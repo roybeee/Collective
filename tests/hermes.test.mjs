@@ -24,6 +24,8 @@ await assert.rejects(()=>submitHermes('other-owner','job',cfg));
 let state='running';
 globalThis.fetch=async(url,init)=>Response.json({object:'hermes.run',run_id:'run_123',status:state,output:'completed draft'});
 assert.equal((await pollHermes(cfg,'run_123')).status,'in_progress');
+globalThis.fetch=async()=>Response.json({object:'hermes.run',run_id:'run_123',status:state,output:'completed draft',last_event:'tool.start',updated_at:1700000000});
+const progress=await pollHermes(cfg,'run_123');assert.equal(progress.activity,'tool.start');assert.equal(progress.activityAt,'2023-11-14T22:13:20.000Z');
 state='completed';assert.equal((await pollHermes(cfg,'run_123')).output[0].content[0].text,'completed draft');
 state='cancelled';assert.equal((await pollHermes(cfg,'run_123',true)).status,'cancelled');
 state='unknown';await assert.rejects(()=>pollHermes(cfg,'run_123'));

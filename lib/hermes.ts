@@ -37,5 +37,9 @@ export async function pollHermes(cfg:Connection,id:string,stop=false,timeoutMs=3
  const status=r.status==='completed'?'completed':['cancelled','canceled','stopped','interrupted'].includes(r.status)?'cancelled':['failed','error'].includes(r.status)?'failed':['started','queued','running','stopping','waiting','waiting_approval','waiting_for_approval','pending'].includes(r.status)?'in_progress':null;
  if(!status)throw new ApiError(502,'HERMES 실행 상태를 확인하지 못했습니다.');
  if(status==='completed'&&(typeof r.output!=='string'||r.output.length>300000))throw new ApiError(502,'HERMES 작업물 형식이 올바르지 않습니다.');
- return {id,status,needsApproval:['waiting_approval','waiting_for_approval'].includes(r.status),output:status==='completed'?[{content:[{type:'output_text',text:r.output}]}]:[],usage:{total_tokens:r.usage?.total_tokens||0}};
+ const activity=typeof r.last_event==='string'&&/^[a-z_.]{1,80}$/.test(r.last_event)?r.last_event:undefined;
+ const activityAt=typeof r.updated_at==='number'&&Number.isFinite(r.updated_at)&&r.updated_at>0&&r.updated_at<1e11?new Date(r.updated_at*1000).toISOString():undefined;
+ const failureText=typeof r.error==='string'?r.error:JSON.stringify(r.error||'');
+ const failureReason=/auth|api.?key|credential|401|403/i.test(failureText)?'HERMES 모델 또는 도구의 인증에 실패했습니다.':/timeout|timed out|deadline/i.test(failureText)?'HERMES 내부 실행 시간이 초과됐습니다.':/restart|interrupt/i.test(failureText)?'HERMES 재시작 또는 실행 중단이 보고됐습니다.':/mcp|aside|browser|tool/i.test(failureText)?'HERMES 도구 실행 중 오류가 발생했습니다. 서버 실행 기록을 확인하세요.':undefined;
+ return {id,status,activity,activityAt,failureReason,needsApproval:['waiting_approval','waiting_for_approval'].includes(r.status),output:status==='completed'?[{content:[{type:'output_text',text:r.output}]}]:[],usage:{total_tokens:r.usage?.total_tokens||0}};
 }
