@@ -1,0 +1,7 @@
+import { sql } from 'drizzle-orm';
+import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
+export const records=sqliteTable('records',{id:text('id').primaryKey(),owner:text('owner').notNull(),kind:text('kind').notNull(),parentId:text('parent_id').notNull().default(''),data:text('data').notNull(),updatedAt:text('updated_at').notNull()},t=>[index('idx_records_owner_kind').on(t.owner,t.kind),index('idx_records_owner_parent').on(t.owner,t.parentId)]);
+export const settings=sqliteTable('settings',{owner:text('owner').primaryKey(),secret:text('secret'),model:text('model').notNull().default('gpt-6-astra'),updatedAt:text('updated_at').notNull()});
+export const jobs=sqliteTable('jobs',{id:text('id').primaryKey(),owner:text('owner').notNull(),campaignId:text('campaign_id').notNull(),role:text('role').notNull(),status:text('status').notNull(),providerId:text('provider_id'),model:text('model').notNull(),campaignVersion:integer('campaign_version').notNull(),createdAt:text('created_at').notNull(),updatedAt:text('updated_at').notNull(),error:text('error'),tokens:integer('tokens').notNull().default(0)},t=>[index('idx_jobs_owner_campaign').on(t.owner,t.campaignId),uniqueIndex('idx_jobs_active_campaign').on(t.owner,t.campaignId).where(sql`${t.status} IN ('starting','queued','in_progress','uncertain')`)]);
+
+export const mutationLocks=sqliteTable('mutation_locks',{owner:text('owner').primaryKey(),token:text('token').notNull(),expiresAt:integer('expires_at').notNull()});
