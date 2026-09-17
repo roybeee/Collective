@@ -1,8 +1,9 @@
 import {briefFields,valueOf,type BriefDraft,type BriefKey,type DraftMeta} from '@/lib/brief';
 import {verifyHermes,hermesEndpoint} from '@/lib/hermes';
-import {ApiError,acquireLock,releaseLock,assertNoActiveJobs,database,identity,secureMutation,json,failure,body,str,num,recordStatement,readRecord,listRecords,eventStatement,validateCampaign,stamp,uid,encrypt,configuration,connection} from '@/lib/server';
+import {deleteCampaign,ApiError,acquireLock,releaseLock,assertNoActiveJobs,database,identity,secureMutation,json,failure,body,str,num,recordStatement,readRecord,listRecords,eventStatement,validateCampaign,stamp,uid,encrypt,configuration,connection} from '@/lib/server';
 import {roles,type Campaign,type Brand,type Artifact,type Metric} from '@/lib/agency';
 export async function POST(req:Request){let lockOwner="",lockToken="";try{const owner=identity(req);secureMutation(req);const b=await body(req);lockOwner=owner;lockToken=await acquireLock(owner);const db=database();
+if(b.action==='delete_campaign')return json(await deleteCampaign(owner,b));
 if(b.action==='save_campaign'){
  const data=validateCampaign(b.data||{});let campaign:Campaign;const writes:D1PreparedStatement[]=[];
  const draft=b.briefDraftId?await readRecord<BriefDraft>(owner,'brief_draft',str(b.briefDraftId,'초안',100,true)):null;
