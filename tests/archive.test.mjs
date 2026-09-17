@@ -12,7 +12,7 @@ const DB={prepare:q=>new Statement(q),batch:async ss=>{sql.exec('BEGIN');try{con
 const runtime={DB,AGENCY_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64')};
 
 const blobs=new Map();runtime.BUCKET={put:async(k,stream)=>blobs.set(k,await new Response(stream).arrayBuffer()),get:async k=>blobs.has(k)?{body:blobs.get(k)}:null,delete:async k=>blobs.delete(k)};
-let calls=0,loseAck=false,denyRecovery=false,badOutput=false,providerStatus='completed',capExtra={},toolsets=[];const submissions=new Map(),inputs=[],destinations=[];
+let calls=0,loseAck=false,denyRecovery=false,badOutput=false,providerStatus='completed',failPoll=false,holdSubmit=null,capExtra={},toolsets=[];const submissions=new Map(),inputs=[],destinations=[];
 function answer(x){
  if(!x.stage)return "검증용 공급자 응답";
  if(x.stage==='investigation'){const sources=['brand','product','customer'].map((category,i)=>({id:'new-'+i,title:'공식 자료 '+i,category,url:'https://brand.example.com/evidence/'+i,content:'테스트에서 제공한 관찰 정보',scope:'공식 원문',observedAt:new Date().toISOString()}));return JSON.stringify({sources,phases:['조사 계획','브랜드·사업 이해','고객·경쟁 조사','콘텐츠 비교','반론·보완 조사','진단·실험 제안'].map(phase=>({phase,summary:'단계별 관찰 결과'})),access:sources.map(s=>({sourceId:s.id,method:'browser',tool:'test-browser',scope:'읽기 전용 관찰'})),cases:[],customerSignals:[],competitors:[],review:{claims:[],followups:[],unresolved:['추가 콘텐츠 자료 필요']},diagnosis:JSON.parse(answer({...x,stage:'diagnosis'}))})}
@@ -25,21 +25,24 @@ const fakeFetch=async(url,options={})=>{
  if(url.endsWith('/v1/toolsets'))return Response.json({data:toolsets});
  if(url.endsWith('/v1/models'))return Response.json({data:[{id:'test-hermes'}]});
  if(url.endsWith('/v1/runs')&&options.method==='POST'){
+  if(holdSubmit)await holdSubmit;
   if(denyRecovery)return new Response('',{status:401});
   const key=options.headers['Idempotency-Key'];if(!submissions.has(key)){calls++;const x=JSON.parse(JSON.parse(options.body).input);inputs.push(x);submissions.set(key,{id:'meeting_run_'+calls,x})}
   if(loseAck){loseAck=false;throw new Error('lost acknowledgement')}
   return Response.json({run_id:submissions.get(key).id});
  }
  if(url.endsWith('/stop')){providerStatus='cancelled';return Response.json({ok:true})}
- if(url.includes('/v1/runs/')){const id=url.split('/').pop(),r=[...submissions.values()].find(r=>r.id===id);return Response.json({object:'hermes.run',run_id:id,status:providerStatus,output:badOutput?'invalid JSON':answer(r.x),usage:{total_tokens:50}})}
+ if(url.includes('/v1/runs/')){if(failPoll)throw new Error('temporary gateway timeout');const id=url.split('/').pop(),r=[...submissions.values()].find(r=>r.id===id);return Response.json({object:'hermes.run',run_id:id,status:providerStatus,output:badOutput?'invalid JSON':answer(r.x),usage:{total_tokens:50}})}
  throw new Error('Unexpected destination: '+url);
 };
-const ctx=createContext({console,crypto:webcrypto,Response,Request,Headers,File,FormData,TextEncoder,TextDecoder,Uint8Array,Date,URL,AbortSignal,btoa,atob,fetch:fakeFetch,process:{env:{NODE_ENV:'production'}}});
+const requestTimeouts=[];const trackedAbortSignal={timeout:ms=>{requestTimeouts.push(ms);return AbortSignal.timeout(ms)}};
+const ctx=createContext({console,crypto:webcrypto,Response,Request,Headers,File,FormData,TextEncoder,TextDecoder,Uint8Array,Date,URL,AbortSignal:trackedAbortSignal,btoa,atob,fetch:fakeFetch,process:{env:{NODE_ENV:'production'}}});
+const backgroundTasks=[];let drainBackground=true;const afterModule=new SyntheticModule(['after'],function(){this.setExport('after',fn=>backgroundTasks.push(fn))},{context:ctx});
 const modules=new Map();const envModule=new SyntheticModule(['env'],function(){this.setExport('env',runtime)},{context:ctx});
-async function load(file){file=resolve(file);if(modules.has(file))return modules.get(file);const code=ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;const m=new SourceTextModule(code,{context:ctx,identifier:file});modules.set(file,m);await m.link(async(spec,ref)=>{if(spec==='cloudflare:workers')return envModule;const f=spec.startsWith('@/')?resolve(spec.slice(2)):resolve(dirname(ref.identifier),spec);return load(f.endsWith('.ts')?f:f+'.ts')});return m}
+async function load(file){file=resolve(file);if(modules.has(file))return modules.get(file);const code=ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;const m=new SourceTextModule(code,{context:ctx,identifier:file});modules.set(file,m);await m.link(async(spec,ref)=>{if(spec==='cloudflare:workers')return envModule;if(spec==='next/server')return afterModule;const f=spec.startsWith('@/')?resolve(spec.slice(2)):resolve(dirname(ref.identifier),spec);return load(f.endsWith('.ts')?f:f+'.ts')});return m}
 const action=await load('app/api/action/route.ts');await action.evaluate();const workspace=await load('app/api/workspace/route.ts');await workspace.evaluate();const run=await load('app/api/run/route.ts');await run.evaluate();
 let owner='qa-owner-with-a-production-length-authenticated-user-id';const passed=[];const check=(name,val)=>{assert.ok(val,name);passed.push(name)};
-async function request(mod,method,b,override={}){const headers={'Content-Type':'application/json','oai-authenticated-user-id':owner,...override};for(const k in headers)if(headers[k]===null)delete headers[k];const r=await mod.namespace[method](new Request('https://agency.test/api/test',{method,headers,...(b?{body:JSON.stringify(b)}:{})}));return {status:r.status,data:await r.json()}}
+async function request(mod,method,b,override={}){const headers={'Content-Type':'application/json','oai-authenticated-user-id':owner,...override};for(const k in headers)if(headers[k]===null)delete headers[k];const r=await mod.namespace[method](new Request('https://agency.test/api/test',{method,headers,...(b?{body:JSON.stringify(b)}:{})}));const data=await r.json();if(drainBackground)while(backgroundTasks.length)await backgroundTasks.shift()();return {status:r.status,data}}
 const act=(name,b={})=>request(action,'POST',{action:name,...b});const snapshot=()=>request(workspace,'GET');
 
 const archive=await load('app/api/archive/route.ts');await archive.evaluate();
@@ -50,7 +53,7 @@ const logic=await load('lib/archive.ts');await logic.evaluate();
 const context=await load('lib/archive-server.ts');await context.evaluate();
 const ap=(action,b={})=>request(archive,'POST',{action,...b});
 const rp=(action,b={})=>request(research,'POST',{action,...b});
-const ar=async(brandId='new-brand')=>{const r=await archive.namespace.GET(new Request('https://agency.test/api/archive?brandId='+brandId,{headers:{'oai-authenticated-user-id':owner}}));return {status:r.status,data:await r.json()}};
+const ar=async(brandId='new-brand')=>{const r=await archive.namespace.GET(new Request('https://agency.test/api/archive?brandId='+brandId,{headers:{'oai-authenticated-user-id':owner}}));const data=await r.json();if(drainBackground)while(backgroundTasks.length)await backgroundTasks.shift()();return {status:r.status,data}};
 await snapshot();
 const create={id:'new-brand',data:{name:'검증용 브랜드',category:'베이커리',description:'테스트',intake:{website:'https://brand.example.com',clientNeed:'평일 방문 개선'}}};
 check('anonymous creation rejected',(await request(archive,'POST',{action:'create_brand',...create},{'oai-authenticated-user-id':null})).status===401);
@@ -84,7 +87,7 @@ check('public cumulative snapshots not compared',!logic.namespace.comparablePrev
 check('research requires configured provider',(await rp('start',{id:'deep-1',brandId:'new-brand'})).status===409);
 await act('save_hermes',{endpoint:'https://hermes.example.com',key:'hermes-local-test-key-only'});
 res=await rp('start',{id:'deep-1',brandId:'new-brand'});
-check('deep research submits continuous server run before returning',res.status===200&&res.data.steps.length===1&&calls===1&&!!res.data.protocol);
+check('deep research queues then submits continuous server run after response',res.status===202&&res.data.steps.length===1&&calls===1&&!!res.data.protocol);
 check('raw source corpus not duplicated in snapshot',!(await server.namespace.readRecord(owner,'brand_research','deep-1')).snapshot.sources);
 check('active research blocks source edits',(await ap('add_source',{brandId:'new-brand',data:source})).status===409);
 check('active research blocks connection removal',(await act('disconnect')).status===409);
@@ -105,11 +108,11 @@ check('diagnosis grounded in confirmed current sources adoptable',(await ap('con
 check('adopted diagnosis reaches AI context',(await context.namespace.brandArchiveContext(owner,'new-brand')).confirmedDiagnosis.id==='classify-1');
 await act('save_brand',{id:'new-brand',data:{description:'브랜드 포지셔닝 변경'}});
 check('brand basic changes invalidate adopted diagnosis',(await context.namespace.brandArchiveContext(owner,'new-brand')).confirmedDiagnosis===null);
-loseAck=true;res=await rp('start',{id:'ack-lost',brandId:'new-brand'});const before=calls;
+loseAck=true;res=await rp('start',{id:'ack-lost',brandId:'new-brand'});const before=calls;res.data=await server.namespace.readRecord(owner,'brand_research','ack-lost');
 check('lost ACK keeps uncertain lock',res.data.status==='uncertain');denyRecovery=true;res=await rp('recover',{id:'ack-lost'});check('recovery auth rejection retains lock',res.data.status==='uncertain'&&(await act('disconnect')).status===409);denyRecovery=false;
 res=await rp('recover',{id:'ack-lost'});check('recovery reuses provider request',res.data.status==='running'&&calls===before);
 res=await rp('cancel',{id:'ack-lost'});check('cancellation ends known provider',res.data.status==='cancelled');providerStatus='completed';
-await rp('start',{id:'cancel-pending',brandId:'new-brand',mode:'classify'});const cancelBefore=calls;check('pending cancellation submits nothing',(await rp('cancel',{id:'cancel-pending'})).data.status==='cancelled'&&calls===cancelBefore);
+drainBackground=false;await rp('start',{id:'cancel-pending',brandId:'new-brand',mode:'classify'});const cancelBefore=calls;check('pending cancellation submits nothing',(await rp('cancel',{id:'cancel-pending'})).data.status==='cancelled'&&calls===cancelBefore);drainBackground=true;while(backgroundTasks.length)await backgroundTasks.shift()();
 await rp('start',{id:'bad-output',brandId:'new-brand'});badOutput=true;res=await rp('advance',{id:'bad-output'});badOutput=false;check('malformed output fails without fake diagnosis',res.data.status==='failed'&&!(await ar()).data.diagnostics.some(d=>d.id==='bad-output'));
 async function upload(){const form=new FormData();form.set('brandId','new-brand');form.set('file',new File(['원본 브랜드 제품 가격'],'brief.txt',{type:'text/plain'}));form.set('content','원본 브랜드 제품 가격');return files.namespace.POST(new Request('https://agency.test/api/archive/file',{method:'POST',headers:{'oai-authenticated-user-id':owner},body:form}))}
 res=await upload();const fid=(await res.json()).id;check('upload stores original and source',res.status===200&&blobs.size===1);
@@ -120,8 +123,8 @@ const published=(await ar()).data;check('public source list contains no object k
 
 
 for(let i=0;i<31;i++)await ap('add_source',{brandId:'new-brand',data:{title:'분류 배치 '+i,content:'추가 분류 자료 '+i}});
-const totalSources=(await ar()).data.sources.length;res=await rp('start',{id:'all-batches',brandId:'new-brand',mode:'classify'});check('classification creates enough batches for entire archive',res.data.steps.length===3);
-const inputStart=inputs.length;for(let i=0;i<7;i++){res=await rp('advance',{id:'all-batches'});if(res.data.status==='completed')break}
+const totalSources=(await ar()).data.sources.length;const inputStart=inputs.length;res=await rp('start',{id:'all-batches',brandId:'new-brand',mode:'classify'});check('classification creates enough batches for entire archive',res.data.steps.length===3);
+for(let i=0;i<7;i++){res=await rp('advance',{id:'all-batches'});if(res.data.status==='completed')break}
 const handled=new Set(inputs.slice(inputStart).filter(x=>x.stage==='identity').flatMap(x=>x.sources.map(s=>s.id)));check('classification covers older sources beyond first 30',res.data.status==='completed'&&handled.size===totalSources);
 const brief=await load('app/api/brief/route.ts');await brief.evaluate();
 res=await request(brief,'POST',{action:'start',id:'archive-brief',data:campaign});check('new brand brief receives confirmed archive and real metrics',res.status===200&&inputs.at(-1).brandArchive.confirmedSources.some(s=>s.id===sid)&&inputs.at(-1).brandArchive.observations.length===1);await request(brief,'POST',{action:'cancel',id:'archive-brief'});providerStatus='completed';
@@ -163,7 +166,7 @@ const insufficient=structuredClone(fixture);insufficient.cases=insufficient.case
 check('provider cannot override server quality gate',parse(insufficient).report.quality.status==='needs_data');
 const unviewed=structuredClone(fixture);Object.assign(unviewed.cases[0],{viewing:'not_viewed',viewedRanges:[],timeline:[]});check('unviewed video preserves report but blocks strategy readiness',parse(unviewed).report.quality.status==='needs_data');
 const old=structuredClone(fixture);old.cases.forEach(c=>c.publishedAt=new Date(Date.now()-120*86400000).toISOString());check('old content cannot meet recent sample requirement',parse(old).report.quality.status==='needs_data');
-res=await rp('start',{id:'followup-test',brandId:'new-brand',previousResearchId:'deep-1'});check('followup submits missing evidence questions',res.status===200&&inputs.at(-1).previousGaps.length>0&&inputs.at(-1).maxNewSources<=40);
+res=await rp('start',{id:'followup-test',brandId:'new-brand',previousResearchId:'deep-1'});check('followup submits missing evidence questions',res.status===202&&inputs.at(-1).previousGaps.length>0&&inputs.at(-1).maxNewSources<=40);
 providerStatus='waiting_approval';res=await rp('advance',{id:'followup-test'});check('tool approval is visible and never marked complete',res.data.status==='running'&&res.data.error.includes('승인'));
 providerStatus='completed';const countBefore=(await ar()).data.sources.length;
 DB.batch=async()=>{throw new Error('injected final storage failure')};res=await rp('advance',{id:'followup-test'});DB.batch=originalBatch;
@@ -171,4 +174,27 @@ check('failed final storage retains running job and no partial evidence',res.sta
 res=await rp('advance',{id:'followup-test'});await rp('advance',{id:'followup-test'});check('final storage retry archives once',res.data.status==='completed'&&(await ar()).data.sources.length===countBefore+3);
 await ap('create_brand',{id:'other-brand',data:{name:'다른 브랜드',category:'서비스'}});
 check('cross-brand followup rejected',(await rp('start',{id:'wrong-followup',brandId:'other-brand',previousResearchId:'deep-1'})).status===409);
+// Registration returns with durable work before any gateway request, then hands off after response.
+drainBackground=false;const beforeRegistrationRequests=destinations.length,beforeRegistrationCalls=calls;
+res=await ap('create_brand',{id:'fast-register',autoResearch:true,data:{name:'빠른 등록 검증',category:'음식점'}});const queuedId=res.data.researchId;
+check('registration atomically saves brand and queued research without network wait',res.status===200&&res.data.researchQueued&&destinations.length===beforeRegistrationRequests&&(await server.namespace.readRecord(owner,'brand_research',queuedId)).steps[0].status==='pending');
+const queuedTotal=sql.prepare("SELECT count(*) n FROM jobs WHERE role='brand_research'").get().n;
+await ap('create_brand',{id:'fast-register',autoResearch:true,data:{name:'빠른 등록 검증',category:'음식점'}});
+check('registration replay cannot enqueue duplicate research',sql.prepare("SELECT count(*) n FROM jobs WHERE role='brand_research'").get().n===queuedTotal&&backgroundTasks.length===1);
+let releaseSubmit;holdSubmit=new Promise(resolve=>releaseSubmit=resolve);const handoff=backgroundTasks.shift()();
+// Await the stored uncertainty marker, not an arbitrary timer.
+for(let i=0;i<100;i++){if((await server.namespace.readRecord(owner,'brand_research',queuedId)).steps[0].status==='uncertain')break;await Promise.resolve()}
+check('slow handoff does not hold workspace mutation lock',(await ap('create_brand',{id:'during-slow-handoff',data:{name:'다른 브랜드',category:'서비스'}})).status===200);
+check('concurrent advancement is serialized per research',(await rp('advance',{id:queuedId})).status===409);
+releaseSubmit();await handoff;holdSubmit=null;
+check('after-response task submits even with no client advancement',calls===beforeRegistrationCalls+1&&(await server.namespace.readRecord(owner,'brand_research',queuedId)).steps[0].status==='running');
+failPoll=true;res=await rp('advance',{id:queuedId});failPoll=false;
+check('transient poll timeout retains active run and schedules retry',res.data.status==='running'&&!!res.data.retryAt&&!res.data.stopRequested);
+const beforeBackoff=destinations.length;await rp('advance',{id:queuedId});check('retry backoff avoids repeated gateway calls',destinations.length===beforeBackoff);
+const aged=await server.namespace.readRecord(owner,'brand_research',queuedId);aged.createdAt=new Date(Date.now()-3*3600000).toISOString();aged.retryAt=undefined;await server.namespace.recordStatement(owner,'brand_research',queuedId,aged,'fast-register').run();
+await rp('advance',{id:queuedId});check('hours-long research can finish without application deadline',(await server.namespace.readRecord(owner,'brand_research',queuedId)).status==='completed');
+check('submission recovery has 90-second budget and status queries 45 seconds',requestTimeouts.includes(90000)&&requestTimeouts.includes(45000)&&requestTimeouts.includes(20000));
+DB.batch=async()=>{throw new Error('injected registration failure')};res=await ap('create_brand',{id:'atomic-registration',autoResearch:true,data:{name:'실패 검증',category:'음식점'}});DB.batch=originalBatch;
+check('failed registration cannot leave orphan brand or queued job',res.status===500&&!sql.prepare("SELECT id FROM records WHERE kind='brand' AND json_extract(data,'$.id')='atomic-registration'").get()&&!sql.prepare("SELECT id FROM jobs WHERE campaign_id='brand:atomic-registration'").get());
+drainBackground=true;
 console.log(JSON.stringify({passed:passed.length,checks:passed},null,2));
