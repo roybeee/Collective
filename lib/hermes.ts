@@ -37,5 +37,5 @@ export async function pollHermes(cfg:Connection,id:string,stop=false){
  const status=r.status==='completed'?'completed':['cancelled','canceled','stopped','interrupted'].includes(r.status)?'cancelled':['failed','error'].includes(r.status)?'failed':['started','queued','running','stopping','waiting','waiting_approval','waiting_for_approval','pending'].includes(r.status)?'in_progress':null;
  if(!status)throw new ApiError(502,'HERMES 실행 상태를 확인하지 못했습니다.');
  if(status==='completed'&&(typeof r.output!=='string'||r.output.length>300000))throw new ApiError(502,'HERMES 작업물 형식이 올바르지 않습니다.');
- return {id,status,output:status==='completed'?[{content:[{type:'output_text',text:r.output}]}]:[],usage:{total_tokens:r.usage?.total_tokens||0}};
+ return {id,status,needsApproval:['waiting_approval','waiting_for_approval'].includes(r.status),output:status==='completed'?[{content:[{type:'output_text',text:r.output}]}]:[],usage:{total_tokens:r.usage?.total_tokens||0}};
 }

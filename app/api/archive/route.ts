@@ -24,7 +24,7 @@ export async function POST(req:Request){let owner='',lock='';try{owner=identity(
  }
  if(b.action==='add_observation'){const o=makeObservation(brandId,b.data||{});await database().batch([recordStatement(owner,'brand_observation',o.id,o,brandId),stateWrite(owner,brandId,state.revision+1)]);return json({id:o.id})}
  if(b.action==='confirm_diagnosis'){
-  const d=await readRecord<Diagnostic>(owner,'brand_diagnostic',str(b.id,'진단',100,true));if(d.brandId!==brandId)throw new ApiError(404,'진단을 찾을 수 없습니다.');if(d.archiveRevision!==state.revision)throw new ApiError(409,'진단 이후 자료가 바뀌었습니다. 최신 자료로 다시 진단하세요.');const sources=await listRecords<ArchiveSource>(owner,'brand_source',brandId);const ids=new Set(sources.filter(s=>s.status==='confirmed').map(s=>s.id));if(!d.sourceIds.length||d.sourceIds.some(id=>!ids.has(id)))throw new ApiError(409,'진단 근거를 확인한 뒤 최신 자료로 다시 진단해 주세요.');
+  const d=await readRecord<Diagnostic>(owner,'brand_diagnostic',str(b.id,'진단',100,true));if(d.brandId!==brandId)throw new ApiError(404,'진단을 찾을 수 없습니다.');if(d.researchQuality?.status==='needs_data')throw new ApiError(409,'조사 근거가 부족합니다. 추가 자료와 보완 조사 후 진단을 채택하세요.');if(d.archiveRevision!==state.revision)throw new ApiError(409,'진단 이후 자료가 바뀌었습니다. 최신 자료로 다시 진단하세요.');const sources=await listRecords<ArchiveSource>(owner,'brand_source',brandId);const ids=new Set(sources.filter(s=>s.status==='confirmed').map(s=>s.id));if(!d.sourceIds.length||d.sourceIds.some(id=>!ids.has(id)))throw new ApiError(409,'진단 근거를 확인한 뒤 최신 자료로 다시 진단해 주세요.');
   await recordStatement(owner,'brand_diagnostic',d.id,{...d,status:'confirmed'},brandId).run();return json({id:d.id});
  }
  throw new ApiError(400,'지원하지 않는 아카이브 작업입니다.');

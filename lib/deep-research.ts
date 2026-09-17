@@ -1,0 +1,20 @@
+import type {Brand} from './agency';
+export const DEEP_RESEARCH_VERSION='brand-onboarding-2';
+export const researchPhases=['조사 계획','브랜드·사업 이해','고객·경쟁 조사','콘텐츠 비교','반론·보완 조사','진단·실험 제안'];
+export type ResearchAccess={checkedAt:string;gateway:boolean;aside:'advertised'|'unverified';browser:'advertised'|'unverified';tools:string[];notes:string[]};
+export type ResearchPlan={objective:string;businessType:'local'|'commerce'|'service';lookbackDays:number;targetCases:number;targetCompetitors:number;maxFollowups:number;questions:string[];channels:string[]};
+export type ContentCase={id:string;sourceId:string;account:string;channel:string;relationship:'own'|'competitor';format:string;publishedAt:string;observedAt:string;distribution:'organic'|'paid'|'unknown';views:number|null;likes:number|null;comments:number|null;shares:number|null;durationSeconds:number|null;viewing:'not_viewed'|'partial'|'full';viewedRanges:{start:number;end:number}[];timeline:{second:number;observation:string}[];hook:string;message:string;proof:string;cta:string;friction:string;hypothesis:string;alternative:string};
+export type CustomerSignal={sourceId:string;kind:'motivation'|'barrier'|'complaint'|'question';observation:string;implication:string};
+export type DeepReport={plan:ResearchPlan;phases:{phase:string;summary:string}[];cases:ContentCase[];customerSignals:CustomerSignal[];competitors:{name:string;sourceIds:string[];difference:string}[];review:{claims:{claim:string;sourceIds:string[];counterEvidence:string;nextCheck:string}[];followups:{question:string;finding:string;sourceIds:string[]}[];unresolved:string[]};access:{sourceId:string;method:'browser'|'api'|'upload'|'search_snippet';tool:string;scope:string}[];quality:{status:'review_ready'|'needs_data';issues:string[];coverage:{category:string;count:number}[];comparableGroups:number;viewedCases:number};completedAt:string};
+export function defaultResearchPlan(brand:Brand):ResearchPlan{
+ const text=[brand.category,brand.description,brand.intake?.clientNeed].join(' '),businessType=/매장|방문|식당|카페|베이커리|피자|도넛/.test(text)?'local':/뷰티|화장품|의류|상품|쇼핑|커머스/.test(text)?'commerce':'service';
+ const branch=businessType==='local'?['지도·리뷰에서 실제 방문 장벽은 무엇인가?','메뉴·가격·영업시간·동선·매장 수용량은 확인됐는가?']:businessType==='commerce'?['상품 상세·후기·배송·환불에서 구매 장벽은 무엇인가?','주력 상품의 마진·재구매·재고 정보는 확보됐는가?']:['고객이 문의·신청·계약 과정에서 멈추는 이유는 무엇인가?','서비스 가격·제공 범위·수용량을 확인했는가?'];
+ const urls=brand.intake?.socialLinks||'';const channels=['Instagram','TikTok','YouTube'].filter(x=>urls.toLowerCase().includes(x.toLowerCase()));
+ return {objective:brand.intake?.clientNeed||'브랜드의 선택 이유와 성장 병목을 파악하고 검증할 실험을 정한다.',businessType,lookbackDays:90,targetCases:15,targetCompetitors:3,maxFollowups:2,channels:channels.length?channels:['Instagram','TikTok','YouTube'],questions:['공식 브랜드·계정·사업 지역이 맞는가?','누가 어떤 상황에서 이 브랜드를 선택하는가?',...branch,'같은 조건의 고·중·저성과 콘텐츠는 무엇이 다른가?','어떤 반례가 전략 가설을 뒤집을 수 있는가?']};
+}
+export function comparisonGroups(cases:ContentCase[]){
+ const groups=new Map<string,ContentCase[]>();
+ for(const c of cases){if(c.views===null||c.distribution==='unknown')continue;const age=(Date.parse(c.observedAt)-Date.parse(c.publishedAt))/86400000;if(age<1||!Number.isFinite(age))continue;const ageBucket=age<=7?'1–7일':age<=30?'8–30일':'31일 이상';const durationBucket=c.durationSeconds===null?'길이 미확인':c.durationSeconds<=15?'15초 이하':c.durationSeconds<=30?'16–30초':c.durationSeconds<=60?'31–60초':'60초 초과';if(c.format==='video'&&c.durationSeconds===null)continue;
+ const key=[c.channel,c.account,c.format,c.distribution,ageBucket,durationBucket].join(' / ');groups.set(key,[...(groups.get(key)||[]),c]);}
+ return [...groups].filter(([,items])=>items.length>=6&&new Set(items.map(c=>c.views)).size>=3).map(([label,items])=>{const sorted=[...items].sort((a,b)=>a.views!-b.views!),median=sorted.length%2?sorted[Math.floor(sorted.length/2)].views!:(sorted[sorted.length/2-1].views!+sorted[sorted.length/2].views!)/2;return {label,count:sorted.length,median,items:sorted.map((c,i)=>({id:c.id,band:i<Math.floor(sorted.length/3)?'low':i>=Math.ceil(sorted.length*2/3)?'high':'middle',relativeViews:median>0?c.views!/median:null}))}});
+}
