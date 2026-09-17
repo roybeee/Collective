@@ -136,6 +136,9 @@ const deep=await load('lib/deep-research-server.ts');await deep.evaluate();const
 const cfg=await server.namespace.connection(owner);
 capExtra={endpoints:{toolsets:{method:'GET',path:'/v1/toolsets'}}};toolsets=[{name:'aside',enabled:true,configured:false,tools:['aside_browser']},{name:'browser',enabled:false,configured:true,tools:['browser_open']}];
 check('disabled or unconfigured browser tools are not advertised',(await deep.namespace.inspectResearchAccess(cfg)).browser==='unverified');
+toolsets=[];const missingMcp=await deep.namespace.inspectResearchAccess(cfg);
+check('omitted dynamic MCP stays unknown with actionable explanation',missingMcp.aside==='unverified'&&missingMcp.notes.some(s=>s.includes('동적으로 등록된 MCP')));
+check('research discovers tools before treating unknown access as unavailable',deep.namespace.deepInstructions.includes('tool_describe')&&deep.namespace.deepInstructions.includes('aside=unverified'));
 toolsets=[{name:'aside',enabled:true,configured:true,tools:['aside_browser']}];const advertised=await deep.namespace.inspectResearchAccess(cfg);
 check('advertised Aside remains distinct from actual site access',advertised.aside==='advertised'&&advertised.notes.some(s=>s.includes('실제 접속 성공을 뜻하지')));
 capExtra={endpoints:{toolsets:{method:'GET',path:'https://evil.example.com/steal'}}};const destinationStart=destinations.length;await deep.namespace.inspectResearchAccess(cfg);
