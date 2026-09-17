@@ -53,6 +53,7 @@ check('negative metric rejected',(await act('save_results',{id:expId,version:4,d
 r=await act('save_results',{id:expId,version:4,data:result});check('qualified result is observational improvement',r.data.assessment?.status==='promising'&&r.data.assessment.lift===100);
 r=await act('adopt_rule',{id:expId,version:5,guidance:'단면을 먼저 보여주는 안을 시험 적용하되 인과관계 확정 아님'});const ruleId=r.data.id;check('trial rule adopted',r.status===200);
 await act('adopt_rule',{id:expId,version:5,guidance:'duplicate'});d=await snap();check('duplicate adoption produces one unchanged rule',d.rules.length===1&&d.rules[0].guidance.includes('단면'));
+check('adopted rule stores actual direction and observed result',d.rules[0].direction==='test'&&d.rules[0].sourceAssessment.lift===100&&d.rules[0].sourceAssessment.controlSample===result.control.denominator);
 check('brand boundary enforced',!domain.namespace.ruleApplies(d.rules[0],'oda','Instagram',now));
 check('channel boundary enforced',!domain.namespace.ruleApplies(d.rules[0],'ofd','YouTube',now));
 check('expiry removes new retrieval',!domain.namespace.ruleApplies(d.rules[0],'ofd','Instagram',now+31*86400000));
@@ -78,4 +79,5 @@ check('active work blocks endpoint replacement',(await req(action,{action:'save_
 r=await req(action,{action:'save_hermes',endpoint:'https://hermes.example.com',key:'a-valid-test-secret-12345'});check('same gateway credentials can recover while work is active',r.status===200);
 r=await req(ai,{action:'recover',id:uncertain.id});check('recovery reuses durable provider submission',r.status===200&&calls===before+1);await req(ai,{action:'poll',id:uncertain.id});
 check('unknown connection cannot block disconnection after terminal jobs',(await req(action,{action:'disconnect'})).status===200);
+await act('adopt_rule',{id:expId,version:6,guidance:'성과가 떨어진 조건을 재검증'});d=await snap();const caution=d.rules.find(x=>x.direction==='caution');check('negative results persist as caution with measurement evidence',caution?.sourceAssessment.status==='not_supported'&&caution.sourceAssessment.treatmentRate===10/result.treatment.denominator);
 console.log(JSON.stringify({passed:checks.length,checks},null,2));

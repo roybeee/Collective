@@ -5,6 +5,7 @@ import {Button} from '@/components/ui/button';
 import {Textarea} from '@/components/ui/textarea';
 import {Label} from '@/components/ui/label';
 import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select';
+import {qualityCriteria,qualityMarkdown} from '@/lib/quality';
 import {roles,type Campaign} from '@/lib/agency';
 import {api,downloadText,type WorkspaceData} from '@/lib/client';
 import {phaseNames,meetingActive,type PublicMeeting,type MeetingStep,type Contribution,type Synthesis,type Revision,type QualityReview} from '@/lib/meetings';
@@ -20,7 +21,7 @@ function StepOutput({step,steps}:{step:MeetingStep|PublicMeeting['steps'][number
  if(step.phase==='discussion'){const x=step.output as Contribution;return <>{!!x.respondsTo.length&&<div className="meeting-replies"><MessageSquare size={13}/>{x.respondsTo.map(id=>roleName(steps.find(s=>s.id===id)?.role||'' )).join(' · ')} 의견에 답변</div>}<Text label="진단">{x.position}</Text><Text label="근거와 한계">{x.evidence}</Text><Text label="반론·보완">{x.challenge}</Text><Text label="제안·협업 요청">{x.proposal}</Text></>}
  if(step.phase==='synthesis'){const x=step.output as Synthesis;return <><Text label="채택한 방향">{x.decisions}</Text><Text label="남은 이견·보류 이유">{x.disagreements}</Text><Text label="확인할 사실">{x.questions}</Text><div className="meeting-task-list">{x.tasks.map(t=><section key={t.role}><b>{roleName(t.role)}</b><p>{t.instruction}</p><small>선정 이유: {t.reason}</small><small>완료 조건: {t.acceptance}</small></section>)}</div></>}
  if(step.phase==='revision'){const x=step.output as Revision;return <><Text label="반영한 의견과 변경점">{x.changes}</Text><details><summary>{x.title} · 개선본 펼치기</summary><p className="meeting-draft">{x.content}</p></details></>}
- const x=step.output as QualityReview;return <><strong className={'meeting-verdict '+x.verdict}>{verdictName[x.verdict]}</strong><Text label="검수 결론">{x.summary}</Text><Text label="검토 항목과 후속 요청">{x.findings}</Text></>;
+ const x=step.output as QualityReview;return <><strong className={'meeting-verdict '+x.verdict}>{verdictName[x.verdict]}</strong><Text label="검수 결론">{x.summary}</Text><Text label="검토 항목과 후속 요청">{x.findings}</Text>{!!x.gateIssues?.length&&<Text label="추가 확인 필요">{x.gateIssues.join("\n")}</Text>}<div className="quality-checks">{x.checks?.map((check,i)=><section key={check.criterion+i}><header><b>{qualityCriteria[check.criterion as keyof typeof qualityCriteria]||check.criterion}</b><span>{check.status==='pass'?'통과':check.status==='revise'?'수정 필요':'자료 필요'}</span></header><p>위치: {check.location}</p><p>{check.finding}</p><p>다음 조치: {check.fix}</p></section>)}</div>{!!x.taskChecks?.length&&<Text label="과제별 완료 검토">{x.taskChecks.map(t=>`${roleName(t.role)} · ${t.status==='pass'?'통과':t.status==='revise'?'수정 필요':'자료 필요'}\n${t.location} · ${t.finding}\n다음 조치: ${t.fix}`).join('\n\n')}</Text>}</>;
 }
 
 export function MeetingPanel({campaign,workspace,onUpdated,onOutputs,onConnect}:{campaign:Campaign;workspace:WorkspaceData;onUpdated:()=>Promise<void>;onOutputs:()=>void;onConnect:()=>void}){

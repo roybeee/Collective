@@ -1,3 +1,5 @@
+import {PRACTICE_VERSION,campaignPractice} from '@/lib/practice';
+import {qualityMarkdown} from '@/lib/quality';
 import {roles,type Campaign,type Brand,type Artifact,type Metric} from '@/lib/agency';
 import type {BriefDraft} from '@/lib/brief';
 import {initialSteps,meetingActive,publicMeeting,parseMeetingOutput,meetingInstructions,candidateArtifacts,type Meeting,type MeetingStep,type Synthesis,type Revision,type QualityReview} from '@/lib/meetings';
@@ -13,7 +15,7 @@ function writes(owner:string,m:Meeting){
 }
 function context(m:Meeting,s:MeetingStep){
  const snapshot=m.snapshot;
- return {agenda:m.agenda,role:s.role,phase:s.phase,brand:snapshot.brand,campaign:snapshot.campaign,trialLearning:snapshot.learning,recordedMetrics:snapshot.metrics,previousMeeting:snapshot.previous,
+ return {skillVersion:m.skillVersion,channelPractice:campaignPractice(snapshot.campaign),agenda:m.agenda,role:s.role,phase:s.phase,brand:snapshot.brand,campaign:snapshot.campaign,trialLearning:snapshot.learning,recordedMetrics:snapshot.metrics,previousMeeting:snapshot.previous,
   originalArtifacts:snapshot.artifacts.map(a=>({...a,content:a.content.slice(0,8000),excerpt:a.content.length>8000})),
   discussion:m.steps.filter(t=>t.phase==='discussion'&&t.status==='completed').map(t=>({id:t.id,role:t.role,...t.output})),
   synthesis:m.steps.find(t=>t.phase==='synthesis')?.output,
@@ -39,8 +41,8 @@ async function finish(owner:string,m:Meeting){
  for(const s of [...changes,m.steps.find(s=>s.phase==='quality')!]){
   const old=current.find(a=>a.role===s.role);const id=old?.id||`meeting-${m.id}-${s.role}`;
   const result=s.output as Revision;
-  const content=s.phase==='quality'?`## ${quality.summary}\n\n${quality.findings}\n\n판정: ${{ready_for_review:'사용자 검토 준비',revise:'수정 필요',needs_data:'자료 필요'}[quality.verdict]}\n최종 승인은 사용자가 진행합니다.`:result.content;
-  const a={id,campaignId:c.id,campaignVersion:c.version,role:s.role,title:s.phase==='quality'?'팀 회의 · 품질 재검토':result.title,content,version:(old?.version||0)+1,status:'review',origin:'ai',createdAt:stamp(),meetingId:m.id};
+  const content=s.phase==='quality'?qualityMarkdown(quality):result.content;
+  const a={skillVersion:m.skillVersion,...(s.phase==='quality'?{qualityReview:quality}:{}),id,campaignId:c.id,campaignVersion:c.version,role:s.role,title:s.phase==='quality'?'팀 회의 · 품질 재검토':result.title,content,version:(old?.version||0)+1,status:'review',origin:'ai',createdAt:stamp(),meetingId:m.id};
   // Multiple manual artifacts for one role are retained as previous versions.
   for(const duplicate of current.filter(a=>a.role===s.role&&a.id!==old?.id))statements.push(recordStatement(owner,'artifact',duplicate.id,{...duplicate,status:'outdated'},c.id));
   statements.push(recordStatement(owner,'artifact',id,a,c.id));m.artifactIds.push(id);
@@ -71,7 +73,7 @@ export async function POST(req:Request){let owner='',lock='',prepared:Meeting|un
    const metrics=(await listRecords<Metric>(owner,'metric',c.id)).slice(0,6),learning=await learningContext(owner,c);
    let previous:Meeting|undefined;
    if(b.previousMeetingId){previous=await readRecord<Meeting>(owner,'team_meeting',str(b.previousMeetingId,'이전 회의',100,true));if(previous.campaignId!==c.id||meetingActive(previous))throw new ApiError(409,'완료 또는 종료된 같은 캠페인의 회의만 이어갈 수 있습니다.')}
-   const m:Meeting={id,campaignId:c.id,campaignVersion:c.version,agenda:str(b.agenda,'회의 안건',5000,true),status:'running',steps:initialSteps(id),createdAt:stamp(),updatedAt:stamp(),model:cfg.model,stopRequested:false,artifactIds:[],invalidatedRoles:[],previousMeetingId:previous?.id,snapshot:{campaign:c,brand,artifacts,metrics,learning,...(previous?{previous:{id:previous.id,agenda:previous.agenda,decisions:previous.steps.find(s=>s.phase==='synthesis')?.output as Synthesis,quality:previous.steps.find(s=>s.phase==='quality')?.output as QualityReview}}:{})}};
+   const m:Meeting={skillVersion:PRACTICE_VERSION,id,campaignId:c.id,campaignVersion:c.version,agenda:str(b.agenda,'회의 안건',5000,true),status:'running',steps:initialSteps(id),createdAt:stamp(),updatedAt:stamp(),model:cfg.model,stopRequested:false,artifactIds:[],invalidatedRoles:[],previousMeetingId:previous?.id,snapshot:{campaign:c,brand,artifacts,metrics,learning,...(previous?{previous:{id:previous.id,agenda:previous.agenda,decisions:previous.steps.find(s=>s.phase==='synthesis')?.output as Synthesis,quality:previous.steps.find(s=>s.phase==='quality')?.output as QualityReview}}:{})}};
    await database().batch([database().prepare('INSERT INTO jobs(id,owner,campaign_id,role,status,model,campaign_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').bind(jobId(owner,m),owner,c.id,'meeting','in_progress',cfg.model,c.version,m.createdAt,m.updatedAt),recordStatement(owner,'team_meeting',m.id,m,c.id),eventStatement(owner,c.id,'팀 회의를 시작했습니다. 8명 의견 교환 → 개선 과제 → 품질 재검토.')]);
    return json(publicMeeting(m));
   }
@@ -85,7 +87,7 @@ export async function POST(req:Request){let owner='',lock='',prepared:Meeting|un
   if(s.status==='pending'){
    if(m.steps.length>13)throw new ApiError(409,'회의의 최대 실행 범위를 초과했습니다.');
    s.status='starting';s.startedAt=stamp();m.updatedAt=stamp();m.error=undefined;
-   await database().batch([...writes(owner,m),hermesSubmissionStatement(owner,s.id,{instructions:meetingInstructions(s),input:JSON.stringify(context(m,s))},m.campaignId)]);
+   await database().batch([...writes(owner,m),hermesSubmissionStatement(owner,s.id,{instructions:meetingInstructions(s,!!m.skillVersion),input:JSON.stringify(context(m,s))},m.campaignId)]);
    prepared=m;
    const r=await submitHermes(owner,s.id,cfg);s.providerId=r.id;s.status='running';m.status='running';m.updatedAt=stamp();
    await database().batch(writes(owner,m));return json(publicMeeting(m));
@@ -102,7 +104,7 @@ export async function POST(req:Request){let owner='',lock='',prepared:Meeting|un
   }
   if(result.status==='completed'){
    s.raw=result.output[0].content[0].text;s.tokens=result.usage.total_tokens;
-   try{s.output=parseMeetingOutput(s.raw!,s,m.steps);s.status='completed';s.completedAt=stamp()}
+   try{s.output=parseMeetingOutput(s.raw!,s,m.steps,!!m.skillVersion,candidateArtifacts(m).invalidatedRoles);s.status='completed';s.completedAt=stamp()}
    catch(e){s.status='failed';s.error=(e as Error).message;m.status='failed';m.error=s.error;await database().batch(writes(owner,m));return json(publicMeeting(m))}
    if(s.phase==='synthesis'){
     const tasks=(s.output as Synthesis).tasks;

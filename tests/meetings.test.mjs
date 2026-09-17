@@ -63,6 +63,7 @@ await mp('advance',{id:args.id});check('gap before second role still blocks muta
 await mp('advance',{id:args.id});check('next member actually receives prior member opinion',inputs[1].discussion.length===1&&inputs[1].discussion[0].role==='cmo');
 for(let i=0;i<30;i++){r=await mp('advance',{id:args.id});if(r.data.status==='completed'||r.data.status==='failed')break}
 check('discussion assignment revisions and quality complete',r.data.status==='completed'&&r.data.steps.length===12&&calls===12);
+check('new meeting records practice version and incomplete rubric cannot pass',!!r.data.skillVersion&&r.data.steps.find(x=>x.phase==='quality').output.gateIssues.length>0);
 check('assigned revisions use dependency order',inputs.filter(x=>x.phase==='revision').map(x=>x.role).join(',')==='content,growth');
 check('later revision receives earlier improved draft',inputs.find(x=>x.phase==='revision'&&x.role==='growth').completedRevisions[0].role==='content');
 const q=inputs.find(x=>x.phase==='quality');check('quality sees only current candidates and stale dependencies',q.candidateArtifacts.some(a=>a.role==='content'&&a.content.includes('수정본'))&&!q.candidateArtifacts.some(a=>a.role==='data')&&q.invalidatedRoles.includes('data'));

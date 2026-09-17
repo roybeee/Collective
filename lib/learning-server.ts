@@ -34,8 +34,8 @@ export function parseAnalysis(raw:any,c:ViralCase,origin:'manual'|'hermes'):Vira
 export async function learningContext(owner:string,c:Pick<Campaign,'brandId'|'channels'>){
  const rules=await listRecords<LearningRule>(owner,'learning_rule');return rules.filter(r=>ruleApplies(r,c.brandId,c.channels)).slice(0,12);
 }
-export async function saveLearningSnapshot(owner:string,id:string,c:Campaign,role:string,rules:LearningRule[]){
- const snap:LearningSnapshot={id,campaignId:c.id,role,rules,createdAt:stamp()};await recordStatement(owner,'learning_snapshot',id,snap,c.id).run();
+export async function saveLearningSnapshot(owner:string,id:string,c:Campaign,role:string,rules:LearningRule[],skillVersion?:string){
+ const snap:LearningSnapshot & {skillVersion?:string}={skillVersion,id,campaignId:c.id,role,rules,createdAt:stamp()};await recordStatement(owner,'learning_snapshot',id,snap,c.id).run();
 }
 function arm(raw:any,label:string,metric:string):Arm{
  if(!raw)throw new ApiError(400,`${label} 결과가 필요합니다.`);const denominator=nullableNumber(raw.denominator,`${label} 분모`),numerator=nullableNumber(raw.numerator,`${label} 반응 수`);
@@ -74,7 +74,7 @@ export async function learningAction(owner:string,b:any){
   }
   if(!e.assessment||!['promising','not_supported'].includes(e.assessment.status))throw new ApiError(409,'최소 표본·기간·비교 조건과 판정 기준을 충족한 결과가 필요합니다.');
   const id=e.id+':'+e.version;const existing=(await listRecords<LearningRule>(owner,'learning_rule')).find(r=>r.id===id);if(existing)return {id:existing.id};
-  const positive=e.assessment.status==='promising',rule:LearningRule={id,brandId:e.brandId,channel:e.channel,experimentId:e.id,experimentVersion:e.version,caseId:e.caseId,title:e.title,guidance:str(b.guidance,'다음 제작에 반영할 규칙',6000,true),scope:e.conditions,evidenceLevel:'observational',status:'active',version:1,expiresAt:new Date(Date.now()+30*86400000).toISOString(),createdAt:stamp(),updatedAt:stamp()};
+  const positive=e.assessment.status==='promising',rule:LearningRule={direction:positive?'test':'caution',...(e.result?{sourceAssessment:{status:e.assessment.status as 'promising'|'not_supported',metric:e.metric,controlRate:e.assessment.controlRate,treatmentRate:e.assessment.treatmentRate,lift:e.assessment.lift,controlSample:e.result.control.denominator,treatmentSample:e.result.treatment.denominator,startedAt:e.startedAt,observedUntil:e.result.observedUntil,conditions:e.conditions,notes:e.result.notes}}:{}),id,brandId:e.brandId,channel:e.channel,experimentId:e.id,experimentVersion:e.version,caseId:e.caseId,title:e.title,guidance:str(b.guidance,'다음 제작에 반영할 규칙',6000,true),scope:e.conditions,evidenceLevel:'observational',status:'active',version:1,expiresAt:new Date(Date.now()+30*86400000).toISOString(),createdAt:stamp(),updatedAt:stamp()};
   await database().batch([recordStatement(owner,'learning_rule',id,rule,e.brandId),eventStatement(owner,e.campaignId,`「${e.title}」을 ${positive?'시험 적용 규칙':'실패에서 배운 주의사항'}으로 채택했습니다. 30일 후 재검토합니다.`)]);return {id};
  }
  if(b.action==='pause_rule'){
