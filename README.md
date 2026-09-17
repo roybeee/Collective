@@ -60,3 +60,14 @@ Design references:
 - GA4, key events: https://support.google.com/analytics/answer/9322688?hl=en
 
 Verification: `node --experimental-vm-modules tests/brief-workflow.mjs` runs owner/origin isolation, HERMES adapter lifecycle, acknowledgement-loss recovery, cancellation, response validation, input preservation, protected facts, persisted provenance, save idempotency, stale version rejection and atomic storage failure checks. `tests/fixtures/brief.json` is a local mock fixture only, never a production generation fallback. Live HERMES execution requires a configured user session and is separate from these tests.
+
+
+## Campaign team meetings
+
+Each campaign has a team meeting tab backed by HERMES: eight separate role contributions, a CMO synthesis assigning 1–3 roles, dependency-ordered revisions, then a separate quality review (maximum 13 provider operations per meeting). Each contribution after the first must reference an actual previous speaker. No synthetic conversation or silent provider fallback is used.
+
+An owner-scoped campaign job remains active throughout the meeting, including between steps. Step inputs and provider idempotency keys are persisted atomically before submission. Unknown acknowledgements remain locked until recovered, including credential errors during recovery; cancellation stops follow-on work. The meeting advances while its tab is open and resumes when reopened. No unattended scheduler is implied.
+
+The final revisions and quality report are committed atomically as review-pending artifacts. Prior versions are retained in history, affected unrevised downstream artifacts become outdated, and no AI verdict approves the campaign. Follow-up meetings receive the preceding decisions, unresolved questions and quality review alongside current campaign context. Campaign deletion removes meeting records and provider input snapshots; shared viral source cases remain.
+
+`node --experimental-vm-modules tests/meetings.test.mjs` checks actual route handlers against SQLite with mocked HERMES responses: cross-role context, role order, output/version preservation, frozen inputs, concurrency, uncertainty, recovery, cancellation, stale rejection, atomic final storage and scoped deletion. Live HERMES response quality and gateway connectivity require an actual configured run.
