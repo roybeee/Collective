@@ -1,4 +1,5 @@
 import {submitHermes,pollHermes,hermesSubmissionStatement} from '@/lib/hermes';
+import {learningContext} from '@/lib/learning-server';
 import {briefInstructions,parseBrief,emptyPlan,type BriefDraft,type BriefInput} from '@/lib/brief';
 import type {Brand,Campaign,Artifact,Metric} from '@/lib/agency';
 import {ApiError,identity,secureMutation,body,str,json,failure,database,recordStatement,readRecord,listRecords,connection,stamp,acquireLock,releaseLock,validateCampaign} from '@/lib/server';
@@ -18,12 +19,13 @@ export async function POST(req:Request){let owner='',lock='',pending:StoredDraft
    let campaignId:string|undefined,campaignVersion:number|undefined;
    if(b.campaignId){const c=await readRecord<Campaign>(owner,'campaign',str(b.campaignId,'캠페인',100,true));if(c.brandId!==input.brandId||c.version!==b.campaignVersion)throw new ApiError(409,'캠페인이 변경됐습니다. 최신 브리프에서 다시 요청하세요.');campaignId=c.id;campaignVersion=c.version}
    const brand=await readRecord<Brand>(owner,'brand',input.brandId);
+   const trialLearning=await learningContext(owner,input);
    const previous=(await listRecords<Campaign>(owner,'campaign')).filter(c=>c.brandId===brand.id&&c.id!==campaignId).slice(0,3);
    const relevantIds=new Set(previous.map(c=>c.id));
    const metrics=(await listRecords<Metric>(owner,'metric')).filter(m=>relevantIds.has(m.campaignId)).slice(0,6);
    const artifacts=(await listRecords<Artifact>(owner,'artifact')).filter(a=>relevantIds.has(a.campaignId)&&a.status==='approved'&&['data','quality','insight'].includes(a.role)).slice(0,4).map(a=>({campaignId:a.campaignId,title:a.title,content:a.content.slice(0,2500)}));
    const prepared:StoredDraft={id,input,status:'starting',campaignId,campaignVersion,model:cfg.model,createdAt:stamp(),updatedAt:stamp()};
-   await database().batch([recordStatement(owner,'brief_draft',id,prepared),hermesSubmissionStatement(owner,'brief-'+id,{instructions:briefInstructions,input:JSON.stringify({brand,currentBrief:input,previousCampaigns:previous.map(c=>({id:c.id,title:c.title,goal:c.goal,plan:c.plan,status:c.status,updatedAt:c.updatedAt})),recordedMetrics:metrics,approvedLearnings:artifacts,contextDate:stamp().slice(0,10)})})]);
+   await database().batch([recordStatement(owner,'brief_draft',id,prepared),hermesSubmissionStatement(owner,'brief-'+id,{instructions:briefInstructions,input:JSON.stringify({brand,currentBrief:input,trialLearning,previousCampaigns:previous.map(c=>({id:c.id,title:c.title,goal:c.goal,plan:c.plan,status:c.status,updatedAt:c.updatedAt})),recordedMetrics:metrics,approvedLearnings:artifacts,contextDate:stamp().slice(0,10)})})]);
    pending=prepared;
    const result=await submitHermes(owner,'brief-'+id,cfg);
    pending={...pending,providerId:result.id,status:'queued',updatedAt:stamp()};await recordStatement(owner,'brief_draft',id,pending).run();return json(publicDraft(pending));

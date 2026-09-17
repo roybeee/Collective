@@ -19,7 +19,7 @@ The default connection is an authenticated HTTPS HERMES gateway in **연결 및 
 
 The model must support Responses background execution and web search. The default model is `gpt-6-astra`; users can set an available compatible model. Official references: https://developers.openai.com/api/docs/guides/agents and https://developers.openai.com/api/docs/models/gpt-6-astra .
 
-Ambiguous submission failures are held for reconciliation, not automatically retried. Recover with the matching provider response ID, or explicitly confirm no submission exists in provider records before retrying. Active work blocks changes to credentials.
+Ambiguous submission failures are held for reconciliation, not automatically retried. Recover with the matching provider response ID, or explicitly confirm no submission exists in provider records before retrying. Active work blocks provider/endpoint changes. Credentials for the same HERMES endpoint may be revalidated to recover active work.
 
 ## Verification
 
@@ -41,7 +41,7 @@ Use the Sites build/publish workflow for deployment. D1 migrations in `drizzle/`
 - Lock a plan before measurement: one changed variable, primary metric, minimum denominator per arm, minimum observation hours, practical relative lift, and comparison conditions. Save measured results with sources. Unknown or insufficient data blocks adoption.
 - Evaluation is a descriptive aggregate comparison, **not** significance testing or causal proof. The sample/time defaults do not constitute a power calculation. Shares/clicks are event counts and can exceed reach/impressions; completions cannot exceed starts. A zero control rate does not yield infinite uplift.
 - Adopt an eligible positive result or negative finding as a scoped, 30-day trial rule. Adoption is idempotent. Result corrections retire previous rules; rules can also be paused. Expired, retired, paused, different-brand or different-channel rules are excluded from new campaign runs.
-- Campaigns automatically retrieve applicable rules; their exact ID/version/content are included in the run input hash and an immutable historical snapshot. Previously generated artifacts are not retroactively rewritten when learning changes. New knowledge is memory/tool guidance, not online model-weight training.
+- Campaign blueprint drafts and campaign role runs automatically retrieve applicable rules; draft submissions retain the exact context. For role runs, their exact ID/version/content are included in the run input hash and an immutable historical snapshot. Previously generated artifacts are not retroactively rewritten when learning changes. New knowledge is memory/tool guidance, not online model-weight training.
 - All data uses the existing owner-scoped D1 records and jobs tables. No schema migrations were necessary. Raw provider responses are retained for diagnosis; secrets are not returned by the learning endpoint.
 
 Verification: `node --experimental-vm-modules tests/learning.test.mjs` exercises real handlers, SQLite and crypto with mocked HERMES. It checks evidence deduplication, ownership, plan locking, insufficient data, result correction, rule expiration/scope, actual campaign prompt injection, preserved snapshots and provider completion idempotency. Browser QA uses explicitly labeled local-only fixtures; none are seeded into production.

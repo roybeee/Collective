@@ -31,7 +31,7 @@ export function parseAnalysis(raw:any,c:ViralCase,origin:'manual'|'hermes'):Vira
  for(const key of ['facts','hook','retention','sharing','context','counterEvidence','unknowns'])out[key]=str(raw[key],key,6000,true);
  out.ideas=raw.ideas.map((x:any)=>{if(!x||!Object.hasOwn(learningMetrics,x.metric))throw new ApiError(400,'실험 주지표를 확인해 주세요.');const idea:any={metric:x.metric};for(const k of ['hypothesis','variable','control','treatment'])idea[k]=str(x[k],k,6000,true);return idea as TestIdea});return out;
 }
-export async function learningContext(owner:string,c:Campaign){
+export async function learningContext(owner:string,c:Pick<Campaign,'brandId'|'channels'>){
  const rules=await listRecords<LearningRule>(owner,'learning_rule');return rules.filter(r=>ruleApplies(r,c.brandId,c.channels)).slice(0,12);
 }
 export async function saveLearningSnapshot(owner:string,id:string,c:Campaign,role:string,rules:LearningRule[]){

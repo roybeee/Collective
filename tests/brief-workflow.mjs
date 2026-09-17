@@ -34,7 +34,13 @@ const input={brandId:'mapdal',title:'사용자 제목',goal:'맵달서울 물품
 await snapshot();
 check('missing connection returns honest error',(await bp('start',{id:'draft-1',data:input})).status===409);
 await act('save_hermes',{endpoint:'https://hermes.example.com',key:'hermes-local-test-key-only'});
+const server=await load('lib/server.ts');await server.evaluate();
+const trial={id:'brief-trial',brandId:'mapdal',channel:'Instagram',status:'active',title:'실험에서 얻은 시험 규칙',version:2,expiresAt:new Date(Date.now()+86400000).toISOString()};
+await server.namespace.recordStatement(owner,'learning_rule',trial.id,trial).run();
+await server.namespace.recordStatement(owner,'learning_rule','other-brand-trial',{...trial,id:'other-brand-trial',brandId:'other'}).run();
+input.channels='인스타그램';
 let r=await bp('start',{id:'draft-1',data:input});check('real adapter submission creates queued draft',r.status===200&&r.data.status==='queued');
+check('new campaign draft receives only applicable trial learning',lastInput.trialLearning.length===1&&lastInput.trialLearning[0].id===trial.id&&lastInput.trialLearning[0].version===2);
 check('repeat start reuses durable draft',(await bp('start',{id:'draft-1',data:input})).status===200&&callCount===1);
 check('parallel second draft is blocked',(await bp('start',{id:'draft-2',data:input})).status===409&&callCount===1);
 check('active draft blocks credential changes',(await act('disconnect')).status===409);
