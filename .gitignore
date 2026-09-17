@@ -46,3 +46,6 @@ next-env.d.ts
 /work/
 *.tsbuildinfo
 !.env.example
+
+# Generated matching PDF worker; included in deployment assets.
+/public/vendor/archive-pdf.worker-*.mjs

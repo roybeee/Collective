@@ -1,4 +1,5 @@
 'use client';
+import {clientId} from '@/lib/client';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {Users,Play,Pause,RefreshCw,LoaderCircle,Check,ArrowRight,Download,MessageSquare} from 'lucide-react';
 import {Button} from '@/components/ui/button';
@@ -43,7 +44,7 @@ export function MeetingPanel({campaign,workspace,onUpdated,onOutputs,onConnect}:
  async function action(type:'start'|'recover'|'cancel'){
   if(pending.current)return;pending.current=true;setBusy(true);setError('');
   try{let result:PublicMeeting;
-   if(type==='start'){if(!startId.current)startId.current=crypto.randomUUID();result=await post('start',{id:startId.current,campaignId:campaign.id,campaignVersion:campaign.version,agenda,previousMeetingId:previous});startId.current=null;setPrevious(undefined);setSelected(result.id)}
+   if(type==='start'){if(!startId.current)startId.current=clientId();result=await post('start',{id:startId.current,campaignId:campaign.id,campaignVersion:campaign.version,agenda,previousMeetingId:previous});startId.current=null;setPrevious(undefined);setSelected(result.id)}
    else{if(!active)return;result=await post(type,{id:active.id})}
    merge(result);setPaused(false);await onUpdated();
   }catch(e){setError((e as Error).message)}finally{pending.current=false;setBusy(false)}
