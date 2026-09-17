@@ -14,7 +14,7 @@ const cfg={provider:'hermes',endpoint:'https://hermes.example.com',key:'test-sec
 for(const endpoint of ['http://example.com','https://127.0.0.1','https://localhost','https://example.com?key=x','https://x:secret@example.com','https://foo.internal','https://example.com:8080'])assert.throws(()=>hermesEndpoint(endpoint));
 assert.equal(hermesEndpoint('https://hermes.example.com/profile/v1/'),'https://hermes.example.com/profile');
 const requests=[];let loseAck=true;
-globalThis.fetch=async(url,init)=>{requests.push({url,init});assert.ok(url.startsWith(cfg.endpoint));assert.equal(init.redirect,'error');if(loseAck){loseAck=false;throw new Error('lost acknowledgement')}return Response.json({run_id:'run_123'})};
+globalThis.fetch=async(url,init)=>{requests.push({url,init});assert.ok(url.startsWith(cfg.endpoint));assert.equal(init.redirect,'manual');if(loseAck){loseAck=false;throw new Error('lost acknowledgement')}return Response.json({run_id:'run_123'})};
 await assert.rejects(()=>submitHermes('owner','job',cfg,{input:'brief',instructions:'draft only'}));
 assert.equal(records.size,1);
 assert.equal((await submitHermes('owner','job',cfg)).id,'run_123');
