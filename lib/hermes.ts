@@ -20,6 +20,8 @@ export async function verifyHermes(cfg:Connection){
  const m=await hermesRequest(cfg,'/v1/models');return 'HERMES · '+(typeof m.data?.[0]?.id==='string'?m.data[0].id.slice(0,100):'기본 모델');
 }
 type Submission={body:string;key:string};
+export function hermesSubmissionStatement(owner:string,id:string,input:{input:string;instructions:string}){const key='collective-'+crypto.randomUUID();return recordStatement(owner,'hermes_submission',id,{key,body:JSON.stringify({...input,session_id:key,conversation_history:[]})})}
+
 export async function submitHermes(owner:string,id:string,cfg:Connection,input?:{input:string;instructions:string}){
  let saved:Submission;
  if(input){const key='collective-'+crypto.randomUUID();saved={key,body:JSON.stringify({...input,session_id:key,conversation_history:[]})};await recordStatement(owner,'hermes_submission',id,saved).run()}

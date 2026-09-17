@@ -1,11 +1,22 @@
+import {briefFields,valueOf,type BriefDraft,type BriefKey,type DraftMeta} from '@/lib/brief';
 import {verifyHermes,hermesEndpoint} from '@/lib/hermes';
 import {ApiError,acquireLock,releaseLock,assertNoActiveJobs,database,identity,secureMutation,json,failure,body,str,num,recordStatement,readRecord,listRecords,eventStatement,validateCampaign,stamp,uid,encrypt,configuration,connection} from '@/lib/server';
 import {roles,type Campaign,type Brand,type Artifact,type Metric} from '@/lib/agency';
 export async function POST(req:Request){let lockOwner="",lockToken="";try{const owner=identity(req);secureMutation(req);const b=await body(req);lockOwner=owner;lockToken=await acquireLock(owner);const db=database();
 if(b.action==='save_campaign'){
  const data=validateCampaign(b.data||{});let campaign:Campaign;const writes:D1PreparedStatement[]=[];
- if(b.id){const old=await readRecord<Campaign>(owner,'campaign',str(b.id,'캠페인',100,true));if(b.version!==old.version)throw new ApiError(409,'다른 화면에서 브리프가 변경됐습니다. 새로고침 후 다시 저장해 주세요.');const running=await db.prepare("SELECT id FROM jobs WHERE owner=? AND campaign_id=? AND status IN ('starting','queued','in_progress','uncertain')").bind(owner,old.id).first();if(running)throw new ApiError(409,'AI 작업이 끝난 후 브리프를 수정해 주세요.');campaign={...old,...data,version:old.version+1,status:'draft',updatedAt:stamp()};const artifacts=await listRecords<Artifact>(owner,'artifact',old.id);for(const a of artifacts)writes.push(recordStatement(owner,'artifact',a.id,{...a,status:'outdated'},old.id));
+ const draft=b.briefDraftId?await readRecord<BriefDraft>(owner,'brief_draft',str(b.briefDraftId,'초안',100,true)):null;
+ if(draft?.savedCampaignId&&!b.id)return json({id:draft.savedCampaignId});
+ if(draft&&['starting','queued','in_progress','uncertain'].includes(draft.status))throw new ApiError(409,'초안 작성을 완료하거나 중지한 뒤 저장해 주세요.');
+ if(draft&&(draft.input.brandId!==data.brandId||draft.input.goal!==data.goal||draft.campaignId&&draft.campaignId!==b.id))throw new ApiError(409,'초안을 요청한 목표·브랜드가 달라졌습니다. 새 목표로 초안을 다시 작성해 주세요.');
+
+ if(b.id){const old=await readRecord<Campaign>(owner,'campaign',str(b.id,'캠페인',100,true));if(draft?.campaignId&&draft.campaignVersion!==old.version)throw new ApiError(409,'초안을 작성한 뒤 캠페인이 변경됐습니다. 최신 브리프에서 다시 작성해 주세요.');if(draft?.savedCampaignId&&draft.savedCampaignId!==old.id)throw new ApiError(409,'이 초안은 다른 캠페인에 저장됐습니다.');if(b.version!==old.version)throw new ApiError(409,'다른 화면에서 브리프가 변경됐습니다. 새로고침 후 다시 저장해 주세요.');const running=await db.prepare("SELECT id FROM jobs WHERE owner=? AND campaign_id=? AND status IN ('starting','queued','in_progress','uncertain')").bind(owner,old.id).first();if(running)throw new ApiError(409,'AI 작업이 끝난 후 브리프를 수정해 주세요.');campaign={...old,...data,version:old.version+1,status:'draft',updatedAt:stamp()};const artifacts=await listRecords<Artifact>(owner,'artifact',old.id);for(const a of artifacts)writes.push(recordStatement(owner,'artifact',a.id,{...a,status:'outdated'},old.id));
  }else campaign={...data,id:uid(),status:'draft',version:1,createdAt:stamp(),updatedAt:stamp()};
+ if(draft?.result){
+  const values:DraftMeta['values']={};for(const item of draft.result.suggestions)if(valueOf(data,item.field)===item.value)values[item.field]=item.value;
+  campaign.draftMeta={id:draft.id,generatedAt:draft.updatedAt,model:draft.model,values,questions:draft.result.questions,assumptions:draft.result.assumptions,contextUsed:draft.result.contextUsed};
+ }
+ if(draft)writes.push(recordStatement(owner,'brief_draft',draft.id,{...draft,savedCampaignId:campaign.id}));
  writes.push(recordStatement(owner,'campaign',campaign.id,campaign),eventStatement(owner,campaign.id,b.id?'브리프 수정 · 이전 승인은 종료되었습니다.':'새 캠페인 브리프를 만들었습니다.'));await db.batch(writes);return json({id:campaign.id});
 }
 if(b.action==='save_brand'){await assertNoActiveJobs(owner);const old=await readRecord<Brand>(owner,'brand',str(b.id,'브랜드',100,true));const updated={...old};for(const k of ['description','audience','tone','constraints','knowledge'] as const)updated[k]=str(b.data?.[k]??'',k,k==='knowledge'?30000:5000);const affected=(await listRecords<Campaign>(owner,'campaign')).filter(c=>c.brandId===old.id);const writes=[recordStatement(owner,'brand',old.id,updated),eventStatement(owner,'',`${old.name} 브랜드 지식을 수정했습니다.`)];for(const c of affected){writes.push(recordStatement(owner,'campaign',c.id,{...c,version:c.version+1,status:'draft',updatedAt:stamp()}),eventStatement(owner,c.id,'브랜드 지식 변경 · 기존 작업물을 다시 검토합니다.'));for(const a of await listRecords<Artifact>(owner,'artifact',c.id))writes.push(recordStatement(owner,'artifact',a.id,{...a,status:'outdated'},c.id))}await db.batch(writes);return json({ok:true})}
