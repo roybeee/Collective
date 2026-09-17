@@ -45,3 +45,18 @@ Use the Sites build/publish workflow for deployment. D1 migrations in `drizzle/`
 - All data uses the existing owner-scoped D1 records and jobs tables. No schema migrations were necessary. Raw provider responses are retained for diagnosis; secrets are not returned by the learning endpoint.
 
 Verification: `node --experimental-vm-modules tests/learning.test.mjs` exercises real handlers, SQLite and crypto with mocked HERMES. It checks evidence deduplication, ownership, plan locking, insufficient data, result correction, rule expiration/scope, actual campaign prompt injection, preserved snapshots and provider completion idempotency. Browser QA uses explicitly labeled local-only fixtures; none are seeded into production.
+
+## Goal-to-brief workflow
+
+The dashboard's HERMES action submits a durable, owner-scoped draft using the existing gateway. Brand context, the three latest same-brand campaigns, recorded metrics, and approved research/measurement reviews form its context. `/api/brief` supports start/load/poll/recover/cancel. The submission and draft are stored atomically before the external request. Recovery reuses the original idempotency key. No OpenAI API fallback is used by the brief flow.
+
+A structured HERMES result fills only empty strategy fields. Existing input is preserved; competing suggestions can be applied one at a time. Baseline, target, operating facts, owner, learned results, numeric budget, and calendar dates are never auto-filled from model suggestions. Up to three questions collect missing decisions. Campaigns retain the plan, AI provenance and assumptions. Drafts can be resumed from the dashboard; explicit campaign save prevents duplicate creation on retry and rejects stale campaign versions.
+
+The blueprint covers customer behavior/barrier, offer/message/journey, KPI/baseline/target, experiment/tracking/decision criteria, deliverables/schedule/operations/budget, and evidence/learning. Readiness shows missing inputs, not a claim of factual verification or campaign success. The existing eight-role team receives the whole saved plan. No ads or messages are sent by this workflow.
+
+Design references:
+- Google Ads, experiment best practices: https://support.google.com/google-ads/answer/7281575?hl=en
+- GA4, campaign URL tracking: https://support.google.com/analytics/answer/10917952?hl=en
+- GA4, key events: https://support.google.com/analytics/answer/9322688?hl=en
+
+Verification: `node --experimental-vm-modules tests/brief-workflow.mjs` runs owner/origin isolation, HERMES adapter lifecycle, acknowledgement-loss recovery, cancellation, response validation, input preservation, protected facts, persisted provenance, save idempotency, stale version rejection and atomic storage failure checks. `tests/fixtures/brief.json` is a local mock fixture only, never a production generation fallback. Live HERMES execution requires a configured user session and is separate from these tests.
