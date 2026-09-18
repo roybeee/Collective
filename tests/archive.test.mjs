@@ -39,7 +39,7 @@ const requestTimeouts=[];const trackedAbortSignal={timeout:ms=>{requestTimeouts.
 const ctx=createContext({console,crypto:webcrypto,Response,Request,Headers,File,FormData,TextEncoder,TextDecoder,Uint8Array,Date,URL,AbortSignal:trackedAbortSignal,btoa,atob,fetch:fakeFetch,process:{env:{NODE_ENV:'production'}}});
 const backgroundTasks=[];let drainBackground=true;const afterModule=new SyntheticModule(['after'],function(){this.setExport('after',fn=>backgroundTasks.push(fn))},{context:ctx});
 const modules=new Map();const envModule=new SyntheticModule(['env'],function(){this.setExport('env',runtime)},{context:ctx});
-async function load(file){file=resolve(file);if(modules.has(file))return modules.get(file);const code=ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;const m=new SourceTextModule(code,{context:ctx,identifier:file});modules.set(file,m);await m.link(async(spec,ref)=>{if(spec==='cloudflare:workers')return envModule;if(spec==='next/server')return afterModule;const f=spec.startsWith('@/')?resolve(spec.slice(2)):resolve(dirname(ref.identifier),spec);return load(f.endsWith('.ts')?f:f+'.ts')});return m}
+async function load(file){file=resolve(file);if(modules.has(file))return modules.get(file);if(file.endsWith('?raw')){const raw=new SyntheticModule(['default'],function(){this.setExport('default',readFileSync(file.slice(0,-4),'utf8'))},{context:ctx});modules.set(file,raw);return raw;}const code=ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;const m=new SourceTextModule(code,{context:ctx,identifier:file});modules.set(file,m);await m.link(async(spec,ref)=>{if(spec==='cloudflare:workers')return envModule;if(spec==='next/server')return afterModule;const f=spec.startsWith('@/')?resolve(spec.slice(2)):resolve(dirname(ref.identifier),spec);return load(f.endsWith('.ts')||f.endsWith('?raw')?f:f+'.ts')});return m}
 const action=await load('app/api/action/route.ts');await action.evaluate();const workspace=await load('app/api/workspace/route.ts');await workspace.evaluate();const run=await load('app/api/run/route.ts');await run.evaluate();
 let owner='qa-owner-with-a-production-length-authenticated-user-id';const passed=[];const check=(name,val)=>{assert.ok(val,name);passed.push(name)};
 async function request(mod,method,b,override={}){const headers={'Content-Type':'application/json','oai-authenticated-user-id':owner,...override};for(const k in headers)if(headers[k]===null)delete headers[k];const r=await mod.namespace[method](new Request('https://agency.test/api/test',{method,headers,...(b?{body:JSON.stringify(b)}:{})}));const data=await r.json();if(drainBackground)while(backgroundTasks.length)await backgroundTasks.shift()();return {status:r.status,data}}
@@ -200,4 +200,53 @@ check('submission recovery has 90-second budget and status queries 45 seconds',r
 DB.batch=async()=>{throw new Error('injected registration failure')};res=await ap('create_brand',{id:'atomic-registration',autoResearch:true,data:{name:'실패 검증',category:'음식점'}});DB.batch=originalBatch;
 check('failed registration cannot leave orphan brand or queued job',res.status===500&&!sql.prepare("SELECT id FROM records WHERE kind='brand' AND json_extract(data,'$.id')='atomic-registration'").get()&&!sql.prepare("SELECT id FROM jobs WHERE campaign_id='brand:atomic-registration'").get());
 drainBackground=true;
+// Dedicated machine route progresses the durable queue with no browser identity or UI calls.
+owner='server-worker-owner';await snapshot();await act('save_hermes',{endpoint:'https://hermes.example.com',key:'hermes-local-test-key-only'});
+const workerRoute=await load('app/api/research-worker/route.ts');await workerRoute.evaluate();
+const workerLib=await load('lib/research-worker.ts');await workerLib.evaluate();
+const setup=await load('app/api/research-worker/setup/route.ts');await setup.evaluate();
+runtime.RESEARCH_WORKER_GATE_TOKEN='test-site-gate-only';runtime.RESEARCH_WORKER_SITE_ORIGIN='https://agency.test';
+check('anonymous installer download rejected',(await request(setup,'POST',{action:'download'},{'oai-authenticated-user-id':null})).status===401);
+check('cross-origin installer download rejected',(await request(setup,'POST',{action:'download'},{origin:'https://foreign.test'})).status===403);
+const installerResponse=await setup.namespace.POST(new Request('https://agency.test/api/research-worker/setup',{method:'POST',headers:{'oai-authenticated-user-id':owner},body:JSON.stringify({action:'download'})}));
+const installerSource=await installerResponse.text(),configMatch=installerSource.match(/CONFIG_HEX = '([a-f0-9]+)'/);
+check('private installer delivered as no-store attachment',installerResponse.ok&&installerResponse.headers.get('content-disposition').includes('attachment')&&installerResponse.headers.get('cache-control')==='no-store'&&!!configMatch);
+const workerConfig=JSON.parse(Buffer.from(configMatch[1],'hex').toString()),token=workerConfig.token;
+check('installer contains scoped credential bound to authenticated owner',workerConfig.owner===owner&&workerConfig.site==='https://agency.test'&&workerConfig.gate==='test-site-gate-only');
+check('download alone cannot claim activated worker',!(await workerLib.namespace.workerStatus(owner)).activated);
+check('worker credential stored hashed',!(await server.namespace.readRecord(owner,'worker_credential','current')).token);
+check('setup status cannot expose credentials',!JSON.stringify((await request(setup,'GET')).data).includes(token));
+const tick=async(auth=token,identity=owner,payload={})=>{const response=await workerRoute.namespace.POST(new Request('https://agency.test/api/research-worker',{method:'POST',headers:{Authorization:'Bearer '+auth,'X-Collective-Owner':identity},body:JSON.stringify(payload)}));return {status:response.status,data:await response.json()}};
+check('human identity alone cannot drive machine route',(await request(workerRoute,'POST',{})).status===401);
+check('forged owner rejected',(await tick(token,'another-owner')).status===401);
+check('forged token rejected',(await tick('0'.repeat(64))).status===401);
+check('authenticated heartbeat activates unattended research',(await tick()).status===200&&(await workerLib.namespace.workerStatus(owner)).online);
+drainBackground=false;await ap('create_brand',{id:'unattended-brand',autoResearch:true,data:{name:'서버 자동 조사',category:'음식점'}});
+let unattended=(await server.namespace.listRecords(owner,'brand_research')).find(r=>r.brandId==='unattended-brand');const unattendedId=unattended.id;
+check('server registration queues four durable steps',unattended.execution==='server'&&unattended.steps.length===4&&unattended.steps.every(s=>s.status==='pending'));
+check('installer rotation blocked during active research',(await request(setup,'POST',{action:'download'})).status===409);
+const beforeUnattended=calls;loseAck=true;await tick();unattended=await server.namespace.readRecord(owner,'brand_research',unattendedId);
+check('worker preserves uncertain submission across connection loss',unattended.status==='uncertain'&&!!unattended.retryAt);
+unattended.retryAt=new Date(0).toISOString();await server.namespace.recordStatement(owner,'brand_research',unattendedId,unattended,'unattended-brand').run();await tick();
+check('worker restart recovers same provider request',calls===beforeUnattended+1);
+await tick();unattended=await server.namespace.readRecord(owner,'brand_research',unattendedId);
+check('first phase persists usable archive before final diagnosis',unattended.status==='running'&&unattended.steps[0].status==='completed'&&(await server.namespace.listRecords(owner,'brand_source','unattended-brand')).length===1);
+for(let i=0;i<8;i++){await tick(token,owner,{action:'cancel',id:unattendedId});unattended=await server.namespace.readRecord(owner,'brand_research',unattendedId);if(unattended.status==='completed')break}
+check('worker alone drains phases and stores final diagnosis',unattended.status==='completed'&&unattended.steps.every(s=>s.status==='completed')&&(await server.namespace.listRecords(owner,'brand_diagnostic','unattended-brand')).length===1);
+check('worker ignores caller action and routes all phases to server',!unattended.stopRequested&&inputs.slice(-4).every(x=>x.execution==='server'));
+check('duplicate intermediate URLs do not inflate archive',(await server.namespace.listRecords(owner,'brand_source','unattended-brand')).length===4);
+const beforeReplay=calls;await tick();check('completed job cannot be resubmitted by worker',calls===beforeReplay);
+// Fairness: a malformed oldest job cannot starve other active work.
+const broken={...unattended,id:'broken-active',status:'running',steps:unattended.steps,createdAt:new Date(0).toISOString()};
+const blocked={...unattended,id:'blocked-active',status:'uncertain',retryAt:undefined};
+await server.namespace.recordStatement(owner,'brand_research',broken.id,broken,broken.brandId).run();
+await server.namespace.recordStatement(owner,'brand_research',blocked.id,blocked,blocked.brandId).run();
+await ap('create_brand',{id:'fair-brand',autoResearch:true,data:{name:'다음 조사',category:'서비스'}});
+await tick();await tick();const fair=(await server.namespace.listRecords(owner,'brand_research')).find(r=>r.brandId==='fair-brand');
+check('non-progressing oldest job cannot starve next brand',fair.steps[0].status==='running');
+check('manual recovery blockage visible in worker status',(await workerLib.namespace.workerStatus(owner)).blocked===1);
+const renewed=await workerLib.namespace.registerWorker(owner);
+check('credential rotation invalidates old worker and activation',(await tick()).status===401&&!(await workerLib.namespace.workerStatus(owner)).activated);
+await workerLib.namespace.revokeWorker(owner);check('revoked credential rejected',(await tick(renewed)).status===401);
+
 console.log(JSON.stringify({passed:passed.length,checks:passed},null,2));

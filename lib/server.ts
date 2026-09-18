@@ -2,7 +2,7 @@ import {emptyPlan,planFields,type PlanKey,type BriefDraft} from './brief';
 import { env } from 'cloudflare:workers';
 import { brandDefaults, type Campaign, type Brand, type Artifact, type Metric } from './agency';
 export class ApiError extends Error {constructor(public status:number,message:string){super(message)}}
-export const runtime=env as unknown as {DB?:D1Database;BUCKET?:R2Bucket;AGENCY_ENCRYPTION_KEY?:string;OPENAI_API_KEY?:string};
+export const runtime=env as unknown as {DB?:D1Database;BUCKET?:R2Bucket;AGENCY_ENCRYPTION_KEY?:string;OPENAI_API_KEY?:string;RESEARCH_WORKER_GATE_TOKEN?:string;RESEARCH_WORKER_SITE_ORIGIN?:string};
 export function database(){if(!runtime.DB)throw new ApiError(503,'저장 공간에 연결하지 못했습니다. 잠시 후 다시 시도하세요.');return runtime.DB}
 export function identity(request:Request){const id=request.headers.get('oai-authenticated-user-id');if(id)return id;if(process.env.NODE_ENV==='development')return 'local-preview';throw new ApiError(401,'로그인이 필요합니다. 페이지를 새로고침해 주세요.')}
 export function secureMutation(request:Request){const origin=request.headers.get('origin');if(origin&&origin!==new URL(request.url).origin)throw new ApiError(403,'허용되지 않은 요청입니다.')}
