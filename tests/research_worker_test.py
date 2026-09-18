@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import threading
+import tempfile
 import unittest
 import urllib.error
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -9,6 +10,27 @@ from pathlib import Path
 spec = importlib.util.spec_from_file_location('worker', Path(__file__).parents[1] / 'server/research-worker/worker.py')
 worker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(worker)
+install_spec = importlib.util.spec_from_file_location('installer', Path(__file__).parents[1] / 'server/research-worker/install.py')
+installer = importlib.util.module_from_spec(install_spec)
+install_spec.loader.exec_module(installer)
+
+class BrowserDiscoveryTest(unittest.TestCase):
+    def test_flat_and_legacy_download_layouts(self):
+        for relative in ('chrome-153.0.8010.47/chrome', 'chrome-153.0.8010.47/chrome-linux64/chrome'):
+            with self.subTest(layout=relative), tempfile.TemporaryDirectory() as folder:
+                chrome = Path(folder) / relative
+                chrome.parent.mkdir(parents=True)
+                chrome.write_text('test executable')
+                chrome.chmod(0o755)
+                self.assertEqual(installer.find_chrome(Path(folder)), chrome)
+    def test_missing_or_non_executable_browser_stops_before_config(self):
+        with tempfile.TemporaryDirectory() as folder:
+            chrome = Path(folder) / 'chrome-153' / 'chrome'
+            chrome.parent.mkdir()
+            chrome.write_text('incomplete download')
+            chrome.chmod(0o600)
+            with self.assertRaises(RuntimeError):
+                installer.find_chrome(Path(folder))
 
 class Handler(BaseHTTPRequestHandler):
     redirect = False

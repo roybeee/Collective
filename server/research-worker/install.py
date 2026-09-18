@@ -19,6 +19,16 @@ SERVICE = 'collective-research-worker.service'
 def run(args, **kwargs):
     return subprocess.run([str(x) for x in args], check=True, **kwargs)
 
+def find_chrome(browsers):
+    # agent-browser strips chrome-linux64/ from new downloads; older caches
+    # can retain it. Accept both layouts, but only actual executable files.
+    candidates = [directory / relative for directory in browsers.glob('chrome-*')
+                  for relative in ('chrome', 'chrome-linux64/chrome')
+                  if (directory / relative).is_file() and os.access(directory / relative, os.X_OK)]
+    if not candidates:
+        raise RuntimeError('Chromium executable was not found. HERMES config is unchanged.')
+    return max(candidates, key=lambda p: p.stat().st_mtime)
+
 def atomic(path, data, uid=0, gid=0, mode=0o600):
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix='.collective-', dir=path.parent)
@@ -69,10 +79,7 @@ def main():
     cli = PREFIX / 'node_modules' / '.bin' / 'agent-browser'
     run([cli, 'install', '--with-deps'], env=apt_env)
     run(user_command + [cli, 'install'])
-    browsers = list((home / '.agent-browser' / 'browsers').glob('chrome-*/chrome-linux64/chrome'))
-    if not browsers:
-        raise RuntimeError('Chromium executable was not found. HERMES config is unchanged.')
-    chrome = max(browsers, key=lambda p: p.stat().st_mtime)
+    chrome = find_chrome(home / '.agent-browser' / 'browsers')
     browser_env = ['AGENT_BROWSER_EXECUTABLE_PATH='+str(chrome)]
     userns = Path('/proc/sys/kernel/apparmor_restrict_unprivileged_userns')
     restricted_userns = userns.exists() and userns.read_text().strip() == '1'
