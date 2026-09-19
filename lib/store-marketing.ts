@@ -1,3 +1,4 @@
+import type {LedgerSnapshot} from './store-operations';
 import type {PublicResearch,ArchiveSourceSummary} from './archive';
 
 export const tradeAreas={residential:'주거 상권',office:'오피스 상권',destination:'목적 방문·관광 상권',mixed:'복합 상권',unknown:'조사 필요'} as const;
@@ -23,8 +24,9 @@ export const storeMetricFields={views:'콘텐츠·페이지 조회',directions:'
 export type StoreMetricKey=keyof typeof storeMetricFields;
 export const experimentStates={draft:'설계 중',running:'실험 중',completed:'회고 완료'} as const;
 export const decisions={iterate:'수정 후 재실험',adopt:'조건부 확대',stop:'중단',inconclusive:'판단 보류'} as const;
-export type StoreExperiment={id:string;storeId:string;brandId:string;title:string;channel:ChannelKey;hypothesis:string;offer:string;control:string;treatment:string;primaryMetric:StoreMetricKey;target:number|null;budget:number|null;startDate:string;endDate:string;measurement:string;stopRule:string;status:keyof typeof experimentStates;decision?:keyof typeof decisions;learning?:string;campaignId?:string;reportId?:string;version:number;createdAt:string;updatedAt:string};
-export type StoreMeasurement={id:string;storeId:string;experimentId:string;periodStart:string;periodEnd:string;source:string;definition:string;method:'manual'|'export';cohortMatured:boolean;values:Record<StoreMetricKey,number|null>;version:number;createdAt:string;updatedAt:string};
+export type StoreReview={evidenceLevel:'observation'|'comparison'|'repeated';failureType:string;confounders:string;nextAction:string;conditions:string};
+export type StoreExperiment={parentExperimentId?:string;review?:StoreReview;id:string;storeId:string;brandId:string;title:string;channel:ChannelKey;hypothesis:string;offer:string;control:string;treatment:string;primaryMetric:StoreMetricKey;target:number|null;budget:number|null;startDate:string;endDate:string;measurement:string;stopRule:string;status:keyof typeof experimentStates;decision?:keyof typeof decisions;learning?:string;campaignId?:string;reportId?:string;version:number;createdAt:string;updatedAt:string};
+export type StoreMeasurement={ledgerSnapshot?:LedgerSnapshot;id:string;storeId:string;experimentId:string;periodStart:string;periodEnd:string;source:string;definition:string;method:'manual'|'export';cohortMatured:boolean;values:Record<StoreMetricKey,number|null>;version:number;createdAt:string;updatedAt:string};
 export type StoreReport={id:string;storeId:string;brandId:string;storeVersion:number;summary:string;customer:string;bottleneck:string;actions:{channel:ChannelKey;priority:'first'|'next';action:string;reason:string;sourceIds:string[]}[];proposals:{title:string;channel:ChannelKey;hypothesis:string;control:string;treatment:string;measurement:string;sourceIds:string[]}[];measurementPlan:string;questions:string[];limitations:string;sourceIds:string[];status:'candidate';createdAt:string};
 export type StoreTask={id:string;storeId:string;reportId:string;title:string;channel:ChannelKey;status:'open'|'done';evidence:string;version:number;updatedAt:string};
 export type StoreData={sources:ArchiveSourceSummary[];stores:Store[];channels:StoreChannel[];experiments:StoreExperiment[];measurements:StoreMeasurement[];reports:StoreReport[];tasks:StoreTask[];research:PublicResearch[]};
