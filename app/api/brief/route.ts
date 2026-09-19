@@ -18,11 +18,11 @@ export async function POST(req:Request){let owner='',lock='',pending:StoredDraft
    const busy=(await listRecords<BriefDraft>(owner,'brief_draft')).find(active);if(busy)throw new ApiError(409,'이미 작성 중인 HERMES 초안이 있습니다. 대시보드에서 이어서 확인해 주세요.');
    const raw=b.data||{};const input=validateCampaign({...raw,title:raw.title||'캠페인 초안'}) as BriefInput;input.title=typeof raw.title==='string'?raw.title.trim():'';input.plan={...emptyPlan(),...input.plan};
    let campaignId:string|undefined,campaignVersion:number|undefined;
-   if(b.campaignId){const c=await readRecord<Campaign>(owner,'campaign',str(b.campaignId,'캠페인',100,true));if(c.brandId!==input.brandId||c.version!==b.campaignVersion)throw new ApiError(409,'캠페인이 변경됐습니다. 최신 브리프에서 다시 요청하세요.');campaignId=c.id;campaignVersion=c.version}
+   if(b.campaignId){const c=await readRecord<Campaign>(owner,'campaign',str(b.campaignId,'캠페인',100,true));if(c.brandId!==input.brandId||c.version!==b.campaignVersion)throw new ApiError(409,'캠페인이 변경됐습니다. 최신 브리프에서 다시 요청하세요.');if(c.storeId){if(input.storeId&&input.storeId!==c.storeId)throw new ApiError(400,'캠페인의 지점이 일치하지 않습니다.');input.storeId=c.storeId;}campaignId=c.id;campaignVersion=c.version}
    if(campaignId){const meeting=await database().prepare("SELECT id FROM jobs WHERE owner=? AND campaign_id=? AND role='meeting' AND status IN ('starting','queued','in_progress','uncertain')").bind(owner,campaignId).first();if(meeting)throw new ApiError(409,'팀 회의가 진행 중입니다. 회의를 완료하거나 중지한 뒤 초안을 작성하세요.');}
    const brand=await readRecord<Brand>(owner,'brand',input.brandId);
-   const trialLearning=await learningContext(owner,input);const archive=await brandArchiveContext(owner,brand.id);
-   const previous=(await listRecords<Campaign>(owner,'campaign')).filter(c=>c.brandId===brand.id&&c.id!==campaignId).slice(0,3);
+   const trialLearning=await learningContext(owner,input);const archive=await brandArchiveContext(owner,brand.id,input.storeId);
+   const previous=(await listRecords<Campaign>(owner,'campaign')).filter(c=>c.brandId===brand.id&&c.id!==campaignId&&(!input.storeId||c.storeId===input.storeId)).slice(0,3);
    const relevantIds=new Set(previous.map(c=>c.id));
    const metrics=(await listRecords<Metric>(owner,'metric')).filter(m=>relevantIds.has(m.campaignId)).slice(0,6);
    const artifacts=(await listRecords<Artifact>(owner,'artifact')).filter(a=>relevantIds.has(a.campaignId)&&a.status==='approved'&&['data','quality','insight'].includes(a.role)).slice(0,4).map(a=>({campaignId:a.campaignId,title:a.title,content:a.content.slice(0,2500)}));

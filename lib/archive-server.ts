@@ -1,4 +1,5 @@
 import {ApiError,database,listRecords,readRecord,recordStatement,stamp,str,uid,num} from './server';
+import {storeContext} from './store-context';
 import {archiveCategories,classifySource,metricFields,type ArchiveSource,type ArchiveState,type ChannelObservation,type Diagnostic,type MetricField,type BrandIntake} from './archive';
 export async function archiveState(owner:string,brandId:string):Promise<ArchiveState>{const s=await listRecords<ArchiveState>(owner,'brand_archive_state',brandId);return s[0]||{id:brandId,revision:0,updatedAt:''}}
 export function stateWrite(owner:string,brandId:string,revision:number){return recordStatement(owner,'brand_archive_state',brandId,{id:brandId,revision,updatedAt:stamp()},brandId)}
@@ -23,9 +24,9 @@ export function makeObservation(brandId:string,b:any):ChannelObservation{
  if(b.method==='public'&&(['reach','impressions','saves','clicks','sessions','keyEventSessions','orders','revenue','adSpend','variableCosts','productionCost','averageViewPercentage'] as MetricField[]).some(k=>values[k]!==null))throw new ApiError(400,'계정 통계·내부 성과 수치는 공개 관찰과 분리해 직접 입력 또는 내보내기 자료로 등록하세요.');
  return {id:uid(),brandId,channel:str(b.channel,'채널',80,true),account:str(b.account,'계정·대상',300,true),periodStart,periodEnd,observedAt:observed(b.observedAt||stamp()),source:str(b.source,'수치 출처',2000,true),definition:str(b.definition,'지표 정의·집계 조건',3000,true),scope:b.scope,method:b.method,values,version:1,createdAt:stamp()};
 }
-export async function brandArchiveContext(owner:string,brandId:string){
- const state=await archiveState(owner,brandId);const sources=(await listRecords<ArchiveSource>(owner,'brand_source',brandId)).filter(s=>s.status==='confirmed');
+export async function brandArchiveContext(owner:string,brandId:string,storeId?:string){
+ const state=await archiveState(owner,brandId);const sources=(await listRecords<ArchiveSource>(owner,'brand_source',brandId)).filter(s=>s.status==='confirmed'&&(!s.storeId||s.storeId===storeId));
  const diagnosis=(await listRecords<Diagnostic>(owner,'brand_diagnostic',brandId)).find(d=>d.status==='confirmed'&&d.archiveRevision===state.revision);
- const observations=await listRecords<ChannelObservation>(owner,'brand_observation',brandId);
- return {revision:state.revision,observations:observations.slice(0,12),omittedObservations:Math.max(0,observations.length-12),confirmedSources:sources.slice(0,20).map(s=>({id:s.id,title:s.title,category:s.category,url:s.url,observedAt:s.observedAt,scope:s.scope,content:s.content.slice(0,3500),excerpt:s.content.length>3500,version:s.version})),omittedSources:Math.max(0,sources.length-20),confirmedDiagnosis:diagnosis||null,notice:'자료는 확인된 항목만 포함되며 관찰 수치는 사용자 기록입니다. 출처·기간·정의를 확인하고 미수집 값을 추정하지 마세요. 진단이 없으면 미확정으로 다루세요. 근거가 바뀐 진단은 제외됩니다.'};
+ const observations=storeId?[]:await listRecords<ChannelObservation>(owner,'brand_observation',brandId);
+ return {storeMarketing:await storeContext(owner,brandId,storeId),revision:state.revision,observations:observations.slice(0,12),omittedObservations:Math.max(0,observations.length-12),confirmedSources:sources.slice(0,20).map(s=>({id:s.id,title:s.title,category:s.category,url:s.url,observedAt:s.observedAt,scope:s.scope,content:s.content.slice(0,3500),excerpt:s.content.length>3500,version:s.version})),omittedSources:Math.max(0,sources.length-20),confirmedDiagnosis:diagnosis||null,notice:'자료는 확인된 항목만 포함되며 관찰 수치는 사용자 기록입니다. 출처·기간·정의를 확인하고 미수집 값을 추정하지 마세요. 진단이 없으면 미확정으로 다루세요. 근거가 바뀐 진단은 제외됩니다.'};
 }
