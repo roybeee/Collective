@@ -14,6 +14,8 @@ const runtime={DB,AGENCY_ENCRYPTION_KEY:Buffer.alloc(32,9).toString('base64')};
 let now=Date.now();class Clock extends Date{constructor(...a){super(...(a.length?a:[now]))}static now(){return now}}
 // 네이버 검색광고 모의 게이트웨이. 실제 계정 없이 서명·매핑·실패 경로를 확인한다.
 let naverAuthorized=true,naverStats={impCnt:4000,clkCnt:120,salesAmt:96000,ccnt:9},naverDown=false;
+let igAuthorized=true,igDown=false,igInsights={reach:9000,shares:450,saves:120,plays:7000};
+const igCalls=[];
 const naverCalls=[];const destinations=[];
 const fakeFetch=async(url,options={})=>{
  destinations.push(url);
@@ -25,6 +27,13 @@ const fakeFetch=async(url,options={})=>{
   if(url.includes('/ncc/campaigns'))return Response.json([{nccCampaignId:'cmp-1',name:'테스트 캠페인'}]);
   if(url.includes('/stats'))return Response.json({data:[{id:'cmp-1',...naverStats}]});
   return new Response('',{status:404});
+ }
+ if(url.startsWith('https://graph.facebook.com/')){
+  igCalls.push(url);
+  if(igDown)throw new Error('graph unavailable');
+  if(!igAuthorized)return Response.json({error:{message:'Invalid OAuth access token',code:190}},{status:400});
+  if(url.includes('/insights'))return Response.json({data:Object.entries(igInsights).map(([name,value])=>({name,values:[{value}]}))});
+  return Response.json({id:'ig-user-1',username:'oldferrydonut',timestamp:'2026-08-01T09:00:00+0000',permalink:'https://instagram.com/p/abc',media_type:'VIDEO'});
  }
  if(url.endsWith('/v1/capabilities')){if(!new Headers(options.headers).has('Authorization'))return new Response('',{status:401});return Response.json({object:'hermes.api_server.capabilities',platform:'hermes-agent',features:{run_submission:true,run_status:true,run_stop:true,runs_idempotency:{durable:true}}})}
  if(url.endsWith('/v1/models'))return Response.json({data:[{id:'test'}]});
@@ -134,6 +143,40 @@ await server.namespace.recordStatement(owner,'brand_research','pending-job',{id:
 r=await worker.namespace.workerTick(principal,fakeResearch,fakeCollect);
 check('research work still takes priority over collection',researchRan===1&&collectRan===1);
 check('worker status stays within the installed python contract',['idle','processed','retry'].includes(r.status));
+
+// --- Instagram 커넥터 ------------------------------------------------------
+const ig={accessToken:'IGQVJXlong-lived-test-token-0123456789',userId:'17841400000000000'};
+igAuthorized=false;
+check('invalid instagram token is rejected before storing',(await ch('save_credential',{channel:'instagram',data:ig})).status>=400);
+check('rejected instagram credential is not stored',!(await chStatus()).channels.some(c=>c.channel==='instagram'&&c.connected));
+igAuthorized=true;
+r=await ch('save_credential',{channel:'instagram',data:{...ig,expiresAt:new Clock(now+40*86400000).toISOString()}});
+check('instagram credential is stored with the account handle',r.status===200&&r.data.account==='oldferrydonut');
+check('access token never leaves the server',!JSON.stringify(await chStatus()).includes(ig.accessToken));
+check('token is never placed in the query string',igCalls.length>0&&igCalls.every(u=>!u.includes(ig.accessToken)&&!u.includes('access_token=')));
+
+status=await chStatus();
+let igStatus=status.channels.find(c=>c.channel==='instagram');
+check('token expiry is surfaced',!!igStatus.expiresAt&&igStatus.expiringSoon===false);
+await ch('save_credential',{channel:'instagram',data:{...ig,expiresAt:new Clock(now+3*86400000).toISOString()}});
+check('expiry within a week raises the warning',(await chStatus()).channels.find(c=>c.channel==='instagram').expiringSoon===true);
+
+r=await mz('collect',{experimentId,arm:'treatment',channel:'instagram',target:'17900000000000000',from:'2026-08-01',to:'2026-08-07'});
+check('instagram collection succeeds',r.status===200);
+check('reach and shares map onto the metric arm',r.data.collected.arm.denominator===9000&&r.data.collected.arm.numerator===450);
+check('cumulative nature of media insights is recorded',r.data.collected.limitations.some(x=>x.includes('누적')));
+check('post time is captured so elapsed time can be compared',r.data.collected.definition.includes('2026-08-01')||JSON.stringify(r.data.collected.raw).includes('2026-08-01'));
+igInsights={reach:9000,saves:120};
+r=await mz('collect',{experimentId,arm:'treatment',channel:'instagram',target:'17900000000000000',from:'2026-08-01',to:'2026-08-07'});
+check('missing share metric stays null rather than zero',r.data.collected.arm.numerator===null);
+igInsights={reach:100,shares:250};
+r=await mz('collect',{experimentId,arm:'treatment',channel:'instagram',target:'17900000000000000',from:'2026-08-01',to:'2026-08-07'});
+check('shares above reach are reported, not silently accepted',r.data.collected.limitations.some(x=>x.includes('공유')));
+igInsights={reach:9000,shares:450,saves:120,plays:7000};
+igDown=true;
+r=await mz('collect',{experimentId,arm:'treatment',channel:'instagram',target:'17900000000000000',from:'2026-08-15',to:'2026-08-21'});
+check('instagram outage surfaces as an error, not as numbers',r.status>=500);
+igDown=false;
 
 // --- 폐기 ------------------------------------------------------------------
 check('revoking a channel succeeds',(await ch('revoke_credential',{channel:'naver_ads'})).status===200);
