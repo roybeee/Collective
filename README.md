@@ -110,3 +110,7 @@ The 매장 실행 준비 cards require observations, evidence and a confirmation
 Running experiments can import only their explicitly linked orders and expenses into dated measurement snapshots. Overlapping measurements are rejected, unconfirmed advertising costs remain unknown, and ledger data does not invent new-customer or repeat-purchase counts. Changed ledger records require re-import before adopting an experiment. Completed retrospectives preserve their original measurements, evidence level, confounders and next actions; follow-up experiments keep their parent link. Agent context includes only the selected store's diagnostic records and recent aggregated ledger, without raw order numbers.
 
 Validation: `node --experimental-vm-modules tests/stores.test.mjs` uses actual handlers with transactional SQLite and mocked HERMES replies, covering ownership, version conflicts, local research, excluded evidence, campaign linkage, measurement boundaries, duplicate imports, partial/full refunds, unknown costs, retrospective snapshots and learning isolation. Existing archive, brief, meeting, learning, deletion and workspace suites remain applicable. Test module loading leaves graph instantiation to VM to support shared dependency graphs. Live HERMES browsing and actual marketing performance need a configured production run.
+
+## 공동개발
+
+이 저장소의 `main`이 COLLECTIVE 제품 소스의 정본입니다. Claude, Codex, HERMES 및 로컬 개발 환경은 [AGENTS.md](AGENTS.md)의 규칙을 따릅니다. 작업 인계에는 [docs/HANDOFF_TEMPLATE.md](docs/HANDOFF_TEMPLATE.md)를 사용합니다.
