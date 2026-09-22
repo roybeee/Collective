@@ -16,6 +16,7 @@ const ctx=createContext({console,crypto:webcrypto,Response,Request,Headers,TextE
 const modules=new Map();const envModule=new SyntheticModule(['env'],function(){this.setExport('env',runtime)},{context:ctx});
 function moduleFor(file){file=resolve(file);if(modules.has(file))return modules.get(file);const code=ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;const m=new SourceTextModule(code,{context:ctx,identifier:file});modules.set(file,m);return m}
 async function load(file){const m=moduleFor(file);if(m.status==='unlinked')await m.link((spec,ref)=>{if(spec==='cloudflare:workers')return envModule;const f=spec.startsWith('@/')?resolve(spec.slice(2)):resolve(dirname(ref.identifier),spec);return moduleFor(f.endsWith('.ts')?f:f+'.ts')});return m}
+const version=await load('app/api/version/route.ts');await version.evaluate();
 const action=await load('app/api/action/route.ts');await action.evaluate();const workspace=await load('app/api/workspace/route.ts');await workspace.evaluate();const run=await load('app/api/run/route.ts');await run.evaluate();
 let owner='qa-owner-with-a-production-length-authenticated-user-id';const passed=[];const check=(name,val)=>{assert.ok(val,name);passed.push(name)};
 async function request(mod,method,b,override={}){const headers={'Content-Type':'application/json','oai-authenticated-user-id':owner,...override};for(const k in headers)if(headers[k]===null)delete headers[k];const r=await mod.namespace[method](new Request('https://agency.test/api/test',{method,headers,...(b?{body:JSON.stringify(b)}:{})}));return {status:r.status,data:await r.json()}}
@@ -50,4 +51,9 @@ r=await request(run,'POST',{action:'poll',id:job});check('completed response bec
 r=await snapshot();const generated=r.data.artifacts.find(a=>a.origin==='ai');check('provider output stored with tokens',generated?.content.includes('mock provider')&&r.data.runs[0].tokens===42);
 await act('review_artifact',{id:generated.id,version:1,decision:'approved',note:''});await request(run,'POST',{action:'poll',id:job});r=await snapshot();check('repeated poll preserves artifact approval',r.data.artifacts.find(a=>a.id===generated.id).status==='approved');
 providerFail=true;r=await request(run,'POST',{action:'start',campaignId:cid,role:'insight'});check('ambiguous provider failure does not fabricate success',r.status===502);r=await snapshot();check('ambiguous submission stops automatic retries',r.data.runs.some(j=>j.status==='uncertain'));const before=callCount;await request(run,'POST',{action:'start',campaignId:cid,role:'insight'});check('no duplicate charged retry after uncertainty',callCount===before);
+// 배포 검증 경로. 소유자만 읽을 수 있어야 하고, 주입이 없으면 신원을 주장하지 않아야 한다.
+r=await request(version,'GET',null);
+check('version reports build and tree to the owner',r.status===200&&typeof r.data.build==='string'&&typeof r.data.tree==='string');
+check('an uninjected build never claims a source identity',r.data.tree==='unknown');
+check('version is owner-only',(await request(version,'GET',null,{'oai-authenticated-user-id':null})).status===401);
 console.log(JSON.stringify({passed:passed.length,checks:passed},null,2));

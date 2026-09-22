@@ -125,6 +125,24 @@ The independent quality report states what it did not review: the five criteria 
 
 Verification: `node scripts/test.mjs` runs the ten suites (497 assertions). `node node_modules/typescript/bin/tsc --noEmit` and `node scripts/lint-gate.mjs` (baseline in `scripts/lint-baseline.json`, increases blocked) complete the gate, and `.github/workflows/ci.yml` runs all three on every branch. `pnpm run <script>` fails in this repository because of `pnpm-workspace.yaml`, so each step calls node directly. `tests/research_worker_test.py` is run without blocking: it fails intermittently through a socket race in the test's local HTTP server. No live paid model call or real connector API call has been made; every suite stubs fetch.
 
+## Deployment identity
+
+`GET /api/version` returns `{build, tree}` for the signed-in owner. `tree` is the committed source tree hash injected at build time by `vite.config.ts`. The GitHub commit and the Sites commit that publishes the same files have different SHAs but the same tree, so the tree — not the commit — identifies which reviewed revision a running deployment was built from.
+
+The value is fail-closed. Vite bundles what is on disk, so a modified working tree would ship code that `HEAD`'s tree does not describe; the build reports `dirty` in that case, and `unknown` when git is unavailable. `lib/app-version.ts` accepts only 40 lowercase hex characters and maps everything else to `unknown`, so a deployment can never be reported as verified against a revision it was not built from. `COLLECTIVE_SOURCE_TREE` overrides the build-time lookup for environments without git.
+
+Reading it requires owner authentication, so open the app and fetch it from the page rather than typing the URL:
+
+```js
+await (await fetch('/api/version', {credentials: 'same-origin', cache: 'no-store'})).json()
+```
+
+Compare the returned `tree` with `git rev-parse <sha>^{tree}` for the GitHub revision that was published. A `tree` of `unknown` or `dirty` means the deployment has no verifiable identity, not that it is current.
+
+Publication itself is unchanged: the Sites build/publish workflow deploys, and a GitHub merge does not. Verify GitHub state, tests and the running deployment separately.
+
+Verification: `node --experimental-vm-modules tests/version.test.mjs` covers the identity rules, and `tests/workflow.mjs` covers the route's owner-only access and its uninjected default.
+
 ## 공동개발
 
 이 저장소의 `main`이 COLLECTIVE 제품 소스의 정본입니다. Claude, Codex, HERMES 및 로컬 개발 환경은 [AGENTS.md](AGENTS.md)의 규칙을 따릅니다. 작업 인계에는 [docs/HANDOFF_TEMPLATE.md](docs/HANDOFF_TEMPLATE.md)를 사용합니다.

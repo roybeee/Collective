@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import vinext from "vinext";
 import { defineConfig } from "vite";
 import hostingConfig from "./.openai/hosting.json";
@@ -35,6 +36,24 @@ const localBindingConfig = {
     : [],
 };
 
+// 커밋된 트리 해시는 GitHub 커밋과 그것을 게시하는 Sites 커밋에서 동일하다. 커밋 SHA는
+// 두 저장소가 다르므로 트리만이 배포본의 신원이 된다. git이 없는 빌드 환경을 위해
+// COLLECTIVE_SOURCE_TREE로 덮어쓸 수 있다.
+function sourceTree(): string {
+  const configured = process.env.COLLECTIVE_SOURCE_TREE;
+  if (configured && /^[0-9a-f]{40}$/.test(configured)) return configured;
+  const git = (args: string[]) =>
+    execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  try {
+    // vite는 디스크에 있는 것을 번들한다. 작업 트리가 더러우면 HEAD의 트리 해시가
+    // 설명하지 못하는 코드가 배포되고 검증이 거짓 통과한다. 거짓 신원 대신 무신원으로 닫는다.
+    if (git(["status", "--porcelain"]).trim() !== "") return "dirty";
+    return git(["rev-parse", "HEAD^{tree}"]).trim();
+  } catch {
+    return "unknown";
+  }
+}
+
 export default defineConfig(async () => {
   // Use Miniflare's local Request.cf placeholder unless fetching is requested.
   process.env.CLOUDFLARE_CF_FETCH_ENABLED ??= "false";
@@ -64,5 +83,9 @@ export default defineConfig(async () => {
         config: localBindingConfig,
       }),
     ],
+    define: {
+      __COLLECTIVE_BUILD_ID__: JSON.stringify(new Date().toISOString()),
+      __COLLECTIVE_SOURCE_TREE__: JSON.stringify(sourceTree()),
+    },
   };
 });
