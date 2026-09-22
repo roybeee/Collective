@@ -111,6 +111,20 @@ Running experiments can import only their explicitly linked orders and expenses 
 
 Validation: `node --experimental-vm-modules tests/stores.test.mjs` uses actual handlers with transactional SQLite and mocked HERMES replies, covering ownership, version conflicts, local research, excluded evidence, campaign linkage, measurement boundaries, duplicate imports, partial/full refunds, unknown costs, retrospective snapshots and learning isolation. Existing archive, brief, meeting, learning, deletion and workspace suites remain applicable. Test module loading leaves graph instantiation to VM to support shared dependency graphs. Live HERMES browsing and actual marketing performance need a configured production run.
 
+## Verdict, collection and review gates
+
+The channel vocabulary has a single source: `lib/channels.ts` holds the registry, the display names stored in existing records, the store checklist keys and `ConnectorKey`. The connector modules no longer declare a second `ChannelKey`; `lib/store-marketing.ts` keeps the store checklist key under that name.
+
+Automatic collection is bounded. A collection is accepted only for a running experiment and only from the connector whose registry channel matches that experiment's channel; numbers from one channel can no longer land in another channel's arm. Collected store values such as advertising cost are kept on the draft instead of appearing once in the response. The worker stops a collection source when its experiment is no longer running or its record is gone, records why it stopped, and never calls the external API for that source again. `comparable` stays false: a person still confirms comparability in `save_results`.
+
+A retrospective that describes itself as a single `observation` cannot become a 30-day learning rule. The retrospective is still stored; only the promotion is blocked. Store measurements carry `scope`: a `baseline` measurement is recorded for a period before the experiment starts, is kept out of the adoption gate and out of rule promotion, and does not collide with in-experiment periods. Pre-period baselines can only be built by calendar time, so the schema accepts them now.
+
+The independent quality report states what it did not review: the five criteria are a structural check and do not include legal review of advertising claims, rights coverage or personal data handling. This is a disclosure, not a new check.
+
+`assertNoActiveJobs` takes an optional campaign. Saving or approving an artifact is checked against its own campaign, so an AI run on one campaign no longer blocks the human approval gate on another. Connection and setting changes keep the account-wide check.
+
+Verification: `node scripts/test.mjs` runs the ten suites (497 assertions). `node node_modules/typescript/bin/tsc --noEmit` and `node scripts/lint-gate.mjs` (baseline in `scripts/lint-baseline.json`, increases blocked) complete the gate, and `.github/workflows/ci.yml` runs all three on every branch. `pnpm run <script>` fails in this repository because of `pnpm-workspace.yaml`, so each step calls node directly. `tests/research_worker_test.py` is run without blocking: it fails intermittently through a socket race in the test's local HTTP server. No live paid model call or real connector API call has been made; every suite stubs fetch.
+
 ## 공동개발
 
 이 저장소의 `main`이 COLLECTIVE 제품 소스의 정본입니다. Claude, Codex, HERMES 및 로컬 개발 환경은 [AGENTS.md](AGENTS.md)의 규칙을 따릅니다. 작업 인계에는 [docs/HANDOFF_TEMPLATE.md](docs/HANDOFF_TEMPLATE.md)를 사용합니다.

@@ -41,6 +41,11 @@ r=await snapshot();check('workspace never returns key material',r.data.connectio
 r=await request(run,'POST',{action:'start',campaignId:cid,role:'cmo'});check('background response queued even if immediately completed',r.status===200&&r.data.status==='queued');const job=r.data.id;
 check('duplicate active run blocked',(await request(run,'POST',{action:'start',campaignId:cid,role:'cmo'})).status===409&&callCount===1);
 check('active run blocks disconnection',(await act('disconnect')).status===409);
+// 다른 캠페인이 실행 중이라고 이 캠페인의 사람 게이트가 막히면, 실행을 늘릴수록 승인이 멈춘다.
+const otherId=(await act('save_campaign',{data:{brandId:'ofd',title:'Second Campaign',goal:'Parallel work',budget:0}})).data.id;
+const otherArtifact=await act('save_artifact',{campaignId:otherId,role:'cmo',title:'Other strategy',content:'Another campaign draft'});
+check('another campaign can still be edited while a run is active',otherArtifact.status===200);
+check('another campaign can still be approved while a run is active',(await act('review_artifact',{id:otherArtifact.data.id,version:1,decision:'approved',note:''})).status===200);
 r=await request(run,'POST',{action:'poll',id:job});check('completed response becomes real artifact',r.status===200&&r.data.status==='completed');
 r=await snapshot();const generated=r.data.artifacts.find(a=>a.origin==='ai');check('provider output stored with tokens',generated?.content.includes('mock provider')&&r.data.runs[0].tokens===42);
 await act('review_artifact',{id:generated.id,version:1,decision:'approved',note:''});await request(run,'POST',{action:'poll',id:job});r=await snapshot();check('repeated poll preserves artifact approval',r.data.artifacts.find(a=>a.id===generated.id).status==='approved');

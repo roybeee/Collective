@@ -30,7 +30,14 @@ export async function publicConnection(owner:string){const c=await configuration
 
 export async function acquireLock(owner:string){const token=uid();const r=await database().prepare('INSERT INTO mutation_locks(owner,token,expires_at) VALUES(?,?,?) ON CONFLICT(owner) DO UPDATE SET token=excluded.token,expires_at=excluded.expires_at WHERE mutation_locks.expires_at < ?').bind(owner,token,Date.now()+120000,Date.now()).run();if(!r.meta.changes)throw new ApiError(409,'다른 작업을 저장하고 있습니다. 잠시 후 다시 시도하세요.');return token}
 export async function releaseLock(owner:string,token:string){await database().prepare('DELETE FROM mutation_locks WHERE owner=? AND token=?').bind(owner,token).run()}
-export async function assertNoActiveJobs(owner:string){await assertNoActiveBriefs(owner);const r=await database().prepare("SELECT id FROM jobs WHERE owner=? AND status IN ('starting','queued','in_progress','uncertain') LIMIT 1").bind(owner).first();if(r)throw new ApiError(409,'AI 작업이 진행 중입니다. 결과를 확인하거나 연결된 작업을 취소한 후 변경해 주세요.')}
+// campaignId를 주면 그 캠페인의 작업만 본다. 다른 캠페인이 실행 중이라고 이 캠페인의 승인이 막히면
+// 실행을 늘릴수록 사람 게이트가 막힌다. 연결·설정 변경은 전역 검사를 그대로 쓴다.
+export async function assertNoActiveJobs(owner:string,campaignId?:string){
+ if(!campaignId)await assertNoActiveBriefs(owner);
+ const r=campaignId
+  ?await database().prepare("SELECT id FROM jobs WHERE owner=? AND campaign_id=? AND status IN ('starting','queued','in_progress','uncertain') LIMIT 1").bind(owner,campaignId).first()
+  :await database().prepare("SELECT id FROM jobs WHERE owner=? AND status IN ('starting','queued','in_progress','uncertain') LIMIT 1").bind(owner).first();
+ if(r)throw new ApiError(409,'AI 작업이 진행 중입니다. 결과를 확인하거나 연결된 작업을 취소한 후 변경해 주세요.')}
 
 export async function assertNoActiveBriefs(owner:string){const drafts=await listRecords<BriefDraft>(owner,'brief_draft');if(drafts.some(d=>['starting','queued','in_progress','uncertain'].includes(d.status)))throw new ApiError(409,'HERMES 초안을 작성 중입니다. 초안을 확인하거나 중지한 뒤 연결을 변경해 주세요.')}
 

@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated third-party PDF worker bundle. Git-ignored and shipped as a
+    // deployment asset, so linting it makes local and CI counts disagree.
+    "public/vendor/**",
   ]),
   {
     files: ["components/ui/**/*.{ts,tsx}", "hooks/use-mobile.ts"],

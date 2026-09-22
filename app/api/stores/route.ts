@@ -2,6 +2,7 @@ import {getStoreOperations} from '@/lib/store-operations-server';
 import {ledgerChanged} from '@/lib/store-operations';
 import {identity,secureMutation,body,database,readRecord,listRecords,recordStatement,json,failure,str,uid,stamp,ApiError,acquireLock,releaseLock,eventStatement} from '@/lib/server';
 import {storeInput,channelInput,checkedVersion,experimentInput,measurementInput,option} from '@/lib/store-server';
+import {storeLearningRule} from '@/lib/learning-server';
 import {channelCatalog,decisions,storeMetricFields,type Store,type StoreChannel,type StoreExperiment,type StoreMeasurement,type StoreReport,type StoreTask} from '@/lib/store-marketing';
 import {publicResearch,researchActive,sourceSummary,type ArchiveSource,type BrandResearch} from '@/lib/archive';
 import type {Brand,Campaign,Artifact} from '@/lib/agency';
@@ -72,7 +73,7 @@ export async function POST(req:Request){let lock='',owner='';try{
   if(experiment.status!=='running')throw new ApiError(409,'실험을 시작한 뒤 성과를 기록하세요. 회고를 완료한 기록은 보존됩니다.');
   const old=b.id?await readRecord<StoreMeasurement>(owner,'store_measurement',str(b.id,'성과',100,true)):undefined;if(old){if(old.experimentId!==experiment.id)throw new ApiError(400,'다른 실험의 성과입니다.');checkedVersion(old,b.version);if(old.ledgerSnapshot)throw new ApiError(409,'장부 성과는 장부에서 다시 가져와 수정하세요.');}
   const measurement=measurementInput(b.data||{},experiment,old),all=await listRecords<StoreMeasurement>(owner,'store_measurement',store.id);
-  if(all.some(m=>m.experimentId===experiment.id&&m.id!==measurement.id&&m.periodStart<=measurement.periodEnd&&m.periodEnd>=measurement.periodStart))throw new ApiError(409,'같은 실험에 겹치는 기간의 기록이 있습니다. 기존 기록을 수정하거나 기간을 나누세요.');
+  if(all.some(m=>m.experimentId===experiment.id&&(m.scope??'experiment')===measurement.scope&&m.id!==measurement.id&&m.periodStart<=measurement.periodEnd&&m.periodEnd>=measurement.periodStart))throw new ApiError(409,'같은 실험에 겹치는 기간의 기록이 있습니다. 기존 기록을 수정하거나 기간을 나누세요.');
   await recordStatement(owner,'store_measurement',measurement.id,measurement,store.id).run();return json({id:measurement.id});
  }
  if(b.action==='close_experiment'){
@@ -81,8 +82,13 @@ export async function POST(req:Request){let lock='',owner='';try{
   const measurements=(await listRecords<StoreMeasurement>(owner,'store_measurement',store.id)).filter(m=>m.experimentId===experiment.id);
   const review=b.review?{evidenceLevel:option(b.review.evidenceLevel,['observation','comparison','repeated'] as const,'근거 수준'),failureType:option(b.review.failureType,['none','collection','execution','measurement','insufficient','economics','negative'] as const,'문제 구분'),confounders:str(b.review.confounders??'','다른 설명',2000),nextAction:str(b.review.nextAction,'다음 행동',2000,true),conditions:str(b.review.conditions??'','적용 조건',2000)}:undefined;
   if(decision==='adopt')for(const m of measurements.filter(m=>m.ledgerSnapshot)){const ops=await getStoreOperations(owner,store.id,m.periodStart,m.periodEnd);if(ledgerChanged(m.ledgerSnapshot!,ops.orders.filter(o=>o.experimentId===experiment.id),ops.spend.filter(s=>s.experimentId===experiment.id)))throw new ApiError(409,'성과를 가져온 뒤 장부가 변경되었습니다. 장부 성과를 다시 가져와 검토하세요.');}
-  if(decision==='adopt'&&!measurements.some(m=>m.values[experiment.primaryMetric]!==null))throw new ApiError(409,'조건부 확대에는 핵심 지표의 실제 기록이 필요합니다.');
-  await recordStatement(owner,'store_experiment',experiment.id,{...experiment,status:'completed',decision,learning,review,version:experiment.version+1,updatedAt:stamp()},store.id).run();return json({id:experiment.id});
+  if(decision==='adopt'&&!measurements.some(m=>(m.scope??'experiment')==='experiment'&&m.values[experiment.primaryMetric]!==null))throw new ApiError(409,'조건부 확대에는 핵심 지표의 실제 기록이 필요합니다.');
+  const closed:StoreExperiment={...experiment,status:'completed',decision,learning,review,version:experiment.version+1,updatedAt:stamp()};
+  // 회고를 학습 규칙으로 승격한다. 게이트를 통과하지 못하면 규칙 없이 회고만 저장된다.
+  const rule=storeLearningRule(closed,decision,learning,review,measurements,storeMetricFields[experiment.primaryMetric]);
+  const writes=[recordStatement(owner,'store_experiment',experiment.id,closed,store.id)];
+  if(rule){writes.push(recordStatement(owner,'learning_rule',rule.id,rule,rule.brandId));if(closed.campaignId)writes.push(eventStatement(owner,closed.campaignId,`「${closed.title}」 회고를 ${rule.direction==='test'?'시험 적용 규칙':'주의사항'}으로 승격했습니다. 30일 후 재검토합니다.`));}
+  await database().batch(writes);return json({id:experiment.id,ruleId:rule?.id});
  }
  throw new ApiError(400,'지원하지 않는 점포 작업입니다.');
 }catch(e){return failure(e)}finally{if(lock)await releaseLock(owner,lock)}}

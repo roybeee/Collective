@@ -28,4 +28,5 @@ check('new meeting schema downgrades missing rubric',()=>assert.equal(meet.names
 check('task deficit survives meeting parsing',()=>assert.equal(meet.namespace.parseMeetingOutput(JSON.stringify({...base,checks,taskChecks:[]}),step,previous,true).verdict,'revise'));
 check('full and discussion instructions differ',()=>{const full=practice.namespace.rolePractice('content'),discussion=practice.namespace.rolePractice('content','discussion');assert.ok(full.includes('타임라인'));assert.ok(full.includes('필수 산출물'));assert.ok(!discussion.includes('필수 산출물'));assert.ok(discussion.includes('최대 병목 1개'))});
 check('channel practices do not claim unknown channels are configured',()=>{assert.ok(practice.namespace.campaignPractice({channels:'',stores:'',goal:'',products:''}).includes('미확정'));assert.ok(practice.namespace.campaignPractice({channels:'인스타, 오프라인',stores:'성수',goal:'보관함 이용',products:''}).includes('QR/POS'))});
+check('the quality report states what it did not review',()=>{const md=qualityMarkdown({...base,checks,taskChecks});assert.ok(md.includes('검수 범위'));assert.ok(md.includes('법적 검토는 포함하지 않습니다'))});
 console.log(JSON.stringify({passed:count}));

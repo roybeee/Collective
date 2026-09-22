@@ -16,7 +16,7 @@ let calls=0,disconnect=false,researchBlocked=false,rejectAuth=false,researchCase
 const analysis={facts:'확인한 장면: 제품을 나누는 손',hook:'단면을 먼저 보여주는 장면이 관심을 끌었을 가능성',retention:'속재료 공개를 기다리는 구조일 가능성',sharing:'친구와 함께 먹을 상황을 떠올릴 가능성',context:'광고 집행 여부는 미확인',counterEvidence:'비슷한 저성과 콘텐츠와 비교 필요',unknowns:'시청 지속·전환·광고비 미확인',ideas:[{hypothesis:'단면 먼저 보여주면 도달 대비 공유가 증가할 것이다',variable:'첫 3초 장면',control:'완성 제품 → 소개 → 매장 안내',treatment:'단면 확대 → 동일 소개 → 동일 매장 안내',metric:'share_rate'}]};
 const fakeFetch=async(url,options={})=>{
  if(url.endsWith('/v1/capabilities')){if(!new Headers(options.headers).has('Authorization'))return new Response('',{status:401});return Response.json({object:'hermes.api_server.capabilities',platform:'hermes-agent',features:{run_submission:true,run_status:true,run_stop:true,runs_idempotency:{durable:true}}})}if(url.endsWith('/v1/models'))return Response.json({data:[{id:'test'}]});
- if(options.method==='POST'&&url.endsWith('/v1/runs')){if(rejectAuth)return Response.json({error:'bad auth'},{status:403});const input=JSON.parse(options.body),key=new Headers(options.headers).get('Idempotency-Key');const known=[...provider.values()].find(x=>x.key===key);if(known)return Response.json({run_id:known.run_id});calls++;const id='run_'+calls;captured.push(input);let output='실제 공급자 모의 응답';if(input.instructions.includes('바이럴 콘텐츠 연구원'))output=input.input.includes('"case"')?JSON.stringify(analysis):JSON.stringify({cases:researchCases,blockers:'사용 가능한 조사 도구가 없습니다.'});provider.set(id,{run_id:id,object:'hermes.run',status:'completed',output,key});if(disconnect){disconnect=false;throw new Error('lost response')}return Response.json({run_id:id});}
+ if(options.method==='POST'&&url.endsWith('/v1/runs')){if(rejectAuth)return Response.json({error:'bad auth'},{status:403});const input=JSON.parse(options.body),key=new Headers(options.headers).get('Idempotency-Key');const known=[...provider.values()].find(x=>x.key===key);if(known)return Response.json({run_id:known.run_id});calls++;const id='run_'+calls;captured.push(input);let output='실제 공급자 모의 응답';if(input.instructions.includes('학습 규칙 초안'))output=JSON.stringify({guidance:'관찰된 방향이 떨어졌으므로 같은 조건에서는 피하고 요일을 통제해 재검증하세요.'});else if(input.instructions.includes('바이럴 콘텐츠 연구원'))output=input.input.includes('"case"')?JSON.stringify(analysis):JSON.stringify({cases:researchCases,blockers:'사용 가능한 조사 도구가 없습니다.'});provider.set(id,{run_id:id,object:'hermes.run',status:'completed',output,key});if(disconnect){disconnect=false;throw new Error('lost response')}return Response.json({run_id:id});}
  const id=url.split('/').pop();if(provider.has(id))return Response.json(provider.get(id));return Response.json({error:'not found'},{status:404});
 };
 const ctx=createContext({console,crypto:webcrypto,Response,Request,Headers,TextEncoder,TextDecoder,Uint8Array,Date:Clock,URL,AbortSignal,btoa,atob,fetch:fakeFetch,process:{env:{NODE_ENV:'production'}}});
@@ -81,4 +81,54 @@ r=await req(action,{action:'save_hermes',endpoint:'https://hermes.example.com',k
 r=await req(ai,{action:'recover',id:uncertain.id});check('recovery reuses durable provider submission',r.status===200&&calls===before+1);await req(ai,{action:'poll',id:uncertain.id});
 check('unknown connection cannot block disconnection after terminal jobs',(await req(action,{action:'disconnect'})).status===200);
 await act('adopt_rule',{id:expId,version:6,guidance:'성과가 떨어진 조건을 재검증'});d=await snap();const caution=d.rules.find(x=>x.direction==='caution');check('negative results persist as caution with measurement evidence',caution?.sourceAssessment.status==='not_supported'&&caution.sourceAssessment.treatmentRate===10/result.treatment.denominator);
+// Phase 0 ③ — 국내 로컬 채널이 학습 루프에 진입한다.
+const catalog=await load('lib/store-marketing.ts');await catalog.evaluate();
+const channels=await load('lib/channels.ts');await channels.evaluate();
+check('every store channel maps to a learning channel name',catalog.namespace.channelCatalog.every(c=>channels.namespace.storeChannelName(c.key)));
+const localCase={brandId:'ofd',channel:'네이버 플레이스',url:'https://m.place.naver.com/restaurant/1234567/home',title:'플레이스 메뉴 개편',scope:'공개 플레이스 페이지에서 확인',observations:'대표 메뉴 사진과 가격 노출 위치를 확인했습니다.'};
+check('local Korean channel accepts a case',(await act('add_case',{data:localCase})).status===200);
+check('global channel keeps strict host validation',(await act('add_case',{data:{...localCase,channel:'Instagram'}})).status===400);
+check('conversion-only channels cannot be registered as cases',(await act('add_case',{data:{...localCase,channel:'카카오톡 · 재방문'}})).status===400);
+check('local channel aliases retrieve rules',domain.namespace.ruleApplies({...caution,status:'active',channel:'네이버 플레이스',expiresAt:new Clock(now+86400000).toISOString()},'ofd','네이버 플레이스, 블로그',now));
+
+// Phase 0 ② — 만료 규칙 재검토 큐.
+const campaignRules=()=>learningServer.namespace.learningContext(owner,{brandId:'ofd',channels:'Instagram'});
+now+=25*86400000;
+check('rule nearing expiry enters the review queue',domain.namespace.ruleNeedsReview(caution,now));
+now+=6*86400000;
+check('expired rule leaves the campaign context',!(await campaignRules()).some(x=>x.id===caution.id));
+check('renewal requires a reason',(await act('renew_rule',{id:caution.id,version:1})).status===400);
+r=await act('renew_rule',{id:caution.id,version:1,reason:'다음 캠페인까지 유지하고 재측정 예정'});
+check('renewal extends expiry and records the count',r.status===200&&r.data.renewCount===1&&Date.parse(r.data.expiresAt)>now);
+check('renewed rule returns with its unverified extension visible',(await campaignRules()).some(x=>x.id===caution.id&&x.renewCount===1&&x.renewReason.includes('재측정')));
+
+r=await act('retest_rule',{id:caution.id,version:2});
+check('retest clones the experiment as a new draft',r.status===200);
+d=await snap();const retest=d.experiments.find(x=>x.id===r.data.id);
+check('retest starts unmeasured',retest.status==='draft'&&retest.result===null&&retest.assessment===null&&retest.title.startsWith('재검증 · '));
+check('retest keeps the original experiment untouched',d.experiments.find(x=>x.id===expId).status==='evaluated');
+check('repeated retest is idempotent',(await act('retest_rule',{id:caution.id,version:2})).data.duplicate===true);
+
+const storeRule={id:'store:synthetic:1',origin:'store',storeId:'store-1',brandId:'ofd',channel:'당근',experimentId:'store-exp',experimentVersion:1,caseId:'',title:'점포 승격 규칙',guidance:'가격 안내 유지',scope:'같은 상품·가격',evidenceLevel:'observational',status:'active',version:1,expiresAt:new Clock(now+86400000).toISOString(),createdAt:new Clock().toISOString(),updatedAt:new Clock().toISOString()};
+await server.namespace.recordStatement(owner,'learning_rule',storeRule.id,storeRule,'ofd').run();
+check('store rules cannot be retested from the viral lab',(await act('retest_rule',{id:storeRule.id,version:1})).status===409);
+
+check('retire closes the rule',(await act('retire_rule',{id:caution.id,version:2})).status===200);
+check('retired rule leaves the campaign context',!(await campaignRules()).some(x=>x.id===caution.id));
+check('retired rule cannot be renewed',(await act('renew_rule',{id:caution.id,version:3,reason:'재시도'})).status===409);
+
+// Phase 0 ① — 채택 문구 초안. 초안일 뿐 채택은 사람이 한다.
+const rulesBefore=(await snap()).rules.length;
+sql.prepare('INSERT INTO settings(owner,secret,model,updated_at) VALUES(?,?,?,?) ON CONFLICT(owner) DO UPDATE SET secret=excluded.secret').run(owner,secret,'HERMES test',new Clock().toISOString());
+r=await req(ai,{action:'start_guidance',experimentId:retest.id,version:1});
+check('guidance draft rejects an unmeasured experiment',r.status===409&&r.data.error.includes('판정 결과'));
+r=await req(ai,{action:'start_guidance',experimentId:expId,version:6});
+check('guidance draft starts for a qualified result',r.status===200);
+check('duplicate guidance run is blocked',(await req(ai,{action:'start_guidance',experimentId:expId,version:6})).status===409);
+await req(ai,{action:'poll',id:r.data.id});
+d=await snap();const draft=d.guidances.find(g=>g.id===expId+':6');
+check('guidance draft is stored against the experiment version',!!draft&&draft.guidance.includes('재검증'));
+check('guidance draft never adopts a rule by itself',d.rules.length===rulesBefore);
+check('guidance draft carries no provider secrets',!JSON.stringify(d.guidances).includes('test-key'));
+
 console.log(JSON.stringify({passed:checks.length,checks},null,2));

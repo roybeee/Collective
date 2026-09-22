@@ -21,13 +21,15 @@ export function enforceQuality(review:QualityReview,raw:any,taskRoles:string[],i
  const revise=issues.length>0||[...c,...t].some(x=>x.status==='revise')||review.verdict==='revise';
  return {...review,reportedVerdict:review.verdict,verdict:needsData?'needs_data':revise?'revise':'ready_for_review',checks:c,taskChecks:t,gateIssues:issues};
 }
+// 이 검수가 확인하지 않은 것을 산출물에 명시한다. 구조 검사를 법적 검토로 오해하면 책임 소재가 뒤바뀐다.
+export const qualityScopeNotice='검수 범위: 이 검수는 근거·브랜드·실행·경제성·측정 5개 기준의 구조 확인이며, 표시·광고 규제, 권리 사용 범위, 개인정보 처리에 대한 법적 검토는 포함하지 않습니다.';
 export function qualityMarkdown(q:QualityReview){
  const state={pass:'통과',revise:'수정 필요',needs_data:'자료 필요'};
  const blocks=[`## ${q.summary}`,q.findings];
  if(q.checks?.length)blocks.push('## 기준별 검수\n'+q.checks.map(x=>`### ${qualityCriteria[x.criterion as keyof typeof qualityCriteria]||x.criterion} · ${state[x.status]}\n- 위치: ${x.location}\n- 근거: ${x.finding}\n- 다음 조치: ${x.fix}`).join('\n\n'));
  if(q.taskChecks?.length)blocks.push('## 과제별 확인\n'+q.taskChecks.map(x=>`- ${x.role} · ${state[x.status]} · ${x.location}\n  ${x.finding}\n  다음 조치: ${x.fix}`).join('\n'));
  if(q.gateIssues?.length)blocks.push('## 추가 확인 필요\n'+q.gateIssues.map(x=>'- '+x).join('\n'));
- blocks.push(`판정: ${{ready_for_review:'사용자 검토 준비',revise:'수정 필요',needs_data:'자료 필요'}[q.verdict]}\n최종 승인은 사용자가 진행합니다.`);
+ blocks.push(`판정: ${{ready_for_review:'사용자 검토 준비',revise:'수정 필요',needs_data:'자료 필요'}[q.verdict]}\n최종 승인은 사용자가 진행합니다.\n${qualityScopeNotice}`);
  return blocks.join('\n\n');
 }
 export function parseStandaloneQuality(text:string):QualityReview{
