@@ -199,4 +199,43 @@ const enhancedContext=(await archiveContext.namespace.brandArchiveContext(owner,
 check('AI context includes diagnosis and scoped ledger',enhancedContext.operations.diagnostics.length===1&&typeof enhancedContext.operations.ledger.records==='number');
 check('AI context does not expose raw orders',!JSON.stringify(enhancedContext.operations).includes('POS-001'));
 
+// Phase 0 ④ — 점포 실험 회고를 학습 규칙으로 승격한다.
+const learningServer=await load('lib/learning-server.ts');await learningServer.evaluate();
+const allRules=async()=>server.namespace.listRecords(owner,'learning_rule');
+const ruleContext=(channels,store)=>learningServer.namespace.learningContext(owner,{brandId:'oda',channels,storeId:store});
+
+const adoptRule=(await allRules()).find(r=>r.experimentId===ledgerExperiment);
+check('adopt retrospective promotes to a test rule',!!adoptRule&&adoptRule.direction==='test'&&adoptRule.origin==='store');
+check('promoted rule uses the store channel display name',adoptRule.channel==='당근');
+check('promoted rule carries the ledger-measured evidence',adoptRule.storeAssessment.primaryMetric==='orders'&&adoptRule.storeAssessment.observed===2&&adoptRule.storeAssessment.target===10&&adoptRule.storeAssessment.measurementSource==='주문 성과 장부'&&adoptRule.storeAssessment.evidenceLevel==='comparison');
+check('promoted rule keeps the retrospective next action',adoptRule.storeAssessment.nextAction==='같은 요일에 재실험');
+check('promoted rule id is deterministic',adoptRule.id.startsWith('store:'+ledgerExperiment+':'));
+check('iterate retrospective creates no rule',!(await allRules()).some(r=>r.experimentId===experimentId));
+
+const closeWith=async(title,decision,extra={},measure=true)=>{
+ const id=(await sp('save_experiment',{storeId,data:{...plan,title}})).data.id;
+ await sp('start_experiment',{storeId,experimentId:id,version:1});
+ if(measure)await sp('save_measurement',{storeId,experimentId:id,data:measurement});
+ const r=await sp('close_experiment',{storeId,experimentId:id,version:2,decision,learning:'회고 기록',...extra});
+ return {id,status:r.status};
+};
+const stopped=await closeWith('중단 검증','stop',{review});
+check('stop retrospective promotes to a caution rule',(await allRules()).find(r=>r.experimentId===stopped.id)?.direction==='caution');
+const noReview=await closeWith('회고 없는 중단','stop');
+check('missing review stores the retrospective without a rule',noReview.status===200&&!(await allRules()).some(r=>r.experimentId===noReview.id));
+const noMeasure=await closeWith('측정 없는 중단','stop',{review},false);
+check('missing measured metric blocks promotion',noMeasure.status===200&&!(await allRules()).some(r=>r.experimentId===noMeasure.id));
+
+check('promoted rule reaches a campaign for the same store',(await ruleContext('당근',storeId)).some(r=>r.id===adoptRule.id));
+check('promoted rule does not leak to another store',!(await ruleContext('당근',storeB)).some(r=>r.id===adoptRule.id));
+check('promoted rule is excluded from brand-only campaigns',!(await ruleContext('당근',undefined)).some(r=>r.id===adoptRule.id));
+check('unrelated channel does not retrieve the store rule',!(await ruleContext('Instagram',storeId)).some(r=>r.id===adoptRule.id));
+
+const linkedExperiment=(await sp('save_experiment',{storeId,data:{...plan,title:'캠페인 연결 중단'}})).data.id;
+const linkedCampaign=(await sp('create_campaign',{storeId,experimentId:linkedExperiment})).data.id;
+await sp('start_experiment',{storeId,experimentId:linkedExperiment,version:2});
+await sp('save_measurement',{storeId,experimentId:linkedExperiment,data:measurement});
+await sp('close_experiment',{storeId,experimentId:linkedExperiment,version:3,decision:'stop',learning:'중단 회고',review});
+check('linked campaign deletion keeps the store rule',(await act('delete_campaign',{id:linkedCampaign,version:1,confirmed:true})).status===200&&(await allRules()).some(r=>r.experimentId===linkedExperiment));
+
 console.log(JSON.stringify({passed:passed.length,checks:passed},null,2));
