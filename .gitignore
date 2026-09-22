@@ -49,3 +49,7 @@ next-env.d.ts
 
 # Generated matching PDF worker; included in deployment assets.
 /public/vendor/archive-pdf.worker-*.mjs
+
+# Python bytecode from server/research-worker and its test. Untracked files make
+# the build report a 'dirty' source tree, which forfeits the deployment identity.
+__pycache__/
