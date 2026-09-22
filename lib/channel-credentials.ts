@@ -1,13 +1,13 @@
 import {ApiError, encrypt, decrypt, readRecord, listRecords, recordStatement, stamp, database} from './server';
 import {connectorFor, connectorKeys, connectors} from './connectors';
-import type {ChannelCredential, ChannelKey} from './connectors/types';
+import type {ChannelCredential, ConnectorKey} from './connectors/types';
 
 // 토큰 만료가 이만큼 남으면 경고한다. Instagram 장수명 토큰(60일)을 위한 것이다.
 export const TOKEN_WARNING_MS = 7 * 86400000;
 
 // records에 저장되는 형태. secret만 암호문이고 나머지는 화면에 보여줄 공개 메타데이터다.
 type StoredCredential = {
- channel: ChannelKey;
+ channel: ConnectorKey;
  secret: string;
  account: string;
  expiresAt?: string;
@@ -16,7 +16,7 @@ type StoredCredential = {
 };
 
 export type ChannelStatus = {
- channel: ChannelKey;
+ channel: ConnectorKey;
  label: string;
  connected: boolean;
  account: string;
@@ -25,7 +25,7 @@ export type ChannelStatus = {
  updatedAt: string | null;
 };
 
-async function stored(owner: string, channel: ChannelKey) {
+async function stored(owner: string, channel: ConnectorKey) {
  try {
   return await readRecord<StoredCredential>(owner, 'channel_credential', channel);
  } catch (error) {

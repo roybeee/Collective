@@ -23,11 +23,14 @@ export function measurementInput(raw:any,experiment:StoreExperiment,old?:StoreMe
  const periodStart=localDate(raw.periodStart,'측정 시작',true),periodEnd=localDate(raw.periodEnd,'측정 종료',true);
  const today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'});
  if(periodStart>periodEnd||periodEnd>today)throw new ApiError(400,'측정 기간은 시작 이후부터 오늘까지 가능합니다.');
- if(periodStart<experiment.startDate||periodEnd>experiment.endDate)throw new ApiError(400,'실험 기간 안의 성과를 기록하세요.');
+ const scope=option(raw.scope??'experiment',['experiment','baseline'] as const,'기록 구분');
+ // 사전 기간 기준선은 달력으로만 만들어진다. 같은 스키마에 담지 못하면 준실험 비교가 영구히 불가능해진다.
+ if(scope==='baseline'){if(periodEnd>=experiment.startDate)throw new ApiError(400,'기준선은 실험 시작 전 기간이어야 합니다.');}
+ else if(periodStart<experiment.startDate||periodEnd>experiment.endDate)throw new ApiError(400,'실험 기간 안의 성과를 기록하세요.');
  const values=Object.fromEntries(Object.entries(storeMetricFields).map(([k,label])=>{const n=nullableNumber(raw.values?.[k],label);if(n!==null&&!['revenue','variableCosts','adSpend','productionCost'].includes(k)&&!Number.isInteger(n))throw new ApiError(400,label+'은 정수로 입력하세요.');return [k,n]})) as StoreMeasurement['values'];
  if(Object.values(values).every(n=>n===null))throw new ApiError(400,'확인한 수치를 하나 이상 입력하세요.');
  for(const [a,b] of [['couponUsed','couponReceived'],['repeatCustomers','eligibleCustomers']] as const)if(values[a]!==null&&values[b]!==null&&values[a]!>values[b]!)throw new ApiError(400,storeMetricFields[a]+'은 '+storeMetricFields[b]+'보다 클 수 없습니다.');
- return {id:old?.id||uid(),storeId:experiment.storeId,experimentId:experiment.id,periodStart,periodEnd,source:str(raw.source,'수치 출처',2000,true),definition:str(raw.definition,'집계 정의·시간대·고객군',4000,true),method:option(raw.method,['manual','export'] as const,'수집 방식'),cohortMatured:raw.cohortMatured===true,values,version:(old?.version||0)+1,createdAt:old?.createdAt||stamp(),updatedAt:stamp()};
+ return {id:old?.id||uid(),scope,storeId:experiment.storeId,experimentId:experiment.id,periodStart,periodEnd,source:str(raw.source,'수치 출처',2000,true),definition:str(raw.definition,'집계 정의·시간대·고객군',4000,true),method:option(raw.method,['manual','export'] as const,'수집 방식'),cohortMatured:raw.cohortMatured===true,values,version:(old?.version||0)+1,createdAt:old?.createdAt||stamp(),updatedAt:stamp()};
 }
 export function parseStoreReport(raw:any,store:Store,sources:ArchiveSource[],id:string):StoreReport{
  const allowed=new Set(sources.filter(s=>s.status!=='excluded').map(s=>s.id));

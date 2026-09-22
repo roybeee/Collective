@@ -87,6 +87,11 @@ check('coupon denominator validated',(await sp('save_measurement',{storeId,exper
 check('fractional visits rejected',(await sp('save_measurement',{storeId,experimentId,data:{...measurement,values:{visits:1.5}}})).status===400);
 result=await sp('save_measurement',{storeId,experimentId,data:measurement});check('measurement saved',result.status===200);const mid=result.data.id;
 check('overlap rejected',(await sp('save_measurement',{storeId,experimentId,data:measurement})).status===409);
+// 처치 전 기준선. 실험 기간 밖이지만 같은 실험에 붙는다.
+const baseline={...measurement,scope:'baseline',periodStart:'2026-07-01',periodEnd:'2026-07-31'};
+check('a pre-period baseline can be recorded',(await sp('save_measurement',{storeId,experimentId,data:baseline})).status===200);
+check('a baseline overlapping the experiment window is rejected',(await sp('save_measurement',{storeId,experimentId,data:{...baseline,periodEnd:'2026-08-03'}})).status===400);
+check('a baseline does not collide with the experiment measurement',(await sp('save_measurement',{storeId,experimentId,data:{...baseline,periodStart:'2026-06-01',periodEnd:'2026-06-30'}})).status===200);
 let d=(await sd(storeId)).data,m=d.measurements.find(m=>m.id===mid),metrics=domain.namespace.storeMetrics(m);
 check('missing is null not zero',m.values.visits===null);
 check('contribution calculated with complete costs',metrics.find(x=>x.label==='비용 차감 잔액').value===45000);
@@ -223,8 +228,16 @@ const stopped=await closeWith('중단 검증','stop',{review});
 check('stop retrospective promotes to a caution rule',(await allRules()).find(r=>r.experimentId===stopped.id)?.direction==='caution');
 const noReview=await closeWith('회고 없는 중단','stop');
 check('missing review stores the retrospective without a rule',noReview.status===200&&!(await allRules()).some(r=>r.experimentId===noReview.id));
+const baselineOnly=(await sp('save_experiment',{storeId,data:{...plan,title:'기준선만 있는 실험'}})).data.id;
+await sp('start_experiment',{storeId,experimentId:baselineOnly,version:1});
+await sp('save_measurement',{storeId,experimentId:baselineOnly,data:{...measurement,scope:'baseline',periodStart:'2026-07-01',periodEnd:'2026-07-31'}});
+check('a baseline alone cannot satisfy the adoption gate',(await sp('close_experiment',{storeId,experimentId:baselineOnly,version:2,decision:'adopt',learning:'확대',review})).status===409);
 const noMeasure=await closeWith('측정 없는 중단','stop',{review},false);
 check('missing measured metric blocks promotion',noMeasure.status===200&&!(await allRules()).some(r=>r.experimentId===noMeasure.id));
+// 대조 없는 단일 관측은 규칙이 되지 못한다. 회고는 그대로 저장된다.
+const observed=await closeWith('단일 관측 채택','adopt',{review:{...review,evidenceLevel:'observation'}});
+check('a single observation without comparison cannot become a rule',observed.status===200&&!(await allRules()).some(r=>r.experimentId===observed.id));
+check('the blocked retrospective is still stored',!!(await server.namespace.listRecords(owner,'store_experiment')).find(x=>x.id===observed.id)?.review);
 
 check('promoted rule reaches a campaign for the same store',(await ruleContext('당근',storeId)).some(r=>r.id===adoptRule.id));
 check('promoted rule does not leak to another store',!(await ruleContext('당근',storeB)).some(r=>r.id===adoptRule.id));

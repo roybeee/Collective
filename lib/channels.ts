@@ -2,6 +2,9 @@
 // 키는 기존 레코드에 저장된 표시명 그대로다. 기존 viral_case/learning_rule의
 // channel 값을 그대로 쓰기 위한 것이므로 키 문자열을 바꾸면 과거 데이터가 끊긴다.
 // import가 없는 순수 데이터 모듈로 유지한다 (lib/learning.ts도 리프 모듈).
+// 공식 통계 API 커넥터가 있는 채널의 키. 채널 어휘는 이 파일이 단일 원본이다.
+export type ConnectorKey = 'naver_ads' | 'instagram';
+
 export type ChannelProfile = {
  // ruleApplies가 캠페인 채널 문구와 대조할 소문자 별칭.
  aliases: string[];
@@ -11,15 +14,17 @@ export type ChannelProfile = {
  storeKey?: string;
  // 사용자가 바이럴 사례로 직접 등록할 수 있는 채널인지.
  caseEligible: boolean;
+ // lib/connectors의 커넥터 키. 자동 수집이 가능한 채널만 채운다.
+ connectorKey?: ConnectorKey;
 };
 
 export const channelRegistry: Record<string, ChannelProfile> = {
- Instagram: {aliases: ['instagram', '인스타그램', '인스타', '릴스'], hosts: ['instagram.com'], caseEligible: true},
+ Instagram: {aliases: ['instagram', '인스타그램', '인스타', '릴스'], hosts: ['instagram.com'], caseEligible: true, connectorKey: 'instagram'},
  YouTube: {aliases: ['youtube', '유튜브', '쇼츠'], hosts: ['youtube.com'], caseEligible: true},
  TikTok: {aliases: ['tiktok', '틱톡'], hosts: ['tiktok.com'], caseEligible: true},
  Reddit: {aliases: ['reddit', '레딧'], hosts: ['reddit.com', 'redd.it'], caseEligible: true},
  '네이버 플레이스': {aliases: ['네이버 플레이스', '네이버플레이스', 'naver place', 'naver_place'], storeKey: 'naver_place', caseEligible: true},
- '네이버 검색광고': {aliases: ['네이버 검색광고', '네이버검색광고', '파워링크', 'naver_ads'], storeKey: 'naver_ads', caseEligible: true},
+ '네이버 검색광고': {aliases: ['네이버 검색광고', '네이버검색광고', '파워링크', 'naver_ads'], storeKey: 'naver_ads', caseEligible: true, connectorKey: 'naver_ads'},
  블로그: {aliases: ['블로그', '네이버 블로그', 'blog'], storeKey: 'blog', caseEligible: true},
  '지역 맛집 페이지': {aliases: ['지역 맛집 페이지', '맛집 페이지', '지역 맛집', 'local_creator'], storeKey: 'local_creator', caseEligible: true},
  'SNS · 숏폼': {aliases: ['sns · 숏폼', '숏폼'], storeKey: 'social', caseEligible: true},
@@ -44,4 +49,10 @@ export function channelHosts(name: string): string[] | undefined {
 // channelCatalog의 key → 학습 규칙이 저장하는 표시명.
 export function storeChannelName(storeKey: string): string | undefined {
  return Object.keys(channelRegistry).find(name => channelRegistry[name].storeKey === storeKey);
+}
+
+// 커넥터 키 → 학습/실험 레코드가 저장하는 채널 표시명.
+// 자동 수집한 수치가 실험 채널과 일치하는지 검사할 때 쓴다.
+export function channelNameForConnector(key: ConnectorKey): string | undefined {
+ return Object.keys(channelRegistry).find(name => channelRegistry[name].connectorKey === key);
 }

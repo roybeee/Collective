@@ -48,8 +48,10 @@ export async function learningContext(owner:string,c:Pick<Campaign,'brandId'|'ch
 export function storeLearningRule(e:StoreExperiment,decision:string,learning:string,review:StoreReview|undefined,measurements:StoreMeasurement[],metricLabel:string):LearningRule|null{
  if(decision!=='adopt'&&decision!=='stop')return null;
  if(!review?.nextAction?.trim())return null;
- const measured=measurements.filter(m=>m.experimentId===e.id&&m.values[e.primaryMetric]!==null).sort((a,b)=>b.periodEnd.localeCompare(a.periodEnd))[0];
+ const measured=measurements.filter(m=>m.experimentId===e.id&&(m.scope??'experiment')==='experiment'&&m.values[e.primaryMetric]!==null).sort((a,b)=>b.periodEnd.localeCompare(a.periodEnd))[0];
  if(!measured)return null;
+ // 대조 없는 단일 관측은 규칙이 되지 못한다. 회고가 스스로 'observation'이라 적은 것을 그대로 게이트로 쓴다.
+ if(review.evidenceLevel==='observation')return null;
  const storeAssessment:StoreAssessment={decision,primaryMetric:e.primaryMetric,primaryMetricLabel:metricLabel,target:e.target,observed:measured.values[e.primaryMetric],periodStart:measured.periodStart,periodEnd:measured.periodEnd,measurementSource:measured.source,evidenceLevel:review.evidenceLevel,failureType:review.failureType,confounders:review.confounders,nextAction:review.nextAction};
  return {id:'store:'+e.id+':'+e.version,origin:'store',storeId:e.storeId,storeAssessment,direction:decision==='adopt'?'test':'caution',brandId:e.brandId,channel:storeChannelName(e.channel)||e.channel,experimentId:e.id,experimentVersion:e.version,caseId:'',title:e.title,guidance:learning,scope:review.conditions||e.measurement,evidenceLevel:'observational',status:'active',version:1,expiresAt:expiry(),createdAt:stamp(),updatedAt:stamp()};
 }

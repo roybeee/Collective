@@ -17,6 +17,7 @@ export const channelCatalog=[
  {key:'partnership',name:'지역 제휴 · 커뮤니티',role:'주변 고객과 연결',checks:['오피스·숙박·주변 점포 후보','커뮤니티 홍보 규정','제휴 조건·담당자','전용 주문·쿠폰 경로','제휴별 비용·주문 실적'],url:'',tip:'주변 사업장과 고객 이용 상황이 맞는 제휴부터 검토하세요.'},
  {key:'offline',name:'매장 · 오프라인 안내',role:'입점·구매·재방문',checks:['간판·입구 식별','메뉴·가격 가독성','대표 상품·주문 안내','포장물·영수증 안내','혜택 확인·직원 안내'],url:'',tip:'온라인에서 본 정보와 실제 매장 경험이 일치하는지 확인하세요.'},
 ] as const;
+// 점포 채널 체크리스트의 키. 자동 수집 커넥터 키는 lib/channels.ts의 ConnectorKey다.
 export type ChannelKey=typeof channelCatalog[number]['key'];
 export const checkStates={unknown:'미확인',todo:'보완 필요',done:'확인 완료',excluded:'해당 없음'} as const;
 export type StoreChannel={id:string;storeId:string;key:ChannelKey;url:string;checks:Record<string,keyof typeof checkStates>;evidence:string;checkedAt:string;version:number;updatedAt:string};
@@ -26,7 +27,8 @@ export const experimentStates={draft:'설계 중',running:'실험 중',completed
 export const decisions={iterate:'수정 후 재실험',adopt:'조건부 확대',stop:'중단',inconclusive:'판단 보류'} as const;
 export type StoreReview={evidenceLevel:'observation'|'comparison'|'repeated';failureType:string;confounders:string;nextAction:string;conditions:string};
 export type StoreExperiment={parentExperimentId?:string;review?:StoreReview;id:string;storeId:string;brandId:string;title:string;channel:ChannelKey;hypothesis:string;offer:string;control:string;treatment:string;primaryMetric:StoreMetricKey;target:number|null;budget:number|null;startDate:string;endDate:string;measurement:string;stopRule:string;status:keyof typeof experimentStates;decision?:keyof typeof decisions;learning?:string;campaignId?:string;reportId?:string;version:number;createdAt:string;updatedAt:string};
-export type StoreMeasurement={ledgerSnapshot?:LedgerSnapshot;id:string;storeId:string;experimentId:string;periodStart:string;periodEnd:string;source:string;definition:string;method:'manual'|'export';cohortMatured:boolean;values:Record<StoreMetricKey,number|null>;version:number;createdAt:string;updatedAt:string};
+// scope='baseline'은 처치 전 기준선이다. 판정·채택·규칙 승격에서는 제외한다.
+export type StoreMeasurement={scope?:'experiment'|'baseline';ledgerSnapshot?:LedgerSnapshot;id:string;storeId:string;experimentId:string;periodStart:string;periodEnd:string;source:string;definition:string;method:'manual'|'export';cohortMatured:boolean;values:Record<StoreMetricKey,number|null>;version:number;createdAt:string;updatedAt:string};
 export type StoreReport={id:string;storeId:string;brandId:string;storeVersion:number;summary:string;customer:string;bottleneck:string;actions:{channel:ChannelKey;priority:'first'|'next';action:string;reason:string;sourceIds:string[]}[];proposals:{title:string;channel:ChannelKey;hypothesis:string;control:string;treatment:string;measurement:string;sourceIds:string[]}[];measurementPlan:string;questions:string[];limitations:string;sourceIds:string[];status:'candidate';createdAt:string};
 export type StoreTask={id:string;storeId:string;reportId:string;title:string;channel:ChannelKey;status:'open'|'done';evidence:string;version:number;updatedAt:string};
 export type StoreData={sources:ArchiveSourceSummary[];stores:Store[];channels:StoreChannel[];experiments:StoreExperiment[];measurements:StoreMeasurement[];reports:StoreReport[];tasks:StoreTask[];research:PublicResearch[]};
