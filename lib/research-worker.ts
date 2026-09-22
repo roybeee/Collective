@@ -25,7 +25,9 @@ export async function workerIdentity(req:Request){
  if(!saved||diff!==0)throw new ApiError(401,'작업자 연결이 해제됐거나 인증이 만료됐습니다.');
  return {owner,hash};
 }
-export async function workerTick(principal:{owner:string;hash:string},executeResearch:(owner:string,input:Record<string,any>,timeout:number)=>Promise<Response>){
+// collectDue는 성과 자동 수집이다. 조사 작업이 없을 때만 진행한다.
+// 반환 status는 설치된 파이썬 워커가 검사하는 ('idle','processed','retry') 안에 머물러야 한다.
+export async function workerTick(principal:{owner:string;hash:string},executeResearch:(owner:string,input:Record<string,any>,timeout:number)=>Promise<Response>,collectDue?:(owner:string)=>Promise<{status:string}>){
  const {owner,hash}=principal;
  const key=owner+':research-worker',lock=await acquireLock(key);
  try{
@@ -36,7 +38,11 @@ export async function workerTick(principal:{owner:string;hash:string},executeRes
   const job=due[(due.findIndex(r=>r.id===previous?.lastJob)+1)%due.length];
   const state={lastSeen:stamp(),version:'1',tokenHash:hash,lastJob:job?.id||previous?.lastJob,blocked};
   await recordStatement(owner,'worker_state','current',state).run();
-  if(!job)return {status:'idle',pending:active.length,blocked};
+  if(!job){
+   const collected=collectDue?await collectDue(owner):null;
+   const status=collected?.status==='processed'||collected?.status==='retry'?collected.status:'idle';
+   return {status,pending:active.length,blocked};
+  }
   const response=await executeResearch(owner,{id:job.id,action:job.status==='uncertain'?'recover':'advance'},20000);
   await recordStatement(owner,'worker_state','current',{...state,lastSeen:stamp(),lastStatus:response.status}).run();
   return {status:response.ok?'processed':'retry',httpStatus:response.status,pending:active.length,blocked};
