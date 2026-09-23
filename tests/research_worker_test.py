@@ -36,15 +36,19 @@ class Handler(BaseHTTPRequestHandler):
     redirect = False
     requests = []
     def do_POST(self):
+        # 본문을 읽지 않고 닫으면 커널이 RST를 보내 클라이언트 read가 ConnectionResetError로 끊긴다.
+        self.rfile.read(int(self.headers.get('Content-Length', 0)))
         self.requests.append((self.path, dict(self.headers)))
         if self.redirect:
             self.send_response(307)
             self.send_header('Location', '/unexpected')
             self.end_headers()
         else:
+            body = json.dumps({'status': 'idle', 'pending': 0}).encode()
             self.send_response(200)
+            self.send_header('Content-Length', str(len(body)))
             self.end_headers()
-            self.wfile.write(json.dumps({'status': 'idle', 'pending': 0}).encode())
+            self.wfile.write(body)
     def log_message(self, *_):
         pass
 

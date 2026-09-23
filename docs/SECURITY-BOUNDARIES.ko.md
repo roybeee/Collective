@@ -1,6 +1,6 @@
 # 보안 경계와 검증 범위
 
-애플리케이션은 Sites 디스패처가 인증한 `oai-authenticated-user-id`를 신뢰한다. 입력 길이 검사나 로컬 모의 인증 테스트는 디스패처의 헤더 위조 방지를 증명하지 않는다.
+운영은 `AUTH_MODE=email`이고 Sites 접근은 public이다(2026-09-23 전환, [게시 기록](releases/2026-09-23-1ecd72e.md)). 앱은 자체 세션 쿠키로 사용자를 확인하고 그 계정의 `workspace_owner`를 소유자로 쓰며, `oai-authenticated-user-id` 헤더는 인증에 쓰지 않는다. 이 헤더를 신뢰하는 legacy 모드는 로컬 개발·E2E용이다. 운영에서는 Sites 접근을 owner-only로 되돌린 뒤의 복구 절차([EMAIL-AUTH.ko.md 복구](EMAIL-AUTH.ko.md))에서만 쓰며, Sites public 상태에서는 절대 쓰지 않는다. `AUTH_MODE`를 비워 두어도 legacy다(`lib/auth-session.ts` `authMode`). 환경 revision 변경·복구·재게시 뒤에는 `/api/auth`가 mode=email을 반환하는지, 위조 헤더 요청이 401인지 먼저 확인한다. 코드 기본값을 fail-closed로 바꾸는 일은 PR 1(`auth-2`)에서 한다. 아래 설치 파일 허용 목록의 판정 단위는 아직 개인 사용자가 아니며, [개선 계획](IMPROVEMENT-PLAN.ko.md) PR 1에서 개인 사용자 단위로 바꾼다. 입력 길이 검사나 로컬 모의 인증 테스트는 운영 인증 경계를 증명하지 않는다.
 
 ## 설치 파일 배포 권한
 

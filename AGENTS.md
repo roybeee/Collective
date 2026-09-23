@@ -38,7 +38,7 @@
 보고, PR, `docs/STATUS.md`, `docs/releases/`는 아래 단어만 쓴다. 단계를 섞어 "완료"라고 쓰지 않는다.
 - 소스: `merged` — PR이 GitHub `main`에 병합됐다. 배포됐다는 뜻이 아니다.
 - 배포: `published` — Sites 게시(save_version_and_deploy_private)가 성공했다.
-- 배포: `runtime-verified` — 실행 중인 앱의 `/api/version` `tree`가 `git rev-parse origin/main^{tree}`와 같다. `unknown`·`dirty`는 검증 실패다.
+- 배포: `runtime-verified` — 실행 중인 앱의 `/api/version` `tree`가 마지막으로 게시한 제품 커밋의 tree와 같고, 그 커밋이 `origin/main`의 조상이며 이후 `main` 변경이 비제품 경로(문서·테스트·CI 등, 목록과 판정 명령은 `docs/PUBLISH.ko.md` 5단계)뿐이다. `unknown`·`dirty`는 검증 실패다.
 - 검사 결과: `passed` | `failed` | `blocked`(실행하려 했으나 막힘, 원인 기록) | `not_run`(실행하지 않음, 이유 기록).
 - 검사 근거: `real`(실제 서비스·실제 브라우저·실제 D1) | `mocked`(fetch 스텁, 모의 HERMES, 로컬 인증 헤더 주입 등). 한 검사가 둘 다면 부분별로 나눠 적는다.
 - 예: `node scripts/test.mjs` — passed · mocked (11/11 스위트, HERMES fetch 스텁).

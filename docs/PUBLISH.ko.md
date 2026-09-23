@@ -18,7 +18,7 @@ GitHub 병합(`merged`)은 배포가 아니다. 게시(`published`)와 실행 �
 git fetch origin --prune
 git rev-parse origin/main                 # 게시할 커밋 SHA
 git ls-remote origin refs/heads/main      # 위와 같아야 한다
-git rev-parse 'origin/main^{tree}'        # 게시 뒤 비교할 트리 해시
+git rev-parse 'origin/main^{tree}'        # 게시할 제품 커밋의 트리. 게시 뒤 비교 기준이며 기록에 남긴다
 ```
 
 ## 2. 정확한 트리 투영
@@ -58,9 +58,15 @@ Sites 도구의 `save_version_and_deploy_private`로 게시한다. 결과로 받
 await (await fetch('/api/version', {credentials: 'same-origin', cache: 'no-store'})).json()
 ```
 
-- `tree`가 1단계의 `git rev-parse 'origin/main^{tree}'`와 같으면 `runtime-verified`.
+- 아래를 모두 만족하면 `runtime-verified`: `tree`가 마지막으로 게시한 제품 커밋(1단계 SHA)의 tree와 같다. 그 커밋이 `origin/main`의 조상이다(`git merge-base --is-ancestor <sha> origin/main`). 그 뒤 `main` 변경이 아래 비제품 경로뿐이다(아래 명령 결과 없음). 그 뒤 제품 코드가 병합됐지만 아직 게시하지 않았다면 `runtime-verified`가 아니다.
+- 비제품 경로(배포 산출물에 들어가지 않는 파일)는 여기에서만 정의한다. 문서, 테스트, E2E, CI, lint 설정·기준선, 테스트 실행기다. 빌드에 쓰이는 파일(예: `scripts/run-framework.mjs`, `vite.config.ts`)은 넣지 않는다.
+
+```bash
+git diff --name-only <sha> origin/main -- . ':!docs' ':!*.md' ':!tests' ':!e2e' ':!.github' ':!eslint.config.mjs' ':!playwright.config.ts' ':!playwright.auth.config.ts' ':!scripts/lint-baseline.json' ':!scripts/lint-gate.mjs' ':!scripts/test.mjs'
+```
+
 - `unknown`·`dirty`이거나 다르면 검증 실패. `published`에서 멈추고 원인을 기록한다.
 
 ## 6. 기록
 
-`docs/releases/<YYYY-MM-DD>-<sha7>.md`를 만들고(형식은 `docs/releases/README.md`), `docs/STATUS.md`의 "마지막 운영 배포"를 갱신하는 PR을 연다.
+`docs/releases/<YYYY-MM-DD>-<sha7>.md`를 만들고(형식은 `docs/releases/README.md`), `docs/STATUS.md`의 "현재 운영 상태" 표를 갱신하는 PR을 연다.
