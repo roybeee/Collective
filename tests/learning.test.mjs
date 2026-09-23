@@ -205,4 +205,10 @@ const relooked=await legacyRecord('legacy-relook',[100,1000],[200,1000]);
 r=await act('save_results',{id:'legacy-relook',version:relooked.version,data:{...result,...counts([110,1100],[220,1100]),observedUntil:new Clock().toISOString()}});
 check('a legacy plan-met result counts as one completed look',r.status===200&&r.data.stats.looks===1&&r.data.stats.warning?.codes.join()==='repeated_looks');
 
+// 결정 7 후속: 캠페인 삭제 때 동결한 원천 실험 요약을 학습 조회가 함께 돌려준다(화면이 보존 규칙 옆에 보여 준다).
+await server.namespace.recordStatement(owner,'viral_experiment_summary','frozen-exp',{id:'frozen-exp',experimentId:'frozen-exp',experimentVersion:2,brandId:'ofd',campaignId:'gone',channel:'Instagram',title:'삭제된 실험',hypothesis:'h',metric:'saves',minSample:100,minHours:24,minLift:10,status:'completed',assessment:{status:'promising',label:'관찰상 개선',controlRate:0.1,treatmentRate:0.2,lift:100},controlSample:100,treatmentSample:100,startedAt:null,observedUntil:null,adoptedRuleIds:['r1'],frozenAt:new Clock().toISOString(),sourceCampaignDeleted:{at:new Clock().toISOString(),by:null}},'ofd').run();
+const withSummary=await snap();
+check('learning GET returns frozen experiment summaries',Array.isArray(withSummary.experimentSummaries)&&withSummary.experimentSummaries.some(x=>x.experimentId==='frozen-exp'&&x.title==='삭제된 실험'));
+check('frozen summaries of another owner are not returned',(await req(learn,null,'someone-else','GET')).data.experimentSummaries?.length===0);
+
 console.log(JSON.stringify({passed:checks.length,checks},null,2));
