@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import {testRuntime} from './helpers/runtime.mjs';
 const runtime=testRuntime(async()=>{throw new Error('No provider calls in parser tests');});
-const {parseMeetingOutput,publicMeeting,meetingMarkdown}=await runtime.load('lib/meetings.ts');
+const {parseMeetingOutput,parseMeetingStep,respondsToHandles,meetingInstructions,meetingAgenda,publicMeeting,meetingMarkdown}=await runtime.load('lib/meetings.ts');
 const previous={id:'m:discussion:cmo',phase:'discussion',role:'cmo',status:'completed'};
 const current={id:'m:discussion:insight',phase:'discussion',role:'insight',status:'running'};
-const valid={position:'진단',evidence:'자료 필요',challenge:'선행 가설의 한계',proposal:'현장 검증',respondsTo:[previous.id]};
+const body='첫 방문 고객은 배달비와 대기 시간을 가장 큰 장벽으로 봅니다. 매장 픽업 시간을 보장하는 문구가 할인보다 선택 이유가 될 수 있습니다.';
+const valid={position:body,evidence:'브리프 목표와 채널 정보만 사용했습니다. 가격·조리 시간은 [자료 필요]이며 매장 운영자가 오픈 전 주에 확인합니다.',challenge:'총괄 제안은 할인 의존 위험이 있습니다. 확인되지 않은 인기 표현은 빼야 합니다.',proposal:'픽업 준비 시간 보장 카피 2안을 만들고 2주간 픽업 비율로 판정합니다. 콘텐츠 담당에게 첫 장면을 조리 과정 대신 픽업 대기 없는 장면으로 바꾸도록 요청합니다.',respondsTo:[previous.id]};
 const checks=[];
 function check(name,fn){fn();checks.push(name);}
 check('first discussion accepts empty references',()=>assert.equal(parseMeetingOutput(JSON.stringify({...valid,respondsTo:[]}),previous,[]).respondsTo.length,0));
@@ -15,12 +16,55 @@ for(const [name,value] of [['missing',undefined],['empty',[]],['not array',previ
 }
 check('future completed discussion is not accepted',()=>assert.throws(()=>parseMeetingOutput(JSON.stringify({...valid,respondsTo:['m:discussion:strategy']}),current,[previous,current,{id:'m:discussion:strategy',role:'strategy',phase:'discussion',status:'completed'}]),/respondsTo/));
 check('completed revisions are not valid references',()=>assert.throws(()=>parseMeetingOutput(JSON.stringify({...valid,respondsTo:['revision-id']}),current,[previous,{id:'revision-id',role:'content',phase:'revision',status:'completed'}]),/respondsTo/));
-check('incomplete previous discussions are not references',()=>assert.throws(()=>parseMeetingOutput(JSON.stringify(valid),current,[{...previous,status:'failed'}]),/respondsTo/));
+check('incomplete previous discussions are not references',()=>{const r=parseMeetingStep(JSON.stringify(valid),current,[{...previous,status:'failed'}]);assert.deepEqual([...r.output.respondsTo],[]);assert.equal(r.warnings.length,1)});
+// 발언 ID 정규화: 모델이 정식 ID를 정확히 복사하지 못해도 같은 회의의 앞선 완료 발언이면 정식 ID로 저장한다.
+const mid='f6c25512-0a1b-4c2d-8e3f-123456789abc';
+const d=(role,status='completed')=>({id:`${mid}:discussion:${role}`,phase:'discussion',role,status,...(status==='completed'?{output:{...valid,position:role+' 진단 '+'가'.repeat(120),respondsTo:[]}}:{})});
+const talk=[d('cmo'),d('insight'),d('strategy','running')],speaker=talk[2];
+const reply=respondsTo=>JSON.stringify({...valid,respondsTo});
+check('role id, discussion suffix, short meeting id and handle map to canonical ids',()=>assert.deepEqual([...parseMeetingOutput(reply(['cmo',':discussion:insight','f6c25512:discussion:cmo','D2','d1']),speaker,talk).respondsTo],[talk[0].id,talk[1].id]));
+check('unknown references are dropped with a safe warning when one reference is valid',()=>{const r=parseMeetingStep(reply(['D1','secret-provider-value','other-meeting:discussion:cmo','f6c2:discussion:insight',7]),speaker,talk);assert.deepEqual([...r.output.respondsTo],[talk[0].id]);assert.equal(r.warnings.length,1);assert.ok(r.warnings[0].includes('4'));assert.ok(!r.warnings.join(' ').includes('secret'))});
+check('references to later or own discussion never normalize',()=>assert.throws(()=>parseMeetingOutput(reply(['strategy','D3','D4']),speaker,talk),/ID 불일치/));
+check('failure messages name the cause',()=>{assert.throws(()=>parseMeetingOutput(reply(['nope']),speaker,talk),e=>/ID 불일치/.test(e.message)&&e.message.includes('D1')&&!e.message.includes('nope'));assert.throws(()=>parseMeetingOutput(reply([]),speaker,talk),/검토 누락/);assert.throws(()=>parseMeetingOutput(reply('D1'),speaker,talk),/형식/)});
+check('allowed references are short handles without internal meeting ids',()=>{const h=respondsToHandles(speaker,talk);assert.deepEqual([...h.map(x=>x.ref)],['D1','D2']);assert.deepEqual([...h.map(x=>x.role)],['cmo','insight']);assert.ok(h.every(x=>x.summary.length<=80));assert.ok(!JSON.stringify(h).includes(mid))});
+// 발언·개선본의 실질 검사: JSON 형식을 지킨 재질문과 속 빈 초안은 저장하지 않고 재작성 가능한 형식 오류로 돌린다.
+const rich={...valid,respondsTo:['D1']};
+check('substantive discussion with conditional plan is stored',()=>assert.equal(parseMeetingOutput(JSON.stringify(rich),speaker,talk).position,body));
+check('discussion that re-asks instead of diagnosing fails as rewritable output',()=>{assert.throws(()=>parseMeetingOutput(JSON.stringify({...rich,position:'다음 중 무엇을 원하시는지 한 가지만 지정해 주세요. 1) 전략 2) 카피',evidence:'자료 없음',challenge:'없음',proposal:'선택 후 진행'}),speaker,talk),/재질문/);const ask='어떤 방향으로 작성할지 알려 주시면 바로 작성하겠습니다.';assert.throws(()=>parseMeetingOutput(JSON.stringify({...rich,position:ask,evidence:ask,challenge:ask,proposal:ask}),speaker,talk),/재질문/)});
+// 다른 담당자에게 고르게 하는 요청과 짧지만 실질적인 발언은 재질문·빈 초안이 아니다(오탐 회귀).
+check('proposal asking another role to choose between drafts is stored',()=>assert.ok(parseMeetingOutput(JSON.stringify({...rich,proposal:'콘텐츠 담당은 아래 두 안 중 하나를 선택해 주세요: 1) 단면 컷으로 시작 2) 매장 전경으로 시작'}),speaker,talk).proposal.includes('두 안')));
+check('proposal that asks the user to pick a direction does not discard a substantive discussion',()=>assert.ok(parseMeetingOutput(JSON.stringify({...rich,proposal:'다음 중 무엇을 원하시는지 한 가지만 지정해 주세요. 1) 전략 2) 카피'}),speaker,talk).position));
+const concise={position:'실제 브리프를 검토했습니다.',evidence:'주어진 브리프만 사용, 고객 반응은 미측정.',challenge:'앞선 제안의 공유 동기와 검증 기준을 보완해야 합니다.',proposal:'제품 단면을 먼저 보여주고 공유율을 대조합니다.',respondsTo:['D1']};
+check('concise but substantive four-field discussion is stored',()=>assert.equal(parseMeetingOutput(JSON.stringify(concise),speaker,talk).position,concise.position));
+check('too short discussion names the discussion minimum, not role deliverables',()=>assert.throws(()=>parseMeetingOutput(JSON.stringify({...concise,position:'동의',evidence:'없음',challenge:'없음',proposal:'유지'}),speaker,talk),e=>e.message.includes('회의 발언 수정 필요')&&e.message.includes('80자')&&!e.message.includes('필수 산출물')));
+check('discussion instructions state the discussion minimum',()=>assert.ok(meetingInstructions({id:'x',role:'insight',phase:'discussion',status:'pending'}).includes('80자')));
+check('revision with customer poll copy is stored',()=>assert.ok(parseMeetingOutput(JSON.stringify({title:'개선본',content:'## 게시 카피\n\n'+body.repeat(4)+'\n\n## 참여형 게시물 문안\n\n다음 중 가장 먹어 보고 싶은 피자를 골라 주세요!\n1) 마르게리타\n2) 페퍼로니\n3) 고르곤졸라\n댓글로 번호를 남겨 주세요.',changes:'반영'}),{id:mid+':revision:content',phase:'revision',role:'content',status:'running'},talk).content.includes('마르게리타')));
+check('stored meeting text maps known input ids to their ref labels',()=>{const source='5b0c3f7e-1111-4222-8333-123456789abc';const r=parseMeetingStep(JSON.stringify({...rich,evidence:`브랜드 자료 id=${source}에 따르면 가격은 미확정입니다. `+rich.evidence}),speaker,talk,false,[],{[source]:'브랜드 자료 #1'});assert.ok(r.output.evidence.startsWith('브랜드 자료 #1에 따르면'),r.output.evidence)});
+check('hollow discussion fails as rewritable output',()=>assert.throws(()=>parseMeetingOutput(JSON.stringify({...rich,position:'자료 필요',evidence:'자료 필요',challenge:'자료 필요',proposal:'자료 필요'}),speaker,talk),/발언 수정 필요/));
+const revisionStep={id:mid+':revision:content',phase:'revision',role:'content',status:'running'};
+check('revision content that asks for direction fails as rewritable output',()=>assert.throws(()=>parseMeetingOutput(JSON.stringify({title:'개선본',content:'어떤 방향으로 작성할지 알려 주시면 바로 작성하겠습니다. '+'브랜드와 목표는 확인했습니다. '.repeat(20),changes:'반영'}),revisionStep,talk),/개선본 수정 필요/));
+check('stored meeting text never keeps internal ids',()=>{const leaked=`캠페인 브리프 campaign.id=${mid}과 이전 작업물 ai-f8710d51c4f2a179f4eb21008f184872, 브랜드 아카이브 revision 17 기준. `;
+ const discussion=parseMeetingOutput(JSON.stringify({...rich,evidence:leaked+rich.evidence}),speaker,talk);assert.ok(!/[0-9a-f]{8}-[0-9a-f]{4}-|ai-[0-9a-f]{32}|revision 17/.test(discussion.evidence));assert.ok(discussion.respondsTo[0].startsWith(mid));
+ const revision=parseMeetingOutput(JSON.stringify({title:'개선본',content:leaked+body.repeat(2),changes:leaked}),revisionStep,talk);assert.ok(!/[0-9a-f]{8}-[0-9a-f]{4}-|ai-[0-9a-f]{32}|revision 17/.test(revision.content+revision.changes));
+ const quality=parseMeetingOutput(JSON.stringify({verdict:'revise',summary:leaked,findings:leaked}),{id:mid+':quality',phase:'quality',role:'quality',status:'running'},talk);assert.ok(!/[0-9a-f]{8}-[0-9a-f]{4}-|ai-[0-9a-f]{32}/.test(quality.summary+quality.findings));assert.equal(quality.verdict,'revise')});
+check('every meeting phase forbids options and re-asking and asks for conditional drafts',()=>{for(const phase of ['discussion','synthesis','revision','quality'])for(const enhanced of [true,false]){const text=meetingInstructions({id:'x',role:phase==='quality'?'quality':'cmo',phase,status:'pending'},enhanced);assert.ok(text.includes('선택지')&&text.includes('재질문')&&text.includes('조건부 초안')&&text.includes('확인 계획'),phase)}});
+check('meeting instructions explain ledger facts, standing directives and unverified brand intro',()=>{for(const phase of ['discussion','revision']){const text=meetingInstructions({id:'x',role:'content',phase,status:'pending'},false);assert.ok(text.includes('evidence.facts.confirmed')&&text.includes('prohibited')&&text.includes('evidence.directives')&&text.includes('brand.brandIntro'),phase)}});
+check('discussion instructions ask for short refs instead of internal step ids',()=>{const text=meetingInstructions({id:'x',role:'insight',phase:'discussion',status:'pending'});assert.ok(text.includes('D1'));assert.ok(!text.includes('discussion step id'))});
 const failed={...current,status:'failed',attempt:1,failureKind:'invalid_output',providerId:'private-provider-current',raw:'private-raw-current',error:'respondsTo: 배열이 필요합니다.',tokens:45,attempts:[{attempt:0,status:'failed',providerId:'private-provider-old',raw:'private-raw-old',error:'응답 형식 오류',tokens:25}]};
 const meeting={id:'m',agenda:'제품 사실과 위치 전략',status:'failed',createdAt:'2026-09-23T00:00:00Z',stopRequested:false,steps:[{...previous,output:valid,tokens:100},failed],snapshot:{artifacts:[],secret:'private-snapshot'}};
 check('public diagnostics redact current and historical raw provider data',()=>{const serialized=JSON.stringify(publicMeeting(meeting));assert.ok(!serialized.includes('private-'));assert.ok(serialized.includes('respondsTo'));});
 check('export includes failed phase diagnostics attempts and known usage',()=>{const exported=meetingMarkdown(publicMeeting(meeting));assert.ok(exported.includes('상태: failed'));assert.ok(exported.includes('respondsTo'));assert.ok(exported.includes('시도 1: failed · 토큰 25'));assert.ok(exported.includes('시도 2: failed · 토큰 45'));assert.ok(!exported.includes('private-'));});
 check('provider failure is not offered as domain repair',()=>assert.equal(publicMeeting({...meeting,steps:[{...failed,failureKind:'provider_failed'}]}).steps[0].retryAvailable,false));
-check('legacy valid raw result is not offered as domain repair',()=>assert.equal(publicMeeting({...meeting,steps:[{...failed,failureKind:undefined,raw:JSON.stringify({...valid,respondsTo:[]})}]}).steps[0].retryAvailable,false));
+// 저장된 응답이 현재 파서로 통과하면 모델을 다시 부르지 않는 저장 응답 보정만 제안한다(legacy-failed-meeting-no-retry).
+check('legacy valid raw result is offered as a stored-response repair',()=>{const step=publicMeeting({...meeting,steps:[{...failed,failureKind:undefined,raw:JSON.stringify({...valid,respondsTo:[]})}]}).steps[0];assert.equal(step.retryAvailable,true);assert.equal(step.storedRepair,true)});
+check('invalid stored raw is never offered as a stored-response repair',()=>{const step=publicMeeting(meeting).steps[1];assert.equal(step.storedRepair,false);assert.equal(step.retryAvailable,true);assert.equal(publicMeeting(meeting,true).steps[1].storedRepair,false)});
 check('cancelled meeting never offers repair',()=>assert.equal(publicMeeting({...meeting,status:'cancelled'}).steps[1].retryAvailable,false));
+check('stale failed meeting reports changed basis and never offers repair',()=>{const fresh=publicMeeting(meeting),stale=publicMeeting(meeting,true);assert.equal(fresh.steps[1].retryAvailable,true);assert.equal(fresh.stale,false);assert.equal(stale.stale,true);assert.equal(stale.steps[1].retryAvailable,false)});
+const review={verdict:'revise',summary:'수정 필요',findings:'CTA 보완',checks:[{criterion:'evidence',status:'revise',location:'콘텐츠 CTA',finding:'가격 근거 없음',fix:'가격 출처를 붙이거나 [확인 필요]로 표시'},{criterion:'brand',status:'pass',location:'전체',finding:'톤 일치',fix:'해당 없음'}],taskChecks:[{role:'growth',status:'needs_data',location:'예산표',finding:'상한 미확정',fix:'예산 상한 확인 계획 작성'}],gateIssues:['측정 기준일 정의 누락']};
+check('agenda draft combines sequence fixes, latest review fixes and standing directives',()=>{const r=meetingAgenda({fixes:[{role:'content',fix:'CTA에서 할인 표현 삭제'},{role:'growth',fix:'예산 상한 확인 계획 작성'}],review,directives:['인기·할인 표현은 확인 전 사용 금지']});
+ for(const text of ['콘텐츠 스튜디오','CTA에서 할인 표현 삭제','가격 출처를 붙이거나','예산 상한 확인 계획 작성','측정 기준일 정의 누락','인기·할인 표현은 확인 전 사용 금지'])assert.ok(r.agenda.includes(text),text);
+ assert.ok(!r.agenda.includes('해당 없음'));assert.equal(r.agenda.split('예산 상한 확인 계획 작성').length,2);assert.equal(r.reviewFixes,4);assert.ok(r.agenda.length<=5000)});
+check('agenda draft without review fixes keeps directives and offers no review meeting',()=>{const r=meetingAgenda({fixes:[],review:{...review,verdict:'ready_for_review',checks:[review.checks[1]],taskChecks:[],gateIssues:[]},directives:['주소는 확정 사실만 사용']});assert.equal(r.reviewFixes,0);assert.ok(r.agenda.includes('주소는 확정 사실만 사용'));assert.equal(meetingAgenda({}).agenda,'')});
+check('sequence fixes without an owning role stay in the agenda',()=>{const r=meetingAgenda({fixes:[{role:null,fix:'측정 기준일을 첫 구매일로 정의'}]});assert.ok(r.agenda.includes('공통: 측정 기준일을 첫 구매일로 정의'));assert.equal(r.reviewFixes,1)});
+check('agenda draft stays within the agenda limit',()=>assert.ok(meetingAgenda({fixes:Array.from({length:80},(_,i)=>({role:'content',fix:i+' '+'가'.repeat(200)}))}).agenda.length<=5000));
 console.log(JSON.stringify({passed:checks.length,checks},null,2));

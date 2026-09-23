@@ -42,6 +42,8 @@ await server.namespace.recordStatement(owner,'learning_rule','other-brand-trial'
 input.channels='인스타그램';
 let r=await bp('start',{id:'draft-1',data:input});check('real adapter submission creates queued draft',r.status===200&&r.data.status==='queued');
 check('new campaign draft receives only applicable trial learning',lastInput.trialLearning.length===1&&lastInput.trialLearning[0].id===trial.id&&lastInput.trialLearning[0].version===2);
+check('brief input separates unverified brand intro',lastInput.brand.brandIntro.verification==='unverified'&&lastInput.brand.brandIntro.useInCopy===false&&!('description' in lastInput.brand)&&lastInput.brand.identity.name==='MAPDAL');
+check('brief input carries shared evidence context',['confirmed','prohibited','candidate'].every(k=>Array.isArray(lastInput.evidence.facts[k]))&&Array.isArray(lastInput.evidence.directives)&&!('factRefs' in lastInput.evidence));
 check('repeat start reuses durable draft',(await bp('start',{id:'draft-1',data:input})).status===200&&callCount===1);
 check('parallel second draft is blocked',(await bp('start',{id:'draft-2',data:input})).status===409&&callCount===1);
 check('active draft blocks credential changes',(await act('disconnect')).status===409);
@@ -65,11 +67,23 @@ r=await bp('recover',{id:'lost-ack'});check('recovery reuses same provider opera
 check('cancellation finishes pending draft',(await bp('cancel',{id:'lost-ack'})).data.status==='cancelled');
 providerStatus='completed';output='not json';await bp('start',{id:'invalid-result',data:input});r=await bp('poll',{id:'invalid-result'});check('malformed output cannot become success',r.data.status==='failed'&&!r.data.result);
 output=JSON.stringify({summary:'',suggestions:[{field:'kpi',value:'one'},{field:'title',value:'two'},{field:'channels',value:'three'}],questions:[],assumptions:[]});await bp('start',{id:'thin-result',data:input});check('incomplete strategy is rejected',(await bp('poll',{id:'thin-result'})).data.status==='failed');
-output=readFileSync('tests/fixtures/brief.json','utf8');await bp('start',{id:'edit-draft',data:c,campaignId:cid,campaignVersion:c.version});await bp('poll',{id:'edit-draft'});await act('save_campaign',{id:cid,version:c.version,data:{...c,title:'Newer human version'}});
+await server.namespace.recordStatement(owner,'campaign_directive','brief-dir',{id:'brief-dir',campaignId:cid,text:'인기·할인은 확인 전 쓰지 않습니다.',createdAt:new Date().toISOString(),createdBy:{id:owner,email:null}},cid).run();
+await server.namespace.recordStatement(owner,'brand_fact','brief-oven',{id:'brief-oven',brandId:'mapdal',key:'popular',value:'동네 1위',status:'rejected',source:'대표 확인',verifiedAt:'',validUntil:'',version:2,updatedAt:new Date().toISOString()},'mapdal').run();
+output=readFileSync('tests/fixtures/brief.json','utf8');await bp('start',{id:'edit-draft',data:c,campaignId:cid,campaignVersion:c.version});
+check('campaign brief draft receives standing directives and prohibited claims',lastInput.evidence.directives.some(d=>d.text==='인기·할인은 확인 전 쓰지 않습니다.')&&lastInput.evidence.facts.prohibited.some(f=>f.value==='동네 1위'));await bp('poll',{id:'edit-draft'});await act('save_campaign',{id:cid,version:c.version,data:{...c,title:'Newer human version'}});
 check('stale draft cannot overwrite newer campaign',(await act('save_campaign',{id:cid,version:c.version+1,briefDraftId:'edit-draft',data:c})).status===409);
 const badParse=JSON.parse(output);badParse.suggestions.push({field:'baseline',value:'100',reason:'fabricated'});badParse.questions=[{field:'budget',question:'예산?',why:'scope'}];const sanitized=pure.namespace.parseBrief(JSON.stringify(badParse));
 check('parser discards protected suggestions',!sanitized.suggestions.some(s=>s.field==='baseline'));
 check('budget question is retained',sanitized.questions[0].field==='budget');
+// 사실 후보는 사용자가 브리프에 직접 적은 값만 받는다. 모델이 다른 출처를 밝히거나 브리프에 없는 값은 버린다(ai-quality-8).
+const briefInput={title:'오픈',goal:'휘경동 377 C동 107호 매장 오픈 알리기',audience:'',channels:'',stores:'휘경동',products:'마르게리타 12,900원',budget:0,startDate:'',endDate:'',constraints:Array.from({length:12},(_,i)=>'값 '+i).join(', '),sources:'',plan:{operations:'평일 11시 오픈'}};
+const withFacts=pure.namespace.parseBrief(JSON.stringify({...JSON.parse(output),factCandidates:[{key:'매장 주소',value:'휘경동 377 C동 107호',source:'사용자 브리프'},{key:'조리 방식',value:'장작 화덕',source:'AI 추론'},{key:'가격',value:'마르게리타   12,900원'},{key:'주소 추정',value:'휘경동 377 C동 107호',source:'AI 추론'},{key:'영업시간',value:'평일 11시~21시',source:'사용자 브리프'},{key:'',value:'빈 항목'},{key:'매장 주소',value:'중복'},'text',...Array.from({length:12},(_,i)=>({key:'항목 '+i,value:'값 '+i}))]}),briefInput);
+check('fact candidates keep only values written in the user brief',withFacts.factCandidates[0].key==='매장 주소'&&withFacts.factCandidates[1].key==='가격'&&withFacts.factCandidates.every(f=>f.source==='사용자 브리프'));
+check('AI-inferred or absent values never become user brief candidates',!withFacts.factCandidates.some(f=>['조리 방식','주소 추정','영업시간'].includes(f.key)));
+check('invalid and duplicate fact candidates dropped and capped',withFacts.factCandidates.length===10&&withFacts.factCandidates.filter(f=>f.key==='매장 주소').length===1);
+check('fact candidates need the brief input to verify provenance',pure.namespace.parseBrief(JSON.stringify({...JSON.parse(output),factCandidates:[{key:'매장 주소',value:'휘경동 377 C동 107호'}]})).factCandidates.length===0);
+check('missing fact candidates default to empty',Array.isArray(sanitized.factCandidates)&&sanitized.factCandidates.length===0);
+check('brief instructions request fact candidates from the user brief only',pure.namespace.briefInstructions.includes('factCandidates')&&pure.namespace.briefInstructions.includes('사용자 브리프'));
 check('past campaign context includes joinable ids',lastInput.previousCampaigns.every(c=>c.id));
 const originalBatch=DB.batch;let failOnce=true;DB.batch=async ss=>{if(failOnce){failOnce=false;throw new Error('injected atomic storage failure')}return originalBatch(ss)};
 r=await bp('start',{id:'atomic-failure',data:input});check('atomic storage failure creates no stuck draft',r.status===500&&!sql.prepare("SELECT id FROM records WHERE kind='brief_draft' AND id LIKE '%atomic-failure'").get());

@@ -15,7 +15,8 @@ export function summarizeUsage(entries:UsageCounts[]){
   invalidOutputCount:sum.invalidOutputCount+Number(entry.domainOutcome==='invalid_output'),
   invalidOutputTokens:sum.invalidOutputTokens+(entry.domainOutcome==='invalid_output'?(entry.totalTokens??0):0),
   unknownInvalidOutputCount:sum.unknownInvalidOutputCount+Number(entry.domainOutcome==='invalid_output'&&entry.totalTokens===null),
-  storedCount:sum.storedCount+Number(entry.domainOutcome==='completed'),
+  storedCount:sum.storedCount+Number(entry.domainOutcome==='completed'||entry.domainOutcome==='thin_output'),
+  thinOutputCount:sum.thinOutputCount+Number(entry.domainOutcome==='thin_output'),
   unclassifiedCount:sum.unclassifiedCount+Number(entry.domainOutcome===null),
- }),{inputTokens:0,outputTokens:0,totalTokens:0,unknownInputCount:0,unknownOutputCount:0,unknownTotalCount:0,invalidOutputCount:0,invalidOutputTokens:0,unknownInvalidOutputCount:0,storedCount:0,unclassifiedCount:0});
+ }),{inputTokens:0,outputTokens:0,totalTokens:0,unknownInputCount:0,unknownOutputCount:0,unknownTotalCount:0,invalidOutputCount:0,invalidOutputTokens:0,unknownInvalidOutputCount:0,storedCount:0,thinOutputCount:0,unclassifiedCount:0});
 }

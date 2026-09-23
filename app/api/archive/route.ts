@@ -5,9 +5,13 @@ import {ApiError,identity,requireAdminActor,secureMutation,body,str,json,failure
 import type {Brand} from '@/lib/agency';
 import {sourceSummary,publicResearch,type ArchiveSource,type ChannelObservation,type Diagnostic,type BrandResearch} from '@/lib/archive';
 import {archiveState,stateWrite,assertArchiveIdle,makeSource,makeObservation,intake} from '@/lib/archive-server';
-export async function GET(req:Request){try{const owner=await identity(req),u=new URL(req.url),brandId=str(u.searchParams.get('brandId'),'브랜드',100,true);await readRecord<Brand>(owner,'brand',brandId);
+import {diagnosisBasis,diagnosisIncluded,latestAdopted,brandBasis,type AdoptedDiagnostic} from '@/lib/ai-context';
+export async function GET(req:Request){try{const owner=await identity(req),u=new URL(req.url),brandId=str(u.searchParams.get('brandId'),'브랜드',100,true),brand=await readRecord<Brand>(owner,'brand',brandId);
  if(u.searchParams.get('sourceId')){const s=await readRecord<ArchiveSource>(owner,'brand_source',str(u.searchParams.get('sourceId'),'자료',100,true));if(s.brandId!==brandId)throw new ApiError(404,'자료를 찾을 수 없습니다.');const{objectKey:_,...data}=s;return json(data)}
- return json({state:await archiveState(owner,brandId),sources:(await listRecords<ArchiveSource>(owner,'brand_source',brandId)).map(sourceSummary),observations:await listRecords<ChannelObservation>(owner,'brand_observation',brandId),diagnostics:await listRecords<Diagnostic>(owner,'brand_diagnostic',brandId),research:(await listRecords<BrandResearch>(owner,'brand_research',brandId)).map(publicResearch),storageReady:!!runtime.BUCKET});
+ // 진단마다 근거 상태(basis)와 AI 입력 포함 여부(included)를 서버 규칙으로 계산해 화면이 같은 기준을 쓰게 한다.
+ const state=await archiveState(owner,brandId),sources=await listRecords<ArchiveSource>(owner,'brand_source',brandId);
+ const diagnostics=await listRecords<AdoptedDiagnostic>(owner,'brand_diagnostic',brandId),latest=latestAdopted(diagnostics);
+ return json({state,sources:sources.map(sourceSummary),observations:await listRecords<ChannelObservation>(owner,'brand_observation',brandId),diagnostics:diagnostics.map(d=>({...d,basis:diagnosisBasis(d,sources),included:d.id===latest?.id&&diagnosisIncluded(d,sources,brand,state.revision)})),research:(await listRecords<BrandResearch>(owner,'brand_research',brandId)).map(publicResearch),storageReady:!!runtime.BUCKET});
 }catch(e){return failure(e)}}
 export async function POST(req:Request){let owner='',lock='';try{owner=await identity(req);secureMutation(req);const b=await body(req);lock=await acquireLock(owner);
  if(b.action==='create_brand'){
@@ -31,11 +35,25 @@ export async function POST(req:Request){let owner='',lock='';try{owner=await ide
   const s=await readRecord<ArchiveSource>(owner,'brand_source',str(b.id,'자료',100,true));if(s.brandId!==brandId)throw new ApiError(404,'자료를 찾을 수 없습니다.');if(s.version!==b.version)throw new ApiError(409,'자료가 변경됐습니다. 새로고침해 주세요.');if(!['confirmed','candidate','excluded'].includes(b.status))throw new ApiError(400,'검토 상태를 확인하세요.');if(b.status==='confirmed'&&!s.content.trim())throw new ApiError(400,'분석 가능한 내용이 없습니다. 원문을 확인하고 텍스트 자료를 추가해 주세요.');
   await database().batch([recordStatement(owner,'brand_source',s.id,{...s,status:b.status,version:s.version+1},brandId),stateWrite(owner,brandId,state.revision+1)]);return json({id:s.id});
  }
+ // 후보 자료 일괄 검토: 모두 검증한 뒤 한 번에 저장하고 revision은 한 번만 올린다. 확정·제외는 관리자 전용(PR 1).
+ if(b.action==='review_sources'){
+  if(!Array.isArray(b.items)||!b.items.length||b.items.length>200)throw new ApiError(400,'검토할 자료를 1~200개 선택하세요.');
+  if(b.items.some((i:{status?:unknown}|null)=>i?.status!=='candidate'))await requireAdminActor(req);
+  const rows=await listRecords<ArchiveSource>(owner,'brand_source',brandId),seen=new Set<string>(),writes:D1PreparedStatement[]=[];
+  for(const item of b.items){
+   const s=rows.find(r=>r.id===item?.id);if(!s)throw new ApiError(404,'자료를 찾을 수 없습니다.');if(seen.has(s.id))throw new ApiError(400,'같은 자료가 중복 선택됐습니다.');seen.add(s.id);
+   if(s.version!==item.version)throw new ApiError(409,`자료가 변경됐습니다. 새로고침해 주세요: ${s.title}`);if(!['confirmed','candidate','excluded'].includes(item.status))throw new ApiError(400,'검토 상태를 확인하세요.');if(item.status==='confirmed'&&!s.content.trim())throw new ApiError(400,`분석 가능한 내용이 없는 자료는 확정할 수 없습니다: ${s.title}`);
+   writes.push(recordStatement(owner,'brand_source',s.id,{...s,status:item.status,version:s.version+1},brandId));
+  }
+  await database().batch([...writes,stateWrite(owner,brandId,state.revision+1)]);return json({ids:[...seen],revision:state.revision+1});
+ }
  if(b.action==='add_observation'){const o=makeObservation(brandId,b.data||{});await database().batch([recordStatement(owner,'brand_observation',o.id,o,brandId),stateWrite(owner,brandId,state.revision+1)]);return json({id:o.id})}
  if(b.action==='confirm_diagnosis'){
-  await requireAdminActor(req);
-  const d=await readRecord<Diagnostic>(owner,'brand_diagnostic',str(b.id,'진단',100,true));if(d.brandId!==brandId)throw new ApiError(404,'진단을 찾을 수 없습니다.');if(d.researchQuality?.status==='needs_data')throw new ApiError(409,'조사 근거가 부족합니다. 추가 자료와 보완 조사 후 진단을 채택하세요.');if(d.archiveRevision!==state.revision)throw new ApiError(409,'진단 이후 자료가 바뀌었습니다. 최신 자료로 다시 진단하세요.');const sources=await listRecords<ArchiveSource>(owner,'brand_source',brandId);const ids=new Set(sources.filter(s=>s.status==='confirmed').map(s=>s.id));if(!d.sourceIds.length||d.sourceIds.some(id=>!ids.has(id)))throw new ApiError(409,'진단 근거를 확인한 뒤 최신 자료로 다시 진단해 주세요.');
-  await recordStatement(owner,'brand_diagnostic',d.id,{...d,status:'confirmed'},brandId).run();return json({id:d.id});
+  const who=await requireAdminActor(req);
+  // 채택 조건: 근거 자료가 모두 확정이고 진단 이후 근거 집합이 바뀌지 않음. revision이 달라도 HERMES를 다시 부르지 않고 채택한다.
+  const d=await readRecord<Diagnostic>(owner,'brand_diagnostic',str(b.id,'진단',100,true));if(d.brandId!==brandId)throw new ApiError(404,'진단을 찾을 수 없습니다.');if(d.researchQuality?.status==='needs_data')throw new ApiError(409,'조사 근거가 부족합니다. 추가 자료와 보완 조사 후 진단을 채택하세요.');const basis=diagnosisBasis(d,await listRecords<ArchiveSource>(owner,'brand_source',brandId));
+  if(basis==='pending')throw new ApiError(409,'진단 근거 중 검토 대기 자료가 있습니다. 근거 자료를 확인한 뒤 채택하세요.');if(basis!=='confirmed')throw new ApiError(409,'진단 이후 근거 자료가 바뀌었습니다. 최신 자료로 다시 진단해 주세요.');
+  await recordStatement(owner,'brand_diagnostic',d.id,{...d,status:'confirmed',brandBasis:brandBasis(brand),confirmedBy:{id:who.id,email:who.email},confirmedAt:stamp()},brandId).run();return json({id:d.id});
  }
  throw new ApiError(400,'지원하지 않는 아카이브 작업입니다.');
 }catch(e){return failure(e)}finally{if(lock)await releaseLock(owner,lock)}}

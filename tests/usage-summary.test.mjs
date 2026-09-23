@@ -15,6 +15,9 @@ const result=summary.summarizeUsage([{inputTokens:10,outputTokens:2,totalTokens:
 check('known totals do not silently turn missing usage into zero',result.totalTokens===32&&result.unknownTotalCount===1&&result.inputTokens===30&&result.unknownInputCount===1);
 check('invalid output usage remains visible separately',result.invalidOutputTokens===20&&result.invalidOutputCount===1);
 check('provider completion alone does not count as a validated result',result.storedCount===1&&result.unclassifiedCount===1);
+// 분량 부족(thin_output)은 저장됐지만 쓸 만한 결과와 구분해 센다(ai-quality-4 권고 4).
+const thin=summary.summarizeUsage([{inputTokens:10,outputTokens:2,totalTokens:12,domainOutcome:'completed'},{inputTokens:10,outputTokens:1,totalTokens:11,domainOutcome:'thin_output'}]);
+check('thin output counts as stored and separately as thin',thin.storedCount===2&&thin.thinOutputCount===1);
 check('zero tokens stays known',summary.summarizeUsage([{inputTokens:0,outputTokens:0,totalTokens:0,domainOutcome:'completed'}]).unknownTotalCount===0);
 const legacy={id:'hermes:legacy',provider:'hermes',providerRunId:'legacy',model:'hermes-agent',inputTokens:100,outputTokens:10,totalTokens:110,costAmount:999,costStatus:'estimated',priceVersion:'incorrect-alias',currency:'USD'};
 await server.recordStatement('alice','provider_usage',legacy.id,legacy).run();

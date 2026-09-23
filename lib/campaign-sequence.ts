@@ -1,10 +1,13 @@
 import {artifactUsable} from './role-output';
 import {roles, type Campaign, type Artifact} from './agency';
+import {qualityFixes, type QualityFix, type QualityReview} from './quality';
 import {ApiError, database, readRecord, listRecords, recordStatement, stamp} from './server';
 
 export type CampaignSequence={
- campaignId:string;campaignVersion:number;status:'running'|'paused'|'completed'|'blocked';
- startedAt:string;updatedAt:string;error?:string;
+ campaignId:string;campaignVersion:number;status:'running'|'paused'|'completed'|'blocked'|'needs_review';
+ startedAt:string;updatedAt:string;error?:string;fixes?:QualityFix[];
+ // fixes를 만든 품질 검수 작업물. 회의 안건 초안은 이 작업물이 아직 현재일 때만 fixes를 쓴다.
+ source?:{id:string;version:number};
 };
 
 // Called under the same owner mutation lock as role execution.
@@ -36,6 +39,9 @@ export async function sequenceAction(owner:string,input:Record<string,unknown>):
  const artifacts=await listRecords<Artifact>(owner,'artifact',campaignId);
  const next=roles.find(role=>!artifacts.some(a=>a.role===role.id&&artifactUsable(a,campaign.version)));
  if(next&&artifacts.some(a=>a.role===next.id&&a.status!=='outdated'))return save({...previous,status:'blocked',updatedAt:stamp(),error:'작업물에 수정 요청 또는 불충분한 응답이 있습니다. 해당 담당자의 작업물을 보완한 뒤 다시 시작하세요.'});
+ // 품질 판정이 사용자 검토 준비가 아니면 완료가 아니다. 지적 사항을 담당 역할과 함께 남긴다.
+ const quality=artifacts.find(a=>a.role==='quality'&&artifactUsable(a,campaign.version)) as (Artifact&{qualityReview?:QualityReview})|undefined,review=quality?.qualityReview;
+ if(!next&&quality&&review&&review.verdict!=='ready_for_review')return save({...previous,status:'needs_review',updatedAt:stamp(),error:'독립 품질 검수에서 수정 또는 자료 확인이 필요합니다. 수정 목록을 담당 역할별로 확인해 회의 안건이나 작업물 보완으로 이어가세요.',fixes:qualityFixes(review),source:{id:quality.id,version:quality.version}});
  if(!next)return save({...previous,status:'completed',updatedAt:stamp()});
  return {role:next.id,campaignId};
 }

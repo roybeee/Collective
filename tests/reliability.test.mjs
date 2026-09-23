@@ -71,7 +71,8 @@ check('paused sequence never starts a provider request', calls === beforeSequenc
 await request({action: 'start_sequence', campaignId: 'sequence-campaign'});
 for (let i = 0; i < 20; i++) await background.advanceBackgroundWork(owner);
 const sequence = await server.readRecord(owner, 'campaign_sequence', 'sequence-campaign');
-check('all eight roles finish with no browser polling', sequence.status === 'completed' && calls === beforeSequence + 8);
+check('all eight roles finish with no browser polling', calls === beforeSequence + 8 && sequence.fixes?.length > 0);
+check('a quality verdict that is not review-ready ends the run as needs_review, not completed', sequence.status === 'needs_review');
 check('background completion preserves human approval', sql.prepare("SELECT COUNT(*) n FROM records WHERE owner=? AND kind='artifact' AND parent_id=? AND json_extract(data,'$.status')='approved'").get(owner, 'sequence-campaign').n === 0);
 await server.recordStatement(owner, 'campaign', 'stale-sequence', {...campaign, id: 'stale-sequence', version: 1}).run();
 await request({action: 'start_sequence', campaignId: 'stale-sequence'});
