@@ -3,14 +3,17 @@ import {claimGuard} from './campaign-policy';
 
 export type FactRef={id:string;version:number};
 // materialHash: 소재 입력(브랜드 이름·색 + 사실 {id,version} + 캡션) 지문. 이 필드 이전 소재는 브리프 버전으로 판정한다. current: 서버가 계산한 현재 유효 여부(화면용).
-export type ExecutionCreative={id:string;campaignId:string;campaignVersion:number;brandId:string;storeId?:string;version:number;factRefs:FactRef[];caption:string;pngHash:string;objectKey:string;materialHash?:string;current?:boolean;createdAt:string};
+// title: 사람이 읽을 소재 제목(선택, 1~60자, exec-loop-4 (3)). 해시·캡션에 넣지 않아 제목이 재승인 조건이 되지 않는다. 없으면 필드도 없다.
+export type ExecutionCreative={id:string;campaignId:string;campaignVersion:number;brandId:string;storeId?:string;version:number;factRefs:FactRef[];caption:string;pngHash:string;objectKey:string;materialHash?:string;title?:string;current?:boolean;createdAt:string};
 export type ExecutionLimits={id:string;version:number;maxPublications:number;maxPlannedCostKRW:number;paused:boolean};
 export type PublicationStatus='draft'|'approved'|'submitting'|'uncertain'|'accepted'|'published'|'failed'|'cancelled'|'blocked';
 // mediaMode auto: 승인 때 앱 공개 주소(/media/<sha256>.png)를 채운다. external(이전 기록 포함): 고급 옵션의 Cloudinary·R2 주소.
 // copy: 승인된 콘텐츠 작업물에서 고른 카피. approvedLimits: 승인 당시 한도(낮아질 때만 무효). needsReview: 사용한 사실이 바뀌어 확인이 필요함.
 export type PublicationCopy={artifactId:string;artifactVersion:number;index:number;text:string};
 export type NeedsReview={reason:string;at:string};
-export type Publication={id:string;campaignId:string;creativeId:string;creativeVersion:number;campaignVersion:number;pngHash:string;factRefs:FactRef[];caption:string;mediaUrl:string;mediaMode?:'auto'|'external';copy?:PublicationCopy;scheduledAt:string;plannedCostKRW:number;version:number;status:PublicationStatus;channelId?:string;credentialVersion?:number;limitsVersion?:number;approvedLimits?:{maxPublications:number;maxPlannedCostKRW:number};approvedBy?:string;approvedAt?:string;providerId?:string;providerStatus?:string;error?:string;attemptedAt?:string;attemptRestored?:boolean;needsReview?:NeedsReview|null;invalidatedReason?:string;reconfirmedBy?:string;reconfirmedAt?:string;resolvedBy?:string;resolvedAt?:string;createdAt:string;updatedAt?:string};
+// A4-2 게시 코드: 이 발행에만 발급한 추적 코드(lib/publication-codes.ts). 캡션 끝 코드 줄과 주문 장부의 게시별 귀속이 같은 코드를 쓴다.
+export type PublicationCode={id:string;code:string;type:'coupon'|'pos_tag';storeId:string};
+export type Publication={id:string;campaignId:string;creativeId:string;creativeVersion:number;campaignVersion:number;pngHash:string;factRefs:FactRef[];caption:string;mediaUrl:string;mediaMode?:'auto'|'external';copy?:PublicationCopy;trackingCode?:PublicationCode;scheduledAt:string;plannedCostKRW:number;version:number;status:PublicationStatus;channelId?:string;credentialVersion?:number;limitsVersion?:number;approvedLimits?:{maxPublications:number;maxPlannedCostKRW:number};approvedBy?:string;approvedAt?:string;providerId?:string;providerStatus?:string;error?:string;attemptedAt?:string;attemptRestored?:boolean;needsReview?:NeedsReview|null;invalidatedReason?:string;reconfirmedBy?:string;reconfirmedAt?:string;resolvedBy?:string;resolvedAt?:string;createdAt:string;updatedAt?:string};
 export type PublisherStatus={connected:boolean;channelId?:string;account?:string;version?:number};
 export type CaptionCandidate={artifactId:string;artifactVersion:number;index:number;text:string;issues:string[]};
 export type ExecutionState={creatives:ExecutionCreative[];publications:Publication[];limits:ExecutionLimits|null;publisher:PublisherStatus;copies:CaptionCandidate[];copyCaptions:boolean};
@@ -26,7 +29,20 @@ export function uncertainResolvable(p:Pick<Publication,'status'|'attemptedAt'>,n
 
 export function providerPublicationStatus(status:string):PublicationStatus{return status==='sent'?'published':status==='error'?'failed':['scheduled','sending'].includes(status)?'accepted':'blocked'}
 
-export const composeCaption=(copy:string|undefined,factCaption:string)=>copy?copy+'\n\n'+factCaption:factCaption;
+// 게시 코드 줄(결정론 문구, AI 생성물 아님). 목적격 조사는 코드 끝 글자를 읽는 소리로 고른다(엘·엠·엔·알, 영·일·삼·육·칠·팔은 '을').
+const objectParticle=(code:string)=>/[LMNR013678]$/.test(code)?'을':'를';
+export function codeLine(code:Pick<PublicationCode,'type'|'code'>){return code.type==='coupon'?`주문할 때 쿠폰 코드 ${code.code}${objectParticle(code.code)} 알려 주세요.`:`주문할 때 코드 ${code.code}${objectParticle(code.code)} 말씀해 주세요.`}
+// 코드가 있을 때만 캡션 끝에 빈 줄+코드 줄을 붙인다. 코드가 없으면 이전 결과와 바이트 단위로 같다.
+export const composeCaption=(copy:string|undefined,factCaption:string,code?:Pick<PublicationCode,'type'|'code'>)=>{const caption=copy?copy+'\n\n'+factCaption:factCaption;return code?caption+'\n\n'+codeLine(code):caption};
+export const CREATIVE_TITLE_MAX=60;
+// 소재 이름(실행 화면·점포 화면·귀속 보고 공용, lib/store-attribution.ts가 다시 내보낸다). 제목이 없으면 '소재 · 9월 23일 00:05 생성'(한국 시각, 날짜가 없으면 짧은 ID) 뒤에
+// 첫 사실 줄을 붙여 같은 분에 만든 소재도 구분한다. 저장된 기록을 그대로 받으므로 제목·캡션·날짜가 없거나 문자열이 아니어도 된다.
+const koreaCreated=(iso:string)=>{const d=new Date(Date.parse(iso)+9*3600000),two=(n:number)=>String(n).padStart(2,'0');return `${d.getUTCMonth()+1}월 ${d.getUTCDate()}일 ${two(d.getUTCHours())}:${two(d.getUTCMinutes())} 생성`};
+export function creativeLabel(c:{id:string;title?:unknown;caption?:unknown;createdAt?:unknown}){
+ const title=typeof c.title==='string'?c.title.trim():'';if(title)return title;
+ const created=typeof c.createdAt==='string'&&Number.isFinite(Date.parse(c.createdAt))?koreaCreated(c.createdAt):c.id.slice(0,8);
+ return ['소재',created,typeof c.caption==='string'?c.caption.split('\n')[0].slice(0,40):''].filter(Boolean).join(' · ');
+}
 // 승인된 콘텐츠 작업물의 '게시 카피' 절(제목이 없는 본문이면 전체)을 빈 줄·하위 제목 단위로 나눈 캡션 후보. 목록 기호·강조 표시는 뺀다.
 const heading=(line:string)=>line.match(/^(#{1,6})[ \t]/)?.[1].length??0;
 export function copyBlocks(content:string):string[]{

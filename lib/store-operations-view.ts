@@ -81,10 +81,11 @@ export function unitRows(rows:readonly UnitRow[]|undefined,names:Record<string,s
   spend:finite(r.spendTotal)?won(r.spendTotal):'배분 안 함',newCustomers:finite(r.newCustomers)?count(r.newCustomers,'명'):'미확인',costPerNewCustomer:won(r.costPerNewCustomer)}));
 }
 
-// 팔·소재 행의 키는 `${campaignId}·${arm|creativeId}`다(lib/store-attribution.ts attributionBreakdown). 캠페인 id를 제목으로 바꿔 보인다. 소재 제목은 아직 없어 id를 쓴다.
+// 팔·소재 행의 키는 `${campaignId}·${arm|creativeId}`다(lib/store-attribution.ts attributionBreakdown). 캠페인 id를 제목으로 바꿔 보인다.
+// 소재는 보고서가 준 소재 이름(creativeLabels: 제목, 없으면 만든 한국 시각·첫 사실 줄)을 쓰고, 이름이 없으면 id를 쓴다.
 const splitPair=(key:string)=>{const i=key.indexOf('·');return i<0?[key,'']:[key.slice(0,i),key.slice(i+1)]};
 export const armNames=(rows:readonly Pick<UnitRow,'key'>[]|undefined,titles:Record<string,string>)=>Object.fromEntries((rows||[]).map(r=>{const [id,arm]=splitPair(r.key);return [r.key,`${titles[id]||id} · ${arm==='팔 없음'?arm:'팔 '+arm}`]}));
-export const creativeNames=(rows:readonly Pick<UnitRow,'key'>[]|undefined,titles:Record<string,string>)=>Object.fromEntries((rows||[]).map(r=>{const [id,creative]=splitPair(r.key);return [r.key,`${titles[id]||id} · 소재 ${creative}`]}));
+export const creativeNames=(rows:readonly Pick<UnitRow,'key'>[]|undefined,titles:Record<string,string>,labels:Record<string,string>={})=>Object.fromEntries((rows||[]).map(r=>{const [id,creative]=splitPair(r.key);return [r.key,`${titles[id]||id} · ${labels[creative]||'소재 '+creative}`]}));
 // 보고서 요청. 변동비율(0~1)은 입력했을 때만 보내고 검증은 서버가 한다. 원가를 적지 않은 주문의 공헌이익을 이 비율로 추정한다.
 export const reportRequest=({from,to,rate}:{from:string;to:string;rate:string})=>({from,to,...(rate.trim()?{variableCostRate:Number(rate.trim())}:{})});
 export const contributionBasis=(economics:ReportEconomics|null|undefined)=>economics&&finite(economics.variableCostRate)?`원가 없는 주문은 변동비율 ${economics.variableCostRate}로 추정`:'원가를 모르면 미확인';

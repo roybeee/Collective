@@ -1,7 +1,7 @@
 import {identity,secureMutation,body,readRecord,listRecords,recordStatement,json,failure,str,stamp,uid,ApiError,acquireLock,releaseLock,database} from '@/lib/server';
 import {channelCatalog,type Store,type StoreExperiment,type StoreMeasurement} from '@/lib/store-marketing';
 import {diagnosisCatalog,ledgerValues,ledgerSnapshot,ledgerChanged,type StoreDiagnostic,type StoreOrder,type StoreSpend} from '@/lib/store-operations';
-import {diagnosisInput,orderInput,spendInput,validateOrderAttribution,validateOrderExperiment,getStoreOperations,requireVersion,isMeasurementAction,isMeasurementRead,measurementAction,rejectPersonalData,carryImportFields} from '@/lib/store-operations-server';
+import {diagnosisInput,orderInput,spendInput,validateOrderAttribution,validateOrderExperiment,getStoreOperations,requireVersion,isMeasurementAction,isMeasurementRead,measurementAction,rejectPersonalData,carryImportFields,keepPublicationAttribution} from '@/lib/store-operations-server';
 import {checkedVersion,measurementInput,option} from '@/lib/store-server';
 
 export async function GET(req:Request){try{const owner=await identity(req),p=new URL(req.url).searchParams,storeId=str(p.get('storeId'),'지점',100,true);await readRecord<Store>(owner,'store',storeId);if(p.get('part')==='diagnosis')return json({diagnostics:await listRecords<StoreDiagnostic>(owner,'store_diagnostic',storeId),orders:[],spend:[],from:'',to:''});return json(await getStoreOperations(owner,storeId,p.get('from')||undefined,p.get('to')||undefined))}catch(e){return failure(e)}}
@@ -25,7 +25,7 @@ export async function POST(req:Request){let owner='',lock='';try{
     if(old&&(importing||!b.id))throw new ApiError(409,'이미 등록한 주문입니다. 기존 주문에서 수정하세요.');requireVersion(old,b.version);
     await validateOrderExperiment(owner,store.id,input.experimentId,input.orderDate,input.channel);
     await validateOrderAttribution(owner,store,input);
-    const order:StoreOrder={...carryImportFields(old,input),version:(old?.version||0)+1,createdAt:old?.createdAt||stamp(),updatedAt:stamp()};writes.push(recordStatement(owner,'store_order',order.id,order,store.id));ids.push(order.id);
+    const order:StoreOrder={...await keepPublicationAttribution(owner,carryImportFields(old,input)),version:(old?.version||0)+1,createdAt:old?.createdAt||stamp(),updatedAt:stamp()};writes.push(recordStatement(owner,'store_order',order.id,order,store.id));ids.push(order.id);
    }catch(e){if(e instanceof ApiError)throw new ApiError(e.status,`${importing?index+2+'행: ':''}${e.message}`);throw e}
   }
   await database().batch(writes);return json({ids,count:ids.length});

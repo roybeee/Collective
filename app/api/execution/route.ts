@@ -14,7 +14,9 @@ export async function POST(req:Request){let owner='',lock='';try{
  owner=await identity(req);secureMutation(req);
  const input=await readBoundedJson<Record<string,unknown>>(req,800000);
  if(!input||typeof input!=='object'||Array.isArray(input))throw new ApiError(400,'입력 형식을 확인하세요.');
- const who:Actor|null=adminActions.includes(String(input.action))?await requireAdminActor(req):null;
+ // 게시 코드를 발급하는 발행 준비(A4-2)는 추적 코드 만들기(A4-1)처럼 관리자만 한다. 코드 없는 준비는 그대로다.
+ const coded=input.action==='save_publication'&&input.trackingCode!==undefined&&input.trackingCode!==null;
+ const who:Actor|null=adminActions.includes(String(input.action))||coded?await requireAdminActor(req):null;
  lock=await acquireLock(owner);
  await executionRate(owner,'execution');
  const campaign=await readRecord<Campaign>(owner,'campaign',str(input.campaignId,'캠페인',100,true));
@@ -25,7 +27,7 @@ export async function POST(req:Request){let owner='',lock='';try{
  if(input.action==='buffer_channels')return json(await listBufferChannels(str(input.token,'Buffer API 키',5000,true),input.organizationId?str(input.organizationId,'Buffer 조직',100,true):undefined));
  if(input.action==='disconnect_buffer')return json(await disconnectPublisher(owner,campaign,input,who!));
  if(input.action==='save_creative')return json(await saveCreative(owner,campaign,input));
- if(input.action==='save_publication')return json(await savePublication(owner,campaign,input,origin));
+ if(input.action==='save_publication')return json(await savePublication(owner,campaign,input,origin,who));
  const p=await publicationFor(owner,campaign,input.id,input.version);
  if(input.action==='approve')return json(await approvePublication(owner,campaign,p,input,who!,origin));
  if(input.action==='cancel')return json(await cancelPublication(owner,campaign,p));
