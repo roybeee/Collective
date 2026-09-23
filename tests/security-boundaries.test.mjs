@@ -1,22 +1,24 @@
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync,readdirSync} from 'node:fs';
 import {resolve, dirname} from 'node:path';
 import {SourceTextModule, SyntheticModule, createContext} from 'node:vm';
-import {webcrypto} from 'node:crypto';
+import {webcrypto,createHash} from 'node:crypto';
 import ts from 'typescript';
 
 const outcomes=[];
 async function test(name, run){try{await run();outcomes.push({name,passed:true})}catch(error){outcomes.push({name,passed:false});console.error(name,error.message)}}
-const state={registered:0,revoked:0,dbCalls:0,secret:null};
+const state={registered:0,revoked:0,dbCalls:0,secret:null,sessions:new Map(),audit:[]};
 const runtime={
+ AUTH_MODE:'legacy',
  AGENCY_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64'),
  DB:{prepare(query){
   state.dbCalls++;
   return {
-   bind(){return this},
+   values:[],
+   bind(...values){this.values=values;return this},
    async run(){return {meta:{changes:1}}},
-   async all(){return {results:[]}},
-   async first(){return query.startsWith('SELECT secret,model')?{secret:state.secret,model:'test'}:null},
+   async all(){return {results:query.includes('FROM records')&&this.values[1]==='worker_event'?state.audit.map(values=>({data:values[4]})).reverse():[]}},
+   async first(){return query.startsWith('SELECT secret,model')?{secret:state.secret,model:'test'}:query.includes('FROM auth_sessions')?state.sessions.get(this.values[0])||null:null},
   };
  }},
 };
@@ -25,8 +27,8 @@ const modules=new Map();
 const envModule=new SyntheticModule(['env'],function(){this.setExport('env',runtime)},{context:ctx});
 const workerModule=new SyntheticModule(['workerStatus','registerWorker','revokeWorker'],function(){
  this.setExport('workerStatus',async()=>({registered:true,activated:false}));
- this.setExport('registerWorker',async()=>{state.registered++;return 'owner-scoped-test-token'});
- this.setExport('revokeWorker',async()=>{state.revoked++});
+ this.setExport('registerWorker',async(owner,audit=[])=>{state.registered++;state.audit.push(...audit.map(s=>s.values));return 'owner-scoped-test-token'});
+ this.setExport('revokeWorker',async(owner,audit=[])=>{state.revoked++;state.audit.push(...audit.map(s=>s.values))});
 },{context:ctx});
 function moduleFor(file){
  file=resolve(file);if(modules.has(file))return modules.get(file);
@@ -133,6 +135,69 @@ await test('explicit administrator receives private installer',async()=>{
 await test('owner can revoke own worker without installer privileges',async()=>{
  delete runtime.RESEARCH_WORKER_ADMIN_IDS;const before=state.revoked;
  const response=await setup.POST(setupRequest('revoke','other-owner'));assert.equal(response.status,200);assert.equal(state.revoked,before+1);
+});
+
+// 이메일 모드: 같은 워크스페이스(workspace-owner)의 대표·두 번째 관리자·직원. 설치 파일은 개인 단위로 판정한다.
+for(const [token,id,role] of [['a','founder-id','owner'],['b','admin-b','admin'],['c','staff-id','member']])state.sessions.set(createHash('sha256').update(token.repeat(64)).digest('hex'),{id,email:id+'@test.invalid',role,owner:'workspace-owner',workspace_owner:'workspace-owner',status:'active'});
+const emailRequest=(token,action)=>new Request('https://agency.test/api/research-worker/setup',{method:action?'POST':'GET',headers:{cookie:'__Host-collective_session='+token.repeat(64),origin:'https://agency.test','content-type':'application/json'},...(action?{body:JSON.stringify({action})}:{})});
+const emailStatus=async token=>(await setup.GET(emailRequest(token))).json();
+runtime.AUTH_MODE='email';runtime.AUTH_ORIGIN='https://agency.test';runtime.RESEARCH_WORKER_SSH_TARGET='deploy@research.example';
+await test('email owner keeps installer access through the existing workspace-owner allowlist',async()=>{
+ runtime.RESEARCH_WORKER_ADMIN_IDS='workspace-owner';assert.equal((await setup.POST(emailRequest('a','download'))).status,200);
+ const status=await emailStatus('a');assert.equal(status.canInstall,true);assert.equal(status.sshTarget,'deploy@research.example');
+});
+await test('second admin in the same workspace cannot download installer',async()=>{
+ runtime.RESEARCH_WORKER_ADMIN_IDS='workspace-owner';const before=state.registered;
+ const response=await setup.POST(emailRequest('b','download'));assert.equal(response.status,403);assert.equal(state.registered,before);assert.ok(!(await response.text()).includes(runtime.RESEARCH_WORKER_GATE_TOKEN));
+ const status=await emailStatus('b');assert.equal(status.canInstall,false);assert.equal('sshTarget' in status,false);
+});
+await test('admin listed by personal user ID receives installer',async()=>{
+ runtime.RESEARCH_WORKER_ADMIN_IDS='admin-b';assert.equal((await setup.POST(emailRequest('b','download'))).status,200);assert.equal((await emailStatus('b')).canInstall,true);
+});
+await test('personal allowlist entry does not extend to other workspace admins',async()=>{
+ runtime.RESEARCH_WORKER_ADMIN_IDS='admin-b';assert.equal((await setup.POST(emailRequest('a','download'))).status,403);assert.equal((await emailStatus('a')).canInstall,false);
+});
+await test('member cannot download installer or see SSH target even when listed',async()=>{
+ runtime.RESEARCH_WORKER_ADMIN_IDS='staff-id,workspace-owner';const before=state.registered;
+ assert.equal((await setup.POST(emailRequest('c','download'))).status,403);assert.equal(state.registered,before);
+ const status=await emailStatus('c');assert.equal(status.canInstall,false);assert.equal('sshTarget' in status,false);assert.equal(typeof status.registered,'boolean');
+});
+await test('member cannot revoke the workspace worker',async()=>{
+ const before=state.revoked;assert.equal((await setup.POST(emailRequest('c','revoke'))).status,403);assert.equal(state.revoked,before);
+});
+// 연결 해제는 설치 목록과 무관하게 대표·관리자에게 열려 있으므로 화면에도 그 기준(canRevoke)을 내려준다. 발급·해제는 행위자와 함께 기록한다.
+await test('unlisted admin may still revoke; member may not',async()=>{
+ runtime.RESEARCH_WORKER_ADMIN_IDS='workspace-owner';const admin=await emailStatus('b');assert.equal(admin.canInstall,false);assert.equal(admin.canRevoke,true);
+ assert.equal((await emailStatus('c')).canRevoke,false);
+ const gate=runtime.RESEARCH_WORKER_GATE_TOKEN;delete runtime.RESEARCH_WORKER_GATE_TOKEN;const owner=await emailStatus('a');runtime.RESEARCH_WORKER_GATE_TOKEN=gate;assert.equal(owner.canInstall,false);assert.equal(owner.canRevoke,true);
+});
+await test('installer issue and worker revoke are recorded with the acting user',async()=>{
+ runtime.RESEARCH_WORKER_ADMIN_IDS='admin-b';state.audit.length=0;
+ assert.equal((await setup.POST(emailRequest('b','download'))).status,200);assert.equal((await setup.POST(emailRequest('a','revoke'))).status,200);
+ const events=state.audit.map(values=>({kind:values[2],...JSON.parse(values[4])}));
+ assert.deepEqual(events.map(e=>[e.kind,e.action,e.actor.id,e.actor.email]),[['worker_event','download','admin-b','admin-b@test.invalid'],['worker_event','revoke','founder-id','founder-id@test.invalid']]);
+ const status=await emailStatus('a');assert.equal(status.lastIssued.email,'admin-b@test.invalid');assert.equal(status.lastRevoked.email,'founder-id@test.invalid');assert.ok(Date.parse(status.lastIssued.at));
+ assert.equal('lastIssued' in await emailStatus('c'),false);
+ const before=state.audit.length;assert.equal((await setup.POST(emailRequest('c','revoke'))).status,403);assert.equal(state.audit.length,before);
+});
+await test('malformed or missing SSH target falls back to placeholder',async()=>{
+ runtime.RESEARCH_WORKER_ADMIN_IDS='workspace-owner';runtime.RESEARCH_WORKER_SSH_TARGET="deploy@host'; rm -rf ~";assert.equal((await emailStatus('a')).sshTarget,null);
+ delete runtime.RESEARCH_WORKER_SSH_TARGET;assert.equal((await emailStatus('a')).sshTarget,null);
+});
+runtime.AUTH_MODE='legacy';delete runtime.AUTH_ORIGIN;
+await test('worker panel and README contain no server address or root login',async()=>{
+ for(const file of ['app/research-worker-panel.tsx','server/research-worker/README.md']){const source=readFileSync(file,'utf8');assert.doesNotMatch(source,/\b\d{1,3}(?:\.\d{1,3}){3}\b/,file);assert.doesNotMatch(source,/root@|:\/root\//,file);assert.match(source,/<서버 접속 주소>/,file)}
+});
+// 공개 저장소의 소스·문서 전체에서 서버 주소를 찾는다. 점 표기 IPv4, 대시 표기(sslip.io·nip.io) 호스트명, root 로그인을 막는다.
+// 허용 목록: 루프백·전체 주소와 문서 예시 대역(RFC 5737: 192.0.2.x, 198.51.100.x, 203.0.113.x).
+await test('tracked sources and docs contain no server address, sslip host or root login',async()=>{
+ const allowed=/^(?:127\.0\.0\.1|0\.0\.0\.0|192\.0\.2\.\d{1,3}|198\.51\.100\.\d{1,3}|203\.0\.113\.\d{1,3})$/;
+ const files=['README.md','AGENTS.md','prompt_plan.md','.env.example',...['app','lib','server','scripts','docs','e2e'].flatMap(dir=>readdirSync(dir,{recursive:true}).map(f=>dir+'/'+f)).filter(f=>/\.(?:tsx?|mjs|js|md|json|py|css|sh|toml|ya?ml|txt)$/.test(f))];
+ assert.ok(files.length>50);
+ for(const file of files){const source=readFileSync(file,'utf8');
+  for(const address of source.match(/\b\d{1,3}(?:\.\d{1,3}){3}\b/g)||[])assert.match(address,allowed,file);
+  assert.doesNotMatch(source,/\b\d{1,3}(?:-\d{1,3}){3}\.(?:sslip|nip)\.io\b/,file);assert.doesNotMatch(source,/root@|:\/root\//,file);
+ }
 });
 
 async function probeScript(env,status=401){

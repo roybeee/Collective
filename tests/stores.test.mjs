@@ -9,7 +9,7 @@ const sql=new DatabaseSync(':memory:');
 for(const file of readdirSync('drizzle').filter(x=>x.endsWith('.sql')).sort())sql.exec(readFileSync('drizzle/'+file,'utf8'));
 class Statement{constructor(query,values=[]){this.query=query;this.values=values}bind(...v){return new Statement(this.query,v)}async first(){return sql.prepare(this.query).get(...this.values)||null}async all(){return {results:sql.prepare(this.query).all(...this.values)}}async run(){const r=sql.prepare(this.query).run(...this.values);return {meta:{changes:Number(r.changes)}}}}
 const DB={prepare:q=>new Statement(q),batch:async ss=>{sql.exec('BEGIN');try{const r=[];for(const s of ss)r.push(await s.run());sql.exec('COMMIT');return r}catch(e){sql.exec('ROLLBACK');throw e}}};
-const runtime={DB,AGENCY_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64')};
+const runtime={AUTH_MODE:'legacy',DB,AGENCY_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64')};
 
 const blobs=new Map();runtime.BUCKET={put:async(k,stream)=>blobs.set(k,await new Response(stream).arrayBuffer()),get:async k=>blobs.has(k)?{body:blobs.get(k)}:null,delete:async k=>blobs.delete(k)};
 let calls=0,loseAck=false,denyRecovery=false,badOutput=false,providerStatus='completed',failPoll=false,holdSubmit=null,capExtra={},toolsets=[];const submissions=new Map(),inputs=[],destinations=[];
@@ -126,6 +126,7 @@ await server.namespace.recordStatement(owner,'brand_source',savedSource.id,saved
 const beforeStoreEdit=(await snapshot()).data.campaigns.find(c=>c.id===campaign).version;
 await sp('save_store',{brandId:'oda',id:storeId,version:1,data:{...info,name:'수정된 지점'}});
 check('store edit invalidates linked campaign version',(await snapshot()).data.campaigns.find(c=>c.id===campaign).version===beforeStoreEdit+1);
+const eventActor=text=>JSON.parse(sql.prepare("SELECT data FROM records WHERE kind='event' AND data LIKE ? ORDER BY rowid DESC").get('%'+text+'%')?.data||'{}').actor;check('store change event records the requester',eventActor('지점 정보 변경')?.id===owner);
 check('outdated report excluded from AI context',(await archiveContext.namespace.brandArchiveContext(owner,'oda',storeId)).storeMarketing.researchDraft===null);
 check('outdated report cannot seed experiment',(await sp('save_experiment',{storeId,reportId:rid,data:plan})).status===409);
 check('cross-store research replay denied',(await rp('start',{id:'store-research-one',brandId:'oda',storeId:storeB})).status===409);
@@ -249,6 +250,7 @@ const linkedCampaign=(await sp('create_campaign',{storeId,experimentId:linkedExp
 await sp('start_experiment',{storeId,experimentId:linkedExperiment,version:2});
 await sp('save_measurement',{storeId,experimentId:linkedExperiment,data:measurement});
 await sp('close_experiment',{storeId,experimentId:linkedExperiment,version:3,decision:'stop',learning:'중단 회고',review});
+check('promotion event records the requester',eventActor('주의사항으로 승격했습니다')?.id===owner);
 check('linked campaign deletion keeps the store rule',(await act('delete_campaign',{id:linkedCampaign,version:1,confirmed:true})).status===200&&(await allRules()).some(r=>r.experimentId===linkedExperiment));
 
 console.log(JSON.stringify({passed:passed.length,checks:passed},null,2));

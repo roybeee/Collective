@@ -15,7 +15,7 @@ class Statement{
  async all(){return {results:sql.prepare(this.query).all(...this.values)}}
  async run(){return {meta:{changes:Number(sql.prepare(this.query).run(...this.values).changes)}}}
 }
-const runtime={DB:{prepare:query=>new Statement(query)}};
+const runtime={AUTH_MODE:'legacy',DB:{prepare:query=>new Statement(query)}};
 let response={},failStatusAfterStop=false;
 const context=createContext({console,crypto:webcrypto,Response,Request,Headers,TextEncoder,TextDecoder,Uint8Array,Date,URL,AbortSignal,btoa,atob,process:{env:{NODE_ENV:'production'}},fetch:async url=>{if(failStatusAfterStop&&!url.endsWith('/stop'))throw new Error('connection lost after stop');return Response.json(response)}});
 const modules=new Map();

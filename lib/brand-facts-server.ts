@@ -1,7 +1,10 @@
-import {ApiError,str,readRecord,listRecords,recordStatement,database,uid,stamp} from './server';
+import {ApiError,str,readRecord,listRecords,recordStatement,database,uid,stamp,type Actor} from './server';
 import type {Brand} from './agency';
 import type {Store} from './store-marketing';
 import {effectiveBrandFacts,type BrandFact} from './brand-facts';
+
+// 확정·거절한 사람과 시각. 이 필드가 생기기 전에 저장된 사실에는 없다.
+export type FactDecision={confirmedBy?:{id:string;email:string|null};confirmedAt?:string};
 
 async function factScope(owner:string,brandId?:string,storeId?:string){
  if(brandId)await readRecord<Brand>(owner,'brand',brandId);
@@ -45,7 +48,8 @@ function factInput(data:Record<string,unknown>,confirmed:unknown):Pick<BrandFact
 }
 
 // The caller holds the owner mutation lock for duplicate/version checks and the batch write.
-export async function saveBrandFact(owner:string,input:Record<string,unknown>){
+// 직원(member)은 확인 후보만 제안한다. 확정·거절과 이미 확정·거절된 사실의 수정은 관리자(owner·admin)만 한다.
+export async function saveBrandFact(owner:string,input:Record<string,unknown>,who:Pick<Actor,'id'|'email'|'role'>){
  const data=input.data;
  if(!data||typeof data!=='object'||Array.isArray(data))throw new ApiError(400,'사실 내용을 입력하세요.');
  const fields=data as Record<string,unknown>;
@@ -53,6 +57,7 @@ export async function saveBrandFact(owner:string,input:Record<string,unknown>){
  await factScope(owner,brandId,storeId);
  const id=input.id?str(input.id,'사실',100,true):uid();
  const old=input.id?await readRecord<BrandFact>(owner,'brand_fact',id):undefined;
+ if(who.role!=='owner'&&who.role!=='admin'&&((fields.status??'candidate')!=='candidate'||old&&old.status!=='candidate'))throw new ApiError(403,'사실 확정·거절과 확정·거절된 사실 수정은 관리자만 할 수 있습니다. 확인 후보로 제안해 주세요.');
  if(old&&(old.version!==input.version||old.brandId!==brandId||old.storeId!==storeId))throw new ApiError(409,'사실의 버전이나 범위가 변경됐습니다. 새로고침하세요.');
  if(!old&&input.version!==undefined&&input.version!==0)throw new ApiError(409,'기존 사실을 다시 불러오세요.');
  const parsed=factInput(fields,input.confirmed);
@@ -60,7 +65,8 @@ export async function saveBrandFact(owner:string,input:Record<string,unknown>){
  if(!old&&existing.length>=200)throw new ApiError(409,'브랜드 사실은 200개까지 보관할 수 있습니다. 기존 사실을 검토하세요.');
  if(old&&old.version>=200&&!(old.status==='confirmed'&&parsed.status==='rejected'))throw new ApiError(409,'이 사실의 수정 한도에 도달했습니다. 확정 사실의 사용 거절은 가능합니다.');
  if(existing.some(f=>f.id!==id&&f.storeId===storeId&&f.key===parsed.key))throw new ApiError(409,'같은 범위의 사실 항목이 이미 있습니다. 기존 항목을 수정하세요.');
- const fact:BrandFact={...parsed,id,brandId,...(storeId?{storeId}:{}),version:(old?.version||0)+1,updatedAt:stamp()};
+ const decision:FactDecision=parsed.status==='candidate'?{}:{confirmedBy:{id:who.id,email:who.email},confirmedAt:stamp()};
+ const fact:BrandFact&FactDecision={...parsed,id,brandId,...(storeId?{storeId}:{}),...decision,version:(old?.version||0)+1,updatedAt:stamp()};
  const writes=[recordStatement(owner,'brand_fact',id,fact,brandId)];
  if(old)writes.push(recordStatement(owner,'brand_fact_history',`${id}:${old.version}`,old,id));
  await database().batch(writes);

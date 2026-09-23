@@ -8,7 +8,7 @@ import {initialSteps,meetingActive,publicMeeting,parseMeetingOutput,meetingInstr
 import {meetingSubmissionId,requireMeetingWorker,retryFailedMeeting} from './meeting-repair';
 import {learningContext} from '@/lib/learning-server';
 import {hermesSubmissionStatement,submitHermes,pollHermes} from '@/lib/hermes';
-import {ApiError,identity,str,json,failure,database,readRecord,listRecords,recordStatement,eventStatement,connection,acquireLock,releaseLock,stamp} from '@/lib/server';
+import {ApiError,identity,str,json,failure,database,readRecord,listRecords,recordStatement,eventStatement,connection,acquireLock,releaseLock,stamp,type EventActor} from '@/lib/server';
 
 const activeStates=['starting','queued','in_progress','uncertain'];
 const jobId=(owner:string,m:Meeting)=>owner+':meeting:'+m.id;
@@ -60,7 +60,7 @@ export async function GET(req:Request){try{
  return json({meetings:(await listRecords<Meeting>(owner,'team_meeting',id)).map(publicMeeting)});
 }catch(e){return failure(e)}}
 
-export async function executeMeeting(owner:string,b:Record<string,unknown>){let lock='',prepared:Meeting|undefined,recovering=false;
+export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:EventActor){let lock='',prepared:Meeting|undefined,recovering=false;
  try{
  lock=await acquireLock(owner);
   const id=str(b.id,'회의',100,true);if(!/^[a-zA-Z0-9_-]{1,100}$/.test(id))throw new ApiError(400,'회의 번호가 올바르지 않습니다.');
@@ -79,7 +79,7 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>){let 
    if(b.previousMeetingId){previous=await readRecord<Meeting>(owner,'team_meeting',str(b.previousMeetingId,'이전 회의',100,true));if(previous.campaignId!==c.id||meetingActive(previous))throw new ApiError(409,'완료 또는 종료된 같은 캠페인의 회의만 이어갈 수 있습니다.')}
    const previousFailure=previous?.steps.find(s=>s.status==='failed');
    const m:Meeting={skillVersion:PRACTICE_VERSION,id,campaignId:c.id,campaignVersion:c.version,agenda:str(b.agenda,'회의 안건',5000,true),status:'running',steps:initialSteps(id),createdAt:stamp(),updatedAt:stamp(),model:cfg.model,stopRequested:false,artifactIds:[],invalidatedRoles:[],previousMeetingId:previous?.id,snapshot:{brandArchive:await brandArchiveContext(owner,c.brandId,c.storeId),campaign:c,brand,artifacts,metrics,learning,...(previous?{previous:{id:previous.id,agenda:previous.agenda,decisions:previous.steps.find(s=>s.phase==='synthesis')?.output as Synthesis,quality:previous.steps.find(s=>s.phase==='quality')?.output as QualityReview,discussion:previous.steps.filter(s=>s.phase==='discussion'&&s.status==='completed').map(s=>({id:s.id,role:s.role,output:s.output as Contribution})),...(previousFailure?{failure:{role:previousFailure.role,phase:previousFailure.phase,error:previousFailure.error||previous.error||'응답 검증 실패'}}:{})}}:{})}};
-   await database().batch([database().prepare('INSERT INTO jobs(id,owner,campaign_id,role,status,model,campaign_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').bind(jobId(owner,m),owner,c.id,'meeting','in_progress',cfg.model,c.version,m.createdAt,m.updatedAt),recordStatement(owner,'team_meeting',m.id,m,c.id),eventStatement(owner,c.id,'팀 회의를 시작했습니다. 8명 의견 교환 → 개선 과제 → 품질 재검토.')]);
+   await database().batch([database().prepare('INSERT INTO jobs(id,owner,campaign_id,role,status,model,campaign_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').bind(jobId(owner,m),owner,c.id,'meeting','in_progress',cfg.model,c.version,m.createdAt,m.updatedAt),recordStatement(owner,'team_meeting',m.id,m,c.id),eventStatement(owner,c.id,'팀 회의를 시작했습니다. 8명 의견 교환 → 개선 과제 → 품질 재검토.',by)]);
    return json(publicMeeting(m));
   }
   if(!['advance','recover','cancel','retry_failed'].includes(String(b.action)))throw new ApiError(400,'지원하지 않는 회의 작업입니다.');

@@ -10,7 +10,7 @@ for(const f of readdirSync('drizzle').filter(f=>f.endsWith('.sql')).sort())sql.e
 class Statement{constructor(q,v=[]){this.q=q;this.v=v}bind(...v){return new Statement(this.q,v)}async first(){return sql.prepare(this.q).get(...this.v)||null}async all(){return {results:sql.prepare(this.q).all(...this.v)}}async run(){return {meta:{changes:Number(sql.prepare(this.q).run(...this.v).changes)}}}}
 const DB={prepare:q=>new Statement(q),batch:async ss=>{sql.exec('BEGIN');try{const out=[];for(const s of ss)out.push(await s.run());sql.exec('COMMIT');return out}catch(e){sql.exec('ROLLBACK');throw e}}};
 const context=createContext({console,crypto:webcrypto,Response,Request,Headers,TextEncoder,TextDecoder,Uint8Array,Date,URL,AbortSignal,btoa,atob,process:{env:{NODE_ENV:'production'}}});
-const env=new SyntheticModule(['env'],function(){this.setExport('env',{DB})},{context});const modules=new Map();
+const env=new SyntheticModule(['env'],function(){this.setExport('env',{DB,AUTH_MODE:'legacy'})},{context});const modules=new Map();
 function moduleFor(file){file=resolve(file);if(modules.has(file))return modules.get(file);const code=ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;const m=new SourceTextModule(code,{context,identifier:file});modules.set(file,m);return m}
 async function load(file){const m=moduleFor(file);if(m.status==='unlinked')await m.link((s,r)=>s==='cloudflare:workers'?env:moduleFor((s.startsWith('@/')?resolve(s.slice(2)):resolve(dirname(r.identifier),s))+'.ts'));await m.evaluate();return m.namespace}
 const api=await load('app/api/store-operations/route.ts'),server=await load('lib/server.ts'),logic=await load('lib/store-operations.ts');

@@ -1,11 +1,11 @@
 import {AuthError,invalidCredentials} from './auth-errors';
-import {authDb,authEnv,hashToken,randomToken,sessionInsert,type Principal} from './auth-session';
+import {authDb,authEnv,hashToken,randomToken,roleSql,sessionInsert,type Principal,type Role} from './auth-session';
 import {hashPassword,validatePassword,verifyPassword} from './auth-password';
 import {normalizeEmail} from './auth-request';
-type UserRow={id:string;email:string;password_hash:string|null;workspace_owner:string;role:'admin'|'member';status:string};
-const principal=(u:UserRow):Principal=>({id:u.id,email:u.email,role:u.role,owner:u.workspace_owner});
+type UserRow={id:string;email:string;password_hash:string|null;workspace_owner:string;role:'admin'|'member';effective_role:Role;status:string};
+const principal=(u:UserRow):Principal=>({id:u.id,email:u.email,role:u.effective_role,owner:u.workspace_owner});
 export async function login(email:string,password:unknown){
- const user=await authDb().prepare('SELECT * FROM auth_users WHERE email=?').bind(email).first<UserRow>();
+ const user=await authDb().prepare(`SELECT u.*,${roleSql('u')} AS effective_role FROM auth_users u WHERE u.email=?`).bind(email).first<UserRow>();
  if(!await verifyPassword(password,user?.password_hash||null)||!user||user.status!=='active')throw invalidCredentials();
  const token=randomToken();const result=await sessionInsert(await hashToken(token),user.id,user.password_hash!).run();
  if(!result.meta.changes)throw invalidCredentials();return {user:principal(user),token};
@@ -19,12 +19,12 @@ export async function bootstrapAccount(email:string,password:unknown,token:unkno
   db.prepare("INSERT INTO auth_users(id,email,password_hash,workspace_owner,role,status,created_at) SELECT ?,?,?,?,'admin','active',? WHERE EXISTS(SELECT 1 FROM auth_tokens WHERE token_hash='bootstrap' AND used=?)").bind(id,email,passwordHash,config.AUTH_BOOTSTRAP_OWNER,now,nonce),
   sessionInsert(await hashToken(session),id,passwordHash),
  ]);
- if(!results[1].meta.changes)throw invalidCredentials();return {user:{id,email,role:'admin' as const,owner:config.AUTH_BOOTSTRAP_OWNER},token:session};
+ if(!results[1].meta.changes)throw invalidCredentials();return {user:{id,email,role:'owner' as const,owner:config.AUTH_BOOTSTRAP_OWNER},token:session};
 }
 export async function acceptToken(email:string,password:unknown,token:unknown){
  if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token))throw invalidCredentials();
  const db=authDb(),hash=await hashToken(token),now=Date.now();
- const target=await db.prepare("SELECT u.* FROM auth_tokens t JOIN auth_users u ON u.id=t.user_id WHERE t.token_hash=? AND t.email=? AND t.email=u.email AND t.owner=u.workspace_owner AND t.role=u.role AND t.kind IN ('invite','reset') AND t.used IS NULL AND t.expires_at>? AND u.status IN ('pending','active')").bind(hash,email,now).first<UserRow>();
+ const target=await db.prepare(`SELECT u.*,${roleSql('u')} AS effective_role FROM auth_tokens t JOIN auth_users u ON u.id=t.user_id WHERE t.token_hash=? AND t.email=? AND t.email=u.email AND t.owner=u.workspace_owner AND t.role=u.role AND t.kind IN ('invite','reset') AND t.used IS NULL AND t.expires_at>? AND u.status IN ('pending','active')`).bind(hash,email,now).first<UserRow>();
  if(!target)throw invalidCredentials();
  const passwordHash=await hashPassword(validatePassword(password)),nonce=randomToken(),session=randomToken();
  const owned="EXISTS(SELECT 1 FROM auth_tokens WHERE token_hash=? AND used=?)";

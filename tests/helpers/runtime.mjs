@@ -27,10 +27,14 @@ export function testRuntime(fetch, hooks = {}) {
    catch (error) { sql.exec('ROLLBACK'); throw error; }
   },
  };
- const env = {DB, AGENCY_ENCRYPTION_KEY: Buffer.alloc(32, 8).toString('base64')};
- const context = createContext({console, crypto: webcrypto, Response, Request, Headers, TextEncoder, TextDecoder, Uint8Array, Date, URL, AbortSignal, DecompressionStream, btoa, atob, fetch, process: {env: {NODE_ENV: 'production'}}});
+ // 운영 빌드는 AUTH_MODE가 비면 닫히므로(lib/auth-session.ts authMode) 헤더 인증 스위트는 legacy를 명시한다.
+ const env = {DB, AUTH_MODE: 'legacy', AGENCY_ENCRYPTION_KEY: Buffer.alloc(32, 8).toString('base64')};
+ const processEnv = {NODE_ENV: 'production'};
+ const context = createContext({console, crypto: webcrypto, Response, Request, Headers, TextEncoder, TextDecoder, Uint8Array, Date, URL, AbortSignal, DecompressionStream, btoa, atob, fetch, process: {env: processEnv}});
  const modules = new Map();
  const envModule = new SyntheticModule(['env'], function() { this.setExport('env', env); }, {context});
+ // next/server의 after()는 응답 뒤 작업을 예약한다. 테스트는 hooks.after로 받거나 실행하지 않는다.
+ const nextModule = new SyntheticModule(['after'], function() { this.setExport('after', task => hooks.after?.(task)); }, {context});
  function moduleFor(file) {
   file = resolve(file);
   if (modules.has(file)) return modules.get(file);
@@ -42,11 +46,12 @@ export function testRuntime(fetch, hooks = {}) {
   const mod = moduleFor(file);
   if (mod.status === 'unlinked') await mod.link((spec, ref) => {
    if (spec === 'cloudflare:workers') return envModule;
+   if (spec === 'next/server') return nextModule;
    const path = spec.startsWith('@/') ? resolve(spec.slice(2)) : resolve(dirname(ref.identifier), spec);
    return moduleFor(path.endsWith('.ts') ? path : path + '.ts');
   });
   if (mod.status !== 'evaluated') await mod.evaluate();
   return mod.namespace;
  }
- return {sql, env, load};
+ return {sql, env, load, processEnv};
 }

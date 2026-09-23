@@ -1,7 +1,7 @@
 import {workerStatus} from '@/lib/research-worker';
 import {initialResearch,queueResearchStatements} from '@/lib/research-queue';
 import {scheduleResearch} from '@/lib/research-background';
-import {ApiError,identity,secureMutation,body,str,json,failure,database,readRecord,listRecords,recordStatement,acquireLock,releaseLock,stamp,uid,runtime,configuration,connection,assertNoActiveJobs} from '@/lib/server';
+import {ApiError,identity,requireAdminActor,secureMutation,body,str,json,failure,database,readRecord,listRecords,recordStatement,acquireLock,releaseLock,stamp,uid,runtime,configuration,connection,assertNoActiveJobs} from '@/lib/server';
 import type {Brand} from '@/lib/agency';
 import {sourceSummary,publicResearch,type ArchiveSource,type ChannelObservation,type Diagnostic,type BrandResearch} from '@/lib/archive';
 import {archiveState,stateWrite,assertArchiveIdle,makeSource,makeObservation,intake} from '@/lib/archive-server';
@@ -20,17 +20,20 @@ export async function POST(req:Request){let owner='',lock='';try{owner=await ide
   return json({id,researchId:research?.id,researchQueued:!!research});
  }
  const brandId=str(b.brandId,'브랜드',100,true),brand=await readRecord<Brand>(owner,'brand',brandId);await assertArchiveIdle(owner,brandId);const state=await archiveState(owner,brandId);
- if(b.action==='save_intake'){await assertNoActiveJobs(owner);const updated={...brand,intake:intake(b.data)};await database().batch([recordStatement(owner,'brand',brandId,updated),stateWrite(owner,brandId,state.revision+1)]);return json({id:brandId})}
+ // 확정 자료·채택 진단·의뢰 정보는 AI 제작 맥락에 '확인된 근거'로 들어가므로 관리자 전용이다. 직원은 자료 추가와 후보 검토까지 한다.
+ if(b.action==='save_intake'){await requireAdminActor(req);await assertNoActiveJobs(owner);const updated={...brand,intake:intake(b.data)};await database().batch([recordStatement(owner,'brand',brandId,updated),stateWrite(owner,brandId,state.revision+1)]);return json({id:brandId})}
  if(b.action==='add_source'){
   const rows=await listRecords<ArchiveSource>(owner,'brand_source',brandId);if(rows.length>=200)throw new ApiError(400,'브랜드당 자료 200개까지 보관할 수 있습니다.');
   const s=makeSource(brandId,b.data||{});await database().batch([recordStatement(owner,'brand_source',s.id,s,brandId),stateWrite(owner,brandId,state.revision+1)]);return json({id:s.id});
  }
  if(b.action==='review_source'){
+  if(b.status!=='candidate')await requireAdminActor(req);
   const s=await readRecord<ArchiveSource>(owner,'brand_source',str(b.id,'자료',100,true));if(s.brandId!==brandId)throw new ApiError(404,'자료를 찾을 수 없습니다.');if(s.version!==b.version)throw new ApiError(409,'자료가 변경됐습니다. 새로고침해 주세요.');if(!['confirmed','candidate','excluded'].includes(b.status))throw new ApiError(400,'검토 상태를 확인하세요.');if(b.status==='confirmed'&&!s.content.trim())throw new ApiError(400,'분석 가능한 내용이 없습니다. 원문을 확인하고 텍스트 자료를 추가해 주세요.');
   await database().batch([recordStatement(owner,'brand_source',s.id,{...s,status:b.status,version:s.version+1},brandId),stateWrite(owner,brandId,state.revision+1)]);return json({id:s.id});
  }
  if(b.action==='add_observation'){const o=makeObservation(brandId,b.data||{});await database().batch([recordStatement(owner,'brand_observation',o.id,o,brandId),stateWrite(owner,brandId,state.revision+1)]);return json({id:o.id})}
  if(b.action==='confirm_diagnosis'){
+  await requireAdminActor(req);
   const d=await readRecord<Diagnostic>(owner,'brand_diagnostic',str(b.id,'진단',100,true));if(d.brandId!==brandId)throw new ApiError(404,'진단을 찾을 수 없습니다.');if(d.researchQuality?.status==='needs_data')throw new ApiError(409,'조사 근거가 부족합니다. 추가 자료와 보완 조사 후 진단을 채택하세요.');if(d.archiveRevision!==state.revision)throw new ApiError(409,'진단 이후 자료가 바뀌었습니다. 최신 자료로 다시 진단하세요.');const sources=await listRecords<ArchiveSource>(owner,'brand_source',brandId);const ids=new Set(sources.filter(s=>s.status==='confirmed').map(s=>s.id));if(!d.sourceIds.length||d.sourceIds.some(id=>!ids.has(id)))throw new ApiError(409,'진단 근거를 확인한 뒤 최신 자료로 다시 진단해 주세요.');
   await recordStatement(owner,'brand_diagnostic',d.id,{...d,status:'confirmed'},brandId).run();return json({id:d.id});
  }

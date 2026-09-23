@@ -26,6 +26,7 @@ test('이메일 로그인·초대·세션 유지·권한 제한·폐기',async({
  await page.getByRole('button',{name:'초대 링크 만들기'}).click();
  const invite=await page.getByLabel('초대·재설정 링크').inputValue();
  await expect(page.getByRole('button',{name:'초대 링크 재발급',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'초대 취소',exact:true})).toBeVisible();
  const token=new URLSearchParams(new URL(invite).hash.slice(1)).get('invite');
  const context=await browser.newContext({baseURL,ignoreHTTPSErrors:true,viewport:{width:390,height:844}});
  const member=await context.newPage();
@@ -35,8 +36,22 @@ test('이메일 로그인·초대·세션 유지·권한 제한·폐기',async({
  expect((await member.request.get('/api/accounts')).status()).toBe(403);
  expect((await member.request.post('/api/action',{headers:{origin:baseURL!},data:{action:'disconnect'}})).status()).toBe(403);
  expect((await member.request.post('/api/auth',{headers:{origin:baseURL!},data:{action:'accept',token,email:'member@example.test',password}})).status()).toBe(401);
- expect((await member.request.post('/api/action',{data:{action:'disconnect'}})).status()).toBe(403);
+ // Origin 없는 변경 요청은 본문을 읽기 전에 403으로 거절된다. 그래서 이 확인에는 본문을 싣지 않는다.
+ // wrangler dev 4.92 로컬 프록시는 워커가 본문을 읽지 않고 응답하면 뒤따르는 요청(다음 줄 reload)을 붙잡는다.
+ // 로컬에서는 멈춤, CI에서는 'Network connection lost'(HTTP 500)로 드러났다. 운영 Workers와 무관한 로컬 환경 문제다(docs/EMAIL-AUTH.ko.md).
+ expect((await member.request.post('/api/action')).status()).toBe(403);
  await member.reload();await expect(member.getByRole('button',{name:'로그아웃',exact:true})).toBeVisible();
+ // 직원 화면에는 관리자 전용 버튼(캠페인 삭제, 채널 연결)을 그리지 않고 관리자에게 요청하라고 안내한다. 서버 403은 위 API 확인과 tests/execution-auth가 맡는다.
+ const starter='평일의 도넛 리추얼';
+ await expect(member.getByRole('button',{name:starter+' 열기',exact:true})).toBeVisible();
+ await expect(member.getByRole('button',{name:starter+' 삭제',exact:true})).toHaveCount(0);
+ await member.getByRole('button',{name:starter+' 열기',exact:true}).click();
+ await expect(member.getByRole('button',{name:'브리프 수정',exact:true})).toBeVisible();
+ await expect(member.getByRole('button',{name:'삭제',exact:true})).toHaveCount(0);
+ await member.getByRole('tab',{name:'제작·발행',exact:true}).click();
+ await expect(member.getByText('채널 연결과 실행 한도는 관리자만 바꿀 수 있습니다.',{exact:false})).toBeVisible();
+ await expect(member.getByRole('button',{name:'채널 확인·연결',exact:true})).toHaveCount(0);
+ await member.keyboard.press('Escape');
  const accounts=await (await page.request.get('/api/accounts')).json() as {accounts:{id:string;email:string}[]};
  const userId=accounts.accounts.find(a=>a.email==='member@example.test')!.id;
  const reset=await (await post('/api/accounts',{action:'reset',userId})).json() as {token:string};
@@ -52,5 +67,6 @@ test('이메일 로그인·초대·세션 유지·권한 제한·폐기',async({
  await page.getByLabel('비밀번호',{exact:true}).fill(password);
  await page.getByRole('button',{name:'로그인',exact:true}).click();
  await expect(page.getByRole('button',{name:'팀 계정 관리',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:starter+' 삭제',exact:true})).toBeVisible();
  await context.close();await other.close();
 });

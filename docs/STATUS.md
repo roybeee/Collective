@@ -18,7 +18,7 @@
 | PR 0 브랜치 게이트(`chore/engineering-baseline`, 2026-09-23 09:34 UTC 경) | tests passed 29/29 suites·946 assertions, tsc passed exit0, lint gate passed errors74/기준74·warnings44/기준44, build passed exit0, 워커 계약 테스트 passed 50회 반복 0회 실패 | 테스트 real SQLite / mocked 외부 공급자, 워커 mocked gateway / real 로컬 HTTP. E2E는 not_run(CI 비차단 잡에서 실행). 병합 전 브랜치 값이며 병합 뒤 main CI로 다시 확인 |
 
 - PR 0 병합 시점부터 `main` 기준 배포 상태는 `published`(운영 dbf94a5, Sites 버전23)이며 `runtime-verified`가 아니다. 게시하지 않은 제품 변경(`lib/deep-research-server.ts`, `lib/store-server.ts`, `lib/validate.ts`, `app/workspace.tsx`)이 `main`에 들어가기 때문이다. 게시 전까지 운영 기준은 dbf94a5다. 게시는 별도 승인 후 [게시 체크리스트](PUBLISH.ko.md)로 진행하고 5단계로 다시 판정한다.
-- Sites가 public인 동안 `AUTH_MODE`를 legacy로 되돌리지 않는다. `AUTH_MODE`를 비워 두어도 legacy다(`lib/auth-session.ts` `authMode`). 환경 revision 변경·복구·재게시 뒤에는 `/api/auth`가 mode=email을 반환하는지, 위조 헤더 요청이 401인지 먼저 확인한다. 코드 기본값을 fail-closed로 바꾸는 일은 PR 1(`auth-2`)에서 한다. 복구는 [이메일 로그인 복구 순서](EMAIL-AUTH.ko.md)를 따른다.
+- Sites가 public인 동안 `AUTH_MODE`를 legacy로 되돌리지 않는다. PR 1(`auth-2`)부터 운영 빌드에서 `AUTH_MODE`가 비면 모든 인증·업무 API가 503이다(fail-closed, `lib/auth-session.ts` `authMode`). legacy는 `AUTH_MODE=legacy`로 명시해야 한다. 이 동작은 PR 1이 게시된 뒤부터 운영에 적용되며, 그 전 운영본(dbf94a5)은 비어 있으면 legacy다. 환경 revision 변경·복구·재게시 뒤에는 `/api/auth`가 mode=email을 반환하는지, 위조 헤더 요청이 401인지 먼저 확인한다. 복구는 [이메일 로그인 복구 순서](EMAIL-AUTH.ko.md)를 따른다.
 - 권장 임시 조치: PR 1 게시 전까지 관리자·직원 계정을 추가로 초대하지 않는다(계정 1개 유지). 역할별 권한 경계와 설치 파일 권한 판정 단위를 PR 1에서 개인 단위로 보완하기 전이기 때문이다.
 - 확인 필요: bootstrap 환경 세 항목 제거와 재게시는 기록이 없다(버전23 게시 기록은 환경 revision4 유지). 실제 Buffer/Instagram 게시는 not_run.
 - 후속 조치: PR 0 병합 뒤 사용자 승인을 받아 PR #19를 닫는다(내용은 [게시 기록](releases/2026-09-23-1ecd72e.md)과 아래 이력으로 옮겼다). 외부 호출이라 이 PR에서는 기록만 한다.
