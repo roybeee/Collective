@@ -5,10 +5,11 @@ import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select';
 import type {ProviderUsage,UsagePricing,UsageProvider} from '@/lib/usage-ledger';
+import {isModelAlias,summarizeUsage} from '@/lib/usage-summary';
 
 type UsageData={entries:ProviderUsage[];pricing:UsagePricing[];notice:string};
 const statusNames:Record<string,string>={completed:'완료',failed:'실패',error:'실패',cancelled:'취소',canceled:'취소',stopped:'중지',interrupted:'중단',incomplete:'미완료'};
-const outcomeNames:Record<string,string>={completed:'저장 완료',invalid_output:'결과 형식 오류',cancelled:'취소',provider_failed:'공급자 실행 실패',storage_failed:'결과 저장 실패'};
+const outcomeNames:Record<string,string>={completed:'저장 완료 · 내용 검토 별도',invalid_output:'결과 요건 미충족',cancelled:'취소',provider_failed:'공급자 실행 실패',storage_failed:'결과 저장 실패'};
 const count=(value:number|null)=>value===null?'미확인':value.toLocaleString('ko-KR');
 const providerName=(provider:UsageProvider)=>provider==='hermes'?'HERMES':'OpenAI API';
 const cost=(entry:ProviderUsage)=>entry.costAmount===null?'미확인':`${entry.costAmount.toLocaleString('ko-KR',{maximumFractionDigits:6})} ${entry.currency||''} · 추정`;
@@ -22,15 +23,24 @@ async function usageData():Promise<UsageData>{
 function UsageRows({entries}:{entries:ProviderUsage[]}){
  return <div className="mt-5 overflow-x-auto"><table className="w-full text-left text-sm" style={{minWidth:780}}>
   <caption className="sr-only">공급자 실행별 토큰과 추정 비용</caption>
-  <thead><tr className="border-b">{['관측 시각 · 공급자','실제 모델','실행 · 결과 처리','입력 토큰','출력 토큰','합계 토큰','비용 · 단가 버전'].map(label=><th scope="col" key={label} className="p-3 font-medium">{label}</th>)}</tr></thead>
+  <thead><tr className="border-b">{['관측 시각 · 공급자','공급자 보고 모델','실행 · 결과 처리','입력 토큰','출력 토큰','합계 토큰','비용 · 단가 버전'].map(label=><th scope="col" key={label} className="p-3 font-medium">{label}</th>)}</tr></thead>
   <tbody>{entries.map(entry=><tr key={entry.id} className="border-b align-top">
    <td className="p-3"><time dateTime={entry.observedAt}>{new Date(entry.observedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})}</time><br/>{providerName(entry.provider)}<details className="mt-1"><summary className="cursor-pointer text-xs">실행 번호</summary><span className="break-all text-xs">{entry.providerRunId}</span></details></td>
-   <td className="max-w-48 break-words p-3">{entry.model||'미확인'}</td>
+   <td className="max-w-48 break-words p-3">{entry.model||'미확인'}{isModelAlias(entry.provider,entry.model)&&<p className="text-xs">연결 별칭 · 기반 모델 미확인</p>}</td>
    <td className="p-3">{statusNames[entry.status]||entry.status}<br/><span className="text-xs">{entry.domainOutcome?outcomeNames[entry.domainOutcome]||entry.domainOutcome:'결과 처리 미확인'}</span><br/><span className="break-all text-xs">종료 사유: {entry.terminalReason}</span></td>
    <td className="p-3 tabular-nums">{count(entry.inputTokens)}</td><td className="p-3 tabular-nums">{count(entry.outputTokens)}</td><td className="p-3 tabular-nums">{count(entry.totalTokens)}</td>
    <td className="p-3 tabular-nums">{cost(entry)}<br/><span className="text-xs">{entry.priceVersion||'적용 단가 없음'}</span></td>
   </tr>)}</tbody>
  </table></div>;
+}
+function UsageSummary({entries}:{entries:ProviderUsage[]}){
+ const totals=summarizeUsage(entries);
+ return <div className="notice" aria-label="전체 실행 사용량 요약">
+  <p>전체 {entries.length.toLocaleString('ko-KR')}회 · 확인된 합계 {count(totals.totalTokens)}토큰{totals.unknownTotalCount>0?` · 합계 미확인 ${totals.unknownTotalCount}회 제외`:''}</p>
+  <p>입력 {count(totals.inputTokens)} / 출력 {count(totals.outputTokens)}토큰 · 입력 미확인 {totals.unknownInputCount}회, 출력 미확인 {totals.unknownOutputCount}회</p>
+  <p>결과 요건 미충족 {totals.invalidOutputCount}회 · 확인된 사용량 {count(totals.invalidOutputTokens)}토큰{totals.unknownInvalidOutputCount>0?` · 사용량 미확인 ${totals.unknownInvalidOutputCount}회 제외`:''}</p>
+  <p>저장 완료 {totals.storedCount}회 · 결과 처리 미확인 {totals.unclassifiedCount}회. 저장 완료는 내용 승인이나 성과 달성을 뜻하지 않습니다.</p>
+ </div>;
 }
 function PricingForm({saved,onSaved}:{saved:UsagePricing[];onSaved:()=>Promise<void>}){
  const [price,setPrice]=useState(emptyPrice),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
@@ -71,11 +81,12 @@ export function UsagePanel(){
  return <section className="settings-card" style={{gridColumn:'1 / -1',minWidth:0}}>
   <div className="flex flex-wrap items-start justify-between gap-4"><div><div className="settings-icon"><ReceiptText/></div><h2>AI 사용량과 비용</h2></div><Button variant="outline" disabled={loading} onClick={()=>{setLoading(true);void refresh()}}><RefreshCw/>새로고침</Button></div>
   <p>실패하거나 취소된 실행도 공급자가 보고한 사용량을 남깁니다. 알 수 없는 모델·토큰·금액은 ‘미확인’으로 표시합니다.</p>
+  <p className="subtle-note">hermes-agent는 연결 별칭입니다. 기반 모델이 보고되지 않으면 모델을 추정하거나 별칭에 단가를 적용하지 않습니다.</p>
   <p className="notice">{data?.notice||'비용은 직접 등록한 단가로 계산한 추정치입니다. 도구 요금·할인·캐시 요금·세금은 포함하지 않습니다.'}</p>
   {error&&<p className="form-error" role="alert">{error}</p>}
   {loading&&!data?<p role="status">사용량 불러오는 중…</p>:data&&<>
-   {!data.pricing.length&&<p className="subtle-note">아직 등록한 단가가 없습니다. 모델과 입력·출력 토큰이 확인되어도 단가를 등록하기 전의 비용은 미확인으로 남습니다.</p>}
-   {data.entries.length?<><p className="subtle-note">최근 {Math.min(visible,data.entries.length)}건 / 전체 {data.entries.length}건 · 한국 시간</p><UsageRows entries={data.entries.slice(0,visible)}/>{visible<data.entries.length&&<Button className="mt-4" variant="outline" onClick={()=>setVisible(current=>current+30)}>이전 실행 더 보기</Button>}</>:<p className="subtle-note">아직 기록된 사용량이 없습니다. 이 기능 도입 이후 종료 상태를 확인한 실행부터 표시됩니다.</p>}
+   {!data.pricing.length&&<p className="subtle-note">아직 등록한 단가가 없습니다. 기반 모델과 입력·출력 토큰, 적용 단가가 확인되기 전의 비용은 미확인으로 남습니다.</p>}
+   {data.entries.length?<><p className="subtle-note">최근 {Math.min(visible,data.entries.length)}건 / 전체 {data.entries.length}건 · 한국 시간</p><UsageSummary entries={data.entries}/><UsageRows entries={data.entries.slice(0,visible)}/>{visible<data.entries.length&&<Button className="mt-4" variant="outline" onClick={()=>setVisible(current=>current+30)}>이전 실행 더 보기</Button>}</>:<p className="subtle-note">아직 기록된 사용량이 없습니다. 이 기능 도입 이후 종료 상태를 확인한 실행부터 표시됩니다.</p>}
    <PricingForm saved={data.pricing} onSaved={refresh}/>
   </>}
  </section>;

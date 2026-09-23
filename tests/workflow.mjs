@@ -1,3 +1,4 @@
+import {roleFixture} from './helpers/role-fixture.mjs';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { SourceTextModule, SyntheticModule, createContext } from 'node:vm';
@@ -11,7 +12,7 @@ class Statement{constructor(query,values=[]){this.query=query;this.values=values
 const DB={prepare:q=>new Statement(q),batch:async ss=>{sql.exec('BEGIN');try{const r=[];for(const s of ss)r.push(await s.run());sql.exec('COMMIT');return r}catch(e){sql.exec('ROLLBACK');throw e}}};
 const runtime={DB,AGENCY_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64')};
 let callCount=0,providerFail=false;const provider=new Map();
-const fakeFetch=async(url,options={})=>{if(url.includes('/models/'))return Response.json({id:'test-model'});if(options.method==='POST'&&url.endsWith('/responses')){callCount++;if(providerFail)throw new Error('network lost');const b=JSON.parse(options.body),id='resp_test'+callCount;provider.set(id,{id,status:'completed',metadata:b.metadata,output:[{content:[{type:'output_text',text:'## Verified test output\nThis is a mock provider response.'}]}],usage:{total_tokens:42}});return Response.json({id,status:'completed'})}const id=url.split('/').pop();if(provider.has(id))return Response.json(provider.get(id));return Response.json({error:{message:'Not found'}},{status:404})};
+const fakeFetch=async(url,options={})=>{if(url.includes('/models/'))return Response.json({id:'test-model'});if(options.method==='POST'&&url.endsWith('/responses')){callCount++;if(providerFail)throw new Error('network lost');const b=JSON.parse(options.body),id='resp_test'+callCount;provider.set(id,{id,status:'completed',metadata:b.metadata,output:[{content:[{type:'output_text',text:roleFixture(b.input)}]}],usage:{total_tokens:42}});return Response.json({id,status:'completed'})}const id=url.split('/').pop();if(provider.has(id))return Response.json(provider.get(id));return Response.json({error:{message:'Not found'}},{status:404})};
 const ctx=createContext({console,crypto:webcrypto,Response,Request,Headers,TextEncoder,TextDecoder,Uint8Array,Date,URL,AbortSignal,btoa,atob,fetch:fakeFetch,process:{env:{NODE_ENV:'production'}}});
 const modules=new Map();const envModule=new SyntheticModule(['env'],function(){this.setExport('env',runtime)},{context:ctx});
 function moduleFor(file){file=resolve(file);if(modules.has(file))return modules.get(file);const code=ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;const m=new SourceTextModule(code,{context:ctx,identifier:file});modules.set(file,m);return m}
@@ -48,7 +49,7 @@ const otherArtifact=await act('save_artifact',{campaignId:otherId,role:'cmo',tit
 check('another campaign can still be edited while a run is active',otherArtifact.status===200);
 check('another campaign can still be approved while a run is active',(await act('review_artifact',{id:otherArtifact.data.id,version:1,decision:'approved',note:''})).status===200);
 r=await request(run,'POST',{action:'poll',id:job});check('completed response becomes real artifact',r.status===200&&r.data.status==='completed');
-r=await snapshot();const generated=r.data.artifacts.find(a=>a.origin==='ai');check('provider output stored with tokens',generated?.content.includes('mock provider')&&r.data.runs[0].tokens===42);
+r=await snapshot();const generated=r.data.artifacts.find(a=>a.origin==='ai');check('provider output stored with tokens',generated?.content.includes('자료 필요: 실제 운영 조건')&&generated?.outputContractVersion==='role-output-v1'&&r.data.runs[0].tokens===42);
 await act('review_artifact',{id:generated.id,version:1,decision:'approved',note:''});await request(run,'POST',{action:'poll',id:job});r=await snapshot();check('repeated poll preserves artifact approval',r.data.artifacts.find(a=>a.id===generated.id).status==='approved');
 providerFail=true;r=await request(run,'POST',{action:'start',campaignId:cid,role:'insight'});check('ambiguous provider failure does not fabricate success',r.status===502);r=await snapshot();check('ambiguous submission stops automatic retries',r.data.runs.some(j=>j.status==='uncertain'));const before=callCount;await request(run,'POST',{action:'start',campaignId:cid,role:'insight'});check('no duplicate charged retry after uncertainty',callCount===before);
 // 배포 검증 경로. 소유자만 읽을 수 있어야 하고, 주입이 없으면 신원을 주장하지 않아야 한다.

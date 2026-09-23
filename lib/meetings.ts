@@ -10,20 +10,45 @@ export type Contribution={position:string;evidence:string;challenge:string;propo
 export type MeetingTask={role:string;instruction:string;reason:string;acceptance:string};
 export type Synthesis={decisions:string;disagreements:string;questions:string;tasks:MeetingTask[]};
 export type Revision={title:string;content:string;changes:string};
-export type MeetingStep={id:string;role:string;phase:MeetingPhase;status:'pending'|'starting'|'running'|'uncertain'|'completed'|'failed'|'cancelled';providerId?:string;startedAt?:string;completedAt?:string;output?:Contribution|Synthesis|Revision|QualityReview;raw?:string;error?:string;task?:MeetingTask;tokens?:number};
-export type Meeting={skillVersion?:string;id:string;campaignId:string;campaignVersion:number;agenda:string;status:MeetingStatus;steps:MeetingStep[];createdAt:string;updatedAt:string;model:string;stopRequested:boolean;error?:string;previousMeetingId?:string;artifactIds:string[];invalidatedRoles:string[];snapshot:{brandArchive?:Awaited<ReturnType<typeof import('./archive-server').brandArchiveContext>>;campaign:Campaign;brand:Brand;artifacts:Artifact[];metrics:Metric[];learning:LearningRule[];previous?:{id:string;agenda:string;decisions?:Synthesis;quality?:QualityReview}}};
-export type PublicMeeting=Omit<Meeting,'snapshot'|'steps'>&{steps:Omit<MeetingStep,'providerId'|'raw'>[]};
+export type MeetingAttempt={attempt:number;status:'failed';providerId?:string;raw?:string;error:string;tokens?:number;startedAt?:string;completedAt?:string};
+export type MeetingStep={id:string;role:string;phase:MeetingPhase;status:'pending'|'starting'|'running'|'uncertain'|'completed'|'failed'|'cancelled';providerId?:string;startedAt?:string;completedAt?:string;output?:Contribution|Synthesis|Revision|QualityReview;raw?:string;error?:string;task?:MeetingTask;tokens?:number;attempt?:number;attempts?:MeetingAttempt[];failureKind?:'invalid_output'|'provider_failed';correction?:{error:string}};
+export type Meeting={skillVersion?:string;id:string;campaignId:string;campaignVersion:number;agenda:string;status:MeetingStatus;steps:MeetingStep[];createdAt:string;updatedAt:string;model:string;stopRequested:boolean;error?:string;previousMeetingId?:string;artifactIds:string[];invalidatedRoles:string[];snapshot:{brandArchive?:Awaited<ReturnType<typeof import('./archive-server').brandArchiveContext>>;campaign:Campaign;brand:Brand;artifacts:Artifact[];metrics:Metric[];learning:LearningRule[];previous?:{id:string;agenda:string;decisions?:Synthesis;quality?:QualityReview;discussion:{id:string;role:string;output:Contribution}[];failure?:{role:string;phase:MeetingPhase;error:string}}}};
+export type PublicMeeting=Omit<Meeting,'snapshot'|'steps'>&{steps:(Omit<MeetingStep,'providerId'|'raw'|'attempts'>&{attempts?:Omit<MeetingAttempt,'providerId'|'raw'>[];retryAvailable:boolean})[]};
 export const phaseNames:Record<MeetingPhase,string>={discussion:'의견 교환',synthesis:'합의·과제 배정',revision:'담당자 개선',quality:'품질 재검토'};
 export const meetingActive=(m:Pick<Meeting,'status'>)=>m.status==='running'||m.status==='uncertain';
 export function initialSteps(id:string):MeetingStep[]{return [...roles.map(r=>({id:`${id}:discussion:${r.id}`,role:r.id,phase:'discussion' as const,status:'pending' as const})),{id:`${id}:synthesis`,role:'cmo',phase:'synthesis',status:'pending'}]}
-export function publicMeeting(m:Meeting):PublicMeeting{const{snapshot:_,steps,...rest}=m;return {...rest,steps:steps.map(({providerId:__,raw:___,...s})=>s)}}
+export function allowedRespondsTo(step:MeetingStep,steps:MeetingStep[]){
+ const index=steps.findIndex(s=>s.id===step.id);
+ return (index<0?steps:steps.slice(0,index)).filter(s=>s.phase==='discussion'&&s.status==='completed').map(s=>s.id);
+}
+export function invalidStepOutput(m:Meeting,s:MeetingStep){
+ if(s.status!=='failed'||s.output)return false;
+ if(s.failureKind)return s.failureKind==='invalid_output';
+ if(typeof s.raw!=='string')return false;
+ try{parseMeetingOutput(s.raw,s,m.steps,!!m.skillVersion,candidateArtifacts(m).invalidatedRoles);return false}catch{return true}
+}
+export function publicMeeting(m:Meeting):PublicMeeting{
+ const{snapshot:_,steps,...rest}=m;
+ return {...rest,steps:steps.map(({providerId:__,raw:___,attempts,...s})=>({...s,
+  retryAvailable:m.status==='failed'&&!m.stopRequested&&(s.attempt||0)<2&&invalidStepOutput(m,steps.find(t=>t.id===s.id)!),
+  ...(attempts?{attempts:attempts.map(({providerId:____,raw:_____,...attempt})=>attempt)}:{})
+ }))};
+}
+export function meetingMarkdown(m:PublicMeeting){
+ return `# 팀 회의\n\n${m.agenda}\n\n회의 상태: ${m.status}\n시작: ${m.createdAt}\n${m.error?'오류: '+m.error+'\n':''}\n`+m.steps.map(s=>{
+  const attempts=[...(s.attempts||[]),{attempt:s.attempt||0,status:s.status,error:s.error,tokens:s.tokens}];
+  return `## ${roles.find(r=>r.id===s.role)?.name||s.role} · ${phaseNames[s.phase]}\n\n상태: ${s.status}\n`+attempts.map(a=>`- 시도 ${a.attempt+1}: ${a.status} · 토큰 ${a.tokens??'미확인'}${a.error?' · '+a.error:''}`).join('\n')+(s.output?'\n\n'+JSON.stringify(s.output,null,2):'');
+ }).join('\n\n');
+}
 export function parseMeetingOutput(text:string,step:MeetingStep,previous:MeetingStep[],strictQuality=false,invalidatedRoles:string[]=[]){
  let x:any;try{x=JSON.parse(text.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''))}catch{throw new Error('담당자가 회의 양식에 맞는 응답을 반환하지 않았습니다. 기록을 확인하고 후속 회의를 시작해 주세요.')}
  if(!x||typeof x!=='object'||Array.isArray(x))throw new Error('회의 응답 형식이 올바르지 않습니다.');
  const required=(obj:any,key:string,max=5000)=>{if(typeof obj[key]!=='string'||!obj[key].trim()||obj[key].length>max)throw new Error(`회의 응답의 ${key} 항목을 확인할 수 없습니다.`);return obj[key].trim()};
  if(step.phase==='discussion'){
-  const allowed=new Set(previous.filter(s=>s.phase==='discussion'&&s.status==='completed').map(s=>s.id));
-  if(!Array.isArray(x.respondsTo)||x.respondsTo.some((id:unknown)=>typeof id!=='string'||!allowed.has(id))||(allowed.size&&!x.respondsTo.length))throw new Error('앞선 팀원의 실제 발언에 대한 검토가 누락됐습니다.');
+  const allowed=new Set(allowedRespondsTo(step,previous));
+  if(!Array.isArray(x.respondsTo))throw new Error('respondsTo: 앞선 발언 ID의 배열이 필요합니다.');
+  if(allowed.size&&!x.respondsTo.length)throw new Error('respondsTo: 앞선 완료 발언을 적어도 하나 지정해야 합니다.');
+  if(x.respondsTo.some((id:unknown)=>typeof id!=='string'||!allowed.has(id)))throw new Error('respondsTo: 허용 목록에 없는 발언 ID가 있습니다. 앞선 완료 발언 ID만 사용하세요.');
   return {position:required(x,'position'),evidence:required(x,'evidence'),challenge:required(x,'challenge'),proposal:required(x,'proposal'),respondsTo:[...new Set(x.respondsTo)]} as Contribution;
  }
  if(step.phase==='synthesis'){

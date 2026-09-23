@@ -1,20 +1,22 @@
+import {roleFixture} from './helpers/role-fixture.mjs';
 import assert from 'node:assert/strict';
 import {testRuntime} from './helpers/runtime.mjs';
 
 let failSnapshot = false, failSubmission = false, failUsage = false, lostAck = false, calls = 0, holdProvider = false;
 const polled = new Set();
-const submissions = new Map();
+const submissions = new Map(),outputs=new Map();
 const runtime = testRuntime(async (url, options = {}) => {
  if(url.endsWith('/responses'))return Response.json({id:'resp_known',status:'completed',model:'test',usage:{total_tokens:15},output:[{content:[{type:'output_text',text:'OpenAI output'}]}]});
  if (url.endsWith('/v1/runs')) {
   const key = options.headers['Idempotency-Key'];
   if (!submissions.has(key)) submissions.set(key, 'run_' + ++calls);
+  outputs.set(submissions.get(key),roleFixture(JSON.parse(options.body).input));
   if (lostAck) { lostAck = false; throw new Error('lost acknowledgement'); }
   return Response.json({run_id: submissions.get(key)});
  }
  const id = url.split('/').pop();
  polled.add(id);
- return Response.json({object: 'hermes.run', run_id: id, status: holdProvider ? 'running' : 'completed', output: 'A provider artifact', usage: {total_tokens: 12}});
+ return Response.json({object: 'hermes.run', run_id: id, status: holdProvider ? 'running' : 'completed', output: outputs.get(id)||'A provider artifact', usage: {total_tokens: 12}});
 }, {beforeRun(statement) { if ((failSnapshot && statement.values[2] === 'learning_snapshot') || (failSubmission && statement.values[2] === 'hermes_submission') || (failUsage && statement.values[2] === 'provider_usage')) throw new Error('injected persistence failure'); }});
 const {sql, load} = runtime;
 const server = await load('lib/server.ts');

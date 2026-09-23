@@ -1,3 +1,4 @@
+import {artifactUsable} from './role-output';
 import {roles, type Campaign, type Artifact} from './agency';
 import {ApiError, database, readRecord, listRecords, recordStatement, stamp} from './server';
 
@@ -33,7 +34,8 @@ export async function sequenceAction(owner:string,input:Record<string,unknown>):
  const failed=await database().prepare("SELECT id FROM jobs WHERE owner=? AND campaign_id=? AND status IN ('failed','cancelled','incomplete') AND updated_at>=? LIMIT 1").bind(owner,campaignId,previous.startedAt).first();
  if(failed)return save({...previous,status:'blocked',updatedAt:stamp(),error:'담당자 작업이 실패하거나 중단되어 연속 실행을 멈췄습니다. 결과를 확인한 뒤 다시 시작하세요.'});
  const artifacts=await listRecords<Artifact>(owner,'artifact',campaignId);
- const next=roles.find(role=>!artifacts.some(a=>a.role===role.id&&a.status!=='outdated'));
+ const next=roles.find(role=>!artifacts.some(a=>a.role===role.id&&artifactUsable(a,campaign.version)));
+ if(next&&artifacts.some(a=>a.role===next.id&&a.status!=='outdated'))return save({...previous,status:'blocked',updatedAt:stamp(),error:'작업물에 수정 요청 또는 불충분한 응답이 있습니다. 해당 담당자의 작업물을 보완한 뒤 다시 시작하세요.'});
  if(!next)return save({...previous,status:'completed',updatedAt:stamp()});
  return {role:next.id,campaignId};
 }

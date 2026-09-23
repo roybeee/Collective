@@ -68,7 +68,7 @@ export async function deleteCampaign(owner:string,input:Record<string,unknown>){
   db.prepare(`DELETE FROM records WHERE owner=? AND kind='experiment_revision' AND parent_id IN (${experiments})`).bind(owner,owner,id),
   db.prepare(`DELETE FROM records WHERE owner=? AND kind='learning_rule' AND json_extract(data,'$.experimentId') IN (${experiments})`).bind(owner,owner,id),
   db.prepare("DELETE FROM records WHERE owner=? AND kind='brief_draft' AND (json_extract(data,'$.campaignId')=? OR json_extract(data,'$.savedCampaignId')=?)").bind(owner,id,id),
-  db.prepare("DELETE FROM records WHERE owner=? AND parent_id=? AND kind IN ('artifact','history','metric','event','viral_experiment','learning_snapshot','team_meeting','hermes_submission','campaign_sequence','openai_submission')").bind(owner,id),
+  db.prepare("DELETE FROM records WHERE owner=? AND parent_id=? AND kind IN ('artifact','history','metric','event','viral_experiment','learning_snapshot','team_meeting','hermes_submission','campaign_sequence','openai_submission','role_output_contract','role_output_failure')").bind(owner,id),
   db.prepare("DELETE FROM records WHERE owner=? AND kind='background_attempt' AND id=?").bind(owner,`${owner}:background_attempt:sequence:${id}`),
   db.prepare('DELETE FROM jobs WHERE owner=? AND campaign_id=?').bind(owner,id),
   db.prepare("DELETE FROM records WHERE owner=? AND kind='campaign' AND id=?").bind(owner,`${owner}:campaign:${id}`),

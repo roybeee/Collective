@@ -17,7 +17,7 @@ node node_modules/@playwright/test/cli.js test
 
 - 서버는 Playwright가 `e2e/serve.mjs`로 직접 띄운다. 매 실행마다 `e2e/.state/`에 빈 로컬 D1을 만들고 `drizzle/*.sql`을 적용한 뒤 `wrangler dev --local`을 `127.0.0.1:8799`(`E2E_PORT`로 변경)에서 시작한다. 운영 D1/R2에는 연결하지 않는다.
 - 스크린샷(390×844 `mobile-*.png`, 1280×800 `desktop-*.png`), 실패 시 trace는 `e2e/artifacts/`에 남는다. 이 폴더와 `e2e/.state/`는 `.gitignore` 대상이라 빌드가 `dirty`로 표시되지 않는다.
-- 두 화면 크기(`mobile`, `desktop` 프로젝트) × 테스트 2개 = 4건.
+- 두 화면 크기(`mobile`, `desktop` 프로젝트) × 테스트 5개 = 10건.
 
 ## 검사 내용
 
@@ -26,6 +26,9 @@ node node_modules/@playwright/test/cli.js test
 | 브랜드 등록 → 새로고침 → 유지 | UI로 브랜드 등록, `/api/archive` 200, 새로고침 뒤 브랜드 아카이브에 그대로 표시 | real: 브라우저, 빌드 결과, 로컬 D1 / mocked: 인증 |
 | 다른 소유자 격리 | 다른 소유자 화면에 그 브랜드가 없고, `GET /api/archive?brandId=…`가 404 | 위와 같음 |
 | 로그인 헤더 없음 | 화면에 "로그인이 필요합니다" 경고, `GET /api/workspace` 401 | real (헤더를 붙이지 않음) |
+| 이전 원문·성과 수정 | 버전 비교, 미확인 비용 보존, 동시 수정 거부 | real Chromium/로컬 D1, mocked 인증 |
+| 사용량 가격 | 명시한 모델별 단가 저장 | real Chromium/로컬 D1, mocked 인증 |
+| 회의 실패 단계 재작성 | 완료 발언 유지, 단계/시도 지정 POST, 이후 GET 조회만 발생 | real Chromium, mocked 인증·회의 응답·작업자 상태 |
 
 ## 실제(real)와 모의(mocked)의 경계
 
