@@ -5,7 +5,7 @@ import {HttpBodyError,readBoundedJson} from './http-limits';
 import {authMode,authPrincipal,authOrigin} from './auth-session';
 import {AuthError} from './auth-errors';
 export class ApiError extends Error {constructor(public status:number,message:string){super(message)}}
-export const runtime=env as unknown as {DB?:D1Database;BUCKET?:R2Bucket;AGENCY_ENCRYPTION_KEY?:string;OPENAI_API_KEY?:string;RESEARCH_WORKER_GATE_TOKEN?:string;RESEARCH_WORKER_SITE_ORIGIN?:string;RESEARCH_WORKER_ADMIN_IDS?:string};
+export const runtime=env as unknown as {DB?:D1Database;BUCKET?:R2Bucket;AGENCY_ENCRYPTION_KEY?:string;OPENAI_API_KEY?:string;RESEARCH_WORKER_GATE_TOKEN?:string;RESEARCH_WORKER_SITE_ORIGIN?:string;RESEARCH_WORKER_ADMIN_IDS?:string;AI_COPY_CAPTIONS?:string};
 export function database(){if(!runtime.DB)throw new ApiError(503,'저장 공간에 연결하지 못했습니다. 잠시 후 다시 시도하세요.');return runtime.DB}
 export async function identity(request:Request){if(authMode()==='email'){const principal=await authPrincipal(request);if(!principal)throw new ApiError(401,'로그인이 필요합니다.');return principal.owner;}const id=request.headers.get('oai-authenticated-user-id');if(id&&id.length<=200&&!/[\x00-\x1f\x7f]/.test(id))return id;if(!id&&process.env.NODE_ENV==='development')return 'local-preview';throw new ApiError(401,'로그인이 필요합니다. 페이지를 새로고침해 주세요.')}
 // 행위자: 이메일 모드는 세션 계정, legacy는 헤더 id가 곧 소유자다. 소유자도 관리자 권한을 가진다.
