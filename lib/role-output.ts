@@ -36,14 +36,14 @@ function asksInsteadOfWriting(text:string){
  return [...text.matchAll(deferAll)].some(m=>workObject.test(objectBefore(text,m.index))||text.length<300&&sentenceAt(text,m.index).length*2>text.length);
 }
 // 제목 줄로 나눈 섹션. 제목과 본문이 붙으면 좁은 재질문 정규식이 오탐하므로 본문만 검사한다.
-function sectionsOf(text:string){
+export function sectionsOf(text:string){
  const parts=text.split(/^#{1,6}[ \t]+(.*)$/m);
  return [{title:'',body:parts[0]},...Array.from({length:(parts.length-1)/2},(_,i)=>({title:parts[2*i+1].trim(),body:parts[2*i+2]}))].map(s=>({...s,body:s.body.trim()})).filter(s=>s.body);
 }
 const bodyLines=(sections:{body:string}[])=>sections.flatMap(s=>s.body.split('\n')).map(x=>x.trim()).filter(x=>x&&!/^#{1,6}\s/.test(x));
 const placeholderLine=(x:string)=>/자료\s?필요/.test(x);
 // '자료 필요'로 시작하는 줄만 있는 항목은 조건부 초안 없이 자료 요청만 남긴 항목이다.
-const placeholderOnly=(x:string)=>/^[-*\s]*[\[(【]?\s?자료\s?필요/.test(x);
+export const placeholderOnly=(x:string)=>/^[-*\s]*[\[(【]?\s?자료\s?필요/.test(x);
 // 재작성 결과의 반영 위치 절은 요청 문장을 인용하기 쉬워 재질문 검사에서 뺀다.
 const reaskExempt=new Set(['수정 요청 반영 위치']);
 export type SubstanceProblem='reask'|'short'|'placeholder';

@@ -44,10 +44,5 @@ export function blocks(text:string):Block[]{
   return {label,out:[...acc.out,{index,line,label:inline?`${inline} ${label}`.trim():label,isLabel:labelled}]};
  },{label:'',out:[]}).out;
 }
-// '자료 필요'로 시작하는 줄(조건부 초안 없이 자료 요청만 남긴 줄). role-output.ts placeholderOnly와 같은 기준이다.
-export const placeholderOnly=(x:string)=>/^[-*\s]*[\[(【]?\s?자료\s?필요/.test(x);
-// 제목 줄로 나눈 섹션. role-output.ts sectionsOf와 같은 규칙이다(그 함수는 export되지 않아 F1b에서 export로 바꾼다).
-export function sectionsOf(text:string){
- const parts=text.split(/^#{1,6}[ \t]+(.*)$/m);
- return [{title:'',body:parts[0]},...Array.from({length:(parts.length-1)/2},(_,i)=>({title:parts[2*i+1].trim(),body:parts[2*i+2]}))].map(s=>({...s,body:s.body.trim()})).filter(s=>s.body);
-}
+// '자료 필요'로 시작하는 줄(조건부 초안 없이 자료 요청만 남긴 줄) 판정과 제목 줄로 나눈 섹션은 앱 검사(role-output.ts)의 구현을 그대로 쓴다.
+export {placeholderOnly,sectionsOf} from '../role-output';
