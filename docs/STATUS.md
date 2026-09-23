@@ -1,20 +1,20 @@
 # COLLECTIVE 현재 상태
 
-마지막 갱신: 2026-09-23 15:40 UTC (Claude 레인 B 세션, 게시 기록 `docs/release-a64aeef`)
+마지막 갱신: 2026-09-23 16:55 UTC (Claude 레인 B 세션, `docs/status-lanes-0924`)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
 | 운영 제품 커밋 | `a64aeefa669afe362f18fff87d2a2b61686af5b5` (#29 `merged`, PR 2 #25·PR 3 #28 포함) | 제품 tree `33a87014f44362ca2696e860f58ceb9bfe67ce90` |
-| `origin/main` | `a64aeef` (게시 시점) | 이후 병합은 병합 PR 기록으로 판정(`docs/PUBLISH.ko.md` 5단계) |
+| `origin/main` | `c7bfe40` (#34) | a64aeef 뒤 **미게시 제품 변경 있음**: #30 B4 1부(학습 통계), #33 PR 6 서버 측(업로드 형식 검증·설치기·워커), #27 F1a·A2(런타임 미연결 채점기), #32 F4a(삭제 정책·건수 API). main 기준 `runtime-verified` 아님 |
 | Sites 게시 | `published` 버전 25, deployment `appgdep_6ab3f15f96c88191860af69d8b50289d`, 2026-09-23 15:3x UTC | [게시 기록](releases/2026-09-23-a64aeef.md) |
 | 실행 검증 | `runtime-verified` · real, 2026-09-23 15:34 UTC 경 | 소유자 이메일 세션 `/api/version` tree `33a8701…` = a64aeef tree. 익명 401, `/media` 404·CSP 확인 |
 | 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` 200, mode=email, role=owner |
 | Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 이번 게시에서 변경 지시 없음 | 게시 뒤 접근 설정 재확인은 not_run |
 | 조사 워커 | 기록 없음 | 게시 뒤 확인 not_run(직전 관찰은 2026-09-23 07:58 UTC 경 online) |
-| 열린 PR | #16 Android(draft, 제외), #26 성장 계획 문서·#27 F1a(레인 A, 대표 병합 대기), #30 B4 1부(레인 B), PR 6 서버 측(레인 B, 진행 중), 이 PR(게시 기록) | `gh pr list -R roybeee/Collective`, 2026-09-23 15:40 UTC |
-| main CI(`a64aeef`) | passed · verify | GitHub Actions main 실행 |
+| 열린 PR | #16 Android(draft, 제외), PR 5a 화면·UX(레인 B, 진행 중) | `gh pr list -R roybeee/Collective`, 2026-09-23 16:55 UTC |
+| main CI(`c7bfe40`) | passed · verify | GitHub Actions main 실행 |
 
 - `AUTH_MODE` fail-closed(PR 1, `auth-2`)가 운영에 적용됐다. 운영 빌드에서 `AUTH_MODE`가 비면 모든 인증·업무 API가 503이다. Sites가 public인 동안 legacy로 되돌리지 않는다. 환경 revision 변경·복구·재게시 뒤에는 `/api/auth`가 mode=email인지, 위조 헤더 요청이 401인지 먼저 확인한다. 복구는 [이메일 로그인 복구 순서](EMAIL-AUTH.ko.md)를 따른다.
 - 확인 필요: 익명 업무 API 401은 a64aeef 게시 뒤 확인했다(passed · real). 위조 헤더 요청 401은 not_run이다(자동 모드 안전 검사 정책). 소유자가 직접 확인한다. 민감 작업 재인증(step-up)은 아직 구현되지 않았다(PR #23 남은 위험).
@@ -26,10 +26,13 @@
 
 - PR 0 엔지니어링 기반 `merged`(#22), PR 1 보안·인증 `merged`(#23) — 묶음 1로 게시, `runtime-verified`.
 - PR 2 AI 품질 루프 `merged`(#25), PR 3 첫 게시 경로 `merged`(#28), 결정 17 게이트(#29) — 대표 승인으로 `a64aeef` 묶음 게시, `runtime-verified`. 게시 뒤 24~72시간 중단 조건 감시 중.
-- 레인 A(공통 기반·교정): 성장 계획을 쓴 세션이 맡는다. F1a(#27) → F4a → F1b → F2 → B1 → F3. `lib/role-execution.ts`는 F1b가 먼저 수정한다.
-- 레인 B(실측·비용): 이 세션이 맡는다. A4 → B4 1부 → PR 4a → A7 → F4b → A2 런타임 → B2 1단계 → B5 리플레이 → F5. A2 순수 함수는 #27에 포함됐다.
-- PR 6(조사 서버 보안): 저장소 변경만 이 세션이 준비하고, 공유 서버 재설치는 대표 확인 뒤 적용한다.
-- 결정 17(AI 생성물 표시) 미결: PR 3의 "AI 카피 → 캡션 불러오기"는 `AI_COPY_CAPTIONS=enabled`가 아니면 꺼져 있다(이 PR). 확인 사실 문구만 쓰는 캡션은 영향 없다.
+- 성장 계획 `docs/GROWTH-PLAN.ko.md`(#26)가 병합됐다. 레인 배정·공유 파일 병합 순서·묶음 게시 절차는 그 문서가 정본이다.
+- 레인 A(공통 기반·교정, 세션 roybee-9a): F1a·A2 순수 함수 `merged`(#27), F4a kind 레지스트리·결정 7 삭제 정책 `merged`(#32). 다음은 F1b(`lib/role-execution.ts` → `lib/role-instruction.ts` 연결) → F2 → B1 → F3.
+- 레인 B(실측·비용, 이 세션): B4 1부 바이럴 판정 통계 `merged`(#30). A4 점포 실측·PR 4a 비용 가드·PR 6 앱 측은 F2(기능 스위치·`lib/hermes.ts`·`lib/research-worker.ts` 순서) 뒤. 그 사이 PR 5 중 공유 파일에 걸리지 않는 부분(PR 5a 내비게이션·로딩 상태·대시보드 숫자, PR 5b 삭제 대화상자 건수·학습 규칙 보존 표시)을 진행한다.
+- PR 6 서버 측 `merged`(#33): 조사 서버 브라우저 격리(CDP 연결 구조로 변경)·설치기 권한 축소·워커 백오프. **공유 서버 재설치는 대표 승인 뒤**. 실서버 검증 not_run.
+- E2E 간헐 실패: 회의 테스트의 응답 폐기 경합은 수정(#34). workerd 크래시는 원인 미확정(blocked) — 다음 발생 때 `[serve]` 로그로 사유 확인.
+- 새 records kind는 `lib/record-kinds.ts` 등록 필수(#32, `tests/record-kinds.test.mjs`). 역할 지시 관련 파일을 바꾸면 `tests/role-instruction.test.mjs` 스냅샷 재캡처(#27).
+- 결정 17(AI 생성물 표시) 미결: AI 카피 캡션은 `AI_COPY_CAPTIONS=enabled`가 아니면 꺼져 있다(#29).
 - `docs/STATUS.md`·`prompt_plan.md`는 여러 레인이 함께 쓰므로 병합 순서대로 rebase해 갱신한다.
 
 ## 이력
