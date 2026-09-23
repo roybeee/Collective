@@ -15,7 +15,8 @@ export const orderModes={hall:'홀',pickup:'포장',delivery:'배달',group:'단
 export const orderStates={paid:'결제 완료',cancelled:'취소',refunded:'전액 환불'} as const;
 export const orderCostFields={foodCost:'식재료 원가',packagingCost:'포장 원가',fees:'결제·플랫폼 수수료',deliveryCost:'매장 부담 배달비',benefitCost:'증정·기타 변동비'} as const;
 // A4 주문 CSV 가져오기가 더하는 선택 필드: importId(가져오기 기록)·discountAmount(할인액, 결제액과 별도)·trackingCodes(행에서 읽은 코드)·newCustomer(신규 여부)·codeAttribution(코드 자동 귀속 사본).
-export type CodeAttribution={codeId:string;code:string;arm?:string;publicationId?:string;conflictCodeIds:string[]};
+// enteredBy(A4-3): 주문 기록 창·장부 양식 CSV에 코드를 직접 넣어 귀속한 사람. 가져오기 자동 귀속은 가져오기 기록(importedBy)에 남으므로 비워 둔다.
+export type CodeAttribution={codeId:string;code:string;arm?:string;publicationId?:string;conflictCodeIds:string[];enteredBy?:{id:string;email:string|null}};
 export type StoreOrder={campaignId?:string;creativeId?:string;importId?:string;discountAmount?:number;trackingCodes?:string[];newCustomer?:boolean;codeAttribution?:CodeAttribution;id:string;storeId:string;source:keyof typeof orderSources;orderNumber:string;orderDate:string;mode:keyof typeof orderModes;status:keyof typeof orderStates;paidAmount:number;refundAmount:number;costs:Record<keyof typeof orderCostFields,number|null>;channel:ChannelKey|'unknown';experimentId:string;attributionEvidence:string;note:string;version:number;createdAt:string;updatedAt:string};
 export type StoreSpend={id:string;storeId:string;date:string;channel:ChannelKey;experimentId:string;adSpend:number;productionCost:number;source:string;version:number;createdAt:string;updatedAt:string};
 export type LedgerSnapshot={capturedAt:string;orderRefs:{id:string;version:number}[];spendRefs:{id:string;version:number}[];costsConfirmed:boolean};
@@ -49,9 +50,10 @@ export function parseOrderCsv(text:string){
  if(quoted)throw new Error('CSV 따옴표가 닫히지 않았습니다.');row.push(cell);if(row.some(x=>x.trim()))rows.push(row);
  const headers=rows.shift()?.map(x=>x.trim())||[];
  const required=['source','orderNumber','orderDate','mode','status','paidAmount','refundAmount'];
- const allowed=[...required,...Object.keys(orderCostFields),'channel','experimentId','campaignId','creativeId','attributionEvidence','note'];
+ // trackingCode(A4-3, 선택): 추적 코드. 서버가 주문 기록 창의 코드 칸과 같게 조회·게시 관문을 거쳐 귀속한다.
+ const allowed=[...required,...Object.keys(orderCostFields),'channel','experimentId','trackingCode','campaignId','creativeId','attributionEvidence','note'];
  if(required.some(k=>!headers.includes(k))||headers.some(k=>!allowed.includes(k))||new Set(headers).size!==headers.length)throw new Error('제공된 양식의 열 이름을 유지해 주세요.');
  if(!rows.length||rows.length>200)throw new Error('한 번에 1~200개 주문을 가져올 수 있습니다.');
  return rows.map((cells,index)=>{if(cells.length!==headers.length)throw new Error(`${index+2}행의 열 수를 확인하세요.`);return Object.fromEntries(headers.map((key,i)=>[key,cells[i].trim()]))});
 }
-export const orderCsvTemplate='source,orderNumber,orderDate,mode,status,paidAmount,refundAmount,foodCost,packagingCost,fees,deliveryCost,benefitCost,channel,experimentId,campaignId,creativeId,attributionEvidence,note\n';
+export const orderCsvTemplate='source,orderNumber,orderDate,mode,status,paidAmount,refundAmount,foodCost,packagingCost,fees,deliveryCost,benefitCost,channel,experimentId,trackingCode,campaignId,creativeId,attributionEvidence,note\n';

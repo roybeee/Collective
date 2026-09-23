@@ -189,10 +189,10 @@ check((await getState('wide')).copyCaptions===false,'AI copy caption gate stays 
 const gated=await post('save_publication','limit',{creativeId:limit.creative.id,mediaUrl:cloud(limit.creative),scheduledAt:at(9),plannedCostKRW:0,copy:{artifactId:'limit-copy',artifactVersion:1,index:0},trackingCode:{type:'coupon',storeId:'s-oda'}});
 check(gated.status===409&&gated.data.error.includes('결정 17')&&!codesOf('limit').length,'gated copy still rejected before any code is issued');
 
-// 화면: 소재 제목 입력, 코드 선택(유형·지점), 준비된 발행의 코드 표시·복사. 문서는 PNG 코드를 A4-3으로 넘긴 이유를 적는다.
+// 화면: 소재 제목 입력, 코드 선택(유형·지점), 준비된 발행의 코드 표시·복사. 문서는 PNG 코드를 A4-4 또는 소재 템플릿 작업으로 넘긴 이유를 적는다.
 const panel=readFileSync('app/execution-panel.tsx','utf8'),doc=readFileSync('docs/EXECUTION-LOOP.ko.md','utf8');
 check(panel.includes('소재 제목')&&panel.includes('creativeLabel(')&&panel.includes('name="codeType"')&&panel.includes('name="codeStoreId"')&&panel.includes('코드 복사'),'panel offers title, code type/store selection and code copy');
 check(panel.includes('지점 목록을 불러오고 있습니다.')&&panel.includes('지점 목록을 불러오지 못했습니다')&&panel.includes('onClick={retryStores}')&&!panel.includes('setStores([])'),'the code store list tells loading and failure apart from having no store and offers a retry');
-check(doc.includes('게시 코드')&&doc.includes('A4-3')&&doc.includes('소재 제목'),'execution loop doc covers publication codes, titles and the A4-3 PNG split');
+check(doc.includes('게시 코드')&&doc.includes('A4-4')&&!doc.includes('(A4-3)')&&doc.includes('소재 제목'),'execution loop doc covers publication codes, titles and the A4-4 PNG split');
 console.log(JSON.stringify({passed:checks-failures.length,failed:failures.length,failures,providerCalls:calls,evidence:'real SQLite; mocked Buffer and R2; genuine PNG fixture'}));
 assert.deepEqual(failures,[]);

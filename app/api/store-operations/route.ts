@@ -1,7 +1,8 @@
 import {identity,secureMutation,body,readRecord,listRecords,recordStatement,json,failure,str,stamp,uid,ApiError,acquireLock,releaseLock,database} from '@/lib/server';
 import {channelCatalog,type Store,type StoreExperiment,type StoreMeasurement} from '@/lib/store-marketing';
 import {diagnosisCatalog,ledgerValues,ledgerSnapshot,ledgerChanged,type StoreDiagnostic,type StoreOrder,type StoreSpend} from '@/lib/store-operations';
-import {diagnosisInput,orderInput,spendInput,validateOrderAttribution,validateOrderExperiment,getStoreOperations,requireVersion,isMeasurementAction,isMeasurementRead,measurementAction,rejectPersonalData,carryImportFields,keepPublicationAttribution} from '@/lib/store-operations-server';
+import {diagnosisInput,orderInput,spendInput,validateOrderExperiment,getStoreOperations,requireVersion,isMeasurementAction,isMeasurementRead,measurementAction,rejectPersonalData,carryImportFields,orderCodeEntry,finishOrderEntry,publishedCreatives,codeEntryContext,attributionChecks} from '@/lib/store-operations-server';
+import {entrySummary,type EntryView} from '@/lib/store-attribution';
 import {checkedVersion,measurementInput,option} from '@/lib/store-server';
 
 export async function GET(req:Request){try{const owner=await identity(req),p=new URL(req.url).searchParams,storeId=str(p.get('storeId'),'지점',100,true);await readRecord<Store>(owner,'store',storeId);if(p.get('part')==='diagnosis')return json({diagnostics:await listRecords<StoreDiagnostic>(owner,'store_diagnostic',storeId),orders:[],spend:[],from:'',to:''});return json(await getStoreOperations(owner,storeId,p.get('from')||undefined,p.get('to')||undefined))}catch(e){return failure(e)}}
@@ -17,18 +18,22 @@ export async function POST(req:Request){let owner='',lock='';try{
  if(isMeasurementAction(b))return json(await measurementAction(req,owner,store,b));
  if(b.action==='save_order'||b.action==='import_orders'){
   const importing=b.action==='import_orders',rows=importing?b.rows:[b.data];if(!Array.isArray(rows)||!rows.length||rows.length>200)throw new ApiError(400,'한 번에 1~200개 주문을 저장하세요.');
-  const writes:ReturnType<typeof recordStatement>[]=[],seen=new Set<string>(),ids:string[]=[];
+  // A4-3: 행의 trackingCode(주문 기록 창의 추적 코드 칸·장부 양식 CSV 열)는 orderCodeEntry가 조회·게시 관문을 거쳐 반영한다. 응답에 귀속 방식·사유·경고(한 건) 또는 요약(여러 행)을 싣는다.
+  // 코드가 든 장부 양식 CSV는 관리자만 올린다(codeEntryContext, 행을 보기 전에 확인). 코드 조회·캠페인 검사는 요청 안에서 같은 값을 한 번만 한다.
+  const writes:ReturnType<typeof recordStatement>[]=[],seen=new Set<string>(),ids:string[]=[],views:EntryView[]=[],published=publishedCreatives(owner),checked=attributionChecks(owner,store),codes=await codeEntryContext(req,owner,store,rows,importing);
   for(let index=0;index<rows.length;index++){
-   try{const input=await orderInput(rows[index]||{},store.id);if(importing)rejectPersonalData(input);if(seen.has(input.id))throw new ApiError(409,'같은 출처·주문일·주문번호가 반복됩니다.');seen.add(input.id);
+   try{const raw=rows[index]||{},input=await orderInput(raw,store.id);if(importing)rejectPersonalData({...input,trackingCode:raw.trackingCode});if(seen.has(input.id))throw new ApiError(409,'같은 출처·주문일·주문번호가 반복됩니다.');seen.add(input.id);
     const row=await database().prepare('SELECT data FROM records WHERE id=? AND owner=? AND kind=?').bind(`${owner}:store_order:${input.id}`,owner,'store_order').first<{data:string}>();const old=row?JSON.parse(row.data) as StoreOrder:undefined;
     if(b.id&&b.id!==input.id)throw new ApiError(400,'주문 출처·주문일·주문번호는 수정할 수 없습니다.');
     if(old&&(importing||!b.id))throw new ApiError(409,'이미 등록한 주문입니다. 기존 주문에서 수정하세요.');requireVersion(old,b.version);
-    await validateOrderExperiment(owner,store.id,input.experimentId,input.orderDate,input.channel);
-    await validateOrderAttribution(owner,store,input);
-    const order:StoreOrder={...await keepPublicationAttribution(owner,carryImportFields(old,input)),version:(old?.version||0)+1,createdAt:old?.createdAt||stamp(),updatedAt:stamp()};writes.push(recordStatement(owner,'store_order',order.id,order,store.id));ids.push(order.id);
+    const {input:entered,entry}=await orderCodeEntry(codes,input,raw.trackingCode,old);
+    await validateOrderExperiment(owner,store.id,entered.experimentId,entered.orderDate,entered.channel);
+    await checked(entered);
+    const {order:kept,view}=await finishOrderEntry(owner,carryImportFields(old,entered),entry,published);
+    const order:StoreOrder={...kept,version:(old?.version||0)+1,createdAt:old?.createdAt||stamp(),updatedAt:stamp()};writes.push(recordStatement(owner,'store_order',order.id,order,store.id));ids.push(order.id);views.push(view);
    }catch(e){if(e instanceof ApiError)throw new ApiError(e.status,`${importing?index+2+'행: ':''}${e.message}`);throw e}
   }
-  await database().batch(writes);return json({ids,count:ids.length});
+  await database().batch(writes);return json({ids,count:ids.length,...(importing?{summary:entrySummary(views)}:{attribution:views[0]})});
  }
  if(b.action==='save_spend'){
   const id=str(b.data?.id,'비용 기록',100,true),old=(await listRecords<StoreSpend>(owner,'store_spend',store.id)).find(s=>s.id===id);requireVersion(old,b.version);

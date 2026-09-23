@@ -79,4 +79,15 @@ check('a card number in ledger row evidence is refused',(await piiRows({attribut
 check('a phone number used as a ledger order number is refused',(await piiRows({orderNumber:'010-2345-6789'})).status===400);
 check('refused ledger rows save nothing',!(await server.listRecords(owner,'store_order')).some(o=>o.orderNumber==='pii-ok'||o.orderNumber==='010-2345-6789'));
 check('a long POS order number in a ledger row is kept',(await post(undefined,{action:'import_orders',rows:[{...base,orderNumber:'2026092412345678'}]})).status===200);
+// A4-3: 주문 기록 저장 응답은 귀속 방식을 싣는다. 코드 칸을 비운 저장은 기존 수동 흐름 그대로다. 모르는 추적 코드는 400이다.
+const viaManual=await post({...base,orderNumber:'via-manual',campaignId:'c1',attributionEvidence:'쿠폰'});
+check('a manual save reports a manual attribution without a warning',viaManual.status===200&&viaManual.attribution?.via==='manual'&&!viaManual.attribution.warning);
+const viaNone=await post({...base,orderNumber:'via-none',trackingCode:''});
+check('a save with an empty code field reports no attribution',viaNone.status===200&&viaNone.attribution?.via==='none');
+check('an empty code field still needs evidence for a campaign',(await post({...base,orderNumber:'via-blank',campaignId:'c1',trackingCode:''})).status===400);
+check('an unknown typed code is refused',(await post({...base,orderNumber:'via-code',trackingCode:'ZZZZ2345'})).status===400);
+const templateColumns=logic.orderCsvTemplate.trim().split(','),templateRow=['pos','tpl',date,'hall','paid','100','0',...Array(templateColumns.length-7).fill('')].join(',');
+check('the ledger template offers the tracking code column',templateColumns.includes('trackingCode')&&logic.parseOrderCsv(logic.orderCsvTemplate+templateRow+'\n')[0].trackingCode==='');
+const ledgerRows=await post(undefined,{action:'import_orders',rows:logic.parseOrderCsv(logic.orderCsvTemplate+templateRow+'\n')});
+check('a ledger import reports a code summary',ledgerRows.status===200&&ledgerRows.summary?.codeAttributed===0&&ledgerRows.summary?.publicationRefused===0);
 console.log(JSON.stringify({passed}));

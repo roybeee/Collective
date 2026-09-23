@@ -36,7 +36,12 @@ export function publicationRefusal(code:Pick<TrackingCode,'publicationId'>,order
 }
 // 가져오기 자동 귀속의 근거 문구. 주문 근거가 이 문구 그대로면 사람이 근거를 새로 적지 않은 코드 자동 귀속이다.
 export const autoEvidence=(code:Pick<TrackingCode,'code'|'type'>)=>`추적 코드 ${code.code}(${trackingCodeTypes[code.type]}) 자동 귀속 · 주문 CSV`;
-const isAutoEvidence=(text:string,code:string)=>(Object.keys(trackingCodeTypes) as TrackingCodeType[]).some(type=>text===autoEvidence({code,type}));
+// 주문 기록 창·장부 양식 CSV에 사람이 코드를 직접 넣었을 때(A4-3) 근거를 비워 두면 채우는 문구. 가져오기 자동 문구와 같이 '사람이 근거를 따로 적지 않은 코드 귀속'으로 본다.
+// ledger: 장부 양식 CSV의 trackingCode 열. 저장한 근거만으로 창에서 한 건 넣은 코드와 파일로 한꺼번에 넣은 코드를 가를 수 있게 출처를 붙인다.
+export const manualEvidence=(code:Pick<TrackingCode,'code'|'type'>,ledger=false)=>`추적 코드 ${code.code}(${trackingCodeTypes[code.type]}) 직접 입력${ledger?' · 장부 양식 CSV':''}`;
+const isAutoEvidence=(text:string,code:string)=>(Object.keys(trackingCodeTypes) as TrackingCodeType[]).some(type=>text===autoEvidence({code,type})||text===manualEvidence({code,type})||text===manualEvidence({code,type},true));
+// 어느 코드든 자동 문구(가져오기·직접 입력) 그대로인 근거. 코드를 바꾸거나 비울 때 이 문구는 사람이 적은 근거로 보지 않는다.
+export const isCodeEvidence=(text:string)=>{const m=/^추적 코드 (\S+)\(/.exec(text);return !!m&&isAutoEvidence(text,m[1])};
 // 게시 관문을 지금 게시 상태로 다시 본 주문. 보고서(귀속 집계)와 주문 기록 수정이 같은 규칙을 쓴다.
 // 관문을 통과하거나 게시 코드 귀속이 아니면 같은 객체를 돌려준다. 아니면 코드 귀속 사본을 빼고, 근거가 자동 문구 그대로면(사람이 근거를 적지 않았으면)
 // 가져올 때 관문에서 거절한 주문처럼 미귀속(캠페인·소재 없음, 유입 미확인, 근거 없음)으로 되돌린다. 사람이 근거를 적었으면 그 수동 귀속은 둔다.
@@ -66,6 +71,32 @@ export function publicationImportNote(counts:unknown){
 export function pendingPublicationNote(counts:unknown){
  const n=countOf(counts,'pendingPublication');
  return n?`게시 상태 확인 전(승인 전·실행 승인·접수 확인 중·접수 여부 미확인·공급자 확인 필요) 게시의 코드가 있는 주문이 ${n}건 있습니다. 지금 확정하면 이 주문은 게시가 나중에 확인돼도 게시별로 귀속되지 않습니다(저장한 주문은 다시 가져와도 건너뜁니다). 실행 화면에서 게시 상태를 확인한 뒤 가져오세요.`:null;
+}
+// A4-3 추적 코드 직접 입력(주문 기록 창·장부 양식 CSV)의 결과. 거절 사유는 게시 관문 3가지와 적용 시작일 전(not_yet_valid)이다.
+// 수동 소재 귀속은 그 소재의 앱 게시 기록(예약 접수·게시 확인)이 없으면 막지 않고 경고만 한다. 앱 밖에서 게시했을 수 있어서다.
+export type CodeRefusal=PublicationRefusal|'not_yet_valid';
+export const UNPUBLISHED_CREATIVE_WARNING='이 소재는 앱에서 게시된 기록이 없습니다. 앱 밖에서 게시했다면 근거에 적어 주세요.';
+const refusalReason:Record<CodeRefusal,string>={before_publication:'게시 예약일(한국 날짜) 전 주문이라',pending:'게시 상태 확인 전(승인 전·실행 승인·접수 확인 중·접수 여부 미확인·공급자 확인 필요) 게시의 코드라',not_live:'취소·발행 실패 게시의 코드라',not_yet_valid:'주문일이 코드 적용 시작일 전이라'};
+// kept: 코드 귀속 사본을 그대로 둔 경우(게시 상태 확인 전 게시의 기존 사본). 보고서는 게시가 확인될 때까지 뺀다.
+export function codeEntryNote(code:string,reason:CodeRefusal,kept=false){
+ if(kept)return `추적 코드 ${code}의 게시가 아직 확인 전이라 예약 접수·게시 확인될 때까지 귀속 보고에서 빠집니다.`;
+ return `${refusalReason[reason]} 추적 코드 ${code}로 귀속하지 않았습니다.${reason==='pending'?' 게시가 예약 접수·게시 확인된 뒤 주문을 다시 열어 코드를 넣으세요.':''}`;
+}
+export type EntryView={via:'code'|'manual'|'none';code?:string;publicationRefusal?:PublicationRefusal;beforeValidFrom?:boolean;unpublishedCreative?:boolean;warning?:string};
+// 저장한 주문의 귀속 방식(코드·수동·없음)과 화면에 보일 사유·경고.
+export function entryView(order:Pick<StoreOrder,'codeAttribution'|'campaignId'|'creativeId'|'channel'>,code:string|undefined,refusal:CodeRefusal|null,unpublishedCreative:boolean):EntryView{
+ const via=order.codeAttribution?'code':order.campaignId||order.creativeId||order.channel!=='unknown'?'manual':'none',shown=code||order.codeAttribution?.code;
+ const warning=[...(refusal&&shown?[codeEntryNote(shown,refusal,!!order.codeAttribution)]:[]),...(unpublishedCreative?[UNPUBLISHED_CREATIVE_WARNING]:[])].join(' ');
+ return {via,...(shown?{code:shown}:{}),...(refusal&&refusal!=='not_yet_valid'?{publicationRefusal:refusal}:{}),...(refusal==='not_yet_valid'?{beforeValidFrom:true}:{}),...(unpublishedCreative?{unpublishedCreative:true}:{}),...(warning?{warning}:{})};
+}
+// 장부 양식 CSV(rows) 결과 요약: 코드 귀속, 게시 관문 거절(사유별), 적용 시작일 전, 앱 게시 기록 없는 소재의 수동 귀속 건수.
+export function entrySummary(views:readonly EntryView[]){
+ const n=(p:(v:EntryView)=>boolean)=>views.filter(p).length,refused=(reason:PublicationRefusal)=>n(v=>v.via!=='code'&&v.publicationRefusal===reason);
+ return {codeAttributed:n(v=>v.via==='code'),publicationRefused:n(v=>v.via!=='code'&&!!v.publicationRefusal),beforePublication:refused('before_publication'),unpublished:refused('not_live'),pendingPublication:refused('pending'),notYetValid:n(v=>!!v.beforeValidFrom),unpublishedCreatives:n(v=>!!v.unpublishedCreative)};
+}
+export function entrySummaryNotes(summary:unknown){
+ const n=(k:string)=>countOf(summary,k),publication=publicationImportNote(summary);
+ return [...(publication?[publication]:[]),...(n('notYetValid')?[`코드 적용 시작일 전 주문 ${n('notYetValid')}건은 추적 코드로 귀속하지 않았습니다.`]:[]),...(n('unpublishedCreatives')?[`앱에서 게시된 기록이 없는 소재에 직접 귀속한 주문 ${n('unpublishedCreatives')}건: 앱 밖에서 게시했다면 근거에 적어 주세요.`]:[])];
 }
 // 소재 표시 이름은 실행 화면과 같은 규칙이다(lib/execution.ts creativeLabel): 제목, 없으면 '소재 · 9월 23일 14:05 생성 · 첫 사실 줄'(한국 시각).
 export {creativeLabel};

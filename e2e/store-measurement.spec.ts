@@ -1,5 +1,5 @@
 // A4 점포 실측 여정: 추적 코드 생성 → POS CSV 미리보기·확정 → 자동 귀속 스위치(a4_auto_attribution) 기본 꺼짐에서 미귀속
-// → 소유자가 켠 뒤 자동 귀속 → POS 주간 합계로 완전성 통과 → 귀속 보고의 '귀속은 증분이 아님' 경고.
+// → 주문 기록 창에 추적 코드를 직접 넣으면 스위치가 꺼져 있어도 귀속(A4-3) → 소유자가 켠 뒤 자동 귀속 → POS 주간 합계로 완전성 통과 → 귀속 보고의 '귀속은 증분이 아님' 경고.
 // 로컬 빌드(wrangler --local, 실제 D1 시뮬레이터)에 로그인 헤더를 직접 붙인다(mocked auth). legacy 헤더 요청자는 소유자(관리자 권한 포함)라
 // 관리자 전용 코드 생성·가져오기 확정·POS 합계와 소유자 전용 기능 스위치 API(POST /api/feature-flags)를 모두 쓸 수 있다.
 // 외부 호출이 없고 요청 가로채기도 쓰지 않는다(docs/E2E.ko.md 규칙).
@@ -112,6 +112,22 @@ test('추적 코드로 가져온 주문은 자동 귀속 스위치를 켤 때만
   const again = await previewCsv(page, `${header}\nE2E-A4-1,${week},18000,${code}\n`);
   expect(again).toMatchObject({ready: 0, duplicates: 1});
   await expect(page.getByRole('button', {name: '확정 · 0건 저장', exact: true})).toBeDisabled();
+
+  // 2b) A4-3: 주문 기록 창의 '추적 코드' 칸에 코드를 넣으면 스위치가 꺼져 있어도 코드의 캠페인으로 귀속한다(사람이 넣은 명시적 귀속).
+  // 소문자로 넣어도 정규화해 찾는다. 오늘 주문이라 아래 4)의 지난주 POS 합계 대조에는 들어가지 않는다.
+  await page.getByRole('tab', {name: '주문·비용', exact: true}).click();
+  await page.getByRole('button', {name: '주문 기록', exact: true}).click();
+  const dialog = page.getByRole('dialog', {name: '주문 기록', exact: true});
+  await dialog.getByLabel('출처의 주문번호', {exact: true}).fill('E2E-A4-M1');
+  await dialog.getByLabel('할인 후 결제액 · 환불 전 (원)', {exact: true}).fill('9000');
+  await dialog.getByLabel('추적 코드 · 선택', {exact: true}).fill(code.toLowerCase());
+  const typed = page.waitForResponse(storeAction('save_order'));
+  await dialog.getByRole('button', {name: '주문 저장', exact: true}).click();
+  const typedResponse = await typed;
+  expect(typedResponse.status()).toBe(200);
+  expect((await typedResponse.json() as {attribution: {via: string; code: string}}).attribution).toMatchObject({via: 'code', code});
+  await expect(dialog).toBeHidden();
+  expect((await orders(page, storeId)).find(o => o.orderNumber === 'E2E-A4-M1')?.campaignId).toBe(campaignId);
 
   // 3) 소유자가 스위치를 켜면 코드가 맞는 새 주문이 캠페인에 자동 귀속된다.
   const switched = await page.request.post('/api/feature-flags', {data: {action: 'set', flag: FLAG, enabled: true}});

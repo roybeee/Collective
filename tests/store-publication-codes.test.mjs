@@ -69,6 +69,9 @@ check('a person-written evidence keeps the manual attribution without the code c
 view=plain(sa.publicationGateView(coded('PUBD','pd',{orderDate:'2026-09-20'}),gates));
 check('a pending publication is out of the attribution view until it goes live',!view.codeAttribution&&!view.campaignId);
 check('a deleted publication is out of the attribution view',!sa.publicationGateView(coded('PUBA','p-deleted',{orderDate:'2026-09-20'}),gates).campaignId);
+// A4-3: 주문 기록 창에 직접 넣은 코드의 문구('… 직접 입력')도 사람이 근거를 적지 않은 코드 귀속이다.
+view=plain(sa.publicationGateView(coded('PUBC','pc',{orderDate:'2026-09-20',attributionEvidence:sa.manualEvidence({code:'PUBC',type:'coupon'})}),gates));
+check('the direct-entry wording is treated like the import wording by the gate view',!view.codeAttribution&&!view.campaignId&&view.channel==='unknown'&&view.attributionEvidence==='');
 const dayRows=[{day:'2026-09-15',net:5000,orders:3,attributedOrders:2,attributedKnown:0,attributedUnknown:2,attributedUnknownNet:3000},{day:'2026-09-16',net:900,orders:1,attributedOrders:1,attributedKnown:0,attributedUnknown:1,attributedUnknownNet:900}];
 const moved=[coded('PUBC','pc',{paidAmount:1000})],fixed=plain(sa.regateDays(dayRows,moved,moved.map(o=>sa.publicationGateView(o,gates))));
 check('regated days drop only the attributed totals of orders the view unattributes',JSON.stringify(fixed[0])===JSON.stringify({...dayRows[0],attributedOrders:1,attributedUnknown:1,attributedUnknownNet:2000})&&JSON.stringify(fixed[1])===JSON.stringify(dayRows[1]));
