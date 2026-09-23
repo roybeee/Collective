@@ -1,26 +1,26 @@
 # COLLECTIVE 현재 상태
 
-마지막 갱신: 2026-09-23 05:59 UTC (Codex)
+마지막 갱신: 2026-09-23 06:12 UTC (Codex)
 
 ## 소스와 배포
 
-- 제품 소스: `6fe596afed212d6786da28d20685fb1caf8e8ec7` (PR #13 merged, main CI passed).
-- Sites 버전 20 published, 환경 revision 3 적용. 배포 `appgdep_6ab359666c508191bd34be4d348e93c2` succeeded.
-- runtime-verified: 로그인한 운영 브라우저의 `/api/version?release=6fe596a`가 tree `c382ed857f9fe3e9da63842c8f5309be070c375e`를 반환해 제품 소스와 일치했다.
-- 이 상태 기록의 후속 문서 커밋은 별도 게시하지 않는다. 운영 기준은 위 제품 커밋이며 문서 전용 main 후속 커밋과 구분한다. [게시 증거](releases/2026-09-23-6fe596a.md).
+- 제품 소스: `a67a318abd024880389f5dde5e8923bc2ca60657` (PR #15 merged, main CI passed).
+- Sites 버전 21 published, 환경 revision 3 유지. 배포 `appgdep_6ab36c7589b881919fb9302d31532b86` succeeded.
+- runtime-verified: 로그인한 운영 브라우저의 `/api/version`가 tree `b57380bb9ade2e2aea7a1ee5fc8fcff92ace6b7f`를 반환해 제품 소스와 일치했다.
+- 이 상태 기록의 후속 문서 커밋은 별도 게시하지 않는다. 운영 기준은 위 제품 커밋이며 문서 전용 main 후속 커밋과 구분한다. [게시 증거](releases/2026-09-23-a67a318.md).
 
-## ODA 실사용 후속 보완 — 게시 준비
+## ODA 실사용 후속 보완 — 운영 적용
 
-사용자가 실제 ODA 오류 분석 뒤 구현을 승인했다. `fix/oda-execution-quality`에서 역할별 결과 계약·재작성/후속 무효화, 회의 실패 단계 재작성, 서버 단일 진행, 업종·측정 규칙, 사용량 진단을 보완했다. [상세](ODA-EXECUTION-FIXES.ko.md).
+사용자가 실제 ODA 오류 분석 뒤 구현을 승인했다. 역할별 결과 계약·재작성/후속 무효화, 회의 실패 단계 재작성, 서버 단일 진행, 업종·측정 규칙, 사용량 진단을 보완해 PR #15로 병합·게시했다. [상세](ODA-EXECUTION-FIXES.ko.md).
 
 - 테스트: passed, 21/21 suites (real SQLite/핸들러, mocked 모델 공급자).
 - Playwright: passed, 10/10 (real Chromium/로컬 D1, mocked 인증; 새 회의 검사는 응답/작업자 상태도 mocked).
 - TypeScript 및 build: passed, exit 0. lint gate: passed, errors106/기준108, warnings44/기준44.
 - 코드 검토의 후속 작업물 무효화와 재작성 UI 지적을 수정했다.
-- 커버리지 비율과 새 실제 모델 응답 검증: not_run. 구조 검증을 사실 정확성 검증으로 해석하지 않는다.
-- 기존 운영 버전은 위 20이며, 이 후속 변경의 merged/published/runtime-verified는 배포 기록에서 별도로 확정한다.
+- 커버리지 비율: not_run. 구조 검증을 사실 정확성 검증으로 해석하지 않는다.
+- 운영 화면에서 기존 Insight 재질문을 보완 필요로 차단하고 재작성 버튼을 제공하는 것을 확인했다. 실제 재작성 1건도 성공했다(23,216 tokens, 비용 미확인). 근거 구분과 30일 성숙 코호트 정의를 원문에서 확인했으며, 전체 캠페인 완료를 의미하지 않는다. [게시 기록](releases/2026-09-23-a67a318.md).
 
-## 이번 보완
+## 이전 버전 20의 보완
 
 1. 역할·바이럴 접수의 원자 저장, 멱등 복구, 활성 실행 전체 조회.
 2. 실패·취소·형식 오류를 포함한 사용량 원장, 수동 가격 버전과 nullable 비용, 설정 UI.
@@ -30,7 +30,7 @@
 
 상세와 적용 조건: [실행·사용량·작업물 보완](RELIABILITY.ko.md), [보안 경계](SECURITY-BOUNDARIES.ko.md).
 
-## 이번 검증
+## 이전 버전 20의 검증 기록
 
 | 검사 | 상태 | 근거 |
 |---|---|---|
