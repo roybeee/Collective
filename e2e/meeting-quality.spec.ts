@@ -8,10 +8,9 @@ test('회의 실패 단계만 재작성하고 브라우저는 진행 요청 없�
  const saved=await page.request.post('/api/action',{data:{action:'save_campaign',data:{brandId:'oda',title:'ODA 실패 복구 검증',goal:'실패 단계 복구 화면 검증',budget:0}}});
  expect(saved.status()).toBe(200);
  const {id}=await saved.json();
- await page.route('**/api/workspace',async route=>{
-  const response=await route.fetch();const body=await response.json();
-  await route.fulfill({response,json:{...body,connection:{...body.connection,configured:true,provider:'hermes'},worker:{registered:true,online:true,lastSeen:new Date().toISOString()}}});
- });
+ // route.fetch 대신 캠페인을 만든 뒤의 실제 응답을 미리 받아 두고 돌려준다(docs/E2E.ko.md). 테스트 중 워크스페이스는 바뀌지 않는다.
+ const workspace=await (await page.request.get('/api/workspace')).json();
+ await page.route('**/api/workspace',route=>route.fulfill({json:{...workspace,connection:{...workspace.connection,configured:true,provider:'hermes'},worker:{registered:true,online:true,lastSeen:new Date().toISOString()}}}));
  const meetingId='meeting-ui',stepId=meetingId+':discussion:content';
  const good=['cmo','insight','strategy','creative'].map((role,i)=>({id:meetingId+':discussion:'+role,role,phase:'discussion',status:'completed',tokens:100,retryAvailable:false,output:{position:`보존할 발언 ${i+1}`,evidence:'테스트 근거',challenge:'확인 필요',proposal:'실행 초안',respondsTo:[]}}));
  let meeting={id:meetingId,campaignId:id,campaignVersion:1,agenda:'실패 복구 테스트 회의',status:'failed',steps:[...good,{id:stepId,role:'content',phase:'discussion',status:'failed',error:'respondsTo: 앞선 완료 발언을 적어도 하나 지정해야 합니다.',tokens:50,retryAvailable:true}],createdAt:'2026-09-23T05:00:00.000Z',updatedAt:'2026-09-23T05:00:00.000Z',model:'hermes-agent',stopRequested:false,artifactIds:[],invalidatedRoles:[],error:'respondsTo 검증 실패'};
@@ -33,7 +32,7 @@ test('회의 실패 단계만 재작성하고 브라우저는 진행 요청 없�
  await expect.poll(()=>gets,{timeout:12000}).toBeGreaterThan(previousGets);
  expect(actions.some(action=>action.action==='advance')).toBe(false);
  await expect(page.getByText('보존할 발언 1',{exact:true})).toBeVisible();
- // 화면이 계속 조회하므로 닫는 순간 route.fetch 중인 처리기가 남을 수 있다. 끝날 때까지 기다린 뒤 닫는다(Response has been disposed 방지).
+ // 화면이 계속 조회하므로 닫는 순간 응답 중인 처리기가 남을 수 있다. 끝날 때까지 기다린 뒤 닫는다(Response has been disposed 방지).
  await page.unrouteAll({behavior:'wait'});
  await context.close();
 });
@@ -45,10 +44,9 @@ test('기준 자료가 바뀐 실패 회의는 재작성 대신 새 회의를 �
  const saved=await page.request.post('/api/action',{data:{action:'save_campaign',data:{brandId:'oda',title:'ODA 기준 변경 검증',goal:'기준 변경 안내 검증',budget:0}}});
  expect(saved.status()).toBe(200);
  const {id}=await saved.json();
- await page.route('**/api/workspace',async route=>{
-  const response=await route.fetch();const body=await response.json();
-  await route.fulfill({response,json:{...body,connection:{...body.connection,configured:true,provider:'hermes'},worker:{registered:true,online:true,lastSeen:new Date().toISOString()}}});
- });
+ // route.fetch 대신 캠페인을 만든 뒤의 실제 응답을 미리 받아 두고 돌려준다(docs/E2E.ko.md). 테스트 중 워크스페이스는 바뀌지 않는다.
+ const workspace=await (await page.request.get('/api/workspace')).json();
+ await page.route('**/api/workspace',route=>route.fulfill({json:{...workspace,connection:{...workspace.connection,configured:true,provider:'hermes'},worker:{registered:true,online:true,lastSeen:new Date().toISOString()}}}));
  const meetingId='meeting-stale';
  const good=['cmo','insight'].map((role,i)=>({id:meetingId+':discussion:'+role,role,phase:'discussion',status:'completed',tokens:100,retryAvailable:false,output:{position:`이어받을 발언 ${i+1}`,evidence:'테스트 근거',challenge:'확인 필요',proposal:'실행 초안',respondsTo:[]}}));
  const meeting={id:meetingId,campaignId:id,campaignVersion:1,agenda:'기준 변경 테스트 회의',status:'failed',stale:true,steps:[...good,{id:meetingId+':discussion:strategy',role:'strategy',phase:'discussion',status:'failed',error:'respondsTo ID 불일치: 지정한 발언 참조 1개가 앞선 완료 발언과 일치하지 않습니다.',tokens:50,retryAvailable:false}],createdAt:'2026-09-23T05:00:00.000Z',updatedAt:'2026-09-23T05:00:00.000Z',model:'hermes-agent',stopRequested:false,artifactIds:[],invalidatedRoles:[],error:'respondsTo ID 불일치'};

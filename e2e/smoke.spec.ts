@@ -144,3 +144,41 @@ test('사용량 단가 설정을 저장하고 API 기록을 확인한다', async
   await shot(page, testInfo, 'usage-pricing');
   await context.close();
 });
+
+// ux-9 권고 1·3과 권고 2의 제목 입력 확인(보관 기본값은 후속): 대시보드 표에는 삭제가 없고, 캠페인 목록의 '⋯' 메뉴에서만 연다.
+// 대화상자는 삭제 영향 조회 건수를 보여 주고, 작업물이 있으면 캠페인 제목을 그대로 입력해야 삭제 버튼이 열린다.
+test('캠페인 삭제는 목록 메뉴에서 건수를 확인하고 제목을 입력해야 한다', async ({browser}, testInfo) => {
+  test.setTimeout(30_000);
+  const {context, page} = await ownerPage(browser, testInfo, `e2e-delete-${testInfo.project.name}-${Date.now()}`);
+  await page.request.get('/api/workspace');
+  const title = `삭제 검증 ${testInfo.project.name}`;
+  const create = await page.request.post('/api/action', {data: {action: 'save_campaign', data: {brandId: 'ofd', title, goal: '삭제 전 영향 확인', budget: 0}}});
+  expect(create.status()).toBe(200);
+  const {id} = await create.json();
+  expect((await page.request.post('/api/action', {data: {action: 'save_artifact', campaignId: id, role: 'cmo', title: '삭제 확인 작업물', content: '삭제 전 건수 확인용 원문'}})).status()).toBe(200);
+
+  await page.goto('/');
+  const dashboard = page.locator('.campaign-table');
+  await expect(dashboard.getByRole('button', {name: / 열기$/}).first()).toBeVisible();
+  await expect(dashboard.getByRole('button', {name: / (삭제|더 보기)$/})).toHaveCount(0);
+
+  await page.goto('/?view=campaigns');
+  await page.getByRole('button', {name: title + ' 더 보기', exact: true}).click();
+  await page.getByRole('menuitem', {name: '삭제…', exact: true}).click();
+  const dialog = page.getByRole('alertdialog');
+  await expect(dialog.getByText('삭제: 작업물 1건', {exact: false})).toBeVisible();
+  await expect(dialog).toContainText('바이럴 출처 학습 규칙은 지우지 않고 종료 상태와 원 캠페인 삭제 표시로 남깁니다');
+  const confirm = dialog.getByRole('button', {name: '캠페인 삭제', exact: true});
+  const typed = dialog.getByLabel('캠페인 제목 확인', {exact: true});
+  await expect(confirm).toBeDisabled();
+  await typed.fill(title.slice(0, -1));
+  await expect(confirm).toBeDisabled();
+  await typed.fill(title);
+  await expect(confirm).toBeEnabled();
+  await shot(page, testInfo, 'delete-confirm');
+  await confirm.click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole('button', {name: title + ' 열기', exact: true})).toHaveCount(0);
+  expect((await page.request.get('/api/campaigns/' + id)).status()).toBe(404);
+  await context.close();
+});

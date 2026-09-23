@@ -18,8 +18,8 @@ node node_modules/@playwright/test/cli.js test -c playwright.auth.config.ts   # 
 
 - 서버는 Playwright가 `e2e/serve.mjs`로 직접 띄운다. 매 실행마다 `e2e/.state/`에 빈 로컬 D1을 만들고 `drizzle/*.sql`을 적용한 뒤 `wrangler dev --local`을 `127.0.0.1:8799`(`E2E_PORT`로 변경)에서 시작한다. 운영 D1/R2에는 연결하지 않는다.
 - 스크린샷(390×844 `mobile-*.png`, 1280×800 `desktop-*.png`), 실패 시 trace는 `e2e/artifacts/`에 남는다. 이 폴더와 `e2e/.state/`는 `.gitignore` 대상이라 빌드가 `dirty`로 표시되지 않는다.
-- 기본 설정(`playwright.config.ts`): 두 화면 크기(`mobile`, `desktop` 프로젝트) × 테스트 6개(`smoke` 4, `meeting-quality` 1, `execution` 1) = 12건.
-- 이메일 인증 설정(`playwright.auth.config.ts`): `email-auth` 1건(390px, HTTPS `127.0.0.1:8800`). 합계 13건.
+- 기본 설정(`playwright.config.ts`): 두 화면 크기(`mobile`, `desktop` 프로젝트) × 테스트 7개(`smoke` 5, `meeting-quality` 1, `execution` 1) = 14건.
+- 이메일 인증 설정(`playwright.auth.config.ts`): `email-auth` 1건(390px, HTTPS `127.0.0.1:8800`). 합계 15건.
 
 ## 검사 내용
 
@@ -30,9 +30,10 @@ node node_modules/@playwright/test/cli.js test -c playwright.auth.config.ts   # 
 | 로그인 헤더 없음 | 화면에 "로그인이 필요합니다" 경고, `GET /api/workspace` 401 | real (헤더를 붙이지 않음) |
 | 이전 원문·성과 수정 | 버전 비교, 미확인 비용 보존, 동시 수정 거부 | real Chromium/로컬 D1, mocked 인증 |
 | 사용량 가격 | 명시한 모델별 단가 저장 | real Chromium/로컬 D1, mocked 인증 |
+| 캠페인 삭제(목록 ⋯ 메뉴) | 대시보드 표에 삭제·더 보기 없음, 삭제 영향 조회 건수(작업물 1건)·결정 7 안내 표시, 제목 불일치 시 비활성·일치 시 활성, 삭제 뒤 `GET /api/campaigns/[id]` 404 | real Chromium/로컬 D1, mocked 인증 |
 | 회의 실패 단계 재작성 | 완료 발언 유지, 단계/시도 지정 POST, 이후 GET 조회만 발생 | real Chromium, mocked 인증·회의 응답·작업자 상태 |
 | 확인 사실 → PNG 제작 → 새로고침 뒤 내려받기 | 확인 사실 등록, `save_creative` 200, `/api/execution/asset` 200과 1080×1080 PNG, 새로고침 뒤 내려받기 링크 유지, 발행 이력 없음 | real Chromium Canvas·로컬 D1/R2 / mocked 인증. 외부 게시 없음 |
-| 이메일 로그인·초대·세션 유지·권한 제한·폐기(별도 설정) | 관리자 초기 등록, 쿠키 속성, 새로고침 유지, 초대·멤버403, 직원 화면의 캠페인 삭제·채널 연결 버튼 미표시(관리자 화면에는 삭제 표시), 위조 GPT 헤더401, 재사용401, 재설정·해제 뒤 세션401 | real HTTPS Chromium·로컬 workerd/D1·native scrypt. 실제 메일·운영 서버 호출 없음 |
+| 이메일 로그인·초대·세션 유지·권한 제한·폐기(별도 설정) | 관리자 초기 등록, 쿠키 속성, 새로고침 유지, 초대·멤버403, 직원 화면의 캠페인 삭제·채널 연결 버튼 미표시(관리자 화면의 캠페인 목록에는 더 보기 메뉴 표시), 위조 GPT 헤더401, 재사용401, 재설정·해제 뒤 세션401 | real HTTPS Chromium·로컬 workerd/D1·native scrypt. 실제 메일·운영 서버 호출 없음 |
 
 ## 실제(real)와 모의(mocked)의 경계
 
@@ -42,6 +43,10 @@ node node_modules/@playwright/test/cli.js test -c playwright.auth.config.ts   # 
 - 운영 사이트에 대한 E2E는 없다. 운영 확인은 `docs/PUBLISH.ko.md`의 `/api/version` 검증과 게시 기록에 남긴 운영 검사뿐이다.
 
 소유자 격리는 단위·통합 테스트에도 있다(`tests/workflow.mjs`, `tests/archive.test.mjs`, `tests/brief-workflow.mjs`, `tests/delete-campaign.test.mjs`, `tests/meetings.test.mjs`, `tests/learning.test.mjs`, `tests/measurements.test.mjs`). 이들은 라우트 핸들러를 SQLite와 모의 HERMES로 실행한다(mocked).
+
+## 요청 가로채기(page.route) 규칙
+
+`page.route` 처리기 안에서 `route.fetch()`로 실제 응답을 받아 고쳐 돌려주지 않는다. 테스트에 필요한 실제 응답은 가로채기 전에 `page.request.get`으로 미리 받아 두고, 처리기에서는 `route.fulfill({json:...})`로 바로 돌려준다(`e2e/navigation.spec.ts`의 폴링 테스트, `e2e/meeting-quality.spec.ts`). 부하가 걸린 러너에서 `route.fetch`가 응답을 돌려주지 않고 멈춘 적이 있고(그러면 화면의 폴링이 끝나지 않은 요청에 막힌다), 화면이 계속 조회하는 동안 컨텍스트를 닫으면 진행 중인 `route.fetch` 응답이 폐기돼 `Response has been disposed` 경합이 난다. 응답이 테스트 도중 바뀌어야 하면 처리기 안에서 `route.fetch`가 아니라 `page.request.get`으로 새로 받고, 그 `await`가 끝난 뒤 `fulfill`한다. 테스트 끝에서는 지금처럼 `page.unrouteAll({behavior:'wait'})`로 처리기가 끝나기를 기다린 뒤 컨텍스트를 닫는다.
 
 ## 관측 사항
 
