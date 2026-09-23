@@ -7,12 +7,14 @@ import {Input} from '@/components/ui/input';
 import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select';
 import type {ProviderUsage,UsagePricing,UsageProvider} from '@/lib/usage-ledger';
 import type {ModelChange} from '@/lib/usage-model-alarm';
+import type {GatewayChange} from '@/lib/gateway-snapshot';
 import {filterUsage,isModelAlias,modelLabel,summarizeUsage,usageKindNames,type UsageFilter} from '@/lib/usage-summary';
 import {roles} from '@/lib/agency';
 import {adminRequestNote,useAuthState,useCanManage} from './auth-client';
 
 type CampaignName={id:string;title:string};
-type UsageData={entries:ProviderUsage[];pricing:UsagePricing[];notice:string;campaigns:CampaignName[];modelChanges:ModelChange[]};
+type GatewayStatus={snapshot:{date:string;takenAt:string;status:'passed'|'blocked';hash:string|null;blockedReason:string|null}|null;changes:GatewayChange[]};
+type UsageData={entries:ProviderUsage[];pricing:UsagePricing[];notice:string;campaigns:CampaignName[];modelChanges:ModelChange[];gateway:GatewayStatus|null};
 const statusNames:Record<string,string>={completed:'완료',failed:'실패',error:'실패',cancelled:'취소',canceled:'취소',stopped:'중지',interrupted:'중단',incomplete:'미완료'};
 const outcomeNames:Record<string,string>={completed:'저장 완료 · 내용 검토 별도',invalid_output:'결과 요건 미충족',cancelled:'취소',provider_failed:'공급자 실행 실패',storage_failed:'결과 저장 실패'};
 const count=(value:number|null)=>value===null?'미확인':value.toLocaleString('ko-KR');
@@ -29,7 +31,7 @@ async function usageData():Promise<UsageData>{
  const response=await fetch('/api/usage',{cache:'no-store'}),data=await response.json() as Partial<UsageData>&{error?:string};
  if(!response.ok)throw new Error(data.error||'사용량을 불러오지 못했습니다.');
  if(!Array.isArray(data.entries)||!Array.isArray(data.pricing))throw new Error('사용량 응답을 확인하지 못했습니다.');
- return {...data,campaigns:Array.isArray(data.campaigns)?data.campaigns:[],modelChanges:Array.isArray(data.modelChanges)?data.modelChanges:[]} as UsageData;
+ return {...data,campaigns:Array.isArray(data.campaigns)?data.campaigns:[],modelChanges:Array.isArray(data.modelChanges)?data.modelChanges:[],gateway:data.gateway&&Array.isArray(data.gateway.changes)?data.gateway:null} as UsageData;
 }
 function UsageRows({entries,campaigns}:{entries:ProviderUsage[];campaigns:CampaignName[]}){
  return <div className="mt-5 overflow-x-auto"><table className="w-full text-left text-sm" style={{minWidth:940}}>
@@ -61,6 +63,16 @@ function ModelAlarm({changes}:{changes:ModelChange[]}){
  return <div className="notice mt-4" role="status" aria-label="보고 모델 변경 경보">
   <p className="flex flex-wrap items-center gap-2"><Badge variant="destructive"><TriangleAlert/>모델 변경 {changes.length}건</Badge>공급자가 보고한 모델이 바뀌었습니다. 같은 지시라도 결과·비용이 달라질 수 있으니 최근 작업물을 확인하세요.</p>
   <ul className="mt-2 space-y-1 text-sm">{changes.slice(0,5).map(change=><li key={change.id}><time dateTime={change.observedAt}>{new Date(change.observedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})}</time> · {providerName(change.provider)}: {modelLabel(change.from)} → {modelLabel(change.to)}{change.kind?` (처음 관측: ${usageKindNames[change.kind]||change.kind})`:''}</li>)}</ul>
+ </div>;
+}
+// 게이트웨이 상태 스냅샷(F2b). 운영 HERMES 연결의 기능·도구·모델 응답 해시를 하루 1회 비교한다. 원문·키·주소는 보이지 않는다.
+const sectionNames:Record<string,string>={capabilities:'기능',toolsets:'도구',models:'모델'};
+function GatewayAlarm({gateway}:{gateway:GatewayStatus|null}){
+ const snapshot=gateway?.snapshot,changes=gateway?.changes||[];
+ if(!snapshot&&!changes.length)return null;
+ return <div className="notice mt-4" role="status" aria-label="게이트웨이 상태 스냅샷">
+  <p className="flex flex-wrap items-center gap-2">{changes.length>0&&<Badge variant="destructive"><TriangleAlert/>게이트웨이 변경 {changes.length}건</Badge>}게이트웨이 스냅샷{snapshot?` ${snapshot.date}(UTC) · ${snapshot.status==='passed'?`기록 ${snapshot.hash?.slice(0,12)}`:`막힘: ${snapshot.blockedReason||'원인 미상'}`}`:' 없음'}</p>
+  {changes.length>0&&<ul className="mt-2 space-y-1 text-sm">{changes.slice(0,3).map(change=><li key={change.id}>{change.fromDate} → {change.toDate}: {change.sections.map(s=>`${sectionNames[s.section]||s.section}(추가 ${s.added.length}·삭제 ${s.removed.length}·변경 ${s.changed.length}${s.truncated?' 이상':''})`).join(', ')}</li>)}</ul>}
  </div>;
 }
 function roleOptions(entries:ProviderUsage[]){
@@ -124,7 +136,7 @@ export function UsagePanel(){
   <p className="notice">{data?.notice||'비용은 직접 등록한 단가로 계산한 추정치입니다. 도구 요금·할인·캐시 요금·세금은 포함하지 않습니다.'}</p>
   {error&&<p className="form-error" role="alert">{error}</p>}
   {loading&&!data?<p role="status">사용량 불러오는 중…</p>:data&&<>
-   <ModelAlarm changes={data.modelChanges}/>
+   <ModelAlarm changes={data.modelChanges}/><GatewayAlarm gateway={data.gateway}/>
    {!data.pricing.length&&<p className="subtle-note">아직 등록한 단가가 없습니다. 기반 모델과 입력·출력 토큰, 적용 단가가 확인되기 전의 비용은 미확인으로 남습니다.</p>}
    {data.entries.length?<>
     <UsageFilters entries={data.entries} campaigns={data.campaigns} filter={filter} onChange={next=>{setFilter(next);setVisible(30)}}/>
