@@ -2,7 +2,7 @@
 
 > 작업 시작 시 읽고, 아래 "확인 명령"으로 실제 원격 상태와 대조한다. 다르면 원격이 맞다. 용어는 `AGENTS.md`의 상태 어휘를 따른다.
 
-마지막 갱신: 2026-09-23 02:50 UTC (Claude, 브랜치 `docs/viral-discovery-rerun`)
+마지막 갱신: 2026-09-23 03:20 UTC (Claude, 브랜치 `docs/source-paths-preview`)
 
 ## 현재 단계
 
@@ -12,16 +12,16 @@ Phase 0·1A·1B와 게이트/CI 통합(PR #1·#2·#4), 배포 신원 확인(PR #
 
 | 항목 | 상태 | 근거 | 증거 |
 |---|---|---|---|
-| `origin/main` | `95070ee65776e5f8af48444ab1b2f58eecd2099d` (PR #7 병합) | real | `git ls-remote origin refs/heads/main` (2026-09-23 00:56 UTC) |
-| `origin/main^{tree}` | `378b2dbd523b44692a8c27966797952427bf2062` | real | `git rev-parse 'origin/main^{tree}'` |
+| `origin/main` | `fa8aeb8` (PR #11 병합) | real | `git ls-remote origin refs/heads/main` (2026-09-23 03:20 UTC) |
+| `origin/main^{tree}` | `faf527147d2af4d3a6ea7cde3f1891758d3239d6` | real | `git rev-parse 'origin/main^{tree}'` |
 | 마지막 운영 배포 | `runtime-verified` — 기록된 사실(2026-09-23) | real | `ea205b1` → Sites 버전 19, deployment `appgdep_6ab2c5735b0c8191b99ac67dba10975b`, `/api/version` tree `c31a5271…` 확인 2026-09-23 03:12 KST (소유자 기록) |
-| main 이동 여부 | 위 배포 뒤 main이 PR #6·#7로 이동했다. 운영은 새 main 기준으로 `runtime-verified`가 아니다(문서·테스트·CI만 바뀌어 앱 동작은 같다) | real | 위 두 명령 |
+| main 이동 여부 | 위 배포 뒤 main이 PR #6·#7로 이동했다. 운영은 새 main 기준으로 `runtime-verified`가 아니다(PR #11이 바이럴 조사 지시문을 바꿨으므로 앱 동작이 다르다. 게시가 필요하다) | real | 위 두 명령 |
 | typecheck | passed | real | `node node_modules/typescript/bin/tsc --noEmit` exit 0 |
 | 단위·통합 테스트 | passed | mocked (HERMES/외부 fetch 스텁, SQLite) | `node scripts/test.mjs` 11/11 스위트, 509 assertions |
 | lint 기준선 | passed | real | `node scripts/lint-gate.mjs` errors 108/108, warnings 44/44 |
 | E2E 스모크(로컬) | passed, 비차단 | real 브라우저·빌드·로컬 D1 / mocked 인증 헤더 | `node node_modules/@playwright/test/cli.js test` 4/4 × 3회 (`docs/E2E.ko.md`) |
 
-재게시 여부는 소유자가 `docs/PUBLISH.ko.md` 사전 점검 뒤 결정한다. 앱 코드가 바뀌지 않았으므로 지금은 재게시할 이유가 없다.
+재게시 여부는 소유자가 `docs/PUBLISH.ko.md` 사전 점검 뒤 결정한다. PR #11로 앱 코드가 바뀌어 재게시가 필요하다.
 
 ## 막힌 것 · 미해결
 
@@ -36,11 +36,11 @@ Phase 0·1A·1B와 게이트/CI 통합(PR #1·#2·#4), 배포 신원 확인(PR #
 
 | PR | 브랜치 | 내용 | 상태 |
 |---|---|---|---|
-| — | `docs/viral-discovery-rerun` | viral_discovery 재실행 관측 기록 | PR 진행 중 |
+| — | `docs/source-paths-preview` | 원문 확인 경로 실측·미리 검증 기록 | PR 진행 중 |
 
 ## 다음 행동
 
-1. HERMES 검색 도구는 연결돼 있고 끝까지 동작한다(real). 2026-09-23 02:38 UTC `viral_discovery` 재실행이 `completed`로 끝났고, 실존하는 YouTube 사례 3건을 반환했다(40,150 토큰, 관측 문서 6절). 남은 한계는 Instagram·TikTok·Reddit 원문을 확인하지 못한다는 것이다(firecrawl 미지원, browser 백엔드 `off`). 이 채널들이 필요하면 browser 백엔드나 ASIDE 경로를 켤지 소유자가 결정한다. 게이트가 배포된 상태에서 quality를 실행하면 `reportedVerdict`도 관측할 수 있다.
+1. **PR #11(바이럴 조사 원문 확인 경로) 게시 대기.** `merged`(main `fa8aeb8`, tree `faf52714…`)이지만 운영은 아직 `ea205b1` 빌드다. 게시 전 미리 검증(real, HERMES 직접 실행 1회 146,001 토큰): Instagram 4건과 TikTok 2건 원문을 확인했고 6건 모두 실존한다(관측 문서 7절). `docs/PUBLISH.ko.md`에 따라 게시는 별도 세션에서 크레딧을 점검한 뒤 진행한다. Reddit·조회수는 여전히 확인할 수 없다(로그인 세션이나 주거용 IP 필요).
 2. 재게시가 필요하면 `docs/PUBLISH.ko.md` 사전 점검(크레딧·예약 실행) 후 단독으로 진행하고 `docs/releases/`에 기록한다.
 3. `e2e-smoke`가 `docs/E2E.ko.md`의 승격 기준을 채우면 차단 게이트로 올리는 PR을 연다.
 
