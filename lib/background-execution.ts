@@ -3,6 +3,7 @@ import {executeRole} from './role-execution';
 import {executeMeeting} from './meeting-execution';
 import {executeLearning} from './learning-execution';
 import {executeBrief} from './brief-execution';
+import {advanceEvalRun} from './eval-server';
 import {roles} from './agency';
 import type {Meeting} from './meetings';
 import type {BriefDraft} from './brief';
@@ -13,9 +14,11 @@ type Attempt={id:string;attempts:number;retryAt:string;error?:string};
 const active=['starting','queued','in_progress','uncertain'];
 
 async function pendingWork(owner:string):Promise<Work[]>{
- const [jobs,meetings,drafts,sequences]=await Promise.all([
+ const [jobs,meetings,drafts,sequences,evalRuns]=await Promise.all([
   database().prepare("SELECT id,role,provider_id,campaign_id FROM jobs WHERE owner=? AND status IN ('starting','queued','in_progress','uncertain') ORDER BY created_at,id").bind(owner).all<{id:string;role:string;provider_id:string|null;campaign_id:string}>(),
   listRecords<Meeting>(owner,'team_meeting'),listRecords<BriefDraft & {providerId?:string}>(owner,'brief_draft'),listRecords<CampaignSequence>(owner,'campaign_sequence'),
+  // 평가 run(F1b-2)은 id만 읽는다. 케이스 결과가 커질 수 있어 매 tick 전체를 파싱하지 않는다.
+  database().prepare("SELECT json_extract(data,'$.id') AS id FROM records WHERE owner=? AND kind='eval_run' AND json_extract(data,'$.status') IN ('queued','running')").bind(owner).all<{id:string}>(),
  ]);
  const work:Work[]=jobs.results.flatMap(job=>{
   const action=job.provider_id?'poll':'recover';
@@ -33,6 +36,9 @@ async function pendingWork(owner:string):Promise<Work[]>{
   if(jobs.results.some(j=>j.campaign_id===sequence.campaignId))continue;
   work.push({id:'sequence:'+sequence.campaignId,run:()=>executeRole(owner,{action:'advance_sequence',campaignId:sequence.campaignId})});
  }
+ // 평가 run은 tick마다 케이스 하나를 제출하거나 조회한다. 진행 중 평가 run은 소유자당 1개(EVAL_MAX_ACTIVE_RUNS)라 순번에 평가 작업은 최대 1개이고,
+ // 운영 작업이 차례를 기다리는 간격은 평가 때문에 한 순번에 한 tick만 늘어난다.
+ for(const run of evalRuns.results)work.push({id:'eval:'+run.id,run:()=>advanceEvalRun(owner,run.id)});
  return work.sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
 }
 
