@@ -1,4 +1,5 @@
 import {ApiError,database,listRecords,readRecord,recordStatement,stamp,str} from './server';
+import {isModelAlias} from './usage-summary';
 
 export type UsageProvider='hermes'|'openai';
 export type UsageOutcome='completed'|'invalid_output'|'cancelled'|'provider_failed'|'storage_failed';
@@ -26,6 +27,7 @@ function rate(value:unknown){
 }
 export function validateUsagePricing(input:Record<string,unknown>):UsagePricing{
  const provider=providerName(input.provider),model=str(input.model,'실제 모델 ID',200,true);
+ if(isModelAlias(provider,model))throw new ApiError(400,'HERMES gateway 별칭에는 모델 단가를 적용할 수 없습니다. 기반 모델이 보고된 후 등록하세요.');
  const priceVersion=str(input.priceVersion,'단가 버전',100,true),currency=str(input.currency,'통화',3,true);
  if(!/^[A-Z]{3}$/.test(currency))throw new ApiError(400,'통화는 USD처럼 대문자 3자로 입력하세요.');
  const source=str(input.source,'단가 출처',2000,true);
@@ -34,6 +36,7 @@ export function validateUsagePricing(input:Record<string,unknown>):UsagePricing{
  return {provider,model,priceVersion,currency,inputPerMillion:rate(input.inputPerMillion),outputPerMillion:rate(input.outputPerMillion),source,configuredAt:stamp()};
 }
 export function estimateUsageCost(provider:UsageProvider,model:string|null,input:number|null,output:number|null,pricing?:UsagePricing){
+ if(isModelAlias(provider,model))return null;
  if(!pricing||pricing.provider!==provider||pricing.model!==model||input===null||output===null)return null;
  const amount=(input*pricing.inputPerMillion+output*pricing.outputPerMillion)/1000000;
  return Number.isFinite(amount)?amount:null;
@@ -44,7 +47,10 @@ export async function saveUsagePricing(owner:string,input:Record<string,unknown>
  return pricing;
 }
 export const listUsagePricing=(owner:string)=>listRecords<UsagePricing>(owner,'usage_pricing');
-export const listProviderUsage=(owner:string)=>listRecords<ProviderUsage>(owner,'provider_usage');
+function displayUsage(entry:ProviderUsage):ProviderUsage{
+ return isModelAlias(entry.provider,entry.model)?{...entry,costAmount:null,currency:null,priceVersion:null,costStatus:'unpriced',pricingSource:null,inputPricePerMillion:null,outputPricePerMillion:null}:entry;
+}
+export const listProviderUsage=async(owner:string)=>(await listRecords<ProviderUsage>(owner,'provider_usage')).map(displayUsage);
 async function matchingPricing(owner:string,provider:UsageProvider,model:string|null){
  if(!model)return undefined;
  try{return await readRecord<UsagePricing>(owner,'usage_pricing',provider+':'+model)}
@@ -59,7 +65,7 @@ export function normalizeProviderUsage(provider:UsageProvider,providerRunId:stri
  // Keep structured reason codes, never arbitrary provider messages or result text.
  const terminalReason=typeof reason==='string'&&/^[a-zA-Z0-9_.:-]{1,120}$/.test(reason)?reason:status;
  const costAmount=estimateUsageCost(provider,model,inputTokens,outputTokens,pricing);
- const matched=pricing?.provider===provider&&pricing.model===model?pricing:undefined;
+ const matched=!isModelAlias(provider,model)&&pricing?.provider===provider&&pricing.model===model?pricing:undefined;
  return {id:provider+':'+providerRunId,provider,providerRunId,model,inputTokens,outputTokens,totalTokens,status,terminalReason,observedAt:stamp(),costAmount,currency:matched?.currency??null,priceVersion:matched?.priceVersion??null,costStatus:costAmount===null?'unpriced':'estimated',pricingSource:matched?.source??null,inputPricePerMillion:matched?.inputPerMillion??null,outputPricePerMillion:matched?.outputPerMillion??null,domainOutcome:null,outcomeObservedAt:null};
 }
 export async function recordProviderUsage(owner:string,provider:UsageProvider,providerRunId:string,response:unknown){
@@ -75,7 +81,7 @@ export async function recordProviderUsage(owner:string,provider:UsageProvider,pr
   .bind(entry.model,entry.inputTokens,entry.outputTokens,entry.totalTokens,`${owner}:provider_usage:${entry.id}`,owner,entry.model,entry.model).run();
  await database().prepare("UPDATE records SET data=json_set(data,'$.costAmount',(json_extract(data,'$.inputTokens')*json_extract(data,'$.inputPricePerMillion')+json_extract(data,'$.outputTokens')*json_extract(data,'$.outputPricePerMillion'))/1000000.0,'$.costStatus','estimated') WHERE id=? AND owner=? AND kind='provider_usage' AND json_extract(data,'$.costAmount') IS NULL AND json_extract(data,'$.inputTokens') IS NOT NULL AND json_extract(data,'$.outputTokens') IS NOT NULL AND json_extract(data,'$.inputPricePerMillion') IS NOT NULL AND json_extract(data,'$.outputPricePerMillion') IS NOT NULL")
   .bind(`${owner}:provider_usage:${entry.id}`,owner).run();
- return readRecord<ProviderUsage>(owner,'provider_usage',entry.id);
+ return displayUsage(await readRecord<ProviderUsage>(owner,'provider_usage',entry.id));
 }
 export async function saveJobUsageTokens(owner:string,jobId:string,total:unknown){
  const tokens=tokenCount(total);if(tokens===null)return;

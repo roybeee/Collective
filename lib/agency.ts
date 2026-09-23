@@ -1,7 +1,7 @@
 import type {CampaignPlan,DraftMeta} from './brief';
 export type Brand = {intake?:import('./archive').BrandIntake;id:string; name:string; short:string; category:string; color:string; bg:string; description:string; audience:string; tone:string; constraints:string; knowledge:string};
 export type Campaign = {storeId?:string;storeExperimentId?:string;plan?:CampaignPlan;draftMeta?:DraftMeta;id:string; brandId:string; title:string; goal:string; audience:string; channels:string; stores:string; products:string; budget:number; startDate:string; endDate:string; constraints:string; sources:string; status:string; version:number; createdAt:string; updatedAt:string;};
-export type Artifact = {id:string; campaignId:string; role:string; title:string; content:string; status:string; version:number; origin:string; createdAt:string};
+export type Artifact = {campaignVersion?:number; outputContractVersion?:string; id:string; campaignId:string; role:string; title:string; content:string; status:string; version:number; origin:string; createdAt:string};
 export type Run = {id:string; campaignId:string; role:string; status:string; error:string|null; createdAt:string; model:string; tokens:number};
 export type Metric = {id:string; campaignId:string; period:string; revenue:number|null; variableCosts:number|null; adSpend:number|null; productionCost:number|null; orders:number|null; baselineContribution:number|null; notes:string;schemaVersion?:2;version?:number;periodStart?:string;periodEnd?:string;scope?:string;source?:string;definition?:string;method?:'manual'|'export';updatedAt?:string};
 export type Event = {id:string; campaignId:string; message:string; createdAt:string};
