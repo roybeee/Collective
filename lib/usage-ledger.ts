@@ -1,5 +1,5 @@
 import {ApiError,database,listRecords,readRecord,recordStatement,stamp,str} from './server';
-import {isModelAlias} from './usage-summary';
+import {aliasReestimate,isModelAlias,type AliasModelChange,type AliasPricing,type AliasReestimate} from './usage-summary';
 import {APP_TREE} from './app-version';
 import {observeReportedModelSafely} from './usage-model-alarm';
 
@@ -22,10 +22,10 @@ export type ProviderUsage={
  inputTokens:number|null;outputTokens:number|null;totalTokens:number|null;
  status:string;terminalReason:string;observedAt:string;
  costAmount:number|null;currency:string|null;priceVersion:string|null;
- costStatus:'estimated'|'unpriced';pricingSource:string|null;
+ costStatus:'estimated'|'unpriced'|'declared_estimate'|'reestimated';pricingSource:string|null;
  inputPricePerMillion:number|null;outputPricePerMillion:number|null;
  domainOutcome:UsageOutcome|null;outcomeObservedAt:string|null;
-}&Partial<UsageJoinKeys>&{superseded?:UsageSuperseded};
+}&Partial<UsageJoinKeys>&{superseded?:UsageSuperseded}&Partial<AliasReestimate>;
 // 화면 표시용 판정(저장하지 않음): 작업물이 이전 버전이 됐거나(outdated) 브리프가 바뀌어 실행 기준이 무효가 됐다(brief_changed).
 export type UsageSuperseded='outdated'|'brief_changed'|null;
 const terminalStatuses=new Set(['completed','failed','error','cancelled','canceled','stopped','interrupted','incomplete']);
@@ -62,10 +62,47 @@ export async function saveUsagePricing(owner:string,input:Record<string,unknown>
  return pricing;
 }
 export const listUsagePricing=(owner:string)=>listRecords<UsagePricing>(owner,'usage_pricing');
-function displayUsage(entry:ProviderUsage):ProviderUsage{
- return isModelAlias(entry.provider,entry.model)?{...entry,costAmount:null,currency:null,priceVersion:null,costStatus:'unpriced',pricingSource:null,inputPricePerMillion:null,outputPricePerMillion:null}:entry;
+// 별칭 단가 선언(loop-5). 소유자가 별칭(hermes-agent) 뒤의 기반 모델·단가·근거·적용 시작일을 선언한다. 같은 적용 시작일은 덮어쓴다.
+const DAY=/^\d{4}-\d{2}-\d{2}$/;
+export function validateAliasPricing(input:Record<string,unknown>):AliasPricing{
+ const baseModel=str(input.baseModel,'기반 모델명',200,true);
+ if(isModelAlias('hermes',baseModel))throw new ApiError(400,'기반 모델명에는 별칭이 아니라 실제 모델 ID를 입력하세요.');
+ const priceVersion=str(input.priceVersion,'단가 버전',100,true),currency=str(input.currency,'통화',3,true),source=str(input.source,'단가 근거',2000,true),effectiveFrom=str(input.effectiveFrom,'적용 시작일',10,true);
+ if(!/^[A-Z]{3}$/.test(currency))throw new ApiError(400,'통화는 USD처럼 대문자 3자로 입력하세요.');
+ let url:URL;try{url=new URL(source)}catch{throw new ApiError(400,'단가 근거의 HTTPS 주소를 입력하세요.')}
+ if(url.protocol!=='https:'||url.username||url.password)throw new ApiError(400,'단가 근거의 HTTPS 주소를 입력하세요.');
+ const day=Date.parse(effectiveFrom+'T00:00:00Z');
+ if(!DAY.test(effectiveFrom)||!Number.isFinite(day)||new Date(day).toISOString().slice(0,10)!==effectiveFrom)throw new ApiError(400,'적용 시작일을 YYYY-MM-DD 형식의 날짜로 입력하세요.');
+ return {provider:'hermes',alias:'hermes-agent',baseModel,priceVersion,currency,inputPerMillion:rate(input.inputPerMillion),outputPerMillion:rate(input.outputPerMillion),source,effectiveFrom,declaredAt:stamp()};
 }
-export const listProviderUsage=async(owner:string)=>(await listRecords<ProviderUsage>(owner,'provider_usage')).map(displayUsage);
+export async function saveAliasPricing(owner:string,input:Record<string,unknown>){
+ const pricing=validateAliasPricing(input);
+ await recordStatement(owner,'usage_alias_pricing',`${pricing.provider}:${pricing.alias}:${pricing.effectiveFrom}`,pricing).run();
+ return pricing;
+}
+export const listAliasPricing=(owner:string)=>listRecords<AliasPricing>(owner,'usage_alias_pricing');
+// 읽을 때 추정에 쓰는 선언과 경보 시각. 선언이 없으면 경보는 읽지 않는다.
+// 경보: 보고 모델 변경(model_change)과 게이트웨이 스냅샷의 models 섹션 변경(gateway_change, F2b). 결정 10으로 HERMES는 별칭만 보고하므로 기반 모델 교체는 뒤쪽으로만 드러난다(GROWTH-PLAN 설계 원칙 7).
+export async function aliasPricingContext(owner:string){
+ const declarations=await listAliasPricing(owner);
+ if(!declarations.length)return {declarations,changes:[] as AliasModelChange[]};
+ const [models,gateway]=await Promise.all([database().prepare("SELECT json_extract(data,'$.provider') AS provider,json_extract(data,'$.observedAt') AS observedAt FROM records WHERE owner=? AND kind='model_change'").bind(owner).all<AliasModelChange>(),database().prepare("SELECT 'hermes' AS provider,json_extract(data,'$.detectedAt') AS observedAt FROM records WHERE owner=? AND kind='gateway_change' AND EXISTS (SELECT 1 FROM json_each(data,'$.sections') WHERE json_extract(value,'$.section')='models')").bind(owner).all<AliasModelChange>()]);
+ return {declarations,changes:[...models.results,...gateway.results]};
+}
+type AliasContext=Awaited<ReturnType<typeof aliasPricingContext>>;
+// 별칭이 아닌 행(loop-5 권고 2): 관측 때 단가가 없어 원장 금액이 비었고 입력·출력 토큰을 알면, 지금 등록된 같은 공급자·모델 단가로 읽을 때 재추정한다(costStatus 'reestimated'). 원장은 바꾸지 않는다.
+function laterPriced(entry:ProviderUsage,prices:Map<string,UsagePricing>):ProviderUsage{
+ const price=entry.costAmount===null&&entry.model?prices.get(entry.provider+':'+entry.model):undefined,amount=price?estimateUsageCost(entry.provider,entry.model,entry.inputTokens,entry.outputTokens,price):null;
+ return price&&amount!==null?{...entry,costStatus:'reestimated',reestimatedCost:amount,reestimatePriceVersion:price.priceVersion,reestimateCurrency:price.currency,reestimateSource:price.source,reestimateNote:null}:entry;
+}
+// 별칭 행은 원장 금액을 보이지 않는다. 선언이 있으면 원장 원본은 두고 reestimatedCost·reestimatePriceVersion을 덧붙인다(costStatus 'declared_estimate').
+function displayUsage(entry:ProviderUsage,alias?:AliasContext,prices?:Map<string,UsagePricing>):ProviderUsage{
+ if(!isModelAlias(entry.provider,entry.model))return prices?laterPriced(entry,prices):entry;
+ const shown:ProviderUsage={...entry,costAmount:null,currency:null,priceVersion:null,costStatus:'unpriced',pricingSource:null,inputPricePerMillion:null,outputPricePerMillion:null};
+ const re=alias?aliasReestimate(entry,alias.declarations,alias.changes):null;
+ return re?{...shown,...re,costStatus:re.reestimatedCost===null?'unpriced':'declared_estimate'}:shown;
+}
+export const listProviderUsage=async(owner:string)=>{const [rows,alias,pricing]=await Promise.all([listRecords<ProviderUsage>(owner,'provider_usage'),aliasPricingContext(owner),listUsagePricing(owner)]);const prices=new Map(pricing.map(p=>[p.provider+':'+p.model,p]));return rows.map(e=>displayUsage(e,alias,prices))};
 async function matchingPricing(owner:string,provider:UsageProvider,model:string|null){
  if(!model)return undefined;
  try{return await readRecord<UsagePricing>(owner,'usage_pricing',provider+':'+model)}

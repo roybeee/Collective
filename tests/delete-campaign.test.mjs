@@ -138,6 +138,11 @@ const campaignWith=async title=>(await act('save_campaign',{data:{brandId:'ofd',
 const limitsOnly=await campaignWith('한도만 저장');await put('execution_limits',limitsOnly,{campaignId:limitsOnly,maxPlannedCostKRW:0,version:1},limitsOnly);
 check('campaign with only publish limits can be deleted',(await act('delete_campaign',{id:limitsOnly,version:1,confirmed:true})).status===200&&!has('campaign',limitsOnly));
 check('publish limits removed with the campaign',!has('execution_limits',limitsOnly));
+// 캠페인 월 토큰 상한(token_budget id campaign:<캠페인>, loop-4)은 캠페인과 함께 지운다. 워크스페이스 상한(campaignId null)은 캠페인과 무관해 남는다.
+const budgeted=await campaignWith('토큰 상한');const budgetRow=(campaignId,monthlyTokens)=>({scope:campaignId?'campaign':'workspace',campaignId,monthlyTokens,updatedAt:'2026-09-24T00:00:00.000Z',updatedBy:null});
+await put('token_budget','campaign:'+budgeted,budgetRow(budgeted,1000));await put('token_budget','workspace',budgetRow(null,5000));
+check('deletion preview counts the campaign token budget',(await preview(budgeted)).data.deleted.token_budget===1);
+check('campaign token budget is removed with the campaign and the workspace budget stays',(await act('delete_campaign',{id:budgeted,version:1,confirmed:true})).status===200&&!has('token_budget','campaign:'+budgeted)&&has('token_budget','workspace'));
 const attempted=await campaignWith('발행 시도');await put('execution_limits',attempted,{campaignId:attempted,version:1},attempted);await put('execution_publication','attempt',{id:'attempt',campaignId:attempted,status:'pending'},attempted);
 check('publication attempt still blocks deletion',(await act('delete_campaign',{id:attempted,version:1,confirmed:true})).status===409&&has('campaign',attempted)&&has('execution_limits',attempted));
 const attemptedPlan=(await preview(attempted)).data;

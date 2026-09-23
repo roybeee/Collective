@@ -15,6 +15,8 @@ let now=Date.now();class Clock extends Date{constructor(...a){super(...(a.length
 // 네이버 검색광고 모의 게이트웨이. 실제 계정 없이 서명·매핑·실패 경로를 확인한다.
 let naverAuthorized=true,naverStats={impCnt:4000,clkCnt:120,salesAmt:96000,ccnt:9},naverDown=false;
 let igAuthorized=true,igDown=false,igInsights={reach:9000,shares:450,saves:120,plays:7000};
+// security-ops-11: 커넥터 응답 한도(200KB) 확인용 채움 글자 수. 0이면 채우지 않는다.
+let naverPad=0,igPad=0;const padded=pad=>pad?{pad:'x'.repeat(pad)}:{};
 const igCalls=[];
 const naverCalls=[];const destinations=[];
 const fakeFetch=async(url,options={})=>{
@@ -24,15 +26,15 @@ const fakeFetch=async(url,options={})=>{
   naverCalls.push({url,timestamp:headers.get('X-Timestamp'),apiKey:headers.get('X-API-KEY'),customer:headers.get('X-Customer'),signature:headers.get('X-Signature')});
   if(naverDown)throw new Error('network lost');
   if(!naverAuthorized)return new Response('',{status:401});
-  if(url.includes('/ncc/campaigns'))return Response.json([{nccCampaignId:'cmp-1',name:'테스트 캠페인'}]);
-  if(url.includes('/stats'))return Response.json({data:[{id:'cmp-1',...naverStats}]});
+  if(url.includes('/ncc/campaigns'))return Response.json([{nccCampaignId:'cmp-1',name:'테스트 캠페인'},...(naverPad?[padded(naverPad)]:[])]);
+  if(url.includes('/stats'))return Response.json({data:[{id:'cmp-1',...naverStats}],...padded(naverPad)});
   return new Response('',{status:404});
  }
  if(url.startsWith('https://graph.facebook.com/')){
   igCalls.push(url);
   if(igDown)throw new Error('graph unavailable');
   if(!igAuthorized)return Response.json({error:{message:'Invalid OAuth access token',code:190}},{status:400});
-  if(url.includes('/insights'))return Response.json({data:Object.entries(igInsights).map(([name,value])=>({name,values:[{value}]}))});
+  if(url.includes('/insights'))return Response.json({data:Object.entries(igInsights).map(([name,value])=>({name,values:[{value}]})),...padded(igPad)});
   return Response.json({id:'ig-user-1',username:'oldferrydonut',timestamp:'2026-08-01T09:00:00+0000',permalink:'https://instagram.com/p/abc',media_type:'VIDEO'});
  }
  if(url.endsWith('/v1/capabilities')){if(!new Headers(options.headers).has('Authorization'))return new Response('',{status:401});return Response.json({object:'hermes.api_server.capabilities',platform:'hermes-agent',features:{run_submission:true,run_status:true,run_stop:true,runs_idempotency:{durable:true}}})}
@@ -81,6 +83,11 @@ check('verified credentials are stored',r.status===200);
 check('verification calls the live account endpoint',naverCalls.some(c=>c.url.includes('/ncc/campaigns')));
 check('request is signed with key, customer and signature',naverCalls.every(c=>c.apiKey===naver.apiKey&&c.customer===naver.customerId&&!!c.signature&&!!c.timestamp));
 check('signature is not the raw secret',naverCalls.every(c=>c.signature!==naver.secretKey));
+// 연결 확인은 인증(2xx)만 보고 캠페인 목록 본문은 읽지 않는다. 캠페인이 많아 목록이 200KB를 넘는 계정도 연결된다.
+naverPad=200001;
+r=await ch('save_credential',{channel:'naver_ads',data:naver});
+check('verification succeeds for an account whose campaign list exceeds 200KB',r.status===200&&(await chStatus()).channels.some(c=>c.channel==='naver_ads'&&c.connected));
+naverPad=0;
 
 // --- 비밀값 노출 금지 -------------------------------------------------------
 let status=await chStatus();
@@ -127,6 +134,14 @@ naverDown=true;
 r=await mz('collect',{experimentId:naverId,arm:'control',channel:'naver_ads',target:'cmp-1',from:'2026-08-08',to:'2026-08-14'});
 check('gateway failure surfaces as an error, not as numbers',r.status>=500&&!JSON.stringify(r.data).includes('4000'));
 naverDown=false;
+// security-ops-11: 외부 응답은 200KB 한도 안에서만 읽는다. 넘으면 파싱하지 않고 명확한 오류로 끝나며, 한도 안의 큰 응답은 그대로 수집된다.
+naverPad=200001;
+r=await mz('collect',{experimentId:naverId,arm:'control',channel:'naver_ads',target:'cmp-1',from:'2026-08-08',to:'2026-08-14'});
+check('an oversized naver response is refused with a clear error, not parsed',r.status===502&&r.data.error.includes('허용 크기(200KB)')&&!JSON.stringify(r.data).includes('4000'));
+naverPad=190000;
+r=await mz('collect',{experimentId:naverId,arm:'control',channel:'naver_ads',target:'cmp-1',from:'2026-08-08',to:'2026-08-14'});
+check('a naver response under the limit is still collected',r.status===200&&r.data.collected.arm.denominator===4000&&r.data.collected.arm.numerator===120);
+naverPad=0;
 naverStats={impCnt:0,clkCnt:null,salesAmt:0,ccnt:null};
 r=await mz('collect',{experimentId:naverId,arm:'control',channel:'naver_ads',target:'cmp-1',from:'2026-08-15',to:'2026-08-21'});
 check('unknown values stay null and are distinguished from zero',r.data.collected.arm.numerator===null&&r.data.collected.arm.denominator===0);
@@ -191,6 +206,13 @@ igDown=true;
 r=await mz('collect',{experimentId,arm:'treatment',channel:'instagram',target:'17900000000000000',from:'2026-08-15',to:'2026-08-21'});
 check('instagram outage surfaces as an error, not as numbers',r.status>=500);
 igDown=false;
+igPad=200001;
+r=await mz('collect',{experimentId,arm:'treatment',channel:'instagram',target:'17900000000000000',from:'2026-08-15',to:'2026-08-21'});
+check('an oversized instagram response is refused with a clear error, not parsed',r.status===502&&r.data.error.includes('허용 크기(200KB)')&&!r.data.collected);
+igPad=190000;
+r=await mz('collect',{experimentId,arm:'treatment',channel:'instagram',target:'17900000000000000',from:'2026-08-15',to:'2026-08-21'});
+check('an instagram response under the limit is still collected',r.status===200&&r.data.collected.arm.denominator===9000&&r.data.collected.arm.numerator===450);
+igPad=0;
 
 // --- 끝난 실험은 수집도 끝난다 ----------------------------------------------
 // naverId는 위에서 save_results를 거쳐 running이 아니다.

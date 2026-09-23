@@ -10,6 +10,7 @@ import {archiveResearchInstructions,researchObject,parseResearchSources,parseDia
 import {DEEP_RESEARCH_VERSION,defaultResearchPlan} from '@/lib/deep-research';
 import {deepInstructions,parseDeepReport} from '@/lib/deep-research-server';
 import {hermesSubmissionStatement,submitHermes,pollHermes} from '@/lib/hermes';
+import {TokenBudgetExceeded} from '@/lib/token-budget';
 import type {UsageContext} from '@/lib/usage-ledger';
 import {workerStatus} from './research-worker';
 import {researchSteps,unverifiedResearchAccess} from './research-queue';
@@ -75,10 +76,13 @@ export async function executeResearch(owner:string,b:Record<string,any>,submissi
     step.summary=str(x.summary,'조사 요약',5000,true);step.limitations=str(x.limitations,'조사 한계',5000,true);if(out.length)out.push(stateWrite(owner,r.brandId,state.revision+1));
    }
    step.status='completed';if(r.steps.every(s=>s.status==='completed'))r.status='completed';
-  }catch(e){step.status='failed';r.status='failed';r.error=e instanceof Error?e.message:'조사 결과를 확인하세요.';step.rawResult=result.output[0].content[0].text;out.length=0}
+  }catch(e){step.status='failed';r.status='failed';r.error=e instanceof ApiError?e.message:unexpectedResultError(e);step.rawResult=result.output[0].content[0].text;out.length=0}
   await database().batch([...out,...writes(owner,r)]);await markUsageOutcome(owner,'hermes',step.providerId,step.status==='failed'?'invalid_output':'completed');
  }else if(['failed','cancelled'].includes(result.status)){await markUsageOutcome(owner,'hermes',step.providerId,result.invalidOutput?'invalid_output':result.status==='cancelled'?'cancelled':'provider_failed');r.status=result.status as 'failed'|'cancelled';step.status='failed';r.error=result.failureReason||'HERMES 조사가 종료됐습니다. 저장된 자료에서 이어서 새 조사를 시작할 수 있습니다.';await database().batch(writes(owner,r))}
  else await database().batch(writes(owner,r));
  return json(publicResearch(r));
-}catch(e){if(prepared){prepared.status=recovering||!(e instanceof ApiError)||e.status>=500||e.status===429?'uncertain':'failed';prepared.error=prepared.status==='uncertain'?'조사 접수 확인이 지연되고 있습니다. 같은 요청으로 다시 확인하며 중복 조사를 만들지 않습니다.':(e as Error).message;prepared.updatedAt=stamp();if(!(e instanceof ApiError)||e.status>=500||e.status===429)researchRetry(prepared);else prepared.retryAt=undefined;await database().batch(writes(owner,prepared));return json(publicResearch(prepared))}if(current&&e instanceof ApiError&&(e.status>=500||e.status===429)){current.error=e.message+' 기존 실행을 다시 확인하며 새 조사를 중복 접수하지 않습니다.';current.updatedAt=stamp();researchRetry(current);await database().batch(writes(owner,current));return json(publicResearch(current))}if(current&&e instanceof ApiError&&e.status!==409){current.error=e.message;current.updatedAt=stamp();await database().batch(writes(owner,current))}return failure(e)}finally{if(lock)await releaseLock(lockOwner,lock)}}
+// 토큰 예산 초과(TokenBudgetExceeded)는 요청을 보내기 전에 막힌 확정 실패다. 복구 중이어도 '접수 확인 지연'으로 가리지 않고 사유와 함께 실패로 남긴다.
+}catch(e){if(prepared){prepared.status=!(e instanceof TokenBudgetExceeded)&&(recovering||!(e instanceof ApiError)||e.status>=500||e.status===429)?'uncertain':'failed';prepared.error=prepared.status==='uncertain'?'조사 접수 확인이 지연되고 있습니다. 같은 요청으로 다시 확인하며 중복 조사를 만들지 않습니다.':(e as Error).message;prepared.updatedAt=stamp();if(!(e instanceof ApiError)||e.status>=500||e.status===429)researchRetry(prepared);else prepared.retryAt=undefined;await database().batch(writes(owner,prepared));return json(publicResearch(prepared))}if(current&&e instanceof ApiError&&(e.status>=500||e.status===429)){current.error=e.message+' 기존 실행을 다시 확인하며 새 조사를 중복 접수하지 않습니다.';current.updatedAt=stamp();researchRetry(current);await database().batch(writes(owner,current));return json(publicResearch(current))}if(current&&e instanceof ApiError&&e.status!==409){current.error=e.message;current.updatedAt=stamp();await database().batch(writes(owner,current))}return failure(e)}finally{if(lock)await releaseLock(lockOwner,lock)}}
+// security-ops-11: ApiError가 아닌 예외(TypeError 등)의 원문은 내부 코드 경로를 드러낸다. 기록·화면에는 고정 문구를, 로그에는 오류 이름·코드만 남긴다(원문·스택 제외).
+function unexpectedResultError(e:unknown){const code=e&&typeof e==='object'&&'code' in e&&['string','number'].includes(typeof e.code)?e.code:null;console.error('research_result_unexpected_error',e instanceof Error?e.name:typeof e,code);return '조사 결과를 처리하지 못했습니다. 다시 시도해 주세요.'}
 function researchRetry(r:BrandResearch){r.retryCount=(r.retryCount||0)+1;r.retryAt=new Date(Date.now()+Math.min(300000,15000*2**Math.min(r.retryCount,5))).toISOString()}

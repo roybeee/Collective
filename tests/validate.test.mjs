@@ -64,9 +64,9 @@ deepFails('null competitor element',x=>{x.competitors=[null]},400,'경쟁사 입
 deepFails('null claim element',x=>{x.review.claims=[null]},400,'조사 내용 입력을 확인해 주세요.');
 deepFails('null followup element',x=>{x.review.followups=[null]},400,'조사 내용 입력을 확인해 주세요.');
 deepFails('null unresolved element',x=>{x.review.unresolved=[null]},400,'조사 내용 입력을 확인해 주세요.');
-// 알려진 결함: 실험 과제 원소가 null이면 422가 아니라 TypeError로 실패하고, 그 내부 예외 문구가 조사 기록 오류로 저장·표시된다.
-// PR 0은 동작을 바꾸지 않는다. PR 4(security-ops-11)에서 422로 바꾸고 이 검사도 함께 바꾼다.
-typeError('알려진 결함(security-ops-11, PR 4에서 422로 전환): null opportunity element',()=>parse(edit(x=>{x.diagnosis.opportunities=[null]})));
+// 알려진 결함: 실험 과제 원소가 null이면 422가 아니라 TypeError로 실패한다. PR 4a(security-ops-11)부터 조사 기록·화면에는 내부 예외 문구 대신 고정 문구만 남는다(tests/research-errors.test.mjs).
+// 422 전환은 원인 파일(lib/deep-research-server.ts)이 PR 6 앱 측 레인 잠금이라 A7로 넘겼다(IMPROVEMENT-PLAN 배정 변경). A7에서 422로 바꾸고 이 검사도 함께 바꾼다.
+typeError('알려진 결함(security-ops-11 잔여, A7에서 422로 전환): null opportunity element',()=>parse(edit(x=>{x.diagnosis.opportunities=[null]})));
 
 // HERMES 도구 목록 (inspectResearchAccess)
 const cfg={provider:'hermes',key:'k',model:'m',endpoint:'https://hermes.example.com'};
