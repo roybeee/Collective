@@ -5,9 +5,9 @@ import {PRACTICE_VERSION,rolePractice,evidenceDiscipline,campaignPractice} from 
 import {qualityContract} from './quality';
 import {roles,aiBudget,type Campaign,type Brand,type Artifact} from './agency';
 
-// 역할 실행의 HERMES 지시문(instructions)·입력(input) 조립을 서버 의존 없이 옮긴 순수 함수(F1a).
-// 기준 커밋 lib/role-execution.ts start 분기와 바이트 동일해야 한다. tests/role-instruction.test.mjs가 캡처 스냅샷
-// (tests/fixtures/role-submission-<기준 sha7>.json)과 비교한다. role-execution.ts 연결은 F1b에서 한다.
+// 역할 실행의 HERMES/OpenAI 지시문(instructions)·입력(input) 조립을 서버 의존 없이 만드는 순수 함수(F1a).
+// lib/role-execution.ts start 분기는 DB에서 읽은 값을 넘기고 이 출력을 그대로 보낸다(F1b). tests/role-instruction.test.mjs가 캡처 스냅샷
+// (tests/fixtures/role-submission-<기준 sha7>.json)과, tests/role-execution-drift.test.mjs가 실제 실행 경로의 제출 본문과 비교한다.
 export type RevisionRequest={note:string;previousVersion:number|null;previousExcerpt:string;lastFailure:string};
 export type PreviousDecisions={agenda:string;decisions:string;questions:string};
 // previous: 캠페인의 작업물 목록(role-execution.ts의 previous). upstreamContext가 사용 가능한 앞선 역할 작업물만 고른다.
