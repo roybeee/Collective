@@ -1,0 +1,54 @@
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {SourceTextModule,SyntheticModule,createContext} from 'node:vm';
+import {readFileSync,readdirSync} from 'node:fs';
+import {resolve,dirname} from 'node:path';
+import {webcrypto} from 'node:crypto';
+import ts from 'typescript';
+const sql=new DatabaseSync(':memory:');
+for(const f of readdirSync('drizzle').filter(f=>f.endsWith('.sql')).sort())sql.exec(readFileSync('drizzle/'+f,'utf8'));
+class Statement{constructor(q,v=[]){this.q=q;this.v=v}bind(...v){return new Statement(this.q,v)}async first(){return sql.prepare(this.q).get(...this.v)||null}async all(){return {results:sql.prepare(this.q).all(...this.v)}}async run(){return {meta:{changes:Number(sql.prepare(this.q).run(...this.v).changes)}}}}
+const DB={prepare:q=>new Statement(q),batch:async ss=>{sql.exec('BEGIN');try{const out=[];for(const s of ss)out.push(await s.run());sql.exec('COMMIT');return out}catch(e){sql.exec('ROLLBACK');throw e}}};
+const context=createContext({console,crypto:webcrypto,Response,Request,Headers,TextEncoder,TextDecoder,Uint8Array,Date,URL,AbortSignal,btoa,atob,process:{env:{NODE_ENV:'production'}}});
+const env=new SyntheticModule(['env'],function(){this.setExport('env',{DB})},{context});const modules=new Map();
+function moduleFor(file){file=resolve(file);if(modules.has(file))return modules.get(file);const code=ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;const m=new SourceTextModule(code,{context,identifier:file});modules.set(file,m);return m}
+async function load(file){const m=moduleFor(file);if(m.status==='unlinked')await m.link((s,r)=>s==='cloudflare:workers'?env:moduleFor((s.startsWith('@/')?resolve(s.slice(2)):resolve(dirname(r.identifier),s))+'.ts'));await m.evaluate();return m.namespace}
+const api=await load('app/api/store-operations/route.ts'),server=await load('lib/server.ts'),logic=await load('lib/store-operations.ts');
+const owner='order-attribution-owner-production-authenticated-id',other='order-attribution-other-production-authenticated-id';let passed=0;
+const check=(name,value)=>{assert.ok(value,name);passed++};
+const save=(kind,id,data,user=owner)=>server.recordStatement(user,kind,id,data).run();
+await save('store','s1',{id:'s1',brandId:'oda',status:'active'});
+for(const [id,brandId,storeId] of [['c1','oda','s1'],['c2','oda','s2'],['c3','ofd',undefined],['c4','oda',undefined]])await save('campaign',id,{id,brandId,storeId});
+await save('campaign','foreign',{id:'foreign',brandId:'oda',storeId:'s1'},other);
+for(const [id,campaignId,brandId,storeId] of [['cr1','c1','oda','s1'],['cr2','c2','oda','s2'],['cr3','c1','ofd','s1'],['cr4','c1','oda','s2']])await save('execution_creative',id,{id,campaignId,brandId,storeId,version:1});
+await save('execution_creative','foreign',{id:'foreign',campaignId:'c1',brandId:'oda',version:1},other);
+const date=logic.koreaToday();
+const base={source:'pos',orderNumber:'A1',orderDate:date,mode:'hall',status:'paid',paidAmount:100,refundAmount:0,channel:'unknown'};
+async function post(data,extra={}){const r=await api.POST(new Request('https://agency.test/api/store-operations',{method:'POST',headers:{'Content-Type':'application/json','oai-authenticated-user-id':owner},body:JSON.stringify({action:'save_order',storeId:'s1',data,...extra})}));return {status:r.status,...await r.json()}}
+check('foreign campaign rejected',(await post({...base,campaignId:'foreign',attributionEvidence:'쿠폰'})).status===404);
+check('wrong store campaign rejected',(await post({...base,campaignId:'c2',attributionEvidence:'쿠폰'})).status===400);
+check('wrong brand campaign rejected',(await post({...base,campaignId:'c3',attributionEvidence:'쿠폰'})).status===400);
+check('creative needs campaign',(await post({...base,creativeId:'cr1',attributionEvidence:'쿠폰'})).status===400);
+check('campaign needs attribution evidence',(await post({...base,campaignId:'c1'})).status===400);
+check('creative campaign conflict',(await post({...base,campaignId:'c1',creativeId:'cr2',attributionEvidence:'쿠폰'})).status===400);
+check('creative wrong brand',(await post({...base,campaignId:'c1',creativeId:'cr3',attributionEvidence:'쿠폰'})).status===400);
+check('creative wrong store',(await post({...base,campaignId:'c1',creativeId:'cr4',attributionEvidence:'쿠폰'})).status===400);
+check('foreign creative rejected',(await post({...base,campaignId:'c1',creativeId:'foreign',attributionEvidence:'쿠폰'})).status===404);
+const attributed={...base,campaignId:'c1',creativeId:'cr1',attributionEvidence:'메뉴 QR 코드'};
+const result=await post(attributed);check('attribution saved',result.status===200);
+const stored=await server.readRecord(owner,'store_order',result.ids[0]);check('IDs retained',stored.campaignId==='c1'&&stored.creativeId==='cr1');
+check('campaign attribution counted without channel',logic.ledgerSummary([stored],[]).attributed===1);
+check('duplicate unchanged',(await post(attributed)).status===409);
+check('stale unchanged',(await post(attributed,{id:stored.id,version:9})).status===409);
+check('refund preserved',(await post({...attributed,status:'refunded',refundAmount:100},{id:stored.id,version:1})).status===200);
+check('blank attribution allowed',(await post({...base,orderNumber:'blank'})).status===200);
+check('brand wide campaign allowed',(await post({...base,orderNumber:'wide',campaignId:'c4',attributionEvidence:'브랜드 쿠폰'})).status===200);
+await save('store_experiment','e1',{id:'e1',storeId:'s1',campaignId:'c2',status:'running',startDate:date,endDate:date,channel:'instagram'});
+check('experiment campaign conflict',(await post({...attributed,orderNumber:'exp',experimentId:'e1',channel:'instagram'})).status===400);
+const legacy='source,orderNumber,orderDate,mode,status,paidAmount,refundAmount\npos,legacy,'+date+',hall,paid,100,0\n';
+check('legacy CSV accepted',(await post(undefined,{action:'import_orders',rows:logic.parseOrderCsv(legacy)})).status===200);
+const expanded=legacy.replace('refundAmount\n','refundAmount,campaignId,creativeId,attributionEvidence\n').replace('pos,legacy,','pos,expanded,').replace(',100,0\n',',100,0,c1,cr1,QR code\n');
+check('new CSV accepted',(await post(undefined,{action:'import_orders',rows:logic.parseOrderCsv(expanded)})).status===200);
+check('CSV atomic invalid attribution',(await post(undefined,{action:'import_orders',rows:[{...base,orderNumber:'atomic-good'},{...base,orderNumber:'atomic-bad',campaignId:'c2',attributionEvidence:'QR'}]})).status===400);
+check('atomic batch writes nothing',!(await server.listRecords(owner,'store_order')).some(o=>o.orderNumber==='atomic-good'));
+console.log(JSON.stringify({passed}));

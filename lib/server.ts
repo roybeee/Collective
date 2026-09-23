@@ -61,6 +61,8 @@ export async function deleteCampaign(owner:string,input:Record<string,unknown>){
  if(deleted)return {id,deleted:true};
  const campaign=await readRecord<Campaign>(owner,'campaign',id);
  if(input.version!==campaign.version)throw new ApiError(409,'캠페인이 변경됐습니다. 최신 내용을 확인한 뒤 다시 삭제해 주세요.');
+ const executions=await db.prepare("SELECT id FROM records WHERE owner=? AND ((parent_id=? AND kind IN ('execution_creative','execution_publication','execution_limits')) OR (kind='store_order' AND json_extract(data,'$.campaignId')=?)) LIMIT 1").bind(owner,id,id).first();
+ if(executions)throw new ApiError(409,'제작·발행 또는 주문 귀속 이력이 있어 삭제할 수 없습니다. 실행 기록을 보존하고 예약 취소는 Buffer에서 확인하세요.');
  const running=await db.prepare("SELECT id FROM jobs WHERE owner=? AND campaign_id=? AND status IN ('starting','queued','in_progress','uncertain') LIMIT 1").bind(owner,id).first();
  if(running)throw new ApiError(409,'진행 중인 AI 작업이 있습니다. 캠페인의 AI 팀에서 작업을 완료하거나 취소한 뒤 삭제해 주세요.');
  const drafts=(await listRecords<BriefDraft>(owner,'brief_draft')).filter(d=>d.campaignId===id||d.savedCampaignId===id);

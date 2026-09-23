@@ -28,7 +28,7 @@ export function testRuntime(fetch, hooks = {}) {
   },
  };
  const env = {DB, AGENCY_ENCRYPTION_KEY: Buffer.alloc(32, 8).toString('base64')};
- const context = createContext({console, crypto: webcrypto, Response, Request, Headers, TextEncoder, TextDecoder, Uint8Array, Date, URL, AbortSignal, btoa, atob, fetch, process: {env: {NODE_ENV: 'production'}}});
+ const context = createContext({console, crypto: webcrypto, Response, Request, Headers, TextEncoder, TextDecoder, Uint8Array, Date, URL, AbortSignal, DecompressionStream, btoa, atob, fetch, process: {env: {NODE_ENV: 'production'}}});
  const modules = new Map();
  const envModule = new SyntheticModule(['env'], function() { this.setExport('env', env); }, {context});
  function moduleFor(file) {

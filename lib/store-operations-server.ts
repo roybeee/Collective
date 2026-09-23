@@ -1,3 +1,4 @@
+import type {Campaign} from './agency';
 import {ApiError,database,listRecords,readRecord,str,num,stamp} from './server';
 import {checkedVersion,localDate,option} from './store-server';
 import {channelCatalog,type Store,type StoreExperiment} from './store-marketing';
@@ -19,8 +20,10 @@ export async function orderInput(raw:any,storeId:string):Promise<Omit<StoreOrder
  const status=option(raw.status,Object.keys(orderStates) as StoreOrder['status'][],'주문 상태');
  if(status==='paid'&&paidAmount>0&&refundAmount===paidAmount)throw new ApiError(400,'결제액을 모두 환불했다면 상태를 전액 환불 또는 취소로 변경하세요.');
  if(status!=='paid'&&paidAmount!==refundAmount)throw new ApiError(400,'취소·전액 환불 주문은 결제액 전체의 환불을 반영하세요. 결제 전 취소는 두 금액을 0으로 입력하세요.');
+ const campaignId=str(raw.campaignId??'','캠페인',100)||undefined,creativeId=str(raw.creativeId??'','소재',100)||undefined;
+ if(creativeId&&!campaignId)throw new ApiError(400,'소재 귀속에는 캠페인이 필요합니다.');
  const channel=option(raw.channel||'unknown',['unknown',...channelCatalog.map(c=>c.key)] as const,'유입 채널');
- return {id,storeId,source,orderNumber,orderDate,mode:option(raw.mode,Object.keys(orderModes) as StoreOrder['mode'][],'주문 방식'),status,paidAmount,refundAmount,costs:Object.fromEntries(Object.entries(orderCostFields).map(([k,label])=>[k,amount(raw.costs?.[k]??raw[k],label,true)])) as StoreOrder['costs'],channel,experimentId:str(raw.experimentId??'','실험',100),attributionEvidence:str(raw.attributionEvidence??'','유입 확인 근거',2000,channel!=='unknown'),note:str(raw.note??'','출처 메모',2000)};
+ return {campaignId,creativeId,id,storeId,source,orderNumber,orderDate,mode:option(raw.mode,Object.keys(orderModes) as StoreOrder['mode'][],'주문 방식'),status,paidAmount,refundAmount,costs:Object.fromEntries(Object.entries(orderCostFields).map(([k,label])=>[k,amount(raw.costs?.[k]??raw[k],label,true)])) as StoreOrder['costs'],channel,experimentId:str(raw.experimentId??'','실험',100),attributionEvidence:str(raw.attributionEvidence??'','유입 확인 근거',2000,channel!=='unknown'||!!campaignId||!!creativeId),note:str(raw.note??'','출처 메모',2000)};
 }
 export async function validateOrderExperiment(owner:string,storeId:string,experimentId:string,date:string,channel:string){if(!experimentId)return;const e=await readRecord<StoreExperiment>(owner,'store_experiment',experimentId);if(e.storeId!==storeId)throw new ApiError(400,'다른 지점의 실험에는 연결할 수 없습니다.');if(e.status==='draft'||!e.startDate||!e.endDate||date<e.startDate||date>e.endDate)throw new ApiError(400,'시작한 실험의 기간 안에서 연결하세요.');if(e.channel!==channel)throw new ApiError(400,'유입 채널과 실험 채널이 일치해야 합니다.');}
 export function spendInput(raw:any,storeId:string,old?:StoreSpend):StoreSpend{return {id:str(raw.id,'비용 기록',100,true),storeId,date:operationDate(raw.date,'비용일'),channel:option(raw.channel,channelCatalog.map(c=>c.key),'채널'),experimentId:str(raw.experimentId??'','실험',100),adSpend:amount(raw.adSpend,'광고비')!,productionCost:amount(raw.productionCost,'제작·협찬비')!,source:str(raw.source,'비용 출처',2000,true),version:(old?.version||0)+1,createdAt:old?.createdAt||stamp(),updatedAt:stamp()}}
@@ -30,3 +33,17 @@ export async function getStoreOperations(owner:string,storeId:string,from?:strin
  const [diagnostics,orders,spend]=await Promise.all([listRecords<StoreDiagnostic>(owner,'store_diagnostic',storeId),query<StoreOrder>('store_order','orderDate'),query<StoreSpend>('store_spend','date')]);return {diagnostics,orders,spend,from:start,to:end};
 }
 export function requireVersion(old:{version:number}|undefined,version:unknown){if(old)checkedVersion(old,version);else if(version!==undefined&&version!==null)throw new ApiError(409,'기록이 변경되었습니다. 다시 불러오세요.')}
+
+export async function validateOrderAttribution(owner:string,store:Pick<Store,'id'|'brandId'>,order:Pick<StoreOrder,'campaignId'|'creativeId'|'experimentId'>){
+ if(!order.campaignId)return;
+ const campaign=await readRecord<Campaign>(owner,'campaign',order.campaignId);
+ if(campaign.brandId!==store.brandId||(campaign.storeId&&campaign.storeId!==store.id))throw new ApiError(400,'이 지점 또는 같은 브랜드의 캠페인에만 연결하세요.');
+ if(order.creativeId){
+  const creative=await readRecord<{id:string;campaignId:string;brandId:string;storeId?:string;version:number}>(owner,'execution_creative',order.creativeId);
+  if(creative.campaignId!==campaign.id||creative.brandId!==store.brandId||(creative.storeId&&creative.storeId!==store.id))throw new ApiError(400,'소재의 캠페인·브랜드·지점이 주문과 일치하지 않습니다.');
+ }
+ if(order.experimentId){
+  const experiment=await readRecord<StoreExperiment>(owner,'store_experiment',order.experimentId);
+  if(experiment.campaignId&&experiment.campaignId!==campaign.id)throw new ApiError(400,'실험에 연결된 캠페인과 주문의 캠페인이 다릅니다.');
+ }
+}
