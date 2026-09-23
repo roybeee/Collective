@@ -4,7 +4,7 @@ import { brandDefaults, type Campaign, type Brand, type Artifact, type Metric } 
 import {HttpBodyError,readBoundedJson} from './http-limits';
 import {authMode,authPrincipal,authOrigin} from './auth-session';
 import {AuthError} from './auth-errors';
-import {campaignScopes,scopesSql,blockingScopes,campaignJobs,derivedLinks,freezeExperimentSummary,type SourceCampaignDeleted} from './record-kinds';
+import {campaignScopes,scopesSql,blockingScopes,campaignJobs,derivedLinks,freezeExperimentSummary,retireRuleOfDeletedCampaign,type SourceCampaignDeleted} from './record-kinds';
 import type {LearningRule,ViralExperiment} from './learning';
 export class ApiError extends Error {constructor(public status:number,message:string){super(message)}}
 export const runtime=env as unknown as {DB?:D1Database;BUCKET?:R2Bucket;AGENCY_ENCRYPTION_KEY?:string;OPENAI_API_KEY?:string;RESEARCH_WORKER_GATE_TOKEN?:string;RESEARCH_WORKER_SITE_ORIGIN?:string;RESEARCH_WORKER_ADMIN_IDS?:string;AI_COPY_CAPTIONS?:string};
@@ -80,7 +80,7 @@ async function retainedLearning(owner:string,id:string){
 }
 function retainedLearningWrites(owner:string,{rules,sources}:Awaited<ReturnType<typeof retainedLearning>>,mark:SourceCampaignDeleted){
  return [
-  ...rules.map(r=>recordStatement(owner,'learning_rule',r.id,{...r,status:'retired',version:r.version+1,updatedAt:mark.at,sourceCampaignDeleted:mark},r.brandId)),
+  ...rules.map(r=>recordStatement(owner,'learning_rule',r.id,retireRuleOfDeletedCampaign(r,mark),r.brandId)),
   ...sources.map(e=>recordStatement(owner,'viral_experiment_summary',e.id,freezeExperimentSummary(e,rules.filter(r=>r.experimentId===e.id).map(r=>r.id),mark),e.brandId)),
  ];
 }

@@ -111,6 +111,24 @@ check('foreign owner records preserved',has('campaign',cid,'other-owner')&&has('
 const learningRoute=await load('app/api/learning/route.ts');await learningRoute.evaluate();
 for(const [name,b] of [['retest',{action:'retest_rule',id:'exp:3',version:2}],['renew',{action:'renew_rule',id:'exp:3',version:2,reason:'다음 캠페인까지 유지'}],['pause',{action:'pause_rule',id:'exp:3',version:2}]]){const r=await request(learningRoute,'POST',b);check(`${name} on a rule from a deleted campaign asks for a new experiment`,r.status===409&&r.data.error.includes('원 캠페인이 삭제')&&r.data.error.includes('새 실험'))}
 check('refused rule operations leave the rule unchanged',JSON.stringify(read('learning_rule','exp:3'))===JSON.stringify(kept));
+// 결정 7(b) 보존 규칙의 원문 제거. 실제 adopt_rule 경로로 만든 규칙(sourceAssessment 포함)을 쓴다. 표지 문자열·이름·전화번호는 모두 합성이다.
+const RAW=['CONTROL-RAW','TREATMENT-RAW','COND-RAW','SOURCE-RAW','NOTES-RAW','REASON-RAW','홍길동','김철수','010-0000-0000'];
+const rawIn=value=>RAW.filter(marker=>JSON.stringify(value).includes(marker));
+const learn=b=>request(learningRoute,'POST',b);
+const rawCampaign=(await act('save_campaign',{data:{brandId:'ofd',title:'원문 제거 확인',goal:'보존 규칙 원문 제거'}})).data.id;
+await put('viral_case','raw-case',{id:'raw-case',brandId:'ofd',channel:'Instagram'},'ofd');await put('viral_analysis','raw-analysis',{id:'raw-analysis',brandId:'ofd',caseId:'raw-case'},'raw-case');
+const rawExp=(await learn({action:'create_experiment',analysisId:'raw-analysis',campaignId:rawCampaign,data:{title:'원문 제거 확인 실험',hypothesis:'질문형 첫 장면이 공유를 늘린다',variable:'첫 장면',control:'CONTROL-RAW 대조안',treatment:'TREATMENT-RAW 실험안',metric:'share_rate',minSample:100,minHours:1,minLift:10,conditions:'COND-RAW 같은 시간대, 문의 담당 홍길동 010-0000-0000'}})).data.id;
+await learn({action:'start_experiment',id:rawExp,version:1});
+sql.prepare("UPDATE records SET data=json_set(data,'$.startedAt',?) WHERE owner=? AND kind='viral_experiment' AND id=?").run(new Date(Date.now()-2*3600000).toISOString(),owner,`${owner}:viral_experiment:${rawExp}`);
+const rawResult=(await learn({action:'save_results',id:rawExp,version:2,data:{observedUntil:new Date().toISOString(),control:{denominator:1000,numerator:10,source:'SOURCE-RAW 대조 조회'},treatment:{denominator:1000,numerator:20,source:'SOURCE-RAW 실험 조회'},comparable:true,notes:'NOTES-RAW 고객 김철수 응대 메모'}})).data;
+const rawRuleId=(await learn({action:'adopt_rule',id:rawExp,version:3,guidance:'질문형 첫 장면을 시험 적용',reason:'REASON-RAW 담당 홍길동 확인'})).data.id;
+const adopted=read('learning_rule',rawRuleId);
+check('adopt_rule fixture carries raw experiment text before deletion',rawResult.assessment.status==='promising'&&['COND-RAW','NOTES-RAW','REASON-RAW'].every(m=>rawIn(adopted).includes(m)));
+check('campaign with an adopted rule can be deleted',(await act('delete_campaign',{id:rawCampaign,version:read('campaign',rawCampaign).version,confirmed:true})).status===200&&!has('campaign',rawCampaign));
+const redacted=read('learning_rule',rawRuleId);
+check('retained rule drops raw experiment text',redacted.status==='retired'&&!!redacted.sourceCampaignDeleted&&rawIn(redacted).length===0);
+check('retained rule keeps its guidance and numeric assessment',redacted.guidance===adopted.guidance&&redacted.title===adopted.title&&redacted.sourceAssessment.lift===adopted.sourceAssessment.lift&&redacted.sourceAssessment.controlSample===1000&&redacted.sourceAssessment.decision==='adopt'&&!!redacted.sourceAssessment.stats);
+check('frozen summary of the adopted experiment has no raw text',has('viral_experiment_summary',rawExp)&&rawIn(read('viral_experiment_summary',rawExp)).length===0);
 check('lost-response retry is idempotent',(await act('delete_campaign',payload)).status===200);
 check('stale edit cannot recreate deleted campaign',(await act('save_campaign',{id:cid,version:1,data:{brandId:'ofd',title:'Resurrection',goal:'No',budget:0}})).status===404);
 check('starter campaign can be deleted',(await act('delete_campaign',{id:'ofd-pilot-01',version:1,confirmed:true})).status===200);

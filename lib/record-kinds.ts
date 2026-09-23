@@ -1,8 +1,8 @@
 // records 테이블 kind 레지스트리(순수 모듈). 코드가 쓰는 모든 kind와 캠페인 삭제 정책을 한곳에 적는다.
 // 새 kind를 만들면 여기에 정책을 추가한다. tests/record-kinds.test.mjs가 app/·lib/·server/ 소스를 스캔해 누락을 막는다.
-// 대표 결정 7(2026-09-24, b): 캠페인을 지워도 바이럴 출처 학습 규칙은 지우지 않고 종료(retired)와 원 캠페인 삭제 표시로 남긴다.
+// 대표 결정 7(2026-09-24, b): 캠페인을 지워도 바이럴 출처 학습 규칙은 지우지 않고 종료(retired)와 원 캠페인 삭제 표시로 남긴다. 규칙에 복사된 원천 실험 원문은 뺀다.
 // 원천 바이럴 실험은 원문을 뺀 요약만 동결 보관하고 실험·개정 이력은 지운다. 점포 출처 규칙·점포 실험은 그대로 둔다.
-import type {ViralExperiment,LearningMetric} from './learning';
+import type {ViralExperiment,LearningMetric,LearningRule} from './learning';
 
 // delete: 캠페인과 함께 삭제 · retain: 캠페인과 이어져 있어도 남김 · retire_and_mark: 종료 상태와 삭제 표시로 남김 · not_campaign_scoped: 캠페인과 무관
 export type CampaignDeletionPolicy='delete'|'retain'|'retire_and_mark'|'not_campaign_scoped';
@@ -122,6 +122,13 @@ export const campaignJobs={where:`(campaign_id=? OR campaign_id IN (${GUIDANCE_G
 
 // 결정 7(b) 표시와 동결 요약. 원문(대조안·실험안·유지 조건·결과 메모·수치 출처)은 담지 않는다.
 export type SourceCampaignDeleted={at:string;by:{id:string;email:string|null}|null};
+// 보존 규칙에 복사돼 있던 원천 실험 원문을 뺀다: 적용 범위(scope=실험의 유지 조건), sourceAssessment의 유지 조건·결과 메모·판정 사유.
+// 규칙 제목·문구(guidance)·연장 기록과 수치 판정(비율·표본·기간·통계·채택/중단)은 남긴다. 필수 문자열 필드는 빈 문자열로 둬 기존 모양을 지킨다.
+const RULE_RAW_ASSESSMENT=['conditions','notes','decisionReason'];
+export function retireRuleOfDeletedCampaign(r:LearningRule,mark:SourceCampaignDeleted):LearningRule&{sourceCampaignDeleted:SourceCampaignDeleted}{
+ const a=r.sourceAssessment,assessment=a?{...Object.fromEntries(Object.entries(a).filter(([k])=>!RULE_RAW_ASSESSMENT.includes(k))),conditions:'',notes:''} as NonNullable<LearningRule['sourceAssessment']>:undefined;
+ return {...r,scope:'',...(assessment?{sourceAssessment:assessment}:{}),status:'retired',version:r.version+1,updatedAt:mark.at,sourceCampaignDeleted:mark};
+}
 export type FrozenExperimentSummary={id:string;experimentId:string;experimentVersion:number;brandId:string;campaignId:string;channel:string;title:string;hypothesis:string;metric:LearningMetric;minSample:number;minHours:number;minLift:number;status:ViralExperiment['status'];assessment:{status:string;label:string;controlRate:number|null;treatmentRate:number|null;lift:number|null}|null;controlSample:number|null;treatmentSample:number|null;startedAt:string|null;observedUntil:string|null;adoptedRuleIds:string[];frozenAt:string;sourceCampaignDeleted:SourceCampaignDeleted};
 export function freezeExperimentSummary(e:ViralExperiment,adoptedRuleIds:readonly string[],mark:SourceCampaignDeleted):FrozenExperimentSummary{
  const a=e.assessment;
