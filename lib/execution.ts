@@ -59,10 +59,12 @@ export function budgetIssues(c:{budget?:number|null;budgetConfirmedAt?:string},p
  return cap>budget?[`예산 초과 · 비용 상한 ${cap.toLocaleString('ko-KR')}원이 확정 예산 ${budget.toLocaleString('ko-KR')}원을 넘습니다. 한도를 낮추세요.`]:[];
 }
 // 승인 뒤 바뀌어 재확인이 필요한 항목. 한도는 낮아졌을 때만 무효화한다(approvedLimits가 없는 이전 승인은 한도 버전으로 판정).
+// 낮아진 한도는 발행 횟수 한도와 예정 비용 상한을 구분해 부른다(exec-loop-10).
 export function approvalDrift(p:Publication,credential:{channelId?:string;version?:number}|null,limits:ExecutionLimits|null):string[]{
  const approvedLimits=p.approvedLimits,drift:string[]=[];
  if(!credential||credential.channelId!==p.channelId||credential.version!==p.credentialVersion)drift.push('발행 계정');
- if(!limits||(approvedLimits?limits.maxPublications<approvedLimits.maxPublications||limits.maxPlannedCostKRW<approvedLimits.maxPlannedCostKRW:limits.version!==p.limitsVersion))drift.push(approvedLimits?'실행 한도(낮아짐)':'실행 한도');
+ if(!limits||!approvedLimits){if(!limits||limits.version!==p.limitsVersion)drift.push('발행 횟수 한도')}
+ else{if(limits.maxPublications<approvedLimits.maxPublications)drift.push('발행 횟수 한도(낮아짐)');if(limits.maxPlannedCostKRW<approvedLimits.maxPlannedCostKRW)drift.push('예정 비용 상한(낮아짐)')}
  if(p.needsReview)drift.push('사용한 사실');
  return drift;
 }

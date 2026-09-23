@@ -7,7 +7,7 @@ import ts from 'typescript';
 const context=createContext({console,URLSearchParams}),cache=new Map();
 function moduleFor(path){path=resolve(path);if(cache.has(path))return cache.get(path);const m=new SourceTextModule(ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText,{context,identifier:path});cache.set(path,m);return m;}
 const m=moduleFor('lib/nav-state.ts');await m.link((s,r)=>moduleFor(resolve(dirname(r.identifier),s+'.ts')));await m.evaluate();
-const {navViews,parseNav,serializeNav,normalizeNav,withCampaign,reconcileNav}=m.namespace;
+const {navViews,learningTabs,parseNav,serializeNav,normalizeNav,withCampaign,reconcileNav}=m.namespace;
 let passed=0;
 function check(name,actual,expected){assert.deepEqual(JSON.parse(JSON.stringify(actual)),expected,name);passed++}
 
@@ -34,6 +34,13 @@ check('100-character id is kept',parseNav('?view=campaigns&campaign='+'a'.repeat
 check('101-character id is dropped',parseNav('?view=campaigns&campaign='+'a'.repeat(101)),{view:'campaigns'});
 check('empty id is dropped',parseNav('?view=brands&brand='),{view:'brands'});
 check('first duplicate parameter wins',parseNav('?view=assets&view=brands'),{view:'assets'});
+// loop-7·loop-11: 학습 화면 링크는 브랜드와 탭(허용 목록)을 싣는다. 탭은 학습 화면에서만 의미가 있다.
+check('learning tabs are an allow-list',[...learningTabs],['cases','experiments','rules','jobs']);
+check('learning view keeps brand and tab',parseNav('?view=learning&brand=oda&tab=rules'),{view:'learning',brand:'oda',tab:'rules'});
+check('unknown learning tab is dropped',parseNav('?view=learning&brand=oda&tab=admin'),{view:'learning',brand:'oda'});
+check('prototype keys are not tabs',parseNav('?view=learning&tab=__proto__'),{view:'learning'});
+check('tab is ignored outside learning',parseNav('?view=stores&brand=oda&tab=rules'),{view:'stores',brand:'oda'});
+check('store is ignored on learning',parseNav('?view=learning&brand=oda&store=s1'),{view:'learning',brand:'oda'});
 check('non-ASCII id is dropped',parseNav('?view=brands&brand=%ED%95%9C%EA%B8%80'),{view:'brands'});
 
 // --- 직렬화 -------------------------------------------------------------------------
@@ -43,8 +50,10 @@ check('campaign detail keeps the view',serializeNav({view:'campaigns',campaign:'
 check('overview with campaign keeps the view',serializeNav({view:'overview',campaign:'c1'}),'?view=overview&campaign=c1');
 check('stores with brand and store',serializeNav({view:'stores',brand:'oda',store:'s1'}),'?view=stores&brand=oda&store=s1');
 check('invalid view and ids are not written',serializeNav({view:'nope',campaign:'a b',brand:'<x>'}),'');
+check('learning link with brand and tab',serializeNav({view:'learning',brand:'oda',tab:'rules'}),'?view=learning&brand=oda&tab=rules');
+check('tab outside learning is not written',serializeNav({view:'stores',brand:'oda',tab:'rules'}),'?view=stores&brand=oda');
 check('brand outside brands/stores is not written',serializeNav({view:'assets',brand:'oda'}),'?view=assets');
-for(const state of [{view:'overview'},{view:'campaigns',campaign:'c-1'},{view:'brands',brand:'mapdal'},{view:'stores',brand:'oda',store:'s_2'},{view:'assets',campaign:'x'},{view:'learning'}])check('round trip '+JSON.stringify(state),parseNav(serializeNav(state)),state);
+for(const state of [{view:'overview'},{view:'campaigns',campaign:'c-1'},{view:'brands',brand:'mapdal'},{view:'stores',brand:'oda',store:'s_2'},{view:'assets',campaign:'x'},{view:'learning'},{view:'learning',brand:'ofd',tab:'experiments'}])check('round trip '+JSON.stringify(state),parseNav(serializeNav(state)),state);
 
 // --- 정규화·캠페인 열기 -----------------------------------------------------------------
 check('null and undefined ids are dropped',normalizeNav({view:'brands',brand:null,campaign:undefined}),{view:'brands'});
@@ -64,6 +73,7 @@ check('unknown campaign on brands also goes to the list',reconcileNav({view:'bra
 check('unknown brand archive goes to the brand list',reconcileNav({view:'brands',brand:'nope'},known),{view:'brands'});
 check('unknown brand keeps a known open campaign',reconcileNav({view:'stores',brand:'nope',campaign:'c2'},known),{view:'stores',campaign:'c2'});
 check('unknown store brand shows all stores',reconcileNav({view:'stores',brand:'nope',store:'s1'},known),{view:'stores'});
+check('unknown learning brand keeps the tab',reconcileNav({view:'learning',brand:'nope',tab:'rules'},known),{view:'learning',tab:'rules'});
 const archive={view:'brands',brand:'oda'};
 assert.equal(reconcileNav(archive,known),archive,'known brand keeps the same state object');passed++;
 const plain={view:'results'};

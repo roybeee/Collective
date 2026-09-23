@@ -52,7 +52,7 @@ test('이메일 로그인·초대·세션 유지·권한 제한·폐기',async({
  await expect(member.getByRole('button',{name:'브리프 수정',exact:true})).toBeVisible();
  await expect(member.getByRole('button',{name:'삭제',exact:true})).toHaveCount(0);
  await member.getByRole('tab',{name:'제작·발행',exact:true}).click();
- await expect(member.getByText('채널 연결과 실행 한도는 관리자만 바꿀 수 있습니다.',{exact:false})).toBeVisible();
+ await expect(member.getByText('채널 연결과 발행 횟수 한도는 관리자만 바꿀 수 있습니다.',{exact:false})).toBeVisible();
  await expect(member.getByRole('button',{name:'채널 확인·연결',exact:true})).toHaveCount(0);
  await member.keyboard.press('Escape');
  const accounts=await (await page.request.get('/api/accounts')).json() as {accounts:{id:string;email:string}[]};

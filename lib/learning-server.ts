@@ -1,5 +1,5 @@
 import {ApiError,str,num,stamp,uid,readRecord,listRecords,recordStatement,database,eventStatement,type EventActor} from './server';
-import {learningChannels,learningMetrics,evaluateExperiment,ruleApplies,type ViralCase,type ViralAnalysis,type TestIdea,type ViralExperiment,type ExperimentResult,type LearningRule,type LearningSnapshot,type Arm,type StoreAssessment} from './learning';
+import {learningChannels,learningMetrics,evaluateExperiment,ruleApplies,defaultVerifyChannel,type ViralCase,type ViralAnalysis,type TestIdea,type ViralExperiment,type ExperimentResult,type LearningRule,type LearningSnapshot,type Arm,type StoreAssessment} from './learning';
 import {channelHosts,storeChannelName} from './channels';
 import {summarizeResult,planShortfall,decisionConflict} from './viral-stats';
 import type {StoreExperiment,StoreMeasurement,StoreReview} from './store-marketing';
@@ -42,7 +42,9 @@ export function parseAnalysis(raw:any,c:ViralCase,origin:'manual'|'hermes'):Vira
 }
 // 모델 입력의 규칙은 판정 통계 도입 이전과 같게 둔다. 통계 요약·확정 기록은 화면·감사용이며 역할 지시문에 뜻이 정의돼 있지 않다.
 const MODEL_OMIT=['stats','decision','decisionReason','decisionConflict'];
-const modelRule=(r:LearningRule):LearningRule=>r.sourceAssessment?{...r,sourceAssessment:Object.fromEntries(Object.entries(r.sourceAssessment).filter(([k])=>!MODEL_OMIT.includes(k))) as NonNullable<LearningRule['sourceAssessment']>}:r;
+// 원 사례 채널·연장 근거 측정 시각도 화면·감사용이다. 모델에는 검증 채널(channel)만 전달한다.
+const MODEL_RULE_OMIT=['caseChannel','renewMeasuredAt'];
+const modelRule=(rule:LearningRule):LearningRule=>{const r=Object.fromEntries(Object.entries(rule).filter(([k])=>!MODEL_RULE_OMIT.includes(k))) as LearningRule;return r.sourceAssessment?{...r,sourceAssessment:Object.fromEntries(Object.entries(r.sourceAssessment).filter(([k])=>!MODEL_OMIT.includes(k))) as NonNullable<LearningRule['sourceAssessment']>}:r};
 export async function learningContext(owner:string,c:Pick<Campaign,'brandId'|'channels'|'storeId'>){
  const rules=await listRecords<LearningRule>(owner,'learning_rule');
  return rules.filter(r=>ruleApplies(r,c.brandId,c.channels,Date.now(),c.storeId))
@@ -86,6 +88,23 @@ function arm(raw:any,label:string,metric:string):Arm{
  if(metric==='completion_rate'&&denominator!==null&&numerator!==null&&numerator>denominator)throw new ApiError(400,'완주 수는 재생 시작 수를 초과할 수 없습니다.');
  return {denominator,numerator,source:str(raw.source,'수치 출처와 조회 조건',3000,true)};
 }
+// 연장 근거가 되는 새 측정: since 이후의 관찰 구간이 있는 유효한 측정의 기간 끝(가장 늦은 것, 없으면 null).
+// 저장 시각이 아니라 측정 기간 끝을 본다. 같은 결과를 다시 저장하거나 지난 기간을 뒤늦게 입력해도 새 측정이 아니다(R1·SEC-1).
+// 바이럴 규칙은 재검증 실험(retest_rule) 결과 중 두 안의 분모가 있고 근거 부족이 아닌 것, 점포 규칙은 원 실험에서 이어간 후속 실험 성과 중
+// 규칙의 핵심 지표가 기록된 것이다(처치 전 기준선 제외). 점포 성과 기간은 날짜뿐이라 since의 Asia/Seoul 날짜보다 뒤에 끝나야 한다.
+async function measuredSince(owner:string,r:LearningRule,since:string,viral?:ViralExperiment[]):Promise<string|null>{
+ let ends:string[];
+ if(r.origin==='store'){
+  if(!r.storeId)return null;
+  const [experiments,measurements]=await Promise.all([listRecords<StoreExperiment>(owner,'store_experiment',r.storeId),listRecords<StoreMeasurement>(owner,'store_measurement',r.storeId)]);
+  const ids=new Set([r.experimentId,...experiments.filter(x=>x.parentExperimentId===r.experimentId).map(x=>x.id)]),metric=r.storeAssessment?.primaryMetric,sinceDay=new Date(since).toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'});
+  const recorded=(m:StoreMeasurement)=>{const values=(m.values??{}) as Record<string,number|null|undefined>;return metric?typeof values[metric]==='number':Object.values(values).some(v=>typeof v==='number')};
+  ends=measurements.filter(m=>ids.has(m.experimentId)&&(m.scope??'experiment')==='experiment'&&recorded(m)&&m.periodEnd>sinceDay).map(m=>m.periodEnd);
+ }else ends=(viral??await listRecords<ViralExperiment>(owner,'viral_experiment')).filter(x=>x.id==='retest:'+r.id&&!!x.result&&!!x.assessment&&x.assessment.status!=='insufficient'&&x.result.control.denominator!==null&&x.result.treatment.denominator!==null&&x.result.observedUntil>since).map(x=>x.result!.observedUntil);
+ return ends.sort().at(-1)??null;
+}
+// 서버가 연장을 거절하는 규칙인지: 측정 없이 한 번 연장했고 그 뒤 새 측정이 없다. GET /api/learning이 규칙마다 계산해 화면이 같은 판정으로 연장 버튼을 끈다.
+export async function renewBlocked(owner:string,r:LearningRule,viral?:ViralExperiment[]){return (r.renewCount||0)>=1&&!await measuredSince(owner,r,r.renewedAt??r.createdAt,viral)}
 export async function learningAction(owner:string,b:any,by?:EventActor){
  if(b.action==='add_case'){
   const c=await makeCase(owner,b.data);const previous=(await listRecords<ViralCase>(owner,'viral_case')).find(x=>x.brandId===c.brandId&&x.url===c.url);
@@ -100,7 +119,10 @@ export async function learningAction(owner:string,b:any,by?:EventActor){
   const campaign=await readRecord<Campaign>(owner,'campaign',str(b.campaignId,'캠페인',100,true));if(campaign.brandId!==a.brandId)throw new ApiError(400,'동일 브랜드의 캠페인을 선택하세요.');
   const d=b.data||{};const minSample=num(d.minSample,'최소 표본'),minHours=num(d.minHours,'최소 관찰 시간'),minLift=num(d.minLift,'목표 개선율');if(!Number.isInteger(minSample)||minSample<100||minHours<1||minHours>2160||minLift<=0||minLift>1000)throw new ApiError(400,'최소 표본 100 이상, 관찰 1~2160시간, 개선율 0 초과~1000%로 설정하세요.');
   if(!Object.hasOwn(learningMetrics,d.metric))throw new ApiError(400,'주지표를 선택하세요.');
-  const now=stamp(),e:ViralExperiment={id:uid(),brandId:a.brandId,campaignId:campaign.id,caseId:c.id,analysisId:a.id,title:str(d.title,'실험 이름',200,true),channel:c.channel,hypothesis:str(d.hypothesis,'가설',6000,true),variable:str(d.variable,'바꿀 요소',3000,true),control:str(d.control,'대조안',6000,true),treatment:str(d.treatment,'실험안',6000,true),metric:d.metric,minSample,minHours,minLift,conditions:str(d.conditions,'동일하게 유지할 조건',6000,true),version:1,status:'draft',startedAt:null,createdAt:now,updatedAt:now,result:null,assessment:null};
+  // 검증할 채널은 사례 채널과 따로 받는다. 비우면 앱이 발행·수집할 수 있는 채널을 쓴다. 사례로 등록할 수 있는 채널만 고를 수 있다.
+  const verifyChannel=d.verifyChannel===undefined||d.verifyChannel===null||d.verifyChannel===''?defaultVerifyChannel(c.channel):str(d.verifyChannel,'검증할 채널',30,true);
+  if(!learningChannels.includes(verifyChannel)&&verifyChannel!==c.channel)throw new ApiError(400,'검증할 채널을 선택하세요.');
+  const now=stamp(),e:ViralExperiment={id:uid(),brandId:a.brandId,campaignId:campaign.id,caseId:c.id,analysisId:a.id,title:str(d.title,'실험 이름',200,true),channel:verifyChannel,caseChannel:c.channel,hypothesis:str(d.hypothesis,'가설',6000,true),variable:str(d.variable,'바꿀 요소',3000,true),control:str(d.control,'대조안',6000,true),treatment:str(d.treatment,'실험안',6000,true),metric:d.metric,minSample,minHours,minLift,conditions:str(d.conditions,'동일하게 유지할 조건',6000,true),version:1,status:'draft',startedAt:null,createdAt:now,updatedAt:now,result:null,assessment:null};
   await database().batch([recordStatement(owner,'viral_experiment',e.id,e,campaign.id),eventStatement(owner,campaign.id,`바이럴 실험 「${e.title}」을 설계했습니다.`,by)]);return {id:e.id};
  }
  if(['start_experiment','save_results','adopt_rule'].includes(b.action)){
@@ -120,7 +142,7 @@ export async function learningAction(owner:string,b:any,by?:EventActor){
   const id=e.id+':'+e.version;const existing=(await listRecords<LearningRule>(owner,'learning_rule')).find(r=>r.id===id);if(existing)return {id:existing.id};
   // 사람의 확정: 개선 판정은 채택(시험 적용), 미지지 판정은 중단(주의사항)이다. 통계 권고와 어긋나도 막지 않고 어긋남과 선택 사유를 규칙에 남긴다.
   const positive=e.assessment.status==='promising',decision=positive?'adopt' as const:'stop' as const,stats=experimentStats(e),reason=str(b.reason??'','판정 사유',2000),conflict=decisionConflict(stats,decision);
-  const rule:LearningRule={origin:'viral',direction:positive?'test':'caution',...(e.result?{sourceAssessment:{status:e.assessment.status as 'promising'|'not_supported',metric:e.metric,controlRate:e.assessment.controlRate,treatmentRate:e.assessment.treatmentRate,lift:e.assessment.lift,controlSample:e.result.control.denominator,treatmentSample:e.result.treatment.denominator,startedAt:e.startedAt,observedUntil:e.result.observedUntil,conditions:e.conditions,notes:e.result.notes,stats,decision,...(conflict?{decisionConflict:conflict}:{}),...(reason?{decisionReason:reason}:{})}}:{}),id,brandId:e.brandId,channel:e.channel,experimentId:e.id,experimentVersion:e.version,caseId:e.caseId,title:e.title,guidance:str(b.guidance,'다음 제작에 반영할 규칙',6000,true),scope:e.conditions,evidenceLevel:'observational',status:'active',version:1,expiresAt:new Date(Date.now()+30*86400000).toISOString(),createdAt:stamp(),updatedAt:stamp()};
+  const rule:LearningRule={origin:'viral',direction:positive?'test':'caution',...(e.result?{sourceAssessment:{status:e.assessment.status as 'promising'|'not_supported',metric:e.metric,controlRate:e.assessment.controlRate,treatmentRate:e.assessment.treatmentRate,lift:e.assessment.lift,controlSample:e.result.control.denominator,treatmentSample:e.result.treatment.denominator,startedAt:e.startedAt,observedUntil:e.result.observedUntil,conditions:e.conditions,notes:e.result.notes,stats,decision,...(conflict?{decisionConflict:conflict}:{}),...(reason?{decisionReason:reason}:{})}}:{}),id,brandId:e.brandId,channel:e.channel,caseChannel:e.caseChannel??e.channel,experimentId:e.id,experimentVersion:e.version,caseId:e.caseId,title:e.title,guidance:str(b.guidance,'다음 제작에 반영할 규칙',6000,true),scope:e.conditions,evidenceLevel:'observational',status:'active',version:1,expiresAt:expiry(),createdAt:stamp(),updatedAt:stamp()};
   await database().batch([recordStatement(owner,'learning_rule',id,rule,e.brandId),eventStatement(owner,e.campaignId,`「${e.title}」을 ${positive?'시험 적용 규칙':'실패에서 배운 주의사항'}으로 채택했습니다. 30일 후 재검토합니다.`,by)]);return {id};
  }
  if(b.action==='pause_rule'){
@@ -137,8 +159,11 @@ export async function learningAction(owner:string,b:any,by?:EventActor){
   if(b.action==='renew_rule'){
    if(r.status!=='active')throw new ApiError(409,'활성 규칙만 연장할 수 있습니다.');
    // 새 측정 없이 연장한 사실을 규칙에 남긴다. 이 값은 모델 입력으로 그대로 전달되어 근거의 신선도를 낮춰 해석하게 한다.
-   const reason=str(b.reason,'연장 사유',2000,true),renewed={...r,expiresAt:expiry(),renewCount:(r.renewCount||0)+1,renewedAt:stamp(),renewReason:reason,version:r.version+1,updatedAt:stamp()};
-   await recordStatement(owner,'learning_rule',r.id,renewed,r.brandId).run();return {id:r.id,expiresAt:renewed.expiresAt,renewCount:renewed.renewCount};
+   // 측정 없는 연장은 한 번까지다. 마지막 연장(없으면 채택) 이후 새 측정이 있으면 횟수를 늘리지 않고 그 측정 기간 끝을 남긴다(renewBlocked와 같은 판정).
+   const reason=str(b.reason,'연장 사유',2000,true),measuredAt=await measuredSince(owner,r,r.renewedAt??r.createdAt);
+   if(!measuredAt&&(r.renewCount||0)>=1)throw new ApiError(409,'연장은 한 번까지 측정 없이 가능합니다. 새 측정을 기록한 뒤 연장하세요.');
+   const renewed={...r,expiresAt:expiry(),...(measuredAt?{renewMeasuredAt:measuredAt}:{renewCount:(r.renewCount||0)+1}),renewedAt:stamp(),renewReason:reason,version:r.version+1,updatedAt:stamp()};
+   await recordStatement(owner,'learning_rule',r.id,renewed,r.brandId).run();return {id:r.id,expiresAt:renewed.expiresAt,renewCount:renewed.renewCount||0};
   }
   if(r.origin==='store')throw new ApiError(409,'점포 실험에서 승격된 규칙은 점포 마케팅 화면에서 후속 실험을 만드세요.');
   const source=await readRecord<ViralExperiment>(owner,'viral_experiment',r.experimentId);

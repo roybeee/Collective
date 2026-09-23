@@ -191,7 +191,11 @@ check('overlapping aggregate cannot double count',(await sp('save_measurement',{
 check('ledger overwrite needs latest version',(await op('ledger_measurement',{...ledgerInput,id:ledgerMeasurementId,version:99,costsConfirmed:true})).status===409);
 await op('ledger_measurement',{...ledgerInput,id:ledgerMeasurementId,version:1,costsConfirmed:true});
 await op('save_order',{storeId,id:orderId,version:2,data:{...order,refundAmount:2500}});
-check('adoption rejects changed ledger',(await sp('close_experiment',{storeId,experimentId:ledgerExperiment,version:2,decision:'adopt',learning:'확대 검토'})).status===409);
+// loop-7·R3: 장부가 바뀌어 저장이 409가 되는 조건부 확대는 미리보기도 같은 문구로 저장할 수 없다고 알린다.
+const staleLedgerPreview=await sp('preview_close',{storeId,experimentId:ledgerExperiment,decision:'adopt',review:{evidenceLevel:'comparison',nextAction:'같은 요일에 재실험'}});
+const staleLedgerClose=await sp('close_experiment',{storeId,experimentId:ledgerExperiment,version:2,decision:'adopt',learning:'확대 검토'});
+check('adoption rejects changed ledger',staleLedgerClose.status===409);
+check('the close preview blocks a changed ledger with the save message',staleLedgerPreview.status===200&&staleLedgerPreview.data.promoted===false&&staleLedgerPreview.data.blocked===staleLedgerClose.data.error);
 await op('ledger_measurement',{...ledgerInput,id:ledgerMeasurementId,version:2,costsConfirmed:true});
 const review={evidenceLevel:'comparison',failureType:'none',confounders:'요일 영향 존재',nextAction:'같은 요일에 재실험',conditions:'같은 상품·가격·처리 용량'};
 check('review links structured next action',(await sp('close_experiment',{storeId,experimentId:ledgerExperiment,version:2,decision:'adopt',learning:'조건부 확대, 인과 효과 미확정',review})).status===200);
@@ -223,7 +227,7 @@ const closeWith=async(title,decision,extra={},measure=true)=>{
  await sp('start_experiment',{storeId,experimentId:id,version:1});
  if(measure)await sp('save_measurement',{storeId,experimentId:id,data:measurement});
  const r=await sp('close_experiment',{storeId,experimentId:id,version:2,decision,learning:'회고 기록',...extra});
- return {id,status:r.status};
+ return {id,status:r.status,data:r.data};
 };
 const stopped=await closeWith('중단 검증','stop',{review});
 check('stop retrospective promotes to a caution rule',(await allRules()).find(r=>r.experimentId===stopped.id)?.direction==='caution');
@@ -239,6 +243,54 @@ check('missing measured metric blocks promotion',noMeasure.status===200&&!(await
 const observed=await closeWith('단일 관측 채택','adopt',{review:{...review,evidenceLevel:'observation'}});
 check('a single observation without comparison cannot become a rule',observed.status===200&&!(await allRules()).some(r=>r.experimentId===observed.id));
 check('the blocked retrospective is still stored',!!(await server.namespace.listRecords(owner,'store_experiment')).find(x=>x.id===observed.id)?.review);
+
+// loop-7: 회고 저장 전에 규칙 승격 여부를 미리 보여 주고, 저장 응답도 규칙 id 또는 막힌 사유를 돌려준다.
+const storeServer=await load('lib/store-server.ts');await storeServer.evaluate();
+const promotion=storeServer.namespace.storeRulePromotion;
+const pe={id:'preview-exp',storeId,brandId:'oda',title:'미리보기',channel:'daangn',primaryMetric:'orders',target:10,measurement:'POS',version:3};
+const pm={experimentId:'preview-exp',scope:'experiment',values:{orders:5},periodStart:'2026-08-01',periodEnd:'2026-08-07',source:'POS'};
+let agrees=true,cases=0;
+for(const decision of ['adopt','stop','iterate','inconclusive'])for(const evidenceLevel of ['observation','comparison','repeated'])for(const nextAction of ['','다음 실험'])for(const ms of [[pm],[],[{...pm,scope:'baseline'}],[{...pm,values:{orders:null}}]]){
+ const input={...review,evidenceLevel,nextAction},p=promotion(pe,decision,'회고',input,ms),gate=learningServer.namespace.storeLearningRule(pe,decision,'회고',input,ms,'주문 수');cases++;
+ if(!!p.rule!==!!gate||(p.rule?p.reasons.length!==0:p.reasons.length===0))agrees=false;
+}
+check('the promotion preview agrees with the store rule gate for every input',agrees&&cases===96);
+const defaults=promotion(pe,'inconclusive','회고',{...review,evidenceLevel:'observation',nextAction:''},[pm]).reasons;
+check('the default close choices name every blocker',defaults.some(x=>x.includes('판단 보류'))&&defaults.some(x=>x.includes('다음 행동'))&&defaults.some(x=>x.includes('관찰 수준이라 규칙이 되지 않습니다 — 비교 조건을 갖춘 결과로 기록하거나 다음 실험을 만드세요')));
+// loop-7·R3: 핵심 지표 기록 없는 조건부 확대는 저장이 409다. 미리보기는 회고로 남는다가 아니라 저장할 수 없다고 알린다.
+check('an adoption without a primary metric record is blocked like the save',promotion(pe,'adopt','회고',review,[]).blocked===storeServer.namespace.ADOPT_NEEDS_MEASUREMENT&&promotion(pe,'adopt','회고',review,[{...pm,scope:'baseline'}]).blocked===storeServer.namespace.ADOPT_NEEDS_MEASUREMENT);
+check('a stop or a measured adoption is not blocked',promotion(pe,'stop','회고',review,[]).blocked===undefined&&promotion(pe,'adopt','회고',review,[pm]).blocked===undefined);
+check('a missing primary metric record is named',promotion(pe,'stop','회고',review,[]).reasons.some(x=>x.includes('핵심 지표(결제·주문 완료)')));
+check('a closing without a review names the missing next action',promotion(pe,'stop','회고',undefined,[pm]).reasons.some(x=>x.includes('다음 행동')));
+
+const previewId=(await sp('save_experiment',{storeId,data:{...plan,title:'미리보기 실험'}})).data.id;
+await sp('start_experiment',{storeId,experimentId:previewId,version:1});
+await sp('save_measurement',{storeId,experimentId:previewId,data:measurement});
+const previewClose=data=>sp('preview_close',{storeId,experimentId:previewId,...data});
+let preview=await previewClose({decision:'inconclusive',review:{evidenceLevel:'observation',nextAction:''}});
+check('the close preview reports that the default choices create no rule',preview.status===200&&preview.data.promoted===false&&preview.data.reasons.some(x=>x.includes('관찰 수준')));
+preview=await previewClose({decision:'adopt',review});
+check('the close preview reports a promotable review',preview.status===200&&preview.data.promoted===true&&preview.data.reasons.length===0);
+check('previewing saves nothing',(await sd(storeId)).data.experiments.find(x=>x.id===previewId).status==='running'&&!(await allRules()).some(r=>r.experimentId===previewId));
+const bareId=(await sp('save_experiment',{storeId,data:{...plan,title:'기록 없는 확대'}})).data.id;
+await sp('start_experiment',{storeId,experimentId:bareId,version:1});
+const barePreview=await sp('preview_close',{storeId,experimentId:bareId,decision:'adopt',review}),bareClose=await sp('close_experiment',{storeId,experimentId:bareId,version:2,decision:'adopt',learning:'확대',review});
+check('the close preview blocks an adoption without a record with the save message',barePreview.status===200&&barePreview.data.promoted===false&&bareClose.status===409&&barePreview.data.blocked===bareClose.data.error);
+check('a promotable preview carries no blocker',!preview.data.blocked);
+check('the close preview is scoped to the experiment store',(await sp('preview_close',{storeId:storeB,experimentId:previewId,decision:'adopt',review})).status===400);
+sql.prepare('INSERT INTO mutation_locks(owner,token,expires_at) VALUES(?,?,?)').run(owner,'held-by-save',Date.now()+60000);
+check('the close preview neither waits for nor takes the save lock',(await previewClose({decision:'adopt',review})).status===200&&sql.prepare('SELECT token FROM mutation_locks WHERE owner=?').get(owner)?.token==='held-by-save');
+sql.prepare('DELETE FROM mutation_locks WHERE owner=?').run(owner);
+check('a promoted retrospective returns its rule id',stopped.data.ruleId===(await allRules()).find(r=>r.experimentId===stopped.id)?.id&&!stopped.data.reasons);
+check('a blocked retrospective returns why it stayed a retrospective',!observed.data.ruleId&&!!observed.data.reasons?.some(x=>x.includes('관찰 수준이라 규칙이 되지 않습니다')));
+const heldBack=await sp('close_experiment',{storeId,experimentId:previewId,version:2,decision:'inconclusive',learning:'판단 보류',review:{...review,evidenceLevel:'observation'}});
+check('the saved retrospective reports the same reasons as the preview',heldBack.status===200&&!heldBack.data.ruleId&&!!heldBack.data.reasons?.some(x=>x.includes('판단 보류'))&&!!heldBack.data.reasons?.some(x=>x.includes('관찰 수준')));
+// 화면 연결(원문 검사, tests/workspace-wiring.test.mjs와 같은 방식): 모달이 미리보기를 쓰고, 저장 응답의 ruleId로 토스트와 학습 화면 이동을 정한다.
+const storePanel=readFileSync('app/store-marketing-panel.tsx','utf8');
+check('the close dialog asks for the promotion preview',storePanel.includes("post('preview_close'"));
+check('the close dialog says a blocked review cannot be saved and disables saving',storePanel.includes('저장할 수 없습니다: ')&&storePanel.includes('disabled={busy||!!preview?.blocked}'));
+check('the close dialog reports the saved result from ruleId',storePanel.includes('r.ruleId')&&storePanel.includes('학습 규칙으로 승격됨')&&storePanel.includes('학습 규칙으로 승격되지 않음'));
+check('the promoted toast opens the rules tab of the store brand by address',storePanel.includes("pushNav({view:'learning',brand:store.brandId,tab:'rules'})")&&!storePanel.includes("serializeNav({view:'learning'})"));
 
 check('promoted rule reaches a campaign for the same store',(await ruleContext('당근',storeId)).some(r=>r.id===adoptRule.id));
 check('promoted rule does not leak to another store',!(await ruleContext('당근',storeB)).some(r=>r.id===adoptRule.id));

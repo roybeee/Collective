@@ -93,11 +93,11 @@ check('other owners cannot see the credential',!(await req(channels,null,'someon
 check('collection requires a known experiment',(await mz('collect',{experimentId:'missing',arm:'control',channel:'naver_ads',target:'cmp-1',from:'2026-08-01',to:'2026-08-07'})).status===404);
 r=await req(action,{action:'save_campaign',data:{brandId:'ofd',title:'측정 캠페인',goal:'수집 검증',channels:'Instagram',budget:0}});const cid=r.data.id;
 // 실험은 채널을 갖는다. 커넥터 수치는 같은 채널의 실험에만 들어갈 수 있다.
-const mkExperiment=async(channel,url,metric)=>{
- const caseId=(await req(learn,{action:'add_case',data:{brandId:'ofd',title:'수집 사례',channel,url,scope:'테스트',observations:'테스트 관찰'}})).data.id;
- const analysisId=(await req(learn,{action:'save_analysis',caseId,data:{facts:'f',hook:'h',retention:'r',sharing:'s',context:'c',counterEvidence:'x',unknowns:'u',ideas:[{hypothesis:'h',variable:'v',control:'c',treatment:'t',metric}]}})).data.id;
- const id=(await req(learn,{action:'create_experiment',analysisId,campaignId:cid,data:{title:'수집 실험',hypothesis:'h',variable:'v',control:'c',treatment:'t',metric,minSample:1000,minHours:1,conditions:'동일 조건',minLift:10}})).data.id;
- await req(learn,{action:'start_experiment',id,version:1});
+const mkExperiment=async(channel,url,metric,who=owner,campaignId=cid)=>{
+ const caseId=(await req(learn,{action:'add_case',data:{brandId:'ofd',title:'수집 사례',channel,url,scope:'테스트',observations:'테스트 관찰'}},who)).data.id;
+ const analysisId=(await req(learn,{action:'save_analysis',caseId,data:{facts:'f',hook:'h',retention:'r',sharing:'s',context:'c',counterEvidence:'x',unknowns:'u',ideas:[{hypothesis:'h',variable:'v',control:'c',treatment:'t',metric}]}},who)).data.id;
+ const id=(await req(learn,{action:'create_experiment',analysisId,campaignId,data:{title:'수집 실험',hypothesis:'h',variable:'v',control:'c',treatment:'t',metric,minSample:1000,minHours:1,conditions:'동일 조건',minLift:10}},who)).data.id;
+ await req(learn,{action:'start_experiment',id,version:1},who);
  return id;
 };
 const experimentId=await mkExperiment('Instagram','https://instagram.com/reel/collect1','share_rate');
@@ -183,6 +183,10 @@ igInsights={reach:100,shares:250};
 r=await mz('collect',{experimentId,arm:'treatment',channel:'instagram',target:'17900000000000000',from:'2026-08-01',to:'2026-08-07'});
 check('shares above reach are reported, not silently accepted',r.data.collected.limitations.some(x=>x.includes('공유')));
 igInsights={reach:9000,shares:450,saves:120,plays:7000};
+// R5: Instagram 미디어 인사이트는 게시 이후 누적값이라 요청 기간이 값에 영향을 주지 않는다. 기간 불일치·당일 부분 집계 경고를 붙이지 않는다.
+await mz('collect',{experimentId,arm:'control',channel:'instagram',target:'17900000000000001',from:'2026-08-02',to:new Clock().toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'})});
+const igDraft=(await drafts()).find(d=>d.experimentId===experimentId);
+check('instagram arms with different windows carry no window warning',igDraft.arms.control.window.from!==igDraft.arms.treatment.window.from&&!igDraft.limitations.some(x=>x.includes('수집 기간이 다릅니다')||x.includes('당일 부분 집계'))&&!igDraft.arms.control.limitations.some(x=>x.includes('당일 부분 집계')));
 igDown=true;
 r=await mz('collect',{experimentId,arm:'treatment',channel:'instagram',target:'17900000000000000',from:'2026-08-15',to:'2026-08-21'});
 check('instagram outage surfaces as an error, not as numbers',r.status>=500);
@@ -206,5 +210,116 @@ const naverLiveId=await mkExperiment('네이버 검색광고','https://searchad.
 check('revoking a channel succeeds',(await ch('revoke_credential',{channel:'naver_ads'})).status===200);
 check('revoked channel reports disconnected',!(await chStatus()).channels.some(c=>c.channel==='naver_ads'&&c.connected));
 check('collection stops after revocation',(await mz('collect',{experimentId:naverLiveId,arm:'control',channel:'naver_ads',target:'cmp-1',from:'2026-09-01',to:'2026-09-07'})).status===409);
+
+// --- loop-9: 워커 재수집은 to를 오늘까지 넓히고, 초안은 arm별 기간·정의를 따로 보관한다 ---------
+// 워커는 tick마다 기한이 된 대상 하나만 처리하므로 시나리오마다 소유자를 나눠 대상이 섞이지 않게 한다.
+const seoulDay=t=>new Date(t).toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'});
+const rollingOwner=async(who,campaign={})=>{await server.namespace.seedBrands(who);await req(channels,{action:'save_credential',channel:'naver_ads',data:naver},who);return (await req(action,{action:'save_campaign',data:{brandId:'ofd',title:'롤링 캠페인',goal:'기간 롤링 검증',channels:'네이버 검색광고',budget:0,...campaign}},who)).data.id};
+const collectAs=(who,data)=>req(measurements,{action:'collect',channel:'naver_ads',target:'cmp-1',...data},who);
+const sourceOf=async(who,id)=>(await server.namespace.listRecords(who,'measurement_source')).find(s=>s.id===id);
+const draftOf=async(who,id)=>(await server.namespace.listRecords(who,'measurement_draft')).find(d=>d.experimentId===id);
+const lastUntil=()=>JSON.parse(new URL(naverCalls.at(-1).url).searchParams.get('timeRange')).until;
+const mismatch=x=>x.includes('수집 기간이 다릅니다'),partial=x=>x.includes('당일 부분 집계');
+// R5: 롤링 상한은 마지막 완결일(어제, Asia/Seoul)이다. 오늘은 집계가 끝나지 않은 날이다.
+const lastDay=t=>seoulDay(t-86400000);
+
+let who='measurement-rolling-open',rollCampaign=await rollingOwner(who);
+const rollId=await mkExperiment('네이버 검색광고','https://searchad.naver.com/report/roll-open','click_rate',who,rollCampaign);
+await collectAs(who,{experimentId:rollId,arm:'control',from:'2026-08-01',to:seoulDay(now-3*86400000),rolling:true});
+check('an explicit rolling request registers a rolling source',(await sourceOf(who,rollId+':control')).rolling===true);
+now+=7*3600000;
+check('the worker recollects the rolling source',(await collector.namespace.collectDueMeasurements(who)).status==='processed');
+let rolled=await sourceOf(who,rollId+':control');
+check('the worker moves to up to the last complete day in Asia/Seoul and keeps from',rolled.window.to===lastDay(now)&&rolled.window.from==='2026-08-01');
+check('the external call asks for the rolled window',lastUntil()===lastDay(now));
+const firstTo=rolled.window.to;
+now+=30*3600000;
+await collector.namespace.collectDueMeasurements(who);
+rolled=await sourceOf(who,rollId+':control');
+check('the second worker tick advances to again',rolled.window.to===lastDay(now)&&rolled.window.to>firstTo&&rolled.rolling===true);
+
+// arm별 보관과 기간 불일치 경고.
+await collectAs(who,{experimentId:rollId,arm:'treatment',target:'cmp-2',from:'2026-08-01',to:'2026-08-07'});
+let rollDraft=await draftOf(who,rollId);
+check('the draft keeps each arm with its own value, window, definition, limitations and time',rollDraft.arms?.control?.window.to===lastDay(now)&&rollDraft.arms.treatment?.window.to==='2026-08-07'&&rollDraft.arms.control.value.denominator===4000&&!!rollDraft.arms.control.definition&&rollDraft.arms.treatment.limitations.length>0&&!!rollDraft.arms.control.fetchedAt);
+check('different arm windows add a warning to the draft limitations',rollDraft.limitations.some(mismatch));
+check('the arm values stay on the existing top-level fields',rollDraft.control.denominator===4000&&rollDraft.treatment.denominator===4000);
+// R5: 수집일(오늘)까지 포함한 기간은 당일 부분 집계다. 문자열이 같아도 수집 시각에 따라 값이 다르므로 arm과 초안 한계에 적는다.
+await collectAs(who,{experimentId:rollId,arm:'treatment',target:'cmp-2',from:'2026-08-01',to:seoulDay(now)});
+rollDraft=await draftOf(who,rollId);
+check('a window that reaches the collection day is a partial day on the arm and the draft',rollDraft.arms.treatment.limitations.some(partial)&&rollDraft.limitations.some(partial)&&!rollDraft.arms.control.limitations.some(partial));
+await collectAs(who,{experimentId:rollId,arm:'treatment',target:'cmp-2',from:'2026-08-01',to:lastDay(now)});
+check('matching complete arm windows carry no warning',!(await draftOf(who,rollId)).limitations.some(x=>mismatch(x)||partial(x)));
+
+// 이전 형식 초안(arm별 기록 없음)은 최상위 기간·정의를 값이 있는 arm의 것으로 읽는다.
+const legacyId=await mkExperiment('네이버 검색광고','https://searchad.naver.com/report/roll-legacy','click_rate',who,rollCampaign);
+await server.namespace.recordStatement(who,'measurement_draft',legacyId,{id:legacyId,experimentId:legacyId,channel:'naver_ads',control:{denominator:1000,numerator:30,source:'이전 수집'},comparable:false,definition:'이전 정의',window:{from:'2026-07-01',to:'2026-07-07'},limitations:['이전 한계'],fetchedAt:'2026-07-08T00:00:00.000Z',updatedAt:'2026-07-08T00:00:00.000Z'},rollCampaign).run();
+await collectAs(who,{experimentId:legacyId,arm:'treatment',from:'2026-07-01',to:'2026-07-14'});
+const legacy=await draftOf(who,legacyId);
+check('a legacy draft is read as the arm it holds',legacy.arms?.control?.window.to==='2026-07-07'&&legacy.arms.control.definition==='이전 정의'&&legacy.arms.control.value.numerator===30&&legacy.arms.control.limitations[0]==='이전 한계'&&legacy.arms.control.fetchedAt==='2026-07-08T00:00:00.000Z');
+check('a legacy arm keeps its value next to the new arm',legacy.control.numerator===30&&legacy.treatment.denominator===4000&&legacy.arms.treatment.window.to==='2026-07-14');
+check('a legacy arm window that differs from the new arm is warned',legacy.limitations.some(mismatch));
+// R6: 두 arm이 모두 있던 이전 초안의 최상위 기간은 마지막 수집 arm의 것이다. 다른 arm의 기간은 그 arm의 수집 대상에 남은 기간을 쓴다.
+const legacyBothId=await mkExperiment('네이버 검색광고','https://searchad.naver.com/report/roll-legacy-both','click_rate',who,rollCampaign);
+await server.namespace.recordStatement(who,'measurement_draft',legacyBothId,{id:legacyBothId,experimentId:legacyBothId,channel:'naver_ads',control:{denominator:1000,numerator:30,source:'이전 수집'},treatment:{denominator:1200,numerator:40,source:'이전 수집'},comparable:false,definition:'이전 정의',window:{from:'2026-07-01',to:'2026-07-14'},limitations:['이전 한계'],fetchedAt:'2026-07-15T00:00:00.000Z',updatedAt:'2026-07-15T00:00:00.000Z'},rollCampaign).run();
+for(const [arm,to] of [['control','2026-07-07'],['treatment','2026-07-14']])await server.namespace.recordStatement(who,'measurement_source',legacyBothId+':'+arm,{id:legacyBothId+':'+arm,experimentId:legacyBothId,channel:'naver_ads',arm,target:'cmp-1',window:{from:'2026-07-01',to},lastFetchedAt:new Clock().toISOString(),lastError:null},legacyBothId).run();
+await collectAs(who,{experimentId:legacyBothId,arm:'treatment',from:'2026-07-01',to:'2026-07-14'});
+const legacyBoth=await draftOf(who,legacyBothId);
+check('a legacy arm takes its window from its own collection source',legacyBoth.arms.control.window.to==='2026-07-07'&&legacyBoth.arms.treatment.window.to==='2026-07-14');
+check('re-collecting the last arm of a legacy draft keeps the mismatch warning',legacyBoth.limitations.some(mismatch));
+
+// 실험 종료일(캠페인 종료일)이 있으면 그날까지만 넓힌다. 그 뒤에는 같은 기간을 다시 조회해 지연 반영분만 받는다.
+who='measurement-rolling-ended';rollCampaign=await rollingOwner(who,{startDate:'2026-08-01',endDate:'2026-08-10'});
+const endedId=await mkExperiment('네이버 검색광고','https://searchad.naver.com/report/roll-ended','click_rate',who,rollCampaign);
+await collectAs(who,{experimentId:endedId,arm:'control',from:'2026-08-01',to:'2026-08-07',rolling:true});
+now+=7*3600000;await collector.namespace.collectDueMeasurements(who);
+check('rolling stops at the experiment end date',(await sourceOf(who,endedId+':control')).window.to==='2026-08-10'&&lastUntil()==='2026-08-10');
+now+=30*3600000;await collector.namespace.collectDueMeasurements(who);
+check('after the end date to no longer advances',(await sourceOf(who,endedId+':control')).window.to==='2026-08-10'&&lastUntil()==='2026-08-10');
+
+// 롤링을 끈 수집과 롤링 이전에 저장된 대상은 처음 기간을 그대로 다시 조회한다.
+who='measurement-rolling-fixed';rollCampaign=await rollingOwner(who);
+const fixedId=await mkExperiment('네이버 검색광고','https://searchad.naver.com/report/roll-fixed','click_rate',who,rollCampaign);
+await collectAs(who,{experimentId:fixedId,arm:'control',from:'2026-08-01',to:'2026-08-07',rolling:false});
+now+=7*3600000;await collector.namespace.collectDueMeasurements(who);
+check('a collection that opts out of rolling keeps its window',(await sourceOf(who,fixedId+':control')).window.to==='2026-08-07'&&lastUntil()==='2026-08-07');
+const legacySource=Object.fromEntries(Object.entries(await sourceOf(who,fixedId+':control')).filter(([k])=>k!=='rolling'));
+await server.namespace.recordStatement(who,'measurement_source',legacySource.id,legacySource,fixedId).run();
+now+=7*3600000;await collector.namespace.collectDueMeasurements(who);
+check('a source saved before rolling keeps its window',(await sourceOf(who,fixedId+':control')).window.to==='2026-08-07'&&lastUntil()==='2026-08-07');
+// R10①: 두 번째 tick에서도 이전 대상은 롤링으로 바뀌지 않는다(첫 tick만 보면 롤링 전환 회귀를 잡지 못한다).
+now+=7*3600000;await collector.namespace.collectDueMeasurements(who);
+check('a source saved before rolling stays fixed on the next tick too',(await sourceOf(who,fixedId+':control')).window.to==='2026-08-07'&&lastUntil()==='2026-08-07'&&(await sourceOf(who,fixedId+':control')).rolling!==true);
+
+// R4: 종료일 없는 캠페인에서 과거의 고정 기간을 지정하면(rolling 미지정) 그 기간을 유지한다. 마지막 완결일 이후까지 요청하면 롤링한다.
+who='measurement-rolling-past';rollCampaign=await rollingOwner(who);
+const pastId=await mkExperiment('네이버 검색광고','https://searchad.naver.com/report/roll-past','click_rate',who,rollCampaign);
+await collectAs(who,{experimentId:pastId,arm:'control',from:'2026-08-01',to:'2026-08-07'});
+check('an explicit past window does not roll by default',(await sourceOf(who,pastId+':control')).rolling===false);
+now+=60000;await collectAs(who,{experimentId:pastId,arm:'treatment',target:'cmp-2',from:'2026-08-01',to:lastDay(now)});
+check('a window up to the last complete day rolls by default',(await sourceOf(who,pastId+':treatment')).rolling===true);
+now+=7*3600000;await collector.namespace.collectDueMeasurements(who);
+check('the worker keeps an explicit past window of an open-ended campaign',(await sourceOf(who,pastId+':control')).window.to==='2026-08-07'&&lastUntil()==='2026-08-07');
+
+// R10②: 이미 더 뒤인 to(예: 앞으로의 종료일까지 요청)는 롤링이 줄이지 않는다.
+who='measurement-rolling-ahead';rollCampaign=await rollingOwner(who);
+const aheadId=await mkExperiment('네이버 검색광고','https://searchad.naver.com/report/roll-ahead','click_rate',who,rollCampaign),aheadTo=seoulDay(now+10*86400000);
+await collectAs(who,{experimentId:aheadId,arm:'control',from:'2026-08-01',to:aheadTo});
+now+=7*3600000;await collector.namespace.collectDueMeasurements(who);
+check('rolling never shortens a later to',(await sourceOf(who,aheadId+':control')).window.to===aheadTo&&lastUntil()===aheadTo&&(await sourceOf(who,aheadId+':control')).rolling===true);
+
+// loop-9: 롤링은 실험 단위로 같은 to를 쓴다. 두 arm을 다른 시각에 수집하고 Asia/Seoul 자정을 넘긴 뒤 한 번 tick하면
+// 기한이 된 arm뿐 아니라 같은 실험의 롤링 arm도 같은 창으로 다시 수집해 기간 불일치가 생기지 않는다.
+who='measurement-rolling-sync';rollCampaign=await rollingOwner(who);
+const syncId=await mkExperiment('네이버 검색광고','https://searchad.naver.com/report/roll-sync','click_rate',who,rollCampaign);
+const nextSeoulMidnight=t=>Math.ceil((t+9*3600000)/86400000)*86400000-9*3600000,midnight=nextSeoulMidnight(now+7*3600000);
+now=midnight-6.5*3600000;await collectAs(who,{experimentId:syncId,arm:'control',from:'2026-08-01',to:lastDay(now)});
+now=midnight-3600000;await collectAs(who,{experimentId:syncId,arm:'treatment',target:'cmp-2',from:'2026-08-01',to:lastDay(now)});
+const syncBefore=(await sourceOf(who,syncId+':treatment')).lastFetchedAt;
+now=midnight+1800000;
+check('only the earlier arm is due after midnight',(await collector.namespace.collectDueMeasurements(who)).status==='processed');
+const syncDraft=await draftOf(who,syncId),syncControl=await sourceOf(who,syncId+':control'),syncTreatment=await sourceOf(who,syncId+':treatment');
+check('one tick rolls both arms of the experiment to the same to',syncControl.window.to===lastDay(now)&&syncTreatment.window.to===lastDay(now)&&syncTreatment.lastFetchedAt>syncBefore);
+check('arms rolled together carry no window mismatch',syncDraft.arms.control.window.to===syncDraft.arms.treatment.window.to&&!syncDraft.limitations.some(mismatch));
 
 console.log(JSON.stringify({passed:checks.length,checks},null,2));

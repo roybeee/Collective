@@ -28,6 +28,11 @@ test('확인 사실로 실제 PNG를 만들고 새로고침 뒤 내려받는다'
  // 새로고침하면 주소(?campaign=)로 상세가 다시 열린다. 열린 상세가 뒤 목록을 가리므로 '열기'를 다시 누르지 않는다.
  await page.reload();await expect(page.getByRole('dialog',{name:title})).toBeVisible();await page.getByRole('tab',{name:'제작·발행',exact:true}).click();await expect(page.getByRole('link',{name:'원본 PNG 내려받기',exact:true})).toBeVisible();
  await expect(page.getByText('발행 연결: 연결 필요',{exact:true})).toBeVisible();await expect(steps.locator('[aria-current="step"]')).toHaveText('채널');
+ // exec-loop-10: 한도는 '발행 횟수 한도'로 부르고 확정된 캠페인 예산을 함께 보여 준다. 예정 비용 입력은 유료 부스트 연동 전까지 참고용 접힘 영역에 있다.
+ await expect(page.getByRole('heading',{name:'2. 채널 연결과 발행 횟수 한도',exact:true})).toBeVisible();await expect(page.getByText('실행 한도',{exact:false})).toHaveCount(0);
+ await expect(page.getByText('캠페인 예산 0원(무예산)',{exact:true})).toBeVisible();await expect(page.getByLabel('누적 예정 비용 상한 (원)',{exact:true})).toBeHidden();
+ const plannedCost=page.getByLabel('이 발행의 예정 비용 (원)',{exact:true});await expect(plannedCost).toBeHidden();
+ await page.getByText('예정 비용 · 유료 부스트 연동 전까지 참고용',{exact:true}).click();await expect(plannedCost).toBeVisible();await expect(plannedCost).toHaveValue('0');
  await expect(page.getByText('고급: 외부 호스트',{exact:true})).toBeVisible();
  // 승인 버튼 옆 차단 사유: 한도·채널·기획 승인·기간. 기본 한도 버튼으로 한도 사유가 사라진다.
  const blockers=page.getByRole('list',{name:'승인 차단 사유',exact:true});
