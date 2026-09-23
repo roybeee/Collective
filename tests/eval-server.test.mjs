@@ -53,6 +53,12 @@ r=await connect({endpoint:'http://eval-hermes.example.com'});
 check('plain http endpoint is rejected',()=>assert.equal(r.status,400));
 r=await connect({endpoint:OPS});const sameHost=await connect({endpoint:OPS+'/eval'});
 check('operational endpoint is rejected with 400',()=>assert.ok(r.status===400&&/운영/.test(r.body.error)&&sameHost.status===400));
+// FQDN 끝 점('host.')은 같은 DNS 이름이다. 대소문자·퍼센트 인코딩(%2E) 변형과 운영이 아닌 평가 주소의 끝 점도 400으로 거부한다.
+for(const endpoint of [OPS+'.',OPS+'./eval','https://HERMES.EXAMPLE.COM.','https://hermes.example.com%2E',EVAL+'.']){const res=await connect({endpoint});check(`trailing-dot host ${endpoint} is rejected`,()=>assert.equal(res.status,400))}
+sql.prepare('UPDATE settings SET secret=? WHERE owner=?').run(await opsSettings(OPS+'.'),owner);
+r=await connect({endpoint:OPS});
+sql.prepare('UPDATE settings SET secret=? WHERE owner=?').run(await opsSettings(OPS),owner);
+check('an operational endpoint stored with a trailing dot still matches its host',()=>assert.ok(r.status===400&&/운영/.test(r.body.error)));
 check('rejected endpoints never reach the eval gateway or operations',()=>assert.ok(evalCalls.length===0&&opsCalls.length===0));
 r=await connect({isolationConfirmed:'yes'});
 check('isolation confirmation must be a boolean',()=>assert.equal(r.status,400));
@@ -111,13 +117,16 @@ await post({action:'delete_case',id:kept.id});
 r=await post({action:'start_run',set:'dev'});
 check('tokenBudget is required',()=>assert.ok(r.status===400&&/tokenBudget/.test(r.body.error)));
 for(const bad of [0,-1,1.5,'1000']){const res=await post({action:'start_run',set:'dev',tokenBudget:bad});check(`invalid tokenBudget ${JSON.stringify(bad)} is 400`,()=>assert.equal(res.status,400))}
-r=await post({action:'start_run',set:'dev',tokenBudget:1000,variant:'candidate'});
-check('only the active variant runs for now',()=>assert.equal(r.status,400));
-r=await post({action:'start_run',tokenBudget:1000});
+// 작은 예산 run을 여러 개 만들어 월 상한을 우회하지 못하게, 케이스 1건 예약량(50,000)보다 작은 예산은 받지 않는다.
+for(const small of [1,1000,49999]){const res=await post({action:'start_run',set:'dev',tokenBudget:small});check(`tokenBudget ${small} below one case reservation is 400`,()=>assert.ok(res.status===400&&/50,000/.test(res.body.error)))}
+check('rejected budgets record no run',()=>assert.equal(sql.prepare("SELECT COUNT(*) n FROM records WHERE kind='eval_run'").get().n,0));
+r=await post({action:'start_run',set:'dev',tokenBudget:50000,variant:'candidate'});
+check('only the active variant runs for now',()=>assert.ok(r.status===400&&/variant/.test(r.body.error)));
+r=await post({action:'start_run',tokenBudget:50000});
 check('start needs caseIds or a set',()=>assert.ok(r.status===400&&/caseIds/.test(r.body.error)));
-r=await post({action:'start_run',caseIds:[],tokenBudget:1000});
+r=await post({action:'start_run',caseIds:[],tokenBudget:50000});
 check('empty case list is 400',()=>assert.equal(r.status,400));
-r=await post({action:'start_run',caseIds:['missing-case'],tokenBudget:1000});
+r=await post({action:'start_run',caseIds:['missing-case'],tokenBudget:50000});
 check('unknown case is 404',()=>assert.equal(r.status,404));
 r=await post({action:'start_run',set:'dev',tokenBudget:250001});
 check('smoke budget above 250k is 409',()=>assert.ok(r.status===409&&/250,000/.test(r.body.error)));
@@ -140,16 +149,30 @@ const reserved=await get();
 check('active runs reserve their unused budget',()=>assert.equal(reserved.body.usage.reservedTokens,100001));
 await post({action:'cancel_run',id:r.body.id});
 sql.prepare("DELETE FROM records WHERE kind='eval_run' AND id IN (?,?)").run(`${owner}:eval_run:seed-this-month`,`${owner}:eval_run:seed-last-month`);
+// 끝난 run을 지워도 이번 달 누적은 줄지 않고, 승인·봉인 세트 감사 기록도 남는다(delete_run 우회 방지).
+const approvedBy={reason:'합성 승인 기록',by:{id:owner,email:null},at:now,exceeded:['monthly_cap'],monthCommitted:0};
+await seeded('seed-deleted',now,1400000);
+sql.prepare("UPDATE records SET data=json_set(data,'$.overBudgetApproved',json(?),'$.sealedUsed',json(?),'$.results',json(?)) WHERE id=?").run(JSON.stringify(approvedBy),JSON.stringify({by:{id:owner,email:null},at:now,cases:1}),JSON.stringify([{caseId:'c1',status:'completed'}]),`${owner}:eval_run:seed-deleted`);
+await put('eval_output','seed-deleted:c1',{runId:'seed-deleted',caseId:'c1',output:'합성 출력'},'seed-deleted');
+r=await post({action:'delete_run',id:'seed-deleted'});
+const afterDelete=await get(),tombstone=await get('?run=seed-deleted'),deletedOutput=await get('?run=seed-deleted&caseId=c1');
+check('deleting a run keeps its tokens in the monthly usage',()=>assert.ok(r.status===200&&afterDelete.body.usage.usedTokens===1400000));
+check('deleted run keeps the approval and sealed-use audit but drops results and outputs',()=>assert.ok(tombstone.body.deleted.by.id===owner&&tombstone.body.deleted.cases===1&&tombstone.body.results.length===0&&tombstone.body.overBudgetApproved.reason==='합성 승인 기록'&&tombstone.body.sealedUsed.cases===1&&deletedOutput.status===404));
+r=await post({action:'start_run',set:'dev',tokenBudget:200000});
+check('after deleting, the monthly cap still needs owner approval',()=>assert.ok(r.status===409&&/1,500,000/.test(r.body.error)));
+r=await post({action:'delete_run',id:'seed-deleted'});
+check('deleting a deleted run is 409',()=>assert.equal(r.status,409));
+sql.prepare("DELETE FROM records WHERE kind='eval_run' AND id=?").run(`${owner}:eval_run:seed-deleted`);
 
 // 연결 상태가 막혀 있으면 run은 blocked로 기록되고 409로 거부된다.
 mode.caps=false;r=await connect();mode.caps=true;
 check('failed capabilities check saves the connection as blocked',()=>assert.ok(r.status===200&&r.body.status==='blocked'&&r.body.statusReason));
-r=await post({action:'start_run',set:'dev',tokenBudget:1000});
+r=await post({action:'start_run',set:'dev',tokenBudget:50000});
 check('blocked connection records a blocked run and answers 409',()=>assert.ok(r.status===409&&r.body.run.status==='blocked'&&r.body.run.results.every(x=>x.status==='not_run')));
 r=await post({action:'check_connection'});
 check('re-check restores a ready connection',()=>assert.equal(r.body.status,'ready'));
 await connect({isolationConfirmed:false});
-r=await post({action:'start_run',set:'dev',tokenBudget:1000});
+r=await post({action:'start_run',set:'dev',tokenBudget:50000});
 check('unconfirmed isolation blocks the run',()=>assert.ok(r.status===409&&r.body.run.status==='blocked'&&/격리|메모리/.test(r.body.run.blockedReason)));
 await connect();
 
@@ -184,29 +207,58 @@ r=await get(`?compare=${run1.id},${run2.id}`);
 check('comparison pairs the shared case per grader without claiming improvement',()=>assert.ok(r.status===200&&r.body.sharedCases===1&&r.body.graders.length===13&&r.body.graders.every(g=>g.n<=1&&g.verdict!=='improved')));
 
 // 예산 소진·사용량 미보고·인증·연결 실패·격리 재확인·시간 초과·취소
-r=await post({action:'start_run',set:'dev',tokenBudget:1500});
-let before=submissions().length;const spent=await drive(r.body.id);
-check('reaching the token budget stops further submissions',()=>assert.ok(spent.status==='completed'&&spent.stopReason==='budget_reached'&&submissions().length===before+1&&spent.results.filter(x=>x.status==='not_run').length===1));
+const normalUsage=mode.usage;mode.usage={input_tokens:30000,output_tokens:10000,total_tokens:40000};
+r=await post({action:'start_run',set:'dev',tokenBudget:50000});
+let before=submissions().length;const spent=await drive(r.body.id);mode.usage=normalUsage;
+check('the next case is not submitted when its reservation would pass the run budget',()=>assert.ok(spent.status==='completed'&&spent.stopReason==='budget_reached'&&spent.usedTokens===40000&&submissions().length===before+1&&spent.results.filter(x=>x.status==='not_run').length===1&&/50,000/.test(spent.results.find(x=>x.status==='not_run').error)));
+// 제출 직전에 월 상한을 다시 본다: 시작 뒤 이번 달 누적이 늘면(예: 앞 케이스의 예약 초과) 승인 없는 run은 더 제출하지 않는다.
+r=await post({action:'start_run',caseIds:[insightCase.id],tokenBudget:100000});
+await seeded('seed-overshoot',now,1460000);before=submissions().length;
+const capped=await drive(r.body.id);
+check('monthly cap is re-checked before each submission',()=>assert.ok(capped.status==='completed'&&capped.stopReason==='monthly_cap_reached'&&capped.results[0].status==='not_run'&&/1,500,000/.test(capped.results[0].error)&&submissions().length===before));
+r=await post({action:'start_run',caseIds:[insightCase.id],tokenBudget:100000,overBudgetApproved:{reason:'합성 승인: 월 상한 초과 제출'}});
+const approvedRun=await drive(r.body.id);
+check('a monthly-cap approval lets the run submit past the monthly re-check',()=>assert.ok(approvedRun.status==='completed'&&approvedRun.results[0].status==='completed'&&JSON.stringify(approvedRun.overBudgetApproved.exceeded)==='["monthly_cap"]'&&submissions().length===before+1));
+sql.prepare("DELETE FROM records WHERE kind='eval_run' AND id=?").run(`${owner}:eval_run:seed-overshoot`);
 mode.usage={};r=await post({action:'start_run',set:'dev',tokenBudget:100000});before=submissions().length;
 const unreported=await drive(r.body.id);mode.usage={input_tokens:1000,output_tokens:500,total_tokens:1500};
 check('unreported usage stops the run because the budget cannot be enforced',()=>assert.ok(unreported.stopReason==='usage_unreported'&&submissions().length===before+1&&unreported.results[1].status==='not_run'));
-mode.auth=false;r=await post({action:'start_run',caseIds:[cmoCase.id],tokenBudget:1000});
+mode.auth=false;r=await post({action:'start_run',caseIds:[cmoCase.id],tokenBudget:50000});
 const authFailed=await drive(r.body.id);mode.auth=true;
 check('authentication failure is blocked, not failed',()=>assert.ok(authFailed.status==='blocked'&&/인증/.test(authFailed.blockedReason)&&authFailed.results[0].status==='not_run'));
-mode.network=false;r=await post({action:'start_run',caseIds:[cmoCase.id],tokenBudget:1000});
+mode.network=false;r=await post({action:'start_run',caseIds:[cmoCase.id],tokenBudget:50000});
 const offline=await drive(r.body.id);mode.network=true;
 check('connection failure is blocked, not failed',()=>assert.ok(offline.status==='blocked'&&/연결/.test(offline.blockedReason)));
-r=await post({action:'start_run',caseIds:[cmoCase.id],tokenBudget:1000});before=submissions().length;
+r=await post({action:'start_run',caseIds:[cmoCase.id],tokenBudget:50000});before=submissions().length;
 sql.prepare('UPDATE settings SET secret=? WHERE owner=?').run(await opsSettings(EVAL),owner);
 const conflicted=await drive(r.body.id);
 sql.prepare('UPDATE settings SET secret=? WHERE owner=?').run(await opsSettings(OPS),owner);
 check('operations switching to the eval host blocks execution before submit',()=>assert.ok(conflicted.status==='blocked'&&/운영/.test(conflicted.blockedReason)&&submissions().length===before));
-mode.poll='running';r=await post({action:'start_run',caseIds:[cmoCase.id],tokenBudget:1000});
+r=await post({action:'start_run',caseIds:[cmoCase.id],tokenBudget:50000});before=submissions().length;
+sql.prepare('UPDATE settings SET secret=? WHERE owner=?').run(await opsSettings(EVAL+'.'),owner);
+const dotted=await drive(r.body.id);
+sql.prepare('UPDATE settings SET secret=? WHERE owner=?').run(await opsSettings(OPS),owner);
+check('an operational endpoint differing only by a trailing dot still blocks',()=>assert.ok(dotted.status==='blocked'&&/운영/.test(dotted.blockedReason)&&submissions().length===before));
+// 제출한 케이스를 조회하다 막히면 그 케이스는 failed가 아니라 blocked(결과 미확인)이고, 이 run을 보낸 연결로 중지를 요청한다.
+mode.poll='running';
+const inflightRun=async()=>{const res=await post({action:'start_run',caseIds:[cmoCase.id],tokenBudget:50000});await background.advanceBackgroundWork(owner);const run=await runOf(res.body.id);assert.equal(run.results[0].status,'submitted');return run};
+let mid=await inflightRun();mode.auth=false;const authMid=await drive(mid.id);mode.auth=true;
+check('auth failure while polling marks the submitted case blocked, not failed',()=>assert.ok(authMid.status==='blocked'&&authMid.results[0].status==='blocked'&&authMid.results[0].providerRunId===mid.results[0].providerRunId&&/인증/.test(authMid.results[0].error)&&/중지를 요청했으나 확인하지 못했습니다/.test(authMid.results[0].error)));
+mid=await inflightRun();mode.network=false;const netMid=await drive(mid.id);mode.network=true;
+check('connection loss while polling marks the submitted case blocked',()=>assert.ok(netMid.status==='blocked'&&netMid.results[0].status==='blocked'&&/연결/.test(netMid.results[0].error)&&!stopped.includes(mid.results[0].providerRunId)));
+mid=await inflightRun();await connect({isolationConfirmed:false});const isoMid=await drive(mid.id);await connect();
+check('isolation withdrawn mid-run blocks the case and stops the HERMES run',()=>assert.ok(isoMid.status==='blocked'&&isoMid.results[0].status==='blocked'&&/격리/.test(isoMid.results[0].error)&&stopped.includes(mid.results[0].providerRunId)&&/중지를 요청해 확인했습니다/.test(isoMid.results[0].error)));
+check('blocked cases are not counted as failures',()=>assert.ok([authMid,netMid,isoMid].every(x=>!x.results.some(c=>c.status==='failed'))));
+mode.poll='completed';
+mode.poll='running';r=await post({action:'start_run',caseIds:[cmoCase.id],tokenBudget:50000});
 await background.advanceBackgroundWork(owner);
 sql.prepare("UPDATE records SET data=json_set(data,'$.results[0].submittedAt','2000-01-01T00:00:00.000Z') WHERE id=?").run(`${owner}:eval_run:${r.body.id}`);
 const timedOut=await drive(r.body.id);
 check('a case running past the timeout is stopped and failed',()=>assert.ok(timedOut.results[0].status==='failed'&&/시간/.test(timedOut.results[0].error)&&stopped.includes(timedOut.results[0].providerRunId)));
 r=await post({action:'start_run',set:'dev',tokenBudget:100000});const cancelId=r.body.id;
+const runCount=()=>sql.prepare("SELECT COUNT(*) n FROM records WHERE owner=? AND kind='eval_run'").get(owner).n,runsBefore=runCount();
+const secondActive=await post({action:'start_run',caseIds:[insightCase.id],tokenBudget:50000});
+check('a second active eval run is refused so the fair queue holds one eval item',()=>assert.ok(secondActive.status===409&&/진행 중인 평가 실행/.test(secondActive.body.error)&&!secondActive.body.run&&runCount()===runsBefore));
 await background.advanceBackgroundWork(owner);await background.advanceBackgroundWork(owner);
 r=await post({action:'delete_case',id:cmoCase.id});
 check('a case used by an active run cannot be deleted',()=>assert.equal(r.status,409));
@@ -231,8 +283,12 @@ r=await post({action:'start_run',set:'sealed',tokenBudget:100000,label:'활성�
 const sealedRun=await drive(r.body.id);
 check('sealed set use records who and when',()=>assert.ok(sealedRun.sealedUsed.by.id===owner&&sealedRun.sealedUsed.cases===1&&sealedRun.sealedUsed.at&&sealedRun.status==='completed'));
 check('dev runs do not record sealed use',()=>assert.ok(!run1.sealedUsed));
+const spentOutputs=()=>sql.prepare("SELECT COUNT(*) n FROM records WHERE kind='eval_output' AND parent_id=?").get(spent.id).n,outputsBefore=spentOutputs();
 r=await post({action:'delete_run',id:spent.id});
-check('owner deletes a finished run with its outputs',()=>assert.ok(r.status===200&&sql.prepare("SELECT COUNT(*) n FROM records WHERE kind IN ('eval_run','eval_output') AND (id=? OR parent_id=?)").get(`${owner}:eval_run:${spent.id}`,spent.id).n===0));
+const spentTomb=await runOf(spent.id);
+check('owner deletes a finished run: outputs and results go, the budget ledger stays',()=>assert.ok(r.status===200&&outputsBefore===1&&spentOutputs()===0&&spentTomb.deleted.by.id===owner&&spentTomb.results.length===0&&spentTomb.usedTokens===40000&&spentTomb.tokenBudget===50000));
+r=await get(`?compare=${run1.id},${spent.id}`);
+check('a deleted run cannot be compared',()=>assert.equal(r.status,409));
 
 // E) 권한: owner만. member·admin 403, 다른 owner 404, 비로그인 401, 크기 제한 413.
 env.AUTH_MODE='email';env.AUTH_ORIGIN='https://agency.test';

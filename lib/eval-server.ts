@@ -14,7 +14,9 @@ import {roles,type Campaign,type Brand} from './agency';
 // 서버 평가 실행(F1b-2). 골든셋 케이스(eval_case)를 평가 전용 HERMES 프로필에 보내고 lib/graders로 채점해 eval_run에 남긴다.
 // 대표 결정 5: 스모크 1회 tokenBudget 250,000 이하, 이번 UTC 월 누적(사용+진행 중 예약) 1,500,000 절대 상한. 넘으면 소유자 건별 승인 사유가 있어야 한다.
 // 대표 결정 6: 골든셋·결과는 D1 records가 정본이다. 운영 HERMES 연결(settings)과 같은 호스트는 평가 연결로 쓰지 않는다. 절차: docs/EVAL.ko.md '서버 평가 실행'.
-export const EVAL_SMOKE_TOKEN_CAP=250000,EVAL_MONTHLY_TOKEN_CAP=1500000,EVAL_MAX_RUN_CASES=100,EVAL_CASE_TIMEOUT_MS=30*60*1000,EVAL_BODY_LIMIT=1000000;
+// 케이스당 예약(EVAL_CASE_TOKEN_RESERVE): HERMES 제출에 토큰 상한이 없어 케이스 1건이 쓸 양을 미리 잡아 둔다. 실측 역할 1회 7,343~13,997토큰(docs/observations/2026-09-23-live-run.md)의 약 3.5배다.
+// 제출 직전마다 run 예산과 월 상한에 이 예약을 더해 본다. 진행 중 평가 run은 소유자당 1개라 공정 큐에 평가 작업이 하나만 들어간다.
+export const EVAL_SMOKE_TOKEN_CAP=250000,EVAL_MONTHLY_TOKEN_CAP=1500000,EVAL_CASE_TOKEN_RESERVE=50000,EVAL_MAX_ACTIVE_RUNS=1,EVAL_MAX_RUN_CASES=100,EVAL_CASE_TIMEOUT_MS=30*60*1000,EVAL_BODY_LIMIT=1000000;
 const MAX_TOKEN_BUDGET=10000000,MAX_REQUEST_CHARS=900000,RUN_ID=/^[a-zA-Z0-9_-]{1,160}$/,ACTIVE=['queued','running'];
 type Who={id:string;email:string|null};
 type EvalSet='dev'|'sealed';
@@ -25,9 +27,11 @@ type Conn={endpoint:string;key:string};
 type Tokens={input:number|null;output:number|null;total:number|null};
 type Compliance={version:string;block:number;warn:number;info:number;issues:{category:string;ruleId:string;severity:string}[]};
 // variant: 제출 본문을 만든 프롬프트 변형. 지금은 현재 코드(active)만 있다. 후보 프롬프트(F3)가 이 자리를 쓴다.
-export type EvalCaseResult={caseId:string;label:string;set:EvalSet;role:string;variant:'active';status:'pending'|'submitted'|'completed'|'failed'|'cancelled'|'not_run';idempotencyKey?:string;promptHash?:string;providerRunId?:string;model?:string|null;tokens?:Tokens;submittedAt?:string;completedAt?:string;durationMs?:number;graders?:GraderResult[];summary?:Record<GraderStatus,number>;compliance?:Compliance;error?:string};
-type StopReason='budget_reached'|'usage_unreported';
-export type EvalRun={id:string;label:string;variant:'active';set:EvalSet|null;caseIds:string[];tokenBudget:number;usedTokens:number;status:'queued'|'running'|'completed'|'cancelled'|'blocked';stopReason?:StopReason;blockedReason?:string;overBudgetApproved?:{reason:string;by:Who;at:string;exceeded:string[];monthCommitted:number};sealedUsed?:{by:Who;at:string;cases:number};host:string|null;createdBy:Who;createdAt:string;updatedAt:string;cancelledBy?:Who;results:EvalCaseResult[]};
+// blocked: 제출했으나 연결·인증·격리 조건이 막혀 결과를 확인하지 못함(HERMES가 계속 실행했을 수 있다). failed(HERMES 실패·중단·시간 초과·출력 형식 오류)와 다르다.
+export type EvalCaseResult={caseId:string;label:string;set:EvalSet;role:string;variant:'active';status:'pending'|'submitted'|'completed'|'failed'|'cancelled'|'blocked'|'not_run';idempotencyKey?:string;promptHash?:string;providerRunId?:string;model?:string|null;tokens?:Tokens;submittedAt?:string;completedAt?:string;durationMs?:number;graders?:GraderResult[];summary?:Record<GraderStatus,number>;compliance?:Compliance;error?:string};
+type StopReason='budget_reached'|'monthly_cap_reached'|'usage_unreported';
+// deleted: delete_run은 결과·출력만 지우고 예산 장부(usedTokens·tokenBudget·createdAt)와 감사 기록(overBudgetApproved·sealedUsed)을 남긴다. 월 누적이 줄지 않게 하려는 것이다.
+export type EvalRun={id:string;label:string;variant:'active';set:EvalSet|null;caseIds:string[];tokenBudget:number;usedTokens:number;status:'queued'|'running'|'completed'|'cancelled'|'blocked';stopReason?:StopReason;blockedReason?:string;overBudgetApproved?:{reason:string;by:Who;at:string;exceeded:string[];monthCommitted:number};sealedUsed?:{by:Who;at:string;cases:number};host:string|null;createdBy:Who;createdAt:string;updatedAt:string;cancelledBy?:Who;deleted?:{by:Who;at:string;cases:number};results:EvalCaseResult[]};
 type Step={run:EvalRun;writes?:D1PreparedStatement[]};
 // 인증 실패·연결 불가는 실패(failed)가 아니라 막힘(blocked)으로 기록한다.
 class EvalBlocked extends Error{}
@@ -45,10 +49,12 @@ async function optionalRecord<T>(owner:string,kind:string,id:string){try{return 
 
 // ── 평가 연결 ──
 const SAME_HOST='운영 HERMES 연결과 같은 주소는 평가에 쓸 수 없습니다. 메모리를 끈 평가 전용 프로필 주소를 등록하세요.';
+// 호스트 비교 키: 소문자, 끝 점 제거. 'host.'(FQDN 표기)와 'host'는 같은 DNS 이름이라 같은 호스트로 본다.
+const hostKey=(host:string)=>host.toLowerCase().replace(/\.+$/,'');
 async function operationalHost(owner:string){
  if(!(await configuration(owner))?.secret)return null;
  const cfg=await connection(owner);
- return cfg.provider==='hermes'&&cfg.endpoint?new URL(hermesEndpoint(cfg.endpoint)).hostname:null;
+ return cfg.provider==='hermes'&&cfg.endpoint?hostKey(new URL(hermesEndpoint(cfg.endpoint)).hostname):null;
 }
 // 응답에는 설정 여부·호스트·상태만 담는다. 키와 전체 주소는 암호문(secret)에만 있다.
 const publicConnection=(s:StoredConnection|null)=>s?{configured:true,host:s.host,isolationConfirmed:s.isolationConfirmed,note:s.note,status:s.status,statusReason:s.statusReason,model:s.model,checkedAt:s.checkedAt,updatedAt:s.updatedAt}:{configured:false};
@@ -66,7 +72,8 @@ async function saveConnection(owner:string,input:Record<string,unknown>,by:Who){
  const endpoint=hermesEndpoint(str(input.endpoint,'평가 HERMES 주소',500,true)),key=str(input.key,'평가 연결 키',2000,true),note=str(input.note??'','메모',1000);
  if(typeof input.isolationConfirmed!=='boolean')throw new ApiError(400,'평가 전용 프로필(메모리 off) 격리 확인(isolationConfirmed)을 true 또는 false로 입력하세요.');
  const host=new URL(endpoint).hostname;
- if(host===await operationalHost(owner))throw new ApiError(400,SAME_HOST);
+ if(host.endsWith('.'))throw new ApiError(400,'평가 HERMES 주소 호스트 끝의 점(.)을 빼고 입력하세요.');
+ if(hostKey(host)===await operationalHost(owner))throw new ApiError(400,SAME_HOST);
  return storeConnection(owner,{endpoint,key},{host,isolationConfirmed:input.isolationConfirmed,note},by);
 }
 async function checkConnection(owner:string,by:Who){
@@ -79,8 +86,14 @@ async function connectionGate(owner:string):Promise<{conn:Conn;host:string}|{blo
  if(!s)return {blocked:'평가 연결이 없습니다. 평가 전용 HERMES 연결을 먼저 저장하세요.',host:null};
  if(!s.isolationConfirmed)return {blocked:'평가 전용 프로필(메모리 off) 격리가 확인되지 않았습니다.',host:s.host};
  if(s.status!=='ready')return {blocked:'평가 연결 확인에 실패했습니다: '+(s.statusReason||'원인 미상'),host:s.host};
- if(s.host===await operationalHost(owner))return {blocked:SAME_HOST,host:s.host};
+ if(hostKey(s.host)===await operationalHost(owner))return {blocked:SAME_HOST,host:s.host};
  return {conn:JSON.parse(await decrypt(s.secret)) as Conn,host:s.host};
+}
+// 막힌 run의 제출 중 실행을 멈출 때 쓴다. 저장된 연결이 이 run을 보낸 호스트일 때만 돌려준다(바뀐 연결에 옛 실행 번호를 보내지 않는다).
+async function stopConnection(owner:string,host:string|null):Promise<Conn|null>{
+ const s=host?await optionalRecord<StoredConnection>(owner,'eval_connection','current'):null;
+ if(!s||!host||hostKey(s.host)!==hostKey(host))return null;
+ try{return JSON.parse(await decrypt(s.secret)) as Conn}catch{return null}
 }
 async function evalRequest(conn:Conn,path:string,init:RequestInit={}):Promise<Record<string,unknown>>{
  let r:Response;
@@ -152,9 +165,10 @@ async function deleteCase(owner:string,input:Record<string,unknown>){
 }
 
 // ── 예산 ──
-// 이번 UTC 월에 만든 run의 보고 토큰 합(usedTokens)과, 진행 중 run이 아직 쓰지 않은 예산(reservedTokens). 둘의 합에 새 예산을 더해 월 상한과 비교한다.
-export async function evalMonthUsage(owner:string){
- const now=new Date(),start=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString(),end=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()+1,1)).toISOString();
+// 그 UTC 월(기본 이번 달)에 만든 run의 보고 토큰 합(usedTokens)과, 진행 중 run이 아직 쓰지 않은 예산(reservedTokens). 둘의 합에 새 예산을 더해 월 상한과 비교한다.
+// 삭제한 run도 행(deleted)이 남아 합에 들어간다. 월 누적은 run 생성 월 기준이다.
+export async function evalMonthUsage(owner:string,at=new Date()){
+ const start=new Date(Date.UTC(at.getUTCFullYear(),at.getUTCMonth(),1)).toISOString(),end=new Date(Date.UTC(at.getUTCFullYear(),at.getUTCMonth()+1,1)).toISOString();
  const rows=(await database().prepare("SELECT json_extract(data,'$.status') AS status,json_extract(data,'$.usedTokens') AS used,json_extract(data,'$.tokenBudget') AS budget FROM records WHERE owner=? AND kind='eval_run' AND json_extract(data,'$.createdAt')>=? AND json_extract(data,'$.createdAt')<?").bind(owner,start,end).all<{status:string;used:number|null;budget:number|null}>()).results;
  const usedTokens=rows.reduce((s,r)=>s+(Number(r.used)||0),0),reservedTokens=rows.filter(r=>ACTIVE.includes(r.status)).reduce((s,r)=>s+Math.max(0,(Number(r.budget)||0)-(Number(r.used)||0)),0);
  return {month:start.slice(0,7),usedTokens,reservedTokens,monthlyCap:EVAL_MONTHLY_TOKEN_CAP,smokeCap:EVAL_SMOKE_TOKEN_CAP};
@@ -166,6 +180,13 @@ async function budgetApproval(owner:string,tokenBudget:number,value:unknown,by:W
  const approval=obj(value);
  if(!approval)throw new ApiError(409,`평가 토큰 상한을 넘습니다(1회 ${comma(EVAL_SMOKE_TOKEN_CAP)} · 이번 달 ${comma(committed)}+${comma(tokenBudget)} / ${comma(EVAL_MONTHLY_TOKEN_CAP)}). 대표 승인 사유(overBudgetApproved.reason)와 함께 다시 요청하세요.`);
  return {reason:str(approval.reason,'대표 승인 사유',500,true),by,at:stamp(),exceeded,monthCommitted:committed};
+}
+// 제출 직전 월 검사: run 생성 월의 보고 토큰 + 다른 진행 중 run의 남은 예산 + 이번 케이스 예약이 월 상한을 넘으면 제출하지 않는다.
+// 앞 케이스가 예약보다 많이 써 월 누적이 늘어난 경우를 잡는다. 월 상한 승인을 받은 run은 자기 run 예산만 본다.
+async function monthlyCapReached(owner:string,run:EvalRun){
+ if(run.overBudgetApproved?.exceeded.includes('monthly_cap'))return false;
+ const u=await evalMonthUsage(owner,new Date(run.createdAt)),own=Math.max(0,run.tokenBudget-run.usedTokens);
+ return u.usedTokens+u.reservedTokens-own+EVAL_CASE_TOKEN_RESERVE>EVAL_MONTHLY_TOKEN_CAP;
 }
 
 // ── 평가 실행 ──
@@ -182,13 +203,32 @@ async function runCases(owner:string,input:Record<string,unknown>):Promise<EvalC
  if(cases.length>EVAL_MAX_RUN_CASES)throw new ApiError(400,`세트 케이스가 ${EVAL_MAX_RUN_CASES}개를 넘습니다. caseIds로 나눠 실행하세요.`);
  return cases;
 }
-const blockRun=(run:EvalRun,reason:string):EvalRun=>({...run,status:'blocked',blockedReason:reason,updatedAt:stamp(),results:run.results.map(r=>r.status==='pending'?{...r,status:'not_run',error:reason}:r.status==='submitted'?{...r,status:'failed',error:reason}:r)});
+// 막힘: 제출 전 케이스는 not_run, 제출 중 케이스는 blocked(결과 미확인, providerRunId 유지)로 둔다. stopNote는 중지 요청 결과다.
+const blockRun=(run:EvalRun,reason:string,stopNote=''):EvalRun=>({...run,status:'blocked',blockedReason:reason,updatedAt:stamp(),results:run.results.map(r=>r.status==='pending'?{...r,status:'not_run',error:reason}:r.status==='submitted'?{...r,status:'blocked',error:`${reason} 결과를 확인하지 못했습니다.${stopNote}`}:r)});
+// 막혀도 제출 중인 HERMES 실행은 계속 토큰을 쓸 수 있으므로, 이 run을 보낸 호스트의 저장된 연결로 중지를 요청하고 결과를 케이스 error에 남긴다.
+async function blockWithStop(owner:string,run:EvalRun,reason:string){
+ const inflight=run.results.find(r=>r.status==='submitted'&&r.providerRunId);
+ if(!inflight)return blockRun(run,reason);
+ const conn=await stopConnection(owner,run.host),stopped=conn?await stopProvider(conn,inflight.providerRunId!):false;
+ return blockRun(run,reason,!conn?' 이 run을 보낸 평가 연결이 없어 HERMES 실행 중지를 요청하지 못했습니다.':stopped?' HERMES 실행 중지를 요청해 확인했습니다.':' HERMES 실행 중지를 요청했으나 확인하지 못했습니다.');
+}
+function budgetOf(v:unknown){
+ if(typeof v!=='number'||!Number.isSafeInteger(v)||v<1||v>MAX_TOKEN_BUDGET)throw new ApiError(400,'토큰 예산(tokenBudget)을 1 이상의 정수로 입력하세요.');
+ if(v<EVAL_CASE_TOKEN_RESERVE)throw new ApiError(400,`토큰 예산(tokenBudget)은 케이스 1건 예약량 ${comma(EVAL_CASE_TOKEN_RESERVE)} 이상이어야 합니다.`);
+ return v;
+}
+// 진행 중 평가 run은 소유자당 EVAL_MAX_ACTIVE_RUNS개다. POST 라우트가 소유자 잠금 안에서 부르므로 검사와 저장 사이에 다른 시작이 끼지 않는다.
+async function assertRunSlot(owner:string){
+ const r=await database().prepare("SELECT COUNT(*) AS n FROM records WHERE owner=? AND kind='eval_run' AND json_extract(data,'$.status') IN ('queued','running')").bind(owner).first<{n:number}>();
+ if(Number(r?.n)>=EVAL_MAX_ACTIVE_RUNS)throw new ApiError(409,`진행 중인 평가 실행이 있습니다(소유자당 ${EVAL_MAX_ACTIVE_RUNS}개). 끝나거나 취소한 뒤 시작하세요.`);
+}
 // 시작 거부 정책: 연결 없음·격리 미확인·연결 확인 실패·운영과 같은 호스트면 run을 blocked로 기록하고 409로 답한다(시도와 원인이 남는다).
 async function startRun(owner:string,input:Record<string,unknown>,by:Who){
- const tokenBudget=input.tokenBudget;
- if(typeof tokenBudget!=='number'||!Number.isSafeInteger(tokenBudget)||tokenBudget<1||tokenBudget>MAX_TOKEN_BUDGET)throw new ApiError(400,'토큰 예산(tokenBudget)을 1 이상의 정수로 입력하세요.');
+ const tokenBudget=budgetOf(input.tokenBudget);
  if((input.variant??'active')!=='active')throw new ApiError(400,'후보 프롬프트 변형은 아직 지원하지 않습니다. variant는 active만 쓸 수 있습니다.');
- const label=str(input.label??'','실행 이름',200),cases=await runCases(owner,input),approval=await budgetApproval(owner,tokenBudget,input.overBudgetApproved,by);
+ const label=str(input.label??'','실행 이름',200),cases=await runCases(owner,input);
+ await assertRunSlot(owner);
+ const approval=await budgetApproval(owner,tokenBudget,input.overBudgetApproved,by);
  const gate=await connectionGate(owner),at=stamp(),sealed=cases.filter(c=>c.set==='sealed').length;
  const run:EvalRun={id:uid(),label,variant:'active',set:Array.isArray(input.caseIds)?null:evalSet(input.set),caseIds:cases.map(c=>c.id),tokenBudget,usedTokens:0,status:'queued',...(approval?{overBudgetApproved:approval}:{}),host:gate.host,createdBy:by,createdAt:at,updatedAt:at,results:cases.map(c=>({caseId:c.id,label:c.label,set:c.set,role:c.role,variant:'active',status:'pending'}))};
  if('blocked' in gate){const blocked=blockRun(run,gate.blocked);await recordStatement(owner,'eval_run',run.id,blocked).run();return json({error:gate.blocked,run:blocked},409)}
@@ -206,27 +246,31 @@ async function cancelRun(owner:string,input:Record<string,unknown>,by:Who){
  await recordStatement(owner,'eval_run',run.id,next).run();
  return next;
 }
-async function deleteRun(owner:string,input:Record<string,unknown>){
- const run=await readRecord<EvalRun>(owner,'eval_run',str(input.id,'평가 실행',100,true)),db=database();
+// 소프트 삭제: 출력(eval_output)과 케이스 결과를 지우고, 결정 5 장부(usedTokens·tokenBudget·createdAt)와 승인·봉인 세트 기록은 남긴다.
+async function deleteRun(owner:string,input:Record<string,unknown>,by:Who){
+ const run=await readRecord<EvalRun>(owner,'eval_run',str(input.id,'평가 실행',100,true)),db=database(),at=stamp();
  if(ACTIVE.includes(run.status))throw new ApiError(409,'진행 중인 평가 실행은 취소한 뒤 삭제하세요.');
- await db.batch([db.prepare("DELETE FROM records WHERE owner=? AND kind='eval_output' AND parent_id=?").bind(owner,run.id),db.prepare("DELETE FROM records WHERE owner=? AND kind='eval_run' AND id=?").bind(owner,`${owner}:eval_run:${run.id}`)]);
+ if(run.deleted)throw new ApiError(409,'이미 삭제한 평가 실행입니다.');
+ const tombstone:EvalRun={...run,results:[],deleted:{by,at,cases:run.results.length},updatedAt:at};
+ await db.batch([db.prepare("DELETE FROM records WHERE owner=? AND kind='eval_output' AND parent_id=?").bind(owner,run.id),recordStatement(owner,'eval_run',run.id,tombstone)]);
  return {id:run.id,deleted:true};
 }
 
-// ── 워커 한 걸음: 제출 중인 케이스가 있으면 조회, 없으면 다음 케이스 제출. 한 tick에 공급자 호출 1건만 한다. ──
+// ── 워커 한 걸음: 제출 중인 케이스가 있으면 조회, 없으면 다음 케이스 제출. 한 tick에 조회·제출은 1건만 한다(시간 초과·막힘의 중지 요청만 더한다). ──
 // 케이스를 하나라도 다룬 run은 queued에서 running으로 넘어간다. 끝남 판정은 settle이 한다.
 const withResult=(run:EvalRun,at:number,result:EvalCaseResult):EvalRun=>({...run,status:run.status==='queued'?'running':run.status,updatedAt:stamp(),results:run.results.map((r,i)=>i===at?result:r)});
-const STOP_TEXT:Record<StopReason,string>={budget_reached:'토큰 예산에 닿아 제출하지 않았습니다.',usage_unreported:'HERMES가 토큰 사용량을 보고하지 않아 예산을 지킬 수 없으므로 제출하지 않았습니다.'};
-// 보고 토큰이 예산에 닿았거나, 제출한 케이스가 사용량 없이 끝나 예산을 확인할 수 없으면 남은 케이스를 제출하지 않는다.
+const STOP_TEXT:Record<StopReason,string>={budget_reached:`남은 토큰 예산이 케이스 1건 예약량(${comma(EVAL_CASE_TOKEN_RESERVE)})보다 작아 제출하지 않았습니다.`,monthly_cap_reached:`이번 달 평가 토큰 절대 상한(${comma(EVAL_MONTHLY_TOKEN_CAP)})에 닿아 제출하지 않았습니다. 넘기려면 대표 승인으로 새 실행을 시작하세요.`,usage_unreported:'HERMES가 토큰 사용량을 보고하지 않아 예산을 지킬 수 없으므로 제출하지 않았습니다.'};
+// 제출한 케이스가 사용량 없이 끝나 예산을 확인할 수 없거나, 보고 토큰에 다음 케이스 예약을 더하면 run 예산을 넘으면 남은 케이스를 제출하지 않는다.
 function stopReason(run:EvalRun):StopReason|undefined{
  if(run.results.some(r=>r.providerRunId&&r.status!=='submitted'&&(r.tokens?.total??null)===null))return 'usage_unreported';
- return run.usedTokens>=run.tokenBudget?'budget_reached':undefined;
+ return run.usedTokens+EVAL_CASE_TOKEN_RESERVE>run.tokenBudget?'budget_reached':undefined;
 }
+const stopRun=(run:EvalRun,stop:StopReason):EvalRun=>({...run,status:'completed',stopReason:stop,updatedAt:stamp(),results:run.results.map(r=>r.status==='pending'?{...r,status:'not_run',error:STOP_TEXT[stop]}:r)});
 function settle(run:EvalRun):EvalRun{
  if(run.results.some(r=>r.status==='submitted'))return run;
  const pending=run.results.some(r=>r.status==='pending'),stop=pending?stopReason(run):undefined;
  if(pending&&!stop)return run;
- return {...run,status:'completed',...(stop?{stopReason:stop}:{}),updatedAt:stamp(),results:run.results.map(r=>r.status==='pending'?{...r,status:'not_run',error:STOP_TEXT[stop!]}:r)};
+ return stop?stopRun(run,stop):{...run,status:'completed',updatedAt:stamp()};
 }
 function runStatus(v:unknown){
  const s=String(v);
@@ -278,13 +322,15 @@ async function pollCase(owner:string,run:EvalRun,conn:Conn,at:number):Promise<St
 }
 async function evalStep(owner:string,run:EvalRun):Promise<Step>{
  const gate=await connectionGate(owner);
- if('blocked' in gate)return {run:blockRun(run,gate.blocked)};
+ if('blocked' in gate)return {run:await blockWithStop(owner,run,gate.blocked)};
  try{
   const inflight=run.results.findIndex(r=>r.status==='submitted');
   if(inflight>=0)return await pollCase(owner,run,gate.conn,inflight);
   const settled=settle(run),next=settled.results.findIndex(r=>r.status==='pending');
-  return settled.status==='completed'||next<0?{run:settled}:await submitCase(owner,settled,gate.conn,next);
- }catch(e){if(e instanceof EvalBlocked)return {run:blockRun(run,e.message)};throw e}
+  if(settled.status==='completed'||next<0)return {run:settled};
+  if(await monthlyCapReached(owner,settled))return {run:stopRun(settled,'monthly_cap_reached')};
+  return await submitCase(owner,settled,gate.conn,next);
+ }catch(e){if(e instanceof EvalBlocked)return {run:await blockWithStop(owner,run,e.message)};throw e}
 }
 // lib/background-execution.ts 공정 큐가 부른다. 소유자 잠금 안에서 한 걸음만 진행하고 run을 저장한다. 재시도할 오류(429·5xx)는 응답 상태로 돌려 큐의 백오프에 맡긴다.
 export async function advanceEvalRun(owner:string,id:string){
@@ -303,7 +349,11 @@ export async function advanceEvalRun(owner:string,id:string){
 const caseSummary=(c:EvalCase)=>({id:c.id,role:c.role,label:c.label,set:c.set,campaignId:c.campaignId,source:c.source,capturedWith:c.capturedWith,prohibitedTerms:c.expectations.prohibitedTerms.length,setChanges:c.setChanges||[],createdBy:c.createdBy,createdAt:c.createdAt,updatedAt:c.updatedAt});
 export async function evalRead(owner:string,params:URLSearchParams){
  const id=(name:string,label:string)=>str(params.get(name),label,200,true),compare=params.get('compare');
- if(compare){const [a,b]=compare.split(',');return compareRuns(await readRecord<EvalRun>(owner,'eval_run',str(a,'기준 실행',100,true)),await readRecord<EvalRun>(owner,'eval_run',str(b,'비교 실행',100,true)))}
+ if(compare){
+  const [a,b]=compare.split(','),runs=[await readRecord<EvalRun>(owner,'eval_run',str(a,'기준 실행',100,true)),await readRecord<EvalRun>(owner,'eval_run',str(b,'비교 실행',100,true))];
+  if(runs.some(r=>r.deleted))throw new ApiError(409,'삭제한 평가 실행은 결과가 없어 비교할 수 없습니다.');
+  return compareRuns(runs[0],runs[1]);
+ }
  if(params.has('run')&&params.has('caseId'))return readRecord(owner,'eval_output',`${id('run','평가 실행')}:${id('caseId','평가 케이스')}`);
  if(params.has('run'))return readRecord<EvalRun>(owner,'eval_run',id('run','평가 실행'));
  if(params.has('case'))return readRecord<EvalCase>(owner,'eval_case',id('case','평가 케이스'));
