@@ -25,7 +25,8 @@ test('확인 사실로 실제 PNG를 만들고 새로고침 뒤 내려받는다'
  const asset=await page.request.get('/api/execution/asset?id='+state.creatives[0].id);expect(asset.status()).toBe(200);const bytes=await asset.body();expect(bytes.readUInt32BE(16)).toBe(1080);expect(bytes.readUInt32BE(20)).toBe(1080);
  // 외부 주소 없이 초안을 만들면 승인 때 앱 공개 주소를 채운다. 승인 전에는 공개 주소가 없다.
  const draft=await page.request.post('/api/execution',{data:{action:'save_publication',campaignId:campaign.id,creativeId:state.creatives[0].id,scheduledAt:new Date(Date.now()+86400000).toISOString(),plannedCostKRW:0}});expect(draft.status()).toBe(200);const publication=await draft.json();expect(publication.mediaMode).toBe('auto');expect(publication.mediaUrl).toBe('');
- await page.reload();await page.getByRole('button',{name:title+' 열기',exact:true}).click();await page.getByRole('tab',{name:'제작·발행',exact:true}).click();await expect(page.getByRole('link',{name:'원본 PNG 내려받기',exact:true})).toBeVisible();
+ // 새로고침하면 주소(?campaign=)로 상세가 다시 열린다. 열린 상세가 뒤 목록을 가리므로 '열기'를 다시 누르지 않는다.
+ await page.reload();await expect(page.getByRole('dialog',{name:title})).toBeVisible();await page.getByRole('tab',{name:'제작·발행',exact:true}).click();await expect(page.getByRole('link',{name:'원본 PNG 내려받기',exact:true})).toBeVisible();
  await expect(page.getByText('발행 연결: 연결 필요',{exact:true})).toBeVisible();await expect(steps.locator('[aria-current="step"]')).toHaveText('채널');
  await expect(page.getByText('고급: 외부 호스트',{exact:true})).toBeVisible();
  // 승인 버튼 옆 차단 사유: 한도·채널·기획 승인·기간. 기본 한도 버튼으로 한도 사유가 사라진다.
