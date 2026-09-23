@@ -1,6 +1,15 @@
 # COLLECTIVE 현재 상태
 
-마지막 갱신: 2026-09-23 07:21 UTC (Codex)
+마지막 갱신: 2026-09-23 07:48 UTC (Codex)
+
+## 최신 배포 — 실행 연결 첫 단계
+
+- 제품 `dbf94a5138df0ea0765919abaa4fa955511d49a2` / PR #20 merged.
+- Sites 버전23 published: `appgdep_6ab383ddc9408191a9cb0e12916d5cd5`, succeeded, 2026-09-23 07:46:46 UTC. 기존 public 접근과 환경 revision4를 유지했다.
+- 제품/Sites 투영 tree `281ea84a47227a5eec82c0b2b7c0cde6c5889c90` 일치. runtime-verified는 blocked: 운영 브라우저에 이메일 로그인 세션이 없어 `/api/version`의 인증 후 값을 확인하지 못했다. 실제 새 로그인 화면까지 확인했으며 내부 기능 정상 작동으로 확대 해석하지 않는다.
+- 전체27/27 suites·849 assertions, TypeScript, lint gate, build, 기본 E2E12와 이메일 E2E1 passed. main CI `35831544401`도 재실행 후 verify/e2e-smoke 모두 passed. 최초 이메일 검사 실패는 Miniflare `Network connection lost` HTTP500으로 확인했고 제품 코드는 바꾸지 않았다.
+- 실제 Buffer/Instagram 게시 not_run(계정·공개 이미지 호스트 미연결). [배포 근거](releases/2026-09-23-dbf94a5.md).
+- 아래 이전 배포 기록은 당시 근거로 보존한다. 후속 문서 전용 커밋은 별도 게시하지 않는다.
 
 ## 브랜드 사실·제작·발행·주문 연결 — 개발 검증
 
