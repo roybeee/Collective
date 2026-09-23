@@ -184,7 +184,18 @@ scoped Authorization credential; they never assert a browser user identity.
 The endpoint accepts no caller-specified job actions or arbitrary destinations.
 Redirects are not followed with credentials.
 
-Reissuing the installer rotates the credential. Revoking it stops future ticks;
+설치 파일을 다시 발급하면 새 자격증명이 발급된다. 3분 안에 응답한 워커가 있으면 그 워커의 토큰을
+10분 동안 함께 받고(유예) 그 뒤에는 거부한다. 바로 멈추려면 먼저 '작업자 연결 해제'를 누른다.
+토큰 만료(90일)와 온라인 자동 교체는 앱 환경변수 `RESEARCH_WORKER_TOKEN_EXPIRY=enforce`일 때만
+켜진다(기본 꺼짐, 만료 없음). 켜면 만료 14일 전부터 앱이 tick 응답에 새 토큰을 싣는다. 워커는
+설정 폴더에 쓸 수 있을 때만 `X-Collective-Rotation: ready`를 보내고, 앱은 그 tick에만 새 토큰을
+싣는다(다시 싣는 것은 10분에 한 번). 워커는 `worker.json`을 같은 폴더의 임시 파일로 쓰고 파일·폴더를
+fsync한 뒤 `os.replace`로 바꾸며, 저장에 성공한 뒤에만 다음 tick부터 새 토큰을 쓴다. 설치기의 워커
+유닛은 `ProtectSystem=strict`를 유지하고 `ReadWritePaths=/etc/collective-research`로 이 폴더만 쓰기를
+연다. 그 줄이 없는 이전 설치기로 설치한 서버는 교체를 저장할 수 없으므로(시작 로그
+`worker_rotation_unavailable`), 새 설치 파일로 재설치하기 전에는 만료를 켜지 않는다. 켜는 순서와 되돌리기는 `docs/SECURITY-BOUNDARIES.ko.md`에 있다.
+
+Revoking the credential stops future ticks;
 an already accepted HERMES run can still execute and can be cancelled from the
 application. HTTP 401/403을 받으면 워커는 멈추지 않고 `worker_rejected`를 기록한 뒤
 30분부터 최대 6시간 간격으로 다시 확인한다. 권한 문제는 설치 파일을 다시 발급해

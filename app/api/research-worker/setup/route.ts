@@ -12,7 +12,7 @@ type WorkerEvent={action:'download'|'revoke';actor:{id:string;email:string|null}
 const workerEvent=(who:Actor,action:WorkerEvent['action'])=>recordStatement(who.owner,'worker_event',uid(),{action,actor:{id:who.id,email:who.email},createdAt:stamp()} satisfies WorkerEvent);
 async function lastEvents(owner:string){const events=await listRecords<WorkerEvent>(owner,'worker_event');const last=(action:WorkerEvent['action'])=>{const e=events.find(x=>x.action===action);return e?{email:e.actor.email,at:e.createdAt}:null};return {lastIssued:last('download'),lastRevoked:last('revoke')}}
 // 연결 해제는 설치 목록과 무관하게 대표·관리자에게 허용한다(canRevoke). 설치·다시 발급만 목록으로 판정한다(canInstall).
-export async function GET(req:Request){try{const who=await actor(req),canRevoke=who.role!=='member',canInstall=canRevoke&&installerAdmin(who)&&!!runtime.RESEARCH_WORKER_GATE_TOKEN&&!!runtime.RESEARCH_WORKER_SITE_ORIGIN;return json({...await workerStatus(who.owner),canInstall,canRevoke,...(canRevoke?await lastEvents(who.owner):{}),...(canInstall?{sshTarget:sshTarget()}:{})})}catch(e){return failure(e)}}
+export async function GET(req:Request){try{const who=await actor(req),canRevoke=who.role!=='member',canInstall=canRevoke&&installerAdmin(who)&&!!runtime.RESEARCH_WORKER_GATE_TOKEN&&!!runtime.RESEARCH_WORKER_SITE_ORIGIN;return json({...await workerStatus(who.owner,{admin:canRevoke}),canInstall,canRevoke,...(canRevoke?await lastEvents(who.owner):{}),...(canInstall?{sshTarget:sshTarget()}:{})})}catch(e){return failure(e)}}
 export async function POST(req:Request){let key='',lock='',ownerLock='',owner='';try{
  secureMutation(req);const who=await requireAdminActor(req);owner=who.owner;const input=await body(req);
  if(input.action==='download'&&!installerAdmin(who))throw new ApiError(403,'서버 설치 파일은 지정된 관리자만 받을 수 있습니다.');
@@ -23,7 +23,8 @@ export async function POST(req:Request){let key='',lock='',ownerLock='',owner=''
  const cfg=await connection(owner);if(cfg.provider!=='hermes')throw new ApiError(409,'HERMES를 먼저 연결하세요.');
  await assertNoActiveJobs(owner);
  const site=new URL(runtime.RESEARCH_WORKER_SITE_ORIGIN);if(site.protocol!=='https:'||site.username||site.password)throw new ApiError(503,'서버 설치 주소를 확인하세요.');
- const token=await registerWorker(owner,[workerEvent(who,'download')]);
+ // 가동 중인 워커가 있으면 이전 토큰을 10분 동안 함께 받는다(security-ops-4). 즉시 멈추려면 먼저 연결 해제(revoke)한다.
+ const token=await registerWorker(owner,[workerEvent(who,'download')],{graceIfOnline:true});
  const result=installer.replace('__COLLECTIVE_CONFIG_HEX__',hex(JSON.stringify({site:site.origin,owner,token,gate:runtime.RESEARCH_WORKER_GATE_TOKEN}))).replace('__COLLECTIVE_WORKER_HEX__',hex(worker));
  return new Response(result,{headers:{'Content-Type':'text/x-python; charset=utf-8','Content-Disposition':'attachment; filename="install-collective-server.py"','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 }catch(e){return failure(e)}finally{if(lock)await releaseLock(key,lock);if(ownerLock)await releaseLock(owner,ownerLock)}}

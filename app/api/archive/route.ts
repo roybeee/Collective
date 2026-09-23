@@ -1,6 +1,7 @@
 import {workerStatus} from '@/lib/research-worker';
 import {initialResearch,queueResearchStatements} from '@/lib/research-queue';
 import {scheduleResearch} from '@/lib/research-background';
+import {autoResearchAccess} from '@/lib/research-tool-check';
 import {ApiError,identity,requireAdminActor,secureMutation,body,str,json,failure,database,readRecord,listRecords,recordStatement,acquireLock,releaseLock,stamp,uid,runtime,configuration,connection,assertNoActiveJobs} from '@/lib/server';
 import type {Brand} from '@/lib/agency';
 import {sourceSummary,publicResearch,type ArchiveSource,type ChannelObservation,type Diagnostic,type BrandResearch} from '@/lib/archive';
@@ -17,11 +18,12 @@ export async function POST(req:Request){let owner='',lock='';try{owner=await ide
  if(b.action==='create_brand'){
   const id=str(b.id,'브랜드 번호',100,true);if(!/^[a-zA-Z0-9_-]{5,100}$/.test(id))throw new ApiError(400,'브랜드 번호를 확인하세요.');const existing=(await listRecords<Brand>(owner,'brand')).find(x=>x.id===id);if(existing)return json({id:existing.id});
   const name=str(b.data?.name,'브랜드 이름',100,true),brand:Brand={id,name,short:name.slice(0,3).toUpperCase(),category:str(b.data?.category??'','업종',100,true),description:str(b.data?.description??'','소개',5000),audience:'',tone:'',constraints:'',knowledge:'',color:'#273953',bg:'#e5e9ee',intake:intake(b.data?.intake)};
-  let research:BrandResearch|undefined;
-  if(b.autoResearch===true&&(await configuration(owner))?.secret){const cfg=await connection(owner);if(cfg.provider==='hermes')research=initialResearch(brand,uid(),cfg.model,(await workerStatus(owner)).activated)}
+  let research:BrandResearch|undefined,researchBlocked:string|undefined;
+  // RESEARCH_TOOL_POLICY=block이면 등록 전에 도구를 점검해, 막히면 브랜드만 만들고 조사는 만들지 않는다(security-ops-1). 기본(warn)은 점검 없이 바로 등록한다.
+  if(b.autoResearch===true&&(await configuration(owner))?.secret){const cfg=await connection(owner);if(cfg.provider==='hermes'){const checked=await autoResearchAccess(cfg);researchBlocked=checked.blocked;if(!researchBlocked){const queued=initialResearch(brand,uid(),cfg.model,(await workerStatus(owner)).activated);research=checked.access?{...queued,access:checked.access}:queued}}}
   await database().batch([recordStatement(owner,'brand',id,brand),stateWrite(owner,id,0),...(research?queueResearchStatements(owner,research):[])]);
   if(research)scheduleResearch(owner,research.id);
-  return json({id,researchId:research?.id,researchQueued:!!research});
+  return json({id,researchId:research?.id,researchQueued:!!research,...(researchBlocked?{researchBlocked}:{})});
  }
  const brandId=str(b.brandId,'브랜드',100,true),brand=await readRecord<Brand>(owner,'brand',brandId);await assertArchiveIdle(owner,brandId);const state=await archiveState(owner,brandId);
  // 확정 자료·채택 진단·의뢰 정보는 AI 제작 맥락에 '확인된 근거'로 들어가므로 관리자 전용이다. 직원은 자료 추가와 후보 검토까지 한다.

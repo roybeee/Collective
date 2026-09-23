@@ -91,6 +91,7 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'worker_credential',parent:'none',campaignDeletion:'not_campaign_scoped',description:'조사 워커 인증 해시'},
  {kind:'worker_event',parent:'none',campaignDeletion:'not_campaign_scoped',description:'조사 워커 설치·해제 감사 기록'},
  {kind:'worker_state',parent:'none',campaignDeletion:'not_campaign_scoped',description:'조사 워커 상태'},
+ {kind:'worker_rejection',parent:'none',campaignDeletion:'not_campaign_scoped',description:'조사 워커 인증 거부 기록(소유자당 1행: 사유별 마지막 거부 시각). 토큰·헤더 값은 담지 않고 재발급·연결 해제 때 지운다(security-ops-4)'},
 ];
 
 // 캠페인에 속한 바이럴 실험 id. 바인드 순서: owner, campaignId.
