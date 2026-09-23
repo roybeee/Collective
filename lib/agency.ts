@@ -3,7 +3,7 @@ export type Brand = {intake?:import('./archive').BrandIntake;id:string; name:str
 export type Campaign = {storeId?:string;storeExperimentId?:string;plan?:CampaignPlan;draftMeta?:DraftMeta;id:string; brandId:string; title:string; goal:string; audience:string; channels:string; stores:string; products:string; budget:number; startDate:string; endDate:string; constraints:string; sources:string; status:string; version:number; createdAt:string; updatedAt:string;};
 export type Artifact = {id:string; campaignId:string; role:string; title:string; content:string; status:string; version:number; origin:string; createdAt:string};
 export type Run = {id:string; campaignId:string; role:string; status:string; error:string|null; createdAt:string; model:string; tokens:number};
-export type Metric = {id:string; campaignId:string; period:string; revenue:number; variableCosts:number; adSpend:number; productionCost:number; orders:number; baselineContribution:number|null; notes:string};
+export type Metric = {id:string; campaignId:string; period:string; revenue:number|null; variableCosts:number|null; adSpend:number|null; productionCost:number|null; orders:number|null; baselineContribution:number|null; notes:string;schemaVersion?:2;version?:number;periodStart?:string;periodEnd?:string;scope?:string;source?:string;definition?:string;method?:'manual'|'export';updatedAt?:string};
 export type Event = {id:string; campaignId:string; message:string; createdAt:string};
 export const roles = [
  {id:'cmo',name:'총괄 파트너',en:'Managing partner',initial:'MP',color:'#d9f36c',job:'목표를 실행 가능한 과제로',deliverable:'목표·범위·예산·일정과 미확정 사항을 구분한 실행 브리프. 예산과 성과 수치를 임의 확정하지 말 것.'},
@@ -23,4 +23,8 @@ export const brandDefaults:Brand[] = [
 ];
 export const statuses:Record<string,string>={draft:'브리프 작성',ready:'실행 준비',running:'AI 작업 중',review:'검토 대기',approved:'기획 승인',revision:'수정 요청',measuring:'성과 기록'};
 export function money(n:number){return new Intl.NumberFormat('ko-KR').format(n)+'원'}
-export function metricSummary(m:Metric){return {contribution:m.revenue-m.variableCosts,net:m.revenue-m.variableCosts-m.adSpend-m.productionCost,observedChange:m.baselineContribution===null?null:m.revenue-m.variableCosts-m.baselineContribution-m.adSpend-m.productionCost,roas:m.adSpend>0?m.revenue/m.adSpend:null,cpa:m.orders>0?m.adSpend/m.orders:null};}
+export function metricSummary(m:Metric){
+ const contribution=m.revenue===null||m.variableCosts===null?null:m.revenue-m.variableCosts;
+ const net=contribution===null||m.adSpend===null||m.productionCost===null?null:contribution-m.adSpend-m.productionCost;
+ return {contribution,net,observedChange:net===null||m.baselineContribution===null?null:net-m.baselineContribution,roas:m.revenue!==null&&m.adSpend!==null&&m.adSpend>0?m.revenue/m.adSpend:null,cpa:m.adSpend!==null&&m.orders!==null&&m.orders>0?m.adSpend/m.orders:null};
+}

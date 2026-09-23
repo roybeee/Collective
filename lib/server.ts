@@ -1,16 +1,23 @@
 import {emptyPlan,planFields,type PlanKey,type BriefDraft} from './brief';
 import { env } from 'cloudflare:workers';
 import { brandDefaults, type Campaign, type Brand, type Artifact, type Metric } from './agency';
+import {HttpBodyError,readBoundedJson} from './http-limits';
 export class ApiError extends Error {constructor(public status:number,message:string){super(message)}}
-export const runtime=env as unknown as {DB?:D1Database;BUCKET?:R2Bucket;AGENCY_ENCRYPTION_KEY?:string;OPENAI_API_KEY?:string;RESEARCH_WORKER_GATE_TOKEN?:string;RESEARCH_WORKER_SITE_ORIGIN?:string};
+export const runtime=env as unknown as {DB?:D1Database;BUCKET?:R2Bucket;AGENCY_ENCRYPTION_KEY?:string;OPENAI_API_KEY?:string;RESEARCH_WORKER_GATE_TOKEN?:string;RESEARCH_WORKER_SITE_ORIGIN?:string;RESEARCH_WORKER_ADMIN_IDS?:string};
 export function database(){if(!runtime.DB)throw new ApiError(503,'저장 공간에 연결하지 못했습니다. 잠시 후 다시 시도하세요.');return runtime.DB}
-export function identity(request:Request){const id=request.headers.get('oai-authenticated-user-id');if(id)return id;if(process.env.NODE_ENV==='development')return 'local-preview';throw new ApiError(401,'로그인이 필요합니다. 페이지를 새로고침해 주세요.')}
+export function identity(request:Request){const id=request.headers.get('oai-authenticated-user-id');if(id&&id.length<=200&&!/[\x00-\x1f\x7f]/.test(id))return id;if(!id&&process.env.NODE_ENV==='development')return 'local-preview';throw new ApiError(401,'로그인이 필요합니다. 페이지를 새로고침해 주세요.')}
 export function secureMutation(request:Request){const origin=request.headers.get('origin');if(origin&&origin!==new URL(request.url).origin)throw new ApiError(403,'허용되지 않은 요청입니다.')}
 export const stamp=()=>new Date().toISOString();
 export const uid=()=>crypto.randomUUID();
 export function json(data:unknown,status=200){return Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}})}
 export function failure(e:unknown){if(e instanceof ApiError)return json({error:e.message},e.status);console.error('agency_request_failed',e instanceof Error?e.message:'unknown');return json({error:'처리하지 못했습니다. 입력한 내용을 유지한 채 다시 시도해 주세요.'},500)}
-export async function body(req:Request){if(Number(req.headers.get('content-length')||0)>200000)throw new ApiError(413,'입력 내용이 너무 큽니다.');const s=await req.text();if(s.length>200000)throw new ApiError(413,'입력 내용이 너무 큽니다.');try{return JSON.parse(s)}catch{throw new ApiError(400,'입력 형식을 확인해 주세요.')}}
+export async function body(req:Request){
+ try{
+  const value=await readBoundedJson<Record<string,any>>(req,200000);
+  if(!value||typeof value!=='object'||Array.isArray(value))throw new ApiError(400,'입력 형식을 확인해 주세요.');
+  return value;
+ }catch(error){if(error instanceof HttpBodyError)throw new ApiError(error.status,error.message);throw error}
+}
 export function str(value:unknown,label:string,max=10000,required=false){if(typeof value!=='string'||value.length>max||(required&&!value.trim()))throw new ApiError(400,`${label} 입력을 확인해 주세요.`);return value.trim()}
 export function num(value:unknown,label:string){if(typeof value!=='number'||!Number.isFinite(value)||value<0||value>1e12)throw new ApiError(400,`${label}은 0 이상의 숫자로 입력해 주세요.`);return value}
 export function recordStatement(owner:string,kind:string,id:string,data:unknown,parentId=''){return database().prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at WHERE records.owner=excluded.owner').bind(`${owner}:${kind}:${id}`,owner,kind,parentId,JSON.stringify(data),stamp())}
@@ -61,7 +68,8 @@ export async function deleteCampaign(owner:string,input:Record<string,unknown>){
   db.prepare(`DELETE FROM records WHERE owner=? AND kind='experiment_revision' AND parent_id IN (${experiments})`).bind(owner,owner,id),
   db.prepare(`DELETE FROM records WHERE owner=? AND kind='learning_rule' AND json_extract(data,'$.experimentId') IN (${experiments})`).bind(owner,owner,id),
   db.prepare("DELETE FROM records WHERE owner=? AND kind='brief_draft' AND (json_extract(data,'$.campaignId')=? OR json_extract(data,'$.savedCampaignId')=?)").bind(owner,id,id),
-  db.prepare("DELETE FROM records WHERE owner=? AND parent_id=? AND kind IN ('artifact','history','metric','event','viral_experiment','learning_snapshot','team_meeting','hermes_submission')").bind(owner,id),
+  db.prepare("DELETE FROM records WHERE owner=? AND parent_id=? AND kind IN ('artifact','history','metric','event','viral_experiment','learning_snapshot','team_meeting','hermes_submission','campaign_sequence','openai_submission')").bind(owner,id),
+  db.prepare("DELETE FROM records WHERE owner=? AND kind='background_attempt' AND id=?").bind(owner,`${owner}:background_attempt:sequence:${id}`),
   db.prepare('DELETE FROM jobs WHERE owner=? AND campaign_id=?').bind(owner,id),
   db.prepare("DELETE FROM records WHERE owner=? AND kind='campaign' AND id=?").bind(owner,`${owner}:campaign:${id}`),
   // A minimal tombstone prevents starter reseeding and makes lost-response retries safe.

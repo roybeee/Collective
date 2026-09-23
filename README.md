@@ -6,7 +6,7 @@ Private marketing workspace for Mealzip. Built with React, Vinext, Cloudflare Wo
 
 - Brand knowledge for OFD, ODA, MAPDAL, and Dr.alan623.
 - Editable first OFD pilot brief; campaign creation, search and brand filtering.
-- Eight-role sequential AI workflow through HERMES, with the existing optional OpenAI Responses background execution preserved. The open campaign view advances roles; closing it pauses future stages, while already-submitted provider work continues.
+- Eight-role sequential AI workflow through HERMES, with the existing optional OpenAI Responses background execution preserved. An explicitly started campaign sequence is persisted and advanced by the registered machine worker; individual provider results can still be collected from an open view when the worker is offline.
 - Text deliverables: strategy, copy, scripts, production instructions, measurement plans and independent review. Image/video rendering, media buying, social publishing and POS ingestion are not connected.
 - Manual artifacts, revision history, version-specific approval and upstream invalidation.
 - Campaign measurements and cost-based calculations. Before/after differences are observational, not causal attribution.
@@ -20,6 +20,10 @@ The default connection is an authenticated HTTPS HERMES gateway in **연결 및 
 The model must support Responses background execution and web search. The default model is `gpt-6-astra`; users can set an available compatible model. Official references: https://developers.openai.com/api/docs/guides/agents and https://developers.openai.com/api/docs/models/gpt-6-astra .
 
 Ambiguous submission failures are held for reconciliation, not automatically retried. Recover with the matching provider response ID, or explicitly confirm no submission exists in provider records before retrying. Active work blocks provider/endpoint changes. Credentials for the same HERMES endpoint may be revalidated to recover active work.
+
+## Reliability, usage and review history
+
+See [실행·사용량·작업물 보완](docs/RELIABILITY.ko.md) and [보안 경계](docs/SECURITY-BOUNDARIES.ko.md). Role and viral submission preparation is atomic; active runs are returned independently of the history limit. The settings page shows a provider usage ledger and explicitly versioned manual pricing. Campaign detail includes previous-version comparison and source-scoped measurements with unknown costs preserved. Installation downloads require `RESEARCH_WORKER_ADMIN_IDS`; existing worker credentials continue to function.
 
 ## Verification
 
@@ -66,7 +70,7 @@ Verification: `node --experimental-vm-modules tests/brief-workflow.mjs` runs own
 
 Each campaign has a team meeting tab backed by HERMES: eight separate role contributions, a CMO synthesis assigning 1–3 roles, dependency-ordered revisions, then a separate quality review (maximum 13 provider operations per meeting). Each contribution after the first must reference an actual previous speaker. No synthetic conversation or silent provider fallback is used.
 
-An owner-scoped campaign job remains active throughout the meeting, including between steps. Step inputs and provider idempotency keys are persisted atomically before submission. Unknown acknowledgements remain locked until recovered, including credential errors during recovery; cancellation stops follow-on work. The meeting advances while its tab is open and resumes when reopened. No unattended scheduler is implied.
+An owner-scoped campaign job remains active throughout the meeting, including between steps. Step inputs and provider idempotency keys are persisted atomically before submission. Unknown acknowledgements remain locked until recovered, including credential errors during recovery; cancellation stops follow-on work. The registered machine worker advances meetings without an open tab, sharing a fair queue with research, role runs, brief/viral work and measurements. An open meeting tab remains a fallback when the worker is unavailable.
 
 The final revisions and quality report are committed atomically as review-pending artifacts. Prior versions are retained in history, affected unrevised downstream artifacts become outdated, and no AI verdict approves the campaign. Follow-up meetings receive the preceding decisions, unresolved questions and quality review alongside current campaign context. Campaign deletion removes meeting records and provider input snapshots; shared viral source cases remain.
 

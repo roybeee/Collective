@@ -1,54 +1,47 @@
 # COLLECTIVE 현재 상태
 
-> 작업 시작 시 읽고, 아래 "확인 명령"으로 실제 원격 상태와 대조한다. 다르면 원격이 맞다. 용어는 `AGENTS.md`의 상태 어휘를 따른다.
+마지막 갱신: 2026-09-23 04:20 UTC (Codex)
 
-마지막 갱신: 2026-09-23 03:20 UTC (Claude, 브랜치 `docs/source-paths-preview`)
+## 소스와 배포
 
-## 현재 단계
+- 확인한 GitHub `origin/main`: `69c366dbfe246dd5b6ff6ff97252617b04beb269` (PR #12까지 merged).
+- 현재 개발 브랜치: `feat/collective-reliability`. 이번 실행·사용량·상세·보안 보완은 로컬 구현 및 검증 상태이며 GitHub merged / Sites published가 아니다.
+- 마지막 기록된 운영 배포는 `ea205b1` / tree `c31a5271d11601b72808caacb4898d80d1bcce2d` / Sites 버전 19. 이번에는 운영 `/api/version` tree를 다시 읽지 않았으므로 새 소스의 runtime-verified를 주장하지 않는다.
 
-Phase 0·1A·1B와 게이트/CI 통합(PR #1·#2·#4), 배포 신원 확인(PR #5), 실제 실행 관측 기록(PR #6), 운영 가드레일(PR #7)이 `merged`. PR #3(Phase 1B)은 내용이 PR #4로 main에 들어가 있어 닫았다. 관측 문서의 미확인 2건은 후속 관측(PR #8, `merged`)으로 해소했다.
+## 이번 보완
 
-## 검증된 결과
+1. 역할·바이럴 접수의 원자 저장, 멱등 복구, 활성 실행 전체 조회.
+2. 실패·취소·형식 오류를 포함한 사용량 원장, 수동 가격 버전과 nullable 비용, 설정 UI.
+3. machine worker의 역할·회의·바이럴·초안 진행, 캠페인 연속 실행 동의/중단, 조사·측정 공정 순환.
+4. 캠페인 상세 및 이전 원문 비교, 출처·기간·범위와 미확인 비용 보존, stale 수정 거부.
+5. 요청/외부 응답 스트림 제한, 설치 파일 관리자 제한, 읽기 전용 운영 인증 probe.
 
-| 항목 | 상태 | 근거 | 증거 |
-|---|---|---|---|
-| `origin/main` | `fa8aeb8` (PR #11 병합) | real | `git ls-remote origin refs/heads/main` (2026-09-23 03:20 UTC) |
-| `origin/main^{tree}` | `faf527147d2af4d3a6ea7cde3f1891758d3239d6` | real | `git rev-parse 'origin/main^{tree}'` |
-| 마지막 운영 배포 | `runtime-verified` — 기록된 사실(2026-09-23) | real | `ea205b1` → Sites 버전 19, deployment `appgdep_6ab2c5735b0c8191b99ac67dba10975b`, `/api/version` tree `c31a5271…` 확인 2026-09-23 03:12 KST (소유자 기록) |
-| main 이동 여부 | 위 배포 뒤 main이 PR #6·#7로 이동했다. 운영은 새 main 기준으로 `runtime-verified`가 아니다(PR #11이 바이럴 조사 지시문을 바꿨으므로 앱 동작이 다르다. 게시가 필요하다) | real | 위 두 명령 |
-| typecheck | passed | real | `node node_modules/typescript/bin/tsc --noEmit` exit 0 |
-| 단위·통합 테스트 | passed | mocked (HERMES/외부 fetch 스텁, SQLite) | `node scripts/test.mjs` 11/11 스위트, 509 assertions |
-| lint 기준선 | passed | real | `node scripts/lint-gate.mjs` errors 108/108, warnings 44/44 |
-| E2E 스모크(로컬) | passed, 비차단 | real 브라우저·빌드·로컬 D1 / mocked 인증 헤더 | `node node_modules/@playwright/test/cli.js test` 4/4 × 3회 (`docs/E2E.ko.md`) |
+상세와 적용 조건: [실행·사용량·작업물 보완](RELIABILITY.ko.md), [보안 경계](SECURITY-BOUNDARIES.ko.md).
 
-재게시 여부는 소유자가 `docs/PUBLISH.ko.md` 사전 점검 뒤 결정한다. PR #11로 앱 코드가 바뀌어 재게시가 필요하다.
+## 이번 검증
 
-## 막힌 것 · 미해결
+| 검사 | 상태 | 근거 |
+|---|---|---|
+| `node scripts/test.mjs` | passed · 16/16 suites, 646 assertions | real SQLite·핸들러 / mocked 외부 공급자 |
+| `node node_modules/typescript/bin/tsc --noEmit` | passed · exit 0 | real 정적 검사 |
+| `node scripts/lint-gate.mjs` | passed · errors 106/108, warnings 42/44 | real 정적 검사, lint zero가 아님 |
+| `node scripts/run-framework.mjs build` | passed · exit 0 | real 로컬 빌드 |
+| `node node_modules/@playwright/test/cli.js test` | passed · 8/8, 18.0초 | real Chromium·로컬 D1 / mocked 인증 헤더 |
+| `python3 tests/research_worker_test.py` | passed · 4/4 | mocked gateway / real 로컬 HTTP |
+| 운영 익명·위조·중복 인증 헤더 GET | passed · 각 HTTP 401 | real, 기존 운영 사이트 읽기 요청 3건 |
+| 원본 Worker 직접 접근·로그인 사용자 간 운영 격리 | not_run | 직접 origin 및 두 사용자 세션 미제공 |
+| 새 유료 모델·커넥터 호출 / 운영 게시 | not_run | 이번 개발에 포함하지 않음 |
 
-1. **실제 실행 관측(PR #6 `merged`)의 남은 미확인.** 후속 관측(2026-09-23 00:55 UTC, real, 읽기 전용)으로 2건을 해소했다(`docs/observations/2026-09-23-live-run.md` 5절).
-   - `viral_discovery` 실패 원인: 당시(9/17) HERMES api_server에 도구가 없어서 모델이 사례를 지어내지 않고 비워 반환했고, 앱이 이를 `failed`로 기록했다. 도구는 9/18에 연결됐고, 재실행에서 성공을 확인했다(다음 행동 1).
-   - `reportedVerdict` vs `verdict`: quality 실행 3건이 모두 게이트 도입(`d67adeb`, 2026-09-17 14:14 UTC) 이전에 실행돼 필드가 없다. 게이트 이후 실행이 있어야 관측할 수 있다.
-   - 남은 미확인: 원화 비용(스키마에 금액 없음), 실행별 소요 시간, 다른 기능 경로의 실행 여부.
-2. 운영 인증 헤더(`oai-authenticated-user-id`)를 클라이언트가 위조할 수 없는지는 Sites 디스패처에 달려 있고, 저장소 안의 어떤 테스트도 이를 검증하지 않는다.
-3. 게시 1회가 ChatGPT Work 크레딧을 크게 소모한다(2026-09-23 약 18분, 179 → 0). Hermes/Codex와 같은 계정이다.
+복구·공정 큐·terminal 오류·원장 후속 실패·기존 성과 버전 전환은 회귀 실패를 먼저 확인한 뒤 수정했다. 코드·보안 교차 리뷰에서 발견한 HIGH/MEDIUM은 보완했다. 커버리지 백분율은 측정하지 않았다.
 
-## 작동 중인 작업
+## 운영 반영 전 조건
 
-| PR | 브랜치 | 내용 | 상태 |
-|---|---|---|---|
-| — | `docs/source-paths-preview` | 원문 확인 경로 실측·미리 검증 기록 | PR 진행 중 |
+- 새 소스를 별도 Sites 게시하고 runtime tree를 확인해야 운영에 반영된다. GitHub 반영만으로 배포되지 않는다.
+- 게시 전 `RESEARCH_WORKER_ADMIN_IDS`에 설치 관리자 ID를 설정해야 설치 파일 다운로드가 유지된다. 기존 worker tick 자격증명은 그대로 동작한다.
+- 무인 진행에는 서버 worker가 실제로 온라인이어야 한다. 로컬 테스트가 운영 worker 연결을 증명하지 않는다.
+- gateway의 도구 강제 읽기 전용 권한·직접 origin·실사용자 간 격리는 추가 운영 검증 대상이다. 설치 파일의 공통 gate는 여전히 신뢰된 관리자에게 제공된다.
+- workspace 전체 본문 전송은 호환을 위해 유지한다. 페이지네이션 최적화와 고객별 협업 권한은 이번 변경에 포함하지 않았다.
 
-## 다음 행동
+## 과거 실제 실행
 
-1. **PR #11(바이럴 조사 원문 확인 경로) 게시 대기.** `merged`(main `fa8aeb8`, tree `faf52714…`)이지만 운영은 아직 `ea205b1` 빌드다. 게시 전 미리 검증(real, HERMES 직접 실행 1회 146,001 토큰): Instagram 4건과 TikTok 2건 원문을 확인했고 6건 모두 실존한다(관측 문서 7절). `docs/PUBLISH.ko.md`에 따라 게시는 별도 세션에서 크레딧을 점검한 뒤 진행한다. Reddit·조회수는 여전히 확인할 수 없다(로그인 세션이나 주거용 IP 필요).
-2. 재게시가 필요하면 `docs/PUBLISH.ko.md` 사전 점검(크레딧·예약 실행) 후 단독으로 진행하고 `docs/releases/`에 기록한다.
-3. `e2e-smoke`가 `docs/E2E.ko.md`의 승격 기준을 채우면 차단 게이트로 올리는 PR을 연다.
-
-## 확인 명령
-
-```bash
-git fetch origin --prune && git ls-remote origin refs/heads/main && git rev-parse 'origin/main^{tree}'
-gh pr list -R roybeee/Collective
-# 운영: 앱 페이지 콘솔에서
-# await (await fetch('/api/version', {credentials: 'same-origin', cache: 'no-store'})).json()
-```
+[2026-09-23 관측 기록](observations/2026-09-23-live-run.md)에 실제 8역할·회의·브랜드 조사 및 바이럴 조사 결과가 있다. 모의 테스트 통과와 과거 실호출은 별개의 근거다. 해당 문서의 총 18건 표에는 실패 1건이 포함되므로 모두 완료한 18건으로 해석하지 않는다. 강화된 품질 게이트 이후의 실호출 및 원문 경로 개선의 운영 게시 여부는 별도 확인한다.

@@ -7,7 +7,9 @@ globalThis.__hermesTest={
  recordStatement:(owner,kind,id,value)=>({run:async()=>records.set(owner+':'+id,value)}),
  readRecord:async(owner,kind,id)=>{if(!records.has(owner+':'+id))throw new Error('not found');return records.get(owner+':'+id)}
 };
-const source=(await readFile(new URL('../lib/hermes.ts',import.meta.url),'utf8')).replace(/^import .*from '.\/server';/m,'const {ApiError,recordStatement,readRecord}=globalThis.__hermesTest;');
+const limitsCode=ts.transpileModule(await readFile(new URL('../lib/http-limits.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
+globalThis.__hermesTest.readBoundedJson=(await import('data:text/javascript;base64,'+Buffer.from(limitsCode).toString('base64'))).readBoundedJson;
+const source=(await readFile(new URL('../lib/hermes.ts',import.meta.url),'utf8')).replace(/^import .*from '.\/server';/m,'const {ApiError,recordStatement,readRecord}=globalThis.__hermesTest;').replace(/^import .*from '.\/usage-ledger';/m,'const recordProviderUsage=async()=>{};').replace(/^import .*from '.\/http-limits';/m,'const {readBoundedJson}=globalThis.__hermesTest;');
 const code=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
 const {hermesEndpoint,verifyHermes,submitHermes,pollHermes}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
 const cfg={provider:'hermes',endpoint:'https://hermes.example.com',key:'test-secret-not-real',model:'HERMES'};
