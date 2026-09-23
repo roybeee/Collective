@@ -64,6 +64,10 @@ jobs:
       - name: Worker contract test
         run: python3 tests/research_worker_test.py
 
+      # 설치기 보안 경계(샌드박스 결정·nftables 규칙·원시 도구 차단 훅·심볼릭 링크 방어·자기 삭제)의 회귀를 병합 전에 막는다. root·네트워크 불필요.
+      - name: Installer hardening test
+        run: python3 tests/research_install_test.py
+
   # 로컬 빌드를 wrangler --local로 띄워 브라우저 여정을 확인한다(docs/E2E.ko.md).
   # 안정성이 확인될 때까지 비차단이다. verify와 독립된 잡이라 결과가 verify에 영향을 주지 않는다.
   e2e-smoke:

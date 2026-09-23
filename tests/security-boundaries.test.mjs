@@ -200,14 +200,18 @@ await test('tracked sources and docs contain no server address, sslip host or ro
  }
 });
 
-async function probeScript(env,status=401){
- let output='',calls=0;
+async function probeScript(env,status=401,worker=()=>{throw new Error('Unexpected worker POST')}){
+ let output='',calls=0,posts=0;
  const context=createContext({URL,Headers,AbortSignal,process:{env,stdout:{write(value){output+=value}}},fetch:async(url,options)=>{
+  if(new URL(url).pathname==='/api/research-worker'){
+   posts++;assert.equal(options.method,'POST');assert.equal(options.redirect,'manual');assert.equal(new Headers(options.headers).get('oai-sites-authorization'),null);
+   return worker();
+  }
   calls++;assert.equal(options.method,'GET');assert.equal(options.redirect,'manual');assert.equal(new URL(url).pathname,'/api/channels');
   return new Response('private-provider-body-do-not-print',{status});
  }});
  const vmModule=new SourceTextModule(readFileSync('scripts/probe-dispatcher-auth.mjs','utf8'),{context});await vmModule.link(()=>{throw new Error('Unexpected import')});await vmModule.evaluate();
- return {output,calls,result:JSON.parse(output),exitCode:context.process.exitCode};
+ return {output,calls,posts,result:JSON.parse(output),exitCode:context.process.exitCode};
 }
 await test('production probe cannot run without explicit target',async()=>{
  const result=await probeScript({});assert.equal(result.calls,0);assert.equal(result.result.status,'not_run');
@@ -224,5 +228,37 @@ await test('production probe records denial without printing response data',asyn
 await test('production probe cannot call a public 200 response safe',async()=>{
  const result=await probeScript({COLLECTIVE_PROBE_ORIGIN:'https://agency.test'},200);
  assert.equal(result.exitCode,1);assert.equal(result.result.results.filter(x=>x.status==='failed').length,3);assert.ok(!result.output.includes('private-provider-body'));
+});
+// security-ops-7: gate 없이 가짜 작업자 토큰을 보냈을 때 누가 거부했는지 응답 모양이 아니라 앱 고유 문구·헤더로 가린다. 본문은 출력하지 않는다.
+const appHeaders={'content-type':'application/json','cache-control':'no-store','x-content-type-options':'nosniff'};
+async function workerProbe(respond){
+ const run=await probeScript({COLLECTIVE_PROBE_ORIGIN:'https://agency.test',COLLECTIVE_PROBE_WORKER:'1'},401,respond);
+ assert.equal(run.posts,1);assert.ok(!run.output.includes('private-worker-body'));assert.ok(!run.output.includes('작업자'));
+ return {...run.result.results.find(x=>x.check==='dispatcher:worker_without_gate'),exitCode:run.exitCode};
+}
+await test('worker probe stays off without explicit approval',async()=>{
+ const run=await probeScript({COLLECTIVE_PROBE_ORIGIN:'https://agency.test'});
+ assert.equal(run.posts,0);assert.equal(run.result.results.find(x=>x.check==='dispatcher:worker_without_gate').status,'not_run');
+});
+await test('worker probe attributes only the exact app auth error to the app',async()=>{
+ for(const error of ['작업자 연결이 해제됐거나 인증이 만료됐습니다.','작업자 인증이 필요합니다.']){
+  const result=await workerProbe(()=>new Response(JSON.stringify({error}),{status:401,headers:appHeaders}));
+  assert.equal(result.status,'passed');assert.equal(result.rejectedBy,'app');assert.equal(result.gateEnforced,false);
+ }
+});
+await test('worker probe attributes dispatcher JSON, HTML and login redirect to the dispatcher',async()=>{
+ const responses=[()=>new Response('{"error":"Unauthorized"}',{status:401,headers:{'content-type':'application/json'}}),
+  ()=>new Response('<html>private-worker-body</html>',{status:403,headers:{'content-type':'text/html'}}),
+  ()=>new Response(null,{status:302,headers:{location:'https://agency.test/signin-with-chatgpt?next=%2F'}})];
+ for(const respond of responses){const result=await workerProbe(respond);assert.equal(result.status,'passed');assert.equal(result.rejectedBy,'dispatcher');assert.equal(result.gateEnforced,true)}
+});
+await test('worker probe records ambiguous app-shaped rejections as unknown',async()=>{
+ for(const respond of [()=>new Response(JSON.stringify({error:'private-worker-body'}),{status:401,headers:appHeaders}),
+  ()=>new Response(JSON.stringify({error:'작업자 인증이 필요합니다.'}),{status:401,headers:{'content-type':'application/json'}})]){
+  const result=await workerProbe(respond);assert.equal(result.status,'blocked');assert.equal(result.rejectedBy,'unknown');assert.equal(result.gateEnforced,undefined);assert.equal(result.exitCode,1);
+ }
+});
+await test('worker probe fails when the endpoint accepts or errors',async()=>{
+ for(const status of [200,500]){const result=await workerProbe(()=>new Response('private-worker-body',{status,headers:appHeaders}));assert.equal(result.status,'failed');assert.equal(result.rejectedBy,undefined);assert.equal(result.exitCode,1)}
 });
 const failed=outcomes.filter(x=>!x.passed);process.stdout.write(JSON.stringify({passed:outcomes.length-failed.length,failed:failed.length})+'\n');process.exitCode=failed.length?1:0;
