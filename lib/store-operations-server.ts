@@ -1,13 +1,13 @@
 import type {Campaign} from './agency';
-import {ApiError,database,listRecords,readRecord,recordStatement,requireAdminActor,str,num,stamp,uid} from './server';
+import {ApiError,actor,database,listRecords,readRecord,recordStatement,requireAdminActor,str,num,stamp,uid} from './server';
 import {checkedVersion,localDate,option} from './store-server';
 import {publicationLabels,type Publication} from './execution';
 import {channelCatalog,type Store,type StoreExperiment} from './store-marketing';
-import {diagnosisCatalog,orderCostFields,orderModes,orderSources,orderStates,koreaToday,recentPeriod,type StoreDiagnostic,type StoreOrder,type StoreSpend,type StoreOperations} from './store-operations';
+import {diagnosisCatalog,orderCostFields,orderModes,orderSources,orderStates,koreaToday,recentPeriod,type CodeAttribution,type StoreDiagnostic,type StoreOrder,type StoreSpend,type StoreOperations} from './store-operations';
 import {isEnabled} from './feature-flags';
 import {generateCode,isTrackingCodeType,isValidCode,normalizeCode,normalizeUtmCampaign,codeTokens,type TrackingCode,type TrackingCodeType} from './tracking-codes';
 import {ImportError,personalDataKind,prepareImport,suggestMapping,type ColumnMapping,type ImportRow} from './order-import';
-import {ATTRIBUTION_NOT_INCREMENTAL,addDays,attributeByCodes,attributionBreakdown,autoEvidence,creativeLabel,incrementalityLite,northStar,orderMetrics,publicationGate,publicationGateView,publicationRefusal,publicationRowLabel,regateDays,unitEconomics,weekStart,weeklyCompletenessFromDays,weeksBetween,type DayTotal,type Economics,type PosWeeklyTotal} from './store-attribution';
+import {ATTRIBUTION_NOT_INCREMENTAL,LIVE_PUBLICATION_STATUSES,addDays,attributeByCodes,attributionBreakdown,autoEvidence,codeEntryNote,creativeLabel,entryView,incrementalityLite,isCodeEvidence,manualEvidence,northStar,orderMetrics,publicationGate,publicationGateView,publicationRefusal,publicationRowLabel,regateDays,unitEconomics,weekStart,weeklyCompletenessFromDays,weeksBetween,type CodeRefusal,type DayTotal,type Economics,type PosWeeklyTotal,type PublicationGate} from './store-attribution';
 
 export function operationDate(v:unknown,label:string){const date=localDate(v,label,true);if(date>koreaToday())throw new ApiError(400,label+'은 오늘까지 입력하세요.');return date}
 export function diagnosisInput(raw:any,store:Store,old?:StoreDiagnostic):StoreDiagnostic{
@@ -28,7 +28,9 @@ export async function orderInput(raw:any,storeId:string):Promise<Omit<StoreOrder
  const campaignId=str(raw.campaignId??'','캠페인',100)||undefined,creativeId=str(raw.creativeId??'','소재',100)||undefined;
  if(creativeId&&!campaignId)throw new ApiError(400,'소재 귀속에는 캠페인이 필요합니다.');
  const channel=option(raw.channel||'unknown',['unknown',...channelCatalog.map(c=>c.key)] as const,'유입 채널');
- return {campaignId,creativeId,id,storeId,source,orderNumber,orderDate,mode:option(raw.mode,Object.keys(orderModes) as StoreOrder['mode'][],'주문 방식'),status,paidAmount,refundAmount,costs:Object.fromEntries(Object.entries(orderCostFields).map(([k,label])=>[k,amount(raw.costs?.[k]??raw[k],label,true)])) as StoreOrder['costs'],channel,experimentId:str(raw.experimentId??'','실험',100),attributionEvidence:str(raw.attributionEvidence??'','유입 확인 근거',2000,channel!=='unknown'||!!campaignId||!!creativeId),note:str(raw.note??'','출처 메모',2000)};
+ // A4-3: 추적 코드를 넣은 주문은 근거를 코드 결과로 채우거나 다시 요구하므로(orderCodeEntry) 여기서는 요구하지 않는다. 코드 칸이 비면 기존 규칙 그대로다.
+ const coded=!!normalizeCode(raw.trackingCode);
+ return {campaignId,creativeId,id,storeId,source,orderNumber,orderDate,mode:option(raw.mode,Object.keys(orderModes) as StoreOrder['mode'][],'주문 방식'),status,paidAmount,refundAmount,costs:Object.fromEntries(Object.entries(orderCostFields).map(([k,label])=>[k,amount(raw.costs?.[k]??raw[k],label,true)])) as StoreOrder['costs'],channel,experimentId:str(raw.experimentId??'','실험',100),attributionEvidence:str(raw.attributionEvidence??'','유입 확인 근거',2000,!coded&&(channel!=='unknown'||!!campaignId||!!creativeId)),note:str(raw.note??'','출처 메모',2000)};
 }
 export async function validateOrderExperiment(owner:string,storeId:string,experimentId:string,date:string,channel:string){if(!experimentId)return;const e=await readRecord<StoreExperiment>(owner,'store_experiment',experimentId);if(e.storeId!==storeId)throw new ApiError(400,'다른 지점의 실험에는 연결할 수 없습니다.');if(e.status==='draft'||!e.startDate||!e.endDate||date<e.startDate||date>e.endDate)throw new ApiError(400,'시작한 실험의 기간 안에서 연결하세요.');if(e.channel!==channel)throw new ApiError(400,'유입 채널과 실험 채널이 일치해야 합니다.');}
 export function spendInput(raw:any,storeId:string,old?:StoreSpend):StoreSpend{return {id:str(raw.id,'비용 기록',100,true),storeId,date:operationDate(raw.date,'비용일'),channel:option(raw.channel,channelCatalog.map(c=>c.key),'채널'),experimentId:str(raw.experimentId??'','실험',100),adSpend:amount(raw.adSpend,'광고비')!,productionCost:amount(raw.productionCost,'제작·협찬비')!,source:str(raw.source,'비용 출처',2000,true),version:(old?.version||0)+1,createdAt:old?.createdAt||stamp(),updatedAt:stamp()}}
@@ -37,7 +39,8 @@ export async function getStoreOperations(owner:string,storeId:string,from?:strin
  const query=async<T>(kind:string,dateKey:string)=>{const rows=await database().prepare(`SELECT data FROM records WHERE owner=? AND kind=? AND parent_id=? AND json_extract(data, '$.${dateKey}') >= ? AND json_extract(data, '$.${dateKey}') <= ? ORDER BY json_extract(data, '$.${dateKey}') DESC, updated_at DESC LIMIT 5001`).bind(owner,kind,storeId,start,end).all<{data:string}>();if(rows.results.length>5000)throw new ApiError(400,'조회 결과가 5,000건을 초과합니다. 기간을 좁혀 주세요.');return rows.results.map(r=>JSON.parse(r.data) as T)};
  const [diagnostics,orders,spend]=await Promise.all([listRecords<StoreDiagnostic>(owner,'store_diagnostic',storeId),query<StoreOrder>('store_order','orderDate'),query<StoreSpend>('store_spend','date')]);return {diagnostics,orders,spend,from:start,to:end};
 }
-// 주문 기록 창(save_order)은 기존 입력 항목만 보낸다. 가져오기가 남긴 필드(가져오기 기록·할인액·읽은 코드·신규 여부)는 이어받는다.
+// 주문 기록 창(save_order)은 기존 입력 항목과 추적 코드 칸(A4-3, trackingCode)을 보낸다. 코드 칸은 orderCodeEntry·applyCodeEntry가 반영하고, 비어 있으면 이 규칙만 적용한다.
+// 가져오기가 남긴 필드(가져오기 기록·할인액·읽은 코드·신규 여부)는 이어받는다.
 // 코드 자동 귀속 사본은 캠페인·소재가 그대로일 때만 둔다. 사람이 캠페인·소재를 바꾸면 수동 귀속이 우선이다.
 export function carryImportFields<T extends Pick<StoreOrder,'campaignId'|'creativeId'>>(old:StoreOrder|undefined,input:T):T&Pick<StoreOrder,'importId'|'discountAmount'|'trackingCodes'|'newCustomer'|'codeAttribution'>{
  if(!old)return input;
@@ -45,16 +48,18 @@ export function carryImportFields<T extends Pick<StoreOrder,'campaignId'|'creati
  return {...input,...(old.importId?{importId:old.importId}:{}),...(old.discountAmount!==undefined?{discountAmount:old.discountAmount}:{}),...(old.trackingCodes?{trackingCodes:old.trackingCodes}:{}),...(old.newCustomer!==undefined?{newCustomer:old.newCustomer}:{}),...(old.codeAttribution&&sameTarget?{codeAttribution:old.codeAttribution}:{})};
 }
 // 기존 장부 양식 가져오기(rows)도 POS CSV 가져오기와 같은 개인정보 패턴을 거부한다. 주문번호는 긴 POS 번호가 흔해 휴대폰 번호만 본다. 값은 문구에 싣지 않는다.
-export function rejectPersonalData(order:Pick<StoreOrder,'orderNumber'|'note'|'attributionEvidence'>){
- for(const [label,value,card] of [['주문번호',order.orderNumber,false],['출처 메모',order.note,true],['유입 확인 근거',order.attributionEvidence,true]] as const){const kind=personalDataKind(value,card);if(kind)throw new ApiError(400,`${label}에 ${kind==='phone'?'휴대폰 번호':'카드번호로 보이는 숫자열'}가 있어 가져오지 않았습니다. 개인정보는 저장하지 않습니다.`)}
+// A4-3 추적 코드 열(trackingCode)도 본다(코드 형식 검사보다 먼저, 개인정보 문구로 알린다).
+export function rejectPersonalData(order:Pick<StoreOrder,'orderNumber'|'note'|'attributionEvidence'>&{trackingCode?:unknown}){
+ for(const [label,value,card] of [['주문번호',order.orderNumber,false],['출처 메모',order.note,true],['유입 확인 근거',order.attributionEvidence,true],['추적 코드',typeof order.trackingCode==='string'?order.trackingCode:'',true]] as const){const kind=personalDataKind(value,card);if(kind)throw new ApiError(400,`${label}에 ${kind==='phone'?'휴대폰 번호':'카드번호로 보이는 숫자열'}가 있어 가져오지 않았습니다. 개인정보는 저장하지 않습니다.`)}
 }
 // 주문 기록 창에서 고칠 때 이어받는 코드 귀속 사본(carryImportFields)도 게시 관문을 지금 게시 상태로 다시 본다(A4-2). 규칙은 귀속 보고와 같다(publicationGateView):
 // 게시가 지워졌거나 취소·발행 실패거나 주문일이 예약일 전이면 사본을 지우고, 근거가 가져오기 자동 문구 그대로면 가져올 때 거절한 주문처럼 미귀속으로 저장한다.
 // 사람이 근거를 새로 적었으면 그 캠페인·소재는 수동 귀속으로 남는다. 게시 상태 확인 전(pending)이면 되돌릴 수 있는 상태라 사본을 그대로 둔다(보고서는 그동안 귀속에서 뺀다).
 // 실험에 연결한 주문을 미귀속(유입 미확인)으로 바꾸면 실험 채널과 어긋나므로 409로 사람이 고르게 한다. 게시에 묶이지 않은 코드 귀속은 그대로 둔다.
-export async function keepPublicationAttribution<T extends Pick<StoreOrder,'orderDate'|'codeAttribution'|'campaignId'|'creativeId'|'channel'|'attributionEvidence'|'experimentId'>>(owner:string,order:T):Promise<T>{
+// known: 부르는 쪽이 이미 읽은 게시 관문(A4-3 finishOrderEntry). 없으면 여기서 읽는다.
+export async function keepPublicationAttribution<T extends Pick<StoreOrder,'orderDate'|'codeAttribution'|'campaignId'|'creativeId'|'channel'|'attributionEvidence'|'experimentId'>>(owner:string,order:T,known?:ReadonlyMap<string,PublicationGate>):Promise<T>{
  const id=order.codeAttribution?.publicationId;if(!id)return order;
- const gates=gatesOf(await recordsByIds<Publication>(owner,'execution_publication',[id]));
+ const gates=known??gatesOf(await recordsByIds<Publication>(owner,'execution_publication',[id]));
  if(publicationRefusal({publicationId:id},order.orderDate,gates)==='pending')return order;
  const next=publicationGateView(order,gates);
  if(order.experimentId&&next.channel!==order.channel)throw new ApiError(409,'게시가 취소·발행 실패 등으로 바뀌어 이 주문의 추적 코드 귀속을 유지할 수 없습니다. 실험 연결을 풀어 미귀속으로 저장하거나, 유입 확인 근거를 직접 적어 저장하세요.');
@@ -130,11 +135,15 @@ async function measurementList(owner:string,store:Store){
  return {codes,imports:imports.slice(0,20),posTotals:[...posTotals].sort((a,b)=>b.weekStart.localeCompare(a.weekStart)),autoAttribution:auto,autoAttributionLabel:autoLabel(auto)};
 }
 
+// 코드를 쓸 수 있는지: 캠페인·소재가 이 지점·브랜드에 유효하고, 게시에 묶였으면 그 게시가 있고 캠페인·소재가 코드와 맞는다. 가져오기(codeBook)와 직접 입력(enteredCode)이 같이 쓴다.
+async function usableCode(owner:string,store:Store,c:TrackingCode,found:ReadonlyMap<string,Publication>){
+ if(c.publicationId){const p=found.get(c.publicationId);if(!p||p.campaignId!==c.campaignId||(!!c.creativeId&&p.creativeId!==c.creativeId))return false}
+ return validateOrderAttribution(owner,store,{campaignId:c.campaignId,creativeId:c.creativeId,experimentId:''}).then(()=>true,e=>{if(e instanceof ApiError)return false;throw e});
+}
 // 자동 귀속에 쓸 코드와 게시 관문. 캠페인이 삭제됐거나 지점·브랜드가 맞지 않게 된 코드, 게시가 삭제됐거나 게시의 캠페인·소재와 어긋난 코드(보존 정책으로 남은 코드)는 귀속하지 않는다.
 async function codeBook(owner:string,store:Store){
  const all=await listRecords<TrackingCode>(owner,'tracking_code',store.id),found=await recordsByIds<Publication>(owner,'execution_publication',all.flatMap(c=>c.publicationId?[c.publicationId]:[]));
- const linked=(c:TrackingCode)=>{if(!c.publicationId)return true;const p=found.get(c.publicationId);return !!p&&p.campaignId===c.campaignId&&(!c.creativeId||p.creativeId===c.creativeId)};
- const ok=await Promise.all(all.map(c=>linked(c)&&validateOrderAttribution(owner,store,{campaignId:c.campaignId,creativeId:c.creativeId,experimentId:''}).then(()=>true,e=>{if(e instanceof ApiError)return false;throw e})));
+ const ok=await Promise.all(all.map(c=>usableCode(owner,store,c,found)));
  return {usable:all.filter((_,i)=>ok[i]),unavailable:new Set(all.filter((_,i)=>!ok[i]).map(c=>c.code)),publications:gatesOf(found)};
 }
 type Built={row:ImportRow;order:StoreOrder;attributed:boolean;conflict:boolean;unknown:boolean;unavailable:boolean;beforePublication:boolean;unpublished:boolean;pendingPublication:boolean};
@@ -246,4 +255,93 @@ export async function measurementAction(req:Request,owner:string,store:Store,b:R
   case 'attribution_report':return attributionReport(owner,store,b);
   default:throw new ApiError(400,'지원하지 않는 점포 실측 작업입니다.');
  }
+}
+
+// ---- A4-3 추적 코드 직접 입력: 주문 기록 창(save_order)·장부 양식 CSV(import_orders rows)의 trackingCode ----
+// 사람이 코드를 넣은 명시적 귀속이라 자동 귀속 스위치(a4_auto_attribution)와 무관하다. 코드 쓸 수 있음(usableCode)·적용 시작일·게시 관문(attributeByCodes)은 가져오기 자동 귀속과 같은 함수를 쓴다.
+// state: absent(칸 없음이나 빈 칸, 기존 흐름 그대로)·unchanged(주문의 코드 귀속과 같은 코드)·entered(새로 넣은 코드). 빈 칸은 칸 없음과 바이트 단위로 같다:
+// 주문을 고칠 때도 기존 사본 규칙(carryImportFields·keepPublicationAttribution)만 적용한다. 주문 기록 창은 코드 칸을 비워 연다.
+export type CodeEntry={state:'absent'|'unchanged'|'entered';code?:string;attribution?:CodeAttribution;refusal?:CodeRefusal;gates?:ReadonlyMap<string,PublicationGate>};
+type OrderDraft=Omit<StoreOrder,'version'|'createdAt'|'updatedAt'>;
+type FoundCode={found:TrackingCode;gates:Map<string,PublicationGate>};
+const targetConflict=(code:string)=>new ApiError(409,`추적 코드 ${code}가 가리키는 캠페인·소재와 고른 캠페인·소재가 다릅니다. 코드로 귀속하려면 캠페인·소재 선택을 비우거나 코드와 같게 고르고, 직접 고르려면 추적 코드 칸을 비우세요.`);
+// 워크스페이스 안 레코드 id=코드로 찾는다. 모르는 코드 400, 다른 지점 코드 409, 캠페인·소재·게시가 삭제됐거나 어긋난 코드 409.
+async function enteredCode(owner:string,store:Store,code:string):Promise<FoundCode>{
+ const row=await database().prepare("SELECT data FROM records WHERE id=? AND owner=? AND kind='tracking_code'").bind(`${owner}:tracking_code:${code}`,owner).first<{data:string}>();
+ if(!row)throw new ApiError(400,`등록되지 않은 추적 코드입니다(${code}). 추적 코드 탭에서 코드를 확인하세요.`);
+ const found=JSON.parse(row.data) as TrackingCode;
+ if(found.storeId!==store.id)throw new ApiError(409,`다른 지점의 추적 코드입니다(${code}). 이 지점의 코드를 넣으세요.`);
+ const publications=await recordsByIds<Publication>(owner,'execution_publication',found.publicationId?[found.publicationId]:[]);
+ if(!await usableCode(owner,store,found,publications))throw new ApiError(409,`쓸 수 없는 추적 코드입니다(${code}). 코드의 캠페인·소재·게시가 삭제됐거나 이 지점과 맞지 않습니다. 코드 칸을 비우고 저장하세요.`);
+ return {found,gates:gatesOf(publications)};
+}
+// 요청 하나의 코드 입력 문맥. 라우트가 행을 돌기 전에 한 번 만든다. lookup은 같은 코드를 요청 안에서 한 번만 찾는다(장부 양식 CSV는 200행까지, D1 요청당 쿼리 한도).
+// by: 코드 귀속을 만든 사람(codeAttribution.enteredBy). ledger: 장부 양식 CSV라 근거 문구에 출처를 붙인다(manualEvidence).
+// 권한: 코드가 든 장부 양식 CSV는 여러 주문을 한 번에 게시·팔 단위로 귀속하므로 POS CSV 확정처럼 관리자만 올린다. 코드 칸이 빈 장부 양식은 기존처럼 모든 역할이다.
+// 주문 기록 창의 코드 칸은 직원도 쓴다. 계산대에서 코드를 확인하는 사람이 직원이고 한 번에 한 건이라서다. 대신 넣은 사람을 남긴다.
+export type CodeEntryContext={store:Store;lookup:(code:string)=>Promise<FoundCode>;by:CodeAttribution['enteredBy']|null;ledger:boolean};
+export async function codeEntryContext(req:Request,owner:string,store:Store,rows:readonly unknown[],ledger:boolean):Promise<CodeEntryContext>{
+ const coded=rows.some(r=>!!normalizeCode((r as {trackingCode?:unknown}|null|undefined)?.trackingCode)),who=coded?await actor(req):null;
+ if(who&&ledger&&(who.role==='member'||who.owner!==owner))throw new ApiError(403,'추적 코드(trackingCode 열)가 든 장부 양식 CSV는 관리자만 가져올 수 있습니다. 코드 열을 비우면 모든 역할이 가져올 수 있습니다.');
+ const seen=new Map<string,Promise<FoundCode>>();
+ const lookup=(code:string)=>{const known=seen.get(code);if(known)return known;const next=enteredCode(owner,store,code);seen.set(code,next);return next};
+ return {store,lookup,by:who?{id:who.id,email:who.email}:null,ledger};
+}
+// orderInput 뒤, 검증(실험·캠페인) 앞에서 부른다. 코드가 귀속되면 캠페인·소재·팔·게시를 코드로 채우고, 사람이 고른 캠페인·소재가 코드와 다르면 409다(조용히 덮어쓰지 않는다).
+// 근거를 비우면 '추적 코드 … 직접 입력' 문구로 채운다. 관문·적용 시작일에서 거절되면 코드는 아무것도 채우지 않는다: 사람이 근거를 적었으면 그 선택이 수동 귀속으로 남고, 아니면 미귀속이다.
+// 주문을 고칠 때 이전 코드 귀속이 채운 값(같은 캠페인·소재·유입 채널, 코드 자동 문구)은 사람이 고른 값으로 보지 않는다(코드를 바꾸면 새 코드로 다시 채운다).
+export async function orderCodeEntry(ctx:CodeEntryContext,input:OrderDraft,raw:unknown,old?:StoreOrder):Promise<{input:OrderDraft;entry:CodeEntry}>{
+ if(raw===undefined||raw===null)return {input,entry:{state:'absent'}};
+ const code=normalizeCode(str(raw,'추적 코드',40));
+ if(!code)return {input,entry:{state:'absent'}};
+ if(!isValidCode(code))throw new ApiError(400,'추적 코드는 혼동 문자(0·O·1·I·L)를 뺀 대문자 영숫자 4~12자입니다. 코드를 확인하세요.');
+ if(old?.codeAttribution?.code===code){
+  if((input.campaignId&&input.campaignId!==old.campaignId)||(input.creativeId&&input.creativeId!==old.creativeId))throw targetConflict(code);
+  return {input:{...input,campaignId:old.campaignId,creativeId:old.creativeId,attributionEvidence:input.attributionEvidence||old.attributionEvidence},entry:{state:'unchanged',code}};
+ }
+ const copied=(key:'campaignId'|'creativeId'|'channel')=>!!old?.codeAttribution&&input[key]===old[key];
+ const own={campaignId:copied('campaignId')?undefined:input.campaignId,creativeId:copied('creativeId')?undefined:input.creativeId,channel:copied('channel')&&!input.experimentId?'unknown':input.channel,evidence:isCodeEvidence(input.attributionEvidence)?'':input.attributionEvidence};
+ const {found,gates}=await ctx.lookup(code);
+ if((own.campaignId&&own.campaignId!==found.campaignId)||(own.creativeId&&own.creativeId!==found.creativeId))throw targetConflict(code);
+ const match=attributeByCodes([{code}],[found],{storeId:ctx.store.id,orderDate:input.orderDate},gates);
+ if(match.code){
+  const attribution:CodeAttribution={codeId:found.id,code,...(found.arm?{arm:found.arm}:{}),...(found.publicationId?{publicationId:found.publicationId}:{}),conflictCodeIds:[],...(ctx.by?{enteredBy:ctx.by}:{})};
+  return {input:{...input,campaignId:found.campaignId,creativeId:found.creativeId,channel:own.channel!=='unknown'?own.channel:(found.channel as OrderDraft['channel']|undefined)||'unknown',attributionEvidence:own.evidence||manualEvidence(found,ctx.ledger)},entry:{state:'entered',code,attribution,gates}};
+ }
+ const refusal:CodeRefusal=match.refused[0]?.reason||'not_yet_valid';
+ if(!own.evidence&&own.channel!=='unknown')throw new ApiError(400,`${codeEntryNote(code,refusal)} 유입 채널을 직접 고르려면 유입 확인 근거를 적어 주세요.`);
+ return {input:{...input,campaignId:own.evidence?own.campaignId:undefined,creativeId:own.evidence?own.creativeId:undefined,channel:own.channel,attributionEvidence:own.evidence},entry:{state:'entered',code,refusal}};
+}
+// carryImportFields 뒤에 반영한다. absent·unchanged는 기존 사본 규칙 그대로다. entered는 코드 귀속 사본을 새 코드로 바꾸거나(거절이면) 지우고, 넣은 코드를 읽은 코드(trackingCodes)에 남긴다.
+// 읽은 코드는 가져오기처럼 앞의 5개를 지킨다: 이미 5개면 넣은 코드를 더하지 않는다(가져오기가 읽은 첫 코드를 밀어내지 않는다).
+export function applyCodeEntry<T extends OrderDraft>(order:T,entry:CodeEntry):T{
+ if(entry.state!=='entered')return order;
+ const codes=order.trackingCodes||[],code=entry.code!,trackingCodes=codes.includes(code)||codes.length>=5?codes:[...codes,code];
+ return {...order,codeAttribution:entry.attribution,trackingCodes};
+}
+// 요청 하나 안에서 같은 캠페인·소재·실험 연결은 한 번만 검사한다(장부 양식 CSV는 200행까지). 결과와 오류 문구는 validateOrderAttribution 그대로다.
+export function attributionChecks(owner:string,store:Pick<Store,'id'|'brandId'>){
+ const seen=new Map<string,Promise<void>>();
+ return (order:Pick<StoreOrder,'campaignId'|'creativeId'|'experimentId'>)=>{
+  const key=JSON.stringify([order.campaignId||'',order.creativeId||'',order.experimentId]),known=seen.get(key);if(known)return known;
+  const next=validateOrderAttribution(owner,store,order);seen.set(key,next);return next;
+ };
+}
+// 소재의 앱 게시 기록 중 예약 접수·게시 확인이 있는지. 요청 하나 안에서 소재마다 한 번만 읽는다(장부 양식 CSV는 200행까지).
+export function publishedCreatives(owner:string){
+ const seen=new Map<string,Promise<boolean>>(),statuses=LIVE_PUBLICATION_STATUSES;
+ return (creativeId:string)=>{
+  const known=seen.get(creativeId);if(known)return known;
+  const next=database().prepare(`SELECT 1 AS found FROM records WHERE owner=? AND kind='execution_publication' AND json_extract(data,'$.creativeId')=? AND json_extract(data,'$.status') IN (${statuses.map(()=>'?').join(',')}) LIMIT 1`).bind(owner,creativeId,...statuses).first().then(row=>!!row);
+  seen.set(creativeId,next);return next;
+ };
+}
+// 코드 입력을 반영하고 게시 관문(keepPublicationAttribution, A4-2 사본 규칙)을 거친 주문과 화면용 귀속 결과(entryView: 방식·코드·거절 사유·경고).
+// 코드 없이 소재를 직접 고른 수동 귀속은 그 소재에 앱 게시 기록(예약 접수·게시 확인)이 없어도 막지 않고 경고만 한다(앱 밖 게시가 있을 수 있어서다).
+// 새로 넣은 코드의 게시 관문은 조회할 때 읽은 것(entry.gates)을 쓰고, 이어받은 사본(absent·unchanged)만 게시를 다시 읽는다.
+export async function finishOrderEntry<T extends OrderDraft>(owner:string,carried:T,entry:CodeEntry,published:(creativeId:string)=>Promise<boolean>){
+ const applied=applyCodeEntry(carried,entry),id=applied.codeAttribution?.publicationId,code=entry.code??applied.codeAttribution?.code;
+ const gates=id?entry.gates??gatesOf(await recordsByIds<Publication>(owner,'execution_publication',[id])):undefined,order=await keepPublicationAttribution(owner,applied,gates);
+ const refusal=entry.refusal??(id?publicationRefusal({publicationId:id},applied.orderDate,gates):null),unpublished=!order.codeAttribution&&!!order.creativeId&&!await published(order.creativeId);
+ return {order,view:entryView(order,code,refusal,unpublished)};
 }
