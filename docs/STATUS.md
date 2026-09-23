@@ -1,6 +1,31 @@
 # COLLECTIVE 현재 상태
 
-마지막 갱신: 2026-09-23 04:47 UTC (Codex)
+마지막 갱신: 2026-09-23 06:11 UTC (Codex)
+
+## Android 설치형 앱 작업
+
+- 브랜치 `feat/android-app`, 기준 `edd7219ad8c044cb8d0616e4170f81a7901903f6`, 별도 작업 트리 `Collective-android`.
+- 기존 웹·로그인·데이터를 사용하는 Android Browser Helper 앱 소스와 아이콘·시작화면·외부 Intent·Manifest 회귀 테스트 16개 통과, 서명된 APK 전달 준비.
+- 현재 운영 `/.well-known/assetlinks.json` 익명 HTTP 401(real). 현재 실행 방식은 Custom Tabs 상단 바 폴백이며 전체 화면 인증은 미완료.
+- 소스 미병합, 운영 미게시. 웹 제품 소스는 변경하지 않았다. [빌드·설치 안내](ANDROID.ko.md).
+
+| Android 작업 검사 | 상태 | 근거 |
+|---|---|---|
+| 웹 기존 테스트 | passed · 16/16 suites, 646 assertions | real SQLite·핸들러 / mocked 외부 공급자 |
+| 웹 typecheck | passed · exit 0 | real 정적 검사 |
+| 웹 lint gate | passed · errors 106/108, warnings 42/44 | real 기준선 검사 |
+| 웹 build | passed · exit 0 | real 로컬 빌드 |
+| 모바일/데스크톱 Playwright | passed · 각 4/4 | real Chromium·로컬 D1 / mocked 인증 |
+| Gradle wrapper·앱 의존성 해석 | passed · exit 0 | real Gradle 8.13·공식 저장소 |
+| 코드·보안 정적 리뷰 | passed · HIGH/MEDIUM 0 | real 소스 검토, 런타임 보증 아님 |
+| Android SDK 설치 | passed | 사용자 약관 동의 후 설치, real |
+| Android unit/lint/APK build | passed · 16/16, lint errors0/warnings5 | mocked Robolectric / real Manifest·빌드 |
+| 릴리스 서명·설치·실행·로그인 화면·취소/재실행 | passed | real API36 에뮬레이터·운영 HTTPS |
+| Android 실제 로그인 완료·파일 입출력 | not_run | 사용자 계정 자격증명 미사용 |
+
+APK `~/Downloads/COLLECTIVE/COLLECTIVE-1.0.0.apk`. [Android 검증 기록](releases/2026-09-23-android-1.0.0.md).
+
+웹 smoke는 실제 Android 검증을 대체하지 않는다. 기존 모바일 메뉴는 바깥 영역을 눌러 닫으며, 업무 화면 이동은 브라우저 history와 연동되지 않는다.
 
 ## 소스와 배포
 

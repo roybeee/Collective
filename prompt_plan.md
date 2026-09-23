@@ -1,3 +1,18 @@
+# COLLECTIVE Android 앱 계획 — 사용자 승인
+
+기준: origin/main edd7219ad8c044cb8d0616e4170f81a7901903f6. 브랜치: feat/android-app.
+작업 경로: /Users/roybee/Collective-android (기존 작업 트리 보존).
+
+1. 기존 Sites URL·ChatGPT 로그인·데이터를 사용하는 Android 설치형 APK를 만든다.
+2. TWA를 시도하고 도메인 연결 검증 실패 시 Custom Tabs 상단 바를 유지한다. 현재 assetlinks 경로 익명 HTTP 401.
+3. COLLECTIVE 아이콘·시작 화면, 고정 HTTPS 실행 주소, 안전한 외부 입력 처리.
+4. Android 빌드·서명·설치·실행, 웹 모바일 메뉴/파일/뒤로가기 확인. 실제 로그인에 사용자 조작이 필요하면 그 부분을 미검증으로 기록한다.
+5. APK와 설치/재빌드 안내, 검사 증거를 제공한다. Play Store 출시는 별도.
+
+검증: Android unit/lint/assemble, apksigner, 실제 에뮬레이터 실행. 웹 기존 test/typecheck/lint/build/Playwright. 코드·보안 리뷰. 실제 운영 쓰기·유료 모델 호출 없음.
+
+## 이전 계획
+
 # COLLECTIVE 안정성·운영 보완 계획
 
 기준: origin/main 69c366d. 브랜치: feat/collective-reliability.
