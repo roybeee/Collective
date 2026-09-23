@@ -61,6 +61,32 @@
 - `type=submissions&campaignId=`: 캠페인의 HERMES 제출 원문(`instructions`·`input`)과 지시 해시. 새 `session_id`만 붙이면 같은 요청을 다시 만들 수 있다.
 - 둘 다 소유자 id 접두어를 뗀 id를 쓰고 멱등 키·연결 주소·암호·계정 이메일을 넣지 않는다.
 
+### 게이트웨이 상태 스냅샷 (F2b)
+
+`lib/gateway-snapshot.ts`. 워커 tick(`lib/research-worker.ts`)이 작업 순환 전에 부른다. 소유자당 UTC 하루 1회이며, 마지막 `gateway_snapshot` 행의 시각이 오늘(UTC)이면 건너뛴다(행 id도 UTC 날짜라 하루 1행).
+
+- 대상: 운영 HERMES 연결의 `GET /v1/capabilities`·`/v1/toolsets`·`/v1/models`. 세 요청은 병렬, 호출당 타임아웃 5초라 tick(60초 제한)에 더해지는 시간은 최대 5초다.
+- 정규화: 객체 키 정렬, 배열은 원소 JSON 순으로 정렬, 아래 변동 필드를 모든 깊이에서 제거한다. 실제로 지운 필드 이름은 스냅샷 `removedFields`에 남는다.
+  `created` `created_at` `createdAt` `updated_at` `updatedAt` `timestamp` `time` `now` `server_time` `serverTime` `generated_at` `generatedAt` `expires_at` `expiresAt` `request_id` `requestId` `trace_id` `traceId` `uptime` `uptime_seconds` `started_at` `startedAt`
+- 저장: 전체 sha256, 섹션별 sha256, 섹션 요약(말단 경로 → 값 해시 앞 12자, 섹션당 200개)만 남긴다. 응답 원문·연결 키·주소는 저장하지 않는다. 배열 원소 경로는 짧은 `id`·`name`(주소처럼 보이는 값 제외) 또는 순번을 쓴다.
+- 변경 경보: 직전 `passed` 스냅샷과 해시가 다르면 `gateway_change` 1건(바뀐 섹션별 추가·삭제·변경 경로, 종류별 20개까지), 같으면 0건. 첫 스냅샷은 기준값만 남긴다.
+- 막힘: 세 요청 중 하나라도 실패·타임아웃·인증 오류면 그날 스냅샷을 `blocked`(해시 없음, 섹션 이름이 든 사유)로 남기고 경보는 만들지 않는다. 다음 UTC 날짜에 다시 재며 비교 기준은 마지막 `passed`다. 저장 자체가 실패하면 로그 `gateway_snapshot_failed` 1줄만 남는다. 어느 경우도 tick과 다른 작업을 막지 않는다.
+- 건너뜀: 연결이 없거나 OpenAI 연결이면 기록 없이 건너뛴다(`not_run` 행을 만들지 않는다).
+- 확인: `GET /api/usage`의 `gateway`(마지막 스냅샷 상태·해시, 최근 변경 5건)와 사용량 화면 모델 변경 경보 아래 줄.
+
+### 평가 실행의 게이트웨이 기준 (F2b)
+
+`eval_run.gatewaySnapshot`은 시작 시점 기준이다. `operational`은 운영 연결의 최신 `passed` 스냅샷(날짜·해시)이며 평가 연결 기준이 아니다(`basis:"operational"`). `eval`은 같은 스냅샷 함수로 시작 시점에 잰 평가 연결 해시다(`basis:"eval"`, 실패하면 `blocked`, 실행은 계속). 평가 연결 해시는 run에만 있고 `gateway_snapshot` 행을 만들지 않는다.
+
+### 온라인 채점 (F2b)
+
+`lib/online-grading.ts`. 기능 스위치 `online_grading`(기본 꺼짐)이 켜져 있으면 역할 작업물(`lib/role-execution.ts`)과 회의 작업물(`lib/meeting-execution.ts`)이 저장·job 완료·사용량 결과 기록을 모두 마친 직후 `lib/graders` 13종과 규제 가드레일로 채점한다.
+
+- 기록: `grading`(id=`<작업물 id>:<버전>`, parent=캠페인). 채점기 판정·요약, 규제 점검 건수와 규칙(발췌 없음), 채점 소요 ms(`durationMs`, 채점기+규제 점검), 맥락(사실 원장 출처: 역할=현재 사실, 회의=회의 시작 스냅샷, 지점 캠페인 여부, 보고 입력 토큰). 업종·큐레이션 금지 표현은 운영 캠페인에 없어 비운다.
+- 비차단: 채점기 하나의 예외는 그 채점기의 `grader_error` 1줄이다. 채점·저장이 실패하면 `status:"grader_error"` 기록 1건과 로그 `online_grading_grader_error` 1줄만 남고 작업물·job 상태·`domainOutcome`은 그대로다.
+- 꺼짐: 스위치 1행만 읽고 채점기를 부르지 않는다. 캠페인을 지우면 채점 기록도 지운다(판정 근거에 작업물 발췌가 있다).
+- 확인: `GET /api/usage?grading=<캠페인 id>`와 캠페인 상세 작업물 탭 끝의 작은 자동 점검 요약(현재 작업물 id·버전과 같은 채점만). 승인·품질 판정이 아니다.
+
 ## 상세·버전·성과
 
 캠페인 상세는 owner 범위 `/api/campaigns/[id]`에서 읽는다. 이력 탭은 현재·이전 작업물 원문을 나란히 표시하며 승인을 대신하거나 자동 복원하지 않는다.

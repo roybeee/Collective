@@ -10,6 +10,7 @@ import {claimGuard,unverifiedClaims} from '@/lib/campaign-policy';
 import {sameEvidenceFactRefs} from '@/lib/brand-facts';
 import {meetingSubmissionId,requireMeetingWorker,retryFailedMeeting,meetingBasis,meetingStale,type MeetingBasis} from './meeting-repair';
 import {learningContext} from '@/lib/learning-server';
+import {gradeMeetingArtifacts} from './online-grading';
 import {aiBrand,evidenceContext,currentFactRefs} from '@/lib/ai-context';
 import {hermesSubmissionStatement,submitHermes,pollHermes} from '@/lib/hermes';
 import type {UsageContext} from '@/lib/usage-ledger';
@@ -75,6 +76,8 @@ async function applyStep(owner:string,m:Meeting,s:MeetingStep){
  }
  if(s.phase==='quality'){
   try{await finish(owner,m)}catch(e){if(!(e instanceof ApiError))throw e;m.status='failed';m.error=e.message;await database().batch(writes(owner,m))}
+  // 비차단 온라인 채점(F2b): 회의 작업물 저장이 끝난 뒤에만 부르며 예외를 던지지 않는다. 스위치가 꺼져 있으면 채점 0회.
+  if(m.status==='completed')await gradeMeetingArtifacts(owner,m);
  }else await database().batch(writes(owner,m));
 }
 

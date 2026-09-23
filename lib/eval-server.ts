@@ -9,6 +9,7 @@ import {runGraders,type GraderResult,type GraderStatus,type FactLedger,type Grad
 import {bodyOf} from './graders/text';
 import {checkCompliance} from './graders/compliance';
 import {compareRuns} from './eval-stats';
+import {gatewayBasis} from './gateway-snapshot';
 import {roles,type Campaign,type Brand} from './agency';
 
 // 서버 평가 실행(F1b-2). 골든셋 케이스(eval_case)를 평가 전용 HERMES 프로필에 보내고 lib/graders로 채점해 eval_run에 남긴다.
@@ -31,8 +32,10 @@ type Compliance={version:string;block:number;warn:number;info:number;issues:{cat
 export type EvalCaseResult={caseId:string;label:string;set:EvalSet;role:string;variant:'active';status:'pending'|'submitted'|'completed'|'failed'|'cancelled'|'blocked'|'not_run';idempotencyKey?:string;promptHash?:string;providerRunId?:string;model?:string|null;tokens?:Tokens;submittedAt?:string;completedAt?:string;durationMs?:number;graders?:GraderResult[];summary?:Record<GraderStatus,number>;compliance?:Compliance;error?:string};
 type StopReason='budget_reached'|'monthly_cap_reached'|'usage_unreported';
 // deleted: delete_run은 결과·출력만 지우고 예산 장부(usedTokens·tokenBudget·createdAt)와 감사 기록(overBudgetApproved·sealedUsed)을 남긴다. 월 누적이 줄지 않게 하려는 것이다.
-export type EvalRun={id:string;label:string;variant:'active';set:EvalSet|null;caseIds:string[];tokenBudget:number;usedTokens:number;status:'queued'|'running'|'completed'|'cancelled'|'blocked';stopReason?:StopReason;blockedReason?:string;overBudgetApproved?:{reason:string;by:Who;at:string;exceeded:string[];monthCommitted:number};sealedUsed?:{by:Who;at:string;cases:number};host:string|null;createdBy:Who;createdAt:string;updatedAt:string;cancelledBy?:Who;deleted?:{by:Who;at:string;cases:number};results:EvalCaseResult[]};
+export type EvalRun={gatewaySnapshot?:EvalGatewayBasis;id:string;label:string;variant:'active';set:EvalSet|null;caseIds:string[];tokenBudget:number;usedTokens:number;status:'queued'|'running'|'completed'|'cancelled'|'blocked';stopReason?:StopReason;blockedReason?:string;overBudgetApproved?:{reason:string;by:Who;at:string;exceeded:string[];monthCommitted:number};sealedUsed?:{by:Who;at:string;cases:number};host:string|null;createdBy:Who;createdAt:string;updatedAt:string;cancelledBy?:Who;deleted?:{by:Who;at:string;cases:number};results:EvalCaseResult[]};
 type Step={run:EvalRun;writes?:D1PreparedStatement[]};
+// 시작 시점 게이트웨이 기준(F2b): operational은 운영 연결의 최신 passed 스냅샷(평가 연결 기준이 아님), eval은 같은 스냅샷 함수로 잰 평가 연결 해시(막히면 blocked).
+export type EvalGatewayBasis=Awaited<ReturnType<typeof gatewayBasis>>;
 // 인증 실패·연결 불가는 실패(failed)가 아니라 막힘(blocked)으로 기록한다.
 class EvalBlocked extends Error{}
 
@@ -230,7 +233,8 @@ async function startRun(owner:string,input:Record<string,unknown>,by:Who){
  await assertRunSlot(owner);
  const approval=await budgetApproval(owner,tokenBudget,input.overBudgetApproved,by);
  const gate=await connectionGate(owner),at=stamp(),sealed=cases.filter(c=>c.set==='sealed').length;
- const run:EvalRun={id:uid(),label,variant:'active',set:Array.isArray(input.caseIds)?null:evalSet(input.set),caseIds:cases.map(c=>c.id),tokenBudget,usedTokens:0,status:'queued',...(approval?{overBudgetApproved:approval}:{}),host:gate.host,createdBy:by,createdAt:at,updatedAt:at,results:cases.map(c=>({caseId:c.id,label:c.label,set:c.set,role:c.role,variant:'active',status:'pending'}))};
+ const gatewaySnapshot=await gatewayBasis(owner,'conn' in gate?gate.conn:null);
+ const run:EvalRun={id:uid(),label,variant:'active',set:Array.isArray(input.caseIds)?null:evalSet(input.set),caseIds:cases.map(c=>c.id),tokenBudget,usedTokens:0,status:'queued',...(approval?{overBudgetApproved:approval}:{}),gatewaySnapshot,host:gate.host,createdBy:by,createdAt:at,updatedAt:at,results:cases.map(c=>({caseId:c.id,label:c.label,set:c.set,role:c.role,variant:'active',status:'pending'}))};
  if('blocked' in gate){const blocked=blockRun(run,gate.blocked);await recordStatement(owner,'eval_run',run.id,blocked).run();return json({error:gate.blocked,run:blocked},409)}
  const queued={...run,...(sealed?{sealedUsed:{by,at,cases:sealed}}:{})};
  await recordStatement(owner,'eval_run',run.id,queued).run();

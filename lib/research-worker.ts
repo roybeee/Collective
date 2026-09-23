@@ -1,5 +1,6 @@
 import {ApiError,database,recordStatement,stamp,listRecords,readRecord,acquireLock,releaseLock} from './server';
 import {researchActive,type BrandResearch} from './archive';
+import {recordGatewaySnapshotSafely} from './gateway-snapshot';
 
 type Credential={hash:string;createdAt:string};
 type WorkerState={lastSeen:string;version:string;tokenHash:string;lastStatus?:number;lastJob?:string;blocked?:number;lastQueue?:string};
@@ -39,6 +40,8 @@ export async function workerTick(principal:{owner:string;hash:string},executeRes
   const job=due[(due.findIndex(r=>r.id===previous?.lastJob)+1)%due.length];
   const state={lastSeen:stamp(),version:'1',tokenHash:hash,lastJob:previous?.lastJob,blocked};
   await recordStatement(owner,'worker_state','current',state).run();
+  // 게이트웨이 상태 스냅샷(F2b): 소유자당 UTC 하루 1회, 호출당 5초 병렬. 실패해도 예외를 던지지 않아 아래 작업 순환을 막지 않는다.
+  await recordGatewaySnapshotSafely(owner);
   const queues=['research','execution','measurement'];
   const first=(queues.indexOf(previous?.lastQueue||'')+1)%queues.length;
   for(let offset=0;offset<queues.length;offset++){
