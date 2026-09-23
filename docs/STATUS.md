@@ -1,23 +1,23 @@
 # COLLECTIVE 현재 상태
 
-마지막 갱신: 2026-09-23 14:26 UTC (Claude 레인 B 세션, `chore/decision17-gate`)
+마지막 갱신: 2026-09-23 15:40 UTC (Claude 레인 B 세션, 게시 기록 `docs/release-a64aeef`)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `d156dfdd23ca0cdf9ebacb405c134d12bd6ae47b` (PR #23 `merged`, PR 0 #22 포함) | 제품 tree `6a1881b6c054f9882c6089157137c626d7214014` |
-| `origin/main` | `d8464a3` (PR #28) | d156dfd 뒤 **미게시 제품 변경 있음**: PR 2(#25 AI 품질 루프), PR 3(#28 첫 게시 경로). 운영 기준은 `published`(d156dfd)이며 main 기준 `runtime-verified` 아님 |
-| Sites 게시 | `published`, 2026-09-23(운영 build `2026-09-23T12:45:56.610Z`). Sites 버전·deployment ID 기록 없음 | [게시 기록](releases/2026-09-23-d156dfd.md) |
-| 실행 검증 | `runtime-verified` · real, 2026-09-23 12:48 UTC 경 | 소유자 이메일 세션으로 연 운영 `/api/version` tree `6a1881b…` = d156dfd tree |
+| 운영 제품 커밋 | `a64aeefa669afe362f18fff87d2a2b61686af5b5` (#29 `merged`, PR 2 #25·PR 3 #28 포함) | 제품 tree `33a87014f44362ca2696e860f58ceb9bfe67ce90` |
+| `origin/main` | `a64aeef` (게시 시점) | 이후 병합은 병합 PR 기록으로 판정(`docs/PUBLISH.ko.md` 5단계) |
+| Sites 게시 | `published` 버전 25, deployment `appgdep_6ab3f15f96c88191860af69d8b50289d`, 2026-09-23 15:3x UTC | [게시 기록](releases/2026-09-23-a64aeef.md) |
+| 실행 검증 | `runtime-verified` · real, 2026-09-23 15:34 UTC 경 | 소유자 이메일 세션 `/api/version` tree `33a8701…` = a64aeef tree. 익명 401, `/media` 404·CSP 확인 |
 | 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` 200, mode=email, role=owner |
 | Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 이번 게시에서 변경 지시 없음 | 게시 뒤 접근 설정 재확인은 not_run |
 | 조사 워커 | 기록 없음 | 게시 뒤 확인 not_run(직전 관찰은 2026-09-23 07:58 UTC 경 online) |
-| 열린 PR | #16 Android(draft, 제외), #26 성장 계획 문서(레인 A 세션), #27 F1a eval graders(레인 A), 이 PR(결정 17 게이트·STATUS) | `gh pr list -R roybeee/Collective`, 2026-09-23 14:26 UTC |
-| main CI(`d156dfd`) | passed · verify, e2e-smoke | [run 35854712297](https://github.com/roybeee/Collective/actions/runs/35854712297) |
+| 열린 PR | #16 Android(draft, 제외), #26 성장 계획 문서·#27 F1a(레인 A, 대표 병합 대기), #30 B4 1부(레인 B), PR 6 서버 측(레인 B, 진행 중), 이 PR(게시 기록) | `gh pr list -R roybeee/Collective`, 2026-09-23 15:40 UTC |
+| main CI(`a64aeef`) | passed · verify | GitHub Actions main 실행 |
 
 - `AUTH_MODE` fail-closed(PR 1, `auth-2`)가 운영에 적용됐다. 운영 빌드에서 `AUTH_MODE`가 비면 모든 인증·업무 API가 503이다. Sites가 public인 동안 legacy로 되돌리지 않는다. 환경 revision 변경·복구·재게시 뒤에는 `/api/auth`가 mode=email인지, 위조 헤더 요청이 401인지 먼저 확인한다. 복구는 [이메일 로그인 복구 순서](EMAIL-AUTH.ko.md)를 따른다.
-- 확인 필요: 이번 게시 뒤 익명·위조 헤더 업무 API 401 재확인은 not_run이다(Claude Code 자동 모드 안전 검사가 위조 헤더 요청 실행을 차단). 소유자가 직접 확인한다. 민감 작업 재인증(step-up)은 아직 구현되지 않았다(PR #23 남은 위험).
+- 확인 필요: 익명 업무 API 401은 a64aeef 게시 뒤 확인했다(passed · real). 위조 헤더 요청 401은 not_run이다(자동 모드 안전 검사 정책). 소유자가 직접 확인한다. 민감 작업 재인증(step-up)은 아직 구현되지 않았다(PR #23 남은 위험).
 - 확인 필요: bootstrap 환경 세 항목 제거와 재게시 기록이 없다. 실제 Buffer/Instagram 게시는 not_run.
 
 ## 진행 중 작업: 병렬 레인
@@ -25,7 +25,7 @@
 사용자 승인 "전체적으로 개선하라"(2026-09-23)와 대표 결정 1(병렬 레인)·4(묶음 게시). 범위·배정은 [전체 개선 계획](IMPROVEMENT-PLAN.ko.md)과 성장 계획 문서(PR #26 병합 후 `docs/GROWTH-PLAN.ko.md`)를 따른다.
 
 - PR 0 엔지니어링 기반 `merged`(#22), PR 1 보안·인증 `merged`(#23) — 묶음 1로 게시, `runtime-verified`.
-- PR 2 AI 품질 루프 `merged`(#25), PR 3 첫 게시 경로 `merged`(#28) — 미게시. 게시 묶음과 대상 SHA는 대표가 게시 직전에 승인한다(결정 4).
+- PR 2 AI 품질 루프 `merged`(#25), PR 3 첫 게시 경로 `merged`(#28), 결정 17 게이트(#29) — 대표 승인으로 `a64aeef` 묶음 게시, `runtime-verified`. 게시 뒤 24~72시간 중단 조건 감시 중.
 - 레인 A(공통 기반·교정): 성장 계획을 쓴 세션이 맡는다. F1a(#27) → F4a → F1b → F2 → B1 → F3. `lib/role-execution.ts`는 F1b가 먼저 수정한다.
 - 레인 B(실측·비용): 이 세션이 맡는다. A4 → B4 1부 → PR 4a → A7 → F4b → A2 런타임 → B2 1단계 → B5 리플레이 → F5. A2 순수 함수는 #27에 포함됐다.
 - PR 6(조사 서버 보안): 저장소 변경만 이 세션이 준비하고, 공유 서버 재설치는 대표 확인 뒤 적용한다.

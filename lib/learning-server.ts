@@ -1,6 +1,7 @@
 import {ApiError,str,num,stamp,uid,readRecord,listRecords,recordStatement,database,eventStatement,type EventActor} from './server';
 import {learningChannels,learningMetrics,evaluateExperiment,ruleApplies,type ViralCase,type ViralAnalysis,type TestIdea,type ViralExperiment,type ExperimentResult,type LearningRule,type LearningSnapshot,type Arm,type StoreAssessment} from './learning';
 import {channelHosts,storeChannelName} from './channels';
+import {summarizeResult,planShortfall,decisionConflict} from './viral-stats';
 import type {StoreExperiment,StoreMeasurement,StoreReview} from './store-marketing';
 import type {Brand,Campaign} from './agency';
 import type {SourceCampaignDeleted} from './record-kinds';
@@ -39,12 +40,15 @@ export function parseAnalysis(raw:any,c:ViralCase,origin:'manual'|'hermes'):Vira
  for(const key of ['facts','hook','retention','sharing','context','counterEvidence','unknowns'])out[key]=str(raw[key],key,6000,true);
  out.ideas=raw.ideas.map((x:any)=>{if(!x||!Object.hasOwn(learningMetrics,x.metric))throw new ApiError(400,'실험 주지표를 확인해 주세요.');const idea:any={metric:x.metric};for(const k of ['hypothesis','variable','control','treatment'])idea[k]=str(x[k],k,6000,true);return idea as TestIdea});return out;
 }
+// 모델 입력의 규칙은 판정 통계 도입 이전과 같게 둔다. 통계 요약·확정 기록은 화면·감사용이며 역할 지시문에 뜻이 정의돼 있지 않다.
+const MODEL_OMIT=['stats','decision','decisionReason','decisionConflict'];
+const modelRule=(r:LearningRule):LearningRule=>r.sourceAssessment?{...r,sourceAssessment:Object.fromEntries(Object.entries(r.sourceAssessment).filter(([k])=>!MODEL_OMIT.includes(k))) as NonNullable<LearningRule['sourceAssessment']>}:r;
 export async function learningContext(owner:string,c:Pick<Campaign,'brandId'|'channels'|'storeId'>){
  const rules=await listRecords<LearningRule>(owner,'learning_rule');
  return rules.filter(r=>ruleApplies(r,c.brandId,c.channels,Date.now(),c.storeId))
   // 지점 전용 규칙이 더 구체적이므로 먼저 전달한다.
   .sort((a,b)=>Number(!!b.storeId)-Number(!!a.storeId)||b.createdAt.localeCompare(a.createdAt))
-  .slice(0,12);
+  .slice(0,12).map(modelRule);
 }
 // 점포 실험 회고를 학습 규칙으로 승격한다. 게이트를 통과하지 못하면 null을 반환하고 회고만 저장된다.
 // 바이럴 실험의 sourceAssessment와 지표 체계가 달라 storeAssessment로 분리해 담는다.
@@ -64,6 +68,18 @@ export function learningSnapshotStatement(owner:string,id:string,c:Campaign,role
 export async function saveLearningSnapshot(owner:string,id:string,c:Campaign,role:string,rules:LearningRule[],skillVersion?:string){
  await learningSnapshotStatement(owner,id,c,role,rules,skillVersion).run();
 }
+// 판정할 수 있는 확인(계획 충족·비교 가능)만 센다. 계획 전이나 비교 가능성 확인 전에 본 결과는 중간 확인 경고로 따로 잡는다.
+const completedLook=(e:ViralExperiment,r:ExperimentResult,now:number)=>!planShortfall(e,r,now).length&&r.comparable===true;
+const sameCounts=(a:ExperimentResult,b:ExperimentResult)=>(['control','treatment'] as const).every(k=>a[k].denominator===b[k].denominator&&a[k].numerator===b[k].numerator);
+// 이번 확인 전에 판정할 수 있는 결과를 본 횟수. completedLooks가 없던 실험은 저장된 결과로 센다.
+// 수치가 그대로인 재저장(메모·비교 가능성·종료 시점 정정)은 새 데이터를 본 것이 아니므로 직전 확인을 대신한다.
+function looksBefore(e:ViralExperiment,result:ExperimentResult,now:number){
+ const prev=e.result,counted=e.completedLooks??(prev&&completedLook(e,prev,now)?1:0);
+ return prev&&sameCounts(prev,result)?Math.max(0,counted-(completedLook(e,prev,now)?1:0)):counted;
+}
+// 사후확률 요약. 이 기능 전에 저장된 실험은 읽을 때 계산만 하고 저장하지 않는다(이전 확인 이력은 알 수 없어 0회로 본다).
+export function experimentStats(e:ViralExperiment){return e.stats!==undefined?e.stats:e.result?summarizeResult(e,e.result,0,Date.now(),e.assessment?.status??null):null}
+export const withStats=(e:ViralExperiment):ViralExperiment=>e.stats===undefined&&e.result?{...e,stats:experimentStats(e)}:e;
 function arm(raw:any,label:string,metric:string):Arm{
  if(!raw)throw new ApiError(400,`${label} 결과가 필요합니다.`);const denominator=nullableNumber(raw.denominator,`${label} 분모`),numerator=nullableNumber(raw.numerator,`${label} 반응 수`);
  if((denominator!==null&&!Number.isInteger(denominator))||(numerator!==null&&!Number.isInteger(numerator)))throw new ApiError(400,'횟수는 정수로 입력하세요.');
@@ -95,13 +111,16 @@ export async function learningAction(owner:string,b:any,by?:EventActor){
   if(b.action==='save_results'){
    if(!e.startedAt)throw new ApiError(409,'실험 계획을 먼저 확정하세요.');const d=b.data||{},observedUntil=dated(d.observedUntil,'측정 종료 시점');if(observedUntil<e.startedAt)throw new ApiError(400,'측정 종료는 실험 시작 이후여야 합니다.');
    const result:ExperimentResult={control:arm(d.control,'대조안',e.metric),treatment:arm(d.treatment,'실험안',e.metric),comparable:d.comparable===true,notes:str(d.notes,'측정 조건·차이·한계',6000,true),observedUntil,recordedAt:stamp()};
-   const updated={...e,result,assessment:evaluateExperiment(e,result),version:e.version+1,status:'evaluated',updatedAt:stamp()};
+   const checkedAt=Date.now(),looks=looksBefore(e,result,checkedAt),assessment=evaluateExperiment(e,result),stats=summarizeResult(e,result,looks,checkedAt,assessment.status);
+   const updated={...e,result,assessment,stats,completedLooks:looks+(completedLook(e,result,checkedAt)?1:0),version:e.version+1,status:'evaluated',updatedAt:stamp()};
    const oldRules=(await listRecords<LearningRule>(owner,'learning_rule')).filter(r=>r.experimentId===e.id&&r.status!=='retired');
-   await database().batch([recordStatement(owner,'experiment_revision',e.id+':'+e.version,e,e.id),recordStatement(owner,'viral_experiment',e.id,updated,e.campaignId),...oldRules.map(r=>recordStatement(owner,'learning_rule',r.id,{...r,status:'retired',version:r.version+1,updatedAt:stamp()},r.brandId)),eventStatement(owner,e.campaignId,`「${e.title}」 결과: ${updated.assessment.label}. 결과 정정 시 이전 학습 적용은 종료됩니다.`,by)]);return {id:e.id,assessment:updated.assessment};
+   await database().batch([recordStatement(owner,'experiment_revision',e.id+':'+e.version,e,e.id),recordStatement(owner,'viral_experiment',e.id,updated,e.campaignId),...oldRules.map(r=>recordStatement(owner,'learning_rule',r.id,{...r,status:'retired',version:r.version+1,updatedAt:stamp()},r.brandId)),eventStatement(owner,e.campaignId,`「${e.title}」 결과: ${updated.assessment.label}. 결과 정정 시 이전 학습 적용은 종료됩니다.`,by)]);return {id:e.id,assessment:updated.assessment,stats};
   }
   if(!e.assessment||!['promising','not_supported'].includes(e.assessment.status))throw new ApiError(409,'최소 표본·기간·비교 조건과 판정 기준을 충족한 결과가 필요합니다.');
   const id=e.id+':'+e.version;const existing=(await listRecords<LearningRule>(owner,'learning_rule')).find(r=>r.id===id);if(existing)return {id:existing.id};
-  const positive=e.assessment.status==='promising',rule:LearningRule={origin:'viral',direction:positive?'test':'caution',...(e.result?{sourceAssessment:{status:e.assessment.status as 'promising'|'not_supported',metric:e.metric,controlRate:e.assessment.controlRate,treatmentRate:e.assessment.treatmentRate,lift:e.assessment.lift,controlSample:e.result.control.denominator,treatmentSample:e.result.treatment.denominator,startedAt:e.startedAt,observedUntil:e.result.observedUntil,conditions:e.conditions,notes:e.result.notes}}:{}),id,brandId:e.brandId,channel:e.channel,experimentId:e.id,experimentVersion:e.version,caseId:e.caseId,title:e.title,guidance:str(b.guidance,'다음 제작에 반영할 규칙',6000,true),scope:e.conditions,evidenceLevel:'observational',status:'active',version:1,expiresAt:new Date(Date.now()+30*86400000).toISOString(),createdAt:stamp(),updatedAt:stamp()};
+  // 사람의 확정: 개선 판정은 채택(시험 적용), 미지지 판정은 중단(주의사항)이다. 통계 권고와 어긋나도 막지 않고 어긋남과 선택 사유를 규칙에 남긴다.
+  const positive=e.assessment.status==='promising',decision=positive?'adopt' as const:'stop' as const,stats=experimentStats(e),reason=str(b.reason??'','판정 사유',2000),conflict=decisionConflict(stats,decision);
+  const rule:LearningRule={origin:'viral',direction:positive?'test':'caution',...(e.result?{sourceAssessment:{status:e.assessment.status as 'promising'|'not_supported',metric:e.metric,controlRate:e.assessment.controlRate,treatmentRate:e.assessment.treatmentRate,lift:e.assessment.lift,controlSample:e.result.control.denominator,treatmentSample:e.result.treatment.denominator,startedAt:e.startedAt,observedUntil:e.result.observedUntil,conditions:e.conditions,notes:e.result.notes,stats,decision,...(conflict?{decisionConflict:conflict}:{}),...(reason?{decisionReason:reason}:{})}}:{}),id,brandId:e.brandId,channel:e.channel,experimentId:e.id,experimentVersion:e.version,caseId:e.caseId,title:e.title,guidance:str(b.guidance,'다음 제작에 반영할 규칙',6000,true),scope:e.conditions,evidenceLevel:'observational',status:'active',version:1,expiresAt:new Date(Date.now()+30*86400000).toISOString(),createdAt:stamp(),updatedAt:stamp()};
   await database().batch([recordStatement(owner,'learning_rule',id,rule,e.brandId),eventStatement(owner,e.campaignId,`「${e.title}」을 ${positive?'시험 적용 규칙':'실패에서 배운 주의사항'}으로 채택했습니다. 30일 후 재검토합니다.`,by)]);return {id};
  }
  if(b.action==='pause_rule'){
@@ -128,7 +147,7 @@ export async function learningAction(owner:string,b:any,by?:EventActor){
   const id='retest:'+r.id,existing=(await listRecords<ViralExperiment>(owner,'viral_experiment')).find(x=>x.id===id);
   if(existing)return {id:existing.id,duplicate:true};
   // 원 실험은 그대로 두고 설계만 복제한다. 측정 결과와 판정은 비운 draft로 시작한다.
-  const now=stamp(),retest:ViralExperiment={...source,id,campaignId:campaign.id,title:'재검증 · '+source.title,status:'draft',version:1,startedAt:null,result:null,assessment:null,createdAt:now,updatedAt:now};
+  const now=stamp(),retest:ViralExperiment={...source,id,campaignId:campaign.id,title:'재검증 · '+source.title,status:'draft',version:1,startedAt:null,result:null,assessment:null,stats:null,completedLooks:0,createdAt:now,updatedAt:now};
   await database().batch([recordStatement(owner,'viral_experiment',id,retest,campaign.id),eventStatement(owner,campaign.id,`「${r.title}」 규칙의 재검증 실험을 만들었습니다. 만료 전에 다시 측정하세요.`,by)]);
   return {id};
  }

@@ -48,22 +48,30 @@ r=await act('start_experiment',{id:expId,version:1});check('plan starts and lock
 check('stale experiment revision rejected',(await act('start_experiment',{id:expId,version:1})).status===409);
 const result={control:{denominator:2000,numerator:20,source:'A 자사 인사이트'},treatment:{denominator:2000,numerator:40,source:'B 자사 인사이트'},observedUntil:new Clock().toISOString(),comparable:true,notes:'대상과 관찰 조건 동일. 무작위 배정 없음.'};
 r=await act('save_results',{id:expId,version:2,data:result});check('early high lift remains insufficient',r.data.assessment?.status==='insufficient');
+check('early look carries an interim warning and no adopt recommendation',r.data.stats?.warning?.codes.includes('duration_below_plan')&&r.data.stats.recommendation==='inconclusive'&&r.data.stats.probBetter>0.95);
 check('premature adoption prohibited',(await act('adopt_rule',{id:expId,version:3,guidance:'x'})).status===409);
 now+=73*3600000;result.observedUntil=new Clock().toISOString();
 r=await act('save_results',{id:expId,version:3,data:{...result,treatment:{...result.treatment,denominator:null}}});check('missing denominator is not zero or winning',r.data.assessment?.status==='insufficient'&&r.data.assessment.treatmentRate===null);
+check('missing denominator yields no posterior',r.data.stats===null);
 check('negative metric rejected',(await act('save_results',{id:expId,version:4,data:{...result,treatment:{...result.treatment,numerator:-1}}})).status===400);
 r=await act('save_results',{id:expId,version:4,data:result});check('qualified result is observational improvement',r.data.assessment?.status==='promising'&&r.data.assessment.lift===100);
+check('qualified result stores the posterior summary',r.data.stats?.probBetter===0.9953&&r.data.stats.recommendation==='adopt'&&r.data.stats.warning===null&&r.data.stats.n.control===2000&&r.data.stats.liftLow>0&&r.data.stats.liftHigh>r.data.stats.liftLow);
+check('posterior summary is stored on the experiment',(await snap()).experiments.find(x=>x.id===expId).stats.probBetter===0.9953);
 r=await act('adopt_rule',{id:expId,version:5,guidance:'단면을 먼저 보여주는 안을 시험 적용하되 인과관계 확정 아님'});const ruleId=r.data.id;check('trial rule adopted',r.status===200);
 const eventActor=text=>JSON.parse(sql.prepare("SELECT data FROM records WHERE kind='event' AND data LIKE ? ORDER BY rowid DESC").get('%'+text+'%')?.data||'{}').actor;check('adoption event records the requester',eventActor('채택했습니다')?.id===owner);
 await act('adopt_rule',{id:expId,version:5,guidance:'duplicate'});d=await snap();check('duplicate adoption produces one unchanged rule',d.rules.length===1&&d.rules[0].guidance.includes('단면'));
 check('adopted rule stores actual direction and observed result',d.rules[0].direction==='test'&&d.rules[0].sourceAssessment.lift===100&&d.rules[0].sourceAssessment.controlSample===result.control.denominator);
+check('adopted rule records the posterior summary and human decision',d.rules[0].sourceAssessment.stats?.probBetter===0.9953&&d.rules[0].sourceAssessment.decision==='adopt'&&!d.rules[0].sourceAssessment.decisionReason&&d.rules[0].evidenceLevel==='observational');
 check('brand boundary enforced',!domain.namespace.ruleApplies(d.rules[0],'oda','Instagram',now));
 check('channel boundary enforced',!domain.namespace.ruleApplies(d.rules[0],'ofd','YouTube',now));
 check('expiry removes new retrieval',!domain.namespace.ruleApplies(d.rules[0],'ofd','Instagram',now+31*86400000));
 const secret=await server.namespace.encrypt(JSON.stringify({provider:'hermes',key:'test-key',endpoint:'https://hermes.example.com'}));sql.prepare('INSERT INTO settings(owner,secret,model,updated_at) VALUES(?,?,?,?)').run(owner,secret,'HERMES test',new Clock().toISOString());
 r=await req(run,{action:'start',campaignId:cid,role:'cmo'});check('campaign starts through Hermes',r.status===200);const job=r.data.id;
 check('new campaign receives trial learning',JSON.parse(captured.at(-1).input).learning[0].id===ruleId);d=await snap();check('actual learning input snapshot persists',d.snapshots[0].rules[0].guidance.includes('단면'));
+const sentSource=JSON.parse(captured.at(-1).input).learning[0].sourceAssessment,addedKeys=['stats','decision','decisionReason','decisionConflict'];
+check('model input keeps the rule evidence without the posterior summary or decision record',sentSource.lift===100&&addedKeys.every(k=>!(k in sentSource))&&addedKeys.every(k=>!(k in d.snapshots[0].rules[0].sourceAssessment)));
 r=await act('save_results',{id:expId,version:5,data:{...result,treatment:{...result.treatment,numerator:10}}});d=await snap();check('correction retires previous rule',d.rules[0].status==='retired');
+check('re-check after a completed look warns as peeking and still recommends stop',r.data.stats?.warning?.codes.join()==='repeated_looks'&&r.data.stats.recommendation==='stop');
 check('past campaign retains exact previous guidance',d.snapshots[0].rules[0].status==='active'&&d.snapshots[0].rules[0].guidance.includes('단면'));
 r=await req(run,{action:'poll',id:job});check('campaign completes with snapshot intact',r.status===200&&r.data.status==='completed');
 r=await req(ai,{action:'start_analysis',caseId});check('Hermes deep analysis submitted',r.status===200);const ajob=r.data.id;
@@ -85,6 +93,7 @@ r=await req(action,{action:'save_hermes',endpoint:'https://hermes.example.com',k
 r=await req(ai,{action:'recover',id:uncertain.id});check('recovery reuses durable provider submission',r.status===200&&calls===before+1);await req(ai,{action:'poll',id:uncertain.id});
 check('unknown connection cannot block disconnection after terminal jobs',(await req(action,{action:'disconnect'})).status===200);
 await act('adopt_rule',{id:expId,version:6,guidance:'성과가 떨어진 조건을 재검증'});d=await snap();const caution=d.rules.find(x=>x.direction==='caution');check('negative results persist as caution with measurement evidence',caution?.sourceAssessment.status==='not_supported'&&caution.sourceAssessment.treatmentRate===10/result.treatment.denominator);
+check('stop matching the recommendation needs no reason despite peeking',caution.sourceAssessment.decision==='stop'&&caution.sourceAssessment.stats.recommendation==='stop'&&caution.sourceAssessment.stats.warning.codes.includes('repeated_looks'));
 // Phase 0 ③ — 국내 로컬 채널이 학습 루프에 진입한다.
 const catalog=await load('lib/store-marketing.ts');await catalog.evaluate();
 const channels=await load('lib/channels.ts');await channels.evaluate();
@@ -110,6 +119,7 @@ r=await act('retest_rule',{id:caution.id,version:2});
 check('retest clones the experiment as a new draft',r.status===200);
 d=await snap();const retest=d.experiments.find(x=>x.id===r.data.id);
 check('retest starts unmeasured',retest.status==='draft'&&retest.result===null&&retest.assessment===null&&retest.title.startsWith('재검증 · '));
+check('retest starts without statistics or looks',retest.stats===null&&retest.completedLooks===0);
 check('retest keeps the original experiment untouched',d.experiments.find(x=>x.id===expId).status==='evaluated');
 check('repeated retest is idempotent',(await act('retest_rule',{id:caution.id,version:2})).data.duplicate===true);
 
@@ -134,5 +144,65 @@ d=await snap();const draft=d.guidances.find(g=>g.id===expId+':6');
 check('guidance draft is stored against the experiment version',!!draft&&draft.guidance.includes('재검증'));
 check('guidance draft never adopts a rule by itself',d.rules.length===rulesBefore);
 check('guidance draft carries no provider secrets',!JSON.stringify(d.guidances).includes('test-key'));
+
+// B4 1부 — 사후확률 권고와 사람 확정. 권고와 다르게 확정하거나 중간 확인 경고 뒤 채택해도 막지 않는다. 어긋남과 선택 사유를 규칙에 기록한다.
+async function measured(title,control,treatment,extra={}){
+ const e=(await act('create_experiment',{analysisId,campaignId:cid,data:{...plan,title,minSample:100,minHours:1}})).data.id;await act('start_experiment',{id:e,version:1});now+=2*3600000;
+ const saved=await act('save_results',{id:e,version:2,data:{...result,control:{...result.control,...control},treatment:{...result.treatment,...treatment},observedUntil:new Clock().toISOString(),...extra}});return {id:e,saved};
+}
+const counts=(c,t)=>({control:{...result.control,denominator:c[1],numerator:c[0]},treatment:{...result.treatment,denominator:t[1],numerator:t[0]}});
+let x=await measured('권고 불일치 실험',{denominator:100,numerator:10},{denominator:100,numerator:13});
+check('lift above target can still be statistically inconclusive',x.saved.data.assessment.status==='promising'&&x.saved.data.stats.recommendation==='inconclusive'&&x.saved.data.stats.probBetter<0.95);
+r=await act('adopt_rule',{id:x.id,version:3,guidance:'시험 적용',reason:'   '});d=await snap();
+const overridden=d.rules.find(z=>z.experimentId===x.id);
+check('adopting against the recommendation needs no reason and records the conflict',r.status===200&&overridden.sourceAssessment.decision==='adopt'&&overridden.sourceAssessment.decisionConflict==='mismatch'&&!('decisionReason' in overridden.sourceAssessment)&&overridden.sourceAssessment.stats.recommendation==='inconclusive');
+check('rule promotion gate is unchanged',overridden.evidenceLevel==='observational'&&overridden.direction==='test'&&overridden.status==='active');
+
+x=await measured('반복 확인 실험',{denominator:1000,numerator:100},{denominator:1000,numerator:200});
+check('first completed look recommends adopt',x.saved.data.stats.recommendation==='adopt'&&x.saved.data.stats.warning===null);
+r=await act('save_results',{id:x.id,version:3,data:{...result,...counts([100,1000],[200,1000]),notes:'메모만 고침',observedUntil:new Clock().toISOString()}});
+check('re-saving the same counts is not a new look',r.data.stats.warning===null&&r.data.stats.recommendation==='adopt'&&r.data.stats.looks===0);
+r=await act('save_results',{id:x.id,version:4,data:{...result,...counts([110,1100],[220,1100]),observedUntil:new Clock().toISOString()}});
+check('a completed look with new counts raises the peeking warning',r.data.stats.warning?.codes.join()==='repeated_looks'&&r.data.stats.recommendation==='inconclusive'&&r.data.stats.looks===1);
+d=await snap();
+check('the stored peeking warning is served on read',d.experiments.find(z=>z.id===x.id).stats.warning?.codes.join()==='repeated_looks');
+r=await act('adopt_rule',{id:x.id,version:5,guidance:'시험 적용',reason:'두 번째 입력은 계획에 있던 측정 연장'});d=await snap();
+const warned=d.rules.find(z=>z.experimentId===x.id);
+check('warned adoption records the interim conflict and the optional reason',r.status===200&&warned.sourceAssessment.decisionConflict==='interim'&&warned.sourceAssessment.decisionReason.includes('측정 연장'));
+
+x=await measured('비교 가능성 정정 실험',{denominator:1000,numerator:100},{denominator:1000,numerator:200},{comparable:false});
+check('comparable:false is not recommended for adoption',x.saved.data.assessment.status==='insufficient'&&x.saved.data.stats.recommendation!=='adopt'&&x.saved.data.stats.warning?.codes.join()==='not_comparable');
+r=await act('save_results',{id:x.id,version:3,data:{...result,...counts([100,1000],[200,1000]),comparable:true,observedUntil:new Clock().toISOString()}});
+check('confirming comparability with the same counts is the first completed look',r.data.assessment.status==='promising'&&r.data.stats.warning===null&&r.data.stats.recommendation==='adopt');
+r=await act('save_results',{id:x.id,version:4,data:{...result,...counts([110,1100],[220,1100]),observedUntil:new Clock().toISOString()}});
+check('only comparable completed looks are counted',r.data.stats.looks===1&&r.data.stats.warning?.codes.join()==='repeated_looks');
+x=await measured('비교 불가 뒤 재측정 실험',{denominator:1000,numerator:100},{denominator:1000,numerator:200},{comparable:false});
+r=await act('save_results',{id:x.id,version:3,data:{...result,...counts([110,1100],[220,1100]),comparable:true,observedUntil:new Clock().toISOString()}});
+check('a non-comparable look is not a completed look',r.data.stats.looks===0&&r.data.stats.warning===null&&r.data.stats.recommendation==='adopt');
+
+x=await measured('목표 미달 대표본 실험',{denominator:1000000,numerator:50000},{denominator:1000000,numerator:51000});
+check('a large-sample lift below the target is not recommended for adoption',x.saved.data.assessment.status==='inconclusive'&&x.saved.data.stats.probBetter>0.99&&x.saved.data.stats.recommendation==='inconclusive');
+x=await measured('대조안 반응 0 실험',{denominator:1000,numerator:0},{denominator:1000,numerator:30});
+check('a zero control response is not recommended for adoption',x.saved.data.assessment.status==='insufficient'&&x.saved.data.stats.recommendation==='inconclusive');
+
+x=await measured('이벤트 집계 실험',{denominator:100,numerator:150},{denominator:100,numerator:200});
+check('event counts above the denominator keep the old judgement without statistics',x.saved.data.assessment.status==='promising'&&x.saved.data.stats===null);
+r=await act('adopt_rule',{id:x.id,version:3,guidance:'시험 적용'});d=await snap();
+check('without statistics the human decides without a reason',r.status===200&&d.rules.find(z=>z.experimentId===x.id).sourceAssessment.stats===null);
+
+// 이 기능 이전 형식(stats·completedLooks 없음)의 실험. 저장하지 않고 조회·채택 때 요약을 계산한다.
+const base=d.experiments.find(z=>z.id===x.id);
+async function legacyRecord(id,c,t){const e={...base,id,title:'이전 형식 · '+id,result:{...base.result,...counts(c,t),comparable:true}};e.assessment=domain.namespace.evaluateExperiment(e,e.result);delete e.stats;delete e.completedLooks;await server.namespace.recordStatement(owner,'viral_experiment',id,e,cid).run();return e}
+const legacy=await legacyRecord('legacy-exp',[100,1000],[200,1000]);
+d=await snap();const shown=d.experiments.find(z=>z.id==='legacy-exp');
+check('legacy experiment shows computed statistics on read',shown.stats?.probBetter>0.99&&shown.stats.recommendation==='adopt'&&!('completedLooks' in shown));
+check('legacy experiment adopts as before',(await act('adopt_rule',{id:'legacy-exp',version:legacy.version,guidance:'이전 형식 채택'})).status===200);
+const mismatch=await legacyRecord('legacy-mismatch',[100,1000],[113,1000]);
+r=await act('adopt_rule',{id:'legacy-mismatch',version:mismatch.version,guidance:'이전 형식 채택'});d=await snap();
+const legacyRule=d.rules.find(z=>z.experimentId==='legacy-mismatch');
+check('legacy promising result below 0.95 still adopts without a reason',mismatch.assessment.status==='promising'&&r.status===200&&legacyRule.sourceAssessment.stats?.recommendation==='inconclusive'&&legacyRule.sourceAssessment.decisionConflict==='mismatch');
+const relooked=await legacyRecord('legacy-relook',[100,1000],[200,1000]);
+r=await act('save_results',{id:'legacy-relook',version:relooked.version,data:{...result,...counts([110,1100],[220,1100]),observedUntil:new Clock().toISOString()}});
+check('a legacy plan-met result counts as one completed look',r.status===200&&r.data.stats.looks===1&&r.data.stats.warning?.codes.join()==='repeated_looks');
 
 console.log(JSON.stringify({passed:checks.length,checks},null,2));
