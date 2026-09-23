@@ -6,6 +6,7 @@ import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Tabs,TabsList,TabsTrigger} from '@/components/ui/tabs';
 import {Field} from './panels';
+import {adminRequestNote,useCanManage} from './auth-client';
 
 type ChannelStatus={channel:'naver_ads'|'instagram';label:string;connected:boolean;account:string;expiresAt:string|null;expiringSoon:boolean;updatedAt:string|null};
 const blank={apiKey:'',secretKey:'',customerId:'',accessToken:'',userId:'',expiresAt:''};
@@ -16,6 +17,7 @@ export function ChannelPanel(){
  const[channel,setChannel]=useState<'naver_ads'|'instagram'>('naver_ads');
  const[form,setForm]=useState(blank);
  const[busy,setBusy]=useState(false);
+ const canManage=useCanManage();
  const set=(k:keyof typeof blank,v:string)=>setForm(s=>({...s,[k]:v}));
 
  async function load(){
@@ -56,6 +58,7 @@ export function ChannelPanel(){
    {c.expiringSoon&&<> <TriangleAlert/> 갱신 필요</>}
   </div>)}
 
+  {canManage?<>
   <Tabs value={channel} onValueChange={v=>{setChannel(v as 'naver_ads'|'instagram');setForm(blank)}}>
    <TabsList><TabsTrigger value="naver_ads">네이버 검색광고</TabsTrigger><TabsTrigger value="instagram">Instagram</TabsTrigger></TabsList>
   </Tabs>
@@ -76,6 +79,7 @@ export function ChannelPanel(){
   </form>
 
   {current?.connected&&<Button variant="ghost" disabled={busy} onClick={()=>void send('revoke_credential',{channel},'연결을 해제했습니다.')}><Unplug/>{current.label} 연결 해제</Button>}
+  </>:<p className="notice">채널 연결·해제는 관리자만 할 수 있습니다. {adminRequestNote}</p>}
 
   <p className="subtle-note">네이버 플레이스와 당근 비즈프로필은 공식 통계 API가 없어 자동 수집 대상이 아닙니다. 두 채널의 성과는 계속 직접 입력합니다.</p>
  </section>;

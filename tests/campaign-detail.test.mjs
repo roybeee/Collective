@@ -17,7 +17,7 @@ class Statement {
 }
 const DB={prepare:q=>new Statement(q),batch:async ss=>{sql.exec('BEGIN');try{const result=[];for(const s of ss)result.push(await s.run());sql.exec('COMMIT');return result}catch(e){sql.exec('ROLLBACK');throw e}}};
 const ctx=createContext({console,crypto:webcrypto,Response,Request,Headers,TextEncoder,TextDecoder,Uint8Array,Date,URL,AbortSignal,btoa,atob,process:{env:{NODE_ENV:'production'}}});
-const env=new SyntheticModule(['env'],function(){this.setExport('env',{DB})},{context:ctx});
+const env=new SyntheticModule(['env'],function(){this.setExport('env',{DB,AUTH_MODE:'legacy'})},{context:ctx});
 const modules=new Map();
 function moduleFor(file){file=resolve(file);if(modules.has(file))return modules.get(file);const code=ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;const m=new SourceTextModule(code,{context:ctx,identifier:file});modules.set(file,m);return m}
 async function load(file){const m=moduleFor(file);if(m.status==='unlinked')await m.link((spec,ref)=>{if(spec==='cloudflare:workers')return env;const path=spec.startsWith('@/')?resolve(spec.slice(2)):resolve(dirname(ref.identifier),spec);return moduleFor(path.endsWith('.ts')?path:path+'.ts')});await m.evaluate();return m.namespace}

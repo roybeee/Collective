@@ -22,6 +22,13 @@
       "when": 1790144610675,
       "tag": "0002_concerned_deathbird",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790157541283,
+      "tag": "0003_noisy_bruce_banner",
+      "breakpoints": true
     }
   ]
 }

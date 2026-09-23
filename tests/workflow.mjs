@@ -10,7 +10,7 @@ const sql=new DatabaseSync(':memory:');
 for(const file of readdirSync('drizzle').filter(x=>x.endsWith('.sql')).sort())sql.exec(readFileSync('drizzle/'+file,'utf8'));
 class Statement{constructor(query,values=[]){this.query=query;this.values=values}bind(...v){return new Statement(this.query,v)}async first(){return sql.prepare(this.query).get(...this.values)||null}async all(){return {results:sql.prepare(this.query).all(...this.values)}}async run(){const r=sql.prepare(this.query).run(...this.values);return {meta:{changes:Number(r.changes)}}}}
 const DB={prepare:q=>new Statement(q),batch:async ss=>{sql.exec('BEGIN');try{const r=[];for(const s of ss)r.push(await s.run());sql.exec('COMMIT');return r}catch(e){sql.exec('ROLLBACK');throw e}}};
-const runtime={DB,AGENCY_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64')};
+const runtime={AUTH_MODE:'legacy',DB,AGENCY_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64')};
 let callCount=0,providerFail=false;const provider=new Map();
 const fakeFetch=async(url,options={})=>{if(url.includes('/models/'))return Response.json({id:'test-model'});if(options.method==='POST'&&url.endsWith('/responses')){callCount++;if(providerFail)throw new Error('network lost');const b=JSON.parse(options.body),id='resp_test'+callCount;provider.set(id,{id,status:'completed',metadata:b.metadata,output:[{content:[{type:'output_text',text:roleFixture(b.input)}]}],usage:{total_tokens:42}});return Response.json({id,status:'completed'})}const id=url.split('/').pop();if(provider.has(id))return Response.json(provider.get(id));return Response.json({error:{message:'Not found'}},{status:404})};
 const ctx=createContext({console,crypto:webcrypto,Response,Request,Headers,TextEncoder,TextDecoder,Uint8Array,Date,URL,AbortSignal,btoa,atob,fetch:fakeFetch,process:{env:{NODE_ENV:'production'}}});
@@ -41,6 +41,7 @@ r=await snapshot();let c=r.data.campaigns.find(c=>c.id===cid);const simultaneous
 r=await act('save_connection',{key:'sk-test-not-real',model:'test-model'});check('model connection validated and saved',r.status===200);const stored=sql.prepare('SELECT secret FROM settings WHERE owner=?').get(owner);check('API key encrypted at rest',stored.secret&&!stored.secret.includes('sk-test'));
 r=await snapshot();check('workspace never returns key material',r.data.connection.configured&&!JSON.stringify(r.data).includes('sk-test'));
 r=await request(run,'POST',{action:'start',campaignId:cid,role:'cmo'});check('background response queued even if immediately completed',r.status===200&&r.data.status==='queued');const job=r.data.id;
+const eventActor=text=>JSON.parse(sql.prepare("SELECT data FROM records WHERE kind='event' AND data LIKE ? ORDER BY rowid DESC").get('%'+text+'%')?.data||'{}').actor;check('role start event records the requester',eventActor('AI 작업을 시작했습니다')?.id===owner);
 check('duplicate active run blocked',(await request(run,'POST',{action:'start',campaignId:cid,role:'cmo'})).status===409&&callCount===1);
 check('active run blocks disconnection',(await act('disconnect')).status===409);
 // 다른 캠페인이 실행 중이라고 이 캠페인의 사람 게이트가 막히면, 실행을 늘릴수록 승인이 멈춘다.

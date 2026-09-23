@@ -32,11 +32,11 @@ node node_modules/@playwright/test/cli.js test -c playwright.auth.config.ts   # 
 | 사용량 가격 | 명시한 모델별 단가 저장 | real Chromium/로컬 D1, mocked 인증 |
 | 회의 실패 단계 재작성 | 완료 발언 유지, 단계/시도 지정 POST, 이후 GET 조회만 발생 | real Chromium, mocked 인증·회의 응답·작업자 상태 |
 | 확인 사실 → PNG 제작 → 새로고침 뒤 내려받기 | 확인 사실 등록, `save_creative` 200, `/api/execution/asset` 200과 1080×1080 PNG, 새로고침 뒤 내려받기 링크 유지, 발행 이력 없음 | real Chromium Canvas·로컬 D1/R2 / mocked 인증. 외부 게시 없음 |
-| 이메일 로그인·초대·세션 유지·권한 제한·폐기(별도 설정) | 관리자 초기 등록, 쿠키 속성, 새로고침 유지, 초대·멤버403, 위조 GPT 헤더401, 재사용401, 재설정·해제 뒤 세션401 | real HTTPS Chromium·로컬 workerd/D1·native scrypt. 실제 메일·운영 서버 호출 없음 |
+| 이메일 로그인·초대·세션 유지·권한 제한·폐기(별도 설정) | 관리자 초기 등록, 쿠키 속성, 새로고침 유지, 초대·멤버403, 직원 화면의 캠페인 삭제·채널 연결 버튼 미표시(관리자 화면에는 삭제 표시), 위조 GPT 헤더401, 재사용401, 재설정·해제 뒤 세션401 | real HTTPS Chromium·로컬 workerd/D1·native scrypt. 실제 메일·운영 서버 호출 없음 |
 
 ## 실제(real)와 모의(mocked)의 경계
 
-- **기본 12건의 인증은 모의다.** 운영은 `AUTH_MODE=email`이며 앱(`lib/server.ts`의 `identity`)은 자체 세션 쿠키로 사용자를 확인하고 `oai-authenticated-user-id` 헤더를 무시한다. 기본 설정은 `AUTH_MODE`를 지정하지 않은 legacy 모드로 서버를 띄우고(legacy는 로컬 개발·E2E용이다. 운영에서는 Sites 접근을 owner-only로 되돌린 뒤의 [복구 절차](EMAIL-AUTH.ko.md)에서만 쓰며, Sites public 상태에서는 절대 쓰지 않는다), 테스트가 이 헤더를 직접 붙여 소유자를 재현한다. 운영과 같은 세션 인증은 이메일 설정 1건만 로컬에서 실제로 실행한다. 운영 사이트의 익명·위조 헤더 거부는 이 테스트가 아니라 [게시 기록](releases/2026-09-23-1ecd72e.md)의 운영 검사가 근거다.
+- **기본 12건의 인증은 모의다.** 운영은 `AUTH_MODE=email`이며 앱(`lib/server.ts`의 `identity`)은 자체 세션 쿠키로 사용자를 확인하고 `oai-authenticated-user-id` 헤더를 무시한다. 기본 설정은 `AUTH_MODE=legacy`를 명시해 서버를 띄우고(`e2e/serve.mjs`의 `--var AUTH_MODE:legacy`. 운영 빌드는 미설정이면 503이다. legacy는 로컬 개발·E2E용이다. 운영에서는 Sites 접근을 owner-only로 되돌린 뒤의 [복구 절차](EMAIL-AUTH.ko.md)에서만 쓰며, Sites public 상태에서는 절대 쓰지 않는다), 테스트가 이 헤더를 직접 붙여 소유자를 재현한다. 운영과 같은 세션 인증은 이메일 설정 1건만 로컬에서 실제로 실행한다. 운영 사이트의 익명·위조 헤더 거부는 이 테스트가 아니라 [게시 기록](releases/2026-09-23-1ecd72e.md)의 운영 검사가 근거다.
 - HERMES, OpenAI, 외부 조사는 호출하지 않는다(HERMES 미연결 상태에서 브랜드 등록은 조사를 접수하지 않는다).
 - 로컬 D1/R2는 wrangler(miniflare) 시뮬레이터다. 운영 Cloudflare 환경과 같다는 증거는 아니다.
 - 운영 사이트에 대한 E2E는 없다. 운영 확인은 `docs/PUBLISH.ko.md`의 `/api/version` 검증과 게시 기록에 남긴 운영 검사뿐이다.

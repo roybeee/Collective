@@ -10,7 +10,7 @@ const sql=new DatabaseSync(':memory:');
 for(const file of readdirSync('drizzle').filter(x=>x.endsWith('.sql')).sort())sql.exec(readFileSync('drizzle/'+file,'utf8'));
 class Statement{constructor(query,values=[]){this.query=query;this.values=values}bind(...v){return new Statement(this.query,v)}async first(){return sql.prepare(this.query).get(...this.values)||null}async all(){return {results:sql.prepare(this.query).all(...this.values)}}async run(){const r=sql.prepare(this.query).run(...this.values);return {meta:{changes:Number(r.changes)}}}}
 const DB={prepare:q=>new Statement(q),batch:async ss=>{sql.exec('BEGIN');try{const r=[];for(const s of ss)r.push(await s.run());sql.exec('COMMIT');return r}catch(e){sql.exec('ROLLBACK');throw e}}};
-const runtime={DB,AGENCY_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64')};
+const runtime={AUTH_MODE:'legacy',DB,AGENCY_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64')};
 
 let now=Date.now();class Clock extends Date{constructor(...a){super(...(a.length?a:[now]))}static now(){return now}}
 let calls=0,disconnect=false,researchBlocked=false,rejectAuth=false,researchCases=[];const provider=new Map();const captured=[];
@@ -54,6 +54,7 @@ r=await act('save_results',{id:expId,version:3,data:{...result,treatment:{...res
 check('negative metric rejected',(await act('save_results',{id:expId,version:4,data:{...result,treatment:{...result.treatment,numerator:-1}}})).status===400);
 r=await act('save_results',{id:expId,version:4,data:result});check('qualified result is observational improvement',r.data.assessment?.status==='promising'&&r.data.assessment.lift===100);
 r=await act('adopt_rule',{id:expId,version:5,guidance:'단면을 먼저 보여주는 안을 시험 적용하되 인과관계 확정 아님'});const ruleId=r.data.id;check('trial rule adopted',r.status===200);
+const eventActor=text=>JSON.parse(sql.prepare("SELECT data FROM records WHERE kind='event' AND data LIKE ? ORDER BY rowid DESC").get('%'+text+'%')?.data||'{}').actor;check('adoption event records the requester',eventActor('채택했습니다')?.id===owner);
 await act('adopt_rule',{id:expId,version:5,guidance:'duplicate'});d=await snap();check('duplicate adoption produces one unchanged rule',d.rules.length===1&&d.rules[0].guidance.includes('단면'));
 check('adopted rule stores actual direction and observed result',d.rules[0].direction==='test'&&d.rules[0].sourceAssessment.lift===100&&d.rules[0].sourceAssessment.controlSample===result.control.denominator);
 check('brand boundary enforced',!domain.namespace.ruleApplies(d.rules[0],'oda','Instagram',now));

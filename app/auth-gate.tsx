@@ -1,7 +1,7 @@
 'use client';
 
 import {useCallback,useEffect,useState,type ReactNode} from 'react';
-import {authRequest,type AccountUser,type AuthState} from './auth-client';
+import {AuthContext,authRequest,roleLabel,useAuthState,type AccountUser,type AuthState} from './auth-client';
 import {AuthForm,type SetupLink} from './auth-form';
 import {AccountPanel,PasswordPanel} from './account-panel';
 import './auth.css';
@@ -37,10 +37,18 @@ export default function AuthGate({children}:{children:ReactNode}){
   catch(e){setError(e instanceof Error?e.message:'로그아웃하지 못했습니다.');}finally{setPending(false);}
  }
  if(!state)return <main className="auth-screen"><section className="auth-card"><div className="auth-brand">COLLECTIVE</div>{error?<><p role="alert">{error}</p><button className="auth-primary" onClick={()=>void refresh()}>다시 연결</button></>:<p role="status">워크스페이스를 준비하고 있습니다…</p>}</section></main>;
- if(state.mode==='legacy')return children;
+ if(state.mode==='legacy')return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>;
  if(link||!state.user)return <AuthForm link={link} onSignedIn={signedIn} onCancel={()=>setLink(null)}/>;
- return <><div className="auth-toolbar"><span>{state.user.email}</span><nav aria-label="계정 메뉴">{state.user.role==='admin'&&<button onClick={()=>setPanel('accounts')}>팀 계정 관리</button>}<button onClick={()=>setPanel('password')}>비밀번호 변경</button><button disabled={pending} onClick={()=>void logout()}>로그아웃</button></nav>{error&&<p role="alert">{error}</p>}</div>{children}
-  {panel==='accounts'&&state.user.role==='admin'&&<AccountPanel user={state.user} onClose={()=>setPanel(null)}/>}
+ const manager=state.user.role!=='member';
+ return <AuthContext.Provider value={state}><div className="auth-toolbar"><span>{state.user.email}</span><nav aria-label="계정 메뉴">{manager&&<button onClick={()=>setPanel('accounts')}>팀 계정 관리</button>}<button onClick={()=>setPanel('password')}>비밀번호 변경</button><button disabled={pending} onClick={()=>void logout()}>로그아웃</button></nav>{error&&<p role="alert">{error}</p>}</div>{children}
+  {panel==='accounts'&&manager&&<AccountPanel user={state.user} onClose={()=>setPanel(null)} onSignedOut={()=>{setState({mode:'email',user:null});setPanel(null)}}/>}
   {panel==='password'&&<PasswordPanel onClose={()=>setPanel(null)} onChanged={()=>{setPanel(null);void refresh()}}/>}
- </>;
+ </AuthContext.Provider>;
+}
+
+// 사이드바 프로필: 로그인한 계정의 이메일과 역할을 보여 준다. legacy는 요청자가 곧 워크스페이스 소유자다.
+export function WorkspaceProfile(){
+ const user=useAuthState()?.user;
+ const badge=user?.role==='admin'?'ADMIN':user?.role==='member'?'MEMBER':'OWNER';
+ return <div className="profile"><span aria-hidden="true">{user?user.email.slice(0,1).toUpperCase():'W'}</span><div className="profile-text">{user?<b className="profile-email" title={user.email}>{user.email}</b>:<b>워크스페이스 소유자</b>}{user&&<small>{roleLabel(user.role)}</small>}</div><span className="profile-badge">{badge}</span></div>;
 }

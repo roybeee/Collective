@@ -27,7 +27,8 @@ for (const file of readdirSync('drizzle').filter(f => f.endsWith('.sql')).sort()
 }
 
 // Public test-only bootstrap fixture; never used against a remote database.
-const authArgs = emailAuth ? ['--local-protocol','https','--var','AUTH_MODE:email','--var',`AUTH_ORIGIN:https://127.0.0.1:${port}`,'--var','AUTH_BOOTSTRAP_EMAIL:admin@example.test','--var','AUTH_BOOTSTRAP_OWNER:e2e-email-owner','--var',`AUTH_BOOTSTRAP_TOKEN_HASH:${createHash('sha256').update('e2e-only-bootstrap-token-do-not-use-in-production').digest('hex')}`] : [];
+// 운영 빌드는 AUTH_MODE가 비면 503으로 닫히므로 기본(헤더 모의) 여정은 legacy를 명시한다.
+const authArgs = emailAuth ? ['--local-protocol','https','--var','AUTH_MODE:email','--var',`AUTH_ORIGIN:https://127.0.0.1:${port}`,'--var','AUTH_BOOTSTRAP_EMAIL:admin@example.test','--var','AUTH_BOOTSTRAP_OWNER:e2e-email-owner','--var',`AUTH_BOOTSTRAP_TOKEN_HASH:${createHash('sha256').update('e2e-only-bootstrap-token-do-not-use-in-production').digest('hex')}`] : ['--var','AUTH_MODE:legacy'];
 const server = spawn(process.execPath, [...wrangler, 'dev', '--config', config, '--local', '--persist-to', state, '--ip', '127.0.0.1', '--port', port, '--inspector-port', '0', ...(emailAuth?['--upstream-protocol','https']:[]), ...authArgs], {stdio: 'inherit'});
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => server.kill(signal));
 server.on('exit', code => process.exit(code ?? 0));

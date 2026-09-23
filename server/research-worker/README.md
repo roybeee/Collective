@@ -10,12 +10,20 @@ meetings or all AI-team tasks.
 
 1. Finish or cancel active AI jobs before restarting the default HERMES gateway.
 2. In COLLECTIVE **연결 및 설정 → Mac 없이 브랜드 조사**, download the installer.
-3. Copy it to the existing Ubuntu x86_64 server and run it as root:
+3. Copy it to the existing Ubuntu x86_64 server as a sudo-capable user (not a
+   direct root login) and run it with sudo. Replace `<서버 접속 주소>` with that
+   `user@host`:
 
    ```sh
-   scp ~/Downloads/install-collective-server.py root@2.28.40.57:/root/
-   ssh root@2.28.40.57 'python3 /root/install-collective-server.py'
+   scp ~/Downloads/install-collective-server.py <서버 접속 주소>:~/
+   ssh -t <서버 접속 주소> 'sudo python3 ~/install-collective-server.py'
    ```
+
+   When the optional `RESEARCH_WORKER_SSH_TARGET` environment variable is set
+   (for example `deploy@research.example.com`), Settings shows it in place of the
+   placeholder, only to users who may download the installer. Do not publish the
+   real server address in this repository. Disable direct root SSH login on the
+   server and use key authentication.
 
 4. Wait for the worker heartbeat in Settings. Start a new brand investigation.
 5. After confirming installation, delete both copies of the generated installer.

@@ -4,7 +4,7 @@ export type Campaign = {storeId?:string;storeExperimentId?:string;plan?:Campaign
 export type Artifact = {campaignVersion?:number; outputContractVersion?:string; id:string; campaignId:string; role:string; title:string; content:string; status:string; version:number; origin:string; createdAt:string};
 export type Run = {id:string; campaignId:string; role:string; status:string; error:string|null; createdAt:string; model:string; tokens:number};
 export type Metric = {id:string; campaignId:string; period:string; revenue:number|null; variableCosts:number|null; adSpend:number|null; productionCost:number|null; orders:number|null; baselineContribution:number|null; notes:string;schemaVersion?:2;version?:number;periodStart?:string;periodEnd?:string;scope?:string;source?:string;definition?:string;method?:'manual'|'export';updatedAt?:string};
-export type Event = {id:string; campaignId:string; message:string; createdAt:string};
+export type Event = {id:string; campaignId:string; message:string; createdAt:string; actor?:{id:string; email:string|null}};
 export const roles = [
  {id:'cmo',name:'총괄 파트너',en:'Managing partner',initial:'MP',color:'#d9f36c',job:'목표를 실행 가능한 과제로',deliverable:'목표·범위·예산·일정과 미확정 사항을 구분한 실행 브리프. 예산과 성과 수치를 임의 확정하지 말 것.'},
  {id:'insight',name:'고객 인사이트',en:'Research & intelligence',initial:'RI',color:'#d9e5ff',job:'고객이 선택하는 이유를 발견',deliverable:'제공 자료에서 관찰한 사실, 출처, 추론, 검증할 가설을 구분. 검색한 자료는 URL과 기준 시점을 제시. 검색하지 못한 내용은 자료 필요로 표시하고 최신 시장조사를 했다고 주장하지 말 것.'},

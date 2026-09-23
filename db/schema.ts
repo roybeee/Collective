@@ -15,7 +15,7 @@ export const authSessions=sqliteTable('auth_sessions',{
 },t=>[index('idx_auth_sessions_user').on(t.userId),index('idx_auth_sessions_expiry').on(t.expiresAt)]);
 export const authTokens=sqliteTable('auth_tokens',{
  tokenHash:text('token_hash').primaryKey(),userId:text('user_id').references(()=>authUsers.id),email:text('email').notNull(),owner:text('owner').notNull(),role:text('role').notNull(),kind:text('kind').notNull(),expiresAt:integer('expires_at').notNull(),used:text('used'),createdAt:integer('created_at').notNull(),
-},t=>[index('idx_auth_tokens_user').on(t.userId)]);
+},t=>[index('idx_auth_tokens_user').on(t.userId),index('idx_auth_tokens_expiry').on(t.expiresAt)]);
 export const authRateLimits=sqliteTable('auth_rate_limits',{
  key:text('key').primaryKey(),count:integer('count').notNull(),windowStart:integer('window_start').notNull(),
-});
+},t=>[index('idx_auth_rate_limits_window').on(t.windowStart)]);

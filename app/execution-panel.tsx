@@ -7,6 +7,7 @@ import {effectiveBrandFacts,type BrandFact} from '@/lib/brand-facts';
 import {executionTotals,publicationLabels,type ExecutionState,type Publication} from '@/lib/execution';
 import {renderFactCard} from '@/lib/creative-render';
 import {BrandFactsPanel} from './brand-facts-panel';
+import {adminRequestNote,useCanManage} from './auth-client';
 
 async function request<T=unknown>(path:string,input?:Record<string,unknown>):Promise<T>{
  const response=await fetch(path,input?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)}:undefined);
@@ -16,6 +17,7 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
  const [state,setState]=useState<ExecutionState|null>(null),[facts,setFacts]=useState<BrandFact[]>([]),[selected,setSelected]=useState<string[]>([]);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[preview,setPreview]=useState('');
  const [rights,setRights]=useState<Record<string,boolean>>({});
+ const canManage=useCanManage();
  const reload=useCallback(async()=>{
   const [next,ledger]=await Promise.all([request<ExecutionState>('/api/execution?campaignId='+encodeURIComponent(campaign.id)),request<{facts:BrandFact[]}>('/api/brand-facts?brandId='+encodeURIComponent(campaign.brandId)+(campaign.storeId?'&storeId='+encodeURIComponent(campaign.storeId):''))]);
   setState(next);setFacts(effectiveBrandFacts(ledger.facts,campaign.brandId,campaign.storeId));setRights({});
@@ -46,18 +48,18 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
     <div className="grid gap-3">{state.creatives.map(c=><div key={c.id} className="border rounded p-3"><Image unoptimized width={1080} height={1080} src={'/api/execution/asset?id='+encodeURIComponent(c.id)} alt={'저장된 소재 '+c.id} loading="lazy" className="w-40 rounded"/><p className="whitespace-pre-wrap">{c.caption}</p><small>브리프 v{c.campaignVersion} · 소재 {c.id}</small><p><a className="underline" href={'/api/execution/asset?id='+encodeURIComponent(c.id)} download={c.pngHash+'.png'}>원본 PNG 내려받기</a></p><p className="break-all text-xs">공개 파일명: {c.pngHash}.png</p></div>)}</div>
    </section>
    <section className="rounded-xl border p-4 space-y-3"><h3 className="font-semibold">2. 채널 연결과 실행 한도</h3><p>발행 연결: {state.publisher.connected?state.publisher.account+' · '+state.publisher.channelId:'연결 필요'}</p>
-    <form className="grid gap-2" onSubmit={e=>{e.preventDefault();const form=e.currentTarget,values=new FormData(form);void perform(async()=>{await action('connect_buffer',Object.fromEntries(values));form.reset()},'Instagram 채널을 확인해 연결했습니다. 기존 승인은 다시 받아야 합니다.')}}>
+    {canManage?<><form className="grid gap-2" onSubmit={e=>{e.preventDefault();const form=e.currentTarget,values=new FormData(form);void perform(async()=>{await action('connect_buffer',Object.fromEntries(values));form.reset()},'Instagram 채널을 확인해 연결했습니다. 기존 승인은 다시 받아야 합니다.')}}>
      <label>Buffer API 키<input className="block border rounded p-2 w-full" name="token" type="password" autoComplete="off" required/></label>
      <label>Buffer 조직 ID<input className="block border rounded p-2 w-full" name="organizationId" required/></label>
      <label>Instagram 채널 ID<input className="block border rounded p-2 w-full" name="channelId" required/></label>
      <button className="border rounded px-3 py-2" disabled={busy}>채널 확인·연결</button>
-    </form>
+    </form></>:<p className="subtle-note">채널 연결과 실행 한도는 관리자만 바꿀 수 있습니다. {adminRequestNote}</p>}
     <p>누적 발행 시도 {totals.attempts}회 · 예약한 예정 비용 {totals.plannedCostKRW.toLocaleString()}원. 실패·접수 미확인 시도도 포함합니다.</p>
-    <form key={state.limits?.version||0} className="grid gap-2" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);void perform(()=>action('save_limits',{version:state.limits?.version,maxPublications:Number(f.get('maxPublications')),maxPlannedCostKRW:Number(f.get('maxPlannedCostKRW')),paused:f.get('paused')==='on'}),'한도를 저장했습니다. 이전 승인은 새 한도로 다시 준비해야 합니다.')}}>
+    {canManage&&<form key={state.limits?.version||0} className="grid gap-2" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);void perform(()=>action('save_limits',{version:state.limits?.version,maxPublications:Number(f.get('maxPublications')),maxPlannedCostKRW:Number(f.get('maxPlannedCostKRW')),paused:f.get('paused')==='on'}),'한도를 저장했습니다. 이전 승인은 새 한도로 다시 준비해야 합니다.')}}>
      <label>캠페인 최대 발행 시도<input className="block border rounded p-2" name="maxPublications" type="number" min="0" max="100" step="1" defaultValue={state.limits?.maxPublications??1} required/></label>
      <label>누적 예정 비용 상한 (원)<input className="block border rounded p-2" name="maxPlannedCostKRW" type="number" min="0" step="1" defaultValue={state.limits?.maxPlannedCostKRW??0} required/></label>
      <label><input name="paused" type="checkbox" defaultChecked={state.limits?.paused}/> 새 발행 접수 중지</label><button className="border rounded px-3 py-2" disabled={busy}>한도 저장</button>
-    </form><p className="text-sm">이 한도는 아래 발행 시도와 입력한 예정 비용에 적용됩니다. AI 모델 요금·광고비의 실제 청구 상한은 아닙니다. 이미 Buffer에 접수한 예약은 Buffer에서 취소해야 합니다.</p>
+    </form>}<p className="text-sm">이 한도는 아래 발행 시도와 입력한 예정 비용에 적용됩니다. AI 모델 요금·광고비의 실제 청구 상한은 아닙니다. 이미 Buffer에 접수한 예약은 Buffer에서 취소해야 합니다.</p>
    </section>
    <section className="rounded-xl border p-4 space-y-3"><h3 className="font-semibold">3. 발행 준비·승인</h3>
     <p>내려받은 PNG를 Cloudinary 또는 R2 공개 저장소에 해시 파일명 그대로 올려 주세요. 승인과 실행 전에 원본과 같은 파일인지 확인합니다. 호스트의 파일을 덮어쓰거나 삭제하면 안 됩니다.</p>
@@ -70,9 +72,10 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
     </form>
     {!state.publications.length&&<p>아직 발행 이력이 없습니다.</p>}
     {state.publications.map(p=><article key={p.id} className="border rounded p-4 space-y-2"><strong>{publicationLabels[p.status]}</strong><Image unoptimized width={1080} height={1080} src={'/api/execution/asset?id='+encodeURIComponent(p.creativeId)} alt="승인 대상 PNG" className="w-40"/><p className="whitespace-pre-wrap">{p.caption}</p><p>계정: {p.channelId||state.publisher.channelId||'연결 필요'} · 예약: {new Date(p.scheduledAt).toLocaleString()} · 예정 비용: {p.plannedCostKRW.toLocaleString()}원</p><p className="break-all text-xs">{p.mediaUrl}</p>{p.providerId&&<p>공급자 게시 번호: {p.providerId} · 공급자 상태: {p.providerStatus}</p>}{p.error&&<p role="alert">{p.error}</p>}
-     {p.status==='draft'&&<><label className="flex gap-2 items-start"><input type="checkbox" checked={!!rights[p.id]} disabled={busy} onChange={e=>setRights(old=>({...old,[p.id]:e.target.checked}))}/><span>PNG·문구·계정·예약 시각·비용 및 사용 권리를 확인했고, 공개 파일을 게시 완료까지 같은 내용으로 유지하겠습니다.</span></label><button className="border rounded px-3 py-2" disabled={busy||!rights[p.id]||!state.publisher.connected||!state.limits} onClick={()=>publicationAction('approve',p)}>이 버전 발행 승인</button></>}
-     {p.status==='approved'&&<button className="border rounded px-3 py-2" disabled={busy} onClick={()=>publicationAction('execute',p)}>승인된 예약을 Buffer에 접수</button>}
-     {['draft','approved'].includes(p.status)&&<button className="border rounded px-3 py-2 ml-2" disabled={busy} onClick={()=>publicationAction('cancel',p)}>이 발행 취소</button>}
+     {!canManage&&['draft','approved'].includes(p.status)&&<p className="subtle-note">발행 승인·Buffer 접수·취소는 관리자만 할 수 있습니다. {adminRequestNote}</p>}
+     {canManage&&p.status==='draft'&&<><label className="flex gap-2 items-start"><input type="checkbox" checked={!!rights[p.id]} disabled={busy} onChange={e=>setRights(old=>({...old,[p.id]:e.target.checked}))}/><span>PNG·문구·계정·예약 시각·비용 및 사용 권리를 확인했고, 공개 파일을 게시 완료까지 같은 내용으로 유지하겠습니다.</span></label><button className="border rounded px-3 py-2" disabled={busy||!rights[p.id]||!state.publisher.connected||!state.limits} onClick={()=>publicationAction('approve',p)}>이 버전 발행 승인</button></>}
+     {canManage&&p.status==='approved'&&<button className="border rounded px-3 py-2" disabled={busy} onClick={()=>publicationAction('execute',p)}>승인된 예약을 Buffer에 접수</button>}
+     {canManage&&['draft','approved'].includes(p.status)&&<button className="border rounded px-3 py-2 ml-2" disabled={busy} onClick={()=>publicationAction('cancel',p)}>이 발행 취소</button>}
      {p.providerId&&<button className="border rounded px-3 py-2" disabled={busy} onClick={()=>publicationAction('refresh',p)}>실제 게시 상태 조회</button>}
      {['submitting','uncertain'].includes(p.status)&&<p>접수 여부를 Buffer에서 확인하세요. 중복 게시를 막기 위해 재전송을 차단했습니다.</p>}
     </article>)}

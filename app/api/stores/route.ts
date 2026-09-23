@@ -1,6 +1,6 @@
 import {getStoreOperations} from '@/lib/store-operations-server';
 import {ledgerChanged} from '@/lib/store-operations';
-import {identity,secureMutation,body,database,readRecord,listRecords,recordStatement,json,failure,str,uid,stamp,ApiError,acquireLock,releaseLock,eventStatement} from '@/lib/server';
+import {actor,identity,secureMutation,body,database,readRecord,listRecords,recordStatement,json,failure,str,uid,stamp,ApiError,acquireLock,releaseLock,eventStatement} from '@/lib/server';
 import {storeInput,channelInput,checkedVersion,experimentInput,measurementInput,option} from '@/lib/store-server';
 import {storeLearningRule} from '@/lib/learning-server';
 import {channelCatalog,decisions,storeMetricFields,type Store,type StoreChannel,type StoreExperiment,type StoreMeasurement,type StoreReport,type StoreTask} from '@/lib/store-marketing';
@@ -18,7 +18,7 @@ export async function GET(req:Request){try{
  return json({stores,channels,experiments,measurements,reports,tasks,sources,research:research.filter(r=>r.storeId===storeId).map(publicResearch)});
 }catch(e){return failure(e)}}
 export async function POST(req:Request){let lock='',owner='';try{
- owner=await identity(req);secureMutation(req);const b=await body(req);lock=await acquireLock(owner);const db=database();
+ const who=await actor(req),by={id:who.id,email:who.email};owner=who.owner;secureMutation(req);const b=await body(req);lock=await acquireLock(owner);const db=database();
  if(b.action==='save_store'){
   const brandId=str(b.brandId,'브랜드',100,true);await readRecord<Brand>(owner,'brand',brandId);
   const old=b.id?await readRecord<Store>(owner,'store',str(b.id,'지점',100,true)):undefined;
@@ -26,7 +26,7 @@ export async function POST(req:Request){let lock='',owner='';try{
   else if((await listRecords(owner,'store',brandId)).length>=100)throw new ApiError(400,'브랜드당 지점은 최대 100개입니다.');
   const store:Store={...storeInput(b.data||{}),id:old?.id||uid(),brandId,status:'active',version:(old?.version||0)+1,createdAt:old?.createdAt||stamp(),updatedAt:stamp()};
   const writes=[recordStatement(owner,'store',store.id,store,brandId)];
-  if(old){for(const c of (await listRecords<Campaign>(owner,'campaign')).filter(c=>c.storeId===old.id)){const active=await db.prepare("SELECT id FROM jobs WHERE owner=? AND campaign_id=? AND status IN ('starting','queued','in_progress','uncertain')").bind(owner,c.id).first();if(active)throw new ApiError(409,'해당 지점의 캠페인 AI 작업이 끝난 뒤 지점 정보를 변경하세요.');writes.push(recordStatement(owner,'campaign',c.id,{...c,status:'draft',version:c.version+1,updatedAt:stamp()}),eventStatement(owner,c.id,'지점 정보 변경 · 브리프의 메뉴·운영 조건과 기존 작업물을 다시 검토하세요.'));for(const a of await listRecords<Artifact>(owner,'artifact',c.id))writes.push(recordStatement(owner,'artifact',a.id,{...a,status:'outdated'},c.id));}}
+  if(old){for(const c of (await listRecords<Campaign>(owner,'campaign')).filter(c=>c.storeId===old.id)){const active=await db.prepare("SELECT id FROM jobs WHERE owner=? AND campaign_id=? AND status IN ('starting','queued','in_progress','uncertain')").bind(owner,c.id).first();if(active)throw new ApiError(409,'해당 지점의 캠페인 AI 작업이 끝난 뒤 지점 정보를 변경하세요.');writes.push(recordStatement(owner,'campaign',c.id,{...c,status:'draft',version:c.version+1,updatedAt:stamp()}),eventStatement(owner,c.id,'지점 정보 변경 · 브리프의 메뉴·운영 조건과 기존 작업물을 다시 검토하세요.',by));for(const a of await listRecords<Artifact>(owner,'artifact',c.id))writes.push(recordStatement(owner,'artifact',a.id,{...a,status:'outdated'},c.id));}}
   await db.batch(writes);return json({id:store.id});
  }
  const store=await readRecord<Store>(owner,'store',str(b.storeId,'지점',100,true));if(store.status!=='active')throw new ApiError(409,'보관한 지점입니다.');
@@ -62,7 +62,7 @@ export async function POST(req:Request){let lock='',owner='';try{
   if(experiment.status==='draft'&&(!experiment.startDate||!experiment.endDate||!experiment.control||!experiment.treatment||!experiment.measurement||!experiment.stopRule||experiment.budget===null||experiment.target===null))throw new ApiError(400,'캠페인 연결 전 실험의 기간·조건·측정·판단 기준·예산·목표값을 정하세요.');
   const plan={...emptyPlan(),behavior:store.goal,kpi:storeMetricFields[experiment.primaryMetric],target:experiment.target===null?'':String(experiment.target),hypothesis:experiment.hypothesis,experiment:'비교 조건: '+experiment.control+'\n변경 조건: '+experiment.treatment,tracking:experiment.measurement,decision:experiment.stopRule,operations:[store.menu,store.hours,store.access,store.capacity,store.economics].filter(Boolean).join('\n'),message:experiment.offer,learning:experiment.learning||''};
   const campaign:Campaign={id:uid(),storeId:store.id,storeExperimentId:experiment.id,brandId:store.brandId,title:store.name+' · '+experiment.title,goal:store.goal,audience:store.customer,channels:channelCatalog.find(c=>c.key===experiment.channel)!.name,stores:store.name+' · '+store.address,products:store.menu,budget:experiment.budget??0,startDate:experiment.startDate,endDate:experiment.endDate,constraints:store.economics,sources:'지점 정보 v'+store.version+' · 실험 설계 v'+experiment.version+' · 사용자 입력 및 미검증 가설',plan,status:'draft',version:1,createdAt:stamp(),updatedAt:stamp()};
-  await db.batch([recordStatement(owner,'campaign',campaign.id,campaign),recordStatement(owner,'store_experiment',experiment.id,{...experiment,campaignId:campaign.id,version:experiment.version+1,updatedAt:stamp()},store.id),eventStatement(owner,campaign.id,'점포 실험에서 캠페인 브리프를 만들었습니다.')]);return json({id:campaign.id});
+  await db.batch([recordStatement(owner,'campaign',campaign.id,campaign),recordStatement(owner,'store_experiment',experiment.id,{...experiment,campaignId:campaign.id,version:experiment.version+1,updatedAt:stamp()},store.id),eventStatement(owner,campaign.id,'점포 실험에서 캠페인 브리프를 만들었습니다.',by)]);return json({id:campaign.id});
  }
  if(b.action==='start_experiment'){
   checkedVersion(experiment,b.version);if(experiment.status!=='draft')throw new ApiError(409,'설계 중인 실험만 시작할 수 있습니다.');
@@ -87,7 +87,7 @@ export async function POST(req:Request){let lock='',owner='';try{
   // 회고를 학습 규칙으로 승격한다. 게이트를 통과하지 못하면 규칙 없이 회고만 저장된다.
   const rule=storeLearningRule(closed,decision,learning,review,measurements,storeMetricFields[experiment.primaryMetric]);
   const writes=[recordStatement(owner,'store_experiment',experiment.id,closed,store.id)];
-  if(rule){writes.push(recordStatement(owner,'learning_rule',rule.id,rule,rule.brandId));if(closed.campaignId)writes.push(eventStatement(owner,closed.campaignId,`「${closed.title}」 회고를 ${rule.direction==='test'?'시험 적용 규칙':'주의사항'}으로 승격했습니다. 30일 후 재검토합니다.`));}
+  if(rule){writes.push(recordStatement(owner,'learning_rule',rule.id,rule,rule.brandId));if(closed.campaignId)writes.push(eventStatement(owner,closed.campaignId,`「${closed.title}」 회고를 ${rule.direction==='test'?'시험 적용 규칙':'주의사항'}으로 승격했습니다. 30일 후 재검토합니다.`,by));}
   await database().batch(writes);return json({id:experiment.id,ruleId:rule?.id});
  }
  throw new ApiError(400,'지원하지 않는 점포 작업입니다.');

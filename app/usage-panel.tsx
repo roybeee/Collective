@@ -6,6 +6,7 @@ import {Input} from '@/components/ui/input';
 import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select';
 import type {ProviderUsage,UsagePricing,UsageProvider} from '@/lib/usage-ledger';
 import {isModelAlias,summarizeUsage} from '@/lib/usage-summary';
+import {adminRequestNote,useCanManage} from './auth-client';
 
 type UsageData={entries:ProviderUsage[];pricing:UsagePricing[];notice:string};
 const statusNames:Record<string,string>={completed:'완료',failed:'실패',error:'실패',cancelled:'취소',canceled:'취소',stopped:'중지',interrupted:'중단',incomplete:'미완료'};
@@ -44,6 +45,7 @@ function UsageSummary({entries}:{entries:ProviderUsage[]}){
 }
 function PricingForm({saved,onSaved}:{saved:UsagePricing[];onSaved:()=>Promise<void>}){
  const [price,setPrice]=useState(emptyPrice),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
+ const canManage=useCanManage();
  const set=(field:keyof typeof emptyPrice,value:string)=>setPrice(current=>({...current,[field]:value}));
  async function submit(event:FormEvent){
   event.preventDefault();setError('');setMessage('');
@@ -58,14 +60,14 @@ function PricingForm({saved,onSaved}:{saved:UsagePricing[];onSaved:()=>Promise<v
  return <details className="mt-6 border-t pt-5"><summary className="cursor-pointer font-medium">모델별 단가 설정{saved.length?` · ${saved.length}개`:''}</summary>
   <p className="subtle-note">공급자 가격표에서 확인한 백만 토큰당 단가를 직접 입력하세요. 실제 보고 모델 ID가 정확히 일치할 때만 적용합니다. 기존 실행의 적용 단가와 금액은 변경하지 않습니다.</p>
   {saved.length>0&&<ul className="my-4 space-y-2 text-sm">{saved.map(item=><li key={item.provider+':'+item.model}>{providerName(item.provider)} · {item.model} · {item.priceVersion}<br/>입력 {item.inputPerMillion} / 출력 {item.outputPerMillion} {item.currency} (백만 토큰당) <a href={item.source} target="_blank" rel="noreferrer" className="underline">단가 출처</a></li>)}</ul>}
-  <form className="form-stack mt-4" onSubmit={submit}>
+  {canManage?<form className="form-stack mt-4" onSubmit={submit}>
    <div className="form-two"><label className="field"><span>공급자</span><NativeSelect value={price.provider} onChange={event=>set('provider',event.target.value)}><NativeSelectOption value="hermes">HERMES</NativeSelectOption><NativeSelectOption value="openai">OpenAI API</NativeSelectOption></NativeSelect></label><label className="field"><span>실제 모델 ID</span><Input required maxLength={200} value={price.model} onChange={event=>set('model',event.target.value)} placeholder="위 사용량에 보고된 모델 ID"/></label></div>
    <div className="form-two"><label className="field"><span>단가 버전</span><Input required maxLength={100} value={price.priceVersion} onChange={event=>set('priceVersion',event.target.value)} placeholder="확인한 가격표 날짜 또는 버전"/></label><label className="field"><span>통화</span><Input required pattern="[A-Z]{3}" maxLength={3} value={price.currency} onChange={event=>set('currency',event.target.value.toUpperCase())} placeholder="USD"/></label></div>
    <div className="form-two"><label className="field"><span>입력 단가 · 백만 토큰당</span><Input required type="number" min={0} max={1000000} step="any" value={price.inputPerMillion} onChange={event=>set('inputPerMillion',event.target.value)}/></label><label className="field"><span>출력 단가 · 백만 토큰당</span><Input required type="number" min={0} max={1000000} step="any" value={price.outputPerMillion} onChange={event=>set('outputPerMillion',event.target.value)}/></label></div>
    <label className="field"><span>단가 출처 · HTTPS 주소</span><Input required type="url" pattern="https://.*" maxLength={2000} value={price.source} onChange={event=>set('source',event.target.value)} placeholder="https://…"/></label>
    <div className="form-actions"><Button type="submit" disabled={busy}>{busy?'저장 중…':'이 단가 저장'}</Button></div>
    {error&&<p className="form-error" role="alert">{error}</p>}{message&&<p role="status" className="text-sm">{message}</p>}
-  </form>
+  </form>:<p className="subtle-note">단가 등록·변경은 관리자만 할 수 있습니다. {adminRequestNote}</p>}
  </details>;
 }
 export function UsagePanel(){

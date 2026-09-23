@@ -9,7 +9,7 @@ const sql=new DatabaseSync(':memory:');
 for(const file of readdirSync('drizzle').filter(x=>x.endsWith('.sql')).sort())sql.exec(readFileSync('drizzle/'+file,'utf8'));
 class Statement{constructor(query,values=[]){this.query=query;this.values=values}bind(...v){return new Statement(this.query,v)}async first(){return sql.prepare(this.query).get(...this.values)||null}async all(){return {results:sql.prepare(this.query).all(...this.values)}}async run(){const r=sql.prepare(this.query).run(...this.values);return {meta:{changes:Number(r.changes)}}}}
 const DB={prepare:q=>new Statement(q),batch:async ss=>{sql.exec('BEGIN');try{const r=[];for(const s of ss)r.push(await s.run());sql.exec('COMMIT');return r}catch(e){sql.exec('ROLLBACK');throw e}}};
-const runtime={DB,AGENCY_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64')};
+const runtime={AUTH_MODE:'legacy',DB,AGENCY_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64')};
 
 let calls=0,loseAck=false,denyRecovery=false,badOutput=false,providerStatus='completed';const submissions=new Map(),inputs=[];
 function answer(x){
@@ -54,6 +54,7 @@ check('anonymous meeting rejected',(await request(meetings,'POST',{action:'start
 check('cross-origin meeting rejected',(await request(meetings,'POST',{action:'start',...args},{origin:'https://other.test'})).status===403);
 let r=await mp('start',args);check('eight actual roles and synthesis are prepared',r.status===200&&r.data.steps.length===9&&calls===0);
 check('repeated start reuses meeting',(await mp('start',args)).data.id===args.id&&sql.prepare("SELECT count(*) n FROM jobs WHERE role='meeting'").get().n===1);
+const eventActor=text=>JSON.parse(sql.prepare("SELECT data FROM records WHERE kind='event' AND data LIKE ? ORDER BY rowid DESC").get('%'+text+'%')?.data||'{}').actor;check('meeting start event records the requester',eventActor('팀 회의를 시작했습니다')?.id===owner);
 check('owner cannot read another meeting',(await request(meetings,'POST',{action:'advance',id:args.id},{'oai-authenticated-user-id':'foreign'})).status===404);
 check('active meeting blocks campaign edit',(await act('save_campaign',{id:cid,version:1,data:c})).status===409);
 check('active meeting blocks campaign deletion',(await act('delete_campaign',{id:cid,version:1,confirmed:true})).status===409);

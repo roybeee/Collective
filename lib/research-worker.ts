@@ -11,12 +11,13 @@ export async function workerStatus(owner:string){
  if(state?.tokenHash!==saved?.hash)state=undefined;
  return {registered,activated:registered&&!!state?.lastSeen,online:registered&&!!state?.lastSeen&&Date.now()-Date.parse(state.lastSeen)<180000,lastSeen:state?.lastSeen||null,lastStatus:state?.lastStatus||null,blocked:state?.blocked||0};
 }
-export async function registerWorker(owner:string){
+// audit: 발급·해제 기록(행위자)을 같은 batch에 넣어, 반영된 변경만 기록된다.
+export async function registerWorker(owner:string,audit:D1PreparedStatement[]=[]){
  const token=crypto.randomUUID().replaceAll('-','')+crypto.randomUUID().replaceAll('-','');
- await database().batch([recordStatement(owner,'worker_credential','current',{hash:await workerHash(token),createdAt:stamp()}),database().prepare('DELETE FROM records WHERE owner=? AND kind=?').bind(owner,'worker_state')]);
+ await database().batch([recordStatement(owner,'worker_credential','current',{hash:await workerHash(token),createdAt:stamp()}),database().prepare('DELETE FROM records WHERE owner=? AND kind=?').bind(owner,'worker_state'),...audit]);
  return token;
 }
-export async function revokeWorker(owner:string){await database().prepare("DELETE FROM records WHERE owner=? AND kind IN ('worker_credential','worker_state')").bind(owner).run()}
+export async function revokeWorker(owner:string,audit:D1PreparedStatement[]=[]){await database().batch([database().prepare("DELETE FROM records WHERE owner=? AND kind IN ('worker_credential','worker_state')").bind(owner),...audit])}
 export async function workerIdentity(req:Request){
  const owner=req.headers.get('x-collective-owner')||'',token=req.headers.get('authorization')?.replace(/^Bearer /,'')||'';
  if(!owner||owner.length>200||!/^[a-f0-9]{64}$/.test(token))throw new ApiError(401,'작업자 인증이 필요합니다.');
