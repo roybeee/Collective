@@ -3,14 +3,16 @@ import {hermesRequest} from './hermes';
 import {archiveUrl,observed} from './archive-server';
 import {parseDiagnostic,parseResearchSources} from './archive-research';
 import {archiveCategories,type ArchiveSource,type BrandResearch} from './archive';
-import {comparisonGroups,researchPhases,type ResearchAccess,type DeepReport,type ContentCase} from './deep-research';
+import {comparisonGroups,researchPhases,type DeepReport,type ContentCase} from './deep-research';
 import {obj,boundedArray} from './validate';
-export async function inspectResearchAccess(cfg:Connection):Promise<ResearchAccess>{
- const result:ResearchAccess={checkedAt:stamp(),gateway:false,aside:'unverified',browser:'unverified',tools:[],notes:[]};
- const caps=await hermesRequest(cfg,'/v1/capabilities');result.gateway=caps.object==='hermes.api_server.capabilities'&&caps.features?.run_submission===true&&caps.features?.run_status===true;if(!result.gateway)throw new ApiError(409,'HERMES 조사 실행 기능을 확인하지 못했습니다.');
+import {toolsetRisk,type RiskedResearchAccess} from './research-tools';
+// 도구 위험 등급(security-ops-1)은 lib/research-tools.ts, 조사 시작 때의 점검·RESEARCH_TOOL_POLICY는 lib/research-tool-check.ts에 둔다.
+export async function inspectResearchAccess(cfg:Connection,timeoutMs=30000):Promise<RiskedResearchAccess>{
+ const result:RiskedResearchAccess={checkedAt:stamp(),gateway:false,aside:'unverified',browser:'unverified',tools:[],notes:[],dangerousAdvertised:false};
+ const caps=await hermesRequest(cfg,'/v1/capabilities',{},timeoutMs);result.gateway=caps.object==='hermes.api_server.capabilities'&&caps.features?.run_submission===true&&caps.features?.run_status===true;if(!result.gateway)throw new ApiError(409,'HERMES 조사 실행 기능을 확인하지 못했습니다.');
  if(caps.features?.browser_extension_control?.enabled===true)result.notes.push('브라우저 제어 기능이 활성화돼 있습니다. 브라우저 세션·사이트 로그인·영상 재생 성공은 아직 확인 전입니다.');
  if(caps.endpoints?.toolsets?.method==='GET'&&caps.endpoints.toolsets.path==='/v1/toolsets'){
-  try{const list=await hermesRequest(cfg,'/v1/toolsets');if(!Array.isArray(list.data))throw 0;const enabled=list.data.filter((x:Record<string,unknown>)=>x.enabled===true&&x.configured===true);result.tools=[...new Set<string>(enabled.flatMap((x:Record<string,unknown>)=>[x.name,...(Array.isArray(x.tools)?x.tools:[])].filter((t:unknown)=>typeof t==='string'&&/^[\w:.-]{1,120}$/.test(t))))].slice(0,100);if(result.tools.some(t=>/aside/i.test(t)))result.aside='advertised';if(result.tools.some(t=>/browser|aside|playwright/i.test(t)))result.browser='advertised'}catch{result.notes.push('도구 목록을 읽지 못했습니다. 실제 실행에서 접근 가능 여부를 확인합니다.')}
+  try{const list=await hermesRequest(cfg,'/v1/toolsets',{},timeoutMs);if(!Array.isArray(list.data))throw 0;const enabled=list.data.filter((x:Record<string,unknown>)=>x.enabled===true&&x.configured===true);result.tools=[...new Set<string>(enabled.flatMap((x:Record<string,unknown>)=>[x.name,...(Array.isArray(x.tools)?x.tools:[])].filter((t:unknown)=>typeof t==='string'&&/^[\w:.-]{1,120}$/.test(t))))].slice(0,100);result.toolRisk=toolsetRisk(enabled);result.dangerousAdvertised=result.toolRisk.dangerous.length>0;if(result.tools.some(t=>/aside/i.test(t)))result.aside='advertised';if(result.tools.some(t=>/browser|aside|playwright/i.test(t)))result.browser='advertised'}catch{result.notes.push('도구 목록을 읽지 못했습니다. 실제 실행에서 접근 가능 여부를 확인합니다.')}
  }else result.notes.push('이 HERMES가 도구 목록 조회를 제공하지 않아 Aside 등록 여부를 확인하지 못했습니다.');
  if(result.aside==='unverified')result.notes.push('이 목록에는 동적으로 등록된 MCP 도구가 빠질 수 있습니다. 목록에 없다는 이유만으로 Aside 연결 실패로 판단하지 않습니다. 실제 조사에서 도구를 찾아 실행한 기록을 확인하세요.');
  result.notes.push('도구 등록 확인은 실제 접속 성공을 뜻하지 않습니다. 접근 결과는 조사 보고서에서 별도로 검토합니다.');return result;

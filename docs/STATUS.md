@@ -1,20 +1,20 @@
 # COLLECTIVE 현재 상태
 
-마지막 갱신: 2026-09-23 21:10 UTC (Claude 레인 B 세션, A4-1)
+마지막 갱신: 2026-09-23 21:16 UTC (Claude 레인 B 세션, PR 6 앱 측)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
 | 운영 제품 커밋 | `a64aeefa669afe362f18fff87d2a2b61686af5b5` (#29 `merged`, PR 2 #25·PR 3 #28 포함) | 제품 tree `33a87014f44362ca2696e860f58ceb9bfe67ce90` |
-| `origin/main` | `98f928d` (#41) | a64aeef 뒤 **미게시 제품 변경 있음**: #27 F1a·A2, #30 B4 1부, #32 F4a, #33 PR 6 서버 측, #35 F1b-1, #37 PR 5a, #39 F1b-2 서버 평가, #40 PR 5b, #41 동결 요약 표시. main 기준 `runtime-verified` 아님 |
+| `origin/main` | `edf82f1` (#46) | a64aeef 뒤 **미게시 제품 변경 있음**: #27 F1a·A2, #30 B4 1부, #32 F4a, #33 PR 6 서버 측, #35 F1b-1, #37 PR 5a, #39 F1b-2 서버 평가, #40 PR 5b, #41 동결 요약 표시, #43 F2a, #44 PR 4b-1, #45 F2b, #46 A4-1. main 기준 `runtime-verified` 아님 |
 | Sites 게시 | `published` 버전 25, deployment `appgdep_6ab3f15f96c88191860af69d8b50289d`, 2026-09-23 15:3x UTC | [게시 기록](releases/2026-09-23-a64aeef.md) |
 | 실행 검증 | `runtime-verified` · real, 2026-09-23 15:34 UTC 경 | 소유자 이메일 세션 `/api/version` tree `33a8701…` = a64aeef tree. 익명 401, `/media` 404·CSP 확인 |
 | 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` 200, mode=email, role=owner |
 | Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 이번 게시에서 변경 지시 없음 | 게시 뒤 접근 설정 재확인은 not_run |
 | 조사 워커 | online(lastSeen 2026-09-23 16:59 UTC, blocked 0) | 게시 뒤 감시 중 확인(real). 게시 뒤 새 AI 실행 0건이라 invalid_output 비율 판단 데이터 없음 |
-| 열린 PR | #16 Android(draft, 제외), PR 4b-1 측정·학습 규칙(레인 B, 진행 중), F2a 실행 신원·기능 스위치(레인 A, 진행 중) | `gh pr list -R roybeee/Collective`, 2026-09-23 18:30 UTC |
-| main CI(`98f928d`) | passed · verify | GitHub Actions main 실행 |
+| 열린 PR | #16 Android(draft, 제외), PR 6 앱 측(레인 B, 이 PR), PR 4a 비용 가드(레인 B, 검증 중) | `gh pr list -R roybeee/Collective`, 2026-09-23 21:08 UTC |
+| main CI(`edf82f1`) | passed · verify | GitHub Actions main 실행 |
 
 - `AUTH_MODE` fail-closed(PR 1, `auth-2`)가 운영에 적용됐다. 운영 빌드에서 `AUTH_MODE`가 비면 모든 인증·업무 API가 503이다. Sites가 public인 동안 legacy로 되돌리지 않는다. 환경 revision 변경·복구·재게시 뒤에는 `/api/auth`가 mode=email인지, 위조 헤더 요청이 401인지 먼저 확인한다. 복구는 [이메일 로그인 복구 순서](EMAIL-AUTH.ko.md)를 따른다.
 - 확인 필요: 익명 업무 API 401은 a64aeef 게시 뒤 확인했다(passed · real). 위조 헤더 요청 401은 not_run이다(자동 모드 안전 검사 정책). 소유자가 직접 확인한다. 민감 작업 재인증(step-up)은 아직 구현되지 않았다(PR #23 남은 위험).
@@ -28,8 +28,8 @@
 - PR 2 AI 품질 루프 `merged`(#25), PR 3 첫 게시 경로 `merged`(#28), 결정 17 게이트(#29) — 대표 승인으로 `a64aeef` 묶음 게시, `runtime-verified`. 게시 뒤 24~72시간 중단 조건 감시 중.
 - 성장 계획 `docs/GROWTH-PLAN.ko.md`(#26)가 병합됐다. 레인 배정·공유 파일 병합 순서·묶음 게시 절차는 그 문서가 정본이다.
 - 레인 A(공통 기반·교정, 세션 roybee-9a): F1a·A2 순수 함수 `merged`(#27), F4a kind 레지스트리·결정 7 삭제 정책 `merged`(#32), F1b-1 역할 지시 순수 함수 연결 `merged`(#35, 스냅샷 `tests/fixtures/role-submission-fc8eb5c.json`), F1b-2 서버 평가 실행 `merged`(#39, `/api/eval` 소유자 전용, 평가 작업 소유자당 1개). F2a 실행 신원·기능 스위치 `merged`(#43: `lib/feature-flags.ts` 기본 꺼짐 — online_grading·b1_reason_required·a4_auto_attribution·a2_downgrade, 소유자만 변경 / 사용량 원장 조인 키 / 보고 모델 변경 경보 / 사용량 내보내기). F2b 게이트웨이 스냅샷·온라인 채점 `merged`(#45: 워커 tick에서 소유자당 하루 1회 스냅샷, `online_grading` 스위치가 켜질 때만 저장 뒤 채점). 다음은 B1 검토 결정 로그(대표 결정 8 대기) → F3. HERMES 평가 전용 프로필(메모리 off)은 대표 승인으로 서버에 생성됨(운영 게이트웨이 무변경).
-- 레인 B(실측·비용, 이 세션): B4 1부 바이럴 판정 통계 `merged`(#30). A4 점포 실측·PR 4a 비용 가드·PR 6 앱 측은 F2(기능 스위치·`lib/hermes.ts`·`lib/research-worker.ts` 순서) 뒤. 그 사이 PR 5 중 공유 파일에 걸리지 않는 부분을 진행한다: PR 5a 내비게이션·로딩 상태·대시보드 숫자 `merged`(#37), PR 5b 삭제 대화상자(결정 7·건수 API)·보존 규칙 표시·E2E route.fetch 제거 `merged`(#40), 동결 요약 표시 `merged`(#41). PR 4b-1(loop-6 검증 채널 분리·loop-7 점포 회고 규칙 승격 미리보기·loop-9 측정 기간 롤링·arm별 초안·loop-11 만료 임박 규칙 알림·연장 조건·exec-loop-10 발행 횟수 한도) 이 PR. PR 4b-1 `merged`(#44). A4-1 점포 실측(추적 코드·POS CSV 가져오기·`a4_auto_attribution` 스위치 기반 자동 귀속·코드/팔/캠페인/출처별 집계·주 단위 완전성 검사·incrementality-lite) 이 PR. 발행 캡션의 추적 코드 연결은 A4-2. PR 4a 비용 가드와 PR 6 앱 측(워커 토큰 회전·도구 위험 등급) 진행 중. PR 4a 비용 가드는 A4 다음, `lib/role-execution.ts`는 F3 뒤라 HERMES 제출 지점(`lib/hermes.ts`)에서만 다룬다.
-- PR 6 서버 측 `merged`(#33): 조사 서버 브라우저 격리(CDP 연결 구조로 변경)·설치기 권한 축소·워커 백오프. **공유 서버 재설치는 대표 승인 뒤**. 실서버 검증 not_run.
+- 레인 B(실측·비용, 이 세션): B4 1부 바이럴 판정 통계 `merged`(#30). A4 점포 실측·PR 4a 비용 가드·PR 6 앱 측은 F2(기능 스위치·`lib/hermes.ts`·`lib/research-worker.ts` 순서) 뒤. 그 사이 PR 5 중 공유 파일에 걸리지 않는 부분을 진행한다: PR 5a 내비게이션·로딩 상태·대시보드 숫자 `merged`(#37), PR 5b 삭제 대화상자(결정 7·건수 API)·보존 규칙 표시·E2E route.fetch 제거 `merged`(#40), 동결 요약 표시 `merged`(#41). PR 4b-1(loop-6 검증 채널 분리·loop-7 점포 회고 규칙 승격 미리보기·loop-9 측정 기간 롤링·arm별 초안·loop-11 만료 임박 규칙 알림·연장 조건·exec-loop-10 발행 횟수 한도) 이 PR. PR 4b-1 `merged`(#44). A4-1 점포 실측(추적 코드·POS CSV 가져오기·`a4_auto_attribution` 스위치 기반 자동 귀속·코드/팔/캠페인/출처별 집계·주 단위 완전성 검사·incrementality-lite) `merged`(#46). 발행 캡션의 추적 코드 연결은 A4-2. PR 6 앱 측(security-ops-4·7·1: 워커 토큰 만료·온라인 회전·재발급 10분 유예·거부 기록·앱 gate 확인·조사 도구 위험 등급) 이 PR — 만료·회전은 `RESEARCH_WORKER_TOKEN_EXPIRY=enforce`, 앱 gate 차단은 `RESEARCH_WORKER_APP_GATE=enforce`, 위험 도구 차단은 `RESEARCH_TOOL_POLICY=block`일 때만 켜지고 기본은 기록·경고만 한다. PR 4a 비용 가드 검증 중. PR 4a 비용 가드는 A4 다음, `lib/role-execution.ts`는 F3 뒤라 HERMES 제출 지점(`lib/hermes.ts`)에서만 다룬다.
+- PR 6 서버 측 `merged`(#33): 조사 서버 브라우저 격리(CDP 연결 구조로 변경)·설치기 권한 축소·워커 백오프. 앱 측 PR에서 설치기 워커 유닛에 `ReadWritePaths=/etc/collective-research`(설정 폴더만 쓰기 허용)를 더했다. 온라인 토큰 회전은 이 설치기로 재설치한 워커만 저장할 수 있다. **공유 서버 재설치는 대표 승인 뒤**. 실서버 검증 not_run.
 - E2E 간헐 실패: 회의 테스트의 응답 폐기 경합은 수정(#34). workerd 크래시는 원인 미확정(blocked) — 다음 발생 때 `[serve]` 로그로 사유 확인.
 - 새 records kind는 `lib/record-kinds.ts` 등록 필수(#32, `tests/record-kinds.test.mjs`). 역할 지시는 `lib/role-instruction.ts` 한 곳에서 만든다(#35). `lib/practice.ts`·`campaign-policy.ts`·`ai-context.ts`·`role-instruction.ts`를 바꾸면 `scripts/eval/capture-role-submission.mjs`로 스냅샷 재캡처.
 - E2E 규칙: 테스트 route 처리기에서 `route.fetch()`는 부하 중 응답이 멈출 수 있어(화면 폴링이 끝나지 않은 reload에 막힘) 미리 받은 응답을 `route.fulfill`로 돌려준다(#37, PR 5b에서 기존 스펙 정리).

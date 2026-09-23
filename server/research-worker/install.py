@@ -301,7 +301,8 @@ def worker_unit():
     return ('[Unit]\nDescription=COLLECTIVE durable research queue\nWants=network-online.target\nAfter=network-online.target\n\n'
             '[Service]\nType=simple\nUser=' + WORKER_USER + '\nExecStart=/usr/bin/python3 /opt/collective-research/worker.py '
             '/etc/collective-research/worker.json\nRestart=on-failure\nRestartSec=15\nRestartPreventExitStatus=78\n'
-            'NoNewPrivileges=true\nPrivateTmp=true\nProtectSystem=strict\nProtectHome=true\nUMask=0077\n\n'
+            'NoNewPrivileges=true\nPrivateTmp=true\nProtectSystem=strict\nProtectHome=true\n'
+            'ReadWritePaths=/etc/collective-research\nUMask=0077\n\n'
             '[Install]\nWantedBy=multi-user.target\n')
 
 def without_other_access(path):

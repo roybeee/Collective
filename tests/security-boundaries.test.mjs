@@ -7,7 +7,7 @@ import ts from 'typescript';
 
 const outcomes=[];
 async function test(name, run){try{await run();outcomes.push({name,passed:true})}catch(error){outcomes.push({name,passed:false});console.error(name,error.message)}}
-const state={registered:0,revoked:0,dbCalls:0,secret:null,sessions:new Map(),audit:[]};
+const state={registered:0,revoked:0,dbCalls:0,secret:null,sessions:new Map(),audit:[],registerOptions:null,statusOptions:null};
 const runtime={
  AUTH_MODE:'legacy',
  AGENCY_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64'),
@@ -26,8 +26,8 @@ const ctx=createContext({console,crypto:webcrypto,Response,Request,Headers,Reada
 const modules=new Map();
 const envModule=new SyntheticModule(['env'],function(){this.setExport('env',runtime)},{context:ctx});
 const workerModule=new SyntheticModule(['workerStatus','registerWorker','revokeWorker'],function(){
- this.setExport('workerStatus',async()=>({registered:true,activated:false}));
- this.setExport('registerWorker',async(owner,audit=[])=>{state.registered++;state.audit.push(...audit.map(s=>s.values));return 'owner-scoped-test-token'});
+ this.setExport('workerStatus',async(owner,options={})=>{state.statusOptions=options;return {registered:true,activated:false}});
+ this.setExport('registerWorker',async(owner,audit=[],options={})=>{state.registered++;state.registerOptions=options;state.audit.push(...audit.map(s=>s.values));return 'owner-scoped-test-token'});
  this.setExport('revokeWorker',async(owner,audit=[])=>{state.revoked++;state.audit.push(...audit.map(s=>s.values))});
 },{context:ctx});
 function moduleFor(file){
@@ -132,6 +132,11 @@ await test('explicit administrator receives private installer',async()=>{
  const source=await response.text();const config=JSON.parse(Buffer.from(source.match(/CONFIG_HEX = '([a-f0-9]+)'/)[1],'hex').toString());
  assert.equal(config.owner,'admin-owner');assert.equal(config.gate,runtime.RESEARCH_WORKER_GATE_TOKEN);
 });
+// security-ops-4: 다시 발급해도 가동 중인 워커는 10분 동안 이전 토큰으로 계속 돈다(판정은 lib/research-worker.ts registerWorker).
+await test('installer reissue asks for the running-worker grace period',async()=>{
+ runtime.RESEARCH_WORKER_ADMIN_IDS='admin-owner';state.registerOptions=null;
+ assert.equal((await setup.POST(setupRequest())).status,200);assert.equal(state.registerOptions?.graceIfOnline,true);
+});
 await test('owner can revoke own worker without installer privileges',async()=>{
  delete runtime.RESEARCH_WORKER_ADMIN_IDS;const before=state.revoked;
  const response=await setup.POST(setupRequest('revoke','other-owner'));assert.equal(response.status,200);assert.equal(state.revoked,before+1);
@@ -162,6 +167,11 @@ await test('member cannot download installer or see SSH target even when listed'
  assert.equal((await setup.POST(emailRequest('c','download'))).status,403);assert.equal(state.registered,before);
  const status=await emailStatus('c');assert.equal(status.canInstall,false);assert.equal('sshTarget' in status,false);assert.equal(typeof status.registered,'boolean');
 });
+// 만료·회전·거부·gate 상태는 대표·관리자에게만 내려준다(lib/research-worker.ts workerStatus admin 옵션, SEC-4).
+await test('setup status asks for credential and gate details only for owners and admins',async()=>{
+ state.statusOptions=null;await emailStatus('c');assert.equal(state.statusOptions?.admin,false);
+ state.statusOptions=null;await emailStatus('b');assert.equal(state.statusOptions?.admin,true);
+});
 await test('member cannot revoke the workspace worker',async()=>{
  const before=state.revoked;assert.equal((await setup.POST(emailRequest('c','revoke'))).status,403);assert.equal(state.revoked,before);
 });
@@ -187,6 +197,20 @@ await test('malformed or missing SSH target falls back to placeholder',async()=>
 runtime.AUTH_MODE='legacy';delete runtime.AUTH_ORIGIN;
 await test('worker panel and README contain no server address or root login',async()=>{
  for(const file of ['app/research-worker-panel.tsx','server/research-worker/README.md']){const source=readFileSync(file,'utf8');assert.doesNotMatch(source,/\b\d{1,3}(?:\.\d{1,3}){3}\b/,file);assert.doesNotMatch(source,/root@|:\/root\//,file);assert.match(source,/<서버 접속 주소>/,file)}
+});
+// 설정 화면: 가동 중 워커가 있을 때 다시 발급하면 10분 유예를 확인받고, 만료·회전·유예·거부·gate 상태를 보여 준다.
+await test('worker panel confirms reissue and shows expiry, rotation, rejection and gate state',async()=>{
+ const source=readFileSync('app/research-worker-panel.tsx','utf8');
+ assert.match(source,/window\.confirm\([^)]*가동 중 워커는 10분 안에 새 설치가 필요합니다/);
+ for(const field of ['expiresAt','rotationOfferedAt','graceUntil','lastRejectedAt','lastRejectedReason','gateEnforced'])assert.ok(source.includes('state.'+field)||source.includes('s.'+field),field);
+});
+// 브랜드 아카이브 배너(ResearchWorkerNotice): 거부·만료·교체 지연을 일반 '응답 없음' 대신 사유와 재발급 안내로 보여 준다(security-ops-4 권고 4, 앱 측).
+await test('archive worker banner explains rejection, expiry and stalled rotation',async()=>{
+ const source=readFileSync('app/research-worker-panel.tsx','utf8');
+ const alert=source.slice(source.indexOf('function workerAlert'),source.indexOf('export function ResearchWorkerNotice')),notice=source.slice(source.indexOf('export function ResearchWorkerNotice'),source.indexOf('export function ResearchWorkerPanel'));
+ assert.ok(alert.length>0&&notice.includes('workerAlert(state)'),'notice uses workerAlert');
+ for(const text of ['연결 및 설정에서 설치 파일을 다시 발급하세요','rejectedText[','토큰이 만료됐습니다','자동 교체가','lastRejectedAt','lastSeen','!s.online'])assert.ok(alert.includes(text),text);
+ assert.match(source,/state\?\.canRevoke&&credentialNotes\(state\)/);
 });
 // 공개 저장소의 소스·문서 전체에서 서버 주소를 찾는다. 점 표기 IPv4, 대시 표기(sslip.io·nip.io) 호스트명, root 로그인을 막는다.
 // 허용 목록: 루프백·전체 주소와 문서 예시 대역(RFC 5737: 192.0.2.x, 198.51.100.x, 203.0.113.x).

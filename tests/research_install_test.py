@@ -409,6 +409,9 @@ class WorkerAccountTest(unittest.TestCase):
         self.assertIn('ExecStart=/usr/bin/python3 /opt/collective-research/worker.py /etc/collective-research/worker.json', unit)
         for line in ('NoNewPrivileges=true', 'ProtectHome=true', 'ProtectSystem=strict', 'RestartPreventExitStatus=78'):
             self.assertIn(line, unit)
+        # 토큰 자동 교체는 설정 폴더에만 쓴다. ProtectSystem=strict 아래에서 그 폴더 하나만 연다.
+        self.assertIn('\nReadWritePaths=/etc/collective-research\n', unit)
+        self.assertEqual(unit.count('ReadWritePaths='), 1)
         hermes = account('hermes', 1000, 1000)
         self.assertEqual(installer.isolation_problems(account(installer.WORKER_USER, 992, 992), hermes, [992]), [])
         self.assertNotEqual(installer.WORKER_USER, installer.BROWSER_USER)

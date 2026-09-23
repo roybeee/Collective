@@ -55,6 +55,58 @@ legacy 모드에서는 헤더의 사용자 ID가 곧 워크스페이스 owner이
 
 설치 파일에는 owner 전용 토큰 외에 **사이트 공통 gate 비밀값이 여전히 포함**된다. 지정 관리자는 이 공통 비밀값을 취급하는 신뢰 주체다. 관리자 제한은 일반 사용자에게 공통 비밀값이 배포되는 것을 막으며, gate 자체를 owner 전용 자격증명으로 바꾸지는 않는다. 파일은 no-store 첨부로 반환된다. 설치가 성공하면 설치기가 서버 사본을 스스로 지우고(PR 6, 지우지 못하면 경고), Mac 사본은 직접 지워야 한다. 장기 개선은 기계 접근 프록시에서 공통 gate를 보관하고 owner·경로·만료가 제한된 자격증명만 설치 파일로 전달하는 것이다([개선 계획](IMPROVEMENT-PLAN.ko.md) PR 6).
 
+## 작업자 자격증명 만료·회전과 앱 gate 확인 (PR 6 앱 측)
+
+마지막 갱신: 2026-09-24 KST (security-ops-4·security-ops-7 앱 측). 근거는 `tests/research-worker-rotation.test.mjs`(mocked: 메모리 SQLite, 로컬 요청, HERMES fetch 스텁), `tests/security-boundaries.test.mjs`(mocked: 소스 검사·모의 workerStatus)와 `python3 tests/research_worker_test.py`(로컬 HTTP 서버, 대기 시간 주입)다. 운영 게시·관측은 아직 하지 않았다(not_run).
+
+**만료(기본 꺼짐).** 토큰 만료와 자동 교체는 배포 환경변수 `RESEARCH_WORKER_TOKEN_EXPIRY=enforce`일 때만 켜진다. 기본(없음 또는 `enforce` 외의 값)은 이 변경 전과 같다. 새로 발급한 토큰에도 만료가 없고, 저장된 `expiresAt`도 검사하지 않으며, 교체를 제안하지 않는다. 아래 전제(설정 폴더 쓰기)가 현재 설치기에서 성립하지 않아, 기본으로 켜면 재설치한 워커가 90일째에 조사·execution·measurement 큐와 함께 멈추기 때문이다. 켜면 새로 발급한 토큰은 90일 뒤 만료된다(`worker_credential.expiresAt`). 만료된 토큰은 기존 앱 문구('작업자 연결이 해제됐거나 인증이 만료됐습니다.')의 401이다. 켜기 전에 발급한 자격증명(`expiresAt` 없음)은 계속 만료 없이 받는다. 설정 화면(대표·관리자)은 '토큰 만료·자동 교체: 꺼짐', '만료를 켜기 전에 발급', 만료 시각과 남은 일수를 구분해 보여 준다.
+
+**자동 교체(온라인 회전, 만료를 켰을 때만).** 만료 14일 전부터, 워커가 새 토큰을 저장할 수 있다고 알린 tick의 응답 `rotation`(`token`, `expiresAt`)에만 다음 토큰을 싣는다. 워커(`server/research-worker/worker.py`)는 설정 폴더에 쓸 수 있을 때만 `X-Collective-Rotation: ready` 헤더를 보낸다. 원문은 그 응답에만 있고 앱은 해시만 저장한다(`worker_credential.next`). 워커는 `worker.json`을 같은 폴더의 임시 파일(0600)에 쓰고 fsync한 뒤 `os.replace`로 한 번에 바꾸고 폴더도 fsync하며, 저장에 성공한 뒤에만 다음 tick부터 새 토큰을 쓴다. 폴더 fsync만 실패하면 파일은 이미 새 토큰이므로 경고(`worker_rotation_folder_sync_failed`)만 남기고 새 토큰을 쓴다. 새 토큰으로 tick이 성공하면 앱이 새 토큰을 현재 토큰으로 올리고 이전 토큰을 지운다. 두 토큰은 이 겹치는 동안(승격 전, 이전 토큰 만료 전)만 함께 유효하다. 워커가 응답을 받지 못했거나 저장하지 못해 이전 토큰으로 다시 오면, 앱은 마지막 제안 10분 뒤에 새 토큰을 다시 만들어 보낸다(마지막으로 보낸 것만 유효). 그 10분 동안의 tick은 자격증명 쓰기와 토큰 재전송이 없고, 이미 저장한 워커는 유지된 다음 토큰 해시로 승격된다. 저장 실패는 워커 로그 `worker_rotation_failed`(토큰 원문 없음)로 남는다. 설정 화면은 워커가 교체 가능을 알렸을 때만 '자동 교체'를 약속하고, 알리지 않았으면 만료 전에 다시 발급하라고 안내하며, 교체가 1시간 넘게 끝나지 않으면 경고한다.
+
+전제와 켜는 순서: 워커 서비스가 설정 폴더(`/etc/collective-research`)에 쓸 수 있어야 한다. 이 변경부터 설치기의 워커 유닛(`server/research-worker/install.py` `worker_unit`)은 `ProtectSystem=strict`를 유지하면서 `ReadWritePaths=/etc/collective-research` 한 곳만 쓰기를 연다(폴더는 워커 계정 소유 0700이라 hermes·브라우저 계정은 여전히 읽지 못한다). 이 변경 전 설치기로 설치한 서버는 이 폴더가 읽기 전용이라 저장할 수 없다. 그런 워커는 시작할 때 `worker_rotation_unavailable` 경고를 남기고 `X-Collective-Rotation`을 보내지 않는다.
+
+1. 이 변경을 게시하고 새 설치 파일로 워커를 재설치한다(공유 서버 재설치는 대표 승인 대상).
+2. 대표·관리자로 설정 화면에서 '작업자는 새 토큰을 저장할 수 있다고 알렸습니다'를 확인한다. 이 문구가 없으면 켜지 않는다.
+3. 배포 환경변수 `RESEARCH_WORKER_TOKEN_EXPIRY=enforce`를 추가하고 게시한 뒤, 설치 파일을 다시 발급해 재설치한다(만료는 새 발급에만 붙는다).
+4. 되돌리기: 환경변수를 지우고 다시 게시한다. 저장된 만료도 바로 검사하지 않으므로 워커는 재설치 없이 계속 동작한다.
+
+**다시 발급할 때 10분 유예.** 설정 화면에서 설치 파일을 다시 발급할 때 3분 안에 응답한 워커가 있으면 그 워커가 쓰는 토큰(그리고 이미 받았을 수 있는 다음 토큰)을 10분 동안 함께 받는다(`worker_credential.previous`). 화면은 '가동 중 워커는 10분 안에 새 설치가 필요합니다' 확인을 받고 유예 마감 시각을 보여 준다. 유예 중 이전 토큰의 tick은 큐를 처리하지만 상태는 '설치 파일 발급됨 · 서버 설치 대기'로 보이며, '서버 작업자 연결됨'은 새 설치의 tick부터다. 유예가 끝나면 이전 토큰은 401이다. 토큰 유출이 의심돼 바로 막아야 하면 먼저 '작업자 연결 해제'(자격증명 삭제, 유예 없음)를 누른 뒤 발급한다.
+
+**거부 기록(`worker_rejected`).** 거부된 워커는 앱에 신호를 보낼 수 없으므로 앱이 소유자별 인증 실패를 `worker_rejection`에 사유별 마지막 시각(`expired`·`grace_ended`·`unknown_token`·`gate`)으로 남기고 설정 화면에 '최근 거부된 작업자 요청'으로 보여 준다. 자격증명이 있는 소유자만, 사유마다 1분에 한 번만 쓰며 토큰·헤더 값은 저장하지 않는다. 형식이 틀린 토큰과 자격증명이 없는 owner는 기록하지 않는다. 조회는 자격증명 유무와 무관하게 해서 owner별 등록 여부가 응답 시간에 덜 드러나게 한다(분당 한 번의 쓰기 차이는 남는다). owner 헤더는 요청자가 정하므로 `unknown_token` 기록은 실제 워커가 아닌 요청일 수도 있다. 그래서 화면은 구체적인 사유(`expired`·`grace_ended`·`gate`) 중 가장 최근 것을 먼저 보여 주고, 없을 때만 `unknown_token`을 보여 준다. 가짜 토큰 요청이 만료·유예 종료라는 실제 원인을 덮지 못한다. 화면은 그 뒤 정상 응답이 있었는지 함께 보여 준다. 기록은 재발급·연결 해제 때 지운다. 워커 쪽 401/403 처리(30분에서 6시간까지 늘어나는 재시도, 로그 `worker_rejected`)는 PR 6 서버 측 그대로다.
+
+**공개 범위.** `workerStatus`는 기본으로 공개 필드(`registered`·`activated`·`online`·`lastSeen`·`lastStatus`·`blocked`)만 준다. 만료·교체·유예·거부·gate 필드(`expiryEnforced`·`issuedAt`·`expiresAt`·`rotationOfferedAt`·`rotationReady`·`graceUntil`·`lastRejected*`·`gate`·`gateEnforced`)는 설정 상태 조회(GET `/api/research-worker/setup`)에서 대표·관리자(`canRevoke`)에게만 준다. workspace 응답의 `worker`는 공개 필드만이다.
+
+**중단 알림(권고 4, 앱 측).** 조사 진행 중 브랜드 아카이브 배너(`ResearchWorkerNotice`)는 대표·관리자에게 다음을 기존 '서버 작업자 응답 없음' 문구 아래에 사유와 '연결 및 설정에서 설치 파일을 다시 발급하세요' 안내로 보여 준다. 마지막 정상 응답 뒤의 거부(작업자가 온라인이 아닐 때, 사유 포함), 만료된 토큰, 1시간 넘게 끝나지 않은 자동 교체다. 일반 멤버는 사유 없이 기존 문구만 본다(위 공개 범위). 이메일·Slack 알림은 없다. 이 앱에는 알림 발송 기반이 없어 미구현 후속 항목이다([개선 계획](IMPROVEMENT-PLAN.ko.md) PR 6 '중단 알림'의 남은 일, 담당 레인 미정).
+
+**앱 gate 확인(security-ops-7).** 앱이 워커 요청의 `OAI-Sites-Authorization` 헤더를 `Bearer <RESEARCH_WORKER_GATE_TOKEN>`과 SHA-256 해시끼리 상수시간으로 비교한다. 토큰 확인 뒤에 하므로 가짜 토큰은 gate와 무관하게 기존 앱 문구의 401이고, 위 운영 점검(`COLLECTIVE_PROBE_WORKER=1`)의 `rejectedBy` 판정은 바뀌지 않는다. 결과(`ok`·`missing`·`mismatch`·`unset`)는 성공한 tick마다 `worker_state.gate`에 남고 설정 화면(대표·관리자)에 보인다. 헤더 값은 저장하지 않는다.
+
+- 기본(환경변수 없음 또는 `enforce` 외의 값): 기록만 하고 막지 않는다. Sites 디스패처가 이 헤더를 앱까지 넘기는지 확인되지 않았기 때문이다. 넘기지 않는데 막으면 모든 워커가 멈춘다.
+- `RESEARCH_WORKER_APP_GATE=enforce`: 결과가 `ok`가 아니면 403('작업자 요청의 사이트 gate 확인에 실패했습니다.')으로 막고 거부 사유 `gate`를 기록한다. 앱에 `RESEARCH_WORKER_GATE_TOKEN`이 없으면 막는다(fail-closed).
+
+enforce를 켜기 전 확인 절차:
+
+1. 이 변경을 게시한 뒤 워커가 몇 번 tick하게 둔다(설정 화면 '마지막 응답' 갱신).
+2. 대표·관리자로 설정 화면의 gate 표시를 본다. '앱에서도 확인했습니다'(`ok`)여야 한다. '헤더 없이 도착'(`missing`)이면 디스패처가 헤더를 앱까지 넘기지 않는 것이므로 enforce를 켜지 않는다. '앱 설정과 다릅니다'(`mismatch`)면 설치 파일의 gate와 앱 값이 다르므로 먼저 다시 발급·재설치한다.
+3. `ok`를 확인한 뒤 배포 환경변수 `RESEARCH_WORKER_APP_GATE=enforce`를 추가하고 게시한다. 게시 직후 '마지막 응답'이 계속 갱신되고 최근 거부 사유에 gate가 없는지 확인한다.
+4. 되돌리기: 환경변수를 지우고 다시 게시한다. 워커는 403을 받으면 30분부터 재시도 간격을 늘리므로, 복구 뒤 첫 tick까지 그만큼 걸릴 수 있다.
+
+enforce 상태에서 공통 gate를 교체하면 설치된 워커는 모두 403으로 거부된다(재시도는 계속하므로 영구 정지는 아니다). 교체 전에 enforce를 끄거나, 교체 뒤 설치 파일을 다시 발급해 재설치한다.
+
+## 조사 도구 위험 등급과 조사 시작 점검 (PR 6 앱 측, security-ops-1)
+
+마지막 갱신: 2026-09-24 KST. 근거는 `tests/research-tools.test.mjs`(mocked: HERMES `/v1/capabilities`·`/v1/toolsets` fetch 스텁, 메모리 SQLite, 로컬 요청으로 두 시작 라우트 호출)다. 운영 게시·관측은 하지 않았다(not_run).
+
+- **등급표**(`lib/research-tools.ts`): 도구 이름만 보고 read(`browser_navigate`·`browser_snapshot`·`browser_get_images`·`browser_vision`·`browser_back`·`web_search`·`web_extract` 등), interact(`browser_click`·`browser_type`·`browser_press`·`browser_scroll`), dangerous(`browser_cdp`·`browser_dialog`·`browser_console`·`browser_exec`·`terminal`·파일 읽기/쓰기·코드 실행·`computer_use`·`delegate_task`·`cronjob_manage`·`send_message` 등)로 나눈다. 표에 없는 이름은 이름 조각으로 올려 잡는다(예: exec·script·python·sql·ssh·http·fetch·run·create·write·send는 dangerous, click·type·fill은 interact). 그래도 모르면 unknown이다. unknown은 읽기로 추측하지 않고 화면에 '상호작용 이상으로 취급'으로 표시한다. 도구가 풀리지 않은 도구셋(`tools`가 빈 배열)은 도구셋 이름으로 등급을 매기되 `unresolved`에도 남기고, 형식 밖 도구 이름은 버리지 않고 `invalid`로 센다.
+- **화면**: 조사 패널의 '조사 도구 확인'은 긍정 문구 대신 등급별 개수(미확인 도구셋·형식 밖 이름 포함)를 보여 주고, dangerous가 있으면 빨간 경고('서버 훅으로 차단하도록 설치했는지 확인 필요 — 운영 확인 항목')를 띄운다.
+- **`RESEARCH_TOOL_POLICY`**: 기본 `warn`(없음 또는 `block` 외의 값)은 막지 않고, 점검 결과와 경고 메모를 `research.access`에 남긴다. `block`이면 dangerous 도구가 목록에 있거나, 목록을 읽지 못했거나(도구 목록 조회 미제공·오류), `unresolved` 도구셋이나 `invalid` 이름이 있거나, 점검 자체가 실패하면 조사 시작을 409로 막는다(fail-closed).
+- **block을 켜는 조건**: 위험 도구를 끈 HERMES에서만 켠다. 현재 운영 목록에는 설치기가 `pre_tool_call` 훅으로 호출을 막은 `browser_cdp`·`browser_dialog`도 계속 보이므로(아래 '조사 서버 브라우저 격리' 절), 지금 운영에서 block을 켜면 모든 심층 조사 시작이 409로 멈춘다. 켜기 전에 조사 패널의 '조사 도구 확인'에서 위험 0, 미확인 도구셋 0, 형식 밖 이름 0을 확인한다. 되돌리기는 환경변수 삭제 뒤 게시다.
+- **한계**: unknown은 block도 막지 않는다. Aside 같은 동적 MCP 도구가 모두 unknown이라 막으면 조사가 멈추고, 의미를 모르는 이름을 read로 등록하는 것도 추측이기 때문이다. 이름 판정이므로 이름이 무해해 보이는 위험 도구는 놓칠 수 있다. 실제 호출 차단은 서버 훅과 격리(아래 절)가 맡고, 이 등급은 목록 판정일 뿐이다.
+- **시작 경로 연결 상태**:
+  - 대화형 시작(POST `/api/archive/research` `start`, 분류 `classify` 제외): 라우트가 `executeResearch` 전에 `startResearchAccess`(`lib/research-tool-check.ts`)로 최신 점검을 한다. 시작 응답을 기다리게 하므로 HERMES 요청마다 8초(`START_CHECK_TIMEOUT_MS`)로 제한하고, 넘으면 점검 실패로 본다(warn은 미확인으로 시작, block은 409). block에 걸리면 409이고 조사를 만들지 않는다. 통과하면(warn 포함) 새로 만든 조사(202)의 단계가 모두 접수 전일 때 같은 조사 잠금 안에서 `research.access`를 점검 결과로 바꿔 쓴다. 잠금을 못 잡았거나(워커가 먼저 접수 중) 이미 접수가 시작됐으면 점검 결과를 남기지 못하고 조사는 그대로 진행된다(첫 HERMES 입력의 access가 unverified일 수 있다). 시작 응답 본문은 저장 전 값(unverified)이고, 다음 새로고침부터 점검 결과가 보인다.
+  - 브랜드 등록 자동 조사(POST `/api/archive` `create_brand`, `autoResearch`): 기본(warn)은 점검하지 않고 `research.access`는 unverified다. 등록을 네트워크로 늦추지 않는다는 기존 계약('등록은 바로 완료', `tests/archive.test.mjs` 'registration atomically saves brand and queued research without network wait') 때문이다. block이면 등록 전에 점검한다. 막히면 브랜드만 만들고 조사는 만들지 않으며 응답 `researchBlocked`로 사유를 돌려주고 화면이 오류 알림으로 보여 준다. 통과하면 점검 결과를 `research.access`로 저장한다.
+  - 넘길 일: `lib/research-execution.ts` 시작 경로의 `access:unverifiedResearchAccess()`를 `startResearchAccess`로 바꿔 한 곳에서 점검·저장하는 배선은 그 파일을 소유한 레인(병합 순서 PR 4a → A7)에서 한다. 그때 위 라우트의 사후 저장(`saveStartAccess`)은 지운다.
+- **권고 4 미해결**: HERMES run 이벤트에서 실제 호출된 도구를 원장에 남기는 일은 `lib/hermes.ts`·`lib/usage-ledger.ts`를 고쳐야 해서 이 레인에서 하지 않았다. 두 파일의 병합 순서(F2 → PR 4a)에 따라 PR 4a가 넘겨받는다.
+
 ## 입력과 공급자 응답
 
 `lib/http-limits.ts`는 Content-Length뿐 아니라 **수신 중 실제 바이트**를 세고 한도 초과 시 스트림을 취소한다. JSON 요청은 200,000 UTF-8 바이트와 객체 루트만 허용한다. 기존 문자 수 제한과 달라 한글 등 멀티바이트 대형 요청은 더 일찍 거부된다. 파일 업로드에는 기존 별도의 8MB 파일/10MB 전송 제한이 유지된다.
@@ -63,7 +115,7 @@ legacy 모드에서는 헤더의 사용자 ID가 곧 워크스페이스 owner이
 
 ## 운영 디스패처 읽기 전용 점검
 
-명시적으로 승인받은 운영 origin에만 실행한다. 아래 명령은 기본으로 GET `/api/channels`만 요청하며, 리다이렉트를 따라가지 않고 응답 본문이나 비밀값을 출력하지 않는다. 별도 승인 뒤 `COLLECTIVE_PROBE_WORKER=1`을 함께 주면 gate 헤더 없이 형식만 맞는 가짜 작업자 토큰으로 POST `/api/research-worker`를 한 번 보내고, 거부한 쪽(`rejectedBy`)을 기록한다. 응답 모양만으로는 구분하지 않는다. 앱이 이 요청에 돌려주는 고정 문구(`lib/research-worker.ts`의 '작업자 연결이 해제됐거나 인증이 만료됐습니다.' 또는 '작업자 인증이 필요합니다.')와 앱 응답 헤더(`Cache-Control: no-store`, `X-Content-Type-Options: nosniff`)가 모두 맞아야 `app`(디스패처가 gate를 강제하지 않음)이다. 문구나 헤더 한쪽만 맞으면 `unknown`(status `blocked`, 수동 확인)이고, 그 밖의 401/403과 로그인 리다이렉트는 `dispatcher`, 200·500 등은 `failed`다. 본문은 비교만 하고 출력하지 않는다. 판정은 `tests/security-boundaries.test.mjs`가 모의 응답으로 검사한다(mocked). 이 작업자 경로 점검은 아직 운영에서 실행하지 않았다(not_run). `COLLECTIVE_PROBE_DIRECT_ORIGIN`은 운영 담당자가 알려준 실제 Worker 직접 접근 주소가 있을 때만 지정한다.
+명시적으로 승인받은 운영 origin에만 실행한다. 아래 명령은 기본으로 GET `/api/channels`만 요청하며, 리다이렉트를 따라가지 않고 응답 본문이나 비밀값을 출력하지 않는다. 별도 승인 뒤 `COLLECTIVE_PROBE_WORKER=1`을 함께 주면 gate 헤더 없이 형식만 맞는 가짜 작업자 토큰으로 POST `/api/research-worker`를 한 번 보내고, 거부한 쪽(`rejectedBy`)을 기록한다. 응답 모양만으로는 구분하지 않는다. 앱이 이 요청에 돌려주는 고정 문구(`lib/research-worker.ts`의 '작업자 연결이 해제됐거나 인증이 만료됐습니다.' 또는 '작업자 인증이 필요합니다.')와 앱 응답 헤더(`Cache-Control: no-store`, `X-Content-Type-Options: nosniff`)가 모두 맞아야 `app`(디스패처가 gate를 강제하지 않음)이다. 문구나 헤더 한쪽만 맞으면 `unknown`(status `blocked`, 수동 확인)이고, 그 밖의 401/403과 로그인 리다이렉트는 `dispatcher`, 200·500 등은 `failed`다. 본문은 비교만 하고 출력하지 않는다. 앱의 gate 확인은 토큰 확인 뒤에 하므로 이 판정은 `RESEARCH_WORKER_APP_GATE` 값과 무관하다([아래](#작업자-자격증명-만료회전과-앱-gate-확인-pr-6-앱-측)). 판정은 `tests/security-boundaries.test.mjs`가 모의 응답으로 검사한다(mocked). 이 작업자 경로 점검은 아직 운영에서 실행하지 않았다(not_run). `COLLECTIVE_PROBE_DIRECT_ORIGIN`은 운영 담당자가 알려준 실제 Worker 직접 접근 주소가 있을 때만 지정한다.
 
 ```sh
 COLLECTIVE_PROBE_ORIGIN=https://your-authorized-site.example \
@@ -109,7 +161,7 @@ Worker 직접 origin 및 로그인된 사용자 간 격리는 **not_run**이다.
 
 이 절이 막지 않는 것:
 
-- `browser_cdp`·`browser_dialog`는 도구 목록(`GET /v1/toolsets`, 앱의 조사 권한 점검)에는 계속 보이고 호출만 훅이 막는다. 도구 목록으로 위험 도구를 판정하는 앱 쪽 작업(PR 4a)은 이 점을 전제로 해야 한다. `browser_console`의 `expression`(페이지 안 JavaScript 실행)과 클릭·입력 같은 상호작용 도구는 막지 않는다. 그 영향은 위 표의 브라우저 계정 권한·방화벽·Chrome 정책 안으로 제한된다.
+- `browser_cdp`·`browser_dialog`는 도구 목록(`GET /v1/toolsets`, 앱의 조사 권한 점검)에는 계속 보이고 호출만 훅이 막는다. 도구 목록으로 위험 도구를 판정하는 앱 쪽 작업(PR 6 앱 측, [조사 도구 위험 등급](#조사-도구-위험-등급과-조사-시작-점검-pr-6-앱-측-security-ops-1))은 이 점을 전제로 한다. `browser_console`의 `expression`(페이지 안 JavaScript 실행)과 클릭·입력 같은 상호작용 도구는 막지 않는다. 그 영향은 위 표의 브라우저 계정 권한·방화벽·Chrome 정책 안으로 제한된다.
 - CDP 포트 소유 확인은 설치 때 한 번이다. 이후 브라우저가 재시작되는 사이(`RestartSec=5`)에 다른 로컬 계정이 9333을 먼저 LISTEN하면 HERMES가 그 가짜 CDP에 붙을 수 있다. 방화벽 규칙은 연결을 막을 뿐 포트 선점은 막지 않는다.
 - 방화벽 테이블은 nftables 재시작·다시 읽기 때 다시 들어가지만, 관리자가 `nft flush ruleset`을 직접 실행해 지운 경우는 감지하지 못한다. 그때는 `sudo systemctl restart collective-browser-firewall.service`로 다시 넣는다(브라우저도 함께 재시작된다).
 - 공인 인터넷과 DNS 조회는 막지 않는다(조사에 필요하다). 유닉스 소켓은 nftables 대상이 아니어서 파일 권한과 `ProtectHome`에 기댄다.
@@ -128,7 +180,7 @@ Worker 직접 origin 및 로그인된 사용자 간 격리는 **not_run**이다.
 
 1. 대표에게 재설치 시각과 영향을 알리고 확인을 받는다. 영향은 게이트웨이 재시작, 진행 중 AI 작업 중단 필요, 브라우저 실행 방식 변경(CDP 연결), 원시 브라우저 도구 차단, 워커 실행 계정 변경(`collective-worker`)이다.
 2. 진행 중인 AI 작업을 끝내거나 취소한다.
-3. 설정 화면에서 설치 파일을 다시 발급하고 [README](../server/research-worker/README.md) 절차대로 sudo 계정으로 `sudo python3 ~/install-collective-server.py`를 실행한다. 다시 발급하면 이전 작업자 자격증명은 바로 무효가 된다.
+3. 설정 화면에서 설치 파일을 다시 발급하고 [README](../server/research-worker/README.md) 절차대로 sudo 계정으로 `sudo python3 ~/install-collective-server.py`를 실행한다. 다시 발급하면 이전 작업자 자격증명은 무효가 된다. 3분 안에 응답한 워커가 있으면 10분 유예 뒤 무효다(위 '작업자 자격증명 만료·회전' 절).
 4. 출력에서 `격리 확인` 줄을 모두 확인해 운영 관측 기록에 남긴다. file://(직후 data: 재확인), 루프백 접속, CDP 포트 접속(collective-npm 계정), 서버 자신의 주소 접속(주소별 한 줄), 원시 브라우저 도구 차단, 작업자 자격증명·HERMES 설정·HERMES 비밀(브라우저 계정), 작업자 자격증명(hermes 계정)이다. `Real browser check passed`, `Chromium 샌드박스 유지`도 확인한다. 비밀값과 서버 주소는 적지 않는다.
 5. 설정 화면의 작업자 heartbeat와 새 브랜드 조사 1건으로 실제 조사를 확인한다.
 6. 서버 사본이 지워졌는지 확인하고 Mac 사본을 지운다.
