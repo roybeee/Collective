@@ -7,7 +7,7 @@ import type {ViralExperiment,LearningMetric,LearningRule} from './learning';
 // delete: 캠페인과 함께 삭제 · retain: 캠페인과 이어져 있어도 남김 · retire_and_mark: 종료 상태와 삭제 표시로 남김 · not_campaign_scoped: 캠페인과 무관
 export type CampaignDeletionPolicy='delete'|'retain'|'retire_and_mark'|'not_campaign_scoped';
 // parent_id에 들어가는 값의 유형. none은 빈 문자열이다.
-export const recordParents=['none','brand','campaign','store','viral_case','viral_experiment','brand_fact','media'] as const;
+export const recordParents=['none','brand','campaign','store','viral_case','viral_experiment','brand_fact','media','eval_run'] as const;
 export type RecordParent=typeof recordParents[number];
 // 레코드가 캠페인에 이어지는 경로. 삭제와 삭제 영향 조회가 같은 조건을 쓴다.
 export type CampaignLink='self'|'parent'|'brief_draft'|'draft_submission'|'job_submission'|'experiment_child'|'experiment_rule'|'guidance_job'|'sequence_attempt'|'data_campaign';
@@ -33,6 +33,10 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'case_observation',parent:'viral_case',campaignDeletion:'not_campaign_scoped',description:'같은 바이럴 사례의 추가 관찰'},
  {kind:'channel_credential',parent:'none',campaignDeletion:'not_campaign_scoped',description:'성과 수집 채널 자격증명(암호화)'},
  {kind:'deleted_campaign',parent:'none',campaignDeletion:'retain',description:'캠페인 삭제 기록(tombstone). 삭제할 때 만들어 재생성과 재시도를 막는다'},
+ {kind:'eval_case',parent:'none',campaignDeletion:'retain',links:['data_campaign'],description:'평가 골든셋 케이스(동결한 역할 요청·기대 판정·세트). 캠페인을 지워도 남기고 소유자만 개별 삭제한다(결정 6·7 취지)'},
+ {kind:'eval_connection',parent:'none',campaignDeletion:'not_campaign_scoped',description:'평가 전용 HERMES 연결(주소·키 암호화, 운영 연결과 다른 호스트)'},
+ {kind:'eval_output',parent:'eval_run',campaignDeletion:'not_campaign_scoped',description:'평가 실행의 케이스별 모델 출력 원문과 규제 점검 상세(소유자 전용)'},
+ {kind:'eval_run',parent:'none',campaignDeletion:'not_campaign_scoped',description:'서버 평가 실행(케이스별 채점 결과·토큰·예산 승인·봉인 세트 사용 기록)'},
  {kind:'event',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'캠페인 이력 이벤트'},
  {kind:'execution_creative',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,description:'제작한 소재. 있으면 캠페인 삭제를 거부한다'},
  {kind:'execution_limits',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'발행 한도 설정'},

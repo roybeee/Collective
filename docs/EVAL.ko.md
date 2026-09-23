@@ -6,7 +6,7 @@
 
 - 코드: `lib/graders/*.ts`(상대 import만 쓰는 순수 함수), `lib/role-instruction.ts`, `scripts/eval/grade.mjs`
 - 테스트: `tests/graders.test.mjs`, `tests/compliance.test.mjs`, `tests/role-instruction.test.mjs`(모두 합성 데이터, `passed · mocked`)
-- F1a는 새 파일만 더했다. F1b-1(#35)이 `lib/role-execution.ts`를 `lib/role-instruction.ts`에 연결했다. 서버 평가 실행 `eval_run`은 F1b-2가, 가드레일의 `complianceIssues` 저장은 A2 연결 PR이 맡는다.
+- F1a는 새 파일만 더했다. F1b-1(#35)이 `lib/role-execution.ts`를 `lib/role-instruction.ts`에 연결했다. 서버 평가 실행(`eval_case`·`eval_run`)은 F1b-2가 더했다([서버 평가 실행](#서버-평가-실행-f1b-2)). 가드레일의 `complianceIssues` 운영 저장은 A2 연결 PR이 맡는다.
 - 이 문서와 채점 결과는 법률 자문이 아니다(아래 [고지](#법률-자문-아님-고지)).
 
 ## 상태 어휘
@@ -166,11 +166,107 @@ node scripts/eval/grade.mjs <case.json> [--json] [--detail]
 
 후보(바뀐 프롬프트·모델·규칙)와 기준(active)을 비교할 때:
 
+구현: `lib/eval-stats.ts`(`compareRuns`, `mcnemarExact`, `comparisonVerdict`, import 없는 순수 모듈). 서버 평가 결과는 `GET /api/eval?compare=<기준 run>,<비교 run>`으로 비교한다.
+
 1. 케이스 단위로 대응해 비교한다. 같은 케이스·같은 채점기의 `pass/fail`만 짝으로 쓰고, 한쪽이라도 `not_applicable`·`grader_error`·`not_run`이면 그 짝은 뺀다.
 2. 불일치 쌍을 표시한다: 기준 pass → 후보 fail(b), 기준 fail → 후보 pass(c).
 3. 짝의 수 n이 30 미만이면 결론은 `비회귀`(b=0) 또는 `비교 불충분`만 쓴다. "개선"이라고 쓰지 않는다.
 4. `개선`은 McNemar 정확 검정(불일치 쌍 b+c에 대한 양측 이항 검정, p=0.5)에서 p<0.05이고 c>b일 때만 주장한다.
 5. 관측 1회로 성능을 결론 내지 않는다. 결론마다 n, b, c, p, 사용한 세트(dev/봉인)를 함께 적는다.
+6. 판정 어휘(`lib/eval-stats.ts`): n=0이면 `insufficient`. n<30이면 b=0일 때 `non_regression`, 아니면 `insufficient`(p가 작아도 회귀·개선을 주장하지 않는다). n≥30이면 p<0.05·c>b는 `improved`, p<0.05·b>c는 `regressed`, 그 밖에는 b=0이면 `non_regression`, 아니면 `inconclusive`.
+7. p = min(1, 2·Σ_{i≤min(b,c)} C(b+c,i)/2^(b+c)). 2^-n이 0으로 내려가지 않도록 로그 공간에서 더한다. 기준값은 Python 분수 계산과 1e-12 안에서 같다(`tests/eval-stats.test.mjs`).
+8. 비교 결과에는 공유 케이스 수, 한쪽 run에만 있는 케이스 수(`onlyBaseline`·`onlyCandidate`), `sameCaseSet`을 함께 낸다. 케이스 집합이 다르면 공유 케이스만 짝으로 쓴다.
+
+## 서버 평가 실행 (F1b-2)
+
+결론: 골든셋 케이스를 D1 `eval_case`에 동결하고, 평가 전용 HERMES 프로필에 백그라운드로 하나씩 보내 서버가 같은 채점기로 채점한다. 예산(결정 5)과 운영 격리(결정 6)를 코드가 막는다.
+
+비유: 시험 문제지(케이스)를 봉투에 봉인해 두고, 연습실(평가 전용 프로필)에서만 풀게 한다. 한 번에 쓸 수 있는 종이(토큰)는 정해져 있고, 다 쓰면 남은 문제는 풀지 않은 것으로 적는다.
+
+- 코드: `lib/eval-server.ts`(연결·케이스·실행·채점), `lib/eval-stats.ts`(비교 통계), `app/api/eval/route.ts`, `lib/background-execution.ts`(`eval:<run id>` 작업), `lib/role-execution.ts`(`roleSources`·`roleRequestFor`로 요청 조립 DB 읽기를 추출, 동작 불변)
+- 테스트: `tests/eval-server.test.mjs`, `tests/eval-stats.test.mjs`(합성 데이터, 평가·운영 HERMES fetch 스텁, `passed · mocked`). 실제 HERMES 호출은 0회다.
+- 권한: 읽기·쓰기 모두 워크스페이스 소유자만 한다(`requireOwnerActor`). 비로그인 401, 관리자·직원 403, 다른 소유자의 케이스·실행·출력은 404. POST 본문은 1,000,000바이트 한도(413, `lib/http-limits.ts` 방식)다.
+- records kind: `eval_connection`, `eval_case`, `eval_run`, `eval_output`(부모 `eval_run`). 정책은 `lib/record-kinds.ts`에 있다.
+- 운영 사용량 장부(`provider_usage`)에는 평가 토큰을 쓰지 않는다. 평가 토큰은 `eval_run.usedTokens`에만 있다.
+
+### 1. 평가 연결
+
+```json
+{"action":"save_connection","endpoint":"https://<평가 전용 HERMES 주소>","key":"<평가 연결 키>","isolationConfirmed":true,"note":"메모리 off 평가 프로필"}
+```
+
+- 주소는 HTTPS만 받는다(`hermesEndpoint` 규칙: 443 포트, IP·내부 호스트 거부).
+- 운영 HERMES 연결(`settings`)과 호스트가 같으면 400으로 거부한다. 경로가 달라도 호스트가 같으면 같은 endpoint로 본다(같은 gateway면 같은 메모리를 쓸 수 있어서다).
+- 주소와 키는 기존 자격증명과 같은 방식(`lib/server.ts` `encrypt`, `AGENCY_ENCRYPTION_KEY`, AES-GCM)으로 한 암호문에 저장한다. 응답과 GET에는 설정 여부·호스트·상태·확인 시각만 나오고 키와 전체 주소는 나오지 않는다.
+- 저장할 때 `verifyHermes`로 `GET /v1/capabilities`(실행·조회·중지·영구 멱등), 무인증 요청 401/403, `GET /v1/models`를 확인한다. **선택: 확인에 실패해도 저장하고 `status: blocked`와 `statusReason`을 남긴다.** blocked 연결로는 실행하지 않는다. `{"action":"check_connection"}`으로 다시 확인한다.
+- `isolationConfirmed`는 대표가 평가 전용 프로필(메모리 off, 운영과 분리)을 확인했다는 표시다. false로도 저장되지만 실행은 blocked가 된다. 메모리 off 여부는 코드가 검사하지 못한다(아래 한계).
+
+### 2. 평가 케이스(`eval_case`)
+
+| 작업 | 입력 | 규칙 |
+|---|---|---|
+| `capture_case` | `campaignId`, `role`, `set?`, `label?`, `expectations?` | 운영 역할 실행 start와 같은 DB 읽기(`roleSources`→`roleRequestFor`)로 요청 객체를 만들어 JSON 그대로 동결한다. 실행 가능 여부 검사(진행 중 작업·앞선 담당 누락·현재 작업물 존재 409)는 적용하지 않아 끝난 캠페인에서도 캡처한다 |
+| `save_case` | `role`, `request`, `expectations?`, `set?`, `label?` | `request`는 운영 요청 구조(role·campaign·brand·archive·evidence·previous)여야 하고 현재 `buildRoleInstruction`·`buildRoleInput`이 받아야 한다. 900,000자를 넘으면 413 |
+| `update_case` | `id`, `label?`, `set?`, `expectations?` | 요청(`request`)은 바꾸지 않는다. 세트 이동은 `setChanges`에 누가·언제 남긴다 |
+| `delete_case` | `id` | 진행 중 run이 쓰는 케이스는 409 |
+
+- `expectations`는 채점 컨텍스트다: `prohibitedTerms`(큐레이션 금지 표현), `facts`(`{confirmed,prohibited}`, 캡처 기본값은 요청의 확정·거절 사실), `industry`, `localStore`, `inputTokenCap`.
+- `set`은 `dev`(기본) 또는 `sealed`. `capturedWith`에 캡처 시점 `PRACTICE_VERSION`·`ROLE_OUTPUT_VERSION`을 남겨 퇴역 판단에 쓴다.
+- 캠페인을 삭제해도 `eval_case`는 남는다(`retain`, `data_campaign` 링크로 삭제 영향 조회의 보존 건수에 나온다). 동결 요청에는 캠페인·브랜드·앞선 작업물 원문이 들어 있으므로 필요 없어진 케이스는 소유자가 개별 삭제한다.
+- 드리프트 방지: `tests/eval-server.test.mjs`가 캡처한 요청으로 만든 지시문·입력이 같은 캠페인의 운영 start 제출 본문과 바이트 동일한지 확인한다.
+
+### 3. 실행(`eval_run`)
+
+```json
+{"action":"start_run","set":"dev","tokenBudget":100000,"label":"프롬프트 변경 전 기준"}
+```
+
+- 케이스는 `caseIds`(1~100개) 또는 `set`(dev|sealed, 100개 이하)으로 고른다. `variant`는 `active`(현재 코드)만 받는다. 후보 프롬프트(F3)가 이 자리를 쓴다.
+- `tokenBudget`은 필수(없으면 400)이며 1 이상 정수다.
+
+| 예산(결정 5) | 기준 | 넘으면 |
+|---|---|---|
+| 스모크 1회 | `tokenBudget` ≤ 250,000 | 409 |
+| 월 절대 상한 | 이번 UTC 월에 만든 run의 보고 토큰 합 + 진행 중 run의 남은 예산 + 새 `tokenBudget` ≤ 1,500,000 | 409 |
+| 대표 건별 승인 | `overBudgetApproved: {"reason": "…"}` | 허용하고 run에 사유·승인자·시각·넘은 상한(`smoke_cap`·`monthly_cap`)·당시 월 누적을 기록 |
+
+- **시작 거부 정책(선택)**: 평가 연결이 없거나, 격리 미확인이거나, 연결 확인이 blocked이거나, 운영 연결이 같은 호스트면 run을 `blocked`(원인 `blockedReason`, 케이스는 모두 `not_run`)로 기록하고 409 `{error, run}`으로 답한다. 시도와 원인이 남는다. 입력 오류(400)와 예산 초과(409)는 기록하지 않는다.
+- 진행: 시작 요청은 공급자를 부르지 않는다. 백그라운드 워커(`POST /api/research-worker` tick)의 공정 큐가 `eval:<run id>`를 다른 작업과 같은 순번 커서로 돌린다. tick마다 소유자 잠금 안에서 공급자 호출 1건만 한다: 제출 중인 케이스가 있으면 조회, 없으면 다음 케이스 제출. 매 걸음 전에 연결 조건(격리·확인 상태·운영 호스트 충돌)을 다시 본다.
+- 제출 본문: `{instructions: buildRoleInstruction(request), input: buildRoleInput(request), session_id: <키>, conversation_history: []}`. 운영 HERMES 제출과 같은 모양이며 현재 코드의 조립기로 만든다. 지시문·입력의 SHA-256 앞 16자를 `promptHash`로 남긴다.
+- 멱등 키: `collective-eval-` + SHA-256(`<run id>:<case id>`) 앞 40자. `Idempotency-Key`·`X-Hermes-Session-Key` 헤더에 쓴다. 운영 키(`collective-<uuid>`)와 접두사가 달라 저장된 운영 키를 재사용할 수 없고, run마다 달라 같은 케이스를 다시 평가해도 이전 결과를 돌려받지 않는다. 같은 run·케이스의 재시도는 같은 키라 중복 실행을 막는다.
+- 예산 중단: 보고 토큰 누적이 `tokenBudget`에 닿으면 다음 제출을 멈추고 남은 케이스는 `not_run`(`stopReason: budget_reached`). 제출한 케이스가 토큰 사용량 없이 끝나면 예산을 지킬 수 없으므로 같은 방식으로 멈춘다(`usage_unreported`). 검사는 제출 전에만 하므로 마지막 케이스 하나가 예산을 넘겨 끝날 수 있다.
+- 오류 분류: 401/403은 `blocked`(인증), 연결 불가·다른 주소로 이동은 `blocked`(연결)로 run을 멈춘다. 이것은 `failed`와 다르다. 429·5xx는 워커 백오프(`background_attempt`)로 재시도한다. 그 밖의 4xx·실행 번호 오류·HERMES 실패·중단 보고는 해당 케이스만 `failed`. 30분 넘게 끝나지 않은 케이스는 중지를 요청하고 `failed`로 둔다.
+- 채점: 케이스가 끝나면 서버가 `runGraders`(13종)와 `checkCompliance`로 채점한다. run에는 채점기별 `pass|fail|not_applicable|grader_error`(상세 200자), 요약 건수, 가드레일 등급별 건수·규칙 ID, 보고 모델, `providerRunId`, 토큰(입력·출력·합계), `durationMs`(제출~완료 관측, tick 간격 포함)를 남긴다. 모델 출력 원문과 발췌가 든 가드레일 상세는 `eval_output`(소유자 전용)에 둔다.
+- 봉인 세트: sealed 케이스를 쓰는 run은 `sealedUsed: {by, at, cases}`를 남긴다. 목적은 run `label`에 적는다.
+- `cancel_run`: 제출 중인 HERMES 실행에 중지를 요청하고(확인 여부를 케이스 `error`에 남김) 그 케이스는 `cancelled`, 남은 케이스는 `not_run`. `delete_run`: 끝난 run과 그 출력을 지운다(진행 중이면 409).
+
+| 케이스 상태 | 뜻 |
+|---|---|
+| `pending` | 아직 제출하지 않음 |
+| `submitted` | HERMES가 받음, 결과 대기 |
+| `completed` | 결과를 받아 채점함(채점 결과의 pass/fail과는 별개) |
+| `failed` | HERMES 실패·중단·시간 초과·출력 형식 오류 |
+| `cancelled` | 취소로 중지 |
+| `not_run` | 예산·사용량 미보고·취소·막힘으로 제출하지 않음(이유를 `error`에 기록) |
+
+run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
+
+### 4. 조회
+
+| 요청 | 응답 |
+|---|---|
+| `GET /api/eval` | `connection`(비밀 없음), `cases`(요청 원문 제외 요약), `runs`, `usage: {month, usedTokens, reservedTokens, monthlyCap, smokeCap}` |
+| `GET /api/eval?case=<id>` | 케이스 전체(동결 요청 포함) |
+| `GET /api/eval?run=<id>` | run 전체 |
+| `GET /api/eval?run=<id>&caseId=<id>` | 모델 출력 원문과 가드레일 상세 |
+| `GET /api/eval?compare=<기준 run>,<비교 run>` | 채점기별 대응 비교(아래 비교 통계 규칙) |
+
+### 서버 평가의 한계
+
+- 이 PR의 검증은 모두 `mocked`다. 실제 평가 전용 HERMES 프로필로 스모크를 돌리지 않았다(결정 5 예산 안에서 대표가 연결을 등록한 뒤 한다).
+- 메모리 off와 운영 분리는 대표 확인(`isolationConfirmed`)과 호스트 비교에만 의존한다. 같은 HERMES 인스턴스를 다른 호스트 이름으로 등록하면 코드는 구분하지 못한다.
+- 제출 응답이 연결 끊김으로 유실되면 run은 blocked가 되지만 HERMES가 이미 받았을 수 있다. 취소·시간 초과·blocked로 멈춘 실행의 토큰은 보고되지 않으면 `usedTokens`에 들어가지 않는다. 월 누적은 run 생성 시각(UTC) 기준이다.
+- 화면(UI)은 없다. API로만 쓴다.
 
 ## 남은 결정·한계
 
