@@ -70,6 +70,8 @@ check('duplicate active analysis prevented',(await req(ai,{action:'start_analysi
 check('foreign job cannot be polled',(await req(ai,{action:'poll',id:ajob},'another-owner')).status===409);
 r=await req(ai,{action:'poll',id:ajob});check('structured analysis and test variants saved',r.status===200&&r.data.status==='completed');d=await snap();const count=d.analyses.length;await req(ai,{action:'poll',id:ajob});check('poll replay does not duplicate analysis',(await snap()).analyses.length===count);
 r=await req(ai,{action:'start_discovery',brandId:'ofd',query:'실제 사례를 조사'});await req(ai,{action:'poll',id:r.data.id});d=await snap();check('unavailable source does not fabricate findings',d.cases.length===1&&d.jobs.some(j=>j.role==='viral_discovery'&&j.status==='failed'));
+const discoveryInstructions=captured.filter(x=>x.instructions.includes('바이럴 콘텐츠 연구원')&&!x.input.includes('"case"')).at(-1).instructions;
+check('discovery names per-channel source access paths',['https://www.tiktok.com/oembed?url=','browser_navigate','youtube.com/oembed','blockers'].every(x=>discoveryInstructions.includes(x)));
 check('secrets excluded from learning endpoint',!JSON.stringify(d).includes('test-key'));
 
 check('Korean channel aliases retrieve rules',domain.namespace.ruleApplies({...d.rules[0],status:'active'},'ofd','인스타그램, 매장',now));
