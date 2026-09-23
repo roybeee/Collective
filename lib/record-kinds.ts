@@ -92,6 +92,9 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'worker_event',parent:'none',campaignDeletion:'not_campaign_scoped',description:'조사 워커 설치·해제 감사 기록'},
  {kind:'worker_state',parent:'none',campaignDeletion:'not_campaign_scoped',description:'조사 워커 상태'},
  {kind:'worker_rejection',parent:'none',campaignDeletion:'not_campaign_scoped',description:'조사 워커 인증 거부 기록(소유자당 1행: 사유별 마지막 거부 시각). 토큰·헤더 값은 담지 않고 재발급·연결 해제 때 지운다(security-ops-4)'},
+ {kind:'token_budget',parent:'none',campaignDeletion:'delete',links:['data_campaign'],description:'소유자가 정한 월 토큰 상한(한국 시간 달력 월). 워크스페이스 1행(id workspace, campaignId 없음)과 캠페인별 행(id campaign:<캠페인>). 캠페인별 행은 캠페인과 함께 지운다(loop-4)'},
+ {kind:'token_reservation',parent:'none',campaignDeletion:'not_campaign_scoped',description:'HERMES 제출 1건의 진행 중 토큰 예약(예상 토큰·실행 종류·캠페인 id·실행 번호·멱등 키 해시). 요청 원문은 담지 않고 토큰을 아는 종료 사용량을 기록하면 지운다(loop-4)'},
+ {kind:'usage_alias_pricing',parent:'none',campaignDeletion:'not_campaign_scoped',description:'HERMES 별칭(hermes-agent) 단가 선언(기반 모델·입력/출력 단가·통화·근거 URL·적용 시작일). 원장은 바꾸지 않고 읽을 때 추정한다(loop-5, 결정 10)'},
 ];
 
 // 캠페인에 속한 바이럴 실험 id. 바인드 순서: owner, campaignId.

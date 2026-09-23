@@ -1,5 +1,6 @@
-import {ApiError,recordStatement,readRecord,type Connection} from './server';
+import {ApiError,database,recordStatement,readRecord,type Connection} from './server';
 import {recordProviderUsage,type UsageContext} from './usage-ledger';
+import {reserveTokenBudget,releaseTokenReservation,markTokenReservationRun,settleTokenReservation} from './token-budget';
 import {readBoundedJson} from './http-limits';
 
 export function hermesEndpoint(value:string){
@@ -24,12 +25,17 @@ export async function verifyHermes(cfg:Connection){
 type Submission={body:string;key:string};
 export function hermesSubmissionStatement(owner:string,id:string,input:{input:string;instructions:string},parentId=''){const key='collective-'+crypto.randomUUID();return recordStatement(owner,'hermes_submission',id,{key,body:JSON.stringify({...input,session_id:key,conversation_history:[]})},parentId)}
 
+// 역할·회의·브리프·조사·학습의 모든 운영 HERMES 제출이 지나는 한 곳이다. 요청 전에 토큰 예산 가드(loop-4, lib/token-budget.ts)가 예약하고, 상한을 넘으면 409로 막아 요청을 보내지 않는다.
+// 이번에 만든 예약만 확정 거절(4xx)에 푼다. 429(미접수·재시도 예정)·연결 오류·5xx(접수 불확실)와 같은 키의 복구 재전송(이미 접수됐을 수 있음)은 예약을 남긴다. budgetWarning: 상한 미설정 경고(막지 않음).
 export async function submitHermes(owner:string,id:string,cfg:Connection,input?:{input:string;instructions:string},timeoutMs=30000){
  let saved:Submission;
  if(input){const key='collective-'+crypto.randomUUID();saved={key,body:JSON.stringify({...input,session_id:key,conversation_history:[]})};await recordStatement(owner,'hermes_submission',id,saved).run()}
  else saved=await readRecord<Submission>(owner,'hermes_submission',id);
- const r=await hermesRequest(cfg,'/v1/runs',{method:'POST',headers:{'Idempotency-Key':saved.key,'X-Hermes-Session-Key':saved.key},body:saved.body},timeoutMs);
- if(typeof r.run_id!=='string'||!/^[a-zA-Z0-9_-]{1,160}$/.test(r.run_id))throw new ApiError(502,'HERMES 실행 번호를 확인하지 못했습니다. 기존 요청 확인으로 복구하세요.');return {id:r.run_id,status:'queued'};
+ const budget=await reserveTokenBudget(database(),owner,id,saved);
+ const r=await hermesRequest(cfg,'/v1/runs',{method:'POST',headers:{'Idempotency-Key':saved.key,'X-Hermes-Session-Key':saved.key},body:saved.body},timeoutMs).catch(async(error:unknown)=>{if(error instanceof ApiError&&error.status<500&&error.status!==429&&budget.created)await releaseTokenReservation(database(),owner,id);throw error});
+ if(typeof r.run_id!=='string'||!/^[a-zA-Z0-9_-]{1,160}$/.test(r.run_id))throw new ApiError(502,'HERMES 실행 번호를 확인하지 못했습니다. 기존 요청 확인으로 복구하세요.');
+ await markTokenReservationRun(database(),owner,id,r.run_id);
+ return {id:r.run_id,status:'queued',...(budget.warning?{budgetWarning:budget.warning}:{})};
 }
 // usage: 사용량 원장 조인 키(F2a). 첫 기록 때만 쓰이며 HERMES로 보내는 본문과는 무관하다.
 export async function pollHermes(cfg:Connection,id:string,stop=false,timeoutMs=30000,owner?:string,usage?:UsageContext){
@@ -42,7 +48,7 @@ export async function pollHermes(cfg:Connection,id:string,stop=false,timeoutMs=3
  if(r.run_id!==id||r.object!=='hermes.run')throw new ApiError(502,'HERMES 실행 결과가 일치하지 않습니다.');
  const status=r.status==='completed'?'completed':['cancelled','canceled','stopped','interrupted'].includes(r.status)?'cancelled':['failed','error','incomplete'].includes(r.status)?'failed':['started','queued','running','stopping','waiting','waiting_approval','waiting_for_approval','pending'].includes(r.status)?'in_progress':null;
  if(!status)throw new ApiError(502,'HERMES 실행 상태를 확인하지 못했습니다.');
- if(owner&&status!=='in_progress')await recordProviderUsage(owner,'hermes',id,r,usage);
+ if(owner&&status!=='in_progress'){await recordProviderUsage(owner,'hermes',id,r,usage);await settleTokenReservation(database(),owner,id,usage?.submissionId)}
  const invalidOutput=status==='completed'&&(typeof r.output!=='string'||r.output.length>300000);
  const activity=typeof r.last_event==='string'&&/^[a-z_.]{1,80}$/.test(r.last_event)?r.last_event:undefined;
  const activityAt=typeof r.updated_at==='number'&&Number.isFinite(r.updated_at)&&r.updated_at>0&&r.updated_at<1e11?new Date(r.updated_at*1000).toISOString():undefined;

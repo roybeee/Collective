@@ -1,9 +1,12 @@
 import {ApiError, str, stamp} from '../server';
+import {HttpBodyError, readBoundedJson} from '../http-limits';
 import type {Connector, Collected, NaverAdsCredential} from './types';
 
 // 고정 호스트만 호출한다. 사용자가 URL을 입력하는 경로가 없으므로 SSRF 표면이 없다.
 const HOST = 'https://api.searchad.naver.com';
 const TIMEOUT_MS = 20000;
+// 외부 공급자 응답은 명시적 바이트 한도 안에서만 읽는다(docs/SECURITY-BOUNDARIES.ko.md).
+const MAX_RESPONSE_BYTES = 200000;
 
 // 검색광고 API 서명: base64(HMAC-SHA256(secretKey, `${timestamp}.${method}.${path}`))
 async function sign(secretKey: string, timestamp: string, method: string, path: string) {
@@ -12,7 +15,8 @@ async function sign(secretKey: string, timestamp: string, method: string, path: 
  return btoa(String.fromCharCode(...new Uint8Array(mac)));
 }
 
-async function call(credential: NaverAdsCredential, path: string, query = '') {
+// 서명한 GET을 보내고 상태 코드까지 확인한 응답을 돌려준다. 본문은 읽지 않는다.
+async function send(credential: NaverAdsCredential, path: string, query = '') {
  const timestamp = String(Date.now());
  const signature = await sign(credential.secretKey, timestamp, 'GET', path);
  let response: Response;
@@ -33,9 +37,15 @@ async function call(credential: NaverAdsCredential, path: string, query = '') {
  }
  if (response.status === 401 || response.status === 403) throw new ApiError(400, '네이버 검색광고 인증에 실패했습니다. API 키, 비밀키, Customer ID를 확인하세요.');
  if (!response.ok) throw new ApiError(response.status >= 500 ? 502 : 400, `네이버 검색광고 요청을 처리하지 못했습니다 (${response.status}).`);
+ return response;
+}
+
+async function call(credential: NaverAdsCredential, path: string, query = '') {
+ const response = await send(credential, path, query);
  try {
-  return await response.json() as Record<string, unknown> | unknown[];
- } catch {
+  return await readBoundedJson<Record<string, unknown> | unknown[]>(response, MAX_RESPONSE_BYTES);
+ } catch (error) {
+  if (error instanceof HttpBodyError && error.status === 413) throw new ApiError(502, '네이버 검색광고 응답이 허용 크기(200KB)를 넘어 읽지 않았습니다. 조회 기간이나 대상을 줄여 다시 시도해 주세요.');
   throw new ApiError(502, '네이버 검색광고 응답 형식이 올바르지 않습니다.');
  }
 }
@@ -69,7 +79,9 @@ export const naverAds: Connector = {
 
  // 계정 조회가 성공해야 키·비밀키·Customer ID 세 가지가 모두 맞는 것이다.
  async verify(credential) {
-  await call(credential as NaverAdsCredential, '/ncc/campaigns');
+  // 2xx면 세 값이 맞다는 뜻이므로 캠페인 목록 본문은 읽지 않고 버린다(캠페인이 많은 계정도 200KB 한도에 걸리지 않게).
+  const response = await send(credential as NaverAdsCredential, '/ncc/campaigns');
+  await response.body?.cancel().catch(() => undefined);
   return {account: (credential as NaverAdsCredential).customerId};
  },
 

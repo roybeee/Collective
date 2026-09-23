@@ -46,6 +46,40 @@
 
 대표 결정 10에 따라 HERMES 기반 모델은 별칭(`hermes-agent`)으로 두고 고정하지 않는다. 그래서 `usage_model_state` 1행(공급자별 마지막 보고 모델)과 새 보고 모델을 비교해 바뀌면 `model_change` 1건을 남긴다. HERMES 5개 경로는 같은 연결을 쓰므로 기반 모델 1회 변경은 실행 종류 수와 무관하게 1건이다. `kind`는 그 변경을 처음 관측한 실행의 종류(참고 정보)다. 같은 값 반복, 같은 실행 재조회, 모델을 보고하지 않은 실행은 0건이다. 처음 보고는 기준값만 남긴다. 모델 전환 중 늦게 끝난 이전 실행(기준값을 만든 실행보다 먼저 제출된 실행)이 이전 모델을 보고하면 비교하지 않는다. 기준값 실행보다 나중에 제출된 실행의 다른 모델은 실제 변경으로 1건이다. 어느 한쪽의 제출 시각을 모르면 그대로 비교한다. 별칭은 `actual: null`(실제 모델 미확인)로 적고 별칭에 단가를 걸 수 없다. `GET /api/usage`의 `modelChanges`(최근 20건)·`reportedModels`와 사용량 화면의 경보 배지로 확인한다. 경보 기록 실패는 `model_change_write_failed`만 남기고 사용량·도메인 처리를 막지 않는다.
 
+### 토큰 예산 (PR 4a, loop-4)
+
+`lib/token-budget.ts`. 단가를 몰라도 동작하도록 금액이 아니라 토큰으로 막는다. **기본값은 미설정**이며, 미설정이면 제출을 막지 않고 경고만 돌려준다(`GET /api/usage`의 `budget.warning`, 사용량 화면의 ‘상한 미설정’ 배지).
+
+- 상한: 워크스페이스 월 상한 1개(`token_budget` id `workspace`)와 캠페인별 월 상한(id `campaign:<캠페인>`). 기간은 둘 다 한국 시간(KST, UTC+9) 달력 월이다(예: 9월 = `2026-08-31T15:00:00Z` 이상 `2026-09-30T15:00:00Z` 미만).
+- 설정: `POST /api/usage` `{"action":"set_budget","scope":"workspace"|"campaign","campaignId":"…","monthlyTokens":2000000}`. `monthlyTokens:null`이면 그 상한을 지워 미설정으로 되돌린다. 워크스페이스 소유자만(관리자·직원 403, 비로그인 401, 다른 출처 403). 1~10,000,000,000 정수가 아니면 400, 모르는 캠페인은 404.
+- 누계: 이번 달 `provider_usage` 보고 토큰(모든 공급자, 관측 시각 `observedAt` 기준, 총 토큰이 없으면 입력+출력, 둘 다 모르면 누계에서 빼고 `unknownUsage`로 따로 센다) + 진행 중 예약. 캠페인 누계는 F2a 조인 키 `campaignId`가 같은 행만 센다.
+- 진행 중 예약(`token_reservation`, 제출 1건당 1행): 가드를 통과한 제출의 예상 토큰·실행 종류·캠페인·실행 번호·멱등 키 해시. 요청 원문은 담지 않고 `hermes_submission` 원문도 바꾸지 않는다. 토큰을 아는 종료 사용량이 기록되면(`pollHermes`) 지운다. 실행 번호 기록이 실패해 `runId`가 비어 있어도 제출 id로 찾아 지운다. 종료 사용량이 토큰을 보고하지 않았으면(실패 실행 등) 예약을 지우지 않고 예상치로 계속 센다(누계에서 0으로 빠지지 않게). HERMES가 새 요청을 4xx로 확정 거절하면 푼다. 429(미접수·재시도 예정)·연결 오류·5xx(접수 불확실)와 같은 멱등 키의 복구 재전송이 받은 4xx(원래 요청이 이미 접수됐을 수 있음)는 예약을 남겨 달이 끝날 때까지 또는 복구·종료 때까지 센다.
+- 예상 토큰: `max(입력 추정, 같은 실행 종류의 최근 종료 실행 20건 평균 보고 토큰)`. 입력 추정은 제출 본문 전체의 `max(문자 수/2, UTF-8 바이트/3)` 올림이다. 영어·JSON은 흔히 3~4자당 1토큰이라 문자 수/2가 넉넉하고, 한글은 1자당 1토큰 가까이 쓰일 수 있어 바이트/3(한글 1자 = 3바이트)과 비교한다. 입력 추정에는 HERMES 에이전트 자체 지시·도구 호출·출력 토큰이 빠져 실제 사용량보다 크게 작을 수 있어(운영 관찰 조사 1회 평균 약 339k, `docs/observations/2026-09-23-live-run.md`) 같은 종류의 최근 평균과 비교한다. 실행 종류는 사용량 조인 키 `kind`와 같은 규칙이다(브리프는 `brief-` 제출, 역할·학습은 jobs 행의 역할, 회의는 캠페인을 부모로 둔 그 밖의 제출, 조사는 브랜드를 부모로 둔 제출). 종료 후에는 실제 보고 토큰이 예상을 대신한다.
+- 가드: `lib/hermes.ts` `submitHermes`가 `/v1/runs` 요청 직전에 `reserveTokenBudget`을 부른다. 확인과 예약 기록은 SQL 한 문장(조건부 `INSERT … SELECT … WHERE 누계 + 다른 진행 중 예약 + 이번 예상 <= 상한`)이라 동시에 들어온 제출이 서로의 예약을 못 본 채 함께 통과하지 않는다. 쓰지 못하면 누계를 다시 읽어(`assertTokenBudget`) 요청을 보내지 않고 409 `토큰 예산 초과: 남은 예산 N토큰 · …`(`TokenBudgetExceeded`)를 던진다(워크스페이스·캠페인 중 남은 예산이 적은 쪽). 역할(start·recover)·회의(advance·recover)·브리프·브랜드 조사·바이럴 학습 5개 운영 경로가 모두 이 함수로 제출한다(`tests/token-budget.test.mjs`가 경로별 409와 `/v1/runs` 제출 위치를 확인). 각 경로는 기존 규칙대로 작업을 ‘실패’로 남기고 사유에 이 문구를 보인다. 캠페인 연속 실행은 실패한 작업을 보고 ‘막힘’으로 멈춘다.
+- 제출의 캠페인: 역할·회의는 제출 원문의 부모 캠페인, 브리프는 초안의 `campaignId`, 실험 규칙 초안은 원천 실험의 캠페인, 조사·사례 분석·주제 조사는 없음(워크스페이스 상한만).
+- 복구: 같은 멱등 키의 재전송(접수 확인 복구)은 이미 통과한 요청이라 다시 막거나 두 번 세지 않는다. 이 기능 이전에 저장된 제출처럼 예약이 없는 복구는 새 요청처럼 가드를 거친다. 브랜드 조사는 복구 중 예산 초과를 ‘접수 확인 지연’으로 가리지 않고 사유와 함께 실패로 남긴다. 회의 복구(`lib/meeting-execution.ts` catch의 `unknown=recovering||…`)는 같은 경우를 아직 ‘확인 지연’으로 보이고, 역할 복구는 409 사유를 보이지만 작업이 ‘확인 필요’에 남는다. 두 경로는 F3 뒤 후속이다.
+- 한계(소프트 캡): 예약은 제출 시점의 예상일 뿐이다. 이미 가드를 통과한 진행 중 실행의 실제 사용량이 예상보다 크면 월 누계가 상한을 넘을 수 있다. 사용량 화면에도 이 점을 적는다.
+- 평가 실행(`lib/eval-server.ts`, F1b-2)은 별도 평가 연결과 결정 5의 별도 월 예산(1.5M, UTC 월)을 쓰고 `submitHermes`·`provider_usage`를 거치지 않는다. 그래서 이 가드가 평가를 다시 막지 않고, 평가 사용량도 운영 누계에 들어가지 않는다.
+- 확인: `GET /api/usage`의 `budget`(`month`·`workspace`·`campaigns`·`campaignOptions`·`warning`)과 사용량 화면의 ‘이번 달 토큰 예산’(상한·사용·진행 중 예상·남은 예산, 소유자에게만 설정 양식).
+- 캠페인 삭제: 캠페인별 상한 행은 `data.campaignId`로 캠페인과 함께 지운다(`lib/record-kinds.ts` `data_campaign`, 삭제 영향 대화상자의 ‘캠페인 토큰 상한’). 워크스페이스 상한과 예약은 남는다.
+- 후속(`loop-4` 미해결 부분): 실행 1회 상한(성장 계획 지표 ‘조사 1회 토큰 → 1회 상한 이하’)과 HERMES 요청에 역할별 출력 토큰 상한(`practices[role].maxTokens`)을 전달하는 것은 gateway 지원 확인 후다. 그 전까지는 월 상한이 하드캡이 아니다(위 한계). OpenAI 직접 경로(`lib/role-execution.ts` `openai('responses')`)는 이번 가드를 거치지 않는다(사용량은 누계에 들어간다).
+
+### 별칭 단가 선언 (PR 4a, loop-5)
+
+대표 결정 10에 따라 별칭 `hermes-agent`를 유지하므로 공급자가 기반 모델을 보고하지 않는다. 모델 단가 등록(`set_pricing`)은 여전히 별칭을 거부하고, 원장 원본(`provider_usage`의 `costAmount`·`priceVersion`)은 바꾸지 않는다.
+
+- 선언: `POST /api/usage` `{"action":"set_alias_pricing","baseModel":"…","priceVersion":"…","currency":"USD","inputPerMillion":2,"outputPerMillion":8,"source":"https://…","effectiveFrom":"2026-09-01"}`. 워크스페이스 소유자만(관리자·직원 403). 기반 모델에 별칭을 넣거나, 날짜가 `YYYY-MM-DD` 달력 날짜가 아니거나, 근거가 HTTPS가 아니면 400. 같은 적용 시작일은 덮어쓴다(`usage_alias_pricing`).
+- 추정: 선언 단가는 읽을 때(`listProviderUsage`) 별칭 실행에만 적용한다. 실행의 관측 시각 이전에 시작한(한국 시간 그날 0시) 가장 늦은 선언을 쓰고, `reestimatedCost = (입력×입력 단가 + 출력×출력 단가)/1,000,000`과 `reestimatePriceVersion`·`reestimateBaseModel`·`reestimateCurrency`·`reestimateSource`를 덧붙이며 `costStatus`는 `declared_estimate`다. 그래서 선언 전의 과거 실행도 추정치가 보인다. 입력·출력 토큰 중 하나라도 모르면 `reestimatedCost:null`(`reestimateNote:"tokens_unknown"`).
+- 경보: 선언의 적용 기간 안에 경보가 있으면 선언 단가는 경보 이전 기간만 유효하다. 경보는 보고 모델 변경(`model_change`, 같은 공급자)과 게이트웨이 스냅샷의 `models` 섹션 변경(`gateway_change`, F2b)이다. 결정 10으로 HERMES는 계속 `hermes-agent`만 보고하므로 별칭 뒤 기반 모델 교체는 보고 모델 변경으로는 드러나지 않고 게이트웨이 스냅샷으로 드러난다(성장 계획 설계 원칙 7). 경보 이후 실행은 추정하지 않고(`reestimateNote:"after_model_change"`), `GET /api/usage`의 `aliasPricingWarning`과 화면에 ‘선언 단가는 경보 이전 기간만 유효’ 경고를 보인다. 경보 뒤에도 쓰려면 기반 모델을 확인해 경보 다음 날짜를 적용 시작일로 다시 선언한다. 경보 뒤에 시작한 선언이 있으면 그 경보는 해소된 것으로 보고 경고를 지운다.
+- 별칭이 아닌 실제 모델 행(OpenAI 포함): 관측 때 단가가 없어 원장 금액이 비어 있고 입력·출력 토큰을 알면, 나중에 등록한 같은 공급자·모델 단가(`usage_pricing`)로 읽을 때 `reestimatedCost`·`reestimatePriceVersion`·`reestimateCurrency`·`reestimateSource`를 계산하고 `costStatus`는 `reestimated`다. 관측 때 단가로 계산된 행과 원장 원본은 바뀌지 않는다.
+- 표시: 사용량 화면 비용 열은 ‘선언 단가 추정’·‘나중 등록 단가 추정’으로 원장 추정과 구분한다. CSV 내보내기(`lib/usage-export.ts`)는 원장 `costAmount` 옆에 `reestimatedCost`·`reestimateCurrency`·`reestimatePriceVersion`·`reestimateBaseModel` 열을 따로 싣는다.
+
+### 커넥터 응답 한도와 조사 결과 예외 문구 (PR 4a, security-ops-11)
+
+- Instagram·네이버 검색광고 커넥터는 응답을 200KB 한도 안에서만 읽는다(`readBoundedJson`). 넘으면 파싱하지 않고 502로 끝난다. 네이버 연결 확인(`verify`)은 인증(2xx)만 보고 캠페인 목록 본문은 읽지 않아 캠페인이 많은 계정도 연결된다.
+- 브랜드 조사 결과 처리에서 `ApiError`가 아닌 예외(TypeError 등)는 조사 기록·화면에 고정 문구 ‘조사 결과를 처리하지 못했습니다. 다시 시도해 주세요.’만 남기고, 로그에는 오류 이름·코드만 남긴다(`research_result_unexpected_error`).
+- 잔여: 실험 과제 원소가 null이면 422가 아니라 TypeError로 실패하는 파서 동작(`lib/deep-research-server.ts`)은 그 파일이 PR 6 앱 측 레인 잠금이라 A7로 넘겼다(`docs/IMPROVEMENT-PLAN.ko.md` 배정 변경). A7이 422로 바꾸고 `tests/validate.test.mjs`의 알려진 결함 검사도 함께 바꾼다.
+
 ### 기능 스위치
 
 `lib/feature-flags.ts`가 알려진 스위치와 기본값의 정본이다. 모두 기본 꺼짐이다: `online_grading`, `b1_reason_required`, `a4_auto_attribution`, `a2_downgrade`. 서버 코드는 `isEnabled(owner, flag)`로 읽는다. 저장은 소유자 범위 `feature_flag` 행(스위치당 1행)이며 행이 없으면 기본값이다. 캐시가 없어 쓰기는 다음 요청부터 반영된다(게시 불필요).
@@ -105,6 +139,6 @@
 
 ## 회귀 검증
 
-`tests/reliability.test.mjs`는 저장 실패·접수 응답 유실·서버 8역할 완주·사용자 승인 유지·큐 공정성·중단·삭제·OpenAI 접수 ID 보존을 확인한다. `tests/execution-identity.test.mjs`는 5개 HERMES 경로와 OpenAI 역할의 조인 키, 모델 변경 경보, 내보내기 권한·합계를, `tests/feature-flags.test.mjs`는 스위치 기본값·즉시 끄기·소유자 전용 쓰기를 확인한다. `tests/terminal-recovery.test.mjs`는 잘못된 완료 출력과 원장 주석 실패의 도메인 상태를 확인한다. 사용량·보안·상세 테스트와 E2E에는 비용 null, 버전 비교, 오래된 수정 거부, 단가 저장이 포함된다.
+`tests/reliability.test.mjs`는 저장 실패·접수 응답 유실·서버 8역할 완주·사용자 승인 유지·큐 공정성·중단·삭제·OpenAI 접수 ID 보존을 확인한다. `tests/execution-identity.test.mjs`는 5개 HERMES 경로와 OpenAI 역할의 조인 키, 모델 변경 경보, 내보내기 권한·합계를, `tests/feature-flags.test.mjs`는 스위치 기본값·즉시 끄기·소유자 전용 쓰기를, `tests/token-budget.test.mjs`는 예산 미설정 통과·경고, 설정 초과 409(5개 HERMES 경로), 진행 중 예약(종류별 최근 평균, 토큰 미보고 종료 실행 유지, 실행 번호 없는 예약 정리), 동시 예약 1건만 통과, 한국 시간 월 경계, 캠페인 예산, 같은 요청 복구(429 뒤 재전송, 예약 없는 조사 복구의 예산 초과 실패), 소유자 전용 설정을, `tests/usage-summary.test.mjs`는 별칭 선언 단가 재추정·경보(보고 모델·게이트웨이 models 섹션) 이후 제외·재선언 뒤 경고 해소·나중 등록 단가 재추정·CSV 재추정 열·원장 불변을 확인한다. `tests/terminal-recovery.test.mjs`는 잘못된 완료 출력과 원장 주석 실패의 도메인 상태를 확인한다. 사용량·보안·상세 테스트와 E2E에는 비용 null, 버전 비교, 오래된 수정 거부, 단가 저장이 포함된다.
 
 외부 모델 응답은 mocked다. E2E는 실제 Chromium과 로컬 D1, mocked 인증 헤더를 사용한다. 유료 모델 실호출과 새 소스의 운영 게시 검증은 별개이며 이 개발에서 수행하지 않는다.

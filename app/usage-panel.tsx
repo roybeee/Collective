@@ -8,18 +8,26 @@ import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select';
 import type {ProviderUsage,UsagePricing,UsageProvider} from '@/lib/usage-ledger';
 import type {ModelChange} from '@/lib/usage-model-alarm';
 import type {GatewayChange} from '@/lib/gateway-snapshot';
-import {filterUsage,isModelAlias,modelLabel,summarizeUsage,usageKindNames,type UsageFilter} from '@/lib/usage-summary';
+import {filterUsage,isModelAlias,modelLabel,summarizeUsage,usageKindNames,type AliasPricing,type UsageFilter} from '@/lib/usage-summary';
 import {roles} from '@/lib/agency';
 import {adminRequestNote,useAuthState,useCanManage} from './auth-client';
 
 type CampaignName={id:string;title:string};
 type GatewayStatus={snapshot:{date:string;takenAt:string;status:'passed'|'blocked';hash:string|null;blockedReason:string|null}|null;changes:GatewayChange[]};
-type UsageData={entries:ProviderUsage[];pricing:UsagePricing[];notice:string;campaigns:CampaignName[];modelChanges:ModelChange[];gateway:GatewayStatus|null};
+// 토큰 예산 요약(loop-4, lib/token-budget.ts tokenBudgetSummary). 한국 시간 달력 월 누계다.
+type BudgetLine={limit:number|null;used:number;inProgress:number;remaining:number|null;unknownUsage:number};
+type BudgetSummary={month:string;workspace:BudgetLine;campaigns:(BudgetLine&{campaignId:string;title:string})[];campaignOptions:CampaignName[];warning:string|null};
+type UsageData={entries:ProviderUsage[];pricing:UsagePricing[];notice:string;campaigns:CampaignName[];modelChanges:ModelChange[];gateway:GatewayStatus|null;budget:BudgetSummary|null;aliasPricing:AliasPricing[];aliasPricingWarning:string|null};
 const statusNames:Record<string,string>={completed:'완료',failed:'실패',error:'실패',cancelled:'취소',canceled:'취소',stopped:'중지',interrupted:'중단',incomplete:'미완료'};
 const outcomeNames:Record<string,string>={completed:'저장 완료 · 내용 검토 별도',invalid_output:'결과 요건 미충족',cancelled:'취소',provider_failed:'공급자 실행 실패',storage_failed:'결과 저장 실패'};
 const count=(value:number|null)=>value===null?'미확인':value.toLocaleString('ko-KR');
 const providerName=(provider:UsageProvider)=>provider==='hermes'?'HERMES':'OpenAI API';
-const cost=(entry:ProviderUsage)=>entry.costAmount===null?'미확인':`${entry.costAmount.toLocaleString('ko-KR',{maximumFractionDigits:6})} ${entry.currency||''} · 추정`;
+const amount=(value:number,currency:string|null|undefined)=>`${value.toLocaleString('ko-KR',{maximumFractionDigits:6})} ${currency||''}`;
+// 별칭 실행은 원장 금액 대신 소유자 선언 단가로 읽을 때 계산한 추정(declared_estimate)을, 실제 모델 실행은 관측 뒤에 등록한 단가로 읽을 때 계산한 추정(reestimated)을 따로 표시한다.
+const reestimateLabels:Record<string,string>={declared_estimate:'선언 단가 추정',reestimated:'나중 등록 단가 추정'};
+const cost=(entry:ProviderUsage)=>entry.costAmount!==null?`${amount(entry.costAmount,entry.currency)} · 추정`:reestimateLabels[entry.costStatus]&&typeof entry.reestimatedCost==='number'?`${amount(entry.reestimatedCost,entry.reestimateCurrency)} · ${reestimateLabels[entry.costStatus]}`:'미확인';
+const reestimateNotes:Record<string,string>={after_model_change:' · 모델 변경 경보 이후라 추정하지 않음',tokens_unknown:' · 입력·출력 토큰 미확인'};
+const priceNote=(entry:ProviderUsage)=>entry.priceVersion||(entry.costStatus==='reestimated'?`관측 뒤 등록한 단가 ${entry.reestimatePriceVersion}로 다시 계산 · 원장은 그대로`:entry.reestimatePriceVersion?`선언 ${entry.reestimatePriceVersion} · 기반 모델 ${entry.reestimateBaseModel}${entry.reestimateNote?reestimateNotes[entry.reestimateNote]||'':''}`:'적용 단가 없음');
 const supersededNames:Record<string,string>={outdated:'이전 버전 작업물',brief_changed:'브리프 변경으로 기준 무효'};
 const roleName=(role:string|null|undefined)=>role?roles.find(r=>r.id===role)?.name||role:'';
 const runLabel=(entry:Pick<ProviderUsage,'kind'|'role'>)=>entry.kind?[usageKindNames[entry.kind]||entry.kind,roleName(entry.role)].filter(Boolean).join(' · '):'실행 종류 미확인';
@@ -31,7 +39,7 @@ async function usageData():Promise<UsageData>{
  const response=await fetch('/api/usage',{cache:'no-store'}),data=await response.json() as Partial<UsageData>&{error?:string};
  if(!response.ok)throw new Error(data.error||'사용량을 불러오지 못했습니다.');
  if(!Array.isArray(data.entries)||!Array.isArray(data.pricing))throw new Error('사용량 응답을 확인하지 못했습니다.');
- return {...data,campaigns:Array.isArray(data.campaigns)?data.campaigns:[],modelChanges:Array.isArray(data.modelChanges)?data.modelChanges:[],gateway:data.gateway&&Array.isArray(data.gateway.changes)?data.gateway:null} as UsageData;
+ return {...data,campaigns:Array.isArray(data.campaigns)?data.campaigns:[],modelChanges:Array.isArray(data.modelChanges)?data.modelChanges:[],gateway:data.gateway&&Array.isArray(data.gateway.changes)?data.gateway:null,budget:data.budget&&data.budget.workspace&&Array.isArray(data.budget.campaigns)?data.budget:null,aliasPricing:Array.isArray(data.aliasPricing)?data.aliasPricing:[],aliasPricingWarning:typeof data.aliasPricingWarning==='string'?data.aliasPricingWarning:null} as UsageData;
 }
 function UsageRows({entries,campaigns}:{entries:ProviderUsage[];campaigns:CampaignName[]}){
  return <div className="mt-5 overflow-x-auto"><table className="w-full text-left text-sm" style={{minWidth:940}}>
@@ -43,7 +51,7 @@ function UsageRows({entries,campaigns}:{entries:ProviderUsage[];campaigns:Campai
    <td className="max-w-48 break-words p-3">{entry.model||'미확인'}{isModelAlias(entry.provider,entry.model)&&<p className="text-xs">연결 별칭 · 기반 모델 미확인</p>}</td>
    <td className="p-3">{statusNames[entry.status]||entry.status}<br/><span className="text-xs">{entry.domainOutcome?outcomeNames[entry.domainOutcome]||entry.domainOutcome:'결과 처리 미확인'}</span><br/><span className="break-all text-xs">종료 사유: {entry.terminalReason}</span></td>
    <td className="p-3 tabular-nums">{count(entry.inputTokens)}</td><td className="p-3 tabular-nums">{count(entry.outputTokens)}</td><td className="p-3 tabular-nums">{count(entry.totalTokens)}</td>
-   <td className="p-3 tabular-nums">{cost(entry)}<br/><span className="text-xs">{entry.priceVersion||'적용 단가 없음'}</span></td>
+   <td className="p-3 tabular-nums">{cost(entry)}<br/><span className="text-xs">{priceNote(entry)}</span></td>
   </tr>)}</tbody>
  </table></div>;
 }
@@ -73,6 +81,42 @@ function GatewayAlarm({gateway}:{gateway:GatewayStatus|null}){
  return <div className="notice mt-4" role="status" aria-label="게이트웨이 상태 스냅샷">
   <p className="flex flex-wrap items-center gap-2">{changes.length>0&&<Badge variant="destructive"><TriangleAlert/>게이트웨이 변경 {changes.length}건</Badge>}게이트웨이 스냅샷{snapshot?` ${snapshot.date}(UTC) · ${snapshot.status==='passed'?`기록 ${snapshot.hash?.slice(0,12)}`:`막힘: ${snapshot.blockedReason||'원인 미상'}`}`:' 없음'}</p>
   {changes.length>0&&<ul className="mt-2 space-y-1 text-sm">{changes.slice(0,3).map(change=><li key={change.id}>{change.fromDate} → {change.toDate}: {change.sections.map(s=>`${sectionNames[s.section]||s.section}(추가 ${s.added.length}·삭제 ${s.removed.length}·변경 ${s.changed.length}${s.truncated?' 이상':''})`).join(', ')}</li>)}</ul>}
+ </div>;
+}
+const tokens=(n:number)=>n.toLocaleString('ko-KR');
+function BudgetLineText({line}:{line:BudgetLine}){
+ return <>상한 {line.limit===null?'미설정':tokens(line.limit)} · 사용 {tokens(line.used)} · 진행 중 예상 {tokens(line.inProgress)} · 남은 예산 {line.remaining===null?'—':tokens(line.remaining)}토큰</>;
+}
+// 토큰 예산(loop-4). 상한은 소유자만 정한다. 미설정은 막지 않고 경고만 보인다. 비우고 저장하면 미설정으로 되돌린다.
+function TokenBudget({budget,onSaved}:{budget:BudgetSummary;onSaved:()=>Promise<void>}){
+ const [scope,setScope]=useState('workspace'),[campaignId,setCampaignId]=useState(''),[limit,setLimit]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
+ const isOwner=useIsOwner();
+ async function submit(event:FormEvent){
+  event.preventDefault();setError('');setMessage('');
+  const value=limit.trim()===''?null:Number(limit);
+  if(value!==null&&(!Number.isSafeInteger(value)||value<1)){setError('월 토큰 상한은 1 이상의 정수로 입력하세요. 비워 두면 미설정으로 되돌립니다.');return}
+  if(scope==='campaign'&&!campaignId){setError('캠페인을 선택하세요.');return}
+  setBusy(true);
+  try{
+   const response=await fetch('/api/usage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'set_budget',scope,...(scope==='campaign'?{campaignId}:{}),monthlyTokens:value})});
+   const data=await response.json() as {error?:string};if(!response.ok)throw new Error(data.error||'토큰 상한을 저장하지 못했습니다.');
+   await onSaved();setMessage(value===null?'상한을 지웠습니다(미설정).':'토큰 상한을 저장했습니다. 다음 HERMES 제출부터 적용합니다.');
+  }catch(error){setError(error instanceof Error?error.message:'토큰 상한을 저장하지 못했습니다.')}finally{setBusy(false)}
+ }
+ return <div className="notice mt-4" aria-label="이번 달 토큰 예산">
+  <p className="font-medium">이번 달 토큰 예산 · {budget.month} (한국 시간)</p>
+  <p>워크스페이스: <BudgetLineText line={budget.workspace}/></p>
+  {budget.campaigns.map(c=><p key={c.campaignId}>캠페인 {c.title}: <BudgetLineText line={c}/></p>)}
+  {budget.warning&&<p className="flex flex-wrap items-center gap-2"><Badge variant="destructive"><TriangleAlert/>상한 미설정</Badge>{budget.warning}</p>}
+  {budget.workspace.unknownUsage>0&&<p className="text-xs">토큰을 알 수 없는 실행 {budget.workspace.unknownUsage}회는 누계에 들어가지 않았습니다.</p>}
+  <p className="text-xs">누계는 공급자가 보고한 이번 달 토큰과 아직 끝나지 않은 HERMES 제출의 예상 토큰(입력 문자 수 추정과 같은 종류 최근 실행 평균 중 큰 값)입니다. 상한을 넘는 새 HERMES 제출은 보내지 않고 ‘토큰 예산 초과’로 멈춥니다. 다만 이미 진행 중인 실행의 실제 사용량이 예상보다 크면 월 누계가 상한을 넘을 수 있습니다. 평가 실행은 별도 월 예산을 씁니다.</p>
+  {isOwner?<form className="form-stack mt-3" onSubmit={submit}>
+   <div className="form-two"><label className="field"><span>상한 범위</span><NativeSelect value={scope} onChange={event=>setScope(event.target.value)}><NativeSelectOption value="workspace">워크스페이스 전체</NativeSelectOption><NativeSelectOption value="campaign">캠페인별</NativeSelectOption></NativeSelect></label>
+    {scope==='campaign'&&<label className="field"><span>상한을 둘 캠페인</span><NativeSelect value={campaignId} onChange={event=>setCampaignId(event.target.value)}><NativeSelectOption value="">캠페인 선택</NativeSelectOption>{budget.campaignOptions.map(c=><NativeSelectOption key={c.id} value={c.id}>{c.title}</NativeSelectOption>)}</NativeSelect></label>}</div>
+   <label className="field"><span>월 토큰 상한 · 비우면 미설정</span><Input type="number" min={1} step={1} value={limit} onChange={event=>setLimit(event.target.value)}/></label>
+   <div className="form-actions"><Button type="submit" disabled={busy}>{busy?'저장 중…':'토큰 상한 저장'}</Button></div>
+   {error&&<p className="form-error" role="alert">{error}</p>}{message&&<p role="status" className="text-sm">{message}</p>}
+  </form>:<p className="subtle-note">토큰 상한 설정은 워크스페이스 소유자만 할 수 있습니다.</p>}
  </div>;
 }
 function roleOptions(entries:ProviderUsage[]){
@@ -118,6 +162,36 @@ function PricingForm({saved,onSaved}:{saved:UsagePricing[];onSaved:()=>Promise<v
   </form>:<p className="subtle-note">단가 등록·변경은 관리자만 할 수 있습니다. {adminRequestNote}</p>}
  </details>;
 }
+// 별칭 단가 선언(loop-5, 결정 10). 소유자만 선언한다. 원장은 바꾸지 않고 적용 시작일(한국 시간) 이후 별칭 실행에 읽을 때 추정을 붙인다.
+const emptyAlias={baseModel:'',priceVersion:'',currency:'USD',inputPerMillion:'',outputPerMillion:'',source:'',effectiveFrom:''};
+function AliasPricingForm({saved,warning,onSaved}:{saved:AliasPricing[];warning:string|null;onSaved:()=>Promise<void>}){
+ const [price,setPrice]=useState(emptyAlias),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
+ const isOwner=useIsOwner();
+ const set=(field:keyof typeof emptyAlias,value:string)=>setPrice(current=>({...current,[field]:value}));
+ async function submit(event:FormEvent){
+  event.preventDefault();setError('');setMessage('');
+  if(!price.inputPerMillion.trim()||!price.outputPerMillion.trim()){setError('입력·출력 단가를 모두 입력하세요.');return}
+  setBusy(true);
+  try{
+   const response=await fetch('/api/usage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'set_alias_pricing',...price,inputPerMillion:Number(price.inputPerMillion),outputPerMillion:Number(price.outputPerMillion)})});
+   const data=await response.json() as {error?:string};if(!response.ok)throw new Error(data.error||'별칭 단가 선언을 저장하지 못했습니다.');
+   await onSaved();setMessage('선언을 저장했습니다. 적용 시작일 이후 별칭 실행에 선언 단가 추정을 표시합니다. 원장은 바꾸지 않습니다.');
+  }catch(error){setError(error instanceof Error?error.message:'별칭 단가 선언을 저장하지 못했습니다.')}finally{setBusy(false)}
+ }
+ return <details className="mt-6 border-t pt-5"><summary className="cursor-pointer font-medium">별칭(hermes-agent) 단가 선언{saved.length?` · ${saved.length}개`:''}</summary>
+  <p className="subtle-note">HERMES가 별칭만 보고할 때 연결한 기반 모델과 그 가격표의 백만 토큰당 단가를 선언하면 별칭 실행 비용을 ‘선언 단가 추정’으로 보여 줍니다. 공급자 보고가 아니라 소유자 선언이며, 이전 실행도 읽을 때 다시 계산합니다.</p>
+  {warning&&<p className="notice flex flex-wrap items-center gap-2" role="status"><Badge variant="destructive"><TriangleAlert/>선언 단가 주의</Badge>{warning}</p>}
+  {saved.length>0&&<ul className="my-4 space-y-2 text-sm">{saved.map(item=><li key={item.effectiveFrom}>{item.effectiveFrom}부터 · 기반 모델 {item.baseModel} · {item.priceVersion}<br/>입력 {item.inputPerMillion} / 출력 {item.outputPerMillion} {item.currency} (백만 토큰당) <a href={item.source} target="_blank" rel="noreferrer" className="underline">단가 근거</a></li>)}</ul>}
+  {isOwner?<form className="form-stack mt-4" onSubmit={submit}>
+   <div className="form-two"><label className="field"><span>기반 모델명</span><Input required maxLength={200} value={price.baseModel} onChange={event=>set('baseModel',event.target.value)} placeholder="별칭 뒤에 연결한 실제 모델 ID"/></label><label className="field"><span>적용 시작일 · 한국 시간</span><Input required type="date" value={price.effectiveFrom} onChange={event=>set('effectiveFrom',event.target.value)}/></label></div>
+   <div className="form-two"><label className="field"><span>선언 단가 버전</span><Input required maxLength={100} value={price.priceVersion} onChange={event=>set('priceVersion',event.target.value)} placeholder="확인한 가격표 날짜 또는 버전"/></label><label className="field"><span>선언 통화</span><Input required pattern="[A-Z]{3}" maxLength={3} value={price.currency} onChange={event=>set('currency',event.target.value.toUpperCase())} placeholder="USD"/></label></div>
+   <div className="form-two"><label className="field"><span>선언 입력 단가 · 백만 토큰당</span><Input required type="number" min={0} max={1000000} step="any" value={price.inputPerMillion} onChange={event=>set('inputPerMillion',event.target.value)}/></label><label className="field"><span>선언 출력 단가 · 백만 토큰당</span><Input required type="number" min={0} max={1000000} step="any" value={price.outputPerMillion} onChange={event=>set('outputPerMillion',event.target.value)}/></label></div>
+   <label className="field"><span>단가 근거 · HTTPS 주소</span><Input required type="url" pattern="https://.*" maxLength={2000} value={price.source} onChange={event=>set('source',event.target.value)} placeholder="https://…"/></label>
+   <div className="form-actions"><Button type="submit" disabled={busy}>{busy?'저장 중…':'별칭 단가 선언'}</Button></div>
+   {error&&<p className="form-error" role="alert">{error}</p>}{message&&<p role="status" className="text-sm">{message}</p>}
+  </form>:<p className="subtle-note">별칭 단가 선언은 워크스페이스 소유자만 할 수 있습니다.</p>}
+ </details>;
+}
 export function UsagePanel(){
  const [data,setData]=useState<UsageData|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[visible,setVisible]=useState(30),[filter,setFilter]=useState<UsageFilter>({});
  const isOwner=useIsOwner(),entries=data?filterUsage(data.entries,filter):[];
@@ -132,11 +206,11 @@ export function UsagePanel(){
  return <section className="settings-card" style={{gridColumn:'1 / -1',minWidth:0}}>
   <div className="flex flex-wrap items-start justify-between gap-4"><div><div className="settings-icon"><ReceiptText/></div><h2>AI 사용량과 비용</h2></div><Button variant="outline" disabled={loading} onClick={()=>{setLoading(true);void refresh()}}><RefreshCw/>새로고침</Button></div>
   <p>실패하거나 취소된 실행도 공급자가 보고한 사용량을 남깁니다. 알 수 없는 모델·토큰·금액은 ‘미확인’으로 표시합니다.</p>
-  <p className="subtle-note">hermes-agent는 연결 별칭입니다. 기반 모델이 보고되지 않으면 모델을 추정하거나 별칭에 단가를 적용하지 않습니다.</p>
+  <p className="subtle-note">hermes-agent는 연결 별칭입니다. 기반 모델이 보고되지 않으면 모델을 추정하거나 별칭에 모델 단가를 적용하지 않습니다. 소유자가 선언한 별칭 단가는 ‘선언 단가 추정’으로 따로 표시합니다.</p>
   <p className="notice">{data?.notice||'비용은 직접 등록한 단가로 계산한 추정치입니다. 도구 요금·할인·캐시 요금·세금은 포함하지 않습니다.'}</p>
   {error&&<p className="form-error" role="alert">{error}</p>}
   {loading&&!data?<p role="status">사용량 불러오는 중…</p>:data&&<>
-   <ModelAlarm changes={data.modelChanges}/><GatewayAlarm gateway={data.gateway}/>
+   <ModelAlarm changes={data.modelChanges}/><GatewayAlarm gateway={data.gateway}/>{data.budget&&<TokenBudget budget={data.budget} onSaved={refresh}/>}
    {!data.pricing.length&&<p className="subtle-note">아직 등록한 단가가 없습니다. 기반 모델과 입력·출력 토큰, 적용 단가가 확인되기 전의 비용은 미확인으로 남습니다.</p>}
    {data.entries.length?<>
     <UsageFilters entries={data.entries} campaigns={data.campaigns} filter={filter} onChange={next=>{setFilter(next);setVisible(30)}}/>
@@ -144,7 +218,7 @@ export function UsagePanel(){
     {isOwner&&<p><a className="inline-flex items-center gap-1 text-sm underline" href={exportHref(filter)} download><Download className="size-4"/>이 조건의 사용량 CSV 내보내기</a></p>}
     <UsageSummary entries={entries}/><UsageRows entries={entries.slice(0,visible)} campaigns={data.campaigns}/>{visible<entries.length&&<Button className="mt-4" variant="outline" onClick={()=>setVisible(current=>current+30)}>이전 실행 더 보기</Button>}
    </>:<p className="subtle-note">아직 기록된 사용량이 없습니다. 이 기능 도입 이후 종료 상태를 확인한 실행부터 표시됩니다.</p>}
-   <PricingForm saved={data.pricing} onSaved={refresh}/>
+   <PricingForm saved={data.pricing} onSaved={refresh}/><AliasPricingForm saved={data.aliasPricing} warning={data.aliasPricingWarning} onSaved={refresh}/>
   </>}
  </section>;
 }

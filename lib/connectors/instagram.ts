@@ -1,9 +1,12 @@
 import {ApiError, str, stamp} from '../server';
+import {HttpBodyError, readBoundedJson} from '../http-limits';
 import type {Connector, Collected, InstagramCredential} from './types';
 
 // 고정 호스트만 호출한다. 사용자가 URL을 입력하는 경로가 없으므로 SSRF 표면이 없다.
 const HOST = 'https://graph.facebook.com/v21.0';
 const TIMEOUT_MS = 20000;
+// 외부 공급자 응답은 명시적 바이트 한도 안에서만 읽는다(docs/SECURITY-BOUNDARIES.ko.md).
+const MAX_RESPONSE_BYTES = 200000;
 // 도달 대비 공유를 계산할 지표. plays/saves는 다음 실험 설계를 위한 참고값으로만 보존한다.
 const METRICS = ['reach', 'shares', 'saves', 'plays'];
 
@@ -21,8 +24,9 @@ async function call(credential: InstagramCredential, path: string, query = '') {
  }
  let payload: Record<string, unknown>;
  try {
-  payload = await response.json() as Record<string, unknown>;
- } catch {
+  payload = await readBoundedJson<Record<string, unknown>>(response, MAX_RESPONSE_BYTES);
+ } catch (error) {
+  if (error instanceof HttpBodyError && error.status === 413) throw new ApiError(502, 'Instagram 응답이 허용 크기(200KB)를 넘어 읽지 않았습니다. 잠시 후 다시 시도해 주세요.');
   throw new ApiError(502, 'Instagram 응답 형식이 올바르지 않습니다.');
  }
  const error = payload.error as {code?: number; message?: string} | undefined;

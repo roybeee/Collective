@@ -45,10 +45,11 @@ function csvCell(value:unknown){
  const text=String(value),safe=/^[=+\-@\t\r]/.test(text)?"'"+text:text;
  return /[",\r\n]/.test(safe)?`"${safe.replace(/"/g,'""')}"`:safe;
 }
-export const USAGE_CSV_COLUMNS=['observedAt','provider','providerRunId','model','actualModel','status','terminalReason','domainOutcome','inputTokens','outputTokens','totalTokens','costAmount','currency','priceVersion','costStatus','jobId','campaignId','campaignVersion','brandId','storeId','kind','role','artifactId','promptVersion','outputContractVersion','appTree','durationMs','superseded'] as const;
+// 재추정 열(loop-5): 원장 금액(costAmount)은 그대로 두고, 읽을 때 선언 단가(declared_estimate)나 관측 뒤 등록한 단가(reestimated)로 계산한 금액을 따로 싣는다.
+export const USAGE_CSV_COLUMNS=['observedAt','provider','providerRunId','model','actualModel','status','terminalReason','domainOutcome','inputTokens','outputTokens','totalTokens','costAmount','currency','priceVersion','costStatus','reestimatedCost','reestimateCurrency','reestimatePriceVersion','reestimateBaseModel','jobId','campaignId','campaignVersion','brandId','storeId','kind','role','artifactId','promptVersion','outputContractVersion','appTree','durationMs','superseded'] as const;
 type CsvRow=Record<typeof USAGE_CSV_COLUMNS[number],unknown>;
 function csvRow(owner:string,e:ProviderUsage):CsvRow{
- return {observedAt:e.observedAt,provider:e.provider,providerRunId:e.providerRunId,model:e.model,actualModel:isModelAlias(e.provider,e.model)?null:e.model,status:e.status,terminalReason:e.terminalReason,domainOutcome:e.domainOutcome,inputTokens:e.inputTokens,outputTokens:e.outputTokens,totalTokens:e.totalTokens,costAmount:e.costAmount,currency:e.currency,priceVersion:e.priceVersion,costStatus:e.costStatus,
+ return {observedAt:e.observedAt,provider:e.provider,providerRunId:e.providerRunId,model:e.model,actualModel:isModelAlias(e.provider,e.model)?null:e.model,status:e.status,terminalReason:e.terminalReason,domainOutcome:e.domainOutcome,inputTokens:e.inputTokens,outputTokens:e.outputTokens,totalTokens:e.totalTokens,costAmount:e.costAmount,currency:e.currency,priceVersion:e.priceVersion,costStatus:e.costStatus,reestimatedCost:e.reestimatedCost,reestimateCurrency:e.reestimateCurrency,reestimatePriceVersion:e.reestimatePriceVersion,reestimateBaseModel:e.reestimateBaseModel,
   jobId:withoutOwner(owner,e.jobId),campaignId:e.campaignId,campaignVersion:e.campaignVersion,brandId:e.brandId,storeId:e.storeId,kind:e.kind,role:e.role,artifactId:e.artifactId,promptVersion:e.promptVersion,outputContractVersion:e.outputContractVersion,appTree:e.appTree,durationMs:e.durationMs,superseded:e.superseded};
 }
 export async function usageCsv(owner:string,filter:UsageFilter){
