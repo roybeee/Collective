@@ -290,7 +290,14 @@ const copy=await setup('copy');
 const blocks=['휘경동 ODA 피자에서 따뜻한 한 판을 만나 보세요.','지금 인기 메뉴를 할인합니다!','무료 배달 이벤트 진행 중','화덕 조리로 구운 피자를 만나 보세요.'];
 await put('artifact','copy-art',{id:'copy-art',campaignId:'copy',campaignVersion:1,role:'content',title:'콘텐츠 스튜디오 · ODA',content:'## 게시 카피 3종과 용도·CTA\n\n'+blocks.join('\n\n')+'\n\n## 총 15초 구간별 화면/대사/자막/소리/편집표\n\n0–3초: 매장 외관',version:2,status:'approved',origin:'manual',createdAt:new Date().toISOString()},'copy');
 await put('artifact','review-art',{id:'review-art',campaignId:'copy',campaignVersion:1,role:'content',title:'검토 전',content:'## 게시 카피 3종과 용도·CTA\n\n검토 전 카피입니다.',version:1,status:'review',origin:'manual',createdAt:new Date().toISOString()},'copy');
+// 결정 17 게이트: 기본값에서는 AI 카피 캡션 후보를 내주지 않고, 카피를 붙인 발행 준비는 409로 막는다.
+const gatedState=await getState('copy');
+check(gatedState.copyCaptions===false&&Array.isArray(gatedState.copies)&&gatedState.copies.length===0,'AI copy captions off by default (decision 17)');
+const gatedCopy=await post('save_publication','copy',{creativeId:copy.creative.id,mediaUrl:cloud(copy),scheduledAt:at(29),plannedCostKRW:0,copy:{artifactId:'copy-art',artifactVersion:2,index:0}});
+check(gatedCopy.status===409&&gatedCopy.data.error.includes('결정 17'),'copy caption rejected while decision 17 gate is off');
+rt.env.AI_COPY_CAPTIONS='enabled';
 const copyState=await getState('copy');
+check(copyState.copyCaptions===true,'gate reports enabled');
 check(copyState.copies?.length===4&&copyState.copies[0].text===blocks[0]&&!copyState.copies[0].issues.length,'approved content copy offered as caption candidate');
 check(!copyState.copies?.some(c=>c.artifactId==='review-art'),'unapproved content copy not offered');
 check(copyState.copies?.[1]?.issues.some(i=>i.includes('인기'))&&copyState.copies[2].issues.some(i=>i.includes('무료 배달'))&&copyState.copies[3].issues.some(i=>i.includes('화덕 조리')),'claim guard, prohibited and candidate facts block copy with reasons');

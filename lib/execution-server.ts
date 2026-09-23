@@ -1,4 +1,4 @@
-import {ApiError,readRecord,listRecords,recordStatement,eventStatement,database,acquireLock,releaseLock,stamp,uid,str,num,encrypt,decrypt,type Actor} from './server';
+import {ApiError,runtime,readRecord,listRecords,recordStatement,eventStatement,database,acquireLock,releaseLock,stamp,uid,str,num,encrypt,decrypt,type Actor} from './server';
 import {campaignBudget,type Artifact,type Brand,type Campaign} from './agency';
 import {confirmedFactContext} from './brand-facts-server';
 import type {BrandFact} from './brand-facts';
@@ -25,7 +25,7 @@ async function creativeCurrent(campaign:Campaign,brand:Brand|null,facts:BrandFac
 export async function getExecution(owner:string,campaign:Campaign):Promise<ExecutionState>{
  const [creatives,publications,limits,credential,brand,facts,copies]=await Promise.all([listRecords<ExecutionCreative>(owner,'execution_creative',campaign.id),listRecords<Publication>(owner,'execution_publication',campaign.id),optionalRecord<ExecutionLimits>(owner,'execution_limits',campaign.id),optionalRecord<PublisherCredential>(owner,'publisher_credential',campaign.brandId),optionalRecord<Brand>(owner,'brand',campaign.brandId),confirmedFactContext(owner,campaign.brandId,campaign.storeId),captionCandidates(owner,campaign)]);
  const current=await Promise.all(creatives.map(c=>creativeCurrent(campaign,brand,facts,c)));
- return {creatives:creatives.map((c,i)=>({...c,objectKey:'',current:current[i]})),publications,limits,publisher:credential?{connected:true,channelId:credential.channelId,account:credential.account,version:credential.version}:{connected:false},copies};
+ return {creatives:creatives.map((c,i)=>({...c,objectKey:'',current:current[i]})),publications,limits,publisher:credential?{connected:true,channelId:credential.channelId,account:credential.account,version:credential.version}:{connected:false},copies,copyCaptions:aiCopyCaptionsEnabled()};
 }
 export function assertVersion(record:{version:number},version:unknown){if(record.version!==version)throw new ApiError(409,'내용이 변경됐습니다. 새로고침 후 다시 확인하세요.')}
 export async function resolveFacts(owner:string,campaign:Campaign,refs:unknown,until=Date.now()):Promise<BrandFact[]>{
@@ -39,13 +39,18 @@ export async function resolveFacts(owner:string,campaign:Campaign,refs:unknown,u
 }
 // 캡션 후보(exec-loop-7 1): 현재 브리프 버전에서 승인된 콘텐츠 작업물의 게시 카피. PR 2 근거 컨텍스트의 확정·거절·후보 사실로 검사한다.
 const copySource=(a:Artifact,c:Campaign)=>a.role==='content'&&a.status==='approved'&&a.campaignId===c.id&&(a.campaignVersion===undefined||a.campaignVersion===c.version);
+// 결정 17(AI 생성물 표시·규제 검토 책임)이 정해지기 전에는 AI 작업물 카피를 게시 캡션에 쓰지 않는다.
+// 표시 문구·위치와 승인 게이트의 표시 확인을 구현한 뒤 AI_COPY_CAPTIONS=enabled로 켠다. 확인 사실 문구만 쓰는 캡션은 영향이 없다.
+export const aiCopyCaptionsEnabled=()=>runtime.AI_COPY_CAPTIONS==='enabled';
 export async function captionCandidates(owner:string,campaign:Campaign):Promise<CaptionCandidate[]>{
+ if(!aiCopyCaptionsEnabled())return [];
  const artifacts=(await listRecords<Artifact>(owner,'artifact',campaign.id)).filter(a=>copySource(a,campaign));
  if(!artifacts.length)return [];
  const {facts}=await evidenceContext(database(),owner,campaign);
  return artifacts.flatMap(a=>copyBlocks(a.content).map((text,index)=>({artifactId:a.id,artifactVersion:a.version,index,text,issues:captionIssues(text,facts)})));
 }
 async function approvedCopy(owner:string,campaign:Campaign,input:unknown):Promise<PublicationCopy>{
+ if(!aiCopyCaptionsEnabled())throw new ApiError(409,'AI 작업물 카피를 캡션에 쓰는 기능은 AI 생성물 표시 기준(결정 17)이 정해질 때까지 꺼져 있습니다. 확인 사실 문구만으로 발행하세요.');
  const ref=(input&&typeof input==='object'?input:{}) as Record<string,unknown>;
  const artifact=await readRecord<Artifact>(owner,'artifact',str(ref.artifactId,'카피 작업물',100,true));
  if(!copySource(artifact,campaign)||artifact.version!==ref.artifactVersion)throw new ApiError(409,'카피 작업물이 현재 브리프에서 승인된 버전이 아닙니다. 캡션 후보를 다시 불러오세요.');
