@@ -1,0 +1,72 @@
+// 워크스페이스 화면 상태 ↔ URL 쿼리(lib/nav-state.ts)의 파싱·직렬화·검증 규칙을 고정한다.
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {resolve,dirname} from 'node:path';
+import {SourceTextModule,createContext} from 'node:vm';
+import ts from 'typescript';
+const context=createContext({console,URLSearchParams}),cache=new Map();
+function moduleFor(path){path=resolve(path);if(cache.has(path))return cache.get(path);const m=new SourceTextModule(ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText,{context,identifier:path});cache.set(path,m);return m;}
+const m=moduleFor('lib/nav-state.ts');await m.link((s,r)=>moduleFor(resolve(dirname(r.identifier),s+'.ts')));await m.evaluate();
+const {navViews,parseNav,serializeNav,normalizeNav,withCampaign,reconcileNav}=m.namespace;
+let passed=0;
+function check(name,actual,expected){assert.deepEqual(JSON.parse(JSON.stringify(actual)),expected,name);passed++}
+
+// --- 허용 화면 ---------------------------------------------------------------------
+check('allowed views match the sidebar menu and settings',[...navViews],['overview','learning','campaigns','brands','stores','agents','assets','results','settings']);
+
+// --- 파싱 ---------------------------------------------------------------------------
+check('empty query is the overview',parseNav(''),{view:'overview'});
+check('leading ? is optional',parseNav('view=assets'),{view:'assets'});
+check('campaign detail on the campaign list',parseNav('?view=campaigns&campaign=3f2a9c1e-0b7d-4c1a-9f00-1234567890ab'),{view:'campaigns',campaign:'3f2a9c1e-0b7d-4c1a-9f00-1234567890ab'});
+check('campaign detail can sit on any view',parseNav('?view=assets&campaign=ofd-pilot-01'),{view:'assets',campaign:'ofd-pilot-01'});
+check('brand archive',parseNav('?view=brands&brand=oda'),{view:'brands',brand:'oda'});
+check('store marketing with brand and store',parseNav('?view=stores&brand=oda&store=store_01'),{view:'stores',brand:'oda',store:'store_01'});
+check('unknown view falls back to the overview',parseNav('?view=admin'),{view:'overview'});
+check('prototype keys are not views',parseNav('?view=__proto__'),{view:'overview'});
+check('view is case-sensitive',parseNav('?view=Campaigns'),{view:'overview'});
+check('missing view with campaign opens it on the overview',parseNav('?campaign=c1'),{view:'overview',campaign:'c1'});
+check('brand is ignored outside brands and stores',parseNav('?view=campaigns&brand=oda'),{view:'campaigns'});
+check('store is ignored outside stores',parseNav('?view=brands&brand=oda&store=s1'),{view:'brands',brand:'oda'});
+check('unknown parameters are ignored',parseNav('?view=results&tab=history&utm_source=x'),{view:'results'});
+check('ids with markup are dropped',parseNav('?view=campaigns&campaign=%3Cscript%3E'),{view:'campaigns'});
+check('ids with spaces or slashes are dropped',parseNav('?view=brands&brand=a%20b&campaign=..%2Fx'),{view:'brands'});
+check('100-character id is kept',parseNav('?view=campaigns&campaign='+'a'.repeat(100)),{view:'campaigns',campaign:'a'.repeat(100)});
+check('101-character id is dropped',parseNav('?view=campaigns&campaign='+'a'.repeat(101)),{view:'campaigns'});
+check('empty id is dropped',parseNav('?view=brands&brand='),{view:'brands'});
+check('first duplicate parameter wins',parseNav('?view=assets&view=brands'),{view:'assets'});
+check('non-ASCII id is dropped',parseNav('?view=brands&brand=%ED%95%9C%EA%B8%80'),{view:'brands'});
+
+// --- 직렬화 -------------------------------------------------------------------------
+check('overview without detail is the bare path',serializeNav({view:'overview'}),'');
+check('view only',serializeNav({view:'settings'}),'?view=settings');
+check('campaign detail keeps the view',serializeNav({view:'campaigns',campaign:'c1'}),'?view=campaigns&campaign=c1');
+check('overview with campaign keeps the view',serializeNav({view:'overview',campaign:'c1'}),'?view=overview&campaign=c1');
+check('stores with brand and store',serializeNav({view:'stores',brand:'oda',store:'s1'}),'?view=stores&brand=oda&store=s1');
+check('invalid view and ids are not written',serializeNav({view:'nope',campaign:'a b',brand:'<x>'}),'');
+check('brand outside brands/stores is not written',serializeNav({view:'assets',brand:'oda'}),'?view=assets');
+for(const state of [{view:'overview'},{view:'campaigns',campaign:'c-1'},{view:'brands',brand:'mapdal'},{view:'stores',brand:'oda',store:'s_2'},{view:'assets',campaign:'x'},{view:'learning'}])check('round trip '+JSON.stringify(state),parseNav(serializeNav(state)),state);
+
+// --- 정규화·캠페인 열기 -----------------------------------------------------------------
+check('null and undefined ids are dropped',normalizeNav({view:'brands',brand:null,campaign:undefined}),{view:'brands'});
+check('missing view becomes the overview',normalizeNav({}),{view:'overview'});
+const base=Object.freeze({view:'assets',brand:'oda'});
+check('opening a campaign keeps the current view',withCampaign({view:'assets'},'c9'),{view:'assets',campaign:'c9'});
+check('closing a campaign keeps the view',withCampaign({view:'campaigns',campaign:'c9'},null),{view:'campaigns'});
+check('invalid campaign id is not opened',withCampaign({view:'campaigns'},'bad id'),{view:'campaigns'});
+check('withCampaign does not mutate its input',[withCampaign(base,'c1'),base],[{view:'assets',campaign:'c1'},{view:'assets',brand:'oda'}]);
+
+// --- 로드 뒤 존재 확인 -----------------------------------------------------------------
+const known={campaigns:['c1','c2'],brands:['ofd','oda']};
+const ok={view:'campaigns',campaign:'c1'};
+assert.equal(reconcileNav(ok,known),ok,'known campaign keeps the same state object');passed++;
+check('unknown campaign goes to the campaign list',reconcileNav({view:'assets',campaign:'gone'},known),{view:'campaigns'});
+check('unknown campaign on brands also goes to the list',reconcileNav({view:'brands',brand:'oda',campaign:'gone'},known),{view:'campaigns'});
+check('unknown brand archive goes to the brand list',reconcileNav({view:'brands',brand:'nope'},known),{view:'brands'});
+check('unknown brand keeps a known open campaign',reconcileNav({view:'stores',brand:'nope',campaign:'c2'},known),{view:'stores',campaign:'c2'});
+check('unknown store brand shows all stores',reconcileNav({view:'stores',brand:'nope',store:'s1'},known),{view:'stores'});
+const archive={view:'brands',brand:'oda'};
+assert.equal(reconcileNav(archive,known),archive,'known brand keeps the same state object');passed++;
+const plain={view:'results'};
+assert.equal(reconcileNav(plain,known),plain,'state without ids is unchanged');passed++;
+
+console.log(JSON.stringify({passed},null,2));
