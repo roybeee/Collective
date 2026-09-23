@@ -1,5 +1,6 @@
 # 두 갈래 이상으로 갈라진 브랜치가 같은 파일을 고치는 동안 회귀를 잡아 줄 장치가 없었다.
-# typecheck와 테스트는 차단, lint는 기준선(scripts/lint-baseline.json)을 넘는 증가만 차단한다.
+# typecheck, 테스트, 빌드, 워커 계약 테스트는 차단, lint는 기준선(scripts/lint-baseline.json)과 다르면 차단한다
+# (증가는 고치고, 감소는 --update로 기준선을 함께 낮춘다).
 #
 # `pnpm run <script>`는 이 저장소의 pnpm-workspace.yaml 때문에 'packages field missing or empty'로
 # 실패한다(이 워크플로 도입 이전부터의 동작). 그래서 각 단계는 node로 직접 실행한다.
@@ -20,6 +21,17 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # 아래 STATUS 점검이 조상 관계를 보려면 전체 이력이 필요하다.
+
+      # 비차단 문서 점검: docs/STATUS.md의 운영 제품 커밋이 이 리비전의 조상인지 확인한다.
+      # 틀린 기준 SHA가 위임 계약서에 들어가 헛도는 위임을 막는다(eng-hygiene-10).
+      - name: STATUS product commit is an ancestor (non-blocking)
+        continue-on-error: true
+        run: |
+          sha=$(grep -oE '운영 제품 커밋 [|] `[0-9a-f]{40}`' docs/STATUS.md | grep -oE '[0-9a-f]{40}' | head -n 1)
+          test -n "$sha" || { echo "::warning::docs/STATUS.md에서 운영 제품 커밋 SHA를 찾지 못했습니다."; exit 1; }
+          git merge-base --is-ancestor "$sha" HEAD || { echo "::warning::STATUS의 운영 제품 커밋 $sha 가 HEAD의 조상이 아닙니다."; exit 1; }
 
       - uses: pnpm/action-setup@v4
         with:
@@ -42,11 +54,14 @@ jobs:
       - name: Lint (baseline gate)
         run: node scripts/lint-gate.mjs
 
-      # tests/research_worker_test.py는 로컬 HTTP 서버와의 소켓 읽기 경합으로 간헐 실패한다
-      # (2026-09-22 측정: 12회 중 2회, test_scoped_machine_request_without_human_identity).
-      # 커버리지는 유지하되 이 경합이 고쳐질 때까지 차단하지 않는다.
-      - name: Worker contract test (non-blocking, known flake)
-        continue-on-error: true
+      # tsc가 못 잡는 빌드 파손(vite/wrangler 설정, 서버·클라이언트 경계)을 병합 전에 막는다.
+      - name: Build
+        run: node scripts/run-framework.mjs build
+
+      # 간헐 실패의 원인은 테스트 서버가 요청 본문을 읽지 않고 연결을 닫아 RST가 나던 것이었다
+      # (ConnectionResetError, test_scoped_machine_request_without_human_identity).
+      # 테스트 서버가 본문을 소비하고 Content-Length를 붙이도록 고친 뒤 50회 반복 0회 실패를 확인해 차단으로 올렸다.
+      - name: Worker contract test
         run: python3 tests/research_worker_test.py
 
   # 로컬 빌드를 wrangler --local로 띄워 브라우저 여정을 확인한다(docs/E2E.ko.md).
@@ -89,3 +104,10 @@ jobs:
           name: e2e-artifacts
           path: e2e/artifacts/
           if-no-files-found: ignore
+
+      # 차단 전환 기준(docs/E2E.ko.md, main 연속 20회 통과)을 세려고 main 실행마다 결과를 실행 요약에 남긴다.
+      # 잡 단위 continue-on-error 때문에 워크플로 결론은 e2e 실패와 무관하게 success일 수 있다.
+      - name: Record outcome
+        if: always() && github.ref == 'refs/heads/main'
+        run: |
+          echo "e2e-smoke main: ${{ job.status }} (run ${{ github.run_id }})" >> "$GITHUB_STEP_SUMMARY"

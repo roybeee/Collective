@@ -1,5 +1,5 @@
-// 기존 lint 오류를 한 번에 고치지 않는다. 대신 기준선을 고정하고 증가만 막는다.
-// 기준선을 낮추는 변경은 환영이고, 그때는 scripts/lint-baseline.json을 함께 줄인다.
+// 기존 lint 오류를 한 번에 고치지 않는다. 대신 기준선을 고정하고 증가를 막는다.
+// 감소 시 기준선 갱신 강제: 수치가 줄면 --update로 scripts/lint-baseline.json을 함께 낮춰야 통과한다(한 방향 래칫).
 import {readFileSync, writeFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 
@@ -26,5 +26,10 @@ if (errors > baseline.errors) {
 }
 if (warnings > baseline.warnings) {
  process.stderr.write(`lint 경고가 기준선보다 ${warnings - baseline.warnings}건 늘었습니다.\n`);
+ process.exit(1);
+}
+// 증가를 먼저 본다. 한쪽이 늘고 다른 쪽이 줄었을 때 --update로 증가분이 기준선에 흡수되지 않게 한다.
+if (errors < baseline.errors || warnings < baseline.warnings) {
+ process.stderr.write('lint 수치가 기준선보다 줄었습니다. node scripts/lint-gate.mjs --update로 기준선을 낮춰 함께 커밋하세요.\n');
  process.exit(1);
 }

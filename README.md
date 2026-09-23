@@ -10,7 +10,7 @@ Private marketing workspace for Mealzip. Built with React, Vinext, Cloudflare Wo
 - Text deliverables: strategy, copy, scripts, production instructions, measurement plans and independent review. Image/video rendering, media buying, social publishing and POS ingestion are not connected.
 - Manual artifacts, revision history, version-specific approval and upstream invalidation.
 - Campaign measurements and cost-based calculations. Before/after differences are observational, not causal attribution.
-- D1 persistence, per-user isolation, owner-private Sites access, same-origin writes, serialized mutations, and encrypted API-key storage.
+- D1 persistence, per-workspace isolation, invitation-only email/password login (`AUTH_MODE=email`) behind a public Sites entry, same-origin writes, serialized mutations, and encrypted API-key storage.
 - API status and output are never simulated in the product. The provider is mocked only in tests.
 
 ## Connection
@@ -29,13 +29,13 @@ See [실행·사용량·작업물 보완](docs/RELIABILITY.ko.md) and [보안 �
 
 `node --experimental-vm-modules tests/workflow.mjs`
 
-28 integration assertions exercise actual route handlers with SQLite, crypto and a mocked provider: authentication, ownership, input validation, persistence, approval/version invalidation, concurrent edits, encrypted keys, completion handling and uncertain submission deduplication. No live paid model call was performed during initial development because no API credential was connected.
+33 integration assertions (main `3f68f21`) exercise actual route handlers with SQLite, crypto and a mocked provider: authentication, ownership, input validation, persistence, approval/version invalidation, concurrent edits, encrypted keys, completion handling and uncertain submission deduplication. No live paid model call was performed during initial development because no API credential was connected.
 
 Browser QA verified campaign and manual artifact creation against the development D1 database. WebMCP tool registration is feature-detected; the QA browser did not expose modelContext, so WebMCP runtime execution was unavailable.
 
 `node node_modules/typescript/bin/tsc --noEmit`
 
-Use the Sites build/publish workflow for deployment. D1 migrations in `drizzle/` are schema-only. Production authentication depends on trusted Sites dispatcher headers; development-only preview identity is removed from production builds. The site is intentionally owner-private.
+Use the Sites build/publish workflow for deployment. D1 migrations in `drizzle/` are schema-only. Production runs with `AUTH_MODE=email`: the Sites entry is public, and every data and account API requires the app's own session cookie ([이메일 로그인 운영 안내](docs/EMAIL-AUTH.ko.md)). The legacy mode that trusts the Sites dispatcher header `oai-authenticated-user-id` is for local development and E2E, and in production only after Sites access is restored to owner-only per the recovery steps in [EMAIL-AUTH.ko.md](docs/EMAIL-AUTH.ko.md); never switch production back to it while Sites access is public — leaving `AUTH_MODE` unset also selects legacy. Development-only preview identity is removed from production builds. Current production state: [docs/STATUS.md](docs/STATUS.md).
 
 ## Viral learning lab
 
@@ -127,15 +127,15 @@ The independent quality report states what it did not review: the five criteria 
 
 `assertNoActiveJobs` takes an optional campaign. Saving or approving an artifact is checked against its own campaign, so an AI run on one campaign no longer blocks the human approval gate on another. Connection and setting changes keep the account-wide check.
 
-Verification: `node scripts/test.mjs` runs the ten suites (497 assertions). `node node_modules/typescript/bin/tsc --noEmit` and `node scripts/lint-gate.mjs` (baseline in `scripts/lint-baseline.json`, increases blocked) complete the gate, and `.github/workflows/ci.yml` runs all three on every branch. `pnpm run <script>` fails in this repository because of `pnpm-workspace.yaml`, so each step calls node directly. `tests/research_worker_test.py` is run without blocking: it fails intermittently through a socket race in the test's local HTTP server. Every suite stubs fetch, so no test makes a paid model call or a real connector call — but the product itself has been run live: see `docs/observations/2026-09-23-live-run.md` for 18 completed HERMES runs and what they showed.
+Verification: `node scripts/test.mjs` runs every suite (current suite and assertion counts are in [docs/STATUS.md](docs/STATUS.md)). `node node_modules/typescript/bin/tsc --noEmit` and `node scripts/lint-gate.mjs` (baseline in `scripts/lint-baseline.json`; increases are blocked, and decreases must lower the baseline with `--update`) complete the gate. The blocking `verify` job in `.github/workflows/ci.yml` runs these three plus `node scripts/run-framework.mjs build` and `python3 tests/research_worker_test.py` on every branch. `pnpm run <script>` fails in this repository because of `pnpm-workspace.yaml`, so each step calls node directly. The worker contract test used to fail intermittently because its local HTTP server closed connections without reading the request body; the server now consumes the body, so the test blocks. Browser E2E remains non-blocking ([docs/E2E.ko.md](docs/E2E.ko.md)). Every suite stubs fetch, so no test makes a paid model call or a real connector call — but the product itself has been run live: see `docs/observations/2026-09-23-live-run.md` for 18 completed HERMES runs and what they showed.
 
 ## Deployment identity
 
-`GET /api/version` returns `{build, tree}` for the signed-in owner. `tree` is the committed source tree hash injected at build time by `vite.config.ts`. The GitHub commit and the Sites commit that publishes the same files have different SHAs but the same tree, so the tree — not the commit — identifies which reviewed revision a running deployment was built from.
+`GET /api/version` returns `{build, tree}` to a signed-in session. `tree` is the committed source tree hash injected at build time by `vite.config.ts`. The GitHub commit and the Sites commit that publishes the same files have different SHAs but the same tree, so the tree — not the commit — identifies which reviewed revision a running deployment was built from.
 
 The value is fail-closed. Vite bundles what is on disk, so a modified working tree would ship code that `HEAD`'s tree does not describe; the build reports `dirty` in that case, and `unknown` when git is unavailable. `lib/app-version.ts` accepts only 40 lowercase hex characters and maps everything else to `unknown`, so a deployment can never be reported as verified against a revision it was not built from. `COLLECTIVE_SOURCE_TREE` overrides the build-time lookup for environments without git.
 
-Reading it requires owner authentication, so open the app and fetch it from the page rather than typing the URL:
+Reading it requires a signed-in email session, so sign in to the app and fetch it from the page rather than typing the URL:
 
 ```js
 await (await fetch('/api/version', {credentials: 'same-origin', cache: 'no-store'})).json()

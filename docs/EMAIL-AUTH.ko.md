@@ -8,7 +8,7 @@
 
 ## 운영 전환 순서
 
-현재는 구현·로컬 검증 단계이며 운영 인증/공개 범위는 변경하지 않았다.
+현재 운영(2026-09-23 기준): `AUTH_MODE=email`, Sites 접근 public, 계정 1개(관리자). PR #18 merged 뒤 이메일 인증을 published했고, 사용자 명시 승인으로 로그인 진입 화면을 public(접근 설정 revision2)으로 전환했다. 익명·위조 GPT 헤더 업무 API와 계정 API의401을 운영에서 확인했다. 관리자가 초기 비밀번호를 설정했고, 2026-09-23 07:58 UTC 경 관리자 세션으로 버전23의 `/api/version` tree를 확인했다(runtime-verified). 아래 6단계의 bootstrap 환경 세 항목 제거·재게시는 기록이 없어 확인이 필요하다. 근거: [게시 기록](releases/2026-09-23-1ecd72e.md), [현재 상태](STATUS.md). 아래 순서는 이 전환에 쓴 절차이며 재구축·복구 때 참고한다.
 
 1. 사용자가 첫 관리자 이메일을 지정한다. 비밀번호를 채팅·환경변수·소스에 저장하지 않는다.
 2. 기존 운영 settings의 정확한 owner를 읽어 `AUTH_BOOTSTRAP_OWNER`에 연결한다. 임의 새 owner를 만들지 않는다.
@@ -31,6 +31,8 @@ node scripts/run-framework.mjs build
 node node_modules/@playwright/test/cli.js test
 node node_modules/@playwright/test/cli.js test -c playwright.auth.config.ts
 ```
+
+아래 수치는 PR #18 병합 시점(2026-09-23) 기록이다. 현재 스위트·E2E 수는 [현재 상태](STATUS.md)와 [E2E 안내](E2E.ko.md)(기본 12건 + 이메일 1건)를 따른다.
 
 - 인증 테스트20개: SQLite 및 native scrypt real, D1/Cloudflare binding adapter mocked. 경합 bootstrap, 초대 일회 소비·이메일 결합·만료, 비활성 관리자, 마지막 관리자, 세션 폐기, origin/입력/rate limit, 잘못된 AUTH_MODE 및 요청 한도 소진 후 로그아웃 검사.
 - 인증 브라우저 여정1개: HTTPS/Chromium/workerd/native scrypt 및 로컬 D1 real. 외부 모델·실제 메일·운영 서버 호출 없음. 관리자 초기 등록·로그인·초대·새로고침 유지·cookie flags·멤버403·위조 GPT401·재사용401·재설정과 disable 후 세션401 확인.
