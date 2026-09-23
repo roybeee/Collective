@@ -14,6 +14,13 @@ for(const [id,role,token] of [['admin','admin','a'.repeat(64)],['member','member
 const request=(token,data,origin='https://app.test')=>new Request('https://app.test/api/execution'+(data?'':'?campaignId=c'),{method:data?'POST':'GET',headers:{cookie:'__Host-collective_session='+token,'oai-authenticated-user-id':'forged-workspace',origin,'content-type':'application/json'},...(data?{body:JSON.stringify({campaignId:'c',...data})}:{})});
 let passed=0;
 for(const action of ['save_limits','connect_buffer','disconnect_buffer','buffer_channels','approve','execute','cancel','reconfirm','resolve_uncertain']){assert.equal((await route.POST(request('b'.repeat(64),{action}))).status,403,action);passed++}
+// A4-2: 게시 코드를 발급하는 발행 준비(trackingCode가 있는 save_publication)는 관리자만 한다. 직원은 값과 상관없이 403이고 추적 코드가 생기지 않는다.
+// 코드 없는 준비(필드 없음·null)는 권한으로 막지 않는다(여기서는 없는 소재라 404).
+const codeCount=()=>rt.sql.prepare("SELECT COUNT(*) AS n FROM records WHERE owner='workspace' AND kind='tracking_code'").get().n;
+const draft={action:'save_publication',creativeId:'x',scheduledAt:new Date(Date.now()+3600000).toISOString(),plannedCostKRW:0};
+for(const trackingCode of [{type:'coupon'},{type:'pos_tag',storeId:'s'},false,0,'',[],{}]){assert.equal((await route.POST(request('b'.repeat(64),{...draft,trackingCode}))).status,403,'member coded draft '+JSON.stringify(trackingCode));passed++}
+assert.equal(codeCount(),0,'member coded draft issues no tracking code');passed++;
+for(const extra of [{},{trackingCode:null}]){assert.equal((await route.POST(request('b'.repeat(64),{...draft,...extra}))).status,404,'member code-free draft '+JSON.stringify(extra));passed++}
 assert.equal((await route.GET(request('b'.repeat(64)))).status,200);passed++;
 assert.equal((await route.GET(request('c'.repeat(64)))).status,401);passed++;
 assert.equal((await route.POST(request('a'.repeat(64),{action:'save_limits',maxPublications:1,maxPlannedCostKRW:0}))).status,200);passed++;

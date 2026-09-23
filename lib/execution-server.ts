@@ -4,9 +4,12 @@ import {confirmedFactContext} from './brand-facts-server';
 import type {BrandFact} from './brand-facts';
 import {evidenceContext} from './ai-context';
 import {factLabel} from './fact-catalog';
-import {approvalDrift,budgetIssues,campaignGateIssues,captionIssues,composeCaption,copyBlocks,executionTotals,providerPublicationStatus,publicationLabels,reviewStatuses,uncertainResolvable,type CaptionCandidate,type ExecutionCreative,type ExecutionLimits,type ExecutionState,type NeedsReview,type Publication,type PublicationCopy,type PublicationStatus,type FactRef} from './execution';
+import {approvalDrift,budgetIssues,campaignGateIssues,captionIssues,composeCaption,copyBlocks,executionTotals,providerPublicationStatus,publicationLabels,reviewStatuses,uncertainResolvable,CREATIVE_TITLE_MAX,type CaptionCandidate,type ExecutionCreative,type ExecutionLimits,type ExecutionState,type NeedsReview,type Publication,type PublicationCode,type PublicationCopy,type PublicationStatus,type FactRef} from './execution';
 import {isOwnMediaUrl,mediaUrl,pngBytes,publishPublicMedia,retirePublicMedia,sha256,storePngThen,verifyMedia} from './execution-media';
 import {inspectBuffer,verifyBuffer} from './publisher-buffer';
+import {issuePublicationCode} from './publication-codes';
+import {CODE_ALPHABET,CODE_MAX,type TrackingCode} from './tracking-codes';
+import type {Store} from './store-marketing';
 
 export type PublisherCredential={secret:string;version:number;channelId:string;account:string;organizationId?:string};
 type Who=Pick<Actor,'id'|'email'>;
@@ -96,18 +99,32 @@ export async function disconnectPublisher(owner:string,campaign:Campaign,input:R
  await retireMedia(owner,approved);
  return {connected:false,invalidated:approved.length};
 }
+// 소재 제목(exec-loop-4 (3)): 선택. 앞뒤 공백을 빼고 1~60자. 비우면 저장하지 않는다(기존 소재와 같은 모양).
+function creativeTitle(value:unknown){
+ if(value===undefined||value===null)return '';
+ const title=str(value,'소재 제목',1000);
+ if(title.length>CREATIVE_TITLE_MAX)throw new ApiError(400,`소재 제목은 ${CREATIVE_TITLE_MAX}자 이하로 입력하세요.`);
+ return title;
+}
 export async function saveCreative(owner:string,campaign:Campaign,input:Record<string,unknown>){
  assertVersion(campaign,input.campaignVersion);
+ const title=creativeTitle(input.title);
  const facts=await resolveFacts(owner,campaign,input.factRefs),caption=labeledCaption(facts);
  if(caption.length>1800)throw new ApiError(400,'선택한 사실이 너무 깁니다. 짧은 안내 사실을 선택하세요.');
  const bytes=await pngBytes(input.png),hash=await sha256(bytes),refs=facts.map(f=>({id:f.id,version:f.version}));
  const material=await materialHash(await readRecord<Brand>(owner,'brand',campaign.brandId),refs,caption);
  const prior=(await listRecords<ExecutionCreative>(owner,'execution_creative',campaign.id)).find(c=>c.pngHash===hash&&c.materialHash===material);
- if(prior)return {...prior,objectKey:''};
+ // 같은 PNG·입력이면 기존 소재를 돌려준다. 제목은 해시·캡션에 들어가지 않으므로 제목이 없던 소재에는 제목만 붙인다.
+ // 버전은 올리지 않는다(발행의 소재 버전 비교가 바뀌지 않게). 다른 제목이 이미 있으면 조용히 버리지 않고 409로 알린다.
+ if(prior){
+  if(!title||prior.title===title)return {...prior,objectKey:''};
+  if(prior.title)throw new ApiError(409,`같은 소재가 이미 '${prior.title}' 제목으로 있어 제목을 바꾸지 않았습니다.`);
+  const named:ExecutionCreative={...prior,title};await recordStatement(owner,'execution_creative',prior.id,named,campaign.id).run();return {...named,objectKey:''};
+ }
  if((await listRecords<ExecutionCreative>(owner,'execution_creative')).length>=200)throw new ApiError(409,'소재 보관 한도 200개에 도달했습니다. 관리자에게 보관 정책을 문의하세요.');
  const id=uid();
  return storePngThen(owner,id,bytes,async objectKey=>{
-  const creative:ExecutionCreative={id,campaignId:campaign.id,campaignVersion:campaign.version,brandId:campaign.brandId,...(campaign.storeId?{storeId:campaign.storeId}:{}),version:1,factRefs:refs,caption,pngHash:hash,objectKey,materialHash:material,createdAt:stamp()};
+  const creative:ExecutionCreative={id,campaignId:campaign.id,campaignVersion:campaign.version,brandId:campaign.brandId,...(campaign.storeId?{storeId:campaign.storeId}:{}),version:1,factRefs:refs,caption,pngHash:hash,objectKey,materialHash:material,...(title?{title}:{}),createdAt:stamp()};
   await recordStatement(owner,'execution_creative',id,creative,campaign.id).run();return {...creative,objectKey:''};
  });
 }
@@ -119,9 +136,28 @@ export async function currentCreative(owner:string,campaign:Campaign,id:string){
  if(c.materialHash!==await materialHash(await readRecord<Brand>(owner,'brand',campaign.brandId),c.factRefs,labeledCaption(facts)))throw new ApiError(409,'소재 입력(브랜드 이름·색·사실·캡션)이 바뀌었습니다. 새 소재를 만들어 주세요.');
  return c;
 }
+// A4-2 게시 코드 선택: 쿠폰·POS 태그만 캡션에 넣는다. 지점 캠페인은 그 지점(다른 지점 거절), 브랜드 공통 캠페인은 같은 브랜드의 운영 지점을 골라야 한다.
+async function publicationCodeChoice(owner:string,campaign:Campaign,raw:unknown){
+ if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new ApiError(400,'게시 코드 입력 형식을 확인하세요.');
+ const choice=raw as Record<string,unknown>,type=choice.type;
+ if(type!=='coupon'&&type!=='pos_tag')throw new ApiError(400,'게시 코드 유형(쿠폰·POS 태그)을 선택하세요.');
+ const storeId=choice.storeId===undefined||choice.storeId===null||choice.storeId===''?campaign.storeId||'':str(choice.storeId,'코드 지점',100);
+ if(!storeId)throw new ApiError(400,'브랜드 공통 캠페인은 코드를 쓸 지점을 선택하세요.');
+ if(campaign.storeId&&storeId!==campaign.storeId)throw new ApiError(409,'이 캠페인에 연결된 지점에만 게시 코드를 발급할 수 있습니다.');
+ const store=await optionalRecord<Store>(owner,'store',storeId);
+ if(!store||store.brandId!==campaign.brandId)throw new ApiError(409,'이 캠페인 브랜드의 지점이 아닙니다. 같은 브랜드의 지점을 고르세요.');
+ if(store.status==='archived')throw new ApiError(409,'보관된 지점에는 게시 코드를 발급할 수 없습니다.');
+ return {type,storeId} as {type:PublicationCode['type'];storeId:string};
+}
+// 코드 발급 뒤 발행 저장이 실패하면 발행이 없는 코드가 남는다. 같은 캠페인·소재·지점·유형으로 다시 준비하면 그 코드의 발행 id를 그대로 써서
+// 멱등 발급(issuePublicationCode)이 같은 코드를 돌려주게 한다. 재시도해도 코드가 늘지 않는다. 호출자는 owner 변경 잠금을 가진다.
+async function publicationIdFor(owner:string,campaign:Campaign,creativeId:string,choice:{type:string;storeId:string},existing:Publication[]){
+ const orphan=(await listRecords<TrackingCode>(owner,'tracking_code',choice.storeId)).find(c=>!!c.publicationId&&c.campaignId===campaign.id&&c.creativeId===creativeId&&c.type===choice.type&&!existing.some(p=>p.id===c.publicationId));
+ return orphan?.publicationId||uid();
+}
 function schedule(value:unknown){const date=str(value,'예약 시각',50,true);if(!Number.isFinite(Date.parse(date))||Date.parse(date)<Date.now()+300000)throw new ApiError(400,'예약은 현재보다 5분 이상 뒤로 설정하세요.');return new Date(date).toISOString()}
 // 외부 주소를 비우거나 앱 공개 주소를 넣으면 auto: 승인 때 앱이 /media/<sha256>.png를 채운다(exec-loop-2). Cloudinary·R2는 고급 옵션(external)이다.
-export async function savePublication(owner:string,campaign:Campaign,input:Record<string,unknown>,origin:string){
+export async function savePublication(owner:string,campaign:Campaign,input:Record<string,unknown>,origin:string,who?:Who|null){
  const creative=await currentCreative(owner,campaign,str(input.creativeId,'소재',100,true));
  const scheduledAt=schedule(input.scheduledAt);await resolveFacts(owner,campaign,creative.factRefs,Date.parse(scheduledAt));
  const raw=str(input.mediaUrl??'','공개 이미지',2000),checked=raw?mediaUrl(raw,creative.pngHash,origin):'',mediaMode=!checked||isOwnMediaUrl(checked,origin)?'auto' as const:'external' as const;
@@ -130,9 +166,18 @@ export async function savePublication(owner:string,campaign:Campaign,input:Recor
  const existing=await listRecords<Publication>(owner,'execution_publication',campaign.id);
  if(existing.length>=200)throw new ApiError(409,'캠페인 발행 기록 한도 200개에 도달했습니다. 새 캠페인으로 준비하세요.');
  if(existing.some(p=>p.creativeId===creative.id&&p.scheduledAt===scheduledAt&&p.status!=='cancelled'))throw new ApiError(409,'같은 소재와 시각의 발행이 이미 있습니다. 기존 발행을 확인하세요.');
- const copy=input.copy?await approvedCopy(owner,campaign,input.copy):undefined,caption=composeCaption(copy?.text,creative.caption);
- if(caption.length>2200)throw new ApiError(400,'캡션이 Instagram 한도 2,200자를 넘습니다. 더 짧은 카피를 고르세요.');
- const p:Publication={id:uid(),campaignId:campaign.id,creativeId:creative.id,creativeVersion:creative.version,campaignVersion:campaign.version,pngHash:creative.pngHash,factRefs:creative.factRefs,caption,...(copy?{copy}:{}),mediaUrl:mediaMode==='auto'?'':checked,mediaMode,scheduledAt,plannedCostKRW,version:1,status:'draft',createdAt:stamp()};
+ const copy=input.copy?await approvedCopy(owner,campaign,input.copy):undefined;
+ const choice=input.trackingCode===undefined||input.trackingCode===null?null:await publicationCodeChoice(owner,campaign,input.trackingCode);
+ // 한도는 코드 줄을 포함해 검사한다. 발급 전에는 가장 긴 코드(CODE_MAX자)로 재서, 발급 뒤에는 저장만 남게 한다(한도 때문에 발급한 코드가 버려지지 않게).
+ if(composeCaption(copy?.text,creative.caption,choice?{type:choice.type,code:CODE_ALPHABET[0].repeat(CODE_MAX)}:undefined).length>2200)throw new ApiError(400,choice?'게시 코드 줄을 포함한 캡션이 Instagram 한도 2,200자를 넘습니다. 더 짧은 카피를 고르거나 코드 없이 준비하세요.':'캡션이 Instagram 한도 2,200자를 넘습니다. 더 짧은 카피를 고르세요.');
+ if(choice&&!who)throw new ApiError(403,'게시 코드 발급은 관리자만 할 수 있습니다.');
+ const id=choice?await publicationIdFor(owner,campaign,creative.id,choice,existing):uid();
+ const issued=choice&&who?await issuePublicationCode(owner,{campaign,publicationId:id,creativeId:creative.id,storeId:choice.storeId,type:choice.type,who:{id:who.id,email:who.email}}):null;
+ // 멱등 발급은 이미 있는 코드를 돌려준다. 캡션 코드 줄과 발행 기록이 선택과 다른 코드를 가리키지 않게 확인한다.
+ if(issued&&choice&&(issued.type!==choice.type||issued.storeId!==choice.storeId||issued.publicationId!==id))throw new ApiError(409,'게시 코드 발급 결과가 선택한 유형·지점과 다릅니다. 새로고침 후 다시 준비하세요.');
+ const trackingCode:PublicationCode|undefined=issued&&choice?{id:issued.id,code:issued.code,type:choice.type,storeId:issued.storeId}:undefined;
+ const caption=composeCaption(copy?.text,creative.caption,trackingCode);
+ const p:Publication={id,campaignId:campaign.id,creativeId:creative.id,creativeVersion:creative.version,campaignVersion:campaign.version,pngHash:creative.pngHash,factRefs:creative.factRefs,caption,...(copy?{copy}:{}),...(trackingCode?{trackingCode}:{}),mediaUrl:mediaMode==='auto'?'':checked,mediaMode,scheduledAt,plannedCostKRW,version:1,status:'draft',createdAt:stamp()};
  await recordStatement(owner,'execution_publication',p.id,p,campaign.id).run();return p;
 }
 export async function publicationFor(owner:string,campaign:Campaign,id:unknown,version:unknown){
@@ -142,7 +187,7 @@ export async function publicationFor(owner:string,campaign:Campaign,id:unknown,v
 export async function approvalInputs(owner:string,campaign:Campaign,p:Publication){
  const gate=campaignGateIssues(campaign,p.scheduledAt);if(gate.length)throw new ApiError(409,gate.join(' '));
  const creative=await currentCreative(owner,campaign,p.creativeId);
- if(creative.version!==p.creativeVersion||creative.pngHash!==p.pngHash||composeCaption(p.copy?.text,creative.caption)!==p.caption)throw new ApiError(409,'소재가 변경됐습니다. 다시 준비하세요.');
+ if(creative.version!==p.creativeVersion||creative.pngHash!==p.pngHash||composeCaption(p.copy?.text,creative.caption,p.trackingCode)!==p.caption)throw new ApiError(409,'소재가 변경됐습니다. 다시 준비하세요.');
  if(p.copy&&(await approvedCopy(owner,campaign,p.copy)).text!==p.copy.text)throw new ApiError(409,'카피 작업물이 바뀌었습니다. 캡션 후보를 다시 고르세요.');
  await resolveFacts(owner,campaign,p.factRefs,Date.parse(p.scheduledAt));schedule(p.scheduledAt);
  const [credential,limits]=await Promise.all([optionalRecord<PublisherCredential>(owner,'publisher_credential',campaign.brandId),optionalRecord<ExecutionLimits>(owner,'execution_limits',campaign.id)]);

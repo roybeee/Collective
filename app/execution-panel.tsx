@@ -4,9 +4,10 @@ import Image from 'next/image';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {budgetLabel,campaignBudget,type Brand,type Campaign} from '@/lib/agency';
 import {effectiveBrandFacts,type BrandFact} from '@/lib/brand-facts';
-import {anonymousReachable,approvalBlockers,approvalDrift,autoRefreshDue,budgetIssues,campaignGateIssues,executionTotals,publicationLabels,publishSteps,reviewStatuses,uncertainResolvable,type ExecutionState,type Publication} from '@/lib/execution';
+import {anonymousReachable,approvalBlockers,approvalDrift,autoRefreshDue,budgetIssues,campaignGateIssues,creativeLabel,executionTotals,publicationLabels,publishSteps,reviewStatuses,uncertainResolvable,CREATIVE_TITLE_MAX,type ExecutionState,type Publication} from '@/lib/execution';
 import {renderFactCard} from '@/lib/creative-render';
 import {factLabel} from '@/lib/fact-catalog';
+import type {Store} from '@/lib/store-marketing';
 import {BrandFactsPanel} from './brand-facts-panel';
 import {adminRequestNote,useCanManage} from './auth-client';
 
@@ -21,12 +22,16 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
  const [state,setState]=useState<ExecutionState|null>(null),[facts,setFacts]=useState<BrandFact[]>([]),[selected,setSelected]=useState<string[]>([]);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[preview,setPreview]=useState('');
  const [rights,setRights]=useState<Record<string,boolean>>({}),[buffer,setBuffer]=useState<BufferChoices|null>(null),[resolveIds,setResolveIds]=useState<Record<string,string>>({});
+ const [title,setTitle]=useState(''),[stores,setStores]=useState<Store[]|null>(null),[storesError,setStoresError]=useState(''),[storesTry,setStoresTry]=useState(0),[codeType,setCodeType]=useState('');
  const canManage=useCanManage(),autoChecked=useRef(false);
  const reload=useCallback(async()=>{
   const [next,ledger]=await Promise.all([request<ExecutionState>('/api/execution?campaignId='+encodeURIComponent(campaign.id)),request<{facts:BrandFact[]}>('/api/brand-facts?brandId='+encodeURIComponent(campaign.brandId)+(campaign.storeId?'&storeId='+encodeURIComponent(campaign.storeId):''))]);
   setState(next);setFacts(effectiveBrandFacts(ledger.facts,campaign.brandId,campaign.storeId));setRights({});
  },[campaign.id,campaign.brandId,campaign.storeId]);
  useEffect(()=>{let active=true;void Promise.resolve().then(()=>{if(active)return reload()}).catch(e=>{if(active)setError(e.message)});return ()=>{active=false}},[reload]);
+ // 게시 코드(A4-2)의 지점 선택·표시에 쓰는 같은 브랜드 지점 목록. null은 불러오는 중이다. 불러오지 못하면 오류와 다시 시도를 보이고, 지점 이름 대신 ID를 보인다.
+ useEffect(()=>{let active=true;void request<{stores?:Store[]}>('/api/stores?brandId='+encodeURIComponent(campaign.brandId)).then(r=>{if(active){setStores(r.stores||[]);setStoresError('')}},e=>{if(active){setStores(null);setStoresError((e as Error).message)}});return ()=>{active=false}},[campaign.brandId,storesTry]);
+ const retryStores=()=>{setStoresError('');setStoresTry(n=>n+1)};
  // 예약 시각 전후의 접수 건은 화면에 들어올 때 한 번 자동으로 상태를 다시 조회한다(최대 3건). 수동 조회 버튼은 그대로 둔다.
  useEffect(()=>{
   if(!state||autoChecked.current)return;autoChecked.current=true;
@@ -43,8 +48,11 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
   if(!chosen.length||chosen.length>4)throw new Error('유효한 확인 사실을 1~4개 선택하세요.');
   // PNG에도 내부 key 대신 표준 항목 라벨을 쓴다. 서버 캡션과 같은 규칙이다.
   const png=await renderFactCard(brand,chosen.map(f=>({...f,key:factLabel(f.key)})));setPreview(png);
-  await action('save_creative',{campaignVersion:campaign.version,factRefs:chosen.map(f=>({id:f.id,version:f.version})),png});
+  // 소재 제목은 선택이다. 비우면 보내지 않는다(해시·캡션에 들어가지 않는다).
+  const name=title.trim();
+  await action('save_creative',{campaignVersion:campaign.version,factRefs:chosen.map(f=>({id:f.id,version:f.version})),png,...(name?{title:name}:{})});setTitle('');
  }
+ function copyCode(code:string){setError('');void Promise.resolve().then(()=>navigator.clipboard.writeText(code)).then(()=>setNotice('게시 코드를 복사했습니다: '+code),()=>setError('복사하지 못했습니다. 코드를 직접 선택해 복사하세요.'))}
  function publicationAction(name:string,p:Publication){void perform(async():Promise<ActionResult>=>{const r=await action<ActionResult>(name,{id:p.id,version:p.version,...(name==='approve'?{confirmed:true,rightsConfirmed:true,immutableMediaConfirmed:true,channelId:state?.publisher.channelId,credentialVersion:state?.publisher.version,limitsVersion:state?.limits?.version}:{})});return name==='approve'&&r?.mediaMode==='auto'&&r.mediaUrl&&!await anonymousReachable(r.mediaUrl,window.location.origin)?{...r,unreachable:true}:r},r=>r?.unreachable?'승인했지만 공개 주소에 로그인 없이 접근할 수 없습니다. 이대로는 Buffer가 이미지를 가져가지 못합니다. 사이트 공개 설정을 확인하거나 고급: 외부 호스트를 쓰세요.':r?.providerAudit?`Buffer 게시 번호 ${r.providerAudit.providerId}: ${r.providerAudit.message}`:name==='execute'?'접수 결과를 확인하세요. 실제 게시 여부는 상태 조회로 확인합니다.':name==='reconfirm'?'초안으로 되돌렸습니다. 바뀐 항목을 확인하고 다시 승인하세요.':'상태를 갱신했습니다.')}
  function resolveMissing(p:Publication,restoreAttempt:boolean){
   if(!window.confirm(`Buffer에 이 예약이 없음을 확인했나요? 실패로 닫고 발행 시도 차감을 ${restoreAttempt?'되돌립니다':'유지합니다'}. 재전송하지 않습니다.`))return;
@@ -52,6 +60,8 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
  }
  const saveDefaultLimits=()=>void perform(()=>action('save_limits',{maxPublications:1,maxPlannedCostKRW:0}),'기본 한도(발행 1회·0원)를 저장했습니다.');
  const steps=state?publishSteps(state,facts.length):[],currentStep=steps.findIndex(s=>!s.done);
+ // 브랜드 공통 캠페인은 운영 지점을 골라야 코드를 발급한다. 목록을 불러오는 중·실패·운영 지점 0개면 초안 저장을 막고 상황에 맞는 안내를 보인다.
+ const storeName=(id:string)=>stores?.find(s=>s.id===id)?.name||id,codeStores=(stores||[]).filter(s=>s.status==='active'),noCodeStore=!!codeType&&!campaign.storeId&&!codeStores.length;
  const reviews=state?.publications.filter(p=>p.needsReview&&reviewStatuses.includes(p.status))||[],submitted=state?.publications.filter(p=>['submitting','uncertain','accepted'].includes(p.status))||[];
  return <div className="execution-panel space-y-6">
   <div><h2 className="text-xl font-semibold">제작·발행</h2><p>확인된 브랜드 사실 → PNG 제작 → 승인 → Instagram 예약 접수 → 주문 귀속</p></div>
@@ -63,9 +73,11 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
    <section className="rounded-xl border p-4 space-y-3"><h3 className="font-semibold">1. 안내 카드 만들기</h3>
     <p>현재 유효한 확인 사실만 사용합니다. 브랜드 이름·색이나 사용한 사실이 바뀌면 새 소재를 만들어야 합니다.</p>
     {facts.length?facts.map(f=><label key={f.id} className="flex gap-2 items-start"><input type="checkbox" checked={selected.includes(f.id)} disabled={busy} onChange={e=>setSelected(ids=>e.target.checked?[...ids,f.id]:ids.filter(id=>id!==f.id))}/><span>{factLabel(f.key)}: {f.value} <small>v{f.version}</small></span></label>):<p>위에서 근거와 유효기한이 있는 사실을 확정하세요.</p>}
+    <label>소재 제목 (선택)<input className="block border rounded p-2 w-full" value={title} maxLength={CREATIVE_TITLE_MAX} placeholder="예: 오픈 주소 안내 v1" disabled={busy} onChange={e=>setTitle(e.target.value)}/></label>
+    <p className="text-sm">목록·발행 준비·주문 화면에서 소재를 구분하는 이름입니다({CREATIVE_TITLE_MAX}자 이하). PNG·캡션·해시에 들어가지 않습니다. 비우면 첫 사실 줄과 제작일로 표시합니다.</p>
     <button className="border rounded px-3 py-2" disabled={busy||!selected.length} onClick={()=>void perform(createCard,'1080×1080 PNG와 사실 버전을 저장했습니다.')}>PNG 제작·저장</button>
     {preview&&<Image unoptimized width={1080} height={1080} src={preview} alt="제작한 안내 카드 미리보기" className="w-64 rounded border"/>}
-    <div className="grid gap-3">{state.creatives.map(c=><div key={c.id} className="border rounded p-3"><Image unoptimized width={1080} height={1080} src={'/api/execution/asset?id='+encodeURIComponent(c.id)} alt={'저장된 소재 '+c.id} loading="lazy" className="w-40 rounded"/><p className="whitespace-pre-wrap">{c.caption}</p><small>브리프 v{c.campaignVersion} · 소재 {c.id}{c.current===false&&' · 입력이 바뀌어 발행에 쓸 수 없습니다'}</small><p><a className="underline" href={'/api/execution/asset?id='+encodeURIComponent(c.id)} download={c.pngHash+'.png'}>원본 PNG 내려받기</a></p><p className="break-all text-xs">공개 파일명: {c.pngHash}.png</p></div>)}</div>
+    <div className="grid gap-3">{state.creatives.map(c=><div key={c.id} className="border rounded p-3"><strong className="block">{creativeLabel(c)}</strong><Image unoptimized width={1080} height={1080} src={'/api/execution/asset?id='+encodeURIComponent(c.id)} alt={'저장된 소재 '+c.id} loading="lazy" className="w-40 rounded"/><p className="whitespace-pre-wrap">{c.caption}</p><small>브리프 v{c.campaignVersion} · 소재 {c.id}{c.current===false&&' · 입력이 바뀌어 발행에 쓸 수 없습니다'}</small><p><a className="underline" href={'/api/execution/asset?id='+encodeURIComponent(c.id)} download={c.pngHash+'.png'}>원본 PNG 내려받기</a></p><p className="break-all text-xs">공개 파일명: {c.pngHash}.png</p></div>)}</div>
    </section>
    <section className="rounded-xl border p-4 space-y-3"><h3 className="font-semibold">2. 채널 연결과 발행 횟수 한도</h3><p>발행 연결: {state.publisher.connected?state.publisher.account+' · '+state.publisher.channelId:'연결 필요'}</p>
     {canManage?<>
@@ -96,15 +108,20 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
    </section>
    <section className="rounded-xl border p-4 space-y-3"><h3 className="font-semibold">3. 발행 준비·승인</h3>
     <p>승인하면 앱이 이 PNG를 공개 주소(/media/해시.png)로 제공하고, Buffer는 그 주소에서 이미지를 가져갑니다. 앱 사이트가 공개(public) 상태일 때만 Buffer가 가져올 수 있어, 승인 직후 로그인 없이 접근되는지 확인합니다. 취소·실패하거나 초안으로 되돌리면 공개를 멈춥니다.</p>
-    <form className="grid gap-2" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget),copy=String(f.get('copy')||'');void perform(()=>action('save_publication',{creativeId:f.get('creativeId'),mediaUrl:String(f.get('mediaUrl')||''),scheduledAt:new Date(String(f.get('scheduledAt'))).toISOString(),plannedCostKRW:Number(f.get('plannedCostKRW')),...(copy?{copy:JSON.parse(copy)}:{})}),'발행 초안을 저장했습니다. 이미지와 계정·시각·비용을 확인해 승인하세요.')}}>
-     <label>발행할 소재<select className="block border rounded p-2 w-full" name="creativeId" required><option value="">선택하세요</option>{state.creatives.filter(c=>c.current!==false).map(c=><option key={c.id} value={c.id}>{c.caption.slice(0,60)} · {c.id.slice(0,8)}</option>)}</select></label>
+    <form className="grid gap-2" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget),copy=String(f.get('copy')||''),trackingCode=codeType?{type:codeType,...(campaign.storeId?{}:{storeId:String(f.get('codeStoreId')||'')})}:null;void perform(async()=>{const r=await action<Publication>('save_publication',{creativeId:f.get('creativeId'),mediaUrl:String(f.get('mediaUrl')||''),scheduledAt:new Date(String(f.get('scheduledAt'))).toISOString(),plannedCostKRW:Number(f.get('plannedCostKRW')),...(copy?{copy:JSON.parse(copy)}:{}),...(trackingCode?{trackingCode}:{})});setCodeType('');return r},r=>r?.trackingCode?`발행 초안을 저장했습니다. 게시 코드(${r.trackingCode.code})를 캡션 끝에 넣었습니다. 이미지와 계정·시각·비용을 확인해 승인하세요.`:'발행 초안을 저장했습니다. 이미지와 계정·시각·비용을 확인해 승인하세요.')}}>
+     <label>발행할 소재<select className="block border rounded p-2 w-full" name="creativeId" required><option value="">선택하세요</option>{state.creatives.filter(c=>c.current!==false).map(c=><option key={c.id} value={c.id}>{creativeLabel(c)}</option>)}</select></label>
      <label>캡션 카피 (선택)<select className="block border rounded p-2 w-full" name="copy"><option value="">확인 사실 문구만 사용</option>{state.copies.filter(c=>!c.issues.length).map(c=><option key={c.artifactId+':'+c.index} value={JSON.stringify({artifactId:c.artifactId,artifactVersion:c.artifactVersion,index:c.index})}>{c.text.slice(0,60)}</option>)}</select></label>
      <p className="text-sm">{!state.copyCaptions?'AI 작업물 카피를 캡션에 쓰는 기능은 AI 생성물 표시 기준이 정해질 때까지 꺼져 있습니다. 확인 사실 문구만 캡션으로 씁니다.':state.copies.length?'승인된 콘텐츠 작업물의 게시 카피를 확인 사실 문구 앞에 붙입니다. 금지·미확인 표현이 있는 카피는 고를 수 없습니다.':'승인된 콘텐츠 작업물의 게시 카피가 없어 확인 사실 문구만 캡션으로 씁니다.'}</p>
      {state.copies.some(c=>c.issues.length)&&<details><summary>쓸 수 없는 카피 {state.copies.filter(c=>c.issues.length).length}개와 사유</summary><ul className="text-sm space-y-1">{state.copies.filter(c=>c.issues.length).map(c=><li key={c.artifactId+':'+c.index}>{c.text.slice(0,80)} — {c.issues.join(', ')}</li>)}</ul></details>}
+     {canManage?<fieldset className="grid gap-2 border rounded p-3"><legend>게시 코드 (선택)</legend>
+      <label>코드 유형<select className="block border rounded p-2 w-full" name="codeType" value={codeType} disabled={busy} onChange={e=>setCodeType(e.target.value)}><option value="">코드 없이 준비</option><option value="coupon">쿠폰 코드</option><option value="pos_tag">POS 태그</option></select></label>
+      {codeType&&(campaign.storeId?<p>코드 지점: {storeName(campaign.storeId)} (캠페인 지점)</p>:codeStores.length?<label>코드 지점<select className="block border rounded p-2 w-full" name="codeStoreId" required defaultValue=""><option value="">지점을 선택하세요</option>{codeStores.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>:storesError?<p role="alert">지점 목록을 불러오지 못했습니다: {storesError} <button type="button" className="underline" disabled={busy} onClick={retryStores}>다시 시도</button></p>:stores===null?<p role="status">지점 목록을 불러오고 있습니다.</p>:<p role="alert">이 브랜드에 운영 중인 지점이 없습니다. 점포 마케팅에서 지점을 만든 뒤 코드를 쓰세요.</p>)}
+      <p className="text-sm">코드를 고르면 이 발행에만 쓰는 추적 코드를 발급하고 캡션 끝에 &apos;주문할 때 …&apos; 안내 줄을 붙입니다. PNG에는 넣지 않습니다. 주문 장부에서 이 코드로 게시별 귀속 주문을 셉니다. 귀속 매출은 증분 효과가 아닙니다.</p>
+     </fieldset>:<p className="subtle-note">게시 코드(쿠폰·POS 태그) 발급은 관리자만 할 수 있습니다. {adminRequestNote}</p>}
      <label>예약 시각 (이 기기의 현지 시각, 최소 5분 후, 캠페인 기간 {campaign.startDate&&campaign.endDate?campaign.startDate+'~'+campaign.endDate:'미확정'})<input className="block border rounded p-2" name="scheduledAt" type="datetime-local" required/></label>
      <details><summary>예정 비용 · 유료 부스트 연동 전까지 참고용</summary><div className="grid gap-2 pt-2"><p className="text-sm">Buffer 유기 게시는 건당 비용이 없어 0원 그대로 두면 됩니다. 유료 부스트를 따로 집행할 때만 참고로 입력하세요. 비워 두면 0원입니다. 0원보다 크게 입력하면 확정 예산과 예정 비용 상한 안에서만 승인·접수됩니다(기본 상한 0원).</p><label>이 발행의 예정 비용 (원)<input className="block border rounded p-2" name="plannedCostKRW" type="number" min="0" step="1" defaultValue="0"/></label></div></details>
      <details><summary>고급: 외부 호스트</summary><div className="grid gap-2 pt-2"><p className="text-sm">앱 공개 주소 대신 외부 호스트를 쓰려면 내려받은 PNG를 Cloudinary 또는 R2 공개 저장소에 해시 파일명 그대로 올리고 주소를 입력하세요. 승인과 실행 전에 원본과 같은 파일인지 확인합니다. 호스트의 파일을 덮어쓰거나 삭제하면 안 됩니다.</p><label>외부 공개 PNG 주소 (비우면 앱 공개 주소 사용)<input className="block border rounded p-2 w-full" name="mediaUrl" type="url" placeholder="https://…r2.dev/해시.png"/></label></div></details>
-     <button className="border rounded px-3 py-2" disabled={busy||!state.creatives.some(c=>c.current!==false)}>발행 초안 저장</button>
+     <button className="border rounded px-3 py-2" disabled={busy||!state.creatives.some(c=>c.current!==false)||noCodeStore}>발행 초안 저장</button>
     </form>
     {!state.publications.length&&<p>아직 발행 이력이 없습니다.</p>}
     {state.publications.map(p=>{
@@ -113,7 +130,7 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
      const drift=p.status==='approved'?[...approvalDrift(p,state.publisher.connected?state.publisher:null,state.limits),...(creative?.current===false?['소재 입력']:[])]:[],gate=p.status==='approved'?[...campaignGateIssues(campaign,p.scheduledAt),...budgetIssues(campaign,p.plannedCostKRW,state.limits)]:[];
      // 사용한 사실이나 소재 입력이 바뀌면 같은 소재로 다시 승인할 수 없다. 재확인 대신 취소 후 새 PNG로 안내한다.
      const restart=p.status==='approved'&&(!!p.needsReview||creative?.current===false);
-     return <article key={p.id} className="border rounded p-4 space-y-2"><strong>{publicationLabels[p.status]}</strong><Image unoptimized width={1080} height={1080} src={'/api/execution/asset?id='+encodeURIComponent(p.creativeId)} alt="승인 대상 PNG" className="w-40"/><p className="whitespace-pre-wrap">{p.caption}</p><p>계정: {p.channelId||state.publisher.channelId||'연결 필요'} · 예약: {new Date(p.scheduledAt).toLocaleString()} · 예정 비용: {p.plannedCostKRW.toLocaleString()}원</p><p className="break-all text-xs">{p.mediaUrl||(auto?'이미지 주소: 승인하면 앱 공개 주소가 채워집니다.':'')}</p>{p.providerId&&<p>공급자 게시 번호: {p.providerId} · 공급자 상태: {p.providerStatus}</p>}{p.error&&<p role="alert">{p.error}</p>}{p.invalidatedReason&&p.status==='draft'&&<p className="text-sm">이전 승인 종료: {p.invalidatedReason}</p>}
+     return <article key={p.id} className="border rounded p-4 space-y-2"><strong>{publicationLabels[p.status]}</strong><Image unoptimized width={1080} height={1080} src={'/api/execution/asset?id='+encodeURIComponent(p.creativeId)} alt="승인 대상 PNG" className="w-40"/><p className="text-sm">소재: {creative?creativeLabel(creative):p.creativeId.slice(0,8)}</p><p className="whitespace-pre-wrap">{p.caption}</p>{p.trackingCode&&<p>게시 코드: <code>{p.trackingCode.code}</code> · {p.trackingCode.type==='coupon'?'쿠폰 코드':'POS 태그'} · {storeName(p.trackingCode.storeId)} <button type="button" className="border rounded px-2 py-1 text-sm" onClick={()=>copyCode(p.trackingCode!.code)}>코드 복사</button></p>}<p>계정: {p.channelId||state.publisher.channelId||'연결 필요'} · 예약: {new Date(p.scheduledAt).toLocaleString()} · 예정 비용: {p.plannedCostKRW.toLocaleString()}원</p><p className="break-all text-xs">{p.mediaUrl||(auto?'이미지 주소: 승인하면 앱 공개 주소가 채워집니다.':'')}</p>{p.providerId&&<p>공급자 게시 번호: {p.providerId} · 공급자 상태: {p.providerStatus}</p>}{p.error&&<p role="alert">{p.error}</p>}{p.invalidatedReason&&p.status==='draft'&&<p className="text-sm">이전 승인 종료: {p.invalidatedReason}</p>}
       {p.needsReview&&<p role="alert">{p.status==='approved'?'사실 변경 · 같은 소재로 다시 승인할 수 없습니다. 이 발행을 취소하고 새 PNG로 새 초안을 만드세요.':p.status==='published'?'사실 변경 · 이미 게시됐습니다. Instagram 게시물을 확인하세요.':['cancelled','failed'].includes(p.status)?'사실 변경 기록이 있습니다.':'사실 변경 · Buffer에서 취소 필요'}</p>}
       {!canManage&&['draft','approved','submitting','uncertain'].includes(p.status)&&<p className="subtle-note">발행 승인·Buffer 접수·취소·접수 확인은 관리자만 할 수 있습니다. {adminRequestNote}</p>}
       {canManage&&p.status==='draft'&&<><label className="flex gap-2 items-start"><input type="checkbox" checked={!!rights[p.id]} disabled={busy} onChange={e=>setRights(old=>({...old,[p.id]:e.target.checked}))}/><span>{auto?'PNG·문구·계정·예약 시각·비용 및 사용 권리를 확인했습니다. 승인하면 이 PNG를 앱 공개 주소로 제공합니다.':'PNG·문구·계정·예약 시각·비용 및 사용 권리를 확인했고, 공개 파일을 게시 완료까지 같은 내용으로 유지하겠습니다.'}</span></label>

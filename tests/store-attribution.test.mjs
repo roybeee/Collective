@@ -127,11 +127,10 @@ check('a missing campaign is a 404',(await act({action:'create_tracking_code',ty
 check('a utm code needs utm_campaign',(await act({action:'create_tracking_code',type:'utm',campaignId:'c1'})).status===400);
 res=await act({action:'create_tracking_code',type:'utm',campaignId:'c1',utmCampaign:'Open_Week'});
 check('a utm code keeps its campaign slug',res.status===200&&res.body.code.utmCampaign==='open_week'&&res.body.code.code[0]==='U');
-// 게시(publication) 연결과 게시 시각 검증은 A4-2에서 한다. 그 전에는 게시에 묶인 코드를 받지 않는다(게시 전·취소된 게시에 주문이 귀속되지 않게).
-res=await act({action:'create_tracking_code',type:'pos_tag',campaignId:'c1',publicationId:'p1'});
-check('a publication link is refused until A4-2',res.status===400&&/A4-2/.test(res.error));
-await save('execution_publication','p-draft',{id:'p-draft',campaignId:'c1',creativeId:'cr1',status:'draft'},'c1');
-check('a draft publication link is refused too',(await act({action:'create_tracking_code',type:'pos_tag',campaignId:'c1',publicationId:'p-draft'})).status===400);
+// 게시(publication) 연결(A4-2): 게시는 같은 캠페인·같은 소재여야 한다. 게시 상태·예약일은 코드를 만들 때가 아니라 귀속할 때 본다(tests/store-publication-codes.test.mjs).
+res=await act({action:'create_tracking_code',type:'pos_tag',campaignId:'c3',publicationId:'p1'});
+check('a publication of another campaign is refused',res.status===400&&/게시/.test(res.error));
+check('a missing publication is a 404',(await act({action:'create_tracking_code',type:'pos_tag',campaignId:'c1',publicationId:'p-none'})).status===404);
 res=await act({action:'create_tracking_code',type:'pos_tag',campaignId:'c1',creativeId:'cr1'});
 check('a POS tag code is linked to its campaign and creative',res.status===200&&res.body.code.code[0]==='P'&&res.body.code.creativeId==='cr1'&&!('publicationId' in res.body.code));
 check('an unknown code type is refused',(await act({action:'create_tracking_code',type:'sms',campaignId:'c1'})).status===400);

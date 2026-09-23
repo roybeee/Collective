@@ -129,6 +129,9 @@ test('추적 코드로 가져온 주문은 자동 귀속 스위치를 켤 때만
   expect((await reported).status()).toBe(200);
   await expect(page.getByText('귀속≠증분', {exact: false}).first()).toBeVisible();
   await expect(page.getByRole('heading', {name: '추적 코드별', exact: true})).toBeVisible();
+  // A4-2: 게시별 표는 게시 코드로 귀속된 주문만 센다. 이 여정의 코드는 게시에 묶이지 않아 빈 표 안내가 보인다.
+  await expect(page.getByRole('heading', {name: '게시별 귀속', exact: true})).toBeVisible();
+  await expect(page.getByText('이 기간에 게시 코드로 귀속된 주문이 없습니다.', {exact: true})).toBeVisible();
   const pos = page.getByRole('form', {name: 'POS 주간 합계 입력'});
   await pos.getByRole('combobox', {name: '주', exact: true}).selectOption(week);
   await pos.getByLabel('POS 순매출 합계 (원)', {exact: true}).fill('51000');

@@ -78,6 +78,7 @@ check('the unattributed row keeps the server label',v.unitRows([{key:'',label:'�
 check('a campaign title wins over the server id label',v.unitRows([{key:'c1',label:'c1',orders:1,netRevenue:700,contribution:null}],{c1:'오픈 캠페인'})[0].label,'오픈 캠페인');
 check('arm rows are named by campaign title and arm',v.armNames([{key:'c1·A'},{key:'c1·팔 없음'},{key:'c9·B'}],{c1:'오픈 캠페인'}),{'c1·A':'오픈 캠페인 · 팔 A','c1·팔 없음':'오픈 캠페인 · 팔 없음','c9·B':'c9 · 팔 B'});
 check('creative rows are named by campaign title and creative',v.creativeNames([{key:'c1·cr1'}],{c1:'오픈 캠페인'}),{'c1·cr1':'오픈 캠페인 · 소재 cr1'});
+check('creative rows use the report creative labels (title or fallback) when given',v.creativeNames([{key:'c1·cr1'},{key:'c1·cr2'},{key:'c9·cr3'}],{c1:'오픈 캠페인'},{cr1:'오픈 주소 안내 v1',cr2:'소재 · 9월 23일 00:05 생성 · 주소: 휘경동 377 C107'}),{'c1·cr1':'오픈 캠페인 · 오픈 주소 안내 v1','c1·cr2':'오픈 캠페인 · 소재 · 9월 23일 00:05 생성 · 주소: 휘경동 377 C107','c9·cr3':'c9 · 소재 cr3'});
 check('server-shaped arm rows show the campaign title',v.unitRows([{key:'c1·A',label:'c1 · A',orders:1,netRevenue:1,contribution:null}],v.armNames([{key:'c1·A'}],{c1:'오픈 캠페인'}))[0].label,'오픈 캠페인 · 팔 A');
 check('the report request sends a variable cost rate only when entered',[v.reportRequest({from:'2026-09-01',to:'2026-09-30',rate:''}),v.reportRequest({from:'2026-09-01',to:'2026-09-30',rate:' 0.4 '})],[{from:'2026-09-01',to:'2026-09-30'},{from:'2026-09-01',to:'2026-09-30',variableCostRate:0.4}]);
 check('the contribution basis says when costs are estimated',[v.contributionBasis(null),v.contributionBasis({variableCostRate:0.4})],['원가를 모르면 미확인','원가 없는 주문은 변동비율 0.4로 추정']);
@@ -144,6 +145,8 @@ has('the report sends the period through reportRequest','reportRequest(');
 has('the report form asks for a variable cost rate','변동비율');
 has('baseline weeks are offered for POS totals','report.baselineWeeks');
 has('arm and creative rows get campaign titles','armNames(');
+has('creative rows are named by the view module with the report labels','creativeNames(report?.byCreative,titles,report?.creativeLabels)');
+has('the import asks to confirm orders of publications not confirmed yet','allowPendingPublications');
 
 const spec=readFileSync('e2e/store-measurement.spec.ts','utf8');
 assert.ok(!spec.includes('route.fetch')&&!spec.includes('page.route'),'the E2E spec never intercepts requests (docs/E2E.ko.md)');passed++;

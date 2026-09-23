@@ -45,6 +45,9 @@ check('blank attribution allowed',(await post({...base,orderNumber:'blank'})).st
 check('brand wide campaign allowed',(await post({...base,orderNumber:'wide',campaignId:'c4',attributionEvidence:'브랜드 쿠폰'})).status===200);
 await save('store_experiment','e1',{id:'e1',storeId:'s1',campaignId:'c2',status:'running',startDate:date,endDate:date,channel:'instagram'});
 check('experiment campaign conflict',(await post({...attributed,orderNumber:'exp',experimentId:'e1',channel:'instagram'})).status===400);
+// A4-2: 수동 주문 귀속에는 게시를 직접 넣지 않는다(추적 코드 경유만). 보낸 publicationId는 저장하지 않는다.
+const direct=await post({...base,orderNumber:'direct-pub',campaignId:'c1',creativeId:'cr1',attributionEvidence:'쿠폰',publicationId:'p1'});
+check('a manual order does not take a publication directly',direct.status===200&&(s=>!('publicationId' in s)&&!s.codeAttribution)(await server.readRecord(owner,'store_order',direct.ids[0])));
 const legacy='source,orderNumber,orderDate,mode,status,paidAmount,refundAmount\npos,legacy,'+date+',hall,paid,100,0\n';
 check('legacy CSV accepted',(await post(undefined,{action:'import_orders',rows:logic.parseOrderCsv(legacy)})).status===200);
 const expanded=legacy.replace('refundAmount\n','refundAmount,campaignId,creativeId,attributionEvidence\n').replace('pos,legacy,','pos,expanded,').replace(',100,0\n',',100,0,c1,cr1,QR code\n');

@@ -9,7 +9,7 @@ const signature=Buffer.from([137,80,78,71,13,10,26,10]),ihdr=Buffer.alloc(13);
 ihdr.writeUInt32BE(1080,0);ihdr.writeUInt32BE(1080,4);ihdr[8]=8;ihdr[9]=2;
 function fixture(fill=0){const pixels=Buffer.alloc((1080*3+1)*1080,fill);for(let row=0;row<1080;row++)pixels[row*(1080*3+1)]=0;return Buffer.concat([signature,chunk('IHDR',ihdr),chunk('IDAT',deflateSync(pixels)),chunk('IEND',Buffer.alloc(0))])}
 const png=fixture(),differentPng=fixture(255),dataUrl=bytes=>'data:image/png;base64,'+bytes.toString('base64');
-let calls=0,mode='ok',media=png,providerStatus='sent',foreignLock='',inspectChannel='channel-1',ownMediaFetches=0,lastSubmittedUrl='',flaggedDuringSubmit=-1;
+let calls=0,mode='ok',media=png,providerStatus='sent',foreignLock='',inspectChannel='channel-1',ownMediaFetches=0,lastSubmittedUrl='',lastSubmittedText='',flaggedDuringSubmit=-1;
 let server,execServer,beforeRun=null;
 const rt=testRuntime(async(url,init={})=>{
  if(String(url).startsWith('https://res.cloudinary.com/'))return new Response(media,{headers:{'content-type':'image/png'}});
@@ -18,7 +18,7 @@ const rt=testRuntime(async(url,init={})=>{
  if(query.includes('organizations'))return Response.json({data:{account:{organizations:[{id:'org',name:'ODA 조직'},{id:'org-2',name:'두 번째 조직'}]}}});
  if(query.includes('channels('))return Response.json({data:{channels:variables.organizationId==='org-2'?[{id:'channel-2',name:'ODA 2',service:'instagram',isQueuePaused:false}]:[{id:'channel-1',name:'ODA',service:'instagram',isQueuePaused:false},{id:'fb-1',name:'ODA FB',service:'facebook',isQueuePaused:false}]}});
  if(query.includes('createPost')){
-  calls++;lastSubmittedUrl=variables.input.assets[0].image.url;
+  calls++;lastSubmittedUrl=variables.input.assets[0].image.url;lastSubmittedText=variables.input.text;
   if(mode==='lost')throw new Error('network timeout after submission');
   if(mode==='lock'||mode==='lockerror')foreignLock=await server.acquireLock('owner');
   if(mode==='steal')rt.sql.prepare("UPDATE records SET data=json_set(data,'$.version',999) WHERE owner='owner' AND kind='execution_publication' AND json_extract(data,'$.status')='submitting'").run();
@@ -89,6 +89,9 @@ check((await post('save_publication',s.id,{creativeId:s.creative.id,mediaUrl:'ht
 check((await post('save_publication',s.id,{creativeId:s.creative.id,mediaUrl:cloud(s),scheduledAt:fact.validUntil,plannedCostKRW:100})).status===409,'fact expiry equality rejected for schedule');
 const p=await draft(s);
 check(p.mediaMode==='external','pasted Cloudinary URL keeps the advanced external-host mode');
+// A4-2 회귀: 제목·게시 코드를 고르지 않은 소재·발행은 이전과 같은 모양·캡션이다.
+check(!('title' in s.creative)&&!('trackingCode' in p)&&p.caption===s.creative.caption,'creative without a title and publication without a code keep the previous shape and caption');
+check(exec.composeCaption(undefined,s.creative.caption)===s.creative.caption&&exec.composeCaption('카피',s.creative.caption)==='카피\n\n'+s.creative.caption,'caption composition without a code is byte-identical');
 check((await post('save_publication',s.id,{creativeId:s.creative.id,mediaUrl:p.mediaUrl,scheduledAt:p.scheduledAt,plannedCostKRW:100})).status===409,'same creative schedule draft duplicate rejected');
 check((await approve(s,p,{rightsConfirmed:false})).status===400,'rights explicitly required');
 check((await approve(s,p,{immutableMediaConfirmed:false})).status===400,'immutable public media commitment required');
@@ -110,6 +113,7 @@ media=png;
 const sent=await post('execute',s.id,{id:p.id,version:approved.data.version});
 check(sent.status===200&&sent.data.status==='accepted'&&!!sent.data.providerId,'execute happy flow');
 check(calls===1,'exactly one provider submit');
+check(lastSubmittedText===p.caption,'Buffer receives the approved caption unchanged when no code was chosen');
 const refreshed=await post('refresh',s.id,{id:p.id,version:sent.data.version});
 check(refreshed.status===200&&refreshed.data.status==='published','refresh sent confirms published');
 const p2=await draft(s,1);const a2=await approve(s,p2);
