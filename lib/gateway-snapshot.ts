@@ -2,6 +2,7 @@
 // 주기: 워커 tick(lib/research-worker.ts)이 부르며 소유자당 UTC 하루 1회다. 마지막 스냅샷(gateway_snapshot 최신 행)의 시각이 오늘(UTC)이면 건너뛴다.
 // 정규화: 객체 키 정렬, VOLATILE_FIELDS 이름의 키 제거(모든 깊이), 배열은 정규화한 원소의 JSON 문자열 순으로 정렬. 지운 키 이름은 removedFields에 남긴다.
 // 저장: 응답 원문은 저장하지 않는다. 전체·섹션 해시와 섹션 요약(말단 경로 → 값 해시 앞 12자, 섹션당 MAX_PATHS개)만 남긴다. 연결 키·주소는 어디에도 쓰지 않는다.
+// 경로에 쓰는 객체 키·배열 라벨도 응답에서 온다. 주소처럼 보이거나 긴 키는 해시 별칭으로, 그런 라벨은 순번으로 바꾼다(unsafeLabel).
 // 변경: 직전 passed 스냅샷과 해시가 다르면 gateway_change 1건(바뀐 섹션의 추가·삭제·변경 경로), 같으면 0건. 첫 passed 스냅샷은 기준값만 남긴다.
 // 막힘: 세 요청 중 하나라도 실패·타임아웃이면 status blocked(해시 없음, 경보 없음)로 그날 기록한다. 다음 UTC 날짜에 다시 잰다.
 // 건너뜀: 연결이 없거나 OpenAI면 기록 없이 건너뛴다(not_run 기록 없음). 절차는 docs/RELIABILITY.ko.md '게이트웨이 상태 스냅샷'.
@@ -37,18 +38,27 @@ export function normalizeGatewayResponse(value:unknown):{value:Json;removed:stri
  }
  return {value:typeof value==='string'||typeof value==='boolean'||typeof value==='number'&&Number.isFinite(value)?value:null,removed:[]};
 }
+// 주소처럼 보이는 문자열: 스킴(://)·사용자(@)·공백, host:port, IPv4, IPv6(::), 마지막 마디가 영문 2자 이상인 점 이은 이름(tools.example.net).
+// 모델 id(gpt-4.1-mini·claude-3.5-sonnet)처럼 마지막 마디에 숫자가 있으면 주소로 보지 않는다. 80자를 넘는 값도 경로에 쓰지 않는다.
+const ADDRESS=/:\/\/|@|\s|:\d{1,5}(?:[/\]]|$)|\b\d{1,3}(?:\.\d{1,3}){3}\b|::|(?:^|[/[])(?:[a-z0-9-]+\.)+[a-z]{2,}(?=[:/\]]|$)/i;
+export const unsafeLabel=(label:string)=>label.length>80||ADDRESS.test(label);
 // 배열 원소는 짧은 id·name이 있으면 그 값으로, 없으면 정렬 뒤 순번으로 경로를 만든다. 주소처럼 보이는 값은 경로에 쓰지 않는다.
 const itemKey=(item:Json,index:number)=>{
  const o=item&&typeof item==='object'&&!Array.isArray(item)?item:null,label=typeof o?.id==='string'?o.id:typeof o?.name==='string'?o.name:null;
- return label&&label.length<=80&&!/:\/\/|@|\s/.test(label)?label:String(index);
+ return label&&!unsafeLabel(label)?label:String(index);
 };
-function leaves(value:Json,path:string):[string,Json][]{
- if(Array.isArray(value))return value.length?value.flatMap((item,i)=>leaves(item,`${path}[${itemKey(item,i)}]`)):[[path,value]];
- if(value&&typeof value==='object'){const entries=Object.entries(value);return entries.length?entries.flatMap(([k,v])=>leaves(v,path?`${path}.${k}`:k)):[[path,value]]}
+// 객체 키가 주소처럼 보이면 원문 대신 '(가림 <키 sha256 앞 8자>)'를 쓴다. 같은 키는 같은 별칭이라 날짜 사이 경로 비교가 유지된다.
+const unsafeKeys=(value:Json):string[]=>Array.isArray(value)?value.flatMap(unsafeKeys):value&&typeof value==='object'?Object.entries(value).flatMap(([k,v])=>[...(unsafeLabel(k)?[k]:[]),...unsafeKeys(v)]):[];
+async function keyAliases(value:Json){
+ return new Map(await Promise.all([...new Set(unsafeKeys(value))].map(async k=>[k,`(가림 ${(await sha256(k)).slice(0,8)})`] as const)));
+}
+function leaves(value:Json,path:string,aliases:Map<string,string>):[string,Json][]{
+ if(Array.isArray(value))return value.length?value.flatMap((item,i)=>leaves(item,`${path}[${itemKey(item,i)}]`,aliases)):[[path,value]];
+ if(value&&typeof value==='object'){const entries=Object.entries(value).map(([k,v])=>[aliases.get(k)??k,v] as const);return entries.length?entries.flatMap(([k,v])=>leaves(v,path?`${path}.${k}`:k,aliases)):[[path,value]]}
  return [[path,value]];
 }
 async function sectionPrint(value:Json):Promise<SectionPrint>{
- const all=leaves(value,''),kept=all.slice(0,MAX_PATHS);
+ const all=leaves(value,'',await keyAliases(value)),kept=all.slice(0,MAX_PATHS);
  const hashes=await Promise.all(kept.map(async([,v])=>(await sha256(JSON.stringify(v))).slice(0,12)));
  return {hash:await sha256(JSON.stringify(value)),paths:Object.fromEntries(kept.map(([p],i)=>[p||'(root)',hashes[i]])),truncated:all.length>kept.length};
 }

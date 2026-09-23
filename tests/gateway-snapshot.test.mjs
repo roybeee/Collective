@@ -109,6 +109,14 @@ check('per-call timeout stays far below the 60 second worker tick',gateway.GATEW
 state.hang=false;
 r=plain(await gateway.recordGatewaySnapshot(owner,{now:day(5)}));
 check('after blocked days the comparison uses the last passed snapshot',r.status==='passed'&&rows(owner,'gateway_snapshot')[5].hash===modelHash&&rows(owner,'gateway_change').length===1);
+// 막힌 날 뒤의 실제 변경(passed H1 → blocked → passed H2, 모델 추가)은 막힌 스냅샷이 아니라 H1과 비교해 경보 1건을 남긴다.
+const gap='gw-gap',gapModels=state.models;await setConnection(gap,hermes(OPS));
+await gateway.recordGatewaySnapshot(gap,{now:day(1)});
+state.fail='models';await gateway.recordGatewaySnapshot(gap,{now:day(2)});state.fail=null;
+state.models=[...gapModels,{id:'reported-model-c',object:'model',owned_by:'hermes'}];
+await gateway.recordGatewaySnapshot(gap,{now:day(3)});state.models=gapModels;
+const gapSnaps=rows(gap,'gateway_snapshot'),gapChanges=rows(gap,'gateway_change');
+check('a real change after a blocked day is compared with the last passed snapshot',gapSnaps.map(x=>x.status).join()==='passed,blocked,passed'&&gapChanges.length===1&&gapChanges[0].fromDate===day(1).toISOString().slice(0,10)&&gapChanges[0].fromHash===gapSnaps[0].hash&&gapChanges[0].toHash===gapSnaps[2].hash&&gapChanges[0].sections.map(x=>x.section).join()==='models'&&gapChanges[0].sections[0].added.some(p=>p.startsWith('data[reported-model-c]')));
 state.caps={...baseCaps,features:{...baseCaps.features,run_stop:false}};
 await gateway.recordGatewaySnapshot(owner,{now:day(6)});
 changes=rows(owner,'gateway_change');
@@ -156,6 +164,21 @@ check('eval run gateway basis has no key or address',!JSON.stringify(basis).incl
 check('eval start never writes an operational snapshot record',rows(owner,'gateway_snapshot').length===8);
 const evalBlocked=plain(await gateway.gatewayBasis(owner,{endpoint:DENY,key:'eval-mock-key'}));
 check('an unreachable eval gateway is a blocked eval basis, not a start failure',evalBlocked.eval.status==='blocked'&&evalBlocked.eval.hash===null&&evalBlocked.operational.hash===lastPassed.hash);
+
+// H2) 응답의 객체 키·배열 라벨에 든 주소: 스냅샷·변경·사용량 응답 어디에도 원문이 없다. 경로는 해시 별칭·순번이며 변경 감지는 그대로다.
+const addr='gw-address',plainToolsets=state.toolsets;await setConnection(addr,hermes(OPS));
+const secrets=['tools.internal-corp.example.net','second-secret-host.example.org','10.0.0.5','10.0.0.6','gateway.internal.example','ops-user@'];
+state.toolsets=[...plainToolsets,{name:'mcp',servers:{'https://tools.internal-corp.example.net/mcp':{enabled:true},'10.0.0.6:9000':{enabled:true}},enabled:true},{id:'10.0.0.5:8080',enabled:true},{id:'10.0.0.5',enabled:true},{name:'gateway.internal.example',enabled:true},{name:'ops-user@relay',enabled:false}];
+await gateway.recordGatewaySnapshot(addr,{now:day(1)});
+state.toolsets=state.toolsets.map(t=>t.name==='mcp'?{...t,servers:{...t.servers,'https://second-secret-host.example.org/mcp':{enabled:true}}}:t);
+await gateway.recordGatewaySnapshot(addr,{now:day(2)});state.toolsets=plainToolsets;
+const addrSnaps=rows(addr,'gateway_snapshot'),addrChanges=rows(addr,'gateway_change');
+const addrUsage=await (await usageRoute.GET(new Request('https://agency.test/api/usage',{headers:{'oai-authenticated-user-id':addr}}))).json();
+const leaked=text=>secrets.filter(x=>text.includes(x));
+check('address-like object keys and labels never reach the snapshot row',addrSnaps.length===2&&addrSnaps.every(x=>x.status==='passed')&&leaked(JSON.stringify(sql.prepare("SELECT data FROM records WHERE owner=? AND kind='gateway_snapshot'").all(addr))).length===0);
+check('address-like keys never reach the change row or the usage response',addrChanges.length===1&&leaked(JSON.stringify(addrChanges)).length===0&&leaked(JSON.stringify(addrUsage.gateway)).length===0&&addrUsage.gateway.changes.length===1);
+check('an added address key still shows as one added path under a hash alias',(()=>{const t=addrChanges[0].sections.find(x=>x.section==='toolsets');return !!t&&t.added.length===1&&/^data\[mcp\]\.servers\.\(가림 [0-9a-f]{8}\)\.enabled$/.test(t.added[0])&&t.removed.length===0})());
+check('safe keys and model-like ids stay readable in paths',Object.keys(addrSnaps[0].sections.toolsets.paths).some(p=>p.startsWith('data[web].'))&&Object.keys(addrSnaps[0].sections.models.paths).some(p=>p.startsWith('data[reported-model-b].'))&&['gpt-4.1-mini','claude-3.5-sonnet','hermes-agent'].every(x=>!gateway.unsafeLabel(x))&&['10.0.0.5:8080','[::1]:80','fe80::1','tools.example.net','a@b'].every(gateway.unsafeLabel));
 
 // I) kind 등록
 const kinds=plain(registry.recordKinds);

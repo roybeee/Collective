@@ -5,7 +5,8 @@ import type {Artifact} from '@/lib/agency';
 import {roles} from '@/lib/agency';
 
 // 온라인 채점(F2b) 요약. 기능 스위치 online_grading이 켜졌을 때 저장 직후 채점한 결과만 있다. 자동 점검이며 승인·품질 판정이 아니다.
-type GradingRow={id:string;artifactId:string;artifactVersion:number;role:string;status:'graded'|'grader_error';summary:{pass:number;fail:number;not_applicable:number;grader_error:number}|null;compliance:{block:number;warn:number;info:number}|null;durationMs:number|null;failed:string[]};
+// not_run: 줄 수가 채점 한도를 넘어 채점기를 돌리지 않았다(lines에 줄 수).
+type GradingRow={id:string;artifactId:string;artifactVersion:number;role:string;status:'graded'|'grader_error'|'not_run';reason?:string;lines?:number;summary:{pass:number;fail:number;not_applicable:number;grader_error:number}|null;compliance:{block:number;warn:number;info:number}|null;durationMs:number|null;failed:string[]};
 
 // 캠페인 상세 '작업물' 탭(panels.tsx) 끝에 붙인다. 탭은 열릴 때만 있으므로 DOM 변화를 보고 자리를 다시 찾는다(evidence-summary.tsx AiTeamSlot과 같은 방식).
 function OutputsSlot({children}:{children:ReactNode}){
@@ -25,7 +26,7 @@ function OutputsSlot({children}:{children:ReactNode}){
  },[]);
  return host?createPortal(children,host):null;
 }
-const line=(g:GradingRow)=>g.status==='grader_error'||!g.summary?'채점 오류(작업물·실행 상태는 그대로)':`통과 ${g.summary.pass} · 실패 ${g.summary.fail} · 해당 없음 ${g.summary.not_applicable}${g.summary.grader_error?` · 채점기 오류 ${g.summary.grader_error}`:''}${g.compliance?` · 규제 점검 차단 ${g.compliance.block}·경고 ${g.compliance.warn}`:''}${g.durationMs!==null?` · ${g.durationMs}ms`:''}`;
+const line=(g:GradingRow)=>g.status==='not_run'?`채점 안 함(${g.lines??'?'}줄, 채점 한도 초과 · 작업물은 그대로)`:g.status==='grader_error'||!g.summary?'채점 오류(작업물·실행 상태는 그대로)':`통과 ${g.summary.pass} · 실패 ${g.summary.fail} · 해당 없음 ${g.summary.not_applicable}${g.summary.grader_error?` · 채점기 오류 ${g.summary.grader_error}`:''}${g.compliance?` · 규제 점검 차단 ${g.compliance.block}·경고 ${g.compliance.warn}`:''}${g.durationMs!==null?` · ${g.durationMs}ms`:''}`;
 
 // 현재 작업물(같은 id·버전)의 채점만 작업물 이름과 함께 작게 보여 준다. 채점이 없으면 아무것도 그리지 않는다.
 export function OnlineGradingSlot({campaignId,artifacts}:{campaignId:string;artifacts:Artifact[]}){

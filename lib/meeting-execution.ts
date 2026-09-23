@@ -69,16 +69,17 @@ async function finish(owner:string,m:Meeting){
 }
 
 // 완료된 단계의 후속 처리: 합의 단계는 개선 과제와 품질 재검토 단계를 추가하고, 품질 재검토는 작업물을 저장한다.
-async function applyStep(owner:string,m:Meeting,s:MeetingStep){
+// 품질 재검토가 작업물을 저장해 회의가 완료되면 그 회의를 돌려준다. 온라인 채점(F2b)은 executeMeeting이 잠금을 푼 뒤 한다.
+async function applyStep(owner:string,m:Meeting,s:MeetingStep):Promise<Meeting|undefined>{
  if(s.phase==='synthesis'){
   const tasks=(s.output as Synthesis).tasks;
   m.steps.push(...tasks.map(t=>({id:`${m.id}:revision:${t.role}`,role:t.role,phase:'revision' as const,status:'pending' as const,task:t})),{id:`${m.id}:quality`,role:'quality',phase:'quality',status:'pending'});
  }
  if(s.phase==='quality'){
   try{await finish(owner,m)}catch(e){if(!(e instanceof ApiError))throw e;m.status='failed';m.error=e.message;await database().batch(writes(owner,m))}
-  // 비차단 온라인 채점(F2b): 회의 작업물 저장이 끝난 뒤에만 부르며 예외를 던지지 않는다. 스위치가 꺼져 있으면 채점 0회.
-  if(m.status==='completed')await gradeMeetingArtifacts(owner,m);
- }else await database().batch(writes(owner,m));
+  return m.status==='completed'?m:undefined;
+ }
+ await database().batch(writes(owner,m));
 }
 
 // 안건 초안: 연속 실행 수정 목록(같은 브리프 버전)·최신 품질 검수 작업물의 미통과 항목·캠페인 상시 지시.
@@ -100,7 +101,7 @@ export async function GET(req:Request){try{
  return json({meetings:meetings.map(m=>publicMeeting(m,m.status==='failed'&&meetingStale(m,basis))),agendaDraft:await agendaDraft(owner,basis)});
 }catch(e){return failure(e)}}
 
-export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:EventActor){let lock='',prepared:Meeting|undefined,recovering=false;
+export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:EventActor){let lock='',prepared:Meeting|undefined,recovering=false,graded:Meeting|undefined;
  try{
  lock=await acquireLock(owner);
   const id=str(b.id,'회의',100,true);if(!/^[a-zA-Z0-9_-]{1,100}$/.test(id))throw new ApiError(400,'회의 번호가 올바르지 않습니다.');
@@ -127,7 +128,7 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:E
   if(b.action==='retry_failed'){
    const cfg=await connection(owner);if(cfg.provider!=='hermes')throw new ApiError(409,'회의를 시작한 HERMES 연결이 필요합니다.');
    const {meeting:retried,completed}=await retryFailedMeeting(owner,m,b);
-   if(completed){await applyStep(owner,retried,completed);if(completed.providerId)await markUsageOutcome(owner,'hermes',completed.providerId,retried.status==='failed'?'storage_failed':'completed');return json(publicMeeting(retried))}
+   if(completed){graded=await applyStep(owner,retried,completed);if(completed.providerId)await markUsageOutcome(owner,'hermes',completed.providerId,retried.status==='failed'?'storage_failed':'completed');return json(publicMeeting(retried))}
    await database().batch(writes(owner,retried));return json(publicMeeting(retried));
   }
   if(!meetingActive(m))return json(publicMeeting(m));
@@ -158,7 +159,7 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:E
    s.raw=result.output[0].content[0].text;s.tokens=result.usage.total_tokens;
    try{const parsed=parseMeetingStep(s.raw!,s,m.steps,!!m.skillVersion,candidateArtifacts(m).invalidatedRoles,meetingLabels(m));s.output=parsed.output;if(parsed.warnings.length)s.warnings=parsed.warnings;s.status='completed';s.completedAt=stamp()}
    catch(e){await markUsageOutcome(owner,'hermes',s.providerId,'invalid_output');s.status='failed';s.failureKind='invalid_output';s.completedAt=stamp();s.error=(e as Error).message;m.status='failed';m.error=s.error;await database().batch(writes(owner,m));return json(publicMeeting(m))}
-   await applyStep(owner,m,s);
+   graded=await applyStep(owner,m,s);
    // applyStep이 저장 실패 시 m.status를 failed로 바꾼다.
    await markUsageOutcome(owner,'hermes',s.providerId,(m.status as Meeting['status'])==='failed'?'storage_failed':'completed');
   }else if(result.status==='failed'||result.status==='cancelled'){
@@ -172,5 +173,9 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:E
    s.status=unknown?'uncertain':'failed';prepared.status=unknown?'uncertain':'failed';prepared.error=unknown?'HERMES 접수 확인이 필요합니다. 기존 요청 확인으로 복구하세요.':(e as Error).message;prepared.updatedAt=stamp();await database().batch(writes(owner,prepared));return json(publicMeeting(prepared));
   }
   return failure(e);
- }finally{if(lock)await releaseLock(owner,lock)}
+ }finally{
+  if(lock)await releaseLock(owner,lock);
+  // 비차단 온라인 채점(F2b): 회의 작업물 저장·사용량 결과 기록 뒤, 소유자 잠금을 푼 다음에만 부르며 예외를 던지지 않는다. 스위치가 꺼져 있으면 채점 0회.
+  if(graded)await gradeMeetingArtifacts(owner,graded);
+ }
 }

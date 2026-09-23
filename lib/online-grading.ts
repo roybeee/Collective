@@ -1,10 +1,12 @@
 // 비차단 온라인 채점(F2b). 기능 스위치 online_grading(lib/feature-flags.ts, 기본 꺼짐)이 켜져 있으면 역할·회의 작업물이 저장된 직후
 // lib/graders 13종(runGraders)과 규제 가드레일(checkCompliance)로 채점해 grading 레코드(id=<작업물 id>:<버전>, parent=캠페인)로 남긴다.
-// 비차단: 작업물 저장·job 상태·사용량 결과(domainOutcome)가 모두 끝난 뒤 부르며 어떤 예외도 던지지 않는다. 채점기 하나의 예외는 runGraders가 그 채점기의
-// grader_error 1줄로 격리한다. 채점·저장 자체가 실패하면 status grader_error 기록 1건과 로그 1줄('online_grading_grader_error')만 남긴다.
+// 비차단: 작업물 저장·job 상태·사용량 결과(domainOutcome)가 모두 끝나고 소유자 변경 잠금(acquireLock)을 푼 뒤에 부르며 어떤 예외도 던지지 않는다.
+// 채점하는 동안 같은 소유자의 다른 변경을 막지 않는다. 잠금 밖이라 grading 행은 캠페인이 아직 있을 때만 쓴다(saveGrading).
+// 채점기 하나의 예외는 runGraders가 그 채점기의 grader_error 1줄로 격리한다. 채점·저장 자체가 실패하면 status grader_error 기록 1건과 로그 1줄('online_grading_grader_error')만 남긴다.
+// 입력 상한: 일부 채점기는 줄 수가 늘면 비례 이상으로 느려진다. MAX_GRADED_LINES줄을 넘는 작업물은 채점기를 부르지 않고 status not_run(reason too_many_lines, 줄 수)만 남긴다.
 // 꺼져 있으면 스위치 1행만 읽고 채점기를 한 번도 부르지 않는다. 채점 맥락: 사실 원장(역할=현재 확정·거절 사실, 회의=회의 시작 스냅샷), 지점 캠페인 여부,
 // 공급자가 보고한 입력 토큰. 업종(industry)·큐레이션 금지 표현은 운영 캠페인에 없어 비워 둔다(해당 채점기는 not_applicable).
-import {database,readRecord,listRecords,recordStatement,stamp,ApiError} from './server';
+import {database,readRecord,listRecords,stamp,ApiError} from './server';
 import {isEnabled} from './feature-flags';
 import {evidenceContext} from './ai-context';
 import {runGraders,GRADERS_VERSION,type FactLedger,type GradeContext,type GraderResult,type GraderStatus} from './graders/index';
@@ -19,9 +21,11 @@ type GradedArtifact=Pick<Artifact,'id'|'version'|'role'|'content'|'campaignId'|'
 export type GradingTarget={artifact:GradedArtifact;source:GradingSource;jobId?:string|null;meetingId?:string|null;usageId?:string|null};
 type FactSource='current'|'snapshot'|'none';
 export type GradingContext={facts:FactSource;confirmedFacts:number;prohibitedFacts:number;industry:null;localStore:boolean;inputTokens:number|null};
+// 저장 한도(40,000자) 안에서 줄 수로 채점 시간을 묶는다. 로컬 실측: 2,000줄 이하 합성 최악 입력 약 110ms 이하, 빈 줄 20,000줄 약 0.5초·40,000줄 약 2.3초.
+export const MAX_GRADED_LINES=2000;
 type ComplianceSummary={version:string;block:number;warn:number;info:number;issues:{category:string;ruleId:string;severity:string}[]};
 export type Grading={id:string;artifactId:string;artifactVersion:number;campaignId:string;campaignVersion:number|null;role:string;source:GradingSource;jobId:string|null;meetingId:string|null;
- status:'graded'|'grader_error';gradersVersion:string;graders:GraderResult[];summary:Record<GraderStatus,number>|null;compliance:ComplianceSummary|null;context:GradingContext;durationMs:number|null;gradedAt:string;error?:string};
+ status:'graded'|'grader_error'|'not_run';gradersVersion:string;graders:GraderResult[];summary:Record<GraderStatus,number>|null;compliance:ComplianceSummary|null;context:GradingContext;durationMs:number|null;gradedAt:string;error?:string;reason?:'too_many_lines';lines?:number};
 
 const emptySummary=():Record<GraderStatus,number>=>({pass:0,fail:0,not_applicable:0,grader_error:0});
 // 순수 채점: 저장된 본문(사용자가 보는 렌더본)을 채점한다. 규제 점검은 발췌(excerpt) 없이 분류·규칙·심각도만 남긴다.
@@ -42,16 +46,21 @@ const ledgerOf=(facts:{confirmed?:unknown[];prohibited?:unknown[]}|null|undefine
 const gradingOf=(t:GradingTarget,campaignId:string,context:GradingContext):Omit<Grading,'status'|'graders'|'summary'|'compliance'|'durationMs'|'gradedAt'>=>({
  id:`${t.artifact.id}:${t.artifact.version}`,artifactId:t.artifact.id,artifactVersion:t.artifact.version,campaignId,campaignVersion:t.artifact.campaignVersion??null,role:t.artifact.role,source:t.source,jobId:t.jobId??null,meetingId:t.meetingId??null,gradersVersion:GRADERS_VERSION,context,
 });
+// 잠금 밖에서 쓰므로 그사이 캠페인이 지워졌으면 쓰지 않는다(캠페인과 함께 지운다는 grading 보존 정책). 같은 id는 덮어쓴다(recordStatement와 같은 규칙).
+const saveGrading=(owner:string,g:Grading)=>database().prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM records WHERE id=? AND owner=? AND kind=?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at WHERE records.owner=excluded.owner')
+ .bind(`${owner}:grading:${g.id}`,owner,'grading',g.campaignId,JSON.stringify(g),stamp(),`${owner}:campaign:${g.campaignId}`,owner,'campaign').run();
 async function gradeOne(owner:string,campaign:Pick<Campaign,'id'|'storeId'>,t:GradingTarget,facts:{ledger:FactLedger|null;source:FactSource}){
  const context:GradingContext={facts:facts.source,confirmedFacts:facts.ledger?.confirmed.length??0,prohibitedFacts:facts.ledger?.prohibited.length??0,industry:null,localStore:!!campaign.storeId,inputTokens:null};
  try{
+  const lines=t.artifact.content.split('\n').length;
+  if(lines>MAX_GRADED_LINES){await saveGrading(owner,{...gradingOf(t,campaign.id,context),status:'not_run',graders:[],summary:null,compliance:null,durationMs:null,gradedAt:stamp(),reason:'too_many_lines',lines});return}
   const inputTokens=await usageInputTokens(owner,t.usageId),base=gradingOf(t,campaign.id,{...context,inputTokens});
   const result=gradeArtifact(t.artifact,{facts:facts.ledger,industry:null,localStore:context.localStore},inputTokens);
-  await recordStatement(owner,'grading',base.id,{...base,status:'graded',...result,gradedAt:stamp()} satisfies Grading,campaign.id).run();
+  await saveGrading(owner,{...base,status:'graded',...result,gradedAt:stamp()} satisfies Grading);
  }catch(error){
   console.error('online_grading_grader_error');
   const base=gradingOf(t,campaign.id,context),failed:Grading={...base,status:'grader_error',graders:[],summary:null,compliance:null,durationMs:null,gradedAt:stamp(),error:String((error as Error)?.message||error).slice(0,200)};
-  await recordStatement(owner,'grading',base.id,failed,campaign.id).run().catch(()=>undefined);
+  await saveGrading(owner,failed).catch(()=>undefined);
  }
 }
 async function switchedOn(owner:string){
@@ -62,12 +71,14 @@ async function factsFor(owner:string,campaign:Campaign,snapshot?:{confirmed?:unk
  try{return {ledger:ledgerOf((await evidenceContext(database(),owner,campaign)).facts),source:'current' as const}}
  catch{return {ledger:null,source:'none' as const}}
 }
-// 역할 실행(lib/role-execution.ts)·회의(gradeMeetingArtifacts)가 저장 직후 부른다. 반환값은 채점한 작업물 수(꺼짐이면 0).
+// 역할 실행(lib/role-execution.ts)·회의(gradeMeetingArtifacts)가 저장하고 잠금을 푼 뒤 부른다. 반환값은 채점한 작업물 수(꺼짐이면 0). 예외를 던지지 않는다.
 export async function gradeSavedArtifacts(owner:string,campaign:Campaign,targets:GradingTarget[],snapshotFacts?:{confirmed?:unknown[];prohibited?:unknown[]}|null){
- if(!targets.length||!(await switchedOn(owner)))return 0;
- const facts=await factsFor(owner,campaign,snapshotFacts);
- for(const target of targets)await gradeOne(owner,campaign,target,facts);
- return targets.length;
+ try{
+  if(!targets.length||!(await switchedOn(owner)))return 0;
+  const facts=await factsFor(owner,campaign,snapshotFacts);
+  for(const target of targets)await gradeOne(owner,campaign,target,facts);
+  return targets.length;
+ }catch{console.error('online_grading_grader_error');return 0}
 }
 // 회의가 저장한 작업물(m.artifactIds)을 저장된 그대로 읽어 채점한다. 사실 원장은 회의 시작 스냅샷을 쓴다.
 export async function gradeMeetingArtifacts(owner:string,m:Meeting){
@@ -80,5 +91,5 @@ export async function gradeMeetingArtifacts(owner:string,m:Meeting){
 // 캠페인 상세 작업물 옆 표시용(GET /api/usage?grading=<캠페인>). 없는 캠페인·다른 소유자는 404다.
 export async function campaignGradings(owner:string,campaignId:string){
  await readRecord<Campaign>(owner,'campaign',campaignId);
- return (await listRecords<Grading>(owner,'grading',campaignId)).map(({id,artifactId,artifactVersion,role,source,status,summary,compliance,durationMs,gradedAt,graders})=>({id,artifactId,artifactVersion,role,source,status,summary,compliance:compliance?{block:compliance.block,warn:compliance.warn,info:compliance.info}:null,durationMs,gradedAt,failed:graders.filter(g=>g.status==='fail'||g.status==='grader_error').map(g=>g.id)}));
+ return (await listRecords<Grading>(owner,'grading',campaignId)).map(({id,artifactId,artifactVersion,role,source,status,reason,lines,summary,compliance,durationMs,gradedAt,graders})=>({id,artifactId,artifactVersion,role,source,status,reason,lines,summary,compliance:compliance?{block:compliance.block,warn:compliance.warn,info:compliance.info}:null,durationMs,gradedAt,failed:graders.filter(g=>g.status==='fail'||g.status==='grader_error').map(g=>g.id)}));
 }
