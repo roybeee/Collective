@@ -2,7 +2,7 @@ import {ApiError,database,recordStatement,stamp,listRecords,readRecord,acquireLo
 import {researchActive,type BrandResearch} from './archive';
 
 type Credential={hash:string;createdAt:string};
-type WorkerState={lastSeen:string;version:string;tokenHash:string;lastStatus?:number;lastJob?:string;blocked?:number};
+type WorkerState={lastSeen:string;version:string;tokenHash:string;lastStatus?:number;lastJob?:string;blocked?:number;lastQueue?:string};
 export async function workerHash(token:string){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token))),b=>b.toString(16).padStart(2,'0')).join('')}
 async function credential(owner:string){try{return await readRecord<Credential>(owner,'worker_credential','current')}catch(e){if(e instanceof ApiError&&e.status===404)return null;throw e}}
 export async function workerStatus(owner:string){
@@ -25,9 +25,9 @@ export async function workerIdentity(req:Request){
  if(!saved||diff!==0)throw new ApiError(401,'작업자 연결이 해제됐거나 인증이 만료됐습니다.');
  return {owner,hash};
 }
-// collectDue는 성과 자동 수집이다. 조사 작업이 없을 때만 진행한다.
+// Rotate work classes so a long research run cannot starve scheduled measurements.
 // 반환 status는 설치된 파이썬 워커가 검사하는 ('idle','processed','retry') 안에 머물러야 한다.
-export async function workerTick(principal:{owner:string;hash:string},executeResearch:(owner:string,input:Record<string,any>,timeout:number)=>Promise<Response>,collectDue?:(owner:string)=>Promise<{status:string}>){
+export async function workerTick(principal:{owner:string;hash:string},executeResearch:(owner:string,input:Record<string,any>,timeout:number)=>Promise<Response>,collectDue?:(owner:string)=>Promise<{status:string}>,advanceWork?:(owner:string)=>Promise<{status:string}>){
  const {owner,hash}=principal;
  const key=owner+':research-worker',lock=await acquireLock(key);
  try{
@@ -36,15 +36,26 @@ export async function workerTick(principal:{owner:string;hash:string},executeRes
   const due=active.filter(r=>!r.retryAt||Date.parse(r.retryAt)<=Date.now()).filter(r=>r.status!=='uncertain'||!!r.retryAt).sort((a,b)=>a.createdAt.localeCompare(b.createdAt)||a.id.localeCompare(b.id));
   let previous:WorkerState|undefined;try{previous=await readRecord<WorkerState>(owner,'worker_state','current')}catch(e){if(!(e instanceof ApiError&&e.status===404))throw e}
   const job=due[(due.findIndex(r=>r.id===previous?.lastJob)+1)%due.length];
-  const state={lastSeen:stamp(),version:'1',tokenHash:hash,lastJob:job?.id||previous?.lastJob,blocked};
+  const state={lastSeen:stamp(),version:'1',tokenHash:hash,lastJob:previous?.lastJob,blocked};
   await recordStatement(owner,'worker_state','current',state).run();
-  if(!job){
-   const collected=collectDue?await collectDue(owner):null;
-   const status=collected?.status==='processed'||collected?.status==='retry'?collected.status:'idle';
-   return {status,pending:active.length,blocked};
+  const queues=['research','execution','measurement'];
+  const first=(queues.indexOf(previous?.lastQueue||'')+1)%queues.length;
+  for(let offset=0;offset<queues.length;offset++){
+   const queue=queues[(first+offset)%queues.length];
+   let result:{status:string;httpStatus?:number}|undefined;
+   // Persist the turn before external work; a crash must not monopolize the queue.
+   const turnState={...state,lastQueue:queue,lastJob:queue==='research'&&job?job.id:state.lastJob};
+   await recordStatement(owner,'worker_state','current',turnState).run();
+   if(queue==='research'&&job){
+    const response=await executeResearch(owner,{id:job.id,action:job.status==='uncertain'?'recover':'advance'},20000);
+    result={status:response.ok?'processed':'retry',httpStatus:response.status};
+   }else if(queue==='execution'&&advanceWork)result=await advanceWork(owner);
+   else if(queue==='measurement'&&collectDue)result=await collectDue(owner);
+   if(result&&result.status!=='idle'){
+    await recordStatement(owner,'worker_state','current',{...turnState,lastSeen:stamp(),lastStatus:result.httpStatus}).run();
+    return {...result,status:result.status==='retry'?'retry':'processed',queue,pending:active.length,blocked};
+   }
   }
-  const response=await executeResearch(owner,{id:job.id,action:job.status==='uncertain'?'recover':'advance'},20000);
-  await recordStatement(owner,'worker_state','current',{...state,lastSeen:stamp(),lastStatus:response.status}).run();
-  return {status:response.ok?'processed':'retry',httpStatus:response.status,pending:active.length,blocked};
+  return {status:'idle',pending:active.length,blocked};
  }finally{await releaseLock(key,lock)}
 }

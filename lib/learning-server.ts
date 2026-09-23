@@ -55,8 +55,11 @@ export function storeLearningRule(e:StoreExperiment,decision:string,learning:str
  const storeAssessment:StoreAssessment={decision,primaryMetric:e.primaryMetric,primaryMetricLabel:metricLabel,target:e.target,observed:measured.values[e.primaryMetric],periodStart:measured.periodStart,periodEnd:measured.periodEnd,measurementSource:measured.source,evidenceLevel:review.evidenceLevel,failureType:review.failureType,confounders:review.confounders,nextAction:review.nextAction};
  return {id:'store:'+e.id+':'+e.version,origin:'store',storeId:e.storeId,storeAssessment,direction:decision==='adopt'?'test':'caution',brandId:e.brandId,channel:storeChannelName(e.channel)||e.channel,experimentId:e.id,experimentVersion:e.version,caseId:'',title:e.title,guidance:learning,scope:review.conditions||e.measurement,evidenceLevel:'observational',status:'active',version:1,expiresAt:expiry(),createdAt:stamp(),updatedAt:stamp()};
 }
+export function learningSnapshotStatement(owner:string,id:string,c:Campaign,role:string,rules:LearningRule[],skillVersion?:string){
+ const snap:LearningSnapshot & {skillVersion?:string}={skillVersion,id,campaignId:c.id,role,rules,createdAt:stamp()};return recordStatement(owner,'learning_snapshot',id,snap,c.id);
+}
 export async function saveLearningSnapshot(owner:string,id:string,c:Campaign,role:string,rules:LearningRule[],skillVersion?:string){
- const snap:LearningSnapshot & {skillVersion?:string}={skillVersion,id,campaignId:c.id,role,rules,createdAt:stamp()};await recordStatement(owner,'learning_snapshot',id,snap,c.id).run();
+ await learningSnapshotStatement(owner,id,c,role,rules,skillVersion).run();
 }
 function arm(raw:any,label:string,metric:string):Arm{
  if(!raw)throw new ApiError(400,`${label} 결과가 필요합니다.`);const denominator=nullableNumber(raw.denominator,`${label} 분모`),numerator=nullableNumber(raw.numerator,`${label} 반응 수`);

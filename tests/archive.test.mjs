@@ -206,7 +206,7 @@ owner='server-worker-owner';await snapshot();await act('save_hermes',{endpoint:'
 const workerRoute=await load('app/api/research-worker/route.ts');await workerRoute.evaluate();
 const workerLib=await load('lib/research-worker.ts');await workerLib.evaluate();
 const setup=await load('app/api/research-worker/setup/route.ts');await setup.evaluate();
-runtime.RESEARCH_WORKER_GATE_TOKEN='test-site-gate-only';runtime.RESEARCH_WORKER_SITE_ORIGIN='https://agency.test';
+runtime.RESEARCH_WORKER_GATE_TOKEN='test-site-gate-only';runtime.RESEARCH_WORKER_SITE_ORIGIN='https://agency.test';runtime.RESEARCH_WORKER_ADMIN_IDS=owner;
 check('anonymous installer download rejected',(await request(setup,'POST',{action:'download'},{'oai-authenticated-user-id':null})).status===401);
 check('cross-origin installer download rejected',(await request(setup,'POST',{action:'download'},{origin:'https://foreign.test'})).status===403);
 const installerResponse=await setup.namespace.POST(new Request('https://agency.test/api/research-worker/setup',{method:'POST',headers:{'oai-authenticated-user-id':owner},body:JSON.stringify({action:'download'})}));

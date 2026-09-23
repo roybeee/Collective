@@ -1,3 +1,19 @@
 import type {BriefDraft} from '@/lib/brief';
-import {database,identity,json,failure,seedBrands,listRecords,publicConnection,runtime} from '@/lib/server';
-export async function GET(req:Request){try{const owner=identity(req);await seedBrands(owner);const [brands,campaigns,artifacts,metrics,events,settings,runs,briefDrafts]=await Promise.all([listRecords(owner,'brand'),listRecords(owner,'campaign'),listRecords(owner,'artifact'),listRecords(owner,'metric'),listRecords(owner,'event'),publicConnection(owner),database().prepare('SELECT id,campaign_id AS campaignId,role,status,error,created_at AS createdAt,model,tokens FROM jobs WHERE owner=? ORDER BY created_at DESC LIMIT 200').bind(owner).all(),listRecords<BriefDraft>(owner,'brief_draft')]);return json({briefDrafts:briefDrafts.filter(d=>!d.savedCampaignId&&d.status!=='cancelled').slice(0,10).map(d=>({id:d.id,status:d.status,title:d.input.title||d.input.goal,brandId:d.input.brandId,campaignId:d.campaignId,createdAt:d.createdAt})),brands,campaigns,artifacts,metrics,events:events.slice(0,60),runs:runs.results,connection:settings,preview:process.env.NODE_ENV==='development'})}catch(e){return failure(e)}}
+import {campaignRuns,type CampaignSequence} from '@/lib/campaign-detail';
+import {identity,json,failure,seedBrands,listRecords,publicConnection} from '@/lib/server';
+import {workerStatus} from '@/lib/research-worker';
+
+export async function GET(req:Request){
+ try{
+  const owner=identity(req);
+  await seedBrands(owner);
+  const [brands,campaigns,artifacts,metrics,events,settings,runs,briefDrafts,sequences,worker]=await Promise.all([
+   listRecords(owner,'brand'),listRecords(owner,'campaign'),listRecords(owner,'artifact'),listRecords(owner,'metric'),listRecords(owner,'event'),
+   publicConnection(owner),campaignRuns(owner),listRecords<BriefDraft>(owner,'brief_draft'),listRecords<CampaignSequence>(owner,'campaign_sequence'),workerStatus(owner),
+  ]);
+  return json({
+   briefDrafts:briefDrafts.filter(d=>!d.savedCampaignId&&d.status!=='cancelled').slice(0,10).map(d=>({id:d.id,status:d.status,title:d.input.title||d.input.goal,brandId:d.input.brandId,campaignId:d.campaignId,createdAt:d.createdAt})),
+   brands,campaigns,artifacts,metrics,events:events.slice(0,60),runs,sequences,worker,connection:settings,preview:process.env.NODE_ENV==='development',
+  });
+ }catch(e){return failure(e)}
+}
