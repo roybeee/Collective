@@ -1,39 +1,45 @@
 # COLLECTIVE 현재 상태
 
-마지막 갱신: 2026-09-23 09:34 UTC (Claude, PR 0 `chore/engineering-baseline`)
+마지막 갱신: 2026-09-23 12:55 UTC (Claude, 게시 기록 `docs/release-d156dfd`)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `dbf94a5138df0ea0765919abaa4fa955511d49a2` (PR #20 `merged`) | 제품 tree `281ea84a47227a5eec82c0b2b7c0cde6c5889c90` |
-| `origin/main` | `3f68f21` (PR #21, PR 0 병합 전 기준). dbf94a5 뒤의 변경은 문서 전용 | `git diff --name-only dbf94a5 3f68f21 -- . ':!docs' ':!*.md'` 결과 없음 |
-| Sites 게시 | 버전23 `published`, deployment `appgdep_6ab383ddc9408191a9cb0e12916d5cd5`, 2026-09-23 07:46:46 UTC | [게시 기록](releases/2026-09-23-dbf94a5.md) |
-| 실행 검증 | `runtime-verified` · real (main `3f68f21` 기준, PR 0 병합 전), 2026-09-23 07:58 UTC 경 | 관리자 이메일 세션으로 연 운영 `/api/version` = build `2026-09-23T07:22:55.964Z`, tree `281ea84…`(dbf94a5 tree와 같음) |
-| 인증 | `AUTH_MODE=email`, 계정 1개(관리자) | 운영 `/api/auth` mode=email. [전환 기록](releases/2026-09-23-1ecd72e.md) |
-| Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 로그인 없는 업무·계정 요청은 앱이 401 | [전환 기록](releases/2026-09-23-1ecd72e.md) |
-| 조사 워커 | online | 운영 관찰, 2026-09-23 07:58 UTC 경 |
-| 열린 PR | #19 문서(`docs/email-auth-release`, `main`에 병합 안 됨, 충돌. 내용은 PR 0에서 다시 반영), #16 Android(ChatGPT 인증 시절 기준, 개선 계획에서 제외), PR 0(이 변경) | 감사 시점 기록. 작업 전 `gh pr list -R roybeee/Collective`로 대조 |
-| 로컬 게이트(main `3f68f21`) | tests passed 27/27 suites·849 assertions, tsc passed exit0, lint gate passed errors107/기준108·warnings44/기준44 | 테스트 real SQLite / mocked 외부 공급자. lint 0 errors가 아님 |
-| PR 0 브랜치 게이트(`chore/engineering-baseline`, 2026-09-23 09:34 UTC 경) | tests passed 29/29 suites·946 assertions, tsc passed exit0, lint gate passed errors74/기준74·warnings44/기준44, build passed exit0, 워커 계약 테스트 passed 50회 반복 0회 실패 | 테스트 real SQLite / mocked 외부 공급자, 워커 mocked gateway / real 로컬 HTTP. E2E는 not_run(CI 비차단 잡에서 실행). 병합 전 브랜치 값이며 병합 뒤 main CI로 다시 확인 |
+| 운영 제품 커밋 | `d156dfdd23ca0cdf9ebacb405c134d12bd6ae47b` (PR #23 `merged`, PR 0 #22 포함) | 제품 tree `6a1881b6c054f9882c6089157137c626d7214014` |
+| `origin/main` | `d156dfd` (PR #23) | 이후 제품 경로 변경 없음(`docs/PUBLISH.ko.md` 5단계 명령 결과 0건) |
+| Sites 게시 | `published`, 2026-09-23(운영 build `2026-09-23T12:45:56.610Z`). Sites 버전·deployment ID 기록 없음 | [게시 기록](releases/2026-09-23-d156dfd.md) |
+| 실행 검증 | `runtime-verified` · real, 2026-09-23 12:48 UTC 경 | 소유자 이메일 세션으로 연 운영 `/api/version` tree `6a1881b…` = d156dfd tree |
+| 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` 200, mode=email, role=owner |
+| Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 이번 게시에서 변경 지시 없음 | 게시 뒤 접근 설정 재확인은 not_run |
+| 조사 워커 | 기록 없음 | 게시 뒤 확인 not_run(직전 관찰은 2026-09-23 07:58 UTC 경 online) |
+| 열린 PR | #16 Android(draft, ChatGPT 인증 시절 기준, 개선 계획에서 제외) | `gh pr list -R roybeee/Collective`, 2026-09-23 12:50 UTC |
+| main CI(`d156dfd`) | passed · verify, e2e-smoke | [run 35854712297](https://github.com/roybeee/Collective/actions/runs/35854712297) |
 
-- PR 0 병합 시점부터 `main` 기준 배포 상태는 `published`(운영 dbf94a5, Sites 버전23)이며 `runtime-verified`가 아니다. 게시하지 않은 제품 변경(`lib/deep-research-server.ts`, `lib/store-server.ts`, `lib/validate.ts`, `app/workspace.tsx`)이 `main`에 들어가기 때문이다. 게시 전까지 운영 기준은 dbf94a5다. 게시는 별도 승인 후 [게시 체크리스트](PUBLISH.ko.md)로 진행하고 5단계로 다시 판정한다.
-- Sites가 public인 동안 `AUTH_MODE`를 legacy로 되돌리지 않는다. PR 1(`auth-2`)부터 운영 빌드에서 `AUTH_MODE`가 비면 모든 인증·업무 API가 503이다(fail-closed, `lib/auth-session.ts` `authMode`). legacy는 `AUTH_MODE=legacy`로 명시해야 한다. 이 동작은 PR 1이 게시된 뒤부터 운영에 적용되며, 그 전 운영본(dbf94a5)은 비어 있으면 legacy다. 환경 revision 변경·복구·재게시 뒤에는 `/api/auth`가 mode=email을 반환하는지, 위조 헤더 요청이 401인지 먼저 확인한다. 복구는 [이메일 로그인 복구 순서](EMAIL-AUTH.ko.md)를 따른다.
-- 권장 임시 조치: PR 1 게시 전까지 관리자·직원 계정을 추가로 초대하지 않는다(계정 1개 유지). 역할별 권한 경계와 설치 파일 권한 판정 단위를 PR 1에서 개인 단위로 보완하기 전이기 때문이다.
-- 확인 필요: bootstrap 환경 세 항목 제거와 재게시는 기록이 없다(버전23 게시 기록은 환경 revision4 유지). 실제 Buffer/Instagram 게시는 not_run.
-- 후속 조치: PR 0 병합 뒤 사용자 승인을 받아 PR #19를 닫는다(내용은 [게시 기록](releases/2026-09-23-1ecd72e.md)과 아래 이력으로 옮겼다). 외부 호출이라 이 PR에서는 기록만 한다.
+- `AUTH_MODE` fail-closed(PR 1, `auth-2`)가 운영에 적용됐다. 운영 빌드에서 `AUTH_MODE`가 비면 모든 인증·업무 API가 503이다. Sites가 public인 동안 legacy로 되돌리지 않는다. 환경 revision 변경·복구·재게시 뒤에는 `/api/auth`가 mode=email인지, 위조 헤더 요청이 401인지 먼저 확인한다. 복구는 [이메일 로그인 복구 순서](EMAIL-AUTH.ko.md)를 따른다.
+- 확인 필요: 이번 게시 뒤 익명·위조 헤더 업무 API 401 재확인은 not_run이다(Claude Code 자동 모드 안전 검사가 위조 헤더 요청 실행을 차단). 소유자가 직접 확인한다. 민감 작업 재인증(step-up)은 아직 구현되지 않았다(PR #23 남은 위험).
+- 확인 필요: bootstrap 환경 세 항목 제거와 재게시 기록이 없다. 실제 Buffer/Instagram 게시는 not_run.
 
 ## 진행 중 작업: 전체 개선 7개 PR
 
 사용자 승인 "전체적으로 개선하라"(2026-09-23). 범위·순서·finding 배정은 [전체 개선 계획](IMPROVEMENT-PLAN.ko.md)에 있다.
 
-- PR 0 엔지니어링 기반 — 진행 중(`chore/engineering-baseline`). 제품 동작 변경 없음.
-- PR 1 보안·인증 → PR 2 AI 품질 루프 → PR 3 첫 게시 경로 → PR 4 측정·비용 → PR 5 화면·UX → PR 6 조사 서버 보안 — 대기.
-- 각 PR의 운영 게시는 병합 뒤 별도 승인을 받는다.
+- PR 0 엔지니어링 기반 — `merged`(#22) · `runtime-verified`(d156dfd와 함께 게시).
+- PR 1 보안·인증 — `merged`(#23) · `runtime-verified`.
+- PR 2 AI 품질 루프 — 진행 중(`feat/ai-quality-loop`).
+- PR 3 첫 게시 경로 → PR 4 측정·비용 → PR 5 화면·UX → PR 6 조사 서버 보안 — 대기.
+- 2026-09-23 대표 결정: 진행 방식을 병렬 레인으로 바꾸는 것을 승인했다(에이전시 기능 강화·에이전트 성장 계획). 파일 소유 표와 배정 변경은 별도 문서 PR로 기록한다.
+- 각 PR의 운영 게시는 병합 뒤 별도 승인을 받는다. 게시는 여러 PR을 묶어 드물게 한다.
 
 ## 이력
 
 아래는 각 시점의 기록이다. "운영 미적용", "Sites 접근은 변경하지 않았다", "runtime-verified는 blocked", "제품 소스 a67a318"처럼 현재형으로 적힌 서술은 모두 그 시점의 상태다. 현재 상태는 위 "현재 운영 상태" 표를 따른다.
+
+### 2026-09-23 12:48 UTC 기록 — 보안·인증 게시 (d156dfd)
+
+- PR 0(#22)의 미게시 제품 변경과 PR 1(#23)을 함께 게시했다. 운영 `/api/version` tree가 `6a1881b…`로 d156dfd tree와 같아 `runtime-verified` · real.
+- 게시는 대표가 Sites 편집기에서 직접 실행했다. Sites 버전·deployment ID·migration 0003 적용 결과는 기록 없음. [게시 기록](releases/2026-09-23-d156dfd.md).
+- PR #19는 이미 `CLOSED`다(이전 STATUS의 "닫을 예정"은 해소).
 
 ### 2026-09-23 07:48 UTC 기록 — 실행 연결 첫 단계 배포 (dbf94a5, Sites 버전23)
 
