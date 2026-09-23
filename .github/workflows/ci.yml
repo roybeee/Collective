@@ -48,3 +48,41 @@ jobs:
       - name: Worker contract test (non-blocking, known flake)
         continue-on-error: true
         run: python3 tests/research_worker_test.py
+
+  # 로컬 빌드를 wrangler --local로 띄워 브라우저 여정을 확인한다(docs/E2E.ko.md).
+  # 안정성이 확인될 때까지 비차단이다. verify와 독립된 잡이라 결과가 verify에 영향을 주지 않는다.
+  e2e-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: node node_modules/@playwright/test/cli.js install --with-deps chromium
+
+      - name: Build
+        run: node scripts/run-framework.mjs build
+
+      - name: E2E smoke
+        run: node node_modules/@playwright/test/cli.js test
+
+      - name: Upload screenshots and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: e2e/artifacts/
+          if-no-files-found: ignore

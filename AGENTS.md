@@ -7,6 +7,11 @@
 - 배포된 사이트는 실행 결과이며 개발 정본이 아니다. GitHub 소스와 배포 상태를 별도로 검증한다.
 - 토큰, 비밀번호, 쿠키, 개인정보, `.env` 파일은 커밋하지 않는다.
 
+## 현재 상태 (`docs/STATUS.md`)
+- 작업을 시작할 때 `docs/STATUS.md`를 먼저 읽는다.
+- 적힌 내용을 믿지 말고 실제 원격 상태(`git ls-remote origin refs/heads/main`, `gh pr list -R roybeee/Collective`, `/api/version`)와 대조한다. 다르면 원격이 맞고 STATUS.md를 고친다.
+- 단계, 검증 결과, 막힌 것, 진행 중 작업, 다음 행동이 바뀌면 같은 PR에서 STATUS.md와 마지막 갱신 시각(UTC)을 갱신한다.
+
 ## 개발 루프
 1. 원격 `main`과 현재 작업 기준 SHA를 확인한다.
 2. 새 작업은 최신 `origin/main`에서 별도 브랜치로 시작한다.
@@ -28,6 +33,25 @@
 - 에이전트 회의 결과는 결정, 근거, 반대 의견, 후속 작업으로 구조화한다.
 - 공식 플랫폼 정책과 COLLECTIVE의 실험 제안을 분리한다.
 - 고객 데이터와 로그인 정보는 최소 수집하고 로그에 원문 토큰을 남기지 않는다.
+
+## 상태 어휘
+보고, PR, `docs/STATUS.md`, `docs/releases/`는 아래 단어만 쓴다. 단계를 섞어 "완료"라고 쓰지 않는다.
+- 소스: `merged` — PR이 GitHub `main`에 병합됐다. 배포됐다는 뜻이 아니다.
+- 배포: `published` — Sites 게시(save_version_and_deploy_private)가 성공했다.
+- 배포: `runtime-verified` — 실행 중인 앱의 `/api/version` `tree`가 `git rev-parse origin/main^{tree}`와 같다. `unknown`·`dirty`는 검증 실패다.
+- 검사 결과: `passed` | `failed` | `blocked`(실행하려 했으나 막힘, 원인 기록) | `not_run`(실행하지 않음, 이유 기록).
+- 검사 근거: `real`(실제 서비스·실제 브라우저·실제 D1) | `mocked`(fetch 스텁, 모의 HERMES, 로컬 인증 헤더 주입 등). 한 검사가 둘 다면 부분별로 나눠 적는다.
+- 예: `node scripts/test.mjs` — passed · mocked (11/11 스위트, HERMES fetch 스텁).
+
+## 위임 계약
+HERMES, Codex, Claude 등 다른 에이전트에게 맡기는 작업은 아래를 모두 적어서 넘긴다. 빠진 항목이 있으면 위임하지 않는다.
+1. 목표와 관측 가능한 수용 기준 — 성공 조건뿐 아니라 실패 사례(거부돼야 하는 입력, 권한 없는 접근, 타임아웃 등)를 포함한다.
+2. 소유 파일·인터페이스 — 바꿔도 되는 파일과 API. 그 밖은 읽기만 한다.
+3. 브랜치·워크트리 — 최신 `origin/main` 기준 SHA와 작업 브랜치 이름.
+4. 시간 예산 — 초과하면 멈추고 보고한다. 재위임은 최대 1회, 그래도 안 되면 소유자에게 올린다.
+5. 허용된 품질 게이트 — 위임자가 지정한 검사만 쓴다. 위임받은 에이전트는 새 게이트를 추가하지 않는다(필요하면 제안만 한다).
+6. 필수 테스트 — 반드시 실행하고 결과를 상태 어휘로 보고할 명령.
+7. 결과 반환 경로 — 커밋 SHA(또는 PR URL)와 증거(명령, 출력 수치, real/mocked 구분).
 
 ## Claude와 Codex 인계
 - `HANDOFF.md` 또는 PR 본문에 기준 SHA, 변경 파일, 검증 결과, 남은 위험, 다음 작업을 기록한다.

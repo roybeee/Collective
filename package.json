@@ -11,6 +11,7 @@
     "build": "node scripts/run-framework.mjs build",
     "start": "node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js dev --config dist/server/wrangler.json --local --persist-to .wrangler/state --ip 127.0.0.1 --inspector-port 0",
     "test": "node scripts/test.mjs",
+    "test:e2e": "node node_modules/@playwright/test/cli.js test",
   "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
   "lint:gate": "node scripts/lint-gate.mjs",
     "db:generate": "drizzle-kit generate"
@@ -46,6 +47,7 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
     "@cloudflare/workers-types": "4.20260515.1",
+    "@playwright/test": "1.63.0",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",

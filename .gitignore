@@ -53,3 +53,7 @@ next-env.d.ts
 # Python bytecode from server/research-worker and its test. Untracked files make
 # the build report a 'dirty' source tree, which forfeits the deployment identity.
 __pycache__/
+
+# Playwright E2E output and its throwaway local D1 state.
+/e2e/artifacts/
+/e2e/.state/
