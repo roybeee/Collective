@@ -73,6 +73,10 @@ check('store experiments and tombstones are retained',policyOf('store_experiment
 check('viral experiments and their revisions are deleted',policyOf('viral_experiment')==='delete'&&policyOf('experiment_revision')==='delete');
 check('execution and attributed order history blocks deletion',JSON.stringify(kinds.filter(k=>k.blocksDeletion).map(k=>k.kind).sort())===JSON.stringify(['execution_creative','execution_publication','store_order']));
 check('blocking kinds are never deleted',kinds.filter(k=>k.blocksDeletion).every(k=>k.campaignDeletion==='retain'));
+// A4: 추적 코드는 주문 장부의 귀속 근거라 캠페인을 지워도 남긴다(코드 재사용으로 옛 인쇄물 주문이 다른 캠페인에 붙지 않게). 삭제를 막지는 않는다.
+const kindOf=kind=>kinds.find(k=>k.kind===kind);
+check('tracking codes are retained through their campaign link without blocking deletion',policyOf('tracking_code')==='retain'&&JSON.stringify(kindOf('tracking_code').links)==='["data_campaign"]'&&!kindOf('tracking_code').blocksDeletion&&kindOf('tracking_code').parent==='store');
+check('order imports and POS weekly totals are store records outside campaign deletion',['order_import','pos_weekly_total'].every(k=>policyOf(k)==='not_campaign_scoped'&&kindOf(k).parent==='store'));
 
 // 5) 조건 생성: 같은 link의 kind를 묶고, kind가 id에 들어가는 link는 kind별로 나눈다.
 const scopes=JSON.parse(JSON.stringify(registry.campaignScopes('delete','o','c')));

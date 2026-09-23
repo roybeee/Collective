@@ -51,4 +51,29 @@ const expanded=legacy.replace('refundAmount\n','refundAmount,campaignId,creative
 check('new CSV accepted',(await post(undefined,{action:'import_orders',rows:logic.parseOrderCsv(expanded)})).status===200);
 check('CSV atomic invalid attribution',(await post(undefined,{action:'import_orders',rows:[{...base,orderNumber:'atomic-good'},{...base,orderNumber:'atomic-bad',campaignId:'c2',attributionEvidence:'QR'}]})).status===400);
 check('atomic batch writes nothing',!(await server.listRecords(owner,'store_order')).some(o=>o.orderNumber==='atomic-good'));
+// A4: 라우트가 점포 실측 작업을 lib/store-operations-server.ts measurementAction으로 넘긴다. rows 배열 import_orders는 위의 기존 경로 그대로다.
+const listed=await post(undefined,{action:'list'});check('route dispatches store measurement list',listed.status===200&&Array.isArray(listed.codes)&&listed.autoAttribution===false);
+const csvPreview=await post(undefined,{action:'import_orders',csv:`주문번호,주문일시,결제금액\nROUTE1,${date},1000`,mapping:{orderNumber:'주문번호',orderedAt:'주문일시',amount:'결제금액'}});check('route sends CSV imports to the measurement preview',csvPreview.status===200&&csvPreview.dryRun===true&&csvPreview.ready===1);
+// A4: 읽기 전용 점포 실측 작업(목록·보고서·가져오기 미리보기)은 워크스페이스 쓰기 잠금을 잡지 않는다. 쓰기(추적 코드 만들기)는 다른 저장이 잠금을 쥐고 있으면 409다.
+const csvMapping={orderNumber:'주문번호',orderedAt:'주문일시',amount:'결제금액'};
+sql.prepare('INSERT INTO mutation_locks(owner,token,expires_at) VALUES(?,?,?)').run(owner,'held-by-another-save',Date.now()+60000);
+check('the measurement list works while another save holds the lock',(await post(undefined,{action:'list'})).status===200);
+check('the attribution report works while another save holds the lock',(await post(undefined,{action:'attribution_report'})).status===200);
+check('an import preview works while another save holds the lock',(await post(undefined,{action:'import_orders',csv:`주문번호,주문일시,결제금액\nLOCK1,${date},1000`,mapping:csvMapping})).status===200);
+check('a tracking code write still needs the lock',(await post(undefined,{action:'create_tracking_code',type:'coupon',campaignId:'c1'})).status===409);
+check('an import confirm still needs the lock',(await post(undefined,{action:'import_orders',csv:`주문번호,주문일시,결제금액\nLOCK1,${date},1000`,mapping:csvMapping,dryRun:false})).status===409);
+check('read actions leave the held lock alone',sql.prepare('SELECT token FROM mutation_locks WHERE owner=?').get(owner)?.token==='held-by-another-save');
+sql.prepare('DELETE FROM mutation_locks WHERE owner=?').run(owner);
+// 보관한 지점도 목록·귀속 보고는 볼 수 있다. 가져오기 미리보기는 거절한다.
+await save('store','s-archived',{id:'s-archived',brandId:'oda',status:'archived'});
+check('an archived store still lists its codes and report',(await post(undefined,{action:'list',storeId:'s-archived'})).status===200&&(await post(undefined,{action:'attribution_report',storeId:'s-archived'})).status===200);
+check('an archived store refuses an import preview',(await post(undefined,{action:'import_orders',storeId:'s-archived',csv:`주문번호,주문일시,결제금액\nARC1,${date},1000`,mapping:csvMapping})).status===409);
+// A4: 기존 장부 양식 가져오기(rows)도 휴대폰·카드번호 패턴을 거부한다. 주문번호는 휴대폰 번호만 본다(긴 POS 번호). 값은 오류 문구에 싣지 않는다.
+const piiRows=over=>post(undefined,{action:'import_orders',rows:[{...base,orderNumber:'pii-ok'},{...base,orderNumber:'pii',...over}]});
+const phoneNote=await piiRows({note:'고객 010-1234-5678'});
+check('a phone number in a ledger row note is refused',phoneNote.status===400&&/3행/.test(phoneNote.error)&&/휴대폰/.test(phoneNote.error)&&!phoneNote.error.includes('1234'));
+check('a card number in ledger row evidence is refused',(await piiRows({attributionEvidence:'카드 4111-1111-1111-1111'})).status===400);
+check('a phone number used as a ledger order number is refused',(await piiRows({orderNumber:'010-2345-6789'})).status===400);
+check('refused ledger rows save nothing',!(await server.listRecords(owner,'store_order')).some(o=>o.orderNumber==='pii-ok'||o.orderNumber==='010-2345-6789'));
+check('a long POS order number in a ledger row is kept',(await post(undefined,{action:'import_orders',rows:[{...base,orderNumber:'2026092412345678'}]})).status===200);
 console.log(JSON.stringify({passed}));

@@ -60,6 +60,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'metric',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'캠페인 성과 기록'},
  {kind:'model_change',parent:'none',campaignDeletion:'not_campaign_scoped',description:'보고 모델 변경 경보. 별칭은 실제 모델 미확인(actual=null)으로 적는다(결정 10)'},
  {kind:'openai_submission',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'OpenAI 요청 원문'},
+ {kind:'order_import',parent:'store',campaignDeletion:'not_campaign_scoped',description:'주문 CSV 가져오기 기록(건수·중복·귀속 수·식별 가능 주문 수·열 매핑·행위자). CSV 원문과 고객 ID 값은 담지 않는다'},
+ {kind:'pos_weekly_total',parent:'store',campaignDeletion:'not_campaign_scoped',description:'지점 주간 POS 합계(순매출·주문 수). 주문 장부 완전성 대조 기준'},
  {kind:'provider_usage',parent:'none',campaignDeletion:'not_campaign_scoped',description:'AI 공급자 사용량 장부'},
  {kind:'public_media',parent:'media',campaignDeletion:'not_campaign_scoped',description:'공개 제공 소재 파일과 발행 참조'},
  {kind:'public_media_ref',parent:'media',campaignDeletion:'not_campaign_scoped',description:'공개 소재 파일의 소유자 참조'},
@@ -76,6 +78,10 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'store_spend',parent:'store',campaignDeletion:'not_campaign_scoped',description:'지점 비용 장부'},
  {kind:'store_task',parent:'store',campaignDeletion:'not_campaign_scoped',description:'지점 조사 후속 과제'},
  {kind:'team_meeting',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'AI 팀 회의'},
+ // 추적 코드(A4)는 주문 장부의 귀속 근거다. 주문 장부 보존 원칙에 맞춰 캠페인을 지워도 남긴다: 코드→캠페인·팔·게시 연결이 남아야 옛 주문의 귀속을 설명할 수 있고,
+ // 코드(레코드 id)가 남아 있어 인쇄된 옛 쿠폰·QR 코드가 다른 캠페인에 다시 쓰이지 않는다. 캠페인이 사라진 코드는 자동 귀속에 쓰지 않는다(lib/store-operations-server.ts codeBook).
+ // 삭제를 막지는 않는다. 코드로 귀속된 주문이 있으면 store_order가 이미 캠페인 삭제를 거부한다.
+ {kind:'tracking_code',parent:'store',campaignDeletion:'retain',links:['data_campaign'],description:'점포 추적 코드(쿠폰·QR·POS 태그·UTM)와 캠페인·소재·게시·팔 연결. 캠페인을 지워도 귀속 근거로 남기고 자동 귀속에는 쓰지 않는다'},
  {kind:'usage_model_state',parent:'none',campaignDeletion:'not_campaign_scoped',description:'공급자별 마지막 보고 모델(1행). 모델 변경 경보의 비교 기준'},
  {kind:'usage_pricing',parent:'none',campaignDeletion:'not_campaign_scoped',description:'사용량 단가'},
  {kind:'viral_analysis',parent:'viral_case',campaignDeletion:'not_campaign_scoped',description:'바이럴 사례 분석'},
