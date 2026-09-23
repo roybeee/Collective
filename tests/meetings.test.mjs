@@ -57,6 +57,8 @@ await put('brand_fact','f-price',fact('f-price',{value:'도넛 1개 3,500원'}),
 await put('campaign_directive','dir-main',{id:'dir-main',campaignId:cid,text:'인기·할인 표현은 확인 전 광고 문구에 쓰지 않습니다.',createdAt:past,createdBy:{id:owner,email:null}},cid);
 check('anonymous meeting rejected',(await request(meetings,'POST',{action:'start',...args},{'oai-authenticated-user-id':null})).status===401);
 check('cross-origin meeting rejected',(await request(meetings,'POST',{action:'start',...args},{origin:'https://other.test'})).status===403);
+// data-truth-4: 확정 표시 없는 이전 0원 예산은 회의 입력에서 미확정(null)으로 넘긴다.
+await put('campaign',cid,{...(await server.namespace.readRecord(owner,'campaign',cid)),budget:0,budgetConfirmedAt:undefined});
 let r=await mp('start',args);check('eight actual roles and synthesis are prepared',r.status===200&&r.data.steps.length===9&&calls===0);
 check('repeated start reuses meeting',(await mp('start',args)).data.id===args.id&&sql.prepare("SELECT count(*) n FROM jobs WHERE role='meeting'").get().n===1);
 const eventActor=text=>JSON.parse(sql.prepare("SELECT data FROM records WHERE kind='event' AND data LIKE ? ORDER BY rowid DESC").get('%'+text+'%')?.data||'{}').actor;check('meeting start event records the requester',eventActor('팀 회의를 시작했습니다')?.id===owner);
@@ -70,6 +72,7 @@ check('normal run cannot consume meeting sentinel',(await request(run,'POST',{ac
 await mp('advance',{id:args.id});check('first role creates one provider request',calls===1);
 check('meeting input carries confirmed and prohibited ledger facts and standing directives',JSON.stringify(inputs[0].evidence.facts.confirmed).includes('도넛 1개 3,500원')&&JSON.stringify(inputs[0].evidence.facts.prohibited).includes('동네 판매 1위')&&inputs[0].evidence.directives.some(d=>d.text==='인기·할인 표현은 확인 전 광고 문구에 쓰지 않습니다.'));
 check('meeting input cites original artifacts by ref labels',inputs[0].originalArtifacts.length>0&&inputs[0].originalArtifacts.every(a=>/ v\d+$/.test(a.ref)));
+check('meeting input normalises a legacy zero budget to unconfirmed',inputs[0].campaign.budget===null&&inputs[0].campaign.budgetStatus==='미확정');
 check('meeting input marks the brand introduction unverified',inputs[0].brand.brandIntro.verification==='unverified'&&inputs[0].brand.brandIntro.useInCopy===false&&!('description' in inputs[0].brand));
 await mp('advance',{id:args.id});check('gap before second role still blocks mutation',(await act('delete_campaign',{id:cid,version:1,confirmed:true})).status===409);
 await mp('advance',{id:args.id});check('next member actually receives prior member opinion',inputs[1].discussion.length===1&&inputs[1].discussion[0].role==='cmo');

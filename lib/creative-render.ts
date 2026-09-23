@@ -1,5 +1,6 @@
 import type {Brand} from './agency';
 import type {BrandFact} from './brand-facts';
+import {factCardIssue} from './fact-eligibility';
 
 const SIZE=1080;
 const FONT='"Apple SD Gothic Neo", "Malgun Gothic", Arial, sans-serif';
@@ -33,11 +34,7 @@ function drawText(context:CanvasRenderingContext2D,layout:ReturnType<typeof fitT
 
 export async function renderFactCard(brand:Brand,facts:BrandFact[]):Promise<string>{
  if(typeof document==='undefined')throw new Error('이미지 제작은 브라우저에서 실행하세요.');
- if(!facts.length||facts.length>4)throw new Error('카드에 넣을 사실을 1~4개 선택하세요.');
- const now=Date.now();
- if(facts.some(f=>f.brandId!==brand.id||f.status!=='confirmed'||!f.source.trim()||!f.value.trim()||!f.key.trim()||!Number.isFinite(Date.parse(f.verifiedAt))||Date.parse(f.verifiedAt)>now||!(Date.parse(f.validUntil)>now)))throw new Error('동일 브랜드의 유효한 확인 사실만 이미지에 사용할 수 있습니다.');
- const stores=new Set(facts.flatMap(f=>f.storeId?[f.storeId]:[]));
- if(stores.size>1||new Set(facts.map(f=>f.key)).size!==facts.length)throw new Error('서로 다른 지점 또는 중복 항목의 사실을 한 카드에 넣을 수 없습니다.');
+ const issue=factCardIssue(brand.id,facts);if(issue)throw new Error(issue);
  if(document.fonts)await document.fonts.ready;
  const canvas=document.createElement('canvas');canvas.width=SIZE;canvas.height=SIZE;
  const context=canvas.getContext('2d');if(!context)throw new Error('이미지 제작 기능을 사용할 수 없습니다.');

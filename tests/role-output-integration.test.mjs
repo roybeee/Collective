@@ -72,6 +72,15 @@ check('role input brand separates unverified introduction from identity',sub.inp
 check('role instructions always forbid re-asking and unverified ad claims',sub.body.instructions.includes(policy.answerDiscipline)&&sub.body.instructions.includes(policy.claimPolicy));
 check('role instructions limit standing directives to team instructions without fact authority',sub.body.instructions.includes(policy.directivePolicy)&&!sub.body.instructions.includes('대표가 이 캠페인에 남긴'));
 check('campaign input is cited by a readable ref label, not its internal id',sub.input.campaign.ref===`브리프 v${base.version}`&&sub.input.campaign.id===undefined);
+// data-truth-4: 역할 입력의 예산은 null=미확정, 0=무예산 확정이다. 확정 표시 없는 이전 0은 미확정(null)으로 넘기고, 지시문도 같은 의미를 쓴다.
+await put('campaign','zero-budget',{...base,id:'zero-budget',budget:0,budgetConfirmedAt:'2026-09-01T00:00:00.000Z'});
+await put('campaign','legacy-zero',{...base,id:'legacy-zero',budget:0,budgetConfirmedAt:undefined});
+const zeroJob=await (await start('zero-budget')).json(),legacyJob=await (await start('legacy-zero')).json();
+const zeroSub=await submissionOf(zeroJob.id),legacySub=await submissionOf(legacyJob.id);
+for(const id of [zeroJob.id,legacyJob.id])await execution.executeRole(owner,{action:'poll',id});
+check('confirmed zero budget reaches the role as a no-budget decision',zeroSub.input.campaign.budget===0&&zeroSub.input.campaign.budgetStatus==='0원(무예산)');
+check('role instructions no longer call a zero budget unconfirmed',!zeroSub.body.instructions.includes('0은 미확정')&&zeroSub.body.instructions.includes('0은 무예산 확정'));
+check('legacy zero without confirmation reaches the role as unconfirmed',legacySub.input.campaign.budget===null&&legacySub.input.campaign.budgetStatus==='미확정');
 await execution.executeRole(owner,{action:'poll',id:job.id});
 let cmo=(await server.listRecords(owner,'artifact','loop'))[0];
 check('saved artifact records the confirmed fact versions it used',JSON.stringify(cmo.factRefs)===JSON.stringify([{id:'hours',version:2,status:'confirmed'}])&&!cmo.factsChanged);

@@ -1,11 +1,12 @@
 import type {CampaignPlan,DraftMeta} from './brief';
 export type Brand = {intake?:import('./archive').BrandIntake;id:string; name:string; short:string; category:string; color:string; bg:string; description:string; audience:string; tone:string; constraints:string; knowledge:string};
-export type Campaign = {storeId?:string;storeExperimentId?:string;plan?:CampaignPlan;draftMeta?:DraftMeta;id:string; brandId:string; title:string; goal:string; audience:string; channels:string; stores:string; products:string; budget:number; startDate:string; endDate:string; constraints:string; sources:string; status:string; version:number; createdAt:string; updatedAt:string;};
+export type Campaign = {storeId?:string;storeExperimentId?:string;plan?:CampaignPlan;draftMeta?:DraftMeta;budgetConfirmedAt?:string;id:string; brandId:string; title:string; goal:string; audience:string; channels:string; stores:string; products:string; budget:number|null; startDate:string; endDate:string; constraints:string; sources:string; status:string; version:number; createdAt:string; updatedAt:string;};
 // brandChanged·factsChanged: 작성 뒤 브랜드 정보·사실 원장이 바뀐 작업물. unverifiedClaims: 저장 전 검사에서 [확인 필요] 없이 발견된 금지·미확인 광고 표현.
 export type Artifact = {factRefs?:import('./brand-facts').EvidenceFactRef[]; factsChanged?:boolean; brandChanged?:boolean; unverifiedClaims?:string[]; campaignVersion?:number; outputContractVersion?:string; id:string; campaignId:string; role:string; title:string; content:string; status:string; version:number; origin:string; createdAt:string};
 export type Run = {id:string; campaignId:string; role:string; status:string; error:string|null; createdAt:string; model:string; tokens:number};
 export type Metric = {id:string; campaignId:string; period:string; revenue:number|null; variableCosts:number|null; adSpend:number|null; productionCost:number|null; orders:number|null; baselineContribution:number|null; notes:string;schemaVersion?:2;version?:number;periodStart?:string;periodEnd?:string;scope?:string;source?:string;definition?:string;method?:'manual'|'export';updatedAt?:string};
-export type Event = {id:string; campaignId:string; message:string; createdAt:string; actor?:{id:string; email:string|null}};
+// storeSync: 지점 수정 때 자동 갱신한 브리프 필드와 사용자가 고쳐 갱신하지 않은 충돌 필드(lib/brief.ts storeCopyFields 키).
+export type Event = {id:string; campaignId:string; message:string; createdAt:string; actor?:{id:string; email:string|null}; storeSync?:{updated:string[]; conflicts:string[]}};
 export const roles = [
  {id:'cmo',name:'총괄 파트너',en:'Managing partner',initial:'MP',color:'#d9f36c',job:'목표를 실행 가능한 과제로',deliverable:'목표·범위·예산·일정과 미확정 사항을 구분한 실행 브리프. 예산과 성과 수치를 임의 확정하지 말 것.'},
  {id:'insight',name:'고객 인사이트',en:'Research & intelligence',initial:'RI',color:'#d9e5ff',job:'고객이 선택하는 이유를 발견',deliverable:'제공 자료에서 관찰한 사실, 출처, 추론, 검증할 가설을 구분. 검색한 자료는 URL과 기준 시점을 제시. 검색하지 못한 내용은 자료 필요로 표시하고 최신 시장조사를 했다고 주장하지 말 것.'},
@@ -24,6 +25,11 @@ export const brandDefaults:Brand[] = [
 ];
 export const statuses:Record<string,string>={draft:'브리프 작성',ready:'실행 준비',running:'AI 작업 중',review:'검토 대기',approved:'기획 승인',revision:'수정 요청',measuring:'성과 기록'};
 export function money(n:number){return new Intl.NumberFormat('ko-KR').format(n)+'원'}
+// 예산: null=미확정, 0=무예산 확정. 확정 표시(budgetConfirmedAt)가 없는 0은 '0=미확정' 규칙 시절의 기록이라 읽을 때 미확정으로 본다(데이터 migration 없음).
+export function campaignBudget(c:{budget?:number|null;budgetConfirmedAt?:string}){return typeof c.budget!=='number'||(c.budget===0&&!c.budgetConfirmedAt)?null:c.budget}
+export function budgetLabel(c:{budget?:number|null;budgetConfirmedAt?:string}){const n=campaignBudget(c);return n===null?'미확정':n===0?'0원(무예산)':money(n)}
+// AI 입력(역할·회의)의 예산: 정규화한 금액(null=미확정, 0=무예산 확정)과 표시 라벨. 저장 원본의 확정 표시 없는 0을 넘기지 않는다.
+export function aiBudget(c:{budget?:number|null;budgetConfirmedAt?:string}){return {budget:campaignBudget(c),budgetStatus:budgetLabel(c)}}
 export function metricSummary(m:Metric){
  const contribution=m.revenue===null||m.variableCosts===null?null:m.revenue-m.variableCosts;
  const net=contribution===null||m.adSpend===null||m.productionCost===null?null:contribution-m.adSpend-m.productionCost;

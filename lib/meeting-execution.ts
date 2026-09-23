@@ -2,7 +2,7 @@ import {markUsageOutcomeSafely as markUsageOutcome} from './usage-outcome';
 import {brandArchiveContext} from '@/lib/archive-server';
 import {PRACTICE_VERSION,campaignPractice} from '@/lib/practice';
 import {qualityMarkdown} from '@/lib/quality';
-import {roles,type Campaign,type Brand,type Artifact,type Metric} from '@/lib/agency';
+import {roles,aiBudget,type Campaign,type Brand,type Artifact,type Metric} from '@/lib/agency';
 import type {BriefDraft} from '@/lib/brief';
 import {initialSteps,meetingActive,publicMeeting,parseMeetingStep,meetingInstructions,candidateArtifacts,respondsToHandles,discussionRef,meetingAgenda,meetingLabels,artifactRef,type Meeting,type MeetingStep,type Contribution,type Synthesis,type Revision,type QualityReview} from '@/lib/meetings';
 import {labelArchive} from '@/lib/role-output';
@@ -22,7 +22,7 @@ function writes(owner:string,m:Meeting){
 }
 function context(m:Meeting,s:MeetingStep){
  const snapshot=m.snapshot,ref=(id:string)=>discussionRef(m.steps.find(t=>t.id===id)?.role||'');
- return {skillVersion:m.skillVersion,channelPractice:campaignPractice(snapshot.campaign),agenda:m.agenda,role:s.role,phase:s.phase,allowedRespondsTo:respondsToHandles(s,m.steps),correction:s.correction,brand:aiBrand(snapshot.brand),...(snapshot.evidence?{evidence:{facts:snapshot.evidence.facts,directives:snapshot.evidence.directives}}:{}),brandArchive:snapshot.brandArchive&&labelArchive(snapshot.brandArchive),campaign:snapshot.campaign,trialLearning:snapshot.learning,recordedMetrics:snapshot.metrics,previousMeeting:snapshot.previous,
+ return {skillVersion:m.skillVersion,channelPractice:campaignPractice(snapshot.campaign),agenda:m.agenda,role:s.role,phase:s.phase,allowedRespondsTo:respondsToHandles(s,m.steps),correction:s.correction,brand:aiBrand(snapshot.brand),...(snapshot.evidence?{evidence:{facts:snapshot.evidence.facts,directives:snapshot.evidence.directives}}:{}),brandArchive:snapshot.brandArchive&&labelArchive(snapshot.brandArchive),campaign:{...snapshot.campaign,...aiBudget(snapshot.campaign)},trialLearning:snapshot.learning,recordedMetrics:snapshot.metrics,previousMeeting:snapshot.previous,
   originalArtifacts:snapshot.artifacts.map(a=>({ref:artifactRef(a),...a,content:a.content.slice(0,8000),excerpt:a.content.length>8000})),
   discussion:m.steps.filter(t=>t.phase==='discussion'&&t.status==='completed').map(t=>{const o=t.output as Contribution;return {ref:discussionRef(t.role),role:t.role,...o,respondsTo:o.respondsTo.map(ref)}}),
   synthesis:m.steps.find(t=>t.phase==='synthesis')?.output,

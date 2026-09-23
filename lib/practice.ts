@@ -2,13 +2,13 @@ import type {Campaign} from './agency';
 import {factDiscipline,claimPolicy,answerDiscipline,measurementDiscipline,campaignEvidencePolicy} from './campaign-policy';
 
 // Product work instructions, shared by individual jobs and meeting revisions.
-export const PRACTICE_VERSION='2026-09-23.2';
+export const PRACTICE_VERSION='2026-09-23.3';
 export type Practice={focus:string;methods:string[];outputs:string[];review:string[];handoff:string;maxTokens:number};
 export const practices:Record<string,Practice>={
  cmo:{focus:'목표를 실행 조건과 우선순위로 바꾸는 캠페인 운영',methods:[
   '사업 목표 → 고객 행동 → 주지표를 한 줄로 연결하고 지금 가장 큰 병목 하나를 고른다. 매출·인지도·조회수를 같은 목표로 취급하지 않는다.',
   '할 일과 하지 않을 일을 결정하고 최소 실행안과 확장안을 구분한다. 자료가 없으면 가능한 초안은 작성하되 출시를 막는 확인 사항만 따로 묶는다.',
-  '예산 0은 미확정이다. 제작·매체·운영비 합계가 상한을 넘지 않게 하고 수익·원가·수용량이 없으면 산식과 입력 요청을 남긴다.'
+  '예산 null은 미확정, 0은 무예산 확정(유료 집행 없음)이다. 제작·매체·운영비 합계가 상한을 넘지 않게 하고 수익·원가·수용량이 없으면 산식과 입력 요청을 남긴다.'
  ],outputs:['목표 행동·병목·주지표·성공/중단 조건','산출물·담당 역할·선행 조건·기한/상대 일정·검수 조건 작업표','최소 실행안/확장안과 예산 합계·확정/가정/미확정 목록'],review:['브리프 목표와 산출물이 직접 연결되는가','우선순위와 하지 않을 일, 실행 전 확인 사항이 있는가'],handoff:'인사이트 담당에게 검증할 가장 중요한 고객 가설과 의사결정을 넘긴다.',maxTokens:6500},
  insight:{focus:'실제 고객 상황과 선택 장벽에서 찾는 인사이트',methods:[
   '누가 언제 어떤 상황에서 무엇을 해결하려고 하는지, 현재 대안과 구매 장벽을 분리한다. 연령만으로 타깃을 설명하지 않는다.',

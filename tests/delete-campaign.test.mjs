@@ -61,4 +61,13 @@ check('lost-response retry is idempotent',(await act('delete_campaign',payload))
 check('stale edit cannot recreate deleted campaign',(await act('save_campaign',{id:cid,version:1,data:{brandId:'ofd',title:'Resurrection',goal:'No',budget:0}})).status===404);
 check('starter campaign can be deleted',(await act('delete_campaign',{id:'ofd-pilot-01',version:1,confirmed:true})).status===200);
 const refreshed=await snapshot();check('refresh does not restore deleted starter',refreshed.data.campaigns.length===0&&refreshed.data.brands.length===4);
+// 발행 한도만 저장한 캠페인은 삭제할 수 있다. 제작·발행 시도 기록이 있으면 계속 막는다(exec-loop-12).
+const campaignWith=async title=>(await act('save_campaign',{data:{brandId:'ofd',title,goal:'실행 기록 삭제 규칙'}})).data.id;
+const limitsOnly=await campaignWith('한도만 저장');await put('execution_limits',limitsOnly,{campaignId:limitsOnly,maxPlannedCostKRW:0,version:1},limitsOnly);
+check('campaign with only publish limits can be deleted',(await act('delete_campaign',{id:limitsOnly,version:1,confirmed:true})).status===200&&!has('campaign',limitsOnly));
+check('publish limits removed with the campaign',!has('execution_limits',limitsOnly));
+const attempted=await campaignWith('발행 시도');await put('execution_limits',attempted,{campaignId:attempted,version:1},attempted);await put('execution_publication','attempt',{id:'attempt',campaignId:attempted,status:'pending'},attempted);
+check('publication attempt still blocks deletion',(await act('delete_campaign',{id:attempted,version:1,confirmed:true})).status===409&&has('campaign',attempted)&&has('execution_limits',attempted));
+const produced=await campaignWith('소재 제작');await put('execution_creative','png',{id:'png',campaignId:produced},produced);
+check('saved creative still blocks deletion',(await act('delete_campaign',{id:produced,version:1,confirmed:true})).status===409&&has('campaign',produced));
 console.log(JSON.stringify({passed:passed.length,checks:passed},null,2));
