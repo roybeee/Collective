@@ -1,3 +1,4 @@
+import {canonicalFactKey} from './fact-catalog';
 export type BrandFact = {
  id:string;
  brandId:string;
@@ -12,17 +13,18 @@ export type BrandFact = {
  updatedAt:string;
 };
 
+// 지점 사실이 같은 항목의 브랜드 사실을 대신하는지는 카탈로그 key로 판단한다('주소'와 'address'는 같은 항목).
 export function effectiveBrandFacts(facts:BrandFact[],brandId:string,storeId?:string,now=Date.now()):BrandFact[]{
  const eligible=facts.filter(f=>f.brandId===brandId&&(!f.storeId||f.storeId===storeId)&&f.status==='confirmed'&&!!f.source.trim()&&Number.isFinite(Date.parse(f.verifiedAt))&&Date.parse(f.verifiedAt)<=now&&Date.parse(f.validUntil)>now);
- const localKeys=new Set(eligible.filter(f=>f.storeId===storeId&&!!storeId).map(f=>f.key));
- return eligible.filter(f=>!!f.storeId||!localKeys.has(f.key));
+ const localKeys=new Set(eligible.filter(f=>f.storeId===storeId&&!!storeId).map(f=>canonicalFactKey(f.key)));
+ return eligible.filter(f=>!!f.storeId||!localKeys.has(canonicalFactKey(f.key)));
 }
 
 // AI 입력용 분류: 확정(유효기한·범위 통과), 금지(거절 = 광고 금지 표현), 후보(미확인·만료). 지점 확정 사실은 같은 항목의 브랜드 사실을 대신한다.
 export function scopedBrandFacts(facts:BrandFact[],brandId:string,storeId?:string,now=Date.now()){
  const confirmed=effectiveBrandFacts(facts,brandId,storeId,now),used=new Set(confirmed.map(f=>f.id));
- const localKeys=new Set(confirmed.filter(f=>!!storeId&&f.storeId===storeId).map(f=>f.key));
- const rest=facts.filter(f=>f.brandId===brandId&&(!f.storeId||f.storeId===storeId)&&!used.has(f.id)&&!(!f.storeId&&localKeys.has(f.key)));
+ const localKeys=new Set(confirmed.filter(f=>!!storeId&&f.storeId===storeId).map(f=>canonicalFactKey(f.key)));
+ const rest=facts.filter(f=>f.brandId===brandId&&(!f.storeId||f.storeId===storeId)&&!used.has(f.id)&&!(!f.storeId&&localKeys.has(canonicalFactKey(f.key))));
  return {confirmed,prohibited:rest.filter(f=>f.status==='rejected'),candidate:rest.filter(f=>f.status!=='rejected')};
 }
 
