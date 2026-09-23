@@ -12,6 +12,7 @@ import {meetingSubmissionId,requireMeetingWorker,retryFailedMeeting,meetingBasis
 import {learningContext} from '@/lib/learning-server';
 import {aiBrand,evidenceContext,currentFactRefs} from '@/lib/ai-context';
 import {hermesSubmissionStatement,submitHermes,pollHermes} from '@/lib/hermes';
+import type {UsageContext} from '@/lib/usage-ledger';
 import {ApiError,identity,str,json,failure,database,readRecord,listRecords,recordStatement,eventStatement,connection,acquireLock,releaseLock,stamp,type EventActor} from '@/lib/server';
 
 const activeStates=['starting','queued','in_progress','uncertain'];
@@ -20,6 +21,8 @@ function writes(owner:string,m:Meeting){
  const status=m.status==='running'?'in_progress':m.status;
  return [recordStatement(owner,'team_meeting',m.id,m,m.campaignId),database().prepare('UPDATE jobs SET status=?,error=?,tokens=?,updated_at=? WHERE owner=? AND id=?').bind(status,m.error||null,m.steps.reduce((n,s)=>n+(s.tokens||0)+(s.attempts||[]).reduce((total,a)=>total+(a.tokens||0),0),0),m.updatedAt,owner,jobId(owner,m))];
 }
+// 사용량 조인 키(F2a). 회의 시작 때 고정한 스냅샷의 캠페인·스킬 버전을 쓴다. 회의 산출물 계약 버전은 따로 없어 null이다.
+const meetingUsage=(owner:string,m:Meeting,s:MeetingStep):UsageContext=>({kind:'meeting',submissionId:meetingSubmissionId(s),jobId:jobId(owner,m),campaignId:m.campaignId,campaignVersion:m.campaignVersion,brandId:m.snapshot?.campaign?.brandId??null,storeId:m.snapshot?.campaign?.storeId??null,role:s.role,skillVersion:m.skillVersion??null});
 function context(m:Meeting,s:MeetingStep){
  const snapshot=m.snapshot,ref=(id:string)=>discussionRef(m.steps.find(t=>t.id===id)?.role||'');
  return {skillVersion:m.skillVersion,channelPractice:campaignPractice(snapshot.campaign),agenda:m.agenda,role:s.role,phase:s.phase,allowedRespondsTo:respondsToHandles(s,m.steps),correction:s.correction,brand:aiBrand(snapshot.brand),...(snapshot.evidence?{evidence:{facts:snapshot.evidence.facts,directives:snapshot.evidence.directives}}:{}),brandArchive:snapshot.brandArchive&&labelArchive(snapshot.brandArchive),campaign:{...snapshot.campaign,...aiBudget(snapshot.campaign)},trialLearning:snapshot.learning,recordedMetrics:snapshot.metrics,previousMeeting:snapshot.previous,
@@ -142,7 +145,7 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:E
    if(b.action!=='recover'){s.status='uncertain';m.status='uncertain';m.error='HERMES 접수 여부를 확인해야 합니다. 기존 요청 확인을 누르면 같은 요청으로 복구합니다.';m.updatedAt=stamp();await database().batch(writes(owner,m));return json(publicMeeting(m))}
    recovering=true;prepared=m;const r=await submitHermes(owner,meetingSubmissionId(s),cfg);s.providerId=r.id;s.status='running';m.status='running';m.error=undefined;m.updatedAt=stamp();await database().batch(writes(owner,m));return json(publicMeeting(m));
   }
-  const result=await pollHermes(cfg,s.providerId,m.stopRequested,30000,owner);
+  const result=await pollHermes(cfg,s.providerId,m.stopRequested,30000,owner,meetingUsage(owner,m,s));
   m.updatedAt=stamp();m.error=undefined;m.status='running';s.status='running';if(['completed','cancelled','failed'].includes(result.status))s.tokens=Number.isSafeInteger(result.usage.total_tokens)?Math.max(0,result.usage.total_tokens):s.tokens;
   if(m.stopRequested){
    if(['completed','cancelled','failed'].includes(result.status)){s.status='cancelled';m.status='cancelled';await markUsageOutcome(owner,'hermes',s.providerId,result.invalidOutput?'invalid_output':'cancelled')}

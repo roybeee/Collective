@@ -1,4 +1,4 @@
-import {saveJobUsageTokens} from './usage-ledger';
+import {saveJobUsageTokens,recordIfPresent,type UsageContext} from './usage-ledger';
 import {markUsageOutcomeSafely as markUsageOutcome} from './usage-outcome';
 import {viralPractice} from '@/lib/practice';
 import {ApiError,json,failure,str,uid,stamp,acquireLock,releaseLock,database,connection,recordStatement,readRecord,listRecords} from '@/lib/server';
@@ -9,6 +9,13 @@ import type {Brand} from '@/lib/agency';
 type Task={id:string;kind:'analysis'|'discovery'|'guidance';brandId:string;caseId?:string;query?:string;experimentId?:string;experimentVersion?:number};
 type Job={id:string;owner:string;role:string;status:string;provider_id:string|null;updated_at:string};
 const fields='facts, hook, retention, sharing, context, counterEvidence, unknowns는 각각 문자열. ideas는 1~3개 {hypothesis, variable, control, treatment, metric} 객체. metric은 share_rate 또는 completion_rate 또는 click_rate. 각 control/treatment에는 실제 제작 가능한 첫 장면·대사·본문 전개·마무리 지시를 쓰고 변수 하나만 바꿉니다.';
+// 사용량 조인 키(F2a). 브랜드는 학습 작업 입력에서, 캠페인은 규칙 초안의 원천 실험에서 첫 기록 때만 읽는다.
+function learningUsage(owner:string,job:Job):UsageContext{
+ return {kind:'learning',submissionId:job.id,jobId:job.id,role:job.role,resolve:async()=>{
+  const task=await recordIfPresent<Task>(owner,'learning_task',job.id),experiment=task?.experimentId?await recordIfPresent<ViralExperiment>(owner,'viral_experiment',task.experimentId):undefined;
+  return {brandId:task?.brandId??null,campaignId:experiment?.campaignId??null};
+ }};
+}
 function jsonOutput(text:string){try{return JSON.parse(text.trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''))}catch{throw new ApiError(422,'HERMES가 구조화된 분석 결과를 반환하지 않았습니다. 저장된 원문을 확인하거나 직접 분석을 등록하세요.')}}
 export async function executeLearning(owner:string,b:Record<string,unknown>){let token='',started='',submitted=false;try{
  token=await acquireLock(owner);const db=database(),cfg=await connection(owner);if(cfg.provider!=='hermes')throw new ApiError(409,'바이럴 조사·분석은 연결 및 설정에서 HERMES를 선택한 뒤 실행하세요.');
@@ -46,7 +53,7 @@ export async function executeLearning(owner:string,b:Record<string,unknown>){let
  }
  if(!['poll','cancel'].includes(String(b.action)))throw new ApiError(400,'지원하지 않는 실행 작업입니다.');
  if(!job.provider_id){if(job.status==='starting'&&Date.now()-Date.parse(job.updated_at)>120000)await db.prepare("UPDATE jobs SET status='uncertain',error=?,updated_at=? WHERE id=? AND owner=?").bind('접수 여부 확인이 필요합니다. 기존 요청 확인을 사용하세요.',stamp(),id,owner).run();return json({id,status:job.status==='starting'?'uncertain':job.status})}
- const result=await pollHermes(cfg,job.provider_id,b.action==='cancel',30000,owner);
+ const result=await pollHermes(cfg,job.provider_id,b.action==='cancel',30000,owner,learningUsage(owner,job));
  await saveJobUsageTokens(owner,id,result.usage.total_tokens);
  if(result.status==='completed'){
   const output=result.output.flatMap(x=>x.content.map(y=>y.text)).join('\n');await recordStatement(owner,'learning_job_output',id,{id,output:output.slice(0,100000),createdAt:stamp()}).run();

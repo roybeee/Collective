@@ -1,32 +1,43 @@
 'use client';
 import {useCallback,useEffect,useState,type FormEvent} from 'react';
-import {ReceiptText,RefreshCw} from 'lucide-react';
+import {Download,ReceiptText,RefreshCw,TriangleAlert} from 'lucide-react';
+import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select';
 import type {ProviderUsage,UsagePricing,UsageProvider} from '@/lib/usage-ledger';
-import {isModelAlias,summarizeUsage} from '@/lib/usage-summary';
-import {adminRequestNote,useCanManage} from './auth-client';
+import type {ModelChange} from '@/lib/usage-model-alarm';
+import {filterUsage,isModelAlias,modelLabel,summarizeUsage,usageKindNames,type UsageFilter} from '@/lib/usage-summary';
+import {roles} from '@/lib/agency';
+import {adminRequestNote,useAuthState,useCanManage} from './auth-client';
 
-type UsageData={entries:ProviderUsage[];pricing:UsagePricing[];notice:string};
+type CampaignName={id:string;title:string};
+type UsageData={entries:ProviderUsage[];pricing:UsagePricing[];notice:string;campaigns:CampaignName[];modelChanges:ModelChange[]};
 const statusNames:Record<string,string>={completed:'완료',failed:'실패',error:'실패',cancelled:'취소',canceled:'취소',stopped:'중지',interrupted:'중단',incomplete:'미완료'};
 const outcomeNames:Record<string,string>={completed:'저장 완료 · 내용 검토 별도',invalid_output:'결과 요건 미충족',cancelled:'취소',provider_failed:'공급자 실행 실패',storage_failed:'결과 저장 실패'};
 const count=(value:number|null)=>value===null?'미확인':value.toLocaleString('ko-KR');
 const providerName=(provider:UsageProvider)=>provider==='hermes'?'HERMES':'OpenAI API';
 const cost=(entry:ProviderUsage)=>entry.costAmount===null?'미확인':`${entry.costAmount.toLocaleString('ko-KR',{maximumFractionDigits:6})} ${entry.currency||''} · 추정`;
+const supersededNames:Record<string,string>={outdated:'이전 버전 작업물',brief_changed:'브리프 변경으로 기준 무효'};
+const roleName=(role:string|null|undefined)=>role?roles.find(r=>r.id===role)?.name||role:'';
+const runLabel=(entry:Pick<ProviderUsage,'kind'|'role'>)=>entry.kind?[usageKindNames[entry.kind]||entry.kind,roleName(entry.role)].filter(Boolean).join(' · '):'실행 종류 미확인';
+const campaignName=(campaigns:CampaignName[],id:string|null|undefined)=>!id?'캠페인 없음':campaigns.find(c=>c.id===id)?.title||`삭제되었거나 찾을 수 없는 캠페인 (${id})`;
+// 내보내기는 소유자 전용 API다(/api/usage/export). legacy는 요청자가 곧 소유자다. 판정은 서버가 한다.
+const useIsOwner=()=>{const state=useAuthState();return !state||state.mode==='legacy'||state.user?.role==='owner'};
 const emptyPrice={provider:'hermes' as UsageProvider,model:'',priceVersion:'',currency:'USD',inputPerMillion:'',outputPerMillion:'',source:''};
 async function usageData():Promise<UsageData>{
  const response=await fetch('/api/usage',{cache:'no-store'}),data=await response.json() as Partial<UsageData>&{error?:string};
  if(!response.ok)throw new Error(data.error||'사용량을 불러오지 못했습니다.');
  if(!Array.isArray(data.entries)||!Array.isArray(data.pricing))throw new Error('사용량 응답을 확인하지 못했습니다.');
- return data as UsageData;
+ return {...data,campaigns:Array.isArray(data.campaigns)?data.campaigns:[],modelChanges:Array.isArray(data.modelChanges)?data.modelChanges:[]} as UsageData;
 }
-function UsageRows({entries}:{entries:ProviderUsage[]}){
- return <div className="mt-5 overflow-x-auto"><table className="w-full text-left text-sm" style={{minWidth:780}}>
-  <caption className="sr-only">공급자 실행별 토큰과 추정 비용</caption>
-  <thead><tr className="border-b">{['관측 시각 · 공급자','공급자 보고 모델','실행 · 결과 처리','입력 토큰','출력 토큰','합계 토큰','비용 · 단가 버전'].map(label=><th scope="col" key={label} className="p-3 font-medium">{label}</th>)}</tr></thead>
+function UsageRows({entries,campaigns}:{entries:ProviderUsage[];campaigns:CampaignName[]}){
+ return <div className="mt-5 overflow-x-auto"><table className="w-full text-left text-sm" style={{minWidth:940}}>
+  <caption className="sr-only">공급자 실행별 캠페인·역할, 토큰과 추정 비용</caption>
+  <thead><tr className="border-b">{['관측 시각 · 공급자','캠페인 · 역할','공급자 보고 모델','실행 · 결과 처리','입력 토큰','출력 토큰','합계 토큰','비용 · 단가 버전'].map(label=><th scope="col" key={label} className="p-3 font-medium">{label}</th>)}</tr></thead>
   <tbody>{entries.map(entry=><tr key={entry.id} className="border-b align-top">
    <td className="p-3"><time dateTime={entry.observedAt}>{new Date(entry.observedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})}</time><br/>{providerName(entry.provider)}<details className="mt-1"><summary className="cursor-pointer text-xs">실행 번호</summary><span className="break-all text-xs">{entry.providerRunId}</span></details></td>
+   <td className="max-w-56 break-words p-3">{campaignName(campaigns,entry.campaignId)}<br/><span className="text-xs">{runLabel(entry)}</span>{entry.superseded&&<><br/><Badge variant="outline" className="mt-1">{supersededNames[entry.superseded]||entry.superseded}</Badge></>}{entry.promptVersion&&<p className="break-all text-xs">지시 버전 {entry.promptVersion}</p>}</td>
    <td className="max-w-48 break-words p-3">{entry.model||'미확인'}{isModelAlias(entry.provider,entry.model)&&<p className="text-xs">연결 별칭 · 기반 모델 미확인</p>}</td>
    <td className="p-3">{statusNames[entry.status]||entry.status}<br/><span className="text-xs">{entry.domainOutcome?outcomeNames[entry.domainOutcome]||entry.domainOutcome:'결과 처리 미확인'}</span><br/><span className="break-all text-xs">종료 사유: {entry.terminalReason}</span></td>
    <td className="p-3 tabular-nums">{count(entry.inputTokens)}</td><td className="p-3 tabular-nums">{count(entry.outputTokens)}</td><td className="p-3 tabular-nums">{count(entry.totalTokens)}</td>
@@ -36,12 +47,37 @@ function UsageRows({entries}:{entries:ProviderUsage[]}){
 }
 function UsageSummary({entries}:{entries:ProviderUsage[]}){
  const totals=summarizeUsage(entries);
- return <div className="notice" aria-label="전체 실행 사용량 요약">
+ return <div className="notice" aria-label="조건에 맞는 실행 사용량 요약">
   <p>전체 {entries.length.toLocaleString('ko-KR')}회 · 확인된 합계 {count(totals.totalTokens)}토큰{totals.unknownTotalCount>0?` · 합계 미확인 ${totals.unknownTotalCount}회 제외`:''}</p>
   <p>입력 {count(totals.inputTokens)} / 출력 {count(totals.outputTokens)}토큰 · 입력 미확인 {totals.unknownInputCount}회, 출력 미확인 {totals.unknownOutputCount}회</p>
   <p>결과 요건 미충족 {totals.invalidOutputCount}회 · 확인된 사용량 {count(totals.invalidOutputTokens)}토큰{totals.unknownInvalidOutputCount>0?` · 사용량 미확인 ${totals.unknownInvalidOutputCount}회 제외`:''}</p>
   <p>저장 완료 {totals.storedCount}회{totals.thinOutputCount>0?`(역할 기준 분량 5% 미만 ${totals.thinOutputCount}회 포함)`:''} · 결과 처리 미확인 {totals.unclassifiedCount}회. 저장 완료는 내용 승인이나 성과 달성을 뜻하지 않습니다.</p>
  </div>;
+}
+// 보고 모델 변경 경보(결정 10). 별칭은 '실제 모델 미확인'으로 표시하고 실제 모델로 적지 않는다.
+// 변경은 공급자 단위 1건이다. 실행 종류는 그 변경을 처음 관측한 실행의 참고 정보다.
+function ModelAlarm({changes}:{changes:ModelChange[]}){
+ if(!changes.length)return null;
+ return <div className="notice mt-4" role="status" aria-label="보고 모델 변경 경보">
+  <p className="flex flex-wrap items-center gap-2"><Badge variant="destructive"><TriangleAlert/>모델 변경 {changes.length}건</Badge>공급자가 보고한 모델이 바뀌었습니다. 같은 지시라도 결과·비용이 달라질 수 있으니 최근 작업물을 확인하세요.</p>
+  <ul className="mt-2 space-y-1 text-sm">{changes.slice(0,5).map(change=><li key={change.id}><time dateTime={change.observedAt}>{new Date(change.observedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})}</time> · {providerName(change.provider)}: {modelLabel(change.from)} → {modelLabel(change.to)}{change.kind?` (처음 관측: ${usageKindNames[change.kind]||change.kind})`:''}</li>)}</ul>
+ </div>;
+}
+function roleOptions(entries:ProviderUsage[]){
+ return [...new Map(entries.filter(e=>e.kind).map(e=>[`${e.kind}|${e.role||''}`,runLabel(e)])).entries()].sort((a,b)=>a[1].localeCompare(b[1],'ko'));
+}
+// 화면 필터와 CSV 내보내기가 같은 필터(filterUsage)를 쓴다. 합계는 필터한 실행만 센다.
+function UsageFilters({entries,campaigns,filter,onChange}:{entries:ProviderUsage[];campaigns:CampaignName[];filter:UsageFilter;onChange:(next:UsageFilter)=>void}){
+ const campaignIds=[...new Set(entries.map(e=>e.campaignId).filter((id):id is string=>!!id))],role=filter.kind?`${filter.kind}|${filter.role||''}`:'';
+ return <div className="form-two mt-4">
+  <label className="field"><span>캠페인</span><NativeSelect value={filter.campaignId||''} onChange={event=>onChange({...filter,campaignId:event.target.value||null})}><NativeSelectOption value="">전체 캠페인</NativeSelectOption>{campaignIds.map(id=><NativeSelectOption key={id} value={id}>{campaignName(campaigns,id)}</NativeSelectOption>)}</NativeSelect></label>
+  <label className="field"><span>역할 · 실행 종류</span><NativeSelect value={role} onChange={event=>{const [kind,roleId]=event.target.value.split('|');onChange({...filter,kind:kind||null,role:roleId||null})}}><NativeSelectOption value="">전체 역할</NativeSelectOption>{roleOptions(entries).map(([value,label])=><NativeSelectOption key={value} value={value}>{label}</NativeSelectOption>)}</NativeSelect></label>
+ </div>;
+}
+function exportHref(filter:UsageFilter){
+ const params=new URLSearchParams({type:'usage_csv'});
+ for(const key of ['campaignId','kind','role'] as const)if(filter[key])params.set(key,filter[key]!);
+ return '/api/usage/export?'+params.toString();
 }
 function PricingForm({saved,onSaved}:{saved:UsagePricing[];onSaved:()=>Promise<void>}){
  const [price,setPrice]=useState(emptyPrice),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
@@ -71,7 +107,8 @@ function PricingForm({saved,onSaved}:{saved:UsagePricing[];onSaved:()=>Promise<v
  </details>;
 }
 export function UsagePanel(){
- const [data,setData]=useState<UsageData|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[visible,setVisible]=useState(30);
+ const [data,setData]=useState<UsageData|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[visible,setVisible]=useState(30),[filter,setFilter]=useState<UsageFilter>({});
+ const isOwner=useIsOwner(),entries=data?filterUsage(data.entries,filter):[];
  const refresh=useCallback(async()=>{
   try{const next=await usageData();setData(next);setError('')}catch(error){setError(error instanceof Error?error.message:'사용량을 불러오지 못했습니다.')}finally{setLoading(false)}
  },[]);
@@ -87,8 +124,14 @@ export function UsagePanel(){
   <p className="notice">{data?.notice||'비용은 직접 등록한 단가로 계산한 추정치입니다. 도구 요금·할인·캐시 요금·세금은 포함하지 않습니다.'}</p>
   {error&&<p className="form-error" role="alert">{error}</p>}
   {loading&&!data?<p role="status">사용량 불러오는 중…</p>:data&&<>
+   <ModelAlarm changes={data.modelChanges}/>
    {!data.pricing.length&&<p className="subtle-note">아직 등록한 단가가 없습니다. 기반 모델과 입력·출력 토큰, 적용 단가가 확인되기 전의 비용은 미확인으로 남습니다.</p>}
-   {data.entries.length?<><p className="subtle-note">최근 {Math.min(visible,data.entries.length)}건 / 전체 {data.entries.length}건 · 한국 시간</p><UsageSummary entries={data.entries}/><UsageRows entries={data.entries.slice(0,visible)}/>{visible<data.entries.length&&<Button className="mt-4" variant="outline" onClick={()=>setVisible(current=>current+30)}>이전 실행 더 보기</Button>}</>:<p className="subtle-note">아직 기록된 사용량이 없습니다. 이 기능 도입 이후 종료 상태를 확인한 실행부터 표시됩니다.</p>}
+   {data.entries.length?<>
+    <UsageFilters entries={data.entries} campaigns={data.campaigns} filter={filter} onChange={next=>{setFilter(next);setVisible(30)}}/>
+    <p className="subtle-note">최근 {Math.min(visible,entries.length)}건 / 조건에 맞는 {entries.length}건(전체 {data.entries.length}건) · 한국 시간 · 캠페인·역할 정보는 이 기능 도입 이후 처음 기록된 실행부터 있습니다.</p>
+    {isOwner&&<p><a className="inline-flex items-center gap-1 text-sm underline" href={exportHref(filter)} download><Download className="size-4"/>이 조건의 사용량 CSV 내보내기</a></p>}
+    <UsageSummary entries={entries}/><UsageRows entries={entries.slice(0,visible)} campaigns={data.campaigns}/>{visible<entries.length&&<Button className="mt-4" variant="outline" onClick={()=>setVisible(current=>current+30)}>이전 실행 더 보기</Button>}
+   </>:<p className="subtle-note">아직 기록된 사용량이 없습니다. 이 기능 도입 이후 종료 상태를 확인한 실행부터 표시됩니다.</p>}
    <PricingForm saved={data.pricing} onSaved={refresh}/>
   </>}
  </section>;

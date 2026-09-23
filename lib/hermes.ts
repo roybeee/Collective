@@ -1,5 +1,5 @@
 import {ApiError,recordStatement,readRecord,type Connection} from './server';
-import {recordProviderUsage} from './usage-ledger';
+import {recordProviderUsage,type UsageContext} from './usage-ledger';
 import {readBoundedJson} from './http-limits';
 
 export function hermesEndpoint(value:string){
@@ -31,17 +31,18 @@ export async function submitHermes(owner:string,id:string,cfg:Connection,input?:
  const r=await hermesRequest(cfg,'/v1/runs',{method:'POST',headers:{'Idempotency-Key':saved.key,'X-Hermes-Session-Key':saved.key},body:saved.body},timeoutMs);
  if(typeof r.run_id!=='string'||!/^[a-zA-Z0-9_-]{1,160}$/.test(r.run_id))throw new ApiError(502,'HERMES 실행 번호를 확인하지 못했습니다. 기존 요청 확인으로 복구하세요.');return {id:r.run_id,status:'queued'};
 }
-export async function pollHermes(cfg:Connection,id:string,stop=false,timeoutMs=30000,owner?:string){
+// usage: 사용량 원장 조인 키(F2a). 첫 기록 때만 쓰이며 HERMES로 보내는 본문과는 무관하다.
+export async function pollHermes(cfg:Connection,id:string,stop=false,timeoutMs=30000,owner?:string,usage?:UsageContext){
  if(!/^[a-zA-Z0-9_-]{1,160}$/.test(id))throw new ApiError(400,'HERMES 실행 번호가 올바르지 않습니다.');
  if(stop){
   const stopped=await hermesRequest(cfg,'/v1/runs/'+id+'/stop',{method:'POST',body:'{}'},timeoutMs);
-  if(owner&&stopped.object==='hermes.run'&&stopped.run_id===id)await recordProviderUsage(owner,'hermes',id,stopped);
+  if(owner&&stopped.object==='hermes.run'&&stopped.run_id===id)await recordProviderUsage(owner,'hermes',id,stopped,usage);
  }
  const r=await hermesRequest(cfg,'/v1/runs/'+id,{},timeoutMs);
  if(r.run_id!==id||r.object!=='hermes.run')throw new ApiError(502,'HERMES 실행 결과가 일치하지 않습니다.');
  const status=r.status==='completed'?'completed':['cancelled','canceled','stopped','interrupted'].includes(r.status)?'cancelled':['failed','error','incomplete'].includes(r.status)?'failed':['started','queued','running','stopping','waiting','waiting_approval','waiting_for_approval','pending'].includes(r.status)?'in_progress':null;
  if(!status)throw new ApiError(502,'HERMES 실행 상태를 확인하지 못했습니다.');
- if(owner&&status!=='in_progress')await recordProviderUsage(owner,'hermes',id,r);
+ if(owner&&status!=='in_progress')await recordProviderUsage(owner,'hermes',id,r,usage);
  const invalidOutput=status==='completed'&&(typeof r.output!=='string'||r.output.length>300000);
  const activity=typeof r.last_event==='string'&&/^[a-z_.]{1,80}$/.test(r.last_event)?r.last_event:undefined;
  const activityAt=typeof r.updated_at==='number'&&Number.isFinite(r.updated_at)&&r.updated_at>0&&r.updated_at<1e11?new Date(r.updated_at*1000).toISOString():undefined;

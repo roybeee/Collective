@@ -67,6 +67,11 @@ check('invalid usage types do not become billable numbers',invalid.inputTokens==
 const aliases=await ledger.recordProviderUsage('alice','hermes','run_alias',{status:'cancelled',usage:{prompt_tokens:15,completion_tokens:0,total_tokens:15}});
 check('explicit zero and Hermes token aliases are preserved',aliases.inputTokens===15&&aliases.outputTokens===0&&aliases.totalTokens===15);
 check('nonterminal responses are not entered in the terminal ledger',await ledger.recordProviderUsage('alice','hermes','run_waiting',{status:'running',usage:{total_tokens:10}})===null);
+// 조인 키(F2a): 보조 읽기가 실패해도 정적 키로 기록하고, 이후 관측은 첫 기록의 조인 키를 바꾸지 않는다.
+const keyed=await ledger.recordProviderUsage('carol','hermes','run_keyed',sample,{kind:'role',submissionId:'missing',jobId:'job-1',campaignId:'camp-1',role:'cmo',resolve:async()=>{throw new Error('synthetic read failure')}});
+check('identity read failure keeps static join keys and still records usage',keyed.jobId==='job-1'&&keyed.campaignId==='camp-1'&&keyed.kind==='role'&&keyed.promptVersion===null&&keyed.brandId===null&&keyed.totalTokens===1250000);
+const rekeyed=await ledger.recordProviderUsage('carol','hermes','run_keyed',sample,{kind:'brief',submissionId:'other',jobId:'job-2'});
+check('later observations never rewrite the first join keys',rekeyed.jobId==='job-1'&&rekeyed.kind==='role'&&(await ledger.listProviderUsage('carol')).length===1);
 await assert.rejects(()=>ledger.saveUsagePricing('alice',{...pricing,inputPerMillion:-1}));passed.push('negative manual rate rejected');
 await assert.rejects(()=>ledger.saveUsagePricing('alice',{...pricing,source:'javascript:alert(1)'}));passed.push('invalid manual pricing source rejected');
 await assert.rejects(()=>ledger.saveUsagePricing('alice',{...pricing,currency:'usd'}));passed.push('ambiguous currency rejected');

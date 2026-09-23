@@ -10,9 +10,12 @@ import {archiveResearchInstructions,researchObject,parseResearchSources,parseDia
 import {DEEP_RESEARCH_VERSION,defaultResearchPlan} from '@/lib/deep-research';
 import {deepInstructions,parseDeepReport} from '@/lib/deep-research-server';
 import {hermesSubmissionStatement,submitHermes,pollHermes} from '@/lib/hermes';
+import type {UsageContext} from '@/lib/usage-ledger';
 import {workerStatus} from './research-worker';
 import {researchSteps,unverifiedResearchAccess} from './research-queue';
 const jobId=(owner:string,id:string)=>owner+':brand-research:'+id;
+// 사용량 조인 키(F2a). 조사는 캠페인에 속하지 않는다. 역할 자리에는 조사 단계, 산출물 계약에는 조사 프로토콜을 쓴다.
+const researchUsage=(owner:string,r:BrandResearch,step:BrandResearch['steps'][number]):UsageContext=>({kind:'research',submissionId:step.id,jobId:jobId(owner,r.id),brandId:r.brandId,storeId:r.storeId??null,role:step.stage,outputContractVersion:r.protocol??null});
 function writes(owner:string,r:BrandResearch){return [recordStatement(owner,'brand_research',r.id,r,r.brandId),database().prepare('UPDATE jobs SET status=?,error=?,tokens=?,updated_at=? WHERE owner=? AND id=?').bind(r.status==='running'?'in_progress':r.status,r.error||null,r.tokens,r.updatedAt,owner,jobId(owner,r.id))]}
 export async function executeResearch(owner:string,b:Record<string,any>,submissionTimeoutMs=90000){let lock='',lockOwner='',prepared:BrandResearch|undefined,current:BrandResearch|undefined,recovering=false;try{
  const id=str(b.id,'조사 번호',70,true);if(!/^[a-zA-Z0-9_-]+$/.test(id))throw new ApiError(400,'조사 번호를 확인하세요.');lockOwner=b.action==='start'?owner:owner+':research:'+id;lock=await acquireLock(lockOwner);
@@ -45,7 +48,7 @@ export async function executeResearch(owner:string,b:Record<string,any>,submissi
   const result=await submitHermes(owner,step.id,cfg,undefined,submissionTimeoutMs);step.providerId=result.id;step.status='running';r.status='running';r.error=undefined;r.retryAt=undefined;r.retryCount=0;await database().batch(writes(owner,r));return json(publicResearch(r));
  }
  if(!step.providerId){if(b.action!=='recover'){r.status='uncertain';r.error='조사 접수 확인이 지연돼 같은 요청으로 다시 확인합니다.';researchRetry(r);await database().batch(writes(owner,r));return json(publicResearch(r))}recovering=true;prepared=r;const result=await submitHermes(owner,step.id,cfg,undefined,submissionTimeoutMs);step.providerId=result.id;step.status='running';r.status='running';r.error=undefined;r.retryAt=undefined;r.retryCount=0;await database().batch(writes(owner,r));return json(publicResearch(r))}
- const result=await pollHermes(cfg,step.providerId,r.stopRequested,Math.min(submissionTimeoutMs,45000),owner);r.updatedAt=stamp();r.lastCheckedAt=r.updatedAt;r.activity=result.activity;r.activityAt=result.activityAt;r.retryAt=undefined;r.retryCount=0;r.error=result.needsApproval?'HERMES에서 도구 사용 승인을 기다리고 있습니다. 연결된 HERMES에서 요청 내용을 확인하세요.':undefined;r.status='running';step.status='running';
+ const result=await pollHermes(cfg,step.providerId,r.stopRequested,Math.min(submissionTimeoutMs,45000),owner,researchUsage(owner,r,step));r.updatedAt=stamp();r.lastCheckedAt=r.updatedAt;r.activity=result.activity;r.activityAt=result.activityAt;r.retryAt=undefined;r.retryCount=0;r.error=result.needsApproval?'HERMES에서 도구 사용 승인을 기다리고 있습니다. 연결된 HERMES에서 요청 내용을 확인하세요.':undefined;r.status='running';step.status='running';
  if(['completed','failed','cancelled'].includes(result.status)){
   const measuredStep=step as typeof step&{usageTokens?:number};
   const tokens=Number.isSafeInteger(result.usage.total_tokens)?Math.max(0,result.usage.total_tokens):0;

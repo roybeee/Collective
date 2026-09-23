@@ -25,6 +25,42 @@
 
 원본 사용량 저장 실패는 동일 실행을 재조회하게 한다. 후속 결과 분류 주석만 실패하면 `usage_outcome_write_failed`를 남기고 이미 완료한 도메인 작업을 실패로 되돌리지 않는다. 이 경우 사용량은 남고 처리 결과가 미확인일 수 있다.
 
+### 사용량 조인 키 (F2a)
+
+`provider_usage`는 첫 기록(INSERT) 때 조인 키를 한 번 채우고 이후 재조회로 바꾸지 않는다. 대상은 HERMES 5개 경로(역할·회의·브리프·조사·학습)와 OpenAI 역할 경로다. 모르는 값은 `null`이며 0이나 빈 문자열로 채우지 않는다. 이 기능 이전 행에는 키가 없다.
+
+| 키 | 값 |
+|---|---|
+| `jobId` | `jobs.id`(역할·회의·조사·학습), 브리프는 초안 id |
+| `campaignId`·`campaignVersion` | 실행 기준 캠페인과 브리프 버전. 조사는 `null`, 규칙 초안은 원천 실험의 캠페인 |
+| `brandId`·`storeId` | 실행 기준 브랜드·지점. 역할은 제출 때 역할 계약(`role_output_contract.usageScope`)에 함께 저장한 값이라 실행 중 브리프가 바뀌어도 버전이 섞이지 않는다(값이 없는 계약은 `null`) |
+| `kind`·`role` | `role`·`meeting`·`brief`·`research`·`learning`, 역할 id·회의 발언 역할·조사 단계·학습 작업 종류 |
+| `promptVersion` | `<스킬 버전>:<지시 sha256 앞 12자>`. 스킬 버전이 없는 인라인 지시(브리프·조사·학습)는 `inline:<해시>` |
+| `outputContractVersion` | 역할 계약(`role-output-v1`) 또는 조사 프로토콜. 회의·브리프·학습은 `null` |
+| `artifactId` | 역할 작업물 id(`ai-<sha256(jobId) 앞 32자>`) |
+| `appTree`·`durationMs` | 기록한 배포의 소스 트리(개발 실행은 `null`), 제출 원문 저장부터 종료 관측까지 |
+
+제출 본문(HERMES·OpenAI로 보내는 요청)은 바꾸지 않는다. 지시 해시와 제출 시각은 저장된 제출 원문에서 읽는다. 사용량 화면은 캠페인·역할 열과 필터, `superseded`(작업물이 이전 버전이 됨 `outdated`, 브리프 버전이 올라가 기준이 무효 `brief_changed`)를 보여 준다.
+
+### 보고 모델 변경 경보
+
+대표 결정 10에 따라 HERMES 기반 모델은 별칭(`hermes-agent`)으로 두고 고정하지 않는다. 그래서 `usage_model_state` 1행(공급자별 마지막 보고 모델)과 새 보고 모델을 비교해 바뀌면 `model_change` 1건을 남긴다. HERMES 5개 경로는 같은 연결을 쓰므로 기반 모델 1회 변경은 실행 종류 수와 무관하게 1건이다. `kind`는 그 변경을 처음 관측한 실행의 종류(참고 정보)다. 같은 값 반복, 같은 실행 재조회, 모델을 보고하지 않은 실행은 0건이다. 처음 보고는 기준값만 남긴다. 모델 전환 중 늦게 끝난 이전 실행(기준값을 만든 실행보다 먼저 제출된 실행)이 이전 모델을 보고하면 비교하지 않는다. 기준값 실행보다 나중에 제출된 실행의 다른 모델은 실제 변경으로 1건이다. 어느 한쪽의 제출 시각을 모르면 그대로 비교한다. 별칭은 `actual: null`(실제 모델 미확인)로 적고 별칭에 단가를 걸 수 없다. `GET /api/usage`의 `modelChanges`(최근 20건)·`reportedModels`와 사용량 화면의 경보 배지로 확인한다. 경보 기록 실패는 `model_change_write_failed`만 남기고 사용량·도메인 처리를 막지 않는다.
+
+### 기능 스위치
+
+`lib/feature-flags.ts`가 알려진 스위치와 기본값의 정본이다. 모두 기본 꺼짐이다: `online_grading`, `b1_reason_required`, `a4_auto_attribution`, `a2_downgrade`. 서버 코드는 `isEnabled(owner, flag)`로 읽는다. 저장은 소유자 범위 `feature_flag` 행(스위치당 1행)이며 행이 없으면 기본값이다. 캐시가 없어 쓰기는 다음 요청부터 반영된다(게시 불필요).
+
+- 조회: `GET /api/feature-flags`(로그인한 모든 역할, 변경자는 소유자에게만).
+- 변경: `POST /api/feature-flags` `{"action":"set","flag":"online_grading","enabled":false}`, 기본값 복귀는 `{"action":"reset","flag":"..."}`. 워크스페이스 소유자만(관리자·직원 403). 모르는 스위치·불리언이 아닌 값은 400.
+
+### 소유자 전용 내보내기
+
+`GET /api/usage/export`는 워크스페이스 소유자만 읽는다(비로그인 401, 관리자·직원 403, 다른 소유자의 캠페인 404).
+
+- `type=usage_csv`(기본): 조인 키를 포함한 `provider_usage` CSV. `campaignId`·`kind`·`role` 필터는 사용량 화면과 같은 함수라 합계가 화면과 같다. 모르는 값은 빈 칸이다.
+- `type=submissions&campaignId=`: 캠페인의 HERMES 제출 원문(`instructions`·`input`)과 지시 해시. 새 `session_id`만 붙이면 같은 요청을 다시 만들 수 있다.
+- 둘 다 소유자 id 접두어를 뗀 id를 쓰고 멱등 키·연결 주소·암호·계정 이메일을 넣지 않는다.
+
 ## 상세·버전·성과
 
 캠페인 상세는 owner 범위 `/api/campaigns/[id]`에서 읽는다. 이력 탭은 현재·이전 작업물 원문을 나란히 표시하며 승인을 대신하거나 자동 복원하지 않는다.
@@ -42,6 +78,6 @@
 
 ## 회귀 검증
 
-`tests/reliability.test.mjs`는 저장 실패·접수 응답 유실·서버 8역할 완주·사용자 승인 유지·큐 공정성·중단·삭제·OpenAI 접수 ID 보존을 확인한다. `tests/terminal-recovery.test.mjs`는 잘못된 완료 출력과 원장 주석 실패의 도메인 상태를 확인한다. 사용량·보안·상세 테스트와 E2E에는 비용 null, 버전 비교, 오래된 수정 거부, 단가 저장이 포함된다.
+`tests/reliability.test.mjs`는 저장 실패·접수 응답 유실·서버 8역할 완주·사용자 승인 유지·큐 공정성·중단·삭제·OpenAI 접수 ID 보존을 확인한다. `tests/execution-identity.test.mjs`는 5개 HERMES 경로와 OpenAI 역할의 조인 키, 모델 변경 경보, 내보내기 권한·합계를, `tests/feature-flags.test.mjs`는 스위치 기본값·즉시 끄기·소유자 전용 쓰기를 확인한다. `tests/terminal-recovery.test.mjs`는 잘못된 완료 출력과 원장 주석 실패의 도메인 상태를 확인한다. 사용량·보안·상세 테스트와 E2E에는 비용 null, 버전 비교, 오래된 수정 거부, 단가 저장이 포함된다.
 
 외부 모델 응답은 mocked다. E2E는 실제 Chromium과 로컬 D1, mocked 인증 헤더를 사용한다. 유료 모델 실호출과 새 소스의 운영 게시 검증은 별개이며 이 개발에서 수행하지 않는다.
