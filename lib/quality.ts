@@ -1,9 +1,12 @@
+import {scrubInternalIds,type IdLabels} from './role-output';
+import {roles} from './agency';
+
 export const qualityCriteria={evidence:'근거',brand:'브랜드·상품',execution:'제작·실행',economics:'예산·운영',measurement:'측정·실험'} as const;
 export type CheckStatus='pass'|'revise'|'needs_data';
-export type QualityCheck={criterion:string;status:CheckStatus;location:string;finding:string;fix:string};
-export type TaskCheck={role:string;status:CheckStatus;location:string;finding:string;fix:string};
+export type QualityCheck={criterion:string;status:CheckStatus;location:string;finding:string;fix:string;locationRef?:string};
+export type TaskCheck={role:string;status:CheckStatus;location:string;finding:string;fix:string;locationRef?:string};
 export type QualityReview={verdict:'ready_for_review'|'revise'|'needs_data';summary:string;findings:string;checks?:QualityCheck[];taskChecks?:TaskCheck[];reportedVerdict?:string;gateIssues?:string[]};
-export const qualityContract=`검수는 JSON으로 반환하세요. 기존 verdict/summary/findings에 checks와 taskChecks를 추가합니다. checks는 evidence,brand,execution,economics,measurement 각 기준을 정확히 한 번씩 포함합니다. 형태: {"criterion":"evidence","status":"pass|revise|needs_data","location":"실제 후보의 역할/작업물 ID 또는 제목/문단","finding":"대조한 내용과 판단 근거","fix":"수정/자료 요청 또는 해당 없음"}. 해당 없는 기준도 이유와 검토 위치를 적어 pass로 남기세요. taskChecks는 합의한 tasks의 모든 role을 정확히 한 번씩 포함하며 같은 형식에서 criterion 대신 role을 씁니다. 합의 tasks가 없으면 빈 배열입니다. 단순 통과 문구만 쓰지 마세요. 미충족 항목이 있으면 ready_for_review를 쓰지 마세요. 일부 원문만 받은 경우 누락된 부분은 검증했다고 하지 마세요.`;
+export const qualityContract=`검수는 JSON으로 반환하세요. 기존 verdict/summary/findings에 checks와 taskChecks를 추가합니다. checks는 evidence,brand,execution,economics,measurement 각 기준을 정확히 한 번씩 포함합니다. 형태: {"criterion":"evidence","status":"pass|revise|needs_data","location":"입력의 ref 라벨(예: 총괄 파트너 v1 §2) 또는 제목/문단","finding":"대조한 내용과 판단 근거","fix":"수정/자료 요청 또는 해당 없음"}. 해당 없는 기준도 이유와 검토 위치를 적어 pass로 남기세요. taskChecks는 합의한 tasks의 모든 role을 정확히 한 번씩 포함하며 같은 형식에서 criterion 대신 role을 씁니다. 합의 tasks가 없으면 빈 배열입니다. 단순 통과 문구만 쓰지 마세요. 미충족 항목이 있으면 ready_for_review를 쓰지 마세요. 일부 원문만 받은 경우 누락된 부분은 검증했다고 하지 마세요.`;
 const nonempty=(x:unknown):x is string=>typeof x==='string'&&!!x.trim()&&x.length<=5000;
 function checks(raw:unknown,key:'criterion'|'role'){
  if(!Array.isArray(raw))return [];
@@ -15,7 +18,9 @@ export function enforceQuality(review:QualityReview,raw:any,taskRoles:string[],i
  const issues:string[]=[];
  const criteria=Object.keys(qualityCriteria);
  if(!Array.isArray(raw?.checks)||raw.checks.length!==c.length||c.length!==criteria.length||criteria.some(k=>c.filter(x=>x.criterion===k).length!==1))issues.push('필수 5개 기준의 검수 위치·판단 근거·수정 요청이 누락되거나 중복됐습니다.');
- if(!Array.isArray(raw?.taskChecks)||raw.taskChecks.length!==t.length||t.length!==taskRoles.length||taskRoles.some(r=>t.filter(x=>x.role===r).length!==1))issues.push('합의 과제별 완료 검토가 누락되거나 담당자가 일치하지 않습니다.');
+ // 합의 과제가 없는데 역할별 검토를 채운 과잉과, 과제 검토의 누락·불일치를 구분해 알린다.
+ if(!taskRoles.length&&Array.isArray(raw?.taskChecks)&&raw.taskChecks.length)issues.push('이번 검수에는 합의 과제가 없어 taskChecks는 비워야 합니다. 역할별 지적은 checks의 위치·수정 요청에 적으세요.');
+ else if(!Array.isArray(raw?.taskChecks)||raw.taskChecks.length!==t.length||t.length!==taskRoles.length||taskRoles.some(r=>t.filter(x=>x.role===r).length!==1))issues.push('합의 과제별 완료 검토가 누락되거나 담당자가 일치하지 않습니다.');
  if(invalidatedRoles.length)issues.push(`변경에 맞춰 다시 작성할 후속 작업: ${invalidatedRoles.join(', ')}`);
  const needsData=[...c,...t].some(x=>x.status==='needs_data')||review.verdict==='needs_data';
  const revise=issues.length>0||[...c,...t].some(x=>x.status==='revise')||review.verdict==='revise';
@@ -32,8 +37,22 @@ export function qualityMarkdown(q:QualityReview){
  blocks.push(`판정: ${{ready_for_review:'사용자 검토 준비',revise:'수정 필요',needs_data:'자료 필요'}[q.verdict]}\n최종 승인은 사용자가 진행합니다.\n${qualityScopeNotice}`);
  return blocks.join('\n\n');
 }
-export function parseStandaloneQuality(text:string):QualityReview{
+// strict: 계약이 있는 새 실행. JSON 파싱 실패만 형식 오류로 돌려보내고, 루브릭 문제는 판정 하향으로 보존한다.
+export function parseStandaloneQuality(text:string,strict=false):QualityReview{
  let x:any;try{x=JSON.parse(text.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''))}catch{}
+ if(strict&&(!x||typeof x!=='object'||Array.isArray(x)))throw new Error('작업물 수정 필요: 검수 결과가 JSON 객체 형식이 아닙니다.');
  if(!x||!['ready_for_review','revise','needs_data'].includes(x.verdict)||!nonempty(x.summary)||!nonempty(x.findings))return enforceQuality({verdict:'revise',summary:'검수 양식 보완 필요',findings:text.slice(0,20000)},null,[]);
  return enforceQuality({verdict:x.verdict,summary:x.summary,findings:x.findings},x,[]);
+}
+// 화면·저장 본문에는 사람이 읽는 표현만 남긴다. 검수 위치의 원래 식별자는 locationRef로 보존한다.
+export function scrubQualityReview(q:QualityReview,labels:IdLabels={}):QualityReview{
+ const scrub=(text:string)=>scrubInternalIds(text,labels);
+ const scrubCheck=<T extends QualityCheck|TaskCheck>(x:T):T=>{const location=scrub(x.location);return {...x,location,finding:scrub(x.finding),fix:scrub(x.fix),...(location!==x.location?{locationRef:x.location}:{})}};
+ return {...q,summary:scrub(q.summary),findings:scrub(q.findings),...(q.checks?{checks:q.checks.map(scrubCheck)}:{}),...(q.taskChecks?{taskChecks:q.taskChecks.map(scrubCheck)}:{}),...(q.gateIssues?{gateIssues:q.gateIssues.map(scrub)}:{})};
+}
+// 검수 지적을 담당 역할별 수정 목록으로 옮긴다. 위치에서 역할을 찾지 못하면 role은 null이다.
+export type QualityFix={role:string|null;fix:string};
+const roleIn=(text:string)=>roles.find(r=>r.id===text||text.includes(r.name))?.id??null;
+export function qualityFixes(q:QualityReview):QualityFix[]{
+ return [...(q.checks||[]).filter(x=>x.status!=='pass').map(x=>({role:roleIn(x.location),fix:x.fix})),...(q.taskChecks||[]).filter(x=>x.status!=='pass').map(x=>({role:roleIn(x.role),fix:x.fix})),...(q.gateIssues||[]).map(fix=>({role:null,fix}))];
 }

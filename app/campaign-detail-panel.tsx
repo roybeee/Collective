@@ -4,6 +4,8 @@ import {Button} from '@/components/ui/button';
 import {Sheet,SheetContent,SheetHeader,SheetTitle,SheetDescription} from '@/components/ui/sheet';
 import type {CampaignDetail} from '@/lib/campaign-detail';
 import {CampaignPanel} from './panels';
+import {AiTeamSlot,EvidenceSummary} from './evidence-summary';
+import {DirectivesPanel} from './directives-panel';
 
 type Props=ComponentProps<typeof CampaignPanel>;
 export function CampaignDetailPanel(props:Props){
@@ -32,5 +34,5 @@ function LoadedCampaign(props:Props){
  const reload=useCallback(async()=>{await Promise.all([parentReload(),load()]);},[parentReload,load]);
  if(!detail)return <Sheet open onOpenChange={open=>{if(!open)props.onClose()}}><SheetContent className="campaign-sheet"><SheetHeader><SheetTitle>{props.campaign!.title}</SheetTitle><SheetDescription>캠페인 상세와 버전 기록을 불러옵니다.</SheetDescription></SheetHeader>{error?<div role="alert"><p>{error}</p><Button onClick={()=>void load().catch(e=>setError(e.message))}>다시 시도</Button></div>:<p>불러오는 중…</p>}</SheetContent></Sheet>;
  const data={...props.data,artifacts:detail.artifacts,metrics:detail.metrics,events:detail.events,runs:detail.runs};
- return <CampaignPanel {...props} campaign={detail.campaign} data={data} history={detail.history} detailError={error} reload={reload}/>;
+ return <><CampaignPanel {...props} campaign={detail.campaign} data={data} history={detail.history} detailError={error} reload={reload}/><AiTeamSlot><EvidenceSummary campaignId={detail.campaign.id} artifacts={detail.artifacts}/><DirectivesPanel campaignId={detail.campaign.id}/></AiTeamSlot></>;
 }

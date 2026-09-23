@@ -39,7 +39,7 @@ check('active linked brief prevents deletion',(await act('delete_campaign',paylo
 await put('brief_draft','linked-draft',{id:'linked-draft',campaignId:cid,status:'completed'});
 await put('brief_draft','saved-draft',{id:'saved-draft',savedCampaignId:cid,status:'completed'});
 await put('brief_draft','unrelated-draft',{id:'unrelated-draft',input:{title:'unrelated'},status:'queued'});
-for(const kind of ['artifact','history','metric','event','learning_snapshot'])await put(kind,'linked-'+kind,{id:'linked-'+kind,campaignId:cid},cid);
+for(const kind of ['artifact','history','metric','event','learning_snapshot','campaign_directive'])await put(kind,'linked-'+kind,{id:'linked-'+kind,campaignId:cid},cid);
 await put('viral_experiment','exp',{id:'exp',campaignId:cid},cid);await put('experiment_revision','exp:1',{id:'exp'},'exp');await put('learning_rule','exp:2',{id:'exp:2',experimentId:'exp'},'ofd');
 await put('hermes_submission',job,{body:'job input'});await put('hermes_submission','brief-linked-draft',{body:'brief input'});await put('hermes_submission','brief-saved-draft',{body:'brief input'});
 await put('viral_case','source',{id:'source'},'ofd');await put('viral_analysis','analysis',{id:'analysis'},'source');
@@ -51,6 +51,7 @@ check('storage failure reports error',(await act('delete_campaign',payload)).sta
 check('deletion failure rolls back every dependent write',before===JSON.stringify(sql.prepare('SELECT * FROM records ORDER BY id').all()));
 check('campaign deletion succeeds despite unrelated active brief',(await act('delete_campaign',payload)).data.deleted===true);
 check('campaign and direct records removed',!has('campaign',cid)&&!has('artifact','linked-artifact')&&!has('history','linked-history')&&!has('metric','linked-metric')&&!has('event','linked-event')&&!has('learning_snapshot','linked-learning_snapshot'));
+check('standing directives removed with the campaign',!has('campaign_directive','linked-campaign_directive'));
 check('experiments revisions and derived rules removed',!has('viral_experiment','exp')&&!has('experiment_revision','exp:1')&&!has('learning_rule','exp:2'));
 check('drafts and provider payloads removed',!has('brief_draft','linked-draft')&&!has('brief_draft','saved-draft')&&!has('hermes_submission',job)&&!has('hermes_submission','brief-linked-draft')&&!has('hermes_submission','brief-saved-draft'));
 check('campaign execution history removed',!sql.prepare('SELECT id FROM jobs WHERE owner=? AND campaign_id=?').get(owner,cid));

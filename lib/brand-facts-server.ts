@@ -1,7 +1,7 @@
 import {ApiError,str,readRecord,listRecords,recordStatement,database,uid,stamp,type Actor} from './server';
-import type {Brand} from './agency';
+import type {Brand,Campaign,Artifact} from './agency';
 import type {Store} from './store-marketing';
-import {effectiveBrandFacts,type BrandFact} from './brand-facts';
+import {effectiveBrandFacts,scopedBrandFacts,evidenceFactRefs,sameEvidenceFactRefs,type BrandFact} from './brand-facts';
 
 // 확정·거절한 사람과 시각. 이 필드가 생기기 전에 저장된 사실에는 없다.
 export type FactDecision={confirmedBy?:{id:string;email:string|null};confirmedAt?:string};
@@ -23,6 +23,20 @@ export async function getBrandFacts(owner:string,brandId?:string,storeId?:string
 
 export async function confirmedFactContext(owner:string,brandId:string,storeId?:string):Promise<BrandFact[]>{
  return effectiveBrandFacts(await getBrandFacts(owner,brandId,storeId),brandId,storeId);
+}
+
+// 사실이 바뀌면 같은 브랜드의 현재 작업물 중 입력에 쓴 사실 스냅샷(factRefs: 확정·거절)이 달라진 것에 factsChanged만 표시한다. outdated로 바꾸지 않는다.
+async function factsChangedWrites(owner:string,brandId:string,facts:BrandFact[]){
+ const writes:D1PreparedStatement[]=[];
+ for(const c of (await listRecords<Campaign>(owner,'campaign')).filter(c=>c.brandId===brandId)){
+  const current=evidenceFactRefs(scopedBrandFacts(facts,brandId,c.storeId));
+  for(const a of await listRecords<Artifact>(owner,'artifact',c.id)){
+   if(a.status==='outdated'||!Array.isArray(a.factRefs))continue;
+   const changed=!sameEvidenceFactRefs(a.factRefs,current);if(changed===!!a.factsChanged)continue;
+   writes.push(recordStatement(owner,'artifact',a.id,{...a,factsChanged:changed||undefined},c.id));
+  }
+ }
+ return writes;
 }
 
 function factDate(value:unknown,label:string){
@@ -69,6 +83,7 @@ export async function saveBrandFact(owner:string,input:Record<string,unknown>,wh
  const fact:BrandFact&FactDecision={...parsed,id,brandId,...(storeId?{storeId}:{}),...decision,version:(old?.version||0)+1,updatedAt:stamp()};
  const writes=[recordStatement(owner,'brand_fact',id,fact,brandId)];
  if(old)writes.push(recordStatement(owner,'brand_fact_history',`${id}:${old.version}`,old,id));
+ writes.push(...await factsChangedWrites(owner,brandId,[...existing.filter(f=>f.id!==id),fact]));
  await database().batch(writes);
  return {id,version:fact.version,fact};
 }

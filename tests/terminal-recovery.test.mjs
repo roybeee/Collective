@@ -72,4 +72,13 @@ const cancelProvider=seedJob('cancel-invalid','cmo','cancel-campaign',123);
 result=await roles.executeRole(owner,{action:'cancel',id:'cancel-invalid'});
 check('cancellation observing malformed terminal output also releases the active job',result.status===200&&(await result.json()).status==='failed'&&sql.prepare('SELECT status FROM jobs WHERE id=?').get('cancel-invalid').status==='failed');
 check('cancel path preserves invalid domain outcome',(await server.readRecord(owner,'provider_usage','hermes:'+cancelProvider)).domainOutcome==='invalid_output');
+// 공급자 종료·취소도 작업물이 있는 캠페인을 '브리프 작성' 단계로 되돌리지 않는다(AQ12).
+for(const [id,status,withWork,expected] of [['provider-failed','failed',true,'revision'],['provider-cancelled','cancelled',true,'revision'],['provider-failed-empty','failed',false,'draft']]){
+ const campaignId='campaign_'+id;
+ await put('campaign',campaignId,{id:campaignId,brandId:'ofd',title:'Stopped run',goal:'Keep stage',status:'running',version:1});
+ if(withWork)await put('artifact','work_'+id,{id:'work_'+id,campaignId,campaignVersion:1,role:'cmo',title:'기존 작업물',content:'검토 가능한 초안',status:'review',version:1,origin:'ai',createdAt:'2026-01-01'},campaignId);
+ const providerId=seedJob(id,'insight',campaignId,null);responses.set(providerId,{object:'hermes.run',run_id:providerId,status,output:[],usage:{total_tokens:5}});
+ result=await roles.executeRole(owner,{action:status==='cancelled'?'cancel':'poll',id});
+ check(id+' keeps the campaign stage after the run stops',result.status===200&&(await server.readRecord(owner,'campaign',campaignId)).status===expected);
+}
 console.log(JSON.stringify({passed:checks.length,checks},null,2));

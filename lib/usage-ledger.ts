@@ -2,7 +2,8 @@ import {ApiError,database,listRecords,readRecord,recordStatement,stamp,str} from
 import {isModelAlias} from './usage-summary';
 
 export type UsageProvider='hermes'|'openai';
-export type UsageOutcome='completed'|'invalid_output'|'cancelled'|'provider_failed'|'storage_failed';
+// thin_output: 저장했지만 출력 토큰이 역할 기준 분량의 5% 미만인 결과. 저장 완료와 쓸 만한 결과를 구분해 센다.
+export type UsageOutcome='completed'|'thin_output'|'invalid_output'|'cancelled'|'provider_failed'|'storage_failed';
 export type UsagePricing={provider:UsageProvider;model:string;priceVersion:string;currency:string;inputPerMillion:number;outputPerMillion:number;source:string;configuredAt:string};
 export type ProviderUsage={
  id:string;provider:UsageProvider;providerRunId:string;model:string|null;
@@ -89,7 +90,7 @@ export async function saveJobUsageTokens(owner:string,jobId:string,total:unknown
 }
 export async function markUsageOutcome(owner:string,provider:UsageProvider,providerRunId:string,outcome:UsageOutcome){
  providerName(provider);
- if(!['completed','invalid_output','cancelled','provider_failed','storage_failed'].includes(outcome))throw new ApiError(400,'사용량 처리 결과를 확인하세요.');
+ if(!['completed','thin_output','invalid_output','cancelled','provider_failed','storage_failed'].includes(outcome))throw new ApiError(400,'사용량 처리 결과를 확인하세요.');
  const observedAt=stamp();
  const result=await database().prepare("UPDATE records SET data=json_set(data,'$.domainOutcome',?,'$.outcomeObservedAt',?),updated_at=? WHERE id=? AND owner=? AND kind='provider_usage'")
   .bind(outcome,observedAt,observedAt,`${owner}:provider_usage:${provider}:${providerRunId}`,owner).run();

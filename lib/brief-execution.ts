@@ -1,6 +1,7 @@
 import {campaignEvidencePolicy} from './campaign-policy';
 import {markUsageOutcomeSafely as markUsageOutcome} from './usage-outcome';
 import {brandArchiveContext} from '@/lib/archive-server';
+import {evidenceContext,aiBrand} from '@/lib/ai-context';
 import {submitHermes,pollHermes,hermesSubmissionStatement} from '@/lib/hermes';
 import {learningContext} from '@/lib/learning-server';
 import {briefInstructions,parseBrief,emptyPlan,type BriefDraft,type BriefInput} from '@/lib/brief';
@@ -23,13 +24,13 @@ export async function executeBrief(owner:string,b:Record<string,unknown>){let lo
    if(b.campaignId){const c=await readRecord<Campaign>(owner,'campaign',str(b.campaignId,'캠페인',100,true));if(c.brandId!==input.brandId||c.version!==b.campaignVersion)throw new ApiError(409,'캠페인이 변경됐습니다. 최신 브리프에서 다시 요청하세요.');if(c.storeId){if(input.storeId&&input.storeId!==c.storeId)throw new ApiError(400,'캠페인의 지점이 일치하지 않습니다.');input.storeId=c.storeId;}campaignId=c.id;campaignVersion=c.version}
    if(campaignId){const meeting=await database().prepare("SELECT id FROM jobs WHERE owner=? AND campaign_id=? AND role='meeting' AND status IN ('starting','queued','in_progress','uncertain')").bind(owner,campaignId).first();if(meeting)throw new ApiError(409,'팀 회의가 진행 중입니다. 회의를 완료하거나 중지한 뒤 초안을 작성하세요.');}
    const brand=await readRecord<Brand>(owner,'brand',input.brandId);
-   const trialLearning=await learningContext(owner,input);const archive=await brandArchiveContext(owner,brand.id,input.storeId);
+   const trialLearning=await learningContext(owner,input);const archive=await brandArchiveContext(owner,brand.id,input.storeId);const evidence=await evidenceContext(database(),owner,{id:campaignId||'',brandId:brand.id,storeId:input.storeId});
    const previous=(await listRecords<Campaign>(owner,'campaign')).filter(c=>c.brandId===brand.id&&c.id!==campaignId&&(!input.storeId||c.storeId===input.storeId)).slice(0,3);
    const relevantIds=new Set(previous.map(c=>c.id));
    const metrics=(await listRecords<Metric>(owner,'metric')).filter(m=>relevantIds.has(m.campaignId)).slice(0,6);
    const artifacts=(await listRecords<Artifact>(owner,'artifact')).filter(a=>relevantIds.has(a.campaignId)&&a.status==='approved'&&['data','quality','insight'].includes(a.role)).slice(0,4).map(a=>({campaignId:a.campaignId,title:a.title,content:a.content.slice(0,2500)}));
    const prepared:StoredDraft={id,input,status:'starting',campaignId,campaignVersion,model:cfg.model,createdAt:stamp(),updatedAt:stamp()};
-   await database().batch([recordStatement(owner,'brief_draft',id,prepared),hermesSubmissionStatement(owner,'brief-'+id,{instructions:briefInstructions+'\n'+campaignEvidencePolicy(input),input:JSON.stringify({brand,brandArchive:archive,currentBrief:input,trialLearning,previousCampaigns:previous.map(c=>({id:c.id,title:c.title,goal:c.goal,plan:c.plan,status:c.status,updatedAt:c.updatedAt})),recordedMetrics:metrics,approvedLearnings:artifacts,contextDate:stamp().slice(0,10)})})]);
+   await database().batch([recordStatement(owner,'brief_draft',id,prepared),hermesSubmissionStatement(owner,'brief-'+id,{instructions:briefInstructions+'\n'+campaignEvidencePolicy(input),input:JSON.stringify({brand:aiBrand(brand),evidence:{facts:evidence.facts,directives:evidence.directives},brandArchive:archive,currentBrief:input,trialLearning,previousCampaigns:previous.map(c=>({id:c.id,title:c.title,goal:c.goal,plan:c.plan,status:c.status,updatedAt:c.updatedAt})),recordedMetrics:metrics,approvedLearnings:artifacts,contextDate:stamp().slice(0,10)})})]);
    pending=prepared;
    const result=await submitHermes(owner,'brief-'+id,cfg);
    pending={...pending,providerId:result.id,status:'queued',updatedAt:stamp()};await recordStatement(owner,'brief_draft',id,pending).run();return json(publicDraft(pending));
@@ -47,7 +48,7 @@ export async function executeBrief(owner:string,b:Record<string,unknown>){let lo
   const r=await pollHermes(cfg,next.providerId!,b.action==='cancel',30000,owner);
   next.updatedAt=stamp();next.status=r.status as BriefDraft['status'];next.error=undefined;
   if(r.status==='completed'){
-   try{next.result=parseBrief(r.output[0].content[0].text)}catch(e){next.status='failed';next.error=(e as Error).message}
+   try{next.result=parseBrief(r.output[0].content[0].text,next.input)}catch(e){next.status='failed';next.error=(e as Error).message}
   }else if(r.status==='failed')next.error='HERMES가 초안 작성을 완료하지 못했습니다. 입력을 유지한 채 다시 요청할 수 있습니다.';
   await recordStatement(owner,'brief_draft',id,next).run();if(['completed','failed','cancelled'].includes(next.status))await markUsageOutcome(owner,'hermes',next.providerId!,next.status==='completed'?'completed':next.status==='cancelled'?'cancelled':r.invalidOutput||r.status==='completed'?'invalid_output':'provider_failed');return json(publicDraft(next));
  }catch(e){
