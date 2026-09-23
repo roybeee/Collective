@@ -4,6 +4,8 @@ import { brandDefaults, type Campaign, type Brand, type Artifact, type Metric } 
 import {HttpBodyError,readBoundedJson} from './http-limits';
 import {authMode,authPrincipal,authOrigin} from './auth-session';
 import {AuthError} from './auth-errors';
+import {campaignScopes,scopesSql,blockingScopes,campaignJobs,derivedLinks,freezeExperimentSummary,type SourceCampaignDeleted} from './record-kinds';
+import type {LearningRule,ViralExperiment} from './learning';
 export class ApiError extends Error {constructor(public status:number,message:string){super(message)}}
 export const runtime=env as unknown as {DB?:D1Database;BUCKET?:R2Bucket;AGENCY_ENCRYPTION_KEY?:string;OPENAI_API_KEY?:string;RESEARCH_WORKER_GATE_TOKEN?:string;RESEARCH_WORKER_SITE_ORIGIN?:string;RESEARCH_WORKER_ADMIN_IDS?:string;AI_COPY_CAPTIONS?:string};
 export function database(){if(!runtime.DB)throw new ApiError(503,'저장 공간에 연결하지 못했습니다. 잠시 후 다시 시도하세요.');return runtime.DB}
@@ -59,7 +61,45 @@ export async function assertNoActiveJobs(owner:string,campaignId?:string){
 
 export async function assertNoActiveBriefs(owner:string){const drafts=await listRecords<BriefDraft>(owner,'brief_draft');if(drafts.some(d=>['starting','queued','in_progress','uncertain'].includes(d.status)))throw new ApiError(409,'HERMES 초안을 작성 중입니다. 초안을 확인하거나 중지한 뒤 연결을 변경해 주세요.')}
 
+// 캠페인 삭제를 막는 사유(없으면 null). 삭제와 삭제 영향 조회가 같은 판정을 쓴다. 보호 대상 kind는 lib/record-kinds.ts의 blocksDeletion이다.
+async function campaignDeletionBlock(owner:string,id:string){
+ const db=database(),blocking=scopesSql('SELECT id',owner,blockingScopes(owner,id));
+ if(await db.prepare(blocking.sql+' LIMIT 1').bind(...blocking.binds).first())return '제작·발행 또는 주문 귀속 이력이 있어 삭제할 수 없습니다. 실행 기록을 보존하고 예약 취소는 Buffer에서 확인하세요.';
+ const running=await db.prepare(`SELECT id FROM jobs WHERE owner=? AND ${campaignJobs.where} AND status IN ('starting','queued','in_progress','uncertain') LIMIT 1`).bind(owner,...campaignJobs.binds(owner,id)).first();
+ if(running)return '진행 중인 AI 작업이 있습니다. 캠페인의 AI 팀에서 작업을 완료하거나 취소한 뒤 삭제해 주세요.';
+ const drafts=(await listRecords<BriefDraft>(owner,'brief_draft')).filter(d=>d.campaignId===id||d.savedCampaignId===id);
+ if(drafts.some(d=>['starting','queued','in_progress','uncertain'].includes(d.status)))return '이 캠페인의 HERMES 초안을 작성 중입니다. 초안을 완료하거나 중지한 뒤 삭제해 주세요.';
+ return null;
+}
+// 결정 7(b): 캠페인 실험에서 나온 바이럴 규칙(retire_and_mark)과, 그 규칙을 낳은 실험. 점포 출처 규칙은 조건에서 빠진다.
+async function retainedLearning(owner:string,id:string){
+ const q=scopesSql('SELECT data',owner,campaignScopes('retire_and_mark',owner,id));
+ const rules=(await database().prepare(q.sql).bind(...q.binds).all<{data:string}>()).results.map(r=>JSON.parse(r.data) as LearningRule);
+ const sources=(await listRecords<ViralExperiment>(owner,'viral_experiment',id)).filter(e=>rules.some(r=>r.experimentId===e.id));
+ return {rules,sources};
+}
+function retainedLearningWrites(owner:string,{rules,sources}:Awaited<ReturnType<typeof retainedLearning>>,mark:SourceCampaignDeleted){
+ return [
+  ...rules.map(r=>recordStatement(owner,'learning_rule',r.id,{...r,status:'retired',version:r.version+1,updatedAt:mark.at,sourceCampaignDeleted:mark},r.brandId)),
+  ...sources.map(e=>recordStatement(owner,'viral_experiment_summary',e.id,freezeExperimentSummary(e,rules.filter(r=>r.experimentId===e.id).map(r=>r.id),mark),e.brandId)),
+ ];
+}
+async function countByKind(owner:string,policy:'delete'|'retain',id:string){
+ const q=scopesSql('SELECT kind,COUNT(*) AS n',owner,campaignScopes(policy,owner,id));
+ const rows=await database().prepare(q.sql+' GROUP BY kind').bind(...q.binds).all<{kind:string;n:number}>();
+ return Object.fromEntries(rows.results.map(r=>[r.kind,Number(r.n)])) as Record<string,number>;
+}
+const total=(counts:Record<string,number>)=>Object.values(counts).reduce((sum,n)=>sum+n,0);
+// 삭제 전 영향 조회. kind별 삭제·보존 건수와 삭제 가능 여부를 돌려주며 아무것도 쓰지 않는다.
+export async function campaignDeletionPreview(owner:string,id:string){
+ const campaign=await readRecord<Campaign>(owner,'campaign',id);
+ const [deleted,linked,learning,jobs,blockedReason]=await Promise.all([countByKind(owner,'delete',id),countByKind(owner,'retain',id),retainedLearning(owner,id),database().prepare(`SELECT COUNT(*) AS n FROM jobs WHERE owner=? AND ${campaignJobs.where}`).bind(owner,...campaignJobs.binds(owner,id)).first<{n:number}>(),campaignDeletionBlock(owner,id)]);
+ const retained={...linked,...(learning.rules.length?{learning_rule:learning.rules.length}:{}),...(learning.sources.length?{viral_experiment_summary:learning.sources.length}:{})};
+ return {campaignId:id,version:campaign.version,deletable:!blockedReason,blockedReason,deleted,retained,jobs:Number(jobs?.n||0),totals:{deleted:total(deleted),retained:total(retained)}};
+}
+
 // Called under the same owner mutation lock used by campaign edits and AI jobs.
+// 삭제 대상은 lib/record-kinds.ts의 정책에서 만든다. 순서: 규칙 종료 표시·요약 동결 → 초안·작업·실험을 참조하는 레코드 → 작업(jobs, 실험 참조) → 직접 연결 레코드와 캠페인.
 export async function deleteCampaign(owner:string,input:Record<string,unknown>,by?:EventActor){
  const id=str(input.id,'캠페인',100,true);
  if(input.confirmed!==true)throw new ApiError(400,'삭제 내용을 확인해 주세요.');
@@ -68,25 +108,17 @@ export async function deleteCampaign(owner:string,input:Record<string,unknown>,b
  if(deleted)return {id,deleted:true};
  const campaign=await readRecord<Campaign>(owner,'campaign',id);
  if(input.version!==campaign.version)throw new ApiError(409,'캠페인이 변경됐습니다. 최신 내용을 확인한 뒤 다시 삭제해 주세요.');
- const executions=await db.prepare("SELECT id FROM records WHERE owner=? AND ((parent_id=? AND kind IN ('execution_creative','execution_publication')) OR (kind='store_order' AND json_extract(data,'$.campaignId')=?)) LIMIT 1").bind(owner,id,id).first();
- if(executions)throw new ApiError(409,'제작·발행 또는 주문 귀속 이력이 있어 삭제할 수 없습니다. 실행 기록을 보존하고 예약 취소는 Buffer에서 확인하세요.');
- const running=await db.prepare("SELECT id FROM jobs WHERE owner=? AND campaign_id=? AND status IN ('starting','queued','in_progress','uncertain') LIMIT 1").bind(owner,id).first();
- if(running)throw new ApiError(409,'진행 중인 AI 작업이 있습니다. 캠페인의 AI 팀에서 작업을 완료하거나 취소한 뒤 삭제해 주세요.');
- const drafts=(await listRecords<BriefDraft>(owner,'brief_draft')).filter(d=>d.campaignId===id||d.savedCampaignId===id);
- if(drafts.some(d=>['starting','queued','in_progress','uncertain'].includes(d.status)))throw new ApiError(409,'이 캠페인의 HERMES 초안을 작성 중입니다. 초안을 완료하거나 중지한 뒤 삭제해 주세요.');
- const experiments="SELECT json_extract(data,'$.id') FROM records WHERE owner=? AND kind='viral_experiment' AND parent_id=?";
+ const blocked=await campaignDeletionBlock(owner,id);
+ if(blocked)throw new ApiError(409,blocked);
+ const mark:SourceCampaignDeleted={at:stamp(),by:by?{id:by.id,email:by.email}:null};
+ const scopes=campaignScopes('delete',owner,id),remove=(derived:boolean)=>scopes.filter(s=>derivedLinks.has(s.link)===derived).map(s=>scopesSql('DELETE',owner,[s])).map(q=>db.prepare(q.sql).bind(...q.binds));
  await db.batch([
-  db.prepare("DELETE FROM records WHERE owner=? AND kind='hermes_submission' AND id IN (SELECT ? || ':hermes_submission:' || id FROM jobs WHERE owner=? AND campaign_id=?)").bind(owner,owner,owner,id),
-  db.prepare("DELETE FROM records WHERE owner=? AND kind='hermes_submission' AND id IN (SELECT ? || ':hermes_submission:brief-' || json_extract(data,'$.id') FROM records WHERE owner=? AND kind='brief_draft' AND (json_extract(data,'$.campaignId')=? OR json_extract(data,'$.savedCampaignId')=?))").bind(owner,owner,owner,id,id),
-  db.prepare(`DELETE FROM records WHERE owner=? AND kind='experiment_revision' AND parent_id IN (${experiments})`).bind(owner,owner,id),
-  db.prepare(`DELETE FROM records WHERE owner=? AND kind='learning_rule' AND json_extract(data,'$.experimentId') IN (${experiments})`).bind(owner,owner,id),
-  db.prepare("DELETE FROM records WHERE owner=? AND kind='brief_draft' AND (json_extract(data,'$.campaignId')=? OR json_extract(data,'$.savedCampaignId')=?)").bind(owner,id,id),
-  db.prepare("DELETE FROM records WHERE owner=? AND parent_id=? AND kind IN ('artifact','history','metric','event','viral_experiment','learning_snapshot','team_meeting','hermes_submission','campaign_sequence','openai_submission','role_output_contract','role_output_failure','campaign_directive','execution_limits')").bind(owner,id),
-  db.prepare("DELETE FROM records WHERE owner=? AND kind='background_attempt' AND id=?").bind(owner,`${owner}:background_attempt:sequence:${id}`),
-  db.prepare('DELETE FROM jobs WHERE owner=? AND campaign_id=?').bind(owner,id),
-  db.prepare("DELETE FROM records WHERE owner=? AND kind='campaign' AND id=?").bind(owner,`${owner}:campaign:${id}`),
+  ...retainedLearningWrites(owner,await retainedLearning(owner,id),mark),
+  ...remove(true),
+  db.prepare(`DELETE FROM jobs WHERE owner=? AND ${campaignJobs.where}`).bind(owner,...campaignJobs.binds(owner,id)),
+  ...remove(false),
   // A minimal tombstone prevents starter reseeding and makes lost-response retries safe.
-  recordStatement(owner,'deleted_campaign',id,{id,deletedAt:stamp(),...(by?{deletedBy:{id:by.id,email:by.email}}:{})}),
+  recordStatement(owner,'deleted_campaign',id,{id,deletedAt:mark.at,...(by?{deletedBy:{id:by.id,email:by.email}}:{})}),
  ]);
  return {id,deleted:true};
 }
