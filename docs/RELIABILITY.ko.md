@@ -33,7 +33,7 @@
 |---|---|
 | `jobId` | `jobs.id`(역할·회의·조사·학습), 브리프는 초안 id |
 | `campaignId`·`campaignVersion` | 실행 기준 캠페인과 브리프 버전. 조사는 `null`, 규칙 초안은 원천 실험의 캠페인 |
-| `brandId`·`storeId` | 실행 기준 브랜드·지점 |
+| `brandId`·`storeId` | 실행 기준 브랜드·지점. 역할은 제출 때 역할 계약(`role_output_contract.usageScope`)에 함께 저장한 값이라 실행 중 브리프가 바뀌어도 버전이 섞이지 않는다(값이 없는 계약은 `null`) |
 | `kind`·`role` | `role`·`meeting`·`brief`·`research`·`learning`, 역할 id·회의 발언 역할·조사 단계·학습 작업 종류 |
 | `promptVersion` | `<스킬 버전>:<지시 sha256 앞 12자>`. 스킬 버전이 없는 인라인 지시(브리프·조사·학습)는 `inline:<해시>` |
 | `outputContractVersion` | 역할 계약(`role-output-v1`) 또는 조사 프로토콜. 회의·브리프·학습은 `null` |
@@ -44,7 +44,7 @@
 
 ### 보고 모델 변경 경보
 
-대표 결정 10에 따라 HERMES 기반 모델은 별칭(`hermes-agent`)으로 두고 고정하지 않는다. 그래서 `usage_model_state` 1행(공급자:실행 종류별 마지막 보고 모델)과 새 보고 모델을 비교해 바뀌면 `model_change` 1건을 남긴다. 같은 값 반복, 같은 실행 재조회, 모델을 보고하지 않은 실행은 0건이다. 처음 보고는 기준값만 남긴다. 별칭은 `actual: null`(실제 모델 미확인)로 적고 별칭에 단가를 걸 수 없다. `GET /api/usage`의 `modelChanges`(최근 20건)·`reportedModels`와 사용량 화면의 경보 배지로 확인한다. 경보 기록 실패는 `model_change_write_failed`만 남기고 사용량·도메인 처리를 막지 않는다.
+대표 결정 10에 따라 HERMES 기반 모델은 별칭(`hermes-agent`)으로 두고 고정하지 않는다. 그래서 `usage_model_state` 1행(공급자별 마지막 보고 모델)과 새 보고 모델을 비교해 바뀌면 `model_change` 1건을 남긴다. HERMES 5개 경로는 같은 연결을 쓰므로 기반 모델 1회 변경은 실행 종류 수와 무관하게 1건이다. `kind`는 그 변경을 처음 관측한 실행의 종류(참고 정보)다. 같은 값 반복, 같은 실행 재조회, 모델을 보고하지 않은 실행은 0건이다. 처음 보고는 기준값만 남긴다. 모델 전환 중 늦게 끝난 이전 실행(기준값을 만든 실행보다 먼저 제출된 실행)이 이전 모델을 보고하면 비교하지 않는다. 기준값 실행보다 나중에 제출된 실행의 다른 모델은 실제 변경으로 1건이다. 어느 한쪽의 제출 시각을 모르면 그대로 비교한다. 별칭은 `actual: null`(실제 모델 미확인)로 적고 별칭에 단가를 걸 수 없다. `GET /api/usage`의 `modelChanges`(최근 20건)·`reportedModels`와 사용량 화면의 경보 배지로 확인한다. 경보 기록 실패는 `model_change_write_failed`만 남기고 사용량·도메인 처리를 막지 않는다.
 
 ### 기능 스위치
 

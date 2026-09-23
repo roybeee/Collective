@@ -29,10 +29,12 @@ async function stoppedStatus(owner:string,campaign:Campaign){
 // 역할 작업물 id: 작업 id의 sha256 앞 32자. 완료 저장과 사용량 조인 키(artifactId)가 같은 규칙을 쓴다.
 export async function roleArtifactId(jobId:string){return 'ai-'+Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(jobId)))).map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,32)}
 // 사용량 조인 키(F2a). HERMES·OpenAI 역할 경로가 같이 쓴다. 브랜드·지점·스킬 버전·계약 버전은 첫 기록 때만 읽는다(resolve).
+// 브랜드·지점은 제출 때 역할 계약에 함께 저장한 값(usageScope)이다. 실행 중 브리프가 바뀌어도 현재 캠페인을 읽지 않아 브리프 버전이 섞이지 않는다. 이 값이 없는 계약은 null이다.
+type UsageScope={brandId:string|null;storeId:string|null};
 function roleUsage(owner:string,job:Pick<Job,'id'|'campaign_id'|'campaign_version'|'role'>):UsageContext{
  return {kind:'role',submissionId:job.id,jobId:job.id,campaignId:job.campaign_id,campaignVersion:job.campaign_version,role:job.role,resolve:async()=>{
-  const [c,snapshot,contract]=await Promise.all([recordIfPresent<Campaign>(owner,'campaign',job.campaign_id),recordIfPresent<{skillVersion?:string}>(owner,'learning_snapshot',job.id),recordIfPresent<RoleOutputContract>(owner,'role_output_contract',job.id)]);
-  return {brandId:c?.brandId??null,storeId:c?.storeId??null,skillVersion:snapshot?.skillVersion??null,outputContractVersion:contract?.version??null,artifactId:await roleArtifactId(job.id)};
+  const [snapshot,contract]=await Promise.all([recordIfPresent<{skillVersion?:string}>(owner,'learning_snapshot',job.id),recordIfPresent<RoleOutputContract&{usageScope?:UsageScope}>(owner,'role_output_contract',job.id)]);
+  return {brandId:contract?.usageScope?.brandId??null,storeId:contract?.usageScope?.storeId??null,skillVersion:snapshot?.skillVersion??null,outputContractVersion:contract?.version??null,artifactId:await roleArtifactId(job.id)};
  }};
 }
 async function invalidRoleOutput(owner:string,job:Job,provider:'hermes'|'openai',error='AI 작업물이 올바른 텍스트 형식이 아니어서 종료했습니다.',raw=''){
@@ -76,7 +78,7 @@ if(b.action==='start'){
  const claimStatement=db.prepare("INSERT INTO jobs(id,owner,campaign_id,role,status,model,campaign_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status='starting',error=NULL,provider_id=NULL,updated_at=excluded.updated_at WHERE jobs.status IN ('failed','cancelled','incomplete')").bind(id,owner,c.id,role.id,'starting',cfg.model,c.version,now,now);
  const {outputContract}=roleRequestPlan(request),input=buildRoleInput(request),effectiveInstruction=buildRoleInstruction(request);
  const openaiRequest=JSON.stringify({model:cfg.model,instructions:effectiveInstruction,input,max_output_tokens:practices[role.id].maxTokens,background:true,store:true,metadata:{agency_job_id:id},...(role.id==='insight'?{tools:[{type:'web_search'}]}:{})});
- const preparedWrites=[claimStatement,recordStatement(owner,'role_output_contract',id,{...outputContract,...(evidence.factRefs?{factRefs:evidence.factRefs}:{}),idLabels:idLabels({campaign:c,archive:labelArchive(archive),artifacts:artifacts.filter(a=>a.status!=='outdated')}),...(claimRoles.has(role.id)?{claimGuard:claimGuard(evidence.facts)}:{})},c.id),learningSnapshotStatement(owner,id,c,role.id,learning,PRACTICE_VERSION),...(cfg.provider==='hermes'?[hermesSubmissionStatement(owner,id,{instructions:effectiveInstruction,input},c.id)]:[recordStatement(owner,'openai_submission',id,{body:openaiRequest,createdAt:now},c.id)])];
+ const preparedWrites=[claimStatement,recordStatement(owner,'role_output_contract',id,{...outputContract,...(evidence.factRefs?{factRefs:evidence.factRefs}:{}),idLabels:idLabels({campaign:c,archive:labelArchive(archive),artifacts:artifacts.filter(a=>a.status!=='outdated')}),...(claimRoles.has(role.id)?{claimGuard:claimGuard(evidence.facts)}:{}),usageScope:{brandId:c.brandId,storeId:c.storeId??null}},c.id),learningSnapshotStatement(owner,id,c,role.id,learning,PRACTICE_VERSION),...(cfg.provider==='hermes'?[hermesSubmissionStatement(owner,id,{instructions:effectiveInstruction,input},c.id)]:[recordStatement(owner,'openai_submission',id,{body:openaiRequest,createdAt:now},c.id)])];
  // No external call occurs until the execution and its exact recovery input commit together.
  const claim=await db.batch(preparedWrites);
  if(!claim[0].meta.changes)throw new ApiError(409,'이 브리프 버전의 작업은 이미 실행됐습니다.');

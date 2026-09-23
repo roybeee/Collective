@@ -73,7 +73,7 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'store_spend',parent:'store',campaignDeletion:'not_campaign_scoped',description:'지점 비용 장부'},
  {kind:'store_task',parent:'store',campaignDeletion:'not_campaign_scoped',description:'지점 조사 후속 과제'},
  {kind:'team_meeting',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'AI 팀 회의'},
- {kind:'usage_model_state',parent:'none',campaignDeletion:'not_campaign_scoped',description:'공급자·실행 종류별 마지막 보고 모델(1행). 모델 변경 경보의 비교 기준'},
+ {kind:'usage_model_state',parent:'none',campaignDeletion:'not_campaign_scoped',description:'공급자별 마지막 보고 모델(1행). 모델 변경 경보의 비교 기준'},
  {kind:'usage_pricing',parent:'none',campaignDeletion:'not_campaign_scoped',description:'사용량 단가'},
  {kind:'viral_analysis',parent:'viral_case',campaignDeletion:'not_campaign_scoped',description:'바이럴 사례 분석'},
  {kind:'viral_case',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'수집한 바이럴 사례'},

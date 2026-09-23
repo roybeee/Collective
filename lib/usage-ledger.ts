@@ -100,14 +100,20 @@ function joinFields(base:UsageJoinKeys,kind:UsageKind,f:UsageContextFields):Usag
 }
 // 조인 키 보조 읽기(resolve용): 없으면(404) undefined. 다른 오류는 usageJoinKeys가 잡아 정적 키만 남긴다.
 export async function recordIfPresent<T>(owner:string,kind:string,id:string){try{return await readRecord<T>(owner,kind,id)}catch(error){if(error instanceof ApiError&&error.status===404)return undefined;throw error}}
-async function usageJoinKeys(owner:string,provider:UsageProvider,observedAt:string,context?:UsageContext):Promise<UsageJoinKeys>{
+// submittedAt은 저장하지 않고 모델 경보의 실행 순서 판정에만 넘긴다.
+async function usageJoinKeys(owner:string,provider:UsageProvider,observedAt:string,context?:UsageContext):Promise<{keys:UsageJoinKeys;submittedAt:string|null}>{
  const base=emptyJoinKeys();
- if(!context)return base;
+ if(!context)return {keys:base,submittedAt:null};
  try{
   const fields={...context,...(context.resolve?await context.resolve():{})},{submittedAt,instructionHash}=await submissionFacts(owner,provider,context.submissionId);
   const elapsed=submittedAt?Date.parse(observedAt)-Date.parse(submittedAt):NaN;
-  return {...joinFields(base,context.kind,fields),promptVersion:instructionHash?`${joinText(fields.skillVersion)??'inline'}:${instructionHash}`:null,durationMs:Number.isFinite(elapsed)&&elapsed>=0?Math.round(elapsed):null};
- }catch{console.error('usage_identity_read_failed');return joinFields(base,context.kind,context)}
+  return {keys:{...joinFields(base,context.kind,fields),promptVersion:instructionHash?`${joinText(fields.skillVersion)??'inline'}:${instructionHash}`:null,durationMs:Number.isFinite(elapsed)&&elapsed>=0?Math.round(elapsed):null},submittedAt};
+ }catch{console.error('usage_identity_read_failed');return {keys:joinFields(base,context.kind,context),submittedAt:null}}
+}
+// 모델을 나중에 알게 된 실행(첫 기록엔 모델 없음)의 제출 시각. 읽기 실패는 경보 순서 판정만 건너뛴다(null).
+async function laterSubmittedAt(owner:string,provider:UsageProvider,context?:UsageContext){
+ if(!context)return null;
+ try{return (await submissionFacts(owner,provider,context.submissionId)).submittedAt}catch{return null}
 }
 export async function recordProviderUsage(owner:string,provider:UsageProvider,providerRunId:string,response:unknown,context?:UsageContext){
  providerName(provider);str(owner,'사용자',500,true);str(providerRunId,'공급자 실행 ID',200,true);
@@ -118,16 +124,16 @@ export async function recordProviderUsage(owner:string,provider:UsageProvider,pr
  const previous=await database().prepare("SELECT json_extract(data,'$.model') AS model FROM records WHERE id=? AND owner=? AND kind='provider_usage'").bind(id,owner).first<{model:string|null}>();
  const pricing=await matchingPricing(owner,provider,text(raw.model));
  const entry=normalizeProviderUsage(provider,providerRunId,raw,pricing)!;
- const keys=previous?{}:await usageJoinKeys(owner,provider,entry.observedAt,context);
+ const first=previous?null:await usageJoinKeys(owner,provider,entry.observedAt,context);
  // Rates and first observation stay fixed; later provider reports may only fill missing usage.
  await database().prepare('INSERT OR IGNORE INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)')
-  .bind(id,owner,'provider_usage','',JSON.stringify({...entry,...keys}),entry.observedAt).run();
+  .bind(id,owner,'provider_usage','',JSON.stringify({...entry,...first?.keys}),entry.observedAt).run();
  await database().prepare("UPDATE records SET data=json_set(data,'$.model',COALESCE(json_extract(data,'$.model'),?),'$.inputTokens',COALESCE(json_extract(data,'$.inputTokens'),?),'$.outputTokens',COALESCE(json_extract(data,'$.outputTokens'),?),'$.totalTokens',COALESCE(json_extract(data,'$.totalTokens'),?)) WHERE id=? AND owner=? AND kind='provider_usage' AND (json_extract(data,'$.model') IS NULL OR ? IS NULL OR json_extract(data,'$.model')=?)")
   .bind(entry.model,entry.inputTokens,entry.outputTokens,entry.totalTokens,`${owner}:provider_usage:${entry.id}`,owner,entry.model,entry.model).run();
  await database().prepare("UPDATE records SET data=json_set(data,'$.costAmount',(json_extract(data,'$.inputTokens')*json_extract(data,'$.inputPricePerMillion')+json_extract(data,'$.outputTokens')*json_extract(data,'$.outputPricePerMillion'))/1000000.0,'$.costStatus','estimated') WHERE id=? AND owner=? AND kind='provider_usage' AND json_extract(data,'$.costAmount') IS NULL AND json_extract(data,'$.inputTokens') IS NOT NULL AND json_extract(data,'$.outputTokens') IS NOT NULL AND json_extract(data,'$.inputPricePerMillion') IS NOT NULL AND json_extract(data,'$.outputPricePerMillion') IS NOT NULL")
   .bind(`${owner}:provider_usage:${entry.id}`,owner).run();
- // 보고 모델 변경 경보: 이 실행에서 모델을 처음 알게 됐을 때만 비교한다(같은 실행의 재조회는 0건).
- if(entry.model&&(!previous||previous.model===null))await observeReportedModelSafely(owner,{provider,kind:context?.kind??null,model:entry.model,providerRunId,observedAt:entry.observedAt});
+ // 보고 모델 변경 경보: 이 실행에서 모델을 처음 알게 됐을 때만 비교한다(같은 실행의 재조회는 0건). 제출 시각은 늦게 끝난 이전 실행을 가르는 데 쓴다.
+ if(entry.model&&(!previous||previous.model===null))await observeReportedModelSafely(owner,{provider,kind:context?.kind??null,model:entry.model,providerRunId,submittedAt:first?first.submittedAt:await laterSubmittedAt(owner,provider,context),observedAt:entry.observedAt});
  return displayUsage(await readRecord<ProviderUsage>(owner,'provider_usage',entry.id));
 }
 export async function saveJobUsageTokens(owner:string,jobId:string,total:unknown){

@@ -55,11 +55,12 @@ function UsageSummary({entries}:{entries:ProviderUsage[]}){
  </div>;
 }
 // 보고 모델 변경 경보(결정 10). 별칭은 '실제 모델 미확인'으로 표시하고 실제 모델로 적지 않는다.
+// 변경은 공급자 단위 1건이다. 실행 종류는 그 변경을 처음 관측한 실행의 참고 정보다.
 function ModelAlarm({changes}:{changes:ModelChange[]}){
  if(!changes.length)return null;
  return <div className="notice mt-4" role="status" aria-label="보고 모델 변경 경보">
   <p className="flex flex-wrap items-center gap-2"><Badge variant="destructive"><TriangleAlert/>모델 변경 {changes.length}건</Badge>공급자가 보고한 모델이 바뀌었습니다. 같은 지시라도 결과·비용이 달라질 수 있으니 최근 작업물을 확인하세요.</p>
-  <ul className="mt-2 space-y-1 text-sm">{changes.slice(0,5).map(change=><li key={change.id}><time dateTime={change.observedAt}>{new Date(change.observedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})}</time> · {providerName(change.provider)} {change.kind?usageKindNames[change.kind]||change.kind:'실행 종류 미확인'}: {modelLabel(change.from)} → {modelLabel(change.to)}</li>)}</ul>
+  <ul className="mt-2 space-y-1 text-sm">{changes.slice(0,5).map(change=><li key={change.id}><time dateTime={change.observedAt}>{new Date(change.observedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})}</time> · {providerName(change.provider)}: {modelLabel(change.from)} → {modelLabel(change.to)}{change.kind?` (처음 관측: ${usageKindNames[change.kind]||change.kind})`:''}</li>)}</ul>
  </div>;
 }
 function roleOptions(entries:ProviderUsage[]){

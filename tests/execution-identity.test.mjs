@@ -89,6 +89,17 @@ await hermes.pollHermes(cfg,roleRun,false,30000,owner);
 check('repeat polls keep one ledger row',usageCount(roleRun)===1);
 check('repeat polls never rewrite the first join keys',plain(usageRow(roleRun)).jobId===roleJob&&usageRow(roleRun).kind==='role'&&usageRow(roleRun).promptVersion===role.promptVersion);
 
+// B-2b) 실행 중 브리프가 바뀌어도(지점 변경·브리프 v2) 역할 조인 키는 제출 때 저장한 브랜드·지점을 쓴다. 검토 재현을 위해 가드를 우회해 캠페인을 직접 바꾼다.
+const storeCampaign={...campaign,id:'id-store-campaign',storeId:store.id,title:'가상점 캠페인'};
+await put('campaign',storeCampaign.id,storeCampaign);
+res=await (await roleExec.executeRole(owner,{action:'start',campaignId:storeCampaign.id,role:'cmo'})).json();
+const storeJob=res.id,storeRun=sql.prepare('SELECT provider_id FROM jobs WHERE id=?').get(storeJob).provider_id;
+check('role contract keeps the brand and store used at submission',JSON.stringify((await server.readRecord(owner,'role_output_contract',storeJob)).usageScope)===JSON.stringify({brandId:brand.id,storeId:store.id}));
+await put('campaign',storeCampaign.id,{...storeCampaign,storeId:'id-store-b',version:2});
+await roleExec.executeRole(owner,{action:'poll',id:storeJob});
+const storeUsage=usageRow(storeRun);
+check('a brief changed mid-run does not mix versions in role join keys',storeUsage.campaignVersion===1&&storeUsage.storeId===store.id&&storeUsage.brandId===brand.id);
+
 // B-3) 팀 회의: start → advance(제출) → advance(조회).
 res=await (await meetingExec.executeMeeting(owner,{action:'start',id:'id-meeting',campaignId:campaign.id,campaignVersion:1,agenda:'합성 안건'})).json();
 await meetingExec.executeMeeting(owner,{action:'advance',id:'id-meeting'});
@@ -146,35 +157,46 @@ check('usage without context has null join keys except the app tree',['jobId','c
 const missing=await ledger.recordProviderUsage(owner,'hermes','run_missing_submission',{status:'failed',usage:{}},{kind:'role',submissionId:'no-such-submission',jobId:'j',role:'cmo'});
 check('missing submission leaves prompt version and duration null',missing.promptVersion===null&&missing.durationMs===null&&missing.jobId==='j'&&missing.campaignId===null);
 
-// C) 보고 모델 변경 경보: 상태 1건과 비교해 바뀔 때만 1건, 같은 값 반복은 0건, 별칭은 '실제 모델 미확인'.
+// C) 보고 모델 변경 경보: 공급자별 상태 1건과 비교해 바뀔 때만 1건, 같은 값 반복은 0건, 별칭은 '실제 모델 미확인'.
+// HERMES 5개 경로는 같은 연결을 쓰므로 기반 모델 1회 변경은 실행 종류 수와 무관하게 1건이다(수용 기준 C: A에서 B로 1건).
 const changes=()=>sql.prepare("SELECT data FROM records WHERE owner=? AND kind='model_change' ORDER BY updated_at,rowid").all(owner).map(r=>JSON.parse(r.data));
-const roleChanges=()=>changes().filter(c=>c.kind==='role'&&c.provider==='hermes');
+const hermesChanges=()=>changes().filter(c=>c.provider==='hermes');
+const modelState=()=>JSON.parse(sql.prepare("SELECT data FROM records WHERE owner=? AND kind='usage_model_state'").get(owner).data);
+// 합성 제출 원문. 저장 시각(updated_at)만 경보 순서 판정에 쓴다. at(n)은 테스트 시작 n초 뒤다(B 단계 실제 제출보다 늦다).
+const at=s=>new Date(Date.parse(now)+s*1000).toISOString();
+const submitted=(id,time)=>{sql.prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').run(`${owner}:hermes_submission:${id}`,owner,'hermes_submission','',JSON.stringify({key:'synthetic',body:'{}'}),time);return id};
+const observe=async(runId,model,kind='role',time=null)=>{queries.length=0;await ledger.recordProviderUsage(owner,'hermes',runId,{status:'completed',model,usage:{total_tokens:1}},{kind,submissionId:time?submitted('sub-'+runId,time):'none'});return [...queries]};
 check('first reports only set the baseline',changes().length===0&&!!sql.prepare("SELECT id FROM records WHERE owner=? AND kind='usage_model_state'").get(owner));
 check('model state is a single record',sql.prepare("SELECT COUNT(*) n FROM records WHERE owner=? AND kind='usage_model_state'").get(owner).n===1);
-const observe=async(runId,model,kind='role')=>{queries.length=0;await ledger.recordProviderUsage(owner,'hermes',runId,{status:'completed',model,usage:{total_tokens:1}},{kind,submissionId:'none'});return [...queries]};
-let q=await observe('run_same','reported-model-a');
-check('same reported model again creates no change',roleChanges().length===0);
+check('all five HERMES kinds share one provider baseline',JSON.stringify(Object.keys(modelState().providers).sort())==='["hermes","openai"]'&&modelState().providers.hermes.actual==='reported-model-a');
+let q=await observe('run_same','reported-model-a','role',at(60));
+check('same reported model again creates no change',hermesChanges().length===0);
 check('alarm reads one state row and never lists provider usage',q.filter(x=>x.op==='all'&&/provider_usage/.test(x.query+x.values.join(' '))).length===0&&q.filter(x=>/usage_model_state/.test(x.query+x.values.join(' '))&&x.op==='first').length===1);
-await observe('run_b','reported-model-b');
-check('a different reported model creates exactly one change',roleChanges().length===1&&roleChanges()[0].from.actual==='reported-model-a'&&roleChanges()[0].to.actual==='reported-model-b'&&roleChanges()[0].providerRunId==='run_b');
+for(const [i,kind] of ['role','meeting','brief','research','learning'].entries())await observe('run_b_'+kind,'reported-model-b',kind,at(120+i));
+check('one base-model change reported by all five HERMES kinds is exactly one change',hermesChanges().length===1&&hermesChanges()[0].from.actual==='reported-model-a'&&hermesChanges()[0].to.actual==='reported-model-b'&&hermesChanges()[0].providerRunId==='run_b_role'&&hermesChanges()[0].kind==='role'&&hermesChanges()[0].key==='hermes');
+// 모델 전환 중 늦게 끝난 이전 실행: 기준값 실행(120초)보다 먼저(90초) 제출돼 이전 모델을 보고해도 역방향 경보·재경보가 없다.
+await observe('run_late_a','reported-model-a','role',at(90));
+await observe('run_after_late','reported-model-b','role',at(130));
+check('a late run submitted before the switch makes no reverse change and no repeat',hermesChanges().length===1&&modelState().providers.hermes.actual==='reported-model-b');
 await observe('run_b2','reported-model-b');
-await ledger.recordProviderUsage(owner,'hermes','run_b',{status:'completed',model:'reported-model-b',usage:{total_tokens:1}},{kind:'role',submissionId:'none'});
-check('repeating the new model or re-polling a run creates no change',roleChanges().length===1);
-await observe('run_alias','hermes-agent');
-const aliasChange=roleChanges()[1];
-check('switching to the gateway alias is a change to an unverified model',roleChanges().length===2&&aliasChange.to.actual===null&&aliasChange.to.reported==='hermes-agent'&&aliasChange.from.actual==='reported-model-b');
-await observe('run_alias2','HERMES-AGENT');
-check('the alias repeated (any case) creates no change',roleChanges().length===2);
-check('alias is never written as an actual model anywhere',changes().every(c=>c.to.actual!=='hermes-agent'&&c.from.actual!=='hermes-agent'&&c.to.actual?.toLowerCase()!=='hermes-agent')&&JSON.parse(sql.prepare("SELECT data FROM records WHERE owner=? AND kind='usage_model_state'").get(owner).data).kinds['hermes:role'].actual===null);
+await ledger.recordProviderUsage(owner,'hermes','run_b_role',{status:'completed',model:'reported-model-b',usage:{total_tokens:1}},{kind:'role',submissionId:'none'});
+check('repeating the new model or re-polling a run creates no change',hermesChanges().length===1);
+await observe('run_alias','hermes-agent','meeting',at(180));
+const aliasChange=hermesChanges()[1];
+check('switching to the gateway alias is a change to an unverified model',hermesChanges().length===2&&aliasChange.to.actual===null&&aliasChange.to.reported==='hermes-agent'&&aliasChange.from.actual==='reported-model-b');
+await observe('run_alias2','HERMES-AGENT','brief',at(181));
+check('the alias repeated (any case, any kind) creates no change',hermesChanges().length===2);
+check('alias is never written as an actual model anywhere',changes().every(c=>c.to.actual!=='hermes-agent'&&c.from.actual!=='hermes-agent'&&c.to.actual?.toLowerCase()!=='hermes-agent')&&modelState().providers.hermes.actual===null);
 check('alias usage stays unpriced',usageRow('run_alias').costStatus==='unpriced'&&usageRow('run_alias').costAmount===null);
 await assert.rejects(()=>ledger.saveUsagePricing(owner,{provider:'hermes',model:'hermes-agent',priceVersion:'v',currency:'USD',inputPerMillion:1,outputPerMillion:1,source:'https://provider.example.com/p'}),e=>e.status===400);passed.push('pricing the alias is still rejected');
-await observe('run_meeting_b','reported-model-b','meeting');
-check('each kind keeps its own last model',changes().filter(c=>c.kind==='meeting').length===1&&changes().find(c=>c.kind==='meeting').from.actual==='reported-model-a'&&roleChanges().length===2);
+await observe('run_back_b','reported-model-b','research',at(240));
+check('a run submitted after the baseline that reports an earlier model is a real change',hermesChanges().length===3&&hermesChanges()[2].from.actual===null&&hermesChanges()[2].to.actual==='reported-model-b');
 const beforeNull=changes().length;
-await ledger.recordProviderUsage(owner,'hermes','run_nomodel',{status:'failed',usage:{}},{kind:'role',submissionId:'none'});
+await ledger.recordProviderUsage(owner,'hermes','run_nomodel',{status:'failed',usage:{}},{kind:'role',submissionId:submitted('sub-run_nomodel',at(300))});
 check('a run that reports no model is not a change',changes().length===beforeNull);
-await ledger.recordProviderUsage(owner,'hermes','run_nomodel',{status:'failed',model:'reported-model-c',usage:{}},{kind:'role',submissionId:'none'});
-check('a model reported later for the same run is compared once',roleChanges().length===3&&roleChanges()[2].to.actual==='reported-model-c');
+await ledger.recordProviderUsage(owner,'hermes','run_nomodel',{status:'failed',model:'reported-model-c',usage:{}},{kind:'role',submissionId:'sub-run_nomodel'});
+check('a model reported later for the same run is compared once',hermesChanges().length===4&&hermesChanges()[3].to.actual==='reported-model-c');
+check('a later-reported model keeps its run submission time for ordering',modelState().providers.hermes.submittedAt===at(300));
 const recent=plain(await alarm.recentModelChanges(owner,2));
 check('recent changes are newest first and limited',recent.length===2&&recent[0].to.actual==='reported-model-c');
 
@@ -190,10 +212,11 @@ check('a changed brief marks older campaign runs superseded',byRun(meetingStep.p
 check('current and campaign-less runs are not superseded',byRun(openaiRun).superseded===null&&byRun(researchStep.providerId).superseded===null);
 check('campaign titles are returned for the campaign column',usage.campaigns.some(c=>c.id===campaign.id&&c.title===campaign.title));
 check('recent model changes are in the usage response',Array.isArray(usage.modelChanges)&&usage.modelChanges.length===changes().length&&usage.modelChanges[0].to.actual==='reported-model-c');
-check('current reported models per kind are in the usage response',usage.reportedModels.some(m=>m.key==='hermes:role'&&m.actual==='reported-model-c'));
+check('current reported model per provider is in the usage response',usage.reportedModels.some(m=>m.key==='hermes'&&m.actual==='reported-model-c'&&m.kind==='role'));
 const filtered=summary.filterUsage(usage.entries,{campaignId:campaign.id,kind:'role',role:'cmo'});
 check('filter by campaign and role keeps only matching runs',filtered.length===1&&filtered[0].providerRunId===roleRun);
-check('filter by kind alone',summary.filterUsage(usage.entries,{kind:'learning'}).length===2);
+// 학습 실행 2회(조사·규칙 초안) + 경보 검사(C)의 합성 학습 실행 1회.
+check('filter by kind alone',summary.filterUsage(usage.entries,{kind:'learning'}).length===3);
 const panel=readFileSync('app/usage-panel.tsx','utf8');
 check('usage panel shows campaign and role columns, filters, superseded and the model alarm badge',/캠페인 · 역할/.test(panel)&&/filterUsage/.test(panel)&&/superseded/.test(panel)&&/modelChanges/.test(panel)&&/모델 변경/.test(panel));
 
