@@ -1,6 +1,17 @@
 # COLLECTIVE 현재 상태
 
-마지막 갱신: 2026-09-23 06:34 UTC (Codex)
+마지막 갱신: 2026-09-23 07:21 UTC (Codex)
+
+## 브랜드 사실·제작·발행·주문 연결 — 개발 검증
+
+- 기준 main `1ecd72e`의 이메일 로그인 변경을 보존해 통합했다. [기능·운영 경계](EXECUTION-LOOP.ko.md), [승인 범위](EXECUTION-LOOP-PLAN.ko.md).
+- 사실 버전/출처/유효기한, 실제 PNG 제작·저장, 계정·소재·예정 비용 승인, Buffer Instagram 어댑터, 주문의 캠페인·소재 귀속을 구현했다.
+- 새 통합 회귀: 실행49, 이메일 권한10, 사실31, 주문귀속22 passed. real SQLite / mocked Buffer·HTTP·R2.
+- 브라우저: 기본 Playwright12 passed(real Chromium Canvas·로컬 D1/R2, mocked 로그인 헤더), 이메일 인증1 passed(real 로컬 쿠키 세션).
+- TypeScript passed; lint gate passed(107 errors/108 기준선, 44 warnings/44 기준선). 기존 lint 오류를 0으로 보고하지 않는다.
+- 코드·보안 리뷰의 게시 결과 유실, 예약 캠페인 삭제, 잘못된 PNG, 승인 계정 경합, 업로드/요청 한도 문제를 보완했다. 수정 한도에서도 사실 확인 철회가 가능하다.
+- 실제 Buffer 계정 검증·외부 호스팅·SNS 게시: not_run(연결 계정·호스트 미제공). 실제 광고비/모델 비용의 하드캡, 자동 CRM, GEO 모니터링은 후속 범위다. 커버리지 비율: not_run.
+- 소스 병합/게시/runtime-verified는 이 구현 테스트 결과와 별도로 후속 배포 기록에 남긴다.
 
 ## 이메일 로그인 — 구현 및 로컬 검증, 운영 미적용
 
