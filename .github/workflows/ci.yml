@@ -79,6 +79,9 @@ jobs:
       - name: E2E smoke
         run: node node_modules/@playwright/test/cli.js test
 
+      - name: Email authentication smoke (real local workerd)
+        run: node node_modules/@playwright/test/cli.js test -c playwright.auth.config.ts
+
       - name: Upload screenshots and traces
         if: always()
         uses: actions/upload-artifact@v4

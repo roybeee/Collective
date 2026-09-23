@@ -60,10 +60,10 @@ await test('oversized unknown-length request cancels before draining',async()=>{
  await assert.rejects(server.body(new Request('https://agency.test/api/action',{method:'POST',body:stream,duplex:'half'})),e=>e.status===413);
  assert.equal(cancelled,true);assert.equal(pulls,3);
 });
-await test('production identity rejects missing header',async()=>assert.throws(()=>server.identity(new Request('https://agency.test')),e=>e.status===401));
-await test('production identity bounds header length',async()=>assert.throws(()=>server.identity(new Request('https://agency.test',{headers:{'oai-authenticated-user-id':'a'.repeat(201)}})),e=>e.status===401));
-await test('production identity rejects control characters',async()=>assert.throws(()=>server.identity(new Request('https://agency.test',{headers:{'oai-authenticated-user-id':'owner\tother'}})),e=>e.status===401));
-await test('trusted owner header is preserved',async()=>assert.equal(server.identity(new Request('https://agency.test',{headers:{'oai-authenticated-user-id':'owner-123'}})),'owner-123'));
+await test('production identity rejects missing header',async()=>assert.rejects(()=>server.identity(new Request('https://agency.test')),e=>e.status===401));
+await test('production identity bounds header length',async()=>assert.rejects(()=>server.identity(new Request('https://agency.test',{headers:{'oai-authenticated-user-id':'a'.repeat(201)}})),e=>e.status===401));
+await test('production identity rejects control characters',async()=>assert.rejects(()=>server.identity(new Request('https://agency.test',{headers:{'oai-authenticated-user-id':'owner\tother'}})),e=>e.status===401));
+await test('trusted owner header is preserved',async()=>assert.equal(await server.identity(new Request('https://agency.test',{headers:{'oai-authenticated-user-id':'owner-123'}})),'owner-123'));
 
 await test('bounded response accepts JSON exactly at byte limit',async()=>{
  const limits=await load('lib/http-limits.ts');const body='{"value":"가"}';

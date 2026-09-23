@@ -9,6 +9,7 @@ const baseURL = `http://127.0.0.1:${port}`;
 
 export default defineConfig({
   testDir: 'e2e',
+  testIgnore: '**/email-auth.spec.ts',
   outputDir: 'e2e/artifacts/test-results',
   // 한 서버·한 로컬 D1을 공유하므로 순서대로 실행한다.
   workers: 1,

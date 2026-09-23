@@ -8,7 +8,7 @@ import {publicResearch,researchActive,sourceSummary,type ArchiveSource,type Bran
 import type {Brand,Campaign,Artifact} from '@/lib/agency';
 import {emptyPlan} from '@/lib/brief';
 export async function GET(req:Request){try{
- const owner=identity(req),p=new URL(req.url).searchParams,brandId=p.get('brandId'),storeId=p.get('storeId');
+ const owner=await identity(req),p=new URL(req.url).searchParams,brandId=p.get('brandId'),storeId=p.get('storeId');
  if(brandId)await readRecord<Brand>(owner,'brand',brandId);
  const stores=await listRecords<Store>(owner,'store',brandId||undefined);
  if(!storeId)return json({stores,channels:[],experiments:[],measurements:[],reports:[],tasks:[],research:[],sources:[]});
@@ -18,7 +18,7 @@ export async function GET(req:Request){try{
  return json({stores,channels,experiments,measurements,reports,tasks,sources,research:research.filter(r=>r.storeId===storeId).map(publicResearch)});
 }catch(e){return failure(e)}}
 export async function POST(req:Request){let lock='',owner='';try{
- owner=identity(req);secureMutation(req);const b=await body(req);lock=await acquireLock(owner);const db=database();
+ owner=await identity(req);secureMutation(req);const b=await body(req);lock=await acquireLock(owner);const db=database();
  if(b.action==='save_store'){
   const brandId=str(b.brandId,'브랜드',100,true);await readRecord<Brand>(owner,'brand',brandId);
   const old=b.id?await readRecord<Store>(owner,'store',str(b.id,'지점',100,true)):undefined;

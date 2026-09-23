@@ -56,7 +56,7 @@ async function finish(owner:string,m:Meeting){
 }
 
 export async function GET(req:Request){try{
- const owner=identity(req),id=str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true);await readRecord<Campaign>(owner,'campaign',id);
+ const owner=await identity(req),id=str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true);await readRecord<Campaign>(owner,'campaign',id);
  return json({meetings:(await listRecords<Meeting>(owner,'team_meeting',id)).map(publicMeeting)});
 }catch(e){return failure(e)}}
 

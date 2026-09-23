@@ -1,3 +1,20 @@
+# COLLECTIVE 이메일 로그인 — 사용자 승인 계획
+
+사용자: “2번으로 진행하자.” (GPT 대신 이메일 로그인·자동 로그인 유지).
+기준 origin/main d96a6cae30076dd429ccaae21074216d33075264. branch feat/email-auth.
+
+1. 초대 전용 이메일+비밀번호 인증, native scrypt, D1 계정·세션·초대·로그인 제한.
+2. 기존 데이터 owner 불변. 계정의 workspace_owner로 기존 자료 연결. member/admin 권한 분리.
+3. 30일 HttpOnly·Secure 세션, 로그아웃·계정해제·재설정 즉시 무효화, GPT header 위조 거부.
+4. 관리자 최초 설정은 이메일+기존owner+일회용고엔트로피 bootstrap으로 보호. 비밀번호는 앱에서 직접 입력.
+5. 로그인·초대/재설정·관리자 계정관리 UI. 메일 전송은 없음, 관리자가 링크를 직접 공유.
+6. 실제 로컬 Workers/D1·브라우저 로그인/유지/업다운로드/권한거부 검증과 코드·보안·DB 리뷰.
+7. 검증 후 자체 로그인 화면 배포. Sites GPT gate 해제(로그인 화면 공개)는 기존 자료 권한보호 확인 후 구체적 운영 전환 승인 단계로 분리.
+
+담당: backend=auth DB/API/session/password; root=기존 identity API 연동·권한제한·배포·검증; frontend=로그인 및 계정관리 UI.
+
+## 이전 계획
+
 # ODA 실사용 오류 보완 계획
 
 기준: origin/main edd7219ad8c044cb8d0616e4170f81a7901903f6. 브랜치: fix/oda-execution-quality.

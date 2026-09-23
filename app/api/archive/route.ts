@@ -5,11 +5,11 @@ import {ApiError,identity,secureMutation,body,str,json,failure,database,readReco
 import type {Brand} from '@/lib/agency';
 import {sourceSummary,publicResearch,type ArchiveSource,type ChannelObservation,type Diagnostic,type BrandResearch} from '@/lib/archive';
 import {archiveState,stateWrite,assertArchiveIdle,makeSource,makeObservation,intake} from '@/lib/archive-server';
-export async function GET(req:Request){try{const owner=identity(req),u=new URL(req.url),brandId=str(u.searchParams.get('brandId'),'브랜드',100,true);await readRecord<Brand>(owner,'brand',brandId);
+export async function GET(req:Request){try{const owner=await identity(req),u=new URL(req.url),brandId=str(u.searchParams.get('brandId'),'브랜드',100,true);await readRecord<Brand>(owner,'brand',brandId);
  if(u.searchParams.get('sourceId')){const s=await readRecord<ArchiveSource>(owner,'brand_source',str(u.searchParams.get('sourceId'),'자료',100,true));if(s.brandId!==brandId)throw new ApiError(404,'자료를 찾을 수 없습니다.');const{objectKey:_,...data}=s;return json(data)}
  return json({state:await archiveState(owner,brandId),sources:(await listRecords<ArchiveSource>(owner,'brand_source',brandId)).map(sourceSummary),observations:await listRecords<ChannelObservation>(owner,'brand_observation',brandId),diagnostics:await listRecords<Diagnostic>(owner,'brand_diagnostic',brandId),research:(await listRecords<BrandResearch>(owner,'brand_research',brandId)).map(publicResearch),storageReady:!!runtime.BUCKET});
 }catch(e){return failure(e)}}
-export async function POST(req:Request){let owner='',lock='';try{owner=identity(req);secureMutation(req);const b=await body(req);lock=await acquireLock(owner);
+export async function POST(req:Request){let owner='',lock='';try{owner=await identity(req);secureMutation(req);const b=await body(req);lock=await acquireLock(owner);
  if(b.action==='create_brand'){
   const id=str(b.id,'브랜드 번호',100,true);if(!/^[a-zA-Z0-9_-]{5,100}$/.test(id))throw new ApiError(400,'브랜드 번호를 확인하세요.');const existing=(await listRecords<Brand>(owner,'brand')).find(x=>x.id===id);if(existing)return json({id:existing.id});
   const name=str(b.data?.name,'브랜드 이름',100,true),brand:Brand={id,name,short:name.slice(0,3).toUpperCase(),category:str(b.data?.category??'','업종',100,true),description:str(b.data?.description??'','소개',5000),audience:'',tone:'',constraints:'',knowledge:'',color:'#273953',bg:'#e5e9ee',intake:intake(b.data?.intake)};
