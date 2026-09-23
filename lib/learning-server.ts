@@ -4,7 +4,10 @@ import {channelHosts,storeChannelName} from './channels';
 import {summarizeResult,planShortfall,decisionConflict} from './viral-stats';
 import type {StoreExperiment,StoreMeasurement,StoreReview} from './store-marketing';
 import type {Brand,Campaign} from './agency';
+import type {SourceCampaignDeleted} from './record-kinds';
 export const RULE_DAYS=30;
+// 결정 7(b): 원 캠페인이 삭제된 바이럴 규칙은 종료 상태로만 남는다. 재검증·연장·상태 변경 대신 새 실험을 안내한다.
+function assertSourceCampaign(r:LearningRule&{sourceCampaignDeleted?:SourceCampaignDeleted}){if(r.sourceCampaignDeleted)throw new ApiError(409,'원 캠페인이 삭제되어 이 규칙은 재검증·연장·상태 변경을 할 수 없습니다. 캠페인을 선택해 새 실험을 만들어 주세요.')}
 const expiry=(from=Date.now())=>new Date(from+RULE_DAYS*86400000).toISOString();
 
 export function publicUrl(value:unknown,label='출처 URL'){
@@ -121,10 +124,11 @@ export async function learningAction(owner:string,b:any,by?:EventActor){
   await database().batch([recordStatement(owner,'learning_rule',id,rule,e.brandId),eventStatement(owner,e.campaignId,`「${e.title}」을 ${positive?'시험 적용 규칙':'실패에서 배운 주의사항'}으로 채택했습니다. 30일 후 재검토합니다.`,by)]);return {id};
  }
  if(b.action==='pause_rule'){
-  const r=await readRecord<LearningRule>(owner,'learning_rule',str(b.id,'학습 규칙',200,true));if(r.version!==b.version||r.status!=='active')throw new ApiError(409,'규칙 상태가 변경됐습니다.');await recordStatement(owner,'learning_rule',r.id,{...r,status:'paused',version:r.version+1,updatedAt:stamp()},r.brandId).run();return {id:r.id};
+  const r=await readRecord<LearningRule>(owner,'learning_rule',str(b.id,'학습 규칙',200,true));assertSourceCampaign(r);if(r.version!==b.version||r.status!=='active')throw new ApiError(409,'규칙 상태가 변경됐습니다.');await recordStatement(owner,'learning_rule',r.id,{...r,status:'paused',version:r.version+1,updatedAt:stamp()},r.brandId).run();return {id:r.id};
  }
  if(['retire_rule','renew_rule','retest_rule'].includes(b.action)){
   const r=await readRecord<LearningRule>(owner,'learning_rule',str(b.id,'학습 규칙',200,true));
+  assertSourceCampaign(r);
   if(r.version!==b.version)throw new ApiError(409,'규칙 상태가 변경됐습니다.');
   if(r.status==='retired')throw new ApiError(409,'이미 종료된 규칙입니다.');
   if(b.action==='retire_rule'){

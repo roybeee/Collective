@@ -4,7 +4,7 @@
 
 ## 역할별 권한 (이메일 모드)
 
-마지막 갱신: 2026-09-23 (PR 2: 아카이브 일괄 검토·캠페인 상시 지시 행 추가)
+마지막 갱신: 2026-09-24 KST (F4a: 캠페인 삭제 영향 조회 행·결정 7 규칙 보존 추가)
 
 같은 워크스페이스의 계정은 대표(owner)·관리자(admin)·직원(member) 중 하나다. 대표는 DB에 따로 저장하지 않고 같은 워크스페이스에서 가장 먼저 만든 관리자 계정으로 계산한다(`lib/auth-session.ts` `roleSql`). 판정은 서버 API가 하며, 화면에서 버튼을 숨기는 것은 보조 수단이다. 직원이 관리자 전용 작업을 요청하면 403이다. legacy 모드(로컬 개발·E2E)의 헤더 사용자는 모든 권한을 가진다.
 
@@ -17,6 +17,7 @@
 | 작업물 최종 승인 | `/api/action` `review_artifact` (`approved`) | 허용 | 허용 | 403 |
 | 성과 기록 | `/api/action` `save_metric` | 허용 | 허용 | 허용 |
 | 캠페인 삭제 | `/api/action` `delete_campaign` | 허용 | 허용 | 403 |
+| 캠페인 삭제 영향 조회(kind별 삭제·보존 건수) | `/api/campaigns/[id]/deletion` GET | 허용 | 허용 | 403 |
 | 브랜드 지식 수정 | `/api/action` `save_brand` | 허용 | 허용 | 403 |
 | 브랜드 사실 후보 제안·후보 수정 | `/api/brand-facts` `save_fact` (`candidate`) | 허용 | 허용 | 허용 |
 | 브랜드 사실 확정·거절, 확정·거절된 사실 수정 | `/api/brand-facts` `save_fact` | 허용 | 허용 | 403 |
@@ -34,7 +35,7 @@
 
 계정 초대·역할 변경·세션 종료 권한은 [EMAIL-AUTH.ko.md](EMAIL-AUTH.ko.md)를 따른다. 표에 없는 업무 API(아카이브의 위 두 줄 밖 작업·조사·지점·주문·학습 등)는 같은 워크스페이스의 로그인 사용자면 역할과 관계없이 허용한다. 확정 자료와 채택 진단은 AI 제작 맥락에 '확인된 근거'로 들어가므로(`lib/archive-server.ts` `brandArchiveContext`) 브랜드 사실과 같은 등급으로 관리자 전용이다. 상시 지시는 직원도 남길 수 있으므로 '확인된 근거'가 아니다. 저장할 때 작성자 역할(`createdBy.role`)을 남기고, AI 입력에는 `{text, author: 관리자|직원}`으로 전달하며, 역할·회의·브리프 지시문은 상시 지시가 사실을 확정하거나 거절 사실(`evidence.facts.prohibited`)·광고 표현 규칙을 무효화하지 못한다고 명시한다(`lib/campaign-policy.ts` `directivePolicy`). 앱 화면은 직원에게 관리자 전용 버튼을 그리지 않고 '관리자에게 요청하세요'를 안내한다(`useCanManage`). 사이드바 프로필은 로그인 계정을 보여 주지만 상단 계정 바(이메일·팀 계정 관리·비밀번호 변경·로그아웃)와 하나로 합치는 일은 이번 범위에서 뺐다.
 
-행위자 기록: `/api/action`이 남기는 캠페인 이력 이벤트에는 요청한 사용자(`id`, `email`)를 함께 저장한다. 브랜드 사실을 확정·거절하면 `confirmedBy`(`id`, `email`)와 `confirmedAt`을 저장하고 사실 화면에 표시한다. 이 필드가 생기기 전에 저장된 사실에는 값이 없으며, 없는 사실도 기존처럼 제작 맥락에 쓰인다. 캠페인 삭제 기록(tombstone)에는 `deletedBy`(`id`, `email`)를 남긴다. 서버 설치 파일 발급·작업자 연결 해제는 같은 batch에서 `records`(kind `worker_event`)에 작업·행위자·시각을 남기고, 설정 화면은 대표·관리자에게 마지막 발급자와 해제자를 보여 준다. 학습·지점·AI 실행·회의 요청이 남기는 이벤트의 행위자 범위는 [EMAIL-AUTH.ko.md](EMAIL-AUTH.ko.md)의 '업무 이벤트'를 따른다.
+행위자 기록: `/api/action`이 남기는 캠페인 이력 이벤트에는 요청한 사용자(`id`, `email`)를 함께 저장한다. 브랜드 사실을 확정·거절하면 `confirmedBy`(`id`, `email`)와 `confirmedAt`을 저장하고 사실 화면에 표시한다. 이 필드가 생기기 전에 저장된 사실에는 값이 없으며, 없는 사실도 기존처럼 제작 맥락에 쓰인다. 캠페인 삭제 기록(tombstone)에는 `deletedBy`(`id`, `email`)를 남긴다. 대표 결정 7(b)에 따라 캠페인 삭제는 바이럴 출처 학습 규칙을 지우지 않고 `status: retired`와 `sourceCampaignDeleted`(`at`, `by`)로 남기며, 원천 바이럴 실험은 원문(대조안·실험안·조건·메모·수치 출처)을 뺀 요약(kind `viral_experiment_summary`)만 동결한다. 남는 규칙에서도 원천 실험에서 복사된 원문(적용 범위 `scope`, `sourceAssessment`의 유지 조건·결과 메모·판정 사유)은 비우고, 규칙 제목·문구(`guidance`)·연장 기록·수치 판정만 둔다(`lib/record-kinds.ts` `retireRuleOfDeletedCampaign`). 다른 캠페인이 실행 시점에 받은 학습 규칙 사본(kind `learning_snapshot`)은 그 캠페인의 기록이라 원문을 포함한 채 남는다. 점포 출처 규칙·점포 실험은 그대로 둔다. kind별 삭제 정책은 `lib/record-kinds.ts`가 정본이다. 서버 설치 파일 발급·작업자 연결 해제는 같은 batch에서 `records`(kind `worker_event`)에 작업·행위자·시각을 남기고, 설정 화면은 대표·관리자에게 마지막 발급자와 해제자를 보여 준다. 학습·지점·AI 실행·회의 요청이 남기는 이벤트의 행위자 범위는 [EMAIL-AUTH.ko.md](EMAIL-AUTH.ko.md)의 '업무 이벤트'를 따른다.
 
 ## 설치 파일 배포 권한
 
