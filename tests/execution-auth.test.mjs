@@ -13,12 +13,16 @@ for(const [id,role,token] of [['admin','admin','a'.repeat(64)],['member','member
 }
 const request=(token,data,origin='https://app.test')=>new Request('https://app.test/api/execution'+(data?'':'?campaignId=c'),{method:data?'POST':'GET',headers:{cookie:'__Host-collective_session='+token,'oai-authenticated-user-id':'forged-workspace',origin,'content-type':'application/json'},...(data?{body:JSON.stringify({campaignId:'c',...data})}:{})});
 let passed=0;
-for(const action of ['save_limits','connect_buffer','approve','execute','cancel']){assert.equal((await route.POST(request('b'.repeat(64),{action}))).status,403);passed++}
+for(const action of ['save_limits','connect_buffer','disconnect_buffer','buffer_channels','approve','execute','cancel','reconfirm','resolve_uncertain']){assert.equal((await route.POST(request('b'.repeat(64),{action}))).status,403,action);passed++}
 assert.equal((await route.GET(request('b'.repeat(64)))).status,200);passed++;
 assert.equal((await route.GET(request('c'.repeat(64)))).status,401);passed++;
 assert.equal((await route.POST(request('a'.repeat(64),{action:'save_limits',maxPublications:1,maxPlannedCostKRW:0}))).status,200);passed++;
 assert.equal((await route.POST(request('a'.repeat(64),{action:'save_limits',version:1,maxPublications:1,maxPlannedCostKRW:0},'https://evil.test'))).status,403);passed++;
 assert.equal((await factRoute.GET(new Request('https://app.test/api/brand-facts?brandId=oda',{headers:{cookie:'__Host-collective_session='+'b'.repeat(64)}}))).status,200);passed++;
+// 연결 해제는 관리자 실제 계정을 감사 이벤트에 남긴다(자격증명은 외부 호출 없이 직접 심는다).
+await server.recordStatement('workspace','publisher_credential','oda',{secret:await server.encrypt('test-only-token'),channelId:'channel-1',account:'ODA',version:1},'oda').run();
+assert.equal((await route.POST(request('a'.repeat(64),{action:'disconnect_buffer',version:1}))).status,200);passed++;
+assert.ok(rt.sql.prepare("SELECT data FROM records WHERE owner='workspace' AND kind='event'").all().map(r=>JSON.parse(r.data)).some(e=>e.message.includes('Buffer 연결 해제')&&e.actor?.email==='admin@test.invalid'));passed++;
 
 // 직원 권한 범위: 작성·수정 요청·후보 제안은 허용, 삭제·브랜드 지식·최종 승인·사실 확정/거절은 관리자 전용.
 const action=await rt.load('app/api/action/route.ts'),workspaceRoute=await rt.load('app/api/workspace/route.ts');

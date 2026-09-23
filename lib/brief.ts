@@ -1,4 +1,5 @@
-import type {Campaign} from './agency';
+import {campaignBudget,type Campaign} from './agency';
+import type {Store} from './store-marketing';
 import {factDiscipline,claimPolicy,directivePolicy,measurementDiscipline} from './campaign-policy';
 
 export const planFields = {
@@ -21,10 +22,10 @@ export type BriefSuggestion={field:BriefKey;value:string;reason:string};
 // 사용자가 브리프에 직접 적은 사실. 확인 1회로 사실 원장의 '확인 후보'로만 등록되며 확정은 관리자가 한다.
 export type FactCandidate={key:string;value:string;source:'사용자 브리프'};
 export type BriefResult={summary:string;suggestions:BriefSuggestion[];questions:{field:QuestionKey;question:string;why:string}[];assumptions:string[];contextUsed:string[];factCandidates?:FactCandidate[]};
-export type BriefInput={storeId?:string;brandId:string;title:string;goal:string;audience:string;channels:string;stores:string;products:string;budget:number;startDate:string;endDate:string;constraints:string;sources:string;plan:CampaignPlan};
+export type BriefInput={storeId?:string;brandId:string;title:string;goal:string;audience:string;channels:string;stores:string;products:string;budget:number|null;startDate:string;endDate:string;constraints:string;sources:string;plan:CampaignPlan};
 export type BriefDraft={id:string;status:'starting'|'queued'|'in_progress'|'uncertain'|'completed'|'failed'|'cancelled';input:BriefInput;campaignId?:string;campaignVersion?:number;result?:BriefResult;error?:string;createdAt:string;updatedAt:string;model:string;savedCampaignId?:string};
 export type DraftMeta={id:string;generatedAt:string;model:string;values:Partial<Record<BriefKey,string>>;questions:BriefResult['questions'];assumptions:string[];contextUsed:string[]};
-export function valueOf(c:Partial<BriefInput>|Campaign,k:QuestionKey):string{const v=k in planFields?c.plan?.[k as PlanKey]:(c as unknown as Record<string,unknown>)[k];return v?String(v):''}
+export function valueOf(c:Partial<BriefInput>|Campaign,k:QuestionKey):string{const v=k in planFields?c.plan?.[k as PlanKey]:(c as unknown as Record<string,unknown>)[k];return v===undefined||v===null?'':String(v)}
 export function applySuggestions<T extends BriefInput>(input:T,suggestions:BriefSuggestion[],allowOverwrite=false){
  const out={...input,plan:{...emptyPlan(),...input.plan}};
  for(const s of suggestions){if(protectedFields.has(s.field)||!(s.field in briefFields))continue;if(!allowOverwrite&&valueOf(out,s.field).trim())continue;if(s.field in planFields)out.plan[s.field as PlanKey]=s.value;else (out as unknown as Record<string,unknown>)[s.field]=s.value}
@@ -47,10 +48,34 @@ export function parseBrief(text:string,input?:Partial<BriefInput>):BriefResult{
  for(const f of Array.isArray(x.factCandidates)?x.factCandidates:[]){const key=clean(f?.key,120),value=clean(f?.value,1000),norm=key.normalize('NFKC').toLowerCase();if(!key||!value||keys.has(norm)||factCandidates.length>=10)continue;if(f.source!==undefined&&clean(f.source)!=='사용자 브리프'||!written||!written.includes(normalizeFact(value)))continue;keys.add(norm);factCandidates.push({key,value,source:'사용자 브리프'})}
  return {summary:clean(x.summary,1000),suggestions,questions:x.questions.filter((q:any)=>q&&typeof q.field==='string'&&Object.hasOwn(questionFields,q.field)&&clean(q.question)).slice(0,3).map((q:any)=>({field:q.field,question:clean(q.question,700),why:clean(q.why,500)})),assumptions:x.assumptions.filter((s:any)=>typeof s==='string').slice(0,10).map((s:string)=>clean(s,1000)),contextUsed:Array.isArray(x.contextUsed)?x.contextUsed.filter((s:any)=>typeof s==='string').slice(0,10).map((s:string)=>clean(s,500)):[],factCandidates};
 }
+// 예산은 숫자면 확정이다(0=무예산). 저장된 캠페인은 campaignBudget으로 정규화한 값을 넘긴다.
 export function readiness(c:Partial<BriefInput>|Campaign){
  const meaningful=(s:string)=>!!s.trim()&&!/^(미확인|미정|확인 필요|자료 필요|TBD|unknown|없음)[.\s]*$/i.test(s.trim());
- const groups=[{title:'전략 설계',keys:['audience','barrier','message','journey'] as BriefKey[]},{title:'측정 준비',keys:['kpi','baseline','target','tracking','experiment','decision'] as BriefKey[]},{title:'운영 준비',keys:['products','operations','owner','schedule'] as BriefKey[]}];
- return groups.map(g=>({...g,missing:g.keys.filter(k=>!meaningful(valueOf(c,k)))}));
+ const groups=[{title:'전략 설계',keys:['audience','barrier','message','journey'] as QuestionKey[]},{title:'측정 준비',keys:['kpi','baseline','target','tracking','experiment','decision'] as QuestionKey[]},{title:'운영 준비',keys:['products','operations','owner','schedule','budget','startDate','endDate'] as QuestionKey[]}];
+ return groups.map(g=>({...g,missing:g.keys.filter(k=>k==='budget'?typeof c.budget!=='number':!meaningful(valueOf(c,k)))}));
+}
+// 목록 카드의 '실행 준비 미완' 표시: 예산 확정·시작일·종료일 중 빠진 항목. 저장된 캠페인의 확정 표시 없는 0은 미확정이다.
+export function executionGaps(c:Pick<Campaign,'budget'|'budgetConfirmedAt'|'startDate'|'endDate'>){return (['budget','startDate','endDate'] as const).filter(k=>k==='budget'?campaignBudget(c)===null:!c[k])}
+export function executionGapLabels(c:Pick<Campaign,'budget'|'budgetConfirmedAt'|'startDate'|'endDate'>){return executionGaps(c).map(k=>questionFields[k]).join(', ')}
+// 캠페인 텍스트(목표·대상 매장)에 적힌 건물 동·호수가 연결 지점 주소에 없으면 충돌이다.
+// 동네 이름(휘경동·이문2동), 도로명(외대역동로), 지하철 노선(2호선), 지점 번호(2호점)는 동·호수로 보지 않는다.
+const unitPatterns=[/(?<![가-힣A-Za-z0-9])([A-Za-z]|\d{1,4}|[가나다라마바사])\s?동(?![가-힣])/g,/(?<!\d)(\d{1,5})\s?호(?![선점차기])/g];
+const addressUnits=(s:string)=>{const t=s.normalize('NFKC').toUpperCase();return unitPatterns.flatMap((p,i)=>[...t.matchAll(p)].map(m=>m[1]+(i?'호':'동')))};
+export function addressConflicts(text:string,address:string){const known=new Set(addressUnits(address));return [...new Set(addressUnits(text))].filter(u=>!known.has(u))}
+// 점포 캠페인이 지점에서 복사하는 브리프 필드. 캠페인 생성(create_campaign)과 지점 수정 동기화가 같은 규칙을 쓴다.
+export const storeCopyFields={goal:'목표',audience:briefFields.audience,stores:briefFields.stores,products:briefFields.products,constraints:briefFields.constraints,behavior:planFields.behavior,operations:planFields.operations};
+export type StoreCopyKey=keyof typeof storeCopyFields;
+export function storeBriefCopy(s:Pick<Store,'name'|'address'|'goal'|'customer'|'menu'|'hours'|'access'|'capacity'|'economics'>):Record<StoreCopyKey,string>{return {goal:s.goal,audience:s.customer,stores:s.name+' · '+s.address,products:s.menu,constraints:s.economics,behavior:s.goal,operations:[s.menu,s.hours,s.access,s.capacity,s.economics].filter(Boolean).join('\n')}}
+// 지점 수정 전후의 복사값을 비교한다. 복사값이 바뀐 필드 중 캠페인 값이 이전 복사값과 같으면(사용자가 손대지 않음) 갱신하고, 다르면 충돌로 남긴다.
+const inPlan=(k:StoreCopyKey):k is 'behavior'|'operations'=>k==='behavior'||k==='operations';
+export function syncStoreCopy(c:Campaign,before:Store,after:Store){
+ const was=storeBriefCopy(before),now=storeBriefCopy(after),updated:StoreCopyKey[]=[],conflicts:StoreCopyKey[]=[];let plan={...emptyPlan(),...c.plan},next:Campaign={...c};
+ for(const k of Object.keys(storeCopyFields) as StoreCopyKey[]){
+  if(was[k]===now[k])continue;
+  if((inPlan(k)?plan[k]:next[k])!==was[k]){conflicts.push(k);continue}
+  updated.push(k);if(inPlan(k))plan={...plan,[k]:now[k]};else next={...next,[k]:now[k]};
+ }
+ return {campaign:{...next,plan},updated,conflicts};
 }
 // 브리프는 사용자에게 확인 질문(questions)을 되돌려 주는 단계라 재질문 금지(answerDiscipline)는 넣지 않는다. 광고 표현 규칙과 상시 지시 한계는 역할·회의와 같다.
 export const briefInstructions=`당신은 COLLECTIVE의 수석 캠페인 전략가입니다. 사용자가 입력한 브랜드와 첫 목표로 실행 가능한 캠페인 브리프의 빈칸을 작성하세요. 한국어로 간결하고 구체적으로 답하세요.

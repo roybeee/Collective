@@ -85,4 +85,34 @@ check('store fact does not flag brand-scope artifacts',!(await server.readRecord
 const menu=(await server.listRecords(owner,'brand_fact','oda')).find(f=>f.key==='menu');
 check('rejecting a candidate flags artifacts that used the fact snapshot',(await post({...base,key:'menu',value:'마르게리타'},{id:menu.id,version:menu.version})).status===200&&!(await server.readRecord(owner,'artifact','fa-current')).factsChanged&&(await post({...base,key:'menu',value:'마르게리타',status:'rejected'},{id:menu.id,version:menu.version+1})).status===200&&(await server.readRecord(owner,'artifact','fa-current')).factsChanged===true);
 check('legacy confirmed-only refs are compared as confirmed facts',bf.sameEvidenceFactRefs([{id:'a',version:1}],[{id:'a',version:1,status:'confirmed'}])&&!bf.sameEvidenceFactRefs([{id:'a',version:1}],[{id:'a',version:1,status:'rejected'}]));
+// 표준 항목 카탈로그(data-truth-12): 같은 항목의 다른 표기는 같은 범위에서 중복이고, 자유 표기는 카탈로그 key로 저장한다. 지점 전용 항목의 브랜드 공통 저장은 경고만 한다.
+check('catalog spelling duplicate rejected in same scope',(await post({...base,key:'주소',value:'다른 주소'})).status===409);
+const hours=await post({...base,key:'영업 시간',value:'11:00-21:00'});
+check('free spelling saved as catalog key',hours.status===200&&(await server.readRecord(owner,'brand_fact',hours.id)).key==='hours');
+check('store scoped item at brand scope warns without blocking',Array.isArray(hours.warnings)&&hours.warnings.length===1&&hours.warnings[0].includes('영업시간'));
+const localHours=await post({...base,key:'hours',storeId:'s1',value:'11:00-22:00'});
+check('store scoped item at store scope has no warning',localHours.status===200&&!localHours.warnings?.length);
+const synthetic=(id,key,storeId)=>({id,brandId:'oda',...(storeId?{storeId}:{}),key,value:id,status:'confirmed',source:'근거',verifiedAt:past,validUntil:future,version:1,updatedAt:past});
+check('store override matches legacy spelling by catalog key',bf.effectiveBrandFacts([synthetic('legacy','주소'),synthetic('local','address','s1')],'oda','s1').map(f=>f.id).join()==='local');
+check('overridden legacy spelling not sent as candidate',bf.scopedBrandFacts([synthetic('legacy','주소'),synthetic('local','address','s1')],'oda','s1').candidate.length===0);
+check('existing free keys stay readable',(await get('brandId=oda')).facts.some(f=>f.key==='oven'));
+// 사실 철회·값 변경은 그 사실을 쓴 예약 발행을 재검토 대상으로 표시하고 개수를 응답한다(exec-loop-3). 후보 수정은 발행과 무관하다.
+check('candidate edit needs no publication review',(await post({...base,key:'hours',value:'10:00-21:00'},{id:hours.id,version:1})).reviewPublications===0);
+await server.recordStatement(owner,'execution_publication','pub-address',{id:'pub-address',campaignId:'fc',creativeId:'cr',creativeVersion:1,campaignVersion:4,pngHash:'h',factRefs:[{id:address.id,version:1}],caption:'',mediaUrl:'',scheduledAt:future,plannedCostKRW:0,version:1,status:'accepted',createdAt:past},'fc').run();
+const withdrawn=await post({...base,key:'address',value:'휘경동 377 C동 107호',status:'rejected'},{id:address.id,version:1});
+check('withdrawing a fact reports scheduled publications to review',withdrawn.status===200&&withdrawn.reviewPublications===1);
+// R2: 접수 여부 미확인·공급자 확인 필요 발행도 Buffer에 예약이 있을 수 있어 재검토 대상이다. R9: 유효 기한 연장은 대상이 아니고 단축은 대상이다.
+const closed=await post({...confirmed,key:'closed_days',value:'월요일'},{confirmed:true});
+const publication=(id,status)=>server.recordStatement(owner,'execution_publication',id,{id,campaignId:'fc',creativeId:'cr',creativeVersion:1,campaignVersion:4,pngHash:'h',factRefs:[{id:closed.id,version:1}],caption:'',mediaUrl:'',scheduledAt:future,plannedCostKRW:0,version:1,status,createdAt:past},'fc').run();
+for(const [id,status] of [['pub-closed','accepted'],['pub-closed-uncertain','uncertain'],['pub-closed-blocked','blocked']])await publication(id,status);
+const later=new Date(now+3*86400000).toISOString(),sooner=new Date(now+3600000).toISOString();
+check('extending validity needs no publication review',(await post({...confirmed,key:'closed_days',value:'월요일',validUntil:later},{id:closed.id,version:1,confirmed:true})).reviewPublications===0);
+check('shortening validity flags accepted, uncertain and blocked publications',(await post({...confirmed,key:'closed_days',value:'월요일',validUntil:sooner},{id:closed.id,version:2,confirmed:true})).reviewPublications===3);
+check('uncertain and blocked publications carry the review flag',!!(await server.readRecord(owner,'execution_publication','pub-closed-uncertain')).needsReview&&!!(await server.readRecord(owner,'execution_publication','pub-closed-blocked')).needsReview);
+// R1: 표기만 다른 이전 중복(같은 카탈로그 항목)도 각각 수정·철회할 수 있다. 새로 만들거나 항목을 바꿀 때만 중복을 막는다.
+await server.recordStatement(owner,'brand_fact','dup-a',synthetic('dup-a','전화'),'oda').run();await server.recordStatement(owner,'brand_fact','dup-b',synthetic('dup-b','연락처'),'oda').run();
+check('legacy duplicate can be withdrawn',(await post({...base,key:'전화',value:'dup-a',status:'rejected'},{id:'dup-a',version:1})).status===200);
+check('legacy duplicate can be edited without changing its item',(await post({...base,key:'연락처',value:'02-000-0000'},{id:'dup-b',version:1})).status===200);
+check('new fact still cannot duplicate a catalog item in the same scope',(await post({...base,key:'전화번호',value:'02-111-1111'})).status===409);
+check('changing an item into an existing one is still rejected',(await post({...base,key:'phone',value:'02-222-2222'},{id:hours.id,version:2})).status===409);
 console.log(JSON.stringify({passed}));

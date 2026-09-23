@@ -8,7 +8,7 @@ import {scopedBrandFacts,evidenceFactRefs,type BrandFact,type EvidenceFactRef} f
 export type DirectiveInput={text:string;author:'관리자'|'직원'};
 export type EvidenceContext={facts:{confirmed:unknown[];prohibited:unknown[];candidate:unknown[]};directives:DirectiveInput[];brandIntro:{text:string;verification:'unverified'};sources:{confirmed:number;excludedCandidates:number;diagnosis:'included'|'stale'|'none'};factRefs?:EvidenceFactRef[]};
 export type AiBrand={identity:Pick<Brand,'name'|'short'|'category'|'color'|'tone'|'audience'|'constraints'>;brandIntro:{text:string;verification:'unverified';useInCopy:false};intake?:Brand['intake']};
-export type AdoptedDiagnostic=Diagnostic&{brandBasis?:string;confirmedBy?:{id:string;email:string|null};confirmedAt?:string};
+export type AdoptedDiagnostic=Diagnostic&{brandBasis?:string;confirmedBy?:{id:string;email:string|null};confirmedAt?:string;adoptionSeq?:number};
 // brandArchiveContext가 AI에 전달하는 확정 자료 수의 한도.
 export const CONTEXT_SOURCE_LIMIT=20;
 
@@ -44,7 +44,8 @@ export function diagnosisIncluded(d:AdoptedDiagnostic,sources:Pick<ArchiveSource
 
 // AI 입력 후보는 가장 최근에 채택한 진단 하나다. 그 진단이 근거·브랜드 변경으로 빠지면 이전에 채택한 진단으로 조용히 돌아가지 않는다.
 export function latestAdopted<T extends AdoptedDiagnostic>(diagnostics:T[]):T|undefined{
- return diagnostics.filter(d=>d.status==='confirmed').sort((a,b)=>String(b.confirmedAt||b.createdAt).localeCompare(String(a.confirmedAt||a.createdAt)))[0];
+ // 같은 밀리초에 채택하면 시각만으로는 순서가 정해지지 않으므로 그때만 채택 순번(adoptionSeq)으로 가른다.
+ return diagnostics.filter(d=>d.status==='confirmed').sort((a,b)=>String(b.confirmedAt||b.createdAt).localeCompare(String(a.confirmedAt||a.createdAt))||(b.adoptionSeq??0)-(a.adoptionSeq??0))[0];
 }
 
 const scope=(f:BrandFact)=>f.storeId?'지점':'브랜드';

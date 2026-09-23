@@ -53,7 +53,8 @@ export async function POST(req:Request){let owner='',lock='';try{owner=await ide
   // 채택 조건: 근거 자료가 모두 확정이고 진단 이후 근거 집합이 바뀌지 않음. revision이 달라도 HERMES를 다시 부르지 않고 채택한다.
   const d=await readRecord<Diagnostic>(owner,'brand_diagnostic',str(b.id,'진단',100,true));if(d.brandId!==brandId)throw new ApiError(404,'진단을 찾을 수 없습니다.');if(d.researchQuality?.status==='needs_data')throw new ApiError(409,'조사 근거가 부족합니다. 추가 자료와 보완 조사 후 진단을 채택하세요.');const basis=diagnosisBasis(d,await listRecords<ArchiveSource>(owner,'brand_source',brandId));
   if(basis==='pending')throw new ApiError(409,'진단 근거 중 검토 대기 자료가 있습니다. 근거 자료를 확인한 뒤 채택하세요.');if(basis!=='confirmed')throw new ApiError(409,'진단 이후 근거 자료가 바뀌었습니다. 최신 자료로 다시 진단해 주세요.');
-  await recordStatement(owner,'brand_diagnostic',d.id,{...d,status:'confirmed',brandBasis:brandBasis(brand),confirmedBy:{id:who.id,email:who.email},confirmedAt:stamp()},brandId).run();return json({id:d.id});
+  const adoptionSeq=Math.max(0,...(await listRecords<AdoptedDiagnostic>(owner,'brand_diagnostic',brandId)).map(x=>x.adoptionSeq??0))+1;
+  await recordStatement(owner,'brand_diagnostic',d.id,{...d,status:'confirmed',brandBasis:brandBasis(brand),confirmedBy:{id:who.id,email:who.email},confirmedAt:stamp(),adoptionSeq},brandId).run();return json({id:d.id});
  }
  throw new ApiError(400,'지원하지 않는 아카이브 작업입니다.');
 }catch(e){return failure(e)}finally{if(lock)await releaseLock(owner,lock)}}

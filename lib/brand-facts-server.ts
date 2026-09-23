@@ -2,6 +2,7 @@ import {ApiError,str,readRecord,listRecords,recordStatement,database,uid,stamp,t
 import type {Brand,Campaign,Artifact} from './agency';
 import type {Store} from './store-marketing';
 import {effectiveBrandFacts,scopedBrandFacts,evidenceFactRefs,sameEvidenceFactRefs,type BrandFact} from './brand-facts';
+import {canonicalFactKey,factCatalogItem} from './fact-catalog';
 
 // 확정·거절한 사람과 시각. 이 필드가 생기기 전에 저장된 사실에는 없다.
 export type FactDecision={confirmedBy?:{id:string;email:string|null};confirmedAt?:string};
@@ -47,7 +48,7 @@ function factDate(value:unknown,label:string){
 }
 
 function factInput(data:Record<string,unknown>,confirmed:unknown):Pick<BrandFact,'key'|'value'|'status'|'source'|'verifiedAt'|'validUntil'>{
- const key=str(data.key,'사실 항목',120,true).normalize('NFKC').toLowerCase();
+ const key=canonicalFactKey(str(data.key,'사실 항목',120,true));
  const value=str(data.value,'사실 내용',5000,true);
  const status=data.status??'candidate';
  if(status!=='candidate'&&status!=='confirmed'&&status!=='rejected')throw new ApiError(400,'사실 상태를 확인하세요.');
@@ -78,12 +79,17 @@ export async function saveBrandFact(owner:string,input:Record<string,unknown>,wh
  const existing=await listRecords<BrandFact>(owner,'brand_fact',brandId);
  if(!old&&existing.length>=200)throw new ApiError(409,'브랜드 사실은 200개까지 보관할 수 있습니다. 기존 사실을 검토하세요.');
  if(old&&old.version>=200&&!(old.status==='confirmed'&&parsed.status==='rejected'))throw new ApiError(409,'이 사실의 수정 한도에 도달했습니다. 확정 사실의 사용 거절은 가능합니다.');
- if(existing.some(f=>f.id!==id&&f.storeId===storeId&&f.key===parsed.key))throw new ApiError(409,'같은 범위의 사실 항목이 이미 있습니다. 기존 항목을 수정하세요.');
+ // 중복 검사는 새로 만들 때와 수정으로 항목(canonical key)이 바뀔 때만 한다. 표기만 다른 이전 중복도 각각 수정·철회할 수 있다(R1).
+ if((!old||canonicalFactKey(old.key)!==parsed.key)&&existing.some(f=>f.id!==id&&f.storeId===storeId&&canonicalFactKey(f.key)===parsed.key))throw new ApiError(409,'같은 범위의 사실 항목이 이미 있습니다. 기존 항목을 수정하세요.');
  const decision:FactDecision=parsed.status==='candidate'?{}:{confirmedBy:{id:who.id,email:who.email},confirmedAt:stamp()};
  const fact:BrandFact&FactDecision={...parsed,id,brandId,...(storeId?{storeId}:{}),...decision,version:(old?.version||0)+1,updatedAt:stamp()};
  const writes=[recordStatement(owner,'brand_fact',id,fact,brandId)];
  if(old)writes.push(recordStatement(owner,'brand_fact_history',`${id}:${old.version}`,old,id));
  writes.push(...await factsChangedWrites(owner,brandId,[...existing.filter(f=>f.id!==id),fact]));
  await database().batch(writes);
- return {id,version:fact.version,fact};
+ // 지점마다 다른 항목을 브랜드 공통으로 저장하면 막지 않고 경고한다. 철회·값 변경·유효 기한 단축은 이미 준비된 발행의 재검토 대상이다. 기한 연장은 게시 내용과 유효성을 해치지 않는다(R9).
+ const item=factCatalogItem(parsed.key),warnings=item?.storeScoped&&!storeId?[`${item.label}은(는) 지점마다 다른 항목입니다. 브랜드 공통으로 저장하면 모든 지점의 제작물에 쓰입니다. 범위가 맞는지 확인하세요.`]:[];
+ const shortened=!!old?.validUntil&&!(Date.parse(parsed.validUntil)>=Date.parse(old.validUntil));
+ const affectsPublications=!!old&&(old.status==='confirmed'&&parsed.status!=='confirmed'||parsed.status==='rejected'&&old.status!=='rejected'||parsed.value!==old.value||shortened);
+ return {id,version:fact.version,fact,warnings,affectsPublications};
 }
