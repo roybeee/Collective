@@ -29,6 +29,20 @@ for (const file of readdirSync('drizzle').filter(f => f.endsWith('.sql')).sort()
 // Public test-only bootstrap fixture; never used against a remote database.
 // 운영 빌드는 AUTH_MODE가 비면 503으로 닫히므로 기본(헤더 모의) 여정은 legacy를 명시한다.
 const authArgs = emailAuth ? ['--local-protocol','https','--var','AUTH_MODE:email','--var',`AUTH_ORIGIN:https://127.0.0.1:${port}`,'--var','AUTH_BOOTSTRAP_EMAIL:admin@example.test','--var','AUTH_BOOTSTRAP_OWNER:e2e-email-owner','--var',`AUTH_BOOTSTRAP_TOKEN_HASH:${createHash('sha256').update('e2e-only-bootstrap-token-do-not-use-in-production').digest('hex')}`] : ['--var','AUTH_MODE:legacy'];
-const server = spawn(process.execPath, [...wrangler, 'dev', '--config', config, '--local', '--persist-to', state, '--ip', '127.0.0.1', '--port', port, '--inspector-port', '0', ...(emailAuth?['--upstream-protocol','https']:[]), ...authArgs], {stdio: 'inherit'});
+const server = spawn(process.execPath, [...wrangler, 'dev', '--config', config, '--local', '--persist-to', state, '--ip', '127.0.0.1', '--port', port, '--inspector-port', '0', ...(emailAuth?['--upstream-protocol','https']:[]), ...authArgs], {stdio: ['inherit', 'pipe', 'inherit']});
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => server.kill(signal));
-server.on('exit', code => process.exit(code ?? 0));
+// workerd는 크래시 사유(예: *** Received signal #11)를 stdout으로 낸다. Playwright webServer는 stdout을 버리므로
+// CI에서 사유가 사라졌다. stdout은 그대로 흘려보내되 크래시 관련 줄만 stderr에도 복사하고, 종료 코드·시그널을 남긴다.
+const crashLine = /Received signal|Fatal|fatal error|uncaught|out of memory|Segmentation|Aborted|core dumped/i;
+let pending = '';
+server.stdout.on('data', chunk => {
+ process.stdout.write(chunk);
+ const lines = (pending + chunk.toString('utf8')).split('\n');
+ pending = lines.pop() ?? '';
+ for (const line of lines) if (crashLine.test(line)) process.stderr.write(`[serve] ${line}\n`);
+});
+server.on('exit', (code, signal) => {
+ if (pending && crashLine.test(pending)) process.stderr.write(`[serve] ${pending}\n`);
+ if (code !== 0 || signal) process.stderr.write(`[serve] wrangler exited code=${code} signal=${signal}\n`);
+ process.exit(code ?? 0);
+});

@@ -33,6 +33,8 @@ test('회의 실패 단계만 재작성하고 브라우저는 진행 요청 없�
  await expect.poll(()=>gets,{timeout:12000}).toBeGreaterThan(previousGets);
  expect(actions.some(action=>action.action==='advance')).toBe(false);
  await expect(page.getByText('보존할 발언 1',{exact:true})).toBeVisible();
+ // 화면이 계속 조회하므로 닫는 순간 route.fetch 중인 처리기가 남을 수 있다. 끝날 때까지 기다린 뒤 닫는다(Response has been disposed 방지).
+ await page.unrouteAll({behavior:'wait'});
  await context.close();
 });
 
@@ -74,5 +76,6 @@ test('기준 자료가 바뀐 실패 회의는 재작성 대신 새 회의를 �
  await expect.poll(()=>actions.length).toBe(1);
  expect(actions[0]).toMatchObject({action:'start',campaignId:id,previousMeetingId:meetingId});
  expect(actions.some(action=>action.action==='retry_failed')).toBe(false);
+ await page.unrouteAll({behavior:'wait'});
  await context.close();
 });
