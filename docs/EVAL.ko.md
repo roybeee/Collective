@@ -104,7 +104,7 @@
 - 바이트 동일성 근거: `tests/fixtures/role-submission-<기준 sha7>.json`. 기준 커밋을 `git archive`로 풀어 `scripts/eval/capture-role-submission.mjs`를 실행해 만들었다. 모의 런타임(`tests/helpers/runtime.mjs`, 메모리 SQLite, HERMES fetch 스텁)과 합성 브랜드·캠페인만 쓰며 외부 호출은 0회다. 8개 역할과 재작성 지시(revisionRequest) 1건을 담는다.
 - `tests/role-instruction.test.mjs`는 런타임 헬퍼 없이 순수 로더로 함수를 읽어 스냅샷과 비교한다.
 - 재캡처: 역할 지시·입력 조립이 의도적으로 바뀌면 새 기준 커밋에서 다시 캡처하고 파일 이름의 sha7을 바꾼다. 이 테스트가 깨졌는데 의도한 변경이 아니면 회귀다. 실패 메시지가 재캡처 절차를 안내한다.
-- 병합 순서 주의: `lib/role-instruction.ts`는 F1b 연결 전까지 `lib/role-execution.ts` start 분기의 복제본이다. `lib/practice.ts`(`PRACTICE_VERSION`, 역할 방법 문구)나 `lib/role-execution.ts` 입력 조립을 바꾸는 PR과 함께 병합되면 나중에 병합되는 쪽의 CI에서 이 테스트가 실패한다. 나중에 병합되는 쪽이 새 기준 SHA에서 fixture를 재캡처하고, 입력 조립 변경(예: `aiBudget`)을 `buildRoleInput`에 반영한다. 장기적으로 F1b에서 `role-execution.ts`가 이 모듈을 직접 써서 복제본을 없앤다.
+- 병합 순서 주의: `lib/role-instruction.ts`는 F1b 연결 전까지 `lib/role-execution.ts` start 분기의 복제본이다. `lib/practice.ts`(`PRACTICE_VERSION`, 역할 방법 문구)나 `lib/role-execution.ts` 입력 조립을 바꾸는 PR과 함께 병합되면 나중에 병합되는 쪽의 CI에서 이 테스트가 실패한다. 나중에 병합되는 쪽이 새 기준 SHA에서 fixture를 재캡처하고, 입력 조립 변경을 `buildRoleInput`·`buildRoleInstruction`에 반영한다. PR 3(#28, `d8464a3`)이 먼저 병합되어 이 PR이 `aiBudget(c)` 입력과 예산 지시 문구를 반영하고 `role-submission-d8464a3.json`으로 재캡처했다. 장기적으로 F1b에서 `role-execution.ts`가 이 모듈을 직접 써서 복제본을 없앤다.
 
 ```sh
 git archive <기준 SHA> | tar -x -C <임시 디렉터리>
