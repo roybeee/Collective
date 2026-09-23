@@ -22,9 +22,11 @@ check('snapshot was captured without external calls',()=>assert.equal(fixture.pr
 const roles=new Set(fixture.cases.map(c=>c.role));
 check('snapshot covers insight, content and quality',()=>assert.ok(['insight','content','quality'].every(r=>roles.has(r))&&roles.size>=3));
 check('snapshot covers a revision request',()=>assert.ok(fixture.cases.some(c=>c.context.revisionRequest)));
+// 다르면 회귀이거나 role-execution.ts·practice.ts 등의 의도한 변경이다. 의도한 변경이면 새 기준 커밋에서 재캡처한다(docs/EVAL.ko.md '역할 지시 스냅샷').
+const drift=`스냅샷(${files[0]})과 다릅니다. 의도한 지시·입력 변경이면 새 기준 커밋에서 scripts/eval/capture-role-submission.mjs로 재캡처하세요.`;
 for(const c of fixture.cases){
- check(`${c.name} instructions are byte-identical`,()=>assert.equal(buildRoleInstruction(c.context),c.submission.instructions));
- check(`${c.name} input is byte-identical`,()=>assert.equal(buildRoleInput(c.context),c.submission.input));
+ check(`${c.name} instructions are byte-identical`,()=>assert.equal(buildRoleInstruction(c.context),c.submission.instructions,drift));
+ check(`${c.name} input is byte-identical`,()=>assert.equal(buildRoleInput(c.context),c.submission.input,drift));
 }
 // 실패 사례: 입력 한 글자·재작성 여부가 달라지면 동일하지 않아야 한다(비교가 실제로 내용을 본다).
 const sample=fixture.cases.find(c=>c.role==='content');

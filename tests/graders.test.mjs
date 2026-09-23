@@ -24,7 +24,7 @@ const rendered=(bodies,head='')=>insightTitles.map((t,i)=>`## ${t}\n\n${i===0?he
 const contract=(bodies,head)=>({id:'c',kind:'role',role:'insight',contract:true,text:rendered(bodies,head)});
 const goodTalk={position:'첫 방문 고객에게는 위치 확인이 가장 큰 장벽일 수 있다는 가설을 우선 검증합니다. 픽업 대기 시간 안내를 함께 둡니다.',evidence:'근거는 브리프 v1 목표와 총괄 파트너 v1 §3입니다. 대기 시간은 [자료 필요]로 두고 점장이 오픈 전 주에 확인합니다.',challenge:'앞선 발언의 인지도 우선 주장은 위치 정보가 정비된 뒤에 검토해야 합니다.',proposal:'길찾기 안내 카드 2안을 만들고 2주간 길찾기 클릭 대비 포장 주문으로 판정합니다.'};
 
-check('registry has the twelve v1 failure types',()=>assert.deepEqual([...GRADERS.map(g=>g.id)],['question_only','thin_section','contract_json','heading_nesting','internal_id_exposure','brief_prohibition_conflict','fact_conflict','unsupported_claim_term','industry_metric_leak','revisit_cohort_definition','local_channel_coverage','input_budget']));
+check('registry has the thirteen v1 failure types',()=>assert.deepEqual([...GRADERS.map(g=>g.id)],['question_only','thin_section','contract_json','heading_nesting','internal_id_exposure','brief_prohibition_conflict','fact_conflict','unconfirmed_value_assertion','unsupported_claim_term','industry_metric_leak','revisit_cohort_definition','local_channel_coverage','input_budget']));
 check('results use only the four statuses',()=>assert.ok(runGraders(role(long)).every(r=>['pass','fail','not_applicable','grader_error'].includes(r.status))));
 check('grader modules import only relative pure modules',()=>{for(const f of readdirSync('lib/graders').filter(f=>f.endsWith('.ts'))){const specs=[...readFileSync('lib/graders/'+f,'utf8').matchAll(/from\s+'([^']+)'/g)].map(x=>x[1]);assert.ok(specs.every(s=>/^\.\.?\//.test(s)&&!/(server|hermes|archive-server|learning-server|usage-ledger)$/.test(s)),f)}});
 
@@ -36,6 +36,10 @@ check('question_only fails a re-asking discussion field',()=>assert.equal(status
 check('question_only is not applicable to inputs and quality verdicts',()=>{assert.equal(status('question_only',{id:'g',kind:'input',text:reask}),'not_applicable');assert.equal(status('question_only',role('{"verdict":"revise"}',{role:'quality'})),'not_applicable')});
 const bigDoc=['1. 결론',long,'2. 우선순위',long,'3. 근거 구분',long].join('\n\n').repeat(5);
 check('a long single-section plan passes question_only and thin_section',()=>{assert.ok(bigDoc.length>2500);const s=statuses(role(bigDoc));assert.equal(s.question_only,'pass');assert.equal(s.thin_section,'pass')});
+// 평범한 '…요청…없습니다' 문장 하나는 재질문이 아니고, 내용 채점기를 가리지 않는다(isQuestionOnly 본문 전체 단독 적용 금지).
+const plainPlan=['## 상황',long,'## 메뉴 근거','고객 요청이 많은 메뉴 데이터는 아직 없습니다. '+long,'## 게시 카피','숯불 향을 살린 떡볶이, 오늘 오픈합니다.','## 측정',long].join('\n');
+check('a plain no-data sentence is not a re-ask and does not hide content failures',()=>{const s=statuses(role(plainPlan),{prohibitedTerms:['숯불']});assert.equal(s.question_only,'pass');assert.equal(s.brief_prohibition_conflict,'fail')});
+check('a discussion noting missing requested data is not a re-ask',()=>assert.equal(status('question_only',talk({...goodTalk,evidence:goodTalk.evidence+' 요청하신 경쟁점 가격 자료는 아직 없습니다.'})),'pass'));
 
 // 2 thin_section
 check('thin_section passes three substantive contract sections',()=>assert.equal(status('thin_section',contract([long,long,long])),'pass'));
@@ -80,21 +84,42 @@ check('prohibition skips blocks labelled as excluded wording',()=>assert.equal(s
 check('prohibition uses rejected ledger values',()=>assert.equal(status('brief_prohibition_conflict',role('게시 카피\n“숯불로 굽는 떡꼬치”'),{facts:{confirmed:[],prohibited:[{key:'조리 방식',value:'숯불'}]}}),'fail'));
 check('prohibition checks discussion position and proposal',()=>{assert.equal(status('brief_prohibition_conflict',talk({...goodTalk,proposal:'숯불 장면을 첫 컷에 둡니다.'}),terms),'fail');assert.equal(status('brief_prohibition_conflict',talk({...goodTalk,proposal:'숯불 장면은 설비 확인 전 쓰지 않습니다.'}),terms),'pass')});
 check('prohibition is not applicable without prohibited terms',()=>assert.equal(status('brief_prohibition_conflict',role(long)),'not_applicable'));
+// 부정·배제는 금지 표현 바로 뒤 서술부만 본다. 문장 안 다른 곳의 '놓치지 말고'·'아닌'·'어디에도 없습니다'는 면제 사유가 아니다.
+const copy=line=>({id:'k',kind:'role',role:'content',text:'## 게시 카피\n'+line});
+check('prohibition catches the term despite unrelated negation wording',()=>{for(const s of ['숯불 향 가득한 떡볶이, 놓치지 말고 오세요.','평범한 분식이 아닌 숯불 떡볶이.','이런 숯불 맛은 어디에도 없습니다.','한 번 맛보면 잊지 않을 숯불 떡볶이.'])assert.equal(status('brief_prohibition_conflict',copy(s),terms),'fail',s)});
+check('prohibition accepts avoidance wording right after the term',()=>{for(const s of ['숯불이라는 단어는 빼고 씁니다.','숯불 대신 철판 조리를 강조합니다.','숯불 표현은 피합니다.','금지 표현: 숯불, 화덕','숯불·인기 메뉴 경쟁이 아니라 위치 안내로 시작합니다.'])assert.equal(status('brief_prohibition_conflict',copy(s),terms),'pass',s)});
+// 카피 라벨은 제목·강조·인라인·목록·끝 콜론 형식을 모두 인식한다.
+const labelForms=['### 게시 카피\n숯불 향 가득, 동네 인기 떡볶이.','**게시 카피**\n숯불 향 가득, 동네 인기 떡볶이.','**카피 A:** 숯불 향 가득, 동네 인기 떡볶이.','- 게시 카피: 숯불 향 가득, 동네 인기 떡볶이.','게시 카피:\n숯불 향 가득, 동네 인기 떡볶이.'];
+check('copy labels are found in heading, bold, inline, list and colon forms',()=>{for(const text of labelForms){const s=statuses({id:'k',kind:'role',role:'content',text},terms);assert.equal(s.brief_prohibition_conflict,'fail',text);assert.equal(s.unsupported_claim_term,'fail',text)}});
 
-// 7 fact_conflict
+// 7 fact_conflict: 원장에 있는 항목만 대조한다. 원장에 없는 항목은 세지 않고 합격률 분모에서 뺀다.
 const ledger={facts:{confirmed:[{key:'주소',value:'가상동 12 B동 201호'}],prohibited:[]}};
+const priced={facts:{confirmed:[{key:'가격',value:'떡볶이 5,000원'},{key:'오픈일',value:'10월 5일'}],prohibited:[]}};
 check('fact_conflict passes matching address with pending open date',()=>assert.equal(status('fact_conflict',role('가상동 12 B동 201호에 오픈 예정입니다. 오픈일은 [확인 필요] 확정 후 안내합니다.'),ledger),'pass'));
-check('fact_conflict fails a different address and an asserted open date',()=>assert.equal(status('fact_conflict',role('가상동 12 B동 102호에서 10월 5일 오픈합니다.'),ledger),'fail'));
-check('fact_conflict fails an unconfirmed price',()=>assert.equal(status('fact_conflict',role('대표 메뉴는 12,900원입니다.'),ledger),'fail'));
-check('fact_conflict passes a marked example price',()=>assert.equal(status('fact_conflict',role('[예시] 대표 메뉴 12,900원처럼 가격을 적는 양식입니다.'),ledger),'pass'));
+check('fact_conflict fails a different address',()=>assert.equal(status('fact_conflict',role('가상동 12 B동 102호에서 10월 5일 오픈합니다.'),ledger),'fail'));
+check('fact_conflict fails a price or open date that differs from the ledger',()=>{assert.equal(status('fact_conflict',role('떡볶이는 7,000원입니다.'),priced),'fail');assert.equal(status('fact_conflict',role('10월 9일 오픈합니다.'),priced),'fail')});
+check('fact_conflict passes a price and open date that match the ledger',()=>assert.equal(status('fact_conflict',role('떡볶이는 5,000원이고 10월 5일 오픈합니다.'),priced),'pass'));
+check('fact_conflict leaves items missing from the ledger out of the denominator',()=>assert.equal(status('fact_conflict',role('떡볶이는 7,000원입니다.'),ledger),'not_applicable'));
+const rejectedLedger={facts:{confirmed:[],prohibited:[{key:'조리 방식',value:'숯불'}]}};
+check('fact_conflict scopes negation of rejected values to the term',()=>{assert.equal(status('fact_conflict',role('숯불 대신 철판 조리를 강조합니다.'),rejectedLedger),'pass');assert.equal(status('fact_conflict',role('숯불 향 가득, 놓치지 말고 오세요.'),rejectedLedger),'fail')});
 check('fact_conflict is not applicable without a ledger',()=>assert.equal(status('fact_conflict',role('가상동 12 B동 102호')),'not_applicable'));
 check('fact_conflict is not applicable when no ledger key is touched',()=>assert.equal(status('fact_conflict',role(long),ledger),'not_applicable'));
+
+// 7b unconfirmed_value_assertion: 원장에 확정값이 없는 구체 값을 표시 없이 단정하면 fail.
+check('unconfirmed value fails an asserted price or open date missing from the ledger',()=>{assert.equal(status('unconfirmed_value_assertion',role('대표 메뉴는 12,900원입니다.'),ledger),'fail');assert.equal(status('unconfirmed_value_assertion',role('10월 5일 오픈합니다.'),ledger),'fail')});
+check('unconfirmed value passes a marked example price',()=>assert.equal(status('unconfirmed_value_assertion',role('[예시] 대표 메뉴 12,900원처럼 가격을 적는 양식입니다.'),ledger),'pass'));
+check('unconfirmed value leaves ledger-confirmed kinds to fact_conflict',()=>assert.equal(status('unconfirmed_value_assertion',role('떡볶이는 7,000원입니다.'),priced),'not_applicable'));
+check('unconfirmed value is not applicable without a ledger',()=>assert.equal(status('unconfirmed_value_assertion',role('대표 메뉴는 12,900원입니다.')),'not_applicable'));
+// 예산·비용·객단가·매출 목표 금액은 판매가가 아니다.
+const budgets=['인스타그램 광고 예산은 월 30만 원으로 시작합니다.','1회 촬영 비용 150,000원 한도 안에서 진행합니다.','객단가 12,000원 이상 주문 비중을 측정합니다.','목표: 첫 주 매출 300만 원.'];
+check('budgets, costs and sales targets are not treated as menu prices',()=>{for(const b of budgets){assert.equal(status('unconfirmed_value_assertion',role(b),ledger),'not_applicable',b);assert.equal(status('fact_conflict',role(b),priced),'not_applicable',b)}});
 
 // 8 unsupported_claim_term
 check('claim term passes neutral copy',()=>assert.equal(status('unsupported_claim_term',role('게시 카피\n“새로 여는 분식집, 메뉴는 확정 후 안내합니다.”')),'pass'));
 check('claim term fails unsupported popularity and opening benefit',()=>assert.equal(status('unsupported_claim_term',role('게시 카피\n“동네 인기 1위 떡볶이, 오픈 혜택 20%”')),'fail'));
 check('claim term ignores procedural mentions outside copy',()=>assert.equal(status('unsupported_claim_term',role('오픈 전에는 할인보다 위치 정보를 먼저 정비합니다. 할인 제공 여부는 별도 승인 없이 바꾸지 않습니다. '+long)),'pass'));
 check('claim term accepts [확인 필요] and negation in copy',()=>assert.equal(status('unsupported_claim_term',role('게시 카피\n“오픈 혜택 [확인 필요] 안내”\n인기 표현은 쓰지 않습니다.')),'pass'));
+check('claim term scopes negation to the claim term',()=>{assert.equal(status('unsupported_claim_term',copy('그냥 떡볶이가 아닌 동네 인기 떡볶이.')),'fail');assert.equal(status('unsupported_claim_term',copy('오픈 혜택 놓치지 말고 오세요.')),'fail');assert.equal(status('unsupported_claim_term',copy('할인 없이도 만족스러운 한 끼.')),'pass')});
 check('claim term accepts a confirmed ledger basis',()=>assert.equal(status('unsupported_claim_term',role('게시 카피\n“오픈 혜택 안내”'),{facts:{confirmed:[{key:'오픈 혜택',value:'첫 주 음료 제공'}],prohibited:[]}}),'pass'));
 
 // 9 industry_metric_leak
@@ -105,7 +130,7 @@ check('industry leak allows the campaign own industry terms',()=>assert.equal(st
 check('industry leak is not applicable without an industry',()=>assert.equal(status('industry_metric_leak',role('보관함 가동률')),'not_applicable'));
 
 // 10 revisit_cohort_definition
-check('revisit definition passes a matured cohort',()=>assert.equal(status('revisit_cohort_definition',role('재방문율 = 30일 관찰이 끝난 첫 구매 고객 중 첫 구매 후 30일 이내 두 번째 유료 구매 고객 수 ÷ 30일 관찰이 끝난 첫 구매 고객 수')),'pass'));
+check('revisit definition passes a matured cohort',()=>assert.equal(status('revisit_cohort_definition',role('재방문율 = 첫 결제 뒤 30일 관찰을 마친 손님 가운데 30일 안에 다시 결제한 손님 수 ÷ 관찰을 마친 손님 수')),'pass'));
 check('revisit definition fails an immature denominator',()=>assert.equal(status('revisit_cohort_definition',role('재방문율 = 두 번째 구매 고객 수 ÷ 첫 구매 고객 수')),'fail'));
 check('revisit definition fails a label line followed by a formula',()=>assert.equal(status('revisit_cohort_definition',role('재방문율\n= 30일 내 두 번째 주문 고객 수 ÷ 첫 구매 고객 수 × 100')),'fail'));
 check('revisit definition is not applicable without a definition',()=>assert.equal(status('revisit_cohort_definition',role(long)),'not_applicable'));
@@ -129,7 +154,7 @@ check('question_only failure suppresses content graders only',()=>{const s=statu
 check('a throwing grader is isolated as grader_error',()=>{const item=role(long),base=runGraders(item),boom=runGraders(item,{},[...GRADERS,{id:'boom',grade(){throw new Error('boom')}}]);assert.equal(boom.at(-1).status,'grader_error');assert.deepEqual([...boom.slice(0,-1).map(r=>r.status)],[...base.map(r=>r.status)])});
 check('bad context data becomes grader_error without hiding other results',()=>{const s=statuses(role('## 검증할 가설\n가설 1: 조리 과정 영상이 조회를 늘린다.'),{prohibitedTerms:[null]});assert.equal(s.brief_prohibition_conflict,'grader_error');assert.equal(s.question_only,'pass')});
 // 합성 정상 산출물: 오탐 0건.
-const cleanPlan=['1. 결론','가상분식 오픈의 1차 병목은 위치 정보 부족일 수 있다는 가설로 시작합니다. 오픈일과 가격은 [확인 필요]이며 확정 후 안내합니다. 주소는 가상동 12 B동 201호입니다.',long,'2. 채널 후보','- 네이버 플레이스: 선택. 주소·영업정보 기준 채널','- 당근 비즈프로필: 선택. 동네 노출','- 배달앱: 보류. 수수료 확인 전','- 카카오톡 채널: 제외. 수신 동의 고객 없음','3. 게시 카피','“가상동에 새로 여는 분식집, 위치를 먼저 확인하세요.”','4. 측정','재방문율 = 30일 관찰이 끝난 첫 구매 고객 중 30일 이내 두 번째 유료 구매 고객 수 ÷ 30일 관찰이 끝난 첫 구매 고객 수',long].join('\n\n');
+const cleanPlan=['1. 결론','가상분식 오픈의 1차 병목은 위치 정보 부족일 수 있다는 가설로 시작합니다. 오픈일과 가격은 [확인 필요]이며 확정 후 안내합니다. 주소는 가상동 12 B동 201호입니다.',long,'2. 채널 후보','- 네이버 플레이스: 선택. 주소·영업정보 기준 채널','- 당근 비즈프로필: 선택. 동네 노출','- 배달앱: 보류. 수수료 확인 전','- 카카오톡 채널: 제외. 수신 동의 고객 없음','3. 게시 카피','“가상동에 새로 여는 분식집, 위치를 먼저 확인하세요.”','4. 측정','재방문율 = 한 달 관찰 코호트에서 두 번 이상 결제한 손님 수 ÷ 같은 코호트의 손님 수',long].join('\n\n');
 const cleanCtx={prohibitedTerms:['숯불'],facts:ledger.facts,industry:'fnb',localStore:true};
 check('clean synthetic plan has zero failures',()=>{const r=runGraders({...role(cleanPlan),inputTokens:21000},cleanCtx);assert.deepEqual([...r.filter(x=>x.status==='fail'||x.status==='grader_error')],[])});
 check('clean synthetic contract output has zero failures',()=>assert.deepEqual([...runGraders(contract([long,long,long]),cleanCtx).filter(x=>x.status!=='pass'&&x.status!=='not_applicable')],[]));

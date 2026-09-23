@@ -1,13 +1,13 @@
 import type {Grader,GraderResult,GraderStatus,EvalItem,GradeContext} from './types';
 import {questionOnly,thinSection,contractJson,headingNesting,internalIdExposure} from './structure';
 import {briefProhibitionConflict,unsupportedClaimTerm,industryMetricLeak,revisitCohortDefinition,localChannelCoverage} from './content';
-import {factConflict,inputBudget} from './ledger';
+import {factConflict,unconfirmedValueAssertion,inputBudget} from './ledger';
 export type {Grader,GraderResult,GraderStatus,EvalItem,EvalKind,GradeContext,FactLedger} from './types';
 export {INPUT_TOKEN_CAP} from './ledger';
 
-// 실패 유형 사전 v1(결정론 12종). 순서는 docs/EVAL.ko.md 정의표와 같다. 판정 임계값·ID 패턴은 이 파일들이 정본이다.
+// 실패 유형 사전 v1(결정론 13종). 순서는 docs/EVAL.ko.md 정의표와 같다. 판정 임계값·ID 패턴은 이 파일들이 정본이다.
 export const GRADERS_VERSION='failure-types-v1';
-export const GRADERS:Grader[]=[questionOnly,thinSection,contractJson,headingNesting,internalIdExposure,briefProhibitionConflict,factConflict,unsupportedClaimTerm,industryMetricLeak,revisitCohortDefinition,localChannelCoverage,inputBudget];
+export const GRADERS:Grader[]=[questionOnly,thinSection,contractJson,headingNesting,internalIdExposure,briefProhibitionConflict,factConflict,unconfirmedValueAssertion,unsupportedClaimTerm,industryMetricLeak,revisitCohortDefinition,localChannelCoverage,inputBudget];
 export const CONTENT_GRADERS=GRADERS.filter(g=>g.content).map(g=>g.id);
 
 function safely(grader:Grader,item:EvalItem,ctx:GradeContext):GraderResult{

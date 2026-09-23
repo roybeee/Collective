@@ -1,11 +1,12 @@
 // 규제·플랫폼·업종 표시 가드레일(A2)의 어휘 사전. 판정 로직(compliance.ts)과 분리해 사전만 개정할 수 있게 둔다.
 // 출처 URL은 국가법령정보센터 공식 페이지이며 2026-09-23에 법령 일련번호로 열리는 것을 확인했다. 이 사전은 법률 자문이 아니다.
-// match: 문장 단위 정규식. context: 문서에 있어야 규칙을 적용. cleared: 문서에 있으면 해소(표기·동의·권리 확인 등).
-// also: 같은 문장에 함께 있어야 함. ledgerKey: 확정 원장 항목 이름이 맞으면 해소. marked: [확인 필요]·미확정 표시 문장은 면제.
+// match: 문장 단위 정규식(바로 뒤 서술부가 부정·배제면 면제, negation.ts). context: 같은 문장(초안 라벨이면 뒤따르는 문단)에 있어야 적용.
+// cleared: 같은 섹션(제목·구분선 사이)에 있으면 해소(표기·동의·권리 확인 등). also: 같은 문장에 함께 있어야 함. except: 문장이 맞으면 면제.
+// ledgerKey: 확정 원장 항목 이름이 맞으면 해소. marked: [확인 필요]·미확정 표시 문장은 면제.
 export type ComplianceSeverity='block'|'warn'|'info';
 export const COMPLIANCE_CATEGORIES=['platform_review','endorsement','ai_label','ad_message','food_claim','cosmetic_claim','ecommerce_terms','rights'] as const;
 export type ComplianceCategory=typeof COMPLIANCE_CATEGORIES[number];
-export type ComplianceRule={id:string;category:ComplianceCategory;severity:ComplianceSeverity;title:string;match:string;context?:string;cleared?:string;also?:string;ledgerKey?:string;marked?:boolean;sources:string[]};
+export type ComplianceRule={id:string;category:ComplianceCategory;severity:ComplianceSeverity;title:string;match:string;context?:string;cleared?:string;also?:string;except?:string;ledgerKey?:string;marked?:boolean;sources:string[]};
 export type ComplianceSource={title:string;url:string};
 
 const law=(name:string)=>'https://www.law.go.kr/법령/'+name;
@@ -13,9 +14,13 @@ const law=(name:string)=>'https://www.law.go.kr/법령/'+name;
 const MESSAGE='(?:문자|SMS|LMS|MMS|알림톡|친구톡|앱\\s?푸시|푸시|카카오톡\\s?(?:채널\\s?)?메시지|광고\\s?메시지)[^.\\n]{0,12}(?:초안|문안|내용|발송|전송|보내|보낸)|메시지[^.\\n]{0,6}(?:발송|전송|보내|보낸)';
 const PROMOTION='오픈|할인|이벤트|쿠폰|혜택|무료|증정|방문하세요|주문하세요|신메뉴|특가|프로모션|드립니다';
 const PURCHASE_CTA='구매하기|바로\\s?구매|지금\\s?구매|구매하세요|장바구니|결제하기|주문하기|스토어에서\\s?(?:구매|주문)|온라인\\s?(?:판매|구매)';
+// 발송을 미루거나 검토만 하는 계획 문장은 전송 문안이 아니다('수신 동의 고객이 생긴 뒤에 검토합니다').
+const DEFERRAL='검토(?:합니다|한다|할\\s?예정|\\s?예정)|보류|(?:뒤|후|이후|다음)에?\\s?(?:검토|결정|판단|작성)';
+// 버튼·링크 클릭 수 같은 측정 문장의 구매 버튼 언급은 구매 유도 문구가 아니다.
+const MEASUREMENT='(?:버튼|링크)[^.\\n]{0,8}(?:클릭|노출|전환)|측정|지표|전환율';
 
 export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:string;sources:Record<string,ComplianceSource>;rules:ComplianceRule[]}={
- version:'compliance-lexicon-2026-09-23.1',
+ version:'compliance-lexicon-2026-09-23.2',
  checkedAt:'2026-09-23',
  platformPolicy:'플랫폼별 리뷰 운영정책(예: 지도·예약 플랫폼) 공식 URL은 아직 확인하지 않았다. 게시 전 해당 플랫폼 공식 정책 페이지에서 확인하고, 확인되면 사전 버전을 올려 출처를 추가한다.',
  sources:{
@@ -33,9 +38,9 @@ export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:
  },
  rules:[
   // ① 플랫폼 리뷰: 보상 조건부 리뷰 요청, 영수증 리뷰 이벤트, 체험단 대량 리뷰.
-  {id:'review_reward',category:'platform_review',severity:'block',title:'보상을 조건으로 리뷰·별점을 요청',match:'(?:리뷰|후기|별점|평점)[^.\\n]{0,30}(?:작성\\s?시|남기(?:면|시면)|남겨\\s?주시면|작성하(?:면|시면)|인증\\s?시|인증하(?:면|시면)|써\\s?주시면|올려\\s?주시면)[^.\\n]{0,30}(?:증정|드립니다|드려요|드려|제공|할인|쿠폰|적립|서비스|무료)',sources:['fair_labeling','endorsement_guideline']},
+  {id:'review_reward',category:'platform_review',severity:'block',title:'보상을 조건으로 리뷰·별점을 요청',match:'(?:리뷰|후기|별점|평점)[^.\\n]{0,30}(?:작성\\s?시|남기(?:면|시면)|남겨\\s?주시면|작성하(?:면|시면)|인증\\s?시|인증하(?:면|시면)|써\\s?주시면|올려\\s?주시면|쓰(?:면|시면)|주시면|작성\\s?(?:고객|하신\\s?분)|참여\\s?(?:고객|하신\\s?분))[^.\\n]{0,30}(?:증정|드립니다|드려요|드려|제공|할인|쿠폰|적립|서비스|무료|지급|선물|사은품)',sources:['fair_labeling','endorsement_guideline']},
   {id:'receipt_review_event',category:'platform_review',severity:'block',title:'영수증·리뷰 이벤트',match:'영수증\\s?리뷰[^.\\n]{0,20}(?:이벤트|증정|혜택|적립)|리뷰\\s?이벤트',sources:['fair_labeling','endorsement_guideline']},
-  {id:'bulk_review',category:'platform_review',severity:'block',title:'체험단·대량 리뷰 확보',match:'(?:체험단|리뷰어|서포터즈)[^.\\n]{0,20}\\d{2,}\\s?(?:명|건)|리뷰\\s?\\d{2,}\\s?건|리뷰\\s?(?:대행|작업|구매)|(?:대량|다수)[^.\\n]{0,6}(?:리뷰|후기)',sources:['fair_labeling','endorsement_guideline']},
+  {id:'bulk_review',category:'platform_review',severity:'block',title:'체험단·대량 리뷰 확보',match:'(?:체험단|리뷰어|서포터즈)[^.\\n]{0,20}\\d{2,}\\s?(?:명|건)|리뷰\\s?\\d{2,}\\s?건[^.\\n]{0,15}(?:확보|모집|작업|구매|대행)|(?:확보|모집|작업|구매|대행)[^.\\n]{0,15}리뷰\\s?\\d{2,}\\s?건|리뷰\\s?(?:대행|작업|구매)|(?:대량|다수)[^.\\n]{0,6}(?:리뷰|후기)',except:'^(?!.*(?:체험단|서포터즈|리뷰어|모집|대행|작업|구매)).*(?:목표|지표|KPI|측정)',sources:['fair_labeling','endorsement_guideline']},
   // ② 공정위 추천·보증: 가짜 체험담, 협찬·광고 표기 누락, 가상인물 미표시.
   {id:'fake_testimonial',category:'endorsement',severity:'block',title:'가짜·위장 체험담',match:'(?:고객|손님|소비자|구매자)[^.\\n]{0,6}(?:인\\s?척|처럼\\s?(?:꾸며|위장|작성))|가짜\\s?(?:후기|리뷰|체험담|계정)|위장\\s?(?:후기|리뷰)|(?:직원|지인|가족)[^.\\n]{0,12}(?:후기|리뷰)[^.\\n]{0,10}(?:작성|남기|올리)|(?:후기|리뷰)를?\\s?(?:대신|대리)\\s?(?:작성|써)',sources:['fair_labeling','endorsement_guideline']},
   {id:'sponsorship_undisclosed',category:'endorsement',severity:'block',title:'협찬·광고 관계 표기 누락',match:'협찬|체험단|원고료|제품을?\\s?(?:무상\\s?)?제공(?:받|하고|해)|무상\\s?제공|유료\\s?(?:광고|게시|포스팅)|광고비[^.\\n]{0,10}(?:지급|받)|대가를?\\s?(?:지급|받)',cleared:'\\[광고\\]|\\(광고\\)|#광고|#협찬|#유료광고|유료\\s?광고\\s?포함|소정의\\s?원고료|(?:광고|협찬)\\s?(?:표기|표시|문구)(?:를|을)?\\s?(?:포함|넣|명시|붙|달)|경제적\\s?(?:대가|이해관계)[^.\\n]{0,12}(?:표시|표기|밝|명시|공개)|제공받아\\s?작성',sources:['fair_labeling','endorsement_guideline']},
@@ -44,21 +49,21 @@ export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:
   // ③ AI 기본법: 생성형 AI 결과물 표시 필요 플래그.
   {id:'ai_generated_unlabeled',category:'ai_label',severity:'warn',title:'AI 생성 소재 표시 필요',match:'(?:AI|인공지능|생성형)[^.\\n]{0,20}(?:이미지|영상|음성|목소리|사진|일러스트|캐릭터|배경|소재)|딥페이크|합성\\s?(?:음성|얼굴)',cleared:'AI\\s?(?:생성|활용|제작)[^.\\n]{0,12}(?:표시|표기|고지|워터마크|라벨)|인공지능[^.\\n]{0,12}(?:표시|표기|고지)|#AI\\s?생성|AI로\\s?(?:생성|제작)(?:됨|되었습니다)',sources:['ai_basic_act']},
   // ④ 정보통신망법: 광고 메시지의 (광고) 표기·야간 전송·수신 동의·수신거부 안내.
-  {id:'ad_label_missing',category:'ad_message',severity:'block',title:'광고 메시지 (광고) 표기 누락',match:MESSAGE,context:PROMOTION,cleared:'\\(광고\\)|\\[광고\\]|（광고）',sources:['network_act']},
-  {id:'consent_missing',category:'ad_message',severity:'warn',title:'광고 메시지 수신 동의 전제 누락',match:MESSAGE,context:PROMOTION,cleared:'수신\\s?(?:에\\s?)?동의|마케팅\\s?(?:정보\\s?)?수신|옵트인|opt-?in',sources:['network_act']},
-  {id:'optout_missing',category:'ad_message',severity:'warn',title:'무료 수신거부 방법 안내 누락',match:MESSAGE,context:PROMOTION,cleared:'수신\\s?거부|무료\\s?거부|수신\\s?철회|080-?\\d',sources:['network_act']},
+  {id:'ad_label_missing',category:'ad_message',severity:'block',title:'광고 메시지 (광고) 표기 누락',match:MESSAGE,context:PROMOTION,except:DEFERRAL,cleared:'\\(광고\\)|\\[광고\\]|（광고）',sources:['network_act']},
+  {id:'consent_missing',category:'ad_message',severity:'warn',title:'광고 메시지 수신 동의 전제 누락',match:MESSAGE,context:PROMOTION,except:DEFERRAL,cleared:'수신\\s?(?:에\\s?)?동의|마케팅\\s?(?:정보\\s?)?수신|옵트인|opt-?in',sources:['network_act']},
+  {id:'optout_missing',category:'ad_message',severity:'warn',title:'무료 수신거부 방법 안내 누락',match:MESSAGE,context:PROMOTION,except:DEFERRAL,cleared:'수신\\s?거부|무료\\s?거부|수신\\s?철회|080-?\\d',sources:['network_act']},
   {id:'night_send',category:'ad_message',severity:'warn',title:'야간(21시~08시) 광고 전송은 별도 동의 필요',match:'(?:밤|저녁|오후)\\s?(?:9|10|11)\\s?시|(?:새벽|오전)\\s?[0-7]\\s?시|(?<!\\d)(?:21|22|23|24)\\s?시(?!간)|(?<![\\d:])(?:21|22|23|0[0-7])\\s?:\\s?[0-5]\\d|자정|심야|야간',also:'발송|전송|보내|보낸|푸시',cleared:'야간[^.\\n]{0,10}동의|별도\\s?(?:야간\\s?)?(?:수신\\s?)?동의',sources:['network_act']},
   // ⑤ 식품 표시·광고: 질병 예방·치료 효능 오인, 원산지 주장(국내산·OO산·한우 등) 시 원장 미확정 경고. 확인 목록의 '원산지' 낱말은 주장이 아니다.
-  {id:'disease_claim',category:'food_claim',severity:'block',title:'식품의 질병 예방·치료 효능 표현',match:'(?:당뇨|고혈압|혈압|혈당|비만|면역력?|질병|질환|감기|변비|치매|숙취)[^.\\n]{0,10}(?:예방|치료|개선|완화|낮춰|낮춘|낮추|강화|회복|효과|효능)|다이어트\\s?(?:효과|효능)|(?<![가-힣])암\\s?(?:예방|치료|억제)|항암|해독\\s?(?:효과|작용)',sources:['food_labeling_act']},
+  {id:'disease_claim',category:'food_claim',severity:'block',title:'식품의 질병 예방·치료 효능 표현',match:'(?:당뇨|고혈압|혈압|혈당|비만|면역력?|질병|질환|감기|변비|치매|숙취)[^.\\n]{0,10}(?:예방|치료|개선|완화|낮춰|낮춘|낮추|강화|회복|효과|효능|높여|높인|줄여|줄인|해소|에\\s?좋은)|다이어트\\s?(?:효과|효능)|(?<![가-힣])암\\s?(?:예방|치료|억제)|항암|해독\\s?(?:효과|작용)',sources:['food_labeling_act']},
   {id:'origin_unconfirmed',category:'food_claim',severity:'warn',title:'원산지 주장(원장에 원산지 확정값 없음)',match:'(?:국내|국|수입|미국|호주|중국|칠레|브라질|스페인|캐나다|뉴질랜드|베트남|태국|일본|이탈리아|독일|노르웨이|러시아)산(?![가-힣]*업)|한우|한돈',ledgerKey:'원산지|산지',marked:true,sources:['origin_act','food_labeling_act']},
   // ⑥ 화장품: 의약품 오인, 미인증 기능성 표현.
   {id:'drug_claim',category:'cosmetic_claim',severity:'block',title:'화장품의 의약품 오인 표현',match:'(?:여드름|아토피|피부염|습진|건선|탈모|흉터|상처|염증|무좀|기미)[^.\\n]{0,12}(?:치료|완치|치유|재생|없애|없앤|사라지|사라진|낫)|(?:세포|피부|모발)\\s?재생|의약품\\s?(?:수준|급|효과)|약처럼|처방\\s?(?:없이|받은)',sources:['cosmetics_act']},
   {id:'functional_unverified',category:'cosmetic_claim',severity:'warn',title:'기능성 인증 근거 없는 기능성 표현',match:'미백|주름\\s?(?:개선|완화)|자외선\\s?차단|탈모\\s?(?:증상\\s?)?(?:완화|방지)|여드름성\\s?피부\\s?완화|피부\\s?장벽\\s?(?:강화|개선)|SPF\\s?\\d+|PA\\+',cleared:'기능성\\s?(?:화장품|인증|심사|보고)|식약처\\s?(?:심사|보고|인증)',ledgerKey:'기능성',sources:['cosmetics_act']},
   // ⑦ 전자상거래: 판매 조건·가격 표시 누락.
-  {id:'price_missing',category:'ecommerce_terms',severity:'warn',title:'구매 유도 문구에 가격 표시 누락',match:PURCHASE_CTA,cleared:'\\d{1,3}(?:,\\d{3})+\\s?원|\\d+\\s?원|가격[^.\\n]{0,6}\\d',sources:['ecommerce_act']},
-  {id:'terms_missing',category:'ecommerce_terms',severity:'warn',title:'구매 유도 문구에 판매 조건(배송·교환·환불 등) 누락',match:PURCHASE_CTA,cleared:'배송|교환|환불|반품|청약\\s?철회|판매\\s?(?:기간|조건)|픽업|수령',sources:['ecommerce_act']},
+  {id:'price_missing',category:'ecommerce_terms',severity:'warn',title:'구매 유도 문구에 가격 표시 누락',match:PURCHASE_CTA,except:MEASUREMENT,cleared:'\\d{1,3}(?:,\\d{3})+\\s?원|\\d+\\s?원|가격[^.\\n]{0,6}\\d',sources:['ecommerce_act']},
+  {id:'terms_missing',category:'ecommerce_terms',severity:'warn',title:'구매 유도 문구에 판매 조건(배송·교환·환불 등) 누락',match:PURCHASE_CTA,except:MEASUREMENT,cleared:'배송|교환|환불|반품|청약\\s?철회|판매\\s?(?:기간|조건)|픽업|수령',sources:['ecommerce_act']},
   {id:'discount_basis_missing',category:'ecommerce_terms',severity:'warn',title:'할인 표시에 기준 가격 누락',match:'\\d{1,2}\\s?%\\s?(?:할인|OFF|off|세일)|할인가|특가|반값|[\\d,]+\\s?원\\s?할인',cleared:'정가|정상가|기존\\s?가|할인\\s?전|원래\\s?가격|소비자가',marked:true,sources:['ecommerce_act','fair_labeling']},
   // ⑧ 권리: 아티스트 이름·사진·로고 사용 시 권리 확인 미기재.
-  {id:'artist_rights_unconfirmed',category:'rights',severity:'warn',title:'아티스트·유명인 이름·사진·로고 권리 확인 미기재',match:'(?:아티스트|아이돌|멤버(?!십)|가수|배우|셀럽|연예인|유명인|포토\\s?카드|앨범\\s?(?:재킷|자켓|커버|이미지)|팬아트|초상|타사\\s?로고|방송\\s?(?:캡처|화면)|캐릭터\\s?IP)[^.\\n]{0,20}(?:사용|활용|게시|삽입|노출|넣|합성|인쇄|배치|배경)',cleared:'권리\\s?(?:확인|처리|확보)|초상권|저작권|퍼블리시티|사용\\s?(?:허락|승인|허가|계약)|라이선스|라이센스|소속사[^.\\n]{0,10}(?:승인|확인|허락|협의)',sources:['copyright_act','unfair_competition_act','trademark_act']},
+  {id:'artist_rights_unconfirmed',category:'rights',severity:'warn',title:'아티스트·유명인 이름·사진·로고 권리 확인 미기재',match:'(?:아티스트|아이돌|멤버(?!십|\\s?전용|\\s?혜택|\\s?등급)|가수|배우|셀럽|연예인|유명인|포토\\s?카드|앨범\\s?(?:재킷|자켓|커버|이미지)|팬아트|초상|타사\\s?로고|방송\\s?(?:캡처|화면)|캐릭터\\s?IP)[^.\\n]{0,20}(?:사용|활용|게시|삽입|노출|넣|합성|인쇄|배치|배경)',cleared:'권리\\s?(?:확인|처리|확보)|초상권|저작권|퍼블리시티|사용\\s?(?:허락|승인|허가|계약)|라이선스|라이센스|소속사[^.\\n]{0,10}(?:승인|확인|허락|협의)',sources:['copyright_act','unfair_competition_act','trademark_act']},
  ],
 };

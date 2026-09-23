@@ -1,12 +1,14 @@
 import {claimGuard} from '../campaign-policy';
 import {verdict,type Grader,type EvalItem,type GradeContext} from './types';
-import {isText,bodyOf,proseFields,blocks,sentences,NEGATION,compact,excerpt,placeholderOnly} from './text';
+import {isText,bodyOf,proseFields,blocks,sentences,excerpt,placeholderOnly} from './text';
+import {NEGATION,usesTerm} from './negation';
 
 // 내용 채점기: question_only가 fail이면 not_applicable로 둔다(index.ts 우선순위 규칙).
 const ledger=(ctx:GradeContext)=>ctx.facts?{confirmed:ctx.facts.confirmed||[],prohibited:ctx.facts.prohibited||[]}:{confirmed:[],prohibited:[]};
 const hitsVerdict=(hits:string[])=>hits.length?verdict('fail',[...new Set(hits)]):verdict('pass');
 
 // 브리프·안건이 막은 표현이 가설·실험·카피 구역에 부정·배제 없이 다시 나오면 fail. [확인 필요]는 면제 사유가 아니다(claimPolicy).
+// 부정·배제는 그 표현 바로 뒤 서술부만 본다(negation.ts). 문장 안 다른 곳의 '놓치지 말고'·'아닌'은 면제 사유가 아니다.
 const PROHIBITION_ZONE=/가설|실험|카피|문안|메시지|대본|자막|슬로건|헤드라인/;
 const NUMBERED_TRIAL=/^(?:[-*]\s*)?(?:고객\s?|우선\s?)?(?:가설|실험)\s?\d/,TRIAL_SENTENCE=/^(?:가설|실험)\s?\d/;
 function prohibitedTerms(ctx:GradeContext){
@@ -24,7 +26,7 @@ export const briefProhibitionConflict:Grader={id:'brief_prohibition_conflict',co
  if(!isText(item))return verdict('not_applicable');
  const terms=prohibitedTerms(ctx);
  if(!terms.length)return verdict('not_applicable','금지 표현 없음');
- return hitsVerdict(zoneSentences(item).filter(s=>!NEGATION.test(s)).flatMap(s=>terms.filter(t=>s.toLowerCase().includes(t)).map(t=>`${t}: ${excerpt(s)}`)));
+ return hitsVerdict(zoneSentences(item).flatMap(s=>terms.filter(t=>usesTerm(s,t)).map(t=>`${t}: ${excerpt(s)}`)));
 }};
 
 // 근거 없는 광고 표현(claimTerms 중 확정 원장에 없는 것)이 카피 구역 문장에 부정·[확인 필요] 없이 쓰이면 fail.
@@ -37,8 +39,8 @@ function copyUnits(item:EvalItem){
 export const unsupportedClaimTerm:Grader={id:'unsupported_claim_term',content:true,grade(item,ctx){
  if(!isText(item))return verdict('not_applicable');
  const terms=claimGuard(ledger(ctx)).unverified;
- const candidates=copyUnits(item).flatMap(sentences).filter(s=>!NEGATION.test(s)&&!/확인\s?필요/.test(s));
- return hitsVerdict(candidates.flatMap(s=>terms.filter(t=>compact(s).includes(compact(t))).map(t=>`${t}: ${excerpt(s)}`)));
+ const candidates=copyUnits(item).flatMap(sentences).filter(s=>!/확인\s?필요/.test(s));
+ return hitsVerdict(candidates.flatMap(s=>terms.filter(t=>usesTerm(s,t)).map(t=>`${t}: ${excerpt(s)}`)));
 }};
 
 // 캠페인 업종이 아닌 업종의 지표·용어. v1 사전은 campaign-policy.ts campaignEvidencePolicy의 보관함 정규식을 업종 사전으로 일반화했다.

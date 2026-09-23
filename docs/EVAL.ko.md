@@ -1,6 +1,6 @@
 # 평가 하네스 (F1a) · 실패 유형 사전 v1 · 규제 가드레일 (A2)
 
-결론: 역할·회의 산출물을 네트워크 없이 다시 채점하는 결정론 채점기 12종과 규제 표시 가드레일 8범주를 순수 함수로 둔다. 프롬프트·모델·입력을 바꾼 뒤 결과가 나빠지지 않았는지를 사람의 인상 대신 같은 저울로 잰다.
+결론: 역할·회의 산출물을 네트워크 없이 다시 채점하는 결정론 채점기 13종과 규제 표시 가드레일 8범주를 순수 함수로 둔다. 프롬프트·모델·입력을 바꾼 뒤 결과가 나빠지지 않았는지를 사람의 인상 대신 같은 저울로 잰다.
 
 비유: 요리 대회에서 맛 평가는 심사위원이 하지만, "재료를 빼먹었는가", "금지 재료를 썼는가"는 체크리스트로 누구나 같은 답을 낸다. 이 문서의 채점기는 그 체크리스트다. 맛(설득력·창의성)은 판정하지 않는다.
 
@@ -26,21 +26,24 @@
 
 공통 규칙:
 - 입력(브리프 목표·회의 안건)은 채점하지 않는다. 금지 표현의 출처로만 쓴다.
-- 우선순위: `question_only`가 `fail`이면 내용 채점기 7종(`thin_section`, `brief_prohibition_conflict`, `fact_conflict`, `unsupported_claim_term`, `industry_metric_leak`, `revisit_cohort_definition`, `local_channel_coverage`)은 `not_applicable`로 둔다. 재질문 1건이 여러 유형으로 이중 계산되지 않게 한다. 구조 채점기(`contract_json`, `heading_nesting`, `internal_id_exposure`, `input_budget`)는 계속 채점한다.
+- 우선순위: `question_only`가 `fail`이면 내용 채점기 8종(`thin_section`, `brief_prohibition_conflict`, `fact_conflict`, `unconfirmed_value_assertion`, `unsupported_claim_term`, `industry_metric_leak`, `revisit_cohort_definition`, `local_channel_coverage`)은 `not_applicable`로 둔다. 재질문 1건이 여러 유형으로 이중 계산되지 않게 한다. 구조 채점기(`contract_json`, `heading_nesting`, `internal_id_exposure`, `input_budget`)는 계속 채점한다.
 - 판정 임계값(역할 250자, 회의 발언 80자, 계약 섹션 150자, 입력 토큰 32,000)과 내부 식별자 패턴은 `lib/graders`가 정본이다.
+- 부정·배제 판정(`lib/graders/negation.ts`, 채점기와 가드레일이 같은 사전을 쓴다): 문장 전체가 아니라 대상 표현 바로 뒤 서술부(같은 절, 40자 안)만 본다. `않·말고·금지·제외·삭제·안 됩니다·안 합니다·피합니다·피해야·빼고·대신·불가·금물`은 절 안 어디에 있어도 부정이다. `아닌·아니라·없이·없습니다`는 대상 바로 뒤 8자 안에 쉼표 없이 나올 때만 부정이다(예: "평범한 분식이 아닌 숯불 떡볶이"의 `아닌`은 숯불을 부정하지 않는다). `·`·`/`로 이은 나열은 한 대상으로 본다. `금지 표현: …`처럼 부정 라벨 뒤 나열도 부정이다. 판정 전에 조건 주석 괄호(`(주류 제외)`, `(1인 1회, 중복 참여 금지)`)와 권유·강조 관용구(`잊지 말고`, `놓치지 마세요`, `어디에도 없습니다`)를 지운다. `(진행 금지)`처럼 괄호 전체가 앞 행위의 부정이면 남긴다.
+- 라벨(구역 이름): 제목 줄, 또는 `**`·`__` 강조와 끝 콜론을 벗긴 뒤 문장부호 없는 30자 이하 짧은 줄(`**게시 카피**`, `게시 카피:`)이다. `라벨: 본문` 인라인 줄(`- 게시 카피: …`, `**카피 A:** …`)은 그 줄에만 라벨을 붙이고 둘러싼 라벨과 함께 본다.
 
-## 실패 유형 정의표 (v1, 결정론 12종)
+## 실패 유형 정의표 (v1, 결정론 13종)
 
 | ID | 정의 | 판정 규칙(fail) | not_applicable |
 |---|---|---|---|
-| `question_only` | 담당 산출물 대신 작업 지정 요청·번호 선택지·"알려 주시면 작성하겠다" 보류를 반환 | `substanceProblem(text,min)==='reask'` 또는 `isQuestionOnly(text)`(`lib/role-output.ts` 재사용). min은 역할 250자, 회의 발언 80자(`DISCUSSION_MIN_CHARS`). 회의 발언은 필드마다 `## 필드명` 제목을 붙여 검사한다(`meetings.ts` fieldText와 같음). 원 JSON은 계약 제목으로 렌더해 섹션별로 검사한다 | 입력, quality 판정 |
+| `question_only` | 담당 산출물 대신 작업 지정 요청·번호 선택지·"알려 주시면 작성하겠다" 보류를 반환 | `substanceProblem(text,min)==='reask'`(`lib/role-output.ts` 재사용, 섹션마다 `isQuestionOnly`·선택지·보류 패턴을 적용하고 재질문 섹션이 과반이거나 나머지 본문이 min 미만이면 reask). `isQuestionOnly`를 본문 전체에 단독 적용하지 않는다("고객 요청이 많은 메뉴 데이터는 아직 없습니다" 한 문장으로 fail이 되어 내용 채점기까지 가렸다). min은 역할 250자, 회의 발언 80자(`DISCUSSION_MIN_CHARS`). 회의 발언은 필드마다 `## 필드명` 제목을 붙여 검사한다(`meetings.ts` fieldText와 같음). 원 JSON은 계약 제목으로 렌더해 섹션별로 검사한다 | 입력, quality 판정 |
 | `thin_section` | 계약 섹션이나 전체 본문에 실제 초안이 없음 | (a) 제목·표 구분선·`자료 필요`로 **시작하는** 줄을 뺀 전체 글자 수 < 250(발언 80), (b) 계약 섹션(렌더본의 계약 제목 사이, 하위 `###` 포함) 글자 수 < 150, (c) 섹션 과반이 `자료 필요`로 시작하는 줄만 있음. PR 2의 "자료 필요가 들어간 줄 80% 초과" 비율 규칙은 쓰지 않는다(한 줄 섹션의 인라인 `[자료 필요]` 태그를 오탐함) | 입력, `question_only` fail. 계약 없는 본문은 (a)(c)만 |
 | `contract_json` | 역할 계약(role-output-v1)·회의 발언 스키마 위반 | 역할: 원 JSON에 `parseRoleOutput(raw,role,contract)`가 예외를 던짐. 원 JSON이 없으면 렌더본에 계약 제목이 순서대로 정확히 1회씩 `## 제목`으로 있어야 한다(약식). 회의 발언: `parseMeetingStep`이 4필드 누락·`respondsTo` 형식 오류·앞선 완료 발언이 있는데 허용 참조 0개를 보고함. 실질 분량 오류는 이 채점기가 아니라 위 두 채점기가 맡는다 | 계약 이전(legacy) 실행, quality, 입력 |
 | `heading_nesting` | 계약 섹션 본문이 `#`·`##` 제목을 다시 써서 섹션 경계가 깨짐 | 계약 렌더본에서 `^#{1,2}\s` 줄이 계약 제목·`수정 요청 반영 위치`가 아님, 또는 계약 제목 바로 다음 비어 있지 않은 줄이 `#`·`##` 제목(빈 계약 섹션). legacy 역할 본문은 내보내기가 `## 역할명`으로 감싸므로 본문의 `#`·`##` 제목이 곧 fail. `###` 이하는 허용 | 입력, 브리프, 회의 발언, quality |
 | `internal_id_exposure` | 사람이 읽는 본문에 내부 ID·입력 스키마 경로·디버그 값 노출 | URL을 뺀 산문에서 (a) `scrubInternalIds(text)!==text`(UUID·`meeting-` UUID·`ai-` 32자리·revision 번호), (b) 스키마 경로 `(campaign\|brandArchive\|archive\|evidence\|artifact(s)\|stores\|products\|operations\|budgetPlan\|learning\|snapshot).필드`, (c) 디버그 값 `소문자키=([]\|null\|true\|false\|숫자\|hex)`. `respondsTo`·`role` 같은 코드 필드는 제외. (b)가 없으면 스키마 경로만 노출한 발언을 놓친다 | 입력 |
-| `brief_prohibition_conflict` | 브리프·안건이 막은 표현이 가설·실험 변수·카피에 다시 나옴 | 금지 표현 = 케이스의 큐레이션 `prohibitedTerms` ∪ 원장 거절값(`claimGuard(facts).prohibited`). 대상 구역 = 제목·라벨에 가설·실험·카피·문안·메시지·대본·자막·슬로건·헤드라인이 있는 블록, `가설 N`·`실험 N`으로 시작하는 문장, 회의 발언 position·proposal. 구역 안 문장(표는 칸 단위)에 금지 표현이 있고 같은 문장에 부정·배제 표현이 없으면 fail. `[확인 필요]`는 면제 사유가 아니다(claimPolicy). 라벨에 부정어가 있는 블록(예: "사용하지 않을 표현")은 제외 | 금지 표현 0개, 입력, `question_only` fail |
-| `fact_conflict` | 확정 원장과 다른 값, 미확정 항목의 구체 값 단정, 거절값 사용 | 원장이 있을 때만. (a) 확정 주소와 본문 주소(공백 제거 비교)가 다름, (b) 거절값이 부정문 밖에서 쓰임, (c) 원장이 확정하지 않은 가격(`N,NNN원`, `N만 원`)·오픈일(`N월 N일 오픈` 등)·도보 시간·유동인구 수치가 `[확인 필요]`·`[예시]`·`미확정`·`자료 필요` 표시 없이 나옴 | 원장 없음, 본문이 원장 항목을 하나도 다루지 않음, 입력, `question_only` fail |
-| `unsupported_claim_term` | 근거 없는 광고 표현(인기·판매 1위·최초·유일·할인·무료·오픈 혜택)이 카피에 쓰임 | `claimGuard(facts).unverified` 용어가 카피 구역(라벨이 카피·문안·메시지 초안·대본·자막·헤드라인·슬로건·CTA인 블록, 또는 따옴표 안 문구) 문장에 부정 표현·`확인 필요` 없이 나옴. 라벨이 "하지 않을·사용하지 않을·금지·제외"인 블록은 제외. PR 2 `unverifiedClaims`(줄 단위·좁은 부정어)는 절차 문장을 오탐해 그대로 쓰지 않는다 | 입력, `question_only` fail(카피 구역이 없으면 pass) |
+| `brief_prohibition_conflict` | 브리프·안건이 막은 표현이 가설·실험 변수·카피에 다시 나옴 | 금지 표현 = 케이스의 큐레이션 `prohibitedTerms` ∪ 원장 거절값(`claimGuard(facts).prohibited`). 대상 구역 = 제목·라벨(인라인 라벨 포함)에 가설·실험·카피·문안·메시지·대본·자막·슬로건·헤드라인이 있는 블록, `가설 N`·`실험 N`으로 시작하는 문장, 회의 발언 position·proposal. 구역 안 문장(표는 칸 단위)에 금지 표현이 있고 그 표현 바로 뒤 서술부가 부정·배제가 아니면(위 공통 규칙) fail. `[확인 필요]`는 면제 사유가 아니다(claimPolicy). 라벨에 부정어가 있는 블록(예: "사용하지 않을 표현")은 제외 | 금지 표현 0개, 입력, `question_only` fail |
+| `fact_conflict` | 확정 원장과 다른 값, 거절값 사용(원장 대조) | 원장에 있는 항목만 대조한다. (a) 확정 주소와 본문 주소(공백 제거 비교)가 다름, (b) 원장에 확정값이 있는 가격·오픈일·도보 시간·유동인구의 본문 값이 원장 값 목록에 없음(가격은 `N,NNN원`·`N만 원`을 원 단위로, 오픈일은 월-일로 정규화해 비교), (c) 거절값이 부정·배제 없이 쓰임. `[확인 필요]`·`[예시]` 표시 문장은 대조하지 않는다. 예산·비용·한도·객단가·매출·목표·광고비·수수료 등이 있는 문장의 금액은 판매가로 보지 않는다 | 원장 없음, 원장에 있는 항목을 본문이 하나도 다루지 않음(원장에 없는 항목의 값은 세지 않고 분모에서 뺀다), 입력, `question_only` fail |
+| `unconfirmed_value_assertion` | 원장이 확정하지 않은 구체 값을 표시 없이 단정(factPolicy "원장에 없는 가격·개점일은 미확정으로 표시") | 원장에 확정값이 없는 종류(가격·오픈일·도보 시간·유동인구 수치)의 값이 `[확인 필요]`·`[예시]`·`미확정`·`자료 필요` 표시 없이 나옴. 가격 판정은 `fact_conflict`와 같이 예산·비용·매출 목표 문장을 뺀다 | 원장 없음, 미확정 종류의 구체 값이 본문에 없음, 입력, `question_only` fail |
+| `unsupported_claim_term` | 근거 없는 광고 표현(인기·판매 1위·최초·유일·할인·무료·오픈 혜택)이 카피에 쓰임 | `claimGuard(facts).unverified` 용어가 카피 구역(라벨이 카피·문안·메시지 초안·대본·자막·헤드라인·슬로건·CTA인 블록, 또는 따옴표 안 문구) 문장에 `확인 필요` 없이 나오고 그 용어 바로 뒤 서술부가 부정·배제가 아님. 라벨이 "하지 않을·사용하지 않을·금지·제외"인 블록은 제외. PR 2 `unverifiedClaims`(줄 단위·좁은 부정어)는 절차 문장을 오탐해 그대로 쓰지 않는다 | 입력, `question_only` fail(카피 구역이 없으면 pass) |
 | `industry_metric_leak` | 캠페인과 무관한 업종의 지표·용어 유입 | 캠페인 업종이 아닌 업종 사전 용어가 배제 표현(무관·삭제·제외·해당 없·관련 없) 없는 문장에 나옴. v1 사전: 보관함(물품보관함·보관함·락커·locker·가동 가능 시간·가동률), K-POP(포토카드·초동·팬사인회·앨범 판매), 뷰티(피부 개선·보습 효과·성분 함량) | 업종 미상(`context.industry` 없음), 입력, `question_only` fail |
 | `revisit_cohort_definition` | 30일 재방문율을 관찰이 끝난 코호트로 정의하지 않음 | 재방문율·재구매율 정의 문장(`재방문율 =`, `재방문율은`, `÷`, `나눈`, 또는 `재방문율` 단독 줄 다음 줄이 `=`)에 성숙 기준(관찰이 끝난·마친·완료, 성숙, 코호트)이 없음 | 정의 문장 없음, 입력, `question_only` fail |
 | `local_channel_coverage` | F&B·점포 캠페인 CMO·strategy가 로컬 핵심 채널 후보를 다루지 않음 | 플레이스(네이버 지도·플레이스)·당근·배달앱(배민·쿠팡이츠·요기요·배달 플랫폼)·카카오 4개 채널군이 각각 채널 구역(라벨·줄에 "채널") 또는 결정 표현(선택·제외·보류·후순위·채택·쓰지 않·다루지 않)이 있는 줄에 나와야 한다. `자료 필요`로 시작하는 줄과 `=`로 시작하는 산식 줄은 세지 않는다. 4/4 미만이면 fail | `context.localStore`가 아님, cmo·strategy 외 역할, 회의 발언, `question_only` fail |
@@ -61,7 +64,8 @@
 
 | 함수 | 채점기에서의 쓰임 |
 |---|---|
-| `isQuestionOnly`, `substanceProblem`('reask') | `question_only`가 그대로 재사용 |
+| `substanceProblem`('reask') | `question_only`가 그대로 재사용 |
+| `isQuestionOnly` | `substanceProblem`이 섹션마다 적용하는 경로로만 쓴다. 첫 정규식의 `없습니다\|없어요` 분기가 평범한 "…요청…없습니다" 문장도 재질문으로 본다. 런타임 `parseRoleOutput`은 본문 전체에 적용해 같은 문장이 든 정상 산출물을 거절할 수 있다(F1b에서 좁힐 후속 과제) |
 | `substanceProblem`('placeholder') | 비율 규칙이 인라인 태그를 오탐해 `thin_section`은 쓰지 않는다. `sectionsOf`·`placeholderOnly`는 `lib/role-output.ts`에서 export되지 않아 `lib/graders/text.ts`에 같은 규칙을 두었다. F1b에서 export로 바꿔 하나로 합친다 |
 | `scrubInternalIds` | `internal_id_exposure` (a)가 치환 발생 여부로 재사용하고 (b)(c) 패턴을 더한다 |
 | `parseRoleOutput`, `parseMeetingStep` | `contract_json`이 재사용 |
@@ -70,7 +74,7 @@
 
 ## 규제 가드레일 (A2, `lib/graders/compliance.ts`)
 
-`checkCompliance(text,{facts})`가 문장 단위로 8개 범주를 점검하고 `{version,issues,notice}`를 반환한다. 어휘 사전(`lib/graders/compliance-lexicon.ts`)은 버전(`compliance-lexicon-YYYY-MM-DD.N`)과 공식 출처 URL(국가법령정보센터)을 가진다. 판정 로직과 사전을 나눠 사전만 개정할 수 있다.
+`checkCompliance(text,{facts})`가 문장 단위로 8개 범주를 점검하고 `{version,issues,notice}`를 반환한다. 현재 사전은 `compliance-lexicon-2026-09-23.2`다. 어휘 사전(`lib/graders/compliance-lexicon.ts`)은 버전(`compliance-lexicon-YYYY-MM-DD.N`)과 공식 출처 URL(국가법령정보센터)을 가진다. 판정 로직과 사전을 나눠 사전만 개정할 수 있다.
 
 | 범주 | 점검 내용 | 등급 |
 |---|---|---|
@@ -85,9 +89,13 @@
 
 - 등급: `block`(발행 원천으로 선택 불가), `warn`(사람 확인 필요, 차단하지 않음), `info`(기록만). v1 사전에는 `info` 규칙이 없다.
 - 판정은 하향만 한다: `downgradeVerdict(verdict,issues)`는 `block`이 있을 때 `ready_for_review`를 `revise`로 내리고, 그 밖에는 판정을 바꾸지 않는다. 위반이 없다고 판정을 올리지 않는다.
-- 부정·배제 문장("가짜 리뷰는 쓰지 않습니다")은 위반으로 보지 않는다. "없습니다"는 "부작용이 없습니다" 같은 효능 주장을 면제하므로 부정어에 넣지 않았다.
+- 부정·배제: 걸린 표현 바로 뒤 서술부가 부정·배제면("가짜 리뷰는 쓰지 않습니다", "리뷰 이벤트 없이 진행합니다", "리뷰 이벤트를 하면 안 됩니다") 위반으로 보지 않는다. 채점기와 같은 사전·범위 규칙(위 공통 규칙)을 쓴다. 판촉 문구의 조건 주석(`(주류 제외)`, `(중복 참여 금지)`)과 `잊지 말고` 같은 권유형 어미는 면제 사유가 아니다. `없습니다`는 대상 바로 뒤에서만 부정이라 "당뇨 개선 효과, 부작용이 없습니다"는 효능 주장으로 남는다.
+- 범위: `cleared`(표기·동의·권리 확인 등 해소 표현)는 걸린 문장이 속한 섹션(제목 `#` 줄·구분선 `---` 사이)에서만 찾는다. 한 초안의 `(광고)`·`#광고`가 같은 문서의 다른 초안 누락을 덮지 않는다. 광고 메시지 규칙의 판촉어(`context`)는 같은 문장에서 찾고, 걸린 표현이 초안 라벨(`문자 초안:`, `## 알림톡 발송 문안 B`)이면 뒤따르는 문단까지 본다. "발송 대신 매장 안내문", "수신 동의 고객이 생긴 뒤에 검토합니다" 같은 비전송·보류 문장은 면제한다(`except`).
+- 체험단·대량 리뷰(`bulk_review`)는 `리뷰 N건`에 모집·확보·작업·구매·대행이 함께 있을 때만 걸고, 체험단·모집 등이 없는 KPI·목표·측정 문장("방문자 리뷰 30건을 목표로")은 면제한다. 구매 유도 문구 규칙은 버튼 클릭 수 같은 측정 문장을 면제한다.
+- 인용: 경쟁점·위반 사례(`사례`, `위반 소지`, `경쟁점`) 문장에서 따옴표 안에 걸린 표현은 `info`로만 남는다. 같은 규칙에 인용 밖 해당 문장이 있으면 그 문장의 원래 등급으로 보고한다.
+- 제목이 `금지 사항`·`하지 않을 것`·`피할 표현`인 섹션의 목록은 위반 문안으로 보지 않는다.
 - 모델 검수 스키마(`qualityCriteria` 5기준)와 `qualityScopeNotice`는 바꾸지 않는다. 런타임 연결에서 가드레일 결과는 `complianceIssues`라는 별도 필드로만 저장한다(연결은 다음 PR, 기능 스위치로 끈다).
-- 한계: 플랫폼별 리뷰 운영정책의 공식 URL은 아직 확인하지 않았다(`COMPLIANCE_LEXICON.platformPolicy`). 법령 조항 해석은 사람이 확인한다. 합성 예시의 탐지율·오탐률은 `tests/compliance.test.mjs` 출력(`violations`, `detected`, `falsePositives`)에 남는다.
+- 한계: 플랫폼별 리뷰 운영정책의 공식 URL은 아직 확인하지 않았다(`COMPLIANCE_LEXICON.platformPolicy`). 법령 조항 해석은 사람이 확인한다. 합성 예시의 탐지율·오탐률은 `tests/compliance.test.mjs` 출력(`violations`, `detected`, `falsePositives`)에 남는다. 쉼표 뒤 다른 대상의 부정("음료 증정, 주류는 안 됩니다")은 같은 절로 보아 면제될 수 있다(미탐 위험). 나열 목록("숯불, 화덕은 쓰지 않습니다")을 부정으로 인정하려고 쉼표를 절 경계로 쓰지 않았다.
 
 ## 역할 지시 스냅샷 (`lib/role-instruction.ts`)
 
@@ -95,7 +103,8 @@
 
 - 바이트 동일성 근거: `tests/fixtures/role-submission-<기준 sha7>.json`. 기준 커밋을 `git archive`로 풀어 `scripts/eval/capture-role-submission.mjs`를 실행해 만들었다. 모의 런타임(`tests/helpers/runtime.mjs`, 메모리 SQLite, HERMES fetch 스텁)과 합성 브랜드·캠페인만 쓰며 외부 호출은 0회다. 8개 역할과 재작성 지시(revisionRequest) 1건을 담는다.
 - `tests/role-instruction.test.mjs`는 런타임 헬퍼 없이 순수 로더로 함수를 읽어 스냅샷과 비교한다.
-- 재캡처: 역할 지시·입력 조립이 의도적으로 바뀌면 새 기준 커밋에서 다시 캡처하고 파일 이름의 sha7을 바꾼다. 이 테스트가 깨졌는데 의도한 변경이 아니면 회귀다.
+- 재캡처: 역할 지시·입력 조립이 의도적으로 바뀌면 새 기준 커밋에서 다시 캡처하고 파일 이름의 sha7을 바꾼다. 이 테스트가 깨졌는데 의도한 변경이 아니면 회귀다. 실패 메시지가 재캡처 절차를 안내한다.
+- 병합 순서 주의: `lib/role-instruction.ts`는 F1b 연결 전까지 `lib/role-execution.ts` start 분기의 복제본이다. `lib/practice.ts`(`PRACTICE_VERSION`, 역할 방법 문구)나 `lib/role-execution.ts` 입력 조립을 바꾸는 PR과 함께 병합되면 나중에 병합되는 쪽의 CI에서 이 테스트가 실패한다. 나중에 병합되는 쪽이 새 기준 SHA에서 fixture를 재캡처하고, 입력 조립 변경(예: `aiBudget`)을 `buildRoleInput`에 반영한다. 장기적으로 F1b에서 `role-execution.ts`가 이 모듈을 직접 써서 복제본을 없앤다.
 
 ```sh
 git archive <기준 SHA> | tar -x -C <임시 디렉터리>
@@ -167,7 +176,8 @@ node scripts/eval/grade.mjs <case.json> [--json] [--detail]
 - `input_budget` 상한(제안 32,000)과 브리프 초안 호출 포함 여부는 대표 결정 사항이다.
 - `brief_prohibition_conflict`의 금지 표현은 케이스마다 사람이 큐레이션한다. 자유 문장에서 자동 추출하면 오탐이 많아 v1은 쓰지 않는다.
 - `contract_json`은 원 JSON이 없으면 렌더본 제목만 보는 약식 검사다.
-- 정규식 채점기라 표현 변형에 약하다. 오탐·미탐 사례는 합성 fixture로 옮겨 테스트에 추가한다.
+- 정규식 채점기라 표현 변형에 약하다. 오탐·미탐 사례는 합성 fixture로 옮겨 테스트에 추가한다. 공개 저장소의 fixture는 로컬 산출물 문장을 옮기지 않고 같은 판정 성질의 합성 문장으로 새로 쓴다.
+- 실패 유형 수는 13종이다. 계획의 v1 목표(10~12종)보다 1종 많다. 원장 대조(`fact_conflict`, 원장에 없는 항목은 분모에서 제외)와 미확정 값 단정(`unconfirmed_value_assertion`)을 계획 수용 기준대로 나누었기 때문이다.
 - 이 채점기는 사실 정확성 전체나 설득력을 판정하지 않는다.
 
 ## 법률 자문 아님 고지

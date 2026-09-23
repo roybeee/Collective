@@ -39,6 +39,23 @@ const violations=[
  ['ecommerce_terms','오늘만 30% 할인 특가, 바로 구매하세요.'],
  ['rights','아티스트 사진을 매장 포스터에 넣어 팬 방문을 유도한다.'],
  ['rights','앨범 재킷 이미지를 카드뉴스 배경으로 사용한다.'],
+ // 조건 주석 괄호·권유형 어미가 붙은 변형: 문장 안 부정어가 위반 전체를 면제하면 안 된다.
+ ['platform_review','영수증 리뷰 이벤트: 참여 고객께 음료 증정(주류 제외).'],
+ ['platform_review','리뷰 작성 시 음료 증정 (1인 1회, 중복 참여 금지)'],
+ ['ad_message','문자 발송 문안: 오픈 기념 20% 할인 쿠폰 드립니다(배달 주문 제외).'],
+ ['food_claim','면역력 강화에 좋은 떡볶이, 오늘만 특가(포장 제외)!'],
+ ['endorsement','체험단 30명 모집, 제품 무상 제공 (중복 신청 불가, 대리 작성 금지)'],
+ ['food_claim','감기 예방 효과 뛰어난 국물, 잊지 말고 챙기세요.'],
+ // 조건형·대상형 보상 리뷰 요청과 효능형 표현 변형.
+ ['platform_review','후기 쓰면 음료 서비스!'],
+ ['platform_review','영수증 인증하고 리뷰 쓰면 쿠폰 지급'],
+ ['platform_review','별점 5점 주시면 사이드 무료'],
+ ['platform_review','리뷰 작성 고객께 음료 증정'],
+ ['platform_review','리뷰 작성하신 분께 음료를 드립니다'],
+ ['food_claim','면역력을 높여주는 김밥.'],
+ ['food_claim','혈당 스파이크를 줄여주는 메뉴.'],
+ ['food_claim','당뇨에 좋은 음식입니다.'],
+ ['food_claim','숙취해소에 좋은 해장 떡볶이.'],
 ];
 // 합성 정상 예시: [설명, 문장, 옵션]. 추천·보증 표기를 갖춘 협찬 게시물을 포함한다.
 const normals=[
@@ -51,12 +68,25 @@ const normals=[
  ['AI output labelled','AI로 생성한 이미지에는 "AI 생성" 표시를 붙여 게시합니다.'],
  ['review policy stated','방문 고객에게 리뷰를 강요하거나 보상을 조건으로 요청하지 않습니다.'],
  ['plain local plan','오픈 전에는 네이버 플레이스에 주소와 영업시간을 먼저 등록하고 입구 사진을 올립니다.'],
- ['negated prohibited list','허위 인기 표현, 가짜 리뷰, 위장 후기, 대량 홍보, 추천 조작을 하지 않습니다.'],
+ ['negated prohibited list','가짜 리뷰·위장 후기·대량 후기 작업은 모두 하지 않습니다.'],
  ['virtual person disclosed','가상 인플루언서 루나(가상 인물입니다)가 메뉴를 소개합니다.'],
- ['health wording excluded','건강 효능은 확정 문구로 사용하지 않습니다.'],
+ ['health wording excluded','건강 효능 표현은 확인 전까지 쓰지 않습니다.'],
  // 실데이터 재채점에서 찾은 오탐의 합성 회귀 예시: 브랜드 핵심 메시지 초안은 전송 메시지가 아니고, 확인 목록의 '원산지' 낱말은 원산지 주장이 아니다.
  ['brand key message draft','핵심 메시지 초안: 가상동에 새로 여는 분식집, 오픈 소식을 먼저 알립니다.'],
- ['origin in a confirmation list','| 승인된 실제 메뉴·가격·원산지·포장 구성 | 확정 문구 작성 전 확인 |'],
+ ['origin in a confirmation list','| 확인 항목: 메뉴명·판매가·원산지 | 게시 전 점장 확인 |'],
+ // 계획·KPI 문장과 부정·회피 문장은 위반이 아니다.
+ ['review count KPI','측정 지표: 오픈 4주 안에 네이버 플레이스 방문자 리뷰 30건을 목표로 둡니다.'],
+ ['deferred message plan','오픈 준비 체크리스트입니다. 카카오톡 채널 메시지 발송은 수신 동의 고객이 생긴 뒤에 검토합니다.'],
+ ['message replaced by a notice','오픈 주간에는 알림톡 발송 대신 매장 안내문을 씁니다.'],
+ ['no review event (없이)','리뷰 이벤트 없이 진행합니다.'],
+ ['no review event (안 합니다)','리뷰 이벤트는 진행 안 합니다.'],
+ ['no review event (안 됩니다)','리뷰 이벤트를 하면 안 됩니다.'],
+ ['no review event (피해야)','리뷰 이벤트는 피해야 합니다.'],
+ ['no review event (불가)','리뷰 이벤트 불가.'],
+ ['no receipt review event (금물)','영수증 리뷰 이벤트는 절대 금물입니다.'],
+ ['no sponsorship (없이)','협찬 없이 자연 유입만 본다.'],
+ ['membership coupon','멤버 전용 쿠폰을 사용할 수 있는 날을 안내합니다.'],
+ ['order button measurement','네이버 주문하기 버튼 클릭 수를 측정합니다.'],
 ];
 
 check('lexicon has a version and eight categories',()=>{assert.match(COMPLIANCE_LEXICON.version,/^compliance-lexicon-\d{4}-\d{2}-\d{2}\.\d+$/);assert.deepEqual([...COMPLIANCE_CATEGORIES],['platform_review','endorsement','ai_label','ad_message','food_claim','cosmetic_claim','ecommerce_terms','rights']);for(const c of COMPLIANCE_CATEGORIES)assert.ok(COMPLIANCE_LEXICON.rules.some(r=>r.category===c),c)});
@@ -83,5 +113,16 @@ check('model quality checks keep the five criteria',()=>assert.deepEqual(Object.
 check('quality scope notice still excludes legal review',()=>assert.match(qualityScopeNotice,/법적 검토는 포함하지 않습니다/));
 check('input text is not mutated',()=>{const opts={facts:{confirmed:[],prohibited:[]}},before=JSON.stringify(opts);checkCompliance(violations[0][1],opts);assert.equal(JSON.stringify(opts),before)});
 check('compliance finishes quickly on 40,000-character inputs',()=>{for(const text of ['가'.repeat(40000),('리뷰 '+'가'.repeat(28)).repeat(1200),'AI'+' 가'.repeat(20000)]){const t=Date.now();checkCompliance(text);assert.ok(Date.now()-t<1000,text.slice(0,6))}});
+// 해소 표기는 같은 섹션(초안)에만 적용한다. 한 초안의 (광고)·#광고가 다른 초안의 누락을 덮지 않는다.
+const multiDraft='## 문자 초안 A\n(광고) 가상분식 오픈 안내입니다. 수신 동의 고객에게만 보냅니다. 무료 수신거부 080-000-0000\n\n## 문자 초안 B\n알림톡 발송 문안: 오픈 기념 쿠폰 드립니다.';
+check('a disclosure in one draft does not clear another draft',()=>{const ids=checkCompliance(multiDraft).issues.map(i=>i.ruleId);for(const id of ['ad_label_missing','consent_missing','optout_missing'])assert.ok(ids.includes(id),id)});
+check('a fully disclosed draft alone stays clean',()=>assert.deepEqual([...checkCompliance(multiDraft.split('\n\n')[0]).issues],[]));
+const multiPost='## 인플루언서 A\n제품을 제공받아 작성한 후기입니다. #광고\n\n## 블로그 체험단\n제품을 무상 제공하고 후기를 받는다.';
+check('a #광고 tag in one post does not clear another post',()=>assert.ok(checkCompliance(multiPost).issues.some(i=>i.ruleId==='sponsorship_undisclosed')));
+check('a draft label carries promotion words from the following paragraph',()=>assert.ok(checkCompliance('문자 초안\n가상분식 첫 주 쿠폰을 드립니다.').issues.some(i=>i.ruleId==='ad_label_missing')));
+// 따옴표로 인용한 경쟁점 사례는 info로만 남고 판정을 내리지 않는다.
+const cited='경쟁점 사례: "리뷰 작성 시 음료 증정". 이는 정책 위반 소지가 있어 우리는 쓰지 않는다.';
+check('a quoted competitor example is info, not block',()=>{const issues=checkCompliance(cited).issues;assert.ok(issues.length>0&&issues.every(i=>i.severity==='info'));assert.equal(downgradeVerdict('ready_for_review',issues),'ready_for_review')});
+check('the same wording outside a cited quote stays blocking',()=>assert.ok(checkCompliance('매장 안내: 리뷰 작성 시 음료 증정.').issues.some(i=>i.severity==='block')));
 check('detection rate is 100% and false positive rate is 0%',()=>{assert.equal(detected,violations.length);assert.equal(falsePositives,0)});
 console.log(JSON.stringify({passed:passed.length,violations:violations.length,detected,normals:normals.length,falsePositives}));

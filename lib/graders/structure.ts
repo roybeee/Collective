@@ -1,4 +1,4 @@
-import {isQuestionOnly,substanceProblem,scrubInternalIds,parseRoleOutput,roleOutputContract} from '../role-output';
+import {substanceProblem,scrubInternalIds,parseRoleOutput,roleOutputContract} from '../role-output';
 import {parseMeetingStep,DISCUSSION_MIN_CHARS,type MeetingStep} from '../meetings';
 import {verdict,type Grader,type EvalItem} from './types';
 import {isText,bodyOf,fieldText,proseFields,withoutUrls,contractTitles,placeholderOnly,sectionsOf,excerpt} from './text';
@@ -7,11 +7,12 @@ import {isText,bodyOf,fieldText,proseFields,withoutUrls,contractTitles,placehold
 const ROLE_MIN_CHARS=250,SECTION_MIN_CHARS=150;
 const substanceTarget=(item:EvalItem)=>item.kind==='discussion'?{text:fieldText(item),min:DISCUSSION_MIN_CHARS}:{text:bodyOf(item),min:ROLE_MIN_CHARS};
 
+// 재질문 판정은 섹션 비례 규칙(substanceProblem 'reask')만 쓴다. 그 규칙이 섹션마다 isQuestionOnly를 적용한다.
+// isQuestionOnly를 본문 전체(2,500자 이하)에 단독 적용하면 '…요청…없습니다' 같은 평범한 문장 하나로 fail이 되고 내용 채점기까지 가린다.
 export const questionOnly:Grader={id:'question_only',grade(item){
  if(!isText(item)||item.role==='quality')return verdict('not_applicable');
  const {text,min}=substanceTarget(item);
- if(substanceProblem(text,min)==='reask')return verdict('fail','substanceProblem=reask');
- return isQuestionOnly(text)?verdict('fail','isQuestionOnly'):verdict('pass');
+ return substanceProblem(text,min)==='reask'?verdict('fail','substanceProblem=reask'):verdict('pass');
 }};
 
 // 제목·표 구분선·'자료 필요'로 시작하는 줄을 뺀 글자 수. PR 2의 '자료 필요가 들어간 줄 80%' 비율 규칙은 쓰지 않는다(한 줄 섹션의 인라인 태그 오탐).
