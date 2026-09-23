@@ -1,6 +1,16 @@
 # COLLECTIVE 현재 상태
 
-마지막 갱신: 2026-09-23 06:12 UTC (Codex)
+마지막 갱신: 2026-09-23 06:34 UTC (Codex)
+
+## 이메일 로그인 — 구현 및 로컬 검증, 운영 미적용
+
+- 사용자가 이메일+비밀번호 및 관리자 초대 방식을 승인했다. 기준 `d96a6cae30076dd429ccaae21074216d33075264`, 별도 `feat/email-auth` 브랜치.
+- 기존 owner 연결 보존, 초대·재설정 일회 링크, 30일 세션, 관리자 권한 제한을 구현했다. GPT 헤더는 이메일 모드에서 인증에 사용하지 않는다.
+- tests passed 23/23 suites, runner 집계737 assertions와 별도 node:test 인증20개. SQLite/native crypto real, Cloudflare 환경 adapter/모델응답 mocked.
+- build/typecheck passed. 기존 브라우저10/10 및 이메일 브라우저1/1 passed. 이메일 여정은 real HTTPS Chromium/local workerd/D1/native scrypt로 실행했다.
+- lint 기준선 gate passed, errors106/108·warnings44/44(0 errors 의미 아님). 독립 코드·DB·보안 검토 CRITICAL/HIGH 0, pending 초대 재발급 UI와 요청한도 소진 시 로그아웃 차단 지적 수정. 만료 인증 레코드 정리는 후속 운영 과제로 기록했다. 운영 게시·운영 CPU 한도·실제 Android 이메일 로그인은 not_run.
+- 남은 입력: 최초 관리자 이메일. 사이트 진입 화면 공개 전환은 사용자 명시 승인 후 진행하며 자체 업무 API 보호를 먼저 검증한다. 운영 데이터와 Sites 접근은 변경하지 않았다.
+- [운영 설정·전환·복구 및 검증 근거](EMAIL-AUTH.ko.md).
 
 ## 소스와 배포
 

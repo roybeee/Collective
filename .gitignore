@@ -57,3 +57,4 @@ __pycache__/
 # Playwright E2E output and its throwaway local D1 state.
 /e2e/artifacts/
 /e2e/.state/
+/e2e/.state-auth/

@@ -22,7 +22,7 @@ async function ownerPage(browser: Browser, testInfo: TestInfo, owner: string) {
 // 스스로 닫히지 않으므로(2026-09-23 관측) Escape로 닫는다.
 async function openBrands(page: Page) {
   const nav = page.getByRole('button', {name: '브랜드 아카이브', exact: true});
-  const mobile = !(await nav.isVisible());
+  const mobile = (page.viewportSize()?.width ?? 1280) < 768;
   if (mobile) await page.locator('[data-sidebar="trigger"]').first().click();
   await nav.click();
   if (mobile) await page.keyboard.press('Escape');
@@ -125,7 +125,7 @@ test('사용량 단가 설정을 저장하고 API 기록을 확인한다', async
   const {context, page} = await ownerPage(browser, testInfo, `e2e-usage-${testInfo.project.name}-${Date.now()}`);
   await page.goto('/');
   const nav = page.getByRole('button', {name: '연결 및 설정', exact: true});
-  const mobile = !(await nav.isVisible());
+  const mobile = (page.viewportSize()?.width ?? 1280) < 768;
   if (mobile) await page.locator('[data-sidebar="trigger"]').first().click();
   await nav.click();
   if (mobile) await page.keyboard.press('Escape');

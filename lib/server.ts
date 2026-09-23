@@ -2,15 +2,19 @@ import {emptyPlan,planFields,type PlanKey,type BriefDraft} from './brief';
 import { env } from 'cloudflare:workers';
 import { brandDefaults, type Campaign, type Brand, type Artifact, type Metric } from './agency';
 import {HttpBodyError,readBoundedJson} from './http-limits';
+import {authMode,authPrincipal,authOrigin} from './auth-session';
+import {AuthError} from './auth-errors';
 export class ApiError extends Error {constructor(public status:number,message:string){super(message)}}
 export const runtime=env as unknown as {DB?:D1Database;BUCKET?:R2Bucket;AGENCY_ENCRYPTION_KEY?:string;OPENAI_API_KEY?:string;RESEARCH_WORKER_GATE_TOKEN?:string;RESEARCH_WORKER_SITE_ORIGIN?:string;RESEARCH_WORKER_ADMIN_IDS?:string};
 export function database(){if(!runtime.DB)throw new ApiError(503,'저장 공간에 연결하지 못했습니다. 잠시 후 다시 시도하세요.');return runtime.DB}
-export function identity(request:Request){const id=request.headers.get('oai-authenticated-user-id');if(id&&id.length<=200&&!/[\x00-\x1f\x7f]/.test(id))return id;if(!id&&process.env.NODE_ENV==='development')return 'local-preview';throw new ApiError(401,'로그인이 필요합니다. 페이지를 새로고침해 주세요.')}
-export function secureMutation(request:Request){const origin=request.headers.get('origin');if(origin&&origin!==new URL(request.url).origin)throw new ApiError(403,'허용되지 않은 요청입니다.')}
+export async function identity(request:Request){if(authMode()==='email'){const principal=await authPrincipal(request);if(!principal)throw new ApiError(401,'로그인이 필요합니다.');return principal.owner;}const id=request.headers.get('oai-authenticated-user-id');if(id&&id.length<=200&&!/[\x00-\x1f\x7f]/.test(id))return id;if(!id&&process.env.NODE_ENV==='development')return 'local-preview';throw new ApiError(401,'로그인이 필요합니다. 페이지를 새로고침해 주세요.')}
+export async function requireAdmin(request:Request){if(authMode()!=='email')return identity(request);const principal=await authPrincipal(request);if(!principal)throw new ApiError(401,'로그인이 필요합니다.');if(principal.role!=='admin')throw new ApiError(403,'관리자만 변경할 수 있습니다.');return principal.owner}
+export async function isAdmin(request:Request){if(authMode()!=='email')return true;return (await authPrincipal(request))?.role==='admin'}
+export function secureMutation(request:Request){const origin=request.headers.get('origin');if(authMode()==='email'?origin!==authOrigin(request):origin&&origin!==new URL(request.url).origin)throw new ApiError(403,'허용되지 않은 요청입니다.')}
 export const stamp=()=>new Date().toISOString();
 export const uid=()=>crypto.randomUUID();
 export function json(data:unknown,status=200){return Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}})}
-export function failure(e:unknown){if(e instanceof ApiError)return json({error:e.message},e.status);console.error('agency_request_failed',e instanceof Error?e.message:'unknown');return json({error:'처리하지 못했습니다. 입력한 내용을 유지한 채 다시 시도해 주세요.'},500)}
+export function failure(e:unknown){if(e instanceof ApiError||e instanceof AuthError)return json({error:e.message},e.status);console.error('agency_request_failed',e instanceof Error?e.message:'unknown');return json({error:'처리하지 못했습니다. 입력한 내용을 유지한 채 다시 시도해 주세요.'},500)}
 export async function body(req:Request){
  try{
   const value=await readBoundedJson<Record<string,any>>(req,200000);

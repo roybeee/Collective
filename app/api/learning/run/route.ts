@@ -3,7 +3,7 @@ import {executeLearning} from '@/lib/learning-execution';
 
 export async function POST(req:Request){
  try{
-  const owner=identity(req);
+  const owner=await identity(req);
   secureMutation(req);
   return await executeLearning(owner,await body(req));
  }catch(error){return failure(error)}

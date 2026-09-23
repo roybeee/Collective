@@ -1,2 +1,3 @@
 import Workspace from './workspace';
-export default function Home(){return <Workspace/>}
+import AuthGate from './auth-gate';
+export default function Home(){return <AuthGate><Workspace/></AuthGate>}

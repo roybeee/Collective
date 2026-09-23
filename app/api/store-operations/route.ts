@@ -4,9 +4,9 @@ import {diagnosisCatalog,ledgerValues,ledgerSnapshot,ledgerChanged,type StoreDia
 import {diagnosisInput,orderInput,spendInput,validateOrderExperiment,getStoreOperations,requireVersion} from '@/lib/store-operations-server';
 import {checkedVersion,measurementInput,option} from '@/lib/store-server';
 
-export async function GET(req:Request){try{const owner=identity(req),p=new URL(req.url).searchParams,storeId=str(p.get('storeId'),'지점',100,true);await readRecord<Store>(owner,'store',storeId);if(p.get('part')==='diagnosis')return json({diagnostics:await listRecords<StoreDiagnostic>(owner,'store_diagnostic',storeId),orders:[],spend:[],from:'',to:''});return json(await getStoreOperations(owner,storeId,p.get('from')||undefined,p.get('to')||undefined))}catch(e){return failure(e)}}
+export async function GET(req:Request){try{const owner=await identity(req),p=new URL(req.url).searchParams,storeId=str(p.get('storeId'),'지점',100,true);await readRecord<Store>(owner,'store',storeId);if(p.get('part')==='diagnosis')return json({diagnostics:await listRecords<StoreDiagnostic>(owner,'store_diagnostic',storeId),orders:[],spend:[],from:'',to:''});return json(await getStoreOperations(owner,storeId,p.get('from')||undefined,p.get('to')||undefined))}catch(e){return failure(e)}}
 export async function POST(req:Request){let owner='',lock='';try{
- owner=identity(req);secureMutation(req);const b=await body(req);lock=await acquireLock(owner);const store=await readRecord<Store>(owner,'store',str(b.storeId,'지점',100,true));if(store.status!=='active')throw new ApiError(409,'보관한 지점입니다.');
+ owner=await identity(req);secureMutation(req);const b=await body(req);lock=await acquireLock(owner);const store=await readRecord<Store>(owner,'store',str(b.storeId,'지점',100,true));if(store.status!=='active')throw new ApiError(409,'보관한 지점입니다.');
  if(b.action==='save_diagnostic'){
   checkedVersion(store,b.storeVersion);const key=option(b.data?.key,diagnosisCatalog.map(d=>d.key),'진단 항목');const old=(await listRecords<StoreDiagnostic>(owner,'store_diagnostic',store.id)).find(d=>d.key===key);requireVersion(old,b.version);
   const record=diagnosisInput(b.data,store,old);await recordStatement(owner,'store_diagnostic',record.id,record,store.id).run();return json({id:record.id});

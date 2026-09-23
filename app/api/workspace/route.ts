@@ -1,11 +1,11 @@
 import type {BriefDraft} from '@/lib/brief';
 import {campaignRuns,type CampaignSequence} from '@/lib/campaign-detail';
-import {identity,json,failure,seedBrands,listRecords,publicConnection} from '@/lib/server';
+import {isAdmin,identity,json,failure,seedBrands,listRecords,publicConnection} from '@/lib/server';
 import {workerStatus} from '@/lib/research-worker';
 
 export async function GET(req:Request){
  try{
-  const owner=identity(req);
+  const owner=await identity(req);
   await seedBrands(owner);
   const [brands,campaigns,artifacts,metrics,events,settings,runs,briefDrafts,sequences,worker]=await Promise.all([
    listRecords(owner,'brand'),listRecords(owner,'campaign'),listRecords(owner,'artifact'),listRecords(owner,'metric'),listRecords(owner,'event'),
@@ -13,7 +13,7 @@ export async function GET(req:Request){
   ]);
   return json({
    briefDrafts:briefDrafts.filter(d=>!d.savedCampaignId&&d.status!=='cancelled').slice(0,10).map(d=>({id:d.id,status:d.status,title:d.input.title||d.input.goal,brandId:d.input.brandId,campaignId:d.campaignId,createdAt:d.createdAt})),
-   brands,campaigns,artifacts,metrics,events:events.slice(0,60),runs,sequences,worker,connection:settings,preview:process.env.NODE_ENV==='development',
+   brands,campaigns,artifacts,metrics,events:events.slice(0,60),runs,sequences,worker,connection:{...settings,canConfigure:settings.canConfigure&&await isAdmin(req)},preview:process.env.NODE_ENV==='development',
   });
  }catch(e){return failure(e)}
 }

@@ -4,7 +4,7 @@ export {GET} from '@/lib/meeting-execution';
 
 export async function POST(req:Request){
  try{
-  const owner=identity(req);
+  const owner=await identity(req);
   secureMutation(req);
   return await executeMeeting(owner,await body(req));
  }catch(error){return failure(error)}

@@ -15,6 +15,13 @@
       "when": 1789612893713,
       "tag": "0001_short_moira_mactaggert",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790144610675,
+      "tag": "0002_concerned_deathbird",
+      "breakpoints": true
     }
   ]
 }
