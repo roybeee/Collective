@@ -14,7 +14,9 @@ export const orderSources={pos:'POS',naver:'네이버 주문',daangn:'당근 주
 export const orderModes={hall:'홀',pickup:'포장',delivery:'배달',group:'단체'} as const;
 export const orderStates={paid:'결제 완료',cancelled:'취소',refunded:'전액 환불'} as const;
 export const orderCostFields={foodCost:'식재료 원가',packagingCost:'포장 원가',fees:'결제·플랫폼 수수료',deliveryCost:'매장 부담 배달비',benefitCost:'증정·기타 변동비'} as const;
-export type StoreOrder={campaignId?:string;creativeId?:string;id:string;storeId:string;source:keyof typeof orderSources;orderNumber:string;orderDate:string;mode:keyof typeof orderModes;status:keyof typeof orderStates;paidAmount:number;refundAmount:number;costs:Record<keyof typeof orderCostFields,number|null>;channel:ChannelKey|'unknown';experimentId:string;attributionEvidence:string;note:string;version:number;createdAt:string;updatedAt:string};
+// A4 주문 CSV 가져오기가 더하는 선택 필드: importId(가져오기 기록)·discountAmount(할인액, 결제액과 별도)·trackingCodes(행에서 읽은 코드)·newCustomer(신규 여부)·codeAttribution(코드 자동 귀속 사본).
+export type CodeAttribution={codeId:string;code:string;arm?:string;publicationId?:string;conflictCodeIds:string[]};
+export type StoreOrder={campaignId?:string;creativeId?:string;importId?:string;discountAmount?:number;trackingCodes?:string[];newCustomer?:boolean;codeAttribution?:CodeAttribution;id:string;storeId:string;source:keyof typeof orderSources;orderNumber:string;orderDate:string;mode:keyof typeof orderModes;status:keyof typeof orderStates;paidAmount:number;refundAmount:number;costs:Record<keyof typeof orderCostFields,number|null>;channel:ChannelKey|'unknown';experimentId:string;attributionEvidence:string;note:string;version:number;createdAt:string;updatedAt:string};
 export type StoreSpend={id:string;storeId:string;date:string;channel:ChannelKey;experimentId:string;adSpend:number;productionCost:number;source:string;version:number;createdAt:string;updatedAt:string};
 export type LedgerSnapshot={capturedAt:string;orderRefs:{id:string;version:number}[];spendRefs:{id:string;version:number}[];costsConfirmed:boolean};
 export type StoreOperations={diagnostics:StoreDiagnostic[];orders:StoreOrder[];spend:StoreSpend[];from:string;to:string};
