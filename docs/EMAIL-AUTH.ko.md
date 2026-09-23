@@ -8,7 +8,7 @@
 
 ## 운영 전환 순서
 
-현재는 구현·로컬 검증 단계이며 운영 인증/공개 범위는 변경하지 않았다.
+2026-09-23: PR #18 merged, 이메일 인증을 owner-only Sites 접근 아래 published했다. 운영 auth mode 및 익명 차단·native scrypt 실행을 확인했다. 사용자 초기 비밀번호 설정과 public 로그인 진입 화면 전환은 아직 수행하지 않았다.
 
 1. 사용자가 첫 관리자 이메일을 지정한다. 비밀번호를 채팅·환경변수·소스에 저장하지 않는다.
 2. 기존 운영 settings의 정확한 owner를 읽어 `AUTH_BOOTSTRAP_OWNER`에 연결한다. 임의 새 owner를 만들지 않는다.
