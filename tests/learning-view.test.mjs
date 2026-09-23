@@ -7,7 +7,7 @@ import ts from 'typescript';
 const context=createContext({console}),cache=new Map();
 function moduleFor(path){path=resolve(path);if(cache.has(path))return cache.get(path);const m=new SourceTextModule(ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText,{context,identifier:path});cache.set(path,m);return m;}
 const m=moduleFor('lib/learning-view.ts');await m.link((s,r)=>moduleFor(resolve(dirname(r.identifier),s+'.ts')));await m.evaluate();
-const {ruleState,SOURCE_DELETED_NOTICE}=m.namespace;
+const {ruleState,SOURCE_DELETED_NOTICE,frozenSummaryFor,frozenSummaryLines}=m.namespace;
 let passed=0;
 function check(name,actual,expected){assert.deepEqual(JSON.parse(JSON.stringify(actual)),expected,name);passed++}
 
@@ -52,5 +52,13 @@ has('the deletion time replaces the review date',"s.sourceDeleted?`원 캠페인
 for(const action of ['retest','renew','retire','pause'])has(`the ${action} button follows ruleState`,`{s.actions.${action}&&<Button`);
 lacks('the inline review condition is gone',"{r.status==='active'&&ruleNeedsReview(r)&&<>");
 lacks('the inline pause condition is gone',"{r.status==='active'&&<Button");
+
+// 동결 요약: 보존 규칙은 experimentId로 요약을 찾고, 요약 줄은 원문 없이 수치 판정만 보여 준다.
+const summary={id:'e1',experimentId:'e1',experimentVersion:2,brandId:'ofd',campaignId:'gone',channel:'Instagram',title:'저장 유도 첫 장면',hypothesis:'원문 가설',metric:'saves',minSample:100,minHours:24,minLift:10,status:'completed',assessment:{status:'promising',label:'관찰상 개선',controlRate:0.1,treatmentRate:0.2,lift:100},controlSample:100,treatmentSample:120,startedAt:'2026-09-01T00:00:00.000Z',observedUntil:'2026-09-08T00:00:00.000Z',adoptedRuleIds:['r1'],frozenAt:'2026-09-24T00:00:00.000Z',sourceCampaignDeleted:mark};
+check('a retained rule finds its frozen summary by experiment id',frozenSummaryFor(rule({experimentId:'e1',sourceCampaignDeleted:mark}),[summary])?.id,'e1');
+check('a rule without a deletion mark has no frozen summary',frozenSummaryFor(rule({experimentId:'e1'}),[summary]),null);
+check('a missing summary is null, not an error',frozenSummaryFor(rule({experimentId:'other',sourceCampaignDeleted:mark}),[summary]),null);
+check('summary lines show title, verdict, rates with samples and period without the raw hypothesis',frozenSummaryLines(summary),['실험: 저장 유도 첫 장면 (v2)','판정: 관찰상 개선','대조 10.0% (n=100) · 실험 20.0% (n=120) · 차이 +100%','관찰 기간: 2026-09-01 ~ 2026-09-08']);
+check('unknown numbers read as unknown',frozenSummaryLines({...summary,assessment:null,controlSample:null,treatmentSample:null,startedAt:null,observedUntil:null}),['실험: 저장 유도 첫 장면 (v2)','판정: 기록 없음']);
 
 console.log(JSON.stringify({passed}));

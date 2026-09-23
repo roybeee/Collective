@@ -132,3 +132,5 @@ body{font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;backgrou
 .overview-grid>:only-child{grid-column:1/-1}.campaign-status-counts{display:flex;flex-wrap:wrap;gap:6px;margin:-6px 0 14px}.next-tasks .step{color:#ad7154;border-color:#f3d9cc;background:#fbe8df}@media(max-width:767px){.launch-card.next-tasks{display:block}}
 /* 목표 한 줄 입력의 다른 브랜드 경고: 어두운 브리프 카드 위에서도 읽히는 대비(8:1 이상). */
 .brief-composer .form-error{color:#ffb59f;font-size:12px;margin-top:8px}
+
+.learning-frozen{margin:.5rem 0;font-size:.85rem;color:var(--muted-foreground,#555)}.learning-frozen summary{cursor:pointer;font-weight:600}.learning-frozen ul{margin:.35rem 0 0 1rem;list-style:disc}
