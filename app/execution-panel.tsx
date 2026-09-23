@@ -67,7 +67,7 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
     {preview&&<Image unoptimized width={1080} height={1080} src={preview} alt="제작한 안내 카드 미리보기" className="w-64 rounded border"/>}
     <div className="grid gap-3">{state.creatives.map(c=><div key={c.id} className="border rounded p-3"><Image unoptimized width={1080} height={1080} src={'/api/execution/asset?id='+encodeURIComponent(c.id)} alt={'저장된 소재 '+c.id} loading="lazy" className="w-40 rounded"/><p className="whitespace-pre-wrap">{c.caption}</p><small>브리프 v{c.campaignVersion} · 소재 {c.id}{c.current===false&&' · 입력이 바뀌어 발행에 쓸 수 없습니다'}</small><p><a className="underline" href={'/api/execution/asset?id='+encodeURIComponent(c.id)} download={c.pngHash+'.png'}>원본 PNG 내려받기</a></p><p className="break-all text-xs">공개 파일명: {c.pngHash}.png</p></div>)}</div>
    </section>
-   <section className="rounded-xl border p-4 space-y-3"><h3 className="font-semibold">2. 채널 연결과 실행 한도</h3><p>발행 연결: {state.publisher.connected?state.publisher.account+' · '+state.publisher.channelId:'연결 필요'}</p>
+   <section className="rounded-xl border p-4 space-y-3"><h3 className="font-semibold">2. 채널 연결과 발행 횟수 한도</h3><p>발행 연결: {state.publisher.connected?state.publisher.account+' · '+state.publisher.channelId:'연결 필요'}</p>
     {canManage?<>
      <form aria-label="Buffer 채널 연결" className="grid gap-2" onSubmit={e=>{e.preventDefault();const values=Object.fromEntries(new FormData(e.currentTarget));
       if(!buffer)void perform(async()=>{const token=String(values.token||'');setBuffer({token,...await action<Omit<BufferChoices,'token'>>('buffer_channels',{token})})},'조직과 Instagram 채널을 불러왔습니다. 연결할 채널을 고르세요.');
@@ -79,15 +79,19 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
       </>}
      </form>
      {state.publisher.connected&&<button className="border rounded px-3 py-2" disabled={busy} onClick={()=>{if(window.confirm('Buffer 연결을 해제할까요? 저장된 API 키를 지우고, 이 브랜드의 승인된 발행은 초안으로 돌아갑니다. 이미 접수된 예약은 Buffer에서 따로 확인해야 합니다.'))void perform(()=>action('disconnect_buffer',{version:state.publisher.version}),'Buffer 연결을 해제했습니다. 승인된 발행은 초안으로 돌아갔습니다.')}}>Buffer 연결 해제</button>}
-    </>:<p className="subtle-note">채널 연결과 실행 한도는 관리자만 바꿀 수 있습니다. {adminRequestNote}</p>}
-    <p>누적 발행 시도 {totals.attempts}회 · 예약한 예정 비용 {totals.plannedCostKRW.toLocaleString()}원. 실패·접수 미확인 시도도 포함합니다(관리자가 미접수를 확인해 복원한 시도는 제외).</p>
-    {!state.limits&&<p>실행 한도가 아직 없습니다. 한도가 없으면 발행을 승인할 수 없습니다.{canManage&&<> <button type="button" className="border rounded px-3 py-2" disabled={busy} onClick={saveDefaultLimits}>기본 한도(발행 1회·0원) 저장</button></>}</p>}
+    </>:<p className="subtle-note">채널 연결과 발행 횟수 한도는 관리자만 바꿀 수 있습니다. {adminRequestNote}</p>}
+    <p>누적 발행 시도 {totals.attempts}회. 실패·접수 미확인 시도도 포함합니다(관리자가 미접수를 확인해 복원한 시도는 제외).</p>
+    {budget!==null&&<p>캠페인 예산 {budgetLabel(campaign)}</p>}
+    {!state.limits&&<p>발행 횟수 한도가 아직 없습니다. 한도가 없으면 발행을 승인할 수 없습니다.{canManage&&<> <button type="button" className="border rounded px-3 py-2" disabled={busy} onClick={saveDefaultLimits}>기본 한도(발행 1회·0원) 저장</button></>}</p>}
     {canManage&&<form key={state.limits?.version||0} className="grid gap-2" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);void perform(()=>action('save_limits',{version:state.limits?.version,maxPublications:Number(f.get('maxPublications')),maxPlannedCostKRW:Number(f.get('maxPlannedCostKRW')),paused:f.get('paused')==='on'}),'한도를 저장했습니다. 한도를 낮추면 기존 승인은 재확인해야 합니다.')}}>
      <label>캠페인 최대 발행 시도<input className="block border rounded p-2" name="maxPublications" type="number" min="0" max="100" step="1" defaultValue={state.limits?.maxPublications??1} required/></label>
-     <label>누적 예정 비용 상한 (원)<input className="block border rounded p-2" name="maxPlannedCostKRW" type="number" min="0" max={budget??0} step="1" defaultValue={state.limits?.maxPlannedCostKRW??0} required/></label>
-     <p className="text-sm">캠페인 예산: {budgetLabel(campaign)}{budget===null?' · 예산을 확정하기 전에는 비용 상한을 0원으로만 저장할 수 있습니다.':' · 비용 상한은 예산을 넘을 수 없습니다.'}</p>
+     <details open={(state.limits?.maxPlannedCostKRW??0)>0}><summary>예정 비용 상한 · 유료 부스트 연동 전까지 참고용</summary><div className="grid gap-2 pt-2">
+      <p className="text-sm">Buffer 유기 게시는 건당 비용이 없어 이 상한이 막는 실제 비용은 없습니다. 입력한 예정 비용에만 적용됩니다.</p>
+      <label>누적 예정 비용 상한 (원)<input className="block border rounded p-2" name="maxPlannedCostKRW" type="number" min="0" max={budget??0} step="1" defaultValue={state.limits?.maxPlannedCostKRW??0}/></label>
+      <p className="text-sm">누적 예약 예정 비용 {totals.plannedCostKRW.toLocaleString()}원 · 캠페인 예산: {budgetLabel(campaign)}{budget===null?' · 예산을 확정하기 전에는 비용 상한을 0원으로만 저장할 수 있습니다.':' · 비용 상한은 예산을 넘을 수 없습니다.'}</p>
+     </div></details>
      <label><input name="paused" type="checkbox" defaultChecked={state.limits?.paused}/> 새 발행 접수 중지</label><button className="border rounded px-3 py-2" disabled={busy}>한도 저장</button>
-    </form>}<p className="text-sm">이 한도는 아래 발행 시도와 입력한 예정 비용에 적용됩니다. AI 모델 요금·광고비의 실제 청구 상한은 아닙니다. 이미 Buffer에 접수한 예약은 Buffer에서 취소해야 합니다.</p>
+    </form>}<p className="text-sm">발행 횟수 한도는 아래 발행 시도에 적용됩니다. 예정 비용은 유료 부스트 연동 전까지 참고로 입력한 값에만 상한을 적용하며, AI 모델 요금·광고비의 실제 청구 상한이 아닙니다. 이미 Buffer에 접수한 예약은 Buffer에서 취소해야 합니다.</p>
     {state.limits?.paused&&<div role="status" className="rounded border p-3 space-y-1"><strong>새 발행 접수가 중지됐습니다.</strong> <span>이미 Buffer에 접수된 예약은 중지되지 않습니다. 아래 예약은 Buffer에서 취소 여부를 확인하세요.</span>{submitted.length?<ul aria-label="이미 접수된 예약">{submitted.map(p=><li key={p.id}>{new Date(p.scheduledAt).toLocaleString()} · {publicationLabels[p.status]}{p.providerId?' · 게시 번호 '+p.providerId:''}</li>)}</ul>:<p>이미 접수된 예약은 없습니다.</p>}</div>}
    </section>
    <section className="rounded-xl border p-4 space-y-3"><h3 className="font-semibold">3. 발행 준비·승인</h3>
@@ -98,7 +102,7 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
      <p className="text-sm">{!state.copyCaptions?'AI 작업물 카피를 캡션에 쓰는 기능은 AI 생성물 표시 기준이 정해질 때까지 꺼져 있습니다. 확인 사실 문구만 캡션으로 씁니다.':state.copies.length?'승인된 콘텐츠 작업물의 게시 카피를 확인 사실 문구 앞에 붙입니다. 금지·미확인 표현이 있는 카피는 고를 수 없습니다.':'승인된 콘텐츠 작업물의 게시 카피가 없어 확인 사실 문구만 캡션으로 씁니다.'}</p>
      {state.copies.some(c=>c.issues.length)&&<details><summary>쓸 수 없는 카피 {state.copies.filter(c=>c.issues.length).length}개와 사유</summary><ul className="text-sm space-y-1">{state.copies.filter(c=>c.issues.length).map(c=><li key={c.artifactId+':'+c.index}>{c.text.slice(0,80)} — {c.issues.join(', ')}</li>)}</ul></details>}
      <label>예약 시각 (이 기기의 현지 시각, 최소 5분 후, 캠페인 기간 {campaign.startDate&&campaign.endDate?campaign.startDate+'~'+campaign.endDate:'미확정'})<input className="block border rounded p-2" name="scheduledAt" type="datetime-local" required/></label>
-     <label>이 발행의 예정 비용 (원)<input className="block border rounded p-2" name="plannedCostKRW" type="number" min="0" step="1" defaultValue="0" required/></label>
+     <details><summary>예정 비용 · 유료 부스트 연동 전까지 참고용</summary><div className="grid gap-2 pt-2"><p className="text-sm">Buffer 유기 게시는 건당 비용이 없어 0원 그대로 두면 됩니다. 유료 부스트를 따로 집행할 때만 참고로 입력하세요. 비워 두면 0원입니다. 0원보다 크게 입력하면 확정 예산과 예정 비용 상한 안에서만 승인·접수됩니다(기본 상한 0원).</p><label>이 발행의 예정 비용 (원)<input className="block border rounded p-2" name="plannedCostKRW" type="number" min="0" step="1" defaultValue="0"/></label></div></details>
      <details><summary>고급: 외부 호스트</summary><div className="grid gap-2 pt-2"><p className="text-sm">앱 공개 주소 대신 외부 호스트를 쓰려면 내려받은 PNG를 Cloudinary 또는 R2 공개 저장소에 해시 파일명 그대로 올리고 주소를 입력하세요. 승인과 실행 전에 원본과 같은 파일인지 확인합니다. 호스트의 파일을 덮어쓰거나 삭제하면 안 됩니다.</p><label>외부 공개 PNG 주소 (비우면 앱 공개 주소 사용)<input className="block border rounded p-2 w-full" name="mediaUrl" type="url" placeholder="https://…r2.dev/해시.png"/></label></div></details>
      <button className="border rounded px-3 py-2" disabled={busy||!state.creatives.some(c=>c.current!==false)}>발행 초안 저장</button>
     </form>

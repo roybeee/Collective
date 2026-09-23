@@ -96,7 +96,7 @@ check((await approve(s,p,{channelId:'different-channel'})).status===409,'display
 const oldCredential=await approve(s,p,{credentialVersion:0});
 check(oldCredential.status===409&&oldCredential.data.error.includes('발행 계정'),'old displayed credential version rejected and named');
 const oldLimits=await approve(s,p,{limitsVersion:0});
-check(oldLimits.status===409&&oldLimits.data.error.includes('실행 한도'),'old displayed limits version rejected and named');
+check(oldLimits.status===409&&oldLimits.data.error.includes('발행 횟수 한도'),'old displayed limits version rejected and named');
 check(calls===0,'displayed approval conflicts never invoke publisher');
 media=differentPng;
 check((await approve(s,p)).status===409,'raw media hash mismatch rejected');
@@ -113,17 +113,20 @@ check(calls===1,'exactly one provider submit');
 const refreshed=await post('refresh',s.id,{id:p.id,version:sent.data.version});
 check(refreshed.status===200&&refreshed.data.status==='published','refresh sent confirms published');
 const p2=await draft(s,1);const a2=await approve(s,p2);
-check((await post('execute',s.id,{id:p2.id,version:a2.data.version})).status===409,'one attempt quota enforced');
+const quota=await post('execute',s.id,{id:p2.id,version:a2.data.version});
+check(quota.status===409&&quota.data.error.includes('발행 횟수 한도를 초과합니다')&&!quota.data.error.includes('예정 비용'),'one attempt quota enforced and named');
 check(calls===1,'quota does not call provider');
 const budget=await setup('budget',2,50),bp=await draft(budget,0,100),ba=await approve(budget,bp);
-check((await post('execute',budget.id,{id:bp.id,version:ba.data.version})).status===409,'budget cap enforced');
+// exec-loop-10: 참고용으로 입력한 예정 비용도 0원보다 크면 확정 예산과 예정 비용 상한 안에서만 접수된다. 막힌 쪽(비용)을 이름으로 알린다.
+const overCost=await post('execute',budget.id,{id:bp.id,version:ba.data.version});
+check(overCost.status===409&&overCost.data.error.includes('예정 비용 상한을 초과합니다')&&!overCost.data.error.includes('발행 횟수'),'budget cap enforced and named');
 const stale=await setup('stale'),sp=await draft(stale),sa=await approve(stale,sp);
 await put('brand_fact','fact',{...fact,version:2},'oda');
 check((await post('execute',stale.id,{id:sp.id,version:sa.data.version})).status===409,'changed facts block');
 await put('brand_fact','fact',fact,'oda');
 await post('save_limits',stale.id,{version:1,maxPublications:1,maxPlannedCostKRW:500});
 const lowered=await post('execute',stale.id,{id:sp.id,version:sa.data.version});
-check(lowered.status===409&&lowered.data.error.includes('실행 한도'),'lowered limits block and name the changed item');
+check(lowered.status===409&&lowered.data.error.includes('예정 비용 상한(낮아짐)'),'lowered limits block and name the changed item');
 const loss=await setup('lost'),lp=await draft(loss),la=await approve(loss,lp);mode='lost';
 const beforeLost=calls,lr=await post('execute',loss.id,{id:lp.id,version:la.data.version});mode='ok';
 check(lr.status===200&&lr.data.status==='uncertain','timeout becomes uncertain');
@@ -408,6 +411,14 @@ const readyState={...emptyState,creatives:[{id:'c',current:true}],publisher:{con
 const unconfirmedBlockers=exec.approvalBlockers({campaign:campaignFixture('x',{budget:null,budgetConfirmedAt:undefined}),publication:paidDraft,state:{...readyState,limits:{version:1,maxPlannedCostKRW:0}},factCount:1,rightsConfirmed:true});
 check(unconfirmedBlockers.length===1&&unconfirmedBlockers[0].startsWith('예산 미확정'),'paid publication under an unconfirmed budget shows its blocker');
 check(exec.approvalBlockers({campaign:campaignFixture('x',{budget:500}),publication:{...paidDraft,plannedCostKRW:0},state:{...readyState,limits:{version:1,maxPlannedCostKRW:1000}},factCount:1,rightsConfirmed:true}).some(b=>b.startsWith('예산 초과')),'cost cap above the confirmed budget shows its blocker');
+// exec-loop-10: 승인 뒤 바뀐 한도는 '발행 횟수 한도'·'예정 비용 상한'으로 구분해 부른다. 옛 이름 '실행 한도'는 화면·서버·문서 어디에도 남기지 않는다.
+const approvedPub={channelId:'ch',credentialVersion:1,limitsVersion:1,approvedLimits:{maxPublications:2,maxPlannedCostKRW:1000}},cred={channelId:'ch',version:1};
+check(JSON.stringify(exec.approvalDrift(approvedPub,cred,{version:2,maxPublications:1,maxPlannedCostKRW:1000}))==='["발행 횟수 한도(낮아짐)"]','a lowered publication count is named as the publication count limit');
+check(JSON.stringify(exec.approvalDrift(approvedPub,cred,{version:2,maxPublications:2,maxPlannedCostKRW:500}))==='["예정 비용 상한(낮아짐)"]','a lowered planned cost cap is named as the planned cost cap');
+check(JSON.stringify(exec.approvalDrift({...approvedPub,approvedLimits:undefined},cred,{version:2,maxPublications:2,maxPlannedCostKRW:1000}))==='["발행 횟수 한도"]','a legacy approval with another limits version names the publication count limit');
+check(exec.approvalDrift(approvedPub,cred,{version:3,maxPublications:3,maxPlannedCostKRW:2000}).length===0,'raised limits keep the approval');
+for(const file of ['lib/execution.ts','lib/execution-server.ts','app/execution-panel.tsx','docs/EXECUTION-LOOP.ko.md'])check(!readFileSync(file,'utf8').includes('실행 한도'),'the old limit name is gone from '+file);
+check(readFileSync('app/execution-panel.tsx','utf8').includes('0원보다 크게 입력하면 확정 예산과 예정 비용 상한 안에서만 승인·접수됩니다'),'the reference cost input explains that a positive value is still capped');
 const steps=exec.publishSteps?.({...emptyState,creatives:[]},1)||[];
 check(steps.map(x=>x.label).join('→')==='사실 확정→PNG→채널→한도→초안→승인→접수'&&steps.findIndex(x=>!x.done)===1,'publish checklist marks the current step');
 check(JSON.stringify(exec.copyBlocks('## 게시 카피 3종과 용도·CTA\n\n### 안 1: 방문\n**훅**: 휘경동 한 판\n- 지금 들러 주세요\n\n### 안 2\n1. 포장도 됩니다\n## 총 15초 편집표\n0–3초 매장'))===JSON.stringify(['훅: 휘경동 한 판\n지금 들러 주세요','포장도 됩니다'])&&!exec.copyBlocks('## 전략\n\n게시 카피 아님').length,'copy candidates keep sub-headed copy variants and ignore other sections');

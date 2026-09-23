@@ -37,6 +37,14 @@ check('active rule outside the review window can only be paused',[plain.label,pl
 check('active rule near expiry offers retest, renew, retire and pause',ruleState(rule({expiresAt:new Date(now+3*day).toISOString()}),now),{label:'시험 적용 중',sourceDeleted:false,deletedAt:null,notice:'',actions:{retest:true,renew:true,retire:true,pause:true}});
 check('expired active rule needs review',ruleState(rule({expiresAt:new Date(now-day).toISOString()}),now).label,'재검토 필요');
 check('store rule is retested from store marketing, not here',ruleState(rule({origin:'store',expiresAt:new Date(now-day).toISOString()}),now).actions,{retest:false,renew:true,retire:true,pause:true});
+// R2: 서버가 연장을 거절할 규칙(GET /api/learning renewBlocked)은 연장 버튼을 끄고 무엇을 기록하면 연장할 수 있는지 알린다.
+const {renewNote}=m.namespace;
+const due=over=>rule({expiresAt:new Date(now+3*day).toISOString(),renewCount:1,...over});
+check('a rule the server will not renew hides only the renew button',ruleState(due({renewBlocked:true}),now).actions,{retest:true,renew:false,retire:true,pause:true});
+check('a renewable rule after one unmeasured renewal keeps the renew button',ruleState(due({}),now).actions.renew,true);
+check('a blocked viral rule asks for a retest result',renewNote(due({renewBlocked:true}),now),'측정 없는 연장은 한 번까지입니다. 재검증 실험 결과를 기록하면 연장할 수 있습니다.');
+check('a blocked store rule asks for a follow-up result',renewNote(due({origin:'store',renewBlocked:true}),now),'측정 없는 연장은 한 번까지입니다. 점포 마케팅에서 후속 실험 성과를 기록하면 연장할 수 있습니다.');
+check('no renew note when the button is shown or not due',[renewNote(due({}),now),renewNote(rule({renewCount:1,renewBlocked:true}),now),renewNote(due({renewBlocked:true,sourceCampaignDeleted:mark}),now)],['','','']);
 check('paused rule shows no actions',[ruleState(rule({status:'paused'}),now).label,ruleState(rule({status:'paused'}),now).actions],['적용 중지',none]);
 check('retired rule without a mark keeps the correction label',[ruleState(rule({status:'retired'}),now).label,ruleState(rule({status:'retired'}),now).notice],['근거 정정 · 적용 종료','']);
 
@@ -50,6 +58,7 @@ has('the badge comes from ruleState','<span className="learning-tag">{s.label}</
 has('the deleted-source notice is rendered','{s.sourceDeleted&&<p className="learning-note" role="note">{s.notice}</p>}');
 has('the deletion time replaces the review date',"s.sourceDeleted?`원 캠페인 삭제 ${s.deletedAt?date(s.deletedAt):'시각 미확인'}`");
 for(const action of ['retest','renew','retire','pause'])has(`the ${action} button follows ruleState`,`{s.actions.${action}&&<Button`);
+has('the rule card explains why renewal is unavailable','{renewNote(r)&&<p className="learning-meta">{renewNote(r)}</p>}');
 lacks('the inline review condition is gone',"{r.status==='active'&&ruleNeedsReview(r)&&<>");
 lacks('the inline pause condition is gone',"{r.status==='active'&&<Button");
 
@@ -59,6 +68,30 @@ check('a retained rule finds its frozen summary by experiment id',frozenSummaryF
 check('a rule without a deletion mark has no frozen summary',frozenSummaryFor(rule({experimentId:'e1'}),[summary]),null);
 check('a missing summary is null, not an error',frozenSummaryFor(rule({experimentId:'other',sourceCampaignDeleted:mark}),[summary]),null);
 check('summary lines show title, verdict, rates with samples and period without the raw hypothesis',frozenSummaryLines(summary),['실험: 저장 유도 첫 장면 (v2)','판정: 관찰상 개선','대조 10.0% (n=100) · 실험 20.0% (n=120) · 차이 +100%','관찰 기간: 2026-09-01 ~ 2026-09-08']);
+// --- 만료 임박 알림 배너(loop-11) ---------------------------------------------------------------
+const {expiringBanner,expiryNote}=m.namespace;
+check('days left are counted up to whole days',[expiryNote(rule({expiresAt:new Date(now+6*day).toISOString()}),now),expiryNote(rule({expiresAt:new Date(now+6.5*day).toISOString()}),now)],['만료까지 6일','만료까지 7일']);
+check('an expired rule reads as expired and out of AI input',expiryNote(rule({expiresAt:new Date(now-day).toISOString()}),now),'만료됨 · 새 AI 작업에 전달되지 않습니다');
+const banner=expiringBanner([rule({id:'a',expiresAt:new Date(now-day).toISOString()}),rule({id:'b',origin:'store',expiresAt:new Date(now+2*day).toISOString()}),rule({id:'c',brandId:'ofd',expiresAt:new Date(now+day).toISOString()})],'oda',now);
+check('the banner lists the current brand and counts the other brands',[banner.items.map(i=>i.rule.id),banner.elsewhere],[['a','b'],1]);
+check('the banner offers retest only where the rule card does',banner.items.map(i=>i.retest),[true,false]);
+check('the banner lines carry the expiry note',banner.items.map(i=>i.note),['만료됨 · 새 AI 작업에 전달되지 않습니다','만료까지 2일']);
+has('the banner reads the server expiring rules','expiringBanner(data.expiringRules??[],brandId)');
+has('the banner links to retest_rule',"post('retest_rule',{id:item.rule.id,version:item.rule.version})");
+has('the banner names the retest action','재검증 실험 만들기');
+// 캠페인 상세 알림(loop-11·R9): 같은 브랜드의 규칙 중 지점 규칙은 같은 지점 캠페인에만 보인다(ruleApplies와 같은 지점 범위).
+const {campaignExpiring}=m.namespace;
+const pool=[rule({id:'brand-wide',expiresAt:new Date(now+2*day).toISOString()}),rule({id:'my-store',origin:'store',storeId:'s1',expiresAt:new Date(now+day).toISOString()}),rule({id:'other-store',origin:'store',storeId:'s2',expiresAt:new Date(now+day).toISOString()}),rule({id:'other-brand',brandId:'ofd',expiresAt:new Date(now+day).toISOString()})];
+check('a store campaign sees brand-wide rules and its own store rules',campaignExpiring(pool,{brandId:'oda',storeId:'s1'},now).map(i=>i.rule.id),['brand-wide','my-store']);
+check('a brand campaign sees only brand-wide rules',campaignExpiring(pool,{brandId:'oda'},now).map(i=>i.rule.id),['brand-wide']);
+check('campaign alert lines carry the note and the retest choice',campaignExpiring(pool,{brandId:'oda',storeId:'s1'},now).map(i=>[i.note,i.retest]),[['만료까지 2일',true],['만료까지 1일',false]]);
+has('the campaign detail reads the expiring rules for its brand and store','campaignExpiring(data.expiringRules??[],campaign)');
+has('the campaign detail alert creates a retest experiment',"api('retest_rule',{id:r.id,version:r.version},'/api/learning')");
+has('the campaign detail alert links to the rules tab of its brand',"pushNav({view:'learning',brand:campaign.brandId,tab:'rules'})");
+has('the overview alert reads only the expiring rules',"fetch('/api/learning?only=expiring')");
+has('the experiment form asks for the verify channel','label="검증할 채널 *"');
+has('the experiment form shows the case channel','label="원 사례 채널"');
+
 check('unknown numbers read as unknown',frozenSummaryLines({...summary,assessment:null,controlSample:null,treatmentSample:null,startedAt:null,observedUntil:null}),['실험: 저장 유도 첫 장면 (v2)','판정: 기록 없음']);
 
 console.log(JSON.stringify({passed}));

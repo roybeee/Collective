@@ -123,7 +123,7 @@ check('retest starts without statistics or looks',retest.stats===null&&retest.co
 check('retest keeps the original experiment untouched',d.experiments.find(x=>x.id===expId).status==='evaluated');
 check('repeated retest is idempotent',(await act('retest_rule',{id:caution.id,version:2})).data.duplicate===true);
 
-const storeRule={id:'store:synthetic:1',origin:'store',storeId:'store-1',brandId:'ofd',channel:'당근',experimentId:'store-exp',experimentVersion:1,caseId:'',title:'점포 승격 규칙',guidance:'가격 안내 유지',scope:'같은 상품·가격',evidenceLevel:'observational',status:'active',version:1,expiresAt:new Clock(now+86400000).toISOString(),createdAt:new Clock().toISOString(),updatedAt:new Clock().toISOString()};
+const storeRule={id:'store:synthetic:1',origin:'store',storeId:'store-1',storeAssessment:{decision:'adopt',primaryMetric:'orders',primaryMetricLabel:'결제·주문 완료',target:10,observed:6,periodStart:'2026-01-01',periodEnd:'2026-01-07',measurementSource:'POS',evidenceLevel:'comparison',failureType:'none',confounders:'',nextAction:'같은 요일 재실험'},brandId:'ofd',channel:'당근',experimentId:'store-exp',experimentVersion:1,caseId:'',title:'점포 승격 규칙',guidance:'가격 안내 유지',scope:'같은 상품·가격',evidenceLevel:'observational',status:'active',version:1,expiresAt:new Clock(now+86400000).toISOString(),createdAt:new Clock().toISOString(),updatedAt:new Clock().toISOString()};
 await server.namespace.recordStatement(owner,'learning_rule',storeRule.id,storeRule,'ofd').run();
 check('store rules cannot be retested from the viral lab',(await act('retest_rule',{id:storeRule.id,version:1})).status===409);
 
@@ -210,5 +210,102 @@ await server.namespace.recordStatement(owner,'viral_experiment_summary','frozen-
 const withSummary=await snap();
 check('learning GET returns frozen experiment summaries',Array.isArray(withSummary.experimentSummaries)&&withSummary.experimentSummaries.some(x=>x.experimentId==='frozen-exp'&&x.title==='삭제된 실험'));
 check('frozen summaries of another owner are not returned',(await req(learn,null,'someone-else','GET')).data.experimentSummaries?.length===0);
+
+// PR 4b-1 loop-6 — 검증할 채널을 사례 채널과 따로 받는다. 기본값은 앱이 발행·수집할 수 있는 채널(사례 채널이 그중 하나면 그대로, 아니면 Instagram)이다.
+const expOf=async id=>(await snap()).experiments.find(z=>z.id===id);
+const analysisFor=async(channel,url)=>{const id=(await act('add_case',{data:{...input,title:channel+' 사례',channel,url}})).data.id;return (await act('save_analysis',{caseId:id,data:analysis})).data.id};
+const ytAnalysis=await analysisFor('YouTube','https://www.youtube.com/watch?v=verify4b1'),adsAnalysis=await analysisFor('네이버 검색광고','https://searchad.naver.com/case/verify4b1');
+const design=(aid,extra={})=>act('create_experiment',{analysisId:aid,campaignId:cid,data:{...plan,title:'검증 채널 실험',minSample:100,minHours:1,...extra}});
+r=await design(ytAnalysis);let ve=await expOf(r.data.id);
+check('a YouTube case is verified on Instagram by default',r.status===200&&ve.channel==='Instagram'&&ve.caseChannel==='YouTube');
+ve=await expOf((await design(adsAnalysis)).data.id);
+check('a case on a collectable channel keeps its channel by default',ve.channel==='네이버 검색광고'&&ve.caseChannel==='네이버 검색광고');
+ve=await expOf((await design(analysisId)).data.id);
+check('an Instagram case keeps Instagram by default',ve.channel==='Instagram'&&ve.caseChannel==='Instagram');
+ve=await expOf((await design(ytAnalysis,{verifyChannel:'네이버 검색광고'})).data.id);
+check('the verify channel can be chosen apart from the case channel',ve.channel==='네이버 검색광고'&&ve.caseChannel==='YouTube');
+check('a case channel outside the app can still be chosen for manual measurement',(await expOf((await design(ytAnalysis,{verifyChannel:'YouTube'})).data.id)).channel==='YouTube');
+check('a conversion-only verify channel is rejected',(await design(ytAnalysis,{verifyChannel:'카카오톡 · 재방문'})).status===400);
+check('an unknown verify channel is rejected',(await design(ytAnalysis,{verifyChannel:'Myspace'})).status===400);
+// 검증 채널에서 측정한 결과를 채택하면 규칙에 원 사례 채널과 검증 채널이 함께 남고, 주입 대상은 검증 채널로 정한다.
+const verified=(await design(ytAnalysis,{title:'유튜브 사례 · 인스타 검증'})).data.id;await act('start_experiment',{id:verified,version:1});now+=2*3600000;
+await act('save_results',{id:verified,version:2,data:{...result,...counts([100,1000],[200,1000]),observedUntil:new Clock().toISOString()}});
+const adoptedAt=now;r=await act('adopt_rule',{id:verified,version:3,guidance:'단면 먼저 · 인스타 검증'});d=await snap();const vRule=d.rules.find(z=>z.id===r.data.id);
+check('the rule records the case channel and the verify channel',vRule.channel==='Instagram'&&vRule.caseChannel==='YouTube');
+check('the rule is injected on the verify channel',domain.namespace.ruleApplies(vRule,'ofd','Instagram 릴스',now));
+check('the rule is not injected on the case channel alone',!domain.namespace.ruleApplies(vRule,'ofd','YouTube 쇼츠',now));
+check('a legacy rule without a case channel still applies by its channel',domain.namespace.ruleApplies({...vRule,caseChannel:undefined,channel:'YouTube'},'ofd','유튜브',now));
+const ctxRule=(await learningServer.namespace.learningContext(owner,{brandId:'ofd',channels:'Instagram'})).find(z=>z.id===vRule.id);
+check('model input keeps the verify channel and omits the case channel',ctxRule?.channel==='Instagram'&&!('caseChannel' in ctxRule));
+// adopt_rule의 만료 계산은 공용 expiry()로 통일한다. 결과는 이전과 같은 채택 시점 + 30일이다.
+check('an adopted rule expires exactly 30 days after adoption',vRule.expiresAt===new Date(adoptedAt+30*86400000).toISOString());
+check('adopt_rule uses the shared expiry()',!readFileSync('lib/learning-server.ts','utf8').includes('Date.now()+30*86400000'));
+
+// PR 4b-1 loop-11 — 만료 7일 이내이거나 이미 만료된 활성 규칙을 알림으로 돌려준다. 원 캠페인이 삭제된 규칙은 제외한다.
+const synthetic=(id,days,over={})=>server.namespace.recordStatement(owner,'learning_rule',id,{...vRule,id,title:id,expiresAt:new Date(now+days*86400000).toISOString(),...over},'ofd').run();
+for(const [id,days] of [['exp-6d',6],['exp-7d',7],['exp-8d',8],['exp-past',-1]])await synthetic(id,days);
+await synthetic('exp-deleted',3,{sourceCampaignDeleted:{at:new Clock().toISOString(),by:null}});await synthetic('exp-paused',2,{status:'paused'});await synthetic('exp-retired',2,{status:'retired'});
+const alertIds=((await snap()).expiringRules||[]).map(z=>z.id);
+check('a rule 6 days from expiry is alerted',alertIds.includes('exp-6d'));
+check('a rule exactly 7 days from expiry is alerted',alertIds.includes('exp-7d'));
+check('a rule 8 days from expiry is not alerted',!alertIds.includes('exp-8d'));
+check('an expired active rule is alerted',alertIds.includes('exp-past'));
+check('a rule whose source campaign was deleted is not alerted',!alertIds.includes('exp-deleted'));
+check('paused and retired rules are not alerted',!alertIds.includes('exp-paused')&&!alertIds.includes('exp-retired'));
+check('alerts list the most urgent first',alertIds.indexOf('exp-past')<alertIds.indexOf('exp-6d')&&alertIds.indexOf('exp-6d')<alertIds.indexOf('exp-7d'));
+check('alerts of another owner are not returned',(await req(learn,null,'someone-else','GET')).data.expiringRules?.length===0);
+// 워크스페이스 첫 화면 알림은 만료 임박 규칙만 가볍게 읽는다(?only=expiring).
+const lightRead=await learn.namespace.GET(new Request('https://agency.test/api/learning?only=expiring',{headers:{'oai-authenticated-user-id':owner}})),light=await lightRead.json();
+check('the overview alert read returns only the expiring rules in the same order',lightRead.status===200&&JSON.stringify(Object.keys(light))==='["expiringRules"]'&&JSON.stringify(light.expiringRules.map(z=>z.id))===JSON.stringify(alertIds));
+check('the overview alert read needs authentication',(await learn.namespace.GET(new Request('https://agency.test/api/learning?only=expiring'))).status===401);
+
+// 연장은 한 번까지 측정 없이 가능하다. 그 뒤로는 마지막 연장 이후 저장한 새 측정(재검증 실험 결과)이 있어야 한다.
+const renewMsg='연장은 한 번까지 측정 없이 가능합니다. 새 측정을 기록한 뒤 연장하세요.';
+r=await act('renew_rule',{id:vRule.id,version:1,reason:'다음 캠페인까지 유지'});
+check('the first renewal needs no new measurement',r.status===200&&r.data.renewCount===1);
+r=await act('renew_rule',{id:vRule.id,version:2,reason:'한 번 더 유지'});
+check('a second renewal without a new measurement is rejected',r.status===409&&r.data.error===renewMsg);
+check('the rule list marks a rule the server will not renew',(await snap()).rules.find(z=>z.id===vRule.id)?.renewBlocked===true);
+const vRetest=(await act('retest_rule',{id:vRule.id,version:2})).data.id;await act('start_experiment',{id:vRetest,version:1});now+=2*3600000;
+// R1: 수치 없는 결과(분모·분자 미확인, 근거 부족 판정)는 새 측정이 아니다.
+const unknownArm={denominator:null,numerator:null,source:'미확인'};
+await act('save_results',{id:vRetest,version:2,data:{...result,control:unknownArm,treatment:unknownArm,observedUntil:new Clock().toISOString()}});
+r=await act('renew_rule',{id:vRule.id,version:2,reason:'빈 결과로 유지'});
+check('an empty retest result does not allow another renewal',r.status===409&&r.data.error===renewMsg);
+check('an empty retest result keeps the renew button hidden',(await snap()).rules.find(z=>z.id===vRule.id)?.renewBlocked===true);
+const vObserved=new Clock().toISOString();
+await act('save_results',{id:vRetest,version:3,data:{...result,...counts([100,1000],[190,1000]),observedUntil:vObserved}});
+check('a valid retest result shows the renew button again',!(await snap()).rules.find(z=>z.id===vRule.id)?.renewBlocked);
+r=await act('renew_rule',{id:vRule.id,version:2,reason:'재검증 측정을 보고 유지'});d=await snap();const renewedRule=d.rules.find(z=>z.id===vRule.id);
+check('a renewal after a new measurement is allowed',r.status===200&&renewedRule.version===3&&renewedRule.expiresAt===new Date(now+30*86400000).toISOString());
+check('a measured renewal keeps the unmeasured count and records the end of the measured period',renewedRule.renewCount===1&&renewedRule.renewMeasuredAt===vObserved);
+check('a measurement before the last renewal does not allow another',(await act('renew_rule',{id:vRule.id,version:3,reason:'또 유지'})).data.error===renewMsg);
+// R1·SEC-1: 같은 관찰 구간(observedUntil)의 결과를 다시 저장해도 저장 시각만 바뀔 뿐 새 측정이 아니다.
+now+=60000;await act('save_results',{id:vRetest,version:4,data:{...result,...counts([100,1000],[190,1000]),observedUntil:vObserved}});
+r=await act('renew_rule',{id:vRule.id,version:3,reason:'같은 결과 재저장'});
+check('re-saving the same observed period does not allow another renewal',r.status===409&&r.data.error===renewMsg);
+const firstRetest=(await act('retest_rule',{id:'exp-6d',version:1})).data.id;await act('start_experiment',{id:firstRetest,version:1});now+=2*3600000;
+await act('save_results',{id:firstRetest,version:2,data:{...result,...counts([100,1000],[190,1000]),observedUntil:new Clock().toISOString()}});
+r=await act('renew_rule',{id:'exp-6d',version:1,reason:'측정 뒤 첫 연장'});d=await snap();
+check('a first renewal backed by a measurement is not counted as unmeasured',r.status===200&&!d.rules.find(z=>z.id==='exp-6d').renewCount&&!!d.rules.find(z=>z.id==='exp-6d').renewMeasuredAt);
+// 점포 규칙의 새 측정은 원 실험에서 이어간 후속 실험의 성과다. 처치 전 기준선은 새 측정이 아니다.
+r=await act('renew_rule',{id:storeRule.id,version:1,reason:'지점 유지'});
+check('a store rule renews once without a measurement',r.status===200&&r.data.renewCount===1);
+check('a store rule cannot renew twice without a measurement',(await act('renew_rule',{id:storeRule.id,version:2,reason:'다시'})).status===409);
+check('the rule list marks the store rule the server will not renew',(await snap()).rules.find(z=>z.id===storeRule.id)?.renewBlocked===true);
+await server.namespace.recordStatement(owner,'store_experiment','store-exp-2',{id:'store-exp-2',parentExperimentId:'store-exp',storeId:'store-1',brandId:'ofd',status:'running',version:1},'store-1').run();
+const seoulDay=t=>new Date(t).toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'}),renewedDay=seoulDay(now);
+const storeMeasure=(id,scope,periodEnd,values)=>server.namespace.recordStatement(owner,'store_measurement',id,{id,scope,storeId:'store-1',experimentId:'store-exp-2',periodStart:'2026-01-01',periodEnd,values,version:1,createdAt:new Clock().toISOString(),updatedAt:new Clock().toISOString()},'store-1').run();
+now+=2*86400000;await storeMeasure('store-baseline','baseline',seoulDay(now),{orders:4});
+check('a baseline is not a new measurement for a store rule',(await act('renew_rule',{id:storeRule.id,version:2,reason:'기준선만'})).status===409);
+// SEC-1: 저장 시각이 아니라 측정 기간 끝이 마지막 연장보다 뒤여야 새 측정이다.
+await storeMeasure('store-old-period','experiment',renewedDay,{orders:3});
+check('a follow-up measurement whose period ended by the last renewal is not new evidence',(await act('renew_rule',{id:storeRule.id,version:2,reason:'지난 기간 입력'})).status===409);
+// R1: 규칙의 핵심 지표가 비어 있는 측정은 새 측정이 아니다.
+await storeMeasure('store-no-metric','experiment',seoulDay(now),{orders:null,revenue:12000});
+check('a follow-up measurement without the rule primary metric is not new evidence',(await act('renew_rule',{id:storeRule.id,version:2,reason:'다른 지표만'})).status===409);
+await storeMeasure('store-follow-up','experiment',seoulDay(now),{orders:5});
+check('a follow-up measurement allows the store rule renewal',(await act('renew_rule',{id:storeRule.id,version:2,reason:'후속 실험 측정'})).status===200);
+check('a store renewal records the end of the measured period',(await snap()).rules.find(z=>z.id===storeRule.id)?.renewMeasuredAt===seoulDay(now));
 
 console.log(JSON.stringify({passed:checks.length,checks},null,2));

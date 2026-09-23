@@ -157,7 +157,7 @@ export async function approvePublication(owner:string,campaign:Campaign,p:Public
  const external=p.mediaMode!=='auto';
  if(p.status!=='draft'||input.confirmed!==true||input.rightsConfirmed!==true||(external&&input.immutableMediaConfirmed!==true))throw new ApiError(400,external?'PNG·사실·사용 권리·공개 파일 유지 조건을 확인하고 승인하세요.':'PNG·사실·사용 권리를 확인하고 승인하세요.');
  const {credential,limits}=await approvalInputs(owner,campaign,p);
- const changed=[...(input.channelId!==credential.channelId||input.credentialVersion!==credential.version?['발행 계정']:[]),...(input.limitsVersion!==limits.version?['실행 한도']:[])];
+ const changed=[...(input.channelId!==credential.channelId||input.credentialVersion!==credential.version?['발행 계정']:[]),...(input.limitsVersion!==limits.version?['발행 횟수 한도']:[])];
  if(changed.length)throw new ApiError(409,`화면에 표시된 정보가 변경됐습니다(${changed.join(', ')}). 새로고침하고 다시 확인하세요.`);
  // 자동 모드는 승인된 발행만 앱 공개 주소로 제공한다. 외부 호스트는 원본 해시와 같은지 확인한다.
  let url=p.mediaUrl;if(external)await verifyMedia(p.mediaUrl,p.pngHash,origin);else url=await publishPublicMedia(owner,p.pngHash,p.id,origin);
@@ -173,7 +173,9 @@ export async function reservePublication(owner:string,campaign:Campaign,p:Public
  // 사용한 사실이 바뀌면 사실 버전이 달라져 같은 소재로 다시 승인할 수 없다. 취소하고 새 PNG로 준비하게 안내한다.
  if(drift.length)throw new ApiError(409,`승인 뒤 바뀐 항목: ${drift.join(', ')}. `+(p.needsReview?'이 발행을 취소하고 새 PNG로 새 초안을 만드세요.':"'재확인'으로 초안에 되돌린 뒤 다시 승인하세요."));
  const total=executionTotals(await listRecords<Publication>(owner,'execution_publication',campaign.id));
- if(total.attempts>=limits.maxPublications||total.plannedCostKRW+p.plannedCostKRW>limits.maxPlannedCostKRW)throw new ApiError(409,'발행 시도 또는 예정 비용 상한을 초과합니다.');
+ // 횟수와 비용 중 무엇이 막았는지 따로 알린다(exec-loop-10). 참고로 입력한 예정 비용도 0원보다 크면 상한에 포함된다.
+ if(total.attempts>=limits.maxPublications)throw new ApiError(409,`발행 횟수 한도를 초과합니다(누적 발행 시도 ${total.attempts}회 · 한도 ${limits.maxPublications}회).`);
+ if(total.plannedCostKRW+p.plannedCostKRW>limits.maxPlannedCostKRW)throw new ApiError(409,`예정 비용 상한을 초과합니다(누적 ${total.plannedCostKRW.toLocaleString('ko-KR')}원 + 이번 ${p.plannedCostKRW.toLocaleString('ko-KR')}원 · 상한 ${limits.maxPlannedCostKRW.toLocaleString('ko-KR')}원).`);
  await verifyMedia(p.mediaUrl,p.pngHash,origin);
  const token=await decrypt(credential.secret);
  const pending:Publication={...p,status:'submitting',attemptedAt:stamp(),updatedAt:stamp(),version:p.version+1};

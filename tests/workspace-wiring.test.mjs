@@ -36,4 +36,12 @@ check('an older workspace response never replaces a newer one',()=>assert.match(
 // 기본 브랜드는 처음 불러올 때 한 번 정하고 이후 활동 변화로 바뀌지 않는다.
 check('the default brand is fixed once when data arrives',()=>{assert.ok(workspace.includes('setBrandId(b=>'));assert.ok(learning.includes('setPicked(p=>'));assert.ok(!learning.includes('recentBrandId'))});
 
+// loop-7·loop-11: 학습 화면 링크(?view=learning&brand=&tab=)로 브랜드·탭을 연다. 링크 브랜드는 직접 고른 것처럼 기억하고,
+// 화면에서 고른 브랜드·탭은 주소에 남겨(replace) 새로고침 때 링크 값이 사용자의 선택을 덮지 않는다(점포 마케팅의 ?brand=&store=와 같은 방식).
+check('the learning view receives the linked brand and tab and reports changes',()=>{assert.ok(workspace.includes('initialBrandId={route.brand}'));assert.ok(workspace.includes('initialTab={route.tab}'));assert.ok(workspace.includes('onScopeChange={setLearningScope}'));assert.match(workspace,/function setLearningScope\(brand:string,tab:string\)\{const next=normalizeNav\([^)]*\);replaceUrl\.current=serializeNav\(next\);setRoute\(r=>r\.view==='learning'\?/)});
+check('the learning panel starts from the linked brand and tab',()=>{assert.ok(learning.includes('useState<string|null>(()=>initialBrandId??storedBrand())'));assert.ok(learning.includes("useState<string>(initialTab??'cases')"));assert.ok(learning.includes('rememberBrand(initialBrandId)'))});
+check('the learning panel follows a new link while open',()=>assert.match(learning,/if\(link\.brand!==initialBrandId\|\|link\.tab!==initialTab\)\{setLink\(/));
+check('brand and tab changes in the learning panel are reported',()=>{assert.ok(learning.includes('onScopeChange?.(id,tab)'));assert.ok(learning.includes("onScopeChange?.(initialBrandId??'',t)"));assert.ok(!learning.includes('onScopeChange?.(brandId,t)'))});
+// loop-11: 만료 임박 규칙 알림은 학습 화면 밖(워크스페이스 첫 화면)에도 보이고 규칙 탭으로 바로 간다.
+check('the overview shows the expiring rule alert with a link to the rules tab',()=>{assert.ok(workspace.includes('<ExpiringRulesAlert'));assert.ok(workspace.includes("navigate({view:'learning',brand,tab:'rules'})"));assert.ok(learning.includes("fetch('/api/learning?only=expiring')"))});
 console.log(JSON.stringify({passed},null,2));
