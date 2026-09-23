@@ -36,3 +36,4 @@ node node_modules/@playwright/test/cli.js test -c playwright.auth.config.ts
 - 인증 브라우저 여정1개: HTTPS/Chromium/workerd/native scrypt 및 로컬 D1 real. 외부 모델·실제 메일·운영 서버 호출 없음. 관리자 초기 등록·로그인·초대·새로고침 유지·cookie flags·멤버403·위조 GPT401·재사용401·재설정과 disable 후 세션401 확인.
 - 기존 브라우저10개: real Chromium/로컬 D1, mocked Sites 인증 및 일부 AI 응답.
 - 커버리지 백분율은 not_run. 만료 session/token/rate row 자동 청소는 미구현이며 운영 DB 용량 모니터링 필요.
+- 독립 의존성 감사 `pnpm --ignore-workspace audit --prod --json`: failed(Critical0/High2/Moderate1/Low1). 기존 Next 빌드 경로의 browserslist4.28.2(권고≥4.28.7), baseline-browser-mapping2.10.30(≥2.11.0), @babel/core7.29.0(≥7.29.6). 이번 변경에서 의존성을 추가하지 않았으며 인증 요청 입력이 해당 도구에 전달되는 경로는 발견하지 못했다. 별도 의존성 갱신 과제로 남긴다.
