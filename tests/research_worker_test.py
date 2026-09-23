@@ -1,4 +1,6 @@
+import contextlib
 import importlib.util
+import io
 import json
 import threading
 import tempfile
@@ -35,6 +37,7 @@ class BrowserDiscoveryTest(unittest.TestCase):
 class Handler(BaseHTTPRequestHandler):
     redirect = False
     requests = []
+    statuses = []
     def do_POST(self):
         # 본문을 읽지 않고 닫으면 커널이 RST를 보내 클라이언트 read가 ConnectionResetError로 끊긴다.
         self.rfile.read(int(self.headers.get('Content-Length', 0)))
@@ -42,6 +45,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.redirect:
             self.send_response(307)
             self.send_header('Location', '/unexpected')
+            self.end_headers()
+        elif self.statuses:
+            self.send_response(self.statuses.pop(0))
+            self.send_header('Content-Length', '0')
             self.end_headers()
         else:
             body = json.dumps({'status': 'idle', 'pending': 0}).encode()
@@ -56,6 +63,7 @@ class WorkerTransportTest(unittest.TestCase):
     def setUp(self):
         Handler.requests = []
         Handler.redirect = False
+        Handler.statuses = []
         self.server = HTTPServer(('127.0.0.1', 0), Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -77,6 +85,37 @@ class WorkerTransportTest(unittest.TestCase):
             worker.tick(self.config)
         self.assertEqual(error.exception.code, 307)
         self.assertEqual(len(Handler.requests), 1)
+    def run_worker(self, ticks):
+        # 대기 시간을 주입해 실제로 잠들지 않고 루프가 고른 지연만 기록한다.
+        stop, delays, out, err = threading.Event(), [], io.StringIO(), io.StringIO()
+        def wait(seconds):
+            delays.append(seconds)
+            if len(delays) >= ticks:
+                stop.set()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = worker.run(self.config, stop, wait)
+        return code, delays, out.getvalue(), err.getvalue()
+    def assertDelays(self, delays, expected):
+        self.assertEqual(len(delays), len(expected))
+        for delay, base in zip(delays, expected):
+            self.assertTrue(base <= delay < base + 2, (delay, base))
+    def test_rejection_backs_off_for_hours_instead_of_stopping(self):
+        Handler.statuses = [401, 403, 401, 403, 401, 401]
+        code, delays, out, err = self.run_worker(6)
+        self.assertEqual(code, 0)
+        self.assertEqual(len(Handler.requests), 6)
+        self.assertDelays(delays, [1800, 3600, 7200, 14400, 21600, 21600])
+        self.assertEqual(err.count('worker_rejected'), 6)
+        self.assertIn('retrying in 360 minutes', err)
+        for secret in ('scoped-test-token', 'test-gate'):
+            self.assertNotIn(secret, out + err)
+    def test_accepted_tick_after_rejection_resets_backoff(self):
+        Handler.statuses = [403, 401]
+        code, delays, out, err = self.run_worker(4)
+        self.assertEqual(code, 0)
+        self.assertDelays(delays, [1800, 3600, 15, 15])
+        self.assertEqual(err.count('worker_rejected'), 2)
+        self.assertEqual(out.count('queue: idle'), 2)
 
 if __name__ == '__main__':
     unittest.main()

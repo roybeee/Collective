@@ -19,6 +19,7 @@
 | `node scripts/lint-gate.mjs` | | | errors/warnings (기준선) |
 | `node scripts/run-framework.mjs build` | | | |
 | `python3 tests/research_worker_test.py` | | mocked gateway / real 로컬 HTTP | 차단 |
+| `python3 tests/research_install_test.py` | | mocked (root·네트워크 없음) | 차단 |
 | `node node_modules/@playwright/test/cli.js test` | | | 비차단, 통과 수 |
 
 ## 배포 여부
