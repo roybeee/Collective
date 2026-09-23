@@ -3,6 +3,7 @@ import {markUsageOutcomeSafely as markUsageOutcome} from './usage-outcome';
 import {brandArchiveContext} from '@/lib/archive-server';
 import {evidenceContext,aiBrand} from '@/lib/ai-context';
 import {submitHermes,pollHermes,hermesSubmissionStatement} from '@/lib/hermes';
+import type {UsageContext} from '@/lib/usage-ledger';
 import {learningContext} from '@/lib/learning-server';
 import {briefInstructions,parseBrief,emptyPlan,type BriefDraft,type BriefInput} from '@/lib/brief';
 import type {Brand,Campaign,Artifact,Metric} from '@/lib/agency';
@@ -10,6 +11,8 @@ import {ApiError,str,json,failure,database,recordStatement,readRecord,listRecord
 type StoredDraft=BriefDraft&{providerId?:string};
 const active=(d:BriefDraft)=>['starting','queued','in_progress','uncertain'].includes(d.status);
 const publicDraft=({providerId:_,...draft}:StoredDraft)=>draft;
+// 사용량 조인 키(F2a). 브리프 초안은 jobs 행이 없어 초안 id를 실행 단위로 쓴다. 인라인 지시라 스킬 버전은 없다.
+const briefUsage=(id:string,d:StoredDraft):UsageContext=>({kind:'brief',submissionId:'brief-'+id,jobId:id,campaignId:d.campaignId??null,campaignVersion:d.campaignVersion??null,brandId:d.input?.brandId||null,storeId:d.input?.storeId||null});
 export async function executeBrief(owner:string,b:Record<string,unknown>){let lock='',pending:StoredDraft|undefined;
  try{
  const id=str(b.id,'초안',100,true);if(!/^[a-zA-Z0-9_-]{1,100}$/.test(id))throw new ApiError(400,'초안 번호가 올바르지 않습니다.');
@@ -45,7 +48,7 @@ export async function executeBrief(owner:string,b:Record<string,unknown>){let lo
    // Reuse the persisted submission and its durable idempotency key, even after an acknowledgement loss.
    const r=await submitHermes(owner,'brief-'+id,cfg);next={...next,providerId:r.id,status:'queued',error:undefined};await recordStatement(owner,'brief_draft',id,next).run();
   }
-  const r=await pollHermes(cfg,next.providerId!,b.action==='cancel',30000,owner);
+  const r=await pollHermes(cfg,next.providerId!,b.action==='cancel',30000,owner,briefUsage(id,next));
   next.updatedAt=stamp();next.status=r.status as BriefDraft['status'];next.error=undefined;
   if(r.status==='completed'){
    try{next.result=parseBrief(r.output[0].content[0].text,next.input)}catch(e){next.status='failed';next.error=(e as Error).message}
