@@ -5,7 +5,9 @@ import {parseStoreReport} from './store-server';
 import {ApiError,str,json,failure,database,readRecord,listRecords,recordStatement,connection,acquireLock,releaseLock,stamp,type Connection} from '@/lib/server';
 import type {Brand} from '@/lib/agency';
 import {archiveCategories,researchActive,publicResearch,type BrandResearch,type ArchiveSource,type ChannelObservation,type Diagnostic} from '@/lib/archive';
-import {archiveState,stateWrite,assertArchiveIdle} from '@/lib/archive-server';
+import {archiveState,stateWrite,assertArchiveIdle,sourceMaskAllow} from '@/lib/archive-server';
+import {modelSources,userProvidedSource} from '@/lib/source-masking';
+import type {InputMasking} from '@/lib/ai-context';
 import {archiveResearchInstructions,researchObject,parseResearchSources,parseDiagnostic,researchBrand,authorPrivacy} from '@/lib/archive-research';
 import {DEEP_RESEARCH_VERSION,defaultResearchPlan} from '@/lib/deep-research';
 import {deepInstructions,parseDeepText,responseUrls,DeepReportShapeError} from '@/lib/deep-research-server';
@@ -25,7 +27,8 @@ const researchUsage=(owner:string,r:BrandResearch,step:BrandResearch['steps'][nu
 // sent: 이 단계의 실행이 수리 실행이다(providerId·사용량 조인 키가 수리 기준). skipped: 추정 입력 토큰 상한 초과. blocked: 예산 가드 409·HERMES 확정 거절.
 const REPAIR_INPUT_LIMIT=60000,REPAIR_NOTE='심층 조사 결과가 형식 검증을 통과하지 못해 같은 조사에 수리 요청을 1회 보냈습니다(수리 중). 새 조사는 하지 않습니다.';
 type Repair={status:'sent'|'skipped'|'blocked';estimatedInputTokens:number;requestedAt:string;reason?:string};
-type Step=BrandResearch['steps'][number]&{repair?:Repair;usageTokens?:number};
+// inputMasking: 이 단계 제출의 자료 가림 기록(필드 'sources.<순번>.<필드>'·종류·건수, 허용 탐지는 allowed:true, 값 없음, DP-4). 단계 제출마다 남는다(0건이면 빈 배열).
+type Step=BrandResearch['steps'][number]&{repair?:Repair;usageTokens?:number;inputMasking?:InputMasking[]};
 const repairing=(step:Step)=>step.repair?.status==='sent';
 const submissionOf=(step:Step)=>repairing(step)?step.id+':repair':step.id;
 // 원래 조사 지시의 보안 문단(읽기 전용, 게시·결제·인증정보 노출 금지)을 그대로 넣는다. 수리 실행도 같은 HERMES 에이전트라 도구 목록을 끌 수 없다.
@@ -64,9 +67,11 @@ export async function executeResearch(owner:string,b:Record<string,any>,submissi
   const archived=await listRecords<ArchiveSource>(owner,'brand_source',r.brandId),sources=archived.filter(s=>s.status!=='excluded'&&(!s.storeId||s.storeId===r.storeId));
   const selected=step.sourceIds?sources.filter(s=>step.sourceIds!.includes(s.id)):sources.slice(0,30);
   step.sourceIds=selected.map(s=>s.id);
+  // 4.4 ③ 사용자 자료(upload·manual)의 본문·제목·확인 범위·URL은 제작 경로와 같은 허용 값으로 가려서 보낸다(lib/source-masking.ts). 조사 자료(research)는 원문이다. 가린 input을 그대로 저장·전송하고 가림 기록은 단계에 남긴다.
+  const allow=selected.some(userProvidedSource)?await sourceMaskAllow(owner,r.brandId,r.storeId,r.snapshot.store):[],{texts,masking}=modelSources(selected,4500,allow,'sources');
   const prior=r.previousResearchId?await readRecord<BrandResearch>(owner,'brand_research',r.previousResearchId):undefined;
-  const input={execution:r.execution,protocol:r.protocol,plan:modelPlan(r),access:r.access,maxNewSources:Math.max(0,Math.min(40,200-archived.length)),previousGaps:prior?.report?.quality.issues||[],brand:modelBrand(r),store:r.snapshot.store,storeContext:modelStoreContext(r.snapshot.storeContext),mode:r.mode,stage:step.stage,requestedAt:stamp(),sources:selected.map(s=>({id:s.id,title:s.title,status:s.status,category:s.category,url:s.url,scope:s.scope,observedAt:s.observedAt,content:s.content.slice(0,4500),excerpt:s.content.length>4500})),omittedSources:Math.max(0,sources.length-selected.length),observations:r.snapshot.observations.slice(0,12),priorSteps:r.steps.filter(s=>s.status==='completed').map(s=>({stage:s.stage,summary:s.summary,limitations:s.limitations}))};
-  step.status='uncertain';r.updatedAt=stamp();await database().batch([...writes(owner,r),hermesSubmissionStatement(owner,step.id,{instructions:step.stage==='store_diagnosis'?storeResearchInstructions+'\n'+authorPrivacy:step.stage==='investigation'?deepInstructions:archiveResearchInstructions(step.stage,r.mode)+(r.storeId?'\n이번 작업은 특정 점포의 조사입니다. 입력 store와 storeContext를 기준으로 지점명·주소를 확인하세요. identity는 메뉴·가격·영업시간·주차·예약/주문 경로, customer는 생활권·이용 상황·동일 상권 경쟁 매장·리뷰의 방문 장벽, channel은 네이버 플레이스/검색광고·블로그·지역 맛집 페이지·당근·지도·재방문 동선을 우선 조사하세요. 사용자 제공 사실과 공개 관찰을 구분하고 다른 지점의 수치를 섞지 마세요. SNS 영상 표본 수를 채우는 작업은 필수가 아닙니다.':''),input:JSON.stringify(input)},r.brandId)]);prepared=r;
+  const input={execution:r.execution,protocol:r.protocol,plan:modelPlan(r),access:r.access,maxNewSources:Math.max(0,Math.min(40,200-archived.length)),previousGaps:prior?.report?.quality.issues||[],brand:modelBrand(r),store:r.snapshot.store,storeContext:modelStoreContext(r.snapshot.storeContext),mode:r.mode,stage:step.stage,requestedAt:stamp(),sources:selected.map((s,i)=>({id:s.id,title:texts[i].title,status:s.status,category:s.category,url:texts[i].url,scope:texts[i].scope,observedAt:s.observedAt,content:texts[i].content,excerpt:texts[i].excerpt})),omittedSources:Math.max(0,sources.length-selected.length),observations:r.snapshot.observations.slice(0,12),priorSteps:r.steps.filter(s=>s.status==='completed').map(s=>({stage:s.stage,summary:s.summary,limitations:s.limitations}))};
+  (step as Step).inputMasking=masking;step.status='uncertain';r.updatedAt=stamp();await database().batch([...writes(owner,r),hermesSubmissionStatement(owner,step.id,{instructions:step.stage==='store_diagnosis'?storeResearchInstructions+'\n'+authorPrivacy:step.stage==='investigation'?deepInstructions:archiveResearchInstructions(step.stage,r.mode)+(r.storeId?'\n이번 작업은 특정 점포의 조사입니다. 입력 store와 storeContext를 기준으로 지점명·주소를 확인하세요. identity는 메뉴·가격·영업시간·주차·예약/주문 경로, customer는 생활권·이용 상황·동일 상권 경쟁 매장·리뷰의 방문 장벽, channel은 네이버 플레이스/검색광고·블로그·지역 맛집 페이지·당근·지도·재방문 동선을 우선 조사하세요. 사용자 제공 사실과 공개 관찰을 구분하고 다른 지점의 수치를 섞지 마세요. SNS 영상 표본 수를 채우는 작업은 필수가 아닙니다.':''),input:JSON.stringify(input)},r.brandId)]);prepared=r;
   const result=await submitHermes(owner,step.id,cfg,undefined,submissionTimeoutMs);step.providerId=result.id;step.status='running';r.status='running';r.error=undefined;r.retryAt=undefined;r.retryCount=0;await database().batch(writes(owner,r));return json(publicResearch(r));
  }
  if(!step.providerId){if(b.action!=='recover'){r.status='uncertain';r.error='조사 접수 확인이 지연돼 같은 요청으로 다시 확인합니다.';researchRetry(r);await database().batch(writes(owner,r));return json(publicResearch(r))}recovering=true;prepared=r;const result=await submitHermes(owner,submissionOf(step),cfg,undefined,submissionTimeoutMs);step.providerId=result.id;step.status='running';r.status='running';r.error=undefined;r.retryAt=undefined;r.retryCount=0;await database().batch(writes(owner,r));return json(publicResearch(r))}

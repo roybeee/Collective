@@ -1,5 +1,5 @@
 import {markUsageOutcomeSafely as markUsageOutcome} from './usage-outcome';
-import {brandArchiveContext} from '@/lib/archive-server';
+import {brandArchiveInput,maskedArchiveSnapshot} from '@/lib/archive-server';
 import {PRACTICE_VERSION,campaignPractice} from '@/lib/practice';
 import {qualityMarkdown} from '@/lib/quality';
 import {roles,aiBudget,type Campaign,type Brand,type Artifact,type Metric} from '@/lib/agency';
@@ -56,7 +56,7 @@ function context(m:Meeting,s:MeetingStep,storeAllow:readonly string[]):{value:ob
  const masked=maskFields(raw,MEETING_MASK_PATHS,{allow:productionAllow(snapshot.evidence,snapshot.brandArchive,storeAllow)});
  return {value:masked.value,findings:inputMaskingRecord(masked)};
 }
-// 가림 기록(필드·종류·건수, 허용 값이라 가리지 않은 탐지는 allowed:true, 값 없음)은 단계 기록(team_meeting.steps[].inputMasking)에 남는다. 저장본(hermes_submission)이 곧 전송본이고 복구도 같은 본문을 보낸다.
+// 가림 기록(필드·종류·건수, 허용 값이라 가리지 않은 탐지는 allowed:true, 값 없음)은 단계 기록(team_meeting.steps[].inputMasking)에 남는다. 브랜드 자료 가림 기록(snapshot.sourceMasking)을 뒤에 합친다. 저장본(hermes_submission)이 곧 전송본이고 복구도 같은 본문을 보낸다.
 type MaskedStep=MeetingStep&{inputMasking?:InputMasking[]};
 async function finish(owner:string,m:Meeting){
  const c=await readRecord<Campaign>(owner,'campaign',m.campaignId);
@@ -147,7 +147,9 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:E
    const previousFailure=previous?.steps.find(s=>s.status==='failed');
    const resolved=await resolveCampaignPrompts(owner,c),registryIds=Object.values(resolved.units);
    const prompts=resolved.source==='registry'?{source:resolved.source,units:resolved.units,promptVersion:joinVersions(registryIds),set:resolved.set}:{source:resolved.source,...(resolved.fallback?{fallback:resolved.fallback}:{})};
-   const m:Meeting={skillVersion:PRACTICE_VERSION,id,campaignId:c.id,campaignVersion:c.version,agenda:str(b.agenda,'회의 안건',5000,true),status:'running',steps:initialSteps(id),createdAt:stamp(),updatedAt:stamp(),model:cfg.model,stopRequested:false,artifactIds:[],invalidatedRoles:[],previousMeetingId:previous?.id,snapshot:{prompts,brandArchive:await brandArchiveContext(owner,c.brandId,c.storeId),campaign:c,brand,artifacts,metrics,learning,evidence:await evidenceContext(database(),owner,c),...(previous?{previous:{id:previous.id,agenda:previous.agenda,decisions:previous.steps.find(s=>s.phase==='synthesis')?.output as Synthesis,quality:previous.steps.find(s=>s.phase==='quality')?.output as QualityReview,discussion:previous.steps.filter(s=>s.phase==='discussion'&&s.status==='completed').map(s=>({id:s.id,role:s.role,output:s.output as Contribution})),...(previousFailure?{failure:{role:previousFailure.role,phase:previousFailure.phase,error:previousFailure.error||previous.error||'응답 검증 실패'}}:{})}}:{})}};
+   // 브랜드 자료(4.4 ③ 사용자 자료 가림)와 그 가림 기록을 스냅샷에 둔다. 가림 기록은 모델 입력에 싣지 않는다.
+   const archived=await brandArchiveInput(owner,c.brandId,c.storeId);
+   const m:Meeting={skillVersion:PRACTICE_VERSION,id,campaignId:c.id,campaignVersion:c.version,agenda:str(b.agenda,'회의 안건',5000,true),status:'running',steps:initialSteps(id),createdAt:stamp(),updatedAt:stamp(),model:cfg.model,stopRequested:false,artifactIds:[],invalidatedRoles:[],previousMeetingId:previous?.id,snapshot:{prompts,brandArchive:archived.archive,sourceMasking:archived.sourceMasking,campaign:c,brand,artifacts,metrics,learning,evidence:await evidenceContext(database(),owner,c),...(previous?{previous:{id:previous.id,agenda:previous.agenda,decisions:previous.steps.find(s=>s.phase==='synthesis')?.output as Synthesis,quality:previous.steps.find(s=>s.phase==='quality')?.output as QualityReview,discussion:previous.steps.filter(s=>s.phase==='discussion'&&s.status==='completed').map(s=>({id:s.id,role:s.role,output:s.output as Contribution})),...(previousFailure?{failure:{role:previousFailure.role,phase:previousFailure.phase,error:previousFailure.error||previous.error||'응답 검증 실패'}}:{})}}:{})}};
    await database().batch([database().prepare('INSERT INTO jobs(id,owner,campaign_id,role,status,model,campaign_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').bind(jobId(owner,m),owner,c.id,'meeting','in_progress',cfg.model,c.version,m.createdAt,m.updatedAt),recordStatement(owner,'team_meeting',m.id,m,c.id),eventStatement(owner,c.id,'팀 회의를 시작했습니다. 8명 의견 교환 → 개선 과제 → 품질 재검토.',by)]);
    return json(publicMeeting(m));
   }
@@ -171,7 +173,9 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:E
    s.status='starting';s.startedAt=stamp();m.updatedAt=stamp();m.error=undefined;
    const correction=s.correction?'\n이전 응답은 검증에 실패했습니다. correction.error를 고치고, respondsTo에는 allowedRespondsTo의 ref만 사용하세요. 요청 선택지를 묻지 말고 이 단계의 완성된 결과를 반환하세요.':'';
    const instructions=meetingInstructions(s,!!m.skillVersion,m.snapshot.prompts?.set)+correction;s.promptVersion=await stepPromptVersion(m,s,instructions);
-   const built=context(m,s,await brandStoreAllow(owner,m.snapshot.campaign));(s as MaskedStep).inputMasking=built.findings;
+   // 전환 구간(DP3-B-02): 자료 가림 이전에 시작한 회의(스냅샷에 가림 기록 없음)는 스냅샷 자료를 새 회의와 같은 규칙으로 가려 저장하고 보낸다(한 번만).
+   if(m.snapshot.brandArchive?.confirmedSources&&!m.snapshot.sourceMasking){const masked=await maskedArchiveSnapshot(owner,m.snapshot.campaign.brandId,m.snapshot.campaign.storeId,m.snapshot.brandArchive);m.snapshot={...m.snapshot,brandArchive:masked.archive,sourceMasking:masked.sourceMasking}}
+   const built=context(m,s,await brandStoreAllow(owner,m.snapshot.campaign));(s as MaskedStep).inputMasking=[...built.findings,...(m.snapshot.sourceMasking||[])];
    await database().batch([...writes(owner,m),hermesSubmissionStatement(owner,meetingSubmissionId(s),{instructions,input:JSON.stringify(built.value)},m.campaignId)]);
    prepared=m;
    const r=await submitHermes(owner,meetingSubmissionId(s),cfg);s.providerId=r.id;s.status='running';m.status='running';m.updatedAt=stamp();
