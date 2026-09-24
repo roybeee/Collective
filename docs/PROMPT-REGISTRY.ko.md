@@ -85,6 +85,7 @@
 - 영향 범위(`?impact=<id>`): 그 버전으로 만든 작업물과, 그 작업물 카피를 쓴 발행물(`execution_publication.copy.artifactId`) 목록·수.
 - 이미 제출한 작업의 멱등 재제출(기존 요청 확인)은 저장된 원문(`hermes_submission`)을 그대로 보낸다. 롤백이 진행 중 작업의 본문을 바꾸지 않는다.
 - 스테이징 중 롤백(`expectedActive` = 스테이징 버전)은 스테이징 전 상태로 되돌린다: `active ← previous`(= 스테이징 전 전체 적용 버전), `stagedCampaignIds ← []`, `baseline ← null`.
+- 같은 배치에서 `prompt_release_event`(`action: "rollback"`, from·to, to 버전의 `sourceSha`, 해제한 `stagedCampaignIds`, 영향 수 `impact`, 조작 전·후 `promptManifest`)를 남긴다. 승인·평가 근거(`approval`·`evalRunId`)는 null이다. 응답에 `event`가 있다.
 - 롤백·활성화마다 `docs/PUBLISH.ko.md` 7절의 `registry-active` 기록을 남긴다.
 
 ## 활성화 게이트 (F3b)
@@ -118,10 +119,15 @@
 | 그 run의 active 쪽 버전이 지금 전체 적용 버전과 같음 | 평가 뒤 active가 바뀜(다시 평가) |
 | 평가 연결 게이트웨이 해시가 시작·종료에 같고 확인됨(운영 스냅샷 해시도 같음) | 게이트웨이 스냅샷 해시 다름·미확인 |
 | 보고 모델이 두 쪽·모든 케이스에서 하나로 같고 보고됨 | 보고 모델 다름·미보고 |
-| 코드 채점 합격 수 후보 ≥ active(케이스·채점기 대응, `not_applicable`·`grader_error` 제외) | 합격 수 후보 < active |
-| 봉인(sealed) 케이스에서 active pass → 후보 fail 회귀 0건 | 봉인 세트 회귀 N건 |
+| 코드 채점 합격 수 후보 ≥ active(케이스·채점기 대응. 후보가 재질문(`question_only` fail)해 `not_applicable`이 된 채점기와 후보 쪽 `grader_error`는 후보 fail로 센다. active 쪽 `not_applicable`·`grader_error`와 그 밖의 `not_applicable`은 뺀다) | 합격 수 후보 < active |
+| 봉인(sealed) 케이스가 1건 이상 | 봉인 케이스 없음(`sealed_missing`) |
+| 봉인(sealed) 케이스에서 active pass → 후보 fail 회귀 0건(위 보정 포함) | 봉인 세트 회귀 N건 |
 | `input_budget` 채점기가 후보 쪽 모든 케이스에서 pass | input_budget 후보 합격 부족 |
 | `model_change`·`gateway_change` 경보가 마지막 확인 이후 열려 있지 않음(결정 10) | 경보 N건 동결 |
+
+- 후보 보정은 비회귀 게이트라 후보에 불리한 쪽으로 센다. 산출물을 내지 않은 후보(재질문)가 같은 케이스 active의 내용 채점 합격을 셈에서 지워 다른 케이스 개선 1건으로 통과하는 것을 막는다. 봉인 케이스의 재질문은 `question_only`와 잃은 내용 채점 합격이 모두 봉인 회귀가 된다.
+- 최소 케이스 수는 강제하지 않는다(대표 결정 전). 대응 쌍이 30쌍 미만이면 `gate.warnings`에 `small_sample` 경고를 싣고 거부하지 않는다. `activate`·`stage`·`promote` 응답의 `event.gate`에 `cases`·`sealedCases`·`warnings`가 있다.
+- 진행 중(queued·running) run이 쓰는 케이스의 기대 판정·세트는 `update_case`로 바꿀 수 없다(409, 이름은 가능). 한 run의 두 쪽이 다른 기준으로 채점되는 것을 막는다.
 
 ### 활성화·지정 캠페인·승격 (`POST /api/prompts`, owner 전용)
 
@@ -137,9 +143,10 @@
 - 고정(pin) 규칙: 이미 고정한 캠페인·브리프 버전은 스테이징·승격 뒤에도 고정 버전을 쓴다. 새 버전을 받게 하려면 `reset_pins`로 그 캠페인의 고정을 명시적으로 푼다(브리프 버전이 올라가도 다시 고정된다). 진행 중 작업의 재제출은 저장된 원문을 그대로 보내고, 회의는 시작 때 스냅샷을 끝까지 쓴다. 지정 캠페인의 회의 스냅샷 `promptVersion`은 같은 캠페인 역할 실행의 `promptVersion`과 같다(같은 고정을 쓴다).
 - `promote`: 스테이징한 버전을 전체에 적용한다(`stagedCampaignIds ← []`, `baseline ← null`). 같은 `evalRunId`로 게이트를 다시 확인하고(기준 = `baseline`) 경보 동결을 다시 본다. `approval.reason`은 선택이다. 스테이징이 없으면 409.
 - 스테이징 중에는 같은 단위의 `activate`·`stage`가 409다. `promote` 또는 `rollback`으로 먼저 끝낸다.
+- `activate`·`promote`에 `campaignIds`·`stagedCampaignIds`·`baseline`을 주면 400이다(조용히 전체 적용하지 않는다). 지정 캠페인 적용은 `stage`로만 한다.
 - 비율 필드(`percent`·`ratio`·`canary`·`weight`·`traffic`·`rollout`)는 400이다. 워커·예약 작업은 `prompt_release`를 쓰지 않는다(승격은 owner의 `promote` 요청뿐).
 - 권한: 비로그인 401, 관리자·직원 403, 다른 소유자의 버전·단위·캠페인·평가 run은 404. 쓰기는 소유자 잠금 안에서 한다.
-- 기록: 조작마다 `prompt_release_event`(단위·from·to·`sourceSha`·`evalRunId`·승인 사유·승인자·지정 캠페인·게이트 요약·조작 전후 `promptManifest`)를 남긴다. `reset_pins`도 푼 고정의 `promptVersion`을 남긴다. `GET /api/prompts`의 `events`로 본다.
+- 기록: 조작마다(`activate`·`stage`·`promote`·`rollback`) `prompt_release_event`(단위·from·to·`sourceSha`·`evalRunId`·승인 사유·승인자·지정 캠페인·게이트 요약·조작 전후 `promptManifest`)를 남긴다. 롤백은 승인·평가 근거가 null이고 해제한 지정 캠페인과 영향 수를 남긴다. `reset_pins`도 푼 고정의 `promptVersion`을 남긴다. `GET /api/prompts`의 `events`로 본다.
 
 ### 경보 동결과 해제 (결정 10)
 
@@ -160,7 +167,7 @@
 6. 지정 캠페인 적용: `stage`(`campaignIds` 1~50개, 승인 사유). 응답 `pinnedCampaignIds`에 있는 캠페인이 새 버전을 받아야 하면 `reset_pins`.
 7. 관찰: 지정 캠페인의 작업물·회의·품질 판정과 `provider_usage`를 `promptVersion`으로 나눠 본다(F2a 조인 키). 지정 밖 캠페인은 그대로다.
 8. 전체 적용 또는 되돌림: 문제가 없으면 `promote`, 있으면 `rollback`(`expectedActive` = 스테이징 버전, 스테이징 전 상태로 돌아간다).
-9. 기록: 조작마다 `docs/PUBLISH.ko.md` 7절 형식으로 `registry-active`를 남긴다. 근거는 `GET /api/prompts`의 `events`(단위·from→to·`sourceSha`·`evalRunId`·승인 사유·지정 캠페인·`manifestBefore`/`manifestAfter`)와 운영 `/api/version`의 `promptManifest`다. `promptManifest`가 이벤트의 `manifestAfter`와 같으면 `registry-active`다. 레지스트리 조작은 게시가 아니므로 `runtime-verified`와 섞지 않는다.
+9. 기록: 조작마다(롤백 포함) `docs/PUBLISH.ko.md` 7절 형식으로 `registry-active`를 남긴다. 근거는 `GET /api/prompts`의 `events`(단위·from→to·`sourceSha`·`evalRunId`·승인 사유·지정 캠페인·`manifestBefore`/`manifestAfter`)와 운영 `/api/version`의 `promptManifest`다. `promptManifest`가 이벤트의 `manifestAfter`와 같으면 `registry-active`다. 레지스트리 조작은 게시가 아니므로 `runtime-verified`와 섞지 않는다.
 
 ## /api/version
 
@@ -176,7 +183,7 @@ PROMPT_BASELINE_SHA=<40자리 기준 SHA> PROMPT_BASELINE_CAPTURE=tests/fixtures
 
 ## 남은 한계
 
-- F3b 게이트는 골든셋만큼만 안다. 쌍 평가는 결정론 채점기 13종의 비회귀만 보며 설득력·사실 정확성 전체를 판정하지 않는다. 봉인 세트 케이스가 없는 pair run은 봉인 회귀 조건을 빈 조건으로 통과한다(`GET /api/eval?pair=`의 `gate.sealedCases`로 확인하고, 활성화 전 봉인 케이스를 넣어 돌린다).
+- F3b 게이트는 골든셋만큼만 안다. 쌍 평가는 결정론 채점기 13종의 비회귀만 보며 설득력·사실 정확성 전체를 판정하지 않는다. 봉인 케이스가 없는 pair run은 거부하지만(`sealed_missing`) 최소 케이스 수는 강제하지 않아, 봉인 1건짜리 run도 조건을 만족하면 통과한다(`gate.warnings`의 `small_sample`로만 알린다). 최소치는 대표 결정이 필요하다.
 - 바이럴 발견 지시(`viral.discovery`)는 역할 평가 케이스로 쌍 평가할 수 없어 F3b 게이트로 활성화할 수 없다(롤백만 가능).
 - 쌍 평가의 두 쪽은 대상 단위만 바꾸고 다른 단위는 코드 상수로 둔다. 운영에서 다른 단위가 active면 조합 효과는 평가하지 않는다.
 - 경보 동결은 운영 연결의 모델 변경(`model_change`)과 운영 게이트웨이 변경(`gateway_change`)을 본다. 평가 연결 자체의 변경은 pair run 안 시작·종료 해시 비교로만 잡는다.

@@ -146,27 +146,29 @@ export async function promptImpact(owner:string,versionId:string){
 }
 // 롤백: prompt_release 포인터 한 번 조작(active ← previous, 없으면 코드 상수). 같은 배치에서 영향 작업물에 재확인 표시만 남기고(본문 불변),
 // 그 버전을 고정한 캠페인 해석(pin)을 풀어 다음 실행이 새 active로 다시 고정한다. 이미 제출한 작업의 재제출은 저장된 원문을 그대로 보낸다.
+// 활성화처럼 prompt_release_event(조작 전·후 매니페스트, 해제한 지정 캠페인, 영향 수)를 같은 배치로 남긴다(registry-active 기록 근거).
 async function rollback(owner:string,input:Record<string,unknown>,who:Who){
  const unit=unitOf(input.unit)?.unit??bad('롤백할 프롬프트 단위를 확인하세요.');
  const release=releaseShape(await readRecord(owner,'prompt_release',unit));
  if(!release.active)throw new ApiError(409,'이 단위에는 활성 버전이 없습니다.');
  if(input.expectedActive!==release.active)throw new ApiError(409,'활성 버전이 바뀌었습니다. 새로고침 후 현재 활성 버전을 확인하고 다시 롤백하세요.');
- const from=release.active,to=release.previous,at=stamp(),impact=await promptImpact(owner,from);
+ const from=release.active,to=release.previous,at=stamp(),impact=await promptImpact(owner,from),sourceSha=to?(await optional<PromptVersionRecord>(owner,'prompt_version',to))?.sourceSha??null:null;
  // 스테이징 중 롤백은 스테이징 전 상태(previous = 스테이징 전 전체 적용 버전)로 되돌리고 지정 캠페인 목록을 비운다.
  const next:PromptRelease={...release,active:to,previous:null,stagedCampaignIds:[],baseline:null,updatedAt:at,history:[...release.history,{action:'rollback' as const,from,to,at,by:who}].slice(-50)};
  const recheck=JSON.stringify({version:from,reason:'prompt_rollback',at});
- await database().batch([recordStatement(owner,'prompt_release',unit,next),
+ const {event}=await commitRelease(owner,next,{unit,action:'rollback',from,to,sourceSha,evalRunId:null,approval:null,stagedCampaignIds:release.stagedCampaignIds,impact:impact.counts,by:who,at},[
   ...impact.artifacts.map(a=>database().prepare("UPDATE records SET data=json_set(data,'$.promptRecheck',json(?)) WHERE id=? AND owner=? AND kind='artifact'").bind(recheck,`${owner}:artifact:${a.id}`,owner)),
   database().prepare("DELETE FROM records WHERE owner=? AND kind='campaign_prompt_pin' AND EXISTS (SELECT 1 FROM json_each(data,'$.units') WHERE value=?)").bind(owner,from)]);
- return {release:next,impact:{counts:impact.counts,artifacts:impact.artifacts.map(a=>a.id),publications:impact.publications.map(p=>p.id)}};
+ return {release:next,impact:{counts:impact.counts,artifacts:impact.artifacts.map(a=>a.id),publications:impact.publications.map(p=>p.id)},event};
 }
 
 // ── 활성화 게이트(F3b, 대표 결정 2·5·10) ──
 // 쌍 평가 두 쪽 본문: 후보 버전과 지금 전체 캠페인에 적용되는 버전(없으면 코드 상수). eval-server가 pair run 시작 때 한 번 읽어 run에 고정한다.
 export type PairPrompts={unit:string;candidateVersionId:string;activeVersionId:string|null;candidateSet:PromptSet;activeSet:PromptSet|null};
-type GateSummary={cases:number;sealedCases:number;passes:{pairs:number;active:number;candidate:number};inputBudget:{pass:number;total:number};models:string[];gateway:{start:string|null;end:string|null}};
+type GateSummary={cases:number;sealedCases:number;passes:{pairs:number;active:number;candidate:number};inputBudget:{pass:number;total:number};models:string[];gateway:{start:string|null;end:string|null};warnings:string[]};
 // 레지스트리 이벤트(docs/PUBLISH.ko.md 7절 registry-active 기록의 근거): 조작 전·후 매니페스트와 승인·평가 근거를 남긴다. 추가만 하고 고치지 않는다.
-export type ReleaseEventRecord={id:string;unit:string|null;action:'activate'|'stage'|'promote'|'reset_pins';from:string|null;to:string|null;sourceSha:string|null;evalRunId:string|null;approval:{reason:string|null;by:Who;at:string}|null;stagedCampaignIds:string[];gate?:GateSummary;pins?:{campaignId:string;campaignVersion:number;promptVersion:string}[];by:Who;manifestBefore:string|null;manifestAfter:string|null;at:string};
+// rollback은 승인·평가 근거 없이(null) 해제한 지정 캠페인(stagedCampaignIds)과 영향 수(impact)를 남긴다.
+export type ReleaseEventRecord={id:string;unit:string|null;action:'activate'|'stage'|'promote'|'rollback'|'reset_pins';from:string|null;to:string|null;sourceSha:string|null;evalRunId:string|null;approval:{reason:string|null;by:Who;at:string}|null;stagedCampaignIds:string[];gate?:GateSummary;impact?:{artifacts:number;publications:number};pins?:{campaignId:string;campaignVersion:number;promptVersion:string}[];by:Who;manifestBefore:string|null;manifestAfter:string|null;at:string};
 const MAX_CAMPAIGNS=50,CANARY=['percent','percentage','ratio','canary','weight','traffic','rollout'];
 const conflict=(message:string):never=>{throw new ApiError(409,message)};
 async function releaseOf(owner:string,unit:string){
@@ -189,6 +191,8 @@ export async function pairPrompts(owner:string,value:unknown):Promise<PairPrompt
  return {unit,candidateVersionId,activeVersionId,candidateSet:toSet([candidate]),activeSet:active?toSet([active]):null};
 }
 function noCanary(input:Record<string,unknown>){if(CANARY.some(k=>k in input))bad('비율(%) 카나리는 지원하지 않습니다(대표 결정 2). 지정 캠페인(stage)으로만 나눠 적용하고 promote로 전체 적용하세요.')}
+// activate·promote는 전체 캠페인 적용이다. 지정 캠페인 필드를 조용히 무시하지 않고 400으로 막는다(지정 캠페인 적용은 stage).
+function noScope(input:Record<string,unknown>){if(['campaignIds','stagedCampaignIds','baseline'].some(k=>k in input))bad(`${String(input.action)}은(는) 전체 캠페인에 적용합니다. 지정 캠페인 적용은 stage를 쓰세요(campaignIds는 stage에서만 받습니다).`)}
 function approvalReason(value:unknown){
  const o=value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:bad('대표 승인 사유(approval.reason)를 입력하세요.');
  return str(o.reason,'대표 승인 사유',500,true);
@@ -213,22 +217,22 @@ async function passGate(owner:string,unit:string,versionId:string,evalRunId:stri
  ];
  if(reasons.length)throw new ApiError(409,'활성화 게이트를 통과하지 못했습니다: '+reasons.join(' / '));
  const models=[...new Set([...gate.models.active,...gate.models.candidate].filter((m):m is string=>!!m))];
- return {cases:gate.cases,sealedCases:gate.sealedCases,passes:gate.passes,inputBudget:gate.inputBudget,models,gateway:gate.gateway};
+ return {cases:gate.cases,sealedCases:gate.sealedCases,passes:gate.passes,inputBudget:gate.inputBudget,models,gateway:gate.gateway,warnings:gate.warnings.map(w=>w.message)};
 }
 // 매니페스트: 단위별 적용 상태(단위 순)의 sha256. 스테이징 중인 단위는 baseline과 지정 캠페인까지 넣어 stage·promote 전후가 구분된다.
 const manifestEntry=(r:PromptRelease)=>Array.isArray(r.stagedCampaignIds)&&r.stagedCampaignIds.length?{unit:r.unit,active:r.active,baseline:r.baseline??null,stagedCampaignIds:r.stagedCampaignIds}:{unit:r.unit,active:r.active};
 async function manifestOf(rels:PromptRelease[]){const active=rels.filter(r=>typeof r?.active==='string').map(manifestEntry).sort((a,b)=>a.unit.localeCompare(b.unit));return active.length?sha256Hex(JSON.stringify(active)):null}
-// 포인터와 이벤트를 한 배치로 쓴다. POST 라우트가 소유자 잠금 안에서 부르므로 조작 전 매니페스트와 쓰기 사이에 다른 조작이 끼지 않는다.
-async function commitRelease(owner:string,next:PromptRelease,event:Omit<ReleaseEventRecord,'id'|'manifestBefore'|'manifestAfter'>){
+// 포인터와 이벤트(와 롤백의 재확인·고정 해제 문장)를 한 배치로 쓴다. POST 라우트가 소유자 잠금 안에서 부르므로 조작 전 매니페스트와 쓰기 사이에 다른 조작이 끼지 않는다.
+async function commitRelease(owner:string,next:PromptRelease,event:Omit<ReleaseEventRecord,'id'|'manifestBefore'|'manifestAfter'>,extra:D1PreparedStatement[]=[]){
  const rels=await listRecords<PromptRelease>(owner,'prompt_release'),after=[...rels.filter(r=>r?.unit!==next.unit),next];
  const record:ReleaseEventRecord={id:uid(),...event,manifestBefore:await manifestOf(rels),manifestAfter:await manifestOf(after)};
- await database().batch([recordStatement(owner,'prompt_release',next.unit,next),recordStatement(owner,'prompt_release_event',record.id,record)]);
+ await database().batch([recordStatement(owner,'prompt_release',next.unit,next),recordStatement(owner,'prompt_release_event',record.id,record),...extra]);
  return {release:next,event:record};
 }
 const pinsOf=(owner:string,campaigns:Campaign[])=>Promise.all(campaigns.map(c=>optional<CampaignPromptPin>(owner,'campaign_prompt_pin',c.id)));
 // activate: 전체 캠페인에 적용. stage: 지정 캠페인에만 적용하고 나머지는 baseline(지금 전체 적용 버전)을 계속 쓴다. 이미 고정(pin)한 캠페인은 reset_pins 전까지 고정 버전을 쓴다.
 async function activate(owner:string,input:Record<string,unknown>,who:Who,mode:'activate'|'stage'){
- noCanary(input);
+ noCanary(input);if(mode==='activate')noScope(input);
  const unit=unitOf(input.unit)?.unit??bad('활성화할 프롬프트 단위를 확인하세요.'),versionId=unitVersion(unit,input.versionId),evalRunId=str(input.evalRunId,'평가 실행',160,true),reason=approvalReason(input.approval);
  const campaigns=mode==='stage'?await campaignsOf(owner,input.campaignIds):[],version=await registeredVersion(owner,unit,versionId),release=await releaseOf(owner,unit);
  if(release?.stagedCampaignIds.length)conflict('이 단위는 지정 캠페인 적용(staged) 중입니다. promote로 전체 적용하거나 rollback한 뒤 다시 하세요.');
@@ -240,7 +244,7 @@ async function activate(owner:string,input:Record<string,unknown>,who:Who,mode:'
 }
 // promote: 스테이징한 버전을 전체 캠페인에 적용한다. 같은 평가 run으로 게이트를 다시 확인하고(기준 = baseline) 경보 동결을 다시 본다. 자동 승격은 없다.
 async function promote(owner:string,input:Record<string,unknown>,who:Who){
- noCanary(input);
+ noCanary(input);noScope(input);
  const unit=unitOf(input.unit)?.unit??bad('승격할 프롬프트 단위를 확인하세요.'),release=await releaseOf(owner,unit),reason=input.approval===undefined?null:approvalReason(input.approval);
  if(!release)throw new ApiError(404,'항목을 찾을 수 없습니다.');
  if(!release.stagedCampaignIds.length||!release.active||!release.evalRunId)throw new ApiError(409,'지정 캠페인 적용(staged) 중인 버전이 없습니다. stage 뒤에 promote하세요.');

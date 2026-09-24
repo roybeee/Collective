@@ -79,7 +79,7 @@ r=await post({action:'upload',unit:'role.data',body:raw.repoBody('role.data')});
 check('there is no upload alternative (400)',()=>assert.ok(r.status===400&&count('prompt_version')===1));
 
 // B) 활성화 게이트(F3b): 완료한 쌍 평가 실행이 없으면 409. 포인터를 만들지 않는다(게이트 조건별 검사는 tests/prompt-activation.test.mjs).
-for(const action of ['activate','stage']){r=await post({action,unit:'role.cmo',versionId:cmoV1,evalRunId:'synthetic-run',campaignIds:[roleCampaign.id],approval:{reason:'합성 승인'}});check(`${action} without a completed pair evaluation run is 409`,()=>assert.ok(r.status===409&&/쌍 평가/.test(r.body.error)))}
+for(const action of ['activate','stage']){r=await post({action,unit:'role.cmo',versionId:cmoV1,evalRunId:'synthetic-run',...(action==='stage'?{campaignIds:[roleCampaign.id]}:{}),approval:{reason:'합성 승인'}});check(`${action} without a completed pair evaluation run is 409`,()=>assert.ok(r.status===409&&/쌍 평가/.test(r.body.error)))}
 check('activation attempts leave no release pointer',()=>assert.equal(count('prompt_release'),0));
 let v=await version();
 check('/api/version keeps build and tree and reports a null manifest without active versions',()=>assert.ok(v.status===200&&v.body.build==='development'&&v.body.tree==='unknown'&&v.body.promptManifest===null));

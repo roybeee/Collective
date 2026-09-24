@@ -1,6 +1,6 @@
 // 프롬프트 활성화 게이트(F3b, 대표 결정 2·5·10): 서버 eval_run 쌍 비교(pair) → 대표(owner) 승인 → 지정 캠페인 staged → promote.
 // 쌍 평가: 같은 run 안에서 케이스마다 active(레지스트리 active, 없으면 코드)와 후보 본문을 교대로 제출하고 같은 채점기로 채점한다. 멱등 키 둘, 예산은 두 제출 모두 계산.
-// 게이트: pair·완료, 시작/종료 게이트웨이 해시·보고 모델 동일, 코드 채점 합격 수 후보≥active, 봉인 세트 회귀 0, input_budget 후보 전부 pass, 모델·게이트웨이 경보 동결.
+// 게이트: pair·완료, 시작/종료 게이트웨이 해시·보고 모델 동일, 코드 채점 합격 수 후보≥active(후보 재질문·grader_error는 fail), 봉인 케이스 1건 이상·봉인 회귀 0, input_budget 후보 전부 pass, 경보 동결.
 // staged: 지정 캠페인만 새 버전, 지정 밖 캠페인 inputHash 불변, 이미 고정한 캠페인은 reset_pins로만 새 버전. 비율 카나리·자동 승격 없음. 권한 401·403·404.
 // 근거: mocked(평가·운영 HERMES·raw.githubusercontent.com fetch 스텁, 메모리 SQLite, 합성 데이터). 외부 네트워크 호출은 0회다.
 import assert from 'node:assert/strict';
@@ -35,7 +35,7 @@ const raw=rawGithub(),hermes=mockHermes(async(url,options)=>await raw.handler(ur
 const {sql,env,load}=testRuntime(hermes.fetch);
 const server=await load('lib/server.ts'),promptRoute=await load('app/api/prompts/route.ts'),evalRoute=await load('app/api/eval/route.ts'),versionRoute=await load('app/api/version/route.ts');
 const background=await load('lib/background-execution.ts'),execution=await load('lib/role-execution.ts'),meeting=await load('lib/meeting-execution.ts'),registry=await load('lib/prompt-registry.ts');
-const instruction=await load('lib/role-instruction.ts'),alarm=await load('lib/usage-model-alarm.ts');
+const instruction=await load('lib/role-instruction.ts'),alarm=await load('lib/usage-model-alarm.ts'),stats=await load('lib/eval-stats.ts');
 const owner='pa-owner',passed=[];
 const check=(name,fn)=>{fn();passed.push(name)};
 const put=await seed(server,sql,owner);
@@ -50,6 +50,30 @@ const release=()=>server.readRecord(owner,'prompt_release','role.cmo').catch(()=
 const events=()=>sql.prepare("SELECT data FROM records WHERE owner=? AND kind='prompt_release_event' ORDER BY rowid").all(owner).map(r=>JSON.parse(r.data));
 const manifest=entries=>sha(JSON.stringify(entries));
 const approval={reason:'합성 승인: 쌍 평가 결과 확인'};
+
+// ── 0) 순수 게이트 판정(pairGate): 합성 결과 행으로 후보 재질문·grader_error 보정과 봉인 케이스 요구를 고정한다 ──
+const GRADER_IDS=['question_only','thin_section','contract_json','heading_nesting','internal_id_exposure','brief_prohibition_conflict','fact_conflict','unconfirmed_value_assertion','unsupported_claim_term','industry_metric_leak','revisit_cohort_definition','local_channel_coverage','input_budget'];
+const CONTENT=new Set(['thin_section','brief_prohibition_conflict','fact_conflict','unconfirmed_value_assertion','unsupported_claim_term','industry_metric_leak','revisit_cohort_definition','local_channel_coverage']);
+const grades=(over={})=>GRADER_IDS.map(id=>({id,status:over[id]??'pass'}));
+// 재질문: runGraders 우선순위 규칙대로 question_only fail, 내용 채점기 8종 not_applicable.
+const reasked=()=>GRADER_IDS.map(id=>({id,status:id==='question_only'?'fail':CONTENT.has(id)?'not_applicable':'pass'}));
+const synBasis={operational:{hash:'op-hash'},eval:{hash:'eval-hash'}};
+const synCase=(caseId,set,active,candidate)=>[{caseId,set,variant:'active',status:'completed',model:'m',graders:active},{caseId,set,variant:'candidate',status:'completed',model:'m',graders:candidate}];
+const synGate=(...cases)=>JSON.parse(JSON.stringify(stats.pairGate({id:'syn',variant:'pair',status:'completed',gatewaySnapshot:synBasis,gatewaySnapshotEnd:synBasis,results:cases.flat()})));
+const sealedSame=synCase('s','sealed',grades(),grades()),codes=g=>g.reasons.map(x=>x.code);
+let g=synGate(synCase('a','dev',grades(),reasked()),synCase('b','dev',grades({internal_id_exposure:'fail'}),grades()),sealedSame);
+check('a reasking candidate loses the active content passes of that case (fewer_passes, not offset by one fix elsewhere)',()=>assert.ok(!g.ok&&JSON.stringify(codes(g))==='["fewer_passes"]'&&g.passes.pairs===39&&g.passes.active===38&&g.passes.candidate===30,JSON.stringify(g)));
+g=synGate(synCase('a','dev',grades(),grades({fact_conflict:'grader_error'})),sealedSame);
+check('a candidate grader_error against an active pass counts as a candidate fail',()=>assert.ok(!g.ok&&JSON.stringify(codes(g))==='["fewer_passes"]'&&g.passes.active===26&&g.passes.candidate===25,JSON.stringify(g)));
+g=synGate(synCase('a','dev',grades({fact_conflict:'grader_error',thin_section:'not_applicable'}),grades()),sealedSame);
+check('active-side grader_error and not_applicable stay out of the pairs',()=>assert.ok(g.ok&&g.passes.pairs===24,JSON.stringify(g)));
+g=synGate(synCase('a','dev',grades(),grades({revisit_cohort_definition:'not_applicable'})),sealedSame);
+check('an output-dependent not_applicable without a reask stays out of the pairs',()=>assert.ok(g.ok&&g.passes.pairs===25&&g.passes.active===25&&g.passes.candidate===25,JSON.stringify(g)));
+g=synGate(synCase('a','dev',grades(),grades()));
+check('a pair run without a sealed case is refused (sealed_missing)',()=>assert.ok(!g.ok&&JSON.stringify(codes(g))==='["sealed_missing"]'&&g.sealedCases===0,JSON.stringify(g)));
+check('under 30 pairs the gate carries a small_sample warning without refusing on it',()=>assert.ok(g.warnings.length===1&&g.warnings[0].code==='small_sample'&&synGate(sealedSame).ok&&synGate(sealedSame).warnings.length===1));
+g=synGate(synCase('s','sealed',grades(),reasked()));
+check('a sealed reask is a sealed regression on question_only and the lost content passes',()=>assert.ok(!g.ok&&codes(g).includes('sealed_regression')&&g.sealedRegressions.length===9,JSON.stringify(g)));
 
 // ── 합성 버전: role.cmo 본문 여러 개를 공개 raw 경로 모의로 등록한다 ──
 const baseBody=raw.repoBody('role.cmo');
@@ -134,6 +158,10 @@ r=await activate(v1,R1.id,{approval:undefined});
 check('approval is required (400)',()=>assert.equal(r.status,400));
 r=await activate(v1,R1.id,{percent:10});
 check('a percentage canary field is refused (400)',()=>assert.ok(r.status===400&&/카나리/.test(r.body.error)));
+r=await activate(v1,R1.id,{campaignIds:[roleCampaign.id]});
+check('activate refuses campaignIds instead of silently applying to every campaign (400)',()=>assert.ok(r.status===400&&/stage/.test(r.body.error),JSON.stringify(r.body)));
+r=await activate(v2,R1b.id);
+check('a pair run without a sealed case cannot open the gate (409)',()=>assert.ok(r.status===409&&/봉인\(sealed\) 케이스가 없습니다/.test(r.body.error),JSON.stringify(r.body)));
 check('refused activations change no pointer',()=>assert.ok(sql.prepare("SELECT COUNT(*) n FROM records WHERE kind='prompt_release'").get().n===0));
 
 // 5) 활성화: previous←active, active←v1, evalRunId·approvedBy·history, 조작 전·후 매니페스트를 이벤트로 남긴다.
@@ -144,6 +172,7 @@ check('release history records the activation',()=>assert.ok(rel.history.at(-1).
 let ev=events().at(-1),v=await version();
 check('a registry event keeps unit, versions, run, approval and manifests before and after',()=>assert.ok(ev.action==='activate'&&ev.unit==='role.cmo'&&ev.from===null&&ev.to===v1&&ev.evalRunId===R1.id&&ev.approval.reason===approval.reason&&ev.approval.by.id===owner&&typeof ev.sourceSha==='string'&&ev.manifestBefore===null&&ev.manifestAfter===manifest([{unit:'role.cmo',active:v1}])&&ev.gate.cases===2,JSON.stringify(ev)));
 check('/api/version promptManifest equals the recorded manifest after',()=>assert.equal(v.body.promptManifest,ev.manifestAfter));
+check('the gate summary warns when the paired sample is under 30 pairs (not enforced)',()=>assert.ok(ev.gate.passes.pairs<30&&ev.gate.warnings.length===1&&/30쌍 미만/.test(ev.gate.warnings[0]),JSON.stringify(ev.gate)));
 r=await activate(v1,R1.id);
 check('re-activating the active version is 409',()=>assert.equal(r.status,409));
 r=await activate(v2,R1b.id);rel=await release();
@@ -159,7 +188,7 @@ check('a gateway hash change between start and end is 409',()=>assert.ok(r.statu
 const R3=await pairRun(v2,[devCase.id],{model:sent=>uses(sent,V2_FOCUS)?'mock-eval-model-b':'mock-eval-model'});
 r=await activate(v2,R3.id);
 check('a different reported model between the sides is 409',()=>assert.ok(r.status===409&&/모델/.test(r.body.error)));
-const R4=await pairRun(vLeak,[devCase.id],{leak:sent=>uses(sent,LEAK_FOCUS)});
+const R4=await pairRun(vLeak,[devCase.id,sealedCase.id],{leak:sent=>uses(sent,LEAK_FOCUS)&&isDev(sent)});
 r=await activate(vLeak,R4.id);
 check('fewer code-grader passes for the candidate is 409',()=>assert.ok(r.status===409&&/합격 수/.test(r.body.error)&&!/봉인/.test(r.body.error),r.body.error));
 const R5=await pairRun(v2,[devCase.id,sealedCase.id],{leak:sent=>(uses(sent,V2_FOCUS)&&isSealed(sent))||(uses(sent,V1_FOCUS)&&isDev(sent))});
@@ -168,7 +197,13 @@ check('a sealed-set regression is 409 even when total passes tie',()=>assert.ok(
 const R6=await pairRun(v2,[devCase.id],{inputTokens:sent=>uses(sent,V2_FOCUS)?30000:1000});
 r=await activate(v2,R6.id);
 check('a candidate input_budget fail is 409',()=>assert.ok(r.status===409&&/input_budget/.test(r.body.error)));
-const cancelled=(await startPair(v2,[devCase.id])).body;await evalPost({action:'cancel_run',id:cancelled.id});
+const cancelled=(await startPair(v2,[devCase.id])).body;
+// 진행 중 run이 쓰는 케이스의 기대 판정·세트는 바꿀 수 없다(두 쪽이 다른 기준으로 채점되는 것을 막는다). 이름은 바꿀 수 있다.
+const editExpect=await evalPost({action:'update_case',id:devCase.id,expectations:{inputTokenCap:500}}),editSet=await evalPost({action:'update_case',id:devCase.id,set:'sealed'}),editLabel=await evalPost({action:'update_case',id:devCase.id,label:'dev cmo'});
+const devNow=(await evalGet('?case='+devCase.id)).body;
+check('update_case of expectations or set while a run uses the case is 409',()=>assert.ok(editExpect.status===409&&editSet.status===409&&/진행 중/.test(editExpect.body.error)&&devNow.expectations.inputTokenCap===20000&&devNow.set==='dev',JSON.stringify([editExpect.status,editSet.status])));
+check('a label-only update_case is still allowed while a run uses the case',()=>assert.equal(editLabel.status,200));
+await evalPost({action:'cancel_run',id:cancelled.id});
 r=await activate(v2,cancelled.id);
 check('a cancelled pair run is 409',()=>assert.ok(r.status===409&&/끝나지/.test(r.body.error)));
 rel=await release();
@@ -241,8 +276,11 @@ const sources=dir=>readdirSync(dir).flatMap(f=>{const p=join(dir,f);return statS
 const writers=['app','lib','server'].flatMap(sources).filter(p=>/recordStatement\([^,()]+,\s*'prompt_release'/.test(readFileSync(p,'utf8')));
 check('only the registry action writes prompt_release (no automatic promotion path)',()=>assert.deepEqual(writers,['lib/prompt-registry.ts']));
 // 스테이징 중 롤백은 스테이징 전 상태(v1 전체 적용)로 되돌린다.
-r=await prompts({action:'rollback',unit:'role.cmo',expectedActive:v2});rel=await release();
+const manifestBeforeRollback=(await version()).body.promptManifest;
+r=await prompts({action:'rollback',unit:'role.cmo',expectedActive:v2});rel=await release();ev=events().at(-1);v=await version();
 check('rollback during staging restores the pre-stage release',()=>assert.ok(r.status===200&&rel.active===v1&&rel.stagedCampaignIds.length===0&&rel.baseline===null));
+check('rollback leaves a registry event with the released campaigns and both manifests',()=>assert.ok(ev.action==='rollback'&&ev.from===v2&&ev.to===v1&&ev.by.id===owner&&ev.evalRunId===null&&ev.approval===null&&typeof ev.sourceSha==='string'&&JSON.stringify(ev.stagedCampaignIds)===JSON.stringify([S.id,P.id].sort())&&typeof ev.impact.artifacts==='number'&&ev.manifestBefore===manifestBeforeRollback&&ev.manifestAfter===manifest([{unit:'role.cmo',active:v1}])&&r.body.event.id===ev.id,JSON.stringify(ev)));
+check('/api/version promptManifest equals the rollback event manifestAfter',()=>assert.equal(v.body.promptManifest,ev.manifestAfter));
 r=await stage({campaignIds:[S.id]});
 check('the same pair run can stage again after a rollback',()=>assert.equal(r.status,200,JSON.stringify(r.body)));
 await alarm.observeReportedModel(owner,{provider:'openai',kind:'role',model:'synthetic-model-c',providerRunId:'pa-c',observedAt:'2026-09-24T02:00:00.000Z'});
@@ -251,6 +289,8 @@ check('promote re-checks the alarm freeze (409)',()=>assert.ok(r.status===409&&/
 await prompts({action:'acknowledge_alarms',reason:'합성 확인: 모델 별칭 변경 검토'});
 r=await prompts({action:'promote',unit:'role.cmo',percent:50});
 check('promote refuses a percentage canary (400)',()=>assert.equal(r.status,400));
+r=await prompts({action:'promote',unit:'role.cmo',campaignIds:[S.id]});
+check('promote refuses campaignIds (400)',()=>assert.ok(r.status===400&&/stage/.test(r.body.error)));
 const manifestBeforePromote=(await version()).body.promptManifest;
 r=await prompts({action:'promote',unit:'role.cmo'});rel=await release();ev=events().at(-1);
 check('promote applies the staged version to every campaign',()=>assert.ok(r.status===200&&rel.active===v2&&rel.stagedCampaignIds.length===0&&rel.baseline===null&&rel.previous===v1&&rel.history.at(-1).action==='promote',JSON.stringify(r.body)));

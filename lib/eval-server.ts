@@ -156,17 +156,22 @@ async function saveCase(owner:string,input:Record<string,unknown>,by:Who){
  const campaignId=typeof request.campaign.id==='string'?request.campaign.id:null;
  return storeCase(owner,{role,request,expectations,campaignId,source:'manual',set,label:str(input.label??'','케이스 이름',200)||`${role} 수동 케이스`},by);
 }
+// 진행 중(queued·running) 평가 run이 이 케이스를 쓰는지 본다. 삭제와 채점 기준 변경을 막는 데 쓴다.
+async function caseInUse(owner:string,caseId:string){
+ return !!await database().prepare("SELECT 1 FROM records WHERE owner=? AND kind='eval_run' AND json_extract(data,'$.status') IN ('queued','running') AND EXISTS (SELECT 1 FROM json_each(json_extract(data,'$.caseIds')) WHERE value=?) LIMIT 1").bind(owner,caseId).first();
+}
 // 요청(request)은 동결 대상이라 바꾸지 않는다. 이름·세트·기대 판정만 고치고, 세트 이동은 기록한다(봉인 세트를 보고 고친 케이스는 dev로 옮긴다).
+// 채점은 결과를 받을 때 케이스의 기대 판정을 읽는다. 진행 중 run이 쓰는 케이스의 기대 판정·세트를 바꾸면 한 run(쌍 평가의 두 쪽)이 다른 기준으로 채점되므로 409로 막는다. 이름은 바꿀 수 있다.
 async function updateCase(owner:string,input:Record<string,unknown>,by:Who){
  const kase=await readRecord<EvalCase>(owner,'eval_case',str(input.id,'평가 케이스',100,true)),set=evalSet(input.set,kase.set),at=stamp();
+ if((input.expectations!==undefined||set!==kase.set)&&await caseInUse(owner,kase.id))throw new ApiError(409,'진행 중인 평가 실행이 이 케이스를 쓰고 있습니다. 실행을 끝내거나 취소한 뒤 기대 판정·세트를 고치세요.');
  const next:EvalCase={...kase,label:input.label===undefined?kase.label:str(input.label,'케이스 이름',200,true),set,expectations:input.expectations===undefined?kase.expectations:expectationsOf(input.expectations,kase.expectations.facts),...(set!==kase.set?{setChanges:[...(kase.setChanges||[]),{from:kase.set,to:set,at,by}]}:{}),updatedAt:at};
  await recordStatement(owner,'eval_case',kase.id,next).run();
  return next;
 }
 async function deleteCase(owner:string,input:Record<string,unknown>){
  const kase=await readRecord<EvalCase>(owner,'eval_case',str(input.id,'평가 케이스',100,true)),db=database();
- const inUse=await db.prepare("SELECT 1 FROM records WHERE owner=? AND kind='eval_run' AND json_extract(data,'$.status') IN ('queued','running') AND EXISTS (SELECT 1 FROM json_each(json_extract(data,'$.caseIds')) WHERE value=?) LIMIT 1").bind(owner,kase.id).first();
- if(inUse)throw new ApiError(409,'진행 중인 평가 실행이 이 케이스를 쓰고 있습니다. 실행을 끝내거나 취소한 뒤 삭제하세요.');
+ if(await caseInUse(owner,kase.id))throw new ApiError(409,'진행 중인 평가 실행이 이 케이스를 쓰고 있습니다. 실행을 끝내거나 취소한 뒤 삭제하세요.');
  await db.prepare("DELETE FROM records WHERE owner=? AND kind='eval_case' AND id=?").bind(owner,`${owner}:eval_case:${kase.id}`).run();
  return {id:kase.id,deleted:true};
 }
