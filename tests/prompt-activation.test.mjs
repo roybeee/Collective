@@ -17,7 +17,8 @@ const capabilities={object:'hermes.api_server.capabilities',platform:'hermes-age
 const clean={toolsets:{toolsets:[{name:'web'}]},leak:()=>false,model:()=>'mock-eval-model',inputTokens:()=>1000};
 let evalMode={...clean};
 const evalRuns=new Map(),evalSubmits=[];let evalSeq=0;
-// 누설: 첫 섹션에 입력 스키마 경로를 적어 internal_id_exposure 채점기를 fail로 만든다(나머지 채점은 그대로).
+// 누설: 첫 섹션에 입력 스키마 경로를 적는다. 저장 정규화가 라벨('사실 원장')로 바꿔 사람이 보는 본문 채점은 pass지만,
+// 정규화 전 예방 판정(prevention) internal_id_exposure는 fail이고 활성화 게이트는 이 판정으로 센다(나머지 채점은 그대로).
 const evalOutput=sent=>{const out=JSON.parse(roleFixture(sent.input));return evalMode.leak(sent)?JSON.stringify({...out,sections:out.sections.map((s,i)=>i?s:{...s,content:s.content+' 근거 위치는 evidence.facts 기준입니다.'})}):JSON.stringify(out)};
 async function evalHandler(url,options={}){
  if(!url.startsWith(EVAL+'/'))return undefined;
@@ -191,6 +192,8 @@ check('a different reported model between the sides is 409',()=>assert.ok(r.stat
 const R4=await pairRun(vLeak,[devCase.id,sealedCase.id],{leak:sent=>uses(sent,LEAK_FOCUS)&&isDev(sent)});
 r=await activate(vLeak,R4.id);
 check('fewer code-grader passes for the candidate is 409',()=>assert.ok(r.status===409&&/합격 수/.test(r.body.error)&&!/봉인/.test(r.body.error),r.body.error));
+const leaked=R4.results.find(x=>x.variant==='candidate'&&x.caseId===devCase.id),verdict=(rows,id)=>rows.find(g=>g.id===id)?.status;
+check('the candidate leak is masked in the shown verdict but kept in the prevention verdict the gate counts',()=>assert.deepEqual([verdict(leaked.graders,'internal_id_exposure'),verdict(leaked.prevention,'internal_id_exposure'),leaked.normalization.schemaPaths],['pass','fail',1]));
 const R5=await pairRun(v2,[devCase.id,sealedCase.id],{leak:sent=>(uses(sent,V2_FOCUS)&&isSealed(sent))||(uses(sent,V1_FOCUS)&&isDev(sent))});
 r=await activate(v2,R5.id);
 check('a sealed-set regression is 409 even when total passes tie',()=>assert.ok(r.status===409&&/봉인 세트 회귀 1건/.test(r.body.error)&&!/합격 수/.test(r.body.error),r.body.error));

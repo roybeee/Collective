@@ -5,8 +5,9 @@ import {roleSources,roleRequestFor} from './role-execution';
 import {buildRoleInput,buildRoleInstruction,type RoleRequest} from './role-instruction';
 import {ROLE_OUTPUT_VERSION} from './role-output';
 import {PRACTICE_VERSION} from './practice';
-import {runGraders,type GraderResult,type GraderStatus,type FactLedger,type GradeContext,type EvalItem} from './graders/index';
-import {bodyOf} from './graders/text';
+import {runGraders,runPreventionGraders,GRADERS_VERSION,type GraderResult,type GraderStatus,type FactLedger,type GradeContext,type EvalItem} from './graders/index';
+import {bodyOf,rawNormalization} from './graders/text';
+import type {OutputNormalization} from './output-normalize';
 import {checkCompliance} from './graders/compliance';
 import {compareRuns,pairReport} from './eval-stats';
 import {gatewayBasis} from './gateway-snapshot';
@@ -30,7 +31,9 @@ type Tokens={input:number|null;output:number|null;total:number|null};
 type Compliance={version:string;block:number;warn:number;info:number;issues:{category:string;ruleId:string;severity:string}[]};
 // variant: 제출 본문을 만든 프롬프트 변형. active run은 현재 코드 상수, pair run(F3b)은 케이스마다 active(레지스트리 전체 적용 버전, 없으면 코드)와 candidate(후보 버전) 두 결과를 둔다.
 // blocked: 제출했으나 연결·인증·격리 조건이 막혀 결과를 확인하지 못함(HERMES가 계속 실행했을 수 있다). failed(HERMES 실패·중단·시간 초과·출력 형식 오류)와 다르다.
-export type EvalCaseResult={caseId:string;label:string;set:EvalSet;role:string;variant:'active'|'candidate';status:'pending'|'submitted'|'completed'|'failed'|'cancelled'|'blocked'|'not_run';idempotencyKey?:string;promptHash?:string;providerRunId?:string;model?:string|null;tokens?:Tokens;submittedAt?:string;completedAt?:string;durationMs?:number;graders?:GraderResult[];summary?:Record<GraderStatus,number>;compliance?:Compliance;error?:string};
+// 채점 기록(completed): gradersVersion(채점 방식), graders(사람이 보는 정규화 렌더본 채점), prevention(정규화 전 렌더본의 heading_nesting·internal_id_exposure — 지시문 예방 판정),
+// normalization(정규화가 바꾼 스키마 경로·#·## 제목 건수, 값 없음). gradersVersion이 없는 결과는 'failure-types-v1'(정규화 전 렌더본 채점)이다.
+export type EvalCaseResult={caseId:string;label:string;set:EvalSet;role:string;variant:'active'|'candidate';status:'pending'|'submitted'|'completed'|'failed'|'cancelled'|'blocked'|'not_run';idempotencyKey?:string;promptHash?:string;providerRunId?:string;model?:string|null;tokens?:Tokens;submittedAt?:string;completedAt?:string;durationMs?:number;gradersVersion?:string;graders?:GraderResult[];summary?:Record<GraderStatus,number>;prevention?:GraderResult[];normalization?:OutputNormalization;compliance?:Compliance;error?:string};
 type StopReason='budget_reached'|'monthly_cap_reached'|'usage_unreported';
 // deleted: delete_run은 결과·출력만 지우고 예산 장부(usedTokens·tokenBudget·createdAt)와 감사 기록(overBudgetApproved·sealedUsed)을 남긴다. 월 누적이 줄지 않게 하려는 것이다.
 // pair: 쌍 평가(F3b) 대상 단위·후보·active 버전과 두 쪽 본문(시작 때 고정). gatewaySnapshotEnd: pair run이 끝날 때 같은 방식으로 다시 잰 게이트웨이 기준.
@@ -309,13 +312,15 @@ function usageOf(res:Record<string,unknown>):Tokens{
  return {input,output,total:tokenCount(u.total_tokens)??(input!==null&&output!==null?input+output:null)};
 }
 // lib/graders 13종과 규제 가드레일로 서버가 채점한다. run에는 판정·요약만, 발췌가 든 가드레일 상세는 eval_output에 둔다.
+// graders·가드레일은 사람이 보는 정규화 렌더본을 채점하고, 정규화가 가릴 수 있는 두 결함은 prevention(정규화 전)과 normalization 건수로 따로 남긴다.
+const gradeRows=(rows:GraderResult[])=>rows.map(g=>({id:g.id,status:g.status,...(g.detail?{detail:g.detail.slice(0,200)}:{})}));
 function gradeCase(kase:EvalCase,output:string,inputTokens:number|null){
  const e=kase.expectations,item:EvalItem={id:kase.id,kind:'role',role:kase.role,raw:output,contract:true,inputTokens};
  const ctx:GradeContext={prohibitedTerms:e.prohibitedTerms,facts:e.facts,industry:e.industry,localStore:e.localStore,...(e.inputTokenCap?{inputTokenCap:e.inputTokenCap}:{})};
- const graders=runGraders(item,ctx).map(g=>({id:g.id,status:g.status,...(g.detail?{detail:g.detail.slice(0,200)}:{})}));
+ const graders=gradeRows(runGraders(item,ctx)),prevention=gradeRows(runPreventionGraders(item,ctx)),normalization=rawNormalization(item);
  const report=checkCompliance(bodyOf(item),{facts:e.facts}),severity=(s:string)=>report.issues.filter(i=>i.severity===s).length;
  const summary=graders.reduce((acc,g)=>({...acc,[g.status]:acc[g.status]+1}),{pass:0,fail:0,not_applicable:0,grader_error:0} as Record<GraderStatus,number>);
- return {graders,summary,report,compliance:{version:report.version,block:severity('block'),warn:severity('warn'),info:severity('info'),issues:report.issues.map(i=>({category:i.category,ruleId:i.ruleId,severity:i.severity}))}};
+ return {report,result:{gradersVersion:GRADERS_VERSION,graders,summary,prevention,...(normalization?{normalization}:{}),compliance:{version:report.version,block:severity('block'),warn:severity('warn'),info:severity('info'),issues:report.issues.map(i=>({category:i.category,ruleId:i.ruleId,severity:i.severity}))}}};
 }
 async function submitCase(owner:string,run:EvalRun,conn:Conn,at:number):Promise<Step>{
  const r=run.results[at],kase=await optionalRecord<EvalCase>(owner,'eval_case',r.caseId);
@@ -346,9 +351,9 @@ async function pollCase(owner:string,run:EvalRun,conn:Conn,at:number):Promise<St
  const tokens=usageOf(res),completedAt=stamp(),done={...r,model:shortText(res.model),tokens,completedAt,durationMs:Math.max(0,Date.parse(completedAt)-Date.parse(r.submittedAt!))};
  const used={...run,usedTokens:run.usedTokens+(tokens.total??0)},kase=await optionalRecord<EvalCase>(owner,'eval_case',r.caseId),output=res.output;
  if(status!=='completed'||typeof output!=='string'||output.length>300000||!kase)return {run:settle(withResult(used,at,{...done,status:'failed',error:!kase?'평가 케이스가 삭제됐습니다.':status==='completed'?'HERMES 출력이 텍스트가 아니거나 300,000자를 넘습니다.':`HERMES 실행이 완료되지 않았습니다(${status}).`}))};
- const {graders,summary,compliance,report}=gradeCase(kase,output,tokens.input);
+ const {result,report}=gradeCase(kase,output,tokens.input);
  const write=recordStatement(owner,'eval_output',run.pair?`${run.id}:${kase.id}:${r.variant}`:`${run.id}:${kase.id}`,{runId:run.id,caseId:kase.id,role:kase.role,...(run.pair?{variant:r.variant}:{}),providerRunId:id,model:done.model,output,compliance:report,createdAt:completedAt},run.id);
- return {run:settle(withResult(used,at,{...done,status:'completed',graders,summary,compliance})),writes:[write]};
+ return {run:settle(withResult(used,at,{...done,status:'completed',...result})),writes:[write]};
 }
 async function nextStep(owner:string,run:EvalRun,conn:Conn):Promise<Step>{
  const inflight=run.results.findIndex(r=>r.status==='submitted');

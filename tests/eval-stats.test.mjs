@@ -8,7 +8,7 @@ import ts from 'typescript';
 const context=createContext({console}),cache=new Map();
 function moduleFor(path){path=resolve(path);if(cache.has(path))return cache.get(path);const m=new SourceTextModule(ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText,{context,identifier:path});cache.set(path,m);return m;}
 const m=moduleFor('lib/eval-stats.ts');await m.link((s,r)=>moduleFor(resolve(dirname(r.identifier),s+'.ts')));await m.evaluate();
-const {mcnemarExact,compareRuns,comparisonVerdict,MIN_PAIRS,ALPHA}=m.namespace;
+const {mcnemarExact,compareRuns,comparisonVerdict,pairGate,MIN_PAIRS,ALPHA}=m.namespace;
 const passed=[];
 const check=(name,fn)=>{fn();passed.push(name)};
 const plain=v=>JSON.parse(JSON.stringify(v));
@@ -74,6 +74,24 @@ check('the reverse direction is regressed',()=>assert.equal(plain(compareRuns(ma
 check('identical runs are non_regression with p=1',()=>{const g=plain(compareRuns(many('x',base),many('y',base))).graders[0];assert.ok(g.b===0&&g.c===0&&g.p===1&&g.verdict==='non_regression'&&plain(compareRuns(many('x',base),many('y',base))).sameCaseSet)});
 check('runs without results compare to nothing',()=>assert.deepEqual(plain(compareRuns({id:'e1',results:[]},{id:'e2',results:[]})).graders,[]));
 
-// 5) 순수 모듈: import가 없다(화면·서버·테스트가 그대로 쓴다).
+// 5) 예방 기준 비교: 정규화 뒤 채점(graders)의 개선은 prevention(정규화 전 판정)으로 따로 본다. 기준선 v1 결과(gradersVersion·prevention 없음)는 graders가 정규화 전 판정이다.
+const v1Row=(caseId,status)=>({caseId,status:'completed',graders:[{id:'internal_id_exposure',status},{id:'heading_nesting',status}]});
+const v2Row=(caseId,shown,model,normalization)=>({caseId,status:'completed',gradersVersion:'failure-types-v1+normalized',graders:[{id:'internal_id_exposure',status:shown},{id:'heading_nesting',status:shown}],prevention:[{id:'heading_nesting',status:model},{id:'internal_id_exposure',status:model}],normalization});
+const v1={id:'baseline-v1',results:[v1Row('k1','fail'),v1Row('k2','fail'),v1Row('k3','pass')]};
+const v2={id:'re-eval',results:[v2Row('k1','pass','fail',{schemaPaths:4,headings:2}),v2Row('k2','pass','pass',{schemaPaths:0,headings:0}),v2Row('k3','pass','pass',{schemaPaths:0,headings:0})]};
+const pc=plain(compareRuns(v1,v2)),shown=pc.graders.find(g=>g.id==='internal_id_exposure'),model=pc.prevention?.find(g=>g.id==='internal_id_exposure');
+check('normalization shows up as c in the shown comparison only',()=>assert.deepEqual([shown.b,shown.c,shown.bothPass],[0,2,1]));
+check('prevention compares model-text verdicts (baseline v1 graders vs re-eval prevention)',()=>{assert.deepEqual([model?.n,model?.b,model?.c,model?.bothFail,model?.bothPass],[3,0,1,1,1]);assert.deepEqual(pc.prevention.map(g=>g.id),['heading_nesting','internal_id_exposure'])});
+check('comparison reports grader versions and normalization tallies per run',()=>{
+ assert.deepEqual(pc.gradersVersions,{baseline:['failure-types-v1'],candidate:['failure-types-v1+normalized']});
+ assert.deepEqual(pc.normalization,{baseline:{recorded:0,normalized:0,schemaPaths:0,headings:0},candidate:{recorded:3,normalized:1,schemaPaths:4,headings:2}});
+});
+check('runs without prevention verdicts have an empty prevention comparison',()=>assert.deepEqual(plain(compareRuns(A,B)).prevention,[]));
+// 쌍 평가 게이트는 프롬프트를 잰다: 후보가 정규화로 가려진 경로 노출을 일으키면 저장 본문 판정이 같아도 합격 수·봉인 회귀로 거부한다.
+const basis={operational:{hash:'o'},eval:{hash:'e'}},side=(variant,model)=>({caseId:'k',variant,status:'completed',set:'sealed',model:'m',graders:[{id:'internal_id_exposure',status:'pass'},{id:'input_budget',status:'pass'}],prevention:[{id:'internal_id_exposure',status:model}]});
+const gate=plain(pairGate({id:'pr',variant:'pair',status:'completed',gatewaySnapshot:basis,gatewaySnapshotEnd:basis,results:[side('active','pass'),side('candidate','fail')]}));
+check('the pair gate counts model-text verdicts, so a masked candidate leak is a regression',()=>{assert.deepEqual(gate.passes,{pairs:2,active:2,candidate:1});assert.deepEqual(gate.reasons.map(r=>r.code),['fewer_passes','sealed_regression'])});
+
+// 6) 순수 모듈: import가 없다(화면·서버·테스트가 그대로 쓴다).
 check('eval-stats has no imports',()=>assert.ok(!/^\s*import\s/m.test(readFileSync('lib/eval-stats.ts','utf8'))));
 console.log(JSON.stringify({passed:passed.length}));
