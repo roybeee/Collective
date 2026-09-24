@@ -217,6 +217,8 @@ Worker 직접 origin 및 로그인된 사용자 간 격리는 **not_run**이다.
 
 ### 운영 적용 절차 (재설치는 대표 확인 후)
 
+대표가 직접 실행할 순서와 Claude에게 넘길 출력은 [조사 서버 재설치 절차서](RESEARCH-SERVER-REINSTALL.ko.md)에 있다.
+
 1. 대표에게 재설치 시각과 영향을 알리고 확인을 받는다. 영향은 게이트웨이 재시작, 진행 중 AI 작업 중단 필요, 브라우저 실행 방식 변경(CDP 연결), 원시 브라우저 도구 차단, 워커 실행 계정 변경(`collective-worker`)이다.
 2. 진행 중인 AI 작업을 끝내거나 취소한다.
 3. 설정 화면에서 설치 파일을 다시 발급하고 [README](../server/research-worker/README.md) 절차대로 sudo 계정으로 `sudo python3 ~/install-collective-server.py`를 실행한다. 다시 발급하면 이전 작업자 자격증명은 무효가 된다. 3분 안에 응답한 워커가 있으면 10분 유예 뒤 무효다(위 '작업자 자격증명 만료·회전' 절).
