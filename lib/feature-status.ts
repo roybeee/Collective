@@ -15,7 +15,8 @@ type CampaignRef={id:string;brandId:string;updatedAt?:string;archivedAt?:string|
 // expiresAt: GET /api/channels의 토큰 만료 시각. 서버는 만료된 토큰도 connected:true로 주므로 now와 비교해 만료면 연결로 세지 않는다.
 type ChannelRef={label:string;connected:boolean;expiresAt?:string|null;expiringSoon?:boolean};
 // publishers: 브랜드 id → Buffer 연결 여부(GET /api/execution의 publisher.connected). null은 그 브랜드 확인 실패, 키가 없으면 연결 전이다.
-export type FeatureInput={connection?:unknown;worker?:unknown;brands?:unknown;campaigns?:unknown;facts?:unknown;channels?:unknown;publishers?:unknown;now?:number};
+// brandChannels: GET /api/channels의 byBrand(브랜드·지점 단위 자격증명, F5). channels는 워크스페이스 기본(기존 소유자 단위) 상태다.
+export type FeatureInput={connection?:unknown;worker?:unknown;brands?:unknown;campaigns?:unknown;facts?:unknown;channels?:unknown;brandChannels?:unknown;publishers?:unknown;now?:number};
 
 const record=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value);
 const text=(value:unknown):value is string=>typeof value==='string';
@@ -24,6 +25,27 @@ const campaignRefs=(value:unknown):CampaignRef[]=>Array.isArray(value)?value.fil
 const isFact=(f:unknown):f is BrandFact=>record(f)&&['brandId','key','status','source','verifiedAt','validUntil'].every(k=>text(f[k]))&&(f.storeId===undefined||text(f.storeId));
 // 현재 유효한 확정 사실(근거·확인 시점·유효 기한 통과, 브랜드·지점 공통)만 센다. 판정은 제작 화면과 같은 effectiveBrandFacts다.
 const usableFacts=(facts:BrandFact[],now:number)=>facts.filter(f=>effectiveBrandFacts([f],f.brandId,f.storeId,now).length>0).length;
+
+// F5 성과 수집 자격증명의 연결 상태 4단계(설정 채널 카드·기능표 공용). 만료 시각이 지났으면 만료, 서버가 갱신 필요(expiringSoon)로 주면 만료 임박이다.
+export type CredentialState='connected'|'expiring'|'expired'|'none';
+export const credentialStateLabels:Record<CredentialState,string>={connected:'연결됨',expiring:'만료 임박',expired:'만료',none:'연결 전'};
+export function credentialState(c:{connected?:unknown;expiresAt?:unknown;expiringSoon?:unknown}|null|undefined,now=Date.now()):CredentialState{
+ if(!c||c.connected!==true)return 'none';
+ return text(c.expiresAt)&&Date.parse(c.expiresAt)<=now?'expired':c.expiringSoon===true?'expiring':'connected';
+}
+const usableState=(state:CredentialState)=>state==='connected'||state==='expiring';
+// byBrand 항목은 channels 항목에 brandId·storeId(지점 단위만)가 붙은 모양이다. connected:true가 아닌 항목과 형식이 틀린 항목은 버린다.
+export type ScopedCredential={brandId:string;storeId:string|null;channel:string;connected:true;account:string;expiresAt:string|null;expiringSoon:boolean};
+export function scopedCredentials(value:unknown):ScopedCredential[]{
+ const one=(c:unknown):ScopedCredential[]=>{if(!record(c))return [];const {brandId,storeId}=c;
+  return text(brandId)&&brandId&&text(c.channel)&&c.connected===true?[{brandId,storeId:text(storeId)&&storeId?storeId:null,channel:c.channel,connected:true,account:text(c.account)?c.account:'',expiresAt:text(c.expiresAt)?c.expiresAt:null,expiringSoon:c.expiringSoon===true}]:[]};
+ return Array.isArray(value)?value.flatMap(e=>one(e)):[];
+}
+// 설정 채널 카드의 한 채널 목록: 워크스페이스 브랜드마다 그 브랜드 자신의 브랜드 단위 상태와 지점 단위 자격증명만 보인다(다른 브랜드 것은 섞지 않는다).
+export function channelScopes(brands:unknown,channel:string,scoped:ScopedCredential[],now=Date.now()){
+ const line=(c?:ScopedCredential)=>({state:credentialState(c,now),account:c?.account||'',expiresAt:c?.expiresAt??null});
+ return brandIds(brands).map(brandId=>{const own=scoped.filter(c=>c.channel===channel&&c.brandId===brandId);return {brandId,...line(own.find(c=>!c.storeId)),stores:own.filter(c=>c.storeId).map(c=>({storeId:c.storeId as string,...line(c)}))}});
+}
 
 // Buffer 연결은 브랜드 단위로 저장되고 캠페인 실행 상태(GET /api/execution)로만 읽힌다. 브랜드마다 확인에 쓸 캠페인 1개: 보관 안 된 최근 캠페인, 없으면 보관 캠페인.
 export function bufferCheckCampaigns(brands:unknown,campaigns:unknown):Record<string,string>{
@@ -57,14 +79,16 @@ function bufferRow(publishers:unknown,brands:string[],campaigns:unknown):Feature
  const reason=`브랜드별 연결 ${connected}/${brands.length}`+(failed?` · ${failed}개 브랜드 확인 실패`:'');
  return connected?{...base,status:'available',reason}:{...base,status:'blocked',reason,link};
 }
-function measurementRow(channels:unknown,now:number):FeatureRow{
+// 채널별 상태는 워크스페이스 기본이고(E2E가 사유 맨 앞의 기본 상태를 본다), 뒤에 자기 브랜드·지점 자격증명이 하나라도 쓸 수 있는 브랜드 수를 붙인다(F5).
+function measurementRow(channels:unknown,brandChannels:unknown,brands:string[],now:number):FeatureRow{
  const base={key:'measurement',label:'광고 · 게시물 성과 자동 수집'},link:FeatureLink={label:'성과 자동 수집 연결로 이동',view:'settings',section:'settings-channels'};
  if(!Array.isArray(channels))return {...base,status:'blocked',reason:'채널 연결 상태를 확인하지 못했습니다',link};
  const list=channels.filter((c):c is ChannelRef=>record(c)&&text(c.label)&&typeof c.connected==='boolean');
  if(!list.length)return {...base,status:'blocked',reason:'연결할 수 있는 채널이 없습니다',link};
  const expired=(c:ChannelRef)=>text(c.expiresAt)&&Date.parse(c.expiresAt)<=now,usable=(c:ChannelRef)=>c.connected&&!expired(c);
- const reason=list.map(c=>c.label+(!c.connected?' 연결 전':expired(c)?' 토큰 만료':c.expiringSoon?' 연결됨(토큰 갱신 필요)':' 연결됨')).join(' · ');
- return list.some(usable)?{...base,status:'available',reason}:{...base,status:'blocked',reason,link};
+ const known=new Set(brands),linked=new Set(scopedCredentials(brandChannels).filter(c=>known.has(c.brandId)&&usableState(credentialState(c,now))).map(c=>c.brandId)).size;
+ const reason=list.map(c=>c.label+(!c.connected?' 연결 전':expired(c)?' 토큰 만료':c.expiringSoon?' 연결됨(토큰 갱신 필요)':' 연결됨')).join(' · ')+' (워크스페이스 기본) · '+(Array.isArray(brandChannels)?`브랜드별 연결 ${linked}/${brands.length} 브랜드`:'브랜드별 연결을 확인하지 못했습니다');
+ return list.some(usable)||linked?{...base,status:'available',reason}:{...base,status:'blocked',reason,link};
 }
 
 export function featureRows(input:FeatureInput={}):FeatureRow[]{
@@ -78,7 +102,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   workerRow(input.worker),
   pngRow(input.facts,brands,now),
   bufferRow(input.publishers,brands,input.campaigns),
-  measurementRow(input.channels,now),
+  measurementRow(input.channels,input.brandChannels,brands,now),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
   {key:'pos-auto',label:'POS 자동 수집',status:'unimplemented',reason:'POS 연동 없음 · CSV로 가져오세요'},
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},

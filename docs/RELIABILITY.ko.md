@@ -81,6 +81,13 @@
 - 브랜드 조사 결과 처리에서 `ApiError`가 아닌 예외(TypeError 등)는 조사 기록·화면에 고정 문구 ‘조사 결과를 처리하지 못했습니다. 다시 시도해 주세요.’만 남기고, 로그에는 오류 이름·코드만 남긴다(`research_result_unexpected_error`).
 - 잔여 해소(A7): 실험 과제 등 심층 조사 보고서의 배열 원소가 null·비객체이면 TypeError가 아니라 항목 단위 오류로 처리한다. 뼈대가 아니면 그 원소만 빼서 구제하고, 뼈대 자리면 422다(아래 ‘A7 조사 투자 회수’). 점포 조사 보고서(`lib/store-server.ts` `parseStoreReport`)의 실행 제안·실험 제안 원소가 null·원시값·배열이면 목록 형식 오류 422(‘점포 진단 목록 형식을 확인하세요.’)다. 점포 보고서에는 부분 구제가 없어 전체를 거절한다(`tests/validate.test.mjs`). `tests/research-errors.test.mjs`는 파서 밖의 내부 예외(저장된 단계 기록 손상)로 고정 문구·로그 규칙을 계속 확인한다.
 
+### 성과 수집 자격증명 선택 (F5)
+
+- 성과 수집(`lib/measurement-collection.ts` `collectForExperiment`, 워커 `collectDueMeasurements`도 같은 경로)은 실험의 `brandId`와 실험 캠페인의 `storeId`로 자격증명을 고른다. 우선순위는 지점 단위 > 브랜드 단위 > 워크스페이스 기본(기존 소유자 단위 레코드)이고, 다른 브랜드의 자격증명은 후보가 아니다. 셋 다 없으면 기존 '연결 전' 409로 끝나며 외부 API를 부르지 않는다. 식별 규칙·검증·권한은 [보안 경계](SECURITY-BOUNDARIES.ko.md#성과-수집-채널-자격증명-단위-f5)를 따른다.
+- 수집 초안의 arm 기록에 실제로 쓴 단위(`credential`: `level`·`brandId`·`storeId`)를 남긴다. 이 필드가 없는 이전 기록은 워크스페이스 기본으로 수집한 것이다.
+- 한 실험의 두 arm이 다른 단위(다른 계정)로 수집됐으면 초안 한계(`measurement_draft.limitations`)에 '두 실험안을 서로 다른 연결(…)로 수집했습니다' 경고를 붙인다. 같은 arm을 이전 수집과 다른 단위로 다시 가져온 경우(워커 재수집 중 브랜드·지점 연결을 추가·해제한 경우 등)에는 그 arm 기록과 초안 한계에 '이전 수집(…)과 다른 연결(…)로 가져왔습니다'를 붙인다. 기간 경고와 달리 Instagram에도 붙는다. 이 경고를 실험 카드에 보여 주는 일은 loop-1(PR 4b)이다.
+- 기존 데이터 마이그레이션은 없다. 기존 레코드는 워크스페이스 기본으로 계속 읽는다. 검증: `tests/channel-credentials-brand.test.mjs`(mocked, fetch 스텁의 Authorization 헤더로 브랜드 A 실험이 브랜드 B 토큰을 쓰지 않음과 연결 불일치 경고를 확인), `tests/measurements.test.mjs`(mocked, 무범위 기존 동작).
+
 ### 기능 스위치
 
 `lib/feature-flags.ts`가 알려진 스위치와 기본값의 정본이다. 모두 기본 꺼짐이다: `online_grading`, `b1_reason_required`, `a4_auto_attribution`, `a2_downgrade`, `a7_repair_turn`. 서버 코드는 `isEnabled(owner, flag)`로 읽는다. 저장은 소유자 범위 `feature_flag` 행(스위치당 1행)이며 행이 없으면 기본값이다. 캐시가 없어 쓰기는 다음 요청부터 반영된다(게시 불필요).
