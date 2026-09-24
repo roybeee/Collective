@@ -37,10 +37,10 @@ function normalize(source:string):Normalized{
 // 탐지기: 우선순위 순서다. 앞선 탐지기가 잡은 구간과 겹치는 뒤 탐지는 버린다(해시 속 숫자열, 이메일 속 번호, 주민번호 13자리 등).
 type Detector={kind:PiiKind;pattern:RegExp;accept?:(m:RegExpMatchArray)=>boolean};
 const CC='(?:\\+ ?82[ -]?(?:\\(0\\)|0)?|0)',SEP='[ .-]?';
-// 도로명·지번 뒤에 오는 수량 단위: 수량 표현(무료로 100개, 추가로 2 종)을 주소로 보지 않는다.
-const COUNTER='(?![0-9A-Za-z가-힣%])(?!\\s?(?:개월|시간|단계|가지|종류|개|명|회|원|배|번|건|일|주|분|초|위|등|종|곳|장|잔|세|년|월|차|권|편|점|이상|이하|미만|초과)(?![가-힣]))';
+// 도로명·지번 뒤에 오는 수량 단위·천 단위 쉼표·소수점: 수량 표현(무료로 100개, 추가로 2 종, 기존대로 8,000자)을 주소로 보지 않는다.
+const COUNTER='(?![0-9A-Za-z가-힣%])(?![.,]\\d)(?!\\s?(?:개월|시간|단계|가지|종류|개|명|회|원|배|번|건|일|주|분|초|위|등|종|곳|장|잔|세|년|월|차|권|편|점|이상|이하|미만|초과)(?![가-힣]))';
 // 조사 '(으)로'·흔한 명사를 도로명·동네 이름으로 보지 않는다.
-const NOT_ROAD=/(?:으|[율률수배량액비회개명건분초순등])$|^(?:추가|무료|별도|실제|정도|최대|최소|기본|필수|단독|우선|순서|스스|그대|이대|제대|대체|절대|정말|마음대|멋대)$/;
+const NOT_ROAD=/(?:으|[율률수배량액비회개명건분초순등])$|^(?:추가|무료|별도|실제|정도|최대|최소|기본|필수|단독|우선|순서|스스|대체|절대|정말)$|^(?:기존|예정|계획|원래|지금|마음|멋|그|이|저|요청|지시|약속|생각|뜻|말|규칙|원칙|기준|평소|사실|제|합의|결정|안내|권장|설명)대$/;
 const NOT_PLACE=new Set(['행동','활동','이동','운동','변동','연동','자동','공동','작동','감동','노동','진동','가동','수동','출동','충동','파동','발동','능동','관리','처리','거리','요리','조리','소리','자리','정리','분리','수리','원리','심리','논리','대리','편리','무리','우리','유리','머리','다리','도리','경리','교리','합리','실리','의리','진리']);
 const digits=(s:string)=>s.replace(/\D/g,'').length;
 const DETECTORS:readonly Detector[]=[
@@ -65,6 +65,9 @@ const DETECTORS:readonly Detector[]=[
 ];
 
 type Span={start:number;end:number;kind:PiiKind};
+// 기술 식별자(32자 이상 16진·UUID: 커밋 SHA, 작업물 id 등) 안의 숫자열은 전화·카드 등으로 보지 않는다. 64자리 16진은 고객 식별자로 먼저 잡힌다.
+const TECH_ID=/(?<![0-9A-Za-z])(?:[0-9A-Fa-f]{32,}|[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})(?![0-9A-Za-z])/g;
+const techRanges=(text:string)=>[...text.matchAll(TECH_ID)].map(m=>[m.index!,m.index!+m[0].length] as [number,number]);
 const allowStrings=(allow:readonly unknown[]=[])=>[...new Set(allow.filter((v):v is string=>typeof v==='string').map(v=>normalize(v.trim()).text).filter(v=>v.length>=MIN_ALLOW_LENGTH))];
 function protectedRanges(text:string,allow:readonly unknown[]){
  const ranges:[number,number][]=[];
@@ -73,11 +76,12 @@ function protectedRanges(text:string,allow:readonly unknown[]){
 }
 // 정규화 본문에서 탐지 구간을 찾는다. 허용 구간에 완전히 들어간 탐지는 버리고, 걸치기만 하면 가린다.
 function detect(text:string,allow:readonly unknown[]=[]):Span[]{
- const safe=protectedRanges(text,allow),taken:Span[]=[];
+ const safe=protectedRanges(text,allow),tech=techRanges(text),taken:Span[]=[];
+ const inside=(ranges:[number,number][],start:number,end:number)=>ranges.some(([a,b])=>a<=start&&end<=b);
  for(const d of DETECTORS)for(const m of text.matchAll(d.pattern)){
   const start=m.index!,end=start+m[0].length;
   if(d.accept&&!d.accept(m))continue;
-  if(safe.some(([a,b])=>a<=start&&end<=b)||taken.some(t=>start<t.end&&t.start<end))continue;
+  if(inside(safe,start,end)||d.kind!=='customer_id'&&inside(tech,start,end)||taken.some(t=>start<t.end&&t.start<end))continue;
   taken.push({start,end,kind:d.kind});
  }
  return taken.sort((a,b)=>a.start-b.start);
