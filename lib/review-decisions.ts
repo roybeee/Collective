@@ -91,6 +91,9 @@ export function editStats(before:string,after:string):EditStats{
  const total=la.length+lb.length,ratio=total?1-2*commonLines(la,lb)/total:0;
  return {changedSections,diffRatio:Math.round(ratio*1000)/1000};
 }
+// B1 이전에는 사람이 AI 작업물을 고쳐도 origin이 'ai'로 남았다. AI 실행은 역할 실행(v1)이거나 회의 개선(meetingId)이므로
+// 그 밖의 v2 이상 'ai'는 과거 사람 수정본이다(lib/history-labels.ts madeBy와 같은 기준).
+export const legacyHumanEdit=(a:{origin?:string;version:number;meetingId?:string|null})=>a.origin==='ai'&&a.version>1&&!a.meetingId;
 // 작업물 출처 표시 문구. ai_edited는 AI 초안을 사람이 고친 판이다.
 export const originLabel=(origin:string|undefined)=>origin==='ai'?'AI 작성':origin==='ai_edited'?'AI 작성 · 사람 수정':'직접 등록';
 // 브리프 초안 제안의 처리: 저장값이 제안과 같으면 채택, 비었거나 초안 요청 때 값 그대로면 미사용, 그 밖은 수정.
@@ -100,19 +103,23 @@ export function suggestionDecision(saved:string,suggested:string,baseline:string
  return !s||s===baseline.trim()?'ignored':'edited';
 }
 
-export type ReviewActor={id:string;email:string|null;role:'owner'|'admin'|'member'};
-export type ReviewDecision={id:string;targetKind:ReviewTargetKind;targetId:string;version:number;role:string|null;decision:ReviewDecisionValue;reasonCodes:ReasonCode[];section?:string;note?:string;actor:ReviewActor;
+// 판정 행위자는 계정 id와 역할만 남긴다. 캠페인을 지워도 남는 기록이라 이메일·검토 메모 원문은 담지 않고 메모는 길이(noteLength)만 둔다.
+export type ReviewActor={id:string;role:'owner'|'admin'|'member'};
+export type ReviewDecision={id:string;targetKind:ReviewTargetKind;targetId:string;version:number;role:string|null;decision:ReviewDecisionValue;reasonCodes:ReasonCode[];section?:string;noteLength?:number;actor:ReviewActor;
  promptVersion:string|null;skillVersion:string|null;outputContractVersion:string|null;campaignId:string|null;brandId:string|null;origin?:string;criteria?:CriterionJudgement[];reasonsVersion:string;createdAt:string};
-// 역할×스킬 버전별 1차 승인율: 작업물마다 기록 순서상 첫 판정이 approved인 비율. 입력은 기록 순서대로 준다.
-export type FirstPassRate={role:string;skillVersion:string|null;artifacts:number;approvedFirst:number;rate:number};
+// 역할×스킬 버전별 1차 승인율: AI가 만든 작업물(ai·ai_edited)마다 기록 순서상 첫 판정을 본다. 입력은 기록 순서대로 준다.
+// 1차 승인은 사람이 고치지 않은 AI 판(origin ai)에 내린 첫 판정이 approved인 경우만이다. 사람이 먼저 고친 판(ai_edited)의 첫 판정은 분모에만 넣고 editedFirst로 센다.
+// 직접 작성(manual)은 AI 스킬 판정이 아니라 뺀다.
+export type FirstPassRate={role:string;skillVersion:string|null;artifacts:number;approvedFirst:number;editedFirst:number;rate:number};
 export function firstPassApproval(decisions:readonly ReviewDecision[]):FirstPassRate[]{
  const first=new Map<string,ReviewDecision>();
  for(const d of decisions)if(d.targetKind==='artifact'&&!first.has(d.targetId))first.set(d.targetId,d);
  const groups=new Map<string,FirstPassRate>();
  for(const d of first.values()){
-  const key=JSON.stringify([d.role,d.skillVersion]),g=groups.get(key)||{role:d.role||'',skillVersion:d.skillVersion,artifacts:0,approvedFirst:0,rate:0};
-  const artifacts=g.artifacts+1,approvedFirst=g.approvedFirst+(d.decision==='approved'?1:0);
-  groups.set(key,{...g,artifacts,approvedFirst,rate:approvedFirst/artifacts});
+  if(d.origin!=='ai'&&d.origin!=='ai_edited')continue;
+  const key=JSON.stringify([d.role,d.skillVersion]),g=groups.get(key)||{role:d.role||'',skillVersion:d.skillVersion,artifacts:0,approvedFirst:0,editedFirst:0,rate:0};
+  const artifacts=g.artifacts+1,approvedFirst=g.approvedFirst+(d.origin==='ai'&&d.decision==='approved'?1:0),editedFirst=g.editedFirst+(d.origin==='ai_edited'?1:0);
+  groups.set(key,{...g,artifacts,approvedFirst,editedFirst,rate:approvedFirst/artifacts});
  }
  return [...groups.values()];
 }

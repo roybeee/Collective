@@ -20,6 +20,7 @@ const retainedGroups:readonly Group[]=[
  {label:'학습 규칙',kinds:['learning_rule'],note:'종료 표시로 남김, 원 캠페인 삭제 표시'},
  {label:'실험 요약',kinds:['viral_experiment_summary'],note:'원문을 뺀 요약으로 동결'},
  {label:'점포 실험',kinds:['store_experiment']},
+ {label:'사람 판정 로그',kinds:['review_decision'],note:'사유 코드·판정만, 검토 메모 원문 없음'},
 ];
 // 캠페인 브리프 자신은 대화상자 제목이 말하므로 목록에 넣지 않는다.
 const SELF='campaign';

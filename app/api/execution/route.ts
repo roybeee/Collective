@@ -32,11 +32,10 @@ export async function POST(req:Request){let owner='',lock='';try{
  const p=await publicationFor(owner,campaign,input.id,input.version);
  if(input.action==='approve')return json(await approvePublication(owner,campaign,p,input,who!,origin));
  // B1: 발행 취소·되돌림(반려)은 사유 코드(선택)와 함께 review_decision 1건을 남긴다. 모르는 코드는 상태를 바꾸기 전에 400이다.
+ // 판정은 상태 변경과 같은 묶음(db.batch)으로 쓴다. 판정 쓰기가 실패하면 상태도 바뀌지 않아 같은 버전으로 다시 시도할 수 있다.
  if(input.action==='cancel'||input.action==='reconfirm'){
-  const reasonCodes=requireReasonCodes(input.reasonCodes,'publication');
-  const result=input.action==='cancel'?await cancelPublication(owner,campaign,p):await reconfirmPublication(owner,campaign,p,who!);
-  await publicationDecisionStatement(owner,p,input.action==='cancel'?'cancelled':'returned',reviewActor(who!),reasonCodes).run();
-  return json(result);
+  const decision=[publicationDecisionStatement(owner,p,input.action==='cancel'?'cancelled':'returned',reviewActor(who!),requireReasonCodes(input.reasonCodes,'publication'))];
+  return json(input.action==='cancel'?await cancelPublication(owner,campaign,p,decision):await reconfirmPublication(owner,campaign,p,who!,decision));
  }
  if(input.action==='resolve_uncertain')return json(await resolveUncertain(owner,campaign,p,input,who!));
  if(input.action==='execute'){

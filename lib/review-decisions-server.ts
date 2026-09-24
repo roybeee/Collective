@@ -4,9 +4,9 @@
 import {ApiError,database,readRecord,stamp,uid,type Actor} from './server';
 import {valueOf,type BriefDraft,type BriefInput} from './brief';
 import type {Artifact} from './agency';
-import {REVIEW_REASONS_VERSION,reasonCodesProblem,reasonCodesOf,criteriaProblem,criteriaOf,editStats,suggestionDecision,firstPassApproval,type ReviewTargetKind,type ReviewDecision,type ReviewActor,type ReasonCode,type CriterionJudgement,type EditStats} from './review-decisions';
+import {REVIEW_REASONS_VERSION,reasonCodesProblem,reasonCodesOf,criteriaProblem,criteriaOf,editStats,suggestionDecision,firstPassApproval,legacyHumanEdit,type ReviewTargetKind,type ReviewDecision,type ReviewActor,type ReasonCode,type CriterionJudgement,type EditStats} from './review-decisions';
 
-export const reviewActor=(who:Actor):ReviewActor=>({id:who.id,email:who.email,role:who.role});
+export const reviewActor=(who:Actor):ReviewActor=>({id:who.id,role:who.role});
 // 검사 실패는 400이고 호출한 라우트는 어떤 레코드도 쓰기 전에 멈춘다. required면 사유가 1개 이상 있어야 한다.
 export function requireReasonCodes(value:unknown,kind:ReviewTargetKind,required=false):ReasonCode[]{
  const problem=reasonCodesProblem(value,kind);if(problem)throw new ApiError(400,problem);
@@ -15,7 +15,7 @@ export function requireReasonCodes(value:unknown,kind:ReviewTargetKind,required=
 }
 type AiSource={id:string;version:number;skillVersion:string|null;outputContractVersion:string|null};
 type QualityChecks={checks?:{criterion:string;status:string}[]};
-export type ReviewedArtifact=Pick<Artifact,'id'|'campaignId'|'role'|'content'|'version'|'origin'>&{skillVersion?:string|null;outputContractVersion?:string|null;aiSourceId?:string;aiSource?:AiSource;editStats?:EditStats|null;qualityReview?:QualityChecks};
+export type ReviewedArtifact=Pick<Artifact,'id'|'campaignId'|'role'|'content'|'version'|'origin'>&{meetingId?:string;skillVersion?:string|null;outputContractVersion?:string|null;aiSourceId?:string;aiSource?:AiSource;editStats?:EditStats|null;qualityReview?:QualityChecks};
 export function requireCriteria(value:unknown,a:ReviewedArtifact):CriterionJudgement[]|undefined{
  if(value===undefined||value===null)return undefined;
  if(a.role!=='quality')throw new ApiError(400,'기준별 판정은 품질 검수 작업물에만 남길 수 있습니다.');
@@ -34,14 +34,15 @@ async function promptVersionOf(owner:string,field:'artifactId'|'jobId',id:string
  return typeof row?.v==='string'?row.v:null;
 }
 // AI 작업물과 사람이 고친 AI 작업물은 AI 원본 실행의 버전을 쓴다. 직접 작성한 작업물은 버전이 없다.
-async function artifactVersions(owner:string,a:ReviewedArtifact){
- if(a.origin!=='ai'&&a.origin!=='ai_edited')return noVersions;
- const src=a.origin==='ai_edited'&&a.aiSource?a.aiSource:{id:a.id,skillVersion:a.skillVersion??null,outputContractVersion:a.outputContractVersion??null};
- return {promptVersion:await promptVersionOf(owner,'artifactId',src.id),skillVersion:src.skillVersion??null,outputContractVersion:src.outputContractVersion??null};
+// AI 원본을 찾지 못한 사람 수정본은 작업물 id로 사용량 원장의 promptVersion만 찾고 실행 버전은 null이다.
+async function artifactVersions(owner:string,a:ReviewedArtifact,view:AiView){
+ if(view.origin!=='ai'&&view.origin!=='ai_edited')return noVersions;
+ return {promptVersion:await promptVersionOf(owner,'artifactId',view.source?.id||a.id),skillVersion:view.source?.skillVersion??null,outputContractVersion:view.source?.outputContractVersion??null};
 }
 export async function artifactDecisionStatement(owner:string,a:ReviewedArtifact,input:{decision:'approved'|'revision';reasonCodes:ReasonCode[];note:string;criteria?:CriterionJudgement[];actor:ReviewActor}){
- return decisionStatement(owner,{targetKind:'artifact',targetId:a.id,version:a.version,role:a.role,decision:input.decision,reasonCodes:input.reasonCodes,...(input.note?{note:input.note}:{}),actor:input.actor,
-  ...await artifactVersions(owner,a),campaignId:a.campaignId,brandId:null,origin:a.origin||'manual',...(input.criteria?{criteria:input.criteria}:{})});
+ const view=await aiView(owner,a);
+ return decisionStatement(owner,{targetKind:'artifact',targetId:a.id,version:a.version,role:a.role,decision:input.decision,reasonCodes:input.reasonCodes,...(input.note?{noteLength:input.note.length}:{}),actor:input.actor,
+  ...await artifactVersions(owner,a,view),campaignId:a.campaignId,brandId:null,origin:view.origin,...(input.criteria?{criteria:input.criteria}:{})});
 }
 export const sourceDecisionStatement=(owner:string,s:{id:string;brandId:string;version:number},actor:ReviewActor,reasonCodes:ReasonCode[])=>
  decisionStatement(owner,{targetKind:'source',targetId:s.id,version:s.version,role:null,decision:'excluded',reasonCodes,actor,...noVersions,campaignId:null,brandId:s.brandId});
@@ -63,14 +64,27 @@ async function aiSourceContent(owner:string,campaignId:string,source:AiSource){
  const row=await database().prepare("SELECT data FROM records WHERE owner=? AND kind='history' AND parent_id=? AND json_extract(data,'$.originalId')=? AND json_extract(data,'$.version')=? AND json_extract(data,'$.origin')='ai' LIMIT 1").bind(owner,campaignId,source.id,source.version).first<{data:string}>();
  return row?(JSON.parse(row.data) as {content:string}).content:null;
 }
+// 과거 사람 수정본(legacyHumanEdit)의 AI 원본: 이력에서 그보다 앞선 판 중 실제 AI 판(v1 또는 회의 개선)의 가장 최근 판. 없으면 null.
+async function legacyAiSource(owner:string,a:ReviewedArtifact):Promise<AiSource|null>{
+ const row=await database().prepare("SELECT data FROM records WHERE owner=? AND kind='history' AND parent_id=? AND json_extract(data,'$.originalId')=? AND json_extract(data,'$.origin')='ai' AND json_extract(data,'$.version')<? AND (json_extract(data,'$.version')=1 OR json_extract(data,'$.meetingId') IS NOT NULL) ORDER BY json_extract(data,'$.version') DESC LIMIT 1").bind(owner,a.campaignId,a.id,a.version).first<{data:string}>();
+ if(!row)return null;
+ const h=JSON.parse(row.data) as ReviewedArtifact;
+ return {id:a.id,version:h.version,skillVersion:h.skillVersion??null,outputContractVersion:h.outputContractVersion??null};
+}
+// 판정·선호 쌍·편집이 보는 출처. 과거 사람 수정본은 origin이 'ai'여도 ai_edited로 보고 이력에서 AI 원본을 찾는다.
+type AiView={origin:string;source:AiSource|null};
+async function aiView(owner:string,a:ReviewedArtifact):Promise<AiView>{
+ if(legacyHumanEdit(a))return {origin:'ai_edited',source:await legacyAiSource(owner,a)};
+ if(a.origin==='ai')return {origin:'ai',source:{id:a.id,version:a.version,skillVersion:a.skillVersion??null,outputContractVersion:a.outputContractVersion??null}};
+ return {origin:a.origin||'manual',source:a.origin==='ai_edited'?a.aiSource||null:null};
+}
 export async function correctedOrigin(owner:string,old:ReviewedArtifact|null,content:string){
- if(old?.origin==='ai'){
-  const aiSource:AiSource={id:old.id,version:old.version,skillVersion:old.skillVersion??null,outputContractVersion:old.outputContractVersion??null};
-  return {origin:'ai_edited',aiSourceId:`${old.id}:${old.version}`,aiSource,editStats:editStats(old.content,content)};
- }
- if(old?.origin!=='ai_edited'||!old.aiSource)return {origin:old?.origin||'manual'};
- const original=await aiSourceContent(owner,old.campaignId,old.aiSource);
- return {origin:'ai_edited',aiSourceId:old.aiSourceId,aiSource:old.aiSource,editStats:original===null?null:editStats(original,content)};
+ if(!old)return {origin:'manual'};
+ const view=await aiView(owner,old);
+ if(view.origin==='ai'&&view.source)return {origin:'ai_edited',aiSourceId:`${old.id}:${old.version}`,aiSource:view.source,editStats:editStats(old.content,content)};
+ if(view.origin!=='ai_edited'||!view.source)return {origin:view.origin};
+ const original=await aiSourceContent(owner,old.campaignId,view.source);
+ return {origin:'ai_edited',aiSourceId:`${view.source.id}:${view.source.version}`,aiSource:view.source,editStats:original===null?null:editStats(original,content)};
 }
 
 async function decisionRows(where:string,binds:unknown[]){
@@ -89,10 +103,9 @@ export async function criterionUnits(owner:string,campaignId?:string):Promise<Cr
 }
 // H: 선호 쌍은 조회로만 묶는다(학습에 쓰지 않는다). AI 원본·사람 확정본(승인했거나 사람이 고친 현재 판)·판정 이력. 직접 작성한 작업물은 null.
 export async function preferencePair(owner:string,artifactId:string){
- const a=await readRecord<ReviewedArtifact&{status:string}>(owner,'artifact',artifactId);
- if(a.origin!=='ai'&&a.origin!=='ai_edited')return null;
- const source=a.origin==='ai'?{id:a.id,version:a.version,skillVersion:a.skillVersion??null,outputContractVersion:a.outputContractVersion??null}:a.aiSource||null;
- const aiContent=a.origin==='ai'?a.content:source?await aiSourceContent(owner,a.campaignId,source):null;
- const human=a.status==='approved'||a.origin==='ai_edited'?{version:a.version,content:a.content,status:a.status,origin:a.origin,editStats:a.editStats??null}:null;
+ const a=await readRecord<ReviewedArtifact&{status:string}>(owner,'artifact',artifactId),view=await aiView(owner,a);
+ if(view.origin!=='ai'&&view.origin!=='ai_edited')return null;
+ const source=view.source,aiContent=view.origin==='ai'?a.content:source?await aiSourceContent(owner,a.campaignId,source):null;
+ const human=a.status==='approved'||view.origin==='ai_edited'?{version:a.version,content:a.content,status:a.status,origin:view.origin,editStats:a.editStats??null}:null;
  return {artifactId:a.id,campaignId:a.campaignId,role:a.role,ai:source&&aiContent!==null?{...source,content:aiContent}:null,human,decisions:await targetHistory(owner,'artifact',a.id)};
 }

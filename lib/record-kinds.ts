@@ -93,8 +93,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'worker_state',parent:'none',campaignDeletion:'not_campaign_scoped',description:'조사 워커 상태'},
  {kind:'worker_rejection',parent:'none',campaignDeletion:'not_campaign_scoped',description:'조사 워커 인증 거부 기록(소유자당 1행: 사유별 마지막 거부 시각). 토큰·헤더 값은 담지 않고 재발급·연결 해제 때 지운다(security-ops-4)'},
  // B1 판정 로그(대표 결정 8). 추가만 하고 덮어쓰지 않는다(lib/review-decisions-server.ts). B2 κ·B3 개선 분석의 평가 자료라 eval_case처럼 캠페인을 지워도 남긴다
- // (캠페인 삭제 영향 조회에는 보존 건수로 잡힌다). 브랜드 자료 제외 판정은 campaignId가 없다. token_budget 묶음(마지막 3개, tests/token-budget.test.mjs 고정) 앞에 둔다.
- {kind:'review_decision',parent:'none',campaignDeletion:'retain',links:['data_campaign'],description:'사람 판정·교정 결정 로그(작업물 승인·수정 요청, 브리프 제안 채택·수정·미사용, 자료 제외, 발행 취소·되돌림)와 사유 코드·실행 버전(B1). 캠페인을 지워도 평가 자료로 남긴다'},
+ // (캠페인 삭제 영향 조회에는 보존 건수로, 대화상자에는 '사람 판정 로그'로 보인다). 브랜드 자료 제외 판정은 campaignId가 없다. token_budget 묶음(마지막 3개, tests/token-budget.test.mjs 고정) 앞에 둔다.
+ {kind:'review_decision',parent:'none',campaignDeletion:'retain',links:['data_campaign'],description:'사람 판정·교정 결정 로그(작업물 승인·수정 요청, 브리프 제안 채택·수정·미사용, 자료 제외, 발행 취소·되돌림)와 사유 코드·실행 버전(B1). 캠페인을 지워도 평가 자료로 남긴다. 검토 메모 원문·검토자 이메일은 담지 않는다(메모는 길이만, 행위자는 id·역할)'},
  {kind:'token_budget',parent:'none',campaignDeletion:'delete',links:['data_campaign'],description:'소유자가 정한 월 토큰 상한(한국 시간 달력 월). 워크스페이스 1행(id workspace, campaignId 없음)과 캠페인별 행(id campaign:<캠페인>). 캠페인별 행은 캠페인과 함께 지운다(loop-4)'},
  {kind:'token_reservation',parent:'none',campaignDeletion:'not_campaign_scoped',description:'HERMES 제출 1건의 진행 중 토큰 예약(예상 토큰·실행 종류·캠페인 id·실행 번호·멱등 키 해시). 요청 원문은 담지 않고 토큰을 아는 종료 사용량을 기록하면 지운다(loop-4)'},
  {kind:'usage_alias_pricing',parent:'none',campaignDeletion:'not_campaign_scoped',description:'HERMES 별칭(hermes-agent) 단가 선언(기반 모델·입력/출력 단가·통화·근거 URL·적용 시작일). 원장은 바꾸지 않고 읽을 때 추정한다(loop-5, 결정 10)'},

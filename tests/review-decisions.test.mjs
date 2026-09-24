@@ -6,12 +6,13 @@ import {createHash} from 'node:crypto';
 import {readFileSync,existsSync} from 'node:fs';
 import {testRuntime} from './helpers/runtime.mjs';
 
-let fetchCalls=0;
-const rt=testRuntime(async()=>{fetchCalls++;throw new Error('외부 호출 금지')});
+let fetchCalls=0,failWrite=null;
+// failWrite: 지정한 문장 실행을 실패시켜 한 묶음(db.batch) 롤백을 확인한다.
+const rt=testRuntime(async()=>{fetchCalls++;throw new Error('외부 호출 금지')},{beforeRun:statement=>failWrite?.(statement)});
 Object.assign(rt.env,{AUTH_MODE:'email',AUTH_ORIGIN:'https://app.test'});
 const server=await rt.load('lib/server.ts'),action=await rt.load('app/api/action/route.ts'),archive=await rt.load('app/api/archive/route.ts'),execution=await rt.load('app/api/execution/route.ts');
 const pure=await rt.load('lib/review-decisions.ts'),store=await rt.load('lib/review-decisions-server.ts'),flags=await rt.load('lib/feature-flags.ts');
-const {GRADERS}=await rt.load('lib/graders/index.ts'),{qualityCriteria}=await rt.load('lib/quality.ts'),registry=await rt.load('lib/record-kinds.ts');
+const {GRADERS}=await rt.load('lib/graders/index.ts'),{qualityCriteria}=await rt.load('lib/quality.ts'),registry=await rt.load('lib/record-kinds.ts'),{deletionSummary}=await rt.load('lib/deletion-summary.ts');
 const plain=value=>JSON.parse(JSON.stringify(value));
 let passed=0;const check=(name,ok)=>{assert.ok(ok,name);passed++};
 
@@ -57,7 +58,8 @@ let events=count('event');
 let r=await call(action,MEMBER,{action:'review_artifact',id:'art1',version:1,decision:'revision',note:'가격 표기를 빼 주세요.'});
 const first=decisions()[0];
 check('member revision without chips is saved while the switch is off',r.status===200&&decisions().length===1);
-check('the decision carries target, version, role, decision, note and the PR 1 actor',first.targetKind==='artifact'&&first.targetId==='art1'&&first.version===1&&first.role==='cmo'&&first.decision==='revision'&&JSON.stringify(first.reasonCodes)==='[]'&&first.note==='가격 표기를 빼 주세요.'&&JSON.stringify(first.actor)==='{"id":"member","email":"member@test.invalid","role":"member"}'&&first.campaignId==='c1'&&Number.isFinite(Date.parse(first.createdAt)));
+check('the decision carries target, version, role, decision, note length and the actor id and role',first.targetKind==='artifact'&&first.targetId==='art1'&&first.version===1&&first.role==='cmo'&&first.decision==='revision'&&JSON.stringify(first.reasonCodes)==='[]'&&first.noteLength==='가격 표기를 빼 주세요.'.length&&JSON.stringify(first.actor)==='{"id":"member","role":"member"}'&&first.campaignId==='c1'&&Number.isFinite(Date.parse(first.createdAt)));
+check('the decision log copies neither the note text nor the reviewer email',!('note' in first)&&rows().every(x=>!x.data.includes('가격 표기')&&!x.data.includes('@test.invalid')));
 check('the revision also writes exactly one legacy event and keeps the review note',count('event')===events+1&&(await server.readRecord(O,'artifact','art1')).reviewNote==='가격 표기를 빼 주세요.');
 events=count('event');
 r=await call(action,ADMIN,{action:'review_artifact',id:'art1',version:1,decision:'revision',note:'다시',reasonCodes:['nope']});
@@ -126,7 +128,8 @@ const editedDecision=decisions().at(-1);
 check('a decision on an edited artifact keeps the AI source versions',editedDecision.origin==='ai_edited'&&editedDecision.skillVersion==='practice-v9'&&editedDecision.promptVersion==='practice-v9:ai2hash');
 const rates=plain(await store.firstPassApprovalRates(O));
 const cmoRate=rates.find(x=>x.role==='cmo'&&x.skillVersion==='practice-v9'),dataRate=rates.find(x=>x.role==='data'&&x.skillVersion==='practice-v9');
-check('first-pass approval rate is grouped by role and skill version',cmoRate?.artifacts===2&&cmoRate.approvedFirst===1&&cmoRate.rate===0.5&&dataRate?.rate===1);
+check('first-pass approval rate is grouped by role and skill version',cmoRate?.artifacts===2&&cmoRate.approvedFirst===1&&cmoRate.editedFirst===0&&cmoRate.rate===0.5&&dataRate?.rate===1);
+check('manual artifacts are left out of the first-pass rate',rates.every(x=>x.skillVersion!==null||x.role!=='cmo')&&JSON.stringify(plain(pure.firstPassApproval([{targetKind:'artifact',targetId:'m',origin:'manual',decision:'approved',role:'cmo',skillVersion:null}])))==='[]');
 check('the pure aggregation agrees with the stored one',JSON.stringify(plain(pure.firstPassApproval(decisions())))===JSON.stringify(rates));
 check('the panel shows the readable origin label',(()=>{const panels=readFileSync('app/panels.tsx','utf8');return (panels.match(/originLabel\(a\.origin\)/g)||[]).length>=2&&!panels.includes("a.origin==='ai'?'AI 작성':'직접 등록'")})());
 
@@ -134,6 +137,38 @@ check('the panel shows the readable origin label',(()=>{const panels=readFileSyn
 const pair=plain(await store.preferencePair(O,'ai2'));
 check('preference pair joins the AI original, the human final and the decisions',pair.ai.version===1&&pair.ai.content.includes('인스타그램 게시')&&!pair.ai.content.includes('당근')&&pair.human.version===3&&pair.human.status==='approved'&&pair.human.content.includes('주말')&&pair.decisions.length===2);
 check('a manual artifact has no preference pair',(await store.preferencePair(O,'art2'))===null);
+
+// 7-1) 사람이 먼저 고친 뒤 받은 첫 승인은 1차 승인이 아니다(AI 원본 그대로의 승인만 센다)
+await put('campaign','c3',{id:'c3',brandId:'oda',title:'편집 후 승인',goal:'평일 방문',version:1,status:'review'});
+await put('artifact','x1',artifact('x1',{campaignId:'c3',origin:'ai',skillVersion:'sv-edit',content:'## 목표\n평일 방문 초안\n## 채널\n인스타그램 게시'}),'c3');
+r=await call(action,MEMBER,{action:'save_artifact',id:'x1',version:1,campaignId:'c3',role:'cmo',title:'전략 x1',content:'## 목표\n주말 방문\n## 채널\n당근 소식'});
+r=await call(action,ADMIN,{action:'review_artifact',id:'x1',version:2,decision:'approved'});
+const x1Decision=decisions().at(-1),x1Rate=plain(await store.firstPassApprovalRates(O)).find(x=>x.skillVersion==='sv-edit');
+check('an approval given after a human edit is recorded as ai_edited on the edited version',r.status===200&&x1Decision.origin==='ai_edited'&&x1Decision.version===2&&x1Decision.skillVersion==='sv-edit');
+check('edit first then approve is not a first-pass approval',x1Rate?.artifacts===1&&x1Rate.approvedFirst===0&&x1Rate.editedFirst===1&&x1Rate.rate===0);
+
+// 7-2) B1 이전 사람 수정본(origin ai·v2 이상·meetingId 없음)은 AI 원본으로 보지 않는다
+await put('campaign','c4',{id:'c4',brandId:'oda',title:'과거 수정본',goal:'평일 방문',version:1,status:'review'});
+const aiOriginal=artifact('old1',{campaignId:'c4',origin:'ai',skillVersion:'v8',outputContractVersion:'role-output-v1',content:'## 목표\nAI가 쓴 원문'});
+await put('history','h-old1',{...aiOriginal,id:'h-old1',originalId:'old1',status:'review'},'c4');
+await put('artifact','old1',artifact('old1',{campaignId:'c4',origin:'ai',version:2,content:'## 목표\n사람이 B1 이전에 고친 문장'}),'c4');
+await put('artifact','old2',artifact('old2',{campaignId:'c4',role:'data',origin:'ai',version:3,content:'## 목표\n이력 없는 과거 수정본'}),'c4');
+await put('artifact','meet1',artifact('meet1',{campaignId:'c4',role:'data',origin:'ai',version:2,meetingId:'m1',skillVersion:'mv1',content:'## 목표\n회의 개선본'}),'c4');
+const legacyPair=plain(await store.preferencePair(O,'old1'));
+check('a legacy human edit pairs the earlier AI version, not itself',legacyPair.ai.version===1&&legacyPair.ai.skillVersion==='v8'&&legacyPair.ai.content.includes('AI가 쓴 원문')&&legacyPair.human.version===2&&legacyPair.human.origin==='ai_edited'&&legacyPair.human.content.includes('B1 이전')&&legacyPair.ai.content!==legacyPair.human.content);
+check('a legacy human edit without an AI history has no AI side',plain(await store.preferencePair(O,'old2')).ai===null);
+const meetingPair=plain(await store.preferencePair(O,'meet1'));
+check('a meeting version stays an AI original',meetingPair.ai.version===2&&meetingPair.ai.skillVersion==='mv1'&&meetingPair.human===null);
+await call(action,ADMIN,{action:'review_artifact',id:'meet1',version:2,decision:'approved'});
+check('a decision on a meeting version keeps origin ai',decisions().at(-1).origin==='ai'&&decisions().at(-1).skillVersion==='mv1');
+await call(action,ADMIN,{action:'review_artifact',id:'old2',version:3,decision:'approved'});
+check('a decision on a legacy edit without history is ai_edited with no skill version',decisions().at(-1).origin==='ai_edited'&&decisions().at(-1).skillVersion===null);
+await call(action,ADMIN,{action:'review_artifact',id:'old1',version:2,decision:'revision',note:'다시'});
+check('a decision on a legacy edit is ai_edited with the AI source versions',decisions().at(-1).origin==='ai_edited'&&decisions().at(-1).skillVersion==='v8'&&decisions().at(-1).outputContractVersion==='role-output-v1');
+r=await call(action,ADMIN,{action:'save_artifact',id:'old1',version:2,campaignId:'c4',role:'cmo',title:'전략 old1',content:'## 목표\nAI가 쓴 원문\n## 채널\n추가'});
+const relabeled=await server.readRecord(O,'artifact','old1');
+check('editing a legacy edit measures against the earlier AI version',r.status===200&&relabeled.origin==='ai_edited'&&relabeled.aiSourceId==='old1:1'&&relabeled.aiSource.skillVersion==='v8'&&JSON.stringify(relabeled.editStats.changedSections)==='["채널"]');
+check('legacy edits are not first-pass approvals either',plain(await store.firstPassApprovalRates(O)).every(x=>x.skillVersion!=='v8'||x.approvedFirst===0));
 
 // 8) E: 브리프 저장 때 AI 제안 필드마다 채택·수정·미사용 기록(기존 저장 동작 불변)
 const plan={behavior:'',kpi:'',baseline:'',target:'',barrier:'',message:'',journey:'',deliverables:'',hypothesis:'',experiment:'',tracking:'',decision:'',operations:'',owner:'',schedule:'',budgetPlan:'',learning:''};
@@ -177,6 +212,24 @@ const cancelled=decisions().at(-1);
 check('publication cancel records the reason',r.status===200&&r.data.status==='cancelled'&&cancelled.targetKind==='publication'&&cancelled.targetId==='p1'&&cancelled.decision==='cancelled'&&cancelled.reasonCodes[0]==='compliance'&&cancelled.campaignId==='c2'&&cancelled.actor.id==='admin');
 r=await call(execution,ADMIN,{action:'cancel',campaignId:'c2',id:'p2',version:1});
 check('publication cancel without a reason works as before',r.status===200&&r.data.status==='cancelled'&&decisions().at(-1).targetId==='p2');
+// 판정 쓰기가 실패하면 발행 상태·이벤트도 바뀌지 않는다(한 묶음). 같은 버전으로 다시 시도하면 둘 다 쓴다
+await put('execution_publication','p3',publication('p3'),'c2');
+await put('execution_publication','p4',{...publication('p4'),status:'approved'},'c2');
+failWrite=statement=>{if(statement.query.startsWith('INSERT INTO records')&&statement.values[2]==='review_decision')throw new Error('판정 쓰기 실패(모의)')};
+let d=decisions().length;events=count('event');
+r=await call(execution,ADMIN,{action:'cancel',campaignId:'c2',id:'p3',version:1});
+let p3=await server.readRecord(O,'execution_publication','p3');
+check('a failed decision write rolls back the cancel',r.status===500&&p3.status==='draft'&&p3.version===1&&decisions().length===d);
+r=await call(execution,ADMIN,{action:'reconfirm',campaignId:'c2',id:'p4',version:1});
+let p4=await server.readRecord(O,'execution_publication','p4');
+check('a failed decision write rolls back the reconfirm and its event',r.status===500&&p4.status==='approved'&&p4.version===1&&decisions().length===d&&count('event')===events);
+failWrite=null;
+r=await call(execution,ADMIN,{action:'cancel',campaignId:'c2',id:'p3',version:1});
+p3=await server.readRecord(O,'execution_publication','p3');
+check('retrying the cancel with the same version records both',r.status===200&&p3.status==='cancelled'&&p3.version===2&&decisions().length===d+1&&decisions().at(-1).targetId==='p3'&&decisions().at(-1).decision==='cancelled');
+r=await call(execution,ADMIN,{action:'reconfirm',campaignId:'c2',id:'p4',version:1,reasonCodes:['voice']});
+p4=await server.readRecord(O,'execution_publication','p4');
+check('retrying the reconfirm with the same version records both',r.status===200&&p4.status==='draft'&&p4.version===2&&decisions().length===d+2&&decisions().at(-1).decision==='returned'&&decisions().at(-1).reasonCodes[0]==='voice'&&count('event')===events+1);
 
 // 10) I: records kind 정책. 평가 자료라 eval_case처럼 캠페인을 지워도 남기고, 삭제 영향 조회에는 보존 건수로 잡는다
 const kind=plain(registry.recordKinds).find(x=>x.kind==='review_decision');
@@ -185,6 +238,8 @@ const kept=decisions().filter(d=>d.campaignId==='c1').length,preview=plain(await
 check('the deletion preview counts decisions as retained',kept>0&&preview.retained.review_decision===kept&&!preview.deleted.review_decision);
 r=await call(action,ADMIN,{action:'delete_campaign',id:'c1',version:1,confirmed:true});
 check('deleting a campaign keeps its decisions and the source decisions',r.status===200&&decisions().filter(d=>d.campaignId==='c1').length===kept&&decisions().filter(d=>d.targetKind==='source').length===3);
+check('the retained decisions hold no review note text or reviewer email',rows().every(x=>!x.data.includes('가격 표기')&&!x.data.includes('근거를 보강해 주세요')&&!x.data.includes('@test.invalid')));
+check('the deletion dialog names the retained decision log',deletionSummary({...preview,retained:{review_decision:kept}}).retained===`보존: 사람 판정 로그 ${kept}건(사유 코드·판정만, 검토 메모 원문 없음)`);
 
 // 11) 화면 연결과 문서
 const panels=readFileSync('app/panels.tsx','utf8'),archiveUi=readFileSync('app/brand-archive.tsx','utf8'),publishUi=readFileSync('app/execution-panel.tsx','utf8'),briefUi=readFileSync('app/campaign-brief.tsx','utf8');
