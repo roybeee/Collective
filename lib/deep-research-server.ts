@@ -1,9 +1,9 @@
 import {ApiError,str,stamp,type Connection} from './server';
 import {hermesRequest} from './hermes';
 import {archiveUrl,observed} from './archive-server';
-import {parseDiagnostic,parseResearchSources} from './archive-research';
-import {archiveCategories,type ArchiveSource,type BrandResearch} from './archive';
-import {comparisonGroups,researchPhases,type DeepReport,type ContentCase} from './deep-research';
+import {parseDiagnostic,parseOpportunity,parseResearchSources,researchObject} from './archive-research';
+import {archiveCategories,salvageSections,type ArchiveSource,type BrandResearch,type ResearchSalvage,type SalvageDrop} from './archive';
+import {comparisonGroups,researchPhases,type DeepReport,type ContentCase,type ResearchPlan} from './deep-research';
 import {obj,boundedArray} from './validate';
 import {toolsetRisk,type RiskedResearchAccess} from './research-tools';
 // 도구 위험 등급(security-ops-1)은 lib/research-tools.ts, 조사 시작 때의 점검·RESEARCH_TOOL_POLICY는 lib/research-tool-check.ts에 둔다.
@@ -33,17 +33,48 @@ const arr=(v:unknown,label:string,max:number)=>boundedArray(v,max,label+' 형식
 const text=(v:unknown,label='조사 내용',max=1000)=>str(v,label,max,true);
 const choice=<T extends string>(v:unknown,allowed:readonly T[],label:string):T=>{if(!(allowed as readonly unknown[]).includes(v))throw new ApiError(422,label+' 값이 올바르지 않습니다.');return v as T};
 const number=(v:unknown,label:string,nullable=true)=>{if(v===null&&nullable)return null;if(typeof v!=='number'||!Number.isFinite(v)||v<0||v>1e12)throw new ApiError(422,label+' 수치를 확인하세요.');return v as number};
-export function parseDeepReport(x:Record<string,unknown>,r:BrandResearch,existing:ArchiveSource[]){
- if(!r.plan)throw new ApiError(422,'저장된 조사 계획이 없습니다.');if(new TextEncoder().encode(JSON.stringify(x)).length>700000)throw new ApiError(422,'조사 응답이 저장 한도를 초과했습니다.');
- const refs=new Map(existing.filter(s=>s.status!=='excluded').map(s=>[s.id,s.id]));const urls=new Set<string>();
- const sources=arr(x.sources,'조사 출처',40).map(obj).map((s,i)=>{const id=text(s.id,'자료 번호',80);if(!/^[a-zA-Z0-9_-]+$/.test(id)||refs.has(id))throw new ApiError(422,'중복되거나 잘못된 출처 번호입니다.');const url=archiveUrl(s.url,true);if(urls.has(url))throw new ApiError(422,'같은 출처 URL이 중복됐습니다.');urls.add(url);text(s.content,'자료 요약',2000);text(s.scope,'확인 범위',1000);const parsed=parseResearchSources([s],r.brandId,r.id,r.id+'-e'+i,stamp())[0];refs.set(id,parsed.id);return parsed;});
- const reference=(id:unknown)=>{if(typeof id!=='string'||!refs.has(id))throw new ApiError(422,'실제 조사 자료와 일치하지 않는 근거입니다.');return refs.get(id)!};
+// A7 부분 구제. 목록 원소 하나의 형식·범위·참조 오류는 그 원소만 빼고 사유를 salvage에 남긴다. 뺀 출처를 가리키던 원소도 함께 빠진다. 살아남은 신규 출처는 그대로 candidate다(사람 확인 게이트 불변).
+// 최대 개수를 넘은 뒤쪽 원소도 항목 단위로 뺀다. 뼈대 오류(배열이 아니거나 최대 개수의 두 배를 넘는 목록, 여섯 단계 기록, 크기 한도, 진단 필수 필드, 진단 근거가 모두 빠짐, JSON 아님)는 DeepReportShapeError(422)로 구분한다.
+// 서로 독립인 뼈대 오류는 모두 errors에 모은다(수리 입력용). 사용자에게 보이는 message는 첫 오류다. 수리 턴은 이 오류만 고칠 대상으로 본다.
+// 저장된 조사 계획이 없는 것은 응답을 고쳐도 풀리지 않으므로 일반 ApiError(422)로 남긴다.
+export class DeepReportShapeError extends ApiError{errors:string[];constructor(message:string,errors:string[]=[message]){super(422,message);this.errors=errors}}
+const gone='근거 출처가 빠져 함께 뺐습니다.',conflict='출처 번호가 겹쳐 근거를 가릴 수 없어 뺐습니다.',sectionOrder=Object.keys(salvageSections);
+// 수리 응답 대조용(A7). 원래 응답에 나온 공개 웹 주소를 정규화해 모은다. JSON이면 문자열 값만 훑고(이스케이프 해제), 아니면 원문에서 찾는다.
+export function responseUrls(raw:string){
+ let text=raw.replace(/\\\//g,'/');try{const texts:string[]=[],walk=(v:unknown):void=>{if(typeof v==='string')texts.push(v);else if(v&&typeof v==='object')Object.values(v).forEach(walk)};walk(researchObject(raw));text=texts.join('\n')}catch{}
+ return new Set((text.match(/https?:\/\/[^\s"'<>`\\]+/gi)||[]).flatMap(u=>[u,u.replace(/[)\].,;:!?]+$/,'')]).flatMap(u=>{try{return [archiveUrl(u,true)]}catch{return []}}));
+}
+// originalUrls: 수리 응답일 때 원래 응답의 URL 집합. 여기에 없는 신규 출처는 지어낸 출처로 보고 뺀다(새 출처 금지를 서버에서 확인).
+export function parseDeepText(raw:string,r:BrandResearch,existing:ArchiveSource[],originalUrls?:Set<string>){let x:Record<string,unknown>;try{x=researchObject(raw)}catch(e){throw e instanceof ApiError?new DeepReportShapeError(e.message):e}return parseDeepReport(x,r,existing,originalUrls)}
+export function parseDeepReport(x:Record<string,unknown>,r:BrandResearch,existing:ArchiveSource[],originalUrls?:Set<string>){
+ if(!r.plan)throw new ApiError(422,'저장된 조사 계획이 없습니다.');
+ try{return deepReport(x,r,r.plan,existing,originalUrls)}catch(e){throw e instanceof ApiError&&!(e instanceof DeepReportShapeError)?new DeepReportShapeError(e.message):e}
+}
+function deepReport(x:Record<string,unknown>,r:BrandResearch,plan:ResearchPlan,existing:ArchiveSource[],originalUrls?:Set<string>){
+ if(new TextEncoder().encode(JSON.stringify(x)).length>700000)throw new ApiError(422,'조사 응답이 저장 한도를 초과했습니다.');
+ const dropped:SalvageDrop[]=[],removed=new Set<string>(),skeleton:string[]=[];
+ // 사유는 ApiError의 사용자용 문구만 쓴다. 원소 원문은 남기지 않고, 식별자는 짧은 영숫자일 때만 남긴다.
+ const drop=(section:string,index:number,reason:string,id?:unknown)=>{dropped.push({section,index,...(typeof id==='string'&&/^[\w-]{1,80}$/.test(id)?{id}:{}),reason})};
+ const keep=<T,>(section:string,list:unknown[],read:(v:Record<string,unknown>,raw:unknown,i:number)=>T,named=false)=>list.flatMap((raw,i)=>{try{return [read(obj(raw),raw,i)]}catch(e){if(!(e instanceof ApiError))throw e;drop(section,i,e.message,named?obj(raw).id:undefined);return []}});
+ // 뼈대 검사는 실패해도 대체값으로 이어 가며 문구를 모은다. 끝에서 하나라도 있으면 첫 문구로 DeepReportShapeError를 던진다.
+ const need=<T,>(fallback:T,run:()=>T):T=>{try{return run()}catch(e){if(!(e instanceof ApiError))throw e;skeleton.push(e.message);return fallback}};
+ // 목록: 배열이 아니거나 최대 개수의 두 배를 넘으면 뼈대 오류(크기 한도)이고 null을 돌려준다. 최대 개수를 넘은 뒤쪽 원소는 항목 단위로 뺀다.
+ const list=(section:string,v:unknown,label:string,max:number,named=false)=>need<unknown[]|null>(null,()=>{const all=arr(v,label,max*2);all.slice(max).forEach((raw,j)=>drop(section,max+j,`최대 ${max}개를 넘어 뺐습니다.`,named?obj(raw).id:undefined));return all.slice(0,max)});
+ const refs=new Map(existing.filter(s=>s.status!=='excluded').map(s=>[s.id,s.id]));const urls=new Set<string>(),given=Array.isArray(x.sources)?x.sources:[],rawSources=list('sources',x.sources,'조사 출처',40,true);
+ // 같은 번호를 다른 URL에 쓴 출처(신규끼리, 또는 신규와 입력 자료)는 어느 쪽 근거인지 가릴 수 없다. 그 번호의 신규 출처와 인용을 모두 뺀다. URL까지 같은 재선언은 뒤쪽 출처만 뺀다.
+ const conflicted=new Set<string>(),seen=new Map<string,string>(existing.filter(s=>s.status!=='excluded').map(s=>[s.id,s.url||'']));
+ for(const v of given){const {id,url}=obj(v);if(typeof id!=='string')continue;let u='';try{u=archiveUrl(url,true)}catch{}if(!seen.has(id))seen.set(id,u);else if(!u||seen.get(id)!==u)conflicted.add(id)}
+ const found=keep('sources',rawSources??[],(s,_,i)=>{const id=text(s.id,'자료 번호',80);if(conflicted.has(id))throw new ApiError(422,conflict);if(!/^[a-zA-Z0-9_-]+$/.test(id)||refs.has(id))throw new ApiError(422,'중복되거나 잘못된 출처 번호입니다.');const url=archiveUrl(s.url,true);if(originalUrls&&!originalUrls.has(url))throw new ApiError(422,'수리 응답에 원래 없던 출처라 뺐습니다.');if(urls.has(url))throw new ApiError(422,'같은 출처 URL이 중복됐습니다.');text(s.content,'자료 요약',2000);text(s.scope,'확인 범위',1000);const parsed=parseResearchSources([s],r.brandId,r.id,r.id+'-e'+i,stamp())[0];urls.add(url);refs.set(id,parsed.id);return {index:i,key:id,parsed}},true);
+ // 뺀 신규 출처의 번호를 기억해 두면, 그 번호를 가리키는 원소는 '없는 근거'가 아니라 연쇄 제거로 사유가 남는다.
+ given.forEach((v,i)=>{const id=obj(v).id;if(typeof id==='string'&&!found.some(f=>f.index===i)&&!refs.has(id))removed.add(id)});
+ const reference=(id:unknown)=>{if(typeof id==='string'&&conflicted.has(id))throw new ApiError(422,conflict);if(typeof id==='string'&&refs.has(id))return refs.get(id)!;throw new ApiError(422,typeof id==='string'&&removed.has(id)?gone:'실제 조사 자료와 일치하지 않는 근거입니다.')};
  const references=(ids:unknown)=>[...new Set<string>(arr(ids,'근거 목록',40).map(reference))];
- const phases=arr(x.phases,'조사 단계',6).map(obj).map((p,i)=>{if(p.phase!==researchPhases[i])throw new ApiError(422,'조사 단계 기록이 누락되거나 순서가 다릅니다.');return {phase:p.phase,summary:text(p.summary,'단계 요약',1500)}});if(phases.length!==6)throw new ApiError(422,'여섯 조사 단계의 기록이 필요합니다.');
- const access=arr(x.access,'접근 기록',70).map(obj).map(a=>({sourceId:reference(a.sourceId),method:choice(a.method,['browser','api','upload','search_snippet'] as const,'접근 방식'),tool:text(a.tool,'사용 도구',200),scope:text(a.scope,'접근 범위')}));
- if(new Set(access.map(a=>a.sourceId)).size!==access.length||sources.some(s=>!access.some(a=>a.sourceId===s.id)))throw new ApiError(422,'신규 출처별 실제 접근 방식이 필요합니다.');
+ const phases=need([] as DeepReport['phases'],()=>{const rows=arr(x.phases,'조사 단계',6).map(obj).map((p,i)=>{if(p.phase!==researchPhases[i])throw new ApiError(422,'조사 단계 기록이 누락되거나 순서가 다릅니다.');return {phase:p.phase,summary:text(p.summary,'단계 요약',1500)}});if(rows.length!==6)throw new ApiError(422,'여섯 조사 단계의 기록이 필요합니다.');return rows});
+ const accessed=new Set<string>(),rawAccess=list('access',x.access,'접근 기록',70);
+ const access=keep('access',rawAccess??[],a=>{const row={sourceId:reference(a.sourceId),method:choice(a.method,['browser','api','upload','search_snippet'] as const,'접근 방식'),tool:text(a.tool,'사용 도구',200),scope:text(a.scope,'접근 범위')};if(accessed.has(row.sourceId))throw new ApiError(422,'같은 출처의 접근 기록이 중복됐습니다.');accessed.add(row.sourceId);return row});
+ const sources=found.filter(f=>{if(accessed.has(f.parsed.id))return true;refs.delete(f.key);removed.add(f.key);drop('sources',f.index,'접근 기록이 없는 출처입니다.',f.key);return false}).map(f=>f.parsed);
  const ids=new Set<string>(),caseSources=new Set<string>();
- const cases:ContentCase[]=arr(x.cases,'콘텐츠 표본',30).map(obj).map(c=>{const id=text(c.id,'콘텐츠 번호',80),sourceId=reference(c.sourceId);if(ids.has(id)||caseSources.has(sourceId))throw new ApiError(422,'콘텐츠 표본이 중복됐습니다.');ids.add(id);caseSources.add(sourceId);
+ const cases:ContentCase[]=keep('cases',list('cases',x.cases,'콘텐츠 표본',30,true)??[],c=>{const id=text(c.id,'콘텐츠 번호',80),sourceId=reference(c.sourceId);if(ids.has(id)||caseSources.has(sourceId))throw new ApiError(422,'콘텐츠 표본이 중복됐습니다.');
   const publishedAt=observed(c.publishedAt),observedAt=observed(c.observedAt);if(publishedAt>observedAt)throw new ApiError(422,'게시 시점이 관찰 시점보다 늦습니다.');
   const format=choice(c.format,['video','image','carousel','text'] as const,'콘텐츠 형식'),viewing=choice(c.viewing,['not_viewed','partial','full'] as const,'시청 범위'),durationSeconds=number(c.durationSeconds,'영상 길이');
   const viewedRanges=arr(c.viewedRanges,'시청 구간',10).map(obj).map(v=>{const start=number(v.start,'시작 초',false)!,end=number(v.end,'종료 초',false)!;if(end<=start||durationSeconds===null||end>durationSeconds)throw new ApiError(422,'시청 구간을 확인하세요.');return {start,end}}).sort((a,b)=>a.start-b.start);
@@ -52,18 +83,25 @@ export function parseDeepReport(x:Record<string,unknown>,r:BrandResearch,existin
   const timeline=arr(c.timeline,'장면 분석',8).map(obj).map(t=>{const second=number(t.second,'장면 시점',false)!;if(!viewedRanges.some(v=>v.start<=second&&second<=v.end))throw new ApiError(422,'보지 않은 영상 구간을 분석할 수 없습니다.');return {second,observation:text(t.observation,'장면 관찰',500)}});
   if(viewing!=='not_viewed'&&!timeline.length)throw new ApiError(422,'시청한 영상의 장면 관찰이 필요합니다.');if(access.find(a=>a.sourceId===sourceId)?.method==='search_snippet'&&viewing!=='not_viewed')throw new ApiError(422,'검색 요약을 영상 시청으로 기록할 수 없습니다.');
   const counts=Object.fromEntries(['views','likes','comments','shares'].map(k=>{const n=number(c[k],k);if(n!==null&&!Number.isInteger(n))throw new ApiError(422,'관찰 횟수는 정수여야 합니다.');return [k,n]})) as Pick<ContentCase,'views'|'likes'|'comments'|'shares'>;
-  return {id,sourceId,account:text(c.account,'계정',200),channel:text(c.channel,'채널',80),relationship:choice(c.relationship,['own','competitor'] as const,'계정 구분'),format,publishedAt,observedAt,distribution:choice(c.distribution,['organic','paid','unknown'] as const,'광고 여부'),...counts,durationSeconds,viewing,viewedRanges,timeline,...Object.fromEntries(['hook','message','proof','cta','friction','hypothesis','alternative'].map(k=>[k,text(c[k],k,500)]))} as ContentCase;
- });
- const customerSignals=arr(x.customerSignals,'고객 관찰',20).map(obj).map(s=>({sourceId:reference(s.sourceId),kind:choice(s.kind,['motivation','barrier','complaint','question'] as const,'고객 관찰 유형'),observation:text(s.observation),implication:text(s.implication)}));
- const competitors=arr(x.competitors,'경쟁·대안',5).map(obj).map(c=>({name:text(c.name,'경쟁사',100),sourceIds:references(c.sourceIds),difference:text(c.difference)}));if(competitors.some(c=>!c.sourceIds.length)||new Set(competitors.map(c=>c.name.trim().toLowerCase())).size!==competitors.length)throw new ApiError(422,'경쟁사 근거가 없거나 중복됐습니다.');
- const rv=obj(x.review),review={claims:arr(rv.claims,'핵심 주장 검토',8).map(obj).map(c=>({claim:text(c.claim),sourceIds:references(c.sourceIds),counterEvidence:text(c.counterEvidence),nextCheck:text(c.nextCheck)})),followups:arr(rv.followups,'보완 조사',r.plan.maxFollowups).map(obj).map(f=>({question:text(f.question),finding:text(f.finding),sourceIds:references(f.sourceIds)})),unresolved:arr(rv.unresolved,'미해결 질문',12).map(v=>text(v))};
- // 알려진 결함, 수정 예정(security-ops-11, PR 4): 실험 과제 null 원소는 422가 아니라 TypeError로 실패한다. PR 0은 동작을 바꾸지 않아 obj로 좁히지 않는다(tests/validate.test.mjs).
- const all=[...existing,...sources],dg=obj(x.diagnosis);const diagnosis=parseDiagnostic({...dg,sourceIds:references(dg.sourceIds),opportunities:(arr(dg.opportunities,'실험 과제',3) as Record<string,unknown>[]).map(o=>({...o,sourceIds:references(o.sourceIds)}))},all);
+  const row={id,sourceId,account:text(c.account,'계정',200),channel:text(c.channel,'채널',80),relationship:choice(c.relationship,['own','competitor'] as const,'계정 구분'),format,publishedAt,observedAt,distribution:choice(c.distribution,['organic','paid','unknown'] as const,'광고 여부'),...counts,durationSeconds,viewing,viewedRanges,timeline,...Object.fromEntries(['hook','message','proof','cta','friction','hypothesis','alternative'].map(k=>[k,text(c[k],k,500)]))} as ContentCase;ids.add(id);caseSources.add(sourceId);return row;
+ },true);
+ const customerSignals=keep('customerSignals',list('customerSignals',x.customerSignals,'고객 관찰',20)??[],s=>({sourceId:reference(s.sourceId),kind:choice(s.kind,['motivation','barrier','complaint','question'] as const,'고객 관찰 유형'),observation:text(s.observation),implication:text(s.implication)}));
+ const names=new Set<string>();
+ const competitors=keep('competitors',list('competitors',x.competitors,'경쟁·대안',5)??[],c=>{const row={name:text(c.name,'경쟁사',100),sourceIds:references(c.sourceIds),difference:text(c.difference)},key=row.name.trim().toLowerCase();if(!row.sourceIds.length||names.has(key))throw new ApiError(422,'경쟁사 근거가 없거나 중복됐습니다.');names.add(key);return row});
+ const rv=obj(x.review),review={claims:keep('review.claims',list('review.claims',rv.claims,'핵심 주장 검토',8)??[],c=>({claim:text(c.claim),sourceIds:references(c.sourceIds),counterEvidence:text(c.counterEvidence),nextCheck:text(c.nextCheck)})),followups:keep('review.followups',list('review.followups',rv.followups,'보완 조사',plan.maxFollowups)??[],f=>({question:text(f.question),finding:text(f.finding),sourceIds:references(f.sourceIds)})),unresolved:keep('review.unresolved',list('review.unresolved',rv.unresolved,'미해결 질문',12)??[],(_,v)=>text(v))};
+ // 진단 근거는 뼈대다. 뺀 출처만 걸러내고, 처음에 있던 근거가 모두 빠지면 뼈대 오류다. 출처·접근 기록 목록 자체가 깨졌으면 그 여파라 근거 검사를 건너뛴다(오류를 두 번 세지 않는다).
+ // 실험 과제·확인 질문은 원소 단위로 구제한다(security-ops-11 잔여: null 원소도 422 사유로 빠진다).
+ const all=[...existing,...sources],dg=obj(x.diagnosis),cited=list('diagnosis.sourceIds',dg.sourceIds,'근거 목록',40);
+ const sourceIds=cited&&rawSources&&rawAccess?need([] as string[],()=>{const kept=[...new Set<string>(cited.flatMap((id,i)=>{if(typeof id==='string'&&(conflicted.has(id)||!refs.has(id)&&removed.has(id))){drop('diagnosis.sourceIds',i,conflicted.has(id)?conflict:gone,id);return []}return [reference(id)]}))];if(cited.length&&!kept.length)throw new ApiError(422,'진단이 참조하는 출처가 모두 빠졌습니다.');return kept}):[];
+ const opportunities=keep('diagnosis.opportunities',list('diagnosis.opportunities',dg.opportunities,'실험 과제',3)??[],o=>{const next={...o,sourceIds:references(o.sourceIds)};parseOpportunity(next,all,sourceIds);return next});
+ const questions=keep('diagnosis.questions',list('diagnosis.questions',dg.questions,'진단 과제와 질문',12)??[],(_,v)=>{str(v,'확인 질문',1000,true);return v});
+ const diagnosis=need(null,()=>parseDiagnostic({...dg,sourceIds,opportunities,questions},all));
+ if(skeleton.length||!diagnosis)throw new DeepReportShapeError(skeleton[0],[...new Set(skeleton)]);
  const used=new Set([...diagnosis.sourceIds,...cases.map(c=>c.sourceId),...customerSignals.map(s=>s.sourceId),...competitors.flatMap(c=>c.sourceIds),...review.claims.flatMap(c=>c.sourceIds),...review.followups.flatMap(f=>f.sourceIds)]);
  const coverage=['brand','product','customer','market','channel','operations'].map(category=>({category,count:all.filter(s=>used.has(s.id)&&s.category===category&&s.status!=='excluded'&&access.find(a=>a.sourceId===s.id)?.method!=='search_snippet').length}));
- const groups=comparisonGroups(cases),issues:string[]=[];const own=cases.filter(c=>c.relationship==='own'&&Date.parse(c.publishedAt)>=Date.parse(r.createdAt)-r.plan!.lookbackDays*86400000),viewedCases=cases.filter(c=>c.viewing!=='not_viewed').length;
- if(own.length<r.plan.targetCases)issues.push(`자사 콘텐츠 표본 ${own.length}/${r.plan.targetCases}개 · 부족한 이유와 추가 자료 필요`);
- if(competitors.length<r.plan.targetCompetitors)issues.push(`경쟁·대안 ${competitors.length}/${r.plan.targetCompetitors}개`);
+ const groups=comparisonGroups(cases),issues:string[]=[];const own=cases.filter(c=>c.relationship==='own'&&Date.parse(c.publishedAt)>=Date.parse(r.createdAt)-plan.lookbackDays*86400000),viewedCases=cases.filter(c=>c.viewing!=='not_viewed').length;
+ if(own.length<plan.targetCases)issues.push(`자사 콘텐츠 표본 ${own.length}/${plan.targetCases}개 · 부족한 이유와 추가 자료 필요`);
+ if(competitors.length<plan.targetCompetitors)issues.push(`경쟁·대안 ${competitors.length}/${plan.targetCompetitors}개`);
  if(!groups.length)issues.push('광고 여부·계정·형식·게시 경과를 맞춘 비교 표본이 부족합니다. 성과 원인을 단정하지 마세요.');
  if(cases.some(c=>c.format==='video'&&c.viewing==='not_viewed'))issues.push('실제로 시청하지 못한 영상이 있습니다. 영상 내용에 관한 판단을 보류하세요.');
  if(!access.some(a=>a.method==='browser'))issues.push('실제 브라우징 접근 기록이 없습니다. Aside 또는 사용 가능한 브라우저 연결을 확인하세요.');
@@ -73,6 +111,9 @@ export function parseDeepReport(x:Record<string,unknown>,r:BrandResearch,existin
  if(review.followups.some(f=>!f.sourceIds.length))issues.push('보완 조사의 근거가 누락됐습니다.');
  if(review.unresolved.length)issues.push(...review.unresolved);
  if(!diagnosis.sourceIds.length||!diagnosis.opportunities.length)issues.push('출처에 연결된 진단과 검증 실험이 필요합니다.');
- const report:DeepReport={plan:r.plan,phases,cases,customerSignals,competitors,review,access,quality:{status:issues.length?'needs_data':'review_ready',issues:[...new Set(issues)],coverage,comparableGroups:groups.length,viewedCases},completedAt:stamp()};
- return {sources,report,diagnosis:{...diagnosis,researchQuality:report.quality}};
+ // 출처나 진단 근거를 뺐으면 진단 문장이 그 근거에 기댔을 수 있다. 사람이 원문과 대조하기 전까지 검토 가능으로 올리지 않는다.
+ if(dropped.some(d=>d.section==='sources'||d.section.startsWith('diagnosis.')))issues.push(`형식·근거 검증에서 뺀 항목 ${dropped.length}개가 있습니다. 진단 문장이 뺀 근거에 기대지 않는지 원문과 대조하세요.`);
+ const report:DeepReport={plan,phases,cases,customerSignals,competitors,review,access,quality:{status:issues.length?'needs_data':'review_ready',issues:[...new Set(issues)],coverage,comparableGroups:groups.length,viewedCases},completedAt:stamp()};
+ const salvage:ResearchSalvage={dropped:[...dropped].sort((a,b)=>sectionOrder.indexOf(a.section)-sectionOrder.indexOf(b.section)||a.index-b.index),kept:{sources:sources.length,access:access.length,cases:cases.length,customerSignals:customerSignals.length,competitors:competitors.length,'review.claims':review.claims.length,'review.followups':review.followups.length,'review.unresolved':review.unresolved.length,'diagnosis.sourceIds':diagnosis.sourceIds.length,'diagnosis.opportunities':diagnosis.opportunities.length,'diagnosis.questions':diagnosis.questions.length}};
+ return {sources,report,diagnosis:{...diagnosis,researchQuality:report.quality},salvage};
 }

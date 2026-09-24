@@ -3,8 +3,8 @@ import {useState} from 'react';
 import {Button} from '@/components/ui/button';
 import {ExternalLink,RefreshCw,Search,TriangleAlert} from 'lucide-react';
 import type {Brand} from '@/lib/agency';
-import type {ArchiveSourceSummary,PublicResearch} from '@/lib/archive';
-import {archiveCategories} from '@/lib/archive';
+import type {ArchiveSourceSummary,PublicResearch,ResearchSalvage} from '@/lib/archive';
+import {archiveCategories,salvageSections} from '@/lib/archive';
 import {comparisonGroups,defaultResearchPlan,researchPhases} from '@/lib/deep-research';
 import {toolRiskView,type RiskedResearchAccess} from '@/lib/research-tools';
 export function DeepResearchPanel({brand,research,sources,busy,onFollowup}:{brand:Brand;research?:PublicResearch;sources:ArchiveSourceSummary[];busy:boolean;onFollowup:(id:string)=>void}){
@@ -22,6 +22,7 @@ export function DeepResearchPanel({brand,research,sources,busy,onFollowup}:{bran
  {report&&<><p className="notice">최근 조사에서 보고된 브라우징 {browserRecords.length}건 · Aside 사용 {asideRecords.length}건. {browserRecords.length?'아래 접근 기록에서 사용 도구와 출처를 확인하세요.':'이 조사에는 브라우징 근거가 없습니다. 연결 후 보완 조사를 실행해 확인하세요.'}</p><div className={'deep-verdict '+report.quality.status}><div><h4>{report.quality.status==='needs_data'?'추가 자료·보완 조사 필요':'진단 검토 가능'}</h4><p>자사 콘텐츠 {report.cases.filter(c=>c.relationship==='own').length}개 · 경쟁·대안 {report.competitors.length}개 · 시청 기록 {report.quality.viewedCases}개 · 비교 가능한 묶음 {report.quality.comparableGroups}개</p></div><Button variant="outline" disabled={busy} onClick={()=>onFollowup(research!.id)}>부족한 근거 보완 조사</Button></div>
  <p className="subtle-note">접근·시청 기록은 HERMES가 보고한 관찰입니다. 자동 검사는 형식과 근거 연결을 점검하며 사실 검증을 대신하지 않습니다. 원문을 확인한 뒤 전략에 사용하세요.</p>
  {!!report.quality.issues.length&&<details open><summary>아직 해결하지 못한 항목 {report.quality.issues.length}</summary><ul>{report.quality.issues.map((s,i)=><li key={i}>{s}</li>)}</ul></details>}
+ <SalvageNote salvage={research?.salvage}/>
  <div className="deep-coverage">{report.quality.coverage.map(c=><span key={c.category}>{archiveCategories[c.category as keyof typeof archiveCategories]} <b>{c.count}개</b></span>)}</div>
  <details><summary>조사 과정과 반론 검토</summary>{report.phases.map(p=><article key={p.phase}><h4>{p.phase}</h4><p>{p.summary}</p></article>)}{report.review.claims.map((c,i)=><article key={i}><h4>{c.claim}</h4><p>근거: {c.sourceIds.map(id=>source(id)?.title||id).join(' · ')}</p><p>반례·다른 설명: {c.counterEvidence}</p><p>추가 검증: {c.nextCheck}</p></article>)}{report.review.followups.map((f,i)=><article key={i}><h4>보완 조사 {i+1} · {f.question}</h4><p>{f.finding}</p><small>{f.sourceIds.map(id=>source(id)?.title||id).join(' · ')}</small></article>)}</details>
  <details><summary>고객의 선택 이유·장벽 {report.customerSignals.length}건</summary>{report.customerSignals.map((s,i)=><article key={i}><h4>{({motivation:'선택 이유',barrier:'구매 장벽',complaint:'불만',question:'반복 질문'})[s.kind]}</h4><p>{s.observation}</p><p>검토할 시사점: {s.implication}</p><small>{source(s.sourceId)?.title}</small></article>)}</details>
@@ -30,4 +31,9 @@ export function DeepResearchPanel({brand,research,sources,busy,onFollowup}:{bran
  <details><summary>콘텐츠 분석 {report.cases.length}개 · 비교 {groups.length}묶음</summary><p className="subtle-note">동일 계정·채널·형식·광고 조건·게시 경과 구간·영상 길이 구간 안에서 최소 6개가 있을 때 관찰 조회수의 상·중·하위를 나눕니다. 표본 내 비교이며 인과관계나 전체 계정 순위를 뜻하지 않습니다.</p>{groups.map(g=><p key={g.label}><b>{g.label}</b> · {g.count}개 · 조회 중앙값 {g.median.toLocaleString('ko-KR')}</p>)}<div className="deep-cases">{report.cases.map(c=>{const band=groups.flatMap(g=>g.items).find(i=>i.id===c.id);return <article key={c.id}><div className="section-heading"><h4>{c.channel} · {c.account}</h4><span>{band?({high:'표본 상위',middle:'표본 중간',low:'표본 하위'})[band.band]:'비교 조건 부족'}</span></div><p>{c.relationship==='own'?'자사':'경쟁사'} · 조회 {c.views===null?'미확인':c.views.toLocaleString('ko-KR')} · {({organic:'자연 유입',paid:'유료',unknown:'광고 여부 미확인'})[c.distribution]}</p><small>게시 {c.publishedAt.slice(0,10)} / 관찰 {c.observedAt.slice(0,10)} · {({not_viewed:'영상 미시청',partial:'일부 시청',full:'전체 시청'})[c.viewing]}</small><p><b>첫 장면·도입</b> {c.hook}</p><p><b>메시지</b> {c.message}</p><p><b>증거</b> {c.proof}</p><p><b>행동 유도</b> {c.cta}</p><p><b>장벽</b> {c.friction}</p><p><b>가설</b> {c.hypothesis}</p><p><b>다른 설명</b> {c.alternative}</p>{c.timeline.map((t,i)=><p key={i}><b>{t.second}초</b> {t.observation}</p>)}{source(c.sourceId)?.url&&<a href={source(c.sourceId)!.url} target="_blank" rel="noreferrer">원문 대조 <ExternalLink size={13}/></a>}</article>})}</div></details>
  </>}
  </section>;
+}
+// A7 부분 구제 요약. 형식·근거 검증에 실패해 뺀 항목이 있을 때만 보인다. 조사 기록에 남은 사유를 모두 보여 준다.
+export function SalvageNote({salvage}:{salvage?:ResearchSalvage}){
+ if(!salvage?.dropped?.length)return null;
+ return <details><summary>살린 출처 {salvage.kept.sources??0} · 뺀 항목 {salvage.dropped.length} <small>사유 보기</small></summary><p className="subtle-note">형식·근거 검증에 실패한 항목만 빼고 나머지를 보관했습니다. 뺀 출처를 근거로 삼은 항목도 함께 뺐습니다. 살린 출처도 사람이 확인하기 전까지 검토 대기 자료입니다.</p><ul>{salvage.dropped.map((d,i)=><li key={i}>{salvageSections[d.section]||'기타'} {d.index+1}번째{d.id?` (${d.id})`:''} · {d.reason}</li>)}</ul></details>;
 }

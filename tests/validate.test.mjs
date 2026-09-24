@@ -23,50 +23,60 @@ const base=()=>({sources:[{id:'s1',title:'공식 자료',category:'brand',url:'h
 const video={id:'c1',sourceId:'s1',account:'brand',channel:'Instagram',relationship:'own',format:'video',publishedAt:past,observedAt:now,distribution:'organic',views:100,likes:null,comments:0,shares:null,durationSeconds:20,viewing:'not_viewed',viewedRanges:[],timeline:[],hook:'h',message:'m',proof:'p',cta:'c',friction:'f',hypothesis:'hy',alternative:'al'};
 const edit=change=>{const x=base();change(x);return x};
 const parse=x=>deep.parseDeepReport(x,research,[]);
-const deepFails=(name,change,status,message)=>fails(name,()=>parse(edit(change)),status,message);
+// 뼈대 오류는 DeepReportShapeError(422)다. 항목 단위 오류는 던지지 않고 그 원소만 빠진다(A7 부분 구제, tests/research-salvage.test.mjs).
+const deepFails=(name,change,status,message)=>{fails(name,()=>parse(edit(change)),status,message);let error;try{parse(edit(change))}catch(e){error=e}assert.ok(error instanceof deep.DeepReportShapeError,name+' → 뼈대 오류 구분')};
+// 항목 검사: 입력 자료 in1을 진단 근거에 더해, 출처 s1이 빠져도 진단 근거가 남게 한 뒤 해당 목록의 첫 사유를 비교한다.
+const input={id:'in1',brandId:'b1',title:'입력 자료',category:'market',origin:'manual',status:'confirmed',url:'https://brand.example.com/in1',content:'입력 근거',observedAt:now,createdAt:now,version:1,scope:'원문'};
+const deepDrops=(name,change,section,message)=>{const x=edit(change);x.diagnosis.sourceIds.push('in1');let out,error;try{out=deep.parseDeepReport(x,research,[input])}catch(e){error=e}const d=out?.salvage.dropped.find(d=>d.section===section);assert.ok(!error&&d&&d.reason===message,name+' → '+(error?`${error.name} ${error.message}`:JSON.stringify(out.salvage.dropped)));passed++};
 const withCase=patch=>x=>{x.cases=[{...video,...patch}]};
 
 const ok=parse(base());
 check('valid report maps new sources to canonical ids',ok.sources[0].id==='r1-e0-0'&&ok.report.access[0].sourceId==='r1-e0-0'&&ok.diagnosis.sourceIds[0]==='r1-e0-0');
 check('text trims surrounding whitespace',parse(edit(x=>{x.phases[0].summary='  검토 내용  '})).report.phases[0].summary==='검토 내용');
 check('text accepts exactly its max length',parse(edit(x=>{x.phases[0].summary='가'.repeat(1500)})).report.phases[0].summary.length===1500);
-deepFails('text length is checked before trimming',x=>{x.phases[0].summary=' '+'가'.repeat(1500)},400,'단계 요약 입력을 확인해 주세요.');
-deepFails('blank text is rejected',x=>{x.phases[0].summary='   '},400,'단계 요약 입력을 확인해 주세요.');
-deepFails('non-string text is rejected',x=>{x.phases[0].summary=5},400,'단계 요약 입력을 확인해 주세요.');
-deepFails('text falls back to its default label',x=>{x.customerSignals=[{sourceId:'s1',kind:'barrier',observation:'',implication:'i'}]},400,'조사 내용 입력을 확인해 주세요.');
+deepFails('text length is checked before trimming',x=>{x.phases[0].summary=' '+'가'.repeat(1500)},422,'단계 요약 입력을 확인해 주세요.');
+deepFails('blank text is rejected',x=>{x.phases[0].summary='   '},422,'단계 요약 입력을 확인해 주세요.');
+deepFails('non-string text is rejected',x=>{x.phases[0].summary=5},422,'단계 요약 입력을 확인해 주세요.');
+deepDrops('text falls back to its default label',x=>{x.customerSignals=[{sourceId:'s1',kind:'barrier',observation:'',implication:'i'}]},'customerSignals','조사 내용 입력을 확인해 주세요.');
 for(const [kind,value] of [['string','abc'],['null',null],['object',{}],['missing',undefined]])deepFails('non-array list is rejected: '+kind,x=>{x.sources=value},422,'조사 출처 형식을 확인하세요.');
-deepFails('list over its max is rejected',x=>{x.sources=Array.from({length:41},()=>x.sources[0])},422,'조사 출처 형식을 확인하세요.');
-deepFails('unresolved list over 12 is rejected',x=>{x.review.unresolved=Array(13).fill('미확인')},422,'미해결 질문 형식을 확인하세요.');
-deepFails('followups over plan maximum are rejected',x=>{x.review.followups=Array(3).fill({question:'q',finding:'f',sourceIds:['s1']})},422,'보완 조사 형식을 확인하세요.');
+// 최대 개수를 넘은 뒤쪽 원소는 항목 단위로 뺀다(A7). 최대 개수의 두 배를 넘는 목록은 크기 한도라 뼈대 오류다.
+deepFails('list over twice its max is rejected',x=>{x.sources=Array.from({length:81},()=>x.sources[0])},422,'조사 출처 형식을 확인하세요.');
+deepFails('unresolved list over twice 12 is rejected',x=>{x.review.unresolved=Array(25).fill('미확인')},422,'미해결 질문 형식을 확인하세요.');
+deepFails('followups over twice the plan maximum are rejected',x=>{x.review.followups=Array(5).fill({question:'q',finding:'f',sourceIds:['s1']})},422,'보완 조사 형식을 확인하세요.');
+deepDrops('unresolved over 12 drops only the overflow',x=>{x.review.unresolved=Array(13).fill('미확인')},'review.unresolved','최대 12개를 넘어 뺐습니다.');
+deepDrops('followups over the plan maximum drop only the overflow',x=>{x.review.followups=Array(3).fill({question:'q',finding:'f',sourceIds:['s1']})},'review.followups','최대 2개를 넘어 뺐습니다.');
 for(const [kind,value] of [['null',null],['string','abc'],['array',[]]])deepFails('non-object review is read as empty: '+kind,x=>{x.review=value},422,'핵심 주장 검토 형식을 확인하세요.');
 for(const [kind,value] of [['null',null],['string','abc']])deepFails('non-object diagnosis has no evidence: '+kind,x=>{x.diagnosis=value},422,'근거 목록 형식을 확인하세요.');
-for(const [kind,value] of [['unknown','crawler'],['null',null],['array',['browser']]])deepFails('choice rejects values outside the list: '+kind,x=>{x.access[0].method=value},422,'접근 방식 값이 올바르지 않습니다.');
-for(const [kind,value] of [['numeric string','100'],['negative',-1],['over limit',1e12+1],['infinity',Infinity],['NaN',NaN],['missing',undefined]])deepFails('number rejects '+kind,withCase({views:value}),422,'views 수치를 확인하세요.');
+for(const [kind,value] of [['unknown','crawler'],['null',null],['array',['browser']]])deepDrops('choice rejects values outside the list: '+kind,x=>{x.access[0].method=value},'access','접근 방식 값이 올바르지 않습니다.');
+for(const [kind,value] of [['numeric string','100'],['negative',-1],['over limit',1e12+1],['infinity',Infinity],['NaN',NaN],['missing',undefined]])deepDrops('number rejects '+kind,withCase({views:value}),'cases','views 수치를 확인하세요.');
 const counted=parse(edit(withCase({views:1e12}))).report.cases[0];
 check('number keeps limit value, null and zero as given',counted.views===1e12&&counted.likes===null&&counted.comments===0&&counted.shares===null&&counted.durationSeconds===20);
-deepFails('non-nullable number rejects null',withCase({viewing:'partial',viewedRanges:[{start:null,end:5}],timeline:[{second:1,observation:'o'}]}),422,'시작 초 수치를 확인하세요.');
-deepFails('non-nullable number rejects numeric string',withCase({viewing:'partial',viewedRanges:[{start:'0',end:5}],timeline:[{second:1,observation:'o'}]}),422,'시작 초 수치를 확인하세요.');
-deepFails('reference rejects non-string ids',x=>{x.access[0].sourceId=5},422,'실제 조사 자료와 일치하지 않는 근거입니다.');
-deepFails('reference rejects unknown ids',x=>{x.access[0].sourceId='missing'},422,'실제 조사 자료와 일치하지 않는 근거입니다.');
+deepDrops('non-nullable number rejects null',withCase({viewing:'partial',viewedRanges:[{start:null,end:5}],timeline:[{second:1,observation:'o'}]}),'cases','시작 초 수치를 확인하세요.');
+deepDrops('non-nullable number rejects numeric string',withCase({viewing:'partial',viewedRanges:[{start:'0',end:5}],timeline:[{second:1,observation:'o'}]}),'cases','시작 초 수치를 확인하세요.');
+deepDrops('reference rejects non-string ids',x=>{x.access[0].sourceId=5},'access','실제 조사 자료와 일치하지 않는 근거입니다.');
+deepDrops('reference rejects unknown ids',x=>{x.access[0].sourceId='missing'},'access','실제 조사 자료와 일치하지 않는 근거입니다.');
+deepFails('reference in the diagnosis skeleton still rejects unknown ids',x=>{x.diagnosis.sourceIds=['missing']},422,'실제 조사 자료와 일치하지 않는 근거입니다.');
 check('references dedupe and map to canonical ids',JSON.stringify(parse(edit(x=>{x.competitors=[{name:'경쟁',sourceIds:['s1','s1'],difference:'d'}]})).report.competitors[0].sourceIds)==='["r1-e0-0"]');
 const unresolved=parse(edit(x=>{x.review.unresolved=['  추가 자료 필요  ']})).report;
 check('unresolved items are trimmed and surface as quality issues',unresolved.review.unresolved[0]==='추가 자료 필요'&&unresolved.quality.issues.includes('추가 자료 필요'));
-// null·원시값 원소는 속성이 없는 값으로 읽혀 각 항목의 첫 검사에서 막힌다.
-deepFails('null source element',x=>{x.sources=[null]},400,'자료 번호 입력을 확인해 주세요.');
+// null·원시값 원소는 속성이 없는 값으로 읽혀 각 항목의 첫 검사에서 막히고, 그 원소만 사유와 함께 빠진다(A7). 뼈대 자리(단계)의 null은 422다.
+deepDrops('null source element',x=>{x.sources.push(null)},'sources','자료 번호 입력을 확인해 주세요.');
 deepFails('null phase element',x=>{x.phases[0]=null},422,'조사 단계 기록이 누락되거나 순서가 다릅니다.');
-deepFails('null access element',x=>{x.access=[null]},422,'실제 조사 자료와 일치하지 않는 근거입니다.');
-deepFails('null case element',x=>{x.cases=[null]},400,'콘텐츠 번호 입력을 확인해 주세요.');
-deepFails('primitive case element',x=>{x.cases=['문자열']},400,'콘텐츠 번호 입력을 확인해 주세요.');
-deepFails('null viewed range element',withCase({viewing:'partial',viewedRanges:[null],timeline:[]}),422,'시작 초 수치를 확인하세요.');
-deepFails('null timeline element',withCase({viewing:'partial',viewedRanges:[{start:0,end:5}],timeline:[null]}),422,'장면 시점 수치를 확인하세요.');
-deepFails('null customer signal element',x=>{x.customerSignals=[null]},422,'실제 조사 자료와 일치하지 않는 근거입니다.');
-deepFails('null competitor element',x=>{x.competitors=[null]},400,'경쟁사 입력을 확인해 주세요.');
-deepFails('null claim element',x=>{x.review.claims=[null]},400,'조사 내용 입력을 확인해 주세요.');
-deepFails('null followup element',x=>{x.review.followups=[null]},400,'조사 내용 입력을 확인해 주세요.');
-deepFails('null unresolved element',x=>{x.review.unresolved=[null]},400,'조사 내용 입력을 확인해 주세요.');
-// 알려진 결함: 실험 과제 원소가 null이면 422가 아니라 TypeError로 실패한다. PR 4a(security-ops-11)부터 조사 기록·화면에는 내부 예외 문구 대신 고정 문구만 남는다(tests/research-errors.test.mjs).
-// 422 전환은 원인 파일(lib/deep-research-server.ts)이 PR 6 앱 측 레인 잠금이라 A7로 넘겼다(IMPROVEMENT-PLAN 배정 변경). A7에서 422로 바꾸고 이 검사도 함께 바꾼다.
-typeError('알려진 결함(security-ops-11 잔여, A7에서 422로 전환): null opportunity element',()=>parse(edit(x=>{x.diagnosis.opportunities=[null]})));
+deepDrops('null access element',x=>{x.access=[null]},'access','실제 조사 자료와 일치하지 않는 근거입니다.');
+deepDrops('null case element',x=>{x.cases=[null]},'cases','콘텐츠 번호 입력을 확인해 주세요.');
+deepDrops('primitive case element',x=>{x.cases=['문자열']},'cases','콘텐츠 번호 입력을 확인해 주세요.');
+deepDrops('null viewed range element',withCase({viewing:'partial',viewedRanges:[null],timeline:[]}),'cases','시작 초 수치를 확인하세요.');
+deepDrops('null timeline element',withCase({viewing:'partial',viewedRanges:[{start:0,end:5}],timeline:[null]}),'cases','장면 시점 수치를 확인하세요.');
+deepDrops('null customer signal element',x=>{x.customerSignals=[null]},'customerSignals','실제 조사 자료와 일치하지 않는 근거입니다.');
+deepDrops('null competitor element',x=>{x.competitors=[null]},'competitors','경쟁사 입력을 확인해 주세요.');
+deepDrops('null claim element',x=>{x.review.claims=[null]},'review.claims','조사 내용 입력을 확인해 주세요.');
+deepDrops('null followup element',x=>{x.review.followups=[null]},'review.followups','조사 내용 입력을 확인해 주세요.');
+deepDrops('null unresolved element',x=>{x.review.unresolved=[null]},'review.unresolved','조사 내용 입력을 확인해 주세요.');
+// security-ops-11 잔여(A7에서 해소): 실험 과제 원소가 null·원시값이면 예전에는 TypeError로 실패했다. 이제 그 과제만 사용자용 사유와 함께 빠지고 진단의 나머지는 남는다.
+deepDrops('null opportunity element is salvaged, not a TypeError (security-ops-11 잔여 해소)',x=>{x.diagnosis.opportunities=[null]},'diagnosis.opportunities','근거 목록 형식을 확인하세요.');
+deepDrops('primitive opportunity element is salvaged, not a TypeError',x=>{x.diagnosis.opportunities=['문자열']},'diagnosis.opportunities','근거 목록 형식을 확인하세요.');
+const nullOpportunity=parse(edit(x=>{x.diagnosis.opportunities=[null,x.diagnosis.opportunities[0]]}));
+check('a null opportunity leaves the valid one and the diagnosis evidence in place',nullOpportunity.diagnosis.opportunities.length===1&&nullOpportunity.diagnosis.sourceIds[0]==='r1-e0-0'&&nullOpportunity.salvage.dropped.length===1);
 
 // HERMES 도구 목록 (inspectResearchAccess)
 const cfg={provider:'hermes',key:'k',model:'m',endpoint:'https://hermes.example.com'};
@@ -97,9 +107,8 @@ storeFails('store text rejects blanks',x=>{x.summary='   '},400,'진단 요약 �
 storeFails('store text rejects over 2000',x=>{x.summary='가'.repeat(2001)},400,'진단 요약 입력을 확인해 주세요.');
 storeFails('store proposal title keeps its 150 limit',x=>{x.proposals[0].title='가'.repeat(151)},400,'실험 이름 입력을 확인해 주세요.');
 storeFails('null question element',x=>{x.questions=[null]},400,'질문 입력을 확인해 주세요.');
-// 알려진 결함: 실행 제안·실험 제안 원소가 null이면 TypeError로 실패한다(위 실험 과제와 같은 결함, PR 4에서 400/422로 전환).
-typeError('알려진 결함(security-ops-11, PR 4에서 전환): null action element',()=>report(storeEdit(x=>{x.actions=[null]})));
-typeError('알려진 결함(security-ops-11, PR 4에서 전환): null proposal element',()=>report(storeEdit(x=>{x.proposals=[null]})));
+// security-ops-11 잔여(A7에서 해소): 실행 제안·실험 제안 원소가 null·비객체이면 예전에는 TypeError로 실패했다. 점포 보고서에는 부분 구제가 없어 목록 형식 오류(422)로 전체를 거절한다.
+for(const [name,change] of [['null action element',x=>{x.actions=[null]}],['primitive action element',x=>{x.actions=['문자열']}],['array action element',x=>{x.actions=[[]]}],['null proposal element',x=>{x.proposals=[null]}],['primitive proposal element',x=>{x.proposals=[7]}]])storeFails('store list rejects '+name+' (security-ops-11 잔여 해소)',change,422,'점포 진단 목록 형식을 확인하세요.');
 
 // 점포 입력 (channelInput·measurementInput·experimentInput)
 const firstCheck=channelCatalog.find(c=>c.key==='naver_place').checks[0];
