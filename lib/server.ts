@@ -4,8 +4,9 @@ import { brandDefaults, type Campaign, type Brand, type Artifact, type Metric } 
 import {HttpBodyError,readBoundedJson} from './http-limits';
 import {authMode,authPrincipal,authOrigin} from './auth-session';
 import {AuthError} from './auth-errors';
-import {campaignScopes,scopesSql,blockingScopes,campaignJobs,derivedLinks,freezeExperimentSummary,retireRuleOfDeletedCampaign,type SourceCampaignDeleted} from './record-kinds';
+import {campaignScopes,scopesSql,blockingScopes,campaignJobs,derivedLinks,freezeExperimentSummary,retireRuleOfDeletedCampaign,purgeAllKinds,type CampaignDeletionPolicy,type RecordKind,type SourceCampaignDeleted} from './record-kinds';
 import type {LearningRule,ViralExperiment} from './learning';
+import {buildSignals,signalSubject,SIGNAL_RETENTION_DAYS,type DeidentifiedSignal} from './deidentified-signals';
 export class ApiError extends Error {constructor(public status:number,message:string){super(message)}}
 export const runtime=env as unknown as {DB?:D1Database;BUCKET?:R2Bucket;AGENCY_ENCRYPTION_KEY?:string;OPENAI_API_KEY?:string;RESEARCH_WORKER_GATE_TOKEN?:string;RESEARCH_WORKER_SITE_ORIGIN?:string;RESEARCH_WORKER_ADMIN_IDS?:string;AI_COPY_CAPTIONS?:string};
 export function database(){if(!runtime.DB)throw new ApiError(503,'저장 공간에 연결하지 못했습니다. 잠시 후 다시 시도하세요.');return runtime.DB}
@@ -84,41 +85,84 @@ function retainedLearningWrites(owner:string,{rules,sources}:Awaited<ReturnType<
   ...sources.map(e=>recordStatement(owner,'viral_experiment_summary',e.id,freezeExperimentSummary(e,rules.filter(r=>r.experimentId===e.id).map(r=>r.id),mark),e.brandId)),
  ];
 }
-async function countByKind(owner:string,policy:'delete'|'retain',id:string){
- const q=scopesSql('SELECT kind,COUNT(*) AS n',owner,campaignScopes(policy,owner,id));
+// F4b-2(결정 7): 삭제할 캠페인의 평가 신호를 원문 없이 가명 키로 만든다(lib/deidentified-signals.ts). 삭제 영향 조회와 삭제가 같은 입력을 쓴다.
+async function campaignSignals(owner:string,c:Campaign,subject:string,now:string){
+ const [brand,artifacts,gradings,usage,metrics]=await Promise.all([readRecord<Brand>(owner,'brand',c.brandId).catch((e:unknown)=>{if(e instanceof ApiError&&e.status===404)return null;throw e}),listRecords<Record<string,unknown>>(owner,'artifact',c.id),listRecords<Record<string,unknown>>(owner,'grading',c.id),
+  database().prepare("SELECT data FROM records WHERE owner=? AND kind='provider_usage' AND json_extract(data,'$.campaignId')=?").bind(owner,c.id).all<{data:string}>(),listRecords<Record<string,unknown>>(owner,'metric',c.id)]);
+ return buildSignals(owner,c,{brand,artifacts,gradings,usage:usage.results.map(r=>JSON.parse(r.data) as Record<string,unknown>),metrics},{subject,now});
+}
+// 이관 레코드는 캠페인과 잇지 않는다(parent_id 빈 값, 캠페인 id 없음). 저장 시각(updated_at)도 이관한 날 0시로 줄인다.
+const signalStatement=(owner:string,s:DeidentifiedSignal)=>database().prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').bind(`${owner}:deidentified_signal:${s.id}`,owner,'deidentified_signal','',JSON.stringify(s),s.archivedOn+'T00:00:00.000Z');
+// 90일이 지난 이관 레코드 정리. 캠페인 삭제와 조사 워커 tick(lib/research-worker.ts, 소유자당 UTC 하루 1회)이 부른다. 조회는 만료분을 빼고 읽는다.
+// 만료일(expiresAt)이 없는 행은 기한을 알 수 없어 남기지 않고 지운다(무기한 보관 방지).
+export const expiredSignalsStatement=(owner:string,now=stamp())=>database().prepare("DELETE FROM records WHERE owner=? AND kind='deidentified_signal' AND (json_extract(data,'$.expiresAt') IS NULL OR json_extract(data,'$.expiresAt')<=?)").bind(owner,now);
+export async function purgeExpiredSignals(owner:string){return (await expiredSignalsStatement(owner).run()).meta.changes}
+export async function listDeidentifiedSignals(owner:string){const rows=await database().prepare("SELECT data FROM records WHERE owner=? AND kind='deidentified_signal' AND json_extract(data,'$.expiresAt')>? ORDER BY id").bind(owner,stamp()).all<{data:string}>();return rows.results.map(r=>JSON.parse(r.data) as DeidentifiedSignal)}
+async function countByKind(owner:string,policy:CampaignDeletionPolicy,id:string,filter?:(k:RecordKind)=>boolean){
+ const q=scopesSql('SELECT kind,COUNT(*) AS n',owner,campaignScopes(policy,owner,id,filter));
  const rows=await database().prepare(q.sql+' GROUP BY kind').bind(...q.binds).all<{kind:string;n:number}>();
  return Object.fromEntries(rows.results.map(r=>[r.kind,Number(r.n)])) as Record<string,number>;
 }
 const total=(counts:Record<string,number>)=>Object.values(counts).reduce((sum,n)=>sum+n,0);
+// 완전 삭제(F4b-2)의 대상은 레지스트리의 purge에서 만든다. delete: 이 캠페인에 이어진 보존·종료 대상 행, delete_all: 소유자의 모든 행(지금은 쓰는 kind가 없다 — 비식별 평가 신호는 not_created라 다른 캠페인의 이관분을 지우지 않는다).
+const purgesLinked=(k:RecordKind)=>k.purge==='delete';
+const purgeLinkedScopes=(owner:string,id:string)=>[...campaignScopes('retire_and_mark',owner,id,purgesLinked),...campaignScopes('retain',owner,id,purgesLinked)];
+const purgeAllSql=`FROM records WHERE owner=? AND (${purgeAllKinds.map(()=>'kind=?').join(' OR ')||'0'})`;
+async function purgeAllCounts(owner:string){
+ const rows=await database().prepare(`SELECT kind,COUNT(*) AS n ${purgeAllSql} GROUP BY kind`).bind(owner,...purgeAllKinds).all<{kind:string;n:number}>();
+ return Object.fromEntries(rows.results.map(r=>[r.kind,Number(r.n)])) as Record<string,number>;
+}
 // 삭제 전 영향 조회. kind별 삭제·보존 건수와 삭제 가능 여부를 돌려주며 아무것도 쓰지 않는다.
+// archive: 기본 삭제 때 비식별로 이관할 평가 신호 건수와 보관 일수. purge: 소유자가 '학습 자산까지 완전 삭제'를 고르면 기본 삭제보다 더 지우는 건수
+// (레지스트리 purge delete: 종료 표시로 남길 바이럴 규칙, 이 캠페인의 사람 판정 로그)와 만들지 않는 건수(실험 요약·이번 이관). 이전에 삭제한 다른 캠페인의 비식별 이관분은 지우지 않는다.
 export async function campaignDeletionPreview(owner:string,id:string){
  const campaign=await readRecord<Campaign>(owner,'campaign',id);
- const [deleted,linked,learning,jobs,blockedReason]=await Promise.all([countByKind(owner,'delete',id),countByKind(owner,'retain',id),retainedLearning(owner,id),database().prepare(`SELECT COUNT(*) AS n FROM jobs WHERE owner=? AND ${campaignJobs.where}`).bind(owner,...campaignJobs.binds(owner,id)).first<{n:number}>(),campaignDeletionBlock(owner,id)]);
+ const [deleted,linked,learning,jobs,blockedReason,signals,purgedRules,purgedRetained,purgedAll]=await Promise.all([countByKind(owner,'delete',id),countByKind(owner,'retain',id),retainedLearning(owner,id),database().prepare(`SELECT COUNT(*) AS n FROM jobs WHERE owner=? AND ${campaignJobs.where}`).bind(owner,...campaignJobs.binds(owner,id)).first<{n:number}>(),campaignDeletionBlock(owner,id),campaignSignals(owner,campaign,'preview',stamp()),
+  countByKind(owner,'retire_and_mark',id,purgesLinked),countByKind(owner,'retain',id,purgesLinked),purgeAllCounts(owner)]);
  const retained={...linked,...(learning.rules.length?{learning_rule:learning.rules.length}:{}),...(learning.sources.length?{viral_experiment_summary:learning.sources.length}:{})};
- return {campaignId:id,version:campaign.version,deletable:!blockedReason,blockedReason,deleted,retained,jobs:Number(jobs?.n||0),totals:{deleted:total(deleted),retained:total(retained)}};
+ const nonzero=(counts:Record<string,number>)=>Object.fromEntries(Object.entries(counts).filter(([,n])=>n>0));
+ const purge={deleted:nonzero({...purgedRules,...purgedRetained,...purgedAll}),skipped:nonzero({viral_experiment_summary:learning.sources.length,deidentified_signal:signals.length})};
+ return {campaignId:id,version:campaign.version,deletable:!blockedReason,blockedReason,deleted,retained,jobs:Number(jobs?.n||0),totals:{deleted:total(deleted),retained:total(retained)},archive:{signals:signals.length,retentionDays:SIGNAL_RETENTION_DAYS},purge};
+}
+// 완전 삭제(purge)의 추가 삭제: 레지스트리 purge delete(바이럴 규칙은 종료 대신 삭제, 이 캠페인의 사람 판정 로그)를 실험보다 먼저 지우고,
+// purge delete_all(현재 해당 kind 없음)을 지운다. 점포 출처 규칙은 experiment_rule 조건에서 빠진다.
+function purgeLearningStatements(owner:string,id:string){
+ const linked=scopesSql('DELETE',owner,purgeLinkedScopes(owner,id));
+ return [database().prepare(linked.sql).bind(...linked.binds),database().prepare(`DELETE ${purgeAllSql}`).bind(owner,...purgeAllKinds)];
 }
 
 // Called under the same owner mutation lock used by campaign edits and AI jobs.
-// 삭제 대상은 lib/record-kinds.ts의 정책에서 만든다. 순서: 규칙 종료 표시·요약 동결 → 초안·작업·실험을 참조하는 레코드 → 작업(jobs, 실험 참조) → 직접 연결 레코드와 캠페인.
-export async function deleteCampaign(owner:string,input:Record<string,unknown>,by?:EventActor){
+// 삭제 대상은 lib/record-kinds.ts의 정책에서 만든다. 순서: 규칙 종료 표시·요약 동결·평가 신호 이관(완전 삭제면 규칙·판정 로그 삭제, 이번 이관 없음) → 초안·작업·실험을 참조하는 레코드 → 작업(jobs, 실험 참조) → 직접 연결 레코드와 캠페인.
+// purgeLearning(학습 자산까지 완전 삭제)은 소유자만 고른다. by.role이 'owner'가 아니면(역할을 넘기지 않는 호출 포함) 403이다(POST /api/action delete_campaign이 역할을 넘긴다).
+// 이미 삭제한 캠페인(tombstone)은 그때 고른 결과(purgedLearning)를 돌려준다. 기본 삭제로 끝난 캠페인에 완전 삭제를 요청하면 적용하지 않았음을 409로 알린다.
+export async function deleteCampaign(owner:string,input:Record<string,unknown>,by?:EventActor&{role?:Actor['role']}){
  const id=str(input.id,'캠페인',100,true);
  if(input.confirmed!==true)throw new ApiError(400,'삭제 내용을 확인해 주세요.');
+ if(input.purgeLearning!==undefined&&typeof input.purgeLearning!=='boolean')throw new ApiError(400,'완전 삭제 선택을 확인해 주세요.');
+ const purge=input.purgeLearning===true;
+ if(purge&&by?.role!=='owner')throw new ApiError(403,'학습 자산까지 완전 삭제는 소유자만 할 수 있습니다.');
  const db=database();
- const deleted=await db.prepare("SELECT id FROM records WHERE owner=? AND kind='deleted_campaign' AND id=?").bind(owner,`${owner}:deleted_campaign:${id}`).first();
- if(deleted)return {id,deleted:true};
+ const deleted=await db.prepare("SELECT data FROM records WHERE owner=? AND kind='deleted_campaign' AND id=?").bind(owner,`${owner}:deleted_campaign:${id}`).first<{data:string}>();
+ if(deleted){
+  const purged=(JSON.parse(deleted.data) as {learningAssets?:string}).learningAssets==='purged';
+  if(purge&&!purged)throw new ApiError(409,'이미 삭제된 캠페인입니다. 학습 자산은 기본 삭제의 보존 정책대로 남아 있어 완전 삭제를 적용하지 않았습니다.');
+  return {id,deleted:true,purgedLearning:purged};
+ }
  const campaign=await readRecord<Campaign>(owner,'campaign',id);
  if(input.version!==campaign.version)throw new ApiError(409,'캠페인이 변경됐습니다. 최신 내용을 확인한 뒤 다시 삭제해 주세요.');
  const blocked=await campaignDeletionBlock(owner,id);
  if(blocked)throw new ApiError(409,blocked);
  const mark:SourceCampaignDeleted={at:stamp(),by:by?{id:by.id,email:by.email}:null};
  const scopes=campaignScopes('delete',owner,id),remove=(derived:boolean)=>scopes.filter(s=>derivedLinks.has(s.link)===derived).map(s=>scopesSql('DELETE',owner,[s])).map(q=>db.prepare(q.sql).bind(...q.binds));
+ const signals=purge?[]:await campaignSignals(owner,campaign,signalSubject(),mark.at);
  await db.batch([
-  ...retainedLearningWrites(owner,await retainedLearning(owner,id),mark),
+  ...(purge?purgeLearningStatements(owner,id):[...retainedLearningWrites(owner,await retainedLearning(owner,id),mark),...signals.map(s=>signalStatement(owner,s))]),
   ...remove(true),
   db.prepare(`DELETE FROM jobs WHERE owner=? AND ${campaignJobs.where}`).bind(owner,...campaignJobs.binds(owner,id)),
   ...remove(false),
+  expiredSignalsStatement(owner,mark.at),
   // A minimal tombstone prevents starter reseeding and makes lost-response retries safe.
-  recordStatement(owner,'deleted_campaign',id,{id,deletedAt:mark.at,...(by?{deletedBy:{id:by.id,email:by.email}}:{})}),
+  recordStatement(owner,'deleted_campaign',id,{id,deletedAt:mark.at,...(by?{deletedBy:{id:by.id,email:by.email}}:{}),...(purge?{learningAssets:'purged'}:{})}),
  ]);
- return {id,deleted:true};
+ return {id,deleted:true,archived:signals.length,purgedLearning:purge};
 }

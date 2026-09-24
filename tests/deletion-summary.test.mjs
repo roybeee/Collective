@@ -9,7 +9,7 @@ import ts from 'typescript';
 const context=createContext({console}),cache=new Map();
 function moduleFor(path){path=resolve(path);if(cache.has(path))return cache.get(path);const m=new SourceTextModule(ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText,{context,identifier:path});cache.set(path,m);return m;}
 const m=moduleFor('lib/deletion-summary.ts');await m.link((s,r)=>moduleFor(resolve(dirname(r.identifier),s+'.ts')));await m.evaluate();
-const {deletionSummary,needsTitleConfirmation,canConfirmDeletion,readDeletionPreview,previewFailure,recheckDeletion,ALREADY_DELETED,STALE_CAMPAIGN,COUNTS_CHANGED}=m.namespace;
+const {deletionSummary,needsTitleConfirmation,canConfirmDeletion,readDeletionPreview,previewFailure,recheckDeletion,recheckPurge,ALREADY_DELETED,STALE_CAMPAIGN,COUNTS_CHANGED}=m.namespace;
 let passed=0;
 function check(name,actual,expected){assert.deepEqual(JSON.parse(JSON.stringify(actual)),expected,name);passed++}
 const preview=(extra={})=>({campaignId:'c1',version:3,deletable:true,blockedReason:null,deleted:{campaign:1},retained:{},jobs:0,totals:{deleted:1,retained:0},...extra});
@@ -32,6 +32,26 @@ const kept=preview({retained:{learning_rule:2,viral_experiment_summary:1,store_e
 check('viral rules are kept retired and marked, experiments frozen as summaries',deletionSummary(kept).retained,'보존: 학습 규칙 2건(종료 표시로 남김, 원 캠페인 삭제 표시)·실험 요약 1건(원문을 뺀 요약으로 동결)·점포 실험 1건');
 check('no retained line when nothing is kept',deletionSummary(preview()).retained,null);
 check('zero retained counts are omitted',deletionSummary(preview({retained:{learning_rule:0,store_experiment:1}})).retained,'보존: 점포 실험 1건');
+
+// --- 비식별 이관과 완전 삭제(F4b-2, 결정 7) ------------------------------------------------------
+const archived=preview({archive:{signals:3,retentionDays:90},purge:{deleted:{learning_rule:2,review_decision:4},skipped:{viral_experiment_summary:1,deidentified_signal:3}}});
+check('the archive line names the de-identified signals and retention',deletionSummary(archived).archived,'비식별 보관: 평가 신호 3건(작업물 본문·캠페인 이름·메모 없이 가명 키로 90일 보관)');
+check('no archive line when nothing is archived or the server is older',[deletionSummary(preview({archive:{signals:0,retentionDays:90}})).archived,deletionSummary(preview()).archived],[null,null]);
+check('the purge line lists what complete deletion removes and skips',deletionSummary(archived).purge,'완전 삭제: 학습 규칙 2건(종료 표시 대신 삭제)·사람 판정 로그 4건을 함께 지웁니다. 실험 요약 1건·비식별 평가 신호 3건을 남기지 않습니다.');
+check('the purge line says so when there is nothing extra',deletionSummary(preview({purge:{deleted:{},skipped:{}}})).purge,'완전 삭제: 추가로 지우거나 남기지 않을 학습 자산이 없습니다.');
+check('no purge line without purge counts',deletionSummary(preview()).purge,null);
+check('a response with archive and purge counts is accepted',readDeletionPreview(JSON.parse(JSON.stringify(archived))).purge.deleted.review_decision,4);
+for(const [name,bad] of [['archive without numbers',{...archived,archive:{signals:'3'}}],['purge counts as array',{...archived,purge:{deleted:[],skipped:{}}}],['purge without skipped',{...archived,purge:{deleted:{}}}]]){
+ assert.throws(()=>readDeletionPreview(bad),/삭제 영향을 확인하지 못했습니다/,'malformed F4b-2 response rejected: '+name);passed++;
+}
+check('unchanged purge counts may be deleted',recheckPurge(archived,JSON.parse(JSON.stringify(archived))),null);
+check('new decisions stop a complete deletion',[recheckPurge(archived,{...archived,purge:{...archived.purge,deleted:{...archived.purge.deleted,review_decision:5}}}),recheckPurge(preview(),archived)],[COUNTS_CHANGED,COUNTS_CHANGED]);
+// 완전 삭제를 고르면 보존 줄에서 완전 삭제가 지우거나 만들지 않는 학습 자산을 빼고, 비식별 보관 줄을 보이지 않는다(F4B2-05). 평가 골든셋은 남는다고 보인다(F4B2-09).
+const both=preview({retained:{learning_rule:2,viral_experiment_summary:1,store_experiment:1,review_decision:4,eval_case:2},archive:{signals:3,retentionDays:90},purge:{deleted:{learning_rule:2,review_decision:4},skipped:{viral_experiment_summary:1,deidentified_signal:3}}});
+check('default deletion lists every retained asset including the eval golden set',deletionSummary(both).retained,'보존: 학습 규칙 2건(종료 표시로 남김, 원 캠페인 삭제 표시)·실험 요약 1건(원문을 뺀 요약으로 동결)·점포 실험 1건·사람 판정 로그 4건(사유 코드·판정만, 검토 메모 원문 없음)·평가 골든셋 2건(동결한 역할 요청 원문 포함, 완전 삭제에도 남음, 평가 화면에서 개별 삭제)');
+check('complete deletion keeps only what it does not remove in the retained line',deletionSummary(both,{purge:true}).retained,'보존: 점포 실험 1건·평가 골든셋 2건(동결한 역할 요청 원문 포함, 완전 삭제에도 남음, 평가 화면에서 개별 삭제)');
+check('complete deletion shows no de-identified archive line',[deletionSummary(both,{purge:true}).archived,deletionSummary(both).archived!==null],[null,true]);
+check('complete deletion without other retained records shows no retained line',deletionSummary(archived,{purge:true}).retained,null);
 
 // --- 삭제 불가 -----------------------------------------------------------------------
 const reason='제작·발행 또는 주문 귀속 이력이 있어 삭제할 수 없습니다. 실행 기록을 보존하고 예약 취소는 Buffer에서 확인하세요.';
@@ -96,5 +116,16 @@ has('the dialog deletes the version it re-checked',dialog,"api('delete_campaign'
 has('an already deleted campaign refreshes the list instead of retrying',dialog,'previewFailure(response.status,result?.error)');
 has('an already deleted campaign offers a list refresh',dialog,'<span>{ALREADY_DELETED}</span><Button variant="outline" size="sm" onClick={refreshGone}>');
 has('a stale list is flagged before typing the title',dialog,'{stale&&!gone&&<p role="alert" className="form-error">{STALE_CAMPAIGN}</p>}');
+// F4b-2: 완전 삭제 선택은 소유자에게만 보이고 기본 해제다. 고르면 소유자 전용 경로(/api/campaigns)로 purgeLearning을 보내고 추가 삭제 건수도 다시 확인한다.
+has('the dialog explains de-identified retention',dialog,'평가 신호는 원문 없이 비식별로 90일 보관합니다');
+has('the purge option is owner-only',dialog,'const isOwner=canChange(useAccount(),true)');
+has('the purge option starts unchecked',dialog,'const[purge,setPurge]=useState(false)');
+has('the purge checkbox is labelled',dialog,'<b>학습 자산까지 완전 삭제(소유자만)</b> {summary.purge}');
+has('complete deletion goes through the regular delete action with the purge flag',dialog,"api('delete_campaign',{id,version:fresh.version,confirmed:true,purgeLearning:true}):api('delete_campaign'");
+has('complete deletion re-checks the extra counts',dialog,'(purging?recheckPurge(preview,fresh):null)');
+has('the dialog shows the archive line',dialog,'{summary.archived&&<p>{summary.archived}</p>}');
+has('the summary follows the purge choice',dialog,'deletionSummary(preview,{purge:purging})');
+has('the dialog description changes for complete deletion',dialog,'바이럴 출처 학습 규칙·이 캠페인의 사람 판정 로그·이전에 보관한 비식별 평가 신호도 지우고');
+has('the success message follows what the server did',dialog,"toast.success(done.purgedLearning?'캠페인과 학습 자산을 완전히 삭제했습니다.':'캠페인을 삭제했습니다.')");
 
 console.log(JSON.stringify({passed},null,2));

@@ -9,7 +9,7 @@ import {currentFactRefs} from '@/lib/ai-context';
 import {isEnabled} from '@/lib/feature-flags';
 import {reviewActor,requireReasonCodes,requireCriteria,artifactDecisionStatement,briefSuggestionStatements,correctedOrigin,type ReviewedArtifact} from '@/lib/review-decisions-server';
 export async function POST(req:Request){let lockOwner="",lockToken="";try{const who=await actor(req),owner=who.owner,by={id:who.id,email:who.email};secureMutation(req);const b=await body(req);lockOwner=owner;lockToken=await acquireLock(owner);const db=database();
-if(b.action==='delete_campaign'){await requireAdminActor(req);return json(await deleteCampaign(owner,b,by))}
+if(b.action==='delete_campaign'){await requireAdminActor(req);return json(await deleteCampaign(owner,b,{...by,role:who.role}))}
 if(b.action==='save_campaign'){
  const data=validateCampaign(b.data||{});await readRecord<Brand>(owner,'brand',data.brandId);if(data.storeId){const store=await readRecord<import('@/lib/store-marketing').Store>(owner,'store',data.storeId);if(store.brandId!==data.brandId)throw new ApiError(400,'브랜드와 지점이 일치하지 않습니다.');}let campaign:Campaign;const writes:D1PreparedStatement[]=[];
  const draft=b.briefDraftId?await readRecord<BriefDraft>(owner,'brief_draft',str(b.briefDraftId,'초안',100,true)):null;

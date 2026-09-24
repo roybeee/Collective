@@ -1,4 +1,4 @@
-import {ApiError,database,recordStatement,stamp,listRecords,readRecord,acquireLock,releaseLock,runtime} from './server';
+import {ApiError,database,recordStatement,stamp,listRecords,readRecord,acquireLock,releaseLock,runtime,purgeExpiredSignals} from './server';
 import {researchActive,type BrandResearch} from './archive';
 import {recordGatewaySnapshotSafely} from './gateway-snapshot';
 
@@ -17,7 +17,7 @@ type RejectReason='expired'|'grace_ended'|'unknown_token'|'gate';
 type Rejection=Partial<Record<RejectReason,string>>;
 // security-ops-7: 사이트 공통 gate 헤더를 앱도 확인한 결과. ok·missing(헤더 없음)·mismatch(값 다름)·unset(앱에 gate 비밀값 없음).
 type GateVerdict='ok'|'missing'|'mismatch'|'unset';
-type WorkerState={lastSeen:string;version:string;tokenHash:string;lastStatus?:number;lastJob?:string;blocked?:number;lastQueue?:string;gate?:GateVerdict;rotationReady?:boolean};
+type WorkerState={lastSeen:string;version:string;tokenHash:string;lastStatus?:number;lastJob?:string;blocked?:number;lastQueue?:string;gate?:GateVerdict;rotationReady?:boolean;signalPurgeDay?:string};
 export async function workerHash(token:string){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token))),b=>b.toString(16).padStart(2,'0')).join('')}
 async function credential(owner:string){try{return await readRecord<Credential>(owner,'worker_credential','current')}catch(e){if(e instanceof ApiError&&e.status===404)return null;throw e}}
 async function optionalRecord<T>(owner:string,kind:string){try{return await readRecord<T>(owner,kind,'current')}catch(e){if(e instanceof ApiError&&e.status===404)return null;throw e}}
@@ -120,10 +120,14 @@ export async function workerTick(principal:{owner:string;hash:string;gate?:GateV
   const due=active.filter(r=>!r.retryAt||Date.parse(r.retryAt)<=Date.now()).filter(r=>r.status!=='uncertain'||!!r.retryAt).sort((a,b)=>a.createdAt.localeCompare(b.createdAt)||a.id.localeCompare(b.id));
   let previous:WorkerState|undefined;try{previous=await readRecord<WorkerState>(owner,'worker_state','current')}catch(e){if(!(e instanceof ApiError&&e.status===404))throw e}
   const job=due[(due.findIndex(r=>r.id===previous?.lastJob)+1)%due.length];
-  const state={lastSeen:stamp(),version:'1',tokenHash:hash,lastJob:previous?.lastJob,blocked,...(gate?{gate}:{}),rotationReady};
+  // F4b-2: 만료 비식별 평가 신호 정리는 소유자당 UTC 하루 1회(만료가 날짜 단위다). 상태에 마지막 정리 날짜를 남겨 같은 날 두 번째 tick부터는 건너뛴다.
+  const today=stamp().slice(0,10),purgeSignals=previous?.signalPurgeDay!==today;
+  const state={lastSeen:stamp(),version:'1',tokenHash:hash,lastJob:previous?.lastJob,blocked,...(gate?{gate}:{}),rotationReady,signalPurgeDay:today};
   await recordStatement(owner,'worker_state','current',state).run();
   // 게이트웨이 상태 스냅샷(F2b): 소유자당 UTC 하루 1회, 호출당 5초 병렬. 실패해도 예외를 던지지 않아 아래 작업 순환을 막지 않는다.
   await recordGatewaySnapshotSafely(owner);
+  // F4b-2: 90일이 지난 비식별 평가 신호를 지운다(문장 1개, 하루 1회). 실패해도 작업 순환을 막지 않고 다음 날 tick·캠페인 삭제가 다시 지운다.
+  if(purgeSignals)await purgeExpiredSignals(owner).catch(()=>console.error('deidentified_signal_purge_failed'));
   const queues=['research','execution','measurement'];
   const first=(queues.indexOf(previous?.lastQueue||'')+1)%queues.length;
   for(let offset=0;offset<queues.length;offset++){

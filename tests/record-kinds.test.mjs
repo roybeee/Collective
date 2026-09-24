@@ -76,6 +76,16 @@ check('blocking kinds are never deleted',kinds.filter(k=>k.blocksDeletion).every
 // A4: 추적 코드는 주문 장부의 귀속 근거라 캠페인을 지워도 남긴다(코드 재사용으로 옛 인쇄물 주문이 다른 캠페인에 붙지 않게). 삭제를 막지는 않는다.
 const kindOf=kind=>kinds.find(k=>k.kind===kind);
 check('tracking codes are retained through their campaign link without blocking deletion',policyOf('tracking_code')==='retain'&&JSON.stringify(kindOf('tracking_code').links)==='["data_campaign"]'&&!kindOf('tracking_code').blocksDeletion&&kindOf('tracking_code').parent==='store');
+// F4b-2(결정 7): 비식별 평가 신호는 캠페인과 잇지 않고(links 없음) 보존하며, token_budget 묶음(마지막 3개) 바로 앞에 둔다.
+check('de-identified signals are retained without a campaign link just before the token budget group',policyOf('deidentified_signal')==='retain'&&!(kindOf('deidentified_signal').links||[]).length&&kindOf('deidentified_signal').parent==='none'&&kinds.at(-4).kind==='deidentified_signal'&&/90일/.test(kindOf('deidentified_signal').description));
+// F4b-2(결정 7): 남기는 kind(retain·retire_and_mark)는 모두 '학습 자산까지 완전 삭제' 때의 동작(purge)을 정한다. 새 보존 kind가 완전 삭제에서 조용히 빠지지 않게 한다.
+const purges=['keep','delete','not_created','delete_all'],kept=kinds.filter(k=>k.campaignDeletion==='retain'||k.campaignDeletion==='retire_and_mark');
+check('every retained or retired kind declares its complete-deletion behaviour',kept.every(k=>purges.includes(k.purge))&&kinds.filter(k=>k.purge!==undefined).length===kept.length);
+check('complete deletion removes the learning assets of decision 7',JSON.stringify(Object.fromEntries(kinds.filter(k=>k.purge&&k.purge!=='keep').map(k=>[k.kind,k.purge])))==='{"learning_rule":"delete","viral_experiment_summary":"not_created","review_decision":"delete","deidentified_signal":"not_created"}');
+check('kinds deleted per campaign are campaign-linked and owner-wide ones are not',kinds.filter(k=>k.purge==='delete').every(k=>k.links?.length)&&kinds.filter(k=>k.purge==='delete_all'||k.purge==='not_created').every(k=>!k.links?.length));
+check('descriptions state the complete-deletion exception',kinds.filter(k=>k.purge&&k.purge!=='keep').every(k=>/완전 삭제/.test(k.description)));
+const plainOf=x=>JSON.parse(JSON.stringify(x)),purgeScopes=[...plainOf(registry.campaignScopes('retire_and_mark','o','c',k=>k.purge==='delete')),...plainOf(registry.campaignScopes('retain','o','c',k=>k.purge==='delete'))].flatMap(s=>s.kinds).sort();
+check('complete-deletion scopes come from the registry',JSON.stringify(purgeScopes)==='["learning_rule","review_decision"]'&&JSON.stringify(plainOf(registry.purgeAllKinds))==='[]');
 check('order imports and POS weekly totals are store records outside campaign deletion',['order_import','pos_weekly_total'].every(k=>policyOf(k)==='not_campaign_scoped'&&kindOf(k).parent==='store'));
 
 // 5) 조건 생성: 같은 link의 kind를 묶고, kind가 id에 들어가는 link는 kind별로 나눈다.
