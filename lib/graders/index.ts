@@ -8,7 +8,9 @@ export {INPUT_TOKEN_CAP} from './ledger';
 
 // 실패 유형 사전 v1(결정론 13종). 순서는 docs/EVAL.ko.md 정의표와 같다. 판정 임계값·ID 패턴은 이 파일들이 정본이다.
 // 'v1+normalized': 원 JSON(raw)은 사람이 보는 정규화 렌더본(lib/output-normalize.ts)으로 채점한다. 'failure-types-v1'은 정규화 전 렌더본을 채점했다(품질 기준선 v1).
-export const GRADERS_VERSION='failure-types-v1+normalized';
+// '+measure-v2': 13종은 같고 부정·규칙 문장 판정(negation.ts)과 unsupported_claim_term·revisit_cohort_definition 판정을 고쳤다(측정 도구 v2). 판정이 바뀌면 이 값을 올려
+// 같은 저울 재채점(regrade_run)의 버전 검사와 비교(gradersVersions)가 저울 변경을 구분하게 한다.
+export const GRADERS_VERSION='failure-types-v1+normalized+measure-v2';
 export const GRADERS:Grader[]=[questionOnly,thinSection,contractJson,headingNesting,internalIdExposure,briefProhibitionConflict,factConflict,unconfirmedValueAssertion,unsupportedClaimTerm,industryMetricLeak,revisitCohortDefinition,localChannelCoverage,inputBudget];
 export const CONTENT_GRADERS=GRADERS.filter(g=>g.content).map(g=>g.id);
 

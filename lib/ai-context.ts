@@ -15,7 +15,7 @@ export const CONTEXT_SOURCE_LIMIT=20;
 
 // 브랜드 소개(description)와 메모(knowledge)는 대표 대화 기반의 미확인 소개다. 정체성 필드와 분리해 사실로 쓰이지 않게 한다.
 // 제작 입력 허용 목록(⑤): 정체성 7개 필드와 소개문만 보낸다. 의뢰 정보(intake)·id·bg는 보내지 않는다. 자유 텍스트 가림은 BRAND_MASK_PATHS로 입력 조립 때 한다.
-export function aiBrand(brand:Brand):AiBrand{
+export function aiBrand(brand:Pick<Brand,'name'|'short'|'category'|'color'|'tone'|'audience'|'constraints'|'description'|'knowledge'>):AiBrand{
  const {name,short,category,color,tone,audience,constraints}=brand;
  const text=[brand.description&&'소개: '+brand.description,brand.knowledge&&'브랜드 메모: '+brand.knowledge].filter(Boolean).join('\n');
  return {identity:{name,short,category,color,tone,audience,constraints},brandIntro:{text,verification:'unverified',useInCopy:false}};
