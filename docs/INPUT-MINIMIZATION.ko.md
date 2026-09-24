@@ -5,7 +5,7 @@
 비유: 외부 디자이너에게 매장 브리프를 넘기기 전에 서류철에서 필요 없는 장을 빼고(허용 목록), 남은 장의 고객 연락처는 검정 펜으로 지운다(가림). 매장 주소·대표 전화처럼 광고에 꼭 필요한 정보는 지우지 않는다(허용 값). 무엇을 몇 군데 지웠는지와 몇 군데를 일부러 남겼는지만 작업 일지에 적고, 그 내용은 적지 않는다.
 
 - 근거 문서: `docs/DATA-PROCESSING.ko.md` 4.2~4.4절, DP-1·DP-3·DP-4 표(이 문서는 그 문서를 고치지 않는다. 레인 B 소유).
-- 범위: 4.4 조치 중 ①(회의 입력 허용 목록), ③(자유 텍스트 가림, 제작 경로), ④(담당자 필드), ⑤(브랜드 입력 허용 목록, 제작 경로). 학습 경로의 ⑤·⑧은 레인 A 후속 PR이다(6절. 레인 A 세션이 종료돼 레인 B 세션이 이어받았다). ②(`orderRefs`)·조사 경로 ⑤·⑦ 화면 안내·⑧ 조사 지시는 레인 B(#69), 업로드 추출문은 레인 B 후속, ⑥ OpenAI `store`·metadata와 ⑨ 보존 기한은 법률 검토 뒤다.
+- 범위: 4.4 조치 중 ①(회의 입력 허용 목록), ③(자유 텍스트 가림, 제작 경로), ④(담당자 필드), ⑤(브랜드 입력 허용 목록, 제작 경로). 학습 경로의 ⑤·⑧은 레인 A 후속 PR이다(6절. 레인 A 세션이 종료돼 레인 B 세션이 이어받았다). ②(`orderRefs`)·조사 경로 ⑤·⑦ 화면 안내·⑧ 조사 지시는 레인 B(#69), 업로드 추출문·직접 입력 자료의 가림(③)은 레인 B 후속 PR(브랜치 `feat/upload-extract-masking`, 2.4·2.5), ⑥ OpenAI `store`·metadata와 ⑨ 보존 기한은 법률 검토 뒤다.
 - 운영 흐름은 가림(mask)으로 처리한다. 전송 차단(fail-closed)은 `failClosed` 옵션만 두고 B3-2 Reflector가 쓴다.
 - 이 문서는 법률 자문이 아니다. 법률 검토 주체는 대표 본인이다(내부 브랜드 한정).
 
@@ -81,7 +81,9 @@
 
 허용 값(가리지 않음, `productionAllow`): (1) 그 캠페인 범위(브랜드·지점)의 확정 사실 값(`evidence.facts.confirmed[].value`). (2) 지점 레코드의 주소(`store.address`)와 연락 동선(`store.access`)에 적힌 유선·대표 번호(`storeAllowValues`). 휴대폰 대역·이메일과 주요 고객(`customer`)·비교 매장(`competitors`) 같은 다른 자유 텍스트의 값은 허용하지 않는다(사업장 휴대폰·이메일은 확정 사실로 등록한다). (3) 브랜드 단위 캠페인(지점 미지정)이면 그 브랜드 active 지점 전부의 (2) 값(`lib/store-allow-server.ts brandStoreAllow`, 보관 지점 제외). 지점 캠페인은 점포 맥락의 지점 값만 쓴다. 역할은 요청의 `storeAllow`(모델 입력에는 싣지 않음, 0건이면 키 없음), 회의는 단계 제출 때, 브리프는 제출 때 읽는다. 허용 값 안의 조각과 같은 탐지도 허용한다(1절).
 
-가리지 않는 것: 확정 사실 값(`evidence.facts.confirmed`), 점포 맥락 중 지점 레코드 밖(채널 확인 근거·조사 초안·진단 관찰·실험·측정, 담당자 필드만 예외), 모델 출력(회의 발언·합의·개선 과제·개선본 변경 위치 `changes`, 이전 회의의 발언 `previousMeeting.discussion`과 품질 출력 `previousMeeting.quality` 포함. 이전 회의 합의 문장만 역할 경로와 맞춰 가린다), 학습 규칙(`learning`·`trialLearning`), 운영자 선호 규칙 블록(`operatorPreferences`, B3-1), 브랜드 자료 발췌(`brandArchive.confirmedSources`, 업로드 추출문은 레인 B).
+브랜드 자료(레인 B 후속 PR, 브랜치 `feat/upload-extract-masking`): 사용자 자료(origin `upload` 파일 추출문, `manual` 직접 입력, origin 없는 옛 기록)의 `title`(업로드는 기본값이 파일 이름)·`scope`·`url`·`content`를 모델 입력 직전에 `maskText`로 가린다(`lib/source-masking.ts`). 제작(역할·회의·브리프)은 `brandArchive.confirmedSources[]`(본문 3,500자 상한, `lib/archive-server.ts brandArchiveInput`), 조사는 `sources[]`(본문 4,500자 상한, `lib/research-execution.ts`)다. 허용 값은 위와 같은 `productionAllow`다(`lib/archive-server.ts sourceMaskAllow`). 조사가 공개 웹에서 모은 자료(origin `research`)는 가리지 않는다. 저장 레코드(`brand_source`)·화면·다운로드는 원문이다. 본문은 앞부분 창만 가린다. 창은 상한+512자로 시작하고, 가린 창이 상한+256자보다 짧으면(자리표시로 줄어든 경우) 두 배로 넓힌다. 보내는 본문은 본문 전체를 가린 뒤 자른 것과 같고(상한 경계에 걸친 번호도 자르기 전에 가린다), `excerpt`는 가린 본문 길이 기준이다.
+
+가리지 않는 것: 확정 사실 값(`evidence.facts.confirmed`), 점포 맥락 중 지점 레코드 밖(채널 확인 근거·조사 초안·진단 관찰·실험·측정, 담당자 필드만 예외), 모델 출력(회의 발언·합의·개선 과제·개선본 변경 위치 `changes`, 이전 회의의 발언 `previousMeeting.discussion`과 품질 출력 `previousMeeting.quality` 포함. 이전 회의 합의 문장만 역할 경로와 맞춰 가린다), 학습 규칙(`learning`·`trialLearning`), 운영자 선호 규칙 블록(`operatorPreferences`, B3-1), 조사가 공개 웹에서 모은 브랜드 자료 발췌(`brandArchive.confirmedSources` 중 origin `research`. 사용자 자료는 위처럼 가린다).
 
 ### 2.5 가림 기록과 저장본 (DP-4)
 
@@ -90,10 +92,13 @@
 | 역할 | `role_output_contract.inputMasking` | 실행마다 `[{field,kind,count}]`(0건이면 빈 배열). 허용 값이라 가리지 않고 보낸 탐지는 `{field,kind,count,allowed:true}`로 함께 남는다 |
 | 회의 | `team_meeting.steps[].inputMasking` | 단계 제출마다 같음. 화면 응답(`publicMeeting`)에도 값 없이 포함된다 |
 | 브리프 | `brief_draft.inputMasking` | 같음 |
+| 조사(브랜드 자료, 레인 B 후속 PR) | `brand_research.steps[].inputMasking` | 단계 제출마다 `sources.<i>.<필드>` 항목(0건이면 빈 배열). 허용 탐지는 `allowed:true` |
 
+- 브랜드 자료 가림 기록(레인 B 후속 PR): 역할·회의·브리프 기록 뒤에 `brandArchive.confirmedSources.<i>.<필드>` 항목(필드·종류·건수, 허용 탐지는 `allowed:true`, 값 없음)이 붙는다. 회의는 시작 때 이 기록을 `team_meeting.snapshot.sourceMasking`에 두고 단계마다 `inputMasking`에 합친다(스냅샷은 화면 응답에 없다). 가림 기록은 모델 입력에 싣지 않는다.
 - `hermes_submission`·`openai_submission` 저장본은 가린 전송본 그대로다. 복구(같은 키 재전송)도 저장본을 다시 보낸다(`lib/hermes.ts` 변경 없음).
 - 콘솔·오류·이벤트에 값을 남기지 않는다. `failClosed` 오류 문구에도 필드·종류·건수만 있다.
 - 사용자가 입력한 원 레코드(작업물 `reviewNote`, 캠페인, 브랜드, 상시 지시, 성과)와 그 내부 사본(작업물 이력 `history`, 회의 `snapshot`·`agenda`, 브리프 초안 `input`)은 그대로 둔다. 회의 스냅샷은 재시도·stale 판정(`lib/meeting-repair.ts`)이 원 레코드와 비교하므로 원문이어야 한다. 역할 `inputHash`(job id 끝 20자)는 이전처럼 원 입력의 SHA-256 앞자리다.
+- 예외(레인 B 후속 PR): 회의 스냅샷의 브랜드 자료(`snapshot.brandArchive.confirmedSources`)는 가린 값으로 저장한다(stale 판정은 자료를 비교하지 않는다). 이 변경 전에 시작한 회의(`snapshot.sourceMasking` 없음)는 다음 단계 제출 때 자료 레코드를 id로 다시 읽어 한 번 가려 저장한다. 지워진 자료는 사용자 자료로 보고 스냅샷 값을 가린다. 역할 `inputHash`와 평가 케이스 캡처(`eval_case.request`)의 `archive`도 가린 자료다. 합성 fixture는 탐지가 0이라 바이트가 같아 `prompt-baseline`·`role-submission`은 재캡처하지 않았다.
 - 테스트: `tests/input-minimization.test.mjs`가 합성 전화번호·이메일·주소·담당자 이름이 모든 HERMES 요청 본문, 원 레코드 밖의 모든 DB 행, 콘솔 출력에 없음을 확인한다.
 
 ## 3. 스냅샷 재캡처
@@ -122,6 +127,7 @@
 |---|---|
 | `node --experimental-vm-modules tests/pii-scan.test.mjs` | 탐지·가림·허용 목록·오탐 억제·`maskFields`·`failClosed`·`order-import` 상위 집합(순수, mocked) |
 | `node --experimental-vm-modules tests/input-minimization.test.mjs` | 역할·회의·브리프 실행 경로(모의 HERMES, 메모리 SQLite, mocked) |
+| `node --experimental-vm-modules tests/source-masking.test.mjs` | 브랜드 자료 가림(레인 B 후속 PR): 순수 함수(앞부분 창 가림 포함), 조사(심층·지점) 제출, 역할·회의(전환 가림 포함)·브리프 제출, 저장 레코드 원문, 저장본=전송본, 가림 기록, 콘솔 값 0(모의 HERMES, 메모리 SQLite, mocked, 외부 호출 0) |
 | `node scripts/test.mjs` | 전체 스위트(재캡처 스냅샷 포함) |
 
 ## 5. 알려진 한계
@@ -134,7 +140,7 @@
 - 구분자가 있는 숫자는 `CARD`(숫자 사이 공백·하이픈 1개 아무 곳)보다 좁게 본다. 그래서 은행명·`계좌` 없이 적은 계좌번호 묶음(`000-000000-00-000`)은 카드 묶음 형식이 아니면 잡지 않는다(PR 68 첫 판에서는 카드 규칙이 대신 가렸다).
 - 여권·운전면허·외국인등록 형식은 후보 패턴이다. 정확한 범위는 `docs/DATA-PROCESSING.ko.md` 6절 14번 법률 검토에서 정한다. 영문 1자 + 8자리 제품 코드는 여권으로 가려질 수 있다.
 - 사용자가 브리프에 직접 적은 주소·전화가 확정 사실이나 지점 레코드에 없으면 가려져서, 브리프 사실 후보(`factCandidates`)로 제안되지 않는다(출처 확인은 원 입력으로 하므로 자리표시 값은 버려진다).
-- 가리지 않는 입력(2.4 '가리지 않는 것')에 개인정보가 있으면 그대로 간다. 특히 학습 규칙 문구, 운영자 선호 규칙, 점포 맥락 자유 텍스트(채널 확인 근거·조사 초안·진단 관찰), 브랜드 자료 발췌다.
+- 가리지 않는 입력(2.4 '가리지 않는 것')에 개인정보가 있으면 그대로 간다. 특히 학습 규칙 문구, 운영자 선호 규칙, 점포 맥락 자유 텍스트(채널 확인 근거·조사 초안·진단 관찰), 조사가 모은 브랜드 자료 발췌(origin `research`)다.
 - 캠페인의 AI 초안 적용 기록(`draftMeta`: 제안 값·질문·가정)은 가림 경로에 넣지 않았다(모델이 만든 제안이다).
 - 회의 발언·합의 같은 모델 출력은 가리지 않는다(이전 회의 합의 문장 `decisions`·`questions`만 예외로 가린다). 이 변경 이전에 가리지 않은 입력으로 만든 출력에는 개인정보가 섞여 있을 수 있다.
 - 확정 사실 값은 종류를 가리지 않고 허용 값이다. 점주 개인 휴대폰을 확정 사실로 등록하면 모든 가림 경로에서 그 번호가 원문으로 간다. 설계 결정('확정 브랜드 사실 값')대로이며, 게시용 사실 키로 좁힐지는 후속 결정이다.
@@ -142,8 +148,11 @@
 - 의도적으로 난독화한 값은 잡지 않는다: `[at]`·`(at)`·` at `·` @ ` 이메일, 한글 로컬부·IDN 도메인 이메일, 한글 숫자(`공일공-…`)로 쓴 전화·주민번호, 탐지 전 제거 목록 밖의 보이지 않는 문자를 끼운 값. DP-5 사람 확인 몫이다.
 - 모델 지시문에는 `[전화번호]`·`[주소]` 같은 자리표시가 가린 값이라는 안내가 없다. 가린 입력으로 만든 산출물에 자리표시가 옮겨질 수 있다(실제 모델 동작은 `not_run`). 지시문 한 줄 추가는 지시문 해시와 스냅샷이 바뀌므로 후속 PR에서 재캡처와 함께 한다.
 - 작업물 검토 이벤트(`app/api/action/route.ts`의 '수정 요청 · 메모')처럼 제작 경로 밖의 이벤트 문구는 이 변경의 범위가 아니다.
-- 평가 케이스(`eval_case.request`)는 원 요청을 동결해 저장한다. 제출 때 `buildRoleInput`이 가리므로 평가 HERMES로는 가린 본문이 가지만, 저장된 동결 요청 자체는 원문이다. 브랜드 단위 캠페인이면 동결 요청에 지점 허용 값(`storeAllow`: 지점 주소·유선 번호)도 함께 저장된다.
+- 평가 케이스(`eval_case.request`)는 원 요청을 동결해 저장한다. 제출 때 `buildRoleInput`이 가리므로 평가 HERMES로는 가린 본문이 가지만, 저장된 동결 요청 자체는 원문이다(브랜드 자료 `archive.confirmedSources`만 레인 B 후속 PR부터 가린 값으로 동결된다). 브랜드 단위 캠페인이면 동결 요청에 지점 허용 값(`storeAllow`: 지점 주소·유선 번호)도 함께 저장된다.
 - 허용 조각은 탐지 단위로 비교한다. 지점 주소의 `도로명+건물번호`가 허용 값이면 본문의 같은 `도로명+건물번호`는 어디에 적혀도 남는다(같은 건물의 다른 호수는 가린다). 역할 `inputHash`는 허용 값을 포함하지 않으므로, 지점 주소만 바뀌면 가림 결과가 달라도 같은 작업 id가 된다.
+- 브랜드 자료 가림(레인 B 후속 PR)은 새로 만드는 제출부터다. 이 변경의 배포 전에 저장한 `hermes_submission`을 같은 키로 복구 재전송(`recover`)하면 원문 자료가 나간다.
+- 자료 레코드가 지워진 옛 회의 스냅샷(전환 가림)은 이미 3,500자로 자른 본문을 가린다. 그래서 잘린 끝에 걸친 번호의 조각이 가려지지 않고 남을 수 있다.
+- 자료 본문의 가림 기록 건수는 가린 앞부분 창 기준이다. 보낸 본문 뒤 창의 나머지에 있는 탐지도 함께 셀 수 있다(과대 계수만 가능). 창 끝에 수백 자 걸친 길이 제한 없는 패턴(앞부분만 수백 자인 이메일 등)은 본문 전체 가림과 결과가 다를 수 있다.
 
 ## 6. 학습 경로(후속 PR)
 
