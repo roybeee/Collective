@@ -5,7 +5,7 @@
 비유: 외부 디자이너에게 매장 브리프를 넘기기 전에 서류철에서 필요 없는 장을 빼고(허용 목록), 남은 장의 고객 연락처는 검정 펜으로 지운다(가림). 매장 주소·대표 전화처럼 광고에 꼭 필요한 정보는 지우지 않는다(허용 값). 무엇을 몇 군데 지웠는지와 몇 군데를 일부러 남겼는지만 작업 일지에 적고, 그 내용은 적지 않는다.
 
 - 근거 문서: `docs/DATA-PROCESSING.ko.md` 4.2~4.4절, DP-1·DP-3·DP-4 표(이 문서는 그 문서를 고치지 않는다. 레인 B 소유).
-- 범위: 4.4 조치 중 ①(회의 입력 허용 목록), ③(자유 텍스트 가림, 제작 경로), ④(담당자 필드), ⑤(브랜드 입력 허용 목록, 제작 경로). 학습 경로의 ⑤·⑧은 레인 A 후속 PR이다(6절. 레인 A 세션이 종료돼 레인 B 세션이 이어받았다). ②(`orderRefs`)·조사 경로 ⑤·⑦ 화면 안내·⑧ 조사 지시는 레인 B(#69), 업로드 추출문·직접 입력 자료의 가림(③)은 레인 B 후속 PR(브랜치 `feat/upload-extract-masking`, 2.4·2.5), ⑥ OpenAI `store`·metadata와 ⑨ 보존 기한은 법률 검토 뒤다.
+- 범위: 4.4 조치 중 ①(회의 입력 허용 목록), ③(자유 텍스트 가림, 제작 경로), ④(담당자 필드), ⑤(브랜드 입력 허용 목록, 제작 경로). 학습 경로의 ⑤·⑧은 레인 A 후속 PR #73이다(6절. 레인 A 세션이 종료돼 레인 B 세션이 이어받았다). ②(`orderRefs`)·조사 경로 ⑤·⑦ 화면 안내·⑧ 조사 지시는 레인 B(#69), 업로드 추출문·직접 입력 자료의 가림(③)은 레인 B 후속 PR #74(2.4·2.5), ⑥ OpenAI `store`·metadata와 ⑨ 보존 기한은 법률 검토 뒤다.
 - 운영 흐름은 가림(mask)으로 처리한다. 전송 차단(fail-closed)은 `failClosed` 옵션만 두고 B3-2 Reflector가 쓴다.
 - 이 문서는 법률 자문이 아니다. 법률 검토 주체는 대표 본인이다(내부 브랜드 한정).
 
@@ -81,7 +81,7 @@
 
 허용 값(가리지 않음, `productionAllow`): (1) 그 캠페인 범위(브랜드·지점)의 확정 사실 값(`evidence.facts.confirmed[].value`). (2) 지점 레코드의 주소(`store.address`)와 연락 동선(`store.access`)에 적힌 유선·대표 번호(`storeAllowValues`). 휴대폰 대역·이메일과 주요 고객(`customer`)·비교 매장(`competitors`) 같은 다른 자유 텍스트의 값은 허용하지 않는다(사업장 휴대폰·이메일은 확정 사실로 등록한다). (3) 브랜드 단위 캠페인(지점 미지정)이면 그 브랜드 active 지점 전부의 (2) 값(`lib/store-allow-server.ts brandStoreAllow`, 보관 지점 제외). 지점 캠페인은 점포 맥락의 지점 값만 쓴다. 역할은 요청의 `storeAllow`(모델 입력에는 싣지 않음, 0건이면 키 없음), 회의는 단계 제출 때, 브리프는 제출 때 읽는다. 허용 값 안의 조각과 같은 탐지도 허용한다(1절).
 
-브랜드 자료(레인 B 후속 PR, 브랜치 `feat/upload-extract-masking`): 사용자 자료(origin `upload` 파일 추출문, `manual` 직접 입력, origin 없는 옛 기록)의 `title`(업로드는 기본값이 파일 이름)·`scope`·`url`·`content`를 모델 입력 직전에 `maskText`로 가린다(`lib/source-masking.ts`). 제작(역할·회의·브리프)은 `brandArchive.confirmedSources[]`(본문 3,500자 상한, `lib/archive-server.ts brandArchiveInput`), 조사는 `sources[]`(본문 4,500자 상한, `lib/research-execution.ts`)다. 허용 값은 위와 같은 `productionAllow`다(`lib/archive-server.ts sourceMaskAllow`). 조사가 공개 웹에서 모은 자료(origin `research`)는 가리지 않는다. 저장 레코드(`brand_source`)·화면·다운로드는 원문이다. 본문은 앞부분 창만 가린다. 창은 상한+512자로 시작하고, 가린 창이 상한+256자보다 짧으면(자리표시로 줄어든 경우) 두 배로 넓힌다. 보내는 본문은 본문 전체를 가린 뒤 자른 것과 같고(상한 경계에 걸친 번호도 자르기 전에 가린다), `excerpt`는 가린 본문 길이 기준이다.
+브랜드 자료(레인 B 후속 PR #74): 사용자 자료(origin `upload` 파일 추출문, `manual` 직접 입력, origin 없는 옛 기록)의 `title`(업로드는 기본값이 파일 이름)·`scope`·`url`·`content`를 모델 입력 직전에 `maskText`로 가린다(`lib/source-masking.ts`). 제작(역할·회의·브리프)은 `brandArchive.confirmedSources[]`(본문 3,500자 상한, `lib/archive-server.ts brandArchiveInput`), 조사는 `sources[]`(본문 4,500자 상한, `lib/research-execution.ts`)다. 허용 값은 위와 같은 `productionAllow`다(`lib/archive-server.ts sourceMaskAllow`). 조사가 공개 웹에서 모은 자료(origin `research`)는 가리지 않는다. 저장 레코드(`brand_source`)·화면·다운로드는 원문이다. 본문은 앞부분 창만 가린다. 창은 상한+512자로 시작하고, 가린 창이 상한+256자보다 짧으면(자리표시로 줄어든 경우) 두 배로 넓힌다. 보내는 본문은 본문 전체를 가린 뒤 자른 것과 같고(상한 경계에 걸친 번호도 자르기 전에 가린다), `excerpt`는 가린 본문 길이 기준이다.
 
 가리지 않는 것: 확정 사실 값(`evidence.facts.confirmed`), 점포 맥락 중 지점 레코드 밖(채널 확인 근거·조사 초안·진단 관찰·실험·측정, 담당자 필드만 예외), 모델 출력(회의 발언·합의·개선 과제·개선본 변경 위치 `changes`, 이전 회의의 발언 `previousMeeting.discussion`과 품질 출력 `previousMeeting.quality` 포함. 이전 회의 합의 문장만 역할 경로와 맞춰 가린다), 학습 규칙(`learning`·`trialLearning`), 운영자 선호 규칙 블록(`operatorPreferences`, B3-1), 조사가 공개 웹에서 모은 브랜드 자료 발췌(`brandArchive.confirmedSources` 중 origin `research`. 사용자 자료는 위처럼 가린다).
 
