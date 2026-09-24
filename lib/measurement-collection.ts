@@ -1,6 +1,6 @@
 import {ApiError, str, stamp, readRecord, listRecords, recordStatement, database} from './server';
 import {connectorFor} from './connectors';
-import {loadCredential} from './channel-credentials';
+import {loadCredential, type CredentialScope, type ResolvedScope} from './channel-credentials';
 import {channelNameForConnector} from './channels';
 import type {ConnectorKey, CollectionWindow, Collected} from './connectors/types';
 import type {Arm, ViralExperiment} from './learning';
@@ -12,7 +12,8 @@ export const COLLECT_INTERVAL_MS = 6 * 3600000;
 
 // arm 하나의 수집 기록. 두 arm이 서로 다른 기간·정의에서 왔는지 비교 전에 확인할 수 있도록 arm별로 보관한다.
 // target·storeValues(PR 4b-2): 그 수집의 광고 대상과 점포 지표(광고비 등). 최상위 storeValues는 마지막 수집 arm의 값으로 덮이므로 비용 장부로 옮길 값은 arm별로 읽는다(lib/spend-transfer.ts).
-export type MeasurementArmDraft = {value?: Arm; window: CollectionWindow; definition: string; limitations: string[]; fetchedAt: string; target?: string; storeValues?: Partial<Record<StoreMetricKey, number | null>>};
+// credential(F5): 이 수집에 쓴 자격증명 단위(지점·브랜드·워크스페이스 기본). 이 필드가 없는 이전 기록은 워크스페이스 기본으로 수집했다.
+export type MeasurementArmDraft = {value?: Arm; window: CollectionWindow; definition: string; limitations: string[]; fetchedAt: string; target?: string; storeValues?: Partial<Record<StoreMetricKey, number | null>>; credential?: ResolvedScope};
 
 // 자동 수집 결과는 초안으로만 남는다. comparable은 API가 주장할 수 없는 사람의 판단이므로
 // 항상 false로 고정하고, 사용자가 save_results에서 직접 확정해야 evaluateExperiment가 판정한다.
@@ -28,6 +29,7 @@ export type MeasurementDraft = {
  arms?: Partial<Record<'control' | 'treatment', MeasurementArmDraft>>;
  comparable: false;
  // 최상위 정의·기간·수집 시각은 마지막으로 수집한 arm의 것이다. 한계에는 두 arm 기간이 다를 때와 당일 부분 집계일 때의 경고가 붙는다(Instagram 누적값 제외).
+ // 두 arm이나 같은 arm의 이전 수집과 자격증명 단위(연결)가 다를 때의 경고는 Instagram에도 붙는다(F5).
  definition: string;
  window: CollectionWindow;
  limitations: string[];
@@ -79,6 +81,24 @@ function windowWarning(entries: NonNullable<MeasurementDraft['arms']>, channel: 
  return [...mismatch, ...partial];
 }
 
+// F5: 두 arm이 서로 다른 자격증명 단위(다른 계정)로 수집됐으면 비교하지 않도록 경고한다. 누적값인 Instagram에도 붙인다. credential이 없는 이전 기록은 워크스페이스 기본이다.
+const unitLabel = (u?: ResolvedScope) => u?.level === 'store' ? `지점 연결 ${u.storeId}` : u?.level === 'brand' ? `브랜드 연결 ${u.brandId}` : '워크스페이스 기본';
+function credentialWarning(entries: NonNullable<MeasurementDraft['arms']>) {
+ const c = entries.control, t = entries.treatment;
+ return c && t && unitLabel(c.credential) !== unitLabel(t.credential) ? [`두 실험안을 서로 다른 연결(대조안 ${unitLabel(c.credential)}, 실험안 ${unitLabel(t.credential)})로 수집했습니다. 같은 연결로 다시 수집하기 전에는 두 값을 비교하지 마세요.`] : [];
+}
+
+// F5: 자격증명 단위는 입력이 아니라 실험의 브랜드와 캠페인의 지점에서 정한다. 캠페인이 없거나 다른 브랜드면 브랜드 단위까지만 본다.
+async function credentialScope(owner: string, experiment: ViralExperiment): Promise<CredentialScope> {
+ try {
+  const campaign = await readRecord<Campaign>(owner, 'campaign', experiment.campaignId);
+  return {brandId: experiment.brandId, storeId: campaign.brandId === experiment.brandId ? campaign.storeId : undefined};
+ } catch (error) {
+  if (error instanceof ApiError && error.status === 404) return {brandId: experiment.brandId};
+  throw error;
+ }
+}
+
 async function draftFor(owner: string, experimentId: string) {
  try {
   return await readRecord<MeasurementDraft>(owner, 'measurement_draft', experimentId);
@@ -101,13 +121,17 @@ export async function collectForExperiment(owner: string, input: Record<string, 
  const target = str(input.target, '광고 대상 ID', 100, true);
  const window: CollectionWindow = {from: str(input.from, '수집 시작일', 20, true), to: str(input.to, '수집 종료일', 20, true)};
 
- const credential = await loadCredential(owner, connector.key);
+ // 우선순위는 지점 > 브랜드 > 워크스페이스 기본이다. 다른 브랜드의 자격증명은 후보가 아니다(lib/channel-credentials.ts).
+ const {credential, resolvedScope} = await loadCredential(owner, connector.key, await credentialScope(owner, experiment));
  const collected: Collected = await connector.collect(credential, target, window);
 
  const previous = await draftFor(owner, experimentId);
  const legacySources = previous && !previous.arms ? await listRecords<MeasurementSource>(owner, 'measurement_source', experimentId) : [];
  const partial = windowed(connector.key) && partialDay(collected) ? [`수집 기간(~${collected.window.to})에 수집일이 포함돼 당일 부분 집계입니다. 하루가 지난 뒤 다시 수집한 값으로 비교하세요.`] : [];
- const entries = {...armsOf(previous, legacySources), [arm]: {value: collected.arm, window: collected.window, definition: collected.definition, limitations: [...collected.limitations, ...partial], fetchedAt: collected.fetchedAt, target, ...(collected.storeValues ? {storeValues: collected.storeValues} : {})}};
+ const before = armsOf(previous, legacySources);
+ // 같은 arm을 이전과 다른 단위로 다시 가져왔으면(워커 재수집 중 브랜드·지점 연결 추가·해제 등) 그 arm 기록과 초안 한계에 남긴다.
+ const changed = before[arm] && unitLabel(before[arm]?.credential) !== unitLabel(resolvedScope) ? [`${armLabels[arm]} 값을 이전 수집(${unitLabel(before[arm]?.credential)})과 다른 연결(${unitLabel(resolvedScope)})로 가져왔습니다. 같은 광고 대상·계정인지 확인하기 전에는 이전 값과 비교하지 마세요.`] : [];
+ const entries = {...before, [arm]: {value: collected.arm, window: collected.window, definition: collected.definition, limitations: [...collected.limitations, ...partial, ...changed], fetchedAt: collected.fetchedAt, target, ...(collected.storeValues ? {storeValues: collected.storeValues} : {}), credential: resolvedScope}};
  const draft: MeasurementDraft = {
   id: experimentId,
   experimentId,
@@ -120,7 +144,7 @@ export async function collectForExperiment(owner: string, input: Record<string, 
   comparable: false,
   definition: collected.definition,
   window: collected.window,
-  limitations: [...collected.limitations, ...windowWarning(entries, connector.key)],
+  limitations: [...collected.limitations, ...changed, ...windowWarning(entries, connector.key), ...credentialWarning(entries)],
   fetchedAt: collected.fetchedAt,
   updatedAt: stamp(),
  } as MeasurementDraft;

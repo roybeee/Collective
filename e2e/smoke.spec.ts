@@ -257,5 +257,16 @@ test('설정 기능표가 확정 사실과 연결 상태를 실제 값으로 보
   await table.getByRole('button', {name: '다시 확인', exact: true}).click();
   await expect(feature('png')).toContainText('사용 가능 · 확정 사실 1건');
   await shot(page, testInfo, 'feature-table-facts');
+
+  // F5: 설정 채널 카드는 채널마다 워크스페이스 기본 상태를 보이고, 연결 폼에서 적용 범위(워크스페이스 기본 / 브랜드 / 브랜드 · 지점)를 고른다.
+  // 로컬 인증 헤더의 소유자는 관리자라 폼이 보인다. '브랜드'를 고르면 적용할 브랜드 선택이 나타난다.
+  const channelCard = page.locator('#settings-channels');
+  await expect(channelCard.getByRole('group', {name: '네이버 검색광고 연결 상태', exact: true})).toContainText('네이버 검색광고 · 워크스페이스 기본 · 연결 전');
+  const scope = channelCard.getByRole('combobox', {name: '적용 범위', exact: true});
+  await expect(scope).toBeVisible();
+  await expect(scope.locator('option')).toHaveText(['워크스페이스 기본', '브랜드', '브랜드 · 지점']);
+  await scope.selectOption({label: '브랜드'});
+  await expect(channelCard.getByRole('combobox', {name: '브랜드', exact: true})).toBeVisible();
+  await shot(page, testInfo, 'channel-scope');
   await context.close();
 });

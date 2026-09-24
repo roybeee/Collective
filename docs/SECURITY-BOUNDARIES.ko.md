@@ -4,7 +4,7 @@
 
 ## 역할별 권한 (이메일 모드)
 
-마지막 갱신: 2026-09-24 KST (F4a: 캠페인 삭제 영향 조회 행·결정 7 규칙 보존 추가)
+마지막 갱신: 2026-09-24 KST (F5: 채널 연결 변경 행에 브랜드·지점 단위 추가)
 
 같은 워크스페이스의 계정은 대표(owner)·관리자(admin)·직원(member) 중 하나다. 대표는 DB에 따로 저장하지 않고 같은 워크스페이스에서 가장 먼저 만든 관리자 계정으로 계산한다(`lib/auth-session.ts` `roleSql`). 판정은 서버 API가 하며, 화면에서 버튼을 숨기는 것은 보조 수단이다. 직원이 관리자 전용 작업을 요청하면 403이다. legacy 모드(로컬 개발·E2E)의 헤더 사용자는 모든 권한을 가진다.
 
@@ -27,7 +27,7 @@
 | 캠페인 상시 지시 삭제 | `/api/directives` `remove` | 허용 | 허용 | 본인 역할(직원)이 남긴 지시만. 관리자·대표가 남긴 지시는 403 |
 | HERMES·OpenAI 연결 저장·해제 | `/api/action` `save_hermes`·`save_connection`·`disconnect` | 허용 | 허용 | 403 |
 | HERMES 연결 주소 조회 | `/api/workspace` `connection.endpoint` | 포함 | 포함 | 응답에서 제외 |
-| 채널 연결 변경 | `/api/channels` POST | 허용 | 허용 | 403 |
+| 채널 연결 변경(워크스페이스 기본·브랜드·지점 단위) | `/api/channels` POST `save_credential`·`revoke_credential` (`brandId`·`storeId` 선택) | 허용 | 허용 | 403 |
 | 사용량 단가 변경 | `/api/usage` POST | 허용 | 허용 | 403 |
 | 발행 설정·승인·실행·취소 | `/api/execution` `connect_buffer`·`save_limits`·`approve`·`execute`·`cancel` | 허용 | 허용 | 403 |
 | 서버 설치 파일 발급 | `/api/research-worker/setup` `download` | 아래 목록 판정 | 아래 목록 판정 | 403 |
@@ -106,6 +106,22 @@ enforce 상태에서 공통 gate를 교체하면 설치된 워커는 모두 403�
   - 브랜드 등록 자동 조사(POST `/api/archive` `create_brand`, `autoResearch`): 기본(warn)은 점검하지 않고 `research.access`는 unverified다. 등록을 네트워크로 늦추지 않는다는 기존 계약('등록은 바로 완료', `tests/archive.test.mjs` 'registration atomically saves brand and queued research without network wait') 때문이다. block이면 등록 전에 점검한다. 막히면 브랜드만 만들고 조사는 만들지 않으며 응답 `researchBlocked`로 사유를 돌려주고 화면이 오류 알림으로 보여 준다. 통과하면 점검 결과를 `research.access`로 저장한다.
   - 넘길 일: `lib/research-execution.ts` 시작 경로의 `access:unverifiedResearchAccess()`를 `startResearchAccess`로 바꿔 한 곳에서 점검·저장하는 배선은 그 파일을 소유한 레인(병합 순서 PR 4a → A7)에서 한다. 그때 위 라우트의 사후 저장(`saveStartAccess`)은 지운다.
 - **권고 4 미해결**: HERMES run 이벤트에서 실제 호출된 도구를 원장에 남기는 일은 `lib/hermes.ts`·`lib/usage-ledger.ts`를 고쳐야 해서 이 레인에서 하지 않았다. 두 파일의 병합 순서(F2 → PR 4a)에 따라 PR 4a가 넘겨받는다.
+
+## 성과 수집 채널 자격증명 단위 (F5)
+
+마지막 갱신: 2026-09-24 KST (F5, 대표 결정 16: 자격증명 단위는 브랜드). 근거는 `tests/channel-credentials-brand.test.mjs`(mocked: 메모리 SQLite, 로컬 요청·이메일 세션, Instagram fetch 스텁이 받은 Authorization 헤더)와 `tests/measurements.test.mjs`(mocked)다. 운영 게시·관측은 하지 않았다(not_run).
+
+성과 커넥터(Instagram·네이버 검색광고) 자격증명은 `(brandId[, storeId], channel)` 단위로 저장한다. kind는 그대로 `channel_credential`이고 새 kind는 없다.
+
+- **식별 규칙.** 레코드 id는 `<owner>:channel_credential:<channel>`(워크스페이스 기본, 기존 소유자 단위 레코드), `<owner>:channel_credential:<channel>:<brandId>`(브랜드 단위), `<owner>:channel_credential:<channel>:<brandId>:<storeId>`(지점 단위)다. 브랜드·지점 단위 레코드는 본문에 `brandId`·`storeId`를 함께 적고, parent_id는 기존처럼 비운다(`lib/record-kinds.ts` parent `none`). id가 겹치지 않도록 `:`가 든 브랜드·지점 id는 400으로 거절한다.
+- **저장·해제 검증.** `/api/channels` POST는 기존처럼 관리자만(직원 403) 한다. `brandId`는 이 워크스페이스의 브랜드여야 하고(없거나 다른 워크스페이스의 브랜드면 404), `storeId`는 그 브랜드의 지점이어야 한다(없는 지점·다른 브랜드의 지점 404, 보관한 지점에 새로 연결하면 409, `brandId` 없이 `storeId`만 주면 400). 단위 검증이 먼저라 잘못된 단위로는 외부 API 검증 호출도 하지 않는다. 해제는 요청한 단위의 레코드 하나만 지운다. 브랜드를 해제해도 그 지점 단위와 워크스페이스 기본은 남고, 보관한 지점의 자격증명도 해제할 수 있다. 설정 채널 카드는 이 채널에 저장된 자격증명이 있는 보관 지점을 지점 선택지에 '(보관됨)'으로 남기고, 그 지점을 고르면 저장 버튼을 막고 해제만 허용한다.
+- **조회 우선순위.** 수집은 지점 단위 > 브랜드 단위 > 워크스페이스 기본 순으로 찾고, 셋 다 없으면 기존 '연결 전' 409('… 연결이 필요합니다')다. 브랜드는 실험의 `brandId`, 지점은 실험 캠페인의 `storeId`(캠페인이 같은 브랜드일 때만)에서 정한다. 수집 요청 본문의 값으로는 단위를 고를 수 없다. 수동 수집과 워커 재수집(`collectDueMeasurements`)이 같은 경로를 쓴다.
+- **격리 보장.** 조회 후보는 그 실험 브랜드의 지점·브랜드 레코드와 워크스페이스 기본뿐이라 다른 브랜드의 자격증명은 어떤 경우에도 쓰지 않는다. 브랜드 A 실험은 브랜드 B만 연결돼 있으면 워크스페이스 기본(있을 때)이나 '연결 전'으로 끝난다. 수집 초안의 arm 기록(`measurement_draft.arms.<arm>.credential`)에 실제로 쓴 단위(`level`·`brandId`·`storeId`)를 남기고, 두 arm이나 같은 arm의 이전 수집과 단위가 다르면 초안 한계에 비교 금지 경고를 붙인다([신뢰성](RELIABILITY.ko.md#성과-수집-자격증명-선택-f5)).
+- **상태 응답.** GET `/api/channels`의 `channels`는 워크스페이스 기본만 보여 준다(기존 필드 그대로). `byBrand`는 브랜드마다 채널별 브랜드 단위 상태와 저장된 지점 단위 상태를 주고, 만료가 7일 안이거나 지난 토큰에는 `warning`을 붙인다. `?brandId=`(`&storeId=`)를 주면 그 단위의 수집이 쓸 자격증명(`resolved[].resolvedScope`)을 함께 준다. 어느 응답에도 비밀값은 없다. 조회는 기존처럼 같은 워크스페이스의 로그인 사용자면 역할과 관계없이 허용한다.
+- **마이그레이션 없음.** 기존 소유자 단위 레코드는 옮기거나 다시 쓰지 않고 워크스페이스 기본으로 계속 읽는다. 범위 없이 부르는 저장·조회·해제는 이전과 같은 id·필드·응답이다.
+- **발행용 Buffer 자격증명과 대조.** `publisher_credential`은 처음부터 브랜드 단위(id `<owner>:publisher_credential:<brandId>`, parent 브랜드)이고 워크스페이스 기본이나 지점 단위가 없다. 성과 수집 자격증명은 브랜드 단위를 같은 규칙(다른 브랜드 것은 쓰지 않음)으로 따르되, 호환을 위해 워크스페이스 기본을 마지막 후보로 둔다. Buffer 규칙은 이번에 바꾸지 않았다.
+- **남은 일.** 브랜드는 삭제 경로가 없고 지점은 보관만 하므로 브랜드·지점 단위 자격증명의 삭제 연쇄는 두지 않았다. 지점을 보관해도 그 지점 자격증명은 자동으로 해제되지 않고 그 지점 캠페인의 수집에 계속 쓰인다(보관 시 자동 해제는 동작 변경이라 별도 결정). 캠페인 삭제는 `channel_credential`을 건드리지 않는다(`not_campaign_scoped`). 암호화 키 회전(security-ops-6)·수집 실패 표시(security-ops-5)·loop-1은 PR 4b 잔여다.
+- **loop-1은 open이다.** F5는 loop-1의 선행 작업(브랜드 단위 자격증명)만 한다. loop-1 본체(실행 중인 실험 카드의 `/api/measurements` collect 버튼, `/api/learning` GET의 `measurement_draft`·`measurement_source`(`lastFetchedAt`·`lastError`·`stopped`), 결과 입력 모달의 초안 값 미리 채우기, 수집 실패·토큰 만료 경고)는 PR 4b에서 한다. 그때 실험 카드의 만료 판정은 GET `/api/channels?brandId=&storeId=`의 `resolved[].resolvedScope`·`expiresAt`을 재사용한다.
 
 ## 입력과 공급자 응답
 
