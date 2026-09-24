@@ -5,7 +5,7 @@
 비유: 외부 디자이너에게 매장 브리프를 넘기기 전에 서류철에서 필요 없는 장을 빼고(허용 목록), 남은 장의 고객 연락처는 검정 펜으로 지운다(가림). 매장 주소·대표 전화처럼 광고에 꼭 필요한 정보는 지우지 않는다(허용 값). 무엇을 몇 군데 지웠는지와 몇 군데를 일부러 남겼는지만 작업 일지에 적고, 그 내용은 적지 않는다.
 
 - 근거 문서: `docs/DATA-PROCESSING.ko.md` 4.2~4.4절, DP-1·DP-3·DP-4 표(이 문서는 그 문서를 고치지 않는다. 레인 B 소유).
-- 범위: 4.4 조치 중 ①(회의 입력 허용 목록), ③(자유 텍스트 가림, 제작 경로), ④(담당자 필드), ⑤(브랜드 입력 허용 목록, 제작 경로). ②(`orderRefs`)·조사·학습 경로·⑦ 화면 안내·⑧ 조사 지시·업로드 추출문은 레인 B, ⑥ OpenAI `store`·metadata와 ⑨ 보존 기한은 법률 검토 뒤다.
+- 범위: 4.4 조치 중 ①(회의 입력 허용 목록), ③(자유 텍스트 가림, 제작 경로), ④(담당자 필드), ⑤(브랜드 입력 허용 목록, 제작 경로). 학습 경로의 ⑤·⑧은 레인 A 후속 PR이다(6절. 레인 A 세션이 종료돼 레인 B 세션이 이어받았다). ②(`orderRefs`)·조사 경로 ⑤·⑦ 화면 안내·⑧ 조사 지시는 레인 B(#69), 업로드 추출문은 레인 B 후속, ⑥ OpenAI `store`·metadata와 ⑨ 보존 기한은 법률 검토 뒤다.
 - 운영 흐름은 가림(mask)으로 처리한다. 전송 차단(fail-closed)은 `failClosed` 옵션만 두고 B3-2 Reflector가 쓴다.
 - 이 문서는 법률 자문이 아니다. 법률 검토 주체는 대표 본인이다(내부 브랜드 한정).
 
@@ -59,7 +59,7 @@
 
 ### 2.2 브랜드 입력 허용 목록 (⑤)
 
-`aiBrand`는 `identity`(name·short·category·color·tone·audience·constraints)와 `brandIntro`만 만든다. 의뢰 정보 `intake`(웹사이트·SNS·시장·의뢰 목적·경쟁사)는 제작 입력에서 뺐다. `brandIntro.text`(소개+메모)와 `identity.audience`·`identity.constraints`는 가린 뒤 보낸다(탐지 0이면 원문 그대로). 조사·학습 경로의 브랜드 입력은 레인 B다.
+`aiBrand`는 `identity`(name·short·category·color·tone·audience·constraints)와 `brandIntro`만 만든다. 의뢰 정보 `intake`(웹사이트·SNS·시장·의뢰 목적·경쟁사)는 제작 입력에서 뺐다. `brandIntro.text`(소개+메모)와 `identity.audience`·`identity.constraints`는 가린 뒤 보낸다(탐지 0이면 원문 그대로). 조사 경로의 브랜드 입력은 레인 B(#69, `researchBrand`), 학습 경로는 6절이다.
 
 ### 2.3 담당자 필드 (④)
 
@@ -144,3 +144,31 @@
 - 작업물 검토 이벤트(`app/api/action/route.ts`의 '수정 요청 · 메모')처럼 제작 경로 밖의 이벤트 문구는 이 변경의 범위가 아니다.
 - 평가 케이스(`eval_case.request`)는 원 요청을 동결해 저장한다. 제출 때 `buildRoleInput`이 가리므로 평가 HERMES로는 가린 본문이 가지만, 저장된 동결 요청 자체는 원문이다. 브랜드 단위 캠페인이면 동결 요청에 지점 허용 값(`storeAllow`: 지점 주소·유선 번호)도 함께 저장된다.
 - 허용 조각은 탐지 단위로 비교한다. 지점 주소의 `도로명+건물번호`가 허용 값이면 본문의 같은 `도로명+건물번호`는 어디에 적혀도 남는다(같은 건물의 다른 호수는 가린다). 역할 `inputHash`는 허용 값을 포함하지 않으므로, 지점 주소만 바뀌면 가림 결과가 달라도 같은 작업 id가 된다.
+
+## 6. 학습 경로(후속 PR)
+
+바이럴 학습 경로에도 4.4 ⑤·⑧을 적용한다. 레인 B #69가 조사 경로에 쓴 도우미(`lib/archive-research.ts`의 `researchBrand`·`authorPrivacy`)를 `lib/learning-execution.ts`에서 그대로 쓴다.
+
+| 조치 | 바꾼 것 |
+|---|---|
+| ⑤ 브랜드 입력 | 학습 규칙 초안(L3 `start_guidance`)·바이럴 분석(L1 `start_analysis`)·바이럴 발견(L2 `start_discovery`) 제출의 `brand`를 `researchBrand(brand)`로 보낸다. 정체성 7필드(`name`·`short`·`category`·`color`·`tone`·`audience`·`constraints`)만 가고 공식 주소(`officialLinks`)는 없다. `id`·`bg`·`description`·`knowledge`·`intake` 전체가 빠진다. 입력 키 이름 `brand`와 과업 입력(실험·판정·결과, 사례·관찰, 조사 주제·요청 시각)은 그대로다 |
+| ⑧ 작성자 식별정보 | 바이럴 발견(L2) 지시에만 넣는다. '개인의 민감한 정보를 수집하지 마세요.' 바로 뒤에 `authorPrivacy` 문장과 사례 게시 계정 한정 문장(`caseAccountRule`: '단, 사례 게시물을 올린 공개 계정 이름은 사례 식별용으로 cases의 account에만 적으세요. 댓글·리뷰 작성자와 게시물·영상에 등장하는 개인의 식별정보는 적지 마세요.')을 차례로 붙인다. 코드가 붙이는 지시에 있으므로 레지스트리 단위 `viral.discovery` 본문(코드 상수 `viralPractice`)은 바뀌지 않고, 레지스트리 버전을 활성화해도 문장이 빠지지 않는다. 사례 분석(L1)·규칙 초안(L3) 지시에는 넣지 않는다. 병합된 계획(4.4 ⑧)대로 L2만이다. L1은 제공된 사례·관찰만 읽고 L3은 실험 결과만 읽어 외부 콘텐츠를 수집하지 않는다. 그래서 분석 지시문은 이 변경 전과 바이트 동일하다 |
+
+- ⑧ 해석(대표 확인 필요): `authorPrivacy`는 '게시물 작성자'의 계정도 기록하지 말라고 하고, 예외는 브랜드·경쟁사 공식 계정뿐이다. 그런데 발견 지시는 사례마다 `account`를 채우게 하고(스키마 `cases[].account`) oEmbed로 계정을 대조하게 한다. 바이럴 사례의 게시자는 대부분 일반 크리에이터라 예외에 들지 않는다. 문장만 넣으면 모델은 `account`를 비우거나(사례 식별과 `baselineViews` 비교 근거가 약해진다) ⑧을 어긴다. 대표가 승인한 ⑧ 조치 문구(4.4 8번)는 '리뷰·댓글 작성자'다. 그래서 사례 게시물을 올린 공개 계정은 관찰 대상으로 보고 `account`에만 적게 했다. 댓글·리뷰 작성자와 게시물·영상 속 개인은 계속 뺀다. 게시 계정도 적지 않기로 하면(엄격안) 발견 스키마의 `account`와 oEmbed '계정 대조' 문구도 함께 고친다. `makeCase`는 `account`를 선택값으로 받으므로 저장은 그대로 된다.
+- 가리지 않는다: 제작 경로(2.2)와 달리 `audience`·`constraints`는 조사 경로처럼 원문으로 간다. 바이럴 사례의 계정명·자막·관찰, 조사 주제, 실험 조건·결과 메모도 가리지 않는다.
+- 저장 기록은 그대로다. 브랜드 레코드는 소개·메모·의뢰 정보를 유지하고 모델 입력에서만 뺀다. 저장한 제출 원문이 전송본이고 복구(`recover`)도 그것을 다시 보내므로, 이 변경 전에 저장한 제출은 복구 때 이전 본문으로 간다.
+- 테스트: `tests/learning-input-minimization.test.mjs`(모의 HERMES, 메모리 SQLite, mocked).
+
+스냅샷: 학습 경로 제출 바이트가 의도적으로 바뀐다. `prompt-baseline`의 학습 항목 가운데 바이럴 분석 입력과 바이럴 발견 지시문이 달라지므로 fixture를 재캡처한다. `tests/prompt-resolution.test.mjs`(75·132행)도 같은 fixture의 `learning[1]`(발견 지시문)과 비교하므로, 재캡처 하나로 두 스위트가 함께 맞춰진다. 절차는 3절과 같다. 코드 변경을 커밋한 뒤 그 커밋 SHA로 캡처한다. 옛 `tests/fixtures/prompt-baseline-9bdcfc8.json`은 `git rm`으로 지운다(이름 바꾸기 금지. 테스트는 fixture가 정확히 1개일 것을 요구한다).
+
+- `tests/fixtures/prompt-baseline-be1e7ad.json`(코드 변경 커밋 `be1e7ad`에서 재캡처): `PROMPT_BASELINE_SHA=be1e7adfdb692d1ebda971a2c2394d49538efef6 PROMPT_BASELINE_CAPTURE=tests/fixtures/prompt-baseline-be1e7ad.json node --experimental-vm-modules tests/prompt-baseline.test.mjs`
+- 역할 8종·회의 12단계 ×2 항목은 바뀌지 않아야 한다. 역할·회의·브리프·조사 제출 바이트는 이 변경의 범위 밖이다.
+- 역할 제출 스냅샷 `tests/fixtures/role-submission-9bdcfc8.json`(역할 16케이스, 이전 회의 합의 입력 포함)은 학습 경로를 지나지 않으므로 바뀌지 않는다. 재캡처하지 않는다.
+
+변경 전후 차이(재캡처한 `be1e7ad`과 옛 fixture `9bdcfc8`을 항목별로 비교. 외부 호출 0회, 합성 데이터):
+
+| 스냅샷 | 역할 8종 | 회의 12단계 ×2 | 바이럴 분석(L1) | 바이럴 발견(L2) 지시문 |
+|---|---|---|---|---|
+| prompt-baseline | 8/8 동일(`inputHash`·지시문·입력) | 24/24 동일(지시문·입력) | 지시문 동일(1,035자). 입력 변경 627→543자(`brand`에서 `id`·`bg`·`description`·`knowledge`가 빠짐) | 변경 1,655→1,832자(`authorPrivacy`·`caseAccountRule` 추가, sha256 `b691d1e0…`) |
+
+`providerCalls.external`(0)도 같다. 재캡처 뒤 `tests/prompt-baseline.test.mjs`(83)와 `tests/prompt-resolution.test.mjs`(50)가 모두 통과한다.

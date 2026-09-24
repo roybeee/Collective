@@ -1,5 +1,5 @@
 {
- "baseSha": "9bdcfc80bcab0811ece2e0d8d9b98dfa72116efb",
+ "baseSha": "be1e7adfdb692d1ebda971a2c2394d49538efef6",
  "roles": [
   {
    "role": "cmo",
@@ -382,15 +382,15 @@
     "length": 1035
    },
    "input": {
-    "sha256": "27b79ff031d13a22f1e0ebf0cf89f1ce5612228a065750b4cac0583a5ea88a87",
-    "length": 627
+    "sha256": "ce38db92cbc44bfe5a18114a4f4d8f707dfb831ce29b74255d720347d1b53d8f",
+    "length": 543
    }
   },
   {
    "kind": "discovery",
    "instructions": {
-    "sha256": "35aa14b5a2897140b77da856e8c254e2eaf3df4bae9fa1b45a0314bab49bb7d4",
-    "length": 1655
+    "sha256": "b691d1e0f493b88a7d2917b7d48199ae500e0678f1012ac0481d35301d009c6e",
+    "length": 1832
    }
   }
  ],
