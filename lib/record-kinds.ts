@@ -31,7 +31,7 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'campaign_directive',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'캠페인 상시 지시'},
  {kind:'campaign_sequence',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'캠페인 연속 실행 동의·진행 상태'},
  {kind:'case_observation',parent:'viral_case',campaignDeletion:'not_campaign_scoped',description:'같은 바이럴 사례의 추가 관찰'},
- {kind:'channel_credential',parent:'none',campaignDeletion:'not_campaign_scoped',description:'성과 수집 채널 자격증명(암호화)'},
+ {kind:'channel_credential',parent:'none',campaignDeletion:'not_campaign_scoped',description:'성과 수집 채널 자격증명(암호화, 워크스페이스 기본·브랜드·지점 단위)'},
  {kind:'deleted_campaign',parent:'none',campaignDeletion:'retain',description:'캠페인 삭제 기록(tombstone). 삭제할 때 만들어 재생성과 재시도를 막는다'},
  {kind:'eval_case',parent:'none',campaignDeletion:'retain',links:['data_campaign'],description:'평가 골든셋 케이스(동결한 역할 요청·기대 판정·세트). 캠페인을 지워도 남기고 소유자만 개별 삭제한다(결정 6·7 취지)'},
  {kind:'eval_connection',parent:'none',campaignDeletion:'not_campaign_scoped',description:'평가 전용 HERMES 연결(주소·키 암호화, 운영 연결과 다른 호스트)'},
