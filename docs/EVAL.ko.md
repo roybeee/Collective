@@ -219,7 +219,7 @@ node scripts/eval/grade.mjs <case.json> [--json] [--detail]
 |---|---|---|
 | `capture_case` | `campaignId`, `role`, `set?`, `label?`, `expectations?` | 운영 역할 실행 start와 같은 DB 읽기(`roleSources`→`roleRequestFor`)로 요청 객체를 만들어 JSON 그대로 동결한다. 실행 가능 여부 검사(진행 중 작업·앞선 담당 누락·현재 작업물 존재 409)는 적용하지 않아 끝난 캠페인에서도 캡처한다 |
 | `save_case` | `role`, `request`, `expectations?`, `set?`, `label?` | `request`는 운영 요청 구조(role·campaign·brand·archive·evidence·previous)여야 하고 현재 `buildRoleInstruction`·`buildRoleInput`이 받아야 한다. 900,000자를 넘으면 413 |
-| `update_case` | `id`, `label?`, `set?`, `expectations?` | 요청(`request`)은 바꾸지 않는다. 세트 이동은 `setChanges`에 누가·언제 남긴다 |
+| `update_case` | `id`, `label?`, `set?`, `expectations?` | 요청(`request`)은 바꾸지 않는다. 세트 이동은 `setChanges`에 누가·언제 남긴다. 진행 중 run이 쓰는 케이스의 `expectations`·`set` 변경은 409(이름은 가능) |
 | `delete_case` | `id` | 진행 중 run이 쓰는 케이스는 409 |
 
 - `expectations`는 채점 컨텍스트다: `prohibitedTerms`(큐레이션 금지 표현), `facts`(`{confirmed,prohibited}`, 캡처 기본값은 요청의 확정·거절 사실), `industry`, `localStore`, `inputTokenCap`.
@@ -233,7 +233,7 @@ node scripts/eval/grade.mjs <case.json> [--json] [--detail]
 {"action":"start_run","set":"dev","tokenBudget":100000,"label":"프롬프트 변경 전 기준"}
 ```
 
-- 케이스는 `caseIds`(1~100개) 또는 `set`(dev|sealed, 100개 이하)으로 고른다. `variant`는 `active`(현재 코드)만 받는다. 후보 프롬프트(F3)가 이 자리를 쓴다.
+- 케이스는 `caseIds`(1~100개) 또는 `set`(dev|sealed, 100개 이하)으로 고른다. `variant`는 `active`(현재 코드) 또는 `pair`(F3b 쌍 평가, 아래 5절)만 받는다. 후보 단독 실행은 없다.
 - `tokenBudget`은 필수(없으면 400)이며 케이스 1건 예약량(`EVAL_CASE_TOKEN_RESERVE`, 50,000) 이상 정수다. 더 작으면 400이다.
 - 케이스 1건 예약량 50,000은 구현 선택이다. HERMES 제출에 토큰 상한이 없어서, 케이스 하나가 쓸 양을 미리 잡아 두는 값이다. 근거는 실측 역할 1회 7,343~13,997토큰(`docs/observations/2026-09-23-live-run.md`)이고, 예약량은 그 최댓값의 약 3.5배다. 대표가 바꿀 수 있다.
 - 진행 중(`queued`·`running`) 평가 run은 소유자당 1개(`EVAL_MAX_ACTIVE_RUNS`)다. 하나가 진행 중이면 새 `start_run`은 409이고 기록하지 않는다. 검사와 저장은 POST 라우트의 소유자 잠금 안에서 한다.
@@ -276,7 +276,24 @@ run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
 | `GET /api/eval?case=<id>` | 케이스 전체(동결 요청 포함) |
 | `GET /api/eval?run=<id>` | run 전체 |
 | `GET /api/eval?run=<id>&caseId=<id>` | 모델 출력 원문과 가드레일 상세 |
-| `GET /api/eval?compare=<기준 run>,<비교 run>` | 채점기별 대응 비교(아래 비교 통계 규칙) |
+| `GET /api/eval?compare=<기준 run>,<비교 run>` | 채점기별 대응 비교(아래 비교 통계 규칙). pair run은 400 |
+| `GET /api/eval?pair=<pair run>` | 한 run 안 두 쪽(active·candidate) 대응 비교와 활성화 게이트 판정(`gate`) |
+| `GET /api/eval?run=<id>&caseId=<id>&variant=<active\|candidate>` | pair run 한쪽의 모델 출력 원문과 가드레일 상세 |
+
+### 5. 쌍 평가(`pair`, F3b)
+
+결론: 후보 프롬프트 버전은 따로 돌리지 않고, 같은 run 안에서 케이스마다 지금 적용 버전(active)과 번갈아 제출해 같은 채점기로 비교한다. 활성화 게이트(`docs/PROMPT-REGISTRY.ko.md` '활성화 게이트')가 이 run 하나로 판정한다.
+
+```json
+{"action":"start_run","pair":{"unit":"role.cmo","candidateVersionId":"role.cmo@<12자>"},"set":"sealed","tokenBudget":200000,"label":"role.cmo 후보 쌍 평가"}
+```
+
+- 두 쪽: `active`는 레지스트리 전체 적용 버전(없으면 코드 상수, 이때 제출 본문은 `active` run과 바이트 동일), `candidate`는 후보 버전 본문을 `RoleRequest.prompts`로 주입한다. 대상 단위 밖은 두 쪽 모두 코드 상수다. run의 `pair`에 단위·후보·active 버전 id와 두 쪽 본문을 시작 때 고정한다.
+- 결과 행: 케이스마다 두 행(`variant: active|candidate`). 순서는 케이스마다 `active→candidate`, `candidate→active`를 번갈아 쓴다. 멱등 키는 `<run>:<case>:<쪽>`으로 쪽마다 다르다.
+- 대상 단위를 쓰지 않는 케이스(다른 역할, 채널이 적용되지 않는 캠페인)는 빼고 `pair.skippedCases`에 수를 남긴다. 남는 케이스가 없으면 400.
+- 예산: 두 제출 모두 위 3절 표의 run 예산·월 상한 검사를 제출 직전마다 받는다. 한 케이스가 한쪽만 끝나고 멈추면 게이트를 통과하지 못한다.
+- 게이트웨이: 시작 때 `gatewaySnapshot`, 끝날 때(`completed`) 같은 평가 연결로 `gatewaySnapshotEnd`를 잰다. 두 해시가 다르면 게이트 거부다.
+- 판정: `lib/eval-stats.ts` `pairGate`(순수). 비교 통계(`comparison`)는 참고용이며 게이트는 비회귀 조건(합격 수 후보 ≥ active(후보 재질문으로 not_applicable이 된 채점기·후보 grader_error는 fail), 봉인 케이스 1건 이상·봉인 회귀 0, `input_budget` 후보 전부 pass, 모델·게이트웨이 동일, 전 케이스 두 쪽 완료)만 본다. 대응 30쌍 미만은 `gate.warnings`(`small_sample`)로만 알린다.
 
 ### 서버 평가의 한계
 
