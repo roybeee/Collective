@@ -1,0 +1,400 @@
+{
+ "baseSha": "5ad24fca5fc41e03787614c96aa0a67a779056c0",
+ "roles": [
+  {
+   "role": "cmo",
+   "status": "completed",
+   "inputHash": "2da5821a6a64d0cce4f8",
+   "instructions": {
+    "sha256": "3919b808a0dda397da6efa443f208ace83564186f976ddbb338b3405fa84b539",
+    "length": 3511
+   },
+   "input": {
+    "sha256": "7a34d0bf97cc0b8331e02dabd79a681c740669375b4102dc5cc291ef27d29c11",
+    "length": 2356
+   }
+  },
+  {
+   "role": "insight",
+   "status": "completed",
+   "inputHash": "134d083f0ee3af1d922e",
+   "instructions": {
+    "sha256": "021e1ddeb00d8627c1ef1e3ae6aad46a84add59b473459ec2a913f05902fac2c",
+    "length": 3501
+   },
+   "input": {
+    "sha256": "47b02610eb4a6c1559cca8ab89887027adbf17f01add8626b202fbb88a7f3aaf",
+    "length": 2928
+   }
+  },
+  {
+   "role": "strategy",
+   "status": "completed",
+   "inputHash": "6283f4fdda0e1d675630",
+   "instructions": {
+    "sha256": "9747214918e20f19723569c1aa8c08a5b2b143a362af144c2796a309fee5b1c1",
+    "length": 3446
+   },
+   "input": {
+    "sha256": "7e0cacff9d3170454a1d2fe7defcb3f2029e6dd2351d1acfd88c3e70921c9cbc",
+    "length": 3381
+   }
+  },
+  {
+   "role": "creative",
+   "status": "completed",
+   "inputHash": "6215371c2c12029ba214",
+   "instructions": {
+    "sha256": "79253b9c84fb994f8332658b479190be1a114e4aa66fb788ed5295d4cb7d47f6",
+    "length": 3470
+   },
+   "input": {
+    "sha256": "ebb8f636649ac40ebe027ac8cb35109b8dfe4395a586c7a568878a7981442e9b",
+    "length": 3944
+   }
+  },
+  {
+   "role": "content",
+   "status": "completed",
+   "inputHash": "58d92bdc02e6d86dd197",
+   "instructions": {
+    "sha256": "438537792061e8d1cd49fb9b50c95f73667a4869339d76d52b0953179a3428c6",
+    "length": 3614
+   },
+   "input": {
+    "sha256": "6111d9f4062db594dd1fb25eec4eaa23cc60307fe9da8a775eb92560b75b3f7e",
+    "length": 4536
+   }
+  },
+  {
+   "role": "growth",
+   "status": "completed",
+   "inputHash": "2b48c4c47e54a4c7dac3",
+   "instructions": {
+    "sha256": "51bad25c9f64f0d763e518e0529801cceeb2a6fe4373f7ab5fcf4920a47fb239",
+    "length": 3570
+   },
+   "input": {
+    "sha256": "91386b00833d1f3763daca9bb5143c9bd2dfd9e416145e373e36d18c3d839a46",
+    "length": 5172
+   }
+  },
+  {
+   "role": "data",
+   "status": "completed",
+   "inputHash": "004a0e3d6f4d182bab47",
+   "instructions": {
+    "sha256": "b00bceb8f2bc52e6aff10d414d7e733de94a9aaa39aaf8b358521f765cbf5e45",
+    "length": 3631
+   },
+   "input": {
+    "sha256": "788fce35791bbf46f227b7403b69c5cf3705c7be328f827e98cc03904a9d78fc",
+    "length": 5836
+   }
+  },
+  {
+   "role": "quality",
+   "status": "completed",
+   "inputHash": "619cee232ccee564e294",
+   "instructions": {
+    "sha256": "251cf17e421da476a7046c7beb090b1cddc607f154178a89fe6b38e5ad14eebb",
+    "length": 3993
+   },
+   "input": {
+    "sha256": "b7917c100a38f784ccb2ded9fa3e01f5a6f8f89c206f8613b4530eb0e20ff9ad",
+    "length": 6472
+   }
+  }
+ ],
+ "meeting": [
+  {
+   "step": "discussion:cmo",
+   "instructions": {
+    "sha256": "e18b00a88a0c211c9076e792b63db2de2a77767f3d9e0a874a8ac3c5c0790cdf",
+    "length": 2939
+   },
+   "input": {
+    "sha256": "4440b1fd2ea37415eb4b3ea9503bb535e4ef97b507db3bbacce76aa1e70ce192",
+    "length": 4184
+   }
+  },
+  {
+   "step": "discussion:insight",
+   "instructions": {
+    "sha256": "56d589bba9bc67ec51da348556458d8e829ea41718744dd5e8830d824eca9e69",
+    "length": 2967
+   },
+   "input": {
+    "sha256": "32047cd6208ca22add91a59fd80095fae86cdbd970c1b557c7d32507c0a9c9ad",
+    "length": 4563
+   }
+  },
+  {
+   "step": "discussion:strategy",
+   "instructions": {
+    "sha256": "646b3b9346efffda0decb47ffa065489ffb06abea4bfa675f21bd4f5e2df6056",
+    "length": 2881
+   },
+   "input": {
+    "sha256": "1445de950aa53f08cce1f6bd3db3325937d3f47ba6f61ce3f20fe2214d7689f7",
+    "length": 4953
+   }
+  },
+  {
+   "step": "discussion:creative",
+   "instructions": {
+    "sha256": "e835ad357948ada6d9079381170730e4f83456b90b191bcdf0e46310fb68684c",
+    "length": 2887
+   },
+   "input": {
+    "sha256": "507adfbe75cdde20785a72e0d27afbc9b51ff7e1072dfa7d243f1c69a0ca6b1d",
+    "length": 5344
+   }
+  },
+  {
+   "step": "discussion:content",
+   "instructions": {
+    "sha256": "ad1fd8a0124fb4d48ab8f976335b47762f9085f645f770be431ebc5b519c9169",
+    "length": 2961
+   },
+   "input": {
+    "sha256": "7038938fcf519508714acdae094f1ad2fa923097ba80cfb7b7296a5d13cc7c42",
+    "length": 5734
+   }
+  },
+  {
+   "step": "discussion:growth",
+   "instructions": {
+    "sha256": "fee777e745bce0816497b8c4ffc03e69a183bbb3a87552fc37ae80d519740bce",
+    "length": 2926
+   },
+   "input": {
+    "sha256": "0a739943659c81fd8c0a077fdd2fabaeb2439a1fe61719b37a1fba7b1a0c836d",
+    "length": 6122
+   }
+  },
+  {
+   "step": "discussion:data",
+   "instructions": {
+    "sha256": "5526893b52359c1b4e318053349ac23edd9c1d37f6bf8dd81eac7e40d3b5942d",
+    "length": 3013
+   },
+   "input": {
+    "sha256": "48c744d67d60e6a8888c310195b946a5ef0cda29cbf31c13bd1318e7d6be59bb",
+    "length": 6507
+   }
+  },
+  {
+   "step": "discussion:quality",
+   "instructions": {
+    "sha256": "ee4da27755327c30c82472c2fcd6bb4af955c5d45a21f09a52d39fb055290c6d",
+    "length": 2979
+   },
+   "input": {
+    "sha256": "a8cf133e57e06a5cc1b315921b35c8fb27b2f28bd3e21e683950557261e84f64",
+    "length": 6893
+   }
+  },
+  {
+   "step": "synthesis",
+   "instructions": {
+    "sha256": "1799e6d16c6723aa6075f859bf688cd9aba84eac9efa337689050cfaf67857a8",
+    "length": 3429
+   },
+   "input": {
+    "sha256": "67d712cf2dcd6cffa5be1fd24f1213809011c03869109abd8e411539f355ffe4",
+    "length": 7277
+   }
+  },
+  {
+   "step": "revision:content",
+   "instructions": {
+    "sha256": "115ac8eb63facc8ab60f531283f234f46d85cb30690dd5f457104da287fe6269",
+    "length": 3114
+   },
+   "input": {
+    "sha256": "3e4c3590db9401ee1af5dfc78fc4c93716f2431b4b102c8ef9c7e3014e451e71",
+    "length": 7669
+   }
+  },
+  {
+   "step": "revision:growth",
+   "instructions": {
+    "sha256": "ac7d3e3ab864ab465ab871c56bff9bbc001f76405f116419404e35a00c7a0670",
+    "length": 3068
+   },
+   "input": {
+    "sha256": "f7d9b2ef70dfb13fce65f03e214b370d7bed03705660e615b76e4b30e48fc954",
+    "length": 8133
+   }
+  },
+  {
+   "step": "quality",
+   "instructions": {
+    "sha256": "91270dd711cf90b836e11c91b45bfaccaf9772bdd809b9770a6ed0b49b8717f2",
+    "length": 4082
+   },
+   "input": {
+    "sha256": "47d253899496452909b141aa3f3ea3c9efb1fe254b8468912c879f17245409f3",
+    "length": 10698
+   }
+  }
+ ],
+ "roleMeeting": [
+  {
+   "step": "discussion:cmo",
+   "instructions": {
+    "sha256": "e18b00a88a0c211c9076e792b63db2de2a77767f3d9e0a874a8ac3c5c0790cdf",
+    "length": 2939
+   },
+   "input": {
+    "sha256": "1559e57639cd15c133fb19f65bdf380369005388584c8256cca9f69737c77ef9",
+    "length": 9889
+   }
+  },
+  {
+   "step": "discussion:insight",
+   "instructions": {
+    "sha256": "56d589bba9bc67ec51da348556458d8e829ea41718744dd5e8830d824eca9e69",
+    "length": 2967
+   },
+   "input": {
+    "sha256": "51df88f6ce01dc197fb416d06879b6b7b08fc5b05232a2e2672795c6581b912e",
+    "length": 10268
+   }
+  },
+  {
+   "step": "discussion:strategy",
+   "instructions": {
+    "sha256": "646b3b9346efffda0decb47ffa065489ffb06abea4bfa675f21bd4f5e2df6056",
+    "length": 2881
+   },
+   "input": {
+    "sha256": "95134bffc4a3514cfffaae709ff999882f9c1a518fcbcd28e2dce5a224876fb1",
+    "length": 10658
+   }
+  },
+  {
+   "step": "discussion:creative",
+   "instructions": {
+    "sha256": "e835ad357948ada6d9079381170730e4f83456b90b191bcdf0e46310fb68684c",
+    "length": 2887
+   },
+   "input": {
+    "sha256": "a2addeac3afcbb5e379507139eda6e1e8f4ce88bf0629e6bcd00dd695edef54c",
+    "length": 11049
+   }
+  },
+  {
+   "step": "discussion:content",
+   "instructions": {
+    "sha256": "ad1fd8a0124fb4d48ab8f976335b47762f9085f645f770be431ebc5b519c9169",
+    "length": 2961
+   },
+   "input": {
+    "sha256": "11b29581a580e2425e3e9947c11ea0f9e41198e2b4dcf053aa226b8e562dd188",
+    "length": 11439
+   }
+  },
+  {
+   "step": "discussion:growth",
+   "instructions": {
+    "sha256": "fee777e745bce0816497b8c4ffc03e69a183bbb3a87552fc37ae80d519740bce",
+    "length": 2926
+   },
+   "input": {
+    "sha256": "6b57eb325d5026209d984ced3400d59d0dead66d8d7b81b395a13bb525319b29",
+    "length": 11827
+   }
+  },
+  {
+   "step": "discussion:data",
+   "instructions": {
+    "sha256": "5526893b52359c1b4e318053349ac23edd9c1d37f6bf8dd81eac7e40d3b5942d",
+    "length": 3013
+   },
+   "input": {
+    "sha256": "7baea2f83526f57d1bcd07da23b9faf4381c537c34529ab5e8d5d91029e0081b",
+    "length": 12212
+   }
+  },
+  {
+   "step": "discussion:quality",
+   "instructions": {
+    "sha256": "ee4da27755327c30c82472c2fcd6bb4af955c5d45a21f09a52d39fb055290c6d",
+    "length": 2979
+   },
+   "input": {
+    "sha256": "ad91d4561533171b694836e0223f9e4df666632b7108ae51083a4ca7d3c7bf00",
+    "length": 12598
+   }
+  },
+  {
+   "step": "synthesis",
+   "instructions": {
+    "sha256": "1799e6d16c6723aa6075f859bf688cd9aba84eac9efa337689050cfaf67857a8",
+    "length": 3429
+   },
+   "input": {
+    "sha256": "53a0f9a0164dda80bdd7cd170641345bd458665ef3a32f2e4a4a14d70483d899",
+    "length": 12982
+   }
+  },
+  {
+   "step": "revision:content",
+   "instructions": {
+    "sha256": "115ac8eb63facc8ab60f531283f234f46d85cb30690dd5f457104da287fe6269",
+    "length": 3114
+   },
+   "input": {
+    "sha256": "3517e1f84d8610eedb4c41d6b3b90562321c74101c39fe4b9f2a8fc141b7ffa3",
+    "length": 13374
+   }
+  },
+  {
+   "step": "revision:growth",
+   "instructions": {
+    "sha256": "ac7d3e3ab864ab465ab871c56bff9bbc001f76405f116419404e35a00c7a0670",
+    "length": 3068
+   },
+   "input": {
+    "sha256": "eb44b239e1eb35f840436d85eba5eefe7fa13981d6a4b261d3ba3b4988e3f3f2",
+    "length": 13838
+   }
+  },
+  {
+   "step": "quality",
+   "instructions": {
+    "sha256": "91270dd711cf90b836e11c91b45bfaccaf9772bdd809b9770a6ed0b49b8717f2",
+    "length": 4082
+   },
+   "input": {
+    "sha256": "92575658f4ba52101535e2d0241c57b2cd56b8532c580c25139d9f8e0afb3814",
+    "length": 18444
+   }
+  }
+ ],
+ "learning": [
+  {
+   "kind": "analysis",
+   "instructions": {
+    "sha256": "1f799478e43554585ce7a4b1bd23b8d9145d84e0ecefd016f509669bfbe7dffe",
+    "length": 1035
+   },
+   "input": {
+    "sha256": "27b79ff031d13a22f1e0ebf0cf89f1ce5612228a065750b4cac0583a5ea88a87",
+    "length": 627
+   }
+  },
+  {
+   "kind": "discovery",
+   "instructions": {
+    "sha256": "35aa14b5a2897140b77da856e8c254e2eaf3df4bae9fa1b45a0314bab49bb7d4",
+    "length": 1655
+   }
+  }
+ ],
+ "providerCalls": {
+  "external": 0
+ }
+}

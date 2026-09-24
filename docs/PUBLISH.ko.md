@@ -60,10 +60,10 @@ await (await fetch('/api/version', {credentials: 'same-origin', cache: 'no-store
 ```
 
 - 아래를 모두 만족하면 `runtime-verified`: `tree`가 마지막으로 게시한 제품 커밋(1단계 SHA)의 tree와 같다. 그 커밋이 `origin/main`의 조상이다(`git merge-base --is-ancestor <sha> origin/main`). 그 뒤 `main` 변경이 아래 비제품 경로뿐이다(아래 명령 결과 없음). 그 뒤 제품 코드가 병합됐지만 아직 게시하지 않았다면 `runtime-verified`가 아니다.
-- 비제품 경로(배포 산출물에 들어가지 않는 파일)는 여기에서만 정의한다. 문서, 테스트, E2E, CI, lint 설정·기준선, 테스트 실행기, 평가 스크립트(`scripts/eval/`, 빌드에 쓰이지 않음)다. 빌드에 쓰이는 파일(예: `scripts/run-framework.mjs`, `vite.config.ts`)은 넣지 않는다.
+- 비제품 경로(배포 산출물에 들어가지 않는 파일)는 여기에서만 정의한다. 문서, 테스트, E2E, CI, lint 설정·기준선, 테스트 실행기, 평가 스크립트(`scripts/eval/`, 빌드에 쓰이지 않음), 프롬프트 정본(`prompts/`, 앱 빌드가 import하지 않으며 `scripts/check-prompts.mjs`가 막는다. 운영 반영은 게시가 아니라 레지스트리 등록·활성화이고 7절에 기록한다)이다. 빌드에 쓰이는 파일(예: `scripts/run-framework.mjs`, `vite.config.ts`)은 넣지 않는다.
 
 ```bash
-git diff --name-only <sha> origin/main -- . ':!docs' ':!*.md' ':!tests' ':!e2e' ':!.github' ':!eslint.config.mjs' ':!playwright.config.ts' ':!playwright.auth.config.ts' ':!scripts/lint-baseline.json' ':!scripts/lint-gate.mjs' ':!scripts/test.mjs' ':!scripts/eval'
+git diff --name-only <sha> origin/main -- . ':!docs' ':!*.md' ':!tests' ':!e2e' ':!.github' ':!eslint.config.mjs' ':!playwright.config.ts' ':!playwright.auth.config.ts' ':!scripts/lint-baseline.json' ':!scripts/lint-gate.mjs' ':!scripts/test.mjs' ':!scripts/eval' ':!prompts'
 ```
 
 - `unknown`·`dirty`이거나 다르면 검증 실패. `published`에서 멈추고 원인을 기록한다.
@@ -71,6 +71,18 @@ git diff --name-only <sha> origin/main -- . ':!docs' ':!*.md' ':!tests' ':!e2e' 
 ## 6. 기록
 
 `docs/releases/<YYYY-MM-DD>-<sha7>.md`를 만들고(형식은 `docs/releases/README.md`), `docs/STATUS.md`의 "현재 운영 상태" 표를 갱신하는 PR을 연다.
+
+## 7. registry-active 기록 (프롬프트 레지스트리)
+
+프롬프트 레지스트리(`docs/PROMPT-REGISTRY.ko.md`)의 활성화·롤백은 게시가 아니다. 코드 tree는 그대로이므로 `runtime-verified`에 영향이 없고, 레지스트리 상태는 `registry-active`로 따로 기록한다(`AGENTS.md` 상태 어휘).
+
+- `registry-active` 조건: 대상 단위의 `prompt_release.active`가 기록한 버전 id이고, 운영 `/api/version`의 `promptManifest`가 기록한 매니페스트 해시와 같다. 롤백으로 active가 없어진 단위는 코드 상수 실행이며 `promptManifest`로 확인한다(전 단위가 비면 null).
+- 활성화(F3b)·롤백마다 한 번씩 `docs/releases/<YYYY-MM-DD>-registry-<단위>.md`(또는 같은 날 게시 기록의 절)와 `docs/STATUS.md`에 남긴다.
+  - 단위, 이전 active → 새 active 버전 id(롤백은 null 가능), 버전의 `sourceSha`
+  - 활성화: `evalRunId`, 승인자·승인 문구·시각, `stagedCampaignIds`(지정 캠페인)
+  - 롤백: 사유, 영향 범위(`GET /api/prompts?impact=<id>`의 작업물·발행물 수), 재확인 표시한 작업물 수
+  - 조작 전·후 `/api/version`의 `promptManifest`
+- 등록(`register`)만으로는 `registry-active`가 아니다. `blocked`로 끝난 등록은 원인(연결 실패·HTTP 상태)을 같이 기록한다.
 
 ## 묶음 게시 승인
 

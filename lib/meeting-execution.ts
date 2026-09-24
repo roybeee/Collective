@@ -14,6 +14,8 @@ import {gradeMeetingArtifacts} from './online-grading';
 import {aiBrand,evidenceContext,currentFactRefs} from '@/lib/ai-context';
 import {hermesSubmissionStatement,submitHermes,pollHermes} from '@/lib/hermes';
 import type {UsageContext} from '@/lib/usage-ledger';
+// 프롬프트 레지스트리(F3a): 역할 실행과 같은 공용 해석기로 회의 시작 때 캠페인 해석을 스냅샷에 고정한다.
+import {resolveCampaignPrompts,runPromptVersion,roleRunUnits,joinVersions,f2aPromptVersion} from './prompt-registry';
 import {ApiError,identity,str,json,failure,database,readRecord,listRecords,recordStatement,eventStatement,connection,acquireLock,releaseLock,stamp,type EventActor} from '@/lib/server';
 
 const activeStates=['starting','queued','in_progress','uncertain'];
@@ -23,15 +25,21 @@ function writes(owner:string,m:Meeting){
  return [recordStatement(owner,'team_meeting',m.id,m,m.campaignId),database().prepare('UPDATE jobs SET status=?,error=?,tokens=?,updated_at=? WHERE owner=? AND id=?').bind(status,m.error||null,m.steps.reduce((n,s)=>n+(s.tokens||0)+(s.attempts||[]).reduce((total,a)=>total+(a.tokens||0),0),0),m.updatedAt,owner,jobId(owner,m))];
 }
 // 사용량 조인 키(F2a). 회의 시작 때 고정한 스냅샷의 캠페인·스킬 버전을 쓴다. 회의 산출물 계약 버전은 따로 없어 null이다.
-const meetingUsage=(owner:string,m:Meeting,s:MeetingStep):UsageContext=>({kind:'meeting',submissionId:meetingSubmissionId(s),jobId:jobId(owner,m),campaignId:m.campaignId,campaignVersion:m.campaignVersion,brandId:m.snapshot?.campaign?.brandId??null,storeId:m.snapshot?.campaign?.storeId??null,role:s.role,skillVersion:m.skillVersion??null});
+// 레지스트리 단위를 쓴 단계는 그 버전(unit@sha256 앞 12자)을 promptVersion으로, 조회 실패·손상 폴백은 promptFallback으로 남긴다.
+const meetingUsage=(owner:string,m:Meeting,s:MeetingStep):UsageContext=>({kind:'meeting',submissionId:meetingSubmissionId(s),jobId:jobId(owner,m),campaignId:m.campaignId,campaignVersion:m.campaignVersion,brandId:m.snapshot?.campaign?.brandId??null,storeId:m.snapshot?.campaign?.storeId??null,role:s.role,skillVersion:m.skillVersion??null,...(m.snapshot?.prompts?.source==='registry'&&s.promptVersion?.includes('@')?{promptVersion:s.promptVersion}:{}),...(m.snapshot?.prompts?.fallback?{promptFallback:m.snapshot.prompts.fallback}:{})});
+// 단계 제출의 promptVersion: 이 단계 역할·채널의 레지스트리 단위가 있으면 그 버전, 없으면 F2a 규칙(스킬 버전:지시 해시).
+async function stepPromptVersion(m:Meeting,s:MeetingStep,instructions:string){return runPromptVersion({units:m.snapshot.prompts?.units||{}},roleRunUnits(s.role,m.snapshot.campaign))??f2aPromptVersion(m.skillVersion,instructions)}
+// 작업물의 실행 메타(F3a 프롬프트 버전·폴백 표시·롤백 재확인 표시)는 모델 입력에 싣지 않는다. 키 순서는 그대로라 레지스트리가 비어 있으면 회의 입력이 도입 전과 바이트 동일하다.
+const runMeta=new Set(['promptVersion','promptFallback','promptRecheck']);
+const modelArtifact=<T extends object>(a:T)=>Object.fromEntries(Object.entries(a).filter(([k])=>!runMeta.has(k))) as T;
 function context(m:Meeting,s:MeetingStep){
  const snapshot=m.snapshot,ref=(id:string)=>discussionRef(m.steps.find(t=>t.id===id)?.role||'');
- return {skillVersion:m.skillVersion,channelPractice:campaignPractice(snapshot.campaign),agenda:m.agenda,role:s.role,phase:s.phase,allowedRespondsTo:respondsToHandles(s,m.steps),correction:s.correction,brand:aiBrand(snapshot.brand),...(snapshot.evidence?{evidence:{facts:snapshot.evidence.facts,directives:snapshot.evidence.directives}}:{}),brandArchive:snapshot.brandArchive&&labelArchive(snapshot.brandArchive),campaign:{...snapshot.campaign,...aiBudget(snapshot.campaign)},trialLearning:snapshot.learning,recordedMetrics:snapshot.metrics,previousMeeting:snapshot.previous,
-  originalArtifacts:snapshot.artifacts.map(a=>({ref:artifactRef(a),...a,content:a.content.slice(0,8000),excerpt:a.content.length>8000})),
+ return {skillVersion:m.skillVersion,channelPractice:campaignPractice(snapshot.campaign,snapshot.prompts?.set?.channels),agenda:m.agenda,role:s.role,phase:s.phase,allowedRespondsTo:respondsToHandles(s,m.steps),correction:s.correction,brand:aiBrand(snapshot.brand),...(snapshot.evidence?{evidence:{facts:snapshot.evidence.facts,directives:snapshot.evidence.directives}}:{}),brandArchive:snapshot.brandArchive&&labelArchive(snapshot.brandArchive),campaign:{...snapshot.campaign,...aiBudget(snapshot.campaign)},trialLearning:snapshot.learning,recordedMetrics:snapshot.metrics,previousMeeting:snapshot.previous,
+  originalArtifacts:snapshot.artifacts.map(a=>({ref:artifactRef(a),...modelArtifact(a),content:a.content.slice(0,8000),excerpt:a.content.length>8000})),
   discussion:m.steps.filter(t=>t.phase==='discussion'&&t.status==='completed').map(t=>{const o=t.output as Contribution;return {ref:discussionRef(t.role),role:t.role,...o,respondsTo:o.respondsTo.map(ref)}}),
   synthesis:m.steps.find(t=>t.phase==='synthesis')?.output,
   completedRevisions:m.steps.filter(t=>t.phase==='revision'&&t.status==='completed').map(t=>({role:t.role,...t.output})),
-  task:s.task,...(s.phase==='quality'?{candidateArtifacts:candidateArtifacts(m).artifacts.map(a=>({ref:artifactRef(a),...a})),invalidatedRoles:candidateArtifacts(m).invalidatedRoles}:{})};
+  task:s.task,...(s.phase==='quality'?{candidateArtifacts:candidateArtifacts(m).artifacts.map(a=>({ref:artifactRef(a),...modelArtifact(a)})),invalidatedRoles:candidateArtifacts(m).invalidatedRoles}:{})};
 }
 async function finish(owner:string,m:Meeting){
  const c=await readRecord<Campaign>(owner,'campaign',m.campaignId);
@@ -58,7 +66,7 @@ async function finish(owner:string,m:Meeting){
   const content=s.phase==='quality'?qualityMarkdown(quality):result.content;
   const claims=guard&&s.phase==='revision'&&['creative','content','growth'].includes(s.role)?unverifiedClaims(content,guard):[];
   if(claims.length)flagged.push(`${roles.find(r=>r.id===s.role)?.name||s.role}: ${claims.join(', ')}`);
-  const a={skillVersion:m.skillVersion,...(s.phase==='quality'?{qualityReview:quality}:{}),...(factRefs?{factRefs}:{}),...(factsChanged?{factsChanged:true}:{}),...(claims.length?{unverifiedClaims:claims}:{}),id,campaignId:c.id,campaignVersion:c.version,role:s.role,title:s.phase==='quality'?'팀 회의 · 품질 재검토':result.title,content,version:(old?.version||0)+1,status:'review',origin:'ai',createdAt:stamp(),meetingId:m.id};
+  const a={skillVersion:m.skillVersion,...(s.promptVersion?{promptVersion:s.promptVersion}:{}),...(m.snapshot.prompts?.fallback?{promptFallback:m.snapshot.prompts.fallback}:{}),...(s.phase==='quality'?{qualityReview:quality}:{}),...(factRefs?{factRefs}:{}),...(factsChanged?{factsChanged:true}:{}),...(claims.length?{unverifiedClaims:claims}:{}),id,campaignId:c.id,campaignVersion:c.version,role:s.role,title:s.phase==='quality'?'팀 회의 · 품질 재검토':result.title,content,version:(old?.version||0)+1,status:'review',origin:'ai',createdAt:stamp(),meetingId:m.id};
   // Multiple manual artifacts for one role are retained as previous versions.
   for(const duplicate of current.filter(a=>a.role===s.role&&a.id!==old?.id))statements.push(recordStatement(owner,'artifact',duplicate.id,{...duplicate,status:'outdated'},c.id));
   statements.push(recordStatement(owner,'artifact',id,a,c.id));m.artifactIds.push(id);
@@ -119,7 +127,9 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:E
    let previous:Meeting|undefined;
    if(b.previousMeetingId){previous=await readRecord<Meeting>(owner,'team_meeting',str(b.previousMeetingId,'이전 회의',100,true));if(previous.campaignId!==c.id||meetingActive(previous))throw new ApiError(409,'완료 또는 종료된 같은 캠페인의 회의만 이어갈 수 있습니다.')}
    const previousFailure=previous?.steps.find(s=>s.status==='failed');
-   const m:Meeting={skillVersion:PRACTICE_VERSION,id,campaignId:c.id,campaignVersion:c.version,agenda:str(b.agenda,'회의 안건',5000,true),status:'running',steps:initialSteps(id),createdAt:stamp(),updatedAt:stamp(),model:cfg.model,stopRequested:false,artifactIds:[],invalidatedRoles:[],previousMeetingId:previous?.id,snapshot:{brandArchive:await brandArchiveContext(owner,c.brandId,c.storeId),campaign:c,brand,artifacts,metrics,learning,evidence:await evidenceContext(database(),owner,c),...(previous?{previous:{id:previous.id,agenda:previous.agenda,decisions:previous.steps.find(s=>s.phase==='synthesis')?.output as Synthesis,quality:previous.steps.find(s=>s.phase==='quality')?.output as QualityReview,discussion:previous.steps.filter(s=>s.phase==='discussion'&&s.status==='completed').map(s=>({id:s.id,role:s.role,output:s.output as Contribution})),...(previousFailure?{failure:{role:previousFailure.role,phase:previousFailure.phase,error:previousFailure.error||previous.error||'응답 검증 실패'}}:{})}}:{})}};
+   const resolved=await resolveCampaignPrompts(owner,c),registryIds=Object.values(resolved.units);
+   const prompts=resolved.source==='registry'?{source:resolved.source,units:resolved.units,promptVersion:joinVersions(registryIds),set:resolved.set}:{source:resolved.source,...(resolved.fallback?{fallback:resolved.fallback}:{})};
+   const m:Meeting={skillVersion:PRACTICE_VERSION,id,campaignId:c.id,campaignVersion:c.version,agenda:str(b.agenda,'회의 안건',5000,true),status:'running',steps:initialSteps(id),createdAt:stamp(),updatedAt:stamp(),model:cfg.model,stopRequested:false,artifactIds:[],invalidatedRoles:[],previousMeetingId:previous?.id,snapshot:{prompts,brandArchive:await brandArchiveContext(owner,c.brandId,c.storeId),campaign:c,brand,artifacts,metrics,learning,evidence:await evidenceContext(database(),owner,c),...(previous?{previous:{id:previous.id,agenda:previous.agenda,decisions:previous.steps.find(s=>s.phase==='synthesis')?.output as Synthesis,quality:previous.steps.find(s=>s.phase==='quality')?.output as QualityReview,discussion:previous.steps.filter(s=>s.phase==='discussion'&&s.status==='completed').map(s=>({id:s.id,role:s.role,output:s.output as Contribution})),...(previousFailure?{failure:{role:previousFailure.role,phase:previousFailure.phase,error:previousFailure.error||previous.error||'응답 검증 실패'}}:{})}}:{})}};
    await database().batch([database().prepare('INSERT INTO jobs(id,owner,campaign_id,role,status,model,campaign_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').bind(jobId(owner,m),owner,c.id,'meeting','in_progress',cfg.model,c.version,m.createdAt,m.updatedAt),recordStatement(owner,'team_meeting',m.id,m,c.id),eventStatement(owner,c.id,'팀 회의를 시작했습니다. 8명 의견 교환 → 개선 과제 → 품질 재검토.',by)]);
    return json(publicMeeting(m));
   }
@@ -140,7 +150,8 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:E
    if(m.steps.length>13)throw new ApiError(409,'회의의 최대 실행 범위를 초과했습니다.');
    s.status='starting';s.startedAt=stamp();m.updatedAt=stamp();m.error=undefined;
    const correction=s.correction?'\n이전 응답은 검증에 실패했습니다. correction.error를 고치고, respondsTo에는 allowedRespondsTo의 ref만 사용하세요. 요청 선택지를 묻지 말고 이 단계의 완성된 결과를 반환하세요.':'';
-   await database().batch([...writes(owner,m),hermesSubmissionStatement(owner,meetingSubmissionId(s),{instructions:meetingInstructions(s,!!m.skillVersion)+correction,input:JSON.stringify(context(m,s))},m.campaignId)]);
+   const instructions=meetingInstructions(s,!!m.skillVersion,m.snapshot.prompts?.set)+correction;s.promptVersion=await stepPromptVersion(m,s,instructions);
+   await database().batch([...writes(owner,m),hermesSubmissionStatement(owner,meetingSubmissionId(s),{instructions,input:JSON.stringify(context(m,s))},m.campaignId)]);
    prepared=m;
    const r=await submitHermes(owner,meetingSubmissionId(s),cfg);s.providerId=r.id;s.status='running';m.status='running';m.updatedAt=stamp();
    await database().batch(writes(owner,m));return json(publicMeeting(m));

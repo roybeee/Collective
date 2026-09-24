@@ -54,6 +54,10 @@ jobs:
       - name: Lint (baseline gate)
         run: node scripts/lint-gate.mjs
 
+      # prompts/ 정본 검사(F3a, 대표 결정 2·3): 스키마·단위당 6,000자·코드 소유 영역·명령형 주입·본문 URL·브랜드/지점명·가격 표기·앱 import 금지.
+      - name: Prompt registry sources
+        run: node scripts/check-prompts.mjs
+
       # tsc가 못 잡는 빌드 파손(vite/wrangler 설정, 서버·클라이언트 경계)을 병합 전에 막는다.
       - name: Build
         run: node scripts/run-framework.mjs build
