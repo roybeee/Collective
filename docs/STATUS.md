@@ -1,23 +1,23 @@
 # COLLECTIVE 현재 상태
 
-마지막 갱신: 2026-09-24 02:54 UTC (Claude 레인 B 세션, B2 1단계)
+마지막 갱신: 2026-09-24 08:55 UTC (Claude 레인 B 세션, 묶음 3 aa999c6 게시 기록)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `a64aeefa669afe362f18fff87d2a2b61686af5b5` (#29 `merged`, PR 2 #25·PR 3 #28 포함) | 제품 tree `33a87014f44362ca2696e860f58ceb9bfe67ce90` |
-| `origin/main` | `193fe96` (#58) | a64aeef 뒤 **미게시 제품 변경 있음**: #27 F1a·A2, #30 B4 1부, #32 F4a, #33 PR 6 서버 측, #35 F1b-1, #37 PR 5a, #39 F1b-2 서버 평가, #40 PR 5b, #41 동결 요약 표시, #43 F2a, #44 PR 4b-1, #45 F2b, #46 A4-1, #47 PR 6 앱 측, #48 PR 4a, #49 A4-2, #50 A4-3, #51 B1, #52 A2 런타임, #53 PR 4b-2, #55 F3a, #56 A7, #58 PR 5d. main 기준 `runtime-verified` 아님 |
-| Sites 게시 | `published` 버전 25, deployment `appgdep_6ab3f15f96c88191860af69d8b50289d`, 2026-09-23 15:3x UTC | [게시 기록](releases/2026-09-23-a64aeef.md) |
-| 실행 검증 | `runtime-verified` · real, 2026-09-23 15:34 UTC 경 | 소유자 이메일 세션 `/api/version` tree `33a8701…` = a64aeef tree. 익명 401, `/media` 404·CSP 확인 |
-| 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` 200, mode=email, role=owner |
-| Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 이번 게시에서 변경 지시 없음 | 게시 뒤 접근 설정 재확인은 not_run |
-| 조사 워커 | online(lastSeen 2026-09-23 16:59 UTC, blocked 0) | 게시 뒤 감시 중 확인(real). 게시 뒤 새 AI 실행 0건이라 invalid_output 비율 판단 데이터 없음 |
-| 열린 PR | #16 Android(draft, 제외), #57 F3b 활성화 게이트(레인 A), B2 1단계 품질 콘솔(레인 B, 이 PR). 레인 B PR 4a-2 실행 가드 진행 중 | `gh pr list -R roybeee/Collective`, 2026-09-24 03:30 UTC |
-| main CI(`193fe96`) | passed · verify | GitHub Actions main 실행 |
+| 운영 제품 커밋 | `aa999c6f6ac100424b1e5872a969de6dceb6dcae` (#57 `merged`, 묶음 3: a64aeef 뒤 31커밋 #26·#27·#30~#58) | 제품 tree `6c4f1552a436265e80438f8ad400bd01c3320ce1` |
+| `origin/main` | `4fde187` (#68) | aa999c6 뒤 **미게시 제품 변경 있음**: #59 B2 1단계, #60 PR 4a-2, #61 PR 5c, #62 B3-1, #63 F5, #64 B5, #65 PR 6c, #67 결정 17, #68 레인 A 입력 최소화, #69 레인 B 입력 최소화, #70 F4b-2. main 기준 `runtime-verified` 아님 |
+| Sites 게시 | `published` 버전 26, deployment `appgdep_6ab4e35785208191be56f75d057c0c0f`, Sites 커밋 `d5dae88`, 2026-09-24 08:45 UTC 경 | [게시 기록](releases/2026-09-24-aa999c6.md) |
+| 실행 검증 | `published` · `/api/version` tree 일치(real, 2026-09-24 08:48 UTC 경). main에 미게시 제품 변경이 있어 `runtime-verified` 아님 | 소유자 이메일 세션 `/api/version` tree `6c4f155…` = aa999c6 tree, `promptManifest` null. 익명 401, `/media` 404·CSP 확인 |
+| 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` mode=email, role=owner (2026-09-24 08:48 UTC 경) |
+| Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 이번 게시도 기존 접근 설정 유지 지시 | 게시 에이전트 보고 "기존 접근 설정으로 배포". 게시 뒤 접근 설정 재확인은 not_run |
+| 조사 워커 | 마지막 확인 online(lastSeen 2026-09-23 16:59 UTC, blocked 0) | aa999c6 게시 뒤 확인은 not_run |
+| 열린 PR | #16 Android(draft, 제외), 이 게시 기록 PR | `gh pr list -R roybeee/Collective`, 2026-09-24 08:52 UTC |
+| main CI(`4fde187`) | passed · verify | GitHub Actions main 실행 |
 
 - `AUTH_MODE` fail-closed(PR 1, `auth-2`)가 운영에 적용됐다. 운영 빌드에서 `AUTH_MODE`가 비면 모든 인증·업무 API가 503이다. Sites가 public인 동안 legacy로 되돌리지 않는다. 환경 revision 변경·복구·재게시 뒤에는 `/api/auth`가 mode=email인지, 위조 헤더 요청이 401인지 먼저 확인한다. 복구는 [이메일 로그인 복구 순서](EMAIL-AUTH.ko.md)를 따른다.
-- 확인 필요: 익명 업무 API 401은 a64aeef 게시 뒤 확인했다(passed · real). 위조 헤더 요청 401은 not_run이다(자동 모드 안전 검사 정책). 소유자가 직접 확인한다. 민감 작업 재인증(step-up)은 아직 구현되지 않았다(PR #23 남은 위험).
+- 확인 필요: 익명 업무 API 401은 aa999c6 게시 뒤 확인했다(passed · real). 위조 헤더 요청 401은 not_run이다(자동 모드 안전 검사 정책). 소유자가 직접 확인한다. 민감 작업 재인증(step-up)은 아직 구현되지 않았다(PR #23 남은 위험).
 - 확인 필요: bootstrap 환경 세 항목 제거와 재게시 기록이 없다. 실제 Buffer/Instagram 게시는 not_run.
 
 ## 진행 중 작업: 병렬 레인
@@ -25,7 +25,8 @@
 사용자 승인 "전체적으로 개선하라"(2026-09-23)와 대표 결정 1(병렬 레인)·4(묶음 게시). 범위·배정은 [전체 개선 계획](IMPROVEMENT-PLAN.ko.md)과 성장 계획 문서(PR #26 병합 후 `docs/GROWTH-PLAN.ko.md`)를 따른다.
 
 - PR 0 엔지니어링 기반 `merged`(#22), PR 1 보안·인증 `merged`(#23) — 묶음 1로 게시, `runtime-verified`.
-- PR 2 AI 품질 루프 `merged`(#25), PR 3 첫 게시 경로 `merged`(#28), 결정 17 게이트(#29) — 대표 승인으로 `a64aeef` 묶음 게시, `runtime-verified`. 게시 뒤 24~72시간 중단 조건 감시 중.
+- PR 2 AI 품질 루프 `merged`(#25), PR 3 첫 게시 경로 `merged`(#28), 결정 17 게이트(#29) — 대표 승인으로 `a64aeef` 묶음 게시, `runtime-verified`(당시).
+- 묶음 3 `aa999c6`(a64aeef 뒤 31커밋, F3b #57까지) — 대표 승인으로 2026-09-24 게시, Sites 버전 26, `/api/version` tree 일치. 게시 뒤 24~72시간 중단 조건 감시 중(롤백 대상 `a64aeef`). 기능 스위치는 모두 기본값(꺼짐)으로 들어갔다. 레인 A 세션(roybee-9a)이 종료돼 레인 A의 남은 작업(게시 기록·학습 경로 입력 최소화·B3-2)은 레인 B 세션이 이어받았다.
 - 성장 계획 `docs/GROWTH-PLAN.ko.md`(#26)가 병합됐다. 레인 배정·공유 파일 병합 순서·묶음 게시 절차는 그 문서가 정본이다.
 - 레인 A(공통 기반·교정, 세션 roybee-9a): F1a·A2 순수 함수 `merged`(#27), F4a kind 레지스트리·결정 7 삭제 정책 `merged`(#32), F1b-1 역할 지시 순수 함수 연결 `merged`(#35, 스냅샷 `tests/fixtures/role-submission-fc8eb5c.json`), F1b-2 서버 평가 실행 `merged`(#39, `/api/eval` 소유자 전용, 평가 작업 소유자당 1개). F2a 실행 신원·기능 스위치 `merged`(#43: `lib/feature-flags.ts` 기본 꺼짐 — online_grading·b1_reason_required·a4_auto_attribution·a2_downgrade, 소유자만 변경 / 사용량 원장 조인 키 / 보고 모델 변경 경보 / 사용량 내보내기). F2b 게이트웨이 스냅샷·온라인 채점 `merged`(#45: 워커 tick에서 소유자당 하루 1회 스냅샷, `online_grading` 스위치가 켜질 때만 저장 뒤 채점). B1 검토 결정 로그 `merged`(#51: 대표 결정 8 (a) — quality 5기준 + compliance·voice·fact_error·question_only·format 사유 코드, 추가 전용 `review_decision`(메모 원문 없이 길이만, 행위자 id·역할만), 사람이 고친 AI 작업물은 origin `ai_edited`, `b1_reason_required` 스위치(기본 꺼짐)를 켜면 수정 요청 사유 필수, 문서 `docs/REVIEW-DECISIONS.ko.md`). F3a 프롬프트 레지스트리 `merged`(#55: 결정 2·3 — git `prompts/` 16단위 정본, 스킬만 레지스트리, 비면 코드 상수로 폴백해 제출 바이트 동일, CI 'Prompt registry sources' 검사, 상태 어휘 `registry-active`, 사용량 promptVersion은 레지스트리면 'unit@sha12' 연결·코드면 '<skillVersion>:<sha12>'/'inline:<hash>'). 다음은 F3b 활성화 게이트(쌍 비교 평가·대표 승인). HERMES 평가 전용 프로필(메모리 off)은 대표 승인으로 서버에 생성됨(운영 게이트웨이 무변경).
 - 레인 B(실측·비용, 이 세션): B4 1부 바이럴 판정 통계 `merged`(#30). A4 점포 실측·PR 4a 비용 가드·PR 6 앱 측은 F2(기능 스위치·`lib/hermes.ts`·`lib/research-worker.ts` 순서) 뒤. 그 사이 PR 5 중 공유 파일에 걸리지 않는 부분을 진행한다: PR 5a 내비게이션·로딩 상태·대시보드 숫자 `merged`(#37), PR 5b 삭제 대화상자(결정 7·건수 API)·보존 규칙 표시·E2E route.fetch 제거 `merged`(#40), 동결 요약 표시 `merged`(#41). PR 4b-1(loop-6 검증 채널 분리·loop-7 점포 회고 규칙 승격 미리보기·loop-9 측정 기간 롤링·arm별 초안·loop-11 만료 임박 규칙 알림·연장 조건·exec-loop-10 발행 횟수 한도) 이 PR. PR 4b-1 `merged`(#44). A4-1 점포 실측(추적 코드·POS CSV 가져오기·`a4_auto_attribution` 스위치 기반 자동 귀속·코드/팔/캠페인/출처별 집계·주 단위 완전성 검사·incrementality-lite) `merged`(#46). 발행 캡션의 추적 코드 연결은 A4-2. PR 6 앱 측(security-ops-4·7·1: 워커 토큰 만료·온라인 회전·재발급 10분 유예·거부 기록·앱 gate 확인·조사 도구 위험 등급) `merged`(#47) — 만료·회전은 `RESEARCH_WORKER_TOKEN_EXPIRY=enforce`, 앱 gate 차단은 `RESEARCH_WORKER_APP_GATE=enforce`, 위험 도구 차단은 `RESEARCH_TOOL_POLICY=block`일 때만 켜지고 기본은 기록·경고만 한다. PR 4a 비용 가드(loop-4 토큰 예산: 기본 미설정·경고만, 소유자가 월 워크스페이스·캠페인 상한을 정하면 HERMES 제출 전 409 / loop-5 별칭 단가 선언 재추정 / security-ops-11 커넥터 응답 200KB 제한·조사 처리 오류 고정 문구) `merged`(#48). A4-2 게시 단위 귀속(발행 캡션의 게시별 쿠폰·POS 태그 코드 줄, 게시 상태·예약일 관문, 점포 귀속 보고서의 게시별 집계, 소재 제목) `merged`(#49). A4-3 추적 코드 직접 입력(주문 기록 창·장부 양식 CSV `trackingCode` 열의 코드 조회·게시 관문, 앱 게시 기록 없는 소재의 수동 귀속 경고 — 차단 없음, 코드 열이 든 장부 CSV는 관리자만) `merged`(#50). A2 런타임 하향(`a2_downgrade` 스위치, 기본 꺼짐: 켜면 차단 등급 규제 위반 작업물에 '규제 점검 차단' 표시, 품질 검수 판정·캠페인 상태를 수정 필요로만 낮춤, `lib/online-grading.ts` 안에서 처리 — 레인 A 확인) `merged`(#52). PR 4b-2(loop-3 잔여: 캠페인 상세 성과 탭의 주문 장부 귀속 집계 — 주 단위·지점·소재·게시·귀속 방식별, '귀속≠증분', 확인 뒤 schemaVersion 2 metric 스냅샷(어제까지) / 네이버 검색광고 수집 광고비를 관리자 확인 뒤 비용 장부로 이관·누적 재수집 갱신) `merged`(#53). loop-3 잔여는 학습 규칙 연결(B3·B4 2부)만 남는다. A7 조사 투자 회수 `merged`(#56) — 부분 구제(기본 동작, 추가 비용 없음: 심층 조사 결과에서 잘못된 항목만 사유와 함께 빼고 유효 출처는 candidate로 저장, 뺀 항목이 근거·진단에 걸리면 품질 판정 needs_data), security-ops-11 잔여(null 원소 → 구제 또는 422, 점포 진단은 422), 수리 턴 1회(`a7_repair_turn` 스위치, 기본 꺼짐: 뼈대 오류일 때만 예산 가드를 거쳐 1회, 원래 응답에 없던 출처는 뺌). PR 5d `merged`(#58) — data-truth-8 파생 캠페인 상태(응답에 derivedStatus·statusReason만 추가, 저장 status와 그것을 쓰는 서버 로직 불변, 새 표시 상태 '진행 막힘'·'발행 진행', 대시보드 수치도 파생 상태 기준) + ux-9 캠페인 보관(archivedAt, 목록·대시보드에서 숨김·보관함 필터·해제, 산출물이 있으면 삭제 대화상자 기본이 보관, 보관 중 새 AI 실행·회의·초안·연속 실행·발행 승인 409, 진행 중 작업·예약 발행이 있으면 보관 거절). B2 1단계 품질 콘솔 이 PR — LLM 없이 역할×스킬 버전×promptVersion(레지스트리 'unit@sha'면 그 값, 코드 상수면 스킬 버전으로 접음)×보고 모델별 1차 승인율(B1 정의 재사용)·사람 판정 사유 분포·폐기 토큰(미연결 따로)·회의 완주율·온라인 채점·규제 보류, 기준별 κ(사람 라벨 20건 미만이면 보정 불가), 주간 다이제스트(`GET /api/quality-console?format=digest`와 로컬 `scripts/quality-digest.mjs`, 네트워크 없음), 소유자·관리자 전용 화면. 워커 큐·Slack 전달은 B2 2단계. 다음은 PR 4a-2 실행 가드(보관 검사 잠금 안·OpenAI 직접 경로 예산 가드·복구 중 예산 초과 표시·수리 예약 분리, 구현 중), 그 뒤 PR 5c 화면·권한. F4b는 대표 결정 12(국외 기반 모델 데이터 처리 기준) 대기. PNG 코드는 A4-4 또는 소재 템플릿 작업(공개 미디어 경로 변경 필요), 캠페인 성과 탭 자동 집계는 PR 4b. A7·F4b는 레인 A의 B1 뒤. PR 4a 비용 가드는 A4 다음, `lib/role-execution.ts`는 F3 뒤라 HERMES 제출 지점(`lib/hermes.ts`)에서만 다룬다.
@@ -39,6 +40,11 @@
 ## 이력
 
 아래는 각 시점의 기록이다. "운영 미적용", "Sites 접근은 변경하지 않았다", "runtime-verified는 blocked", "제품 소스 a67a318"처럼 현재형으로 적힌 서술은 모두 그 시점의 상태다. 현재 상태는 위 "현재 운영 상태" 표를 따른다.
+
+### 2026-09-24 08:48 UTC 기록 — 묶음 3 게시 (aa999c6, Sites 버전 26)
+
+- 직전 운영은 `a64aeef`(Sites 버전 25, 2026-09-23 15:34 UTC 경 `runtime-verified`)였다.
+- 대표가 레인 A 세션에 승인한 `aa999c6`(tree `6c4f155…`)을 대표가 휴대폰에서 Sites 편집기에 지시문을 넣어 게시했다. 버전 26, deployment `appgdep_6ab4e35785208191be56f75d057c0c0f` succeeded, 약 5분. 운영 `/api/version` tree가 aa999c6 tree와 같다(real). [게시 기록](releases/2026-09-24-aa999c6.md).
 
 ### 2026-09-23 12:48 UTC 기록 — 보안·인증 게시 (d156dfd)
 
