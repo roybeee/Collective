@@ -120,6 +120,12 @@ res=await upload();const fid=(await res.json()).id;check('upload stores original
 const download=(id,user=owner)=>files.namespace.GET(new Request('https://agency.test/api/archive/file?id='+id,{headers:{'oai-authenticated-user-id':user}}));
 res=await download(fid);check('original downloads as attachment',res.status===200&&res.headers.get('content-disposition').startsWith('attachment')&&await res.text()==='원본 브랜드 제품 가격');check('cross-owner download forbidden',(await download(fid,'foreign')).status===404);
 const originalBatch=DB.batch;DB.batch=async()=>{throw new Error('injected storage failure')};res=await upload();DB.batch=originalBatch;check('failed metadata write cleans new original',res.status===500&&blobs.size===1);
+// 롤백의 R2 삭제가 실패해도 조용히 버리지 않는다. 오류 이름만 로그에 남기고(키·메시지 없음), 레코드 없는 고아는 archive/ 접두 목록과 brand_source 대조로 정리한다.
+{const originalDelete=runtime.BUCKET.delete,originalError=console.error,logs=[];runtime.BUCKET.delete=async k=>{const e=new Error('r2 down for '+k);e.name='R2Error';throw e};console.error=(...args)=>logs.push(args);DB.batch=async()=>{throw new Error('injected storage failure')};
+ try{res=await upload()}finally{DB.batch=originalBatch;runtime.BUCKET.delete=originalDelete;console.error=originalError}
+ const orphan=[...blobs.keys()].find(k=>!(k.endsWith('/'+fid))),cleanup=logs.filter(l=>l[0]==='archive_object_cleanup_failed');
+ check('rollback delete failure is logged by error name only',res.status===500&&cleanup.length===1&&cleanup[0].length===2&&cleanup[0][1]==='R2Error'&&!!orphan&&!JSON.stringify(cleanup).includes(orphan)&&!JSON.stringify(cleanup).includes('r2 down'));
+ blobs.delete(orphan)}
 const published=(await ar()).data;check('public source list contains no object key or full content',published.sources.every(s=>!s.objectKey&&!s.content));
 // 확장자와 실제 내용(매직 바이트)이 다르면 원본을 저장하지 않는다.
 const uploadAs=async(name,bytes,content='')=>{const form=new FormData();form.set('brandId','new-brand');form.set('file',new File([bytes],name));if(content)form.set('content',content);form.set('extraction',content?'텍스트 추출 완료':'이미지 원본 보관 · 내용 메모 필요');const r=await files.namespace.POST(new Request('https://agency.test/api/archive/file',{method:'POST',headers:{'oai-authenticated-user-id':owner},body:form}));return {status:r.status,data:await r.json()}};
@@ -127,10 +133,11 @@ const pngBytes=new Uint8Array([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0,0,0,13]
 res=await uploadAs('disguised.pdf',pngBytes,'위장 파일 본문');check('PNG disguised as PDF rejected before storage',res.status===400&&blobs.size===blobsBeforeSignature);
 res=await uploadAs('notes.txt',pngBytes,'위장 텍스트');check('PNG renamed to txt rejected before storage',res.status===400&&blobs.size===blobsBeforeSignature);
 res=await uploadAs('scan.pdf',new TextEncoder().encode('%PDF-1.7\n1 0 obj\n'),'PDF 본문 텍스트');let signed=await server.namespace.readRecord(owner,'brand_source',res.data.id);
-check('matching PDF stored with extraction status as sent',res.status===200&&blobs.size===blobsBeforeSignature+1&&signed.extraction==='텍스트 추출 완료'&&!('extractionSource' in signed));
-res=await uploadAs('sales.csv',new Uint8Array([0xc7,0xd1,0xb1,0xdb,0x2c,0x31,0x0a]),'매출');check('non-UTF-8 CSV still stored',res.status===200&&blobs.size===blobsBeforeSignature+2);
+check('matching PDF stored with browser extraction marked unverified',res.status===200&&blobs.size===blobsBeforeSignature+1&&signed.extraction==='브라우저 추출(서버 미검증) · 텍스트 추출 완료'&&!('extractionSource' in signed));
+res=await uploadAs('sales.csv',new Uint8Array([0xc7,0xd1,0xb1,0xdb,0x2c,0x31,0x0a]),'매출');signed=res.status===200&&await server.namespace.readRecord(owner,'brand_source',res.data.id);
+check('non-UTF-8 CSV still stored as original only (server cannot extract it)',res.status===200&&blobs.size===blobsBeforeSignature+2&&signed.content===''&&signed.extraction==='서버 추출 불가 · UTF-8 아님 · 원본만 보관');
 res=await uploadAs('photo.png',pngBytes);signed=await server.namespace.readRecord(owner,'brand_source',res.data.id);
-check('matching image stored without claiming extracted text',res.status===200&&signed.extraction==='이미지 원본 보관 · 내용 메모 필요');
+check('matching image stored without claiming extracted text',res.status===200&&signed.extraction==='브라우저 추출(서버 미검증) · 이미지 원본 보관 · 내용 메모 필요');
 
 
 for(let i=0;i<31;i++)await ap('add_source',{brandId:'new-brand',data:{title:'분류 배치 '+i,content:'추가 분류 자료 '+i}});

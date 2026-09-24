@@ -1,4 +1,4 @@
-import {ApiError,database,listRecords,readRecord,recordStatement,stamp,str,uid,num} from './server';
+import {ApiError,database,listRecords,readRecord,recordStatement,stamp,str,uid,num,runtime} from './server';
 import {storeContext} from './store-context';
 import {diagnosisIncluded,latestAdopted,CONTEXT_SOURCE_LIMIT,type AdoptedDiagnostic} from './ai-context';
 import type {Brand} from './agency';
@@ -13,6 +13,29 @@ export function makeSource(brandId:string,b:any,origin:ArchiveSource['origin']='
  const title=str(b.title,'자료 제목',200,true),content=str(b.content??'','자료 내용',80000);const category=b.category||classifySource(title,content);if(!Object.hasOwn(archiveCategories,category))throw new ApiError(400,'자료 분류를 확인하세요.');
  if(!content&&!b.fileName)throw new ApiError(400,'출처 링크와 함께 확인한 내용이나 원문 파일이 필요합니다.');
  return {id:uid(),brandId,title,category,origin,status:'candidate',url:archiveUrl(b.url),content,scope:str(b.scope??'사용자가 입력한 자료','확인 범위',3000,true),observedAt:observed(b.observedAt||stamp()),createdAt:stamp(),version:1};
+}
+// 원본 파일 삭제 표시(brand_source 확장 필드, 새 kind 없음). fileCleanupKey는 R2 삭제가 끝나지 않은 원본 키로 재시도 목록 역할을 하며 API 응답에는 내보내지 않는다(목록·지점 API는 lib/archive.ts sourceSummary, 자료 상세는 withoutCleanupKey).
+export type SourceFileDeletion={fileDeletedAt?:string;fileDeletedBy?:{id:string;email:string|null};fileCleanupKey?:string};
+export function withoutCleanupKey<T extends SourceFileDeletion>(s:T){const{fileCleanupKey,...rest}=s;return {...rest,...(fileCleanupKey?{fileCleanupPending:true}:{})}}
+// R2 원본 삭제. 실패하면 오류 이름만 로그에 남기고(키·메시지 없음) false를 돌려준다.
+// 같은 버킷에 다른 워크스페이스 원본과 공개 미디어가 섞여 있으므로, 업로드 라우트가 만든 'archive/<uuid>/<자료 id>' 형식(sourceId를 주면 그 자료의 키)만 지운다.
+const ARCHIVE_KEY=/^archive\/[0-9a-f-]{36}\/[A-Za-z0-9_-]{1,100}$/;
+export async function removeArchiveObject(key:string,sourceId?:string){
+ if(!ARCHIVE_KEY.test(key)||(sourceId!==undefined&&!key.endsWith('/'+sourceId))){console.error('archive_object_cleanup_failed','InvalidKey');return false}
+ if(!runtime.BUCKET){console.error('archive_object_cleanup_failed','BucketUnavailable');return false}
+ try{await runtime.BUCKET.delete(key);return true}catch(e){const name=(e as {name?:unknown}|null)?.name;console.error('archive_object_cleanup_failed',typeof name==='string'?name.slice(0,60):'unknown');return false}
+}
+// 원본 파일 삭제(관리자 전용, 되돌릴 수 없음): 자료 레코드·추출 텍스트·검토 상태는 남기고 R2 원본만 지운다. 사용 제외(excluded)는 되돌릴 수 있어 원본을 지우지 않는다.
+// 순서: 레코드 저장(objectKey 제거·fileDeletedAt·fileDeletedBy·fileCleanupKey) → R2 삭제 → 성공하면 fileCleanupKey 제거. R2가 실패해도 성공으로 답하고, 같은 요청을 다시 보내면 남은 R2 삭제만 재시도한다.
+// AI 입력(content)은 그대로라 archive revision은 올리지 않는다.
+export async function deleteSourceFile(owner:string,brandId:string,b:{id?:unknown;version?:unknown},by:{id:string;email:string|null}){
+ let s=await readRecord<ArchiveSource&SourceFileDeletion>(owner,'brand_source',str(b.id,'자료',100,true));if(s.brandId!==brandId)throw new ApiError(404,'자료를 찾을 수 없습니다.');
+ if(!s.fileDeletedAt){
+  if(s.version!==b.version)throw new ApiError(409,'자료가 변경됐습니다. 새로고침해 주세요.');if(!s.objectKey)throw new ApiError(404,'삭제할 원본 파일이 없습니다.');
+  s={...s,objectKey:undefined,fileDeletedAt:stamp(),fileDeletedBy:{id:by.id,email:by.email},fileCleanupKey:s.objectKey,version:s.version+1};await recordStatement(owner,'brand_source',s.id,s,brandId).run();
+ }
+ if(s.fileCleanupKey&&await removeArchiveObject(s.fileCleanupKey,s.id)){s={...s,fileCleanupKey:undefined};await recordStatement(owner,'brand_source',s.id,s,brandId).run()}
+ return {id:s.id,version:s.version,fileDeletedAt:s.fileDeletedAt,cleanupPending:!!s.fileCleanupKey};
 }
 export function makeObservation(brandId:string,b:any):ChannelObservation{
  const periodStart=str(b.periodStart,'시작일',10,true),periodEnd=str(b.periodEnd,'종료일',10,true);

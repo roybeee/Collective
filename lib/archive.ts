@@ -1,7 +1,7 @@
 export const archiveCategories={brand:'브랜드·정체성',product:'제품·가격',customer:'고객·니즈',market:'시장·경쟁',channel:'채널·콘텐츠',performance:'성과·매출',operations:'운영·제약',other:'미분류'} as const;
 export type ArchiveCategory=keyof typeof archiveCategories;
-export type ArchiveSource={storeId?:string;id:string;brandId:string;title:string;category:ArchiveCategory;origin:'manual'|'upload'|'research';status:'candidate'|'confirmed'|'excluded';url:string;content:string;observedAt:string;createdAt:string;version:number;scope:string;fileName?:string;fileSize?:number;objectKey?:string;extraction?:string;researchId?:string};
-export type ArchiveSourceSummary=Omit<ArchiveSource,'content'|'objectKey'>&{excerpt:string;characters:number;hasFile:boolean};
+export type ArchiveSource={storeId?:string;id:string;brandId:string;title:string;category:ArchiveCategory;origin:'manual'|'upload'|'research';status:'candidate'|'confirmed'|'excluded';url:string;content:string;observedAt:string;createdAt:string;version:number;scope:string;fileName?:string;fileSize?:number;objectKey?:string;extraction?:string;extractedBy?:'server'|'browser';researchId?:string};
+export type ArchiveSourceSummary=Omit<ArchiveSource,'content'|'objectKey'>&{excerpt:string;characters:number;hasFile:boolean;fileCleanupPending?:boolean};
 export type BrandIntake={website:string;socialLinks:string;market:string;clientNeed:string;competitors:string};
 export type ArchiveState={id:string;revision:number;updatedAt:string};
 export const metricFields={posts:'기간 내 게시물',followers:'종료 시점 팔로워',reach:'도달한 계정 수',impressions:'노출 수',views:'재생/조회 수',shares:'공유 횟수',saves:'저장 횟수',clicks:'링크 클릭 수',sessions:'사이트 세션',keyEventSessions:'핵심 행동 발생 세션',orders:'구매/이용 완료 수',revenue:'매출 (원)',adSpend:'광고비 (원)',variableCosts:'변동비 (원)',productionCost:'제작비 (원)',averageViewPercentage:'평균 시청 비율 (%)'} as const;
@@ -19,7 +19,8 @@ export type PublicResearch=Omit<BrandResearch,'snapshot'|'steps'>&{steps:Omit<Br
 export type ArchiveData={sources:ArchiveSourceSummary[];observations:ChannelObservation[];diagnostics:Diagnostic[];research:PublicResearch[];state:ArchiveState;storageReady:boolean};
 export const researchActive=(r:Pick<BrandResearch,'status'>)=>r.status==='running'||r.status==='uncertain';
 export function publicResearch(r:BrandResearch):PublicResearch{const{snapshot:_,steps,...rest}=r;return {...rest,steps:steps.map(({providerId:__,...x})=>x)}}
-export function sourceSummary(s:ArchiveSource):ArchiveSourceSummary{const{objectKey,content,...rest}=s;return {...rest,excerpt:content.slice(0,260),characters:content.length,hasFile:!!objectKey}}
+// 자료 요약(아카이브 목록·지점 API 공통). 원본 키(objectKey)와 저장소 정리 대기 키(fileCleanupKey, lib/archive-server.ts deleteSourceFile)는 내보내지 않고 정리 대기 여부만 알린다.
+export function sourceSummary(s:ArchiveSource):ArchiveSourceSummary{const{objectKey,content,fileCleanupKey,...rest}=s as ArchiveSource&{fileCleanupKey?:string};return {...rest,...(fileCleanupKey?{fileCleanupPending:true}:{}),excerpt:content.slice(0,260),characters:content.length,hasFile:!!objectKey}}
 export function classifySource(title:string,content:string):ArchiveCategory{
  const t=(title+' '+content.slice(0,4000)).toLowerCase();
  const rules:[ArchiveCategory,RegExp][]=[['performance',/매출|광고비|roas|전환율|손익/],['product',/제품|메뉴|가격|성분|상품/],['customer',/인터뷰|고객|페르소나|니즈/],['channel',/인스타|틱톡|유튜브|sns|콘텐츠/],['market',/시장|경쟁|트렌드/],['operations',/운영|재고|영업시간|수용량/],['brand',/브랜드|로고|톤앤매너|비전/]];
