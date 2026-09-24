@@ -1,5 +1,6 @@
 import {campaignBudget,statuses,type Campaign} from './agency';
 import {claimGuard} from './campaign-policy';
+import {disclosureLine} from './ai-disclosure';
 
 export type FactRef={id:string;version:number};
 // materialHash: 소재 입력(브랜드 이름·색 + 사실 {id,version} + 캡션) 지문. 이 필드 이전 소재는 브리프 버전으로 판정한다. current: 서버가 계산한 현재 유효 여부(화면용).
@@ -9,13 +10,14 @@ export type ExecutionLimits={id:string;version:number;maxPublications:number;max
 export type PublicationStatus='draft'|'approved'|'submitting'|'uncertain'|'accepted'|'published'|'failed'|'cancelled'|'blocked';
 // mediaMode auto: 승인 때 앱 공개 주소(/media/<sha256>.png)를 채운다. external(이전 기록 포함): 고급 옵션의 Cloudinary·R2 주소.
 // copy: 승인된 콘텐츠 작업물에서 고른 카피. approvedLimits: 승인 당시 한도(낮아질 때만 무효). needsReview: 사용한 사실이 바뀌어 확인이 필요함.
-export type PublicationCopy={artifactId:string;artifactVersion:number;index:number;text:string};
+// aiGenerated: 준비 때 작업물 출처(origin)로 정한 AI 생성물 여부(결정 17, lib/ai-disclosure.ts). 이 필드 이전 기록에는 없다.
+export type PublicationCopy={artifactId:string;artifactVersion:number;index:number;text:string;aiGenerated?:boolean};
 export type NeedsReview={reason:string;at:string};
 // A4-2 게시 코드: 이 발행에만 발급한 추적 코드(lib/publication-codes.ts). 캡션 끝 코드 줄과 주문 장부의 게시별 귀속이 같은 코드를 쓴다.
 export type PublicationCode={id:string;code:string;type:'coupon'|'pos_tag';storeId:string};
-export type Publication={id:string;campaignId:string;creativeId:string;creativeVersion:number;campaignVersion:number;pngHash:string;factRefs:FactRef[];caption:string;mediaUrl:string;mediaMode?:'auto'|'external';copy?:PublicationCopy;trackingCode?:PublicationCode;scheduledAt:string;plannedCostKRW:number;version:number;status:PublicationStatus;channelId?:string;credentialVersion?:number;limitsVersion?:number;approvedLimits?:{maxPublications:number;maxPlannedCostKRW:number};approvedBy?:string;approvedAt?:string;providerId?:string;providerStatus?:string;error?:string;attemptedAt?:string;attemptRestored?:boolean;needsReview?:NeedsReview|null;invalidatedReason?:string;reconfirmedBy?:string;reconfirmedAt?:string;resolvedBy?:string;resolvedAt?:string;createdAt:string;updatedAt?:string};
+export type Publication={id:string;campaignId:string;creativeId:string;creativeVersion:number;campaignVersion:number;pngHash:string;factRefs:FactRef[];caption:string;mediaUrl:string;mediaMode?:'auto'|'external';copy?:PublicationCopy;trackingCode?:PublicationCode;scheduledAt:string;plannedCostKRW:number;version:number;status:PublicationStatus;channelId?:string;credentialVersion?:number;limitsVersion?:number;approvedLimits?:{maxPublications:number;maxPlannedCostKRW:number};approvedBy?:string;approvedAt?:string;aiDisclosureConfirmedBy?:string;aiDisclosureConfirmedAt?:string;providerId?:string;providerStatus?:string;error?:string;attemptedAt?:string;attemptRestored?:boolean;needsReview?:NeedsReview|null;invalidatedReason?:string;reconfirmedBy?:string;reconfirmedAt?:string;resolvedBy?:string;resolvedAt?:string;createdAt:string;updatedAt?:string};
 export type PublisherStatus={connected:boolean;channelId?:string;account?:string;version?:number};
-export type CaptionCandidate={artifactId:string;artifactVersion:number;index:number;text:string;issues:string[]};
+export type CaptionCandidate={artifactId:string;artifactVersion:number;index:number;text:string;issues:string[];aiGenerated:boolean};
 export type ExecutionState={creatives:ExecutionCreative[];publications:Publication[];limits:ExecutionLimits|null;publisher:PublisherStatus;copies:CaptionCandidate[];copyCaptions:boolean};
 export const publicationLabels:Record<PublicationStatus,string>={draft:'승인 전',approved:'실행 승인',submitting:'접수 확인 중',uncertain:'접수 여부 미확인',accepted:'예약 접수',blocked:'공급자 확인 필요',published:'게시 확인',failed:'발행 실패',cancelled:'취소'};
 // 관리자가 Buffer 미접수를 확인하고 차감을 되돌린 시도(attemptRestored)는 한도에서 뺀다.
@@ -33,7 +35,8 @@ export function providerPublicationStatus(status:string):PublicationStatus{retur
 const objectParticle=(code:string)=>/[LMNR013678]$/.test(code)?'을':'를';
 export function codeLine(code:Pick<PublicationCode,'type'|'code'>){return code.type==='coupon'?`주문할 때 쿠폰 코드 ${code.code}${objectParticle(code.code)} 알려 주세요.`:`주문할 때 코드 ${code.code}${objectParticle(code.code)} 말씀해 주세요.`}
 // 코드가 있을 때만 캡션 끝에 빈 줄+코드 줄을 붙인다. 코드가 없으면 이전 결과와 바이트 단위로 같다.
-export const composeCaption=(copy:string|undefined,factCaption:string,code?:Pick<PublicationCode,'type'|'code'>)=>{const caption=copy?copy+'\n\n'+factCaption:factCaption;return code?caption+'\n\n'+codeLine(code):caption};
+// 결정 17: AI 카피(copy.aiGenerated)면 사실 문구 뒤·코드 줄 앞에 빈 줄+AI 생성물 표시 줄을 넣는다. 카피 없음·문자열 카피·사람 카피는 이전 결과와 바이트 단위로 같다.
+export const composeCaption=(copy:string|Pick<PublicationCopy,'text'|'aiGenerated'>|undefined,factCaption:string,code?:Pick<PublicationCode,'type'|'code'>)=>{const text=typeof copy==='string'?copy:copy?.text,disclosure=typeof copy==='string'?null:disclosureLine(copy);const caption=text?text+'\n\n'+factCaption:factCaption,disclosed=disclosure?caption+'\n\n'+disclosure:caption;return code?disclosed+'\n\n'+codeLine(code):disclosed};
 export const CREATIVE_TITLE_MAX=60;
 // 소재 이름(실행 화면·점포 화면·귀속 보고 공용, lib/store-attribution.ts가 다시 내보낸다). 제목이 없으면 '소재 · 9월 23일 00:05 생성'(한국 시각, 날짜가 없으면 짧은 ID) 뒤에
 // 첫 사실 줄을 붙여 같은 분에 만든 소재도 구분한다. 저장된 기록을 그대로 받으므로 제목·캡션·날짜가 없거나 문자열이 아니어도 된다.
@@ -82,12 +85,18 @@ export function approvalDrift(p:Publication,credential:{channelId?:string;versio
  if(!limits||!approvedLimits){if(!limits||limits.version!==p.limitsVersion)drift.push('발행 횟수 한도')}
  else{if(limits.maxPublications<approvedLimits.maxPublications)drift.push('발행 횟수 한도(낮아짐)');if(limits.maxPlannedCostKRW<approvedLimits.maxPlannedCostKRW)drift.push('예정 비용 상한(낮아짐)')}
  if(p.needsReview)drift.push('사용한 사실');
+ // 결정 17: 표시 확인 기록 없는 AI 카피 승인은 접수하지 않는다. 드리프트로 보여 화면이 재확인(초안으로 되돌리기)을 안내하게 한다.
+ if(p.copy?.aiGenerated===true&&!p.aiDisclosureConfirmedAt)drift.push('AI 생성물 표시 확인');
  return drift;
 }
-// 승인 버튼 옆에 보이는 차단 사유. 서버도 같은 조건을 409로 막는다.
-export function approvalBlockers({campaign,publication,state,factCount,rightsConfirmed}:{campaign:Pick<Campaign,'status'|'startDate'|'endDate'>&{budget?:number|null;budgetConfirmedAt?:string};publication:Pick<Publication,'scheduledAt'|'creativeId'|'needsReview'>&{plannedCostKRW?:number};state:Pick<ExecutionState,'creatives'|'limits'|'publisher'>;factCount:number;rightsConfirmed:boolean}):string[]{
+// 승인 버튼 옆에 보이는 차단 사유. 서버도 같은 조건을 409로 막는다. AI 카피 발행은 AI 생성물 표시 확인란도 체크해야 한다(결정 17).
+export function approvalBlockers({campaign,publication,state,factCount,rightsConfirmed,aiDisclosureConfirmed=false}:{campaign:Pick<Campaign,'status'|'startDate'|'endDate'>&{budget?:number|null;budgetConfirmedAt?:string};publication:Pick<Publication,'scheduledAt'|'creativeId'|'needsReview'|'copy'>&{plannedCostKRW?:number};state:Pick<ExecutionState,'creatives'|'limits'|'publisher'>;factCount:number;rightsConfirmed:boolean;aiDisclosureConfirmed?:boolean}):string[]{
  const creative=state.creatives.find(c=>c.id===publication.creativeId);
- return [...(!state.limits?['한도 미설정 · 기본 한도(발행 1회·0원)를 저장하세요.']:[]),...(!state.publisher.connected?['채널 미연결 · Buffer Instagram 채널을 연결하세요.']:[]),...(!factCount?['사실 없음 · 근거와 유효 기한이 있는 사실을 확정하세요.']:[]),...campaignGateIssues(campaign,publication.scheduledAt),...budgetIssues(campaign,publication.plannedCostKRW||0,state.limits),...(creative?.current===false||publication.needsReview?['사실 변경 · 소재 입력이나 사용한 사실이 바뀌었습니다. 이 초안을 취소하고 새 PNG로 새 초안을 만드세요.']:[]),...(!rightsConfirmed?['권리 확인 필요 · PNG·문구 사용 권리 확인란을 체크하세요.']:[])];
+ return [...(!state.limits?['한도 미설정 · 기본 한도(발행 1회·0원)를 저장하세요.']:[]),...(!state.publisher.connected?['채널 미연결 · Buffer Instagram 채널을 연결하세요.']:[]),...(!factCount?['사실 없음 · 근거와 유효 기한이 있는 사실을 확정하세요.']:[]),...campaignGateIssues(campaign,publication.scheduledAt),...budgetIssues(campaign,publication.plannedCostKRW||0,state.limits),...(creative?.current===false||publication.needsReview?['사실 변경 · 소재 입력이나 사용한 사실이 바뀌었습니다. 이 초안을 취소하고 새 PNG로 새 초안을 만드세요.']:[]),...(!rightsConfirmed?['권리 확인 필요 · PNG·문구 사용 권리 확인란을 체크하세요.']:[]),...(publication.copy?.aiGenerated&&!aiDisclosureConfirmed?['AI 생성물 표시 확인 필요 · 캡션 끝 AI 생성물 표시 문구를 확인하고 확인란을 체크하세요.']:[])];
+}
+// 화면의 발행 승인 요청 본문. AI 카피 발행에만 'AI 생성물 표시 확인' 체크 값(aiDisclosureConfirmed)을 싣는다(결정 17). 사람 카피·카피 없는 발행은 이전 본문과 같다.
+export function approvalRequest(p:Pick<Publication,'copy'>,state:Pick<ExecutionState,'publisher'|'limits'>|null,aiChecked:boolean){
+ return {confirmed:true,rightsConfirmed:true,immutableMediaConfirmed:true,channelId:state?.publisher.channelId,credentialVersion:state?.publisher.version,limitsVersion:state?.limits?.version,...(p.copy?.aiGenerated?{aiDisclosureConfirmed:aiChecked}:{})};
 }
 // 제작·발행 탭 상단 체크리스트. 완료되지 않은 첫 단계가 현재 단계다.
 export function publishSteps(state:Pick<ExecutionState,'creatives'|'publications'|'limits'|'publisher'>,factCount:number){
