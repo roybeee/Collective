@@ -145,7 +145,7 @@ test('사용량 단가 설정을 저장하고 API 기록을 확인한다', async
   await context.close();
 });
 
-// ux-9 권고 1·3과 권고 2의 제목 입력 확인(보관 기본값은 후속): 대시보드 표에는 삭제가 없고, 캠페인 목록의 '⋯' 메뉴에서만 연다.
+// ux-9 권고 1·3과 권고 2의 제목 입력 확인(보관 기본값은 아래 보관 시나리오): 대시보드 표에는 삭제가 없고, 캠페인 목록의 '⋯' 메뉴에서만 연다.
 // 대화상자는 삭제 영향 조회 건수를 보여 주고, 작업물이 있으면 캠페인 제목을 그대로 입력해야 삭제 버튼이 열린다.
 test('캠페인 삭제는 목록 메뉴에서 건수를 확인하고 제목을 입력해야 한다', async ({browser}, testInfo) => {
   test.setTimeout(30_000);
@@ -180,5 +180,50 @@ test('캠페인 삭제는 목록 메뉴에서 건수를 확인하고 제목을 �
   await expect(dialog).toBeHidden();
   await expect(page.getByRole('button', {name: title + ' 열기', exact: true})).toHaveCount(0);
   expect((await page.request.get('/api/campaigns/' + id)).status()).toBe(404);
+  await context.close();
+});
+
+// ux-9 권고 2: 작업물이 있는 캠페인의 삭제 대화상자는 '보관(권장)'을 기본 동작으로 보인다. 보관하면 대시보드와 기본 목록에서 숨고
+// '보관함' 필터로만 보인다. 보관 중에는 새 AI 실행이 409다. 보관함 행 메뉴에서 보관을 해제하면 기본 목록으로 돌아온다.
+test('작업물이 있는 캠페인은 삭제 대신 보관하고 보관함에서 해제한다', async ({browser}, testInfo) => {
+  test.setTimeout(30_000);
+  const {context, page} = await ownerPage(browser, testInfo, `e2e-archive-${testInfo.project.name}-${Date.now()}`);
+  await page.request.get('/api/workspace');
+  const title = `보관 검증 ${testInfo.project.name}`;
+  const create = await page.request.post('/api/action', {data: {action: 'save_campaign', data: {brandId: 'ofd', title, goal: '보관 동작 확인', budget: 0}}});
+  expect(create.status()).toBe(200);
+  const {id} = await create.json();
+  expect((await page.request.post('/api/action', {data: {action: 'save_artifact', campaignId: id, role: 'cmo', title: '보관 확인 작업물', content: '보관 전 건수 확인용 원문'}})).status()).toBe(200);
+  const opened = page.getByRole('button', {name: title + ' 열기', exact: true});
+
+  await page.goto('/?view=campaigns');
+  await page.getByRole('button', {name: title + ' 더 보기', exact: true}).click();
+  await page.getByRole('menuitem', {name: '삭제…', exact: true}).click();
+  const dialog = page.getByRole('alertdialog');
+  await expect(dialog).toContainText('보관을 권장합니다');
+  await expect(dialog.getByRole('button', {name: '캠페인 삭제', exact: true})).toBeDisabled();
+  await shot(page, testInfo, 'archive-suggest');
+  await dialog.getByRole('button', {name: '보관(권장)', exact: true}).click();
+  await expect(dialog).toBeHidden();
+  await expect(opened).toHaveCount(0);
+
+  // 보관 중에는 새 AI 실행을 외부 호출 전에 409로 막는다.
+  const run = await page.request.post('/api/run', {data: {action: 'start', campaignId: id, role: 'cmo'}});
+  expect(run.status()).toBe(409);
+  expect((await run.json()).error).toContain('보관 해제 후');
+  await page.goto('/');
+  await expect(page.locator('.campaign-table').getByRole('button', {name: title + ' 열기', exact: true})).toHaveCount(0);
+
+  await page.goto('/?view=campaigns');
+  const filter = page.getByRole('combobox', {name: '브랜드 필터', exact: true});
+  await filter.selectOption({label: '보관함'});
+  await expect(opened).toBeVisible();
+  await expect(page.locator('.status-archived').first()).toHaveText('보관됨');
+  await page.getByRole('button', {name: title + ' 더 보기', exact: true}).click();
+  await page.getByRole('menuitem', {name: '보관 해제', exact: true}).click();
+  await expect(opened).toHaveCount(0);
+  await filter.selectOption('all');
+  await expect(opened).toBeVisible();
+  expect((await (await page.request.get('/api/campaigns/' + id)).json()).campaign.archivedAt).toBeUndefined();
   await context.close();
 });

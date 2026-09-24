@@ -1,6 +1,7 @@
 import type {CampaignPlan,DraftMeta} from './brief';
 export type Brand = {intake?:import('./archive').BrandIntake;id:string; name:string; short:string; category:string; color:string; bg:string; description:string; audience:string; tone:string; constraints:string; knowledge:string};
-export type Campaign = {storeId?:string;storeExperimentId?:string;plan?:CampaignPlan;draftMeta?:DraftMeta;budgetConfirmedAt?:string;id:string; brandId:string; title:string; goal:string; audience:string; channels:string; stores:string; products:string; budget:number|null; startDate:string; endDate:string; constraints:string; sources:string; status:string; version:number; createdAt:string; updatedAt:string;};
+// derivedStatus·statusReason: 응답 전용 파생 상태와 근거(lib/campaign-status.ts). 저장하지 않으며 저장 status는 그대로다.
+export type Campaign = {derivedStatus?:string;statusReason?:string;storeId?:string;storeExperimentId?:string;plan?:CampaignPlan;draftMeta?:DraftMeta;budgetConfirmedAt?:string;id:string; brandId:string; title:string; goal:string; audience:string; channels:string; stores:string; products:string; budget:number|null; startDate:string; endDate:string; constraints:string; sources:string; status:string; version:number; createdAt:string; updatedAt:string;};
 // brandChanged·factsChanged: 작성 뒤 브랜드 정보·사실 원장이 바뀐 작업물. unverifiedClaims: 저장 전 검사에서 [확인 필요] 없이 발견된 금지·미확인 광고 표현.
 export type Artifact = {factRefs?:import('./brand-facts').EvidenceFactRef[]; factsChanged?:boolean; brandChanged?:boolean; unverifiedClaims?:string[]; campaignVersion?:number; outputContractVersion?:string; id:string; campaignId:string; role:string; title:string; content:string; status:string; version:number; origin:string; createdAt:string};
 export type Run = {id:string; campaignId:string; role:string; status:string; error:string|null; createdAt:string; model:string; tokens:number};
@@ -23,7 +24,8 @@ export const brandDefaults:Brand[] = [
  {id:'mapdal',name:'MAPDAL',short:'MD',category:'K-FOOD & CULTURE',color:'#91394d',bg:'#f6e2e9',description:'Sweet + Spicy. K-food와 팬덤, 공간을 연결하는 맵달.',audience:'K-food와 문화 경험에 관심 있는 Gen Z·Alpha',tone:'대담하고 즐거운, 문화적 맥락을 이해하는',constraints:'사업별 타깃 구분. 해외 시장의 반응을 검증 없이 일반화하지 않기.',knowledge:'MAPDAL SEOUL · MAPDAL BUNSIK · MAPDAL VENDING MACHINE.\n초기 브랜드 정보: 대표님 대화 기반. 국가·사업별 제품 정보 확인 필요.'},
  {id:'alan',name:'Dr.alan623',short:'a623',category:'BEAUTY & DAILY RITUAL',color:'#38645e',bg:'#deede8',description:'미세한 미스트와 일상의 리추얼을 중심으로 하는 뷰티 브랜드.',audience:'간편하고 세련된 스킨케어 경험을 찾는 고객',tone:'정제된, 명료한, 연구 근거를 존중하는',constraints:'닥터알란623 / Dr.alan623 표기. 입증되지 않은 효능 주장 금지.',knowledge:'미스트를 중심으로 세럼·선크림으로 확장 구상.\n초기 브랜드 정보: 대표님 대화 기반. 성분·시험 근거·판매 상태는 확인 필요.'}
 ];
-export const statuses:Record<string,string>={draft:'브리프 작성',ready:'실행 준비',running:'AI 작업 중',review:'검토 대기',approved:'기획 승인',revision:'수정 요청',measuring:'성과 기록'};
+// 캠페인 상태 라벨. blocked·executing은 파생 상태(lib/campaign-status.ts)에만 나온다. 순서는 상태별 캠페인 수의 표시 순서다.
+export const statuses:Record<string,string>={draft:'브리프 작성',ready:'실행 준비',running:'AI 작업 중',blocked:'진행 막힘',review:'검토 대기',approved:'기획 승인',revision:'수정 요청',executing:'발행 진행',measuring:'성과 기록'};
 export function money(n:number){return new Intl.NumberFormat('ko-KR').format(n)+'원'}
 // 예산: null=미확정, 0=무예산 확정. 확정 표시(budgetConfirmedAt)가 없는 0은 '0=미확정' 규칙 시절의 기록이라 읽을 때 미확정으로 본다(데이터 migration 없음).
 export function campaignBudget(c:{budget?:number|null;budgetConfirmedAt?:string}){return typeof c.budget!=='number'||(c.budget===0&&!c.budgetConfirmedAt)?null:c.budget}
