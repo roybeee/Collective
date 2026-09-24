@@ -177,11 +177,13 @@ node scripts/probe-dispatcher-auth.mjs
 
 2026-09-23 검증 담당자가 `COLLECTIVE_PROBE_ORIGIN=https://mealzip-agency.hflameb.chatgpt.site node scripts/probe-dispatcher-auth.mjs`를 실행했다. 익명·위조 identity·중복 identity 세 요청은 모두 **passed · real — HTTP 401**이었다. 응답 본문은 기록하지 않았다. 기록 시각은 시스템 시계 기준 2026-09-23 13:08:57 KST다.
 
+2026-09-24 14:15 UTC 대표가 운영 조사 서버에 CDP 점검 설치기(#76 코드를 이미 받은 설치 파일에 적용)로 재설치했다(sudo 없는 ssh 계정이라 `su -`로 root 실행). **passed · real**: `격리 확인` 줄 — 다른 로컬 계정의 CDP 점검 포트 접속(collective-npm) 거부, 브라우저 계정의 file:// 열기 거부(직후 data: 재확인 통과), 브라우저 계정의 루프백 접속 거부, 다른 로컬 계정의 CDP 포트 접속(collective-npm) 거부, 브라우저 계정의 서버 자신의 주소 접속 거부(IPv4·IPv6 각 한 줄), HERMES의 browser_cdp·browser_dialog 호출 차단(pre_tool_call 훅, fail_closed), 브라우저 계정의 작업자 자격증명·HERMES 설정·HERMES 비밀 읽기 거부, hermes 계정의 작업자 자격증명 읽기 거부. `Real browser check passed: Example Domain`, `브라우저 계정: collective-browser (Chromium 샌드박스 유지)`. 서버 사본 설치 파일은 설치기가 지웠다. 앱 `/api/research-worker/setup`: online, blocked 0, rotationReady true, gate `missing`(디스패처가 gate 헤더를 앱까지 넘기지 않음 → `RESEARCH_WORKER_APP_GATE=enforce` 켜지 않음). 서버 주소는 기록하지 않는다. 실제 run에서 `browser_cdp` 호출이 막히는지(차단 사유 문구)는 not_run이다.
+
 Worker 직접 origin 및 로그인된 사용자 간 격리는 **not_run**이다. 이 관측은 당시 운영본에 대한 것이며, 아직 게시하지 않은 작업 브랜치의 배포·런타임 검증을 뜻하지 않는다.
 
 ## 조사 서버 브라우저 격리 (PR 6)
 
-마지막 갱신: 2026-09-24. 바뀐 것은 저장소의 설치기(`server/research-worker/install.py`)뿐이다. 공유 서버 재설치는 대표 확인 뒤에 한다. 2026-09-24 첫 실행은 3/6단계 샌드박스 점검에서 멈췄고(아래 샌드박스 행), 재설치를 끝낸 적은 아직 없다. 재설치 전까지 운영 서버는 이전 방식(hermes 계정이 샌드박스 없이 Chromium 실행, 워커도 hermes 계정)이다. 설치기의 순수 함수는 `python3 tests/research_install_test.py`로 검사하고 CI verify 잡도 이 명령을 실행한다(mocked, root·네트워크 없음). 서버에서의 실제 차단 효과는 설치기가 설치 중에 스스로 점검한다(아래 '설치 점검' 열).
+마지막 갱신: 2026-09-24. 바뀐 것은 저장소의 설치기(`server/research-worker/install.py`)뿐이다. 공유 서버 재설치는 대표 확인 뒤에 한다. 2026-09-24 첫 실행은 3/6단계 샌드박스 점검에서 멈췄고(아래 샌드박스 행), CDP 점검으로 고친 설치기로 같은 날 14:15 UTC 재설치를 마쳤다(위 운영 관측 기록). 설치기의 순수 함수는 `python3 tests/research_install_test.py`로 검사하고 CI verify 잡도 이 명령을 실행한다(mocked, root·네트워크 없음). 서버에서의 실제 차단 효과는 설치기가 설치 중에 스스로 점검한다(아래 '설치 점검' 열).
 
 | 경계 | 설치기가 하는 일 | 설치 점검(실패하면 설치 중단) |
 |---|---|---|
