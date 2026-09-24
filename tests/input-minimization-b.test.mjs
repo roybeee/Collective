@@ -1,6 +1,7 @@
 // 입력 최소화 레인 B(docs/DATA-PROCESSING.ko.md 4.4 ②⑤⑧): 조사 제출 본문과 점포 맥락이 허용한 필드만 모델로 보내는지 고정한다.
 // ② 측정 기록의 주문 해시 id(ledgerSnapshot.orderRefs)는 어떤 모델 입력에도 없다(집계 수치는 남는다). 점포 맥락은 제작 경로(brandArchiveContext)와 조사가 같이 쓴다.
-// ⑤ 조사의 브랜드 입력은 정체성 필드만이다. 소개·메모와 의뢰 정보 자유 텍스트는 빠지고, 조사에는 공식 웹사이트·SNS 주소만 필드 단위로 남는다.
+// ⑤ 조사의 브랜드 입력은 정체성 필드와 공식 웹사이트·SNS 주소(필드 단위), 의뢰 정보 자유 텍스트(brand.request)다. 소개·메모는 빠진다.
+// 의뢰 정보(시장·의뢰 목적·경쟁사)는 대표 결정(2026-09-24, 품질 우선)으로 가린 채 다시 실린다. 가림·허용 값·기록은 tests/research-intake.test.mjs가 검증한다.
 // ⑧ 조사 지시문(심층·단계별·지점 진단)에 리뷰·댓글 작성자 식별정보를 남기지 말라는 문구가 있다.
 // 근거: mocked(모의 HERMES fetch 스텁, 메모리 SQLite, 합성 브랜드·지점). 외부 네트워크·유료 모델 호출은 0회다.
 import assert from 'node:assert/strict';
@@ -21,7 +22,8 @@ const secret={intro:'IMB-소개-가상소개문장',memo:'IMB-메모-가상메�
 const brand={id:'imb-brand',name:'가상분식',short:'GB',category:'SNACK BAR',color:'#224466',bg:'#eef2f6',description:secret.intro,audience:'가상동 주민(가설)',tone:'명료한',constraints:'가격은 확인 전 확정하지 않는다.',knowledge:secret.memo,
  intake:{website:'https://gabunsik.example.com/',socialLinks:`공식 인스타 https://www.instagram.com/gabunsik_test ${secret.social} youtube.com/@gabunsik`,market:secret.market,clientNeed:secret.need,competitors:secret.competitors}};
 const identity={name:brand.name,short:brand.short,category:brand.category,color:brand.color,tone:brand.tone,audience:brand.audience,constraints:brand.constraints};
-const leaks=text=>Object.values(secret).filter(s=>text.includes(s));
+// 계속 보내지 않는 칸(소개·메모·공식 채널 칸의 주소 밖 글)만 찾는다. 의뢰 정보 세 칸은 대표 결정(2026-09-24)으로 brand.request에 실리므로 뺐다(탐지 없는 합성 문장이라 원문 그대로 실린다).
+const leaks=text=>[secret.intro,secret.memo,secret.social].filter(s=>text.includes(s));
 const RESEARCH_PRIVACY='작성자의 이름·닉네임·계정·연락처 등 식별정보는 수집·기록하지 말고 내용만 요약';
 const put=(kind,id,data,parent)=>server.recordStatement(owner,kind,id,data,parent).run();
 await server.database().prepare('INSERT INTO settings(owner,secret,model,updated_at) VALUES(?,?,?,?)').bind(owner,await server.encrypt(JSON.stringify({provider:'hermes',endpoint:HERMES,key:'mock-only'})),'HERMES',now).run();
@@ -46,10 +48,10 @@ const researchBrand=input=>JSON.parse(input).brand;
 {
  await research.executeResearch(owner,{action:'start',id:'imb-deep',brandId:brand.id});await research.executeResearch(owner,{action:'advance',id:'imb-deep'});
  const sent=posts.at(-1),input=JSON.parse(sent.input);
- check('deep research submission carries no brand intro, memo or intake free text',leaks(sent.input).length===0);
- check('deep research brand input is the identity allow-list plus official links',JSON.stringify(Object.keys(input.brand).sort())===JSON.stringify([...Object.keys(identity),'officialLinks'].sort())&&Object.entries(identity).every(([k,v])=>input.brand[k]===v));
+ check('deep research submission carries no brand intro or memo and carries the intake free text as brand.request',leaks(sent.input).length===0&&input.brand.request.clientNeed===secret.need&&input.brand.request.market===secret.market&&input.brand.request.competitors===secret.competitors);
+ check('deep research brand input is the identity allow-list plus official links and the intake request',JSON.stringify(Object.keys(input.brand).sort())===JSON.stringify([...Object.keys(identity),'officialLinks','request'].sort())&&Object.entries(identity).every(([k,v])=>input.brand[k]===v));
  check('official links keep the website and the SNS URLs only',input.brand.officialLinks.website===brand.intake.website&&JSON.stringify(input.brand.officialLinks.socialLinks)===JSON.stringify(['https://www.instagram.com/gabunsik_test','https://youtube.com/@gabunsik']));
- check('the plan keeps derived business type and channels but not the client-need text as objective',input.plan.businessType==='local'&&input.plan.channels.join()==='Instagram,YouTube'&&!input.plan.objective.includes(secret.need)&&input.plan.objective.length>0);
+ check('the plan keeps derived business type and channels and uses the (masked) client need as objective',input.plan.businessType==='local'&&input.plan.channels.join()==='Instagram,YouTube'&&input.plan.objective===secret.need);
  check('deep research instructions tell the model to leave out review and comment author identities',sent.instructions.includes(RESEARCH_PRIVACY));
  check('the A7 repair instructions keep the same author-privacy rule',deep.deepInstructions.split('\n').find(line=>line.startsWith('보안:')).includes(RESEARCH_PRIVACY));
 }
@@ -59,7 +61,7 @@ const researchBrand=input=>JSON.parse(input).brand;
  sql.prepare("UPDATE jobs SET status='completed' WHERE owner=?").run(owner);
  await research.executeResearch(owner,{action:'start',id:'imb-store-r',brandId:brand.id,storeId:shop.id});await research.executeResearch(owner,{action:'advance',id:'imb-store-r'});
  const sent=posts.at(-1),input=JSON.parse(sent.input);
- check('store research submission carries no brand free text and no order hash',leaks(sent.input).length===0&&!sent.input.includes(HASH)&&!sent.input.includes('"orderRefs"'));
+ check('store research submission carries no brand intro or memo and no order hash',leaks(sent.input).length===0&&!sent.input.includes(HASH)&&!sent.input.includes('"orderRefs"'));
  check('store research still receives the store and the measured aggregates',input.store.id===shop.id&&input.storeContext.measurements[0].values.revenue===30000&&researchBrand(sent.input).name===brand.name);
  check('stage research instructions carry the author-privacy rule',sent.instructions.includes(RESEARCH_PRIVACY)&&['identity','customer','channel','diagnosis'].every(stage=>stages.archiveResearchInstructions(stage,'deep').includes(RESEARCH_PRIVACY)));
  // 마지막 단계(store_diagnosis)는 점포 전용 지시(storeResearchInstructions)를 쓴다. 앞 세 단계를 끝난 것으로 두고 제출까지 진행한다.
@@ -69,7 +71,7 @@ const researchBrand=input=>JSON.parse(input).brand;
  const diagnosis=posts.at(-1),diagnosisInput=JSON.parse(diagnosis.input);
  check('the store diagnosis step is submitted with the store-only instructions',diagnosisInput.stage==='store_diagnosis'&&diagnosis.instructions.startsWith('당신은 COLLECTIVE 점포 마케팅 조사 책임자입니다.'));
  check('store diagnosis instructions carry the author-privacy rule',diagnosis.instructions.includes(RESEARCH_PRIVACY));
- check('store diagnosis submission carries no brand free text and no order hash',leaks(diagnosis.input).length===0&&!diagnosis.input.includes(HASH));
+ check('store diagnosis submission carries no brand intro or memo and no order hash',leaks(diagnosis.input).length===0&&!diagnosis.input.includes(HASH));
 }
 
 // ② 변경 전에 시작한 지점 조사: 저장된 점포 맥락 스냅샷에 주문 해시가 남아 있어도 보낼 때 뺀다.
@@ -85,7 +87,7 @@ const researchBrand=input=>JSON.parse(input).brand;
  check('the in-flight submission keeps the measured aggregates and the rest of the ledger snapshot',input.storeContext.measurements[0].values.revenue===30000&&input.storeContext.measurements[0].ledgerSnapshot.spendRefs.length===1&&input.storeContext.measurements[0].ledgerSnapshot.capturedAt===now);
 }
 
-// ⑤ 의뢰 목적(intake.clientNeed)은 보내지 않으므로 진단·심층 조사 지시가 의뢰인 니즈를 추정하지 말라고 한다.
+// ⑤ 의뢰 목적(intake.clientNeed)이 비어 입력에 없으면 진단·심층 조사 지시가 의뢰인 니즈를 추정하지 말라고 한다(기본값). 의뢰 목적이 있을 때의 문장은 tests/research-intake.test.mjs가 검증한다.
 {
  const NO_CLIENT_NEED='의뢰 목적은 입력으로 제공되지 않습니다. 의뢰인의 니즈를 추정하지 말고';
  check('stage diagnosis instructions tell the model not to guess the client need',stages.archiveResearchInstructions('diagnosis','deep').includes(NO_CLIENT_NEED)&&stages.archiveResearchInstructions('diagnosis','classify').includes(NO_CLIENT_NEED));
@@ -102,10 +104,10 @@ const researchBrand=input=>JSON.parse(input).brand;
  check('query strings and fragments are dropped from social links and the website',JSON.stringify(social('https://example.com/contact?name=hong&tel=01012345678#top'))==='["https://example.com/contact"]'&&links('','https://gabunsik.example.com/?ref=hong#top').website==='https://gabunsik.example.com/');
 }
 
-// ⑤ 화면 안내: 의뢰 목적·시장·경쟁사는 조사에 보내지 않고, 공식 SNS 칸은 주소만 보낸다는 것을 등록·의뢰 정보 화면이 실제 동작대로 알린다.
+// ⑤ 화면 안내: 의뢰 목적·시장·경쟁사는 개인정보 패턴을 가린 뒤 조사에 보내고(대표 결정 2026-09-24로 '보내지 않습니다'에서 바뀜), 공식 SNS 칸은 주소만 보낸다는 것을 등록·의뢰 정보 화면이 실제 동작대로 알린다.
 {
- const ui=readFileSync('app/brand-archive.tsx','utf8'),NOTE='의뢰 목적·시장·경쟁사는 AI 조사에 보내지 않습니다.';
- check('brand registration and the intake tab say intake notes are not sent to AI research',ui.split(NOTE).length===3&&!ui.includes('의뢰 목적과 공식 채널을 알려주면 조사 범위를 더 정확하게'));
+ const ui=readFileSync('app/brand-archive.tsx','utf8'),NOTE='의뢰 목적·시장·경쟁사는 전화·이메일·주소 같은 개인정보 패턴을 가린 뒤 AI 조사에 보냅니다.';
+ check('brand registration and the intake tab say intake notes are masked before AI research',ui.split(NOTE).length===3&&!ui.includes('의뢰 목적·시장·경쟁사는 AI 조사에 보내지 않습니다.')&&!ui.includes('의뢰 목적과 공식 채널을 알려주면 조사 범위를 더 정확하게'));
  check('the empty diagnosis state no longer asks for the client objective to start research',!ui.includes('공식 채널과 의뢰 목적을 입력하고 심층 조사를 시작'));
  check('the official SNS field asks for addresses because bare handles are not sent',ui.includes("placeholder={k==='socialLinks'?'https://instagram.com/계정처럼 주소로 적어 주세요. @계정만 적으면 조사에 보내지 않습니다.'"));
 }
