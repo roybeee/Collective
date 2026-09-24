@@ -83,8 +83,9 @@ has('the dialog renders the summary module',dialog,'deletionSummary(');
 has('the delete button waits for confirmation',dialog,'canConfirmDeletion(');
 has('the dialog explains decision 7',dialog,'바이럴 출처 학습 규칙은 지우지 않고 종료 상태와 원 캠페인 삭제 표시로 남깁니다');
 lacks('the old wording that rules are deleted is gone',dialog,'연결된 실험·학습 규칙을 삭제');
-has('the dashboard table has no delete action',workspace,'<CampaignTable items={recent.slice(0,3)}/>');
-has('the campaign list shows the row menu',workspace,'<CampaignTable items={campaigns} rowMenu/>');
+// eng-hygiene-7 ③: 표는 Workspace 밖 컴포넌트라 워크스페이스 값·동작(tableProps)을 props로 함께 받는다. 대시보드 호출에는 rowMenu가 없다.
+has('the dashboard table has no delete action',workspace,'<CampaignTable items={recent.slice(0,3)} {...tableProps}/>');
+has('the campaign list shows the row menu',workspace,'<CampaignTable items={campaigns} rowMenu {...tableProps}/>');
 lacks('the inline row delete button is gone',workspace,'campaign-delete-button');
 has('delete lives in the row menu',workspace,'<DropdownMenuItem variant="destructive" onSelect={()=>setDeleteTarget(c)}><Trash2/>삭제…</DropdownMenuItem>');
 has('members never see the row menu',workspace,'rowMenu&&canManage&&<DropdownMenu');

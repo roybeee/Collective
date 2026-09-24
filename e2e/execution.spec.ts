@@ -2,6 +2,7 @@ import {test,expect} from '@playwright/test';
 
 // Real browser Canvas and local D1/R2. Dispatcher identity is injected; no external publishing.
 test('확인 사실로 실제 PNG를 만들고 새로고침 뒤 내려받는다',async({browser},info)=>{
+ test.setTimeout(90_000);
  const context=await browser.newContext({baseURL:info.project.use.baseURL,viewport:info.project.use.viewport,extraHTTPHeaders:{'oai-authenticated-user-id':`execution-${info.project.name}-${Date.now()}`}});
  const page=await context.newPage();await page.request.get('/api/workspace');
  const title='실행 카드 '+info.project.name;
@@ -56,5 +57,20 @@ test('확인 사실로 실제 PNG를 만들고 새로고침 뒤 내려받는다'
  expect(codedDraft.trackingCode).toMatchObject({type:'coupon'});expect(codedDraft.caption.startsWith('대표 메뉴: 테스트 대표 메뉴 107\n\n주문할 때 쿠폰 코드 '+codedDraft.trackingCode.code)).toBe(true);expect(codedDraft.caption).toMatch(/[을를] 알려 주세요\.$/);
  const codedArticle=page.locator('article',{hasText:codedDraft.trackingCode.code});await expect(codedArticle.getByRole('button',{name:'코드 복사',exact:true})).toBeVisible();await expect(codedArticle).toContainText(storeName);await expect(codedArticle).toContainText('소재: '+creativeTitle);
  await page.screenshot({path:`e2e/artifacts/${info.project.name}-execution.png`,fullPage:true});
+ // ux-2 권고 (3): 주문 귀속 안내는 '주문 장부 열기' 버튼이다. 브랜드 공통 캠페인은 같은 브랜드의 운영 중 지점을 골라 그 지점의 주문 장부로 간다(주소 ?view=stores&brand=&store=&tab=ledger).
+ // 권고 (2): 이 캠페인·소재로 귀속한 주문을 하나 기록해 두고, 열린 장부의 '주문 보기'에서 소재·캠페인으로 걸러 본다.
+ const {id:storeId}=await store.json() as {id:string};const orderNumber='E2E-EXEC-'+info.project.name+'-'+Date.now(),today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'});
+ const ordered=await page.request.post('/api/store-operations',{data:{action:'save_order',storeId,data:{source:'pos',orderNumber,orderDate:today,mode:'hall',status:'paid',paidAmount:'9000',refundAmount:'0',channel:'unknown',experimentId:'',campaignId:campaign.id,creativeId:state.creatives[0].id,trackingCode:'',attributionEvidence:'브라우저 회귀 테스트 쿠폰 확인',note:''}}});expect(ordered.status()).toBe(200);
+ await expect(page.getByRole('heading',{name:'4. 주문 귀속',exact:true})).toBeVisible();await expect(page.getByText('주문·매출 화면에서',{exact:false})).toHaveCount(0);
+ await page.getByRole('combobox',{name:'주문 장부를 열 지점',exact:true}).selectOption({label:storeName});
+ await page.getByRole('button',{name:'주문 장부 열기',exact:true}).click();
+ await expect(page).toHaveURL(new RegExp('[?&]view=stores&brand=ofd&store='+storeId+'&tab=ledger'));await expect(page.getByRole('dialog',{name:title})).toBeHidden();
+ await expect(page.getByRole('heading',{level:2,name:storeName,exact:true})).toBeVisible();
+ // 주소의 지점 탭(tab=ledger)으로 탭을 누르지 않아도 주문 장부 탭이 열린다.
+ await expect(page.getByRole('tab',{name:'주문 장부',exact:true})).toHaveAttribute('aria-selected','true');await expect(page.getByRole('heading',{name:'주문 성과 장부',exact:true})).toBeVisible();
+ const view=page.getByRole('combobox',{name:'주문 보기',exact:true}),row=page.getByRole('row').filter({hasText:orderNumber});await expect(row).toBeVisible();
+ await view.selectOption({label:creativeTitle+' · '+title});await expect(row).toBeVisible();
+ await view.selectOption('unknown');await expect(row).toHaveCount(0);await expect(page.getByText('이 조건의 주문 기록이 없습니다',{exact:true})).toBeVisible();
+ await view.selectOption({label:title});await expect(row).toBeVisible();
  await context.close();
 });

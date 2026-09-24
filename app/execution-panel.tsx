@@ -9,8 +9,10 @@ import {renderFactCard} from '@/lib/creative-render';
 import {factLabel} from '@/lib/fact-catalog';
 import type {Store} from '@/lib/store-marketing';
 import {BrandFactsPanel} from './brand-facts-panel';
-import {adminRequestNote,useCanManage} from './auth-client';
+import {adminRequestNote} from './auth-client';
+import {AdminOnly,canChange,useAccount} from './account-context';
 import {reasonChoices} from '@/lib/review-decisions';
+import {pushNav} from '@/lib/nav-state';
 
 async function request<T=unknown>(path:string,input?:Record<string,unknown>):Promise<T>{
  const response=await fetch(path,input?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)}:undefined);
@@ -19,12 +21,36 @@ async function request<T=unknown>(path:string,input?:Record<string,unknown>):Pro
 type BufferChoices={token:string;organizations:{id:string;name:string}[];organizationId:string;channels:{id:string;name:string;paused:boolean}[]};
 type ProviderAudit={providerAudit?:{providerId:string;message:string}};
 type ActionResult=Partial<Publication>&ProviderAudit&{unreachable?:boolean};
+// ux-2 권고 (3) '주문 장부 열기'의 이동 대상. 지점 캠페인은 목록을 기다리지 않고 그 지점의 주문 장부로 간다. 브랜드 공통 캠페인은 같은 브랜드의 운영 중 지점을 고른다
+// (점포 마케팅은 운영 중 지점만 연다). 목록을 불러오는 중이면 loading, 운영 지점이 없으면 브랜드의 점포 마케팅으로 보낸다. 주소 이동은 pushNav(PR 5a)가 한다.
+// tab:'ledger'는 지점 화면의 주문 장부 탭 값이다(lib/nav-state.ts storeTabs). 캠페인 지점이 보관됐거나 목록에 없으면 점포 마케팅이 다른 운영 지점을 대신 열므로
+// 이동하지 않고 archived로 안내한다(서버도 보관 지점의 주문 기록을 409로 거절한다). 목록을 불러오는 중이면 기다리지 않고 이동한다.
+export type LedgerNav={view:'stores';brand:string;store?:string;tab?:'ledger'};
+export type LedgerTarget={kind:'store';nav:LedgerNav}|{kind:'archived'}|{kind:'choose';stores:{id:string;name:string}[]}|{kind:'loading'}|{kind:'none';nav:LedgerNav};
+export const ledgerNav=(brand:string,store:string):LedgerNav=>({view:'stores',brand,store,tab:'ledger'});
+export function orderLedgerTarget(campaign:Pick<Campaign,'brandId'|'storeId'>,stores:Pick<Store,'id'|'name'|'brandId'|'status'>[]|null):LedgerTarget{
+ if(campaign.storeId)return !stores||stores.some(s=>s.id===campaign.storeId&&s.status==='active')?{kind:'store',nav:ledgerNav(campaign.brandId,campaign.storeId)}:{kind:'archived'};
+ if(!stores)return {kind:'loading'};
+ const open=stores.filter(s=>s.brandId===campaign.brandId&&s.status==='active').map(s=>({id:s.id,name:s.name}));
+ return open.length?{kind:'choose',stores:open}:{kind:'none',nav:{view:'stores',brand:campaign.brandId}};
+}
+function OrderLedgerLink({campaign,stores,error,onRetry}:{campaign:Campaign;stores:Store[]|null;error:string;onRetry:()=>void}){
+ const target=orderLedgerTarget(campaign,stores),[choice,setChoice]=useState('');
+ if(target.kind==='store')return <button type="button" className="border rounded px-3 py-2" onClick={()=>pushNav(target.nav)}>주문 장부 열기</button>;
+ if(target.kind==='archived')return <p role="note">이 캠페인의 지점은 보관됐거나 찾을 수 없어 주문 장부를 열 수 없습니다. 보관한 지점에는 주문을 기록할 수 없습니다.</p>;
+ if(error)return <p role="alert">지점 목록을 불러오지 못했습니다: {error} <button type="button" className="underline" onClick={onRetry}>다시 시도</button></p>;
+ if(target.kind==='loading')return <p role="status">지점 목록을 불러오고 있습니다.</p>;
+ if(target.kind==='none')return <p>이 브랜드에 운영 중인 지점이 없습니다. 점포 마케팅에서 지점을 만든 뒤 주문을 기록하세요. <button type="button" className="underline" onClick={()=>pushNav(target.nav)}>점포 마케팅 열기</button></p>;
+ const chosen=choice||(target.stores.length===1?target.stores[0].id:'');
+ return <div className="flex flex-wrap gap-2 items-end"><label>주문 장부를 열 지점<select className="block border rounded p-2" value={chosen} onChange={e=>setChoice(e.target.value)}><option value="">지점을 선택하세요</option>{target.stores.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label><button type="button" className="border rounded px-3 py-2" disabled={!chosen} onClick={()=>pushNav(ledgerNav(campaign.brandId,chosen))}>주문 장부 열기</button></div>;
+}
 export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand}){
  const [state,setState]=useState<ExecutionState|null>(null),[facts,setFacts]=useState<BrandFact[]>([]),[selected,setSelected]=useState<string[]>([]);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[preview,setPreview]=useState('');
  const [rights,setRights]=useState<Record<string,boolean>>({}),[buffer,setBuffer]=useState<BufferChoices|null>(null),[resolveIds,setResolveIds]=useState<Record<string,string>>({}),[cancelReasons,setCancelReasons]=useState<Record<string,string>>({});
  const [title,setTitle]=useState(''),[stores,setStores]=useState<Store[]|null>(null),[storesError,setStoresError]=useState(''),[storesTry,setStoresTry]=useState(0),[codeType,setCodeType]=useState('');
- const canManage=useCanManage(),autoChecked=useRef(false);
+ // 관리자 전용 실행(app/api/execution/route.ts adminActions·코드 있는 발행 준비)은 직원에게 숨기고 안내한다. 판정은 서버가 한다.
+ const canManage=canChange(useAccount()),autoChecked=useRef(false);
  const reload=useCallback(async()=>{
   const [next,ledger]=await Promise.all([request<ExecutionState>('/api/execution?campaignId='+encodeURIComponent(campaign.id)),request<{facts:BrandFact[]}>('/api/brand-facts?brandId='+encodeURIComponent(campaign.brandId)+(campaign.storeId?'&storeId='+encodeURIComponent(campaign.storeId):''))]);
   setState(next);setFacts(effectiveBrandFacts(ledger.facts,campaign.brandId,campaign.storeId));setRights({});
@@ -81,7 +107,7 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
     <div className="grid gap-3">{state.creatives.map(c=><div key={c.id} className="border rounded p-3"><strong className="block">{creativeLabel(c)}</strong><Image unoptimized width={1080} height={1080} src={'/api/execution/asset?id='+encodeURIComponent(c.id)} alt={'저장된 소재 '+c.id} loading="lazy" className="w-40 rounded"/><p className="whitespace-pre-wrap">{c.caption}</p><small>브리프 v{c.campaignVersion} · 소재 {c.id}{c.current===false&&' · 입력이 바뀌어 발행에 쓸 수 없습니다'}</small><p><a className="underline" href={'/api/execution/asset?id='+encodeURIComponent(c.id)} download={c.pngHash+'.png'}>원본 PNG 내려받기</a></p><p className="break-all text-xs">공개 파일명: {c.pngHash}.png</p></div>)}</div>
    </section>
    <section className="rounded-xl border p-4 space-y-3"><h3 className="font-semibold">2. 채널 연결과 발행 횟수 한도</h3><p>발행 연결: {state.publisher.connected?state.publisher.account+' · '+state.publisher.channelId:'연결 필요'}</p>
-    {canManage?<>
+    <AdminOnly note={'채널 연결과 발행 횟수 한도는 관리자만 바꿀 수 있습니다. '+adminRequestNote}>
      <form aria-label="Buffer 채널 연결" className="grid gap-2" onSubmit={e=>{e.preventDefault();const values=Object.fromEntries(new FormData(e.currentTarget));
       if(!buffer)void perform(async()=>{const token=String(values.token||'');setBuffer({token,...await action<Omit<BufferChoices,'token'>>('buffer_channels',{token})})},'조직과 Instagram 채널을 불러왔습니다. 연결할 채널을 고르세요.');
       else void perform(async()=>{await action('connect_buffer',{token:buffer.token,organizationId:buffer.organizationId,channelId:values.channelId,version:state.publisher.version});setBuffer(null)},'Instagram 채널을 확인해 연결했습니다. 기존 승인은 재확인해야 합니다.')}}>
@@ -92,10 +118,11 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
       </>}
      </form>
      {state.publisher.connected&&<button className="border rounded px-3 py-2" disabled={busy} onClick={()=>{if(window.confirm('Buffer 연결을 해제할까요? 저장된 API 키를 지우고, 이 브랜드의 승인된 발행은 초안으로 돌아갑니다. 이미 접수된 예약은 Buffer에서 따로 확인해야 합니다.'))void perform(()=>action('disconnect_buffer',{version:state.publisher.version}),'Buffer 연결을 해제했습니다. 승인된 발행은 초안으로 돌아갔습니다.')}}>Buffer 연결 해제</button>}
-    </>:<p className="subtle-note">채널 연결과 발행 횟수 한도는 관리자만 바꿀 수 있습니다. {adminRequestNote}</p>}
+    </AdminOnly>
     <p>누적 발행 시도 {totals.attempts}회. 실패·접수 미확인 시도도 포함합니다(관리자가 미접수를 확인해 복원한 시도는 제외).</p>
     {budget!==null&&<p>캠페인 예산 {budgetLabel(campaign)}</p>}
     {!state.limits&&<p>발행 횟수 한도가 아직 없습니다. 한도가 없으면 발행을 승인할 수 없습니다.{canManage&&<> <button type="button" className="border rounded px-3 py-2" disabled={busy} onClick={saveDefaultLimits}>기본 한도(발행 1회·0원) 저장</button></>}</p>}
+    {!canManage&&state.limits&&<ul aria-label="현재 발행 횟수 한도" className="text-sm list-disc pl-5"><li>캠페인 최대 발행 시도 {state.limits.maxPublications}회</li><li>누적 예정 비용 상한 {state.limits.maxPlannedCostKRW.toLocaleString()}원</li></ul>}
     {canManage&&<form key={state.limits?.version||0} className="grid gap-2" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);void perform(()=>action('save_limits',{version:state.limits?.version,maxPublications:Number(f.get('maxPublications')),maxPlannedCostKRW:Number(f.get('maxPlannedCostKRW')),paused:f.get('paused')==='on'}),'한도를 저장했습니다. 한도를 낮추면 기존 승인은 재확인해야 합니다.')}}>
      <label>캠페인 최대 발행 시도<input className="block border rounded p-2" name="maxPublications" type="number" min="0" max="100" step="1" defaultValue={state.limits?.maxPublications??1} required/></label>
      <details open={(state.limits?.maxPlannedCostKRW??0)>0}><summary>예정 비용 상한 · 유료 부스트 연동 전까지 참고용</summary><div className="grid gap-2 pt-2">
@@ -114,11 +141,11 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
      <label>캡션 카피 (선택)<select className="block border rounded p-2 w-full" name="copy"><option value="">확인 사실 문구만 사용</option>{state.copies.filter(c=>!c.issues.length).map(c=><option key={c.artifactId+':'+c.index} value={JSON.stringify({artifactId:c.artifactId,artifactVersion:c.artifactVersion,index:c.index})}>{c.text.slice(0,60)}</option>)}</select></label>
      <p className="text-sm">{!state.copyCaptions?'AI 작업물 카피를 캡션에 쓰는 기능은 AI 생성물 표시 기준이 정해질 때까지 꺼져 있습니다. 확인 사실 문구만 캡션으로 씁니다.':state.copies.length?'승인된 콘텐츠 작업물의 게시 카피를 확인 사실 문구 앞에 붙입니다. 금지·미확인 표현이 있는 카피는 고를 수 없습니다.':'승인된 콘텐츠 작업물의 게시 카피가 없어 확인 사실 문구만 캡션으로 씁니다.'}</p>
      {state.copies.some(c=>c.issues.length)&&<details><summary>쓸 수 없는 카피 {state.copies.filter(c=>c.issues.length).length}개와 사유</summary><ul className="text-sm space-y-1">{state.copies.filter(c=>c.issues.length).map(c=><li key={c.artifactId+':'+c.index}>{c.text.slice(0,80)} — {c.issues.join(', ')}</li>)}</ul></details>}
-     {canManage?<fieldset className="grid gap-2 border rounded p-3"><legend>게시 코드 (선택)</legend>
+     <AdminOnly note={'게시 코드(쿠폰·POS 태그) 발급은 관리자만 할 수 있습니다. '+adminRequestNote}><fieldset className="grid gap-2 border rounded p-3"><legend>게시 코드 (선택)</legend>
       <label>코드 유형<select className="block border rounded p-2 w-full" name="codeType" value={codeType} disabled={busy} onChange={e=>setCodeType(e.target.value)}><option value="">코드 없이 준비</option><option value="coupon">쿠폰 코드</option><option value="pos_tag">POS 태그</option></select></label>
       {codeType&&(campaign.storeId?<p>코드 지점: {storeName(campaign.storeId)} (캠페인 지점)</p>:codeStores.length?<label>코드 지점<select className="block border rounded p-2 w-full" name="codeStoreId" required defaultValue=""><option value="">지점을 선택하세요</option>{codeStores.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>:storesError?<p role="alert">지점 목록을 불러오지 못했습니다: {storesError} <button type="button" className="underline" disabled={busy} onClick={retryStores}>다시 시도</button></p>:stores===null?<p role="status">지점 목록을 불러오고 있습니다.</p>:<p role="alert">이 브랜드에 운영 중인 지점이 없습니다. 점포 마케팅에서 지점을 만든 뒤 코드를 쓰세요.</p>)}
       <p className="text-sm">코드를 고르면 이 발행에만 쓰는 추적 코드를 발급하고 캡션 끝에 &apos;주문할 때 …&apos; 안내 줄을 붙입니다. PNG에는 넣지 않습니다. 주문 장부에서 이 코드로 게시별 귀속 주문을 셉니다. 귀속 매출은 증분 효과가 아닙니다.</p>
-     </fieldset>:<p className="subtle-note">게시 코드(쿠폰·POS 태그) 발급은 관리자만 할 수 있습니다. {adminRequestNote}</p>}
+     </fieldset></AdminOnly>
      <label>예약 시각 (이 기기의 현지 시각, 최소 5분 후, 캠페인 기간 {campaign.startDate&&campaign.endDate?campaign.startDate+'~'+campaign.endDate:'미확정'})<input className="block border rounded p-2" name="scheduledAt" type="datetime-local" required/></label>
      <details><summary>예정 비용 · 유료 부스트 연동 전까지 참고용</summary><div className="grid gap-2 pt-2"><p className="text-sm">Buffer 유기 게시는 건당 비용이 없어 0원 그대로 두면 됩니다. 유료 부스트를 따로 집행할 때만 참고로 입력하세요. 비워 두면 0원입니다. 0원보다 크게 입력하면 확정 예산과 예정 비용 상한 안에서만 승인·접수됩니다(기본 상한 0원).</p><label>이 발행의 예정 비용 (원)<input className="block border rounded p-2" name="plannedCostKRW" type="number" min="0" step="1" defaultValue="0"/></label></div></details>
      <details><summary>고급: 외부 호스트</summary><div className="grid gap-2 pt-2"><p className="text-sm">앱 공개 주소 대신 외부 호스트를 쓰려면 내려받은 PNG를 Cloudinary 또는 R2 공개 저장소에 해시 파일명 그대로 올리고 주소를 입력하세요. 승인과 실행 전에 원본과 같은 파일인지 확인합니다. 호스트의 파일을 덮어쓰거나 삭제하면 안 됩니다.</p><label>외부 공개 PNG 주소 (비우면 앱 공개 주소 사용)<input className="block border rounded p-2 w-full" name="mediaUrl" type="url" placeholder="https://…r2.dev/해시.png"/></label></div></details>
@@ -148,7 +175,10 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
        <div className="flex flex-wrap gap-2"><button className="border rounded px-3 py-2" disabled={busy||!resolveIds[p.id]?.trim()} onClick={()=>void perform(()=>action('resolve_uncertain',{id:p.id,version:p.version,providerId:resolveIds[p.id].trim()}),'Buffer 게시와 채널을 확인해 상태를 확정했습니다.')}>게시 ID로 접수 확인</button><button className="border rounded px-3 py-2" disabled={busy} onClick={()=>resolveMissing(p,true)}>없음 확인 · 시도 차감 복원</button><button className="border rounded px-3 py-2" disabled={busy} onClick={()=>resolveMissing(p,false)}>없음 확인 · 시도 차감 유지</button></div></div>}
      </article>})}
    </section>
-   <p>주문·매출 화면에서 주문에 이 캠페인과 소재를 선택하고 귀속 근거를 기록하세요. 귀속 주문은 인과 효과를 증명하지 않으며, 증분 효과는 별도 비교 실험이 필요합니다.</p>
+   <section className="rounded-xl border p-4 space-y-3"><h3 className="font-semibold">4. 주문 귀속</h3>
+    <p>점포 마케팅의 {campaign.storeId&&stores?.some(s=>s.id===campaign.storeId)?storeName(campaign.storeId)+' ':''}주문 장부에서 주문에 이 캠페인과 소재를 선택하고 귀속 근거를 기록하세요. 귀속 주문은 인과 효과를 증명하지 않으며, 증분 효과는 별도 비교 실험이 필요합니다.</p>
+    <OrderLedgerLink campaign={campaign} stores={stores} error={storesError} onRetry={retryStores}/>
+   </section>
   </>}
  </div>;
 }

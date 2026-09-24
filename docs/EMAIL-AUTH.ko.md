@@ -20,7 +20,7 @@
 | 계정 변경 기록(최근 20건) 보기 | 가능 | 불가 | 불가 |
 | 본인 계정 접근 해제 | 불가(400) | 불가(400) | 불가 |
 
-권한 검사는 화면과 서버에 모두 있다. 서버(`lib/auth-accounts.ts`)는 대상의 역할과 요청자의 현재 상태(활성 관리자, 소유자 전용 작업이면 소유자)를 쓰기 SQL 안에서 다시 확인한다. 업무 API는 `lib/server.ts`의 `actor()`(이메일 모드: 세션 계정, legacy: 헤더 id를 소유자로 취급), `requireAdminActor()`(소유자·관리자 아니면 403), `requireOwnerActor()`(소유자 아니면 403)를 쓴다. 앱 화면은 `AuthGate`가 내려 주는 로그인 상태(`app/auth-client.ts`의 `useAuthState`)로 사이드바 프로필에 이메일과 역할(소유자·관리자·직원)을 보여 준다. legacy 모드는 '워크스페이스 소유자'로 표시한다.
+권한 검사는 화면과 서버에 모두 있다. 서버(`lib/auth-accounts.ts`)는 대상의 역할과 요청자의 현재 상태(활성 관리자, 소유자 전용 작업이면 소유자)를 쓰기 SQL 안에서 다시 확인한다. 업무 API는 `lib/server.ts`의 `actor()`(이메일 모드: 세션 계정, legacy: 헤더 id를 소유자로 취급), `requireAdminActor()`(소유자·관리자 아니면 403), `requireOwnerActor()`(소유자 아니면 403)를 쓴다. 앱 화면은 `AuthGate`가 감싸는 `AccountProvider`(`app/account-context.tsx`의 `useAccount`)로 사이드바 프로필에 이메일과 역할(대표·관리자·직원)을 보여 주고, 서버가 403을 주는 관리자·소유자 전용 폼은 직원에게 읽기 전용과 '관리자만 변경할 수 있습니다.'(소유자 전용이면 '소유자만 변경할 수 있습니다.') 안내로 보인다(PR 5c, 화면 표시일 뿐 권한 판정은 서버). legacy 모드는 '워크스페이스 소유자 / 대표'로 표시한다.
 
 ## 계정 관리 (`/api/accounts`)
 
