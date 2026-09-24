@@ -161,14 +161,14 @@
 
 스냅샷: 학습 경로 제출 바이트가 의도적으로 바뀐다. `prompt-baseline`의 학습 항목 가운데 바이럴 분석 입력과 바이럴 발견 지시문이 달라지므로 fixture를 재캡처한다. `tests/prompt-resolution.test.mjs`(75·132행)도 같은 fixture의 `learning[1]`(발견 지시문)과 비교하므로, 재캡처 하나로 두 스위트가 함께 맞춰진다. 절차는 3절과 같다. 코드 변경을 커밋한 뒤 그 커밋 SHA로 캡처한다. 옛 `tests/fixtures/prompt-baseline-9bdcfc8.json`은 `git rm`으로 지운다(이름 바꾸기 금지. 테스트는 fixture가 정확히 1개일 것을 요구한다).
 
-- `tests/fixtures/prompt-baseline-<재캡처 SHA>.json`(환경변수에는 40자, 파일 이름에는 앞 7자. 코드 커밋 뒤 채운다): `PROMPT_BASELINE_SHA=<재캡처 SHA> PROMPT_BASELINE_CAPTURE=tests/fixtures/prompt-baseline-<재캡처 SHA>.json node --experimental-vm-modules tests/prompt-baseline.test.mjs`
+- `tests/fixtures/prompt-baseline-be1e7ad.json`(코드 변경 커밋 `be1e7ad`에서 재캡처): `PROMPT_BASELINE_SHA=be1e7adfdb692d1ebda971a2c2394d49538efef6 PROMPT_BASELINE_CAPTURE=tests/fixtures/prompt-baseline-be1e7ad.json node --experimental-vm-modules tests/prompt-baseline.test.mjs`
 - 역할 8종·회의 12단계 ×2 항목은 바뀌지 않아야 한다. 역할·회의·브리프·조사 제출 바이트는 이 변경의 범위 밖이다.
 - 역할 제출 스냅샷 `tests/fixtures/role-submission-9bdcfc8.json`(역할 16케이스, 이전 회의 합의 입력 포함)은 학습 경로를 지나지 않으므로 바뀌지 않는다. 재캡처하지 않는다.
 
-변경 전후 차이(옛 fixture `9bdcfc8`과 비교. 이 작업 트리를 스크래치 경로로 캡처했다. 외부 호출 0회, 합성 데이터):
+변경 전후 차이(재캡처한 `be1e7ad`과 옛 fixture `9bdcfc8`을 항목별로 비교. 외부 호출 0회, 합성 데이터):
 
 | 스냅샷 | 역할 8종 | 회의 12단계 ×2 | 바이럴 분석(L1) | 바이럴 발견(L2) 지시문 |
 |---|---|---|---|---|
 | prompt-baseline | 8/8 동일(`inputHash`·지시문·입력) | 24/24 동일(지시문·입력) | 지시문 동일(1,035자). 입력 변경 627→543자(`brand`에서 `id`·`bg`·`description`·`knowledge`가 빠짐) | 변경 1,655→1,832자(`authorPrivacy`·`caseAccountRule` 추가, sha256 `b691d1e0…`) |
 
-`providerCalls.external`(0)도 같다. 옛 fixture를 지운 스크래치 사본에서 재캡처하면 `tests/prompt-baseline.test.mjs`(83)와 `tests/prompt-resolution.test.mjs`(50)가 모두 통과한다.
+`providerCalls.external`(0)도 같다. 재캡처 뒤 `tests/prompt-baseline.test.mjs`(83)와 `tests/prompt-resolution.test.mjs`(50)가 모두 통과한다.
