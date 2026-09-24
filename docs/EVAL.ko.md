@@ -6,7 +6,7 @@
 
 - 코드: `lib/graders/*.ts`(상대 import만 쓰는 순수 함수), `lib/role-instruction.ts`, `scripts/eval/grade.mjs`
 - 테스트: `tests/graders.test.mjs`, `tests/compliance.test.mjs`, `tests/role-instruction.test.mjs`(모두 합성 데이터, `passed · mocked`)
-- F1a는 새 파일만 더했다. F1b-1(#35)이 `lib/role-execution.ts`를 `lib/role-instruction.ts`에 연결했다. 서버 평가 실행(`eval_case`·`eval_run`)은 F1b-2가 더했다([서버 평가 실행](#서버-평가-실행-f1b-2)). 가드레일의 `complianceIssues` 운영 저장은 A2 연결 PR이 맡는다.
+- F1a는 새 파일만 더했다. F1b-1(#35)이 `lib/role-execution.ts`를 `lib/role-instruction.ts`에 연결했다. 서버 평가 실행(`eval_case`·`eval_run`)은 F1b-2가 더했다([서버 평가 실행](#서버-평가-실행-f1b-2)). 가드레일의 운영 연결은 A2 런타임 하향(기능 스위치 `a2_downgrade`, [아래](#런타임-하향-a2_downgrade))이 맡는다.
 - 이 문서와 채점 결과는 법률 자문이 아니다(아래 [고지](#법률-자문-아님-고지)).
 
 ## 상태 어휘
@@ -94,8 +94,19 @@
 - 체험단·대량 리뷰(`bulk_review`)는 `리뷰 N건`에 모집·확보·작업·구매·대행이 함께 있을 때만 걸고, 체험단·모집 등이 없는 KPI·목표·측정 문장("방문자 리뷰 30건을 목표로")은 면제한다. 구매 유도 문구 규칙은 버튼 클릭 수 같은 측정 문장을 면제한다.
 - 인용: 경쟁점·위반 사례(`사례`, `위반 소지`, `경쟁점`) 문장에서 따옴표 안에 걸린 표현은 `info`로만 남는다. 같은 규칙에 인용 밖 해당 문장이 있으면 그 문장의 원래 등급으로 보고한다.
 - 제목이 `금지 사항`·`하지 않을 것`·`피할 표현`인 섹션의 목록은 위반 문안으로 보지 않는다.
-- 모델 검수 스키마(`qualityCriteria` 5기준)와 `qualityScopeNotice`는 바꾸지 않는다. 런타임 연결에서 가드레일 결과는 `complianceIssues`라는 별도 필드로만 저장한다(연결은 다음 PR, 기능 스위치로 끈다).
+- 모델 검수 스키마(`qualityCriteria` 5기준)와 `qualityScopeNotice`는 바꾸지 않는다. 런타임 연결에서 가드레일 결과는 작업물의 `complianceHold`라는 별도 필드로만 저장한다(기능 스위치 `a2_downgrade`로 끈다).
 - 한계: 플랫폼별 리뷰 운영정책의 공식 URL은 아직 확인하지 않았다(`COMPLIANCE_LEXICON.platformPolicy`). 법령 조항 해석은 사람이 확인한다. 합성 예시의 탐지율·오탐률은 `tests/compliance.test.mjs` 출력(`violations`, `detected`, `falsePositives`)에 남는다. 쉼표 뒤 다른 대상의 부정("음료 증정, 주류는 안 됩니다")은 같은 절로 보아 면제될 수 있다(미탐 위험). 나열 목록("숯불, 화덕은 쓰지 않습니다")을 부정으로 인정하려고 쉼표를 절 경계로 쓰지 않았다.
+
+### 런타임 하향 (`a2_downgrade`)
+
+`lib/online-grading.ts`가 역할·회의 작업물 저장 직후(잠금 해제 뒤) 가드레일을 적용한다. 기본 꺼짐이며 운영 절차·compare-and-set 조건은 [RELIABILITY.ko.md 기능 스위치](RELIABILITY.ko.md#기능-스위치)에 있다.
+
+- 판정은 하향만 한다. block 위반이 있는 작업물에 `complianceHold`(사전 버전, block 건수, 규칙별 `category`·`ruleId`·`title`·`excerpt` 최대 20건, `checkedAt`, `notice`)를 남긴다. warn·info는 기록하지 않는다. block이 없어도 기존 hold를 지우지 않는다.
+- 품질 검수(`ai-quality-6` 구조 게이트 `enforceQuality` 뒤)를 저장할 때 같은 캠페인·같은 캠페인 버전의 현재 작업물(검수 자신 포함)에 hold가 있거나 이번 점검에서 block이 나오면 `downgradeVerdict`로 `ready_for_review`→`revise`만 하고, `gateIssues`에 `A2 규제 점검: <작업물 제목> — <규칙 제목> 외 N건`과 `COMPLIANCE_NOTICE`를 더한다. `checks`는 5기준 그대로이며 규제 기준(criterion)을 새로 만들지 않는다. `taskChecks`도 그대로다. 판정을 내렸으면 캠페인도 역할·회의 저장 규칙처럼 `review`→`revision`으로만 내린다.
+- 입력 상한: 온라인 채점과 같은 2,000줄(`MAX_GRADED_LINES`)을 넘는 작업물은 점검하지 않는다(미탐 위험, 로그 `a2_downgrade_not_run`).
+- `online_grading`이 켜져 있으면 채점 결과의 규제 점검을 재사용하고 `grading` 기록 형식은 바꾸지 않는다(발췌 없음). 꺼져 있어도 `a2_downgrade`만으로 점검한다.
+- 끄는 방법: 기능 스위치 `a2_downgrade`를 끄거나 기본값으로 되돌린다. 꺼지면 작업물·`grading` 기록이 이전과 바이트 단위로 같다.
+- 테스트: `tests/a2-runtime.test.mjs`(`passed · mocked`). 화면 표시와 hold는 법률 자문이 아니다([고지](#법률-자문-아님-고지)).
 
 ## 역할 지시 스냅샷 (`lib/role-instruction.ts`)
 
