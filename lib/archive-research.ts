@@ -13,10 +13,11 @@ export function parseResearchSources(raw:any,brandId:string,researchId:string,st
  if(!Array.isArray(raw)||raw.length>6)throw new ApiError(422,'조사 출처는 단계당 최대 6개입니다.');
  return raw.map((x,i)=>{if(!Object.hasOwn(archiveCategories,x?.category))throw new ApiError(422,'자료 분류가 올바르지 않습니다.');return {id:stepId+'-'+i,brandId,researchId,title:str(x.title,'출처 제목',200,true),category:x.category,url:archiveUrl(x.url,true),content:str(x.content,'관찰한 근거',8000,true),scope:str(x.scope,'관찰 범위',3000,true),observedAt:observed(x.observedAt),createdAt,origin:'research',status:'candidate',version:1}});
 }
+const diagnosticRefs=(sources:ArchiveSource[])=>{const allowed=new Set(sources.filter(s=>s.status!=='excluded'&&s.content).map(s=>s.id));return (ids:any)=>{if(!Array.isArray(ids)||ids.length>100||ids.some(id=>typeof id!=='string'||!allowed.has(id)))throw new ApiError(422,'진단에 실제 자료와 일치하지 않는 근거가 있습니다.');return [...new Set(ids)] as string[]}};
+// 실험 과제 1개의 검사. 심층 조사 부분 구제(lib/deep-research-server.ts)가 과제 단위로 걸러낼 때도 같은 규칙을 쓴다.
+export function parseOpportunity(o:Record<string,unknown>|null|undefined,sources:ArchiveSource[],sourceIds:string[]){const ids=diagnosticRefs(sources)(o?.sourceIds);if(!ids.length||ids.some(id=>!sourceIds.includes(id)))throw new ApiError(422,'전략 기회의 출처가 누락됐습니다.');return {title:str(o?.title,'기회',200,true),hypothesis:str(o?.hypothesis,'가설',3000,true),action:str(o?.action,'다음 행동',3000,true),metric:str(o?.metric,'확인 지표',3000,true),sourceIds:ids}}
 export function parseDiagnostic(x:any,sources:ArchiveSource[]):Omit<Diagnostic,'id'|'brandId'|'researchId'|'archiveRevision'|'status'|'createdAt'>{
- const allowed=new Set(sources.filter(s=>s.status!=='excluded'&&s.content).map(s=>s.id));
- const refs=(ids:any)=>{if(!Array.isArray(ids)||ids.length>100||ids.some(id=>typeof id!=='string'||!allowed.has(id)))throw new ApiError(422,'진단에 실제 자료와 일치하지 않는 근거가 있습니다.');return [...new Set(ids)] as string[]};
- const sourceIds=refs(x.sourceIds);if(!Array.isArray(x.opportunities)||x.opportunities.length>3||!Array.isArray(x.questions)||x.questions.length>12)throw new ApiError(422,'진단 과제와 질문 형식을 확인하세요.');
- const opportunities=x.opportunities.map((o:any)=>{const ids=refs(o?.sourceIds);if(!ids.length||ids.some(id=>!sourceIds.includes(id)))throw new ApiError(422,'전략 기회의 출처가 누락됐습니다.');return {title:str(o.title,'기회',200,true),hypothesis:str(o.hypothesis,'가설',3000,true),action:str(o.action,'다음 행동',3000,true),metric:str(o.metric,'확인 지표',3000,true),sourceIds:ids}});
+ const sourceIds=diagnosticRefs(sources)(x.sourceIds);if(!Array.isArray(x.opportunities)||x.opportunities.length>3||!Array.isArray(x.questions)||x.questions.length>12)throw new ApiError(422,'진단 과제와 질문 형식을 확인하세요.');
+ const opportunities=x.opportunities.map((o:any)=>parseOpportunity(o,sources,sourceIds));
  return {summary:str(x.summary,'진단 요약',3000,true),positioning:str(x.positioning,'포지셔닝',3000,true),audience:str(x.audience,'고객',3000,true),needs:str(x.needs,'니즈',3000,true),strengths:str(x.strengths,'강점',3000,true),gaps:str(x.gaps,'문제',3000,true),limitations:str(x.limitations,'한계',3000,true),sourceIds,opportunities,questions:x.questions.map((q:any)=>str(q,'확인 질문',1000,true))};
 }

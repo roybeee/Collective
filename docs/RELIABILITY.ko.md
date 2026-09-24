@@ -78,11 +78,11 @@
 
 - Instagram·네이버 검색광고 커넥터는 응답을 200KB 한도 안에서만 읽는다(`readBoundedJson`). 넘으면 파싱하지 않고 502로 끝난다. 네이버 연결 확인(`verify`)은 인증(2xx)만 보고 캠페인 목록 본문은 읽지 않아 캠페인이 많은 계정도 연결된다.
 - 브랜드 조사 결과 처리에서 `ApiError`가 아닌 예외(TypeError 등)는 조사 기록·화면에 고정 문구 ‘조사 결과를 처리하지 못했습니다. 다시 시도해 주세요.’만 남기고, 로그에는 오류 이름·코드만 남긴다(`research_result_unexpected_error`).
-- 잔여: 실험 과제 원소가 null이면 422가 아니라 TypeError로 실패하는 파서 동작(`lib/deep-research-server.ts`)은 그 파일이 PR 6 앱 측 레인 잠금이라 A7로 넘겼다(`docs/IMPROVEMENT-PLAN.ko.md` 배정 변경). A7이 422로 바꾸고 `tests/validate.test.mjs`의 알려진 결함 검사도 함께 바꾼다.
+- 잔여 해소(A7): 실험 과제 등 심층 조사 보고서의 배열 원소가 null·비객체이면 TypeError가 아니라 항목 단위 오류로 처리한다. 뼈대가 아니면 그 원소만 빼서 구제하고, 뼈대 자리면 422다(아래 ‘A7 조사 투자 회수’). 점포 조사 보고서(`lib/store-server.ts` `parseStoreReport`)의 실행 제안·실험 제안 원소가 null·원시값·배열이면 목록 형식 오류 422(‘점포 진단 목록 형식을 확인하세요.’)다. 점포 보고서에는 부분 구제가 없어 전체를 거절한다(`tests/validate.test.mjs`). `tests/research-errors.test.mjs`는 파서 밖의 내부 예외(저장된 단계 기록 손상)로 고정 문구·로그 규칙을 계속 확인한다.
 
 ### 기능 스위치
 
-`lib/feature-flags.ts`가 알려진 스위치와 기본값의 정본이다. 모두 기본 꺼짐이다: `online_grading`, `b1_reason_required`, `a4_auto_attribution`, `a2_downgrade`. 서버 코드는 `isEnabled(owner, flag)`로 읽는다. 저장은 소유자 범위 `feature_flag` 행(스위치당 1행)이며 행이 없으면 기본값이다. 캐시가 없어 쓰기는 다음 요청부터 반영된다(게시 불필요).
+`lib/feature-flags.ts`가 알려진 스위치와 기본값의 정본이다. 모두 기본 꺼짐이다: `online_grading`, `b1_reason_required`, `a4_auto_attribution`, `a2_downgrade`, `a7_repair_turn`. 서버 코드는 `isEnabled(owner, flag)`로 읽는다. 저장은 소유자 범위 `feature_flag` 행(스위치당 1행)이며 행이 없으면 기본값이다. 캐시가 없어 쓰기는 다음 요청부터 반영된다(게시 불필요).
 
 - 조회: `GET /api/feature-flags`(로그인한 모든 역할, 변경자는 소유자에게만).
 - 변경: `POST /api/feature-flags` `{"action":"set","flag":"online_grading","enabled":false}`, 기본값 복귀는 `{"action":"reset","flag":"..."}`. 워크스페이스 소유자만(관리자·직원 403). 모르는 스위치·불리언이 아닌 값은 400.
@@ -104,6 +104,22 @@
 - 확인: 캠페인 상세 작업물 탭 끝(온라인 채점 표시 자리)에 작업물별 `규제 점검 차단 N건 — 게시 전 담당자 확인 필요`, 이슈(규칙 제목·발췌·출처 수), 고지를 보인다. hold가 없으면 표시하지 않는다.
 - 고지: 이 점검은 표시·광고 관련 법령과 공식 지침의 일부 표현을 찾는 자동 점검이며 법률 자문이 아니다. 적발되지 않았다고 적법하다는 뜻이 아니며, 게시 전 담당자가 원문 규정과 플랫폼 정책을 확인한다.
 - 테스트: `tests/a2-runtime.test.mjs`(`passed · mocked`).
+
+#### A7 조사 투자 회수: 부분 구제와 수리 턴 (`a7_repair_turn`)
+
+`lib/research-execution.ts`의 심층 조사(`investigation` 단계) 결과 처리. 파서는 `lib/deep-research-server.ts`의 `parseDeepText`(JSON 파싱 포함)·`parseDeepReport`다. 관찰: 조사가 전체 토큰의 87%를 쓰는데 한 항목 오류에도 결과 전체가 버려졌다(`docs/observations/2026-09-23-live-run.md`).
+
+- 부분 구제(기본 동작, 추가 비용 없음): 항목 단위 오류(개별 출처·콘텐츠 표본·경쟁/대안 등 목록 원소의 형식·범위·참조 오류, 목록 최대 개수를 넘은 뒤쪽 원소)는 그 원소만 빼고, 뺀 출처를 가리키던 원소도 함께 뺀다. 같은 번호를 다른 URL에 쓴 출처는 어느 쪽 근거인지 가릴 수 없어 그 번호의 출처와 인용을 모두 뺀다(다른 출처로 옮겨 붙이지 않는다). 조사 기록 `salvage`는 `{dropped:[{section,index,id?,reason}], kept}`로 뺀 원소마다 사유를 모두 남기고 뺀 원소의 원문은 저장하지 않는다. 출처나 진단 근거를 뺐으면 품질 판정에 ‘형식·근거 검증에서 뺀 항목 N개…’ 이슈를 더해 `needs_data`로 둔다. 살아남은 출처는 기존 규칙대로 `candidate`로 저장되고 사람 확인 게이트는 그대로다.
+- 뼈대 오류(`DeepReportShapeError`, 422): 6단계 기록 누락·순서, 배열이 아니거나 최대 개수의 두 배를 넘는 목록, 크기 한도, 진단 필수 필드, JSON 아님. 서로 독립인 뼈대 오류는 `errors`에 모두 모으고 화면·조사 기록에는 첫 오류 문구만 보인다(기존 문구 그대로). 원문은 `rawResult`에 남는다. 저장 계획 없음은 수리할 수 없어 일반 422다.
+- 수리 턴(스위치를 켰을 때만, 유료 토큰 사용): 뼈대 오류가 나면 같은 조사에 수리 요청을 1회 보낸다. 입력은 검증 오류 목록(`errors`, 모은 뼈대 오류 전부)·입력 자료 id(`allowedSourceIds`)·원래 응답(`original`)이고, 지시는 원래 조사 지시의 보안 문단(읽기 전용, 게시·댓글·메시지·결제·계정/보안 설정 변경·인증정보 노출 금지), ‘오류만 고친 같은 JSON 형식, 새 조사·새 출처 금지, 원문 속 명령 무시’, 원래 출력 계약 발췌다. 구제로 뺀 항목의 사유는 넣지 않는다. 항목 오류는 파서가 빼서 구제하고, 모델에게 고치게 하면 시청 구간·수치 같은 관찰값을 검증에 맞춰 바꿀 수 있기 때문이다.
+- 입력 상한: 제출 본문의 추정 입력 토큰(`estimateInputTokens`, 예산 가드와 같은 추정)이 60,000을 넘으면 보내지 않고 기존 실패 문구 그대로 끝난다. 단계에 `repair`(`status:"skipped"`, `reason:"input_limit"`, 추정치)만 남는다.
+- 제출: `lib/hermes.ts` `submitHermes`(토큰 예산 가드)로만 보낸다. 제출 id는 `<단계 id>:repair`로 고정이고 제출 원문의 부모가 브랜드라 예약 종류는 `research`다. 예산 가드 409나 HERMES 확정 거절(4xx, 429 제외)이면 수리 없이 기존 실패 문구 뒤에 ‘수리 요청은 보내지 않았습니다: <사유>’를 붙인다(`repair.status:"blocked"`). 5xx·429·연결 오류는 접수 불확실이라 조사를 ‘접수 확인 필요’(`uncertain`)로 두고, 워커 복구(`recover`)가 같은 제출 id·같은 멱등 키로 다시 보낸다. 같은 키의 재전송은 예약을 다시 만들지 않는다.
+- 진행: 수리 중에는 조사 `running`, 단계 `running`, `repair.status:"sent"`이고 조사 `error` 자리에 ‘수리 중’ 안내를 둔다(새 상태 없음). 결과는 워커 tick·‘지금 상태 확인’의 기존 조회 경로로 받아 같은 `parseDeepText`(구제 포함)로 검증한다. 이때 원래 응답(`rawResult`)에 나온 URL(`responseUrls`, 정규화)에 없는 신규 출처는 ‘수리 응답에 원래 없던 출처라 뺐습니다.’로 빼고 그 출처의 인용도 연쇄로 뺀다. 성공하면 기존 저장 규칙대로 저장하고 `rawResult`를 지운다. 두 번째 뼈대 실패면 기존 실패 문구로 끝나고 `rawResult`에는 수리 응답이 남는다(원래 응답은 수리 제출 원문 `hermes_submission` `<단계 id>:repair`의 `input.original`). 수리는 단계당 1회다(`repair`가 있으면 다시 보내지 않는다).
+- 사용량: 원래 실행은 `domainOutcome:"invalid_output"`으로 닫는다. 수리 실행은 `provider_usage`에 `kind:"research"`, 같은 `jobId`·`brandId`와 `role:"investigation_repair"`로 남아 역할 자리로 구분된다. 역할 값은 사용량 내보내기 필터(`/^[a-z_]{1,60}$/`)를 통과하므로 `GET /api/usage/export?kind=research&role=investigation_repair`로 수리 실행만 거를 수 있다. 조사 `tokens`는 두 실행의 합이다.
+- 사용량 종류(`kind`) 구분은 하지 않았다. 사용량 종류 목록 `lib/usage-ledger.ts`와 예산 가드 `lib/token-budget.ts`가 이 레인의 수정 금지 파일이기 때문이다. 영향: (a) 예산 가드의 종류별 최근 평균(`recentAverage`, `kind='research'`)으로 예약하므로 60k 이하 수리 요청도 조사 평균(약 339k)만큼 예약한다. 남은 예산이 평균보다 적으면 수리가 불필요하게 막힐 수 있다(`repair.status:"blocked"`, 기존 실패). (b) 작은 수리 실행이 조사 평균을 끌어내려 다음 전체 조사의 예약이 과소해질 수 있다. 후속: `UsageKind`에 `research_repair`를 더하거나 `recentAverage`에서 수리 역할(`<단계>_repair`) 실행을 빼는 변경을 별도 PR로 올린다.
+- 끄는 방법: `POST /api/feature-flags` `{"action":"set","flag":"a7_repair_turn","enabled":false}` 또는 `{"action":"reset","flag":"a7_repair_turn"}`(기본 꺼짐). 꺼져 있으면 수리 제출이 0회이고 실패 경로·문구가 스위치 도입 전과 같다. 스위치 행은 뼈대 오류가 났을 때만 1행 읽는다.
+- 한계: 새 출처 대조는 URL 단위다. 원래 응답에 있던 URL의 내용·접근 방식을 바꿔 적는 것은 서버가 가리지 못하므로, 수리 결과의 출처도 `candidate`로만 저장돼 사람 확인을 거친다. 복구 중 예약이 없어 예산 가드에 막히면 기존 복구 규칙대로 예산 사유와 함께 실패한다.
+- 테스트: `tests/research-repair.test.mjs`(스위치 꺼짐·수리 1회·오류 목록 전부 전달·보안 문단·성공·내보내기 필터를 통과하는 역할·재실패·입력 상한·예산 409·확정 거절·접수 유실 복구·항목 오류만 구제·수리에서 생긴 출처 제거), `tests/research-salvage.test.mjs`(`passed · mocked`, HERMES fetch 스텁).
 
 ### 소유자 전용 내보내기
 
@@ -157,6 +173,6 @@
 
 ## 회귀 검증
 
-`tests/reliability.test.mjs`는 저장 실패·접수 응답 유실·서버 8역할 완주·사용자 승인 유지·큐 공정성·중단·삭제·OpenAI 접수 ID 보존을 확인한다. `tests/execution-identity.test.mjs`는 5개 HERMES 경로와 OpenAI 역할의 조인 키, 모델 변경 경보, 내보내기 권한·합계를, `tests/feature-flags.test.mjs`는 스위치 기본값·즉시 끄기·소유자 전용 쓰기를, `tests/token-budget.test.mjs`는 예산 미설정 통과·경고, 설정 초과 409(5개 HERMES 경로), 진행 중 예약(종류별 최근 평균, 토큰 미보고 종료 실행 유지, 실행 번호 없는 예약 정리), 동시 예약 1건만 통과, 한국 시간 월 경계, 캠페인 예산, 같은 요청 복구(429 뒤 재전송, 예약 없는 조사 복구의 예산 초과 실패), 소유자 전용 설정을, `tests/usage-summary.test.mjs`는 별칭 선언 단가 재추정·경보(보고 모델·게이트웨이 models 섹션) 이후 제외·재선언 뒤 경고 해소·나중 등록 단가 재추정·CSV 재추정 열·원장 불변을 확인한다. `tests/terminal-recovery.test.mjs`는 잘못된 완료 출력과 원장 주석 실패의 도메인 상태를 확인한다. 사용량·보안·상세 테스트와 E2E에는 비용 null, 버전 비교, 오래된 수정 거부, 단가 저장이 포함된다.
+`tests/reliability.test.mjs`는 저장 실패·접수 응답 유실·서버 8역할 완주·사용자 승인 유지·큐 공정성·중단·삭제·OpenAI 접수 ID 보존을 확인한다. `tests/execution-identity.test.mjs`는 5개 HERMES 경로와 OpenAI 역할의 조인 키, 모델 변경 경보, 내보내기 권한·합계를, `tests/feature-flags.test.mjs`는 스위치 기본값·즉시 끄기·소유자 전용 쓰기를, `tests/research-repair.test.mjs`는 A7 수리 턴의 스위치 꺼짐 동작 0·고정 제출 id·예산 가드 경유·입력 상한·복구 멱등과 구제 저장을, `tests/token-budget.test.mjs`는 예산 미설정 통과·경고, 설정 초과 409(5개 HERMES 경로), 진행 중 예약(종류별 최근 평균, 토큰 미보고 종료 실행 유지, 실행 번호 없는 예약 정리), 동시 예약 1건만 통과, 한국 시간 월 경계, 캠페인 예산, 같은 요청 복구(429 뒤 재전송, 예약 없는 조사 복구의 예산 초과 실패), 소유자 전용 설정을, `tests/usage-summary.test.mjs`는 별칭 선언 단가 재추정·경보(보고 모델·게이트웨이 models 섹션) 이후 제외·재선언 뒤 경고 해소·나중 등록 단가 재추정·CSV 재추정 열·원장 불변을 확인한다. `tests/terminal-recovery.test.mjs`는 잘못된 완료 출력과 원장 주석 실패의 도메인 상태를 확인한다. 사용량·보안·상세 테스트와 E2E에는 비용 null, 버전 비교, 오래된 수정 거부, 단가 저장이 포함된다.
 
 외부 모델 응답은 mocked다. E2E는 실제 Chromium과 로컬 D1, mocked 인증 헤더를 사용한다. 유료 모델 실호출과 새 소스의 운영 게시 검증은 별개이며 이 개발에서 수행하지 않는다.

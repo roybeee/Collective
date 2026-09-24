@@ -168,15 +168,21 @@ check('unknown ad status excluded from comparative rankings',deepLogic.namespace
 check('unmatched accounts cannot be combined for sample threshold',deepLogic.namespace.comparisonGroups(cases.map((c,i)=>({...c,account:'account-'+Math.floor(i/5)}))).length===0);
 check('unmatched age buckets cannot be combined',deepLogic.namespace.comparisonGroups(cases.map((c,i)=>({...c,publishedAt:new Date(Date.now()-[3,15,50][Math.floor(i/5)]*86400000).toISOString()}))).length===0);
 check('zero median produces no invented relative multiplier',deepLogic.namespace.comparisonGroups(cases.map((c,i)=>({...c,views:i<10?0:i})))[0].items.every(x=>x.relativeViews===null));
-function rejects(name,change){const x=structuredClone(fixture);change(x);assert.throws(()=>parse(x));passed.push(name)}
-rejects('full-view claim with missing segment rejected',x=>x.cases[0].viewedRanges=[{start:0,end:5},{start:10,end:20}]);
-rejects('search snippet cannot claim video viewing',x=>x.access[0].method='search_snippet');
-rejects('unseen scene cannot appear in timeline',x=>{x.cases[0].viewing='partial';x.cases[0].viewedRanges=[{start:0,end:5}];x.cases[0].timeline[0].second=8});
-rejects('fabricated source reference rejected',x=>x.review.claims[0].sourceIds=['missing']);
-rejects('duplicate content cannot inflate sample',x=>x.cases[1].sourceId=x.cases[0].sourceId);
-rejects('duplicate source URL cannot inflate evidence',x=>x.sources[1].url=x.sources[0].url);
+function rejects(name,change){const x=structuredClone(fixture);change(x);assert.throws(()=>parse(x),e=>e instanceof deep.namespace.DeepReportShapeError&&e.status===422);passed.push(name)}
+// A7 부분 구제: 항목 단위 위반은 보고서 전체를 버리지 않고 그 원소만 빼며 사유를 salvage에 남긴다. 남은 표본으로 서버 품질 판정을 다시 한다.
+function drops(name,change,section,reason,left){const x=structuredClone(fixture);change(x);const out=parse(x);assert.ok(out.salvage.dropped.some(d=>d.section===section&&d.reason===reason)&&left(out),name);passed.push(name)}
+const without=id=>out=>out.report.cases.length===14&&!out.report.cases.some(c=>c.id===id);
+drops('full-view claim with missing segment rejected',x=>x.cases[0].viewedRanges=[{start:0,end:5},{start:10,end:20}],'cases','전체 시청 기록에 빠진 구간이 있습니다.',without('content-0'));
+drops('search snippet cannot claim video viewing',x=>x.access[0].method='search_snippet','cases','검색 요약을 영상 시청으로 기록할 수 없습니다.',without('content-0'));
+drops('unseen scene cannot appear in timeline',x=>{x.cases[0].viewing='partial';x.cases[0].viewedRanges=[{start:0,end:5}];x.cases[0].timeline[0].second=8},'cases','보지 않은 영상 구간을 분석할 수 없습니다.',without('content-0'));
+drops('fabricated source reference rejected',x=>x.review.claims[0].sourceIds=['missing'],'review.claims','실제 조사 자료와 일치하지 않는 근거입니다.',out=>!out.report.review.claims.length&&out.report.quality.status==='needs_data');
+rejects('fabricated diagnosis reference rejected',x=>x.diagnosis.sourceIds.push('missing'));
+drops('duplicate content cannot inflate sample',x=>x.cases[1].sourceId=x.cases[0].sourceId,'cases','콘텐츠 표본이 중복됐습니다.',without('content-1'));
+drops('duplicate source URL cannot inflate evidence',x=>x.sources[1].url=x.sources[0].url,'sources','같은 출처 URL이 중복됐습니다.',out=>out.sources.length===19&&without('content-1')(out)&&out.salvage.dropped.some(d=>d.section==='cases'&&d.reason==='근거 출처가 빠져 함께 뺐습니다.'));
 rejects('missing investigation phase rejected',x=>x.phases.pop());
-rejects('unobserved count cannot silently become zero',x=>delete x.cases[0].views);
+const pricing=structuredClone(fixture);pricing.sources.push({id:'pricing',title:'가격표',category:'weird',url:'https://brand.example.com/pricing',content:'가격 관찰',scope:'원문',observedAt:date});pricing.access.push({sourceId:'pricing',method:'browser',tool:'test-browser',scope:'원문 관찰'});pricing.diagnosis.sourceIds.push('pricing');pricing.diagnosis.summary='가격표(pricing) 기준 경쟁사보다 30% 비싸다';
+const priced=parse(pricing);check('a diagnosis that lost evidence to salvage is not marked review ready',priced.salvage.dropped.some(d=>d.section==='diagnosis.sourceIds')&&priced.report.quality.status==='needs_data'&&priced.report.quality.issues.some(s=>s.startsWith('형식·근거 검증에서 뺀 항목')));
+drops('unobserved count cannot silently become zero',x=>delete x.cases[0].views,'cases','views 수치를 확인하세요.',without('content-0'));
 const insufficient=structuredClone(fixture);insufficient.cases=insufficient.cases.slice(0,4);insufficient.quality={status:'review_ready'};
 check('provider cannot override server quality gate',parse(insufficient).report.quality.status==='needs_data');
 const unviewed=structuredClone(fixture);Object.assign(unviewed.cases[0],{viewing:'not_viewed',viewedRanges:[],timeline:[]});check('unviewed video preserves report but blocks strategy readiness',parse(unviewed).report.quality.status==='needs_data');
