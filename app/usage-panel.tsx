@@ -10,7 +10,7 @@ import type {ModelChange} from '@/lib/usage-model-alarm';
 import type {GatewayChange} from '@/lib/gateway-snapshot';
 import {filterUsage,isModelAlias,modelLabel,summarizeUsage,usageKindNames,type AliasPricing,type UsageFilter} from '@/lib/usage-summary';
 import {roles} from '@/lib/agency';
-import {adminRequestNote,useAuthState,useCanManage} from './auth-client';
+import {AdminOnly,canChange,useAccount} from './account-context';
 
 type CampaignName={id:string;title:string};
 type GatewayStatus={snapshot:{date:string;takenAt:string;status:'passed'|'blocked';hash:string|null;blockedReason:string|null}|null;changes:GatewayChange[]};
@@ -32,8 +32,6 @@ const supersededNames:Record<string,string>={outdated:'이전 버전 작업물',
 const roleName=(role:string|null|undefined)=>role?roles.find(r=>r.id===role)?.name||role:'';
 const runLabel=(entry:Pick<ProviderUsage,'kind'|'role'>)=>entry.kind?[usageKindNames[entry.kind]||entry.kind,roleName(entry.role)].filter(Boolean).join(' · '):'실행 종류 미확인';
 const campaignName=(campaigns:CampaignName[],id:string|null|undefined)=>!id?'캠페인 없음':campaigns.find(c=>c.id===id)?.title||`삭제되었거나 찾을 수 없는 캠페인 (${id})`;
-// 내보내기는 소유자 전용 API다(/api/usage/export). legacy는 요청자가 곧 소유자다. 판정은 서버가 한다.
-const useIsOwner=()=>{const state=useAuthState();return !state||state.mode==='legacy'||state.user?.role==='owner'};
 const emptyPrice={provider:'hermes' as UsageProvider,model:'',priceVersion:'',currency:'USD',inputPerMillion:'',outputPerMillion:'',source:''};
 async function usageData():Promise<UsageData>{
  const response=await fetch('/api/usage',{cache:'no-store'}),data=await response.json() as Partial<UsageData>&{error?:string};
@@ -90,7 +88,7 @@ function BudgetLineText({line}:{line:BudgetLine}){
 // 토큰 예산(loop-4). 상한은 소유자만 정한다. 미설정은 막지 않고 경고만 보인다. 비우고 저장하면 미설정으로 되돌린다.
 function TokenBudget({budget,onSaved}:{budget:BudgetSummary;onSaved:()=>Promise<void>}){
  const [scope,setScope]=useState('workspace'),[campaignId,setCampaignId]=useState(''),[limit,setLimit]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
- const isOwner=useIsOwner();
+ const isOwner=canChange(useAccount(),true);
  async function submit(event:FormEvent){
   event.preventDefault();setError('');setMessage('');
   const value=limit.trim()===''?null:Number(limit);
@@ -137,7 +135,6 @@ function exportHref(filter:UsageFilter){
 }
 function PricingForm({saved,onSaved}:{saved:UsagePricing[];onSaved:()=>Promise<void>}){
  const [price,setPrice]=useState(emptyPrice),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
- const canManage=useCanManage();
  const set=(field:keyof typeof emptyPrice,value:string)=>setPrice(current=>({...current,[field]:value}));
  async function submit(event:FormEvent){
   event.preventDefault();setError('');setMessage('');
@@ -152,21 +149,20 @@ function PricingForm({saved,onSaved}:{saved:UsagePricing[];onSaved:()=>Promise<v
  return <details className="mt-6 border-t pt-5"><summary className="cursor-pointer font-medium">모델별 단가 설정{saved.length?` · ${saved.length}개`:''}</summary>
   <p className="subtle-note">공급자 가격표에서 확인한 백만 토큰당 단가를 직접 입력하세요. 실제 보고 모델 ID가 정확히 일치할 때만 적용합니다. 기존 실행의 적용 단가와 금액은 변경하지 않습니다.</p>
   {saved.length>0&&<ul className="my-4 space-y-2 text-sm">{saved.map(item=><li key={item.provider+':'+item.model}>{providerName(item.provider)} · {item.model} · {item.priceVersion}<br/>입력 {item.inputPerMillion} / 출력 {item.outputPerMillion} {item.currency} (백만 토큰당) <a href={item.source} target="_blank" rel="noreferrer" className="underline">단가 출처</a></li>)}</ul>}
-  {canManage?<form className="form-stack mt-4" onSubmit={submit}>
+  <AdminOnly><form className="form-stack mt-4" onSubmit={submit}>
    <div className="form-two"><label className="field"><span>공급자</span><NativeSelect value={price.provider} onChange={event=>set('provider',event.target.value)}><NativeSelectOption value="hermes">HERMES</NativeSelectOption><NativeSelectOption value="openai">OpenAI API</NativeSelectOption></NativeSelect></label><label className="field"><span>실제 모델 ID</span><Input required maxLength={200} value={price.model} onChange={event=>set('model',event.target.value)} placeholder="위 사용량에 보고된 모델 ID"/></label></div>
    <div className="form-two"><label className="field"><span>단가 버전</span><Input required maxLength={100} value={price.priceVersion} onChange={event=>set('priceVersion',event.target.value)} placeholder="확인한 가격표 날짜 또는 버전"/></label><label className="field"><span>통화</span><Input required pattern="[A-Z]{3}" maxLength={3} value={price.currency} onChange={event=>set('currency',event.target.value.toUpperCase())} placeholder="USD"/></label></div>
    <div className="form-two"><label className="field"><span>입력 단가 · 백만 토큰당</span><Input required type="number" min={0} max={1000000} step="any" value={price.inputPerMillion} onChange={event=>set('inputPerMillion',event.target.value)}/></label><label className="field"><span>출력 단가 · 백만 토큰당</span><Input required type="number" min={0} max={1000000} step="any" value={price.outputPerMillion} onChange={event=>set('outputPerMillion',event.target.value)}/></label></div>
    <label className="field"><span>단가 출처 · HTTPS 주소</span><Input required type="url" pattern="https://.*" maxLength={2000} value={price.source} onChange={event=>set('source',event.target.value)} placeholder="https://…"/></label>
    <div className="form-actions"><Button type="submit" disabled={busy}>{busy?'저장 중…':'이 단가 저장'}</Button></div>
    {error&&<p className="form-error" role="alert">{error}</p>}{message&&<p role="status" className="text-sm">{message}</p>}
-  </form>:<p className="subtle-note">단가 등록·변경은 관리자만 할 수 있습니다. {adminRequestNote}</p>}
+  </form></AdminOnly>
  </details>;
 }
 // 별칭 단가 선언(loop-5, 결정 10). 소유자만 선언한다. 원장은 바꾸지 않고 적용 시작일(한국 시간) 이후 별칭 실행에 읽을 때 추정을 붙인다.
 const emptyAlias={baseModel:'',priceVersion:'',currency:'USD',inputPerMillion:'',outputPerMillion:'',source:'',effectiveFrom:''};
 function AliasPricingForm({saved,warning,onSaved}:{saved:AliasPricing[];warning:string|null;onSaved:()=>Promise<void>}){
  const [price,setPrice]=useState(emptyAlias),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
- const isOwner=useIsOwner();
  const set=(field:keyof typeof emptyAlias,value:string)=>setPrice(current=>({...current,[field]:value}));
  async function submit(event:FormEvent){
   event.preventDefault();setError('');setMessage('');
@@ -182,19 +178,20 @@ function AliasPricingForm({saved,warning,onSaved}:{saved:AliasPricing[];warning:
   <p className="subtle-note">HERMES가 별칭만 보고할 때 연결한 기반 모델과 그 가격표의 백만 토큰당 단가를 선언하면 별칭 실행 비용을 ‘선언 단가 추정’으로 보여 줍니다. 공급자 보고가 아니라 소유자 선언이며, 이전 실행도 읽을 때 다시 계산합니다.</p>
   {warning&&<p className="notice flex flex-wrap items-center gap-2" role="status"><Badge variant="destructive"><TriangleAlert/>선언 단가 주의</Badge>{warning}</p>}
   {saved.length>0&&<ul className="my-4 space-y-2 text-sm">{saved.map(item=><li key={item.effectiveFrom}>{item.effectiveFrom}부터 · 기반 모델 {item.baseModel} · {item.priceVersion}<br/>입력 {item.inputPerMillion} / 출력 {item.outputPerMillion} {item.currency} (백만 토큰당) <a href={item.source} target="_blank" rel="noreferrer" className="underline">단가 근거</a></li>)}</ul>}
-  {isOwner?<form className="form-stack mt-4" onSubmit={submit}>
+  <AdminOnly owner><form className="form-stack mt-4" onSubmit={submit}>
    <div className="form-two"><label className="field"><span>기반 모델명</span><Input required maxLength={200} value={price.baseModel} onChange={event=>set('baseModel',event.target.value)} placeholder="별칭 뒤에 연결한 실제 모델 ID"/></label><label className="field"><span>적용 시작일 · 한국 시간</span><Input required type="date" value={price.effectiveFrom} onChange={event=>set('effectiveFrom',event.target.value)}/></label></div>
    <div className="form-two"><label className="field"><span>선언 단가 버전</span><Input required maxLength={100} value={price.priceVersion} onChange={event=>set('priceVersion',event.target.value)} placeholder="확인한 가격표 날짜 또는 버전"/></label><label className="field"><span>선언 통화</span><Input required pattern="[A-Z]{3}" maxLength={3} value={price.currency} onChange={event=>set('currency',event.target.value.toUpperCase())} placeholder="USD"/></label></div>
    <div className="form-two"><label className="field"><span>선언 입력 단가 · 백만 토큰당</span><Input required type="number" min={0} max={1000000} step="any" value={price.inputPerMillion} onChange={event=>set('inputPerMillion',event.target.value)}/></label><label className="field"><span>선언 출력 단가 · 백만 토큰당</span><Input required type="number" min={0} max={1000000} step="any" value={price.outputPerMillion} onChange={event=>set('outputPerMillion',event.target.value)}/></label></div>
    <label className="field"><span>단가 근거 · HTTPS 주소</span><Input required type="url" pattern="https://.*" maxLength={2000} value={price.source} onChange={event=>set('source',event.target.value)} placeholder="https://…"/></label>
    <div className="form-actions"><Button type="submit" disabled={busy}>{busy?'저장 중…':'별칭 단가 선언'}</Button></div>
    {error&&<p className="form-error" role="alert">{error}</p>}{message&&<p role="status" className="text-sm">{message}</p>}
-  </form>:<p className="subtle-note">별칭 단가 선언은 워크스페이스 소유자만 할 수 있습니다.</p>}
+  </form></AdminOnly>
  </details>;
 }
 export function UsagePanel(){
  const [data,setData]=useState<UsageData|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[visible,setVisible]=useState(30),[filter,setFilter]=useState<UsageFilter>({});
- const isOwner=useIsOwner(),entries=data?filterUsage(data.entries,filter):[];
+ // 내보내기는 소유자 전용 API다(/api/usage/export). legacy는 요청자가 곧 소유자다. 판정은 서버가 한다.
+ const canOwn=canChange(useAccount(),true),entries=data?filterUsage(data.entries,filter):[];
  const refresh=useCallback(async()=>{
   try{const next=await usageData();setData(next);setError('')}catch(error){setError(error instanceof Error?error.message:'사용량을 불러오지 못했습니다.')}finally{setLoading(false)}
  },[]);
@@ -215,7 +212,7 @@ export function UsagePanel(){
    {data.entries.length?<>
     <UsageFilters entries={data.entries} campaigns={data.campaigns} filter={filter} onChange={next=>{setFilter(next);setVisible(30)}}/>
     <p className="subtle-note">최근 {Math.min(visible,entries.length)}건 / 조건에 맞는 {entries.length}건(전체 {data.entries.length}건) · 한국 시간 · 캠페인·역할 정보는 이 기능 도입 이후 처음 기록된 실행부터 있습니다.</p>
-    {isOwner&&<p><a className="inline-flex items-center gap-1 text-sm underline" href={exportHref(filter)} download><Download className="size-4"/>이 조건의 사용량 CSV 내보내기</a></p>}
+    {canOwn&&<p><a className="inline-flex items-center gap-1 text-sm underline" href={exportHref(filter)} download><Download className="size-4"/>이 조건의 사용량 CSV 내보내기</a></p>}
     <UsageSummary entries={entries}/><UsageRows entries={entries.slice(0,visible)} campaigns={data.campaigns}/>{visible<entries.length&&<Button className="mt-4" variant="outline" onClick={()=>setVisible(current=>current+30)}>이전 실행 더 보기</Button>}
    </>:<p className="subtle-note">아직 기록된 사용량이 없습니다. 이 기능 도입 이후 종료 상태를 확인한 실행부터 표시됩니다.</p>}
    <PricingForm saved={data.pricing} onSaved={refresh}/><AliasPricingForm saved={data.aliasPricing} warning={data.aliasPricingWarning} onSaved={refresh}/>

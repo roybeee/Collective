@@ -2,6 +2,7 @@
 import {useEffect,useState} from 'react';
 import {Download,RefreshCw,Server,Unplug} from 'lucide-react';
 import {Button} from '@/components/ui/button';
+import {AdminOnly} from './account-context';
 type WorkerEvent={email:string|null;at:string}|null;
 type Rejected='expired'|'grace_ended'|'unknown_token'|'gate';
 type WorkerStatus={registered:boolean;activated:boolean;online:boolean;lastSeen:string|null;canInstall:boolean;canRevoke?:boolean;lastIssued?:WorkerEvent;lastRevoked?:WorkerEvent;sshTarget?:string|null;lastStatus:number|null;blocked:number;
@@ -73,7 +74,7 @@ export function ResearchWorkerPanel({hermes}:{hermes:boolean}){
   {state?.canInstall?<>
   {!hermes&&<p className="subtle-note">먼저 HERMES를 연결하세요.</p>}
   <p className="subtle-note">설치 파일에는 이 워크스페이스의 연결 정보가 포함됩니다. 공유하지 말고 설치 확인 후 삭제하세요. 다시 발급하면 이전 파일은 무효가 되고, 가동 중인 작업자는 10분 동안만 이전 인증으로 계속 동작합니다. 바로 멈추려면 먼저 작업자 연결 해제를 누르세요.</p>
-  </>:state&&<p className="subtle-note">서버 작업자 설치·다시 발급은 지정된 관리자만 할 수 있습니다.{state.canRevoke?' 연결 해제는 관리자 누구나 할 수 있습니다.':' 연결 해제는 관리자에게 요청하세요.'}</p>}
+  </>:state&&<AdminOnly><p className="subtle-note">서버 작업자 설치·다시 발급은 지정된 관리자만 할 수 있습니다.{state.canRevoke?' 연결 해제는 관리자 누구나 할 수 있습니다.':' 연결 해제는 관리자에게 요청하세요.'}</p></AdminOnly>}
   {error&&<p className="form-error" role="alert">{error}</p>}
  </section>
 }

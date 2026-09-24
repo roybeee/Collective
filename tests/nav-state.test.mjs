@@ -7,7 +7,7 @@ import ts from 'typescript';
 const context=createContext({console,URLSearchParams}),cache=new Map();
 function moduleFor(path){path=resolve(path);if(cache.has(path))return cache.get(path);const m=new SourceTextModule(ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText,{context,identifier:path});cache.set(path,m);return m;}
 const m=moduleFor('lib/nav-state.ts');await m.link((s,r)=>moduleFor(resolve(dirname(r.identifier),s+'.ts')));await m.evaluate();
-const {navViews,learningTabs,parseNav,serializeNav,normalizeNav,withCampaign,reconcileNav}=m.namespace;
+const {navViews,learningTabs,storeTabs,brandTabs,isLearningTab,parseNav,serializeNav,normalizeNav,withCampaign,reconcileNav}=m.namespace;
 let passed=0;
 function check(name,actual,expected){assert.deepEqual(JSON.parse(JSON.stringify(actual)),expected,name);passed++}
 
@@ -39,8 +39,17 @@ check('learning tabs are an allow-list',[...learningTabs],['cases','experiments'
 check('learning view keeps brand and tab',parseNav('?view=learning&brand=oda&tab=rules'),{view:'learning',brand:'oda',tab:'rules'});
 check('unknown learning tab is dropped',parseNav('?view=learning&brand=oda&tab=admin'),{view:'learning',brand:'oda'});
 check('prototype keys are not tabs',parseNav('?view=learning&tab=__proto__'),{view:'learning'});
-check('tab is ignored outside learning',parseNav('?view=stores&brand=oda&tab=rules'),{view:'stores',brand:'oda'});
+check('a tab outside the view allow-list is dropped',parseNav('?view=stores&brand=oda&tab=rules'),{view:'stores',brand:'oda'});
 check('store is ignored on learning',parseNav('?view=learning&brand=oda&store=s1'),{view:'learning',brand:'oda'});
+// ux-2 권고 (3)·ux-5: '주문 장부 열기'는 지점의 주문 장부 탭을, 설정 기능표 링크는 브랜드 아카이브의 확인 사실 탭을 연다. 탭은 화면별 허용 목록만 받는다.
+check('store tabs are an allow-list',[...storeTabs],['diagnosis','ledger','channels','experiments','research']);
+check('brand archive tabs are an allow-list',[...brandTabs],['overview','sources','facts','intake','research']);
+check('store marketing keeps brand, store and a store tab',parseNav('?view=stores&brand=oda&store=s1&tab=ledger'),{view:'stores',brand:'oda',store:'s1',tab:'ledger'});
+check('brand archive keeps brand and a brand tab',parseNav('?view=brands&brand=oda&tab=facts'),{view:'brands',brand:'oda',tab:'facts'});
+check('a store tab is dropped on the brand archive and a brand tab on stores',[parseNav('?view=brands&brand=oda&tab=ledger'),parseNav('?view=stores&brand=oda&tab=facts')],[{view:'brands',brand:'oda'},{view:'stores',brand:'oda'}]);
+check('views without tabs drop any tab',[parseNav('?view=campaigns&campaign=c1&tab=ledger'),parseNav('?view=settings&tab=facts')],[{view:'campaigns',campaign:'c1'},{view:'settings'}]);
+check('prototype keys are not store tabs',parseNav('?view=stores&tab=__proto__'),{view:'stores'});
+check('the learning tab guard accepts learning tabs only',['rules','jobs','ledger','facts',undefined].map(isLearningTab),[true,true,false,false,false]);
 check('non-ASCII id is dropped',parseNav('?view=brands&brand=%ED%95%9C%EA%B8%80'),{view:'brands'});
 
 // --- 직렬화 -------------------------------------------------------------------------
@@ -51,9 +60,10 @@ check('overview with campaign keeps the view',serializeNav({view:'overview',camp
 check('stores with brand and store',serializeNav({view:'stores',brand:'oda',store:'s1'}),'?view=stores&brand=oda&store=s1');
 check('invalid view and ids are not written',serializeNav({view:'nope',campaign:'a b',brand:'<x>'}),'');
 check('learning link with brand and tab',serializeNav({view:'learning',brand:'oda',tab:'rules'}),'?view=learning&brand=oda&tab=rules');
-check('tab outside learning is not written',serializeNav({view:'stores',brand:'oda',tab:'rules'}),'?view=stores&brand=oda');
+check('a tab outside the view allow-list is not written',serializeNav({view:'stores',brand:'oda',tab:'rules'}),'?view=stores&brand=oda');
+check('the order ledger link is written with its tab',serializeNav({view:'stores',brand:'oda',store:'s1',tab:'ledger'}),'?view=stores&brand=oda&store=s1&tab=ledger');
 check('brand outside brands/stores is not written',serializeNav({view:'assets',brand:'oda'}),'?view=assets');
-for(const state of [{view:'overview'},{view:'campaigns',campaign:'c-1'},{view:'brands',brand:'mapdal'},{view:'stores',brand:'oda',store:'s_2'},{view:'assets',campaign:'x'},{view:'learning'},{view:'learning',brand:'ofd',tab:'experiments'}])check('round trip '+JSON.stringify(state),parseNav(serializeNav(state)),state);
+for(const state of [{view:'overview'},{view:'campaigns',campaign:'c-1'},{view:'brands',brand:'mapdal'},{view:'stores',brand:'oda',store:'s_2'},{view:'assets',campaign:'x'},{view:'learning'},{view:'learning',brand:'ofd',tab:'experiments'},{view:'stores',brand:'oda',store:'s_2',tab:'ledger'},{view:'brands',brand:'mapdal',tab:'facts'}])check('round trip '+JSON.stringify(state),parseNav(serializeNav(state)),state);
 
 // --- 정규화·캠페인 열기 -----------------------------------------------------------------
 check('null and undefined ids are dropped',normalizeNav({view:'brands',brand:null,campaign:undefined}),{view:'brands'});
@@ -74,6 +84,7 @@ check('unknown brand archive goes to the brand list',reconcileNav({view:'brands'
 check('unknown brand keeps a known open campaign',reconcileNav({view:'stores',brand:'nope',campaign:'c2'},known),{view:'stores',campaign:'c2'});
 check('unknown store brand shows all stores',reconcileNav({view:'stores',brand:'nope',store:'s1'},known),{view:'stores'});
 check('unknown learning brand keeps the tab',reconcileNav({view:'learning',brand:'nope',tab:'rules'},known),{view:'learning',tab:'rules'});
+check('unknown store or archive brand drops the store and brand tab',[reconcileNav({view:'stores',brand:'nope',store:'s1',tab:'ledger'},known),reconcileNav({view:'brands',brand:'nope',tab:'facts'},known)],[{view:'stores'},{view:'brands'}]);
 const archive={view:'brands',brand:'oda'};
 assert.equal(reconcileNav(archive,known),archive,'known brand keeps the same state object');passed++;
 const plain={view:'results'};

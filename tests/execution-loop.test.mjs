@@ -435,7 +435,7 @@ check(await probe(new Response(null,{status:302,headers:{location:'/login'}}))==
 probeInit=null;
 check(await probe(new Error('not called'),'https://other.test/media/x.png')===true&&probeInit===null,'other-origin media is not probed from the browser');
 // exec-loop-6 (4): 설정의 기능 표는 PNG 카드 제작과 Buffer 예약을 실제 상태로 안내한다.
-const panelsSource=readFileSync('app/panels.tsx','utf8');
-check(panelsSource.includes("['PNG 안내 카드','사용 가능']")&&panelsSource.includes("['Instagram 예약(Buffer)','Buffer 연결 시']")&&!panelsSource.includes("['광고 집행 · SNS 게시','연결 전']")&&!panelsSource.includes("['이미지 · 영상 렌더링','연결 전']"),'settings capability table reflects PNG cards and Buffer scheduling');
+const panelsSource=readFileSync('app/panels.tsx','utf8'),featureSource=readFileSync('lib/feature-status.ts','utf8');
+check(panelsSource.includes('featureRows(')&&featureSource.includes("'PNG 정보 카드'")&&featureSource.includes("'Instagram 예약 발행(Buffer)'")&&!panelsSource.includes("['광고 집행 · SNS 게시','연결 전']")&&!panelsSource.includes("['이미지 · 영상 렌더링','연결 전']"),'settings capability table reflects PNG cards and Buffer scheduling');
 console.log(JSON.stringify({passed:checks-failures.length,failed:failures.length,failures,providerCalls:calls,evidence:'real SQLite; mocked Buffer, media HTTP and R2; genuine PNG fixture'}));
 assert.deepEqual(failures,[]);

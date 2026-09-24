@@ -38,7 +38,10 @@ check('the default brand is fixed once when data arrives',()=>{assert.ok(workspa
 
 // loop-7·loop-11: 학습 화면 링크(?view=learning&brand=&tab=)로 브랜드·탭을 연다. 링크 브랜드는 직접 고른 것처럼 기억하고,
 // 화면에서 고른 브랜드·탭은 주소에 남겨(replace) 새로고침 때 링크 값이 사용자의 선택을 덮지 않는다(점포 마케팅의 ?brand=&store=와 같은 방식).
-check('the learning view receives the linked brand and tab and reports changes',()=>{assert.ok(workspace.includes('initialBrandId={route.brand}'));assert.ok(workspace.includes('initialTab={route.tab}'));assert.ok(workspace.includes('onScopeChange={setLearningScope}'));assert.match(workspace,/function setLearningScope\(brand:string,tab:string\)\{const next=normalizeNav\([^)]*\);replaceUrl\.current=serializeNav\(next\);setRoute\(r=>r\.view==='learning'\?/)});
+check('the learning view receives the linked brand and tab and reports changes',()=>{assert.ok(workspace.includes('initialBrandId={route.brand}'));assert.ok(workspace.includes('initialTab={isLearningTab(route.tab)?route.tab:undefined}'));assert.ok(workspace.includes('onScopeChange={setLearningScope}'));assert.match(workspace,/function setLearningScope\(brand:string,tab:string\)\{const next=normalizeNav\([^)]*\);replaceUrl\.current=serializeNav\(next\);setRoute\(r=>r\.view==='learning'\?/)});
+// ux-5·eng-hygiene-12: 설정 기능표의 PNG 링크(?view=brands&brand=&tab=facts)는 브랜드 아카이브를 확인 사실 탭으로 연다. 아카이브는 브랜드마다 새로 그려지므로 첫 탭만 받는다.
+const archive=source('app/brand-archive.tsx');
+check('the brand archive opens the linked tab',()=>{assert.match(workspace,/<BrandArchive initialTab=\{route\.tab\} /);assert.ok(archive.includes("[tab,setTab]=useState(initialTab||'overview')"));assert.ok(archive.includes('initialTab?:string'))});
 check('the learning panel starts from the linked brand and tab',()=>{assert.ok(learning.includes('useState<string|null>(()=>initialBrandId??storedBrand())'));assert.ok(learning.includes("useState<string>(initialTab??'cases')"));assert.ok(learning.includes('rememberBrand(initialBrandId)'))});
 check('the learning panel follows a new link while open',()=>assert.match(learning,/if\(link\.brand!==initialBrandId\|\|link\.tab!==initialTab\)\{setLink\(/));
 check('brand and tab changes in the learning panel are reported',()=>{assert.ok(learning.includes('onScopeChange?.(id,tab)'));assert.ok(learning.includes("onScopeChange?.(initialBrandId??'',t)"));assert.ok(!learning.includes('onScopeChange?.(brandId,t)'))});

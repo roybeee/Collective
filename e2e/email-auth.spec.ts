@@ -55,6 +55,17 @@ test('이메일 로그인·초대·세션 유지·권한 제한·폐기',async({
  await expect(member.getByText('채널 연결과 발행 횟수 한도는 관리자만 바꿀 수 있습니다.',{exact:false})).toBeVisible();
  await expect(member.getByRole('button',{name:'채널 확인·연결',exact:true})).toHaveCount(0);
  await member.keyboard.press('Escape');
+ // ux-3: 직원 사이드바 프로필은 로그인 이메일과 역할(직원)을 보이고, 관리자 전용 단가 폼 대신 서버 403과 같은 안내를 보인다(저장된 단가 조회는 그대로).
+ await member.goto('/?view=settings');
+ await member.getByRole('button',{name:'Toggle Sidebar'}).click();
+ const profile=member.getByRole('group',{name:'로그인 계정'});
+ await expect(profile).toContainText('member@example.test');
+ await expect(profile).toContainText('직원');
+ await member.keyboard.press('Escape');
+ await expect(member.getByRole('heading',{name:'AI 사용량과 비용',exact:true})).toBeVisible();
+ await member.getByText('모델별 단가 설정',{exact:true}).click();
+ await expect(member.locator('details').filter({hasText:'모델별 단가 설정'}).getByText('관리자만 변경할 수 있습니다.',{exact:true})).toBeVisible();
+ await expect(member.getByLabel('실제 모델 ID',{exact:true})).toHaveCount(0);
  const accounts=await (await page.request.get('/api/accounts')).json() as {accounts:{id:string;email:string}[]};
  const userId=accounts.accounts.find(a=>a.email==='member@example.test')!.id;
  const reset=await (await post('/api/accounts',{action:'reset',userId})).json() as {token:string};

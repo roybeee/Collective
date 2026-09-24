@@ -140,6 +140,22 @@ test('추적 코드로 가져온 주문은 자동 귀속 스위치를 켤 때만
   expect(await confirmCsv(page, 1)).toMatchObject({created: 1, attributed: 1});
   expect((await orders(page, storeId)).find(o => o.orderNumber === 'E2E-A4-3')?.campaignId).toBe(campaignId);
 
+  // 3b) ux-2 권고 (2): 확정 뒤 돌아온 주문·비용 탭의 '주문 보기'에 캠페인 선택지가 있다. 캠페인으로 거르면 그 캠페인에 귀속된 주문만,
+  // '유입 경로 미확인'이면 미귀속 주문만 보인다. 이 여정의 주문에는 소재 귀속이 없어 소재 선택지 묶음은 없다.
+  const view = page.getByRole('combobox', {name: '주문 보기', exact: true});
+  const row = (orderNumber: string) => page.getByRole('row').filter({hasText: orderNumber});
+  await expect(row('E2E-A4-3')).toBeVisible();
+  await expect(view.locator('optgroup[label="캠페인"]')).toHaveCount(1);
+  await expect(view.locator('optgroup[label="소재"]')).toHaveCount(0);
+  await view.selectOption({label: `A4 실측 ${testInfo.project.name}`});
+  for (const attributed of ['E2E-A4-M1', 'E2E-A4-3']) await expect(row(attributed)).toBeVisible();
+  for (const unattributed of ['E2E-A4-1', 'E2E-A4-2']) await expect(row(unattributed)).toHaveCount(0);
+  await view.selectOption('unknown');
+  for (const unattributed of ['E2E-A4-1', 'E2E-A4-2']) await expect(row(unattributed)).toBeVisible();
+  for (const attributed of ['E2E-A4-M1', 'E2E-A4-3']) await expect(row(attributed)).toHaveCount(0);
+  await view.selectOption('all');
+  for (const all of ['E2E-A4-1', 'E2E-A4-2', 'E2E-A4-M1', 'E2E-A4-3']) await expect(row(all)).toBeVisible();
+
   // 4) 귀속 보고: 지난주 POS 합계를 넣으면 완전성 통과, '귀속은 증분이 아님' 경고는 항상 보인다.
   const reported = page.waitForResponse(storeAction('attribution_report'));
   await page.getByRole('tab', {name: '귀속 보고', exact: true}).click();
