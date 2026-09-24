@@ -264,33 +264,51 @@ async function renewPlaybookRule(owner:string,b:Record<string,unknown>,by:Playbo
  await database().batch([recordStatement(owner,'learning_rule',r.id,next,r.brandId),auditStatement(owner,next,'renew',r.status,by)]);
  return {id:r.id,expiresAt:next.expiresAt};
 }
-// 중지할 규칙이 주입된 역할 작업물(learning_snapshot 기준). 운영자 선호를 주입한 스냅샷(artifactId 있음)만 읽고, 그중 실제로 저장된 작업물만 고른다. 작업물은 읽기만 한다.
-async function injectedArtifacts(owner:string,ruleId:string):Promise<Omit<PlaybookRecheck,'createdAt'>[]>{
+// 끝나지 않은 역할 실행 상태(lib/role-execution.ts 실행 중 작업 검사와 같다). 이 실행은 나중에 작업물을 저장할 수 있다.
+const LIVE_JOBS=new Set(['starting','queued','in_progress','uncertain']);
+const optionalArtifact=(owner:string,id:string)=>readRecord<Artifact>(owner,'artifact',id).catch((e:unknown)=>{if(e instanceof ApiError&&e.status===404)return null;throw e});
+const liveJob=async(owner:string,id:string)=>LIVE_JOBS.has((await database().prepare('SELECT status FROM jobs WHERE id=? AND owner=?').bind(id,owner).first<{status:string}>())?.status??'');
+type RecheckMark=Omit<PlaybookRecheck,'createdAt'>;
+// 작업물이 저장돼 있으면 그 버전으로 표시하고, 아직 없으면 실행이 끝나지 않았을 때만 대기 표시(pending)로 남긴다. artifactId는 실행 id에서 정해지므로(roleArtifactId) 완료 뒤 저장될 작업물을 가리킨다.
+async function recheckMark(owner:string,ruleId:string,s:LearningSnapshot&{artifactId:string},ruleVersion:number):Promise<RecheckMark[]>{
+ const a=await optionalArtifact(owner,s.artifactId),mark={id:`${ruleId}:${s.artifactId}`,ruleId,ruleVersion,artifactId:s.artifactId,campaignId:s.campaignId,jobId:s.id,role:s.role,reason:'rule_paused' as const};
+ if(a)return [{...mark,artifactVersion:a.version}];
+ return await liveJob(owner,s.id)?[{...mark,artifactVersion:null,pending:true}]:[];
+}
+// 중지할 규칙이 주입된 역할 작업물(learning_snapshot 기준). 운영자 선호를 주입한 스냅샷(artifactId 있음)만 읽고, 저장된 작업물과 아직 실행 중인 작업(대기 표시)을 고른다. 작업물은 읽기만 한다.
+async function injectedArtifacts(owner:string,ruleId:string):Promise<RecheckMark[]>{
  const snapshots=(await database().prepare("SELECT data FROM records WHERE owner=? AND kind='learning_snapshot' AND json_extract(data,'$.artifactId') IS NOT NULL").bind(owner).all<{data:string}>()).results.map(r=>JSON.parse(r.data) as LearningSnapshot);
- const hits=snapshots.flatMap(s=>{const p=s.operatorPreferences?.find(x=>x.id===ruleId);return p&&s.artifactId?[{s,artifactId:s.artifactId,ruleVersion:p.version}]:[]});
- const found=await Promise.all(hits.map(async({s,artifactId,ruleVersion})=>{
-  const a=await readRecord<Artifact>(owner,'artifact',artifactId).catch((e:unknown)=>{if(e instanceof ApiError&&e.status===404)return null;throw e});
-  return a?[{id:`${ruleId}:${a.id}`,ruleId,ruleVersion,artifactId:a.id,artifactVersion:a.version,campaignId:s.campaignId,jobId:s.id,role:s.role,reason:'rule_paused' as const}]:[];
- }));
+ const hits=snapshots.flatMap(s=>{const p=s.operatorPreferences?.find(x=>x.id===ruleId);return p&&s.artifactId?[{s:{...s,artifactId:s.artifactId},ruleVersion:p.version}]:[]});
+ const found=await Promise.all(hits.map(({s,ruleVersion})=>recheckMark(owner,ruleId,s,ruleVersion)));
  return [...new Map(found.flat().map(m=>[m.artifactId,m])).values()];
 }
 // 재확인 표시: 캠페인마다 이력(event) 1건에 작업물 목록을 detail(playbookRecheck)로 싣는다. 캠페인 이력이라 캠페인과 함께 지워지고 캠페인 화면 이력에도 보인다.
-type RecheckDetail={ruleId:string;reason:'rule_paused';artifacts:Pick<PlaybookRecheck,'artifactId'|'artifactVersion'|'ruleVersion'|'jobId'|'role'>[]};
-function recheckStatement(owner:string,r:LearningRule,campaignId:string,marks:Omit<PlaybookRecheck,'createdAt'>[],by:PlaybookActor){
- const artifacts=marks.filter(m=>m.campaignId===campaignId).map(({artifactId,artifactVersion,ruleVersion,jobId,role})=>({artifactId,artifactVersion,ruleVersion,jobId,role})),playbookRecheck:RecheckDetail={ruleId:r.id,reason:'rule_paused',artifacts};
- return eventStatement(owner,campaignId,`운영자 선호 규칙 「${r.title}」 적용을 중지했습니다. 이 규칙이 전달된 작업물 ${artifacts.length}건을 재확인하세요. 작업물 내용은 바꾸지 않았습니다.`,by,{playbookRecheck});
+type RecheckDetail={ruleId:string;reason:'rule_paused';artifacts:Pick<PlaybookRecheck,'artifactId'|'artifactVersion'|'ruleVersion'|'jobId'|'role'|'pending'>[]};
+function recheckStatement(owner:string,r:LearningRule,campaignId:string,marks:RecheckMark[],by:PlaybookActor){
+ const artifacts=marks.filter(m=>m.campaignId===campaignId).map(({artifactId,artifactVersion,ruleVersion,jobId,role,pending})=>({artifactId,artifactVersion,ruleVersion,jobId,role,...(pending?{pending}:{})})),playbookRecheck:RecheckDetail={ruleId:r.id,reason:'rule_paused',artifacts};
+ const waiting=artifacts.filter(a=>a.pending).length,saved=artifacts.length-waiting;
+ return eventStatement(owner,campaignId,`운영자 선호 규칙 「${r.title}」 적용을 중지했습니다. 이 규칙이 전달된 작업물 ${saved}건${waiting?`과 진행 중 작업 ${waiting}건(완료되면 저장될 작업물)`:''}을 재확인하세요. 작업물 내용은 바꾸지 않았습니다.`,by,{playbookRecheck});
+}
+// 대기 표시는 읽을 때 푼다: 작업물이 저장됐으면 그 버전의 표시로 바꾸고, 실행이 작업물 없이 끝났으면(실패·취소) 빼고, 아직 실행 중이면 대기 표시로 둔다.
+async function settledMark(owner:string,m:PlaybookRecheck):Promise<PlaybookRecheck[]>{
+ if(!m.pending)return [m];
+ const a=await optionalArtifact(owner,m.artifactId);
+ if(a)return [{id:m.id,ruleId:m.ruleId,ruleVersion:m.ruleVersion,artifactId:m.artifactId,artifactVersion:a.version,campaignId:m.campaignId,jobId:m.jobId,role:m.role,reason:m.reason,createdAt:m.createdAt}];
+ return await liveJob(owner,m.jobId)?[m]:[];
 }
 // 학습 화면용 재확인 표시 목록(캠페인 이력의 playbookRecheck를 작업물 단위로 편다).
 export async function playbookRechecks(owner:string):Promise<PlaybookRecheck[]>{
  const rows=await database().prepare("SELECT data FROM records WHERE owner=? AND kind='event' AND json_extract(data,'$.playbookRecheck.ruleId') IS NOT NULL").bind(owner).all<{data:string}>();
- return rows.results.map(r=>JSON.parse(r.data) as {campaignId:string;createdAt:string;playbookRecheck:RecheckDetail}).flatMap(e=>e.playbookRecheck.artifacts.map(a=>({...a,id:`${e.playbookRecheck.ruleId}:${a.artifactId}`,ruleId:e.playbookRecheck.ruleId,campaignId:e.campaignId,reason:e.playbookRecheck.reason,createdAt:e.createdAt})));
+ const marks=rows.results.map(r=>JSON.parse(r.data) as {campaignId:string;createdAt:string;playbookRecheck:RecheckDetail}).flatMap(e=>e.playbookRecheck.artifacts.map(a=>({...a,id:`${e.playbookRecheck.ruleId}:${a.artifactId}`,ruleId:e.playbookRecheck.ruleId,campaignId:e.campaignId,reason:e.playbookRecheck.reason,createdAt:e.createdAt})));
+ return (await Promise.all(marks.map(m=>settledMark(owner,m)))).flat();
 }
-// 중지: 다음 작업부터 주입하지 않고, 이미 주입된 작업물에는 재확인 표시(캠페인 이력)만 남긴다. 작업물 내용·버전은 바꾸지 않는다.
+// 중지: 다음 작업부터 주입하지 않고, 이미 주입된 작업물과 아직 실행 중인 작업(대기 표시)에 재확인 표시(캠페인 이력)만 남긴다. 작업물 내용·버전은 바꾸지 않는다.
+// affected는 대기 표시를 포함한 전체 건수, pending은 그중 실행 중인 작업 수다. 규칙 변경과 역할 실행은 같은 소유자 잠금을 써서 중지 도중 새 주입이 끼어들지 않는다.
 async function pausePlaybookRule(owner:string,b:Record<string,unknown>,by:PlaybookActor){
  const r=await playbookRule(owner,b);if(r.status!=='active')throw new ApiError(409,'적용 중인 규칙만 중지할 수 있습니다.');
- const at=stamp(),next:LearningRule={...r,status:'paused',version:r.version+1,updatedAt:at},marks=await injectedArtifacts(owner,r.id),campaigns=[...new Set(marks.map(m=>m.campaignId))];
- await database().batch([recordStatement(owner,'learning_rule',r.id,next,r.brandId),...campaigns.map(id=>recheckStatement(owner,next,id,marks,by)),auditStatement(owner,next,'pause',r.status,by,{affectedArtifacts:marks.length})]);
- return {id:r.id,status:next.status,affected:marks.length};
+ const at=stamp(),next:LearningRule={...r,status:'paused',version:r.version+1,updatedAt:at},marks=await injectedArtifacts(owner,r.id),campaigns=[...new Set(marks.map(m=>m.campaignId))],pending=marks.filter(m=>m.pending).length;
+ await database().batch([recordStatement(owner,'learning_rule',r.id,next,r.brandId),...campaigns.map(id=>recheckStatement(owner,next,id,marks,by)),auditStatement(owner,next,'pause',r.status,by,{affectedArtifacts:marks.length,...(pending?{pendingArtifacts:pending}:{})})]);
+ return {id:r.id,status:next.status,affected:marks.length,pending};
 }
 const playbookActions:Record<string,(owner:string,b:Record<string,unknown>,by:PlaybookActor)=>Promise<unknown>>={
  playbook_create:(owner,b,by)=>createPlaybookRule(owner,(b.data&&typeof b.data==='object'&&!Array.isArray(b.data)?b.data:{}) as Record<string,unknown>,by),

@@ -42,7 +42,8 @@ export type ReviewDecisionSummary={id:string;brandId:string;targetKind:string;ro
 // Curator 제안(자동 병합 없음). duplicate는 같은 뜻의 규칙, conflict는 같은 주제에서 서로 반대 지시다.
 export type CurationSuggestion={kind:'duplicate'|'conflict';ruleIds:[string,string];brandId:string;role:string|null;similarity:number;note:string};
 // 운영자 선호 규칙 중지 때 그 규칙이 주입된 작업물의 재확인 표시(캠페인 이력 event의 playbookRecheck를 작업물 단위로 편 것). 작업물 내용은 바꾸지 않는다.
-export type PlaybookRecheck={id:string;ruleId:string;ruleVersion:number;artifactId:string;artifactVersion:number;campaignId:string;jobId:string;role:string;reason:'rule_paused';createdAt:string};
+// pending: 중지 시점에 아직 실행 중이던 작업(작업물 저장 전)이다. artifactVersion은 null이고, 완료돼 작업물이 저장되면 GET이 그 버전의 일반 표시로 바꾸며 작업물 없이 끝나면 뺀다.
+export type PlaybookRecheck={id:string;ruleId:string;ruleVersion:number;artifactId:string;artifactVersion:number|null;pending?:true;campaignId:string;jobId:string;role:string;reason:'rule_paused';createdAt:string};
 export type LearningData={reviewDecisions?:ReviewDecisionSummary[];playbookSuggestions?:CurationSuggestion[];playbookRechecks?:PlaybookRecheck[];guidances?:LearningGuidance[];expiringRules?:LearningRule[];cases:ViralCase[];analyses:ViralAnalysis[];experiments:ViralExperiment[];rules:LearningRule[];snapshots:LearningSnapshot[];jobs:LearningJob[];observations:(ViralCase&{caseId:string})[];jobOutputs:{id:string;output:string}[]};
 export function evaluateExperiment(e:ViralExperiment,result:ExperimentResult):Assessment{
  const a=result.control,b=result.treatment,reasons:string[]=[];

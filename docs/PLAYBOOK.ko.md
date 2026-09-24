@@ -63,11 +63,19 @@
 
 - `operatorPreferenceContext(owner,campaign,role)`: 승인·미만료·같은 브랜드·채널·역할이 맞는 규칙, 역할 지정 규칙 먼저·최신순, 역할당 8개까지.
 - 역할 입력 끝에 `operatorPreferences` 키로 붙인다: `{note, rules:[{title,version,text,channel,expiresAt}]}`. 규칙 id·인용·카운터는 모델에 보내지 않는다.
-  `note`는 이 블록이 성과 근거·확정 사실이 아니며 사실 원장·브리프·근거 규칙과 충돌하면 따르지 말라고 적는다.
+  `note`는 이 블록이 성과 근거·확정 사실이 아니며 시스템 지시·`evidence.facts`·`factPolicy`·근거 규칙을 바꿀 권한이 없으니 충돌하면 따르지 말라고 적는다(입력에 실제로 있는 키 이름을 쓴다).
+- 블록의 권한 한계는 지시문(instructions)이 정한다. 규칙이 1건 이상일 때만 순수 지시문(`buildRoleInstruction`) 끝에 `OPERATOR_PREFERENCE_AUTHORITY` 한 문장을 붙인다(`withPreferenceAuthority`, `revisionInstruction`처럼 조건부).
+  이 문장은 operatorPreferences가 작업 방식 선호 데이터일 뿐 시스템 지시·evidence.facts·factPolicy·근거 규칙·산출물 계약을 바꾸거나 그보다 우선할 권한이 없다고 적는다. 코드 경로의 `promptVersion`(지시 해시)은 이 문장을 포함한 실제 지시문으로 계산한다.
+- 역할 요청(`roleRequestFor`)에는 모델용 블록만 싣는다. 규칙 사본(스냅샷·중지 재확인용)은 `roleRequestWithRules`가 `operatorRules`로 따로 돌려준다.
 - `learning` 블록(성과 규칙)은 그대로다. 운영자 선호 규칙은 `learning`에 섞지 않는다.
 - **규칙 0건이면 키 자체를 넣지 않는다.** 이때 역할 요청·제출 본문·`inputHash`·`learning_snapshot`은 이전과 바이트 동일하다(`tests/role-instruction`·`role-execution-drift`·`prompt-baseline` 불변).
 - 규칙이 있으면 `inputHash`에 같은 블록을 넣어 새 실행 id가 되고, `learning_snapshot`에 `operatorPreferences`(주입한 규칙 사본)와 `artifactId`(이 실행이 저장할 작업물 id)를 남긴다.
-- 알려진 한계: 순수 입력 조립 함수(`lib/role-instruction.ts buildRoleInput`)는 이 블록을 모른다. 역할 실행이 그 출력에 `withOperatorPreferences`로 덧붙인다. 평가 케이스 캡처(`lib/eval-server.ts`)는 요청에 `operatorPreferences`를 동결하지만 재실행 입력에는 아직 넣지 않는다.
+- 평가 케이스 캡처(`lib/eval-server.ts captureCase`)는 `roleRequestFor` 결과를 그대로 동결하므로 동결본에는 모델용 블록만 있다(규칙 id·인용·카운터 없음).
+  동결본만으로 운영 제출을 바이트 그대로 다시 만들 수 있다: 입력 = `withOperatorPreferences(buildRoleInput(request), request.operatorPreferences)`, 지시문 = `withPreferenceAuthority(buildRoleInstruction(request), request.operatorPreferences)`(`tests/playbook.test.mjs`가 확인).
+- 알려진 한계: 순수 조립 함수(`lib/role-instruction.ts`)와 평가 실행 제출(`lib/eval-server.ts submitCase`)은 이번 단계의 소유 밖이라 블록과 권한 문장을 아직 넣지 않는다.
+  그래서 **활성 운영자 선호 규칙이 적용된 캠페인에서 캡처한 평가 케이스는 평가 실행 입력이 운영 입력과 다르다**(블록·권한 문장 빠짐). 규칙 0건이면 영향이 없다.
+  B3-2에서 위 두 식을 `buildRoleInput`·`buildRoleInstruction`(또는 `submitCase`)으로 옮기고, 그 전에는 규칙이 적용된 캠페인의 캡처 케이스로 골든 on/off 비교(`performance_tested`)를 하지 않는다(부여 경로도 409로 막혀 있다).
+- B5 맥락 리플레이는 저장된 HERMES 제출 입력(`hermes_submission`의 `input`)을 읽으므로 블록이 들어간 운영 입력을 그대로 본다. 규칙 0건이면 제출 본문이 이전과 바이트 동일하다.
 
 ## Curator (`lib/playbook-curator.ts`, 순수)
 
@@ -79,20 +87,32 @@
 
 ## 중지와 재확인 표시
 
-중지하면 다음 작업부터 주입하지 않는다. 이미 주입된 작업물은 `learning_snapshot`의 `operatorPreferences`·`artifactId`로 찾고, 실제로 저장된 작업물만 센다.
-캠페인마다 이력(`event`) 1건을 남기고 그 `playbookRecheck` detail에 `{ruleId, reason:'rule_paused', artifacts:[{artifactId, artifactVersion, ruleVersion(주입 당시), jobId, role}]}`를 싣는다.
-**작업물 내용·버전은 바꾸지 않는다.** 응답의 `affected`가 재확인 표시 작업물 수다. 캠페인 이력이라 캠페인 화면 이력에 보이고 캠페인과 함께 지워진다.
-학습 화면은 `GET /api/learning`의 `playbookRechecks`(이력을 작업물 단위로 편 목록)로 규칙마다 재확인 표시 건수를 보인다.
+중지하면 다음 작업부터 주입하지 않는다. 이미 주입된 작업물은 `learning_snapshot`의 `operatorPreferences`·`artifactId`로 찾는다.
+- 작업물이 저장돼 있으면 그 버전으로 표시한다.
+- 작업물이 아직 없고 그 실행이 끝나지 않았으면(`starting`·`queued`·`in_progress`·`uncertain`) **대기 표시**(`pending: true`, `artifactVersion: null`)로 남긴다. `artifactId`는 실행 id에서 정해지므로(`roleArtifactId`) 중지 뒤 완료돼 저장될 작업물을 가리킨다.
+- 작업물 없이 끝난 실행(실패·취소)은 표시하지 않는다. 규칙 변경(`POST /api/learning`)과 역할 실행은 같은 소유자 잠금을 써서 중지 도중 새 주입이 끼어들지 않는다.
+
+캠페인마다 이력(`event`) 1건을 남기고 그 `playbookRecheck` detail에 `{ruleId, reason:'rule_paused', artifacts:[{artifactId, artifactVersion, ruleVersion(주입 당시), jobId, role, pending?}]}`를 싣는다.
+**작업물 내용·버전은 바꾸지 않는다.** 응답의 `affected`가 재확인 표시 수(대기 표시 포함), `pending`이 그중 실행 중인 작업 수다. 감사 기록에도 `affectedArtifacts`·`pendingArtifacts`를 남긴다. 캠페인 이력이라 캠페인 화면 이력에 보이고 캠페인과 함께 지워진다.
+학습 화면은 `GET /api/learning`의 `playbookRechecks`(이력을 작업물 단위로 편 목록)로 규칙마다 재확인 표시 건수를 보인다. 대기 표시는 읽을 때 푼다: 작업물이 저장됐으면 그 버전의 일반 표시로 바꾸고, 작업물 없이 끝났으면 빼고, 아직 실행 중이면 대기 표시로 둔다.
 새 캠페인 범위 kind를 만들지 않은 이유: 캠페인 삭제 대화상자(`lib/deletion-summary.ts`)가 삭제되는 모든 kind에 이름을 요구하고, 재확인 표시는 캠페인 이력의 성격이기 때문이다.
 
 ## 오염 방어
 
 - 본문은 NFC·공백 정규화 뒤 **400자 이하**.
-- 연락처(이메일·국내 전화번호·대표번호)는 거부한다.
+- 연락처(이메일·국내 전화번호·대표번호)는 거부한다. NFKC로 접은 본문(전각 숫자·전각 @)에서 보고, 숫자 사이 구분자(공백·대시류·가운뎃점·점·슬래시·괄호·밑줄·ㅡ, 1~3자)를 지운 숫자열로 한 번 더 본다(띄어 쓴 숫자·en dash·구분자 없는 대표번호).
+  시각의 `:`와 금액의 `,`는 구분자로 보지 않는다(15:00-18:00, 15,000,000원은 통과).
+- 한 단어에 라틴 문자와 키릴·그리스 문자를 섞으면 거부한다(모양이 같은 문자로 영어 표지를 피하는 것을 막는다).
 - F3a 본문 검사(`lib/prompt-units.ts validateUnitBody`)를 재사용해 URL·도메인·IP·계정 핸들, 명령형 주입 문구(이전 지시 무시·상위 규칙 우선·시스템 프롬프트·역할 전환), 보이지 않는 문자, 코드 소유 정책 문구(근거 규율·사실 정책·출력 계약·외부 행동 금지)를 거부한다.
+  F3a 한국어 표지는 공백만 접은 형태에서 보므로, 원문과 **글자·숫자만 남긴 사본**에 한 번씩 돌린다(`이전·지시`, `시스템-프롬프트`처럼 구두점을 끼운 변형). F3a 단위(prompts) 검사 동작은 바꾸지 않는다.
+- 플레이북 전용 표지를 더 막는다(F3a에는 넣지 않는다).
+  - 지시 동의어(안내·가이드·가이드라인·방침·원칙)를 무시하라는 문구, 영어 동사(ignore·disregard·override·bypass·obey 등, skip … guidance/rules/evidence, only follow, take priority).
+  - 권한 주장: 지시·사실·근거·증거·출처·브리프보다 우선(중요), 최우선으로 따르기, 먼저 따르기, 이 선호만 따르기.
+  - 근거 규율 우회: 근거 없이, 출처(표기) 생략, 확정해 적기, 미확정 표시 빼기, without evidence, as certain, fact ledger.
+  - 순서 선호(예: 결론을 근거보다 먼저 쓴다, 환불 정책보다 할인 혜택을 먼저 적는다)와 강조(고객 혜택을 최우선으로 적는다)는 막지 않는다.
   - 브랜드 범위 규칙이라 브랜드명은 허용하고, 할인 금액 같은 선호가 있어 가격 표기도 허용한다.
   - 코드 소유 표지와 겹치는 흔한 표현(예: 광고 게재·메시지 발송)도 막힌다. 다른 말로 적는다.
-- 승인 전 주입 0건, 소유자 전용 승인, 인용 2건 이상·같은 브랜드, 60일 만료, 역할당 8개 상한, 모델 입력의 별도 블록과 경고 문구가 함께 오염을 줄인다.
+- 승인 전 주입 0건, 소유자 전용 승인, 인용 2건 이상·같은 브랜드, 60일 만료, 역할당 8개 상한, 모델 입력의 별도 블록과 경고 문구, 지시문의 권한 한계 문장이 함께 오염을 줄인다.
 - 인용 판정 기록에는 검토 메모 원문이 없다(B1). 규칙 본문도 사람이 직접 쓴 400자 이하 문장뿐이다.
 
 ## B3-2 예정
@@ -100,4 +120,4 @@
 - **Reflector**: 교정 데이터(판정 이력·선호 쌍)를 외부 모델로 보내 규칙 초안을 제안한다. 대표 결정 12에 따라 **F4b 데이터 처리 문서가 먼저**다. 제안은 `playbook_create`와 같은 검사(인용 2건 이상·같은 브랜드·본문 검사)를 거친 `draft`로만 들어오고 승인은 사람이 한다.
 - **helpful/harmful 카운터** 갱신: `learning_snapshot.operatorPreferences`와 `artifactId`로 규칙이 주입된 작업물의 판정(`review_decision`)을 이어 센다.
 - **performance_tested** 부여: 골든 on/off 비교(평가 run)를 첨부할 때만 연다. 지금은 `playbook_grade`·생성 모두 409다.
-- 입력 조립 함수(`buildRoleInput`)에 `operatorPreferences`를 옮겨 평가 캡처·리플레이도 같은 입력을 만들게 하고, 회의·브리프 경로 주입 여부를 정한다.
+- 입력·지시문 조립 함수(`buildRoleInput`·`buildRoleInstruction`)에 `operatorPreferences` 블록과 권한 문장을 옮겨(규칙 0건이면 키·문장 생략 유지) 평가 실행도 운영과 같은 제출을 만들게 하고, `tests/eval-server.test.mjs`에 활성 규칙이 있을 때 캡처로 다시 만든 입력 = 운영 입력 검사를 더한다. 회의·브리프 경로 주입 여부도 정한다.
