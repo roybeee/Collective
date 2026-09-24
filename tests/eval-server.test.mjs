@@ -193,6 +193,8 @@ for(const res of run1.results){
  check(`${res.role} key never reuses a stored production key`,()=>assert.ok(!productionKeys.includes(res.idempotencyKey)));
  check(`${res.role} result records model, provider run, tokens and duration`,()=>assert.ok(res.model==='mock-eval-model'&&/^eval_\d+$/.test(res.providerRunId)&&res.tokens.total===1500&&res.tokens.input===1000&&res.tokens.output===500&&Number.isFinite(res.durationMs)&&res.durationMs>=0));
  check(`${res.role} graded by the thirteen graders and compliance`,()=>assert.ok(res.graders.length===13&&res.graders.every(g=>['pass','fail','not_applicable','grader_error'].includes(g.status))&&Object.values(res.summary).reduce((a,b)=>a+b,0)===13&&typeof res.compliance.version==='string'&&res.variant==='active'));
+ // 채점 방식 기록: 정규화 뒤 채점(graders)과 별도로 정규화 전 예방 판정·정규화 건수를 남긴다(값 없이 건수만).
+ check(`${res.role} records the grading version, prevention verdicts and normalization counts`,()=>assert.ok(res.gradersVersion==='failure-types-v1+normalized'&&res.prevention.map(g=>g.id).join()==='heading_nesting,internal_id_exposure'&&res.prevention.every(g=>['pass','fail','not_applicable'].includes(g.status))&&Object.keys(res.normalization).join()==='schemaPaths,headings'&&Number.isInteger(res.normalization.schemaPaths)&&Number.isInteger(res.normalization.headings)));
 }
 check('run accumulates reported tokens',()=>assert.equal(run1.usedTokens,3000));
 const insightResult=run1.results.find(x=>x.caseId===insightCase.id);
@@ -205,6 +207,7 @@ const run2=await drive(r.body.id);
 check('two runs of the same case use different idempotency keys',()=>assert.ok(run2.results[0].idempotencyKey!==insightResult.idempotencyKey&&run2.results[0].idempotencyKey===expectedKey(run2.id,insightCase.id)));
 r=await get(`?compare=${run1.id},${run2.id}`);
 check('comparison pairs the shared case per grader without claiming improvement',()=>assert.ok(r.status===200&&r.body.sharedCases===1&&r.body.graders.length===13&&r.body.graders.every(g=>g.n<=1&&g.verdict!=='improved')));
+check('comparison also reports the model-text (prevention) verdicts and normalization tallies',()=>assert.ok(r.body.prevention.map(g=>g.id).join()==='heading_nesting,internal_id_exposure'&&r.body.normalization.candidate.recorded===1&&r.body.gradersVersions.candidate[0]==='failure-types-v1+normalized'));
 
 // 예산 소진·사용량 미보고·인증·연결 실패·격리 재확인·시간 초과·취소
 const normalUsage=mode.usage;mode.usage={input_tokens:30000,output_tokens:10000,total_tokens:40000};

@@ -6,10 +6,13 @@ export const MIN_PAIRS=30,ALPHA=0.05;
 // Workers CPU 한도 안에서 끝나도록 불일치 쌍 수의 상한을 둔다. 평가 run 한 번의 케이스 수(100)보다 훨씬 크다.
 const MAX_DISCORDANT=1e6;
 export type ComparisonVerdict='improved'|'regressed'|'non_regression'|'inconclusive'|'insufficient';
-export type CaseOutcome={caseId:string;status:string;graders?:readonly {id:string;status:string}[]};
+// prevention: 정규화 전 렌더본으로 다시 잰 판정(heading_nesting·internal_id_exposure), normalization: 정규화가 바꾼 건수. lib/eval-server.ts EvalCaseResult와 같다.
+export type CaseOutcome={caseId:string;status:string;gradersVersion?:string;graders?:readonly {id:string;status:string}[];prevention?:readonly {id:string;status:string}[];normalization?:{schemaPaths?:number;headings?:number}|null};
 export type RunOutcomes={id:string;results:readonly CaseOutcome[]};
 export type GraderComparison={id:string;n:number;b:number;c:number;bothPass:number;bothFail:number;p:number;verdict:ComparisonVerdict};
-export type RunComparison={baseline:string;candidate:string;sharedCases:number;onlyBaseline:number;onlyCandidate:number;sameCaseSet:boolean;minPairs:number;alpha:number;graders:GraderComparison[]};
+export type NormalizationTally={recorded:number;normalized:number;schemaPaths:number;headings:number};
+// graders: 사람이 보는 본문 기준 비교. prevention: 모델 원문(정규화 전) 기준 비교 — 지시문 예방 효과는 이것으로 읽는다. normalization: run별 정규화 건수 합계.
+export type RunComparison={baseline:string;candidate:string;sharedCases:number;onlyBaseline:number;onlyCandidate:number;sameCaseSet:boolean;minPairs:number;alpha:number;gradersVersions:{baseline:string[];candidate:string[]};graders:GraderComparison[];prevention:GraderComparison[];normalization:{baseline:NormalizationTally;candidate:NormalizationTally}};
 
 const count=(v:unknown,label:string)=>{if(typeof v!=='number'||!Number.isSafeInteger(v)||v<0)throw new EvalStatsError(`${label}은 0 이상의 정수여야 합니다.`);return v};
 // 양측 p = min(1, 2·P(X≤min(b,c))), X~Binomial(b+c, 1/2). 2^-n이 0으로 내려가지 않도록 가장 큰 항(i=k) 기준 로그 공간에서 더한다.
@@ -31,18 +34,31 @@ export function comparisonVerdict(n:number,b:number,c:number,p:number):Compariso
  return b===0?'non_regression':'inconclusive';
 }
 const byCase=(run:RunOutcomes)=>new Map(run.results.map(r=>[r.caseId,r]));
-const graderStatus=(r:CaseOutcome|undefined,id:string)=>r?.status==='completed'?r.graders?.find(g=>g.id===id)?.status:undefined;
-function compareGrader(id:string,shared:string[],A:Map<string,CaseOutcome>,B:Map<string,CaseOutcome>):GraderComparison{
- const pairs=shared.map(caseId=>[graderStatus(A.get(caseId),id),graderStatus(B.get(caseId),id)]).filter(([x,y])=>(x==='pass'||x==='fail')&&(y==='pass'||y==='fail'));
+// 모델 원문 기준 판정: prevention이 있으면 그 판정, 없으면 graders. 정규화 도입 전 결과(gradersVersion 없음 = failure-types-v1)는 graders가 곧 정규화 전 렌더본 판정이다.
+const modelStatus=(r:CaseOutcome|undefined,id:string)=>r?.prevention?.find(g=>g.id===id)?.status??r?.graders?.find(g=>g.id===id)?.status;
+type Basis='shown'|'model';
+const graderStatus=(r:CaseOutcome|undefined,id:string,basis:Basis)=>r?.status==='completed'?basis==='model'?modelStatus(r,id):r.graders?.find(g=>g.id===id)?.status:undefined;
+function compareGrader(id:string,shared:string[],A:Map<string,CaseOutcome>,B:Map<string,CaseOutcome>,basis:Basis='shown'):GraderComparison{
+ const pairs=shared.map(caseId=>[graderStatus(A.get(caseId),id,basis),graderStatus(B.get(caseId),id,basis)]).filter(([x,y])=>(x==='pass'||x==='fail')&&(y==='pass'||y==='fail'));
  const tally=(x:string,y:string)=>pairs.filter(p=>p[0]===x&&p[1]===y).length;
  const b=tally('pass','fail'),c=tally('fail','pass'),p=mcnemarExact(b,c);
  return {id,n:pairs.length,b,c,bothPass:tally('pass','pass'),bothFail:tally('fail','fail'),p,verdict:comparisonVerdict(pairs.length,b,c,p)};
 }
+const completedOf=(run:RunOutcomes)=>run.results.filter(r=>r.status==='completed');
+const count0=(v:unknown)=>typeof v==='number'&&Number.isSafeInteger(v)&&v>0?v:0;
+function normalizationTally(run:RunOutcomes):NormalizationTally{
+ const rows=completedOf(run).flatMap(r=>r.normalization?[{schemaPaths:count0(r.normalization.schemaPaths),headings:count0(r.normalization.headings)}]:[]);
+ return {recorded:rows.length,normalized:rows.filter(n=>n.schemaPaths+n.headings>0).length,schemaPaths:rows.reduce((a,n)=>a+n.schemaPaths,0),headings:rows.reduce((a,n)=>a+n.headings,0)};
+}
+// gradersVersion을 남기기 전 결과는 정규화 전 렌더본 채점(failure-types-v1)이다.
+const versionsOf=(run:RunOutcomes)=>[...new Set(completedOf(run).map(r=>r.gradersVersion??'failure-types-v1'))];
 // baseline(기준, 예: active)과 candidate(후보)를 비교한다. 두 run 모두 completed인 케이스만 짝이 되고, 채점기 결과가 pass/fail이 아니면 그 짝은 뺀다.
+// prevention은 어느 한쪽에 예방 판정이 있는 채점기만 모델 원문 기준으로 비교한다(정규화 효과를 '개선'으로 세지 않는다).
 export function compareRuns(baseline:RunOutcomes,candidate:RunOutcomes):RunComparison{
- const A=byCase(baseline),B=byCase(candidate),shared=[...A.keys()].filter(id=>B.has(id));
- const ids=[...new Set([...baseline.results,...candidate.results].flatMap(r=>(r.graders||[]).map(g=>g.id)))];
- return {baseline:baseline.id,candidate:candidate.id,sharedCases:shared.length,onlyBaseline:A.size-shared.length,onlyCandidate:B.size-shared.length,sameCaseSet:shared.length===A.size&&shared.length===B.size,minPairs:MIN_PAIRS,alpha:ALPHA,graders:ids.map(id=>compareGrader(id,shared,A,B))};
+ const A=byCase(baseline),B=byCase(candidate),shared=[...A.keys()].filter(id=>B.has(id)),all=[...baseline.results,...candidate.results];
+ const ids=[...new Set(all.flatMap(r=>(r.graders||[]).map(g=>g.id)))],preventionIds=[...new Set(all.flatMap(r=>(r.prevention||[]).map(g=>g.id)))];
+ return {baseline:baseline.id,candidate:candidate.id,sharedCases:shared.length,onlyBaseline:A.size-shared.length,onlyCandidate:B.size-shared.length,sameCaseSet:shared.length===A.size&&shared.length===B.size,minPairs:MIN_PAIRS,alpha:ALPHA,
+  gradersVersions:{baseline:versionsOf(baseline),candidate:versionsOf(candidate)},graders:ids.map(id=>compareGrader(id,shared,A,B)),prevention:preventionIds.map(id=>compareGrader(id,shared,A,B,'model')),normalization:{baseline:normalizationTally(baseline),candidate:normalizationTally(candidate)}};
 }
 
 // ── 쌍 평가 게이트(F3b, 대표 결정 2) ──
@@ -64,12 +80,13 @@ const PASS_FAIL=['pass','fail'];
 // 후보 쪽 판정 보정(비회귀 게이트라 후보에 불리하게 센다): 후보가 재질문(question_only fail)해 not_applicable이 된 채점기와 후보 쪽 grader_error는 fail로 센다.
 // 그래야 산출물을 내지 않은 후보가 같은 케이스 active의 내용 채점 합격을 셈에서 지우지 못한다. active 쪽 not_applicable·grader_error와 그 밖의 not_applicable은 뺀다.
 function candidateStatus(r:PairCaseOutcome|undefined,id:string){
- const s=r?.graders?.find(g=>g.id===id)?.status??'',reask=!!r?.graders?.some(g=>g.id==='question_only'&&g.status==='fail');
+ const s=modelStatus(r,id)??'',reask=!!r?.graders?.some(g=>g.id==='question_only'&&g.status==='fail');
  return s==='grader_error'||(s==='not_applicable'&&reask)?'fail':s;
 }
-// 케이스·채점기 대응 짝: active가 pass/fail이고 보정한 후보가 pass/fail인 것만 쓴다.
+// 케이스·채점기 대응 짝: active가 pass/fail이고 보정한 후보가 pass/fail인 것만 쓴다. 게이트는 프롬프트를 재므로 두 쪽 모두 모델 원문 기준 판정(prevention 우선)을 쓴다.
+// 그래야 후보 프롬프트가 일으킨 스키마 경로 노출·제목 중첩을 저장 정규화가 가려도 회귀로 잡는다.
 function gradedPairs(caseIds:string[],A:Map<string,PairCaseOutcome>,B:Map<string,PairCaseOutcome>){
- return caseIds.flatMap(caseId=>(A.get(caseId)?.graders||[]).map(g=>({caseId,grader:g.id,sealed:A.get(caseId)?.set==='sealed',a:g.status,b:candidateStatus(B.get(caseId),g.id)}))).filter(p=>PASS_FAIL.includes(p.a)&&PASS_FAIL.includes(p.b));
+ return caseIds.flatMap(caseId=>(A.get(caseId)?.graders||[]).map(g=>({caseId,grader:g.id,sealed:A.get(caseId)?.set==='sealed',a:modelStatus(A.get(caseId),g.id)??'',b:candidateStatus(B.get(caseId),g.id)}))).filter(p=>PASS_FAIL.includes(p.a)&&PASS_FAIL.includes(p.b));
 }
 const modelsOf=(side:RunOutcomes)=>side.results.filter(r=>r.status==='completed').map(r=>(r as PairCaseOutcome).model??null);
 const hashOf=(basis:PairGatewayBasis,key:'operational'|'eval')=>basis?.[key]?.hash??null;

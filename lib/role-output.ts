@@ -1,5 +1,6 @@
 import {roles,type Artifact} from './agency';
 import {practices} from './practice';
+import {normalizeSectionBody,normalizeQualityOutput,addNormalization,NO_NORMALIZATION,type OutputNormalization} from './output-normalize';
 
 export const ROLE_OUTPUT_VERSION='role-output-v1';
 // 저장된 계약에만 붙는 실행 스냅샷: factRefs(입력에 쓴 확정·거절 사실), idLabels(입력 식별자→ref 라벨), claimGuard(저장 전 광고 표현 검사 목록).
@@ -99,25 +100,32 @@ export function labelArchive<T extends {confirmedSources?:object[]}>(archive:T):
  return {...archive,...(archive.confirmedSources?{confirmedSources:archive.confirmedSources.map((s,i)=>({ref:`브랜드 자료 #${i+1}`,...s}))}:{})};
 }
 function outputError(message:string):never {throw new Error(`작업물 수정 필요: ${message}`)}
-export function parseRoleOutput(content:string,role:string,contract?:RoleOutputContract){
+export function parseRoleOutput(content:string,role:string,contract?:RoleOutputContract){return renderRoleOutput(content,role,contract).content}
+// 계약 렌더 + 사람이 보는 본문 정규화(lib/output-normalize.ts: 스키마 경로 → 한국어 라벨, 본문 #·## 제목 → ###). 원 응답(content 인자)은 바꾸지 않는다.
+// 운영 저장(role-execution.ts poll)과 평가 채점(lib/graders/text.ts renderRaw)이 같은 렌더를 본다. normalization은 종류별 건수만 담는다(값 없음).
+// normalize:false는 정규화 전 렌더본이다(품질 기준선 v1이 채점한 본문과 같은 방식). 평가의 예방 판정(lib/graders PREVENTION_GRADERS)만 쓴다.
+export function renderRoleOutput(content:string,role:string,contract?:RoleOutputContract,{normalize=true}:{normalize?:boolean}={}):{content:string;normalization:OutputNormalization}{
  if(!content.trim())return outputError('본문이 비어 있습니다.');
  if(isQuestionOnly(content))return outputError('담당 과업 대신 작업 선택을 요청했습니다.');
- if(!contract||role==='quality')return content;
+ if(!contract||role==='quality'&&!normalize)return {content,normalization:NO_NORMALIZATION};
+ if(role==='quality'){const q=normalizeQualityOutput(content);return {content:q.text,normalization:q.normalization}}
+ const section=normalize?normalizeSectionBody:(text:string)=>({text,normalization:NO_NORMALIZATION});
  let raw:unknown;try{raw=JSON.parse(content.trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''))}catch{return outputError('필수 산출물 JSON 형식이 아닙니다.');}
  if(!raw||typeof raw!=='object')return outputError('결과 객체가 필요합니다.');
  const result=raw as Record<string,unknown>;
  if(result.contractVersion!==contract.version||result.role!==role)return outputError('담당 또는 산출물 계약 버전이 일치하지 않습니다.');
  if(!Array.isArray(result.sections)||result.sections.length!==contract.sections.length)return outputError('필수 산출물 항목이 누락되거나 중복되었습니다.');
  const sections=result.sections as Record<string,unknown>[];
- const rendered=contract.sections.map(required=>{
+ const bodies=contract.sections.map(required=>{
   const matches=sections.filter(s=>s&&typeof s==='object'&&s.id===required.id);
   if(matches.length!==1)return outputError(`${required.id} (${required.title}) 항목이 필요합니다.`);
   const body=matches[0].content;
   if(typeof body!=='string'||!body.trim()||isQuestionOnly(body))return outputError(`${required.id} 항목에 실제 초안 또는 자료 필요·확인 계획을 작성하세요.`);
-  return `## ${required.title}\n\n${body.trim()}`;
- }).join('\n\n')+(typeof result.changes==='string'&&result.changes.trim()?`\n\n## 수정 요청 반영 위치\n\n${result.changes.trim()}`:'');
+  return {title:required.title,...section(body.trim())};
+ }),changes=typeof result.changes==='string'&&result.changes.trim()?section(result.changes.trim()):null;
+ const rendered=bodies.map(b=>`## ${b.title}\n\n${b.text}`).join('\n\n')+(changes?`\n\n## 수정 요청 반영 위치\n\n${changes.text}`:'');
  if(rendered.length>40000)return outputError('산출물이 40,000자 저장 한도를 초과했습니다. 요약해서 다시 작성하세요.');
- return rendered;
+ return {content:rendered,normalization:[...bodies,...(changes?[changes]:[])].map(b=>b.normalization).reduce(addNormalization,NO_NORMALIZATION)};
 }
 export function artifactUsable(a:Artifact,campaignVersion:number){
  return ['review','approved'].includes(a.status)&&(!a.campaignVersion||a.campaignVersion===campaignVersion)&&!!a.content.trim()&&!isQuestionOnly(a.content);
