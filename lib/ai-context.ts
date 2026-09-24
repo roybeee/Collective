@@ -2,21 +2,23 @@ import type {Brand} from './agency';
 import type {ArchiveSource,ArchiveState,Diagnostic} from './archive';
 import type {CampaignDirective} from './campaign-directives';
 import {scopedBrandFacts,evidenceFactRefs,type BrandFact,type EvidenceFactRef} from './brand-facts';
+import {contactAllowValues} from './pii-scan';
 
 // 역할·회의·브리프 초안이 같은 근거를 받도록 만드는 단일 컨텍스트. 서버 모듈을 가져오지 않아 화면에서도 규칙 함수를 쓸 수 있다.
 // directives.author: 지시 작성자 구분. 상시 지시는 사실 근거가 아니며 AI 지시문이 권한 한계를 함께 전달한다(campaign-policy directivePolicy).
 export type DirectiveInput={text:string;author:'관리자'|'직원'};
 export type EvidenceContext={facts:{confirmed:unknown[];prohibited:unknown[];candidate:unknown[]};directives:DirectiveInput[];brandIntro:{text:string;verification:'unverified'};sources:{confirmed:number;excludedCandidates:number;diagnosis:'included'|'stale'|'none'};factRefs?:EvidenceFactRef[]};
-export type AiBrand={identity:Pick<Brand,'name'|'short'|'category'|'color'|'tone'|'audience'|'constraints'>;brandIntro:{text:string;verification:'unverified';useInCopy:false};intake?:Brand['intake']};
+export type AiBrand={identity:Pick<Brand,'name'|'short'|'category'|'color'|'tone'|'audience'|'constraints'>;brandIntro:{text:string;verification:'unverified';useInCopy:false}};
 export type AdoptedDiagnostic=Diagnostic&{brandBasis?:string;confirmedBy?:{id:string;email:string|null};confirmedAt?:string;adoptionSeq?:number};
 // brandArchiveContext가 AI에 전달하는 확정 자료 수의 한도.
 export const CONTEXT_SOURCE_LIMIT=20;
 
 // 브랜드 소개(description)와 메모(knowledge)는 대표 대화 기반의 미확인 소개다. 정체성 필드와 분리해 사실로 쓰이지 않게 한다.
+// 제작 입력 허용 목록(⑤): 정체성 7개 필드와 소개문만 보낸다. 의뢰 정보(intake)·id·bg는 보내지 않는다. 자유 텍스트 가림은 BRAND_MASK_PATHS로 입력 조립 때 한다.
 export function aiBrand(brand:Brand):AiBrand{
  const {name,short,category,color,tone,audience,constraints}=brand;
  const text=[brand.description&&'소개: '+brand.description,brand.knowledge&&'브랜드 메모: '+brand.knowledge].filter(Boolean).join('\n');
- return {identity:{name,short,category,color,tone,audience,constraints},brandIntro:{text,verification:'unverified',useInCopy:false},...(brand.intake?{intake:brand.intake}:{})};
+ return {identity:{name,short,category,color,tone,audience,constraints},brandIntro:{text,verification:'unverified',useInCopy:false}};
 }
 
 // 진단 채택 시점의 브랜드 기본 정보 지문. 채택 뒤 브랜드 소개·의뢰가 바뀌면 진단을 다시 확인하게 한다.
@@ -95,3 +97,33 @@ export function evidenceSummary(e:EvidenceContext){
  return {confirmedFacts:e.facts.confirmed.length,prohibitedFacts:e.facts.prohibited.length,candidateFacts:e.facts.candidate.length,directives:e.directives.length,confirmedSources:e.sources.confirmed,excludedCandidates:e.sources.excludedCandidates,diagnosis:e.sources.diagnosis};
 }
 export type EvidenceSummary=ReturnType<typeof evidenceSummary>;
+
+// ── 제작 경로(역할·회의·브리프) 입력 최소화(레인 A, docs/INPUT-MINIMIZATION.ko.md) ──
+// 사람 이름 필드(④)는 값이 있으면 역할 자리표시로 바꾸고 빈 값은 그대로 둔다. 모델은 담당자 입력 여부만 안다.
+export const PERSON_PLACEHOLDER='[담당자]';
+const isRecord=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
+const person=(v:unknown)=>typeof v==='string'&&v.trim()?PERSON_PLACEHOLDER:v;
+// 캠페인·브리프의 plan.owner(담당자·협업 자원). 키 순서는 그대로다.
+export function withoutPlanOwner<T>(c:T):T{
+ if(!isRecord(c)||!isRecord(c.plan)||!Object.hasOwn(c.plan,'owner'))return c;
+ return {...c,plan:{...c.plan,owner:person(c.plan.owner)}} as T;
+}
+// 점포 맥락(lib/store-context.ts)의 진단 담당자(assignee). 점포 맥락은 가리지 않고 이 필드만 바꾼다.
+export function withoutAssignees<T>(archive:T):T{
+ const sm=isRecord(archive)?archive.storeMarketing:undefined,ops=isRecord(sm)?sm.operations:undefined;
+ if(!isRecord(archive)||!isRecord(sm)||!isRecord(ops)||!Array.isArray(ops.diagnostics))return archive;
+ const diagnostics=ops.diagnostics.map(d=>isRecord(d)&&Object.hasOwn(d,'assignee')?{...d,assignee:person(d.assignee)}:d);
+ return {...archive,storeMarketing:{...sm,operations:{...ops,diagnostics}}} as T;
+}
+// 가림 허용 목록(③): 캠페인 범위의 확정 사실 값 + 지점 레코드의 주소와 사업장 연락처 원문. 이 값과 정확히 같은 부분은 가리지 않는다.
+export function productionAllow(evidence:{facts:{confirmed:readonly unknown[]}}|undefined,archive?:unknown):string[]{
+ const facts=(evidence?.facts.confirmed||[]).map(f=>isRecord(f)?f.value:undefined);
+ const sm=isRecord(archive)?archive.storeMarketing:undefined,store=isRecord(sm)&&isRecord(sm.store)?sm.store:undefined;
+ return [...facts,...(store?[store.address,...contactAllowValues(Object.values(store))]:[])].filter((v):v is string=>typeof v==='string');
+}
+// 가림 경로(코드 상수). 확정 사실(evidence.facts)과 점포 맥락(brandArchive)은 가리지 않는다.
+export const BRAND_MASK_PATHS=['brand.brandIntro.text','brand.identity.audience','brand.identity.constraints'] as const;
+export const DIRECTIVE_MASK_PATHS=['evidence.directives.*.text'] as const;
+const CAMPAIGN_TEXT_KEYS=['title','goal','audience','channels','stores','products','constraints','sources'];
+export const campaignMaskPaths=(prefix:string)=>[...CAMPAIGN_TEXT_KEYS.map(k=>`${prefix}.${k}`),`${prefix}.plan.*`];
+export const metricMaskPaths=(prefix:string)=>['notes','source','definition'].map(k=>`${prefix}.*.${k}`);
