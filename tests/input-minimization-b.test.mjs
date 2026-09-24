@@ -1,7 +1,7 @@
-// 입력 최소화 레인 B(docs/DATA-PROCESSING.ko.md 4.4 ②⑤⑧): 조사·학습 제출 본문과 점포 맥락이 허용한 필드만 모델로 보내는지 고정한다.
+// 입력 최소화 레인 B(docs/DATA-PROCESSING.ko.md 4.4 ②⑤⑧): 조사 제출 본문과 점포 맥락이 허용한 필드만 모델로 보내는지 고정한다.
 // ② 측정 기록의 주문 해시 id(ledgerSnapshot.orderRefs)는 어떤 모델 입력에도 없다(집계 수치는 남는다). 점포 맥락은 제작 경로(brandArchiveContext)와 조사가 같이 쓴다.
-// ⑤ 조사·학습의 브랜드 입력은 정체성 필드만이다. 소개·메모와 의뢰 정보 자유 텍스트는 빠지고, 조사에는 공식 웹사이트·SNS 주소만 필드 단위로 남는다.
-// ⑧ 조사 지시문(심층·단계별·지점 진단·바이럴 발견)에 리뷰·댓글 작성자 식별정보를 남기지 말라는 문구가 있다.
+// ⑤ 조사의 브랜드 입력은 정체성 필드만이다. 소개·메모와 의뢰 정보 자유 텍스트는 빠지고, 조사에는 공식 웹사이트·SNS 주소만 필드 단위로 남는다.
+// ⑧ 조사 지시문(심층·단계별·지점 진단)에 리뷰·댓글 작성자 식별정보를 남기지 말라는 문구가 있다.
 // 근거: mocked(모의 HERMES fetch 스텁, 메모리 SQLite, 합성 브랜드·지점). 외부 네트워크·유료 모델 호출은 0회다.
 import assert from 'node:assert/strict';
 import {testRuntime} from './helpers/runtime.mjs';
@@ -110,6 +110,6 @@ const researchBrand=input=>JSON.parse(input).brand;
  check('the official SNS field asks for addresses because bare handles are not sent',ui.includes("placeholder={k==='socialLinks'?'https://instagram.com/계정처럼 주소로 적어 주세요. @계정만 적으면 조사에 보내지 않습니다.'"));
 }
 
-// ⑤⑧ 바이럴 학습 경로는 이 PR에서 빼고 후속으로 둔다. 바이럴 지시문은 프롬프트 레지스트리 단위(F3a)와 기준 스냅샷(prompt-baseline, 레인 A 소유)이 바이트로 고정돼 있어, 레지스트리 단위·스냅샷 재캡처와 함께 바꿔야 한다(docs/DATA-PROCESSING.ko.md 4.4).
+// ⑤⑧ 바이럴 학습 경로는 레인 A 후속 학습 경로 PR에서 적용했고 tests/learning-input-minimization.test.mjs가 검증한다(docs/DATA-PROCESSING.ko.md 4.4).
 check('no external call was made',external.length===0&&posts.length===4);
 console.log(JSON.stringify({passed}));
