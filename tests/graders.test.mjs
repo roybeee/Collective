@@ -121,6 +121,35 @@ check('claim term ignores procedural mentions outside copy',()=>assert.equal(sta
 check('claim term accepts [확인 필요] and negation in copy',()=>assert.equal(status('unsupported_claim_term',role('게시 카피\n“오픈 혜택 [확인 필요] 안내”\n인기 표현은 쓰지 않습니다.')),'pass'));
 check('claim term scopes negation to the claim term',()=>{assert.equal(status('unsupported_claim_term',copy('그냥 떡볶이가 아닌 동네 인기 떡볶이.')),'fail');assert.equal(status('unsupported_claim_term',copy('오픈 혜택 놓치지 말고 오세요.')),'fail');assert.equal(status('unsupported_claim_term',copy('할인 없이도 만족스러운 한 끼.')),'pass')});
 check('claim term accepts a confirmed ledger basis',()=>assert.equal(status('unsupported_claim_term',role('게시 카피\n“오픈 혜택 안내”'),{facts:{confirmed:[{key:'오픈 혜택',value:'첫 주 음료 제공'}],prohibited:[]}}),'pass'));
+// 품질 측정 v2(2026-09-24 재평가 실측 합성): 금지 규칙을 적은 문장·표·제목 블록은 카피 사용이 아니다.
+const claimRules='## 게시 카피 3종과 용도·CTA\n### 카피 A\n“새로 들어온 K-POP 음반, 발매 일정부터 확인하세요.”\n\n### 금지 또는 보류 표현\n다음 표현은 확정 사실 목록에 근거가 없으므로 광고·헤드라인·CTA·대본·자막·예시 문안에 사용하지 않는다.\n\n| 유형 | 표현 | 조치 |\n|---|---|---|\n| 인기·순위 | ‘가장 인기 있는’, ‘판매 1위’, ‘많이 찾는’ | 실제 판매·인기 근거 확인 전 삭제 |\n| 가격·혜택 | ‘첫 주문 무료 배송’, ‘오픈 혜택 한정’ | 가격 확정 전 보류 |\n\n### 카피 B\n“발매 일정과 구성품을 먼저 확인하세요.”';
+const claimLists=['### CTA·헤드라인 원칙\n현재 확정된 가격·인기·판매 1위·최초·유일·할인·무료·오픈 혜택·효능·원산지·수상 이력·재고 수량·배송 기간 표현은 쓰지 않는다.','### 헤드라인 원칙\n증빙 전에는 “공식”, “독점”, “유일”, “최저가”, “정품 보장”, “한정 수량”, “판매 1위”, “최초 입고” 표현을 쓰지 않는다.','### 확인 계획\n“가장 인기 있는 K-POP 음반” 같은 문구는 실제 판매 순위 자료를 확인하기 전까지 헤드라인·CTA·자막 어디에도 쓰지 않는다.','### 카피 가이드\n| 구분 | 사용하지 않을 표현 | 이유 |\n|---|---|---|\n| 인기 | ‘가장 인기 있는 음반’ | 판매 근거 없음 |'];
+const claimTable=copyCell=>'### 카피 비교표\n| 콘셉트 | 핵심 카피 | 금지 표현 |\n|---|---|---|\n| A | '+copyCell+' | ‘판매 1위 음반’, ‘최초 공개 한정반’ |';
+check('claim term skips a prohibited-expression heading block and its table',()=>assert.equal(status('unsupported_claim_term',{id:'k',kind:'role',role:'content',text:claimRules}),'pass'));
+check('claim term treats a sentence-final prohibition as negating the whole list',()=>{for(const text of claimLists)assert.equal(status('unsupported_claim_term',{id:'k',kind:'role',role:'content',text}),'pass',text)});
+check('claim term skips only the prohibited column of a table that has a copy column',()=>{assert.equal(status('unsupported_claim_term',role(claimTable('새로 들어온 K-POP 음반입니다'))),'pass');assert.equal(status('unsupported_claim_term',role(claimTable('가장 인기 있는 K-POP 음반입니다'))),'fail')});
+check('claim term still fails unsupported popularity copy',()=>{for(const text of ['### 게시 카피\n가장 인기 있는 K-POP 음반입니다.','### 게시 카피\n가장 인기 있는 K-POP 음반입니다. 할인 표현은 쓰지 않는다.','### 확인 계획\n대표 문구는 “가장 인기 있는 K-POP 음반입니다”로 씁니다.'])assert.equal(status('unsupported_claim_term',role(text)),'fail',text)});
+// 문장 끝 부정이 있어도 인용 카피를 '처럼 쓴다·로 쓰되'로 쓰는 문맥이면 사용이다. 표현 사용과 무관한 부정('발행하지 않습니다')은 먼 대상 표현을 면제하지 않는다.
+check('claim term keeps quoted copy used with a positive verb despite a later prohibition',()=>{for(const text of ['### 헤드라인\n헤드라인은 “가장 인기 있는 K-POP 음반”처럼 쓰고, 근거 없는 할인·무료·최초 같은 표현은 확정 전까지 쓰지 않는다.','### 헤드라인\n헤드라인은 “가장 인기 있는 K-POP 음반”으로 쓰되 가격은 확정 전까지 넣지 않는다.','### 게시 카피\n가장 인기 있는 K-POP 음반을 소개하는 이번 주말 팝업 캠페인에서는 첫 구매 고객 대상 할인 쿠폰을 발행하지 않습니다.'])assert.equal(status('unsupported_claim_term',role(text)),'fail',text)});
+// 금지 맥락은 라벨 전체가 금지·보류 목록일 때만이다. 계약 제목('…·금지 표현·…')이나 조건 주석('(주류 제외)')은 카피를 면제하지 않는다.
+check('claim term keeps checking copy under mixed or condition-noted labels',()=>{for(const text of ['## 채널 역할·랜딩/매장 연결·금지 표현·크리에이티브 평가 기준\n- 랜딩 헤드라인: 가장 인기 있는 K-POP 음반','### 오픈 카피 (주류 제외)\n가장 인기 있는 떡볶이, 오늘 오픈합니다.','### 채널 선택과 제외\n- 인스타그램: 선택. 릴스 자막 “가장 인기 있는 K-POP 음반”으로 씁니다.'])assert.equal(status('unsupported_claim_term',role(text,{role:'strategy'})),'fail',text)});
+// 금지 나열의 모든 항목을 문장 끝까지 판정해도 문장마다 한 번만 분석한다(제곱 시간 방지).
+check('claim negation stays fast on 40,000-character negated lists',()=>{for(const text of ['### 게시 카피\n'+'인기·'.repeat(13000)+' 표현은 쓰지 않는다.','### 게시 카피\n'+'“인기”, '.repeat(5500)+' 표현은 쓰지 않는다.','### 확인 계획\n'+'“가장 인기 있는 음반” '.repeat(3000)+'같은 문구는 쓰지 않는다.','### 게시 카피\n'+'인기는 '.repeat(8000)+'쓰지 않는다.']){const t=Date.now();assert.equal(status('unsupported_claim_term',role(text)),'pass');assert.ok(Date.now()-t<1000,text.slice(0,12))}});
+// 측정 v2 리뷰 재현(HEAD 443fff4 fail, v2 초안 pass): 뒤 절의 다른 주제어('가격은')에 붙은 부정은 앞 카피를 면제하지 않는다.
+const laterSubject=['### 게시 카피\n가장 인기 있는 떡볶이 세트와 함께 즐기는 동네 분식 한 상을 매장에서 만나 보세요, 가격은 표기하지 않는다.','### 게시 카피\n“판매 1위 떡볶이”를 첫 컷 자막으로 크게 보여 주는 15초 영상에서 가격은 쓰지 않는다.','### 게시 카피\n판매 1위 떡볶이와 매장 위치, 운영 시간을 소개하는 첫 게시물이며, 가격은 확정 전까지 쓰지 않는다.'];
+check('claim term still fails when a later clause negates another subject',()=>{for(const text of laterSubject)assert.equal(status('unsupported_claim_term',role(text)),'fail',text);assert.equal(status('brief_prohibition_conflict',role('### 게시 카피\n숯불 향을 살린 떡볶이를 매장 입구에서 직접 조리하는 모습을 보여 주는 릴스에서 가격은 쓰지 않는다.'),terms),'fail')});
+// 금지어가 들어 있기만 한 제목·라벨('보류 표현 포함', '삭제 후보', '보류 사유', '보류 해제 후')과 '대체 문구'는 금지 맥락이 아니다.
+const heldWordLabels=['### 헤드라인 (보류 표현 포함)\n가장 인기 있는 떡볶이, 오늘 오픈합니다.','### 삭제 후보와 대체 카피\n가장 인기 있는 떡볶이, 오늘 오픈합니다.','### 게시 카피\n- 보류 사유: 없음. 판매 1위 떡볶이, 오늘 오픈합니다.','### 보류 해제 후 게시 카피\n가장 인기 있는 K-POP 음반입니다.','### 보류 해제 후 게시할 카피\n판매 1위 떡볶이, 오늘만 무료 증정!','### 금지 표현과 대체 문구\n- 대체 문구: “가장 인기 있는 K-POP 음반, 지금 만나보세요”'];
+check('claim term keeps checking copy under labels that only mention a hold or ban',()=>{for(const text of heldWordLabels)assert.equal(status('unsupported_claim_term',role(text)),'fail',text)});
+// 카피 표에 보류·금지 칸이 함께 있으면 그 칸만 비우고 카피 칸은 채점한다(표 전체를 건너뛰는 것은 나머지 칸이 모두 분류·보조 칸일 때뿐).
+const heldColumnTables=['| 채널 | 게시 문구 | 보류 사유 |','| 안 | 문구 | 제외 여부 |','| 안 | 문구 | 보류 사유 |','| 안 | 메시지 | 제외 이유 |','| 채널 | 게시 문구 | 보류 여부 |','| 채널 | 내용 | 금지 |'].map(h=>'### 게시 카피\n'+h+'\n|---|---|---|\n| A | 판매 1위 떡볶이, 오늘 오픈합니다. | 없음 |');
+check('claim term checks the copy cells of a table that also has a hold or ban column',()=>{for(const text of heldColumnTables)assert.equal(status('unsupported_claim_term',role(text)),'fail',text)});
+// '써서는 안 된다'·'사용해서는 안 됩니다'·'써도 되는지는 … 쓰지 않는다'는 인용 카피 사용이 아니다.
+check('claim term reads “…”처럼 써서는 안 된다 as a rule',()=>{for(const text of ['### 헤드라인 원칙\n“판매 1위 떡볶이”처럼 써서는 안 된다.','### 헤드라인 원칙\n“가장 인기 있는 떡볶이”로 사용해서는 안 됩니다.','### 헤드라인 원칙\n“가장 인기 있는 떡볶이”처럼 써도 되는지는 판매 자료 확인 전까지 쓰지 않는다.'])assert.equal(status('unsupported_claim_term',role(text)),'pass',text)});
+// 규칙 문장: 관형절이 꾸미는 주제어('암시하는 표현은', '메뉴라는 표현은', '내세우는 문구는')와 연결 어미 뒤로 이어지는 주제어('검토하되, 지금은')의 끝 부정.
+const ruleSentences=['### 헤드라인 원칙\n“가장 인기 있는 K-POP 음반”처럼 판매 근거가 없는 표현은 실제 판매 자료를 확인하기 전까지 쓰지 않는다.','### 게시 카피 원칙\n판매 1위, 최초 입고, 가장 인기 같은 표현은 판매 자료가 확인될 때까지 헤드라인과 자막에 넣지 않는다.','### 게시 카피\n가장 인기 있는 메뉴라는 표현은 판매 자료가 없으므로 이번 게시물의 헤드라인·본문·해시태그 어디에도 사용하지 않습니다.','### 게시 카피\n“판매 1위”나 “가장 인기” 같은 문구는 실제 판매 자료를 받은 뒤에도 점장 확인 전에는 쓰지 않는다.','### 게시 카피\n인기 메뉴, 판매 1위 메뉴처럼 순위를 암시하는 표현은 근거 자료가 확보되기 전까지 게시물 어디에도 쓰지 않는다.','### 카피 원칙\n판매 1위나 가장 인기 있는 메뉴를 내세우는 문구는 판매 순위 자료를 확인할 때까지 헤드라인과 CTA 모두에서 쓰지 않는다.','### 카피 원칙\n판매 1위 표현은 판매 자료가 오면 검토하되, 지금은 헤드라인에 쓰지 않는다.'];
+check('claim term keeps long rule sentences with relative clauses and carried topics negated',()=>{for(const text of ruleSentences)assert.equal(status('unsupported_claim_term',role(text)),'pass',text)});
+check('claim term reads quoted discussion copy in its sentence',()=>{assert.equal(status('unsupported_claim_term',talk({...goodTalk,proposal:'“가장 인기 있는 K-POP 음반” 같은 문구는 판매 순위 자료 확인 전까지 헤드라인에 쓰지 않습니다.'})),'pass');assert.equal(status('unsupported_claim_term',talk({...goodTalk,proposal:'첫 컷 자막은 “가장 인기 있는 K-POP 음반”으로 씁니다.'})),'fail')});
 
 // 9 industry_metric_leak
 check('industry leak passes own-industry metrics',()=>assert.equal(status('industry_metric_leak',role('꽃다발 픽업 완료 건수를 일별로 기록한다.'),{industry:'florist'}),'pass'));
@@ -134,6 +163,12 @@ check('revisit definition passes a matured cohort',()=>assert.equal(status('revi
 check('revisit definition fails an immature denominator',()=>assert.equal(status('revisit_cohort_definition',role('재방문율 = 두 번째 구매 고객 수 ÷ 첫 구매 고객 수')),'fail'));
 check('revisit definition fails a label line followed by a formula',()=>assert.equal(status('revisit_cohort_definition',role('재방문율\n= 30일 내 두 번째 주문 고객 수 ÷ 첫 구매 고객 수 × 100')),'fail'));
 check('revisit definition is not applicable without a definition',()=>assert.equal(status('revisit_cohort_definition',role(long)),'not_applicable'));
+// 품질 측정 v2(2026-09-24 재평가 실측 합성): 정의가 아닌 문장·계산하지 않는다는 문장은 정의로 보지 않는다.
+const revisitNotes=['30일 재방문율은 이번 결과의 주 KPI가 아니다.','현재 고객 식별자와 구매 원자료가 없어 재방문율은 계산하지 않습니다.','재방문율(재방문 고객 ÷ 첫 방문 고객)은 고객 식별자가 없어 이번에는 계산하지 않습니다.','재구매율: 원자료 확보 전까지 측정 보류'];
+check('revisit definition ignores non-definition and not-computed sentences',()=>{for(const s of revisitNotes)assert.equal(status('revisit_cohort_definition',role(s+'\n'+long)),'not_applicable',s)});
+// 뒤 절의 단서('쿠폰 고객은 제외한다')는 정의를 지우지 않고, 콜론·빗금 산식과 '비중'·'…수로 계산한다'도 정의다(측정 v2 리뷰 재현, HEAD fail).
+check('revisit definition still fails immature definitions',()=>{for(const s of ['30일 재방문율 = 30일 안에 재방문한 고객 ÷ 첫 방문 고객','재방문율은 첫 방문 뒤 30일 안에 다시 방문한 고객의 비율입니다.','재구매율은 두 번째 구매 고객 수를 첫 구매 고객 수로 나눈 값이다.','재방문율을 30일 안에 다시 결제한 손님 비율로 정의한다.','재방문율: 30일 내 두 번째 주문 고객 수 / 첫 주문 고객 수','재방문율은 30일 안에 다시 방문한 고객 ÷ 첫 방문 고객이며, 쿠폰 고객은 제외한다.','재방문율 = 재방문 고객 수 ÷ 전체 고객 수, 단 직원 주문은 제외','재방문율은 두 번째 주문 고객 수를 첫 주문 고객 수로 나눠 계산하되 환불 주문은 제외합니다.','재방문율: 30일 내 재방문 고객 / 첫 방문 고객','재방문율은 첫 구매 뒤 30일 안에 다시 구매한 고객 비중이다.','재방문율: 재방문 고객 / 첫 방문 고객','재방문율: 두 번째 주문 고객 / 첫 주문 고객 × 100','재방문율은 첫 방문 뒤 30일 안에 다시 온 고객 비중이다.','재방문율은 다시 방문한 고객 수를 전체 방문 고객 수로 계산한다.'])assert.equal(status('revisit_cohort_definition',role(s+'\n'+long)),'fail',s)});
+check('revisit definition passes a matured sentence definition',()=>assert.equal(status('revisit_cohort_definition',role('재방문율은 30일 관찰을 마친 첫 구매 고객 가운데 다시 구매한 고객의 비율입니다. 30일 재방문율은 이번 결과의 주 KPI가 아니다.')),'pass'));
 
 // 11 local_channel_coverage
 const store={localStore:true};
