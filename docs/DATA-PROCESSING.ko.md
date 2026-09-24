@@ -26,7 +26,7 @@
 - **방법과 한계**:
   - 코드를 정적으로 읽었다.
   - 조사 단계에서 `lib/role-instruction.ts`의 `buildRoleInput`을 모의 데이터로 로컬 실행했다(외부 호출 0회, 스크립트는 저장소 밖 임시 파일). 입력에 들어간 것은 사람 수정본, 수정 요청 메모, 지점 주소, 진단 담당자, 주문 해시, 순매출, plan 담당자, 브랜드 메모다. 승인판 검토 메모와 `ai_edited` 표시는 들어가지 않았다.
-  - 회의 입력 함수(`lib/meeting-execution.ts:38` `context`)는 export되지 않아 실행으로 검증하지 못했다. 코드 판독 근거만 있다.
+  - 회의 입력 함수(`lib/meeting-execution.ts:38` `context`)는 export되지 않아 실행으로 검증하지 못했다. 코드 판독 근거만 있다. (G1 이후 `lib/meeting-input.ts` `meetingContext`로 공개됨)
   - 운영 사이트·HERMES·외부 API는 호출하지 않았다.
   - 운영 게시본이 이 작업 트리와 같은 흐름인지는 확인이 필요하다(8절 16번).
 
