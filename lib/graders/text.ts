@@ -46,11 +46,12 @@ const labelText=(l:string)=>heading(l)?l.replace(/^#+\s*/,'').trim():unmark(l).r
 const isLabel=(l:string)=>{const t=labelText(l);return heading(l)||(t.length>0&&t.length<=30&&!/[.:!?|‘’“”"]/.test(t)&&!/^[-*>]/.test(t))};
 // 인라인 라벨: '라벨: 본문' 줄(예: '- 게시 카피: …', '**카피 A:** …'). 그 줄에만 적용하고 둘러싼 라벨과 함께 본다.
 const INLINE_LABEL=/^(?:[-*>]\s*)?([^:：.!?|‘’“”"()[\]]{1,24}?)\s*[:：]\s*\S/;
-export type Block={index:number;line:string;label:string;isLabel:boolean};
+// inline은 그 줄의 인라인 라벨(없으면 undefined)이다. label은 인라인 라벨과 둘러싼 라벨을 이어 붙인 값이다.
+export type Block={index:number;line:string;label:string;isLabel:boolean;inline?:string};
 export function blocks(text:string):Block[]{
  return text.split('\n').reduce<{label:string;out:Block[]}>((acc,line,index)=>{
   const labelled=isLabel(line),label=labelled?labelText(line):acc.label,inline=labelled?undefined:INLINE_LABEL.exec(unmark(line))?.[1]?.trim();
-  return {label,out:[...acc.out,{index,line,label:inline?`${inline} ${label}`.trim():label,isLabel:labelled}]};
+  return {label,out:[...acc.out,{index,line,label:inline?`${inline} ${label}`.trim():label,isLabel:labelled,inline}]};
  },{label:'',out:[]}).out;
 }
 // '자료 필요'로 시작하는 줄(조건부 초안 없이 자료 요청만 남긴 줄) 판정과 제목 줄로 나눈 섹션은 앱 검사(role-output.ts)의 구현을 그대로 쓴다.
