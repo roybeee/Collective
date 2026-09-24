@@ -1,6 +1,9 @@
 import {ApiError,database,listRecords,readRecord,recordStatement,stamp,str,uid,num,runtime} from './server';
 import {storeContext} from './store-context';
-import {diagnosisIncluded,latestAdopted,CONTEXT_SOURCE_LIMIT,type AdoptedDiagnostic} from './ai-context';
+import {diagnosisIncluded,latestAdopted,productionAllow,CONTEXT_SOURCE_LIMIT,type AdoptedDiagnostic} from './ai-context';
+import {brandStoreAllow} from './store-allow-server';
+import {scopedBrandFacts,type BrandFact} from './brand-facts';
+import {modelSources,userProvidedSource,type ModelSourceText} from './source-masking';
 import type {Brand} from './agency';
 import {archiveCategories,classifySource,metricFields,type ArchiveSource,type ArchiveState,type ChannelObservation,type Diagnostic,type MetricField,type BrandIntake} from './archive';
 export async function archiveState(owner:string,brandId:string):Promise<ArchiveState>{const s=await listRecords<ArchiveState>(owner,'brand_archive_state',brandId);return s[0]||{id:brandId,revision:0,updatedAt:''}}
@@ -51,9 +54,30 @@ export function makeObservation(brandId:string,b:any):ChannelObservation{
 }
 // 채택 기록(브랜드 지문·채택자)은 AI 입력에서 뺀다.
 const withoutAdoption=(d:AdoptedDiagnostic)=>Object.fromEntries(Object.entries(d).filter(([k])=>!['brandBasis','confirmedBy','confirmedAt'].includes(k))) as Diagnostic;
-export async function brandArchiveContext(owner:string,brandId:string,storeId?:string){
+// 자료 본문 가림(4.4 ③, lib/source-masking.ts)의 허용 값. 제작 경로 가림(productionAllow)과 같은 값이다: 범위(브랜드·지점)의 확정 사실 값, 지점 레코드(store)의 주소·사업장 유선 번호,
+// 브랜드 단위(지점 미지정)면 그 브랜드 active 지점 전부의 같은 값(brandStoreAllow). 값은 로그·이벤트에 쓰지 않는다.
+export async function sourceMaskAllow(owner:string,brandId:string,storeId?:string,store?:unknown):Promise<string[]>{
+ const facts=scopedBrandFacts(await listRecords<BrandFact>(owner,'brand_fact',brandId),brandId,storeId).confirmed;
+ return productionAllow({facts:{confirmed:facts}},{storeMarketing:{store}},await brandStoreAllow(owner,{brandId,storeId}));
+}
+// 제작 입력(역할·회의·브리프) 확정 자료 한 건. 제목·확인 범위·URL·본문은 lib/source-masking.ts modelSources가 만든 값이다(키 순서는 이전과 같다).
+const ARCHIVE_SOURCE_PATH='brandArchive.confirmedSources',ARCHIVE_SOURCE_LIMIT=3500;
+const archiveSource=(s:ArchiveSource,t:ModelSourceText)=>({id:s.id,title:t.title,category:s.category,url:t.url,observedAt:s.observedAt,scope:t.scope,content:t.content,excerpt:t.excerpt,version:s.version});
+// 제작 입력의 브랜드 자료(archive)와 자료 가림 기록(sourceMasking). 4.4 ③ 확정 자료 중 사용자 자료(upload·manual)는 가려서 싣는다(조사 자료는 원문).
+// sourceMasking(필드 'brandArchive.confirmedSources.<순번>.<필드>'·종류·건수, 허용 탐지는 allowed:true, 값 없음)은 모델 입력에 싣지 않고, 역할·회의·브리프가 실행 기록(inputMasking)에 합친다(DP-4).
+export async function brandArchiveInput(owner:string,brandId:string,storeId?:string){
  const state=await archiveState(owner,brandId),brand=await readRecord<Brand>(owner,'brand',brandId),all=await listRecords<ArchiveSource>(owner,'brand_source',brandId);const sources=all.filter(s=>s.status==='confirmed'&&(!s.storeId||s.storeId===storeId));
  const latest=latestAdopted(await listRecords<AdoptedDiagnostic>(owner,'brand_diagnostic',brandId)),diagnosis=latest&&diagnosisIncluded(latest,all,brand,state.revision)?latest:undefined;
  const observations=storeId?[]:await listRecords<ChannelObservation>(owner,'brand_observation',brandId);
- return {storeMarketing:await storeContext(owner,brandId,storeId),revision:state.revision,observations:observations.slice(0,12),omittedObservations:Math.max(0,observations.length-12),confirmedSources:sources.slice(0,CONTEXT_SOURCE_LIMIT).map(s=>({id:s.id,title:s.title,category:s.category,url:s.url,observedAt:s.observedAt,scope:s.scope,content:s.content.slice(0,3500),excerpt:s.content.length>3500,version:s.version})),omittedSources:Math.max(0,sources.length-CONTEXT_SOURCE_LIMIT),confirmedDiagnosis:diagnosis?withoutAdoption(diagnosis):null,notice:'자료는 확인된 항목만 포함되며 관찰 수치는 사용자 기록입니다. 출처·기간·정의를 확인하고 미수집 값을 추정하지 마세요. 진단이 없으면 미확정으로 다루세요. 근거가 바뀐 진단은 제외됩니다.'};
+ const storeMarketing=await storeContext(owner,brandId,storeId),sent=sources.slice(0,CONTEXT_SOURCE_LIMIT),allow=sent.some(userProvidedSource)?await sourceMaskAllow(owner,brandId,storeId,storeMarketing?.store):[],{texts,masking}=modelSources(sent,ARCHIVE_SOURCE_LIMIT,allow,ARCHIVE_SOURCE_PATH);
+ return {archive:{storeMarketing,revision:state.revision,observations:observations.slice(0,12),omittedObservations:Math.max(0,observations.length-12),confirmedSources:sent.map((s,i)=>archiveSource(s,texts[i])),omittedSources:Math.max(0,sources.length-CONTEXT_SOURCE_LIMIT),confirmedDiagnosis:diagnosis?withoutAdoption(diagnosis):null,notice:'자료는 확인된 항목만 포함되며 관찰 수치는 사용자 기록입니다. 출처·기간·정의를 확인하고 미수집 값을 추정하지 마세요. 진단이 없으면 미확정으로 다루세요. 근거가 바뀐 진단은 제외됩니다.'},sourceMasking:masking};
+}
+// 모델 입력의 브랜드 자료만 돌려준다(기존 호출·평가 캡처 호환). 회의 스냅샷 타입(lib/meetings.ts)도 이 반환형이다.
+export async function brandArchiveContext(owner:string,brandId:string,storeId?:string){return (await brandArchiveInput(owner,brandId,storeId)).archive}
+// 전환 구간(DP3-B-02): 자료 가림 배포 전에 시작한 회의 스냅샷(원문 자료, 가림 기록 없음)을 새 회의와 같은 규칙으로 가린 사본과 가림 기록.
+// 자료 레코드에서 origin과 원문을 다시 읽는다(자료의 제목·확인 범위·URL·본문은 수정되지 않는다). 레코드가 지워졌으면 사용자 자료로 보고 스냅샷 값(이미 자른 본문)을 가린다.
+export async function maskedArchiveSnapshot(owner:string,brandId:string,storeId:string|undefined,archive:Awaited<ReturnType<typeof brandArchiveContext>>){
+ const byId=new Map((await listRecords<ArchiveSource>(owner,'brand_source',brandId)).map(s=>[s.id,s])),sent=archive.confirmedSources.map(c=>byId.get(c.id)||{...c,origin:undefined});
+ const allow=sent.some(userProvidedSource)?await sourceMaskAllow(owner,brandId,storeId,archive.storeMarketing?.store):[],{texts,masking}=modelSources(sent,ARCHIVE_SOURCE_LIMIT,allow,ARCHIVE_SOURCE_PATH);
+ return {archive:{...archive,confirmedSources:archive.confirmedSources.map((c,i)=>({...c,title:texts[i].title,url:texts[i].url,scope:texts[i].scope,content:texts[i].content,excerpt:texts[i].excerpt||!byId.has(c.id)&&c.excerpt}))},sourceMasking:masking};
 }
