@@ -32,8 +32,11 @@ export function DeepResearchPanel({brand,research,sources,busy,onFollowup}:{bran
  </>}
  </section>;
 }
-// A7 부분 구제 요약. 형식·근거 검증에 실패해 뺀 항목이 있을 때만 보인다. 조사 기록에 남은 사유를 모두 보여 준다.
-export function SalvageNote({salvage}:{salvage?:ResearchSalvage}){
- if(!salvage?.dropped?.length)return null;
- return <details><summary>살린 출처 {salvage.kept.sources??0} · 뺀 항목 {salvage.dropped.length} <small>사유 보기</small></summary><p className="subtle-note">형식·근거 검증에 실패한 항목만 빼고 나머지를 보관했습니다. 뺀 출처를 근거로 삼은 항목도 함께 뺐습니다. 살린 출처도 사람이 확인하기 전까지 검토 대기 자료입니다.</p><ul>{salvage.dropped.map((d,i)=><li key={i}>{salvageSections[d.section]||'기타'} {d.index+1}번째{d.id?` (${d.id})`:''} · {d.reason}</li>)}</ul></details>;
+// A7 부분 구제 요약. 형식·근거 검증에 실패해 뺀 항목이나 기존 자료 재선언이 있을 때 보인다. 뺀 항목은 조사 기록에 남은 사유를 모두 보여 준다.
+// 이미 보관된 입력 자료를 같은 URL로 다시 적은 재선언(redeclared)은 뺀 항목이 아니다. 인용은 원래 자료로 이어지므로 따로 한 줄로만 알린다.
+export function SalvageNote({salvage}:{salvage?:ResearchSalvage&{redeclared?:number}}){
+ const redeclared=salvage?.redeclared||0;if(!salvage?.dropped?.length&&!redeclared)return null;
+ const note=redeclared?<p className="subtle-note">기존 자료 재선언 {redeclared}건(인용 유지) · 이미 보관된 입력 자료를 결과에 다시 적은 것이라 새로 저장하지 않고 원래 자료로 인용을 연결했습니다.</p>:null;
+ if(!salvage?.dropped?.length)return note;
+ return <><details><summary>살린 출처 {salvage.kept.sources??0} · 뺀 항목 {salvage.dropped.length} <small>사유 보기</small></summary><p className="subtle-note">형식·근거 검증에 실패한 항목만 빼고 나머지를 보관했습니다. 뺀 출처를 근거로 삼은 항목도 함께 뺐습니다. 살린 출처도 사람이 확인하기 전까지 검토 대기 자료입니다.</p><ul>{salvage.dropped.map((d,i)=><li key={i}>{salvageSections[d.section]||'기타'} {d.index+1}번째{d.id?` (${d.id})`:''} · {d.reason}</li>)}</ul></details>{note}</>;
 }

@@ -118,13 +118,15 @@ const extra=parse(edit(x=>{for(let i=0;i<36;i++){x.sources.push(source('e'+i,'ot
 check('sources past the maximum are dropped and their citations cascade',extra.sources.length===40&&has(extra,'sources',40,'최대 40개를 넘어 뺐습니다.')&&extra.salvage.dropped.find(d=>d.section==='sources').id==='e35'&&has(extra,'access',41,CASCADE)&&has(extra,'customerSignals',1,CASCADE)&&extra.report.customerSignals.length===1);
 
 // 10) 출처 번호 충돌: 같은 번호를 다른 URL에 쓰면 어느 출처의 근거인지 가릴 수 없다. 그 번호의 출처와 인용을 모두 빼고, 다른 출처로 옮겨 붙이지 않는다.
-const CONFLICT='출처 번호가 겹쳐 근거를 가릴 수 없어 뺐습니다.';
+// 사유는 충돌 원인을 드러낸다(새 출처끼리 같은 번호 / 입력 자료 번호를 다른 URL로 재사용).
+const CONFLICT='출처 번호 충돌(새 출처 여러 개가 같은 번호를 씀)로 어느 근거인지 가릴 수 없어 뺐습니다.',REUSED='출처 번호 충돌(입력 자료 번호를 다른 URL로 재사용)로 어느 근거인지 가릴 수 없어 뺐습니다.';
 const twin=parse(edit(x=>{x.sources.push({...source('s3','customer'),url:'https://other.example.com/reviews',content:'B 사이트 별점 1점 불만'});x.customerSignals.push({sourceId:'s3',kind:'complaint',observation:'B 사이트 별점 1점 불만',implication:'확인 필요'})}));
 check('two new sources sharing an id are both dropped',has(twin,'sources',2,CONFLICT)&&has(twin,'sources',5,CONFLICT)&&!twin.sources.some(s=>s.id==='rs-e2-0'||s.url.includes('other.example.com')));
 check('citations of a shared new id are dropped, not re-bound to the first source',has(twin,'customerSignals',0,CONFLICT)&&has(twin,'customerSignals',1,CONFLICT)&&has(twin,'access',2,CONFLICT)&&!twin.report.customerSignals.length&&!JSON.stringify({report:twin.report,diagnosis:twin.diagnosis}).includes('rs-e2-0'));
 const shadow=parse(edit(x=>{x.sources.push({...source('in1','market'),url:'https://elsewhere.example.com/in1',content:'다른 페이지'})}));
-check('a new source reusing an input id with another URL drops every citation of that id',has(shadow,'sources',5,CONFLICT)&&has(shadow,'access',5,CONFLICT)&&has(shadow,'competitors',0,CONFLICT)&&has(shadow,'diagnosis.sourceIds',3,CONFLICT)&&!JSON.stringify({report:shadow.report,diagnosis:shadow.diagnosis}).includes('"in1"'));
+check('a new source reusing an input id with another URL drops every citation of that id',has(shadow,'sources',5,REUSED)&&has(shadow,'access',5,REUSED)&&has(shadow,'competitors',0,REUSED)&&has(shadow,'diagnosis.sourceIds',3,REUSED)&&!JSON.stringify({report:shadow.report,diagnosis:shadow.diagnosis}).includes('"in1"'));
 const redeclared=parse(edit(x=>{x.sources.push(source('in1','market'))}));
-check('re-declaring an input source with the same URL drops only the re-declaration',JSON.stringify(redeclared.salvage.dropped)===JSON.stringify([{section:'sources',index:5,id:'in1',reason:'중복되거나 잘못된 출처 번호입니다.'}])&&redeclared.diagnosis.sourceIds.includes('in1')&&redeclared.report.competitors.length===1);
+// 입력 자료를 번호·URL까지 같게 다시 적은 것은 뺀 항목이 아니라 재선언 수로만 센다(tests/deep-report-evidence.test.mjs).
+check('re-declaring an input source with the same URL is counted, not dropped, and citations stay on the input',redeclared.salvage.dropped.length===0&&redeclared.salvage.redeclared===1&&redeclared.diagnosis.sourceIds.includes('in1')&&redeclared.report.competitors.length===1);
 check('no external destination was called',external.length===0);
 console.log(JSON.stringify({passed}));

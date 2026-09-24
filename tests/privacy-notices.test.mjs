@@ -28,4 +28,9 @@ ok('the upload notice comes before every field, so no field label or accessible 
 ok('the upload notice comes before the file picker and the memo field',inOrder(upload,UPLOAD,'<Input type="file"',"'추가 메모'"));
 ok('upload labels used by E2E stay unchanged',['<DialogTitle>브랜드 자료 추가</DialogTitle>',"label={file?'추가 메모':'확인한 내용 · 원문 텍스트'}","{progress||'자료 보관'}"].every(t=>upload.includes(t)));
 
+// --- 의뢰 정보(app/brand-archive.tsx 브랜드 등록 설명·의뢰 정보 탭) ---------------------------------------------------
+// 대표 결정(2026-09-24)으로 의뢰 목적·시장·경쟁사를 개인정보 패턴을 가린 뒤 AI 조사에 보내게 되어 '보내지 않습니다' 안내를 바꿨다. 패턴 가림은 이름을 잡지 못하므로 적지 말라는 문장을 같은 안내에 둔다.
+const INTAKE='의뢰 목적·시장·경쟁사는 전화·이메일·주소 같은 개인정보 패턴을 가린 뒤 AI 조사에 보냅니다. 고객 이름·전화번호·주소 같은 개인정보는 적지 마세요.';
+ok('brand registration and the intake tab say intake notes are masked and ask not to write personal data',source('app/brand-archive.tsx').split(INTAKE).length===3);
+
 console.log(JSON.stringify({passed}));
