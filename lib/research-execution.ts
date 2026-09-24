@@ -1,12 +1,12 @@
 import {markUsageOutcomeSafely as markUsageOutcome} from './usage-outcome';
-import {storeContext} from './store-context';
+import {storeContext,modelStoreContext} from './store-context';
 import {storeResearchInstructions,type Store} from './store-marketing';
 import {parseStoreReport} from './store-server';
 import {ApiError,str,json,failure,database,readRecord,listRecords,recordStatement,connection,acquireLock,releaseLock,stamp,type Connection} from '@/lib/server';
 import type {Brand} from '@/lib/agency';
 import {archiveCategories,researchActive,publicResearch,type BrandResearch,type ArchiveSource,type ChannelObservation,type Diagnostic} from '@/lib/archive';
 import {archiveState,stateWrite,assertArchiveIdle} from '@/lib/archive-server';
-import {archiveResearchInstructions,researchObject,parseResearchSources,parseDiagnostic} from '@/lib/archive-research';
+import {archiveResearchInstructions,researchObject,parseResearchSources,parseDiagnostic,researchBrand,authorPrivacy} from '@/lib/archive-research';
 import {DEEP_RESEARCH_VERSION,defaultResearchPlan} from '@/lib/deep-research';
 import {deepInstructions,parseDeepText,responseUrls,DeepReportShapeError} from '@/lib/deep-research-server';
 import {hermesSubmissionStatement,submitHermes,pollHermes} from '@/lib/hermes';
@@ -33,6 +33,11 @@ const repairInstructions=`당신은 심층 브랜드 조사 결과의 형식 수
 ${deepInstructions.split('\n').find(line=>line.startsWith('보안:'))}
 오류만 고친 같은 JSON 형식 하나를 반환하세요(설명/마크다운 없이). 새 조사를 하지 말고 도구·브라우저·검색을 쓰지 마세요. 새 출처를 추가하지 말고 original에 없는 사실·수치·URL을 만들지 마세요. 고칠 수 없는 항목은 지어내지 말고 빼세요. sourceIds/sourceId는 allowedSourceIds 또는 결과 sources의 id만 씁니다.
 ${deepInstructions.slice(Math.max(0,deepInstructions.indexOf('출력 JSON 계약')))}`;
+// 4.4 ⑤ 모델 입력의 조사 브랜드·계획. 브랜드는 정체성 필드와 공식 웹사이트·SNS 주소만 보낸다(researchBrand). 저장한 조사 스냅샷은 바꾸지 않고 보낼 때 고르므로 브랜드 등록 자동 조사(lib/research-queue.ts)에도 같이 적용된다.
+// 계획 목표(plan.objective)는 의뢰 목적(intake.clientNeed) 자유 텍스트를 담으므로 의뢰 정보가 없을 때의 기본 목표로 보낸다. 업종 분류·채널 목록은 레코드에서 도출한 값이라 그대로 둔다.
+const modelBrand=(r:BrandResearch)=>researchBrand(r.snapshot.brand as Brand,true);
+const modelPlan=(r:BrandResearch)=>r.plan&&{...r.plan,objective:defaultResearchPlan({...r.snapshot.brand as Brand,intake:undefined}).objective};
+// 4.4 ② 점포 맥락은 저장한 스냅샷에서도 주문 해시(orderRefs)를 빼고 보낸다(modelStoreContext). ⑧ 지점 진단(store_diagnosis)은 점포 전용 지시를 쓰므로 작성자 식별정보 제외 문구(authorPrivacy)를 여기서 붙인다.
 function writes(owner:string,r:BrandResearch){return [recordStatement(owner,'brand_research',r.id,r,r.brandId),database().prepare('UPDATE jobs SET status=?,error=?,tokens=?,updated_at=? WHERE owner=? AND id=?').bind(r.status==='running'?'in_progress':r.status,r.error||null,r.tokens,r.updatedAt,owner,jobId(owner,r.id))]}
 export async function executeResearch(owner:string,b:Record<string,any>,submissionTimeoutMs=90000){let lock='',lockOwner='',prepared:BrandResearch|undefined,current:BrandResearch|undefined,recovering=false;try{
  const id=str(b.id,'조사 번호',70,true);if(!/^[a-zA-Z0-9_-]+$/.test(id))throw new ApiError(400,'조사 번호를 확인하세요.');lockOwner=b.action==='start'?owner:owner+':research:'+id;lock=await acquireLock(lockOwner);
@@ -60,8 +65,8 @@ export async function executeResearch(owner:string,b:Record<string,any>,submissi
   const selected=step.sourceIds?sources.filter(s=>step.sourceIds!.includes(s.id)):sources.slice(0,30);
   step.sourceIds=selected.map(s=>s.id);
   const prior=r.previousResearchId?await readRecord<BrandResearch>(owner,'brand_research',r.previousResearchId):undefined;
-  const input={execution:r.execution,protocol:r.protocol,plan:r.plan,access:r.access,maxNewSources:Math.max(0,Math.min(40,200-archived.length)),previousGaps:prior?.report?.quality.issues||[],brand:r.snapshot.brand,store:r.snapshot.store,storeContext:r.snapshot.storeContext,mode:r.mode,stage:step.stage,requestedAt:stamp(),sources:selected.map(s=>({id:s.id,title:s.title,status:s.status,category:s.category,url:s.url,scope:s.scope,observedAt:s.observedAt,content:s.content.slice(0,4500),excerpt:s.content.length>4500})),omittedSources:Math.max(0,sources.length-selected.length),observations:r.snapshot.observations.slice(0,12),priorSteps:r.steps.filter(s=>s.status==='completed').map(s=>({stage:s.stage,summary:s.summary,limitations:s.limitations}))};
-  step.status='uncertain';r.updatedAt=stamp();await database().batch([...writes(owner,r),hermesSubmissionStatement(owner,step.id,{instructions:step.stage==='store_diagnosis'?storeResearchInstructions:step.stage==='investigation'?deepInstructions:archiveResearchInstructions(step.stage,r.mode)+(r.storeId?'\n이번 작업은 특정 점포의 조사입니다. 입력 store와 storeContext를 기준으로 지점명·주소를 확인하세요. identity는 메뉴·가격·영업시간·주차·예약/주문 경로, customer는 생활권·이용 상황·동일 상권 경쟁 매장·리뷰의 방문 장벽, channel은 네이버 플레이스/검색광고·블로그·지역 맛집 페이지·당근·지도·재방문 동선을 우선 조사하세요. 사용자 제공 사실과 공개 관찰을 구분하고 다른 지점의 수치를 섞지 마세요. SNS 영상 표본 수를 채우는 작업은 필수가 아닙니다.':''),input:JSON.stringify(input)},r.brandId)]);prepared=r;
+  const input={execution:r.execution,protocol:r.protocol,plan:modelPlan(r),access:r.access,maxNewSources:Math.max(0,Math.min(40,200-archived.length)),previousGaps:prior?.report?.quality.issues||[],brand:modelBrand(r),store:r.snapshot.store,storeContext:modelStoreContext(r.snapshot.storeContext),mode:r.mode,stage:step.stage,requestedAt:stamp(),sources:selected.map(s=>({id:s.id,title:s.title,status:s.status,category:s.category,url:s.url,scope:s.scope,observedAt:s.observedAt,content:s.content.slice(0,4500),excerpt:s.content.length>4500})),omittedSources:Math.max(0,sources.length-selected.length),observations:r.snapshot.observations.slice(0,12),priorSteps:r.steps.filter(s=>s.status==='completed').map(s=>({stage:s.stage,summary:s.summary,limitations:s.limitations}))};
+  step.status='uncertain';r.updatedAt=stamp();await database().batch([...writes(owner,r),hermesSubmissionStatement(owner,step.id,{instructions:step.stage==='store_diagnosis'?storeResearchInstructions+'\n'+authorPrivacy:step.stage==='investigation'?deepInstructions:archiveResearchInstructions(step.stage,r.mode)+(r.storeId?'\n이번 작업은 특정 점포의 조사입니다. 입력 store와 storeContext를 기준으로 지점명·주소를 확인하세요. identity는 메뉴·가격·영업시간·주차·예약/주문 경로, customer는 생활권·이용 상황·동일 상권 경쟁 매장·리뷰의 방문 장벽, channel은 네이버 플레이스/검색광고·블로그·지역 맛집 페이지·당근·지도·재방문 동선을 우선 조사하세요. 사용자 제공 사실과 공개 관찰을 구분하고 다른 지점의 수치를 섞지 마세요. SNS 영상 표본 수를 채우는 작업은 필수가 아닙니다.':''),input:JSON.stringify(input)},r.brandId)]);prepared=r;
   const result=await submitHermes(owner,step.id,cfg,undefined,submissionTimeoutMs);step.providerId=result.id;step.status='running';r.status='running';r.error=undefined;r.retryAt=undefined;r.retryCount=0;await database().batch(writes(owner,r));return json(publicResearch(r));
  }
  if(!step.providerId){if(b.action!=='recover'){r.status='uncertain';r.error='조사 접수 확인이 지연돼 같은 요청으로 다시 확인합니다.';researchRetry(r);await database().batch(writes(owner,r));return json(publicResearch(r))}recovering=true;prepared=r;const result=await submitHermes(owner,submissionOf(step),cfg,undefined,submissionTimeoutMs);step.providerId=result.id;step.status='running';r.status='running';r.error=undefined;r.retryAt=undefined;r.retryCount=0;await database().batch(writes(owner,r));return json(publicResearch(r))}
