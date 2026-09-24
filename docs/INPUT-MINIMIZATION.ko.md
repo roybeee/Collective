@@ -76,12 +76,12 @@
 | 경로 | 가리는 필드 |
 |---|---|
 | 역할 | `brand.brandIntro.text`, `brand.identity.audience`·`constraints`, `evidence.directives[].text`, 후보·금지 사실 값 `evidence.facts.candidate[].value`·`prohibited[].value`, 점포 맥락의 지점 자유 텍스트 `brandArchive.storeMarketing.store`의 `name`·`customer`·`goal`·`daypart`·`menu`·`hours`·`access`·`capacity`·`economics`·`competitors`(주소 `address`는 허용 값이라 뺀다), `campaign.title`·`goal`·`audience`·`channels`·`stores`·`products`·`constraints`·`sources`·`plan.*`, 앞선 작업물 `previous[].title`·`content`(사람 수정본 포함), `previousDecisions.agenda`·`decisions`·`questions`, `revisionRequest.note`(검토 메모)·`previousExcerpt` |
-| 회의 | `agenda`, 브랜드·상시 지시·후보·금지 사실·지점 자유 텍스트·캠페인(역할과 같음), `recordedMetrics[].notes`·`source`·`definition`·`scope`(비교 범위)·`period`(scope가 붙는 기간 표기), `previousMeeting.agenda`, `originalArtifacts[]`·`completedRevisions[]`·`candidateArtifacts[]`의 `title`·`content`(개선본은 `completedRevisions`와 품질 단계 `candidateArtifacts` 두 곳으로 가므로 둘 다 가린다) |
+| 회의 | `agenda`, 브랜드·상시 지시·후보·금지 사실·지점 자유 텍스트·캠페인(역할과 같음), `recordedMetrics[].notes`·`source`·`definition`·`scope`(비교 범위)·`period`(scope가 붙는 기간 표기), `previousMeeting.agenda`, 이전 회의 합의 `previousMeeting.decisions.decisions`·`questions`(역할의 `previousDecisions`와 같은 규칙), `originalArtifacts[]`·`completedRevisions[]`·`candidateArtifacts[]`의 `title`·`content`(개선본은 `completedRevisions`와 품질 단계 `candidateArtifacts` 두 곳으로 가므로 둘 다 가린다) |
 | 브리프 | 브랜드·상시 지시·후보·금지 사실·지점 자유 텍스트(역할과 같음), `currentBrief`(캠페인 필드와 `plan.*`), `previousCampaigns[].title`·`goal`·`plan.*`, `recordedMetrics[]`(회의와 같음), `approvedLearnings[].title`·`content` |
 
 허용 값(가리지 않음, `productionAllow`): (1) 그 캠페인 범위(브랜드·지점)의 확정 사실 값(`evidence.facts.confirmed[].value`). (2) 지점 레코드의 주소(`store.address`)와 연락 동선(`store.access`)에 적힌 유선·대표 번호(`storeAllowValues`). 휴대폰 대역·이메일과 주요 고객(`customer`)·비교 매장(`competitors`) 같은 다른 자유 텍스트의 값은 허용하지 않는다(사업장 휴대폰·이메일은 확정 사실로 등록한다). (3) 브랜드 단위 캠페인(지점 미지정)이면 그 브랜드 active 지점 전부의 (2) 값(`lib/store-allow-server.ts brandStoreAllow`, 보관 지점 제외). 지점 캠페인은 점포 맥락의 지점 값만 쓴다. 역할은 요청의 `storeAllow`(모델 입력에는 싣지 않음, 0건이면 키 없음), 회의는 단계 제출 때, 브리프는 제출 때 읽는다. 허용 값 안의 조각과 같은 탐지도 허용한다(1절).
 
-가리지 않는 것: 확정 사실 값(`evidence.facts.confirmed`), 점포 맥락 중 지점 레코드 밖(채널 확인 근거·조사 초안·진단 관찰·실험·측정, 담당자 필드만 예외), 모델 출력(회의 발언·합의·개선 과제·개선본 변경 위치 `changes`), 학습 규칙(`learning`·`trialLearning`), 운영자 선호 규칙 블록(`operatorPreferences`, B3-1), 브랜드 자료 발췌(`brandArchive.confirmedSources`, 업로드 추출문은 레인 B).
+가리지 않는 것: 확정 사실 값(`evidence.facts.confirmed`), 점포 맥락 중 지점 레코드 밖(채널 확인 근거·조사 초안·진단 관찰·실험·측정, 담당자 필드만 예외), 모델 출력(회의 발언·합의·개선 과제·개선본 변경 위치 `changes`, 이전 회의의 발언 `previousMeeting.discussion`과 품질 출력 `previousMeeting.quality` 포함. 이전 회의 합의 문장만 역할 경로와 맞춰 가린다), 학습 규칙(`learning`·`trialLearning`), 운영자 선호 규칙 블록(`operatorPreferences`, B3-1), 브랜드 자료 발췌(`brandArchive.confirmedSources`, 업로드 추출문은 레인 B).
 
 ### 2.5 가림 기록과 저장본 (DP-4)
 
@@ -110,7 +110,7 @@
 | role-submission(16케이스) | 16/16 동일 | 제거·추가 필드 0. 다른 값은 캡처 시각(`campaign.updatedAt`, 실행 중 갱신되는 시각)뿐이다 | — | 0 |
 | prompt-baseline(역할 8, 회의 12단계 ×2, 학습 1) | 33/33 동일 | 8/8 동일(`inputHash` 포함) | 24/24 변경: (1) 작업물 제거 필드 `campaignId`·`campaignVersion`·`origin`(시드 작업물), 역할 실행 작업물은 여기에 `skillVersion`·`outputContractVersion`·`factRefs` (2) 품질 단계 `candidateArtifacts[].excerpt`(상한 표시, 2.1) 추가 | 0 |
 
-합성 fixture에는 허용 목록 밖 개인정보 패턴이 없어 가림 차이는 0이다(fixture의 지점 주소 `가상동 12 B동 201호`·`가상동 12`는 확정 사실이라 허용 값이다). `docs/EVAL.ko.md`의 옛 fixture 이름(`role-submission-fc8eb5c.json`)은 레인 B 소유 문서라 이 PR에서 고치지 않았다.
+합성 fixture에는 허용 목록 밖 개인정보 패턴이 없어 가림 차이는 0이다(fixture의 지점 주소 `가상동 12 B동 201호`·`가상동 12`는 확정 사실이라 허용 값이다). `docs/EVAL.ko.md`의 fixture 이름은 이 PR에서 `role-submission-9bdcfc8.json`으로 고쳤다. `docs/STATUS.md`의 옛 이름은 상태 문서 소유자(레인 B)가 갱신한다.
 
 리뷰 반영(탐지기·가림 경로·허용 값 변경)은 두 fixture를 바꾸지 않았다. 합성 fixture 본문에 새 경로(후보·금지 사실, 지점 자유 텍스트, 성과 `scope`·`period`, `completedRevisions`)의 탐지가 없고, 줄어든 탐지(카드 묶음·호수·나열)도 원래 0건이었다. 그래서 재캡처 없이 `tests/prompt-baseline.test.mjs`·`tests/role-instruction.test.mjs`가 그대로 통과한다.
 
@@ -136,7 +136,11 @@
 - 사용자가 브리프에 직접 적은 주소·전화가 확정 사실이나 지점 레코드에 없으면 가려져서, 브리프 사실 후보(`factCandidates`)로 제안되지 않는다(출처 확인은 원 입력으로 하므로 자리표시 값은 버려진다).
 - 가리지 않는 입력(2.4 '가리지 않는 것')에 개인정보가 있으면 그대로 간다. 특히 학습 규칙 문구, 운영자 선호 규칙, 점포 맥락 자유 텍스트(채널 확인 근거·조사 초안·진단 관찰), 브랜드 자료 발췌다.
 - 캠페인의 AI 초안 적용 기록(`draftMeta`: 제안 값·질문·가정)은 가림 경로에 넣지 않았다(모델이 만든 제안이다).
-- 회의 발언·합의 같은 모델 출력은 가리지 않는다. 이 변경 이전에 가리지 않은 입력으로 만든 출력에는 개인정보가 섞여 있을 수 있다.
+- 회의 발언·합의 같은 모델 출력은 가리지 않는다(이전 회의 합의 문장 `decisions`·`questions`만 예외로 가린다). 이 변경 이전에 가리지 않은 입력으로 만든 출력에는 개인정보가 섞여 있을 수 있다.
+- 확정 사실 값은 종류를 가리지 않고 허용 값이다. 점주 개인 휴대폰을 확정 사실로 등록하면 모든 가림 경로에서 그 번호가 원문으로 간다. 설계 결정('확정 브랜드 사실 값')대로이며, 게시용 사실 키로 좁힐지는 후속 결정이다.
+- 오탐 억제 목록의 단어 중 실제 법정동 이름과 겹치는 것(`연동`·`변동`·`작동`)은 그 동의 지번 주소(`제주시 연동 123-4`)를 잡지 못한다. 아파트 동·호 약식 표기(`101-1203`)도 잡지 않는다.
+- 의도적으로 난독화한 값은 잡지 않는다: `[at]`·`(at)`·` at `·` @ ` 이메일, 한글 로컬부·IDN 도메인 이메일, 한글 숫자(`공일공-…`)로 쓴 전화·주민번호, 탐지 전 제거 목록 밖의 보이지 않는 문자를 끼운 값. DP-5 사람 확인 몫이다.
+- 모델 지시문에는 `[전화번호]`·`[주소]` 같은 자리표시가 가린 값이라는 안내가 없다. 가린 입력으로 만든 산출물에 자리표시가 옮겨질 수 있다(실제 모델 동작은 `not_run`). 지시문 한 줄 추가는 지시문 해시와 스냅샷이 바뀌므로 후속 PR에서 재캡처와 함께 한다.
 - 작업물 검토 이벤트(`app/api/action/route.ts`의 '수정 요청 · 메모')처럼 제작 경로 밖의 이벤트 문구는 이 변경의 범위가 아니다.
 - 평가 케이스(`eval_case.request`)는 원 요청을 동결해 저장한다. 제출 때 `buildRoleInput`이 가리므로 평가 HERMES로는 가린 본문이 가지만, 저장된 동결 요청 자체는 원문이다. 브랜드 단위 캠페인이면 동결 요청에 지점 허용 값(`storeAllow`: 지점 주소·유선 번호)도 함께 저장된다.
 - 허용 조각은 탐지 단위로 비교한다. 지점 주소의 `도로명+건물번호`가 허용 값이면 본문의 같은 `도로명+건물번호`는 어디에 적혀도 남는다(같은 건물의 다른 호수는 가린다). 역할 `inputHash`는 허용 값을 포함하지 않으므로, 지점 주소만 바뀌면 가림 결과가 달라도 같은 작업 id가 된다.

@@ -43,7 +43,7 @@ const CANDIDATE_CONTENT_LIMIT=24000;
 const pick=(a:object,keys:readonly string[])=>Object.fromEntries(Object.entries(a).filter(([k])=>keys.includes(k)));
 // 가림 경로(③). 모델 출력(발언·합의·개선 과제)은 가리지 않는다. 개선본은 candidateArtifacts와 completedRevisions 두 곳으로 가므로 둘 다 제목·본문을 가린다.
 // 확정 사실 값은 허용 값이라 경로에 없다. 후보·금지 사실 값과 점포 맥락의 지점 자유 텍스트는 가린다.
-const MEETING_MASK_PATHS=['agenda',...BRAND_MASK_PATHS,...DIRECTIVE_MASK_PATHS,...FACT_MASK_PATHS,...STORE_MASK_PATHS,...campaignMaskPaths('campaign'),...metricMaskPaths('recordedMetrics'),'previousMeeting.agenda','originalArtifacts.*.title','originalArtifacts.*.content','completedRevisions.*.title','completedRevisions.*.content','candidateArtifacts.*.title','candidateArtifacts.*.content'];
+const MEETING_MASK_PATHS=['agenda',...BRAND_MASK_PATHS,...DIRECTIVE_MASK_PATHS,...FACT_MASK_PATHS,...STORE_MASK_PATHS,...campaignMaskPaths('campaign'),...metricMaskPaths('recordedMetrics'),'previousMeeting.agenda','previousMeeting.decisions.decisions','previousMeeting.decisions.questions','originalArtifacts.*.title','originalArtifacts.*.content','completedRevisions.*.title','completedRevisions.*.content','candidateArtifacts.*.title','candidateArtifacts.*.content'];
 // storeAllow: 브랜드 단위 회의의 지점 허용 값(lib/store-allow-server.ts). 가림 허용 목록에만 쓴다.
 function context(m:Meeting,s:MeetingStep,storeAllow:readonly string[]):{value:object;findings:InputMasking[]}{
  const snapshot=m.snapshot,ref=(id:string)=>discussionRef(m.steps.find(t=>t.id===id)?.role||'');

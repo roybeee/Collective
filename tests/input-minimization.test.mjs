@@ -26,7 +26,7 @@ const logged=[];for(const k of ['log','warn','error','info','debug']){const orig
 // 합성 개인정보(허용 목록 밖). 모두 가려져야 하고 파생 기록·전송 본문에 남으면 안 된다.
 const PHONE=n=>`010-0000-04${n}`;
 const PERSON='가상 담당자 김가상';
-const secrets=[...Array.from({length:15},(_,i)=>PHONE(17+i)),'synthetic.owner@example.com','synthetic.src@example.com','synthetic.edit@example.com','가상로 77','다상로 56',PERSON];
+const secrets=[...Array.from({length:17},(_,i)=>PHONE(17+i)),'synthetic.owner@example.com','synthetic.src@example.com','synthetic.edit@example.com','가상로 77','다상로 56',PERSON];
 // 허용 목록 값: 확정 사실(지점 주소·사업장 전화)과 지점 레코드 주소. 가리지 않는다.
 const STORE_ADDRESS='가상동 12 B동 201호',STORE_PHONE='02-000-0000';
 
@@ -129,6 +129,16 @@ check('meeting applies brand, owner and assignee rules',()=>{const d=stepInputs[
 check('meeting step inputs carry no synthetic personal data',()=>{for(const {input} of stepInputs)noSecret(JSON.stringify(input),'회의 입력')});
 check('meeting steps record masking findings without values',()=>{const f=stored.steps[0].inputMasking;assert.ok(Array.isArray(f)&&f.some(x=>x.field==='agenda'&&x.kind==='phone'&&x.count===1));assert.ok(stored.steps.every(s=>Array.isArray(s.inputMasking)));noSecret(JSON.stringify(stored.steps.map(s=>s.inputMasking)),'회의 가림 기록')});
 check('meeting snapshot keeps the user records for staleness checks',()=>assert.ok(stored.snapshot.artifacts.some(x=>x.reviewNote)&&stored.snapshot.brand.intake));
+// 이전 회의 합의(decisions·questions)는 역할 경로(previousDecisions)와 같은 규칙으로 가린다(리뷰 지적 PR 68).
+const PREV_DECISION=`고객 ${PHONE(32)} 에게 연락해 후기 받기`,PREV_QUESTION=`점주 ${PHONE(33)} 확인 필요`;
+await put('team_meeting','min-meeting',{...stored,steps:stored.steps.map(s=>s.phase==='synthesis'?{...s,output:{...s.output,decisions:PREV_DECISION,questions:PREV_QUESTION}}:s)},'min-d');
+const followUp=await (await meeting.executeMeeting(owner,{action:'start',id:'min-meeting-2',campaignId:'min-d',campaignVersion:(await server.readRecord(owner,'campaign','min-d')).version,agenda:'합성 후속 안건',previousMeetingId:'min-meeting'})).json();
+check('follow-up meeting started',()=>assert.equal(followUp.status,'running',JSON.stringify(followUp)));
+await (await meeting.executeMeeting(owner,{action:'advance',id:'min-meeting-2'})).json();
+const followInput=await inputOf('min-meeting-2:discussion:cmo');
+check('meeting previous decisions and questions are masked like the role path',()=>{assert.equal(followInput.previousMeeting.decisions.decisions,'고객 [전화번호] 에게 연락해 후기 받기');assert.equal(followInput.previousMeeting.decisions.questions,'점주 [전화번호] 확인 필요');noSecret(JSON.stringify(followInput),'후속 회의 입력')});
+await (await meeting.executeMeeting(owner,{action:'cancel',id:'min-meeting-2'})).json();
+await put('team_meeting','min-meeting',stored,'min-d'); // 주입한 합의 출력을 되돌린다(아래 DB 행 검사는 코드가 만든 행만 본다).
 
 // ── 브리프(A4): 입력 중인 브리프·이전 캠페인·승인 작업물 발췌 가림, 담당자 자리표시 ──
 await put('artifact','min-a-data',artifact('min-a','data',{status:'approved',content:`## 승인 측정 설계\n현장 담당 ${PHONE(27)} 확인.`}),'min-a');
@@ -164,7 +174,7 @@ check('brand-level brief keeps active store addresses verbatim and masks the res
 // 사용자가 입력한 원 레코드(과 그 내부 사본: 작업물 이력, 회의 스냅샷·안건, 브리프 입력)는 그대로 둔다.
 const userKinds=new Set(['brand','campaign','artifact','history','campaign_directive','metric','store','store_diagnostic','brand_fact']);
 // 역할 6회(복구·브랜드 단위 포함), 회의 13회(8 발언 + 실패 1 + 합의 + 개선 2 + 품질), 브리프 2회(지점·브랜드 단위).
-check('every HERMES request body is free of synthetic personal data',()=>{assert.equal(posted.length,21);for(const p of posted){noSecret(p,'HERMES 요청 본문');assert.ok(!p.includes(REVISION_PHONE),'개선본이 인용한 번호가 다시 전송됐습니다')}});
+check('every HERMES request body is free of synthetic personal data',()=>{assert.equal(posted.length,22);for(const p of posted){noSecret(p,'HERMES 요청 본문');assert.ok(!p.includes(REVISION_PHONE),'개선본이 인용한 번호가 다시 전송됐습니다')}});
 check('no derived DB row keeps synthetic personal data',()=>{
  for(const {name} of sql.prepare("SELECT name FROM sqlite_master WHERE type='table'").all()){
   for(const row of sql.prepare(`SELECT * FROM "${name}"`).all()){

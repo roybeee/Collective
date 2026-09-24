@@ -86,10 +86,10 @@ check('allowed detections are counted separately without values',()=>{const r=ma
 check('scanText counts only what would be masked',()=>assert.deepEqual(plain(scanText('매장 가상로 12',{allow:storeAllow})),[]));
 
 // 9) 탐지 0이면 원문 그대로, 여러 종류는 종류별 건수만 돌려준다(값 없음).
-const mixed='전화 010-0000-0000, 010-1111-0000 메일 synthetic.user@example.com 주소 가상로 12';
+const mixed='전화 010-0000-0000, 010-0000-0001 메일 synthetic.user@example.com 주소 가상로 12';
 check('no detection returns the same string',()=>{const t='합성 문장: 첫 방문 고객 30명';assert.equal(maskText(t).text,t)});
 check('findings are kind counts only',()=>assert.deepEqual(plain(scanText(mixed)),[{kind:'phone',count:2},{kind:'email',count:1},{kind:'address',count:1}]));
-check('findings never carry the detected values',()=>{const s=JSON.stringify([scanText(mixed),maskText(mixed).findings]);for(const v of ['0000','1111','synthetic','example','가상로'])assert.ok(!s.includes(v))});
+check('findings never carry the detected values',()=>{const s=JSON.stringify([scanText(mixed),maskText(mixed).findings]);for(const v of ['0000','0001','synthetic','example','가상로'])assert.ok(!s.includes(v))});
 check('masked text has no detected value left',()=>{const t=maskText(mixed).text;assert.ok(!/\d{4}/.test(t)&&!t.includes('@')&&!t.includes('가상로'),t)});
 
 // 10) maskFields: 지정 경로의 문자열만 가리고, 새 객체를 돌려주며, 키 순서를 지킨다.
