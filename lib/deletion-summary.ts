@@ -12,7 +12,7 @@ const deletedGroups:readonly Group[]=[
  {label:'작업물 이전 버전',kinds:['history']},{label:'온라인 채점 결과',kinds:['grading']},{label:'바이럴 실험',kinds:['viral_experiment']},
  {label:'실험 정정·수집 기록',kinds:['experiment_revision','measurement_draft','measurement_source','learning_guidance']},
  {label:'브리프 초안',kinds:['brief_draft']},{label:'상시 지시',kinds:['campaign_directive']},{label:'캠페인 이력',kinds:['event']},
- {label:'AI 요청·응답 원문',kinds:['hermes_submission','openai_submission','learning_task','learning_job_output','role_output_contract','role_output_failure','learning_snapshot']},
+ {label:'AI 요청·응답 원문',kinds:['hermes_submission','openai_submission','learning_task','learning_job_output','role_output_contract','role_output_failure','learning_snapshot','campaign_prompt_pin']},
  {label:'연속 실행·발행 설정',kinds:['campaign_sequence','background_attempt','execution_limits']},{label:'캠페인 토큰 상한',kinds:['token_budget']},
 ];
 // 제작·발행·주문 귀속 기록(blocksDeletion)이 있으면 삭제 자체가 거부되므로 대화상자는 사유만 보이고 보존 목록을 쓰지 않는다.

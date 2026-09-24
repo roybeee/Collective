@@ -10,7 +10,8 @@ export const usageKinds:readonly UsageKind[]=['role','meeting','brief','research
 // jobId: jobs.id(역할·회의·조사·학습) 또는 브리프 초안 id. promptVersion: '<스킬 버전>:<지시 sha256 앞 12자>', 스킬 버전이 없는 인라인 지시는 'inline:<해시>'.
 // appTree: 기록한 배포의 소스 트리(lib/app-version.ts, 개발 실행은 null). durationMs: 제출 원문 저장 시각부터 종료 관측까지.
 export type UsageJoinKeys={jobId:string|null;campaignId:string|null;campaignVersion:number|null;brandId:string|null;storeId:string|null;kind:UsageKind|null;role:string|null;artifactId:string|null;promptVersion:string|null;outputContractVersion:string|null;appTree:string|null;durationMs:number|null};
-export type UsageContextFields=Partial<Pick<UsageJoinKeys,'jobId'|'campaignId'|'campaignVersion'|'brandId'|'storeId'|'role'|'artifactId'|'outputContractVersion'>>&{skillVersion?:string|null};
+// promptVersion: 레지스트리 단위로 실행한 기록의 버전(F3a, unit@sha256 앞 12자). 없으면 아래 F2a 규칙으로 만든다. promptFallback: 조회 실패·손상으로 코드 상수를 쓴 실행.
+export type UsageContextFields=Partial<Pick<UsageJoinKeys,'jobId'|'campaignId'|'campaignVersion'|'brandId'|'storeId'|'role'|'artifactId'|'outputContractVersion'|'promptVersion'>>&{skillVersion?:string|null;promptFallback?:string|null};
 // submissionId: 제출 원문(hermes_submission·openai_submission) id. 제출 시각과 지시 해시를 여기서 읽고 원문은 바꾸지 않는다.
 // resolve: 첫 기록 때만 부르는 추가 읽기(브랜드·지점·스킬 버전 등). 진행 중 폴링마다 DB를 더 읽지 않게 한다.
 export type UsageContext=UsageContextFields&{kind:UsageKind;submissionId:string;resolve?:()=>Promise<UsageContextFields>};
@@ -25,7 +26,7 @@ export type ProviderUsage={
  costStatus:'estimated'|'unpriced'|'declared_estimate'|'reestimated';pricingSource:string|null;
  inputPricePerMillion:number|null;outputPricePerMillion:number|null;
  domainOutcome:UsageOutcome|null;outcomeObservedAt:string|null;
-}&Partial<UsageJoinKeys>&{superseded?:UsageSuperseded}&Partial<AliasReestimate>;
+}&Partial<UsageJoinKeys>&{promptFallback?:string}&{superseded?:UsageSuperseded}&Partial<AliasReestimate>;
 // 화면 표시용 판정(저장하지 않음): 작업물이 이전 버전이 됐거나(outdated) 브리프가 바뀌어 실행 기준이 무효가 됐다(brief_changed).
 export type UsageSuperseded='outdated'|'brief_changed'|null;
 const terminalStatuses=new Set(['completed','failed','error','cancelled','canceled','stopped','interrupted','incomplete']);
@@ -138,13 +139,14 @@ function joinFields(base:UsageJoinKeys,kind:UsageKind,f:UsageContextFields):Usag
 // 조인 키 보조 읽기(resolve용): 없으면(404) undefined. 다른 오류는 usageJoinKeys가 잡아 정적 키만 남긴다.
 export async function recordIfPresent<T>(owner:string,kind:string,id:string){try{return await readRecord<T>(owner,kind,id)}catch(error){if(error instanceof ApiError&&error.status===404)return undefined;throw error}}
 // submittedAt은 저장하지 않고 모델 경보의 실행 순서 판정에만 넘긴다.
-async function usageJoinKeys(owner:string,provider:UsageProvider,observedAt:string,context?:UsageContext):Promise<{keys:UsageJoinKeys;submittedAt:string|null}>{
+async function usageJoinKeys(owner:string,provider:UsageProvider,observedAt:string,context?:UsageContext):Promise<{keys:UsageJoinKeys&{promptFallback?:string};submittedAt:string|null}>{
  const base=emptyJoinKeys();
  if(!context)return {keys:base,submittedAt:null};
  try{
   const fields={...context,...(context.resolve?await context.resolve():{})},{submittedAt,instructionHash}=await submissionFacts(owner,provider,context.submissionId);
   const elapsed=submittedAt?Date.parse(observedAt)-Date.parse(submittedAt):NaN;
-  return {keys:{...joinFields(base,context.kind,fields),promptVersion:instructionHash?`${joinText(fields.skillVersion)??'inline'}:${instructionHash}`:null,durationMs:Number.isFinite(elapsed)&&elapsed>=0?Math.round(elapsed):null},submittedAt};
+  const fallback=joinText(fields.promptFallback);
+  return {keys:{...joinFields(base,context.kind,fields),promptVersion:joinText(fields.promptVersion)??(instructionHash?`${joinText(fields.skillVersion)??'inline'}:${instructionHash}`:null),durationMs:Number.isFinite(elapsed)&&elapsed>=0?Math.round(elapsed):null,...(fallback?{promptFallback:fallback}:{})},submittedAt};
  }catch{console.error('usage_identity_read_failed');return {keys:joinFields(base,context.kind,context),submittedAt:null}}
 }
 // 모델을 나중에 알게 된 실행(첫 기록엔 모델 없음)의 제출 시각. 읽기 실패는 경보 순서 판정만 건너뛴다(null).
