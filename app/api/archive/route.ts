@@ -5,11 +5,11 @@ import {autoResearchAccess} from '@/lib/research-tool-check';
 import {ApiError,identity,requireAdminActor,secureMutation,body,str,json,failure,database,readRecord,listRecords,recordStatement,acquireLock,releaseLock,stamp,uid,runtime,configuration,connection,assertNoActiveJobs} from '@/lib/server';
 import type {Brand} from '@/lib/agency';
 import {sourceSummary,publicResearch,type ArchiveSource,type ChannelObservation,type Diagnostic,type BrandResearch} from '@/lib/archive';
-import {archiveState,stateWrite,assertArchiveIdle,makeSource,makeObservation,intake} from '@/lib/archive-server';
+import {archiveState,stateWrite,assertArchiveIdle,makeSource,makeObservation,intake,deleteSourceFile,withoutCleanupKey,type SourceFileDeletion} from '@/lib/archive-server';
 import {diagnosisBasis,diagnosisIncluded,latestAdopted,brandBasis,type AdoptedDiagnostic} from '@/lib/ai-context';
 import {reviewActor,requireReasonCodes,sourceDecisionStatement} from '@/lib/review-decisions-server';
 export async function GET(req:Request){try{const owner=await identity(req),u=new URL(req.url),brandId=str(u.searchParams.get('brandId'),'브랜드',100,true),brand=await readRecord<Brand>(owner,'brand',brandId);
- if(u.searchParams.get('sourceId')){const s=await readRecord<ArchiveSource>(owner,'brand_source',str(u.searchParams.get('sourceId'),'자료',100,true));if(s.brandId!==brandId)throw new ApiError(404,'자료를 찾을 수 없습니다.');const{objectKey:_,...data}=s;return json(data)}
+ if(u.searchParams.get('sourceId')){const s=await readRecord<ArchiveSource&SourceFileDeletion>(owner,'brand_source',str(u.searchParams.get('sourceId'),'자료',100,true));if(s.brandId!==brandId)throw new ApiError(404,'자료를 찾을 수 없습니다.');const{objectKey:_,...data}=withoutCleanupKey(s);return json(data)}
  // 진단마다 근거 상태(basis)와 AI 입력 포함 여부(included)를 서버 규칙으로 계산해 화면이 같은 기준을 쓰게 한다.
  const state=await archiveState(owner,brandId),sources=await listRecords<ArchiveSource>(owner,'brand_source',brandId);
  const diagnostics=await listRecords<AdoptedDiagnostic>(owner,'brand_diagnostic',brandId),latest=latestAdopted(diagnostics);
@@ -54,6 +54,8 @@ export async function POST(req:Request){let owner='',lock='';try{owner=await ide
   }
   await database().batch([...writes,stateWrite(owner,brandId,state.revision+1)]);return json({ids:[...seen],revision:state.revision+1});
  }
+ // 원본 파일 삭제(관리자 전용): 레코드는 남기고 R2 원본만 지운다. 사용 제외와 달리 되돌릴 수 없다(lib/archive-server.ts deleteSourceFile).
+ if(b.action==='delete_source_file'){const who=await requireAdminActor(req);return json(await deleteSourceFile(owner,brandId,b,who))}
  if(b.action==='add_observation'){const o=makeObservation(brandId,b.data||{});await database().batch([recordStatement(owner,'brand_observation',o.id,o,brandId),stateWrite(owner,brandId,state.revision+1)]);return json({id:o.id})}
  if(b.action==='confirm_diagnosis'){
   const who=await requireAdminActor(req);
