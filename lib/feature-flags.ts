@@ -8,6 +8,7 @@ export const FEATURE_FLAGS={
  b1_reason_required:{defaultEnabled:false,description:'수정 요청·반려 때 사유 코드 선택을 필수로 한다(B1 판정 로그).'},
  a4_auto_attribution:{defaultEnabled:false,description:'추적 코드가 맞는 주문을 캠페인에 자동 귀속한다(A4 점포 실측).'},
  a2_downgrade:{defaultEnabled:false,description:'규제 가드레일 차단 위반을 작업물에 규제 점검 차단으로 표시하고, 품질 검수 판정을 수정 필요로만 낮춘다(A2 런타임 하향, 법률 자문 아님).'},
+ a7_repair_turn:{defaultEnabled:false,description:'심층 조사 결과가 형식 오류로 버려질 때 같은 조사에 수리 요청을 1회 보낸다(토큰 사용, 예산 가드 적용).'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};

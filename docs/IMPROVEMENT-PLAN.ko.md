@@ -84,7 +84,7 @@ URL 라우팅, 발행→주문→성과 화면 연결, 로그인 계정·권한 
 | finding | 이전 | 변경 | 이유 |
 |---|---|---|---|
 | `loop-4` `loop-5` `security-ops-11` | PR 4 | PR 4a(2단계) | 토큰 예산이 새 HERMES 사용(서버 평가·수리 턴)보다 먼저 있어야 한다. `security-ops-11`은 A7과 같은 파일이라 A7 앞에 병합한다. |
-| `security-ops-11` 잔여(null 실험 과제 422 전환) | PR 4a | A7 | 원인 코드(`lib/deep-research-server.ts` 실험 과제 파서)가 PR 6 앱 측 레인 잠금이라 PR 4a에서 고치지 못했다. PR 4a는 커넥터 응답 한도와 조사 결과 내부 예외 문구 제거만 한다. A7이 422로 바꾸고 `tests/validate.test.mjs`의 알려진 결함 검사도 함께 바꾼다. |
+| `security-ops-11` 잔여(null 실험 과제 422 전환) | PR 4a | A7 · **완료** | 원인 코드(`lib/deep-research-server.ts` 실험 과제 파서)가 PR 6 앱 측 레인 잠금이라 PR 4a에서 고치지 못했다. PR 4a는 커넥터 응답 한도와 조사 결과 내부 예외 문구 제거만 한다. A7에서 완료했다. 실험 과제 등 목록 원소가 null·비객체이면 TypeError가 아니라 항목 단위 오류로 처리한다. 뼈대 밖이면 그 원소만 빼고 사유를 남기고(부분 구제), 뼈대면 422(`DeepReportShapeError`)다. 같은 결함이던 점포 조사 보고서(`lib/store-server.ts` `parseStoreReport`)의 실행·실험 제안 null·비객체 원소도 목록 형식 오류 422로 바꿨다(점포 보고서는 구제 없음). `tests/validate.test.mjs`의 알려진 결함 검사 3건은 구제·422 검사로 바꿨다([브랜드 심층 조사](BRAND-RESEARCH.ko.md#부분-구제)). 병합·게시 상태는 PR에서 확인한다. |
 | `loop-8` | PR 4 | F2(1단계)가 통째로 흡수 | 실행 신원 조인 키가 있어야 PR 2 이후 실행을 역할·버전·모델 단위로 귀속할 수 있다. |
 | `loop-3`·`exec-loop-4`의 추적 코드와 귀속 집계 | PR 4 | A4(1단계)로 앞당김. 잔여(`loop-3` 광고비 이관 등, `exec-loop-4` publicationId 연결·게시 후 주문 검증)는 PR 4b | 점포 실측이 게시물 단위 연결보다 급하다. 집계 함수의 정본은 A4다. |
 | `loop-1` `loop-2` `loop-3`(잔여) `loop-6` `loop-7` `loop-9` `loop-10` `loop-11`, `exec-loop-4`(잔여) `exec-loop-10`, `security-ops-5` `-6`, `ai-quality-9` | PR 4 | PR 4b(3단계) | 게시물–주문–성과 연결 파이프다. `ai-quality-9`는 B5 맥락 정책 비교표를 설계 근거로 받은 뒤 구현한다. `security-ops-5`·`-6` 키 회전은 F5의 새 자격증명 형식에 적용한다. |
