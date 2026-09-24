@@ -14,9 +14,10 @@ export const ARCHIVED_CAMPAIGN='보관된 캠페인입니다. 보관 해제 후 
 type Archivable={id:string}&CampaignArchive;
 export const isArchived=(campaign:Archivable)=>typeof campaign.archivedAt==='string'&&campaign.archivedAt!=='';
 export function assertNotArchived(campaign:Archivable){if(isArchived(campaign))throw new ApiError(409,ARCHIVED_CAMPAIGN)}
-// 잠금 밖 진입(app/api/run·meetings·brief의 start, 회의 retry_failed)에서 쓴다. 없는 캠페인은 원래 실행 경로가 404로 답하게 둔다.
+// 라우트의 빠른 거절(app/api/run·meetings·brief의 start, 회의 retry_failed, 잠금 밖)과 회의 retry_failed의 잠금 안 재검사(lib/meeting-execution.ts)에서 쓴다. 없는 캠페인은 원래 실행 경로가 404로 답하게 둔다.
 // 실행 경로(str)처럼 앞뒤 공백을 떼고 읽는다. 공백을 붙인 id로 검사를 건너뛰고 실행만 보관 캠페인을 읽는 일을 막는다.
-// 한계: 잠금 밖 사전 검사라 보관 요청과 동시에 들어온 시작 1건은 통과할 수 있다. 완전한 차단은 각 실행 lib의 잠금 안 검사가 필요하다(docs/CAMPAIGN-STATUS.ko.md).
+// 경합 해소(PR 4a-2): 라우트 사전 검사는 잠금 밖이라 보관과 동시에 들어온 시작이 통과할 수 있다. 그래서 실행 lib(역할·회의·캠페인 초안 start, 회의 retry_failed)가 소유자 잠금을 잡고 캠페인을 읽은 직후 다시 검사한다.
+// 보관도 같은 소유자 잠금 안에서 기록하므로 시작과 보관 중 먼저 잠금을 잡은 쪽만 반영된다(docs/CAMPAIGN-STATUS.ko.md).
 export async function assertCampaignNotArchived(owner:string,campaignId:unknown){
  const id=typeof campaignId==='string'?campaignId.trim():'';
  if(!id)return;

@@ -100,7 +100,7 @@ function TokenBudget({budget,onSaved}:{budget:BudgetSummary;onSaved:()=>Promise<
   try{
    const response=await fetch('/api/usage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'set_budget',scope,...(scope==='campaign'?{campaignId}:{}),monthlyTokens:value})});
    const data=await response.json() as {error?:string};if(!response.ok)throw new Error(data.error||'토큰 상한을 저장하지 못했습니다.');
-   await onSaved();setMessage(value===null?'상한을 지웠습니다(미설정).':'토큰 상한을 저장했습니다. 다음 HERMES 제출부터 적용합니다.');
+   await onSaved();setMessage(value===null?'상한을 지웠습니다(미설정).':'토큰 상한을 저장했습니다. 다음 AI 요청(HERMES 제출·OpenAI 역할 실행)부터 적용합니다.');
   }catch(error){setError(error instanceof Error?error.message:'토큰 상한을 저장하지 못했습니다.')}finally{setBusy(false)}
  }
  return <div className="notice mt-4" aria-label="이번 달 토큰 예산">
@@ -109,7 +109,7 @@ function TokenBudget({budget,onSaved}:{budget:BudgetSummary;onSaved:()=>Promise<
   {budget.campaigns.map(c=><p key={c.campaignId}>캠페인 {c.title}: <BudgetLineText line={c}/></p>)}
   {budget.warning&&<p className="flex flex-wrap items-center gap-2"><Badge variant="destructive"><TriangleAlert/>상한 미설정</Badge>{budget.warning}</p>}
   {budget.workspace.unknownUsage>0&&<p className="text-xs">토큰을 알 수 없는 실행 {budget.workspace.unknownUsage}회는 누계에 들어가지 않았습니다.</p>}
-  <p className="text-xs">누계는 공급자가 보고한 이번 달 토큰과 아직 끝나지 않은 HERMES 제출의 예상 토큰(입력 문자 수 추정과 같은 종류 최근 실행 평균 중 큰 값)입니다. 상한을 넘는 새 HERMES 제출은 보내지 않고 ‘토큰 예산 초과’로 멈춥니다. 다만 이미 진행 중인 실행의 실제 사용량이 예상보다 크면 월 누계가 상한을 넘을 수 있습니다. 평가 실행은 별도 월 예산을 씁니다.</p>
+  <p className="text-xs">누계는 공급자가 보고한 이번 달 토큰과 아직 끝나지 않은 AI 요청(HERMES 제출·OpenAI 역할 실행)의 예상 토큰(입력 문자 수 추정과 같은 종류 최근 실행 평균 중 큰 값)입니다. 상한을 넘는 새 AI 요청은 보내지 않고 ‘토큰 예산 초과’로 멈춥니다. 다만 이미 진행 중인 실행의 실제 사용량이 예상보다 크면 월 누계가 상한을 넘을 수 있습니다. 평가 실행은 별도 월 예산을 씁니다.</p>
   {isOwner?<form className="form-stack mt-3" onSubmit={submit}>
    <div className="form-two"><label className="field"><span>상한 범위</span><NativeSelect value={scope} onChange={event=>setScope(event.target.value)}><NativeSelectOption value="workspace">워크스페이스 전체</NativeSelectOption><NativeSelectOption value="campaign">캠페인별</NativeSelectOption></NativeSelect></label>
     {scope==='campaign'&&<label className="field"><span>상한을 둘 캠페인</span><NativeSelect value={campaignId} onChange={event=>setCampaignId(event.target.value)}><NativeSelectOption value="">캠페인 선택</NativeSelectOption>{budget.campaignOptions.map(c=><NativeSelectOption key={c.id} value={c.id}>{c.title}</NativeSelectOption>)}</NativeSelect></label>}</div>
