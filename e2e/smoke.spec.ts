@@ -270,3 +270,13 @@ test('설정 기능표가 확정 사실과 연결 상태를 실제 값으로 보
   await shot(page, testInfo, 'channel-scope');
   await context.close();
 });
+
+// 입력 최소화 ⑦(docs/DATA-PROCESSING.ko.md 4.4): 자료 업로드 화면은 개인정보가 담긴 파일을 올리지 말라고 안내한다. 라벨·버튼은 그대로다.
+test('자료 업로드 화면에 개인정보 안내를 보인다', async ({browser}, testInfo) => {
+  const {context, page} = await ownerPage(browser, testInfo, `e2e-privacy-${testInfo.project.name}-${Date.now()}`);
+  await page.request.get('/api/workspace');
+  await page.goto('/?view=brands&brand=ofd&tab=sources');
+  await page.getByRole('button', {name: '자료 추가', exact: true}).click();
+  await expect(page.getByRole('dialog', {name: '브랜드 자료 추가'})).toContainText('개인정보가 담긴 파일은 올리지 마세요.');
+  await context.close();
+});
