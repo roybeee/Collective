@@ -1,18 +1,18 @@
 import {markUsageOutcomeSafely as markUsageOutcome} from './usage-outcome';
 import {brandArchiveInput,maskedArchiveSnapshot} from '@/lib/archive-server';
-import {PRACTICE_VERSION,campaignPractice} from '@/lib/practice';
+import {PRACTICE_VERSION} from '@/lib/practice';
 import {qualityMarkdown} from '@/lib/quality';
-import {roles,aiBudget,type Campaign,type Brand,type Artifact,type Metric} from '@/lib/agency';
+import {roles,type Campaign,type Brand,type Artifact,type Metric} from '@/lib/agency';
 import type {BriefDraft} from '@/lib/brief';
-import {initialSteps,meetingActive,publicMeeting,parseMeetingStep,meetingInstructions,candidateArtifacts,respondsToHandles,discussionRef,meetingAgenda,meetingLabels,artifactRef,type Meeting,type MeetingStep,type Contribution,type Synthesis,type Revision,type QualityReview} from '@/lib/meetings';
-import {labelArchive} from '@/lib/role-output';
+import {initialSteps,meetingActive,publicMeeting,parseMeetingStep,candidateArtifacts,meetingAgenda,meetingLabels,type Meeting,type MeetingStep,type Contribution,type Synthesis,type Revision,type QualityReview} from '@/lib/meetings';
 import {claimGuard,unverifiedClaims} from '@/lib/campaign-policy';
 import {sameEvidenceFactRefs} from '@/lib/brand-facts';
 import {meetingSubmissionId,requireMeetingWorker,retryFailedMeeting,meetingBasis,meetingStale,type MeetingBasis} from './meeting-repair';
 import {learningContext} from '@/lib/learning-server';
 import {gradeMeetingArtifacts} from './online-grading';
-import {aiBrand,evidenceContext,currentFactRefs,withoutPlanOwner,withoutAssignees,productionAllow,inputMaskingRecord,BRAND_MASK_PATHS,DIRECTIVE_MASK_PATHS,FACT_MASK_PATHS,STORE_MASK_PATHS,campaignMaskPaths,metricMaskPaths,type InputMasking} from '@/lib/ai-context';
-import {maskFields} from '@/lib/pii-scan';
+import {evidenceContext,currentFactRefs,type InputMasking} from '@/lib/ai-context';
+// 단계 제출(지시문·입력·가림 기록) 조립은 공개 순수 함수다(G1). 평가가 같은 함수로 단계 요청을 재현한다.
+import {buildMeetingSubmission} from '@/lib/meeting-input';
 import {brandStoreAllow} from './store-allow-server';
 import {hermesSubmissionStatement,submitHermes,pollHermes} from '@/lib/hermes';
 import type {UsageContext} from '@/lib/usage-ledger';
@@ -34,28 +34,6 @@ function writes(owner:string,m:Meeting){
 const meetingUsage=(owner:string,m:Meeting,s:MeetingStep):UsageContext=>({kind:'meeting',submissionId:meetingSubmissionId(s),jobId:jobId(owner,m),campaignId:m.campaignId,campaignVersion:m.campaignVersion,brandId:m.snapshot?.campaign?.brandId??null,storeId:m.snapshot?.campaign?.storeId??null,role:s.role,skillVersion:m.skillVersion??null,...(m.snapshot?.prompts?.source==='registry'&&s.promptVersion?.includes('@')?{promptVersion:s.promptVersion}:{}),...(m.snapshot?.prompts?.fallback?{promptFallback:m.snapshot.prompts.fallback}:{})});
 // 단계 제출의 promptVersion: 이 단계 역할·채널의 레지스트리 단위가 있으면 그 버전, 없으면 F2a 규칙(스킬 버전:지시 해시).
 async function stepPromptVersion(m:Meeting,s:MeetingStep,instructions:string){return runPromptVersion({units:m.snapshot.prompts?.units||{}},roleRunUnits(s.role,m.snapshot.campaign))??f2aPromptVersion(m.skillVersion,instructions)}
-// 회의 입력 작업물 허용 목록(DP-1 ①, 코드 상수). 사람 수정 표시(origin·aiSource·aiSourceId)·편집 통계(editStats)·검토 메모(reviewNote·reviewedAt)·준수 보류(complianceHold)·
-// 실행 메타(promptVersion·promptFallback·promptRecheck·skillVersion 등)·캠페인 id는 보내지 않는다. content 키 자리는 원 레코드 순서를 따른다.
-const MEETING_ARTIFACT_FIELDS=['id','role','title','content','version','status','createdAt','factsChanged','brandChanged','unverifiedClaims','qualityReview'] as const;
-const CANDIDATE_FIELDS=[...MEETING_ARTIFACT_FIELDS,'changes'];
-// 품질 단계 후보 본문 상한: 역할 경로 upstreamContext의 품질 담당 상한과 같다(lib/role-output.ts). 원 작업물 발췌 상한 8,000자는 그대로다.
-const CANDIDATE_CONTENT_LIMIT=24000;
-const pick=(a:object,keys:readonly string[])=>Object.fromEntries(Object.entries(a).filter(([k])=>keys.includes(k)));
-// 가림 경로(③). 모델 출력(발언·합의·개선 과제)은 가리지 않는다. 개선본은 candidateArtifacts와 completedRevisions 두 곳으로 가므로 둘 다 제목·본문을 가린다.
-// 확정 사실 값은 허용 값이라 경로에 없다. 후보·금지 사실 값과 점포 맥락의 지점 자유 텍스트는 가린다.
-const MEETING_MASK_PATHS=['agenda',...BRAND_MASK_PATHS,...DIRECTIVE_MASK_PATHS,...FACT_MASK_PATHS,...STORE_MASK_PATHS,...campaignMaskPaths('campaign'),...metricMaskPaths('recordedMetrics'),'previousMeeting.agenda','previousMeeting.decisions.decisions','previousMeeting.decisions.questions','originalArtifacts.*.title','originalArtifacts.*.content','completedRevisions.*.title','completedRevisions.*.content','candidateArtifacts.*.title','candidateArtifacts.*.content'];
-// storeAllow: 브랜드 단위 회의의 지점 허용 값(lib/store-allow-server.ts). 가림 허용 목록에만 쓴다.
-function context(m:Meeting,s:MeetingStep,storeAllow:readonly string[]):{value:object;findings:InputMasking[]}{
- const snapshot=m.snapshot,ref=(id:string)=>discussionRef(m.steps.find(t=>t.id===id)?.role||'');
- const raw={skillVersion:m.skillVersion,channelPractice:campaignPractice(snapshot.campaign,snapshot.prompts?.set?.channels),agenda:m.agenda,role:s.role,phase:s.phase,allowedRespondsTo:respondsToHandles(s,m.steps),correction:s.correction,brand:aiBrand(snapshot.brand),...(snapshot.evidence?{evidence:{facts:snapshot.evidence.facts,directives:snapshot.evidence.directives}}:{}),brandArchive:snapshot.brandArchive&&withoutAssignees(labelArchive(snapshot.brandArchive)),campaign:withoutPlanOwner({...snapshot.campaign,...aiBudget(snapshot.campaign)}),trialLearning:snapshot.learning,recordedMetrics:snapshot.metrics,previousMeeting:snapshot.previous,
-  originalArtifacts:snapshot.artifacts.map(a=>({ref:artifactRef(a),...pick(a,MEETING_ARTIFACT_FIELDS),content:a.content.slice(0,8000),excerpt:a.content.length>8000})),
-  discussion:m.steps.filter(t=>t.phase==='discussion'&&t.status==='completed').map(t=>{const o=t.output as Contribution;return {ref:discussionRef(t.role),role:t.role,...o,respondsTo:o.respondsTo.map(ref)}}),
-  synthesis:m.steps.find(t=>t.phase==='synthesis')?.output,
-  completedRevisions:m.steps.filter(t=>t.phase==='revision'&&t.status==='completed').map(t=>({role:t.role,...t.output})),
-  task:s.task,...(s.phase==='quality'?{candidateArtifacts:candidateArtifacts(m).artifacts.map(a=>({ref:artifactRef(a),...pick(a,CANDIDATE_FIELDS),content:a.content.slice(0,CANDIDATE_CONTENT_LIMIT),excerpt:a.content.length>CANDIDATE_CONTENT_LIMIT})),invalidatedRoles:candidateArtifacts(m).invalidatedRoles}:{})};
- const masked=maskFields(raw,MEETING_MASK_PATHS,{allow:productionAllow(snapshot.evidence,snapshot.brandArchive,storeAllow)});
- return {value:masked.value,findings:inputMaskingRecord(masked)};
-}
 // 가림 기록(필드·종류·건수, 허용 값이라 가리지 않은 탐지는 allowed:true, 값 없음)은 단계 기록(team_meeting.steps[].inputMasking)에 남는다. 브랜드 자료 가림 기록(snapshot.sourceMasking)을 뒤에 합친다. 저장본(hermes_submission)이 곧 전송본이고 복구도 같은 본문을 보낸다.
 type MaskedStep=MeetingStep&{inputMasking?:InputMasking[]};
 async function finish(owner:string,m:Meeting){
@@ -171,12 +149,11 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:E
   if(s.status==='pending'){
    if(m.steps.length>13)throw new ApiError(409,'회의의 최대 실행 범위를 초과했습니다.');
    s.status='starting';s.startedAt=stamp();m.updatedAt=stamp();m.error=undefined;
-   const correction=s.correction?'\n이전 응답은 검증에 실패했습니다. correction.error를 고치고, respondsTo에는 allowedRespondsTo의 ref만 사용하세요. 요청 선택지를 묻지 말고 이 단계의 완성된 결과를 반환하세요.':'';
-   const instructions=meetingInstructions(s,!!m.skillVersion,m.snapshot.prompts?.set)+correction;s.promptVersion=await stepPromptVersion(m,s,instructions);
    // 전환 구간(DP3-B-02): 자료 가림 이전에 시작한 회의(스냅샷에 가림 기록 없음)는 스냅샷 자료를 새 회의와 같은 규칙으로 가려 저장하고 보낸다(한 번만).
    if(m.snapshot.brandArchive?.confirmedSources&&!m.snapshot.sourceMasking){const masked=await maskedArchiveSnapshot(owner,m.snapshot.campaign.brandId,m.snapshot.campaign.storeId,m.snapshot.brandArchive);m.snapshot={...m.snapshot,brandArchive:masked.archive,sourceMasking:masked.sourceMasking}}
-   const built=context(m,s,await brandStoreAllow(owner,m.snapshot.campaign));(s as MaskedStep).inputMasking=[...built.findings,...(m.snapshot.sourceMasking||[])];
-   await database().batch([...writes(owner,m),hermesSubmissionStatement(owner,meetingSubmissionId(s),{instructions,input:JSON.stringify(built.value)},m.campaignId)]);
+   // 지시문(교정 재시도 문장 포함)·입력·가림 기록은 lib/meeting-input.ts가 만든다. 전환 가림은 자료만 바꾸므로 지시문과 promptVersion은 그 전과 같다.
+   const built=buildMeetingSubmission(m,s.id,await brandStoreAllow(owner,m.snapshot.campaign));s.promptVersion=await stepPromptVersion(m,s,built.instructions);(s as MaskedStep).inputMasking=built.maskingRecord;
+   await database().batch([...writes(owner,m),hermesSubmissionStatement(owner,meetingSubmissionId(s),{instructions:built.instructions,input:built.input},m.campaignId)]);
    prepared=m;
    const r=await submitHermes(owner,meetingSubmissionId(s),cfg);s.providerId=r.id;s.status='running';m.status='running';m.updatedAt=stamp();
    await database().batch(writes(owner,m));return json(publicMeeting(m));
