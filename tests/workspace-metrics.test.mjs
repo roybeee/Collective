@@ -1,4 +1,4 @@
-// 대시보드 숫자 정의(lib/workspace-metrics.ts)를 고정한다: 검토 필요·보완 필요·진행 중 캠페인·역할 진행·샘플 캠페인·다음 할 일.
+// 대시보드 숫자 정의(lib/workspace-metrics.ts)를 고정한다: 검토 필요·보완 필요·진행 중 캠페인·역할 진행·샘플 캠페인·다음 할 일·파생 상태·보관.
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
@@ -7,7 +7,7 @@ import ts from 'typescript';
 const context=createContext({console}),cache=new Map();
 function moduleFor(path){path=resolve(path);if(cache.has(path))return cache.get(path);const m=new SourceTextModule(ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText,{context,identifier:path});cache.set(path,m);return m;}
 const m=moduleFor('lib/workspace-metrics.ts');await m.link((s,r)=>moduleFor(resolve(dirname(r.identifier),s+'.ts')));await m.evaluate();
-const {workspaceMetrics,isActiveCampaign,activeCampaigns,reviewArtifacts,needsWorkArtifacts,recentCampaigns,campaignStatusCounts,failedRuns,nextTasks,onboardingComplete,usableRoleCount,activeCampaignNote,isSampleCampaign,sampleCampaignIds}=m.namespace;
+const {workspaceMetrics,isActiveCampaign,activeCampaigns,reviewArtifacts,needsWorkArtifacts,recentCampaigns,campaignStatusCounts,failedRuns,nextTasks,onboardingComplete,usableRoleCount,activeCampaignNote,isSampleCampaign,sampleCampaignIds,campaignStatus,isArchivedCampaign,visibleCampaigns}=m.namespace;
 let passed=0;
 function check(name,actual,expected){assert.deepEqual(JSON.parse(JSON.stringify(actual)),expected,name);passed++}
 const ids=list=>list.map(x=>x.id);
@@ -42,6 +42,8 @@ const artifacts=[
 check('draft is not in progress',isActiveCampaign({status:'draft'}),false);
 check('approved (기획 승인) is closed',isActiveCampaign({status:'approved'}),false);
 check('measuring (성과 기록) is closed',isActiveCampaign({status:'measuring'}),false);
+check('executing (발행 진행) is closed like approval and measuring',isActiveCampaign({status:'executing'}),false);
+check('blocked (진행 막힘) is in progress',isActiveCampaign({status:'blocked'}),true);
 for(const status of ['ready','running','review','revision'])check(status+' is in progress',isActiveCampaign({status}),true);
 check('unknown status is still counted as in progress',isActiveCampaign({status:'paused'}),true);
 check('in-progress campaigns keep input order',ids(activeCampaigns(campaigns)),['ready1','running1','review1','revision1','legacy1']);
@@ -51,9 +53,9 @@ check('review needs usable content on the current brief version',ids(reviewArtif
 check('needs work = unusable review + revision, only for existing campaigns',ids(needsWorkArtifacts(artifacts,campaigns)),['reask-review','old-version-review','empty-review','revision']);
 
 // --- 요약 숫자 -------------------------------------------------------------------------
-check('dashboard metrics share one definition',workspaceMetrics({campaigns,artifacts}),{totalCampaigns:8,sampleCampaigns:0,activeCampaigns:5,review:2,needsWork:4,roles:8});
-check('empty workspace is all zero except roles',workspaceMetrics({campaigns:[],artifacts:[]}),{totalCampaigns:0,sampleCampaigns:0,activeCampaigns:0,review:0,needsWork:0,roles:8});
-check('the in-progress note names every excluded status',activeCampaignNote,'초안·기획 승인·성과 기록 제외');
+check('dashboard metrics share one definition',workspaceMetrics({campaigns,artifacts}),{totalCampaigns:8,sampleCampaigns:0,archivedCampaigns:0,activeCampaigns:5,review:2,needsWork:4,roles:8});
+check('empty workspace is all zero except roles',workspaceMetrics({campaigns:[],artifacts:[]}),{totalCampaigns:0,sampleCampaigns:0,archivedCampaigns:0,activeCampaigns:0,review:0,needsWork:0,roles:8});
+check('the in-progress note names every excluded status',activeCampaignNote,'초안·기획 승인·발행 진행·성과 기록 제외');
 
 // --- 정렬·상태별 개수 -----------------------------------------------------------------------
 const frozen=Object.freeze([...campaigns]);
@@ -90,7 +92,7 @@ check('the seed campaign id matches lib/server.ts seedBrands',sampleCampaignIds,
 check('an untouched seed campaign is a sample',isSampleCampaign(sample),true);
 check('an edited or started seed campaign is a real campaign',[isSampleCampaign({...sample,version:2}),isSampleCampaign({...sample,status:'running'})],[false,false]);
 check('other draft campaigns are not samples',isSampleCampaign(campaigns[0]),false);
-check('samples are counted apart from the total',workspaceMetrics({campaigns:[...campaigns,sample],artifacts}),{totalCampaigns:8,sampleCampaigns:1,activeCampaigns:5,review:2,needsWork:4,roles:8});
+check('samples are counted apart from the total',workspaceMetrics({campaigns:[...campaigns,sample],artifacts}),{totalCampaigns:8,sampleCampaigns:1,archivedCampaigns:0,activeCampaigns:5,review:2,needsWork:4,roles:8});
 check('status counts leave samples out',campaignStatusCounts([sample,campaign('x','draft')]),[{status:'draft',label:'브리프 작성',count:1}]);
 check('a workspace with only the sample has no status counts',campaignStatusCounts([sample]),[]);
 
@@ -116,5 +118,25 @@ check('onboarding complete needs brands, AI connection and a campaign',onboardin
 check('onboarding incomplete without connection',onboardingComplete({brands,campaigns,connection:{configured:false}}),false);
 check('onboarding incomplete without campaigns',onboardingComplete({brands,campaigns:[],connection:connected}),false);
 check('onboarding incomplete without brands',onboardingComplete({brands:[],campaigns,connection:connected}),false);
+
+// --- 파생 상태(data-truth-8): 서버가 응답에 실은 derivedStatus(lib/campaign-status.ts)를 쓰고, 없으면(이전 서버) 저장 status를 쓴다 ---
+check('screens use the derived status when the server sends one',[campaignStatus({status:'review',derivedStatus:'running'}),campaignStatus({status:'review'})],['running','review']);
+check('a stale stored status does not decide progress',[isActiveCampaign({status:'review',derivedStatus:'approved'}),isActiveCampaign({status:'approved',derivedStatus:'blocked'}),isActiveCampaign({status:'approved',derivedStatus:'executing'})],[false,true,false]);
+const derivedList=[campaign('d-run','review',{derivedStatus:'running'}),campaign('d-block','review',{derivedStatus:'blocked'}),campaign('d-exec','approved',{derivedStatus:'executing'}),campaign('d-measure','approved',{derivedStatus:'measuring'}),campaign('d-ready','draft',{derivedStatus:'ready'})];
+check('status counts follow the derived status in lib/agency.ts order',campaignStatusCounts(derivedList),[{status:'ready',label:'실행 준비',count:1},{status:'running',label:'AI 작업 중',count:1},{status:'blocked',label:'진행 막힘',count:1},{status:'executing',label:'발행 진행',count:1},{status:'measuring',label:'성과 기록',count:1}]);
+check('in-progress campaigns are counted by derived status',ids(activeCampaigns(derivedList)),['d-run','d-block','d-ready']);
+check('the dashboard counts in-progress campaigns by derived status',workspaceMetrics({campaigns:derivedList,artifacts:[]}).activeCampaigns,3);
+check('an untouched seed campaign stays a sample whatever its derived status',isSampleCampaign({...sample,derivedStatus:'draft'}),true);
+
+// --- 보관(ux-9 권고 2): 목록·대시보드 수치·상태별 수·다음 할 일에서 빼고 '보관함' 필터에서만 보인다 ---
+const archived=campaign('archived1','review',{version:2,archivedAt:'2026-09-23T00:00:00.000Z',derivedStatus:'running'});
+check('archived = archivedAt set (archive is not a derived status)',[isArchivedCampaign(archived),isArchivedCampaign({status:'review',archivedAt:'2026-09-23T00:00:00.000Z'}),isArchivedCampaign({status:'review',derivedStatus:'archived'}),isArchivedCampaign({status:'review',archivedAt:''}),isArchivedCampaign(campaigns[0])],[true,true,false,false,false]);
+check('visible campaigns leave archived ones out and keep order',ids(visibleCampaigns([archived,...campaigns])),ids(campaigns));
+check('an archived campaign is never in progress, even with a stale stored status',isActiveCampaign({status:'review',archivedAt:'2026-09-23T00:00:00.000Z'}),false);
+check('an archived campaign stays out of progress even while its derived status is running',isActiveCampaign(archived),false);
+const archivedArtifacts=[artifact('archived-review','archived1','review',{campaignVersion:2}),artifact('archived-revision','archived1','revision',{campaignVersion:2})];
+check('archived campaigns and their artifacts leave the dashboard numbers',workspaceMetrics({campaigns:[...campaigns,archived],artifacts:[...artifacts,...archivedArtifacts]}),{totalCampaigns:8,sampleCampaigns:0,archivedCampaigns:1,activeCampaigns:5,review:2,needsWork:4,roles:8});
+check('status counts leave archived campaigns out',campaignStatusCounts([archived,campaign('x','draft')]),[{status:'draft',label:'브리프 작성',count:1}]);
+check('next tasks skip archived campaigns',nextTasks({campaigns:[archived],artifacts:archivedArtifacts,runs:[run('ra','archived1','cmo','failed','2026-09-20T00:00:00.000Z')]}),[]);
 
 console.log(JSON.stringify({passed},null,2));

@@ -10,6 +10,7 @@ import {inspectBuffer,verifyBuffer} from './publisher-buffer';
 import {issuePublicationCode} from './publication-codes';
 import {CODE_ALPHABET,CODE_MAX,type TrackingCode} from './tracking-codes';
 import type {Store} from './store-marketing';
+import {assertNotArchived} from './campaign-archive';
 
 export type PublisherCredential={secret:string;version:number;channelId:string;account:string;organizationId?:string};
 type Who=Pick<Actor,'id'|'email'>;
@@ -199,6 +200,8 @@ export async function approvalInputs(owner:string,campaign:Campaign,p:Publicatio
  return {credential,limits};
 }
 export async function approvePublication(owner:string,campaign:Campaign,p:Publication,input:Record<string,unknown>,who:Who,origin:string){
+ // 보관 캠페인은 발행을 승인하지 않는다(409, 보관 해제 후 다시).
+ assertNotArchived(campaign);
  const external=p.mediaMode!=='auto';
  if(p.status!=='draft'||input.confirmed!==true||input.rightsConfirmed!==true||(external&&input.immutableMediaConfirmed!==true))throw new ApiError(400,external?'PNG·사실·사용 권리·공개 파일 유지 조건을 확인하고 승인하세요.':'PNG·사실·사용 권리를 확인하고 승인하세요.');
  const {credential,limits}=await approvalInputs(owner,campaign,p);
@@ -212,6 +215,7 @@ export async function approvePublication(owner:string,campaign:Campaign,p:Public
 }
 // Called with the owner mutation lock. Persist the attempt BEFORE any publish call.
 export async function reservePublication(owner:string,campaign:Campaign,p:Publication,origin:string){
+ assertNotArchived(campaign);
  if(p.status!=='approved'||p.attemptedAt)throw new ApiError(409,'승인된 미실행 항목만 접수할 수 있습니다. 재전송하지 마세요.');
  const {credential,limits}=await approvalInputs(owner,campaign,p);
  const drift=approvalDrift(p,credential,limits);
