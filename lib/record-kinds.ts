@@ -103,6 +103,10 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'prompt_registration',parent:'none',campaignDeletion:'not_campaign_scoped',description:'프롬프트 등록 시도 기록(단위·sourceSha·registered/idempotent/blocked·사유·행위자). 본문은 담지 않는다(F3a)'},
  {kind:'prompt_release_event',parent:'none',campaignDeletion:'not_campaign_scoped',description:'프롬프트 활성화·지정 캠페인 적용·승격·pin 재설정 이벤트(단위·전후 버전·sourceSha·평가 run·승인 사유·조작 전후 매니페스트). 추가만 한다(F3b, registry-active 근거)'},
  {kind:'prompt_alarm_ack',parent:'none',campaignDeletion:'not_campaign_scoped',description:'모델·게이트웨이 변경 경보 확인(동결 해제) 기록: 확인한 경보 id·사유·근거 평가 run·행위자. 확인 뒤 새 경보는 다시 동결한다(F3b, 결정 10)'},
+ // 운영자 선호 규칙(B3-1, 대표 결정 9). 규칙 자체는 learning_rule(origin review·preference, grade operator_preference)이고 캠페인과 무관하다(experimentId 빈 문자열).
+// 중지 때 재확인 표시는 새 kind 없이 캠페인 이력(event)의 playbookRecheck detail로 남겨 캠페인과 함께 지운다.
+ // token_budget 묶음(마지막 3개, tests/token-budget.test.mjs 고정) 앞에 둔다.
+ {kind:'playbook_audit',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'운영자 선호 규칙 감사 기록(생성·승인·중지·연장, 전후 상태·규칙 버전·만료·중지 때 재확인 작업물 수·행위자 id·역할). 추가만 하고 이메일·본문 원문은 담지 않는다(B3-1)'},
  {kind:'token_budget',parent:'none',campaignDeletion:'delete',links:['data_campaign'],description:'소유자가 정한 월 토큰 상한(한국 시간 달력 월). 워크스페이스 1행(id workspace, campaignId 없음)과 캠페인별 행(id campaign:<캠페인>). 캠페인별 행은 캠페인과 함께 지운다(loop-4)'},
  {kind:'token_reservation',parent:'none',campaignDeletion:'not_campaign_scoped',description:'HERMES 제출 1건의 진행 중 토큰 예약(예상 토큰·실행 종류·캠페인 id·실행 번호·멱등 키 해시). 요청 원문은 담지 않고 토큰을 아는 종료 사용량을 기록하면 지운다(loop-4)'},
  {kind:'usage_alias_pricing',parent:'none',campaignDeletion:'not_campaign_scoped',description:'HERMES 별칭(hermes-agent) 단가 선언(기반 모델·입력/출력 단가·통화·근거 URL·적용 시작일). 원장은 바꾸지 않고 읽을 때 추정한다(loop-5, 결정 10)'},

@@ -1,14 +1,18 @@
 import {ApiError,str,num,stamp,uid,readRecord,listRecords,recordStatement,database,eventStatement,type EventActor} from './server';
-import {learningChannels,learningMetrics,evaluateExperiment,ruleApplies,defaultVerifyChannel,type ViralCase,type ViralAnalysis,type TestIdea,type ViralExperiment,type ExperimentResult,type LearningRule,type LearningSnapshot,type Arm,type StoreAssessment} from './learning';
-import {channelHosts,storeChannelName} from './channels';
+import {learningChannels,learningMetrics,evaluateExperiment,ruleApplies,defaultVerifyChannel,operatorRule,ANY_CHANNEL,PLAYBOOK_MAX_CHARS,type ViralCase,type ViralAnalysis,type TestIdea,type ViralExperiment,type ExperimentResult,type LearningRule,type LearningSnapshot,type Arm,type StoreAssessment,type ReviewDecisionSummary,type PlaybookRecheck} from './learning';
+import {channelHosts,storeChannelName,channelRegistry} from './channels';
+import {normalizeRuleBody,ruleBodyProblem,ruleTitle,playbookExpiry,activationProblem,MAX_ACTIVE_PER_ROLE,PLAYBOOK_MIN_CITATIONS,PLAYBOOK_MAX_CITATIONS} from './playbook-curator';
+import type {ReviewDecision} from './review-decisions';
 import {summarizeResult,planShortfall,decisionConflict} from './viral-stats';
 import type {StoreExperiment,StoreMeasurement,StoreReview} from './store-marketing';
-import type {Brand,Campaign} from './agency';
+import {roles,type Brand,type Campaign,type Artifact} from './agency';
 import type {SourceCampaignDeleted} from './record-kinds';
 export const RULE_DAYS=30;
 // 결정 7(b): 원 캠페인이 삭제된 바이럴 규칙은 종료 상태로만 남는다. 재검증·연장·상태 변경 대신 새 실험을 안내한다.
 function assertSourceCampaign(r:LearningRule&{sourceCampaignDeleted?:SourceCampaignDeleted}){if(r.sourceCampaignDeleted)throw new ApiError(409,'원 캠페인이 삭제되어 이 규칙은 재검증·연장·상태 변경을 할 수 없습니다. 캠페인을 선택해 새 실험을 만들어 주세요.')}
 const expiry=(from=Date.now())=>new Date(from+RULE_DAYS*86400000).toISOString();
+// 운영자 선호 규칙은 소유자 전용 playbook_* 작업(감사 로그 포함)으로만 상태를 바꾼다. 기존 중지·종료·연장·재검증 작업은 거절한다.
+function assertNotOperatorRule(r:LearningRule){if(operatorRule(r))throw new ApiError(409,'운영자 선호 규칙은 학습 규칙 화면의 운영자 선호 영역에서 승인·중지·연장합니다.')}
 
 export function publicUrl(value:unknown,label='출처 URL'){
  const raw=str(value,label,2000,true);let u:URL;try{u=new URL(raw)}catch{throw new ApiError(400,`${label}을 확인해 주세요.`)}
@@ -45,12 +49,19 @@ const MODEL_OMIT=['stats','decision','decisionReason','decisionConflict'];
 // 원 사례 채널·연장 근거 측정 시각도 화면·감사용이다. 모델에는 검증 채널(channel)만 전달한다.
 const MODEL_RULE_OMIT=['caseChannel','renewMeasuredAt'];
 const modelRule=(rule:LearningRule):LearningRule=>{const r=Object.fromEntries(Object.entries(rule).filter(([k])=>!MODEL_RULE_OMIT.includes(k))) as LearningRule;return r.sourceAssessment?{...r,sourceAssessment:Object.fromEntries(Object.entries(r.sourceAssessment).filter(([k])=>!MODEL_OMIT.includes(k))) as NonNullable<LearningRule['sourceAssessment']>}:r};
+// 성과 규칙(learning 블록). 운영자 선호 규칙은 다른 블록(operatorPreferenceContext)으로 가므로 뺀다. 브리프·회의 경로도 이 함수만 쓴다(운영자 선호 주입은 역할 실행만, B3-1).
 export async function learningContext(owner:string,c:Pick<Campaign,'brandId'|'channels'|'storeId'>){
  const rules=await listRecords<LearningRule>(owner,'learning_rule');
- return rules.filter(r=>ruleApplies(r,c.brandId,c.channels,Date.now(),c.storeId))
+ return rules.filter(r=>!operatorRule(r)&&ruleApplies(r,c.brandId,c.channels,Date.now(),c.storeId))
   // 지점 전용 규칙이 더 구체적이므로 먼저 전달한다.
   .sort((a,b)=>Number(!!b.storeId)-Number(!!a.storeId)||b.createdAt.localeCompare(a.createdAt))
   .slice(0,12).map(modelRule);
+}
+// 운영자 선호 규칙(B3-1). 승인(active)·미만료·같은 브랜드·채널("*" 포함)·역할이 맞는 것만 역할당 8개까지. 역할 지정 규칙을 먼저, 그다음 최신순이다.
+export async function operatorPreferenceContext(owner:string,c:Pick<Campaign,'brandId'|'channels'|'storeId'>,role:string){
+ const rules=await listRecords<LearningRule>(owner,'learning_rule'),now=Date.now();
+ return rules.filter(r=>operatorRule(r)&&ruleApplies(r,c.brandId,c.channels,now,c.storeId,role))
+  .sort((a,b)=>Number(!!b.role)-Number(!!a.role)||b.createdAt.localeCompare(a.createdAt)||a.id.localeCompare(b.id)).slice(0,MAX_ACTIVE_PER_ROLE);
 }
 // 점포 실험 회고를 학습 규칙으로 승격한다. 게이트를 통과하지 못하면 null을 반환하고 회고만 저장된다.
 // 바이럴 실험의 sourceAssessment와 지표 체계가 달라 storeAssessment로 분리해 담는다.
@@ -64,8 +75,9 @@ export function storeLearningRule(e:StoreExperiment,decision:string,learning:str
  const storeAssessment:StoreAssessment={decision,primaryMetric:e.primaryMetric,primaryMetricLabel:metricLabel,target:e.target,observed:measured.values[e.primaryMetric],periodStart:measured.periodStart,periodEnd:measured.periodEnd,measurementSource:measured.source,evidenceLevel:review.evidenceLevel,failureType:review.failureType,confounders:review.confounders,nextAction:review.nextAction};
  return {id:'store:'+e.id+':'+e.version,origin:'store',storeId:e.storeId,storeAssessment,direction:decision==='adopt'?'test':'caution',brandId:e.brandId,channel:storeChannelName(e.channel)||e.channel,experimentId:e.id,experimentVersion:e.version,caseId:'',title:e.title,guidance:learning,scope:review.conditions||e.measurement,evidenceLevel:'observational',status:'active',version:1,expiresAt:expiry(),createdAt:stamp(),updatedAt:stamp()};
 }
-export function learningSnapshotStatement(owner:string,id:string,c:Campaign,role:string,rules:LearningRule[],skillVersion?:string){
- const snap:LearningSnapshot & {skillVersion?:string}={skillVersion,id,campaignId:c.id,role,rules,createdAt:stamp()};return recordStatement(owner,'learning_snapshot',id,snap,c.id);
+// preferences: 운영자 선호 규칙을 주입한 역할 실행만 넘긴다. 0건이면 이전과 같은 모양으로 저장한다(키 없음).
+export function learningSnapshotStatement(owner:string,id:string,c:Campaign,role:string,rules:LearningRule[],skillVersion?:string,preferences?:{operatorPreferences:LearningRule[];artifactId:string}){
+ const snap:LearningSnapshot & {skillVersion?:string}={skillVersion,id,campaignId:c.id,role,rules,createdAt:stamp(),...(preferences?.operatorPreferences.length?preferences:{})};return recordStatement(owner,'learning_snapshot',id,snap,c.id);
 }
 export async function saveLearningSnapshot(owner:string,id:string,c:Campaign,role:string,rules:LearningRule[],skillVersion?:string){
  await learningSnapshotStatement(owner,id,c,role,rules,skillVersion).run();
@@ -105,7 +117,8 @@ async function measuredSince(owner:string,r:LearningRule,since:string,viral?:Vir
 }
 // 서버가 연장을 거절하는 규칙인지: 측정 없이 한 번 연장했고 그 뒤 새 측정이 없다. GET /api/learning이 규칙마다 계산해 화면이 같은 판정으로 연장 버튼을 끈다.
 export async function renewBlocked(owner:string,r:LearningRule,viral?:ViralExperiment[]){return (r.renewCount||0)>=1&&!await measuredSince(owner,r,r.renewedAt??r.createdAt,viral)}
-export async function learningAction(owner:string,b:any,by?:EventActor){
+export async function learningAction(owner:string,b:any,by?:PlaybookActor){
+ if(typeof b.action==='string'&&b.action.startsWith('playbook_'))return playbookAction(owner,b,by);
  if(b.action==='add_case'){
   const c=await makeCase(owner,b.data);const previous=(await listRecords<ViralCase>(owner,'viral_case')).find(x=>x.brandId===c.brandId&&x.url===c.url);
   if(previous){const id=uid();await recordStatement(owner,'case_observation',id,{...c,id,caseId:previous.id},previous.id).run();return {id:previous.id,duplicate:true}}
@@ -146,11 +159,12 @@ export async function learningAction(owner:string,b:any,by?:EventActor){
   await database().batch([recordStatement(owner,'learning_rule',id,rule,e.brandId),eventStatement(owner,e.campaignId,`「${e.title}」을 ${positive?'시험 적용 규칙':'실패에서 배운 주의사항'}으로 채택했습니다. 30일 후 재검토합니다.`,by)]);return {id};
  }
  if(b.action==='pause_rule'){
-  const r=await readRecord<LearningRule>(owner,'learning_rule',str(b.id,'학습 규칙',200,true));assertSourceCampaign(r);if(r.version!==b.version||r.status!=='active')throw new ApiError(409,'규칙 상태가 변경됐습니다.');await recordStatement(owner,'learning_rule',r.id,{...r,status:'paused',version:r.version+1,updatedAt:stamp()},r.brandId).run();return {id:r.id};
+  const r=await readRecord<LearningRule>(owner,'learning_rule',str(b.id,'학습 규칙',200,true));assertSourceCampaign(r);assertNotOperatorRule(r);if(r.version!==b.version||r.status!=='active')throw new ApiError(409,'규칙 상태가 변경됐습니다.');await recordStatement(owner,'learning_rule',r.id,{...r,status:'paused',version:r.version+1,updatedAt:stamp()},r.brandId).run();return {id:r.id};
  }
  if(['retire_rule','renew_rule','retest_rule'].includes(b.action)){
   const r=await readRecord<LearningRule>(owner,'learning_rule',str(b.id,'학습 규칙',200,true));
   assertSourceCampaign(r);
+  assertNotOperatorRule(r);
   if(r.version!==b.version)throw new ApiError(409,'규칙 상태가 변경됐습니다.');
   if(r.status==='retired')throw new ApiError(409,'이미 종료된 규칙입니다.');
   if(b.action==='retire_rule'){
@@ -177,4 +191,115 @@ export async function learningAction(owner:string,b:any,by?:EventActor){
   return {id};
  }
  throw new ApiError(400,'지원하지 않는 학습 작업입니다.');
+}
+
+// ── 운영자 선호 규칙(B3-1, 대표 결정 9). 사람 판정(review_decision)을 2건 이상 인용한 규칙을 소유자가 만들고 승인·중지·연장한다. 모델을 부르지 않는다.
+// 생성은 초안(draft)이고 승인 전에는 주입 0건이다. 상태를 바꿀 때마다 playbook_audit를 남긴다(행위자는 id·역할만). 형식과 정책은 docs/PLAYBOOK.ko.md.
+type PlaybookActor=EventActor&{role?:'owner'|'admin'|'member'};
+type PlaybookAuditAction='create'|'activate'|'pause'|'renew';
+function auditStatement(owner:string,r:LearningRule,action:PlaybookAuditAction,from:string,by:PlaybookActor,extra:Record<string,unknown>={}){
+ const id=uid();
+ return recordStatement(owner,'playbook_audit',id,{id,ruleId:r.id,brandId:r.brandId,action,fromStatus:from,toStatus:r.status,ruleVersion:r.version,expiresAt:r.expiresAt,actor:{id:by.id,role:by.role},...extra,createdAt:stamp()},r.brandId);
+}
+// performance_tested는 골든 on/off 비교를 첨부할 때만 부여한다. 그 경로는 B3-2에서 연결하므로 지금은 409로 막는다. 수동 규칙은 operator_preference만이다.
+function manualGrade(value:unknown){
+ if(value===undefined||value===null||value===''||value==='operator_preference')return;
+ if(value==='performance_tested')throw new ApiError(409,'performance_tested 등급은 골든 on/off 비교를 첨부할 때만 부여합니다. 부여 경로는 B3-2에서 연결합니다.');
+ throw new ApiError(400,'수동 규칙의 등급은 operator_preference만 쓸 수 있습니다.');
+}
+const campaignBrands=async(owner:string)=>new Map((await listRecords<Campaign>(owner,'campaign')).map(c=>[c.id,c.brandId]));
+// 판정의 브랜드: 기록의 brandId, 없으면 캠페인의 브랜드(작업물·발행 판정). 원 캠페인이 삭제돼 알 수 없으면 null이다.
+const decisionBrand=(d:Pick<ReviewDecision,'brandId'|'campaignId'>,brands:Map<string,string>)=>d.brandId??(d.campaignId?brands.get(d.campaignId)??null:null);
+// 인용 선택용 사람 판정 요약(최근 200건, 브랜드를 확인할 수 있는 것만). 메모 원문은 판정 로그에 없고 행위자는 담지 않는다.
+export async function reviewDecisionChoices(owner:string,limit=200):Promise<ReviewDecisionSummary[]>{
+ const [rows,brands]=await Promise.all([database().prepare("SELECT data FROM records WHERE owner=? AND kind='review_decision' ORDER BY rowid DESC LIMIT ?").bind(owner,limit).all<{data:string}>(),campaignBrands(owner)]);
+ return rows.results.map(r=>JSON.parse(r.data) as ReviewDecision).flatMap(d=>{const brandId=decisionBrand(d,brands);return brandId?[{id:d.id,brandId,targetKind:d.targetKind,role:d.role,decision:d.decision,reasonCodes:d.reasonCodes,...(d.origin?{origin:d.origin}:{}),campaignId:d.campaignId,createdAt:d.createdAt}]:[]});
+}
+// 인용: 서로 다른 판정 2~20건, 모두 같은 브랜드의 실제 기록. 편집 근거(preference) 규칙은 사람이 고친 AI 작업물 판정(ai_edited)만 인용한다.
+async function citedDecisions(owner:string,brandId:string,value:unknown,origin:'review'|'preference'){
+ if(!Array.isArray(value))throw new ApiError(400,`근거가 되는 사람 판정 기록을 ${PLAYBOOK_MIN_CITATIONS}건 이상 고르세요.`);
+ const ids=[...new Set(value.map(x=>str(x,'인용 판정',100,true)))];
+ if(ids.length<PLAYBOOK_MIN_CITATIONS||ids.length>PLAYBOOK_MAX_CITATIONS)throw new ApiError(400,`서로 다른 사람 판정 기록을 ${PLAYBOOK_MIN_CITATIONS}~${PLAYBOOK_MAX_CITATIONS}건 인용하세요.`);
+ const brands=await campaignBrands(owner);
+ for(const id of ids){
+  const d=await readRecord<ReviewDecision>(owner,'review_decision',id).catch((e:unknown)=>{if(e instanceof ApiError&&e.status===404)throw new ApiError(400,'인용한 사람 판정 기록을 찾을 수 없습니다.');throw e});
+  if(decisionBrand(d,brands)!==brandId)throw new ApiError(400,'같은 브랜드의 사람 판정 기록만 인용할 수 있습니다. 원 캠페인이 삭제돼 브랜드를 확인할 수 없는 기록도 인용할 수 없습니다.');
+  if(origin==='preference'&&(d.targetKind!=='artifact'||d.origin!=='ai_edited'))throw new ApiError(400,'편집 근거(preference) 규칙은 사람이 고친 AI 작업물(ai_edited) 판정만 인용할 수 있습니다.');
+ }
+ return ids;
+}
+const optional=(v:unknown)=>v===undefined||v===null||v==='';
+async function createPlaybookRule(owner:string,d:Record<string,unknown>,by:PlaybookActor){
+ manualGrade(d.grade);
+ const origin=optional(d.origin)?'review':d.origin;
+ if(origin!=='review'&&origin!=='preference')throw new ApiError(400,'규칙 출처는 운영자 교정(review) 또는 편집 근거(preference)만 고를 수 있습니다.');
+ const brandId=str(d.brandId,'대상 브랜드',100,true);await readRecord<Brand>(owner,'brand',brandId);
+ const role=optional(d.role)?'':str(d.role,'역할',30);if(role&&!roles.some(r=>r.id===role))throw new ApiError(400,'역할을 확인해 주세요.');
+ const channel=optional(d.channel)?ANY_CHANNEL:str(d.channel,'채널',30);if(channel!==ANY_CHANNEL&&!Object.hasOwn(channelRegistry,channel))throw new ApiError(400,'채널을 확인해 주세요.');
+ const text=normalizeRuleBody(str(d.text,'규칙 본문',PLAYBOOK_MAX_CHARS*4,true)),problem=ruleBodyProblem(text);if(problem)throw new ApiError(400,problem);
+ const citations=await citedDecisions(owner,brandId,d.citations,origin),at=stamp();
+ const rule:LearningRule={origin,grade:'operator_preference',id:'playbook:'+uid(),brandId,channel,...(role?{role}:{}),experimentId:'',experimentVersion:0,caseId:'',title:ruleTitle(text),guidance:text,scope:`사람 판정 ${citations.length}건 인용`,citations,feedback:{helpful:0,harmful:0},status:'draft',version:1,expiresAt:playbookExpiry(),createdAt:at,updatedAt:at};
+ await database().batch([recordStatement(owner,'learning_rule',rule.id,rule,brandId),auditStatement(owner,rule,'create','',by)]);
+ return {id:rule.id,status:rule.status};
+}
+async function playbookRule(owner:string,b:Record<string,unknown>){
+ const r=await readRecord<LearningRule>(owner,'learning_rule',str(b.id,'학습 규칙',200,true));
+ if(!operatorRule(r))throw new ApiError(409,'운영자 선호 규칙이 아닙니다.');
+ if(r.version!==b.version)throw new ApiError(409,'규칙 상태가 변경됐습니다. 새로고침 후 다시 시도하세요.');
+ return r;
+}
+// 승인(초안·중지 → 적용 중): 역할당 활성 8개 상한을 넘으면 409. 승인 시점부터 60일 뒤 만료된다.
+async function activatePlaybookRule(owner:string,b:Record<string,unknown>,by:PlaybookActor){
+ const r=await playbookRule(owner,b);if(r.status!=='draft'&&r.status!=='paused')throw new ApiError(409,'초안이나 중지한 규칙만 승인할 수 있습니다.');
+ const problem=activationProblem(r,await listRecords<LearningRule>(owner,'learning_rule'));if(problem)throw new ApiError(409,problem);
+ const at=stamp(),next:LearningRule={...r,status:'active',expiresAt:playbookExpiry(),version:r.version+1,updatedAt:at};
+ await database().batch([recordStatement(owner,'learning_rule',r.id,next,r.brandId),auditStatement(owner,next,'activate',r.status,by)]);
+ return {id:r.id,status:next.status,expiresAt:next.expiresAt};
+}
+// 재확인(연장): 적용 중인 규칙만 지금부터 60일로 늘린다. 만료된 규칙을 되살리는 경우도 상한을 다시 본다.
+async function renewPlaybookRule(owner:string,b:Record<string,unknown>,by:PlaybookActor){
+ const r=await playbookRule(owner,b);if(r.status!=='active')throw new ApiError(409,'적용 중인 규칙만 연장할 수 있습니다.');
+ const problem=activationProblem(r,await listRecords<LearningRule>(owner,'learning_rule'));if(problem)throw new ApiError(409,problem);
+ const at=stamp(),next:LearningRule={...r,expiresAt:playbookExpiry(),renewedAt:at,version:r.version+1,updatedAt:at};
+ await database().batch([recordStatement(owner,'learning_rule',r.id,next,r.brandId),auditStatement(owner,next,'renew',r.status,by)]);
+ return {id:r.id,expiresAt:next.expiresAt};
+}
+// 중지할 규칙이 주입된 역할 작업물(learning_snapshot 기준). 운영자 선호를 주입한 스냅샷(artifactId 있음)만 읽고, 그중 실제로 저장된 작업물만 고른다. 작업물은 읽기만 한다.
+async function injectedArtifacts(owner:string,ruleId:string):Promise<Omit<PlaybookRecheck,'createdAt'>[]>{
+ const snapshots=(await database().prepare("SELECT data FROM records WHERE owner=? AND kind='learning_snapshot' AND json_extract(data,'$.artifactId') IS NOT NULL").bind(owner).all<{data:string}>()).results.map(r=>JSON.parse(r.data) as LearningSnapshot);
+ const hits=snapshots.flatMap(s=>{const p=s.operatorPreferences?.find(x=>x.id===ruleId);return p&&s.artifactId?[{s,artifactId:s.artifactId,ruleVersion:p.version}]:[]});
+ const found=await Promise.all(hits.map(async({s,artifactId,ruleVersion})=>{
+  const a=await readRecord<Artifact>(owner,'artifact',artifactId).catch((e:unknown)=>{if(e instanceof ApiError&&e.status===404)return null;throw e});
+  return a?[{id:`${ruleId}:${a.id}`,ruleId,ruleVersion,artifactId:a.id,artifactVersion:a.version,campaignId:s.campaignId,jobId:s.id,role:s.role,reason:'rule_paused' as const}]:[];
+ }));
+ return [...new Map(found.flat().map(m=>[m.artifactId,m])).values()];
+}
+// 재확인 표시: 캠페인마다 이력(event) 1건에 작업물 목록을 detail(playbookRecheck)로 싣는다. 캠페인 이력이라 캠페인과 함께 지워지고 캠페인 화면 이력에도 보인다.
+type RecheckDetail={ruleId:string;reason:'rule_paused';artifacts:Pick<PlaybookRecheck,'artifactId'|'artifactVersion'|'ruleVersion'|'jobId'|'role'>[]};
+function recheckStatement(owner:string,r:LearningRule,campaignId:string,marks:Omit<PlaybookRecheck,'createdAt'>[],by:PlaybookActor){
+ const artifacts=marks.filter(m=>m.campaignId===campaignId).map(({artifactId,artifactVersion,ruleVersion,jobId,role})=>({artifactId,artifactVersion,ruleVersion,jobId,role})),playbookRecheck:RecheckDetail={ruleId:r.id,reason:'rule_paused',artifacts};
+ return eventStatement(owner,campaignId,`운영자 선호 규칙 「${r.title}」 적용을 중지했습니다. 이 규칙이 전달된 작업물 ${artifacts.length}건을 재확인하세요. 작업물 내용은 바꾸지 않았습니다.`,by,{playbookRecheck});
+}
+// 학습 화면용 재확인 표시 목록(캠페인 이력의 playbookRecheck를 작업물 단위로 편다).
+export async function playbookRechecks(owner:string):Promise<PlaybookRecheck[]>{
+ const rows=await database().prepare("SELECT data FROM records WHERE owner=? AND kind='event' AND json_extract(data,'$.playbookRecheck.ruleId') IS NOT NULL").bind(owner).all<{data:string}>();
+ return rows.results.map(r=>JSON.parse(r.data) as {campaignId:string;createdAt:string;playbookRecheck:RecheckDetail}).flatMap(e=>e.playbookRecheck.artifacts.map(a=>({...a,id:`${e.playbookRecheck.ruleId}:${a.artifactId}`,ruleId:e.playbookRecheck.ruleId,campaignId:e.campaignId,reason:e.playbookRecheck.reason,createdAt:e.createdAt})));
+}
+// 중지: 다음 작업부터 주입하지 않고, 이미 주입된 작업물에는 재확인 표시(캠페인 이력)만 남긴다. 작업물 내용·버전은 바꾸지 않는다.
+async function pausePlaybookRule(owner:string,b:Record<string,unknown>,by:PlaybookActor){
+ const r=await playbookRule(owner,b);if(r.status!=='active')throw new ApiError(409,'적용 중인 규칙만 중지할 수 있습니다.');
+ const at=stamp(),next:LearningRule={...r,status:'paused',version:r.version+1,updatedAt:at},marks=await injectedArtifacts(owner,r.id),campaigns=[...new Set(marks.map(m=>m.campaignId))];
+ await database().batch([recordStatement(owner,'learning_rule',r.id,next,r.brandId),...campaigns.map(id=>recheckStatement(owner,next,id,marks,by)),auditStatement(owner,next,'pause',r.status,by,{affectedArtifacts:marks.length})]);
+ return {id:r.id,status:next.status,affected:marks.length};
+}
+const playbookActions:Record<string,(owner:string,b:Record<string,unknown>,by:PlaybookActor)=>Promise<unknown>>={
+ playbook_create:(owner,b,by)=>createPlaybookRule(owner,(b.data&&typeof b.data==='object'&&!Array.isArray(b.data)?b.data:{}) as Record<string,unknown>,by),
+ playbook_activate:activatePlaybookRule,playbook_pause:pausePlaybookRule,playbook_renew:renewPlaybookRule,
+ playbook_grade:async(_owner,b)=>{manualGrade(b.grade);throw new ApiError(400,'운영자 선호 규칙의 등급은 바꿀 수 없습니다.')},
+};
+// 소유자 전용(서버 판정). 화면도 같은 규칙으로 버튼을 끈다(app/learning-panel.tsx).
+async function playbookAction(owner:string,b:Record<string,unknown>,by?:PlaybookActor){
+ const run=playbookActions[String(b.action)];if(!run)throw new ApiError(400,'지원하지 않는 학습 작업입니다.');
+ if(!by||by.role!=='owner')throw new ApiError(403,'소유자만 변경할 수 있습니다.');
+ return run(owner,b,by);
 }
