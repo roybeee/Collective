@@ -134,3 +134,5 @@ body{font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;backgrou
 .brief-composer .form-error{color:#ffb59f;font-size:12px;margin-top:8px}
 
 .learning-frozen{margin:.5rem 0;font-size:.85rem;color:var(--muted-foreground,#555)}.learning-frozen summary{cursor:pointer;font-weight:600}.learning-frozen ul{margin:.35rem 0 0 1rem;list-style:disc}
+/* 캠페인 성과 탭의 주문 장부 귀속 카드(PR 4b-2). 좁은 상세 시트에서는 요약 카드가 줄어든 폭에 맞춰 줄을 바꾼다. */
+.campaign-attribution{margin-top:34px;padding-top:26px;border-top:1px solid #e1e8d6}.campaign-attribution .section-heading p{font-size:13px;color:#7e8774;line-height:1.7;margin-top:6px}.campaign-attribution .ledger-summary{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}.campaign-attribution .ledger-summary strong{font-size:21px}.attribution-notes{list-style:disc;padding-left:18px}.attribution-snapshot{display:grid;grid-template-columns:1fr 1fr;gap:14px 20px;font-size:14px}.attribution-snapshot dt{font-size:12px;color:#62685d}.attribution-snapshot dd{margin-top:4px;overflow-wrap:anywhere}@media(max-width:600px){.attribution-snapshot{grid-template-columns:1fr}}

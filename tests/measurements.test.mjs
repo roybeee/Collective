@@ -128,6 +128,17 @@ await mz('collect',{experimentId:naverId,arm:'treatment',channel:'naver_ads',tar
 let draft=(await drafts()).find(d=>d.experimentId===naverId);
 check('both arms land in the same draft',!!draft.control&&!!draft.treatment);
 check('draft never asserts comparability',draft.comparable===false||draft.comparable===undefined);
+// PR 4b-2: 최상위 storeValues는 마지막으로 수집한 arm의 값으로 덮인다. 장부로 옮길 광고비는 arm마다 광고 대상·기간과 함께 남긴다.
+check('each arm keeps its own ad spend and ad target for the ledger transfer',draft.arms.control.storeValues?.adSpend===96000&&draft.arms.control.target==='cmp-1'&&draft.arms.treatment.storeValues?.adSpend===96000&&draft.arms.treatment.target==='cmp-1');
+// 수집한 초안은 같은 브랜드 지점의 비용 장부 옮기기 후보가 된다(tests/spend-transfer.test.mjs). 두 arm이 같은 광고 대상이면 같은 광고비라 한 번만 옮긴다.
+const storeOps=await load('app/api/store-operations/route.ts');await storeOps.evaluate();
+await server.namespace.recordStatement(owner,'store','ofd-s1',{id:'ofd-s1',brandId:'ofd',name:'측정 지점',status:'active',version:1},'ofd').run();
+const so=async b=>{const res=await storeOps.namespace.POST(new Request('https://agency.test/api/store-operations',{method:'POST',headers:{'content-type':'application/json','oai-authenticated-user-id':owner},body:JSON.stringify({storeId:'ofd-s1',...b})}));return {status:res.status,data:await res.json()}};
+const transferOf=c=>({action:'transfer_spend',experimentId:naverId,arm:c.arm,adSpend:c.adSpend,from:c.window.from,to:c.window.to,fetchedAt:c.fetchedAt});
+const preview=await so({action:'transfer_preview',experimentId:naverId}),collectedControl=preview.data.candidates?.find(c=>c.arm==='control'),collectedTreatment=preview.data.candidates?.find(c=>c.arm==='treatment');
+check('a collected naver draft becomes a ledger transfer candidate with the collected amount, window and time',preview.status===200&&collectedControl?.adSpend===96000&&collectedControl.window.from==='2026-08-01'&&collectedControl.window.to==='2026-08-07'&&collectedControl.fetchedAt===draft.arms.control.fetchedAt&&!collectedControl.blocked);
+const movedControl=await so(transferOf(collectedControl)),movedTreatment=await so(transferOf(collectedTreatment));
+check('the collected spend is written once when both arms point at the same ad target',movedControl.status===200&&movedTreatment.status===409&&(await server.namespace.listRecords(owner,'store_spend')).length===1);
 
 // --- 실패는 숫자를 지어내지 않는다 -------------------------------------------
 naverDown=true;

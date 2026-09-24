@@ -3,6 +3,7 @@ import {channelCatalog,type Store,type StoreExperiment,type StoreMeasurement} fr
 import {diagnosisCatalog,ledgerValues,ledgerSnapshot,ledgerChanged,type StoreDiagnostic,type StoreOrder,type StoreSpend} from '@/lib/store-operations';
 import {diagnosisInput,orderInput,spendInput,validateOrderExperiment,getStoreOperations,requireVersion,isMeasurementAction,isMeasurementRead,measurementAction,rejectPersonalData,carryImportFields,orderCodeEntry,finishOrderEntry,publishedCreatives,codeEntryContext,attributionChecks} from '@/lib/store-operations-server';
 import {entrySummary,type EntryView} from '@/lib/store-attribution';
+import {TRANSFER_PREFIX} from '@/lib/spend-transfer';
 import {checkedVersion,measurementInput,option} from '@/lib/store-server';
 
 export async function GET(req:Request){try{const owner=await identity(req),p=new URL(req.url).searchParams,storeId=str(p.get('storeId'),'지점',100,true);await readRecord<Store>(owner,'store',storeId);if(p.get('part')==='diagnosis')return json({diagnostics:await listRecords<StoreDiagnostic>(owner,'store_diagnostic',storeId),orders:[],spend:[],from:'',to:''});return json(await getStoreOperations(owner,storeId,p.get('from')||undefined,p.get('to')||undefined))}catch(e){return failure(e)}}
@@ -39,6 +40,8 @@ export async function POST(req:Request){let owner='',lock='';try{
   const id=str(b.data?.id,'비용 기록',100,true),old=(await listRecords<StoreSpend>(owner,'store_spend',store.id)).find(s=>s.id===id);requireVersion(old,b.version);
   // A supplied identifier must never overwrite another store's record.
   const existing=await database().prepare('SELECT parent_id FROM records WHERE id=? AND owner=? AND kind=?').bind(`${owner}:store_spend:${id}`,owner,'store_spend').first<{parent_id:string}>();if(existing&&existing.parent_id!==store.id)throw new ApiError(400,'다른 지점의 비용입니다.');
+  // naver- id는 수집 광고비 옮기기(관리자, transfer_spend) 전용이다. 새 비용으로 만들면 옮긴 표식을 위조할 수 있어 막고, 이미 옮긴 기록의 수정은 그대로 둔다(SEC-4b2-1).
+  if(!old&&id.startsWith(TRANSFER_PREFIX))throw new ApiError(400,'naver-로 시작하는 비용 id는 수집 광고비 옮기기 전용입니다.');
   const spend=spendInput(b.data,store.id,old);await validateOrderExperiment(owner,store.id,spend.experimentId,spend.date,spend.channel);await recordStatement(owner,'store_spend',id,spend,store.id).run();return json({id});
  }
  if(b.action==='ledger_measurement'){
