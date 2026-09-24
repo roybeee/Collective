@@ -87,6 +87,24 @@
 - 조회: `GET /api/feature-flags`(로그인한 모든 역할, 변경자는 소유자에게만).
 - 변경: `POST /api/feature-flags` `{"action":"set","flag":"online_grading","enabled":false}`, 기본값 복귀는 `{"action":"reset","flag":"..."}`. 워크스페이스 소유자만(관리자·직원 403). 모르는 스위치·불리언이 아닌 값은 400.
 
+#### A2 런타임 하향 (`a2_downgrade`)
+
+`lib/online-grading.ts`. 규제 가드레일(`lib/graders/compliance.ts`)을 운영 저장 경로에 연결하되 판정은 내리기만 한다. 역할 실행·회의가 저장한 작업물(`gradeSavedArtifacts`·`gradeMeetingArtifacts` 대상)을 온라인 채점과 같은 자리(저장·job 완료·사용량 결과 기록 뒤, 소유자 잠금을 푼 `finally`)에서 점검한다.
+
+- 점검: `online_grading`이 켜져 있으면 그 채점의 규제 점검 결과를 재사용한다(점검 1회). 꺼져 있어도 `a2_downgrade`만으로 점검한다. 이때 `grading` 기록은 기존 규칙대로 쓰지 않는다. 회의 경로는 그 회의가 저장한 레코드(`meetingId`가 그 회의)만 점검한다. 잠금이 풀린 뒤 사람이 저장한 새 버전은 `meetingId`가 없어 대상이 아니다(채점 대상은 기존 그대로).
+- 입력 상한: 온라인 채점과 같은 `MAX_GRADED_LINES`(2,000줄)를 넘는 작업물은 점검하지 않고 hold도 남기지 않는다(로그 `a2_downgrade_not_run`, 이름만). 규제 점검도 줄 수에 비례 이상으로 느려지기 때문이다(로컬 실측: 빈 줄 2,001줄 4ms·10,001줄 51ms·20,001줄 202ms·40,000줄 795ms, `문자 초안:` 5,715줄 833ms, 상한 이내 `앱 푸시 문안:` 2,000줄 133ms). 상한을 넘는 작업물은 미탐 위험이 있으므로 게시 전 담당자 확인이 그대로 필요하다.
+- 차단 표시: block 위반이 있으면 작업물에 `complianceHold`(`version` 사전 버전, `block` 건수, `issues` 최대 20건의 `category`·`ruleId`·`title`·`excerpt`, `checkedAt`, `notice`)를 남긴다. warn·info만 있으면 쓰지 않는다. 하향만 한다: block이 없어도 기존 hold를 지우지 않고, hold가 이미 있으면 덮지 않는다. 사람이 새 버전을 저장하면 새 버전에는 필드가 없어 자연히 사라진다.
+- 품질 검수 하향: 품질 검수 작업물(`role:"quality"`, `qualityReview` 있음)을 저장하면 같은 캠페인·같은 캠페인 버전의 현재(outdated 아님) 작업물(품질 검수 자신 포함) 중 hold가 있거나 이번 점검에서 block이 나온 것이 있을 때 `downgradeVerdict`로 `ready_for_review`만 `revise`로 내린다. 문구는 저장된 hold(화면에 보이는 것)로 만들고, 없을 때만 같은 버전의 이번 점검 결과로 만든다. `gateIssues`(없는 이전 형식이면 `findings` 끝)에 `A2 규제 점검: <작업물 제목> — <규칙 제목> 외 N건`(역할 순서)과 법률 자문 아님 고지를 더하고 `content`를 `qualityMarkdown`으로 다시 만든다. `checks` 5기준·`taskChecks`·`reportedVerdict`는 그대로다. 이미 `revise`·`needs_data`면 문구만 더한다.
+- 캠페인 상태: 판정을 `ready_for_review`에서 `revise`로 실제로 내렸으면 역할·회의 저장 규칙(판정이 `ready_for_review`가 아니면 캠페인 `revision`)과 맞게 캠페인을 `revision`(수정 요청)으로 내린다. 캠페인이 `review`이고 같은 캠페인 버전일 때만 쓴다(`UPDATE records SET data=json_set(data,'$.status','revision','$.updatedAt',?),updated_at=? WHERE id=? AND owner=? AND kind='campaign' AND json_extract(data,'$.version')=? AND json_extract(data,'$.status')='review'`). 승인·실행 중 등 다른 상태는 바꾸지 않는다. hold만 썼거나 문구만 더했으면 같은 캠페인 버전일 때 캠페인 `updatedAt`만 올려 캠페인 상세 화면이 다시 읽게 한다.
+- compare-and-set: `UPDATE records SET data=? WHERE id=? AND owner=? AND kind='artifact' AND json_extract(data,'$.version')=? AND json_extract(data,'$.status')='review' AND data=?`. 저장 뒤 버전이 바뀌었거나(사람이 수정) `review`가 아니면(승인·수정 요청·outdated) 쓰지 않는다. 읽은 뒤 다른 표시(브랜드·사실 변경 등)가 붙어 `changes`가 0이면 한 번만 다시 읽어, 버전·상태가 그대로일 때 그 본문 위에 다시 쓴다(표시 보존). 두 번째도 0이면 조용히 건너뛴다. 작업물 `updated_at`은 바꾸지 않는다(작업물 목록 순서 유지).
+- 알려진 한계: A2는 잠금 밖에서 쓴다. 잠금을 잡은 쓰기(브랜드·사실 변경 표시처럼 작업물 전체를 다시 쓰는 경로)가 A2보다 먼저 읽고 나중에 쓰면 방금 쓴 hold가 사라질 수 있다(lost update, 품질 검수에 더한 문구와 캠페인 상태는 남는다). 연속 실행(`advance_sequence`)이 역할 저장과 A2 하향 사이에 끼어들면 하향 전 판정을 읽어 `completed`로 끝날 수 있다. 두 경우 모두 창은 A2 실행 시간(상한 이내 작업물 1개당 수 ms~약 130ms)이다.
+- 수정 이력: 버전을 올리지 않는 같은 버전의 표시·검수 보정이라 `history` 행을 만들지 않는다(`brandChanged`·`factsChanged` 표시와 같은 규칙). 사람이 작업물을 수정 저장하면 기존 규칙대로 이전 버전(hold 포함)이 `history`에 남는다. 승인은 막지 않는다.
+- 비차단: 예외는 삼키고 로그 `a2_downgrade_error` 1줄(이름만, 작업물 원문 없음)만 남긴다. 상한 초과로 건너뛰면 `a2_downgrade_not_run` 1줄이다. 역할·회의 결과, job 상태, `domainOutcome`은 그대로다.
+- 끄는 방법: `POST /api/feature-flags` `{"action":"set","flag":"a2_downgrade","enabled":false}` 또는 `{"action":"reset","flag":"a2_downgrade"}`(기본 꺼짐). 다음 저장부터 점검·하향이 0회다. 두 스위치가 모두 꺼져 있으면 작업물·`grading` 기록은 스위치 도입 전과 바이트 단위로 같다. 이미 남은 hold는 그 버전이 바뀔 때까지 표시된다.
+- 확인: 캠페인 상세 작업물 탭 끝(온라인 채점 표시 자리)에 작업물별 `규제 점검 차단 N건 — 게시 전 담당자 확인 필요`, 이슈(규칙 제목·발췌·출처 수), 고지를 보인다. hold가 없으면 표시하지 않는다.
+- 고지: 이 점검은 표시·광고 관련 법령과 공식 지침의 일부 표현을 찾는 자동 점검이며 법률 자문이 아니다. 적발되지 않았다고 적법하다는 뜻이 아니며, 게시 전 담당자가 원문 규정과 플랫폼 정책을 확인한다.
+- 테스트: `tests/a2-runtime.test.mjs`(`passed · mocked`).
+
 ### 소유자 전용 내보내기
 
 `GET /api/usage/export`는 워크스페이스 소유자만 읽는다(비로그인 401, 관리자·직원 403, 다른 소유자의 캠페인 404).
@@ -119,7 +137,7 @@
 - 기록: `grading`(id=`<작업물 id>:<버전>`, parent=캠페인). 채점기 판정·요약, 규제 점검 건수와 규칙(발췌 없음), 채점 소요 ms(`durationMs`, 채점기+규제 점검), 맥락(사실 원장 출처: 역할=현재 사실, 회의=회의 시작 스냅샷, 지점 캠페인 여부, 보고 입력 토큰). 업종·큐레이션 금지 표현은 운영 캠페인에 없어 비운다.
 - 비차단: 채점기 하나의 예외는 그 채점기의 `grader_error` 1줄이다. 채점·저장이 실패하면 `status:"grader_error"` 기록 1건과 로그 `online_grading_grader_error` 1줄만 남고 작업물·job 상태·`domainOutcome`은 그대로다.
 - 입력 상한: 일부 채점기는 줄 수가 늘면 비례 이상으로 느려진다(로컬 실측: 2,000줄 이하 합성 최악 입력 약 110ms 이하, 빈 줄 20,000줄 약 0.5초·40,000줄 약 2.3초). 2,000줄(`MAX_GRADED_LINES`)을 넘는 작업물은 채점기를 부르지 않고 `status:"not_run"`(`reason:"too_many_lines"`, `lines`) 기록만 남긴다. 채점기 구현(`lib/graders`)은 평가 실행과 같은 기준이어야 해서 상한은 입력에만 둔다.
-- 꺼짐: 스위치 1행만 읽고 채점기를 부르지 않는다. 캠페인을 지우면 채점 기록도 지운다(판정 근거에 작업물 발췌가 있다). 잠금 밖에서 쓰므로 grading 행은 캠페인 행이 아직 있을 때만 쓴다(그사이 삭제되면 행을 남기지 않는다).
+- 꺼짐: 스위치 행(`online_grading`·`a2_downgrade` 2행)만 읽고 채점기를 부르지 않는다(`a2_downgrade`만 켜져 있으면 위 규제 점검만 한다). 캠페인을 지우면 채점 기록도 지운다(판정 근거에 작업물 발췌가 있다). 잠금 밖에서 쓰므로 grading 행은 캠페인 행이 아직 있을 때만 쓴다(그사이 삭제되면 행을 남기지 않는다).
 - 확인: `GET /api/usage?grading=<캠페인 id>`와 캠페인 상세 작업물 탭 끝의 작은 자동 점검 요약(현재 작업물 id·버전과 같은 채점만). 승인·품질 판정이 아니다.
 
 ## 상세·버전·성과
