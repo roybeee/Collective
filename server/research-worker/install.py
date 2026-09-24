@@ -6,12 +6,14 @@ import os
 import platform
 import pwd
 import shutil
+import signal
 import socket
 import stat
 import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,6 +30,9 @@ FIREWALL_SERVICE = 'collective-browser-firewall.service'
 CHROME = PREFIX / 'chromium' / 'chrome'
 CDP_PORT = 9333
 CDP_URL = 'http://127.0.0.1:' + str(CDP_PORT)
+# 설치 점검 때만 잠깐 여는 루프백 CDP 포트. 서비스 포트(CDP_PORT)와 겹치지 않게 따로 둔다.
+PROBE_PORT = 9334
+PROBE_URL = 'http://127.0.0.1:' + str(PROBE_PORT)
 # HERMES는 AGENT_BROWSER_ARGS가 없으면 userns 제한 환경에서 --no-sandbox를 스스로 넣는다. 값을 채워 그 경로를 막는다.
 HERMES_BROWSER_ARGS = '--disable-dev-shm-usage'
 # npm 설치·Chromium 내려받기 전용 계정. 결과는 root 소유 경로로 복사해 이 계정도 나중에 고칠 수 없다.
@@ -186,6 +191,9 @@ def nft_rules(uid, dns=(), cdp_clients=()):
         # 인증 없는 CDP 포트에는 지정한 계정(root·hermes)만 새로 연결한다. 브라우저의 응답(출발 포트 9333)은 해당하지 않는다.
         allowed = ' tcp dport ' + str(CDP_PORT) + ' meta skuid != { ' + ', '.join(str(x) for x in cdp_clients) + ' } reject'
         lines += ['    ip daddr ' + expand_cidr('127/8') + allowed, '    ip6 daddr ::1' + allowed]
+    # 설치 점검용 CDP 포트(역시 인증 없음)에는 점검하는 root만 새로 연결한다. hermes도 붙지 못한다.
+    probe = ' tcp dport ' + str(PROBE_PORT) + ' meta skuid != 0 reject'
+    lines += ['    ip daddr ' + expand_cidr('127/8') + probe, '    ip6 daddr ::1' + probe]
     return '\n'.join(lines + ['  }', '}']) + '\n'
 
 def apparmor_profile(chrome):
@@ -332,6 +340,10 @@ def cdp_client_denial():
     # root·hermes 밖의 로컬 계정은 인증 없는 CDP 포트에 붙지 못해야 한다(양성 대조군은 root의 cdp_websocket).
     return 'CDP 포트 접속(' + NPM_USER + ' 계정)', as_user(NPM_USER, NPM_HOME, ['python3', '-c', CONNECT, '127.0.0.1', CDP_PORT])
 
+def probe_client_denial():
+    # root 밖의 로컬 계정은 점검 포트에 붙지 못해야 한다(양성 대조군은 root의 /json/version, wait_probe_port).
+    return 'CDP 점검 포트 접속(' + NPM_USER + ' 계정)', as_user(NPM_USER, NPM_HOME, ['python3', '-c', CONNECT, '127.0.0.1', PROBE_PORT])
+
 def host_denial(address, port):
     return '서버 자신의 주소 접속(' + address + ')', as_user(BROWSER_USER, BROWSER_HOME, ['python3', '-c', CONNECT, address, port])
 
@@ -367,12 +379,12 @@ def smoke_command(user_command, websocket):
     # HERMES와 같은 형태로 --cdp만 넘긴다. agent-browser 0.13 이상은 --session이 있으면 --cdp를 무시하고 로컬 브라우저를 띄운다.
     return user_command + [str(PREFIX / 'node_modules' / '.bin' / 'agent-browser'), '--cdp', websocket]
 
-def policy_problem(marker, file_output, recheck_output):
-    """file:// 음성 테스트 판정. 마커가 없다는 것만으로는 시간 초과·비정상 종료와 구분되지 않아 직후 data: 재확인을 요구한다."""
-    if marker in file_output:
+def policy_problem(file_opened, rechecked):
+    """file:// 음성 테스트 판정. 제목이 안 보였다는 것만으로는 시간 초과·비정상 종료와 구분되지 않아 직후 data: 재확인을 요구한다."""
+    if file_opened:
         return 'Chrome 정책(URLBlocklist)이 적용되지 않아 file:// 페이지가 열렸습니다. 설치를 중단합니다.'
-    if marker not in recheck_output:
-        return 'file:// 점검 직후 Chromium이 data: 페이지를 읽지 못해 정책 차단을 확인하지 못했습니다. 설치를 중단합니다.'
+    if not rechecked:
+        return 'file:// 점검 직후 Chromium이 data: 재확인 페이지를 열지 못해 정책 차단을 확인하지 못했습니다. 설치를 중단합니다.'
     return ''
 
 def install_tree(source, target, uid=0, gid=0, top=None):
@@ -498,47 +510,163 @@ def apply_apparmor():
         return 'collective-chromium profile is not loaded'
     return None
 
-def dump_dom(url, profile, no_sandbox):
-    shutil.rmtree(profile, ignore_errors=True)
-    command = as_user(BROWSER_USER, BROWSER_HOME, [CHROME] + chrome_flags(no_sandbox) + ['--user-data-dir=' + str(profile), '--dump-dom', url])
+def log_tail(text, lines=5, limit=500):
+    """점검 브라우저 로그의 마지막 몇 줄. 제어 문자는 ?로 바꾸고 길이를 제한한다."""
+    kept = [x for x in (''.join(c if c.isprintable() else '?' for c in line).strip() for line in text.splitlines()) if x]
+    tail = ' | '.join(kept[-lines:])
+    return ('…' + tail[-limit:] if len(tail) > limit else tail) or '(로그 없음)'
+
+def read_log(path, size=8192):
     try:
-        return subprocess.run(command, capture_output=True, text=True, timeout=60).stdout
-    except subprocess.TimeoutExpired:
+        with open(path, 'rb') as stream:
+            stream.seek(max(0, os.fstat(stream.fileno()).st_size - size))
+            return stream.read().decode('utf-8', 'replace')
+    except OSError:
         return ''
 
-def probe_chrome(no_sandbox, allow_no_sandbox):
-    # 양성: 샌드박스를 켠 채 data: 페이지를 읽는다. 음성: 브라우저 계정이 읽을 수 있는 file:// 페이지도 정책으로 막힌다.
-    # 점검 페이지는 root 소유 폴더에 둔다(0755·0644). 브라우저 계정이 쓸 수 있는 폴더에 root가 파일을 쓰지 않는다.
-    token = os.urandom(8).hex()
-    marker, profile, page = '<p>' + token + '</p>', BROWSER_HOME / 'install-probe', PREFIX / 'policy-check' / 'policy-check.html'
+def probe_owners():
+    tables = ''.join(p.read_text() for p in (Path('/proc/net/tcp'), Path('/proc/net/tcp6')) if p.exists())
+    return listener_uids(tables, PROBE_PORT)
+
+def check_probe_port_free(attempts=5):
+    # 포트 선점 확인: 점검 전에는 아무도 점검 포트를 열고 있지 않아야 한다(이전 점검이 남긴 브라우저가 대신 답하지 못하게).
+    for _ in range(attempts):
+        owners = probe_owners()
+        if not owners:
+            return
+        time.sleep(1)
+    raise IsolationError('CDP 점검 포트(' + str(PROBE_PORT) + ')를 이미 다른 프로세스가 열고 있어(UID ' + ', '.join(map(str, sorted(owners))) +
+                         ') 점검 결과를 믿을 수 없어 설치를 중단했습니다. ss -ltnp로 확인해 끝낸 뒤 다시 실행하세요.')
+
+def wait_probe_port(process, attempts=30):
+    # 점검 포트가 열릴 때까지 약 30초 기다린다. Chromium이 먼저 끝나면(샌드박스 오류 등) 더 기다리지 않는다.
+    for _ in range(attempts):
+        if process.poll() is not None:
+            return False
+        try:
+            cdp_json('/json/version', PROBE_URL)
+            return True
+        except (OSError, ValueError):
+            time.sleep(1)
+    return False
+
+def probe_titles():
     try:
-        page.parent.mkdir(parents=True, exist_ok=True)
-        os.chmod(page.parent, 0o755)
-        atomic(page, marker, mode=0o644)
-        started = marker in dump_dom('data:text/html,' + marker, profile, no_sandbox)
-        if not started and not no_sandbox:
-            if not allow_no_sandbox:
-                raise IsolationError('샌드박스를 켠 채로 Chromium을 시작하지 못해 설치를 중단했습니다. AppArmor 프로필(' + str(APPARMOR_PROFILE) +
-                                   ')과 journalctl -k를 확인하세요. 예외가 꼭 필요하면 --allow-no-sandbox로 다시 실행하세요. HERMES 설정은 바뀌지 않았습니다.')
-            print('경고: 샌드박스로 시작하지 못해 --allow-no-sandbox에 따라 샌드박스 없이 실행합니다.', flush=True)
-            no_sandbox = True
-            started = marker in dump_dom('data:text/html,' + marker, profile, no_sandbox)
-        if not started:
-            raise RuntimeError('격리 브라우저 계정으로 Chromium을 시작하지 못했습니다. HERMES 설정은 바뀌지 않았습니다.')
-        file_output = dump_dom(page.as_uri(), profile, no_sandbox)
-        problem = policy_problem(marker, file_output, dump_dom('data:text/html,' + marker, profile, no_sandbox))
-        if problem:
-            raise IsolationError(problem)
-        print('격리 확인: 브라우저 계정의 file:// 열기 거부됨(Chrome 정책, 직후 data: 재확인 통과)', flush=True)
-    finally:
-        page.unlink(missing_ok=True)
+        targets = cdp_json('/json/list', PROBE_URL)
+    except (OSError, ValueError):
+        return set()
+    return {t.get('title') for t in targets if isinstance(t, dict)} if isinstance(targets, list) else set()
+
+def wait_title(title, attempts):
+    """점검 브라우저의 CDP 대상 제목에 title이 나타날 때까지 1초 간격으로 본다. 나타나면 그때의 제목 집합, 아니면 None."""
+    for _ in range(attempts):
+        titles = probe_titles()
+        if title in titles:
+            return titles
+        time.sleep(1)
+    return None
+
+def stop_probe(process):
+    # 점검 브라우저는 새 세션으로 띄웠다. runuser와 Chromium 자식 프로세스를 그룹째 TERM으로 끝내고, 남은 것은 KILL한다.
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(process.pid, sig)
+        except OSError:
+            pass
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+
+def probe_checks(process, browser_uid, page, tokens, log):
+    """양성(data:)·음성(file://)·재확인(새 토큰 data:)을 CDP 제목으로 본다. (시작 실패 사유, 정책 문제)."""
+    if not wait_probe_port(process):
+        return 'Chromium이 CDP 점검 포트(' + str(PROBE_PORT) + ')를 열지 않았습니다. Chromium 로그 끝: ' + log_tail(read_log(log)), ''
+    owners = probe_owners()
+    if owners != {browser_uid}:
+        raise IsolationError('CDP 점검 포트(' + str(PROBE_PORT) + ')를 브라우저 계정이 아닌 계정이 열고 있어 설치를 중단했습니다(UID ' +
+                             ', '.join(map(str, sorted(owners))) + ').')
+    expect_denied(*probe_client_denial(), who='다른 로컬 계정')
+    page_url = lambda token: 'data:text/html,<title>' + token + '</title>'
+    if not (cdp_open(page_url(tokens[0])) and wait_title(tokens[0], 10) is not None):
+        return 'Chromium이 CDP 점검 포트는 열었지만 data: 점검 페이지를 열지 못했습니다. Chromium 로그 끝: ' + log_tail(read_log(log)), ''
+    if not cdp_open(page.as_uri()):
+        # 요청이 실패하면(HTTP 오류·시간 초과) file:// 페이지를 연 적이 없어 제목이 안 보여도 정책 차단의 증거가 아니다.
+        return '', 'file:// 점검 페이지를 CDP로 열도록 요청하지 못해 정책 차단을 확인하지 못했습니다. 설치를 중단합니다.'
+    file_opened, recheck = wait_title(tokens[1], 5) is not None, None
+    if not file_opened and cdp_open(page_url(tokens[2])):
+        recheck = wait_title(tokens[2], 10)
+        file_opened = recheck is not None and tokens[1] in recheck
+    return '', policy_problem(file_opened, recheck is not None)
+
+def exit_on_signal(signum, frame):
+    raise SystemExit(128 + signum)
+
+def probe_once(no_sandbox, browser_uid, page):
+    # 브라우저 계정으로 점검용 Chromium을 띄운다. 출력은 root 소유 폴더의 로그로 받고, 끝나면 그룹째 끝낸 뒤 모두 지운다.
+    profile, log, tokens, process = BROWSER_HOME / 'install-probe', page.parent / 'chromium.log', [os.urandom(8).hex() for _ in range(3)], None
+    # SIGHUP(ssh 연결 끊김)·SIGTERM(kill·timeout)의 기본 동작은 finally 없이 끝나 새 세션의 점검 브라우저가 포트를 연 채 남는다.
+    # 점검 동안만 예외로 바꿔 아래 정리가 돌게 한다. 무시(nohup 등)로 둔 신호는 그대로 둔다.
+    replaced = [sig for sig in (signal.SIGHUP, signal.SIGTERM) if signal.getsignal(sig) == signal.SIG_DFL]
+    for sig in replaced:
+        signal.signal(sig, exit_on_signal)
+    try:
+        # SIGKILL 등으로 설치기가 끝나 남은 점검 브라우저(같은 점검 프로필)만 먼저 끝낸다. 서비스 브라우저는 프로필이 달라 걸리지 않는다.
+        subprocess.run(['pkill', '-KILL', '-u', BROWSER_USER, '-f', 'user-data-dir=' + str(profile)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        check_probe_port_free()
         shutil.rmtree(profile, ignore_errors=True)
+        atomic(page, '<title>' + tokens[1] + '</title>', mode=0o644)
+        command = as_user(BROWSER_USER, BROWSER_HOME, [CHROME] + chrome_flags(no_sandbox) + ['--remote-debugging-port=' + str(PROBE_PORT),
+                                                                                           '--user-data-dir=' + str(profile), 'about:blank'])
+        with open(log, 'wb') as output:
+            process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
+        return probe_checks(process, browser_uid, page, tokens, log)
+    finally:
+        if process is not None:
+            stop_probe(process)
+        shutil.rmtree(profile, ignore_errors=True)
+        page.unlink(missing_ok=True)
+        log.unlink(missing_ok=True)
+        for sig in replaced:
+            signal.signal(sig, signal.SIG_DFL)
+
+def probe_chrome(no_sandbox, allow_no_sandbox, browser_uid):
+    # 양성: 샌드박스를 켠 채 data: 페이지를 연다. 음성: 브라우저 계정이 읽을 수 있는 file:// 페이지도 정책으로 막힌다.
+    # Chromium의 DOM 덤프 옵션은 Chrome for Testing 154에서 root·--no-sandbox 어느 조합으로도 끝나지 않아(2026-09-24 실측) 점검 포트의 CDP로 본다.
+    # 점검 페이지·로그는 root 소유 폴더에 둔다(0755). 브라우저 계정이 쓸 수 있는 폴더에 root가 파일을 쓰지 않는다.
+    page = PREFIX / 'policy-check' / 'policy-check.html'
+    page.parent.mkdir(parents=True, exist_ok=True)
+    os.chmod(page.parent, 0o755)
+    reason, problem = probe_once(no_sandbox, browser_uid, page)
+    if reason and not no_sandbox:
+        if not allow_no_sandbox:
+            raise IsolationError('샌드박스를 켠 채로 Chromium을 시작하지 못해 설치를 중단했습니다. ' + reason + ' AppArmor 프로필(' + str(APPARMOR_PROFILE) +
+                               ')과 journalctl -k를 확인하세요. 예외가 꼭 필요하면 --allow-no-sandbox로 다시 실행하세요. HERMES 설정은 바뀌지 않았습니다.')
+        print('경고: 샌드박스로 시작하지 못해(' + reason + ') --allow-no-sandbox에 따라 샌드박스 없이 실행합니다.', flush=True)
+        no_sandbox = True
+        reason, problem = probe_once(no_sandbox, browser_uid, page)
+    if reason:
+        print('Chromium 점검 실패 사유: ' + reason, file=sys.stderr, flush=True)
+        raise RuntimeError('격리 브라우저 계정으로 Chromium을 시작하지 못했습니다. HERMES 설정은 바뀌지 않았습니다.')
+    if problem:
+        raise IsolationError(problem)
+    print('격리 확인: 브라우저 계정의 file:// 열기 거부됨(Chrome 정책, 직후 data: 재확인 통과)', flush=True)
     return no_sandbox
 
-def cdp_json(path):
+def cdp_json(path, base=CDP_URL):
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    with opener.open(CDP_URL + path, timeout=2) as response:
+    with opener.open(base + path, timeout=2) as response:
         return json.loads(response.read(1048576))
+
+def cdp_open(url, base=PROBE_URL):
+    # Chrome 111부터 /json/new는 PUT만 받는다. 새 탭을 만들었으면 True, 연결·응답이 실패하면 False.
+    request = urllib.request.Request(base + '/json/new?' + urllib.parse.quote(url, safe=':/,'), method='PUT')
+    try:
+        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request, timeout=5) as response:
+            json.loads(response.read(1048576))
+    except (OSError, ValueError):
+        return False
+    return True
 
 def cdp_websocket(attempts=30):
     # root 쪽 양성 대조군: 격리 브라우저가 CDP 포트를 열었는지 확인하고 HERMES가 쓰는 것과 같은 WebSocket 주소를 얻는다.
@@ -605,7 +733,7 @@ def start_isolated_browser(browser, hermes, allow_no_sandbox):
         no_sandbox = sandbox_decision(restricted, apply_apparmor() if restricted else None, allow_no_sandbox)
     except RuntimeError as exc:
         raise IsolationError(str(exc)) from None
-    no_sandbox = probe_chrome(no_sandbox, allow_no_sandbox)
+    no_sandbox = probe_chrome(no_sandbox, allow_no_sandbox, browser.pw_uid)
     atomic(Path('/etc/systemd/system') / BROWSER_SERVICE, browser_unit(CHROME, no_sandbox), mode=0o644)
     run(['systemctl', 'daemon-reload'])
     run(['systemctl', 'enable', BROWSER_SERVICE])
