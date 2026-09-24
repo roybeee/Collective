@@ -1,10 +1,11 @@
 // 프롬프트 레지스트리 해석·기록(F3a): 공용 해석기(역할 실행·회의)·캠페인 고정(pin)·promptVersion 기록(작업물·learning_snapshot·provider_usage·회의 스냅샷)·폴백.
 // 코드 기본값과 같은 본문을 활성화하면 역할·회의·바이럴 지시와 입력은 기준 커밋과 바이트 동일하고, 역할 inputHash 변화는 promptVersion 키 추가분뿐이다(독립 오라클로 재계산).
+// 회의 입력에는 작업물 실행 메타(promptVersion·promptFallback·promptRecheck)를 싣지 않는다.
 // 근거: mocked(raw.githubusercontent.com·HERMES fetch 스텁, 메모리 SQLite, 합성 데이터). 포인터는 테스트 헬퍼로 직접 설정한다(활성화 게이트는 F3b).
 import assert from 'node:assert/strict';
 import {readFileSync,readdirSync} from 'node:fs';
 import {testRuntime} from './helpers/runtime.mjs';
-import {sha,seed,mockHermes,runRole,runMeeting,roleCampaign,meetingCampaign,brand,rawGithub,setRelease,SOURCE_SHA} from './helpers/prompt-seed.mjs';
+import {sha,seed,mockHermes,runRole,runMeeting,roleCampaign,meetingCampaign,brand,now,rawGithub,setRelease,SOURCE_SHA} from './helpers/prompt-seed.mjs';
 
 const raw=rawGithub(),hermes=mockHermes(raw.handler);
 const {sql,load}=testRuntime(hermes.fetch);
@@ -129,5 +130,13 @@ check('lookup failure is recorded on the run snapshot',()=>assert.equal(lfSnapsh
 const lfDiscovery=await (await learning.executeLearning(owner,{action:'start_discovery',brandId:brand.id,query:'합성 조사 주제 2'})).json();
 const lfTask=await server.readRecord(owner,'learning_task',lfDiscovery.id),lfBody=JSON.parse((await server.readRecord(owner,'hermes_submission',lfDiscovery.id)).body);
 check('viral discovery falls back to the code constant and marks the task',()=>assert.ok(lfTask.promptFallback==='lookup_failed'&&!lfTask.promptVersion&&sha(lfBody.instructions)===fixture.learning[1].instructions.sha256));
+// 8) 회의 입력에는 작업물 실행 메타가 없다: 레지스트리 버전 id(promptVersion)·폴백 표시·롤백 재확인 표시를 단 작업물로 회의를 열어도 originalArtifacts·candidateArtifacts에 싣지 않는다.
+const markArtifact=(c,role,path,value)=>sql.prepare(`UPDATE records SET data=json_set(data,'${path}',json(?)) WHERE owner=? AND kind='artifact' AND parent_id=? AND json_extract(data,'$.role')=? AND json_extract(data,'$.status')!='outdated'`).run(JSON.stringify(value),owner,c.id,role);
+markArtifact(fresh,'cmo','$.promptRecheck',{version:ids['role.cmo'],reason:'prompt_rollback',at:now});markArtifact(fresh,'insight','$.promptFallback','lookup_failed');
+const marked=(await server.listRecords(owner,'artifact',fresh.id)).filter(a=>a.status!=='outdated');
+check('the leak case starts from artifacts that carry registry versions and run marks',()=>assert.ok(marked.length===2&&marked.every(a=>/@[0-9a-f]{12}/.test(a.promptVersion))&&marked.some(a=>a.promptRecheck)&&marked.some(a=>a.promptFallback)));
+const leak=await runMeeting(meeting,server,owner,fresh,'pr-meeting-3');
+check('meeting inputs carry no promptVersion, promptFallback, promptRecheck or registry version id',()=>assert.ok(leak.meeting.status==='completed'&&leak.steps.every(s=>!/"prompt(?:Version|Fallback|Recheck)"|[a-z]+\.[a-z]+@[0-9a-f]{12}/.test(s.input))));
+check('meeting inputs still carry the artifacts themselves (original and quality candidates)',()=>assert.ok(marked.every(a=>leak.steps.every(s=>s.input.includes('"id":'+JSON.stringify(a.id))))));
 check('no external network call',()=>assert.deepEqual(hermes.external,[]));
 console.log(JSON.stringify({passed:passed.length}));

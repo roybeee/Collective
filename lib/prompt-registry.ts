@@ -1,6 +1,6 @@
 import {ApiError,database,listRecords,readRecord,recordStatement,stamp,uid} from './server';
 import {HttpBodyError,readBoundedJson} from './http-limits';
-import {promptUnits,unitOf,unitFile,unitVersionId,versionUnit,canonicalBody,parseUnitFile,validateUnitBody,brandTermsFromCode,PromptUnitError,PROMPT_FILE_MAX_BYTES,type UnitBody} from './prompt-units';
+import {promptUnits,unitOf,unitFile,unitVersionId,versionUnit,canonicalBody,parseUnitFile,validateUnitBody,brandTermsFromCode,brandShort,PromptUnitError,PROMPT_FILE_MAX_BYTES,type UnitBody} from './prompt-units';
 import {channelSkillIds,type PromptSet,type RoleSkill} from './practice';
 import type {Campaign,Artifact,Brand} from './agency';
 import type {Publication} from './execution';
@@ -96,10 +96,10 @@ async function fetchUnitFile(ref:string,unit:string):Promise<unknown>{
  try{return await readBoundedJson(r,PROMPT_FILE_MAX_BYTES)}catch(error){if(error instanceof HttpBodyError)bad(`${refLabel(ref)} 프롬프트 파일이 ${error.status===413?'너무 큽니다':'JSON 형식이 아닙니다'}.`);throw error}
 }
 function unitCheck<T>(fn:()=>T):T{try{return fn()}catch(error){if(error instanceof PromptUnitError)bad(error.message);throw error}}
-// 소유자 D1의 브랜드·지점 이름. 코드 시드 목록과 함께 브랜드 식별어로 막는다.
+// 소유자 D1의 브랜드·지점 이름과 약칭(영문 3자·한글 2자 이상). 코드 시드 목록과 함께 브랜드 식별어로 막는다. D1 이름은 CI가 볼 수 없어 등록 때만 검사한다.
 async function workspaceTerms(owner:string){
  const [brands,stores]=await Promise.all([listRecords<Brand>(owner,'brand'),listRecords<Store>(owner,'store')]);
- return [...brands.flatMap(b=>[b.name,...(typeof b.short==='string'&&b.short.length>=3?[b.short]:[])]),...stores.map(s=>s.name)].filter((t):t is string=>typeof t==='string');
+ return [...brands.flatMap(b=>[b.name,...brandShort(b.short)]),...stores.map(s=>s.name)].filter((t):t is string=>typeof t==='string');
 }
 const registrationStatement=(owner:string,entry:{unit:string;sourceSha:string;status:'registered'|'idempotent'|'blocked';reason?:string;versionId?:string},who:Who)=>{const id=uid();return recordStatement(owner,'prompt_registration',id,{id,...entry,by:who,at:stamp()})};
 // 목록·등록 응답에는 본문을 빼고 보낸다(본문은 ?version=<id>로 읽는다).

@@ -60,6 +60,17 @@ export async function runRole(execution,server,owner,campaign,role){
  return {role,jobId:started.id,inputHash:started.id.split(':').pop(),instructions:body.instructions,input:body.input,status:polled.status};
 }
 
+// 역할 실행이 만든 작업물 행의 시각(updated_at·createdAt)을 역할 순서의 고정값으로 바꾸고 캠페인 행을 시드 값으로 되돌린다. 내용·실행 메타는 그대로다.
+// 회의는 작업물을 updated_at 순으로 읽고 작업물 객체를 입력에 실으므로, 이렇게 해야 순서와 입력이 실행마다 같다.
+export async function pinRoleArtifacts(server,sql,owner,campaign){
+ for(const [i,role] of roleIds.entries()){
+  const row=sql.prepare("SELECT id,data FROM records WHERE owner=? AND kind='artifact' AND parent_id=? AND json_extract(data,'$.role')=?").get(owner,campaign.id,role);
+  if(!row)throw new Error(`${role} 작업물이 없습니다.`);
+  sql.prepare('UPDATE records SET data=?,updated_at=? WHERE id=?').run(JSON.stringify({...JSON.parse(row.data),createdAt:now}),`2026-01-01T00:01:0${i}.000Z`,row.id);
+ }
+ await server.recordStatement(owner,'campaign',campaign.id,campaign).run();
+}
+
 // 회의를 시작해 완료까지 진행한다. 단계별 제출 본문(지시·입력)을 순서대로 돌려준다.
 export async function runMeeting(meeting,server,owner,campaign,id){
  const started=await (await meeting.executeMeeting(owner,{action:'start',id,campaignId:campaign.id,campaignVersion:campaign.version,agenda:'합성 안건: 재방문 동기를 정리한다.'})).json();

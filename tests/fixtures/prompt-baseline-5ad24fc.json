@@ -240,6 +240,140 @@
    }
   }
  ],
+ "roleMeeting": [
+  {
+   "step": "discussion:cmo",
+   "instructions": {
+    "sha256": "e18b00a88a0c211c9076e792b63db2de2a77767f3d9e0a874a8ac3c5c0790cdf",
+    "length": 2939
+   },
+   "input": {
+    "sha256": "1559e57639cd15c133fb19f65bdf380369005388584c8256cca9f69737c77ef9",
+    "length": 9889
+   }
+  },
+  {
+   "step": "discussion:insight",
+   "instructions": {
+    "sha256": "56d589bba9bc67ec51da348556458d8e829ea41718744dd5e8830d824eca9e69",
+    "length": 2967
+   },
+   "input": {
+    "sha256": "51df88f6ce01dc197fb416d06879b6b7b08fc5b05232a2e2672795c6581b912e",
+    "length": 10268
+   }
+  },
+  {
+   "step": "discussion:strategy",
+   "instructions": {
+    "sha256": "646b3b9346efffda0decb47ffa065489ffb06abea4bfa675f21bd4f5e2df6056",
+    "length": 2881
+   },
+   "input": {
+    "sha256": "95134bffc4a3514cfffaae709ff999882f9c1a518fcbcd28e2dce5a224876fb1",
+    "length": 10658
+   }
+  },
+  {
+   "step": "discussion:creative",
+   "instructions": {
+    "sha256": "e835ad357948ada6d9079381170730e4f83456b90b191bcdf0e46310fb68684c",
+    "length": 2887
+   },
+   "input": {
+    "sha256": "a2addeac3afcbb5e379507139eda6e1e8f4ce88bf0629e6bcd00dd695edef54c",
+    "length": 11049
+   }
+  },
+  {
+   "step": "discussion:content",
+   "instructions": {
+    "sha256": "ad1fd8a0124fb4d48ab8f976335b47762f9085f645f770be431ebc5b519c9169",
+    "length": 2961
+   },
+   "input": {
+    "sha256": "11b29581a580e2425e3e9947c11ea0f9e41198e2b4dcf053aa226b8e562dd188",
+    "length": 11439
+   }
+  },
+  {
+   "step": "discussion:growth",
+   "instructions": {
+    "sha256": "fee777e745bce0816497b8c4ffc03e69a183bbb3a87552fc37ae80d519740bce",
+    "length": 2926
+   },
+   "input": {
+    "sha256": "6b57eb325d5026209d984ced3400d59d0dead66d8d7b81b395a13bb525319b29",
+    "length": 11827
+   }
+  },
+  {
+   "step": "discussion:data",
+   "instructions": {
+    "sha256": "5526893b52359c1b4e318053349ac23edd9c1d37f6bf8dd81eac7e40d3b5942d",
+    "length": 3013
+   },
+   "input": {
+    "sha256": "7baea2f83526f57d1bcd07da23b9faf4381c537c34529ab5e8d5d91029e0081b",
+    "length": 12212
+   }
+  },
+  {
+   "step": "discussion:quality",
+   "instructions": {
+    "sha256": "ee4da27755327c30c82472c2fcd6bb4af955c5d45a21f09a52d39fb055290c6d",
+    "length": 2979
+   },
+   "input": {
+    "sha256": "ad91d4561533171b694836e0223f9e4df666632b7108ae51083a4ca7d3c7bf00",
+    "length": 12598
+   }
+  },
+  {
+   "step": "synthesis",
+   "instructions": {
+    "sha256": "1799e6d16c6723aa6075f859bf688cd9aba84eac9efa337689050cfaf67857a8",
+    "length": 3429
+   },
+   "input": {
+    "sha256": "53a0f9a0164dda80bdd7cd170641345bd458665ef3a32f2e4a4a14d70483d899",
+    "length": 12982
+   }
+  },
+  {
+   "step": "revision:content",
+   "instructions": {
+    "sha256": "115ac8eb63facc8ab60f531283f234f46d85cb30690dd5f457104da287fe6269",
+    "length": 3114
+   },
+   "input": {
+    "sha256": "3517e1f84d8610eedb4c41d6b3b90562321c74101c39fe4b9f2a8fc141b7ffa3",
+    "length": 13374
+   }
+  },
+  {
+   "step": "revision:growth",
+   "instructions": {
+    "sha256": "ac7d3e3ab864ab465ab871c56bff9bbc001f76405f116419404e35a00c7a0670",
+    "length": 3068
+   },
+   "input": {
+    "sha256": "eb44b239e1eb35f840436d85eba5eefe7fa13981d6a4b261d3ba3b4988e3f3f2",
+    "length": 13838
+   }
+  },
+  {
+   "step": "quality",
+   "instructions": {
+    "sha256": "91270dd711cf90b836e11c91b45bfaccaf9772bdd809b9770a6ed0b49b8717f2",
+    "length": 4082
+   },
+   "input": {
+    "sha256": "92575658f4ba52101535e2d0241c57b2cd56b8532c580c25139d9f8e0afb3814",
+    "length": 18444
+   }
+  }
+ ],
  "learning": [
   {
    "kind": "analysis",
