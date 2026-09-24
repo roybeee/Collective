@@ -80,6 +80,8 @@ const events=sql.prepare("SELECT COUNT(*) AS n FROM records WHERE owner=? AND ki
 check('preview counts deleted records per kind',sorted(plan.deleted)===sorted({campaign:1,artifact:1,history:1,metric:1,event:events,learning_snapshot:1,campaign_directive:1,viral_experiment:2,experiment_revision:1,measurement_draft:1,measurement_source:1,learning_guidance:1,brief_draft:2,hermes_submission:4,learning_task:1,learning_job_output:1}));
 check('preview counts retained records per kind',sorted(plan.retained)===sorted({learning_rule:2,viral_experiment_summary:1,store_experiment:1}));
 check('preview counts execution jobs and totals',plan.jobs===2&&plan.totals.deleted===Object.values(plan.deleted).reduce((a,b)=>a+b,0)&&plan.totals.retained===4);
+// F4b-2: 직접 작성 작업물뿐이라 이관할 평가 신호는 없다. 완전 삭제면 종료 보존할 규칙 2건을 지우고 실험 요약 1건을 만들지 않는다.
+check('preview reports archive and complete-deletion counts',plan.archive.signals===0&&plan.archive.retentionDays===90&&sorted(plan.purge.deleted)===sorted({learning_rule:2})&&sorted(plan.purge.skipped)===sorted({viral_experiment_summary:1}));
 check('preview reports the campaign as deletable',plan.deletable===true&&plan.blockedReason===null&&plan.version===1&&plan.campaignId===cid);
 const originalBatch=DB.batch;DB.batch=async ss=>originalBatch([...ss,DB.prepare('INSERT INTO missing_table VALUES (1)')]);
 check('storage failure reports error',(await act('delete_campaign',payload)).status===500);DB.batch=originalBatch;

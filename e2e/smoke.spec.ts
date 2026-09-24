@@ -168,6 +168,11 @@ test('캠페인 삭제는 목록 메뉴에서 건수를 확인하고 제목을 �
   const dialog = page.getByRole('alertdialog');
   await expect(dialog.getByText('삭제: 작업물 1건', {exact: false})).toBeVisible();
   await expect(dialog).toContainText('바이럴 출처 학습 규칙은 지우지 않고 종료 상태와 원 캠페인 삭제 표시로 남깁니다');
+  // F4b-2(결정 7): 평가 신호는 비식별로 90일 보관하고, 소유자에게만 '학습 자산까지 완전 삭제' 선택이 기본 해제로 보인다. 이 시나리오는 기본(보존) 삭제를 쓴다.
+  await expect(dialog).toContainText('평가 신호는 원문 없이 비식별로 90일 보관합니다');
+  const purge = dialog.getByRole('checkbox', {name: /학습 자산까지 완전 삭제\(소유자만\)/});
+  await expect(purge).toBeVisible();
+  await expect(purge).not.toBeChecked();
   const confirm = dialog.getByRole('button', {name: '캠페인 삭제', exact: true});
   const typed = dialog.getByLabel('캠페인 제목 확인', {exact: true});
   await expect(confirm).toBeDisabled();
