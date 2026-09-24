@@ -16,6 +16,9 @@ import {hermesSubmissionStatement,submitHermes,pollHermes} from '@/lib/hermes';
 import type {UsageContext} from '@/lib/usage-ledger';
 // 프롬프트 레지스트리(F3a): 역할 실행과 같은 공용 해석기로 회의 시작 때 캠페인 해석을 스냅샷에 고정한다.
 import {resolveCampaignPrompts,runPromptVersion,roleRunUnits,joinVersions,f2aPromptVersion} from './prompt-registry';
+// 보관 캠페인 검사(PR 5d)를 소유자 잠금 안에서 한다(PR 4a-2). 복구 중 예산 초과(TokenBudgetExceeded)는 확정 실패로 가른다.
+import {assertNotArchived,assertCampaignNotArchived} from './campaign-archive';
+import {TokenBudgetExceeded} from './token-budget';
 import {ApiError,identity,str,json,failure,database,readRecord,listRecords,recordStatement,eventStatement,connection,acquireLock,releaseLock,stamp,type EventActor} from '@/lib/server';
 
 const activeStates=['starting','queued','in_progress','uncertain'];
@@ -118,7 +121,8 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:E
    if(existing){if(existing.campaignId!==b.campaignId)throw new ApiError(409,'다른 캠페인에서 사용한 회의 번호입니다.');return json(publicMeeting(existing))}
    const cfg=await connection(owner);if(cfg.provider!=='hermes')throw new ApiError(409,'팀 회의는 HERMES 연결이 필요합니다. 연결 및 설정을 확인하세요.');
    await requireMeetingWorker(owner);
-   const c=await readRecord<Campaign>(owner,'campaign',str(b.campaignId,'캠페인',100,true));if(c.version!==b.campaignVersion)throw new ApiError(409,'캠페인이 변경됐습니다. 최신 브리프에서 회의를 시작하세요.');
+   // 보관 검사는 잠금 안에서 캠페인을 읽은 직후 한다. 라우트 사전 검사(app/api/meetings)를 통과한 뒤 보관된 경합도 409로 막는다(PR 4a-2).
+   const c=await readRecord<Campaign>(owner,'campaign',str(b.campaignId,'캠페인',100,true));assertNotArchived(c);if(c.version!==b.campaignVersion)throw new ApiError(409,'캠페인이 변경됐습니다. 최신 브리프에서 회의를 시작하세요.');
    const busy=await database().prepare("SELECT id FROM jobs WHERE owner=? AND campaign_id=? AND status IN ('starting','queued','in_progress','uncertain')").bind(owner,c.id).first();if(busy)throw new ApiError(409,'이 캠페인에서 AI 작업 또는 회의가 진행 중입니다. 먼저 완료하거나 중지해 주세요.');
    const drafts=await listRecords<BriefDraft>(owner,'brief_draft');if(drafts.some(d=>(d.campaignId===c.id||d.savedCampaignId===c.id)&&activeStates.includes(d.status)))throw new ApiError(409,'캠페인 초안 작성이 진행 중입니다. 먼저 완료하거나 중지해 주세요.');
    const brand=await readRecord<Brand>(owner,'brand',c.brandId),artifacts=(await listRecords<Artifact>(owner,'artifact',c.id)).filter(a=>a.status!=='outdated');
@@ -136,6 +140,8 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:E
   if(!['advance','recover','cancel','retry_failed'].includes(String(b.action)))throw new ApiError(400,'지원하지 않는 회의 작업입니다.');
   const m=await readRecord<Meeting>(owner,'team_meeting',id);
   if(b.action==='retry_failed'){
+   // 실패 회의 재시도도 잠금 안에서 회의 기록의 캠페인을 다시 검사한다(PR 4a-2). 없는 캠페인은 원래 경로가 답한다.
+   await assertCampaignNotArchived(owner,m.campaignId);
    const cfg=await connection(owner);if(cfg.provider!=='hermes')throw new ApiError(409,'회의를 시작한 HERMES 연결이 필요합니다.');
    const {meeting:retried,completed}=await retryFailedMeeting(owner,m,b);
    if(completed){graded=await applyStep(owner,retried,completed);if(completed.providerId)await markUsageOutcome(owner,'hermes',completed.providerId,retried.status==='failed'?'storage_failed':'completed');return json(publicMeeting(retried))}
@@ -180,7 +186,8 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:E
  }catch(e){
   if(prepared){
    const s=prepared.steps.find(s=>s.status!=='completed')!;
-   const unknown=recovering||!(e instanceof ApiError)||e.status>=500;
+   // 토큰 예산 초과(TokenBudgetExceeded)는 요청을 보내기 전에 막힌 확정 실패다. 복구 중이어도 '접수 확인'으로 가리지 않고 사유와 함께 실패로 남긴다(조사 경로와 같은 규칙, PR 4a-2).
+   const unknown=!(e instanceof TokenBudgetExceeded)&&(recovering||!(e instanceof ApiError)||e.status>=500);
    s.status=unknown?'uncertain':'failed';prepared.status=unknown?'uncertain':'failed';prepared.error=unknown?'HERMES 접수 확인이 필요합니다. 기존 요청 확인으로 복구하세요.':(e as Error).message;prepared.updatedAt=stamp();await database().batch(writes(owner,prepared));return json(publicMeeting(prepared));
   }
   return failure(e);

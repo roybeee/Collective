@@ -8,6 +8,8 @@ import {learningContext} from '@/lib/learning-server';
 import {briefInstructions,parseBrief,emptyPlan,type BriefDraft,type BriefInput} from '@/lib/brief';
 import type {Brand,Campaign,Artifact,Metric} from '@/lib/agency';
 import {ApiError,str,json,failure,database,recordStatement,readRecord,listRecords,connection,stamp,acquireLock,releaseLock,validateCampaign} from '@/lib/server';
+// 보관 캠페인 검사(PR 5d)를 소유자 잠금 안에서 한다(PR 4a-2).
+import {assertNotArchived} from './campaign-archive';
 type StoredDraft=BriefDraft&{providerId?:string};
 const active=(d:BriefDraft)=>['starting','queued','in_progress','uncertain'].includes(d.status);
 const publicDraft=({providerId:_,...draft}:StoredDraft)=>draft;
@@ -24,7 +26,8 @@ export async function executeBrief(owner:string,b:Record<string,unknown>){let lo
    const busy=(await listRecords<BriefDraft>(owner,'brief_draft')).find(active);if(busy)throw new ApiError(409,'이미 작성 중인 HERMES 초안이 있습니다. 대시보드에서 이어서 확인해 주세요.');
    const raw=b.data&&typeof b.data==='object'&&!Array.isArray(b.data)?b.data as Record<string,unknown>:{};const input=validateCampaign({...raw,title:raw.title||'캠페인 초안'}) as BriefInput;input.title=typeof raw.title==='string'?raw.title.trim():'';input.plan={...emptyPlan(),...input.plan};
    let campaignId:string|undefined,campaignVersion:number|undefined;
-   if(b.campaignId){const c=await readRecord<Campaign>(owner,'campaign',str(b.campaignId,'캠페인',100,true));if(c.brandId!==input.brandId||c.version!==b.campaignVersion)throw new ApiError(409,'캠페인이 변경됐습니다. 최신 브리프에서 다시 요청하세요.');if(c.storeId){if(input.storeId&&input.storeId!==c.storeId)throw new ApiError(400,'캠페인의 지점이 일치하지 않습니다.');input.storeId=c.storeId;}campaignId=c.id;campaignVersion=c.version}
+   // 캠페인 브리프 초안은 잠금 안에서 캠페인을 읽은 직후 보관을 검사한다. 라우트 사전 검사(app/api/brief)를 통과한 뒤 보관된 경합도 409로 막는다(PR 4a-2).
+   if(b.campaignId){const c=await readRecord<Campaign>(owner,'campaign',str(b.campaignId,'캠페인',100,true));assertNotArchived(c);if(c.brandId!==input.brandId||c.version!==b.campaignVersion)throw new ApiError(409,'캠페인이 변경됐습니다. 최신 브리프에서 다시 요청하세요.');if(c.storeId){if(input.storeId&&input.storeId!==c.storeId)throw new ApiError(400,'캠페인의 지점이 일치하지 않습니다.');input.storeId=c.storeId;}campaignId=c.id;campaignVersion=c.version}
    if(campaignId){const meeting=await database().prepare("SELECT id FROM jobs WHERE owner=? AND campaign_id=? AND role='meeting' AND status IN ('starting','queued','in_progress','uncertain')").bind(owner,campaignId).first();if(meeting)throw new ApiError(409,'팀 회의가 진행 중입니다. 회의를 완료하거나 중지한 뒤 초안을 작성하세요.');}
    const brand=await readRecord<Brand>(owner,'brand',input.brandId);
    const trialLearning=await learningContext(owner,input);const archive=await brandArchiveContext(owner,brand.id,input.storeId);const evidence=await evidenceContext(database(),owner,{id:campaignId||'',brandId:brand.id,storeId:input.storeId});

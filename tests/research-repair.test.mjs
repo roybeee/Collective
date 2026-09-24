@@ -122,6 +122,20 @@ const count=(owner,kind)=>sql.prepare('SELECT COUNT(*) n FROM records WHERE owne
  check('the original run stays linked and marked invalid output',saved.steps[0].providerId===originalRun&&usageOf(owner,originalRun).domainOutcome==='invalid_output');
 }
 
+// 5b) 남은 예산이 조사 최근 평균(운영 관찰 약 339k)보다 적어도 수리 요청은 입력 추정으로 예약하므로 불필요하게 막히지 않는다(PR 4a-2 해소).
+{
+ const owner='rp-average',id='rp-average-1',stepId=id+'-investigation',earlier=new Date(Date.now()-40*86400000).toISOString();await setup(owner,true);
+ // 지난달 관측한 합성 조사 사용량 3건(이번 달 누계에는 들지 않고 종류별 최근 평균에만 쓰인다).
+ for(const n of [1,2,3])sql.prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').run(`${owner}:provider_usage:hermes:avg_${n}`,owner,'provider_usage','',JSON.stringify({id:'hermes:avg_'+n,provider:'hermes',providerRunId:'avg_'+n,model:'mock-model',totalTokens:339000,status:'completed',terminalReason:'completed',observedAt:earlier,kind:'research',role:'investigation'}),earlier);
+ await start(owner,id,shapeBroken);repairOutput=valid;
+ await budget.setTokenBudget(server.database(),owner,{scope:'workspace',monthlyTokens:200000},{id:owner,email:null});
+ const before=posts.length;
+ const {saved}=await step(owner,id);
+ const reservation=row(owner,'token_reservation',stepId+':repair');
+ check('with less budget left than the research average the repair is still sent',posts.length===before+1&&saved.status==='running'&&saved.steps[0].repair?.status==='sent'&&/수리/.test(saved.error));
+ check('the repair reservation is the repair input estimate, not the research average',!!reservation&&reservation.kind==='research'&&reservation.estimatedTokens===reservation.estimatedInputTokens&&reservation.estimatedInputTokens===saved.steps[0].repair.estimatedInputTokens&&reservation.estimatedTokens<60000);
+}
+
 // 6) HERMES가 수리 요청을 확정 거절(4xx): 수리 없이 기존 실패 + 사유.
 {
  const owner='rp-reject',id='rp-reject-1';await setup(owner,true);
