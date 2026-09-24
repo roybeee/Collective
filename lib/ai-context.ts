@@ -2,7 +2,7 @@ import type {Brand} from './agency';
 import type {ArchiveSource,ArchiveState,Diagnostic} from './archive';
 import type {CampaignDirective} from './campaign-directives';
 import {scopedBrandFacts,evidenceFactRefs,type BrandFact,type EvidenceFactRef} from './brand-facts';
-import {contactAllowValues} from './pii-scan';
+import {contactAllowValues,type PiiFieldFinding} from './pii-scan';
 
 // 역할·회의·브리프 초안이 같은 근거를 받도록 만드는 단일 컨텍스트. 서버 모듈을 가져오지 않아 화면에서도 규칙 함수를 쓸 수 있다.
 // directives.author: 지시 작성자 구분. 상시 지시는 사실 근거가 아니며 AI 지시문이 권한 한계를 함께 전달한다(campaign-policy directivePolicy).
@@ -115,15 +115,29 @@ export function withoutAssignees<T>(archive:T):T{
  const diagnostics=ops.diagnostics.map(d=>isRecord(d)&&Object.hasOwn(d,'assignee')?{...d,assignee:person(d.assignee)}:d);
  return {...archive,storeMarketing:{...sm,operations:{...ops,diagnostics}}} as T;
 }
-// 가림 허용 목록(③): 캠페인 범위의 확정 사실 값 + 지점 레코드의 주소와 사업장 연락처 원문. 이 값과 정확히 같은 부분은 가리지 않는다.
-export function productionAllow(evidence:{facts:{confirmed:readonly unknown[]}}|undefined,archive?:unknown):string[]{
- const facts=(evidence?.facts.confirmed||[]).map(f=>isRecord(f)?f.value:undefined);
- const sm=isRecord(archive)?archive.storeMarketing:undefined,store=isRecord(sm)&&isRecord(sm.store)?sm.store:undefined;
- return [...facts,...(store?[store.address,...contactAllowValues(Object.values(store))]:[])].filter((v):v is string=>typeof v==='string');
+// 지점 레코드의 허용 값: 주소 원문과 연락 동선(access)의 유선·대표 번호. 휴대폰 대역·이메일과 다른 자유 텍스트(주요 고객·비교 매장 등)의 값은 허용하지 않는다.
+export function storeAllowValues(store:unknown):string[]{
+ if(!isRecord(store))return [];
+ return [store.address,...contactAllowValues([store.access])].filter((v):v is string=>typeof v==='string');
 }
-// 가림 경로(코드 상수). 확정 사실(evidence.facts)과 점포 맥락(brandArchive)은 가리지 않는다.
+// 가림 허용 목록(③): 캠페인 범위의 확정 사실 값 + 점포 맥락 지점의 허용 값 + 실행부가 넘긴 지점 허용 값(브랜드 단위 캠페인이면 그 브랜드 active 지점 전부).
+// 이 값과 같은 부분, 이 값 안에서 탐지되는 조각(도로명+건물번호, 전화번호 등)과 같은 탐지는 가리지 않는다(lib/pii-scan.ts allow).
+export function productionAllow(evidence:{facts:{confirmed:readonly unknown[]}}|undefined,archive?:unknown,storeAllow:readonly string[]=[]):string[]{
+ const facts=(evidence?.facts.confirmed||[]).map(f=>isRecord(f)?f.value:undefined);
+ const sm=isRecord(archive)?archive.storeMarketing:undefined;
+ return [...facts,...storeAllowValues(isRecord(sm)?sm.store:undefined),...storeAllow].filter((v):v is string=>typeof v==='string');
+}
+// 가림 기록(DP-4, 값 없음): 가린 탐지는 {field,kind,count}, 허용 값이라 가리지 않은 탐지는 allowed:true를 붙인다.
+export type InputMasking=PiiFieldFinding&{allowed?:true};
+export const inputMaskingRecord=(r:{findings:readonly PiiFieldFinding[];allowed:readonly PiiFieldFinding[]}):InputMasking[]=>[...r.findings,...r.allowed.map(f=>({...f,allowed:true as const}))];
+// 가림 경로(코드 상수). 확정 사실 값(evidence.facts.confirmed)은 허용 값이라 경로에 넣지 않는다. 후보·금지 사실 값과 점포 맥락의 지점 자유 텍스트는 가린다.
 export const BRAND_MASK_PATHS=['brand.brandIntro.text','brand.identity.audience','brand.identity.constraints'] as const;
 export const DIRECTIVE_MASK_PATHS=['evidence.directives.*.text'] as const;
+export const FACT_MASK_PATHS=['evidence.facts.candidate.*.value','evidence.facts.prohibited.*.value'] as const;
+// 지점 레코드(lib/store-marketing.ts Store)의 자유 텍스트. 주소(address)는 허용 값이라 뺀다. 그 밖의 점포 맥락(채널 근거·조사 초안·진단 관찰)은 가리지 않는다(문서 '알려진 한계').
+const STORE_TEXT_KEYS=['name','customer','goal','daypart','menu','hours','access','capacity','economics','competitors'];
+export const STORE_MASK_PATHS=STORE_TEXT_KEYS.map(k=>`brandArchive.storeMarketing.store.${k}`);
 const CAMPAIGN_TEXT_KEYS=['title','goal','audience','channels','stores','products','constraints','sources'];
 export const campaignMaskPaths=(prefix:string)=>[...CAMPAIGN_TEXT_KEYS.map(k=>`${prefix}.${k}`),`${prefix}.plan.*`];
-export const metricMaskPaths=(prefix:string)=>['notes','source','definition'].map(k=>`${prefix}.*.${k}`);
+// 성과 기록의 자유 텍스트: 메모·출처·집계 정의와 비교 범위(scope), scope가 붙는 기간 표기(period).
+export const metricMaskPaths=(prefix:string)=>['notes','source','definition','scope','period'].map(k=>`${prefix}.*.${k}`);

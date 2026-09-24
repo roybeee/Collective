@@ -1,6 +1,6 @@
 import {roleOutputContract,upstreamContext,labelArchive} from './role-output';
-import {aiBrand,withoutPlanOwner,withoutAssignees,productionAllow,BRAND_MASK_PATHS,DIRECTIVE_MASK_PATHS,campaignMaskPaths,type EvidenceContext} from './ai-context';
-import {maskFields,type PiiFieldFinding} from './pii-scan';
+import {aiBrand,withoutPlanOwner,withoutAssignees,productionAllow,inputMaskingRecord,BRAND_MASK_PATHS,DIRECTIVE_MASK_PATHS,FACT_MASK_PATHS,STORE_MASK_PATHS,campaignMaskPaths,type EvidenceContext,type InputMasking} from './ai-context';
+import {maskFields} from './pii-scan';
 import {directivePolicy} from './campaign-policy';
 import {PRACTICE_VERSION,rolePractice,evidenceDiscipline,campaignPractice,type PromptSet} from './practice';
 import {qualityContract} from './quality';
@@ -13,7 +13,8 @@ export type RevisionRequest={note:string;previousVersion:number|null;previousExc
 export type PreviousDecisions={agenda:string;decisions:string;questions:string};
 // previous: 캠페인의 작업물 목록(role-execution.ts의 previous). upstreamContext가 사용 가능한 앞선 역할 작업물만 고른다.
 // prompts: 캠페인에 고정한 레지스트리 해석 결과(lib/prompt-registry.ts). 없거나 비어 있는 단위는 코드 상수를 써서 이전과 바이트 동일하다.
-export type RoleRequest={role:string;campaign:Campaign;brand:Brand;archive:{confirmedSources?:object[]};evidence:Pick<EvidenceContext,'facts'|'directives'>;learning:unknown;previous:Artifact[];previousDecisions?:PreviousDecisions;revisionRequest?:RevisionRequest;prompts?:PromptSet};
+// storeAllow: 브랜드 단위 캠페인의 지점 허용 값(lib/store-allow-server.ts). 가림 허용 목록에만 쓰고 모델 입력에는 싣지 않는다. 없으면 키가 없다.
+export type RoleRequest={role:string;campaign:Campaign;brand:Brand;archive:{confirmedSources?:object[]};evidence:Pick<EvidenceContext,'facts'|'directives'>;learning:unknown;previous:Artifact[];previousDecisions?:PreviousDecisions;revisionRequest?:RevisionRequest;prompts?:PromptSet;storeAllow?:string[]};
 function roleOf(id:string){
  const role=roles.find(r=>r.id===id);
  if(!role)throw new Error('Unknown agency role');
@@ -26,14 +27,14 @@ export function roleRequestPlan(r:Pick<RoleRequest,'role'|'campaign'|'previous'>
  const priorContext=upstreamContext(r.previous,r.role,r.campaign.version);
  return {priorContext,outputContract:{...roleOutputContract(r.role),contextTruncated:priorContext.some(a=>a.excerpt)}};
 }
-// 입력 최소화(레인 A): 브랜드 정체성 허용 목록, 담당자 자리표시, 자유 텍스트 가림(허용: 확정 사실·지점 주소·사업장 연락처). 탐지 0이면 이전과 바이트 동일하다.
-const ROLE_MASK_PATHS=[...BRAND_MASK_PATHS,...DIRECTIVE_MASK_PATHS,...campaignMaskPaths('campaign'),'previous.*.title','previous.*.content','previousDecisions.agenda','previousDecisions.decisions','previousDecisions.questions','revisionRequest.note','revisionRequest.previousExcerpt'];
-// findings: 가린 필드·종류·건수(값 없음). role-execution.ts가 role_output_contract.inputMasking에 저장한다.
-export function buildRoleInputMasked(r:RoleRequest):{input:string;findings:PiiFieldFinding[]}{
+// 입력 최소화(레인 A): 브랜드 정체성 허용 목록, 담당자 자리표시, 자유 텍스트 가림(허용: 확정 사실·지점 주소·사업장 유선 번호). 가릴 탐지 0이면 이전과 바이트 동일하다.
+const ROLE_MASK_PATHS=[...BRAND_MASK_PATHS,...DIRECTIVE_MASK_PATHS,...FACT_MASK_PATHS,...STORE_MASK_PATHS,...campaignMaskPaths('campaign'),'previous.*.title','previous.*.content','previousDecisions.agenda','previousDecisions.decisions','previousDecisions.questions','revisionRequest.note','revisionRequest.previousExcerpt'];
+// findings: 가림 기록(필드·종류·건수, 허용 값이라 가리지 않은 탐지는 allowed:true, 값 없음). role-execution.ts가 role_output_contract.inputMasking에 저장한다.
+export function buildRoleInputMasked(r:RoleRequest):{input:string;findings:InputMasking[]}{
  const role=roleOf(r.role),c=r.campaign,{priorContext,outputContract}=roleRequestPlan(r);
  const raw={task:{action:'작성',role:role.id,roleName:role.name,deliverable:role.deliverable,outputContract,instruction:'지금 이 역할의 산출물을 작성하세요. 작업 선택을 재질문하지 마세요. 미확정 자료는 자료 필요와 확인 계획으로 남기고 가능한 초안을 완성하세요.'+revisionInstruction(r)},skillVersion:PRACTICE_VERSION,channelPractice:campaignPractice(c,r.prompts?.channels),brand:aiBrand(r.brand),brandArchive:withoutAssignees(labelArchive(r.archive)),evidence:{facts:r.evidence.facts,directives:r.evidence.directives},factPolicy,campaign:withoutPlanOwner({...c,...aiBudget(c),id:undefined,ref:`브리프 v${c.version}`}),learning:r.learning,previous:priorContext,...(r.previousDecisions?{previousDecisions:r.previousDecisions}:{}),...(r.revisionRequest?{revisionRequest:r.revisionRequest}:{})};
- const {value,findings}=maskFields(raw,ROLE_MASK_PATHS,{allow:productionAllow(r.evidence,r.archive)});
- return {input:JSON.stringify(value),findings};
+ const masked=maskFields(raw,ROLE_MASK_PATHS,{allow:productionAllow(r.evidence,r.archive,r.storeAllow)});
+ return {input:JSON.stringify(masked.value),findings:inputMaskingRecord(masked)};
 }
 export function buildRoleInput(r:RoleRequest):string{return buildRoleInputMasked(r).input}
 function baseInstruction(role:ReturnType<typeof roleOf>,prompts?:PromptSet){
