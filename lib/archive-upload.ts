@@ -16,3 +16,7 @@ export async function extractArchiveFile(file:File):Promise<{content:string;extr
  }
  return {content:'',extraction:'이미지 원본 보관 · 내용 메모 필요',scope:'이미지 자동 해석 미실행. 원본 확인 후 관찰 내용을 텍스트로 추가하세요.'};
 }
+// 업로드 자료의 추출 출처 표시(자료 상세·목록 행·일괄 검토 공통). 출처는 서버만 쓰는 extractedBy로 판정한다(lib/archive-upload-server.ts):
+// 값이 있으면 서버가 만든 추출 상태('서버 추출 · …' 또는 '브라우저 추출(서버 미검증) · …')를 그대로 보여 준다.
+// extractedBy가 없는 이전 업로드는 추출 상태를 브라우저가 보낸 그대로 저장했으므로, 내용과 관계없이 브라우저 추출로 표시한다. 직접 입력·AI 조사 자료는 빈 문자열이다.
+export const uploadExtractionLabel=(s:{origin:string;extraction?:string;extractedBy?:string})=>s.origin!=='upload'?'':s.extractedBy==='server'||s.extractedBy==='browser'?s.extraction||'':'브라우저 추출(서버 미검증) · '+(s.extraction||'원본만 보관');
