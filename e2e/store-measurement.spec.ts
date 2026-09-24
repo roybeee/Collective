@@ -1,5 +1,6 @@
 // A4 점포 실측 여정: 추적 코드 생성 → POS CSV 미리보기·확정 → 자동 귀속 스위치(a4_auto_attribution) 기본 꺼짐에서 미귀속
-// → 주문 기록 창에 추적 코드를 직접 넣으면 스위치가 꺼져 있어도 귀속(A4-3) → 소유자가 켠 뒤 자동 귀속 → POS 주간 합계로 완전성 통과 → 귀속 보고의 '귀속은 증분이 아님' 경고.
+// → 주문 기록 창에 추적 코드를 직접 넣으면 스위치가 꺼져 있어도 귀속(A4-3) → 소유자가 켠 뒤 자동 귀속 → POS 주간 합계로 완전성 통과 → 귀속 보고의 '귀속은 증분이 아님' 경고
+// → 캠페인 상세 성과 탭의 주문 장부 귀속 자동 집계와 확인 대화를 거친 metric 스냅샷 저장(PR 4b-2, 오늘 끝나는 기간 400·어제까지로 다시 조회·같은 기간 재저장 409).
 // 로컬 빌드(wrangler --local, 실제 D1 시뮬레이터)에 로그인 헤더를 직접 붙인다(mocked auth). legacy 헤더 요청자는 소유자(관리자 권한 포함)라
 // 관리자 전용 코드 생성·가져오기 확정·POS 합계와 소유자 전용 기능 스위치 API(POST /api/feature-flags)를 모두 쓸 수 있다.
 // 외부 호출이 없고 요청 가로채기도 쓰지 않는다(docs/E2E.ko.md 규칙).
@@ -55,7 +56,7 @@ async function confirmCsv(page: Page, ready: number) {
 }
 
 test('추적 코드로 가져온 주문은 자동 귀속 스위치를 켤 때만 캠페인에 귀속된다', async ({browser}, testInfo) => {
-  test.setTimeout(60_000);
+  test.setTimeout(90_000);
   const owner = `e2e-a4-${testInfo.project.name}-${Date.now()}`;
   const {context, page} = await ownerPage(browser, testInfo, owner);
   await page.request.get('/api/workspace');
@@ -159,6 +160,41 @@ test('추적 코드로 가져온 주문은 자동 귀속 스위치를 켤 때만
   await expect(page.getByRole('row').filter({hasText: week})).toContainText('통과');
   await expect(page.getByRole('region', {name: 'north-star'})).toContainText('1건');
   await page.screenshot({path: `e2e/artifacts/${testInfo.project.name}-store-measurement.png`, fullPage: true});
+
+  // 5) PR 4b-2: 캠페인 상세 '성과' 탭에 같은 주문이 자동 집계되고, 확인 대화를 거쳐 schemaVersion 2 metric 스냅샷으로 저장된다.
+  // 이 캠페인은 브랜드 공통이라 같은 브랜드 지점 주문을 합친다. 귀속된 주문은 E2E-A4-M1(오늘, 9000원)과 E2E-A4-3(지난주 월요일, 21000원)이다. 원가를 적지 않아 공헌이익은 미확인이다.
+  // 스냅샷은 끝난 날까지만 저장한다(오늘 끝나는 기간은 400). 카드의 '어제까지로 조회'로 기간을 바꾸면 E2E-A4-3만 남는다.
+  const aggregated = await page.request.get('/api/campaign-attribution?campaignId=' + encodeURIComponent(campaignId));
+  expect(aggregated.status()).toBe(200);
+  const attribution = await aggregated.json() as {period: {from: string; to: string}; totals: {orders: number; netRevenue: number; contribution: number | null}};
+  expect(attribution.totals).toMatchObject({orders: 2, netRevenue: 30000, contribution: null});
+  await page.goto(`/?view=campaigns&campaign=${encodeURIComponent(campaignId)}`);
+  await page.getByRole('tab', {name: '성과', exact: true}).click();
+  const card = page.getByRole('region', {name: '주문 장부 귀속', exact: true});
+  await expect(card.getByText('귀속≠증분', {exact: false}).first()).toBeVisible();
+  await expect(card.locator('article').filter({hasText: '귀속 주문'})).toContainText('2건');
+  await expect(card.locator('article').filter({hasText: '공헌이익'})).toContainText('미확인');
+  await expect(card.getByRole('heading', {name: '주별 귀속', exact: true})).toBeVisible();
+  const openDay = await page.request.post('/api/campaign-attribution', {data: {action: 'snapshot', campaignId, ...attribution.period, confirmed: true, expected: {orders: 2, netRevenue: 30000, contribution: null}}});
+  expect(openDay.status()).toBe(400);
+  await expect(card.getByRole('button', {name: '스냅샷으로 저장', exact: true})).toHaveCount(0);
+  await card.getByRole('button', {name: '어제까지로 조회', exact: true}).click();
+  await expect(card.locator('article').filter({hasText: '귀속 주문'}).locator('strong')).toHaveText('1건');
+  await card.getByRole('button', {name: '스냅샷으로 저장', exact: true}).click();
+  const confirm = page.getByRole('dialog', {name: '주문 장부 귀속 스냅샷 저장', exact: true});
+  await expect(confirm).toContainText('주문 장부 귀속');
+  const snapshotSaved = page.waitForResponse(r => r.url().endsWith('/api/campaign-attribution') && r.request().method() === 'POST');
+  await confirm.getByRole('button', {name: '확인하고 저장', exact: true}).click();
+  expect((await snapshotSaved).status()).toBe(200);
+  await expect(confirm).toBeHidden();
+  await expect(page.getByText('출처: 주문 장부 귀속', {exact: false})).toBeVisible();
+  const detail = await (await page.request.get('/api/campaigns/' + encodeURIComponent(campaignId))).json() as {metrics: {source?: string}[]};
+  expect(detail.metrics.find(m => m.source === '주문 장부 귀속')).toMatchObject({schemaVersion: 2, method: 'export', revenue: 21000, orders: 1, variableCosts: null, adSpend: null});
+  // 같은 기간을 다시 저장하면 기간 겹침(409)이다.
+  const closed = {from: attribution.period.from, to: addDays(koreaToday(), -1)};
+  const overlapping = await page.request.post('/api/campaign-attribution', {data: {action: 'snapshot', campaignId, ...closed, confirmed: true, expected: {orders: 1, netRevenue: 21000, contribution: null}}});
+  expect(overlapping.status()).toBe(409);
+  await page.screenshot({path: `e2e/artifacts/${testInfo.project.name}-campaign-attribution.png`, fullPage: true});
 
   // 소유자 범위 기록이라 다른 테스트에 번지지 않지만 기본값으로 되돌려 둔다.
   expect((await page.request.post('/api/feature-flags', {data: {action: 'reset', flag: FLAG}})).status()).toBe(200);

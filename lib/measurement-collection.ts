@@ -11,7 +11,8 @@ import type {Campaign} from './agency';
 export const COLLECT_INTERVAL_MS = 6 * 3600000;
 
 // arm 하나의 수집 기록. 두 arm이 서로 다른 기간·정의에서 왔는지 비교 전에 확인할 수 있도록 arm별로 보관한다.
-export type MeasurementArmDraft = {value?: Arm; window: CollectionWindow; definition: string; limitations: string[]; fetchedAt: string};
+// target·storeValues(PR 4b-2): 그 수집의 광고 대상과 점포 지표(광고비 등). 최상위 storeValues는 마지막 수집 arm의 값으로 덮이므로 비용 장부로 옮길 값은 arm별로 읽는다(lib/spend-transfer.ts).
+export type MeasurementArmDraft = {value?: Arm; window: CollectionWindow; definition: string; limitations: string[]; fetchedAt: string; target?: string; storeValues?: Partial<Record<StoreMetricKey, number | null>>};
 
 // 자동 수집 결과는 초안으로만 남는다. comparable은 API가 주장할 수 없는 사람의 판단이므로
 // 항상 false로 고정하고, 사용자가 save_results에서 직접 확정해야 evaluateExperiment가 판정한다.
@@ -60,7 +61,7 @@ const lastCompleteDay = () => seoulDay(Date.now() - 86400000);
 // Instagram 미디어 인사이트는 게시 이후 누적값이라 요청 기간이 값에 영향을 주지 않는다. 기간 불일치·당일 부분 집계 경고는 기간 집계 커넥터에만 붙인다.
 const windowed = (channel: ConnectorKey) => channel !== 'instagram';
 // 수집 기간이 수집일(Asia/Seoul)까지 닿으면 당일 부분 집계다. 기간 문자열이 같아도 수집 시각에 따라 값이 다르다.
-const partialDay = (entry: Pick<MeasurementArmDraft, 'window' | 'fetchedAt'>) => entry.window.to >= seoulDay(entry.fetchedAt);
+export const partialDay = (entry: Pick<MeasurementArmDraft, 'window' | 'fetchedAt'>) => entry.window.to >= seoulDay(entry.fetchedAt);
 
 // 이전 초안은 기간·정의를 하나만 가졌다(마지막으로 수집한 arm의 것). 그 값을 값이 있는 arm의 기록으로 해석하되,
 // 기간은 그 arm의 수집 대상(measurement_source)에 남은 기간을 우선 쓴다. 다른 arm의 기간이 붙어 불일치가 가려지지 않게 한다(R6).
@@ -106,7 +107,7 @@ export async function collectForExperiment(owner: string, input: Record<string, 
  const previous = await draftFor(owner, experimentId);
  const legacySources = previous && !previous.arms ? await listRecords<MeasurementSource>(owner, 'measurement_source', experimentId) : [];
  const partial = windowed(connector.key) && partialDay(collected) ? [`수집 기간(~${collected.window.to})에 수집일이 포함돼 당일 부분 집계입니다. 하루가 지난 뒤 다시 수집한 값으로 비교하세요.`] : [];
- const entries = {...armsOf(previous, legacySources), [arm]: {value: collected.arm, window: collected.window, definition: collected.definition, limitations: [...collected.limitations, ...partial], fetchedAt: collected.fetchedAt}};
+ const entries = {...armsOf(previous, legacySources), [arm]: {value: collected.arm, window: collected.window, definition: collected.definition, limitations: [...collected.limitations, ...partial], fetchedAt: collected.fetchedAt, target, ...(collected.storeValues ? {storeValues: collected.storeValues} : {})}};
  const draft: MeasurementDraft = {
   id: experimentId,
   experimentId,

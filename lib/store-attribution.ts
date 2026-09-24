@@ -115,7 +115,8 @@ export function orderMetrics(orders:readonly StoreOrder[],economics?:Economics):
  return {records:orders.length,orders:counted.length,netRevenue:money(sum(orders.map(o=>o.paidAmount-o.refundAmount))),contribution:unknownCostOrders?null:money(sum(parts.map(p=>p.value))),estimatedOrders:parts.filter(p=>p.kind==='estimated').length,unknownCostOrders,newCustomers:flags.some(f=>typeof f!=='boolean')?null:flags.filter(Boolean).length};
 }
 export type Group=Metrics&{key:string;label:string};
-function groupBy(orders:readonly StoreOrder[],keyOf:(o:StoreOrder)=>string|null,labelOf:(key:string)=>string,economics?:Economics):Group[]{
+// 캠페인 성과 탭 집계(lib/campaign-attribution.ts)도 같은 묶음 규칙(지표·정렬)을 쓴다.
+export function groupBy(orders:readonly StoreOrder[],keyOf:(o:StoreOrder)=>string|null,labelOf:(key:string)=>string,economics?:Economics):Group[]{
  const keys=[...new Set(orders.map(keyOf).filter((k):k is string=>k!==null))];
  return keys.map(key=>({key,label:labelOf(key),...orderMetrics(orders.filter(o=>keyOf(o)===key),economics)})).sort((a,b)=>b.orders-a.orders||b.netRevenue-a.netRevenue);
 }

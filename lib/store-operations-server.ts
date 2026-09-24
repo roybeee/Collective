@@ -8,6 +8,7 @@ import {isEnabled} from './feature-flags';
 import {generateCode,isTrackingCodeType,isValidCode,normalizeCode,normalizeUtmCampaign,codeTokens,type TrackingCode,type TrackingCodeType} from './tracking-codes';
 import {ImportError,personalDataKind,prepareImport,suggestMapping,type ColumnMapping,type ImportRow} from './order-import';
 import {ATTRIBUTION_NOT_INCREMENTAL,LIVE_PUBLICATION_STATUSES,addDays,attributeByCodes,attributionBreakdown,autoEvidence,codeEntryNote,creativeLabel,entryView,incrementalityLite,isCodeEvidence,manualEvidence,northStar,orderMetrics,publicationGate,publicationGateView,publicationRefusal,publicationRowLabel,regateDays,unitEconomics,weekStart,weeklyCompletenessFromDays,weeksBetween,type CodeRefusal,type DayTotal,type Economics,type PosWeeklyTotal,type PublicationGate} from './store-attribution';
+import {transferPreview,transferSpend} from './spend-transfer';
 
 export function operationDate(v:unknown,label:string){const date=localDate(v,label,true);if(date>koreaToday())throw new ApiError(400,label+'은 오늘까지 입력하세요.');return date}
 export function diagnosisInput(raw:any,store:Store,old?:StoreDiagnostic):StoreDiagnostic{
@@ -84,11 +85,12 @@ export async function validateOrderAttribution(owner:string,store:Pick<Store,'id
 // ---- A4 점포 실측: 추적 코드·주문 CSV 가져오기·POS 주간 합계·귀속 보고서 ----
 // 권한: 코드 생성·가져오기 확정·POS 합계 입력은 관리자(requireAdminActor). 목록·가져오기 미리보기·보고서는 로그인 사용자(호출하는 라우트가 identity로 확인한다).
 // 자동 귀속은 기능 스위치 a4_auto_attribution이 켜졌을 때만 한다. 꺼져 있으면 가져온 주문은 미귀속으로 두고(코드 문자열만 보존) 수동 귀속만 쓴다.
-export const measurementActions=['create_tracking_code','list','import_orders','set_pos_total','attribution_report'] as const;
+// PR 4b-2 네이버 수집 광고비 옮기기(lib/spend-transfer.ts): transfer_preview는 로그인 사용자(쓰기 없음), transfer_spend는 관리자.
+export const measurementActions=['create_tracking_code','list','import_orders','set_pos_total','attribution_report','transfer_preview','transfer_spend'] as const;
 // 행 배열을 보내는 기존 import_orders(주문 장부 양식)는 라우트가 그대로 처리한다. csv 문자열이 있을 때만 이 가져오기다.
 export function isMeasurementAction(b:Record<string,unknown>){return b.action==='import_orders'?typeof b.csv==='string':(measurementActions as readonly unknown[]).includes(b.action)}
-// 저장하지 않는 작업(목록·귀속 보고·가져오기 미리보기). 라우트는 이 작업에 워크스페이스 쓰기 잠금을 잡지 않는다.
-export function isMeasurementRead(b:Record<string,unknown>){return b.action==='list'||b.action==='attribution_report'||(b.action==='import_orders'&&typeof b.csv==='string'&&b.dryRun!==false)}
+// 저장하지 않는 작업(목록·귀속 보고·가져오기 미리보기·수집 광고비 옮기기 미리보기). 라우트는 이 작업에 워크스페이스 쓰기 잠금을 잡지 않는다.
+export function isMeasurementRead(b:Record<string,unknown>){return b.action==='list'||b.action==='attribution_report'||b.action==='transfer_preview'||(b.action==='import_orders'&&typeof b.csv==='string'&&b.dryRun!==false)}
 export type OrderImport={id:string;storeId:string;fileName:string;rows:number;created:number;duplicates:number;sourceConflicts:number;attributed:number;conflicts:number;identifiableOrders:number;autoAttribution:boolean;mapping:ColumnMapping;weeks:string[];importedAt:string;importedBy:{id:string;email:string|null}};
 const autoLabel=(on:boolean)=>on?'자동 귀속 켜짐':'자동 귀속 꺼짐';
 async function adminOf(req:Request,owner:string){const who=await requireAdminActor(req);if(who.owner!==owner)throw new ApiError(403,'이 워크스페이스의 관리자만 변경할 수 있습니다.');return who}
@@ -101,10 +103,10 @@ export async function freeCode(owner:string,type:TrackingCodeType,custom:unknown
  for(let i=0;i<5;i++){const code=generateCode(type,crypto.getRandomValues(new Uint8Array(32)));if(!await codeTaken(owner,code))return code}
  throw new ApiError(409,'코드를 만들지 못했습니다. 다시 시도하세요.');
 }
-// 읽은 게시의 게시 관문(상태·한국 예약일). 없는 게시는 들어가지 않아 관문에서 거절된다.
-const gatesOf=(found:ReadonlyMap<string,Publication>)=>new Map([...found].map(([id,p])=>[id,publicationGate(p)]));
+// 읽은 게시의 게시 관문(상태·한국 예약일). 없는 게시는 들어가지 않아 관문에서 거절된다. 캠페인 성과 탭 집계(lib/campaign-attribution.ts)도 같은 도우미를 쓴다.
+export const gatesOf=(found:ReadonlyMap<string,Publication>)=>new Map([...found].map(([id,p])=>[id,publicationGate(p)]));
 // D1 바인드 한도(100) 안에서 나누어 id로 레코드를 읽는다. 없는 id는 결과에 없다.
-async function recordsByIds<T>(owner:string,kind:string,ids:readonly string[]){
+export async function recordsByIds<T>(owner:string,kind:string,ids:readonly string[]){
  const prefix=`${owner}:${kind}:`,keys=[...new Set(ids)].map(id=>prefix+id),chunks=Array.from({length:Math.ceil(keys.length/90)},(_,i)=>keys.slice(i*90,i*90+90));
  const found=await Promise.all(chunks.map(c=>database().prepare(`SELECT id,data FROM records WHERE owner=? AND kind=? AND id IN (${c.map(()=>'?').join(',')})`).bind(owner,kind,...c).all<{id:string;data:string}>()));
  return new Map(found.flatMap(r=>r.results.map(x=>[x.id.slice(prefix.length),JSON.parse(x.data) as T] as const)));
@@ -215,7 +217,7 @@ export async function ledgerDays(owner:string,storeId:string,from:string,to:stri
 export const REPORT_LIMITS={periodDays:182,baselineDays:84} as const;
 // 귀속 보고의 소재·게시 표시 이름. 소재는 제목(없으면 만든 한국 시각·첫 사실 줄의 대체 라벨), 게시는 소재 이름·예약 시각(한국)·상태다. 지워진 게시는 id로 보인다.
 type CreativeName={id:string;title?:string;caption?:string;createdAt?:string};
-async function reportLabels(owner:string,orders:readonly StoreOrder[],found:ReadonlyMap<string,Publication>){
+export async function reportLabels(owner:string,orders:readonly StoreOrder[],found:ReadonlyMap<string,Publication>){
  const used=new Set(orders.flatMap(o=>o.codeAttribution?.publicationId?[o.codeAttribution.publicationId]:[])),publications=new Map([...found].filter(([id])=>used.has(id)));
  const creatives=await recordsByIds<CreativeName>(owner,'execution_creative',[...orders.flatMap(o=>o.creativeId?[o.creativeId]:[]),...[...publications.values()].map(p=>p.creativeId)]);
  const creativeLabels=Object.fromEntries([...creatives].map(([id,c])=>[id,creativeLabel(c)]));
@@ -253,6 +255,8 @@ export async function measurementAction(req:Request,owner:string,store:Store,b:R
   case 'import_orders':return importOrders(req,owner,store,b);
   case 'set_pos_total':return setPosTotal(req,owner,store,b);
   case 'attribution_report':return attributionReport(owner,store,b);
+  case 'transfer_preview':return transferPreview(owner,store,b);
+  case 'transfer_spend':{const who=await adminOf(req,owner);return transferSpend(owner,store,b,(id,date)=>validateOrderExperiment(owner,store.id,id,date,'naver_ads'),{id:who.id,email:who.email})}
   default:throw new ApiError(400,'지원하지 않는 점포 실측 작업입니다.');
  }
 }
