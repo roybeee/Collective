@@ -18,7 +18,8 @@ export type BrandResearch={storeId?:string;execution?:'server'|'interactive';las
 export type PublicResearch=Omit<BrandResearch,'snapshot'|'steps'>&{steps:Omit<BrandResearch['steps'][number],'providerId'>[]};
 export type ArchiveData={sources:ArchiveSourceSummary[];observations:ChannelObservation[];diagnostics:Diagnostic[];research:PublicResearch[];state:ArchiveState;storageReady:boolean};
 export const researchActive=(r:Pick<BrandResearch,'status'>)=>r.status==='running'||r.status==='uncertain';
-export function publicResearch(r:BrandResearch):PublicResearch{const{snapshot:_,steps,...rest}=r;return {...rest,steps:steps.map(({providerId:__,...x})=>x)}}
+// 실행 번호는 화면에 보내지 않는다: 단계 providerId와 A7 수리 기록의 원래 실행 번호(repair.originalRun, lib/research-execution.ts).
+export function publicResearch(r:BrandResearch):PublicResearch{const{snapshot:_,steps,...rest}=r;return {...rest,steps:steps.map(({providerId:__,...x})=>{const repair=(x as {repair?:{originalRun?:string}}).repair;return repair?.originalRun?{...x,repair:{...repair,originalRun:undefined}}:x})}}
 // 자료 요약(아카이브 목록·지점 API 공통). 원본 키(objectKey)와 저장소 정리 대기 키(fileCleanupKey, lib/archive-server.ts deleteSourceFile)는 내보내지 않고 정리 대기 여부만 알린다.
 export function sourceSummary(s:ArchiveSource):ArchiveSourceSummary{const{objectKey,content,fileCleanupKey,...rest}=s as ArchiveSource&{fileCleanupKey?:string};return {...rest,...(fileCleanupKey?{fileCleanupPending:true}:{}),excerpt:content.slice(0,260),characters:content.length,hasFile:!!objectKey}}
 export function classifySource(title:string,content:string):ArchiveCategory{
