@@ -210,6 +210,15 @@ job=await (await start('claims','creative')).json();sub=await submissionOf(job.i
 const claimed=(await server.listRecords(owner,'artifact','claims')).find(a=>a.role==='creative');
 check('rejected fact value and unmarked discount claim are flagged on the saved artifact',claimed?.status==='review'&&JSON.stringify(claimed.unverifiedClaims)===JSON.stringify(['장작 화덕','할인']));
 check('claim check leaves an event for the campaign',(await server.listRecords(owner,'event','claims')).some(e=>e.message.includes('장작 화덕')));
+check('an artifact the normalizer did not touch carries no normalization record',claimed.outputNormalization===undefined&&artifact.outputNormalization===undefined);
+// 저장 정규화: 사람이 보는 본문의 알려진 스키마 경로는 라벨, 계약 섹션 안 #·## 제목은 ###. 바꾼 건수(값 없음)를 작업물에 남겨 온라인 채점과 예방 효과를 나눠 본다.
+await put('campaign','normalized',{...base,id:'normalized'});
+const normalizeContract=roleOutput.roleOutputContract('cmo');
+output=JSON.stringify({contractVersion:normalizeContract.version,role:'cmo',sections:normalizeContract.sections.map((s,i)=>({id:s.id,content:(i===0?'## 우선순위\ncampaign.goal 기준으로 첫 주 실행 순서를 정합니다. ':'')+'첫 주는 픽업 동선과 포장 대기 시간을 기록해 기준값을 모으고, 둘째 주부터 퇴근 시간대 안내문 유무에 따른 주문 수를 비교합니다. 매장 운영 조건과 담당자는 점주 확인 뒤 확정하며, 반증 조건은 2주 동안 주문 수가 기준 기간과 같을 때입니다. 확인 담당은 점장이며 기준 기간 방문 수를 먼저 받습니다.'}))});
+job=await (await start('normalized','cmo')).json();await execution.executeRole(owner,{action:'poll',id:job.id});
+const normalizedArtifact=(await server.listRecords(owner,'artifact','normalized')).find(a=>a.role==='cmo');
+check('the saved artifact shows labels instead of schema paths and lowers body headings',!!normalizedArtifact&&normalizedArtifact.content.includes('### 우선순위\n캠페인 목표 기준으로')&&!normalizedArtifact.content.includes('campaign.goal'));
+check('the saved artifact records what the normalizer changed as counts only',JSON.stringify(normalizedArtifact?.outputNormalization)===JSON.stringify({schemaPaths:1,headings:1}));
 output='';
 
 // Legacy in-flight requests have no structured contract. Reject the known failure anyway.

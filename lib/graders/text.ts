@@ -1,4 +1,5 @@
-import {parseRoleOutput,roleOutputContract} from '../role-output';
+import {renderRoleOutput,roleOutputContract} from '../role-output';
+import {NO_NORMALIZATION,type OutputNormalization} from '../output-normalize';
 import type {EvalItem} from './types';
 
 // 채점기 공통 텍스트 도구. 규칙의 정의와 근거는 docs/EVAL.ko.md 실패 유형 정의표에 있다.
@@ -13,10 +14,11 @@ export const contractTitles=(role:string)=>roleOutputContract(role).sections.map
 export const proseFields=(item:EvalItem)=>PROSE_FIELDS.map(k=>str(item.fields?.[k]));
 // meetings.ts fieldText와 같은 형식: 필드마다 '## 이름' 제목을 붙여 재질문은 필드 단위로 본다.
 export const fieldText=(item:EvalItem)=>PROSE_FIELDS.map(k=>`## ${k}\n${str(item.fields?.[k])}`).join('\n');
-// 원 JSON만 있으면 앱과 같은 규칙으로 렌더한다. 계약 위반 JSON은 섹션 본문을 이어 붙여 내용 채점만 가능하게 한다.
-function renderRaw(item:EvalItem){
+// 원 JSON만 있으면 앱과 같은 규칙(정규화 포함)으로 렌더한다. normalize=false는 정규화 전 렌더본(예방 판정용)이다.
+// 계약 위반 JSON은 섹션 본문을 이어 붙여 내용 채점만 가능하게 한다(정규화 없음).
+function renderRaw(item:EvalItem,normalize=true){
  const raw=item.raw||'';
- try{return parseRoleOutput(raw,item.role||'',roleOutputContract(item.role||''))}catch{}
+ try{return renderRoleOutput(raw,item.role||'',roleOutputContract(item.role||''),{normalize}).content}catch{}
  try{
   const parsed=JSON.parse(raw.trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'')) as {sections?:{id?:unknown;content?:unknown}[]};
   return (parsed.sections||[]).map(s=>`## ${str(s?.id)}\n\n${str(s?.content)}`).join('\n\n');
@@ -26,6 +28,13 @@ function renderRaw(item:EvalItem){
 export function bodyOf(item:EvalItem){
  if(item.kind==='discussion')return proseFields(item).join('\n');
  return item.text??(item.raw?renderRaw(item):'');
+}
+// 예방 판정용 항목: 원 JSON만 있는 항목을 정규화 전 렌더본(text)으로 바꾼다. 저장 본문(text)을 채점하는 항목은 원문을 알 수 없어 null이다.
+export const unnormalizedItem=(item:EvalItem):EvalItem|null=>item.text===undefined&&item.raw?{...item,text:renderRaw(item,false)}:null;
+// 원 JSON 렌더에서 정규화가 바꾼 건수(값 없음). 계약 위반으로 이어 붙인 본문은 정규화하지 않으므로 0이다. 저장 본문 항목은 null.
+export function rawNormalization(item:EvalItem):OutputNormalization|null{
+ if(item.text!==undefined||!item.raw)return null;
+ try{return renderRoleOutput(item.raw,item.role||'',roleOutputContract(item.role||'')).normalization}catch{return NO_NORMALIZATION}
 }
 // 문장 단위: 표 행은 칸으로, 나머지는 문장부호 뒤 공백으로 나눈다.
 export const sentences=(line:string)=>(line.trim().startsWith('|')?line.split('|'):[line]).flatMap(c=>c.split(/(?<=[.?!])\s+/)).map(s=>s.trim()).filter(Boolean);

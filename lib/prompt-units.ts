@@ -1,5 +1,5 @@
 import {practices,channelSkills,defaultChannelSkill,viralPractice,type RoleSkill} from './practice';
-import {factDiscipline,claimPolicy,answerDiscipline,measurementDiscipline,directivePolicy} from './campaign-policy';
+import {factDiscipline,claimPolicy,copyCompliancePolicy,answerDiscipline,measurementDiscipline,directivePolicy} from './campaign-policy';
 import {brandDefaults} from './agency';
 
 // 프롬프트 레지스트리(F3a) 단위 목록과 본문 검사. 순수 모듈(상대 import만): 등록 API(lib/prompt-registry.ts)와 CI 검사(scripts/check-prompts.mjs)가 같은 규칙을 쓴다.
@@ -80,10 +80,10 @@ function formsOf(all:string):Forms{const folded=all.normalize('NFKC').replace(/[
 type Rule={form:keyof Forms;pattern:RegExp};
 const on=(form:keyof Forms,...patterns:RegExp[]):Rule[]=>patterns.map(pattern=>({form,pattern}));
 const matched=(rules:readonly Rule[],f:Forms)=>rules.find(r=>r.pattern.test(f[r.form]));
-// 코드 소유 섹션의 표지: 근거 규율·광고 표현·측정·상시 지시 정책 문장의 머리, 역할 스킬 머리말·제목, 입력 필드명, JSON 계약, 외부 행동 금지, 사실 정책을 뒤집는 문구.
+// 코드 소유 섹션의 표지: 근거 규율·광고 표현·추천·광고 표시·측정·상시 지시 정책 문장의 머리, 역할 스킬 머리말·제목, 입력 필드명, JSON 계약, 외부 행동 금지, 사실 정책을 뒤집는 문구.
 const lead=(s:string)=>s.slice(0,24);
 const squashed=(s:string)=>formsOf(s).squash;
-const codeOwnedPhrases=[lead(factDiscipline),lead(claimPolicy),lead(answerDiscipline),lead(measurementDiscipline),lead(directivePolicy),'근거 규칙','광고 표현 규칙','측정 정의:','실무 스킬','필수 산출물','완료 전 점검','인계:'].map(squashed);
+const codeOwnedPhrases=[lead(factDiscipline),lead(claimPolicy),lead(copyCompliancePolicy),lead(answerDiscipline),lead(measurementDiscipline),lead(directivePolicy),'근거 규칙','광고 표현 규칙','추천·광고 표시 규칙','측정 정의:','실무 스킬','필수 산출물','완료 전 점검','인계:'].map(squashed);
 const codeOwnedRules=[
  ...on('squash',/evidence\.(?:facts|directives)|facts\.(?:confirmed|candidate|prohibited)|contractversion|outputcontract|contexttruncated|idlabels|claimguard|respondsto|revisionrequest|previousdecisions|sourceassessment|brandintro|factpolicy|taskchecks|```|~~~/),
  ...on('folded',/\bsections\b|\boutput_?\d+\b/),

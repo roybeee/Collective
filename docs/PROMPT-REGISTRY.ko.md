@@ -119,7 +119,7 @@
 | 그 run의 active 쪽 버전이 지금 전체 적용 버전과 같음 | 평가 뒤 active가 바뀜(다시 평가) |
 | 평가 연결 게이트웨이 해시가 시작·종료에 같고 확인됨(운영 스냅샷 해시도 같음) | 게이트웨이 스냅샷 해시 다름·미확인 |
 | 보고 모델이 두 쪽·모든 케이스에서 하나로 같고 보고됨 | 보고 모델 다름·미보고 |
-| 코드 채점 합격 수 후보 ≥ active(케이스·채점기 대응. 후보가 재질문(`question_only` fail)해 `not_applicable`이 된 채점기와 후보 쪽 `grader_error`는 후보 fail로 센다. active 쪽 `not_applicable`·`grader_error`와 그 밖의 `not_applicable`은 뺀다) | 합격 수 후보 < active |
+| 코드 채점 합격 수 후보 ≥ active(케이스·채점기 대응. 두 쪽 모두 모델 원문 기준 판정을 쓴다 — `heading_nesting`·`internal_id_exposure`는 저장 정규화 전 판정(`prevention`, `docs/EVAL.ko.md` '정규화와 예방 판정'). 후보가 재질문(`question_only` fail)해 `not_applicable`이 된 채점기와 후보 쪽 `grader_error`는 후보 fail로 센다. active 쪽 `not_applicable`·`grader_error`와 그 밖의 `not_applicable`은 뺀다) | 합격 수 후보 < active |
 | 봉인(sealed) 케이스가 1건 이상 | 봉인 케이스 없음(`sealed_missing`) |
 | 봉인(sealed) 케이스에서 active pass → 후보 fail 회귀 0건(위 보정 포함) | 봉인 세트 회귀 N건 |
 | `input_budget` 채점기가 후보 쪽 모든 케이스에서 pass | input_budget 후보 합격 부족 |
