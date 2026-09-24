@@ -98,9 +98,11 @@ export const recordKinds:readonly RecordKind[]=[
  // 프롬프트 레지스트리(F3a, 대표 결정 2·3). 버전은 불변이고 캠페인과 무관하다. 캠페인 고정(pin)만 캠페인과 함께 지운다.
  // token_budget 묶음(마지막 3개, tests/token-budget.test.mjs 고정) 앞에 둔다.
  {kind:'prompt_version',parent:'none',campaignDeletion:'not_campaign_scoped',description:'불변 프롬프트 버전(단위·본문·sha256·sourceSha·출처 메타·등록자·등록 시각). git prompts/ 정본과 main 본문이 같을 때만 만든다(F3a)'},
- {kind:'prompt_release',parent:'none',campaignDeletion:'not_campaign_scoped',description:'프롬프트 단위별 active·previous 포인터와 targets·stagedCampaignIds·evalRunId·approvedBy·활성화/롤백 이력(F3a 구조와 롤백, 활성화 게이트는 F3b)'},
+ {kind:'prompt_release',parent:'none',campaignDeletion:'not_campaign_scoped',description:'프롬프트 단위별 active·previous·baseline 포인터와 stagedCampaignIds·evalRunId·approvedBy·활성화/지정 캠페인/승격/롤백 이력(F3a 구조와 롤백, F3b 활성화 게이트)'},
  {kind:'campaign_prompt_pin',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'캠페인·브리프 버전별 프롬프트 해석 고정(단위→버전). 역할 실행과 회의가 같은 해석을 쓴다. 롤백하면 해당 버전의 고정을 푼다(F3a)'},
  {kind:'prompt_registration',parent:'none',campaignDeletion:'not_campaign_scoped',description:'프롬프트 등록 시도 기록(단위·sourceSha·registered/idempotent/blocked·사유·행위자). 본문은 담지 않는다(F3a)'},
+ {kind:'prompt_release_event',parent:'none',campaignDeletion:'not_campaign_scoped',description:'프롬프트 활성화·지정 캠페인 적용·승격·pin 재설정 이벤트(단위·전후 버전·sourceSha·평가 run·승인 사유·조작 전후 매니페스트). 추가만 한다(F3b, registry-active 근거)'},
+ {kind:'prompt_alarm_ack',parent:'none',campaignDeletion:'not_campaign_scoped',description:'모델·게이트웨이 변경 경보 확인(동결 해제) 기록: 확인한 경보 id·사유·근거 평가 run·행위자. 확인 뒤 새 경보는 다시 동결한다(F3b, 결정 10)'},
  {kind:'token_budget',parent:'none',campaignDeletion:'delete',links:['data_campaign'],description:'소유자가 정한 월 토큰 상한(한국 시간 달력 월). 워크스페이스 1행(id workspace, campaignId 없음)과 캠페인별 행(id campaign:<캠페인>). 캠페인별 행은 캠페인과 함께 지운다(loop-4)'},
  {kind:'token_reservation',parent:'none',campaignDeletion:'not_campaign_scoped',description:'HERMES 제출 1건의 진행 중 토큰 예약(예상 토큰·실행 종류·캠페인 id·실행 번호·멱등 키 해시). 요청 원문은 담지 않고 토큰을 아는 종료 사용량을 기록하면 지운다(loop-4)'},
  {kind:'usage_alias_pricing',parent:'none',campaignDeletion:'not_campaign_scoped',description:'HERMES 별칭(hermes-agent) 단가 선언(기반 모델·입력/출력 단가·통화·근거 URL·적용 시작일). 원장은 바꾸지 않고 읽을 때 추정한다(loop-5, 결정 10)'},

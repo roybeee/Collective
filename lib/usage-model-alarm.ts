@@ -4,7 +4,7 @@
 // 바뀌면 model_change 1건, 같은 값이 반복되면 0건. 처음 보고는 기준값만 남긴다. 모델을 보고하지 않은 실행은 비교하지 않는다.
 // 늦게 끝난 이전 실행: 기준값을 만든 실행보다 먼저 제출된 실행이 다른 모델을 보고하면 비교하지 않는다(모델 전환 중 B→A, A→B 반복 경보 방지). 어느 한쪽의 제출 시각을 모르면 비교한다.
 // 별칭은 실제 모델이 아니다: actual=null('실제 모델 미확인')로 적는다. 별칭에 단가를 거는 경로는 usage-ledger가 막는다(validateUsagePricing·estimateUsageCost).
-import {database} from './server';
+import {database,recordStatement} from './server';
 import {isModelAlias,type ReportedModel} from './usage-summary';
 import type {UsageKind,UsageProvider} from './usage-ledger';
 
@@ -52,3 +52,23 @@ export async function recentModelChanges(owner:string,limit=20){
 export async function reportedModels(owner:string){
  return Object.entries((await readState(owner)).providers).map(([key,s])=>({key,kind:s.kind??null,reported:s.reported,actual:s.actual,observedAt:s.observedAt})).sort((a,b)=>a.key.localeCompare(b.key));
 }
+
+// 경보 동결(F3b, 결정 10): 모델 변경(model_change)·게이트웨이 변경(gateway_change, lib/gateway-snapshot.ts) 경보는 소유자가 확인(prompt_alarm_ack)할 때까지 열려 있다.
+// 열린 경보가 있으면 프롬프트 activate·stage·promote를 막는다(lib/prompt-registry.ts). 확인 기록은 확인한 경보 id 목록을 남기므로 그 뒤에 생긴 경보는 다시 열린 상태다.
+export type AlarmKind='model_change'|'gateway_change';
+export type OpenAlarm={kind:AlarmKind;id:string;at:string;detail:string};
+export type AlarmAck={id:string;alarms:{kind:AlarmKind;id:string}[];reason:string;evalRunId:string|null;by:{id:string;email:string|null};at:string};
+type AlarmRow={kind:string;data:string;updated_at:string};
+// 경보 요약: 모델은 보고값 전후, 게이트웨이는 해시 앞 12자와 바뀐 섹션 이름. 주소·키·원문은 경보 기록에 없다.
+function openAlarm(row:AlarmRow):OpenAlarm{
+ const d=JSON.parse(row.data) as Partial<ModelChange>&{fromHash?:string;toHash?:string;sections?:{section:string}[]};
+ const detail=row.kind==='model_change'?`${d.provider}: ${d.from?.reported} → ${d.to?.reported}`:`${String(d.fromHash).slice(0,12)} → ${String(d.toHash).slice(0,12)} (${(d.sections||[]).map(s=>s.section).join(', ')||'섹션 미상'})`;
+ return {kind:row.kind as AlarmKind,id:String(d.id),at:row.updated_at,detail};
+}
+export async function alarmState(owner:string){
+ const rows=(await database().prepare("SELECT kind,data,updated_at FROM records WHERE owner=? AND kind IN ('model_change','gateway_change','prompt_alarm_ack') ORDER BY updated_at,rowid").bind(owner).all<AlarmRow>()).results;
+ const acks=rows.filter(r=>r.kind==='prompt_alarm_ack').map(r=>JSON.parse(r.data) as AlarmAck),acked=new Set(acks.flatMap(a=>a.alarms.map(x=>`${x.kind}:${x.id}`)));
+ const open=rows.filter(r=>r.kind!=='prompt_alarm_ack').map(openAlarm).filter(a=>!acked.has(`${a.kind}:${a.id}`));
+ return {open,lastAck:acks.at(-1)??null};
+}
+export const alarmAckStatement=(owner:string,ack:AlarmAck)=>recordStatement(owner,'prompt_alarm_ack',ack.id,ack);

@@ -1,4 +1,4 @@
-// 프롬프트 레지스트리 API(F3a, app/api/prompts): 등록(공개 raw 경로·main 비교·불변·멱등·blocked·본문 검사), 활성화 자리(409),
+// 프롬프트 레지스트리 API(F3a, app/api/prompts): 등록(공개 raw 경로·main 비교·불변·멱등·blocked·본문 검사), 쌍 평가 없는 활성화 거부(409),
 // 롤백(포인터 1회 조작·재확인 표시만·pin 해제·진행 중 작업의 멱등 재제출은 저장 원문), 영향 범위, /api/version 매니페스트, 권한(401·403·404).
 // 근거: mocked(raw.githubusercontent.com·HERMES fetch 스텁, 메모리 SQLite, 합성 데이터). 실제 GitHub·HERMES 네트워크 호출은 0회다.
 import assert from 'node:assert/strict';
@@ -78,8 +78,8 @@ check('blocked record keeps unit, SHA, reason and actor but no body',()=>assert.
 r=await post({action:'upload',unit:'role.data',body:raw.repoBody('role.data')});
 check('there is no upload alternative (400)',()=>assert.ok(r.status===400&&count('prompt_version')===1));
 
-// B) 활성화 자리: F3b 전에는 409. 포인터를 만들지 않는다.
-for(const action of ['activate','stage']){r=await post({action,unit:'role.cmo',version:cmoV1,evalRunId:'synthetic-run',stagedCampaignIds:[roleCampaign.id]});check(`${action} is 409 until F3b (pair evaluation needed)`,()=>assert.ok(r.status===409&&/F3b/.test(r.body.error)))}
+// B) 활성화 게이트(F3b): 완료한 쌍 평가 실행이 없으면 409. 포인터를 만들지 않는다(게이트 조건별 검사는 tests/prompt-activation.test.mjs).
+for(const action of ['activate','stage']){r=await post({action,unit:'role.cmo',versionId:cmoV1,evalRunId:'synthetic-run',campaignIds:[roleCampaign.id],approval:{reason:'합성 승인'}});check(`${action} without a completed pair evaluation run is 409`,()=>assert.ok(r.status===409&&/쌍 평가/.test(r.body.error)))}
 check('activation attempts leave no release pointer',()=>assert.equal(count('prompt_release'),0));
 let v=await version();
 check('/api/version keeps build and tree and reports a null manifest without active versions',()=>assert.ok(v.status===200&&v.body.build==='development'&&v.body.tree==='unknown'&&v.body.promptManifest===null));

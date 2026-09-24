@@ -44,3 +44,57 @@ export function compareRuns(baseline:RunOutcomes,candidate:RunOutcomes):RunCompa
  const ids=[...new Set([...baseline.results,...candidate.results].flatMap(r=>(r.graders||[]).map(g=>g.id)))];
  return {baseline:baseline.id,candidate:candidate.id,sharedCases:shared.length,onlyBaseline:A.size-shared.length,onlyCandidate:B.size-shared.length,sameCaseSet:shared.length===A.size&&shared.length===B.size,minPairs:MIN_PAIRS,alpha:ALPHA,graders:ids.map(id=>compareGrader(id,shared,A,B))};
 }
+
+// ── 쌍 평가 게이트(F3b, 대표 결정 2) ──
+// pair run 하나에는 케이스마다 active(현재 적용 버전 또는 코드 상수)와 candidate(후보 버전) 결과가 하나씩 있다. 활성화 조건을 순수 함수로 판정한다.
+// 규칙: docs/PROMPT-REGISTRY.ko.md '활성화 게이트'. 이 판정은 비교 통계(McNemar)와 별개인 비회귀 게이트이며 개선을 주장하지 않는다.
+export type PairVariant='active'|'candidate';
+export type PairCaseOutcome=CaseOutcome&{variant?:string;set?:string;model?:string|null};
+type BasisHash={hash?:string|null}|null|undefined;
+export type PairGatewayBasis={operational?:BasisHash;eval?:BasisHash}|null|undefined;
+export type PairRunOutcomes={id:string;variant?:string;status?:string;deleted?:unknown;gatewaySnapshot?:PairGatewayBasis;gatewaySnapshotEnd?:PairGatewayBasis;results:readonly PairCaseOutcome[]};
+export type PairGateCode='not_pair'|'not_completed'|'incomplete_cases'|'gateway_changed'|'model_changed'|'fewer_passes'|'sealed_regression'|'input_budget';
+export type PairGate={ok:boolean;reasons:{code:PairGateCode;message:string}[];cases:number;sealedCases:number;passes:{pairs:number;active:number;candidate:number};sealedRegressions:{caseId:string;grader:string}[];inputBudget:{pass:number;total:number};models:Record<PairVariant,(string|null)[]>;gateway:{start:string|null;end:string|null}};
+
+const sideOf=(run:PairRunOutcomes,variant:PairVariant):RunOutcomes=>({id:`${run.id}:${variant}`,results:run.results.filter(r=>r.variant===variant)});
+// 두 쪽을 비교 통계(compareRuns)에 넣을 수 있게 나눈다. active가 기준(baseline), candidate가 비교 대상이다.
+export const splitPair=(run:PairRunOutcomes)=>({active:sideOf(run,'active'),candidate:sideOf(run,'candidate')});
+const PASS_FAIL=['pass','fail'];
+// 케이스·채점기 대응 짝: 두 쪽 모두 pass/fail인 것만 쓴다(not_applicable·grader_error 제외).
+function gradedPairs(caseIds:string[],A:Map<string,PairCaseOutcome>,B:Map<string,PairCaseOutcome>){
+ return caseIds.flatMap(caseId=>(A.get(caseId)?.graders||[]).map(g=>({caseId,grader:g.id,sealed:A.get(caseId)?.set==='sealed',a:g.status,b:B.get(caseId)?.graders?.find(h=>h.id===g.id)?.status??''}))).filter(p=>PASS_FAIL.includes(p.a)&&PASS_FAIL.includes(p.b));
+}
+const modelsOf=(side:RunOutcomes)=>side.results.filter(r=>r.status==='completed').map(r=>(r as PairCaseOutcome).model??null);
+const hashOf=(basis:PairGatewayBasis,key:'operational'|'eval')=>basis?.[key]?.hash??null;
+function pairFacts(run:PairRunOutcomes){
+ const {active,candidate}=splitPair(run),A=byCase(active) as Map<string,PairCaseOutcome>,B=byCase(candidate) as Map<string,PairCaseOutcome>,caseIds=[...new Set(run.results.map(r=>r.caseId))];
+ const complete=caseIds.filter(id=>A.get(id)?.status==='completed'&&B.get(id)?.status==='completed'),pairs=gradedPairs(complete,A,B);
+ const budget=caseIds.map(id=>B.get(id)?.graders?.find(g=>g.id==='input_budget')?.status);
+ return {caseIds,complete,pairs,models:{active:modelsOf(active),candidate:modelsOf(candidate)},sealedCases:caseIds.filter(id=>A.get(id)?.set==='sealed').length,
+  passes:{pairs:pairs.length,active:pairs.filter(p=>p.a==='pass').length,candidate:pairs.filter(p=>p.b==='pass').length},
+  sealedRegressions:pairs.filter(p=>p.sealed&&p.a==='pass'&&p.b==='fail').map(({caseId,grader})=>({caseId,grader})),inputBudget:{pass:budget.filter(s=>s==='pass').length,total:caseIds.length}};
+}
+type Facts=ReturnType<typeof pairFacts>;
+// 조건별 거부 사유. 사유 문구는 활성화 API의 409 응답에 그대로 쓴다.
+function pairReasons(run:PairRunOutcomes,f:Facts,gateway:PairGate['gateway']):PairGate['reasons']{
+ const allModels=[...f.models.active,...f.models.candidate],sameModel=allModels.length>0&&allModels.every(m=>m!==null&&m===allModels[0]);
+ const sameGateway=!!gateway.start&&gateway.start===gateway.end&&hashOf(run.gatewaySnapshot,'operational')===hashOf(run.gatewaySnapshotEnd,'operational');
+ const rules:[boolean,PairGateCode,string][]=[
+  [run.variant!=='pair','not_pair','쌍 평가(pair) 실행이 아닙니다.'],
+  [run.status!=='completed'||!!run.deleted,'not_completed',run.deleted?'삭제한 평가 실행입니다.':`평가 실행이 끝나지 않았습니다(상태 ${run.status??'미상'}).`],
+  [!f.caseIds.length||f.complete.length<f.caseIds.length,'incomplete_cases',`두 쪽 모두 completed인 케이스가 ${f.complete.length}/${f.caseIds.length}건입니다. 모든 케이스가 두 쪽 모두 끝나야 합니다.`],
+  [!sameGateway,'gateway_changed','게이트웨이 스냅샷 해시가 시작·종료 시점에 다르거나 확인되지 않았습니다.'],
+  [!sameModel,'model_changed',`보고 모델이 두 쪽·전 구간에서 같지 않거나 보고되지 않았습니다(${[...new Set(allModels.map(m=>m??'미보고'))].join(', ')||'없음'}).`],
+  [f.passes.candidate<f.passes.active,'fewer_passes',`코드 채점 합격 수가 후보 ${f.passes.candidate} < active ${f.passes.active}입니다(대응 ${f.passes.pairs}쌍).`],
+  [f.sealedRegressions.length>0,'sealed_regression',`봉인 세트 회귀 ${f.sealedRegressions.length}건(active pass → 후보 fail: ${f.sealedRegressions.slice(0,5).map(x=>x.grader).join(', ')}).`],
+  [!f.inputBudget.total||f.inputBudget.pass<f.inputBudget.total,'input_budget',`input_budget 채점기 후보 합격이 ${f.inputBudget.pass}/${f.inputBudget.total}건입니다. 후보는 전부 pass여야 합니다.`],
+ ];
+ return rules.filter(([failed])=>failed).map(([,code,message])=>({code,message}));
+}
+// 활성화 게이트 판정. 모든 조건을 모아 한 번에 돌려준다(첫 사유에서 멈추지 않는다).
+export function pairGate(run:PairRunOutcomes):PairGate{
+ const f=pairFacts(run),gateway={start:hashOf(run.gatewaySnapshot,'eval'),end:hashOf(run.gatewaySnapshotEnd,'eval')},reasons=pairReasons(run,f,gateway);
+ return {ok:!reasons.length,reasons,cases:f.caseIds.length,sealedCases:f.sealedCases,passes:f.passes,sealedRegressions:f.sealedRegressions,inputBudget:f.inputBudget,models:f.models,gateway};
+}
+// GET /api/eval?pair=<run>: 두 쪽 비교 통계와 게이트 판정.
+export const pairReport=(run:PairRunOutcomes)=>{const {active,candidate}=splitPair(run);return {comparison:compareRuns(active,candidate),gate:pairGate(run)}};
