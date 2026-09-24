@@ -45,7 +45,7 @@
 
 ## 2. 제작 경로 변경
 
-적용 위치: 역할 `lib/role-instruction.ts buildRoleInputMasked`(운영 `lib/role-execution.ts`와 서버 평가 `lib/eval-server.ts`가 같은 함수를 쓴다), 회의 `lib/meeting-execution.ts context`, 브리프 `lib/brief-execution.ts`. 공통 규칙은 `lib/ai-context.ts`에, 브랜드 단위 캠페인의 지점 허용 값 조회는 `lib/store-allow-server.ts`에 있다.
+적용 위치: 역할 `lib/role-instruction.ts buildRoleInputMasked`(운영 `lib/role-execution.ts`와 서버 평가 `lib/eval-server.ts`가 같은 함수를 쓴다), 회의 `lib/meeting-input.ts meetingContext`(운영 `lib/meeting-execution.ts`가 `buildMeetingSubmission`으로 부른다), 브리프 `lib/brief-input.ts buildBriefSubmission`(운영 `lib/brief-execution.ts`가 `briefRequestFor`로 요청을 만들어 부른다). 공통 규칙은 `lib/ai-context.ts`에, 브랜드 단위 캠페인의 지점 허용 값 조회는 `lib/store-allow-server.ts`에 있다.
 
 ### 2.1 회의 작업물 허용 목록 (①, DP-1)
 
