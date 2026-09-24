@@ -1,14 +1,18 @@
 """설치기(server/research-worker/install.py)의 순수 함수 검사. root·네트워크 없이 실행한다."""
+import contextlib
 import importlib.util
+import io
 import ipaddress
 import json
 import os
 import pwd
 import re
+import signal
 import stat
 import subprocess
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest import mock
 
@@ -67,6 +71,15 @@ class FirewallTest(unittest.TestCase):
         self.assertIn('ip daddr 127.0.0.0/8 tcp dport ' + port + ' meta skuid != { 0, 1000 } reject', output)
         self.assertIn('ip6 daddr ::1 tcp dport ' + port + ' meta skuid != { 0, 1000 } reject', output)
         self.assertNotIn('dport ' + port, installer.nft_rules(991))
+    def test_probe_port_only_accepts_root(self):
+        # 설치 점검 때 여는 CDP 점검 포트도 인증이 없다. hermes를 포함해 root 밖의 계정은 새로 연결하지 못한다.
+        port = str(installer.PROBE_PORT)
+        for rules in (installer.nft_rules(991), installer.nft_rules(991, cdp_clients=(0, 1000))):
+            output = rules.split('chain output')[1]
+            self.assertIn('ip daddr 127.0.0.0/8 tcp dport ' + port + ' meta skuid != 0 reject', output)
+            self.assertIn('ip6 daddr ::1 tcp dport ' + port + ' meta skuid != 0 reject', output)
+            self.assertEqual(rules.count('dport ' + port), 2)
+            self.assertLess(output.index('jump browser'), output.index('dport ' + port))
     def test_route_source_reads_default_route_address(self):
         v4 = '192.0.2.1 via 198.51.100.1 dev eth0 src 203.0.113.10 uid 0 \\    cache '
         v6 = '2001:db8::1 from :: via fe80::1 dev eth0 proto ra src 2001:db8:0:1::10 metric 1024 pref medium'
@@ -129,11 +142,12 @@ class BrowserServiceTest(unittest.TestCase):
             self.assertIn(pattern, blocked)
         self.assertFalse(any(x.startswith(('about:', 'data:', 'blob:', 'http')) for x in blocked))
     def test_file_policy_needs_positive_evidence_that_chromium_still_works(self):
-        marker = '<p>token</p>'
-        self.assertEqual(installer.policy_problem(marker, '<html>ERR_BLOCKED_BY_ADMINISTRATOR</html>', marker), '')
-        # 시간 초과·비정상 종료로 빈 출력이면 정책 차단의 증거가 아니다.
-        self.assertTrue(installer.policy_problem(marker, '', ''))
-        self.assertTrue(installer.policy_problem(marker, marker, marker))
+        # 입력: file 제목 노출 여부, 직후 data: 재확인 성공 여부.
+        self.assertEqual(installer.policy_problem(False, True), '')
+        # 시간 초과·비정상 종료로 제목이 안 보인 것만으로는 정책 차단의 증거가 아니다.
+        self.assertIn('재확인', installer.policy_problem(False, False))
+        self.assertIn('URLBlocklist', installer.policy_problem(True, True))
+        self.assertIn('URLBlocklist', installer.policy_problem(True, False))
     def test_smoke_check_attaches_with_cdp_only_like_hermes(self):
         ws = 'ws://127.0.0.1:' + str(installer.CDP_PORT) + '/devtools/browser/abc'
         command = installer.smoke_command(['runuser', '-u', 'hermes', '--', 'env'], ws)
@@ -275,6 +289,336 @@ class IsolationCheckTest(unittest.TestCase):
             os.chmod(folder, 0o755)
             installer.without_other_access(Path(folder))
             self.assertEqual(stat.S_IMODE(os.stat(folder).st_mode), 0o750)
+
+def page_title(text):
+    return re.search('<title>(.*)</title>', text).group(1)
+
+class FakeProcess:
+    def __init__(self, pid, exit_code=None, wait_error=None):
+        self.pid, self.exit_code, self.wait_error, self.waits = pid, exit_code, wait_error, 0
+    def poll(self):
+        return self.exit_code
+    def wait(self, timeout=None):
+        self.waits += 1
+        if self.wait_error and self.waits == 1:
+            raise self.wait_error
+        return 0
+
+EXPECT_DENIED = installer.expect_denied
+
+class FakeChromium:
+    """점검용 Chromium 대역. PUT /json/new로 연 페이지의 제목을 /json/list로 돌려준다(root·네트워크 없음).
+    file_open_fails: file:// 요청만 실패, file_late: file 제목이 재확인 때 뒤늦게 보임, probe_denied: 다른 계정의 점검 포트 접속이 막힘,
+    leftover: 포트를 잡은 것이 이전 점검 브라우저라 pkill로 끝남, interrupt: file:// 요청 중 이 신호를 받음."""
+    def __init__(self, live=lambda command: True, data_pages=2, file_exposed=False, owners=(991,), squatters=(), exit_code=None,
+                 file_open_fails=False, file_late=False, probe_denied=True, leftover=False, interrupt=None):
+        self.live, self.data_pages, self.file_exposed, self.exit_code = live, data_pages, file_exposed, exit_code
+        self.file_open_fails, self.file_late, self.probe_denied, self.leftover, self.interrupt = file_open_fails, file_late, probe_denied, leftover, interrupt
+        self.owners, self.squatters = set(owners), set(squatters)
+        self.commands, self.popen_kwargs, self.opened, self.titles, self.kills, self.json_calls = [], [], [], [], [], []
+        self.denials, self.runs, self.handlers, self.late = [], [], {}, None
+        self.running = self.listening = False
+        self.page = None
+    def popen(self, command, **kwargs):
+        self.commands.append(command)
+        self.popen_kwargs.append(kwargs)
+        self.handlers = {sig: signal.getsignal(sig) for sig in (signal.SIGHUP, signal.SIGTERM)}
+        kwargs['stdout'].write(b'[0924/000000.000:FATAL:zygote_host_impl_linux.cc(128)] No usable sandbox!\x1b[0m\n')
+        profile = Path(next(x for x in command if x.startswith('--user-data-dir=')).split('=', 1)[1])
+        profile.mkdir(parents=True)
+        (profile / 'Local State').write_text('{}')
+        self.running, self.listening, self.titles = True, self.live(command), []
+        return FakeProcess(4000 + len(self.commands), self.exit_code)
+    def cdp_json(self, path, base=None):
+        self.json_calls.append((base or installer.CDP_URL, path))
+        if base != installer.PROBE_URL or not (self.running and self.listening):
+            raise ConnectionRefusedError(path)
+        if path == '/json/version':
+            return {'Browser': 'HeadlessChrome'}
+        return [{'type': 'page', 'title': title} for title in ['about:blank'] + self.titles] + ['bogus']
+    def cdp_open(self, url, base=None):
+        if (base or installer.PROBE_URL) != installer.PROBE_URL or not (self.running and self.listening):
+            return False
+        self.opened.append(url)
+        if url.startswith('data:text/html,') and len([u for u in self.opened if u.startswith('data:')]) <= self.data_pages:
+            self.titles += ([self.late] if self.late else []) + [page_title(url)]
+        if url.startswith('file://'):
+            path = Path(url[len('file://'):])
+            self.page = (path, page_title(path.read_text()), stat.S_IMODE(os.stat(path).st_mode))
+            if self.interrupt:
+                signal.getsignal(self.interrupt)(self.interrupt, None)
+            if self.file_open_fails:
+                return False
+            if self.file_exposed:
+                self.titles.append(self.page[1])
+            if self.file_late:
+                self.late = self.page[1]
+        return True
+    def listener_uids(self, tables, port):
+        assert port == installer.PROBE_PORT
+        return set(self.owners) if self.running and self.listening else set(self.squatters)
+    def killpg(self, pid, sig):
+        self.kills.append((pid, sig))
+        self.running = False
+    def run(self, command, **kwargs):
+        self.runs.append((command, len(self.commands)))
+        if command[0] == 'pkill' and self.leftover:
+            self.squatters = set()
+        return subprocess.CompletedProcess(command, 0)
+    def expect_denied(self, label, command, runner=None, who='브라우저 계정'):
+        self.denials.append((label, [str(x) for x in command], who, len(self.opened), self.running and self.listening))
+        return EXPECT_DENIED(label, command, lambda args, **kwargs: subprocess.CompletedProcess(args, 1 if self.probe_denied else 0), who)
+
+class ProbeChromeTest(unittest.TestCase):
+    """3/6단계 Chromium 점검: --dump-dom 대신 점검 포트의 CDP로 양성·음성·재확인을 본다(mocked)."""
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.prefix, self.home = Path(folder.name) / 'opt', Path(folder.name) / 'home'
+        self.home.mkdir()
+    def run_probe(self, fake, no_sandbox=False, allow=False):
+        real_atomic, sleeps, out, err = installer.atomic, [], io.StringIO(), io.StringIO()
+        with contextlib.ExitStack() as stack:
+            for target, name, value in ((installer, 'PREFIX', self.prefix), (installer, 'BROWSER_HOME', self.home),
+                                        (installer, 'atomic', lambda path, data, uid=0, gid=0, mode=0o600: real_atomic(path, data, os.getuid(), os.getgid(), mode)),
+                                        (installer.subprocess, 'Popen', fake.popen), (installer, 'cdp_json', fake.cdp_json),
+                                        (installer, 'cdp_open', fake.cdp_open), (installer, 'listener_uids', fake.listener_uids),
+                                        (installer.os, 'killpg', fake.killpg), (installer.time, 'sleep', sleeps.append),
+                                        (installer.subprocess, 'run', fake.run), (installer, 'expect_denied', fake.expect_denied)):
+                stack.enter_context(mock.patch.object(target, name, value))
+            stack.enter_context(contextlib.redirect_stdout(out))
+            stack.enter_context(contextlib.redirect_stderr(err))
+            try:
+                return installer.probe_chrome(no_sandbox, allow, 991)
+            finally:
+                self.sleeps, self.out, self.err = sleeps, out.getvalue(), err.getvalue()
+    def assert_cleaned(self, fake):
+        # 어떤 경로든 띄운 점검 브라우저는 프로세스 그룹째 TERM 뒤 KILL로 끝내고, 프로필·점검 페이지·로그를 지운다.
+        pids = [4001 + i for i in range(len(fake.commands))]
+        self.assertEqual(fake.kills, [(pid, sig) for pid in pids for sig in (signal.SIGTERM, signal.SIGKILL)])
+        self.assertFalse((self.home / 'install-probe').exists())
+        self.assertEqual(list((self.prefix / 'policy-check').iterdir()), [])
+        self.assertTrue(all(base == installer.PROBE_URL for base, _ in fake.json_calls))
+    def test_positive_negative_and_recheck_pass_over_cdp(self):
+        fake = FakeChromium()
+        self.assertFalse(self.run_probe(fake))
+        self.assertEqual(len(fake.commands), 1)
+        command, kwargs = fake.commands[0], fake.popen_kwargs[0]
+        self.assertEqual(command[:4], ['runuser', '-u', installer.BROWSER_USER, '--'])
+        start = command.index(str(installer.CHROME))
+        self.assertEqual(command[start + 1:], installer.chrome_flags() + ['--remote-debugging-port=' + str(installer.PROBE_PORT),
+                                                                       '--user-data-dir=' + str(self.home / 'install-probe'), 'about:blank'])
+        self.assertFalse(any('dump-dom' in x or 'no-sandbox' in x for x in command))
+        self.assertTrue(kwargs['start_new_session'])
+        self.assertEqual(kwargs['stderr'], subprocess.STDOUT)
+        # 양성 data: → 음성 file:// → 새 토큰 data: 재확인. 세 제목은 모두 달라야 앞 페이지가 재확인을 대신하지 못한다.
+        self.assertEqual(len(fake.opened), 3)
+        first, page, recheck = fake.opened
+        self.assertTrue(first.startswith('data:text/html,<title>') and recheck.startswith('data:text/html,<title>'))
+        self.assertEqual(page, fake.page[0].as_uri())
+        self.assertEqual(fake.page[0], self.prefix / 'policy-check' / 'policy-check.html')
+        self.assertEqual(fake.page[2], 0o644)
+        self.assertEqual(len({page_title(first), fake.page[1], page_title(recheck)}), 3)
+        self.assertIn('격리 확인: 브라우저 계정의 file:// 열기 거부됨', self.out)
+        self.assertNotEqual(installer.PROBE_PORT, installer.CDP_PORT)
+        self.assert_cleaned(fake)
+    def test_cdp_port_never_opening_is_a_sandbox_failure_with_the_real_cause(self):
+        fake = FakeChromium(live=lambda command: False)
+        with self.assertRaises(installer.IsolationError) as error:
+            self.run_probe(fake)
+        message = str(error.exception)
+        for text in ('샌드박스를 켠 채로 Chromium을 시작하지 못해', 'CDP 점검 포트', str(installer.PROBE_PORT), 'No usable sandbox!',
+                     'AppArmor', 'journalctl -k', '--allow-no-sandbox'):
+            self.assertIn(text, message)
+        self.assertNotIn('\x1b', message)
+        self.assertEqual(len(fake.commands), 1)
+        # 약 30초 폴링: 1초 간격 30번을 넘지 않는다.
+        self.assertLessEqual(len(self.sleeps), 30)
+        self.assertGreaterEqual(len(self.sleeps), 25)
+        self.assert_cleaned(fake)
+    def test_chromium_exiting_early_stops_waiting(self):
+        fake = FakeChromium(live=lambda command: False, exit_code=1)
+        with self.assertRaises(installer.IsolationError):
+            self.run_probe(fake)
+        self.assertEqual(self.sleeps, [])
+        self.assert_cleaned(fake)
+    def test_sandbox_failure_retries_without_sandbox_only_when_allowed(self):
+        fake = FakeChromium(live=lambda command: '--no-sandbox' in command)
+        self.assertTrue(self.run_probe(fake, allow=True))
+        self.assertEqual(len(fake.commands), 2)
+        self.assertNotIn('--no-sandbox', fake.commands[0])
+        self.assertIn('--no-sandbox', fake.commands[1])
+        self.assertIn('--allow-no-sandbox', self.out)
+        self.assertIn('CDP 점검 포트', self.out)
+        self.assert_cleaned(fake)
+    def test_no_sandbox_failure_keeps_runtime_error(self):
+        fake = FakeChromium(live=lambda command: False)
+        with self.assertRaises(RuntimeError) as error:
+            self.run_probe(fake, allow=True)
+        self.assertNotIsInstance(error.exception, installer.IsolationError)
+        self.assertEqual(str(error.exception), '격리 브라우저 계정으로 Chromium을 시작하지 못했습니다. HERMES 설정은 바뀌지 않았습니다.')
+        self.assertIn('CDP 점검 포트', self.err)
+        self.assertEqual(len(fake.commands), 2)
+        self.assert_cleaned(fake)
+    def test_positive_page_that_never_loads_is_a_start_failure(self):
+        fake = FakeChromium(data_pages=0)
+        with self.assertRaises(installer.IsolationError) as error:
+            self.run_probe(fake)
+        self.assertIn('페이지를 열지 못했', str(error.exception))
+        self.assertEqual(len(fake.opened), 1)
+        self.assertLessEqual(len(self.sleeps), 10)
+        self.assert_cleaned(fake)
+    def test_file_page_title_exposed_stops_install(self):
+        fake = FakeChromium(file_exposed=True)
+        with self.assertRaises(installer.IsolationError) as error:
+            self.run_probe(fake)
+        self.assertIn('URLBlocklist', str(error.exception))
+        self.assert_cleaned(fake)
+    def test_recheck_failure_is_not_treated_as_policy_block(self):
+        fake = FakeChromium(data_pages=1)
+        with self.assertRaises(installer.IsolationError) as error:
+            self.run_probe(fake)
+        self.assertIn('재확인', str(error.exception))
+        self.assertEqual(len(fake.opened), 3)
+        self.assertNotIn('격리 확인: 브라우저 계정의 file://', self.out)
+        self.assert_cleaned(fake)
+    def test_probe_port_opened_by_another_uid_stops_install(self):
+        fake = FakeChromium(owners=(991, 1001))
+        with self.assertRaises(installer.IsolationError) as error:
+            self.run_probe(fake, allow=True)
+        self.assertIn('1001', str(error.exception))
+        self.assertEqual(len(fake.commands), 1)
+        self.assertEqual(fake.opened, [])
+        self.assert_cleaned(fake)
+    def test_probe_port_already_taken_before_launch_stops_install(self):
+        # 이전 점검이 남긴 브라우저나 다른 계정이 먼저 답하면 점검 결과를 믿을 수 없다.
+        fake = FakeChromium(squatters=(991,))
+        with self.assertRaises(installer.IsolationError) as error:
+            self.run_probe(fake, allow=True)
+        self.assertIn(str(installer.PROBE_PORT), str(error.exception))
+        self.assertEqual(fake.commands, [])
+        self.assertEqual(fake.kills, [])
+        self.assertEqual([command[0] for command, _ in fake.runs], ['pkill'])
+    def test_leftover_probe_browser_is_ended_before_port_check(self):
+        # 설치기가 SIGKILL 등으로 끝나 남은 점검 브라우저(같은 점검 프로필)는 포트 선점 확인 전에 끝낸다. 서비스 브라우저는 건드리지 않는다.
+        fake = FakeChromium(squatters=(991,), leftover=True)
+        self.assertFalse(self.run_probe(fake))
+        pattern = 'user-data-dir=' + str(self.home / 'install-probe')
+        self.assertEqual(fake.runs[0], (['pkill', '-KILL', '-u', installer.BROWSER_USER, '-f', pattern], 0))
+        self.assertIsNone(re.search('user-data-dir=' + str(installer.BROWSER_HOME / 'install-probe'), installer.browser_unit(CHROME)))
+        self.assertEqual(len(fake.commands), 1)
+        self.assert_cleaned(fake)
+    def test_probe_port_refused_to_other_local_accounts_while_listening(self):
+        fake = FakeChromium()
+        self.run_probe(fake)
+        self.assertEqual(len(fake.denials), 1)
+        label, command, who, opened, listening = fake.denials[0]
+        self.assertEqual((label, who), ('CDP 점검 포트 접속(' + installer.NPM_USER + ' 계정)', '다른 로컬 계정'))
+        connect = ['python3', '-c', installer.CONNECT, '127.0.0.1', installer.PROBE_PORT]
+        self.assertEqual(command, [str(x) for x in installer.as_user(installer.NPM_USER, installer.NPM_HOME, connect)])
+        # 점검 브라우저가 포트를 연 뒤(root의 /json/version이 양성 대조군) 첫 페이지를 열기 전에 확인한다.
+        self.assertEqual((opened, listening), (0, True))
+        self.assertIn('격리 확인: 다른 로컬 계정의 CDP 점검 포트 접속(' + installer.NPM_USER + ' 계정) 거부됨', self.out)
+    def test_probe_port_reachable_by_other_account_stops_install(self):
+        fake = FakeChromium(probe_denied=False)
+        with self.assertRaises(installer.IsolationError) as error:
+            self.run_probe(fake, allow=True)
+        self.assertIn('CDP 점검 포트 접속', str(error.exception))
+        self.assertEqual(len(fake.commands), 1)
+        self.assertEqual(fake.opened, [])
+        self.assert_cleaned(fake)
+    def test_file_request_failure_is_not_evidence_of_policy_block(self):
+        # /json/new 요청이 실패(HTTP 오류·시간 초과)하면 file:// 페이지를 연 적이 없어 정책 차단을 증명하지 못한다.
+        fake = FakeChromium(file_open_fails=True)
+        with self.assertRaises(installer.IsolationError) as error:
+            self.run_probe(fake)
+        self.assertIn('file:// 점검 페이지', str(error.exception))
+        self.assertNotIn('격리 확인: 브라우저 계정의 file://', self.out)
+        self.assertEqual(len(fake.opened), 2)
+        self.assert_cleaned(fake)
+    def test_file_title_appearing_late_is_caught_on_recheck(self):
+        fake = FakeChromium(file_late=True)
+        with self.assertRaises(installer.IsolationError) as error:
+            self.run_probe(fake)
+        self.assertIn('URLBlocklist', str(error.exception))
+        self.assertEqual(len(fake.opened), 3)
+        self.assert_cleaned(fake)
+    def default_signals(self, handler=signal.SIG_DFL):
+        for sig in (signal.SIGHUP, signal.SIGTERM):
+            self.addCleanup(signal.signal, sig, signal.signal(sig, handler))
+    def test_hangup_or_terminate_during_probe_still_ends_probe_browser(self):
+        # ssh 연결 끊김(SIGHUP)·kill·timeout(SIGTERM)의 기본 동작은 finally 없이 끝나 새 세션의 점검 브라우저가 포트를 연 채 남는다.
+        self.default_signals()
+        for sig in (signal.SIGHUP, signal.SIGTERM):
+            with self.subTest(signal=sig):
+                fake = FakeChromium(interrupt=sig)
+                with self.assertRaises(SystemExit) as stop:
+                    self.run_probe(fake)
+                self.assertEqual(stop.exception.code, 128 + sig)
+                self.assert_cleaned(fake)
+                self.assertEqual(signal.getsignal(sig), signal.SIG_DFL)
+    def test_signal_handlers_only_during_probe_and_ignored_signals_stay_ignored(self):
+        self.default_signals()
+        fake = FakeChromium()
+        self.run_probe(fake)
+        for sig in (signal.SIGHUP, signal.SIGTERM):
+            self.assertTrue(callable(fake.handlers[sig]))
+            self.assertEqual(signal.getsignal(sig), signal.SIG_DFL)
+        # nohup 등으로 무시하게 둔 신호는 그대로 둔다.
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
+        fake = FakeChromium()
+        self.run_probe(fake)
+        self.assertEqual(fake.handlers[signal.SIGHUP], signal.SIG_IGN)
+        self.assertTrue(callable(fake.handlers[signal.SIGTERM]))
+        self.assertEqual((signal.getsignal(signal.SIGHUP), signal.getsignal(signal.SIGTERM)), (signal.SIG_IGN, signal.SIG_DFL))
+    def test_stop_probe_kills_group_even_when_waiting_times_out(self):
+        kills = []
+        def killpg(pid, sig):
+            kills.append((pid, sig))
+            if sig == signal.SIGKILL:
+                raise ProcessLookupError(pid)
+        process = FakeProcess(77, wait_error=subprocess.TimeoutExpired('runuser', 5))
+        with mock.patch.object(installer.os, 'killpg', killpg):
+            installer.stop_probe(process)
+        self.assertEqual(kills, [(77, signal.SIGTERM), (77, signal.SIGKILL)])
+    def test_log_tail_is_short_printable_and_never_empty(self):
+        self.assertEqual(installer.log_tail(''), '(로그 없음)')
+        self.assertEqual(installer.log_tail('a\n\n b \nc\x1b[0m\n'), 'a | b | c?[0m')
+        self.assertEqual(installer.log_tail('\n'.join(str(i) for i in range(20))), '15 | 16 | 17 | 18 | 19')
+        self.assertLessEqual(len(installer.log_tail('x' * 5000)), 501)
+
+class CdpRequestTest(unittest.TestCase):
+    def open_with(self, call, error=None):
+        seen, handlers = [], []
+        class Opener:
+            def open(self, request, timeout=None):
+                seen.append((request, timeout))
+                if error:
+                    raise error
+                return io.BytesIO(b'{"ok": true}')
+        def build(*items):
+            handlers.extend(items)
+            return Opener()
+        with mock.patch.object(installer.urllib.request, 'build_opener', build):
+            result = call()
+        self.assertTrue(handlers and all(isinstance(h, installer.urllib.request.ProxyHandler) and h.proxies == {} for h in handlers))
+        return result, seen
+    def test_cdp_json_keeps_service_default_and_accepts_probe_base(self):
+        result, seen = self.open_with(lambda: installer.cdp_json('/json/version'))
+        self.assertEqual((result, seen[0][0]), ({'ok': True}, installer.CDP_URL + '/json/version'))
+        result, seen = self.open_with(lambda: installer.cdp_json('/json/list', installer.PROBE_URL))
+        self.assertEqual(seen[0][0], installer.PROBE_URL + '/json/list')
+    def test_cdp_open_uses_put_json_new_on_probe_port(self):
+        result, seen = self.open_with(lambda: installer.cdp_open('data:text/html,<title>abc</title>'))
+        request = seen[0][0]
+        self.assertTrue(result)
+        self.assertEqual(request.get_method(), 'PUT')
+        self.assertEqual(request.full_url, installer.PROBE_URL + '/json/new?data:text/html,%3Ctitle%3Eabc%3C/title%3E')
+        self.assertEqual(installer.PROBE_URL, 'http://127.0.0.1:' + str(installer.PROBE_PORT))
+        for error in (urllib.error.URLError('refused'), ConnectionRefusedError(), ValueError('bad json')):
+            self.assertFalse(self.open_with(lambda: installer.cdp_open('file:///x'), error)[0])
+    def test_installer_no_longer_uses_dump_dom(self):
+        self.assertNotIn('--dump-dom', SOURCE.read_text())
 
 class SupplyChainTest(unittest.TestCase):
     def test_npm_runs_as_dedicated_user_without_lifecycle_scripts(self):
