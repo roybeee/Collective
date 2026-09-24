@@ -10,6 +10,7 @@ import {factLabel} from '@/lib/fact-catalog';
 import type {Store} from '@/lib/store-marketing';
 import {BrandFactsPanel} from './brand-facts-panel';
 import {adminRequestNote,useCanManage} from './auth-client';
+import {reasonChoices} from '@/lib/review-decisions';
 
 async function request<T=unknown>(path:string,input?:Record<string,unknown>):Promise<T>{
  const response=await fetch(path,input?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)}:undefined);
@@ -21,7 +22,7 @@ type ActionResult=Partial<Publication>&ProviderAudit&{unreachable?:boolean};
 export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand}){
  const [state,setState]=useState<ExecutionState|null>(null),[facts,setFacts]=useState<BrandFact[]>([]),[selected,setSelected]=useState<string[]>([]);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[preview,setPreview]=useState('');
- const [rights,setRights]=useState<Record<string,boolean>>({}),[buffer,setBuffer]=useState<BufferChoices|null>(null),[resolveIds,setResolveIds]=useState<Record<string,string>>({});
+ const [rights,setRights]=useState<Record<string,boolean>>({}),[buffer,setBuffer]=useState<BufferChoices|null>(null),[resolveIds,setResolveIds]=useState<Record<string,string>>({}),[cancelReasons,setCancelReasons]=useState<Record<string,string>>({});
  const [title,setTitle]=useState(''),[stores,setStores]=useState<Store[]|null>(null),[storesError,setStoresError]=useState(''),[storesTry,setStoresTry]=useState(0),[codeType,setCodeType]=useState('');
  const canManage=useCanManage(),autoChecked=useRef(false);
  const reload=useCallback(async()=>{
@@ -53,7 +54,7 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
   await action('save_creative',{campaignVersion:campaign.version,factRefs:chosen.map(f=>({id:f.id,version:f.version})),png,...(name?{title:name}:{})});setTitle('');
  }
  function copyCode(code:string){setError('');void Promise.resolve().then(()=>navigator.clipboard.writeText(code)).then(()=>setNotice('게시 코드를 복사했습니다: '+code),()=>setError('복사하지 못했습니다. 코드를 직접 선택해 복사하세요.'))}
- function publicationAction(name:string,p:Publication){void perform(async():Promise<ActionResult>=>{const r=await action<ActionResult>(name,{id:p.id,version:p.version,...(name==='approve'?{confirmed:true,rightsConfirmed:true,immutableMediaConfirmed:true,channelId:state?.publisher.channelId,credentialVersion:state?.publisher.version,limitsVersion:state?.limits?.version}:{})});return name==='approve'&&r?.mediaMode==='auto'&&r.mediaUrl&&!await anonymousReachable(r.mediaUrl,window.location.origin)?{...r,unreachable:true}:r},r=>r?.unreachable?'승인했지만 공개 주소에 로그인 없이 접근할 수 없습니다. 이대로는 Buffer가 이미지를 가져가지 못합니다. 사이트 공개 설정을 확인하거나 고급: 외부 호스트를 쓰세요.':r?.providerAudit?`Buffer 게시 번호 ${r.providerAudit.providerId}: ${r.providerAudit.message}`:name==='execute'?'접수 결과를 확인하세요. 실제 게시 여부는 상태 조회로 확인합니다.':name==='reconfirm'?'초안으로 되돌렸습니다. 바뀐 항목을 확인하고 다시 승인하세요.':'상태를 갱신했습니다.')}
+ function publicationAction(name:string,p:Publication){void perform(async():Promise<ActionResult>=>{const reason=(name==='cancel'||name==='reconfirm')&&cancelReasons[p.id];const r=await action<ActionResult>(name,{id:p.id,version:p.version,...(reason?{reasonCodes:[reason]}:{}),...(name==='approve'?{confirmed:true,rightsConfirmed:true,immutableMediaConfirmed:true,channelId:state?.publisher.channelId,credentialVersion:state?.publisher.version,limitsVersion:state?.limits?.version}:{})});return name==='approve'&&r?.mediaMode==='auto'&&r.mediaUrl&&!await anonymousReachable(r.mediaUrl,window.location.origin)?{...r,unreachable:true}:r},r=>r?.unreachable?'승인했지만 공개 주소에 로그인 없이 접근할 수 없습니다. 이대로는 Buffer가 이미지를 가져가지 못합니다. 사이트 공개 설정을 확인하거나 고급: 외부 호스트를 쓰세요.':r?.providerAudit?`Buffer 게시 번호 ${r.providerAudit.providerId}: ${r.providerAudit.message}`:name==='execute'?'접수 결과를 확인하세요. 실제 게시 여부는 상태 조회로 확인합니다.':name==='reconfirm'?'초안으로 되돌렸습니다. 바뀐 항목을 확인하고 다시 승인하세요.':'상태를 갱신했습니다.')}
  function resolveMissing(p:Publication,restoreAttempt:boolean){
   if(!window.confirm(`Buffer에 이 예약이 없음을 확인했나요? 실패로 닫고 발행 시도 차감을 ${restoreAttempt?'되돌립니다':'유지합니다'}. 재전송하지 않습니다.`))return;
   void perform(()=>action('resolve_uncertain',{id:p.id,version:p.version,notFound:true,restoreAttempt}),'접수 여부를 실패로 확정했습니다.');
@@ -137,6 +138,8 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
        <div className="flex flex-wrap gap-2 items-start"><button className="border rounded px-3 py-2" disabled={busy||blockers.length>0} onClick={()=>publicationAction('approve',p)}>이 버전 발행 승인</button>{!state.limits&&<button type="button" className="border rounded px-3 py-2" disabled={busy} onClick={saveDefaultLimits}>기본 한도(발행 1회·0원) 저장</button>}</div>
        {blockers.length>0&&<ul aria-label="승인 차단 사유" className="text-sm list-disc pl-5">{blockers.map(b=><li key={b}>{b}</li>)}</ul>}</>}
       {canManage&&p.status==='approved'&&<>{drift.length>0&&<p role="alert">승인 뒤 바뀐 항목: {drift.join(', ')}. {restart?'이 발행을 취소하고 새 PNG로 새 초안을 만드세요.':'재확인으로 초안에 되돌린 뒤 다시 승인하세요.'}</p>}{gate.length>0&&<ul aria-label="접수 차단 사유" className="text-sm list-disc pl-5">{gate.map(b=><li key={b}>{b}</li>)}</ul>}<div className="flex flex-wrap gap-2"><button className="border rounded px-3 py-2" disabled={busy||drift.length>0||gate.length>0} onClick={()=>publicationAction('execute',p)}>승인된 예약을 Buffer에 접수</button>{drift.length>0&&!restart&&<button className="border rounded px-3 py-2" disabled={busy} onClick={()=>publicationAction('reconfirm',p)}>재확인 (초안으로 되돌리기)</button>}</div></>}
+      {/* B1: 취소·재확인(초안으로 되돌리기) 사유는 선택이다. 고르면 발행 판정 로그에 사유 코드로 남는다. */}
+      {canManage&&['draft','approved'].includes(p.status)&&<label className="block text-sm">취소·되돌림 사유 (선택)<select aria-label="취소·되돌림 사유" className="block border rounded p-2" value={cancelReasons[p.id]||''} disabled={busy} onChange={e=>setCancelReasons(old=>({...old,[p.id]:e.target.value}))}><option value="">선택 안 함</option>{reasonChoices('publication').map(r=><option key={r.code} value={r.code}>{r.label}</option>)}</select></label>}
       {canManage&&['draft','approved'].includes(p.status)&&<button className={'border rounded px-3 py-2 ml-2'+(restart?' font-semibold border-current':'')} disabled={busy} onClick={()=>publicationAction('cancel',p)}>{restart?'이 발행 취소 (새 PNG로 다시 준비)':'이 발행 취소'}</button>}
       {p.providerId&&<button className="border rounded px-3 py-2" disabled={busy} onClick={()=>publicationAction('refresh',p)}>실제 게시 상태 조회</button>}
       {['submitting','uncertain'].includes(p.status)&&<p>접수 여부를 Buffer에서 확인하세요. 중복 게시를 막기 위해 재전송을 차단했습니다.</p>}

@@ -241,16 +241,17 @@ export async function saveProviderResult(owner:string,campaign:Campaign,pending:
  const current=await optionalRecord<Publication>(owner,'execution_publication',pending.id).catch(()=>null);
  return {...(current||saved),providerAudit:{providerId:saved.providerId,providerStatus:saved.providerStatus,message:'이 Buffer 게시 번호를 발행 기록에 저장하지 못했습니다. 접수 확인에서 이 번호로 연결하세요.'}};
 }
-export async function cancelPublication(owner:string,campaign:Campaign,p:Publication){
+// extra: 상태 변경과 한 묶음으로 쓸 추가 기록(B1 판정 로그). 하나라도 실패하면 상태도 바뀌지 않는다.
+export async function cancelPublication(owner:string,campaign:Campaign,p:Publication,extra:D1PreparedStatement[]=[]){
  if(p.status!=='draft'&&p.status!=='approved')throw new ApiError(409,'이미 접수한 항목은 Buffer에서 예약 상태와 취소 여부를 확인하세요.');
- const cancelled:Publication={...p,status:'cancelled',version:p.version+1,updatedAt:stamp()};await recordStatement(owner,'execution_publication',p.id,cancelled,campaign.id).run();
+ const cancelled:Publication={...p,status:'cancelled',version:p.version+1,updatedAt:stamp()};await database().batch([recordStatement(owner,'execution_publication',p.id,cancelled,campaign.id),...extra]);
  await retireMedia(owner,[p]);return cancelled;
 }
 // exec-loop-8: 무효화된 승인을 새 버전의 초안으로 되돌린다. 바뀐 소재·사실·한도는 다시 승인할 때 검사한다.
-export async function reconfirmPublication(owner:string,campaign:Campaign,p:Publication,who:Who){
+export async function reconfirmPublication(owner:string,campaign:Campaign,p:Publication,who:Who,extra:D1PreparedStatement[]=[]){
  if(p.status!=='approved'||p.attemptedAt)throw new ApiError(409,'승인 후 접수하지 않은 발행만 재확인할 수 있습니다.');
  const draft:Publication={...toDraft(p,'관리자 재확인'),reconfirmedBy:who.id,reconfirmedAt:stamp()};
- await database().batch([recordStatement(owner,'execution_publication',p.id,draft,campaign.id),eventStatement(owner,campaign.id,'발행 재확인 · 승인을 초안으로 되돌렸습니다. 바뀐 항목을 확인하고 다시 승인하세요.',who)]);
+ await database().batch([recordStatement(owner,'execution_publication',p.id,draft,campaign.id),eventStatement(owner,campaign.id,'발행 재확인 · 승인을 초안으로 되돌렸습니다. 바뀐 항목을 확인하고 다시 승인하세요.',who),...extra]);
  await retireMedia(owner,[p]);return draft;
 }
 // exec-loop-9: 접수 여부가 불확실한 발행을 관리자가 확정한다. 재전송하지 않는다.

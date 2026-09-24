@@ -7,6 +7,7 @@ import type {Brand} from '@/lib/agency';
 import {sourceSummary,publicResearch,type ArchiveSource,type ChannelObservation,type Diagnostic,type BrandResearch} from '@/lib/archive';
 import {archiveState,stateWrite,assertArchiveIdle,makeSource,makeObservation,intake} from '@/lib/archive-server';
 import {diagnosisBasis,diagnosisIncluded,latestAdopted,brandBasis,type AdoptedDiagnostic} from '@/lib/ai-context';
+import {reviewActor,requireReasonCodes,sourceDecisionStatement} from '@/lib/review-decisions-server';
 export async function GET(req:Request){try{const owner=await identity(req),u=new URL(req.url),brandId=str(u.searchParams.get('brandId'),'브랜드',100,true),brand=await readRecord<Brand>(owner,'brand',brandId);
  if(u.searchParams.get('sourceId')){const s=await readRecord<ArchiveSource>(owner,'brand_source',str(u.searchParams.get('sourceId'),'자료',100,true));if(s.brandId!==brandId)throw new ApiError(404,'자료를 찾을 수 없습니다.');const{objectKey:_,...data}=s;return json(data)}
  // 진단마다 근거 상태(basis)와 AI 입력 포함 여부(included)를 서버 규칙으로 계산해 화면이 같은 기준을 쓰게 한다.
@@ -33,19 +34,23 @@ export async function POST(req:Request){let owner='',lock='';try{owner=await ide
   const s=makeSource(brandId,b.data||{});await database().batch([recordStatement(owner,'brand_source',s.id,s,brandId),stateWrite(owner,brandId,state.revision+1)]);return json({id:s.id});
  }
  if(b.action==='review_source'){
-  if(b.status!=='candidate')await requireAdminActor(req);
+  const who=b.status!=='candidate'?await requireAdminActor(req):null;
   const s=await readRecord<ArchiveSource>(owner,'brand_source',str(b.id,'자료',100,true));if(s.brandId!==brandId)throw new ApiError(404,'자료를 찾을 수 없습니다.');if(s.version!==b.version)throw new ApiError(409,'자료가 변경됐습니다. 새로고침해 주세요.');if(!['confirmed','candidate','excluded'].includes(b.status))throw new ApiError(400,'검토 상태를 확인하세요.');if(b.status==='confirmed'&&!s.content.trim())throw new ApiError(400,'분석 가능한 내용이 없습니다. 원문을 확인하고 텍스트 자료를 추가해 주세요.');
-  await database().batch([recordStatement(owner,'brand_source',s.id,{...s,status:b.status,version:s.version+1},brandId),stateWrite(owner,brandId,state.revision+1)]);return json({id:s.id});
+  // B1: 사용 제외는 사유 코드(선택)와 함께 review_decision 1건을 남긴다. 모르는 코드는 쓰기 전에 400이다.
+  const exclusion=b.status==='excluded'?[sourceDecisionStatement(owner,s,reviewActor(who!),requireReasonCodes(b.reasonCodes,'source'))]:[];
+  await database().batch([recordStatement(owner,'brand_source',s.id,{...s,status:b.status,version:s.version+1},brandId),stateWrite(owner,brandId,state.revision+1),...exclusion]);return json({id:s.id});
  }
  // 후보 자료 일괄 검토: 모두 검증한 뒤 한 번에 저장하고 revision은 한 번만 올린다. 확정·제외는 관리자 전용(PR 1).
  if(b.action==='review_sources'){
   if(!Array.isArray(b.items)||!b.items.length||b.items.length>200)throw new ApiError(400,'검토할 자료를 1~200개 선택하세요.');
-  if(b.items.some((i:{status?:unknown}|null)=>i?.status!=='candidate'))await requireAdminActor(req);
+  const who=b.items.some((i:{status?:unknown}|null)=>i?.status!=='candidate')?await requireAdminActor(req):null;
+  const reasonCodes=requireReasonCodes(b.reasonCodes,'source');
   const rows=await listRecords<ArchiveSource>(owner,'brand_source',brandId),seen=new Set<string>(),writes:D1PreparedStatement[]=[];
   for(const item of b.items){
    const s=rows.find(r=>r.id===item?.id);if(!s)throw new ApiError(404,'자료를 찾을 수 없습니다.');if(seen.has(s.id))throw new ApiError(400,'같은 자료가 중복 선택됐습니다.');seen.add(s.id);
    if(s.version!==item.version)throw new ApiError(409,`자료가 변경됐습니다. 새로고침해 주세요: ${s.title}`);if(!['confirmed','candidate','excluded'].includes(item.status))throw new ApiError(400,'검토 상태를 확인하세요.');if(item.status==='confirmed'&&!s.content.trim())throw new ApiError(400,`분석 가능한 내용이 없는 자료는 확정할 수 없습니다: ${s.title}`);
    writes.push(recordStatement(owner,'brand_source',s.id,{...s,status:item.status,version:s.version+1},brandId));
+   if(item.status==='excluded')writes.push(sourceDecisionStatement(owner,s,reviewActor(who!),reasonCodes));
   }
   await database().batch([...writes,stateWrite(owner,brandId,state.revision+1)]);return json({ids:[...seen],revision:state.revision+1});
  }
