@@ -11,6 +11,7 @@ import {issuePublicationCode} from './publication-codes';
 import {CODE_ALPHABET,CODE_MAX,type TrackingCode} from './tracking-codes';
 import type {Store} from './store-marketing';
 import {assertNotArchived} from './campaign-archive';
+import {AI_DISCLOSURE_LINE,hasKnownOrigin,isAiGenerated} from './ai-disclosure';
 
 export type PublisherCredential={secret:string;version:number;channelId:string;account:string;organizationId?:string};
 type Who=Pick<Actor,'id'|'email'>;
@@ -43,26 +44,30 @@ export async function resolveFacts(owner:string,campaign:Campaign,refs:unknown,u
 }
 // 캡션 후보(exec-loop-7 1): 현재 브리프 버전에서 승인된 콘텐츠 작업물의 게시 카피. PR 2 근거 컨텍스트의 확정·거절·후보 사실로 검사한다.
 const copySource=(a:Artifact,c:Campaign)=>a.role==='content'&&a.status==='approved'&&a.campaignId===c.id&&(a.campaignVersion===undefined||a.campaignVersion===c.version);
-// 결정 17(AI 생성물 표시·규제 검토 책임)이 정해지기 전에는 AI 작업물 카피를 게시 캡션에 쓰지 않는다.
-// 표시 문구·위치와 승인 게이트의 표시 확인을 구현한 뒤 AI_COPY_CAPTIONS=enabled로 켠다. 확인 사실 문구만 쓰는 캡션은 영향이 없다.
+// 결정 17(AI 생성물 표시·규제 검토 책임): 표시 줄(lib/ai-disclosure.ts)·승인 게이트의 표시 확인은 구현됐다. 표시 문구는 대표·법률 검토 전 초안이라
+// 대표가 문구를 확정하고 docs/AI-DISCLOSURE.ko.md 체크리스트를 마친 뒤 AI_COPY_CAPTIONS=enabled로 켠다. 꺼져 있으면 작업물 카피를 캡션에 쓰지 않는다. 확인 사실 문구만 쓰는 캡션은 영향이 없다.
 export const aiCopyCaptionsEnabled=()=>runtime.AI_COPY_CAPTIONS==='enabled';
+// 출처가 없거나 알 수 없는 작업물은 AI 생성물 여부를 판정할 수 없어 캡션에 쓰지 않는다(결정 17, 표시 누락 방지).
+const UNKNOWN_ORIGIN='작업물 출처 불명(AI 생성물 여부를 판정할 수 없음)';
 export async function captionCandidates(owner:string,campaign:Campaign):Promise<CaptionCandidate[]>{
  if(!aiCopyCaptionsEnabled())return [];
  const artifacts=(await listRecords<Artifact>(owner,'artifact',campaign.id)).filter(a=>copySource(a,campaign));
  if(!artifacts.length)return [];
  const {facts}=await evidenceContext(database(),owner,campaign);
- return artifacts.flatMap(a=>copyBlocks(a.content).map((text,index)=>({artifactId:a.id,artifactVersion:a.version,index,text,issues:captionIssues(text,facts)})));
+ return artifacts.flatMap(a=>copyBlocks(a.content).map((text,index)=>({artifactId:a.id,artifactVersion:a.version,index,text,issues:[...captionIssues(text,facts),...(hasKnownOrigin(a)?[]:[UNKNOWN_ORIGIN])],aiGenerated:isAiGenerated(a)})));
 }
 async function approvedCopy(owner:string,campaign:Campaign,input:unknown):Promise<PublicationCopy>{
- if(!aiCopyCaptionsEnabled())throw new ApiError(409,'AI 작업물 카피를 캡션에 쓰는 기능은 AI 생성물 표시 기준(결정 17)이 정해질 때까지 꺼져 있습니다. 확인 사실 문구만으로 발행하세요.');
+ if(!aiCopyCaptionsEnabled())throw new ApiError(409,'AI 작업물 카피를 캡션에 쓰는 기능은 대표가 AI 생성물 표시 문구(결정 17)를 확정할 때까지 꺼져 있습니다. 확인 사실 문구만으로 발행하세요.');
  const ref=(input&&typeof input==='object'?input:{}) as Record<string,unknown>;
  const artifact=await readRecord<Artifact>(owner,'artifact',str(ref.artifactId,'카피 작업물',100,true));
  if(!copySource(artifact,campaign)||artifact.version!==ref.artifactVersion)throw new ApiError(409,'카피 작업물이 현재 브리프에서 승인된 버전이 아닙니다. 캡션 후보를 다시 불러오세요.');
+ if(!hasKnownOrigin(artifact))throw new ApiError(409,'이 카피는 캡션에 쓸 수 없습니다: '+UNKNOWN_ORIGIN);
  const index=typeof ref.index==='number'?ref.index:-1,text=copyBlocks(artifact.content)[index];
  if(!text)throw new ApiError(400,'캡션 후보를 선택하세요.');
  const issues=captionIssues(text,(await evidenceContext(database(),owner,campaign)).facts);
  if(issues.length)throw new ApiError(409,'이 카피는 캡션에 쓸 수 없습니다: '+issues.join(', '));
- return {artifactId:artifact.id,artifactVersion:artifact.version,index,text};
+ // AI 생성물 여부는 작업물 출처(origin)에서 파생해 발행에 기록한다(결정 17). 캡션 표시 줄과 승인 게이트가 이 값을 쓴다.
+ return {artifactId:artifact.id,artifactVersion:artifact.version,index,text,aiGenerated:isAiGenerated(artifact)};
 }
 export async function saveLimits(owner:string,campaign:Campaign,input:Record<string,unknown>){
  const old=await optionalRecord<ExecutionLimits>(owner,'execution_limits',campaign.id);if(old)assertVersion(old,input.version);
@@ -85,7 +90,7 @@ export async function connectPublisher(owner:string,campaign:Campaign,input:Reco
  await recordStatement(owner,'publisher_credential',campaign.brandId,value,campaign.brandId).run();return {connected:true,channelId,account,version:value.version};
 }
 // 승인을 새 버전의 초안으로 되돌린다. 승인 필드와 자동 공개 주소를 비운다(JSON 저장 시 undefined 필드는 빠진다).
-function toDraft(p:Publication,reason:string):Publication{return {...p,status:'draft',version:p.version+1,mediaUrl:p.mediaMode==='auto'?'':p.mediaUrl,channelId:undefined,credentialVersion:undefined,limitsVersion:undefined,approvedLimits:undefined,approvedBy:undefined,approvedAt:undefined,needsReview:undefined,invalidatedReason:reason,updatedAt:stamp()}}
+function toDraft(p:Publication,reason:string):Publication{return {...p,status:'draft',version:p.version+1,mediaUrl:p.mediaMode==='auto'?'':p.mediaUrl,channelId:undefined,credentialVersion:undefined,limitsVersion:undefined,approvedLimits:undefined,approvedBy:undefined,approvedAt:undefined,aiDisclosureConfirmedBy:undefined,aiDisclosureConfirmedAt:undefined,needsReview:undefined,invalidatedReason:reason,updatedAt:stamp()}}
 // 승인에서 벗어난 발행의 앱 공개 주소 참조를 해제한다. 호출자는 owner 변경 잠금을 가진다. 실패해도 상태 변경은 유지하고 기록만 남긴다.
 export async function retireMedia(owner:string,publications:Publication[]){
  for(const p of publications)if(p.mediaMode==='auto'&&p.mediaUrl)await retirePublicMedia(owner,p.pngHash,p.id).catch(e=>console.error('execution_media_retire_failed',e instanceof Error?e.message:'unknown'));
@@ -169,15 +174,16 @@ export async function savePublication(owner:string,campaign:Campaign,input:Recor
  if(existing.some(p=>p.creativeId===creative.id&&p.scheduledAt===scheduledAt&&p.status!=='cancelled'))throw new ApiError(409,'같은 소재와 시각의 발행이 이미 있습니다. 기존 발행을 확인하세요.');
  const copy=input.copy?await approvedCopy(owner,campaign,input.copy):undefined;
  const choice=input.trackingCode===undefined||input.trackingCode===null?null:await publicationCodeChoice(owner,campaign,input.trackingCode);
- // 한도는 코드 줄을 포함해 검사한다. 발급 전에는 가장 긴 코드(CODE_MAX자)로 재서, 발급 뒤에는 저장만 남게 한다(한도 때문에 발급한 코드가 버려지지 않게).
- if(composeCaption(copy?.text,creative.caption,choice?{type:choice.type,code:CODE_ALPHABET[0].repeat(CODE_MAX)}:undefined).length>2200)throw new ApiError(400,choice?'게시 코드 줄을 포함한 캡션이 Instagram 한도 2,200자를 넘습니다. 더 짧은 카피를 고르거나 코드 없이 준비하세요.':'캡션이 Instagram 한도 2,200자를 넘습니다. 더 짧은 카피를 고르세요.');
+ // 한도는 AI 생성물 표시 줄·코드 줄을 포함해 검사한다. 발급 전에는 가장 긴 코드(CODE_MAX자)로 재서, 발급 뒤에는 저장만 남게 한다(한도 때문에 발급한 코드가 버려지지 않게).
+ const extraLines=[...(copy?.aiGenerated?['AI 생성물 표시 줄']:[]),...(choice?['게시 코드 줄']:[])].join('·');
+ if(composeCaption(copy,creative.caption,choice?{type:choice.type,code:CODE_ALPHABET[0].repeat(CODE_MAX)}:undefined).length>2200)throw new ApiError(400,(extraLines?extraLines+'을 포함한 캡션이':'캡션이')+' Instagram 한도 2,200자를 넘습니다. 더 짧은 카피를 고르'+(choice?'거나 코드 없이 준비하세요.':'세요.'));
  if(choice&&!who)throw new ApiError(403,'게시 코드 발급은 관리자만 할 수 있습니다.');
  const id=choice?await publicationIdFor(owner,campaign,creative.id,choice,existing):uid();
  const issued=choice&&who?await issuePublicationCode(owner,{campaign,publicationId:id,creativeId:creative.id,storeId:choice.storeId,type:choice.type,who:{id:who.id,email:who.email}}):null;
  // 멱등 발급은 이미 있는 코드를 돌려준다. 캡션 코드 줄과 발행 기록이 선택과 다른 코드를 가리키지 않게 확인한다.
  if(issued&&choice&&(issued.type!==choice.type||issued.storeId!==choice.storeId||issued.publicationId!==id))throw new ApiError(409,'게시 코드 발급 결과가 선택한 유형·지점과 다릅니다. 새로고침 후 다시 준비하세요.');
  const trackingCode:PublicationCode|undefined=issued&&choice?{id:issued.id,code:issued.code,type:choice.type,storeId:issued.storeId}:undefined;
- const caption=composeCaption(copy?.text,creative.caption,trackingCode);
+ const caption=composeCaption(copy,creative.caption,trackingCode);
  const p:Publication={id,campaignId:campaign.id,creativeId:creative.id,creativeVersion:creative.version,campaignVersion:campaign.version,pngHash:creative.pngHash,factRefs:creative.factRefs,caption,...(copy?{copy}:{}),...(trackingCode?{trackingCode}:{}),mediaUrl:mediaMode==='auto'?'':checked,mediaMode,scheduledAt,plannedCostKRW,version:1,status:'draft',createdAt:stamp()};
  await recordStatement(owner,'execution_publication',p.id,p,campaign.id).run();return p;
 }
@@ -188,8 +194,11 @@ export async function publicationFor(owner:string,campaign:Campaign,id:unknown,v
 export async function approvalInputs(owner:string,campaign:Campaign,p:Publication){
  const gate=campaignGateIssues(campaign,p.scheduledAt);if(gate.length)throw new ApiError(409,gate.join(' '));
  const creative=await currentCreative(owner,campaign,p.creativeId);
- if(creative.version!==p.creativeVersion||creative.pngHash!==p.pngHash||composeCaption(p.copy?.text,creative.caption,p.trackingCode)!==p.caption)throw new ApiError(409,'소재가 변경됐습니다. 다시 준비하세요.');
- if(p.copy&&(await approvedCopy(owner,campaign,p.copy)).text!==p.copy.text)throw new ApiError(409,'카피 작업물이 바뀌었습니다. 캡션 후보를 다시 고르세요.');
+ // 스위치를 켠 뒤 표시 문구 상수가 바뀌면 남은 초안·승인의 캡션에는 이전 표시 줄이 있다. 재확인으로는 캡션이 바뀌지 않으므로 취소·재준비를 안내한다(결정 17).
+ if(p.copy?.aiGenerated===true&&!p.caption.includes(AI_DISCLOSURE_LINE))throw new ApiError(409,'AI 생성물 표시 문구가 준비 뒤 바뀌었습니다. 이 발행을 취소하고 다시 준비하세요.');
+ if(creative.version!==p.creativeVersion||creative.pngHash!==p.pngHash||composeCaption(p.copy,creative.caption,p.trackingCode)!==p.caption)throw new ApiError(409,'소재가 변경됐습니다. 다시 준비하세요.');
+ // 기록된 AI 생성물 판정(이 필드 이전 기록 포함)이 작업물 출처와 다르면 캡션 표시 줄이 맞지 않으므로 다시 준비하게 한다(결정 17).
+ if(p.copy){const copy=await approvedCopy(owner,campaign,p.copy);if(copy.text!==p.copy.text)throw new ApiError(409,'카피 작업물이 바뀌었습니다. 캡션 후보를 다시 고르세요.');if(copy.aiGenerated!==(p.copy.aiGenerated===true))throw new ApiError(409,'카피 작업물의 AI 생성물 판정이 준비 때와 다릅니다. 이 발행을 취소하고 캡션 후보를 다시 골라 준비하세요.')}
  await resolveFacts(owner,campaign,p.factRefs,Date.parse(p.scheduledAt));schedule(p.scheduledAt);
  const [credential,limits]=await Promise.all([optionalRecord<PublisherCredential>(owner,'publisher_credential',campaign.brandId),optionalRecord<ExecutionLimits>(owner,'execution_limits',campaign.id)]);
  if(!credential)throw new ApiError(409,'채널 미연결 · Buffer Instagram 채널을 연결한 뒤 승인하세요.');
@@ -204,12 +213,15 @@ export async function approvePublication(owner:string,campaign:Campaign,p:Public
  assertNotArchived(campaign);
  const external=p.mediaMode!=='auto';
  if(p.status!=='draft'||input.confirmed!==true||input.rightsConfirmed!==true||(external&&input.immutableMediaConfirmed!==true))throw new ApiError(400,external?'PNG·사실·사용 권리·공개 파일 유지 조건을 확인하고 승인하세요.':'PNG·사실·사용 권리를 확인하고 승인하세요.');
+ // 결정 17: AI 카피 발행은 캡션 끝 표시 줄을 확인했다는 체크(aiDisclosureConfirmed:true)가 있어야 승인한다. 확인자·시각은 승인자와 같은 방식으로 남긴다.
+ const aiCopy=p.copy?.aiGenerated===true;
+ if(aiCopy&&input.aiDisclosureConfirmed!==true)throw new ApiError(409,'AI 카피를 쓴 발행입니다. 캡션 끝 표시 문구를 확인하고 AI 생성물 표시를 확인하세요.');
  const {credential,limits}=await approvalInputs(owner,campaign,p);
  const changed=[...(input.channelId!==credential.channelId||input.credentialVersion!==credential.version?['발행 계정']:[]),...(input.limitsVersion!==limits.version?['발행 횟수 한도']:[])];
  if(changed.length)throw new ApiError(409,`화면에 표시된 정보가 변경됐습니다(${changed.join(', ')}). 새로고침하고 다시 확인하세요.`);
  // 자동 모드는 승인된 발행만 앱 공개 주소로 제공한다. 외부 호스트는 원본 해시와 같은지 확인한다.
  let url=p.mediaUrl;if(external)await verifyMedia(p.mediaUrl,p.pngHash,origin);else url=await publishPublicMedia(owner,p.pngHash,p.id,origin);
- const approved:Publication={...p,status:'approved',version:p.version+1,mediaUrl:url,channelId:credential.channelId,credentialVersion:credential.version,limitsVersion:limits.version,approvedLimits:{maxPublications:limits.maxPublications,maxPlannedCostKRW:limits.maxPlannedCostKRW},approvedBy:who.id,approvedAt:stamp(),invalidatedReason:undefined,updatedAt:stamp()};
+ const approved:Publication={...p,status:'approved',version:p.version+1,mediaUrl:url,channelId:credential.channelId,credentialVersion:credential.version,limitsVersion:limits.version,approvedLimits:{maxPublications:limits.maxPublications,maxPlannedCostKRW:limits.maxPlannedCostKRW},approvedBy:who.id,approvedAt:stamp(),...(aiCopy?{aiDisclosureConfirmedBy:who.id,aiDisclosureConfirmedAt:stamp()}:{}),invalidatedReason:undefined,updatedAt:stamp()};
  try{await recordStatement(owner,'execution_publication',p.id,approved,campaign.id).run()}catch(e){if(!external)await retirePublicMedia(owner,p.pngHash,p.id).catch(()=>{});throw e}
  return approved;
 }
