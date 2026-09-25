@@ -99,7 +99,8 @@ const request=JSON.parse(JSON.stringify(briefInput.briefRequestFor({...sources,c
 check('brief stored body is byte-identical to the frozen pure assembly (fixed context date)',()=>assert.equal(saved.body,JSON.stringify({instructions:built.instructions,input:built.input,session_id:saved.key,conversation_history:[]}),'운영 브리프 제출 본문이 lib/brief-input.ts 출력과 다릅니다.'));
 check('brief HERMES received the stored body unchanged',()=>assert.ok([...hermes.bodies.values()].includes(saved.body)));
 check('brief masking record equals the stored draft record',()=>assert.deepEqual(built.maskingRecord,stored.inputMasking));
-check('brief instructions equal base 7b897c9',()=>assert.deepEqual(digest(built.instructions),baseline.brief.instructions,baseDrift));
+// 브리프 지시문 기준값은 브리프 품질 수정 v2(2026-09-25)가 의도적으로 바꿨다(fixture brief.instructionsUpdated에 이전 값·사유). 입력·가림 기록은 7b897c9 그대로다.
+check('brief instructions equal the recorded baseline (7b897c9, updated by brief quality v2)',()=>assert.deepEqual(digest(built.instructions),baseline.brief.instructions,baseDrift));
 check('brief input equals base 7b897c9 (same fixed context date)',()=>{assert.equal(request.contextDate,baseline.contextDate);assert.deepEqual(digest(built.input),baseline.brief.input,baseDrift)});
 check('brief draft masking record equals base 7b897c9',()=>assert.deepEqual(digest(JSON.stringify(stored.inputMasking)),baseline.brief.inputMasking,baseDrift));
 const briefBody=JSON.parse(built.input);
