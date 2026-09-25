@@ -220,8 +220,8 @@ node scripts/eval/grade.mjs <case.json> [--json] [--detail]
 
 비유: 시험 문제지(케이스)를 봉투에 봉인해 두고, 연습실(평가 전용 프로필)에서만 풀게 한다. 한 번에 쓸 수 있는 종이(토큰)는 정해져 있고, 다 쓰면 남은 문제는 풀지 않은 것으로 적는다.
 
-- 코드: `lib/eval-server.ts`(연결·케이스·실행), `lib/eval-kinds.ts`(평가 종류별 동결 검사·제출 조립·채점·예약, 8절), `lib/eval-budget-server.ts`(월 승인, 7절), `lib/eval-stats.ts`(비교 통계), `app/api/eval/route.ts`, `lib/background-execution.ts`(`eval:<run id>` 작업), `lib/role-execution.ts`(`roleSources`·`roleRequestFor`로 요청 조립 DB 읽기를 추출, 동작 불변. `roleSubmission`은 운영 start와 평가가 함께 쓰는 제출 조립, 8절)
-- 테스트: `tests/eval-server.test.mjs`, `tests/eval-stats.test.mjs`, `tests/eval-regrade.test.mjs`, `tests/eval-budget.test.mjs`, `tests/eval-kinds.test.mjs`(합성 데이터, 평가·운영 HERMES fetch 스텁, `passed · mocked`). 실제 HERMES 호출은 0회다.
+- 코드: `lib/eval-server.ts`(연결·케이스·실행), `lib/eval-kinds.ts`(평가 종류별 동결 검사·제출 조립·채점·예약, 8절), `lib/eval-freeze.ts`(회의 단계·브리프 요청 동결, 8절), `lib/eval-capture.ts`(회의 단계·브리프 캡처와 드리프트 판정, 8절), `lib/brief-execution.ts` `briefSources`(운영 브리프 start와 캡처가 함께 쓰는 DB 읽기), `lib/eval-budget-server.ts`(월 승인, 7절), `lib/eval-stats.ts`(비교 통계), `app/api/eval/route.ts`, `lib/background-execution.ts`(`eval:<run id>` 작업), `lib/role-execution.ts`(`roleSources`·`roleRequestFor`로 요청 조립 DB 읽기를 추출, 동작 불변. `roleSubmission`은 운영 start와 평가가 함께 쓰는 제출 조립, 8절)
+- 테스트: `tests/eval-server.test.mjs`, `tests/eval-stats.test.mjs`, `tests/eval-regrade.test.mjs`, `tests/eval-budget.test.mjs`, `tests/eval-kinds.test.mjs`, `tests/eval-meeting-brief.test.mjs`(합성 데이터, 평가·운영 HERMES fetch 스텁, `passed · mocked`). 실제 HERMES 호출은 0회다.
 - 권한: 읽기·쓰기 모두 워크스페이스 소유자만 한다(`requireOwnerActor`). 비로그인 401, 관리자·직원 403, 다른 소유자의 케이스·실행·출력은 404. POST 본문은 1,000,000바이트 한도(413, `lib/http-limits.ts` 방식)다.
 - records kind: `eval_connection`, `eval_case`, `eval_run`, `eval_output`(부모 `eval_run`), `eval_budget_approval`(월 승인, 7절). 정책은 `lib/record-kinds.ts`에 있다.
 - 운영 사용량 장부(`provider_usage`)에는 평가 토큰을 쓰지 않는다. 평가 토큰은 `eval_run.usedTokens`에만 있다. `delete_run`은 이 행을 지우지 않고 결과·출력만 비운다(아래 3절). 그래서 월 누적은 삭제로 줄지 않는다.
@@ -245,17 +245,17 @@ node scripts/eval/grade.mjs <case.json> [--json] [--detail]
 
 | 작업 | 입력 | 규칙 |
 |---|---|---|
-| `capture_case` | `campaignId`, `role`, `kind?`, `externalKey?`·`specHash?`, `set?`, `label?`, `expectations?` | 운영 역할 실행 start와 같은 DB 읽기(`roleSources`→`roleRequestFor`)로 요청 객체를 만들어 JSON 그대로 동결한다(운영자 선호 블록 `operatorPreferences` 포함). 실행 가능 여부 검사(진행 중 작업·앞선 담당 누락·현재 작업물 존재 409)는 적용하지 않아 끝난 캠페인에서도 캡처한다 |
-| `save_case` | `role`, `request`, `kind?`, `externalKey?`·`specHash?`, `expectations?`, `set?`, `label?` | `request`는 운영 요청 구조(role·campaign·brand·archive·evidence·previous)여야 하고 현재 역할 제출 조립(`roleSubmission`, 운영 start와 같은 조립)이 받아야 한다. 선호 블록(`operatorPreferences`)은 있으면 `{note, rules:[]}` 형식이어야 한다. 900,000자를 넘으면 413 |
+| `capture_case` | 역할: `campaignId`, `role`. 회의 단계: `kind:'meeting_step'`, `meetingId`, `stepId`. 브리프: `kind:'brief'`, `briefDraftId`. 공통: `externalKey?`·`specHash?`, `set?`, `label?`, `expectations?` | 역할은 운영 역할 실행 start와 같은 DB 읽기(`roleSources`→`roleRequestFor`)로 요청 객체를 만들어 JSON 그대로 동결한다(운영자 선호 블록 `operatorPreferences` 포함). 실행 가능 여부 검사(진행 중 작업·앞선 담당 누락·현재 작업물 존재 409)는 적용하지 않아 끝난 캠페인에서도 캡처한다. 회의 단계·브리프는 운영 기록으로 요청을 만들고 운영과 같은 가림을 거쳐 동결하며 드리프트 판정(`captureCheck`)을 남긴다(8절). 담당은 대상 단계의 담당, 브리프는 `brief`다. 없는 회의·초안은 404, 없는 단계는 400 |
+| `save_case` | `request`, `kind?`, `role?`(역할은 필수), `externalKey?`·`specHash?`, `expectations?`, `set?`, `label?` | 역할 `request`는 운영 요청 구조(role·campaign·brand·archive·evidence·previous)여야 하고 현재 역할 제출 조립(`roleSubmission`, 운영 start와 같은 조립)이 받아야 한다. 선호 블록(`operatorPreferences`)은 있으면 `{note, rules:[]}` 형식이어야 한다. 회의 단계 `request`는 `{meeting:{agenda, steps[], snapshot:{campaign, brand, artifacts[], metrics[], learning[], …}}, stepId, storeAllow[]}`, 브리프는 `{input, context, contextDate(YYYY-MM-DD), storeAllow[]}`이고, 캡처와 같은 동결(자르기·줄이기·가림)을 거쳐 저장한다. 회의 단계의 `role`은 대상 단계 담당이어야 하고(없으면 그 담당), 브리프는 `brief`다. 900,000자를 넘으면 413 |
 | `update_case` | `id`, `label?`, `set?`, `expectations?` | 요청(`request`)은 바꾸지 않는다. 세트 이동은 `setChanges`에 누가·언제 남긴다. 진행 중 run이 쓰는 케이스의 `expectations`·`set` 변경은 409(이름은 가능) |
 | `delete_case` | `id` | 진행 중 run이 쓰는 케이스는 409 |
 
-- `expectations`는 채점 컨텍스트다: `prohibitedTerms`(큐레이션 금지 표현), `facts`(`{confirmed,prohibited}`, 캡처 기본값은 요청의 확정·거절 사실), `industry`, `localStore`, `inputTokenCap`. 그 밖의 키는 저장하지 않는다. 케이스별 예약 토큰을 바꾸는 입력은 없다(예약은 종류의 값, 3절).
-- `kind`(평가 종류, 8절): `role`|`meeting_step`|`brief`. 없으면 `role`이고, 이 필드가 없는 옛 케이스도 `role`로 읽어 이행이 필요 없다. `meeting_step`·`brief`는 G2에서 채울 자리라 지금은 저장하면 400(지원하지 않는 평가 종류)이다. 목록 밖 값도 400이다. 저장된 케이스의 종류를 실행할 수 없으면 `start_run`이 400이고 run을 기록하지 않는다.
+- `expectations`는 채점 컨텍스트다: `prohibitedTerms`(큐레이션 금지 표현), `facts`(`{confirmed,prohibited}`, 캡처 기본값은 요청의 확정·거절 사실), `industry`(업종 ID 또는 `[주 업종, ...허용 업종]` 1~5개, G3), `localStore`, `inputTokenCap`, `seededDefects`(G3 심은 결함 50개 이하, `{id, role?, marker?, keywords?}`이고 `marker`나 `keywords`가 있어야 한다). 그 밖의 키는 저장하지 않는다. 케이스별 예약 토큰을 바꾸는 입력은 없다(예약은 종류의 값, 3절).
+- `kind`(평가 종류, 8절): `role`|`meeting_step`|`brief`. 없으면 `role`이고, 이 필드가 없는 옛 케이스도 `role`로 읽어 이행이 필요 없다. 목록 밖 값은 400이다. 저장된 케이스의 종류를 실행할 수 없으면 `start_run`이 400이고 run을 기록하지 않는다.
 - `externalKey`·`specHash`(생성기 멱등 키, G4 합성 생성기용): 둘을 함께 보낸다. 하나만 오거나 형식이 틀리면 400이다. `externalKey`는 영문·숫자로 시작하는 200자 이하(영문·숫자·`_ . : -`), `specHash`는 8~128자(영문·숫자·`_ : -`)다. 같은 소유자에게 같은 키·같은 해시 케이스가 있으면 새로 만들지 않고 그 케이스를 그대로 돌려준다(이름 등 다른 입력은 무시). 같은 키에 다른 해시가 오면 409이고 아무것도 바꾸지 않는다(동결 케이스는 덮어쓰지 않는다). 키는 소유자 범위이고, 케이스를 지우면 그 키도 다시 쓸 수 있다.
 - `set`은 `dev`(기본) 또는 `sealed`. `capturedWith`에 캡처 시점 `PRACTICE_VERSION`·`ROLE_OUTPUT_VERSION`을 남겨 퇴역 판단에 쓴다.
 - 캠페인을 삭제해도 `eval_case`는 남는다(`retain`, `data_campaign` 링크로 삭제 영향 조회의 보존 건수에 나온다). 동결 요청에는 캠페인·브랜드·앞선 작업물 원문이 들어 있으므로 필요 없어진 케이스는 소유자가 개별 삭제한다.
-- 드리프트 방지: `tests/eval-server.test.mjs`가 캡처한 요청으로 만든 지시문·입력이 같은 캠페인의 운영 start 제출 본문과 바이트 동일한지 확인한다. 운영자 선호 규칙이 있는 캠페인은 `tests/eval-kinds.test.mjs`가 같은 확인을 한다(8절).
+- 드리프트 방지: `tests/eval-server.test.mjs`가 캡처한 요청으로 만든 지시문·입력이 같은 캠페인의 운영 start 제출 본문과 바이트 동일한지 확인한다. 운영자 선호 규칙이 있는 캠페인은 `tests/eval-kinds.test.mjs`가, 회의 단계(교정 재시도 포함 12단계)와 기준일을 고정한 브리프는 `tests/eval-meeting-brief.test.mjs`가 같은 확인을 한다(8절).
 
 ### 3. 실행(`eval_run`)
 
@@ -264,8 +264,8 @@ node scripts/eval/grade.mjs <case.json> [--json] [--detail]
 ```
 
 - 케이스는 `caseIds`(1~100개) 또는 `set`(dev|sealed, 100개 이하)으로 고른다. `variant`는 `active`(현재 코드) 또는 `pair`(F3b 쌍 평가, 아래 5절)만 받는다. 후보 단독 실행은 없다.
-- `tokenBudget`은 필수(없으면 400)이며 고른 케이스 중 가장 큰 케이스 1건 예약량(`reserveOf`, 역할 50,000) 이상 정수다. 더 작으면 400이다.
-- 케이스 1건 예약량(`reserveOf`)은 케이스 종류 처리기의 값이다(`lib/eval-kinds.ts`, 역할은 `EVAL_CASE_TOKEN_RESERVE` 50,000). 케이스마다 바꾸는 입력은 없다. 회의 단계처럼 다른 예약이 필요한 종류는 G2에서 그 처리기에 둔다. 역할 50,000은 구현 선택이다. HERMES 제출에 토큰 상한이 없어서, 케이스 하나가 쓸 양을 미리 잡아 두는 값이다. 근거는 실측 역할 1회 7,343~13,997토큰(`docs/observations/2026-09-23-live-run.md`)이고, 예약량은 그 최댓값의 약 3.5배다(기준선 실측 최대 25,790토큰의 약 1.9배). 대표가 바꿀 수 있다.
+- `tokenBudget`은 필수(없으면 400)이며 고른 케이스 중 가장 큰 케이스 1건 예약량(`reserveOf`, 역할·브리프 50,000, 회의 단계 100,000) 이상 정수다. 더 작으면 400이다.
+- 케이스 1건 예약량(`reserveOf`)은 케이스 종류 처리기의 값이다(`lib/eval-kinds.ts`, 역할은 `EVAL_CASE_TOKEN_RESERVE` 50,000). 케이스마다 바꾸는 입력은 없다. 회의 단계는 `EVAL_MEETING_STEP_TOKEN_RESERVE` 100,000이다(원 작업물 8개가 각 8,000자, 재검토 후보가 각 24,000자까지 입력에 들어가 파일럿 실측 전까지 크게 잡는다). 브리프는 미측정이라 50,000이다. 역할 50,000은 구현 선택이다. HERMES 제출에 토큰 상한이 없어서, 케이스 하나가 쓸 양을 미리 잡아 두는 값이다. 근거는 실측 역할 1회 7,343~13,997토큰(`docs/observations/2026-09-23-live-run.md`)이고, 예약량은 그 최댓값의 약 3.5배다(기준선 실측 최대 25,790토큰의 약 1.9배). 대표가 바꿀 수 있다.
 - run 시작 때 결과 행마다 그 케이스의 예약을 `reserve`로 고정한다. 아래 표의 제출 직전 검사는 다음에 보낼 결과 행의 `reserve`를 쓴다. `reserve`가 없는 결과 행(Q1 전에 시작한 run)은 50,000으로 본다.
 - 진행 중(`queued`·`running`) 평가 run은 소유자당 1개(`EVAL_MAX_ACTIVE_RUNS`)다. 하나가 진행 중이면 새 `start_run`은 409이고 기록하지 않는다. 검사와 저장은 POST 라우트의 소유자 잠금 안에서 한다.
 
@@ -279,11 +279,11 @@ node scripts/eval/grade.mjs <case.json> [--json] [--detail]
 
 - **시작 거부 정책(선택)**: 평가 연결이 없거나, 격리 미확인이거나, 연결 확인이 blocked이거나, 운영 연결이 같은 호스트면 run을 `blocked`(원인 `blockedReason`, 케이스는 모두 `not_run`)로 기록하고 409 `{error, run}`으로 답한다. 시도와 원인이 남는다. 입력 오류(400), 예산 초과(409), 진행 중 run 있음(409)은 기록하지 않는다.
 - 진행: 시작 요청은 공급자를 부르지 않는다. 백그라운드 워커(`POST /api/research-worker` tick)의 공정 큐가 `eval:<run id>`를 다른 작업과 같은 순번 커서로 돌린다. 진행 중 평가 run이 1개라 큐 순번에 평가 작업은 최대 1개다. 운영 작업이 차례를 기다리는 간격은 평가 때문에 한 순번에 한 tick만 늘어난다. tick마다 소유자 잠금 안에서 조회나 제출을 1건만 한다. 시간 초과나 막힘으로 보내는 중지 요청만 여기에 더해진다(아래 오류 분류). 제출 중인 케이스가 있으면 조회하고, 없으면 다음 케이스를 제출한다. 매 걸음 전에 연결 조건(격리·확인 상태·운영 호스트 충돌)을 다시 본다.
-- 제출 본문: `{instructions, input, session_id: <키>, conversation_history: []}`. `instructions`·`input`은 케이스 종류의 조립(`lib/eval-kinds.ts` `build`)이 만든다. 역할은 운영 start와 같은 `roleSubmission`(`lib/role-execution.ts`)이다. 동결 요청에 운영자 선호 블록이 있으면 입력 끝에 `operatorPreferences`, 지시문 끝에 권한 문장이 붙는다. 블록이 없으면 순수 조립(`buildRoleInstruction`·`buildRoleInput`)과 바이트 동일하다. 운영 HERMES 제출과 같은 모양이며 현재 코드의 조립기로 만든다. 지시문·입력의 SHA-256 앞 16자를 `promptHash`로 남긴다(기존 케이스의 `promptHash` 조건은 8절).
+- 제출 본문: `{instructions, input, session_id: <키>, conversation_history: []}`. `instructions`·`input`은 케이스 종류의 조립(`lib/eval-kinds.ts` `build`)이 만든다. 역할은 운영 start와 같은 `roleSubmission`(`lib/role-execution.ts`), 회의 단계는 운영 회의 진행과 같은 `buildMeetingSubmission`, 브리프는 운영 초안과 같은 `buildBriefSubmission`이다. 동결 요청에 운영자 선호 블록이 있으면 입력 끝에 `operatorPreferences`, 지시문 끝에 권한 문장이 붙는다. 블록이 없으면 순수 조립(`buildRoleInstruction`·`buildRoleInput`)과 바이트 동일하다. 운영 HERMES 제출과 같은 모양이며 현재 코드의 조립기로 만든다. 지시문·입력의 SHA-256 앞 16자를 `promptHash`로 남긴다(기존 케이스의 `promptHash` 조건은 8절).
 - 멱등 키: `collective-eval-` + SHA-256(`<run id>:<case id>`) 앞 40자. `Idempotency-Key`·`X-Hermes-Session-Key` 헤더에 쓴다. 운영 키(`collective-<uuid>`)와 접두사가 달라 저장된 운영 키를 재사용할 수 없고, run마다 달라 같은 케이스를 다시 평가해도 이전 결과를 돌려받지 않는다. 같은 run·케이스의 재시도는 같은 키라 중복 실행을 막는다.
 - 예산 중단: 제출 직전마다 위 표의 run 예산·월 절대 상한(제출 직전)을 본다. 넘으면 다음 제출을 멈추고, 남은 케이스는 `not_run`(`stopReason: budget_reached` 또는 `monthly_cap_reached`)이 된다. 제출한 케이스가 토큰 사용량 없이 끝나도 예산을 지킬 수 없으므로 같은 방식으로 멈춘다(`usage_unreported`). 케이스 하나가 자기 예약(`reserve`, 역할 50,000)보다 많이 쓰면 그 케이스만큼 run 예산을 넘을 수 있다. 그러면 다음 제출 직전 검사가 그 run을 멈추고, 늘어난 월 누적은 이후 run의 시작·제출 검사에 반영된다.
 - 오류 분류: 401/403은 `blocked`(인증), 연결 불가·다른 주소로 이동은 `blocked`(연결)로 run을 멈춘다. 이것은 `failed`와 다르다. 제출 전 케이스는 `not_run`이 된다. 조회하던(제출 중) 케이스는 `blocked`가 되고 `providerRunId`를 유지한다. 연결은 살아 있는데 격리 해제·연결 확인 실패·운영 호스트 충돌로 게이트만 막힌 경우도 같다. 막힐 때 제출 중인 HERMES 실행이 있으면, 저장된 평가 연결이 그 run을 보낸 호스트일 때 중지를 요청한다. 요청 결과(확인함·확인하지 못함·연결이 없어 요청 못 함)는 케이스 `error`에 남긴다. 429·5xx는 워커 백오프(`background_attempt`)로 재시도한다. 그 밖의 4xx·실행 번호 오류·HERMES 실패·중단 보고는 해당 케이스만 `failed`. 30분 넘게 끝나지 않은 케이스는 중지를 요청하고 `failed`로 둔다.
-- 채점: 케이스가 끝나면 서버가 `runGraders`(13종)와 `checkCompliance`로 사람이 보는 정규화 렌더본을 채점한다. run에는 채점 버전(`gradersVersion`), 채점기별 `pass|fail|not_applicable|grader_error`(상세 200자), 요약 건수, 정규화 전 예방 판정(`prevention`, 2종)과 정규화 건수(`normalization`, 위 '정규화와 예방 판정'), 가드레일 등급별 건수·규칙 ID, 보고 모델, `providerRunId`, 토큰(입력·출력·합계), `durationMs`(제출~완료 관측, tick 간격 포함)를 남긴다. 모델 출력 원문과 발췌가 든 가드레일 상세는 `eval_output`(소유자 전용)에 둔다.
+- 채점: 케이스가 끝나면 서버가 `runGraders`(역할은 13종, 회의 단계·브리프는 G3 채점기를 더한 `ALL_GRADERS`, 8절)와 `checkCompliance`로 사람이 보는 정규화 렌더본을 채점한다. run에는 채점 버전(`gradersVersion`), 채점기별 `pass|fail|not_applicable|grader_error`(상세 200자), 요약 건수, 정규화 전 예방 판정(`prevention`, 2종)과 정규화 건수(`normalization`, 위 '정규화와 예방 판정'), 가드레일 등급별 건수·규칙 ID, 보고 모델, `providerRunId`, 토큰(입력·출력·합계), `durationMs`(제출~완료 관측, tick 간격 포함)를 남긴다. 모델 출력 원문과 발췌가 든 가드레일 상세는 `eval_output`(소유자 전용)에 둔다.
 - 봉인 세트: sealed 케이스를 쓰는 run은 `sealedUsed: {by, at, cases}`를 남긴다. 목적은 run `label`에 적는다.
 - `cancel_run`: 제출 중인 HERMES 실행에 중지를 요청하고(확인 여부를 케이스 `error`에 남김) 그 케이스는 `cancelled`, 남은 케이스는 `not_run`. `delete_run`: 끝난 run의 출력(`eval_output`)과 케이스 결과(`results`), 재채점 기록(`regrades`)을 지운다(진행 중이면 409, 이미 삭제했으면 409). run 행은 `deleted: {by, at, cases}`를 단 채 남는다. 결정 5 장부(`usedTokens`·`tokenBudget`·`createdAt`)와 감사 기록(`overBudgetApproved`·`sealedUsed`·`label`)을 보존해 월 누적이 삭제로 줄지 않게 하려는 것이다. 삭제한 run은 비교(`compare`)할 수 없다(409).
 
@@ -321,9 +321,9 @@ run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
 {"action":"start_run","pair":{"unit":"role.cmo","candidateVersionId":"role.cmo@<12자>"},"set":"sealed","tokenBudget":200000,"label":"role.cmo 후보 쌍 평가"}
 ```
 
-- 두 쪽: `active`는 레지스트리 전체 적용 버전(없으면 코드 상수, 이때 제출 본문은 `active` run과 바이트 동일), `candidate`는 후보 버전 본문을 `RoleRequest.prompts`로 주입한다. 대상 단위 밖은 두 쪽 모두 코드 상수다. run의 `pair`에 단위·후보·active 버전 id와 두 쪽 본문을 시작 때 고정한다.
+- 두 쪽: `active`는 레지스트리 전체 적용 버전(없으면 코드 상수, 이때 제출 본문은 `active` run과 바이트 동일), `candidate`는 후보 버전 본문을 주입한다. 역할은 `RoleRequest.prompts`, 회의 단계는 동결한 회의 스냅샷의 `snapshot.prompts.set`이다. 대상 단위 밖은 두 쪽 모두 코드 상수다. run의 `pair`에 단위·후보·active 버전 id와 두 쪽 본문을 시작 때 고정한다.
 - 결과 행: 케이스마다 두 행(`variant: active|candidate`). 순서는 케이스마다 `active→candidate`, `candidate→active`를 번갈아 쓴다. 멱등 키는 `<run>:<case>:<쪽>`으로 쪽마다 다르다.
-- 대상 단위를 쓰지 않는 케이스(다른 역할, 채널이 적용되지 않는 캠페인)는 빼고 `pair.skippedCases`에 수를 남긴다. 남는 케이스가 없으면 400.
+- 대상 단위를 쓰지 않는 케이스(다른 역할, 채널이 적용되지 않는 캠페인)는 빼고 `pair.skippedCases`에 수를 남긴다. 회의 단계는 대상 단계 담당과 스냅샷 캠페인(`meeting.snapshot.campaign`)으로 본다. 브리프는 레지스트리 단위가 없어 늘 빠진다. 남는 케이스가 없으면 400.
 - 예산: 두 제출 모두 위 3절 표의 run 예산·월 상한 검사를 제출 직전마다 받는다. 한 케이스가 한쪽만 끝나고 멈추면 게이트를 통과하지 못한다.
 - 게이트웨이: 시작 때 `gatewaySnapshot`, 끝날 때(`completed`) 같은 평가 연결로 `gatewaySnapshotEnd`를 잰다. 두 해시가 다르면 게이트 거부다.
 - 판정: `lib/eval-stats.ts` `pairGate`(순수). 비교 통계(`comparison`)는 참고용이며 게이트는 비회귀 조건(합격 수 후보 ≥ active(두 쪽 모두 모델 원문 기준 판정 — `prevention`이 있으면 그 판정. 후보 재질문으로 not_applicable이 된 채점기·후보 grader_error는 fail), 봉인 케이스 1건 이상·봉인 회귀 0, `input_budget` 후보 전부 pass, 모델·게이트웨이 동일, 전 케이스 두 쪽 완료)만 본다. 대응 30쌍 미만은 `gate.warnings`(`small_sample`)로만 알린다.
@@ -385,22 +385,41 @@ run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
   - run에는 적용된 `cap`을 복사하지 않는다. 어느 run에 어떤 상한이 적용됐는지는 승인 레코드의 `createdAt`·`history`와 run `createdAt`을 맞춰 본다.
 - 테스트: `tests/eval-budget.test.mjs`(승인 없음 기본값, 승인 반영, UTC 월 경계, 입력 검증, 이력, 소유자 전용·관리자 403, 건별 승인 run의 승인 cap 초과 제출 중단, 첫 케이스도 들어가지 않는 건별 승인 시작 거부. 합성 데이터, 메모리 SQLite, 평가 HERMES fetch 스텁, `mocked`).
 
-### 8. 평가 종류(`kind`, Q1)
+### 8. 평가 종류(`kind`, Q1·G2)
 
-결론: 케이스 종류마다 처리기 하나(`lib/eval-kinds.ts`)가 요청 동결 검사·제출 조립·채점·예약을 함께 맡는다. 역할 평가는 운영 start와 같은 제출 조립을 써서, 운영자 선호 규칙까지 운영 제출과 바이트가 같다.
+결론: 케이스 종류마다 처리기 하나(`lib/eval-kinds.ts`)가 요청 동결·제출 조립·채점·예약·쌍 평가 대상 캠페인을 함께 맡는다. 세 종류 모두 운영과 같은 조립을 써서 평가 제출이 운영 제출과 바이트가 같다. 역할은 운영자 선호 규칙까지, 회의 단계·브리프는 운영 가림까지 같다.
 
 - 처리기:
-  - `freeze`: 직접 저장(`save_case`)하는 요청의 구조 검사다. 역할은 운영 요청 구조이고 지금 조립기가 받아야 한다(2절 표).
-  - `build`: 동결 요청 → `{instructions, input}`. 쌍 평가(5절)의 쪽 본문을 어디에 주입할지도 처리기가 정한다(역할은 `RoleRequest.prompts`).
+  - `freeze`: 저장할 요청과 담당을 정한다. 역할은 운영 요청 구조 검사이고 지금 조립기가 받아야 한다. 회의 단계·브리프는 아래 동결을 거친다(2절 표).
+  - `build`: 동결 요청 → `{instructions, input}`. 쌍 평가(5절)의 쪽 본문을 어디에 주입할지도 처리기가 정한다(역할은 `RoleRequest.prompts`, 회의 단계는 `snapshot.prompts.set`, 브리프는 대상 아님).
   - `grade`: 출력 → 채점 결과(3절 '채점').
-  - `reserve`: 케이스 1건 예약(3절). 역할은 50,000이다. 케이스마다 바꾸는 입력은 없다.
-- 종류: `role`만 실행한다. `meeting_step`·`brief`는 G2(회의 단계·브리프 평가)에서 채울 자리라 저장·실행 모두 400이다(2절).
+  - `reserve`: 케이스 1건 예약(3절). 역할·브리프 50,000, 회의 단계 100,000이다. 케이스마다 바꾸는 입력은 없다.
+  - `campaignOf`: 쌍 평가 대상 캠페인. 역할은 `request.campaign`, 회의 단계는 `meeting.snapshot.campaign`, 브리프는 없음(쌍 평가 제외).
 - 역할 제출 조립(`roleSubmission`, `lib/role-execution.ts`): 운영 start 분기와 평가가 함께 쓴다. 동결 요청에 운영자 선호 블록(`operatorPreferences`)이 있으면 입력 끝에 블록을, 지시문 끝에 권한 문장을 붙인다. 블록이 없으면 순수 조립(`buildRoleInstruction`·`buildRoleInput`)과 바이트 동일하다.
 - 기존 케이스의 `promptHash`:
   - 선호 블록이 없는 동결본(규칙 0건 캠페인에서 캡처한 옛 케이스)은 제출 본문과 `promptHash`가 Q1 전과 같다(합성 재현, `mocked`).
   - 선호 블록이 든 동결본은 Q1부터 운영 제출과 같은 본문을 보내므로 `promptHash`가 바뀐다. 의도한 변경이다. Q1 전에는 평가가 블록을 빼고 보내 운영과 달랐다.
   - 운영 평가 케이스 11개에 블록이 든 케이스가 있는지는 확인하지 못했다(not_run, `docs/STATUS.md`). 있으면 기준선 비교에서 따로 표시한다.
-- 테스트: `tests/eval-kinds.test.mjs`(종류 목록·기본 role·목록 밖 400, 예약, 선호 규칙 캠페인의 제출이 운영 start 제출과 바이트 동일, 선호 블록 없는 옛 케이스 `promptHash` 불변, `externalKey` 멱등·409. 합성 데이터, 평가·운영 HERMES fetch 스텁, `mocked`).
+- 회의 단계(`meeting_step`, G2): 저장 요청은 `{meeting, stepId, storeAllow}`다(`lib/eval-freeze.ts`).
+  - 자르기: 대상 단계 직전의 회의 기록이다. 앞 단계는 완료 출력 그대로, 대상 단계는 출력·교정 없이 대기, 뒤 단계는 없다. 교정 재시도(`correction`·`attempt`)는 떼어 첫 제출(attempt 0)을 재현한다.
+  - 줄이기: 조립이 읽는 필드만 둔다. 단계는 `id·role·phase·status·output·task`, 작업물은 회의 입력 허용 목록(`MEETING_ARTIFACT_FIELDS`), 브랜드는 `aiBrand`가 읽는 필드다. 실행 메타(`providerId`·`raw`·시도 기록·가림 기록), 검토 메모·사람 수정 표시, 브랜드 의뢰 정보·`bg`는 저장하지 않는다. 담당자 실명은 조립과 같은 자리표시로 바꾼다.
+  - 가림: 운영 가림 경로(`MEETING_MASK_PATHS`)마다 대응하는 원자료 자리(`MEETING_FREEZE_MASK_PATHS`, 개선본 출력은 제목·본문)를 운영과 같은 허용 값으로 가린다. 조립이 다시 가려도 자리표시는 다시 탐지되지 않아 결과가 같다(두 번 가린 결과 = 한 번 가린 결과). 운영 경로에 대응이 없는 새 경로가 생기면 모듈 로드가 실패해 테스트가 잡는다. 운영도 가리지 않는 모델 출력(발언·합의·재검토)은 그대로 둔다.
+  - 채점 항목: 발언은 기존 `discussion`(발언 JSON, 앞선 발언 역할)이다. 합의·개선본·재검토는 `meeting_step`이다(단계, 원 JSON, 개선본의 원 작업물 8,000자, 재검토의 합의 과제 담당, 실무 스킬 회의면 계약). 본문은 개선본이면 `content`, 합의·재검토면 코드 필드와 되묻는 질문을 뺀 문장이다. 브랜드 소개(`brand_intro_as_fact`)와 심은 결함(`seeded_defect_detection`)을 컨텍스트로 준다.
+- 브리프(`brief`, G2): 저장 요청은 `lib/brief-input.ts` `BriefRequest`(`{input, context, contextDate, storeAllow}`)다. 담당자 실명 자리표시·브랜드 필드 최소화 뒤 운영 가림 경로(`BRIEF_MASK_PATHS`)의 원자료 자리(`BRIEF_FREEZE_MASK_PATHS`)를 같은 허용 값으로 가린다. 채점 본문은 계획이 되는 summary·제안 값이다(questions·assumptions 제외). 사용자 입력과 기준일(`briefInput`)에 적힌 가격·날짜는 단정으로 보지 않는다. 담당은 `brief`이고 쌍 평가 대상이 아니다.
+- 캡처 드리프트 판정(`captureCheck`, `lib/eval-capture.ts`): 지금 코드로 다시 조립한 제출을 운영이 그때 저장·전송한 제출(`hermes_submission`)과 비교한다. 지시문·입력만 보고 무작위 `session_id`는 뺀다. 회의 단계는 첫 제출과 비교한다.
+
+| `submission` | 뜻 | 경보 |
+|---|---|---|
+| `identical` | 같다 | 아니오 |
+| `no_submission` | 저장된 제출이 없다 | 아니오 |
+| `code_changed` | 회의 당시 실무 스킬 버전(`PRACTICE_VERSION`)이 지금과 다르다. 브리프는 지시문이 다르다 | 아니오 |
+| `store_allow_changed` | 회의 단계의 가림 기록이 그때와 다르다. 지점 허용 값은 지금 값으로 다시 읽는다 | 아니오 |
+| `context_changed` | 브리프 원자료(다른 캠페인·성과·학습 규칙)를 지금 DB로 다시 읽어 입력이 다르다 | 아니오 |
+| `assembly_drift` | 위 사유 없이 다르다. 평가 조립이 운영과 갈라졌다는 뜻이다 | 예 |
+
+  `frozenIdentical`은 동결본(자르고 줄이고 가린 저장 요청)으로 만든 제출이 원기록 조립과 같은지다. 한계: 발췌 상한(원 작업물 8,000자·재검토 후보 24,000자)을 넘는 본문의 앞부분에 가릴 값이 있으면, 가림으로 글자 수가 바뀌어 발췌 끝이 달라진다. 이때만 `false`다. 그 케이스는 운영 제출과 발췌 끝 몇 글자가 다를 수 있다. 브리프 승인 작업물 발췌(2,500자)는 요청을 만들 때 이미 잘라 이 한계가 없다.
+- 회의 단계 입력 토큰: 회의 입력은 역할보다 커서 `input_budget`(32,000토큰)이 fail할 수 있다. 쌍 평가 게이트는 후보 `input_budget` 전부 pass를 요구하므로, 회의 단계 쌍 평가의 `input_budget` 적용은 파일럿(R2)에서 단계별 입력 토큰을 실측한 뒤 정한다.
+- 테스트: `tests/eval-meeting-brief.test.mjs`(합성 회의 12단계·교정 재시도 1회와 기준일을 고정한 브리프를 운영 경로로 만든 뒤 캡처한다. 동결본 제출이 운영 첫 제출과 바이트 동일, 다시 동결해도 같음, 저장 케이스에 가릴 값·실행 메타 없음, 드리프트 사유 5종, 예약 100,000, 단계별 채점기, 직접 저장 형식 400, 쌍 평가 주입, 발췌 상한 한계 재현. 뮤테이션 7종(가림·개선본 가림·교정 제거·채점기·브리프 가림·예약·실행 메타)을 모두 잡는다), `tests/eval-kinds.test.mjs`(종류 목록·기본 role·목록 밖 400, 예약, 선호 규칙 캠페인의 제출이 운영 start 제출과 바이트 동일, 선호 블록 없는 옛 케이스 `promptHash` 불변, `externalKey` 멱등·409. 합성 데이터, 평가·운영 HERMES fetch 스텁, `mocked`).
 
 ### 서버 평가의 한계
 
