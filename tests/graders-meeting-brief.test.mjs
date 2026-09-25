@@ -44,7 +44,7 @@ check('the v1 registry keeps its thirteen graders and the G3 graders are a separ
  assert.deepEqual([...KIND_GRADERS.map(g=>g.id)],NEW);
  assert.deepEqual([...ALL_GRADERS.map(g=>g.id)],[...V1,...NEW]);
 });
-check('the grading version moves past measure-v2 with the G3 graders, dictionaries, compound failure labels, absent-expression negation, critique clauses, meeting normalization, R3 measurement fixes, local-channel rerun fixes and contract reading',()=>assert.equal(GRADERS_VERSION,'failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-measure+local-rerun+contract-read'));
+check('the grading version moves past measure-v2 with the G3 graders, dictionaries, compound failure labels, absent-expression negation, critique clauses, meeting normalization, R3 measurement fixes, local-channel rerun fixes, contract reading and local channel decision lines',()=>assert.equal(GRADERS_VERSION,'failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-measure+local-rerun+contract-read+channel-decision'));
 // 기존 역할·발언 채점은 그대로다: 앞 13종 결과가 같고 새 6종은 적용 kind 밖이라 not_applicable.
 check('G3 graders leave role and discussion results unchanged (not applicable outside their kinds)',()=>{
  const ctx={...cleanCtx,seededDefects:[{id:'d1',role:'cmo',marker:'업계 최초'}],briefInput:'목표: 오픈'};

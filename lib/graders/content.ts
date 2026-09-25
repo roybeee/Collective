@@ -56,10 +56,16 @@ export const unsupportedClaimTerm:Grader={id:'unsupported_claim_term',content:tr
 // 캠페인 업종이 아닌 업종의 지표·용어. 사전은 industry.ts(G3에서 옮김). 캠페인 업종은 단일 ID 또는 [주 업종, ...허용 업종]이며 둘 다 사전 대조에서 뺀다.
 export {INDUSTRY_TERMS};
 const INDUSTRY_EXCLUDED=/무관|삭제|제외|해당\s?없|관련\s?없/;
+// 로컬 채널 결정 줄('- 배달앱: 제외. … 배달 주문 흐름과 맞지 않는다', '| 배달앱 | 후순위 | …')은 현장 스킬이 쓰게 한 채널 결정이지 업종 지표 유출이 아니다(e8bd8e0 S8 재실행 실측).
+// 줄이 배달 채널 이름으로 시작하고 그 줄의 결정이 제외·보류·후순위일 때만 줄 전체를 뺀다(표 행은 결정이 끝 칸에 있다: '| 배달앱 | … | 제외 |').
+// 채택·선택 줄과 다른 줄의 배달 지표는 계속 본다.
+// 결정은 라벨처럼 따로 선 낱말이다('제외.', '| 제외 |', '(제외)', '보류:'). '… 쿠폰 고객은 제외한다' 같은 서술은 결정이 아니다.
+const DELIVERY_LINE=/^\s*(?:[-*•|]\s*)?(?:\*\*)?(?:배달\s?앱|배달의민족|배민|쿠팡이츠|요기요|배달\s?플랫폼)/,HOLD_DECISION=/[\s(：](?:제외|보류|후순위)(?=[\s).:])/;
+const deliveryDecisionLine=(line:string)=>DELIVERY_LINE.test(line)&&HOLD_DECISION.test(line)&&!/채택|선택/.test(line);
 export const industryMetricLeak:Grader={id:'industry_metric_leak',content:true,grade(item,ctx){
  const own=industryIds(ctx.industry);
  if(!isText(item)||!own.length)return verdict('not_applicable',own.length?undefined:'캠페인 업종 미상');
- const lines=bodyOf(item).split('\n').flatMap(sentences).filter(s=>!INDUSTRY_EXCLUDED.test(s));
+ const lines=bodyOf(item).split('\n').filter(l=>!deliveryDecisionLine(l)).flatMap(sentences).filter(s=>!INDUSTRY_EXCLUDED.test(s));
  return hitsVerdict(Object.entries(INDUSTRY_TERMS).filter(([id])=>!own.includes(id)).flatMap(([id,re])=>lines.filter(s=>re.test(s)).map(s=>`${id}: ${excerpt(s)}`)));
 }};
 

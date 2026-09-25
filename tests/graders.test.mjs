@@ -213,6 +213,13 @@ check('claim term reads quoted discussion copy in its sentence',()=>{assert.equa
 check('industry leak passes own-industry metrics',()=>assert.equal(status('industry_metric_leak',role('꽃다발 픽업 완료 건수를 일별로 기록한다.'),{industry:'florist'}),'pass'));
 check('industry leak fails a locker metric in a florist campaign',()=>assert.equal(status('industry_metric_leak',role('보관함 가동률을 주간 지표로 둔다.'),{industry:'florist'}),'fail'));
 check('industry leak passes an explicit exclusion',()=>assert.equal(status('industry_metric_leak',role('보관함 지표는 이번 캠페인과 무관하므로 제외합니다.'),{industry:'fnb'}),'pass'));
+// e8bd8e0 S8 재실행(2026-09-25 교육 업종 총괄) 실측: 로컬 채널 결정 줄의 배달앱 제외·보류 이유('배달 주문 흐름과 맞지 않는다')는 업종 지표 유출이 아니다.
+check('industry leak skips a delivery-app exclusion line in the local channel decision',()=>assert.equal(status('industry_metric_leak',role('- 배달앱: 제외. 본 캠페인의 목표 행동은 필라테스 체험 예약이며 배달 주문 흐름과 맞지 않는다. 별도 근거가 생기기 전까지 사용하지 않는다.'),{industry:'education'}),'pass'));
+// 같은 재실행 S8 전략 실측: 표 행의 결정이 끝 칸에 있다.
+check('industry leak skips a delivery table row whose decision is in the last cell',()=>assert.equal(status('industry_metric_leak',role('| 채널 | 역할 | 근거 | 결정 |\n|---|---|---|---|\n| 배달앱 | 필라테스 체험 예약 목적과 맞지 않음 | 음식·배달 중심 채널로 이번 서비스의 실제 목표 행동과 연결되지 않으므로 사용하지 않는다 | 제외 |'),{industry:'education'}),'pass'));
+check('industry leak still fails a delivery row that adopts or selects the channel',()=>{for(const text of ['| 배달앱 | 배달 주문 비중 확대 | 제외 조건 없음 | 채택 |','| 배달앱 | 배달 주문 비중 확대 | 보류 해제 뒤 | 선택 |'])assert.equal(status('industry_metric_leak',role(text),{industry:'education'}),'fail',text)});
+check('industry leak skips other delivery decision line forms',()=>{for(const text of ['| 배달 앱 | 후순위 | 배달 주문 흐름과 맞지 않음 |','- **배민** — 보류: 배달 주문 수요 자료가 없다.','- 쿠팡이츠(제외). 배달 주문 흐름과 맞지 않는다.','- 요기요: 제외. 배달 주문 흐름과 맞지 않는다.','- 배달 플랫폼 - 후순위. 배달 주문 흐름은 목표와 다르다.','- 배달의민족: 보류. 배달 주문 흐름과 맞지 않는다.','- 배달앱：제외. 배달 주문 흐름과 맞지 않는다.','- 배달앱 – 보류. 배달 주문 흐름과 맞지 않는다.'])assert.equal(status('industry_metric_leak',role(text),{industry:'education'}),'pass',text)});
+check('industry leak still fails delivery metrics when the delivery app is adopted or outside a decision line',()=>{for(const text of ['- 배달앱: 채택. 배달 주문 비중을 주지표로 본다.','주지표는 배달 주문 수다. 배달앱은 후순위로 둔다.','- 배달앱 주문 비중을 주지표로 본다. 쿠폰 고객은 제외한다.'])assert.equal(status('industry_metric_leak',role(text),{industry:'education'}),'fail',text)});
 check('industry leak allows the campaign own industry terms',()=>assert.equal(status('industry_metric_leak',role('보관함 가동률을 주간 지표로 둔다.'),{industry:'locker'}),'pass'));
 check('industry leak is not applicable without an industry',()=>assert.equal(status('industry_metric_leak',role('보관함 가동률')),'not_applicable'));
 
