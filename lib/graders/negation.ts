@@ -144,9 +144,15 @@ function negLabel(s:string,a:Sentence,start:number){
 // s는 neutralize를 거친 문장, [start,end)는 대상 표현의 위치다.
 // 대상 앞 금지·거절 수식('금지된 “당일 전량 소진” 표현이 … 포함됨', '거절된 ‘…’ 주장')은 대상을 금지 대상으로 가리킨다(R3 기준선 S2 중단 조건 실측).
 const PRE_NEGATION=/(?:금지된|금지\s?대상인|거절된|사용\s?금지된|쓰면\s?안\s?되는|써서는\s?안\s?되는)\s?[“‘"'「『]?$/;
+// 주장이 아닌 언급(R3 기준선 S3 실측): 따옴표 안이 주의·금지 규칙 이름('‘할인 마감 문구 주의’ 버전 1', '「할인 마감 문구 주의」')이거나,
+// 대상 뒤가 '여부'('레벨 테스트의 무료 여부')이거나, 대상이 주제어인 절이 '확정 사실이 아니다'로 이어지면('‘무료 레벨 테스트’는 … 확정 사실이 아니므로') 사용이 아니다.
+const RULE_NAME=/(?:주의|금지|경고|보류|피하기|자제)\s*$/,WHETHER=/^[’”"」』]?\s?(?:제공\s?|적용\s?)?여부/;
+const TOPIC_NOT_FACT=/^[^.,’”"」』]{0,20}?[’”"」』]?\s?(?:은|는|도|(?:이)?라는\s?(?:표현|주장|문구)은)[^.]{0,60}?(?:확정|확인된|검증된)\s?(?:사실|정보|혜택)(?:이|가)?\s?아니/;
+const inRuleName=(s:string,start:number)=>[...s.matchAll(QUOTE)].some(m=>{const a=m.index!+1,b=m.index!+m[0].length-1;return start>=a&&start<b&&RULE_NAME.test(s.slice(a,b))});
 export function negatedAt(s:string,start:number,end:number){
  const a=sentenceOf(s);
  if(PRE_NEGATION.test(s.slice(Math.max(0,start-14),start)))return true;
+ if(inRuleName(s,start)||WHETHER.test(s.slice(end,end+8))||TOPIC_NOT_FACT.test(s.slice(end,end+100)))return true;
  if(negLabel(s,a,start))return true;
  if(quotedUse(s,a,start))return false;
  const from=end+(LIST_TAIL.exec(s.slice(end,end+SCOPE))?.[0].length||0),after=s.slice(from,from+SCOPE),cut=CLAUSE_END.exec(after);
