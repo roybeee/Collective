@@ -264,7 +264,7 @@ node scripts/eval/grade.mjs <case.json> [--json] [--detail]
 {"action":"start_run","set":"dev","tokenBudget":100000,"label":"프롬프트 변경 전 기준"}
 ```
 
-- 케이스는 `caseIds`(1~100개) 또는 `set`(dev|sealed, 100개 이하)으로 고른다. `variant`는 `active`(현재 코드) 또는 `pair`(F3b 쌍 평가, 아래 5절)만 받는다. 후보 단독 실행은 없다.
+- 케이스는 `caseIds`(1~100개) 또는 `set`(dev|sealed, 100개 이하)으로 고른다. `variant`는 `active`(현재 코드), `pair`(F3b 쌍 평가, 아래 5절), `judge`(AI 심사, [AI 심사](JUDGE.ko.md) '심사 실행')만 받는다. 후보 단독 실행은 없다.
 - `tokenBudget`은 필수(없으면 400)이며 고른 케이스 중 가장 큰 케이스 1건 예약량(`reserveOf`, 역할·브리프 50,000, 회의 단계 100,000) 이상 정수다. 더 작으면 400이다.
 - 케이스 1건 예약량(`reserveOf`)은 케이스 종류 처리기의 값이다(`lib/eval-kinds.ts`, 역할은 `EVAL_CASE_TOKEN_RESERVE` 50,000). 케이스마다 바꾸는 입력은 없다. 회의 단계는 `EVAL_MEETING_STEP_TOKEN_RESERVE` 100,000이다(원 작업물 8개가 각 8,000자, 재검토 후보가 각 24,000자까지 입력에 들어가 파일럿 실측 전까지 크게 잡는다). 브리프는 미측정이라 50,000이다. 역할 50,000은 구현 선택이다. HERMES 제출에 토큰 상한이 없어서, 케이스 하나가 쓸 양을 미리 잡아 두는 값이다. 근거는 실측 역할 1회 7,343~13,997토큰(`docs/observations/2026-09-23-live-run.md`)이고, 예약량은 그 최댓값의 약 3.5배다(기준선 실측 최대 25,790토큰의 약 1.9배). 대표가 바꿀 수 있다.
 - run 시작 때 결과 행마다 그 케이스의 예약을 `reserve`로 고정한다. 아래 표의 제출 직전 검사는 다음에 보낼 결과 행의 `reserve`를 쓴다. `reserve`가 없는 결과 행(Q1 전에 시작한 run)은 50,000으로 본다.
@@ -313,6 +313,7 @@ run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
 | `GET /api/eval?compare=<기준 run>,<비교 run>&regrade=1` | 두 run의 최신 재채점 결과로 낸 같은 비교 통계 + `regrade`(두 재채점의 id·시각·버전·합계). 한쪽이라도 재채점이 없거나 두 재채점의 채점·사전 버전이 다르면 409 |
 | `GET /api/eval?pair=<pair run>` | 한 run 안 두 쪽(active·candidate) 대응 비교와 활성화 게이트 판정(`gate`) |
 | `GET /api/eval?run=<id>&caseId=<id>&variant=<active\|candidate>` | pair run 한쪽의 모델 출력 원문과 가드레일 상세 |
+| `GET /api/eval?judge=<심사 run>[&itemId=<표시 id>]` | AI 심사 run(J3)의 항목별 점수와 기준별 보정 통계·채택 판정, 또는 한 항목의 인용·이유([AI 심사](JUDGE.ko.md) '심사 실행') |
 | `GET /api/eval?labels=queue[&limit=N]`·`?labels=item&id=<표시 id>` | AI 심사 보정 라벨 대기열·항목(J2, [AI 심사](JUDGE.ko.md) '라벨 화면·API'). 블라인드라 run·케이스 id·variant·모델·채점 결과가 없다 |
 
 ### 5. 쌍 평가(`pair`, F3b)
