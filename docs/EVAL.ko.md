@@ -154,7 +154,7 @@
 - 바이트 동일성 근거: `tests/fixtures/role-submission-<기준 sha7>.json`. 기준 커밋을 `git archive`로 풀어 `scripts/eval/capture-role-submission.mjs`를 실행해 만들었다. 모의 런타임(`tests/helpers/runtime.mjs`, 메모리 SQLite, HERMES fetch 스텁)과 합성 브랜드·캠페인만 쓰며 외부 호출은 0회다. 8개 역할과 재작성 지시(revisionRequest) 1건을 담는다.
 - `tests/role-instruction.test.mjs`는 런타임 헬퍼 없이 순수 로더로 함수를 읽어 스냅샷과 비교한다.
 - 재캡처: 역할 지시·입력 조립이 의도적으로 바뀌면 새 기준 커밋에서 다시 캡처하고 파일 이름의 sha7을 바꾼다. 이 테스트가 깨졌는데 의도한 변경이 아니면 회귀다. 실패 메시지가 재캡처 절차를 안내한다.
-- 단일 원천: F1b-1(#35)부터 `lib/role-execution.ts`가 이 모듈을 직접 호출하므로 역할 지시·입력 조립은 `lib/role-instruction.ts` 한 곳에만 있다. `tests/role-execution-drift.test.mjs`는 실제 실행 경로(모의 런타임)의 제출 본문이 순수 함수 출력과 같은지 확인한다. 순수 함수 자체의 변경은 스냅샷 `role-submission-f7b6ee4.json`(품질 수정 v1, `PRACTICE_VERSION` 2026-09-25.1에서 재캡처. 같은 커밋에서 `prompt-baseline-f7b6ee4.json`도 재캡처. 16케이스: 8역할, 재질문 뒤 재작성, 검토 메모 보완, 이전 회의 결정, 앞선 작업물 발췌 잘림, quality 재작성)이 잡는다.
+- 단일 원천: F1b-1(#35)부터 `lib/role-execution.ts`가 이 모듈을 직접 호출하므로 역할 지시·입력 조립은 `lib/role-instruction.ts` 한 곳에만 있다. `tests/role-execution-drift.test.mjs`는 실제 실행 경로(모의 런타임)의 제출 본문이 순수 함수 출력과 같은지 확인한다. 순수 함수 자체의 변경은 스냅샷 `role-submission-73a90ed.json`(로컬 채널 결정, 현장 스킬 `channel.offline` 본문 변경에서 재캡처. 같은 커밋에서 `prompt-baseline-73a90ed.json`도 재캡처. 이전 기준은 품질 수정 v1의 `f7b6ee4`. 16케이스: 8역할, 재질문 뒤 재작성, 검토 메모 보완, 이전 회의 결정, 앞선 작업물 발췌 잘림, quality 재작성)이 잡는다.
 - 병합 순서 주의: `lib/practice.ts`(`PRACTICE_VERSION`, 역할 방법 문구), `lib/campaign-policy.ts`, `lib/ai-context.ts`, `lib/role-instruction.ts`를 바꾸는 PR은 스냅샷 테스트가 실패한다. 의도한 변경이면 새 기준 SHA에서 fixture를 재캡처한다.
 
 ```sh

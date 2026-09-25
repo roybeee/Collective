@@ -71,7 +71,7 @@ export const channelSkills:readonly {id:string;applies:(c:ChannelScope)=>boolean
  {id:'community',applies:c=>/reddit|레딧|커뮤니티/i.test(c.channels||''),body:'커뮤니티: 게시판 맥락과 실제 확인한 운영 규칙을 기록. 질문에 도움이 되는 정보와 브랜드 관계 공개를 우선. 위장 후기·대량 홍보·추천 조작 금지.'},
  {id:'search',applies:c=>/네이버|naver|검색|블로그/i.test(c.channels||''),body:'검색: 탐색/비교/구매 의도를 구분하고 키워드 → 문서/랜딩 → 행동을 연결. 데이터랩 상대 지수와 절대 검색량을 혼동하지 않으며 소스·기간·분류를 명시.'},
  {id:'commerce',applies:c=>/올리브영|무신사|olive|musinsa|커머스/i.test(c.channels||''),body:'커머스: 노출·클릭·장바구니·구매의 병목과 상품 정보/리뷰 장벽을 구분. 순위는 분류·기간·재고·프로모션 영향을 확인하며 매출량으로 추정하지 않음.'},
- {id:'offline',applies:c=>/매장|오프라인|성수|락커|보관함/.test([c.channels||'',c.stores,c.goal].join(' ')),body:'현장: 노출 위치 → 발견 → 이용 방법 → 가격/이용 조건 → 행동을 설계. 동선·표지·직원 안내·수용량과 QR/POS 등 추적 방법을 확인. 방문/이용 증가와 SNS 조회수를 분리.'},
+ {id:'offline',applies:c=>/매장|오프라인|성수|락커|보관함/.test([c.channels||'',c.stores,c.goal].join(' ')),body:'현장: 노출 위치 → 발견 → 이용 방법 → 가격/이용 조건 → 행동을 설계. 동선·표지·직원 안내·수용량과 QR/POS 등 추적 방법을 확인. 방문/이용 증가와 SNS 조회수를 분리. 점포 방문이 목표면 채널 계획에 로컬 채널 4개군(네이버 플레이스·당근·배달앱·카카오)을 한 줄씩 적고 각각 채택·후순위·제외 중 하나로 결정한 이유를 쓴다. 맞지 않는 채널도 제외 이유를 적는다.'},
 ];
 // 적용할 채널 스킬이 없을 때의 본문(단위 channel.default).
 export const defaultChannelSkill='채널이 미확정이면 목표 행동과 고객 상황으로 1순위 채널 및 선택 이유를 제안하되, 확정 정보로 취급하지 마세요.';
