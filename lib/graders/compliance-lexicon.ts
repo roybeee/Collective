@@ -22,7 +22,9 @@ const PURCHASE_CTA='구매하기|바로\\s?구매|지금\\s?구매|구매하세�
 const DEFERRAL='검토(?:합니다|한다|할\\s?예정|\\s?예정)|보류|(?:뒤|후|이후|다음)에?\\s?(?:검토|결정|판단|작성)';
 // 버튼·링크 클릭 수 같은 측정 문장의 구매 버튼 언급은 구매 유도 문구가 아니다. 퍼널 단계('상품 상세→장바구니', '장바구니→결제 시작률', '단계별 이탈'),
 // 분석 이벤트 이름(add_to_cart 같은 snake_case)·세션 ID·조회수, '유료 주문과 구분'도 측정 문장이다(2026-09-25 MAPDAL 재채점 실측). 카피 안의 화살표('혜택 확인 → 지금 구매')는 측정이 아니다.
-const MEASUREMENT='(?:버튼|링크)[^.\\n]{0,8}(?:클릭|노출|전환)|측정|지표|전환율|이탈|퍼널|단계별|조회수|세션\\s?ID|\\b[a-z]+(?:_[a-z]+)+\\b|(?:장바구니|상품\\s?상세|결제\\s?시작)\\s?→|→\\s?(?:장바구니|결제\\s?시작|결제\\s?완료)|(?:시작|완료|진입)률|유료\\s?주문과\\s?구분';
+// 퍼널 단계를 셋 이상 나열한 측정 문장('유효 세션·상품 조회·장바구니·결제 시작·결제 완료', '주문·조회·장바구니 자료')도 측정이다(R3 기준선 MAPDAL 회의 실측).
+const FUNNEL_STAGE='(?:상품\\s?)?(?:조회|세션|장바구니|결제\\s?(?:시작|완료)|주문|취소|환불)';
+const MEASUREMENT=`${FUNNEL_STAGE}(?:\\s?[·,]\\s?${FUNNEL_STAGE}){2,}|`+'(?:버튼|링크)[^.\\n]{0,8}(?:클릭|노출|전환)|측정|지표|전환율|이탈|퍼널|단계별|조회수|세션\\s?ID|\\b[a-z]+(?:_[a-z]+)+\\b|(?:장바구니|상품\\s?상세|결제\\s?시작)\\s?→|→\\s?(?:장바구니|결제\\s?시작|결제\\s?완료)|(?:시작|완료|진입)률|유료\\s?주문과\\s?구분';
 // 구매 CTA 자체를 보류·미사용하거나 가격 확정 뒤 넣는·바꾸는 계획, 확인 계획에 적는다는 문장은 구매 유도 문구가 아니다(held: 매치가 든 절에서만 본다, M은 걸린 구매 문구 자리).
 // '구매하기 CTA는 보류', '바로 구매 버튼은 가격 확정 후 추가', '가격 확정 후 CTA를 구매하기로 전환', '구매하기 문구 미사용', '(구매하기는 가격 확정 후)', '구매하기 CTA 사용 여부: 가격 확정 뒤 결정'.
 // '헤드라인은 ‘지금 구매하세요’, 서브 문구는 보류', '장바구니 담기 CTA를 쓰고 할인 문구는 보류'처럼 다른 문구의 보류는 면제 사유가 아니다.
@@ -44,7 +46,7 @@ const PAID_POST='유료\\s?광고\\s?(?:용\\s?)?(?:게시(?:물|글)?|포스팅
 const PAID_AD=`${PAID_POST}|유료\\s?광고(?!\\s?비)(?:(?<!(?:${PAID_MEDIA})[^.\\n]{0,30}유료\\s?광고)(?![^.\\n]{0,30}(?:${PAID_MEDIA}))|(?<=(?:${CREATOR})[^.\\n]{0,30}유료\\s?광고)|(?=[^.\\n]{0,30}(?:${CREATOR})))`;
 
 export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:string;sources:Record<string,ComplianceSource>;rules:ComplianceRule[]}={
- version:'compliance-lexicon-2026-09-25.6',
+ version:'compliance-lexicon-2026-09-25.7',
  checkedAt:'2026-09-23',
  platformPolicy:'플랫폼별 리뷰 운영정책(예: 지도·예약 플랫폼) 공식 URL은 아직 확인하지 않았다. 게시 전 해당 플랫폼 공식 정책 페이지에서 확인하고, 확인되면 사전 버전을 올려 출처를 추가한다.',
  sources:{
@@ -84,7 +86,7 @@ export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:
   {id:'drug_claim',category:'cosmetic_claim',severity:'block',title:'화장품의 의약품 오인 표현',match:'(?:여드름|아토피|피부염|습진|건선|탈모|흉터|상처|염증|무좀|기미)[^.\\n]{0,12}(?:치료|완치|치유|재생|없애|없앤|사라지|사라진|낫)|(?:세포|피부|모발)\\s?재생|의약품\\s?(?:수준|급|효과)|약처럼|처방\\s?(?:없이|받은)',sources:['cosmetics_act']},
   {id:'functional_unverified',category:'cosmetic_claim',severity:'warn',title:'기능성 인증 근거 없는 기능성 표현',match:'미백|주름\\s?(?:개선|완화)|자외선\\s?차단|탈모\\s?(?:증상\\s?)?(?:완화|방지)|여드름성\\s?피부\\s?완화|피부\\s?장벽\\s?(?:강화|개선)|SPF\\s?\\d+|PA\\+',cleared:'기능성\\s?(?:화장품|인증|심사|보고)|식약처\\s?(?:심사|보고|인증)',ledgerKey:'기능성',sources:['cosmetics_act']},
   // ⑦ 전자상거래: 판매 조건·가격 표시 누락.
-  {id:'price_missing',category:'ecommerce_terms',severity:'warn',title:'구매 유도 문구에 가격 표시 누락',match:PURCHASE_CTA,except:MEASUREMENT,held:CTA_HELD,cleared:'\\d{1,3}(?:,\\d{3})+\\s?원|\\d+\\s?원|가격[^.\\n]{0,6}\\d',sources:['ecommerce_act']},
+  {id:'price_missing',category:'ecommerce_terms',severity:'warn',title:'구매 유도 문구에 가격 표시 누락',match:PURCHASE_CTA,except:MEASUREMENT,held:CTA_HELD,cleared:'\\d{1,3}(?:,\\d{3})+\\s?원|\\d+\\s?원|가격[^.\\n]{0,6}\\d|\\[(?:확정\\s?)?(?:가격|판매가|판매\\s?가격|정가)\\]',sources:['ecommerce_act']},
   {id:'terms_missing',category:'ecommerce_terms',severity:'warn',title:'구매 유도 문구에 판매 조건(배송·교환·환불 등) 누락',match:PURCHASE_CTA,except:MEASUREMENT,held:CTA_HELD,cleared:'배송|교환|환불|반품|청약\\s?철회|판매\\s?(?:기간|조건)|픽업|수령',sources:['ecommerce_act']},
   {id:'discount_basis_missing',category:'ecommerce_terms',severity:'warn',title:'할인 표시에 기준 가격 누락',match:'\\d{1,2}\\s?%\\s?(?:할인|OFF|off|세일)|할인가|특가|반값|[\\d,]+\\s?원\\s?할인',cleared:'정가|정상가|기존\\s?가|할인\\s?전|원래\\s?가격|소비자가',marked:true,sources:['ecommerce_act','fair_labeling']},
   // ⑧ 권리: 아티스트 이름·사진·로고 사용 시 권리 확인 미기재.
