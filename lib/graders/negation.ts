@@ -150,8 +150,10 @@ const PRE_NEGATION=/(?:금지된|금지\s?대상인|거절된|사용\s?금지된
 // 주장이 아닌 언급(R3 기준선 S3 실측): 따옴표 안이 주의·금지 규칙 이름('‘할인 마감 문구 주의’ 버전 1', '「할인 마감 문구 주의」')이거나,
 // 대상 뒤가 '여부'('레벨 테스트의 무료 여부')이거나, 대상이 주제어인 절이 '확정 사실이 아니다'로 이어지면('‘무료 레벨 테스트’는 … 확정 사실이 아니므로') 사용이 아니다.
 // '무료인가요?'처럼 대상을 묻는 질문의 서술부('인가요·인지·일까요·입니까')도 '여부'와 같다(S3 FAQ 질문).
+// 보장·효과 여부를 묻는 질문('체형 교정이나 통증 완화를 보장하나요?')은 그 표현의 사용이 아니다(R3 기준선 S8 FAQ). '통증 완화를 원하시나요?'(유도 질문)는 아니다.
+const GUARANTEE_QUESTION=/(?:보장|약속|효과가\s?있|가능|확실)(?:하|한|해)?(?:나요|습니까|은가요|ㄴ가요|인가요)\s*[?？]*\s*$/;
 const RULE_NAME=/(?:주의|금지|경고|보류|피하기|자제)\s*$/,WHETHER=/^[’”"」』]?\s?(?:(?:제공\s?|적용\s?)?여부|인가요|인지|일까요|입니까)/;
-const TOPIC_NOT_FACT=/^[^.,’”"」』]{0,20}?[’”"」』]?\s?(?:은|는|도|(?:이)?라는\s?(?:표현|주장|문구)은)[^.]{0,60}?(?:(?:확정|확인된|검증된)\s?(?:사실|정보|혜택)(?:이|가)?\s?아니|(?:확정|확인|검증)(?:되지|하지)\s?않(?:았|은|는|으|아)|(?:확정|확인된|검증된)\s?사실\s?(?:목록|원장)?(?:에는|에|엔)?\s?없)/;
+const TOPIC_NOT_FACT=/^[^.,’”"」』]{0,20}?[’”"」』]?\s?(?:은|는|도|(?:이)?라는\s?(?:표현|주장|문구)은)[^.]{0,60}?(?:(?:확정|확인된|검증된)\s?(?:사실|정보|혜택)(?:이|가)?\s?아니|(?:확정|확인|검증)(?:되지|하지)\s?않(?:았|은|는|으|아)|(?:확정|확인된|검증된)\s?사실\s?(?:목록|원장)?(?:에는|에|엔)?\s?없|(?:후보|미확인|미확정)\s?(?:사실|값|정보)(?:이고|이며|이다|입니다|이므로|일\s?뿐))/;
 // 캠페인·브리프 목표 원문 인용('캠페인 목표는 ‘… 무료 레벨 테스트 상담 신청을 늘린다’이며')도 입력 인용이다. '메시지 목표는 ‘…’'는 제작 계획이라 아니다.
 const GOAL_CITE=/(?:캠페인|브리프(?:의)?|사업)\s?목표(?:는|은|:|：)\s?$/;
 // 인용 뒤 '(이)라는 목표(행동)'도 목표 인용이다('‘무료 레벨 테스트 상담 신청’이라는 목표 행동을 … 분리하지 않은 점'). '(이)라는 문구로 광고를 만든다'는 아니다.
@@ -164,7 +166,7 @@ function inRuleName(s:string,a:Sentence,start:number){
 export function negatedAt(s:string,start:number,end:number){
  const a=sentenceOf(s);
  if(PRE_NEGATION.test(s.slice(Math.max(0,start-14),start)))return true;
- if(inRuleName(s,a,start)||WHETHER.test(s.slice(end,end+8))||TOPIC_NOT_FACT.test(s.slice(end,end+100)))return true;
+ if(inRuleName(s,a,start)||WHETHER.test(s.slice(end,end+8))||TOPIC_NOT_FACT.test(s.slice(end,end+100))||GUARANTEE_QUESTION.test(s.trim()))return true;
  if(negLabel(s,a,start))return true;
  if(quotedUse(s,a,start))return false;
  const from=end+(LIST_TAIL.exec(s.slice(end,end+SCOPE))?.[0].length||0),after=s.slice(from,from+SCOPE),cut=CLAUSE_END.exec(after);

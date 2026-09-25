@@ -127,6 +127,15 @@ check('unconfirmed value fails an asserted price or open date missing from the l
 // R3 기준선(2026-09-25 S7 품질 검수 실측): 금지된 수익 보장 문구 안의 값('금지된 ‘월 순수익 500만 원 보장’ … 표현은 사용하지 않는다')과 금지 제목 아래 값은 단정이 아니다.
 check('unconfirmed value skips values in negated or prohibitive contexts',()=>{for(const text of ['금지된 ‘월 순수익 500만 원 보장’ 및 유사 수익 보장 표현은 사용하지 않는다.','### 금지 표현\n- ‘월 순수익 500만 원 보장’'])assert.equal(status('unconfirmed_value_assertion',role(text),ledger),'pass',text)});
 check('unconfirmed value still fails a value asserted next to a negated clause',()=>{for(const text of ['대표 메뉴는 12,900원이며 할인하지 않습니다.','월 순수익 500만 원을 보장합니다.'])assert.equal(status('unconfirmed_value_assertion',role(text),ledger),'fail',text)});
+// R3 기준선(2026-09-25 S8 실측): FAQ의 보장 여부 질문('체형 교정이나 통증 완화를 보장하나요?')과 값이 후보 사실이라는 설명('체험 가격 2만 원은 후보 사실이고')은 사용·단정이 아니다.
+check('a question about a guarantee and a candidate-fact value are not use or assertion',()=>{
+ assert.equal(status('brief_prohibition_conflict',copy('Q. 체형 교정이나 통증 완화를 보장하나요?\nA. 그런 보장 또는 의학적 효과를 광고하지 않습니다.'),{prohibitedTerms:['통증 완화']}),'pass');
+ assert.equal(status('unconfirmed_value_assertion',role('체험 가격 2만 원은 후보 사실이고, 수업 시간·정규 8회권 가격은 미정이다.'),ledger),'pass');
+});
+check('a hook question and a stated price still count',()=>{
+ assert.equal(status('brief_prohibition_conflict',copy('통증 완화를 원하시나요? 지금 체험하세요.'),{prohibitedTerms:['통증 완화']}),'fail');
+ assert.equal(status('unconfirmed_value_assertion',role('체험 가격은 2만 원입니다.'),ledger),'fail');
+});
 check('unconfirmed value passes a marked example price',()=>assert.equal(status('unconfirmed_value_assertion',role('[예시] 대표 메뉴 12,900원처럼 가격을 적는 양식입니다.'),ledger),'pass'));
 check('unconfirmed value leaves ledger-confirmed kinds to fact_conflict',()=>assert.equal(status('unconfirmed_value_assertion',role('떡볶이는 7,000원입니다.'),priced),'not_applicable'));
 check('unconfirmed value is not applicable without a ledger',()=>assert.equal(status('unconfirmed_value_assertion',role('대표 메뉴는 12,900원입니다.')),'not_applicable'));
