@@ -1,0 +1,447 @@
+{
+ "schema": 1,
+ "id": "syn-s2-bakery",
+ "label": "S2 베이커리 재방문",
+ "set": "dev",
+ "now": "2026-03-10T09:00:00.000Z",
+ "campaignId": "syn-s2-campaign",
+ "expectations": {
+  "prohibitedTerms": [
+   "최저가",
+   "무료 증정"
+  ],
+  "industry": [
+   "fnb"
+  ],
+  "localStore": true
+ },
+ "records": [
+  {
+   "kind": "brand",
+   "id": "syn-s2-brand",
+   "data": {
+    "name": "가상베이커리",
+    "short": "GB",
+    "category": "BAKERY",
+    "color": "#7a4b2a",
+    "bg": "#f6efe6",
+    "description": "합성 브랜드 소개(미확인): 가상동 골목의 동네 빵집.",
+    "audience": "가상동 직장인과 주민(가설)",
+    "tone": "따뜻하고 간결한",
+    "constraints": "가격·효능은 확인 전 확정 문구로 쓰지 않는다. \"최저가\" 표현 금지.",
+    "knowledge": "합성 메모: 첫 빵이 나오는 시간은 미확인이다."
+   }
+  },
+  {
+   "kind": "campaign",
+   "id": "syn-s2-campaign",
+   "data": {
+    "brandId": "syn-s2-brand",
+    "title": "가상베이커리 재방문 4주",
+    "goal": "첫 방문 고객의 2주 안 재방문을 만든다. 재방문율은 30일 관찰을 마친 첫 방문 코호트로 본다.",
+    "audience": "첫 방문 고객(가설)",
+    "channels": "Instagram, 네이버 플레이스, 매장 안내",
+    "stores": "가상동 34",
+    "products": "식빵·소금빵(가격 미확정)",
+    "budget": null,
+    "startDate": "",
+    "endDate": "",
+    "constraints": "\"최저가\" 표현 금지. 할인 약속 금지. 무료 증정 약속 금지.",
+    "sources": "",
+    "status": "review",
+    "version": 1,
+    "createdAt": "2026-03-10T09:00:00.000Z",
+    "updatedAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "brand_fact",
+   "id": "syn-s2-fact-address",
+   "parent": "syn-s2-brand",
+   "data": {
+    "brandId": "syn-s2-brand",
+    "key": "주소",
+    "value": "가상동 34",
+    "status": "confirmed",
+    "source": "합성 원장",
+    "verifiedAt": "2026-03-10T09:00:00.000Z",
+    "validUntil": "2099-12-31T00:00:00.000Z",
+    "version": 1,
+    "updatedAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "brand_fact",
+   "id": "syn-s2-fact-soldout",
+   "parent": "syn-s2-brand",
+   "data": {
+    "brandId": "syn-s2-brand",
+    "key": "판매 주장",
+    "value": "당일 전량 소진",
+    "status": "rejected",
+    "source": "합성 원장",
+    "verifiedAt": "2026-03-10T09:00:00.000Z",
+    "validUntil": "2099-12-31T00:00:00.000Z",
+    "version": 1,
+    "updatedAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "brand_fact",
+   "id": "syn-s2-fact-open",
+   "parent": "syn-s2-brand",
+   "data": {
+    "brandId": "syn-s2-brand",
+    "key": "첫 빵 시각",
+    "value": "오전 8시",
+    "status": "candidate",
+    "source": "합성 원장",
+    "verifiedAt": "2026-03-10T09:00:00.000Z",
+    "validUntil": "2099-12-31T00:00:00.000Z",
+    "version": 1,
+    "updatedAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "campaign_directive",
+   "id": "syn-s2-directive",
+   "parent": "syn-s2-campaign",
+   "data": {
+    "campaignId": "syn-s2-campaign",
+    "text": "합성 지시: 날짜는 D-day 상대 일정으로 쓴다.",
+    "createdAt": "2026-03-10T09:00:00.000Z",
+    "createdBy": {
+     "id": "syn-member",
+     "email": null,
+     "role": "member"
+    }
+   }
+  },
+  {
+   "kind": "store",
+   "id": "syn-s2-store",
+   "parent": "syn-s2-brand",
+   "data": {
+    "brandId": "syn-s2-brand",
+    "name": "가상베이커리 가상동점",
+    "status": "active",
+    "address": "가상동 34",
+    "access": "대표 전화 02-1234-5678. 가상역 2번 출구에서 걸어서 5분(합성).",
+    "customer": "출근길 직장인(가설)",
+    "menu": "식빵·소금빵(가격 미확정)",
+    "hours": "확인 필요",
+    "createdAt": "2026-03-10T09:00:00.000Z",
+    "updatedAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "learning_rule",
+   "id": "syn-s2-rule-caution",
+   "data": {
+    "origin": "store",
+    "direction": "caution",
+    "brandId": "syn-s2-brand",
+    "channel": "*",
+    "experimentId": "",
+    "experimentVersion": 0,
+    "caseId": "",
+    "title": "오전 한정 문구 주의",
+    "guidance": "오전 한정 문구는 재방문을 늘리지 못했다(합성 관찰). 피하거나 재검증 조건으로 다룬다.",
+    "scope": "",
+    "status": "active",
+    "version": 1,
+    "expiresAt": "2099-12-31T00:00:00.000Z",
+    "createdAt": "2026-03-10T09:00:00.000Z",
+    "updatedAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "learning_rule",
+   "id": "syn-s2-pref-cmo",
+   "data": {
+    "origin": "review",
+    "grade": "operator_preference",
+    "role": "cmo",
+    "citations": [
+     "syn-d-1",
+     "syn-d-2"
+    ],
+    "feedback": {
+     "helpful": 0,
+     "harmful": 0
+    },
+    "brandId": "syn-s2-brand",
+    "channel": "*",
+    "experimentId": "",
+    "experimentVersion": 0,
+    "caseId": "",
+    "title": "첫 문장은 고객 상황",
+    "guidance": "첫 문장은 고객의 평일 아침 상황으로 시작한다.",
+    "scope": "",
+    "status": "active",
+    "version": 1,
+    "expiresAt": "2099-12-31T00:00:00.000Z",
+    "createdAt": "2026-03-10T09:00:00.000Z",
+    "updatedAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "team_meeting",
+   "id": "syn-s2-meeting-prev",
+   "parent": "syn-s2-campaign",
+   "data": {
+    "campaignId": "syn-s2-campaign",
+    "campaignVersion": 1,
+    "agenda": "합성 안건: 재방문 이유를 하나로 좁힌다.",
+    "status": "completed",
+    "steps": [
+     {
+      "id": "syn-s2-meeting-prev:synthesis",
+      "role": "cmo",
+      "phase": "synthesis",
+      "status": "completed",
+      "output": {
+       "decisions": "합성 결정: 다음 주 새 빵 안내 카드를 시험한다.",
+       "disagreements": "합성: 쿠폰 보류",
+       "questions": "합성: 카드 회수 방법",
+       "tasks": []
+      }
+     }
+    ],
+    "createdAt": "2026-03-10T09:00:00.000Z",
+    "updatedAt": "2026-03-10T09:00:00.000Z",
+    "model": "synthetic",
+    "stopRequested": false,
+    "artifactIds": [],
+    "invalidatedRoles": [],
+    "snapshot": {}
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s2-art-cmo",
+   "parent": "syn-s2-campaign",
+   "data": {
+    "campaignId": "syn-s2-campaign",
+    "campaignVersion": 1,
+    "role": "cmo",
+    "title": "합성 총괄 파트너",
+    "content": "## 목표와 판단\n첫 방문 고객이 2주 안에 다시 오게 만드는 것이 이번 캠페인의 유일한 목표다. 재방문율은 30일 관찰을 마친 첫 방문 코호트로만 계산한다.\n\n## 우선순위\n1. 첫 방문 때 다음 방문 이유를 하나만 건넨다.\n2. 네이버 플레이스 소식과 매장 안내 카드로 같은 메시지를 반복한다.\n3. 가격·효능은 확정 전까지 쓰지 않는다.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai",
+    "createdAt": "2026-03-10T09:00:00.000Z"
+   },
+   "padTo": 6100
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s2-art-insight",
+   "parent": "syn-s2-campaign",
+   "data": {
+    "campaignId": "syn-s2-campaign",
+    "campaignVersion": 1,
+    "role": "insight",
+    "title": "합성 인사이트",
+    "content": "## 고객 관찰(사람 수정본)\n출근길 직장인은 오전에 빠르게 사고 나가며, 다음 방문 계기를 스스로 만들지 않는다(가설, 관찰 기록 없음).\n\n## 장애물\n- 매장 앞을 지나쳐도 새 빵이 나오는 시간을 모른다.\n- 첫 방문 뒤 기억에 남는 메뉴가 없다.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai_edited",
+    "createdAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s2-art-strategy",
+   "parent": "syn-s2-campaign",
+   "data": {
+    "campaignId": "syn-s2-campaign",
+    "campaignVersion": 1,
+    "role": "strategy",
+    "title": "합성 전략",
+    "content": "## 전략 가설\n가설 1: 첫 방문 때 \"다음 주 새 빵 안내 카드\"를 건네면 2주 재방문이 늘어난다.\n\n## 실험 설계\n카드 배포 주와 미배포 주를 번갈아 비교한다. 판정은 30일 관찰 완료 코호트의 재방문율로 한다.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai",
+    "createdAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s2-art-creative",
+   "parent": "syn-s2-campaign",
+   "data": {
+    "campaignId": "syn-s2-campaign",
+    "campaignVersion": 1,
+    "role": "creative",
+    "title": "합성 크리에이티브",
+    "content": "## 핵심 메시지\n\"다음 주에도 새 빵이 나옵니다\" 한 문장으로 다음 방문 이유를 만든다.\n\n## 카피 초안\n- 이번 주 식빵 다음엔 소금빵. 다음 주에 뵙겠습니다.\n- 무조건 재방문 보장 쿠폰을 드립니다.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai",
+    "createdAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s2-art-content",
+   "parent": "syn-s2-campaign",
+   "data": {
+    "campaignId": "syn-s2-campaign",
+    "campaignVersion": 1,
+    "role": "content",
+    "title": "합성 콘텐츠",
+    "content": "## 콘텐츠 계획\n네이버 플레이스 소식 주 2회, 인스타그램 게시물 주 1회.\n\n## 게시물 초안\n월요일: 이번 주 새 빵 소개. 목요일: 다음 주 예고.\n",
+    "version": 1,
+    "status": "revision",
+    "origin": "ai",
+    "createdAt": "2026-03-10T09:00:00.000Z",
+    "reviewNote": "합성 검토 메모: 게시물 초안에 다음 방문 이유를 한 문장으로 넣어 주세요."
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s2-art-growth",
+   "parent": "syn-s2-campaign",
+   "data": {
+    "campaignId": "syn-s2-campaign",
+    "campaignVersion": 1,
+    "role": "growth",
+    "title": "합성 그로스",
+    "content": "## 유입과 재방문 동선\n첫 방문 → 안내 카드 → 다음 주 소식 알림 → 재방문.\n\n## 측정\n카드 회수 수를 첫 방문 고객 수로 나눈다. 쿠폰은 쓰지 않는다.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai",
+    "createdAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s2-art-data",
+   "parent": "syn-s2-campaign",
+   "data": {
+    "campaignId": "syn-s2-campaign",
+    "campaignVersion": 1,
+    "role": "data",
+    "title": "합성 데이터",
+    "content": "## 측정 정의\n재방문율 = 30일 관찰을 마친 첫 방문 코호트 중 2주 안 재방문 고객 수 ÷ 코호트 고객 수.\n\n## 자료 필요\n포스 기록의 고객 식별 방식 확인 필요.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai",
+    "createdAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s2-art-quality",
+   "parent": "syn-s2-campaign",
+   "data": {
+    "campaignId": "syn-s2-campaign",
+    "campaignVersion": 1,
+    "role": "quality",
+    "title": "합성 품질",
+    "content": "## 검수 요약\n근거·브랜드 적합성·제작 완성도·측정 가능성을 확인했다. 카피 초안의 보장 표현은 수정이 필요하다.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai",
+    "createdAt": "2026-03-10T09:00:00.000Z"
+   }
+  }
+ ],
+ "roles": [
+  "cmo",
+  "insight",
+  "strategy",
+  "creative",
+  "content",
+  "growth",
+  "data",
+  "quality"
+ ],
+ "meeting": {
+  "agenda": "합성 안건: 재방문 안내 카드 문안과 측정 방법을 정한다. \"최저가\"·무료 증정 표현은 쓰지 않는다.",
+  "previousMeetingId": "syn-s2-meeting-prev",
+  "answers": {
+   "discussion": {
+    "default": {
+     "position": "합성 진단: 첫 방문 고객이 다음에 올 이유가 한 가지로 정해지지 않았습니다.",
+     "evidence": "합성 근거: 제공된 브리프와 작업물만 사용했고 고객 반응은 미측정입니다.",
+     "challenge": "합성 반론: 앞선 제안의 측정 기준이 30일 코호트와 맞는지 확인이 필요합니다.",
+     "proposal": "합성 제안: 다음 주 새 빵 안내 카드 한 가지로 시험하고 회수율을 봅니다."
+    }
+   },
+   "synthesis": {
+    "decisions": "합성 결정: 다음 주 새 빵 안내 카드를 시험한다.",
+    "disagreements": "합성: 쿠폰은 보류한다.",
+    "questions": "합성: 카드 회수 기록 방법",
+    "tasks": [
+     {
+      "role": "content",
+      "instruction": "안내 카드 문안 3종 완성",
+      "reason": "합의 결정",
+      "acceptance": "문안 3종"
+     },
+     {
+      "role": "growth",
+      "instruction": "카드 회수 측정 조건 정리",
+      "reason": "측정 연결",
+      "acceptance": "분자·분모 명시"
+     }
+    ]
+   },
+   "revision": {
+    "default": {
+     "title": "합성 개선본",
+     "content": "## 합성 개선본\n안내 카드 문안과 회수 측정 조건을 합의 과제에 맞춰 정리했습니다. 실적은 미측정이며 모든 효과는 가설입니다.\n\n## 문안 3종\n1. 다음 주에도 새 빵이 나옵니다. 이 카드를 계산대에 보여 주시면 새 빵 나오는 요일을 알려 드립니다.\n2. 오늘 드신 식빵과 어울리는 빵을 카드 뒷면에 적었습니다. 가격은 매장에서 확인해 주세요.\n3. 출근길에 들르시는 분께: 다음 주 화요일에 새 빵이 나옵니다(요일은 확정 뒤 교체).\n\n## 회수 측정 조건\n카드 회수 수를 같은 주 첫 방문 고객 수로 나눕니다. 재방문율 판정은 30일 관찰을 마친 첫 방문 코호트로만 합니다. 매장 담당자가 주간 기록으로 확인합니다.",
+     "changes": "합의 과제를 반영했습니다."
+    }
+   },
+   "quality": {
+    "verdict": "revise",
+    "summary": "합성 검수: 보장 표현 수정 필요",
+    "findings": "합성 발견: 카피 초안의 재방문 보장 표현은 근거가 없습니다."
+   }
+  },
+  "targets": [
+   "discussion:cmo",
+   "discussion:creative",
+   "discussion:quality",
+   "synthesis",
+   "revision:content",
+   "quality"
+  ],
+  "seededDefects": [
+   {
+    "id": "syn-guarantee",
+    "role": "creative",
+    "marker": "무조건 재방문 보장",
+    "keywords": [
+     "재방문 보장"
+    ]
+   }
+  ]
+ },
+ "briefs": [
+  {
+   "id": "syn-s2-brief-1",
+   "campaign": true,
+   "data": {
+    "brandId": "syn-s2-brand",
+    "title": "가상베이커리 재방문 초안",
+    "goal": "첫 방문 고객의 2주 안 재방문을 만든다.",
+    "audience": "첫 방문 고객(가설)",
+    "channels": "Instagram, 네이버 플레이스",
+    "stores": "가상동 34",
+    "products": "식빵·소금빵(가격 미확정)",
+    "budget": null,
+    "startDate": "",
+    "endDate": "",
+    "constraints": "\"최저가\" 표현 금지. 무료 증정 약속 금지.",
+    "sources": "",
+    "plan": {
+     "owner": "합성 담당"
+    }
+   }
+  }
+ ]
+}

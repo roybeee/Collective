@@ -12,6 +12,7 @@ import {caseKind,evalKind,reserveOf,roleId,EVAL_CASE_TOKEN_RESERVE,type EvalCase
 import {captureMeetingStep,captureBrief,type CaptureCheck} from './eval-capture';
 import {compareRuns,pairReport} from './eval-stats';
 import {gatewayBasis} from './gateway-snapshot';
+import {APP_TREE} from './app-version';
 import {roles,type Campaign,type Brand} from './agency';
 import {pairPrompts,roleRunUnits,type PairPrompts} from './prompt-registry';
 import {evalMonthBudget,setBudgetApproval,EVAL_DEFAULT_MONTHLY_TOKEN_CAP} from './eval-budget-server';
@@ -30,7 +31,8 @@ export type {EvalExpectations};
 // expectationsUpdatedAt: 기대 판정(expectations)이 실제로 바뀐 마지막 시각. 이름·세트만 고치면 바뀌지 않는다(재채점의 caseUpdatedAfterRun 판정).
 // kind: 평가 종류(lib/eval-kinds.ts). 없는 옛 케이스는 role이다. externalKey·specHash: 생성기 멱등 키와 그 스펙 해시(같은 키에 다른 specHash는 409).
 // request: 종류별 동결 요청(역할 RoleRequest, 회의 단계 {meeting,stepId,storeAllow}, 브리프 BriefRequest). captureCheck: 회의·브리프 캡처의 드리프트 판정(lib/eval-capture.ts).
-export type EvalCase={id:string;kind?:EvalCaseKind;externalKey?:string;specHash?:string;role:string;label:string;set:EvalSet;request:EvalRequest;captureCheck?:CaptureCheck;expectations:EvalExpectations;campaignId:string|null;source:'capture'|'manual';capturedWith:{skillVersion:string;outputContractVersion:string};setChanges?:{from:EvalSet;to:EvalSet;at:string;by:Who}[];expectationsUpdatedAt?:string;createdBy:Who;createdAt:string;updatedAt:string};
+// source synthetic·generator: 합성 생성기 출력을 import_cases로 가져온 케이스와 그 생성 커밋·트리(G4).
+export type EvalCase={id:string;kind?:EvalCaseKind;externalKey?:string;specHash?:string;role:string;label:string;set:EvalSet;request:EvalRequest;captureCheck?:CaptureCheck;generator?:{commit:string;tree:string};expectations:EvalExpectations;campaignId:string|null;source:'capture'|'manual'|'synthetic';capturedWith:{skillVersion:string;outputContractVersion:string};setChanges?:{from:EvalSet;to:EvalSet;at:string;by:Who}[];expectationsUpdatedAt?:string;createdBy:Who;createdAt:string;updatedAt:string};
 type StoredConnection={secret:string;host:string;isolationConfirmed:boolean;note:string;status:'ready'|'blocked';statusReason:string|null;model:string|null;checkedAt:string;updatedAt:string;updatedBy:Who};
 type Conn={endpoint:string;key:string};
 type Tokens={input:number|null;output:number|null;total:number|null};
@@ -183,8 +185,9 @@ async function existingExternal(owner:string,ext:External|null){
  return kase;
 }
 type CaseFields=Pick<EvalCase,'kind'|'role'|'label'|'set'|'request'|'expectations'|'campaignId'|'source'|'captureCheck'>;
+const caseRecord=(fields:CaseFields,by:Who,ext:External|null,at=stamp()):EvalCase=>({id:uid(),...fields,...ext,capturedWith:{skillVersion:PRACTICE_VERSION,outputContractVersion:ROLE_OUTPUT_VERSION},createdBy:by,createdAt:at,updatedAt:at});
 async function storeCase(owner:string,fields:CaseFields,by:Who,ext:External|null){
- const at=stamp(),kase:EvalCase={id:uid(),...fields,...ext,capturedWith:{skillVersion:PRACTICE_VERSION,outputContractVersion:ROLE_OUTPUT_VERSION},createdBy:by,createdAt:at,updatedAt:at};
+ const kase=caseRecord(fields,by,ext);
  await recordStatement(owner,'eval_case',kase.id,kase).run();
  return kase;
 }
@@ -212,6 +215,36 @@ async function saveCase(owner:string,input:Record<string,unknown>,by:Who){
  const set=evalSet(input.set),{request,role}=frozenRequest(input.request,input.role,handler),expectations=expectationsOf(input.expectations,null);
  const id=handler.campaignOf(request)?.id,campaignId=typeof id==='string'?id:null;
  return storeCase(owner,{kind,role,request,expectations,campaignId,source:'manual',set,label:str(input.label??'','케이스 이름',200)||`${role} 수동 케이스`},by,ext);
+}
+// ── 합성 케이스 가져오기(import_cases, G4) ──
+// 본문은 합성 생성기(scripts/eval/synthesize-cases.mjs) 출력 그대로다: {generator:{commit,tree}, specId, cases:[save_case 본문 + externalKey·specHash·promptHash]}.
+// 본문 한도는 라우트의 EVAL_BODY_LIMIT(1MB)이고 생성기 출력 하나가 합성 캠페인 하나다. 케이스마다 save_case와 같은 동결·검사를 거친다(externalKey 멱등, 같은 키 다른 specHash 409).
+// 거부: 생성 트리가 운영 앱 트리(APP_TREE)와 다르거나 운영 트리를 알 수 없음 409(생성 코드와 운영 코드가 같아야 운영과 같은 요청이다), 케이스 0개·100개 초과·syn-가 아닌 externalKey·
+// promptHash 없음·같은 키 중복 400, 동결 뒤 지금 조립으로 만든 promptHash가 생성기 값과 다름 409. 하나라도 거부되면 아무것도 저장하지 않고, 저장은 한 배치로 한다.
+export const EVAL_IMPORT_MAX_CASES=100;
+const SYNTHETIC_KEY=/^syn-/,PROMPT_HASH=/^[0-9a-f]{16}$/,GIT_HASH=/^[0-9a-f]{40}$/;
+export async function importCases(owner:string,input:Record<string,unknown>,by:Who,appTree:string=APP_TREE){
+ const g=obj(input.generator),cases=input.cases,commit=typeof g?.commit==='string'?g.commit:'',tree=typeof g?.tree==='string'?g.tree:'';
+ if(!GIT_HASH.test(commit)||!GIT_HASH.test(tree))throw new ApiError(400,'생성기 정보(generator.commit·tree)는 깨끗한 작업 트리에서 만든 40자 해시여야 합니다.');
+ if(!Array.isArray(cases)||!cases.length||cases.length>EVAL_IMPORT_MAX_CASES)throw new ApiError(400,`가져올 케이스(cases)는 1~${EVAL_IMPORT_MAX_CASES}개여야 합니다.`);
+ if(tree!==appTree)throw new ApiError(409,`생성 트리(${tree.slice(0,12)})가 운영 앱 트리(${appTree.slice(0,12)})와 다릅니다. 운영에 게시된 커밋을 체크아웃해 생성기를 다시 실행하세요.`);
+ const keys=new Set<string>(),mismatched:string[]=[],prepared:{ext:External;existing:EvalCase|null;fields:CaseFields}[]=[];
+ for(const [i,value] of cases.entries()){
+  const o=obj(value),ext=o?externalOf(o):null;
+  if(!o||!ext||!SYNTHETIC_KEY.test(ext.externalKey))throw new ApiError(400,`케이스 ${i+1}: 합성 케이스는 syn-로 시작하는 externalKey와 specHash가 있어야 합니다.`);
+  if(keys.has(ext.externalKey))throw new ApiError(400,`외부 키(externalKey)가 중복됐습니다: ${ext.externalKey}`);
+  if(typeof o.promptHash!=='string'||!PROMPT_HASH.test(o.promptHash))throw new ApiError(400,`케이스 ${i+1}: 생성기 promptHash(16자)가 필요합니다.`);
+  keys.add(ext.externalKey);
+  const kind=caseKind(o.kind),handler=evalKind(kind),{request,role}=frozenRequest(o.request,o.role,handler),built=handler.build(request);
+  if((await hex(built.instructions+'\u0000'+built.input)).slice(0,16)!==o.promptHash)mismatched.push(ext.externalKey);
+  const campaign=handler.campaignOf(request)?.id;
+  prepared.push({ext,existing:await existingExternal(owner,ext),fields:{kind,role,request,expectations:expectationsOf(o.expectations,null),campaignId:typeof campaign==='string'?campaign:null,source:'synthetic',set:evalSet(o.set),label:str(o.label??'','케이스 이름',200)||`${role} 합성 케이스`}});
+ }
+ if(mismatched.length)throw new ApiError(409,`생성기 조립과 지금 조립이 다른 케이스가 있습니다(promptHash): ${mismatched.slice(0,5).join(', ')}${mismatched.length>5?` 외 ${mismatched.length-5}건`:''}. 운영에 게시된 커밋에서 다시 생성하세요.`);
+ const at=stamp(),created=prepared.filter(p=>!p.existing).map(p=>({...caseRecord(p.fields,by,p.ext,at),generator:{commit,tree}}));
+ if(created.length){const db=database();await db.batch(created.map(k=>recordStatement(owner,'eval_case',k.id,k)))}
+ const idOf=(p:typeof prepared[number])=>p.existing?.id??created.find(k=>k.externalKey===p.ext.externalKey)!.id;
+ return {specId:typeof input.specId==='string'?input.specId.slice(0,100):null,created:created.length,existing:prepared.length-created.length,cases:prepared.map(p=>({externalKey:p.ext.externalKey,id:idOf(p),status:p.existing?'existing':'created'}))};
 }
 // 진행 중(queued·running) 평가 run이 이 케이스를 쓰는지 본다. 삭제와 채점 기준 변경을 막는 데 쓴다.
 async function caseInUse(owner:string,caseId:string){
@@ -556,7 +589,7 @@ export async function evalRead(owner:string,params:URLSearchParams){
  return {connection:publicConnection(conn),cases:cases.map(caseSummary),runs,usage};
 }
 const ACTIONS:Record<string,(owner:string,input:Record<string,unknown>,by:Who)=>Promise<unknown>>={
- save_connection:saveConnection,check_connection:(owner,_input,by)=>checkConnection(owner,by),capture_case:captureCase,save_case:saveCase,update_case:updateCase,delete_case:deleteCase,cancel_run:cancelRun,delete_run:deleteRun,regrade_run:regradeRun,set_budget_approval:setBudgetApproval,
+ save_connection:saveConnection,check_connection:(owner,_input,by)=>checkConnection(owner,by),capture_case:captureCase,save_case:saveCase,update_case:updateCase,delete_case:deleteCase,cancel_run:cancelRun,delete_run:deleteRun,regrade_run:regradeRun,set_budget_approval:setBudgetApproval,import_cases:(owner,input,by)=>importCases(owner,input,by),
 };
 export async function evalAction(owner:string,input:Record<string,unknown>,actor:Actor):Promise<Response>{
  const by=who(actor),name=String(input.action);
