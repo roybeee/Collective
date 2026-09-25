@@ -261,6 +261,13 @@ r=await post(boss,{action:'record_contract',brandId:'fr-a',leadId:s6,version:v(s
 check('scenario 6: later contract is 409',r.status===409&&r.body.reasons.some(x=>['evidence_incomplete','disclosure_missing'].includes(x.code)));
 r=await deliver(boss,s6,'draft','now',{templateId:CT_PART});
 check('a draft on an incomplete template is recorded but not counted',r.status===200&&r.body.result.assessment.counted===false&&r.body.result.assessment.reasons.some(x=>x.code==='draft_template_incomplete'));
+const kstToday=new Date(Date.now()+9*HOUR).toISOString().slice(0,10);
+r=await post(boss,{action:'record_advice',brandId:'fr-a',leadId:s6,version:v(s6),advisorType:'attorney',registrationVerified:true,advisedOn:'2199-01-01',targetDoc:'disclosure',hqPaid:false,hqReferred:false});
+check('advice dated after today (KST) is 400 FUTURE_TIME',r.status===400&&r.body.error===T('FUTURE_TIME'));
+r=await post(boss,{action:'record_advice',brandId:'fr-a',leadId:s6,version:v(s6),advisorType:'lawyer',registrationVerified:true,advisedOn:kstToday,targetDoc:'disclosure'});
+check('unknown advisor type is 400',r.status===400);
+r=await post(boss,{action:'record_advice',brandId:'fr-a',leadId:s6,version:v(s6),advisorType:'attorney',registrationVerified:true,advisedOn:kstToday,targetDoc:'disclosure',hqPaid:false,hqReferred:false});
+check('advice evidence is recorded without a backdate',r.status===200&&rows('franchise_delivery',"AND json_extract(data,'$.id')=?",r.body.result.evidenceId)[0].payload.advisedOn===kstToday);
 // 18) 공정위 링크
 n0=total();
 r=await post(boss,{action:'record_delivery',brandId:'fr-a',leadId:s6,version:v(s6),doc:'disclosure',method:'ftc_link',deliveredAt:'now',versionId:DV});

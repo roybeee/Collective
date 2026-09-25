@@ -452,11 +452,11 @@ async function createLead(c:Ctx):Promise<Outcome>{
 }
 async function updateContact(c:Ctx,lead:LeadRecord):Promise<Outcome>{
  const i=c.input,ci=isRecord(i.contact)?i.contact:{},given=(k:string)=>Object.hasOwn(ci,k)&&ci[k]!==undefined,cur=lead.contact!;
- const now={name:await openField(cur.name),phone:cur.phone?await openField(cur.phone):null,email:cur.email?await openField(cur.email):null};
- const next={...now},changed:ContactField[]=[];
- if(given('name')){next.name=readName(ci.name);if(next.name!==now.name)changed.push('name')}
- if(given('phone')){next.phone=readPhone(ci.phone);if(next.phone!==now.phone)changed.push('phone')}
- if(given('email')){next.email=readEmail(ci.email);if(next.email!==now.email)changed.push('email')}
+ const old={name:await openField(cur.name),phone:cur.phone?await openField(cur.phone):null,email:cur.email?await openField(cur.email):null};
+ const next={...old},changed:ContactField[]=[];
+ if(given('name')){next.name=readName(ci.name);if(next.name!==old.name)changed.push('name')}
+ if(given('phone')){next.phone=readPhone(ci.phone);if(next.phone!==old.phone)changed.push('phone')}
+ if(given('email')){next.email=readEmail(ci.email);if(next.email!==old.email)changed.push('email')}
  let memo=lead.memo;
  if(Object.hasOwn(i,'memo')&&i.memo!==undefined){const m=readMemo(i.memo),old=lead.memo?await openField(lead.memo):null;if(m!==old){memo=m?await sealField(m):null;changed.push('memo')}}
  if(!next.phone&&!next.email)fail('CONTACT_REQUIRED');
@@ -466,7 +466,10 @@ async function updateContact(c:Ctx,lead:LeadRecord):Promise<Outcome>{
  const contact={name:changed.includes('name')?await sealField(next.name):cur.name,phone:changed.includes('phone')?next.phone?await sealField(next.phone):null:cur.phone,email:changed.includes('email')?next.email?await sealField(next.email):null:cur.email};
  const updated=bump(c,lead,{contact,memo},'contact_updated'),result={leadId:lead.id,version:updated.version,fields:changed};
  await commit([leadStmt(c.owner,updated),...rekey.map(t=>database().prepare("DELETE FROM records WHERE owner=? AND kind='franchise_lead_key' AND parent_id=? AND json_extract(data,'$.type')=?").bind(c.owner,lead.id,t)),...keys.map(k=>keyInsert(c,lead.id,k)),eventStmt(c.owner,receiptEvent(c,lead,'contact_updated',result,{fields:changed}))]);
- await verifyKeys(c,keys,lead.id,[leadStmt(c.owner,{...lead,version:updated.version+1,updatedAt:c.now}),...keys.map(k=>database().prepare("DELETE FROM records WHERE owner=? AND kind='franchise_lead_key' AND id=? AND parent_id=?").bind(c.owner,`${c.owner}:franchise_lead_key:${k.id}`,lead.id))]);
+ // 잠금 아래에서는 생기지 않는 경합의 보상: 리드를 이전 연락처로 되돌리고 새 키를 지우고 이전 키를 다시 넣는다.
+ const oldKeys:{id:string;type:'phone'|'email'}[]=[];
+ for(const t of rekey){const value=old[t];if(value)oldKeys.push({id:await leadKeyHmac(c.owner,c.brandId,t,value),type:t})}
+ await verifyKeys(c,keys,lead.id,[leadStmt(c.owner,{...lead,version:updated.version+1,updatedAt:c.now}),...keys.map(k=>database().prepare("DELETE FROM records WHERE owner=? AND kind='franchise_lead_key' AND id=? AND parent_id=?").bind(c.owner,`${c.owner}:franchise_lead_key:${k.id}`,lead.id)),...oldKeys.map(k=>keyInsert(c,lead.id,k))]);
  return {result,lead:updated};
 }
 async function updateTask(c:Ctx,lead:LeadRecord):Promise<Outcome>{
