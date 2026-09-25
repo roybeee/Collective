@@ -50,9 +50,10 @@ function valueChecks(lines:string[],confirmed:{key:string;value:string}[]):Check
 }
 // 거절값은 문장에 나오면 대조 대상이고, 부정·배제 없이 쓰이면 fail이다.
 // allowed: 금지·보류 맥락 밖 문장. 그 안의 언급은 대조는 하되(적용됨) 사용으로 세지 않는다.
-function rejectedChecks(lines:string[],facts:NonNullable<GradeContext['facts']>,allowed:Set<string>):Check[]{
+// allowed는 거절 사실 언급이 있을 때만 계산한다(대부분의 출력은 언급이 없다).
+function rejectedChecks(lines:string[],facts:NonNullable<GradeContext['facts']>,allowed:()=>Set<string>):Check[]{
  const rejected=claimGuard({confirmed:facts.confirmed||[],prohibited:facts.prohibited||[]}).prohibited;
- return rejected.flatMap(t=>lines.filter(s=>mentions(s,t)).map(s=>allowed.has(s)&&usesTerm(s,t)?{hit:`거절 사실 사용: ${excerpt(s)}`}:{}));
+ return rejected.flatMap(t=>lines.filter(s=>mentions(s,t)).map(s=>allowed().has(s)&&usesTerm(s,t)?{hit:`거절 사실 사용: ${excerpt(s)}`}:{}));
 }
 // 원장에 있는 항목만 대조한다. 원장에 없는 항목은 세지 않고, 대조할 항목이 하나도 없으면 not_applicable(합격률 분모에서 제외).
 export const factConflict:Grader={id:'fact_conflict',content:true,grade(item,ctx){
@@ -60,12 +61,16 @@ export const factConflict:Grader={id:'fact_conflict',content:true,grade(item,ctx
  if(!ctx.facts)return verdict('not_applicable','원장 없음');
  const text=bodyOf(item),lines=bodySentences(text),confirmed=confirmedFacts(ctx);
  // 거절 사실은 금지·보류 맥락(제목·라벨·금지 표 칸·금지 리드 아래 인용 목록) 밖 문장만 본다. 그 안은 쓰지 않을 표현의 목록이다(R3 기준선 S6 실측).
- const allowed=new Set(outsideProhibition(blocks(withoutBannedLists(text))).filter(b=>!b.isLabel).flatMap(b=>sentences(b.line)));
- const checks=[...addressChecks(text,confirmed),...valueChecks(lines,confirmed),...rejectedChecks(lines,ctx.facts,allowed)];
+ const checks=[...addressChecks(text,confirmed),...valueChecks(lines,confirmed),...rejectedChecks(lines,ctx.facts,allowedSentences(text))];
  return checks.length?hitsVerdict(checks.flatMap(c=>c.hit?[c.hit]:[])):verdict('not_applicable','원장 항목을 다루지 않음');
 }};
 
 // 원장이 확정하지 않은 가격·오픈일·도보 시간·유동인구 수치를 [확인 필요]·[예시]·미확정 표시 없이 단정하면 fail(factPolicy).
+// 금지·보류 맥락 밖 문장 집합. 처음 부를 때 한 번만 계산한다.
+function allowedSentences(text:string){
+ let cached:Set<string>|null=null;
+ return ()=>cached??=new Set(outsideProhibition(blocks(withoutBannedLists(text))).filter(b=>!b.isLabel).flatMap(b=>sentences(b.line)));
+}
 // 문장 속 값(가격·오픈일)의 원문 위치마다 부정·배제를 본다. 하나라도 부정되지 않으면 단정이다.
 const VALUE_SPAN=/(\d{1,3}(?:,\d{3})+|\d{4,})\s?원|(\d+(?:\.\d+)?)\s?만\s?원/g;
 function assertsValue(s:string){
@@ -77,10 +82,10 @@ export const unconfirmedValueAssertion:Grader={id:'unconfirmed_value_assertion',
  if(!ctx.facts)return verdict('not_applicable','원장 없음');
  const confirmed=confirmedFacts(ctx),open=VALUE_KINDS.filter(k=>!ledgerValues(k,confirmed).size);
  // 금지·보류 맥락 안 값과 부정·배제된 값('금지된 ‘월 순수익 500만 원 보장’ … 표현은 사용하지 않는다')은 단정이 아니다(R3 기준선 S7 실측).
- const text=bodyOf(item),allowed=new Set(outsideProhibition(blocks(withoutBannedLists(text))).filter(b=>!b.isLabel).flatMap(b=>sentences(b.line)));
+ const text=bodyOf(item),allowed=allowedSentences(text);
  const found=bodySentences(text).flatMap(s=>open.filter(k=>k.body(s).length).map(k=>({kind:k.kind,s})));
  if(!found.length)return verdict('not_applicable','미확정 항목의 구체 값 없음');
- return hitsVerdict(found.filter(x=>!MARKED.test(x.s)&&allowed.has(x.s)&&assertsValue(x.s)).map(x=>`미확정 ${x.kind} 단정: ${excerpt(x.s)}`));
+ return hitsVerdict(found.filter(x=>!MARKED.test(x.s)&&allowed().has(x.s)&&assertsValue(x.s)).map(x=>`미확정 ${x.kind} 단정: ${excerpt(x.s)}`));
 }};
 
 // 미확인 브랜드 소개(brand.brandIntro)를 '확인 사실' 구역에 적으면 fail(원장 구역 규칙, G3. docs/EVAL.ko.md 결정론 불가 유형의 v1.1 후보를 옮겼다).

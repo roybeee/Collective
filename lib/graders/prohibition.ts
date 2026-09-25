@@ -14,16 +14,17 @@ function bannedColumns(header:string){
  return {all:banned.length>0&&cells.every((c,i)=>!c.trim()||banned.includes(i)||TABLE_AUX.test(c.trim())),cols:banned};
 }
 // level: 금지 맥락 제목의 수준(0이면 없음). banned: 둘러싼 라벨(가장 가까운 라벨 줄)이 금지 맥락인지. table: 지금 표의 금지 열.
-type Scope={level:number;banned:boolean;table:ReturnType<typeof bannedColumns>|null;out:Block[]};
+// 한 번 훑으며 상태만 이어 간다(선형). 결과 배열을 매 블록 펼쳐 복사하면 4만 자 제목 반복 입력에서 제곱 시간이 된다(R3 CI 성능 테스트).
 export function outsideProhibition(list:Block[]):Block[]{
- return list.reduce<Scope>((acc,b)=>{
+ let level=0,banned=false,table:ReturnType<typeof bannedColumns>|null=null;
+ return list.flatMap(b=>{
   const h=headingLevel(b.line),row=b.line.trim().startsWith('|'),own=b.isLabel&&prohibitiveLabel(b.label);
-  const open=h&&acc.level&&h<=acc.level?0:acc.level,level=h&&!open&&own?h:open;
-  const banned=b.isLabel?own:acc.banned,table=row?acc.table||bannedColumns(b.line):null;
-  if(level||banned||b.inline&&prohibitiveLabel(b.inline)||table?.all)return {level,banned,table,out:acc.out};
-  const line=table?.cols.length?cellsOf(b.line).map((c,i)=>table.cols.includes(i)?'':c).join('|'):b.line;
-  return {level,banned,table,out:[...acc.out,{...b,line}]};
- },{level:0,banned:false,table:null,out:[]}).out;
+  const open=h&&level&&h<=level?0:level;
+  level=h&&!open&&own?h:open;banned=b.isLabel?own:banned;table=row?table||bannedColumns(b.line):null;
+  if(level||banned||b.inline&&prohibitiveLabel(b.inline)||table?.all)return [];
+  const cols=table?.cols||[];
+  return [{...b,line:cols.length?cellsOf(b.line).map((c,i)=>cols.includes(i)?'':c).join('|'):b.line}];
+ });
 }
 // '다음 표현은 … 사용하지 않는다'처럼 금지를 여는 리드 문장 아래 인용만 있는 줄(빈 줄 허용)은 금지 목록이라 뺀다. 제목·산문 줄이 오면 끝난다(R3 기준선 MAPDAL 개선본 실측).
 const BAN_LEAD=/(?:다음|아래)\s?(?:표현|문구|카피|단어|어휘)(?:은|는|을|를)?[^.\n]{0,40}(?:(?:사용하|쓰|넣)지\s?않(?:는다|습니다|음)|금지(?:한다|합니다|함)?)[.。]?\s*$/;
