@@ -218,6 +218,13 @@ check('channel coverage is not applicable outside store campaigns and to other r
 check('input budget cap defaults to 32,000',()=>assert.equal(INPUT_TOKEN_CAP,32000));
 check('input budget passes and fails around the cap',()=>{assert.equal(status('input_budget',{id:'u',kind:'call',role:'cmo',inputTokens:24000}),'pass');assert.equal(status('input_budget',{id:'u',kind:'call',role:'cmo',inputTokens:35500}),'fail')});
 check('input budget is not applicable without tokens or for brief drafts',()=>{assert.equal(status('input_budget',{id:'u',kind:'call',role:'cmo',inputTokens:null}),'not_applicable');assert.equal(status('input_budget',{id:'u',kind:'call',role:'brief',inputTokens:40000}),'not_applicable')});
+// R3 기준선(2026-09-25) 실측: 회의 단계 입력 최대 52,268(MAPDAL 재검토), 역할 최대 23,701. 회의 단계 상한은 64,000, 역할은 32,000(위임 결정).
+check('meeting steps use the 64,000 meeting cap and roles keep 32,000',()=>{
+ assert.equal(status('input_budget',{id:'m',kind:'meeting_step',role:'quality',meetingId:'m1',phase:'quality',text:'x',inputTokens:52268}),'pass');
+ assert.equal(status('input_budget',{id:'m',kind:'meeting_step',role:'quality',meetingId:'m1',phase:'quality',text:'x',inputTokens:70000}),'fail');
+ assert.equal(status('input_budget',{id:'d',kind:'discussion',role:'cmo',meetingId:'m1',fields:{},inputTokens:40000}),'pass');
+ assert.equal(status('input_budget',{id:'u',kind:'role',role:'cmo',text:'x',inputTokens:40000}),'fail');
+});
 check('input budget cap is configurable',()=>assert.equal(status('input_budget',{id:'u',kind:'call',role:'cmo',inputTokens:33000},{inputTokenCap:36000}),'pass'));
 
 // 우선순위: 재질문이면 내용 채점기는 not_applicable, 구조 채점기는 계속 채점한다.

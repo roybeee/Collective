@@ -123,10 +123,13 @@ export const brandIntroAsFact:Grader={id:'brand_intro_as_fact',content:true,grad
 
 // 역할·회의 단계 호출의 입력 토큰 절대 상한. 제안값 32,000은 대표 결정 사항이며 설정으로 바꾼다(ctx.inputTokenCap).
 export const INPUT_TOKEN_CAP=32000;
+// 회의 단계(발언·합의·개선본·재검토) 상한. R3 기준선(2026-09-25) 실측 최대 52,268(운영 MAPDAL 회의 재검토: 개선본 전체와 후보 24,000자를 읽는다)의 약 1.2배다.
+// 역할 최대 23,701은 32,000 안이라 역할 상한은 그대로 둔다(대표 위임 결정 2026-09-25, QUALITY-ROADMAP 승인 기록).
+export const MEETING_INPUT_TOKEN_CAP=64000;
 export const inputBudget:Grader={id:'input_budget',grade(item,ctx){
  const tokens=item.inputTokens;
  if(typeof tokens!=='number'||!Number.isFinite(tokens))return verdict('not_applicable','토큰 미확인');
  if(item.kind==='brief'||/^(?:brief|research)/.test(item.role||''))return verdict('not_applicable','브리프 초안·조사 호출(대상 여부 결정 전)');
- const cap=ctx.inputTokenCap??INPUT_TOKEN_CAP;
+ const cap=ctx.inputTokenCap??(item.meetingId?MEETING_INPUT_TOKEN_CAP:INPUT_TOKEN_CAP);
  return tokens>cap?verdict('fail',`${tokens} > ${cap}`):verdict('pass',`${tokens} (${Math.round(tokens/cap*100)}%)`);
 }};
