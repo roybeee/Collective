@@ -8,8 +8,8 @@ import {maskFields} from './pii-scan';
 // 회의 단계 제출(지시문·입력·가림 기록) 조립을 서버 의존 없이 만드는 순수 함수(G1). lib/meeting-execution.ts advance 분기가 이 출력을 그대로 저장·전송하고,
 // 평가는 대상 단계 직전까지의 회의 기록으로 같은 요청을 재현한다. tests/assembly-export.test.mjs가 운영 제출 본문과 바이트 동일한지 본다.
 // 회의 입력 작업물 허용 목록(DP-1 ①, 코드 상수). 사람 수정 표시(origin·aiSource·aiSourceId)·편집 통계(editStats)·검토 메모(reviewNote·reviewedAt)·준수 보류(complianceHold)·
-// 실행 메타(promptVersion·promptFallback·promptRecheck·skillVersion 등)·캠페인 id는 보내지 않는다. content 키 자리는 원 레코드 순서를 따른다.
-const MEETING_ARTIFACT_FIELDS=['id','role','title','content','version','status','createdAt','factsChanged','brandChanged','unverifiedClaims','qualityReview'] as const;
+// 실행 메타(promptVersion·promptFallback·promptRecheck·skillVersion 등)·캠페인 id는 보내지 않는다. content 키 자리는 원 레코드 순서를 따른다. 평가 동결(lib/eval-freeze.ts)도 이 목록으로 작업물을 줄여 저장한다.
+export const MEETING_ARTIFACT_FIELDS=['id','role','title','content','version','status','createdAt','factsChanged','brandChanged','unverifiedClaims','qualityReview'] as const;
 const CANDIDATE_FIELDS=[...MEETING_ARTIFACT_FIELDS,'changes'];
 // 품질 단계 후보 본문 상한: 역할 경로 upstreamContext의 품질 담당 상한과 같다(lib/role-output.ts). 원 작업물 발췌 상한 8,000자는 그대로다.
 const CANDIDATE_CONTENT_LIMIT=24000;
