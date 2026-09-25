@@ -103,6 +103,9 @@ const rejectedSoldOut={facts:{confirmed:[],prohibited:[{key:'판매 주장',valu
 check('fact_conflict treats an absent-expression clause as exclusion',()=>{for(const text of ['완성본에는 ‘새 빵’, ‘오전 8시’, ‘당일 전량 소진’, ‘최저가’, 할인·무료·보장 표현이 없고, 후기·추천사 예시도 없다.','카드 문안에 ‘당일 전량 소진’ 문구가 포함되지 않는다.','‘새 빵’, ‘오전 8시’, 가격, 할인, 무료 증정, ‘당일 전량 소진’, ‘최저가’ 문구가 들어가지 않는다.'])assert.equal(status('fact_conflict',role(text),rejectedSoldOut),'pass',text)});
 // 파일럿 1(2026-09-25 S2 품질 검토 실측): 수동형 비사용('사용되지는 않았으나')과 '…하면 안 된다'는 사용 배제다.
 check('fact_conflict treats passive non-use and must-not-use as exclusion',()=>{for(const text of ["prohibited인 '당일 전량 소진'은 직접 사용되지는 않았으나 어떤 가설이나 제작 전제로도 사용하면 안 됩니다.",'‘당일 전량 소진’은 카드에 사용되지 않았다.','‘당일 전량 소진’ 문구는 쓰면 안 됩니다.','‘당일 전량 소진’은 가설로도 내세워서는 안 된다.'])assert.equal(status('fact_conflict',role(text),rejectedSoldOut),'pass',text)});
+// R3 기준선(2026-09-25 S2 그로스 실측): '금지된 “…” 표현이 … 포함됨'(중단 조건)처럼 대상 앞에 금지·거절 수식이 붙으면 사용이 아니다.
+check('fact_conflict treats a rejected fact named as forbidden as non-use',()=>{for(const text of ['- 금지된 “당일 전량 소진” 표현이 소재·제작 지시에 포함됨','거절된 ‘당일 전량 소진’ 주장이 카드에 들어가면 중단한다.'])assert.equal(status('fact_conflict',role(text),rejectedSoldOut),'pass',text)});
+check('fact_conflict still fails the rejected fact without a forbidding modifier',()=>{for(const text of ['- “당일 전량 소진” 표현이 소재·제작 지시에 포함됨','인기 많은 “당일 전량 소진” 빵입니다.'])assert.equal(status('fact_conflict',role(text),rejectedSoldOut),'fail',text)});
 check('fact_conflict still fails a passive use',()=>{for(const text of ['‘당일 전량 소진’이 카드 문구에 사용되었습니다.','‘당일 전량 소진’은 직접 사용되지는 않았다고 적었지만 카드에는 ‘당일 전량 소진’을 넣습니다.'])assert.equal(status('fact_conflict',role(text),rejectedSoldOut),'fail',text)});
 check('fact_conflict still fails a rejected fact that is present or wished away but used',()=>{for(const text of ['카드에는 ‘당일 전량 소진’ 문구가 있다.','‘당일 전량 소진’ 표현이 없으면 좋겠지만 오늘은 씁니다.','매일 당일 전량 소진되는 인기 빵입니다.','매일 당일 전량 소진, 이보다 좋은 문구가 없다.','당일 전량 소진, 더 이상의 표현이 없습니다.'])assert.equal(status('fact_conflict',role(text),rejectedSoldOut),'fail',text)});
 check('fact_conflict passes a price and open date that match the ledger',()=>assert.equal(status('fact_conflict',role('떡볶이는 5,000원이고 10월 5일 오픈합니다.'),priced),'pass'));
@@ -127,6 +130,11 @@ check('claim term fails unsupported popularity and opening benefit',()=>assert.e
 check('claim term ignores procedural mentions outside copy',()=>assert.equal(status('unsupported_claim_term',role('오픈 전에는 할인보다 위치 정보를 먼저 정비합니다. 할인 제공 여부는 별도 승인 없이 바꾸지 않습니다. '+long)),'pass'));
 check('claim term accepts [확인 필요] and negation in copy',()=>assert.equal(status('unsupported_claim_term',role('게시 카피\n“오픈 혜택 [확인 필요] 안내”\n인기 표현은 쓰지 않습니다.')),'pass'));
 check('claim term scopes negation to the claim term',()=>{assert.equal(status('unsupported_claim_term',copy('그냥 떡볶이가 아닌 동네 인기 떡볶이.')),'fail');assert.equal(status('unsupported_claim_term',copy('오픈 혜택 놓치지 말고 오세요.')),'fail');assert.equal(status('unsupported_claim_term',copy('할인 없이도 만족스러운 한 끼.')),'pass')});
+// R3 기준선(2026-09-25 MAPDAL 실측): 인용 뒤 '이라고 단정하지 않는다'(인용 조사 '라고'는 절 경계가 아니다), 구매·혜택 문구를 '확정된 뒤 별도 승인'으로 미룬 규칙은 사용이 아니다.
+check('claim term treats a quoted claim that is not asserted and a deferred approval as non-use',()=>{
+ for(const item of [role('자사 채널을 사용하더라도 실제 비용이 발생하면 따로 기록한다. ‘무료 자사 채널’이라고 단정하지 않는다.'),copy('“지금 구매하세요”, “주문하기”, “할인받기”와 같은 구매·혜택 유도 표현은 가격과 해당 조건이 확정된 뒤 별도 승인합니다.')])assert.equal(status('unsupported_claim_term',item),'pass',item.text)});
+check('claim term still fails a quoted claim that is used or a deferral in another clause',()=>{
+ for(const item of [role('‘무료 자사 채널’이라고 안내한다.'),role('‘무료 체험 이벤트’라고 쓰고 링크를 단다.'),copy('“할인받기” 버튼을 쓰고, 문구 조건은 확정된 뒤 별도 승인합니다.'),copy('“할인받기”는 가격이 확정된 뒤 바로 씁니다.')])assert.equal(status('unsupported_claim_term',item),'fail',item.text)});
 check('claim term accepts a confirmed ledger basis',()=>assert.equal(status('unsupported_claim_term',role('게시 카피\n“오픈 혜택 안내”'),{facts:{confirmed:[{key:'오픈 혜택',value:'첫 주 음료 제공'}],prohibited:[]}}),'pass'));
 // 품질 측정 v2(2026-09-24 재평가 실측 합성): 금지 규칙을 적은 문장·표·제목 블록은 카피 사용이 아니다.
 const claimRules='## 게시 카피 3종과 용도·CTA\n### 카피 A\n“새로 들어온 K-POP 음반, 발매 일정부터 확인하세요.”\n\n### 금지 또는 보류 표현\n다음 표현은 확정 사실 목록에 근거가 없으므로 광고·헤드라인·CTA·대본·자막·예시 문안에 사용하지 않는다.\n\n| 유형 | 표현 | 조치 |\n|---|---|---|\n| 인기·순위 | ‘가장 인기 있는’, ‘판매 1위’, ‘많이 찾는’ | 실제 판매·인기 근거 확인 전 삭제 |\n| 가격·혜택 | ‘첫 주문 무료 배송’, ‘오픈 혜택 한정’ | 가격 확정 전 보류 |\n\n### 카피 B\n“발매 일정과 구성품을 먼저 확인하세요.”';
