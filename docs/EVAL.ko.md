@@ -95,7 +95,7 @@
 
 ## 규제 가드레일 (A2, `lib/graders/compliance.ts`)
 
-`checkCompliance(text,{facts})`가 문장 단위로 8개 범주를 점검하고 `{version,issues,notice}`를 반환한다. 현재 사전은 `compliance-lexicon-2026-09-25.2`다. `.2`는 `.1`(측정 v2)에 두 가지를 더했다: 합성 판정 라벨 표 열을 규칙 칸으로 보고(위 `+compound-labels`), `price_missing`·`terms_missing`에서 퍼널·분석 이벤트 측정 문장(퍼널 화살표·단계별 이탈·snake_case 이벤트 이름·세션 ID·조회수·'유료 주문과 구분')과 조건을 앞에 둔 CTA('확인된 경우 “구매하기”'), `[가격 확인 필요]` 표시 CTA를 면제한다(2026-09-25 MAPDAL 재채점 오탐 재현). 카피 안 화살표·'오픈 이벤트'·블로그·다른 문장의 조건·'확정된 가격으로 구매'는 계속 잡는다. 품질 기준선 v1과 품질 수정 v1 뒤 재평가는 이전 사전 `compliance-lexicon-2026-09-23.2`로 채점했다. 사전·판정이 바뀐 뒤 이전 run과 비교하려면 두 run을 모두 재채점한다([같은 저울 재채점](#6-같은-저울-재채점regrade_run)). 어휘 사전(`lib/graders/compliance-lexicon.ts`)은 버전(`compliance-lexicon-YYYY-MM-DD.N`)과 공식 출처 URL(국가법령정보센터)을 가진다. 판정 로직과 사전을 나눠 사전만 개정할 수 있다.
+`checkCompliance(text,{facts})`가 문장 단위로 8개 범주를 점검하고 `{version,issues,notice}`를 반환한다. 현재 사전은 `compliance-lexicon-2026-09-25.2`다. `.2`는 `.1`(측정 v2)에 두 가지를 더했다: 합성 판정 라벨 표 열을 규칙 칸으로 보고(위 `+compound-labels`), `price_missing`·`terms_missing`에서 퍼널·분석 이벤트 측정 문장(퍼널 화살표·단계별 이탈·snake_case 이벤트 이름·세션 ID·조회수·'유료 주문과 구분')과 조건을 앞에 둔 CTA('확인된 경우 “구매하기”', '정상 작동한 뒤: “구매하기”')를 면제한다(2026-09-25 MAPDAL 재채점 오탐 재현). 조건 없이 `[가격 확인 필요]` 표시만 붙인 구매 문구는 품질 수정 v1 결정대로 경고를 남긴다. 카피 안 화살표·'오픈 이벤트'·블로그·다른 문장의 조건·'확정된 가격으로 구매'는 계속 잡는다. 품질 기준선 v1과 품질 수정 v1 뒤 재평가는 이전 사전 `compliance-lexicon-2026-09-23.2`로 채점했다. 사전·판정이 바뀐 뒤 이전 run과 비교하려면 두 run을 모두 재채점한다([같은 저울 재채점](#6-같은-저울-재채점regrade_run)). 어휘 사전(`lib/graders/compliance-lexicon.ts`)은 버전(`compliance-lexicon-YYYY-MM-DD.N`)과 공식 출처 URL(국가법령정보센터)을 가진다. 판정 로직과 사전을 나눠 사전만 개정할 수 있다.
 
 | 범주 | 점검 내용 | 등급 |
 |---|---|---|

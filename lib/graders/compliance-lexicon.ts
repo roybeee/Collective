@@ -29,8 +29,9 @@ const M=HELD_MARK,AFTER_CONFIRM='(?:확정|확인|입력|등록)\\s?(?:뒤|후|�
 const CTA_HELD=[`${M}[^.\\n]{0,12}(?:보류(?!\\s?없)|미사용)`,`${M}[^.\\n]{0,12}${AFTER_CONFIRM}[^.\\n]{0,12}(?:넣|추가|적|쓰|사용|노출|반영|바꾸|바꾼|바꿉|바꿔|교체|전환|변경)`,
  `${M}[^.\\n]{0,12}${AFTER_CONFIRM}에?\\s?(?:[)）|]|$)`,`${M}[^.\\n]{0,8}(?:사용|노출)\\s?여부[^.\\n]{0,16}(?:결정|판단|검토)`,
  `${AFTER_CONFIRM}[^.\\n]{0,20}${M}[^.\\n]{0,12}(?:으로|로)\\s?(?:바꾸|바꾼|바꿉|바꿔|교체|전환|변경|추가|넣)`,`${M}[^.\\n]{0,12}확인\\s?계획(?:에|으로)`,
- // 같은 절에서 구매 문구 앞에 확정·확인 조건이 먼저 오는 계획('가격과 판매 조건이 확인된 경우 “구매하기”'). '확정된 가격으로 지금 구매'처럼 조건이 아닌 수식은 면제하지 않는다.
- `(?:확정|확인)(?:되면|되고|된\\s?(?:경우|뒤|후|때|다음))[^.\\n]{0,40}${M}`].join('|');
+ // 같은 절에서 구매 문구 앞에 확정·확인·작동 조건이 먼저 오는 계획('가격과 판매 조건이 확인된 경우 “구매하기”', '결제 페이지가 정상 작동한 뒤: “구매하기”').
+ // '확정된 가격으로 지금 구매'처럼 조건이 아닌 수식은 면제하지 않는다. 조건 없이 [가격 확인 필요] 표시만 붙인 구매 문구는 경고를 남긴다(품질 수정 v1 결정).
+ `(?:확정|확인|작동|등록|준비)(?:되면|되고|된\\s?(?:경우|뒤|후|때|다음)|한\\s?(?:뒤|후|다음))[^.\\n]{0,40}${M}`].join('|');
 // 매체 광고비 집행(검색·SNS 광고 운영)은 협찬 게시물이 아니다. 이 문맥의 '유료 광고'는 협찬 표기 대상에서 빼되, 인플루언서·체험단 같은 게시자 문맥이면 그대로 본다.
 // '유료 광고 게시물·포스팅·후기'처럼 게시물을 가리키는 합성어는 집행·예산 문맥이어도 협찬 표기 대상이다.
 const PAID_MEDIA='집행|예산|입찰|매체|광고\\s?(?:세트|관리자|계정|그룹)|캠페인\\s?(?:운영|세팅|설정)|CPC|CPM|CPA|CPV|ROAS|클릭당|노출당|타[기게겟]팅|부스팅|키워드\\s?광고|검색\\s?광고|파워링크|돌리|돌린|돌려|운영|게재|검토|세팅|노출';
@@ -79,8 +80,8 @@ export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:
   {id:'drug_claim',category:'cosmetic_claim',severity:'block',title:'화장품의 의약품 오인 표현',match:'(?:여드름|아토피|피부염|습진|건선|탈모|흉터|상처|염증|무좀|기미)[^.\\n]{0,12}(?:치료|완치|치유|재생|없애|없앤|사라지|사라진|낫)|(?:세포|피부|모발)\\s?재생|의약품\\s?(?:수준|급|효과)|약처럼|처방\\s?(?:없이|받은)',sources:['cosmetics_act']},
   {id:'functional_unverified',category:'cosmetic_claim',severity:'warn',title:'기능성 인증 근거 없는 기능성 표현',match:'미백|주름\\s?(?:개선|완화)|자외선\\s?차단|탈모\\s?(?:증상\\s?)?(?:완화|방지)|여드름성\\s?피부\\s?완화|피부\\s?장벽\\s?(?:강화|개선)|SPF\\s?\\d+|PA\\+',cleared:'기능성\\s?(?:화장품|인증|심사|보고)|식약처\\s?(?:심사|보고|인증)',ledgerKey:'기능성',sources:['cosmetics_act']},
   // ⑦ 전자상거래: 판매 조건·가격 표시 누락.
-  {id:'price_missing',category:'ecommerce_terms',severity:'warn',title:'구매 유도 문구에 가격 표시 누락',match:PURCHASE_CTA,except:MEASUREMENT,held:CTA_HELD,marked:true,cleared:'\\d{1,3}(?:,\\d{3})+\\s?원|\\d+\\s?원|가격[^.\\n]{0,6}\\d',sources:['ecommerce_act']},
-  {id:'terms_missing',category:'ecommerce_terms',severity:'warn',title:'구매 유도 문구에 판매 조건(배송·교환·환불 등) 누락',match:PURCHASE_CTA,except:MEASUREMENT,held:CTA_HELD,marked:true,cleared:'배송|교환|환불|반품|청약\\s?철회|판매\\s?(?:기간|조건)|픽업|수령',sources:['ecommerce_act']},
+  {id:'price_missing',category:'ecommerce_terms',severity:'warn',title:'구매 유도 문구에 가격 표시 누락',match:PURCHASE_CTA,except:MEASUREMENT,held:CTA_HELD,cleared:'\\d{1,3}(?:,\\d{3})+\\s?원|\\d+\\s?원|가격[^.\\n]{0,6}\\d',sources:['ecommerce_act']},
+  {id:'terms_missing',category:'ecommerce_terms',severity:'warn',title:'구매 유도 문구에 판매 조건(배송·교환·환불 등) 누락',match:PURCHASE_CTA,except:MEASUREMENT,held:CTA_HELD,cleared:'배송|교환|환불|반품|청약\\s?철회|판매\\s?(?:기간|조건)|픽업|수령',sources:['ecommerce_act']},
   {id:'discount_basis_missing',category:'ecommerce_terms',severity:'warn',title:'할인 표시에 기준 가격 누락',match:'\\d{1,2}\\s?%\\s?(?:할인|OFF|off|세일)|할인가|특가|반값|[\\d,]+\\s?원\\s?할인',cleared:'정가|정상가|기존\\s?가|할인\\s?전|원래\\s?가격|소비자가',marked:true,sources:['ecommerce_act','fair_labeling']},
   // ⑧ 권리: 아티스트 이름·사진·로고 사용 시 권리 확인 미기재.
   {id:'artist_rights_unconfirmed',category:'rights',severity:'warn',title:'아티스트·유명인 이름·사진·로고 권리 확인 미기재',match:'(?:아티스트|아이돌|멤버(?!십|\\s?전용|\\s?혜택|\\s?등급)|가수|배우|셀럽|연예인|유명인|포토\\s?카드|앨범\\s?(?:재킷|자켓|커버|이미지)|팬아트|초상|타사\\s?로고|방송\\s?(?:캡처|화면)|캐릭터\\s?IP)[^.\\n]{0,20}(?:사용|활용|게시|삽입|노출|넣|합성|인쇄|배치|배경)',cleared:'권리\\s?(?:확인|처리|확보)|초상권|저작권|퍼블리시티|사용\\s?(?:허락|승인|허가|계약)|라이선스|라이센스|소속사[^.\\n]{0,10}(?:승인|확인|허락|협의)',sources:['copyright_act','unfair_competition_act','trademark_act']},
