@@ -96,3 +96,20 @@ git diff --name-only <sha> origin/main -- . ':!docs' ':!*.md' ':!tests' ':!e2e' 
    - Workers CPU 한도 초과
 4. 중단 조건을 넘으면 원인을 기록한다. 기능 스위치가 있는 동작(성장 계획 F2 이후)은 먼저 스위치로 끈다. 코드 문제면 롤백한다.
 5. 롤백은 직전에 `runtime-verified`였던 제품 커밋을 이 체크리스트 1~5단계로 다시 게시하는 것이다. 게시 1회와 같은 시간·크레딧이 들므로 0단계 사전 점검도 다시 한다. 롤백 게시는 `published`와 `/api/version` tree 일치 여부를 기록한다. `main`에는 게시되지 않은 제품 변경이 남으므로 정의상 `runtime-verified`가 아니다. 원인 수정이 병합·게시될 때까지 그 상태를 기록에 남긴다.
+
+## 8. 자동 게시 (ChatGPT 예약 작업)
+
+Sites는 ChatGPT 웹·데스크톱 안에서만 저장·게시되고 외부 API·CLI·웹훅이 없다([Sites 문서](https://learn.chatgpt.com/docs/sites)). 그래서 개발 도구가 게시를 직접 누르지 못한다. 대신 대표가 2026-09-25 ChatGPT 웹의 COLLECTIVE Sites 대화에 예약 작업 `COLLECTIVE 자동 게시`를 만들어 활성화했다. GitHub PR 활동을 트리거로 쓴다([예약 작업 문서](https://learn.chatgpt.com/docs/automations?surface=app)).
+
+- 게시 요청: 개발 도구가 PR 하나를 연다.
+  - 본문에 `PUBLISH-TARGET: <40자 SHA>`와 `PUBLISH-INSTRUCTION: docs/publish/<sha7>.md` 두 줄을 넣는다.
+  - 지시문은 이 체크리스트의 파일 목록·기대 해시 방식이다. 보내기 전에 임시 `GIT_INDEX_FILE`로 목표 tree 재현을 확인한다.
+  - 승인 문구는 지시문과 PR 본문에 적는다.
+- 실행 순서: 라벨 `sites-publish`를 먼저 붙이고, 그다음 지시문 파일 커밋을 push한다. 라벨을 붙이는 것만으로는 실행되지 않는다(작업 생성 때 편집기 보고). push가 PR 활동을 만든다.
+- 작업이 확인하는 것: PR이 열려 있고 라벨이 있는지, 지시문의 목표 커밋 = `PUBLISH-TARGET`인지, 그 커밋이 main에 들어 있는지, 그 커밋의 CI가 success인지. 하나라도 아니면 게시하지 않는다.
+- 작업이 하는 것: 지시문을 실행한다. 환경변수·접근 설정·D1·R2는 바꾸지 않는다. 결과(단계별 결과·해시 불일치 수·`TREE_EMBEDDED`·Sites 버전·deployment ID·Sites 커밋)를 PR 댓글로 남긴다. 라벨은 `sites-published` 또는 `sites-publish-blocked`로 바꾼다. 코드 push·병합·PR 닫기는 하지 않는다.
+- 라벨이 `sites-publish`로 남아 있는 동안에는 그 PR에 push·댓글을 더하지 않는다. 더하면 작업이 다시 실행된다. 결과 댓글을 받은 뒤 게시 기록(6절)을 같은 PR에 더하고 병합한다.
+- `sites-publish` 라벨 PR은 한 번에 하나만 둔다.
+- 0단계 사전 점검(크레딧)은 자동 게시에서 기록되지 않는다. 게시 1회 크레딧은 붙여 넣기 방식과 같다.
+- `runtime-verified`는 여전히 소유자 세션의 `/api/version`(5단계)이 필요하다.
+- 첫 실행 전 확인하지 못한 것(2026-09-25): 예약 작업 안에서 Sites 게시 도구를 쓸 수 있는지, GitHub 트리거가 이 요금제에서 동작하는지. 첫 실행이 멈추면 대표가 같은 지시문을 편집기에 붙여 넣는 방식으로 돌아간다.
