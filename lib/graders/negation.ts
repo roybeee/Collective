@@ -147,8 +147,10 @@ const PRE_NEGATION=/(?:금지된|금지\s?대상인|거절된|사용\s?금지된
 // 주장이 아닌 언급(R3 기준선 S3 실측): 따옴표 안이 주의·금지 규칙 이름('‘할인 마감 문구 주의’ 버전 1', '「할인 마감 문구 주의」')이거나,
 // 대상 뒤가 '여부'('레벨 테스트의 무료 여부')이거나, 대상이 주제어인 절이 '확정 사실이 아니다'로 이어지면('‘무료 레벨 테스트’는 … 확정 사실이 아니므로') 사용이 아니다.
 const RULE_NAME=/(?:주의|금지|경고|보류|피하기|자제)\s*$/,WHETHER=/^[’”"」』]?\s?(?:제공\s?|적용\s?)?여부/;
-const TOPIC_NOT_FACT=/^[^.,’”"」』]{0,20}?[’”"」』]?\s?(?:은|는|도|(?:이)?라는\s?(?:표현|주장|문구)은)[^.]{0,60}?(?:확정|확인된|검증된)\s?(?:사실|정보|혜택)(?:이|가)?\s?아니/;
-const inRuleName=(s:string,start:number)=>[...s.matchAll(QUOTE)].some(m=>{const a=m.index!+1,b=m.index!+m[0].length-1;return start>=a&&start<b&&RULE_NAME.test(s.slice(a,b))});
+const TOPIC_NOT_FACT=/^[^.,’”"」』]{0,20}?[’”"」』]?\s?(?:은|는|도|(?:이)?라는\s?(?:표현|주장|문구)은)[^.]{0,60}?(?:(?:확정|확인된|검증된)\s?(?:사실|정보|혜택)(?:이|가)?\s?아니|(?:확정|확인|검증)(?:되지|하지)\s?않(?:았|은|는|으))/;
+// 캠페인·브리프 목표 원문 인용('캠페인 목표는 ‘… 무료 레벨 테스트 상담 신청을 늘린다’이며')도 입력 인용이다. '메시지 목표는 ‘…’'는 제작 계획이라 아니다.
+const GOAL_CITE=/(?:캠페인|브리프(?:의)?|사업)\s?목표(?:는|은|:|：)\s?$/;
+const inRuleName=(s:string,start:number)=>[...s.matchAll(QUOTE)].some(m=>{const a=m.index!+1,b=m.index!+m[0].length-1;return start>=a&&start<b&&(RULE_NAME.test(s.slice(a,b))||GOAL_CITE.test(s.slice(Math.max(0,m.index!-16),m.index!)))});
 export function negatedAt(s:string,start:number,end:number){
  const a=sentenceOf(s);
  if(PRE_NEGATION.test(s.slice(Math.max(0,start-14),start)))return true;
