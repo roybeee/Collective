@@ -316,3 +316,63 @@ export function registryIssues(now:string,rules:readonly FranchiseRule[]=FRANCHI
  const out=list.flatMap(r=>[...ruleIssues(r,nowMs),...(label(r)!=='?'&&(counts.get(label(r))??0)>1?['duplicate_id']:[])].map(issue=>`${label(r)}:${issue}`));
  return [...new Set([...out,...familyOverlaps(list)])].sort(ascii);
 }
+
+// ── 모집 표현 판정 상수(R2) ──
+// 캡션·발행 게이트 판정기(lib/franchise-compliance.ts)가 쓴다. 공식 규칙의 표현 정규식은 규제 사전(lib/graders/compliance-lexicon.ts 범주 franchise_recruit)에 있고,
+// 여기에는 휴리스틱 표현 정규식·근거 사실 조건·해제 불가 목록만 둔다. 규칙 레지스트리(FRANCHISE_RULES·FRANCHISE_RULES_VERSION)는 바꾸지 않는다.
+export const FRANCHISE_CLAIMS_VERSION='fr-claims@2026-09-25.1';
+// 해제 불가 목록(결정 25, 대표 기본값으로 적용 2026-09-25). 원장·[확인 필요]·인용·관리자·대표 승인 어느 것으로도 풀리지 않는다. 완화는 법률 검토(LR-1) 뒤 코드 PR로만 한다.
+export const FRANCHISE_HARD_BLOCK_IDS=Object.freeze(['h.captive_advisor_phrase','h.net_profit_payback_claims','h.revenue_figures_no_ad','h.wait_bypass_solicitation','kr.fr.association_condition','kr.fr.association_condition_2026','kr.fr.insurance_mark','kr.fr.revenue_guarantee'] as const);
+// 휴리스틱 표현 정규식(문장 단위, 부정문은 판정기가 뺀다). also: 같은 문장에 함께 있어야 함. except: 문장이 맞으면 면제. cleared: 본문에 있으면 해소. title: 화면에 보일 짧은 이름.
+export type ClaimMatcher={readonly title:string;readonly match:string;readonly cleared?:string;readonly also?:string;readonly except?:string};
+// 소비자 문장과 겹치는 비용 낱말('베이킹 클래스 교육비', '로열티 카드')은 가맹 비용이 아니다.
+const CLS_EDU='(?<!(?:클래스|수강|체험|원데이)\\s?)교육비',LOYALTY='로열티(?!\\s?(?:카드|멤버십|회원|포인트|프로그램|적립|클럽))';
+const MATCHERS:Record<string,ClaimMatcher>={
+ // hard_block. '하루 매출의 10%를 기부합니다'는 소비자 기부 문장이다.
+ 'h.revenue_figures_no_ad':{title:'매출·수익률 수치 광고(H6)',match:'(?:평균|월|연|일|하루|직영점|가맹점|점포당|매장당)\\s?(?:평균\\s?)?매출(?:액)?[^.\\n]{0,10}?\\d|매출액\\s?\\d|수익률\\s?\\d|공헌\\s?이익[^.\\n]{0,10}?\\d',except:'매출[^.\\n]{0,4}?\\d+(?:\\.\\d+)?\\s?%[^.\\n]{0,12}(?:기부|후원|환원|적립)'},
+ 'h.net_profit_payback_claims':{title:'순수익·투자금 회수 수치(H6)',match:'(?:순수익|순이익|월\\s?수익|월\\s?수입|순\\s?마진)[^.\\n]{0,8}?\\d|(?:투자금|창업\\s?비용|원금)[^.\\n]{0,6}?회수|\\d+\\s?(?:개월|년)\\s?(?:만에|안에|이내)?\\s?(?:투자금\\s?)?회수|ROI\\s?\\d'},
+ // '전국 가맹점에서 바로 사용 가능한 쿠폰', '가맹점 당일 픽업', '케이크 예약금 미리 받습니다', '대기 없이 바로 픽업'은 소비자 문장이다(가맹·계약 문맥 필요).
+ 'h.wait_bypass_solicitation':{title:'가계약금·바로 계약 같은 대기기간 우회 유도',match:'가계약\\s?(?:금)?|상권\\s?(?:선점|예약)\\s?(?:금|비)|우선\\s?협상\\s?(?:보증금|예약금|권)|(?:예약금|보증금)\\s?(?:선납|먼저|미리)|(?:계약|가맹(?!점))[^.\\n]{0,12}?(?:바로|즉시|당일|대기\\s?없이)|(?:바로|즉시|당일|대기\\s?없이)[^.\\n]{0,8}?(?:가맹\\s?)?(?:계약|가맹금)',also:'가맹(?!점\\s?(?:에서|어디))|계약|창업|점포|상권|개설|본사',except:'구독|정기\\s?배송|렌탈'},
+ 'h.captive_advisor_phrase':{title:'본사 전속 자문으로 7일 계약 같은 문구(H4)',match:'(?:본사|가맹\\s?본부|본부)\\s?(?:전속|소속|지정|제휴)\\s?(?:가맹\\s?거래사|변호사)|(?:가맹\\s?거래사|변호사)\\s?자문(?:으로|이면|시)?\\s?7\\s?일|7\\s?일\\s?(?:만에|안에|이면)\\s?(?:바로\\s?)?계약'},
+ // block_unless_evidence. '멤버십 가입비 무료', '포장 용기 보증금 없음', '교육비 무료 원데이 클래스'는 소비자 문장이다.
+ 'h.zero_cost_claims':{title:'로열티 0원·가맹비 면제 같은 비용 0 표현(H13)',match:`(?:${LOYALTY}|가맹비|가맹\\s?가입비|${CLS_EDU}|(?:가맹|계약\\s?이행)\\s?보증금)\\s?(?:0\\s?원|없음|없는|면제|무료|제로|zero)`,except:'클래스|수강|원데이'},
+ // 아래는 모집 범위(objective_export)에서만 적용한다. 소비자 캠페인 문장('오늘도 완판', '매일 직접 굽는 수제 도넛')은 막지 않는다.
+ 'h.direct_store_popularity':{title:'직영 매장 대기줄·완판·판매량 표현(H14)',match:'완판|품절\\s?(?:대란|행진|사태|임박)?|대기\\s?(?:줄|행렬|번호|시간)|줄\\s?서서|오픈\\s?런|웨이팅|하루\\s?\\d+\\s?(?:개|판|명)|누적\\s?판매\\s?\\d|판매량\\s?\\d|화제의|핫플'},
+ 'h.handmade_claims':{title:'수제 표현',match:'수제|손으로\\s?(?:직접\\s?)?(?:빚|만든|만들|반죽)|핸드\\s?메이드|handmade'},
+ 'h.exclusive_supply_claims':{title:'본사 독점 공급 표현',match:'본사\\s?(?:독점|단독)\\s?(?:공급|납품|유통)|독점\\s?공급'},
+ 'h.collab_rights_claims':{title:'협업·콜라보 표기',match:'콜라보|컬래버(?:레이션)?|협업\\s?(?:메뉴|에디션|제품|굿즈)|collab'},
+ 'h.own_ip_claims':{title:'자체 IP·캐릭터·상표 표현',match:'자체\\s?(?:IP|캐릭터|상표)|자사\\s?(?:캐릭터|IP)'},
+ 'h.heritage_claims':{title:'N년 전통·since 표현',match:'\\d+\\s?년\\s?(?:전통|역사|노하우)|(?:since|Since|SINCE)\\s?\\d{4}|(?:EST|Est)\\.?\\s?\\d{4}'},
+ 'h.direct_to_franchise_inference':{title:'직영점 성과를 가맹점 기대로 잇는 문장(H14)',match:'(?:직영점|본점|1\\s?호점)[^.\\n]{0,30}?(?:가맹점|점주|여러분)[^.\\n]{0,20}?(?:도|에서도)\\s?(?:같은|동일|똑같|기대|가능)'},
+};
+export const FRANCHISE_CLAIM_MATCHERS:Readonly<Record<string,ClaimMatcher>>=Object.freeze(Object.fromEntries(Object.entries(MATCHERS).map(([id,m])=>[id,Object.freeze({...m})])));
+// 근거 조건(이게 만족되면 표현을 쓸 수 있다). hard_block id에는 없다. 보험 표지만 예외다: 제15조의2①의 계약(보험·채무지급보증·공제) 사실은 규칙의 성립 조건이지 해제가 아니다.
+// values: 가맹 값 종류(lib/graders/ledger.ts VALUE_KINDS)의 본문 값이 현재 확정 사실 값과 같아야 함. fact_in_text: 현재 사실 값이 본문에 있어야 함(all이면 모두, marker는 본문 표지).
+// fact_value: 현재 사실 값이 valuePattern에 맞고 notPattern에 맞지 않아야 함. fact_exists: 현재 사실이 있어야 함. 현재 사실 = 정보공개서 현재 등록 버전 근거가 있는 확정 사실(비공개 항목은 확정 사실).
+export type ClaimEvidence=
+ |{readonly kind:'values';readonly valueKinds:readonly string[]}
+ |{readonly kind:'fact_in_text';readonly factKeys:readonly string[];readonly all?:true;readonly marker?:string}
+ |{readonly kind:'fact_value';readonly factKey:string;readonly valuePattern:string;readonly notPattern?:string}
+ |{readonly kind:'fact_exists';readonly factKeys:readonly string[]};
+const EVIDENCE:Record<string,ClaimEvidence>={
+ 'kr.fr.insurance_mark':{kind:'fact_value',factKey:'escrow_insurance',valuePattern:'피해\\s?보상\\s?보험|채무\\s?지급\\s?보증|공제\\s?(?:조합|계약)'},
+ 'kr.fr.store_count_claims':{kind:'values',valueKinds:['매장 수']},
+ 'kr.fr.startup_cost_claims':{kind:'values',valueKinds:['창업비용','가맹비','교육비','가맹 보증금','인테리어 비용','로열티']},
+ 'kr.fr.ip_claims':{kind:'fact_exists',factKeys:['ip_registration']},
+ 'kr.fr.superlative_claims':{kind:'fact_in_text',factKeys:['claim_basis']},
+ 'kr.fr.trade_area_claims':{kind:'fact_in_text',factKeys:['trade_area_source']},
+ 'kr.fr.production_claims':{kind:'fact_value',factKey:'production_method',valuePattern:'자체|직접|직영',notPattern:'OEM|위탁|외주'},
+ 'kr.fr.exclusive_channel_claims':{kind:'fact_value',factKey:'sales_channels',valuePattern:'없음|가맹점\\s?(?:에서만|전용|만)'},
+ 'kr.fr.territory_claims':{kind:'fact_exists',factKeys:['territory_clause']},
+ 'h.zero_cost_claims':{kind:'fact_in_text',factKeys:['required_items_pricing','margin_fee'],all:true},
+ 'h.direct_store_popularity':{kind:'fact_in_text',factKeys:['direct_store_performance'],marker:'직영점\\s?실적'},
+ 'h.handmade_claims':{kind:'fact_value',factKey:'production_method',valuePattern:'수제|손으로|핸드'},
+ 'h.exclusive_supply_claims':{kind:'fact_in_text',factKeys:['required_items_pricing','margin_fee'],all:true},
+ 'h.collab_rights_claims':{kind:'fact_in_text',factKeys:['collab_consent']},
+ 'h.own_ip_claims':{kind:'fact_exists',factKeys:['own_ip_rights']},
+ 'h.heritage_claims':{kind:'fact_in_text',factKeys:['heritage_basis']},
+};
+const freezeEvidence=(e:ClaimEvidence):ClaimEvidence=>Object.freeze('factKeys' in e?{...e,factKeys:Object.freeze([...e.factKeys])}:'valueKinds' in e?{...e,valueKinds:Object.freeze([...e.valueKinds])}:{...e});
+export const FRANCHISE_CLAIM_EVIDENCE:Readonly<Record<string,ClaimEvidence>>=Object.freeze(Object.fromEntries(Object.entries(EVIDENCE).map(([id,e])=>[id,freezeEvidence(e)])));
+// 정규식이 아니라 판정기 로직으로만 구현하는 규칙: H8(가맹 수치 문장의 [사실] 표지·정보공개서 각주), H9(첫 줄 수치 주장의 경고를 차단으로).
+export const FRANCHISE_CLAIM_LOGIC=Object.freeze(['h.fact_opinion_labels','h.headline_claim_block'] as const);

@@ -1,6 +1,7 @@
 import {campaignBudget,statuses,type Campaign} from './agency';
 import {claimGuard} from './campaign-policy';
 import {disclosureLine} from './ai-disclosure';
+import type {VersionState} from './franchise-facts';
 
 export type FactRef={id:string;version:number};
 // materialHash: 소재 입력(브랜드 이름·색 + 사실 {id,version} + 캡션) 지문. 이 필드 이전 소재는 브리프 버전으로 판정한다. current: 서버가 계산한 현재 유효 여부(화면용).
@@ -17,8 +18,12 @@ export type NeedsReview={reason:string;at:string};
 export type PublicationCode={id:string;code:string;type:'coupon'|'pos_tag';storeId:string};
 export type Publication={id:string;campaignId:string;creativeId:string;creativeVersion:number;campaignVersion:number;pngHash:string;factRefs:FactRef[];caption:string;mediaUrl:string;mediaMode?:'auto'|'external';copy?:PublicationCopy;trackingCode?:PublicationCode;scheduledAt:string;plannedCostKRW:number;version:number;status:PublicationStatus;channelId?:string;credentialVersion?:number;limitsVersion?:number;approvedLimits?:{maxPublications:number;maxPlannedCostKRW:number};approvedBy?:string;approvedAt?:string;aiDisclosureConfirmedBy?:string;aiDisclosureConfirmedAt?:string;providerId?:string;providerStatus?:string;error?:string;attemptedAt?:string;attemptRestored?:boolean;needsReview?:NeedsReview|null;invalidatedReason?:string;reconfirmedBy?:string;reconfirmedAt?:string;resolvedBy?:string;resolvedAt?:string;createdAt:string;updatedAt?:string};
 export type PublisherStatus={connected:boolean;channelId?:string;account?:string;version?:number};
-export type CaptionCandidate={artifactId:string;artifactVersion:number;index:number;text:string;issues:string[];aiGenerated:boolean};
-export type ExecutionState={creatives:ExecutionCreative[];publications:Publication[];limits:ExecutionLimits|null;publisher:PublisherStatus;copies:CaptionCandidate[];copyCaptions:boolean};
+// warnings: 가맹 프로필이 있는 브랜드의 가맹 규칙 경고(트랙 R R2). 비가맹 브랜드에는 키가 없다.
+export type CaptionCandidate={artifactId:string;artifactVersion:number;index:number;text:string;issues:string[];aiGenerated:boolean;warnings?:string[]};
+// 가맹 프로필이 있는 브랜드의 발행 화면 정보(트랙 R R2). scope: objective 없는 캠페인은 소비자 캠페인 규칙만 적용한다. blockedFacts: 카드에 쓸 수 없는 사실과 사유.
+// publications: 초안·승인 발행의 가맹 규칙 차단 사유(서버가 같은 조건을 409로 막는다)와 경고. recruitmentWarning: 모집처럼 읽히는 캠페인 경고(승인 화면만, 서버는 막지 않는다).
+export type FranchiseExecution={scope:'consumer';branch:string;versions:{id:string;label:string;registeredAt:string|null;state:VersionState}[];blockedFacts:{id:string;reason:string}[];publications:Record<string,{blockers:string[];warnings:string[]}>;recruitmentWarning:string|null;notice:string;disclaimer:string};
+export type ExecutionState={creatives:ExecutionCreative[];publications:Publication[];limits:ExecutionLimits|null;publisher:PublisherStatus;copies:CaptionCandidate[];copyCaptions:boolean;franchise?:FranchiseExecution};
 export const publicationLabels:Record<PublicationStatus,string>={draft:'승인 전',approved:'실행 승인',submitting:'접수 확인 중',uncertain:'접수 여부 미확인',accepted:'예약 접수',blocked:'공급자 확인 필요',published:'게시 확인',failed:'발행 실패',cancelled:'취소'};
 // 관리자가 Buffer 미접수를 확인하고 차감을 되돌린 시도(attemptRestored)는 한도에서 뺀다.
 export function executionTotals(publications:Publication[]){const attempted=publications.filter(p=>!!p.attemptedAt&&!p.attemptRestored);return {attempts:attempted.length,plannedCostKRW:attempted.reduce((n,p)=>n+p.plannedCostKRW,0)}}
@@ -90,9 +95,10 @@ export function approvalDrift(p:Publication,credential:{channelId?:string;versio
  return drift;
 }
 // 승인 버튼 옆에 보이는 차단 사유. 서버도 같은 조건을 409로 막는다. AI 카피 발행은 AI 생성물 표시 확인란도 체크해야 한다(결정 17).
-export function approvalBlockers({campaign,publication,state,factCount,rightsConfirmed,aiDisclosureConfirmed=false}:{campaign:Pick<Campaign,'status'|'startDate'|'endDate'>&{budget?:number|null;budgetConfirmedAt?:string};publication:Pick<Publication,'scheduledAt'|'creativeId'|'needsReview'|'copy'>&{plannedCostKRW?:number};state:Pick<ExecutionState,'creatives'|'limits'|'publisher'>;factCount:number;rightsConfirmed:boolean;aiDisclosureConfirmed?:boolean}):string[]{
+// franchise: 가맹 규칙 차단 사유(트랙 R R2, ExecutionState.franchise.publications[id]). 없으면 이전과 같은 배열이다.
+export function approvalBlockers({campaign,publication,state,factCount,rightsConfirmed,aiDisclosureConfirmed=false,franchise}:{campaign:Pick<Campaign,'status'|'startDate'|'endDate'>&{budget?:number|null;budgetConfirmedAt?:string};publication:Pick<Publication,'scheduledAt'|'creativeId'|'needsReview'|'copy'>&{plannedCostKRW?:number};state:Pick<ExecutionState,'creatives'|'limits'|'publisher'>;factCount:number;rightsConfirmed:boolean;aiDisclosureConfirmed?:boolean;franchise?:{blockers:string[]}|null}):string[]{
  const creative=state.creatives.find(c=>c.id===publication.creativeId);
- return [...(!state.limits?['한도 미설정 · 기본 한도(발행 1회·0원)를 저장하세요.']:[]),...(!state.publisher.connected?['채널 미연결 · Buffer Instagram 채널을 연결하세요.']:[]),...(!factCount?['사실 없음 · 근거와 유효 기한이 있는 사실을 확정하세요.']:[]),...campaignGateIssues(campaign,publication.scheduledAt),...budgetIssues(campaign,publication.plannedCostKRW||0,state.limits),...(creative?.current===false||publication.needsReview?['사실 변경 · 소재 입력이나 사용한 사실이 바뀌었습니다. 이 초안을 취소하고 새 PNG로 새 초안을 만드세요.']:[]),...(!rightsConfirmed?['권리 확인 필요 · PNG·문구 사용 권리 확인란을 체크하세요.']:[]),...(publication.copy?.aiGenerated&&!aiDisclosureConfirmed?['AI 생성물 표시 확인 필요 · 캡션 끝 AI 생성물 표시 문구를 확인하고 확인란을 체크하세요.']:[])];
+ return [...(!state.limits?['한도 미설정 · 기본 한도(발행 1회·0원)를 저장하세요.']:[]),...(!state.publisher.connected?['채널 미연결 · Buffer Instagram 채널을 연결하세요.']:[]),...(!factCount?['사실 없음 · 근거와 유효 기한이 있는 사실을 확정하세요.']:[]),...campaignGateIssues(campaign,publication.scheduledAt),...budgetIssues(campaign,publication.plannedCostKRW||0,state.limits),...(creative?.current===false||publication.needsReview?['사실 변경 · 소재 입력이나 사용한 사실이 바뀌었습니다. 이 초안을 취소하고 새 PNG로 새 초안을 만드세요.']:[]),...(!rightsConfirmed?['권리 확인 필요 · PNG·문구 사용 권리 확인란을 체크하세요.']:[]),...(publication.copy?.aiGenerated&&!aiDisclosureConfirmed?['AI 생성물 표시 확인 필요 · 캡션 끝 AI 생성물 표시 문구를 확인하고 확인란을 체크하세요.']:[]),...(franchise?.blockers??[])];
 }
 // 화면의 발행 승인 요청 본문. AI 카피 발행에만 'AI 생성물 표시 확인' 체크 값(aiDisclosureConfirmed)을 싣는다(결정 17). 사람 카피·카피 없는 발행은 이전 본문과 같다.
 export function approvalRequest(p:Pick<Publication,'copy'>,state:Pick<ExecutionState,'publisher'|'limits'>|null,aiChecked:boolean){

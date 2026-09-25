@@ -119,9 +119,13 @@ function withoutProhibitedCells(text:string){
   return banned.length?cells.map((c,i)=>banned!.includes(i)?' ':c).join('|'):line;
  }).join('\n');
 }
-export function checkCompliance(text:string,opts:{facts?:FactLedger|null}={}):ComplianceReport{
- const sections=sectionsOf(withoutProhibitedCells(text)),keys=confirmedKeys(opts.facts);
- return {version:COMPLIANCE_LEXICON.version,issues:COMPLIANCE_LEXICON.rules.flatMap(rule=>ruleIssue(rule,sections,keys)),notice:COMPLIANCE_NOTICE};
+// 가맹 범주(franchise_recruit, 트랙 R R2)는 opts.franchise로 옵트인할 때만 본다. 기본 호출(온라인 채점·평가)의 이슈 목록은 이전과 같다(사전 버전 문자열만 바뀐다).
+// scope 'recruitment' 규칙(생산·판매 채널 표현)은 모집 범위에서만 본다. 캡션·발행 게이트는 이 경로가 아니라 lib/franchise-compliance.ts가 직접 판정한다.
+export type FranchiseComplianceScope={scope:'consumer'|'recruitment'};
+const skipped=(rule:ComplianceRule,franchise?:FranchiseComplianceScope|null)=>rule.category==='franchise_recruit'&&(!franchise||(rule.scope==='recruitment'&&franchise.scope!=='recruitment'));
+export function checkCompliance(text:string,opts:{facts?:FactLedger|null;franchise?:FranchiseComplianceScope|null}={}):ComplianceReport{
+ const sections=sectionsOf(withoutProhibitedCells(text)),keys=confirmedKeys(opts.facts),franchise=opts.franchise;
+ return {version:COMPLIANCE_LEXICON.version,issues:COMPLIANCE_LEXICON.rules.flatMap(rule=>skipped(rule,franchise)?[]:ruleIssue(rule,sections,keys)),notice:COMPLIANCE_NOTICE};
 }
 // 판정은 하향만 한다. 차단(block)이 있으면 사용자 검토 준비를 수정 필요로 내리고, 경고·정보와 무위반은 판정을 바꾸지 않는다.
 export function downgradeVerdict(verdict:QualityReview['verdict'],issues:Pick<ComplianceIssue,'severity'>[]):QualityReview['verdict']{

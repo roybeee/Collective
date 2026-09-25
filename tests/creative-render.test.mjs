@@ -49,7 +49,7 @@ const browserModule=moduleFor('lib/creative-render.ts');
 await browserModule.link((spec,ref)=>moduleFor(resolve(dirname(ref.identifier),spec)+'.ts'));await browserModule.evaluate();
 const {renderFactCard}=browserModule.namespace;
 const liveFact=over=>fact({verifiedAt:iso(Date.now()-60000),validUntil:iso(Date.now()+86400000),...over});
-async function outcome(facts){try{return {png:await renderFactCard(brand,facts)}}catch(e){return {error:e.message}}}
+async function outcome(facts,footnote){try{return {png:await renderFactCard(brand,facts,footnote)}}catch(e){return {error:e.message}}}
 check('other brand fact blocked before canvas',(await outcome([liveFact({brandId:'ofd'})])).error===INVALID&&canvases===0);
 check('future verifiedAt blocked before canvas',(await outcome([liveFact({verifiedAt:iso(Date.now()+3600000)})])).error===INVALID&&canvases===0);
 check('duplicate key blocked before canvas',(await outcome([liveFact({key:'a'}),liveFact({key:'a'})])).error===MIXED&&canvases===0);
@@ -58,5 +58,17 @@ const ok=await outcome([liveFact({value:'휘경동 377 C107'})]);
 check('eligible fact renders PNG data URL',ok.png==='data:image/png;base64,AAAA'&&canvases===1);
 check('rendered card draws brand and fact value',drawn.join('').includes('ODA')&&drawn.join('').includes('휘경동'));
 
+// 트랙 R R1b: 카드 텍스트 묶음(순수). 각주가 없으면 이전 레이아웃(브랜드 → 사실마다 항목·내용)과 같고, 있으면 마지막 묶음이 각주다. H6 수익 항목 카드 거부.
+const {cardTextBlocks}=render,two=[{key:'주소',value:'휘경동 377'},{key:'영업시간',value:'10-22'}];
+const blocks=cardTextBlocks(brand,two),boxHeight=Math.floor((1000-250-24)/2),keyHeight=Math.min(70,boxHeight/3);
+check('card blocks without a footnote match the previous layout',JSON.stringify(blocks.map(b=>[b.role,b.text,b.x,b.y,b.width,b.height,b.maxSize,b.minSize,b.weight]))===JSON.stringify([['brand','ODA',72,64,936,144,64,32,700],['key','주소',98,250,864,keyHeight,25,18,700],['value','휘경동 377',98,250+keyHeight+16,864,boxHeight-keyHeight-32,38,18,500],['key','영업시간',98,250+boxHeight+24,864,keyHeight,25,18,700],['value','10-22',98,250+boxHeight+24+keyHeight+16,864,boxHeight-keyHeight-32,38,18,500]]));
+const NOTE='※ 정보공개서 등록 버전 가상본(등록일 2026-03-15) · 기준 사업연도 2025년 · 확인일 2026-09-25';
+const noted=cardTextBlocks(brand,two,[NOTE]);
+check('card blocks with a footnote add it as the last block under the facts',noted.length===blocks.length+1&&noted.at(-1).role==='footnote'&&noted.at(-1).text===NOTE&&noted.at(-1).y===1012&&noted.at(-1).height===56&&noted.at(-1).maxSize===22&&noted.at(-1).minSize===18&&JSON.stringify(noted.slice(0,-1))===JSON.stringify(blocks));
+const drawnBefore=drawn.length,noteCard=await outcome([liveFact({value:'휘경동 377 C107'})],[NOTE]);
+check('the footnote is drawn after the facts on the card',noteCard.png==='data:image/png;base64,AAAA'&&drawn.slice(drawnBefore).at(-1)===NOTE);
+check('a footnote that does not fit is refused with the footnote message',(await outcome([liveFact({value:'휘경동 377 C107'})],[NOTE,NOTE,NOTE])).error==='각주가 카드에 들어가지 않습니다. 사실을 적게 선택하세요.');
+const REF={disclosureVersionId:'dv-1',fiscalYear:2025,page:3};
+check('a sourced revenue fact is refused before the canvas (H6)',(await outcome([liveFact({key:'월 매출',value:'월 4,200만원',sourceRef:REF})])).error?.includes('H6')&&factCardIssue('oda',[fact({key:'monthly_sales',sourceRef:REF})],now)?.includes('H6')&&factCardIssue('oda',[fact({key:'월 매출'})],now)===null);
 console.log(JSON.stringify({passed,failed:failures.length,failures}));
 assert.deepEqual(failures,[]);

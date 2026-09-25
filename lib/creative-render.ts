@@ -1,6 +1,7 @@
 import type {Brand} from './agency';
 import type {BrandFact} from './brand-facts';
 import {factCardIssue} from './fact-eligibility';
+import {FRANCHISE_FACT_MESSAGES} from './franchise-facts';
 
 const SIZE=1080;
 const FONT='"Apple SD Gothic Neo", "Malgun Gothic", Arial, sans-serif';
@@ -32,7 +33,19 @@ function drawText(context:CanvasRenderingContext2D,layout:ReturnType<typeof fitT
  for(const [index,line] of layout.lines.entries())context.fillText(line,x,y+index*layout.lineHeight);
 }
 
-export async function renderFactCard(brand:Brand,facts:BrandFact[]):Promise<string>{
+// 카드에 그릴 텍스트 묶음과 자리(순수). 브랜드 이름 → 사실마다 항목·내용 → (가맹 사실이면) 정보공개서 각주. 각주가 없으면 이전 레이아웃과 같다.
+// box: 사실 칸 높이(왼쪽 색 막대). 각주는 사실 칸 아래 y=1012부터 폭 936·높이 56px 안에 18~22px로 맞춘다(트랙 R R1b).
+export type CardTextBlock={role:'brand'|'key'|'value'|'footnote';text:string;x:number;y:number;width:number;height:number;maxSize:number;minSize:number;weight:number;box?:number};
+export function cardTextBlocks(brand:Pick<Brand,'name'>,facts:readonly Pick<BrandFact,'key'|'value'>[],footnote:readonly string[]=[]):CardTextBlock[]{
+ const gap=24,top=250,bottom=1000,boxHeight=Math.floor((bottom-top-gap*(facts.length-1))/facts.length),keyHeight=Math.min(70,boxHeight/3);
+ return [
+  {role:'brand',text:brand.name,x:72,y:64,width:936,height:144,maxSize:64,minSize:32,weight:700},
+  ...facts.flatMap((f,index):CardTextBlock[]=>{const y=top+index*(boxHeight+gap);return [{role:'key',text:f.key,x:98,y,width:864,height:keyHeight,maxSize:25,minSize:18,weight:700,box:boxHeight},{role:'value',text:f.value,x:98,y:y+keyHeight+16,width:864,height:boxHeight-keyHeight-32,maxSize:38,minSize:18,weight:500}]}),
+  ...(footnote.length?[{role:'footnote' as const,text:footnote.join('\n'),x:72,y:1012,width:936,height:56,maxSize:22,minSize:18,weight:500}]:[]),
+ ];
+}
+
+export async function renderFactCard(brand:Brand,facts:BrandFact[],footnote:string[]=[]):Promise<string>{
  if(typeof document==='undefined')throw new Error('이미지 제작은 브라우저에서 실행하세요.');
  const issue=factCardIssue(brand.id,facts);if(issue)throw new Error(issue);
  if(document.fonts)await document.fonts.ready;
@@ -42,16 +55,21 @@ export async function renderFactCard(brand:Brand,facts:BrandFact[]):Promise<stri
  context.fillStyle='#ffffff';context.fillRect(0,0,SIZE,SIZE);
  context.fillStyle=color;context.fillRect(0,0,SIZE,24);
  context.textBaseline='top';context.fillStyle='#172018';
- drawText(context,fitText(context,brand.name,936,144,64,32,700),72,64);
- const gap=24,top=250,bottom=1000,boxHeight=Math.floor((bottom-top-gap*(facts.length-1))/facts.length);
- const layouts=facts.map(f=>({key:fitText(context,f.key,864,Math.min(70,boxHeight/3),25,18,700),value:fitText(context,f.value,864,boxHeight-Math.min(70,boxHeight/3)-32,38,18)}));
+ const blocks=cardTextBlocks(brand,facts,footnote),fit=(b:CardTextBlock)=>fitText(context,b.text,b.width,b.height,b.maxSize,b.minSize,b.weight);
+ drawText(context,fit(blocks[0]),blocks[0].x,blocks[0].y);
+ const pairs=facts.map((_,index)=>[blocks[1+2*index],blocks[2+2*index]] as const);
+ const layouts=pairs.map(([key,value])=>({key:fit(key),value:fit(value)}));
+ const note=blocks.find(b=>b.role==='footnote');
+ let noteLayout:ReturnType<typeof fitText>|null=null;
+ if(note){try{noteLayout=fit(note)}catch{throw new Error(FRANCHISE_FACT_MESSAGES.footnoteTooLong)}}
  for(const [index,fact] of facts.entries()){
-  const y=top+index*(boxHeight+gap),layout=layouts[index];
-  context.fillStyle=color;context.fillRect(72,y,5,boxHeight);
-  context.fillStyle='#172018';drawText(context,layout.key,98,y);
-  drawText(context,layout.value,98,y+Math.min(70,boxHeight/3)+16);
+  const [key,value]=pairs[index],layout=layouts[index];
+  context.fillStyle=color;context.fillRect(72,key.y,5,key.box??0);
+  context.fillStyle='#172018';drawText(context,layout.key,key.x,key.y);
+  drawText(context,layout.value,value.x,value.y);
   if(!fact.value)throw new Error('빈 사실은 이미지로 제작할 수 없습니다.');
  }
+ if(note&&noteLayout){context.fillStyle='#172018';drawText(context,noteLayout,note.x,note.y)}
  const png=canvas.toDataURL('image/png');
  if(!png.startsWith('data:image/png;base64,'))throw new Error('PNG 파일을 만들지 못했습니다.');
  return png;

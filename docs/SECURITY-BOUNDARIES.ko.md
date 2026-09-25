@@ -4,7 +4,7 @@
 
 ## 역할별 권한 (이메일 모드)
 
-마지막 갱신: 2026-09-25 KST (트랙 R R1a·R4b: `/api/franchise` 가맹 설정·리드 원장·연락처 열람·정보주체 요청 행 추가, 대표 결정 22. 검토 반영: 설정 정정·다시 사용 행, 출처 고지 `record_source_notice` 행. 이전: F4a 캠페인 삭제 영향 조회 행·결정 7 규칙 보존, F5 채널 연결 브랜드·지점 단위, PR 6c 아카이브 원본 파일 삭제 행)
+마지막 갱신: 2026-09-25 KST (트랙 R R1b: 가맹 사실 저장 조건과 `rebase_facts` 행. 이전: 트랙 R R1a·R4b: `/api/franchise` 가맹 설정·리드 원장·연락처 열람·정보주체 요청 행 추가, 대표 결정 22. 검토 반영: 설정 정정·다시 사용 행, 출처 고지 `record_source_notice` 행. 이전: F4a 캠페인 삭제 영향 조회 행·결정 7 규칙 보존, F5 채널 연결 브랜드·지점 단위, PR 6c 아카이브 원본 파일 삭제 행)
 
 같은 워크스페이스의 계정은 대표(owner)·관리자(admin)·직원(member) 중 하나다. 대표는 DB에 따로 저장하지 않고 같은 워크스페이스에서 가장 먼저 만든 관리자 계정으로 계산한다(`lib/auth-session.ts` `roleSql`). 판정은 서버 API가 하며, 화면에서 버튼을 숨기는 것은 보조 수단이다. 직원이 관리자 전용 작업을 요청하면 403이다. legacy 모드(로컬 개발·E2E)의 헤더 사용자는 모든 권한을 가진다.
 
@@ -19,8 +19,9 @@
 | 캠페인 삭제 | `/api/action` `delete_campaign` | 허용 | 허용 | 403 |
 | 캠페인 삭제 영향 조회(kind별 삭제·보존 건수) | `/api/campaigns/[id]/deletion` GET | 허용 | 허용 | 403 |
 | 브랜드 지식 수정 | `/api/action` `save_brand` | 허용 | 허용 | 403 |
-| 브랜드 사실 후보 제안·후보 수정 | `/api/brand-facts` `save_fact` (`candidate`) | 허용 | 허용 | 허용 |
-| 브랜드 사실 확정·거절, 확정·거절된 사실 수정 | `/api/brand-facts` `save_fact` | 허용 | 허용 | 403 |
+| 브랜드 사실 후보 제안·후보 수정(가맹 항목은 `r_franchise` 꺼짐 409, 정보공개서 근거를 주면 같은 브랜드 현재 버전만) | `/api/brand-facts` `save_fact` (`candidate`) | 허용 | 허용 | 허용 |
+| 브랜드 사실 확정·거절, 확정·거절된 사실 수정(가맹 항목 확정은 정보공개서 근거 필수·`r_franchise` 꺼짐 409, 사용 거절은 스위치와 무관) | `/api/brand-facts` `save_fact` | 허용 | 허용 | 403 |
+| 가맹 사실을 새 정보공개서 버전으로 옮기기 | `/api/brand-facts` `rebase_facts` | 허용 | 허용 | 403 |
 | 아카이브 자료 추가·후보로 되돌리기 | `/api/archive` `add_source`, `review_source`·`review_sources` (모든 항목이 `candidate`) | 허용 | 허용 | 허용 |
 | 아카이브 자료 확정·사용 제외(일괄 포함), 진단 채택, 의뢰 정보 수정 | `/api/archive` `review_source`·`review_sources` (`confirmed`·`excluded`가 하나라도 있으면), `confirm_diagnosis`, `save_intake` | 허용 | 허용 | 403 |
 | 아카이브 원본 파일 삭제(레코드는 남김, 되돌릴 수 없음) | `/api/archive` `delete_source_file` | 허용 | 허용 | 403 |

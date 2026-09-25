@@ -5,10 +5,12 @@
 // 같은 ## 섹션(렌더본의 #·## 제목과 구분선 사이) 안의 다른 소제목에 있어도 해소한다. also: 같은 문장에 함께 있어야 함. except: 문장이 맞으면 면제.
 // held: 매치가 든 절(쉼표·연결 어미·줄표 사이)에서 매치 자리를 HELD_MARK로 바꾼 문자열이 맞으면 그 매치만 면제(같은 문장의 다른 문구 보류는 면제 사유가 아니다).
 // ledgerKey: 확정 원장 항목 이름이 맞으면 해소. marked: [확인 필요]·미확정 표시 문장은 면제.
+// 가맹 범주(franchise_recruit, 트랙 R R2)는 checkCompliance의 opts.franchise로만 켠다. 기본 호출(온라인 채점·평가)은 이 범주를 보지 않는다.
+// scope 'recruitment': 모집 범위(objective 캠페인·내보내기)에서만 적용한다. 가맹 규칙의 id는 규칙 레지스트리(lib/franchise-rules.ts) id 그대로다.
 export type ComplianceSeverity='block'|'warn'|'info';
-export const COMPLIANCE_CATEGORIES=['platform_review','endorsement','ai_label','ad_message','food_claim','cosmetic_claim','ecommerce_terms','rights'] as const;
+export const COMPLIANCE_CATEGORIES=['platform_review','endorsement','ai_label','ad_message','food_claim','cosmetic_claim','ecommerce_terms','rights','franchise_recruit'] as const;
 export type ComplianceCategory=typeof COMPLIANCE_CATEGORIES[number];
-export type ComplianceRule={id:string;category:ComplianceCategory;severity:ComplianceSeverity;title:string;match:string;context?:string;cleared?:string;also?:string;except?:string;held?:string;ledgerKey?:string;marked?:boolean;sources:string[]};
+export type ComplianceRule={id:string;category:ComplianceCategory;severity:ComplianceSeverity;title:string;match:string;context?:string;cleared?:string;also?:string;except?:string;held?:string;ledgerKey?:string;marked?:boolean;scope?:'recruitment';sources:string[]};
 export const HELD_MARK='⟪M⟫';
 export type ComplianceSource={title:string;url:string};
 
@@ -41,9 +43,16 @@ const PAID_MEDIA='집행|예산|입찰|매체|광고\\s?(?:세트|관리자|계�
 const CREATOR='인플루언서|크리에이터|블로거|유튜버|틱톡커|셀럽|체험단|리뷰어|서포터즈|앰배서더|원고';
 const PAID_POST='유료\\s?광고\\s?(?:용\\s?)?(?:게시(?:물|글)?|포스팅|포스트|후기|리뷰|원고)';
 const PAID_AD=`${PAID_POST}|유료\\s?광고(?:(?<!(?:${PAID_MEDIA})[^.\\n]{0,30}유료\\s?광고)(?![^.\\n]{0,30}(?:${PAID_MEDIA}))|(?<=(?:${CREATOR})[^.\\n]{0,30}유료\\s?광고)|(?=[^.\\n]{0,30}(?:${CREATOR})))`;
+// 가맹 모집(트랙 R R2). 출처 URL은 규칙 레지스트리(lib/franchise-rules.ts LAW·DEC_NOW·NOTICE_2019_8)와 같은 문자열이다(사전은 레지스트리를 import하지 않는다).
+const FR_DRF='https://www.law.go.kr/DRF/lawService.do?OC=test';
+// 소비자 문장과 겹치는 비용 낱말: '베이킹 클래스 교육비', '로열티 카드 적립'은 가맹 비용이 아니다.
+const CLS='(?<!(?:클래스|수강|체험|원데이)\\s?)',LOY='(?!\\s?(?:카드|멤버십|회원|포인트|프로그램|적립|클럽))';
+// 매장 수 주장. lib/graders/ledger.ts STORE_COUNT와 같은 모양에 '오픈 예정 N개'를 더했다(원장 항목이 없어 언제나 근거 없음).
+const FR_STORE_COUNT='(?:전국|국내|총|누적|현재)\\s?\\d[\\d,]*\\s?(?:개|곳)\\s?(?:의\\s?)?(?:매장|점포|가맹점|지점)|(?:가맹점|직영점)\\s?수?\\s?\\d[\\d,]*\\s?(?:개|곳)|(?:매장|점포)\\s?수\\s?\\d[\\d,]*\\s?(?:개|곳)|성업\\s?중(?:인)?\\s?(?:매장|점포|가맹점)?\\s?\\d[\\d,]*\\s?(?:개|곳)|\\d[\\d,]*\\s?호점\\s?(?:돌파|달성|시대|눈앞)|오픈\\s?예정\\s?(?:매장|점포)?\\s?\\d[\\d,]*\\s?(?:개|곳)';
+const FR_COST_LABEL=`가맹비|가맹\\s?가입비|${CLS}교육비|로열티${LOY}|(?:가맹|계약\\s?이행)\\s?보증금|인테리어\\s?(?:비|비용|공사비)`;
 
 export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:string;sources:Record<string,ComplianceSource>;rules:ComplianceRule[]}={
- version:'compliance-lexicon-2026-09-25.5',
+ version:'compliance-lexicon-2026-09-25.6',
  checkedAt:'2026-09-23',
  platformPolicy:'플랫폼별 리뷰 운영정책(예: 지도·예약 플랫폼) 공식 URL은 아직 확인하지 않았다. 게시 전 해당 플랫폼 공식 정책 페이지에서 확인하고, 확인되면 사전 버전을 올려 출처를 추가한다.',
  sources:{
@@ -58,6 +67,9 @@ export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:
   copyright_act:{title:'저작권법',url:law('저작권법')},
   unfair_competition_act:{title:'부정경쟁방지 및 영업비밀보호에 관한 법률(유명인 성명·초상 등 무단 사용)',url:law('부정경쟁방지및영업비밀보호에관한법률')},
   trademark_act:{title:'상표법',url:law('상표법')},
+  franchise_act:{title:'가맹사업거래의 공정화에 관한 법률(법률 제20712호)',url:`${FR_DRF}&target=law&type=XML&MST=268283`},
+  franchise_decree:{title:'가맹사업거래의 공정화에 관한 법률 시행령(대통령령 제36561호, 2026-08-04 시행)',url:`${FR_DRF}&target=eflaw&type=XML&MST=288453&efYd=20260804`},
+  franchise_false_info_notice:{title:'가맹사업거래 상 허위·과장 정보제공행위 등의 유형 지정고시(공정거래위원회고시 제2019-8호, 2019-11-20 시행)',url:`${FR_DRF}&target=admrul&type=XML&ID=2100000183885`},
  },
  rules:[
   // ① 플랫폼 리뷰: 보상 조건부 리뷰 요청, 영수증 리뷰 이벤트, 체험단 대량 리뷰.
@@ -88,5 +100,21 @@ export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:
   {id:'discount_basis_missing',category:'ecommerce_terms',severity:'warn',title:'할인 표시에 기준 가격 누락',match:'\\d{1,2}\\s?%\\s?(?:할인|OFF|off|세일)|할인가|특가|반값|[\\d,]+\\s?원\\s?할인',cleared:'정가|정상가|기존\\s?가|할인\\s?전|원래\\s?가격|소비자가',marked:true,sources:['ecommerce_act','fair_labeling']},
   // ⑧ 권리: 아티스트 이름·사진·로고 사용 시 권리 확인 미기재.
   {id:'artist_rights_unconfirmed',category:'rights',severity:'warn',title:'아티스트·유명인 이름·사진·로고 권리 확인 미기재',match:'(?:아티스트|아이돌|멤버(?!십|\\s?전용|\\s?혜택|\\s?등급)|가수|배우|셀럽|연예인|유명인|포토\\s?카드|앨범\\s?(?:재킷|자켓|커버|이미지)|팬아트|초상|타사\\s?로고|방송\\s?(?:캡처|화면)|캐릭터\\s?IP)[^.\\n]{0,20}(?:사용|활용|게시|삽입|노출|넣|합성|인쇄|배치|배경)',cleared:'권리\\s?(?:확인|처리|확보)|초상권|저작권|퍼블리시티|사용\\s?(?:허락|승인|허가|계약)|라이선스|라이센스|소속사[^.\\n]{0,10}(?:승인|확인|허락|협의)',sources:['copyright_act','unfair_competition_act','trademark_act']},
+  // ⑨ 가맹 모집(트랙 R R2, opts.franchise로만 켠다). hard_block(해제 불가)은 등급이 아니라 lib/franchise-rules.ts FRANCHISE_HARD_BLOCK_IDS다. 여기서는 block·warn만 쓴다.
+  // 게이트 판정기(lib/franchise-compliance.ts)는 match·also·except·cleared만 쓰고 ledgerKey·marked·인용 강등은 쓰지 않는다. ledgerKey·marked는 이 사전을 옵트인한 A2 경로용이다.
+  {id:'kr.fr.revenue_guarantee',category:'franchise_recruit',severity:'block',title:'수익·매출 보장 표현',match:'(?:순?수익(?!금)|매출|순이익|(?:월|연|고정|안정)\\s?수입|이익금|투자\\s?수익|수익률)[^.\\n]{0,15}?(?:보장|확정\\s?지급|책임지)|(?:최저|최소)\\s?(?:수익|매출|수입)|(?:보장|확정)\\s?(?:수익|매출|수입)',sources:['franchise_act','franchise_decree','franchise_false_info_notice']},
+  {id:'kr.fr.insurance_mark',category:'franchise_recruit',severity:'block',title:'보험 계약 사실 없는 가맹금 보호 표지',match:'가맹금\\s?(?:안전|안심|보호|100\\s?%)|피해\\s?보상\\s?보험|공제\\s?조합\\s?(?:가입|계약)',sources:['franchise_act']},
+  {id:'kr.fr.association_condition',category:'franchise_recruit',severity:'block',title:'가맹점사업자단체 가입·미가입 조건',match:'(?:가맹점\\s?(?:사업자\\s?)?단체|점주\\s?(?:협의회|단체|모임))[^.\\n]{0,20}?(?:가입|미가입|탈퇴|참여)[^.\\n]{0,15}?(?:조건|해야|하셔야|시에만|불가|제한|불이익)',sources:['franchise_act']},
+  {id:'kr.fr.store_count_claims',category:'franchise_recruit',severity:'block',title:'매장 수 주장',match:FR_STORE_COUNT,ledgerKey:'^(?:franchise_store_count|direct_store_count)$',marked:true,sources:['franchise_false_info_notice','fair_labeling']},
+  {id:'kr.fr.startup_cost_claims',category:'franchise_recruit',severity:'block',title:'창업비용 표현',match:`(?:총\\s?)?창업\\s?(?:비용|자금|금액)|총\\s?투자\\s?(?:비|금|비용)|소자본\\s?창업|개설\\s?비용|(?:${FR_COST_LABEL})\\s?[^.\\n]{0,8}?\\d`,ledgerKey:'^(?:startup_cost_total|franchise_fee|education_fee|franchise_deposit|interior_cost|royalty_fee)$',marked:true,sources:['franchise_decree','franchise_false_info_notice']},
+  {id:'kr.fr.ip_claims',category:'franchise_recruit',severity:'block',title:'특허·상표 등록 표현',match:'특허\\s?(?:받은|등록|기술|출원|인증)|특허\\s?제?\\s?\\d|(?:상표|디자인)\\s?등록|등록\\s?상표|실용\\s?신안',ledgerKey:'^ip_registration$',marked:true,sources:['franchise_decree','franchise_false_info_notice']},
+  {id:'kr.fr.conditional_support',category:'franchise_recruit',severity:'block',title:'조건 없는 지원처럼 보이는 표현',match:`(?:인테리어|가맹비|${CLS}교육비|로열티|창업\\s?자금|장비|집기|오픈\\s?(?:비용|자금|물품))\\s?(?:무상\\s?|전액\\s?)?지원|정부\\s?창업\\s?지원|정부\\s?지원\\s?(?:창업|자금|대출)|창업\\s?대출\\s?(?:연계|알선|지원)|무조건\\s?지원`,except:'(?<!무)조건|요건|대상자|심사|선착순|까지|한정|클래스|수강|원데이',marked:true,sources:['franchise_decree','franchise_false_info_notice']},
+  {id:'kr.fr.superlative_claims',category:'franchise_recruit',severity:'block',title:'업계 최저·1위·최초·유일 표현',match:'업계\\s?(?:최저|최고|최초|1\\s?위|유일)|(?:국내|전국)\\s?(?:1\\s?위|최초|유일|최대)|No\\.?\\s?1(?!\\d)|넘버\\s?원',ledgerKey:'^claim_basis$',marked:true,sources:['franchise_false_info_notice','fair_labeling']},
+  {id:'kr.fr.trade_area_claims',category:'franchise_recruit',severity:'block',title:'상권 분석·유동인구·경쟁 점포 주장',match:'상권\\s?(?:분석|보장|보호|검증)|유동\\s?인구\\s?(?:하루\\s?|일\\s?)?\\d|경쟁\\s?(?:점포|매장|업체)\\s?(?:없|0)',ledgerKey:'^trade_area_source$',marked:true,sources:['franchise_decree','franchise_false_info_notice']},
+  {id:'kr.fr.production_claims',category:'franchise_recruit',severity:'block',scope:'recruitment',title:'자체 공장·직접 생산 표현',match:'자체\\s?(?:공장|생산|제조)|직영\\s?공장|본사\\s?(?:직접\\s?)?(?:공장|생산|제조)|직접\\s?(?:생산|제조|굽|구운|구워|만든|만들)',ledgerKey:'^production_method$',marked:true,sources:['franchise_false_info_notice','franchise_decree']},
+  {id:'kr.fr.exclusive_channel_claims',category:'franchise_recruit',severity:'block',scope:'recruitment',title:'가맹점 전용 판매 표현',match:'가맹점\\s?(?:전용|에서만|한정)|오직\\s?가맹점',ledgerKey:'^sales_channels$',marked:true,sources:['franchise_false_info_notice']},
+  {id:'kr.fr.territory_claims',category:'franchise_recruit',severity:'warn',title:'독점 상권·영업지역 보장 표현',match:'독점\\s?(?:상권|영업\\s?(?:지역|권))|영업\\s?지역\\s?(?:보장|보호)|상권\\s?독점',ledgerKey:'^territory_clause$',sources:['franchise_act','franchise_decree']},
+  {id:'kr.ad.endorsement_disclosure',category:'franchise_recruit',severity:'warn',title:'경제적 이해관계 표시 없는 점주 후기',match:'(?:가맹\\s?)?점주\\s?(?:님\\s?)?(?:후기|인터뷰|추천|이야기|증언)',cleared:'광고|협찬|경제적\\s?(?:대가|이해관계)|대가를?\\s?받',sources:['endorsement_guideline','fair_labeling']},
+  {id:'kr.ad.virtual_human_label',category:'franchise_recruit',severity:'warn',title:'가상인물 표시 없는 AI 가상인물',match:'(?:AI|가상)\\s?(?:점주|인물|모델|아바타|인플루언서)',cleared:'가상\\s?인물(?:임|입니다|\\s?표시)|AI\\s?생성\\s?인물',sources:['endorsement_guideline','fair_labeling']},
  ],
 };

@@ -8,6 +8,7 @@ import {anonymousReachable,approvalBlockers,approvalDrift,approvalRequest,autoRe
 import {renderFactCard} from '@/lib/creative-render';
 import {AI_DISCLOSURE_LINE,disclosureLine} from '@/lib/ai-disclosure';
 import {factLabel} from '@/lib/fact-catalog';
+import {costDetailLine,factHeading,footnoteLines,franchiseFactUseIssue,FRANCHISE_FACT_MESSAGES,type VersionState} from '@/lib/franchise-facts';
 import type {Store} from '@/lib/store-marketing';
 import {BrandFactsPanel} from './brand-facts-panel';
 import {adminRequestNote} from './auth-client';
@@ -22,6 +23,10 @@ async function request<T=unknown>(path:string,input?:Record<string,unknown>):Pro
 type BufferChoices={token:string;organizations:{id:string;name:string}[];organizationId:string;channels:{id:string;name:string;paused:boolean}[]};
 type ProviderAudit={providerAudit?:{providerId:string;message:string}};
 type ActionResult=Partial<Publication>&ProviderAudit&{unreachable?:boolean};
+// 트랙 R R1b: 가맹 브랜드의 정보공개서 버전 상태(GET /api/brand-facts franchise 블록). 카드 사실 선택의 비활성 사유와 각주 미리보기에 쓴다.
+type FranchiseVersions={versions:{id:string;label:string;registeredAt:string|null;state:VersionState}[];disclaimer:string};
+// PNG 항목·내용: 가맹 사실은 매장 유형·기준일을 항목에, 포함·불포함·면적을 내용 둘째 줄에 싣는다(서버 캡션 줄과 같은 규칙). 그 밖은 표준 라벨.
+const cardFact=(f:BrandFact)=>f.sourceRef||f.cost?{...f,key:factHeading(f),value:f.cost?f.value+'\n'+costDetailLine(f.cost):f.value}:{...f,key:factLabel(f.key)};
 // ux-2 권고 (3) '주문 장부 열기'의 이동 대상. 지점 캠페인은 목록을 기다리지 않고 그 지점의 주문 장부로 간다. 브랜드 공통 캠페인은 같은 브랜드의 운영 중 지점을 고른다
 // (점포 마케팅은 운영 중 지점만 연다). 목록을 불러오는 중이면 loading, 운영 지점이 없으면 브랜드의 점포 마케팅으로 보낸다. 주소 이동은 pushNav(PR 5a)가 한다.
 // tab:'ledger'는 지점 화면의 주문 장부 탭 값이다(lib/nav-state.ts storeTabs). 캠페인 지점이 보관됐거나 목록에 없으면 점포 마케팅이 다른 운영 지점을 대신 열므로
@@ -46,15 +51,15 @@ function OrderLedgerLink({campaign,stores,error,onRetry}:{campaign:Campaign;stor
  return <div className="flex flex-wrap gap-2 items-end"><label>주문 장부를 열 지점<select className="block border rounded p-2" value={chosen} onChange={e=>setChoice(e.target.value)}><option value="">지점을 선택하세요</option>{target.stores.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label><button type="button" className="border rounded px-3 py-2" disabled={!chosen} onClick={()=>pushNav(ledgerNav(campaign.brandId,chosen))}>주문 장부 열기</button></div>;
 }
 export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand}){
- const [state,setState]=useState<ExecutionState|null>(null),[facts,setFacts]=useState<BrandFact[]>([]),[selected,setSelected]=useState<string[]>([]);
+ const [state,setState]=useState<ExecutionState|null>(null),[facts,setFacts]=useState<BrandFact[]>([]),[selected,setSelected]=useState<string[]>([]),[franchise,setFranchise]=useState<FranchiseVersions|null>(null);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[preview,setPreview]=useState('');
  const [rights,setRights]=useState<Record<string,boolean>>({}),[aiChecks,setAiChecks]=useState<Record<string,boolean>>({}),[buffer,setBuffer]=useState<BufferChoices|null>(null),[resolveIds,setResolveIds]=useState<Record<string,string>>({}),[cancelReasons,setCancelReasons]=useState<Record<string,string>>({});
  const [title,setTitle]=useState(''),[stores,setStores]=useState<Store[]|null>(null),[storesError,setStoresError]=useState(''),[storesTry,setStoresTry]=useState(0),[codeType,setCodeType]=useState('');
  // 관리자 전용 실행(app/api/execution/route.ts adminActions·코드 있는 발행 준비)은 직원에게 숨기고 안내한다. 판정은 서버가 한다.
  const canManage=canChange(useAccount()),autoChecked=useRef(false);
  const reload=useCallback(async()=>{
-  const [next,ledger]=await Promise.all([request<ExecutionState>('/api/execution?campaignId='+encodeURIComponent(campaign.id)),request<{facts:BrandFact[]}>('/api/brand-facts?brandId='+encodeURIComponent(campaign.brandId)+(campaign.storeId?'&storeId='+encodeURIComponent(campaign.storeId):''))]);
-  setState(next);setFacts(effectiveBrandFacts(ledger.facts,campaign.brandId,campaign.storeId));setRights({});setAiChecks({});
+  const [next,ledger]=await Promise.all([request<ExecutionState>('/api/execution?campaignId='+encodeURIComponent(campaign.id)),request<{facts:BrandFact[];franchise?:FranchiseVersions}>('/api/brand-facts?brandId='+encodeURIComponent(campaign.brandId)+(campaign.storeId?'&storeId='+encodeURIComponent(campaign.storeId):''))]);
+  setState(next);setFacts(effectiveBrandFacts(ledger.facts,campaign.brandId,campaign.storeId));setFranchise(ledger.franchise??null);setRights({});setAiChecks({});
  },[campaign.id,campaign.brandId,campaign.storeId]);
  useEffect(()=>{let active=true;void Promise.resolve().then(()=>{if(active)return reload()}).catch(e=>{if(active)setError(e.message)});return ()=>{active=false}},[reload]);
  // 게시 코드(A4-2)의 지점 선택·표시에 쓰는 같은 브랜드 지점 목록. null은 불러오는 중이다. 불러오지 못하면 오류와 다시 시도를 보이고, 지점 이름 대신 ID를 보인다.
@@ -71,11 +76,18 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
  }
  const action=<T=unknown,>(name:string,data:Record<string,unknown>)=>request<T>('/api/execution',{action:name,campaignId:campaign.id,...data});
  const totals=executionTotals(state?.publications||[]),budget=campaignBudget(campaign);
+ // 가맹 브랜드에서 카드에 쓸 수 없는 사실(H6 수익 항목·근거 없음·교체된 버전)의 사유. 서버도 같은 조건을 409로 막는다.
+ const states=Object.fromEntries((franchise?.versions||[]).map(v=>[v.id,v.state])) as Record<string,VersionState>;
+ const blockReason=(f:BrandFact)=>{if(!franchise)return '';const key=franchiseFactUseIssue(f,states);return key?FRANCHISE_FACT_MESSAGES[key]:''};
+ const chosenNotes=franchise?footnoteLines(facts.filter(f=>selected.includes(f.id)),franchise.versions):[];
  async function createCard(){
   const chosen=facts.filter(f=>selected.includes(f.id));
   if(!chosen.length||chosen.length>4)throw new Error('유효한 확인 사실을 1~4개 선택하세요.');
   // PNG에도 내부 key 대신 표준 항목 라벨을 쓴다. 서버 캡션과 같은 규칙이다.
-  const png=await renderFactCard(brand,chosen.map(f=>({...f,key:factLabel(f.key)})));setPreview(png);
+  const blocked=chosen.map(blockReason).find(Boolean);if(blocked)throw new Error(blocked);
+  // 근거 있는 가맹 사실이 있으면 PNG에도 정보공개서 각주를 그린다(서버 캡션에는 서버가 붙인다).
+  const footnote=footnoteLines(chosen,franchise?.versions||[]);if(footnote===null)throw new Error(FRANCHISE_FACT_MESSAGES.staleFact);
+  const png=await renderFactCard(brand,chosen.map(cardFact),footnote);setPreview(png);
   // 소재 제목은 선택이다. 비우면 보내지 않는다(해시·캡션에 들어가지 않는다).
   const name=title.trim();
   await action('save_creative',{campaignVersion:campaign.version,factRefs:chosen.map(f=>({id:f.id,version:f.version})),png,...(name?{title:name}:{})});setTitle('');
@@ -100,7 +112,8 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
   {!state?<p>실행 상태를 불러오고 있습니다.</p>:<>
    <section className="rounded-xl border p-4 space-y-3"><h3 className="font-semibold">1. 안내 카드 만들기</h3>
     <p>현재 유효한 확인 사실만 사용합니다. 브랜드 이름·색이나 사용한 사실이 바뀌면 새 소재를 만들어야 합니다.</p>
-    {facts.length?facts.map(f=><label key={f.id} className="flex gap-2 items-start"><input type="checkbox" checked={selected.includes(f.id)} disabled={busy} onChange={e=>setSelected(ids=>e.target.checked?[...ids,f.id]:ids.filter(id=>id!==f.id))}/><span>{factLabel(f.key)}: {f.value} <small>v{f.version}</small></span></label>):<p>위에서 근거와 유효기한이 있는 사실을 확정하세요.</p>}
+    {facts.length?facts.map(f=>{const reason=blockReason(f);return <label key={f.id} className="flex gap-2 items-start"><input type="checkbox" checked={selected.includes(f.id)} disabled={busy||(!!reason&&!selected.includes(f.id))} onChange={e=>setSelected(ids=>e.target.checked?[...ids,f.id]:ids.filter(id=>id!==f.id))}/><span>{factLabel(f.key)}: {f.value} <small>v{f.version}</small>{reason&&<small className="block">카드에 쓸 수 없음 · {reason}</small>}</span></label>}):<p>위에서 근거와 유효기한이 있는 사실을 확정하세요.</p>}
+    {!!chosenNotes?.length&&<div role="note" className="text-sm"><p>카드·캡션에 붙는 정보공개서 각주</p>{chosenNotes.map(n=><p key={n}>{n}</p>)}<p>{franchise?.disclaimer}</p></div>}
     <label>소재 제목 (선택)<input className="block border rounded p-2 w-full" value={title} maxLength={CREATIVE_TITLE_MAX} placeholder="예: 오픈 주소 안내 v1" disabled={busy} onChange={e=>setTitle(e.target.value)}/></label>
     <p className="text-sm">목록·발행 준비·주문 화면에서 소재를 구분하는 이름입니다({CREATIVE_TITLE_MAX}자 이하). PNG·캡션·해시에 들어가지 않습니다. 비우면 첫 사실 줄과 제작일로 표시합니다.</p>
     <button className="border rounded px-3 py-2" disabled={busy||!selected.length} onClick={()=>void perform(createCard,'1080×1080 PNG와 사실 버전을 저장했습니다.')}>PNG 제작·저장</button>

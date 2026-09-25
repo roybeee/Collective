@@ -12,19 +12,45 @@ const ADDRESS=/[가-힣]{1,12}동\s?\d+(?:-\d+)?[^\n]{0,8}?[A-Z]동\s?\d+\s?호/
 const NON_PRICE=/예산|비용|한도|객단가|매출|목표|광고비|제작비|촬영비|수수료|인건비|임대료|월세|보증금|원가|마진|이익|손익|투자|지원금|배송비|최소\s?주문|이상\s?주문|결제\s?금액|판매액|상금/;
 const num=(s:string)=>Number(s.replace(/,/g,''));
 export const amounts=(s:string)=>[...s.matchAll(/(\d{1,3}(?:,\d{3})+|\d{4,})\s?원|(\d+(?:\.\d+)?)\s?만\s?원/g)].map(m=>String(m[1]?num(m[1]):Math.round(num(m[2])*10000)));
+// 가맹 금액(트랙 R): '870만원'→8700000, '5천만원'→50000000, '1억 2천만원'·'1억 2,000만원'→120000000, '1.2억'→120000000, '5,500,000원'→5500000. 채점기(valueChecks·unconfirmedValueAssertion)는 가맹 종류를 쓰지 않는다.
+const KRW=/(\d[\d,]*(?:\.\d+)?)\s?억(?:\s?(\d[\d,]*(?:\.\d+)?)\s?(천)?\s?만)?(?:\s?원)?|(\d[\d,]*(?:\.\d+)?)\s?(천)?\s?만\s?원|(\d[\d,]*(?:\.\d+)?)\s?천\s?원|(\d[\d,]*)\s?원/g;
+const krwOf=(m:RegExpMatchArray)=>m[1]!==undefined?num(m[1])*1e8+(m[2]!==undefined?num(m[2])*(m[3]?1e7:1e4):0):m[4]!==undefined?num(m[4])*(m[5]?1e7:1e4):m[6]!==undefined?num(m[6])*1e3:num(m[7]);
+export const krwAmounts=(s:string)=>[...s.matchAll(KRW)].map(m=>String(Math.round(krwOf(m))));
 const monthDay=(m:string,d:string)=>`${Number(m)}-${Number(d)}`;
 export const dates=(s:string)=>[...s.matchAll(/(\d{1,2})월\s?(\d{1,2})일|\d{4}[-./](\d{1,2})[-./](\d{1,2})/g)].map(m=>m[1]?monthDay(m[1],m[2]):monthDay(m[3],m[4]));
 const OPEN_DATE=/오픈(?:일)?\s?(?:은|는|:)?\s?\d{1,2}월\s?\d{1,2}일|\d{1,2}월\s?\d{1,2}일\s?(?:에\s?)?(?:오픈|개업|개점)|\d{4}[-.]\d{1,2}[-.]\d{1,2}\s?(?:오픈|개업|개점)/g;
 const minutes=(s:string)=>[...s.matchAll(/(\d+)\s?분/g)].map(m=>String(Number(m[1])));
 const counts=(s:string)=>[...s.matchAll(/(\d[\d,]*(?:\.\d+)?)\s?(만|천)?/g)].map(m=>String(Math.round(num(m[1])*(m[2]==='만'?10000:m[2]==='천'?1000:1))));
+// 매장 수 주장(트랙 R R2): 'N호점 돌파·성업 중 N개·전국 N개 매장'의 N을 정수 문자열로. '2호점 오픈 기념'·'한정 12개'는 매장 수 주장이 아니다.
+const STORE_COUNT=/(?:전국|국내|총|누적|현재)\s?(\d[\d,]*)\s?(?:개|곳)\s?(?:의\s?)?(?:매장|점포|가맹점|지점)|(?:가맹점|직영점)\s?수?\s?(\d[\d,]*)\s?(?:개|곳)|(?:매장|점포)\s?수\s?(\d[\d,]*)\s?(?:개|곳)|성업\s?중(?:인)?\s?(?:매장|점포|가맹점)?\s?(\d[\d,]*)\s?(?:개|곳)|(\d[\d,]*)\s?호점\s?(?:돌파|달성|시대|눈앞)/g;
+export const storeCountClaims=(s:string)=>[...s.matchAll(STORE_COUNT)].map(m=>String(num(m.slice(1).find(x=>x!==undefined)!)));
+const firstInteger=(v:string)=>{const m=/\d[\d,]*/.exec(v);return m?[String(num(m[0]))]:[]};
+// 가맹 비용 라벨 뒤 금액: 라벨 뒤 20자 안, 쉼표·마침표·줄바꿈 전('가맹비 870만원, 교육비 550만원'에서 가맹비는 870만원만). 숫자 사이 쉼표·소수점은 끊지 않는다.
+// 소비자 문장과 겹치는 낱말은 가맹 문맥만 본다('베이킹 클래스 교육비', '로열티 카드', '일회용컵 보증금', '멤버십 가입비'는 가맹 비용이 아니다).
+const COST_CUT=/[\n.。](?!\d)|[,，](?!\d)/;
+function amountsAfter(label:RegExp){
+ const g=new RegExp(label.source,'g');
+ return (s:string)=>[...s.matchAll(g)].flatMap(m=>{const after=s.slice(m.index!+m[0].length,m.index!+m[0].length+20);return krwAmounts(after.split(COST_CUT)[0])});
+}
+export const STARTUP_COST_LABEL=/(?:총\s?)?창업\s?(?:비용|자금|금액)|총\s?투자\s?(?:비|금|비용)?|소자본\s?창업|개설\s?비용/;
 // 원장이 확정할 수 있는 구체 값. body: 본문 문장에서 찾은 값(정규화), ledger: 원장 값에서 찾은 값. 브리프 지시 위반(brief.ts)도 같은 추출을 쓴다.
-type ValueKind={kind:string;key:RegExp;body:(s:string)=>string[];ledger:(v:string)=>string[]};
+// franchise: 가맹 모집 값(트랙 R R2). 가맹 규칙 판정기(lib/franchise-compliance.ts)만 쓰고 채점기는 건너뛴다(채점 결과·GRADERS_VERSION 불변). ruleId: 이 값을 대조하는 가맹 규칙.
+type ValueKind={kind:string;key:RegExp;body:(s:string)=>string[];ledger:(v:string)=>string[];franchise?:true;ruleId?:string};
 export const VALUE_KINDS:ValueKind[]=[
  {kind:'가격',key:/가격|판매가|price|메뉴/i,body:s=>NON_PRICE.test(s)?[]:amounts(s),ledger:amounts},
  {kind:'오픈일',key:/오픈|개점|개업|open/i,body:s=>[...s.matchAll(OPEN_DATE)].flatMap(m=>dates(m[0])),ledger:dates},
  {kind:'도보 시간',key:/도보|거리|접근/,body:s=>[...s.matchAll(/도보\s?\d+\s?분/g)].flatMap(m=>minutes(m[0])),ledger:minutes},
  {kind:'유동인구',key:/유동|상권/,body:s=>[...s.matchAll(/유동\s?인구[^\n.]{0,10}?\d[\d,]*(?:\.\d+)?\s?(?:만|천)?/g)].flatMap(m=>counts(m[0]).slice(-1)),ledger:counts},
+ {kind:'매장 수',key:/^(?:franchise_store_count|direct_store_count)$/,body:storeCountClaims,ledger:firstInteger,franchise:true,ruleId:'kr.fr.store_count_claims'},
+ {kind:'창업비용',key:/^startup_cost_total$/,body:amountsAfter(STARTUP_COST_LABEL),ledger:krwAmounts,franchise:true,ruleId:'kr.fr.startup_cost_claims'},
+ {kind:'가맹비',key:/^franchise_fee$/,body:amountsAfter(/가맹비|가맹\s?가입비/),ledger:krwAmounts,franchise:true,ruleId:'kr.fr.startup_cost_claims'},
+ {kind:'교육비',key:/^education_fee$/,body:amountsAfter(/(?<!(?:클래스|수강|체험|원데이)\s?)교육비/),ledger:krwAmounts,franchise:true,ruleId:'kr.fr.startup_cost_claims'},
+ {kind:'가맹 보증금',key:/^franchise_deposit$/,body:amountsAfter(/(?:가맹|계약\s?이행)\s?보증금/),ledger:krwAmounts,franchise:true,ruleId:'kr.fr.startup_cost_claims'},
+ {kind:'인테리어 비용',key:/^interior_cost$/,body:amountsAfter(/인테리어\s?(?:비용|공사비|비)/),ledger:krwAmounts,franchise:true,ruleId:'kr.fr.startup_cost_claims'},
+ {kind:'로열티',key:/^royalty_fee$/,body:amountsAfter(/로열티(?!\s?(?:카드|멤버십|회원|포인트|프로그램|적립|클럽))/),ledger:krwAmounts,franchise:true,ruleId:'kr.fr.startup_cost_claims'},
 ];
+// 채점기가 쓰는 값 종류(가맹 종류 제외).
+const GRADED_KINDS=VALUE_KINDS.filter(k=>!k.franchise);
 // 예시·확인 필요·미확정 표시가 있는 문장은 단정이 아니다.
 export const MARKED=/\[[^\]]*(?:확인|예시|실제|확정)[^\]]*\]|확인\s?필요|미확정|자료\s?필요|예시/;
 export function confirmedFacts(ctx:GradeContext){
@@ -41,7 +67,7 @@ function addressChecks(text:string,confirmed:{key:string;value:string}[]):Check[
  return [...text.matchAll(ADDRESS)].map(m=>compact(address.value).includes(compact(m[0]))?{}:{hit:`주소 불일치: ${m[0]}`});
 }
 function valueChecks(lines:string[],confirmed:{key:string;value:string}[]):Check[]{
- return VALUE_KINDS.flatMap(kind=>{
+ return GRADED_KINDS.flatMap(kind=>{
   const known=ledgerValues(kind,confirmed);
   if(!known.size)return [];
   return lines.filter(s=>!MARKED.test(s)).flatMap(s=>kind.body(s).map(v=>known.has(v)?{}:{hit:`${kind.kind} 불일치: ${excerpt(s)}`}));
@@ -65,7 +91,7 @@ export const factConflict:Grader={id:'fact_conflict',content:true,grade(item,ctx
 export const unconfirmedValueAssertion:Grader={id:'unconfirmed_value_assertion',content:true,grade(item,ctx){
  if(!isText(item))return verdict('not_applicable');
  if(!ctx.facts)return verdict('not_applicable','원장 없음');
- const confirmed=confirmedFacts(ctx),open=VALUE_KINDS.filter(k=>!ledgerValues(k,confirmed).size);
+ const confirmed=confirmedFacts(ctx),open=GRADED_KINDS.filter(k=>!ledgerValues(k,confirmed).size);
  const found=bodySentences(bodyOf(item)).flatMap(s=>open.filter(k=>k.body(s).length).map(k=>({kind:k.kind,s})));
  if(!found.length)return verdict('not_applicable','미확정 항목의 구체 값 없음');
  return hitsVerdict(found.filter(x=>!MARKED.test(x.s)).map(x=>`미확정 ${x.kind} 단정: ${excerpt(x.s)}`));
