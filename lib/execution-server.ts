@@ -4,7 +4,7 @@ import {confirmedFactContext} from './brand-facts-server';
 import type {BrandFact} from './brand-facts';
 import {evidenceContext} from './ai-context';
 import {factLabel} from './fact-catalog';
-import {approvalDrift,budgetIssues,campaignGateIssues,captionIssues,composeCaption,copyBlocks,executionTotals,providerPublicationStatus,publicationLabels,reviewStatuses,uncertainResolvable,CREATIVE_TITLE_MAX,type CaptionCandidate,type ExecutionCreative,type ExecutionLimits,type ExecutionState,type NeedsReview,type Publication,type PublicationCode,type PublicationCopy,type PublicationStatus,type FactRef} from './execution';
+import {approvalDrift,budgetIssues,campaignGateIssues,captionIssues,composeCaption,copyBlocks,executionTotals,providerPublicationStatus,publicationLabels,reviewStatuses,uncertainResolvable,CREATIVE_TITLE_MAX,type CaptionCandidate,type ExecutionCreative,type ExecutionLimits,type ExecutionState,type FranchiseExecution,type NeedsReview,type Publication,type PublicationCode,type PublicationCopy,type PublicationStatus,type FactRef} from './execution';
 import {isOwnMediaUrl,mediaUrl,pngBytes,publishPublicMedia,retirePublicMedia,sha256,storePngThen,verifyMedia} from './execution-media';
 import {inspectBuffer,verifyBuffer} from './publisher-buffer';
 import {issuePublicationCode} from './publication-codes';
@@ -12,25 +12,70 @@ import {CODE_ALPHABET,CODE_MAX,type TrackingCode} from './tracking-codes';
 import type {Store} from './store-marketing';
 import {assertNotArchived} from './campaign-archive';
 import {AI_DISCLOSURE_LINE,hasKnownOrigin,isAiGenerated} from './ai-disclosure';
+import {factCaption,footnoteIssues,franchiseFactUseIssues,versionStates,FRANCHISE_FACT_MESSAGES,type VersionLite} from './franchise-facts';
+import {hasFranchiseContext,loadFranchiseContext,type FranchiseContext} from './franchise-facts-server';
+import {franchiseGateError,franchiseIssueLabels,judgeFranchiseText,mentionedFranchiseFacts,recruitmentLike,recruitmentWarning,type FranchiseJudgement} from './franchise-compliance';
+import {COMPLIANCE_NOTICE} from './graders/compliance';
+import {GATE_DISCLAIMER} from './franchise-gates';
+import {isInstant} from './franchise-rules';
 
 export type PublisherCredential={secret:string;version:number;channelId:string;account:string;organizationId?:string};
 type Who=Pick<Actor,'id'|'email'>;
 export async function optionalRecord<T>(owner:string,kind:string,id:string){try{return await readRecord<T>(owner,kind,id)}catch(e){if(e instanceof ApiError&&e.status===404)return null;throw e}}
 // 캡션과 PNG에는 내부 key 대신 표준 항목 라벨을 쓴다(data-truth-12).
 const labeledCaption=(facts:Pick<BrandFact,'key'|'value'>[])=>facts.map(f=>factLabel(f.key)+': '+f.value).join('\n');
+// 트랙 R R1b: 정보공개서 근거(sourceRef)·창업비용 상세가 있는 가맹 사실이 있으면 사실 줄에 매장 유형·기준일·포함·불포함을 싣고 캡션 끝에 결정론 각주를 붙인다.
+// 없으면 labeledCaption과 같은 바이트라 기존 소재의 materialHash가 바뀌지 않는다. 참조 버전을 찾지 못하면 null(현재 소재가 아님).
+const sourced=(facts:readonly BrandFact[])=>facts.some(f=>!!f.sourceRef||!!f.cost);
+const creativeCaption=(facts:BrandFact[],versions:readonly VersionLite[])=>sourced(facts)?factCaption(facts,versions):labeledCaption(facts);
+// 사실 사용 게이트(가맹 문맥 브랜드만): 수익 항목(H6)·근거 없는 가맹 항목·교체된 정보공개서 버전의 사실은 소재·발행에 쓰지 않는다.
+function franchiseFactGate(fr:FranchiseContext,facts:BrandFact[]){
+ if(!hasFranchiseContext(fr))return;
+ const issues=franchiseFactUseIssues(facts,fr.versions,stamp());
+ if(issues.length)throw new ApiError(409,issues[0].message);
+}
+// 가맹 모집 규칙 판정(트랙 R R2): 가맹 프로필이 있는 브랜드만 캡션 본문을 직접 판정한다(원장 해소·[확인 필요] 면제·인용 강등 없음). objective가 없는 캠페인은 소비자 범위다.
+// facts는 캠페인 범위의 유효 확정 사실(sourceRef 포함), at은 규칙 선택 시각(발행 예약 시각, 소재·카피는 지금)이다. 가맹 프로필이 없으면 null(비가맹 경로 불변).
+// 규칙 선택 시각은 시간대 있는 ISO 시각만 쓴다. 저장 기록의 예약 시각을 읽을 수 없으면 지금 시각 규칙으로 판정한다(판정을 건너뛰지 않는다).
+const ruleTime=(at:string)=>isInstant(at)?at:stamp();
+function franchiseJudgement(campaign:Campaign,fr:FranchiseContext,facts:BrandFact[],text:string,at:string):FranchiseJudgement|null{
+ return fr.profile?judgeFranchiseText({text,at:ruleTime(at),now:stamp(),scope:'consumer',brandId:campaign.brandId,facts,versions:fr.versions}):null;
+}
+// 차단(해제 불가·근거 필요)이면 409. 승인 입력 확인란·역할(대표 포함)은 이 판정을 바꾸지 못한다.
+function assertFranchiseText(j:FranchiseJudgement|null){const e=j&&franchiseGateError(j);if(e)throw new ApiError(e.status,e.message)}
 // 소재 입력 지문(exec-loop-8): 브랜드 이름·색, 사실 {id,version}, 캡션. 입력이 같으면 브리프 버전이 바뀌어도 소재를 다시 만들 필요가 없다.
 export async function materialHash(brand:Pick<Brand,'name'|'color'>,refs:FactRef[],caption:string){return sha256(new TextEncoder().encode(JSON.stringify([brand.name,brand.color,refs.map(r=>[r.id,r.version]),caption])))}
-async function creativeCurrent(campaign:Campaign,brand:Brand|null,facts:BrandFact[],c:ExecutionCreative){
+async function creativeCurrent(campaign:Campaign,brand:Brand|null,facts:BrandFact[],c:ExecutionCreative,versions:readonly VersionLite[]){
  const used=c.factRefs.map(r=>facts.find(f=>f.id===r.id&&f.version===r.version));
  // 지점 연결 전에 만든 소재는 접수 때 currentCreative가 거부하므로 화면에서도 현재 소재가 아니다(R4).
  if(used.some(f=>!f)||!brand||c.storeId!==campaign.storeId)return false;
  if(!c.materialHash)return c.campaignVersion===campaign.version;
- return c.materialHash===await materialHash(brand,c.factRefs,labeledCaption(used as BrandFact[]));
+ const caption=creativeCaption(used as BrandFact[],versions);
+ return caption!==null&&c.materialHash===await materialHash(brand,c.factRefs,caption);
 }
 export async function getExecution(owner:string,campaign:Campaign):Promise<ExecutionState>{
- const [creatives,publications,limits,credential,brand,facts,copies]=await Promise.all([listRecords<ExecutionCreative>(owner,'execution_creative',campaign.id),listRecords<Publication>(owner,'execution_publication',campaign.id),optionalRecord<ExecutionLimits>(owner,'execution_limits',campaign.id),optionalRecord<PublisherCredential>(owner,'publisher_credential',campaign.brandId),optionalRecord<Brand>(owner,'brand',campaign.brandId),confirmedFactContext(owner,campaign.brandId,campaign.storeId),captionCandidates(owner,campaign)]);
- const current=await Promise.all(creatives.map(c=>creativeCurrent(campaign,brand,facts,c)));
- return {creatives:creatives.map((c,i)=>({...c,objectKey:'',current:current[i]})),publications,limits,publisher:credential?{connected:true,channelId:credential.channelId,account:credential.account,version:credential.version}:{connected:false},copies,copyCaptions:aiCopyCaptionsEnabled()};
+ const [creatives,publications,limits,credential,brand,facts,copies,fr]=await Promise.all([listRecords<ExecutionCreative>(owner,'execution_creative',campaign.id),listRecords<Publication>(owner,'execution_publication',campaign.id),optionalRecord<ExecutionLimits>(owner,'execution_limits',campaign.id),optionalRecord<PublisherCredential>(owner,'publisher_credential',campaign.brandId),optionalRecord<Brand>(owner,'brand',campaign.brandId),confirmedFactContext(owner,campaign.brandId,campaign.storeId),captionCandidates(owner,campaign),loadFranchiseContext(owner,campaign.brandId)]);
+ // 정보공개서 버전은 근거 있는 가맹 사실의 각주 계산에만 쓰인다(근거 없는 사실의 캡션은 버전과 무관하다).
+ const current=await Promise.all(creatives.map(c=>creativeCurrent(campaign,brand,facts,c,fr.versions)));
+ const state:ExecutionState={creatives:creatives.map((c,i)=>({...c,objectKey:'',current:current[i]})),publications,limits,publisher:credential?{connected:true,channelId:credential.channelId,account:credential.account,version:credential.version}:{connected:false},copies,copyCaptions:aiCopyCaptionsEnabled()};
+ // 가맹 프로필이 없는 브랜드는 franchise 키가 없다(비가맹 응답 불변).
+ return fr.profile?{...state,franchise:franchiseExecution(campaign,fr.profile,fr.versions,facts,publications)}:state;
+}
+// 발행 화면의 가맹 정보(트랙 R R2). 초안·승인 발행마다 서버 승인 게이트와 같은 조건(사실 사용·각주·가맹 규칙 판정)의 차단 사유를 계산한다.
+function franchiseExecution(campaign:Campaign,profile:NonNullable<FranchiseContext['profile']>,versions:VersionLite[],facts:BrandFact[],publications:Publication[]):FranchiseExecution{
+ const now=stamp(),states=versionStates(versions,now),live=publications.filter(p=>p.status==='draft'||p.status==='approved');
+ const byId=new Map(franchiseFactUseIssues(facts,versions,now).map(x=>[x.id,x.message]));
+ const verdicts=Object.fromEntries(live.map(p=>{
+  const used=p.factRefs.flatMap(r=>facts.filter(f=>f.id===r.id&&f.version===r.version));
+  const labels=franchiseIssueLabels(judgeFranchiseText({text:p.caption,at:ruleTime(p.scheduledAt),now,scope:'consumer',brandId:campaign.brandId,facts,versions}));
+  const factUse=[...new Set(used.flatMap(f=>byId.has(f.id)?[byId.get(f.id)!]:[]))];
+  const mentioned=mentionedFranchiseFacts({text:p.caption,now,brandId:campaign.brandId,facts,versions});
+  const footnote=footnoteIssues(p.caption,{used:used.filter(f=>!!f.sourceRef),mentioned},versions).length?[FRANCHISE_FACT_MESSAGES.footnoteMissing]:[];
+  return [p.id,{blockers:[...factUse,...footnote,...labels.blockers],warnings:labels.warnings}];
+ }));
+ const text=[campaign.title,campaign.goal,campaign.audience,campaign.channels,...live.map(p=>p.caption)].filter(x=>typeof x==='string').join('\n');
+ return {scope:'consumer',branch:profile.branch,versions:versions.map(v=>({id:v.id,label:v.label,registeredAt:v.registeredAt,state:states[v.id]})),blockedFacts:[...byId].map(([id,reason])=>({id,reason})),publications:verdicts,
+  recruitmentWarning:recruitmentLike(text)?recruitmentWarning(profile.branch):null,notice:COMPLIANCE_NOTICE,disclaimer:GATE_DISCLAIMER};
 }
 export function assertVersion(record:{version:number},version:unknown){if(record.version!==version)throw new ApiError(409,'내용이 변경됐습니다. 새로고침 후 다시 확인하세요.')}
 export async function resolveFacts(owner:string,campaign:Campaign,refs:unknown,until=Date.now()):Promise<BrandFact[]>{
@@ -53,10 +98,18 @@ export async function captionCandidates(owner:string,campaign:Campaign):Promise<
  if(!aiCopyCaptionsEnabled())return [];
  const artifacts=(await listRecords<Artifact>(owner,'artifact',campaign.id)).filter(a=>copySource(a,campaign));
  if(!artifacts.length)return [];
- const {facts}=await evidenceContext(database(),owner,campaign);
- return artifacts.flatMap(a=>copyBlocks(a.content).map((text,index)=>({artifactId:a.id,artifactVersion:a.version,index,text,issues:[...captionIssues(text,facts),...(hasKnownOrigin(a)?[]:[UNKNOWN_ORIGIN])],aiGenerated:isAiGenerated(a)})));
+ const [{facts},fr]=await Promise.all([evidenceContext(database(),owner,campaign),loadFranchiseContext(owner,campaign.brandId)]);
+ // 가맹 프로필이 있는 브랜드: 가맹 규칙 차단은 issues(고를 수 없음), 경고는 warnings. 판정 입력은 모델 입력(evidenceContext)이 아니라 sourceRef가 있는 확정 사실이다.
+ const frFacts=fr.profile?await confirmedFactContext(owner,campaign.brandId,campaign.storeId):[],now=stamp();
+ return artifacts.flatMap(a=>copyBlocks(a.content).map((text,index)=>{
+  const candidate:CaptionCandidate={artifactId:a.id,artifactVersion:a.version,index,text,issues:[...captionIssues(text,facts),...(hasKnownOrigin(a)?[]:[UNKNOWN_ORIGIN])],aiGenerated:isAiGenerated(a)};
+  const j=franchiseJudgement(campaign,fr,frFacts,text,now);
+  if(!j)return candidate;
+  const labels=franchiseIssueLabels(j);
+  return {...candidate,issues:[...candidate.issues,...labels.blockers],warnings:labels.warnings};
+ }));
 }
-async function approvedCopy(owner:string,campaign:Campaign,input:unknown):Promise<PublicationCopy>{
+async function approvedCopy(owner:string,campaign:Campaign,input:unknown,fr?:FranchiseContext):Promise<PublicationCopy>{
  if(!aiCopyCaptionsEnabled())throw new ApiError(409,'AI 작업물 카피를 캡션에 쓰는 기능은 대표가 AI 생성물 표시 문구(결정 17)를 확정할 때까지 꺼져 있습니다. 확인 사실 문구만으로 발행하세요.');
  const ref=(input&&typeof input==='object'?input:{}) as Record<string,unknown>;
  const artifact=await readRecord<Artifact>(owner,'artifact',str(ref.artifactId,'카피 작업물',100,true));
@@ -66,6 +119,9 @@ async function approvedCopy(owner:string,campaign:Campaign,input:unknown):Promis
  if(!text)throw new ApiError(400,'캡션 후보를 선택하세요.');
  const issues=captionIssues(text,(await evidenceContext(database(),owner,campaign)).facts);
  if(issues.length)throw new ApiError(409,'이 카피는 캡션에 쓸 수 없습니다: '+issues.join(', '));
+ // 가맹 규칙(트랙 R R2): 카피 본문을 지금 시각 규칙으로 판정한다. 캡션 전체는 발행 준비·승인 때 예약 시각 규칙으로 다시 판정한다.
+ const context=fr??await loadFranchiseContext(owner,campaign.brandId);
+ if(context.profile)assertFranchiseText(franchiseJudgement(campaign,context,await confirmedFactContext(owner,campaign.brandId,campaign.storeId),text,stamp()));
  // AI 생성물 여부는 작업물 출처(origin)에서 파생해 발행에 기록한다(결정 17). 캡션 표시 줄과 승인 게이트가 이 값을 쓴다.
  return {artifactId:artifact.id,artifactVersion:artifact.version,index,text,aiGenerated:isAiGenerated(artifact)};
 }
@@ -115,8 +171,12 @@ function creativeTitle(value:unknown){
 export async function saveCreative(owner:string,campaign:Campaign,input:Record<string,unknown>){
  assertVersion(campaign,input.campaignVersion);
  const title=creativeTitle(input.title);
- const facts=await resolveFacts(owner,campaign,input.factRefs),caption=labeledCaption(facts);
+ const facts=await resolveFacts(owner,campaign,input.factRefs),fr=await loadFranchiseContext(owner,campaign.brandId);
+ franchiseFactGate(fr,facts);
+ const caption=creativeCaption(facts,fr.versions);
+ if(caption===null)throw new ApiError(409,FRANCHISE_FACT_MESSAGES.staleFact);
  if(caption.length>1800)throw new ApiError(400,'선택한 사실이 너무 깁니다. 짧은 안내 사실을 선택하세요.');
+ if(fr.profile)assertFranchiseText(franchiseJudgement(campaign,fr,await confirmedFactContext(owner,campaign.brandId,campaign.storeId),caption,stamp()));
  const bytes=await pngBytes(input.png),hash=await sha256(bytes),refs=facts.map(f=>({id:f.id,version:f.version}));
  const material=await materialHash(await readRecord<Brand>(owner,'brand',campaign.brandId),refs,caption);
  const prior=(await listRecords<ExecutionCreative>(owner,'execution_creative',campaign.id)).find(c=>c.pngHash===hash&&c.materialHash===material);
@@ -134,13 +194,28 @@ export async function saveCreative(owner:string,campaign:Campaign,input:Record<s
   await recordStatement(owner,'execution_creative',id,creative,campaign.id).run();return {...creative,objectKey:''};
  });
 }
-export async function currentCreative(owner:string,campaign:Campaign,id:string){
+// 현재 소재와 그 사실·가맹 문맥. 발행 준비·승인·접수가 같이 쓴다.
+async function currentCreativeInputs(owner:string,campaign:Campaign,id:string){
  const c=await readRecord<ExecutionCreative>(owner,'execution_creative',id);
  if(c.campaignId!==campaign.id||c.brandId!==campaign.brandId||c.storeId!==campaign.storeId)throw new ApiError(404,'이 캠페인의 소재가 아닙니다.');
- const facts=await resolveFacts(owner,campaign,c.factRefs);
- if(!c.materialHash){if(c.campaignVersion!==campaign.version)throw new ApiError(409,'브리프가 변경됐습니다. 새 소재를 만들어 주세요.');return c}
- if(c.materialHash!==await materialHash(await readRecord<Brand>(owner,'brand',campaign.brandId),c.factRefs,labeledCaption(facts)))throw new ApiError(409,'소재 입력(브랜드 이름·색·사실·캡션)이 바뀌었습니다. 새 소재를 만들어 주세요.');
- return c;
+ const facts=await resolveFacts(owner,campaign,c.factRefs),fr=await loadFranchiseContext(owner,campaign.brandId);
+ if(!c.materialHash){if(c.campaignVersion!==campaign.version)throw new ApiError(409,'브리프가 변경됐습니다. 새 소재를 만들어 주세요.');return {creative:c,facts,fr}}
+ const caption=creativeCaption(facts,fr.versions);
+ if(caption===null)throw new ApiError(409,FRANCHISE_FACT_MESSAGES.staleFact);
+ if(c.materialHash!==await materialHash(await readRecord<Brand>(owner,'brand',campaign.brandId),c.factRefs,caption))throw new ApiError(409,'소재 입력(브랜드 이름·색·사실·캡션)이 바뀌었습니다. 새 소재를 만들어 주세요.');
+ return {creative:c,facts,fr};
+}
+export async function currentCreative(owner:string,campaign:Campaign,id:string){return (await currentCreativeInputs(owner,campaign,id)).creative}
+// 가맹 사실 게이트·가맹 규칙 판정·각주 검사(트랙 R R1b·R2). 순서: 사실 사용(H6·근거 없음·교체 버전) → 가맹 규칙 판정(가맹 프로필 브랜드, at 시각 규칙) → 각주.
+// 각주: 캡션에 쓴 근거 있는 가맹 사실(used)과 캡션·카피에 값이 나온 현재 가맹 사실(mentioned)마다 정보공개서 각주 줄이 그대로 있어야 한다(각주를 지운 캡션 409).
+// 가맹 문맥(프로필·버전)이 없는 브랜드는 사실 조회 없이 끝난다(비가맹 경로 불변).
+async function franchiseCaptionGate(owner:string,campaign:Campaign,fr:FranchiseContext,used:BrandFact[],caption:string,at:string){
+ franchiseFactGate(fr,used);
+ if(!hasFranchiseContext(fr))return;
+ const facts=await confirmedFactContext(owner,campaign.brandId,campaign.storeId);
+ assertFranchiseText(franchiseJudgement(campaign,fr,facts,caption,at));
+ const mentioned=mentionedFranchiseFacts({text:caption,now:stamp(),brandId:campaign.brandId,facts,versions:fr.versions});
+ if(footnoteIssues(caption,{used:used.filter(f=>!!f.sourceRef),mentioned},fr.versions).length)throw new ApiError(409,FRANCHISE_FACT_MESSAGES.footnoteMissing);
 }
 // A4-2 게시 코드 선택: 쿠폰·POS 태그만 캡션에 넣는다. 지점 캠페인은 그 지점(다른 지점 거절), 브랜드 공통 캠페인은 같은 브랜드의 운영 지점을 골라야 한다.
 async function publicationCodeChoice(owner:string,campaign:Campaign,raw:unknown){
@@ -164,7 +239,7 @@ async function publicationIdFor(owner:string,campaign:Campaign,creativeId:string
 function schedule(value:unknown){const date=str(value,'예약 시각',50,true);if(!Number.isFinite(Date.parse(date))||Date.parse(date)<Date.now()+300000)throw new ApiError(400,'예약은 현재보다 5분 이상 뒤로 설정하세요.');return new Date(date).toISOString()}
 // 외부 주소를 비우거나 앱 공개 주소를 넣으면 auto: 승인 때 앱이 /media/<sha256>.png를 채운다(exec-loop-2). Cloudinary·R2는 고급 옵션(external)이다.
 export async function savePublication(owner:string,campaign:Campaign,input:Record<string,unknown>,origin:string,who?:Who|null){
- const creative=await currentCreative(owner,campaign,str(input.creativeId,'소재',100,true));
+ const {creative,facts:used,fr}=await currentCreativeInputs(owner,campaign,str(input.creativeId,'소재',100,true));
  const scheduledAt=schedule(input.scheduledAt);await resolveFacts(owner,campaign,creative.factRefs,Date.parse(scheduledAt));
  const raw=str(input.mediaUrl??'','공개 이미지',2000),checked=raw?mediaUrl(raw,creative.pngHash,origin):'',mediaMode=!checked||isOwnMediaUrl(checked,origin)?'auto' as const:'external' as const;
  const plannedCostKRW=num(input.plannedCostKRW,'예정 비용');
@@ -172,8 +247,10 @@ export async function savePublication(owner:string,campaign:Campaign,input:Recor
  const existing=await listRecords<Publication>(owner,'execution_publication',campaign.id);
  if(existing.length>=200)throw new ApiError(409,'캠페인 발행 기록 한도 200개에 도달했습니다. 새 캠페인으로 준비하세요.');
  if(existing.some(p=>p.creativeId===creative.id&&p.scheduledAt===scheduledAt&&p.status!=='cancelled'))throw new ApiError(409,'같은 소재와 시각의 발행이 이미 있습니다. 기존 발행을 확인하세요.');
- const copy=input.copy?await approvedCopy(owner,campaign,input.copy):undefined;
+ const copy=input.copy?await approvedCopy(owner,campaign,input.copy,fr):undefined;
  const choice=input.trackingCode===undefined||input.trackingCode===null?null:await publicationCodeChoice(owner,campaign,input.trackingCode);
+ // 코드 발급 전에 가맹 사실 게이트·가맹 규칙(예약 시각 규칙)·각주를 확인한다(막히면 코드가 발급되지 않는다).
+ await franchiseCaptionGate(owner,campaign,fr,used,composeCaption(copy,creative.caption),scheduledAt);
  // 한도는 AI 생성물 표시 줄·코드 줄을 포함해 검사한다. 발급 전에는 가장 긴 코드(CODE_MAX자)로 재서, 발급 뒤에는 저장만 남게 한다(한도 때문에 발급한 코드가 버려지지 않게).
  const extraLines=[...(copy?.aiGenerated?['AI 생성물 표시 줄']:[]),...(choice?['게시 코드 줄']:[])].join('·');
  if(composeCaption(copy,creative.caption,choice?{type:choice.type,code:CODE_ALPHABET[0].repeat(CODE_MAX)}:undefined).length>2200)throw new ApiError(400,(extraLines?extraLines+'을 포함한 캡션이':'캡션이')+' Instagram 한도 2,200자를 넘습니다. 더 짧은 카피를 고르'+(choice?'거나 코드 없이 준비하세요.':'세요.'));
@@ -193,12 +270,14 @@ export async function publicationFor(owner:string,campaign:Campaign,id:unknown,v
 }
 export async function approvalInputs(owner:string,campaign:Campaign,p:Publication){
  const gate=campaignGateIssues(campaign,p.scheduledAt);if(gate.length)throw new ApiError(409,gate.join(' '));
- const creative=await currentCreative(owner,campaign,p.creativeId);
+ const {creative,facts:used,fr}=await currentCreativeInputs(owner,campaign,p.creativeId);
  // 스위치를 켠 뒤 표시 문구 상수가 바뀌면 남은 초안·승인의 캡션에는 이전 표시 줄이 있다. 재확인으로는 캡션이 바뀌지 않으므로 취소·재준비를 안내한다(결정 17).
  if(p.copy?.aiGenerated===true&&!p.caption.includes(AI_DISCLOSURE_LINE))throw new ApiError(409,'AI 생성물 표시 문구가 준비 뒤 바뀌었습니다. 이 발행을 취소하고 다시 준비하세요.');
  if(creative.version!==p.creativeVersion||creative.pngHash!==p.pngHash||composeCaption(p.copy,creative.caption,p.trackingCode)!==p.caption)throw new ApiError(409,'소재가 변경됐습니다. 다시 준비하세요.');
  // 기록된 AI 생성물 판정(이 필드 이전 기록 포함)이 작업물 출처와 다르면 캡션 표시 줄이 맞지 않으므로 다시 준비하게 한다(결정 17).
- if(p.copy){const copy=await approvedCopy(owner,campaign,p.copy);if(copy.text!==p.copy.text)throw new ApiError(409,'카피 작업물이 바뀌었습니다. 캡션 후보를 다시 고르세요.');if(copy.aiGenerated!==(p.copy.aiGenerated===true))throw new ApiError(409,'카피 작업물의 AI 생성물 판정이 준비 때와 다릅니다. 이 발행을 취소하고 캡션 후보를 다시 골라 준비하세요.')}
+ if(p.copy){const copy=await approvedCopy(owner,campaign,p.copy,fr);if(copy.text!==p.copy.text)throw new ApiError(409,'카피 작업물이 바뀌었습니다. 캡션 후보를 다시 고르세요.');if(copy.aiGenerated!==(p.copy.aiGenerated===true))throw new ApiError(409,'카피 작업물의 AI 생성물 판정이 준비 때와 다릅니다. 이 발행을 취소하고 캡션 후보를 다시 골라 준비하세요.')}
+ // 가맹 사실 게이트·가맹 규칙·각주(트랙 R R1b·R2). 소재·발행 두 행의 캡션을 함께 고쳐 각주를 지워도 여기서 막는다. 승인 입력 확인란·역할(대표 포함)로는 풀리지 않는다.
+ await franchiseCaptionGate(owner,campaign,fr,used,p.caption,p.scheduledAt);
  await resolveFacts(owner,campaign,p.factRefs,Date.parse(p.scheduledAt));schedule(p.scheduledAt);
  const [credential,limits]=await Promise.all([optionalRecord<PublisherCredential>(owner,'publisher_credential',campaign.brandId),optionalRecord<ExecutionLimits>(owner,'execution_limits',campaign.id)]);
  if(!credential)throw new ApiError(409,'채널 미연결 · Buffer Instagram 채널을 연결한 뒤 승인하세요.');
@@ -240,8 +319,14 @@ export async function reservePublication(owner:string,campaign:Campaign,p:Public
  await verifyMedia(p.mediaUrl,p.pngHash,origin);
  const token=await decrypt(credential.secret);
  const pending:Publication={...p,status:'submitting',attemptedAt:stamp(),updatedAt:stamp(),version:p.version+1};
- await recordStatement(owner,'execution_publication',p.id,pending,campaign.id).run();
+ await publicationKeepingReview(owner,pending,campaign.id).run();
  return {pending,token};
+}
+// 발행 행 전체 쓰기(접수 예약·상태 조회). owner 잠금 밖에서 붙는 재검토 표시(가맹 정보공개서 버전 교체, lib/franchise-server.ts versionFactReview)가
+// 읽은 뒤 쓰기 전에 붙었으면 지우지 않는다(saveProviderResult와 같은 취지). 새 행에 재검토 표시가 있거나 저장된 행에 없으면 recordStatement와 같은 바이트다.
+export function publicationKeepingReview(owner:string,p:Publication,campaignId:string){
+ return database().prepare("INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=CASE WHEN json_extract(records.data,'$.needsReview') IS NOT NULL AND json_extract(excluded.data,'$.needsReview') IS NULL THEN json_set(excluded.data,'$.needsReview',json(json_extract(records.data,'$.needsReview'))) ELSE excluded.data END, updated_at=excluded.updated_at WHERE records.owner=excluded.owner")
+  .bind(`${owner}:execution_publication:${p.id}`,owner,'execution_publication',campaignId,JSON.stringify(p),stamp());
 }
 // 공급자 결과는 잠금 재획득 없이 버전 조건부 UPDATE로 저장한다. 접수 중 표시된 needsReview는 유지한다.
 // 반영되지 않으면(changes=0·저장 오류) Buffer 게시 번호를 별도 감사 기록과 응답에 남겨 잃지 않는다(exec-loop-9).

@@ -118,4 +118,14 @@ const staffFact=(await staffServer.listRecords('workspace','brand_fact','oda'))[
 check('member import recorded as candidate with importer',staffFact.status==='candidate'&&staffFact.importedBy?.id==='staff');
 check('member cannot confirm imported candidate',(await staffCall({action:'save_fact',id:staffFact.id,version:1,confirmed:true,data:{brandId:'oda',key:staffFact.key,value:staffFact.value,status:'confirmed',source:'근거',verifiedAt:new Date(Date.now()-60000).toISOString(),validUntil:new Date(Date.now()+86400000).toISOString()}})).status===403);
 check('member may propose a candidate',(await staffCall({action:'save_fact',data:{brandId:'oda',key:'phone',value:'02-000-0000',status:'candidate',source:'',verifiedAt:'',validUntil:''}})).status===200);
+
+// 트랙 R R1b: 가맹 금액 문장(합성)은 메뉴 가격으로 분류하지 않는다. 숫자형 3종은 이 변경 전에 menu_price였다. 소비자 문장 분류는 명시 기대값 그대로다.
+const FR_MONEY=['가맹비 870만원','교육비 550만원','가맹 보증금 500만원','인테리어 비용 3.3㎡당 180만원','총 창업비용 1억 2천만원','가맹비 8,700,000원','교육비 5,500,000원','로열티 월 300,000원'];
+check('franchise money sentences are not guessed as menu prices',FR_MONEY.every(s=>imp.isFranchiseMoney(s)&&imp.guessFactKey(s)!=='menu_price'));
+const CONSUMER={'아메리카노 4,500원':'menu_price','일회용컵 보증금 300원':'menu_price','쿠키 3개 5,000원':'menu_price','베이킹 클래스 교육비 35,000원':'menu_price','멤버십 가입비 10,000원':'menu_price','로열티 카드 적립 시 아메리카노 4,500원':'menu_price','로열티 10% 할인, 아메리카노 4,500원':'menu_price','로열티 5% 적립 라떼 5,000원':'menu_price','로열티 월 1회 무료 음료, 라떼 5,000원':'menu_price','대관 보증금 100만원, 케이크 30,000원':'menu_price','총 투자 없이 즐기는 라떼 5,000원':'menu_price','영업시간 10:00-21:00':'hours','9월 1일 오픈':'opening_date','02-000-0000':'phone','가상시 가상구 가상로 12':'address'};
+check('consumer sentence classification keeps the explicit expectations',Object.entries(CONSUMER).every(([s,k])=>imp.guessFactKey(s)===k&&!imp.isFranchiseMoney(s)));
+const priceChecks=(description,menu='')=>imp.ledgerChecks({...oda,description,knowledge:''},menu?[{...store,menu,address:'',hours:''}]:[],[]).filter(c=>c.key==='menu_price');
+check('brand intro franchise money sentences make no menu price check',priceChecks('가맹 안내. '+FR_MONEY.join('. ')+'.').length===0);
+check('brand intro consumer prices keep their menu price checks',JSON.stringify(priceChecks('일회용컵 보증금 300원. 마르게리타 15,000원. 멤버십 가입비 10,000원.').map(c=>c.value))===JSON.stringify(['300원','15,000원','10,000원']));
+check('store menu lines with franchise money are skipped, consumer lines kept',JSON.stringify(priceChecks('','마르게리타 15,000원\n가맹비 870만원').map(c=>c.value))===JSON.stringify(['15,000원'])&&JSON.stringify(priceChecks('','마르게리타 15,000원\n콜라 2,000원').map(c=>c.value))===JSON.stringify(['15,000원, 2,000원']));
 console.log(JSON.stringify({passed}));

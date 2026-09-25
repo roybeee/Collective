@@ -13,7 +13,8 @@ const passed=[];
 const check=(name,fn)=>{fn();passed.push(name)};
 const categoriesOf=(text,opts)=>[...new Set(checkCompliance(text,opts).issues.map(i=>i.category))];
 
-// 합성 위반 예시: [범주, 문장]. 범주마다 2건 이상.
+// 합성 위반 예시: [범주, 문장, 옵션]. 범주마다 2건 이상. 가맹 모집 범주(franchise_recruit)는 opts.franchise로 옵트인할 때만 본다.
+const RECRUIT={franchise:{scope:'recruitment'}},CONSUMER={franchise:{scope:'consumer'}};
 const violations=[
  ['platform_review','영수증 리뷰 작성 시 음료 1잔을 증정합니다.'],
  ['platform_review','별점 5점 리뷰를 남겨 주시면 다음 방문 때 쓸 쿠폰을 드려요.'],
@@ -170,6 +171,11 @@ const violations=[
  ['ecommerce_terms','## 게시 카피\n블로그에서 소개한 신보, 지금 구매하세요.'],
  ['ecommerce_terms','## 게시 카피\n가격은 매장에서 확인된 뒤 안내합니다. 지금 구매하세요!'],
  ['ecommerce_terms','## 게시 카피\n확정된 가격으로 지금 구매하세요.'],
+ // 가맹 모집(트랙 R R2, 합성 문장): 옵트인한 A2 경로. 캡션·발행 게이트 판정은 tests/franchise-compliance.test.mjs가 본다.
+ ['franchise_recruit','월 순수익 500만원 보장, 지금 가맹 상담하세요.',RECRUIT],
+ ['franchise_recruit','피해보상보험에 가입한 브랜드입니다.',RECRUIT],
+ ['franchise_recruit','자체 공장에서 생산한 반죽을 공급합니다.',RECRUIT],
+ ['franchise_recruit','전국 20개 매장 운영 중인 가상도넛입니다.',RECRUIT],
 ];
 // 합성 정상 예시: [설명, 문장, 옵션]. 추천·보증 표기를 갖춘 협찬 게시물을 포함한다.
 const normals=[
@@ -294,13 +300,13 @@ const normals=[
  ['fake review method never used','직원 5명이 고객인 척 후기를 작성해 평점을 높이는 방식은 이번 캠페인뿐 아니라 이후 어떤 운영 계획에서도 절대 쓰지 않는다.'],
 ];
 
-check('lexicon has a version and eight categories',()=>{assert.match(COMPLIANCE_LEXICON.version,/^compliance-lexicon-\d{4}-\d{2}-\d{2}\.\d+$/);assert.deepEqual([...COMPLIANCE_CATEGORIES],['platform_review','endorsement','ai_label','ad_message','food_claim','cosmetic_claim','ecommerce_terms','rights']);for(const c of COMPLIANCE_CATEGORIES)assert.ok(COMPLIANCE_LEXICON.rules.some(r=>r.category===c),c)});
+check('lexicon has a version and nine categories',()=>{assert.match(COMPLIANCE_LEXICON.version,/^compliance-lexicon-\d{4}-\d{2}-\d{2}\.\d+$/);assert.deepEqual([...COMPLIANCE_CATEGORIES],['platform_review','endorsement','ai_label','ad_message','food_claim','cosmetic_claim','ecommerce_terms','rights','franchise_recruit']);for(const c of COMPLIANCE_CATEGORIES)assert.ok(COMPLIANCE_LEXICON.rules.some(r=>r.category===c),c)});
 check('every rule cites official source links',()=>{for(const r of COMPLIANCE_LEXICON.rules){assert.ok(r.sources.length>0,r.id);for(const s of r.sources){const src=COMPLIANCE_LEXICON.sources[s];assert.ok(src,s);assert.match(src.url,/^https:\/\/www\.law\.go\.kr\//,s)}}});
 check('rules use block, warn or info severities',()=>assert.ok(COMPLIANCE_LEXICON.rules.every(r=>['block','warn','info'].includes(r.severity))));
 check('notice states this is not legal advice',()=>{assert.match(COMPLIANCE_NOTICE,/법률 자문이 아닙니다/);assert.equal(checkCompliance('가상 문장').notice,COMPLIANCE_NOTICE)});
 check('at least two synthetic violations per category (16+)',()=>{assert.ok(violations.length>=16);for(const c of COMPLIANCE_CATEGORIES)assert.ok(violations.filter(v=>v[0]===c).length>=2,c)});
 let detected=0;
-for(const [category,text] of violations)check(`detects ${category}: ${text.slice(0,16)}`,()=>{assert.ok(categoriesOf(text).includes(category),JSON.stringify(checkCompliance(text).issues));detected++});
+for(const [category,text,opts] of violations)check(`detects ${category}: ${text.slice(0,16)}`,()=>{assert.ok(categoriesOf(text,opts).includes(category),JSON.stringify(checkCompliance(text,opts).issues));detected++});
 let falsePositives=0;
 for(const [name,text,opts] of normals)check(`no false positive: ${name}`,()=>{const issues=checkCompliance(text,opts).issues;falsePositives+=issues.length?1:0;assert.deepEqual([...issues],[])});
 check('fake testimonials and missing ad labels are blocking',()=>{assert.ok(checkCompliance(violations[4][1]).issues.some(i=>i.severity==='block'));assert.ok(checkCompliance(violations[10][1]).issues.some(i=>i.ruleId==='ad_label_missing'&&i.severity==='block'))});
@@ -347,5 +353,20 @@ check('a draft label carries promotion words from the following paragraph',()=>a
 const cited='경쟁점 사례: "리뷰 작성 시 음료 증정". 이는 정책 위반 소지가 있어 우리는 쓰지 않는다.';
 check('a quoted competitor example is info, not block',()=>{const issues=checkCompliance(cited).issues;assert.ok(issues.length>0&&issues.every(i=>i.severity==='info'));assert.equal(downgradeVerdict('ready_for_review',issues),'ready_for_review')});
 check('the same wording outside a cited quote stays blocking',()=>assert.ok(checkCompliance('매장 안내: 리뷰 작성 시 음료 증정.').issues.some(i=>i.severity==='block')));
+// 가맹 범주 옵트인(트랙 R R2): 기본 호출은 가맹 범주를 보지 않아 기존 이슈 목록이 같다. 소비자 범위는 모집 범위 전용 규칙(생산·판매 채널)을 건너뛴다.
+const {FRANCHISE_RULES}=await load('lib/franchise-rules.ts');
+const frRules=COMPLIANCE_LEXICON.rules.filter(r=>r.category==='franchise_recruit'),plainIssues=(t,o)=>JSON.stringify(checkCompliance(t,o).issues);
+check('the default call reports no franchise issue on any existing violation or normal text',()=>{for(const [,text,opts] of [...violations,...normals])assert.ok(!checkCompliance(text,opts?.franchise?{...opts,franchise:null}:opts).issues.some(i=>i.category==='franchise_recruit'),text)});
+check('franchise:null and no franchise option give the same report',()=>{for(const [,text] of [...violations,...normals])assert.equal(plainIssues(text,{franchise:null}),plainIssues(text),text)});
+check('consumer scope skips the recruitment-only production and channel rules, recruitment scope applies them',()=>{for(const [id,text] of [['kr.fr.production_claims','자체 공장에서 생산합니다.'],['kr.fr.exclusive_channel_claims','가맹점에서만 파는 도넛입니다.']]){assert.ok(!checkCompliance(text,CONSUMER).issues.some(i=>i.ruleId===id),text);assert.ok(checkCompliance(text,RECRUIT).issues.some(i=>i.ruleId===id),text)}});
+check('consumer scope still applies the franchise-brand rules',()=>assert.ok(checkCompliance('월 순수익 500만원 보장',CONSUMER).issues.some(i=>i.ruleId==='kr.fr.revenue_guarantee')));
+check('a negated guarantee is not flagged in the opt-in path',()=>assert.ok(!checkCompliance('수익을 보장하지 않습니다.',RECRUIT).issues.some(i=>i.ruleId==='kr.fr.revenue_guarantee')));
+const registry=id=>FRANCHISE_RULES.find(r=>r.id===id);
+check('franchise lexicon rules are the 14 official registry rules and their scope matches objective_export',()=>{assert.equal(frRules.length,14);for(const r of frRules){const reg=registry(r.id);assert.ok(reg&&reg.basis==='official'&&reg.scope,r.id);assert.equal(r.scope==='recruitment',reg.scope==='objective_export',r.id);assert.ok(['block','warn'].includes(r.severity),r.id)}});
+check('severity follows the registry tier (hard_block and block_unless_evidence as block, warn as warn)',()=>{for(const r of frRules)assert.equal(r.severity,registry(r.id).tier==='warn'?'warn':'block',r.id)});
+check('every franchise-law source URL of a kr.fr rule is in the registry sourceUrls of the same id',()=>{for(const r of frRules.filter(r=>r.id.startsWith('kr.fr.'))){const urls=registry(r.id).sourceUrls;for(const k of r.sources){const url=COMPLIANCE_LEXICON.sources[k].url;if(k.startsWith('franchise_'))assert.ok(urls.includes(url),r.id+' '+k);else assert.ok(k==='fair_labeling'&&urls.some(u=>u.includes('lsId=002011')),r.id+' '+k)}}});
+check('the false-information notice source carries the formal title',()=>{const t=COMPLIANCE_LEXICON.sources.franchise_false_info_notice.title;assert.match(t,/가맹사업거래 상 허위·과장 정보제공행위 등의 유형 지정고시/);assert.match(t,/제2019-8호/)});
+check('the lexicon version is bumped once to .14 (franchise category on top of .13)',()=>assert.equal(COMPLIANCE_LEXICON.version,'compliance-lexicon-2026-09-25.14'));
+check('a quoted franchise example is info in the opt-in A2 path',()=>{const issues=checkCompliance('경쟁점 사례: “월 순수익 500만원 보장”.',CONSUMER).issues.filter(i=>i.category==='franchise_recruit');assert.ok(issues.length>0&&issues.every(i=>i.severity==='info'))});
 check('detection rate is 100% and false positive rate is 0%',()=>{assert.equal(detected,violations.length);assert.equal(falsePositives,0)});
 console.log(JSON.stringify({passed:passed.length,violations:violations.length,detected,normals:normals.length,falsePositives}));

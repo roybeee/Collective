@@ -4,7 +4,7 @@
 
 ## 역할별 권한 (이메일 모드)
 
-마지막 갱신: 2026-09-25 KST (트랙 R R1a·R4b: `/api/franchise` 가맹 설정·리드 원장·연락처 열람·정보주체 요청 행 추가, 대표 결정 22. 검토 반영: 설정 정정·다시 사용 행, 출처 고지 `record_source_notice` 행. 이전: F4a 캠페인 삭제 영향 조회 행·결정 7 규칙 보존, F5 채널 연결 브랜드·지점 단위, PR 6c 아카이브 원본 파일 삭제 행)
+마지막 갱신: 2026-09-25 KST (트랙 R R2: 발행 승인 행에 가맹 모집 규칙 해제 불가 409, 직원도 보는 정보공개서 버전 요약 행. 트랙 R R1b: 가맹 사실 저장 조건과 `rebase_facts` 행. 이전: 트랙 R R1a·R4b: `/api/franchise` 가맹 설정·리드 원장·연락처 열람·정보주체 요청 행 추가, 대표 결정 22. 검토 반영: 설정 정정·다시 사용 행, 출처 고지 `record_source_notice` 행. 이전: F4a 캠페인 삭제 영향 조회 행·결정 7 규칙 보존, F5 채널 연결 브랜드·지점 단위, PR 6c 아카이브 원본 파일 삭제 행)
 
 같은 워크스페이스의 계정은 대표(owner)·관리자(admin)·직원(member) 중 하나다. 대표는 DB에 따로 저장하지 않고 같은 워크스페이스에서 가장 먼저 만든 관리자 계정으로 계산한다(`lib/auth-session.ts` `roleSql`). 판정은 서버 API가 하며, 화면에서 버튼을 숨기는 것은 보조 수단이다. 직원이 관리자 전용 작업을 요청하면 403이다. legacy 모드(로컬 개발·E2E)의 헤더 사용자는 모든 권한을 가진다.
 
@@ -19,8 +19,10 @@
 | 캠페인 삭제 | `/api/action` `delete_campaign` | 허용 | 허용 | 403 |
 | 캠페인 삭제 영향 조회(kind별 삭제·보존 건수) | `/api/campaigns/[id]/deletion` GET | 허용 | 허용 | 403 |
 | 브랜드 지식 수정 | `/api/action` `save_brand` | 허용 | 허용 | 403 |
-| 브랜드 사실 후보 제안·후보 수정 | `/api/brand-facts` `save_fact` (`candidate`) | 허용 | 허용 | 허용 |
-| 브랜드 사실 확정·거절, 확정·거절된 사실 수정 | `/api/brand-facts` `save_fact` | 허용 | 허용 | 403 |
+| 브랜드 사실 후보 제안·후보 수정(가맹 항목은 `r_franchise` 꺼짐 409, 정보공개서 근거를 주면 같은 브랜드 현재 버전만) | `/api/brand-facts` `save_fact` (`candidate`) | 허용 | 허용 | 허용 |
+| 브랜드 사실 확정·거절, 확정·거절된 사실 수정(가맹 항목 확정은 정보공개서 근거 필수·`r_franchise` 꺼짐 409, 사용 거절은 스위치와 무관) | `/api/brand-facts` `save_fact` | 허용 | 허용 | 403 |
+| 가맹 사실을 새 정보공개서 버전으로 옮기기 | `/api/brand-facts` `rebase_facts` | 허용 | 허용 | 403 |
+| 가맹 브랜드의 정보공개서 버전 요약 보기(버전 id·라벨·등록일·상태, 현재 버전, 사업연도 종료일, 기능 스위치 상태, 분기) | `/api/brand-facts` GET `franchise`, `/api/execution` GET `franchise` | 포함 | 포함 | 포함(후보 사실의 근거 입력과 발행 화면 차단 사유용. 파일 해시·보관 위치·감사 기록은 없고, 가맹 설정 GET `settings`는 403) |
 | 아카이브 자료 추가·후보로 되돌리기 | `/api/archive` `add_source`, `review_source`·`review_sources` (모든 항목이 `candidate`) | 허용 | 허용 | 허용 |
 | 아카이브 자료 확정·사용 제외(일괄 포함), 진단 채택, 의뢰 정보 수정 | `/api/archive` `review_source`·`review_sources` (`confirmed`·`excluded`가 하나라도 있으면), `confirm_diagnosis`, `save_intake` | 허용 | 허용 | 403 |
 | 아카이브 원본 파일 삭제(레코드는 남김, 되돌릴 수 없음) | `/api/archive` `delete_source_file` | 허용 | 허용 | 403 |
@@ -30,7 +32,7 @@
 | HERMES 연결 주소 조회 | `/api/workspace` `connection.endpoint` | 포함 | 포함 | 응답에서 제외 |
 | 채널 연결 변경(워크스페이스 기본·브랜드·지점 단위) | `/api/channels` POST `save_credential`·`revoke_credential` (`brandId`·`storeId` 선택) | 허용 | 허용 | 403 |
 | 사용량 단가 변경 | `/api/usage` POST | 허용 | 허용 | 403 |
-| 발행 설정·승인·실행·취소 | `/api/execution` `connect_buffer`·`save_limits`·`approve`·`execute`·`cancel` | 허용 | 허용 | 403 |
+| 발행 설정·승인·실행·취소(가맹 프로필이 있는 브랜드는 가맹 모집 규칙 판정. 해제 불가 표현은 대표·관리자 승인으로도 409, 결정 25) | `/api/execution` `connect_buffer`·`save_limits`·`approve`·`execute`·`cancel` | 허용 | 허용 | 403 |
 | 가맹 설정(프로필·정보공개서 버전·계약서안 템플릿·개인정보 안내문 등록·사용 중지·다시 사용, 버전 등록일·유효 기간과 템플릿 확인 항목 정정), 설정·감사 기록 조회 | `/api/franchise` `save_profile`·`register_*`·`retire_*`·`amend_disclosure_version`·`amend_contract_template`, GET `settings`·`audit` | 허용(정정은 사유·감사) | 허용(정정은 사유·감사) | 403 |
 | 가맹 리드 등록·문의 조건 수정·연락처 수정(메모 덧붙이기 포함)·출처 고지 기록·일반 단계 이동·일반 단계에서 종결 | `/api/franchise` `create_lead`·`update_task`·`update_contact`·`record_source_notice`·`move_stage` | 허용 | 허용 | 본인 담당만(등록하면 본인 담당). 담당 없는 리드는 먼저 가져온다. 기능 스위치가 꺼지면 409(대표·관리자는 연락처 수정·출처 고지·종결을 계속한다) |
 | 증빙·계약 단계에서 종결, 다시 열기, 개점 | `/api/franchise` `move_stage`(`closed`·`opened`)·`reopen_lead` | 허용 | 허용 | 403 |

@@ -11,7 +11,14 @@ export type BrandFact = {
  validUntil:string;
  version:number;
  updatedAt:string;
+ // 가맹 항목(트랙 R R1b)만: 정보공개서 근거와 창업비용 상세. 없으면 키가 없다(기존 사실 JSON 불변). 모델 입력(lib/ai-context.ts confirmedItem)에는 들어가지 않는다.
+ sourceRef?:FactSourceRef;
+ cost?:FranchiseCostDetail;
 };
+// disclosureVersionId: 같은 브랜드의 franchise_disclosure_version id. fiscalYear: 종료일이 그 달력 연도에 있는 사업연도. page: 정보공개서 쪽(모르면 null). asOf: 매장 수 기준일(KST 'YYYY-MM-DD').
+export type FactSourceRef={disclosureVersionId:string;fiscalYear:number;page:number|null;asOf?:string};
+// 창업비용 구성: 매장 유형별 값과 포함·불포함 항목, 전용면적(㎡, 모르면 null).
+export type FranchiseCostDetail={storeType:string;includes:string[];excludes:string[];areaM2:number|null};
 
 // 지점 사실이 같은 항목의 브랜드 사실을 대신하는지는 카탈로그 key로 판단한다('주소'와 'address'는 같은 항목).
 export function effectiveBrandFacts(facts:BrandFact[],brandId:string,storeId?:string,now=Date.now()):BrandFact[]{

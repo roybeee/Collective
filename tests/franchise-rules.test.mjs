@@ -173,4 +173,13 @@ const gr=gm.namespace;
 const runAll=m=>[m.ruleAt('kr.fr.change_deadlines','2028-01-01'),m.rulesAt('2026-12-31',{tier:'hard_block'}).map(r=>r.id),m.registryIssues(NOW),m.registryIssues(NOW,[{...escrow,sourceUrls:['https://user@www.law.go.kr/x']}]),m.addDays('2027-12-31',120),m.weekdayOf('2028-04-29'),m.toKstDate('2026-10-05T15:30Z'),m.kstMidnight('2026-10-20'),m.compareInstant('2026-10-05T15:30Z','2026-10-06T00:30:00+09:00')];
 check('rules run without clock, randomness, URL, process or fetch and match the normal run',same(runAll(gr),plain(runAll(fr))));
 
+// 11) R2 모집 표현 판정 상수: 규칙 레지스트리(54개·버전)는 그대로이고 별도 상수만 더했다. 상수는 얼려져 있고, 해제 불가 목록은 레지스트리 hard_block(적용 범위 있음)과 같다.
+check('R2 claim constants are frozen, deeply',Object.isFrozen(fr.FRANCHISE_HARD_BLOCK_IDS)&&Object.isFrozen(fr.FRANCHISE_CLAIM_MATCHERS)&&Object.values(fr.FRANCHISE_CLAIM_MATCHERS).every(Object.isFrozen)&&Object.isFrozen(fr.FRANCHISE_CLAIM_EVIDENCE)&&Object.values(fr.FRANCHISE_CLAIM_EVIDENCE).every(e=>Object.isFrozen(e)&&[e.factKeys,e.valueKinds].every(x=>x===undefined||Object.isFrozen(x)))&&Object.isFrozen(fr.FRANCHISE_CLAIM_LOGIC));
+assert.throws(()=>{fr.FRANCHISE_HARD_BLOCK_IDS.push('x')});assert.throws(()=>{fr.FRANCHISE_CLAIM_MATCHERS['h.handmade_claims'].match='x'});passed.push('frozen claim constants reject mutation');
+check('claims version is pinned and the registry version is unchanged',fr.FRANCHISE_CLAIMS_VERSION==='fr-claims@2026-09-25.1'&&fr.FRANCHISE_RULES_VERSION==='2026-09-25.1'&&fr.FRANCHISE_RULES.length===54);
+check('the unremovable list equals the scoped hard_block registry rules',same([...fr.FRANCHISE_HARD_BLOCK_IDS].sort(),fr.FRANCHISE_RULES.filter(r=>r.tier==='hard_block'&&r.scope).map(r=>r.id).sort())&&fr.FRANCHISE_HARD_BLOCK_IDS.length===8);
+check('heuristic matchers are exactly the scoped heuristic pattern rules and compile',same(Object.keys(fr.FRANCHISE_CLAIM_MATCHERS).sort(),fr.FRANCHISE_RULES.filter(r=>r.basis==='heuristic'&&r.scope&&!fr.FRANCHISE_CLAIM_LOGIC.includes(r.id)).map(r=>r.id).sort())&&Object.values(fr.FRANCHISE_CLAIM_MATCHERS).every(m=>[m.match,m.also,m.except,m.cleared].filter(Boolean).every(x=>new RegExp(x)&&true)&&m.title.length>0));
+check('evidence is never attached to an unremovable rule except the insurance contract condition',Object.keys(fr.FRANCHISE_CLAIM_EVIDENCE).every(id=>!fr.FRANCHISE_HARD_BLOCK_IDS.includes(id)||id==='kr.fr.insurance_mark'));
+check('registryIssues stays empty after the R2 additions',fr.registryIssues(NOW).length===0);
+
 console.log(JSON.stringify({passed:passed.length}));

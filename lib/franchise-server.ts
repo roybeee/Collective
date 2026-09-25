@@ -14,6 +14,9 @@ import {requireContactKey,sealField,openField,leadKeyHmac} from './franchise-cry
 import {checkTransition,earliestContractAt,assessDelivery,checkAgreement,contractWindowAsOf,forecastDuty,LEAD_STAGES,DELIVERY_DOCS,DELIVERY_METHODS,ALLOWED_METHODS,ELECTRONIC_CHANNELS,ADVISOR_TYPES,ESCROW_INSTITUTIONS,FEE_CATEGORIES,LIMITS,CONTRACT_ITEM_COUNT,GATE_DISCLAIMER,
  type LeadStage,type GateContext,type GateResult,type FranchiseLead,type FranchiseDelivery,type AdviceEvidence,type FeeRecord,type PreContractAgreement,type BackdateApproval,type ContractWindow,type ContractWindowInput,type DisclosureVersion,type ContractTemplate} from './franchise-gates';
 import {isInstant,isDate,parseInstant,toKstDate,kstMidnight,addDays} from './franchise-rules';
+import {versionStates,type VersionLite} from './franchise-facts';
+import {flagPublicationsForFactChange} from './execution-server';
+import type {BrandFact} from './brand-facts';
 import {FRANCHISE_ERRORS,FRANCHISE_LABELS,CONTACT_FIELDS,BUDGET_BANDS,TIMING_BANDS,SOURCE_CHANNELS,BASIS_TYPES,REFERRAL_FROM,MARKETING_METHODS,CLOSE_REASONS,REVEAL_PURPOSES,EXPORT_PURPOSES,BACKDATE_REASONS,CORRECTION_REASONS,REGISTRY_AMEND_REASONS,BOARD_TODOS,SUBJECT_REQUEST_TYPES,SUBJECT_REQUEST_STATUS,SUBJECT_RESOLUTIONS,SUBJECT_CHANNELS,BRANCHES,EXPORT_COLUMNS,
  STAGE_LABELS,SOURCE_LABELS,BUDGET_LABELS,TIMING_LABELS,BASIS_LABELS,MARKETING_STATUS_LABELS,CONTACT_NOTE,DUE_LABEL,RETENTION_LABEL,RECHECK_LABEL,MEMO_HINT,ACTIVITY_EVENTS,
  normalizePhone,normalizeEmail,normalizeName,formatPhone,maskName,maskPhone,maskEmail,stageOrder,retentionUntil,isContactExpired,marketingRecheckDue,subjectDueAt,auditCutoff,isAdminRole,isOwnLead,canSeeLead,canEditLead,canReveal,canClose,
@@ -396,6 +399,19 @@ function readItems(v:unknown):number[]{
  if(!Array.isArray(v)||v.length>CONTRACT_ITEM_COUNT||!v.every(x=>typeof x==='number'&&Number.isSafeInteger(x)&&x>=1&&x<=CONTRACT_ITEM_COUNT)||new Set(v).size!==v.length)bad('확인한 기재 항목을 확인해 주세요.');
  return [...v as number[]].sort((a,b)=>a-b);
 }
+// 트랙 R R1b: 버전 등록·정정·사용 중지로 확정 가맹 사실의 근거 버전이 현재 등록 버전에서 벗어나거나(교체), 현재 버전의 라벨·등록일이 바뀌면(각주가 바뀜)
+// 그 사실을 쓴 승인·접수 발행에 재검토를 표시한다. 이미 교체돼 있던 사실은 다시 표시하지 않는다. 사실 자체는 고치지 않는다(사람이 save_fact·rebase_facts로 옮긴다).
+// 표시한 건이 없으면 extra를 만들지 않아 응답이 이전과 같다. 조건부 UPDATE라 owner 잠금이 필요 없다. 실패하면 null과 기록만 남긴다(버전 변경은 유지).
+const versionLite=(v:VersionRow):VersionLite=>({id:v.id,brandId:v.brandId,label:v.label,registeredAt:v.registeredAt,validFrom:v.validFrom,validUntil:v.validUntil,status:v.status});
+async function versionFactReview(c:Ctx,before:readonly VersionRow[],after:readonly VersionRow[],noteChanged:string|null):Promise<Json|undefined>{
+ const facts=(await listRecords<BrandFact>(c.owner,'brand_fact',c.brandId)).filter(f=>f.brandId===c.brandId&&f.status==='confirmed'&&!!f.sourceRef);
+ if(!facts.length)return undefined;
+ const was=versionStates(before.map(versionLite),c.now),now=versionStates(after.map(versionLite),c.now);
+ const ids=facts.filter(f=>{const id=f.sourceRef!.disclosureVersionId;return was[id]==='current'&&(now[id]!=='current'||id===noteChanged)}).map(f=>f.id);
+ if(!ids.length)return undefined;
+ const reviewPublications=await flagPublicationsForFactChange(database(),c.owner,ids).catch(()=>{console.error('franchise_fact_flag_failed');return null});
+ return {reviewPublications};
+}
 // 같은 파일(해시)을 다시 등록하면: 사용 중이고 판정에 쓰는 값(등록일·유효 기간 / 확인 항목)이 같으면 기존 항목(쓰기 없음), 다르면 409(정정을 쓴다),
 // 사용 중지된 항목이면 요청 값으로 다시 사용한다(바꾸기 전 값은 amendments에, 감사 행은 register에 reasonCode 'reactivate').
 async function registerVersion(c:Ctx):Promise<Outcome>{
@@ -410,13 +426,15 @@ async function registerVersion(c:Ctx):Promise<Outcome>{
   const next:VersionRow={...same,label,storageLabel,...meta,status:'active',retiredAt:undefined,version:same.version+1,amendments:[...(same.amendments??[]),{at:c.now,by:c.by,reasonCode:'reactivate',before:{status:same.status,registeredAt:same.registeredAt,validFrom:same.validFrom,validUntil:same.validUntil,label:same.label,storageLabel:same.storageLabel}}]};
   const result={id:same.id,existing:true,reactivated:true,status:next.status,version:next.version};
   await commit([recordStatement(c.owner,'franchise_disclosure_version',same.id,next,c.brandId),auditStmt(c.owner,receiptAudit(c,'version_register',result,{recordId:same.id,reasonCode:'reactivate'}))]);
-  return {result};
+  const extra=await versionFactReview(c,versions,versions.map(v=>v.id===same.id?next:v),null);
+  return {result,...(extra?{extra}:{})};
  }
  if(versions.length>=LIMITS.versions)fail('LIMIT');
  const row:VersionRow={id:'dv-'+uid(),brandId:c.brandId,label,sha256,...meta,storageLabel,status:'active',version:1,createdAt:c.now,createdBy:c.by};
  const result={id:row.id,existing:false,status:row.status,version:row.version};
  await commit([recordStatement(c.owner,'franchise_disclosure_version',row.id,row,c.brandId),auditStmt(c.owner,receiptAudit(c,'version_register',result,{recordId:row.id}))]);
- return {result};
+ const extra=await versionFactReview(c,versions,[...versions,row],null);
+ return {result,...(extra?{extra}:{})};
 }
 async function registerTemplate(c:Ctx):Promise<Outcome>{
  const i=c.input,label=labelOf(i.label,'라벨',60),sha256=shaOf(i.sha256,true) as string,checkedItems=readItems(i.checkedItems);
@@ -457,7 +475,9 @@ async function amendRegistry(c:Ctx,kind:'version'|'template'):Promise<Outcome>{
  const next={...row,...after,version:row.version+1,amendments:[...(row.amendments??[]),{at:c.now,by:c.by,reasonCode,before:Object.fromEntries(changedFields.map(k=>[k,before[k]]))}]};
  const result={id,version:next.version,changedFields,...(kind==='template'?{complete:(next as TemplateRow).checkedItems.length===CONTRACT_ITEM_COUNT}:{})};
  await commit([recordStatement(c.owner,kind==='version'?'franchise_disclosure_version':'franchise_contract_template',id,next,c.brandId),auditStmt(c.owner,receiptAudit(c,kind==='version'?'version_amend':'template_amend',result,{recordId:id,reasonCode,changedFields},id))]);
- return {result};
+ if(kind!=='version')return {result};
+ const prior=rows as VersionRow[],extra=await versionFactReview(c,prior,prior.map(v=>v.id===id?next as VersionRow:v),changedFields.some(f=>f==='label'||f==='registeredAt')?id:null);
+ return {result,...(extra?{extra}:{})};
 }
 async function registerNotice(c:Ctx):Promise<Outcome>{
  const i=c.input,versionLabel=labelOf(i.versionLabel,'버전 이름',20),text=str(i.text,'안내문 본문',20000,true),controllerName=str(i.controllerName,'개인정보처리자 이름',100,true);
@@ -493,7 +513,9 @@ async function retire(c:Ctx,kind:'version'|'template'|'notice'):Promise<Outcome>
  const result={id,status:'retired',...(kind!=='notice'?{version:next.version}:{})};
  const stmt=kind==='version'?recordStatement(c.owner,'franchise_disclosure_version',id,next,c.brandId):kind==='template'?recordStatement(c.owner,'franchise_contract_template',id,next,c.brandId):recordStatement(c.owner,'franchise_privacy_notice',id,next,c.brandId);
  await commit([stmt,auditStmt(c.owner,receiptAudit(c,kind==='version'?'version_retire':kind==='template'?'template_retire':'notice_retire',result,{recordId:id},id))]);
- return {result};
+ if(kind!=='version')return {result};
+ const prior=rows as VersionRow[],extra=await versionFactReview(c,prior,prior.map(v=>v.id===id?next as VersionRow:v),null);
+ return {result,...(extra?{extra}:{})};
 }
 
 // ── 리드 ──

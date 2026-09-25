@@ -118,7 +118,7 @@
 
 ## 규제 가드레일 (A2, `lib/graders/compliance.ts`)
 
-`checkCompliance(text,{facts})`가 문장 단위로 8개 범주를 점검하고 `{version,issues,notice}`를 반환한다. 현재 사전은 `compliance-lexicon-2026-09-25.13`이다. `.13`은 2026-09-25 fa9da73 로컬 채널 재실행 실측으로 두 가지를 바꿨다.
+`checkCompliance(text,{facts})`가 문장 단위로 9개 범주를 점검하고 `{version,issues,notice}`를 반환한다. 가맹 모집 범주(`franchise_recruit`)는 `opts.franchise`로만 켠다. 기본 호출(온라인 채점·평가·재채점)은 이 범주를 보지 않아 이슈 목록이 `.13`과 같고 버전 문자열만 바뀐다. 현재 사전은 `compliance-lexicon-2026-09-25.14`이다. `.14`는 기존 8개 범주의 항목을 바꾸지 않고 가맹 모집 범주(트랙 R R2, 공식 규칙 14개, 출처는 가맹사업법·시행령·허위·과장 정보제공 유형 지정고시의 law.go.kr 주소)를 더했다. 가맹 프로필이 있는 브랜드의 캡션·발행 게이트는 이 경로가 아니라 `lib/franchise-compliance.ts`가 직접 판정한다(원장 해소·[확인 필요] 면제·인용 강등 없음, `docs/FRANCHISE-RECRUITMENT-PLAN.ko.md` R2). `.13`은 2026-09-25 fa9da73 로컬 채널 재실행 실측으로 두 가지를 바꿨다.
   - 공용 부정·금지 라벨(위 `+local-rerun`): 쓰려는 조건, '사용 여부', 인용 조사 '고', '포기하는 것' 칸. 확인 항목 'AI 생성·합성 소재 사용 여부'는 면제하고, 'AI 생성·합성 소재 사용으로 배너를 만든다'는 계속 잡는다.
   - 인용 CTA 나열 뒤 '(같은 …) 문구는 … 확인 뒤 추가한다'는 보류다('“지금 구매”, “예약하기” 같은 구매·주문 유도 문구는 가격 및 판매 조건 확인 뒤 추가한다'). '“지금 구매” 버튼 옆 할인 문구는 가격 확인 뒤 추가한다'는 계속 잡는다.
 
@@ -151,6 +151,7 @@
 | `cosmetic_claim` | 의약품 오인 표현(block), 기능성 인증 근거 없는 기능성 표현(warn) | block·warn |
 | `ecommerce_terms` | 구매 유도 문구의 가격·판매 조건 누락, 할인 표시의 기준 가격 누락 | warn |
 | `rights` | 아티스트·유명인 이름·사진·앨범 이미지 사용 시 권리 확인 미기재 | warn |
+| `franchise_recruit` | 가맹 모집 표현(수익 보장, 가맹금 보호 표지, 단체 가입 조건, 매장 수·창업비용·특허·조건부 지원·최상급·상권 주장, 생산·판매 채널 표현은 모집 범위만, 독점 상권, 점주 후기·가상인물 표시). `opts.franchise`로 옵트인할 때만 | block·warn |
 
 - 등급: `block`(발행 원천으로 선택 불가), `warn`(사람 확인 필요, 차단하지 않음), `info`(기록만). v1 사전에는 `info` 규칙이 없다.
 - 판정은 하향만 한다: `downgradeVerdict(verdict,issues)`는 `block`이 있을 때 `ready_for_review`를 `revise`로 내리고, 그 밖에는 판정을 바꾸지 않는다. 위반이 없다고 판정을 올리지 않는다.

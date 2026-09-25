@@ -30,10 +30,10 @@ import {MetricCard,MetricDialog} from './campaign-metrics';
 import {adminRequestNote,useCanManage} from './auth-client';
 import {originLabel,reasonChoices,type ReasonCode,type HumanCriterion} from '@/lib/review-decisions';
 import {qualityCriteria} from '@/lib/quality';
-import {bufferCheckCampaigns,channelScopes,credentialState,credentialStateLabels,featureRows,featureStatusLabels,scopedCredentials,type CredentialState,type FeatureLink,type ScopedCredential} from '@/lib/feature-status';
+import {bufferCheckCampaigns,channelScopes,credentialState,credentialStateLabels,featureRows,featureStatusLabels,franchiseSwitch,scopedCredentials,type CredentialState,type FeatureLink,type ScopedCredential} from '@/lib/feature-status';
 import type {Store} from '@/lib/store-marketing';
 import {pushNav} from '@/lib/nav-state';
-import {AdminOnly} from './account-context';
+import {AdminOnly,useAccount} from './account-context';
 export {MetricCard,MetricDialog} from './campaign-metrics';
 export function Field({label,children,help}:{label:string;children:React.ReactNode;help?:string}){return <label className="field"><span>{label}</span>{children}{help&&<small>{help}</small>}</label>}
 export function Status({status,title}:{status:string;title?:string}){return <span className={'status status-'+status} title={title}>{statuses[status]||({approved:'승인 완료',review:'검토 대기',revision:'수정 요청',outdated:'이전 버전'} as Record<string,string>)[status]||status}</span>}
@@ -160,8 +160,17 @@ function FeatureTable({data}:{data:WorkspaceData}){
  const[loaded,setLoaded]=useState<{key:string;sources:FeatureSources}|null>(null),pending=loaded?.key!==key;
  useEffect(()=>{let active=true;void featureSources(JSON.parse(checkKey)).then(sources=>{if(active)setLoaded({key,sources})});return()=>{active=false}},[checkKey,key]);
  const rows=featureRows({connection:data.connection,brands:data.brands,campaigns:data.campaigns,...loaded?.sources,worker:loaded?.sources.worker??data.worker});
+ // 가맹 모집 스위치(r_franchise)는 소유자만 바꾼다(서버 /api/feature-flags requireOwnerActor). 휴대폰에서도 켤 수 있게 기능표 행에 버튼을 둔다.
+ // 바꾼 뒤 창 focus 이벤트를 보내 사이드바 메뉴(app/workspace.tsx가 focus 때 /api/franchise?view=status를 다시 읽음)가 새로고침 없이 반영되게 한다.
+ const account=useAccount(),[switching,setSwitching]=useState(false),franchiseOn=franchiseSwitch(loaded?.sources.flags);
+ async function toggleFranchise(on:boolean){
+  if(switching||!window.confirm(on?'가맹 모집을 켤까요? 켜면 담당자가 가맹 문의자의 이름·연락처를 등록하고 관리할 수 있습니다. 판정은 COLLECTIVE 휴리스틱이며 법률 자문이 아닙니다.':'가맹 모집 쓰기를 끌까요? 조회·연락처 보기·파기·정보주체 요청 처리는 계속됩니다.'))return;
+  setSwitching(true);
+  try{const r=await fetch('/api/feature-flags',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'set',flag:'r_franchise',enabled:on})});const d=await r.json().catch(()=>({})) as {error?:unknown};if(!r.ok)throw new Error(typeof d.error==='string'?d.error:'가맹 모집 스위치를 바꾸지 못했습니다.');toast.success(on?'가맹 모집을 켰습니다. 왼쪽 메뉴에서 가맹 모집을 여세요.':'가맹 모집 쓰기를 껐습니다.');window.dispatchEvent(new Event('focus'));setRound(n=>n+1)}
+  catch(e){toast.error((e as Error).message)}finally{setSwitching(false)}
+ }
  return <section className="settings-card scope-card"><h2>현재 사용할 수 있는 기능</h2>
-  {!loaded?<p className="subtle-note" role="status">연결 상태를 확인하고 있습니다…</p>:rows.map(r=><div className="scope-row" key={r.key} data-feature={r.key} data-status={r.status}><span>{r.label}</span><b>{featureStatusLabels[r.status]}{r.reason?' · '+r.reason:''}{r.link&&<><br/><FeatureLinkButton link={r.link}/></>}</b></div>)}
+  {!loaded?<p className="subtle-note" role="status">연결 상태를 확인하고 있습니다…</p>:rows.map(r=><div className="scope-row" key={r.key} data-feature={r.key} data-status={r.status}><span>{r.label}</span><b>{featureStatusLabels[r.status]}{r.reason?' · '+r.reason:''}{r.link&&<><br/><FeatureLinkButton link={r.link}/></>}{r.key==='franchise'&&account?.isOwner&&franchiseOn!==null&&<><br/><Button variant="outline" size="sm" className="mt-1" disabled={switching} onClick={()=>void toggleFranchise(!franchiseOn)}>{switching?<LoaderCircle className="spin"/>:null}{franchiseOn?'가맹 모집 끄기':'가맹 모집 켜기'}</Button></>}</b></div>)}
   <div className="form-actions"><Button variant="outline" size="sm" disabled={pending} onClick={()=>setRound(n=>n+1)}>{pending?<LoaderCircle className="spin"/>:<RefreshCw/>}다시 확인</Button></div>
   <p className="subtle-note">HERMES gateway가 실행 중이어야 AI 팀을 실행할 수 있습니다. 기획·작업물 승인은 외부 게시·광고 집행으로 이어지지 않습니다. Instagram 게시는 제작·발행 탭에서 관리자가 발행을 승인·실행할 때만 Buffer에 예약 접수됩니다. 연결을 바꾼 뒤에는 ‘다시 확인’을 누르세요.</p></section>;
 }
