@@ -369,6 +369,8 @@ function evaluate(input:unknown,now:string,cutoff:string|null=null):Evaluation{
 }
 // 계약·가맹금이 허용되는 첫 시각. 두 시계(정보공개서 쪽·계약서안 쪽)를 KST 날짜로 세고 늦은 쪽을 고른다. 입력 순서와 무관하게 같은 결과를 낸다.
 export function earliestContractAt(input:ContractWindowInput,now:string):ContractWindow{return evaluate(input,now).window}
+// cutoff 시각 이전 증빙만으로 계산한 창(R4b 약정 판정용). checkAgreement는 약정 서명 시각으로 자른 창을 받아야 하는데 자르는 계산(cutParsed)은 비공개라 같은 계산을 내보낸다.
+export function contractWindowAsOf(input:ContractWindowInput,now:string,cutoff:string):ContractWindow{return evaluate(input,now,cutoff).window}
 
 // ── 가맹금·본계약 전 약정 ──
 type WindowFacts={at:number|null;blockers:ReasonCode[];notes:ReasonCode[];warnings:WarningCode[]};

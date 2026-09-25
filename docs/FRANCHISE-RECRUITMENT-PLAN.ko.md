@@ -24,7 +24,7 @@ COLLECTIVE가 파는 가맹 모집 마케팅 솔루션은 **모집해도 되는 
 순서는 다섯 단계다.
 
 1. R-0단계 W1–W2(런타임 연결 0): 준비도 진단으로 모집 가능 여부를 분기하고, 수동 절차서 v0와 수동 채널 플레이북·미디어 플랜 v0를 쓰고, 외부 법률 검토를 요청한다. 기존 사실 원장의 거절값으로 금지 표현 바닥을 게시 없이 깐다. 순수 규칙·게이트 모듈 R4a는 묶음 4가 `runtime-verified`된 뒤 병합한다.
-2. R-1단계 W3–W8(첫 계약 경로): R1 팩트시트 → R2 규제 가드레일 → R4b 연락처 없는 원장·법정 게이트 → R3 모집 캠페인·채널 스킬 → R15a 모집 자료 키트·설명회 운영. 묶음 4(`df7e253`)와 묶음 5(`443fff4`)는 트랙 R 코드 없이 게시돼 `runtime-verified`됐고, 묶음 6(`a41624d`)과 묶음 7(`ac7a031`, 2026-09-25 게시 승인)도 트랙 R 코드 없이 구성됐으므로(`docs/STATUS.md`), 트랙 R 코드는 가장 이르면 묶음 8에 싣는다.
+2. R-1단계 W3–W8(첫 계약 경로): R1 팩트시트 → R2 규제 가드레일 → R4b 리드 원장(이름·연락처, 결정 22)·법정 게이트 → R3 모집 캠페인·채널 스킬 → R15a 모집 자료 키트·설명회 운영. 묶음 4(`df7e253`)와 묶음 5(`443fff4`)는 트랙 R 코드 없이 게시돼 `runtime-verified`됐고, 묶음 6(`a41624d`)과 묶음 7(`ac7a031`, 2026-09-25 게시 승인)도 트랙 R 코드 없이 구성됐으므로(`docs/STATUS.md`), 트랙 R 코드는 가장 이르면 묶음 8에 싣는다.
 3. R-2단계 W9–W16(측정과 증거): R5 유입 코드·비용 → R15b 결정론 모집 템플릿 → R6 퍼널·주간 보고·증빙 묶음 → R7a 공공 벤치마크(토큰 0) → R9a 정보성 너처링 초안.
 4. R-3단계 W17–W28(조건부): R8 연락처·동의 원장, R9b 광고성 초안, R10 공개 수집, R7b 정성 조사. 발동 조건을 채울 때만 착수한다.
 5. R-4단계 W28 이후(조건부): R11 전달 포털, R12 영업지역, R13 외부 가맹본부 게이트, R14b 해외 마스터프랜차이즈 파트너 모집. 코드 없는 해외 피치 키트(R14a)는 결정 30에 따라 R-1 기간에도 할 수 있다.
@@ -120,7 +120,7 @@ OFD는 여기에 체크리스트 23·24행(생산·공급 방식과 필수품목
 | 2 | 오퍼 | 조건부 지원을 무조건처럼 제시 금지(시행령 제8조②2호) | 조건·기간을 필수로 받는 오퍼 사실 | R1, R2 |
 | 3 | 채널 계획 | 표시광고법 제3조, 네이버·Meta 정책 | objective 캠페인과 가맹 채널 스킬 | R3 |
 | 4 | 콘텐츠 | 고시 제2019-8호, 추천·보증 심사지침(AI 가상인물 '가상인물' 표시 포함). 모든 AI 생성물 표시 줄은 결정 17(COLLECTIVE 규칙) | 주장→근거→승인, hard_block 캡션·내보내기 게이트, 앱 밖 모집 자료 키트 | R2, R15a |
-| 5 | 리드 수집 | 개인정보 보호법 제15·16·20·22조 | 연락처 없는 원장, CSV 가져오기, (조건부) 공개 폼 | R4b, R5, R10 |
+| 5 | 리드 수집 | 개인정보 보호법 제15·16·20·22조 | 최소 수집 원장(이름·전화/이메일·메모 암호문, 결정 22), 수집 근거·출처 고지, CSV 가져오기, (조건부) 공개 폼 | R4b, R5, R10 |
 | 6 | 첫 연락 | 요청받은 1회 정보는 정보성(해석) | 미응대 할 일, speed-to-lead | R4b, R6 |
 | 7 | 상담·적격 | 수익 정보는 서면(제9조③), 자동화된 결정(제37조의2) | 수익 문의 → 서면 기록, 사람의 적격 판정 | R4b |
 | 8 | 설명회·견학 | 초대는 광고성 정보(정보통신망법 제50조, KISA 안내서 해석) | 설명회·견학 운영 기록, 승인형 초안, 수동 발송 기록 | R15a, R9 |
@@ -143,7 +143,7 @@ OFD는 여기에 체크리스트 23·24행(생산·공급 방식과 필수품목
 | V2 팩트시트 | 광고에 써도 되는 숫자는 무엇인가 | 출처·버전 없는 가맹 사실 확정, 수익 수치의 광고 사용 | R1 |
 | V3 모집 캠페인 | 어떤 채널에 무엇을 내보내나 | 지점 연결, 소비자 스킬 혼입 | R3 |
 | V4 검수 큐 | 이 문구를 내보내도 되나 | hard_block이 남은 소재의 승인, 앱 밖 자료의 내보내기 | R2, R15a |
-| V5 리드 보드 | 누구에게 먼저 연락하나 | 이름·연락처 입력란 자체가 없다(1단계) | R4b |
+| V5 리드 보드 | 누구에게 먼저 연락하나 | 연락처는 목록에서 가린다. 원문 보기는 목적을 고르고 감사 기록에 남는다(결정 22) | R4b |
 | V6 리드 상세 | 이 사람과 계약할 수 있나 | 계약 가능일 전 계약·가맹금 기록 | R4b |
 | V7 설명회·초안 | 누가 오고 무엇을 보내나 | 정원 초과 신청, 동의 없는 광고성 발송 기록, 야간 발송 기록 | R15a, R9 |
 | V8 성과 | 어느 채널 돈이 계약이 되나 | 플랫폼 보고 전환을 리드로 표시, n<20 비율 | R5, R6 |
@@ -419,7 +419,7 @@ W1 확인에는 결론의 일곱 가지에 체크리스트 23·24행(생산·공
 2. 병합과 운영 활성화를 나눈다. R 런타임 동작은 기본 꺼짐 스위치 뒤에서 병합·게시한다(`docs/GROWTH-PLAN.ko.md:54`). 예외는 R2 가드레일 하나다. R2는 스위치가 아니라 적용 범위(objective·가맹 프로필. 둘 다 `r_franchise`가 켜져야 만들 수 있다)로 켜진다. 끄는 방법은 관리자가 objective와 가맹 프로필을 해제하는 것이다(감사 기록, 게시 0회). 성장 계획 원칙 4와 다른 이 예외는 결정 25에서 정한다. 실제 리드와 실제 계약에 쓰는 일은 LR-1 뒤 대표가 켠다.
 3. 기록과 게이트를 나눈다. 법에 맞게 한 제공은 언제나 추가 전용으로 기록된다(외부 시스템의 3호, 예정지 미확정으로 늦게 준 인근가맹점 문서 포함). 게이트는 계약과 가맹금 단계만 409로 막는다.
 4. 게이트는 서버에서, 우회 불가. 관리자·대표에게도 우회 경로가 없다. 기록 시각은 서버 시각이고, 증빙에 묶인 시각(내용증명 접수일, 4호 수신 로그, 1호 자필 일시)만 기산에 쓴다. 기록 시각보다 이른 증빙 시각은 관리자 역할·사유·감사 이벤트가 있어야 받는다. 게이트만 끄는 스위치는 없다.
-5. 연락처 없는 원장 먼저(결정 22). 1단계 원장은 시스템이 만든 가명 코드와 과업 필드만 둔다. 가명 코드도 원 채널과 대조하면 식별할 수 있으므로 개인정보(가명 처리된 정보)로 다룬다. 유출 영향과 보안 표면을 줄일 뿐 개인정보 규정 밖이 아니다.
+5. 최소 수집 원장(결정 22, 2026-09-25). 영업 담당자가 리드를 관리하도록 이름(필수)·전화/이메일(하나 이상)·메모(선택, 1000자)만 받고 필드마다 `v1.` 암호문으로 저장한다. 목록은 가리고 원문 보기·찾기·내보내기는 매번 감사한다. 시스템 코드(`L…`)는 값 없는 식별 손잡이로 남는다. 주소·생년월일·주민등록번호·계좌·서명 이미지·스캔은 받지 않는다. 이전 권고(가명 코드만 두는 원장)는 쓰지 않는다.
 6. 리드 데이터는 모델로 가지 않는다. DP-8은 A5 고객 데이터 범위(`docs/DATA-PROCESSING.ko.md:211`)라 리드에는 새 DP-10 행을 둔다(레인 B 소유). 모의 HERMES 0건 테스트와 정적 import 검사로 고정한다.
 7. 수치의 유일한 원천은 정보공개서 버전에 묶인 확정 사실이다. 타 브랜드 벤치마크와 공공 추정매출은 자사 사실이 될 수 없다. 수익 수치는 광고에 쓰지 않는다(H6).
 8. 예상수익을 만들지 않는다. 모델·화면·보고서 어디서도 가맹희망자별 예상매출·수익·회수기간을 계산하지 않는다.
@@ -440,18 +440,21 @@ W1 확인에는 결론의 일곱 가지에 체크리스트 23·24행(생산·공
 |---|---|---|---|---|---|---|
 | `franchise_profile` | R1 | brand | not_campaign_scoped | policy(이력 유지) | none | 없음(분기·판정·체크 상태) |
 | `franchise_disclosure_version` | R1 | brand | not_campaign_scoped | policy: 그 버전으로 맺은 마지막 계약 거래 종료 후 3년(제11조③·제32조① 준용) | none | 없음. 원본은 오프라인, SHA-256과 보관 위치 라벨만 |
-| `franchise_lead` | R4b | brand | not_campaign_scoped(캠페인 id는 귀속 참조) | policy: H11. 계약 리드는 statutory | minimize(계약 증빙 링크만 남김) | 시스템 가명 코드, 시·군·구, 예산·시기 구간. 이름·연락처·자유 메모 없음 |
-| `franchise_lead_event` | R4b | franchise_lead | not_campaign_scoped | 리드와 같음 | delete, 법정 이벤트는 legal_hold | 없음(사유 코드, 행위자 id·역할) |
+| `franchise_lead` | R4b | brand | not_campaign_scoped(캠페인 id는 귀속 참조) | policy: H11(마지막 활동 뒤 180일). 계약 리드는 종결 뒤 1095일 | minimize(연락처·메모·키를 지우고 과업·단계·동의 기록은 남김) | 이름·전화·이메일·메모는 암호문(`v1.`)만, 시스템 코드, 시·군·구, 예산·시기 구간, 수집 근거·광고성 정보 동의 상태, 담당자 id(결정 22) |
+| `franchise_lead_key` | R4b | franchise_lead | not_campaign_scoped | 연락처와 함께 파기 | delete | 없음(소유자·브랜드 범위 HMAC이 id, 리드 id·유형만) |
+| `franchise_lead_event` | R4b | franchise_lead | not_campaign_scoped | 리드와 같음 | none(값 없이 남김) | 없음(사유 코드, 필드 이름, 수집 근거·동의 방법과 안내문 id, 행위자 id·역할) |
 | `franchise_delivery` | R4b | franchise_lead | not_campaign_scoped | statutory(계약 리드), 미계약은 H11 | legal_hold(해시·체크만) | 없음. 확인서·자문서는 SHA-256과 보관 위치만 |
 | `franchise_contract_template` | R4b | brand | not_campaign_scoped | policy 3년(제11조③ 준용. 법정 보관 대상은 체결된 계약서) | none | 없음 |
-| `franchise_audit` | R4b | brand | not_campaign_scoped | policy 1년 | none | 없음(행위자 id·역할·건수·목적 코드) |
+| `franchise_privacy_notice` | R4b | brand | not_campaign_scoped | policy: 사용 중지 뒤 3년(동의·고지 입증, 휴리스틱) | none | 관리자가 입력한 안내문 본문·SHA-256·처리자·수탁자 이름. 리드 값 없음 |
+| `franchise_subject_request` | R4b | brand | not_campaign_scoped | policy: 처리 뒤 3년(휴리스틱) | none | 유형·접수 경로·접수 시각·기한·상태·리드 id. 요청자 이름·연락처 없음 |
+| `franchise_audit` | R4b | brand | not_campaign_scoped | policy 1년(이른 증빙 시각 `backdate` 행은 증빙과 같이 보존) | none | 없음(행위자 id·역할·리드 id·필드 이름·건수·목적 코드) |
 | `recruitment_code` | R5 | brand | retain(links `data_campaign`), purge keep | policy(재사용 방지) | none | 없음 |
 | `recruitment_spend`, `lead_import` | R5 | brand | not_campaign_scoped | policy | none | 없음(파일 해시·건수·거부 사유 건수) |
 | `recruitment_asset`, `recruitment_event` | R15a | brand | not_campaign_scoped(캠페인 id는 참조) | policy(귀속 리드 증빙과 같은 기간) | none | 없음(원문 해시·버전·근거 사실 id). 행사 참석은 건수와 가명 코드 연결만 |
 | `recruitment_report` | R6 | brand | not_campaign_scoped | policy | none | 집계만(n<5 억제) |
 | `franchise_benchmark`, `benchmark_fetch`, `benchmark_credential` | R7a | brand | not_campaign_scoped | policy | none | 대표자명·사업자·법인등록번호는 적재하지 않는다 |
 | `testimonial_consent` | R2(첫 점주 후기 때) | brand | not_campaign_scoped | 동의 기간 + 3년 | minimize | 점포 id, 동의 범위·기간, 경제적 이해관계 유형, 동의서 SHA-256. 이름 없음 |
-| `lead_contact`, `lead_key`, `lead_consent`, `lead_erasure_request`, `lead_suppression` | R8 | franchise_lead·none | not_campaign_scoped | policy, 동의 입증 최소 기록 | delete·minimize·hold | 암호문(`v1.` 접두), 브랜드 범위 HMAC |
+| `lead_suppression` | R8 | franchise_lead·none | not_campaign_scoped | 동의 입증 최소 기록(LR-2) | hold | 결정 22로 `lead_contact`·`lead_key`·`lead_consent`·`lead_erasure_request`는 R4b의 `franchise_lead`·`franchise_lead_key`·`franchise_privacy_notice`·`franchise_subject_request`에 합쳤다. 남은 것은 수신거부 유지와 키 회전 |
 | `lead_message_template`, `lead_message_log` | R9a | brand·franchise_lead | not_campaign_scoped | 리드와 같음 | delete | 본문 없음(분류·템플릿 버전·매체·시각) |
 | `lead_form`, `lead_form_ref`(owner ''), `lead_webhook_source`, `lead_intake_rejection` | R10 | brand·none | not_campaign_scoped | policy | none | 거부 기록은 건수만 |
 
@@ -462,10 +465,10 @@ W1 확인에는 결론의 일곱 가지에 체크리스트 23·24행(생산·공
 | 미전환 리드 | 마지막 활동 또는 종결 | 180일 | 법정 기준 없음 | 휴리스틱 H11, LR-1 확정 |
 | 계약 리드의 제공·계약 증빙 | 거래 종료일 | 3년 | 계약서 보관(제11조③), 조사 대상 기간(제32조①) 준용 | 공식 기준 준용. COLLECTIVE 기록 자체의 보존 의무는 Q6 |
 | 산정서 제공 기록 | 계약 체결일 | 5년 | 제9조⑥ | 공식 |
-| 동의 입증 최소 기록(R8) | 철회일 | LR-2 결정 | 입증 필요 | 열린 질문 |
+| 동의·고지 입증(안내문 버전, 이벤트의 동의 방법·시각) | 철회일·사용 중지일 | 이벤트는 리드와 같이, 안내문은 3년 | 입증 필요 | 휴리스틱. LR-2 결정 |
 | 감사 기록 | 기록일 | 1년 | 운영 | 휴리스틱 |
 
-파기는 네 겹이다. (1) 조회·내보내기에서 만료 행을 뺀다. (2) 조사 워커 tick이 소유자당 하루 1회 지운다(`lib/research-worker.ts:130` 옆). 이 tick은 외부 조사 서버가 유효한 워커 토큰으로 폴링할 때만 돈다(`lib/research-worker.ts:112-116`). 지금은 재설치 전이라 멈춰 있다(`docs/STATUS.md:35`). 그래서 5일 목표는 (1)·(3)만으로도 지켜지게 하고, 워커 마지막 활동이 24시간을 넘으면 V1 할 일에 '파기 대기 N건'을 띄운다. (3) 관리자가 가맹 화면에 들어오면 정리한다. (4) 규칙·건수·시각만 `franchise_audit`에 남긴다. 목표는 만료 뒤 5일 안 파기다(안내 기준 유지 여부 확인 필요). 기능 스위치를 꺼도 파기와 정보주체 요청 처리는 멈추지 않는다. 정보주체 삭제 뒤에는 퍼널 집계에 가명 키를 남기지 않는다. 확정 보고서는 집계만 가진다.
+R4b 구현(2026-09-25, 결정 22): (1)·(3)·(4)만 넣었다. 조회·내보내기·찾기는 만료 연락처를 없는 것으로 보고, 리드를 바꾸는 요청은 만료 연락처를 먼저 파기한 뒤 처리해 새 활동이 만료 연락처를 되살리지 않는다. 대표·관리자의 보드 열기와 수동 `purge`가 한 번에 100건까지 지운다. (2) 조사 워커 훅은 이 PR에 없다. 원안: 파기는 네 겹이다. (1) 조회·내보내기에서 만료 행을 뺀다. (2) 조사 워커 tick이 소유자당 하루 1회 지운다(`lib/research-worker.ts:130` 옆). 이 tick은 외부 조사 서버가 유효한 워커 토큰으로 폴링할 때만 돈다(`lib/research-worker.ts:112-116`). 지금은 재설치 전이라 멈춰 있다(`docs/STATUS.md:35`). 그래서 5일 목표는 (1)·(3)만으로도 지켜지게 하고, 워커 마지막 활동이 24시간을 넘으면 V1 할 일에 '파기 대기 N건'을 띄운다. (3) 관리자가 가맹 화면에 들어오면 정리한다. (4) 규칙·건수·시각만 `franchise_audit`에 남긴다. 목표는 만료 뒤 5일 안 파기다(안내 기준 유지 여부 확인 필요). 기능 스위치를 꺼도 파기와 정보주체 요청 처리는 멈추지 않는다. 정보주체 삭제 뒤에는 퍼널 집계에 가명 키를 남기지 않는다. 확정 보고서는 집계만 가진다.
 
 ### 모델 입력 경계 (DP-10 제안)
 
@@ -492,9 +495,12 @@ W1 확인에는 결론의 일곱 가지에 체크리스트 23·24행(생산·공
 | 모집 자료 초안 저장 / 승인·내보내기, 설명회·견학 등록·참석 건수 기록 | `/api/franchise` `asset_*`·`event_*` | 허용 | 허용 | 초안·참석 기록 허용 / 승인·내보내기 403 |
 | 벤치마크 적재, 공공데이터 키 저장 | `/api/franchise` `benchmark` | 허용 | 허용 | 403 |
 | 모집 보고서 조회(집계) | `/api/franchise` `report` | 허용 | 허용 | 허용 |
-| (R8) 연락처 원문 조회·내보내기 | `/api/franchise` `contact_*` | 허용(감사) | 허용(감사) | 403(가린 목록) |
-| (R8) 동의 철회 기록 | `/api/franchise` `consent` | 허용 | 허용 | 허용(보호 방향) |
-| (R8) 정보주체 요청 처리 | `/api/franchise` `erasure` | 허용 | 허용 | 403 |
+| 연락처 원문 보기(결정 22) | `/api/franchise` `reveal_contact` | 허용(감사) | 허용(감사) | 본인 담당만(감사). 담당 없는 리드·다른 직원 리드는 403 |
+| 연락처로 리드 찾기 | `/api/franchise` `find_contact` | 허용(감사) | 허용(감사) | 허용(감사, 보이는 리드만 id) |
+| 리드 내보내기(목적 필수) | `/api/franchise` `export_leads` | 허용(감사) | 허용(감사) | 403 |
+| 광고성 정보 수신 철회 / 동의 기록 | `/api/franchise` `set_marketing_consent` | 허용 / 허용 | 허용 / 허용 | 허용(보이는 리드, 보호 방향) / 403 |
+| 정보주체 요청 등록 / 처리·삭제 실행·파기 실행 | `/api/franchise` `add_subject_request` / `update_subject_request`·`erase_lead`·`purge` | 허용 / 허용 | 허용 / 허용 | 허용(보이는 리드) / 403 |
+| 담당 가져오기 / 재배정 | `/api/franchise` `claim_lead` / `assign_lead` | 허용 / 허용 | 허용 / 허용 | 허용(담당 없는 리드) / 403 |
 | (R9) 초안 승인 / 수동 발송 기록 | `/api/franchise` `nurture` | 허용 / 허용 | 허용 / 허용 | 403 / 허용 |
 | 가맹 스위치, (R10) 공개 폼·웹훅 비밀값 | `/api/feature-flags`, `/api/franchise` | 허용 | 403 | 403 |
 
@@ -504,8 +510,8 @@ W1 확인에는 결론의 일곱 가지에 체크리스트 23·24행(생산·공
 
 | 스위치 | 에픽 | 켜면 | 꺼져 있을 때 | 켜는 조건 |
 |---|---|---|---|---|
-| `r_franchise` | R1 신설, R3~R7·R9·R12·R15가 쓴다(R2 가드레일은 이 스위치와 무관하게 적용) | 가맹 화면·API, objective 지정, 벤치마크 적재 버튼 | R 쓰기 API와 objective 지정은 고정 문구 409, 화면 숨김. 저장된 objective 캠페인은 저장값대로 실행되고 가맹 hard_block도 그대로다. 읽기·파기·정보주체 요청은 계속 | 묶음 게시 뒤 대표. 실제 리드 기록은 LR-1 뒤 |
-| `r_lead_contacts` | R8 | 연락처 저장·조회 | 저장·조회 409, 기존 암호문 유지, 파기 계속 | 결정 28, LR-2 |
+| `r_franchise` | R1 신설, R3~R7·R9·R12·R15가 쓴다(R2 가드레일은 이 스위치와 무관하게 적용) | 가맹 화면·API, objective 지정, 벤치마크 적재 버튼 | R 쓰기 API와 objective 지정은 고정 문구 409, 화면 숨김. 저장된 objective 캠페인은 저장값대로 실행되고 가맹 hard_block도 그대로다. 읽기·파기·정보주체 요청·연락처 보기·찾기·내보내기·광고성 정보 철회는 계속(대표·관리자는 정정·출처 고지·종결도) | 묶음 게시 뒤 대표. 실제 리드 기록은 LR-1 뒤 |
+| `r_lead_contacts` | R8 | 결정 22로 폐기(만들지 않는다). 연락처는 `r_franchise` 뒤에 있다 | - | - |
 | `r_lead_intake` | R10 | 서명 웹훅과 공개 폼(폼·소스별 활성 상태는 레코드) | 모든 공개 경로가 없는 경로와 같은 404 | 결정 28, LR-2, 보안 리뷰 |
 | `r_disclosure_portal` | R11 | 전달 포털 | 404, 발급 거부 | 결정 24, LR-2(Q8) |
 
@@ -588,11 +594,11 @@ R4a가 `lib/franchise-rules.ts`에 만들고 R2·R4b가 쓴다. 레코드는 `{i
 | R1 | 모집 팩트시트 | 가맹 조건·가맹점 수·등록 정보를 정보공개서 버전에 묶인 확정 사실로 만든다. | 필수 | R0, R4a | PR 3 사실 원장·사실 카드 확장, A6와 파일 공유 | `franchise_profile`, `franchise_disclosure_version` | `r_franchise` 신설 | 0.75 |
 | R2 | 가맹 모집 규제 가드레일 | 고시 예시를 결정론 규칙으로 만들고 hard_block을 가맹 브랜드의 캡션·발행 게이트에서 우회 없이 막는다. | 필수 | R1, R4a | A2 확장, `data-truth-1`, B1 사유 코드, 결정 17 | (조건부) `testimonial_consent` | 없음(적용 범위로 켜짐) | 0.75 |
 | R3 | 모집 캠페인 objective·채널 스킬 | objective 하나로 8역할에 가맹 스킬·근거 정책·측정 정의를 가맹 캠페인에만 주입한다. | 도움 | R2, F3(`merged`) | F3 새 단위, A1 범위 해석(결정 26), A3보다 먼저 | 없음 | `r_franchise` | 1.0 |
-| R4 | 파이프라인·법정 절차 게이트 (R4a 순수 규칙·게이트 / R4b 연락처 없는 원장·API·화면·적격 기준) | 제공 증빙, 두 대기기간, 예치, 산정서 조건을 서버가 강제한다. | 필수 | R4a는 묶음 4 `runtime-verified`. R4b는 R1, 결정 22·23·24 | A4 순수 함수 패턴, F4a 레지스트리 확장, DP-10 | `franchise_lead`, `franchise_lead_event`, `franchise_delivery`, `franchise_contract_template`, `franchise_audit` | `r_franchise` | 0.5 + 0.85 |
+| R4 | 파이프라인·법정 절차 게이트 (R4a 순수 규칙·게이트 / R4b 원장(이름·연락처 포함)·API·화면·적격 기준) | 제공 증빙, 두 대기기간, 예치, 산정서 조건을 서버가 강제한다. | 필수 | R4a는 묶음 4 `runtime-verified`. R4b는 R1, 결정 22·23·24 | A4 순수 함수 패턴, F4a 레지스트리 확장, DP-10 | `franchise_lead`, `franchise_lead_key`, `franchise_lead_event`, `franchise_delivery`, `franchise_contract_template`, `franchise_privacy_notice`, `franchise_subject_request`, `franchise_audit` | `r_franchise` | 0.5 + 0.85 |
 | R5 | 유입 코드·모집 비용·리드 가져오기 | 브랜드 단위 유입 코드와 모집 비용 장부를 두고 외부 폼 리드 메타데이터를 CSV로 들여온다. | 도움 | R4b | A4 `exec-loop-4`, PR 4b-2 이관 패턴, 결정 27 | `recruitment_code`, `recruitment_spend`, `lead_import` | `r_franchise` | 0.75 |
 | R6 | 퍼널 측정·주간 보고·증빙 묶음 | 퍼널·CPL·계약당 비용·speed-to-lead를 LLM 0으로 계산하고 리드별·소재별 증빙을 재구성한다. | 도움 | R5 | A4 단위경제, A8 패턴, B4 1부, `data-truth-9` | `recruitment_report` | `r_franchise` | 0.75 |
 | R7 | 경쟁·시장 벤치마크 (R7a 공공 API / R7b 조사, 조건부) | 공정위 가맹정보 API를 토큰 0으로 적재하고 자사 예상매출과 분리한다. | 도움 | R1. R7b는 월 토큰 상한·PR 6 재설치 | 커넥터 규율, 조사 출처 규율, 결정 19 | `franchise_benchmark`, `benchmark_fetch`, `benchmark_credential` | `r_franchise` | 0.5 + 조건부 0.5 |
-| R8 | 연락처·동의 원장 (조건부) | 연락처 암호화, 브랜드 범위 HMAC, 동의·철회 원장, 정보주체 요청을 갖춘다. | 무관 | R4b, 결정 28, LR-2 | A5·결정 11 계열, F4b-2 만료 패턴 | `lead_contact` 외 4 | `r_lead_contacts` | 1.25 |
+| R8 | 연락처·동의 원장 (조건부) | 결정 22로 연락처 암호화·HMAC·동의·정보주체 요청은 R4b에 합쳤다. 남은 것은 수신거부 유지(`lead_suppression`)와 키 회전이다. | 무관 | R4b, 결정 28, LR-2 | A5·결정 11 계열, F4b-2 만료 패턴 | `lead_suppression` | 없음(`r_lead_contacts`는 결정 22로 폐기) | 0.25 |
 | R9 | 너처링 승인형 초안 (R9a 정보성 / R9b 광고성, 조건부) | 자리표시 초안과 사람의 수동 발송 기록만 남긴다. | 도움(R9a) | R4b. R9b는 R8 | A2 `ad_message`, 결정 17 | `lead_message_template`, `lead_message_log` | `r_franchise` | 0.5 + 조건부 0.25 |
 | R10 | 공개 수집 (서명 웹훅 → 공개 폼, 조건부) | 동의·요청 제한·봇 방지·CSP를 갖춘 공개 표면을 연다. | 무관 | R8, 결정 28, 보안 리뷰 | 공개 경로 패턴, `security-ops` 계열 | `lead_form` 외 3 | `r_lead_intake` | 1.5 |
 | R11 | 정보공개서 전달 포털 (조건부) | 시행령 제6조 3호를 채우는 리드별 열람 기록을 만든다. | 무관 | R4b, R10, 결정 24, LR-2 | R10 공개 경로 | 착수 때 정함 | `r_disclosure_portal` | 1.5 |
@@ -617,6 +623,7 @@ R4a가 `lib/franchise-rules.ts`에 만들고 R2·R4b가 쓴다. 레코드는 `{i
 
 ### R1 모집 팩트시트
 
+- 분할(2026-09-25): R1a(가맹 프로필 `franchise_profile`, 정보공개서 버전 `franchise_disclosure_version`, 계약서안 템플릿 `franchise_contract_template` 등록부, 기능 스위치 `r_franchise`, `/api/franchise`)는 R4b가 쓰므로 R4b와 함께 싣는다. R1b(팩트 카탈로그 가맹 항목, `sourceRef` 각주, `lib/execution-server.ts` 캡션, `lib/fact-import.ts` 분류)는 뒤 PR이다. 아래 소유 파일·수용 기준 가운데 R1b 몫은 그대로 남는다. 정보공개서 버전은 원본을 올리지 않고 파일 SHA-256·등록 시각·유효 기간·보관 위치 라벨만 적는다.
 - 소유 파일: `lib/fact-catalog.ts`, `lib/brand-facts.ts`(선택 필드 `sourceRef`), `lib/brand-facts-server.ts`, `lib/fact-import.ts`, `lib/fact-eligibility.ts`, `lib/execution.ts`(각주·`adUse`), `lib/execution-server.ts`(사실 캡션 `labeledCaption` `:20`, 소재 지문 `:28`. 각주는 `sourceRef`가 있는 가맹 사실에만 붙여 기존 소재의 `materialHash`를 바꾸지 않는다), 새 `lib/franchise-facts.ts`(각주·기한 순수), 새 `app/api/franchise/route.ts`, `app/brand-facts-panel.tsx`, `lib/feature-flags.ts`, `lib/record-kinds.ts`, `docs/SECURITY-BOUNDARIES.ko.md`(가맹 프로필·버전 행)와 해당 테스트.
 - 수용 기준(성공):
   - 카탈로그에 가맹 항목(가맹비·교육비·보증금·인테리어·기타 비용·총 창업비용·로열티·가맹점 수·직영점 수·신규개점·종료·해지 수·지역별 평균매출·정보공개서 등록번호·등록일·등록기관·기준 사업연도·예치·보험, 필수품목·공급가격 산정방식 요지·차액가맹금 여부·생산 방식·가맹점 밖 판매 채널·매장 유형)을 `storeScoped:false`와 별칭으로 더한다. 창업비용은 매장 유형별로 둔다. `production_method`(가맹점 공급 기준 생산 주체·방식)는 기존 소비자 항목 `cooking_method`(조리 방식, `lib/fact-catalog.ts:15`, 별칭 '조리방법'·'조리설비')와 다른 항목으로 두고 별칭을 겹치지 않는다. R2의 생산 표현 근거는 `production_method`만 인정한다. 두 사실이 서로 다르게 읽히면(예: 소비자 '매장 수제'와 가맹 'OEM 공급') R0 체크리스트 23행을 '확인 필요'로 둔다. 기존 14개 항목의 `canonicalFactKey` 결과는 같다.
@@ -670,11 +677,12 @@ R4a가 `lib/franchise-rules.ts`에 만들고 R2·R4b가 쓴다. 레코드는 `{i
 
 - R4a 구현(2026-09-25, 이 계획 브랜치, `main` 병합 전): 규칙 54개(공식·휴리스틱·플랫폼, `proposed`는 어떤 날짜에도 미적용), 사유 코드 24개·경고 3개, `ruleAt`·`rulesAt`·`registryIssues`·`earliestContractAt`·`checkTransition`·`forecastDuty`·`amendmentDeadline`·`GATE_RULES`. 테스트 `tests/franchise-rules.test.mjs`·`tests/franchise-gates.test.mjs`. 게이트 시나리오 10(직원 403)·11(동시 전이 409)은 권한·잠금이 있는 R4b 몫이다.
 - 분할: R4a는 순수 모듈 `lib/franchise-rules.ts`·`lib/franchise-gates.ts`와 테스트뿐이다. 공유 파일을 건드리지 않아 결정 없이 병합한다([첫 에픽 위임 계약](#첫-에픽-위임-계약-초안-r4a)). 다만 제품 경로라 병합은 묶음 4가 `runtime-verified`된 뒤다([게시 규칙](#로드맵)). R4b는 kind·API·화면·역할 행·DP-10이다.
-- R4b 소유 파일: 새 `lib/franchise.ts`, `lib/franchise-server.ts`, `app/franchise-panel.tsx`, `app/api/franchise/route.ts`(R1 파일 확장), `lib/nav-state.ts`·`app/workspace.tsx`(내비 1줄), `lib/record-kinds.ts`, `lib/research-worker.ts`(파기 훅 1줄), `docs/SECURITY-BOUNDARIES.ko.md`, `docs/DATA-PROCESSING.ko.md`(DP-10 제안), 테스트.
+- R4b 원장(이름·연락처 포함)·API·화면·적격 기준(결정 22 반영). 서버 구현(2026-09-25, 이 계획 브랜치): `/api/franchise` 보기 7개·작업 30개, 새 kind 10개, 스위치 `r_franchise`, 테스트 4개 스위트. 화면은 다음 PR이다.
+- R4b 소유 파일: 새 `lib/franchise.ts`(순수), `lib/franchise-crypto.ts`(필드 암호화·중복 키), `lib/franchise-server.ts`, `app/api/franchise/route.ts`, `app/franchise-panel.tsx`·`app/franchise-lead-detail.tsx`·`app/franchise-settings.tsx`(화면), `lib/nav-state.ts`·`app/workspace.tsx`(내비), `lib/record-kinds.ts`, `lib/feature-flags.ts`, `lib/franchise-gates.ts`(`contractWindowAsOf` 내보내기 1개), `docs/SECURITY-BOUNDARIES.ko.md`, `docs/DATA-PROCESSING.ko.md`(DP-10 제안·3.5), 테스트(`tests/franchise-lib.test.mjs`, `tests/franchise-pipeline.test.mjs`, `tests/franchise-contacts.test.mjs`, `tests/franchise-model-boundary.test.mjs`). `lib/research-worker.ts` 파기 훅은 넣지 않는다(보드 열기·수동 파기로 대신한다).
 
 | 단계 | 코드 | 서버 진입 조건 |
 |---|---|---|
-| 문의 | `inquiry` | 시스템 가명 코드, 유입, 서버 접수 시각. 분기 B는 LR-1 전 409 |
+| 문의 | `inquiry` | 시스템 코드, 이름·연락처(암호문), 수집 근거, 유입, 서버 접수 시각. 가맹 프로필 분기가 A인 브랜드만 받는다(판정 불가·B·C·프로필 없음은 409, H7을 보수적으로 넓힘) |
 | 연락·상담·설명회 | `contacted`·`consulted`·`briefing` | 첫 연락 시각. 상담부터 가맹희망자 |
 | 정보공개서 제공 | `disclosed` | 기록은 언제나 받는다. 등록·유효 버전, 방법별 증빙, 인근가맹점 문서가 갖춰진 날부터 대기 시작 |
 | 계약서안 | `draft_provided` | 13개 호 체크 템플릿 |
@@ -684,14 +692,14 @@ R4a가 `lib/franchise-rules.ts`에 만들고 R2·R4b가 쓴다. 레코드는 `{i
 
 - 수용 기준(성공):
   - 서버 강제: 계약·가맹금 기록은 R4a가 거부하면 409와 사유 코드를 돌려준다. 화면을 거치지 않은 호출도 같다. 대표·관리자에게도 우회 경로가 없다. 게이트 결과와 계약 가능일 옆에 'COLLECTIVE 휴리스틱 · 법률 자문 아님'이 붙는다.
-  - 연락처 없음: 이름·전화·이메일·주소 입력란이 없다. 가명 코드는 `lib/tracking-codes.ts`의 알파벳·정규화만 import해 시스템이 만든다. 자유 텍스트 메모는 없고 사유 코드만 있다. 보관 위치 라벨은 관리자가 정한 목록에서 고르고 `lib/pii-scan.ts` 검사를 fail-closed로 거친다(이름은 탐지되지 않으므로 필드 설계로 막는다).
+  - 최소 수집 연락처(결정 22): 이름(필수)·전화/이메일(하나 이상)·메모(1000자, 선택)만 받고 필드마다 `v1.` 암호문으로 저장한다. 목록·보기는 읽을 때 가리고(이름 첫 글자·끝 글자, 전화 끝 4자리, 이메일 첫 글자·도메인) 가린 값도 저장하지 않는다. 연락처 원문 보기는 대표·관리자는 모든 리드, 직원은 본인 담당 리드만이고 매번 감사 기록(값 없음)을 남긴다. 중복 키는 소유자·브랜드 범위 HMAC(키는 `AGENCY_ENCRYPTION_KEY`에서 HKDF로 파생, 새 환경변수 없음)이고 같은 연락처는 409와 기존 리드 코드만 돌려준다. 수집 근거는 문의 응대(제15조①4호)·동의(제15조①1호, 안내문 버전 필수)·제3자 소개(출처 고지 할 일)다. 광고성 정보 수신 동의는 기본 없음이고 언제든 철회한다. 정보주체 요청(열람·정정·삭제·처리정지·출처 고지)은 기한 10일(휴리스틱)을 표시한다. 미전환 리드 연락처는 마지막 활동 180일 뒤(H11), 계약 리드는 종결 1095일 뒤 파기한다. 모델 전송은 0건이다(DP-10). 시스템 코드는 `lib/tracking-codes.ts`의 알파벳만 import해 'L'+7자로 만든다. 메모·지역·이름·라벨은 `lib/pii-scan.ts` 검사를 fail-closed로 거친다. 주소·생년월일·주민등록번호·계좌·서명 이미지·스캔은 받지 않는다.
   - 증빙은 추가 전용이다. 수정은 사유를 단 새 버전이다. 확인서 스캔·서명 이미지는 받지 않고 SHA-256과 보관 위치만 받는다.
   - 수익 문의는 '서면 제공'(문서 SHA-256, 근거자료 비치 체크) 또는 '제공하지 않음'으로만 닫힌다. 구두 제공 유형은 없다.
   - 할 일과 반환 요구 기간 표시가 보인다. 캠페인을 지워도 리드는 남는다.
   - 적격 기준: `franchise_profile` 안에 브랜드가 정한 적격 기준 버전을 둔다(버전 필수). 항목은 R4b가 이미 받는 과업 필드만 쓴다: 예산 구간이 확정 총 창업비용 구간 이상인가, 희망 시·군·구가 모집 가능 지역 목록 안인가(목록 값은 D1), 희망 시기 구간, 첫 연락 성공. 서버는 충족 항목 수를 결정론으로 계산해 리드 보드 정렬에만 쓴다. 적격·보류·거절 확정은 사람이 사유 코드와 함께 한다. 모델 호출 0, 자동 탈락 0이다. 기준을 바꾸면 새 버전이 된다. 거부: 버전 없는 기준 400, 직원의 기준 변경 403.
   - 게이트 시나리오 12종([테스트 계획](#테스트-계획))과 모델 경계 테스트가 passed · mocked다.
   - 경로 A 운영: 첫 실제 제공 기록의 계약 가능일이 R0 계산표와 같다(real, LR-1 뒤). 합성 리드로 운영 게이트를 시험하지 않는다.
-- 수용 기준(거부): 미래 제공 시각 400, 기록 시각보다 이른 증빙 시각을 사유·관리자 없이 넣으면 400, 직원 제공·계약 기록 403, 같은 요청 id 재전송은 1건, 단계 동시 변경은 버전 불일치 409(잠금 키 `owner+':franchise'`, `lib/server.ts:52` 패턴), 소유자×범위 분당 60회 초과 429(`lib/execution-rate.ts:8` 패턴), 스위치 꺼짐 409(읽기·파기 계속), 공정위 사이트 링크를 제공 방법으로 고르면 400.
+- 수용 기준(거부): 미래 제공 시각 400, 기록 시각보다 이른 증빙 시각을 사유·관리자 없이 넣으면 400, 직원 제공·계약 기록 403, 같은 요청 id 재전송은 1건, 단계 동시 변경은 버전 불일치 409(잠금 키 `owner+':franchise'`, `lib/server.ts:52` 패턴), 소유자×범위 분당 60회 초과 429(`lib/execution-rate.ts:8` 패턴), 스위치 꺼짐 409(읽기·파기·정보주체 요청·연락처 보기·철회 계속), 공정위 사이트 링크를 제공 방법으로 고르면 400. 결정 22 거부: 암호화 키가 없으면 연락처 저장·조회 503(평문 0), 같은 전화·이메일 409(기존 리드 코드만), 직원의 담당 없는 리드·다른 직원 리드 연락처 보기 403, 가맹 준비도 분기가 A가 아니면 새 문의 409, 보존 기한이 지난 연락처는 새 활동으로 되살아나지 않고(먼저 파기 뒤 409) 같은 번호의 새 문의는 새 리드가 된다. 수익 문의 종결 기록(서면·제공하지 않음)은 이 PR에 없다(다음 PR).
 
 ### R5 유입 코드·모집 비용·리드 가져오기
 
@@ -806,7 +814,7 @@ R4a가 `lib/franchise-rules.ts`에 만들고 R2·R4b가 쓴다. 레코드는 `{i
 | R1 | `tests/franchise-facts.test.mjs`, 기존 `brand-facts`·`fact-import` | 버전 확정 검증, 각주, `adUse`, 소비자 분류 불변 | mocked(로컬 SQLite) |
 | R2 | `tests/franchise-compliance.test.mjs`, `tests/compliance.test.mjs`(9범주), `tests/execution-loop.test.mjs`(캡션 후보·카피 409), `tests/ai-disclosure.test.mjs`(승인 게이트) | 합성 위반 2건+, 오탐 0, 값 대조, 비가맹 이슈 동일 | mocked |
 | R3 | `tests/franchise-objective.test.mjs`, `prompt-baseline`·`role-instruction`·`role-execution-drift`(fixture 무변경), `check-prompts`, `prompt-registry`, `prompt-resolution`, `graders`, `online-grading` | 바이트 동일, 단위 적용·제외, 단위 수 16 → 22, 채점 맥락 | mocked |
-| R4b | `tests/franchise-pipeline.test.mjs`, `tests/franchise-model-boundary.test.mjs`, `record-kinds`, `feature-flags`, `security-boundaries`, E2E 1개 | 게이트 12종, 모델 입력 0과 import 그래프, 권한 | mocked, E2E는 real Chromium·로컬 D1 / mocked 로그인 |
+| R4b | `tests/franchise-pipeline.test.mjs`, `tests/franchise-contacts.test.mjs`, `tests/franchise-lib.test.mjs`, `tests/franchise-model-boundary.test.mjs`, `record-kinds`, `feature-flags`, `franchise-gates`(`contractWindowAsOf`), `security-boundaries`, E2E 1개 | 게이트 시나리오, 권한, 연락처 암호화·가림·열람 감사·중복·파기·삭제, 모델 입력 0과 import 그래프 | mocked. E2E는 `not_run`(Playwright는 R4b 서버 위임의 허용 게이트가 아니고 화면이 다음 PR) |
 | R5·R6 | `tests/recruitment-codes.test.mjs`, `tests/lead-import.test.mjs`, `tests/recruitment-metrics.test.mjs`, `tests/recruitment-report.test.mjs` | null·n·억제, 코드 유일성, 스냅샷 409, LLM 0 | mocked |
 | R7a | `tests/franchise-benchmark.test.mjs` | 성공, 미승인, 타임아웃, 200KB, 중복 실행, 단위·0 변환, 개인 필드 미적재 | mocked(fetch 스텁) + real 적재 1회 |
 | R9a | `tests/nurture.test.mjs` | 분류, 알림톡 정보성, 수익 수치 차단, 발송 코드 0, HERMES 실패·재전송 | mocked |
@@ -894,12 +902,12 @@ R4b 게이트 시나리오 12종: (1) 두 문서와 계약서안을 D에 제공�
 | `tests/fixtures/*` | 트랙 R은 바꾸지 않는다 | 가맹 fixture는 새 파일 |
 | `lib/nav-state.ts`, `app/workspace.tsx`, `tests/nav-state.test.mjs` | R4b(내비 1줄) → R6(할 일 표시) | |
 | `app/api/workspace/route.ts`, `lib/workspace-metrics.ts` | R6 → R15a(행사 뒤 연락 할 일) | 리드 없는 집계 건수만 |
-| `lib/research-worker.ts` | R4b(파기 훅 1줄) → R7b | B2 digest 큐 PR이 먼저 열려 있으면 그 뒤로 미룬다(규칙 2). 레인 B의 digest 큐가 나중이면 그쪽이 rebase한다 |
+| `lib/research-worker.ts` | (R4b 파기 훅은 넣지 않음, 결정 22 구현) → R7b | B2 digest 큐 PR이 먼저 열려 있으면 그 뒤로 미룬다(규칙 2). 레인 B의 digest 큐가 나중이면 그쪽이 rebase한다 |
 | `lib/usage-ledger.ts`, `lib/token-budget.ts`, `lib/hermes.ts` | F2·PR 4a(`merged`) → R9a | 새 사용 종류만 더하고 예산 가드는 그대로 쓴다(`docs/GROWTH-PLAN.ko.md:235`) |
 | `lib/auth-request.ts` | 보안 PR(`bump` export) → R10 | 보안 리뷰 필수 |
 | `docs/SECURITY-BOUNDARIES.ko.md`, `scripts/probe-dispatcher-auth.mjs`, `tests/security-boundaries.test.mjs` | R1(가맹 프로필·버전 행) → R4b → R3(objective 행) → R15a → R5 → R6 → R7a → (R8 → R10) | 권한 표 행 추가 |
 | `docs/DATA-PROCESSING.ko.md` | R4b(DP-10·리드 범주) → R7a(2절 공공 API) → (R8 → R10) | 레인 B 소유, 레인 B가 검토. 이 문서 2.2절의 R1~R4는 조사 전송 행 ID이고 트랙 R 에픽이 아니다. 트랙 R이 쓰는 행과 문장은 에픽을 '트랙 R R7a'처럼 적고, 공공 API 행은 2.4절 C 계열 다음 번호(C5)로 둔다 |
-| `docs/PUBLISH.ko.md`, `.env.example` | (R8) `LEAD_HMAC_KEY` 사전 점검 항목과 선택 환경변수 | |
+| `docs/PUBLISH.ko.md`, `.env.example` | 없음. 결정 22 구현은 중복 키를 `AGENCY_ENCRYPTION_KEY`에서 파생해 새 환경변수가 없다 | |
 
 ## KPI
 

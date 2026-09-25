@@ -555,6 +555,15 @@ const afterCompile=gg.assessDelivery({...e('d1','disclosure',T10),id:FREE},CTX,'
 check('compiling the exported id pattern cannot loosen the module check',compileThrew&&afterCompile.id===null&&same(afterCompile.reasons,['invalid_record']));
 
 // 29) 사유·경고 코드 전부가 어딘가에서 기대값으로 나왔다. 외부 호출은 0회다.
+// R4b 추가 내보내기: contractWindowAsOf는 checkTransition이 그 시각 계약에 쓰는 창과 같다(약정 판정용, 시계 없음).
+{
+ const t0='2026-10-05T10:00:00+09:00',lead={deliveries:[e('d1','disclosure',t0),e('n1','nearby',t0),e('r1','draft',t0)]},input={...lead,disclosureVersions:VER,contractTemplates:TPL,holidays:HOL};
+ for(const cutoff of ['2026-10-19T10:00:00+09:00','2026-10-25T10:00:00+09:00','2026-10-04T10:00:00+09:00']){
+  const w=fg.contractWindowAsOf(input,'2026-10-26T10:00:00+09:00',cutoff),g=fg.checkTransition({...lead,contract:{signedAt:cutoff,recordedAt:cutoff}},'contracted','2026-10-26T10:00:00+09:00',CTX);
+  check(`contractWindowAsOf(${cutoff.slice(0,10)}) equals the window the contract gate uses`,w.at===g.window.at&&JSON.stringify(plain(w.blockers))===JSON.stringify(plain(g.window.blockers)));
+ }
+ check('contractWindowAsOf before any delivery has no window',fg.contractWindowAsOf(input,'2026-10-26T10:00:00+09:00','2026-10-04T10:00:00+09:00').at===null);
+}
 const missingCodes=[...fg.REASON_CODES,...fg.WARNING_CODES].filter(c=>!seen.has(c));
 assert.deepEqual(missingCodes,[],'기대값으로 확인하지 않은 코드: '+missingCodes.join(', '));passed.push('all 24 reason codes and 3 warning codes are asserted');
 check('no external call was made',fetchCalls===0);
