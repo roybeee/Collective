@@ -12,10 +12,11 @@ import {STAGE_LABELS,BASIS_LABELS,REFERRAL_LABELS,MARKETING_METHOD_LABELS,MARKET
  SUBJECT_REQUEST_TYPE_LABELS,SUBJECT_CHANNEL_LABELS,CONTACT_FIELD_LABELS,CONTACT_STATE_LABELS,EVIDENCE_TYPE_LABELS,DELIVERY_DOC_LABELS,DELIVERY_METHOD_LABELS,ELECTRONIC_CHANNEL_LABELS,HAND_EVIDENCE_LABELS,
  ADVISOR_TYPE_LABELS,FEE_CATEGORY_LABELS,ESCROW_INSTITUTION_LABELS,FORECAST_DUTY_LABELS,EVENT_TYPE_LABELS,CONTACT_NOTE,RETENTION_LABEL,RECHECK_LABEL,MEMO_HINT,DUE_LABEL,
  type LeadTask,type RevealPurpose,type CloseReason,type MarketingMethod,type SubjectRequestType,type SubjectChannel,type ContactField} from '@/lib/franchise';
-import {franchiseGet,franchisePost,problemOf,messageOf,ProblemBox,Disclaimer,Section,TimeField,HashField,StorageField,LabelSelect,TaskFields,NOW,timeOf,kstDate,kst,labelOf,roleLabel,
+import {franchiseGet,franchisePost,problemOf,messageOf,ProblemBox,Disclaimer,Section,TimeField,HashField,StorageField,LabelSelect,TaskFields,NOW,timeOf,kstDate,kst,labelOf,actorLabel,
  type Json,type LeadDetail,type Intake,type Assignee,type Problem,type PostResult,type TimeValue,type EvidenceView,type GateView,type SideView} from './franchise-common';
 
-type Act=(action:string,payload:Json,done?:string,noVersion?:boolean)=>Promise<PostResult|null>;
+// done: 성공 문구. 응답에 따라 달라지면 함수로 준다.
+type Act=(action:string,payload:Json,done?:string|((result:Json)=>string),noVersion?:boolean)=>Promise<PostResult|null>;
 type Common={lead:LeadDetail;act:Act;busy:boolean};
 const REVEAL_MS=60000;
 export const ERASE_CONFIRM='연락처·메모·중복 키를 지우고 되돌릴 수 없습니다. 단계·증빙 기록은 남습니다.';
@@ -45,7 +46,7 @@ export function FranchiseLeadDetail({brandId,leadId,initial,admin,intake,assigne
    const r=await franchisePost(action,{brandId,leadId:lead.id,...(noVersion?{}:{version:lead.version}),...payload});
    if(r.body.lead)setLead(r.body.lead);
    if(r.status!==200){setProblem(problemOf(r));if(r.status===409)void load();return null}
-   if(done)setMessage(done);
+   if(done)setMessage(typeof done==='function'?done((r.body.result??{}) as Json):done);
    onChanged();
    return r;
   }finally{setBusy(false)}
@@ -73,19 +74,30 @@ function LeadBody({lead,act,busy,admin,intake,assignees,campaigns,brandId}:Commo
   {can(lead,'reveal_contact')&&<RevealBox key={lead.version} {...c}/>}
   <AssignBox {...c} admin={admin} assignees={assignees}/>
   <StageBox {...c}/>
-  {admin&&lead.gate&&<GateCard gate={lead.gate}/>}
-  {can(lead,'update_task')&&<Section title="과업 정보"><TaskForm key={lead.version} {...c} campaigns={campaigns}/></Section>}
+  {admin&&lead.gate&&<GateCard gate={lead.gate} stage={lead.stage}/>}
+  {can(lead,'update_task')&&<Section title="문의 조건"><TaskForm key={lead.version} {...c} campaigns={campaigns}/></Section>}
   {can(lead,'update_contact')&&<Section title="연락처 수정" note="빈칸은 그대로 둡니다. 바꿀 값만 적으세요. 수정은 이력에 항목 이름만 남습니다."><ContactForm key={lead.version} {...c}/></Section>}
   <BasisBox {...c} notices={notices}/>
   <MarketingBox key={'m'+lead.version} {...c} notices={notices}/>
   {can(lead,'add_subject_request')&&<SubjectQuick key={'s'+lead.version} {...c}/>}
-  {admin&&lead.evidence&&<EvidenceSection {...c} brandId={brandId}/>}
-  {can(lead,'erase_lead')&&<Section title="연락처 삭제 실행 (정보주체 요청)" note={ERASE_CONFIRM}><div><Button variant="outline" disabled={busy} onClick={()=>{if(window.confirm(ERASE_CONFIRM))void act('erase_lead',{},'연락처·메모·중복 키를 삭제했습니다.',true)}}>삭제 실행</Button></div></Section>}
-  <Timeline lead={lead}/>
+  {admin&&lead.evidence&&<EvidenceSection {...c} brandId={brandId} assignees={assignees}/>}
+  {can(lead,'erase_lead')&&<Section title="연락처 삭제 실행 (정보주체 요청)" note={ERASE_CONFIRM+' 이 리드에 접수된 삭제 요청은 완료로 기록합니다.'}><div><Button variant="outline" disabled={busy} onClick={()=>{if(window.confirm(ERASE_CONFIRM))void act('erase_lead',{},eraseDone,true)}}>삭제 실행</Button></div></Section>}
+  <Timeline lead={lead} assignees={assignees}/>
  </>;
 }
 
+// 삭제 실행 결과 문구: 함께 완료로 기록한 삭제 요청 수를 알린다.
+export function eraseDone(result:Json){
+ const closed=Array.isArray(result.closedRequestIds)?result.closedRequestIds.length:0,tail=closed?` 삭제 요청 ${closed}건을 완료로 기록했습니다.`:'';
+ return (result.alreadyErased?'이미 삭제된 연락처입니다.':'연락처·메모·중복 키를 삭제했습니다.')+tail;
+}
 // 연락처 보기: 목적과 항목을 고르면 서버가 원문을 돌려주고 감사 기록(값 없음)을 남긴다. 값은 이 컴포넌트 상태에만 두고 60초 뒤·리드 변경 때 지운다.
+// 전화·이메일은 눌러서 바로 걸거나 쓸 수 있게 tel:·mailto: 링크로 보인다(주소 표시줄·저장소에는 남기지 않는다).
+export function contactHref(field:ContactField,value:string){
+ if(field==='phone'){const digits=value.replace(/[^\d+]/g,'');return digits?'tel:'+digits:null}
+ if(field==='email')return 'mailto:'+encodeURIComponent(value).replace('%40','@');
+ return null;
+}
 function RevealBox({lead,act,busy}:Common){
  const available=(['name','phone','email','memo'] as ContactField[]).filter(f=>f==='name'||(f==='phone'&&!!lead.contact?.hasPhone)||(f==='email'&&!!lead.contact?.hasEmail)||(f==='memo'&&lead.hasMemo));
  const [fields,setFields]=useState<ContactField[]>(()=>available.filter(f=>f!=='memo')),[purpose,setPurpose]=useState<RevealPurpose>('call_back');
@@ -96,7 +108,7 @@ function RevealBox({lead,act,busy}:Common){
   const v=r?.body.values;if(v&&typeof v==='object')setValues(v as Record<string,string|null>);
  }
  return <Section title="연락처 보기" note="열람 목적과 항목이 기록에 남습니다. 보인 값은 60초 뒤 화면에서 지웁니다.">
-  {values?<div className="franchise-revealed" aria-live="polite"><dl>{available.filter(f=>f in values).map(f=><div key={f}><dt>{CONTACT_FIELD_LABELS[f]}</dt><dd style={{whiteSpace:'pre-wrap'}}>{values[f]??'없음'}</dd></div>)}</dl><Button size="sm" variant="outline" onClick={()=>setValues(null)}>지금 가리기</Button></div>
+  {values?<div className="franchise-revealed" aria-live="polite"><dl>{available.filter(f=>f in values).map(f=>{const v=values[f],href=v?contactHref(f,v):null;return <div key={f}><dt>{CONTACT_FIELD_LABELS[f]}</dt><dd style={{whiteSpace:'pre-wrap'}}>{v?href?<a href={href}>{v}</a>:v:'없음'}</dd></div>})}</dl><Button size="sm" variant="outline" onClick={()=>setValues(null)}>지금 가리기</Button></div>
   :<div className="franchise-bar">
    <LabelSelect label="열람 목적" labels={REVEAL_PURPOSE_LABELS} value={purpose} onChange={setPurpose}/>
    <fieldset className="franchise-inline"><legend className="sr-only">볼 항목</legend>{available.map(f=><label key={f}><input type="checkbox" checked={fields.includes(f)} onChange={e=>setFields(e.target.checked?[...fields,f]:fields.filter(x=>x!==f))}/> {CONTACT_FIELD_LABELS[f]}</label>)}</fieldset>
@@ -126,16 +138,21 @@ function StageBox({lead,act,busy}:Common){
  return <Section title="단계" note="정보공개서 제공·계약서안 제공·계약·가맹금 예치는 증빙 기록으로만 진행합니다. 막히면 사유를 보여 줍니다.">
   <p>현재 단계: <b>{STAGE_LABELS[lead.stage]}</b>{lead.stage==='closed'&&lead.closedFrom?` (종결 전 ${STAGE_LABELS[lead.closedFrom]})`:''}</p>
   {(moves.length>0||reopen)&&<div className="franchise-bar">{moves.map(s=><Button key={s} variant="outline" disabled={busy} onClick={()=>void act('move_stage',{to:s},`${STAGE_LABELS[s]} 단계로 옮겼습니다.`)}>{s==='opened'?'개점 기록':STAGE_LABELS[s]+' 단계로'}</Button>)}
-   {reopen&&<Button variant="outline" disabled={busy} onClick={()=>void act('reopen_lead',{},'리드를 다시 열었습니다.')}>다시 열기</Button>}</div>}
+   {reopen&&<Button variant="outline" disabled={busy} onClick={()=>void act('reopen_lead',{},reopenDone)}>다시 열기</Button>}</div>}
   {closable&&<div className="franchise-bar"><LabelSelect label="종결 사유" labels={reasons} value={reason} empty="사유 선택" onChange={setReason}/><Button variant="outline" disabled={busy||!reason} onClick={()=>void act('move_stage',{to:'closed',closeReason:reason},'리드를 종결했습니다.')}>종결</Button></div>}
   {!moves.length&&!closable&&!reopen&&<p className="subtle-note">지금 이 계정으로 옮길 수 있는 단계가 없습니다.</p>}
   <Disclaimer/>
  </Section>;
 }
 
-const sideText=(label:string,s:SideView)=>`${label}: ${s.startDate??'-'} 기산 · ${s.days??'-'}일 · 기간 말일 ${s.periodEnd??'-'}${s.shortened?' · 7일로 단축':''}${s.extended?' · 주말·공휴일로 말일 연장':''}`;
+// 다시 열기 결과: 되돌린 단계를 지금 설정으로 다시 판정해 막히면 사유를 함께 알린다(COLLECTIVE 휴리스틱 · 법률 자문 아님).
+export function reopenDone(result:Json){
+ const r=(result.recheck??{}) as {ok?:boolean;reasons?:{message:string}[]};
+ return r.ok===false?`리드를 다시 열었습니다. 지금 설정으로 다시 판정하면 막힙니다: ${(r.reasons??[]).map(x=>x.message).join(' ')} (COLLECTIVE 휴리스틱 · 법률 자문 아님)`:'리드를 다시 열었습니다.';
+}
+const sideText=(label:string,s:SideView)=>s.startDate?`${label}: ${s.startDate} 기산 · ${s.days??'-'}일 · 기간 말일 ${s.periodEnd??'-'}${s.shortened?' · 7일로 단축':''}${s.extended?' · 주말·공휴일로 말일 연장':''}`:`${label}: 기산할 제공 기록 없음`;
 // 계약 가능 시각(대표·관리자): 가장 이른 계약 가능 시각, 기산 내역, 막힌 이유·참고·주의, 예상매출액 산정서 필요 여부, 개점 판정.
-function GateCard({gate}:{gate:GateView}){
+function GateCard({gate,stage}:{gate:GateView;stage:LeadDetail['stage']}){
  const w=gate.window,opened=gate.stageChecks.opened;
  return <Section title="계약 가능 시각">
   <p><b>{w.atKst??'아직 계산할 수 없습니다'}</b></p><Disclaimer/>
@@ -145,30 +162,34 @@ function GateCard({gate}:{gate:GateView}){
   {!!w.notes.length&&<><p>참고</p><ul>{w.notes.map(b=><li key={b.code}>{b.message}</li>)}</ul></>}
   {!!w.warnings.length&&<ul className="franchise-warnings">{w.warnings.map(b=><li key={b.code}>주의: {b.message}</li>)}</ul>}
   <p>예상매출액 산정서: {FORECAST_DUTY_LABELS[gate.forecastDuty]}</p>
-  <p>개점 판정: {opened.ok?'진행 가능':'막힘'}</p>{!opened.ok&&!!opened.reasons.length&&<ul>{opened.reasons.map(r=><li key={r.code}>{r.message}</li>)}</ul>}
+  {opened?<><p>개점 판정: {opened.ok?'진행 가능':'막힘'}</p>{!opened.ok&&!!opened.reasons.length&&<ul>{opened.reasons.map(r=><li key={r.code}>{r.message}</li>)}</ul>}</>
+   :<p className="subtle-note">개점 판정: {stage==='opened'?'개점을 기록했습니다.':stage==='closed'?'종결된 리드입니다.':'계약 기록 뒤에 판정합니다.'}</p>}
  </Section>;
 }
 
 function TaskForm({lead,act,busy,campaigns}:Common&{campaigns:readonly {id:string;title:string}[]}){
  const [task,setTask]=useState<LeadTask>(lead.task);
  const changed=(Object.keys(task) as (keyof LeadTask)[]).filter(k=>(task[k]||null)!==(lead.task[k]||null));
- return <form className="form-stack" onSubmit={e=>{e.preventDefault();void act('update_task',{task:Object.fromEntries(changed.map(k=>[k,k==='campaignId'?task[k]||null:task[k]]))},'과업 정보를 저장했습니다.')}}>
+ return <form className="form-stack" onSubmit={e=>{e.preventDefault();void act('update_task',{task:Object.fromEntries(changed.map(k=>[k,k==='campaignId'?task[k]||null:task[k]]))},'문의 조건을 저장했습니다.')}}>
   <TaskFields task={task} onChange={setTask} campaigns={campaigns}/>
-  <div className="form-actions"><Button type="submit" disabled={busy||!changed.length}>과업 저장</Button></div>
+  <div className="form-actions"><Button type="submit" disabled={busy||!changed.length}>문의 조건 저장</Button></div>
  </form>;
 }
 
-const blankContact={name:'',phone:'',email:'',memo:'',clearPhone:false,clearEmail:false,clearMemo:false};
+const blankContact={name:'',phone:'',email:'',memo:'',memoMode:'append' as 'append'|'replace',clearPhone:false,clearEmail:false,clearMemo:false};
 // 연락처 수정: 입력값은 이 폼 상태에만 있고 저장에 성공하면 버전이 바뀌어 폼이 비워진다. 브라우저 자동 완성에 남지 않게 autoComplete를 끈다.
+// 메모는 기본으로 기존 메모 뒤에 덧붙인다(기존 메모를 열람하지 않고 통화 메모를 더한다). '바꾸기'를 고르면 기존 메모 전체를 바꾼다.
 function ContactForm({lead,act,busy}:Common){
  const [f,setF]=useState(blankContact);
  const contact={...(f.name.trim()?{name:f.name}:{}),...(f.clearPhone?{phone:null}:f.phone.trim()?{phone:f.phone}:{}),...(f.clearEmail?{email:null}:f.email.trim()?{email:f.email}:{})};
- const memo=f.clearMemo?{memo:null}:f.memo.trim()?{memo:f.memo}:{},empty=!Object.keys(contact).length&&!('memo' in memo);
+ const append=lead.hasMemo&&f.memoMode==='append';
+ const memo=f.clearMemo?{memo:null}:f.memo.trim()?append?{memoAppend:f.memo}:{memo:f.memo}:{},empty=!Object.keys(contact).length&&!Object.keys(memo).length;
  return <form className="form-stack" autoComplete="off" onSubmit={e=>{e.preventDefault();void act('update_contact',{...(Object.keys(contact).length?{contact}:{}),...memo},'연락처를 수정했습니다.')}}>
   <div className="form-two"><label className="field"><span>이름</span><Input autoComplete="off" maxLength={40} value={f.name} onChange={e=>setF({...f,name:e.target.value})}/></label>
    <label className="field"><span>전화</span><Input autoComplete="off" inputMode="tel" maxLength={40} disabled={f.clearPhone} placeholder="010-0000-0000" value={f.phone} onChange={e=>setF({...f,phone:e.target.value})}/>{lead.contact?.hasPhone&&<label className="franchise-inline"><input type="checkbox" checked={f.clearPhone} onChange={e=>setF({...f,clearPhone:e.target.checked,phone:''})}/> 전화 지우기</label>}</label></div>
   <label className="field"><span>이메일</span><Input autoComplete="off" type="email" maxLength={254} disabled={f.clearEmail} placeholder="name@example.com" value={f.email} onChange={e=>setF({...f,email:e.target.value})}/>{lead.contact?.hasEmail&&<label className="franchise-inline"><input type="checkbox" checked={f.clearEmail} onChange={e=>setF({...f,clearEmail:e.target.checked,email:''})}/> 이메일 지우기</label>}</label>
-  <label className="field"><span>메모 (1000자)</span><Textarea autoComplete="off" rows={3} maxLength={1000} disabled={f.clearMemo} value={f.memo} onChange={e=>setF({...f,memo:e.target.value})}/><small>{MEMO_HINT}</small>{lead.hasMemo&&<label className="franchise-inline"><input type="checkbox" checked={f.clearMemo} onChange={e=>setF({...f,clearMemo:e.target.checked,memo:''})}/> 메모 지우기</label>}</label>
+  <label className="field"><span>{!lead.hasMemo?'메모 (1000자)':append?'메모 덧붙이기 (기존 메모 뒤에 붙입니다 · 합쳐서 1000자)':'메모 바꾸기 (저장하면 기존 메모 전체를 바꿉니다 · 1000자)'}</span><Textarea autoComplete="off" rows={3} maxLength={1000} disabled={f.clearMemo} value={f.memo} onChange={e=>setF({...f,memo:e.target.value})}/><small>{MEMO_HINT}</small>
+   {lead.hasMemo&&<fieldset className="franchise-inline"><legend className="sr-only">메모 저장 방식</legend><label><input type="radio" name="franchise-memo-mode" checked={f.memoMode==='append'} disabled={f.clearMemo} onChange={()=>setF({...f,memoMode:'append'})}/> 덧붙이기</label><label><input type="radio" name="franchise-memo-mode" checked={f.memoMode==='replace'} disabled={f.clearMemo} onChange={()=>setF({...f,memoMode:'replace'})}/> 바꾸기</label><label><input type="checkbox" checked={f.clearMemo} onChange={e=>setF({...f,clearMemo:e.target.checked,memo:''})}/> 메모 지우기</label></fieldset>}</label>
   <p className="subtle-note">전화·이메일 중 하나는 남아야 합니다.</p>
   <div className="form-actions"><Button type="button" variant="outline" disabled={busy} onClick={()=>setF(blankContact)}>비우기</Button><Button type="submit" disabled={busy||empty}>연락처 저장</Button></div>
  </form>;
@@ -180,9 +201,9 @@ function BasisBox({lead,act,busy,notices}:Common&{notices:Intake['notices']}){
   <p>{BASIS_LABELS[b.type]}</p>
   {b.type==='consent'&&<p className="subtle-note">개인정보 안내문 {notice?notice.versionLabel:'(사용 중지된 버전)'} · 안내 시각 {kst(b.noticeGivenAt)}</p>}
   {b.type==='referral'&&<>
-   <p className="subtle-note">소개: {labelOf(REFERRAL_LABELS,b.referralFrom)} · {b.sourceNoticedAt?`출처 고지함 ${kst(b.sourceNoticedAt)}`:'출처 고지 필요'}</p>
-   {!b.sourceNoticedAt&&<p className="subtle-note">다른 사람에게 소개받은 연락처입니다. 처음 연락할 때 어디서 연락처를 받았는지 알리고 기록하세요.</p>}
-   {!b.sourceNoticedAt&&can(lead,'record_source_notice')&&<div className="franchise-bar"><TimeField label="고지한 시각" value={at} onChange={setAt}/><Button disabled={busy||!timeOf(at)} onClick={()=>void act('record_source_notice',{noticedAt:timeOf(at)},'출처 고지를 기록했습니다.')}>고지함</Button></div>}
+   <p className="subtle-note">소개: {labelOf(REFERRAL_LABELS,b.referralFrom)} · {b.sourceNoticedAt?`출처 고지함 ${kst(b.sourceNoticedAt)}`:lead.sourceNoticePending?'출처 고지 필요':'출처 고지 기록 없음'}</p>
+   {lead.sourceNoticePending&&<p className="subtle-note">다른 사람에게 소개받은 연락처입니다. 처음 연락할 때 어디서 연락처를 받았는지 알리고 기록하세요.</p>}
+   {lead.sourceNoticePending&&can(lead,'record_source_notice')&&<div className="franchise-bar"><TimeField label="고지한 시각" value={at} onChange={setAt}/><Button disabled={busy||!timeOf(at)} onClick={()=>void act('record_source_notice',{noticedAt:timeOf(at)},'출처 고지를 기록했습니다.')}>고지함</Button></div>}
   </>}
  </Section>;
 }
@@ -210,26 +231,26 @@ function SubjectQuick({act,busy}:Common){
   <div className="form-two"><LabelSelect label="요청 유형" labels={SUBJECT_REQUEST_TYPE_LABELS} value={type} empty="유형 선택" onChange={setType}/><LabelSelect label="접수 경로" labels={SUBJECT_CHANNEL_LABELS} value={channel} empty="경로 선택" onChange={setChannel}/></div>
   <TimeField label="접수 시각 (30일 안)" value={at} onChange={setAt}/>
   <p className="subtle-note">{DUE_LABEL}. 요청한 사람의 이름·연락처는 따로 적지 않습니다.</p>
-  <div><Button disabled={busy||!type||!channel||!timeOf(at)} onClick={()=>void act('add_subject_request',{type,channel,receivedAt:timeOf(at)},undefined,true).then(r=>{const due=r?.body.result?.dueAt;if(r)window.alert(`정보주체 요청을 접수했습니다. 처리 기한 ${kst(typeof due==='string'?due:null)}`)})}>요청 접수</Button></div>
+  <div><Button disabled={busy||!type||!channel||!timeOf(at)} onClick={()=>void act('add_subject_request',{type,channel,receivedAt:timeOf(at)},undefined,true).then(r=>{if(!r)return;const due=r.body.result?.dueAt;setType('');setChannel('');setAt(NOW);window.alert(`정보주체 요청을 접수했습니다. 처리 기한 ${kst(typeof due==='string'?due:null)}`)})}>요청 접수</Button></div>
  </div></details>;
 }
 
 // ── 증빙(대표·관리자) ──
 type SettingsLite={profile:{storageLabels:string[]}|null;versions:{id:string;label:string;status:string}[];templates:{id:string;label:string;status:string;complete:boolean}[]};
 const HAND_KEYS=Object.keys(HAND_EVIDENCE_LABELS) as (keyof typeof HAND_EVIDENCE_LABELS)[];
-type EvForm={type:EvidenceType;docSha256:string;storageLabel:string;backdateReason:string;supersedes:string;correctionReason:string;
+export type EvForm={type:EvidenceType;docSha256:string;storageLabel:string;backdateReason:string;supersedes:string;correctionReason:string;
  doc:keyof typeof DELIVERY_DOC_LABELS;method:'hand'|'certified_mail'|'electronic';deliveredAt:TimeValue;versionId:string;templateId:string;hand:Record<typeof HAND_KEYS[number],boolean>;receiptConfirmed:boolean;
  channel:keyof typeof ELECTRONIC_CHANNEL_LABELS;received:boolean;receivedAt:TimeValue;printable:boolean;
  advisorType:keyof typeof ADVISOR_TYPE_LABELS;registrationVerified:boolean;advisedOn:string;targetDoc:'disclosure'|'draft';hqPaid:string;hqReferred:string;
  providedAt:TimeValue;signedAt:TimeValue;category:keyof typeof FEE_CATEGORY_LABELS;paid:boolean;paidAt:TimeValue;proof:'none'|'escrow'|'insurance';institutionType:keyof typeof ESCROW_INSTITUTION_LABELS;
  firstDepositAt:TimeValue;hasAgreementAt:boolean;agreementAt:TimeValue;coverageFrom:string;coverageTo:string;clauses:{fee:boolean;construction:boolean;training:boolean}};
-const blankEvidence=(type:EvidenceType):EvForm=>({type,docSha256:'',storageLabel:'',backdateReason:'',supersedes:'',correctionReason:'',doc:'disclosure',method:'hand',deliveredAt:NOW,versionId:'',templateId:'',
+export const blankEvidence=(type:EvidenceType):EvForm=>({type,docSha256:'',storageLabel:'',backdateReason:'',supersedes:'',correctionReason:'',doc:'disclosure',method:'hand',deliveredAt:NOW,versionId:'',templateId:'',
  hand:Object.fromEntries(HAND_KEYS.map(k=>[k,false])) as EvForm['hand'],receiptConfirmed:false,channel:'email',received:false,receivedAt:NOW,printable:false,
  advisorType:'franchise_consultant',registrationVerified:false,advisedOn:'',targetDoc:'disclosure',hqPaid:'',hqReferred:'',providedAt:NOW,signedAt:NOW,category:'a_join',paid:true,paidAt:NOW,proof:'escrow',institutionType:'bank',
  firstDepositAt:NOW,hasAgreementAt:false,agreementAt:NOW,coverageFrom:'',coverageTo:'',clauses:{fee:false,construction:false,training:false}});
 const tri=(v:string)=>v==='yes'?true:v==='no'?false:null;
 // 서버 whitelist와 같은 키만 보낸다(자유 입력 칸 없음). times는 기록 시각보다 이를 수 있는 증빙 시각이다('지금'이 아니면 사유가 필요하다).
-function evidenceRequest(f:EvForm):{action:string;payload:Json;times:TimeValue[]}{
+export function evidenceRequest(f:EvForm):{action:string;payload:Json;times:TimeValue[]}{
  const common={...(f.docSha256?{docSha256:f.docSha256}:{}),...(f.storageLabel?{storageLabel:f.storageLabel}:{}),...(f.supersedes?{supersedes:f.supersedes,correctionReason:f.correctionReason}:{})};
  switch(f.type){
   case 'delivery':{
@@ -260,7 +281,7 @@ function evidenceSummary(e:EvidenceView,settings:SettingsLite|null){
   default:return '';
  }
 }
-function EvidenceSection({lead,act,busy,brandId}:Common&{brandId:string}){
+function EvidenceSection({lead,act,busy,brandId,assignees}:Common&{brandId:string;assignees:readonly Assignee[]}){
  const [settings,setSettings]=useState<SettingsLite|null>(null),[settingsError,setSettingsError]=useState('');
  useEffect(()=>{const c=new AbortController();franchiseGet<SettingsLite>({view:'settings',brandId},c.signal).then(d=>{if(!c.signal.aborted)setSettings(d)},e=>{if(!c.signal.aborted)setSettingsError(messageOf(e))});return ()=>c.abort()},[brandId]);
  const recordable=can(lead,'record_delivery');
@@ -268,7 +289,7 @@ function EvidenceSection({lead,act,busy,brandId}:Common&{brandId:string}){
   {settingsError&&<p className="form-error" role="alert">{settingsError}</p>}
   {recordable&&<Section title="증빙 기록" note="증빙은 추가만 합니다. 고칠 때는 정정 대상을 골라 새로 기록합니다. 기록 시각은 서버 시각이고, 그보다 이른 증빙 시각은 사유가 필요합니다."><EvidenceForm key={lead.version} lead={lead} act={act} busy={busy} settings={settings}/></Section>}
   {!recordable&&lead.stage==='closed'&&<p className="subtle-note">종결된 리드는 다시 연 뒤 증빙을 기록합니다.</p>}
-  <EvidenceList lead={lead} act={act} busy={busy} settings={settings}/>
+  <EvidenceList lead={lead} act={act} busy={busy} settings={settings} assignees={assignees}/>
  </>;
 }
 function EvidenceForm({lead,act,busy,settings}:Common&{settings:SettingsLite|null}){
@@ -278,7 +299,7 @@ function EvidenceForm({lead,act,busy,settings}:Common&{settings:SettingsLite|nul
  const versions=(settings?.versions??[]).filter(v=>v.status==='active'),templates=(settings?.templates??[]).filter(t=>t.status==='active');
  const targets=(lead.evidence??[]).filter(e=>e.evidenceType===f.type&&!e.voided&&!e.superseded);
  const missing=req.times.some(t=>!timeOf(t))||(f.type==='delivery'&&((f.doc==='disclosure'&&!f.versionId)||(f.doc==='draft'&&!f.templateId)))||(f.type==='advice'&&!f.advisedOn)||(f.type==='forecast'&&!f.docSha256)
-  ||(f.type==='fee'&&f.proof==='insurance'&&(!f.coverageFrom||!f.coverageTo))||(backdate&&!f.backdateReason)||(!!f.supersedes&&!f.correctionReason);
+  ||(f.type==='fee'&&f.proof==='insurance'&&(!f.coverageFrom||!f.coverageTo))||(f.type==='fee'&&f.proof!=='escrow'&&!f.paid)||(backdate&&!f.backdateReason)||(!!f.supersedes&&!f.correctionReason);
  async function submit(){
   const r=await act(req.action,{...req.payload,...(backdate?{backdateReason:f.backdateReason}:{})},`${EVIDENCE_TYPE_LABELS[f.type]} 기록을 저장했습니다.`);
   const a=r?.body.result?.assessment as {counted?:boolean;reasons?:{message:string}[]}|undefined;
@@ -312,6 +333,7 @@ function EvidenceForm({lead,act,busy,settings}:Common&{settings:SettingsLite|nul
   {f.type==='agreement'&&<fieldset className="field"><legend>약정에 든 조항</legend>{(['fee','construction','training'] as const).map(k=><label key={k} className="franchise-inline"><input type="checkbox" checked={f.clauses[k]} onChange={e=>set({clauses:{...f.clauses,[k]:e.target.checked}})}/> {({fee:'가맹금',construction:'공사',training:'교육'})[k]}</label>)}</fieldset>}
   {f.type==='fee'&&<>
    <LabelSelect label="가맹금 유형" labels={FEE_CATEGORY_LABELS} value={f.category} onChange={category=>set({category})}/>
+   {f.proof!=='escrow'&&<p className="subtle-note">예치 증빙이 없거나 보험이면 수령 시각을 기록해야 합니다.</p>}
    <label className="franchise-inline"><input type="checkbox" checked={f.paid} onChange={e=>set({paid:e.target.checked})}/> 수령 시각 기록</label>
    {f.paid&&<TimeField label="수령 시각" value={f.paidAt} onChange={paidAt=>set({paidAt})}/>}
    <LabelSelect label="예치·보험 증빙" labels={{none:'없음',escrow:'예치',insurance:'피해보상보험'}} value={f.proof} onChange={proof=>set({proof})}/>
@@ -330,13 +352,13 @@ function EvidenceForm({lead,act,busy,settings}:Common&{settings:SettingsLite|nul
   <Disclaimer/>
  </form>;
 }
-function EvidenceList({lead,act,busy,settings}:Common&{settings:SettingsLite|null}){
+function EvidenceList({lead,act,busy,settings,assignees}:Common&{settings:SettingsLite|null;assignees:readonly Assignee[]}){
  const rows=lead.evidence??[];
  if(!rows.length)return <Section title="증빙 목록"><p className="subtle-note">아직 기록한 증빙이 없습니다.</p></Section>;
  return <Section title="증빙 목록" note="추가 전용입니다. 지우지 않고 정정·무효 표시로 남깁니다.">
   <ul className="franchise-list">{rows.map(e=><li key={e.id}>
    <p><b>{labelOf(EVIDENCE_TYPE_LABELS,e.evidenceType)}</b> {e.superseded&&<span className="status status-outdated">정정됨</span>}{e.voided&&<span className="status status-revision">무효</span>} {evidenceSummary(e,settings)}</p>
-   <p className="subtle-note">기록 {kst(e.recordedAt)} · {roleLabel(e.recordedBy.role)}{e.backdateApproval?` · 이른 시각 사유: ${labelOf(BACKDATE_REASON_LABELS,e.backdateApproval.reasonCode)}`:''}{e.correctionReason?` · 정정 사유: ${labelOf(CORRECTION_REASON_LABELS,e.correctionReason)}`:''}{e.storageLabel?` · 보관 ${e.storageLabel}`:''}{e.docSha256?` · 해시 ${e.docSha256.slice(0,12)}`:''}</p>
+   <p className="subtle-note">기록 {kst(e.recordedAt)} · {actorLabel(e.recordedBy,assignees)}{e.backdateApproval?` · 이른 시각 사유: ${labelOf(BACKDATE_REASON_LABELS,e.backdateApproval.reasonCode)}`:''}{e.correctionReason?` · 정정 사유: ${labelOf(CORRECTION_REASON_LABELS,e.correctionReason)}`:''}{e.storageLabel?` · 보관 ${e.storageLabel}`:''}{e.docSha256?` · 해시 ${e.docSha256.slice(0,12)}`:''}</p>
    {e.assessment&&<p className="subtle-note">{e.assessment.counted?'기산에 씀':'기산에 쓰지 않음'}{e.assessment.reasons.length?': '+e.assessment.reasons.map(r=>r.message).join(' '):''}</p>}
    {can(lead,'void_evidence')&&!e.voided&&!e.superseded&&e.evidenceType!=='contract'&&<VoidButton id={e.id} act={act} busy={busy}/>}
   </li>)}</ul>
@@ -350,13 +372,13 @@ function VoidButton({id,act,busy}:{id:string;act:Act;busy:boolean}){
   <Button size="sm" variant="outline" disabled={busy||!reason} onClick={()=>{if(window.confirm('이 증빙을 무효로 표시할까요? 기록은 지우지 않고 남습니다.'))void act('void_evidence',{supersedes:id,correctionReason:reason},'증빙을 무효로 표시했습니다.')}}>다른 리드 기록 무효화</Button></div>;
 }
 
-// 이력: 종류·단계·사유·항목 이름·시각·역할만 보인다(값 없음).
+// 이력: 종류·단계·사유·항목 이름·시각·행위자(대표·관리자는 계정, 직원은 '나' 또는 역할)만 보인다(연락처 값 없음).
 function eventLine(e:LeadDetail['events'][number]){
  return [labelOf(EVENT_TYPE_LABELS,e.type),e.from||e.to?`${e.from?STAGE_LABELS[e.from]:''} → ${e.to?STAGE_LABELS[e.to]:''}`:null,e.closeReason?'사유 '+labelOf(CLOSE_REASON_LABELS,e.closeReason):null,
   e.fields?.length?'항목 '+e.fields.map(f=>labelOf(CONTACT_FIELD_LABELS,f)).join('·'):null,e.taskFields?.length?'항목 '+e.taskFields.map(f=>labelOf(TASK_FIELD_LABELS,f)).join('·'):null,
   e.basis?.type?'근거 '+labelOf(BASIS_LABELS,e.basis.type):null,e.consent?.method?'방법 '+labelOf(MARKETING_METHOD_LABELS,e.consent.method):null,e.evidenceType?labelOf(EVIDENCE_TYPE_LABELS,e.evidenceType):null,
   e.assigneeId!==undefined&&e.type==='assigned'?(e.assigneeId?'담당 지정':'담당 없음'):null].filter(Boolean).join(' · ');
 }
-function Timeline({lead}:{lead:LeadDetail}){
- return <Section title="이력">{lead.events.length?<ul className="franchise-list">{lead.events.map(e=><li key={e.id}><p>{eventLine(e)}</p>{!!e.reasons?.length&&<ul>{e.reasons.map(r=><li key={r.code}>{r.message}</li>)}</ul>}<p className="subtle-note">{kst(e.at)} · {roleLabel(e.actor.role)}</p></li>)}</ul>:<p className="subtle-note">이력이 없습니다.</p>}</Section>;
+function Timeline({lead,assignees}:{lead:LeadDetail;assignees:readonly Assignee[]}){
+ return <Section title="이력">{lead.events.length?<ul className="franchise-list">{lead.events.map(e=><li key={e.id}><p>{eventLine(e)}</p>{!!e.reasons?.length&&<ul>{e.reasons.map(r=><li key={r.code}>{r.message}</li>)}</ul>}<p className="subtle-note">{kst(e.at)} · {actorLabel(e.actor,assignees)}</p></li>)}</ul>:<p className="subtle-note">이력이 없습니다.</p>}</Section>;
 }

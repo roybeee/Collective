@@ -13,11 +13,11 @@ import {scanText} from './pii-scan';
 import {requireContactKey,sealField,openField,leadKeyHmac} from './franchise-crypto';
 import {checkTransition,earliestContractAt,assessDelivery,checkAgreement,contractWindowAsOf,forecastDuty,LEAD_STAGES,DELIVERY_DOCS,DELIVERY_METHODS,ALLOWED_METHODS,ELECTRONIC_CHANNELS,ADVISOR_TYPES,ESCROW_INSTITUTIONS,FEE_CATEGORIES,LIMITS,CONTRACT_ITEM_COUNT,GATE_DISCLAIMER,
  type LeadStage,type GateContext,type GateResult,type FranchiseLead,type FranchiseDelivery,type AdviceEvidence,type FeeRecord,type PreContractAgreement,type BackdateApproval,type ContractWindow,type ContractWindowInput,type DisclosureVersion,type ContractTemplate} from './franchise-gates';
-import {isInstant,isDate,parseInstant,toKstDate,kstMidnight} from './franchise-rules';
-import {FRANCHISE_ERRORS,FRANCHISE_LABELS,CONTACT_FIELDS,BUDGET_BANDS,TIMING_BANDS,SOURCE_CHANNELS,BASIS_TYPES,REFERRAL_FROM,MARKETING_METHODS,CLOSE_REASONS,REVEAL_PURPOSES,EXPORT_PURPOSES,BACKDATE_REASONS,CORRECTION_REASONS,SUBJECT_REQUEST_TYPES,SUBJECT_REQUEST_STATUS,SUBJECT_RESOLUTIONS,SUBJECT_CHANNELS,BRANCHES,EXPORT_COLUMNS,
+import {isInstant,isDate,parseInstant,toKstDate,kstMidnight,addDays} from './franchise-rules';
+import {FRANCHISE_ERRORS,FRANCHISE_LABELS,CONTACT_FIELDS,BUDGET_BANDS,TIMING_BANDS,SOURCE_CHANNELS,BASIS_TYPES,REFERRAL_FROM,MARKETING_METHODS,CLOSE_REASONS,REVEAL_PURPOSES,EXPORT_PURPOSES,BACKDATE_REASONS,CORRECTION_REASONS,REGISTRY_AMEND_REASONS,BOARD_TODOS,SUBJECT_REQUEST_TYPES,SUBJECT_REQUEST_STATUS,SUBJECT_RESOLUTIONS,SUBJECT_CHANNELS,BRANCHES,EXPORT_COLUMNS,
  STAGE_LABELS,SOURCE_LABELS,BUDGET_LABELS,TIMING_LABELS,BASIS_LABELS,MARKETING_STATUS_LABELS,CONTACT_NOTE,DUE_LABEL,RETENTION_LABEL,RECHECK_LABEL,MEMO_HINT,ACTIVITY_EVENTS,
  normalizePhone,normalizeEmail,normalizeName,formatPhone,maskName,maskPhone,maskEmail,stageOrder,retentionUntil,isContactExpired,marketingRecheckDue,subjectDueAt,auditCutoff,isAdminRole,isOwnLead,canSeeLead,canEditLead,canReveal,canClose,
- leadActions,allowedMoves,marketingOptions,eligibilityScore,csvFile,leadSystemCode,codeMessages,describeGate,describeWindow,isGeneralStage,isEvidenceStage,
+ leadActions,allowedMoves,marketingOptions,eligibilityScore,csvFile,leadSystemCode,codeMessages,describeGate,describeWindow,isGeneralStage,isEvidenceStage,isBoardQuery,
  type FranchiseErrorKey,type LeadRecord,type ActorSnapshot,type Who,type Branch,type EligibilityCriteria,type ContactField,type LeadTask,type LeadBasis,type LeadMarketing,type EvidenceType,type CorrectionReason,type LeadEventType,type AuditAction,type ContactState} from './franchise';
 
 type Json=Record<string,unknown>;
@@ -35,14 +35,18 @@ export function franchiseFailure(error:unknown){
 
 // ── 레코드 모양 ──
 export type FranchiseProfile={id:string;brandId:string;branch:Branch;forecastInputs:{sme:boolean|null;storesAtFyEnd:number|null;fiscalYearEnd:string|null};holidays:{list:string[];source:string;verifiedAt:string}|null;storageLabels:string[];eligibility:EligibilityCriteria|null;version:number;updatedAt:string;updatedBy:ActorSnapshot};
-type Registered={id:string;brandId:string;status:'active'|'retired';createdAt:string;createdBy:ActorSnapshot;retiredAt?:string};
+// 정정·다시 사용 이력: 바꾸기 전 값만 남긴다(추가 전용). 개인정보는 없다(날짜·확인 항목·라벨).
+type Amendment={at:string;by:ActorSnapshot;reasonCode:string;before:Json};
+type Registered={id:string;brandId:string;status:'active'|'retired';createdAt:string;createdBy:ActorSnapshot;retiredAt?:string;amendments?:Amendment[]};
 type VersionRow=Registered&{label:string;sha256:string;registeredAt:string|null;validFrom:string;validUntil:string;storageLabel:string;version:number};
 type TemplateRow=Registered&{label:string;sha256:string;checkedItems:number[];storageLabel:string;version:number};
 type NoticeRow=Registered&{versionLabel:string;text:string;sha256:string;controllerName:string;processorNames:string[]};
 type EvidenceRow={id:string;leadId:string;brandId:string;evidenceType:EvidenceType;recordedAt:string;recordedBy:ActorSnapshot;backdateApproval:BackdateApproval|null;supersedes:string|null;correctionReason:CorrectionReason|null;docSha256:string|null;storageLabel:string|null;payload:Json|null;voided?:true};
 type Receipt={requestAction?:string;status?:number;result?:Json;target?:string|null};
 type EventRow={id:string;leadId:string;brandId:string;type:LeadEventType;at:string;actor:ActorSnapshot;from?:LeadStage;to?:LeadStage;reasonCodes?:string[];fields?:ContactField[];taskFields?:string[];basis?:Json;consent?:Json;withdrawnAt?:string;evidenceId?:string;evidenceType?:EvidenceType;supersedes?:string|null;voided?:true;closeReason?:string|null;assigneeId?:string|null}&Receipt;
-type AuditRow={id:string;brandId:string;action:AuditAction;actor:ActorSnapshot;at:string;leadId?:string;recordId?:string;fields?:ContactField[];purpose?:string;contactMode?:'masked'|'full';count?:number;matchedLeadIds?:string[];counts?:{leads:number;keys:number;audits:number;remaining:number};byBrand?:Record<string,number>;trigger?:'board_open'|'manual'|'inline';reasonCode?:string;changedFields?:string[];assigneeId?:string|null;alreadyErased?:boolean}&Receipt;
+type AuditRow={id:string;brandId:string;action:AuditAction;actor:ActorSnapshot;at:string;leadId?:string;recordId?:string;fields?:ContactField[];purpose?:string;contactMode?:'masked'|'full';count?:number;matchedLeadIds?:string[];counts?:{leads:number;keys:number;audits:number;remaining:number};byBrand?:Record<string,number>;trigger?:'board_open'|'manual'|'inline';reasonCode?:string;changedFields?:string[];assigneeId?:string|null;alreadyErased?:boolean;
+ // 재생 묶음: 열람은 그때 리드 버전, 내보내기는 내보낸 리드 id·버전·연락처 유무의 SHA-256. 재생은 이 값이 같을 때만 값을 다시 만든다.
+ leadVersion?:number;leadSetSha256?:string;requestIds?:string[]}&Receipt;
 type SubjectRequestRow={id:string;brandId:string;leadId:string|null;type:string;channel:string;receivedAt:string;dueAt:string;status:string;resolution:string|null;resolvedAt:string|null;version:number;createdAt:string;createdBy:ActorSnapshot};
 type KeyRow={id:string;leadId:string;brandId:string;type:'phone'|'email';createdAt:string};
 
@@ -80,7 +84,7 @@ async function commit(stmts:D1PreparedStatement[]){
 const changesOf=(r:D1Result|undefined)=>Number(r?.meta?.changes??0);
 
 // ── 작업 목록 ──
-const SETTINGS_ACTIONS=['save_profile','register_disclosure_version','retire_disclosure_version','register_contract_template','retire_contract_template','register_privacy_notice','retire_privacy_notice'] as const;
+const SETTINGS_ACTIONS=['save_profile','register_disclosure_version','retire_disclosure_version','amend_disclosure_version','register_contract_template','retire_contract_template','amend_contract_template','register_privacy_notice','retire_privacy_notice'] as const;
 const EVIDENCE_ACTIONS=['record_delivery','record_advice','record_forecast','record_contract','record_fee','record_agreement','void_evidence'] as const;
 const LEAD_MUTATIONS=['update_contact','update_task','move_stage','reopen_lead','claim_lead','assign_lead','record_source_notice','set_marketing_consent'] as const;
 const OTHER_ACTIONS=['create_lead','reveal_contact','find_contact','export_leads','purge','erase_lead','add_subject_request','update_subject_request'] as const;
@@ -108,7 +112,7 @@ const bump=(c:Ctx,lead:LeadRecord,patch:Partial<LeadRecord>,activity:LeadEventTy
 // 요청 번호가 이미 쓰인 대상과 같아야 재생한다. undefined는 대상 비교가 없는 작업이다(등록·저장·파기·내보내기).
 function targetOf(action:string,input:Json):string|null|undefined{
  if(has(ON_LEAD,action))return String(input.leadId??'');
- if(action==='retire_disclosure_version'||action==='retire_contract_template'||action==='retire_privacy_notice'||action==='update_subject_request')return String(input.id??'').trim();
+ if(action==='retire_disclosure_version'||action==='retire_contract_template'||action==='retire_privacy_notice'||action==='amend_disclosure_version'||action==='amend_contract_template'||action==='update_subject_request')return String(input.id??'').trim();
  if(action==='add_subject_request')return typeof input.leadId==='string'&&input.leadId.trim()?input.leadId:null;
  return undefined;
 }
@@ -150,9 +154,13 @@ function feeOf(r:EvidenceRow):FeeRecord{
 function agreementOf(r:EvidenceRow):PreContractAgreement{const p=payloadOf(r);return {id:r.id,signedAt:String(p.signedAt),recordedAt:r.recordedAt,clauses:p.clauses as PreContractAgreement['clauses'],backdateApproval:r.backdateApproval}}
 const latest=(rows:readonly EvidenceRow[])=>rows.reduce<EvidenceRow|null>((best,r)=>!best||ms(r.recordedAt)>=ms(best.recordedAt)?r:best,null);
 // 저장된 backdateApproval을 그대로 넘긴다. 없으면 기록 시각보다 이른 증빙이 뒤 판정에서 다시 backdate_unapproved가 된다.
-function leadGateOf(rows:readonly EvidenceRow[]):FranchiseLead{
+// 산정서: 판정하는 계약 서명 시각(signedAt, 없으면 현재 계약 기록의 서명 시각) 이전에 준 산정서 가운데 가장 최근 기록을 쓴다. 그런 것이 없을 때만 가장 최근 기록을 쓴다
+// (서명 뒤에 다시 준 산정서가 서명 전에 준 산정서를 가려 계약·개점을 거짓으로 막지 않게).
+function leadGateOf(rows:readonly EvidenceRow[],signedAt?:string):FranchiseLead{
  const active=activeEvidence(rows),of=(t:EvidenceType)=>active.filter(r=>r.evidenceType===t);
- const forecast=latest(of('forecast')),contract=latest(of('contract'));
+ const contract=latest(of('contract')),signed=signedAt??(contract?String(payloadOf(contract).signedAt):null),forecasts=of('forecast');
+ const before=signed&&isInstant(signed)?forecasts.filter(r=>{const p=payloadOf(r).providedAt;return isInstant(p)&&ms(p)<=ms(signed)}):[];
+ const forecast=latest(before.length?before:forecasts);
  return {
   deliveries:of('delivery').map(deliveryOf),
   advice:of('advice').map((r):AdviceEvidence=>{const p=payloadOf(r);return {id:r.id,advisorType:String(p.advisorType),registrationVerified:p.registrationVerified===true,advisedOn:String(p.advisedOn),targetDoc:p.targetDoc as AdviceEvidence['targetDoc'],hqPaid:p.hqPaid as boolean|null,hqReferred:p.hqReferred as boolean|null}}),
@@ -197,7 +205,9 @@ async function leadDetail(who:Who,owner:string,lead:LeadRecord,now:string,enable
  if(!admin)return detail;
  const rows=await evidenceRows(owner,lead),active=new Set(activeEvidence(rows).map(r=>r.id)),gate=leadGateOf(rows);
  detail.evidence=rows.sort((a,b)=>ms(a.recordedAt)-ms(b.recordedAt)||byId(a,b)).map(r=>({...r,superseded:!r.voided&&!active.has(r.id),...(r.evidenceType==='delivery'&&!r.voided?{assessment:(a=>({accepted:a.accepted,counted:a.counted,reasons:codeMessages(a.reasons)}))(assessDelivery(deliveryOf(r),ctx,now))}:{})}));
- detail.gate={window:describeWindow(earliestContractAt(windowInputOf(ctx,gate),now)),forecastDuty:forecastDuty(ctx.forecast),stageChecks:{opened:describeGate(checkTransition(gate,'opened',now,ctx))},disclaimer:GATE_DISCLAIMER};
+ // 개점 판정은 계약·가맹금 예치 단계에서만 보인다(계약 기록이 없으면 판정할 것이 없다).
+ const openable=lead.stage==='contracted'||lead.stage==='fee_escrowed';
+ detail.gate={window:describeWindow(earliestContractAt(windowInputOf(ctx,gate),now)),forecastDuty:forecastDuty(ctx.forecast),stageChecks:{opened:openable?describeGate(checkTransition(gate,'opened',now,ctx)):null},disclaimer:GATE_DISCLAIMER};
  return detail;
 }
 
@@ -369,35 +379,84 @@ async function saveProfile(c:Ctx):Promise<Outcome>{
  await commit([recordStatement(c.owner,'franchise_profile',c.brandId,profile,c.brandId),auditStmt(c.owner,receiptAudit(c,'profile_save',result,{changedFields}))]);
  return {result};
 }
-// 날짜만 주면 그날 KST 0시로 저장한다(유효 기간 [시작, 끝)).
+// 날짜만 주면 시작은 그날 KST 0시, 끝은 다음 날 KST 0시로 저장한다(유효 기간 [시작, 끝) — 화면의 '유효 기간 끝' 날짜도 유효한 날로 센다).
 const instantOrDate=(v:unknown,message:string)=>isDate(v)?kstMidnight(v):isInstant(v)?v:bad(message);
-async function registerVersion(c:Ctx):Promise<Outcome>{
- const i=c.input,label=labelOf(i.label,'라벨',60),sha256=shaOf(i.sha256,true) as string;
- const registeredAt=i.registeredAt===null||i.registeredAt===undefined||i.registeredAt===''?null:pastTime(i.registeredAt,c.now,'등록 시각을 확인해 주세요.');
- const validFrom=instantOrDate(i.validFrom,'유효 기간을 확인해 주세요.'),validUntil=instantOrDate(i.validUntil,'유효 기간을 확인해 주세요.');
+const untilOf=(v:unknown,message:string)=>isDate(v)?kstMidnight(addDays(v,1)):isInstant(v)?v:bad(message);
+const sameInstant=(a:string|null,b:string|null)=>a===b||(a!==null&&b!==null&&ms(a)===ms(b));
+const sameItems=(a:readonly number[],b:readonly number[])=>JSON.stringify([...a].sort((x,y)=>x-y))===JSON.stringify([...b].sort((x,y)=>x-y));
+const AMEND_LIMIT=50;
+function readVersionMeta(c:Ctx,i:Json,current?:VersionRow){
+ const given=(k:string)=>!current||(Object.hasOwn(i,k)&&i[k]!==undefined);
+ const registeredAt=given('registeredAt')?(blank(i.registeredAt)?null:pastTime(i.registeredAt,c.now,'등록 시각을 확인해 주세요.')):current!.registeredAt;
+ const validFrom=given('validFrom')?instantOrDate(i.validFrom,'유효 기간을 확인해 주세요.'):current!.validFrom,validUntil=given('validUntil')?untilOf(i.validUntil,'유효 기간을 확인해 주세요.'):current!.validUntil;
  if(ms(validFrom)>=ms(validUntil))bad('유효 기간을 확인해 주세요.');
+ return {registeredAt,validFrom,validUntil};
+}
+function readItems(v:unknown):number[]{
+ if(!Array.isArray(v)||v.length>CONTRACT_ITEM_COUNT||!v.every(x=>typeof x==='number'&&Number.isSafeInteger(x)&&x>=1&&x<=CONTRACT_ITEM_COUNT)||new Set(v).size!==v.length)bad('확인한 기재 항목을 확인해 주세요.');
+ return [...v as number[]].sort((a,b)=>a-b);
+}
+// 같은 파일(해시)을 다시 등록하면: 사용 중이고 판정에 쓰는 값(등록일·유효 기간 / 확인 항목)이 같으면 기존 항목(쓰기 없음), 다르면 409(정정을 쓴다),
+// 사용 중지된 항목이면 요청 값으로 다시 사용한다(바꾸기 전 값은 amendments에, 감사 행은 register에 reasonCode 'reactivate').
+async function registerVersion(c:Ctx):Promise<Outcome>{
+ const i=c.input,label=labelOf(i.label,'라벨',60),sha256=shaOf(i.sha256,true) as string,meta=readVersionMeta(c,i);
  const [versions,profile]=await Promise.all([versionsOf(c.owner,c.brandId),profileOf(c.owner,c.brandId)]);
  const storageLabel=storageLabelOf(i.storageLabel,profile,true) as string;
  const same=versions.find(v=>v.sha256===sha256);
- if(same)return {result:{id:same.id,existing:true,status:same.status}};
+ if(same){
+  const sameMeta=sameInstant(same.registeredAt,meta.registeredAt)&&sameInstant(same.validFrom,meta.validFrom)&&sameInstant(same.validUntil,meta.validUntil);
+  if(same.status==='active'){if(!sameMeta)fail('REGISTRY_CONFLICT');return {result:{id:same.id,existing:true,status:same.status}}}
+  if((same.amendments?.length??0)>=AMEND_LIMIT)fail('LIMIT');
+  const next:VersionRow={...same,label,storageLabel,...meta,status:'active',retiredAt:undefined,version:same.version+1,amendments:[...(same.amendments??[]),{at:c.now,by:c.by,reasonCode:'reactivate',before:{status:same.status,registeredAt:same.registeredAt,validFrom:same.validFrom,validUntil:same.validUntil,label:same.label,storageLabel:same.storageLabel}}]};
+  const result={id:same.id,existing:true,reactivated:true,status:next.status,version:next.version};
+  await commit([recordStatement(c.owner,'franchise_disclosure_version',same.id,next,c.brandId),auditStmt(c.owner,receiptAudit(c,'version_register',result,{recordId:same.id,reasonCode:'reactivate'}))]);
+  return {result};
+ }
  if(versions.length>=LIMITS.versions)fail('LIMIT');
- const row:VersionRow={id:'dv-'+uid(),brandId:c.brandId,label,sha256,registeredAt,validFrom,validUntil,storageLabel,status:'active',version:1,createdAt:c.now,createdBy:c.by};
+ const row:VersionRow={id:'dv-'+uid(),brandId:c.brandId,label,sha256,...meta,storageLabel,status:'active',version:1,createdAt:c.now,createdBy:c.by};
  const result={id:row.id,existing:false,status:row.status,version:row.version};
  await commit([recordStatement(c.owner,'franchise_disclosure_version',row.id,row,c.brandId),auditStmt(c.owner,receiptAudit(c,'version_register',result,{recordId:row.id}))]);
  return {result};
 }
 async function registerTemplate(c:Ctx):Promise<Outcome>{
- const i=c.input,label=labelOf(i.label,'라벨',60),sha256=shaOf(i.sha256,true) as string;
- const items=i.checkedItems;
- if(!Array.isArray(items)||items.length>CONTRACT_ITEM_COUNT||!items.every(x=>typeof x==='number'&&Number.isSafeInteger(x)&&x>=1&&x<=CONTRACT_ITEM_COUNT)||new Set(items).size!==items.length)bad('확인한 기재 항목을 확인해 주세요.');
+ const i=c.input,label=labelOf(i.label,'라벨',60),sha256=shaOf(i.sha256,true) as string,checkedItems=readItems(i.checkedItems);
  const [templates,profile]=await Promise.all([templatesOf(c.owner,c.brandId),profileOf(c.owner,c.brandId)]);
  const storageLabel=storageLabelOf(i.storageLabel,profile,true) as string;
  const same=templates.find(t=>t.sha256===sha256);
- if(same)return {result:{id:same.id,existing:true,status:same.status}};
+ if(same){
+  if(same.status==='active'){if(!sameItems(same.checkedItems,checkedItems))fail('REGISTRY_CONFLICT');return {result:{id:same.id,existing:true,status:same.status,complete:same.checkedItems.length===CONTRACT_ITEM_COUNT}}}
+  if((same.amendments?.length??0)>=AMEND_LIMIT)fail('LIMIT');
+  const next:TemplateRow={...same,label,storageLabel,checkedItems,status:'active',retiredAt:undefined,version:same.version+1,amendments:[...(same.amendments??[]),{at:c.now,by:c.by,reasonCode:'reactivate',before:{status:same.status,checkedItems:same.checkedItems,label:same.label,storageLabel:same.storageLabel}}]};
+  const result={id:same.id,existing:true,reactivated:true,status:next.status,version:next.version,complete:checkedItems.length===CONTRACT_ITEM_COUNT};
+  await commit([recordStatement(c.owner,'franchise_contract_template',same.id,next,c.brandId),auditStmt(c.owner,receiptAudit(c,'template_register',result,{recordId:same.id,reasonCode:'reactivate'}))]);
+  return {result};
+ }
  if(templates.length>=LIMITS.templates)fail('LIMIT');
- const row:TemplateRow={id:'ct-'+uid(),brandId:c.brandId,label,sha256,checkedItems:[...items as number[]].sort((a,b)=>a-b),storageLabel,status:'active',version:1,createdAt:c.now,createdBy:c.by};
+ const row:TemplateRow={id:'ct-'+uid(),brandId:c.brandId,label,sha256,checkedItems,storageLabel,status:'active',version:1,createdAt:c.now,createdBy:c.by};
  const result={id:row.id,existing:false,status:row.status,version:row.version,complete:row.checkedItems.length===CONTRACT_ITEM_COUNT};
  await commit([recordStatement(c.owner,'franchise_contract_template',row.id,row,c.brandId),auditStmt(c.owner,receiptAudit(c,'template_register',result,{recordId:row.id}))]);
+ return {result};
+}
+// 정정(대표·관리자, 사유 필수): 같은 id에 값을 고치고 버전을 올린다. 바꾸기 전 값은 amendments에 남고 감사 행에 바뀐 항목 이름·사유가 남는다(추가 전용 이력).
+// 판정은 언제나 현재 값으로 다시 한다(이미 기록한 제공도 정정한 등록일·유효 기간·확인 항목으로 다시 센다).
+async function amendRegistry(c:Ctx,kind:'version'|'template'):Promise<Outcome>{
+ const i=c.input,id=str(i.id,'항목',100,true),reasonCode=pick(REGISTRY_AMEND_REASONS,i.reasonCode,'정정 사유를 골라 주세요.');
+ const [rows,profile]=await Promise.all([kind==='version'?versionsOf(c.owner,c.brandId):templatesOf(c.owner,c.brandId),profileOf(c.owner,c.brandId)]);
+ const row=(rows as (VersionRow|TemplateRow)[]).find(r=>r.id===id);
+ if(!row)throw new ApiError(404,'항목을 찾을 수 없습니다.');
+ if(i.version!==row.version)fail('STALE');
+ if((row.amendments?.length??0)>=AMEND_LIMIT)fail('LIMIT');
+ const given=(k:string)=>Object.hasOwn(i,k)&&i[k]!==undefined;
+ const label=given('label')?labelOf(i.label,'라벨',60):row.label,storageLabel=given('storageLabel')?storageLabelOf(i.storageLabel,profile,true) as string:row.storageLabel;
+ const before:Json={label:row.label,storageLabel:row.storageLabel},after:Json={label,storageLabel};
+ if(kind==='version'){const v=row as VersionRow;Object.assign(before,{registeredAt:v.registeredAt,validFrom:v.validFrom,validUntil:v.validUntil});Object.assign(after,readVersionMeta(c,i,v))}
+ else{const t=row as TemplateRow;before.checkedItems=t.checkedItems;after.checkedItems=given('checkedItems')?readItems(i.checkedItems):t.checkedItems}
+ const differs=(k:string)=>k==='checkedItems'?!sameItems(before[k] as number[],after[k] as number[]):k==='label'||k==='storageLabel'?before[k]!==after[k]:!sameInstant(before[k] as string|null,after[k] as string|null);
+ const changedFields=Object.keys(after).filter(differs);
+ if(!changedFields.length)bad('바뀐 내용이 없습니다.');
+ const next={...row,...after,version:row.version+1,amendments:[...(row.amendments??[]),{at:c.now,by:c.by,reasonCode,before:Object.fromEntries(changedFields.map(k=>[k,before[k]]))}]};
+ const result={id,version:next.version,changedFields,...(kind==='template'?{complete:(next as TemplateRow).checkedItems.length===CONTRACT_ITEM_COUNT}:{})};
+ await commit([recordStatement(c.owner,kind==='version'?'franchise_disclosure_version':'franchise_contract_template',id,next,c.brandId),auditStmt(c.owner,receiptAudit(c,kind==='version'?'version_amend':'template_amend',result,{recordId:id,reasonCode,changedFields},id))]);
  return {result};
 }
 async function registerNotice(c:Ctx):Promise<Outcome>{
@@ -407,7 +466,15 @@ async function registerNotice(c:Ctx):Promise<Outcome>{
  const processorNames=names.map(n=>str(n,'수탁자 이름',100,true));
  const sha256=await sha256Hex(text),notices=await noticesOf(c.owner,c.brandId);
  const same=notices.find(n=>n.sha256===sha256);
- if(same)return {result:{id:same.id,existing:true,status:same.status}};
+ if(same){
+  // 같은 본문: 처리자·수탁자 이름까지 같으면 기존 안내문(사용 중지였으면 다시 사용), 다르면 409.
+  if(same.controllerName!==controllerName||JSON.stringify(same.processorNames)!==JSON.stringify(processorNames))fail('NOTICE_CONFLICT');
+  if(same.status==='active')return {result:{id:same.id,existing:true,status:same.status}};
+  const next:NoticeRow={...same,status:'active',retiredAt:undefined,amendments:[...(same.amendments??[]),{at:c.now,by:c.by,reasonCode:'reactivate',before:{status:same.status}}]};
+  const result={id:same.id,existing:true,reactivated:true,status:next.status,versionLabel:same.versionLabel};
+  await commit([recordStatement(c.owner,'franchise_privacy_notice',same.id,next,c.brandId),auditStmt(c.owner,receiptAudit(c,'notice_register',result,{recordId:same.id,reasonCode:'reactivate'}))]);
+  return {result};
+ }
  if(notices.some(n=>n.versionLabel===versionLabel))throw new ApiError(409,'같은 버전 이름의 안내문이 이미 있습니다.');
  if(notices.length>=LIMITS.versions)fail('LIMIT');
  const row:NoticeRow={id:'pn-'+uid(),brandId:c.brandId,versionLabel,text,sha256,controllerName,processorNames,status:'active',createdAt:c.now,createdBy:c.by};
@@ -458,7 +525,11 @@ async function updateContact(c:Ctx,lead:LeadRecord):Promise<Outcome>{
  if(given('phone')){next.phone=readPhone(ci.phone);if(next.phone!==old.phone)changed.push('phone')}
  if(given('email')){next.email=readEmail(ci.email);if(next.email!==old.email)changed.push('email')}
  let memo=lead.memo;
- if(Object.hasOwn(i,'memo')&&i.memo!==undefined){const m=readMemo(i.memo),old=lead.memo?await openField(lead.memo):null;if(m!==old){memo=m?await sealField(m):null;changed.push('memo')}}
+ const replaceMemo=Object.hasOwn(i,'memo')&&i.memo!==undefined,appendMemo=Object.hasOwn(i,'memoAppend')&&i.memoAppend!==undefined&&i.memoAppend!==null;
+ if(replaceMemo&&appendMemo)bad('메모는 바꾸기와 덧붙이기 중 하나만 보내 주세요.');
+ if(replaceMemo){const m=readMemo(i.memo),old=lead.memo?await openField(lead.memo):null;if(m!==old){memo=m?await sealField(m):null;changed.push('memo')}}
+ // 덧붙이기: 기존 메모(복호화) 뒤에 줄을 바꿔 붙인다. 합친 메모도 1000자·개인정보 패턴 검사를 한다. 화면은 기존 메모를 보지 않고도 통화 메모를 더한다.
+ if(appendMemo){const add=readMemo(i.memoAppend);if(add){const old=lead.memo?await openField(lead.memo):null,next=old?old+'\n'+add:add;if(next.length>1000)bad('메모는 1000자까지입니다. 기존 메모를 줄인 뒤 다시 시도해 주세요.');memo=await sealField(clean(next));changed.push('memo')}}
  if(!next.phone&&!next.email)fail('CONTACT_REQUIRED');
  if(!changed.length)bad('바뀐 내용이 없습니다.');
  const rekey=(['phone','email'] as const).filter(t=>changed.includes(t));
@@ -505,10 +576,14 @@ async function moveStage(c:Ctx,lead:LeadRecord):Promise<Outcome>{
  await commit([leadStmt(c.owner,updated),eventStmt(c.owner,receiptEvent(c,lead,'stage_changed',result,{from:lead.stage,to,...(closeReason?{closeReason}:{})}))]);
  return {result,lead:updated};
 }
+// 다시 열기: 종결 전 단계로 되돌리고, 그 단계를 지금 설정(공휴일·산정서 입력·버전)으로 checkTransition에 다시 건다. 증빙이 이미 있어 되돌림은 막지 않되
+// 통과하지 못하면 사유를 응답(recheck)과 reopened 이벤트(reasonCodes)에 남겨 대표·관리자가 확인하게 한다.
 async function reopenLead(c:Ctx,lead:LeadRecord):Promise<Outcome>{
  if(lead.stage!=='closed')bad('종결된 리드만 다시 열 수 있습니다.');
- const stage=lead.closedFrom??'inquiry',updated=bump(c,lead,{stage,closedAt:null,closeReason:null,closedFrom:null},'reopened'),result={leadId:lead.id,version:updated.version,stage};
- await commit([leadStmt(c.owner,updated),eventStmt(c.owner,receiptEvent(c,lead,'reopened',result,{from:'closed',to:stage}))]);
+ const stage=lead.closedFrom??'inquiry',[{ctx},rows]=await Promise.all([gateContext(c.owner,lead.brandId),evidenceRows(c.owner,lead)]);
+ const gate=checkTransition(leadGateOf(rows),stage,c.now,ctx),recheck={ok:gate.ok,reasons:codeMessages(gate.reasons),warnings:codeMessages(gate.warnings),disclaimer:GATE_DISCLAIMER};
+ const updated=bump(c,lead,{stage,closedAt:null,closeReason:null,closedFrom:null},'reopened'),result={leadId:lead.id,version:updated.version,stage,recheck};
+ await commit([leadStmt(c.owner,updated),eventStmt(c.owner,receiptEvent(c,lead,'reopened',result,{from:'closed',to:stage,...(gate.ok?{}:{reasonCodes:gate.reasons})}))]);
  return {result,lead:updated};
 }
 async function claimLead(c:Ctx,lead:LeadRecord):Promise<Outcome>{
@@ -560,7 +635,7 @@ async function contactValues(lead:LeadRecord,fields:readonly ContactField[]){
 async function revealContact(c:Ctx,lead:LeadRecord):Promise<Outcome>{
  const fields=revealFields(c.input.fields),purpose=pick(REVEAL_PURPOSES,c.input.purpose,'열람 목적을 골라 주세요.');
  const values=await contactValues(lead,fields),result={leadId:lead.id,fields,purpose};
- await commit([auditStmt(c.owner,receiptAudit(c,'reveal',result,{leadId:lead.id,fields,purpose},lead.id))]);
+ await commit([auditStmt(c.owner,receiptAudit(c,'reveal',result,{leadId:lead.id,fields,purpose,leadVersion:lead.version},lead.id))]);
  return {result,extra:{values},leadView:false};
 }
 
@@ -639,13 +714,17 @@ async function recordForecast(c:Ctx,lead:LeadRecord):Promise<Outcome>{
  const pre=await evidencePrelude(c,lead,'forecast',true),providedAt=timeOf(c.input.providedAt,c.now),bd=backdate(c,[providedAt]);
  return appendEvidence(c,lead,evidenceRow(c,lead,'forecast',pre,{providedAt,written:true},bd.approval),bd.audit,{});
 }
+// 계약 전에 예치·보험 증빙이 있는 가맹금이 이미 기록돼 게이트를 통과하면 계약과 함께 가맹금 예치 단계로 간다(증빙과 단계가 어긋나지 않게).
 async function recordContract(c:Ctx,lead:LeadRecord):Promise<Outcome>{
  const pre=await evidencePrelude(c,lead,'contract');
- if(!pre.supersedes&&activeEvidence(pre.rows).some(r=>r.evidenceType==='contract'))fail('LIMIT');
+ if(!pre.supersedes&&activeEvidence(pre.rows).some(r=>r.evidenceType==='contract'))fail('CONTRACT_EXISTS');
  const signedAt=timeOf(c.input.signedAt,c.now),bd=backdate(c,[signedAt]);
- const gate=checkTransition({...leadGateOf(pre.rows),contract:{signedAt,recordedAt:c.now,backdateApproval:bd.approval}},'contracted',c.now,pre.ctx);
+ const withContract:FranchiseLead={...leadGateOf(pre.rows,signedAt),contract:{signedAt,recordedAt:c.now,backdateApproval:bd.approval}};
+ const gate=checkTransition(withContract,'contracted',c.now,pre.ctx);
  if(!gate.ok)await blocked(c,lead,gate,'contracted');
- return appendEvidence(c,lead,evidenceRow(c,lead,'contract',pre,{signedAt},bd.approval),bd.audit,{contractedAt:signedAt,...(stageOrder(lead.stage)<6?{stage:'contracted' as const}:{})},{earliestContractAt:gate.window?.at??null});
+ const escrowed=(withContract.fees??[]).some(f=>(!!f.escrow||!!f.insurance)&&checkTransition({...withContract,fees:[f]},'fee_escrowed',c.now,pre.ctx).ok);
+ const stage=stageOrder(lead.stage)<6?{stage:escrowed?'fee_escrowed' as const:'contracted' as const}:{};
+ return appendEvidence(c,lead,evidenceRow(c,lead,'contract',pre,{signedAt},bd.approval),bd.audit,{contractedAt:signedAt,...stage},{earliestContractAt:gate.window?.at??null});
 }
 async function recordFee(c:Ctx,lead:LeadRecord):Promise<Outcome>{
  const i=c.input,pre=await evidencePrelude(c,lead,'fee'),category=pick(FEE_CATEGORIES,i.category,'가맹금 유형을 골라 주세요.'),times:string[]=[];
@@ -664,6 +743,8 @@ async function recordFee(c:Ctx,lead:LeadRecord):Promise<Outcome>{
   if(ms(from)>=ms(to))bad('보험 기간을 확인해 주세요.');
   insurance={coverageFrom:from,coverageTo:to};
  }else if(i.insurance!==undefined&&i.insurance!==null)bad('보험 입력을 확인해 주세요.');
+ // 예치가 없으면(증빙 없음·보험) 수령 시각이 있어야 형식이 맞는다. 빠지면 게이트 409가 아니라 400이고 아무것도 쓰지 않는다.
+ if(!paidAt&&!escrow)fail('FEE_PAID_AT');
  const bd=backdate(c,times),payload:Json={category,...(paidAt?{paidAt}:{}),...(escrow?{escrow}:{}),...(insurance?{insurance}:{})};
  const row=evidenceRow(c,lead,'fee',pre,payload,bd.approval);
  const gate=checkTransition({...leadGateOf(pre.rows),fees:[feeOf(row)]},'fee_escrowed',c.now,pre.ctx);
@@ -692,21 +773,27 @@ async function voidEvidence(c:Ctx,lead:LeadRecord):Promise<Outcome>{
 }
 
 // ── 파기·삭제·정보주체 요청·찾기·내보내기 ──
+// 삭제 실행은 이 리드에 연결된 처리 전(접수·처리 중) 삭제 요청을 모두 완료(삭제함)로 기록한다. subjectRequestId를 주면 그 요청(연결 리드 없음도 가능)도 함께 닫는다.
+// 이미 삭제된 리드면 연락처는 그대로 두고 요청만 닫는다(요청이 접수로 남아 기한을 넘기지 않게).
+const openRequest=(r:SubjectRequestRow)=>r.status==='open'||r.status==='in_progress';
 async function eraseLead(c:Ctx,lead:LeadRecord):Promise<Outcome>{
  let request:SubjectRequestRow|null=null;
  if(!blank(c.input.subjectRequestId)){
   request=await optionalRecord<SubjectRequestRow>(c.owner,'franchise_subject_request',String(c.input.subjectRequestId));
   if(!request||request.brandId!==c.brandId||(request.leadId!==null&&request.leadId!==lead.id))throw new ApiError(404,'항목을 찾을 수 없습니다.');
  }
+ const linked=(await listRecords<SubjectRequestRow>(c.owner,'franchise_subject_request',c.brandId)).filter(r=>r.brandId===c.brandId&&r.leadId===lead.id&&r.type==='erasure'&&openRequest(r)&&r.id!==request?.id);
+ const closing=[...(request&&openRequest(request)?[request]:[]),...linked].sort(byId);
+ const requestIds=closing.map(r=>r.id),closeStmts=closing.map(r=>recordStatement(c.owner,'franchise_subject_request',r.id,{...r,...(r.leadId===null?{leadId:lead.id}:{}),status:'done',resolution:'erased',resolvedAt:c.now,version:r.version+1},c.brandId));
+ const requestAudit={...(request?{reasonCode:'subject_request',recordId:request.id}:{}),...(requestIds.length?{requestIds}:{})};
  if(lead.contactState==='erased'){
-  const result={leadId:lead.id,version:lead.version,alreadyErased:true};
-  await commit([auditStmt(c.owner,receiptAudit(c,'erase',result,{leadId:lead.id,alreadyErased:true},lead.id))]);
+  const result={leadId:lead.id,version:lead.version,alreadyErased:true,closedRequestIds:requestIds};
+  await commit([auditStmt(c.owner,receiptAudit(c,'erase',result,{leadId:lead.id,alreadyErased:true,...requestAudit},lead.id)),...closeStmts]);
   return {result,lead};
  }
  const updated:LeadRecord={...lead,contact:null,memo:null,contactState:'erased',erasedAt:c.now,version:lead.version+1,updatedAt:c.now};
- const result={leadId:lead.id,version:updated.version,alreadyErased:false,...(request?{subjectRequestId:request.id}:{})};
- await commit([leadStmt(c.owner,updated),deleteKeys(c.owner,lead.id),eventStmt(c.owner,plainEvent(c,lead,'erased')),auditStmt(c.owner,receiptAudit(c,'erase',result,{leadId:lead.id,...(request?{reasonCode:'subject_request',recordId:request.id}:{})},lead.id)),
-  ...(request?[recordStatement(c.owner,'franchise_subject_request',request.id,{...request,status:'done',resolution:'erased',resolvedAt:c.now,version:request.version+1},c.brandId)]:[])]);
+ const result={leadId:lead.id,version:updated.version,alreadyErased:false,...(request?{subjectRequestId:request.id}:{}),closedRequestIds:requestIds};
+ await commit([leadStmt(c.owner,updated),deleteKeys(c.owner,lead.id),eventStmt(c.owner,plainEvent(c,lead,'erased')),auditStmt(c.owner,receiptAudit(c,'erase',result,{leadId:lead.id,...requestAudit},lead.id)),...closeStmts]);
  return {result,lead:updated};
 }
 async function addSubjectRequest(c:Ctx):Promise<Outcome>{
@@ -724,13 +811,21 @@ async function addSubjectRequest(c:Ctx):Promise<Outcome>{
  await commit([recordStatement(c.owner,'franchise_subject_request',row.id,row,c.brandId),auditStmt(c.owner,receiptAudit(c,'subject_request',result,{recordId:row.id,...(leadId?{leadId}:{})},leadId))]);
  return {result};
 }
+// 연결 리드가 없는 요청은 나중에 리드를 연결할 수 있다(한 번만, 같은 브랜드). 연결한 뒤에는 바꾸지 않는다.
 async function updateSubjectRequest(c:Ctx):Promise<Outcome>{
  const id=str(c.input.id,'요청',100,true),row=await optionalRecord<SubjectRequestRow>(c.owner,'franchise_subject_request',id);
  if(!row||row.brandId!==c.brandId)throw new ApiError(404,'항목을 찾을 수 없습니다.');
  if(c.input.version!==row.version)fail('STALE');
  const status=pick(SUBJECT_REQUEST_STATUS,c.input.status,'처리 상태를 골라 주세요.'),resolution=blank(c.input.resolution)?null:pick(SUBJECT_RESOLUTIONS,c.input.resolution,'처리 결과를 골라 주세요.');
- const resolved=status==='done'||status==='rejected',next:SubjectRequestRow={...row,status,resolution,resolvedAt:resolved?c.now:null,version:row.version+1};
- const result={id,status,resolution,version:next.version};
+ let leadId=row.leadId;
+ if(!blank(c.input.leadId)&&c.input.leadId!==row.leadId){
+  if(row.leadId!==null)bad('연결 리드는 바꿀 수 없습니다.');
+  const lead=typeof c.input.leadId==='string'&&c.input.leadId.length<=100?await optionalRecord<LeadRecord>(c.owner,'franchise_lead',c.input.leadId):null;
+  if(!lead||lead.brandId!==c.brandId)fail('LEAD_NOT_FOUND');
+  leadId=lead.id;
+ }
+ const resolved=status==='done'||status==='rejected',next:SubjectRequestRow={...row,leadId,status,resolution,resolvedAt:resolved?c.now:null,version:row.version+1};
+ const result={id,status,resolution,version:next.version,leadId};
  await commit([recordStatement(c.owner,'franchise_subject_request',id,next,c.brandId),auditStmt(c.owner,receiptAudit(c,'subject_request_update',result,{recordId:id},id))]);
  return {result};
 }
@@ -756,13 +851,15 @@ async function findContact(c:Ctx):Promise<Outcome>{
  await commit([auditStmt(c.owner,plainAudit(c,'find',{count:matched.length,matchedLeadIds:matched}))]);
  return {result:{count:matched.length},extra:{matches}};
 }
+// leadSetSha256: 내보낸 리드 id·버전·연락처 포함 여부의 SHA-256. 감사 행에 남겨 재생이 같은 내용일 때만 파일을 다시 만든다.
 async function exportCsv(owner:string,brandId:string,now:string,contactMode:'masked'|'full'){
  const leads=(await listRecords<LeadRecord>(owner,'franchise_lead',brandId)).filter(l=>l.brandId===brandId);
  if(leads.length>5000)fail('LIMIT');
  leads.sort((a,b)=>ms(a.createdAt)-ms(b.createdAt)||byId(a,b));
- const rows:unknown[][]=[];
+ const rows:unknown[][]=[],set:string[]=[];
  for(const l of leads){
   const present=l.contactState==='present'&&!!l.contact&&!isContactExpired(l,now),c=l.contact;
+  set.push(`${l.id}:${l.version}:${present?1:0}`);
   let name='',phone='',email='';
   if(present&&c){
    const n=await openField(c.name),p=c.phone?await openField(c.phone):null,e=c.email?await openField(c.email):null;
@@ -770,12 +867,12 @@ async function exportCsv(owner:string,brandId:string,now:string,contactMode:'mas
   }
   rows.push([l.systemCode,STAGE_LABELS[l.stage],l.assigneeId??'',SOURCE_LABELS[l.task.sourceChannel],l.task.region,BUDGET_LABELS[l.task.budgetBand],TIMING_LABELS[l.task.timingBand],BASIS_LABELS[l.basis.type],MARKETING_STATUS_LABELS[l.marketing.status],l.createdAt,l.lastActivityAt,name,phone,email]);
  }
- return {filename:`franchise-leads-${brandId.replace(/[^A-Za-z0-9_-]/g,'_').slice(0,80)}-${toKstDate(now).replace(/-/g,'')}.csv`,csv:csvFile(EXPORT_COLUMNS,rows),rowCount:rows.length};
+ return {filename:`franchise-leads-${brandId.replace(/[^A-Za-z0-9_-]/g,'_').slice(0,80)}-${toKstDate(now).replace(/-/g,'')}.csv`,csv:csvFile(EXPORT_COLUMNS,rows),rowCount:rows.length,leadSetSha256:await sha256Hex(set.join('\n'))};
 }
 async function exportLeads(c:Ctx):Promise<Outcome>{
  const purpose=pick(EXPORT_PURPOSES,c.input.purpose,'내보내기 목적을 골라 주세요.'),contactMode=pick(['masked','full'] as const,c.input.contactMode,'연락처 포함 방식을 골라 주세요.');
- const file=await exportCsv(c.owner,c.brandId,c.now,contactMode),result={filename:file.filename,rowCount:file.rowCount,contactMode,purpose};
- await commit([auditStmt(c.owner,receiptAudit(c,'export',result,{purpose,contactMode,count:file.rowCount}))]);
+ const {leadSetSha256,...file}=await exportCsv(c.owner,c.brandId,c.now,contactMode),result={filename:file.filename,rowCount:file.rowCount,contactMode,purpose};
+ await commit([auditStmt(c.owner,receiptAudit(c,'export',result,{purpose,contactMode,count:file.rowCount,leadSetSha256}))]);
  return {result,extra:{...file,contactMode,disclaimer:GATE_DISCLAIMER}};
 }
 
@@ -803,7 +900,8 @@ function offAllowed(action:string,input:Json,who:Actor){
  return isAdminRole(who.role)&&(action==='update_contact'||action==='record_source_notice'||(action==='move_stage'&&input.to==='closed'));
 }
 async function receiptIdOf(userId:string,action:string,requestId:string){return (await sha256Hex(userId+'\n'+action+'\n'+requestId)).slice(0,40)}
-// 영수증 재생: 같은 사람·작업·요청 번호면 저장한 상태·결과를 그대로 돌려주고 새 행을 쓰지 않는다. 다른 대상이면 409. 열람·내보내기 값은 5분 안에만, 지금 권한이 있을 때만 다시 만든다.
+// 영수증 재생: 같은 사람·작업·요청 번호면 저장한 상태·결과를 그대로 돌려주고 새 행을 쓰지 않는다. 다른 대상이면 409. 열람·내보내기 값은 5분 안에만, 지금 권한이 있을 때만,
+// 감사 행이 적은 것과 같을 때만(열람: 리드 버전, 내보내기: 리드 묶음 해시·건수) 다시 만든다. 그 사이 연락처·리드가 바뀌었으면 REPLAY_EXPIRED다(감사 기록보다 많이 주지 않는다).
 async function replay(who:Actor,action:Action,input:Json,rid:string,now:string):Promise<Response|null>{
  const owner=who.owner,row=await database().prepare('SELECT kind,data FROM records WHERE owner=? AND id IN (?,?) LIMIT 1').bind(owner,`${owner}:franchise_lead_event:ev-${rid}`,`${owner}:franchise_audit:au-${rid}`).first<{kind:string;data:string}>();
  if(!row)return null;
@@ -816,12 +914,13 @@ async function replay(who:Actor,action:Action,input:Json,rid:string,now:string):
  const usable=!!lead&&lead.brandId===brandId&&lead.contactState==='present'&&!isContactExpired(lead,now);
  let extra:Json={};
  if(action==='reveal_contact'){
-  if(!fresh||!usable||!lead||!canReveal(who,lead)||!canSeeLead(who,lead))fail('REPLAY_EXPIRED');
+  if(!fresh||!usable||!lead||!canReveal(who,lead)||!canSeeLead(who,lead)||(r as AuditRow).leadVersion!==lead.version)fail('REPLAY_EXPIRED');
   extra={values:await contactValues(lead,(r as AuditRow).fields??[])};
  }
  if(action==='export_leads'){
   if(!fresh||!admin||!keyPresent())fail('REPLAY_EXPIRED');
-  const file=await exportCsv(owner,brandId,now,(r as AuditRow).contactMode==='full'?'full':'masked');
+  const {leadSetSha256,...file}=await exportCsv(owner,brandId,now,(r as AuditRow).contactMode==='full'?'full':'masked');
+  if(leadSetSha256!==(r as AuditRow).leadSetSha256||file.rowCount!==(r as AuditRow).count)fail('REPLAY_EXPIRED');
   extra={...file,contactMode:(r as AuditRow).contactMode,disclaimer:GATE_DISCLAIMER};
  }
  const view=lead&&action!=='reveal_contact'&&lead.brandId===brandId&&canSeeLead(who,lead)?await leadDetail(who,owner,lead,now,await isEnabled(owner,'r_franchise')):undefined;
@@ -892,6 +991,8 @@ function other(c:Ctx):Promise<Outcome>{
   case 'retire_disclosure_version':return retire(c,'version');
   case 'register_contract_template':return registerTemplate(c);
   case 'retire_contract_template':return retire(c,'template');
+  case 'amend_disclosure_version':return amendRegistry(c,'version');
+  case 'amend_contract_template':return amendRegistry(c,'template');
   case 'register_privacy_notice':return registerNotice(c);
   case 'retire_privacy_notice':return retire(c,'notice');
   case 'create_lead':return createLead(c);
@@ -922,8 +1023,10 @@ async function assigneesOf(who:Actor){
 }
 async function boardView(who:Actor,brandId:string,params:URLSearchParams){
  const owner=who.owner,admin=isAdminRole(who.role);
- const stage=params.get('stage')||'',assignee=params.get('assignee')||'',source=params.get('source')||'',q=(params.get('q')||'').trim(),sort=params.get('sort')||'activity';
- if((stage&&!oneOf(LEAD_STAGES,stage))||(source&&!oneOf(SOURCE_CHANNELS,source))||!['activity','eligibility'].includes(sort)||q.length>40||assignee.length>200)bad('필터를 확인해 주세요.');
+ const stage=params.get('stage')||'',assignee=params.get('assignee')||'',source=params.get('source')||'',q=(params.get('q')||'').trim(),sort=params.get('sort')||'activity',todo=params.get('todo')||'';
+ if((stage&&!oneOf(LEAD_STAGES,stage))||(source&&!oneOf(SOURCE_CHANNELS,source))||(todo&&!oneOf(BOARD_TODOS,todo))||!['activity','eligibility'].includes(sort)||q.length>40||assignee.length>200)bad('필터를 확인해 주세요.');
+ // 검색어는 리드 코드 앞부분이나 지역 이름만 받는다. 전화·이메일·숫자가 든 검색어는 주소에 실리므로 400(값은 되돌려주지 않는다).
+ if(q&&(!isBoardQuery(q)||scanText(q).length))fail('SEARCH_INPUT');
  // 대표·관리자가 보드를 열면 만료 연락처를 먼저 파기한다(잠금이 잡혀 있으면 건너뛴다). 스위치·키와 관계없이 돈다.
  if(admin){
   let token='';try{token=await acquireLock(owner+':franchise')}catch{token=''}
@@ -934,15 +1037,22 @@ async function boardView(who:Actor,brandId:string,params:URLSearchParams){
  const visible=all.filter(l=>l.brandId===brandId&&canSeeLead(who,l)),criteria=profile?.eligibility??null;
  const byStage=Object.fromEntries(LEAD_STAGES.map(s=>[s,visible.filter(l=>l.stage===s).length]));
  const soon=(t:string|null,days:number)=>t!==null&&Date.parse(t)>Date.parse(now)&&Date.parse(t)<=Date.parse(now)+days*86400000;
+ // 할 일 칩과 같은 판정으로 보드를 거른다(todo 필터). 파기 대기는 대표·관리자만.
+ const TODO:Record<string,(l:LeadRecord)=>boolean>={
+  source_notice:l=>l.contactState==='present'&&!isContactExpired(l,now)&&l.basis.type==='referral'&&!l.basis.sourceNoticedAt,
+  expiring:l=>soon(retentionUntil(l),14),
+  marketing_recheck:l=>marketingRecheckDue(l,now),
+  purge_pending:l=>admin&&isContactExpired(l,now),
+ };
  const todos={
-  sourceNoticePending:visible.filter(l=>l.contactState==='present'&&!isContactExpired(l,now)&&l.basis.type==='referral'&&!l.basis.sourceNoticedAt).length,
+  sourceNoticePending:visible.filter(TODO.source_notice).length,
   subjectRequestsDueSoon:requests.filter(r=>r.brandId===brandId&&(admin||r.createdBy.id===who.id)&&(r.status==='open'||r.status==='in_progress')&&Date.parse(r.dueAt)<=Date.parse(now)+3*86400000).length,
-  contactsExpiringSoon:visible.filter(l=>soon(retentionUntil(l),14)).length,
-  marketingRecheck:visible.filter(l=>marketingRecheckDue(l,now)).length,
-  ...(admin?{purgePending:visible.filter(l=>isContactExpired(l,now)).length}:{}),
+  contactsExpiringSoon:visible.filter(TODO.expiring).length,
+  marketingRecheck:visible.filter(TODO.marketing_recheck).length,
+  ...(admin?{purgePending:visible.filter(TODO.purge_pending).length}:{}),
  };
  const needle=q.normalize('NFKC');
- const filtered=visible.filter(l=>(!stage||l.stage===stage)&&(!source||l.task.sourceChannel===source)&&(!assignee||(assignee==='me'?l.assigneeId===who.id:assignee==='unassigned'?l.assigneeId===null:l.assigneeId===assignee))&&(!needle||l.systemCode.startsWith(needle.toUpperCase())||(!!l.task.region&&l.task.region.includes(needle))));
+ const filtered=visible.filter(l=>(!stage||l.stage===stage)&&(!source||l.task.sourceChannel===source)&&(!todo||TODO[todo](l))&&(!assignee||(assignee==='me'?l.assigneeId===who.id:assignee==='unassigned'?l.assigneeId===null:l.assigneeId===assignee))&&(!needle||l.systemCode.startsWith(needle.toUpperCase())||(!!l.task.region&&l.task.region.includes(needle))));
  const score=(l:LeadRecord)=>eligibilityScore(l,criteria)?.met??0;
  filtered.sort((a,b)=>(sort==='eligibility'?score(b)-score(a):0)||Date.parse(b.lastActivityAt)-Date.parse(a.lastActivityAt)||byId(a,b));
  const leads:LeadSummary[]=[];
@@ -964,9 +1074,9 @@ async function settingsView(who:Actor,brandId:string){
 }
 async function requestsView(who:Actor,brandId:string){
  const now=stamp(),admin=isAdminRole(who.role),[rows,leads]=await Promise.all([listRecords<SubjectRequestRow>(who.owner,'franchise_subject_request',brandId),listRecords<LeadRecord>(who.owner,'franchise_lead',brandId)]);
- const codes=new Map(leads.map(l=>[l.id,l.systemCode]));
+ const byLead=new Map(leads.filter(l=>l.brandId===brandId).map(l=>[l.id,l]));
  return {requests:rows.filter(r=>r.brandId===brandId&&(admin||r.createdBy.id===who.id)).sort((a,b)=>Date.parse(b.receivedAt)-Date.parse(a.receivedAt)||byId(a,b))
-  .map(r=>({...r,leadCode:r.leadId?codes.get(r.leadId)??null:null,dueLabel:DUE_LABEL,overdue:(r.status==='open'||r.status==='in_progress')&&Date.parse(r.dueAt)<Date.parse(now)})),dueLabel:DUE_LABEL,disclaimer:GATE_DISCLAIMER};
+  .map(r=>{const l=r.leadId?byLead.get(r.leadId):undefined;return {...r,leadCode:l?.systemCode??null,leadContactState:l?stateOf(l,now):null,dueLabel:DUE_LABEL,overdue:(r.status==='open'||r.status==='in_progress')&&Date.parse(r.dueAt)<Date.parse(now)}}),dueLabel:DUE_LABEL,disclaimer:GATE_DISCLAIMER};
 }
 async function auditView(who:Actor,brandId:string){
  if(!isAdminRole(who.role))fail('ADMIN_ONLY');

@@ -77,6 +77,14 @@ export const CONTACT_FIELDS=keysOf(CONTACT_FIELD_LABELS);
 export const CONTACT_STATE_LABELS={present:'보관 중',purged:'파기됨',erased:'삭제됨',expired:'보존 기한 지남'} as const;
 export type ContactState=keyof typeof CONTACT_STATE_LABELS;
 export const CONTACT_STATES=keysOf(CONTACT_STATE_LABELS);
+// 설정 정정(정보공개서 버전 등록일·유효 기간, 계약서안 템플릿 확인 항목) 사유.
+export const REGISTRY_AMEND_REASON_LABELS={typo:'오기',wrong_date:'날짜 오류',checklist_update:'확인 항목 보완',other:'기타'} as const;
+export type RegistryAmendReason=keyof typeof REGISTRY_AMEND_REASON_LABELS;
+export const REGISTRY_AMEND_REASONS=keysOf(REGISTRY_AMEND_REASON_LABELS);
+// 보드 할 일 필터(칩을 누르면 해당 리드만 본다).
+export const BOARD_TODO_LABELS={source_notice:'출처 고지 필요',expiring:'보존 기한 임박',marketing_recheck:'광고성 동의 재확인',purge_pending:'파기 대기'} as const;
+export type BoardTodo=keyof typeof BOARD_TODO_LABELS;
+export const BOARD_TODOS=keysOf(BOARD_TODO_LABELS);
 export const EVIDENCE_TYPE_LABELS={delivery:'제공',advice:'자문',forecast:'예상매출액 산정서',contract:'계약',fee:'가맹금',agreement:'본계약 전 약정'} as const;
 export type EvidenceType=keyof typeof EVIDENCE_TYPE_LABELS;
 export const EVIDENCE_TYPES=keysOf(EVIDENCE_TYPE_LABELS);
@@ -89,9 +97,9 @@ export const ADVISOR_TYPE_LABELS={attorney:'변호사',franchise_consultant:'가
 export const FEE_CATEGORY_LABELS={a_join:'가입비·교육비·계약금',b_security:'보증금·담보',c_opening:'설비·인테리어·임차료',d_periodic:'정기 대가',e_other:'그 밖의 대가'} as const;
 export const ESCROW_INSTITUTION_LABELS={bank:'은행',post_office:'체신관서',insurer:'보험회사',trust:'신탁업자'} as const;
 export const FORECAST_DUTY_LABELS={required:'산정서 필요',not_required:'불필요',unknown:'미확인(필요로 처리)'} as const;
-export const EVENT_TYPE_LABELS={created:'등록',stage_changed:'단계 변경',transition_blocked:'진행 차단',claimed:'담당 가져옴',assigned:'담당 지정',contact_updated:'연락처 수정',task_updated:'과업 수정',source_noticed:'출처 고지',marketing_given:'광고성 정보 동의',marketing_withdrawn:'광고성 정보 철회',evidence_recorded:'증빙 기록',evidence_voided:'증빙 무효화',purged:'연락처 파기',erased:'연락처 삭제',reopened:'다시 열기'} as const;
+export const EVENT_TYPE_LABELS={created:'등록',stage_changed:'단계 변경',transition_blocked:'진행 차단',claimed:'담당 가져옴',assigned:'담당 지정',contact_updated:'연락처 수정',task_updated:'문의 조건 수정',source_noticed:'출처 고지',marketing_given:'광고성 정보 동의',marketing_withdrawn:'광고성 정보 철회',evidence_recorded:'증빙 기록',evidence_voided:'증빙 무효화',purged:'연락처 파기',erased:'연락처 삭제',reopened:'다시 열기'} as const;
 export type LeadEventType=keyof typeof EVENT_TYPE_LABELS;
-export const AUDIT_ACTION_LABELS={reveal:'연락처 보기',find:'연락처로 찾기',export:'내보내기',purge:'파기',erase:'정보주체 삭제',backdate:'이른 증빙 시각',evidence_void:'증빙 무효화',assign:'담당 지정',claim:'담당 가져옴',profile_save:'가맹 프로필 저장',version_register:'정보공개서 버전 등록',version_retire:'정보공개서 버전 사용 중지',template_register:'계약서안 템플릿 등록',template_retire:'계약서안 템플릿 사용 중지',notice_register:'안내문 등록',notice_retire:'안내문 사용 중지',subject_request:'정보주체 요청 접수',subject_request_update:'정보주체 요청 처리',marketing_withdrawn:'광고성 정보 철회'} as const;
+export const AUDIT_ACTION_LABELS={reveal:'연락처 보기',find:'연락처로 찾기',export:'내보내기',purge:'파기',erase:'정보주체 삭제',backdate:'이른 증빙 시각',evidence_void:'증빙 무효화',assign:'담당 지정',claim:'담당 가져옴',profile_save:'가맹 프로필 저장',version_register:'정보공개서 버전 등록',version_retire:'정보공개서 버전 사용 중지',template_register:'계약서안 템플릿 등록',template_retire:'계약서안 템플릿 사용 중지',version_amend:'정보공개서 버전 정정',template_amend:'계약서안 템플릿 정정',notice_register:'안내문 등록',notice_retire:'안내문 사용 중지',subject_request:'정보주체 요청 접수',subject_request_update:'정보주체 요청 처리',marketing_withdrawn:'광고성 정보 철회'} as const;
 export type AuditAction=keyof typeof AUDIT_ACTION_LABELS;
 
 // ── 고정 문구 ──
@@ -125,6 +133,11 @@ export const FRANCHISE_ERRORS={
  TEMPLATE_NOT_FOUND:{status:400,text:'계약서 템플릿을 찾을 수 없습니다.'},
  RETIRED:{status:400,text:'사용 중지된 항목은 새 기록에 쓸 수 없습니다.'},
  LIMIT:{status:409,text:'기록 한도에 도달했습니다.'},
+ CONTRACT_EXISTS:{status:409,text:'이미 계약 기록이 있습니다. 고치려면 정정 대상을 골라 새로 기록하세요.'},
+ REGISTRY_CONFLICT:{status:409,text:'같은 파일이 이미 다른 내용으로 등록돼 있습니다. 등록일·유효 기간·확인 항목을 고치려면 목록에서 정정을 쓰세요.'},
+ NOTICE_CONFLICT:{status:409,text:'같은 본문의 안내문이 다른 처리자·수탁자 이름으로 이미 있습니다. 이름을 바꾸려면 본문도 새 버전으로 등록하세요.'},
+ SEARCH_INPUT:{status:400,text:'검색은 리드 코드(L로 시작)나 지역 이름만 받습니다. 전화·이메일은 ‘연락처로 찾기’를 쓰세요.'},
+ FEE_PAID_AT:{status:400,text:'수령 시각을 입력해 주세요. 예치 증빙이 없으면 수령 시각이 필요합니다.'},
  UNKNOWN_ACTION:{status:400,text:'지원하지 않는 작업입니다.'},
  REQUEST_ID:{status:400,text:'요청 번호를 확인해 주세요.'},
  UNKNOWN_VIEW:{status:400,text:'지원하지 않는 화면입니다.'},
@@ -158,11 +171,11 @@ export const GATE_REASON_MESSAGES:Readonly<Record<ReasonCode|WarningCode,string>
  version_not_valid_on_delivery:'제공 시점에 유효한 정보공개서 버전이 아닙니다.',
  advisor_independence_unverified:'자문자의 독립성(본부 비용 부담·소개 여부)이 확인되지 않았습니다.',
  application_date_unknown:'변경등록 신청일을 몰라 이른 기한을 표시합니다.',
- holiday_calendar_unverified:'공휴일 목록이 없어 주말만 반영했습니다.',
+ holiday_calendar_unverified:'공휴일 목록이 없거나 해당 연도를 포함하지 않아 주말만 반영했습니다.',
 };
 export {GATE_DISCLAIMER};
 export const CONTACT_NOTE='연락처는 암호화해 저장하고 목록에서는 가립니다. 연락처 보기는 기록에 남습니다.';
-export const OFF_BANNER='가맹 모집 기능이 꺼져 있습니다. 대표가 설정의 기능 스위치에서 켤 수 있습니다. 조회·파기·정보주체 요청은 계속할 수 있습니다.';
+export const OFF_BANNER='가맹 모집 기능이 꺼져 있습니다. 대표가 기능 스위치(r_franchise)를 켠 뒤 새로고침하면 쓸 수 있습니다. 조회·파기·정보주체 요청은 계속할 수 있습니다.';
 export const DUE_LABEL='처리 기한(COLLECTIVE 휴리스틱 10일 · 법률 자문 아님)';
 export const RETENTION_LABEL='보존 기한(COLLECTIVE 휴리스틱 H11 · 법률 자문 아님)';
 export const MEMO_HINT='연락처·주소·주민등록번호·계좌번호와 건강·신용·가족 같은 민감한 내용은 적지 마세요.';
@@ -213,7 +226,12 @@ export function formatPhone(d:string){
 // ── 가림(읽을 때만) ──
 export function maskName(name:string){const cs=[...name],n=cs.length;return n<=1?'*':n===2?cs[0]+'*':cs[0]+'*'.repeat(n-2)+cs[n-1]}
 export const maskPhone=(d:string)=>'***-****-'+d.slice(-4);
-export function maskEmail(e:string){const at=e.lastIndexOf('@');return at<1?'***':[...e.slice(0,at)][0]+'***@'+e.slice(at+1)}
+// 이메일: 로컬 부분이 3자 이상이면 첫 글자와 도메인만 남긴다. 2자 이하면 첫 글자도 버린다(가린 값이 원문 전체나 절반이 되지 않게).
+export function maskEmail(e:string){const at=e.lastIndexOf('@');if(at<1)return '***';const local=[...e.slice(0,at)];return (local.length<=2?'':local[0])+'***@'+e.slice(at+1)}
+
+// 보드 검색어: 리드 코드 앞부분(L + 코드 문자) 또는 지역 이름(한글·공백)만 받는다. 전화·이메일·숫자는 주소(GET 쿼리)에 싣지 않는다(서버도 400).
+const CODE_PREFIX=new RegExp(`^L[${CODE_ALPHABET}]{0,7}$`);
+export function isBoardQuery(q:string){const t=q.normalize('NFKC').trim();return !t||CODE_PREFIX.test(t.toUpperCase())||/^[가-힣 ]{1,40}$/.test(t)}
 
 // ── 보존 기한(H11, COLLECTIVE 휴리스틱) ──
 const DAY=86400000;
@@ -316,4 +334,4 @@ export function describeWindow(w:ContractWindow){
 }
 
 // 화면 선택 목록 묶음(intake 보기가 그대로 돌려준다).
-export const FRANCHISE_LABELS={stages:STAGE_LABELS,budgets:BUDGET_LABELS,timings:TIMING_LABELS,sources:SOURCE_LABELS,basis:BASIS_LABELS,referralFrom:REFERRAL_LABELS,marketingMethods:MARKETING_METHOD_LABELS,marketingStatus:MARKETING_STATUS_LABELS,closeReasons:CLOSE_REASON_LABELS,revealPurposes:REVEAL_PURPOSE_LABELS,exportPurposes:EXPORT_PURPOSE_LABELS,backdateReasons:BACKDATE_REASON_LABELS,correctionReasons:CORRECTION_REASON_LABELS,subjectRequestTypes:SUBJECT_REQUEST_TYPE_LABELS,subjectRequestStatus:SUBJECT_REQUEST_STATUS_LABELS,subjectResolutions:SUBJECT_RESOLUTION_LABELS,subjectChannels:SUBJECT_CHANNEL_LABELS,branches:BRANCH_LABELS,contactFields:CONTACT_FIELD_LABELS,contactStates:CONTACT_STATE_LABELS,evidenceTypes:EVIDENCE_TYPE_LABELS,deliveryDocs:DELIVERY_DOC_LABELS,deliveryMethods:DELIVERY_METHOD_LABELS,electronicChannels:ELECTRONIC_CHANNEL_LABELS,handEvidence:HAND_EVIDENCE_LABELS,advisorTypes:ADVISOR_TYPE_LABELS,feeCategories:FEE_CATEGORY_LABELS,escrowInstitutions:ESCROW_INSTITUTION_LABELS,forecastDuty:FORECAST_DUTY_LABELS,eventTypes:EVENT_TYPE_LABELS,auditActions:AUDIT_ACTION_LABELS} as const;
+export const FRANCHISE_LABELS={stages:STAGE_LABELS,budgets:BUDGET_LABELS,timings:TIMING_LABELS,sources:SOURCE_LABELS,basis:BASIS_LABELS,referralFrom:REFERRAL_LABELS,marketingMethods:MARKETING_METHOD_LABELS,marketingStatus:MARKETING_STATUS_LABELS,closeReasons:CLOSE_REASON_LABELS,revealPurposes:REVEAL_PURPOSE_LABELS,exportPurposes:EXPORT_PURPOSE_LABELS,backdateReasons:BACKDATE_REASON_LABELS,correctionReasons:CORRECTION_REASON_LABELS,subjectRequestTypes:SUBJECT_REQUEST_TYPE_LABELS,subjectRequestStatus:SUBJECT_REQUEST_STATUS_LABELS,subjectResolutions:SUBJECT_RESOLUTION_LABELS,subjectChannels:SUBJECT_CHANNEL_LABELS,branches:BRANCH_LABELS,contactFields:CONTACT_FIELD_LABELS,contactStates:CONTACT_STATE_LABELS,evidenceTypes:EVIDENCE_TYPE_LABELS,amendReasons:REGISTRY_AMEND_REASON_LABELS,boardTodos:BOARD_TODO_LABELS,deliveryDocs:DELIVERY_DOC_LABELS,deliveryMethods:DELIVERY_METHOD_LABELS,electronicChannels:ELECTRONIC_CHANNEL_LABELS,handEvidence:HAND_EVIDENCE_LABELS,advisorTypes:ADVISOR_TYPE_LABELS,feeCategories:FEE_CATEGORY_LABELS,escrowInstitutions:ESCROW_INSTITUTION_LABELS,forecastDuty:FORECAST_DUTY_LABELS,eventTypes:EVENT_TYPE_LABELS,auditActions:AUDIT_ACTION_LABELS} as const;

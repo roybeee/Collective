@@ -22,7 +22,7 @@ check('ftc link reason says a site link is not a delivery',/공정위 사이트 
 check('stage labels cover exactly the lead stages',same(Object.keys(fl.STAGE_LABELS),plain(fg.LEAD_STAGES)));
 check('general and evidence stages split the pre-contract flow',same(fl.GENERAL_STAGES,['inquiry','contacted','consulted','briefing'])&&same(fl.EVIDENCE_STAGES,['disclosed','draft_provided','contracted','fee_escrowed']));
 check('stage order runs inquiry 0 to opened 8 and closed has none',fl.stageOrder('inquiry')===0&&fl.stageOrder('opened')===8&&fl.stageOrder('closed')===-1&&fl.stageOrder('disclosed')===4);
-const labelSets=['BUDGET_LABELS','TIMING_LABELS','SOURCE_LABELS','BASIS_LABELS','REFERRAL_LABELS','MARKETING_METHOD_LABELS','CLOSE_REASON_LABELS','REVEAL_PURPOSE_LABELS','EXPORT_PURPOSE_LABELS','BACKDATE_REASON_LABELS','CORRECTION_REASON_LABELS','SUBJECT_REQUEST_TYPE_LABELS','SUBJECT_REQUEST_STATUS_LABELS','SUBJECT_CHANNEL_LABELS','BRANCH_LABELS','CONTACT_FIELD_LABELS','CONTACT_STATE_LABELS','EVIDENCE_TYPE_LABELS','EVENT_TYPE_LABELS','AUDIT_ACTION_LABELS'];
+const labelSets=['BUDGET_LABELS','TIMING_LABELS','SOURCE_LABELS','BASIS_LABELS','REFERRAL_LABELS','MARKETING_METHOD_LABELS','CLOSE_REASON_LABELS','REVEAL_PURPOSE_LABELS','EXPORT_PURPOSE_LABELS','BACKDATE_REASON_LABELS','CORRECTION_REASON_LABELS','SUBJECT_REQUEST_TYPE_LABELS','SUBJECT_REQUEST_STATUS_LABELS','SUBJECT_CHANNEL_LABELS','BRANCH_LABELS','CONTACT_FIELD_LABELS','CONTACT_STATE_LABELS','EVIDENCE_TYPE_LABELS','EVENT_TYPE_LABELS','AUDIT_ACTION_LABELS','REGISTRY_AMEND_REASON_LABELS','BOARD_TODO_LABELS'];
 check('every enum has Korean labels',labelSets.every(k=>Object.values(fl[k]).length>0&&Object.values(fl[k]).every(v=>/[가-힣]/.test(v))));
 check('enum arrays match their label keys',[['BUDGET_BANDS','BUDGET_LABELS'],['TIMING_BANDS','TIMING_LABELS'],['SOURCE_CHANNELS','SOURCE_LABELS'],['BASIS_TYPES','BASIS_LABELS'],['CLOSE_REASONS','CLOSE_REASON_LABELS'],['REVEAL_PURPOSES','REVEAL_PURPOSE_LABELS'],['EXPORT_PURPOSES','EXPORT_PURPOSE_LABELS'],['BACKDATE_REASONS','BACKDATE_REASON_LABELS'],['CONTACT_FIELDS','CONTACT_FIELD_LABELS'],['SUBJECT_REQUEST_TYPES','SUBJECT_REQUEST_TYPE_LABELS']].every(([a,l])=>same(fl[a],Object.keys(fl[l]))));
 check('backdate reasons satisfy the gate approval pattern',fl.BACKDATE_REASONS.every(r=>fg.APPROVAL_REASON_PATTERN.test(r)));
@@ -44,7 +44,13 @@ check('names with digits, control chars, brackets, empty or 41 chars are rejecte
 check('name masks keep first (and last) character',fl.maskName('홍길동')==='홍*동'&&fl.maskName('김철')==='김*'&&fl.maskName('남궁민수')==='남**수'&&fl.maskName('김')==='*');
 check('phone mask keeps only the last four digits',fl.maskPhone('01000000101')==='***-****-0101');
 check('email mask keeps first local char and domain',fl.maskEmail('lead.one@example.com')==='l***@example.com');
+check('an email with a one- or two-character local part hides the whole local part',fl.maskEmail('a@example.com')==='***@example.com'&&fl.maskEmail('ab@example.com')==='***@example.com'&&!fl.maskEmail('a@example.com').startsWith('a')&&!fl.maskEmail('ab@example.com').includes('ab@')&&fl.maskEmail('abc@example.com')==='a***@example.com');
 check('masks never contain the full value',!fl.maskName('김가상').includes('김가상')&&!fl.maskPhone('01000000101').includes('01000000101')&&!fl.maskEmail('lead.one@example.com').includes('lead.one'));
+// 6-1) 보드 검색어: 코드 앞부분·지역만(전화·이메일·숫자는 GET 주소에 싣지 않는다)
+check('board queries accept a code prefix or a region name',['','L','lkb7','LKB728BT','가상시 가상구'].every(q=>fl.isBoardQuery(q)));
+check('board queries refuse phones, emails, digits and non-code letters',['010-0000-0777','01000000777','lead.one@example.com','가상구 1','L0100000','LKB728BT9','김가상 010','abc'].every(q=>!fl.isBoardQuery(q)));
+check('the holiday warning also covers a list that misses the year',/해당 연도를 포함하지 않아/.test(fl.GATE_REASON_MESSAGES.holiday_calendar_unverified));
+check('the switch-off banner names the switch and the reload instead of a missing settings control',fl.OFF_BANNER.includes('r_franchise')&&fl.OFF_BANNER.includes('새로고침')&&!fl.OFF_BANNER.includes('설정의 기능 스위치'));
 // 7) 전화 표시
 check('phone formatting covers 02, 10 and 11 digit numbers',fl.formatPhone('020000000')==='02-000-0000'&&fl.formatPhone('0200000000')==='02-0000-0000'&&fl.formatPhone('0310000000')==='031-000-0000'&&fl.formatPhone('01000000101')==='010-0000-0101'&&fl.formatPhone('12')==='12');
 

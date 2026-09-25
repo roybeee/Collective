@@ -1,10 +1,12 @@
 // 트랙 R 모델 입력 경계(DP-10): 가맹 리드 모듈은 HERMES·OpenAI 제출 경로에서 직간접으로 import되지 않고, 합성 리드를 심은 워크스페이스에서 역할·회의를 실행해도
 // 제출 본문·제출 원문 행·콘솔에 리드 유래 문자열(이름·전화·이메일·메모·지역 토큰·시스템 코드·리드 id)이 0건이다.
-// 근거: 검사 1(정적 import 그래프, 고정 8개 루트 + fetch·hermes를 쓰는 lib 모듈 전부) passed · 정적, 검사 2(모의 HERMES로 역할·회의 실행) passed · mocked.
+// 근거: 검사 1(정적 import 그래프 — TypeScript 구문 트리로 import·export·import()·require·import 타입을 읽고, node_modules·.git·점 폴더 밖의 모든 .ts/.tsx를 잇는다.
+// 고정 8개 루트 + fetch·hermes를 쓰는 lib 모듈 전부) passed · 정적, 검사 2(모의 HERMES로 역할·회의 실행) passed · mocked.
 // 브리프·조사·학습·평가 경로는 검사 1(정적)로만 확인한다(모의 실행 not_run: 이 스위트 범위 밖).
 import assert from 'node:assert/strict';
 import {readFileSync,readdirSync,existsSync,statSync} from 'node:fs';
 import {join,resolve,dirname,relative} from 'node:path';
+import ts from 'typescript';
 import {testRuntime} from './helpers/runtime.mjs';
 import {seed,mockHermes,runRole,runMeeting,roleCampaign,meetingCampaign,brand} from './helpers/prompt-seed.mjs';
 import {captureConsole,NAME,PHONE,PHONE_DIGITS,EMAIL,MEMO} from './helpers/franchise-fixture.mjs';
@@ -13,12 +15,22 @@ const passed=[];const check=(name,val)=>{assert.ok(val,name);passed.push(name)};
 const ROOT=process.cwd();
 
 // ── 1) 정적 import 그래프 ──
-function specifiers(src){
- const out=new Set();
- for(const m of src.matchAll(/\b(?:import|export)\s+(?:type\s+)?(?:[^'";]*?\sfrom\s*)?['"]([^'"]+)['"]/g))out.add(m[1]);
- for(const m of src.matchAll(/\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g))out.add(m[1]);
- return [...out];
+// 정규식 대신 TypeScript 구문 트리로 읽는다(공백 없는 import{a}from'./f'·export*from·템플릿 문자열 import()·주석 속 따옴표도 놓치지 않게).
+// 문자열이 아닌 인자의 import()·require()는 경로를 알 수 없으므로 opaque로 따로 모아 모델 경로에서 닿으면 실패한다.
+function parseImports(src,file='m.ts'){
+ const out=new Set(),opaque=[],sf=ts.createSourceFile(file,src,ts.ScriptTarget.Latest,false,file.endsWith('.tsx')?ts.ScriptKind.TSX:ts.ScriptKind.TS);
+ const lit=n=>n&&(ts.isStringLiteral(n)||ts.isNoSubstitutionTemplateLiteral(n))?n.text:null;
+ const visit=node=>{
+  if((ts.isImportDeclaration(node)||ts.isExportDeclaration(node))&&node.moduleSpecifier){const x=lit(node.moduleSpecifier);if(x)out.add(x)}
+  else if(ts.isImportEqualsDeclaration(node)&&ts.isExternalModuleReference(node.moduleReference)){const x=lit(node.moduleReference.expression);if(x)out.add(x)}
+  else if(ts.isImportTypeNode(node)&&ts.isLiteralTypeNode(node.argument)){const x=lit(node.argument.literal);if(x)out.add(x)}
+  else if(ts.isCallExpression(node)&&(node.expression.kind===ts.SyntaxKind.ImportKeyword||(ts.isIdentifier(node.expression)&&node.expression.text==='require'))){const x=lit(node.arguments[0]);if(x)out.add(x);else opaque.push(node.getText(sf).slice(0,80))}
+  ts.forEachChild(node,visit);
+ };
+ visit(sf);
+ return {specifiers:[...out],opaque};
 }
+const specifiers=(src,file)=>parseImports(src,file).specifiers;
 function resolveSpec(from,spec){
  let base;
  if(spec.startsWith('@/'))base=join(ROOT,spec.slice(2));
@@ -37,21 +49,31 @@ function reachable(graph,roots,forbidden){
  }
  return found;
 }
-const walk=d=>readdirSync(d,{withFileTypes:true}).flatMap(e=>{const p=join(d,e.name);return e.isDirectory()?(e.name==='node_modules'?[]:walk(p)):/\.tsx?$/.test(e.name)&&!e.name.endsWith('.d.ts')?[p]:[]});
-const files=['app','lib','server'].filter(d=>existsSync(d)).flatMap(walk);
-const graph=new Map(files.map(file=>[file,specifiers(readFileSync(file,'utf8')).map(s=>resolveSpec(file,s)).filter(Boolean)]));
+// 저장소의 모든 .ts/.tsx(node_modules·.git·점 폴더 제외)를 노드로 둔다. components·hooks·db를 거치는 경로도 찾는다.
+const walk=d=>readdirSync(d,{withFileTypes:true}).flatMap(e=>{const p=d==='.'?e.name:join(d,e.name);return e.isDirectory()?(e.name==='node_modules'||e.name.startsWith('.')?[]:walk(p)):/\.tsx?$/.test(e.name)&&!e.name.endsWith('.d.ts')?[p]:[]});
+const files=walk('.');
+const parsed=new Map(files.map(file=>[file,parseImports(readFileSync(file,'utf8'),file)]));
+const graph=new Map(files.map(file=>[file,parsed.get(file).specifiers.map(s=>resolveSpec(file,s)).filter(Boolean)]));
+check('the graph walks every top-level source folder',['app/','lib/','components/','hooks/','db/'].every(d=>files.some(f=>f.startsWith(d))));
 const FIXED=['lib/role-execution.ts','lib/meeting-execution.ts','lib/brief-execution.ts','lib/research-execution.ts','lib/learning-execution.ts','lib/eval-server.ts','lib/ai-context.ts','lib/role-instruction.ts'];
 check('the eight fixed model-path roots exist',FIXED.every(f=>existsSync(f)));
 const dynamicRoots=files.filter(f=>f.startsWith('lib/')&&f!=='lib/client.ts'&&/\.ts$/.test(f)&&(/\bfetch\s*\(/.test(readFileSync(f,'utf8'))||specifiers(readFileSync(f,'utf8')).some(s=>s==='./hermes'||s==='@/lib/hermes'||s==='../hermes')));
 check('dynamic roots cover the HERMES client and the connectors',['lib/hermes.ts','lib/execution.ts','lib/prompt-registry.ts'].every(f=>dynamicRoots.includes(f))&&dynamicRoots.some(f=>f.startsWith('lib/connectors/')));
-const FORBIDDEN=['lib/franchise.ts','lib/franchise-server.ts','lib/franchise-crypto.ts','app/api/franchise/route.ts','app/franchise-panel.tsx','app/franchise-lead-detail.tsx','app/franchise-settings.tsx'];
+const FORBIDDEN=['lib/franchise.ts','lib/franchise-server.ts','lib/franchise-crypto.ts','app/api/franchise/route.ts','app/franchise-panel.tsx','app/franchise-lead-detail.tsx','app/franchise-settings.tsx','app/franchise-common.tsx'];
 const roots=[...new Set([...FIXED,...dynamicRoots])],hits=reachable(graph,roots,FORBIDDEN);
 assert.deepEqual(hits,[],'모델 경로가 가맹 리드 모듈에 닿습니다: '+hits.map(h=>h[2]).join(' | '));passed.push(`no model-path root (${roots.length}) reaches a franchise lead module`);
+const reached=new Set(roots.flatMap(root=>{const seen=new Set([root]),queue=[root];while(queue.length){const at=queue.shift();for(const next of graph.get(at)||[])if(!seen.has(next)){seen.add(next);queue.push(next)}}return [...seen]}));
+const opaqueHits=[...reached].filter(f=>parsed.get(f)?.opaque.length).map(f=>f+': '+parsed.get(f).opaque.join(', '));
+assert.deepEqual(opaqueHits,[],'모델 경로에 경로를 알 수 없는 import()·require()가 있습니다: '+opaqueHits.join(' | '));passed.push(`no file reachable from the model roots (${reached.size}) has a non-literal import() or require()`);
 check('the franchise modules are in the graph',['lib/franchise.ts','lib/franchise-server.ts','lib/franchise-crypto.ts','app/api/franchise/route.ts'].every(f=>graph.has(f))&&graph.get('app/api/franchise/route.ts').includes('lib/franchise-server.ts'));
 // ── 2) 검사기 자체 확인 ──
 const synthetic=new Map([['r.ts',['a.ts']],['a.ts',['b.ts']],['b.ts',['f.ts']],['c.ts',[]]]);
 check('checker reports a transitive path to a forbidden file',JSON.stringify(reachable(synthetic,['r.ts'],['f.ts']))==='[["r.ts","f.ts","r.ts -> a.ts -> b.ts -> f.ts"]]'&&reachable(synthetic,['c.ts'],['f.ts']).length===0);
-check('type-only, re-export, side-effect and dynamic imports are edges',JSON.stringify(specifiers("import type {X} from './f';\nexport {y} from '@/lib/g';\nimport './h';\nconst m=await import('./i');\nimport {\n a,\n b\n} from './j';"))==='["./f","@/lib/g","./h","./j","./i"]');
+const sorted=src=>JSON.stringify(specifiers(src).sort());
+check('type-only, re-export, side-effect and dynamic imports are edges',sorted("import type {X} from './f';\nexport {y} from '@/lib/g';\nimport './h';\nconst m=await import('./i');\nimport {\n a,\n b\n} from './j';")==='["./f","./h","./i","./j","@/lib/g"]');
+check('compact import and export syntax without spaces is an edge',sorted("import{a}from'./f';import {b}from'./g';export*from'./h';export*as n from\"./i\";import c,{d}from'./j'")==='["./f","./g","./h","./i","./j"]');
+check('template-literal dynamic imports, require, import types and quotes inside import comments are edges',sorted("const a=import(`./f`);const b=require('./g');type T=typeof import('./h');import {\n x, // it's a comment with a quote\n y\n} from './i';")==='["./f","./g","./h","./i"]');
+check('a non-literal dynamic import is reported as opaque',JSON.stringify(parseImports("const p='./f';const m=await import(p);const n=import(`./${p}`);").opaque)==='["import(p)","import(`./${p}`)"]');
 check('specifier resolution maps @/ and relative paths to files',resolveSpec('lib/role-execution.ts','./server')==='lib/server.ts'&&resolveSpec('app/api/franchise/route.ts','@/lib/franchise-server')==='lib/franchise-server.ts');
 // ── 3) 가맹 모듈 자체 ──
 const own=[...readdirSync('lib').filter(x=>/^franchise.*\.ts$/.test(x)&&!['franchise-rules.ts','franchise-gates.ts'].includes(x)).map(x=>'lib/'+x),'app/api/franchise/route.ts'];

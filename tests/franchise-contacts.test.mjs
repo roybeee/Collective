@@ -43,7 +43,7 @@ r=await post(memberA,{action:'reveal_contact',brandId:'fr-a',leadId:L1,fields:['
 check('member reveals own lead with full values',r.status===200&&r.body.values.name===NAME&&r.body.values.phone===PHONE&&r.body.values.email===EMAIL&&r.body.values.memo===MEMO);
 const reveal=audits('reveal').find(a=>a.leadId===L1);
 check('reveal writes an audit row with fields, purpose, lead id and actor only',!!reveal&&JSON.stringify(reveal.fields)==='["name","phone","email","memo"]'&&reveal.purpose==='call_back'&&JSON.stringify(Object.keys(reveal.actor).sort())==='["id","role"]'
- &&Object.keys(reveal).every(k=>['id','brandId','action','actor','at','leadId','fields','purpose','requestAction','status','result','target'].includes(k)));
+ &&Object.keys(reveal).every(k=>['id','brandId','action','actor','at','leadId','fields','purpose','leadVersion','requestAction','status','result','target'].includes(k))&&reveal.leadVersion===leadRow(L1).version);
 const un=(await createLead(boss,'fr-a',{assigneeId:null})).body.result.leadId;
 let n0=audits('reveal').length;
 r=await post(memberA,{action:'reveal_contact',brandId:'fr-a',leadId:un,fields:['name'],purpose:'call_back'});
@@ -88,6 +88,14 @@ r=await post(memberA,{action:'update_contact',brandId:'fr-a',leadId:L2,version:v
 check("changing to another lead's phone is 409 and the lead is unchanged",r.status===409&&r.body.duplicateOf.systemCode===row1.systemCode&&JSON.stringify(leadRow(L2))===before2);
 r=await post(memberA,{action:'update_contact',brandId:'fr-a',leadId:L2,version:v(L2),contact:{phone:null}});
 check('removing the only contact is 400 CONTACT_REQUIRED',r.status===400&&r.body.error===T('CONTACT_REQUIRED'));
+// 메모 덧붙이기: 기존 메모를 보지 않고 새 통화 메모를 뒤에 붙인다(합쳐서 1000자, 개인정보 패턴 거부, 바꾸기와 동시에 못 보냄).
+const NOTE2='두 번째 통화 가상메모';
+r=await post(memberA,{action:'update_contact',brandId:'fr-a',leadId:L1,version:v(L1),memoAppend:NOTE2});
+check('memo append keeps the earlier memo, adds the new note and stays encrypted',r.status===200&&JSON.stringify(r.body.result.fields)==='["memo"]'&&leadRow(L1).memo.startsWith('v1.')&&await f.fcrypto.openField(leadRow(L1).memo)===MEMO+'\n'+NOTE2);
+const memoBefore=leadRow(L1).memo;
+for(const [name,extra] of [['an append past 1000 characters',{memoAppend:'가'.repeat(995)}],['an append with a phone number',{memoAppend:'다른 번호 010-0000-0999'}],['replace and append together',{memo:'가상',memoAppend:'가상'}]]){
+ r=await post(memberA,{action:'update_contact',brandId:'fr-a',leadId:L1,version:v(L1),...extra});check(`${name} is a 400 and changes nothing`,r.status===400&&leadRow(L1).memo===memoBefore);
+}
 
 // ── 10) 입력 개인정보 거부 ──
 n0=total();
@@ -196,6 +204,27 @@ r=await post(admin,{action:'update_task',brandId:'fr-a',leadId:ER,version:v(ER),
 check('other mutations of an erased lead are 409 LEAD_ERASED',r.status===409&&r.body.error===T('LEAD_ERASED'));
 r=await post(admin,{action:'create_lead',brandId:'fr-a',contact:{name:'이테스트',phone:'010-0000-0106'},task,basis:{type:'inquiry_response'}});
 check('the erased phone can be registered again as a new lead',r.status===200&&r.body.result.leadId!==ER);
+// 리드 상세의 삭제 실행(요청 번호 없음)도 이 리드의 접수된 삭제 요청을 닫는다. 이미 삭제된 리드면 요청만 닫는다.
+const req=id=>rows('franchise_subject_request').find(x=>x.id===id);
+const ER2=(await post(admin,{action:'create_lead',brandId:'fr-a',contact:{name:'이테스트',phone:'010-0000-0108'},task,basis:{type:'inquiry_response'}})).body.result.leadId;
+const sr2=(await post(admin,{action:'add_subject_request',brandId:'fr-a',leadId:ER2,type:'erasure',channel:'phone',receivedAt:'now'})).body.result.id;
+r=await post(admin,{action:'erase_lead',brandId:'fr-a',leadId:ER2});
+check('erasure from the lead detail closes the open erasure request of that lead',r.status===200&&r.body.result.alreadyErased===false&&JSON.stringify(r.body.result.closedRequestIds)===JSON.stringify([sr2])&&req(sr2).status==='done'&&req(sr2).resolution==='erased'&&!!req(sr2).resolvedAt);
+const sr3=(await post(admin,{action:'add_subject_request',brandId:'fr-a',leadId:ER2,type:'erasure',channel:'email',receivedAt:'now'})).body.result.id;
+r=await post(admin,{action:'erase_lead',brandId:'fr-a',leadId:ER2,subjectRequestId:sr3});
+check('erasing an already erased lead still closes the linked request',r.status===200&&r.body.result.alreadyErased===true&&req(sr3).status==='done'&&req(sr3).resolution==='erased'&&audits('erase').some(a=>a.alreadyErased===true&&JSON.stringify(a.requestIds)===JSON.stringify([sr3])));
+r=await get(admin,'view=requests&brandId=fr-a');
+check('the requests view carries the lead contact state for the screen',r.body.requests.find(x=>x.id===sr3).leadContactState==='erased'&&r.body.requests.find(x=>x.id===SR.id).leadContactState==='present');
+const sr4=(await post(admin,{action:'add_subject_request',brandId:'fr-a',type:'erasure',channel:'mail',receivedAt:'now'})).body.result.id;
+const ER3=(await post(admin,{action:'create_lead',brandId:'fr-a',contact:{name:'이테스트',phone:'010-0000-0109'},task,basis:{type:'inquiry_response'}})).body.result.leadId;
+r=await post(admin,{action:'update_subject_request',brandId:'fr-a',id:sr4,version:1,status:'in_progress',leadId:'no-such-lead'});
+check('linking an unknown lead is 404 and changes nothing',r.status===404&&req(sr4).leadId===null&&req(sr4).version===1);
+r=await post(admin,{action:'update_subject_request',brandId:'fr-a',id:sr4,version:1,status:'in_progress',leadId:ER3});
+check('an unlinked request can be linked to a lead once',r.status===200&&req(sr4).leadId===ER3&&req(sr4).status==='in_progress');
+r=await post(admin,{action:'update_subject_request',brandId:'fr-a',id:sr4,version:2,status:'in_progress',leadId:L1});
+check('a linked request cannot be relinked',r.status===400&&req(sr4).leadId===ER3);
+r=await post(admin,{action:'erase_lead',brandId:'fr-a',leadId:ER3});
+check('the erasure closes the newly linked request',r.status===200&&req(sr4).status==='done'&&req(sr4).resolution==='erased');
 
 // ── 9) 암호화 키 없음 ──
 const KEY=env.AGENCY_ENCRYPTION_KEY,disposable=(await createLead(boss,'fr-a')).body.result.leadId;
@@ -294,20 +323,22 @@ check('no external call was made',f.calls.length===0);
 check('another-brand lead was created from the same phone',!!LB&&!!W2);
 
 // ── 19) 공개 저장소 경계 ──
+// 가맹 테스트는 목록을 고정하지 않고 tests/franchise*.test.mjs를 모두 읽는다(새 스위트가 빠지지 않게).
 const scanFiles=[...readdirSync('lib').filter(x=>/^franchise.*\.ts$/.test(x)&&!['franchise-rules.ts','franchise-gates.ts'].includes(x)).map(x=>'lib/'+x),...readdirSync('app').filter(x=>/^franchise.*\.tsx$/.test(x)).map(x=>'app/'+x),'app/api/franchise/route.ts',
- ...['franchise-lib','franchise-pipeline','franchise-contacts','franchise-model-boundary'].map(x=>`tests/${x}.test.mjs`),'tests/helpers/franchise-fixture.mjs'];
+ ...readdirSync('tests').filter(x=>/^franchise.*\.test\.mjs$/.test(x)).map(x=>'tests/'+x),'tests/helpers/franchise-fixture.mjs'];
 const PHONE_RE=/(?:\+?82[ .-]?)?\(?0?1[016789]\)?[ .-]?\d{3,4}[ .-]?\d{4}/g,EMAIL_RE=/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
 const phoneBad=[],emailBad=[],ipBad=[];
 for(const file of scanFiles){
  const src=readFileSync(file,'utf8');
  // 국가번호·(0) 뒤에서 잘린 번호('10.0000.0101')는 앞에 0을 붙여 본다. 구분자 없는 숫자열(시각·상수)이 번호로 읽히지 않으면 건너뛴다.
  for(const m of src.match(PHONE_RE)||[]){const n=f.lib.normalizePhone(m)??f.lib.normalizePhone('0'+m);if(n?!/^0100000\d{4}$/.test(n):/[ .()-]/.test(m))phoneBad.push(file+': '+m)}
- for(const m of src.match(EMAIL_RE)||[])if(!/@(?:example\.com|test\.invalid)$/i.test(m))emailBad.push(file+': '+m);
+ // URL 사용자 정보(https://user@host, 주소 검사 테스트 입력)는 이메일이 아니다.
+ for(const m of src.matchAll(EMAIL_RE))if(!/@(?:example\.com|test\.invalid)$/i.test(m[0])&&src.slice(Math.max(0,m.index-3),m.index)!=='://')emailBad.push(file+': '+m[0]);
  for(const m of src.match(/\b\d{1,3}(?:\.\d{1,3}){3}\b/g)||[])ipBad.push(file+': '+m);
 }
 assert.deepEqual(phoneBad,[],'합성이 아닌 전화번호 형태: '+phoneBad.join(', '));passed.push('every phone-like value in the franchise files is a synthetic 010-0000 number');
 assert.deepEqual(emailBad,[],'합성이 아닌 이메일: '+emailBad.join(', '));passed.push('every email in the franchise files is example.com or test.invalid');
 assert.deepEqual(ipBad,[],'주소 형태 숫자: '+ipBad.join(', '));passed.push('franchise files contain no IPv4-like dotted numbers');
-check('the boundary scan covered the new files',scanFiles.length>=8);
+check('the boundary scan covered every franchise test suite, including the screen tests',scanFiles.length>=12&&['tests/franchise-ui.test.mjs','tests/franchise-ui-render.test.mjs','tests/franchise-pipeline.test.mjs'].every(x=>scanFiles.includes(x)));
 
 console.log(JSON.stringify({passed:passed.length}));

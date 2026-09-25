@@ -22,7 +22,8 @@ export type SideView={startDate:string|null;days:number|null;periodEnd:string|nu
 export type WindowView={at:string|null;atKst:string|null;disclosureSide:SideView;draftSide:SideView;blockers:CodeMessage[];notes:CodeMessage[];warnings:CodeMessage[];ruleVersion:string;disclaimer:string};
 export type EvidenceView={id:string;evidenceType:string;recordedAt:string;recordedBy:{id:string;role:string};backdateApproval:{role:string;reasonCode:string}|null;supersedes:string|null;correctionReason:string|null;
  docSha256:string|null;storageLabel:string|null;payload:Json|null;voided?:boolean;superseded:boolean;assessment?:{accepted:boolean;counted:boolean;reasons:CodeMessage[]}};
-export type GateView={window:WindowView;forecastDuty:ForecastDuty;stageChecks:{opened:{ok:boolean;reasons:CodeMessage[];warnings:CodeMessage[]}};disclaimer:string};
+// 개점 판정은 계약·가맹금 예치 단계에서만 온다(그 밖은 null).
+export type GateView={window:WindowView;forecastDuty:ForecastDuty;stageChecks:{opened:{ok:boolean;reasons:CodeMessage[];warnings:CodeMessage[]}|null};disclaimer:string};
 export type LeadDetail=LeadSummary&{hasMemo:boolean;basis:LeadBasis;marketing:LeadMarketing;marketingRecheck:boolean;firstContactAt:string|null;contractedAt:string|null;closedAt:string|null;closedFrom:LeadStage|null;
  events:EventView[];allowedActions:string[];allowedMoves:LeadStage[];marketingOptions:('given'|'withdrawn')[];disclaimer:string;evidence?:EvidenceView[];gate?:GateView};
 export type Assignee={id:string;label:string};
@@ -110,7 +111,7 @@ export function StorageField({labels,value,onChange,required=false}:{labels:read
 export function LabelSelect<K extends string>({label,labels,value,onChange,empty,required=false}:{label:string;labels:Readonly<Record<K,string>>;value:string;onChange:(v:NoInfer<K>)=>void;empty?:string;required?:boolean}){
  return <label className="field"><span>{label}</span><NativeSelect value={value} required={required} onChange={e=>onChange(e.target.value as K)}>{empty!==undefined&&<NativeSelectOption value="">{empty}</NativeSelectOption>}{(Object.keys(labels) as K[]).map(k=><NativeSelectOption key={k} value={k}>{labels[k]}</NativeSelectOption>)}</NativeSelect></label>;
 }
-// 과업 필드(지역·유입·예산·시기·캠페인). 리드 등록과 과업 수정이 같이 쓴다. 지역은 시·군·구 이름만(숫자·번지 없음).
+// 문의 조건(지역·유입·예산·시기·캠페인). 리드 등록과 문의 조건 수정이 같이 쓴다. 지역은 시·군·구 이름만(숫자·번지 없음).
 export function TaskFields({task,onChange,campaigns}:{task:LeadTask;onChange:(t:LeadTask)=>void;campaigns:readonly {id:string;title:string}[]}){
  return <>
   <div className="form-two">
@@ -126,6 +127,8 @@ export function TaskFields({task,onChange,campaigns}:{task:LeadTask;onChange:(t:
 }
 export const labelOf=(labels:object,key:string|null|undefined)=>key?(labels as Readonly<Record<string,string>>)[key]??key:'-';
 export const roleLabel=(role:string)=>labelOf({owner:'대표',admin:'관리자',member:'직원',system:'시스템'},role);
+// 이력·증빙의 행위자: 담당자 목록(대표·관리자는 워크스페이스 계정, 직원은 자신만 '나')에서 찾고, 없으면 역할로 보인다.
+export const actorLabel=(actor:{id:string;role:string},assignees:readonly Assignee[])=>actor.role==='system'?roleLabel('system'):assignees.find(a=>a.id===actor.id)?.label??roleLabel(actor.role);
 export function Section({title,children,note}:{title:string;children:ReactNode;note?:ReactNode}){return <section className="franchise-box"><h3>{title}</h3>{note&&<p className="subtle-note">{note}</p>}{children}</section>}
 // CSV 파일 저장: 서버가 만든 문자열(BOM 포함)을 그대로 파일로 내려받는다. 화면 상태에 남기지 않는다.
 export function saveCsv(name:string,csv:string){const a=document.createElement('a'),url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}

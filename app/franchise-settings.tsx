@@ -6,13 +6,14 @@ import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Textarea} from '@/components/ui/textarea';
 import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select';
-import {BRANCH_LABELS,BUDGET_LABELS,TIMING_LABELS,FORECAST_DUTY_LABELS,AUDIT_ACTION_LABELS,CONTACT_FIELD_LABELS,REVEAL_PURPOSE_LABELS,EXPORT_PURPOSE_LABELS,type Branch} from '@/lib/franchise';
+import {BRANCH_LABELS,BUDGET_LABELS,TIMING_LABELS,FORECAST_DUTY_LABELS,AUDIT_ACTION_LABELS,CONTACT_FIELD_LABELS,REVEAL_PURPOSE_LABELS,EXPORT_PURPOSE_LABELS,REGISTRY_AMEND_REASON_LABELS,BACKDATE_REASON_LABELS,CORRECTION_REASON_LABELS,type Branch,type RegistryAmendReason} from '@/lib/franchise';
+import {toKstDate} from '@/lib/franchise-rules';
 import type {ForecastDuty} from '@/lib/franchise-gates';
 import {franchiseGet,franchisePost,problemOf,messageOf,ProblemBox,Disclaimer,Section,HashField,StorageField,LabelSelect,kst,kstDate,labelOf,roleLabel,type Json,type Problem} from './franchise-common';
 
 type Profile={branch:Branch;forecastInputs:{sme:boolean|null;storesAtFyEnd:number|null;fiscalYearEnd:string|null};holidays:{list:string[];source:string;verifiedAt:string}|null;storageLabels:string[];
  eligibility:{version:number;budgetBands:string[];regions:string[];timingBands:string[]}|null;version:number;updatedAt:string};
-type Registered={id:string;status:'active'|'retired';createdAt:string;retiredAt?:string};
+type Registered={id:string;status:'active'|'retired';createdAt:string;retiredAt?:string;amendments?:{at:string;reasonCode:string}[]};
 type VersionRow=Registered&{label:string;sha256:string;registeredAt:string|null;validFrom:string;validUntil:string;storageLabel:string;version:number};
 type TemplateRow=Registered&{label:string;sha256:string;checkedItems:number[];storageLabel:string;version:number;complete:boolean};
 type NoticeRow=Registered&{versionLabel:string;text:string;sha256:string;controllerName:string;processorNames:string[]};
@@ -37,7 +38,7 @@ export function FranchiseSettings({brandId,enabled,onChanged}:{brandId:string;en
    const r=await franchisePost(action,{brandId,...payload});
    if(r.status!==200){setProblem(problemOf(r));if(r.status===409)void load();return null}
    const result=(r.body.result??{}) as Json;
-   setMessage(result.existing?'같은 해시(본문)의 항목이 이미 있어 새로 만들지 않았습니다.':result.alreadyRetired?'이미 사용 중지된 항목입니다.':done);
+   setMessage(result.reactivated?'사용 중지했던 같은 파일(본문)을 다시 사용합니다.':result.existing?'같은 해시(본문)의 항목이 이미 있어 새로 만들지 않았습니다.':result.alreadyRetired?'이미 사용 중지된 항목입니다.':done);
    await load();onChanged();
    return result;
   }finally{setBusy(false)}
@@ -88,22 +89,39 @@ function ProfileForm({profile,duty,run,locked}:{profile:Profile|null;duty:Foreca
  </fieldset></form>;
 }
 
-// 정보공개서 버전: 등록된 최신본의 파일 해시와 공정위 등록일·유효 기간을 기록한다. 같은 해시는 새로 만들지 않는다. 사용 중지한 버전도 과거 제공 판정에는 계속 쓴다.
+// 날짜 입력칸 값: 등록일·유효 기간 시작은 그 시각의 KST 날짜, 유효 기간 끝은 저장한 끝 시각 직전의 KST 날짜(그날까지 유효).
+const dateOf=(at:string|null)=>at?toKstDate(at):'';
+const lastDayOf=(until:string)=>toKstDate(new Date(Date.parse(until)-1).toISOString());
+const untilLabel=(until:string)=>`${lastDayOf(until)}까지(${kst(until)} 전)`;
+// 정보공개서 버전: 등록된 최신본의 파일 해시와 공정위 등록일·유효 기간을 기록한다. 같은 해시를 다른 값으로 다시 등록하면 409이고 목록의 정정을 쓴다.
+// 사용 중지한 같은 파일을 다시 등록하면 다시 사용한다. 사용 중지한 버전도 과거 제공 판정에는 계속 쓴다.
 function VersionsSection({rows,labels,run,locked}:{rows:VersionRow[];labels:readonly string[];run:Run;locked:boolean}){
  const [f,setF]=useState({label:'',sha256:'',registeredOn:'',validFrom:'',validUntil:'',storageLabel:''});
  async function register(){const r=await run('register_disclosure_version',{label:f.label,sha256:f.sha256,registeredAt:f.registeredOn?kstDate(f.registeredOn):null,validFrom:f.validFrom,validUntil:f.validUntil,storageLabel:f.storageLabel},'정보공개서 버전을 등록했습니다.');if(r)setF({label:'',sha256:'',registeredOn:'',validFrom:'',validUntil:'',storageLabel:f.storageLabel})}
  return <Section title="정보공개서 버전" note="등록된 최신 정보공개서의 파일 해시와 등록일·유효 기간을 입력합니다. 파일은 올리지 않고 해시만 저장합니다.">
   {rows.length?<ul className="franchise-list">{rows.map(v=><li key={v.id}><p><b>{v.label}</b> <span className={'status '+(v.status==='active'?'status-approved':'status-outdated')}>{v.status==='active'?'사용 중':'사용 중지'}</span></p>
-   <p className="subtle-note">등록 {v.registeredAt?kst(v.registeredAt):'미등록'} · 유효 {kst(v.validFrom)} ~ {kst(v.validUntil)} · 해시 {v.sha256.slice(0,12)} · 보관 {v.storageLabel}</p>
-   {v.status==='active'&&<Button size="sm" variant="outline" disabled={locked} onClick={()=>{if(window.confirm('이 버전을 사용 중지할까요? 새 제공 기록에는 쓸 수 없고, 이미 기록한 제공 판정에는 계속 씁니다.'))void run('retire_disclosure_version',{id:v.id,version:v.version},'버전을 사용 중지했습니다.')}}>사용 중지</Button>}</li>)}</ul>:<p className="subtle-note">등록한 버전이 없습니다.</p>}
+   <p className="subtle-note">등록 {v.registeredAt?kst(v.registeredAt):'미등록'} · 유효 {kst(v.validFrom)} ~ {untilLabel(v.validUntil)} · 해시 {v.sha256.slice(0,12)} · 보관 {v.storageLabel}{v.amendments?.length?` · 정정 ${v.amendments.length}회`:''}</p>
+   {v.status==='active'&&<Button size="sm" variant="outline" disabled={locked} onClick={()=>{if(window.confirm('이 버전을 사용 중지할까요? 새 제공 기록에는 쓸 수 없고, 이미 기록한 제공 판정에는 계속 씁니다.'))void run('retire_disclosure_version',{id:v.id,version:v.version},'버전을 사용 중지했습니다.')}}>사용 중지</Button>}
+   <VersionAmend key={v.version} row={v} run={run} locked={locked}/></li>)}</ul>:<p className="subtle-note">등록한 버전이 없습니다.</p>}
   <form className="form-stack" onSubmit={e=>{e.preventDefault();void register()}}><fieldset disabled={locked} className="form-stack"><legend>새 버전 등록</legend>
    <label className="field"><span>라벨</span><Input required maxLength={60} value={f.label} placeholder="예: 정보공개서 2026년판" onChange={e=>setF({...f,label:e.target.value})}/></label>
    <HashField label="정보공개서 파일 해시" required value={f.sha256} onChange={sha256=>setF({...f,sha256})}/>
    <div className="form-two"><label className="field"><span>공정위 등록일 (없으면 빈칸=미등록)</span><Input type="date" value={f.registeredOn} onChange={e=>setF({...f,registeredOn:e.target.value})}/></label><StorageField labels={labels} required value={f.storageLabel} onChange={storageLabel=>setF({...f,storageLabel})}/></div>
-   <div className="form-two"><label className="field"><span>유효 기간 시작</span><Input type="date" required value={f.validFrom} onChange={e=>setF({...f,validFrom:e.target.value})}/></label><label className="field"><span>유효 기간 끝</span><Input type="date" required value={f.validUntil} onChange={e=>setF({...f,validUntil:e.target.value})}/></label></div>
+   <div className="form-two"><label className="field"><span>유효 기간 시작</span><Input type="date" required value={f.validFrom} onChange={e=>setF({...f,validFrom:e.target.value})}/></label><label className="field"><span>유효 기간 끝 (이날까지 유효)</span><Input type="date" required value={f.validUntil} onChange={e=>setF({...f,validUntil:e.target.value})}/></label></div>
    <div className="form-actions"><Button type="submit">버전 등록</Button></div>
   </fieldset></form>
  </Section>;
+}
+// 정정: 등록일·유효 기간을 고친다(사유 필수, 바꾸기 전 값과 사유가 기록에 남는다). 바꾼 칸만 보낸다. 이미 기록한 제공도 고친 값으로 다시 판정한다.
+function VersionAmend({row,run,locked}:{row:VersionRow;run:Run;locked:boolean}){
+ const initial={registeredOn:dateOf(row.registeredAt),validFrom:dateOf(row.validFrom),validUntil:lastDayOf(row.validUntil)};
+ const [f,setF]=useState(initial),[reason,setReason]=useState<RegistryAmendReason|''>('');
+ const payload={...(f.registeredOn!==initial.registeredOn?{registeredAt:f.registeredOn?kstDate(f.registeredOn):null}:{}),...(f.validFrom!==initial.validFrom?{validFrom:f.validFrom}:{}),...(f.validUntil!==initial.validUntil?{validUntil:f.validUntil}:{})};
+ return <details><summary>정정 (등록일·유효 기간)</summary><form className="form-stack" onSubmit={e=>{e.preventDefault();void run('amend_disclosure_version',{id:row.id,version:row.version,reasonCode:reason,...payload},'정보공개서 버전을 정정했습니다.')}}><fieldset disabled={locked} className="form-stack">
+  <div className="form-two"><label className="field"><span>공정위 등록일 (빈칸=미등록)</span><Input type="date" value={f.registeredOn} onChange={e=>setF({...f,registeredOn:e.target.value})}/></label><LabelSelect label="정정 사유" labels={REGISTRY_AMEND_REASON_LABELS} value={reason} empty="사유 선택" required onChange={setReason}/></div>
+  <div className="form-two"><label className="field"><span>유효 기간 시작</span><Input type="date" required value={f.validFrom} onChange={e=>setF({...f,validFrom:e.target.value})}/></label><label className="field"><span>유효 기간 끝 (이날까지 유효)</span><Input type="date" required value={f.validUntil} onChange={e=>setF({...f,validUntil:e.target.value})}/></label></div>
+  <div className="form-actions"><Button type="submit" variant="outline" disabled={!reason||!Object.keys(payload).length}>정정 저장</Button></div>
+ </fieldset></form></details>;
 }
 
 // 가맹계약서안 템플릿: 계약 전에 주는 초안(서명한 계약서가 아님). 제11조② 필수 기재 13개 항목 확인 여부를 기록한다. 13개가 다 확인돼야 계약서안 제공을 기산에 쓴다.
@@ -112,8 +130,9 @@ function TemplatesSection({rows,labels,run,locked}:{rows:TemplateRow[];labels:re
  async function register(){const r=await run('register_contract_template',{label:f.label,sha256:f.sha256,checkedItems:[...f.items].sort((a,b)=>a-b),storageLabel:f.storageLabel},'가맹계약서안 템플릿을 등록했습니다.');if(r)setF({label:'',sha256:'',items:[],storageLabel:f.storageLabel})}
  return <Section title="가맹계약서안 템플릿" note="계약 전에 가맹희망자에게 주는 가맹계약서 초안입니다. 서명한 계약서가 아닙니다.">
   {rows.length?<ul className="franchise-list">{rows.map(t=><li key={t.id}><p><b>{t.label}</b> <span className={'status '+(t.status==='active'?'status-approved':'status-outdated')}>{t.status==='active'?'사용 중':'사용 중지'}</span> <span className={'status '+(t.complete?'status-approved':'status-revision')}>{t.complete?'13개 항목 확인':`${t.checkedItems.length}/13 확인`}</span></p>
-   <p className="subtle-note">해시 {t.sha256.slice(0,12)} · 보관 {t.storageLabel} · 등록 {kst(t.createdAt)}</p>
-   {t.status==='active'&&<Button size="sm" variant="outline" disabled={locked} onClick={()=>{if(window.confirm('이 템플릿을 사용 중지할까요?'))void run('retire_contract_template',{id:t.id,version:t.version},'템플릿을 사용 중지했습니다.')}}>사용 중지</Button>}</li>)}</ul>:<p className="subtle-note">등록한 템플릿이 없습니다.</p>}
+   <p className="subtle-note">해시 {t.sha256.slice(0,12)} · 보관 {t.storageLabel} · 등록 {kst(t.createdAt)}{t.amendments?.length?` · 정정 ${t.amendments.length}회`:''}</p>
+   {t.status==='active'&&<Button size="sm" variant="outline" disabled={locked} onClick={()=>{if(window.confirm('이 템플릿을 사용 중지할까요?'))void run('retire_contract_template',{id:t.id,version:t.version},'템플릿을 사용 중지했습니다.')}}>사용 중지</Button>}
+   <TemplateAmend key={t.version} row={t} run={run} locked={locked}/></li>)}</ul>:<p className="subtle-note">등록한 템플릿이 없습니다.</p>}
   <form className="form-stack" onSubmit={e=>{e.preventDefault();void register()}}><fieldset disabled={locked} className="form-stack"><legend>새 템플릿 등록</legend>
    <label className="field"><span>라벨</span><Input required maxLength={60} value={f.label} placeholder="예: 가맹계약서안 v1" onChange={e=>setF({...f,label:e.target.value})}/></label>
    <HashField label="계약서안 파일 해시" required value={f.sha256} onChange={sha256=>setF({...f,sha256})}/>
@@ -122,6 +141,16 @@ function TemplatesSection({rows,labels,run,locked}:{rows:TemplateRow[];labels:re
    <div className="form-actions"><Button type="submit">템플릿 등록</Button></div>
   </fieldset></form>
  </Section>;
+}
+// 정정: 확인한 필수 기재 항목을 고친다(사유 필수). 13개가 모두 확인되면 그 템플릿으로 한 제공을 기산에 쓴다.
+function TemplateAmend({row,run,locked}:{row:TemplateRow;run:Run;locked:boolean}){
+ const [items,setItems]=useState<number[]>(row.checkedItems),[reason,setReason]=useState<RegistryAmendReason|''>('');
+ const changed=JSON.stringify([...items].sort((a,b)=>a-b))!==JSON.stringify([...row.checkedItems].sort((a,b)=>a-b));
+ return <details><summary>정정 (확인한 기재 항목)</summary><form className="form-stack" onSubmit={e=>{e.preventDefault();void run('amend_contract_template',{id:row.id,version:row.version,reasonCode:reason,checkedItems:[...items].sort((a,b)=>a-b)},'계약서안 템플릿을 정정했습니다.')}}><fieldset disabled={locked} className="form-stack">
+  <fieldset className="field"><legend>확인한 필수 기재 항목</legend><div className="franchise-bar">{ITEMS.map(n=><label key={n} className="franchise-inline"><input type="checkbox" checked={items.includes(n)} onChange={e=>setItems(e.target.checked?[...items,n]:items.filter(x=>x!==n))}/> 제11조② {n}호</label>)}</div></fieldset>
+  <LabelSelect label="정정 사유" labels={REGISTRY_AMEND_REASON_LABELS} value={reason} empty="사유 선택" required onChange={setReason}/>
+  <div className="form-actions"><Button type="submit" variant="outline" disabled={!reason||!changed}>정정 저장</Button></div>
+ </fieldset></form></details>;
 }
 
 // 개인정보 안내문: 동의 근거·광고성 정보 동의 때 안내한 문구의 버전. 처리자·수탁자 이름은 관리자가 적는다(코드에 고정한 회사 정보 없음).
@@ -143,12 +172,13 @@ function NoticesSection({rows,run,locked}:{rows:NoticeRow[];run:Run;locked:boole
  </Section>;
 }
 
+const REASON_LABELS={...BACKDATE_REASON_LABELS,...CORRECTION_REASON_LABELS,...REGISTRY_AMEND_REASON_LABELS,reactivate:'다시 사용',subject_request:'정보주체 요청'};
 // 감사 기록: 최근 100건. 누가(역할)·언제·무엇을·몇 건·어떤 항목 이름·목적만 보인다. 값은 기록에도 화면에도 없다.
 function auditDetail(a:AuditRow){
  return [a.fields?.length?'항목 '+a.fields.map(f=>labelOf(CONTACT_FIELD_LABELS,f)).join('·'):null,a.purpose?'목적 '+labelOf({...REVEAL_PURPOSE_LABELS,...EXPORT_PURPOSE_LABELS},a.purpose):null,
   a.contactMode?(a.contactMode==='full'?'원문 포함':'가린 값'):null,typeof a.count==='number'?`${a.count}건`:null,
   a.counts?`파기 ${a.counts.leads} · 키 ${a.counts.keys} · 감사 ${a.counts.audits} · 남음 ${a.counts.remaining}`:null,a.trigger?({board_open:'목록 열기',manual:'직접 실행',inline:'요청 중'} as Record<string,string>)[a.trigger]??a.trigger:null,
-  a.changedFields?.length?'바뀐 항목 '+a.changedFields.join('·'):null].filter(Boolean).join(' · ');
+  a.changedFields?.length?'바뀐 항목 '+a.changedFields.join('·'):null,a.reasonCode?'사유 '+labelOf(REASON_LABELS,a.reasonCode):null].filter(Boolean).join(' · ');
 }
 function AuditSection({brandId,refresh}:{brandId:string;refresh:unknown}){
  const [rows,setRows]=useState<AuditRow[]|null>(null),[error,setError]=useState('');

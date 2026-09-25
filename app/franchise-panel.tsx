@@ -14,17 +14,19 @@ import type {WorkspaceData} from '@/lib/client';
 import {franchiseTabs,type FranchiseTab} from '@/lib/nav-state';
 import {LEAD_STAGES} from '@/lib/franchise-gates';
 import {GATE_DISCLAIMER,CONTACT_NOTE,OFF_BANNER,UNDETERMINED_BANNER,FRANCHISE_ERRORS,MEMO_HINT,RETENTION_LABEL,DUE_LABEL,STAGE_LABELS,SOURCE_LABELS,BUDGET_LABELS,TIMING_LABELS,BASIS_LABELS,REFERRAL_LABELS,
- MARKETING_METHOD_LABELS,EXPORT_PURPOSE_LABELS,CONTACT_STATE_LABELS,SUBJECT_REQUEST_TYPE_LABELS,SUBJECT_REQUEST_STATUS_LABELS,SUBJECT_RESOLUTION_LABELS,SUBJECT_CHANNEL_LABELS,isAdminRole,
- type LeadTask,type BasisType,type ExportPurpose} from '@/lib/franchise';
+ MARKETING_METHOD_LABELS,EXPORT_PURPOSE_LABELS,CONTACT_STATE_LABELS,SUBJECT_REQUEST_TYPE_LABELS,SUBJECT_REQUEST_STATUS_LABELS,SUBJECT_RESOLUTION_LABELS,SUBJECT_CHANNEL_LABELS,BOARD_TODO_LABELS,isAdminRole,isBoardQuery,
+ type LeadTask,type BasisType,type ExportPurpose,type BoardTodo} from '@/lib/franchise';
 import {canChange,useAccount} from './account-context';
 import {franchiseGet,franchisePost,problemOf,messageOf,ProblemBox,Disclaimer,TimeField,TaskFields,LabelSelect,saveCsv,NOW,timeOf,kst,labelOf,
  type FranchiseStatus,type Intake,type Board,type LeadSummary,type LeadDetail,type Assignee,type Problem,type TimeValue} from './franchise-common';
-import {FranchiseLeadDetail,ERASE_CONFIRM,assigneeLabel} from './franchise-lead-detail';
+import {FranchiseLeadDetail,ERASE_CONFIRM,assigneeLabel,eraseDone} from './franchise-lead-detail';
 import {FranchiseSettings} from './franchise-settings';
 
 type Campaigns=readonly {id:string;title:string}[];
-type Filters={stage:string;assignee:string;source:string;q:string;sort:'activity'|'eligibility'};
-const noFilters:Filters={stage:'',assignee:'',source:'',q:'',sort:'activity'};
+type Filters={stage:string;assignee:string;source:string;q:string;todo:BoardTodo|'';sort:'activity'|'eligibility'};
+const noFilters:Filters={stage:'',assignee:'',source:'',q:'',todo:'',sort:'activity'};
+// 검색어가 코드·지역이 아니면(전화·이메일·숫자) 보내지 않는다. 서버도 400이다.
+export const SEARCH_HINT='검색은 리드 코드(L로 시작)나 지역 이름만 받습니다. 전화·이메일은 ‘연락처로 찾기’를 쓰세요(주소창에 남지 않고 기록이 남습니다).';
 const isTab=(v:string):v is FranchiseTab=>(franchiseTabs as readonly string[]).includes(v);
 
 export function FranchisePanel({workspace,initialBrandId,initialTab,onScopeChange}:{workspace:WorkspaceData;initialBrandId?:string;initialTab?:FranchiseTab;onScopeChange?:(brand:string,tab:string)=>void}){
@@ -32,11 +34,11 @@ export function FranchisePanel({workspace,initialBrandId,initialTab,onScopeChang
  const known=(id?:string):id is string=>!!id&&brands.some(b=>b.id===id);
  const [brandId,setBrandId]=useState(()=>known(initialBrandId)?initialBrandId:brands[0]?.id??'');
  const [tab,setTab]=useState<FranchiseTab>(initialTab??'leads');
- // 주소로 다른 브랜드·탭 링크를 열면 따른다(열려 있는 동안에도).
- const [link,setLink]=useState({brand:initialBrandId,tab:initialTab});
- if(link.brand!==initialBrandId||link.tab!==initialTab){setLink({brand:initialBrandId,tab:initialTab});if(known(initialBrandId))setBrandId(initialBrandId);if(initialTab)setTab(initialTab)}
  const [status,setStatus]=useState<FranchiseStatus|null>(null),[statusError,setStatusError]=useState('');
  const [intake,setIntake]=useState<Intake|null>(null),[intakeError,setIntakeError]=useState('');
+ // 주소로 다른 브랜드·탭 링크를 열면 따른다(열려 있는 동안에도). 브랜드가 바뀌면 이전 브랜드의 등록 조건을 버린다.
+ const [link,setLink]=useState({brand:initialBrandId,tab:initialTab});
+ if(link.brand!==initialBrandId||link.tab!==initialTab){setLink({brand:initialBrandId,tab:initialTab});if(known(initialBrandId)&&initialBrandId!==brandId){setBrandId(initialBrandId);setIntake(null)}if(initialTab)setTab(initialTab)}
  const loadStatus=useCallback(async(signal?:AbortSignal)=>{
   try{const s=await franchiseGet<FranchiseStatus>({view:'status'},signal);if(!signal?.aborted){setStatus(s);setStatusError('')}}
   catch(e){if(!signal?.aborted)setStatusError(messageOf(e))}
@@ -84,7 +86,7 @@ function LeadsTab({brandId,status,admin,intake,campaigns,onRequests}:{brandId:st
   setLoading(true);setError('');
   try{
    const params:Record<string,string>={view:'board',brandId,sort:filters.sort};
-   for(const k of ['stage','assignee','source','q'] as const)if(filters[k])params[k]=filters[k];
+   for(const k of ['stage','assignee','source','q','todo'] as const)if(filters[k])params[k]=filters[k];
    const d=await franchiseGet<Board>(params,signal);if(!signal?.aborted)setBoard(d);
   }catch(e){if(!signal?.aborted)setError(messageOf(e))}
   finally{if(!signal?.aborted)setLoading(false)}
@@ -111,7 +113,7 @@ function LeadsTab({brandId,status,admin,intake,campaigns,onRequests}:{brandId:st
   </div>
   {(message||problem)&&<div className="franchise-status">{message&&<p role="status">{message}</p>}<ProblemBox problem={problem}/></div>}
   {!keyReady?<div role="alert" className="load-error"><span>{FRANCHISE_ERRORS.KEY_MISSING.text}</span></div>:<>
-   <form className="franchise-bar" aria-label="리드 필터" onSubmit={e=>{e.preventDefault();setFilters({...filters,q:query.trim()})}}>
+   <form className="franchise-bar" aria-label="리드 필터" onSubmit={e=>{e.preventDefault();const q=query.trim();if(!isBoardQuery(q)){setQuery('');setProblem({error:SEARCH_HINT});return}setProblem(null);setFilters({...filters,q})}}>
     <label className="field"><span>단계</span><NativeSelect value={filters.stage} onChange={e=>setFilters({...filters,stage:e.target.value})}><NativeSelectOption value="">전체</NativeSelectOption>{LEAD_STAGES.map(s=><NativeSelectOption key={s} value={s}>{STAGE_LABELS[s]}{board?` ${board.counts.byStage[s]??0}`:''}</NativeSelectOption>)}</NativeSelect></label>
     <label className="field"><span>담당</span><NativeSelect value={filters.assignee} onChange={e=>setFilters({...filters,assignee:e.target.value})}><NativeSelectOption value="">{admin?'전체':'내 리드와 담당 없음'}</NativeSelectOption><NativeSelectOption value="me">내 리드</NativeSelectOption><NativeSelectOption value="unassigned">담당 없음</NativeSelectOption>{admin&&assignees.filter(a=>a.label!=='나').map(a=><NativeSelectOption key={a.id} value={a.id}>{a.label}</NativeSelectOption>)}</NativeSelect></label>
     <LabelSelect label="유입" labels={SOURCE_LABELS} value={filters.source} empty="전체" onChange={source=>setFilters({...filters,source})}/>
@@ -120,7 +122,8 @@ function LeadsTab({brandId,status,admin,intake,campaigns,onRequests}:{brandId:st
     <LabelSelect label="정렬" labels={{activity:'최근 활동',eligibility:'적격 충족'}} value={filters.sort} onChange={sort=>setFilters({...filters,sort})}/>
    </form>
    <p className="subtle-note">이름·연락처로는 검색하지 않습니다. 연락처로 확인할 때는 ‘연락처로 찾기’를 쓰세요(기록이 남습니다).</p>
-   {t&&<ul className="franchise-chips" aria-label="할 일"><li>출처 고지 필요 {t.sourceNoticePending}</li><li><button type="button" onClick={onRequests}>기한 임박 요청 {t.subjectRequestsDueSoon}</button></li><li>보존 기한 임박 {t.contactsExpiringSoon}</li><li title={board?.recheckLabel}>광고성 동의 재확인 {t.marketingRecheck}</li>{admin&&t.purgePending!==undefined&&<li>파기 대기 {t.purgePending}</li>}</ul>}
+   {t&&<ul className="franchise-chips" aria-label="할 일">{todoChips(t,admin).map(([key,count])=><li key={key}><button type="button" aria-pressed={filters.todo===key} title={key==='marketing_recheck'?board?.recheckLabel:undefined} onClick={()=>setFilters({...filters,todo:filters.todo===key?'':key})}>{BOARD_TODO_LABELS[key]} {count}</button></li>)}<li><button type="button" onClick={onRequests}>기한 임박 요청 {t.subjectRequestsDueSoon}</button></li></ul>}
+   {filters.todo&&<p className="subtle-note">할 일 ‘{BOARD_TODO_LABELS[filters.todo]}’ 리드만 봅니다. <Button size="sm" variant="ghost" onClick={()=>setFilters({...filters,todo:''})}>할 일 필터 해제</Button></p>}
    {error&&<div role="alert" className="load-error"><span>{error}</span><Button variant="outline" size="sm" onClick={()=>void load()}>다시 불러오기</Button></div>}
    {!board?loading&&<p role="status">리드를 불러오고 있습니다.</p>:board.leads.length?<>
     <div className="ledger-table-wrap"><table className="ledger-table franchise-table"><caption className="sr-only">가맹 리드 목록</caption>
@@ -136,7 +139,7 @@ function LeadsTab({brandId,status,admin,intake,campaigns,onRequests}:{brandId:st
      </tr>)}</tbody>
     </table></div>
     <p className="subtle-note">{board.total>board.leads.length?`${board.total}건 중 ${board.leads.length}건을 보여 줍니다. 필터를 좁혀 주세요.`:`${board.total}건`} · 보존 기한은 {RETENTION_LABEL}</p>
-   </>:<p className="subtle-note">{filters===noFilters?'아직 등록된 리드가 없습니다.':'조건에 맞는 리드가 없습니다.'}{!admin?' 직원은 내 리드와 담당 없는 리드만 봅니다.':''}</p>}
+   </>:<p className="subtle-note">{filters.stage||filters.assignee||filters.source||filters.q||filters.todo?'조건에 맞는 리드가 없습니다.':'아직 등록된 리드가 없습니다.'}{!admin?' 직원은 내 리드와 담당 없는 리드만 봅니다.':''}</p>}
   </>}
   {open&&<FranchiseLeadDetail key={open.id} brandId={brandId} leadId={open.id} initial={open.initial} admin={admin} intake={intake} assignees={assignees} campaigns={campaigns} onClose={()=>setOpen(null)} onChanged={()=>void load()}/>}
   {dialog==='create'&&<CreateLeadDialog brandId={brandId} admin={admin} intake={intake} assignees={assignees} campaigns={campaigns} onClose={()=>setDialog('')} onCreated={(id,lead)=>{setDialog('');setMessage('리드를 등록했습니다.');void load();setOpen({id,initial:lead})}}/>}
@@ -145,12 +148,17 @@ function LeadsTab({brandId,status,admin,intake,campaigns,onRequests}:{brandId:st
  </div>;
 }
 
+// 할 일 칩: 누르면 그 할 일에 해당하는 리드만 보드에 보인다(서버 todo 필터). 파기 대기는 대표·관리자만.
+function todoChips(t:Board['todos'],admin:boolean):[BoardTodo,number][]{
+ return [['source_notice',t.sourceNoticePending],['expiring',t.contactsExpiringSoon],['marketing_recheck',t.marketingRecheck],...(admin&&t.purgePending!==undefined?[['purge_pending',t.purgePending] as [BoardTodo,number]]:[])];
+}
+
 // ── 리드 등록 ──
 type CreateForm={name:string;phone:string;email:string;memo:string;task:LeadTask;basis:BasisType;noticeId:string;noticeAt:TimeValue;referralFrom:string;marketing:boolean;method:string;marketingAt:TimeValue;marketingNoticeId:string;assignee:string};
 const blankCreate:CreateForm={name:'',phone:'',email:'',memo:'',task:{region:'',budgetBand:'unknown',timingBand:'unknown',sourceChannel:'phone_inquiry',campaignId:null},basis:'inquiry_response',noticeId:'',noticeAt:NOW,referralFrom:'',
  marketing:false,method:'',marketingAt:NOW,marketingNoticeId:'',assignee:'__self'};
 // 최소 수집: 이름(필수)·전화/이메일(하나 이상)·메모(선택). 입력은 이 대화상자 상태에만 두고 닫으면 사라진다. 브라우저 자동 완성에 남지 않게 autoComplete를 끈다.
-function CreateLeadDialog({brandId,admin,intake,assignees,campaigns,onClose,onCreated}:{brandId:string;admin:boolean;intake:Intake|null;assignees:readonly Assignee[];campaigns:Campaigns;onClose:()=>void;onCreated:(id:string,lead?:LeadDetail)=>void}){
+export function CreateLeadDialog({brandId,admin,intake,assignees,campaigns,onClose,onCreated}:{brandId:string;admin:boolean;intake:Intake|null;assignees:readonly Assignee[];campaigns:Campaigns;onClose:()=>void;onCreated:(id:string,lead?:LeadDetail)=>void}){
  const [f,setF]=useState<CreateForm>(blankCreate),[busy,setBusy]=useState(false),[problem,setProblem]=useState<Problem|null>(null);
  const notices=intake?.notices??[],set=(patch:Partial<CreateForm>)=>setF({...f,...patch});
  const missing=!f.name.trim()||(!f.phone.trim()&&!f.email.trim())||(f.basis==='consent'&&(!f.noticeId||!timeOf(f.noticeAt)))||(f.basis==='referral'&&!f.referralFrom)
@@ -236,7 +244,8 @@ function FindDialog({brandId,onClose,onOpen}:{brandId:string;onClose:()=>void;on
 }
 
 // ── 정보주체 요청: 접수(모든 역할)·처리 상태(대표·관리자)·삭제 실행(대표·관리자). 요청한 사람의 이름·연락처는 따로 저장하지 않는다. ──
-type RequestRow={id:string;leadId:string|null;leadCode:string|null;type:string;channel:string;receivedAt:string;dueAt:string;status:string;resolution:string|null;resolvedAt:string|null;version:number;overdue:boolean};
+type RequestRow={id:string;leadId:string|null;leadCode:string|null;leadContactState:string|null;type:string;channel:string;receivedAt:string;dueAt:string;status:string;resolution:string|null;resolvedAt:string|null;version:number;overdue:boolean};
+type RequestPost=(action:string,payload:Record<string,unknown>,done:string|((result:Record<string,unknown>)=>string),confirmText?:string)=>Promise<boolean>;
 function RequestsTab({brandId,admin,keyReady}:{brandId:string;admin:boolean;keyReady:boolean}){
  const [rows,setRows]=useState<RequestRow[]|null>(null),[error,setError]=useState(''),[leads,setLeads]=useState<{id:string;systemCode:string}[]>([]);
  const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[problem,setProblem]=useState<Problem|null>(null);
@@ -247,12 +256,12 @@ function RequestsTab({brandId,admin,keyReady}:{brandId:string;admin:boolean;keyR
   if(keyReady)try{const b=await franchiseGet<Board>({view:'board',brandId},signal);if(!signal?.aborted)setLeads(b.leads.map(l=>({id:l.id,systemCode:l.systemCode})))}catch{/* 리드 목록 없이도 요청은 접수한다(연결 리드 없음). */}
  },[brandId,keyReady]);
  useEffect(()=>{const c=new AbortController();void Promise.resolve().then(()=>{if(!c.signal.aborted)return load(c.signal)});return ()=>c.abort()},[load]);
- async function post(action:string,payload:Record<string,unknown>,done:string,confirmText?:string){
+ const post:RequestPost=async(action,payload,done,confirmText)=>{
   if(confirmText&&!window.confirm(confirmText))return false;
   setBusy(true);setProblem(null);setMessage('');
-  try{const r=await franchisePost(action,{brandId,...payload});if(r.status!==200){setProblem(problemOf(r));if(r.status===409)void load();return false}setMessage(done);await load();return true}
+  try{const r=await franchisePost(action,{brandId,...payload});if(r.status!==200){setProblem(problemOf(r));if(r.status===409)void load();return false}setMessage(typeof done==='function'?done((r.body.result??{}) as Record<string,unknown>):done);await load();return true}
   finally{setBusy(false)}
- }
+ };
  async function add(){if(await post('add_subject_request',{type:form.type,channel:form.channel,leadId:form.leadId||null,receivedAt:timeOf(form.at)},'정보주체 요청을 접수했습니다.'))setForm({type:'',channel:'',leadId:'',at:NOW})}
  return <div className="franchise-panel">
   <p className="notice" role="note">{DUE_LABEL}. 열람은 리드 상세의 연락처 보기(목적: 정보주체 요청 처리), 정정은 연락처 수정, 처리정지는 광고성 정보 철회·종결, 삭제는 삭제 실행으로 처리합니다. 답변은 COLLECTIVE 밖에서 사람이 보냅니다.</p>
@@ -267,17 +276,23 @@ function RequestsTab({brandId,admin,keyReady}:{brandId:string;admin:boolean;keyR
    <thead><tr><th>유형</th><th>리드 코드</th><th>접수</th><th>처리 기한</th><th>상태</th><th>결과</th>{admin&&<th>처리</th>}</tr></thead>
    <tbody>{rows.map(r=><tr key={r.id}><td>{labelOf(SUBJECT_REQUEST_TYPE_LABELS,r.type)}<br/><small>{labelOf(SUBJECT_CHANNEL_LABELS,r.channel)}</small></td><td>{r.leadCode??'-'}</td><td>{kst(r.receivedAt)}</td>
     <td>{kst(r.dueAt)}{r.overdue&&<span className="status status-revision"> 기한 지남</span>}</td><td>{labelOf(SUBJECT_REQUEST_STATUS_LABELS,r.status)}</td><td>{r.resolution?labelOf(SUBJECT_RESOLUTION_LABELS,r.resolution):'-'}</td>
-    {admin&&<td><RequestUpdate key={r.version} row={r} busy={busy} post={post}/></td>}</tr>)}</tbody>
+    {admin&&<td><RequestUpdate key={r.version} row={r} busy={busy} post={post} leads={leads}/></td>}</tr>)}</tbody>
   </table></div>:<p className="subtle-note">접수한 요청이 없습니다.{admin?'':' 직원은 자신이 접수한 요청만 봅니다.'}</p>}
   <p className="subtle-note">처리 기한: {DUE_LABEL}</p>
  </div>;
 }
-function RequestUpdate({row,busy,post}:{row:RequestRow;busy:boolean;post:(action:string,payload:Record<string,unknown>,done:string,confirmText?:string)=>Promise<boolean>}){
- const [status,setStatus]=useState(row.status),[resolution,setResolution]=useState(row.resolution??'');
- const open=row.status==='open'||row.status==='in_progress';
+// 처리(대표·관리자): 상태·결과 저장, 연결 리드가 없으면 한 번 연결, 삭제 요청이면 삭제 실행(이미 삭제된 리드면 요청만 완료로 기록).
+function RequestUpdate({row,busy,post,leads}:{row:RequestRow;busy:boolean;post:RequestPost;leads:readonly {id:string;systemCode:string}[]}){
+ const [status,setStatus]=useState(row.status),[resolution,setResolution]=useState(row.resolution??''),[leadId,setLeadId]=useState('');
+ const open=row.status==='open'||row.status==='in_progress',erased=row.leadContactState==='erased';
+ const changed=status!==row.status||resolution!==(row.resolution??'')||!!leadId;
  return <div className="form-stack">
   <div className="franchise-bar"><LabelSelect label="상태" labels={SUBJECT_REQUEST_STATUS_LABELS} value={status} onChange={setStatus}/><LabelSelect label="결과" labels={SUBJECT_RESOLUTION_LABELS} value={resolution} empty="없음" onChange={setResolution}/>
-   <Button size="sm" variant="outline" disabled={busy||(status===row.status&&resolution===(row.resolution??''))} onClick={()=>void post('update_subject_request',{id:row.id,version:row.version,status,...(resolution?{resolution}:{})},'요청 상태를 저장했습니다.')}>저장</Button></div>
-  {row.type==='erasure'&&row.leadId&&open&&<Button size="sm" variant="outline" disabled={busy} onClick={()=>void post('erase_lead',{leadId:row.leadId,subjectRequestId:row.id},'연락처·메모·중복 키를 삭제하고 요청을 완료로 기록했습니다.',ERASE_CONFIRM)}>삭제 실행</Button>}
+   {!row.leadId&&<label className="field"><span>연결 리드</span><NativeSelect value={leadId} onChange={e=>setLeadId(e.target.value)}><NativeSelectOption value="">연결 없음</NativeSelectOption>{leads.map(l=><NativeSelectOption key={l.id} value={l.id}>{l.systemCode}</NativeSelectOption>)}</NativeSelect></label>}
+   <Button size="sm" variant="outline" disabled={busy||!changed} onClick={()=>void post('update_subject_request',{id:row.id,version:row.version,status,...(resolution?{resolution}:{}),...(leadId?{leadId}:{})},'요청 상태를 저장했습니다.')}>저장</Button></div>
+  {row.type==='erasure'&&row.leadId&&open&&(erased
+   ?<Button size="sm" variant="outline" disabled={busy} onClick={()=>void post('erase_lead',{leadId:row.leadId,subjectRequestId:row.id},eraseDone)}>삭제 완료로 기록</Button>
+   :<Button size="sm" variant="outline" disabled={busy} onClick={()=>void post('erase_lead',{leadId:row.leadId,subjectRequestId:row.id},eraseDone,ERASE_CONFIRM)}>삭제 실행</Button>)}
+  {row.type==='erasure'&&!row.leadId&&open&&<small>연결 리드를 저장하면 삭제 실행을 할 수 있습니다.</small>}
  </div>;
 }

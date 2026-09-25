@@ -22,7 +22,7 @@ const WS='fr-owner',WS2='fr-owner-2';
 env.AUTH_MODE='email';env.AUTH_ORIGIN='https://agency.test';
 const boss=signIn('fr-boss','admin',1000,WS),admin=signIn('fr-admin','admin',2000,WS),memberA=signIn('fr-member-a','member',3000,WS),memberB=signIn('fr-member-b','member',4000,WS);
 const boss2=signIn('fr-boss-2','admin',1000,WS2);
-for(const b of ['fr-a','fr-b','fr-c','fr-d'])await brand(WS,b);
+for(const b of ['fr-a','fr-b','fr-c','fr-d','fr-g'])await brand(WS,b);
 await brand(WS2,'fr-a');
 
 // ── 3) 기본 거부 ──
@@ -57,13 +57,15 @@ check('owner turns the switch on through /api/feature-flags',r.status===200&&r.b
 // 설정: 프로필·버전·템플릿(대표·관리자)
 r=await profile(boss,'fr-a',{},0);
 check('owner saves a branch A profile',r.status===200&&r.body.result.version===1);
-const DV_SHA=sha64('synthetic disclosure v1');
-r=await post(boss,{action:'register_disclosure_version',brandId:'fr-a',label:'가상 정보공개서 1판',sha256:DV_SHA,registeredAt:ago(60*DAY),validFrom:ago(90*DAY),validUntil:ahead(300*DAY),storageLabel:'본사 문서함'});
+const DV_SHA=sha64('synthetic disclosure v1'),DV_META={registeredAt:ago(60*DAY),validFrom:ago(90*DAY),validUntil:ahead(300*DAY)};
+r=await post(boss,{action:'register_disclosure_version',brandId:'fr-a',label:'가상 정보공개서 1판',sha256:DV_SHA,...DV_META,storageLabel:'본사 문서함'});
 const DV=r.body.result.id;
 check('disclosure version is registered with its hash',r.status===200&&/^dv-/.test(DV)&&rows('franchise_disclosure_version').some(x=>x.id===DV&&x.sha256===DV_SHA&&x.status==='active'));
 const before=total();
-r=await post(admin,{action:'register_disclosure_version',brandId:'fr-a',label:'다른 라벨',sha256:DV_SHA,registeredAt:ago(60*DAY),validFrom:ago(90*DAY),validUntil:ahead(300*DAY),storageLabel:'본사 문서함'});
-check('same hash returns the existing version and writes nothing',r.status===200&&r.body.result.id===DV&&r.body.result.existing===true&&total()===before);
+r=await post(admin,{action:'register_disclosure_version',brandId:'fr-a',label:'다른 라벨',sha256:DV_SHA,...DV_META,storageLabel:'본사 문서함'});
+check('same hash with the same dates returns the existing version and writes nothing',r.status===200&&r.body.result.id===DV&&r.body.result.existing===true&&total()===before);
+r=await post(admin,{action:'register_disclosure_version',brandId:'fr-a',label:'가상 정보공개서 1판',sha256:DV_SHA,...DV_META,registeredAt:null,storageLabel:'본사 문서함'});
+check('same hash with different dates is 409 REGISTRY_CONFLICT (not a silent existing) and writes nothing',r.status===409&&r.body.error===T('REGISTRY_CONFLICT')&&total()===before);
 r=await post(boss,{action:'register_disclosure_version',brandId:'fr-a',label:'미래',sha256:sha64('x2'),registeredAt:ahead(DAY),validFrom:ago(DAY),validUntil:ahead(DAY),storageLabel:'본사 문서함'});
 check('future registeredAt is a 400',r.status===400&&r.body.error===T('FUTURE_TIME'));
 r=await post(boss,{action:'register_disclosure_version',brandId:'fr-a',label:'역순',sha256:sha64('x3'),registeredAt:null,validFrom:ahead(DAY),validUntil:ago(DAY),storageLabel:'본사 문서함'});
@@ -124,6 +126,7 @@ for(const [name,s,input] of [
  ['update_task',boss,{action:'update_task',leadId:off1,task:{budgetBand:'lt_50m'}}],
  ['record_delivery',boss,{action:'record_delivery',leadId:off1,doc:'disclosure',method:'electronic',deliveredAt:'now'}],
  ['claim_lead',memberB,{action:'claim_lead',leadId:off1}],
+ ['amend_disclosure_version',boss,{action:'amend_disclosure_version',id:DV,version:1,reasonCode:'typo',registeredAt:null}],
 ]){const n=total();r=await post(s,{brandId:'fr-a',version:v(off1),...input});check(`switch off: ${name} is 409 OFF and writes nothing`,r.status===409&&r.body.error===T('OFF')&&total()===n)}
 r=await post(admin,{action:'purge',brandId:'fr-a'});
 check('switch off: manual purge is accepted',r.status===200&&typeof r.body.result.counts.leads==='number');
@@ -139,6 +142,7 @@ const memberDenied=[
  ['save_profile',{action:'save_profile',version:1,profile:{branch:'A'}}],
  ['register_disclosure_version',{action:'register_disclosure_version',label:'x',sha256:sha64('m1')}],
  ['register_contract_template',{action:'register_contract_template',label:'x',sha256:sha64('m2'),checkedItems:[1]}],
+ ['amend_disclosure_version',{action:'amend_disclosure_version',id:DV,version:1,reasonCode:'typo',registeredAt:null}],['amend_contract_template',{action:'amend_contract_template',id:'ct-x',version:1,reasonCode:'typo',checkedItems:[1]}],
  ['register_privacy_notice',{action:'register_privacy_notice',versionLabel:'m',text:'x',controllerName:'x'}],
  ['record_delivery',{action:'record_delivery',leadId:own}],['record_advice',{action:'record_advice',leadId:own}],['record_forecast',{action:'record_forecast',leadId:own}],
  ['record_contract',{action:'record_contract',leadId:own}],['record_fee',{action:'record_fee',leadId:own}],['record_agreement',{action:'record_agreement',leadId:own}],['void_evidence',{action:'void_evidence',leadId:own}],
@@ -187,6 +191,16 @@ check('assigning an unknown account is a 400',r.status===400);
 const mView=(await get(memberA,`view=lead&brandId=fr-a&leadId=${own}`)).body,aView=(await get(admin,`view=lead&brandId=fr-a&leadId=${own}`)).body;
 check('member lead view has no evidence or gate keys',!('evidence' in mView)&&!('gate' in mView)&&Array.isArray(mView.events));
 check('admin lead view has evidence and gate with disclaimer',Array.isArray(aView.evidence)&&aView.evidence.length===1&&aView.gate.disclaimer===DISCLAIMER&&aView.gate.window.disclaimer===DISCLAIMER);
+check('before a contract the gate card has no opening check (not a record-format error)',aView.gate.stageChecks.opened===null&&!JSON.stringify(aView.gate).includes('invalid_record'));
+// 검색어: 코드·지역만. 전화·이메일·숫자는 GET 주소에 싣지 않도록 400이고 값을 되돌려주지 않는다.
+for(const q of ['010-0000-0777','01000000777','lead.one@example.com','가상구 1','L0100000']){r=await get(memberA,`view=board&brandId=fr-a&q=${encodeURIComponent(q)}`);check(`board search with ${q} is 400 SEARCH_INPUT without echo`,r.status===400&&r.body.error===T('SEARCH_INPUT')&&!JSON.stringify(r.body).includes(q))}
+for(const q of ['L','lab','가상시 가상구']){r=await get(memberA,`view=board&brandId=fr-a&q=${encodeURIComponent(q)}`);check(`board search with ${q} is accepted`,r.status===200)}
+// 할 일 칩 필터
+const refL=(await createLead(boss,'fr-a',{basis:{type:'referral',referralFrom:'acquaintance'}})).body.result.leadId;
+r=await get(boss,'view=board&brandId=fr-a&todo=source_notice');
+check('the source-notice to-do filter lists exactly the leads the chip counts',r.status===200&&r.body.leads.some(l=>l.id===refL)&&r.body.leads.every(l=>l.sourceNoticePending)&&r.body.total===r.body.todos.sourceNoticePending);
+r=await get(boss,'view=board&brandId=fr-a&todo=nope');
+check('an unknown to-do filter is 400',r.status===400);
 
 // ── 10) 다른 소유자(IDOR) ──
 await setFlag(boss2,true);
@@ -230,6 +244,10 @@ const signed1=ago(HOUR);
 r=await post(boss,{action:'record_contract',brandId:'fr-a',leadId:s1,version:v(s1),signedAt:signed1,backdateReason:'after_the_fact_entry'});
 check('scenario 1: contract after the waiting period is recorded',r.status===200&&leadRow(s1).stage==='contracted'&&leadRow(s1).contractedAt===signed1);
 check('scenario 1: lead view shows the contract window with disclaimer',!!r.body.lead.gate.window.at&&/KST$/.test(r.body.lead.gate.window.atKst)&&r.body.lead.gate.disclaimer===DISCLAIMER);
+check('scenario 1: a contracted lead shows the opening check',r.body.lead.gate.stageChecks.opened?.ok===true);
+n0=total();
+r=await post(boss,{action:'record_contract',brandId:'fr-a',leadId:s1,version:v(s1),signedAt:ago(HOUR),backdateReason:'after_the_fact_entry'});
+check('a second contract without a correction target is 409 CONTRACT_EXISTS and writes nothing',r.status===409&&r.body.error===T('CONTRACT_EXISTS')&&total()===n0);
 r=await post(boss,{action:'move_stage',brandId:'fr-a',leadId:s1,version:v(s1),to:'opened'});
 check('scenario 1: opening passes with stored backdate approvals',r.status===200&&leadRow(s1).stage==='opened');
 // 16) 시나리오 2: 3일 전 제공 → 계약 409
@@ -302,6 +320,17 @@ r=await post(boss,{action:'record_fee',brandId:'fr-a',leadId:s8,version:v(s8),ca
 check('valid escrow after the window moves the lead to fee_escrowed',r.status===200&&leadRow(s8).stage==='fee_escrowed');
 r=await post(boss,{action:'record_fee',brandId:'fr-a',leadId:s8,version:v(s8),category:'a_join',paidAt:ago(DAY),insurance:{coverageFrom:ago(10*DAY),coverageTo:ahead(365*DAY)},backdateReason:'after_the_fact_entry'});
 check('insurance coverage ending next year is accepted (not a future evidence time)',r.status===200);
+n0=total();
+r=await post(boss,{action:'record_fee',brandId:'fr-a',leadId:s8,version:v(s8),category:'c_opening'});
+check('a fee with no paid time and no escrow is 400 FEE_PAID_AT and writes nothing (not a gate 409)',r.status===400&&r.body.error===T('FEE_PAID_AT')&&total()===n0);
+r=await post(boss,{action:'record_fee',brandId:'fr-a',leadId:s8,version:v(s8),category:'a_join',insurance:{coverageFrom:ago(10*DAY),coverageTo:ahead(365*DAY)}});
+check('insurance without a paid time is 400 FEE_PAID_AT and writes nothing',r.status===400&&r.body.error===T('FEE_PAID_AT')&&total()===n0);
+// 계약 전에 예치한 가맹금: 계약을 기록하면 바로 가맹금 예치 단계다.
+const s10=await ready(40);
+r=await post(boss,{action:'record_fee',brandId:'fr-a',leadId:s10,version:v(s10),category:'a_join',escrow:{institutionType:'bank',firstDepositAt:ago(2*DAY),agreementAt:null},backdateReason:'after_the_fact_entry'});
+check('an escrowed join fee before the contract is recorded and the stage stays',r.status===200&&leadRow(s10).stage==='draft_provided');
+r=await post(boss,{action:'record_contract',brandId:'fr-a',leadId:s10,version:v(s10),signedAt:ago(HOUR),backdateReason:'after_the_fact_entry'});
+check('the contract moves the lead to fee_escrowed when an escrowed fee already passes',r.status===200&&leadRow(s10).stage==='fee_escrowed'&&!!leadRow(s10).contractedAt&&events(s10,'stage_changed').some(e=>e.to==='fee_escrowed'));
 // 21) 시나리오 9: 산정서 의무 미확인
 await profile(boss,'fr-c',{forecastInputs:{sme:null,storesAtFyEnd:null,fiscalYearEnd:null}},0);
 const dvC=(await post(boss,{action:'register_disclosure_version',brandId:'fr-c',label:'C 정보공개서',sha256:sha64('dv-c'),registeredAt:ago(60*DAY),validFrom:ago(90*DAY),validUntil:ahead(300*DAY),storageLabel:'본사 문서함'})).body.result.id;
@@ -315,6 +344,10 @@ r=await post(boss,{action:'record_forecast',brandId:'fr-c',leadId:s9,version:v(s
 check('forecast statement is recorded',r.status===200);
 r=await post(boss,{action:'record_contract',brandId:'fr-c',leadId:s9,version:v(s9),signedAt:ago(HOUR),backdateReason:'after_the_fact_entry'});
 check('contract passes after the forecast statement',r.status===200&&leadRow(s9).stage==='contracted');
+r=await post(boss,{action:'record_forecast',brandId:'fr-c',leadId:s9,version:v(s9),providedAt:'now',docSha256:sha64('forecast-reissued')});
+check('a forecast statement re-issued after signing is recorded',r.status===200);
+r=await post(boss,{action:'move_stage',brandId:'fr-c',leadId:s9,version:v(s9),to:'opened'});
+check('opening still passes: the statement given before signing counts, not the later re-issue',r.status===200&&leadRow(s9).stage==='opened');
 // 24) 단계 규칙
 r=await post(boss,{action:'move_stage',brandId:'fr-a',leadId:s6,version:v(s6),to:'contracted'});
 check('moving to contracted is 400 EVIDENCE_ONLY',r.status===400&&r.body.error===T('EVIDENCE_ONLY'));
@@ -336,7 +369,7 @@ check('moving a closed lead is 409 CLOSED',r.status===409&&r.body.error===T('CLO
 r=await deliver(boss,own,'nearby','now');
 check('delivery on a closed lead is 409 CLOSED',r.status===409&&r.body.error===T('CLOSED'));
 r=await post(admin,{action:'reopen_lead',brandId:'fr-a',leadId:own,version:v(own)});
-check('admin reopen restores the pre-close stage',r.status===200&&leadRow(own).stage==='disclosed'&&leadRow(own).closedAt===null);
+check('admin reopen restores the pre-close stage and re-checks it',r.status===200&&leadRow(own).stage==='disclosed'&&leadRow(own).closedAt===null&&r.body.result.recheck.ok===true&&r.body.result.recheck.disclaimer===DISCLAIMER);
 const g0=await createLead(boss,'fr-a');
 r=await post(boss,{action:'move_stage',brandId:'fr-a',leadId:g0.body.result.leadId,version:1,to:'opened'});
 check('opening before a contract is 409',r.status===409&&r.body.error===T('GATE_BLOCKED'));
@@ -359,6 +392,61 @@ check('after voiding the only disclosure, the contract is 409 disclosure_missing
 const contract1=rows('franchise_delivery',"AND parent_id=? AND json_extract(data,'$.evidenceType')='contract'",s1)[0];
 r=await post(boss,{action:'void_evidence',brandId:'fr-a',leadId:s1,version:v(s1),supersedes:contract1.id,correctionReason:'wrong_lead'});
 check('voiding a contract record is 400',r.status===400);
+
+// ── 32) 설정 정정·다시 사용: 같은 파일의 등록일·유효 기간·확인 항목을 고치고, 사용 중지한 파일을 다시 쓴다 ──
+await profile(boss,'fr-g',{},0);
+const G_SHA=sha64('fr-g disclosure'),G_FROM=ago(90*DAY),G_UNTIL=ahead(300*DAY),ALL13=Array.from({length:13},(_,i)=>i+1);
+const DVG=(await post(boss,{action:'register_disclosure_version',brandId:'fr-g',label:'G 정보공개서',sha256:G_SHA,registeredAt:null,validFrom:G_FROM,validUntil:G_UNTIL,storageLabel:'본사 문서함'})).body.result.id;
+const CTG=(await post(boss,{action:'register_contract_template',brandId:'fr-g',label:'G 계약서안',sha256:sha64('fr-g tpl'),checkedItems:[1,2,3],storageLabel:'본사 문서함'})).body.result.id;
+const g1=(await createLead(boss,'fr-g')).body.result.leadId;
+for(const [doc,extra] of [['disclosure',{versionId:DVG}],['nearby',{}],['draft',{templateId:CTG}]]){r=await deliver(boss,g1,doc,ago(40*DAY),{brandId:'fr-g',...extra});assert.equal(r.status,200,JSON.stringify(r.body))}
+check('deliveries under an unregistered version and a partial template are stored but not counted',leadRow(g1).stage==='inquiry');
+n0=total();
+r=await post(admin,{action:'register_disclosure_version',brandId:'fr-g',label:'G 정보공개서',sha256:G_SHA,registeredAt:ago(60*DAY),validFrom:G_FROM,validUntil:G_UNTIL,storageLabel:'본사 문서함'});
+check('re-registering the same file with a registration date is 409 REGISTRY_CONFLICT and writes nothing',r.status===409&&r.body.error===T('REGISTRY_CONFLICT')&&total()===n0);
+r=await post(admin,{action:'amend_disclosure_version',brandId:'fr-g',id:DVG,version:1,registeredAt:ago(60*DAY)});
+check('amend without a reason is 400',r.status===400&&total()===n0);
+r=await post(admin,{action:'amend_disclosure_version',brandId:'fr-g',id:DVG,version:1,reasonCode:'wrong_date',registeredAt:ahead(DAY)});
+check('amend to a future registration date is 400 FUTURE_TIME',r.status===400&&r.body.error===T('FUTURE_TIME')&&total()===n0);
+const REG=ago(60*DAY);
+r=await post(admin,{action:'amend_disclosure_version',brandId:'fr-g',id:DVG,version:1,reasonCode:'wrong_date',registeredAt:REG});
+const dvRow=rows('franchise_disclosure_version').find(x=>x.id===DVG);
+check('amend corrects the registration date, bumps the version and keeps the old value with the reason',r.status===200&&r.body.result.version===2&&JSON.stringify(r.body.result.changedFields)==='["registeredAt"]'&&dvRow.registeredAt===REG&&dvRow.amendments.length===1&&dvRow.amendments[0].before.registeredAt===null&&dvRow.amendments[0].reasonCode==='wrong_date');
+check('amend writes one audit row with the changed field names and the reason',audits('version_amend').filter(a=>a.recordId===DVG).length===1&&audits('version_amend').some(a=>a.recordId===DVG&&a.reasonCode==='wrong_date'&&JSON.stringify(a.changedFields)==='["registeredAt"]'));
+r=await post(admin,{action:'amend_disclosure_version',brandId:'fr-g',id:DVG,version:1,reasonCode:'wrong_date',registeredAt:REG});
+check('amend with a stale version is 409 STALE',r.status===409&&r.body.error===T('STALE'));
+r=await post(admin,{action:'amend_disclosure_version',brandId:'fr-g',id:DVG,version:2,reasonCode:'typo',registeredAt:REG});
+check('amend with nothing changed is 400',r.status===400);
+r=await post(boss,{action:'register_contract_template',brandId:'fr-g',label:'G 계약서안',sha256:sha64('fr-g tpl'),checkedItems:ALL13,storageLabel:'본사 문서함'});
+check('re-registering the same template with more items is 409 REGISTRY_CONFLICT',r.status===409&&r.body.error===T('REGISTRY_CONFLICT'));
+r=await post(admin,{action:'amend_contract_template',brandId:'fr-g',id:CTG,version:1,reasonCode:'checklist_update',checkedItems:ALL13});
+check('amend completes the template checklist with an audit row',r.status===200&&r.body.result.complete===true&&rows('franchise_contract_template').find(t=>t.id===CTG).checkedItems.length===13&&audits('template_amend').some(a=>a.recordId===CTG&&a.reasonCode==='checklist_update'));
+const gView=(await get(boss,`view=lead&brandId=fr-g&leadId=${g1}`)).body;
+check('after the corrections the earlier deliveries are counted and the window opens',gView.evidence.filter(e=>e.evidenceType==='delivery').every(e=>e.assessment.counted===true)&&!!gView.gate.window.at);
+r=await post(boss,{action:'record_contract',brandId:'fr-g',leadId:g1,version:v(g1),signedAt:ago(HOUR),backdateReason:'after_the_fact_entry'});
+check('a contract passes after the corrections',r.status===200&&leadRow(g1).stage==='contracted');
+r=await post(boss,{action:'retire_disclosure_version',brandId:'fr-g',id:DVG,version:2});
+const g2=(await createLead(boss,'fr-g')).body.result.leadId;
+r=await deliver(boss,g2,'disclosure','now',{brandId:'fr-g',versionId:DVG});
+check('a retired version is refused for new deliveries',r.status===400&&r.body.error===T('RETIRED'));
+r=await post(boss,{action:'register_disclosure_version',brandId:'fr-g',label:'G 정보공개서',sha256:G_SHA,registeredAt:REG,validFrom:G_FROM,validUntil:G_UNTIL,storageLabel:'본사 문서함'});
+check('re-registering the retired file reactivates the same version with an audit row',r.status===200&&r.body.result.id===DVG&&r.body.result.reactivated===true&&rows('franchise_disclosure_version').find(x=>x.id===DVG).status==='active'&&audits('version_register').some(a=>a.recordId===DVG&&a.reasonCode==='reactivate'));
+r=await deliver(boss,g2,'disclosure','now',{brandId:'fr-g',versionId:DVG});
+check('the reactivated version is used and counted',r.status===200&&r.body.result.assessment.counted===true&&leadRow(g2).stage==='disclosed');
+// '유효 기간 끝' 날짜는 그날까지 유효하다(다음 날 KST 0시 전까지).
+const todayKst=new Date(Date.now()+9*HOUR).toISOString().slice(0,10),tomorrowKst=new Date(Date.parse(todayKst+'T00:00:00Z')+DAY).toISOString().slice(0,10);
+const DVL=(await post(boss,{action:'register_disclosure_version',brandId:'fr-g',label:'G 오늘까지',sha256:sha64('fr-g last day'),registeredAt:ago(60*DAY),validFrom:ago(90*DAY),validUntil:todayKst,storageLabel:'본사 문서함'})).body.result.id;
+check('a date-only end is stored as the next KST midnight',rows('franchise_disclosure_version').find(x=>x.id===DVL).validUntil===`${tomorrowKst}T00:00:00+09:00`);
+const g3=(await createLead(boss,'fr-g')).body.result.leadId;
+r=await deliver(boss,g3,'disclosure','now',{brandId:'fr-g',versionId:DVL});
+check('a delivery on the named last valid day is counted',r.status===200&&r.body.result.assessment.counted===true);
+// 다시 열기: 종결 전 단계를 지금 설정으로 다시 판정하고, 막히면 사유를 알린다(되돌림은 한다).
+r=await post(boss,{action:'move_stage',brandId:'fr-g',leadId:g1,version:v(g1),to:'closed',closeReason:'other'});
+check('the contracted lead is closed',r.status===200&&leadRow(g1).closedFrom==='contracted');
+await profile(boss,'fr-g',{forecastInputs:{sme:false,storesAtFyEnd:3,fiscalYearEnd:null}},rows('franchise_profile').find(p=>p.id==='fr-g').version);
+r=await post(admin,{action:'reopen_lead',brandId:'fr-g',leadId:g1,version:v(g1)});
+check('reopen re-checks the restored stage and reports the new blocker without refusing',r.status===200&&leadRow(g1).stage==='contracted'&&r.body.result.recheck.ok===false&&r.body.result.recheck.reasons.some(x=>x.code==='forecast_statement_missing')&&r.body.result.recheck.disclaimer===DISCLAIMER);
+check('the reopened event keeps the recheck reason codes',events(g1,'reopened').some(e=>(e.reasonCodes??[]).includes('forecast_statement_missing')));
 
 // ── 26·27) 버전·잠금 ──
 n0=total();
@@ -392,6 +480,17 @@ check('reveal replay within five minutes returns the same values without a new a
 const ex={action:'export_leads',brandId:'fr-a',purpose:'internal_review',contactMode:'masked',requestId:'replay-export-001'};
 r=await post(boss,ex);s0=snapshot();again=await post(boss,ex);
 check('export replay within five minutes regenerates the file without a new audit row',again.status===200&&again.body.rowCount===r.body.rowCount&&typeof again.body.csv==='string'&&snapshot()===s0);
+// 재생은 감사 행이 적은 것보다 많이 주지 않는다: 내보낸 뒤 리드가 늘거나 열람 뒤 연락처가 바뀌면 409 REPLAY_EXPIRED.
+const ex2={...ex,contactMode:'full',requestId:'replay-export-002'};
+r=await post(boss,ex2);
+await createLead(admin,'fr-a');
+s0=snapshot();again=await post(boss,ex2);
+check('export replay after a new lead is 409 REPLAY_EXPIRED without a file or a new row',r.status===200&&again.status===409&&again.body.error===T('REPLAY_EXPIRED')&&!('csv' in again.body)&&snapshot()===s0);
+const rv2={...rv,fields:['phone'],requestId:'replay-reveal-002'};
+r=await post(boss,rv2);
+await post(admin,{action:'update_contact',brandId:'fr-a',leadId:rl,version:v(rl),contact:{phone:f.nextPhone()}});
+s0=snapshot();again=await post(boss,rv2);
+check('reveal replay after a contact change is 409 REPLAY_EXPIRED without values or a new row',r.status===200&&again.status===409&&again.body.error===T('REPLAY_EXPIRED')&&!('values' in again.body)&&snapshot()===s0);
 const bl={action:'record_contract',brandId:'fr-a',leadId:s2,version:v(s2),signedAt:ago(HOUR),backdateReason:'after_the_fact_entry',requestId:'replay-blocked-01'};
 r=await post(boss,bl);s0=snapshot();again=await post(boss,bl);
 check('blocked contract replay returns the same 409',r.status===409&&again.status===409&&again.body.replayed===true&&JSON.stringify(again.body.reasons)===JSON.stringify(r.body.reasons)&&snapshot()===s0);

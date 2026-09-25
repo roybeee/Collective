@@ -269,7 +269,7 @@ check('a bad receipt time is also an invalid timestamp',same(fg.assessDelivery(e
 const badNow=fg.earliestContractAt({...CTX,deliveries:[]},'yesterday');
 check('a bad now closes the window without echo',badNow.at===null&&same(badNow.blockers,['invalid_timestamp'])&&same(badNow.deliveries,[])&&!JSON.stringify(badNow).includes('yesterday')&&badNow.disclaimer==='COLLECTIVE 휴리스틱 · 법률 자문 아님');
 check('assessDelivery with a bad now is an invalid timestamp',same(fg.assessDelivery(e('d1','disclosure',T10),CTX,'now').reasons,['invalid_timestamp']));
-const FREE='홍길동-010-1234-5678';
+const FREE='홍길동-010-0000-5678';
 const freeRec=fg.assessDelivery({...e('d1','disclosure',T10),id:FREE,method:FREE},CTX,'2026-10-06T09:00:00+09:00');
 check('a free-text id is an invalid record and is not echoed',same(freeRec.reasons,['invalid_record'])&&freeRec.id===null&&!JSON.stringify(freeRec).includes(FREE));
 const portal=fg.assessDelivery({...e('d1','disclosure',T10),method:FREE},CTX,'2026-10-06T09:00:00+09:00');
