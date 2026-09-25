@@ -16,7 +16,8 @@ type CampaignRef={id:string;brandId:string;updatedAt?:string;archivedAt?:string|
 type ChannelRef={label:string;connected:boolean;expiresAt?:string|null;expiringSoon?:boolean};
 // publishers: 브랜드 id → Buffer 연결 여부(GET /api/execution의 publisher.connected). null은 그 브랜드 확인 실패, 키가 없으면 연결 전이다.
 // brandChannels: GET /api/channels의 byBrand(브랜드·지점 단위 자격증명, F5). channels는 워크스페이스 기본(기존 소유자 단위) 상태다.
-export type FeatureInput={connection?:unknown;worker?:unknown;brands?:unknown;campaigns?:unknown;facts?:unknown;channels?:unknown;brandChannels?:unknown;publishers?:unknown;now?:number};
+// flags: GET /api/feature-flags의 flags(기능 스위치 상태 목록). 가맹 모집 행(트랙 R)이 r_franchise 상태를 읽는다.
+export type FeatureInput={connection?:unknown;worker?:unknown;brands?:unknown;campaigns?:unknown;facts?:unknown;channels?:unknown;brandChannels?:unknown;publishers?:unknown;flags?:unknown;now?:number};
 
 const record=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value);
 const text=(value:unknown):value is string=>typeof value==='string';
@@ -91,6 +92,14 @@ function measurementRow(channels:unknown,brandChannels:unknown,brands:string[],n
  return list.some(usable)||linked?{...base,status:'available',reason}:{...base,status:'blocked',reason,link};
 }
 
+// 가맹 모집 리드 원장(트랙 R R4b): 기능 스위치 r_franchise가 켜져 있어야 쓴다. 스위치는 소유자만 켠다(/api/feature-flags). 게이트 결과는 휴리스틱이다.
+function franchiseRow(flags:unknown):FeatureRow{
+ const base={key:'franchise',label:'가맹 모집 리드 원장'},link:FeatureLink={label:'가맹 모집 화면으로 이동',view:'franchise'};
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='r_franchise'):undefined;
+ if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'가맹 모집 스위치 상태를 확인하지 못했습니다',link};
+ return state.enabled?{...base,status:'available',reason:'리드 · 연락처(암호화) · 법정 절차 판정(COLLECTIVE 휴리스틱 · 법률 자문 아님)'}:{...base,status:'blocked',reason:'기능 스위치 r_franchise 꺼짐 · 소유자가 켭니다',link};
+}
+
 export function featureRows(input:FeatureInput={}):FeatureRow[]{
  const now=typeof input.now==='number'?input.now:Date.now(),brands=brandIds(input.brands);
  return [
@@ -103,6 +112,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   pngRow(input.facts,brands,now),
   bufferRow(input.publishers,brands,input.campaigns),
   measurementRow(input.channels,input.brandChannels,brands,now),
+  franchiseRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
   {key:'pos-auto',label:'POS 자동 수집',status:'unimplemented',reason:'POS 연동 없음 · CSV로 가져오세요'},
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},

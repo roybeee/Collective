@@ -1,6 +1,6 @@
 // 워크스페이스 화면 상태 ↔ URL 쿼리(?view=&campaign=&brand=&store=&tab=). 새로고침·링크 공유·뒤로가기 때 같은 화면을 복원한다.
 // 허용하지 않은 화면·형식이 틀린 id·모르는 쿼리는 버린다. 존재 확인은 데이터를 불러온 뒤 reconcileNav로 한다.
-export const navViews=['overview','learning','campaigns','brands','stores','agents','assets','results','settings'] as const;
+export const navViews=['overview','learning','campaigns','brands','stores','agents','assets','results','franchise','settings'] as const;
 export type NavView=typeof navViews[number];
 // 학습 화면의 탭(app/learning-panel.tsx). 링크가 규칙 탭 등을 바로 열 수 있게 허용 목록만 받는다.
 export const learningTabs=['cases','experiments','rules','jobs'] as const;
@@ -10,20 +10,27 @@ export const storeTabs=['diagnosis','ledger','channels','experiments','research'
 export type StoreTab=typeof storeTabs[number];
 export const brandTabs=['overview','sources','facts','intake','research'] as const;
 export type BrandTab=typeof brandTabs[number];
-export type NavTab=LearningTab|StoreTab|BrandTab;
+// 가맹 모집 화면의 탭(app/franchise-panel.tsx, 트랙 R). 설정 탭은 대표·관리자에게만 보이고, 직원에게는 리드 탭으로 보인다(서버도 403).
+export const franchiseTabs=['leads','requests','settings'] as const;
+export type FranchiseTab=typeof franchiseTabs[number];
+export type NavTab=LearningTab|StoreTab|BrandTab|FranchiseTab;
 export type NavState={view:NavView;campaign?:string;brand?:string;store?:string;tab?:NavTab};
 type NavInput={view?:string|null;campaign?:string|null;brand?:string|null;store?:string|null;tab?:string|null};
 // 서버 id 형식(UUID·시드 id·브랜드 번호 [a-zA-Z0-9_-], 최대 100자)만 받는다.
 const idPattern=/^[A-Za-z0-9_-]{1,100}$/;
 const validId=(value:string|null|undefined)=>typeof value==='string'&&idPattern.test(value)?value:undefined;
 const isView=(value:string|null|undefined):value is NavView=>(navViews as readonly string[]).includes(value as string);
-const viewTabs:Partial<Record<NavView,readonly NavTab[]>>={learning:learningTabs,stores:storeTabs,brands:brandTabs};
+const viewTabs:Partial<Record<NavView,readonly NavTab[]>>={learning:learningTabs,stores:storeTabs,brands:brandTabs,franchise:franchiseTabs};
 const tabOf=(view:NavView,value:string|null|undefined)=>viewTabs[view]?.find(tab=>tab===value);
 export const isLearningTab=(value:unknown):value is LearningTab=>(learningTabs as readonly unknown[]).includes(value);
-// brand는 브랜드 아카이브·점포 마케팅·학습에서만, store는 점포 마케팅에서만, tab은 탭이 있는 화면(학습·점포 마케팅·브랜드 아카이브)에서 그 화면의 허용 목록 값만 의미가 있다.
+export const isFranchiseTab=(value:unknown):value is FranchiseTab=>(franchiseTabs as readonly unknown[]).includes(value);
+// 사이드바 '가맹 모집' 메뉴: 상태를 읽기 전·실패하면 숨긴다. 기능 스위치(r_franchise)가 켜져 있으면 모두에게 보이고, 꺼졌으면 리드·정보주체 요청 기록이 있을 때
+// 대표·관리자에게만 보인다(꺼진 뒤에도 조회·파기·정보주체 요청을 처리하도록). 꺼져 있고 기록이 없으면 메뉴는 스위치 도입 전과 같다. 권한 판정은 서버가 한다.
+export const franchiseMenuVisible=(status:{enabled:boolean;hasRecords:boolean}|null,canManage:boolean)=>!!status&&(status.enabled||(status.hasRecords&&canManage));
+// brand는 브랜드 아카이브·점포 마케팅·학습·가맹 모집에서만, store는 점포 마케팅에서만, tab은 탭이 있는 화면(학습·점포 마케팅·브랜드 아카이브·가맹 모집)에서 그 화면의 허용 목록 값만 의미가 있다.
 export function normalizeNav(input:NavInput):NavState{
  const view=isView(input.view)?input.view:'overview',campaign=validId(input.campaign);
- const brand=view==='brands'||view==='stores'||view==='learning'?validId(input.brand):undefined,store=view==='stores'?validId(input.store):undefined,tab=tabOf(view,input.tab);
+ const brand=view==='brands'||view==='stores'||view==='learning'||view==='franchise'?validId(input.brand):undefined,store=view==='stores'?validId(input.store):undefined,tab=tabOf(view,input.tab);
  return {view,...(campaign?{campaign}:{}),...(brand?{brand}:{}),...(store?{store}:{}),...(tab?{tab}:{})};
 }
 export function parseNav(search:string):NavState{

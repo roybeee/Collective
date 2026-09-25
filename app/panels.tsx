@@ -91,12 +91,13 @@ return <><Sheet open={!!c} onOpenChange={v=>{if(!v)onClose()}}><SheetContent cla
 // 설정 기능표(ux-5·eng-hygiene-12)의 실시간 입력: 확정 사실(GET /api/brand-facts), 성과 수집 채널(GET /api/channels의 워크스페이스 기본 channels와 브랜드·지점 단위 byBrand, F5), 브랜드별 Buffer 연결(브랜드마다 캠페인 1개의 GET /api/execution),
 // 조사 작업자 상태(GET /api/research-worker/setup, 워크스페이스 응답은 주기적으로 갱신되지 않아 '다시 확인' 때 다시 읽는다). 모두 기존 읽기 API이고 직원도 읽을 수 있다.
 // 읽지 못한 항목(응답 없음은 15초 뒤 실패)은 null로 두어 표가 '사용 가능' 대신 '확인하지 못했습니다'로 보인다. 작업자는 읽지 못하면 워크스페이스 응답 값을 쓴다.
-type FeatureSources={facts:unknown;channels:unknown;brandChannels:unknown;publishers:unknown;worker:unknown};
+type FeatureSources={facts:unknown;channels:unknown;brandChannels:unknown;publishers:unknown;worker:unknown;flags:unknown};
 async function readJson(path:string){const response=await fetch(path,{cache:'no-store',signal:AbortSignal.timeout(15_000)});if(!response.ok)throw new Error(path);return await response.json() as Record<string,unknown>}
 async function featureSources(checks:Record<string,string>):Promise<FeatureSources>{
  const publisher=([brand,id]:[string,string])=>readJson('/api/execution?campaignId='+encodeURIComponent(id)).then(d=>[brand,(d.publisher as {connected?:unknown}|undefined)?.connected===true] as const,()=>[brand,null] as const);
  const [facts,channelState,publishers,worker]=await Promise.all([readJson('/api/brand-facts').then(d=>d.facts,()=>null),readJson('/api/channels').catch(()=>null),Promise.all(Object.entries(checks).map(publisher)).then(entries=>Object.fromEntries(entries)),readJson('/api/research-worker/setup').catch(()=>null)]);
- return {facts,channels:channelState?.channels??null,brandChannels:channelState?.byBrand??null,publishers,worker};
+ const flags=await readJson('/api/feature-flags').then(d=>d.flags,()=>null);
+ return {facts,channels:channelState?.channels??null,brandChannels:channelState?.byBrand??null,publishers,worker,flags};
 }
 // 조건 부족 행의 링크: 설정 안의 카드면 그 카드로 스크롤하고, 다른 화면이면 주소 라우팅(pushNav)으로 옮긴다.
 function openFeature(link:FeatureLink){const card=link.section&&document.getElementById(link.section);if(link.view==='settings'&&card){card.scrollIntoView({behavior:'smooth',block:'start'});return}pushNav({view:link.view,brand:link.brand,campaign:link.campaign,tab:link.tab})}
