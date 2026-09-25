@@ -5,7 +5,7 @@
 // 근거: mocked(운영·평가 HERMES fetch 스텁, 메모리 SQLite, 합성 브랜드·캠페인·회의). 외부 네트워크 호출은 0회다.
 import assert from 'node:assert/strict';
 import {testRuntime} from './helpers/runtime.mjs';
-import {seed,mockHermes,meetingCampaign,roleCampaign,brand,now,meetingAnswer} from './helpers/prompt-seed.mjs';
+import {seed,mockHermes,meetingCampaign,roleCampaign,brand,meetingAnswer} from './helpers/prompt-seed.mjs';
 import {roleFixture} from './helpers/role-fixture.mjs';
 
 const EVAL='https://eval-hermes.example.com';
@@ -207,7 +207,7 @@ const meetingKind=kinds.evalKind('meeting_step'),briefKind=kinds.evalKind('brief
 const contentCase=captured.get(meetingId+':revision:content');
 check('a meeting case pairs through its snapshot campaign',()=>assert.ok(meetingKind.campaignOf(contentCase.request).id===meetingCampaign.id&&registry.roleRunUnits('content',meetingKind.campaignOf(contentCase.request)).includes('role.content')));
 check('a brief case has no pair campaign',()=>assert.equal(briefKind.campaignOf(briefCase.request),null));
-const {focus,methods,outputs,review,handoff}=practice.practices.content,candidateSet={roles:{content:{focus:'합성 후보 초점: 첫 문장에 고객의 평일 상황을 쓴다.',methods,outputs,review,handoff}}};
+const {methods,outputs,review,handoff}=practice.practices.content,candidateSet={roles:{content:{focus:'합성 후보 초점: 첫 문장에 고객의 평일 상황을 쓴다.',methods,outputs,review,handoff}}};
 const asIs=meetingKind.build(contentCase.request),asActive=meetingKind.build(contentCase.request,null),asCandidate=meetingKind.build(contentCase.request,candidateSet);
 check('an active side of null builds the code-constant request (same as the frozen code snapshot)',()=>assert.deepEqual(asActive,asIs));
 check('a candidate side changes the meeting instructions',()=>assert.notEqual(asCandidate.instructions,asIs.instructions));
