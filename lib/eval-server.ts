@@ -5,10 +5,11 @@ import {roleSources,roleRequestFor} from './role-execution';
 import type {RoleRequest} from './role-instruction';
 import {ROLE_OUTPUT_VERSION} from './role-output';
 import {PRACTICE_VERSION} from './practice';
-import {GRADERS_VERSION,type GraderResult,type GraderStatus,type FactLedger} from './graders/index';
+import {GRADERS_VERSION,type GraderResult,type GraderStatus,type FactLedger,type SeededDefect} from './graders/index';
 import type {OutputNormalization} from './output-normalize';
 import {COMPLIANCE_LEXICON} from './graders/compliance';
-import {caseKind,evalKind,reserveOf,EVAL_CASE_TOKEN_RESERVE,type EvalCaseKind,type EvalKindHandler,type EvalExpectations} from './eval-kinds';
+import {caseKind,evalKind,reserveOf,roleId,EVAL_CASE_TOKEN_RESERVE,type EvalCaseKind,type EvalKindHandler,type EvalExpectations,type EvalRequest} from './eval-kinds';
+import {captureMeetingStep,captureBrief,type CaptureCheck} from './eval-capture';
 import {compareRuns,pairReport} from './eval-stats';
 import {gatewayBasis} from './gateway-snapshot';
 import {roles,type Campaign,type Brand} from './agency';
@@ -28,7 +29,8 @@ type EvalSet='dev'|'sealed';
 export type {EvalExpectations};
 // expectationsUpdatedAt: 기대 판정(expectations)이 실제로 바뀐 마지막 시각. 이름·세트만 고치면 바뀌지 않는다(재채점의 caseUpdatedAfterRun 판정).
 // kind: 평가 종류(lib/eval-kinds.ts). 없는 옛 케이스는 role이다. externalKey·specHash: 생성기 멱등 키와 그 스펙 해시(같은 키에 다른 specHash는 409).
-export type EvalCase={id:string;kind?:EvalCaseKind;externalKey?:string;specHash?:string;role:string;label:string;set:EvalSet;request:RoleRequest;expectations:EvalExpectations;campaignId:string|null;source:'capture'|'manual';capturedWith:{skillVersion:string;outputContractVersion:string};setChanges?:{from:EvalSet;to:EvalSet;at:string;by:Who}[];expectationsUpdatedAt?:string;createdBy:Who;createdAt:string;updatedAt:string};
+// request: 종류별 동결 요청(역할 RoleRequest, 회의 단계 {meeting,stepId,storeAllow}, 브리프 BriefRequest). captureCheck: 회의·브리프 캡처의 드리프트 판정(lib/eval-capture.ts).
+export type EvalCase={id:string;kind?:EvalCaseKind;externalKey?:string;specHash?:string;role:string;label:string;set:EvalSet;request:EvalRequest;captureCheck?:CaptureCheck;expectations:EvalExpectations;campaignId:string|null;source:'capture'|'manual';capturedWith:{skillVersion:string;outputContractVersion:string};setChanges?:{from:EvalSet;to:EvalSet;at:string;by:Who}[];expectationsUpdatedAt?:string;createdBy:Who;createdAt:string;updatedAt:string};
 type StoredConnection={secret:string;host:string;isolationConfirmed:boolean;note:string;status:'ready'|'blocked';statusReason:string|null;model:string|null;checkedAt:string;updatedAt:string;updatedBy:Who};
 type Conn={endpoint:string;key:string};
 type Tokens={input:number|null;output:number|null;total:number|null};
@@ -122,7 +124,6 @@ async function evalRequest(conn:Conn,path:string,init:RequestInit={}):Promise<Re
 }
 
 // ── 평가 케이스 ──
-function roleId(v:unknown){const id=str(v,'담당',40,true);if(!roles.some(r=>r.id===id))throw new ApiError(400,'담당을 선택해 주세요.');return id}
 function evalSet(v:unknown,fallback:EvalSet='dev'):EvalSet{if(v===undefined)return fallback;if(v!=='dev'&&v!=='sealed')throw new ApiError(400,'세트는 dev 또는 sealed만 쓸 수 있습니다.');return v}
 function stringList(v:unknown,label:string){if(v===undefined)return [];if(!Array.isArray(v)||v.length>100)throw new ApiError(400,`${label} 목록을 확인하세요.`);return v.map(x=>str(x,label,100,true))}
 function ledger(v:unknown):FactLedger|null{
@@ -131,17 +132,35 @@ function ledger(v:unknown):FactLedger|null{
  if(!o||!confirmed||!prohibited)throw new ApiError(400,'사실 원장(facts)은 {confirmed:[], prohibited:[]} 형식이어야 합니다.');
  return {confirmed,prohibited};
 }
+// 업종: 단일 ID 또는 [주 업종, ...허용 업종](1~5개, G3). 심은 결함(seededDefects, G3): 회의 재검토가 지적하고 개선본이 고쳐야 할 상류 결함 목록.
+function industryOf(v:unknown){
+ if(v===undefined||v===null)return null;
+ if(!Array.isArray(v))return str(v,'업종',50,true);
+ if(!v.length||v.length>5)throw new ApiError(400,'업종 목록(industry)은 1~5개여야 합니다.');
+ return v.map(x=>str(x,'업종',50,true));
+}
+function seededDefectsOf(v:unknown):SeededDefect[]|undefined{
+ if(v===undefined)return undefined;
+ if(!Array.isArray(v)||v.length>50)throw new ApiError(400,'심은 결함(seededDefects)은 50개 이하 목록이어야 합니다.');
+ return v.map(x=>{
+  const d=obj(x);if(!d)throw new ApiError(400,'심은 결함(seededDefects) 항목은 {id, role?, marker?, keywords?} 형식이어야 합니다.');
+  const keywords=d.keywords===undefined?undefined:stringList(d.keywords,'결함 지적 표현');
+  if(d.marker===undefined&&!keywords?.length)throw new ApiError(400,'심은 결함에는 marker나 keywords가 있어야 합니다.');
+  return {id:str(d.id,'결함 id',100,true),...(d.role!==undefined?{role:str(d.role,'결함 담당',40,true)}:{}),...(d.marker!==undefined?{marker:str(d.marker,'심은 문구',500,true)}:{}),...(keywords?{keywords}:{})};
+ });
+}
 // 기대 판정 = lib/graders 채점 컨텍스트. facts를 주지 않으면 캡처한 요청의 확정·거절 사실을 원장으로 쓴다.
 function expectationsOf(v:unknown,facts:FactLedger|null):EvalExpectations{
  const o=v===undefined?{}:obj(v),cap=o?.inputTokenCap;
  if(!o||o.localStore!==undefined&&typeof o.localStore!=='boolean')throw new ApiError(400,'기대 판정(expectations) 형식을 확인하세요.');
  if(cap!==undefined&&(typeof cap!=='number'||!Number.isSafeInteger(cap)||cap<1||cap>1000000))throw new ApiError(400,'입력 토큰 상한(inputTokenCap)을 확인하세요.');
- return {prohibitedTerms:stringList(o.prohibitedTerms,'금지 표현'),facts:o.facts===undefined?facts:ledger(o.facts),industry:o.industry===undefined||o.industry===null?null:str(o.industry,'업종',50,true),localStore:o.localStore===true,...(typeof cap==='number'?{inputTokenCap:cap}:{})};
+ const seededDefects=seededDefectsOf(o.seededDefects);
+ return {prohibitedTerms:stringList(o.prohibitedTerms,'금지 표현'),facts:o.facts===undefined?facts:ledger(o.facts),industry:industryOf(o.industry),localStore:o.localStore===true,...(typeof cap==='number'?{inputTokenCap:cap}:{}),...(seededDefects?{seededDefects}:{})};
 }
-// 직접 저장하는 요청: 종류별 구조 검사(lib/eval-kinds.ts freeze — 역할은 운영 요청 구조와 현재 조립기) 뒤 크기를 본다.
-function frozenRequest(v:unknown,role:string,kind:EvalKindHandler):RoleRequest{
+// 직접 저장하는 요청: 종류별 동결(lib/eval-kinds.ts freeze — 역할은 운영 요청 구조와 현재 조립기, 회의·브리프는 자르기·줄이기·가림) 뒤 크기를 본다.
+function frozenRequest(v:unknown,role:unknown,kind:EvalKindHandler){
  const r=kind.freeze(v,role);
- if(JSON.stringify(r).length>MAX_REQUEST_CHARS)throw new ApiError(413,'역할 요청이 너무 큽니다.');
+ if(JSON.stringify(r.request).length>MAX_REQUEST_CHARS)throw new ApiError(413,'평가 요청(request)이 너무 큽니다.');
  return r;
 }
 // 생성기 멱등 키(G4 합성 생성기): externalKey는 케이스마다 생성기가 정하는 키, specHash는 그 케이스 스펙의 해시다. 둘은 함께 온다.
@@ -163,29 +182,35 @@ async function existingExternal(owner:string,ext:External|null){
  if(kase.specHash!==ext.specHash)throw new ApiError(409,`외부 키(externalKey) ${ext.externalKey}에 다른 스펙(specHash)으로 저장한 케이스가 이미 있습니다. 동결 케이스는 덮어쓰지 않습니다. 새 키를 쓰거나 기존 케이스를 지운 뒤 저장하세요.`);
  return kase;
 }
-type CaseFields=Pick<EvalCase,'kind'|'role'|'label'|'set'|'request'|'expectations'|'campaignId'|'source'>;
+type CaseFields=Pick<EvalCase,'kind'|'role'|'label'|'set'|'request'|'expectations'|'campaignId'|'source'|'captureCheck'>;
 async function storeCase(owner:string,fields:CaseFields,by:Who,ext:External|null){
  const at=stamp(),kase:EvalCase={id:uid(),...fields,...ext,capturedWith:{skillVersion:PRACTICE_VERSION,outputContractVersion:ROLE_OUTPUT_VERSION},createdBy:by,createdAt:at,updatedAt:at};
  await recordStatement(owner,'eval_case',kase.id,kase).run();
  return kase;
 }
-// 운영 역할 실행과 같은 DB 읽기(roleSources·roleRequestFor)로 요청을 만들어 JSON 그대로 동결한다(운영자 선호 블록 포함). 실행 가능 여부 검사(409)는 적용하지 않는다.
+// 역할: 운영 역할 실행과 같은 DB 읽기(roleSources·roleRequestFor)로 요청을 만들어 JSON 그대로 동결한다(운영자 선호 블록 포함). 실행 가능 여부 검사(409)는 적용하지 않는다.
+// 회의 단계({meetingId, stepId})·브리프({briefDraftId})는 lib/eval-capture.ts가 운영 기록으로 요청을 만들고 운영과 같은 가림을 거쳐 동결하며, 드리프트 판정을 captureCheck에 남긴다.
 async function captureCase(owner:string,input:Record<string,unknown>,by:Who){
- const kind=caseKind(input.kind);evalKind(kind);
- const role=roleId(input.role),ext=externalOf(input),existing=await existingExternal(owner,ext);
+ const kind=caseKind(input.kind),ext=externalOf(input),existing=await existingExternal(owner,ext);
  if(existing)return existing;
+ if(kind!=='role')return captureRecord(owner,kind,input,by,ext);
+ const role=roleId(input.role);
  const c=await readRecord<Campaign>(owner,'campaign',str(input.campaignId,'캠페인',100,true)),sources=await roleSources(owner,c,role);
  const request=await roleRequestFor(owner,c,role,sources,await readRecord<Brand>(owner,'brand',c.brandId)),frozen=JSON.parse(JSON.stringify(request)) as RoleRequest;
  if(JSON.stringify(frozen).length>MAX_REQUEST_CHARS)throw new ApiError(413,'역할 요청이 너무 커서 평가 케이스로 저장할 수 없습니다.');
  const facts={confirmed:request.evidence.facts.confirmed,prohibited:request.evidence.facts.prohibited} as FactLedger,name=roles.find(r=>r.id===role)!.name;
  return storeCase(owner,{kind,role,request:frozen,expectations:expectationsOf(input.expectations,facts),campaignId:c.id,source:'capture',set:evalSet(input.set),label:str(input.label??'','케이스 이름',200)||`${name} · ${c.title} · 브리프 v${c.version}`},by,ext);
 }
+async function captureRecord(owner:string,kind:Exclude<EvalCaseKind,'role'>,input:Record<string,unknown>,by:Who,ext:External|null){
+ const c=kind==='meeting_step'?await captureMeetingStep(owner,input):await captureBrief(owner,input);
+ if(JSON.stringify(c.request).length>MAX_REQUEST_CHARS)throw new ApiError(413,'평가 요청이 너무 커서 평가 케이스로 저장할 수 없습니다.');
+ return storeCase(owner,{kind,role:c.role,request:c.request,expectations:expectationsOf(input.expectations,c.facts),campaignId:c.campaignId,source:'capture',set:evalSet(input.set),label:str(input.label??'','케이스 이름',200)||c.label,captureCheck:c.captureCheck},by,ext);
+}
 async function saveCase(owner:string,input:Record<string,unknown>,by:Who){
- const kind=caseKind(input.kind),handler=evalKind(kind);
- const role=roleId(input.role),ext=externalOf(input),existing=await existingExternal(owner,ext);
+ const kind=caseKind(input.kind),handler=evalKind(kind),ext=externalOf(input),existing=await existingExternal(owner,ext);
  if(existing)return existing;
- const set=evalSet(input.set),request=frozenRequest(input.request,role,handler),expectations=expectationsOf(input.expectations,null);
- const campaignId=typeof request.campaign.id==='string'?request.campaign.id:null;
+ const set=evalSet(input.set),{request,role}=frozenRequest(input.request,input.role,handler),expectations=expectationsOf(input.expectations,null);
+ const id=handler.campaignOf(request)?.id,campaignId=typeof id==='string'?id:null;
  return storeCase(owner,{kind,role,request,expectations,campaignId,source:'manual',set,label:str(input.label??'','케이스 이름',200)||`${role} 수동 케이스`},by,ext);
 }
 // 진행 중(queued·running) 평가 run이 이 케이스를 쓰는지 본다. 삭제와 채점 기준 변경을 막는 데 쓴다.
@@ -254,7 +279,7 @@ async function runCases(owner:string,input:Record<string,unknown>):Promise<EvalC
  if(cases.length>EVAL_MAX_RUN_CASES)throw new ApiError(400,`세트 케이스가 ${EVAL_MAX_RUN_CASES}개를 넘습니다. caseIds로 나눠 실행하세요.`);
  return cases;
 }
-// 실행할 수 없는 종류(G2 자리·목록 밖)의 케이스가 섞이면 run을 기록하지 않고 400으로 거부한다.
+// 실행할 수 없는 종류(목록 밖)의 케이스가 섞이면 run을 기록하지 않고 400으로 거부한다.
 const supportedCases=(cases:EvalCase[])=>{cases.forEach(c=>evalKind(c.kind));return cases};
 // 막힘: 제출 전 케이스는 not_run, 제출 중 케이스는 blocked(결과 미확인, providerRunId 유지)로 둔다. stopNote는 중지 요청 결과다.
 const blockRun=(run:EvalRun,reason:string,stopNote=''):EvalRun=>({...run,status:'blocked',blockedReason:reason,updatedAt:stamp(),results:run.results.map(r=>r.status==='pending'?{...r,status:'not_run',error:reason}:r.status==='submitted'?{...r,status:'blocked',error:`${reason} 결과를 확인하지 못했습니다.${stopNote}`}:r)});
@@ -286,8 +311,9 @@ function runVariant(input:Record<string,unknown>){
  return variant;
 }
 // 쌍 평가 케이스: 후보 단위를 쓰는 케이스만 남긴다(역할 스킬은 같은 역할, 채널 스킬은 그 채널이 적용되는 캠페인). 쓰지 않는 케이스는 두 쪽 본문이 같아 토큰만 쓴다.
+// 캠페인은 종류 처리기가 정한다(역할 request.campaign, 회의 단계 meeting.snapshot.campaign). 브리프는 레지스트리 단위가 없어 늘 빠진다(skippedCases).
 function pairCases(cases:EvalCase[],unit:string){
- const kept=cases.filter(c=>roleRunUnits(c.role,c.request.campaign).includes(unit));
+ const kept=cases.filter(c=>{const campaign=evalKind(c.kind).campaignOf(c.request);return !!campaign&&roleRunUnits(c.role,campaign as Campaign).includes(unit)});
  if(!kept.length)throw new ApiError(400,`${unit}을(를) 쓰는 평가 케이스가 없습니다. 역할 스킬은 같은 역할 케이스, 채널 스킬은 그 채널이 적용되는 캠페인 케이스를 고르세요.`);
  return kept;
 }
@@ -512,7 +538,7 @@ async function pairRead(owner:string,runId:string){
  const {unit,candidateVersionId,activeVersionId,skippedCases}=run.pair;
  return {id:run.id,status:run.status,pair:{unit,candidateVersionId,activeVersionId,skippedCases},...pairReport(run)};
 }
-const caseSummary=(c:EvalCase)=>({id:c.id,role:c.role,label:c.label,set:c.set,campaignId:c.campaignId,source:c.source,capturedWith:c.capturedWith,prohibitedTerms:c.expectations.prohibitedTerms.length,setChanges:c.setChanges||[],createdBy:c.createdBy,createdAt:c.createdAt,updatedAt:c.updatedAt});
+const caseSummary=(c:EvalCase)=>({id:c.id,kind:c.kind??'role',role:c.role,label:c.label,set:c.set,campaignId:c.campaignId,source:c.source,capturedWith:c.capturedWith,prohibitedTerms:c.expectations.prohibitedTerms.length,setChanges:c.setChanges||[],...(c.captureCheck?{captureCheck:c.captureCheck}:{}),createdBy:c.createdBy,createdAt:c.createdAt,updatedAt:c.updatedAt});
 export async function evalRead(owner:string,params:URLSearchParams){
  const id=(name:string,label:string)=>str(params.get(name),label,200,true),compare=params.get('compare');
  if(compare){

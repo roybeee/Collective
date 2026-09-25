@@ -56,11 +56,11 @@ await put('artifact','syn-a-cmo',{id:'syn-a-cmo',campaignId:'syn-a',campaignVers
 const PREFERENCE='첫 문장은 고객의 평일 상황으로 시작한다.';
 await put('learning_rule','pref-1',{id:'pref-1',origin:'review',grade:'operator_preference',role:'cmo',citations:['d-1','d-2'],feedback:{helpful:0,harmful:0},brandId:'syn-brand-p',channel:'*',experimentId:'',experimentVersion:0,caseId:'',title:'평일 상황으로 시작',guidance:PREFERENCE,scope:'',status:'active',version:1,expiresAt:new Date(Date.now()+30*86400000).toISOString(),createdAt:now,updatedAt:now},'syn-brand-p');
 
-// A) kind 골격(순수): 종류 목록, 없으면 role, G2 자리(meeting_step·brief)는 지원하지 않는 종류 400, 알 수 없는 종류 400, 예약량.
+// A) kind 골격(순수): 종류 목록, 없으면 role, 회의 단계·브리프 처리기(G2, tests/eval-meeting-brief.test.mjs가 동작을 본다), 알 수 없는 종류 400, 예약량.
 check('the case kinds are role, meeting_step and brief',()=>assert.deepEqual(plain(kinds.EVAL_CASE_KINDS),['role','meeting_step','brief']));
 check('a missing kind reads as role (no migration)',()=>assert.ok(kinds.caseKind(undefined)==='role'&&kinds.caseKind('role')==='role'&&kinds.evalKind(undefined).kind==='role'));
 for(const bad of ['judge','ROLE','',5,null])check(`unknown kind ${JSON.stringify(bad)} is 400`,()=>rejects(()=>kinds.caseKind(bad),/kind|종류/));
-for(const slot of ['meeting_step','brief'])check(`${slot} is a reserved slot that answers 400 unsupported`,()=>{assert.equal(kinds.caseKind(slot),slot);rejects(()=>kinds.evalKind(slot),/지원하지 않는 평가 종류/)});
+check('meeting_step and brief have handlers (G2): meeting reserves 100,000, brief 50,000',()=>assert.ok(kinds.caseKind('meeting_step')==='meeting_step'&&kinds.evalKind('meeting_step').kind==='meeting_step'&&kinds.reserveOf({kind:'meeting_step'})===100000&&kinds.evalKind('brief').kind==='brief'&&kinds.reserveOf({kind:'brief'})===50000));
 check('a stored unknown kind is 400 unsupported',()=>rejects(()=>kinds.evalKind('judge'),/지원하지 않는 평가 종류/));
 check('role reserves 50,000 per case by default',()=>assert.ok(kinds.EVAL_CASE_TOKEN_RESERVE===50000&&kinds.reserveOf({expectations:{prohibitedTerms:[]}})===50000&&kinds.reserveOf({kind:'role',expectations:{prohibitedTerms:[]}})===50000));
 check('a case reserve comes from its kind only (no per-case override through expectations)',()=>assert.ok(kinds.reserveOf({kind:'role',expectations:{reserveTokens:120000}})===50000&&kinds.reserveOf({expectations:{reserveTokens:20000}})===50000&&!('EVAL_RESERVE_MIN' in kinds)&&!('reserveTokens' in kinds)));
@@ -157,18 +157,18 @@ check('externalKey is scoped to the owner',()=>assert.ok(r.status===200&&r.body.
 await post({action:'delete_case',id:first.id});r=await post({...manual,specHash:HASH2});
 check('deleting the case frees its externalKey',()=>assert.ok(r.status===200&&r.body.id!==first.id&&r.body.specHash===HASH2));
 
-// F) kind 입력: 알 수 없는 종류 400, G2 자리는 지원하지 않는 종류 400, 저장된 옛·알 수 없는 종류는 실행 시작에서 400(기록 없음).
+// F) kind 입력: 알 수 없는 종류 400, 회의·브리프 요청 형식이 아니면 400(G2), 저장된 알 수 없는 종류는 실행 시작에서 400(기록 없음).
 count=caseCount();
 for(const bad of ['judge',5,'Role'])for(const action of ['save_case','capture_case']){
  const res=await post({action,kind:bad,role:'cmo',campaignId:'syn-a',request:base.request});check(`${action} rejects kind ${JSON.stringify(bad)}`,()=>assert.ok(res.status===400&&/kind|종류/.test(res.body.error)));
 }
 for(const slot of ['meeting_step','brief'])for(const action of ['save_case','capture_case']){
- const res=await post({action,kind:slot,role:'cmo',campaignId:'syn-a',request:base.request});check(`${action} ${slot} is 400 unsupported for now`,()=>assert.ok(res.status===400&&/지원하지 않는 평가 종류/.test(res.body.error)));
+ const res=await post({action,kind:slot,role:'cmo',campaignId:'syn-a',request:base.request});check(`${action} ${slot} with a role-shaped input is 400`,()=>assert.ok(res.status===400&&/회의|브리프/.test(res.body.error),JSON.stringify(res.body)));
 }
 check('rejected kinds store no case',()=>assert.equal(caseCount(),count));
 r=await post({action:'save_case',kind:'role',role:'cmo',request:base.request});
 check('an explicit role kind saves',()=>assert.ok(r.status===200&&r.body.kind==='role'));
-for(const kind of ['meeting_step','judge']){
+for(const kind of ['judge']){
  const id='stored-'+kind;await put('eval_case',id,{...plain(r.body),id,kind});before=runCount();
  const res=await post({action:'start_run',caseIds:[id],tokenBudget:100000});
  check(`a stored ${kind} case cannot start a run (400, no run)`,()=>assert.ok(res.status===400&&/지원하지 않는 평가 종류/.test(res.body.error)&&runCount()===before));
