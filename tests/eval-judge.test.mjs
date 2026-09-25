@@ -105,11 +105,12 @@ r=await get('?labels=queue&limit=50');check('judge runs never appear in the labe
 
 // 4) JSON이 아닌 심사 응답은 적용 기준 모두 무효(bad_shape)로 센다.
 mode.brokenJudge=true;
-r=await post({action:'start_run',variant:'judge',tokenBudget:100000,limit:1});run=await drive(r.body.id);mode.brokenJudge=false;
-check('a non-JSON judge answer marks every applicable criterion invalid',()=>{const x=run.results[0];assert.ok(x.status==='completed'&&x.judge.error==='not_json'&&x.judge.scores.every(s=>!s.valid&&s.score===null&&s.invalid.includes('bad_shape')),JSON.stringify(x))});
+// 항목 순서는 표시 id(해시) 순이라 어느 항목이 먼저인지 정해져 있지 않다. 네 항목을 모두 심사하고, 보낸 세 항목(금지 값이 든 creative 제외)을 본다.
+r=await post({action:'start_run',variant:'judge',tokenBudget:250000});run=await drive(r.body.id);mode.brokenJudge=false;
+check('a non-JSON judge answer marks every applicable criterion invalid',()=>{const sent=run.results.filter(x=>x.status==='completed');assert.ok(sent.length===3&&sent.every(x=>x.judge.error==='not_json'&&x.judge.scores.every(s=>!s.valid&&s.score===null&&s.invalid.includes('bad_shape'))),JSON.stringify(run.results.map(x=>[x.role,x.status,x.judge?.error])))});
 
 // 5) 심사 run 삭제는 judge_output도 지운다(라벨은 원 평가 run에 걸려 있어 그대로다).
 r=await post({action:'delete_run',id:judgeRunId});
-check('deleting a judge run deletes its judge outputs and keeps labels',()=>assert.ok(r.status===200&&count('judge_output')===1&&count('judge_label')===4));
+check('deleting a judge run deletes its judge outputs and keeps labels',()=>assert.ok(r.status===200&&count('judge_output')===3&&count('judge_label')===4));
 check('no external network call',()=>assert.deepEqual(external,[]));
 console.log(JSON.stringify({passed:passed.length}));

@@ -446,9 +446,9 @@ run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
   - 케이스마다 `save_case`와 같은 동결·검사를 거친 뒤 지금 조립으로 `promptHash`를 다시 계산해 생성기 값과 비교한다(다르면 409).
   - `externalKey` 멱등: 같은 키·같은 `specHash`는 기존 케이스를 돌려주고, 다른 `specHash`는 409다(2절).
   - 하나라도 거부되면 아무것도 저장하지 않는다. 저장은 한 배치다. 케이스에는 `source: synthetic`과 `generator{commit,tree}`가 남는다.
-- 샘플 스펙: `scripts/eval/specs/syn-s2-bakery.json`(설계의 S2 베이커리 재방문, fnb, dev). 역할 8·회의 단계 6·브리프 1, 15케이스다.
+- dev 스펙(저장소): `scripts/eval/specs/syn-s2-bakery.json`(설계의 S2 베이커리 재방문, fnb, 역할 8·회의 단계 6·브리프 1, 15케이스), `syn-s3-coding.json`(S3 코딩학원 상담 리드, education, 역할 8·회의 단계 6·브리프 2(캠페인 브리프·신규 브리프), 16케이스). `tests/eval-synthesize.test.mjs`가 저장소의 모든 스펙이 지금 코드로 생성되고 체크리스트 8종을 채우는지 본다(스펙이 코드 변경으로 썩지 않게).
 - 테스트: `tests/eval-synthesize.test.mjs`(라이브러리·CLI 두 번 실행 바이트 동일, 15케이스·체크리스트 8종, 브리프 기준일이 스펙 시각을 따름, 케이스별 `specHash`, 거부 7종, 가져오기의 트리·`promptHash`·멱등·전부 아니면 전무·입력 400, 가져온 케이스 실행의 `promptHash`가 생성기 값과 같음. 뮤테이션 7종(트리 검사·해시 검사·시계·개인정보 검사·체크리스트·syn- 키·금지 표현 출처)을 모두 잡는다. 합성 데이터, `mocked`).
-- 한계: 운영 트리가 알 수 없음(`unknown`, 개발 실행)이면 가져오기가 늘 409라 로컬 개발 서버로는 가져올 수 없다. 설계의 나머지 합성 캠페인(S1·S3~S5)과 C1·C2 운영 캡처는 아직 없다(R1 전 작업).
+- 한계: 운영 트리가 알 수 없음(`unknown`, 개발 실행)이면 가져오기가 늘 409라 로컬 개발 서버로는 가져올 수 없다. 설계의 봉인 합성 캠페인(S1 beauty·S4 popup·S5 retail)과 C1·C2 운영 캡처는 아직 없다(R1 전 작업). 봉인 스펙은 프롬프트를 고치는 레인이 아닌 사람이 저장소 밖에서 만든다([로드맵](QUALITY-ROADMAP.ko.md) 위험과 완화).
 
 ### 서버 평가의 한계
 
