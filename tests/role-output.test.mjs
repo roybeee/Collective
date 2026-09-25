@@ -15,6 +15,15 @@ const valid={contractVersion:contract.version,role:'insight',sections:contract.s
 assert.ok(parseRoleOutput(JSON.stringify(valid),'insight',contract).includes('자료 필요'));
 assert.throws(()=>parseRoleOutput(JSON.stringify({...valid,sections:valid.sections.slice(1)}),'insight',contract));
 assert.throws(()=>parseRoleOutput(JSON.stringify({...valid,role:'strategy'}),'insight',contract));
+// R3 기준선(2026-09-25 MAPDAL 크리에이티브 실측): '과업이 확인되지 않은 상태에서 … 단정할 수 없습니다'는 재질문이 아니다. 운영이 이 추천안 섹션을 형식 오류로 거절했다.
+const recommendation='### 추천안\n현재 상품명·상품 유형·옵션·구성이 확인되지 않았으므로 모든 상품에 적용할 수 없습니다. 실제 옵션 비교 과업이 확인되지 않은 상태에서 고객이 비교를 원한다고 단정할 수 없습니다. 상품과 국가가 확정되고 옵션 비교가 필요한 경우에만 후속 테스트로 삼습니다.';
+assert.equal(isQuestionOnly(recommendation),false);
+assert.ok(parseRoleOutput(JSON.stringify({...valid,sections:valid.sections.map((s,i)=>i?s:{...s,content:recommendation})}),'insight',contract).includes('단정할 수 없습니다'));
+for(const ask of ['요청하신 작업이 없습니다. 원하는 방향을 알려 주세요.','수행할 과업이 없어요.','현재 작업 요청이 없습니다.'])assert.equal(isQuestionOnly(ask),true,ask);
+// R3 기준선(2026-09-25 S8 총괄 실측): 완결된 JSON 뒤에 닫는 괄호를 더 붙인 응답('…}]}}')은 여분 괄호만 떼고 읽는다(최대 8자). 잘린 JSON·뒤에 붙은 글은 계속 거절한다.
+const json=JSON.stringify(valid),expected=parseRoleOutput(json,'insight',contract);
+for(const tail of ['}',']}\n','}'.repeat(8)])assert.equal(parseRoleOutput(json+tail,'insight',contract),expected,JSON.stringify(tail));
+for(const bad of [json.slice(0,-1),json+' 끝',json+'}'.repeat(9)])assert.throws(()=>parseRoleOutput(bad,'insight',contract),bad.slice(-12));
 assert.throws(()=>parseRoleOutput(JSON.stringify({...valid,sections:valid.sections.map(s=>({...s,content:bad}))}),'insight',contract));
 assert.throws(()=>parseRoleOutput(JSON.stringify({...valid,sections:valid.sections.map(s=>({...s,content:'가'.repeat(40001)}))}),'insight',contract));
 assert.equal(parseRoleOutput('기존 실행의 사용 가능한 결과','cmo'),'기존 실행의 사용 가능한 결과');

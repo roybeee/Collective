@@ -53,6 +53,8 @@ check('thin_section does not repeat the inline data-request false positive',()=>
 const c=roleOutputContract('insight');
 const raw=sections=>JSON.stringify({contractVersion:c.version,role:'insight',sections});
 check('contract_json passes a complete raw contract',()=>assert.equal(status('contract_json',{id:'r',kind:'role',role:'insight',contract:true,raw:raw(c.sections.map(s=>({id:s.id,content:long})))}),'pass'));
+// 운영은 JSON 끝 여분 괄호를 떼고 읽지만, 모델 원문 형식 결함이라 contract_json은 계속 fail로 센다(R3 기준선 S8 총괄 실측).
+check('contract_json still fails a raw contract with a stray closing brace',()=>assert.equal(status('contract_json',{id:'r',kind:'role',role:'insight',contract:true,raw:raw(c.sections.map(s=>({id:s.id,content:long})))+'}'}),'fail'));
 check('contract_json fails a raw contract missing sections',()=>assert.equal(status('contract_json',{id:'r',kind:'role',role:'insight',contract:true,raw:raw([{id:'output_1',content:long}])}),'fail'));
 check('contract_json checks rendered titles when raw JSON is absent',()=>{assert.equal(status('contract_json',contract([long,long,long])),'pass');assert.equal(status('contract_json',{...contract([long,long,long]),text:rendered([long,long,long]).replace('## '+insightTitles[1],'## 다른 제목')}),'fail')});
 check('contract_json is not applicable to legacy runs',()=>assert.equal(status('contract_json',role(long)),'not_applicable'));
@@ -112,6 +114,13 @@ check('fact_conflict still fails a rejected fact used or said to be usable',()=>
 // R3 기준선(2026-09-25 S6 브랜드 전략 실측): '### 금지·보류 표현' 제목과 '다음 표현은 … 쓰지 않는다' 아래 목록은 거절 사실 사용이 아니다. 제목이 바뀐 뒤 다시 쓰면 사용이다.
 check('fact_conflict skips rejected facts listed under a prohibitive heading or lead',()=>{for(const text of ['### 금지·보류 표현\n다음 표현은 확인된 사실이 없으므로 확정 광고 문구로 쓰지 않는다.\n- ‘인기’, ‘판매 1위’.\n- ‘24시간 운영’, ‘24시간 보안요원 상주’.','다음 표현은 확인된 사실이 없으므로 확정 광고 문구로 쓰지 않는다.\n- ‘24시간 운영’, ‘24시간 보안요원 상주’.'])assert.equal(status('fact_conflict',role(text),rejectedGuard),'pass',text)});
 check('fact_conflict still fails a rejected fact used after the prohibitive heading ends',()=>assert.equal(status('fact_conflict',role('### 금지·보류 표현\n- ‘24시간 운영’.\n\n### 게시 카피\n‘24시간 보안요원 상주’ 보관함, 안심하고 맡기세요.'),rejectedGuard),'fail'));
+// 로컬 채널 재실행(2026-09-25 fa9da73, S2 총괄) 실측: 수정·중단 조건의 '… 표현을 사용하려는 경우'는 사용이 아니다.
+check('fact_conflict treats a use-intent condition as non-use',()=>assert.equal(status('fact_conflict',role('- 실제 근거 없이 ‘인기’, ‘판매 1위’ 또는 ‘당일 전량 소진’ 표현을 사용하려는 경우. ‘당일 전량 소진’은 관리자가 금지한 사실이므로 광고 문구·제작 지시·가설의 전제로 사용하지 않는다.'),rejectedSoldOut),'pass'));
+check('fact_conflict treats other use-intent verb forms as non-use',()=>{for(const text of ['- ‘당일 전량 소진’ 문구를 쓰려는 경우.','- ‘당일 전량 소진’을 넣으려는 때.','- ‘당일 전량 소진’ 주장을 강조하려고 하는 경우.',...['활용','표기','노출','언급','주장','기재','삽입'].map(v=>`- ‘당일 전량 소진’ 표현을 ${v}하려는 경우.`),...['적으','내세우','붙이'].map(v=>`- ‘당일 전량 소진’ 카피를 ${v}려는 때.`)])assert.equal(status('fact_conflict',role(text),rejectedSoldOut),'pass',text)});
+check('fact_conflict still fails a rejected fact used in a condition clause',()=>assert.equal(status('fact_conflict',role('비가 오는 경우 ‘당일 전량 소진’ 문구를 카드에 넣는다.'),rejectedSoldOut),'fail'));
+// 로컬 채널 재실행(2026-09-25 fa9da73, S6 전략) 실측: '포기하는 것:' 아래 목록은 쓰지 않을 약속 목록이다. 목록이 끝난 뒤 카피에 쓰면 사용이다.
+check('fact_conflict skips rejected facts listed under a give-up label',()=>assert.equal(status('fact_conflict',role('포기하는 것:\n- 가격 경쟁 메시지와 할인 메시지. 가격과 할인 사실이 확정되지 않았다.\n- “안전하다”, “분실 보상”, “24시간 보안요원 상주” 같은 위험 감소 약속. 특히 “24시간 보안요원 상주”는 거절된 사실이므로 [확인 필요]를 붙여서도 광고 문구·제작 전제로 쓰지 않는다.'),rejectedGuard),'pass'));
+check('fact_conflict still fails a rejected fact used after the give-up list ends',()=>assert.equal(status('fact_conflict',role('포기하는 것:\n- 가격 경쟁 메시지.\n\n### 게시 카피\n“24시간 보안요원 상주” 보관함, 안심하고 맡기세요.'),rejectedGuard),'fail'));
 check('fact_conflict still fails the rejected fact without a forbidding modifier',()=>{for(const text of ['- “당일 전량 소진” 표현이 소재·제작 지시에 포함됨','인기 많은 “당일 전량 소진” 빵입니다.'])assert.equal(status('fact_conflict',role(text),rejectedSoldOut),'fail',text)});
 check('fact_conflict still fails a passive use',()=>{for(const text of ['‘당일 전량 소진’이 카드 문구에 사용되었습니다.','‘당일 전량 소진’은 직접 사용되지는 않았다고 적었지만 카드에는 ‘당일 전량 소진’을 넣습니다.'])assert.equal(status('fact_conflict',role(text),rejectedSoldOut),'fail',text)});
 check('fact_conflict still fails a rejected fact that is present or wished away but used',()=>{for(const text of ['카드에는 ‘당일 전량 소진’ 문구가 있다.','‘당일 전량 소진’ 표현이 없으면 좋겠지만 오늘은 씁니다.','매일 당일 전량 소진되는 인기 빵입니다.','매일 당일 전량 소진, 이보다 좋은 문구가 없다.','당일 전량 소진, 더 이상의 표현이 없습니다.'])assert.equal(status('fact_conflict',role(text),rejectedSoldOut),'fail',text)});
@@ -126,6 +135,10 @@ check('fact_conflict is not applicable when no ledger key is touched',()=>assert
 check('unconfirmed value fails an asserted price or open date missing from the ledger',()=>{assert.equal(status('unconfirmed_value_assertion',role('대표 메뉴는 12,900원입니다.'),ledger),'fail');assert.equal(status('unconfirmed_value_assertion',role('10월 5일 오픈합니다.'),ledger),'fail')});
 // R3 기준선(2026-09-25 S7 품질 검수 실측): 금지된 수익 보장 문구 안의 값('금지된 ‘월 순수익 500만 원 보장’ … 표현은 사용하지 않는다')과 금지 제목 아래 값은 단정이 아니다.
 check('unconfirmed value skips values in negated or prohibitive contexts',()=>{for(const text of ['금지된 ‘월 순수익 500만 원 보장’ 및 유사 수익 보장 표현은 사용하지 않는다.','### 금지 표현\n- ‘월 순수익 500만 원 보장’'])assert.equal(status('unconfirmed_value_assertion',role(text),ledger),'pass',text)});
+// 로컬 채널 재실행(2026-09-25 fa9da73, S8 총괄) 실측: 인용 뒤 조사 '고'('‘…2만 원이다’고 광고하지 않는다')는 절 경계가 아니라 인용 나열 전체가 부정된다.
+const quotedDenial='현재 확인된 사실만으로는 ‘가상필라테스가 소규모 스튜디오다’, ‘특정 강사가 수업한다’, ‘체험 가격이 2만 원이다’, ‘평일 저녁 수업이 있다’, ‘가장 인기 있다’고 광고하지 않는다.';
+check('a quoted list denied with the quotative 고 is not an assertion or a claim',()=>{assert.equal(status('unconfirmed_value_assertion',role(quotedDenial),ledger),'pass');assert.equal(status('unsupported_claim_term',role(quotedDenial)),'pass')});
+check('a quoted claim followed by the quotative 고 and a use verb is still asserted',()=>{assert.equal(status('unconfirmed_value_assertion',role('‘체험 가격이 2만 원이다’고 안내한다.'),ledger),'fail');assert.equal(status('unsupported_claim_term',role('‘동네에서 가장 인기 있다’고 광고한다.')),'fail')});
 check('unconfirmed value still fails a value asserted next to a negated clause',()=>{for(const text of ['대표 메뉴는 12,900원이며 할인하지 않습니다.','월 순수익 500만 원을 보장합니다.'])assert.equal(status('unconfirmed_value_assertion',role(text),ledger),'fail',text)});
 // R3 기준선(2026-09-25 S8 실측): FAQ의 보장 여부 질문('체형 교정이나 통증 완화를 보장하나요?')과 값이 후보 사실이라는 설명('체험 가격 2만 원은 후보 사실이고')은 사용·단정이 아니다.
 check('a question about a guarantee and a candidate-fact value are not use or assertion',()=>{
@@ -200,6 +213,13 @@ check('claim term reads quoted discussion copy in its sentence',()=>{assert.equa
 check('industry leak passes own-industry metrics',()=>assert.equal(status('industry_metric_leak',role('꽃다발 픽업 완료 건수를 일별로 기록한다.'),{industry:'florist'}),'pass'));
 check('industry leak fails a locker metric in a florist campaign',()=>assert.equal(status('industry_metric_leak',role('보관함 가동률을 주간 지표로 둔다.'),{industry:'florist'}),'fail'));
 check('industry leak passes an explicit exclusion',()=>assert.equal(status('industry_metric_leak',role('보관함 지표는 이번 캠페인과 무관하므로 제외합니다.'),{industry:'fnb'}),'pass'));
+// e8bd8e0 S8 재실행(2026-09-25 교육 업종 총괄) 실측: 로컬 채널 결정 줄의 배달앱 제외·보류 이유('배달 주문 흐름과 맞지 않는다')는 업종 지표 유출이 아니다.
+check('industry leak skips a delivery-app exclusion line in the local channel decision',()=>assert.equal(status('industry_metric_leak',role('- 배달앱: 제외. 본 캠페인의 목표 행동은 필라테스 체험 예약이며 배달 주문 흐름과 맞지 않는다. 별도 근거가 생기기 전까지 사용하지 않는다.'),{industry:'education'}),'pass'));
+// 같은 재실행 S8 전략 실측: 표 행의 결정이 끝 칸에 있다.
+check('industry leak skips a delivery table row whose decision is in the last cell',()=>assert.equal(status('industry_metric_leak',role('| 채널 | 역할 | 근거 | 결정 |\n|---|---|---|---|\n| 배달앱 | 필라테스 체험 예약 목적과 맞지 않음 | 음식·배달 중심 채널로 이번 서비스의 실제 목표 행동과 연결되지 않으므로 사용하지 않는다 | 제외 |'),{industry:'education'}),'pass'));
+check('industry leak still fails a delivery row that adopts or selects the channel',()=>{for(const text of ['| 배달앱 | 배달 주문 비중 확대 | 제외 조건 없음 | 채택 |','| 배달앱 | 배달 주문 비중 확대 | 보류 해제 뒤 | 선택 |'])assert.equal(status('industry_metric_leak',role(text),{industry:'education'}),'fail',text)});
+check('industry leak skips other delivery decision line forms',()=>{for(const text of ['| 배달 앱 | 후순위 | 배달 주문 흐름과 맞지 않음 |','- **배민** — 보류: 배달 주문 수요 자료가 없다.','- 쿠팡이츠(제외). 배달 주문 흐름과 맞지 않는다.','- 요기요: 제외. 배달 주문 흐름과 맞지 않는다.','- 배달 플랫폼 - 후순위. 배달 주문 흐름은 목표와 다르다.','- 배달의민족: 보류. 배달 주문 흐름과 맞지 않는다.','- 배달앱：제외. 배달 주문 흐름과 맞지 않는다.','- 배달앱 – 보류. 배달 주문 흐름과 맞지 않는다.'])assert.equal(status('industry_metric_leak',role(text),{industry:'education'}),'pass',text)});
+check('industry leak still fails delivery metrics when the delivery app is adopted or outside a decision line',()=>{for(const text of ['- 배달앱: 채택. 배달 주문 비중을 주지표로 본다.','주지표는 배달 주문 수다. 배달앱은 후순위로 둔다.','- 배달앱 주문 비중을 주지표로 본다. 쿠폰 고객은 제외한다.'])assert.equal(status('industry_metric_leak',role(text),{industry:'education'}),'fail',text)});
 check('industry leak allows the campaign own industry terms',()=>assert.equal(status('industry_metric_leak',role('보관함 가동률을 주간 지표로 둔다.'),{industry:'locker'}),'pass'));
 check('industry leak is not applicable without an industry',()=>assert.equal(status('industry_metric_leak',role('보관함 가동률')),'not_applicable'));
 

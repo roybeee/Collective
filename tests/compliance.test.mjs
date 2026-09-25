@@ -140,6 +140,20 @@ const violations=[
  ['endorsement','체험단 협찬 게시물을 올리고 광고 표시는 넣지 않는다.'],
  // '게시 시간' 같은 명사 제외가 인물 사진 게시를 놓치지 않는다(R3 기준선).
  ['rights','아이돌 사진을 게시 시간에 맞춰 게시한다.'],
+ // '장바구니' 명사 제외·'온라인 판매 KPI'·확인 뒤 검토·결정 CTA 면제가 진짜 구매 유도를 놓치지 않는다(R3 재채점 뒤).
+ ['ecommerce_terms','장바구니에 담고 바로 결제하세요.'],
+ ['ecommerce_terms','온라인 판매 KPI를 위해 지금 구매하세요 버튼을 둔다.'],
+ ['ecommerce_terms','가격 확인 후 할인 쿠폰과 함께 지금 구매하세요.'],
+ // 판매처·'주문하기 어려움'·지적 문장·확인 뒤 삽입 면제가 진짜 구매 유도를 놓치지 않는다(fa9da73 재채점 뒤).
+ ['ecommerce_terms','지금 주문하기, 쉽고 빠르게!'],
+ ['ecommerce_terms','온라인 판매 시작, 공식 판매처에서 지금 구매하세요.'],
+ ['ecommerce_terms','가격 확인 후 ‘구매하기’를 크게 넣고 바로 게시한다.'],
+ ['ecommerce_terms','‘구매하기’ 문구가 들어 있는 배너를 오늘 게시한다.'],
+ // 확인 뒤 추가 면제는 그 CTA 목록의 것만이다: 앞 절에서 넣은 CTA, CTA 옆 다른 문구의 보류는 계속 잡는다.
+ ['ecommerce_terms','“지금 구매하세요”, “주문하기” 같은 문구는 오늘 배너에 넣고, 할인 표현은 가격 확인 뒤 추가한다.'],
+ ['ecommerce_terms','“지금 구매” 버튼 옆 할인 문구는 가격 확인 뒤 추가한다.'],
+ // '사용 여부' 확인 항목 면제가 AI 소재 사용을 면제하지 않는다.
+ ['ai_label','AI 생성·합성 소재 사용으로 배너를 만든다.'],
  ['ecommerce_terms','헤드라인 “오픈 기념”, “지금 구매하세요” 두 줄로 간다.'],
  ['ecommerce_terms','온라인 판매 실적을 늘리려면 지금 구매하세요 버튼을 키운다.'],
  ['ecommerce_terms','상품 보기 버튼은 보류하고 지금 구매하세요 문구를 메인에 둔다.'],
@@ -200,6 +214,23 @@ const normals=[
  ['conditional disclosure plan and checklist','### 게시 전 확인\n유료 집행·협찬·제품 제공이 발생하면 게시 문안에 해당 광고 표시를 추가합니다.\n- [ ] 광고·협찬·유료 게시라면 해당 표시를 문안에 넣었는가'],
  // 실측(2026-09-25 R3 기준선 S8 크리에이티브) 합성 재현: 실험에서 고정할 변수 나열의 '배우 … 게시 시간'.
  ['fixed experiment variables list an actor and posting time','## 실험 조건\n이후 증명 장면, 길이, 배우, 조명, CTA, 랜딩 페이지, 게시 시간은 고정한다.'],
+ // 실측(2026-09-25 R3 121791b 재채점 뒤 MAPDAL 남은 warn) 합성 재현: 퍼널 단계 명사 '장바구니', 온라인 판매 KPI 범위, 확인 뒤 검토·결정하는 CTA.
+ // 실측(2026-09-25 R3 fa9da73 재채점 뒤 남은 warn) 합성 재현: 판매처 명사, '주문하기 어려움', 검수의 지적 문장과 확인 뒤 삽입.
+ ['online sales outlets as alternatives','## 대안\n| 대안 | 내용 |\n|---|---|\n| 다른 온라인 판매처 | 공식 또는 비공식 유통처, 구매를 보류하거나 비교 검색하는 선택지가 있을 수 있음. |'],
+ // 실측(2026-09-25 fa9da73 로컬 채널 재실행 S2 총괄) 합성 재현: 확인 항목의 'AI 생성·합성 소재 사용 여부'.
+ // 실측(2026-09-25 fa9da73 로컬 채널 재실행 S6 전략): 인용 나열 뒤 '같은 … 문구는 … 확인 뒤 추가한다'는 확인 뒤로 미룬 CTA다.
+ ['quoted CTA list added after confirmation','### 메시지 구조\n- 가격 미확정 상태이므로 “지금 구매”, “예약하기”, “이용하세요”, “저렴하게 맡기기” 같은 구매·주문 유도 문구는 가격 및 판매 조건 확인 뒤 추가한다.'],
+ ...[['같은','문구는','넣는다'],['등의','표현을','추가한다'],['등','CTA를','적는다'],['같은','문구를','쓰기로 한다'],['같은','표현은','사용한다'],['등의','문구는','노출한다'],['같은','CTA는','반영한다']].map(([a,b,c])=>[`quoted CTA list ${a} ${b} ${c}`,`“바로 구매”, “주문하기” ${a} ${b} 가격 확정 후 ${c}.`]),
+ ['AI asset use as a question to check','## 확인할 것\n- 콘텐츠 촬영 장소·소재의 실제 여부와 AI 생성·합성 소재 사용 여부.'],
+ ['hard to buy as a customer inquiry','## 고객 문의\n가격을 몰라 구매하기 어렵다는 문의가 많다.'],
+ ['hard to order as a customer barrier','## 고객 장벽\n| 고객 | 장벽 |\n|---|---|\n| 처음 방문 고객 | 메뉴·가격·포장 구성이 없어 비교·주문하기 어려움 |'],
+ ['quality review points at a leftover CTA and inserts it after confirmation','## 검수 의견\n메시지의 ‘구매하기’ 제안이 가격 확인 전 단계에 남아 있어 혼동될 수 있습니다. 가격이 확정되기 전 CTA는 ‘상품 보기’로 제한하고, 상품명·가격·배송 조건 확인 후에만 ‘구매하기’를 삽입합니다.'],
+ ['cart as a funnel stage in a scenario','## 고객 상황\n구매 직전 고객이 장바구니와 결제 단계에서 주문을 완료하려는 상황.'],
+ ['cart in a checkout flow test','## 확인 계획\nmapdal.kr에서 상품 상세·장바구니·결제·주문 확인 흐름을 테스트 주문으로 검증합니다.'],
+ ['online sales KPI scope','## 범위\n매장·자판기 수용량은 이번 온라인 판매 KPI에 포함하지 않으며, 관련 운영 자료가 들어와도 별도 사업으로 분리합니다.'],
+ ['CTA decided after a price check','## CTA\n상품 선택이 필요 없는 단일 상품이면 CTA를 ‘자세히 보기’ 또는 가격 확인 후 ‘구매하기’로 결정합니다.'],
+ ['CTA reviewed only after confirmation','## CTA 기준\n| 기준 | 내용 |\n|---|---|\n| 구매 CTA | 가격·재고·배송 조건 확인 후에만 “구매하기”를 검토 |'],
+ ['placeholder for a CTA after confirmation','## 전환 문안\n가격 확인 후 전환 문안: [가격 확정 후 검토 — 구매하기]'],
  ['funnel stage list in a data question','## 확인 질문\n4) 비교할 기준 기간의 유효 세션·상품 조회·장바구니·결제 시작·결제 완료·취소·환불 원자료와 현재 추적 도구·주문 DB 구조는 무엇인가'],
  ['funnel stage list as selection data','## 선정 기준\n상품×국가 선정은 기존 주문·조회·장바구니 자료가 있으면 그 출처와 기간을 명시하고, 없으면 운영 가능성에 따른 임시 선정임을 기록한다.'],
  ['paid ad budget of zero in an organic channel row','## 채널 계획\n| 채널 | 소재 | 예산 배분 | 목적지 |\n|---|---|---|---|\n| Instagram 오가닉 숏폼 | CTA: “자세히 보기” | 제작비의 25%, 유료 광고비 0원으로 우선 설계 | 프로필 링크의 안내 페이지 |'],
@@ -335,7 +366,7 @@ check('franchise lexicon rules are the 14 official registry rules and their scop
 check('severity follows the registry tier (hard_block and block_unless_evidence as block, warn as warn)',()=>{for(const r of frRules)assert.equal(r.severity,registry(r.id).tier==='warn'?'warn':'block',r.id)});
 check('every franchise-law source URL of a kr.fr rule is in the registry sourceUrls of the same id',()=>{for(const r of frRules.filter(r=>r.id.startsWith('kr.fr.'))){const urls=registry(r.id).sourceUrls;for(const k of r.sources){const url=COMPLIANCE_LEXICON.sources[k].url;if(k.startsWith('franchise_'))assert.ok(urls.includes(url),r.id+' '+k);else assert.ok(k==='fair_labeling'&&urls.some(u=>u.includes('lsId=002011')),r.id+' '+k)}}});
 check('the false-information notice source carries the formal title',()=>{const t=COMPLIANCE_LEXICON.sources.franchise_false_info_notice.title;assert.match(t,/가맹사업거래 상 허위·과장 정보제공행위 등의 유형 지정고시/);assert.match(t,/제2019-8호/)});
-check('the lexicon version is bumped once to .11 (franchise category on top of .10)',()=>assert.equal(COMPLIANCE_LEXICON.version,'compliance-lexicon-2026-09-25.11'));
+check('the lexicon version is bumped once to .14 (franchise category on top of .13)',()=>assert.equal(COMPLIANCE_LEXICON.version,'compliance-lexicon-2026-09-25.14'));
 check('a quoted franchise example is info in the opt-in A2 path',()=>{const issues=checkCompliance('경쟁점 사례: “월 순수익 500만원 보장”.',CONSUMER).issues.filter(i=>i.category==='franchise_recruit');assert.ok(issues.length>0&&issues.every(i=>i.severity==='info'))});
 check('detection rate is 100% and false positive rate is 0%',()=>{assert.equal(detected,violations.length);assert.equal(falsePositives,0)});
 console.log(JSON.stringify({passed:passed.length,violations:violations.length,detected,normals:normals.length,falsePositives}));

@@ -12,7 +12,8 @@ export function roleOutputContract(role:string):RoleOutputContract {
 export function isQuestionOnly(content:string){
  const text=content.trim();
  if(text.length>2500)return false;
- return /(?:작업|요청|과업)[\s\S]{0,35}(?:명시되지|지정되지|주어지지|없습니다|없어요)/.test(text)
+ // '없다'는 작업·요청·과업이 바로 주어일 때만 본다('요청하신 작업이 없습니다'). '… 과업이 확인되지 않은 상태에서 … 단정할 수 없습니다'는 재질문이 아니다(R3 기준선 MAPDAL 크리에이티브).
+ return /(?:작업|요청|과업)[\s\S]{0,35}(?:명시되지|지정되지|주어지지)|(?:작업|요청|과업)이\s?(?:없습니다|없어요)/.test(text)
   ||/(?:원하시는|수행할|진행할|어떤)[\s\S]{0,35}(?:작업|업무)[\s\S]{0,50}(?:선택해|지정해|알려\s?주|말씀해)/.test(text)
   ||/(?:what (?:task|would you like)|please (?:specify|choose) (?:the |a )?task)/i.test(text);
 }
@@ -100,6 +101,18 @@ export function labelArchive<T extends {confirmedSources?:object[]}>(archive:T):
  return {...archive,...(archive.confirmedSources?{confirmedSources:archive.confirmedSources.map((s,i)=>({ref:`브랜드 자료 #${i+1}`,...s}))}:{})};
 }
 function outputError(message:string):never {throw new Error(`작업물 수정 필요: ${message}`)}
+const unfenced=(content:string)=>content.trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'');
+// 모델 원문이 그대로 JSON인지(contract_json 채점). 운영 읽기(contractJson)와 달리 여분 괄호를 떼지 않는다.
+export function strictContractJson(content:string){try{JSON.parse(unfenced(content));return true}catch{return false}}
+// 완결된 JSON 객체 뒤에 닫는 괄호를 더 붙인 응답('…}]}}', R3 기준선 2026-09-25 S8 총괄 실측)은 여분 괄호만 떼고 읽는다.
+// 끝의 '}'·']'를 최대 8자까지 하나씩 떼며 다시 읽는다. 잘린 JSON이나 뒤에 붙은 글은 그대로 형식 오류다.
+const MAX_TRAILING_CLOSERS=8;
+function contractJson(content:string):unknown{
+ const text=unfenced(content);
+ try{return JSON.parse(text)}catch{}
+ for(let end=text.length-1;end>=text.length-MAX_TRAILING_CLOSERS&&/[}\]]/.test(text[end]);end--){try{return JSON.parse(text.slice(0,end))}catch{}}
+ return outputError('필수 산출물 JSON 형식이 아닙니다.');
+}
 export function parseRoleOutput(content:string,role:string,contract?:RoleOutputContract){return renderRoleOutput(content,role,contract).content}
 // 계약 렌더 + 사람이 보는 본문 정규화(lib/output-normalize.ts: 스키마 경로 → 한국어 라벨, 본문 #·## 제목 → ###). 원 응답(content 인자)은 바꾸지 않는다.
 // 운영 저장(role-execution.ts poll)과 평가 채점(lib/graders/text.ts renderRaw)이 같은 렌더를 본다. normalization은 종류별 건수만 담는다(값 없음).
@@ -110,7 +123,7 @@ export function renderRoleOutput(content:string,role:string,contract?:RoleOutput
  if(!contract||role==='quality'&&!normalize)return {content,normalization:NO_NORMALIZATION};
  if(role==='quality'){const q=normalizeQualityOutput(content);return {content:q.text,normalization:q.normalization}}
  const section=normalize?normalizeSectionBody:(text:string)=>({text,normalization:NO_NORMALIZATION});
- let raw:unknown;try{raw=JSON.parse(content.trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''))}catch{return outputError('필수 산출물 JSON 형식이 아닙니다.');}
+ const raw=contractJson(content);
  if(!raw||typeof raw!=='object')return outputError('결과 객체가 필요합니다.');
  const result=raw as Record<string,unknown>;
  if(result.contractVersion!==contract.version||result.role!==role)return outputError('담당 또는 산출물 계약 버전이 일치하지 않습니다.');
