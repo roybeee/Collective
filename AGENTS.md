@@ -8,7 +8,7 @@
 - 토큰, 비밀번호, 쿠키, 개인정보, `.env` 파일은 커밋하지 않는다.
 
 ## 현재 상태 (`docs/STATUS.md`)
-- 작업을 시작할 때 `docs/STATUS.md`를 먼저 읽는다.
+- 작업을 시작할 때 `docs/STATUS.md`를 먼저 읽는다. 다른 도구(Claude·ChatGPT/Codex)가 하던 일을 이어받을 때는 `docs/HANDOFF.ko.md`(역할 분리·게시·평가 방법·다음 작업)도 읽는다.
 - 적힌 내용을 믿지 말고 실제 원격 상태(`git ls-remote origin refs/heads/main`, `gh pr list -R roybeee/Collective`, `/api/version`)와 대조한다. 다르면 원격이 맞고 STATUS.md를 고친다.
 - 단계, 검증 결과, 막힌 것, 진행 중 작업, 다음 행동이 바뀌면 같은 PR에서 STATUS.md와 마지막 갱신 시각(UTC)을 갱신한다.
 
