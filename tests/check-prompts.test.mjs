@@ -1,5 +1,5 @@
 // prompts/ 정본과 CI 검사 스크립트(scripts/check-prompts.mjs)의 회귀(F3a, 대표 결정 2·3).
-// 정본 파일은 현재 코드 상수(폴백)와 본문이 같아야 하고, 브랜드명·가격·주입 패턴·URL·코드 소유 문구·6,000자 초과 fixture는 exit≠0이어야 한다.
+// 아직 개선하지 않은 정본은 코드 상수(폴백)와 같다. 후보 콘텐츠도 브랜드명·가격·주입 패턴·URL·코드 소유 문구·6,000자 초과 fixture는 exit≠0이어야 한다.
 // 실패 fixture는 임시 디렉터리에 정본을 복사한 뒤 한 파일만 바꿔 만든다. 브랜드명은 lib/agency.ts 시드와 lib/prompt-units.ts의 코드 공개 한글 표기에서 읽는다(저장소에 새 브랜드 문구를 두지 않는다).
 // 보이지 않는 문자·전각·띄어쓰기 변형은 코드 포인트로 만들어 이 파일에 보이지 않는 문자를 두지 않는다.
 // 근거: 로컬 파일·스크립트 실행만(네트워크 0회).
@@ -24,7 +24,8 @@ const files=readdirSync('prompts').sort();
 check('one file per unit and nothing else',()=>assert.deepEqual(files,plain(units.promptUnits.map(u=>units.unitFile(u.unit))).sort()));
 check('eight role skills, channel skills and the viral discovery unit',()=>assert.deepEqual(plain(units.promptUnits.map(u=>u.kind)).reduce((n,k)=>({...n,[k]:(n[k]||0)+1}),{}),{role:8,channel:7,viral:1}));
 // F3a 기준: 정본 본문은 코드 상수(폴백)와 같다. 개선 제안으로 정본을 바꾸는 PR은 이 목록에서 그 단위를 뺀다(등록·평가 뒤 활성화).
-const codeEqualUnits=units.promptUnits.map(u=>u.unit);
+// A1은 레지스트리 콘텐츠 후보만 변경한다. 코드 폴백과 운영 제출 기준선은 그대로다.
+const codeEqualUnits=units.promptUnits.map(u=>u.unit).filter(unit=>unit!=='channel.offline');
 for(const unit of codeEqualUnits){
  const file=JSON.parse(readFileSync('prompts/'+units.unitFile(unit),'utf8'));
  check(`${unit} canonical file equals the code constant`,()=>assert.equal(units.canonicalJson(unit,file.body),JSON.stringify(plain(units.codeUnitBody(unit)))));
