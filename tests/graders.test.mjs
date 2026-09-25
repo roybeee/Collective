@@ -53,6 +53,8 @@ check('thin_section does not repeat the inline data-request false positive',()=>
 const c=roleOutputContract('insight');
 const raw=sections=>JSON.stringify({contractVersion:c.version,role:'insight',sections});
 check('contract_json passes a complete raw contract',()=>assert.equal(status('contract_json',{id:'r',kind:'role',role:'insight',contract:true,raw:raw(c.sections.map(s=>({id:s.id,content:long})))}),'pass'));
+// 운영은 JSON 끝 여분 괄호를 떼고 읽지만, 모델 원문 형식 결함이라 contract_json은 계속 fail로 센다(R3 기준선 S8 총괄 실측).
+check('contract_json still fails a raw contract with a stray closing brace',()=>assert.equal(status('contract_json',{id:'r',kind:'role',role:'insight',contract:true,raw:raw(c.sections.map(s=>({id:s.id,content:long})))+'}'}),'fail'));
 check('contract_json fails a raw contract missing sections',()=>assert.equal(status('contract_json',{id:'r',kind:'role',role:'insight',contract:true,raw:raw([{id:'output_1',content:long}])}),'fail'));
 check('contract_json checks rendered titles when raw JSON is absent',()=>{assert.equal(status('contract_json',contract([long,long,long])),'pass');assert.equal(status('contract_json',{...contract([long,long,long]),text:rendered([long,long,long]).replace('## '+insightTitles[1],'## 다른 제목')}),'fail')});
 check('contract_json is not applicable to legacy runs',()=>assert.equal(status('contract_json',role(long)),'not_applicable'));
