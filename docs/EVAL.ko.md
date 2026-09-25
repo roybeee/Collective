@@ -446,9 +446,21 @@ run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
   - 케이스마다 `save_case`와 같은 동결·검사를 거친 뒤 지금 조립으로 `promptHash`를 다시 계산해 생성기 값과 비교한다(다르면 409).
   - `externalKey` 멱등: 같은 키·같은 `specHash`는 기존 케이스를 돌려주고, 다른 `specHash`는 409다(2절).
   - 하나라도 거부되면 아무것도 저장하지 않는다. 저장은 한 배치다. 케이스에는 `source: synthetic`과 `generator{commit,tree}`가 남는다.
-- dev 스펙(저장소): `scripts/eval/specs/syn-s2-bakery.json`(설계의 S2 베이커리 재방문, fnb, 역할 8·회의 단계 6·브리프 1, 15케이스), `syn-s3-coding.json`(S3 코딩학원 상담 리드, education, 역할 8·회의 단계 6·브리프 2(캠페인 브리프·신규 브리프), 16케이스). `tests/eval-synthesize.test.mjs`가 저장소의 모든 스펙이 지금 코드로 생성되고 체크리스트 8종을 채우는지 본다(스펙이 코드 변경으로 썩지 않게).
+- dev 스펙(저장소): `scripts/eval/specs/syn-s2-bakery.json`(설계의 S2 베이커리 재방문, fnb, 역할 8·회의 단계 6·브리프 1, 15케이스), `syn-s3-coding.json`(S3 코딩학원 상담 리드, education, 역할 8·회의 단계 6·브리프 2(캠페인 브리프·신규 브리프), 16케이스). 역할만 있는 dev 스펙 셋(설계의 S6·S7, G0에서 C1이 3역할뿐이라 S8 추가)도 있다.
+  - `syn-s6-locker.json`(역 앞 무인 물품보관함 주말 이용, locker, 점포 목표).
+  - `syn-s7-franchise.json`(무인 분식 자판기 가맹 상담 리드, B2B, fnb).
+  - `syn-s8-pilates.json`(동네 필라테스 체험 수업 예약, education, 점포 목표).
+  - 셋 다 역할 8케이스다. 2026-09-25 운영 트리 `449a677`에서 생성해 운영에 가져왔다(real). 봉인 업종(beauty·popup·retail)을 피했다. 수정 요청·운영자 선호·사람 수정본·발췌 잘림 분기를 캠페인마다 다른 역할에 둔다. 상류 작업물에는 운영처럼 결함을 심었다(금지 표현이 든 카피 초안, 거절 사실 사용, 관찰 기간 없는 전환율 정의, 확인 안 된 칸 수로 잡은 목표).
+
+  `tests/eval-synthesize.test.mjs`가 저장소의 모든 스펙이 지금 코드로 생성되고 체크리스트 8종을 채우는지 본다(스펙이 코드 변경으로 썩지 않게).
 - 테스트: `tests/eval-synthesize.test.mjs`(라이브러리·CLI 두 번 실행 바이트 동일, 15케이스·체크리스트 8종, 브리프 기준일이 스펙 시각을 따름, 케이스별 `specHash`, 거부 7종, 가져오기의 트리·`promptHash`·멱등·전부 아니면 전무·입력 400, 가져온 케이스 실행의 `promptHash`가 생성기 값과 같음. 뮤테이션 7종(트리 검사·해시 검사·시계·개인정보 검사·체크리스트·syn- 키·금지 표현 출처)을 모두 잡는다. 합성 데이터, `mocked`).
-- 한계: 운영 트리가 알 수 없음(`unknown`, 개발 실행)이면 가져오기가 늘 409라 로컬 개발 서버로는 가져올 수 없다. 설계의 봉인 합성 캠페인(S1 beauty·S4 popup·S5 retail)과 C1·C2 운영 캡처는 아직 없다(R1 전 작업). 봉인 스펙은 프롬프트를 고치는 레인이 아닌 사람이 저장소 밖에서 만든다([로드맵](QUALITY-ROADMAP.ko.md) 위험과 완화).
+- 한계: 운영 트리가 알 수 없음(`unknown`, 개발 실행)이면 가져오기가 늘 409라 로컬 개발 서버로는 가져올 수 없다. 설계의 봉인 합성 캠페인(S1 beauty·S4 popup·S5 retail)은 아직 없다(R1 전 작업).
+  - 운영 캡처(real, 2026-09-25 G0)
+    - C1 ODA: 역할 3건(기존)과 회의 단계 2건(실패한 회의의 완료 단계 cmo·creative).
+    - C2 MAPDAL: 역할 8건(기존)과 완료 회의 단계 6건(cmo·creative·quality 토론, 합의, 개선본 strategy, 재검토).
+    - 운영에 브리프 초안이 0건이라 C1·C2 브리프 케이스는 없다.
+    - 회의 캡처 8건은 모두 `captureCheck.submission` `code_changed`다. 회의는 2026-09-17에 옛 코드로 돌았다.
+    - ODA 2건은 `frozenIdentical:false`다(발췌 상한 앞 가림의 알려진 한계). 봉인 스펙은 프롬프트를 고치는 레인이 아닌 사람이 저장소 밖에서 만든다([로드맵](QUALITY-ROADMAP.ko.md) 위험과 완화).
 
 ### 서버 평가의 한계
 
