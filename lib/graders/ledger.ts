@@ -2,6 +2,7 @@ import {claimGuard} from '../campaign-policy';
 import {verdict,outputObject,proseValues,briefPlanValues,type Grader,type EvalItem,type GradeContext} from './types';
 import {isText,bodyOf,sentences,compact,excerpt,blocks} from './text';
 import {mentions,usesTerm} from './negation';
+import {outsideProhibition,withoutBannedLists} from './prohibition';
 
 // 사실 원장 대조(fact_conflict)와 미확정 구체 값 단정(unconfirmed_value_assertion). 원장이 없으면 둘 다 not_applicable이다.
 const factText=(v:unknown)=>typeof v==='string'?v:'';
@@ -48,16 +49,19 @@ function valueChecks(lines:string[],confirmed:{key:string;value:string}[]):Check
  });
 }
 // 거절값은 문장에 나오면 대조 대상이고, 부정·배제 없이 쓰이면 fail이다.
-function rejectedChecks(lines:string[],facts:NonNullable<GradeContext['facts']>):Check[]{
+// allowed: 금지·보류 맥락 밖 문장. 그 안의 언급은 대조는 하되(적용됨) 사용으로 세지 않는다.
+function rejectedChecks(lines:string[],facts:NonNullable<GradeContext['facts']>,allowed:Set<string>):Check[]{
  const rejected=claimGuard({confirmed:facts.confirmed||[],prohibited:facts.prohibited||[]}).prohibited;
- return rejected.flatMap(t=>lines.filter(s=>mentions(s,t)).map(s=>usesTerm(s,t)?{hit:`거절 사실 사용: ${excerpt(s)}`}:{}));
+ return rejected.flatMap(t=>lines.filter(s=>mentions(s,t)).map(s=>allowed.has(s)&&usesTerm(s,t)?{hit:`거절 사실 사용: ${excerpt(s)}`}:{}));
 }
 // 원장에 있는 항목만 대조한다. 원장에 없는 항목은 세지 않고, 대조할 항목이 하나도 없으면 not_applicable(합격률 분모에서 제외).
 export const factConflict:Grader={id:'fact_conflict',content:true,grade(item,ctx){
  if(!isText(item))return verdict('not_applicable');
  if(!ctx.facts)return verdict('not_applicable','원장 없음');
  const text=bodyOf(item),lines=bodySentences(text),confirmed=confirmedFacts(ctx);
- const checks=[...addressChecks(text,confirmed),...valueChecks(lines,confirmed),...rejectedChecks(lines,ctx.facts)];
+ // 거절 사실은 금지·보류 맥락(제목·라벨·금지 표 칸·금지 리드 아래 인용 목록) 밖 문장만 본다. 그 안은 쓰지 않을 표현의 목록이다(R3 기준선 S6 실측).
+ const allowed=new Set(outsideProhibition(blocks(withoutBannedLists(text))).filter(b=>!b.isLabel).flatMap(b=>sentences(b.line)));
+ const checks=[...addressChecks(text,confirmed),...valueChecks(lines,confirmed),...rejectedChecks(lines,ctx.facts,allowed)];
  return checks.length?hitsVerdict(checks.flatMap(c=>c.hit?[c.hit]:[])):verdict('not_applicable','원장 항목을 다루지 않음');
 }};
 
