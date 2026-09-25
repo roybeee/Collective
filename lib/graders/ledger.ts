@@ -30,17 +30,17 @@ const minutes=(s:string)=>[...s.matchAll(/(\d+)\s?분/g)].map(m=>String(Number(m
 const counts=(s:string)=>[...s.matchAll(/(\d[\d,]*(?:\.\d+)?)\s?(만|천)?/g)].map(m=>String(Math.round(num(m[1])*(m[2]==='만'?10000:m[2]==='천'?1000:1))));
 // 매장 수 주장(트랙 R R2): 규제 사전의 매장 수 정규식(FR_STORE_COUNT)과 같은 문장을 본다. 수, 가리키는 매장(가맹점·직영점·전체), 비교 방식을 함께 돌려준다.
 // '가맹점·가맹 매장 N개'는 가맹점 수, '직영점·직영 매장 N개'는 직영점 수, '매장·점포·지점·N호점·전국 N개'와 '가맹점과 직영점 합계 N개'는 전체 매장 수와 대조한다. '오픈 예정 N개'는 원장 항목이 없어 값을 내지 않는다.
-// 비교 방식: 'N여 개'는 N 이상·다음 자릿수 단위 미만(approx: '40여 개'는 40~49, '1,200여 개'는 1,200~1,299), 'N개 이상·넘는·N+·N호점 돌파·달성·시대'는 N 이상(gte), 나머지는 같은 값(eq).
+// 비교 방식: 'N여 개'는 N 이상·다음 자릿수 단위 미만(approx: '40여 개'는 40~49, '1,200여 개'는 1,200~1,299), 'N개 이상·넘는·넘은·N+·N호점 돌파·달성·시대'는 N 이상(gte), 나머지('N호점 눈앞·임박' 포함)는 같은 값(eq). '전국 100여 매장'처럼 개·곳 없이 매장 명사가 바로 붙은 수도 센다.
 // '2호점 오픈 기념'·'한정 12개'·'전국 5개 매장에서 한정 판매'는 매장 수 주장이 아니다.
 export type StoreCountClaim={n:string;of:'franchise'|'direct'|'total';cmp:'eq'|'gte'|'approx'};
 const STORE_COUNT=new RegExp(FR_STORE_COUNT,'g');
 export const storeCountClaimList=(s:string):StoreCountClaim[]=>[...s.matchAll(STORE_COUNT)].flatMap(m=>{
  const t=m[0];
  if(/^오픈\s?예정/.test(t))return [];
- const n=/\d[\d,]*(?=\s?(?:여\s?)?(?:개|곳|호점|\+))/.exec(t);
+ const n=/\d[\d,]*(?=\s?(?:여\s?)?(?:개|곳|호점|\+|매장|점포|가맹점|직영점|지점|가맹\s?(?:매장|점포)|직영\s?(?:매장|점포)))/.exec(t);
  if(!n)return [];
  const of:StoreCountClaim['of']=/호점/.test(t)||/직영/.test(t)&&/가맹/.test(t)?'total':/직영/.test(t)?'direct':/가맹/.test(t)?'franchise':'total';
- const cmp:StoreCountClaim['cmp']=/\d\s?여/.test(t)?'approx':/이상|넘|초과|\+|돌파|달성|시대/.test(t)||/호점/.test(t)&&!/눈앞/.test(t)?'gte':'eq';
+ const cmp:StoreCountClaim['cmp']=/\d\s?여/.test(t)?'approx':/이상|넘|초과|\+|돌파|달성|시대/.test(t)||/호점/.test(t)&&!/눈앞|임박/.test(t)?'gte':'eq';
  return [{n:String(num(n[0])),of,cmp}];
 });
 // 주장 값 n이 확정 값 v를 참으로 말하는가(비교 방식별).

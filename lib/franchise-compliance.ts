@@ -7,7 +7,7 @@ import type {BrandFact,FranchiseCostDetail} from './brand-facts';
 import {COMPLIANCE_LEXICON,FR_CONTEXT,FR_SHARED_COST,type ComplianceRule} from './graders/compliance-lexicon';
 import {COMPLIANCE_NOTICE} from './graders/compliance';
 import {VALUE_KINDS,krwAmounts,storeCountClaimList,storeCountHolds,type AmountSpan,type StoreCountClaim} from './graders/ledger';
-import {FRANCHISE_CLAIMS_VERSION,FRANCHISE_CLAIM_EVIDENCE,FRANCHISE_CLAIM_LOGIC,FRANCHISE_CLAIM_MATCHERS,FRANCHISE_FIGURE_IDS,FRANCHISE_HARD_BLOCK_IDS,FRANCHISE_OFFICIAL_EXTENSIONS,kstDateOf,rulesAt,type ClaimEvidence,type ClaimExtension,type FranchiseRule,type RuleBasis,type RuleScope} from './franchise-rules';
+import {FRANCHISE_CLAIMS_VERSION,FRANCHISE_CLAIM_EVIDENCE,FRANCHISE_CLAIM_LOGIC,FRANCHISE_CLAIM_MATCHERS,FRANCHISE_FIGURE_IDS,FRANCHISE_HARD_BLOCK_IDS,FRANCHISE_OFFICIAL_EXTENSIONS,FRANCHISE_REVIEW_NET,kstDateOf,rulesAt,type ClaimEvidence,type ClaimExtension,type FranchiseRule,type RuleBasis,type RuleScope} from './franchise-rules';
 import {franchiseFactKey,franchiseItem} from './fact-catalog';
 import {costDetailLine,versionStates,type VersionLite} from './franchise-facts';
 import {GATE_DISCLAIMER} from './franchise-gates';
@@ -16,13 +16,16 @@ export type ClaimScope='consumer'|'recruitment';
 // facts: 캠페인 범위의 유효 확정 사실(lib/brand-facts-server.ts confirmedFactContext, sourceRef 포함). at: 규칙 선택 시각(발행 예약 시각 등). now: 정보공개서 버전 상태 판정 시각.
 export type FranchiseJudgeInput={text:string;at:string;now:string;scope:ClaimScope;brandId:string;facts:readonly BrandFact[];versions:readonly VersionLite[]};
 export type FranchiseTier='hard_block'|'block'|'warn';
-export type FranchiseReason='pattern'|'no_evidence'|'value_mismatch'|'details_missing'|'revenue_fact';
+export type FranchiseReason='pattern'|'no_evidence'|'value_mismatch'|'details_missing'|'revenue_fact'|'review';
 // extended: 공식 규칙의 휴리스틱 확장으로 걸린 이슈(basis는 heuristic, 근거 라벨에 확장 적용을 적는다).
-export type FranchiseIssue={ruleId:string;registryId:string;tier:FranchiseTier;basis:RuleBasis;registryScope:RuleScope;title:string;article:string;excerpt:string;reason:FranchiseReason;escalatedBy?:'h.headline_claim_block';extended?:true;basisLabel:string;sources:readonly string[]};
-export type FranchiseJudgement={version:string;issues:FranchiseIssue[];hardBlocked:boolean;blocked:boolean;notice:string;disclaimer:string};
+// downgradedBy·downgradedFrom: 소비자 범위에서 캡션에 가맹 모집 문구가 없어 경고로 낮춘 이슈와 원래 등급(결정 25 기본값을 소비자 캠페인에 맞게 좁힌 것, COLLECTIVE 휴리스틱).
+export type FranchiseIssue={ruleId:string;registryId:string;tier:FranchiseTier;basis:RuleBasis;registryScope:RuleScope;title:string;article:string;excerpt:string;reason:FranchiseReason;escalatedBy?:'h.headline_claim_block';extended?:true;downgradedBy?:'consumer_no_recruitment_context';downgradedFrom?:'hard_block'|'block';basisLabel:string;sources:readonly string[]};
+// recruitmentContext: 모집 범위이거나 캡션에 가맹 모집 문구(RECRUITMENT_LIKE)가 있다. 소비자 범위에서 false면 모든 이슈가 경고다.
+export type FranchiseJudgement={version:string;issues:FranchiseIssue[];hardBlocked:boolean;blocked:boolean;recruitmentContext:boolean;notice:string;disclaimer:string};
 
 const H8='h.fact_opinion_labels',H9='h.headline_claim_block' as const,H6='h.revenue_figures_no_ad';
 const H8_TITLE='가맹 수치 문장의 [사실] 표지·정보공개서 각주 없음(H8)';
+const DOWNGRADED='consumer_no_recruitment_context' as const;
 // 가맹사업법·시행령·고시 제2019-8호만 근거인 공식 규칙은 가맹희망자 정보제공 규정이다. 소비자 캠페인에 거는 것은 결정 25의 적용 범위 선택이라 휴리스틱 표시를 덧붙인다.
 const FRANCHISE_LAW_SOURCES=new Set(['franchise_act','franchise_decree','franchise_false_info_notice']);
 const STORE_COUNT_RULE='kr.fr.store_count_claims',STARTUP_COST_RULE='kr.fr.startup_cost_claims';
@@ -37,16 +40,32 @@ const H9_NUMERIC=/(?<!(?:카카오|원두|우유|과즙|과육|아라비카|국�
 const H9_WINDOW=15;
 
 const compactText=(s:string)=>s.normalize('NFKC').replace(/\s+/g,'').toLowerCase();
+// 한 줄에 한 글자씩 세로로 쓴 낱말('수\n익\n보\n장')은 한 줄로 붙인다(한글 한 음절만 있는 줄이 둘 이상 이어질 때만).
+function joinVertical(t:string):string{
+ const lines=t.split('\n'),out:string[]=[],one=/^[ \t]*[가-힣][ \t]*$/;
+ for(let k=0;k<lines.length;){
+  let e=k;while(e<lines.length&&one.test(lines[e]))e++;
+  if(e-k>=2){out.push(lines.slice(k,e).map(l=>l.trim()).join(''));k=e}else{out.push(lines[k]);k++}
+ }
+ return out.join('\n');
+}
 // 판정 전에 NFKC로 정규화한다(전각 숫자 '４,２００만원'·'２０개', 'Ｎｏ．１', '№1'도 같은 표기다). 발췌는 정규화한 원문 문장이다.
-const normalized=(t:unknown)=>typeof t==='string'?t.normalize('NFKC'):'';
+const normalized=(t:unknown)=>typeof t==='string'?joinVertical(t.normalize('NFKC')):'';
 // ── 판정용 문장 보기(view) ──
 // 표현 정규식과 값 추출은 문장의 보기에서 한다. 발췌는 원문(raw)이다. 보기는 원문에서 다음만 바꾼다(COLLECTIVE 휴리스틱).
-// 1) 글자 사이 구분 기호·이모지·폭 없는 문자: '수익-보장'·'수익/보장'·'수익💰보장'은 '수익 보장', '(가)계약금'·'수익(을)'의 한두 글자 괄호는 괄호를 뗀다.
-// 2) 한 글자씩 띄우거나 점을 찍은 낱말: '수 익 보 장'·'수.익.보.장'·'R O I'·'7 일 만 에'는 붙인다(한 글자 토큰이 둘 이상 이어질 때만).
+// 1) 글자 사이 구분 기호·이모지·폭 없는 문자: '수익-보장'·'수익/보장'·'수익💰보장'·'수익—보장'·'수익ㅡ보장'은 '수익 보장', '(가)계약금'·'수익(을)'의 한두 글자 괄호는 괄호를 뗀다.
+//    결합 문자('수͏익'의 U+034F)는 지우고 한글 채움 문자(U+3164·U+115F·U+1160·U+FFA0, NFKC 뒤 U+1160)는 띄어쓰기로 본다. 한자 保障·保證·收益·賣出·特許·萬·千·億·月은 한글로 읽는다.
+// 2) 한 글자씩 띄우거나 점을 찍은 낱말: '수 익 보 장'·'수.익.보.장'·'수·익·보·장'·'R O I'·'7 일 만 에'는 붙인다(한 글자 토큰이 둘 이상 이어질 때만).
 // 3) 한글·혼합 수: '오백만원'→'500만원', '사천이백만 원'→'4200만 원', '4천2백만원'·'4천200만원'→'4200만원', '1.5천 개'→'1500 개', '2천여 개'→'2000여 개', '3억 2천'→'3억 2000만', '18프로'→'18%'.
+// 가운뎃점·띄운 줄표·괄호 주석은 목록·절 경계라 이 보기에서 그대로 두고, 해제 불가 규칙만 보는 두 번째 보기(altView)에서 띄어쓰기로 본다.
 const ZERO_WIDTH=/[­​-‏⁠﻿]/g,SYMBOLS=/[\p{Extended_Pictographic}\p{So}⃣️]/gu,PAREN_SHORT=/\(([가-힣]{1,2})\)/g;
-const INTRA_SEP=/(?<=[가-힣A-Za-z])[.\-_/*~|^'’"](?=[가-힣])|(?<=[가-힣])[.\-_/*~|^'’"](?=[A-Za-z])/g;
-const SPACED_RUN=/(?<![\p{L}\p{N}])[\p{L}\p{N}](?:[ .·ㆍ\-_/*~|]{1,3}[\p{L}\p{N}](?![\p{L}\p{N}]))+/gu;
+const MARKS=/\p{M}/gu,FILLER=/[\u115F\u1160\u3164\uFFA0]/g;
+const HANJA:Record<string,string>={保障:'보장',保證:'보증',收益:'수익',賣出:'매출',特許:'특허',萬:'만',千:'천',億:'억',月:'월'};
+const HANJA_RE=new RegExp(Object.keys(HANJA).join('|'),'g');
+// 'ㅡ'(U+3161, NFKC 뒤 U+1173)를 줄표로 쓴 경우도 구분 기호다.
+const SEP='[.\\-_/*~|^\'’"‐‑‒–—―\\u3161\\u1173]+';
+const INTRA_SEP=new RegExp(`(?<=[가-힣A-Za-z])${SEP}(?=[가-힣])|(?<=[가-힣])${SEP}(?=[A-Za-z])`,'g');
+const SPACED_RUN=/(?<![\p{L}\p{N}])[\p{L}\p{N}](?:[ .·ㆍ\u119E・‧\-_/*~|]{1,3}[\p{L}\p{N}](?![\p{L}\p{N}]))+/gu;
 const HDIGIT:Record<string,number>={일:1,이:2,삼:3,사:4,오:5,육:6,칠:7,팔:8,구:9};
 const digitOf=(t:string)=>t===''?1:/\d/.test(t)?Number(t):HDIGIT[t]??NaN;
 const HD='[일이삼사오육칠팔구]';
@@ -62,23 +81,36 @@ function numerals(s:string){
   }).replace(PERCENT_WORD,'%');
 }
 export function matchView(raw:string):string{
- const t=raw.replace(ZERO_WIDTH,'').replace(SYMBOLS,' ').replace(PAREN_SHORT,'$1').replace(INTRA_SEP,' ').replace(SPACED_RUN,m=>m.replace(/[ .·ㆍ\-_/*~|]/g,''));
+ const t=raw.replace(ZERO_WIDTH,'').replace(MARKS,'').replace(FILLER,' ').replace(HANJA_RE,h=>HANJA[h]).replace(SYMBOLS,' ').replace(PAREN_SHORT,'$1').replace(INTRA_SEP,' ')
+  .replace(SPACED_RUN,m=>m.replace(/[ .·ㆍ\u119E・‧\-_/*~|]/g,''));
  return numerals(t).replace(/[ \t]{2,}/g,' ').trim();
 }
-type Sentence={s:string;raw:string;line:number};
+// 해제 불가 규칙의 두 번째 보기: 한글 사이 가운뎃점('수익·보장'), 띄운 줄표·빗금('수익 — 보장', '수익 / 보장'), 짧은 괄호 주석('월 순수익(인건비·임대료 제외 기준) 550만원')을 띄어쓰기로 본다.
+// 적중을 더하기만 한다(첫 보기의 적중은 그대로다).
+const ALT_SEP=/(?<=[가-힣])\s?[·ㆍ\u119E・‧]\s?(?=[가-힣])|(?<=[가-힣])\s[-‐‑‒–—―/]\s(?=[가-힣])/g,ALT_PAREN=/\s?\([^()\n]{1,24}\)\s?/g;
+const altView=(s:string)=>s.replace(ALT_SEP,' ').replace(ALT_PAREN,' ').replace(/[ \t]{2,}/g,' ').trim();
+// parts: 이은 문장의 두 문장 보기. 이은 문장의 적중은 두 문장에 걸친 것만 센다(한 문장 안의 표현이 다른 문장의 낱말로 문맥을 얻지 않는다).
+type Sentence={s:string;raw:string;line:number;parts?:readonly [string,string]};
 function sentencesOf(text:string):Sentence[]{
  return text.split('\n').flatMap((l,line)=>l.split(/(?<=[.?!])\s+/).map(r=>r.trim()).filter(Boolean).map(raw=>({s:matchView(raw),raw,line})));
 }
-// 줄바꿈으로 끊은 해제 불가 표현('수익\n보장', '월 순수익\n550만원')을 보려고, 문장부호로 끝나지 않은 줄의 마지막 문장과 다음 줄의 첫 문장을 이은 문장.
-// 같은 줄의 묻고 답하는 두 문장('투자금 N개월 회수? 저희는 10개월!')도 잇는다. 해제 불가 규칙만 본다.
+// 줄바꿈으로 끊은 해제 불가 표현('수익\n보장', '월 순수익\n\n550만원')을 보려고, 문장부호로 끝나지 않은 줄의 마지막 문장과 다음 줄(빈 줄 하나까지 건너뜀)의 첫 문장을 이은 문장.
+// 같은 줄의 묻고 답하는 두 문장('투자금 N개월 회수? 저희는 10개월!')과, 문장부호가 있어도 이웃한 짧은 두 문장('월 순수익 걱정 끝.\n본사가 보장합니다.')도 잇는다. 해제 불가 규칙만 본다.
+const BRIDGE_SHORT=20;
 function bridgesOf(sentences:Sentence[]):Sentence[]{
  const out:Sentence[]=[];
  for(let k=0;k+1<sentences.length;k++){
-  const a=sentences[k],b=sentences[k+1];
-  if(!(b.line===a.line+1&&!/[.?!。…:：]$/.test(a.raw))&&!(b.line===a.line&&/\?$/.test(a.raw)))continue;
-  const raw=a.raw+' '+b.raw;out.push({s:matchView(raw),raw,line:a.line});
+  const a=sentences[k],b=sentences[k+1],near=b.line<=a.line+2;
+  const broken=b.line>a.line&&near&&!/[.?!。…:：]$/.test(a.raw),asked=b.line===a.line&&/\?$/.test(a.raw),short=near&&a.s.length<=BRIDGE_SHORT&&b.s.length<=BRIDGE_SHORT;
+  if(!broken&&!asked&&!short)continue;
+  const raw=a.raw+' '+b.raw;out.push({s:matchView(raw),raw,line:a.line,parts:[a.s,b.s]});
  }
  return out;
+}
+// 이은 문장·두 번째 보기를 더한 해제 불가 규칙의 문장 풀.
+function hardPool(sentences:Sentence[],bridges:Sentence[]):Sentence[]{
+ const base=[...sentences,...bridges];
+ return [...base,...base.flatMap(x=>{const s=altView(x.s);return s!==x.s?[{...x,s,...(x.parts?{parts:[altView(x.parts[0]),altView(x.parts[1])] as const}:{})}]:[]})];
 }
 type Matcher={match:string;also?:string;consumerAlso?:string;except?:string;cleared?:string};
 type Hit={x:Sentence;start:number;end:number};
@@ -98,7 +130,7 @@ const PARTICLE='(?:[은는을를이가도]|으로|로|에는|에서는|에|에�
 const DIRECT_NEG=new RegExp(`^\\s?(?:(?:요구|요청|수령|제시|약속)\\s?)?(?:${PARTICLE}\\s?)?${negTail(NEG_STEM)}|^(?:지|치)\\s?(?:[는도]\\s?)?(?:않|못)${NOT_COND}`);
 // 같은 절 끝의 부정은 동사 부정만 본다('X 조건 없음'의 '없음'은 사이 낱말 '조건'을 부정한다).
 const CLAUSE_NEG=new RegExp(`^([^,.;!?\\n·]{0,26}?)(?:${NEG_STEM_STRICT}지\\s?(?:[는도]\\s?)?(?:않|못)${NOT_COND}|(?:할|될|드릴|받을|해\\s?드릴|쓸|줄|둘)\\s?수\\s?(?:는\\s?|도\\s?)?없|(?:불법|위법)(?:입니다|이다|이에요|이며|행위)|금지(?:돼|되어|됩니다|입니다|된|되며|이며|하고|합니다))`);
-const LIST_NEG=/^(?:\s?(?:,|·|ㆍ|및|와|과|이나|나|또는|혹은)\s?[가-힣A-Za-z0-9]{1,10}(?:\s[가-힣A-Za-z0-9]{1,10}){0,2}?){1,5}?\s?(?:을|를|은|는|도)\s?(?:받|요구하|요청하|수령하|두|제공하|드리|약속하|지급하|보장하|책임지|알선하|운영하)지\s?(?:[는도]\s?)?(?:않|못)/;
+const LIST_NEG=/^(?:\s?(?:,|·|ㆍ|\u119E|및|와|과|이나|나|또는|혹은)\s?[가-힣A-Za-z0-9]{1,10}(?:\s[가-힣A-Za-z0-9]{1,10}){0,2}?){1,5}?\s?(?:을|를|은|는|도)\s?(?:받|요구하|요청하|수령하|두|제공하|드리|약속하|지급하|보장하|책임지|알선하|운영하)지\s?(?:[는도]\s?)?(?:않|못)/;
 const META_NEG=new RegExp(`^\\s?(?:(?:을|를|이|가)\\s?)?(?:하는|해\\s?주는|해\\s?드리는|되는|된|이라는|라는|같은|등의|류의|의|하겠다는|한다는|과\\s?같은|와\\s?같은)?\\s?(?:[가-힣A-Za-z0-9]{1,8}\\s){0,4}?(?:문구|표현|광고|문장|말|약속|제도|프로그램|방식|행위|내용|요구|제안|조항|정책|서비스|기간|단축|수치|숫자|자료|이야기)(?:은|는|을|를|도|이|가|으로|로)?\\s?([^,.;!?\\n]{0,24}?)(?:${negTail(NEG_STEM)}|금지|불법|위법)`);
 const CONNECTIVE=/(?:면|으면|면서|는데|지만|니까|어서|아서|해서|하여|고서|며|려고|려면|도록)(?:\s|$)/,RHETORIC=/다른|타\s?(?:브랜드|사|업체)|경쟁|어디에도|어디서도|어디서나|오직|저희만|우리만|유일/;
 const CONTRAST_AFTER=/^(?:는|은|던)\s?[가-힣]{1,8}(?:와|과|랑|하고)?(?:는|은|도)?\s?(?:[가-힣]{1,6}\s)?(?:다르|다릅|달라|달리|차원|비교|잊|말고|아니라|아닌)/,ADNOMINAL_AFTER=/^(?:는|은|던|을)\s?[가-힣]/;
@@ -119,7 +151,7 @@ function negatedAfter(s:string,end:number):boolean{
 }
 // 해제 불가 규칙의 except는 매치가 든 절(쉼표·가운뎃점·더하기·줄표·세미콜론·괄호 사이)만 본다. 다른 절이나 괄호 주석의 '구독 이벤트'·'매출 1% 기부'·'(탈퇴는 자유)'로 면제되지 않는다.
 // 숫자 사이 쉼표('4,200')는 절 경계가 아니다.
-const CLAUSE_CUT=/(?<!\d)[,，]|[,，](?!\d)|[;；·ㆍ+|!?()（）]|\s[-–—/]\s/g;
+const CLAUSE_CUT=/(?<!\d)[,，]|[,，](?!\d)|[;；·ㆍ\u119E+|!?()（）]|\s[-–—/]\s/g;
 function clauseOf(s:string,start:number,end:number){
  let from=0,to=s.length;
  for(const m of s.matchAll(CLAUSE_CUT)){const at=m.index!;if(at<start)from=at+m[0].length;else if(at>=end){to=at;break}}
@@ -133,6 +165,7 @@ function hitSentences(m:Matcher,sentences:Sentence[],o:{all:boolean;figure:boole
   if(also&&!also.test(x.s)||ctx&&!ctx.test(x.s)||except&&!o.clauseExcept&&except.test(x.s))continue;
   for(const hit of x.s.matchAll(match)){
    const start=hit.index!,end=start+hit[0].length;
+   if(x.parts&&x.parts.some(p=>p.includes(hit[0])))continue;
    if(!o.figure&&negatedAfter(x.s,end))continue;
    if(except&&o.clauseExcept&&except.test(clauseOf(x.s,start,end)))continue;
    out.push({x,start,end});break;
@@ -205,7 +238,7 @@ function countResult(x:Sentence,current:Fact[],scope:ClaimScope):ValueResult{
  return {claim:true,failure:null};
 }
 // 비용 금액의 절(끊는 기호 사이)과 매장 유형. 유형은 금액이 든 절 → 문장에서 금액 앞 → 문장 전체 → 앞 두 줄 → 다음 줄 순으로 찾는다(가장 가까운 유형).
-const SEG_CUT=/[,，](?!\d)|[;；·ㆍ/|]|\s[-–—]\s/g;
+const SEG_CUT=/[,，](?!\d)|[;；·ㆍ\u119E/|]|\s[-–—]\s/g;
 const PER_UNIT=/(?:3\.3\s?(?:m2|㎡)|평|m2|㎡|제곱\s?미터)\s?당/,VAT_RE=/(?:VAT|vat|부가세|부가가치세)\s?(포함|별도|제외|미포함|불포함)/;
 const vatOf=(t:string)=>{const m=VAT_RE.exec(t);return m?(m[1]==='포함'?'incl':'excl'):null};
 const typesIn=(t:string,types:string[])=>{const c=compactText(t);return types.filter(ty=>c.includes(compactText(ty)))};
@@ -332,6 +365,10 @@ function revenueFactSentence(facts:Fact[],sentences:Sentence[]):Sentence|undefin
  return sentences.find(x=>hits(x.s))??(values.some(v=>v.named&&v.compact.length>=6&&compactText(sentences.map(x=>x.s).join('')).includes(v.compact))?sentences[0]:undefined);
 }
 
+// 안전망 문장: 절(끊는 기호 사이)마다 수익 낱말과 금액·비율(개수·기간 셈은 뺀다)이 함께 있는가. 경품·기부·할인 절과 비용 라벨 절('로열티는 매출액의 3%')은 빼고 본다.
+const REVIEW_WORDS=new RegExp(FRANCHISE_REVIEW_NET.words),REVIEW_FIGURE=new RegExp(FRANCHISE_REVIEW_NET.figure),REVIEW_SKIP=new RegExp(FRANCHISE_REVIEW_NET.skip);
+const revenueLikeFigure=(s:string)=>s.split(CLAUSE_CUT).some(c=>REVIEW_WORDS.test(c)&&!GIVEAWAY.test(c)&&!COST_LABELED.test(c)&&!REVIEW_SKIP.test(c)&&REVIEW_FIGURE.test(c.replace(COUNTER,' ')));
+
 // ── 판정 ──
 type Draft={rule:FranchiseRule;ruleId:string;title:string;lexicon?:ComplianceRule;extension?:ClaimExtension;reason:FranchiseReason;hit:Hit;tier:FranchiseTier;escalated?:boolean};
 const tierOf=(r:FranchiseRule):FranchiseTier=>(FRANCHISE_HARD_BLOCK_IDS as readonly string[]).includes(r.id)?'hard_block':r.tier==='warn'?'warn':'block';
@@ -348,7 +385,10 @@ const ascii=(a:string,b:string)=>a<b?-1:a>b?1:0;
 const numericClaim=(h:Hit)=>{const w=h.x.s.slice(Math.max(0,h.start-H9_WINDOW),h.end+H9_WINDOW);return H9_NUMERIC.test(w)||FR_KINDS.some(k=>k.body(w).length>0)};
 const HARD=new Set<string>(FRANCHISE_HARD_BLOCK_IDS),FIGURES=new Set<string>(FRANCHISE_FIGURE_IDS);
 export function judgeFranchiseText(i:FranchiseJudgeInput):FranchiseJudgement{
- const text=normalized(i.text),sentences=sentencesOf(text),bridges=bridgesOf(sentences),date=kstDateOf(i.at);
+ const text=normalized(i.text),sentences=sentencesOf(text),bridges=bridgesOf(sentences),hardSentences=hardPool(sentences,bridges),date=kstDateOf(i.at);
+ // 소비자 범위는 캡션(본문 전체)에 가맹 모집 문구가 있을 때만 가맹 규칙이 막는다. 없으면 모든 이슈를 경고로 낮춰 승인 화면에만 보인다(결정 25 기본값을 소비자 캠페인에 맞게 좁힘).
+ // '본사'·'창업 N주년'·'점포' 같은 느슨한 낱말은 모집 문구가 아니다(RECRUITMENT_LIKE). 모집 범위는 캠페인 자체가 모집이다.
+ const context=i.scope==='recruitment'||RECRUITMENT_LIKE.test(text)||sentences.some(x=>RECRUITMENT_LIKE.test(x.s));
  const applicable=rulesAt(date).filter(r=>r.scope==='franchise_brand'||(r.scope==='objective_export'&&i.scope==='recruitment'));
  const applies=(id:string)=>applicable.some(r=>r.id===id);
  const {current,stale}=splitFacts(i);
@@ -363,7 +403,7 @@ export function judgeFranchiseText(i:FranchiseJudgeInput):FranchiseJudgement{
   if(matcher.cleared&&new RegExp(matcher.cleared).test(text))continue;
   const evidence=FRANCHISE_CLAIM_EVIDENCE[ruleId],values=evidence?.kind==='values',hard=HARD.has(rule.id),opts={figure:FIGURES.has(rule.id),clauseExcept:hard,scope:i.scope};
   // 해제 불가 규칙은 줄바꿈으로 끊은 표현도 본다(이은 문장은 뒤에 둔다).
-  const pool=hard?[...sentences,...bridges]:sentences;
+  const pool=hard?hardSentences:sentences;
   const draft=(reason:FranchiseReason,hit:Hit,extension?:ClaimExtension)=>drafts.push({rule,ruleId,title,lexicon,extension,reason,hit,tier:tierOf(rule)});
   const hits=hitSentences(matcher,pool,{...opts,all:values});
   const met=!!evidence&&evidence.kind!=='values'&&hits.length>0&&evidenceMet(evidence,current,text);
@@ -401,18 +441,30 @@ export function judgeFranchiseText(i:FranchiseJudgeInput):FranchiseJudgement{
   const first=[...valueHits].sort((a,b)=>sentences.indexOf(a)-sentences.indexOf(b))[0];
   drafts.push({rule:h8,ruleId:H8,title:H8_TITLE,reason:'pattern',hit:{x:first,start:0,end:first.s.length},tier:'warn'});
  }
- // H9: 첫 줄(비어 있지 않은 첫 줄)의 경고 가운데 경고 표현 곁에 수치 주장이 있는 것은 차단으로 올린다. H8은 문서 단위 표지 경고라 올리지 않는다.
+ // 안전망(모집 범위, COLLECTIVE 휴리스틱): 패턴 규칙은 완전하지 않다. 어느 규칙도 잡지 않은 문장에서 수익 낱말과 같은 절에 금액·비율이 있으면 경고로 승인자에게 보인다.
+ const parent=applicable.find(r=>r.id===FRANCHISE_REVIEW_NET.parent);
+ if(i.scope==='recruitment'&&parent){
+  const caught=(x:Sentence)=>drafts.some(d=>d.hit.x.raw.includes(x.raw)||x.raw.includes(d.hit.x.raw));
+  const x=[...sentences,...bridges].find(x=>!caught(x)&&revenueLikeFigure(x.s));
+  if(x)drafts.push({rule:parent,ruleId:FRANCHISE_REVIEW_NET.id,title:FRANCHISE_REVIEW_NET.title,reason:'review',hit:{x,start:0,end:x.s.length},tier:'warn'});
+ }
+ // H9: 첫 줄(비어 있지 않은 첫 줄)의 경고 가운데 경고 표현 곁에 수치 주장이 있는 것은 차단으로 올린다. H8·안전망은 확인용 경고라 올리지 않는다.
+ // 모집 문구 없는 소비자 캡션은 아래에서 모두 경고로 낮춘다(올린 것도 downgradedFrom 'block'으로 남기고 escalatedBy는 떼어 낸다).
  const headline=sentences[0]?.line;
- if(applies(H9)&&headline!==undefined)for(const d of drafts)if(d.tier==='warn'&&d.ruleId!==H8&&d.hit.x.line===headline&&numericClaim(d.hit)){d.tier='block';d.escalated=true}
- const issues:FranchiseIssue[]=drafts.map(d=>({ruleId:d.ruleId,registryId:d.rule.id,tier:d.tier,basis:d.extension?'heuristic':d.rule.basis,registryScope:d.rule.scope!,title:d.title,article:d.rule.article,excerpt:d.hit.x.raw.slice(0,EXCERPT),reason:d.reason,...(d.escalated?{escalatedBy:H9}:{}),...(d.extension?{extended:true as const}:{}),basisLabel:basisLabelOf(d,i.scope),sources:[...d.rule.sourceUrls]}))
-  .sort((a,b)=>TIER_ORDER[a.tier]-TIER_ORDER[b.tier]||ascii(a.ruleId,b.ruleId));
- return {version:`${FRANCHISE_CLAIMS_VERSION}+${COMPLIANCE_LEXICON.version}`,issues,hardBlocked:issues.some(x=>x.tier==='hard_block'),blocked:issues.some(x=>x.tier!=='warn'),notice:COMPLIANCE_NOTICE,disclaimer:GATE_DISCLAIMER};
+ if(applies(H9)&&headline!==undefined)for(const d of drafts)if(d.tier==='warn'&&d.ruleId!==H8&&d.ruleId!==FRANCHISE_REVIEW_NET.id&&d.hit.x.line===headline&&numericClaim(d.hit)){d.tier='block';d.escalated=true}
+ const issues:FranchiseIssue[]=drafts.map(d=>{
+  const from=!context&&d.tier!=='warn'?d.tier as 'hard_block'|'block':null;
+  return {ruleId:d.ruleId,registryId:d.rule.id,tier:from?'warn' as const:d.tier,basis:d.extension||d.ruleId===FRANCHISE_REVIEW_NET.id?'heuristic' as const:d.rule.basis,registryScope:d.rule.scope!,title:d.title,article:d.rule.article,excerpt:d.hit.x.raw.slice(0,EXCERPT),reason:d.reason,
+   ...(d.escalated&&!from?{escalatedBy:H9}:{}),...(d.extension?{extended:true as const}:{}),...(from?{downgradedBy:DOWNGRADED,downgradedFrom:from}:{}),basisLabel:basisLabelOf(d,i.scope),sources:[...d.rule.sourceUrls]};
+ }).sort((a,b)=>TIER_ORDER[a.tier]-TIER_ORDER[b.tier]||ascii(a.ruleId,b.ruleId));
+ return {version:`${FRANCHISE_CLAIMS_VERSION}+${COMPLIANCE_LEXICON.version}`,issues,hardBlocked:issues.some(x=>x.tier==='hard_block'),blocked:issues.some(x=>x.tier!=='warn'),recruitmentContext:context,notice:COMPLIANCE_NOTICE,disclaimer:GATE_DISCLAIMER};
 }
 
 // ── 문구 ──
-const REASON_TEXT:Record<FranchiseReason,string>={pattern:'',no_evidence:'근거 사실 없음',value_mismatch:'확정 사실 값과 다름',details_missing:'매장 유형·포함·불포함·면적 줄 없음',revenue_fact:'수익 항목 사실 값'};
+const REASON_TEXT:Record<FranchiseReason,string>={pattern:'',no_evidence:'근거 사실 없음',value_mismatch:'확정 사실 값과 다름',details_missing:'매장 유형·포함·불포함·면적 줄 없음',revenue_fact:'수익 항목 사실 값',review:'규칙 밖 표현이라 승인자 확인'};
+const downgradeText=(x:FranchiseIssue)=>x.downgradedBy?`모집 문구 없는 소비자 캡션이라 경고, 모집 문구가 있으면 ${x.downgradedFrom==='hard_block'?'해제 불가 ':''}차단`:'';
 export function franchiseIssueText(x:FranchiseIssue):string{
- const why=[REASON_TEXT[x.reason],x.escalatedBy?'첫 줄 수치 주장이라 차단(H9)':''].filter(Boolean).join(' · ');
+ const why=[REASON_TEXT[x.reason],x.escalatedBy?'첫 줄 수치 주장이라 차단(H9)':'',downgradeText(x)].filter(Boolean).join(' · ');
  const basis=x.escalatedBy&&!x.basisLabel.includes(GATE_DISCLAIMER)?`${x.basisLabel} · H9는 ${GATE_DISCLAIMER}`:x.basisLabel;
  return `${x.title}${why?`(${why})`:''} — “${x.excerpt}” (${basis})`;
 }
@@ -447,7 +499,9 @@ export function mentionedFranchiseFacts(i:Omit<FranchiseJudgeInput,'at'|'scope'>
 
 // ── 모집처럼 읽히는 소비자 캠페인 ──
 // objective가 없는 캠페인(R2의 모든 캠페인)은 소비자 규칙만 적용한다. 모집처럼 읽히면 발행 승인 화면에만 경고하고 서버는 막지 않는다(결정 21·H7 문구 포함).
-export const RECRUITMENT_LIKE=/가맹\s?(?:문의|상담|모집|개설|조건|사업\s?설명회)|가맹점\s?모집|창업\s?(?:설명회|문의|상담|박람회)|점주\s?모집|예비\s?창업자/;
+// 같은 문구가 캡션에 있으면 소비자 범위에서도 가맹 규칙이 막는다(judgeFranchiseText). 엄격한 모집 문구만 본다: 가맹 문의·상담·모집·개설·조건·계약·신청·설명회, 가맹점 모집,
+// 창업 설명회·문의·상담·박람회·비용·아이템, 점주 모집, 예비 창업자, 가맹비·가맹금·가맹 보증금·가맹 교육비. '본사'·'창업 30주년'·'점포'·'가맹점에서 사용 가능'·'교육비'만으로는 아니다.
+export const RECRUITMENT_LIKE=/가맹\s?(?:문의|상담|모집|개설|조건|사업\s?설명회|설명회|계약|신청|희망)|가맹점\s?(?:모집|개설)|가맹점주\s?모집|창업\s?(?:설명회|문의|상담|박람회|비용|비(?![가-힣])|아이템|희망자?)|점주\s?(?:님\s?)?(?:을\s?|를\s?)?(?:모집|모십니다|모셔요)|예비\s?(?:창업자|점주|가맹점주)|가맹비|가맹금|가맹\s?(?:가입비|보증금|교육비)|프랜차이즈\s?(?:창업|모집|문의|가맹)|[Ff]ranchise\s+(?:inquir|opportunit|recruit)/;
 export function recruitmentWarning(branch:string):string{
  return '모집 캠페인처럼 보입니다. 이 캠페인에는 소비자 캠페인 규칙만 적용했습니다. 모집 광고는 모집 목표를 정한 캠페인으로 따로 만들어 승인받으세요.'+(branch!=='A'?' 분기 A가 아니면 유료 모집 광고·설명회·가맹 조건 제시를 하지 않습니다(H7).':'')+` ${GATE_DISCLAIMER}`;
 }

@@ -1,5 +1,5 @@
 // 트랙 R R2 가맹 모집 규제 가드레일: 규제 사전 범주 franchise_recruit, 해제 불가 목록(결정 25), 휴리스틱 표현·근거 조건, 캡션·발행 게이트의 직접 판정(원장 해소·[확인 필요] 면제·인용 강등 없음),
-// 소비자 범위와 모집 범위 분리(소비자 판촉 합성 20건 오탐 0), 값 대조(매장 수·창업비용), 교체된 정보공개서 버전 값 차단, ruleAt 날짜 주입, 대표 승인으로도 풀리지 않는 409, 모집 유사 경고, 비가맹 불변, 모델 제출 바이트 동일.
+// 소비자 범위와 모집 범위 분리(소비자 판촉 합성 20건 오탐 0, 소비자 캡션은 가맹 모집 문구가 있을 때만 차단 15d), 모집 범위 안전망 경고(15d), 값 대조(매장 수·창업비용), 교체된 정보공개서 버전 값 차단, ruleAt 날짜 주입, 대표 승인으로도 풀리지 않는 409, 모집 유사 경고, 비가맹 불변, 모델 제출 바이트 동일.
 // 근거: mocked(메모리 SQLite, 이메일 모드 세션 주입, 모의 R2, 외부 fetch는 던지는 스텁, 모의 HERMES). 값·문장은 모두 합성이다. 판정은 COLLECTIVE 휴리스틱 · 법률 자문 아님(결정 20 보류).
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -52,6 +52,8 @@ const ref=(over={})=>({disclosureVersionId:'v1',fiscalYear:2025,page:3,...over})
 const count=(n,over={})=>fact('franchise_store_count',n+'개',{sourceRef:ref({asOf:'2025-12-31'}),...over});
 const judge=(text,{scope='recruitment',facts=[],versions=[V1],at=AT,now=NOW}={})=>jc.judgeFranchiseText({text,at,now,scope,brandId:'b',facts,versions});
 const ids=j=>j.issues.map(i=>i.ruleId);
+// 소비자 범위는 캡션에 가맹 모집 문구가 있을 때만 가맹 규칙이 막는다(결정 25 기본값을 소비자 캠페인에 맞게 좁힘, R2 3차 재검토). 소비자 범위 차단 검사는 모집 문구 줄을 붙인 캡션으로 본다.
+const RC='\n가맹 문의 환영';
 
 // ════ 4) 규칙마다 합성 위반 2건 이상(모집 범위, 사실 없음) ════
 const VIOLATIONS={
@@ -130,13 +132,13 @@ check('8: the production and sold-out sentences (1·2·8·9·15·20) are blocked
 const EXTRA=['수입 버터로 만든 풍미, 맛은 보장합니다','하루 매출의 10%를 기부합니다','판매 수익금 전액 기부를 보장합니다','전국 가맹점에서 바로 사용 가능한 쿠폰','가맹점 당일 픽업 가능','케이크 예약금 미리 받습니다','로열티 카드 5개 모으면 도넛 1개','베이킹 클래스 교육비 35,000원','멤버십 가입비 무료','포장 용기 보증금 없음','정부 지원 소비쿠폰 사용 가능','그랜드 오픈 지원 이벤트','세트 No.10 출시','한정 12개, 대기 없음'];
 check('8a: 14 consumer sentences that tripped the draft patterns raise 0 issues in consumer scope',same(EXTRA.flatMap(t=>judge(t,{scope:'consumer',facts:consumerFacts}).issues.map(i=>t+' → '+i.ruleId)),[]));
 check('8a: none of them is a hard_block even in recruitment scope',EXTRA.every(t=>!judge(t,{scope:'recruitment',facts:consumerFacts}).hardBlocked));
-check('8b: unremovable revenue patterns need a money or rate figure (rankings and imported goods are not revenue figures)',['매일 매출 1위 메뉴 글레이즈드 도넛','9월 수입 원두 2종 입고','이달 수입 버터 3종으로 구웠어요'].every(t=>!judge(t,{scope:'consumer'}).hardBlocked)&&['일 매출 300만원','매월 순수익 20%','가맹점 매출 2배'].every(t=>judge(t,{scope:'consumer'}).hardBlocked));
+check('8b: unremovable revenue patterns need a money or rate figure (rankings and imported goods are not revenue figures)',['매일 매출 1위 메뉴 글레이즈드 도넛','9월 수입 원두 2종 입고','이달 수입 버터 3종으로 구웠어요'].every(t=>!judge(t+RC,{scope:'consumer'}).hardBlocked)&&['일 매출 300만원','매월 순수익 20%','가맹점 매출 2배'].every(t=>judge(t+RC,{scope:'consumer'}).hardBlocked));
 check('8a: 한정 12개, 대기 없음 is not a mention of the store count 12 (no footnote needed)',jc.mentionedFranchiseFacts({text:'한정 12개, 대기 없음',now:NOW,brandId:'b',facts:consumerFacts,versions:[V1]}).length===0&&jc.mentionedFranchiseFacts({text:'전국 12개 매장에서 만나요',now:NOW,brandId:'b',facts:consumerFacts,versions:[V1]}).length===1);
 
 // ════ 9·10·11) 값 대조 ════
 const reasonOf=(j,id)=>j.issues.find(i=>i.ruleId===id)?.reason;
 const SC='kr.fr.store_count_claims',SU='kr.fr.startup_cost_claims';
-check('9: confirmed store count 12 with reference date blocks 전국 20개 매장 (value_mismatch)',reasonOf(judge('전국 20개 매장',{scope:'consumer',facts:[count(12)]}),SC)==='value_mismatch'&&judge('전국 20개 매장',{scope:'consumer',facts:[count(12)]}).blocked);
+check('9: confirmed store count 12 with reference date blocks 전국 20개 매장 (value_mismatch)',reasonOf(judge('전국 20개 매장'+RC,{scope:'consumer',facts:[count(12)]}),SC)==='value_mismatch'&&judge('전국 20개 매장'+RC,{scope:'consumer',facts:[count(12)]}).blocked);
 check('9: 전국 12개 매장 passes',!judge('전국 12개 매장',{scope:'consumer',facts:[count(12)]}).blocked&&!ids(judge('전국 12개 매장',{scope:'consumer',facts:[count(12)]})).includes(SC));
 check('9: an old count fact without a reference date (or source) is no evidence',reasonOf(judge('전국 12개 매장',{facts:[count(12,{sourceRef:ref()})]}),SC)==='no_evidence'&&reasonOf(judge('전국 12개 매장',{facts:[fact('가맹점 수','12개')]}),SC)==='no_evidence');
 const direct3=fact('direct_store_count','3개',{sourceRef:ref({asOf:'2025-12-31'})});
@@ -156,7 +158,7 @@ check('11: a fee claim with a matching fee fact passes, a different amount is va
 
 // ════ 12) 부정문·[확인 필요]·인용 ════
 check('12: negations are not flagged (4 cases)',['수익을 보장하지 않습니다','수익 보장은 없습니다','가계약금은 받지 않습니다','본사 전속 가맹거래사를 두지 않습니다'].every(t=>judge(t).issues.length===0));
-const marked=judge('[확인 필요] 월 순수익 500만원 보장',{scope:'consumer'}),quoted=judge('“월 순수익 500만원 보장” 같은 경쟁 사례',{scope:'consumer'});
+const marked=judge('[확인 필요] 월 순수익 500만원 보장'+RC,{scope:'consumer'}),quoted=judge('“월 순수익 500만원 보장” 같은 경쟁 사례'+RC,{scope:'consumer'});
 check('12: a [확인 필요] mark and a quoted competitor case stay hard_block (no exemption or downgrade)',marked.hardBlocked&&quoted.hardBlocked&&ids(marked).includes('kr.fr.revenue_guarantee')&&ids(quoted).includes('kr.fr.revenue_guarantee'));
 check('12: the same quoted sentence is info on the A2 opt-in path (different from the gate)',comp.checkCompliance('“월 순수익 500만원 보장” 같은 경쟁 사례',{franchise:{scope:'consumer'}}).issues.filter(i=>i.category==='franchise_recruit').every(i=>i.severity==='info'));
 check('12: the gate does not use ledger resolution (a confirmed store count key without a matching value still blocks)',reasonOf(judge('전국 20개 매장',{facts:[count(12)]}),SC)==='value_mismatch'&&!comp.checkCompliance('전국 20개 매장',{franchise:{scope:'consumer'},facts:{confirmed:[{key:'franchise_store_count',value:'12개'}],prohibited:[]}}).issues.some(i=>i.ruleId===SC));
@@ -168,7 +170,7 @@ check('13: the family keeps hard_block on both sides of the boundary',assoc('202
 check('13: virtual human label applies from 2026-06-01, endorsement from 2024-12-01',!ids(judge('AI 점주가 소개합니다',{at:'2026-05-31T12:00:00+09:00'})).includes('kr.ad.virtual_human_label')&&ids(judge('AI 점주가 소개합니다',{at:'2026-06-01T00:00:00+09:00'})).includes('kr.ad.virtual_human_label')&&!ids(judge('점주 인터뷰 영상 공개',{at:'2024-11-30T12:00:00+09:00'})).includes('kr.ad.endorsement_disclosure')&&ids(judge('점주 인터뷰 영상 공개',{at:'2024-12-01T00:00:00+09:00'})).includes('kr.ad.endorsement_disclosure'));
 
 // ════ 14) H9 ════
-const first=judge('독점 상권 3km 보장\n안내',{scope:'consumer'}),second=judge('안내\n독점 상권 3km 보장',{scope:'consumer'});
+const first=judge('독점 상권 3km 보장\n가맹 상담 안내',{scope:'consumer'}),second=judge('가맹 상담 안내\n독점 상권 3km 보장',{scope:'consumer'});
 check('14: first line numeric territory claim is block with escalatedBy, second line stays warn',first.issues.find(i=>i.ruleId==='kr.fr.territory_claims')?.escalatedBy==='h.headline_claim_block'&&second.issues.find(i=>i.ruleId==='kr.fr.territory_claims')?.tier==='warn'&&!second.blocked);
 check('14: a first-line warn claim without a number stays warn',judge('독점 상권 보장 안내',{scope:'consumer',facts:[cur('trade_area_source','독점 상권 보장 안내')]}).issues.every(i=>i.tier!=='block'||i.ruleId!=='kr.fr.territory_claims'));
 
@@ -183,23 +185,23 @@ check('15: issues sort hard_block, block, warn then rule id, one per rule, excer
 const input={text:'전국 20개 매장',at:AT,now:NOW,scope:'consumer',brandId:'b',facts:[count(12)],versions:[V1]},before=JSON.stringify(input);jc.judgeFranchiseText(input);
 check('15: the judge does not mutate its input',JSON.stringify(input)===before);
 check('15: 40,000-character inputs finish within one second',['가'.repeat(40000),('수제 '+'가'.repeat(28)).repeat(1300),('월 순수익 '+'나'.repeat(20)+' ').repeat(1500),'전국 1개 매장 '.repeat(4000)].every(t=>{const s=Date.now();judge(t,{facts:[count(12)]});return Date.now()-s<1000}));
-const gateMsg=jc.franchiseGateError(judge('월 순수익 500만원 보장',{scope:'consumer'}));
+const gateMsg=jc.franchiseGateError(judge('월 순수익 500만원 보장'+RC,{scope:'consumer'}));
 check('15: a hard_block gate error is a 409 that says approval cannot release it',gateMsg.status===409&&gateMsg.message.includes('승인으로 풀 수 없음')&&gateMsg.message.includes('월 순수익 500만원 보장')&&gateMsg.message.includes(DISCLAIMER));
-check('15: a block-only gate error asks for evidence and a clean text has no error',jc.franchiseGateError(judge('전국 20개 매장',{scope:'consumer',facts:[count(12)]})).message.includes('근거 사실')&&jc.franchiseGateError(judge('가을 신메뉴 출시',{scope:'consumer'}))===null);
+check('15: a block-only gate error asks for evidence and a clean text has no error',jc.franchiseGateError(judge('전국 20개 매장'+RC,{scope:'consumer',facts:[count(12)]})).message.includes('근거 사실')&&jc.franchiseGateError(judge('가을 신메뉴 출시',{scope:'consumer'}))===null);
 const FORBIDDEN=/법적으로 적합|준수 완료|합법/;
 check('15: judge texts make no legal-adequacy claim',!FORBIDDEN.test(readFileSync('lib/franchise-compliance.ts','utf8'))&&!FORBIDDEN.test(JSON.stringify(all))&&!FORBIDDEN.test(jc.recruitmentWarning('B')));
 
 // ════ 15b) 검토 반영(합성): 붙은 부정만 부정, 다른 절의 면제·부정 없음, 전각 숫자, 소비자 오탐, 값 대조 세분화, 확장 라벨, H9 창 ════
-const SC_ID='kr.fr.store_count_claims',hardC=t=>judge(t,{scope:'consumer'}).hardBlocked;
+const SC_ID='kr.fr.store_count_claims',hardC=t=>judge(t+RC,{scope:'consumer'}).hardBlocked;
 // 뒤 절의 비용 주석·면책·권유·다른 금지 문구는 해제 불가 표현을 부정하거나 면제하지 않는다.
 const HARD_SUFFIXED=['월 순수익 500만원 보장, 인건비 제외','이벤트: 월 순수익 500만원 보장, 인건비 제외','최저 수익 보장, 임대료 무관','월 매출 4,200만원, 임대료 제외','월 순수익 500만원 보장, 걱정하지 마세요','18개월이면 투자금 회수, 의심하지 마세요','가계약금 100만원이면 바로 계약, 서두르지 않으면 늦어요','월 평균 매출 4,200만원 대신 순수익으로 보세요','가맹금 100% 안전, 걱정하지 마세요','본사 전속 가맹거래사로 7일 계약, 기다리지 마세요','가계약금 100만원, 환불 불가','월 순수익 500만원 보장 · 중복 신청 불가','월 평균 매출 4,200만원 매장, 매출 1% 기부','가맹금 100% 안전 보장 - 무단 복제 금지','가계약금 100만원으로 상권 선점 + 유튜브 구독 이벤트','월 평균 매출 4,200만원, 외부 유출 금지','매출 보장 대신 확실한 수익','본사 전속 가맹거래사로 7일 계약, 연락 없이 방문 불가','이벤트(월 순수익 500만원 보장, 인건비 제외)','점주 모임 가입 시 계약 불가(탈퇴는 자유)'];
 check(`15b: ${HARD_SUFFIXED.length} hard_block claims with a trailing note, disclaimer or unrelated clause stay hard_block`,HARD_SUFFIXED.every(hardC));
 // H6 수치 규칙은 부정 면제가 없다(수치 자체가 광고에 남는다).
 const FIGURE_NEGATED=['월 순수익 500만원은 보장하지 않습니다','월 평균 매출 4,200만원은 보장되지 않습니다','직영점 매출 1억, 보장하지 않습니다','수익률 30% 보장하지 않음','18개월이면 투자금 회수, 보장되지 않습니다','월 순수익 500만원 가능(보장하지 않음)'];
-check('15b: revenue figures stay hard_block when the guarantee is negated (figure rules have no negation exemption)',FIGURE_NEGATED.every(t=>judge(t,{scope:'consumer'}).issues.some(i=>['h.net_profit_payback_claims','h.revenue_figures_no_ad'].includes(i.ruleId)&&i.tier==='hard_block')));
+check('15b: revenue figures stay hard_block when the guarantee is negated (figure rules have no negation exemption)',FIGURE_NEGATED.every(t=>judge(t+RC,{scope:'consumer'}).issues.some(i=>['h.net_profit_payback_claims','h.revenue_figures_no_ad'].includes(i.ruleId)&&i.tier==='hard_block')));
 check('15b: a guarantee negated right at its verb is still not flagged, a guarantee with a later cost note is',!ids(judge('수익을 보장하지 않습니다')).includes('kr.fr.revenue_guarantee')&&!ids(judge('최저 수익은 보장할 수 없습니다')).length&&ids(judge('최저 수익 보장, 임대료 무관')).includes('kr.fr.revenue_guarantee'));
 check('15b: fullwidth digits are the same figures (NFKC)',['월 평균 매출 ４,２００만원','월 순수익 ６００만원'].every(hardC)&&reasonOf(judge('전국 ２０개 매장 운영 중',{scope:'consumer',facts:[count(12)]}),SC_ID)==='value_mismatch');
-check('15b: block rules are not cleared by a trailing reassurance clause',judge('전국 20개 매장 운영, 걱정하지 마세요',{scope:'consumer',facts:[count(12)]}).blocked&&judge('업계 1위 도넛, 의심하지 마세요',{scope:'consumer'}).blocked);
+check('15b: block rules are not cleared by a trailing reassurance clause',judge('전국 20개 매장 운영, 걱정하지 마세요'+RC,{scope:'consumer',facts:[count(12)]}).blocked&&judge('업계 1위 도넛, 의심하지 마세요'+RC,{scope:'consumer'}).blocked);
 // 소비자 문장(검토에서 해제 불가·차단 오탐이었던 것): 날짜의 '월', 순위, 기부·전달, 픽업, 제휴 계약, 수입품, 다회용컵 회수, 로열티 고객, 한정 판매 매장 수.
 const CONSUMER_MORE=['12월 수입 원두 20% 할인','9월 수익금의 10%를 기부합니다','9월 매출 1위 도넛 3,500원','월 매출 1위 메뉴 20% 할인','월 매출 감사 이벤트 20% 할인','단체 주문은 예약금 선납 후 점포에서 당일 수령','매출 1위 메뉴, 맛은 보장합니다','매출 1위 비결은 신선함 보장','전 가맹 매장에서 당일 픽업 가능','가맹 매장 어디서나 바로 사용 가능한 쿠폰','크리스마스 케이크는 점포별 예약금 선납 후 픽업 가능합니다','제휴 계약 카드로 결제하면 바로 10% 할인','계약직 바리스타 모집, 즉시 근무 가능','본사 온라인몰 케이크 예약금 미리 결제','통신사 제휴 계약 매장에서 즉시 할인','기업 단체 주문 계약 시 당일 배송해 드립니다','렌탈 계약 당일 설치','품질 보장 수입 버터로 구운 크루아상','판매 수익 일부는 기부하고, 맛은 보장해요','판매 수익 일부를 기부하고 끝까지 책임지겠습니다','이번 달 판매 순수익의 10%를 동물보호단체에 기부합니다','하루 매출의 일부(10%)를 지역 아동센터에 전달합니다','3개월 회수 텀블러 캠페인에 참여하세요','월 수입 원두 2만원','1년 만에 회수한 다회용컵 1만 개','다회용컵은 1개월 이내 회수해 매장에서 세척합니다','로열티 고객 10% 할인 이벤트','VIP 로열티 혜택 2배 적립','리뉴얼 인테리어 비포 애프터 2탄 공개','베이킹 교육비 30,000원, 초보자 환영','바리스타 교육비 무료 이벤트','로열티 프리 음원으로 만든 영상','신메뉴는 전국 5개 매장에서 한정 판매합니다','현재 2개 매장에서만 판매하는 한정 메뉴','총 3곳 매장에서 먼저 선보여요','현재 4개 지점에서 시범 판매 중','매장 2곳 운영 시간 변경 안내'];
 check(`8a: ${CONSUMER_MORE.length} more consumer sentences raise 0 issues in a franchise brand consumer campaign (store count 12 confirmed)`,same(CONSUMER_MORE.flatMap(t=>judge(t,{scope:'consumer',facts:consumerFacts}).issues.map(i=>t+' → '+i.ruleId)),[]));
@@ -221,7 +223,7 @@ const twoTypes=[costOf('테이크아웃형','5,000만원'),costOf('카페형','8
 check('15b: startup cost compares with the named store type only and needs the store type',suOf('카페형 창업비용 5,000만원\n'+DETAIL)==='value_mismatch'&&suOf('창업비용 5,000만원\n'+DETAIL)==='details_missing'&&suOf('테이크아웃형 창업비용 5,000만원\n'+DETAIL)===undefined&&suOf('총 창업비용 · 카페형: 8,000만원\n'+DETAIL)===undefined);
 check('15b: a startup cost range checks both bounds (4,000~5,000만원 reads 4,000만원 and 5,000만원)',suOf('테이크아웃형 창업비용 4,000~5,000만원\n'+DETAIL)==='value_mismatch');
 const revenueFacts=[cur('regional_avg_sales','월 평균 4,200만원 (2025년 기준)'),cur('profit_rate','영업이익률 18%'),cur('monthly_sales','월 500만원')];
-check('15b: a restated revenue fact amount or rate is hard_block without the word 매출 (H6)',['가맹점 평균 4,200만원 달성','월 평균 4,200만원','가맹점 평균 월 4,200만원','수익 18% 브랜드','가맹점 평균 4,200만원 달성, 경품 증정'].every(t=>judge(t,{scope:'consumer',facts:revenueFacts}).issues.some(i=>i.ruleId==='h.revenue_figures_no_ad'&&i.tier==='hard_block'&&i.reason==='revenue_fact')));
+check('15b: a restated revenue fact amount or rate is hard_block without the word 매출 (H6)',['가맹점 평균 4,200만원 달성','월 평균 4,200만원','가맹점 평균 월 4,200만원','수익 18% 브랜드','가맹점 평균 4,200만원 달성, 경품 증정'].every(t=>judge(t+RC,{scope:'consumer',facts:revenueFacts}).issues.some(i=>i.ruleId==='h.revenue_figures_no_ad'&&i.tier==='hard_block'&&i.reason==='revenue_fact')));
 check('15b: a discount rate, a menu price, a counter, a composition rate or a giveaway amount is not a revenue fact value',['아메리카노 18% 할인','라떼 4,200원','누적 판매 4,200만 개','카카오 18% 함유 초코 도넛','총 500만원 상당 경품 이벤트'].every(t=>!judge(t,{scope:'consumer',facts:revenueFacts}).hardBlocked));
 const insured=[cur('escrow_insurance','피해보상보험 가입(가상보험사)')];
 const extIssue=judge('가맹금 100% 안전하게 지켜드립니다').issues.find(i=>i.ruleId==='kr.fr.insurance_mark');
@@ -269,6 +271,42 @@ const r2ValueBad=R2_VALUE.filter(v=>!r2Value(v)).map(v=>v[0]);
 check(`15c: ${R2_VALUE.length} value cases (store count qualifiers·dates·classes, cost windows·types·details·range·VAT·per-3.3㎡, revenue numerals, consumer notices) judge as confirmed`+(r2ValueBad.length?' '+JSON.stringify(r2ValueBad):''),R2_VALUE.length===59&&r2ValueBad.length===0);
 check('15c: 319 confirmed round-2 sentences are covered',R2_CONSUMER_NONE.length+R2_CONSUMER_WARN.length+r2detected+Object.values(R2_LEGIT).flat().length+R2_VALUE.length===319);
 
+// ════ 15d) R2 3차 재검토(합성): 소비자 범위 모집 문구 게이트, 글자 사이 구분 기호, 현실적인 모집 우회 표현, 모집 범위 안전망 ════
+// 소비자 캡션은 가맹 모집 문구가 있을 때만 막는다. 재검토 소비자 프로브(376문장)에서 이전에 차단(block·hard_block)이던 65문장과 이전 등급(원장 없음·소비자 원장, H·B·W·-)이다.
+// 모집 우회 표현은 재검토 모집 프로브(120건) 가운데 이번에 고친 104건이다(규칙별). 나머지 16건은 승인자 확인에 맡긴다(lib/franchise-rules.ts FRANCHISE_REVIEW_NET 주석).
+const R3_CONSUMER=[["매장 매출 1등 도넛 2,500원에 만나보세요","HH"],["블프 마진 0원 특가 🔥 도넛 6개 박스 7,900원","HH"],["사장님이 미쳤어요! 사장님 수익 0원 특가 도넛 박스","HH"],["앱 로열티 무료 가입하고 웰컴 쿠폰 받으세요","BB"],["골드 로열티 매월 5% 추가 적립 혜택","BB"],["전월 실적 무관 15% 캐시백, 제휴 카드로 결제하세요","-H"],["선불 충전금은 원금 100% 보장, 잔액은 언제든 환불돼요","HH"],["구독 회원은 매월 10% 확정 할인!","HH"],["모바일 상품권 발행액은 보증보험으로 지급 보증됩니다","HH"],["천만 영화 개봉 기념 팝콘맛 도넛 출시 🍿","-H"],["추석 맞이 총 1,000만원 쏜다! 앱 스탬프 이벤트","-H"],["천만다행으로 비가 그쳐 오늘 야외 플리마켓 정상 진행해요 ☀\uFE0F","-H"],["오픈 첫 주문 No.1 고객님께 1년 무료 쿠폰을 드립니다","BB"],["오픈 기념 한정 굿즈 우선 배정권 증정 (선착순 100명)","HH"],["창업 30주년 기념 케이크, 예약금을 미리 받습니다","HH"],["오픈 기념 케이크 우선 예약, 예약금을 미리 입금해 주세요","HH"],["오픈 첫날 매장 자리 예약 시 예약금 1만원은 음식값에서 차감돼요","HH"],["오픈 첫 주 단체석은 선입금 확인 후 자리를 확보해 드려요","HH"],["크리스마스 D-14 🎄 14일 기다리지 않고 오픈 즉시 예약하세요","HH"],["점주 협의회가 준비한 나눔 장터, 참여 조건은 장바구니 지참!","HH"],["Skip the wait — sign in and order ahead 🍩","HH"],["Daily sales: 20% off all donuts after 8pm","HH"],["추석 당일에는 총 6개 매장만 문을 엽니다","BB"],["현재 5개 매장만 영업 중이에요 (명절 당일)","BB"],["드디어 3개 매장에서도 크리스마스 케이크 예약 오픈","BB"],["드디어 2호점 오픈합니다! 이번엔 판교에서 만나요","BW"],["새 매장 계약 후 바로 오픈 준비 중이에요, 12월에 만나요","HH"],["브런치 메뉴는 3개 매장에서 운영 중이에요","BB"],["직영점 2곳은 24시간 운영해요","BB"],["연휴 기간에도 매장 5곳이 영업 중이에요","BB"],["가맹점 3곳에서 새벽 배송을 시작해요","BB"],["2개 지점에서 운영하는 루프탑 테라스, 날씨 좋은 날 놀러 오세요","BB"],["인테리어 비용 1억, 새로워진 성수점을 만나보세요","BB"],["다회용컵 회수 기간: 2주 (미반납 시 보증금 차감)","HH"],["제휴 카드 페이백 기간은 1개월 이내예요","HH"],["돌잔치 답례품 상담 후 일주일 내 계약 시 포장 무료 (본사 공식몰)","HH"],["지난달 나눔 바자회 순수익 320만원, 전액 지역아동센터에 기부했습니다","HH"],["약속된 수익금 전액을 아동센터에 전달했어요 💛","HH"],["판매 수익금은 전액 약속드린 대로 푸드뱅크에 전달했습니다","HH"],["소상공인 상권 보호 주간, 동네 가게 스탬프 투어에 함께해요","BB"],["지역 마라톤 대회 급수대에 음료와 장비 지원했어요","BB"],["기초생활수급 가구·월 소득 200만원 이하 가구는 음료 20% 할인","HH"],["점주 이야기: 매장 옆 300m 거리 텃밭에서 키운 허브로 만든 에이드","BB"],["덕분에 우리 매장 매출이 2배로 늘었어요, 감사 이벤트 준비했어요!","HH"],["AI 모델 ‘도리’와 함께하는 5km 도넛런 챌린지","BB"],["리뷰 답글: 천만에요! 또 놀러 오세요 😊","-H"],["알바 구해요! 사장이 약속해요, 월급 꼭 책임집니다","HH"],["홈카페 머신 렌탈, 초기 비용 부담 없이 시작하세요","BB"],["법인 선물 계정 개설 비용 0원, 대량 주문 할인","BB"],["원데이 마카롱 클래스 신규 개설, 교육비 3만원","BB"],["라떼아트 교실 교육비 무료, 강사는 10년 차 점주님","BB"],["커피 구독 본전 뽑는 기간? 딱 2주!","HH"],["매일 한 잔이면 2주 만에 본전 뽑는 커피 구독권","HH"],["카드 매출전표 기준 3만원 이상 결제 시 에코백 증정","HH"],["영업시간 내내 15% 캐시백, 오늘 하루만!","-H"],["안심하세요! 전 매장 식품 피해보상보험 가입","HH"],["고객 디자인 등록 수 1,000건 돌파! 투표로 신메뉴를 골라 주세요","B-"],["오픈 기념, 대기 없이 대관 계약 가능한 파티룸","HH"],["Flash sales ₩990 · 아이스 아메리카노 오늘만","HH"],["전국 150개 매장에서 동시 진행 🎉","BW"],["[사실: 가맹점 수·직영점 수 2025-12-31 기준] 가맹점 142개, 직영점 8개에서 만나요","B-"],["드디어 100호점 시대! 감사 이벤트 진행합니다","BW"],["특허받은 저온 숙성 반죽으로 더 쫀득하게","B-"],["국내 최초 흑당 크림 도넛 출시","BB"],["우리 동네 넘버원 도넛, 오늘도 맛있게 구웠어요","BB"]];
+const R3_BYPASS={"kr.fr.revenue_guarantee":["수익·보장 가맹 브랜드","매출・보장 창업 아이템","수익ㅡ보장 창업 문의","수익\u3164보장 가맹점 모집","수\u034F익 보장 가맹 브랜드","수익 保障 창업 아이템","월 500 보장 창업 브랜드","월 천 보장, 가맹 상담 환영","수익 담보 가맹 브랜드","최저수익 책임제 운영 가맹본부","매출 안 나오면 본사가 메꿔드립니다","손해 보시면 본사가 전부 물어드립니다, 가맹점 모집","수익 안 나면 가맹비 전액 환불해 드립니다","수익 — 보장 창업 브랜드","Your profit, guaranteed. 가맹 문의","매출 확약 가맹 브랜드","월 500만원 수익, 보장합니다","월 순수익 걱정 끝.\n본사가 보장합니다.","수\n익\n보\n장\n가맹 모집","수익을 본사가 끝까지 책임지고 보장합니다","매출은 저희 본사가 확실하게 보장합니다"],"h.net_profit_payback_claims":["월 600만원 순수익 달성 가맹점","한 달에 700만원 버는 점주님들","점주님들 월 700 가져가십니다","월 순수익 5백 이상","월 순수입 600만원 가맹점","실수령 월 650만원, 점주 모집","평균 수익 월 600만원 가맹점","1년이면 본전입니다, 가맹 문의","창업비 1년이면 빠져요","BEP 4개월 달성 매장 다수","투자 대비 250% 수익","R0I 250%","월 순수익 500萬원","6개월 컷! 투자금 회수","회수까지 딱 8개월, 창업비용 부담 끝","석 달 만에 투자금 회수","월 순수익 5,000,000","월 순수익(인건비·임대료 제외 기준) 550만원","월 순수익\n\n500만원"],"h.revenue_figures_no_ad":["월 5천만원 매출 올리는 가맹점","월 매상 4천만원 가맹점","하루 판매액 200만원 직영점","일매출 300 찍는 매장","月매출 5千만원","Store sales: 50,000,000 KRW/month","1억 매출 신화 가맹점","월 매출 42,000,000","월 매출(2025년 가맹점 평균) 4,200만원"],"h.wait_bypass_solicitation":["가맹 착수금 100만원 먼저 받습니다","가맹 신청금 50만원 입금 순으로 희망 지역 배정","선계약 먼저, 정보공개서는 나중에 드립니다","약식 계약으로 자리부터 잡으세요 (창업 상담)","사전 계약금 50만원만 받고 상권 킵해 드립니다","LOI 제출 시 예치금 200만원, 지역 우선권 부여","정보공개서는 계약 후에 드려요, 오늘 바로 사인하세요","오늘 상담, 오늘 계약!","당일 계약 시 가맹비 50% 할인","사흘 만에 가맹 계약 완료","당장 계약 가능한 창업 브랜드","대기 0일! 가맹 계약","No waiting, 가맹 계약 즉시","14일? 저희는 그런 거 없습니다, 바로 도장 찍으세요","숙려 기간 패스하고 계약","입점 보장금 50만원"],"kr.fr.insurance_mark":["가맹금 전액 보장 제도","가맹금 보증 제도 운영","안전 가맹비 시스템","피해보상 공제 가입 본부","Franchise fee protection program 가입 본부","가맹금 걱정 제로","가맹금 지급보증 가입"],"kr.fr.association_condition":["협의회 가입 시 재계약 불가","점주협의회 결성 시 재계약 없음","사업자단체 가입 점주는 지원 대상에서 빠집니다","점주회 가입 금지가 계약 조건"],"h.captive_advisor_phrase":["7일 계약 패키지 (본사 지정 자문)","1주 만에 가맹 계약","본사가 자문료 대드리는 가맹거래사로 7일 단축","본사 협력사 가맹거래사 무료 매칭, 일주일 계약"],"kr.fr.store_count_claims":["전국 100여 매장 운영","200호점 오픈 임박","매장 150개 넘은 브랜드"],"kr.fr.startup_cost_claims":["3천으로 창업 가능","오픈 비용 3,500만원","창업 예산 3천만원대면 충분","투자금 4천만원이면 내 가게 오픈"],"kr.fr.ip_claims":["특허청 등록 반죽 기술","특허 획득 도우","特許 받은 레시피"],"kr.fr.conditional_support":["간판·집기 무상 제공","오픈 지원금 1천만원 드립니다"],"kr.fr.superlative_claims":["업계 1등 도넛 창업","TOP 1 도넛 프랜차이즈","국내 첫 번째 도넛 프랜차이즈"],"kr.fr.production_claims":["자가 공장 생산 도우","자사 공장에서 만든 크림"],"kr.fr.exclusive_channel_claims":["가맹 전용 메뉴 공급"],"h.exclusive_supply_claims":["원료는 본사만 공급합니다"],"h.direct_store_popularity":["직영점 하루 1,000개 판매","직영점 대기 2시간은 기본"],"h.zero_cost_claims":["로열티 0%","가맹비 ₩0"],"h.handmade_claims":["손수 빚은 도넛 가맹점"]};
+const TIER_CODE={hard_block:'H',block:'B',warn:'W'},topCode=j=>j.issues.reduce((a,i)=>'-WBH'.indexOf(TIER_CODE[i.tier])>'-WBH'.indexOf(a)?TIER_CODE[i.tier]:a,'-');
+const R3_LEDGERS=[undefined,'CONSUMER'];
+const r3Plain=R3_CONSUMER.flatMap(([t,want])=>R3_LEDGERS.flatMap((L,k)=>{const j=r2(t,'consumer',L),was='HB'.includes(want[k]);return j.blocked||j.recruitmentContext||!j.issues.every(i=>i.tier==='warn')||was&&!j.issues.some(i=>i.downgradedBy==='consumer_no_recruitment_context'&&i.downgradedFrom===(want[k]==='H'?'hard_block':'block'))?[t+' ('+(L??'none')+')']:[]}));
+check(`15d: ${R3_CONSUMER.length} consumer sentences that were blocked in re-probe are warnings only without recruitment wording (downgraded, never block)`+(r3Plain.length?' '+JSON.stringify(r3Plain):''),R3_CONSUMER.length===65&&r3Plain.length===0);
+const r3Ctx=R3_CONSUMER.flatMap(([t,want])=>R3_LEDGERS.flatMap((L,k)=>{const got=topCode(r2(t+RC,'consumer',L));return got===want[k]?[]:[`${t} (${L??'none'}) ${want[k]}→${got}`]}));
+check('15d: the same sentences with a recruitment line (가맹 문의 환영) keep their previous tiers'+(r3Ctx.length?' '+JSON.stringify(r3Ctx):''),r3Ctx.length===0);
+check('15d: the 65 sentences as one caption without recruitment wording do not block',!r2(R3_CONSUMER.map(x=>x[0]).join('\n'),'consumer').blocked&&!r2(R3_CONSUMER.map(x=>x[0]).join('\n'),'consumer','CONSUMER').blocked);
+const G3='월 순수익 500만원 보장';
+check('15d: loose words (본사, 창업 N주년, 점포, 가맹점 쿠폰, 교육비) are not recruitment wording',['본사 아카데미 소식','창업 30주년 기념','점포 리뉴얼 안내','전국 가맹점에서 사용 가능한 쿠폰','바리스타 교육비 무료'].every(p=>{const j=judge(p+'\n'+G3,{scope:'consumer'});return !j.blocked&&!j.recruitmentContext&&j.issues.some(i=>i.downgradedFrom==='hard_block')}));
+check('15d: strict recruitment wording turns the consumer gate back on (hard_block stays unremovable)',['가맹 상담 환영','가맹점 모집','창업 설명회 안내','예비 창업자 모십니다','가맹비 550만원','창업비용 문의','점주 모집','가.맹.문.의 환영'].every(p=>{const j=judge(p+'\n'+G3,{scope:'consumer'});return j.hardBlocked&&j.recruitmentContext&&!j.issues.some(i=>i.downgradedBy)}));
+const down=judge(G3,{scope:'consumer'}),downSc=judge('전국 20개 매장',{scope:'consumer',facts:[count(12)]}).issues.find(i=>i.ruleId===SC);
+check('15d: a downgraded issue keeps its rule, reason and original tier; the recruitment scope is unchanged',down.issues.find(i=>i.ruleId==='kr.fr.revenue_guarantee')?.downgradedFrom==='hard_block'&&downSc.tier==='warn'&&downSc.reason==='value_mismatch'&&downSc.downgradedFrom==='block'&&judge(G3).hardBlocked&&judge(G3).recruitmentContext&&!judge(G3).issues.some(i=>i.downgradedBy));
+const downLabels=jc.franchiseIssueLabels(down);
+check('15d: downgraded issues are approval-screen warnings with a short Korean reason, and no 409',jc.franchiseGateError(down)===null&&downLabels.blockers.length===0&&downLabels.warnings.some(w=>w.startsWith('가맹 규칙 확인 · 수익·매출 보장 표현(모집 문구 없는 소비자 캡션이라 경고, 모집 문구가 있으면 해제 불가 차단)')));
+check('15d: H9 does not escalate a consumer caption without recruitment wording',(()=>{const j=judge('독점 상권 3km 보장\n안내',{scope:'consumer'});return !j.blocked&&j.issues.every(i=>!i.escalatedBy)})());
+// 글자 사이 구분 기호·한자·세로쓰기(모집 범위, 사실 없음).
+const SEPARATED=['수익‧보장 가맹 브랜드','수익–보장 창업 문의','수익 / 보장 가맹 모집','수익\u115F보장 가맹점 모집','매출 保證 가맹 브랜드','수\n익\n보\n장','매 출\n보 장','월 순수익\n\n500만원','수·익·보·장 창업','월 순수익(인건비·임대료·카드 수수료 제외 기준) 550만원'];
+check('15d: separators inside words (middle dots, dashes, slashes, fillers, marks), Hanja and vertical runs read as the plain claim',SEPARATED.every(t=>judge(t).hardBlocked));
+check('15d: list dots and parenthetical notes stay clause boundaries for negation and legit statements',['수익·매출 보장 표현은 쓰지 않습니다','가맹비·교육비·가맹 보증금은 정보공개서로 안내합니다','가맹금(예치 약정) 반환 절차를 안내합니다'].every(t=>!judge(t).hardBlocked));
+let r3detected=0;
+for(const [id,list] of Object.entries(R3_BYPASS))for(const t of list)check(`15d: ${id} detects ${JSON.stringify(t)} (${R2_HARD.has(id)?'hard_block':'block'})`,r2(t,'recruitment').issues.some(i=>i.ruleId===id&&i.tier===(R2_HARD.has(id)?'hard_block':'block'))&&++r3detected>0);
+const R3_MORE={'kr.fr.revenue_guarantee':['장사 안 되면 본사가 책임집니다','매장 손실 나면 본사가 보전해 드립니다','수익 안 나오면 투자금 돌려 드립니다','매출은 우리 본사가 끝까지 책임지고 보장합니다'],'h.net_profit_payback_claims':['한 달 반이면 투자금 회수','넉 달 만에 본전','투자금 대비 월 3% 수익','월 1,000만원 이상 버는 점주님','매달 천 가져가세요']};
+for(const [id,list] of Object.entries(R3_MORE))for(const t of list)check(`15d: ${id} detects ${JSON.stringify(t)} (hard_block)`,judge(t).issues.some(i=>i.ruleId===id&&i.tier==='hard_block')&&++r3detected>0);
+check('15d: new revenue forms keep their negation and franchise anchors (no hard_block)',['수익이 안 나면 원인을 함께 찾습니다','매출이 안 나오면 본사가 보상하지 않습니다','직원 채용, 실수령 월 280만원','다회용컵 회수까지 2주','가맹 계약 후 교육은 3일 만에 끝납니다','오늘 가맹 계약서안을 드립니다','정보공개서 수령 확인서에 바로 서명해 주세요'].every(t=>!judge(t).hardBlocked));
+// 모집 범위 안전망: 어느 규칙도 잡지 않은 수익 낱말 곁 금액·비율은 경고(H6 부모, COLLECTIVE 휴리스틱)로 승인자에게 보인다.
+const NET='h.revenue_like_figure_review',net=t=>judge(t).issues.filter(i=>i.ruleId===NET);
+const netOne=net('매출 대비 남는 돈 35%')[0];
+check('15d: the safety net warns on a revenue-like figure no rule caught (registry H6 parent, heuristic, reason review)',netOne?.tier==='warn'&&netOne.reason==='review'&&netOne.registryId==='h.revenue_figures_no_ad'&&netOne.basis==='heuristic'&&netOne.basisLabel===DISCLAIMER&&!judge('매출 대비 남는 돈 35%').blocked&&net('월 매출 4200 (단위: 만원)').length===1&&net('점주님 월 수익 대박, 평균 순익 420')[0]?.tier==='warn');
+check('15d: the safety net stays a warning on the first line, is at most one issue, and skips caught sentences',(()=>{const j=judge('매출 대비 남는 돈 35%\n마진 40퍼 남는 구조');return j.issues.filter(i=>i.ruleId===NET).length===1&&!j.blocked&&!j.issues.some(i=>i.escalatedBy)})()&&!net('월 순수익 600만원').length&&net('매출 대비 남는 돈 35%'+RC).length===1);
+check('15d: the safety net is recruitment scope only and skips cost, fee-share, giveaway and discount clauses',!judge('매출 대비 남는 돈 35%'+RC,{scope:'consumer'}).issues.some(i=>i.ruleId===NET)&&['광고분담금은 매출액의 1%입니다.','카드 수수료는 매출의 2%입니다','매출의 10%를 기부합니다','매출 감사 이벤트 20% 할인','로열티: 월 매출액의 3%(부가세 별도)'].every(t=>!net(t).length));
+
 // ════ 16~22) 게이트(라우트) ════
 const WS='fc-owner';
 const boss=f.signIn('fc-boss','admin',1000,WS),admin=f.signIn('fc-admin','admin',2000,WS),member=f.signIn('fc-member','member',3000,WS);
@@ -303,15 +341,18 @@ let minute=0;
 const publication=(c,creativeId,extra={})=>execPost(boss,{action:'save_publication',campaignId:c.id,creativeId,scheduledAt:new Date(Date.parse('2026-10-15T01:00:00.000Z')+(minute++)*60000).toISOString(),plannedCostKRW:0,...extra});
 const approve=(c,p,s=boss,extra={})=>execPost(s,{action:'approve',campaignId:c.id,id:p.id,version:p.version,confirmed:true,rightsConfirmed:true,immutableMediaConfirmed:true,channelId:'channel-1',credentialVersion:1,limitsVersion:c.limitsVersion,...extra});
 
-// 16) 비가맹 브랜드의 '월 순수익 500만원 보장 이벤트' 소재·초안 → 가맹 프로필 저장 → 대표·관리자 승인 409
+// 16) 비가맹 브랜드의 '월 순수익 500만원 보장 이벤트, 가맹 문의 환영' 소재·초안 → 가맹 프로필 저장 → 대표·관리자 승인 409
+// 소비자 캠페인 캡션은 가맹 모집 문구('가맹 문의 환영')가 있을 때만 막힌다. 모집 문구가 없는 같은 표현은 승인 화면 경고만 보이고 승인된다(아래 16b).
 const CG=await campaign('fc-camp-g',G);
-const promo=await confirmed(G,'promotion','월 순수익 500만원 보장 이벤트');
+const promo=await confirmed(G,'promotion','월 순수익 500만원 보장 이벤트, 가맹 문의 환영');
 const cardG=await creative(CG,[promo.body]),pubG=await publication(CG,cardG.body.id);
 check('16: before any franchise profile the consumer card and draft save (200)',promo.status===200&&cardG.status===200&&pubG.status===200&&pubG.body.status==='draft');
 // 검토 반영: 뒤에 비용 주석·권유·환불 불가를 붙여도 해제 불가 표현이다. 가맹 프로필 저장 전에 만든 초안이 프로필 뒤 대표 승인에서 409인지 본다.
 const SUFFIXED_ROUTE=['월 순수익 500만원 보장, 인건비 제외','월 순수익 500만원 보장, 걱정하지 마세요','가계약금 100만원, 환불 불가'],suffixedG=[];
-for(const [k,t] of SUFFIXED_ROUTE.entries()){const fx=await confirmed(G,'가상 행사 문구 '+(k+1),t),card=await uniqueCreative(CG,[fx.body]),pub=await publication(CG,card.body.id);suffixedG.push({fx,card,pub})}
+for(const [k,t] of SUFFIXED_ROUTE.entries()){const fx=await confirmed(G,'가상 행사 문구 '+(k+1),t+' · 가맹 문의 환영'),card=await uniqueCreative(CG,[fx.body]),pub=await publication(CG,card.body.id);suffixedG.push({fx,card,pub})}
 check('16: the suffixed drafts save before the franchise profile (200)',suffixedG.every(x=>x.fx.status===200&&x.card.status===200&&x.pub.status===200));
+const plainFx=await confirmed(G,'가상 행사 문구 0','월 순수익 500만원 보장 이벤트'),plainCard=await uniqueCreative(CG,[plainFx.body]),plainPub=await publication(CG,plainCard.body.id);
+check('16b: the same wording without recruitment wording saves as a draft before the profile (200)',plainFx.status===200&&plainCard.status===200&&plainPub.status===200);
 assert.equal((await profile(G)).status,200);
 const bossTry=await approve(CG,pubG.body,boss,{override:true,hardBlockRelease:true,release:['kr.fr.revenue_guarantee']});
 check('16: the owner (CEO) approving with every confirmation and release-looking fields is still 409',bossTry.status===409&&bossTry.body.error.includes('승인으로 풀 수 없음')&&bossTry.body.error.includes('월 순수익 500만원 보장'));
@@ -323,6 +364,10 @@ check('16: the owner approving a suffixed claim (, 인건비 제외 · , 걱정�
 const stateG=await execGet(boss,CG.id),blockersG=stateG.body.franchise?.publications?.[pubG.body.id]?.blockers??[];
 check('16: getExecution shows the same unremovable items as approval blockers',blockersG.length>=2&&blockersG.every(b=>b.startsWith('가맹 규칙(해제 불가) · ')||b.startsWith('가맹 규칙 · '))&&blockersG.filter(b=>b.startsWith('가맹 규칙(해제 불가)')).every(b=>bossTry.body.error.includes(b.slice('가맹 규칙(해제 불가) · '.length))));
 check('16: the screen blockers include the franchise items (approvalBlockers)',exec.approvalBlockers({campaign:CG,publication:pubG.body,state:stateG.body,factCount:1,rightsConfirmed:true,franchise:stateG.body.franchise.publications[pubG.body.id]}).some(b=>b.startsWith('가맹 규칙(해제 불가)')));
+const plainState=stateG.body.franchise.publications[plainPub.body.id];
+check('16b: without recruitment wording the consumer caption shows the franchise items as warnings only (no blocker)',plainState.blockers.length===0&&plainState.warnings.length>=2&&plainState.warnings.every(w=>w.startsWith('가맹 규칙 확인 · '))&&plainState.warnings.some(w=>w.includes('월 순수익 500만원 보장')&&w.includes('모집 문구 없는 소비자 캡션이라 경고, 모집 문구가 있으면 해제 불가 차단')));
+const plainApproved=await approve(CG,plainPub.body);
+check('16b: the owner approves it (200): the approver is the last check',plainApproved.status===200&&plainApproved.body.status==='approved');
 
 // 17) 가맹 브랜드 소재: 매장 수 카드 각주·멱등, 수익 카드 409, 근거 없는 옛 가맹비 409, 교체 버전 카드 409
 const CF=await campaign('fc-camp-f',F);
@@ -358,17 +403,21 @@ r=await approve(CF,pubCount.body);
 check('18: the intact caption approves (200)',r.status===200&&r.body.status==='approved');
 
 // 19) AI 카피 캡션(AI_COPY_CAPTIONS)
-await server.recordStatement(WS,'artifact','fc-copy',{id:'fc-copy',campaignId:CF.id,campaignVersion:1,role:'content',title:'콘텐츠 스튜디오 · 가상',content:'## 게시 카피\n\n전국 20개 매장에서 만나요\n\n전국 12개 매장에서 만나요',version:1,status:'approved',origin:'manual',createdAt:'2026-09-25T00:00:00.000Z'},CF.id).run();
+await server.recordStatement(WS,'artifact','fc-copy',{id:'fc-copy',campaignId:CF.id,campaignVersion:1,role:'content',title:'콘텐츠 스튜디오 · 가상',content:'## 게시 카피\n\n가맹 문의 환영! 전국 20개 매장에서 만나요\n\n전국 12개 매장에서 만나요\n\n전국 20개 매장에서 만나요',version:1,status:'approved',origin:'manual',createdAt:'2026-09-25T00:00:00.000Z'},CF.id).run();
 const copy=index=>({artifactId:'fc-copy',artifactVersion:1,index});
 r=await publication(CF,cardCount.body.id,{copy:copy(1)});
 check('19: with AI_COPY_CAPTIONS off the decision-17 409 comes first',r.status===409&&r.body.error.includes('결정 17'));
 env.AI_COPY_CAPTIONS='enabled';
 const stateF=await execGet(boss,CF.id),c20=stateF.body.copies.find(c=>c.index===0),c12=stateF.body.copies.find(c=>c.index===1);
-check('19: the 전국 20개 candidate lists a franchise issue, the 12 one only warnings',c20.issues.some(i=>i.startsWith('가맹 규칙 · 매장 수 주장(확정 사실 값과 다름)'))&&!c12.issues.length&&Array.isArray(c12.warnings)&&c12.warnings.some(w=>w.includes('H8')));
+const c20plain=stateF.body.copies.find(c=>c.index===2);
+check('19: the 전국 20개 candidate with recruitment wording lists a franchise issue, the 12 one only warnings',c20.issues.some(i=>i.startsWith('가맹 규칙 · 매장 수 주장(확정 사실 값과 다름)'))&&!c12.issues.length&&Array.isArray(c12.warnings)&&c12.warnings.some(w=>w.includes('H8')));
+check('19: the same 전국 20개 candidate without recruitment wording is a warning, not an issue',!c20plain.issues.some(i=>i.includes('가맹'))&&c20plain.warnings.some(w=>w.startsWith('가맹 규칙 확인 · 매장 수 주장(확정 사실 값과 다름 · 모집 문구 없는 소비자 캡션이라 경고, 모집 문구가 있으면 차단)')));
 r=await publication(CF,cardCount.body.id,{copy:copy(0)});
 check('19: save_publication with the 20 copy is 409',r.status===409&&r.body.error.includes('매장 수 주장'));
 const with12=await publication(CF,cardCount.body.id,{copy:copy(1)});
 check('19: the 12 copy with the store count card saves (200) and keeps the footnote',with12.status===200&&with12.body.caption.startsWith('전국 12개 매장에서 만나요\n\n')&&with12.body.caption.endsWith(NOTE_F));
+const plain20=await publication(CF,cardCount.body.id,{copy:copy(2)});
+check('19: the 전국 20개 copy without recruitment wording saves (200, warning only)',plain20.status===200&&plain20.body.caption.startsWith('전국 20개 매장에서 만나요\n\n'));
 const cardMenu=await uniqueCreative(CF,[menu.body]);
 r=await publication(CF,cardMenu.body.id,{copy:copy(1)});
 check('19: the 12 copy with a consumer card is 409 footnoteMissing',cardMenu.status===200&&r.status===409&&r.body.error===MSG.footnoteMissing);
@@ -387,7 +436,7 @@ const FP_ROUTE=['전 가맹 매장에서 당일 픽업 가능','로열티 고객
 for(const [k,t] of FP_ROUTE.entries()){const fx=await confirmed(F,'가상 소비자 문구 '+(k+1),t);fpCards.push({t,fx,card:await uniqueCreative(CR,[fx.body])})}
 check(`20: ${FP_ROUTE.length} consumer sentences that were 409 in review save as fact cards on the franchise brand (200)`,fpCards.every(x=>x.fx.status===200&&x.card.status===200&&x.card.body.caption.endsWith(x.t)));
 // 즉시 실행(execute) 경로: 가맹 프로필 전 승인한 발행도 접수 전 판정에서 409이고 접수 시도를 남기지 않는다(reservePublication → approvalInputs).
-const CH=await campaign('fc-camp-h',H),promoH=await confirmed(H,'promotion','월 순수익 500만원 보장 이벤트');
+const CH=await campaign('fc-camp-h',H),promoH=await confirmed(H,'promotion','월 순수익 500만원 보장 이벤트, 가맹 문의 환영');
 const cardH=await creative(CH,[promoH.body]),pubH=await publication(CH,cardH.body.id),approvedH=await approve(CH,pubH.body);
 check('27: a publication approved before the franchise profile exists is approved (200)',cardH.status===200&&pubH.status===200&&approvedH.status===200&&approvedH.body.status==='approved');
 assert.equal((await profile(H)).status,200);
@@ -407,7 +456,7 @@ env.AI_COPY_CAPTIONS='enabled';
 await server.recordStatement(WS,'artifact','fc-copy-n',{id:'fc-copy-n',campaignId:CN.id,campaignVersion:1,role:'content',title:'콘텐츠 스튜디오 · 가상',content:'## 게시 카피\n\n전국 20개 매장에서 만나요',version:1,status:'approved',origin:'manual',createdAt:'2026-09-25T00:00:00.000Z'},CN.id).run();
 const nCopies=(await execGet(boss,CN.id)).body;
 check('22: a non-franchise caption candidate has no warnings key and no franchise issue',nCopies.copies.length===1&&!('warnings' in nCopies.copies[0])&&same(Object.keys(nCopies.copies[0]),['artifactId','artifactVersion','index','text','issues','aiGenerated'])&&!nCopies.copies[0].issues.some(i=>i.includes('가맹'))&&!('franchise' in nCopies));
-const nFact=await confirmed(N,'promotion','월 순수익 500만원 보장 이벤트');
+const nFact=await confirmed(N,'promotion','월 순수익 500만원 보장 이벤트, 가맹 문의 환영');
 const nCard=await creative(CN,[nFact.body]),nPub=await publication(CN,nCard.body.id);
 r=await approve(CN,nPub.body);
 check('22: the same revenue-guarantee wording in a non-franchise brand approves as before (no franchise gate)',nCard.status===200&&nPub.status===200&&r.status===200);
@@ -453,4 +502,4 @@ check('23: role, meeting and brief submissions ran on the mock',beforeRun.bodies
 check('23: submissions for a franchise brand are byte-identical to the same brand without franchise records',same(beforeRun.bodies,afterRun.bodies));
 check('23: no franchise source, cost or R2 judge text reaches a model submission',afterRun.bodies.every(b=>!/sourceRef|disclosureVersionId|정보공개서 등록 버전|가상 정보공개서 모델본|storeType|dv-fc-model|franchise_recruit|fr-claims|가맹 규칙|COLLECTIVE 휴리스틱/.test(b))&&afterRun.bodies.some(b=>b.includes('franchise_fee')));
 
-console.log(JSON.stringify({passed:passed.length,violations:detected,consumer:CONSUMER.length,extraConsumer:EXTRA.length,normals:NORMALS.length,round2:{consumer:R2_CONSUMER_NONE.length+R2_CONSUMER_WARN.length,bypass:r2detected,legit:Object.values(R2_LEGIT).flat().length,value:R2_VALUE.length}}));
+console.log(JSON.stringify({passed:passed.length,violations:detected,consumer:CONSUMER.length,extraConsumer:EXTRA.length,normals:NORMALS.length,round2:{consumer:R2_CONSUMER_NONE.length+R2_CONSUMER_WARN.length,bypass:r2detected,legit:Object.values(R2_LEGIT).flat().length,value:R2_VALUE.length},round3:{consumer:R3_CONSUMER.length,bypass:r3detected}}));
