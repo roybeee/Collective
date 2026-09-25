@@ -93,7 +93,7 @@ OFD는 여기에 체크리스트 23·24행(생산·공급 방식과 필수품목
 | 4 | 채널 스킬 적용이 자유 텍스트 정규식이다. `offline`은 채널·지점·목표에 '매장·오프라인·성수'가 있으면, `search`는 '네이버·검색·블로그'가 있으면 켜진다. 가맹 캠페인에 소비자 스킬이 섞인다. | `lib/practice.ts:70-72` | 늦춤(소재 품질) |
 | 5 | 운영 채점의 업종은 늘 null이고 지점 여부는 storeId로 정한다. `local_channel_coverage`는 지점 캠페인에 로컬 4채널을 요구한다. | `lib/online-grading.ts:28`, `:60`, `lib/graders/content.ts:71-75` | 늦춤(잘못된 fail) |
 | 6 | 측정 정의는 30일 재방문율 전용이고 광고 표현 목록은 소비자 판촉어뿐이다. | `lib/campaign-policy.ts:11`, `:26` | 늦춤 |
-| 7 | 규제 사전은 8범주로 고정이고 가맹 범주가 없다. `ledgerKey`는 확정 키가 있는지만 보고 값을 대조하지 않는다. | `lib/graders/compliance-lexicon.ts:7`, `tests/compliance.test.mjs:92`, `lib/graders/compliance.ts:60` | 막음(소재 준법) |
+| 7 | 규제 사전은 8범주로 고정이고 가맹 범주가 없다. `ledgerKey`는 확정 키가 있는지만 보고 값을 대조하지 않는다. R2 PR에서 9번째 범주 `franchise_recruit`와 가맹 값 종류(`VALUE_KINDS`)를 더했다. | `lib/graders/compliance-lexicon.ts:11`, `tests/compliance.test.mjs:236`, `lib/graders/compliance.ts:107` | 막음(소재 준법) |
 | 8 | 사실 카탈로그는 소비자 항목 14개이고, 후보 가져오기는 '원' 금액을 메뉴 가격으로 분류한다. | `lib/fact-catalog.ts:3-18`, `lib/fact-import.ts:23` | 늦춤 |
 | 9 | 새 레지스트리 단위는 코드 상수에서만 생기고 단위 수가 테스트에 고정돼 있다. 단위마다 정본 파일이 하나씩 있어야 한다. | `lib/prompt-units.ts:14-19`, `tests/check-prompts.test.mjs:24-25`, `tests/prompt-registry.test.mjs:123`, `tests/prompt-resolution.test.mjs:46` | 늦춤(새 단위는 게시 필요) |
 | 10 | 추적 코드는 지점이 필수이고, 성과 기록에 리드·계약 필드가 없다. | `lib/tracking-codes.ts:12`, `lib/agency.ts:8` | 무관(측정) |
@@ -638,9 +638,9 @@ R4a가 `lib/franchise-rules.ts`에 만들고 R2·R4b가 쓴다. 레코드는 `{i
 
 ### R2 가맹 모집 규제 가드레일 (주장 → 근거 → 승인)
 
-- 소유 파일: `lib/graders/compliance-lexicon.ts`, `lib/graders/compliance.ts`, `lib/graders/ledger.ts`, `lib/franchise-rules.ts`, `lib/execution.ts`(캡션·발행 게이트), `lib/execution-server.ts`(`approvedCopy` `:59-68`이 `franchise_profile`을 읽어 가맹 규칙을 적용한다), `tests/compliance.test.mjs`, 새 `tests/franchise-compliance.test.mjs`.
+- 소유 파일: `lib/graders/compliance-lexicon.ts`, `lib/graders/compliance.ts`, `lib/graders/ledger.ts`, `lib/franchise-rules.ts`, `lib/execution.ts`(캡션·발행 게이트), `lib/execution-server.ts`(`approvedCopy` `:109-123`이 `franchise_profile`을 읽어 가맹 규칙을 적용한다), `tests/compliance.test.mjs`, 새 `tests/franchise-compliance.test.mjs`.
 - 적용 범위: `franchise_profile`이 있는 브랜드의 모든 캠페인 캡션·발행 게이트. objective 캠페인은 R3가 같은 게이트에 더한다. 다만 소비자 판촉 문구와 겹치는 생산 표현('자체 공장·직접 생산·수제'), 판매 채널 표현('가맹점 전용·본사 독점 공급'), 직영 매장 인기 표현(H14) 규칙은 objective 캠페인과 R15a 내보내기 게이트에만 건다. 모델 제출 바이트는 바꾸지 않는다. objective가 없는데 모집처럼 읽히는 캠페인(가맹 문의·가맹점 모집·창업 설명회 표현)은 발행 승인 화면에 경고만 한다.
-- 구현 자리: 공식 규칙은 새 범주 `franchise_recruit`로 규제 사전에 넣는다(law.go.kr 출처). 휴리스틱·플랫폼 규칙은 `lib/franchise-rules.ts`에 둔다. 값 대조(N호점 대 확정 가맹점 수와 기준일, 창업비용)는 `ledgerKey`가 키 존재만 보므로(`lib/graders/compliance.ts:60`) `VALUE_KINDS`(`lib/graders/ledger.ts:22-27`)에 더한다. 사전 규칙은 기존 등급(`block`·`warn`·`info`, `lib/graders/compliance-lexicon.ts:6`, `tests/compliance.test.mjs:94`)만 쓴다. hard_block은 등급이 아니라 `lib/franchise-rules.ts`의 해제 불가 목록이다. 캡션·발행 게이트가 원장 해소(`lib/graders/compliance.ts:60`), [확인 필요] 면제(`:44`), 인용 강등(`:61-62`)을 거치지 않고 직접 판정한다. R2는 온라인 채점 파일(`lib/online-grading.ts` 등)을 고치지 않는다.
+- 구현 자리: 공식 규칙은 새 범주 `franchise_recruit`로 규제 사전에 넣는다(law.go.kr 출처). 휴리스틱·플랫폼 규칙은 `lib/franchise-rules.ts`에 둔다. 값 대조(N호점 대 확정 가맹점 수와 기준일, 창업비용)는 `ledgerKey`가 키 존재만 보므로(`lib/graders/compliance.ts:107`) `VALUE_KINDS`(`lib/graders/ledger.ts:39-53`)에 더한다. 사전 규칙은 기존 등급(`block`·`warn`·`info`, `lib/graders/compliance-lexicon.ts:10`, `tests/compliance.test.mjs:238`)만 쓴다. hard_block은 등급이 아니라 `lib/franchise-rules.ts`의 해제 불가 목록이다. 캡션·발행 게이트가 원장 해소(`lib/graders/compliance.ts:107`), [확인 필요] 면제(`:87`), 인용 강등(`:109`)을 거치지 않고 직접 판정한다. R2는 온라인 채점 파일(`lib/online-grading.ts` 등)을 고치지 않는다.
 
 | 등급 | 규칙 | 근거 |
 |---|---|---|
@@ -659,9 +659,10 @@ R4a가 `lib/franchise-rules.ts`에 만들고 R2·R4b가 쓴다. 레코드는 `{i
 | warn | '독점 상권' 없는 영업지역 조항 사실, 경제적 이해관계 표시 없는 점주 후기, 표시 없는 AI 가상인물, 사실·의견 표지 누락(H8) | 제12조의4, 추천·보증 심사지침 |
 | 강화 | 헤드라인·첫 줄 수치 주장의 warn → block | H9 |
 
-- 수용 기준(성공): 범주 테스트를 9개로 고치고(`tests/compliance.test.mjs:92`) 규칙마다 합성 위반 2건 이상(`:96`)과 정상 문장 오탐 0건이다. 부정문('수익을 보장하지 않습니다')은 잡지 않는다. 가맹 프로필이 있는 브랜드의 소비자 캠페인에도 게이트가 걸리므로, 도넛·디저트 소비자 판촉 문장(신메뉴, 한정 판매, 매장 안내, '매일 직접 굽는 수제 도넛', '오늘도 완판', '대기 없이 바로 픽업' 등) 합성 20건을 소비자 캠페인 캡션으로 돌려 오탐이 0건이다. 같은 생산·완판 문장은 objective 캠페인과 내보내기에서 근거 사실이 없으면 차단된다. 비가맹 fixture의 이슈 목록이 같다(사전 버전 문자열만 바뀐다). 결과에 기존 고지(`lib/graders/compliance.ts:9`)와 공식·휴리스틱 구분이 붙는다. 날짜 주입으로 `ruleAt` 선택을 확인한다.
-- 수용 기준(거부): "월 순수익 500만원 보장"은 대표가 승인해도 409다. 확정 가맹점 수 12개(기준일 있음)일 때 "전국 20개 매장"은 차단, "전국 12개 매장"은 통과다. 교체된 정보공개서 버전 값은 차단이다. 직원 최종 승인 403(기존). AI 카피 캡션 409는 `AI_COPY_CAPTIONS=enabled`로 켠 테스트에서 확인한다(꺼져 있으면 `lib/execution-server.ts:60`의 결정 17 사유가 먼저 난다).
+- 수용 기준(성공): 범주 테스트를 9개로 고치고(`tests/compliance.test.mjs:236`) 규칙마다 합성 위반 2건 이상(`:240`)과 정상 문장 오탐 0건이다. 부정문('수익을 보장하지 않습니다')은 잡지 않는다. 가맹 프로필이 있는 브랜드의 소비자 캠페인에도 게이트가 걸리므로, 도넛·디저트 소비자 판촉 문장(신메뉴, 한정 판매, 매장 안내, '매일 직접 굽는 수제 도넛', '오늘도 완판', '대기 없이 바로 픽업' 등) 합성 20건을 소비자 캠페인 캡션으로 돌려 오탐이 0건이다. 같은 생산·완판 문장은 objective 캠페인과 내보내기에서 근거 사실이 없으면 차단된다. 비가맹 fixture의 이슈 목록이 같다(사전 버전 문자열만 바뀐다). 결과에 기존 고지(`lib/graders/compliance.ts:9`)와 공식·휴리스틱 구분이 붙는다. 날짜 주입으로 `ruleAt` 선택을 확인한다.
+- 수용 기준(거부): "월 순수익 500만원 보장"은 대표가 승인해도 409다. 확정 가맹점 수 12개(기준일 있음)일 때 "전국 20개 매장"은 차단, "전국 12개 매장"은 통과다. 교체된 정보공개서 버전 값은 차단이다. 직원 최종 승인 403(기존). AI 카피 캡션 409는 `AI_COPY_CAPTIONS=enabled`로 켠 테스트에서 확인한다(꺼져 있으면 `lib/execution-server.ts:110`의 결정 17 사유가 먼저 난다).
 - 점주 후기: 첫 점주 후기 소재가 생길 때 `testimonial_consent`를 같은 규칙으로 더한다(그 전에는 kind를 등록하지 않는다). 동의가 철회되면 그 후기를 쓴 발행에 재검토가 붙는다.
+- 구현 기록(2026-09-25, R1b·R2 PR, 병합 전): 사전 범주 `franchise_recruit`(공식 규칙 14개, 사전 `compliance-lexicon-2026-09-25.6`, `checkCompliance`는 `opts.franchise`로 옵트인할 때만 이 범주를 본다), `lib/franchise-rules.ts`의 해제 불가 목록 `FRANCHISE_HARD_BLOCK_IDS` 8개·휴리스틱 표현 12개·근거 조건(`FRANCHISE_CLAIMS_VERSION` `fr-claims@2026-09-25.1`. 규칙 레지스트리 54개와 버전은 그대로), `VALUE_KINDS` 가맹 값 종류 7개(채점기는 건너뛰어 `GRADERS_VERSION` 그대로), 판정기 `lib/franchise-compliance.ts`(소비자·모집 범위, H6 수익 사실, H8 표지, H9 첫 줄), 캡션·발행 게이트(소재 저장·캡션 후보·카피·발행 준비·승인·접수, 가맹 프로필 브랜드만)와 승인 화면의 차단 사유·경고·모집 유사 경고. objective가 없는 지금의 캠페인은 모두 소비자 범위로 판정하고, 모집 범위는 R3 objective 캠페인과 R15a 내보내기가 넘긴다. 결과마다 공식 규정·휴리스틱을 구분하고 휴리스틱에는 'COLLECTIVE 휴리스틱 · 법률 자문 아님'을 붙인다(결정 20 보류). 모델 제출 바이트와 프롬프트 16개 단위는 그대로다. 검사: `node scripts/test.mjs` passed · mocked(`tests/franchise-compliance.test.mjs` 포함). 운영 확인은 게시 전이라 `not_run`.
 
 ### R3 모집 캠페인 objective·채널 스킬
 
@@ -950,7 +951,7 @@ R4b 게이트 시나리오 12종: (1) 두 문서와 계약서안을 D에 제공�
 |---|---|---|---|
 | 23 | 계약 #1 체결 조건과 대기 계산 기본값 | W3 | H1~H5를 기본값으로 둔다. 계약 #1은 LR-1 회신 뒤에만 체결하고, 그 전에 체결해야 하면 대표가 이 결정으로 위험 수용을 기록한다. 게이트 결과에 'COLLECTIVE 휴리스틱 · 법률 자문 아님'을 붙인다. |
 | 24 | 정보공개서 전달 방식 | W3 | 본부가 1·2·4호로 직접 주고 COLLECTIVE는 증빙만 기록한다. 외부 시스템의 3호 제공도 기록한다. 원본·확인서 스캔은 저장하지 않는다. 전달 포털(R11)과 본인 확인 수단은 Q8 회신 뒤 조건부다. |
-| 25 | 규제 가드레일 등급과 수익 수치 | W3 | hard_block 목록(R2 표)은 해제 불가다. 수익 수치는 광고 금지(H6), 헤드라인 엄격(H9)이다. 가맹 프로필이 있는 브랜드는 모든 캠페인의 캡션·발행 게이트에 적용하되, 생산·판매 채널·직영 매장 인기 규칙은 objective 캠페인과 내보내기에만 적용한다. 완화는 LR-1 뒤 코드 PR로만 한다. R2는 스위치 없이 적용 범위로 켜지고 objective·가맹 프로필 해제로 꺼진다. 이 예외는 성장 계획 설계 원칙 4의 스위치 요건을 대신한다. |
+| 25 | 규제 가드레일 등급과 수익 수치 | W3 | **대표 기본값으로 적용(2026-09-25): hard_block 해제 불가, H6 광고 금지, H9 헤드라인 엄격. 완화는 법률 검토 뒤 코드 PR로만.** hard_block 목록(R2 표)은 해제 불가다. 수익 수치는 광고 금지(H6), 헤드라인 엄격(H9)이다. 가맹 프로필이 있는 브랜드는 모든 캠페인의 캡션·발행 게이트에 적용하되, 생산·판매 채널·직영 매장 인기 규칙은 objective 캠페인과 내보내기에만 적용한다. 완화는 LR-1 뒤 코드 PR로만 한다. R2는 스위치 없이 적용 범위로 켜지고 objective·가맹 프로필 해제로 꺼진다. 이 예외는 성장 계획 설계 원칙 4의 스위치 요건을 대신한다. |
 | 26 | objective와 채널 단위 | W5, R3 착수 전 | objective는 'franchise_recruitment' 하나, 설정·해제는 대표·관리자(감사)다. 새 단위는 franchise·portal·keyword·expo·leadad·referral 6개를 한 번의 코드 PR과 묶음 게시로 넣는다. objective 캠페인에서 offline·commerce·search를 끄고 storeId를 막는다. `PRACTICE_VERSION`은 올리지 않는다. 성장 계획 A1의 '게시 없이 반영'은 기존 단위 본문에만 적용되고, 새 채널 단위(가맹 6개, A1의 당근·배달·카카오 등)는 코드 PR과 묶음 게시로만 생긴다는 해석도 이 결정으로 함께 정한다. 채택하면 같은 PR에서 성장 계획 A1 행과 3단계 종료 조건에 이 한정을 적는다. |
 | 27 | 모집 비용 출처, 점주 추천, 외부 영업대행 | W4 | 본부 모집 예산만 쓴다(광고분담금은 Q10 전 금지). 점주 추천에 금전 보상을 주지 않는다(Q9 전). 가맹본부와 모집 위탁 계약을 맺은 주체 밖의 성과 수수료형 분양·영업대행은 1차에 쓰지 않는다([M8]). 모집 위탁을 받은 가맹중개인이 COLLECTIVE를 쓰는 경우에도 가맹본부 명의 문서와 같은 게이트를 쓴다(체크리스트 12행). |
 | 31 | 창업 전용 발행 계정 | W5, R3 착수 전 | R-1은 창업 게시를 앱 밖 창업 계정에 수동으로 올리고 R15a로 증빙한다. 월 게시가 8건을 넘으면 발행 연결 키를 brandId+목적으로 넓히는 PR을 따로 낸다(`lib/execution-server.ts` 공유 파일, 빈 곳 19). |
