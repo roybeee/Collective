@@ -200,4 +200,4 @@ v1은 역할 산출물(kind `role`)만 심사한다. quality 역할은 B1 κ가 
 
 - J1은 아무것도 보내지 않는다.
 - 골든 라벨(`expectations`·`prohibitedTerms`)과 모델·평가 구분 정보는 심사 입력에 들어갈 수 없다(위 `forbidden_field`).
-- J3가 평가 출력을 평가 HERMES로 다시 보내는 전송은 [데이터 처리](DATA-PROCESSING.ko.md) E1 행에 적었다. 다만 E1 확장은 대표 결정 대기다([로드맵](QUALITY-ROADMAP.ko.md#아직-결정하지-않은-것)). 결정 전에는 심사 run을 시작하지 않는다(운영 절차, 코드는 막지 않는다).
+- J3가 평가 출력을 평가 HERMES로 다시 보내는 전송은 [데이터 처리](DATA-PROCESSING.ko.md) E1 행에 적었다. E1 확장은 대표가 2026-09-25에 승인했다([로드맵](QUALITY-ROADMAP.ko.md#대표-승인-기록)).
