@@ -80,6 +80,8 @@ function scrubbed<T>(value:T,labels:IdLabels={},key=''):T{
  if(Array.isArray(value))return value.map(v=>scrubbed(v,labels)) as T;
  return value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([k,v])=>[k,scrubbed(v,labels,k)])) as T:value;
 }
+// 평가(lib/eval-kinds.ts)가 운영과 같은 정규화본으로 회의 단계를 채점하도록 공개한다.
+export function scrubMeetingOutput<T>(value:T,labels:IdLabels={}):T{return scrubbed(value,labels)}
 // 필드마다 제목을 붙여 재질문은 필드 단위로, 최소 실질량은 필드 전체로 본다.
 const fieldText=(fields:Record<string,string>)=>Object.entries(fields).map(([k,v])=>`## ${k}\n${v}`).join('\n');
 function substantive(label:string,fields:Record<string,string>){
@@ -120,7 +122,7 @@ export function parseMeetingStep(text:string,step:MeetingStep,previous:MeetingSt
 }
 // 회의 입력의 내부 식별자 → ref 라벨. 저장 본문의 식별자를 입력에서 쓴 이름으로 바꾼다.
 export const artifactRef=(a:{role:string;version?:number})=>`${roles.find(r=>r.id===a.role)?.name||a.role} ${a.version?'v'+a.version:'개선본'}`;
-export function meetingLabels(m:Meeting):IdLabels{
+export function meetingLabels(m:Pick<Meeting,'steps'>&{snapshot:Pick<Meeting['snapshot'],'campaign'|'brandArchive'|'artifacts'>}):IdLabels{
  const labels=idLabels({campaign:m.snapshot.campaign,archive:m.snapshot.brandArchive,artifacts:m.snapshot.artifacts});
  for(const s of m.steps)if(s.phase==='discussion')labels[s.id]=discussionRef(s.role);
  return labels;

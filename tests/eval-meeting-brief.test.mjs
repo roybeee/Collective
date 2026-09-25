@@ -132,7 +132,16 @@ check('a discussion step is graded as a discussion (contract_json passes)',()=>a
 check('synthesis passes meeting_step_contract',()=>assert.equal(status(synthesis,'meeting_step_contract'),'pass'));
 check('a revision is graded by revision_repeat against its original',()=>assert.equal(status(revision,'revision_repeat'),'pass'));
 check('the quality review reports the missed seeded defect only',()=>{const g=quality.graders.find(x=>x.id==='seeded_defect_detection');assert.ok(g.status==='fail'&&/missing/.test(g.detail)&&!/denominator/.test(g.detail),JSON.stringify(g))});
-check('meeting results carry no prevention rows and no grader errors',()=>assert.ok(run.results.every(x=>Array.isArray(x.prevention)&&!x.prevention.length&&!x.summary.grader_error)));
+// 회의 단계는 운영과 같은 정규화본(lib/meetings.ts scrubMeetingOutput: 내부 식별자·입력 스키마 경로 → 한국어 라벨)으로 채점하고, 원문의 경로 노출은 예방 판정(internal_id_exposure)으로 남긴다(R3 기준선 2026-09-25: MAPDAL 재검토 원문의 evidence.facts.confirmed).
+check('meeting results carry an internal_id_exposure prevention row and no grader errors',()=>assert.ok(run.results.every(x=>x.prevention.map(g=>g.id).join()==='internal_id_exposure'&&!x.summary.grader_error),JSON.stringify(run.results.map(x=>x.prevention))));
+{
+ const kase=captured.get(done.steps[1].id),pad=' 확인 계획과 가설을 함께 적습니다.'.repeat(3);
+ const out=JSON.stringify({position:'확정 사실(evidence.facts.confirmed)만 근거로 첫 방문 이유를 좁힙니다.'+pad,evidence:'evidence.directives 기준으로 날짜는 상대 일정입니다.'+pad,challenge:'앞선 제안의 측정 기준이 30일 코호트와 맞는지 확인이 필요합니다.'+pad,proposal:'다음 주 새 빵 안내 카드 한 가지로 시험합니다.'+pad,respondsTo:[]});
+ const g=kinds.evalKind('meeting_step').grade(kase,out,null).result,row=(list,id)=>list.find(x=>x.id===id)?.status;
+ check('a meeting step is graded on the normalized text (paths labeled) and the raw path is a prevention fail',()=>assert.ok(row(g.graders,'internal_id_exposure')==='pass'&&row(g.prevention,'internal_id_exposure')==='fail',JSON.stringify({graders:g.graders.filter(x=>x.id==='internal_id_exposure'),prevention:g.prevention})));
+ const clean=kinds.evalKind('meeting_step').grade(kase,out.replaceAll('evidence.facts.confirmed','확정 사실').replaceAll('evidence.directives','상시 지시'),null).result;
+ check('a meeting step without paths passes both',()=>assert.ok(row(clean.graders,'internal_id_exposure')==='pass'&&row(clean.prevention,'internal_id_exposure')==='pass'));
+}
 check('meeting outputs are stored per case with the step role',()=>assert.ok(run.results.every(x=>sql.prepare("SELECT 1 FROM records WHERE owner=? AND kind='eval_output' AND id=?").get(owner,`${owner}:eval_output:${runId}:${x.caseId}`))));
 r=await post({action:'regrade_run',id:runId});
 check('a meeting run regrades with the same scale (no skips)',()=>assert.ok(r.status===200&&r.body.totals.cases===steps.length&&!r.body.skipped.length,JSON.stringify(r.body).slice(0,300)));
