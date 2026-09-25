@@ -111,6 +111,8 @@ export const recordKinds:readonly RecordKind[]=[
 // 중지 때 재확인 표시는 새 kind 없이 캠페인 이력(event)의 playbookRecheck detail로 남겨 캠페인과 함께 지운다.
  // token_budget 묶음(마지막 3개, tests/token-budget.test.mjs 고정) 앞에 둔다.
  {kind:'playbook_audit',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'운영자 선호 규칙 감사 기록(생성·승인·중지·연장, 전후 상태·규칙 버전·만료·중지 때 재확인 작업물 수·행위자 id·역할). 추가만 하고 이메일·본문 원문은 담지 않는다(B3-1)'},
+ // Q2 평가 월 승인(품질 계획 v2). 소유자 범위이고 캠페인과 무관하다(lib/eval-budget-server.ts). 비식별 신호와 token_budget 묶음(마지막 3개, tests/token-budget.test.mjs 고정) 앞에 둔다.
+ {kind:'eval_budget_approval',parent:'none',campaignDeletion:'not_campaign_scoped',description:'서버 평가 토큰 월 상한 대표 승인(UTC 월당 1행, id YYYY-MM: cap·사유·승인자·시각). 다시 승인하면 이전 승인을 history에 남긴다. 승인이 없는 달은 기본 1,500,000(결정 5)이고 월 상한 판정(시작·제출 직전)이 이 cap을 읽는다'},
  // F4b-2 비식별 이관(대표 결정 7). 캠페인 삭제 때 만들고 캠페인과 잇지 않는다(links 없음, 가명 키). 소유자가 완전 삭제를 고르면 만들지 않고 기존 행도 지운다(lib/server.ts).
  // token_budget 묶음(마지막 3개, tests/token-budget.test.mjs 고정) 앞에 둔다.
  {kind:'deidentified_signal',parent:'none',campaignDeletion:'retain',purge:'not_created',description:'삭제한 캠페인의 비식별 평가 신호(가명 키·업종 범주·AI 작업물별 역할·스킬/프롬프트 버전·보고 모델·토큰 합계(유효숫자 2자리)·온라인 채점 통과/실패 채점기·규제 보류 건수·AI 품질 검수 기준별 판정, 캠페인 사용량 요약). 원문·캠페인 id·브랜드 이름은 담지 않는다. 이관한 날(UTC)부터 90일(expiresAt)이 지나면 조회에서 빠지고 캠페인 삭제·조사 워커 tick(소유자당 UTC 하루 1회)이 지운다. 소유자가 완전 삭제를 고르면 그 캠페인의 이관을 만들지 않는다. 이전에 삭제한 다른 캠페인의 이관분은 만료까지 그대로 둔다'},
