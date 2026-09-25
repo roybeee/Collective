@@ -472,7 +472,7 @@ run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
 
   `tests/eval-synthesize.test.mjs`가 저장소의 모든 스펙이 지금 코드로 생성되고 체크리스트 8종을 채우는지 본다(스펙이 코드 변경으로 썩지 않게).
 - 테스트: `tests/eval-synthesize.test.mjs`(라이브러리·CLI 두 번 실행 바이트 동일, 15케이스·체크리스트 8종, 브리프 기준일이 스펙 시각을 따름, 케이스별 `specHash`, 거부 7종, 가져오기의 트리·`promptHash`·멱등·전부 아니면 전무·입력 400, 가져온 케이스 실행의 `promptHash`가 생성기 값과 같음. 뮤테이션 7종(트리 검사·해시 검사·시계·개인정보 검사·체크리스트·syn- 키·금지 표현 출처)을 모두 잡는다. 합성 데이터, `mocked`).
-- 한계: 운영 트리가 알 수 없음(`unknown`, 개발 실행)이면 가져오기가 늘 409라 로컬 개발 서버로는 가져올 수 없다. 설계의 봉인 합성 캠페인(S1 beauty·S4 popup·S5 retail)은 아직 없다(R1 전 작업).
+- 한계: 운영 트리가 알 수 없음(`unknown`, 개발 실행)이면 가져오기가 늘 409라 로컬 개발 서버로는 가져올 수 없다. 설계의 봉인 합성 캠페인(S1 beauty·S4 popup·S5 retail)은 아직 없다(R1 전 작업, 작성 안내 [봉인 케이스](SEALED-CASES.ko.md)).
   - 운영 캡처(real, 2026-09-25 G0)
     - C1 ODA: 역할 3건(기존)과 회의 단계 2건(실패한 회의의 완료 단계 cmo·creative).
     - C2 MAPDAL: 역할 8건(기존)과 완료 회의 단계 6건(cmo·creative·quality 토론, 합의, 개선본 strategy, 재검토).
