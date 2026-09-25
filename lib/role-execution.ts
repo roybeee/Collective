@@ -1,5 +1,5 @@
 import {ROLE_OUTPUT_VERSION,renderRoleOutput,artifactUsable,substantiveIssue,scrubInternalIds,labelArchive,idLabels,type RoleOutputContract} from './role-output';
-import {roleRequestPlan,buildRoleInputMasked,buildRoleInstruction} from './role-instruction';
+import {roleRequestPlan,buildRoleInputMasked,buildRoleInstruction,type RoleRequest} from './role-instruction';
 import {evidenceContext,currentFactRefs} from './ai-context';
 import {brandStoreAllow} from './store-allow-server';
 import {claimGuard,unverifiedClaims} from './campaign-policy';
@@ -21,7 +21,7 @@ import {PRACTICE_VERSION,practices} from '@/lib/practice';
 import {parseStandaloneQuality,qualityMarkdown,scrubQualityReview} from '@/lib/quality';
 import {learningContext,learningSnapshotStatement,operatorPreferenceContext} from '@/lib/learning-server';
 // 운영자 선호 규칙(B3-1): 성과 규칙(learning)과 다른 operatorPreferences 블록으로 역할 입력 끝에 붙이고, 블록의 권한 한계 문장을 지시문 끝에 붙인다. 0건이면 키·문장이 없어 입력·지시문·inputHash·스냅샷이 이전과 바이트 동일하다.
-import {withOperatorPreferences,withPreferenceAuthority,operatorPreferenceBlock} from '@/lib/playbook-curator';
+import {withOperatorPreferences,withPreferenceAuthority,operatorPreferenceBlock,type OperatorPreferenceBlock} from '@/lib/playbook-curator';
 import {hermesSubmissionStatement,submitHermes,pollHermes} from '@/lib/hermes';
 import {roles,type Campaign,type Brand,type Artifact} from '@/lib/agency';
 import {ApiError,acquireLock,releaseLock,database,json,failure,str,recordStatement,readRecord,listRecords,eventStatement,connection,stamp,uid,type EventActor} from '@/lib/server';
@@ -85,6 +85,13 @@ export async function roleRequestWithRules(owner:string,c:Campaign,role:string,{
  return {request:{role,campaign:c,brand,archive,evidence,learning,previous,previousDecisions,revisionRequest,...(operatorRules.length?{operatorPreferences:operatorPreferenceBlock(operatorRules)}:{}),...(storeAllow.length?{storeAllow}:{})},operatorRules,sourceMasking};
 }
 export async function roleRequestFor(owner:string,c:Campaign,role:string,sources:RoleSources,brand:Brand){return (await roleRequestWithRules(owner,c,role,sources,brand)).request}
+// 역할 제출 조립(운영 start 분기와 서버 평가 lib/eval-kinds.ts가 공유, Q1): 순수 지시문·가린 입력에 운영자 선호 블록과 권한 문장을 붙인다.
+// 요청에 블록이 없으면(규칙 0건·옛 동결본) 순수 함수 출력과 바이트 동일하다. findings는 입력 가림 기록이다(평가는 쓰지 않는다).
+export type RoleSubmissionRequest=RoleRequest&{operatorPreferences?:OperatorPreferenceBlock};
+export function roleSubmission(request:RoleSubmissionRequest){
+ const masked=buildRoleInputMasked(request);
+ return {instructions:withPreferenceAuthority(buildRoleInstruction(request),request.operatorPreferences),input:withOperatorPreferences(masked.input,request.operatorPreferences),findings:masked.findings};
+}
 async function openai(path:string,key:string,options:RequestInit={}){let r:Response;try{r=await fetch('https://api.openai.com/v1/'+path,{...options,headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json',...options.headers},signal:AbortSignal.timeout(25000)})}catch{throw new ApiError(502,'AI 서비스 응답을 받지 못했습니다. 작업 기록에서 다시 확인해 주세요.')}let data:any;try{data=await readBoundedJson(r,1000000)}catch{throw new ApiError(502,'AI 응답이 너무 크거나 형식이 올바르지 않습니다.')}if(!r.ok){const code=data.error?.code;if(code==='insufficient_quota')throw new ApiError(402,'API 사용 한도를 확인해 주세요.');throw new ApiError(r.status>=500?502:r.status,r.status===401?'AI 인증에 실패했습니다. 연결을 다시 확인해 주세요.':`AI 요청을 처리하지 못했습니다 (${r.status}). 모델과 사용 한도를 확인하세요.`)}return data}
 export async function executeRole(owner:string,b:Record<string,unknown>,by?:EventActor){let started:Job|null=null;let lockOwner="",lockToken="",providerAccepted=false;let gradeAfterUnlock:(()=>Promise<number>)|null=null;try{lockOwner=owner;lockToken=await acquireLock(owner);const db=database();if(b.action==='stop_sequence'){const result=await sequenceAction(owner,b);return json('sequence' in result?result.sequence:result)}const cfg=await connection(owner);
 if(['start_sequence','stop_sequence','advance_sequence'].includes(String(b.action))){
@@ -101,11 +108,11 @@ if(b.action==='start'){
  if(existing&&!['failed','cancelled','incomplete'].includes(existing.status))throw new ApiError(409,'이 브리프 버전의 작업은 이미 실행됐습니다.');
  const claimStatement=db.prepare("INSERT INTO jobs(id,owner,campaign_id,role,status,model,campaign_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status='starting',error=NULL,provider_id=NULL,updated_at=excluded.updated_at WHERE jobs.status IN ('failed','cancelled','incomplete')").bind(id,owner,c.id,role.id,'starting',cfg.model,c.version,now,now);
  // 입력 최소화(레인 A): 가린 입력을 저장·전송하고, 가림 기록(필드·종류·건수, 허용 값이라 가리지 않은 탐지는 allowed:true, 값 없음)을 산출물 계약에 남긴다(inputMasking, 실행마다·0건이면 빈 배열). 브랜드 자료 가림 기록(4.4 ③)은 그 뒤에 합친다.
- const {outputContract}=roleRequestPlan(request),masked=buildRoleInputMasked(request),input=withOperatorPreferences(masked.input,operatorPreferences),effectiveInstruction=withPreferenceAuthority(buildRoleInstruction(request),operatorPreferences);
+ const {outputContract}=roleRequestPlan(request),{instructions:effectiveInstruction,input,findings}=roleSubmission(request);
  // promptVersion(F2a 조인 키): 레지스트리 단위를 썼으면 unit@sha256 앞 12자, 아니면 <스킬 버전>:<지시 해시>. 작업물·사용량 원장이 같은 값을 쓴다.
  const promptVersion=registryVersion??await f2aPromptVersion(PRACTICE_VERSION,effectiveInstruction);
  const openaiRequest=JSON.stringify({model:cfg.model,instructions:effectiveInstruction,input,max_output_tokens:practices[role.id].maxTokens,background:true,store:true,metadata:{agency_job_id:id},...(role.id==='insight'?{tools:[{type:'web_search'}]}:{})});
- const preparedWrites=[claimStatement,recordStatement(owner,'role_output_contract',id,{...outputContract,...(evidence.factRefs?{factRefs:evidence.factRefs}:{}),idLabels:idLabels({campaign:c,archive:labelArchive(archive),artifacts:artifacts.filter(a=>a.status!=='outdated')}),...(claimRoles.has(role.id)?{claimGuard:claimGuard(evidence.facts)}:{}),usageScope:{brandId:c.brandId,storeId:c.storeId??null},inputMasking:[...masked.findings,...sourceMasking]},c.id),learningSnapshotStatement(owner,id,c,role.id,learning,PRACTICE_VERSION,operatorRules.length?{operatorPreferences:operatorRules,artifactId:await roleArtifactId(id)}:undefined),promptSnapshotStatement(owner,id,{promptVersion,promptSource:registryVersion?'registry':'code',...(prompt.fallback?{promptFallback:prompt.fallback}:{})}),...(cfg.provider==='hermes'?[hermesSubmissionStatement(owner,id,{instructions:effectiveInstruction,input},c.id)]:[recordStatement(owner,'openai_submission',id,{body:openaiRequest,createdAt:now},c.id)])];
+ const preparedWrites=[claimStatement,recordStatement(owner,'role_output_contract',id,{...outputContract,...(evidence.factRefs?{factRefs:evidence.factRefs}:{}),idLabels:idLabels({campaign:c,archive:labelArchive(archive),artifacts:artifacts.filter(a=>a.status!=='outdated')}),...(claimRoles.has(role.id)?{claimGuard:claimGuard(evidence.facts)}:{}),usageScope:{brandId:c.brandId,storeId:c.storeId??null},inputMasking:[...findings,...sourceMasking]},c.id),learningSnapshotStatement(owner,id,c,role.id,learning,PRACTICE_VERSION,operatorRules.length?{operatorPreferences:operatorRules,artifactId:await roleArtifactId(id)}:undefined),promptSnapshotStatement(owner,id,{promptVersion,promptSource:registryVersion?'registry':'code',...(prompt.fallback?{promptFallback:prompt.fallback}:{})}),...(cfg.provider==='hermes'?[hermesSubmissionStatement(owner,id,{instructions:effectiveInstruction,input},c.id)]:[recordStatement(owner,'openai_submission',id,{body:openaiRequest,createdAt:now},c.id)])];
  // No external call occurs until the execution and its exact recovery input commit together.
  const claim=await db.batch(preparedWrites);
  if(!claim[0].meta.changes)throw new ApiError(409,'이 브리프 버전의 작업은 이미 실행됐습니다.');

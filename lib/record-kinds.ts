@@ -37,9 +37,13 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'case_observation',parent:'viral_case',campaignDeletion:'not_campaign_scoped',description:'같은 바이럴 사례의 추가 관찰'},
  {kind:'channel_credential',parent:'none',campaignDeletion:'not_campaign_scoped',description:'성과 수집 채널 자격증명(암호화, 워크스페이스 기본·브랜드·지점 단위)'},
  {kind:'deleted_campaign',parent:'none',campaignDeletion:'retain',purge:'keep',description:'캠페인 삭제 기록(tombstone). 삭제할 때 만들어 재생성과 재시도를 막는다'},
- {kind:'eval_case',parent:'none',campaignDeletion:'retain',links:['data_campaign'],purge:'keep',description:'평가 골든셋 케이스(동결한 역할 요청·기대 판정·세트). 캠페인을 지워도 남기고 소유자만 개별 삭제한다(결정 6·7 취지)'},
+ {kind:'eval_case',parent:'none',campaignDeletion:'retain',links:['data_campaign'],purge:'keep',description:'평가 골든셋 케이스(동결한 역할·회의 단계·브리프 요청 — 회의·브리프는 운영과 같은 가림 뒤 — 기대 판정·세트·캡처 드리프트 판정, 합성 케이스는 생성 커밋·트리). 캠페인을 지워도 남기고 소유자만 개별 삭제한다(결정 6·7 취지)'},
  {kind:'eval_connection',parent:'none',campaignDeletion:'not_campaign_scoped',description:'평가 전용 HERMES 연결(주소·키 암호화, 운영 연결과 다른 호스트)'},
  {kind:'eval_output',parent:'eval_run',campaignDeletion:'not_campaign_scoped',description:'평가 실행의 케이스별 모델 출력 원문과 규제 점검 상세(소유자 전용)'},
+ // J2 AI 심사 보정 라벨. 부모 eval_run(라벨이 있는 run은 delete_run 409). 소유자 전용 /api/eval.
+ {kind:'judge_label',parent:'eval_run',campaignDeletion:'not_campaign_scoped',description:'AI 심사 보정 라벨(대표가 평가 출력 렌더본에 매긴 기준별 1~5점·해당없음, 용도 measure·anchor·relabel, 루브릭 버전, 렌더본 해시, 라벨한 사람·시각). 라벨이 있는 평가 실행은 삭제할 수 없다'},
+ // J3 AI 심사 응답(인용·이유·파서 결과·모델 원문). 부모 eval_run(variant judge), delete_run이 결과와 함께 지운다. 소유자 전용 ?judge=<run>&itemId=.
+ {kind:'judge_output',parent:'eval_run',campaignDeletion:'not_campaign_scoped',description:'AI 심사 응답 원문과 파서 결과(기준별 점수·판단 불가·인용·이유, 라벨 항목·원 평가 run 연결). 심사 run의 결과에는 점수만 두고 인용·이유는 여기에만 둔다(소유자 전용)'},
  {kind:'eval_run',parent:'none',campaignDeletion:'not_campaign_scoped',description:'서버 평가 실행(케이스별 채점 결과·토큰·예산 승인·봉인 세트 사용 기록). delete_run은 결과·출력만 지우고 행은 월 예산 장부로 남긴다'},
  {kind:'event',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'캠페인 이력 이벤트'},
  {kind:'execution_creative',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'제작한 소재. 있으면 캠페인 삭제를 거부한다'},
@@ -111,6 +115,8 @@ export const recordKinds:readonly RecordKind[]=[
 // 중지 때 재확인 표시는 새 kind 없이 캠페인 이력(event)의 playbookRecheck detail로 남겨 캠페인과 함께 지운다.
  // token_budget 묶음(마지막 3개, tests/token-budget.test.mjs 고정) 앞에 둔다.
  {kind:'playbook_audit',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'운영자 선호 규칙 감사 기록(생성·승인·중지·연장, 전후 상태·규칙 버전·만료·중지 때 재확인 작업물 수·행위자 id·역할). 추가만 하고 이메일·본문 원문은 담지 않는다(B3-1)'},
+ // Q2 평가 월 승인(품질 계획 v2). 소유자 범위이고 캠페인과 무관하다(lib/eval-budget-server.ts). 비식별 신호와 token_budget 묶음(마지막 3개, tests/token-budget.test.mjs 고정) 앞에 둔다.
+ {kind:'eval_budget_approval',parent:'none',campaignDeletion:'not_campaign_scoped',description:'서버 평가 토큰 월 상한 대표 승인(UTC 월당 1행, id YYYY-MM: cap·사유·승인자·시각). 다시 승인하면 이전 승인을 history에 남긴다. 승인이 없는 달은 기본 1,500,000(결정 5)이고 월 상한 판정(시작·제출 직전)이 이 cap을 읽는다'},
  // F4b-2 비식별 이관(대표 결정 7). 캠페인 삭제 때 만들고 캠페인과 잇지 않는다(links 없음, 가명 키). 소유자가 완전 삭제를 고르면 만들지 않고 기존 행도 지운다(lib/server.ts).
  // token_budget 묶음(마지막 3개, tests/token-budget.test.mjs 고정) 앞에 둔다.
  {kind:'deidentified_signal',parent:'none',campaignDeletion:'retain',purge:'not_created',description:'삭제한 캠페인의 비식별 평가 신호(가명 키·업종 범주·AI 작업물별 역할·스킬/프롬프트 버전·보고 모델·토큰 합계(유효숫자 2자리)·온라인 채점 통과/실패 채점기·규제 보류 건수·AI 품질 검수 기준별 판정, 캠페인 사용량 요약). 원문·캠페인 id·브랜드 이름은 담지 않는다. 이관한 날(UTC)부터 90일(expiresAt)이 지나면 조회에서 빠지고 캠페인 삭제·조사 워커 tick(소유자당 UTC 하루 1회)이 지운다. 소유자가 완전 삭제를 고르면 그 캠페인의 이관을 만들지 않는다. 이전에 삭제한 다른 캠페인의 이관분은 만료까지 그대로 둔다'},

@@ -78,6 +78,8 @@ const kindOf=kind=>kinds.find(k=>k.kind===kind);
 check('tracking codes are retained through their campaign link without blocking deletion',policyOf('tracking_code')==='retain'&&JSON.stringify(kindOf('tracking_code').links)==='["data_campaign"]'&&!kindOf('tracking_code').blocksDeletion&&kindOf('tracking_code').parent==='store');
 // F4b-2(결정 7): 비식별 평가 신호는 캠페인과 잇지 않고(links 없음) 보존하며, token_budget 묶음(마지막 3개) 바로 앞에 둔다.
 check('de-identified signals are retained without a campaign link just before the token budget group',policyOf('deidentified_signal')==='retain'&&!(kindOf('deidentified_signal').links||[]).length&&kindOf('deidentified_signal').parent==='none'&&kinds.at(-4).kind==='deidentified_signal'&&/90일/.test(kindOf('deidentified_signal').description));
+// Q2 평가 월 승인(eval_budget_approval): 캠페인과 무관한 소유자 기록(UTC 월당 1행)이라 완전 삭제 동작(purge)이 없다. token_budget 묶음과 비식별 신호 앞에 둔다.
+check('eval budget approvals are owner records outside campaign deletion, placed before the token budget group',policyOf('eval_budget_approval')==='not_campaign_scoped'&&kindOf('eval_budget_approval').parent==='none'&&!kindOf('eval_budget_approval').links&&kindOf('eval_budget_approval').purge===undefined&&kinds.at(-5).kind==='eval_budget_approval'&&/월/.test(kindOf('eval_budget_approval').description));
 // F4b-2(결정 7): 남기는 kind(retain·retire_and_mark)는 모두 '학습 자산까지 완전 삭제' 때의 동작(purge)을 정한다. 새 보존 kind가 완전 삭제에서 조용히 빠지지 않게 한다.
 const purges=['keep','delete','not_created','delete_all'],kept=kinds.filter(k=>k.campaignDeletion==='retain'||k.campaignDeletion==='retire_and_mark');
 check('every retained or retired kind declares its complete-deletion behaviour',kept.every(k=>purges.includes(k.purge))&&kinds.filter(k=>k.purge!==undefined).length===kept.length);

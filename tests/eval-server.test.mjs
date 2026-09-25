@@ -130,6 +130,7 @@ r=await post({action:'start_run',caseIds:['missing-case'],tokenBudget:50000});
 check('unknown case is 404',()=>assert.equal(r.status,404));
 r=await post({action:'start_run',set:'dev',tokenBudget:250001});
 check('smoke budget above 250k is 409',()=>assert.ok(r.status===409&&/250,000/.test(r.body.error)));
+check('a smoke-only overrun keeps the per-run approval message',()=>assert.ok(/overBudgetApproved\.reason/.test(r.body.error)&&!/set_budget_approval/.test(r.body.error)));
 r=await post({action:'start_run',set:'dev',tokenBudget:300000,overBudgetApproved:{reason:''}});
 check('approval needs a reason',()=>assert.equal(r.status,400));
 r=await post({action:'start_run',set:'dev',tokenBudget:300000,overBudgetApproved:{reason:'합성 승인: dev 전체 확인'}});
@@ -143,6 +144,7 @@ r=await get();
 check('monthly usage counts only this UTC month',()=>assert.ok(r.body.usage.usedTokens===1400000&&r.body.usage.monthlyCap===1500000&&r.body.usage.smokeCap===250000));
 r=await post({action:'start_run',set:'dev',tokenBudget:100001});
 check('monthly cap blocks a run that would exceed 1.5M',()=>assert.ok(r.status===409&&/1,500,000/.test(r.body.error)));
+check('the monthly-cap refusal points to the monthly approval, not only a per-run reason (Q2)',()=>assert.ok(/overBudgetApproved\.reason/.test(r.body.error)&&/set_budget_approval/.test(r.body.error)));
 r=await post({action:'start_run',set:'dev',tokenBudget:100001,overBudgetApproved:{reason:'합성 승인: 월 상한 초과 확인'}});
 check('monthly overrun needs and records owner approval',()=>assert.ok(r.status===200&&JSON.stringify(r.body.overBudgetApproved.exceeded)==='["monthly_cap"]'));
 const reserved=await get();
@@ -194,7 +196,7 @@ for(const res of run1.results){
  check(`${res.role} result records model, provider run, tokens and duration`,()=>assert.ok(res.model==='mock-eval-model'&&/^eval_\d+$/.test(res.providerRunId)&&res.tokens.total===1500&&res.tokens.input===1000&&res.tokens.output===500&&Number.isFinite(res.durationMs)&&res.durationMs>=0));
  check(`${res.role} graded by the thirteen graders and compliance`,()=>assert.ok(res.graders.length===13&&res.graders.every(g=>['pass','fail','not_applicable','grader_error'].includes(g.status))&&Object.values(res.summary).reduce((a,b)=>a+b,0)===13&&typeof res.compliance.version==='string'&&res.variant==='active'));
  // 채점 방식 기록: 정규화 뒤 채점(graders)과 별도로 정규화 전 예방 판정·정규화 건수를 남긴다(값 없이 건수만).
- check(`${res.role} records the grading version, prevention verdicts and normalization counts`,()=>assert.ok(res.gradersVersion==='failure-types-v1+normalized+measure-v2'&&res.prevention.map(g=>g.id).join()==='heading_nesting,internal_id_exposure'&&res.prevention.every(g=>['pass','fail','not_applicable'].includes(g.status))&&Object.keys(res.normalization).join()==='schemaPaths,headings'&&Number.isInteger(res.normalization.schemaPaths)&&Number.isInteger(res.normalization.headings)));
+ check(`${res.role} records the grading version, prevention verdicts and normalization counts`,()=>assert.ok(res.gradersVersion==='failure-types-v1+normalized+measure-v2+g3'&&res.prevention.map(g=>g.id).join()==='heading_nesting,internal_id_exposure'&&res.prevention.every(g=>['pass','fail','not_applicable'].includes(g.status))&&Object.keys(res.normalization).join()==='schemaPaths,headings'&&Number.isInteger(res.normalization.schemaPaths)&&Number.isInteger(res.normalization.headings)));
 }
 check('run accumulates reported tokens',()=>assert.equal(run1.usedTokens,3000));
 const insightResult=run1.results.find(x=>x.caseId===insightCase.id);
@@ -207,7 +209,7 @@ const run2=await drive(r.body.id);
 check('two runs of the same case use different idempotency keys',()=>assert.ok(run2.results[0].idempotencyKey!==insightResult.idempotencyKey&&run2.results[0].idempotencyKey===expectedKey(run2.id,insightCase.id)));
 r=await get(`?compare=${run1.id},${run2.id}`);
 check('comparison pairs the shared case per grader without claiming improvement',()=>assert.ok(r.status===200&&r.body.sharedCases===1&&r.body.graders.length===13&&r.body.graders.every(g=>g.n<=1&&g.verdict!=='improved')));
-check('comparison also reports the model-text (prevention) verdicts and normalization tallies',()=>assert.ok(r.body.prevention.map(g=>g.id).join()==='heading_nesting,internal_id_exposure'&&r.body.normalization.candidate.recorded===1&&r.body.gradersVersions.candidate[0]==='failure-types-v1+normalized+measure-v2'));
+check('comparison also reports the model-text (prevention) verdicts and normalization tallies',()=>assert.ok(r.body.prevention.map(g=>g.id).join()==='heading_nesting,internal_id_exposure'&&r.body.normalization.candidate.recorded===1&&r.body.gradersVersions.candidate[0]==='failure-types-v1+normalized+measure-v2+g3'));
 
 // 예산 소진·사용량 미보고·인증·연결 실패·격리 재확인·시간 초과·취소
 const normalUsage=mode.usage;mode.usage={input_tokens:30000,output_tokens:10000,total_tokens:40000};
@@ -219,9 +221,10 @@ r=await post({action:'start_run',caseIds:[insightCase.id],tokenBudget:100000});
 await seeded('seed-overshoot',now,1460000);before=submissions().length;
 const capped=await drive(r.body.id);
 check('monthly cap is re-checked before each submission',()=>assert.ok(capped.status==='completed'&&capped.stopReason==='monthly_cap_reached'&&capped.results[0].status==='not_run'&&/1,500,000/.test(capped.results[0].error)&&submissions().length===before));
+// Q2: 건별 승인은 월 상한을 올리지 못한다. 첫 케이스 예약도 월 상한에 들어가지 않으면 승인이 있어도 제출 0건 run이 되므로 기록하지 않고 409로 월 승인을 안내한다.
+const evalRunCount=()=>sql.prepare("SELECT COUNT(*) n FROM records WHERE owner=? AND kind='eval_run'").get(owner).n,capRunsBefore=evalRunCount();
 r=await post({action:'start_run',caseIds:[insightCase.id],tokenBudget:100000,overBudgetApproved:{reason:'합성 승인: 월 상한 초과 제출'}});
-const approvedRun=await drive(r.body.id);
-check('a monthly-cap approval lets the run submit past the monthly re-check',()=>assert.ok(approvedRun.status==='completed'&&approvedRun.results[0].status==='completed'&&JSON.stringify(approvedRun.overBudgetApproved.exceeded)==='["monthly_cap"]'&&submissions().length===before+1));
+check('a per-run approval cannot start a run whose first case does not fit the monthly cap (Q2, no run recorded)',()=>assert.ok(r.status===409&&/1,500,000/.test(r.body.error)&&/set_budget_approval/.test(r.body.error)&&evalRunCount()===capRunsBefore&&submissions().length===before,JSON.stringify(r.body)));
 sql.prepare("DELETE FROM records WHERE kind='eval_run' AND id=?").run(`${owner}:eval_run:seed-overshoot`);
 mode.usage={};r=await post({action:'start_run',set:'dev',tokenBudget:100000});before=submissions().length;
 const unreported=await drive(r.body.id);mode.usage={input_tokens:1000,output_tokens:500,total_tokens:1500};
