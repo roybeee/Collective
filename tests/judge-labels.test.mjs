@@ -57,8 +57,8 @@ for(const q of ['?labels=queue&limit=0','?labels=queue&limit=51','?labels=queue&
 
 // 2) 저장: 적용 기준마다 1~5 또는 na.
 const cmoItem=queue.items.find(i=>i.role==='cmo'),full=Object.fromEntries(cmoItem.criteria.map((c,i)=>[c,i===0?'na':i+2]));
-for(const [name,scores] of [['a missing criterion',Object.fromEntries(Object.entries(full).slice(1))],['a criterion outside the role',{...full,concept_diversity:3}],['a score of 6',{...full,[cmoItem.criteria[1]]:6}],['a fractional score',{...full,[cmoItem.criteria[1]]:2.5}],['no scores',undefined]]){
- r=await post({action:'save_label',itemId:cmoItem.itemId,scores});check(`saving with ${name} is 400`,()=>assert.equal(r.status,400,JSON.stringify(r.body)));
+for(const [name,scores,message] of [['a missing criterion',Object.fromEntries(Object.entries(full).slice(1)),new RegExp('빠짐: '+cmoItem.criteria[0])],['a criterion outside the role',{...full,concept_diversity:3},/적용 밖: concept_diversity/],['a score of 6',{...full,[cmoItem.criteria[1]]:6},/1~5 정수/],['a fractional score',{...full,[cmoItem.criteria[1]]:2.5},/1~5 정수/],['no scores',undefined,/scores/]]){
+ r=await post({action:'save_label',itemId:cmoItem.itemId,scores});check(`saving with ${name} is 400 and says why`,()=>assert.ok(r.status===400&&message.test(r.body.error),JSON.stringify(r.body)));
 }
 r=await post({action:'save_label',itemId:'Lffffffffff',scores:full});check('an unknown item is 404',()=>assert.equal(r.status,404));
 r=await post({action:'save_label',itemId:cmoItem.itemId,scores:full,use:'relabel'});check('relabel before a first label is 409',()=>assert.equal(r.status,409));
