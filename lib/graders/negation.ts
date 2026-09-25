@@ -153,11 +153,15 @@ const TOPIC_NOT_FACT=/^[^.,’”"」』]{0,20}?[’”"」』]?\s?(?:은|는|�
 const GOAL_CITE=/(?:캠페인|브리프(?:의)?|사업)\s?목표(?:는|은|:|：)\s?$/;
 // 인용 뒤 '(이)라는 목표(행동)'도 목표 인용이다('‘무료 레벨 테스트 상담 신청’이라는 목표 행동을 … 분리하지 않은 점'). '(이)라는 문구로 광고를 만든다'는 아니다.
 const GOAL_CITE_AFTER=/^(?:이)?라는\s?(?:캠페인\s?)?목표/;
-const inRuleName=(s:string,start:number)=>[...s.matchAll(QUOTE)].some(m=>{const a=m.index!+1,b=m.index!+m[0].length-1;return start>=a&&start<b&&(RULE_NAME.test(s.slice(a,b))||GOAL_CITE.test(s.slice(Math.max(0,m.index!-16),m.index!))||GOAL_CITE_AFTER.test(s.slice(b+1,b+12)))});
+// 둘러싼 따옴표는 문장 분석의 인용 구간(이분 탐색)으로 찾는다. 긴 금지 나열에서 매 대상마다 인용을 다시 훑지 않게 한다(제곱 시간 방지).
+function inRuleName(s:string,a:Sentence,start:number){
+ const k=lastAtOrBefore(a.quoteStarts,start),q=k>=0&&start<a.quotes[k].end?a.quotes[k]:undefined;
+ return !!q&&(RULE_NAME.test(s.slice(q.start,q.end))||GOAL_CITE.test(s.slice(Math.max(0,q.start-17),q.start-1))||GOAL_CITE_AFTER.test(s.slice(q.end+1,q.end+12)));
+}
 export function negatedAt(s:string,start:number,end:number){
  const a=sentenceOf(s);
  if(PRE_NEGATION.test(s.slice(Math.max(0,start-14),start)))return true;
- if(inRuleName(s,start)||WHETHER.test(s.slice(end,end+8))||TOPIC_NOT_FACT.test(s.slice(end,end+100)))return true;
+ if(inRuleName(s,a,start)||WHETHER.test(s.slice(end,end+8))||TOPIC_NOT_FACT.test(s.slice(end,end+100)))return true;
  if(negLabel(s,a,start))return true;
  if(quotedUse(s,a,start))return false;
  const from=end+(LIST_TAIL.exec(s.slice(end,end+SCOPE))?.[0].length||0),after=s.slice(from,from+SCOPE),cut=CLAUSE_END.exec(after);
