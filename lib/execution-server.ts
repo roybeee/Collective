@@ -17,6 +17,7 @@ import {hasFranchiseContext,loadFranchiseContext,type FranchiseContext} from './
 import {franchiseGateError,franchiseIssueLabels,judgeFranchiseText,mentionedFranchiseFacts,recruitmentWarning,RECRUITMENT_LIKE,type FranchiseJudgement} from './franchise-compliance';
 import {COMPLIANCE_NOTICE} from './graders/compliance';
 import {GATE_DISCLAIMER} from './franchise-gates';
+import {isInstant} from './franchise-rules';
 
 export type PublisherCredential={secret:string;version:number;channelId:string;account:string;organizationId?:string};
 type Who=Pick<Actor,'id'|'email'>;
@@ -35,8 +36,10 @@ function franchiseFactGate(fr:FranchiseContext,facts:BrandFact[]){
 }
 // 가맹 모집 규칙 판정(트랙 R R2): 가맹 프로필이 있는 브랜드만 캡션 본문을 직접 판정한다(원장 해소·[확인 필요] 면제·인용 강등 없음). objective가 없는 캠페인은 소비자 범위다.
 // facts는 캠페인 범위의 유효 확정 사실(sourceRef 포함), at은 규칙 선택 시각(발행 예약 시각, 소재·카피는 지금)이다. 가맹 프로필이 없으면 null(비가맹 경로 불변).
+// 규칙 선택 시각은 시간대 있는 ISO 시각만 쓴다. 저장 기록의 예약 시각을 읽을 수 없으면 지금 시각 규칙으로 판정한다(판정을 건너뛰지 않는다).
+const ruleTime=(at:string)=>isInstant(at)?at:stamp();
 function franchiseJudgement(campaign:Campaign,fr:FranchiseContext,facts:BrandFact[],text:string,at:string):FranchiseJudgement|null{
- return fr.profile?judgeFranchiseText({text,at,now:stamp(),scope:'consumer',brandId:campaign.brandId,facts,versions:fr.versions}):null;
+ return fr.profile?judgeFranchiseText({text,at:ruleTime(at),now:stamp(),scope:'consumer',brandId:campaign.brandId,facts,versions:fr.versions}):null;
 }
 // 차단(해제 불가·근거 필요)이면 409. 승인 입력 확인란·역할(대표 포함)은 이 판정을 바꾸지 못한다.
 function assertFranchiseText(j:FranchiseJudgement|null){const e=j&&franchiseGateError(j);if(e)throw new ApiError(e.status,e.message)}
@@ -64,7 +67,7 @@ function franchiseExecution(campaign:Campaign,profile:NonNullable<FranchiseConte
  const byId=new Map(franchiseFactUseIssues(facts,versions,now).map(x=>[x.id,x.message]));
  const verdicts=Object.fromEntries(live.map(p=>{
   const used=p.factRefs.flatMap(r=>facts.filter(f=>f.id===r.id&&f.version===r.version));
-  const labels=franchiseIssueLabels(judgeFranchiseText({text:p.caption,at:p.scheduledAt,now,scope:'consumer',brandId:campaign.brandId,facts,versions}));
+  const labels=franchiseIssueLabels(judgeFranchiseText({text:p.caption,at:ruleTime(p.scheduledAt),now,scope:'consumer',brandId:campaign.brandId,facts,versions}));
   const factUse=[...new Set(used.flatMap(f=>byId.has(f.id)?[byId.get(f.id)!]:[]))];
   const mentioned=mentionedFranchiseFacts({text:p.caption,now,brandId:campaign.brandId,facts,versions});
   const footnote=footnoteIssues(p.caption,{used:used.filter(f=>!!f.sourceRef),mentioned},versions).length?[FRANCHISE_FACT_MESSAGES.footnoteMissing]:[];

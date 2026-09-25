@@ -108,7 +108,7 @@ check('6: direct-store popularity passes with a performance fact and the 직영�
 check('6: store count passes with the matching confirmed count',ok('전국 12개 매장 운영 중',[count(12)]));
 check('6: startup cost passes with the matching value and details line',ok('총 창업비용 · 테이크아웃형: 5,000만원\n포함: 가맹비, 교육비 · 불포함: 임차보증금 · 전용면적 33㎡',[cur('startup_cost_total','5,000만원',{cost:{storeType:'테이크아웃형',includes:['가맹비','교육비'],excludes:['임차보증금'],areaM2:33}})]));
 check('6: a percentage royalty card passes on its own fact value',ok('로열티: 매출의 3%',[cur('royalty_fee','매출의 3%')]));
-check('6: ip claim passes with a registration fact',ok('특허받은 반죽 기술',[cur('ip_registration','특허 제10-0000000호')]));
+check('6: ip claim passes with a registration fact',ok('특허받은 반죽 기술',[cur('ip_registration','가상 특허 등록번호 A1')]));
 check('6: superlative passes when the basis fact is on the same screen',ok('국내 1위 도넛 브랜드(가상 조사 2026)',[cur('claim_basis','가상 조사 2026')]));
 check('6: trade area passes when the source fact is on the same screen',ok('유동인구 하루 3만 명(가상 상권 자료)',[cur('trade_area_source','가상 상권 자료')]));
 check('6: conditional support passes when the condition is stated',ok('인테리어 전액 지원(조건: 계약 기간 5년, 선착순 3곳)',[]));
@@ -130,6 +130,7 @@ check('8: the production and sold-out sentences (1·2·8·9·15·20) are blocked
 const EXTRA=['수입 버터로 만든 풍미, 맛은 보장합니다','하루 매출의 10%를 기부합니다','판매 수익금 전액 기부를 보장합니다','전국 가맹점에서 바로 사용 가능한 쿠폰','가맹점 당일 픽업 가능','케이크 예약금 미리 받습니다','로열티 카드 5개 모으면 도넛 1개','베이킹 클래스 교육비 35,000원','멤버십 가입비 무료','포장 용기 보증금 없음','정부 지원 소비쿠폰 사용 가능','그랜드 오픈 지원 이벤트','세트 No.10 출시','한정 12개, 대기 없음'];
 check('8a: 14 consumer sentences that tripped the draft patterns raise 0 issues in consumer scope',same(EXTRA.flatMap(t=>judge(t,{scope:'consumer',facts:consumerFacts}).issues.map(i=>t+' → '+i.ruleId)),[]));
 check('8a: none of them is a hard_block even in recruitment scope',EXTRA.every(t=>!judge(t,{scope:'recruitment',facts:consumerFacts}).hardBlocked));
+check('8b: unremovable revenue patterns need a money or rate figure (rankings and imported goods are not revenue figures)',['매일 매출 1위 메뉴 글레이즈드 도넛','9월 수입 원두 2종 입고','이달 수입 버터 3종으로 구웠어요'].every(t=>!judge(t,{scope:'consumer'}).hardBlocked)&&['일 매출 300만원','매월 순수익 20%','가맹점 매출 2배'].every(t=>judge(t,{scope:'consumer'}).hardBlocked));
 check('8a: 한정 12개, 대기 없음 is not a mention of the store count 12 (no footnote needed)',jc.mentionedFranchiseFacts({text:'한정 12개, 대기 없음',now:NOW,brandId:'b',facts:consumerFacts,versions:[V1]}).length===0&&jc.mentionedFranchiseFacts({text:'전국 12개 매장에서 만나요',now:NOW,brandId:'b',facts:consumerFacts,versions:[V1]}).length===1);
 
 // ════ 9·10·11) 값 대조 ════

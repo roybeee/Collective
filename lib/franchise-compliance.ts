@@ -32,7 +32,7 @@ const COST_KEYS=['startup_cost_total','franchise_fee','education_fee','franchise
 const FR_KINDS=VALUE_KINDS.filter(k=>k.franchise);
 const EXCERPT=60;
 // H9 수치 주장: 금액, 비율, 거리(가맹 값 종류 본문 값은 따로 본다).
-const NUMERIC=/\d+(?:\.\d+)?\s?%|\d+(?:\.\d+)?\s?(?:km|㎞|m|미터)/;
+const NUMERIC=/\d+(?:\.\d+)?\s?%|\d+(?:\.\d+)?\s?(?:km|㎞|m|미터)(?![A-Za-z])/;
 
 const compactText=(s:string)=>s.normalize('NFKC').replace(/\s+/g,'').toLowerCase();
 type Sentence={s:string;n:string;line:number};
