@@ -49,7 +49,7 @@ node scripts/run-framework.mjs build
 
 ## 4. 게시
 
-Sites 도구의 `save_version_and_deploy_private`로 게시한다. 결과로 받은 버전 번호와 deployment ID를 기록한다.
+Sites 접근 설정에 맞는 게시 도구를 쓴다. 공개(public) 사이트는 `save_site_version`으로 버전을 저장한 뒤 `deploy_site_version`으로 배포한다. 비공개 사이트는 `save_version_and_deploy_private`다. 접근 설정은 바꾸지 않는다. 결과로 받은 버전 번호와 deployment ID를 기록한다. COLLECTIVE는 2026-09-23부터 public이다(STATUS 'Sites 접근').
 
 ## 5. 실행 검증
 
@@ -112,4 +112,5 @@ Sites는 ChatGPT 웹·데스크톱 안에서만 저장·게시되고 외부 API�
 - `sites-publish` 라벨 PR은 한 번에 하나만 둔다.
 - 0단계 사전 점검(크레딧)은 자동 게시에서 기록되지 않는다. 게시 1회 크레딧은 붙여 넣기 방식과 같다.
 - `runtime-verified`는 여전히 소유자 세션의 `/api/version`(5단계)이 필요하다.
-- 첫 실행 전 확인하지 못한 것(2026-09-25): 예약 작업 안에서 Sites 게시 도구를 쓸 수 있는지, GitHub 트리거가 이 요금제에서 동작하는지. 첫 실행이 멈추면 대표가 같은 지시문을 편집기에 붙여 넣는 방식으로 돌아간다.
+- 첫 실행(2026-09-25 22:36 UTC, #119 push): GitHub 트리거가 동작했다(real). 작업은 PR 본문 파싱, main 포함(compare `identical`), CI success, Sites 작업 사본 tree·접근 설정 읽기까지 하고 멈췄다. 지시문 5단계가 비공개 전용 도구(`save_version_and_deploy_private`)를 적어서, public 사이트의 접근 설정 유지 조건과 맞지 않았기 때문이다(blocked, 파일 적용·빌드·게시 미실행). 결과 댓글과 라벨 교체(`sites-publish-blocked`)도 동작했다. 지시문 생성기는 4단계의 공개 사이트 도구를 적도록 고쳤다. 다시 요청할 때는 라벨을 `sites-publish`로 되돌린 뒤 고친 지시문 커밋을 push한다.
+- 첫 실행이 멈추면 대표가 같은 지시문을 편집기에 붙여 넣는 방식으로 돌아간다. 예약 작업 안에서 Sites 저장·배포 도구가 동작하는지는 두 번째 실행에서 확인한다.

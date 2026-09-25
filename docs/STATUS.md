@@ -1,13 +1,13 @@
 # COLLECTIVE 현재 상태
 
-마지막 갱신: 2026-09-25 22:37 UTC (Claude 트랙 R 세션: 묶음 13 `b0ef304` 게시 요청, 자동 게시 첫 실행)
+마지막 갱신: 2026-09-25 22:45 UTC (Claude 트랙 R 세션: 묶음 13 `b0ef304` 게시 요청, 자동 게시 1차 blocked 뒤 재요청)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
 | 운영 제품 커밋 | `8c22f0e8738653698dd4350cd2063e3755340c83` (#115 `merged`, 묶음 12: e8bd8e0 뒤 #113~#115, 제품 변경은 #113 채점 도구뿐) | 제품 tree `02260ba4d4bf50dbd617fd4f6dc2709c5e067cf2` |
-| `origin/main` | `b0ef304` (#118) | 8c22f0e 뒤 #116(문서)·#117(트랙 R R1b·R2)·#118(게시 전 점검 수정). 묶음 13 `b0ef304`(tree `cb16d6b`, 38줄) 게시 요청 PR이 열려 있다(자동 게시 첫 실행, `docs/PUBLISH.ko.md` 8절). 그동안 다른 도구는 새 게시를 요청하지 않는다 |
+| `origin/main` | `b0ef304` (#118) | 8c22f0e 뒤 #116(문서)·#117(트랙 R R1b·R2)·#118(게시 전 점검 수정). 묶음 13 `b0ef304`(tree `cb16d6b`, 38줄) 게시 요청 #119가 열려 있다(자동 게시, `docs/PUBLISH.ko.md` 8절). 1차 실행(22:36 UTC)은 트리거·조건 확인까지 동작했으나 지시문의 게시 도구가 비공개 전용이라 blocked(게시 안 함). 공개 사이트 도구로 고친 지시문으로 재요청했다. 그동안 다른 도구는 새 게시를 요청하지 않는다 |
 | Sites 게시 | `published`: Sites 버전 35, deployment `appgdep_6ab68fba…` succeeded, Sites 작업 사본 tree `02260ba…` = 8c22f0e tree | [게시 기록](releases/2026-09-25-8c22f0e.md)(편집기 보고, 2026-09-25 21:3x UTC 경). 그 앞: e8bd8e0(묶음 11) [기록](releases/2026-09-25-e8bd8e0.md), 트랙 R 단독 게시 73147a9(Sites 버전 31, tree `unknown`) [기록](releases/2026-09-25-73147a9.md) |
 | 실행 검증 | 8c22f0e: `/api/version` not_run. 마지막 `runtime-verified`는 e8bd8e0(2026-09-25 13:48 UTC) | 소유자 세션 `/api/version` tree `d8eacc9…` = e8bd8e0 tree(그 게시 기록) |
 | 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` mode=email, role=owner (2026-09-25 03:30 UTC 경) |
