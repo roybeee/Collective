@@ -64,9 +64,20 @@ function outsideProhibition(list:Block[]):Block[]{
   return {level,banned,table,out:[...acc.out,{...b,line}]};
  },{level:0,banned:false,table:null,out:[]}).out;
 }
+// '다음 표현은 … 사용하지 않는다'처럼 금지를 여는 리드 문장 아래 인용만 있는 줄(빈 줄 허용)은 금지 목록이라 뺀다. 제목·산문 줄이 오면 끝난다(R3 기준선 MAPDAL 개선본 실측).
+const BAN_LEAD=/(?:다음|아래)\s?(?:표현|문구|카피|단어|어휘)(?:은|는|을|를)?[^.\n]{0,40}(?:(?:사용하|쓰|넣)지\s?않(?:는다|습니다|음)|금지(?:한다|합니다|함)?)[.。]?\s*$/;
+const QUOTES_ONLY=/^\s*(?:[-*•]\s*)?(?:[“‘"「『][^”’"」』\n]{1,60}[”’"」』]\s*[,，·/]?\s*)+$/;
+function withoutBannedLists(text:string){
+ let open=false;
+ return text.split('\n').map(line=>{
+  if(open&&(QUOTES_ONLY.test(line)||!line.trim()))return QUOTES_ONLY.test(line)?'':line;
+  open=BAN_LEAD.test(line.trim());
+  return line;
+ }).join('\n');
+}
 function copyUnits(item:EvalItem):CopyUnit[]{
  if(item.kind==='discussion')return proseFields(item).flatMap(f=>f.split('\n')).flatMap(quotedUnits);
- return outsideProhibition(blocks(bodyOf(item))).filter(b=>!b.isLabel).flatMap(b=>COPY_ZONE.test(b.label)?sentences(b.line).map(sentence=>({sentence})):quotedUnits(b.line));
+ return outsideProhibition(blocks(withoutBannedLists(bodyOf(item)))).filter(b=>!b.isLabel).flatMap(b=>COPY_ZONE.test(b.label)?sentences(b.line).map(sentence=>({sentence})):quotedUnits(b.line));
 }
 export const unsupportedClaimTerm:Grader={id:'unsupported_claim_term',content:true,grade(item,ctx){
  if(!isText(item))return verdict('not_applicable');
