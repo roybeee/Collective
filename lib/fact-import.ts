@@ -6,6 +6,7 @@ import type {Store} from './store-marketing';
 import {effectiveBrandFacts,type BrandFact} from './brand-facts';
 import {canonicalFactKey,factLabel} from './fact-catalog';
 import {krwAmounts} from './graders/ledger';
+import {FR_ROYALTY_FORM} from './graders/compliance-lexicon';
 
 // 사실 원장 후보 가져오기: 브리프의 '확정 사실(사용자 직접 제공)' 표현·브리프 초안 사실 후보·지점 레코드 필드·브랜드 조사 주장을 확인 후보(candidate)로 한 번에 등록한다.
 // 같은 범위에 같은 카탈로그 항목이 이미 있으면 건너뛰고 보고한다. 확정은 관리자가 원장에서 한다.
@@ -26,11 +27,12 @@ const keyPatterns:[string,RegExp][]=[
  ['phone',/0\d{1,2}-\d{3,4}-\d{4}/],
  ['address',/[가-힣](시|도|구|군|읍|면|동|리|로|길)\s*\d+|\d+\s*(호|층)(?![가-힣])/],
 ];
-// 가맹 금액 문장(트랙 R R1b): 가맹 문맥 표지가 있거나, 소비자와 겹치는 비용 낱말 뒤 금액이 100만원 이상일 때만이다. 메뉴 가격으로 분류하지 않는다.
-// 소비자 문장('일회용컵 보증금 300원'·'베이킹 클래스 교육비 35,000원'·'멤버십 가입비 10,000원'·'로열티 카드 적립 시 …')의 분류는 이전과 같다.
-const FRANCHISE_ANCHOR=/가맹\s?(?:비|금|가입비|보증금|교육비)|계약\s?이행\s?보증금|창업\s?(?:비용|자금)|총\s?투자|개설\s?비용|로열티\s?(?:월|매월|매출|\d)/;
-const SHARED_COST=/가입비|교육비|보증금|인테리어\s?(?:비|비용|공사비)/;
-export const isFranchiseMoney=(s:string)=>FRANCHISE_ANCHOR.test(s)||SHARED_COST.test(s)&&krwAmounts(s).some(v=>Number(v)>=1_000_000);
+// 가맹 금액 문장(트랙 R R1b): 가맹 비용 표지('가맹비', '가맹 보증금', '창업비용', '총 투자비', '로열티 월 30만원'·'로열티: 매출의 3%')가 있거나,
+// 소비자와 겹치는 비용 낱말(가입비·교육비·인테리어 비) 바로 뒤 16자 안 금액이 100만원 이상일 때만이다. 메뉴 가격으로 분류하지 않는다.
+// 소비자 문장('일회용컵 보증금 300원'·'대관 보증금 100만원'·'베이킹 클래스 교육비 35,000원'·'멤버십 가입비 10,000원'·'로열티 카드 적립 시 …'·'로열티 10% 할인'·'로열티 월 1회 무료 음료'·'총 투자 없이 즐기는 …')의 분류는 이전과 같다.
+const FRANCHISE_ANCHOR=new RegExp(`가맹\\s?(?:비|금|가입비|보증금|교육비)|계약\\s?이행\\s?보증금|창업\\s?(?:비용|자금)|총\\s?투자\\s?(?:비|금|비용)|개설\\s?비용|${FR_ROYALTY_FORM}`);
+const SHARED_COST=/가입비|교육비|인테리어\s?(?:비(?!포)|비용|공사비)/g;
+export const isFranchiseMoney=(s:string)=>FRANCHISE_ANCHOR.test(s)||[...s.matchAll(SHARED_COST)].some(m=>krwAmounts(s.slice(m.index!+m[0].length,m.index!+m[0].length+16)).some(v=>Number(v)>=1_000_000));
 export function guessFactKey(value:string):string|undefined{return keyPatterns.find(([key,re])=>!(key==='menu_price'&&isFranchiseMoney(value))&&re.test(value))?.[0]}
 // 카탈로그 항목을 추정할 수 없으면 문장 앞부분을 자유 항목으로 쓴다. 같은 문장은 다시 가져와도 같은 항목이 되어 건너뛴다.
 const freeKey=(text:string)=>{const t=text.normalize('NFKC').replace(/\s+/g,' ').trim();return canonicalFactKey(t.length>40?t.slice(0,40)+'…':t)};

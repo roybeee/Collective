@@ -1,8 +1,8 @@
-import {identity,requireAdminActor,secureMutation,readRecord,recordStatement,json,failure,str,stamp,ApiError,acquireLock,releaseLock,decrypt,type Actor} from '@/lib/server';
+import {identity,requireAdminActor,secureMutation,readRecord,json,failure,str,stamp,ApiError,acquireLock,releaseLock,decrypt,type Actor} from '@/lib/server';
 import {authEnv} from '@/lib/auth-session';
 import type {Campaign} from '@/lib/agency';
 import {providerPublicationStatus,type Publication} from '@/lib/execution';
-import {getExecution,saveLimits,connectPublisher,disconnectPublisher,saveCreative,savePublication,publicationFor,approvePublication,reservePublication,saveProviderResult,cancelPublication,reconfirmPublication,resolveUncertain,retireMedia,externalMediaReview,type PublisherCredential} from '@/lib/execution-server';
+import {getExecution,saveLimits,connectPublisher,disconnectPublisher,saveCreative,savePublication,publicationFor,approvePublication,reservePublication,publicationKeepingReview,saveProviderResult,cancelPublication,reconfirmPublication,resolveUncertain,retireMedia,externalMediaReview,type PublisherCredential} from '@/lib/execution-server';
 import {submitBuffer,inspectBuffer,listBufferChannels} from '@/lib/publisher-buffer';
 import {readBoundedJson,HttpBodyError} from '@/lib/http-limits';
 import {executionRate} from '@/lib/execution-rate';
@@ -53,7 +53,7 @@ export async function POST(req:Request){let owner='',lock='';try{
   const remote=await inspectBuffer(await decrypt(credential.secret),p.providerId);
   if(remote.channelId!==p.channelId)throw new ApiError(409,'공급자 게시 계정이 다릅니다.');
   const status=providerPublicationStatus(remote.status),review=await externalMediaReview(p,status,origin);
-  const updated:Publication={...p,status,providerStatus:remote.status,...(review?{needsReview:review}:{}),version:p.version+1,updatedAt:stamp()};await recordStatement(owner,'execution_publication',p.id,updated,campaign.id).run();
+  const updated:Publication={...p,status,providerStatus:remote.status,...(review?{needsReview:review}:{}),version:p.version+1,updatedAt:stamp()};await publicationKeepingReview(owner,updated,campaign.id).run();
   if(status==='failed')await retireMedia(owner,[p]);
   return json(updated);
  }

@@ -141,7 +141,7 @@ const violations=[
  ['ecommerce_terms','## 게시 카피\n확정된 가격으로 지금 구매하세요.'],
  // 가맹 모집(트랙 R R2, 합성 문장): 옵트인한 A2 경로. 캡션·발행 게이트 판정은 tests/franchise-compliance.test.mjs가 본다.
  ['franchise_recruit','월 순수익 500만원 보장, 지금 가맹 상담하세요.',RECRUIT],
- ['franchise_recruit','가맹금 100% 안전하게 지켜드립니다.',RECRUIT],
+ ['franchise_recruit','피해보상보험에 가입한 브랜드입니다.',RECRUIT],
  ['franchise_recruit','자체 공장에서 생산한 반죽을 공급합니다.',RECRUIT],
  ['franchise_recruit','전국 20개 매장 운영 중인 가상도넛입니다.',RECRUIT],
 ];

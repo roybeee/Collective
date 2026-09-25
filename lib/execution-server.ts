@@ -319,8 +319,14 @@ export async function reservePublication(owner:string,campaign:Campaign,p:Public
  await verifyMedia(p.mediaUrl,p.pngHash,origin);
  const token=await decrypt(credential.secret);
  const pending:Publication={...p,status:'submitting',attemptedAt:stamp(),updatedAt:stamp(),version:p.version+1};
- await recordStatement(owner,'execution_publication',p.id,pending,campaign.id).run();
+ await publicationKeepingReview(owner,pending,campaign.id).run();
  return {pending,token};
+}
+// 발행 행 전체 쓰기(접수 예약·상태 조회). owner 잠금 밖에서 붙는 재검토 표시(가맹 정보공개서 버전 교체, lib/franchise-server.ts versionFactReview)가
+// 읽은 뒤 쓰기 전에 붙었으면 지우지 않는다(saveProviderResult와 같은 취지). 새 행에 재검토 표시가 있거나 저장된 행에 없으면 recordStatement와 같은 바이트다.
+export function publicationKeepingReview(owner:string,p:Publication,campaignId:string){
+ return database().prepare("INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=CASE WHEN json_extract(records.data,'$.needsReview') IS NOT NULL AND json_extract(excluded.data,'$.needsReview') IS NULL THEN json_set(excluded.data,'$.needsReview',json(json_extract(records.data,'$.needsReview'))) ELSE excluded.data END, updated_at=excluded.updated_at WHERE records.owner=excluded.owner")
+  .bind(`${owner}:execution_publication:${p.id}`,owner,'execution_publication',campaignId,JSON.stringify(p),stamp());
 }
 // 공급자 결과는 잠금 재획득 없이 버전 조건부 UPDATE로 저장한다. 접수 중 표시된 needsReview는 유지한다.
 // 반영되지 않으면(changes=0·저장 오류) Buffer 게시 번호를 별도 감사 기록과 응답에 남겨 잃지 않는다(exec-loop-9).
