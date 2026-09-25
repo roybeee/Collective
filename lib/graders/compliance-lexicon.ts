@@ -46,7 +46,7 @@ const PAID_POST='유료\\s?광고\\s?(?:용\\s?)?(?:게시(?:물|글)?|포스팅
 const PAID_AD=`${PAID_POST}|유료\\s?광고(?!\\s?비)(?:(?<!(?:${PAID_MEDIA})[^.\\n]{0,30}유료\\s?광고)(?![^.\\n]{0,30}(?:${PAID_MEDIA}))|(?<=(?:${CREATOR})[^.\\n]{0,30}유료\\s?광고)|(?=[^.\\n]{0,30}(?:${CREATOR})))`;
 
 export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:string;sources:Record<string,ComplianceSource>;rules:ComplianceRule[]}={
- version:'compliance-lexicon-2026-09-25.7',
+ version:'compliance-lexicon-2026-09-25.8',
  checkedAt:'2026-09-23',
  platformPolicy:'플랫폼별 리뷰 운영정책(예: 지도·예약 플랫폼) 공식 URL은 아직 확인하지 않았다. 게시 전 해당 플랫폼 공식 정책 페이지에서 확인하고, 확인되면 사전 버전을 올려 출처를 추가한다.',
  sources:{
@@ -73,7 +73,7 @@ export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:
   {id:'disclosure_omitted',category:'endorsement',severity:'block',title:'광고·협찬 표기를 빼라는 지시',match:'(?:광고|협찬|유료|AI)\\s?(?:표기|표시|문구|해시태그|고지)[^.\\n]{0,8}(?:빼|생략|없이|숨기|지우|제거)',sources:['fair_labeling','endorsement_guideline']},
   {id:'virtual_person_undisclosed',category:'endorsement',severity:'block',title:'가상인물 추천·보증 표시 누락',match:'가상\\s?(?:인물|인간|모델|인플루언서)|버추얼\\s?(?:인플루언서|모델|휴먼)|AI\\s?(?:인플루언서|모델|아바타)|디지털\\s?휴먼',cleared:'가상\\s?인물(?:임|입니다|이라는|로\\s?표시|\\s?표시)|가상\\s?인간(?:임|입니다)|실제\\s?인물이\\s?아닙|#가상인간|#가상인물|#버추얼|AI\\s?(?:생성|합성)\\s?인물(?:임|입니다|\\s?표시)',sources:['endorsement_guideline','fair_labeling']},
   // ③ AI 기본법: 생성형 AI 결과물 표시 필요 플래그.
-  {id:'ai_generated_unlabeled',category:'ai_label',severity:'warn',title:'AI 생성 소재 표시 필요',match:'(?:AI|인공지능|생성형)[^.\\n]{0,20}(?:이미지|영상|음성|목소리|사진|일러스트|캐릭터|배경|소재)|딥페이크|합성\\s?(?:음성|얼굴)',cleared:'AI\\s?(?:생성|활용|제작)[^.\\n]{0,12}(?:표시|표기|고지|워터마크|라벨)|인공지능[^.\\n]{0,12}(?:표시|표기|고지)|#AI\\s?생성|AI로\\s?(?:생성|제작)(?:됨|되었습니다)',sources:['ai_basic_act']},
+  {id:'ai_generated_unlabeled',category:'ai_label',severity:'warn',title:'AI 생성 소재 표시 필요',match:'(?:AI|인공지능|생성형)[^.\\n]{0,20}(?:이미지|영상|음성|목소리|사진|일러스트|캐릭터|배경|소재)|딥페이크|합성\\s?(?:음성|얼굴)',cleared:'AI\\s?(?:생성|활용|제작)[^.\\n]{0,12}(?:표시|표기|고지|워터마크|라벨)|AI\\s?소재\\s?[·,/]\\s?(?:광고\\s?)?(?:표시|표기)|인공지능[^.\\n]{0,12}(?:표시|표기|고지)|#AI\\s?생성|AI로\\s?(?:생성|제작)(?:됨|되었습니다)',sources:['ai_basic_act']},
   // ④ 정보통신망법: 광고 메시지의 (광고) 표기·야간 전송·수신 동의·수신거부 안내.
   {id:'ad_label_missing',category:'ad_message',severity:'block',title:'광고 메시지 (광고) 표기 누락',match:MESSAGE,context:PROMOTION,except:DEFERRAL,cleared:'\\(광고\\)|\\[광고\\]|（광고）',sources:['network_act']},
   {id:'consent_missing',category:'ad_message',severity:'warn',title:'광고 메시지 수신 동의 전제 누락',match:MESSAGE,context:PROMOTION,except:DEFERRAL,cleared:'수신\\s?(?:에\\s?)?동의|마케팅\\s?(?:정보\\s?)?수신|옵트인|opt-?in',sources:['network_act']},

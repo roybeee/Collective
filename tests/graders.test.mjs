@@ -124,6 +124,9 @@ check('fact_conflict is not applicable when no ledger key is touched',()=>assert
 
 // 7b unconfirmed_value_assertion: 원장에 확정값이 없는 구체 값을 표시 없이 단정하면 fail.
 check('unconfirmed value fails an asserted price or open date missing from the ledger',()=>{assert.equal(status('unconfirmed_value_assertion',role('대표 메뉴는 12,900원입니다.'),ledger),'fail');assert.equal(status('unconfirmed_value_assertion',role('10월 5일 오픈합니다.'),ledger),'fail')});
+// R3 기준선(2026-09-25 S7 품질 검수 실측): 금지된 수익 보장 문구 안의 값('금지된 ‘월 순수익 500만 원 보장’ … 표현은 사용하지 않는다')과 금지 제목 아래 값은 단정이 아니다.
+check('unconfirmed value skips values in negated or prohibitive contexts',()=>{for(const text of ['금지된 ‘월 순수익 500만 원 보장’ 및 유사 수익 보장 표현은 사용하지 않는다.','### 금지 표현\n- ‘월 순수익 500만 원 보장’'])assert.equal(status('unconfirmed_value_assertion',role(text),ledger),'pass',text)});
+check('unconfirmed value still fails a value asserted next to a negated clause',()=>{for(const text of ['대표 메뉴는 12,900원이며 할인하지 않습니다.','월 순수익 500만 원을 보장합니다.'])assert.equal(status('unconfirmed_value_assertion',role(text),ledger),'fail',text)});
 check('unconfirmed value passes a marked example price',()=>assert.equal(status('unconfirmed_value_assertion',role('[예시] 대표 메뉴 12,900원처럼 가격을 적는 양식입니다.'),ledger),'pass'));
 check('unconfirmed value leaves ledger-confirmed kinds to fact_conflict',()=>assert.equal(status('unconfirmed_value_assertion',role('떡볶이는 7,000원입니다.'),priced),'not_applicable'));
 check('unconfirmed value is not applicable without a ledger',()=>assert.equal(status('unconfirmed_value_assertion',role('대표 메뉴는 12,900원입니다.')),'not_applicable'));
