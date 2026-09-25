@@ -385,6 +385,23 @@ run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
   - run에는 적용된 `cap`을 복사하지 않는다. 어느 run에 어떤 상한이 적용됐는지는 승인 레코드의 `createdAt`·`history`와 run `createdAt`을 맞춰 본다.
 - 테스트: `tests/eval-budget.test.mjs`(승인 없음 기본값, 승인 반영, UTC 월 경계, 입력 검증, 이력, 소유자 전용·관리자 403, 건별 승인 run의 승인 cap 초과 제출 중단, 첫 케이스도 들어가지 않는 건별 승인 시작 거부. 합성 데이터, 메모리 SQLite, 평가 HERMES fetch 스텁, `mocked`).
 
+### 8. 평가 종류(`kind`, Q1)
+
+결론: 케이스 종류마다 처리기 하나(`lib/eval-kinds.ts`)가 요청 동결 검사·제출 조립·채점·예약을 함께 맡는다. 역할 평가는 운영 start와 같은 제출 조립을 써서, 운영자 선호 규칙까지 운영 제출과 바이트가 같다.
+
+- 처리기:
+  - `freeze`: 직접 저장(`save_case`)하는 요청의 구조 검사다. 역할은 운영 요청 구조이고 지금 조립기가 받아야 한다(2절 표).
+  - `build`: 동결 요청 → `{instructions, input}`. 쌍 평가(5절)의 쪽 본문을 어디에 주입할지도 처리기가 정한다(역할은 `RoleRequest.prompts`).
+  - `grade`: 출력 → 채점 결과(3절 '채점').
+  - `reserve`: 케이스 1건 예약(3절). 역할은 50,000이다. 케이스마다 바꾸는 입력은 없다.
+- 종류: `role`만 실행한다. `meeting_step`·`brief`는 G2(회의 단계·브리프 평가)에서 채울 자리라 저장·실행 모두 400이다(2절).
+- 역할 제출 조립(`roleSubmission`, `lib/role-execution.ts`): 운영 start 분기와 평가가 함께 쓴다. 동결 요청에 운영자 선호 블록(`operatorPreferences`)이 있으면 입력 끝에 블록을, 지시문 끝에 권한 문장을 붙인다. 블록이 없으면 순수 조립(`buildRoleInstruction`·`buildRoleInput`)과 바이트 동일하다.
+- 기존 케이스의 `promptHash`:
+  - 선호 블록이 없는 동결본(규칙 0건 캠페인에서 캡처한 옛 케이스)은 제출 본문과 `promptHash`가 Q1 전과 같다(합성 재현, `mocked`).
+  - 선호 블록이 든 동결본은 Q1부터 운영 제출과 같은 본문을 보내므로 `promptHash`가 바뀐다. 의도한 변경이다. Q1 전에는 평가가 블록을 빼고 보내 운영과 달랐다.
+  - 운영 평가 케이스 11개에 블록이 든 케이스가 있는지는 확인하지 못했다(not_run, `docs/STATUS.md`). 있으면 기준선 비교에서 따로 표시한다.
+- 테스트: `tests/eval-kinds.test.mjs`(종류 목록·기본 role·목록 밖 400, 예약, 선호 규칙 캠페인의 제출이 운영 start 제출과 바이트 동일, 선호 블록 없는 옛 케이스 `promptHash` 불변, `externalKey` 멱등·409. 합성 데이터, 평가·운영 HERMES fetch 스텁, `mocked`).
+
 ### 서버 평가의 한계
 
 - 이 PR의 검증은 모두 `mocked`다. 실제 평가 전용 HERMES 프로필로 스모크를 돌리지 않았다(결정 5 예산 안에서 대표가 연결을 등록한 뒤 한다).
