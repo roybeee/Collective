@@ -8,6 +8,7 @@ import {submitHermes,pollHermes,hermesSubmissionStatement} from '@/lib/hermes';
 import type {UsageContext} from '@/lib/usage-ledger';
 import {learningContext} from '@/lib/learning-server';
 import {parseBrief,emptyPlan,type BriefDraft,type BriefInput} from '@/lib/brief';
+import {labelBriefResult} from '@/lib/brief-normalize';
 import type {Brand,Campaign,Artifact,Metric} from '@/lib/agency';
 import {ApiError,str,json,failure,database,recordStatement,readRecord,listRecords,connection,stamp,acquireLock,releaseLock,validateCampaign} from '@/lib/server';
 // 보관 캠페인 검사(PR 5d)를 소유자 잠금 안에서 한다(PR 4a-2).
@@ -59,7 +60,7 @@ export async function executeBrief(owner:string,b:Record<string,unknown>){let lo
   const r=await pollHermes(cfg,next.providerId!,b.action==='cancel',30000,owner,briefUsage(id,next));
   next.updatedAt=stamp();next.status=r.status as BriefDraft['status'];next.error=undefined;
   if(r.status==='completed'){
-   try{next.result=parseBrief(r.output[0].content[0].text,next.input)}catch(e){next.status='failed';next.error=(e as Error).message}
+   try{next.result=labelBriefResult(parseBrief(r.output[0].content[0].text,next.input))}catch(e){next.status='failed';next.error=(e as Error).message}
   }else if(r.status==='failed')next.error='HERMES가 초안 작성을 완료하지 못했습니다. 입력을 유지한 채 다시 요청할 수 있습니다.';
   await recordStatement(owner,'brief_draft',id,next).run();if(['completed','failed','cancelled'].includes(next.status))await markUsageOutcome(owner,'hermes',next.providerId!,next.status==='completed'?'completed':next.status==='cancelled'?'cancelled':r.invalidOutput||r.status==='completed'?'invalid_output':'provider_failed');return json(publicDraft(next));
  }catch(e){

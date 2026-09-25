@@ -119,12 +119,25 @@ function withoutProhibitedCells(text:string){
   return banned.length?cells.map((c,i)=>banned!.includes(i)?' ':c).join('|'):line;
  }).join('\n');
 }
+// '다음 상황에서는 … 중단한다'처럼 중단·수정·보류 조건을 여는 리드 문장 바로 아래 목록(빈 줄 하나 허용)은 중단 조건 목록이라 비우고 검사한다.
+// 목록이 끝난 뒤 문장과, 리드가 중단 조건이 아닌 목록('아래 문안을 게시한다')은 그대로 본다(2026-09-25 ODA cmo 기준선 v1 문장, 제목이 없을 때).
+const STOP_LEAD=/(?:다음|아래)\s?(?:상황|경우|조건|신호)(?:에서는|에는|에서|이면|일\s?때|가\s?(?:보이면|나오면))?[^.\n]{0,40}(?:중단|중지|멈추|멈춘|수정|보류|회수|내리|내린)(?:한다|합니다|하고|해야|하세요|다|ㅂ니다)?[.:：]?\s*$/;
+const LIST_ITEM=/^\s*(?:[-*•·]|\d+[.)])\s/;
+function withoutStopLists(text:string){
+ let state:'none'|'lead'|'list'='none';
+ return text.split('\n').map(line=>{
+  if(state!=='none'&&LIST_ITEM.test(line)){state='list';return ''}
+  if(state==='lead'&&!line.trim())return line;
+  state=!LIST_ITEM.test(line)&&STOP_LEAD.test(line.trim())?'lead':'none';
+  return line;
+ }).join('\n');
+}
 // 가맹 범주(franchise_recruit, 트랙 R R2)는 opts.franchise로 옵트인할 때만 본다. 기본 호출(온라인 채점·평가)의 이슈 목록은 이전과 같다(사전 버전 문자열만 바뀐다).
 // scope 'recruitment' 규칙(생산·판매 채널 표현)은 모집 범위에서만 본다. 캡션·발행 게이트는 이 경로가 아니라 lib/franchise-compliance.ts가 직접 판정한다.
 export type FranchiseComplianceScope={scope:'consumer'|'recruitment'};
 const skipped=(rule:ComplianceRule,franchise?:FranchiseComplianceScope|null)=>rule.category==='franchise_recruit'&&(!franchise||(rule.scope==='recruitment'&&franchise.scope!=='recruitment'));
 export function checkCompliance(text:string,opts:{facts?:FactLedger|null;franchise?:FranchiseComplianceScope|null}={}):ComplianceReport{
- const sections=sectionsOf(withoutProhibitedCells(text)),keys=confirmedKeys(opts.facts),franchise=opts.franchise;
+ const sections=sectionsOf(withoutStopLists(withoutProhibitedCells(text))),keys=confirmedKeys(opts.facts),franchise=opts.franchise;
  return {version:COMPLIANCE_LEXICON.version,issues:COMPLIANCE_LEXICON.rules.flatMap(rule=>skipped(rule,franchise)?[]:ruleIssue(rule,sections,keys)),notice:COMPLIANCE_NOTICE};
 }
 // 판정은 하향만 한다. 차단(block)이 있으면 사용자 검토 준비를 수정 필요로 내리고, 경고·정보와 무위반은 판정을 바꾸지 않는다.

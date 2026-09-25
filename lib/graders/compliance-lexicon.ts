@@ -24,7 +24,9 @@ const PURCHASE_CTA='구매하기|바로\\s?구매|지금\\s?구매|구매하세�
 const DEFERRAL='검토(?:합니다|한다|할\\s?예정|\\s?예정)|보류|(?:뒤|후|이후|다음)에?\\s?(?:검토|결정|판단|작성)';
 // 버튼·링크 클릭 수 같은 측정 문장의 구매 버튼 언급은 구매 유도 문구가 아니다. 퍼널 단계('상품 상세→장바구니', '장바구니→결제 시작률', '단계별 이탈'),
 // 분석 이벤트 이름(add_to_cart 같은 snake_case)·세션 ID·조회수, '유료 주문과 구분'도 측정 문장이다(2026-09-25 MAPDAL 재채점 실측). 카피 안의 화살표('혜택 확인 → 지금 구매')는 측정이 아니다.
-const MEASUREMENT='(?:버튼|링크)[^.\\n]{0,8}(?:클릭|노출|전환)|측정|지표|전환율|이탈|퍼널|단계별|조회수|세션\\s?ID|\\b[a-z]+(?:_[a-z]+)+\\b|(?:장바구니|상품\\s?상세|결제\\s?시작)\\s?→|→\\s?(?:장바구니|결제\\s?시작|결제\\s?완료)|(?:시작|완료|진입)률|유료\\s?주문과\\s?구분';
+// 퍼널 단계를 셋 이상 나열한 측정 문장('유효 세션·상품 조회·장바구니·결제 시작·결제 완료', '주문·조회·장바구니 자료')도 측정이다(R3 기준선 MAPDAL 회의 실측).
+const FUNNEL_STAGE='(?:상품\\s?)?(?:조회|세션|장바구니|결제\\s?(?:시작|완료)|주문|취소|환불)';
+const MEASUREMENT=`${FUNNEL_STAGE}(?:\\s?[·,]\\s?${FUNNEL_STAGE}){2,}|`+'(?:버튼|링크)[^.\\n]{0,8}(?:클릭|노출|전환)|측정|지표|전환율|이탈|퍼널|단계별|조회수|세션\\s?ID|\\b[a-z]+(?:_[a-z]+)+\\b|(?:장바구니|상품\\s?상세|결제\\s?시작)\\s?→|→\\s?(?:장바구니|결제\\s?시작|결제\\s?완료)|(?:시작|완료|진입)률|유료\\s?주문과\\s?구분';
 // 구매 CTA 자체를 보류·미사용하거나 가격 확정 뒤 넣는·바꾸는 계획, 확인 계획에 적는다는 문장은 구매 유도 문구가 아니다(held: 매치가 든 절에서만 본다, M은 걸린 구매 문구 자리).
 // '구매하기 CTA는 보류', '바로 구매 버튼은 가격 확정 후 추가', '가격 확정 후 CTA를 구매하기로 전환', '구매하기 문구 미사용', '(구매하기는 가격 확정 후)', '구매하기 CTA 사용 여부: 가격 확정 뒤 결정'.
 // '헤드라인은 ‘지금 구매하세요’, 서브 문구는 보류', '장바구니 담기 CTA를 쓰고 할인 문구는 보류'처럼 다른 문구의 보류는 면제 사유가 아니다.
@@ -42,7 +44,8 @@ const CTA_HELD=[`${M}[^.\\n]{0,12}(?:보류(?!\\s?없)|미사용)`,`${M}[^.\\n]{
 const PAID_MEDIA='집행|예산|입찰|매체|광고\\s?(?:세트|관리자|계정|그룹)|캠페인\\s?(?:운영|세팅|설정)|CPC|CPM|CPA|CPV|ROAS|클릭당|노출당|타[기게겟]팅|부스팅|키워드\\s?광고|검색\\s?광고|파워링크|돌리|돌린|돌려|운영|게재|검토|세팅|노출';
 const CREATOR='인플루언서|크리에이터|블로거|유튜버|틱톡커|셀럽|체험단|리뷰어|서포터즈|앰배서더|원고';
 const PAID_POST='유료\\s?광고\\s?(?:용\\s?)?(?:게시(?:물|글)?|포스팅|포스트|후기|리뷰|원고)';
-const PAID_AD=`${PAID_POST}|유료\\s?광고(?:(?<!(?:${PAID_MEDIA})[^.\\n]{0,30}유료\\s?광고)(?![^.\\n]{0,30}(?:${PAID_MEDIA}))|(?<=(?:${CREATOR})[^.\\n]{0,30}유료\\s?광고)|(?=[^.\\n]{0,30}(?:${CREATOR})))`;
+// '유료 광고비'(광고 예산 칸, '유료 광고비 0원으로 우선 설계')는 광고 관계가 아니다. 광고비를 받는 대가는 '광고비…받' 규칙이 잡는다(R3 기준선 S2 실측).
+const PAID_AD=`${PAID_POST}|유료\\s?광고(?!\\s?비)(?:(?<!(?:${PAID_MEDIA})[^.\\n]{0,30}유료\\s?광고)(?![^.\\n]{0,30}(?:${PAID_MEDIA}))|(?<=(?:${CREATOR})[^.\\n]{0,30}유료\\s?광고)|(?=[^.\\n]{0,30}(?:${CREATOR})))`;
 // 가맹 모집(트랙 R R2). 출처 URL은 규칙 레지스트리(lib/franchise-rules.ts LAW·DEC_NOW·NOTICE_2019_8)와 같은 문자열이다(사전은 레지스트리를 import하지 않는다).
 const FR_DRF='https://www.law.go.kr/DRF/lawService.do?OC=test';
 // 소비자 문장과 겹치는 비용 낱말: '베이킹 클래스 교육비', '로열티 카드 적립', '로열티 고객 혜택'은 가맹 비용이 아니다.
@@ -80,7 +83,7 @@ const REV_GUARANTEE=`${REV_NOUN}${REV_GAP}(?:보장|확정\\s?지급|책임(?:�
 const SUPPORT_CONDITION='(?<!무|아무\\s?)조건(?!\\s?(?:없|無|0))|요건|대상자|심사|선착순|\\d+\\s?월\\s?(?:\\d+\\s?일)?\\s?까지|\\d{4}\\s?[-.년]\\s?\\d{1,2}\\s?[-.월]?\\s?(?:\\d{1,2}\\s?일?)?\\s?까지|한정|클래스|수강|원데이';
 
 export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:string;sources:Record<string,ComplianceSource>;rules:ComplianceRule[]}={
- version:'compliance-lexicon-2026-09-25.6',
+ version:'compliance-lexicon-2026-09-25.11',
  checkedAt:'2026-09-23',
  platformPolicy:'플랫폼별 리뷰 운영정책(예: 지도·예약 플랫폼) 공식 URL은 아직 확인하지 않았다. 게시 전 해당 플랫폼 공식 정책 페이지에서 확인하고, 확인되면 사전 버전을 올려 출처를 추가한다.',
  sources:{
@@ -106,11 +109,11 @@ export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:
   {id:'bulk_review',category:'platform_review',severity:'block',title:'체험단·대량 리뷰 확보',match:'(?:체험단|리뷰어|서포터즈)[^.\\n]{0,20}\\d{2,}\\s?(?:명|건)|리뷰\\s?\\d{2,}\\s?건[^.\\n]{0,15}(?:확보|모집|작업|구매|대행)|(?:확보|모집|작업|구매|대행)[^.\\n]{0,15}리뷰\\s?\\d{2,}\\s?건|리뷰\\s?(?:대행|작업|구매)|(?:대량|다수)[^.\\n]{0,6}(?:리뷰|후기)',except:'^(?!.*(?:체험단|서포터즈|리뷰어|모집|대행|작업|구매)).*(?:목표|지표|KPI|측정)',sources:['fair_labeling','endorsement_guideline']},
   // ② 공정위 추천·보증: 가짜 체험담, 협찬·광고 표기 누락, 가상인물 미표시.
   {id:'fake_testimonial',category:'endorsement',severity:'block',title:'가짜·위장 체험담',match:'(?:고객|손님|소비자|구매자)[^.\\n]{0,6}(?:인\\s?척|처럼\\s?(?:꾸며|위장|작성))|가짜\\s?(?:후기|리뷰|체험담|계정)|위장\\s?(?:후기|리뷰)|(?:직원|지인|가족)[^.\\n]{0,12}(?:후기|리뷰)[^.\\n]{0,10}(?:작성|남기|올리)|(?:후기|리뷰)를?\\s?(?:대신|대리)\\s?(?:작성|써)',sources:['fair_labeling','endorsement_guideline']},
-  {id:'sponsorship_undisclosed',category:'endorsement',severity:'block',title:'협찬·광고 관계 표기 누락',match:'협찬|체험단|원고료|제품을?\\s?(?:무상\\s?)?제공(?:받|하고|해)|무상\\s?제공|유료\\s?(?:게시|포스팅)|'+PAID_AD+'|광고비[^.\\n]{0,10}(?:지급|받)|대가를?\\s?(?:지급|받)',cleared:'\\[광고\\]|\\(광고\\)|#광고|#협찬|#유료광고|유료\\s?광고\\s?포함|소정의\\s?원고료|(?:광고|협찬)\\s?(?:표기|표시|문구)(?:를|을)?\\s?(?:포함|넣|명시|붙|달)|경제적\\s?(?:대가|이해관계)[^.\\n]{0,12}(?:표시|표기|밝|명시|공개)|제공받아\\s?작성',sources:['fair_labeling','endorsement_guideline']},
+  {id:'sponsorship_undisclosed',category:'endorsement',severity:'block',title:'협찬·광고 관계 표기 누락',match:'협찬|체험단|원고료|제품을?\\s?(?:무상\\s?)?제공(?:받|하고|해)|무상\\s?제공|유료\\s?(?:게시|포스팅)|'+PAID_AD+'|광고비[^.\\n]{0,10}(?:지급|받)|대가를?\\s?(?:지급|받)',cleared:'\\[광고\\]|\\(광고\\)|#광고|#협찬|#유료광고|유료\\s?광고\\s?포함|소정의\\s?원고료|(?:광고|협찬)[^.\\n]{0,20}(?:표기|표시|문구)(?:를|을)?[^.\\n]{0,10}?(?:포함|넣|명시|붙|달|추가)(?!지\\s?(?:않|말|마)|하지\\s?(?:않|말|마))|경제적\\s?(?:대가|이해관계)[^.\\n]{0,12}(?:표시|표기|밝|명시|공개)|제공받아\\s?작성',sources:['fair_labeling','endorsement_guideline']},
   {id:'disclosure_omitted',category:'endorsement',severity:'block',title:'광고·협찬 표기를 빼라는 지시',match:'(?:광고|협찬|유료|AI)\\s?(?:표기|표시|문구|해시태그|고지)[^.\\n]{0,8}(?:빼|생략|없이|숨기|지우|제거)',sources:['fair_labeling','endorsement_guideline']},
   {id:'virtual_person_undisclosed',category:'endorsement',severity:'block',title:'가상인물 추천·보증 표시 누락',match:'가상\\s?(?:인물|인간|모델|인플루언서)|버추얼\\s?(?:인플루언서|모델|휴먼)|AI\\s?(?:인플루언서|모델|아바타)|디지털\\s?휴먼',cleared:'가상\\s?인물(?:임|입니다|이라는|로\\s?표시|\\s?표시)|가상\\s?인간(?:임|입니다)|실제\\s?인물이\\s?아닙|#가상인간|#가상인물|#버추얼|AI\\s?(?:생성|합성)\\s?인물(?:임|입니다|\\s?표시)',sources:['endorsement_guideline','fair_labeling']},
   // ③ AI 기본법: 생성형 AI 결과물 표시 필요 플래그.
-  {id:'ai_generated_unlabeled',category:'ai_label',severity:'warn',title:'AI 생성 소재 표시 필요',match:'(?:AI|인공지능|생성형)[^.\\n]{0,20}(?:이미지|영상|음성|목소리|사진|일러스트|캐릭터|배경|소재)|딥페이크|합성\\s?(?:음성|얼굴)',cleared:'AI\\s?(?:생성|활용|제작)[^.\\n]{0,12}(?:표시|표기|고지|워터마크|라벨)|인공지능[^.\\n]{0,12}(?:표시|표기|고지)|#AI\\s?생성|AI로\\s?(?:생성|제작)(?:됨|되었습니다)',sources:['ai_basic_act']},
+  {id:'ai_generated_unlabeled',category:'ai_label',severity:'warn',title:'AI 생성 소재 표시 필요',match:'(?:AI|인공지능|생성형)[^.\\n]{0,20}(?:이미지|영상|음성|목소리|사진|일러스트|캐릭터|배경|소재)|딥페이크|합성\\s?(?:음성|얼굴)',cleared:'AI\\s?(?:생성|활용|제작)[^.\\n]{0,12}(?:표시|표기|고지|워터마크|라벨)|AI\\s?소재\\s?[·,/]\\s?(?:광고\\s?)?(?:표시|표기)|인공지능[^.\\n]{0,12}(?:표시|표기|고지)|#AI\\s?생성|AI로\\s?(?:생성|제작)(?:됨|되었습니다)',sources:['ai_basic_act']},
   // ④ 정보통신망법: 광고 메시지의 (광고) 표기·야간 전송·수신 동의·수신거부 안내.
   {id:'ad_label_missing',category:'ad_message',severity:'block',title:'광고 메시지 (광고) 표기 누락',match:MESSAGE,context:PROMOTION,except:DEFERRAL,cleared:'\\(광고\\)|\\[광고\\]|（광고）',sources:['network_act']},
   {id:'consent_missing',category:'ad_message',severity:'warn',title:'광고 메시지 수신 동의 전제 누락',match:MESSAGE,context:PROMOTION,except:DEFERRAL,cleared:'수신\\s?(?:에\\s?)?동의|마케팅\\s?(?:정보\\s?)?수신|옵트인|opt-?in',sources:['network_act']},
@@ -123,11 +126,11 @@ export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:
   {id:'drug_claim',category:'cosmetic_claim',severity:'block',title:'화장품의 의약품 오인 표현',match:'(?:여드름|아토피|피부염|습진|건선|탈모|흉터|상처|염증|무좀|기미)[^.\\n]{0,12}(?:치료|완치|치유|재생|없애|없앤|사라지|사라진|낫)|(?:세포|피부|모발)\\s?재생|의약품\\s?(?:수준|급|효과)|약처럼|처방\\s?(?:없이|받은)',sources:['cosmetics_act']},
   {id:'functional_unverified',category:'cosmetic_claim',severity:'warn',title:'기능성 인증 근거 없는 기능성 표현',match:'미백|주름\\s?(?:개선|완화)|자외선\\s?차단|탈모\\s?(?:증상\\s?)?(?:완화|방지)|여드름성\\s?피부\\s?완화|피부\\s?장벽\\s?(?:강화|개선)|SPF\\s?\\d+|PA\\+',cleared:'기능성\\s?(?:화장품|인증|심사|보고)|식약처\\s?(?:심사|보고|인증)',ledgerKey:'기능성',sources:['cosmetics_act']},
   // ⑦ 전자상거래: 판매 조건·가격 표시 누락.
-  {id:'price_missing',category:'ecommerce_terms',severity:'warn',title:'구매 유도 문구에 가격 표시 누락',match:PURCHASE_CTA,except:MEASUREMENT,held:CTA_HELD,cleared:'\\d{1,3}(?:,\\d{3})+\\s?원|\\d+\\s?원|가격[^.\\n]{0,6}\\d',sources:['ecommerce_act']},
+  {id:'price_missing',category:'ecommerce_terms',severity:'warn',title:'구매 유도 문구에 가격 표시 누락',match:PURCHASE_CTA,except:MEASUREMENT,held:CTA_HELD,cleared:'\\d{1,3}(?:,\\d{3})+\\s?원|\\d+\\s?원|가격[^.\\n]{0,6}\\d|\\[(?:확정\\s?)?(?:가격|판매가|판매\\s?가격|정가)(?![^\\]]*(?:확인|문의|미정|필요|협의))[^\\]]{0,8}\\]',sources:['ecommerce_act']},
   {id:'terms_missing',category:'ecommerce_terms',severity:'warn',title:'구매 유도 문구에 판매 조건(배송·교환·환불 등) 누락',match:PURCHASE_CTA,except:MEASUREMENT,held:CTA_HELD,cleared:'배송|교환|환불|반품|청약\\s?철회|판매\\s?(?:기간|조건)|픽업|수령',sources:['ecommerce_act']},
   {id:'discount_basis_missing',category:'ecommerce_terms',severity:'warn',title:'할인 표시에 기준 가격 누락',match:'\\d{1,2}\\s?%\\s?(?:할인|OFF|off|세일)|할인가|특가|반값|[\\d,]+\\s?원\\s?할인',cleared:'정가|정상가|기존\\s?가|할인\\s?전|원래\\s?가격|소비자가',marked:true,sources:['ecommerce_act','fair_labeling']},
   // ⑧ 권리: 아티스트 이름·사진·로고 사용 시 권리 확인 미기재.
-  {id:'artist_rights_unconfirmed',category:'rights',severity:'warn',title:'아티스트·유명인 이름·사진·로고 권리 확인 미기재',match:'(?:아티스트|아이돌|멤버(?!십|\\s?전용|\\s?혜택|\\s?등급)|가수|배우|셀럽|연예인|유명인|포토\\s?카드|앨범\\s?(?:재킷|자켓|커버|이미지)|팬아트|초상|타사\\s?로고|방송\\s?(?:캡처|화면)|캐릭터\\s?IP)[^.\\n]{0,20}(?:사용|활용|게시|삽입|노출|넣|합성|인쇄|배치|배경)',cleared:'권리\\s?(?:확인|처리|확보)|초상권|저작권|퍼블리시티|사용\\s?(?:허락|승인|허가|계약)|라이선스|라이센스|소속사[^.\\n]{0,10}(?:승인|확인|허락|협의)',sources:['copyright_act','unfair_competition_act','trademark_act']},
+  {id:'artist_rights_unconfirmed',category:'rights',severity:'warn',title:'아티스트·유명인 이름·사진·로고 권리 확인 미기재',match:'(?:아티스트|아이돌|멤버(?!십|\\s?전용|\\s?혜택|\\s?등급)|가수|배우|셀럽|연예인|유명인|포토\\s?카드|앨범\\s?(?:재킷|자켓|커버|이미지)|팬아트|초상|타사\\s?로고|방송\\s?(?:캡처|화면)|캐릭터\\s?IP)[^.\\n]{0,20}(?:사용|활용|게시|삽입|노출|넣|합성|인쇄|배치|배경)(?!\\s?(?:시간|시각|일정|일|빈도|주기|채널|위치|순서|횟수))',cleared:'권리\\s?(?:확인|처리|확보)|초상권|저작권|퍼블리시티|사용\\s?(?:허락|승인|허가|계약)|라이선스|라이센스|소속사[^.\\n]{0,10}(?:승인|확인|허락|협의)',sources:['copyright_act','unfair_competition_act','trademark_act']},
   // ⑨ 가맹 모집(트랙 R R2, opts.franchise로만 켠다). hard_block(해제 불가)은 등급이 아니라 lib/franchise-rules.ts FRANCHISE_HARD_BLOCK_IDS다. 여기서는 block·warn만 쓴다.
   // 게이트 판정기(lib/franchise-compliance.ts)는 match·also·except·cleared만 쓰고 ledgerKey·marked·인용 강등은 쓰지 않는다. ledgerKey·marked는 이 사전을 옵트인한 A2 경로용이다.
   {id:'kr.fr.revenue_guarantee',category:'franchise_recruit',severity:'block',title:'수익·매출 보장 표현',match:REV_GUARANTEE,sources:['franchise_act','franchise_decree','franchise_false_info_notice']},

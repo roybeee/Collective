@@ -1,0 +1,361 @@
+{
+ "schema": 1,
+ "id": "syn-s6-locker",
+ "label": "S6 역 앞 무인 보관함 이용",
+ "set": "dev",
+ "now": "2026-03-10T09:00:00.000Z",
+ "campaignId": "syn-s6-locker-campaign",
+ "expectations": {
+  "prohibitedTerms": [
+   "100% 안전",
+   "분실 보상"
+  ],
+  "industry": [
+   "locker"
+  ],
+  "localStore": true
+ },
+ "records": [
+  {
+   "kind": "brand",
+   "id": "syn-s6-locker-brand",
+   "data": {
+    "name": "가상락커",
+    "short": "GL",
+    "category": "LOCKER",
+    "color": "#1f4e79",
+    "bg": "#eaf1f8",
+    "description": "합성 브랜드 소개(미확인): 가상역 앞 무인 물품보관함.",
+    "audience": "주말 여행객과 행사 방문객(가설)",
+    "tone": "짧고 안내형",
+    "constraints": "\"100% 안전\" 표현 금지. 보관 요금은 확정 전 쓰지 않는다.",
+    "knowledge": "합성 메모: 대형 캐리어 칸 수는 미확인이다."
+   }
+  },
+  {
+   "kind": "campaign",
+   "id": "syn-s6-locker-campaign",
+   "data": {
+    "brandId": "syn-s6-locker-brand",
+    "title": "가상락커 주말 이용 4주",
+    "goal": "주말 방문객의 보관함 이용 건수를 늘린다. 이용 건수는 결제 완료 건만 센다.",
+    "audience": "가상역에 내린 주말 여행객(가설)",
+    "channels": "네이버 플레이스, 역 안내 배너, Instagram",
+    "stores": "가상로 12 가상역 3번 출구 앞",
+    "products": "소형·중형·대형 보관 칸(요금 미확정)",
+    "constraints": "\"100% 안전\" 표현 금지. \"분실 보상\" 약속 금지. 보관 요금 단정 금지.",
+    "budget": null,
+    "startDate": "",
+    "endDate": "",
+    "sources": "",
+    "status": "review",
+    "version": 1,
+    "createdAt": "2026-03-10T09:00:00.000Z",
+    "updatedAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "brand_fact",
+   "id": "syn-s6-locker-fact-address",
+   "parent": "syn-s6-locker-brand",
+   "data": {
+    "brandId": "syn-s6-locker-brand",
+    "key": "주소",
+    "value": "가상로 12 가상역 3번 출구 앞",
+    "status": "confirmed",
+    "source": "합성 원장",
+    "verifiedAt": "2026-03-10T09:00:00.000Z",
+    "validUntil": "2099-12-31T00:00:00.000Z",
+    "version": 1,
+    "updatedAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "brand_fact",
+   "id": "syn-s6-locker-fact-guard",
+   "parent": "syn-s6-locker-brand",
+   "data": {
+    "brandId": "syn-s6-locker-brand",
+    "key": "보안 주장",
+    "value": "24시간 보안요원 상주",
+    "status": "rejected",
+    "source": "합성 원장",
+    "verifiedAt": "2026-03-10T09:00:00.000Z",
+    "validUntil": "2099-12-31T00:00:00.000Z",
+    "version": 1,
+    "updatedAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "brand_fact",
+   "id": "syn-s6-locker-fact-large",
+   "parent": "syn-s6-locker-brand",
+   "data": {
+    "brandId": "syn-s6-locker-brand",
+    "key": "대형 칸 수",
+    "value": "대형 캐리어 칸 12개",
+    "status": "candidate",
+    "source": "합성 원장",
+    "verifiedAt": "2026-03-10T09:00:00.000Z",
+    "validUntil": "2099-12-31T00:00:00.000Z",
+    "version": 1,
+    "updatedAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "campaign_directive",
+   "id": "syn-s6-locker-directive",
+   "parent": "syn-s6-locker-campaign",
+   "data": {
+    "campaignId": "syn-s6-locker-campaign",
+    "text": "합성 지시: 요일·시간대는 주말 기준 상대 일정으로 쓴다.",
+    "createdAt": "2026-03-10T09:00:00.000Z",
+    "createdBy": {
+     "id": "syn-member",
+     "email": null,
+     "role": "member"
+    }
+   }
+  },
+  {
+   "kind": "store",
+   "id": "syn-s6-locker-store",
+   "parent": "syn-s6-locker-brand",
+   "data": {
+    "brandId": "syn-s6-locker-brand",
+    "status": "active",
+    "name": "가상락커 가상역점",
+    "address": "가상로 12 가상역 3번 출구 앞",
+    "access": "고객센터 1588-0000(합성). 가상역 3번 출구에서 바로 오른쪽.",
+    "customer": "주말 여행객(가설)",
+    "menu": "소형·중형·대형 칸(요금 미확정)",
+    "hours": "확인 필요",
+    "createdAt": "2026-03-10T09:00:00.000Z",
+    "updatedAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "learning_rule",
+   "id": "syn-s6-locker-rule-caution",
+   "data": {
+    "origin": "store",
+    "direction": "caution",
+    "brandId": "syn-s6-locker-brand",
+    "channel": "*",
+    "experimentId": "",
+    "experimentVersion": 0,
+    "caseId": "",
+    "title": "비 오는 날 안내 주의",
+    "guidance": "비 오는 날 '빈 칸 많음' 안내는 실제 빈 칸 수와 달라 민원이 났다(합성 관찰). 실시간 확인 전에는 쓰지 않는다.",
+    "scope": "",
+    "status": "active",
+    "version": 1,
+    "expiresAt": "2099-12-31T00:00:00.000Z",
+    "createdAt": "2026-03-10T09:00:00.000Z",
+    "updatedAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "learning_rule",
+   "id": "syn-s6-locker-pref-creative",
+   "data": {
+    "origin": "review",
+    "grade": "operator_preference",
+    "role": "creative",
+    "citations": [
+     "syn-d-1",
+     "syn-d-2"
+    ],
+    "feedback": {
+     "helpful": 0,
+     "harmful": 0
+    },
+    "brandId": "syn-s6-locker-brand",
+    "channel": "*",
+    "experimentId": "",
+    "experimentVersion": 0,
+    "caseId": "",
+    "title": "카피는 행동 한 줄",
+    "guidance": "카피 첫 줄은 고객이 할 행동 하나만 적는다.",
+    "scope": "",
+    "status": "active",
+    "version": 1,
+    "expiresAt": "2099-12-31T00:00:00.000Z",
+    "createdAt": "2026-03-10T09:00:00.000Z",
+    "updatedAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "team_meeting",
+   "id": "syn-s6-locker-meeting-prev",
+   "parent": "syn-s6-locker-campaign",
+   "data": {
+    "campaignId": "syn-s6-locker-campaign",
+    "campaignVersion": 1,
+    "agenda": "합성 안건: 역 안내 배너 문안을 정한다.",
+    "status": "completed",
+    "steps": [
+     {
+      "id": "syn-s6-locker-meeting-prev:synthesis",
+      "role": "cmo",
+      "phase": "synthesis",
+      "status": "completed",
+      "output": {
+       "decisions": "합성 결정: 배너는 위치 안내 한 줄로 시작한다.",
+       "disagreements": "합성: 요금 표기 보류",
+       "questions": "합성: 대형 칸 수 확인 방법",
+       "tasks": []
+      }
+     }
+    ],
+    "createdAt": "2026-03-10T09:00:00.000Z",
+    "updatedAt": "2026-03-10T09:00:00.000Z",
+    "model": "synthetic",
+    "stopRequested": false,
+    "artifactIds": [],
+    "invalidatedRoles": [],
+    "snapshot": {}
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s6-locker-art-cmo",
+   "parent": "syn-s6-locker-campaign",
+   "data": {
+    "campaignId": "syn-s6-locker-campaign",
+    "campaignVersion": 1,
+    "role": "cmo",
+    "title": "합성 총괄 파트너",
+    "content": "## 목표와 판단\n주말 방문객이 역에서 나오자마자 보관함을 찾게 만드는 것이 목표다. 이용 건수는 결제 완료 건만 센다.\n\n## 우선순위\n1. 3번 출구 앞 위치를 한 문장으로 알린다.\n2. 요금·칸 수는 확인 전까지 쓰지 않는다.\n3. 행사 날짜가 있는 주말부터 시험한다.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai",
+    "createdAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s6-locker-art-insight",
+   "parent": "syn-s6-locker-campaign",
+   "data": {
+    "campaignId": "syn-s6-locker-campaign",
+    "campaignVersion": 1,
+    "role": "insight",
+    "title": "합성 인사이트",
+    "content": "## 고객 관찰\n여행객은 짐을 든 채 역을 나와 가장 가까운 보관함을 찾는다(가설, 관찰 기록 없음). 위치를 모르면 카페에 짐을 맡기거나 들고 다닌다.\n\n## 장애물\n- 출구 번호를 모른다.\n- 대형 캐리어가 들어가는지 모른다.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai",
+    "createdAt": "2026-03-10T09:00:00.000Z"
+   },
+   "padTo": 6300
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s6-locker-art-strategy",
+   "parent": "syn-s6-locker-campaign",
+   "data": {
+    "campaignId": "syn-s6-locker-campaign",
+    "campaignVersion": 1,
+    "role": "strategy",
+    "title": "합성 전략(사람 수정본)",
+    "content": "## 전략 가설\n가설 1: 역 안내 배너에 '3번 출구 바로 앞'을 적으면 주말 이용 건수가 늘어난다.\n\n## 실험 설계\n배너 게시 주말과 미게시 주말의 결제 완료 건을 비교한다. 행사 유무는 따로 표시한다.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai_edited",
+    "createdAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s6-locker-art-creative",
+   "parent": "syn-s6-locker-campaign",
+   "data": {
+    "campaignId": "syn-s6-locker-campaign",
+    "campaignVersion": 1,
+    "role": "creative",
+    "title": "합성 크리에이티브",
+    "content": "## 핵심 메시지\n\"짐은 3번 출구 앞에 두고 가볍게.\"\n\n## 카피 초안\n- 짐은 3번 출구 앞에. 가볍게 다녀오세요.\n- 24시간 보안요원이 지키는 100% 안전 보관함.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai",
+    "createdAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s6-locker-art-content",
+   "parent": "syn-s6-locker-campaign",
+   "data": {
+    "campaignId": "syn-s6-locker-campaign",
+    "campaignVersion": 1,
+    "role": "content",
+    "title": "합성 콘텐츠",
+    "content": "## 콘텐츠 계획\n네이버 플레이스 소식 주 1회, Instagram 스토리 주말 2회.\n\n## 게시물 초안\n금요일: 이번 주말 행사와 보관함 위치. 토요일: 출구 사진 한 장.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai",
+    "createdAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s6-locker-art-growth",
+   "parent": "syn-s6-locker-campaign",
+   "data": {
+    "campaignId": "syn-s6-locker-campaign",
+    "campaignVersion": 1,
+    "role": "growth",
+    "title": "합성 그로스",
+    "content": "## 유입 동선\n역 출구 → 배너 → 보관함 → 결제.\n\n## 측정\n가동률을 본다. 대형 칸은 12개라 주말 가동률 80%가 목표다.\n",
+    "version": 1,
+    "status": "revision",
+    "origin": "ai",
+    "createdAt": "2026-03-10T09:00:00.000Z",
+    "reviewNote": "합성 검토 메모: 가동률의 분모(시간·칸 수)를 적고, 확인되지 않은 칸 수는 빼 주세요."
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s6-locker-art-data",
+   "parent": "syn-s6-locker-campaign",
+   "data": {
+    "campaignId": "syn-s6-locker-campaign",
+    "campaignVersion": 1,
+    "role": "data",
+    "title": "합성 데이터",
+    "content": "## 측정 정의\n주말 이용 건수 = 토·일 결제 완료 건. 행사일은 따로 표시한다.\n\n## 자료 필요\n결제 기록의 칸 크기 구분 확인 필요.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai",
+    "createdAt": "2026-03-10T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s6-locker-art-quality",
+   "parent": "syn-s6-locker-campaign",
+   "data": {
+    "campaignId": "syn-s6-locker-campaign",
+    "campaignVersion": 1,
+    "role": "quality",
+    "title": "합성 품질",
+    "content": "## 검수 요약\n근거·브랜드 적합성·제작 완성도·측정 가능성을 확인했다. 카피 초안의 보안 요원·100% 안전 표현은 수정이 필요하다.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai",
+    "createdAt": "2026-03-10T09:00:00.000Z"
+   }
+  }
+ ],
+ "roles": [
+  "cmo",
+  "insight",
+  "strategy",
+  "creative",
+  "content",
+  "growth",
+  "data",
+  "quality"
+ ]
+}

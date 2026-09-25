@@ -23,8 +23,8 @@
  "brief": {
   "submission": "brief-g1-brief",
   "instructions": {
-   "sha256": "f3127abde9845a21ad376a6d0f1174a51f5ebb38a7ca3097755e2ec4188518b1",
-   "length": 3897
+   "sha256": "97793e1789a6cc7bb57ef3867511c70a95725516d2beeb38b0d70842ea5252fe",
+   "length": 4226
   },
   "input": {
    "sha256": "38c54ae220d15ee8014247586bc1d8205e2724bceaeb221d20ab3206df82bc1e",
@@ -33,6 +33,14 @@
   "inputMasking": {
    "sha256": "7f94b09c92ddb79b0730ff25ef3dd511592637c45a3c3a73c4744ebfa1556f30",
    "length": 137
+  },
+  "instructionsUpdated": {
+   "by": "브리프 품질 수정 v2 (fix/brief-paths-protected, 2026-09-25)",
+   "previous": {
+    "sha256": "f3127abde9845a21ad376a6d0f1174a51f5ebb38a7ca3097755e2ec4188518b1",
+    "length": 3897
+   },
+   "reason": "의도한 지시문 변경: suggestions 허용 키에서 보호 키를 빼고 보호 키를 밝힘, 입력 JSON 경로를 본문에 쓰지 말라는 규칙 추가. 입력·가림 기록 digest는 7b897c9 그대로다."
   }
  }
 }

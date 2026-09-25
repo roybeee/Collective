@@ -103,6 +103,16 @@ const rejectedSoldOut={facts:{confirmed:[],prohibited:[{key:'판매 주장',valu
 check('fact_conflict treats an absent-expression clause as exclusion',()=>{for(const text of ['완성본에는 ‘새 빵’, ‘오전 8시’, ‘당일 전량 소진’, ‘최저가’, 할인·무료·보장 표현이 없고, 후기·추천사 예시도 없다.','카드 문안에 ‘당일 전량 소진’ 문구가 포함되지 않는다.','‘새 빵’, ‘오전 8시’, 가격, 할인, 무료 증정, ‘당일 전량 소진’, ‘최저가’ 문구가 들어가지 않는다.'])assert.equal(status('fact_conflict',role(text),rejectedSoldOut),'pass',text)});
 // 파일럿 1(2026-09-25 S2 품질 검토 실측): 수동형 비사용('사용되지는 않았으나')과 '…하면 안 된다'는 사용 배제다.
 check('fact_conflict treats passive non-use and must-not-use as exclusion',()=>{for(const text of ["prohibited인 '당일 전량 소진'은 직접 사용되지는 않았으나 어떤 가설이나 제작 전제로도 사용하면 안 됩니다.",'‘당일 전량 소진’은 카드에 사용되지 않았다.','‘당일 전량 소진’ 문구는 쓰면 안 됩니다.','‘당일 전량 소진’은 가설로도 내세워서는 안 된다.'])assert.equal(status('fact_conflict',role(text),rejectedSoldOut),'pass',text)});
+// R3 기준선(2026-09-25 S2 그로스 실측): '금지된 “…” 표현이 … 포함됨'(중단 조건)처럼 대상 앞에 금지·거절 수식이 붙으면 사용이 아니다.
+check('fact_conflict treats a rejected fact named as forbidden as non-use',()=>{for(const text of ['- 금지된 “당일 전량 소진” 표현이 소재·제작 지시에 포함됨','거절된 ‘당일 전량 소진’ 주장이 카드에 들어가면 중단한다.'])assert.equal(status('fact_conflict',role(text),rejectedSoldOut),'pass',text)});
+// R3 기준선(2026-09-25 S6 품질 검수 실측): '‘…’는 거절된 사실이므로 … 사용할 수 없습니다'는 사용이 아니다.
+const rejectedGuard={facts:{confirmed:[],prohibited:[{key:'보안 주장',value:'24시간 보안요원 상주'}]}};
+check('fact_conflict treats cannot-use and rejected-fact topic statements as non-use',()=>{for(const text of ['‘24시간 보안요원 상주’는 거절된 사실이므로 [확인 필요]를 붙여도 사용할 수 없습니다.','‘24시간 보안요원 상주’ 문구는 쓸 수 없다.'])assert.equal(status('fact_conflict',role(text),rejectedGuard),'pass',text)});
+check('fact_conflict still fails a rejected fact used or said to be usable',()=>{for(const text of ['‘24시간 보안요원 상주’를 카피 첫 줄에 쓴다.','‘24시간 보안요원 상주’ 문구는 이제 쓸 수 있다.'])assert.equal(status('fact_conflict',role(text),rejectedGuard),'fail',text)});
+// R3 기준선(2026-09-25 S6 브랜드 전략 실측): '### 금지·보류 표현' 제목과 '다음 표현은 … 쓰지 않는다' 아래 목록은 거절 사실 사용이 아니다. 제목이 바뀐 뒤 다시 쓰면 사용이다.
+check('fact_conflict skips rejected facts listed under a prohibitive heading or lead',()=>{for(const text of ['### 금지·보류 표현\n다음 표현은 확인된 사실이 없으므로 확정 광고 문구로 쓰지 않는다.\n- ‘인기’, ‘판매 1위’.\n- ‘24시간 운영’, ‘24시간 보안요원 상주’.','다음 표현은 확인된 사실이 없으므로 확정 광고 문구로 쓰지 않는다.\n- ‘24시간 운영’, ‘24시간 보안요원 상주’.'])assert.equal(status('fact_conflict',role(text),rejectedGuard),'pass',text)});
+check('fact_conflict still fails a rejected fact used after the prohibitive heading ends',()=>assert.equal(status('fact_conflict',role('### 금지·보류 표현\n- ‘24시간 운영’.\n\n### 게시 카피\n‘24시간 보안요원 상주’ 보관함, 안심하고 맡기세요.'),rejectedGuard),'fail'));
+check('fact_conflict still fails the rejected fact without a forbidding modifier',()=>{for(const text of ['- “당일 전량 소진” 표현이 소재·제작 지시에 포함됨','인기 많은 “당일 전량 소진” 빵입니다.'])assert.equal(status('fact_conflict',role(text),rejectedSoldOut),'fail',text)});
 check('fact_conflict still fails a passive use',()=>{for(const text of ['‘당일 전량 소진’이 카드 문구에 사용되었습니다.','‘당일 전량 소진’은 직접 사용되지는 않았다고 적었지만 카드에는 ‘당일 전량 소진’을 넣습니다.'])assert.equal(status('fact_conflict',role(text),rejectedSoldOut),'fail',text)});
 check('fact_conflict still fails a rejected fact that is present or wished away but used',()=>{for(const text of ['카드에는 ‘당일 전량 소진’ 문구가 있다.','‘당일 전량 소진’ 표현이 없으면 좋겠지만 오늘은 씁니다.','매일 당일 전량 소진되는 인기 빵입니다.','매일 당일 전량 소진, 이보다 좋은 문구가 없다.','당일 전량 소진, 더 이상의 표현이 없습니다.'])assert.equal(status('fact_conflict',role(text),rejectedSoldOut),'fail',text)});
 check('fact_conflict passes a price and open date that match the ledger',()=>assert.equal(status('fact_conflict',role('떡볶이는 5,000원이고 10월 5일 오픈합니다.'),priced),'pass'));
@@ -114,6 +124,18 @@ check('fact_conflict is not applicable when no ledger key is touched',()=>assert
 
 // 7b unconfirmed_value_assertion: 원장에 확정값이 없는 구체 값을 표시 없이 단정하면 fail.
 check('unconfirmed value fails an asserted price or open date missing from the ledger',()=>{assert.equal(status('unconfirmed_value_assertion',role('대표 메뉴는 12,900원입니다.'),ledger),'fail');assert.equal(status('unconfirmed_value_assertion',role('10월 5일 오픈합니다.'),ledger),'fail')});
+// R3 기준선(2026-09-25 S7 품질 검수 실측): 금지된 수익 보장 문구 안의 값('금지된 ‘월 순수익 500만 원 보장’ … 표현은 사용하지 않는다')과 금지 제목 아래 값은 단정이 아니다.
+check('unconfirmed value skips values in negated or prohibitive contexts',()=>{for(const text of ['금지된 ‘월 순수익 500만 원 보장’ 및 유사 수익 보장 표현은 사용하지 않는다.','### 금지 표현\n- ‘월 순수익 500만 원 보장’'])assert.equal(status('unconfirmed_value_assertion',role(text),ledger),'pass',text)});
+check('unconfirmed value still fails a value asserted next to a negated clause',()=>{for(const text of ['대표 메뉴는 12,900원이며 할인하지 않습니다.','월 순수익 500만 원을 보장합니다.'])assert.equal(status('unconfirmed_value_assertion',role(text),ledger),'fail',text)});
+// R3 기준선(2026-09-25 S8 실측): FAQ의 보장 여부 질문('체형 교정이나 통증 완화를 보장하나요?')과 값이 후보 사실이라는 설명('체험 가격 2만 원은 후보 사실이고')은 사용·단정이 아니다.
+check('a question about a guarantee and a candidate-fact value are not use or assertion',()=>{
+ assert.equal(status('brief_prohibition_conflict',copy('Q. 체형 교정이나 통증 완화를 보장하나요?\nA. 그런 보장 또는 의학적 효과를 광고하지 않습니다.'),{prohibitedTerms:['통증 완화']}),'pass');
+ assert.equal(status('unconfirmed_value_assertion',role('체험 가격 2만 원은 후보 사실이고, 수업 시간·정규 8회권 가격은 미정이다.'),ledger),'pass');
+});
+check('a hook question and a stated price still count',()=>{
+ assert.equal(status('brief_prohibition_conflict',copy('통증 완화를 원하시나요? 지금 체험하세요.'),{prohibitedTerms:['통증 완화']}),'fail');
+ assert.equal(status('unconfirmed_value_assertion',role('체험 가격은 2만 원입니다.'),ledger),'fail');
+});
 check('unconfirmed value passes a marked example price',()=>assert.equal(status('unconfirmed_value_assertion',role('[예시] 대표 메뉴 12,900원처럼 가격을 적는 양식입니다.'),ledger),'pass'));
 check('unconfirmed value leaves ledger-confirmed kinds to fact_conflict',()=>assert.equal(status('unconfirmed_value_assertion',role('떡볶이는 7,000원입니다.'),priced),'not_applicable'));
 check('unconfirmed value is not applicable without a ledger',()=>assert.equal(status('unconfirmed_value_assertion',role('대표 메뉴는 12,900원입니다.')),'not_applicable'));
@@ -127,6 +149,19 @@ check('claim term fails unsupported popularity and opening benefit',()=>assert.e
 check('claim term ignores procedural mentions outside copy',()=>assert.equal(status('unsupported_claim_term',role('오픈 전에는 할인보다 위치 정보를 먼저 정비합니다. 할인 제공 여부는 별도 승인 없이 바꾸지 않습니다. '+long)),'pass'));
 check('claim term accepts [확인 필요] and negation in copy',()=>assert.equal(status('unsupported_claim_term',role('게시 카피\n“오픈 혜택 [확인 필요] 안내”\n인기 표현은 쓰지 않습니다.')),'pass'));
 check('claim term scopes negation to the claim term',()=>{assert.equal(status('unsupported_claim_term',copy('그냥 떡볶이가 아닌 동네 인기 떡볶이.')),'fail');assert.equal(status('unsupported_claim_term',copy('오픈 혜택 놓치지 말고 오세요.')),'fail');assert.equal(status('unsupported_claim_term',copy('할인 없이도 만족스러운 한 끼.')),'pass')});
+// R3 기준선(2026-09-25 MAPDAL 실측): 인용 뒤 '이라고 단정하지 않는다'(인용 조사 '라고'는 절 경계가 아니다), 구매·혜택 문구를 '확정된 뒤 별도 승인'으로 미룬 규칙은 사용이 아니다.
+check('claim term treats a quoted claim that is not asserted and a deferred approval as non-use',()=>{
+ for(const item of [role('자사 채널을 사용하더라도 실제 비용이 발생하면 따로 기록한다. ‘무료 자사 채널’이라고 단정하지 않는다.'),copy('“지금 구매하세요”, “주문하기”, “할인받기”와 같은 구매·혜택 유도 표현은 가격과 해당 조건이 확정된 뒤 별도 승인합니다.')])assert.equal(status('unsupported_claim_term',item),'pass',item.text)});
+check('claim term still fails a quoted claim that is used or a deferral in another clause',()=>{
+ for(const item of [role('‘무료 자사 채널’이라고 안내한다.'),role('‘무료 체험 이벤트’라고 쓰고 링크를 단다.'),copy('“할인받기” 버튼을 쓰고, 문구 조건은 확정된 뒤 별도 승인합니다.'),copy('“할인받기”는 가격이 확정된 뒤 바로 씁니다.')])assert.equal(status('unsupported_claim_term',item),'fail',item.text)});
+// R3 기준선(2026-09-25 S3 코딩학원 실측): 주의 학습 규칙 이름 인용('‘할인 마감 문구 주의’ 버전 1'), '무료 여부', '‘…’는 … 확정 사실이 아니므로'는 주장 사용이 아니다.
+check('claim term treats caution rule names, whether-questions and not-a-fact statements as non-use',()=>{
+ for(const item of [role('적용한 학습 규칙은 ‘할인 마감 문구 주의’ 버전 1이다.'),copy('할인·마감 문구는 learning 「할인 마감 문구 주의」 버전 1의 caution 규칙에 따라 성공 방법으로 적용하지 않는다.'),role('근거: 크리에이티브 v1 「카피 초안」, trialLearning 「할인 마감 문구 주의」.'),copy('[확인 사실: 주소/합성 원장, 2026-03-12 확인, 브랜드 범위] 학원명·교육 과정·수강료·정원·레벨 테스트의 무료 여부·오픈일·합격률·성적 향상 수치·수업 방식은 확정 사실로 확인되지 않았다.'),role('또한 ‘무료 레벨 테스트’는 브리프 v1 목표와 총괄 파트너 v1에 반복되지만 확정 사실이 아니므로, 이를 광고 문구로 바로 쓰면 주장이 사실로 승격됩니다.'),role('‘무료 레벨 테스트’는 브리프의 목표 표현에 포함되어 있으나 실제 무료 제공 조건은 별도 확인되지 않았으므로 광고 문구로 확정하지 않는다.'),role('캠페인 목표는 ‘중학생 학부모의 무료 레벨 테스트 상담 신청을 늘린다’이며 상담 신청률은 랜딩 방문 중 상담 신청 완료 비율로 정의되어 있음.'),role('‘무료 레벨 테스트’는 브리프 v1의 목표 표현에 포함되어 있으나 확정 사실 목록에는 없습니다.'),role('‘무료 레벨 테스트’는 브리프의 목표 표현에는 있으나 실제 제공 조건과 비용 부담 주체가 확인되지 않아 광고의 확정 혜택으로 확대하면 안 됩니다.'),copy('Q. 레벨 테스트는 무료인가요?'),copy('A. 현재 무료 여부와 제공 조건은 확인 중입니다. 확인 전에는 무료라고 안내하지 않습니다.'),role('첫 브리프의 빈틈은 ‘무료 레벨 테스트 상담 신청’이라는 목표 행동을 실제 제공 조건과 측정 이벤트로 분리하지 않은 점이다.')])assert.equal(status('unsupported_claim_term',item),'pass',item.text)});
+check('claim term still fails claims in quotes that are not rule names and plain free offers',()=>{
+ for(const item of [copy('“할인 마감 임박, 지금 신청하세요”'),copy('레벨 테스트 무료 제공, 지금 신청하세요.'),role('‘무료 레벨 테스트’는 이번 달 확정된 혜택입니다.'),copy('‘할인 주의보 해제 기념 이벤트’를 엽니다.'),role('메시지 목표는 ‘무료 레벨 테스트 신청’을 알리는 것이다.'),role('‘무료 레벨 테스트’는 확인된 혜택이라 광고 첫 줄에 쓴다.'),copy('레벨 테스트는 무료입니다. 지금 신청하세요.'),role('‘무료 레벨 테스트 상담 신청’이라는 문구로 광고를 만든다.')])assert.equal(status('unsupported_claim_term',item),'fail',item.text)});
+// R3 기준선(2026-09-25 MAPDAL 개선본 실측): '다음 표현은 … 사용하지 않는다' 리드 아래 인용 목록(빈 줄 허용)은 금지 목록이다. 제목이 오거나 리드가 금지가 아니면 아니다.
+check('claim term skips quoted lists under a prohibiting lead sentence',()=>assert.equal(status('unsupported_claim_term',role('## 개선본\n다음 표현은 확정 근거가 없으므로 사용하지 않는다.\n\n“전 세계 배송”, “글로벌 어디서나 구매 가능”\n\n“최저가”, “가장 인기 있는”, “팬 필수품”')),'pass'));
+check('claim term still checks copy after the banned list ends or under a non-prohibiting lead',()=>{for(const text of ['다음 표현은 확정 근거가 없으므로 사용하지 않는다.\n\n“최저가 보장 이벤트”\n\n## 게시 카피\n“가장 인기 있는 K-POP 음반”','아래 문구로 게시한다.\n\n“가장 인기 있는 K-POP 음반”'])assert.equal(status('unsupported_claim_term',role(text)),'fail',text)});
 check('claim term accepts a confirmed ledger basis',()=>assert.equal(status('unsupported_claim_term',role('게시 카피\n“오픈 혜택 안내”'),{facts:{confirmed:[{key:'오픈 혜택',value:'첫 주 음료 제공'}],prohibited:[]}}),'pass'));
 // 품질 측정 v2(2026-09-24 재평가 실측 합성): 금지 규칙을 적은 문장·표·제목 블록은 카피 사용이 아니다.
 const claimRules='## 게시 카피 3종과 용도·CTA\n### 카피 A\n“새로 들어온 K-POP 음반, 발매 일정부터 확인하세요.”\n\n### 금지 또는 보류 표현\n다음 표현은 확정 사실 목록에 근거가 없으므로 광고·헤드라인·CTA·대본·자막·예시 문안에 사용하지 않는다.\n\n| 유형 | 표현 | 조치 |\n|---|---|---|\n| 인기·순위 | ‘가장 인기 있는’, ‘판매 1위’, ‘많이 찾는’ | 실제 판매·인기 근거 확인 전 삭제 |\n| 가격·혜택 | ‘첫 주문 무료 배송’, ‘오픈 혜택 한정’ | 가격 확정 전 보류 |\n\n### 카피 B\n“발매 일정과 구성품을 먼저 확인하세요.”';
@@ -195,6 +230,13 @@ check('channel coverage is not applicable outside store campaigns and to other r
 check('input budget cap defaults to 32,000',()=>assert.equal(INPUT_TOKEN_CAP,32000));
 check('input budget passes and fails around the cap',()=>{assert.equal(status('input_budget',{id:'u',kind:'call',role:'cmo',inputTokens:24000}),'pass');assert.equal(status('input_budget',{id:'u',kind:'call',role:'cmo',inputTokens:35500}),'fail')});
 check('input budget is not applicable without tokens or for brief drafts',()=>{assert.equal(status('input_budget',{id:'u',kind:'call',role:'cmo',inputTokens:null}),'not_applicable');assert.equal(status('input_budget',{id:'u',kind:'call',role:'brief',inputTokens:40000}),'not_applicable')});
+// R3 기준선(2026-09-25) 실측: 회의 단계 입력 최대 52,268(MAPDAL 재검토), 역할 최대 23,701. 회의 단계 상한은 64,000, 역할은 32,000(위임 결정).
+check('meeting steps use the 64,000 meeting cap and roles keep 32,000',()=>{
+ assert.equal(status('input_budget',{id:'m',kind:'meeting_step',role:'quality',meetingId:'m1',phase:'quality',text:'x',inputTokens:52268}),'pass');
+ assert.equal(status('input_budget',{id:'m',kind:'meeting_step',role:'quality',meetingId:'m1',phase:'quality',text:'x',inputTokens:70000}),'fail');
+ assert.equal(status('input_budget',{id:'d',kind:'discussion',role:'cmo',meetingId:'m1',fields:{},inputTokens:40000}),'pass');
+ assert.equal(status('input_budget',{id:'u',kind:'role',role:'cmo',text:'x',inputTokens:40000}),'fail');
+});
 check('input budget cap is configurable',()=>assert.equal(status('input_budget',{id:'u',kind:'call',role:'cmo',inputTokens:33000},{inputTokenCap:36000}),'pass'));
 
 // 우선순위: 재질문이면 내용 채점기는 not_applicable, 구조 채점기는 계속 채점한다.

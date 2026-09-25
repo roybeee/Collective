@@ -122,6 +122,24 @@ const violations=[
  ['ecommerce_terms','온라인 판매 시작! 링크에서 만나보세요.'],
  ['ecommerce_terms','필요할 때 지금 구매하세요.'],
  ['ecommerce_terms','살 수 있을 때 지금 구매하세요.'],
+ // 확정 뒤 승인으로 미룬 규칙은 면제하되, 다른 절의 미룸은 구매 유도를 면제하지 않는다(R3 기준선).
+ ['ecommerce_terms','지금 구매하세요, 가격은 확정된 뒤 별도 승인합니다.'],
+ // '유료 광고비'(광고 예산) 제외가 협찬 대가·크리에이터 유료 광고를 놓치지 않는다(R3 기준선).
+ ['endorsement','유료 광고비를 받고 후기를 쓴다.'],
+ ['endorsement','인플루언서 유료 광고 게시물을 올린다.'],
+ // 중단 조건 리드 아래 목록 제외가 목록 뒤 문장·중단이 아닌 리드의 목록을 면제하지 않는다.
+ ['endorsement','다음 상황에서는 소재를 중단한다.\n- 품질 문제가 확인된다.\n\n오픈 주간에는 가짜 후기 3건을 올린다.'],
+ ['ecommerce_terms','아래 문안을 게시한다.\n- 지금 구매하세요'],
+ // 확정 가격 자리·퍼널 단계 나열 면제가 가격 문의 표시나 단계 두 개만 적은 구매 유도를 면제하지 않는다(R3 기준선).
+ ['ecommerce_terms','[가격 문의] 지금 구매하세요.'],
+ ['ecommerce_terms','상품 조회·장바구니 다음 단계로 지금 구매하세요.'],
+ ['ecommerce_terms','[가격 협의] 배송·교환·환불 안내 포함, 지금 구매하세요.'],
+ // 'AI 소재·광고 표시' 점검 항목 면제가 AI 소재 사용을 면제하지 않는다(R3 기준선).
+ ['ai_label','AI 소재 이미지로 메인 배너를 만든다.'],
+ // 광고 표시 계획 인정 범위를 넓혀도 '광고 표시는 넣지 않는다'는 표기 누락이다(R3 기준선).
+ ['endorsement','체험단 협찬 게시물을 올리고 광고 표시는 넣지 않는다.'],
+ // '게시 시간' 같은 명사 제외가 인물 사진 게시를 놓치지 않는다(R3 기준선).
+ ['rights','아이돌 사진을 게시 시간에 맞춰 게시한다.'],
  ['ecommerce_terms','헤드라인 “오픈 기념”, “지금 구매하세요” 두 줄로 간다.'],
  ['ecommerce_terms','온라인 판매 실적을 늘리려면 지금 구매하세요 버튼을 키운다.'],
  ['ecommerce_terms','상품 보기 버튼은 보류하고 지금 구매하세요 문구를 메인에 둔다.'],
@@ -168,6 +186,24 @@ const normals=[
  ['online purchase relation table header','## 오프라인 접점\n| 접점 | 식별자 예시 | 기록할 것 | 온라인 구매와의 관계 |\n|---|---|---|---|\n| 매장 | 영수증 번호 | 방문일 | 없음 |'],
  ['online sales inventory row','## 운영\n| 오프라인 접점 | 매장·자판기 재고와 온라인 재고 분리 여부 | 온라인 판매 재고와 중복 판매 방지 | 자료 필요 / 운영 |'],
  ['CTA only when checkout is reachable','## CTA\n확인 완료 후 상품 선택이 필요하면 “상품 선택하기”, 바로 결제 단계로 이동할 수 있을 때만 “구매하기”.'],
+ // 실측(2026-09-25 R3 기준선 MAPDAL 전략) 합성 재현: 구매·혜택 유도 문구 목록을 '확정된 뒤 별도 승인'으로 미룬 규칙.
+ // 실측(2026-09-25 R3 기준선 S2 그로스) 합성 재현: 오가닉 채널 행의 예산 칸 '유료 광고비 0원'은 광고 관계 표기 대상이 아니다.
+ // 실측(2026-09-25 ODA cmo 기준선 v1, 제목이 없을 때) 합성 재현: '다음 상황에서는 … 중단한다' 아래 목록은 중단 조건이지 문안이 아니다.
+ ['stop-condition list under a lead sentence without a heading','[제안] 다음 상황에서는 해당 소재·채널·집행을 중단한다.\n\n- 승인되지 않은 메뉴, 가격, 영업시간이 노출된다.\n- 가격·영업정보 불일치, 개인정보 관리 문제, 허위 후기·위장 후기·추천 조작이 확인된다.'],
+ // 실측(2026-09-25 R3 기준선 MAPDAL 회의) 합성 재현: 확정 가격 자리가 든 카피 구성의 CTA, 퍼널 단계를 나열한 측정 질문·선정 기준.
+ ['CTA planned in copy that carries a confirmed price slot','## 카피 방향\n1안: 카피는 ‘[확정 상품명], MAPDAL.kr에서 확인하세요’와 ‘[확정 가격] · [배송 가능 지역] · 해외배송비 별도’로 구성하고 CTA는 ‘구매하기’로 둡니다.'],
+ ['CTA in a template with a price and currency slot','## 상세 페이지 구성\n[확인된 구성 또는 옵션]\n[가격·통화]\n[배송 가능 지역·배송비 확인 경로]\n[결제·취소·반품 안내]\nCTA: 구매하기 또는 상품 선택하기'],
+ // 실측(2026-09-25 R3 기준선 S7 데이터) 합성 재현: 검수 책임표의 'AI 소재·광고 표시' 점검 항목.
+ ['AI asset and ad label review row','## 검수 책임\n| 점검 항목 | 담당 | 시점 | 목적 |\n|---|---|---|---|\n| 광고 표현·AI 소재·광고 표시 | 콘텐츠·법무 담당 | 소재 승인 전 | 미확인 주장·광고 표시 위반 방지 |'],
+ // 실측(2026-09-25 R3 기준선 S7 콘텐츠) 합성 재현: 협찬·제품 제공 시 광고 표시를 추가한다는 계획과 표시 여부 체크리스트.
+ ['conditional disclosure plan that adds the ad label','### 게시 전 확인\n유료 집행·협찬·제품 제공이 발생하면 게시 문안에 해당 광고 표시를 추가합니다.'],
+ ['conditional disclosure plan and checklist','### 게시 전 확인\n유료 집행·협찬·제품 제공이 발생하면 게시 문안에 해당 광고 표시를 추가합니다.\n- [ ] 광고·협찬·유료 게시라면 해당 표시를 문안에 넣었는가'],
+ // 실측(2026-09-25 R3 기준선 S8 크리에이티브) 합성 재현: 실험에서 고정할 변수 나열의 '배우 … 게시 시간'.
+ ['fixed experiment variables list an actor and posting time','## 실험 조건\n이후 증명 장면, 길이, 배우, 조명, CTA, 랜딩 페이지, 게시 시간은 고정한다.'],
+ ['funnel stage list in a data question','## 확인 질문\n4) 비교할 기준 기간의 유효 세션·상품 조회·장바구니·결제 시작·결제 완료·취소·환불 원자료와 현재 추적 도구·주문 DB 구조는 무엇인가'],
+ ['funnel stage list as selection data','## 선정 기준\n상품×국가 선정은 기존 주문·조회·장바구니 자료가 있으면 그 출처와 기간을 명시하고, 없으면 운영 가능성에 따른 임시 선정임을 기록한다.'],
+ ['paid ad budget of zero in an organic channel row','## 채널 계획\n| 채널 | 소재 | 예산 배분 | 목적지 |\n|---|---|---|---|\n| Instagram 오가닉 숏폼 | CTA: “자세히 보기” | 제작비의 25%, 유료 광고비 0원으로 우선 설계 | 프로필 링크의 안내 페이지 |'],
+ ['purchase prompts deferred until confirmed and approved','## 조건부 핵심 메시지\n문안 상태: [제안]. “지금 구매하세요”, “주문하기”, “할인받기”와 같은 구매·혜택 유도 표현은 가격과 해당 조건이 확정된 뒤 별도 승인합니다.'],
  ['CTA options chosen after checking the next step','## 하단 CTA\n- 하단에는 실제 사이트에서 다음 단계가 상품 선택인지 결제인지 확인한 뒤 “상품 자세히 보기”, “상품 선택하기”, “구매하기” 중 하나만 사용한다.'],
  ['disclosed sponsored post','[광고] 가상분식에서 제품을 제공받아 작성한 후기입니다. 떡볶이 소스가 달지 않고 매콤해 퇴근길 포장 메뉴로 괜찮았습니다. #광고 #협찬'],
  ['compliant ad message','(광고) 가상분식 오픈 안내 문자입니다. 오전 11시에 마케팅 정보 수신에 동의한 고객에게만 발송합니다. 무료 수신거부 080-000-0000'],
@@ -299,7 +335,7 @@ check('franchise lexicon rules are the 14 official registry rules and their scop
 check('severity follows the registry tier (hard_block and block_unless_evidence as block, warn as warn)',()=>{for(const r of frRules)assert.equal(r.severity,registry(r.id).tier==='warn'?'warn':'block',r.id)});
 check('every franchise-law source URL of a kr.fr rule is in the registry sourceUrls of the same id',()=>{for(const r of frRules.filter(r=>r.id.startsWith('kr.fr.'))){const urls=registry(r.id).sourceUrls;for(const k of r.sources){const url=COMPLIANCE_LEXICON.sources[k].url;if(k.startsWith('franchise_'))assert.ok(urls.includes(url),r.id+' '+k);else assert.ok(k==='fair_labeling'&&urls.some(u=>u.includes('lsId=002011')),r.id+' '+k)}}});
 check('the false-information notice source carries the formal title',()=>{const t=COMPLIANCE_LEXICON.sources.franchise_false_info_notice.title;assert.match(t,/가맹사업거래 상 허위·과장 정보제공행위 등의 유형 지정고시/);assert.match(t,/제2019-8호/)});
-check('the lexicon version is bumped once to .6',()=>assert.equal(COMPLIANCE_LEXICON.version,'compliance-lexicon-2026-09-25.6'));
+check('the lexicon version is bumped once to .11 (franchise category on top of .10)',()=>assert.equal(COMPLIANCE_LEXICON.version,'compliance-lexicon-2026-09-25.11'));
 check('a quoted franchise example is info in the opt-in A2 path',()=>{const issues=checkCompliance('경쟁점 사례: “월 순수익 500만원 보장”.',CONSUMER).issues.filter(i=>i.category==='franchise_recruit');assert.ok(issues.length>0&&issues.every(i=>i.severity==='info'))});
 check('detection rate is 100% and false positive rate is 0%',()=>{assert.equal(detected,violations.length);assert.equal(falsePositives,0)});
 console.log(JSON.stringify({passed:passed.length,violations:violations.length,detected,normals:normals.length,falsePositives}));

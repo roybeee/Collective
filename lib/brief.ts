@@ -87,7 +87,9 @@ ${claimPolicy}
 ${measurementDiscipline}
 확정 사실(evidence.facts.confirmed)만 사실 근거입니다(출처·확인일·유효기한 포함). 거절된 사실(evidence.facts.prohibited)은 광고 금지 표현이므로 제안·카피·가설의 전제로 쓰지 마세요. 후보 사실(evidence.facts.candidate)과 브랜드 소개(brand.brandIntro, 대표 대화 기반 미확인 소개, useInCopy:false)는 사실로 단정하지 말고 [확인 필요]로 표시하세요. ${directivePolicy}
 trialLearning은 같은 브랜드·채널 실험에서 채택한 시험 적용 규칙이며 인과관계가 검증된 사실이 아닙니다. 이번 목표와 적용 조건에 맞을 때만 제안에 참고하고, contextUsed에 실제 참고한 규칙 제목·버전·관찰 근거의 한계를 밝히세요. 사용자가 기록할 결과/learning 항목을 대신 채우지 마세요.
+입력 JSON의 필드 경로(점으로 이은 영문 이름)나 입력 필드의 영문 이름은 summary·제안 값·이유·질문·가정에 쓰지 말고 사람이 읽는 이름으로 쓰세요. 예를 들어 확정 사실(evidence.facts.confirmed)은 '확정 사실', 거절된 사실(evidence.facts.prohibited)은 '거절된 사실', 후보 사실(evidence.facts.candidate)은 '후보 사실', 브랜드 소개(brand.brandIntro)는 '브랜드 소개', trialLearning은 '시험 적용 규칙'으로 씁니다.
 출력은 마크다운 없이 JSON 한 개입니다. 형태:
 {"summary":"이번 목표의 접근법","suggestions":[{"field":"아래 허용 키","value":"작성할 내용","reason":"이 제안의 근거 또는 검증할 가설"}],"questions":[{"field":"관련 키","question":"중요 확인 질문","why":"왜 필요한가"}],"assumptions":["검증해야 할 가설"],"contextUsed":["실제로 전달받아 참고한 자료 이름과 한계"],"factCandidates":[{"key":"짧은 사실 항목","value":"사용자가 브리프에 직접 적은 사실 원문","source":"사용자 브리프"}]}
 factCandidates에는 currentBrief에 사용자가 직접 적은 확인 가능한 사실(주소·영업시간·가격·메뉴·오픈일 등)만 원문 그대로 최대 10개 넣으세요. 브랜드 소개·AI 추론·확정 사실(evidence.facts.confirmed)에 이미 있는 항목은 넣지 마세요. 없으면 빈 배열입니다. 이 항목은 사실 원장의 확인 후보로만 등록되고 확정은 관리자가 합니다.
-suggestions 허용 키: ${Object.keys(briefFields).join(', ')}. questions 허용 키: ${Object.keys(questionFields).join(', ')}. 예산 질문을 여러 조건과 묶을 때는 field를 budgetPlan으로, 운영 조건은 operations로, 목표·기한은 target으로 연결하세요. protected 키에는 suggestions를 만들지 마세요. 최소한 kpi, hypothesis, experiment, tracking, decision을 포함해 계획 초안을 작성하세요. 모든 본문 합계 약 5000자 내외.`;
+보호 키(${[...protectedFields].join(', ')})는 사용자가 직접 기록하는 항목이라 suggestions에 넣지 마세요. 확인이 필요하면 questions로 물으세요.
+suggestions 허용 키: ${Object.keys(briefFields).filter(k=>!protectedFields.has(k as BriefKey)).join(', ')}. questions 허용 키: ${Object.keys(questionFields).join(', ')}. 예산 질문을 여러 조건과 묶을 때는 field를 budgetPlan으로, 운영 조건은 operations로, 목표·기한은 target으로 연결하세요. 최소한 kpi, hypothesis, experiment, tracking, decision을 포함해 계획 초안을 작성하세요. 모든 본문 합계 약 5000자 내외.`;
