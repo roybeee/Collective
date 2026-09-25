@@ -121,11 +121,35 @@ check('member may propose a candidate',(await staffCall({action:'save_fact',data
 
 // 트랙 R R1b: 가맹 금액 문장(합성)은 메뉴 가격으로 분류하지 않는다. 숫자형 3종은 이 변경 전에 menu_price였다. 소비자 문장 분류는 명시 기대값 그대로다.
 const FR_MONEY=['가맹비 870만원','교육비 550만원','가맹 보증금 500만원','인테리어 비용 3.3㎡당 180만원','총 창업비용 1억 2천만원','가맹비 8,700,000원','교육비 5,500,000원','로열티 월 300,000원'];
-check('franchise money sentences are not guessed as menu prices',FR_MONEY.every(s=>imp.isFranchiseMoney(s)&&imp.guessFactKey(s)!=='menu_price'));
+check('franchise money sentences are not guessed as menu prices',FR_MONEY.every(s=>imp.isFranchiseMoney(s)&&imp.guessFactKey(s,true)!=='menu_price'));
 const CONSUMER={'아메리카노 4,500원':'menu_price','일회용컵 보증금 300원':'menu_price','쿠키 3개 5,000원':'menu_price','베이킹 클래스 교육비 35,000원':'menu_price','멤버십 가입비 10,000원':'menu_price','로열티 카드 적립 시 아메리카노 4,500원':'menu_price','로열티 10% 할인, 아메리카노 4,500원':'menu_price','로열티 5% 적립 라떼 5,000원':'menu_price','로열티 월 1회 무료 음료, 라떼 5,000원':'menu_price','대관 보증금 100만원, 케이크 30,000원':'menu_price','총 투자 없이 즐기는 라떼 5,000원':'menu_price','영업시간 10:00-21:00':'hours','9월 1일 오픈':'opening_date','02-000-0000':'phone','가상시 가상구 가상로 12':'address'};
-check('consumer sentence classification keeps the explicit expectations',Object.entries(CONSUMER).every(([s,k])=>imp.guessFactKey(s)===k&&!imp.isFranchiseMoney(s)));
-const priceChecks=(description,menu='')=>imp.ledgerChecks({...oda,description,knowledge:''},menu?[{...store,menu,address:'',hours:''}]:[],[]).filter(c=>c.key==='menu_price');
+check('consumer sentence classification keeps the explicit expectations',Object.entries(CONSUMER).every(([s,k])=>imp.guessFactKey(s)===k&&imp.guessFactKey(s,true)===k&&!imp.isFranchiseMoney(s)));
+const priceChecks=(description,menu='')=>imp.ledgerChecks({...oda,description,knowledge:''},menu?[{...store,menu,address:'',hours:''}]:[],[],true).filter(c=>c.key==='menu_price');
 check('brand intro franchise money sentences make no menu price check',priceChecks('가맹 안내. '+FR_MONEY.join('. ')+'.').length===0);
 check('brand intro consumer prices keep their menu price checks',JSON.stringify(priceChecks('일회용컵 보증금 300원. 마르게리타 15,000원. 멤버십 가입비 10,000원.').map(c=>c.value))===JSON.stringify(['300원','15,000원','10,000원']));
 check('store menu lines with franchise money are skipped, consumer lines kept',JSON.stringify(priceChecks('','마르게리타 15,000원\n가맹비 870만원').map(c=>c.value))===JSON.stringify(['15,000원'])&&JSON.stringify(priceChecks('','마르게리타 15,000원\n콜라 2,000원').map(c=>c.value))===JSON.stringify(['15,000원, 2,000원']));
+// 묶음 13 게시 전 점검(2026-09-25): 가맹 금액 제외는 가맹 문맥(가맹 프로필·정보공개서 버전)이 있는 브랜드에만 적용한다.
+// 비가맹 브랜드는 R1b 이전(8c22f0e)처럼 아래 소비자 문장을 메뉴 가격으로 분류하고 원장 점검에 남긴다(r_franchise가 꺼진 운영 기본값에서 기존 사용자 동작 불변).
+const OVERLAP=['인테리어 비용 1억 원을 들여 새단장, 아메리카노 4,500원','로열티 월 5,000원 할인 쿠폰 제공','로열티 회원 혜택: 로열티 월 5% 적립, 라떼 5,500원','베이킹 클래스 12주 과정 교육비 1,200,000원','멤버십 가입비 1,000,000원 (연간)','청년 창업 자금 지원 이벤트 참여 매장, 아메리카노 2,000원','법인 선물 계정 개설 비용 0원, 대량 주문 할인','올해도 가맹비 인상 없이 아메리카노 3,500원 동결'];
+check('non-franchise brand guesses overlapping consumer sentences as menu prices',OVERLAP.every(s=>imp.guessFactKey(s)==='menu_price'));
+check('non-franchise brand guesses franchise money sentences as before R1b',FR_MONEY.every(s=>imp.guessFactKey(s)===(/\d[\d,]*\s*원/.test(s)?'menu_price':undefined)));
+check('franchise brand excludes franchise money and keeps consumer prices',FR_MONEY.every(s=>imp.guessFactKey(s,true)!=='menu_price')&&Object.entries(CONSUMER).every(([s,k])=>imp.guessFactKey(s,true)===k));
+const plainChecks=(description,menu='')=>imp.ledgerChecks({...oda,description,knowledge:''},menu?[{...store,menu,address:'',hours:''}]:[],[],false).filter(c=>c.key==='menu_price');
+check('non-franchise brand intro keeps menu price checks in overlapping sentences',JSON.stringify(plainChecks('인테리어 비용 1억 원을 들여 새단장한 매장, 아메리카노 4,500원. 로열티 월 5,000원 할인 쿠폰, 도넛 2,500원.').map(c=>c.value))===JSON.stringify(['4,500원','5,000원, 2,500원']));
+check('non-franchise store menu keeps every line',JSON.stringify(plainChecks('','마르게리타 15,000원\n가맹비 870만원').map(c=>c.value))===JSON.stringify(['15,000원, 870만원']));
+// 서버 경로: 같은 브랜드 소개가 가맹 프로필이 생기기 전에는 점검되고, 생긴 뒤에는 가맹 금액 문장이 빠진다.
+const frOwner='fact-import-franchise-owner';
+await server.seedBrands(frOwner);
+const frOda=await server.readRecord(frOwner,'brand','oda');
+await server.recordStatement(frOwner,'brand','oda',{...frOda,description:'로열티 월 5,000원 할인 쿠폰, 도넛 2,500원. 가맹비 870만원.',knowledge:''}).run();
+// 가져오기 경로: 확정 메뉴 가격이 이미 있으면 메뉴 가격으로 분류된 후보는 건너뛴다. 비가맹 브랜드에서는 소비자 문장이 메뉴 가격이라 건너뛰고, 가맹 문맥이 생기면 자유 항목이 되어 가져올 수 있다.
+await server.recordStatement(frOwner,'brand_fact','bf-price',{id:'bf-price',brandId:'oda',key:'menu_price',value:'도넛 2,500원',status:'confirmed',source:'가상 메뉴판',verifiedAt:'2026-09-01T00:00:00.000Z',validUntil:'2099-01-01T00:00:00.000Z',version:1,updatedAt:'2026-09-01T00:00:00.000Z'},'oda').run();
+await server.recordStatement(frOwner,'campaign','c-fr',{id:'c-fr',brandId:'oda',title:'가상 캠페인',goal:'확정 사실(사용자 직접 제공): 로열티 월 5,000원 할인 쿠폰 제공.',version:1,status:'draft'}).run();
+const importable=async()=>(await get('brandId=oda',frOwner)).readiness.importable;
+const importableBefore=await importable();
+const menuChecks=async()=>(await get('brandId=oda',frOwner)).checks.filter(c=>c.key==='menu_price').map(c=>c.value);
+check('GET without franchise context checks every price sentence',JSON.stringify(await menuChecks())===JSON.stringify(['5,000원, 2,500원','870만원']));
+await server.recordStatement(frOwner,'franchise_profile','oda',{id:'oda',brandId:'oda',branch:'A',forecastInputs:{fiscalYearEnd:'2025-12-31'},version:1},'oda').run();
+check('GET with franchise context drops franchise money sentences only',JSON.stringify(await menuChecks())===JSON.stringify([]));
+check('franchise context turns the royalty sentence into an importable free item',(await importable())===importableBefore+1);
 console.log(JSON.stringify({passed}));

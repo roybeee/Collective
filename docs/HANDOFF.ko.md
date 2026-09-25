@@ -6,9 +6,9 @@
 
 ## 기준
 - 저장소: `roybeee/Collective`, 브랜치 `main`
-- 기준 SHA: `41ea80d`(#117). 운영은 `8c22f0e`(tree `02260ba`, Sites 버전 35, `published`, `/api/version` 확인 전)이다. `41ea80d` 게시 요청 PR이 열려 있다(자동 게시, [게시 절차 8절](PUBLISH.ko.md#8-자동-게시-chatgpt-예약-작업)).
+- 기준 SHA: `41ea80d`(#117). 운영은 `8c22f0e`(tree `02260ba`, Sites 버전 35, `published`, `/api/version` 확인 전)이다. 다음 묶음 13은 41ea80d에 게시 전 점검 수정(트랙 R 브랜치 PR)을 더한 main 커밋이고, 그 PR 병합 뒤 게시 요청 PR을 연다(자동 게시, [게시 절차 8절](PUBLISH.ko.md#8-자동-게시-chatgpt-예약-작업)).
 - 작성자/도구: Claude Code(트랙 R 세션)
-- 작성 시각: 2026-09-25 21:50 UTC
+- 작성 시각: 2026-09-25 22:40 UTC
 - 이 문서를 바꾸는 사람은 기준 SHA와 작성 시각을 같이 고친다.
 
 ## 먼저 읽을 것
@@ -31,7 +31,7 @@
   - 시작할 때 STATUS의 진행 중 작업에 한 줄을 적는다(브랜치 이름, 도구, 목표).
   - 같은 파일을 두 도구가 동시에 고치지 않는다. 파일 소유자는 1명이다.
 - 자주 충돌하는 줄이 있다. `lib/graders/index.ts`의 `GRADERS_VERSION`, `lib/graders/compliance-lexicon.ts`의 사전 버전, `docs/STATUS.md`다. 먼저 병합된 PR이 이기고, 뒤 PR은 `origin/main` 위로 다시 올려 버전을 이어 붙인다.
-- 게시 SHA는 한 번에 한 도구만 고른다. 게시 지시문이 나가 있거나 `sites-publish` 라벨 PR이 열려 있는 동안에는 다른 도구가 새 게시를 요청하지 않는다(지금: `41ea80d` 게시 요청 PR).
+- 게시 SHA는 한 번에 한 도구만 고른다. 게시 지시문이 나가 있거나 `sites-publish` 라벨 PR이 열려 있는 동안에는 다른 도구가 새 게시를 요청하지 않는다(지금: 묶음 13, 트랙 R 세션이 요청).
 - 브라우저: 소유자 세션 Chrome 탭을 두 도구가 같이 쓰면 요청이 막힌다(2026-09-25 `ERR_BLOCKED_BY_CLIENT`). 도구마다 새 탭을 연다.
 
 ## 검증 명령 (`pnpm run` 금지, node로 직접)
@@ -83,7 +83,7 @@ node --experimental-vm-modules tests/<이름>.test.mjs   # 스위트 하나
 - 브라우저 자동화로 읽을 때 쿠키·쿼리처럼 보이는 문자(`= ? & %`)가 섞이면 출력이 막힌다. 바꿔서 읽는다.
 
 ## 다음 작업
-1. `41ea80d` 자동 게시 결과(PR 댓글) 확인, 대표의 `/api/version` 확인, 릴리스 기록. `8c22f0e`는 Sites 버전 35로 `published`다([기록](releases/2026-09-25-8c22f0e.md)). S8 run `93a7c33a`·`480861d6` 재채점으로 `industry_metric_leak` 오탐이 사라졌는지 본다(토큰 0, 8c22f0e부터 운영 저울에 `+channel-decision`).
+1. 묶음 13 자동 게시 결과(PR 댓글) 확인, 대표의 `/api/version` 확인, 릴리스 기록. `8c22f0e`는 Sites 버전 35로 `published`다([기록](releases/2026-09-25-8c22f0e.md)). S8 run `93a7c33a`·`480861d6` 재채점으로 `industry_metric_leak` 오탐이 사라졌는지 본다(토큰 0, 8c22f0e부터 운영 저울에 `+channel-decision`).
 2. R4 대표 라벨링: 품질 콘솔 대기열 65건, 주 20건.
 3. A/A 10건: 10월 한도, 약 0.22M. J4 임계값의 잡음 바닥이다.
 4. R5 채택 판정(토큰 0) → J4 게이트 PR(품질 계획 v2 마지막 PR).

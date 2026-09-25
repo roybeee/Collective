@@ -7,6 +7,7 @@ import {effectiveBrandFacts,type BrandFact} from './brand-facts';
 import {canonicalFactKey,factLabel} from './fact-catalog';
 import {krwAmounts} from './graders/ledger';
 import {FR_ROYALTY_FORM} from './graders/compliance-lexicon';
+import {hasFranchiseContext,loadFranchiseContext} from './franchise-facts-server';
 
 // 사실 원장 후보 가져오기: 브리프의 '확정 사실(사용자 직접 제공)' 표현·브리프 초안 사실 후보·지점 레코드 필드·브랜드 조사 주장을 확인 후보(candidate)로 한 번에 등록한다.
 // 같은 범위에 같은 카탈로그 항목이 이미 있으면 건너뛰고 보고한다. 확정은 관리자가 원장에서 한다.
@@ -14,7 +15,7 @@ export type FactCandidateInput={key:string;value:string;source:string;storeId?:s
 export type FactImportSkip=FactCandidateInput&{label:string;reason:string};
 export type LedgerCheckState='unverified'|'candidate'|'conflict'|'prohibited';
 export type LedgerCheck={id:string;origin:'brand'|'store';storeId?:string;storeName?:string;field:string;key:string;label:string;claim:string;value:string;source:string;state:LedgerCheckState;ledgerValue?:string};
-type LedgerInputs={brand:Brand;facts:BrandFact[];stores:Store[];research:BrandResearch[];campaigns:Campaign[];drafts:BriefDraft[]};
+type LedgerInputs={brand:Brand;facts:BrandFact[];stores:Store[];research:BrandResearch[];campaigns:Campaign[];drafts:BriefDraft[];franchise:boolean};
 
 const briefMarker=/확정\s*사실\s*[(（]\s*사용자\s*직접\s*제공\s*[)）]\s*[:：]?\s*/g;
 export function briefFactExpressions(text:string):string[]{
@@ -30,10 +31,11 @@ const keyPatterns:[string,RegExp][]=[
 // 가맹 금액 문장(트랙 R R1b): 가맹 비용 표지('가맹비', '가맹 보증금', '창업비용', '총 투자비', '로열티 월 30만원'·'로열티: 매출의 3%')가 있거나,
 // 소비자와 겹치는 비용 낱말(가입비·교육비·인테리어 비) 바로 뒤 16자 안 금액이 100만원 이상일 때만이다. 메뉴 가격으로 분류하지 않는다.
 // 소비자 문장('일회용컵 보증금 300원'·'대관 보증금 100만원'·'베이킹 클래스 교육비 35,000원'·'멤버십 가입비 10,000원'·'로열티 카드 적립 시 …'·'로열티 10% 할인'·'로열티 월 1회 무료 음료'·'총 투자 없이 즐기는 …')의 분류는 이전과 같다.
+// 이 제외는 가맹 문맥(가맹 프로필·정보공개서 버전)이 있는 브랜드에만 쓴다(franchise). 비가맹 브랜드는 '로열티 월 5% 적립'·'인테리어 비용 1억 원을 들여' 같은 소비자 문장도 R1b 이전처럼 메뉴 가격으로 본다.
 const FRANCHISE_ANCHOR=new RegExp(`가맹\\s?(?:비|금|가입비|보증금|교육비)|계약\\s?이행\\s?보증금|창업\\s?(?:비용|자금)|총\\s?투자\\s?(?:비|금|비용)|개설\\s?비용|${FR_ROYALTY_FORM}`);
 const SHARED_COST=/가입비|교육비|인테리어\s?(?:비(?!포)|비용|공사비)/g;
 export const isFranchiseMoney=(s:string)=>FRANCHISE_ANCHOR.test(s)||[...s.matchAll(SHARED_COST)].some(m=>krwAmounts(s.slice(m.index!+m[0].length,m.index!+m[0].length+16)).some(v=>Number(v)>=1_000_000));
-export function guessFactKey(value:string):string|undefined{return keyPatterns.find(([key,re])=>!(key==='menu_price'&&isFranchiseMoney(value))&&re.test(value))?.[0]}
+export function guessFactKey(value:string,franchise=false):string|undefined{return keyPatterns.find(([key,re])=>!(franchise&&key==='menu_price'&&isFranchiseMoney(value))&&re.test(value))?.[0]}
 // 카탈로그 항목을 추정할 수 없으면 문장 앞부분을 자유 항목으로 쓴다. 같은 문장은 다시 가져와도 같은 항목이 되어 건너뛴다.
 const freeKey=(text:string)=>{const t=text.normalize('NFKC').replace(/\s+/g,' ').trim();return canonicalFactKey(t.length>40?t.slice(0,40)+'…':t)};
 const placeholder=/^(미정|미확정|미확인|확인 필요|조사 필요|없음|-)$/;
@@ -43,7 +45,7 @@ const campaignText=(c:Campaign):[string,string][]=>[...(['title','goal','audienc
 // 가져올 순서: 사용자가 직접 적은 브리프 표현 → 브리프 초안 후보 → 지점 레코드 → 조사 주장. 같은 항목이면 앞선 것을 남긴다.
 function foundCandidates(d:LedgerInputs,storeId?:string):FactCandidateInput[]{
  const found:FactCandidateInput[]=[];
- for(const c of d.campaigns)for(const [field,text] of campaignText(c))briefFactExpressions(text).forEach(value=>found.push({key:canonicalFactKey(guessFactKey(value)??freeKey(value)),value,storeId:c.storeId||undefined,source:`캠페인 '${String(c.title??'').slice(0,100)}' (${c.id}) v${c.version} · ${field} · 확정 사실(사용자 직접 제공)`}));
+ for(const c of d.campaigns)for(const [field,text] of campaignText(c))briefFactExpressions(text).forEach(value=>found.push({key:canonicalFactKey(guessFactKey(value,d.franchise)??freeKey(value)),value,storeId:c.storeId||undefined,source:`캠페인 '${String(c.title??'').slice(0,100)}' (${c.id}) v${c.version} · ${field} · 확정 사실(사용자 직접 제공)`}));
  for(const draft of d.drafts)if(draft.status==='completed')(draft.result?.factCandidates||[]).forEach((f,i)=>{if(f?.key?.trim()&&f?.value?.trim())found.push({key:canonicalFactKey(f.key),value:f.value.trim().slice(0,5000),storeId:draft.input.storeId||undefined,source:`브리프 초안 ${draft.id} · factCandidates[${i}] · 사용자 브리프`})});
  for(const s of d.stores)for(const [field,key] of storeImportFields){const value=String(s[field]??'').trim();if(value&&!placeholder.test(value))found.push({key,value:value.slice(0,5000),storeId:s.id,source:`지점 '${s.name}' (${s.id}) v${s.version} · store.${field}`})}
  for(const r of d.research)if(r.status==='completed')(r.report?.review?.claims||[]).forEach((c,i)=>{const claim=typeof c?.claim==='string'?c.claim.trim():'';if(claim)found.push({key:freeKey(claim),value:claim.slice(0,5000),storeId:r.storeId||undefined,source:`브랜드 조사 ${r.id} (${String(r.createdAt).slice(0,10)}) · review.claims[${i}] · 근거 자료 ${(c.sourceIds||[]).join(', ')||'없음'}`.slice(0,3000)})});
@@ -75,8 +77,8 @@ async function one<T>(db:D1Database,owner:string,kind:string,id:string){
 async function ledgerInputs(db:D1Database,owner:string,brandId:string,storeId?:string):Promise<LedgerInputs>{
  const brand=await one<Brand>(db,owner,'brand',brandId);if(!brand)throw new ApiError(404,'항목을 찾을 수 없습니다.');
  if(storeId){const store=await one<Store>(db,owner,'store',storeId);if(!store||store.brandId!==brandId)throw new ApiError(404,'해당 브랜드의 지점이 아닙니다.')}
- const [facts,stores,research,campaigns,drafts]=await Promise.all([rows<BrandFact>(db,owner,'brand_fact',brandId),rows<Store>(db,owner,'store',brandId),rows<BrandResearch>(db,owner,'brand_research',brandId),rows<Campaign>(db,owner,'campaign'),rows<BriefDraft>(db,owner,'brief_draft')]);
- return {brand,facts,stores:stores.filter(s=>s.status!=='archived'),research,campaigns:campaigns.filter(c=>c.brandId===brandId),drafts:drafts.filter(d=>d.input?.brandId===brandId)};
+ const [facts,stores,research,campaigns,drafts,fr]=await Promise.all([rows<BrandFact>(db,owner,'brand_fact',brandId),rows<Store>(db,owner,'store',brandId),rows<BrandResearch>(db,owner,'brand_research',brandId),rows<Campaign>(db,owner,'campaign'),rows<BriefDraft>(db,owner,'brief_draft'),loadFranchiseContext(owner,brandId)]);
+ return {brand,facts,stores:stores.filter(s=>s.status!=='archived'),research,campaigns:campaigns.filter(c=>c.brandId===brandId),drafts:drafts.filter(d=>d.input?.brandId===brandId),franchise:hasFranchiseContext(fr)};
 }
 function readinessOf(d:LedgerInputs,brandId:string,storeId?:string){
  return {confirmed:effectiveBrandFacts(d.facts,brandId,storeId).length,candidates:d.facts.filter(f=>(!f.storeId||f.storeId===storeId)&&f.status==='candidate').length,importable:planImport(foundCandidates(d,storeId),d.facts).candidates.length};
@@ -108,22 +110,22 @@ function judge(scoped:BrandFact[],confirmed:BrandFact[],key:string,terms:string[
  if(scoped.some(f=>f.status!=='rejected'&&(canonicalFactKey(f.key)===key||has(f.value))))return {state:'candidate'};
  return {state:'unverified'};
 }
-export function ledgerChecks(brand:Brand,stores:Store[],facts:BrandFact[]):LedgerCheck[]{
+export function ledgerChecks(brand:Brand,stores:Store[],facts:BrandFact[],franchise=false):LedgerCheck[]{
  const checks:LedgerCheck[]=[],brandFacts=facts.filter(f=>f.brandId===brand.id&&!f.storeId),brandConfirmed=effectiveBrandFacts(facts,brand.id);
  for(const field of ['description','knowledge'] as const)String(brand[field]||'').split(/(?<=[.!?。])\s+|\n+/).map(s=>s.trim()).filter(Boolean).forEach((sentence,i)=>{
-  for(const [key,re] of coreClaims){const terms=key==='menu_price'&&isFranchiseMoney(sentence)?[]:[...new Set(sentence.match(re)||[])];const verdict=terms.length?judge(brandFacts,brandConfirmed,key,terms,false):null;if(verdict)checks.push({id:`brand:${field}:${i}:${key}`,origin:'brand',field,key,label:factLabel(key),claim:sentence.slice(0,1000),value:terms.join(', '),source:`브랜드 소개 (brand.${field})`,...verdict})}
+  for(const [key,re] of coreClaims){const terms=franchise&&key==='menu_price'&&isFranchiseMoney(sentence)?[]:[...new Set(sentence.match(re)||[])];const verdict=terms.length?judge(brandFacts,brandConfirmed,key,terms,false):null;if(verdict)checks.push({id:`brand:${field}:${i}:${key}`,origin:'brand',field,key,label:factLabel(key),claim:sentence.slice(0,1000),value:terms.join(', '),source:`브랜드 소개 (brand.${field})`,...verdict})}
  });
  for(const s of stores){
   const scoped=facts.filter(f=>f.brandId===brand.id&&(!f.storeId||f.storeId===s.id)),confirmed=effectiveBrandFacts(facts,brand.id,s.id),base={origin:'store' as const,storeId:s.id,storeName:s.name,source:`지점 '${s.name}' (${s.id}) v${s.version}`};
   for(const field of ['address','hours'] as const){const value=String(s[field]||'').trim();const verdict=value&&!placeholder.test(value)?judge(scoped,confirmed,field,[value],true):null;if(verdict)checks.push({...base,id:`store:${s.id}:${field}`,field,key:field,label:factLabel(field),claim:value,value,source:base.source+' · store.'+field,...verdict})}
   const menu=String(s.menu||'').trim();
-  // 지점 메뉴는 줄 단위로 가맹 금액 줄을 뺀 뒤 가격을 찾는다(가맹 금액 줄이 없으면 이전과 같은 본문).
-  for(const [key,re] of coreClaims.slice(0,2)){const text=key==='menu_price'?menu.split('\n').filter(l=>!isFranchiseMoney(l)).join('\n'):menu;const terms=[...new Set(text.match(re)||[])];const verdict=terms.length?judge(scoped,confirmed,key,terms,false):null;if(verdict)checks.push({...base,id:`store:${s.id}:menu:${key}`,field:'menu',key,label:factLabel(key),claim:menu.slice(0,1000),value:terms.join(', '),source:base.source+' · store.menu',...verdict})}
+  // 가맹 브랜드의 지점 메뉴는 줄 단위로 가맹 금액 줄을 뺀 뒤 가격을 찾는다(가맹 금액 줄이 없거나 비가맹 브랜드면 이전과 같은 본문).
+  for(const [key,re] of coreClaims.slice(0,2)){const text=franchise&&key==='menu_price'?menu.split('\n').filter(l=>!isFranchiseMoney(l)).join('\n'):menu;const terms=[...new Set(text.match(re)||[])];const verdict=terms.length?judge(scoped,confirmed,key,terms,false):null;if(verdict)checks.push({...base,id:`store:${s.id}:menu:${key}`,field:'menu',key,label:factLabel(key),claim:menu.slice(0,1000),value:terms.join(', '),source:base.source+' · store.menu',...verdict})}
  }
  return checks;
 }
 // 사실 목록 화면용: 준비 상태·원장 점검·지점 목록. storeId가 있으면 그 지점만 점검한다.
 export async function factOverview(db:D1Database,owner:string,brandId:string,storeId?:string){
  const d=await ledgerInputs(db,owner,brandId,storeId);
- return {readiness:readinessOf(d,brandId,storeId),checks:ledgerChecks(d.brand,d.stores.filter(s=>!storeId||s.id===storeId),d.facts),stores:d.stores.map(s=>({id:s.id,name:s.name}))};
+ return {readiness:readinessOf(d,brandId,storeId),checks:ledgerChecks(d.brand,d.stores.filter(s=>!storeId||s.id===storeId),d.facts,d.franchise),stores:d.stores.map(s=>({id:s.id,name:s.name}))};
 }

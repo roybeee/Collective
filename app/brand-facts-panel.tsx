@@ -159,7 +159,7 @@ function FranchiseFactNote({fact,block,canManage,disabled,onRebase}:{fact:BrandF
   {fact.cost&&<p>매장 유형 {fact.cost.storeType} · {costDetailLine(fact.cost)}</p>}
   {note&&<p>각주 미리보기: {note}</p>}
   {item.adUse===false&&<p role="note">광고 사용 불가(H6)</p>}
-  {stale&&<p role="note" className="form-error">이전 버전 · 새 버전으로 옮기세요{canManage&&block.currentVersionId?<> <Button variant="outline" size="sm" disabled={disabled} onClick={onRebase}>새 버전으로 옮기기</Button></>:''}</p>}
+  {stale&&<p role="note" className="form-error">이전 버전 · 새 버전으로 옮기세요{canManage&&block.enabled&&block.currentVersionId?<> <Button variant="outline" size="sm" disabled={disabled} onClick={onRebase}>새 버전으로 옮기기</Button></>:''}</p>}
   <p>{block.disclaimer}</p>
  </div>;
 }
