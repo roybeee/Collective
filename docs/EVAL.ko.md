@@ -220,8 +220,8 @@ node scripts/eval/grade.mjs <case.json> [--json] [--detail]
 
 비유: 시험 문제지(케이스)를 봉투에 봉인해 두고, 연습실(평가 전용 프로필)에서만 풀게 한다. 한 번에 쓸 수 있는 종이(토큰)는 정해져 있고, 다 쓰면 남은 문제는 풀지 않은 것으로 적는다.
 
-- 코드: `lib/eval-server.ts`(연결·케이스·실행), `lib/eval-kinds.ts`(평가 종류별 동결 검사·제출 조립·채점·예약, 8절), `lib/eval-freeze.ts`(회의 단계·브리프 요청 동결, 8절), `lib/eval-capture.ts`(회의 단계·브리프 캡처와 드리프트 판정, 8절), `lib/brief-execution.ts` `briefSources`(운영 브리프 start와 캡처가 함께 쓰는 DB 읽기), `lib/eval-budget-server.ts`(월 승인, 7절), `lib/eval-stats.ts`(비교 통계), `app/api/eval/route.ts`, `lib/background-execution.ts`(`eval:<run id>` 작업), `lib/role-execution.ts`(`roleSources`·`roleRequestFor`로 요청 조립 DB 읽기를 추출, 동작 불변. `roleSubmission`은 운영 start와 평가가 함께 쓰는 제출 조립, 8절)
-- 테스트: `tests/eval-server.test.mjs`, `tests/eval-stats.test.mjs`, `tests/eval-regrade.test.mjs`, `tests/eval-budget.test.mjs`, `tests/eval-kinds.test.mjs`, `tests/eval-meeting-brief.test.mjs`(합성 데이터, 평가·운영 HERMES fetch 스텁, `passed · mocked`). 실제 HERMES 호출은 0회다.
+- 코드: `lib/eval-server.ts`(연결·케이스·실행), `lib/eval-kinds.ts`(평가 종류별 동결 검사·제출 조립·채점·예약, 8절), `lib/eval-freeze.ts`(회의 단계·브리프 요청 동결, 8절), `lib/eval-capture.ts`(회의 단계·브리프 캡처와 드리프트 판정, 8절), `lib/brief-execution.ts` `briefSources`(운영 브리프 start와 캡처가 함께 쓰는 DB 읽기), `scripts/eval/synthesize.mjs`·`synthesize-cases.mjs`(합성 케이스 생성기, 9절), `scripts/eval/runtime.mjs`(테스트·생성기 공용 모의 런타임), `lib/eval-budget-server.ts`(월 승인, 7절), `lib/eval-stats.ts`(비교 통계), `app/api/eval/route.ts`, `lib/background-execution.ts`(`eval:<run id>` 작업), `lib/role-execution.ts`(`roleSources`·`roleRequestFor`로 요청 조립 DB 읽기를 추출, 동작 불변. `roleSubmission`은 운영 start와 평가가 함께 쓰는 제출 조립, 8절)
+- 테스트: `tests/eval-server.test.mjs`, `tests/eval-stats.test.mjs`, `tests/eval-regrade.test.mjs`, `tests/eval-budget.test.mjs`, `tests/eval-kinds.test.mjs`, `tests/eval-meeting-brief.test.mjs`, `tests/eval-synthesize.test.mjs`(합성 데이터, 평가·운영 HERMES fetch 스텁, `passed · mocked`). 실제 HERMES 호출은 0회다.
 - 권한: 읽기·쓰기 모두 워크스페이스 소유자만 한다(`requireOwnerActor`). 비로그인 401, 관리자·직원 403, 다른 소유자의 케이스·실행·출력은 404. POST 본문은 1,000,000바이트 한도(413, `lib/http-limits.ts` 방식)다.
 - records kind: `eval_connection`, `eval_case`, `eval_run`, `eval_output`(부모 `eval_run`), `eval_budget_approval`(월 승인, 7절). 정책은 `lib/record-kinds.ts`에 있다.
 - 운영 사용량 장부(`provider_usage`)에는 평가 토큰을 쓰지 않는다. 평가 토큰은 `eval_run.usedTokens`에만 있다. `delete_run`은 이 행을 지우지 않고 결과·출력만 비운다(아래 3절). 그래서 월 누적은 삭제로 줄지 않는다.
@@ -247,6 +247,7 @@ node scripts/eval/grade.mjs <case.json> [--json] [--detail]
 |---|---|---|
 | `capture_case` | 역할: `campaignId`, `role`. 회의 단계: `kind:'meeting_step'`, `meetingId`, `stepId`. 브리프: `kind:'brief'`, `briefDraftId`. 공통: `externalKey?`·`specHash?`, `set?`, `label?`, `expectations?` | 역할은 운영 역할 실행 start와 같은 DB 읽기(`roleSources`→`roleRequestFor`)로 요청 객체를 만들어 JSON 그대로 동결한다(운영자 선호 블록 `operatorPreferences` 포함). 실행 가능 여부 검사(진행 중 작업·앞선 담당 누락·현재 작업물 존재 409)는 적용하지 않아 끝난 캠페인에서도 캡처한다. 회의 단계·브리프는 운영 기록으로 요청을 만들고 운영과 같은 가림을 거쳐 동결하며 드리프트 판정(`captureCheck`)을 남긴다(8절). 담당은 대상 단계의 담당, 브리프는 `brief`다. 없는 회의·초안은 404, 없는 단계는 400 |
 | `save_case` | `request`, `kind?`, `role?`(역할은 필수), `externalKey?`·`specHash?`, `expectations?`, `set?`, `label?` | 역할 `request`는 운영 요청 구조(role·campaign·brand·archive·evidence·previous)여야 하고 현재 역할 제출 조립(`roleSubmission`, 운영 start와 같은 조립)이 받아야 한다. 선호 블록(`operatorPreferences`)은 있으면 `{note, rules:[]}` 형식이어야 한다. 회의 단계 `request`는 `{meeting:{agenda, steps[], snapshot:{campaign, brand, artifacts[], metrics[], learning[], …}}, stepId, storeAllow[]}`, 브리프는 `{input, context, contextDate(YYYY-MM-DD), storeAllow[]}`이고, 캡처와 같은 동결(자르기·줄이기·가림)을 거쳐 저장한다. 회의 단계의 `role`은 대상 단계 담당이어야 하고(없으면 그 담당), 브리프는 `brief`다. 900,000자를 넘으면 413 |
+| `import_cases` | 합성 생성기 출력 그대로: `generator{commit,tree}`, `specId`, `cases[]`(save_case 본문 + `externalKey`·`specHash`·`promptHash`) | 합성 케이스(`source: synthetic`)를 한 번에 가져온다(9절). 생성 트리가 운영 앱 트리와 다르면 409, 케이스마다 save_case와 같은 동결·검사를 거치고 지금 조립의 `promptHash`가 생성기 값과 다르면 409. 하나라도 거부되면 아무것도 저장하지 않는다 |
 | `update_case` | `id`, `label?`, `set?`, `expectations?` | 요청(`request`)은 바꾸지 않는다. 세트 이동은 `setChanges`에 누가·언제 남긴다. 진행 중 run이 쓰는 케이스의 `expectations`·`set` 변경은 409(이름은 가능) |
 | `delete_case` | `id` | 진행 중 run이 쓰는 케이스는 409 |
 
@@ -420,6 +421,32 @@ run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
   `frozenIdentical`은 동결본(자르고 줄이고 가린 저장 요청)으로 만든 제출이 원기록 조립과 같은지다. 한계: 발췌 상한(원 작업물 8,000자·재검토 후보 24,000자)을 넘는 본문의 앞부분에 가릴 값이 있으면, 가림으로 글자 수가 바뀌어 발췌 끝이 달라진다. 이때만 `false`다. 그 케이스는 운영 제출과 발췌 끝 몇 글자가 다를 수 있다. 브리프 승인 작업물 발췌(2,500자)는 요청을 만들 때 이미 잘라 이 한계가 없다.
 - 회의 단계 입력 토큰: 회의 입력은 역할보다 커서 `input_budget`(32,000토큰)이 fail할 수 있다. 쌍 평가 게이트는 후보 `input_budget` 전부 pass를 요구하므로, 회의 단계 쌍 평가의 `input_budget` 적용은 파일럿(R2)에서 단계별 입력 토큰을 실측한 뒤 정한다.
 - 테스트: `tests/eval-meeting-brief.test.mjs`(합성 회의 12단계·교정 재시도 1회와 기준일을 고정한 브리프를 운영 경로로 만든 뒤 캡처한다. 동결본 제출이 운영 첫 제출과 바이트 동일, 다시 동결해도 같음, 저장 케이스에 가릴 값·실행 메타 없음, 드리프트 사유 5종, 예약 100,000, 단계별 채점기, 직접 저장 형식 400, 쌍 평가 주입, 발췌 상한 한계 재현. 뮤테이션 7종(가림·개선본 가림·교정 제거·채점기·브리프 가림·예약·실행 메타)을 모두 잡는다), `tests/eval-kinds.test.mjs`(종류 목록·기본 role·목록 밖 400, 예약, 선호 규칙 캠페인의 제출이 운영 start 제출과 바이트 동일, 선호 블록 없는 옛 케이스 `promptHash` 불변, `externalKey` 멱등·409. 합성 데이터, 평가·운영 HERMES fetch 스텁, `mocked`).
+
+### 9. 합성 케이스 생성기·가져오기(G4)
+
+결론: 합성 스펙(JSON) 하나가 합성 캠페인 하나다. 생성기는 운영 D1이 아니라 모의 런타임에서 운영과 같은 함수로 요청을 만들고, 소유자가 그 출력을 `import_cases`로 한 번에 가져온다. 같은 스펙·같은 코드면 출력이 바이트까지 같다.
+
+- 실행: 저장소 루트에서 `node --experimental-vm-modules scripts/eval/synthesize-cases.mjs --spec <스펙.json> --out <출력.json>`. 운영에 게시된 커밋을 체크아웃한 깨끗한 작업 트리에서 돌린다. 커밋하지 않은 변경이 있으면 `generator.tree`가 `dirty`가 되고 가져오기가 거부된다. dev 출력은 git이 무시하는 `scripts/eval/outputs/`에 둔다. 봉인(sealed) 스펙과 그 출력은 저장소 밖에 둔다(프롬프트를 고치는 작업 트리에서 보이지 않게).
+- 런타임(`scripts/eval/runtime.mjs`): 테스트와 같은 모의 런타임(메모리 SQLite, TypeScript 모듈)이다. 생성기는 고정 시각(`spec.now`에서 호출마다 1ms씩 흐름)과 결정적 uuid·난수(스펙 id와 호출 순번의 SHA-256)를 넣는다. HERMES는 스텁이고(회의 단계는 스펙 `meeting.answers`로 응답), 다른 주소를 부르면 실패한다. 외부 네트워크 호출은 0회다.
+- 요청 조립: 운영 함수 그대로다.
+  - 역할: `roleSources`→`roleRequestFor`(capture_case와 같은 DB 읽기).
+  - 회의 단계: `executeMeeting`을 스텁 응답으로 끝까지 돌린 기록을 `freezeMeetingRequest`로 동결한다(8절, 대상 `meeting.targets`, 심은 결함은 재검토·개선본 대상에만).
+  - 브리프: `executeBrief` start(운영 입력 검사)로 만든 초안을 `briefSources`→`briefRequestFor`→`freezeBriefRequest`로 동결한다. 기준일은 스펙 시각의 날짜다.
+  - 앞선 작업물은 체인 실행이 아니라 스펙의 고정 합성본이다(상류 변화가 섞이지 않고 결함을 심을 수 있다). `padTo`로 본문을 늘려 발췌 잘림 분기를 지난다.
+- 스펙 거부(생성기가 멈춘다):
+  - 스키마·id: `schema` 1, 스펙·레코드 id는 `syn-` 접두사, 허용 레코드 종류(`brand`·`campaign`·`brand_fact`·`brand_source`·`campaign_directive`·`artifact`·`learning_rule`·`store`·`team_meeting`·`role_output_failure`·`metric`).
+  - 개인정보 패턴: 스펙의 모든 문자열을 `lib/pii-scan.ts`로 검사한다. 확정 사실 값과 지점 허용 값(주소·사업장 유선 번호)만 허용한다. 걸리면 경로만 알리고 값은 출력하지 않는다.
+  - 금지 표현 출처: `expectations.prohibitedTerms`(1~5개)는 입력(브랜드·캠페인 제약, 상시 지시, 회의 안건, 브리프 제약)에 글자 그대로 있어야 한다.
+  - 분기 체크리스트(설계 2-9, 합성 캠페인이 운영보다 깨끗하면 품질이 부풀려진다): 생성된 역할 요청에서 `revisionRequest`·`reviewNote`·`previousDecisions`·`operatorPreferences`·`storeAllow`·caution 학습 규칙·사람 수정본(`ai_edited`)·발췌 잘림이 모두 확인돼야 한다. 스펙의 자기 신고를 믿지 않고 요청을 본다.
+- 출력: `{schema, generator{commit,tree}, specId, specHash, set, checklist, cases[]}`. 케이스의 `externalKey`는 `<스펙 id>:<종류>:<대상>`, `specHash`는 그 케이스 본문(요청·기대 판정·세트·이름)의 해시라 스펙의 다른 부분을 고쳐도 바뀌지 않는다. `promptHash`는 생성 코드로 만든 제출의 해시(3절 규칙)다.
+- 가져오기(`import_cases`, 2절 표): 본문 한도 1MB(합성 캠페인 하나, 샘플 스펙 약 0.37MB), 케이스 100개 이하.
+  - 생성 트리가 운영 앱 `/api/version`의 `tree`와 같아야 한다(다르거나 알 수 없으면 409). 생성 코드와 운영 코드가 같아야 운영과 같은 요청이기 때문이다.
+  - 케이스마다 `save_case`와 같은 동결·검사를 거친 뒤 지금 조립으로 `promptHash`를 다시 계산해 생성기 값과 비교한다(다르면 409).
+  - `externalKey` 멱등: 같은 키·같은 `specHash`는 기존 케이스를 돌려주고, 다른 `specHash`는 409다(2절).
+  - 하나라도 거부되면 아무것도 저장하지 않는다. 저장은 한 배치다. 케이스에는 `source: synthetic`과 `generator{commit,tree}`가 남는다.
+- 샘플 스펙: `scripts/eval/specs/syn-s2-bakery.json`(설계의 S2 베이커리 재방문, fnb, dev). 역할 8·회의 단계 6·브리프 1, 15케이스다.
+- 테스트: `tests/eval-synthesize.test.mjs`(라이브러리·CLI 두 번 실행 바이트 동일, 15케이스·체크리스트 8종, 브리프 기준일이 스펙 시각을 따름, 케이스별 `specHash`, 거부 7종, 가져오기의 트리·`promptHash`·멱등·전부 아니면 전무·입력 400, 가져온 케이스 실행의 `promptHash`가 생성기 값과 같음. 뮤테이션 7종(트리 검사·해시 검사·시계·개인정보 검사·체크리스트·syn- 키·금지 표현 출처)을 모두 잡는다. 합성 데이터, `mocked`).
+- 한계: 운영 트리가 알 수 없음(`unknown`, 개발 실행)이면 가져오기가 늘 409라 로컬 개발 서버로는 가져올 수 없다. 설계의 나머지 합성 캠페인(S1·S3~S5)과 C1·C2 운영 캡처는 아직 없다(R1 전 작업).
 
 ### 서버 평가의 한계
 
