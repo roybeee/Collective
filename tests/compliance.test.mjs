@@ -139,6 +139,10 @@ const violations=[
  ['endorsement','체험단 협찬 게시물을 올리고 광고 표시는 넣지 않는다.'],
  // '게시 시간' 같은 명사 제외가 인물 사진 게시를 놓치지 않는다(R3 기준선).
  ['rights','아이돌 사진을 게시 시간에 맞춰 게시한다.'],
+ // '장바구니' 명사 제외·'온라인 판매 KPI'·확인 뒤 검토·결정 CTA 면제가 진짜 구매 유도를 놓치지 않는다(R3 재채점 뒤).
+ ['ecommerce_terms','장바구니에 담고 바로 결제하세요.'],
+ ['ecommerce_terms','온라인 판매 KPI를 위해 지금 구매하세요 버튼을 둔다.'],
+ ['ecommerce_terms','가격 확인 후 할인 쿠폰과 함께 지금 구매하세요.'],
  ['ecommerce_terms','헤드라인 “오픈 기념”, “지금 구매하세요” 두 줄로 간다.'],
  ['ecommerce_terms','온라인 판매 실적을 늘리려면 지금 구매하세요 버튼을 키운다.'],
  ['ecommerce_terms','상품 보기 버튼은 보류하고 지금 구매하세요 문구를 메인에 둔다.'],
@@ -194,6 +198,13 @@ const normals=[
  ['conditional disclosure plan and checklist','### 게시 전 확인\n유료 집행·협찬·제품 제공이 발생하면 게시 문안에 해당 광고 표시를 추가합니다.\n- [ ] 광고·협찬·유료 게시라면 해당 표시를 문안에 넣었는가'],
  // 실측(2026-09-25 R3 기준선 S8 크리에이티브) 합성 재현: 실험에서 고정할 변수 나열의 '배우 … 게시 시간'.
  ['fixed experiment variables list an actor and posting time','## 실험 조건\n이후 증명 장면, 길이, 배우, 조명, CTA, 랜딩 페이지, 게시 시간은 고정한다.'],
+ // 실측(2026-09-25 R3 121791b 재채점 뒤 MAPDAL 남은 warn) 합성 재현: 퍼널 단계 명사 '장바구니', 온라인 판매 KPI 범위, 확인 뒤 검토·결정하는 CTA.
+ ['cart as a funnel stage in a scenario','## 고객 상황\n구매 직전 고객이 장바구니와 결제 단계에서 주문을 완료하려는 상황.'],
+ ['cart in a checkout flow test','## 확인 계획\nmapdal.kr에서 상품 상세·장바구니·결제·주문 확인 흐름을 테스트 주문으로 검증합니다.'],
+ ['online sales KPI scope','## 범위\n매장·자판기 수용량은 이번 온라인 판매 KPI에 포함하지 않으며, 관련 운영 자료가 들어와도 별도 사업으로 분리합니다.'],
+ ['CTA decided after a price check','## CTA\n상품 선택이 필요 없는 단일 상품이면 CTA를 ‘자세히 보기’ 또는 가격 확인 후 ‘구매하기’로 결정합니다.'],
+ ['CTA reviewed only after confirmation','## CTA 기준\n| 기준 | 내용 |\n|---|---|\n| 구매 CTA | 가격·재고·배송 조건 확인 후에만 “구매하기”를 검토 |'],
+ ['placeholder for a CTA after confirmation','## 전환 문안\n가격 확인 후 전환 문안: [가격 확정 후 검토 — 구매하기]'],
  ['funnel stage list in a data question','## 확인 질문\n4) 비교할 기준 기간의 유효 세션·상품 조회·장바구니·결제 시작·결제 완료·취소·환불 원자료와 현재 추적 도구·주문 DB 구조는 무엇인가'],
  ['funnel stage list as selection data','## 선정 기준\n상품×국가 선정은 기존 주문·조회·장바구니 자료가 있으면 그 출처와 기간을 명시하고, 없으면 운영 가능성에 따른 임시 선정임을 기록한다.'],
  ['paid ad budget of zero in an organic channel row','## 채널 계획\n| 채널 | 소재 | 예산 배분 | 목적지 |\n|---|---|---|---|\n| Instagram 오가닉 숏폼 | CTA: “자세히 보기” | 제작비의 25%, 유료 광고비 0원으로 우선 설계 | 프로필 링크의 안내 페이지 |'],
