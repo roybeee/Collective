@@ -8,7 +8,7 @@ import ts from 'typescript';
 const context=createContext({console}),cache=new Map();
 function moduleFor(path){path=resolve(path);if(cache.has(path))return cache.get(path);const m=new SourceTextModule(ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText,{context,identifier:path});cache.set(path,m);return m;}
 const m=moduleFor('lib/feature-status.ts');await m.link((s,r)=>moduleFor(resolve(dirname(r.identifier),s+'.ts')));await m.evaluate();
-const {featureRows,featureStatusLabels,bufferCheckCampaigns,credentialState,credentialStateLabels,scopedCredentials,channelScopes}=m.namespace;
+const {featureRows,featureStatusLabels,franchiseSwitch,bufferCheckCampaigns,credentialState,credentialStateLabels,scopedCredentials,channelScopes}=m.namespace;
 let passed=0;
 // vm 모듈의 배열·객체는 다른 realm이라 양쪽 모두 JSON으로 옮겨 비교한다.
 const plain=value=>JSON.parse(JSON.stringify(value));
@@ -107,6 +107,12 @@ check('franchise row is available when r_franchise is on',row(full({flags:flagLi
 ok('franchise available reason keeps the heuristic disclaimer',row(full({flags:flagList(true)}),'franchise').reason.includes('COLLECTIVE 휴리스틱 · 법률 자문 아님'));
 check('franchise row is blocked with the switch reason when off',view(row(full({flags:flagList(false)}),'franchise')),{status:'blocked',reason:'기능 스위치 r_franchise 꺼짐 · 소유자가 켭니다',link:{label:'가맹 모집 화면으로 이동',view:'franchise'}});
 check('unknown or broken flag state is not available',[row(full(),'franchise').status,row(full({flags:'x'}),'franchise').status,row(full({flags:[{flag:'r_franchise'}]}),'franchise').status],['blocked','blocked','blocked']);
+check('franchiseSwitch reads on, off and unknown',[franchiseSwitch(flagList(true)),franchiseSwitch(flagList(false)),franchiseSwitch(null),franchiseSwitch([{flag:'r_franchise',enabled:'yes'}]),franchiseSwitch([{flag:'online_grading',enabled:true}])],[true,false,null,null,null]);
+{const panelsSrc=readFileSync('app/panels.tsx','utf8');
+ ok('only the owner sees the franchise switch button',panelsSrc.includes("r.key==='franchise'&&account?.isOwner&&franchiseOn!==null"));
+ ok('the switch button asks first and posts the owner-only flag change',panelsSrc.includes('window.confirm(on?')&&panelsSrc.includes("JSON.stringify({action:'set',flag:'r_franchise',enabled:on})"));
+ ok('after switching the sidebar status is re-read without a reload',panelsSrc.includes("window.dispatchEvent(new Event('focus'))")&&readFileSync('app/workspace.tsx','utf8').includes("window.addEventListener('focus',read)"));
+}
 ok('settings loads the switch list for the table',readFileSync('app/panels.tsx','utf8').includes("readJson('/api/feature-flags').then(d=>d.flags,()=>null)"));
 
 // --- 입력 누락: 안전한 기본 ------------------------------------------------------------
