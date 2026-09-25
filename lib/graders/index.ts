@@ -16,9 +16,9 @@ export {INPUT_TOKEN_CAP} from './ledger';
 // '+compound-labels': 합성 판정 라벨('탈락·수정 기준', '실패/중단 조건')의 표 열·제목을 규칙 칸으로 본다(negation.ts prohibitiveLabel). unsupported_claim_term 판정이 바뀌었다.
 // '+absent-expr': 표현 부재 서술('… 보장 표현이 없고', '… 문구가 포함되지 않는다')을 사용 배제로 본다(negation.ts ABSENT_EXPR). fact_conflict·금지 표현 채점기와 규제 판정이 바뀌었다.
 // '+critique-clause': 재방문율 산식은 재방문율이 든 절 안에 있어야 정의다('X는 재방문율이 아니라 Y'·'재방문율을 계산할 수 없다'도 정의가 아니다, content.ts). 공용 부정에 '-지는·지도 않'을 더했다.
-// '+r3-negation': 공용 부정 판정에 인용 조사 '(이)라고'(절 경계 아님), 확정 뒤로 미룬 승인·결정, 대상 앞 금지·거절 수식('금지된 “…”'), 주의 규칙 이름 인용·'여부'·'확정 사실이 아니다'를 더했다(R3 기준선 실측). unsupported_claim_term·fact_conflict 판정이 바뀌었다.
+// '+r3-measure': 공용 부정 판정에 인용 조사 '(이)라고'(절 경계 아님), 확정 뒤로 미룬 승인·결정, 대상 앞 금지·거절 수식('금지된 “…”'), 주의 규칙 이름 인용·'여부'·'확정 사실이 아니다'를 더했다(R3 기준선 실측). unsupported_claim_term·fact_conflict 판정이 바뀌었다. fact_conflict는 금지·보류 맥락 안 언급을 사용으로 세지 않고, input_budget은 회의 단계 상한 64,000을 쓴다.
 // '+meeting-normalized': 회의 단계를 운영과 같은 정규화본으로 채점하고 원문 경로 노출은 prevention으로 둔다(lib/eval-kinds.ts). 회의 단계의 internal_id_exposure 결과가 바뀌었다.
-export const GRADERS_VERSION='failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-negation';
+export const GRADERS_VERSION='failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-measure';
 export const GRADERS:Grader[]=[questionOnly,thinSection,contractJson,headingNesting,internalIdExposure,briefProhibitionConflict,factConflict,unconfirmedValueAssertion,unsupportedClaimTerm,industryMetricLeak,revisitCohortDefinition,localChannelCoverage,inputBudget];
 export const CONTENT_GRADERS=GRADERS.filter(g=>g.content).map(g=>g.id);
 // 채점기 확장 G3: 회의 단계(합의·개선본·재검토)·브리프 채점기와 원장 구역 규칙. 적용 kind 밖이면 not_applicable이라 역할·발언 채점 결과를 바꾸지 않는다.
