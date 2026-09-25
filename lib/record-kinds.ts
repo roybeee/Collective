@@ -37,7 +37,7 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'case_observation',parent:'viral_case',campaignDeletion:'not_campaign_scoped',description:'같은 바이럴 사례의 추가 관찰'},
  {kind:'channel_credential',parent:'none',campaignDeletion:'not_campaign_scoped',description:'성과 수집 채널 자격증명(암호화, 워크스페이스 기본·브랜드·지점 단위)'},
  {kind:'deleted_campaign',parent:'none',campaignDeletion:'retain',purge:'keep',description:'캠페인 삭제 기록(tombstone). 삭제할 때 만들어 재생성과 재시도를 막는다'},
- {kind:'eval_case',parent:'none',campaignDeletion:'retain',links:['data_campaign'],purge:'keep',description:'평가 골든셋 케이스(동결한 역할·회의 단계·브리프 요청 — 회의·브리프는 운영과 같은 가림 뒤 — 기대 판정·세트·캡처 드리프트 판정). 캠페인을 지워도 남기고 소유자만 개별 삭제한다(결정 6·7 취지)'},
+ {kind:'eval_case',parent:'none',campaignDeletion:'retain',links:['data_campaign'],purge:'keep',description:'평가 골든셋 케이스(동결한 역할·회의 단계·브리프 요청 — 회의·브리프는 운영과 같은 가림 뒤 — 기대 판정·세트·캡처 드리프트 판정, 합성 케이스는 생성 커밋·트리). 캠페인을 지워도 남기고 소유자만 개별 삭제한다(결정 6·7 취지)'},
  {kind:'eval_connection',parent:'none',campaignDeletion:'not_campaign_scoped',description:'평가 전용 HERMES 연결(주소·키 암호화, 운영 연결과 다른 호스트)'},
  {kind:'eval_output',parent:'eval_run',campaignDeletion:'not_campaign_scoped',description:'평가 실행의 케이스별 모델 출력 원문과 규제 점검 상세(소유자 전용)'},
  {kind:'eval_run',parent:'none',campaignDeletion:'not_campaign_scoped',description:'서버 평가 실행(케이스별 채점 결과·토큰·예산 승인·봉인 세트 사용 기록). delete_run은 결과·출력만 지우고 행은 월 예산 장부로 남긴다'},

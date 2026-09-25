@@ -58,3 +58,6 @@ __pycache__/
 /e2e/artifacts/
 /e2e/.state/
 /e2e/.state-auth/
+
+# 합성 평가 케이스 생성기 출력(docs/EVAL.ko.md 9절)
+/scripts/eval/outputs/
