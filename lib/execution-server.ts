@@ -14,7 +14,7 @@ import {assertNotArchived} from './campaign-archive';
 import {AI_DISCLOSURE_LINE,hasKnownOrigin,isAiGenerated} from './ai-disclosure';
 import {factCaption,footnoteIssues,franchiseFactUseIssues,versionStates,FRANCHISE_FACT_MESSAGES,type VersionLite} from './franchise-facts';
 import {hasFranchiseContext,loadFranchiseContext,type FranchiseContext} from './franchise-facts-server';
-import {franchiseGateError,franchiseIssueLabels,judgeFranchiseText,mentionedFranchiseFacts,recruitmentWarning,RECRUITMENT_LIKE,type FranchiseJudgement} from './franchise-compliance';
+import {franchiseGateError,franchiseIssueLabels,judgeFranchiseText,mentionedFranchiseFacts,recruitmentLike,recruitmentWarning,type FranchiseJudgement} from './franchise-compliance';
 import {COMPLIANCE_NOTICE} from './graders/compliance';
 import {GATE_DISCLAIMER} from './franchise-gates';
 import {isInstant} from './franchise-rules';
@@ -75,7 +75,7 @@ function franchiseExecution(campaign:Campaign,profile:NonNullable<FranchiseConte
  }));
  const text=[campaign.title,campaign.goal,campaign.audience,campaign.channels,...live.map(p=>p.caption)].filter(x=>typeof x==='string').join('\n');
  return {scope:'consumer',branch:profile.branch,versions:versions.map(v=>({id:v.id,label:v.label,registeredAt:v.registeredAt,state:states[v.id]})),blockedFacts:[...byId].map(([id,reason])=>({id,reason})),publications:verdicts,
-  recruitmentWarning:RECRUITMENT_LIKE.test(text)?recruitmentWarning(profile.branch):null,notice:COMPLIANCE_NOTICE,disclaimer:GATE_DISCLAIMER};
+  recruitmentWarning:recruitmentLike(text)?recruitmentWarning(profile.branch):null,notice:COMPLIANCE_NOTICE,disclaimer:GATE_DISCLAIMER};
 }
 export function assertVersion(record:{version:number},version:unknown){if(record.version!==version)throw new ApiError(409,'내용이 변경됐습니다. 새로고침 후 다시 확인하세요.')}
 export async function resolveFacts(owner:string,campaign:Campaign,refs:unknown,until=Date.now()):Promise<BrandFact[]>{
