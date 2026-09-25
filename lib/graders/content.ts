@@ -2,6 +2,7 @@ import {claimGuard} from '../campaign-policy';
 import {verdict,type Grader,type EvalItem,type GradeContext} from './types';
 import {isText,bodyOf,proseFields,blocks,sentences,excerpt,placeholderOnly,type Block} from './text';
 import {NEGATION,usesTerm,neutralize,predicateOf,prohibitiveLabel,quoteSpans} from './negation';
+import {INDUSTRY_TERMS,industryIds} from './industry';
 
 // 내용 채점기: question_only가 fail이면 not_applicable로 둔다(index.ts 우선순위 규칙).
 const ledger=(ctx:GradeContext)=>ctx.facts?{confirmed:ctx.facts.confirmed||[],prohibited:ctx.facts.prohibited||[]}:{confirmed:[],prohibited:[]};
@@ -11,7 +12,8 @@ const hitsVerdict=(hits:string[])=>hits.length?verdict('fail',[...new Set(hits)]
 // 부정·배제는 그 표현 바로 뒤 서술부만 본다(negation.ts). 문장 안 다른 곳의 '놓치지 말고'·'아닌'은 면제 사유가 아니다.
 const PROHIBITION_ZONE=/가설|실험|카피|문안|메시지|대본|자막|슬로건|헤드라인/;
 const NUMBERED_TRIAL=/^(?:[-*]\s*)?(?:고객\s?|우선\s?)?(?:가설|실험)\s?\d/,TRIAL_SENTENCE=/^(?:가설|실험)\s?\d/;
-function prohibitedTerms(ctx:GradeContext){
+// 브리프 지시 위반(brief.ts brief_instruction_violation)도 같은 금지 표현 목록을 쓴다.
+export function prohibitedTerms(ctx:GradeContext){
  return [...(ctx.prohibitedTerms||[]),...claimGuard(ledger(ctx)).prohibited].map(t=>t.toLowerCase());
 }
 function zoneSentences(item:EvalItem){
@@ -73,13 +75,14 @@ export const unsupportedClaimTerm:Grader={id:'unsupported_claim_term',content:tr
  return hitsVerdict(candidates.flatMap(u=>terms.filter(t=>usesTerm(u.sentence,t,u.within)).map(t=>`${t}: ${excerpt(u.sentence)}`)));
 }};
 
-// 캠페인 업종이 아닌 업종의 지표·용어. v1 사전은 campaign-policy.ts campaignEvidencePolicy의 보관함 정규식을 업종 사전으로 일반화했다.
-export const INDUSTRY_TERMS:Record<string,RegExp>={locker:/물품보관함|보관함|락커|\blocker\b|가동\s?가능\s?시간|가동률/i,kpop:/포토카드|초동|팬사인회|앨범\s?판매/,beauty:/피부\s?개선|보습\s?효과|성분\s?함량/};
+// 캠페인 업종이 아닌 업종의 지표·용어. 사전은 industry.ts(G3에서 옮김). 캠페인 업종은 단일 ID 또는 [주 업종, ...허용 업종]이며 둘 다 사전 대조에서 뺀다.
+export {INDUSTRY_TERMS};
 const INDUSTRY_EXCLUDED=/무관|삭제|제외|해당\s?없|관련\s?없/;
 export const industryMetricLeak:Grader={id:'industry_metric_leak',content:true,grade(item,ctx){
- if(!isText(item)||!ctx.industry)return verdict('not_applicable',ctx.industry?undefined:'캠페인 업종 미상');
+ const own=industryIds(ctx.industry);
+ if(!isText(item)||!own.length)return verdict('not_applicable',own.length?undefined:'캠페인 업종 미상');
  const lines=bodyOf(item).split('\n').flatMap(sentences).filter(s=>!INDUSTRY_EXCLUDED.test(s));
- return hitsVerdict(Object.entries(INDUSTRY_TERMS).filter(([id])=>id!==ctx.industry).flatMap(([id,re])=>lines.filter(s=>re.test(s)).map(s=>`${id}: ${excerpt(s)}`)));
+ return hitsVerdict(Object.entries(INDUSTRY_TERMS).filter(([id])=>!own.includes(id)).flatMap(([id,re])=>lines.filter(s=>re.test(s)).map(s=>`${id}: ${excerpt(s)}`)));
 }};
 
 // 재방문율·재구매율 정의 문장에 성숙 기준(30일 관찰 완료 코호트)이 없으면 fail(measurementDiscipline).
