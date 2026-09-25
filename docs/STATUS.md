@@ -1,21 +1,24 @@
 # COLLECTIVE 현재 상태
 
-마지막 갱신: 2026-09-25 02:23 UTC (Claude 품질 계획 v2 세션, 합성 dev 스펙 S3)
+마지막 갱신: 2026-09-25 02:40 UTC (Claude 품질 계획 v2 세션, 운영 상태 표·테스트 흔들림 기록)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
 | 운영 제품 커밋 | `443fff4800aee28e00418f8ff7ab6f3a49bb2b70` (#80 `merged`, 묶음 5: df7e253 뒤 #77~#80) | 제품 tree `7c64d53d1c1d98d95e1fe2445a3066ca2b44646d` |
-| `origin/main` | `443fff4` (#80) = 운영 제품 커밋 | 게시 확인 시점 |
+| `origin/main` | `a809a1e` (#92). 운영(443fff4) 뒤 제품 커밋: 묶음 6 `a41624d`(#83, 2026-09-24 승인·지시, 게시 결과 미확인 — 브라우저 연결이 끊겨 not_run), 묶음 7 `ac7a031`(#84~#90, 2026-09-25 승인·지시, 게시 결과 대기, 목표 tree `53492af`). ac7a031 뒤 #91·#92는 비제품 경로(문서·테스트·`scripts/eval/`)뿐 | `gh`, 2026-09-25 |
 | Sites 게시 | `published` 버전 28, deployment `appgdep_6ab56e0f52fc8191bc5085883629d298`, Sites 커밋 `c0c00bf`, 2026-09-24 18:37 UTC 경. 파일 목록·기대 해시 방식(커넥터) | [게시 기록](releases/2026-09-24-443fff4.md) |
 | 실행 검증 | `runtime-verified` · real, 2026-09-24 18:41 UTC 경 | 소유자 이메일 세션 `/api/version` tree `7c64d53…` = 443fff4 tree, `promptManifest` null. 익명 401, `/media` 404·CSP 확인 |
 | 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` mode=email, role=owner (2026-09-24 18:41 UTC 경) |
 | Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 이번 게시도 기존 접근 설정 유지 | 게시 에이전트 보고 "기존 공개 접근 설정을 유지". 게시 뒤 접근 설정 재확인은 not_run |
 | 조사 워커 | online(lastSeen 2026-09-24 18:41 UTC, blocked 0, rotationReady true). 2026-09-24 14:15 UTC 새 설치기로 재설치(격리 점검 전부 통과) | `/api/research-worker/setup` 조회(real). gate 표시 `missing`이라 `RESEARCH_WORKER_APP_GATE=enforce`는 켜지 않는다 |
-| 열린 PR | #16 Android(draft, 제외), 이 게시 기록 PR | `gh pr list -R roybeee/Collective`, 2026-09-24 18:45 UTC |
-| main CI(`443fff4`) | passed · verify·e2e-smoke | GitHub Actions main 실행 |
+| 열린 PR | #16 Android(draft, 제외), 이 기록 PR | `gh pr list -R roybeee/Collective`, 2026-09-25 |
+| main CI | `ac7a031`·`4a39dec` passed · verify·e2e-smoke. `a809a1e` 실행 중 | GitHub Actions main 실행, 2026-09-25 |
 
+- 테스트 흔들림(2026-09-25 관찰, 제품 동작 변경 없음, 원인 조사는 별도 작업):
+  - CI E2E `e2e/meeting-quality.spec.ts:40`('기준 자료가 바뀐 실패 회의…')가 오늘 3번 60초 시간 초과(#86 1회, #92 첫 CI 모바일·데스크톱). 매번 같은 파일 첫 테스트 직후 두 번째 테스트 첫 줄 `page.request.get('/api/workspace')`에서 멈추고, 같은 로그에 workerd `Broken pipe`가 있다. 재실행하면 통과하고 로컬 `--repeat-each 6`은 24/24 통과(재현 안 됨).
+  - `tests/email-auth.test.mjs` '소유자가 멤버·관리자 역할을 바꾼다'가 전체 스위트 병렬 실행에서 가끔 실패(오늘 3회 중 2회, 단독 6/6 통과). 소유자는 '가장 먼저 만든 관리자(created_at, id 순)'로 정해지므로, 계정 생성 시각이 겹치면 승격한 관리자가 소유자로 읽힐 수 있는 구조다(auth 코드는 #23 이후 변경 없음).
 - `AUTH_MODE` fail-closed(PR 1, `auth-2`)가 운영에 적용됐다. 운영 빌드에서 `AUTH_MODE`가 비면 모든 인증·업무 API가 503이다. Sites가 public인 동안 legacy로 되돌리지 않는다. 환경 revision 변경·복구·재게시 뒤에는 `/api/auth`가 mode=email인지, 위조 헤더 요청이 401인지 먼저 확인한다. 복구는 [이메일 로그인 복구 순서](EMAIL-AUTH.ko.md)를 따른다.
 - 확인 필요: 익명 업무 API 401은 443fff4 게시 뒤 확인했다(passed · real). 위조 헤더 요청 401은 not_run이다(자동 모드 안전 검사 정책). 소유자가 직접 확인한다. 민감 작업 재인증(step-up)은 아직 구현되지 않았다(PR #23 남은 위험).
 - 확인 필요: bootstrap 환경 세 항목 제거와 재게시 기록이 없다. 실제 Buffer/Instagram 게시는 not_run.
