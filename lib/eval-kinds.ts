@@ -4,13 +4,13 @@ import type {PromptSet} from './practice';
 import {roles} from './agency';
 import {aiBrand} from './ai-context';
 import {roleSubmission,type RoleSubmissionRequest} from './role-execution';
-import {runGraders,runPreventionGraders,GRADERS_VERSION,ALL_GRADERS,type GraderResult,type GraderStatus,type FactLedger,type GradeContext,type EvalItem,type SeededDefect} from './graders/index';
+import {runGraders,runPreventionGraders,GRADERS,GRADERS_VERSION,ALL_GRADERS,type GraderResult,type GraderStatus,type FactLedger,type GradeContext,type EvalItem,type SeededDefect} from './graders/index';
 import {bodyOf,rawNormalization} from './graders/text';
 import {outputObject,proseValues,briefPlanValues} from './graders/types';
 import {checkCompliance} from './graders/compliance';
 import {buildBriefSubmission,type BriefRequest} from './brief-input';
 import {meetingStepRequestOf,buildMeetingRequest,briefRequestOf,targetStep,type MeetingStepRequest} from './eval-freeze';
-import type {Synthesis} from './meetings';
+import {scrubMeetingOutput,meetingLabels,type Synthesis} from './meetings';
 
 // 평가 종류(Q1 골격, G2 회의·브리프). 평가 케이스(eval_case.kind)마다 요청 동결(freeze: 입력 → 저장 요청·담당), 제출 조립(build: 동결 요청 → {instructions,input}),
 // 채점(grade: 출력 → 채점 결과), 케이스 1건 예약 토큰(reserve), 쌍 평가 대상 캠페인(campaignOf)을 한 처리기에 둔다. lib/eval-server.ts는 케이스의 kind로 처리기를 고른다.
@@ -32,10 +32,10 @@ export function roleId(v:unknown){const id=str(v,'담당',40,true);if(!roles.som
 export const BRIEF_ROLE='brief';
 
 // 채점 결과: lib/graders와 규제 가드레일. run에는 판정·요약만, 발췌가 든 가드레일 상세(report)는 eval_output에 둔다.
-// prevention(정규화 전 heading_nesting·internal_id_exposure)과 normalization 건수는 역할 산출물 렌더에만 있다. 회의·브리프는 빈 목록이다.
+// prevention(정규화 전 heading_nesting·internal_id_exposure)과 normalization 건수는 역할 산출물 렌더에 있다. 회의 단계는 원문의 internal_id_exposure만 예방 판정으로 두고(정규화 건수 없음), 브리프는 빈 목록이다.
 const gradeRows=(rows:GraderResult[])=>rows.map(g=>({id:g.id,status:g.status,...(g.detail?{detail:g.detail.slice(0,200)}:{})}));
-function graded(item:EvalItem,ctx:GradeContext,graders=runGraders(item,ctx),role=item.kind==='role'){
- const rows=gradeRows(graders),prevention=role?gradeRows(runPreventionGraders(item,ctx)):[],normalization=role?rawNormalization(item):null;
+function graded(item:EvalItem,ctx:GradeContext,graders=runGraders(item,ctx),role=item.kind==='role',preventionRows?:GraderResult[]){
+ const rows=gradeRows(graders),prevention=preventionRows?gradeRows(preventionRows):role?gradeRows(runPreventionGraders(item,ctx)):[],normalization=role?rawNormalization(item):null;
  const report=checkCompliance(bodyOf(item),{facts:ctx.facts??null}),severity=(s:string)=>report.issues.filter(i=>i.severity===s).length;
  const summary=rows.reduce((acc,g)=>({...acc,[g.status]:acc[g.status]+1}),{pass:0,fail:0,not_applicable:0,grader_error:0} as Record<GraderStatus,number>);
  return {report,result:{gradersVersion:GRADERS_VERSION,graders:rows,summary,prevention,...(normalization?{normalization}:{}),compliance:{version:report.version,block:severity('block'),warn:severity('warn'),info:severity('info'),issues:report.issues.map(i=>({category:i.category,ruleId:i.ruleId,severity:i.severity}))}}};
@@ -83,8 +83,9 @@ function stepText(phase:string,x:Record<string,unknown>|null,output:string){
  if(phase==='revision')return typeof x.content==='string'?x.content:'';
  return proseValues(Object.fromEntries(Object.entries(x).filter(([k])=>k!=='questions'))).join('\n\n');
 }
-function meetingItem(kase:KindCase,output:string,inputTokens:number|null):EvalItem{
- const r=kase.request as MeetingStepRequest,m=r.meeting,s=targetStep(r),at=m.steps.indexOf(s),x=parsed(output),base={id:kase.id,role:s.role,meetingId:m.id,inputTokens};
+// normalized: 운영이 저장·표시하는 정규화본(scrubMeetingOutput, 라벨은 동결 회의 기록의 meetingLabels)으로 채점한다. false면 원문(예방 판정용)이다.
+function meetingItem(kase:KindCase,output:string,inputTokens:number|null,normalized=true):EvalItem{
+ const r=kase.request as MeetingStepRequest,m=r.meeting,s=targetStep(r),at=m.steps.indexOf(s),raw=parsed(output),x=raw&&normalized?scrubMeetingOutput(raw,meetingLabels(m)):raw,base={id:kase.id,role:s.role,meetingId:m.id,inputTokens};
  if(s.phase==='discussion')return {...base,kind:'discussion',...(x?{fields:x}:{}),priorRoles:m.steps.slice(0,at).filter(t=>t.phase==='discussion'&&t.status==='completed').map(t=>t.role)};
  const synthesis=m.steps.find(t=>t.phase==='synthesis')?.output as Synthesis|undefined,original=[...m.snapshot.artifacts].reverse().find(a=>a.role===s.role)?.content;
  return {...base,kind:'meeting_step',phase:s.phase,raw:output,text:stepText(s.phase,x,output),contract:!!m.skillVersion,
@@ -94,8 +95,8 @@ const brandContext=(brand:{name?:string}&Parameters<typeof aiBrand>[0])=>({brand
 function gradeMeeting(kase:KindCase,output:string,inputTokens:number|null){
  const m=(kase.request as MeetingStepRequest).meeting,e=kase.expectations;
  const ctx:GradeContext={...baseContext(e),...(e.seededDefects?{seededDefects:e.seededDefects}:{}),...brandContext(m.snapshot.brand)};
- const item=meetingItem(kase,output,inputTokens);
- return graded(item,ctx,runGraders(item,ctx,ALL_GRADERS));
+ const item=meetingItem(kase,output,inputTokens),exposure=GRADERS.filter(g=>g.id==='internal_id_exposure');
+ return graded(item,ctx,runGraders(item,ctx,ALL_GRADERS),false,runGraders(meetingItem(kase,output,inputTokens,false),ctx,exposure));
 }
 
 // ── brief: 운영 브리프 초안과 같은 조립(lib/brief-input.ts buildBriefSubmission). 레지스트리 단위가 없어 쌍 평가에서 뺀다 ──
