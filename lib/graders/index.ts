@@ -14,7 +14,8 @@ export {INPUT_TOKEN_CAP} from './ledger';
 // 같은 저울 재채점(regrade_run)의 버전 검사와 비교(gradersVersions)가 저울 변경을 구분하게 한다.
 // '+g3': 업종 사전에 fnb·education·popup·retail을 더하고 업종을 배열(주 업종+허용 업종)로 받아 industry_metric_leak 판정이 바뀌었다. 회의·브리프 채점기 6종(KIND_GRADERS)을 더했다.
 // '+compound-labels': 합성 판정 라벨('탈락·수정 기준', '실패/중단 조건')의 표 열·제목을 규칙 칸으로 본다(negation.ts prohibitiveLabel). unsupported_claim_term 판정이 바뀌었다.
-export const GRADERS_VERSION='failure-types-v1+normalized+measure-v2+g3+compound-labels';
+// '+absent-expr': 표현 부재 서술('… 보장 표현이 없고', '… 문구가 포함되지 않는다')을 사용 배제로 본다(negation.ts ABSENT_EXPR). fact_conflict·금지 표현 채점기와 규제 판정이 바뀌었다.
+export const GRADERS_VERSION='failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr';
 export const GRADERS:Grader[]=[questionOnly,thinSection,contractJson,headingNesting,internalIdExposure,briefProhibitionConflict,factConflict,unconfirmedValueAssertion,unsupportedClaimTerm,industryMetricLeak,revisitCohortDefinition,localChannelCoverage,inputBudget];
 export const CONTENT_GRADERS=GRADERS.filter(g=>g.content).map(g=>g.id);
 // 채점기 확장 G3: 회의 단계(합의·개선본·재검토)·브리프 채점기와 원장 구역 규칙. 적용 kind 밖이면 not_applicable이라 역할·발언 채점 결과를 바꾸지 않는다.
