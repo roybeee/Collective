@@ -119,8 +119,21 @@ function withoutProhibitedCells(text:string){
   return banned.length?cells.map((c,i)=>banned!.includes(i)?' ':c).join('|'):line;
  }).join('\n');
 }
+// '다음 상황에서는 … 중단한다'처럼 중단·수정·보류 조건을 여는 리드 문장 바로 아래 목록(빈 줄 하나 허용)은 중단 조건 목록이라 비우고 검사한다.
+// 목록이 끝난 뒤 문장과, 리드가 중단 조건이 아닌 목록('아래 문안을 게시한다')은 그대로 본다(2026-09-25 ODA cmo 기준선 v1 문장, 제목이 없을 때).
+const STOP_LEAD=/(?:다음|아래)\s?(?:상황|경우|조건|신호)(?:에서는|에는|에서|이면|일\s?때|가\s?(?:보이면|나오면))?[^.\n]{0,40}(?:중단|중지|멈추|멈춘|수정|보류|회수|내리|내린)(?:한다|합니다|하고|해야|하세요|다|ㅂ니다)?[.:：]?\s*$/;
+const LIST_ITEM=/^\s*(?:[-*•·]|\d+[.)])\s/;
+function withoutStopLists(text:string){
+ let state:'none'|'lead'|'list'='none';
+ return text.split('\n').map(line=>{
+  if(state!=='none'&&LIST_ITEM.test(line)){state='list';return ''}
+  if(state==='lead'&&!line.trim())return line;
+  state=!LIST_ITEM.test(line)&&STOP_LEAD.test(line.trim())?'lead':'none';
+  return line;
+ }).join('\n');
+}
 export function checkCompliance(text:string,opts:{facts?:FactLedger|null}={}):ComplianceReport{
- const sections=sectionsOf(withoutProhibitedCells(text)),keys=confirmedKeys(opts.facts);
+ const sections=sectionsOf(withoutStopLists(withoutProhibitedCells(text))),keys=confirmedKeys(opts.facts);
  return {version:COMPLIANCE_LEXICON.version,issues:COMPLIANCE_LEXICON.rules.flatMap(rule=>ruleIssue(rule,sections,keys)),notice:COMPLIANCE_NOTICE};
 }
 // 판정은 하향만 한다. 차단(block)이 있으면 사용자 검토 준비를 수정 필요로 내리고, 경고·정보와 무위반은 판정을 바꾸지 않는다.

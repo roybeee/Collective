@@ -1,8 +1,9 @@
 import {claimGuard} from '../campaign-policy';
 import {verdict,type Grader,type EvalItem,type GradeContext} from './types';
-import {isText,bodyOf,proseFields,blocks,sentences,excerpt,placeholderOnly,type Block} from './text';
-import {NEGATION,usesTerm,neutralize,predicateOf,prohibitiveLabel,quoteSpans} from './negation';
+import {isText,bodyOf,proseFields,blocks,sentences,excerpt,placeholderOnly} from './text';
+import {NEGATION,usesTerm,neutralize,predicateOf,quoteSpans} from './negation';
 import {INDUSTRY_TERMS,industryIds} from './industry';
+import {outsideProhibition,withoutBannedLists} from './prohibition';
 
 // 내용 채점기: question_only가 fail이면 not_applicable로 둔다(index.ts 우선순위 규칙).
 const ledger=(ctx:GradeContext)=>ctx.facts?{confirmed:ctx.facts.confirmed||[],prohibited:ctx.facts.prohibited||[]}:{confirmed:[],prohibited:[]};
@@ -41,32 +42,9 @@ function quotedUnits(line:string):CopyUnit[]{
   return spans.length?[{sentence,within:(at:number)=>spans.some(q=>at>=q.start&&at<q.end)}]:[];
  });
 }
-// 금지·보류 맥락(prohibitiveLabel)은 대상이 아니다: 그런 제목 아래(다음 같은 수준 이상 제목 전까지), 그런 라벨·인라인 라벨의 블록,
-// 머리칸이 금지·보류인 표의 행(나머지 머리칸이 분류·보조 칸이 아니면 금지 칸만). '금지 또는 보류 표현' 표·목록은 규칙이지 카피 사용이 아니다.
-const headingLevel=(line:string)=>/^(#{1,6})\s/.exec(line)?.[1].length||0;
-const cellsOf=(row:string)=>row.trim().split('|');
-// 금지 열: 머리칸이 금지 맥락이거나 금지·보류의 사유 칸('보류 사유', '제외 이유')이다. 표 전체가 금지 목록인 것은 나머지 머리칸이 모두 분류·보조 칸일 때뿐이다
-// ('| 구분 | 사용하지 않을 표현 | 이유 |'). '| 안 | 문구 | 보류 사유 |', '| 채널 | 내용 | 금지 |'처럼 다른 열이 있으면 금지 열만 비우고 나머지 칸은 채점한다.
-const TABLE_AUX=/^(?:유형|구분|분류|항목|범주|이유|사유|근거|조치|처리|기준|예시|비고|표현|번호)$/;
-function bannedColumns(header:string){
- const cells=cellsOf(header),banned=cells.flatMap((c,i)=>c.trim()&&prohibitiveLabel(c.replace(/\s?(?:사유|이유)\s*$/,''))?[i]:[]);
- return {all:banned.length>0&&cells.every((c,i)=>!c.trim()||banned.includes(i)||TABLE_AUX.test(c.trim())),cols:banned};
-}
-// level: 금지 맥락 제목의 수준(0이면 없음). banned: 둘러싼 라벨(가장 가까운 라벨 줄)이 금지 맥락인지. table: 지금 표의 금지 열.
-type Scope={level:number;banned:boolean;table:ReturnType<typeof bannedColumns>|null;out:Block[]};
-function outsideProhibition(list:Block[]):Block[]{
- return list.reduce<Scope>((acc,b)=>{
-  const h=headingLevel(b.line),row=b.line.trim().startsWith('|'),own=b.isLabel&&prohibitiveLabel(b.label);
-  const open=h&&acc.level&&h<=acc.level?0:acc.level,level=h&&!open&&own?h:open;
-  const banned=b.isLabel?own:acc.banned,table=row?acc.table||bannedColumns(b.line):null;
-  if(level||banned||b.inline&&prohibitiveLabel(b.inline)||table?.all)return {level,banned,table,out:acc.out};
-  const line=table?.cols.length?cellsOf(b.line).map((c,i)=>table.cols.includes(i)?'':c).join('|'):b.line;
-  return {level,banned,table,out:[...acc.out,{...b,line}]};
- },{level:0,banned:false,table:null,out:[]}).out;
-}
 function copyUnits(item:EvalItem):CopyUnit[]{
  if(item.kind==='discussion')return proseFields(item).flatMap(f=>f.split('\n')).flatMap(quotedUnits);
- return outsideProhibition(blocks(bodyOf(item))).filter(b=>!b.isLabel).flatMap(b=>COPY_ZONE.test(b.label)?sentences(b.line).map(sentence=>({sentence})):quotedUnits(b.line));
+ return outsideProhibition(blocks(withoutBannedLists(bodyOf(item)))).filter(b=>!b.isLabel).flatMap(b=>COPY_ZONE.test(b.label)?sentences(b.line).map(sentence=>({sentence})):quotedUnits(b.line));
 }
 export const unsupportedClaimTerm:Grader={id:'unsupported_claim_term',content:true,grade(item,ctx){
  if(!isText(item))return verdict('not_applicable');

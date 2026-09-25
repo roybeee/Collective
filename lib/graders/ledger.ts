@@ -1,7 +1,8 @@
 import {claimGuard} from '../campaign-policy';
 import {verdict,outputObject,proseValues,briefPlanValues,type Grader,type EvalItem,type GradeContext} from './types';
 import {isText,bodyOf,sentences,compact,excerpt,blocks} from './text';
-import {mentions,usesTerm} from './negation';
+import {mentions,usesTerm,negatedAt,neutralize} from './negation';
+import {outsideProhibition,withoutBannedLists} from './prohibition';
 
 // 사실 원장 대조(fact_conflict)와 미확정 구체 값 단정(unconfirmed_value_assertion). 원장이 없으면 둘 다 not_applicable이다.
 const factText=(v:unknown)=>typeof v==='string'?v:'';
@@ -48,27 +49,43 @@ function valueChecks(lines:string[],confirmed:{key:string;value:string}[]):Check
  });
 }
 // 거절값은 문장에 나오면 대조 대상이고, 부정·배제 없이 쓰이면 fail이다.
-function rejectedChecks(lines:string[],facts:NonNullable<GradeContext['facts']>):Check[]{
+// allowed: 금지·보류 맥락 밖 문장. 그 안의 언급은 대조는 하되(적용됨) 사용으로 세지 않는다.
+// allowed는 거절 사실 언급이 있을 때만 계산한다(대부분의 출력은 언급이 없다).
+function rejectedChecks(lines:string[],facts:NonNullable<GradeContext['facts']>,allowed:()=>Set<string>):Check[]{
  const rejected=claimGuard({confirmed:facts.confirmed||[],prohibited:facts.prohibited||[]}).prohibited;
- return rejected.flatMap(t=>lines.filter(s=>mentions(s,t)).map(s=>usesTerm(s,t)?{hit:`거절 사실 사용: ${excerpt(s)}`}:{}));
+ return rejected.flatMap(t=>lines.filter(s=>mentions(s,t)).map(s=>allowed().has(s)&&usesTerm(s,t)?{hit:`거절 사실 사용: ${excerpt(s)}`}:{}));
 }
 // 원장에 있는 항목만 대조한다. 원장에 없는 항목은 세지 않고, 대조할 항목이 하나도 없으면 not_applicable(합격률 분모에서 제외).
 export const factConflict:Grader={id:'fact_conflict',content:true,grade(item,ctx){
  if(!isText(item))return verdict('not_applicable');
  if(!ctx.facts)return verdict('not_applicable','원장 없음');
  const text=bodyOf(item),lines=bodySentences(text),confirmed=confirmedFacts(ctx);
- const checks=[...addressChecks(text,confirmed),...valueChecks(lines,confirmed),...rejectedChecks(lines,ctx.facts)];
+ // 거절 사실은 금지·보류 맥락(제목·라벨·금지 표 칸·금지 리드 아래 인용 목록) 밖 문장만 본다. 그 안은 쓰지 않을 표현의 목록이다(R3 기준선 S6 실측).
+ const checks=[...addressChecks(text,confirmed),...valueChecks(lines,confirmed),...rejectedChecks(lines,ctx.facts,allowedSentences(text))];
  return checks.length?hitsVerdict(checks.flatMap(c=>c.hit?[c.hit]:[])):verdict('not_applicable','원장 항목을 다루지 않음');
 }};
 
 // 원장이 확정하지 않은 가격·오픈일·도보 시간·유동인구 수치를 [확인 필요]·[예시]·미확정 표시 없이 단정하면 fail(factPolicy).
+// 금지·보류 맥락 밖 문장 집합. 처음 부를 때 한 번만 계산한다.
+function allowedSentences(text:string){
+ let cached:Set<string>|null=null;
+ return ()=>cached??=new Set(outsideProhibition(blocks(withoutBannedLists(text))).filter(b=>!b.isLabel).flatMap(b=>sentences(b.line)));
+}
+// 문장 속 값(가격·오픈일)의 원문 위치마다 부정·배제를 본다. 하나라도 부정되지 않으면 단정이다.
+const VALUE_SPAN=/(\d{1,3}(?:,\d{3})+|\d{4,})\s?원|(\d+(?:\.\d+)?)\s?만\s?원/g;
+function assertsValue(s:string){
+ const n=neutralize(s),spans=[...n.matchAll(VALUE_SPAN),...n.matchAll(OPEN_DATE)];
+ return !spans.length||spans.some(m=>!negatedAt(n,m.index!,m.index!+m[0].length));
+}
 export const unconfirmedValueAssertion:Grader={id:'unconfirmed_value_assertion',content:true,grade(item,ctx){
  if(!isText(item))return verdict('not_applicable');
  if(!ctx.facts)return verdict('not_applicable','원장 없음');
  const confirmed=confirmedFacts(ctx),open=VALUE_KINDS.filter(k=>!ledgerValues(k,confirmed).size);
- const found=bodySentences(bodyOf(item)).flatMap(s=>open.filter(k=>k.body(s).length).map(k=>({kind:k.kind,s})));
+ // 금지·보류 맥락 안 값과 부정·배제된 값('금지된 ‘월 순수익 500만 원 보장’ … 표현은 사용하지 않는다')은 단정이 아니다(R3 기준선 S7 실측).
+ const text=bodyOf(item),allowed=allowedSentences(text);
+ const found=bodySentences(text).flatMap(s=>open.filter(k=>k.body(s).length).map(k=>({kind:k.kind,s})));
  if(!found.length)return verdict('not_applicable','미확정 항목의 구체 값 없음');
- return hitsVerdict(found.filter(x=>!MARKED.test(x.s)).map(x=>`미확정 ${x.kind} 단정: ${excerpt(x.s)}`));
+ return hitsVerdict(found.filter(x=>!MARKED.test(x.s)&&allowed().has(x.s)&&assertsValue(x.s)).map(x=>`미확정 ${x.kind} 단정: ${excerpt(x.s)}`));
 }};
 
 // 미확인 브랜드 소개(brand.brandIntro)를 '확인 사실' 구역에 적으면 fail(원장 구역 규칙, G3. docs/EVAL.ko.md 결정론 불가 유형의 v1.1 후보를 옮겼다).
@@ -119,10 +136,13 @@ export const brandIntroAsFact:Grader={id:'brand_intro_as_fact',content:true,grad
 
 // 역할·회의 단계 호출의 입력 토큰 절대 상한. 제안값 32,000은 대표 결정 사항이며 설정으로 바꾼다(ctx.inputTokenCap).
 export const INPUT_TOKEN_CAP=32000;
+// 회의 단계(발언·합의·개선본·재검토) 상한. R3 기준선(2026-09-25) 실측 최대 52,268(운영 MAPDAL 회의 재검토: 개선본 전체와 후보 24,000자를 읽는다)의 약 1.2배다.
+// 역할 최대 23,701은 32,000 안이라 역할 상한은 그대로 둔다(대표 위임 결정 2026-09-25, QUALITY-ROADMAP 승인 기록).
+export const MEETING_INPUT_TOKEN_CAP=64000;
 export const inputBudget:Grader={id:'input_budget',grade(item,ctx){
  const tokens=item.inputTokens;
  if(typeof tokens!=='number'||!Number.isFinite(tokens))return verdict('not_applicable','토큰 미확인');
  if(item.kind==='brief'||/^(?:brief|research)/.test(item.role||''))return verdict('not_applicable','브리프 초안·조사 호출(대상 여부 결정 전)');
- const cap=ctx.inputTokenCap??INPUT_TOKEN_CAP;
+ const cap=ctx.inputTokenCap??(item.meetingId?MEETING_INPUT_TOKEN_CAP:INPUT_TOKEN_CAP);
  return tokens>cap?verdict('fail',`${tokens} > ${cap}`):verdict('pass',`${tokens} (${Math.round(tokens/cap*100)}%)`);
 }};
