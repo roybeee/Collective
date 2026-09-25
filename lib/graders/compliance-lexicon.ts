@@ -40,7 +40,7 @@ const PAID_POST='유료\\s?광고\\s?(?:용\\s?)?(?:게시(?:물|글)?|포스팅
 const PAID_AD=`${PAID_POST}|유료\\s?광고(?:(?<!(?:${PAID_MEDIA})[^.\\n]{0,30}유료\\s?광고)(?![^.\\n]{0,30}(?:${PAID_MEDIA}))|(?<=(?:${CREATOR})[^.\\n]{0,30}유료\\s?광고)|(?=[^.\\n]{0,30}(?:${CREATOR})))`;
 
 export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:string;sources:Record<string,ComplianceSource>;rules:ComplianceRule[]}={
- version:'compliance-lexicon-2026-09-25.2',
+ version:'compliance-lexicon-2026-09-25.3',
  checkedAt:'2026-09-23',
  platformPolicy:'플랫폼별 리뷰 운영정책(예: 지도·예약 플랫폼) 공식 URL은 아직 확인하지 않았다. 게시 전 해당 플랫폼 공식 정책 페이지에서 확인하고, 확인되면 사전 버전을 올려 출처를 추가한다.',
  sources:{

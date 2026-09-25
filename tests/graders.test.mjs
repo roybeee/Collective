@@ -98,6 +98,10 @@ const priced={facts:{confirmed:[{key:'가격',value:'떡볶이 5,000원'},{key:'
 check('fact_conflict passes matching address with pending open date',()=>assert.equal(status('fact_conflict',role('가상동 12 B동 201호에 오픈 예정입니다. 오픈일은 [확인 필요] 확정 후 안내합니다.'),ledger),'pass'));
 check('fact_conflict fails a different address',()=>assert.equal(status('fact_conflict',role('가상동 12 B동 102호에서 10월 5일 오픈합니다.'),ledger),'fail'));
 check('fact_conflict fails a price or open date that differs from the ledger',()=>{assert.equal(status('fact_conflict',role('떡볶이는 7,000원입니다.'),priced),'fail');assert.equal(status('fact_conflict',role('10월 9일 오픈합니다.'),priced),'fail')});
+// 표현의 부재('… 표현이 없고', '… 문구가 포함되지 않는다')는 사용 배제다(2026-09-25 파일럿 1 합의 단계 실측 재현, 과제 수용 기준 문장). '…이 있다'와 '없으면 좋겠지만 씁니다'는 사용이다.
+const rejectedSoldOut={facts:{confirmed:[],prohibited:[{key:'판매 주장',value:'당일 전량 소진'}]}};
+check('fact_conflict treats an absent-expression clause as exclusion',()=>{for(const text of ['완성본에는 ‘새 빵’, ‘오전 8시’, ‘당일 전량 소진’, ‘최저가’, 할인·무료·보장 표현이 없고, 후기·추천사 예시도 없다.','카드 문안에 ‘당일 전량 소진’ 문구가 포함되지 않는다.','‘새 빵’, ‘오전 8시’, 가격, 할인, 무료 증정, ‘당일 전량 소진’, ‘최저가’ 문구가 들어가지 않는다.'])assert.equal(status('fact_conflict',role(text),rejectedSoldOut),'pass',text)});
+check('fact_conflict still fails a rejected fact that is present or wished away but used',()=>{for(const text of ['카드에는 ‘당일 전량 소진’ 문구가 있다.','‘당일 전량 소진’ 표현이 없으면 좋겠지만 오늘은 씁니다.','매일 당일 전량 소진되는 인기 빵입니다.','매일 당일 전량 소진, 이보다 좋은 문구가 없다.','당일 전량 소진, 더 이상의 표현이 없습니다.'])assert.equal(status('fact_conflict',role(text),rejectedSoldOut),'fail',text)});
 check('fact_conflict passes a price and open date that match the ledger',()=>assert.equal(status('fact_conflict',role('떡볶이는 5,000원이고 10월 5일 오픈합니다.'),priced),'pass'));
 check('fact_conflict leaves items missing from the ledger out of the denominator',()=>assert.equal(status('fact_conflict',role('떡볶이는 7,000원입니다.'),ledger),'not_applicable'));
 const rejectedLedger={facts:{confirmed:[],prohibited:[{key:'조리 방식',value:'숯불'}]}};
