@@ -152,7 +152,19 @@ const FAILURE_LABEL=/^(?:실패|중단|위반|탈락|불합격|위험)\s?(?:기�
 const BARE_LABEL=/^\s*(?:사용|게시|노출|진행|집행)?\s?(?:금지|보류|삭제|제외)\s*$/;
 const AUXILIARY=/^(?:이유|사유|근거|기준|목록|예시|처리|조치|조건|대안)$/;
 const LABEL_ITEMS=/[·ㆍ/,，]|\s(?:및|또는|그리고)\s|(?<=[가-힣])(?:과|와)\s/;
+// 합성 라벨: 판정어를 가운뎃점·빗금·쉼표로 잇고 공통 접미('기준' 등)를 끝에 한 번 쓴 칸('탈락·수정 기준', '실패/중단 조건')은 판정어마다 접미를 붙여 본다.
+// 모든 판정어가 실패 판정(FAILURE_LABEL)이거나 그 곁말(FAILURE_COMPANION: 수정·반려·보완·재작업·보류 기준)이고 실패 판정이 하나 이상이면 규칙 칸이다.
+// 곁말만 있거나('수정 기준') 합격이 섞이면('합격·수정 기준') 규칙 칸이 아니다(2026-09-25 ODA 전략 재채점 실측).
+const SHARED_SUFFIX=/^([가-힣]{1,4}(?:\s?[·ㆍ/,，]\s?[가-힣]{1,4})+)\s?(기준|조건|사례|신호|예시|요소)$/;
+const FAILURE_COMPANION=/^(?:수정|반려|보완|재작업|보류)\s?(?:기준|조건|신호)$/;
+function compoundFailureLabel(label:string){
+ const m=SHARED_SUFFIX.exec(label.trim());
+ if(!m)return false;
+ const parts=m[1].split(/[·ㆍ/,，]/).map(x=>`${x.trim()} ${m[2]}`);
+ return parts.some(x=>FAILURE_LABEL.test(x))&&parts.every(x=>FAILURE_LABEL.test(x)||FAILURE_COMPANION.test(x));
+}
 export function prohibitiveLabel(label:string){
+ if(compoundFailureLabel(neutralize(label)))return true;
  const items=neutralize(label).replace(/[(（]([^()（）]*)[)）]/g,(m,inner:string)=>BARE_LABEL.test(inner)?` ${inner} `:' ').split(LABEL_ITEMS).map(x=>x.trim()).filter(Boolean);
  const banned=(x:string)=>PROHIBITIVE.test(x)||FAILURE_LABEL.test(x);
  return items.some(banned)&&items.every(x=>banned(x)||AUXILIARY.test(x));
