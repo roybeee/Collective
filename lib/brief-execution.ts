@@ -1,21 +1,19 @@
-import {campaignEvidencePolicy} from './campaign-policy';
 import {markUsageOutcomeSafely as markUsageOutcome} from './usage-outcome';
 import {brandArchiveInput} from '@/lib/archive-server';
-import {evidenceContext,aiBrand,withoutPlanOwner,withoutAssignees,productionAllow,inputMaskingRecord,BRAND_MASK_PATHS,DIRECTIVE_MASK_PATHS,FACT_MASK_PATHS,STORE_MASK_PATHS,campaignMaskPaths,metricMaskPaths,type InputMasking} from '@/lib/ai-context';
-import {maskFields} from '@/lib/pii-scan';
+import {evidenceContext,type InputMasking} from '@/lib/ai-context';
+// 제출(지시문·입력·가림 기록) 조립은 공개 순수 함수다(G1). 기준일(contextDate)은 인자로 넘겨 평가가 같은 본문을 재현한다.
+import {briefRequestFor,buildBriefSubmission} from '@/lib/brief-input';
 import {brandStoreAllow} from './store-allow-server';
 import {submitHermes,pollHermes,hermesSubmissionStatement} from '@/lib/hermes';
 import type {UsageContext} from '@/lib/usage-ledger';
 import {learningContext} from '@/lib/learning-server';
-import {briefInstructions,parseBrief,emptyPlan,type BriefDraft,type BriefInput} from '@/lib/brief';
+import {parseBrief,emptyPlan,type BriefDraft,type BriefInput} from '@/lib/brief';
 import type {Brand,Campaign,Artifact,Metric} from '@/lib/agency';
 import {ApiError,str,json,failure,database,recordStatement,readRecord,listRecords,connection,stamp,acquireLock,releaseLock,validateCampaign} from '@/lib/server';
 // 보관 캠페인 검사(PR 5d)를 소유자 잠금 안에서 한다(PR 4a-2).
 import {assertNotArchived} from './campaign-archive';
 // inputMasking: 제출 본문의 가림 기록(필드·종류·건수, 허용 값이라 가리지 않은 탐지는 allowed:true, 값 없음, 레인 A 입력 최소화). 브랜드 자료 가림 기록(4.4 ③, brandArchiveInput)을 뒤에 합친다.
 type StoredDraft=BriefDraft&{providerId?:string;inputMasking?:InputMasking[]};
-// 가림 경로(③)와 담당자 자리표시(④). 확정 사실 값은 허용 값이라 경로에 없고, 후보·금지 사실 값과 점포 맥락의 지점 자유 텍스트는 가린다. 사실 후보 출처 확인(parseBrief)은 저장한 원 입력으로 한다.
-const BRIEF_MASK_PATHS=[...BRAND_MASK_PATHS,...DIRECTIVE_MASK_PATHS,...FACT_MASK_PATHS,...STORE_MASK_PATHS,...campaignMaskPaths('currentBrief'),'previousCampaigns.*.title','previousCampaigns.*.goal','previousCampaigns.*.plan.*',...metricMaskPaths('recordedMetrics'),'approvedLearnings.*.title','approvedLearnings.*.content'];
 const active=(d:BriefDraft)=>['starting','queued','in_progress','uncertain'].includes(d.status);
 const publicDraft=({providerId:_,...draft}:StoredDraft)=>draft;
 // 사용량 조인 키(F2a). 브리프 초안은 jobs 행이 없어 초안 id를 실행 단위로 쓴다. 인라인 지시라 스킬 버전은 없다.
@@ -36,13 +34,10 @@ export async function executeBrief(owner:string,b:Record<string,unknown>){let lo
    if(campaignId){const meeting=await database().prepare("SELECT id FROM jobs WHERE owner=? AND campaign_id=? AND role='meeting' AND status IN ('starting','queued','in_progress','uncertain')").bind(owner,campaignId).first();if(meeting)throw new ApiError(409,'팀 회의가 진행 중입니다. 회의를 완료하거나 중지한 뒤 초안을 작성하세요.');}
    const brand=await readRecord<Brand>(owner,'brand',input.brandId);
    const trialLearning=await learningContext(owner,input);const {archive,sourceMasking}=await brandArchiveInput(owner,brand.id,input.storeId);const evidence=await evidenceContext(database(),owner,{id:campaignId||'',brandId:brand.id,storeId:input.storeId});
-   const previous=(await listRecords<Campaign>(owner,'campaign')).filter(c=>c.brandId===brand.id&&c.id!==campaignId&&(!input.storeId||c.storeId===input.storeId)).slice(0,3);
-   const relevantIds=new Set(previous.map(c=>c.id));
-   const metrics=(await listRecords<Metric>(owner,'metric')).filter(m=>relevantIds.has(m.campaignId)).slice(0,6);
-   const artifacts=(await listRecords<Artifact>(owner,'artifact')).filter(a=>relevantIds.has(a.campaignId)&&a.status==='approved'&&['data','quality','insight'].includes(a.role)).slice(0,4).map(a=>({campaignId:a.campaignId,title:a.title,content:a.content.slice(0,2500)}));
-   const masked=maskFields({brand:aiBrand(brand),evidence:{facts:evidence.facts,directives:evidence.directives},brandArchive:withoutAssignees(archive),currentBrief:withoutPlanOwner(input),trialLearning,previousCampaigns:previous.map(c=>withoutPlanOwner({id:c.id,title:c.title,goal:c.goal,plan:c.plan,status:c.status,updatedAt:c.updatedAt})),recordedMetrics:metrics,approvedLearnings:artifacts,contextDate:stamp().slice(0,10)},BRIEF_MASK_PATHS,{allow:productionAllow(evidence,archive,await brandStoreAllow(owner,{brandId:brand.id,storeId:input.storeId}))});
-   const prepared:StoredDraft={id,input,status:'starting',campaignId,campaignVersion,model:cfg.model,createdAt:stamp(),updatedAt:stamp(),inputMasking:[...inputMaskingRecord(masked),...sourceMasking]};
-   await database().batch([recordStatement(owner,'brief_draft',id,prepared),hermesSubmissionStatement(owner,'brief-'+id,{instructions:briefInstructions+'\n'+campaignEvidencePolicy(input),input:JSON.stringify(masked.value)})]);
+   // 이전 캠페인 3건·성과 6건·승인 작업물 4건 선택과 가림은 lib/brief-input.ts가 한다. 기준일은 지금 날짜(stamp)다.
+   const built=buildBriefSubmission(briefRequestFor({campaignId,input,brand,evidence,archive,sourceMasking,trialLearning,campaigns:await listRecords<Campaign>(owner,'campaign'),metrics:await listRecords<Metric>(owner,'metric'),artifacts:await listRecords<Artifact>(owner,'artifact'),contextDate:stamp().slice(0,10),storeAllow:await brandStoreAllow(owner,{brandId:brand.id,storeId:input.storeId})}));
+   const prepared:StoredDraft={id,input,status:'starting',campaignId,campaignVersion,model:cfg.model,createdAt:stamp(),updatedAt:stamp(),inputMasking:built.maskingRecord};
+   await database().batch([recordStatement(owner,'brief_draft',id,prepared),hermesSubmissionStatement(owner,'brief-'+id,{instructions:built.instructions,input:built.input})]);
    pending=prepared;
    const result=await submitHermes(owner,'brief-'+id,cfg);
    pending={...pending,providerId:result.id,status:'queued',updatedAt:stamp()};await recordStatement(owner,'brief_draft',id,pending).run();return json(publicDraft(pending));

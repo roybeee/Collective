@@ -1,0 +1,38 @@
+{
+ "baseSha": "7b897c900e215bb22c24bdeda43f816b7c95907c",
+ "capture": "기준 커밋 스냅샷(git archive)에서 tests/assembly-export.test.mjs와 같은 시드·모의 HERMES·고정 시각(2026-03-15T09:00Z)으로 운영 경로(executeMeeting 교정 재시도, executeBrief start)를 실행해 hermes_submission 본문과 저장 가림 기록의 sha256·길이만 뽑았다.",
+ "providerCalls": {
+  "external": 0
+ },
+ "contextDate": "2026-03-15",
+ "correctionRetry": {
+  "submission": "g1-meeting:discussion:strategy:retry:1",
+  "instructions": {
+   "sha256": "3087f1355142b229bd16b06e2750620ad85f57a502f220ce752050b4a039967d",
+   "length": 4250
+  },
+  "input": {
+   "sha256": "4f628f458f1ccc1242b65d0b7bb96c89756fa3f4ffa345307eee95b9200fc247",
+   "length": 4501
+  },
+  "inputMasking": {
+   "sha256": "337d3f359d102f4431912144c489f31f6e39a37aa5152662a21bc6d14b6600c4",
+   "length": 115
+  }
+ },
+ "brief": {
+  "submission": "brief-g1-brief",
+  "instructions": {
+   "sha256": "f3127abde9845a21ad376a6d0f1174a51f5ebb38a7ca3097755e2ec4188518b1",
+   "length": 3897
+  },
+  "input": {
+   "sha256": "38c54ae220d15ee8014247586bc1d8205e2724bceaeb221d20ab3206df82bc1e",
+   "length": 4331
+  },
+  "inputMasking": {
+   "sha256": "7f94b09c92ddb79b0730ff25ef3dd511592637c45a3c3a73c4744ebfa1556f30",
+   "length": 137
+  }
+ }
+}

@@ -8,7 +8,7 @@ import {PRACTICE_VERSION} from './practice';
 import {runGraders,runPreventionGraders,GRADERS_VERSION,type GraderResult,type GraderStatus,type FactLedger,type GradeContext,type EvalItem} from './graders/index';
 import {bodyOf,rawNormalization} from './graders/text';
 import type {OutputNormalization} from './output-normalize';
-import {checkCompliance} from './graders/compliance';
+import {checkCompliance,COMPLIANCE_LEXICON} from './graders/compliance';
 import {compareRuns,pairReport} from './eval-stats';
 import {gatewayBasis} from './gateway-snapshot';
 import {roles,type Campaign,type Brand} from './agency';
@@ -24,7 +24,8 @@ const MAX_TOKEN_BUDGET=10000000,MAX_REQUEST_CHARS=900000,RUN_ID=/^[a-zA-Z0-9_-]{
 type Who={id:string;email:string|null};
 type EvalSet='dev'|'sealed';
 export type EvalExpectations={prohibitedTerms:string[];facts:FactLedger|null;industry:string|null;localStore:boolean;inputTokenCap?:number};
-export type EvalCase={id:string;role:string;label:string;set:EvalSet;request:RoleRequest;expectations:EvalExpectations;campaignId:string|null;source:'capture'|'manual';capturedWith:{skillVersion:string;outputContractVersion:string};setChanges?:{from:EvalSet;to:EvalSet;at:string;by:Who}[];createdBy:Who;createdAt:string;updatedAt:string};
+// expectationsUpdatedAt: 기대 판정(expectations)이 실제로 바뀐 마지막 시각. 이름·세트만 고치면 바뀌지 않는다(재채점의 caseUpdatedAfterRun 판정).
+export type EvalCase={id:string;role:string;label:string;set:EvalSet;request:RoleRequest;expectations:EvalExpectations;campaignId:string|null;source:'capture'|'manual';capturedWith:{skillVersion:string;outputContractVersion:string};setChanges?:{from:EvalSet;to:EvalSet;at:string;by:Who}[];expectationsUpdatedAt?:string;createdBy:Who;createdAt:string;updatedAt:string};
 type StoredConnection={secret:string;host:string;isolationConfirmed:boolean;note:string;status:'ready'|'blocked';statusReason:string|null;model:string|null;checkedAt:string;updatedAt:string;updatedBy:Who};
 type Conn={endpoint:string;key:string};
 type Tokens={input:number|null;output:number|null;total:number|null};
@@ -37,8 +38,9 @@ export type EvalCaseResult={caseId:string;label:string;set:EvalSet;role:string;v
 type StopReason='budget_reached'|'monthly_cap_reached'|'usage_unreported';
 // deleted: delete_run은 결과·출력만 지우고 예산 장부(usedTokens·tokenBudget·createdAt)와 감사 기록(overBudgetApproved·sealedUsed)을 남긴다. 월 누적이 줄지 않게 하려는 것이다.
 // pair: 쌍 평가(F3b) 대상 단위·후보·active 버전과 두 쪽 본문(시작 때 고정). gatewaySnapshotEnd: pair run이 끝날 때 같은 방식으로 다시 잰 게이트웨이 기준.
+// regrades: 같은 저울 재채점 기록(아래 '같은 저울 재채점'). results와 별개이며 results를 바꾸지 않는다.
 export type EvalPair=PairPrompts&{skippedCases:number};
-export type EvalRun={gatewaySnapshot?:EvalGatewayBasis;gatewaySnapshotEnd?:EvalGatewayBasis;pair?:EvalPair;id:string;label:string;variant:'active'|'pair';set:EvalSet|null;caseIds:string[];tokenBudget:number;usedTokens:number;status:'queued'|'running'|'completed'|'cancelled'|'blocked';stopReason?:StopReason;blockedReason?:string;overBudgetApproved?:{reason:string;by:Who;at:string;exceeded:string[];monthCommitted:number};sealedUsed?:{by:Who;at:string;cases:number};host:string|null;createdBy:Who;createdAt:string;updatedAt:string;cancelledBy?:Who;deleted?:{by:Who;at:string;cases:number};results:EvalCaseResult[]};
+export type EvalRun={gatewaySnapshot?:EvalGatewayBasis;gatewaySnapshotEnd?:EvalGatewayBasis;pair?:EvalPair;id:string;label:string;variant:'active'|'pair';set:EvalSet|null;caseIds:string[];tokenBudget:number;usedTokens:number;status:'queued'|'running'|'completed'|'cancelled'|'blocked';stopReason?:StopReason;blockedReason?:string;overBudgetApproved?:{reason:string;by:Who;at:string;exceeded:string[];monthCommitted:number};sealedUsed?:{by:Who;at:string;cases:number};host:string|null;createdBy:Who;createdAt:string;updatedAt:string;cancelledBy?:Who;deleted?:{by:Who;at:string;cases:number};results:EvalCaseResult[];regrades?:EvalRegrade[]};
 type Step={run:EvalRun;writes?:D1PreparedStatement[]};
 // 시작 시점 게이트웨이 기준(F2b): operational은 운영 연결의 최신 passed 스냅샷(평가 연결 기준이 아님), eval은 같은 스냅샷 함수로 잰 평가 연결 해시(막히면 blocked).
 export type EvalGatewayBasis=Awaited<ReturnType<typeof gatewayBasis>>;
@@ -163,12 +165,15 @@ async function saveCase(owner:string,input:Record<string,unknown>,by:Who){
 async function caseInUse(owner:string,caseId:string){
  return !!await database().prepare("SELECT 1 FROM records WHERE owner=? AND kind='eval_run' AND json_extract(data,'$.status') IN ('queued','running') AND EXISTS (SELECT 1 FROM json_each(json_extract(data,'$.caseIds')) WHERE value=?) LIMIT 1").bind(owner,caseId).first();
 }
+// 기대 판정이 바뀐 마지막 시각. 이 필드가 생기기 전에 고친 케이스는 무엇을 고쳤는지 모르므로 마지막 수정 시각(updatedAt)으로 본다(표시가 빠지지 않는 쪽).
+const expectationsChangedAt=(kase:EvalCase)=>kase.expectationsUpdatedAt??kase.updatedAt;
 // 요청(request)은 동결 대상이라 바꾸지 않는다. 이름·세트·기대 판정만 고치고, 세트 이동은 기록한다(봉인 세트를 보고 고친 케이스는 dev로 옮긴다).
 // 채점은 결과를 받을 때 케이스의 기대 판정을 읽는다. 진행 중 run이 쓰는 케이스의 기대 판정·세트를 바꾸면 한 run(쌍 평가의 두 쪽)이 다른 기준으로 채점되므로 409로 막는다. 이름은 바꿀 수 있다.
 async function updateCase(owner:string,input:Record<string,unknown>,by:Who){
  const kase=await readRecord<EvalCase>(owner,'eval_case',str(input.id,'평가 케이스',100,true)),set=evalSet(input.set,kase.set),at=stamp();
  if((input.expectations!==undefined||set!==kase.set)&&await caseInUse(owner,kase.id))throw new ApiError(409,'진행 중인 평가 실행이 이 케이스를 쓰고 있습니다. 실행을 끝내거나 취소한 뒤 기대 판정·세트를 고치세요.');
- const next:EvalCase={...kase,label:input.label===undefined?kase.label:str(input.label,'케이스 이름',200,true),set,expectations:input.expectations===undefined?kase.expectations:expectationsOf(input.expectations,kase.expectations.facts),...(set!==kase.set?{setChanges:[...(kase.setChanges||[]),{from:kase.set,to:set,at,by}]}:{}),updatedAt:at};
+ const expectations=input.expectations===undefined?kase.expectations:expectationsOf(input.expectations,kase.expectations.facts),changed=JSON.stringify(expectations)!==JSON.stringify(kase.expectations);
+ const next:EvalCase={...kase,label:input.label===undefined?kase.label:str(input.label,'케이스 이름',200,true),set,expectations,...(set!==kase.set?{setChanges:[...(kase.setChanges||[]),{from:kase.set,to:set,at,by}]}:{}),expectationsUpdatedAt:changed?at:expectationsChangedAt(kase),updatedAt:at};
  await recordStatement(owner,'eval_case',kase.id,next).run();
  return next;
 }
@@ -278,11 +283,12 @@ async function cancelRun(owner:string,input:Record<string,unknown>,by:Who){
  return next;
 }
 // 소프트 삭제: 출력(eval_output)과 케이스 결과를 지우고, 결정 5 장부(usedTokens·tokenBudget·createdAt)와 승인·봉인 세트 기록은 남긴다.
+// 재채점 기록(regrades)은 출력에서 나온 채점 상세라 결과와 함께 지운다.
 async function deleteRun(owner:string,input:Record<string,unknown>,by:Who){
  const run=await readRecord<EvalRun>(owner,'eval_run',str(input.id,'평가 실행',100,true)),db=database(),at=stamp();
  if(ACTIVE.includes(run.status))throw new ApiError(409,'진행 중인 평가 실행은 취소한 뒤 삭제하세요.');
  if(run.deleted)throw new ApiError(409,'이미 삭제한 평가 실행입니다.');
- const tombstone:EvalRun={...run,results:[],deleted:{by,at,cases:run.results.length},updatedAt:at};
+ const tombstone:EvalRun={...run,results:[],...(run.regrades?{regrades:[]}:{}),deleted:{by,at,cases:run.results.length},updatedAt:at};
  await db.batch([db.prepare("DELETE FROM records WHERE owner=? AND kind='eval_output' AND parent_id=?").bind(owner,run.id),recordStatement(owner,'eval_run',run.id,tombstone)]);
  return {id:run.id,deleted:true};
 }
@@ -387,6 +393,84 @@ export async function advanceEvalRun(owner:string,id:string){
  }catch(e){return failure(e)}finally{if(lock)await releaseLock(owner,lock)}
 }
 
+// ── 같은 저울 재채점(regrade_run) ──
+// 채점기·가드레일을 고치면 이전 run과 새 run의 결과는 다른 저울로 잰 값이 된다. 끝난 run의 저장 출력(eval_output)을 지금 코드의 채점기·규제 가드레일·
+// 예방 판정·정규화(gradeCase)로 다시 채점해 eval_run.regrades에 덧붙인다. 원래 results는 바꾸지 않고 모델·HERMES를 부르지 않는다(토큰 0).
+// 기록은 최근 EVAL_REGRADE_KEEP개만 두고 케이스별 상세(cases·skipped)는 최신 1개에만 둔다(이전 기록은 버전·합계만). run 행이 D1 행 한도를 넘지 않게 하려는 것이다.
+export const EVAL_REGRADE_KEEP=5;
+type ComplianceTally=Omit<Compliance,'version'>;
+// caseUpdatedAfterRun: 기대 판정은 지금 케이스 값으로 채점한다. run 뒤 케이스의 기대 판정을 고쳤으면 원래 채점과 기대 판정이 달랐을 수 있어 표시한다(이름·세트만 고치면 표시하지 않는다).
+export type EvalRegradeCase={caseId:string;label:string;role:string;variant:'active'|'candidate';caseUpdatedAfterRun?:true;summary:Record<GraderStatus,number>;graders:{id:string;status:GraderStatus}[];fails:{id:string;detail?:string}[];prevention:GraderResult[];normalization?:OutputNormalization;compliance:ComplianceTally};
+export type EvalRegradeTotals={cases:number;pass:number;fail:number;not_applicable:number;grader_error:number;preventionFail:number;block:number;warn:number;info:number;failsByGrader:Record<string,number>;issuesByRule:Record<string,number>};
+type RegradeSkip={caseId:string;label:string;variant:'active'|'candidate';reason:string};
+// original: 재채점한 같은 케이스들의 원래 결과 합계와 그때의 채점·사전 버전. 도구 변경 효과를 한 run 안에서 본다.
+export type EvalRegrade={id:string;at:string;by:Who;gradersVersion:string;complianceVersion:string;totals:EvalRegradeTotals;original:{gradersVersions:string[];complianceVersions:string[];totals:EvalRegradeTotals};cases?:EvalRegradeCase[];skipped?:RegradeSkip[]};
+type Graded={graders?:readonly {id:string;status:string}[];prevention?:readonly {status:string}[];compliance?:Partial<ComplianceTally>};
+const tally=(keys:string[])=>keys.reduce<Record<string,number>>((acc,k)=>({...acc,[k]:(acc[k]||0)+1}),{});
+function regradeTotals(rows:Graded[]):EvalRegradeTotals{
+ const graders=rows.flatMap(r=>r.graders||[]),count=(s:string)=>graders.filter(g=>g.status===s).length,sum=(k:'block'|'warn'|'info')=>rows.reduce((a,r)=>a+(Number(r.compliance?.[k])||0),0);
+ return {cases:rows.length,pass:count('pass'),fail:count('fail'),not_applicable:count('not_applicable'),grader_error:count('grader_error'),preventionFail:rows.flatMap(r=>r.prevention||[]).filter(g=>g.status==='fail').length,block:sum('block'),warn:sum('warn'),info:sum('info'),failsByGrader:tally(graders.filter(g=>g.status==='fail').map(g=>g.id)),issuesByRule:tally(rows.flatMap(r=>r.compliance?.issues||[]).map(i=>i.ruleId))};
+}
+// 출력 id는 pollCase가 저장한 형식과 같다(pair run은 쪽 이름을 붙인다).
+const outputKey=(run:EvalRun,r:EvalCaseResult)=>run.pair?`${run.id}:${r.caseId}:${r.variant}`:`${run.id}:${r.caseId}`;
+// 케이스가 삭제됐거나 출력이 없으면 채점하지 않고 이유(문자열)를 돌려준다.
+async function regradeResult(owner:string,run:EvalRun,r:EvalCaseResult):Promise<EvalRegradeCase|string>{
+ const kase=await optionalRecord<EvalCase>(owner,'eval_case',r.caseId);
+ if(!kase)return '평가 케이스가 삭제돼 기대 판정을 알 수 없습니다.';
+ const output=(await optionalRecord<{output?:unknown}>(owner,'eval_output',outputKey(run,r)))?.output;
+ if(typeof output!=='string')return '저장된 모델 출력이 없습니다.';
+ const {summary,graders,prevention,normalization,compliance:{block,warn,info,issues}}=gradeCase(kase,output,r.tokens?.input??null).result;
+ return {caseId:r.caseId,label:r.label,role:r.role,variant:r.variant,...(expectationsChangedAt(kase)>(r.completedAt||'')?{caseUpdatedAfterRun:true as const}:{}),summary,graders:graders.map(g=>({id:g.id,status:g.status})),
+  fails:graders.filter(g=>g.status==='fail').map(g=>({id:g.id,...(g.detail?{detail:g.detail}:{})})),prevention,...(normalization?{normalization}:{}),compliance:{block,warn,info,issues}};
+}
+const regradeMeta=(g:EvalRegrade):EvalRegrade=>({id:g.id,at:g.at,by:g.by,gradersVersion:g.gradersVersion,complianceVersion:g.complianceVersion,totals:g.totals,original:g.original});
+// 진행 중 run은 결과가 바뀌는 중이라 409, 삭제한 run은 출력이 없어 409. 끝난 run(completed·cancelled·blocked)의 completed 케이스만 다시 채점한다.
+// 기록은 compare-and-set이다: 읽은 행 원문이 그대로일 때만 쓴다. 채점하는 동안 delete_run·다른 재채점이 행을 바꿨으면 409로 끝내고 아무것도 쓰지 않는다
+// (삭제 tombstone이 이전 results로 되살아나지 않게).
+async function readRunRow(owner:string,id:string){
+ const row=await database().prepare("SELECT data FROM records WHERE id=? AND owner=? AND kind='eval_run'").bind(`${owner}:eval_run:${id}`,owner).first<{data:string}>();
+ if(!row)throw new ApiError(404,'항목을 찾을 수 없습니다.');
+ return {raw:row.data,run:JSON.parse(row.data) as EvalRun};
+}
+async function regradeRun(owner:string,input:Record<string,unknown>,by:Who){
+ const {raw,run}=await readRunRow(owner,str(input.id,'평가 실행',100,true));
+ if(ACTIVE.includes(run.status))throw new ApiError(409,'진행 중인 평가 실행은 끝나거나 취소한 뒤 재채점하세요.');
+ if(run.deleted)throw new ApiError(409,'삭제한 평가 실행은 출력이 없어 재채점할 수 없습니다.');
+ // 케이스를 하나씩 읽어 채점한다. 출력 원문(케이스당 최대 300,000자)을 한꺼번에 메모리에 올리지 않는다.
+ let outcomes:[EvalCaseResult,EvalRegradeCase|string][]=[];
+ for(const r of run.results.filter(x=>x.status==='completed'))outcomes=[...outcomes,[r,await regradeResult(owner,run,r)]];
+ const done=outcomes.flatMap(([r,o])=>typeof o==='string'?[]:[{r,o}]),originals=done.map(d=>d.r),cases=done.map(d=>d.o);
+ const skipped=outcomes.flatMap(([r,o])=>typeof o==='string'?[{caseId:r.caseId,label:r.label,variant:r.variant,reason:o}]:[]);
+ const regrade:EvalRegrade={id:uid(),at:stamp(),by,gradersVersion:GRADERS_VERSION,complianceVersion:COMPLIANCE_LEXICON.version,totals:regradeTotals(cases),
+  original:{gradersVersions:[...new Set(originals.map(r=>r.gradersVersion??'failure-types-v1'))],complianceVersions:[...new Set(originals.flatMap(r=>r.compliance?[r.compliance.version]:[]))],totals:regradeTotals(originals)},cases,skipped};
+ const next:EvalRun={...run,regrades:[...(run.regrades||[]).map(regradeMeta),regrade].slice(-EVAL_REGRADE_KEEP)};
+ const written=await database().prepare("UPDATE records SET data=?,updated_at=? WHERE id=? AND owner=? AND kind='eval_run' AND data=?").bind(JSON.stringify(next),stamp(),`${owner}:eval_run:${run.id}`,owner,raw).run();
+ if(!written.meta.changes)throw new ApiError(409,'재채점하는 동안 평가 실행이 바뀌었습니다(삭제·다른 재채점). 실행 상태를 확인하고 다시 재채점하세요.');
+ return {runId:run.id,...regrade};
+}
+// 조회·비교는 최신 재채점을 쓴다. regrade 값은 latest(또는 1)만 받는다.
+function wantsRegrade(params:URLSearchParams){
+ if(!params.has('regrade'))return false;
+ if(!['latest','1'].includes(params.get('regrade')||''))throw new ApiError(400,'regrade는 latest(또는 1)만 쓸 수 있습니다. 최신 재채점 결과를 봅니다.');
+ return true;
+}
+const latestRegrade=(run:EvalRun)=>run.regrades?.[run.regrades.length-1];
+async function regradeRead(owner:string,runId:string){
+ const run=await readRecord<EvalRun>(owner,'eval_run',runId);
+ if(run.deleted)throw new ApiError(409,'삭제한 평가 실행은 재채점 결과가 없습니다.');
+ const latest=latestRegrade(run);
+ if(!latest)throw new ApiError(404,'이 평가 실행의 재채점 결과가 없습니다. regrade_run으로 먼저 재채점하세요.');
+ return {runId:run.id,...latest};
+}
+// 재채점 비교: 두 run의 최신 재채점을 기존 비교 통계(compareRuns)에 넣는다. 채점기·사전 버전이 다르면 같은 저울이 아니므로 409로 둘 다 다시 재채점하게 한다.
+const regradeOutcomes=(run:EvalRun,g:EvalRegrade)=>({id:run.id,results:(g.cases||[]).map(c=>({caseId:c.caseId,status:'completed',gradersVersion:g.gradersVersion,graders:c.graders,prevention:c.prevention,normalization:c.normalization??null}))});
+function regradeCompare(a:EvalRun,b:EvalRun){
+ const [x,y]=[a,b].map(run=>{const g=latestRegrade(run);if(!g)throw new ApiError(409,`재채점 결과가 없는 평가 실행이 있습니다(${run.id}). regrade_run으로 두 실행을 먼저 재채점하세요.`);return g});
+ if(x.gradersVersion!==y.gradersVersion||x.complianceVersion!==y.complianceVersion)throw new ApiError(409,'두 실행의 최신 재채점 채점기·사전 버전이 다릅니다. 두 실행을 지금 코드로 다시 재채점한 뒤 비교하세요.');
+ const meta=(g:EvalRegrade)=>({id:g.id,at:g.at,gradersVersion:g.gradersVersion,complianceVersion:g.complianceVersion,totals:g.totals});
+ return {...compareRuns(regradeOutcomes(a,x),regradeOutcomes(b,y)),regrade:{baseline:meta(x),candidate:meta(y)}};
+}
+
 // ── API 진입점(app/api/eval/route.ts). 권한 검사는 라우트가 한다(소유자만). ──
 function variantOf(v:unknown){if(v!=='active'&&v!=='candidate')throw new ApiError(400,'variant는 active 또는 candidate여야 합니다.');return v}
 // 쌍 평가 결과: 두 쪽 비교 통계와 활성화 게이트 판정(lib/eval-stats.ts pairReport). 본문(PromptSet)은 빼고 버전 id만 보인다.
@@ -403,17 +487,18 @@ export async function evalRead(owner:string,params:URLSearchParams){
   const [a,b]=compare.split(','),runs=[await readRecord<EvalRun>(owner,'eval_run',str(a,'기준 실행',100,true)),await readRecord<EvalRun>(owner,'eval_run',str(b,'비교 실행',100,true))];
   if(runs.some(r=>r.deleted))throw new ApiError(409,'삭제한 평가 실행은 결과가 없어 비교할 수 없습니다.');
   if(runs.some(r=>r.variant==='pair'))throw new ApiError(400,'쌍 평가(pair) 실행은 한 run 안의 두 쪽을 ?pair=<run>으로 비교합니다.');
-  return compareRuns(runs[0],runs[1]);
+  return wantsRegrade(params)?regradeCompare(runs[0],runs[1]):compareRuns(runs[0],runs[1]);
  }
  if(params.has('pair'))return pairRead(owner,id('pair','평가 실행'));
  if(params.has('run')&&params.has('caseId'))return readRecord(owner,'eval_output',`${id('run','평가 실행')}:${id('caseId','평가 케이스')}${params.has('variant')?':'+variantOf(params.get('variant')):''}`);
+ if(params.has('run')&&wantsRegrade(params))return regradeRead(owner,id('run','평가 실행'));
  if(params.has('run'))return readRecord<EvalRun>(owner,'eval_run',id('run','평가 실행'));
  if(params.has('case'))return readRecord<EvalCase>(owner,'eval_case',id('case','평가 케이스'));
  const [conn,cases,runs,usage]=await Promise.all([optionalRecord<StoredConnection>(owner,'eval_connection','current'),listRecords<EvalCase>(owner,'eval_case'),listRecords<EvalRun>(owner,'eval_run'),evalMonthUsage(owner)]);
  return {connection:publicConnection(conn),cases:cases.map(caseSummary),runs,usage};
 }
 const ACTIONS:Record<string,(owner:string,input:Record<string,unknown>,by:Who)=>Promise<unknown>>={
- save_connection:saveConnection,check_connection:(owner,_input,by)=>checkConnection(owner,by),capture_case:captureCase,save_case:saveCase,update_case:updateCase,delete_case:deleteCase,cancel_run:cancelRun,delete_run:deleteRun,
+ save_connection:saveConnection,check_connection:(owner,_input,by)=>checkConnection(owner,by),capture_case:captureCase,save_case:saveCase,update_case:updateCase,delete_case:deleteCase,cancel_run:cancelRun,delete_run:deleteRun,regrade_run:regradeRun,
 };
 export async function evalAction(owner:string,input:Record<string,unknown>,actor:Actor):Promise<Response>{
  const by=who(actor),name=String(input.action);
