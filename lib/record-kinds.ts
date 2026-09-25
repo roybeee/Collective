@@ -7,7 +7,7 @@ import type {ViralExperiment,LearningMetric,LearningRule} from './learning';
 // delete: 캠페인과 함께 삭제 · retain: 캠페인과 이어져 있어도 남김 · retire_and_mark: 종료 상태와 삭제 표시로 남김 · not_campaign_scoped: 캠페인과 무관
 export type CampaignDeletionPolicy='delete'|'retain'|'retire_and_mark'|'not_campaign_scoped';
 // parent_id에 들어가는 값의 유형. none은 빈 문자열이다.
-export const recordParents=['none','brand','campaign','store','viral_case','viral_experiment','brand_fact','media','eval_run'] as const;
+export const recordParents=['none','brand','campaign','store','viral_case','viral_experiment','brand_fact','media','eval_run','franchise_lead'] as const;
 export type RecordParent=typeof recordParents[number];
 // 레코드가 캠페인에 이어지는 경로. 삭제와 삭제 영향 조회가 같은 조건을 쓴다.
 export type CampaignLink='self'|'parent'|'brief_draft'|'draft_submission'|'job_submission'|'experiment_child'|'experiment_rule'|'guidance_job'|'sequence_attempt'|'data_campaign';
@@ -15,7 +15,12 @@ export type CampaignLink='self'|'parent'|'brief_draft'|'draft_submission'|'job_s
 // keep: 완전 삭제에서도 남김 · delete: 이 캠페인에 이어진 행을 남기지 않고 삭제 · not_created: 기본 삭제가 만드는 보존 요약이라 완전 삭제는 만들지 않음
 // · delete_all: 캠페인과 상관없이 소유자의 기존 행을 모두 지움(현재 이 값을 쓰는 kind는 없다. 비식별 평가 신호는 다른 캠페인의 이관분을 지우지 않도록 not_created다)
 export type LearningPurge='keep'|'delete'|'not_created'|'delete_all';
-export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;description:string};
+// 트랙 R(가맹) kind만 선언하는 보존·정보주체 삭제 축(docs/FRANCHISE-RECRUITMENT-PLAN.ko.md '데이터 모델과 경계'). 기존 kind는 두 축이 없다(tests/record-kinds.test.mjs).
+// retention: basis statutory(법정 기준 준용)·policy(COLLECTIVE 휴리스틱), anchor 기산 기준, days 기간(null=기산 기준을 따름), ref 근거. 모두 법률 자문이 아니다(결정 20 보류).
+// subjectErasure: 정보주체 삭제 요청 때의 동작. delete 삭제 · minimize 개인정보 필드만 지움 · legal_hold 보존(개인정보 없음) · none 개인정보 없음.
+export type RetentionPolicy={basis:'statutory'|'policy';anchor:string;days:number|null;ref:string};
+export type SubjectErasure='delete'|'minimize'|'legal_hold'|'none';
+export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;retention?:RetentionPolicy;subjectErasure?:SubjectErasure;description:string};
 
 export const recordKinds:readonly RecordKind[]=[
  {kind:'account_event',parent:'none',campaignDeletion:'not_campaign_scoped',description:'계정 초대·역할 변경·잠금 등 워크스페이스 계정 감사 기록'},
@@ -115,6 +120,18 @@ export const recordKinds:readonly RecordKind[]=[
 // 중지 때 재확인 표시는 새 kind 없이 캠페인 이력(event)의 playbookRecheck detail로 남겨 캠페인과 함께 지운다.
  // token_budget 묶음(마지막 3개, tests/token-budget.test.mjs 고정) 앞에 둔다.
  {kind:'playbook_audit',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'운영자 선호 규칙 감사 기록(생성·승인·중지·연장, 전후 상태·규칙 버전·만료·중지 때 재확인 작업물 수·행위자 id·역할). 추가만 하고 이메일·본문 원문은 담지 않는다(B3-1)'},
+ // 트랙 R 가맹 모집(R1a·R4b, 대표 결정 20·22). 모두 캠페인과 무관하고(캠페인 id는 귀속 참조일 뿐) 보존·정보주체 삭제 축을 선언한다. 구현된 삭제는 리드 연락처 파기(180일·계약 리드 종결 뒤 1095일),
+ // 중복 키 삭제, 365일 지난 감사 기록(backdate 제외) 삭제뿐이고 나머지 보존 값은 선언이다(lib/franchise-server.ts). 비식별 신호·eval_budget_approval·token_budget 묶음 앞에 둔다.
+ {kind:'franchise_profile',parent:'brand',campaignDeletion:'not_campaign_scoped',retention:{basis:'policy',anchor:'updated',days:null,ref:'이력은 감사 기록'},subjectErasure:'none',description:'가맹 프로필(준비도 분기·산정서 판단 입력·공휴일 목록·보관 위치 라벨·적격 기준 버전). 캠페인과 무관. 개인정보 없음'},
+ {kind:'franchise_disclosure_version',parent:'brand',campaignDeletion:'not_campaign_scoped',retention:{basis:'policy',anchor:'last_contract_closed',days:1095,ref:'제11조③·제32조① 준용(휴리스틱)'},subjectErasure:'none',description:'정보공개서 버전(라벨·파일 SHA-256·등록 시각·유효 기간·보관 위치 라벨). 원본 파일은 올리지 않는다. 캠페인과 무관'},
+ {kind:'franchise_contract_template',parent:'brand',campaignDeletion:'not_campaign_scoped',retention:{basis:'policy',anchor:'retired',days:1095,ref:'제11조③ 준용(휴리스틱)'},subjectErasure:'none',description:'가맹계약서안 템플릿(라벨·SHA-256·제11조② 13개 호 확인 상태·보관 위치 라벨). 서명한 계약서가 아니다. 캠페인과 무관'},
+ {kind:'franchise_privacy_notice',parent:'brand',campaignDeletion:'not_campaign_scoped',retention:{basis:'policy',anchor:'retired',days:1095,ref:'동의·고지 입증(휴리스틱)'},subjectErasure:'none',description:'개인정보 안내문 버전(버전 이름·본문·SHA-256·처리자·수탁자 이름). 관리자가 입력한 문구이고 리드 값은 담지 않는다. 캠페인과 무관'},
+ {kind:'franchise_lead',parent:'brand',campaignDeletion:'not_campaign_scoped',retention:{basis:'policy',anchor:'last_activity',days:180,ref:'H11 · 계약 리드는 종결 뒤 1095일'},subjectErasure:'minimize',description:'가맹 리드(이름·전화·이메일·메모는 v1. 암호문만, 과업 필드·수집 근거·광고성 정보 동의 상태·담당자 id·단계). 캠페인 id는 귀속 참조일 뿐 캠페인과 무관. 가린 값·평문은 담지 않는다'},
+ {kind:'franchise_lead_key',parent:'franchise_lead',campaignDeletion:'not_campaign_scoped',retention:{basis:'policy',anchor:'last_activity',days:180,ref:'H11 · 연락처와 함께 파기'},subjectErasure:'delete',description:'리드 중복 키(소유자·브랜드 범위 HMAC이 id, 리드 id·유형만). 평문 연락처는 담지 않는다. 캠페인과 무관'},
+ {kind:'franchise_lead_event',parent:'franchise_lead',campaignDeletion:'not_campaign_scoped',retention:{basis:'policy',anchor:'lead',days:null,ref:'리드와 같음(개인정보 없음)'},subjectErasure:'none',description:'리드 이력(단계·사유 코드·필드 이름·수집 근거·동의 방법과 안내문 id·행위자 id와 역할·요청 영수증). 연락처 값은 담지 않는다. 캠페인과 무관'},
+ {kind:'franchise_delivery',parent:'franchise_lead',campaignDeletion:'not_campaign_scoped',retention:{basis:'statutory',anchor:'contract_closed',days:1095,ref:'제11조③·제32조① 준용 · 산정서 기록은 계약 체결일 5년(제9조⑥) · 미계약 리드는 H11'},subjectErasure:'legal_hold',description:'제공·자문·산정서·계약·가맹금·약정 증빙(추가 전용, 정정은 새 버전·무효화 행). 서버가 허용 필드만 다시 만들어 자유 텍스트·연락처 값이 들어갈 수 없다. 캠페인과 무관'},
+ {kind:'franchise_subject_request',parent:'brand',campaignDeletion:'not_campaign_scoped',retention:{basis:'policy',anchor:'resolved',days:1095,ref:'처리 입증(휴리스틱)'},subjectErasure:'none',description:'정보주체 요청(유형·접수 경로·접수 시각·처리 기한·상태·처리 코드·리드 id). 요청자 이름·연락처는 담지 않는다. 캠페인과 무관'},
+ {kind:'franchise_audit',parent:'brand',campaignDeletion:'not_campaign_scoped',retention:{basis:'policy',anchor:'recorded',days:365,ref:'운영 휴리스틱 · backdate 행은 연결된 증빙과 같이 보존'},subjectErasure:'none',description:'가맹 감사 기록(열람·찾기·내보내기·파기·삭제·이른 증빙 시각·설정 변경: 행위자 id와 역할·리드 id·필드 이름·목적 코드·건수). 값은 담지 않는다. 캠페인과 무관'},
  // Q2 평가 월 승인(품질 계획 v2). 소유자 범위이고 캠페인과 무관하다(lib/eval-budget-server.ts). 비식별 신호와 token_budget 묶음(마지막 3개, tests/token-budget.test.mjs 고정) 앞에 둔다.
  {kind:'eval_budget_approval',parent:'none',campaignDeletion:'not_campaign_scoped',description:'서버 평가 토큰 월 상한 대표 승인(UTC 월당 1행, id YYYY-MM: cap·사유·승인자·시각). 다시 승인하면 이전 승인을 history에 남긴다. 승인이 없는 달은 기본 1,500,000(결정 5)이고 월 상한 판정(시작·제출 직전)이 이 cap을 읽는다'},
  // F4b-2 비식별 이관(대표 결정 7). 캠페인 삭제 때 만들고 캠페인과 잇지 않는다(links 없음, 가명 키). 소유자가 완전 삭제를 고르면 만들지 않고 기존 행도 지운다(lib/server.ts).

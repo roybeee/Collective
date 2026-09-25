@@ -4,7 +4,7 @@
 
 ## 역할별 권한 (이메일 모드)
 
-마지막 갱신: 2026-09-24 KST (F4a: 캠페인 삭제 영향 조회 행·결정 7 규칙 보존 추가, F5: 채널 연결 변경 행에 브랜드·지점 단위 추가, PR 6c: 아카이브 원본 파일 삭제 행 추가)
+마지막 갱신: 2026-09-25 KST (트랙 R R1a·R4b: `/api/franchise` 가맹 설정·리드 원장·연락처 열람·정보주체 요청 행 추가, 대표 결정 22. 검토 반영: 설정 정정·다시 사용 행, 출처 고지 `record_source_notice` 행. 이전: F4a 캠페인 삭제 영향 조회 행·결정 7 규칙 보존, F5 채널 연결 브랜드·지점 단위, PR 6c 아카이브 원본 파일 삭제 행)
 
 같은 워크스페이스의 계정은 대표(owner)·관리자(admin)·직원(member) 중 하나다. 대표는 DB에 따로 저장하지 않고 같은 워크스페이스에서 가장 먼저 만든 관리자 계정으로 계산한다(`lib/auth-session.ts` `roleSql`). 판정은 서버 API가 하며, 화면에서 버튼을 숨기는 것은 보조 수단이다. 직원이 관리자 전용 작업을 요청하면 403이다. legacy 모드(로컬 개발·E2E)의 헤더 사용자는 모든 권한을 가진다.
 
@@ -31,8 +31,23 @@
 | 채널 연결 변경(워크스페이스 기본·브랜드·지점 단위) | `/api/channels` POST `save_credential`·`revoke_credential` (`brandId`·`storeId` 선택) | 허용 | 허용 | 403 |
 | 사용량 단가 변경 | `/api/usage` POST | 허용 | 허용 | 403 |
 | 발행 설정·승인·실행·취소 | `/api/execution` `connect_buffer`·`save_limits`·`approve`·`execute`·`cancel` | 허용 | 허용 | 403 |
+| 가맹 설정(프로필·정보공개서 버전·계약서안 템플릿·개인정보 안내문 등록·사용 중지·다시 사용, 버전 등록일·유효 기간과 템플릿 확인 항목 정정), 설정·감사 기록 조회 | `/api/franchise` `save_profile`·`register_*`·`retire_*`·`amend_disclosure_version`·`amend_contract_template`, GET `settings`·`audit` | 허용(정정은 사유·감사) | 허용(정정은 사유·감사) | 403 |
+| 가맹 리드 등록·문의 조건 수정·연락처 수정(메모 덧붙이기 포함)·출처 고지 기록·일반 단계 이동·일반 단계에서 종결 | `/api/franchise` `create_lead`·`update_task`·`update_contact`·`record_source_notice`·`move_stage` | 허용 | 허용 | 본인 담당만(등록하면 본인 담당). 담당 없는 리드는 먼저 가져온다. 기능 스위치가 꺼지면 409(대표·관리자는 연락처 수정·출처 고지·종결을 계속한다) |
+| 증빙·계약 단계에서 종결, 다시 열기, 개점 | `/api/franchise` `move_stage`(`closed`·`opened`)·`reopen_lead` | 허용 | 허용 | 403 |
+| 가맹 리드 담당 가져오기 / 재배정 | `/api/franchise` `claim_lead` / `assign_lead` | 허용 / 허용 | 허용 / 허용 | 허용(담당 없는 리드만) / 403 |
+| 가맹 리드 연락처 원문 보기 | `/api/franchise` `reveal_contact` | 허용(감사) | 허용(감사) | 본인 담당만(감사). 담당 없는 리드·다른 직원 리드는 403 |
+| 연락처로 가맹 리드 찾기 | `/api/franchise` `find_contact` | 허용(감사) | 허용(감사) | 허용(감사, 보이는 리드만 id) |
+| 가맹 리드 내보내기(CSV) | `/api/franchise` `export_leads` | 허용(감사) | 허용(감사) | 403 |
+| 제공·자문·산정서·계약·가맹금·약정 증빙 기록, 기록 시각보다 이른 증빙 시각 | `/api/franchise` `record_*` | 허용(사유·감사) | 허용(사유·감사) | 403 |
+| 다른 리드에 잘못 적은 증빙 무효화 | `/api/franchise` `void_evidence` | 허용(사유·감사) | 허용(사유·감사) | 403 |
+| 연락처 파기 실행·정보주체 삭제 실행(그 리드의 접수된 삭제 요청을 완료로 기록)·정보주체 요청 처리(연결 리드 없는 요청의 리드 연결 1회 포함) | `/api/franchise` `purge`·`erase_lead`·`update_subject_request` | 허용 | 허용 | 403 |
+| 정보주체 요청 등록·광고성 정보 수신 철회 | `/api/franchise` `add_subject_request`·`set_marketing_consent`(`withdrawn`) | 허용 | 허용 | 허용(보이는 리드) |
+| 광고성 정보 수신 동의 기록 | `/api/franchise` `set_marketing_consent`(`given`) | 허용 | 허용 | 403 |
+| 가맹 모집 기능 스위치 `r_franchise` | `/api/feature-flags` | 허용 | 403 | 403 |
 | 서버 설치 파일 발급 | `/api/research-worker/setup` `download` | 아래 목록 판정 | 아래 목록 판정 | 403 |
 | 서버 작업자 연결 해제 | `/api/research-worker/setup` `revoke` | 허용 | 허용 | 403 |
+
+가맹 행(트랙 R, 대표 결정 22)은 `lib/franchise.ts`의 역할 판정(`canSeeLead`·`canReveal`·`canClose` 등)을 서버와 화면이 함께 쓴다. 직원은 본인 담당과 담당 없는 리드만 보고, 목록의 연락처는 언제나 가린 값이다. 원문 보기·찾기·내보내기는 값 없이 행위자 id·역할·리드 id·필드 이름·목적을 감사 기록(kind `franchise_audit`)에 남긴다. 직원 403은 mocked 테스트(`tests/franchise-pipeline.test.mjs`, `tests/franchise-contacts.test.mjs`)로 확인했고, 운영 real 확인은 직원 계정을 만든 뒤다. 기능 스위치가 꺼져도 조회·연락처 보기·내보내기·찾기·파기·정보주체 요청·광고성 정보 철회는 되고, 대표·관리자는 정보주체 요청 처리(정정·출처 고지·종결)도 한다. 게이트 결과와 기한은 COLLECTIVE 휴리스틱이며 법률 자문이 아니다(결정 20 보류).
 
 계정 초대·역할 변경·세션 종료 권한은 [EMAIL-AUTH.ko.md](EMAIL-AUTH.ko.md)를 따른다. 표에 없는 업무 API(아카이브의 위 세 줄 밖 작업·조사·지점·주문·학습 등)는 같은 워크스페이스의 로그인 사용자면 역할과 관계없이 허용한다. 확정 자료와 채택 진단은 AI 제작 맥락에 '확인된 근거'로 들어가므로(`lib/archive-server.ts` `brandArchiveContext`) 브랜드 사실과 같은 등급으로 관리자 전용이다. 상시 지시는 직원도 남길 수 있으므로 '확인된 근거'가 아니다. 저장할 때 작성자 역할(`createdBy.role`)을 남기고, AI 입력에는 `{text, author: 관리자|직원}`으로 전달하며, 역할·회의·브리프 지시문은 상시 지시가 사실을 확정하거나 거절 사실(`evidence.facts.prohibited`)·광고 표현 규칙을 무효화하지 못한다고 명시한다(`lib/campaign-policy.ts` `directivePolicy`). 앱 화면은 직원에게 관리자 전용 버튼을 그리지 않고 '관리자에게 요청하세요'를 안내한다(`useCanManage`). 사이드바 프로필은 로그인 계정을 보여 주지만 상단 계정 바(이메일·팀 계정 관리·비밀번호 변경·로그아웃)와 하나로 합치는 일은 이번 범위에서 뺐다.
 
