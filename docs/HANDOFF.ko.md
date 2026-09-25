@@ -8,7 +8,7 @@
 - 저장소: `roybeee/Collective`, 브랜치 `main`
 - 기준 SHA: `41ea80d`(#117). 운영은 `8c22f0e`(tree `02260ba`, Sites 버전 35, `published`, `/api/version` 확인 전)이다. 다음 묶음 13은 41ea80d에 게시 전 점검 수정(트랙 R 브랜치 PR)을 더한 main 커밋이고, 그 PR 병합 뒤 게시 요청 PR을 연다(자동 게시, [게시 절차 8절](PUBLISH.ko.md#8-자동-게시-chatgpt-예약-작업)).
 - 작성자/도구: Claude Code(트랙 R 세션)
-- 작성 시각: 2026-09-25 22:40 UTC
+- 작성 시각: 2026-09-25 22:15 UTC
 - 이 문서를 바꾸는 사람은 기준 SHA와 작성 시각을 같이 고친다.
 
 ## 먼저 읽을 것
