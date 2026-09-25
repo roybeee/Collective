@@ -1,7 +1,7 @@
 // E2E 전용 로컬 서버. 매 실행마다 빈 로컬 D1을 만들고 drizzle/ 마이그레이션을 적용한 뒤
 // 빌드 결과(dist/)를 wrangler --local로 띄운다. 운영 D1/R2에는 연결하지 않는다.
 // 빌드는 하지 않는다. 먼저 `node scripts/run-framework.mjs build`를 실행한다.
-import {existsSync, readdirSync, rmSync} from 'node:fs';
+import {existsSync, readdirSync, rmSync, mkdirSync, createWriteStream} from 'node:fs';
 import {spawn, spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 
@@ -34,12 +34,20 @@ for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => server.kill
 // workerd는 크래시 사유(예: *** Received signal #11)를 stdout으로 낸다. Playwright webServer는 stdout을 버리므로
 // CI에서 사유가 사라졌다. stdout은 그대로 흘려보내되 크래시 관련 줄만 stderr에도 복사하고, 종료 코드·시그널을 남긴다.
 const crashLine = /Received signal|Fatal|fatal error|uncaught|out of memory|Segmentation|Aborted|core dumped/i;
+// 서버 stdout 전체(요청마다 wrangler가 적는 경로·상태·처리 시간 포함)를 줄마다 UTC 시각을 붙여 e2e/artifacts/server-<여정>.log에 남긴다.
+// CI는 e2e/artifacts/를 늘 올린다. 응답 없이 멈춘 요청(예: meeting-quality.spec.ts:40의 첫 GET /api/workspace 60초 초과, docs/STATUS.md 테스트 흔들림)을
+// Playwright 시각과 맞춰 조사하려는 것이다. 이 파일은 로컬 E2E D1의 합성 데이터 요청 기록만 담는다.
+mkdirSync('e2e/artifacts', {recursive: true});
+const serverLog = createWriteStream(`e2e/artifacts/server-${emailAuth ? 'auth' : 'default'}.log`, {flags: 'w'});
 let pending = '';
 server.stdout.on('data', chunk => {
  process.stdout.write(chunk);
  const lines = (pending + chunk.toString('utf8')).split('\n');
  pending = lines.pop() ?? '';
- for (const line of lines) if (crashLine.test(line)) process.stderr.write(`[serve] ${line}\n`);
+ for (const line of lines) {
+  serverLog.write(`${new Date().toISOString()} ${line.replace(/\x1b\[[0-9;]*m/g, '')}\n`);
+  if (crashLine.test(line)) process.stderr.write(`[serve] ${line}\n`);
+ }
 });
 server.on('exit', (code, signal) => {
  if (pending && crashLine.test(pending)) process.stderr.write(`[serve] ${pending}\n`);

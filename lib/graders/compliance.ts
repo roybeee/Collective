@@ -64,7 +64,9 @@ function lastSentence<T>(fn:(n:string)=>T){
  let last:{n:string;value:T}|undefined;
  return (n:string)=>{if(last?.n!==n)last={n,value:fn(n)};return last.value};
 }
-const cutsOf=lastSentence(n=>{const cuts=[...n.matchAll(new RegExp(CLAUSE_CUT.source,'g'))];return {starts:cuts.map(c=>c.index!),ends:cuts.map(c=>c.index!+c[0].length)}});
+// 인용 문구 나열('“상품 선택하기”, “구매하기” 중 하나') 사이 쉼표는 절 경계가 아니다. 나열 앞의 조건('확인한 뒤')이 나열 전체에 걸린다.
+const listComma=(n:string,i:number)=>/[,，]/.test(n[i])&&/[”’"']\s*$/.test(n.slice(Math.max(0,i-3),i))&&/^\s*[“‘"']/.test(n.slice(i+1,i+4));
+const cutsOf=lastSentence(n=>{const cuts=[...n.matchAll(new RegExp(CLAUSE_CUT.source,'g'))].filter(c=>!listComma(n,c.index!));return {starts:cuts.map(c=>c.index!),ends:cuts.map(c=>c.index!+c[0].length)}});
 function clauseAround(n:string,at:number,end:number){
  const {starts,ends}=cutsOf(n),before=ends.filter(e=>e<=at),next=starts.findIndex(i=>i>=end);
  return n.slice(before.length?before[before.length-1]:0,at)+HELD_MARK+n.slice(end,next>=0?ends[next]:n.length);

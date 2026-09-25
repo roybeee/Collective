@@ -90,11 +90,16 @@ export const industryMetricLeak:Grader={id:'industry_metric_leak',content:true,g
 // '재방문율은'만으로는 정의가 아니다. 재방문율·재구매율이 든 절(쉼표·연결 어미 전)의 서술부가 '아니다·계산하지 않는다·측정 보류'면 정의가 아니다
 // ('30일 재방문율은 이번 결과의 주 KPI가 아니다'). 뒤 절의 '쿠폰 고객은 제외한다' 같은 단서는 정의를 지우지 않는다.
 const REVISIT_DEFINITION=/재(?:방문|구매)율\s*=|재(?:방문|구매)율\s*[:：][^.\n]{0,80}?(?:\/|÷|나눈|나누어|나눠|비율|비중|대비)|÷|나눈|나누어|나눠|수\s?\/\s?[^/]{1,40}?수|비율(?:로|을)\s?정의|재(?:방문|구매)율(?:은|는|이란|\s?:)[^.]{0,80}?(?:고객|손님|구매자|방문자|회원|수)\s?(?:의\s?)?(?:비율|비중)|재(?:방문|구매)율[^.]{0,80}?(?:으로|로)\s?(?:계산|산출|정의)(?:한다|합니다|하며|하고|해)/;
-const NOT_DEFINED=/(?:아니(?:다|며|고)?|아닙니다|아님|(?:계산|측정|산출|집계|사용|활용|보고|정의|추적)하?지\s?(?:않|말|못)[가-힣]{0,4}|쓰지\s?(?:않|말)[가-힣]{0,4}|보류(?:한다|합니다|함)?)$/;
+const NOT_DEFINED=/(?:아니(?:다|며|고)?|아닙니다|아님|(?:계산|측정|산출|집계|사용|활용|보고|정의|추적)하?지\s?(?:않|말|못)[가-힣]{0,4}|(?:계산|측정|산출|집계|판단|정의)할\s?수\s?(?:는\s?)?없[가-힣]{0,4}|쓰지\s?(?:않|말)[가-힣]{0,4}|보류(?:한다|합니다|함)?)$/;
 const REVISIT_TERM=/재(?:방문|구매)율/,REVISIT_CLAUSE_CUT=/[,，;；]|(?<![광재참최공신경원창])고\s|(?:며|면서|지만|는데|으나|니까|되)\s/;
+// 산식은 재방문율이 든 절 안에 있어야 한다. 앞 절의 다른 지표 산식('카드 회수율은 … ÷ …로 정의하고, 재방문율과 섞지 마세요')과
+// 'X는 재방문율이 아니라 Y'는 정의가 아니다(2026-09-25 파일럿 1 회의 토론의 상류 산식 비판).
+const REVISIT_ANY=/재(?:방문|구매)/,NOT_THE_RATE=/^재(?:방문|구매)율(?:이|가)\s?아(?:니|닌|닙)/;
 function defines(s:string){
  if(!REVISIT_DEFINITION.test(s))return false;
- const n=neutralize(s),clause=n.slice(Math.max(0,n.search(REVISIT_TERM))).split(REVISIT_CLAUSE_CUT)[0];
+ const n=neutralize(s),term=n.search(REVISIT_TERM),at=term<0?Math.max(0,n.search(REVISIT_ANY)):term;
+ const clause=n.slice(at).split(REVISIT_CLAUSE_CUT)[0],whole=(n.slice(0,at).split(REVISIT_CLAUSE_CUT).pop()||'')+clause;
+ if(!REVISIT_DEFINITION.test(whole)||NOT_THE_RATE.test(clause))return false;
  return !NOT_DEFINED.test(predicateOf(clause).slice(-24));
 }
 const REVISIT_LABEL=/^재(?:방문|구매)율$/,MATURED=/관찰(?:이|을)?\s?(?:끝난|마친|완료)|성숙|코호트/;

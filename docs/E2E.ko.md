@@ -17,7 +17,7 @@ node node_modules/@playwright/test/cli.js test -c playwright.auth.config.ts   # 
 ```
 
 - 서버는 Playwright가 `e2e/serve.mjs`로 직접 띄운다. 매 실행마다 `e2e/.state/`에 빈 로컬 D1을 만들고 `drizzle/*.sql`을 적용한 뒤 `wrangler dev --local`을 `127.0.0.1:8799`(`E2E_PORT`로 변경)에서 시작한다. 운영 D1/R2에는 연결하지 않는다.
-- 스크린샷(390×844 `mobile-*.png`, 1280×800 `desktop-*.png`), 실패 시 trace는 `e2e/artifacts/`에 남는다. 이 폴더와 `e2e/.state/`는 `.gitignore` 대상이라 빌드가 `dirty`로 표시되지 않는다.
+- 스크린샷(390×844 `mobile-*.png`, 1280×800 `desktop-*.png`), 실패 시 trace는 `e2e/artifacts/`에 남는다. 로컬 서버 stdout 전체(wrangler 요청 기록: 경로·상태·처리 시간)는 줄마다 UTC 시각을 붙여 `e2e/artifacts/server-default.log`(이메일 인증 여정은 `server-auth.log`)에 남는다. CI는 이 폴더를 늘 올리므로(`e2e-artifacts`), 응답 없이 멈춘 요청을 Playwright 시각과 맞춰 볼 수 있다(2026-09-25 `meeting-quality.spec.ts:40` 흔들림 조사용). 이 폴더와 `e2e/.state/`는 `.gitignore` 대상이라 빌드가 `dirty`로 표시되지 않는다.
 - 기본 설정(`playwright.config.ts`): 두 화면 크기(`mobile`, `desktop` 프로젝트) × 테스트 7개(`smoke` 5, `meeting-quality` 1, `execution` 1) = 14건.
 - 이메일 인증 설정(`playwright.auth.config.ts`): `email-auth` 1건(390px, HTTPS `127.0.0.1:8800`). 합계 15건.
 
