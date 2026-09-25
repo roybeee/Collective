@@ -1,18 +1,25 @@
 import type {Grader,GraderResult,GraderStatus,EvalItem,GradeContext} from './types';
 import {questionOnly,thinSection,contractJson,headingNesting,internalIdExposure} from './structure';
 import {briefProhibitionConflict,unsupportedClaimTerm,industryMetricLeak,revisitCohortDefinition,localChannelCoverage} from './content';
-import {factConflict,unconfirmedValueAssertion,inputBudget} from './ledger';
+import {factConflict,unconfirmedValueAssertion,inputBudget,brandIntroAsFact} from './ledger';
+import {meetingStepContract,revisionRepeat,seededDefectDetection} from './meeting';
+import {briefContract,briefInstructionViolation} from './brief';
 import {unnormalizedItem,rawNormalization} from './text';
-export type {Grader,GraderResult,GraderStatus,EvalItem,EvalKind,GradeContext,FactLedger} from './types';
+export type {Grader,GraderResult,GraderStatus,EvalItem,EvalKind,GradeContext,FactLedger,SeededDefect} from './types';
 export {INPUT_TOKEN_CAP} from './ledger';
 
 // 실패 유형 사전 v1(결정론 13종). 순서는 docs/EVAL.ko.md 정의표와 같다. 판정 임계값·ID 패턴은 이 파일들이 정본이다.
 // 'v1+normalized': 원 JSON(raw)은 사람이 보는 정규화 렌더본(lib/output-normalize.ts)으로 채점한다. 'failure-types-v1'은 정규화 전 렌더본을 채점했다(품질 기준선 v1).
 // '+measure-v2': 13종은 같고 부정·규칙 문장 판정(negation.ts)과 unsupported_claim_term·revisit_cohort_definition 판정을 고쳤다(측정 도구 v2). 판정이 바뀌면 이 값을 올려
 // 같은 저울 재채점(regrade_run)의 버전 검사와 비교(gradersVersions)가 저울 변경을 구분하게 한다.
-export const GRADERS_VERSION='failure-types-v1+normalized+measure-v2';
+// '+g3': 업종 사전에 fnb·education·popup·retail을 더하고 업종을 배열(주 업종+허용 업종)로 받아 industry_metric_leak 판정이 바뀌었다. 회의·브리프 채점기 6종(KIND_GRADERS)을 더했다.
+export const GRADERS_VERSION='failure-types-v1+normalized+measure-v2+g3';
 export const GRADERS:Grader[]=[questionOnly,thinSection,contractJson,headingNesting,internalIdExposure,briefProhibitionConflict,factConflict,unconfirmedValueAssertion,unsupportedClaimTerm,industryMetricLeak,revisitCohortDefinition,localChannelCoverage,inputBudget];
 export const CONTENT_GRADERS=GRADERS.filter(g=>g.content).map(g=>g.id);
+// 채점기 확장 G3: 회의 단계(합의·개선본·재검토)·브리프 채점기와 원장 구역 규칙. 적용 kind 밖이면 not_applicable이라 역할·발언 채점 결과를 바꾸지 않는다.
+// GRADERS(13종)는 운영 온라인 채점·기존 비교·검토 사유 매핑이 그대로 쓰고, 회의·브리프 평가는 runGraders(item,ctx,ALL_GRADERS)로 부른다.
+export const KIND_GRADERS:Grader[]=[meetingStepContract,revisionRepeat,seededDefectDetection,briefContract,briefInstructionViolation,brandIntroAsFact];
+export const ALL_GRADERS:Grader[]=[...GRADERS,...KIND_GRADERS];
 
 function safely(grader:Grader,item:EvalItem,ctx:GradeContext):GraderResult{
  try{return {id:grader.id,...grader.grade(item,ctx)}}
