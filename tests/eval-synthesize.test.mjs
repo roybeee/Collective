@@ -4,7 +4,7 @@
 // 가져온 케이스를 실행하면 평가 제출의 promptHash가 생성기 값과 같다.
 // 근거: mocked(스텁 HERMES, 메모리 SQLite, 합성 스펙 scripts/eval/specs/syn-s2-bakery.json). 외부 네트워크 호출은 0회다.
 import assert from 'node:assert/strict';
-import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
+import {readFileSync,readdirSync,mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
@@ -35,6 +35,12 @@ check('the brief context date follows the spec clock, not the wall clock',()=>as
 const changed=clone(spec);changed.briefs[0].data.goal+=' (수정)';
 const third=await synthesizeCases(changed,{generator}),byKey=r=>Object.fromEntries(r.cases.map(c=>[c.externalKey,c.specHash]));
 check('editing the brief changes the brief spec hash and keeps role and meeting hashes',()=>{const a=byKey(first),b=byKey(third);assert.ok(Object.keys(a).every(k=>k.includes(':brief:')?a[k]!==b[k]:a[k]===b[k]))});
+
+// 1-b) 저장소의 다른 dev 스펙도 지금 코드로 생성된다(코드가 바뀌어도 스펙이 썩지 않게). 봉인 스펙은 저장소 밖이라 여기 없다.
+for(const file of readdirSync('scripts/eval/specs').filter(f=>f.endsWith('.json')&&f!=='syn-s2-bakery.json').sort()){
+ const other=JSON.parse(readFileSync('scripts/eval/specs/'+file,'utf8')),out=await synthesizeCases(other,{generator});
+ check(`${file} generates dev cases covering the eight branches`,()=>assert.ok(other.set==='dev'&&out.cases.length>0&&CHECKLIST.every(k=>out.checklist[k])&&out.cases.every(c=>c.externalKey.startsWith(other.id+':')),JSON.stringify(out.checklist)));
+}
 
 // 2) CLI: 두 번 실행한 출력 파일이 같다.
 const dir=mkdtempSync(join(tmpdir(),'g4-synth-'));
