@@ -215,10 +215,10 @@ node scripts/eval/grade.mjs <case.json> [--json] [--detail]
 
 비유: 시험 문제지(케이스)를 봉투에 봉인해 두고, 연습실(평가 전용 프로필)에서만 풀게 한다. 한 번에 쓸 수 있는 종이(토큰)는 정해져 있고, 다 쓰면 남은 문제는 풀지 않은 것으로 적는다.
 
-- 코드: `lib/eval-server.ts`(연결·케이스·실행·채점), `lib/eval-stats.ts`(비교 통계), `app/api/eval/route.ts`, `lib/background-execution.ts`(`eval:<run id>` 작업), `lib/role-execution.ts`(`roleSources`·`roleRequestFor`로 요청 조립 DB 읽기를 추출, 동작 불변)
-- 테스트: `tests/eval-server.test.mjs`, `tests/eval-stats.test.mjs`, `tests/eval-regrade.test.mjs`(합성 데이터, 평가·운영 HERMES fetch 스텁, `passed · mocked`). 실제 HERMES 호출은 0회다.
+- 코드: `lib/eval-server.ts`(연결·케이스·실행), `lib/eval-kinds.ts`(평가 종류별 동결 검사·제출 조립·채점·예약, 8절), `lib/eval-budget-server.ts`(월 승인, 7절), `lib/eval-stats.ts`(비교 통계), `app/api/eval/route.ts`, `lib/background-execution.ts`(`eval:<run id>` 작업), `lib/role-execution.ts`(`roleSources`·`roleRequestFor`로 요청 조립 DB 읽기를 추출, 동작 불변. `roleSubmission`은 운영 start와 평가가 함께 쓰는 제출 조립, 8절)
+- 테스트: `tests/eval-server.test.mjs`, `tests/eval-stats.test.mjs`, `tests/eval-regrade.test.mjs`, `tests/eval-budget.test.mjs`, `tests/eval-kinds.test.mjs`(합성 데이터, 평가·운영 HERMES fetch 스텁, `passed · mocked`). 실제 HERMES 호출은 0회다.
 - 권한: 읽기·쓰기 모두 워크스페이스 소유자만 한다(`requireOwnerActor`). 비로그인 401, 관리자·직원 403, 다른 소유자의 케이스·실행·출력은 404. POST 본문은 1,000,000바이트 한도(413, `lib/http-limits.ts` 방식)다.
-- records kind: `eval_connection`, `eval_case`, `eval_run`, `eval_output`(부모 `eval_run`). 정책은 `lib/record-kinds.ts`에 있다.
+- records kind: `eval_connection`, `eval_case`, `eval_run`, `eval_output`(부모 `eval_run`), `eval_budget_approval`(월 승인, 7절). 정책은 `lib/record-kinds.ts`에 있다.
 - 운영 사용량 장부(`provider_usage`)에는 평가 토큰을 쓰지 않는다. 평가 토큰은 `eval_run.usedTokens`에만 있다. `delete_run`은 이 행을 지우지 않고 결과·출력만 비운다(아래 3절). 그래서 월 누적은 삭제로 줄지 않는다.
 - 첫 실측 기준선: [품질 기준선 v1 — 2026-09-24](observations/2026-09-24-quality-baseline-v1.md)(운영 `df7e253` 코드, dev 11케이스, 평가 전용 프로필 `collective-eval`, real). 결함 0개 산출물 0/11, 적용 채점기 통과율 58/81(71.6%), 규제 block 3건.
 - 품질 수정 v1 뒤 재평가: [품질 재평가 — 품질 수정 v1 뒤](observations/2026-09-24-quality-after-v1.md)(운영 `443fff4` 코드, 같은 케이스, real). 모델 원문의 내부 경로·제목 깊이 결함 0(정규화 건수 0, 예방 판정 fail 0), 결함 0개 산출물 MAPDAL 4/8. 남은 채점기 실패와 규제 block은 모두 측정 도구 오탐이라 측정 v2(부정·규칙 문장 판정, 사전 `compliance-lexicon-2026-09-25.1`)와 같은 저울 재채점(6절)을 더했다.
@@ -240,15 +240,17 @@ node scripts/eval/grade.mjs <case.json> [--json] [--detail]
 
 | 작업 | 입력 | 규칙 |
 |---|---|---|
-| `capture_case` | `campaignId`, `role`, `set?`, `label?`, `expectations?` | 운영 역할 실행 start와 같은 DB 읽기(`roleSources`→`roleRequestFor`)로 요청 객체를 만들어 JSON 그대로 동결한다. 실행 가능 여부 검사(진행 중 작업·앞선 담당 누락·현재 작업물 존재 409)는 적용하지 않아 끝난 캠페인에서도 캡처한다 |
-| `save_case` | `role`, `request`, `expectations?`, `set?`, `label?` | `request`는 운영 요청 구조(role·campaign·brand·archive·evidence·previous)여야 하고 현재 `buildRoleInstruction`·`buildRoleInput`이 받아야 한다. 900,000자를 넘으면 413 |
+| `capture_case` | `campaignId`, `role`, `kind?`, `externalKey?`·`specHash?`, `set?`, `label?`, `expectations?` | 운영 역할 실행 start와 같은 DB 읽기(`roleSources`→`roleRequestFor`)로 요청 객체를 만들어 JSON 그대로 동결한다(운영자 선호 블록 `operatorPreferences` 포함). 실행 가능 여부 검사(진행 중 작업·앞선 담당 누락·현재 작업물 존재 409)는 적용하지 않아 끝난 캠페인에서도 캡처한다 |
+| `save_case` | `role`, `request`, `kind?`, `externalKey?`·`specHash?`, `expectations?`, `set?`, `label?` | `request`는 운영 요청 구조(role·campaign·brand·archive·evidence·previous)여야 하고 현재 역할 제출 조립(`roleSubmission`, 운영 start와 같은 조립)이 받아야 한다. 선호 블록(`operatorPreferences`)은 있으면 `{note, rules:[]}` 형식이어야 한다. 900,000자를 넘으면 413 |
 | `update_case` | `id`, `label?`, `set?`, `expectations?` | 요청(`request`)은 바꾸지 않는다. 세트 이동은 `setChanges`에 누가·언제 남긴다. 진행 중 run이 쓰는 케이스의 `expectations`·`set` 변경은 409(이름은 가능) |
 | `delete_case` | `id` | 진행 중 run이 쓰는 케이스는 409 |
 
-- `expectations`는 채점 컨텍스트다: `prohibitedTerms`(큐레이션 금지 표현), `facts`(`{confirmed,prohibited}`, 캡처 기본값은 요청의 확정·거절 사실), `industry`, `localStore`, `inputTokenCap`.
+- `expectations`는 채점 컨텍스트다: `prohibitedTerms`(큐레이션 금지 표현), `facts`(`{confirmed,prohibited}`, 캡처 기본값은 요청의 확정·거절 사실), `industry`, `localStore`, `inputTokenCap`. 그 밖의 키는 저장하지 않는다. 케이스별 예약 토큰을 바꾸는 입력은 없다(예약은 종류의 값, 3절).
+- `kind`(평가 종류, 8절): `role`|`meeting_step`|`brief`. 없으면 `role`이고, 이 필드가 없는 옛 케이스도 `role`로 읽어 이행이 필요 없다. `meeting_step`·`brief`는 G2에서 채울 자리라 지금은 저장하면 400(지원하지 않는 평가 종류)이다. 목록 밖 값도 400이다. 저장된 케이스의 종류를 실행할 수 없으면 `start_run`이 400이고 run을 기록하지 않는다.
+- `externalKey`·`specHash`(생성기 멱등 키, G4 합성 생성기용): 둘을 함께 보낸다. 하나만 오거나 형식이 틀리면 400이다. `externalKey`는 영문·숫자로 시작하는 200자 이하(영문·숫자·`_ . : -`), `specHash`는 8~128자(영문·숫자·`_ : -`)다. 같은 소유자에게 같은 키·같은 해시 케이스가 있으면 새로 만들지 않고 그 케이스를 그대로 돌려준다(이름 등 다른 입력은 무시). 같은 키에 다른 해시가 오면 409이고 아무것도 바꾸지 않는다(동결 케이스는 덮어쓰지 않는다). 키는 소유자 범위이고, 케이스를 지우면 그 키도 다시 쓸 수 있다.
 - `set`은 `dev`(기본) 또는 `sealed`. `capturedWith`에 캡처 시점 `PRACTICE_VERSION`·`ROLE_OUTPUT_VERSION`을 남겨 퇴역 판단에 쓴다.
 - 캠페인을 삭제해도 `eval_case`는 남는다(`retain`, `data_campaign` 링크로 삭제 영향 조회의 보존 건수에 나온다). 동결 요청에는 캠페인·브랜드·앞선 작업물 원문이 들어 있으므로 필요 없어진 케이스는 소유자가 개별 삭제한다.
-- 드리프트 방지: `tests/eval-server.test.mjs`가 캡처한 요청으로 만든 지시문·입력이 같은 캠페인의 운영 start 제출 본문과 바이트 동일한지 확인한다.
+- 드리프트 방지: `tests/eval-server.test.mjs`가 캡처한 요청으로 만든 지시문·입력이 같은 캠페인의 운영 start 제출 본문과 바이트 동일한지 확인한다. 운영자 선호 규칙이 있는 캠페인은 `tests/eval-kinds.test.mjs`가 같은 확인을 한다(8절).
 
 ### 3. 실행(`eval_run`)
 
@@ -257,23 +259,24 @@ node scripts/eval/grade.mjs <case.json> [--json] [--detail]
 ```
 
 - 케이스는 `caseIds`(1~100개) 또는 `set`(dev|sealed, 100개 이하)으로 고른다. `variant`는 `active`(현재 코드) 또는 `pair`(F3b 쌍 평가, 아래 5절)만 받는다. 후보 단독 실행은 없다.
-- `tokenBudget`은 필수(없으면 400)이며 케이스 1건 예약량(`EVAL_CASE_TOKEN_RESERVE`, 50,000) 이상 정수다. 더 작으면 400이다.
-- 케이스 1건 예약량 50,000은 구현 선택이다. HERMES 제출에 토큰 상한이 없어서, 케이스 하나가 쓸 양을 미리 잡아 두는 값이다. 근거는 실측 역할 1회 7,343~13,997토큰(`docs/observations/2026-09-23-live-run.md`)이고, 예약량은 그 최댓값의 약 3.5배다. 대표가 바꿀 수 있다.
+- `tokenBudget`은 필수(없으면 400)이며 고른 케이스 중 가장 큰 케이스 1건 예약량(`reserveOf`, 역할 50,000) 이상 정수다. 더 작으면 400이다.
+- 케이스 1건 예약량(`reserveOf`)은 케이스 종류 처리기의 값이다(`lib/eval-kinds.ts`, 역할은 `EVAL_CASE_TOKEN_RESERVE` 50,000). 케이스마다 바꾸는 입력은 없다. 회의 단계처럼 다른 예약이 필요한 종류는 G2에서 그 처리기에 둔다. 역할 50,000은 구현 선택이다. HERMES 제출에 토큰 상한이 없어서, 케이스 하나가 쓸 양을 미리 잡아 두는 값이다. 근거는 실측 역할 1회 7,343~13,997토큰(`docs/observations/2026-09-23-live-run.md`)이고, 예약량은 그 최댓값의 약 3.5배다(기준선 실측 최대 25,790토큰의 약 1.9배). 대표가 바꿀 수 있다.
+- run 시작 때 결과 행마다 그 케이스의 예약을 `reserve`로 고정한다. 아래 표의 제출 직전 검사는 다음에 보낼 결과 행의 `reserve`를 쓴다. `reserve`가 없는 결과 행(Q1 전에 시작한 run)은 50,000으로 본다.
 - 진행 중(`queued`·`running`) 평가 run은 소유자당 1개(`EVAL_MAX_ACTIVE_RUNS`)다. 하나가 진행 중이면 새 `start_run`은 409이고 기록하지 않는다. 검사와 저장은 POST 라우트의 소유자 잠금 안에서 한다.
 
 | 예산(결정 5) | 기준 | 넘으면 |
 |---|---|---|
 | 스모크 1회 | `tokenBudget` ≤ 250,000 | 409 |
-| 월 절대 상한(시작) | 이번 UTC 월에 만든 run(삭제한 run 포함)의 보고 토큰 합 + 진행 중 run의 남은 예산 + 새 `tokenBudget` ≤ 1,500,000 | 409 |
-| run 예산(제출 직전) | 이 run의 보고 토큰 + 50,000 ≤ `tokenBudget` | 남은 케이스 `not_run`, `stopReason: budget_reached` |
-| 월 절대 상한(제출 직전) | run 생성 월의 보고 토큰 합 + 다른 진행 중 run의 남은 예산 + 50,000 ≤ 1,500,000. 월 상한 승인을 받은 run은 이 검사를 건너뛰고 run 예산만 본다 | 남은 케이스 `not_run`, `stopReason: monthly_cap_reached` |
-| 대표 건별 승인 | `overBudgetApproved: {"reason": "…"}` | 허용하고 run에 사유·승인자·시각·넘은 상한(`smoke_cap`·`monthly_cap`)·당시 월 누적을 기록 |
+| 월 절대 상한(시작) | 이번 UTC 월에 만든 run(삭제한 run 포함)의 보고 토큰 합 + 진행 중 run의 남은 예산 + 새 `tokenBudget` ≤ 그 달의 월 상한(월 승인 cap, 승인이 없으면 1,500,000. 아래 7절) | 409 |
+| run 예산(제출 직전) | 이 run의 보고 토큰 + 다음 케이스 예약(결과 행 `reserve`) ≤ `tokenBudget` | 남은 케이스 `not_run`, `stopReason: budget_reached` |
+| 월 절대 상한(제출 직전) | run 생성 월의 보고 토큰 합 + 다른 진행 중 run의 남은 예산 + 다음 케이스 예약(결과 행 `reserve`) ≤ 그 달의 월 상한(월 승인 반영). 건별 승인을 받은 run도 이 검사를 건너뛰지 않는다 | 남은 케이스 `not_run`, `stopReason: monthly_cap_reached` |
+| 대표 건별 승인 | `overBudgetApproved: {"reason": "…"}` | 시작만 허용하고 run에 사유·승인자·시각·넘은 상한(`smoke_cap`·`monthly_cap`)·당시 월 누적을 기록. 월 상한을 올리지는 않는다(올리려면 7절 월 승인). 이번 달 누적 + 첫 케이스 예약이 월 상한을 넘으면 승인이 있어도 409이고 run을 기록하지 않는다(제출 0건 run 방지). 월 상한 초과 409 문구는 월 승인(`set_budget_approval`)을 함께 안내한다 |
 
 - **시작 거부 정책(선택)**: 평가 연결이 없거나, 격리 미확인이거나, 연결 확인이 blocked이거나, 운영 연결이 같은 호스트면 run을 `blocked`(원인 `blockedReason`, 케이스는 모두 `not_run`)로 기록하고 409 `{error, run}`으로 답한다. 시도와 원인이 남는다. 입력 오류(400), 예산 초과(409), 진행 중 run 있음(409)은 기록하지 않는다.
 - 진행: 시작 요청은 공급자를 부르지 않는다. 백그라운드 워커(`POST /api/research-worker` tick)의 공정 큐가 `eval:<run id>`를 다른 작업과 같은 순번 커서로 돌린다. 진행 중 평가 run이 1개라 큐 순번에 평가 작업은 최대 1개다. 운영 작업이 차례를 기다리는 간격은 평가 때문에 한 순번에 한 tick만 늘어난다. tick마다 소유자 잠금 안에서 조회나 제출을 1건만 한다. 시간 초과나 막힘으로 보내는 중지 요청만 여기에 더해진다(아래 오류 분류). 제출 중인 케이스가 있으면 조회하고, 없으면 다음 케이스를 제출한다. 매 걸음 전에 연결 조건(격리·확인 상태·운영 호스트 충돌)을 다시 본다.
-- 제출 본문: `{instructions: buildRoleInstruction(request), input: buildRoleInput(request), session_id: <키>, conversation_history: []}`. 운영 HERMES 제출과 같은 모양이며 현재 코드의 조립기로 만든다. 지시문·입력의 SHA-256 앞 16자를 `promptHash`로 남긴다.
+- 제출 본문: `{instructions, input, session_id: <키>, conversation_history: []}`. `instructions`·`input`은 케이스 종류의 조립(`lib/eval-kinds.ts` `build`)이 만든다. 역할은 운영 start와 같은 `roleSubmission`(`lib/role-execution.ts`)이다. 동결 요청에 운영자 선호 블록이 있으면 입력 끝에 `operatorPreferences`, 지시문 끝에 권한 문장이 붙는다. 블록이 없으면 순수 조립(`buildRoleInstruction`·`buildRoleInput`)과 바이트 동일하다. 운영 HERMES 제출과 같은 모양이며 현재 코드의 조립기로 만든다. 지시문·입력의 SHA-256 앞 16자를 `promptHash`로 남긴다(기존 케이스의 `promptHash` 조건은 8절).
 - 멱등 키: `collective-eval-` + SHA-256(`<run id>:<case id>`) 앞 40자. `Idempotency-Key`·`X-Hermes-Session-Key` 헤더에 쓴다. 운영 키(`collective-<uuid>`)와 접두사가 달라 저장된 운영 키를 재사용할 수 없고, run마다 달라 같은 케이스를 다시 평가해도 이전 결과를 돌려받지 않는다. 같은 run·케이스의 재시도는 같은 키라 중복 실행을 막는다.
-- 예산 중단: 제출 직전마다 위 표의 run 예산·월 절대 상한(제출 직전)을 본다. 넘으면 다음 제출을 멈추고, 남은 케이스는 `not_run`(`stopReason: budget_reached` 또는 `monthly_cap_reached`)이 된다. 제출한 케이스가 토큰 사용량 없이 끝나도 예산을 지킬 수 없으므로 같은 방식으로 멈춘다(`usage_unreported`). 케이스 하나가 예약량 50,000보다 많이 쓰면 그 케이스만큼 run 예산을 넘을 수 있다. 그러면 다음 제출 직전 검사가 그 run을 멈추고, 늘어난 월 누적은 이후 run의 시작·제출 검사에 반영된다.
+- 예산 중단: 제출 직전마다 위 표의 run 예산·월 절대 상한(제출 직전)을 본다. 넘으면 다음 제출을 멈추고, 남은 케이스는 `not_run`(`stopReason: budget_reached` 또는 `monthly_cap_reached`)이 된다. 제출한 케이스가 토큰 사용량 없이 끝나도 예산을 지킬 수 없으므로 같은 방식으로 멈춘다(`usage_unreported`). 케이스 하나가 자기 예약(`reserve`, 역할 50,000)보다 많이 쓰면 그 케이스만큼 run 예산을 넘을 수 있다. 그러면 다음 제출 직전 검사가 그 run을 멈추고, 늘어난 월 누적은 이후 run의 시작·제출 검사에 반영된다.
 - 오류 분류: 401/403은 `blocked`(인증), 연결 불가·다른 주소로 이동은 `blocked`(연결)로 run을 멈춘다. 이것은 `failed`와 다르다. 제출 전 케이스는 `not_run`이 된다. 조회하던(제출 중) 케이스는 `blocked`가 되고 `providerRunId`를 유지한다. 연결은 살아 있는데 격리 해제·연결 확인 실패·운영 호스트 충돌로 게이트만 막힌 경우도 같다. 막힐 때 제출 중인 HERMES 실행이 있으면, 저장된 평가 연결이 그 run을 보낸 호스트일 때 중지를 요청한다. 요청 결과(확인함·확인하지 못함·연결이 없어 요청 못 함)는 케이스 `error`에 남긴다. 429·5xx는 워커 백오프(`background_attempt`)로 재시도한다. 그 밖의 4xx·실행 번호 오류·HERMES 실패·중단 보고는 해당 케이스만 `failed`. 30분 넘게 끝나지 않은 케이스는 중지를 요청하고 `failed`로 둔다.
 - 채점: 케이스가 끝나면 서버가 `runGraders`(13종)와 `checkCompliance`로 사람이 보는 정규화 렌더본을 채점한다. run에는 채점 버전(`gradersVersion`), 채점기별 `pass|fail|not_applicable|grader_error`(상세 200자), 요약 건수, 정규화 전 예방 판정(`prevention`, 2종)과 정규화 건수(`normalization`, 위 '정규화와 예방 판정'), 가드레일 등급별 건수·규칙 ID, 보고 모델, `providerRunId`, 토큰(입력·출력·합계), `durationMs`(제출~완료 관측, tick 간격 포함)를 남긴다. 모델 출력 원문과 발췌가 든 가드레일 상세는 `eval_output`(소유자 전용)에 둔다.
 - 봉인 세트: sealed 케이스를 쓰는 run은 `sealedUsed: {by, at, cases}`를 남긴다. 목적은 run `label`에 적는다.
@@ -295,7 +298,7 @@ run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
 
 | 요청 | 응답 |
 |---|---|
-| `GET /api/eval` | `connection`(비밀 없음), `cases`(요청 원문 제외 요약), `runs`, `usage: {month, usedTokens, reservedTokens, monthlyCap, smokeCap}` |
+| `GET /api/eval` | `connection`(비밀 없음), `cases`(요청 원문 제외 요약), `runs`, `usage: {month, usedTokens, reservedTokens, monthlyCap, approval, smokeCap}`(`monthlyCap`은 이번 달 월 승인 반영, `approval`은 이번 달 승인 레코드 또는 null, 7절) |
 | `GET /api/eval?case=<id>` | 케이스 전체(동결 요청 포함) |
 | `GET /api/eval?run=<id>` | run 전체 |
 | `GET /api/eval?run=<id>&caseId=<id>` | 모델 출력 원문과 가드레일 상세 |
@@ -340,12 +343,49 @@ run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
 - 한계: 버전 비교는 버전 문자열로만 한다. 채점기 판정을 바꾸면서 `GRADERS_VERSION`을, 사전을 바꾸면서 사전 버전을 올리지 않으면 이 검사는 저울이 바뀐 것을 구분하지 못한다. 저장 출력이 없는 케이스(1차 run의 실패 케이스처럼 `completed`가 아닌 케이스)는 재채점할 수 없다.
 - 테스트: `tests/eval-regrade.test.mjs`(합성 run·출력, 메모리 SQLite, fetch 스텁 호출 0, `passed · mocked`).
 
+### 7. 월 승인 레코드(`eval_budget_approval`, Q2)
+
+결론: 평가 토큰 월 상한은 이제 코드 상수가 아니라 UTC 달력 월마다 대표가 승인한 값(`cap`)이다. 승인이 없는 달은 결정 5의 기본 1,500,000이다. 시작 검사, 제출 직전 검사, `GET` 조회가 모두 이 값을 읽는다. 건별 승인(`overBudgetApproved`)은 시작만 허용하고, 제출 직전 월 누적 검사를 건너뛰지 못한다.
+
+비유: 가스 계량기에 이번 달 한도를 적어 두는 것과 같다. 한도를 올리려면 대표가 계량기 표(월 승인)를 바꿔야 한다. 건별 승인은 큰 냄비를 한 번 올리게 해 줄 뿐이고, 계량기를 끄지는 않는다.
+
+```json
+{"action":"set_budget_approval","month":"2026-10","cap":2400000,"reason":"토큰 상한 증액 승인 … -> 승인한다(기준선 달)"}
+```
+
+- 입력:
+  - `month`: UTC 기준 `YYYY-MM`. 지난 달은 400이다(월 누적 장부가 닫힌 달은 바꾸지 않는다). 이번 달과 다음 달 이후는 받는다.
+  - `cap`: 1 이상 10,000,000 이하 정수. 기본값보다 낮게 두면 그 달을 더 좁게 막는다.
+  - `reason`: 대표 승인 사유(1~500자).
+- 저장:
+  - 월당 1행(`id` = `YYYY-MM`)이다. 내용은 `{month, cap, reason, by: {id, email}, createdAt, history}`이다.
+  - 같은 달을 다시 승인하면 행은 하나로 둔다. 이전 승인(`cap`·`reason`·`by`·`createdAt`)은 오래된 순서로 `history`에 남긴다. 이력이 50건에 닿으면 409다. 이력을 버리지 않으려는 것이다.
+  - 캠페인과 무관한 소유자 기록이라 캠페인 삭제의 영향을 받지 않는다(`not_campaign_scoped`).
+- 권한: 다른 평가 API와 같다. 소유자만 쓰고 읽는다. 비로그인은 401, 관리자·직원은 403이다. 거부된 요청은 승인을 바꾸지 않는다.
+- 반영(`lib/eval-budget-server.ts`의 `evalMonthBudget`·`monthlyCapFor`):
+  - 3절 표의 월 절대 상한(시작·제출 직전)은 run 생성 월의 `cap`을 쓴다.
+  - `GET /api/eval`의 `usage.monthlyCap`은 이번 달 `cap`이고, `usage.approval`은 그 달의 승인 레코드(없으면 null)다.
+  - 승인을 바꾸면 다음 시작과 다음 제출 직전 검사부터 적용된다.
+- 고친 실패 사례(설계 교차 검토 1-3): 전에는 `overBudgetApproved.exceeded`에 `monthly_cap`이 든 run이 제출 직전 월 누적을 보지 않았다. 그래서 "월 누적 N까지"라는 승인을 코드가 지키지 못했다. 이제 그런 run도 승인 `cap`에 닿으면 `monthly_cap_reached`로 멈춘다. 남은 케이스의 `error`에는 적용된 상한이 적힌다.
+- 건별 승인은 첫 케이스는 월 상한에 들어가는 run만 시작하게 한다. 이번 달 누적 + 첫 케이스 예약이 월 상한을 넘으면 승인이 있어도 첫 제출 직전에 곧바로 멈출 run이므로 409로 거부하고 기록하지 않는다(쓸모없는 run과 '월 상한 승인'처럼 보이는 감사 기록을 남기지 않는다). 월 상한 초과 409 문구는 `set_budget_approval`을 안내한다. 스모크 상한만 넘은 409는 건별 승인 사유 안내만 한다.
+- 대표 사전 승인(2026-09-24, '토큰 상한 증액 승인 … -> 승인한다', 평가 케이스 확대와 함께):
+  - 기준선을 돌리는 달(10월 예정)만 월 상한을 1,500,000에서 2,400,000으로 올린다. 내역은 파일럿 0.2M + dev 기준선 1.6M + A/A 0.21M = 약 2.0M이고, S8을 더하면 약 2.2M이다.
+  - 기준선 run 1회의 `tokenBudget`은 2,000,000이다. 스모크 1회 상한(250,000)을 넘으므로 그 run에도 건별 승인 사유를 남긴다.
+  - 파일럿 평균이 추정의 1.2배를 넘으면 멈추고 다시 보고한다. 이 규칙은 운영 규칙이다. 코드가 자동으로 막지 않으므로, 파일럿이 끝나면 사람이 실측 평균과 추정을 비교한다.
+  - 심사를 하는 달(약 1.04M)은 증액이 필요 없다. 활성화 쌍 평가는 결정 5에 따라 건별로 승인한다.
+  - 적용 방법: 기준선 달이 정해지면 소유자가 그 달에 대해 `set_budget_approval`(`cap` 2,400,000, 사유에 위 승인 인용)을 한 번 기록한다. 이 기록 전에는 그 달도 1,500,000이다.
+- 한계:
+  - 월 누적은 run 생성 시각(UTC) 기준이다. 월말에 시작한 run은 다음 달로 넘어가도 시작한 달의 `cap`과 누적을 쓴다.
+  - 케이스 하나가 자기 예약(`reserveOf`, 역할 50,000)보다 많이 쓰면 그만큼 `cap`을 넘을 수 있다(아래 '서버 평가의 한계'와 같다).
+  - run에는 적용된 `cap`을 복사하지 않는다. 어느 run에 어떤 상한이 적용됐는지는 승인 레코드의 `createdAt`·`history`와 run `createdAt`을 맞춰 본다.
+- 테스트: `tests/eval-budget.test.mjs`(승인 없음 기본값, 승인 반영, UTC 월 경계, 입력 검증, 이력, 소유자 전용·관리자 403, 건별 승인 run의 승인 cap 초과 제출 중단, 첫 케이스도 들어가지 않는 건별 승인 시작 거부. 합성 데이터, 메모리 SQLite, 평가 HERMES fetch 스텁, `mocked`).
+
 ### 서버 평가의 한계
 
 - 이 PR의 검증은 모두 `mocked`다. 실제 평가 전용 HERMES 프로필로 스모크를 돌리지 않았다(결정 5 예산 안에서 대표가 연결을 등록한 뒤 한다).
 - 메모리 off와 운영 분리는 대표 확인(`isolationConfirmed`)과 호스트 비교에만 의존한다. 같은 HERMES 인스턴스를 다른 호스트 이름으로 등록하면 코드는 구분하지 못한다.
 - 제출 응답이 연결 끊김으로 유실되면 run은 blocked가 되지만 HERMES가 이미 받았을 수 있다(실행 번호가 없어 중지도 못 한다). 취소·시간 초과·blocked로 멈춘 실행의 토큰은 보고되지 않으면 `usedTokens`에 들어가지 않는다. 중지 요청이 확인되지 않은 blocked 케이스는 HERMES 쪽에서 토큰을 더 썼을 수 있다. 월 누적은 run 생성 시각(UTC) 기준이다.
-- 월 절대 상한은 케이스 1건 예약량(50,000)을 넘게 쓰는 케이스가 없다는 가정에서만 지켜진다. 한 케이스가 예약량을 넘기면 그만큼 상한을 넘을 수 있다. 진행 중 run이 1개라, 넘는 양은 그 run의 마지막 케이스 하나에서 생긴다.
+- 월 절대 상한은 자기 예약(`reserveOf`, 역할 50,000)을 넘게 쓰는 케이스가 없다는 가정에서만 지켜진다. 한 케이스가 예약량을 넘기면 그만큼 상한을 넘을 수 있다. 진행 중 run이 1개라, 넘는 양은 그 run의 마지막 케이스 하나에서 생긴다.
 - 화면(UI)은 없다. API로만 쓴다.
 
 ## 남은 결정·한계
