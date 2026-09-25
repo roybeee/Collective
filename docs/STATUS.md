@@ -1,6 +1,6 @@
 # COLLECTIVE 현재 상태
 
-마지막 갱신: 2026-09-25 22:30 UTC (Claude 트랙 R 세션: 묶음 13 `b0ef304` 게시 요청, 자동 게시 첫 실행)
+마지막 갱신: 2026-09-25 22:37 UTC (Claude 트랙 R 세션: 묶음 13 `b0ef304` 게시 요청, 자동 게시 첫 실행)
 
 ## 현재 운영 상태
 
@@ -13,8 +13,8 @@
 | 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` mode=email, role=owner (2026-09-25 03:30 UTC 경) |
 | Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 이번 게시도 기존 접근 설정 유지 | 게시 에이전트 보고 "기존 공개 접근 설정을 유지". 게시 뒤 접근 설정 재확인은 not_run |
 | 조사 워커 | online(lastSeen 2026-09-25 03:29 UTC, blocked 0, rotationReady true). 2026-09-24 14:15 UTC 새 설치기로 재설치(격리 점검 전부 통과) | `/api/research-worker/setup` 조회(real). gate 표시 `missing`이라 `RESEARCH_WORKER_APP_GATE=enforce`는 켜지 않는다 |
-| 열린 PR | #16 Android(draft, 제외), 묶음 13 게시 요청 PR(라벨 `sites-publish`, 브랜치 `claude/franchise-recruitment-marketing-u8cpo2`, 이 갱신과 같은 PR) | GitHub 열린 PR 목록(GitHub MCP), 2026-09-25 22:30 UTC |
-| main CI | `41ea80d`·`8ed30d0`·`8c22f0e` passed. `b0ef304`는 PR #118 head `3396535`(같은 tree)에서 verify·e2e-smoke passed | GitHub Actions(API 조회), 2026-09-25 22:3x UTC |
+| 열린 PR | #16 Android(draft, 제외), 묶음 13 게시 요청 #119(라벨 `sites-publish`, 브랜치 `claude/franchise-recruitment-marketing-u8cpo2`, 이 갱신과 같은 PR) | GitHub 열린 PR 목록(GitHub MCP), 2026-09-25 22:30 UTC |
+| main CI | `b0ef304`·`41ea80d`·`8ed30d0` passed | GitHub Actions main 실행(run 36196792023 success, API 조회), 2026-09-25 22:36 UTC |
 
 - 테스트 흔들림(2026-09-25 관찰, 제품 동작 변경 없음, 원인 조사는 별도 작업):
   - CI E2E `e2e/meeting-quality.spec.ts:40`('기준 자료가 바뀐 실패 회의…')가 오늘 3번 60초 시간 초과(#86 1회, #92 첫 CI 모바일·데스크톱). 매번 같은 파일 첫 테스트 직후 두 번째 테스트 첫 줄 `page.request.get('/api/workspace')`에서 멈추고, 같은 로그에 workerd `Broken pipe`가 있다. 재실행하면 통과하고 로컬 `--repeat-each 6`은 24/24 통과(재현 안 됨).
