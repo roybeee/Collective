@@ -42,6 +42,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'eval_output',parent:'eval_run',campaignDeletion:'not_campaign_scoped',description:'평가 실행의 케이스별 모델 출력 원문과 규제 점검 상세(소유자 전용)'},
  // J2 AI 심사 보정 라벨. 부모 eval_run(라벨이 있는 run은 delete_run 409). 소유자 전용 /api/eval.
  {kind:'judge_label',parent:'eval_run',campaignDeletion:'not_campaign_scoped',description:'AI 심사 보정 라벨(대표가 평가 출력 렌더본에 매긴 기준별 1~5점·해당없음, 용도 measure·anchor·relabel, 루브릭 버전, 렌더본 해시, 라벨한 사람·시각). 라벨이 있는 평가 실행은 삭제할 수 없다'},
+ // J3 AI 심사 응답(인용·이유·파서 결과·모델 원문). 부모 eval_run(variant judge), delete_run이 결과와 함께 지운다. 소유자 전용 ?judge=<run>&itemId=.
+ {kind:'judge_output',parent:'eval_run',campaignDeletion:'not_campaign_scoped',description:'AI 심사 응답 원문과 파서 결과(기준별 점수·판단 불가·인용·이유, 라벨 항목·원 평가 run 연결). 심사 run의 결과에는 점수만 두고 인용·이유는 여기에만 둔다(소유자 전용)'},
  {kind:'eval_run',parent:'none',campaignDeletion:'not_campaign_scoped',description:'서버 평가 실행(케이스별 채점 결과·토큰·예산 승인·봉인 세트 사용 기록). delete_run은 결과·출력만 지우고 행은 월 예산 장부로 남긴다'},
  {kind:'event',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'캠페인 이력 이벤트'},
  {kind:'execution_creative',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'제작한 소재. 있으면 캠페인 삭제를 거부한다'},

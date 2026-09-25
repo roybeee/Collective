@@ -184,8 +184,20 @@ v1은 역할 산출물(kind `role`)만 심사한다. quality 역할은 B1 κ가 
 - 주기 재측정(설계 3절): 채택된 기준은 4주마다 새 측정 라벨 10건을 더해 κ를 다시 잰다. 조건을 못 채우면 참고로 강등한다. 이 10건(약 50분)은 대표 운영 시간(주 3시간) 안에 넣는다. 게이트웨이 해시 변화만으로는 같은 해시 안의 드리프트(입력 분포 변화 등)를 잡지 못하기 때문이다.
 - 강등된 기준은 다시 보정해 채택 조건을 채우기 전까지 게이트에 쓰지 않는다.
 
+## 심사 실행 (J3)
+
+- 시작: `POST /api/eval {action:'start_run', variant:'judge', tokenBudget, limit?, label?, overBudgetApproved?}`. 평가 run(`eval_run`)과 같은 경로라 월 예산 합산(`evalMonthUsage`)·연결 게이트·격리·run 1개 제한·중지·예산 중단이 그대로 적용된다(`lib/eval-server.ts`·`lib/eval-judge-server.ts`).
+- 대상: 보정 라벨(`measure`·`anchor`, 현재 루브릭 버전)이 있는 항목만(R4). 표시 id 순으로 `limit`개(기본·최대 100). 라벨이 없으면 400이다. `caseIds`·`set`·`pair`는 받지 않는다(400).
+- 예약: 항목당 `JUDGE_CALL_TOKEN_RESERVE` 25,000(설계 추정 1건 약 12k의 약 2배). `tokenBudget`이 그보다 작으면 400.
+- 입력: `buildJudgePrompt`(위 '심사 입력'). 원 평가 출력(`eval_output`)의 정규화 렌더본, 동결 요청의 브리프 요약(목표·타깃·KPI·채널·constraints 원문·예산 확정 여부), 확정·거절 사실, `aiBrand`, 상류 발췌(앞선 작업물), 가림 허용 값(확정 사실·지점 값)이다. 금지 값(`denyTerms`)은 원 run이 보고한 모델, 평가 연결 모델, 원 결과의 `promptHash`, variant 이름(`active`·`candidate`)이다. 걸리면 그 항목만 `failed`이고 보내지 않는다.
+- 멱등 키: 한 심사 run이 여러 원 run의 같은 케이스를 심사할 수 있어 `<심사 run>:<표시 id>`로 만든다.
+- 결과: run 결과 행에는 `judge: {itemId, sourceRunId, rubricVersion, scores:[{id, score, uncertain, valid, invalid?}], length, error?}`만 둔다(인용·이유 없음). JSON이 아니거나 모양이 틀린 응답은 적용 기준 모두 무효(`bad_shape`, `error`)로 센다. 인용·이유·파서 결과·응답 원문은 `judge_output`(부모 심사 run, 소유자 전용)에 두고, 판정 이유와 응답 원문은 저장 전에 `maskText`로 가린다.
+- 조회: `GET /api/eval?judge=<run>` — 항목별 점수와 기준별 보정 통계(`criterionStats`)·채택 판정(`adoptCriterion`). 사람 점수는 그 항목의 첫 라벨이고 용도(측정·앵커)는 라벨을 따른다. `?judge=<run>&itemId=<표시 id>` — 그 항목의 인용·이유. 심사는 라벨이 있는 항목만 하므로 라벨 저장 전에 심사 점수가 보이는 경로가 없다.
+- 다른 작업: 심사 run은 `compare`·`regrade_run`·`?judge`가 아닌 비교 대상이 아니다(400). 라벨 대기열에도 나오지 않는다. `delete_run`은 `judge_output`도 지운다(라벨은 원 평가 run에 있어 그대로다).
+- 테스트: `tests/eval-judge.test.mjs`(라벨 없음·입력·예산 400, 같은 케이스 두 항목의 멱등 키, 금지 값이 든 출력은 보내지 않음, 심사 입력에 모델·run id·케이스 이름·골든 라벨 없음, 점수만 run에·인용은 judge_output에, 이유·원문 가림, 보정 통계·채택 판정, 월 사용량 합산, compare·regrade 400, JSON 아닌 응답 무효, 삭제. 뮤테이션 6종(키·금지 값·인용 노출·재채점·출력 삭제·라벨 조건)을 모두 잡는다. 합성 데이터, 평가 HERMES fetch 스텁, `mocked`).
+
 ## 데이터 처리 경계
 
 - J1은 아무것도 보내지 않는다.
 - 골든 라벨(`expectations`·`prohibitedTerms`)과 모델·평가 구분 정보는 심사 입력에 들어갈 수 없다(위 `forbidden_field`).
-- J3가 평가 출력을 평가 HERMES로 다시 보내는 것은 [데이터 처리](DATA-PROCESSING.ko.md) E1 행에 아직 없는 전송이다. J3 전에 E1 행을 넓혀야 한다([로드맵](QUALITY-ROADMAP.ko.md#아직-결정하지-않은-것)).
+- J3가 평가 출력을 평가 HERMES로 다시 보내는 전송은 [데이터 처리](DATA-PROCESSING.ko.md) E1 행에 적었다. 다만 E1 확장은 대표 결정 대기다([로드맵](QUALITY-ROADMAP.ko.md#아직-결정하지-않은-것)). 결정 전에는 심사 run을 시작하지 않는다(운영 절차, 코드는 막지 않는다).
