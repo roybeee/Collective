@@ -3,7 +3,7 @@ import {verdict,outputObject,proseValues,briefPlanValues,type Grader,type EvalIt
 import {isText,bodyOf,sentences,compact,excerpt,blocks} from './text';
 import {mentions,usesTerm,negatedAt,neutralize} from './negation';
 import {outsideProhibition,withoutBannedLists} from './prohibition';
-import {FR_CONTEXT,FR_ROYALTY_FORM,FR_STORE_COUNT} from './compliance-lexicon';
+import {FR_CONTEXT,FR_EDU_LABEL,FR_ROYALTY_FORM,FR_ROYALTY_LABEL,FR_STARTUP_AMOUNT_FIRST,FR_STARTUP_LABEL,FR_STORE_COUNT} from './compliance-lexicon';
 
 // 사실 원장 대조(fact_conflict)와 미확정 구체 값 단정(unconfirmed_value_assertion). 원장이 없으면 둘 다 not_applicable이다.
 const factText=(v:unknown)=>typeof v==='string'?v:'';
@@ -19,53 +19,94 @@ export const amounts=(s:string)=>[...s.matchAll(/(\d{1,3}(?:,\d{3})+|\d{4,})\s?�
 const KRW=/(\d[\d,]*(?:\.\d+)?)\s?억(?:\s?(\d[\d,]*(?:\.\d+)?)\s?(천)?\s?만)?(?:\s?원)?|(\d[\d,]*(?:\.\d+)?)\s?(천)?\s?만\s?원|(\d[\d,]*(?:\.\d+)?)\s?천\s?원|(\d[\d,]*)\s?원/g;
 const krwOf=(m:RegExpMatchArray)=>m[1]!==undefined?num(m[1])*1e8+(m[2]!==undefined?num(m[2])*(m[3]?1e7:1e4):0):m[4]!==undefined?num(m[4])*(m[5]?1e7:1e4):m[6]!==undefined?num(m[6])*1e3:num(m[7]);
 const BARE_LOWER=/(\d[\d,]*(?:\.\d+)?)(\s?[~∼〜～–-]\s?)(?=\d[\d,]*(?:\.\d+)?\s?(억|천\s?만|만|천)?\s?원)/g;
-const withLowerUnit=(s:string)=>s.replace(BARE_LOWER,(_m,a:string,sep:string,unit:string|undefined)=>`${a}${unit??''}원${sep}`);
+// 아래 값에 단위만 있고 '원'이 없는 범위('4,500만~5,500만원', '1억~1억 2천만원')도 두 값이다.
+const UNIT_LOWER=/(\d[\d,]*(?:\.\d+)?\s?(?:억|천\s?만|만|천))(\s?[~∼〜～–-]\s?)(?=\d[\d,]*(?:\.\d+)?\s?(?:억|천\s?만|만|천)?[^\n~∼〜～–-]{0,8}?원)/g;
+const withLowerUnit=(s:string)=>s.replace(UNIT_LOWER,'$1원$2').replace(BARE_LOWER,(_m,a:string,sep:string,unit:string|undefined)=>`${a}${unit??''}원${sep}`);
 export const krwAmounts=(s:string)=>[...withLowerUnit(s).matchAll(KRW)].map(m=>String(Math.round(krwOf(m))));
 const monthDay=(m:string,d:string)=>`${Number(m)}-${Number(d)}`;
 export const dates=(s:string)=>[...s.matchAll(/(\d{1,2})월\s?(\d{1,2})일|\d{4}[-./](\d{1,2})[-./](\d{1,2})/g)].map(m=>m[1]?monthDay(m[1],m[2]):monthDay(m[3],m[4]));
 const OPEN_DATE=/오픈(?:일)?\s?(?:은|는|:)?\s?\d{1,2}월\s?\d{1,2}일|\d{1,2}월\s?\d{1,2}일\s?(?:에\s?)?(?:오픈|개업|개점)|\d{4}[-.]\d{1,2}[-.]\d{1,2}\s?(?:오픈|개업|개점)/g;
 const minutes=(s:string)=>[...s.matchAll(/(\d+)\s?분/g)].map(m=>String(Number(m[1])));
 const counts=(s:string)=>[...s.matchAll(/(\d[\d,]*(?:\.\d+)?)\s?(만|천)?/g)].map(m=>String(Math.round(num(m[1])*(m[2]==='만'?10000:m[2]==='천'?1000:1))));
-// 매장 수 주장(트랙 R R2): 규제 사전의 매장 수 정규식(FR_STORE_COUNT)과 같은 문장을 본다. 수와 가리키는 매장(가맹점·직영점·전체)을 함께 돌려준다.
-// '가맹점 N개'는 가맹점 수, '직영점 N개'는 직영점 수, '매장·점포·지점·N호점·전국 N개'는 전체 매장 수와 대조한다. '오픈 예정 N개'는 원장 항목이 없어 값을 내지 않는다.
+// 매장 수 주장(트랙 R R2): 규제 사전의 매장 수 정규식(FR_STORE_COUNT)과 같은 문장을 본다. 수, 가리키는 매장(가맹점·직영점·전체), 비교 방식을 함께 돌려준다.
+// '가맹점·가맹 매장 N개'는 가맹점 수, '직영점·직영 매장 N개'는 직영점 수, '매장·점포·지점·N호점·전국 N개'와 '가맹점과 직영점 합계 N개'는 전체 매장 수와 대조한다. '오픈 예정 N개'는 원장 항목이 없어 값을 내지 않는다.
+// 비교 방식: 'N여 개'는 N 이상·다음 자릿수 단위 미만(approx: '40여 개'는 40~49, '1,200여 개'는 1,200~1,299), 'N개 이상·넘는·N+·N호점 돌파·달성·시대'는 N 이상(gte), 나머지는 같은 값(eq).
 // '2호점 오픈 기념'·'한정 12개'·'전국 5개 매장에서 한정 판매'는 매장 수 주장이 아니다.
-export type StoreCountClaim={n:string;of:'franchise'|'direct'|'total'};
+export type StoreCountClaim={n:string;of:'franchise'|'direct'|'total';cmp:'eq'|'gte'|'approx'};
 const STORE_COUNT=new RegExp(FR_STORE_COUNT,'g');
 export const storeCountClaimList=(s:string):StoreCountClaim[]=>[...s.matchAll(STORE_COUNT)].flatMap(m=>{
- if(/^오픈\s?예정/.test(m[0]))return [];
- const n=/\d[\d,]*(?=\s?(?:여\s?)?(?:개|곳|호점))/.exec(m[0]);
- return n?[{n:String(num(n[0])),of:/호점/.test(m[0])?'total':/직영점/.test(m[0])?'direct':/가맹점/.test(m[0])?'franchise':'total'}]:[];
+ const t=m[0];
+ if(/^오픈\s?예정/.test(t))return [];
+ const n=/\d[\d,]*(?=\s?(?:여\s?)?(?:개|곳|호점|\+))/.exec(t);
+ if(!n)return [];
+ const of:StoreCountClaim['of']=/호점/.test(t)||/직영/.test(t)&&/가맹/.test(t)?'total':/직영/.test(t)?'direct':/가맹/.test(t)?'franchise':'total';
+ const cmp:StoreCountClaim['cmp']=/\d\s?여/.test(t)?'approx':/이상|넘|초과|\+|돌파|달성|시대/.test(t)||/호점/.test(t)&&!/눈앞/.test(t)?'gte':'eq';
+ return [{n:String(num(n[0])),of,cmp}];
 });
+// 주장 값 n이 확정 값 v를 참으로 말하는가(비교 방식별).
+export function storeCountHolds(c:Pick<StoreCountClaim,'n'|'cmp'>,v:string):boolean{
+ const n=Number(c.n),x=Number(v);
+ if(c.cmp==='eq')return n===x;
+ if(c.cmp==='gte')return x>=n;
+ const zeros=(String(n).match(/0+$/)?.[0].length??0),step=10**Math.max(1,zeros);
+ return x>=n&&x<n+step;
+}
 export const storeCountClaims=(s:string)=>storeCountClaimList(s).map(c=>c.n);
 const firstInteger=(v:string)=>{const m=/\d[\d,]*/.exec(v);return m?[String(num(m[0]))]:[]};
-// 가맹 비용 라벨 뒤 금액: 라벨 뒤 20자 안, 쉼표·마침표·줄바꿈 전('가맹비 870만원, 교육비 550만원'에서 가맹비는 870만원만). 숫자 사이 쉼표·소수점은 끊지 않는다.
+// 가맹 비용 라벨 뒤 금액: 라벨 뒤 20자 안의 첫 금액부터, 끊는 기호(쉼표·마침표·줄바꿈·괄호·가운뎃점·빗금·등호·더하기·세미콜론·띄운 줄표) 또는 다음 비용 라벨 전까지.
+// '가맹비 870만원, 교육비 550만원'·'가맹비 550만원 · 교육비 220만원'·'창업비용 6,500만원(가맹비 550만원 …)'에서 가맹비·창업비용은 첫 금액만이다. 숫자 사이 쉼표·소수점은 끊지 않고, 범위('4,000~5,000만원')는 두 값이다.
 // 소비자 문장과 겹치는 낱말은 가맹 문맥만 본다('베이킹 클래스 교육비', '로열티 카드', '일회용컵 보증금', '멤버십 가입비'는 가맹 비용이 아니다).
-// shared: 교육비·로열티·인테리어 비는 같은 문장에 가맹 문맥(규제 사전 FR_CONTEXT)이 있거나 라벨 뒤 금액이 100만원 이상일 때만 값을 낸다(로열티는 월 정액·매출 비율 형식도 가맹 비용).
-const COST_CUT=/[\n.。](?!\d)|[,，](?!\d)/,FRANCHISE_CONTEXT=new RegExp(FR_CONTEXT),ROYALTY_FORM=new RegExp('^'+FR_ROYALTY_FORM);
-function amountsAfter(label:RegExp,shared=false){
+// shared: 교육비·로열티·인테리어 비는 같은 문장에 가맹 문맥(규제 사전 FR_CONTEXT)이 있거나(모집 범위는 문맥이 이미 있다: context) 라벨 뒤 금액이 100만원 이상일 때만 값을 낸다
+// (로열티는 월 정액·매출 비율 형식도 가맹 비용). 우리 매장에 들인 금액('인테리어 비용 1억 원 들인 리뉴얼')은 100만원 이상이어도 가맹 비용이 아니다.
+const COST_CUT=/[\n.。](?!\d)|[,，](?!\d)|[(（)）·ㆍ/=+|;；→]|\s[-–—]\s/,FRANCHISE_CONTEXT=new RegExp(FR_CONTEXT),ROYALTY_FORM=new RegExp('^'+FR_ROYALTY_FORM);
+const COST_LABEL=new RegExp(`${FR_STARTUP_LABEL}|가맹비|가맹\\s?가입비|(?:가맹|계약\\s?이행)\\s?보증금|${FR_EDU_LABEL}|${FR_ROYALTY_LABEL}|인테리어\\s?(?:비|비용|공사비)|주방\\s?설비|임차\\s?보증금|권리금`);
+const SPENT=/^[^.\n]{0,20}?(?:들인|들여|들였|투자한|투자해|쏟|썼|사용한)/;
+export type CostBodyOptions={context?:boolean};
+function segmentAfter(s:string,from:number):{seg:string;at:number}|null{
+ const rest=s.slice(from,from+60),digit=rest.search(/\d/);
+ if(digit<0||digit>20)return null;
+ const lead=rest.slice(0,digit);
+ if(/[\n.。]/.test(lead.replace(/\.(?=\d)/g,''))||COST_LABEL.test(lead))return null;
+ let seg=rest.slice(digit);
+ const cut=seg.search(COST_CUT),label=seg.search(COST_LABEL);
+ const end=Math.min(cut<0?seg.length:cut,label<0?seg.length:label);
+ seg=seg.slice(0,end);
+ return {seg,at:from+digit};
+}
+// 금액 위치(at: 금액 조각이 시작하는 문장 안 위치, seg: 금액 조각). 판정기는 위치로 그 금액의 절·매장 유형·부가세를, 조각으로 3.3㎡당 단가를 본다. 범위의 두 값은 같은 위치다.
+export type AmountSpan={v:string;at:number;seg:string};
+function amountSpans(label:RegExp,shared=false){
  const g=new RegExp(label.source,'g');
- return (s:string)=>[...s.matchAll(g)].flatMap(m=>{
-  const after=s.slice(m.index!+m[0].length,m.index!+m[0].length+20),values=krwAmounts(after.split(COST_CUT)[0]);
-  if(shared&&!FRANCHISE_CONTEXT.test(s)&&!ROYALTY_FORM.test(s.slice(m.index!))&&!values.some(v=>Number(v)>=1_000_000))return [];
-  return values;
+ return (s:string,o:CostBodyOptions={}):AmountSpan[]=>[...s.matchAll(g)].flatMap(m=>{
+  const x=segmentAfter(s,m.index!+m[0].length);
+  if(!x)return [];
+  const values=krwAmounts(x.seg);
+  if(shared&&!o.context&&!FRANCHISE_CONTEXT.test(s)&&!ROYALTY_FORM.test(s.slice(m.index!))&&!(values.some(v=>Number(v)>=1_000_000)&&!SPENT.test(s.slice(x.at))))return [];
+  return values.map(v=>({v,at:x.at,seg:x.seg}));
  });
 }
-export const STARTUP_COST_LABEL=/(?:총\s?)?창업\s?(?:비용|자금|금액)|총\s?투자\s?(?:비|금|비용)?|소자본\s?창업|개설\s?비용/;
+const values=(f:(s:string,o?:CostBodyOptions)=>AmountSpan[])=>(s:string,o?:CostBodyOptions)=>f(s,o).map(x=>x.v);
+export const STARTUP_COST_LABEL=new RegExp(FR_STARTUP_LABEL);
+const STARTUP_AMOUNT_FIRST=new RegExp(FR_STARTUP_AMOUNT_FIRST,'g'),startupAfter=amountSpans(STARTUP_COST_LABEL);
+// 창업비용: 라벨 뒤 금액과 금액이 먼저 오는 '4,000만원으로 창업 가능'의 금액.
+const startupSpans=(s:string,o?:CostBodyOptions):AmountSpan[]=>[...startupAfter(s,o),...[...s.matchAll(STARTUP_AMOUNT_FIRST)].flatMap(m=>krwAmounts(m[0]).slice(0,1).map(v=>({v,at:m.index!,seg:m[0]})))];
+const feeSpans=amountSpans(/가맹비|가맹\s?가입비/),eduSpans=amountSpans(new RegExp(FR_EDU_LABEL),true),depositSpans=amountSpans(/(?:가맹|계약\s?이행)\s?보증금/);
+const interiorSpans=amountSpans(/인테리어\s?(?:비용|공사비|비(?!포))/,true),royaltySpans=amountSpans(new RegExp(FR_ROYALTY_LABEL),true);
 // 원장이 확정할 수 있는 구체 값. body: 본문 문장에서 찾은 값(정규화), ledger: 원장 값에서 찾은 값. 브리프 지시 위반(brief.ts)도 같은 추출을 쓴다.
 // franchise: 가맹 모집 값(트랙 R R2). 가맹 규칙 판정기(lib/franchise-compliance.ts)만 쓰고 채점기는 건너뛴다(채점 결과·GRADERS_VERSION 불변). ruleId: 이 값을 대조하는 가맹 규칙.
-type ValueKind={kind:string;key:RegExp;body:(s:string)=>string[];ledger:(v:string)=>string[];franchise?:true;ruleId?:string};
+type ValueKind={kind:string;key:RegExp;body:(s:string,o?:CostBodyOptions)=>string[];spans?:(s:string,o?:CostBodyOptions)=>AmountSpan[];ledger:(v:string)=>string[];franchise?:true;ruleId?:string};
 export const VALUE_KINDS:ValueKind[]=[
  {kind:'가격',key:/가격|판매가|price|메뉴/i,body:s=>NON_PRICE.test(s)?[]:amounts(s),ledger:amounts},
  {kind:'오픈일',key:/오픈|개점|개업|open/i,body:s=>[...s.matchAll(OPEN_DATE)].flatMap(m=>dates(m[0])),ledger:dates},
  {kind:'도보 시간',key:/도보|거리|접근/,body:s=>[...s.matchAll(/도보\s?\d+\s?분/g)].flatMap(m=>minutes(m[0])),ledger:minutes},
  {kind:'유동인구',key:/유동|상권/,body:s=>[...s.matchAll(/유동\s?인구[^\n.]{0,10}?\d[\d,]*(?:\.\d+)?\s?(?:만|천)?/g)].flatMap(m=>counts(m[0]).slice(-1)),ledger:counts},
  {kind:'매장 수',key:/^(?:franchise_store_count|direct_store_count)$/,body:storeCountClaims,ledger:firstInteger,franchise:true,ruleId:'kr.fr.store_count_claims'},
- {kind:'창업비용',key:/^startup_cost_total$/,body:amountsAfter(STARTUP_COST_LABEL),ledger:krwAmounts,franchise:true,ruleId:'kr.fr.startup_cost_claims'},
- {kind:'가맹비',key:/^franchise_fee$/,body:amountsAfter(/가맹비|가맹\s?가입비/),ledger:krwAmounts,franchise:true,ruleId:'kr.fr.startup_cost_claims'},
- {kind:'교육비',key:/^education_fee$/,body:amountsAfter(/(?<!(?:클래스|수강|체험|원데이)\s?)교육비/,true),ledger:krwAmounts,franchise:true,ruleId:'kr.fr.startup_cost_claims'},
- {kind:'가맹 보증금',key:/^franchise_deposit$/,body:amountsAfter(/(?:가맹|계약\s?이행)\s?보증금/),ledger:krwAmounts,franchise:true,ruleId:'kr.fr.startup_cost_claims'},
- {kind:'인테리어 비용',key:/^interior_cost$/,body:amountsAfter(/인테리어\s?(?:비용|공사비|비(?!포))/,true),ledger:krwAmounts,franchise:true,ruleId:'kr.fr.startup_cost_claims'},
- {kind:'로열티',key:/^royalty_fee$/,body:amountsAfter(/로열티(?!\s?(?:카드|멤버십|회원|포인트|프로그램|적립|클럽|고객|혜택|등급|VIP))/,true),ledger:krwAmounts,franchise:true,ruleId:'kr.fr.startup_cost_claims'},
+ {kind:'창업비용',key:/^startup_cost_total$/,body:values(startupSpans),spans:startupSpans,ledger:krwAmounts,franchise:true,ruleId:'kr.fr.startup_cost_claims'},
+ {kind:'가맹비',key:/^franchise_fee$/,body:values(feeSpans),spans:feeSpans,ledger:krwAmounts,franchise:true,ruleId:'kr.fr.startup_cost_claims'},
+ {kind:'교육비',key:/^education_fee$/,body:values(eduSpans),spans:eduSpans,ledger:krwAmounts,franchise:true,ruleId:'kr.fr.startup_cost_claims'},
+ {kind:'가맹 보증금',key:/^franchise_deposit$/,body:values(depositSpans),spans:depositSpans,ledger:krwAmounts,franchise:true,ruleId:'kr.fr.startup_cost_claims'},
+ {kind:'인테리어 비용',key:/^interior_cost$/,body:values(interiorSpans),spans:interiorSpans,ledger:krwAmounts,franchise:true,ruleId:'kr.fr.startup_cost_claims'},
+ {kind:'로열티',key:/^royalty_fee$/,body:values(royaltySpans),spans:royaltySpans,ledger:krwAmounts,franchise:true,ruleId:'kr.fr.startup_cost_claims'},
 ];
 // 채점기가 쓰는 값 종류(가맹 종류 제외).
 const GRADED_KINDS=VALUE_KINDS.filter(k=>!k.franchise);
