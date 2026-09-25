@@ -10,6 +10,8 @@ import {roles,type Campaign} from '@/lib/agency';
 import {isModelAlias} from '@/lib/usage-summary';
 import {MIN_SAMPLE,kstDate,type ConsoleSummary,type MeetingCompletion} from '@/lib/quality-console';
 import {MIN_KAPPA_N,kappaBand,type CriterionKappaRow} from '@/lib/quality-kappa';
+import {AdminOnly} from './account-context';
+import {JudgeLabelPanel} from './judge-label-panel';
 
 // B2 품질 콘솔(소유자·관리자 전용 시트). GET /api/quality-console(lib/quality-console-server.ts)의 집계를 보여 주기만 하고 다시 계산하지 않는다.
 // 표본 규칙은 집계와 같다: 비율은 n<MIN_SAMPLE(5)이면 '표본 부족', κ는 기준별 라벨 n<MIN_KAPPA_N(20)이면 '보정 불가', 한 범주만 있으면 '정의 불가'.
@@ -130,6 +132,7 @@ export function QualityConsolePanel({open,onClose,campaigns}:{open:boolean;onClo
    <p className="subtle-note">기간은 최대 180일이고 기본은 오늘까지 최근 28일입니다. 비율은 표본 {MIN_SAMPLE}건 미만이면 표본 부족으로 표시합니다.</p>
    {error&&<div className="load-error" role="alert"><span>{error}</span><Button variant="outline" size="sm" onClick={()=>void load(query)}><RefreshCw/>다시 시도</Button></div>}
    {loading&&!data?<p className="loading-line" role="status">품질 지표 불러오는 중…</p>:data&&<Summary data={data}/>}
+   <section><h3>AI 심사 보정 라벨</h3><AdminOnly owner note="보정 라벨은 워크스페이스 소유자만 매깁니다(평가 출력은 소유자 전용)."><JudgeLabelPanel/></AdminOnly></section>
    <section><h3><ClipboardCheck className="inline size-4"/> 주간 다이제스트</h3><p className="subtle-note">같은 집계로 만든 한국어 마크다운(지표 표·전주 대비·표본 부족 표시)입니다. 기본은 지난주(ISO 주, 한국 시간)이고 캠페인 범위는 마지막으로 조회한 범위를 따릅니다.</p>
     <div className="quality-toolbar"><label>주(YYYY-Www)<Input type="week" aria-label="다이제스트 주" value={week} onChange={e=>setWeek(e.target.value)} placeholder="2026-W38"/></label><Button type="button" disabled={busy} onClick={()=>void digest()}><Download/>주간 다이제스트 받기</Button></div>
     {digestError&&<p className="form-error" role="alert">{digestError} <Button variant="outline" size="sm" onClick={()=>void digest()}><RefreshCw/>다시 시도</Button></p>}

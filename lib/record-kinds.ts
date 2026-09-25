@@ -40,6 +40,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'eval_case',parent:'none',campaignDeletion:'retain',links:['data_campaign'],purge:'keep',description:'평가 골든셋 케이스(동결한 역할·회의 단계·브리프 요청 — 회의·브리프는 운영과 같은 가림 뒤 — 기대 판정·세트·캡처 드리프트 판정, 합성 케이스는 생성 커밋·트리). 캠페인을 지워도 남기고 소유자만 개별 삭제한다(결정 6·7 취지)'},
  {kind:'eval_connection',parent:'none',campaignDeletion:'not_campaign_scoped',description:'평가 전용 HERMES 연결(주소·키 암호화, 운영 연결과 다른 호스트)'},
  {kind:'eval_output',parent:'eval_run',campaignDeletion:'not_campaign_scoped',description:'평가 실행의 케이스별 모델 출력 원문과 규제 점검 상세(소유자 전용)'},
+ // J2 AI 심사 보정 라벨. 부모 eval_run(라벨이 있는 run은 delete_run 409). 소유자 전용 /api/eval.
+ {kind:'judge_label',parent:'eval_run',campaignDeletion:'not_campaign_scoped',description:'AI 심사 보정 라벨(대표가 평가 출력 렌더본에 매긴 기준별 1~5점·해당없음, 용도 measure·anchor·relabel, 루브릭 버전, 렌더본 해시, 라벨한 사람·시각). 라벨이 있는 평가 실행은 삭제할 수 없다'},
  {kind:'eval_run',parent:'none',campaignDeletion:'not_campaign_scoped',description:'서버 평가 실행(케이스별 채점 결과·토큰·예산 승인·봉인 세트 사용 기록). delete_run은 결과·출력만 지우고 행은 월 예산 장부로 남긴다'},
  {kind:'event',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'캠페인 이력 이벤트'},
  {kind:'execution_creative',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'제작한 소재. 있으면 캠페인 삭제를 거부한다'},

@@ -13,6 +13,7 @@ import {captureMeetingStep,captureBrief,type CaptureCheck} from './eval-capture'
 import {compareRuns,pairReport} from './eval-stats';
 import {gatewayBasis} from './gateway-snapshot';
 import {APP_TREE} from './app-version';
+import {labelRead,saveLabel,runHasLabels} from './judge-labels-server';
 import {roles,type Campaign,type Brand} from './agency';
 import {pairPrompts,roleRunUnits,type PairPrompts} from './prompt-registry';
 import {evalMonthBudget,setBudgetApproval,EVAL_DEFAULT_MONTHLY_TOKEN_CAP} from './eval-budget-server';
@@ -384,6 +385,8 @@ async function deleteRun(owner:string,input:Record<string,unknown>,by:Who){
  const run=await readRecord<EvalRun>(owner,'eval_run',str(input.id,'평가 실행',100,true)),db=database(),at=stamp();
  if(ACTIVE.includes(run.status))throw new ApiError(409,'진행 중인 평가 실행은 취소한 뒤 삭제하세요.');
  if(run.deleted)throw new ApiError(409,'이미 삭제한 평가 실행입니다.');
+ // 보정 라벨(J2)이 있는 run은 라벨의 근거(출력)가 사라지므로 지우지 않는다.
+ if(await runHasLabels(owner,run.id))throw new ApiError(409,'AI 심사 보정 라벨이 있는 평가 실행은 삭제할 수 없습니다.');
  const tombstone:EvalRun={...run,results:[],...(run.regrades?{regrades:[]}:{}),deleted:{by,at,cases:run.results.length},updatedAt:at};
  await db.batch([db.prepare("DELETE FROM records WHERE owner=? AND kind='eval_output' AND parent_id=?").bind(owner,run.id),recordStatement(owner,'eval_run',run.id,tombstone)]);
  return {id:run.id,deleted:true};
@@ -580,6 +583,7 @@ export async function evalRead(owner:string,params:URLSearchParams){
   if(runs.some(r=>r.variant==='pair'))throw new ApiError(400,'쌍 평가(pair) 실행은 한 run 안의 두 쪽을 ?pair=<run>으로 비교합니다.');
   return wantsRegrade(params)?regradeCompare(runs[0],runs[1]):compareRuns(runs[0],runs[1]);
  }
+ if(params.has('labels'))return labelRead(owner,params);
  if(params.has('pair'))return pairRead(owner,id('pair','평가 실행'));
  if(params.has('run')&&params.has('caseId'))return readRecord(owner,'eval_output',`${id('run','평가 실행')}:${id('caseId','평가 케이스')}${params.has('variant')?':'+variantOf(params.get('variant')):''}`);
  if(params.has('run')&&wantsRegrade(params))return regradeRead(owner,id('run','평가 실행'));
@@ -589,7 +593,7 @@ export async function evalRead(owner:string,params:URLSearchParams){
  return {connection:publicConnection(conn),cases:cases.map(caseSummary),runs,usage};
 }
 const ACTIONS:Record<string,(owner:string,input:Record<string,unknown>,by:Who)=>Promise<unknown>>={
- save_connection:saveConnection,check_connection:(owner,_input,by)=>checkConnection(owner,by),capture_case:captureCase,save_case:saveCase,update_case:updateCase,delete_case:deleteCase,cancel_run:cancelRun,delete_run:deleteRun,regrade_run:regradeRun,set_budget_approval:setBudgetApproval,import_cases:(owner,input,by)=>importCases(owner,input,by),
+ save_connection:saveConnection,check_connection:(owner,_input,by)=>checkConnection(owner,by),capture_case:captureCase,save_case:saveCase,update_case:updateCase,delete_case:deleteCase,cancel_run:cancelRun,delete_run:deleteRun,regrade_run:regradeRun,set_budget_approval:setBudgetApproval,import_cases:(owner,input,by)=>importCases(owner,input,by),save_label:saveLabel,
 };
 export async function evalAction(owner:string,input:Record<string,unknown>,actor:Actor):Promise<Response>{
  const by=who(actor),name=String(input.action);
