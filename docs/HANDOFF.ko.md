@@ -93,4 +93,4 @@ node --experimental-vm-modules tests/<이름>.test.mjs   # 스위트 하나
 ## 남은 위험
 - 모델 원문에 입력 필드 이름(`evidence.directives` 등)이 섞이는 예방 판정 fail이 R3 역할 3건에 있다. 화면에서는 정규화로 가려진다. 지시문에 금지 규칙이 이미 있어 비율만 추적한다.
 - 조건 없는 `[가격 확인 필요]` CTA 경고는 설계대로 남긴다(품질 수정 v1 결정).
-- 운영 `/api/version` tree가 `unknown`으로 나온 일이 있다(2026-09-25 08:21, 트랙 R 게시). 원인은 확인하지 못했다.
+- 운영 `/api/version` tree가 `unknown`으로 나온 일이 있다(2026-09-25 08:21, 트랙 R 게시). 원인은 확인하지 못했다. 빌드하던 순간 git 조회가 실패한 것으로 보인다(그 빌드 결과물에 tree 문자열이 없음). 재발 방지(같은 셸에서 tree를 확인해 `COLLECTIVE_SOURCE_TREE`로 넘겨 빌드하고, `dist/server`에 tree가 박혔는지 확인한 뒤 게시)는 [73147a9 게시 기록](releases/2026-09-25-73147a9.md)에 있다.
