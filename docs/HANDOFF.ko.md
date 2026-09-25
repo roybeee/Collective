@@ -8,7 +8,7 @@
 - 저장소: `roybeee/Collective`, 브랜치 `main`
 - 기준 SHA: `b0ef304`(#118). 운영은 `8c22f0e`(tree `02260ba`, Sites 버전 35, `published`, `/api/version` 확인 전)이다. 묶음 13 `b0ef304` 게시는 대표 결정으로 보류 중이다(자동 게시 2차 실행이 결과를 내지 않음, [게시 절차 8절](PUBLISH.ko.md#8-자동-게시-chatgpt-예약-작업)). 재개는 `docs/publish/b0ef304.md`.
 - 작성자/도구: Claude Code(트랙 R 세션)
-- 작성 시각: 2026-09-25 23:25 UTC
+- 작성 시각: 2026-09-25 23:31 UTC
 - 이 문서를 바꾸는 사람은 기준 SHA와 작성 시각을 같이 고친다.
 
 ## 먼저 읽을 것
