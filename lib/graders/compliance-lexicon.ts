@@ -40,10 +40,11 @@ const CTA_HELD=[`${M}[^.\\n]{0,12}(?:보류(?!\\s?없)|미사용)`,`${M}[^.\\n]{
 const PAID_MEDIA='집행|예산|입찰|매체|광고\\s?(?:세트|관리자|계정|그룹)|캠페인\\s?(?:운영|세팅|설정)|CPC|CPM|CPA|CPV|ROAS|클릭당|노출당|타[기게겟]팅|부스팅|키워드\\s?광고|검색\\s?광고|파워링크|돌리|돌린|돌려|운영|게재|검토|세팅|노출';
 const CREATOR='인플루언서|크리에이터|블로거|유튜버|틱톡커|셀럽|체험단|리뷰어|서포터즈|앰배서더|원고';
 const PAID_POST='유료\\s?광고\\s?(?:용\\s?)?(?:게시(?:물|글)?|포스팅|포스트|후기|리뷰|원고)';
-const PAID_AD=`${PAID_POST}|유료\\s?광고(?:(?<!(?:${PAID_MEDIA})[^.\\n]{0,30}유료\\s?광고)(?![^.\\n]{0,30}(?:${PAID_MEDIA}))|(?<=(?:${CREATOR})[^.\\n]{0,30}유료\\s?광고)|(?=[^.\\n]{0,30}(?:${CREATOR})))`;
+// '유료 광고비'(광고 예산 칸, '유료 광고비 0원으로 우선 설계')는 광고 관계가 아니다. 광고비를 받는 대가는 '광고비…받' 규칙이 잡는다(R3 기준선 S2 실측).
+const PAID_AD=`${PAID_POST}|유료\\s?광고(?!\\s?비)(?:(?<!(?:${PAID_MEDIA})[^.\\n]{0,30}유료\\s?광고)(?![^.\\n]{0,30}(?:${PAID_MEDIA}))|(?<=(?:${CREATOR})[^.\\n]{0,30}유료\\s?광고)|(?=[^.\\n]{0,30}(?:${CREATOR})))`;
 
 export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:string;sources:Record<string,ComplianceSource>;rules:ComplianceRule[]}={
- version:'compliance-lexicon-2026-09-25.5',
+ version:'compliance-lexicon-2026-09-25.6',
  checkedAt:'2026-09-23',
  platformPolicy:'플랫폼별 리뷰 운영정책(예: 지도·예약 플랫폼) 공식 URL은 아직 확인하지 않았다. 게시 전 해당 플랫폼 공식 정책 페이지에서 확인하고, 확인되면 사전 버전을 올려 출처를 추가한다.',
  sources:{
