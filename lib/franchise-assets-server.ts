@@ -45,6 +45,8 @@ export class FranchiseAssetError extends ApiError{constructor(status:number,mess
 const isRecord=(v:unknown):v is Json=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const posInt=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=1;
 const idOk=(v:unknown):v is string=>typeof v==='string'&&ID_PATTERN.test(v);
+// 저장의 자료·행사 id: undefined·null·''만 '새 자료·새 행사'다. 그 밖의 값(숫자·객체 등)은 주어진 id로 보고 로더가 형식 검사로 404를 낸다(새 행으로 만들지 않는다).
+const given=(v:unknown)=>v!==undefined&&v!==null&&v!=='';
 function fail(key:FranchiseErrorKey):never{const e=FRANCHISE_ERRORS[key];throw new FranchiseAssetError(e.status,e.text)}
 const reasonMessages=(codes:readonly string[])=>codes.map(code=>({code,message:(ASSET_MESSAGES as Readonly<Record<string,string>>)[code]??code}));
 // 판정 실패를 HTTP로: 실시간 응답은 판정 문구(발췌 포함 가능)와 사유 코드·고정 사유 문구·규칙 버전·면책.
@@ -65,7 +67,7 @@ const eventTarget=(x:AssetArgs)=>x.action==='event_save'?(typeof x.input.eventId
 
 // ── 조건부 쓰기 보호 ──
 // 읽은 뒤 행이 바뀌었으면 같은 id 행을 다시 INSERT해 UNIQUE 실패로 batch 전체를 되돌린다. commit이 ASSET_STALE·EVENT_STALE 409로 바꾼다. path는 두 리터럴 중 하나(사용자 입력 아님).
-// batch의 첫 문장으로 둔다(자료: 승인·내보내기·게시 위치·폐기의 $.rev, 행사: 기존 행을 바꾸는 모든 작업의 $.version). 운영 D1 batch와 로컬 런타임 batch 모두 트랜잭션이다.
+// batch의 첫 문장으로 둔다(자료: 저장(바로 앞 판)·승인·내보내기·게시 위치·폐기의 $.rev, 행사: 기존 행을 바꾸는 모든 작업의 $.version). 운영 D1 batch와 로컬 런타임 batch 모두 트랜잭션이다.
 export const rowGuard=(owner:string,kind:'recruitment_asset'|'recruitment_event',rowId:string,path:'$.rev'|'$.version',expected:number|null)=>
  database().prepare(`INSERT INTO records(id,owner,kind,parent_id,data,updated_at) SELECT id,owner,kind,parent_id,data,updated_at FROM records WHERE id=? AND owner=? AND json_extract(data,'${path}') IS NOT ?`).bind(`${owner}:${kind}:${rowId}`,owner,expected);
 // 재검토 표시(가맹 잠금 밖, owner 잠금 아래에서 돈다). 읽은 rev와 같을 때만 바꾸는 조건부 UPDATE이고 rev를 올린다. 테스트용으로 export.
@@ -149,9 +151,9 @@ async function sourceOf(owner:string,raw:unknown,campaignId:string,inherited:Ass
 }
 const aiOf=(s:AssetSource|null)=>s?.origin==='ai'||s?.origin==='ai_edited';
 // 초안 저장(모든 역할): 최신 판 CAS(baseVersion) → 캠페인(기존 자료는 이전 값) → 문맥 → 입력 검사(분기는 보지 않는다) → 출처 → 같은 값이면 쓰기 없음 → 한도.
-// 바로 앞 판이 증빙이 아닌 초안(승인·내보내기 없음)이면 같은 batch에서 지운다.
+// 바로 앞 판이 증빙이 아닌 초안(승인·내보내기 없음)이면 같은 batch에서 지운다. 저장도 바로 앞 판의 $.rev 보호를 batch 첫 문장으로 둔다.
 async function assetSave(x:AssetArgs):Promise<Outcome>{
- const i=x.input,prev=typeof i.assetId==='string'&&i.assetId?await loadAsset(x.owner,x.brandId,i.assetId):null;
+ const i=x.input,prev=given(i.assetId)?await loadAsset(x.owner,x.brandId,i.assetId):null;
  if(prev&&i.baseVersion!==prev.version)fail('ASSET_STALE');
  const campaignId=prev?prev.campaignId:str(i.campaignId,'캠페인',100,true);
  const [ctx,campaign]=await Promise.all([factContext(x.owner,x.brandId,i.factRefs),campaignOf(x.owner,campaignId)]);
@@ -165,9 +167,12 @@ async function assetSave(x:AssetArgs):Promise<Outcome>{
  else if(await assetCount(x.owner,x.brandId)>=ASSET_LIMITS.assetsPerBrand)fail('LIMIT');
  const row:AssetRow={...draft,rev:1,source,aiGenerated:aiOf(source),savedBy:actorOf(x.actor),exportCount:0};
  const result={assetId:row.id,version:row.version,bodyHash:row.bodyHash,status:row.status};
+ // 잠금(120초)이 도중에 풀려 다른 요청이 끼어들어도(교차 검토 C1) 승인·내보낸 판을 지우거나 먼저 쓴 새 판을 덮어쓰지 않는다:
+ // 바로 앞 판의 rev 보호(첫 문장) → 읽은 상태 그대로인 초안만 지우는 조건부 DELETE → 새 판은 upsert가 아닌 INSERT(같은 판이 이미 있으면 UNIQUE → ASSET_STALE 409).
  await x.port.commit([
-  ...(removable&&prev?[database().prepare("DELETE FROM records WHERE id=? AND owner=? AND kind='recruitment_asset'").bind(assetKey(x.owner,rowIdOf(prev)),x.owner)]:[]),
-  recordStatement(x.owner,'recruitment_asset',rowIdOf(row),row,x.brandId),
+  ...(prev?[rowGuard(x.owner,'recruitment_asset',rowIdOf(prev),'$.rev',revOf(prev))]:[]),
+  ...(removable&&prev?[database().prepare("DELETE FROM records WHERE id=? AND owner=? AND kind='recruitment_asset' AND json_extract(data,'$.status')='draft' AND json_extract(data,'$.approval') IS NULL AND json_array_length(data,'$.exports')=0 AND json_extract(data,'$.rev') IS ?").bind(assetKey(x.owner,rowIdOf(prev)),x.owner,revOf(prev))]:[]),
+  database().prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').bind(assetKey(x.owner,rowIdOf(row)),x.owner,'recruitment_asset',x.brandId,JSON.stringify(row),x.now),
   x.port.receipt('asset_save',result,{recordId:row.id,assetVersion:row.version,bodyHash:row.bodyHash,aiGenerated:row.aiGenerated},assetTarget(x)),
  ],'ASSET_STALE');
  return {result,extra:{warnings:d.warnings,ruleVersion:d.ruleVersion,disclaimer:d.disclaimer}};
@@ -211,12 +216,14 @@ async function assetExport(x:AssetArgs):Promise<Outcome>{
 }
 // 내보내기 재생(lib/franchise-server.ts replay가 5분 안·대표·관리자일 때 부른다): 행을 다시 읽고 스위치·문맥을 새로 읽어 판정을 다시 돌린다(읽기 전용). exports는 늘리지 않는다.
 // 행이 없거나, 판정이 ok가 아니거나(폐기·재검토·분기 변경 등), 행의 해시가 감사 행 해시와 다르면 REPLAY_EXPIRED 409다.
-export async function replayAssetExport(owner:string,brandId:string,who:ActorLite,audit:{recordId?:unknown;assetVersion?:unknown;bodyHash?:unknown},now:string):Promise<Json>{
+// 판정은 지금 시각(now)으로 다시 돌리고, 파일 이름의 날짜만 처음 내보낸 시각(감사 행 at)으로 만든다(KST 자정을 넘는 재생도 같은 파일 이름, 교차 검토 C4).
+export async function replayAssetExport(owner:string,brandId:string,who:ActorLite,audit:{recordId?:unknown;assetVersion?:unknown;bodyHash?:unknown;at?:unknown},now:string):Promise<Json>{
  let row:AssetRow;
  try{row=await loadAsset(owner,brandId,audit.recordId,audit.assetVersion)}catch(e){if(e instanceof FranchiseAssetError)fail('REPLAY_EXPIRED');throw e}
  const d=await exportDecision(row,{...await decisionContext({owner,brandId,now,enabled:await isEnabled(owner,'r_franchise')},row),actor:actorOf(who)});
  if(!d.ok||row.bodyHash!==audit.bodyHash)fail('REPLAY_EXPIRED');
- return exportPayload(row,d,brandId,now);
+ const exportedAt=typeof audit.at==='string'&&Number.isFinite(Date.parse(audit.at))?audit.at:now;
+ return exportPayload(row,d,brandId,exportedAt);
 }
 // 게시 위치(대표·관리자): 어느 판이든(내보낸 승인 판). 라벨은 개인정보 검사를 한다(값은 감사에 남기지 않는다).
 async function assetPlace(x:AssetArgs):Promise<Outcome>{
@@ -242,7 +249,7 @@ async function assetRetire(x:AssetArgs):Promise<Outcome>{
 }
 // 행사 등록·변경(대표·관리자, 분기 A): 판 CAS → 비용 참조(R5 전에는 null만) → 장소 개인정보 → 캠페인·연결 후보·분기 → 판정 → 한도.
 async function eventSave(x:AssetArgs):Promise<Outcome>{
- const i=x.input,prev=typeof i.eventId==='string'&&i.eventId?await loadEvent(x.owner,x.brandId,i.eventId):null;
+ const i=x.input,prev=given(i.eventId)?await loadEvent(x.owner,x.brandId,i.eventId):null;
  if(prev&&i.version!==prev.version)fail('EVENT_STALE');
  const spendRef=i.spendRef===undefined?null:i.spendRef;
  if(spendRef!==null)fail('SPEND_REF_UNAVAILABLE');

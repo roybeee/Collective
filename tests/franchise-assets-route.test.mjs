@@ -2,6 +2,8 @@
 // 다른 브랜드·워크스페이스 404, 초안 저장(판·멱등·판 CAS·출처 작업물·한도), 승인·내보내기 게이트(hard_block·분기 A·수익 안전망·위조 승인 행·재생), 게시 위치·폐기,
 // 설명회·견학·박람회(정원·동시 신청·잠금·참석 KST 날짜·시작·취소·followUps), 사실 판 인상·정보공개서 버전 변경 재검토(rebase_facts 포함), 조건부 쓰기 보호(rowGuard·reviewStatement),
 // 보기(원문 없는 목록·상세 게이트·drift), 감사 행(원문·라벨·가명 코드 없음), 캠페인 삭제 뒤 campaignMissing, 외부 호출 0.
+// 교차 검토 반영: 자료 저장의 잠금 만료 경합(승인 판 삭제·동시 저장 유실 없음), 숫자 id 404, 쓰기 작업 전부의 커밋 경합·rev/판 올림, 재생 대상 묶음, 옛 판 내보내기·게시·폐기,
+// 행사 변경 경로 개인정보·비용 참조, 내보내기 막힘 영수증, 감사 키 허용 목록, 재검토 훅 실패 주입(저장 유지·null), 판 2 이상 사실 수정, KST 자정을 넘는 재생 파일 이름.
 // 근거: mocked(메모리 SQLite node:sqlite, 이메일 모드 세션 주입, 외부 fetch는 던지는 스텁, 시계 이동 Date, batch 가로채기로 경합 재현). 결과는 COLLECTIVE 휴리스틱 · 법률 자문 아님.
 // 운영 real 확인·E2E·직원 403 real 확인은 not_run이다(화면 없음, 게시는 레인 A 몫). 브랜드 삭제는 API가 없어 not_run(대상 없음)이다.
 import assert from 'node:assert/strict';
@@ -50,6 +52,13 @@ const fixed=(r,status,key)=>r.status===status&&r.body.error===T(key);
 // batch 가로채기: 조건부 쓰기 보호 문장(IS NOT ?)으로 시작하는 다음 batch 직전에 한 번 행을 바꾼다(잠금 밖 경합 재현).
 const realBatch=env.DB.batch;
 const raceOnce=mutate=>{env.DB.batch=async stmts=>{if(String(stmts[0]?.query).includes('IS NOT ?')){env.DB.batch=realBatch;mutate()}return realBatch(stmts)}};
+// 커밋 batch 가로채기: 영수증 행의 작업이 action인 다음 batch 직전에 한 번 끼어든다(보호 문장 유무와 무관). 잠금 만료는 mutation_locks를 지워 재현한다.
+const receiptOf=(stmts,action)=>stmts.some(s=>Array.isArray(s.values)&&s.values.some(v=>typeof v==='string'&&v.includes(`"action":"${action}"`)));
+const raceCommit=(action,mutate)=>{env.DB.batch=async stmts=>{if(receiptOf(stmts,action)){env.DB.batch=realBatch;await mutate()}return realBatch(stmts)}};
+const expireLock=()=>sql.prepare('DELETE FROM mutation_locks').run();
+const bumpRev=key=>sql.prepare("UPDATE records SET data=json_set(data,'$.rev',json_extract(data,'$.rev')+10) WHERE id=?").run(key);
+const bumpVer=key=>sql.prepare("UPDATE records SET data=json_set(data,'$.version',json_extract(data,'$.version')+10) WHERE id=?").run(key);
+const evKey=id=>`${WS}:recruitment_event:${id}`;
 
 // ── 준비: 스위치·프로필·정보공개서 버전·사실·캠페인·지점·작업물 ──
 check('owner turns the franchise switch on',(await f.setFlag(boss,true)).status===200);
@@ -122,6 +131,32 @@ const P2=r.body.result;
 snap=snapshot();
 const stale1=await save(member,{assetId:P,baseVersion:1,body:page(['다른 문장'])}),stale2=await save(member,{assetId:P,body:page(['다른 문장'])});
 check('C10: an old or missing baseVersion is 409 ASSET_STALE and writes nothing',fixed(stale1,409,'ASSET_STALE')&&fixed(stale2,409,'ASSET_STALE')&&snapshot()===snap);
+// 교차 검토 C2: 문자열이 아닌 id는 '새 자료·새 행사'가 아니라 없는 행(404)이다.
+const numAsset=await save(member,{assetId:12345,baseVersion:1,body:page(['숫자 id 확인'])});
+const numEvent=await post(boss,{action:'event_save',brandId:'fr-a',eventId:777,version:1,campaignId:'ca-a',type:'tour',startsAt:'2026-10-20T14:00:00+09:00',placeLabel:'가상 직영점',capacity:5,spendRef:null,assetRefs:[]});
+check('C10: a numeric assetId is 404 ASSET_NOT_FOUND and a numeric eventId is 404 EVENT_NOT_FOUND, both creating nothing',fixed(numAsset,404,'ASSET_NOT_FOUND')&&fixed(numEvent,404,'EVENT_NOT_FOUND')&&snapshot()===snap);
+// 교차 검토 C1: 저장이 읽은 뒤 커밋 전에 잠금(120초)이 풀려 다른 요청이 끼어들어도 승인 판을 지우거나 다른 저장을 덮어쓰지 않는다.
+r=await portal(member,FILL_WHY+' (잠금 만료 승인)');
+const LA=r.body.result;let racedApprove=null;
+raceCommit('asset_save',async()=>{expireLock();racedApprove=await approve(boss,LA)});
+r=await portal(member,FILL_WHY+' (잠금 만료 승인 수정)',{assetId:LA.assetId,baseVersion:1});
+const laRows=assetRows(LA.assetId);
+check('C10: an approval that lands after the save read its draft makes the save 409 ASSET_STALE and the approved version stays',racedApprove?.status===200&&fixed(r,409,'ASSET_STALE')&&laRows.length===1&&laRows[0].version===1&&laRows[0].status==='approved'&&!audits('asset_save').some(a=>a.recordId===LA.assetId&&a.assetVersion===2));
+r=await portal(member,'동시 저장 기준 초안');
+const LB=r.body.result;let secondSave=null;
+raceCommit('asset_save',async()=>{expireLock();secondSave=await portal(member2,'동시 저장 둘째 본문',{assetId:LB.assetId,baseVersion:1})});
+const firstSave=await portal(member,'동시 저장 첫째 본문',{assetId:LB.assetId,baseVersion:1});
+const lbRows=assetRows(LB.assetId);
+check('C10: two saves on the same base version end as one 200 and one 409 ASSET_STALE and the winner body is kept',secondSave?.status===200&&secondSave.body.result.version===2&&fixed(firstSave,409,'ASSET_STALE')&&lbRows.length===1&&lbRows[0].version===2&&lbRows[0].body==='동시 저장 둘째 본문'&&lbRows[0].savedBy.id==='ra-member-2'&&audits('asset_save').filter(a=>a.recordId===LB.assetId&&a.assetVersion===2).length===1);
+r=await portal(member,FILL_WHY+' (잠금 만료 새 판)');
+const LC=r.body.result;
+check('C10: the base of the new-version race approves',(await approve(boss,LC)).status===200);
+const lcIntruder={...assetRow(LC.assetId,1),version:2,rev:4,exports:[{at:iso(),by:'ra-admin',role:'admin',bodyHash:LC.bodyHash,judgeVersion:'synthetic',assetsVersion:fa.ASSETS_VERSION,checklistVersion:fa.CHECKLIST_VERSION}],exportCount:1};
+raceCommit('asset_save',()=>insertRow(assetKey(LC.assetId,2),'recruitment_asset','fr-a',lcIntruder));
+r=await portal(member,FILL_WHY+' (잠금 만료 새 판 수정)',{assetId:LC.assetId,baseVersion:1});
+check('C10: a version row written meanwhile is not overwritten (409 ASSET_STALE, its export record stays)',fixed(r,409,'ASSET_STALE')&&JSON.stringify(assetRow(LC.assetId,2))===JSON.stringify(lcIntruder)&&assetRow(LC.assetId,1).status==='approved');
+sql.prepare('DELETE FROM records WHERE id=?').run(assetKey(LC.assetId,2));
+snap=snapshot();
 const otherFact=await portal(member,'도넛 가게 소개',{factRefs:[{id:B_COUNT.id,version:1}]}),storeFact=await portal(member,'도넛 가게 소개',{factRefs:[{id:S_FACT.id,version:1}]});
 check('C11: another brand fact is 400 fact_other_brand and a store fact is 400 fact_store_scoped',codesAre(otherFact,400,'fact_other_brand')&&codesAre(storeFact,400,'fact_store_scoped')&&otherFact.body.disclaimer===DISCLAIMER&&snapshot()===snap);
 const [cons,campB,campNone]=[await portal(member,'도넛 가게 소개',{campaignId:'ca-cons'}),await portal(member,'도넛 가게 소개',{campaignId:'ca-b'}),await portal(member,'도넛 가게 소개',{campaignId:'ca-none'})];
@@ -152,6 +187,10 @@ for(let v=2;v<=10;v++)insertRow(assetKey(LIM.assetId,v),'recruitment_asset','fr-
 snap=snapshot();
 r=await post(member,{action:'asset_save',brandId:'fr-l',assetId:LIM.assetId,baseVersion:10,type:'portal_intro',factRefs:[],body:'도넛 가게 소개 둘'});
 check('C15: with ten version rows a new version is 409 LIMIT and writes nothing',fixed(r,409,'LIMIT')&&snapshot()===snap);
+patch(assetKey(LIM.assetId,10),'$.status','draft');
+r=await post(member,{action:'asset_save',brandId:'fr-l',assetId:LIM.assetId,baseVersion:10,type:'portal_intro',factRefs:[],body:'도넛 가게 소개 둘'});
+const limRows=assetRows(LIM.assetId);
+check('C15: at ten rows a removable latest draft is replaced, so the new version saves and the row count stays ten',r.status===200&&r.body.result.version===11&&limRows.length===10&&!limRows.some(x=>x.version===10)&&limRows[limRows.length-1].version===11);
 for(let k=0;k<200;k++)insertRow(`${WS}:recruitment_event:re-seed-${k}`,'recruitment_event','fr-l',{id:'re-seed-'+k,brandId:'fr-l',version:1,status:'scheduled'});
 snap=snapshot();
 r=await post(boss,{action:'event_save',brandId:'fr-l',campaignId:'ca-l',type:'tour',startsAt:'2026-10-20T14:00:00+09:00',placeLabel:'가상 직영점',capacity:5,spendRef:null,assetRefs:[]});
@@ -220,9 +259,15 @@ r=await approve(boss,W);
 check('D: approving again after the race reads the new rev and succeeds',r.status===200&&assetRow(W.assetId,1).status==='approved'&&assetRow(W.assetId,1).rev===6);
 
 // ════ E. 내보내기 ════
-r=await exportAsset(admin,CR,'download');
+const RID_DRAFT_EXPORT='rq-export-draft-eeeeeee',blockedBeforeExport=audits('asset_blocked').length;
+r=await exportAsset(admin,CR,'download',{requestId:RID_DRAFT_EXPORT});
 const badMode=await exportAsset(admin,P2,'print');
 check('E21: exporting a draft is 409 not_approved and an unknown mode is 400 EXPORT_MODE',codesAre(r,409,'not_approved')&&fixed(badMode,400,'EXPORT_MODE'));
+const exportBlock=audits('asset_blocked').find(b=>b.requestAction==='asset_export'&&b.recordId===CR.assetId);
+check('E21: the export 409 writes one asset_blocked receipt with reason codes and fixed texts only',audits('asset_blocked').length===blockedBeforeExport+1&&!!exportBlock&&exportBlock.status===409&&exportBlock.assetVersion===1&&JSON.stringify(exportBlock.reasons)==='["not_approved"]'&&exportBlock.result.error===T('ASSET_BLOCKED')&&Object.keys(exportBlock.result).sort().join()==='disclaimer,error,reasons,ruleVersion'&&exportBlock.result.reasons.every(x=>x.message===fa.ASSET_MESSAGES[x.code]));
+snap=snapshot();
+const exportBlockReplay=await exportAsset(admin,CR,'download',{requestId:RID_DRAFT_EXPORT});
+check('E21: the same requestId replays the export 409 with the fixed text and writes nothing',exportBlockReplay.status===409&&exportBlockReplay.body.replayed===true&&JSON.stringify(codes(exportBlockReplay))==='["not_approved"]'&&exportBlockReplay.body.error===T('ASSET_BLOCKED')&&snapshot()===snap);
 const RID_EXPORT='rq-export-bbbbbbbbbbbb';
 r=await exportAsset(admin,P2,'download',{requestId:RID_EXPORT});
 const exported=assetRow(P,2),firstExport=r;
@@ -313,6 +358,9 @@ const BRIEF=r.body.result;
 check('H35: a briefing without a deck saves with the missing-deck warning',r.status===200&&/^re-/.test(BRIEF.eventId)&&BRIEF.version===1&&BRIEF.status==='scheduled'&&r.body.warnings.includes(fa.ASSET_WARNING_MESSAGES.briefingDeckMissing)&&r.body.disclaimer===DISCLAIMER);
 const briefRow=eventRow(BRIEF.eventId);
 check('H35: the event row is a brand row with zero counts and the creator',briefRow.brandId==='fr-a'&&briefRow.campaignId==='ca-a'&&JSON.stringify(briefRow.counts)==='{"applied":0,"attended":0,"noShow":0}'&&briefRow.codes.length===0&&briefRow.createdBy.id==='ra-boss'&&JSON.stringify(briefRow.assetRefs)===JSON.stringify([{id:P,version:2}])&&audits('event_save').some(a=>a.recordId===BRIEF.eventId&&a.eventVersion===1));
+r=await register(member,BRIEF.eventId,null);
+const nullCodeAudit=audits('event_register').filter(a=>a.recordId===BRIEF.eventId);
+check('H36: a registration with code null is 200 and its audit row says withCode false',r.status===200&&r.body.result.counts.applied===1&&nullCodeAudit.length===1&&nullCodeAudit[0].withCode===false&&eventRow(BRIEF.eventId).codes.length===0);
 const PLACE_EV='가상행사장소토큰';
 r=await post(admin,EV({placeLabel:'가상 직영점 '+PLACE_EV}));
 const E2=r.body.result.eventId;
@@ -421,8 +469,11 @@ check('A1: the owner turns the switch back on',(await f.setFlag(boss,true)).stat
 const KEY=env.AGENCY_ENCRYPTION_KEY;delete env.AGENCY_ENCRYPTION_KEY;
 const keyless=[await portal(member,'키 없는 초안'),await post(boss,EV({startsAt:'2026-10-25T16:00:00+09:00',capacity:3}))];
 const keylessReg=await register(member,keyless[1].body.result?.eventId,'LKJ777HH'),keylessView=await get(member,'view=assets&brandId=fr-a'),keylessLead=await f.createLead(boss,'fr-a');
+const KA=(await portal(member,FILL_WHY+' (키 없음)')).body.result,KE=keyless[1].body.result?.eventId;
+const keylessRest=[await approve(boss,KA),await exportAsset(admin,KA),await place(admin,KA),await retire(admin,KA),await attend(member,PAST,{version:eventRow(PAST).version,attended:0,noShow:0}),await cancel(boss,KE,eventRow(KE).version)];
 env.AGENCY_ENCRYPTION_KEY=KEY;
 check('A3: without the contact key asset_save, event_save, event_register and GET assets are 200 while a lead action is 503',keyless.every(x=>x.status===200)&&keylessReg.status===200&&keylessView.status===200&&keylessLead.status===503&&keylessLead.body.error===T('KEY_MISSING'));
+check('A3: without the contact key approve, export, place, retire, attendance and cancel are 200 too (all nine actions)',keylessRest.every(x=>x.status===200));
 
 // ════ F. 사실·정보공개서 버전 변경 재검토 ════
 const pBefore=assetRow(P,2);
@@ -495,8 +546,13 @@ r=await get(member,`view=asset&brandId=fr-a&assetId=${P}&version=2`);
 check('I46: the flagged old approval shows the fact drift and suggests a new save',r.status===200&&r.body.asset.version===2&&r.body.drift[0].factId===A_TOTAL.id&&r.body.drift[0].refVersion===1&&r.body.drift[0].currentVersion===3&&r.body.drift[0].changed===true&&r.body.resaveSuggested===true&&r.body.latestVersion===3&&r.body.versions.length===2);
 r=await get(member,`view=asset&brandId=fr-a&assetId=${SRC.assetId}`);
 check('I46: the detail view reports the source and AI flag',r.status===200&&r.body.source.artifactId==='art-ai'&&r.body.aiGenerated===true&&r.body.asset.version===2);
+r=await portal(member,'사실 없는 소개 초안');
+const FL=r.body.result;
+check('I46: a factless draft is saved on the current version',r.status===200&&assetRow(FL.assetId,1).disclosureVersionId===dvA2&&assetRow(FL.assetId,1).factRefs.length===0);
 r=await post(boss,{action:'amend_disclosure_version',brandId:'fr-a',id:dvA2,version:1,reasonCode:'typo',label:'가상 정보공개서 A 변경(정정)'});
 check('F31: amending the label of the current version flags assets saved on it with version_changed',r.status===200&&r.body.reviewAssets>=1&&assetRow(MISS.assetId,1).review.reasons.includes('version_changed'));
+r=await get(member,`view=asset&brandId=fr-a&assetId=${FL.assetId}`);
+check('I46: a factless draft flagged only by the label amendment still suggests a new save (no drift, version still current)',r.status===200&&r.body.asset.review.needed===true&&JSON.stringify(r.body.asset.review.reasons)==='["version_changed"]'&&r.body.drift.length===0&&!r.body.gate.reasons.some(x=>x.code==='version_not_current'||x.code==='fact_changed')&&r.body.resaveSuggested===true);
 r=await get(admin,'view=audit&brandId=fr-a');
 const NEW_ACTIONS=['asset_save','asset_approve','asset_export','asset_place','asset_retire','asset_blocked','event_save','event_cancel','event_register','event_attendance'];
 const seenActions=new Set(r.body.audit.map(a=>a.action));
@@ -504,6 +560,11 @@ check('I47: the admin audit view lists the ten new actions with Korean labels',r
 const auditJson=JSON.stringify(sql.prepare("SELECT data FROM records WHERE kind='franchise_audit'").all());
 const TOKENS=[TOKEN_BODY,PLACE_TOKEN,PLACE_EV,'LKB728BT','LKF333CC','LKD111AA','LKE222BB','LKJ777HH',DEPOSIT,'예약금',RR,'가맹점 수 안내','출처 확인 초안',FILL_WHY];
 check('I47: no audit row holds body text, place labels or pseudonymous codes',TOKENS.every(t=>!auditJson.includes(t)));
+// 부분 유출(원문·라벨 앞머리 등)도 잡도록 자료·행사 감사 행의 키를 허용 목록으로 고정한다.
+const AUDIT_KEYS=new Set(['id','brandId','action','actor','at','requestAction','status','result','target','recordId','assetVersion','bodyHash','mode','checklistVersion','judgeVersion','reasons','eventVersion','eventCounts','withCode','aiGenerated','placementCount']);
+const assetAudits=()=>sql.prepare("SELECT data FROM records WHERE kind='franchise_audit'").all().map(x=>JSON.parse(x.data)).filter(a=>NEW_ACTIONS.includes(a.action));
+const auditKeysOk=()=>assetAudits().every(a=>Object.keys(a).every(k=>AUDIT_KEYS.has(k)));
+check('I47: every asset and event audit row carries only the allowed keys',assetAudits().length>=NEW_ACTIONS.length&&auditKeysOk());
 r=await portal(member,FILL_WHY+' (삭제 캠페인)',{campaignId:'ca-a2'});
 const AC=r.body.result;
 check('I48: the asset of the second campaign approves',(await approve(boss,AC)).status===200);
@@ -511,14 +572,152 @@ const deleted=await server.deleteCampaign(WS,{id:'ca-a2',confirmed:true,version:
 check('I48: deleting the campaign leaves the asset row',deleted.deleted===true&&assetRows(AC.assetId).length===1&&assetRows(AC.assetId)[0].status==='approved');
 r=await exportAsset(admin,AC);
 check('I48: exporting an asset of a deleted campaign is 400 campaign_other_brand',codesAre(r,400,'campaign_other_brand'));
+await server.recordStatement(WS,'campaign','ca-arch',{id:'ca-arch',brandId:'fr-a',title:'가상 보관 모집',goal:'가상 목표',audience:'',channels:'',stores:'',products:'',budget:null,startDate:'',endDate:'',constraints:'',sources:'',status:'approved',version:1,objective:'franchise_recruitment',archivedAt:'2026-10-02T00:00:00.000Z',createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-02T00:00:00.000Z'}).run();
 r=await get(member,'view=assets&brandId=fr-a');
 const acEntry=r.body.assets.find(a=>a.assetId===AC.assetId);
 check('I48: the assets view marks the deleted campaign and drops it from the campaign list',!!acEntry&&acEntry.campaignMissing===true&&acEntry.campaignTitle===null&&!r.body.campaigns.some(c=>c.id==='ca-a2'));
+const archivedEvents=await get(member,'view=events&brandId=fr-a');
+check('I48: an archived recruitment campaign is left out of the asset and event campaign lists',r.body.campaigns.some(c=>c.id==='ca-a')&&!r.body.campaigns.some(c=>c.id==='ca-arch')&&archivedEvents.status===200&&archivedEvents.body.campaigns.some(c=>c.id==='ca-a')&&!archivedEvents.body.campaigns.some(c=>c.id==='ca-arch'));
 const FORBIDDEN=/법적으로 적합|준수 완료|합법/;
 check('I49: no response and no new module makes a legal-adequacy claim',!responses.some(b=>FORBIDDEN.test(JSON.stringify(b)))&&!FORBIDDEN.test(readFileSync('lib/franchise-assets-server.ts','utf8')));
 check('I49: the console holds no body text or pseudonymous code and no unexpected failure',TOKENS.every(t=>!logged.some(l=>l.includes(t)))&&!logged.some(l=>/franchise_request_failed|agency_request_failed|asset_flag_failed/.test(l)));
 check('I49: no external call was made',f.calls.length===0);
 const NEW_ERRORS={ASSET_NOT_FOUND:404,ASSET_STALE:409,ASSET_BLOCKED:409,EXPORT_MODE:400,SOURCE_INVALID:400,EVENT_NOT_FOUND:404,EVENT_STALE:409,SPEND_REF_UNAVAILABLE:400};
 check('I49: the eight new fixed errors are Korean with 400, 404 or 409',Object.entries(NEW_ERRORS).every(([k,s])=>E[k]&&E[k].status===s&&/[가-힣]/.test(E[k].text)));
+
+// ════ J. 교차 검토 보강: 커밋 경합·재생 대상·옛 판·행사 변경 경로 ════
+// 1) 커밋 직전에 잠금 밖 재검토 표시(rev)나 다른 쓰기(행사 판)가 끼어들면 조건부 쓰기 보호가 batch를 되돌린다(행·영수증 그대로). 성공하면 rev·판이 1 오른다.
+r=await portal(member,FILL_WHY+' (커밋 경합)');
+const GR=r.body.result,grKey=assetKey(GR.assetId,1),grAudits=action=>audits(action).filter(a=>a.recordId===GR.assetId).length;
+check('J: the commit-race asset approves and exports',(await approve(boss,GR)).status===200&&(await exportAsset(admin,GR)).status===200);
+let grBefore=assetRow(GR.assetId,1),receiptsBefore=grAudits('asset_export');
+raceCommit('asset_export',()=>bumpRev(grKey));
+r=await exportAsset(admin,GR);
+check('J: an export racing a review mark is 409 ASSET_STALE, keeps the export records and writes no receipt',fixed(r,409,'ASSET_STALE')&&assetRow(GR.assetId,1).rev===grBefore.rev+10&&assetRow(GR.assetId,1).exports.length===grBefore.exports.length&&assetRow(GR.assetId,1).exportCount===grBefore.exportCount&&grAudits('asset_export')===receiptsBefore);
+grBefore=assetRow(GR.assetId,1);receiptsBefore=grAudits('asset_place');
+raceCommit('asset_place',()=>bumpRev(grKey));
+r=await place(admin,GR);
+check('J: a placement racing a review mark is 409 ASSET_STALE with no placement and no receipt',fixed(r,409,'ASSET_STALE')&&assetRow(GR.assetId,1).placements.length===0&&assetRow(GR.assetId,1).rev===grBefore.rev+10&&grAudits('asset_place')===receiptsBefore);
+grBefore=assetRow(GR.assetId,1);
+r=await place(admin,GR);
+check('J: a placement raises rev by one',r.status===200&&assetRow(GR.assetId,1).placements.length===1&&assetRow(GR.assetId,1).rev===grBefore.rev+1);
+grBefore=assetRow(GR.assetId,1);receiptsBefore=grAudits('asset_retire');
+raceCommit('asset_retire',()=>bumpRev(grKey));
+r=await retire(admin,GR);
+check('J: a retirement racing a review mark is 409 ASSET_STALE, the row stays approved and no receipt',fixed(r,409,'ASSET_STALE')&&assetRow(GR.assetId,1).status==='approved'&&assetRow(GR.assetId,1).rev===grBefore.rev+10&&grAudits('asset_retire')===receiptsBefore);
+grBefore=assetRow(GR.assetId,1);
+r=await retire(admin,GR);
+check('J: a retirement raises rev by one',r.status===200&&assetRow(GR.assetId,1).status==='retired'&&assetRow(GR.assetId,1).rev===grBefore.rev+1);
+r=await post(boss,EV({startsAt:'2026-10-15T14:00:00+09:00',capacity:5}));
+const RE=r.body.result.eventId,reKey=evKey(RE),reAudits=action=>audits(action).filter(a=>a.recordId===RE).length;
+let reBefore=eventRow(RE);receiptsBefore=reAudits('event_save');
+raceCommit('event_save',()=>bumpVer(reKey));
+r=await post(boss,EV({eventId:RE,version:reBefore.version,startsAt:'2026-10-15T14:00:00+09:00',capacity:6}));
+check('J: an event edit racing another write is 409 EVENT_STALE and keeps the row',fixed(r,409,'EVENT_STALE')&&eventRow(RE).capacity===5&&eventRow(RE).version===reBefore.version+10&&reAudits('event_save')===receiptsBefore);
+reBefore=eventRow(RE);receiptsBefore=reAudits('event_attendance');
+raceCommit('event_attendance',()=>bumpVer(reKey));
+r=await attend(member,RE,{version:reBefore.version,attended:0,noShow:0});
+check('J: attendance racing another write is 409 EVENT_STALE (event text) and keeps the counts',fixed(r,409,'EVENT_STALE')&&JSON.stringify(eventRow(RE).counts)===JSON.stringify(reBefore.counts)&&eventRow(RE).version===reBefore.version+10&&reAudits('event_attendance')===receiptsBefore);
+reBefore=eventRow(RE);receiptsBefore=reAudits('event_cancel');
+raceCommit('event_cancel',()=>bumpVer(reKey));
+r=await cancel(boss,RE,reBefore.version);
+check('J: a cancellation racing another write is 409 EVENT_STALE and the event stays scheduled',fixed(r,409,'EVENT_STALE')&&eventRow(RE).status==='scheduled'&&eventRow(RE).version===reBefore.version+10&&reAudits('event_cancel')===receiptsBefore);
+reBefore=eventRow(RE);
+r=await cancel(boss,RE,reBefore.version);
+check('J: a cancellation raises the event version by one',r.status===200&&r.body.result.version===reBefore.version+1&&eventRow(RE).status==='cancelled'&&eventRow(RE).version===reBefore.version+1);
+// 2) 같은 요청 번호는 작업·브랜드·대상이 같을 때만 재생하고, 다른 자료·행사에 쓰면 REQUEST_REUSED 409다.
+const RB1=(await portal(member,FILL_WHY+' (재생 대상 하나)')).body.result,RB2=(await portal(member,FILL_WHY+' (재생 대상 둘)')).body.result;
+check('J: both replay-target assets approve and export',(await approve(boss,RB1)).status===200&&(await approve(boss,RB2)).status===200&&(await exportAsset(admin,RB1)).status===200&&(await exportAsset(admin,RB2)).status===200);
+const RID_EXP='rq-reuse-export-aaaaaa',RID_PL='rq-reuse-place-aaaaaaa',RID_RT='rq-reuse-retire-aaaaaa',rb2Before=assetRow(RB2.assetId,1);
+const reuse1=[await exportAsset(admin,RB1,'copy',{requestId:RID_EXP}),await place(admin,RB1,{requestId:RID_PL}),await retire(admin,RB1,{requestId:RID_RT})];
+snap=snapshot();
+const reuse2=[await exportAsset(admin,RB2,'copy',{requestId:RID_EXP}),await place(admin,RB2,{requestId:RID_PL}),await retire(admin,RB2,{requestId:RID_RT})];
+check('J: reusing a requestId for export, place or retire on another asset is 409 REQUEST_REUSED and leaves that asset alone',reuse1.every(x=>x.status===200)&&reuse2.every(x=>fixed(x,409,'REQUEST_REUSED'))&&JSON.stringify(assetRow(RB2.assetId,1))===JSON.stringify(rb2Before)&&snapshot()===snap);
+const RS=(await portal(member,'재생 대상 초안')).body.result,RID_SV='rq-reuse-save-aaaaaaaa',RID_NEW='rq-reuse-save-new-aaaa';
+const sv1=await portal(member,'재생 대상 초안 둘',{assetId:RS.assetId,baseVersion:1,requestId:RID_SV});
+snap=snapshot();
+const sv2=await portal(member,'재생 대상 초안 둘',{assetId:RS.assetId,baseVersion:1,requestId:RID_SV});
+check('J: resending an existing-asset save with the same requestId replays it',sv1.status===200&&sv1.body.result.version===2&&sv2.status===200&&sv2.body.replayed===true&&JSON.stringify(sv2.body.result)===JSON.stringify(sv1.body.result)&&snapshot()===snap);
+const sv3=await portal(member,'재생 대상 새 초안',{requestId:RID_NEW});
+snap=snapshot();
+const sv4=await portal(member,'재생 대상 초안 셋',{assetId:RS.assetId,baseVersion:2,requestId:RID_NEW});
+check('J: a new-asset save requestId sent again with an assetId is 409 REQUEST_REUSED',sv3.status===200&&fixed(sv4,409,'REQUEST_REUSED')&&snapshot()===snap);
+const RID_EVN='rq-reuse-event-new-aaa',RID_EVE='rq-reuse-event-edit-aa',eventTotal=()=>Number(sql.prepare("SELECT COUNT(*) n FROM records WHERE kind='recruitment_event'").get().n),eventsBefore=eventTotal();
+const ne1=await post(boss,EV({startsAt:'2026-11-20T14:00:00+09:00',capacity:5,requestId:RID_EVN})),ne2=await post(boss,EV({startsAt:'2026-11-20T14:00:00+09:00',capacity:5,requestId:RID_EVN}));
+const NE=ne1.body.result?.eventId;
+const ed1=await post(boss,EV({eventId:NE,version:1,startsAt:'2026-11-20T14:00:00+09:00',capacity:6,requestId:RID_EVE})),ed2=await post(boss,EV({eventId:NE,version:1,startsAt:'2026-11-20T14:00:00+09:00',capacity:6,requestId:RID_EVE}));
+const ne3=await post(boss,EV({eventId:NE,version:eventRow(NE).version,startsAt:'2026-11-20T14:00:00+09:00',capacity:7,requestId:RID_EVN}));
+check('J: a new event_save and an edit each replay with the same requestId, and the new-event requestId on an edit is 409 REQUEST_REUSED',ne1.status===200&&ne2.status===200&&ne2.body.replayed===true&&JSON.stringify(ne2.body.result)===JSON.stringify(ne1.body.result)&&ed1.status===200&&ed2.status===200&&ed2.body.replayed===true&&JSON.stringify(ed2.body.result)===JSON.stringify(ed1.body.result)&&fixed(ne3,409,'REQUEST_REUSED')&&eventTotal()===eventsBefore+1&&eventRow(NE).capacity===6&&eventRow(NE).version===2);
+// 3) 옛 승인 판: 내보내기는 최신 판만(ASSET_STALE), 게시 위치 기록·폐기는 요청한 판에만 쓴다.
+const OV=(await portal(member,FILL_WHY+' (옛 판)')).body.result;
+check('J: the old-version asset approves and exports',(await approve(boss,OV)).status===200&&(await exportAsset(admin,OV)).status===200);
+r=await portal(member,FILL_WHY+' (옛 판 둘)',{assetId:OV.assetId,baseVersion:1});
+const OV2=r.body.result,ov1=assetRow(OV.assetId,1),ov2=assetRow(OV.assetId,2),ovExports=audits('asset_export').filter(a=>a.recordId===OV.assetId).length;
+r=await exportAsset(admin,OV);
+check('J: exporting an older approved version is 409 ASSET_STALE and adds no export record',OV2.version===2&&fixed(r,409,'ASSET_STALE')&&JSON.stringify(assetRow(OV.assetId,1))===JSON.stringify(ov1)&&audits('asset_export').filter(a=>a.recordId===OV.assetId).length===ovExports);
+r=await place(admin,OV);
+check('J: a placement is recorded on the older exported version and the new draft is untouched',r.status===200&&r.body.result.version===1&&assetRow(OV.assetId,1).placements.length===1&&JSON.stringify(assetRow(OV.assetId,2))===JSON.stringify(ov2));
+r=await retire(admin,OV);
+check('J: retiring the older version retires only that version',r.status===200&&r.body.result.version===1&&assetRow(OV.assetId,1).status==='retired'&&JSON.stringify(assetRow(OV.assetId,2))===JSON.stringify(ov2));
+// 4) 행사 변경 경로도 장소 개인정보와 비용 참조를 막는다.
+const GE=(await post(boss,EV({startsAt:'2026-11-25T14:00:00+09:00',capacity:5}))).body.result.eventId;
+snap=snapshot();
+const editPii=await post(boss,EV({eventId:GE,version:1,startsAt:'2026-11-25T14:00:00+09:00',capacity:5,placeLabel:'문의 010-0000-0999'})),editSpend=await post(boss,EV({eventId:GE,version:1,startsAt:'2026-11-25T14:00:00+09:00',capacity:5,spendRef:'sp-probe1'}));
+check('J: an edit with a phone number in the place is 400 PII_IN_TEXT and one with a spend reference is 400 SPEND_REF_UNAVAILABLE, both writing nothing',fixed(editPii,400,'PII_IN_TEXT')&&fixed(editSpend,400,'SPEND_REF_UNAVAILABLE')&&eventRow(GE).version===1&&snapshot()===snap);
+
+// ════ K. 재검토 훅 실패(명세 5.4)와 판 2 이상 사실 수정 ════
+// 후보 조회(json_each factRefs)를 실패시키면 사실·버전 변경은 유지되고 reviewAssets:null과 고정 코드 한 줄만 남는다.
+await f.brand(WS,'fr-h');
+assert.equal((await f.profile(boss,'fr-h',{...FY,branch:'A'},0)).status,200);
+const dvH=(await registerVersion('fr-h','가상 정보공개서 H','ra dvH',V1META)).body.result.id;
+const H_DATA=fact('fr-h',{key:'franchise_store_count',value:'8개',validUntil:UNTIL_Y,sourceRef:{disclosureVersionId:dvH,fiscalYear:2025,page:3,asOf:'2025-12-31'}});
+const H_COUNT=await saveFact(H_DATA);
+await campaign('ca-h','fr-h','franchise_recruitment','가상 가맹 모집 H');
+const hSave=(body,x={})=>post(member,{action:'asset_save',brandId:'fr-h',campaignId:'ca-h',type:'portal_intro',body,...x});
+r=await hSave('가맹점 수 안내 H',{factRefs:[{id:H_COUNT.id,version:1}]});
+const HA=r.body.result;
+check('K: the hook brand has a draft on its fact',r.status===200&&HA.version===1);
+const realPrepare=env.DB.prepare,flagLogs=()=>logged.filter(l=>/asset_flag_failed/.test(l));
+const failHook=on=>{env.DB.prepare=on?q=>{if(String(q).includes("json_each(data,'$.factRefs')"))throw new Error('injected hook failure');return realPrepare(q)}:realPrepare};
+let logsBefore=flagLogs().length;
+failHook(true);
+r=await factPost(boss,{action:'save_fact',id:H_COUNT.id,version:1,confirmed:true,data:{...H_DATA,sourceRef:{...H_DATA.sourceRef,page:4}}});
+failHook(false);
+let hFact=await server.readRecord(WS,'brand_fact',H_COUNT.id);
+check('K: a failing review hook on save_fact keeps the saved fact and answers reviewAssets null',r.status===200&&r.body.version===2&&Object.hasOwn(r.body,'reviewAssets')&&r.body.reviewAssets===null&&hFact.version===2&&hFact.sourceRef.page===4&&assetRow(HA.assetId,1).review.needed===false&&flagLogs().length===logsBefore+1&&flagLogs().at(-1)==='fact_asset_flag_failed');
+r=await hSave('가맹점 수 안내 H 둘',{assetId:HA.assetId,baseVersion:1,factRefs:[{id:H_COUNT.id,version:2}]});
+check('K: the draft is re-saved on fact version 2',r.status===200&&r.body.result.version===2&&assetRow(HA.assetId,2).review.needed===false);
+r=await factPost(boss,{action:'save_fact',id:H_COUNT.id,version:2,confirmed:true,data:{...H_DATA,sourceRef:{...H_DATA.sourceRef,page:5}}});
+check('K: editing a fact already at version 2 flags the draft that references it with fact_changed',r.status===200&&r.body.version===3&&r.body.reviewAssets===1&&assetRow(HA.assetId,2).review.needed===true&&assetRow(HA.assetId,2).review.reasons.includes('fact_changed'));
+r=await hSave('가맹점 수 안내 H 셋',{assetId:HA.assetId,baseVersion:2,factRefs:[{id:H_COUNT.id,version:3}]});
+check('K: the draft is re-saved on fact version 3 without a review mark',r.status===200&&r.body.result.version===3&&assetRow(HA.assetId,3).review.needed===false&&assetRows(HA.assetId).length===1);
+logsBefore=flagLogs().length;
+failHook(true);
+r=await post(boss,{action:'register_disclosure_version',brandId:'fr-h',label:'가상 정보공개서 H 변경',sha256:sha64('ra dvH2'),storageLabel:LABEL,registeredAt:'2026-10-16T10:00:00+09:00',validFrom:'2026-10-16',validUntil:'2027-10-30'});
+failHook(false);
+const dvH2=r.body.result?.id,hVersionIds=sql.prepare("SELECT json_extract(data,'$.id') AS id FROM records WHERE kind='franchise_disclosure_version' AND parent_id='fr-h'").all().map(x=>x.id);
+check('K: a failing review hook on a replacing disclosure version keeps the version and answers reviewAssets null',r.status===200&&Object.hasOwn(r.body,'reviewAssets')&&r.body.reviewAssets===null&&typeof dvH2==='string'&&dvH2!==dvH&&hVersionIds.includes(dvH2)&&assetRow(HA.assetId,3).review.needed===false&&flagLogs().length===logsBefore+1&&flagLogs().at(-1)==='franchise_asset_flag_failed');
+logsBefore=flagLogs().length;
+failHook(true);
+r=await factPost(boss,{action:'rebase_facts',brandId:'fr-h',disclosureVersionId:dvH2,items:[{id:H_COUNT.id,version:3,fiscalYear:2025,page:3,verifiedAt:'2026-10-16T10:00:00+09:00',validUntil:UNTIL_Y,asOf:'2025-12-31'}]});
+failHook(false);
+hFact=await server.readRecord(WS,'brand_fact',H_COUNT.id);
+check('K: a failing review hook on rebase_facts keeps the moved fact and answers reviewAssets null',r.status===200&&r.body.rebased===1&&Object.hasOwn(r.body,'reviewAssets')&&r.body.reviewAssets===null&&hFact.version===4&&hFact.sourceRef.disclosureVersionId===dvH2&&assetRow(HA.assetId,3).review.needed===false&&flagLogs().length===logsBefore+1&&flagLogs().at(-1)==='fact_asset_flag_failed');
+check('K: the three hook failure lines are fixed codes only',flagLogs().length===3&&flagLogs().every(l=>/^(fact|franchise)_asset_flag_failed$/.test(l)));
+
+// ════ L. 교차 검토 C4: KST 자정을 넘는 내보내기 재생은 처음 내보낸 날의 파일 이름을 준다 ════
+setNow(Date.parse('2026-10-16T14:58:00Z'));
+r=await portal(member,FILL_WHY+' (자정 재생)');
+const MN=r.body.result,RID_MN='rq-export-midnight-aaa';
+check('L: the midnight asset approves',(await approve(boss,MN)).status===200);
+const mn1=await exportAsset(admin,MN,'copy',{requestId:RID_MN});
+setNow(Date.parse('2026-10-16T15:01:00Z'));
+snap=snapshot();
+const mn2=await exportAsset(admin,MN,'copy',{requestId:RID_MN});
+check('L: a replay after KST midnight keeps the first file name and body and writes nothing',mn1.status===200&&mn1.body.filename.includes('-20261016-')&&mn2.status===200&&mn2.body.replayed===true&&mn2.body.filename===mn1.body.filename&&mn2.body.body===mn1.body.body&&snapshot()===snap);
+
+// ════ 끝: 교차 검토 사례까지 포함한 감사 키·콘솔·외부 호출 ════
+check('Z: every asset and event audit row, including the cross-review cases, carries only the allowed keys',auditKeysOk());
+check('Z: the console holds no body text or pseudonymous code and no request failure, and no external call was made',TOKENS.every(t=>!logged.some(l=>l.includes(t)))&&!logged.some(l=>/franchise_request_failed|agency_request_failed/.test(l))&&!responses.some(b=>FORBIDDEN.test(JSON.stringify(b)))&&f.calls.length===0);
 
 console.log(JSON.stringify({passed:passed.length}));
