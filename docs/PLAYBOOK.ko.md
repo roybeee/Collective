@@ -1,4 +1,4 @@
-# 교정 기반 플레이북 (B3-1 · B3-2a)
+# 교정 기반 플레이북 (B3-1 · B3-2a · B3-2b)
 
 사람이 작업물·브리프 제안·자료·발행을 판정한 기록(B1 `review_decision`)에서 반복된 선호를 **운영자 선호 규칙**으로 만들어, 소유자가 승인한 뒤 AI 역할 입력에 전달한다.
 성과 실험에서 나온 학습 규칙(바이럴·점포)과 등급·만료·주입 블록을 분리한다. 이번 단계(B3-1)는 모델(HERMES·OpenAI)을 부르지 않는다. 규칙은 사람이 직접 쓰고, 교정 데이터를 외부 모델로 보내는 Reflector는 B3-2다.
@@ -11,6 +11,7 @@
 - records kind: `learning_rule`(규칙), `playbook_audit`(감사, 새 kind) — `lib/record-kinds.ts`. 중지 때 재확인 표시는 새 kind 없이 캠페인 이력(`event`)의 `playbookRecheck` detail이다.
 - 테스트: `tests/playbook.test.mjs` (mocked: 메모리 SQLite·헤더 세션·모의 HERMES, 플레이북 작업의 모델 호출 0)
 - B3-2a 교정 신호(교정 묶음·파생 피드백·재발률·경보 중 승인 동결): 아래 [B3-2a 절](#b3-2a-교정-신호), 테스트 `tests/playbook-signals.test.mjs`
+- B3-2b 선호 on/off 골든 쌍 평가(`POST /api/eval` `pair.kind: operator_preferences`): 아래 [B3-2b 절](#b3-2b-선호-onoff-쌍-평가), 테스트 `tests/eval-preference-pair.test.mjs`
 
 ## 등급과 만료 (대표 결정 9, 2026-09-24)
 
@@ -158,3 +159,25 @@ B3-2a는 교정 데이터를 **읽을 때 모아 보여 주기만** 한다. 모�
 - 열린 모델·게이트웨이 변경 경보(`model_change`·`gateway_change`, 결정 10)가 있으면 `playbook_activate`를 **409**로 막는다. 스위치와 무관하게 늘 적용한다.
 - 판정은 프롬프트 레지스트리의 활성화 게이트와 같은 `alarmState`(`lib/usage-model-alarm.ts`, `lib/prompt-registry.ts`가 쓰는 함수)이고, 해제도 같은 확인 절차(`POST /api/prompts` `acknowledge_alarms`, 소유자)다.
 - `playbook_pause`(주입을 줄임)와 `playbook_renew`(적용 중 규칙의 만료만 늘림)는 막지 않는다.
+
+## B3-2b 선호 on/off 쌍 평가
+
+B3-2b는 운영자 선호 규칙이 역할 산출물을 나쁘게 만들지 않는지를 **골든 케이스 on/off 비교**로 잰다. 설계 권고 D5(초안도 평가)·D8·D11을 적용했다(대표 지시 2026-09-27 "B2 2단계 빼고 남은 개발 모두 진행"). 규칙 상태·만료·등급은 바꾸지 않는다. `performance_tested` 부여는 이번 범위가 아니다(여전히 409).
+
+- 요청: `POST /api/eval {action:'start_run', pair:{kind:'operator_preferences', ruleIds:[…]}, caseIds, tokenBudget, label}`(소유자 전용, 관리자·직원 403, 비로그인 401). 평가 run 절차는 [EVAL 5절](EVAL.ko.md#운영자-선호-onoff-쌍-평가pairkind-operator_preferences-b3-2b).
+- 두 쪽(같은 run·같은 게이트웨이 스냅샷, 케이스마다 번갈아):
+  - off(`active`): 동결 요청에서 `operatorPreferences`를 뺀 제출. `roleSubmission`(운영 조립)과 바이트 동일하다.
+  - on(`candidate`): 고른 규칙만으로 만든 블록을 넣은 제출. 블록은 운영 주입과 같은 `operatorPreferenceBlock`이고 순서도 운영 주입과 같은 `preferenceOrder`(역할 지정 먼저·최신순·id)다. 그래서 '이 규칙만 적용 중일 때의 운영 제출'과 바이트 동일하다.
+- 순수 헬퍼(`lib/playbook-curator.ts`): `preferenceSides(request, block)` → `{off, on}`(원 요청 불변), `preferencePairCases(cases, rules)` → `{cases, skippedCases}`, `preferencePairRules(rules)`(블록·규칙 참조), `isPreferencePair`. `lib/learning-server.ts` `operatorPreferenceContext`도 같은 `preferenceOrder`를 쓴다(동작 동일).
+- 규칙 검사: 1~8개(`MAX_ACTIVE_PER_ROLE`), 같은 브랜드, 운영자 선호 규칙만, 종료(`retired`) 거부. 초안·중지 규칙은 평가할 수 있다(D5).
+- 대상 케이스: 고른 규칙이 모두 주입될 역할 케이스(같은 브랜드·역할·채널. `ruleApplies`의 범위 판정을 쓰고 상태·만료는 보지 않는다). 다른 브랜드·역할·채널 밖·회의 단계·브리프는 `skippedCases`로 센다.
+- run 메타(`eval_run.pair`, 시작 때 고정):
+
+```json
+"pair":{"kind":"operator_preferences","unit":"operator_preferences","brandId":"oda","activeVersionId":"off","candidateVersionId":"playbook:9c1e@2","rules":[{"ruleRef":"playbook:9c1e@2","role":"content","channel":"*","status":"draft"}],"blockHash":"sha256:…","block":{"note":"…","rules":[…]},"skippedCases":1}
+```
+
+- 모델에 가는 블록에는 제목·버전·본문·채널·만료만 있다. 규칙 id·인용·카운터는 run 메타에만 둔다. 시작 뒤 규칙을 고치거나 중지해도 두 쪽 본문은 시작 때 블록이다.
+- 판정: 기존 `pairGate`를 바꾸지 않고 쓴다(봉인 1건 이상·봉인 회귀 0·같은 게이트웨이·같은 모델·전 케이스 두 쪽 완료·후보 합격 수 ≥ off). 비회귀 게이트이며 개선을 주장하지 않는다.
+- 이 run은 프롬프트 레지스트리 활성화 게이트(`activate`·`stage`·`promote`)의 근거가 되지 못한다(409, `lib/prompt-registry.ts`).
+- 한계: 프롬프트 본문은 동결 요청 그대로라 레지스트리 active 버전이 있는 캠페인의 운영 제출과는 프롬프트 부분이 다를 수 있다(두 쪽 모두 같은 본문이라 비교는 공정하다). 회의·브리프 경로는 운영에서도 선호 블록을 넣지 않아 대상이 아니다.
