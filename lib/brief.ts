@@ -1,4 +1,4 @@
-import {campaignBudget,type Campaign,type CampaignObjective} from './agency';
+import {campaignBudget,isRecruitmentObjective,type Campaign,type CampaignObjective} from './agency';
 import type {Store} from './store-marketing';
 import {factDiscipline,claimPolicy,directivePolicy,measurementDiscipline} from './campaign-policy';
 
@@ -94,3 +94,6 @@ trialLearning은 같은 브랜드·채널 실험에서 채택한 시험 적용 �
 factCandidates에는 currentBrief에 사용자가 직접 적은 확인 가능한 사실(주소·영업시간·가격·메뉴·오픈일 등)만 원문 그대로 최대 10개 넣으세요. 브랜드 소개·AI 추론·확정 사실(evidence.facts.confirmed)에 이미 있는 항목은 넣지 마세요. 없으면 빈 배열입니다. 이 항목은 사실 원장의 확인 후보로만 등록되고 확정은 관리자가 합니다.
 보호 키(${[...protectedFields].join(', ')})는 사용자가 직접 기록하는 항목이라 suggestions에 넣지 마세요. 확인이 필요하면 questions로 물으세요.
 suggestions 허용 키: ${Object.keys(briefFields).filter(k=>!protectedFields.has(k as BriefKey)).join(', ')}. questions 허용 키: ${Object.keys(questionFields).join(', ')}. 예산 질문을 여러 조건과 묶을 때는 field를 budgetPlan으로, 운영 조건은 operations로, 목표·기한은 target으로 연결하세요. 최소한 kpi, hypothesis, experiment, tracking, decision을 포함해 계획 초안을 작성하세요. 모든 본문 합계 약 5000자 내외.`;
+// 가맹 모집 objective 브리프(R3b): 가맹 모집 규칙이 지시문 끝에 붙으므로(lib/brief-input.ts) 소비자 30일 재방문율 정의 줄을 뺀다. objective 없는 브리프는 briefInstructions 그대로.
+export const recruitmentBriefInstructions=briefInstructions.replace('\n'+measurementDiscipline+'\n',()=>'\n');
+export const briefInstructionsFor=(c?:{objective?:unknown}|null)=>isRecruitmentObjective(c)?recruitmentBriefInstructions:briefInstructions;

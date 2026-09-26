@@ -1,13 +1,15 @@
 // 트랙 R R3a: 캠페인 가맹 모집 목적(objective 'franchise_recruitment', 결정 26). 형식 검사·지정·해제 권한·스위치, 지점·브랜드·제작 기록 보호,
 // 소비자 채널 스킬(offline·search·commerce) 끄기, 가맹 근거 정책, 발행 캡션의 모집 범위 판정(가맹 프로필 없어도), 브리프 초안의 목적 이어받기,
 // objective 없는 캠페인의 제출 바이트 불변(기준 fixture 재캡처 없음).
+// R3b: 가맹 모집 채널 단위 6개(franchise·portal·keyword·expo·leadad·referral, objective 한정·channels 문구만 봄), 본문 되풀이 안전,
+// objective 캠페인의 역할·회의·브리프 지시문에서 소비자 30일 재방문율 정의 자리를 가맹 모집 규칙으로 바꾸기(소비자 지시 바이트는 그대로).
 // 근거: mocked(메모리 SQLite, 이메일 모드 세션 주입, 모의 R2, 외부 fetch는 던지는 스텁, 모의 HERMES). 값·문장은 모두 합성이다. 판정은 COLLECTIVE 휴리스틱 · 법률 자문 아님(결정 20 보류).
 import assert from 'node:assert/strict';
 import {readFileSync,readdirSync} from 'node:fs';
 import {deflateSync} from 'node:zlib';
 import {franchiseFixture,captureConsole} from './helpers/franchise-fixture.mjs';
 import {testRuntime} from './helpers/runtime.mjs';
-import {seed,mockHermes,runRole,roleCampaign,brand as seedBrand} from './helpers/prompt-seed.mjs';
+import {seed,mockHermes,runRole,runMeeting,roleCampaign,meetingCampaign,brand as seedBrand} from './helpers/prompt-seed.mjs';
 
 captureConsole();
 const passed=[];const check=(name,val)=>{assert.ok(val,name);passed.push(name)};
@@ -21,24 +23,83 @@ const objects=new Map();env.BUCKET={put:async(k,v)=>objects.set(k,new Uint8Array
 f.clock.set(Date.parse('2026-09-26T03:00:00Z')-Date.now());
 const NOW='2026-09-26T12:00:00+09:00';
 const practice=await f.load('lib/practice.ts'),policy=await f.load('lib/campaign-policy.ts'),agency=await f.load('lib/agency.ts'),registry=await f.load('lib/prompt-registry.ts');
-const ri=await f.load('lib/role-instruction.ts'),briefInput=await f.load('lib/brief-input.ts');
+const ri=await f.load('lib/role-instruction.ts'),briefInput=await f.load('lib/brief-input.ts'),briefLib=await f.load('lib/brief.ts'),meetings=await f.load('lib/meetings.ts'),units=await f.load('lib/prompt-units.ts');
 const jc=await f.load('lib/franchise-compliance.ts'),comp=await f.load('lib/graders/compliance.ts'),graders=await f.load('lib/graders/index.ts');
 
-// ════ 1) 채널 스킬: objective 캠페인은 offline·search·commerce를 끈다. objective 없는 캠페인은 그대로 ════
+// ════ 1) 채널 스킬: objective 캠페인은 offline·search·commerce를 끄고 가맹 모집 단위(R3b)를 켠다. objective 없는 캠페인은 그대로 ════
+// MD: 소비자 30일 재방문율 정의(측정 정의), P: 가맹 모집 규칙(코드 소유 정책). 지시문 치환은 함수 치환자로 한다('$' 패턴 해석 없음).
+const MD=policy.measurementDiscipline,P=policy.franchiseEvidencePolicy;
+const bodyOf=id=>practice.channelSkills.find(x=>x.id===id).body;
+const NEW_IDS=['franchise','portal','keyword','expo','leadad','referral'];
+const idsOf=c=>practice.channelSkillIds(c);
+check('1: the 30-day definition is in the evidence rules exactly once and in the brief instructions exactly once as its own line',practice.evidenceDiscipline.split(MD).length===2&&briefLib.briefInstructions.split(MD).length===2&&briefLib.briefInstructions.split('\n'+MD+'\n').length===2);
 const OFD={goal:'매장 창업을 고민하는 분의 가맹 상담 신청을 받는다.',products:'',stores:'',channels:'네이버 블로그, 매장 QR'};
-check('1: the OFD-shaped objective campaign drops search and offline (R3a falls back to default until R3b)',same(practice.channelSkillIds({...OFD,objective:O}),['default']));
-check('1: the same campaign without objective keeps search and offline',same(practice.channelSkillIds(OFD),['search','offline']));
+check('1: the OFD-shaped objective campaign gets franchise, keyword and referral after R3b (no offline, search or commerce)',same(idsOf({...OFD,objective:O}),['franchise','keyword','referral'])&&['offline','search','commerce','default'].every(x=>!idsOf({...OFD,objective:O}).includes(x)));
+check('1: the same campaign without objective keeps search and offline',same(idsOf(OFD),['search','offline']));
 const MIXED={goal:'가맹 상담을 받는다.',products:'',stores:'',channels:'인스타 릴스, 유튜브, 창업 커뮤니티, 올리브영, 네이버'};
-check('1: shortform, youtube and community stay; commerce and search go',same(practice.channelSkillIds({...MIXED,objective:O}),['shortform','youtube','community'])&&same(practice.channelSkillIds(MIXED),['shortform','youtube','community','search','commerce']));
-check('1: roleRunUnits follow the same list (promptVersion units)',same(registry.roleRunUnits('cmo',{...OFD,objective:O}),['role.cmo','channel.default'])&&same(registry.roleRunUnits('cmo',OFD),['role.cmo','channel.search','channel.offline']));
+check('1: shortform, youtube and community stay; commerce and search go; portal and keyword join; 인스타 alone is not a lead ad channel',same(idsOf({...MIXED,objective:O}),['shortform','youtube','community','franchise','portal','keyword'])&&same(idsOf(MIXED),['shortform','youtube','community','search','commerce']));
+check('1: roleRunUnits follow the same list (promptVersion units)',same(registry.roleRunUnits('cmo',{...OFD,objective:O}),['role.cmo','channel.franchise','channel.keyword','channel.referral'])&&same(registry.roleRunUnits('cmo',OFD),['role.cmo','channel.search','channel.offline']));
+check('1: all eight roles get the same recruitment channel units',agency.roles.length===8&&agency.roles.every(r=>same(registry.roleRunUnits(r.id,{...OFD,objective:O}),['role.'+r.id,'channel.franchise','channel.keyword','channel.referral'])));
 const SENTINEL={offline:'센티넬-현장',search:'센티넬-검색',commerce:'센티넬-커머스'};
 const objectivePractice=practice.campaignPractice({...OFD,objective:O},SENTINEL);
-check('1: registry bodies of the dropped units never reach the objective practice text',!Object.values(SENTINEL).some(x=>objectivePractice.includes(x))&&objectivePractice===[practice.defaultChannelSkill,policy.franchiseEvidencePolicy].join('\n'));
+check('1: registry bodies of the dropped units never reach the objective practice text',!Object.values(SENTINEL).some(x=>objectivePractice.includes(x))&&objectivePractice===[bodyOf('franchise'),bodyOf('keyword'),bodyOf('referral'),P].join('\n'));
 check('1: consumer practice still uses the registry bodies',practice.campaignPractice(OFD,SENTINEL).includes('센티넬-현장')&&practice.campaignPractice(OFD,SENTINEL).includes('센티넬-검색'));
-check('1: objective with a storeId (frozen eval request) still drops offline',!practice.channelSkillIds({...OFD,objective:O,storeId:'s1'}).includes('offline'));
-check('1: only the exact value switches: other values behave like a consumer campaign',['franchise','FRANCHISE_RECRUITMENT',' franchise_recruitment','',null,true].every(v=>same(practice.channelSkillIds({...OFD,objective:v}),practice.channelSkillIds(OFD))&&practice.campaignPractice({...OFD,objective:v})===practice.campaignPractice(OFD)));
+const SENTINEL_R={franchise:'센티넬-가맹',keyword:'센티넬-키워드',referral:'센티넬-추천'};
+check('1: registry bodies of the recruitment units reach the objective practice text in code order',practice.campaignPractice({...OFD,objective:O},SENTINEL_R)===['센티넬-가맹','센티넬-키워드','센티넬-추천',P].join('\n'));
+check('1: registry bodies of the recruitment units never reach a consumer practice text',!Object.values(SENTINEL_R).some(x=>practice.campaignPractice(OFD,SENTINEL_R).includes(x))&&practice.campaignPractice(OFD,SENTINEL_R)===practice.campaignPractice(OFD));
+const ALL={goal:'가맹 상담 신청을 받는다.',products:'',stores:'',channels:'네이버 블로그, 창업 카페, 커뮤니티, 박람회, 설명회, 메타 리드광고, 페이스북, 인스타그램, 점주 추천, 매장 QR, 키워드, 파워링크, 입점, 견학, 포털, 엑스포'};
+check('1: a consumer campaign with every trigger word keeps its consumer skills and gets none of the recruitment bodies',same(idsOf(ALL),['shortform','community','search','offline'])&&NEW_IDS.every(id=>!practice.campaignPractice(ALL).includes(bodyOf(id))));
+check('1: the same campaign with objective gets all six recruitment units after the kept consumer skills',same(idsOf({...ALL,objective:O}),['shortform','community','franchise','portal','keyword','expo','leadad','referral']));
+// 트리거 정밀도(objective): channels 문구만 본다. 메타버스·예비 점주·'인스타'만·'카페'만은 켜지 않는다.
+const EDGES=[
+ [{channels:''},['franchise']],
+ [{channels:'예비 점주 카페'},['franchise']],
+ [{channels:'예비점주 모임'},['franchise']],
+ [{channels:'기존 점주 소개'},['franchise','referral']],
+ [{channels:'메타버스 전시'},['franchise']],
+ [{channels:'메타 광고'},['franchise','leadad']],
+ [{channels:'인스타 릴스'},['shortform','franchise']],
+ [{channels:'인스타그램'},['shortform','franchise','leadad']],
+ [{channels:'Facebook lead ads'},['franchise','leadad']],
+ [{channels:'카페 홍보'},['franchise']],
+ [{channels:'창업 카페'},['franchise','portal']],
+ [{channels:'창업카페 입점'},['franchise','portal']],
+ [{channels:'',goal:'설명회·박람회·점주 추천을 늘린다.'},['franchise']],
+ [{channels:'',goal:'네이버 블로그와 창업 카페, 메타 리드광고, QR'},['franchise']],
+ [{channels:'',stores:'설명회장 QR'},['franchise']],
+ [{channels:'Meta 리드광고, 페이스북'},['franchise','leadad']],
+ [{channels:'창업 박람회, 설명회, 본사 견학'},['franchise','expo']],
+ [{channels:'EXPO 부스'},['franchise','expo']],
+ [{channels:'파워 링크'},['franchise','keyword']],
+ [{channels:'큐알 코드'},['franchise','referral']],
+];
+for(const [c,want] of EDGES)check(`1: objective ${JSON.stringify(c)} gets ${want.join(', ')}`,same(idsOf({goal:'',products:'',stores:'',...c,objective:O}),want));
+check('1: objective with a storeId (frozen eval request) still drops offline',!idsOf({...OFD,objective:O,storeId:'s1'}).includes('offline'));
+check('1: only the exact value switches: other values behave like a consumer campaign (old and new units)',['franchise','FRANCHISE_RECRUITMENT',' franchise_recruitment','',null,true].every(v=>[OFD,MIXED,ALL].every(c=>same(idsOf({...c,objective:v}),idsOf(c))&&practice.campaignPractice({...c,objective:v})===practice.campaignPractice(c))));
 check('1: one predicate decides (lib/agency.ts isRecruitmentObjective)',agency.isRecruitmentObjective({objective:O})&&!agency.isRecruitmentObjective({objective:'franchise'})&&!agency.isRecruitmentObjective({})&&!agency.isRecruitmentObjective(null));
 check('1: PRACTICE_VERSION is unchanged',practice.PRACTICE_VERSION==='2026-09-25.1');
+
+// ════ 1b) 가맹 모집 채널 단위 본문(R3b): 순서, 한 줄, 레지스트리 본문 검사, 계획 항목, 되풀이 안전 ════
+check('1b: the six recruitment units follow offline in code order',same(practice.channelSkills.map(x=>x.id),['shortform','youtube','community','search','commerce','offline',...NEW_IDS]));
+const WORKSPACE_TERMS=[...units.brandTermsFromCode(),'가상분식','가상동 12'];
+const validBody=id=>{try{units.validateUnitBody('channel.'+id,bodyOf(id),WORKSPACE_TERMS);return true}catch{return false}};
+check('1b: every recruitment body is one trimmed NFC line and passes the registry body check (code and synthetic workspace brand terms)',NEW_IDS.every(id=>{const b=bodyOf(id);return !/[\r\n]/.test(b)&&b===b.trim()&&b===b.normalize('NFC')&&validBody(id)}));
+check('1b: each recruitment body is the code unit body of its registry unit',NEW_IDS.every(id=>units.codeUnitBody('channel.'+id)===bodyOf(id)));
+const PLAN={
+ franchise:[...agency.roles.map(r=>r.name),'창업 페이지 문안','포털 소개문','네이버 검색 문안','메타 리드광고 문안','박람회 배너·리플렛 문안','설명회 덱 개요·원고','첫 통화 스크립트','[의견]','수익 수치 칸은 두지 않는다'],
+ portal:['수집 출처와 동의 범위'],
+ keyword:['입찰가·예산은 사람이 정하고'],
+ expo:['48시간','승인된 버전만','서면 절차'],
+ leadad:['이름·연락처·희망 지역·희망 시기만','금융 정보는 묻지 않는다','처리방침'],
+ referral:['추천 보상은 제안하지 않는다','경제적 이해관계'],
+};
+for(const id of NEW_IDS)check(`1b: channel.${id} covers the plan items`,PLAN[id].every(x=>bodyOf(id).includes(x)));
+check('1b: the bodies leave the fact label format to the code-owned policy and name no amount (only 48시간)',NEW_IDS.every(id=>!bodyOf(id).includes('[사실')&&!/만원|₩/.test(bodyOf(id)))&&NEW_IDS.map(bodyOf).join(' ').match(/\d+/g).join(',')==='48');
+const ECHO=[...NEW_IDS.map(bodyOf),[...NEW_IDS.map(bodyOf),P].join('\n')];
+check('1b: echoing the recruitment bodies raises no franchise judge issue in either scope',ECHO.every(text=>['recruitment','consumer'].every(scope=>jc.judgeFranchiseText({text,at:NOW,now:NOW,scope,brandId:'b',facts:[],versions:[]}).issues.length===0)));
+check('1b: echoing the recruitment bodies raises no compliance issue (default, consumer and recruitment franchise scope)',ECHO.every(text=>[null,{scope:'consumer'},{scope:'recruitment'}].every(fr=>comp.checkCompliance(text,{facts:null,franchise:fr}).issues.length===0)));
+check('1b: echoing the recruitment bodies fails no grader but thin_section (industry null, fnb, franchise; cmo, content, data, quality)',ECHO.every(text=>[null,'fnb','franchise'].every(industry=>['cmo','content','data','quality'].every(role=>!graders.runGraders({id:'p',kind:'role',role,contract:false,text},{industry,facts:{confirmed:[],prohibited:[]}}).some(r=>r.status==='fail'&&r.id!=='thin_section')))));
+check('1b: echoing the recruitment bodies is not an unverified ad claim',ECHO.every(text=>policy.unverifiedClaims(text,policy.claimGuard({confirmed:[],prohibited:[]})).length===0));
 
 // ════ 2) 역할 제출 바이트: 기준 fixture의 모든 케이스에서 지시문은 같고, 입력은 campaign·channelPractice만 달라진다 ════
 const fixtureFile=readdirSync('tests/fixtures').filter(x=>/^role-submission-[0-9a-f]{7}\.json$/.test(x));
@@ -46,19 +107,40 @@ assert.equal(fixtureFile.length,1);
 const fixture=JSON.parse(readFileSync('tests/fixtures/'+fixtureFile[0],'utf8'));
 const diffKeys=(a,b)=>[...new Set([...Object.keys(a),...Object.keys(b)])].filter(k=>JSON.stringify(a[k])!==JSON.stringify(b[k])).sort();
 const byteRows=fixture.cases.map(c=>{
- const ctx={...c.context,campaign:{...c.context.campaign,objective:O}},input=JSON.parse(ri.buildRoleInput(ctx)),base=JSON.parse(c.submission.input);
- return {instructions:ri.buildRoleInstruction(ctx)===c.submission.instructions,keys:diffKeys(input,base),objective:input.campaign.objective,policy:input.channelPractice.includes(policy.franchiseEvidencePolicy),undef:ri.buildRoleInput({...c.context,campaign:{...c.context.campaign,objective:undefined}})===c.submission.input};
+ const ctx={...c.context,campaign:{...c.context.campaign,objective:O}},input=JSON.parse(ri.buildRoleInput(ctx)),base=JSON.parse(c.submission.input),objective=ri.buildRoleInstruction(ctx);
+ return {once:c.submission.instructions.split(MD).length===2,instructions:objective===c.submission.instructions.replace(MD,()=>P),counts:objective.split(P).length===2&&!objective.includes(MD)&&!objective.includes('30일 재방문율의 기준일'),consumer:ri.buildRoleInstruction(c.context)===c.submission.instructions,keys:diffKeys(input,base),objective:input.campaign.objective,policy:input.channelPractice.includes(policy.franchiseEvidencePolicy),undef:ri.buildRoleInput({...c.context,campaign:{...c.context.campaign,objective:undefined}})===c.submission.input};
 });
-check('2: objective leaves every fixture instruction byte-identical',byteRows.every(r=>r.instructions));
+check('2: every fixture instruction carries the consumer 30-day definition once',byteRows.length===16&&byteRows.every(r=>r.once));
+check('2: objective replaces only the 30-day definition with the franchise policy in every fixture instruction (R3b)',byteRows.every(r=>r.instructions&&r.counts));
+check('2: the same fixture contexts without objective still build the fixture instruction bytes',byteRows.every(r=>r.consumer));
 check('2: objective changes only campaign and channelPractice in the role input',byteRows.every(r=>same(r.keys,['campaign','channelPractice'])&&r.objective===O&&r.policy));
 check('2: an undefined objective key serializes to the fixture bytes',byteRows.every(r=>r.undef));
+check('2: evidenceDisciplineFor returns the consumer constant for anything but the exact objective',[undefined,null,{},{objective:'franchise'},{objective:true},{objective:'FRANCHISE_RECRUITMENT'},{objective:' franchise_recruitment'}].every(v=>practice.evidenceDisciplineFor(v)===practice.evidenceDiscipline));
+check('2: the recruitment evidence rules are the consumer rules with the 30-day definition replaced by the policy',practice.evidenceDisciplineFor({objective:O})===practice.recruitmentEvidenceDiscipline&&practice.recruitmentEvidenceDiscipline===practice.evidenceDiscipline.replace(MD,()=>P)&&practice.recruitmentEvidenceDiscipline!==practice.evidenceDiscipline);
+check('2: a role instruction without a campaign equals the consumer instruction',['cmo','quality'].every(role=>ri.buildRoleInstruction({role})===ri.buildRoleInstruction({role,campaign:roleCampaign})&&ri.buildRoleInstruction({role})===ri.buildRoleInstruction({role,campaign:null})&&ri.buildRoleInstruction({role})===ri.buildRoleInstruction({role,campaign:{objective:'franchise'}})));
+check('2: for all eight roles (quality included) the objective instruction is the consumer one with only the 30-day definition replaced',agency.roles.every(r=>{const con=ri.buildRoleInstruction({role:r.id}),obj=ri.buildRoleInstruction({role:r.id,campaign:{objective:O}});return con.split(MD).length===2&&obj===con.replace(MD,()=>P)&&obj!==con}));
+check('2: an unknown role still throws before the campaign is read',(()=>{try{ri.buildRoleInstruction({role:'intern',campaign:{objective:O}});return false}catch(e){return /Unknown agency role/.test(e.message)}})());
+// quality-fixes-v1의 입력 경로 검사(라벨 없는 점 표기 경로 0건)를 정책과 objective 지시문에 그대로 적용한다.
+const PATH=/(?<![\w/.])[a-z][A-Za-z]*(?:\.[A-Za-z_]\w*)+/g;
+const unlabeledPaths=text=>{const labelled=[...text.matchAll(/[가-힣]\(([^()]*)\)/g)].map(m=>[m.index+2,m.index+m[0].length-1]);return [...text.matchAll(PATH)].filter(m=>!labelled.some(([a,b])=>m.index>=a&&m.index+m[0].length<=b)).map(m=>m[0])};
+check('2: the policy and every objective role instruction name no bare dotted input path',unlabeledPaths(P).length===0&&agency.roles.every(r=>unlabeledPaths(ri.buildRoleInstruction({role:r.id,campaign:{objective:O}})).length===0));
+
+// ════ 2b) 회의 지시문(순수): 개선 회의(skillVersion)는 모집 플래그로 같은 치환, 비개선 회의는 근거 규율이 없어 플래그와 무관 ════
+const STEPS=[...agency.roles.flatMap(r=>['discussion','revision','quality'].map(phase=>({id:`x:${phase}:${r.id}`,role:r.id,phase,status:'pending'}))),{id:'x:synthesis:cmo',role:'cmo',phase:'synthesis',status:'pending'}];
+check('2b: enhanced meeting instructions of every role and phase replace only the 30-day definition when the recruitment flag is set',STEPS.length===25&&STEPS.every(st=>{const con=meetings.meetingInstructions(st,true);return con.split(MD).length===2&&meetings.meetingInstructions(st,true,undefined,false,true)===con.replace(MD,()=>P)}));
+check('2b: the recruitment flag defaults to false (consumer bytes)',STEPS.every(st=>meetings.meetingInstructions(st,true,undefined,false)===meetings.meetingInstructions(st,true,undefined,false,false)&&meetings.meetingInstructions(st)===meetings.meetingInstructions(st,true)));
+check('2b: unenhanced meeting instructions carry no evidence rules and ignore the flag',STEPS.every(st=>{const con=meetings.meetingInstructions(st,false);return !con.includes(MD)&&!con.includes(P)&&meetings.meetingInstructions(st,false,undefined,false,true)===con}));
+const packStep={id:'x:revision:content',role:'content',phase:'revision',status:'pending'},packed=meetings.meetingInstructions(packStep,true,undefined,true);
+check('2b: the copy-pack content revision gets the same replacement',packed!==meetings.meetingInstructions(packStep,true)&&meetings.meetingInstructions(packStep,true,undefined,true,true)===packed.replace(MD,()=>P));
 
 // ════ 3) 가맹 근거 정책 ════
 const GENERIC='이번 제품·서비스의 실제 목표 행동만 측정하고 관련 없는 업종의 지표를 추가하지 마세요.';
 const LOCKER={goal:'물품보관함 이용을 늘린다.',products:'락커',stores:'',channels:'인스타그램'};
-const P=policy.franchiseEvidencePolicy;
 check('3: consumer policy strings are byte-pinned',policy.campaignEvidencePolicy(OFD)===GENERIC&&policy.campaignEvidencePolicy({...OFD,objective:'franchise'})===GENERIC&&policy.campaignEvidencePolicy(LOCKER).includes('가동 가능 시간'));
 check('3: the objective branch replaces even the locker instruction',policy.campaignEvidencePolicy({...LOCKER,objective:O})===P&&!P.includes('가동 가능 시간'));
+// 소비자 캠페인에는 새 단위 id가 나오지 않는다(역할 fixture 캠페인, 기준선 역할·회의 캠페인, 보관함, 커머스).
+const CONSUMERS=[...fixture.cases.map(c=>c.context.campaign),roleCampaign,meetingCampaign,LOCKER,{goal:'',products:'',stores:'',channels:'쿠팡 마켓플레이스, 자사몰'}];
+check('1: consumer campaigns never get a recruitment unit id or body',CONSUMERS.every(c=>!idsOf(c).some(id=>NEW_IDS.includes(id))&&NEW_IDS.every(id=>!practice.campaignPractice(c).includes(bodyOf(id)))));
 const ITEMS=['보장','서면 절차','정보공개서 버전','[사실:','[의견]','대기기간','가맹금','점주 후기','문의 → 첫 연락 → 상담 → 설명회 → 정보공개서 제공 → 대기기간 → 계약서안 제공 → 계약 → 개점','CPL','계약당 비용','순증 효과가 아니','30일 재방문율 정의는 이 캠페인에 적용하지 마세요'];
 check('3: the policy covers every plan item',ITEMS.every(x=>P.includes(x))&&!P.includes(policy.measurementDiscipline));
 check('3: the policy names no amount, period figure or startup-cost claim word (only the name of the 30-day revisit definition it switches off)',!/\d|창업\s?비용|만원|개월/.test(P.replaceAll('30일 재방문율','재방문율')));
@@ -81,7 +163,11 @@ const req=(input,campaigns)=>briefInput.briefRequestFor({campaignId:'now',input,
 const PREV=[{id:'c-con',brandId:'b1',title:'소비자',goal:'g',plan:{},status:'draft',updatedAt:NOW},{id:'c-obj',brandId:'b1',title:'모집',goal:'g',plan:{},status:'draft',updatedAt:NOW,objective:O}];
 const briefIn={brandId:'b1',title:'t',goal:'g',audience:'',channels:'',stores:'',products:'',budget:null,startDate:'',endDate:'',constraints:'',sources:'',plan:{}};
 check('4: a consumer brief sees only consumer campaigns and a recruitment brief only recruitment campaigns',same(req(briefIn,PREV).context.previousCampaigns.map(c=>c.id),['c-con'])&&same(req({...briefIn,objective:O},PREV).context.previousCampaigns.map(c=>c.id),['c-obj']));
-check('4: the recruitment brief instructions end with the franchise policy',briefInput.buildBriefSubmission(req({...briefIn,objective:O},PREV)).instructions.endsWith('\n'+P)&&briefInput.buildBriefSubmission(req(briefIn,PREV)).instructions.endsWith('\n'+GENERIC));
+const objBrief=briefInput.buildBriefSubmission(req({...briefIn,objective:O},PREV)).instructions,conBrief=briefInput.buildBriefSubmission(req(briefIn,PREV)).instructions;
+check('4: the recruitment brief instructions end with the franchise policy',objBrief.endsWith('\n'+P)&&conBrief.endsWith('\n'+GENERIC));
+check('4: the recruitment brief drops only the consumer 30-day definition line (the policy at the end defines recruitment measurement)',objBrief===briefLib.recruitmentBriefInstructions+'\n'+P&&briefLib.recruitmentBriefInstructions===briefLib.briefInstructions.replace('\n'+MD+'\n','\n')&&!objBrief.includes(MD)&&objBrief.split(P).length===2);
+check('4: the consumer brief instructions are the constant plus the generic policy and keep the 30-day definition',conBrief===briefLib.briefInstructions+'\n'+GENERIC&&conBrief.includes(MD));
+check('4: briefInstructionsFor switches on the exact value only',[undefined,null,{},{objective:'franchise'},{objective:true},{objective:'FRANCHISE_RECRUITMENT'}].every(v=>briefLib.briefInstructionsFor(v)===briefLib.briefInstructions)&&briefLib.briefInstructionsFor({objective:O})===briefLib.recruitmentBriefInstructions);
 
 // ════ 5) 저장(save_campaign): 형식·스위치·역할·해제·지점·브랜드·제작 기록 ════
 const WS='fo-owner';
@@ -242,8 +328,25 @@ const objectiveCampaign={...roleCampaign,id:'fo-role-obj',objective:O};
 await s.recordStatement(owner,'campaign_directive','fo-directive',{id:'fo-directive',campaignId:objectiveCampaign.id,text:'합성 지시: 날짜는 D-day 상대 일정으로 쓴다.',createdAt:'2026-01-01T00:00:00.000Z',createdBy:{id:'synthetic-member',email:null,role:'member'}},objectiveCampaign.id).run();
 const objectiveRun=await runRole(execution,s,owner,objectiveCampaign,'cmo');
 const ci=JSON.parse(consumerRun.input),oi=JSON.parse(objectiveRun.input);
-check('7: an objective role run keeps the instructions and changes only campaign and channelPractice',objectiveRun.instructions===consumerRun.instructions&&same(diffKeys(oi,ci),['campaign','channelPractice'])&&oi.campaign.objective===O);
-check('7: the objective role input carries the franchise policy and no consumer channel skill',oi.channelPractice.includes(P)&&!oi.channelPractice.includes(practice.channelSkills.find(x=>x.id==='offline').body)&&!oi.channelPractice.includes(practice.channelSkills.find(x=>x.id==='search').body));
+check('7: an objective role run replaces only the 30-day definition in the instructions and changes only campaign and channelPractice in the input',objectiveRun.instructions===consumerRun.instructions.replace(MD,()=>P)&&objectiveRun.instructions!==consumerRun.instructions&&same(diffKeys(oi,ci),['campaign','channelPractice'])&&oi.campaign.objective===O);
+check('7: the objective role input carries the recruitment bodies and the franchise policy and no consumer channel skill',oi.channelPractice===practice.campaignPractice(objectiveCampaign)&&['franchise','keyword','leadad'].every(id=>oi.channelPractice.includes(bodyOf(id)))&&oi.channelPractice.includes(P)&&!oi.channelPractice.includes(bodyOf('offline'))&&!oi.channelPractice.includes(bodyOf('search')));
+// 회의(R3b): 소비자 회의를 끝까지 돌린 기록으로, 같은 기록의 스냅샷 캠페인에 objective를 넣은 사본의 단계 제출을 비교한다(meeting-input이 스냅샷 캠페인으로 판정).
+const meetingExec=await rt.load('lib/meeting-execution.ts'),meetingInput=await rt.load('lib/meeting-input.ts');
+const met=await runMeeting(meetingExec,s,owner,meetingCampaign,'fo-meeting'),done=met.meeting;
+const withObjective=m=>({...m,snapshot:{...m.snapshot,campaign:{...m.snapshot.campaign,objective:O}}});
+const withoutSkill=m=>Object.fromEntries(Object.entries(m).filter(([k])=>k!=='skillVersion'));
+const meetingRows=done.steps.map((st,i)=>{
+ const a=meetingInput.buildMeetingSubmission(done,st.id,[]),b=meetingInput.buildMeetingSubmission(withObjective(done),st.id,[]);
+ const a0=meetingInput.buildMeetingSubmission(withoutSkill(done),st.id,[]),b0=meetingInput.buildMeetingSubmission(withObjective(withoutSkill(done)),st.id,[]);
+ return {stored:a.instructions===met.steps[i].instructions,replaced:a.instructions.split(MD).length===2&&b.instructions===a.instructions.replace(MD,()=>P),keys:same(diffKeys(JSON.parse(b.input),JSON.parse(a.input)),['campaign','channelPractice']),plain:!a0.instructions.includes(MD)&&b0.instructions===a0.instructions};
+});
+check('7: the consumer meeting completes (enhanced) and rebuilding each step gives the stored instructions',done.status==='completed'&&done.skillVersion===practice.PRACTICE_VERSION&&meetingRows.length===12&&meetingRows.every(r=>r.stored));
+check('7: an objective snapshot replaces only the 30-day definition in every enhanced meeting step instruction',meetingRows.every(r=>r.replaced));
+check('7: the objective meeting input changes only campaign and channelPractice',meetingRows.every(r=>r.keys));
+check('7: a meeting without skillVersion (not enhanced) keeps identical instructions under objective',meetingRows.every(r=>r.plain));
+const retryStep=done.steps.find(t=>t.phase==='discussion'),retried=m=>({...m,steps:m.steps.map(t=>t.id===retryStep.id?{...t,correction:{error:'합성 검증 실패'}}:t)});
+const ra=meetingInput.buildMeetingSubmission(retried(done),retryStep.id,[]),rb=meetingInput.buildMeetingSubmission(withObjective(retried(done)),retryStep.id,[]);
+check('7: a correction retry step keeps its correction sentence and gets the same replacement',ra.instructions.startsWith(meetingInput.buildMeetingSubmission(done,retryStep.id,[]).instructions)&&ra.instructions.length>meetingInput.buildMeetingSubmission(done,retryStep.id,[]).instructions.length&&rb.instructions===ra.instructions.replace(MD,()=>P));
 await s.recordStatement(owner,'campaign',objectiveCampaign.id,objectiveCampaign).run();
 const objStart=await (await brief.executeBrief(owner,{action:'start',id:'fo-brief-obj',data:{brandId:seedBrand.id,title:'가상 모집 초안',goal:'가맹 상담 신청을 받는다.'},campaignId:objectiveCampaign.id,campaignVersion:objectiveCampaign.version})).json();
 const objDraft=JSON.parse(rt.sql.prepare("SELECT data FROM records WHERE owner=? AND kind='brief_draft' AND json_extract(data,'$.id')='fo-brief-obj'").get(owner).data);
@@ -259,6 +362,7 @@ check('7: a brief draft of an objective campaign with a store in the request is 
 const submissions=[...hermes.bodies.values()].map(b=>JSON.parse(b));
 const briefSubs=submissions.filter(b=>!JSON.parse(b.input).task&&!JSON.parse(b.input).phase);
 check('7: the objective brief instructions end with the franchise policy and the consumer brief with the generic policy',briefSubs.length===2&&briefSubs[0].instructions.endsWith('\n'+P)&&briefSubs[1].instructions.endsWith('\n'+GENERIC));
+check('7: the objective brief submission has no consumer 30-day definition and the consumer brief keeps it',!briefSubs[0].instructions.includes(MD)&&briefSubs[1].instructions.includes(MD));
 check('7: no external call',hermes.external.length===0&&f.calls.length===0);
 
 console.log(JSON.stringify({passed:passed.length}));

@@ -117,10 +117,12 @@ r=await get('?impact='+encodeURIComponent('role.cmo@000000000000'));
 check('impact of an unknown version is 404',()=>assert.equal(r.status,404));
 r=await get('?impact=not-a-version');
 check('a malformed version id is 400',()=>assert.equal(r.status,400));
+// 단위 id 형식(R3b, lib/prompt-units.ts VERSION_ID): 하이픈이 든 버전 id는 읽기·영향 조회 모두 400이다.
+for(const q of ['?version=','?impact=']){r=await get(q+encodeURIComponent('channel.lead-ad@0123456789ab'));check(`a hyphenated unit version id is 400 (${q.slice(1,-1)})`,()=>assert.equal(r.status,400))}
 r=await get('?version='+encodeURIComponent(cmoV2));
 check('one version can be read with its body',()=>assert.ok(r.status===200&&r.body.version.body.focus===cmoBody2.focus));
 r=await get();
-check('overview lists every unit, versions without bodies, the release and the manifest',()=>assert.ok(r.status===200&&r.body.units.length===16&&r.body.versions.length===2&&r.body.versions.every(x=>x.body===undefined)&&r.body.units.find(u=>u.unit==='role.cmo').release.active===cmoV2&&r.body.manifest===manifest([{unit:'role.cmo',active:cmoV2}])));
+check('overview lists every unit, versions without bodies, the release and the manifest',()=>assert.ok(r.status===200&&r.body.units.length===22&&r.body.versions.length===2&&r.body.versions.every(x=>x.body===undefined)&&r.body.units.find(u=>u.unit==='role.cmo').release.active===cmoV2&&r.body.manifest===manifest([{unit:'role.cmo',active:cmoV2}])));
 
 // E) 롤백: 포인터 1회 조작. 영향 작업물에는 재확인 표시만 남기고(본문·갱신 시각 불변) 그 버전을 고정한 캠페인 해석을 푼다.
 const artRow=()=>sql.prepare('SELECT data,updated_at FROM records WHERE id=?').get(`${owner}:artifact:${art.id}`);

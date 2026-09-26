@@ -11,6 +11,9 @@ export type UnitBody=RoleSkill|string;
 export type PromptUnitFile={schema:1;unit:string;body:UnitBody};
 export const PROMPT_UNIT_MAX_CHARS=6000;
 export const PROMPT_FILE_MAX_BYTES=32000;
+// 단위 id: <종류>.<이름>, 영문 소문자만(하이픈·밑줄·숫자·대문자 없음). 버전 id <단위>@<sha256 앞 12자>도 같은 형식이다(lib/prompt-registry.ts).
+export const UNIT_ID=/^[a-z]+\.[a-z]+$/;
+export const VERSION_ID=/^[a-z]+\.[a-z]+@[0-9a-f]{12}$/;
 export const promptUnits:readonly PromptUnit[]=[
  ...Object.keys(practices).map(key=>({unit:'role.'+key,kind:'role' as const,key})),
  ...channelSkills.map(s=>({unit:'channel.'+s.id,kind:'channel' as const,key:s.id})),
@@ -35,7 +38,7 @@ export function codeUnitBody(unit:string):UnitBody{
  return u.key==='default'?defaultChannelSkill:channelSkills.find(s=>s.id===u.key)!.body;
 }
 // 리뷰 화면에 보이지 않는 문자는 받지 않는다: 줄바꿈·제어(Cc), 형식(Cf: 너비 없는 공백·양방향 제어·Unicode Tags), 사용자 정의 영역(Co), 미할당(Cn), 줄·문단 구분(Zl·Zp),
-// 이체 선택자(데이터 밀반입에 쓰는 U+FE00대·U+E0100대), 결합 자소 접합자, 한글 채움 문자. NFC가 아닌 본문도 거부한다. 정본 16개 파일에는 이런 문자가 없다.
+// 이체 선택자(데이터 밀반입에 쓰는 U+FE00대·U+E0100대), 결합 자소 접합자, 한글 채움 문자. NFC가 아닌 본문도 거부한다. 정본 파일에는 이런 문자가 없다.
 const hiddenChars=/[\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Zl}\p{Zp}\u034F\u115F\u1160\u180B-\u180F\u3164\uFE00-\uFE0F\uFFA0\u{E0100}-\u{E01EF}]/u;
 function text(value:unknown,label:string,max:number):string{
  if(typeof value!=='string'||!value.trim()||value.length>max||value!==value.trim())return fail('schema',`${label}은(는) 앞뒤 공백 없는 ${max}자 이하 문자열이어야 합니다.`);
@@ -80,10 +83,11 @@ function formsOf(all:string):Forms{const folded=all.normalize('NFKC').replace(/[
 type Rule={form:keyof Forms;pattern:RegExp};
 const on=(form:keyof Forms,...patterns:RegExp[]):Rule[]=>patterns.map(pattern=>({form,pattern}));
 const matched=(rules:readonly Rule[],f:Forms)=>rules.find(r=>r.pattern.test(f[r.form]));
-// 코드 소유 섹션의 표지: 근거 규율·광고 표현·추천·광고 표시·측정·상시 지시 정책 문장의 머리, 역할 스킬 머리말·제목, 입력 필드명, JSON 계약, 외부 행동 금지, 사실 정책을 뒤집는 문구.
+// 코드 소유 섹션의 표지: 근거 규율·광고 표현·추천·광고 표시·측정·상시 지시 정책 문장의 머리, 역할 스킬 머리말·제목, 입력 필드명, JSON 계약, 외부 행동 금지, 사실 정책을 뒤집는 문구,
+// 가맹 모집 규칙(가맹 모집 objective 캠페인의 코드 소유 근거 정책 머리말, R3b. 정책 머리가 이 문구로 시작하는지는 tests/check-prompts.test.mjs가 고정한다).
 const lead=(s:string)=>s.slice(0,24);
 const squashed=(s:string)=>formsOf(s).squash;
-const codeOwnedPhrases=[lead(factDiscipline),lead(claimPolicy),lead(copyCompliancePolicy),lead(answerDiscipline),lead(measurementDiscipline),lead(directivePolicy),'근거 규칙','광고 표현 규칙','추천·광고 표시 규칙','측정 정의:','실무 스킬','필수 산출물','완료 전 점검','인계:'].map(squashed);
+const codeOwnedPhrases=[lead(factDiscipline),lead(claimPolicy),lead(copyCompliancePolicy),lead(answerDiscipline),lead(measurementDiscipline),lead(directivePolicy),'근거 규칙','광고 표현 규칙','추천·광고 표시 규칙','측정 정의:','가맹 모집 규칙','실무 스킬','필수 산출물','완료 전 점검','인계:'].map(squashed);
 const codeOwnedRules=[
  ...on('squash',/evidence\.(?:facts|directives)|facts\.(?:confirmed|candidate|prohibited)|contractversion|outputcontract|copypack|brandvoice|contexttruncated|idlabels|claimguard|respondsto|revisionrequest|previousdecisions|sourceassessment|brandintro|factpolicy|taskchecks|```|~~~/),
  ...on('folded',/\bsections\b|\boutput_?\d+\b/),
