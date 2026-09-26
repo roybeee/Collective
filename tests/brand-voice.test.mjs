@@ -183,7 +183,7 @@ const ctxVoice={brandVoice:{avoidTerms:['최고의','대박']}};
 check('brand_voice_avoid_term fails on avoid term in copy zone',()=>assert.equal(status(role(copyText),ctxVoice),'fail'));
 check('brand_voice_avoid_term passes when negated',()=>assert.equal(status(role(negatedText),ctxVoice),'pass'));
 check('brand_voice_avoid_term is not_applicable without voice input',()=>{assert.equal(status(role(copyText),{}),'not_applicable');assert.equal(status(role(copyText),{brandVoice:null}),'not_applicable')});
-check('the grader registry has fifteen graders and the voice tag',()=>{assert.equal(graders.GRADERS.length,15);assert.equal(graders.GRADERS.at(-1).id,'brand_voice_avoid_term');assert.ok(graders.GRADERS_VERSION.endsWith('+copy-pack+voice-avoid'))});
+check('the grader registry has fifteen graders and the voice tag',()=>{assert.equal(graders.GRADERS.length,15);assert.equal(graders.GRADERS.at(-1).id,'brand_voice_avoid_term');assert.ok(graders.GRADERS_VERSION.endsWith('+copy-pack+voice-avoid+expected-contract'))});
 check('voiceAvoidHits reports term and excerpt',()=>assert.ok(voice.voiceAvoidHits([{sentence:'대박 할인 소식'}],['대박']).length===1&&voice.voiceAvoidHits([{sentence:'‘대박’이라는 말은 쓰지 않는다'}],['대박']).length===0));
 // 평가 역할 채점은 동결 요청의 brandVoice(content·creative)에서 피할 표현을 읽는다.
 const output=JSON.stringify({contractVersion:'role-output-v1',role:'content',sections:instruction.roleRequestPlan({role:'content',campaign:{version:1},previous:[]}).outputContract.sections.map((s,i)=>({id:s.id,content:i===0?'### 게시 카피\n오늘 저녁은 최고의 떡볶이 한 컵. 퇴근길 20분 안에 포장해 가세요. [자료 필요] 가격은 점장이 확인한다.':`${s.title} 메모. 이 절은 선택 이유와 확인 계획을 적는다. 브리프 v1 목표인 첫 포장 주문에 맞춰 퇴근길 고객의 대기 시간 장벽을 먼저 다룬다. [자료 필요] 시간대별 주문량은 점장이 오픈 전 주에 확인한다.`}))});

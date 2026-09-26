@@ -1,0 +1,443 @@
+{
+ "schema": 1,
+ "id": "syn-s9-fnb-insta",
+ "label": "S9 동네 국밥집 점심 Instagram (카피 팩 v2)",
+ "set": "dev",
+ "now": "2026-04-02T09:00:00.000Z",
+ "campaignId": "syn-s9-fnb-insta-campaign",
+ "expectations": {
+  "prohibitedTerms": [
+   "최저가",
+   "무한 리필"
+  ],
+  "industry": [
+   "fnb"
+  ],
+  "localStore": true
+ },
+ "records": [
+  {
+   "kind": "feature_flag",
+   "id": "a3_copy_pack",
+   "data": {
+    "flag": "a3_copy_pack",
+    "enabled": true,
+    "updatedAt": "2026-04-02T09:00:00.000Z",
+    "updatedBy": {
+     "id": "syn-owner",
+     "email": null
+    }
+   }
+  },
+  {
+   "kind": "feature_flag",
+   "id": "a3_brand_voice",
+   "data": {
+    "flag": "a3_brand_voice",
+    "enabled": true,
+    "updatedAt": "2026-04-02T09:00:00.000Z",
+    "updatedBy": {
+     "id": "syn-owner",
+     "email": null
+    }
+   }
+  },
+  {
+   "kind": "brand",
+   "id": "syn-s9-fnb-insta-brand",
+   "data": {
+    "name": "가상국밥",
+    "short": "GK",
+    "category": "KOREAN FOOD",
+    "color": "#7a3b1f",
+    "bg": "#f6ede6",
+    "description": "합성 브랜드 소개(미확인): 가상동 골목의 12석 국밥집.",
+    "audience": "가상동 직장인 점심 손님(가설)",
+    "tone": "담백하고 정직한",
+    "constraints": "\"최저가\" 표현 금지. 가격은 확정 전 쓰지 않는다.",
+    "knowledge": "합성 메모: 육수 끓이는 시간은 점주 확인 전이다."
+   }
+  },
+  {
+   "kind": "campaign",
+   "id": "syn-s9-fnb-insta-campaign",
+   "data": {
+    "brandId": "syn-s9-fnb-insta-brand",
+    "title": "가상국밥 점심 Instagram 4주",
+    "goal": "점심 첫 방문을 늘리고, 4주 안 재방문 손님 비율을 본다.",
+    "audience": "가상동 직장인(가설)",
+    "channels": "Instagram 피드, 네이버 플레이스",
+    "stores": "가상동 45 1층",
+    "products": "돼지국밥, 순대국(가격 미확정)",
+    "constraints": "\"최저가\" 표현 금지. \"무한 리필\" 약속 금지. 가격 단정 금지.",
+    "budget": null,
+    "startDate": "",
+    "endDate": "",
+    "sources": "",
+    "status": "review",
+    "version": 1,
+    "createdAt": "2026-04-02T09:00:00.000Z",
+    "updatedAt": "2026-04-02T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "brand_voice",
+   "id": "syn-s9-fnb-insta-brand",
+   "parent": "syn-s9-fnb-insta-brand",
+   "data": {
+    "brandId": "syn-s9-fnb-insta-brand",
+    "tone": [
+     "담백한",
+     "정직한"
+    ],
+    "do": [
+     "짧은 문장",
+     "먹는 장면 묘사"
+    ],
+    "dont": [
+     "과장 감탄사 연속"
+    ],
+    "preferTerms": [
+     "뜨끈한 한 그릇",
+     "혼밥 자리"
+    ],
+    "avoidTerms": [
+     "대박",
+     "역대급"
+    ],
+    "samples": [
+     "오늘 점심, 뜨끈한 한 그릇 어떠세요?"
+    ],
+    "version": 2,
+    "status": "confirmed",
+    "updatedBy": {
+     "id": "syn-admin",
+     "role": "admin"
+    },
+    "updatedAt": "2026-04-02T09:00:00.000Z",
+    "confirmedBy": {
+     "id": "syn-owner",
+     "role": "owner"
+    },
+    "confirmedAt": "2026-04-02T09:00:00.000Z",
+    "confirmedVoice": {
+     "tone": [
+      "담백한",
+      "정직한"
+     ],
+     "do": [
+      "짧은 문장",
+      "먹는 장면 묘사"
+     ],
+     "dont": [
+      "과장 감탄사 연속"
+     ],
+     "preferTerms": [
+      "뜨끈한 한 그릇",
+      "혼밥 자리"
+     ],
+     "avoidTerms": [
+      "대박",
+      "역대급"
+     ],
+     "samples": [
+      "오늘 점심, 뜨끈한 한 그릇 어떠세요?"
+     ],
+     "version": 2,
+     "status": "confirmed",
+     "updatedBy": {
+      "id": "syn-admin",
+      "role": "admin"
+     },
+     "updatedAt": "2026-04-02T09:00:00.000Z",
+     "confirmedBy": {
+      "id": "syn-owner",
+      "role": "owner"
+     },
+     "confirmedAt": "2026-04-02T09:00:00.000Z"
+    },
+    "history": [
+     {
+      "tone": [
+       "담백한",
+       "정직한"
+      ],
+      "do": [
+       "짧은 문장",
+       "먹는 장면 묘사"
+      ],
+      "dont": [
+       "과장 감탄사 연속"
+      ],
+      "preferTerms": [
+       "뜨끈한 한 그릇",
+       "혼밥 자리"
+      ],
+      "avoidTerms": [
+       "대박",
+       "역대급"
+      ],
+      "samples": [
+       "오늘 점심, 뜨끈한 한 그릇 어떠세요?"
+      ],
+      "version": 1,
+      "status": "draft",
+      "updatedBy": {
+       "id": "syn-admin",
+       "role": "admin"
+      },
+      "updatedAt": "2026-04-02T09:00:00.000Z"
+     }
+    ]
+   }
+  },
+  {
+   "kind": "brand_fact",
+   "id": "syn-s9-fnb-insta-fact-address",
+   "parent": "syn-s9-fnb-insta-brand",
+   "data": {
+    "brandId": "syn-s9-fnb-insta-brand",
+    "key": "주소",
+    "value": "가상동 45 1층",
+    "status": "confirmed",
+    "source": "합성 원장",
+    "verifiedAt": "2026-04-02T09:00:00.000Z",
+    "validUntil": "2099-12-31T00:00:00.000Z",
+    "version": 1,
+    "updatedAt": "2026-04-02T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "brand_fact",
+   "id": "syn-s9-fnb-insta-fact-price",
+   "parent": "syn-s9-fnb-insta-brand",
+   "data": {
+    "brandId": "syn-s9-fnb-insta-brand",
+    "key": "가격 비교",
+    "value": "동네 최저가 국밥",
+    "status": "rejected",
+    "source": "합성 원장",
+    "verifiedAt": "2026-04-02T09:00:00.000Z",
+    "validUntil": "2099-12-31T00:00:00.000Z",
+    "version": 1,
+    "updatedAt": "2026-04-02T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "brand_fact",
+   "id": "syn-s9-fnb-insta-fact-lunch",
+   "parent": "syn-s9-fnb-insta-brand",
+   "data": {
+    "brandId": "syn-s9-fnb-insta-brand",
+    "key": "점심 영업",
+    "value": "평일 11시~14시",
+    "status": "candidate",
+    "source": "합성 원장",
+    "verifiedAt": "2026-04-02T09:00:00.000Z",
+    "validUntil": "2099-12-31T00:00:00.000Z",
+    "version": 1,
+    "updatedAt": "2026-04-02T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "campaign_directive",
+   "id": "syn-s9-fnb-insta-directive",
+   "parent": "syn-s9-fnb-insta-campaign",
+   "data": {
+    "campaignId": "syn-s9-fnb-insta-campaign",
+    "text": "합성 지시: 점심 대기 시간은 확인 전 숫자로 쓰지 않는다.",
+    "createdAt": "2026-04-02T09:00:00.000Z",
+    "createdBy": {
+     "id": "syn-member",
+     "email": null,
+     "role": "member"
+    }
+   }
+  },
+  {
+   "kind": "store",
+   "id": "syn-s9-fnb-insta-store",
+   "parent": "syn-s9-fnb-insta-brand",
+   "data": {
+    "brandId": "syn-s9-fnb-insta-brand",
+    "status": "active",
+    "name": "가상국밥 가상동점",
+    "address": "가상동 45 1층",
+    "access": "가상역 2번 출구에서 골목 두 번째 집(합성).",
+    "customer": "점심 직장인(가설)",
+    "menu": "돼지국밥·순대국(가격 미확정)",
+    "hours": "평일 11시~14시(합성, 확인 필요)",
+    "createdAt": "2026-04-02T09:00:00.000Z",
+    "updatedAt": "2026-04-02T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "learning_rule",
+   "id": "syn-s9-fnb-insta-rule-caution",
+   "data": {
+    "origin": "store",
+    "direction": "caution",
+    "title": "대기 줄 사진 주의",
+    "guidance": "대기 줄 사진은 손님 얼굴이 보여 내렸다(합성 관찰). 쓰지 않는다.",
+    "brandId": "syn-s9-fnb-insta-brand",
+    "channel": "*",
+    "experimentId": "",
+    "experimentVersion": 0,
+    "caseId": "",
+    "scope": "",
+    "status": "active",
+    "version": 1,
+    "expiresAt": "2099-12-31T00:00:00.000Z",
+    "createdAt": "2026-04-02T09:00:00.000Z",
+    "updatedAt": "2026-04-02T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "learning_rule",
+   "id": "syn-s9-fnb-insta-pref-content",
+   "data": {
+    "origin": "review",
+    "grade": "operator_preference",
+    "role": "content",
+    "citations": [
+     "syn-d-1",
+     "syn-d-2"
+    ],
+    "feedback": {
+     "helpful": 0,
+     "harmful": 0
+    },
+    "title": "첫 장면은 뚝배기",
+    "guidance": "게시물 첫 장면은 김이 오르는 뚝배기로 시작한다.",
+    "brandId": "syn-s9-fnb-insta-brand",
+    "channel": "*",
+    "experimentId": "",
+    "experimentVersion": 0,
+    "caseId": "",
+    "scope": "",
+    "status": "active",
+    "version": 1,
+    "expiresAt": "2099-12-31T00:00:00.000Z",
+    "createdAt": "2026-04-02T09:00:00.000Z",
+    "updatedAt": "2026-04-02T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "team_meeting",
+   "id": "syn-s9-fnb-insta-meeting-prev",
+   "parent": "syn-s9-fnb-insta-campaign",
+   "data": {
+    "campaignId": "syn-s9-fnb-insta-campaign",
+    "campaignVersion": 1,
+    "agenda": "합성 안건: 점심 첫 방문 동선을 정한다.",
+    "status": "completed",
+    "steps": [
+     {
+      "id": "syn-s9-fnb-insta-meeting-prev:synthesis",
+      "role": "cmo",
+      "phase": "synthesis",
+      "status": "completed",
+      "output": {
+       "decisions": "합성 결정: 네이버 플레이스 길찾기로 받는다.",
+       "disagreements": "합성: 쿠폰 보류",
+       "questions": "합성: 점심 대기 안내 방식",
+       "tasks": []
+      }
+     }
+    ],
+    "createdAt": "2026-04-02T09:00:00.000Z",
+    "updatedAt": "2026-04-02T09:00:00.000Z",
+    "model": "synthetic",
+    "stopRequested": false,
+    "artifactIds": [],
+    "invalidatedRoles": [],
+    "snapshot": {}
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s9-fnb-insta-art-cmo",
+   "parent": "syn-s9-fnb-insta-campaign",
+   "data": {
+    "campaignId": "syn-s9-fnb-insta-campaign",
+    "campaignVersion": 1,
+    "role": "cmo",
+    "title": "합성 총괄 파트너",
+    "content": "## 목표와 판단\n점심 첫 방문보다 재방문 손님 비율이 중요하다. 가격 경쟁은 하지 않고 국물과 자리 안내를 보여 준다.\n\n## 우선순위\n1. 평일 점심 시간을 분명히 한다.\n2. 가격은 확정 전까지 쓰지 않는다.\n3. 길찾기는 네이버 플레이스 하나로 받는다.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai",
+    "createdAt": "2026-04-02T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s9-fnb-insta-art-insight",
+   "parent": "syn-s9-fnb-insta-campaign",
+   "data": {
+    "campaignId": "syn-s9-fnb-insta-campaign",
+    "campaignVersion": 1,
+    "role": "insight",
+    "title": "합성 인사이트",
+    "content": "## 고객 관찰\n점심 직장인은 자리가 있는지와 음식이 빨리 나오는지를 먼저 걱정한다(가설, 관찰 기록 없음).\n\n## 장애물\n- 골목 안이라 입구를 찾기 어렵다.\n- 혼밥 자리가 있는지 모른다.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai_edited",
+    "createdAt": "2026-04-02T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s9-fnb-insta-art-strategy",
+   "parent": "syn-s9-fnb-insta-campaign",
+   "data": {
+    "campaignId": "syn-s9-fnb-insta-campaign",
+    "campaignVersion": 1,
+    "role": "strategy",
+    "title": "합성 전략",
+    "content": "## 전략 가설\n가설 1: '혼밥 자리 안내'를 앞세우면 첫 방문이 늘어난다.\n\n## 실험 설계\n혼밥 자리 안내 게시물과 국물 클로즈업 게시물의 길찾기 클릭을 비교한다.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai",
+    "createdAt": "2026-04-02T09:00:00.000Z"
+   },
+   "padTo": 6400
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s9-fnb-insta-art-creative",
+   "parent": "syn-s9-fnb-insta-campaign",
+   "data": {
+    "campaignId": "syn-s9-fnb-insta-campaign",
+    "campaignVersion": 1,
+    "role": "creative",
+    "title": "합성 크리에이티브",
+    "content": "## 핵심 메시지\n\"혼자 와도 편한 점심 한 그릇.\"\n\n## 카피 초안\n- 골목 안 12석, 혼밥 자리부터 안내합니다.\n- 동네 최저가 국밥, 무한 리필까지.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai",
+    "createdAt": "2026-04-02T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s9-fnb-insta-art-content",
+   "parent": "syn-s9-fnb-insta-campaign",
+   "data": {
+    "campaignId": "syn-s9-fnb-insta-campaign",
+    "campaignVersion": 1,
+    "role": "content",
+    "title": "합성 콘텐츠",
+    "content": "## 콘텐츠 계획\nInstagram 피드 주 3회, 네이버 플레이스 소식 주 1회.\n\n## 게시물 초안\n월요일: 점심 메뉴 소개. 목요일: 손님 대기 줄 사진.\n",
+    "version": 1,
+    "status": "revision",
+    "origin": "ai",
+    "createdAt": "2026-04-02T09:00:00.000Z",
+    "reviewNote": "합성 검토 메모: Instagram 피드 카피를 안 3개로 나누고 혼밥 자리 안내를 넣어 주세요."
+   }
+  }
+ ],
+ "roles": [
+  "content"
+ ]
+}

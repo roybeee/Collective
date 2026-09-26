@@ -16,7 +16,7 @@
 | A3-2 | `brand_voice` 원장: records kind `brand_voice`, 관리자 확정, content·creative 입력 주입, 채점기 `brand_voice_avoid_term` | `a3_brand_voice` | 확정 권한은 대표·관리자, 직원은 403. 아래 'A3-2 브랜드 말투' 절 |
 | A3-3a | 작업물→실험 경로(`create_experiment_from_artifact`) | — (팩이 `a3_copy_pack`에서만 생긴다) | 팩의 `experiments`와 안의 실제 문안을 실험 대조·실험안으로 옮긴다. 아래 'A3-3 작업물 제안 실험' 절 |
 | A3-3b | 카피 팩을 게시 캡션 소스로 | — | 트랙 R R3 뒤로 미룸(`lib/execution-server.ts`는 트랙 R 소유) |
-| A3-4 | 회의 개선본의 카피 팩, 골든 v2 케이스, 종료 조건 run | — | 게시 뒤 평가 run으로 종료 조건을 잰다 |
+| A3-4 | 회의 개선본의 카피 팩, 골든 v2 케이스, 기대 계약 채점 | `a3_copy_pack`(회의 시작 때 고정) | 코드는 이 PR. 종료 조건 run은 게시 뒤다. 아래 'A3-4 회의 개선본과 골든 v2' 절 |
 
 ## 적용한 대표 결정 (위임 권고안)
 
@@ -94,7 +94,7 @@
 
 - 출력 상한: 콘텐츠 `maxTokens`는 10,000이다(`lib/practice.ts`, 이 PR은 바꾸지 않음). 팩까지 쓰면 잘릴 수 있다. 지시는 섹션 본문을 짧게 쓰게 한다. 상한 조정은 실측(A3-4 run) 뒤 정한다. 조정하면 `lib/role-execution.ts`에서 v2일 때만 올린다.
 - 온라인 채점(`lib/online-grading.ts`)은 저장 본문만 보므로 `copy_pack_variants`가 늘 `not_applicable`이다. 운영의 팩 문제는 작업물 `copyPackIssues`로 본다.
-- 평가 항목은 요청 계약을 모른다. v2로 요청했는데 모델이 v1로 답하면 운영은 거부하지만 채점기는 v1로 채점한다. A3-4 골든 v2 케이스에서 기대 계약을 둔다.
+- (A3-4에서 해결) 평가 항목이 요청 계약을 몰라 v2 요청에 v1로 답한 원문을 v1로 채점했다. 이제 동결 요청의 `outputProfile`을 기대 계약으로 보고 `contract_json` fail이다(`+expected-contract`).
 - 평가 케이스의 `capturedWith.outputContractVersion`은 코드 상수(`role-output-v1`)라 v2로 캡처한 케이스도 v1로 적힌다(`lib/eval-server.ts`, 트랙 R 소유라 고치지 않음). 동결 요청의 `outputProfile`로 구분한다.
 - 사람이 작업물을 고치면(판 2 이상) 팩은 갱신되지 않는다. 화면 표시는 아직 없다(렌더본이 본문에 있다).
 
@@ -202,3 +202,57 @@
 - 동결 요약 표시(`lib/learning-view.ts` `frozenSummaryLines`)는 출처 종류를 아직 보이지 않는다(그 파일은 이 PR 범위 밖).
 - 사람이 작업물을 고치면 팩 필드가 사라져(`save_artifact`가 새 객체를 쓴다) 그 판에서는 실험을 만들 수 없다. 이미 만든 실험은 옛 판 문안을 그대로 가진다.
 - 화면 목록은 워크스페이스 응답의 작업물(`copyPack` 포함)을 쓴다. 작업물 승인 직후 워크스페이스를 새로 불러오기 전에는 목록이 옛 상태일 수 있고, 서버 판정이 최종이다.
+
+## A3-4 회의 개선본과 골든 v2
+
+결론: 이 PR은 A3-4의 코드 부분이다. (1) 회의 시작 때 스위치 `a3_copy_pack`이 켜져 있으면 회의 스냅샷에 출력 프로필을 고정하고, 그 회의의 콘텐츠 개선본만 카피 팩을 함께 낸다. (2) 합성 dev 스펙 2건이 v2 콘텐츠 케이스를 만든다. (3) 평가가 동결 요청의 프로필을 기대 계약으로 보고 v1 원문을 fail로 센다. 종료 조건 run은 게시 뒤에 한다(아래 절차). 스위치가 꺼졌거나 스냅샷에 프로필이 없으면 회의 제출·저장이 이전과 바이트 동일하다.
+
+비유: 회의 시작 때 '이번 회의는 주문서 동봉' 도장을 회의록 표지에 찍는다. 회의 중에 사장이 규칙을 바꿔도 이미 시작한 회의는 표지 도장대로 간다. 도장이 있으면 콘텐츠 담당의 개선본에만 주문서가 붙고, 다른 담당은 늘 쓰던 편지만 쓴다.
+
+- 코드: `lib/meetings.ts`(`meetingCopyPack`·개선 지시·`packedRevision`·`withoutCopyPack`), `lib/meeting-execution.ts`(시작 스냅샷·작업물 저장), `lib/meeting-input.ts`(지시 선택·뒤 단계 입력), `lib/eval-freeze.ts`(동결), `lib/eval-kinds.ts`·`lib/graders/types.ts`·`lib/graders/structure.ts`(기대 계약), `scripts/eval/synthesize.mjs`(스위치·말투 레코드), `scripts/eval/specs/syn-s9-*.json`
+- 테스트: `tests/meeting-copy-pack.test.mjs`(모의 HERMES·메모리 SQLite·합성 데이터, 모델·외부 호출 0회, `passed · mocked`). `tests/eval-synthesize.test.mjs`가 새 스펙 2건도 생성한다.
+
+### 회의 경로
+
+- 시작(`executeMeeting` start): `isEnabled(owner,'a3_copy_pack')`를 한 번 읽어 켜져 있으면 `snapshot.outputProfile:'copy-pack-v2'`를 둔다. 꺼져 있으면 키가 없다. 프로필은 모델 입력에 싣지 않는다.
+- 판정 `meetingCopyPack(m,s)`: 스냅샷 프로필 + 개선 단계 + 콘텐츠 담당. 발언·합의·재검토와 다른 역할 개선본은 늘 false라 지시·입력이 바이트 동일하다.
+- 지시: 개선 형식 `{"title","content","changes"}` 뒤에 `copyPack` 스키마(`copyPackSchema`)를, 끝에 팩 규칙(`meetingCopyPackInstruction`)을 붙인다. 규칙은 A3-1 규칙 문장에서 계약 섹션 안내를 'content 앞에 렌더본을 붙이니 content에는 팩 문안을 반복하지 말라'로 바꾼 것이다.
+- 파싱(`packedRevision`, soft): `parseCopyPack`으로 읽고 렌더본(채널별 카피 안·장면표·실험)을 content 앞에 넣는다. 팩이 없거나 규칙을 어겨도 개선본은 통과하고 `copyPackIssues`만 남는다. 실질 분량과 40,000자 저장 한도는 렌더본을 합친 본문으로 본다(역할 경로와 같다). 단계 출력에는 `copyPack`·`copyPackIssues`가 남아 저장 응답 재시도(`storedStepOutput`)도 같은 결과를 낸다.
+- 저장(`finish`): 콘텐츠 개선 작업물 새 판에 `copyPack`, `copyPackArtifactVersion`(= 새 판 번호), 문제가 있으면 `copyPackIssues`(파싱 문제 + 브리프 채널 누락 경고)를 둔다. error 문제가 있으면 캠페인 이벤트 1건을 남긴다. 다른 역할 작업물과 재검토 작업물에는 팩 필드가 없다. 사람 수정·이전 판의 팩은 새 작업물 객체로 바뀌며 사라진다.
+- 뒤 단계 입력: `completedRevisions`는 팩 필드를 빼고 싣는다(렌더본은 content에 있다). 재검토 후보(`candidateArtifacts`)는 원래 허용 목록이라 팩 필드가 없다.
+- 평가 동결(`freezeMeetingRequest`): 프로필은 남기고(콘텐츠 개선 지시를 바꾸므로), 단계 출력의 팩 필드는 저장하지 않는다(조립이 읽지 않는다). 동결본 조립은 운영 제출과 바이트 동일하다(테스트).
+
+### 기대 계약 (`+expected-contract`)
+
+- `gradeRole`이 동결 요청의 `outputProfile`을 `GradeContext.outputProfile`로 넘긴다(A3-2 `brandVoice`와 같은 방식).
+- `contract_json`은 프로필이 있으면 `roleOutputContract(role,{copyPack:true})`로 원문을 읽는다. v2 요청 + v1 원문은 운영과 같은 계약 버전 불일치로 fail, v2 원문은 이전과 같다. 프로필이 없으면 원문의 계약 버전으로 고른다(이전과 같다). 판정 위치는 `contract_json` 한 곳이고 `copy_pack_variants`는 바꾸지 않았다.
+
+### 골든 v2 합성 스펙
+
+| 스펙 | 업종·채널 | 케이스 | 말투 피할 표현 | 금지 표현 |
+|---|---|---|---|---|
+| `syn-s9-fnb-insta.json` | fnb, Instagram 피드·네이버 플레이스 | content 1 | 대박·역대급 | 최저가·무한 리필 |
+| `syn-s9-edu-reels.json` | education, Instagram 릴스·네이버 블로그 | content 1 | 무조건·완벽 대비 | 성적 향상 보장·1등 강사 |
+
+- 두 스펙 모두 `feature_flag` 레코드 `a3_copy_pack`·`a3_brand_voice`(켜짐)와 확정 `brand_voice` 레코드(판 2)가 있다. 생성기 모의 DB에서 운영과 같은 `roleRequestFor`가 요청에 `outputProfile:'copy-pack-v2'`와 `brandVoice`를 넣고 동결한다. 분기 체크리스트 8종을 콘텐츠 요청 하나로 채운다(수정 요청·검토 메모·이전 회의·운영자 선호·지점 허용 값·주의 규칙·사람 수정본·발췌 잘림).
+- 상류 크리에이티브 초안에 금지 표현을 심었다(운영처럼 결함 있는 입력).
+- 평가 run은 동결 요청으로 제출하므로 운영 소유자의 스위치 상태와 무관하다.
+
+### 종료 조건 run (게시 뒤, 아직 안 함)
+
+이 PR은 실제 생성·가져오기(`import_cases`)·모델 호출을 하지 않았다. 게시 뒤 아래 순서로 한다.
+
+1. 이 PR이 든 제품 커밋이 `published`·`runtime-verified`인지 확인한다(`/api/version` `tree`). 가져오기는 생성 트리가 운영 트리와 같아야 한다.
+2. 그 커밋을 체크아웃한 깨끗한 작업 트리에서 스펙마다 생성한다: `node --experimental-vm-modules scripts/eval/synthesize-cases.mjs --spec scripts/eval/specs/syn-s9-fnb-insta.json --out scripts/eval/outputs/syn-s9-fnb-insta.json`(edu도 같다).
+3. 소유자 세션 브라우저로 `POST /api/eval {action:'import_cases', …출력}` 두 번. `created` 1건씩을 확인한다.
+4. `POST /api/eval {action:'start_run', label:'A3-4 골든 v2', variant:'active', caseIds:[두 케이스], tokenBudget:100000}`.
+   - 예산: 역할 케이스 예약 50,000 × 2 = 100,000(두 번째 케이스까지 예약이 들어가야 `not_run`이 되지 않는다). 실측 예상은 약 30,000(역할 1회 7,343~13,997토큰 실측에 팩 출력 증가분).
+5. 종료 조건(두 케이스 모두): `contract_json` pass(v2 원문), `copy_pack_variants` pass, `brand_voice_avoid_term` pass, 출력이 잘리지 않음(출력 토큰이 콘텐츠 `maxTokens` 10,000 미만). 결과는 `docs/releases/` 또는 이 절에 run id와 함께 적는다.
+6. 출력 토큰이 상한에 닿으면 `lib/role-execution.ts`에서 v2일 때만 상한을 올리는 PR을 따로 낸다(A3-1 남은 위험).
+
+### 남은 위험
+
+- 평가 케이스 `capturedWith.outputContractVersion`은 여전히 코드 상수 `role-output-v1`이다(`lib/eval-server.ts`, 이 PR 범위 밖 파일). v2 케이스는 동결 요청의 `outputProfile`로 구분한다.
+- 회의 단계 평가(`meeting_step`)의 콘텐츠 개선본 채점은 모델 원문의 content만 본다. 운영 저장본처럼 팩 렌더본을 앞에 붙여 채점하지 않고, 팩 형식도 채점하지 않는다. 회의 골든 v2 케이스가 필요해지면 따로 더한다.
+- 회의 입력 상한(64,000)은 그대로다. 팩 렌더본이 든 콘텐츠 개선본이 뒤 단계(그로스·데이터 개선, 재검토) 입력에 들어가 입력이 렌더본 크기만큼 는다. 실측은 종료 조건 run 뒤 회의 run에서 본다.
+- 온라인 채점은 동결 요청이 없어 기대 계약·말투 판정을 하지 않는다.
