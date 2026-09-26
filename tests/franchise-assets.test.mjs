@@ -1,5 +1,6 @@
 // R15a-1 모집 자료 키트 순수 판정 모듈(lib/franchise-assets.ts) 회귀: 자료 유형·고정 절, 원문 SHA-256(정규화 없음), 입력 검사, 초안 버전, 절 구조, 승인·내보내기(R2 모집 범위 전체 판정·H8·각주·근거 사실·말로 쓰는 원고 수익 안전망),
-// 승인 체크리스트(near-miss 세 유형·H7 안내), 재검토 표시, 설명회·견학·박람회(정원·신청·참석 KST 날짜), 게시 위치, 던지지 않음, 사유 코드 51개와 상태 코드 불변식, 순수성·가드 컨텍스트 재실행.
+// 승인 체크리스트(near-miss 세 유형·H7 안내), 재검토 표시, 설명회·견학·박람회(정원·신청·참석 KST 날짜), 게시 위치, 던지지 않음, 사유 코드 49개와 상태 코드 불변식, 순수성·가드 컨텍스트 재실행,
+// 권장 안내 문장(대표 결정 2026-09-26 '3번': 대기기간 두 문장·수익 질문 안내 문장은 템플릿이 미리 채우는 권장 문구이고, 빠지거나 고쳐도 승인·내보내기를 막지 않고 경고로 알린다).
 // 근거: mocked(순수 함수, 합성 픽스처, 외부 호출 0회). 법률 적합성은 not_run(LR-1 대상). HTTP 403·409 연결·D1 저장·잠금·요청 제한은 R15a-2a(lib/franchise-assets-server.ts, tests/franchise-assets-route.test.mjs)가 맡는다.
 import assert from 'node:assert/strict';
 import {readFileSync,readdirSync,statSync} from 'node:fs';
@@ -16,7 +17,7 @@ const fa=await rt.load('lib/franchise-assets.ts'),ff=await rt.load('lib/franchis
 const passed=[];const check=(name,val)=>{assert.ok(val,name);passed.push(name)};
 const same=(a,b)=>JSON.stringify(plain(a))===JSON.stringify(b);
 const asc=(a,b)=>a<b?-1:a>b?1:0;
-// 기대값으로 쓴 사유 코드(seen)와 실제로 나온 사유 코드(produced)를 모아 마지막에 51개가 모두 나왔는지 본다.
+// 기대값으로 쓴 사유 코드(seen)와 실제로 나온 사유 코드(produced)를 모아 마지막에 49개가 모두 나왔는지 본다.
 const seen=new Set(),produced=new Set();const E=(...codes)=>{codes.forEach(c=>seen.add(c));return codes};
 let failCount=0;
 // 모든 실패 결과는 D를 거친다: 사유는 정렬·중복 없음, 모든 사유의 상태 코드가 결과 상태와 같다(단계 불변식), 문구·버전·면책이 있다.
@@ -137,10 +138,12 @@ const allSections=[...fa.STARTUP_PAGE_SECTIONS,...fa.EVENT_DECK_SECTIONS];
 check('8: the twelve headings, section ids and four labels are fixed',same(fa.STARTUP_PAGE_SECTIONS.map(s=>s.heading),PAGE_HEADINGS)&&same(fa.EVENT_DECK_SECTIONS.map(s=>s.heading),DECK_HEADINGS)&&fa.SECTION_MARK==='■ '
  &&same(fa.STARTUP_PAGE_SECTIONS.map(s=>s.id),['why','cost','support','process','faq','contact'])&&same(fa.EVENT_DECK_SECTIONS.map(s=>s.id),['story','demo','cost','support','process','qna'])
  &&allSections.every(s=>s.heading===fa.SECTION_MARK+s.title+(s.label?' '+s.label:''))&&['[의견]','[사실]','[조건·기간 병기]',`[${DISCLAIMER}]`].every(l=>allSections.some(s=>s.label===l)));
-check('8: waiting notes, the revenue note and fixed lines are pinned',same(fa.WAITING_NOTES,WAIT)&&fa.REVENUE_QNA_NOTE===QNA&&allSections.every(s=>same(s.fixedLines,s.id==='process'?WAIT:s.id==='qna'?[QNA]:[])&&s.costLines===(s.id==='cost')));
+check('8: waiting notes, the revenue note and the recommended lines are pinned (no fixedLines field)',same(fa.WAITING_NOTES,WAIT)&&fa.REVENUE_QNA_NOTE===QNA&&allSections.every(s=>same(s.recommendedLines,s.id==='process'?WAIT:s.id==='qna'?[QNA]:[])&&!('fixedLines' in s)&&s.costLines===(s.id==='cost')));
+// 권장 문장이 빠졌을 때의 경고 문구(막지 않음).
+const W_WAIT='가맹 절차 절에 대기기간 안내 권장 문장이 없습니다(권장, 내보내기는 막지 않음).',W_QNA='질의응답 절에 수익 질문 안내 권장 문장이 없습니다(권장, 내보내기는 막지 않음).';
 const ruleIds=new Set(fr.FRANCHISE_RULES.map(r=>r.id));
 const ITEMS=[
- ['no_wait_bypass',"대기기간 우회 없음: 가계약금·예약금·선점금·홀딩비, 입금 순서로 자리 확정, '바로 계약·대기 없이' 같은 표현이 없고, 정보공개서·계약서안을 받은 날부터 14일(자문 시 7일)이 지나기 전에는 계약하거나 가맹금을 받지 않는다고 안내합니다.",['h.wait_bypass_solicitation','kr.fr.disclosure_wait','kr.fr.draft_wait']],
+ ['no_wait_bypass',"대기기간 우회 없음: 가계약금·예약금·선점금·홀딩비, 입금 순서로 자리 확정, '바로 계약·대기 없이' 같은 표현이 없습니다(대기기간 안내 문장은 권장).",['h.wait_bypass_solicitation','kr.fr.disclosure_wait','kr.fr.draft_wait']],
  ['no_association_condition','단체 가입 조건 없음: 가맹점사업자단체 가입·미가입을 계약 조건이나 지원·불이익의 조건으로 적지 않았습니다.',['kr.fr.association_condition','kr.fr.association_condition_2026']],
  ['no_captive_advisor','본사 연계 자문 없음: 본부가 변호사·가맹거래사·행정사 같은 자문자를 지정·소개하거나 비용을 대는 것처럼, 본부 연계 자문으로 계약이 빨라지는 것처럼 쓰지 않았습니다.',['h.advice_shortening_evidence','h.captive_advisor_phrase']],
  ['no_revenue_figures','수익 수치 없음: 평균매출·월 매출·순수익·수익률·투자금 회수 기간을 예시 점주·돌려 말하기·질문 답변 형태로도 쓰지 않았고, 수익 질문은 서면 절차 안내로만 답합니다(H6).',['h.net_profit_payback_claims','h.revenue_figures_no_ad','kr.fr.revenue_guarantee']],
@@ -152,9 +155,10 @@ const H7={B:`분기 B(문의 수집만)입니다. 정보공개서 등록·변경
  C:`분기 C(모집 불가)입니다. 모집 광고와 가맹 상담을 하지 않습니다(H7). 이 자료는 승인·내보내기할 수 없습니다. ${DISCLAIMER}`,
  undetermined:`가맹 준비도 분기가 판정되지 않았습니다. 분기 A(모집 가능)로 기록되기 전에는 모집 자료를 승인·내보내지 않고 설명회·견학·박람회를 열지 않습니다(H7). ${DISCLAIMER}`};
 check('9: the H7 notices are pinned with the disclaimer',same(fa.H7_NOTICES,H7));
+check('9: no checklist item requires the recommended sentences (CEO decision 2026-09-26), the wait-bypass item marks them as recommended',fa.CHECKLIST_ITEMS.every(i=>!i.text.includes('14일')&&!i.text.includes('안내합니다')&&![...WAIT,QNA].some(l=>i.text.includes(l)))&&fa.CHECKLIST_ITEMS.find(i=>i.id==='no_wait_bypass').text.endsWith('(대기기간 안내 문장은 권장).'));
 const unionIds=[...new Set([...ITEMS.flatMap(x=>x[2]),'h.fact_opinion_labels'])].sort(asc);
-check('10: asset rules carry versions, disclaimer, KST and registry rule ids',fa.ASSETS_VERSION==='fr-assets@2026-09-26.1'&&fa.CHECKLIST_VERSION==='fr-assets-checklist@2026-09-26.1'&&same(fa.ASSET_RULES,{assetsVersion:'fr-assets@2026-09-26.1',checklistVersion:'fr-assets-checklist@2026-09-26.1',rulesVersion:fr.FRANCHISE_RULES_VERSION,ruleIds:unionIds,disclaimer:DISCLAIMER,timezone:'+09:00'})&&fa.ASSET_RULES.ruleIds.every(id=>ruleIds.has(id)));
-const STATUS={asset_not_approved:409,attendance_before_event:400,block_unresolved:409,branch_not_a:409,campaign_not_recruitment:409,campaign_other_brand:400,capacity_below_applied:409,capacity_full:409,checklist_incomplete:400,checklist_outdated:409,code_duplicate:409,code_unknown:400,cost_table_missing:409,event_cancelled:409,event_started:409,fact_changed:409,fact_other_brand:400,fact_ref_missing:409,fact_revenue:409,fact_source_missing:409,fact_stale:409,fact_store_scoped:400,footnote_missing:409,h8_label_missing:409,hard_block:409,hash_mismatch:409,invalid_body:400,invalid_code:400,invalid_counts:400,invalid_event:400,invalid_fact_refs:400,invalid_input:400,invalid_placement:400,invalid_record:400,invalid_timestamp:400,invalid_type:400,not_approved:409,not_draft:409,not_exported:409,record_other_brand:400,revenue_qna_note_missing:409,review_needed:409,role_forbidden:403,section_duplicate:409,section_missing:409,section_order:409,section_unknown:409,spoken_revenue_figure:409,switch_off:409,version_not_current:409,waiting_note_missing:409};
+check('10: asset rules carry versions, disclaimer, KST and registry rule ids',fa.ASSETS_VERSION==='fr-assets@2026-09-26.2'&&fa.CHECKLIST_VERSION==='fr-assets-checklist@2026-09-26.2'&&same(fa.ASSET_RULES,{assetsVersion:'fr-assets@2026-09-26.2',checklistVersion:'fr-assets-checklist@2026-09-26.2',rulesVersion:fr.FRANCHISE_RULES_VERSION,ruleIds:unionIds,disclaimer:DISCLAIMER,timezone:'+09:00'})&&fa.ASSET_RULES.ruleIds.every(id=>ruleIds.has(id)));
+const STATUS={asset_not_approved:409,attendance_before_event:400,block_unresolved:409,branch_not_a:409,campaign_not_recruitment:409,campaign_other_brand:400,capacity_below_applied:409,capacity_full:409,checklist_incomplete:400,checklist_outdated:409,code_duplicate:409,code_unknown:400,cost_table_missing:409,event_cancelled:409,event_started:409,fact_changed:409,fact_other_brand:400,fact_ref_missing:409,fact_revenue:409,fact_source_missing:409,fact_stale:409,fact_store_scoped:400,footnote_missing:409,h8_label_missing:409,hard_block:409,hash_mismatch:409,invalid_body:400,invalid_code:400,invalid_counts:400,invalid_event:400,invalid_fact_refs:400,invalid_input:400,invalid_placement:400,invalid_record:400,invalid_timestamp:400,invalid_type:400,not_approved:409,not_draft:409,not_exported:409,record_other_brand:400,review_needed:409,role_forbidden:403,section_duplicate:409,section_missing:409,section_order:409,section_unknown:409,spoken_revenue_figure:409,switch_off:409,version_not_current:409};
 const FM=plain(ff.FRANCHISE_FACT_MESSAGES);
 const MESSAGES={asset_not_approved:'승인된 모집 자료 버전만 행사에 연결할 수 있습니다.',attendance_before_event:'행사일(KST) 전에는 참석·불참을 기록할 수 없습니다.',block_unresolved:'가맹 모집 규칙상 근거 사실이 필요한 표현이 남아 있습니다.',
  branch_not_a:`가맹 준비도 분기가 A(모집 가능)로 기록된 브랜드만 모집 자료를 승인·내보내고 설명회·견학·박람회를 열 수 있습니다(H7). ${DISCLAIMER}`,campaign_not_recruitment:'가맹 모집 목적 캠페인에서만 모집 자료와 행사를 만들 수 있습니다.',campaign_other_brand:'이 브랜드의 캠페인이 아닙니다.',
@@ -166,13 +170,13 @@ const MESSAGES={asset_not_approved:'승인된 모집 자료 버전만 행사에 
  hash_mismatch:'원문이 확인·승인한 내용과 다릅니다. 새로고침하고 다시 승인하세요.',invalid_body:'원문은 1~20,000자이고 줄바꿈·탭 밖의 제어 문자를 넣을 수 없습니다.',invalid_code:'가명 코드 형식을 확인하세요.',invalid_counts:'참석·불참 건수를 확인하세요.',
  invalid_event:'행사 유형·장소 라벨·정원·비용 참조·연결 자료를 확인하세요.',invalid_fact_refs:'근거 사실 선택을 확인하세요(최대 20개, 중복 불가).',invalid_input:'입력 형식을 확인하세요.',invalid_placement:'게시 위치 라벨(1~100자)과 게시 확인일(내보낸 날부터 오늘까지의 날짜)을 확인하세요. 게시 위치는 20곳까지입니다.',
  invalid_record:'저장된 기록의 형식이 올바르지 않습니다.',invalid_timestamp:'시각은 시간대가 있는 ISO 8601이어야 합니다.',invalid_type:'자료 유형을 확인하세요.',not_approved:'승인된 자료만 내보낼 수 있습니다.',not_draft:'초안 상태의 자료만 승인할 수 있습니다.',
- not_exported:'내보낸 자료만 게시 위치를 기록할 수 있습니다.',record_other_brand:'이 브랜드의 기록이 아닙니다.',revenue_qna_note_missing:'질의응답 절에 수익 질문 안내 문장을 그대로 넣으세요(H6).',
+ not_exported:'내보낸 자료만 게시 위치를 기록할 수 있습니다.',record_other_brand:'이 브랜드의 기록이 아닙니다.',
  review_needed:'근거 사실이나 정보공개서 버전이 바뀌어 재검토가 필요합니다. 현재 사실로 새 버전을 저장하고 다시 승인하세요.',role_forbidden:'모집 자료 승인·내보내기·게시 기록과 행사 등록·변경은 대표·관리자만 할 수 있습니다.',
  section_duplicate:'고정 절 제목이 두 번 이상 있습니다.',section_missing:'고정 절 제목이 빠졌습니다. 제목 줄을 템플릿 그대로 두세요.',section_order:'고정 절 순서가 템플릿과 다릅니다.',section_unknown:'템플릿에 없는 절 제목(■)이 있습니다.',
  spoken_revenue_figure:`설명회 원고·첫 통화 스크립트에 수익처럼 보이는 수치가 있습니다. 수익 질문은 서면 절차 안내 문장으로만 답합니다(H6). ${DISCLAIMER}`,switch_off:'가맹 모집 기능이 꺼져 있어 모집 자료·행사를 저장·승인·내보낼 수 없습니다.',
- version_not_current:'자료를 저장할 때의 정보공개서 버전이 현재 등록 버전이 아닙니다. 현재 버전의 사실로 새 버전을 저장하세요.',waiting_note_missing:'가맹 절차 절에 두 대기기간 안내 문장을 그대로 넣으세요.'};
-check('11: 51 sorted unique codes with the fixed status table',fa.ASSET_CODES.length===51&&fa.ASSET_CODES.every((c,i)=>i===0||fa.ASSET_CODES[i-1]<c)&&same(fa.ASSET_CODES,Object.keys(STATUS).sort(asc))&&same(fa.ASSET_CODE_STATUS,STATUS));
-check('11: every code has its fixed non-empty message',same(fa.ASSET_MESSAGES,MESSAGES)&&Object.values(MESSAGES).every(m=>m.length>0)&&same(fa.ASSET_WARNING_MESSAGES,{briefingDeckMissing:'설명회에 승인된 설명회 덱(표준 순서)을 연결하지 않았습니다.'}));
+ version_not_current:'자료를 저장할 때의 정보공개서 버전이 현재 등록 버전이 아닙니다. 현재 버전의 사실로 새 버전을 저장하세요.'};
+check('11: 49 sorted unique codes with the fixed status table, the two recommended-line codes are gone',fa.ASSET_CODES.length===49&&['waiting_note_missing','revenue_qna_note_missing'].every(c=>!fa.ASSET_CODES.includes(c)&&!(c in fa.ASSET_CODE_STATUS)&&!(c in fa.ASSET_MESSAGES))&&fa.ASSET_CODES.every((c,i)=>i===0||fa.ASSET_CODES[i-1]<c)&&same(fa.ASSET_CODES,Object.keys(STATUS).sort(asc))&&same(fa.ASSET_CODE_STATUS,STATUS));
+check('11: every code has its fixed non-empty message',same(fa.ASSET_MESSAGES,MESSAGES)&&Object.values(MESSAGES).every(m=>m.length>0)&&same(fa.ASSET_WARNING_MESSAGES,{briefingDeckMissing:'설명회에 승인된 설명회 덱(표준 순서)을 연결하지 않았습니다.',waitingNoteMissing:W_WAIT,revenueQnaNoteMissing:W_QNA}));
 const odd=fa.validateAssetInput({type:'blog-ZZTOP',body:'\u0000비밀X',factRefs:[]},CTX);
 check('11: odd input values never reach the message',is(odd,'invalid_body','invalid_type')&&!odd.message.includes('ZZTOP')&&!odd.message.includes('비밀X')&&odd.message===MESSAGES.invalid_body+' '+MESSAGES.invalid_type);
 const deepFrozen=(o,memo=new Set())=>{if(!o||typeof o!=='object'||memo.has(o))return true;memo.add(o);return Object.isFrozen(o)&&Object.values(o).every(v=>deepFrozen(v,memo))};
@@ -251,10 +255,12 @@ check('26: a changed type, reference set or disclosure version also makes a new 
 
 // ════ 절 구조 ════
 const S=(type,body,refs=[F.total],facts=BF,versions=V)=>plain(fa.assetStructureIssues(type,body,refs,facts,versions,NOW));
+const SW=(type,body)=>plain(fa.assetStructureWarnings(type,body));
 const tpl=fa.sectionTemplate('startup_page');
 check('27: the startup page template only lacks the cost table and does not block the judge',tpl===[PAGE_HEADINGS[0],PAGE_HEADINGS[1],PAGE_HEADINGS[2],[PAGE_HEADINGS[3],...WAIT].join('\n'),PAGE_HEADINGS[4],PAGE_HEADINGS[5]].join('\n\n')&&same(S('startup_page',tpl),E('cost_table_missing'))&&VAL(tpl,[]).value.judgement.blocked===false);
+check('27: both templates still pre-fill the recommended sentences under their headings and raise no warning',tpl.includes([PAGE_HEADINGS[3],...WAIT].join('\n'))&&fa.sectionTemplate('event_deck').includes([DECK_HEADINGS[4],...WAIT].join('\n')+'\n\n'+DECK_HEADINGS[5]+'\n'+QNA)&&same(SW('startup_page',tpl),[])&&same(SW('event_deck',fa.sectionTemplate('event_deck')),[]));
 check('27: the deck template only lacks the cost table, free types have no template',same(S('event_deck',fa.sectionTemplate('event_deck')),['cost_table_missing'])&&fa.sectionTemplate('event_deck').endsWith(DECK_HEADINGS[5]+'\n'+QNA)&&['portal_intro','first_call_script','blog',null,5].every(t=>fa.sectionTemplate(t)===''));
-check('28: a complete startup page has no structure code and no judge issue',same(S('startup_page',PAGE()),[])&&VAL(PAGE()).value.judgement.issues.length===0);
+check('28: a complete startup page has no structure code, no recommended-line warning and no judge issue',same(S('startup_page',PAGE()),[])&&same(SW('startup_page',PAGE()),[])&&VAL(PAGE()).value.judgement.issues.length===0);
 check('29: a removed heading is section_missing',same(S('startup_page',PAGE(heading('support',null))),E('section_missing')));
 check('29: a repeated heading is section_duplicate',same(S('startup_page',PAGE(bs=>[...bs,{id:'x',heading:PAGE_HEADINGS[0],lines:['다시 씁니다.']}])),E('section_duplicate'))&&same(S('startup_page',PAGE(bs=>[bs[0],bs[1],{id:'x',heading:PAGE_HEADINGS[0],lines:[]},...bs.slice(2)])),['section_duplicate']));
 check('29: swapped headings are section_order',same(S('startup_page',PAGE(bs=>[...bs.slice(0,4),bs[5],bs[4]])),E('section_order')));
@@ -282,9 +288,15 @@ const dNfdFoot=vNfdFoot.ok?await fa.draftAsset(null,vNfdFoot.value,META):null;
 check('30: an NFD version label in a footnote pasted verbatim is compared in NFC and approves',footNfd!==footNfd.normalize('NFC')&&OK(vNfdFoot)&&OK(await APP(dNfdFoot,APPROVE_IN(dNfdFoot),{...ACTX,versions:V_NFD})));
 // 줄로 보일 수 있는 U+0085·U+2028·U+2029 뒤의 ■ 제목도 절 검사가 본다(저장 원문에는 이 문자가 없지만 직접 부르는 미리보기도 fail closed).
 check('29: a ■ line after U+0085, U+2028 or U+2029 is still a section line',['\u0085','\u2028','\u2029'].every(sep=>same(S('startup_page',PAGE(lines('support',l=>[l[0]+sep+'■ 예상 수익']))),['section_unknown'])&&same(S('startup_page',PAGE(lines('support',l=>[l[0]+sep+PAGE_HEADINGS[0]]))),['section_duplicate'])&&is(VAL(PAGE(lines('support',l=>[l[0]+sep+'■ 예상 수익']))),'invalid_body')));
-check('31: a stray ■ line ends the section before the waiting notes, fixed lines match exactly without trim',same(S('startup_page',PAGE(lines('process',()=>['■ 참고',...WAIT]))),['section_unknown','waiting_note_missing'])&&same(S('startup_page',PAGE(lines('process',()=>[WAIT[0]+' ',WAIT[1]]))),['waiting_note_missing']));
-check('31: a missing or misplaced waiting note is waiting_note_missing',same(S('startup_page',PAGE(lines('process',()=>[WAIT[0]]))),E('waiting_note_missing'))&&same(S('startup_page',PAGE(bs=>lines('faq',l=>[...l,...WAIT])(lines('process',()=>[])(bs)))),['waiting_note_missing']));
-check('32: the deck is complete, loses its revenue note or is out of order',same(S('event_deck',DECK()),[])&&VAL(DECK(),['f-total'],'event_deck').value.judgement.issues.length===0&&same(S('event_deck',DECK(lines('qna',()=>[]))),E('revenue_qna_note_missing'))&&same(S('event_deck',DECK(bs=>[bs[0],bs[2],bs[1],...bs.slice(3)])),['section_order']));
+check('31: a stray ■ line ends the section before the waiting notes, recommended lines match exactly without trim and only warn',same(S('startup_page',PAGE(lines('process',()=>['■ 참고',...WAIT]))),E('section_unknown'))&&same(SW('startup_page',PAGE(lines('process',()=>['■ 참고',...WAIT]))),[W_WAIT])
+ &&same(S('startup_page',PAGE(lines('process',()=>[WAIT[0]+' ',WAIT[1]]))),[])&&same(SW('startup_page',PAGE(lines('process',()=>[WAIT[0]+' ',WAIT[1]]))),[W_WAIT]));
+check('31: a missing or misplaced waiting note is a warning, not a structure code',same(S('startup_page',PAGE(lines('process',()=>[WAIT[0]]))),[])&&same(SW('startup_page',PAGE(lines('process',()=>[WAIT[0]]))),[W_WAIT])
+ &&same(S('startup_page',PAGE(bs=>lines('faq',l=>[...l,...WAIT])(lines('process',()=>[])(bs)))),[])&&same(SW('startup_page',PAGE(bs=>lines('faq',l=>[...l,...WAIT])(lines('process',()=>[])(bs)))),[W_WAIT]));
+check('31: recommended lines may come in any order or twice inside their section, one missing line is one warning per section',same(SW('startup_page',PAGE(lines('process',()=>[WAIT[1],'절차 설명입니다.',WAIT[0]]))),[])&&same(SW('startup_page',PAGE(lines('process',()=>[...WAIT,...WAIT]))),[])&&same(SW('event_deck',DECK(lines('process',()=>[WAIT[1]]))),[W_WAIT]));
+check('31: recommended-line warnings: free and unknown types have none, a non-string body or a missing heading misses the lines, order follows the sections',['portal_intro','first_call_script','naver_search','meta_lead_ad','expo_banner','blog',null,5].every(t=>same(SW(t,'자유 문안\n'+WAIT.join('\n')),[])&&same(SW(t,null),[]))
+ &&same(SW('startup_page',null),[W_WAIT])&&same(SW('event_deck',5),[W_WAIT,W_QNA])&&same(SW('startup_page',PAGE(heading('process',null))),[W_WAIT])&&same(S('startup_page',PAGE(heading('process',null))),['section_missing'])
+ &&same(SW('event_deck',DECK(bs=>lines('qna',()=>[])(lines('process',()=>[])(bs)))),[W_WAIT,W_QNA])&&same(SW('event_deck',DECK(bs=>lines('qna',()=>[...WAIT])(lines('process',()=>[QNA])(bs)))),[W_WAIT,W_QNA])&&same(SW('startup_page',PAGE(lines('faq',l=>[...l,QNA]))),[]));
+check('32: the deck is complete, loses its revenue note (a warning only) or is out of order',same(S('event_deck',DECK()),[])&&same(SW('event_deck',DECK()),[])&&VAL(DECK(),['f-total'],'event_deck').value.judgement.issues.length===0&&same(S('event_deck',DECK(lines('qna',()=>[]))),[])&&same(SW('event_deck',DECK(lines('qna',()=>[]))),[W_QNA])&&same(S('event_deck',DECK(bs=>[bs[0],bs[2],bs[1],...bs.slice(3)])),E('section_order')));
 check('33: free asset types have no structure check, a non-string body misses every heading',['portal_intro','first_call_script','naver_search','meta_lead_ad','expo_banner'].every(t=>same(S(t,'■ 예상 수익\n자유 문안'),[]))&&same(S('startup_page',null),['section_missing'])&&same(S('event_deck',5),['section_missing']));
 
 // ════ 승인 ════
@@ -367,12 +379,111 @@ const r55a=await EXP(deckRR),r55b=await EXP(callRR);
 check('55: a revenue-like figure is spoken_revenue_figure (409) in the deck and the first call script',is(r55a,'spoken_revenue_figure')&&is(r55b,'spoken_revenue_figure')&&r55a.message.includes(DISCLAIMER)&&r55b.status===409);
 check('55: the same figure in a portal intro exports with a warning',OK(portalRR)&&portalRR.warnings.some(w=>w.includes('수익처럼 보이는 수치')));
 check('56: a revenue figure in a deck script is hard_block',is(await EXP(FORGE(DECK(lines('story',l=>[...l,'가맹점 월 매출 3,200만원'])),['f-total'],'event_deck')),'hard_block'));
-check('56: a structure error in a forged deck is caught at export',is(await EXP(FORGE(DECK(lines('process',()=>[WAIT[1]])),['f-total'],'event_deck')),'waiting_note_missing'));
+const deckHalf=await EXP(FORGE(DECK(lines('process',()=>[WAIT[1]])),['f-total'],'event_deck'));
+check('56: a forged deck missing one waiting note exports with the waiting warning only, a structure error is still caught',OK(deckHalf)&&same(deckHalf.warnings,[W_WAIT])&&is(await EXP(FORGE(DECK(bs=>[bs[0],bs[2],bs[1],...bs.slice(3)]),['f-total'],'event_deck')),'section_order'));
 const PF=(edit,refs=['f-total'])=>FORGE(PAGE(edit),refs,'startup_page');
 check('56: structure errors reach approval and export as 409 decisions',is(await APP(await DRAFT(PAGE(heading('support',null)))),'section_missing')&&is(await EXP(PF(bs=>[...bs.slice(0,4),bs[5],bs[4]])),'section_order')&&is(await EXP(PF(bs=>[...bs,{id:'x',heading:PAGE_HEADINGS[0],lines:[]}])),'section_duplicate')
- &&is(await EXP(PF(lines('faq',l=>[...l,'■ 예상 수익']))),'section_unknown')&&is(await EXP(PF(),{...XCTX,facts:[...CTX.facts,total2]}),'cost_table_missing')&&is(await EXP(FORGE(DECK(lines('qna',()=>[])),['f-total'],'event_deck')),'revenue_qna_note_missing')&&(await EXP(PF(lines('faq',l=>[...l,'■ 예상 수익'])))).status===409);
+ &&is(await EXP(PF(lines('faq',l=>[...l,'■ 예상 수익']))),'section_unknown')&&is(await EXP(PF(),{...XCTX,facts:[...CTX.facts,total2]}),'cost_table_missing')&&(r=>OK(r)&&same(r.warnings,[W_QNA]))(await EXP(FORGE(DECK(lines('qna',()=>[])),['f-total'],'event_deck')))&&(await EXP(PF(lines('faq',l=>[...l,'■ 예상 수익'])))).status===409);
 const rev=ctx=>({...ctx,facts:[...ctx.facts].reverse(),versions:[...ctx.versions].reverse()});
 check('57: the same input gives the same result regardless of fact and version order',JSON.stringify(plain(await EXP(A)))===JSON.stringify(plain(x48))&&JSON.stringify(plain(await EXP(A,rev(XCTX))))===JSON.stringify(plain(x48))&&JSON.stringify(plain(await EXP(FORGE(PORTAL,['f-count']),rev(XCTX))))===JSON.stringify(plain(r54)));
+
+// ════ 권장 안내 문장(대표 결정 2026-09-26 '3번') ════
+// 대기기간 두 문장과 수익 질문 안내 문장은 템플릿이 미리 채우는 권장 문구다. 빠지거나 고쳐도 저장·승인·내보내기를 막지 않고 경고로 알린다.
+// 절 구조·창업비용 표·판정기(해제 불가·block 포함)·H8·각주·근거 사실·말로 쓰는 원고 수익 안전망·체크리스트·역할·스위치·분기 A는 그대로 막는다.
+const NO_WAIT=lines('process',()=>[]),NO_QNA=lines('qna',()=>[]),RGCTX={brandId:'b1',facts:CTX.facts,versions:V,now:NOW};
+const pageBare=PAGE(NO_WAIT),deckBare=DECK(bs=>NO_QNA(NO_WAIT(bs)));
+const vPageBare=VAL(pageBare),vDeckBare=VAL(deckBare,['f-total'],'event_deck');
+check('R1: a startup page without the waiting notes saves with only the waiting warning',OK(vPageBare)&&same(vPageBare.warnings,[W_WAIT])&&vPageBare.value.judgement.issues.length===0&&same(S('startup_page',pageBare),[]));
+check('R1: a deck without the waiting notes and the revenue note saves with both warnings in section order',OK(vDeckBare)&&same(vDeckBare.warnings,[W_WAIT,W_QNA])&&vDeckBare.value.judgement.issues.length===0&&same(S('event_deck',deckBare),[]));
+const dPageBare=await DRAFT(pageBare,['f-total'],'startup_page',CTX,'a-page-bare'),aPageBare=await APP(dPageBare);
+const dDeckBare=await DRAFT(deckBare,['f-total'],'event_deck',CTX,'a-deck-bare'),aDeckBare=await APP(dDeckBare);
+check('R2: both bare bodies approve (200) with the full approval record and the same warnings',OK(aPageBare)&&same(aPageBare.warnings,[W_WAIT])&&aPageBare.value.approval.checklist.version==='fr-assets-checklist@2026-09-26.2'&&OK(aDeckBare)&&same(aDeckBare.warnings,[W_WAIT,W_QNA])&&aDeckBare.value.approval.bodyHash===sha64(deckBare));
+const APageBare={...plain(dPageBare),status:'approved',approval:plain(aPageBare.value.approval)},ADeckBare={...plain(dDeckBare),status:'approved',approval:plain(aDeckBare.value.approval)};
+const xPageBare=await EXP(APageBare),xDeckBare=await EXP(ADeckBare);
+check('R3: both bare bodies export their exact body (200) with the same warnings and the bumped versions',OK(xPageBare)&&xPageBare.value.body===pageBare&&same(xPageBare.warnings,[W_WAIT])&&OK(xDeckBare)&&xDeckBare.value.body===deckBare&&same(xDeckBare.warnings,[W_WAIT,W_QNA])
+ &&xDeckBare.value.record.assetsVersion==='fr-assets@2026-09-26.2'&&xDeckBare.value.record.checklistVersion==='fr-assets-checklist@2026-09-26.2');
+check('R3: the gate preview has no code for the bare bodies',(g=>same(g.codes,[])&&g.status===200&&g.message===null)(fa.assetGateIssues(APageBare,RGCTX))&&(g=>same(g.codes,[])&&g.status===200)(fa.assetGateIssues(ADeckBare,RGCTX)));
+const noRecWarn=r=>OK(r)&&!r.warnings.includes(W_WAIT)&&!r.warnings.includes(W_QNA);
+const DECK_FULL=await APPROVED(DECK(),['f-total'],'event_deck',CTX,'a-deck-full');
+check('R4: bodies with the sentences carry neither warning at save, approval and export',same(VAL(PAGE()).warnings,[])&&same(VAL(DECK(),['f-total'],'event_deck').warnings,[])&&noRecWarn(await APP(d1))&&same((await APP(d1)).warnings,[])&&noRecWarn(x48)
+ &&noRecWarn(await APP(await DRAFT(DECK(),['f-total'],'event_deck')))&&(r=>noRecWarn(r)&&same(r.warnings,[]))(await EXP(DECK_FULL)));
+const WAIT_EDIT='정보공개서를 받은 날부터 14일이 지나기 전에는 가맹계약을 체결하지 않습니다.',QNA_EDIT='수익 관련 질문은 정보공개서로 안내합니다.';
+const pageEdit=PAGE(lines('process',()=>[WAIT_EDIT,WAIT[1]])),dEdit=await DRAFT(pageEdit,['f-total'],'startup_page',CTX,'a-page-edit'),aEdit=await APP(dEdit);
+const xEdit=aEdit.ok?await EXP({...plain(dEdit),status:'approved',approval:plain(aEdit.value.approval)}):null;
+check('R5: an edited waiting sentence is a warning, not a block, at save, approval and export',same(S('startup_page',pageEdit),[])&&same(VAL(pageEdit).warnings,[W_WAIT])&&OK(aEdit)&&same(aEdit.warnings,[W_WAIT])&&OK(xEdit)&&same(xEdit.warnings,[W_WAIT]));
+check('R5: an edited revenue note is a warning, not a block',(r=>OK(r)&&same(r.warnings,[W_QNA]))(await EXP(FORGE(DECK(lines('qna',()=>[QNA_EDIT])),['f-total'],'event_deck'))));
+const BYPASS='가계약금 먼저 입금하시면 자리 확정';
+const rBypassBare=await APP(await DRAFT(PAGE(bs=>lines('faq',l=>[...l,BYPASS])(NO_WAIT(bs))),['f-total'],'startup_page',CTX,'a-bypass-bare')),rBypassFull=await APP(await DRAFT(PAGE(lines('faq',l=>[...l,BYPASS])),['f-total'],'startup_page',CTX,'a-bypass-full'));
+check('R6: wait-bypass wording is still hard_block (409) with or without the recommended sentences',is(rBypassBare,'hard_block')&&rBypassBare.status===409&&is(rBypassFull,'hard_block')&&rBypassBare.judgement.issues.some(x=>x.ruleId==='h.wait_bypass_solicitation'&&x.tier==='hard_block')&&rBypassBare.message.includes('승인으로 풀 수 없음')
+ &&is(await EXP(FORGE(PAGE(lines('process',()=>[BYPASS])),['f-total'],'startup_page')),'hard_block')&&is(await EXP(FORGE(DECK(bs=>lines('process',()=>[BYPASS])(NO_QNA(bs))),['f-total'],'event_deck')),'hard_block'));
+const vDeckRR=VAL(DECK(bs=>lines('story',l=>[...l,RR])(NO_QNA(bs))),['f-total'],'event_deck');
+check('R7: a revenue-like figure in a deck without the revenue note is still spoken_revenue_figure (409), a revenue value still hard_block',(r=>is(r,'spoken_revenue_figure')&&r.status===409)(await EXP(FORGE(DECK(lines('qna',()=>[RR])),['f-total'],'event_deck')))
+ &&OK(vDeckRR)&&vDeckRR.warnings.length===2&&vDeckRR.warnings[0].includes('수익처럼 보이는 수치')&&vDeckRR.warnings[1]===W_QNA&&is(await APP(await DRAFT(DECK(bs=>lines('story',l=>[...l,RR])(NO_QNA(bs))),['f-total'],'event_deck',CTX,'a-deck-rr')),'spoken_revenue_figure')
+ &&is(await EXP(FORGE(DECK(lines('qna',()=>['가맹점 월 매출 3,200만원'])),['f-total'],'event_deck')),'hard_block')&&is(await EXP(FORGE(RR,[],'first_call_script')),'spoken_revenue_figure'));
+check('R7: other structure codes still block a body that also lacks the sentences, and failures carry no warnings',is(await APP(await DRAFT(PAGE(bs=>heading('support',null)(NO_WAIT(bs))),['f-total'],'startup_page',CTX,'a-bare-missing')),'section_missing')&&is(await EXP(FORGE(PAGE(bs=>lines('cost',()=>[FOOT])(NO_WAIT(bs))),['f-total'],'startup_page')),'cost_table_missing')
+ &&(r=>is(r,'section_unknown')&&!('warnings' in r))(await EXP(FORGE(DECK(bs=>lines('qna',()=>['■ 예상 수익'])(NO_WAIT(bs))),['f-total'],'event_deck'))));
+const OLD_CL='fr-assets-checklist@2026-09-26.1',oldApproval={...APageBare.approval,checklist:{version:OLD_CL,checked:[...fa.CHECKLIST_IDS]}};
+check('R8: the previous checklist version (.1) is outdated at approval and export, and a record approved under it re-saves as a new draft that approves',fa.CHECKLIST_VERSION!==OLD_CL&&is(await APP(dPageBare,{bodyHash:dPageBare.bodyHash,checklist:{version:OLD_CL,checked:[...fa.CHECKLIST_IDS]}}),'checklist_outdated')
+ &&is(await EXP({...APageBare,approval:oldApproval}),'checklist_outdated')
+ &&await fa.draftAsset(APageBare,vPageBare.value,{...META,id:APageBare.id,now:LATER})===APageBare);
+const resavedOld=await fa.draftAsset({...APageBare,approval:oldApproval},vPageBare.value,{...META,id:APageBare.id,now:LATER}),aResavedOld=await APP(resavedOld);
+check('R8: the re-saved draft approves under the new checklist with the waiting warning',resavedOld.version===2&&OK(aResavedOld)&&aResavedOld.value.approval.checklist.version===fa.CHECKLIST_VERSION&&same(aResavedOld.warnings,[W_WAIT]));
+const WARN_LINE='입금 순서대로 자리 확정됩니다',pageMix=PAGE(bs=>lines('faq',l=>[...l,WARN_LINE])(NO_WAIT(bs)));
+const vMix=VAL(pageMix),dMix=await DRAFT(pageMix,['f-total'],'startup_page',CTX,'a-page-mix'),aMix=await APP(dMix),xMix=aMix.ok?await EXP({...plain(dMix),status:'approved',approval:plain(aMix.value.approval)}):null;
+const judgeFirst=r=>OK(r)&&r.warnings.length===2&&r.warnings[0].startsWith('가맹 규칙 확인 · ')&&r.warnings[1]===W_WAIT;
+check('R9: judge warnings come first and the recommended-line warning follows at save, approval and export',judgeFirst(vMix)&&same(vMix.warnings,[...plain(jc.franchiseIssueLabels(vMix.value.judgement).warnings),W_WAIT])&&judgeFirst(aMix)&&judgeFirst(xMix)&&same(aMix.warnings,plain(vMix.warnings))&&same(xMix.warnings,plain(vMix.warnings)));
+check('R9: without the asset the checklist shows only the deposit net next to the wait-bypass item, never the recommended-line warning',(c=>c.items.every(i=>!i.warnings.includes(W_WAIT)&&!i.warnings.includes(W_QNA))&&c.items.find(i=>i.id==='no_wait_bypass').warnings.length===1)(fa.approvalChecklist(vMix.value.judgement,'A')));
+check('R9: with the asset the waiting warning follows the deposit net on the wait-bypass item only',(c=>same(c.items.find(i=>i.id==='no_wait_bypass').warnings,[plain(jc.franchiseIssueLabels(vMix.value.judgement).warnings)[0],W_WAIT])&&c.items.every(i=>i.id==='no_wait_bypass'||i.warnings.length===0))(fa.approvalChecklist(vMix.value.judgement,'A',dMix)));
+check('R10: a free asset type never gets the recommended-line warnings, even when it quotes nothing',same(VAL('동네 도넛 브랜드',[],'portal_intro').warnings,[])&&same((await EXP(FORGE('동네 도넛 브랜드'))).warnings,[])&&same((await EXP(FORGE('매장에서 뵙겠습니다',[],'first_call_script'))).warnings,[]));
+check('R10: a bare body is still refused for a member (403), switch off (409) and branch B (409)',is(await APP(dPageBare,APPROVE_IN(dPageBare),{...CTX,actor:MEMBER}),'role_forbidden')&&is(await EXP(APageBare,{...XCTX,enabled:false}),'switch_off')&&is(await EXP(APageBare,{...XCTX,branch:'B'}),'branch_not_a')&&is(await APP(dPageBare,APPROVE_IN(dPageBare),{...ACTX,branch:'C'}),'branch_not_a'));
+// 교차 검토 반영(F1·TA-3·TA-4·TA-5).
+// R11 대기기간 오기재(교차 검토 F1, 대표 결정 3번 보완 2026-09-26): 판정기의 해제 불가 규칙(h.wait_bypass_solicitation, 본사 연계 자문은 h.captive_advisor_phrase)이
+// 법정 대기기간(14일, 자문 시 7일)을 짧게 잘못 적은 문장을 막는다. 권장 문장 대신 적어도, 권장 문장을 그대로 두고 옆에 적어도 저장은 초안으로 되고(판정 미리보기) 승인·내보내기는 409 hard_block이다.
+const APPROVE_EXPORT=async(body,type,id)=>{const d=await DRAFT(body,['f-total'],type,CTX,id),a=await APP(d);return {v:VAL(body,['f-total'],type),a,x:a.ok?await EXP({...plain(d),status:'approved',approval:plain(a.value.approval)}):a}};
+const allPass=(r,w)=>OK(r.v)&&OK(r.a)&&OK(r.x)&&same(r.v.warnings,w)&&same(r.a.warnings,w)&&same(r.x.warnings,w);
+const hardOn=(r,rule)=>is(r,'hard_block')&&r.status===409&&r.judgement.issues.some(x=>x.ruleId===rule&&x.tier==='hard_block')&&r.message.includes('승인으로 풀 수 없음');
+const BLOCKED_AT=async(body,id,rule)=>{const v=VAL(body,['f-total'],'startup_page'),a=await APP(await DRAFT(body,['f-total'],'startup_page',CTX,id)),x=await EXP(FORGE(body,['f-total'],'startup_page'));
+ return OK(v)&&v.value.judgement.issues.some(i=>i.ruleId===rule&&i.tier==='hard_block')&&hardOn(a,rule)&&hardOn(x,rule)};
+const MISSTATED=['정보공개서를 받은 날부터 3일이 지나면 가맹계약을 체결할 수 있습니다.','정보공개서를 받은 날부터 7일이 지나면 가맹계약을 체결하거나 가맹금을 받을 수 있습니다.','정보공개서를 받은 다음 날 계약하실 수 있습니다.',
+ '정보공개서와 계약서안을 같은 날 드리고 그날 계약합니다.','14일 대기기간은 선택 사항입니다.','가맹금은 정보공개서를 드린 날 받습니다.','정보공개서 제공 뒤 바로 계약금을 받습니다.'];
+const gapReplaced=[],gapBeside=[];
+for(const [k,l] of MISSTATED.entries()){gapReplaced.push(await BLOCKED_AT(PAGE(lines('process',()=>[l])),'a-gap-r'+k,'h.wait_bypass_solicitation'));gapBeside.push(await BLOCKED_AT(PAGE(lines('process',ls=>[...ls,l])),'a-gap-b'+k,'h.wait_bypass_solicitation'))}
+check('R11 (F1 closed): a misstated waiting period that replaces the notes saves as a draft but is 409 hard_block (wait-bypass rule) at approval and export',gapReplaced.length===7&&gapReplaced.every(Boolean));
+check('R11 (F1 closed): the same line next to the kept notes is 409 hard_block at approval and export too',gapBeside.length===7&&gapBeside.every(Boolean));
+check('R11 (F1 closed): a captive-advisor shortening line in the support section is 409 hard_block (captive-advisor rule) at approval and export',await BLOCKED_AT(PAGE(bs=>lines('support',l=>[...l,'본사가 지정한 가맹거래사 자문을 받으시면 7일로 줄어 계약이 빨라집니다.'])(NO_WAIT(bs))),'a-gap-captive','h.captive_advisor_phrase'));
+check('R11: a correct 14-day line in place of the notes still approves and exports with only the waiting warning',allPass(await APPROVE_EXPORT(PAGE(lines('process',()=>['정보공개서를 받으신 뒤 14일이 지나야 계약할 수 있습니다.'])),'startup_page','a-gap-ok'),[W_WAIT]));
+// R11 레드팀 반영(2026-09-26): 'D+3', 요일, 표, 짧은 두 문장, 본사 쪽 자문 같은 오기재도 409 hard_block이고, 법 설명·경고 문장(오탐이던 문장)은 권장 문장 경고만 남기고 승인·내보내기된다.
+const RED_TEAM=[['정보공개서 수령 D+3 계약 가능','h.wait_bypass_solicitation'],['월요일에 정보공개서 받으시면 금요일에 계약하실 수 있어요.','h.wait_bypass_solicitation'],['계약 가능일: 정보공개서 수령 다음 날','h.wait_bypass_solicitation'],
+ ['정보공개서 먼저 드려요. 3일 뒤 계약합니다.','h.wait_bypass_solicitation'],['저희 쪽 가맹거래사님께 확인받으시면 7일이면 됩니다.','h.captive_advisor_phrase']];
+const redBlocked=[];
+for(const [k,[l,rule]] of RED_TEAM.entries())redBlocked.push(await BLOCKED_AT(PAGE(lines('process',()=>[l])),'a-red-'+k,rule));
+check('R11: red-team misstatements (D+3, weekday span, table form, split sentences, HQ-side advisor) in place of the notes are 409 hard_block at approval and export',redBlocked.length===5&&redBlocked.every(Boolean));
+const CAUTIONS=['정보공개서를 받은 날 계약하거나 가맹금을 받는 것은 법 위반입니다.','정보공개서를 드린 날 바로 계약을 권하는 본사는 피하세요.','본사가 추천한 가맹거래사를 꼭 이용하실 필요는 없습니다.'];
+const cautionPass=[];
+for(const [k,l] of CAUTIONS.entries())cautionPass.push(allPass(await APPROVE_EXPORT(PAGE(lines('process',()=>[l])),'startup_page','a-caution-'+k),[W_WAIT]));
+check('R11: legal warnings that used to be false positives approve and export with only the waiting warning',cautionPass.length===3&&cautionPass.every(Boolean));
+const BYPASSES=['가계약금 먼저 입금하시면 자리 확정해 드립니다','홀딩비 100만원을 내시면 상권을 잡아 둡니다','대기 없이 바로 계약 가능합니다','대기기간 14일을 기다리지 않아도 됩니다','자문을 받으시면 대기기간 없이 계약할 수 있습니다','상담 당일 계약 가능합니다','예약금을 먼저 넣으시면 입금 순서대로 자리를 확정합니다'];
+const bypassBlocked=[];
+for(const [k,l] of BYPASSES.entries()){const r=await APP(await DRAFT(PAGE(lines('process',()=>[l])),['f-total'],'startup_page',CTX,'a-bypass-'+k));bypassBlocked.push(is(r,'hard_block')&&r.status===409&&r.judgement.issues.some(x=>x.tier==='hard_block'))}
+check('R11: the judge phrase list still hard-blocks (409) seven bypass lines written in place of the notes',bypassBlocked.length===7&&bypassBlocked.every(Boolean));
+// R12 체크리스트(F1): 자료를 넘기면 권장 문장 경고가 대기기간 우회·수익 수치 항목 옆에 붙는다.
+const itemWarnings=c=>Object.fromEntries(c.items.map(i=>[i.id,plain(i.warnings)]));
+const onlyItems=(c,want)=>same(itemWarnings(c),Object.fromEntries(fa.CHECKLIST_ITEMS.map(i=>[i.id,want[i.id]??[]])));
+check('R12: the checklist puts the waiting warning on the wait-bypass item and the revenue-note warning on the revenue item',onlyItems(fa.approvalChecklist(vPageBare.value.judgement,'A',dPageBare),{no_wait_bypass:[W_WAIT]})
+ &&onlyItems(fa.approvalChecklist(vDeckBare.value.judgement,'A',dDeckBare),{no_wait_bypass:[W_WAIT],no_revenue_figures:[W_QNA]})&&onlyItems(fa.approvalChecklist(null,'B',{type:'event_deck',body:DECK(NO_QNA)}),{no_revenue_figures:[W_QNA]}));
+check('R12: complete bodies, free types, a missing asset and garbage add nothing; a record without a body string misses the lines',onlyItems(fa.approvalChecklist(null,'A',d1),{})&&onlyItems(fa.approvalChecklist(null,'A',DECK_FULL),{})&&onlyItems(fa.approvalChecklist(null,'A',FORGE('동네 도넛 브랜드')),{})
+ &&[undefined,null,5,'x',[dPageBare]].every(a=>onlyItems(fa.approvalChecklist(null,'A',a),{}))&&onlyItems(fa.approvalChecklist(null,'A',{type:'startup_page'}),{no_wait_bypass:[W_WAIT]})&&fa.approvalChecklist(null,'A',dPageBare).version===fa.CHECKLIST_VERSION);
+check('R12: assetWarnings gives the save order for views and only the recommended warnings without a judgement',same(fa.assetWarnings(null,'event_deck',deckBare),[W_WAIT,W_QNA])&&same(fa.assetWarnings(vMix.value.judgement,'startup_page',pageMix),plain(vMix.warnings))&&same(fa.assetWarnings(null,'portal_intro','동네'),[])&&same(fa.assetWarnings(vPageBare.value.judgement,'startup_page',PAGE()),[]));
+// R13(TA-3): 저장 경고는 정규화한 원문(CRLF → LF, NFC)으로 계산한다. 정규화 전 원문으로 보면 경고가 잘못 붙는다.
+const pageCrlf=PAGE().replace(/\n/g,'\r\n'),pageNfd=PAGE(lines('process',()=>WAIT.map(l=>l.normalize('NFD'))));
+check('R13: a CRLF or NFD paste of the waiting notes saves without the waiting warning',pageNfd!==pageNfd.normalize('NFC')&&same(SW('startup_page',pageCrlf),[W_WAIT])&&same(SW('startup_page',pageNfd),[W_WAIT])&&same(VAL(pageCrlf).warnings,[])&&same(VAL(pageNfd).warnings,[]));
+// R14(TA-4): 판정기 경고가 둘 이상이면 판정기 순서를 지키고 권장 문장 경고는 맨 뒤다(정렬하지 않는다).
+const pageTwo=PAGE(bs=>lines('faq',l=>[...l,WARN_LINE,RR])(NO_WAIT(bs))),rTwo=await APPROVE_EXPORT(pageTwo,'startup_page','a-page-two'),twoLabels=plain(jc.franchiseIssueLabels(rTwo.v.value.judgement).warnings);
+check('R14: two judge warnings keep the judge order (deposit net first) and the waiting warning comes last at save, approval and export',twoLabels.length===2&&twoLabels[0].includes('대기기간 우회 안전망')&&twoLabels[1].includes('H6 안전망')
+ &&!same([...twoLabels,W_WAIT].sort(),[...twoLabels,W_WAIT])&&allPass(rTwo,[...twoLabels,W_WAIT]));
+// R15(TA-5): 같은 제목이 두 번 나오면 첫 제목의 몸통을 본다(section_duplicate는 승인·내보내기에서 막고, 저장 경고는 첫 몸통 기준).
+const pageDupProcess=PAGE(bs=>[...bs,{id:'x',heading:PAGE_HEADINGS[3],lines:[]}]),pageDupFirstEmpty=PAGE(bs=>[...lines('process',()=>[])(bs),{id:'x',heading:PAGE_HEADINGS[3],lines:[...WAIT]}]);
+check('R15: with a duplicated process heading the first copy decides the waiting warning',same(SW('startup_page',pageDupProcess),[])&&same(VAL(pageDupProcess).warnings,[])&&same(SW('startup_page',pageDupFirstEmpty),[W_WAIT])&&same(S('startup_page',pageDupProcess),E('section_duplicate')));
 
 // ════ 체크리스트 ════
 const cA=fa.approvalChecklist(null,'A');
@@ -520,13 +631,13 @@ for(const g of GARBAGE){
  await call(()=>fa.validateEvent(g,ECTX),'decision');await call(()=>fa.validateEvent(EV_IN(),g),'decision');await call(()=>fa.validateEvent(EV_IN(),ECTX,g),'decision');await call(()=>fa.validateEvent(EV_IN({assetRefs:g}),ECTX),'decision');await call(()=>fa.validateEvent(EV_IN(),{...ECTX,assets:g}),'decision');
  await call(()=>fa.registerDecision(g,{},OPCTX),'decision');await call(()=>fa.registerDecision(e1,g,OPCTX),'decision');await call(()=>fa.registerDecision(e1,{},g),'decision');
  await call(()=>fa.attendanceDecision(g,AIN,OPCTX),'decision');await call(()=>fa.attendanceDecision(E3,g,{...OPCTX,now:LATER}),'decision');await call(()=>fa.attendanceDecision(E3,{attended:1,noShow:0,codes:g},{...OPCTX,now:LATER}),'decision');await call(()=>fa.attendanceDecision(E3,AIN,g),'decision');
- await call(()=>fa.assetGateIssues(g,{brandId:'b1',facts:CTX.facts,versions:V,now:NOW}));await call(()=>fa.assetGateIssues(A,g));await call(()=>fa.assetStructureIssues('startup_page',g,g,g,g,g));await call(()=>fa.approvalChecklist(g,g));await call(()=>fa.h7Notice(g));
+ await call(()=>fa.assetGateIssues(g,{brandId:'b1',facts:CTX.facts,versions:V,now:NOW}));await call(()=>fa.assetGateIssues(A,g));await call(()=>fa.assetStructureIssues('startup_page',g,g,g,g,g));await call(()=>fa.assetStructureWarnings('event_deck',g));await call(()=>fa.assetStructureWarnings(g,g));await call(()=>fa.approvalChecklist(g,g));await call(()=>fa.h7Notice(g));
  await call(()=>fa.factChangeAffects(g,T));await call(()=>fa.changedVersionIds(g,g,NOW,g));await call(()=>fa.markAssetsForReview(g,g,g));await call(()=>fa.effectiveAssetFacts(g,'b1',NOW));await call(()=>fa.sectionTemplate(g));await call(()=>fa.assetBodyHash(g));
 }
 for(const now of BAD_NOW){
  check(`70: now ${now} is invalid_timestamp everywhere`,[fa.validateAssetInput(inputOf(PAGE()),{...CTX,now}),await APP(d1,APPROVE_IN(d1),{...ACTX,now}),await EXP(A,{...XCTX,now}),PL({label:'p',confirmedAt:'2026-10-15'},EXPORTED,{...PCTX,now}),VE({},{...ECTX,now}),REG(e1,{},{...OPCTX,now}),ATT(AIN,now)].every(r=>is(r,'invalid_timestamp'))&&same(fa.assetGateIssues(A,{brandId:'b1',facts:CTX.facts,versions:V,now}).codes,['invalid_timestamp']));
 }
-check('70: BigInt fields, huge arrays and garbage never throw from any function',noThrow===GARBAGE.length*38&&is(fa.validateAssetInput({type:'portal_intro',body:'도넛',factRefs:[{id:'f-total',version:1n}]},CTX),'invalid_fact_refs')&&is(fa.validateAssetInput(inputOf('도넛',[],'portal_intro'),{...CTX,facts:[{...F.total,version:5n}]}),'invalid_record')&&is(fa.validateAssetInput({type:'portal_intro',body:'도넛',factRefs:HUGE},CTX),'invalid_fact_refs')&&is(await APP(d1,cl(HUGE.map(()=>'no_wait_bypass'))),'checklist_incomplete'));
+check('70: BigInt fields, huge arrays and garbage never throw from any function',noThrow===GARBAGE.length*40&&is(fa.validateAssetInput({type:'portal_intro',body:'도넛',factRefs:[{id:'f-total',version:1n}]},CTX),'invalid_fact_refs')&&is(fa.validateAssetInput(inputOf('도넛',[],'portal_intro'),{...CTX,facts:[{...F.total,version:5n}]}),'invalid_record')&&is(fa.validateAssetInput({type:'portal_intro',body:'도넛',factRefs:HUGE},CTX),'invalid_fact_refs')&&is(await APP(d1,cl(HUGE.map(()=>'no_wait_bypass'))),'checklist_incomplete'));
 
 // ════ 6) 가드 컨텍스트 재실행 ════
 // console·가드 Date(인자 없는 생성·Date()·Date.now·Date.parse는 던짐)·가드 Math.random·crypto.subtle·TextEncoder만 둔 컨텍스트에서 모듈과 폐포를 다시 불러 모든 판정 함수를 돌린다.
@@ -543,7 +654,8 @@ const runAll=async m=>{
  return [await m.assetBodyHash(PAGE()),m.effectiveAssetFacts(Object.values(F),'b1',NOW),m.validateAssetInput(inputOf(PAGE()),CTX),m.validateAssetInput(inputOf(DEPOSIT,[],'portal_intro'),CTX),d,m.sectionTemplate('event_deck'),m.assetStructureIssues('startup_page',PAGE(heading('why',null)),[F.total],BF,V,NOW),
   m.assetGateIssues(FORGE(PORTAL,['f-count']),{brandId:'b1',facts:CTX.facts,versions:V,now:NOW}),m.approvalChecklist(VAL(RR,[],'portal_intro').value.judgement,'B'),m.h7Notice('C'),await m.approveDecision(d,APPROVE_IN(d),ACTX),await m.approveDecision(faqDeposit,APPROVE_IN(faqDeposit),ACTX),
   await m.exportDecision(A,XCTX),await m.exportDecision(deckRR,XCTX),m.placementDecision(EXPORTED,{label:'창업 포털',confirmedAt:'2026-10-20'},PCTX),m.factChangeAffects(T,{...T,value:'x'}),m.changedVersionIds(V,V_NEW,NOW,null),m.markAssetsForReview(assets,{factIds:['f-total'],versionIds:['dvA']},LATER),
-  m.validateEvent(EV_IN(),ECTX),m.validateEvent(EV_IN({assetRefs:[]}),ECTX,prev2),m.registerDecision(e1,{code:'p_alpha1'},OPCTX),m.registerDecision(e2,{},OPCTX),m.attendanceDecision(E3,AIN,{...OPCTX,now:LATER}),m.attendanceDecision(E3,AIN,{...OPCTX,now:'2026-10-19T14:59:59Z'})];
+  m.validateEvent(EV_IN(),ECTX),m.validateEvent(EV_IN({assetRefs:[]}),ECTX,prev2),m.assetStructureWarnings('event_deck',deckBare),m.assetStructureWarnings('startup_page',pageEdit),m.assetWarnings(null,'event_deck',deckBare),m.approvalChecklist(vMix.value.judgement,'A',dMix),m.validateAssetInput(inputOf(pageMix),CTX),
+  await m.approveDecision(dDeckBare,APPROVE_IN(dDeckBare),ACTX),await m.exportDecision(ADeckBare,XCTX),await m.exportDecision(APageBare,XCTX),m.registerDecision(e1,{code:'p_alpha1'},OPCTX),m.registerDecision(e2,{},OPCTX),m.attendanceDecision(E3,AIN,{...OPCTX,now:LATER}),m.attendanceDecision(E3,AIN,{...OPCTX,now:'2026-10-19T14:59:59Z'})];
 };
 check('6: every decision function runs without clock, randomness, URL, process or fetch and matches the normal run',JSON.stringify(plain(await runAll(ga)))===JSON.stringify(plain(await runAll(fa))));
 let compileThrew=false;try{ga.ID_PATTERN.compile('^.*$')}catch{compileThrew=true}
@@ -552,8 +664,8 @@ check('12: compiling the exported patterns cannot loosen the module checks',comp
 
 // ════ 71) 사유 코드 전부·외부 호출 ════
 const missingSeen=plain(fa.ASSET_CODES).filter(c=>!seen.has(c)),missingProduced=plain(fa.ASSET_CODES).filter(c=>!produced.has(c));
-assert.deepEqual(missingSeen,[],'기대값으로 확인하지 않은 코드: '+missingSeen.join(', '));passed.push('71: all 51 codes are asserted as expected values');
-assert.deepEqual(missingProduced,[],'실제로 나오지 않은 코드: '+missingProduced.join(', '));passed.push('71: all 51 codes were produced by a decision');
+assert.deepEqual(missingSeen,[],'기대값으로 확인하지 않은 코드: '+missingSeen.join(', '));passed.push('71: all 49 codes are asserted as expected values');
+assert.deepEqual(missingProduced,[],'실제로 나오지 않은 코드: '+missingProduced.join(', '));passed.push('71: all 49 codes were produced by a decision');
 check(`71: the status invariant held on every failure result (${failCount})`,failCount>=300);
 check('71: no external call was made',fetchCalls===0);
 
