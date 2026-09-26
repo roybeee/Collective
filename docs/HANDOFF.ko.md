@@ -42,7 +42,7 @@
 - 저장소: `roybeee/Collective`, 브랜치 `main`
 - 기준 SHA: `81d122a`(#132). 운영은 이 세션이 확인한 마지막이 `d721017`(tree `4f3b130`, Sites 버전 37, `runtime-verified`)이고, Codex PR #131(병합 전)은 버전 38(#128 head tree)을 기록한다. 묶음 13 `b16403d`(버전 36, 자동 게시)는 그 안에 포함된다. A3-2·A3-3a·A3-4는 #129로 main에 반영됐다.
 - 작성자/도구: Claude Code(트랙 R 세션)
-- 작성 시각: 2026-09-26 02:40 UTC
+- 작성 시각: 2026-09-26 05:10 UTC
 - 이 문서를 바꾸는 사람은 기준 SHA와 작성 시각을 같이 고친다.
 
 ## 먼저 읽을 것
@@ -122,7 +122,7 @@ node --experimental-vm-modules tests/<이름>.test.mjs   # 스위트 하나
 3. A/A 10건: 10월 한도, 약 0.22M. J4 임계값의 잡음 바닥이다.
 4. R5 채택 판정(토큰 0) → J4 게이트 PR(품질 계획 v2 마지막 PR).
 5. 게시 뒤 24~72시간 동안 `invalid_output` 비율, 5xx, Workers CPU를 본다. #112가 거절을 줄여야 한다.
-6. 트랙 R: R3a(캠페인 가맹 모집 목적) `merged`(#124, `b16403d`). R3b(새 채널 단위 6개)는 A1 PR(#120)이 `merged`(aefd421)돼 시작할 수 있다(채널 단위 검사 파일 공유). R15a는 공유 파일 `lib/record-kinds.ts`를 #122·#123이 고치고 있어, 순수 모듈 R15a-1(`lib/franchise-assets.ts`)을 먼저 하고 기록·API·화면 R15a-2는 그 PR들 뒤에 한다. R3c(업종 채점 `franchise`·`GRADERS_VERSION`)는 운영 D1의 합성 S7 케이스 기대 업종 갱신(대표 승인)이 먼저이고, A3-1·A3-2(#121·#122)를 R3보다 먼저 병합한다는 #121의 위임 결정 1에 따라 그 뒤에 한다(R3a는 `GRADERS_VERSION`·사유 매핑을 건드리지 않았다). R3a 테스트의 스위치 검사는 `r_franchise`만 막는다(A3-1이 실행 경로에서 `a3_copy_pack`을 읽어도 된다). 트랙 R은 법률 검토(R-0)가 병목이다.
+6. 트랙 R: R3a(캠페인 가맹 모집 목적) `merged`(#124, `b16403d`). R3b(새 채널 단위 6개)는 A1 PR(#120)이 `merged`(aefd421)돼 시작할 수 있다(채널 단위 검사 파일 공유). R15a-1(순수 판정 모듈 `lib/franchise-assets.ts`, 런타임 연결 없음)은 트랙 R 브랜치 PR이다. 기록·API·화면 R15a-2는 공유 파일 `lib/record-kinds.ts`를 고치는 열린 PR이 없을 때 시작한다(#130·#133·#137 A6는 `merged`). R3c(업종 채점 `franchise`·`GRADERS_VERSION`)는 운영 D1의 합성 S7 케이스 기대 업종 갱신(대표 승인)이 먼저이고, A3-1·A3-2(#121·#122)를 R3보다 먼저 병합한다는 #121의 위임 결정 1에 따라 그 뒤에 한다(R3a는 `GRADERS_VERSION`·사유 매핑을 건드리지 않았다). R3a 테스트의 스위치 검사는 `r_franchise`만 막는다(A3-1이 실행 경로에서 `a3_copy_pack`을 읽어도 된다). 트랙 R은 법률 검토(R-0)가 병목이다.
 
 ## 남은 위험
 - 모델 원문에 입력 필드 이름(`evidence.directives` 등)이 섞이는 예방 판정 fail이 R3 역할 3건에 있다. 화면에서는 정규화로 가려진다. 지시문에 금지 규칙이 이미 있어 비율만 추적한다.
