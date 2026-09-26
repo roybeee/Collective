@@ -42,7 +42,9 @@ check('prototype keys are not tabs',parseNav('?view=learning&tab=__proto__'),{vi
 check('a tab outside the view allow-list is dropped',parseNav('?view=stores&brand=oda&tab=rules'),{view:'stores',brand:'oda'});
 check('store is ignored on learning',parseNav('?view=learning&brand=oda&store=s1'),{view:'learning',brand:'oda'});
 // ux-2 권고 (3)·ux-5: '주문 장부 열기'는 지점의 주문 장부 탭을, 설정 기능표 링크는 브랜드 아카이브의 확인 사실 탭을 연다. 탭은 화면별 허용 목록만 받는다.
-check('store tabs are an allow-list',[...storeTabs],['diagnosis','ledger','channels','experiments','research']);
+check('store tabs are an allow-list',[...storeTabs],['diagnosis','ledger','channels','experiments','research','report']);
+// A8-3: 지점 '고객 보고서' 탭(app/customer-report-panel.tsx). 탭 노출(대표·관리자만)은 화면이 정하고, 주소는 허용 목록만 본다.
+check('store tab \'report\' is allowed in nav-state',[parseNav('?view=stores&brand=oda&store=s1&tab=report'),parseNav('?view=brands&brand=oda&tab=report')],[{view:'stores',brand:'oda',store:'s1',tab:'report'},{view:'brands',brand:'oda'}]);
 check('brand archive tabs are an allow-list',[...brandTabs],['overview','sources','facts','intake','research']);
 check('store marketing keeps brand, store and a store tab',parseNav('?view=stores&brand=oda&store=s1&tab=ledger'),{view:'stores',brand:'oda',store:'s1',tab:'ledger'});
 check('brand archive keeps brand and a brand tab',parseNav('?view=brands&brand=oda&tab=facts'),{view:'brands',brand:'oda',tab:'facts'});
@@ -76,7 +78,7 @@ check('a tab outside the view allow-list is not written',serializeNav({view:'sto
 check('franchise link with brand and tab',serializeNav({view:'franchise',brand:'fr-a',tab:'settings'}),'?view=franchise&brand=fr-a&tab=settings');
 check('the order ledger link is written with its tab',serializeNav({view:'stores',brand:'oda',store:'s1',tab:'ledger'}),'?view=stores&brand=oda&store=s1&tab=ledger');
 check('brand outside brands/stores is not written',serializeNav({view:'assets',brand:'oda'}),'?view=assets');
-for(const state of [{view:'overview'},{view:'campaigns',campaign:'c-1'},{view:'brands',brand:'mapdal'},{view:'stores',brand:'oda',store:'s_2'},{view:'assets',campaign:'x'},{view:'learning'},{view:'learning',brand:'ofd',tab:'experiments'},{view:'stores',brand:'oda',store:'s_2',tab:'ledger'},{view:'brands',brand:'mapdal',tab:'facts'},{view:'franchise'},{view:'franchise',brand:'fr-a',tab:'requests'},{view:'franchise',campaign:'c-1',brand:'fr-a',tab:'leads'}])check('round trip '+JSON.stringify(state),parseNav(serializeNav(state)),state);
+for(const state of [{view:'overview'},{view:'campaigns',campaign:'c-1'},{view:'brands',brand:'mapdal'},{view:'stores',brand:'oda',store:'s_2'},{view:'assets',campaign:'x'},{view:'learning'},{view:'learning',brand:'ofd',tab:'experiments'},{view:'stores',brand:'oda',store:'s_2',tab:'ledger'},{view:'stores',brand:'oda',store:'s_2',tab:'report'},{view:'brands',brand:'mapdal',tab:'facts'},{view:'franchise'},{view:'franchise',brand:'fr-a',tab:'requests'},{view:'franchise',campaign:'c-1',brand:'fr-a',tab:'leads'}])check('round trip '+JSON.stringify(state),parseNav(serializeNav(state)),state);
 
 // --- 정규화·캠페인 열기 -----------------------------------------------------------------
 check('null and undefined ids are dropped',normalizeNav({view:'brands',brand:null,campaign:undefined}),{view:'brands'});

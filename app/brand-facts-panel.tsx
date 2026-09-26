@@ -7,6 +7,7 @@ import type {FactImportSkip,LedgerCheck} from '@/lib/fact-import';
 import {factCatalog,factCatalogItem,factLabel,franchiseItem} from '@/lib/fact-catalog';
 import {costDetailLine,footnoteLine,VERSION_STATE_LABELS,type VersionState} from '@/lib/franchise-facts';
 import {adminRequestNote,useCanManage} from './auth-client';
+import {FactPackDownload} from './customer-report-panel';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Textarea} from '@/components/ui/textarea';
@@ -111,6 +112,7 @@ export function BrandFactsPanel({campaign,brandId,onChanged}:{campaign?:Campaign
  }
  const ready=overview?.readiness;
  return <section aria-label="브랜드 확인 사실"><div className="section-heading"><div><h3>브랜드 확인 사실</h3><p>조리 방식·가격·영업시간 등 근거를 확인한 내용을 관리합니다.</p></div><Button disabled={saving} onClick={()=>edit(null)}>사실 추가</Button></div>
+  {!campaign&&<FactPackDownload brandId={brand} storeId={storeId}/>}
   {!campaign&&!!overview?.stores.length&&<label className="field"><span>적용 범위 · 이 범위의 캠페인이 받는 사실</span><NativeSelect aria-label="사실 적용 범위" value={scopeStore} onChange={e=>{setScopeStore(e.target.value);setOpen(false);setSkipped([])}}><NativeSelectOption value="">브랜드 공통</NativeSelectOption>{overview.stores.map(s=><NativeSelectOption key={s.id} value={s.id}>{s.name} · 브랜드 공통 포함</NativeSelectOption>)}</NativeSelect></label>}
   {ready&&<div className="notice"><p>제작에 쓸 확정 사실 {ready.confirmed}건 · 확인 후보 {ready.candidates}건 · 가져올 수 있는 후보 {ready.importable}건{ready.confirmed===0&&ready.candidates+ready.importable>0?' · 확정 사실이 없습니다. 후보의 근거를 확인해 확정하세요.':''}</p><Button variant="outline" size="sm" disabled={saving||!ready.importable} onClick={()=>void importCandidates()}>후보 가져오기</Button> <small>조사 주장·지점 정보·브리프의 ‘확정 사실(사용자 직접 제공)’과 브리프 사실 후보를 확인 후보로만 등록합니다. 확정은 관리자가 합니다.</small></div>}
   {!!skipped.length&&<details><summary>건너뛴 항목 {skipped.length}건</summary><ul>{skipped.map((s,i)=><li key={i}>{scopeName(s.storeId)} · {s.label}: {s.value} · {s.reason}</li>)}</ul></details>}

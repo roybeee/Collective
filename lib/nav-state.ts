@@ -6,7 +6,8 @@ export type NavView=typeof navViews[number];
 export const learningTabs=['cases','experiments','rules','jobs'] as const;
 export type LearningTab=typeof learningTabs[number];
 // 점포 마케팅 지점 탭(app/store-marketing-panel.tsx)과 브랜드 아카이브 탭(app/brand-archive.tsx). '주문 장부 열기'는 주문 장부 탭을, 설정 기능표 링크는 확인 사실 탭을 연다.
-export const storeTabs=['diagnosis','ledger','channels','experiments','research'] as const;
+// report는 고객 보고서 탭(A8-3, app/customer-report-panel.tsx)이다. 대표·관리자에게만 보이고 권한은 서버가 판정한다.
+export const storeTabs=['diagnosis','ledger','channels','experiments','research','report'] as const;
 export type StoreTab=typeof storeTabs[number];
 export const brandTabs=['overview','sources','facts','intake','research'] as const;
 export type BrandTab=typeof brandTabs[number];
