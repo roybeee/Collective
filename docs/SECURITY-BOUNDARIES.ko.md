@@ -4,7 +4,7 @@
 
 ## 역할별 권한 (이메일 모드)
 
-마지막 갱신: 2026-09-26 KST (A6-2: `/api/place-checks` 플레이스 대조 보기·스냅샷 입력·할 일 처리 행. A6-1: `/api/data-requests` 자료 요청 보기·모으기·닫기 행. 트랙 R R3a: 캠페인 가맹 모집 목적 지정·해제 행, 발행 승인 행의 판정 범위. 트랙 R R2: 발행 승인 행에 가맹 모집 규칙 해제 불가 409, 직원도 보는 정보공개서 버전 요약 행. 트랙 R R1b: 가맹 사실 저장 조건과 `rebase_facts` 행. 이전: 트랙 R R1a·R4b: `/api/franchise` 가맹 설정·리드 원장·연락처 열람·정보주체 요청 행 추가, 대표 결정 22. 검토 반영: 설정 정정·다시 사용 행, 출처 고지 `record_source_notice` 행. 이전: F4a 캠페인 삭제 영향 조회 행·결정 7 규칙 보존, F5 채널 연결 브랜드·지점 단위, PR 6c 아카이브 원본 파일 삭제 행)
+마지막 갱신: 2026-09-26 KST (트랙 R R15a-2a: 모집 자료·행사 행. A6-2: `/api/place-checks` 플레이스 대조 보기·스냅샷 입력·할 일 처리 행. A6-1: `/api/data-requests` 자료 요청 보기·모으기·닫기 행. 트랙 R R3a: 캠페인 가맹 모집 목적 지정·해제 행, 발행 승인 행의 판정 범위. 트랙 R R2: 발행 승인 행에 가맹 모집 규칙 해제 불가 409, 직원도 보는 정보공개서 버전 요약 행. 트랙 R R1b: 가맹 사실 저장 조건과 `rebase_facts` 행. 이전: 트랙 R R1a·R4b: `/api/franchise` 가맹 설정·리드 원장·연락처 열람·정보주체 요청 행 추가, 대표 결정 22. 검토 반영: 설정 정정·다시 사용 행, 출처 고지 `record_source_notice` 행. 이전: F4a 캠페인 삭제 영향 조회 행·결정 7 규칙 보존, F5 채널 연결 브랜드·지점 단위, PR 6c 아카이브 원본 파일 삭제 행)
 
 같은 워크스페이스의 계정은 대표(owner)·관리자(admin)·직원(member) 중 하나다. 대표는 DB에 따로 저장하지 않고 같은 워크스페이스에서 가장 먼저 만든 관리자 계정으로 계산한다(`lib/auth-session.ts` `roleSql`). 판정은 서버 API가 하며, 화면에서 버튼을 숨기는 것은 보조 수단이다. 직원이 관리자 전용 작업을 요청하면 403이다. legacy 모드(로컬 개발·E2E)의 헤더 사용자는 모든 권한을 가진다.
 
@@ -55,11 +55,15 @@
 | 연락처 파기 실행·정보주체 삭제 실행(그 리드의 접수된 삭제 요청을 완료로 기록)·정보주체 요청 처리(연결 리드 없는 요청의 리드 연결 1회 포함) | `/api/franchise` `purge`·`erase_lead`·`update_subject_request` | 허용 | 허용 | 403 |
 | 정보주체 요청 등록·광고성 정보 수신 철회 | `/api/franchise` `add_subject_request`·`set_marketing_consent`(`withdrawn`) | 허용 | 허용 | 허용(보이는 리드) |
 | 광고성 정보 수신 동의 기록 | `/api/franchise` `set_marketing_consent`(`given`) | 허용 | 허용 | 403 |
+| 모집 자료 초안 저장(새 판), 자료·행사 보기 | `/api/franchise` `asset_save`, GET `assets`·`asset`·`events` | 허용 | 허용 | 허용. 기능 스위치가 꺼지면 저장은 409 |
+| 모집 자료 승인·내보내기(복사·내려받기)·게시 위치 기록 / 폐기 | `/api/franchise` `asset_approve`·`asset_export`·`asset_place` / `asset_retire` | 허용(감사) | 허용(감사) | 403. 해제 불가 표현·승인 없음·재검토 필요·분기 A 아님은 대표·관리자도 409(결정 25). 승인·내보내기는 최신 판만. 폐기는 스위치가 꺼져도 된다 |
+| 설명회·견학·박람회 등록·변경 / 취소 | `/api/franchise` `event_save` / `event_cancel` | 허용(감사) | 허용(감사) | 403. 등록·변경은 분기 A만. 취소는 스위치가 꺼져도 된다 |
+| 행사 신청·참석 기록(가명 코드와 건수만) | `/api/franchise` `event_register`·`event_attendance` | 허용 | 허용 | 허용. 이름·연락처 칸 없음. 스위치 꺼짐 409 |
 | 가맹 모집 기능 스위치 `r_franchise` | `/api/feature-flags` | 허용 | 403 | 403 |
 | 서버 설치 파일 발급 | `/api/research-worker/setup` `download` | 아래 목록 판정 | 아래 목록 판정 | 403 |
 | 서버 작업자 연결 해제 | `/api/research-worker/setup` `revoke` | 허용 | 허용 | 403 |
 
-가맹 행(트랙 R, 대표 결정 22)은 `lib/franchise.ts`의 역할 판정(`canSeeLead`·`canReveal`·`canClose` 등)을 서버와 화면이 함께 쓴다. 직원은 본인 담당과 담당 없는 리드만 보고, 목록의 연락처는 언제나 가린 값이다. 원문 보기·찾기·내보내기는 값 없이 행위자 id·역할·리드 id·필드 이름·목적을 감사 기록(kind `franchise_audit`)에 남긴다. 직원 403은 mocked 테스트(`tests/franchise-pipeline.test.mjs`, `tests/franchise-contacts.test.mjs`)로 확인했고, 운영 real 확인은 직원 계정을 만든 뒤다. 기능 스위치가 꺼져도 조회·연락처 보기·내보내기·찾기·파기·정보주체 요청·광고성 정보 철회는 되고, 대표·관리자는 정보주체 요청 처리(정정·출처 고지·종결)도 한다. 게이트 결과와 기한은 COLLECTIVE 휴리스틱이며 법률 자문이 아니다(결정 20 보류).
+가맹 행(트랙 R, 대표 결정 22)은 `lib/franchise.ts`의 역할 판정(`canSeeLead`·`canReveal`·`canClose` 등)을 서버와 화면이 함께 쓴다. 직원은 본인 담당과 담당 없는 리드만 보고, 목록의 연락처는 언제나 가린 값이다. 원문 보기·찾기·내보내기는 값 없이 행위자 id·역할·리드 id·필드 이름·목적을 감사 기록(kind `franchise_audit`)에 남긴다. 직원 403은 mocked 테스트(`tests/franchise-pipeline.test.mjs`, `tests/franchise-contacts.test.mjs`)로 확인했고, 운영 real 확인은 직원 계정을 만든 뒤다. 기능 스위치가 꺼져도 조회·연락처 보기·내보내기·찾기·파기·정보주체 요청·광고성 정보 철회는 되고, 대표·관리자는 정보주체 요청 처리(정정·출처 고지·종결)도 한다. 게이트 결과와 기한은 COLLECTIVE 휴리스틱이며 법률 자문이 아니다(결정 20 보류). 모집 자료·행사 행(R15a-2a)의 감사 기록은 원문·게시 위치 라벨·장소 라벨·가명 코드 없이 id·판·해시·사유 코드만 남기고, 쓰기는 가맹 잠금과 조건부 쓰기(판·순번 대조, 어긋나면 409)로 막는다. 직원 403·스위치 409는 경로 테스트로 확인했다(mocked).
 
 계정 초대·역할 변경·세션 종료 권한은 [EMAIL-AUTH.ko.md](EMAIL-AUTH.ko.md)를 따른다. 표에 없는 업무 API(아카이브의 위 세 줄 밖 작업·조사·지점·주문·학습 등)는 같은 워크스페이스의 로그인 사용자면 역할과 관계없이 허용한다. 확정 자료와 채택 진단은 AI 제작 맥락에 '확인된 근거'로 들어가므로(`lib/archive-server.ts` `brandArchiveContext`) 브랜드 사실과 같은 등급으로 관리자 전용이다. 상시 지시는 직원도 남길 수 있으므로 '확인된 근거'가 아니다. 저장할 때 작성자 역할(`createdBy.role`)을 남기고, AI 입력에는 `{text, author: 관리자|직원}`으로 전달하며, 역할·회의·브리프 지시문은 상시 지시가 사실을 확정하거나 거절 사실(`evidence.facts.prohibited`)·광고 표현 규칙을 무효화하지 못한다고 명시한다(`lib/campaign-policy.ts` `directivePolicy`). 앱 화면은 직원에게 관리자 전용 버튼을 그리지 않고 '관리자에게 요청하세요'를 안내한다(`useCanManage`). 사이드바 프로필은 로그인 계정을 보여 주지만 상단 계정 바(이메일·팀 계정 관리·비밀번호 변경·로그아웃)와 하나로 합치는 일은 이번 범위에서 뺐다.
 
