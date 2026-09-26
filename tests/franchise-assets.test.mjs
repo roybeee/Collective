@@ -1,6 +1,6 @@
 // R15a-1 모집 자료 키트 순수 판정 모듈(lib/franchise-assets.ts) 회귀: 자료 유형·고정 절, 원문 SHA-256(정규화 없음), 입력 검사, 초안 버전, 절 구조, 승인·내보내기(R2 모집 범위 전체 판정·H8·각주·근거 사실·말로 쓰는 원고 수익 안전망),
 // 승인 체크리스트(near-miss 세 유형·H7 안내), 재검토 표시, 설명회·견학·박람회(정원·신청·참석 KST 날짜), 게시 위치, 던지지 않음, 사유 코드 51개와 상태 코드 불변식, 순수성·가드 컨텍스트 재실행.
-// 근거: mocked(순수 함수, 합성 픽스처, 외부 호출 0회). 법률 적합성은 not_run(LR-1 대상). HTTP 403·409 연결, 실제 D1, 잠금·요청 제한은 R15a-2 몫이다.
+// 근거: mocked(순수 함수, 합성 픽스처, 외부 호출 0회). 법률 적합성은 not_run(LR-1 대상). HTTP 403·409 연결·D1 저장·잠금·요청 제한은 R15a-2a(lib/franchise-assets-server.ts, tests/franchise-assets-route.test.mjs)가 맡는다.
 import assert from 'node:assert/strict';
 import {readFileSync,readdirSync,statSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
@@ -93,8 +93,8 @@ const specs=[...src.matchAll(/\bfrom\s*'([^']+)'|\bimport\s*\(\s*['"`]([^'"`]+)|
 const FORBIDDEN=['./server','./execution-server','./brand-facts-server','./franchise-facts-server','./franchise','./franchise-server','./franchise-crypto','./feature-flags','./prompt-registry','./execution-media'];
 check('1: brand-facts is a type-only import, no .ts extension, no @/ path, no forbidden module, no dynamic import',importLines.find(l=>l.includes("'./brand-facts'")).startsWith('import type ')&&specs.length===7&&specs.every(s=>s.startsWith('./')&&!s.endsWith('.ts')&&!FORBIDDEN.includes(s))&&!/\bimport\s*\(|\brequire\s*\(/.test(src)&&!src.includes("'@/"));
 // 모듈 참조를 TypeScript 구문 트리로도 모은다(tests/franchise-model-boundary.test.mjs parseImports와 같은 노드): 따옴표 종류, export from, 한 줄의 여러 문장, import(), require, import 타입, import =.
-const moduleRefs=text=>{
- const out=[],sf=ts.createSourceFile('m.ts',text,ts.ScriptTarget.Latest,false,ts.ScriptKind.TS),lit=n=>n&&(ts.isStringLiteral(n)||ts.isNoSubstitutionTemplateLiteral(n))?n.text:'(opaque)';
+const moduleRefs=(text,file='m.ts')=>{
+ const out=[],sf=ts.createSourceFile(file,text,ts.ScriptTarget.Latest,false,file.endsWith('.tsx')?ts.ScriptKind.TSX:ts.ScriptKind.TS),lit=n=>n&&(ts.isStringLiteral(n)||ts.isNoSubstitutionTemplateLiteral(n))?n.text:'(opaque)';
  const visit=n=>{
   if(ts.isImportDeclaration(n))out.push({kind:n.importClause?.isTypeOnly?'import type':'import',spec:lit(n.moduleSpecifier)});
   else if(ts.isExportDeclaration(n)&&n.moduleSpecifier)out.push({kind:'export',spec:lit(n.moduleSpecifier)});
@@ -116,8 +116,15 @@ check('2: the module reads no clock, randomness or environment and digests exact
 check('3: no fetch call, URL or any',!/\bfetch\s*\(/.test(src)&&!/\bURL\b/.test(code)&&!/\bany\b/.test(code));
 check('4: no record-kind literal forms the scanner would register',!/kind\s*=\s*'/.test(src)&&!/recordStatement|readRecord|listRecords|optionalRecord/.test(src)&&!/:recruitment_(asset|event):/.test(src)&&!/\$\{owner\}:/.test(src));
 const walk=d=>readdirSync(d).flatMap(x=>{const p=join(d,x);return statSync(p).isDirectory()?(x==='node_modules'||x.startsWith('.')?[]:walk(p)):/\.(ts|tsx|mjs|js)$/.test(x)?[p]:[]});
-const importers=['app','lib','components','hooks'].flatMap(walk).filter(p=>p!==join('lib','franchise-assets.ts')&&readFileSync(p,'utf8').includes('franchise-assets'));
-check('5: no app, lib, component or hook source imports the module yet (R15a-1)',importers.length===0);
+// 5: 문자열 검색 대신 import 해석(R15a-2a). 모듈 참조를 구문 트리로 모아(.tsx는 TSX) '@/'·상대 경로를 저장소 경로로 풀고, 이 순수 모듈을 직접 import하는 파일은 서버 모듈 하나뿐이고 화면(.tsx)은 lib/franchise-assets*를 import하지 않는다.
+const resolveRef=(from,spec)=>{const base=spec.startsWith('@/')?spec.slice(2):spec.startsWith('.')?join(dirname(from),spec):null;return base===null?null:join(base).replace(/\.tsx?$/,'')};
+const refsOf=p=>moduleRefs(readFileSync(p,'utf8'),p).map(x=>resolveRef(p,x.spec)).filter(Boolean);
+const sources=['app','lib','components','hooks'].flatMap(walk).filter(p=>p!==join('lib','franchise-assets.ts'));
+const importers=sources.filter(p=>refsOf(p).includes(join('lib','franchise-assets')));
+check('5: exactly lib/franchise-assets-server.ts imports the pure module',same(importers,[join('lib','franchise-assets-server.ts')]));
+check('5: no app screen imports lib/franchise-assets*',sources.filter(p=>p.startsWith('app')&&p.endsWith('.tsx')).every(p=>!refsOf(p).some(r=>r.startsWith(join('lib','franchise-assets')))));
+check('5: the resolver maps @/, relative and .ts specifiers and TSX sources',resolveRef(join('app','x.tsx'),'@/lib/franchise-assets')===join('lib','franchise-assets')&&resolveRef(join('lib','a','b.ts'),'../franchise-assets.ts')===join('lib','franchise-assets')&&resolveRef(join('lib','x.ts'),'./franchise-assets-server')===join('lib','franchise-assets-server')&&resolveRef('x.ts','react')===null
+ &&same(moduleRefs("import {A} from '@/lib/franchise-assets';\nexport const V=()=><div>{A}</div>;",'app/x.tsx'),[{kind:'import',spec:'@/lib/franchise-assets'}]));
 
 // ════ 상수 ════
 check('7: seven asset types sorted with fixed labels and a permutation for screen order',same(fa.ASSET_TYPES,['event_deck','expo_banner','first_call_script','meta_lead_ad','naver_search','portal_intro','startup_page'])&&same(fa.ASSET_TYPE_ORDER,['startup_page','portal_intro','naver_search','meta_lead_ad','expo_banner','event_deck','first_call_script'])&&same([...fa.ASSET_TYPE_ORDER].sort(asc),plain(fa.ASSET_TYPES))

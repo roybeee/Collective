@@ -532,7 +532,7 @@ const withGate=responses.filter(b=>b&&(b.reasons||b.window||b.gate));
 check('every gate response carries the disclaimer',withGate.length>10&&withGate.every(b=>(b.disclaimer??b.gate?.disclaimer)===DISCLAIMER));
 const FORBIDDEN=/법적으로 적합|준수 완료|합법/;
 check('no response contains a legal-adequacy claim',!responses.some(b=>FORBIDDEN.test(JSON.stringify(b))));
-check('franchise sources and docs contain no legal-adequacy claim',['lib/franchise.ts','lib/franchise-server.ts','lib/franchise-crypto.ts','app/api/franchise/route.ts','docs/FRANCHISE-RECRUITMENT-PLAN.ko.md','docs/SECURITY-BOUNDARIES.ko.md','docs/DATA-PROCESSING.ko.md'].every(p=>!FORBIDDEN.test(readFileSync(p,'utf8'))));
+check('franchise sources and docs contain no legal-adequacy claim',['lib/franchise.ts','lib/franchise-server.ts','lib/franchise-crypto.ts','lib/franchise-assets-server.ts','app/api/franchise/route.ts','docs/FRANCHISE-RECRUITMENT-PLAN.ko.md','docs/SECURITY-BOUNDARIES.ko.md','docs/DATA-PROCESSING.ko.md'].every(p=>!FORBIDDEN.test(readFileSync(p,'utf8'))));
 check('no unexpected server error was logged',!logged.some(l=>/franchise_request_failed|agency_request_failed/.test(l)));
 check('no external call was made',f.calls.length===0);
 

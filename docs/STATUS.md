@@ -16,13 +16,15 @@
 - 다음: A3·A6 run → A8-1 → A8-2 → A8-3 → B4 2부 → B3([순서](LANES.ko.md#레인-a-claude-a-세션)).
 
 ## 레인 R (Claude 트랙 R 세션 — 가맹 모집)
-갱신: 2026-09-26 09:00 UTC
-- 최근 `merged`: #143 R3b 가맹 모집 채널 단위 6개·머리말 보호·objective 캠페인 30일 정의 교체(`2fafd3f`, 게시 대기열에 적음). 이제 레인 A의 B3가 `prompts/`·`lib/prompt-units.ts`·`lib/role-instruction.ts`·`lib/meetings.ts`를 이어서 고칠 수 있다([공유 파일 순서](LANES.ko.md#공유-코드-파일-순서)). 그 전: #139 R15a-1(대기열), #134 E2E 프록시 멈춤 수정(비제품), #124 R3a(운영 포함, 스위치 꺼짐).
-- 진행 중: R15a-2 모집 자료 기록·API(·화면) 설계. `lib/record-kinds.ts`, `app/api/franchise/route.ts`, `app/franchise-panel.tsx`를 고친다. 워크스페이스 할 일(행사 뒤 48시간 연락)은 레인 A의 A8과 파일이 겹치면 미룬다.
-- 다음: R15a-2 → R3c(업종 채점) → 트랙 R 계획 순서([순서](LANES.ko.md#레인-r-claude-트랙-r-세션)).
-- 대표 결정 대기(권장값으로 진행 중): R15a-1의 (1) 앱 밖 모집 자료의 AI 생성물 표시(권장: R15a-2에서 자료 출처 저장 뒤 결정), (2) 예비창업자용 고정 안내 문장(권장: 현재 문장, LR-1 회신 뒤 버전 올림).
-- 막힌 것: R3c는 운영 D1의 합성 S7 케이스 기대 업종 갱신(대표 승인)이 먼저다. 법률 검토(결정 20)는 보류 중이라 모든 가맹 판정은 'COLLECTIVE 휴리스틱 · 법률 자문 아님'이다.
-- 확인 필요(레인 A 게시 점검): #143을 싣는 묶음 게시 전에, 운영 D1에서 R3b 이전에 시작한 objective 개선 회의(`kind='team_meeting'`, 스냅샷 캠페인 objective `franchise_recruitment`, `skillVersion` `2026-09-25.1`) 건수를 읽기 전용으로 센다. 있으면 그 회의는 평가 케이스로 캡처하지 않는다(`assembly_drift`로 잡힌다, [R3b 기록](FRANCHISE-RECRUITMENT-PLAN.ko.md#r3-모집-캠페인-objective채널-스킬)). 레지스트리 활성화는 레인 Q의 쌍 평가·대표 승인 뒤다.
+갱신: 2026-09-26 12:45 UTC
+- 진행 중: R15a-2a 모집 자료·행사 기록과 가맹 API·사실 변경 재검토 훅 PR(브랜치 `claude/franchise-recruitment-marketing-u8cpo2`, 화면 없음, [계획 R15 기록](FRANCHISE-RECRUITMENT-PLAN.ko.md#r15-모집-자료-키트설명회-운영-r15a-자료-키트내보내기-게이트--r15b-결정론-모집-템플릿)). 병합하면 게시 대기열에 한 줄을 적는다.
+- 최근 `merged`: #143 R3b(게시 대기열에 있음, 레인 A B3 착수 가능), #139 R15a-1(대기열), #134 E2E 프록시 멈춤 수정(비제품).
+- 다음: R15a-2b(가맹 화면 탭: 모집 자료·행사) → R3c(업종 채점) → 트랙 R 계획 순서. R15a-3(워크스페이스 할 일)은 R6 뒤([순서](LANES.ko.md#레인-r-claude-트랙-r-세션)).
+- 대표 결정(2026-09-26): 앱 밖 모집 자료에 AI 생성물 표시를 붙이지 않는다("표시하지마", 화면도 묻지 않음, 결정 17 앱 발행 캡션은 그대로). 대표 결정 대기: 예비창업자용 고정 안내 문장(두 대기기간 안내, 수익 질문 안내) — 대표에게 뜻을 다시 설명하는 중, 그동안 현재 문장으로 진행.
+- 막힌 것: R3c는 운영 D1의 합성 S7 케이스 기대 업종 갱신(대표 승인)이 먼저다. 법률 검토(결정 20) 보류 중이라 모든 가맹 판정은 'COLLECTIVE 휴리스틱 · 법률 자문 아님'이다.
+- 확인 필요(레인 A 게시 점검): #143을 싣는 묶음 게시 전에 운영 D1에서 R3b 이전에 시작한 objective 개선 회의 건수를 읽기 전용으로 센다(평가 캡처 시 `assembly_drift`, [R3b 기록](FRANCHISE-RECRUITMENT-PLAN.ko.md#r3-모집-캠페인-objective채널-스킬)).
+- 제안(소유 레인 검토): `docs/DATA-PROCESSING.ko.md` 가맹 kind 목록에 `recruitment_asset`·`recruitment_event`를 더한다(이름·연락처 없음, 모델 입력 0). R2 판정기 `matchView`가 보이지 않는 문자(Cc·Co·Cn·Zl·Zp)를 지우게 하는 것은 레인 R 별도 PR로 한다.
+- 관찰: `tests/graders.test.mjs`의 입력별 1초 시간 검사가 전체 스위트 병렬 실행에서 한 번 실패했다(단독 3/3 통과, 재실행 통과). 레인 Q 파일이라 기록만 한다.
 
 ## 레인 Q (Codex 세션 — 품질·평가·운영)
 갱신: (레인 Q가 적는다)
