@@ -1,10 +1,13 @@
 import {ApiError,str,num,stamp,uid,readRecord,listRecords,recordStatement,database,eventStatement,isAdmin,type EventActor} from './server';
-import {learningChannels,learningMetrics,evaluateExperiment,ruleApplies,defaultVerifyChannel,operatorRule,ANY_CHANNEL,PLAYBOOK_MAX_CHARS,type ViralCase,type ViralAnalysis,type TestIdea,type ViralExperiment,type ExperimentResult,type LearningRule,type LearningSnapshot,type Arm,type StoreAssessment,type ReviewDecisionSummary,type PlaybookRecheck,type LearningData,type CorrectionDecision} from './learning';
+import {learningChannels,learningMetrics,evaluateExperiment,ruleApplies,defaultVerifyChannel,operatorRule,ANY_CHANNEL,PLAYBOOK_MAX_CHARS,type ViralCase,type ViralAnalysis,type TestIdea,type ViralExperiment,type ExperimentResult,type LearningRule,type LearningSnapshot,type Arm,type StoreAssessment,type ReviewDecisionSummary,type PlaybookRecheck,type LearningData,type CorrectionDecision,type PlaybookEvalGate} from './learning';
 import {channelHosts,storeChannelName,channelRegistry} from './channels';
-import {normalizeRuleBody,ruleBodyProblem,ruleTitle,playbookExpiry,activationProblem,correctionClusters,playbookFeedback,recurrenceRate,preferenceOrder,MAX_ACTIVE_PER_ROLE,PLAYBOOK_MIN_CITATIONS,PLAYBOOK_MAX_CITATIONS} from './playbook-curator';
+import {normalizeRuleBody,ruleBodyProblem,ruleTitle,playbookExpiry,activationProblem,correctionClusters,playbookFeedback,recurrenceRate,preferenceOrder,isPreferencePair,MAX_ACTIVE_PER_ROLE,PLAYBOOK_MIN_CITATIONS,PLAYBOOK_MAX_CITATIONS} from './playbook-curator';
 import {isEnabled} from './feature-flags';
 // 경보 판정은 프롬프트 레지스트리(lib/prompt-registry.ts)가 쓰는 것과 같은 alarmState다. 레지스트리 파일은 평가 서버 의존을 끌고 오므로 판정의 원래 모듈에서 가져온다.
 import {alarmState} from './usage-model-alarm';
+// B3-2c 평가 첨부 게이트는 GET /api/eval?pair=(lib/eval-server.ts pairRead → pairReport)와 같은 pairGate다. 평가 서버는 역할 실행을 거쳐 이 파일을 다시 부르므로 판정의 원래 모듈(순수)과 타입만 가져온다.
+import {pairGate} from './eval-stats';
+import type {EvalRun} from './eval-server';
 import type {ReviewDecision} from './review-decisions';
 import {summarizeResult,planShortfall,decisionConflict} from './viral-stats';
 import type {StoreExperiment,StoreMeasurement,StoreReview} from './store-marketing';
@@ -226,7 +229,7 @@ export async function learningAction(owner:string,b:any,by?:PlaybookActor){
 // ── 운영자 선호 규칙(B3-1, 대표 결정 9). 사람 판정(review_decision)을 2건 이상 인용한 규칙을 소유자가 만들고 승인·중지·연장한다. 모델을 부르지 않는다.
 // 생성은 초안(draft)이고 승인 전에는 주입 0건이다. 상태를 바꿀 때마다 playbook_audit를 남긴다(행위자는 id·역할만). 형식과 정책은 docs/PLAYBOOK.ko.md.
 type PlaybookActor=EventActor&{role?:'owner'|'admin'|'member'};
-type PlaybookAuditAction='create'|'activate'|'pause'|'renew';
+type PlaybookAuditAction='create'|'activate'|'pause'|'renew'|'attach_eval';
 function auditStatement(owner:string,r:LearningRule,action:PlaybookAuditAction,from:string,by:PlaybookActor,extra:Record<string,unknown>={}){
  const id=uid();
  return recordStatement(owner,'playbook_audit',id,{id,ruleId:r.id,brandId:r.brandId,action,fromStatus:from,toStatus:r.status,ruleVersion:r.version,expiresAt:r.expiresAt,actor:{id:by.id,role:by.role},...extra,createdAt:stamp()},r.brandId);
@@ -347,9 +350,28 @@ async function pausePlaybookRule(owner:string,b:Record<string,unknown>,by:Playbo
  await database().batch([recordStatement(owner,'learning_rule',r.id,next,r.brandId),...campaigns.map(id=>recheckStatement(owner,next,id,marks,by)),auditStatement(owner,next,'pause',r.status,by,{affectedArtifacts:marks.length,...(pending?{pendingArtifacts:pending}:{})})]);
  return {id:r.id,status:next.status,affected:marks.length,pending};
 }
+// ── B3-2c 선호 쌍 평가 첨부(권고 D4·D6, 스위치 b3_playbook_signals). 끝난 운영자 선호 쌍 평가 run(B3-2b)을 그 run이 평가한 규칙 버전에 감사 기록(attach_eval)으로만 붙인다.
+// 규칙 레코드의 버전·상태·만료·등급은 바꾸지 않는다(ruleRef 계보 보존, performance_tested 부여는 계속 409). 게이트는 GET /api/eval?pair=와 같은 pairGate이고 모델을 부르지 않는다.
+// 개선 루프(lib/improvement-loops.ts)는 activate 감사만 후보로 보므로 attach_eval은 후보가 아니다.
+async function attachPlaybookEval(owner:string,b:Record<string,unknown>,by:PlaybookActor){
+ if(!await playbookSignalsOn(owner))throw new ApiError(409,'교정 신호 스위치(b3_playbook_signals)가 꺼져 있어 평가를 첨부할 수 없습니다.');
+ const r=await playbookRule(owner,b),runId=str(b.runId,'평가 실행',200,true),run=await readRecord<EvalRun>(owner,'eval_run',runId);
+ if(run.variant!=='pair'||!isPreferencePair(run.pair))throw new ApiError(400,'운영자 선호 쌍 평가(pair.kind operator_preferences) 실행만 첨부할 수 있습니다. 프롬프트 쌍 평가·단독 실행은 대상이 아닙니다.');
+ if(run.deleted)throw new ApiError(409,'삭제한 평가 실행은 첨부할 수 없습니다.');
+ if(run.status!=='completed')throw new ApiError(409,`평가 실행이 끝나지 않았습니다(상태 ${run.status}). 끝난(completed) 실행만 첨부합니다.`);
+ if(run.pair.brandId!==r.brandId)throw new ApiError(400,'같은 브랜드의 운영자 선호 쌍 평가만 첨부할 수 있습니다.');
+ const tested=run.pair.rules.filter(x=>x.ruleRef.startsWith(r.id+'@')).map(x=>x.ruleRef.slice(r.id.length+1));
+ if(!tested.length)throw new ApiError(400,'이 평가 실행은 이 규칙을 평가하지 않았습니다.');
+ if(!tested.includes(String(r.version)))throw new ApiError(409,`이 평가 실행은 이 규칙의 v${r.version}을 평가하지 않았습니다(평가한 버전 ${tested.map(x=>'v'+x).join(', ')}). 현재 버전으로 다시 쌍 평가하세요.`);
+ const dup=await database().prepare("SELECT 1 FROM records WHERE owner=? AND kind='playbook_audit' AND json_extract(data,'$.action')='attach_eval' AND json_extract(data,'$.ruleId')=? AND json_extract(data,'$.ruleVersion')=? AND json_extract(data,'$.evalRunId')=?").bind(owner,r.id,r.version,run.id).first();
+ if(dup)throw new ApiError(409,'이 평가 실행은 이미 이 규칙 버전에 첨부했습니다.');
+ const g=pairGate(run),gate={passed:g.ok,reasons:g.reasons.map(x=>x.code),warnings:g.warnings.map(x=>x.code)},extra={evalRunId:run.id,gate,pairs:g.cases,sealed:g.sealedCases};
+ await auditStatement(owner,r,'attach_eval',r.status,by,extra).run();
+ return {id:r.id,version:r.version,...extra};
+}
 const playbookActions:Record<string,(owner:string,b:Record<string,unknown>,by:PlaybookActor)=>Promise<unknown>>={
  playbook_create:(owner,b,by)=>createPlaybookRule(owner,(b.data&&typeof b.data==='object'&&!Array.isArray(b.data)?b.data:{}) as Record<string,unknown>,by),
- playbook_activate:activatePlaybookRule,playbook_pause:pausePlaybookRule,playbook_renew:renewPlaybookRule,
+ playbook_activate:activatePlaybookRule,playbook_pause:pausePlaybookRule,playbook_renew:renewPlaybookRule,playbook_attach_eval:attachPlaybookEval,
  playbook_grade:async(_owner,b)=>{manualGrade(b.grade);throw new ApiError(400,'운영자 선호 규칙의 등급은 바꿀 수 없습니다.')},
 };
 // 소유자 전용(서버 판정). 화면도 같은 규칙으로 버튼을 끈다(app/learning-panel.tsx).
@@ -372,8 +394,14 @@ async function signalDecisions(owner:string):Promise<CorrectionDecision[]>{
  return rows.results.map(r=>JSON.parse(r.data) as ReviewDecision).reverse().map(d=>({id:d.id,brandId:decisionBrand(d,brands),targetKind:d.targetKind,targetId:d.targetId,role:d.role,decision:d.decision,reasonCodes:d.reasonCodes??[],...(d.origin?{origin:d.origin}:{}),createdAt:d.createdAt}));
 }
 // snapshots는 라우트가 이미 읽은 learning_snapshot 목록(형식 미확정 records)이다. 주입 기록(artifactId·operatorPreferences)만 본다.
-export async function playbookSignals(owner:string,req:Request,rules:readonly LearningRule[],snapshots:readonly unknown[]):Promise<Pick<LearningData,'correctionClusters'|'playbookFeedback'|'recurrence'>>{
+// B3-2c: playbookEvals는 규칙 버전별 가장 나중에 첨부한 쌍 평가 게이트(attach_eval 감사, 기록 순서)다. 같은 스위치·같은 권한으로 끝에 덧붙인다.
+async function playbookEvals(owner:string):Promise<PlaybookEvalGate[]>{
+ const rows=await database().prepare("SELECT data FROM records WHERE owner=? AND kind='playbook_audit' AND json_extract(data,'$.action')='attach_eval' ORDER BY rowid").bind(owner).all<{data:string}>();
+ const latest=new Map(rows.results.map(r=>JSON.parse(r.data) as {ruleId:string;ruleVersion:number;evalRunId:string;gate:{passed:boolean;reasons:string[];warnings:string[]};pairs:number;sealed:number;createdAt:string}).map(a=>[`${a.ruleId}@${a.ruleVersion}`,a]));
+ return [...latest.values()].map(a=>({ruleId:a.ruleId,ruleVersion:a.ruleVersion,evalRunId:a.evalRunId,passed:a.gate.passed,reasons:a.gate.reasons,warnings:a.gate.warnings,pairs:a.pairs,sealed:a.sealed,createdAt:a.createdAt}));
+}
+export async function playbookSignals(owner:string,req:Request,rules:readonly LearningRule[],snapshots:readonly unknown[]):Promise<Pick<LearningData,'correctionClusters'|'playbookFeedback'|'recurrence'|'playbookEvals'>>{
  if(!await playbookSignalsOn(owner)||!await isAdmin(req))return {};
- const decisions=await signalDecisions(owner),now=Date.now();
- return {correctionClusters:correctionClusters(decisions,rules,now),playbookFeedback:playbookFeedback(rules,snapshots as readonly LearningSnapshot[],decisions),recurrence:recurrenceRate(decisions,now)};
+ const [decisions,evals]=await Promise.all([signalDecisions(owner),playbookEvals(owner)]),now=Date.now();
+ return {correctionClusters:correctionClusters(decisions,rules,now),playbookFeedback:playbookFeedback(rules,snapshots as readonly LearningSnapshot[],decisions),recurrence:recurrenceRate(decisions,now),playbookEvals:evals};
 }

@@ -38,7 +38,8 @@ const rule=id=>server.readRecord(O,'learning_rule',id);
 const ruleRows=()=>JSON.stringify(rt.sql.prepare("SELECT id,data,updated_at FROM records WHERE owner=? AND kind='learning_rule' ORDER BY id").all(O));
 const allRows=()=>JSON.stringify(rt.sql.prepare('SELECT COUNT(*) n,MAX(updated_at) m FROM records').get());
 const setSignals=enabled=>flags.setFeatureFlag(O,{flag:'b3_playbook_signals',enabled},{id:'sig-owner',email:null});
-const NEW_KEYS=['correctionClusters','playbookFeedback','recurrence'];
+// B3-2c: 같은 스위치·권한으로 playbookEvals(규칙 버전별 최신 선호 쌍 평가 첨부)를 끝에 덧붙인다(tests/playbook-attach-eval.test.mjs).
+const NEW_KEYS=['correctionClusters','playbookFeedback','recurrence','playbookEvals'];
 
 // 2) 합성 데이터(실제 고객·매장 정보 아님). 브랜드 oda·ofd, 캠페인 c-oda(oda)·c-ofd(ofd). c-gone은 지운 캠페인이다.
 await server.seedBrands(O);
@@ -98,7 +99,7 @@ await setSignals(true);
 const on=await get(),onAdmin=await get(ADMIN),onMember=await get(MEMBER);
 const stripped=JSON.stringify(Object.fromEntries(Object.entries(on.data).filter(([k])=>!NEW_KEYS.includes(k))));
 check('switch off: GET /api/learning is byte-identical to the switch-on response without the new keys',stripped===offDefault.text&&NEW_KEYS.every(k=>k in on.data));
-check('switch on: the new keys are appended after the existing keys',JSON.stringify(Object.keys(on.data).slice(-3))===JSON.stringify(NEW_KEYS));
+check('switch on: the new keys are appended after the existing keys',JSON.stringify(Object.keys(on.data).slice(-NEW_KEYS.length))===JSON.stringify(NEW_KEYS));
 check('switch on: admin sees the signals, member does not (hidden from staff)',NEW_KEYS.every(k=>k in onAdmin.data)&&NEW_KEYS.every(k=>!(k in onMember.data))&&onMember.status===200);
 
 // 5) 교정 묶음
