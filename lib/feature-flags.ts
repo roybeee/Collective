@@ -10,6 +10,7 @@ export const FEATURE_FLAGS={
  a2_downgrade:{defaultEnabled:false,description:'규제 가드레일 차단 위반을 작업물에 규제 점검 차단으로 표시하고, 품질 검수 판정을 수정 필요로만 낮춘다(A2 런타임 하향, 법률 자문 아님).'},
  a7_repair_turn:{defaultEnabled:false,description:'심층 조사 결과가 형식 오류로 버려지거나 출처 번호 충돌로 근거가 빠질 때 같은 조사에 수리 요청을 1회 보낸다(토큰 사용, 예산 가드 적용).'},
  r_franchise:{defaultEnabled:false,description:'가맹 모집 화면과 쓰기 API(리드·연락처·제공 증빙·가맹 설정)를 켠다. 꺼도 조회·연락처 보기·내보내기·파기·정보주체 요청 처리는 계속된다(트랙 R, COLLECTIVE 휴리스틱 · 법률 자문 아님).'},
+ a3_copy_pack:{defaultEnabled:false,description:'콘텐츠 역할 단독 실행을 카피 팩 v2 계약으로 받는다(채널당 3~5안 카피·숏폼 장면 배열·제안 실험을 작업물에 구조화 저장). 팩 형식 문제는 작업물을 막지 않고 표시만 한다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};

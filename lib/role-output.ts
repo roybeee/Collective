@@ -1,12 +1,17 @@
 import {roles,type Artifact} from './agency';
 import {practices} from './practice';
 import {normalizeSectionBody,normalizeQualityOutput,addNormalization,NO_NORMALIZATION,type OutputNormalization} from './output-normalize';
+import {COPY_PACK_VERSION,parseCopyPack,renderCopyPack,type CopyPack,type CopyPackIssue} from './copy-pack';
 
 export const ROLE_OUTPUT_VERSION='role-output-v1';
+// 카피 팩 v2(A3-1): 콘텐츠 역할의 v1 섹션 4개에 구조화 팩(copyPack)을 더한 계약. 스위치 a3_copy_pack이 켜진 소유자의 콘텐츠 단독 실행만 쓴다(docs/COPY-PACK.ko.md).
+export const ROLE_OUTPUT_V2='role-output-v2';
 // 저장된 계약에만 붙는 실행 스냅샷: factRefs(입력에 쓴 확정·거절 사실), idLabels(입력 식별자→ref 라벨), claimGuard(저장 전 광고 표현 검사 목록).
-export type RoleOutputContract={version:string;role:string;contextTruncated?:boolean;sections:{id:string;title:string}[];factRefs?:{id:string;version:number;status?:'confirmed'|'rejected'}[];idLabels?:Record<string,string>;claimGuard?:{prohibited:string[];unverified:string[]}};
-export function roleOutputContract(role:string):RoleOutputContract {
- return {version:ROLE_OUTPUT_VERSION,role,sections:practices[role].outputs.map((title,index)=>({id:`output_${index+1}`,title}))};
+export type RoleOutputContract={version:string;role:string;contextTruncated?:boolean;sections:{id:string;title:string}[];copyPack?:typeof COPY_PACK_VERSION;factRefs?:{id:string;version:number;status?:'confirmed'|'rejected'}[];idLabels?:Record<string,string>;claimGuard?:{prohibited:string[];unverified:string[]}};
+// copyPack은 콘텐츠 역할에만 적용한다. 다른 역할이나 copyPack 없이 부르면 v1 계약이며 키 순서까지 이전과 같다(제출 바이트 동일).
+export function roleOutputContract(role:string,{copyPack=false}:{copyPack?:boolean}={}):RoleOutputContract {
+ const sections=practices[role].outputs.map((title,index)=>({id:`output_${index+1}`,title}));
+ return copyPack&&role==='content'?{version:ROLE_OUTPUT_V2,role,sections,copyPack:COPY_PACK_VERSION}:{version:ROLE_OUTPUT_VERSION,role,sections};
 }
 // A narrow guard for known nonanswers, not a factual accuracy or quality judgment.
 export function isQuestionOnly(content:string){
@@ -114,10 +119,19 @@ function contractJson(content:string):unknown{
  return outputError('필수 산출물 JSON 형식이 아닙니다.');
 }
 export function parseRoleOutput(content:string,role:string,contract?:RoleOutputContract){return renderRoleOutput(content,role,contract).content}
+// 모델 원문의 결과 객체(운영 읽기와 같은 여분 괄호 규칙). JSON 객체가 아니면 null.
+export function contractObject(content:string):Record<string,unknown>|null{
+ try{const raw=contractJson(content);return raw&&typeof raw==='object'&&!Array.isArray(raw)?raw as Record<string,unknown>:null}catch{return null}
+}
+// 저장 계약이 없는 원문(평가 채점)은 원문의 contractVersion으로 계약을 고른다. v2가 아니면 v1이다.
+export const rawOutputContract=(content:string,role:string)=>roleOutputContract(role,{copyPack:contractObject(content)?.contractVersion===ROLE_OUTPUT_V2});
+// v2 팩 렌더본을 넣는 계약 섹션: output_1 채널별 카피 안, output_2 장면표, output_4 실험(lib/copy-pack.ts renderCopyPack).
+const withPack=(body:string,pack:Record<string,string>|null,id:string)=>pack?.[id]?pack[id]+'\n\n'+body:body;
 // 계약 렌더 + 사람이 보는 본문 정규화(lib/output-normalize.ts: 스키마 경로 → 한국어 라벨, 본문 #·## 제목 → ###). 원 응답(content 인자)은 바꾸지 않는다.
 // 운영 저장(role-execution.ts poll)과 평가 채점(lib/graders/text.ts renderRaw)이 같은 렌더를 본다. normalization은 종류별 건수만 담는다(값 없음).
 // normalize:false는 정규화 전 렌더본이다(품질 기준선 v1이 채점한 본문과 같은 방식). 평가의 예방 판정(lib/graders PREVENTION_GRADERS)만 쓴다.
-export function renderRoleOutput(content:string,role:string,contract?:RoleOutputContract,{normalize=true}:{normalize?:boolean}={}):{content:string;normalization:OutputNormalization}{
+// v2 계약(copyPack)은 팩을 소프트 검증한다. 팩이 없거나 규칙을 어겨도 섹션이 맞으면 렌더하고 copyPack·copyPackIssues를 돌려준다(작업물을 막지 않음).
+export function renderRoleOutput(content:string,role:string,contract?:RoleOutputContract,{normalize=true}:{normalize?:boolean}={}):{content:string;normalization:OutputNormalization;copyPack?:CopyPack;copyPackIssues?:CopyPackIssue[]}{
  if(!content.trim())return outputError('본문이 비어 있습니다.');
  if(isQuestionOnly(content))return outputError('담당 과업 대신 작업 선택을 요청했습니다.');
  if(!contract||role==='quality'&&!normalize)return {content,normalization:NO_NORMALIZATION};
@@ -129,16 +143,17 @@ export function renderRoleOutput(content:string,role:string,contract?:RoleOutput
  if(result.contractVersion!==contract.version||result.role!==role)return outputError('담당 또는 산출물 계약 버전이 일치하지 않습니다.');
  if(!Array.isArray(result.sections)||result.sections.length!==contract.sections.length)return outputError('필수 산출물 항목이 누락되거나 중복되었습니다.');
  const sections=result.sections as Record<string,unknown>[];
+ const packed=contract.copyPack?parseCopyPack(result.copyPack):null,packText=packed?.pack?renderCopyPack(packed.pack):null;
  const bodies=contract.sections.map(required=>{
   const matches=sections.filter(s=>s&&typeof s==='object'&&s.id===required.id);
   if(matches.length!==1)return outputError(`${required.id} (${required.title}) 항목이 필요합니다.`);
   const body=matches[0].content;
   if(typeof body!=='string'||!body.trim()||isQuestionOnly(body))return outputError(`${required.id} 항목에 실제 초안 또는 자료 필요·확인 계획을 작성하세요.`);
-  return {title:required.title,...section(body.trim())};
+  return {title:required.title,...section(withPack(body.trim(),packText,required.id))};
  }),changes=typeof result.changes==='string'&&result.changes.trim()?section(result.changes.trim()):null;
  const rendered=bodies.map(b=>`## ${b.title}\n\n${b.text}`).join('\n\n')+(changes?`\n\n## 수정 요청 반영 위치\n\n${changes.text}`:'');
  if(rendered.length>40000)return outputError('산출물이 40,000자 저장 한도를 초과했습니다. 요약해서 다시 작성하세요.');
- return {content:rendered,normalization:[...bodies,...(changes?[changes]:[])].map(b=>b.normalization).reduce(addNormalization,NO_NORMALIZATION)};
+ return {content:rendered,normalization:[...bodies,...(changes?[changes]:[])].map(b=>b.normalization).reduce(addNormalization,NO_NORMALIZATION),...(packed?{...(packed.pack?{copyPack:packed.pack}:{}),copyPackIssues:packed.issues}:{})};
 }
 export function artifactUsable(a:Artifact,campaignVersion:number){
  return ['review','approved'].includes(a.status)&&(!a.campaignVersion||a.campaignVersion===campaignVersion)&&!!a.content.trim()&&!isQuestionOnly(a.content);
