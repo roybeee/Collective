@@ -37,7 +37,7 @@
 ## 상태 어휘
 보고, PR, `docs/STATUS.md`, `docs/releases/`는 아래 단어만 쓴다. 단계를 섞어 "완료"라고 쓰지 않는다.
 - 소스: `merged` — PR이 GitHub `main`에 병합됐다. 배포됐다는 뜻이 아니다.
-- 배포: `published` — Sites 게시(save_version_and_deploy_private)가 성공했다.
+- 배포: `published` — Sites 게시가 성공했다(공개 사이트는 save_site_version → deploy_site_version, 비공개 사이트는 save_version_and_deploy_private).
 - 배포: `runtime-verified` — 실행 중인 앱의 `/api/version` `tree`가 마지막으로 게시한 제품 커밋의 tree와 같고, 그 커밋이 `origin/main`의 조상이며 이후 `main` 변경이 비제품 경로(문서·테스트·CI 등, 목록과 판정 명령은 `docs/PUBLISH.ko.md` 5단계)뿐이다. `unknown`·`dirty`는 검증 실패다.
 - 레지스트리: `registry-active` — 프롬프트 레지스트리의 단위별 active 포인터가 기록한 버전 id로 바뀌었고(활성화·롤백), 운영 `/api/version`의 `promptManifest`가 기록한 매니페스트 해시와 같다(`docs/PUBLISH.ko.md` 7절). `runtime-verified`는 코드 tree 기준으로만 판정하며 레지스트리 상태와 섞지 않는다.
 - 검사 결과: `passed` | `failed` | `blocked`(실행하려 했으나 막힘, 원인 기록) | `not_run`(실행하지 않음, 이유 기록).
