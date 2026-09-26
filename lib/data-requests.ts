@@ -7,7 +7,9 @@ import {canonicalFactKey,factCatalogItem,franchiseFactKey} from './fact-catalog'
 export type DataRequestActor={id:string;role:'owner'|'admin'|'member'};
 export type DataRequestOrigin=
  {kind:'artifact_marker';artifactId:string;artifactVersion:number;role:string;excerpt:string}|
- {kind:'copy_pack';artifactId:string;artifactVersion:number;channel:string;variantId:string};
+ {kind:'copy_pack';artifactId:string;artifactVersion:number;channel:string;variantId:string}|
+ // A6-2 플레이스 대조의 fact_missing(플레이스 값은 있는데 확정 사실 없음). 스냅샷 id·판·플랫폼·항목(lib/place-check.ts).
+ {kind:'place_check';snapshotId:string;snapshotVersion:number;platform:string;field:string};
 export type DataRequestResolution=
  {kind:'fact_confirmed';factId:string;factVersion:number;by:DataRequestActor;at:string}|
  {kind:'answered'|'dismissed';note:string;by:DataRequestActor;at:string};
@@ -123,7 +125,7 @@ export function closingFact(r:Pick<DataRequest,'brandId'|'storeId'|'factKey'>,fa
 }
 export const closedByFact=(r:DataRequest,f:Pick<BrandFact,'id'|'version'>,by:DataRequestActor,at:string):DataRequest=>({...r,status:'closed',resolution:{kind:'fact_confirmed',factId:f.id,factVersion:f.version,by,at},version:r.version+1,updatedAt:at});
 
-const originKey=(o:DataRequestOrigin)=>o.kind==='copy_pack'?`c|${o.artifactId}|${o.artifactVersion}|${o.channel}|${o.variantId}`:`m|${o.artifactId}|${o.artifactVersion}|${o.excerpt}`;
+const originKey=(o:DataRequestOrigin)=>o.kind==='copy_pack'?`c|${o.artifactId}|${o.artifactVersion}|${o.channel}|${o.variantId}`:o.kind==='place_check'?`p|${o.snapshotId}|${o.snapshotVersion}|${o.field}`:`m|${o.artifactId}|${o.artifactVersion}|${o.excerpt}`;
 // 출처 합치기: 같은 출처는 한 번만, 새 출처는 뒤에 붙이고 최근 10개만 남긴다. 바뀐 것이 없으면 같은 배열을 돌려준다.
 export function mergeOrigins(existing:DataRequestOrigin[],incoming:DataRequestOrigin[]):DataRequestOrigin[]{
  const seen=new Set(existing.map(originKey)),added=incoming.filter(o=>{const k=originKey(o);if(seen.has(k))return false;seen.add(k);return true});

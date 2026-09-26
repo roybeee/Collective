@@ -112,6 +112,13 @@ function dataRequestsRow(flags:unknown):FeatureRow{
  return state.enabled?{...base,status:'available',reason:'작업물의 자료 필요 표지 모으기 · 같은 항목 사실 확정 때 자동 닫힘(모델 호출 없음)'}:{...base,status:'blocked',reason:'기능 스위치 a6_data_requests 꺼짐 · 소유자가 켭니다',link};
 }
 
+// 플레이스 대조(A6-2): 기능 스위치 a6_place_check 상태를 읽는다. 켜지면 점포 마케팅 '채널 점검' 탭에서 관리자가 스냅샷을 입력한다.
+function placeCheckRow(flags:unknown):FeatureRow{
+ const base={key:'place-check',label:'플레이스 정보 대조(수동 스냅샷 → 확정 사실)'},link:FeatureLink={label:'점포 마케팅 채널 점검 탭에서 확인',view:'stores',tab:'channels'};
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='a6_place_check'):undefined;
+ if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'플레이스 대조 스위치 상태를 확인하지 못했습니다',link};
+ return state.enabled?{...base,status:'available',reason:'관리자가 옮겨 적은 네이버 플레이스 정보를 확정 사실과 대조 · 다른 항목은 점포 할 일, 다시 일치하면 자동 완료(모델 호출·스크래핑 없음)'}:{...base,status:'blocked',reason:'기능 스위치 a6_place_check 꺼짐 · 소유자가 켭니다',link};
+}
 export function featureRows(input:FeatureInput={}):FeatureRow[]{
  const now=typeof input.now==='number'?input.now:Date.now(),brands=brandIds(input.brands);
  return [
@@ -127,6 +134,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   measurementRow(input.channels,input.brandChannels,brands,now),
   franchiseRow(input.flags),
   dataRequestsRow(input.flags),
+  placeCheckRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
   {key:'pos-auto',label:'POS 자동 수집',status:'unimplemented',reason:'POS 연동 없음 · CSV로 가져오세요'},
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},

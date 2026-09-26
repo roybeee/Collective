@@ -4,6 +4,9 @@ import type {Store} from './store-marketing';
 import type {BrandFact} from './brand-facts';
 import {artifactUsable} from './role-output';
 import {isEnabled} from './feature-flags';
+import {factLabel} from './fact-catalog';
+import {PLACE_PLATFORMS,type PlaceSnapshot} from './place-check';
+import {placeTasksAfterFact} from './place-check-server';
 import {closedByFact,closingFact,draftFor,extractCopyPackNeeds,extractMarkers,factKeyOfFact,planCollect,requestSeed,sortRequests,DATA_REQUEST_LIMITS,type DataRequest,type DataRequestActor,type DataRequestOrigin,type ExtractedNeed,type PlannedNeed} from './data-requests';
 
 // 자료 요청(A6-1) 저장. records kind data_request(parent = 브랜드 id, 캠페인 요청은 data.campaignId로 캠페인과 함께 지운다).
@@ -125,9 +128,32 @@ export async function dataRequestAction(owner:string,input:Record<string,unknown
 
 // /api/brand-facts save_fact 저장 뒤에 부른다. 스위치가 꺼져 있으면 {}(응답 바이트 동일), 켜져 있으면 {closedRequests: 닫은 수},
 // 닫기가 실패하면 사실 저장은 유지하고 {closedRequests:null}이다(reconcile로 다시 닫는다). 확정 사실이 아니면 닫을 것이 없다(0).
-export async function afterFactSaved(owner:string,fact:Pick<BrandFact,'brandId'|'key'|'status'>,who:Pick<Actor,'id'|'role'>):Promise<{closedRequests?:number|null}>{
+// A6-2: 이어서 플레이스 스냅샷을 다시 대조해 할 일을 닫는다(lib/place-check-server.ts, 스위치 a6_place_check). 두 스위치가 모두 꺼져 있으면 {}다.
+export async function afterFactSaved(owner:string,fact:Pick<BrandFact,'id'|'version'|'brandId'|'storeId'|'key'|'status'>,who:Pick<Actor,'id'|'role'>):Promise<{closedRequests?:number|null;closedPlaceTasks?:number|null}>{
+ return {...await closeRequestsAfterFact(owner,fact,who),...await placeTasksAfterFact(owner,fact)};
+}
+async function closeRequestsAfterFact(owner:string,fact:Pick<BrandFact,'brandId'|'key'|'status'>,who:Pick<Actor,'id'|'role'>):Promise<{closedRequests?:number|null}>{
  if(!await dataRequestsOn(owner))return {};
  if(fact.status!=='confirmed')return {closedRequests:0};
  try{return {closedRequests:(await reconcileBrand(owner,fact.brandId,actorOf(who),factKeyOfFact(fact.key))).length}}
  catch{console.error('data_request_close_failed');return {closedRequests:null}}
+}
+
+// 플레이스 대조(A6-2)의 fact_missing(플레이스 값은 있는데 확정 사실 없음)을 지점 자료 요청(origin place_check, 캠페인 없음)으로 모은다. 할 일은 만들지 않는다.
+// 스위치 a6_data_requests가 꺼져 있으면 {}(응답에 키 없음), 켜져 있으면 {dataRequests: 새 요청 수}, 실패하면 스냅샷 저장은 유지하고 {dataRequests:null}이다.
+// id는 수동 지점 요청과 같은 씨앗(|지점|항목)이라 같은 항목이 열려 있으면 출처만 합친다. 닫힌 요청은 다시 열지 않는다(planCollect).
+export async function placeCheckRequests(owner:string,snapshot:PlaceSnapshot,who:Pick<Actor,'id'|'role'>):Promise<{dataRequests?:number|null}>{
+ if(!await dataRequestsOn(owner))return {};
+ try{
+  const scope={brandId:snapshot.brandId,storeId:snapshot.storeId},platform=PLACE_PLATFORMS[snapshot.platform].label;
+  const needs:PlannedNeed[]=await Promise.all(snapshot.result.filter(r=>r.state==='fact_missing').map(async r=>{
+   const item=factLabel(r.field),draft=draftFor({item,text:`${platform} ${item}: ${snapshot.fields[r.field]} (확정 사실 없음)`.slice(0,DATA_REQUEST_LIMITS.text)},scope);
+   return {id:await dataRequestId(requestSeed('',draft.storeId,draft.factKey,item)),draft,origins:[{kind:'place_check' as const,snapshotId:snapshot.id,snapshotVersion:snapshot.version,platform:snapshot.platform,field:r.field}]};
+  }));
+  if(!needs.length)return {dataRequests:0};
+  const existing=(await brandRequests(owner,snapshot.brandId)).filter(r=>!r.campaignId&&r.storeId===snapshot.storeId);
+  const plan=planCollect({existing,needs,facts:await brandFacts(owner,snapshot.brandId),by:actorOf(who),now:stamp()});
+  await write(owner,plan.writes);
+  return {dataRequests:plan.created};
+ }catch{console.error('place_check_request_failed');return {dataRequests:null}}
 }
