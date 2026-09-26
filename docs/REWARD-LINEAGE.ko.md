@@ -4,7 +4,7 @@
 
 비유: 식당 주방에서 레시피 판(버전)마다 "손님이 처음 먹고 바로 좋다고 했나, 메뉴판에 올랐나, 그 메뉴로 주문이 들어왔나"를 영수증에 적힌 레시피 번호로만 거슬러 세는 장부다. 번호가 없는 영수증은 어느 레시피에도 나눠 주지 않는다.
 
-- 상태: **B4-2a 순수 모듈과 B4-2b 서버·API·스위치를 구현했다**(`lib/reward-lineage.ts` [8절](#8-b4-2a-구현-순수-모듈), `lib/reward-lineage-server.ts`·`/api/reward-lineage` [9절](#9-b4-2b-구현-서버api스위치)). 스위치 `b4_reward_lineage`는 기본 꺼짐이고 화면(B4-2c)은 없다.
+- 상태: **B4-2a 순수 모듈, B4-2b 서버·API·스위치, B4-2c 닫힌 개선 루프 대장과 학습 화면 보상 표를 구현했다**(`lib/reward-lineage.ts` [8절](#8-b4-2a-구현-순수-모듈), `lib/reward-lineage-server.ts`·`/api/reward-lineage` [9절](#9-b4-2b-구현-서버api스위치), `lib/improvement-loops.ts`·`app/reward-lineage-section.tsx` [11절](#11-b4-2c-구현-닫힌-개선-루프와-화면)). 스위치 `b4_reward_lineage`는 기본 꺼짐이다.
 - 레인: A([LANES](LANES.ko.md)). 기준 SHA `76fc96e`. 아래 `파일:줄`은 그 커밋 기준이다.
 - 착수 근거: 대표 지시(2026-09-27 "B2 2단계 빼고 남은 개발을 모두 진행하라").
 - 이름 구분: 이 문서의 **보상 L0~L4**는 보상 층이다. [DATA-PROCESSING](DATA-PROCESSING.ko.md)의 L1~L3(바이럴 사례 분석·발견·학습 규칙 초안의 모델 입력 경로)과는 다른 것이다. 코드 키는 영문(`human`·`publish`·`engagement`·`order`·`revisit`)을 쓴다.
@@ -119,7 +119,7 @@
 |---|---|---|---|
 | **B4-2a** 순수 모듈(이 PR) | 보상 층 집계, 규칙 계보, 배분 규칙, `inputDigest` | 신규 `lib/reward-lineage.ts`, `tests/reward-lineage.test.mjs`, 이 문서 | 연결 없음. 게시 불필요. 토큰 0 |
 | **B4-2b** 서버·API | 범위(브랜드·지점·캠페인)로 기록을 읽는다. `roleArtifactId` 매핑을 계산한다. 결정 16 상태를 읽어 미리보기로 돌려준다. 저장 없는 읽기 전용 GET으로 시작한다 | 신규 `lib/reward-lineage-server.ts`, `app/api/reward-lineage/route.ts`, `lib/feature-flags.ts`(`b4_reward_lineage` 기본 꺼짐) | 스위치 꺼짐. 묶음 5로 게시. 토큰 0 |
-| **B4-2c** 화면·판정 기록 | 학습 또는 품질 화면의 읽기 전용 표. `insufficient`·`reduced`·`not_run`·귀속≠증분을 함께 보인다. 2026-10-15 중단 규칙 판정을 기록한다 | 화면 파일(PR 5 범위), 관찰 기록 | 묶음 5. 토큰 0 |
+| **B4-2c** 개선 루프·화면 | 닫힌 개선 루프 대장(후보·전후 14일 비교·대표 닫기 동결)과 학습 화면 보상 표. `insufficient`·`reduced`·`not_run`·귀속≠증분을 함께 보인다. 2026-10-15 중단 규칙 판정 절차를 정한다([11절](#11-b4-2c-구현-닫힌-개선-루프와-화면)) | 신규 `lib/improvement-loops.ts`·`app/reward-lineage-section.tsx`, `lib/reward-lineage-server.ts`·route POST, kind `improvement_loop` | 스위치 꺼짐. 묶음 5. 토큰 0 |
 
 - `lib/learning.ts`·`lib/learning-server.ts`는 B4 2부 어느 PR에서도 고치지 않고 타입만 import한다. 그래서 B3와 겹치지 않는다(GROWTH-PLAN 파일 소유 표).
 
@@ -208,3 +208,62 @@
 - **B4-2b 범위 규칙**: 지점 범위에 브랜드 공통 캠페인이 함께 든다. 그래서 같은 공통 캠페인 기록이 두 지점에 모두 보인다. 지운 캠페인의 판정은 지점 범위에서 빠지고 브랜드 범위에만 남는다.
 - **B4-2b 행 상한**: 판정이 5,000행을 넘으면 최근 행만 읽는다. 그래서 오래된 첫 판정이 빠져 1차 판정이 달라질 수 있다. 이때 `partial.kinds`에 `review_decision`이 나오므로 화면(B4-2c)이 '일부만 집계'를 함께 보여야 한다.
 - **결정 16 상수**: 첫 실게시가 real이 돼도 코드 상수를 바꾸기 전까지 `not_run`으로 보인다. 결정 16 판정 기록 PR에서 함께 바꾼다.
+- **B4-2c 전후 비교는 인과가 아니다**: 같은 14일에 다른 버전·규칙·계절 변화가 섞인다. 화면과 동결 행 모두 설명용이고 자동 판정이 아니다. 운영 판정 수가 적어 대부분 `insufficient`로 머물 수 있다.
+- **B4-2c 코드 상수 전 창**: 레지스트리 이전(from 없음) 활성화의 전 창은 '그 단위의 레지스트리 버전이 없는 줄'이다. 채널·회의 단위는 역할을 몰라 같은 기간의 다른 역할 줄까지 든다.
+- **B4-2c 한 번 읽기**: 루프 후보 창을 모두 덮는 기간을 한 번 읽는다(최대 약 194일). 종류별 5,000행을 넘으면 `loops.partial.kinds`가 나오고 오래된 창의 수치가 빠질 수 있다. 180일 넘은 미종결 후보는 목록에서 빠진다(닫을 수 없다).
+- **B4-2c 닫은 뒤 범위**: 루프는 한 번만 닫고 닫을 때의 범위(브랜드) 수치를 동결한다. 프롬프트 루프를 다른 브랜드 화면에서 보면 닫은 브랜드의 동결 수치가 보인다.
+
+## 11. B4-2c 구현 (닫힌 개선 루프와 화면)
+- **파일**
+  - 신규 `lib/improvement-loops.ts`(순수): 루프 후보, 전후 14일 창, 창별 보상 비교, 상태, `inputDigest`. `reward-lineage`·`store-attribution`·`viral-stats`만 실행 import한다. `lib/prompt-registry.ts`는 `ReleaseEventRecord` 타입만 import한다(서버 의존 없음, 로컬 복사 없음).
+  - `lib/reward-lineage-server.ts`: GET 응답에 `loops`를 더하고 POST `close`(`rewardLineageAction`)를 넣었다. `app/api/reward-lineage/route.ts`에 POST(`secureMutation`, 소유자 잠금, `executionRate(owner,'reward_lineage')`).
+  - kind `improvement_loop`(`lib/record-kinds.ts`, `customer_report` 뒤·`brand_voice` 앞). parent 없음, 캠페인과 무관, 추가만(`INSERT OR IGNORE`, 이미 있으면 409), 원문·이메일·승인 사유 없음.
+  - 신규 `app/reward-lineage-section.tsx`와 `app/learning-panel.tsx` 학습 규칙 탭 아래 '보상 계보' 절(새 탭 없음). D1 migration 0건. 토큰 0.
+- **루프 후보**
+  - 프롬프트: `prompt_release_event`의 `activate`·`promote` 중 `evalRunId`와 `approval`이 모두 있는 것. `stage`·`rollback`·`reset_pins`는 후보가 아니다. 워크스페이스 전체 단위다.
+  - 운영자 선호 규칙: 조회 브랜드의 `playbook_audit` `activate`(B3-1). 규칙 역할은 그 `learning_rule`의 `role`(없으면 모든 역할)이다.
+  - 루프 id는 `prompt:<이벤트 id>`·`playbook:<감사 id>`이고 루프당 한 번만 닫는다.
+  - 180일(`LOOP_MAX_AGE_DAYS`)보다 오래된 활성화는 닫지 않은 한 목록에 없다.
+- **창과 비교**
+  - 활성화 한국 날짜 D. 전 창은 D-14~D-1, 후 창은 D~D+13이다. B4-2a `buildRewardLineage`를 창마다 다시 부른다.
+  - 프롬프트: 후 = `to` 버전을 쓴 줄(`usesVersion`, 복합 키 포함). 전 = `from` 버전을 쓴 줄이다. `from`이 없으면(코드 상수) 그 단위의 레지스트리 버전이 없는 줄이다. `role.*` 단위는 같은 역할만 본다.
+  - 규칙: 후 = 그 규칙이 주입된 작업물(`byRule`의 `ruleId@*`). 전 = 같은 브랜드의 같은 역할 줄(`byPromptVersion`)이다.
+  - 창별로 L0(1차 판정·승인·수정 요청), L1(발행·승인·접수), L3 경로(귀속 주문·순매출·공헌이익, 귀속≠증분)를 싣는다. L2·L4는 싣지 않는다.
+  - `probTreatmentBetter`(전=대조, 후=실험)는 양쪽 1차 판정이 모두 5건 이상일 때만 설명용으로 적는다. 권고·판정 필드는 없다.
+- **상태**(우선순위 순): `closed`(동결 행 있음) → `rolled_back`(롤백·중지됨) → `open`(오늘 ≤ D+13) → `insufficient`(한쪽이라도 1차 판정 5건 미만) → `closable`.
+  - `rolled_back`은 설계 요청의 네 상태에 더한 다섯째 상태다. 롤백된 버전을 `closable`로 보이지 않게 하려고 넣었다.
+  - 롤백: 활성화 뒤 같은 단위의 `rollback`이 이 루프의 `to`를 되돌렸다. 규칙은 활성화 뒤 같은 규칙의 `pause`다(재승인은 새 루프다).
+- **닫기(POST `close`)**
+  - 본문: `{action:'close',loopId,version,expected:{before:{decidedFirst,approvedFirst},after:{…}},brandId|storeId|campaignId}`.
+  - 판정 순서: 모르는 작업 400 → 대표 아님 403(관리자·직원, route와 서버가 함께 막는다) → 스위치 꺼짐 409 → 범위 400·404 → 루프 없음 404 → 판 번호(`version`: 닫기 전 0, 닫은 뒤 1) 불일치 409 → `closable` 아님 409 → `expected` 빠짐 400 → 지금 수치와 다름 409.
+  - 동결: 그때 계산한 `comparison`·`windows`·`source`·범위와 루프 `inputDigest`를 `improvement_loop` 행에 쓴다. 닫은 사람은 id·역할(`owner`)만 남긴다.
+  - 닫은 루프는 이후 데이터가 바뀌어도 이 행의 수치와 `inputDigest`를 그대로 보인다. 롤백 여부만 지금 이벤트로 다시 본다.
+- **inputDigest**: 루프 창 입력 참조의 SHA-256이다. 판정은 후 창 끝까지, 발행·주문·실험은 루프 창 안만 넣고 B4-2a `canonicalInput`으로 만든다(id·판만, 원문 없음). 루프 창 밖 새 기록은 바꾸지 않는다.
+- **읽기**: `prompt_release_event`(승인은 있는지와 시각만, 사유 원문은 읽지 않는다)·브랜드 `playbook_audit`·`improvement_loop`·규칙 역할을 읽는다. 후보 창을 모두 덮는 기간을 `lineageInput`으로 한 번 읽는다. 행 상한을 넘은 종류는 `loops.partial.kinds`에 남긴다.
+- **B4-2b 결함 수정**: 서버가 스냅샷 자체 `artifactId`(운영자 선호를 주입한 실행)를 순수 모듈에 넘기지 않았다. 그래서 운영자 선호 규칙의 `byRule` 계보가 끊겼다(`roleArtifactIds`에도 없음). `ruleLinks`가 `artifactId`를 그대로 넘기게 고쳤다. 규칙 루프 서버 테스트가 이 경로를 잡는다(변이 검사로 확인).
+- **화면**(학습 → 학습 규칙 탭 아래 '보상 계보' 절)
+  - 대표·관리자만 보이고 직원에게는 절이 없다. 스위치가 꺼지면(409) 안내만 보인다.
+  - 버전별 보상 L0~L4 표를 보인다. 고지는 `realPublish:false`, 일부만 집계(`partial.kinds`), 귀속≠증분, 자동 판정 아님, L4 `not_run`이다.
+  - 규칙별 표에는 중복 배분이라 줄을 합산하지 말라는 고지를 붙인다.
+  - 개선 루프 목록은 전후·설명용 확률·상태·종료 조건 셈을 보인다. 'close'(닫기 · 수치 동결) 버튼은 대표에게만, `closable` 루프에만 있다. 누르면 확인 창을 띄운다.
+- **4단계 종료 조건 "닫힌 개선 루프 누적 5건"의 셈법**([GROWTH-PLAN](GROWTH-PLAN.ko.md) 4단계)
+  - 워크스페이스의 `improvement_loop` 행 중 지금 롤백되지 않은 것만 센다. 화면과 응답의 `loops.exit.counted`이고, 목표는 `exit.target=5`다.
+  - 닫은 뒤 그 버전이 롤백되거나 규칙이 중지되면 행은 남지만 셈에서 빠진다(`countsToExit:false`).
+  - 닫기는 대표만 한다. `closable`(14일 경과, 전후 각 5건 이상, 롤백 없음)만 닫을 수 있어, 표본이 모자란 루프는 세지 않는다.
+  - 자동 판정이 아니다. 전후 차이의 방향(좋아졌는지)은 셈에 쓰지 않고 대표 검토에 맡긴다.
+- **2026-10-15 중단 규칙 판정 절차**([6절](#6-선행-조건-판정), GROWTH-PLAN 141행)
+  1. 기준일: A4 게시일부터 3주다. 판정일은 **2026-10-15(KST)**로 고정한다.
+  2. 확인할 기록: 운영 D1에서 A4 게시 뒤 만든 `order_import`(주문 CSV 가져오기 기록) 행 수와 그 행들이 적은 가져온 주문 건수를 센다(소유자 워크스페이스, 합성·테스트 브랜드 제외). 직접 입력한 `store_order`는 CSV가 아니므로 세지 않는다. 명령과 결과는 관찰 기록(`docs/observations/2026-10-15-lane-a-b4-stop-rule.md`)에 `real`로 남긴다.
+  3. 0건이면: L3·L4를 운영에서 쓰는 것을 보류한다. 스위치 `b4_reward_lineage`는 켜지 않거나, 이미 켰다면 L3를 KPI로 주장하지 않는다. 코드·L0·L1 집계와 개선 루프 대장(L0 기준)은 남긴다. STATUS 레인 A 칸에 `blocked`(사유: 실제 주문 CSV 0건)로 적는다.
+  4. 1건 이상이면: L3 사용을 막지 않는다. 스위치 켜기는 대표 결정으로 따로 한다. A5 착수 판단은 별도 문서에서 한다.
+  5. 판정을 하지 못했으면(운영 D1 접근 불가 등) `not_run`과 이유를 적고, 다음 영업일에 다시 한다. 그 사이 L3는 보류 상태로 본다.
+- **RED 목록**(모두 passed · mocked)
+  - `tests/improvement-loops.test.mjs`(순수, 45): activate·promote(evalRunId·승인 있음) 후보·승인 없는 stage 제외, 창 경계(D-14~D-1, D~D+13), closable 전후 수치와 설명용 확률, open(마지막 날까지)·insufficient, 롤백된 버전은 닫힌 루프로 세지 않음(닫은 뒤 롤백 포함), 닫은 루프의 동결 수치 불변, playbook activate 뒤 주입 작업물만 후 창·같은 역할 전 창·중지 = 롤백, 결정론·inputDigest, import 경계.
+  - `tests/improvement-loops-server.test.mjs`(실제 SQLite, 44): GET loops, close는 대표만(관리자·직원 403, 비로그인 401, 다른 출처 403), 판 불일치·상태·확인 값 409, 동결 수치는 이후 데이터가 바뀌어도 불변, 롤백 뒤 셈 제외, 다른 소유자 분리, 스위치 꺼짐 POST close 409·직원 403, kind 등록 위치, fetch 0회·`provider_usage` 0건.
+  - `tests/reward-lineage-ui.test.mjs`(화면 렌더·원문, 10): 직원에게 절 없음, 대표에게 close 버튼, 관리자에게 없음, 스위치 꺼짐 안내, 고지·표·루프 목록, 학습 화면 새 탭 없음.
+  - 고정 목록 테스트는 자기 항목만 더했다: `tests/customer-report-server.test.mjs`(customer_report 다음 improvement_loop, 그다음 brand_voice), `tests/reward-lineage-server.test.mjs`(새 kind는 improvement_loop만, route는 GET·POST).
+  - E2E는 추가하지 않았다(`not_run`).
+- **변이 검사**: 33개 변이를 모두 잡았다.
+  - 순수: stage 후보, 승인·평가 run 무시, 롤백 무시·시각 무시, open 경계, 표본 하한, 창 13일, from 무시, 역할 필터, 규칙 후 창을 전체 줄로, 중지 무시, 동결 무시, 셈에서 롤백 무시, 비교 방향, 창 판정 자르기, 브랜드 필터, 최대 나이
+  - 서버: 대표 전용 제거(route+서버), 판 번호·확인 값·상태·스위치 검사 제거, 추가만→덮어쓰기, 스냅샷 artifactId 누락(B4-2b 결함), 승인 읽기 누락, 규칙 역할 누락, 닫은 행 읽기 누락
+  - 화면: 관리자 닫기, 직원 노출, 합산 금지 고지 제거, realPublish 고지 뒤집기, 모든 상태에 닫기 버튼

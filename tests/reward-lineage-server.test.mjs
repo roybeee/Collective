@@ -74,7 +74,7 @@ const refs=body=>body.lineage.byRule.map(r=>r.ruleRef);
 
 // ── 2) 등록: 새 kind 0, 스위치 기본 꺼짐, 기능표 행, 스위치는 서버 파일에서만 읽음 ──
 const kinds=plain(registry.recordKinds).map(k=>k.kind);
-check('record-kinds is unchanged: no reward lineage kind',!kinds.some(k=>/reward/.test(k))&&kinds.length===plain(registry.recordKinds).length&&!/reward/.test(src('lib/record-kinds.ts')));
+check('record-kinds has no reward lineage kind (B4-2c adds only improvement_loop)',!kinds.some(k=>/reward/.test(k))&&kinds.includes('improvement_loop')&&!/reward/.test(src('lib/record-kinds.ts')));
 const names=Object.keys(flags.FEATURE_FLAGS);
 check('b4_reward_lineage is a known switch, off by default, after a8_customer_report',flags.FEATURE_FLAGS.b4_reward_lineage?.defaultEnabled===false&&names.indexOf('b4_reward_lineage')===names.indexOf('a8_customer_report')+1&&/보상 계보/.test(flags.FEATURE_FLAGS.b4_reward_lineage.description));
 check('b4_reward_lineage reads off without a stored row',await flags.isEnabled(O,'b4_reward_lineage')===false);
@@ -165,5 +165,5 @@ check('switch off again: admin and owner get a 409, member still a 403',(await G
 check('no external call was made (no HERMES, no model, no connector)',fetchCalls===0);
 check('no provider usage row was written',sql.prepare("SELECT COUNT(*) n FROM records WHERE kind='provider_usage'").get().n===0);
 check('the server imports role-execution only for roleArtifactId and has no network code',/import \{roleArtifactId\} from '\.\/role-execution';/.test(src('lib/reward-lineage-server.ts'))&&!/hermes|openai|fetch\(/.test(src('lib/reward-lineage-server.ts'))&&!/hermes|openai|fetch\(/.test(src('app/api/reward-lineage/route.ts')));
-check('the route has only GET',!('POST' in route)&&!('PUT' in route)&&!('DELETE' in route));
+check('the route has GET and the B4-2c POST only',typeof route.GET==='function'&&typeof route.POST==='function'&&!('PUT' in route)&&!('DELETE' in route));
 console.log(JSON.stringify({passed:passed.length},null,1));

@@ -68,7 +68,7 @@ const rows=()=>sql.prepare("SELECT data FROM records WHERE owner=? AND kind='cus
 // ── 2) 등록: kind 위치·스위치·기능표·구조 규칙 ──
 const kinds=plain(registry.recordKinds),kind=kinds.find(k=>k.kind==='customer_report');
 check('customer_report is a brand record outside campaign deletion',kind&&kind.parent==='brand'&&kind.campaignDeletion==='not_campaign_scoped'&&!kind.links&&!kind.purge&&!kind.blocksDeletion);
-check('customer_report sits right after place_snapshot and right before brand_voice',kinds.indexOf(kind)===kinds.findIndex(k=>k.kind==='place_snapshot')+1&&kinds.indexOf(kind)===kinds.findIndex(k=>k.kind==='brand_voice')-1);
+check('customer_report sits right after place_snapshot and right before improvement_loop (B4-2c), then brand_voice',kinds.indexOf(kind)===kinds.findIndex(k=>k.kind==='place_snapshot')+1&&kinds.indexOf(kind)===kinds.findIndex(k=>k.kind==='improvement_loop')-1&&kinds.indexOf(kind)===kinds.findIndex(k=>k.kind==='brand_voice')-2);
 const names=Object.keys(flags.FEATURE_FLAGS);
 check('a8_customer_report is a known switch, off by default, after a6_place_check',flags.FEATURE_FLAGS.a8_customer_report?.defaultEnabled===false&&names.indexOf('a8_customer_report')===names.indexOf('a6_place_check')+1&&/고객 보고서/.test(flags.FEATURE_FLAGS.a8_customer_report.description));
 const featureRow=f=>plain(status.featureRows({flags:f})).find(r=>r.key==='customer-report');
