@@ -59,6 +59,7 @@ Sites 접근 설정에 맞는 게시 도구를 쓴다. 공개(public) 사이트�
 await (await fetch('/api/version', {credentials: 'same-origin', cache: 'no-store'})).json()
 ```
 
+- 로그인 없이 확인하는 공개 경로도 있다(2026-09-26 대표 결정): `curl -fsS https://mealzip-agency.hflameb.chatgpt.site/api/version/public`는 `{build, tree}`만 돌려준다. `tree` 판정은 위와 같다. 레지스트리 상태(`promptManifest`)는 소유자 경로에서만 본다.
 - 아래를 모두 만족하면 `runtime-verified`: `tree`가 마지막으로 게시한 제품 커밋(1단계 SHA)의 tree와 같다. 그 커밋이 `origin/main`의 조상이다(`git merge-base --is-ancestor <sha> origin/main`). 그 뒤 `main` 변경이 아래 비제품 경로뿐이다(아래 명령 결과 없음). 그 뒤 제품 코드가 병합됐지만 아직 게시하지 않았다면 `runtime-verified`가 아니다.
 - 비제품 경로(배포 산출물에 들어가지 않는 파일)는 여기에서만 정의한다. 문서, 테스트, E2E, CI, lint 설정·기준선, 테스트 실행기, 평가 스크립트(`scripts/eval/`, 빌드에 쓰이지 않음), 프롬프트 정본(`prompts/`, 앱 빌드가 import하지 않으며 `scripts/check-prompts.mjs`가 막는다. 운영 반영은 게시가 아니라 레지스트리 등록·활성화이고 7절에 기록한다)이다. 빌드에 쓰이는 파일(예: `scripts/run-framework.mjs`, `vite.config.ts`)은 넣지 않는다.
 
@@ -111,7 +112,7 @@ Sites는 ChatGPT 웹·데스크톱 안에서만 저장·게시되고 외부 API�
 - 라벨이 `sites-publish`로 남아 있는 동안에는 그 PR에 push·댓글을 더하지 않는다. 더하면 작업이 다시 실행된다. 결과 댓글을 받은 뒤 게시 기록(6절)을 같은 PR에 더하고 병합한다.
 - `sites-publish` 라벨 PR은 한 번에 하나만 둔다.
 - 0단계 사전 점검(크레딧)은 자동 게시에서 기록되지 않는다. 게시 1회 크레딧은 붙여 넣기 방식과 같다.
-- `runtime-verified`는 여전히 소유자 세션의 `/api/version`(5단계)이 필요하다.
+- `runtime-verified`는 5단계 판정이다. 공개 경로 `/api/version/public`이 게시된 뒤에는 개발 도구가 curl로 직접 확인한다. 그 전 게시는 소유자 세션의 `/api/version`이 필요하다.
 - 첫 실행(2026-09-25 22:36 UTC, #119 push): GitHub 트리거가 동작했다(real). 작업은 PR 본문 파싱, main 포함(compare `identical`), CI success, Sites 작업 사본 tree·접근 설정 읽기까지 하고 멈췄다. 지시문 5단계가 비공개 전용 도구(`save_version_and_deploy_private`)를 적어서, public 사이트의 접근 설정 유지 조건과 맞지 않았기 때문이다(blocked, 파일 적용·빌드·게시 미실행). 결과 댓글과 라벨 교체(`sites-publish-blocked`)도 동작했다. 지시문 생성기는 4단계의 공개 사이트 도구를 적도록 고쳤다. 다시 요청할 때는 라벨을 `sites-publish`로 되돌린 뒤 고친 지시문 커밋을 push한다.
 - 첫 실행이 멈추면 대표가 같은 지시문을 편집기에 붙여 넣는 방식으로 돌아간다. 예약 작업 안에서 Sites 저장·배포 도구가 동작하는지는 두 번째 실행에서 확인한다.
 - 두 번째 요청(2026-09-25 22:46 UTC 라벨 복구 → 22:47 UTC push): 23:20 UTC까지 결과 댓글·라벨 변화가 없었다(not_run 추정, 원인 미확인). 작업 설정의 이벤트는 '풀 리퀘스트, 리뷰, PR 및 리뷰 댓글 및 커밋 업데이트'였다. 문서는 가까이 들어온 이벤트를 한 실행으로 묶을 수 있다고 적는다. 작업 화면의 '지금 실행(Run now)'으로 대기 이벤트를 처리할 수 있다. 대표 결정으로 묶음 13 게시는 보류했다. 저장·배포 도구가 예약 작업 안에서 동작하는지는 아직 확인하지 못했다.
