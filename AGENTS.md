@@ -10,7 +10,8 @@
 ## 현재 상태 (`docs/STATUS.md`)
 - 작업을 시작할 때 `docs/STATUS.md`를 먼저 읽는다. 다른 도구(Claude·ChatGPT/Codex)가 하던 일을 이어받을 때는 `docs/HANDOFF.ko.md`(역할 분리·게시·평가 방법·다음 작업)도 읽는다.
 - 적힌 내용을 믿지 말고 실제 원격 상태(`git ls-remote origin refs/heads/main`, `gh pr list -R roybeee/Collective`, `/api/version`)와 대조한다. 다르면 원격이 맞고 STATUS.md를 고친다.
-- 단계, 검증 결과, 막힌 것, 진행 중 작업, 다음 행동이 바뀌면 같은 PR에서 STATUS.md와 마지막 갱신 시각(UTC)을 갱신한다.
+- 세션(레인)마다 맡는 일·게시 담당·공유 파일 순서는 `docs/LANES.ko.md`가 정한다. 다른 문서와 다르면 LANES가 이긴다.
+- 단계, 검증 결과, 막힌 것, 진행 중 작업, 다음 행동이 바뀌면 같은 PR에서 STATUS.md의 **자기 레인 칸**(`## 레인 A`·`## 레인 R`·`## 레인 Q`)과 그 칸의 `갱신:` 시각(UTC)을 고친다. 파일 전체의 `마지막 갱신`·`현재 운영 상태` 표·`게시 대기열`은 게시 담당(레인 A)만 고친다.
 
 ## 개발 루프
 1. 원격 `main`과 현재 작업 기준 SHA를 확인한다.
