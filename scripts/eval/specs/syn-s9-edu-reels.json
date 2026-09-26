@@ -1,0 +1,443 @@
+{
+ "schema": 1,
+ "id": "syn-s9-edu-reels",
+ "label": "S9 동네 수학학원 설명회 릴스 (카피 팩 v2)",
+ "set": "dev",
+ "now": "2026-04-09T09:00:00.000Z",
+ "campaignId": "syn-s9-edu-reels-campaign",
+ "expectations": {
+  "prohibitedTerms": [
+   "성적 향상 보장",
+   "1등 강사"
+  ],
+  "industry": [
+   "education"
+  ],
+  "localStore": true
+ },
+ "records": [
+  {
+   "kind": "feature_flag",
+   "id": "a3_copy_pack",
+   "data": {
+    "flag": "a3_copy_pack",
+    "enabled": true,
+    "updatedAt": "2026-04-09T09:00:00.000Z",
+    "updatedBy": {
+     "id": "syn-owner",
+     "email": null
+    }
+   }
+  },
+  {
+   "kind": "feature_flag",
+   "id": "a3_brand_voice",
+   "data": {
+    "flag": "a3_brand_voice",
+    "enabled": true,
+    "updatedAt": "2026-04-09T09:00:00.000Z",
+    "updatedBy": {
+     "id": "syn-owner",
+     "email": null
+    }
+   }
+  },
+  {
+   "kind": "brand",
+   "id": "syn-s9-edu-reels-brand",
+   "data": {
+    "name": "가상수학",
+    "short": "GM",
+    "category": "EDUCATION",
+    "color": "#1f4e7a",
+    "bg": "#e6eef6",
+    "description": "합성 브랜드 소개(미확인): 가상동 3층 중등 수학 소수반 학원.",
+    "audience": "중학생 자녀를 둔 학부모(가설)",
+    "tone": "차분하고 구체적인",
+    "constraints": "\"성적 향상 보장\" 표현 금지. 수강료는 확정 전 쓰지 않는다.",
+    "knowledge": "합성 메모: 강사 경력 표기는 본인 확인 전이다."
+   }
+  },
+  {
+   "kind": "campaign",
+   "id": "syn-s9-edu-reels-campaign",
+   "data": {
+    "brandId": "syn-s9-edu-reels-brand",
+    "title": "가상수학 학부모 설명회 릴스 3주",
+    "goal": "학부모 설명회 신청을 받고, 설명회 뒤 14일 안 상담 예약 비율을 본다.",
+    "audience": "가상동 중학생 학부모(가설)",
+    "channels": "Instagram 릴스, 네이버 블로그",
+    "stores": "가상동 88 3층",
+    "products": "중등 수학 소수반, 학부모 설명회(수강료 미확정)",
+    "constraints": "\"성적 향상 보장\" 표현 금지. \"1등 강사\" 등 순위 표현 금지. 수강료 단정 금지.",
+    "budget": null,
+    "startDate": "",
+    "endDate": "",
+    "sources": "",
+    "status": "review",
+    "version": 1,
+    "createdAt": "2026-04-09T09:00:00.000Z",
+    "updatedAt": "2026-04-09T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "brand_voice",
+   "id": "syn-s9-edu-reels-brand",
+   "parent": "syn-s9-edu-reels-brand",
+   "data": {
+    "brandId": "syn-s9-edu-reels-brand",
+    "tone": [
+     "차분한",
+     "구체적인"
+    ],
+    "do": [
+     "수업 장면 묘사",
+     "질문 시간 강조"
+    ],
+    "dont": [
+     "불안 자극 문구"
+    ],
+    "preferTerms": [
+     "소수반",
+     "질문 시간"
+    ],
+    "avoidTerms": [
+     "무조건",
+     "완벽 대비"
+    ],
+    "samples": [
+     "모르는 문제는 그 자리에서 물어보세요."
+    ],
+    "version": 2,
+    "status": "confirmed",
+    "updatedBy": {
+     "id": "syn-admin",
+     "role": "admin"
+    },
+    "updatedAt": "2026-04-09T09:00:00.000Z",
+    "confirmedBy": {
+     "id": "syn-owner",
+     "role": "owner"
+    },
+    "confirmedAt": "2026-04-09T09:00:00.000Z",
+    "confirmedVoice": {
+     "tone": [
+      "차분한",
+      "구체적인"
+     ],
+     "do": [
+      "수업 장면 묘사",
+      "질문 시간 강조"
+     ],
+     "dont": [
+      "불안 자극 문구"
+     ],
+     "preferTerms": [
+      "소수반",
+      "질문 시간"
+     ],
+     "avoidTerms": [
+      "무조건",
+      "완벽 대비"
+     ],
+     "samples": [
+      "모르는 문제는 그 자리에서 물어보세요."
+     ],
+     "version": 2,
+     "status": "confirmed",
+     "updatedBy": {
+      "id": "syn-admin",
+      "role": "admin"
+     },
+     "updatedAt": "2026-04-09T09:00:00.000Z",
+     "confirmedBy": {
+      "id": "syn-owner",
+      "role": "owner"
+     },
+     "confirmedAt": "2026-04-09T09:00:00.000Z"
+    },
+    "history": [
+     {
+      "tone": [
+       "차분한",
+       "구체적인"
+      ],
+      "do": [
+       "수업 장면 묘사",
+       "질문 시간 강조"
+      ],
+      "dont": [
+       "불안 자극 문구"
+      ],
+      "preferTerms": [
+       "소수반",
+       "질문 시간"
+      ],
+      "avoidTerms": [
+       "무조건",
+       "완벽 대비"
+      ],
+      "samples": [
+       "모르는 문제는 그 자리에서 물어보세요."
+      ],
+      "version": 1,
+      "status": "draft",
+      "updatedBy": {
+       "id": "syn-admin",
+       "role": "admin"
+      },
+      "updatedAt": "2026-04-09T09:00:00.000Z"
+     }
+    ]
+   }
+  },
+  {
+   "kind": "brand_fact",
+   "id": "syn-s9-edu-reels-fact-address",
+   "parent": "syn-s9-edu-reels-brand",
+   "data": {
+    "brandId": "syn-s9-edu-reels-brand",
+    "key": "주소",
+    "value": "가상동 88 3층",
+    "status": "confirmed",
+    "source": "합성 원장",
+    "verifiedAt": "2026-04-09T09:00:00.000Z",
+    "validUntil": "2099-12-31T00:00:00.000Z",
+    "version": 1,
+    "updatedAt": "2026-04-09T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "brand_fact",
+   "id": "syn-s9-edu-reels-fact-score",
+   "parent": "syn-s9-edu-reels-brand",
+   "data": {
+    "brandId": "syn-s9-edu-reels-brand",
+    "key": "성적 주장",
+    "value": "한 달 만에 성적 향상 보장",
+    "status": "rejected",
+    "source": "합성 원장",
+    "verifiedAt": "2026-04-09T09:00:00.000Z",
+    "validUntil": "2099-12-31T00:00:00.000Z",
+    "version": 1,
+    "updatedAt": "2026-04-09T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "brand_fact",
+   "id": "syn-s9-edu-reels-fact-session",
+   "parent": "syn-s9-edu-reels-brand",
+   "data": {
+    "brandId": "syn-s9-edu-reels-brand",
+    "key": "설명회 일정",
+    "value": "토요일 오전 설명회",
+    "status": "candidate",
+    "source": "합성 원장",
+    "verifiedAt": "2026-04-09T09:00:00.000Z",
+    "validUntil": "2099-12-31T00:00:00.000Z",
+    "version": 1,
+    "updatedAt": "2026-04-09T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "campaign_directive",
+   "id": "syn-s9-edu-reels-directive",
+   "parent": "syn-s9-edu-reels-campaign",
+   "data": {
+    "campaignId": "syn-s9-edu-reels-campaign",
+    "text": "합성 지시: 학생 얼굴과 이름은 영상에 쓰지 않는다.",
+    "createdAt": "2026-04-09T09:00:00.000Z",
+    "createdBy": {
+     "id": "syn-member",
+     "email": null,
+     "role": "member"
+    }
+   }
+  },
+  {
+   "kind": "store",
+   "id": "syn-s9-edu-reels-store",
+   "parent": "syn-s9-edu-reels-brand",
+   "data": {
+    "brandId": "syn-s9-edu-reels-brand",
+    "status": "active",
+    "name": "가상수학 가상동점",
+    "address": "가상동 88 3층",
+    "access": "가상초 정문 건너편 건물 3층(합성).",
+    "customer": "중학생 학부모(가설)",
+    "menu": "중등 수학 소수반(수강료 미확정)",
+    "hours": "평일 15시~22시(합성, 확인 필요)",
+    "createdAt": "2026-04-09T09:00:00.000Z",
+    "updatedAt": "2026-04-09T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "learning_rule",
+   "id": "syn-s9-edu-reels-rule-caution",
+   "data": {
+    "origin": "store",
+    "direction": "caution",
+    "title": "성적표 사진 주의",
+    "guidance": "학생 성적표 사진은 동의와 과장 문제로 내렸다(합성 관찰). 쓰지 않는다.",
+    "brandId": "syn-s9-edu-reels-brand",
+    "channel": "*",
+    "experimentId": "",
+    "experimentVersion": 0,
+    "caseId": "",
+    "scope": "",
+    "status": "active",
+    "version": 1,
+    "expiresAt": "2099-12-31T00:00:00.000Z",
+    "createdAt": "2026-04-09T09:00:00.000Z",
+    "updatedAt": "2026-04-09T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "learning_rule",
+   "id": "syn-s9-edu-reels-pref-content",
+   "data": {
+    "origin": "review",
+    "grade": "operator_preference",
+    "role": "content",
+    "citations": [
+     "syn-d-1",
+     "syn-d-2"
+    ],
+    "feedback": {
+     "helpful": 0,
+     "harmful": 0
+    },
+    "title": "릴스 첫 장면은 칠판",
+    "guidance": "릴스 첫 장면은 칠판 풀이 손글씨로 시작한다.",
+    "brandId": "syn-s9-edu-reels-brand",
+    "channel": "*",
+    "experimentId": "",
+    "experimentVersion": 0,
+    "caseId": "",
+    "scope": "",
+    "status": "active",
+    "version": 1,
+    "expiresAt": "2099-12-31T00:00:00.000Z",
+    "createdAt": "2026-04-09T09:00:00.000Z",
+    "updatedAt": "2026-04-09T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "team_meeting",
+   "id": "syn-s9-edu-reels-meeting-prev",
+   "parent": "syn-s9-edu-reels-campaign",
+   "data": {
+    "campaignId": "syn-s9-edu-reels-campaign",
+    "campaignVersion": 1,
+    "agenda": "합성 안건: 설명회 신청 동선을 정한다.",
+    "status": "completed",
+    "steps": [
+     {
+      "id": "syn-s9-edu-reels-meeting-prev:synthesis",
+      "role": "cmo",
+      "phase": "synthesis",
+      "status": "completed",
+      "output": {
+       "decisions": "합성 결정: 네이버 블로그 신청 글 하나로 받는다.",
+       "disagreements": "합성: 무료 체험 보류",
+       "questions": "합성: 설명회 뒤 상담 안내 시점",
+       "tasks": []
+      }
+     }
+    ],
+    "createdAt": "2026-04-09T09:00:00.000Z",
+    "updatedAt": "2026-04-09T09:00:00.000Z",
+    "model": "synthetic",
+    "stopRequested": false,
+    "artifactIds": [],
+    "invalidatedRoles": [],
+    "snapshot": {}
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s9-edu-reels-art-cmo",
+   "parent": "syn-s9-edu-reels-campaign",
+   "data": {
+    "campaignId": "syn-s9-edu-reels-campaign",
+    "campaignVersion": 1,
+    "role": "cmo",
+    "title": "합성 총괄 파트너",
+    "content": "## 목표와 판단\n설명회 신청 수보다 설명회 뒤 상담 예약 비율이 중요하다. 성적 효과는 약속하지 않고 수업 방식을 보여 준다.\n\n## 우선순위\n1. 소수반 수업 방식을 분명히 한다.\n2. 수강료·성적은 확정 전까지 쓰지 않는다.\n3. 신청은 네이버 블로그 하나로 받는다.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai",
+    "createdAt": "2026-04-09T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s9-edu-reels-art-insight",
+   "parent": "syn-s9-edu-reels-campaign",
+   "data": {
+    "campaignId": "syn-s9-edu-reels-campaign",
+    "campaignVersion": 1,
+    "role": "insight",
+    "title": "합성 인사이트",
+    "content": "## 고객 관찰\n학부모는 아이가 수업을 따라갈 수 있는지와 질문할 시간이 있는지를 먼저 묻는다(가설, 관찰 기록 없음).\n\n## 장애물\n- 소수반 인원을 모른다.\n- 설명회 시간이 맞는지 모른다.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai_edited",
+    "createdAt": "2026-04-09T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s9-edu-reels-art-strategy",
+   "parent": "syn-s9-edu-reels-campaign",
+   "data": {
+    "campaignId": "syn-s9-edu-reels-campaign",
+    "campaignVersion": 1,
+    "role": "strategy",
+    "title": "합성 전략",
+    "content": "## 전략 가설\n가설 1: '질문 시간이 있는 소수반'을 앞세우면 상담 예약 비율이 오른다.\n\n## 실험 설계\n칠판 풀이 릴스와 교실 전경 릴스의 완주율과 신청 클릭을 비교한다.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai",
+    "createdAt": "2026-04-09T09:00:00.000Z"
+   },
+   "padTo": 6400
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s9-edu-reels-art-creative",
+   "parent": "syn-s9-edu-reels-campaign",
+   "data": {
+    "campaignId": "syn-s9-edu-reels-campaign",
+    "campaignVersion": 1,
+    "role": "creative",
+    "title": "합성 크리에이티브",
+    "content": "## 핵심 메시지\n\"모르는 문제를 그 자리에서 묻는 수업.\"\n\n## 카피 초안\n- 한 반 여섯 명, 질문 시간이 있는 수학 수업.\n- 성적 향상 보장, 1등 강사의 비법.\n",
+    "version": 1,
+    "status": "review",
+    "origin": "ai",
+    "createdAt": "2026-04-09T09:00:00.000Z"
+   }
+  },
+  {
+   "kind": "artifact",
+   "id": "syn-s9-edu-reels-art-content",
+   "parent": "syn-s9-edu-reels-campaign",
+   "data": {
+    "campaignId": "syn-s9-edu-reels-campaign",
+    "campaignVersion": 1,
+    "role": "content",
+    "title": "합성 콘텐츠",
+    "content": "## 콘텐츠 계획\nInstagram 릴스 주 2회, 네이버 블로그 설명회 글 1회.\n\n## 영상 초안\n화요일: 교실 소개. 금요일: 학생 성적표 사진.\n",
+    "version": 1,
+    "status": "revision",
+    "origin": "ai",
+    "createdAt": "2026-04-09T09:00:00.000Z",
+    "reviewNote": "합성 검토 메모: 릴스 장면을 15초 안에 나누고 카피를 안 3개로 만들어 주세요."
+   }
+  }
+ ],
+ "roles": [
+  "content"
+ ]
+}

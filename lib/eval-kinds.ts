@@ -66,9 +66,10 @@ function freezeRole(v:unknown,roleInput:unknown){
 function buildRole(request:EvalRequest,side?:PromptSet|null){const r=request as RoleRequest,{instructions,input}=roleSubmission(side===undefined?r:{...r,prompts:side??undefined});return {instructions,input}}
 // lib/graders 13종(GRADERS)으로 채점한다. 회의·브리프용 채점기(KIND_GRADERS)는 역할 산출물에 붙이지 않아 역할 run의 기존 비교가 그대로다.
 // 브랜드 말투(A3-2): 동결 요청의 확정 말투가 입력에 실리는 역할(content·creative)이면 피할 표현을 채점 맥락에 넣는다. 없으면 키가 없어 기존 채점과 같다.
+// 기대 계약(A3-4): 동결 요청에 출력 프로필이 있으면 채점 맥락에 넣는다. contract_json이 요청한 계약으로 원문을 읽어 운영과 같이 v1 원문을 거부한다. 없으면 키가 없다.
 function gradeRole(kase:KindCase,output:string,inputTokens:number|null){
- const voice=voiceForRole(kase.role,(kase.request as RoleRequest).brandVoice);
- return graded({id:kase.id,kind:'role',role:kase.role,raw:output,contract:true,inputTokens},{...baseContext(kase.expectations),...(voice?{brandVoice:{avoidTerms:[...voice.avoidTerms]}}:{})});
+ const request=kase.request as RoleRequest,voice=voiceForRole(kase.role,request.brandVoice);
+ return graded({id:kase.id,kind:'role',role:kase.role,raw:output,contract:true,inputTokens},{...baseContext(kase.expectations),...(voice?{brandVoice:{avoidTerms:[...voice.avoidTerms]}}:{}),...(request.outputProfile?{outputProfile:request.outputProfile}:{})});
 }
 
 // ── meeting_step: 운영 회의 진행과 같은 조립(lib/meeting-input.ts buildMeetingSubmission)을 대상 단계 직전 기록으로 부른다 ──

@@ -22,7 +22,8 @@ export {INPUT_TOKEN_CAP} from './ledger';
 // '+meeting-normalized': 회의 단계를 운영과 같은 정규화본으로 채점하고 원문 경로 노출은 prevention으로 둔다(lib/eval-kinds.ts). 회의 단계의 internal_id_exposure 결과가 바뀌었다.
 // '+copy-pack': 카피 팩 v2(A3-1). 원문의 contractVersion으로 계약을 골라 v2 팩 렌더본까지 채점하고, copy_pack_variants(14번째)를 더했다. v1 원문의 기존 13종 판정은 같다.
 // '+voice-avoid': 브랜드 말투(A3-2). 입력에 확정 말투가 실린 항목의 카피 구역에서 피할 표현을 찾는 brand_voice_avoid_term(15번째)을 더했다. 말투 입력이 없는 항목의 기존 14종 판정은 같다.
-export const GRADERS_VERSION='failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-measure+local-rerun+contract-read+channel-decision+copy-pack+voice-avoid';
+// '+expected-contract': 기대 계약(A3-4). 평가 역할 항목의 동결 요청에 출력 프로필(copy-pack-v2)이 있으면 contract_json이 그 계약으로 원문을 읽어 v1 원문을 fail로 본다. 프로필 없는 항목의 판정은 같다.
+export const GRADERS_VERSION='failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-measure+local-rerun+contract-read+channel-decision+copy-pack+voice-avoid+expected-contract';
 export const GRADERS:Grader[]=[questionOnly,thinSection,contractJson,headingNesting,internalIdExposure,briefProhibitionConflict,factConflict,unconfirmedValueAssertion,unsupportedClaimTerm,industryMetricLeak,revisitCohortDefinition,localChannelCoverage,inputBudget,copyPackVariants,brandVoiceAvoidTerm];
 export const CONTENT_GRADERS=GRADERS.filter(g=>g.content).map(g=>g.id);
 // 채점기 확장 G3: 회의 단계(합의·개선본·재검토)·브리프 채점기와 원장 구역 규칙. 적용 kind 밖이면 not_applicable이라 역할·발언 채점 결과를 바꾸지 않는다.

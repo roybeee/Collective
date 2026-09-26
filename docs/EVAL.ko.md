@@ -66,7 +66,7 @@
 
 결론: 원 JSON(`raw`) 채점은 사람이 보는 정규화 렌더본을 채점하고, 정규화가 가릴 수 있는 두 결함은 정규화 전 판정을 따로 남긴다. 정규화로 가린 결함은 예방된 것이 아니기 때문이다.
 
-- 채점 버전: `GRADERS_VERSION='failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-measure+local-rerun+contract-read+channel-decision+copy-pack+voice-avoid'`(`lib/graders/index.ts`). `+meeting-normalized`는 회의 단계를 운영 정규화본으로 채점하고 원문 경로 노출을 `prevention`으로 둔다(아래 `prevention`). `+r3-measure`은 R3 기준선 실측 오탐 세 가지를 고쳤다. 인용 조사 '(이)라고'는 절 경계가 아니다('‘무료 자사 채널’이라고 단정하지 않는다'). 확정·확인 뒤로 미룬 승인·결정은 보류다('구매·혜택 유도 표현은 … 확정된 뒤 별도 승인합니다'. '확정된 뒤 바로 씁니다'는 사용). 대상 앞 금지·거절 수식은 금지 대상 표시다('금지된 “당일 전량 소진” 표현이 … 포함됨'). 다음도 주장 사용이 아니다.
+- 채점 버전: `GRADERS_VERSION='failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-measure+local-rerun+contract-read+channel-decision+copy-pack+voice-avoid+expected-contract'`(`lib/graders/index.ts`). `+meeting-normalized`는 회의 단계를 운영 정규화본으로 채점하고 원문 경로 노출을 `prevention`으로 둔다(아래 `prevention`). `+r3-measure`은 R3 기준선 실측 오탐 세 가지를 고쳤다. 인용 조사 '(이)라고'는 절 경계가 아니다('‘무료 자사 채널’이라고 단정하지 않는다'). 확정·확인 뒤로 미룬 승인·결정은 보류다('구매·혜택 유도 표현은 … 확정된 뒤 별도 승인합니다'. '확정된 뒤 바로 씁니다'는 사용). 대상 앞 금지·거절 수식은 금지 대상 표시다('금지된 “당일 전량 소진” 표현이 … 포함됨'). 다음도 주장 사용이 아니다.
   - 따옴표 안이 주의·금지 규칙 이름인 경우('‘할인 마감 문구 주의’ 버전 1').
   - '무료 여부'·'무료인가요'.
   - 대상이 주제어인 절의 '확정 사실이 아니다·확정 사실 목록에 없다·확인되지 않았다'.
@@ -84,10 +84,15 @@
 - `+copy-pack`은 카피 팩 v2(A3-1, [카피 팩](COPY-PACK.ko.md))를 채점한다.
   - 원 JSON 채점은 원문의 `contractVersion`으로 계약을 고른다(`rawOutputContract`). `role-output-v2`면 운영과 같이 팩 렌더본(채널별 카피 안·장면표·실험)을 계약 섹션 앞에 넣고 렌더한다. `contract_json`도 같은 계약으로 읽는다.
   - `copy_pack_variants`를 14번째 채점기로 더했다. v1 원문은 계약·렌더본이 그대로라 기존 13종 판정이 같고 새 채점기는 `not_applicable`이다.
-  - 한계: 평가 항목은 요청한 계약을 모른다. v2로 요청했는데 모델이 v1로 답하면 운영은 계약 버전 불일치로 거부하지만 채점기는 v1 원문으로 채점한다(`contract_json` pass, `copy_pack_variants` not_applicable). A3-4 골든 v2 케이스에서 기대 계약을 케이스에 둔다.
+  - 한계(A3-1 당시): 평가 항목은 요청한 계약을 몰랐다. v2로 요청했는데 모델이 v1로 답하면 운영은 거부하지만 채점기는 v1 원문으로 채점했다. `+expected-contract`(A3-4)가 고쳤다.
 - `+voice-avoid`는 브랜드 말투(A3-2, [카피 팩](COPY-PACK.ko.md) A3-2 절)를 채점한다.
   - `brand_voice_avoid_term`을 15번째 채점기로 더했다. 평가 역할 채점은 동결 요청의 `brandVoice`(content·creative 역할일 때만)에서 피할 표현을 읽어 채점 맥락(`GradeContext.brandVoice`)에 넣는다(`lib/eval-kinds.ts` `gradeRole`). 말투가 없는 케이스는 맥락이 그대로라 기존 14종 판정이 같고 새 채점기는 `not_applicable`이다.
   - 한계: 운영 온라인 채점(`lib/online-grading.ts`)은 말투 입력을 모르므로 늘 `not_applicable`이다. 운영 작업물의 피할 표현은 평가 run으로 본다.
+- `+expected-contract`는 기대 계약(A3-4, [카피 팩](COPY-PACK.ko.md) A3-4 절)이다.
+  - 평가 역할 채점은 동결 요청의 `outputProfile`(`copy-pack-v2`)을 채점 맥락(`GradeContext.outputProfile`)에 넣는다(`lib/eval-kinds.ts` `gradeRole`, 브랜드 말투와 같은 방식).
+  - `contract_json`은 맥락에 프로필이 있으면 원문 버전과 무관하게 그 계약(`role-output-v2`)으로 원문을 읽는다. 운영 poll이 저장 계약으로 읽는 것과 같다. 그래서 v2로 요청했는데 v1로 답한 원문은 운영과 같은 '담당 또는 산출물 계약 버전이 일치하지 않습니다'로 fail이다. v2 원문은 이전과 같다.
+  - 프로필이 없는 케이스는 맥락이 그대로라 판정이 같다. 콘텐츠 밖 역할은 계약이 프로필을 무시하므로(v1) 판정이 같다. `copy_pack_variants`는 바꾸지 않았다(v1 원문은 계속 `not_applicable`, 판정 위치는 `contract_json` 한 곳).
+  - 한계: 운영 온라인 채점은 동결 요청이 없어 이 판정을 하지 않는다. 운영의 v1 답은 이미 `invalid_output`으로 거부된다.
 - `+contract-read`는 운영 계약 읽기(`lib/role-output.ts`)를 고쳐 렌더본이 바뀐다(R3 기준선 계약 형식 실패 2건 실측).
   - 완결된 JSON 뒤의 여분 닫는 괄호('…}]}}')는 끝의 '}'·']'를 최대 8자까지 떼고 읽는다. `contract_json`은 원문을 그대로 읽어(`strictContractJson`) 계속 fail로 센다.
   - 재질문 판정의 '없다'는 작업·요청·과업이 바로 주어일 때만 본다('요청하신 작업이 없습니다'). '… 과업이 확인되지 않은 상태에서 … 단정할 수 없습니다'는 재질문이 아니다.
@@ -493,7 +498,8 @@ run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
   - 브리프: `executeBrief` start(운영 입력 검사)로 만든 초안을 `briefSources`→`briefRequestFor`→`freezeBriefRequest`로 동결한다. 기준일은 스펙 시각의 날짜다.
   - 앞선 작업물은 체인 실행이 아니라 스펙의 고정 합성본이다(상류 변화가 섞이지 않고 결함을 심을 수 있다). `padTo`로 본문을 늘려 발췌 잘림 분기를 지난다.
 - 스펙 거부(생성기가 멈춘다):
-  - 스키마·id: `schema` 1, 스펙·레코드 id는 `syn-` 접두사, 허용 레코드 종류(`brand`·`campaign`·`brand_fact`·`brand_source`·`campaign_directive`·`artifact`·`learning_rule`·`store`·`team_meeting`·`role_output_failure`·`metric`).
+  - 스키마·id: `schema` 1, 스펙·레코드 id는 `syn-` 접두사, 허용 레코드 종류(`brand`·`campaign`·`brand_fact`·`brand_source`·`campaign_directive`·`artifact`·`learning_rule`·`store`·`team_meeting`·`role_output_failure`·`metric`·`brand_voice`·`feature_flag`).
+  - 기능 스위치(A3-4): `feature_flag` 레코드는 id가 스위치 이름이라 `syn-` 예외다. 요청 조립을 바꾸는 `a3_copy_pack`·`a3_brand_voice`만 허용하고 data는 `{flag:id, enabled:true|false}`여야 한다. 켜면 모의 DB에서 운영과 같은 `roleRequestFor`가 콘텐츠 요청에 `outputProfile`을, 확정 `brand_voice` 레코드가 있으면 `brandVoice`를 넣어 동결한다.
   - 개인정보 패턴: 스펙의 모든 문자열을 `lib/pii-scan.ts`로 검사한다. 확정 사실 값과 지점 허용 값(주소·사업장 유선 번호)만 허용한다. 걸리면 경로만 알리고 값은 출력하지 않는다.
   - 금지 표현 출처: `expectations.prohibitedTerms`(1~5개)는 입력(브랜드·캠페인 제약, 상시 지시, 회의 안건, 브리프 제약)에 글자 그대로 있어야 한다.
   - 분기 체크리스트(설계 2-9, 합성 캠페인이 운영보다 깨끗하면 품질이 부풀려진다): 생성된 역할 요청에서 `revisionRequest`·`reviewNote`·`previousDecisions`·`operatorPreferences`·`storeAllow`·caution 학습 규칙·사람 수정본(`ai_edited`)·발췌 잘림이 모두 확인돼야 한다. 스펙의 자기 신고를 믿지 않고 요청을 본다.
@@ -507,6 +513,7 @@ run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
   - `syn-s6-locker.json`(역 앞 무인 물품보관함 주말 이용, locker, 점포 목표).
   - `syn-s7-franchise.json`(무인 분식 자판기 가맹 상담 리드, B2B, fnb).
   - `syn-s8-pilates.json`(동네 필라테스 체험 수업 예약, education, 점포 목표).
+  - 골든 v2(A3-4): `syn-s9-fnb-insta.json`(동네 국밥집 점심, fnb, Instagram 피드)·`syn-s9-edu-reels.json`(동네 수학학원 설명회, education, Instagram 릴스). 콘텐츠 역할 1케이스씩이고 `a3_copy_pack`·`a3_brand_voice` 스위치와 확정 `brand_voice` 레코드가 있어 동결 요청에 `outputProfile`·`brandVoice`가 들어간다. 아직 운영에 가져오지 않았다(게시 뒤, [카피 팩](COPY-PACK.ko.md) A3-4 절).
   - 셋 다 역할 8케이스다. 2026-09-25 운영 트리 `449a677`에서 생성해 운영에 가져왔다(real). 봉인 업종(beauty·popup·retail)을 피했다. 수정 요청·운영자 선호·사람 수정본·발췌 잘림 분기를 캠페인마다 다른 역할에 둔다. 상류 작업물에는 운영처럼 결함을 심었다(금지 표현이 든 카피 초안, 거절 사실 사용, 관찰 기간 없는 전환율 정의, 확인 안 된 칸 수로 잡은 목표).
 
   `tests/eval-synthesize.test.mjs`가 저장소의 모든 스펙이 지금 코드로 생성되고 체크리스트 8종을 채우는지 본다(스펙이 코드 변경으로 썩지 않게).
