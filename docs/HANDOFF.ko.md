@@ -1,5 +1,13 @@
 # 공동작업 인계 (Claude ↔ ChatGPT/Codex)
 
+## 운영 API 복구 결과 (2026-09-26 02:22 UTC)
+
+- PR #127 merged, Sites 버전 37 published, `d721017` tree `4f3b130…` runtime-verified. 품질 콘솔의 운영 상태 조회가 실제 API 호출에 성공했다.
+- S8 두 run 재채점 passed(완료 출력 각 1건, 실패 0, 추가 모델 토큰 0). `channel.offline@2cbe193eacdc` 등록 성공.
+- 쌍 평가 `8fcd3726-b09f-464c-b111-d1d9e20c63fc`는 완료 출력 0/4, 사용 0 토큰으로 끝나 게이트 failed. stage/promote not_run. 실패 사유를 원문 대신 정해진 분류·건수로 운영 화면에 추가한다.
+- [게시·실행 근거](releases/2026-09-26-d721017.md). 봉인 요청·출력 원문은 열지 않았다.
+
+
 ## 운영 관리 화면 복구 (2026-09-26)
 
 - A1 PR #120은 `aefd4219aa335425243e41372c8ba8efa3009ee7`로 merged. CI passed, D1 이름 대조 passed. 운영 등록·쌍 평가·stage는 아직 not_run.
@@ -24,9 +32,9 @@
 
 ## 기준
 - 저장소: `roybeee/Collective`, 브랜치 `main`
-- 기준 SHA: `16981dd`(#119, 문서만. 제품 코드는 `b0ef304` #118과 같다). 운영은 `8c22f0e`(tree `02260ba`, Sites 버전 35, `published`, `/api/version` 확인 전)이다. 묶음 13 `b0ef304` 게시는 대표 결정으로 보류 중이다(자동 게시 2차 실행이 결과를 내지 않음, [게시 절차 8절](PUBLISH.ko.md#8-자동-게시-chatgpt-예약-작업)). 재개는 `docs/publish/b0ef304.md`.
+- 기준 SHA: `aa49e6b`(#121 A3-1). 운영은 `d721017`(tree `4f3b130`, Sites 버전 37, Codex 세션 게시, `runtime-verified` 02:22 UTC 경)이고 묶음 13 `b16403d`(버전 36, 자동 게시)를 포함한다. A3-2·A3-3a·A3-4(#122·#123·#125)는 쌓인 base 브랜치로 병합돼 main에 없다(A3 세션 확인 필요).
 - 작성자/도구: Claude Code(트랙 R 세션)
-- 작성 시각: 2026-09-26 01:17 UTC
+- 작성 시각: 2026-09-26 02:40 UTC
 - 이 문서를 바꾸는 사람은 기준 SHA와 작성 시각을 같이 고친다.
 
 ## 먼저 읽을 것
@@ -49,7 +57,7 @@
   - 시작할 때 STATUS의 진행 중 작업에 한 줄을 적는다(브랜치 이름, 도구, 목표).
   - 같은 파일을 두 도구가 동시에 고치지 않는다. 파일 소유자는 1명이다.
 - 자주 충돌하는 줄이 있다. `lib/graders/index.ts`의 `GRADERS_VERSION`, `lib/graders/compliance-lexicon.ts`의 사전 버전, `docs/STATUS.md`다. 먼저 병합된 PR이 이기고, 뒤 PR은 `origin/main` 위로 다시 올려 버전을 이어 붙인다.
-- 게시 SHA는 한 번에 한 도구만 고른다. 게시 지시문이 나가 있거나 `sites-publish` 라벨 PR이 열려 있는 동안에는 다른 도구가 새 게시를 요청하지 않는다(지금: 묶음 13 `b0ef304`, 트랙 R 세션이 골랐고 보류 중).
+- 게시 SHA는 한 번에 한 도구만 고른다. 게시 지시문이 나가 있거나 `sites-publish` 라벨 PR이 열려 있는 동안에는 다른 도구가 새 게시를 요청하지 않는다(지금: 없음. 버전 36 `b16403d`는 트랙 R 세션 자동 게시, 버전 37 `d721017`은 Codex 세션이 버전 36 성공을 확인한 뒤 게시했다).
 - 브라우저: 소유자 세션 Chrome 탭을 두 도구가 같이 쓰면 요청이 막힌다(2026-09-25 `ERR_BLOCKED_BY_CLIENT`). 도구마다 새 탭을 연다.
 
 ## 검증 명령 (`pnpm run` 금지, node로 직접)
@@ -106,7 +114,7 @@ node --experimental-vm-modules tests/<이름>.test.mjs   # 스위트 하나
 3. A/A 10건: 10월 한도, 약 0.22M. J4 임계값의 잡음 바닥이다.
 4. R5 채택 판정(토큰 0) → J4 게이트 PR(품질 계획 v2 마지막 PR).
 5. 게시 뒤 24~72시간 동안 `invalid_output` 비율, 5xx, Workers CPU를 본다. #112가 거절을 줄여야 한다.
-6. 트랙 R: R3a(캠페인 가맹 모집 목적, 트랙 R 브랜치 PR) 병합 뒤 R3b(새 채널 단위 6개)는 A1 PR(#120)이 병합된 뒤 시작한다(채널 단위 검사 파일 공유). R3c(업종 채점 `franchise`·`GRADERS_VERSION`)는 운영 D1의 합성 S7 케이스 기대 업종 갱신(대표 승인)이 먼저다. 다음 개발은 대표 결정 대기다. 권장은 A1 로컬 채널 스킬 팩 → A3 카피 팩 v2다. 트랙 R은 법률 검토(R-0)가 병목이다.
+6. 트랙 R: R3a(캠페인 가맹 모집 목적) `merged`(#124, `b16403d`). R3b(새 채널 단위 6개)는 A1 PR(#120)이 `merged`(aefd421)돼 시작할 수 있다(채널 단위 검사 파일 공유). R15a는 공유 파일 `lib/record-kinds.ts`를 #122·#123이 고치고 있어, 순수 모듈 R15a-1(`lib/franchise-assets.ts`)을 먼저 하고 기록·API·화면 R15a-2는 그 PR들 뒤에 한다. R3c(업종 채점 `franchise`·`GRADERS_VERSION`)는 운영 D1의 합성 S7 케이스 기대 업종 갱신(대표 승인)이 먼저이고, A3-1·A3-2(#121·#122)를 R3보다 먼저 병합한다는 #121의 위임 결정 1에 따라 그 뒤에 한다(R3a는 `GRADERS_VERSION`·사유 매핑을 건드리지 않았다). R3a 테스트의 스위치 검사는 `r_franchise`만 막는다(A3-1이 실행 경로에서 `a3_copy_pack`을 읽어도 된다). 트랙 R은 법률 검토(R-0)가 병목이다.
 
 ## 남은 위험
 - 모델 원문에 입력 필드 이름(`evidence.directives` 등)이 섞이는 예방 판정 fail이 R3 역할 3건에 있다. 화면에서는 정규화로 가려진다. 지시문에 금지 규칙이 이미 있어 비율만 추적한다.
