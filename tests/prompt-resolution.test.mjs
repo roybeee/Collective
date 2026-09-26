@@ -41,6 +41,8 @@ check('code run writes no campaign pin',()=>assert.equal(sql.prepare("SELECT COU
 
 // 2) 모든 단위를 API로 등록(코드 기본값과 같은 본문)하고 포인터를 직접 설정한다.
 raw.publishRepo(SOURCE_SHA);raw.publishRepo('main');
+// A1 정본은 새 후보다. 이 절의 '코드와 같은 본문' 대조는 실제 코드 폴백을 명시적으로 등록한다.
+for(const ref of [SOURCE_SHA,'main'])raw.publish(ref,'channel.offline',units.codeUnitBody('channel.offline'));
 const ids={};
 for(const u of units.promptUnits){const r=await post({action:'register',unit:u.unit,sourceSha:SOURCE_SHA});ids[u.unit]=r.body.version?.id;await setRelease(server,owner,u.unit,ids[u.unit])}
 check('all 16 units registered',()=>assert.equal(Object.values(ids).filter(Boolean).length,16));
@@ -104,6 +106,25 @@ check('a meeting on a new campaign puts the registry role body in the step instr
 check('a meeting on a new campaign puts the registry channel body in the step input',()=>assert.ok(JSON.parse(insightStep.input).channelPractice.includes(youtubeBody)));
 const m2=await server.readRecord(owner,'team_meeting','pr-meeting-2');
 check('the new meeting step records the new role and channel versions',()=>assert.ok(m2.steps.find(s=>s.role==='insight'&&s.phase==='discussion').promptVersion===[insightV2,youtubeV2,ids['channel.community'],ids['channel.commerce']].join('+')));
+
+// A1 후보는 등록만으로 운영을 바꾸지 않는다. 포인터 변경 뒤 새 캠페인에만 채널 본문이 들어간다.
+const offlineCandidate=raw.repoBody('channel.offline'),A1_SHA='a1'.repeat(20);
+raw.publish(A1_SHA,'channel.offline',offlineCandidate);raw.publish('main','channel.offline',offlineCandidate);
+const a1Registration=await post({action:'register',unit:'channel.offline',sourceSha:A1_SHA});
+check('the canonical A1 candidate registers through the existing validator',()=>assert.equal(a1Registration.status,200));
+const beforeA1={...roleCampaign,id:'pr-offline-before'};await put('campaign',beforeA1.id,beforeA1);
+const beforeA1Run=await runRole(execution,server,owner,beforeA1,'cmo');
+check('registering the candidate without activation keeps the old channel input',()=>assert.equal(JSON.parse(beforeA1Run.input).channelPractice,JSON.parse(code.input).channelPractice));
+const beforeA1Pin=await pinOf(beforeA1);
+check('the pre-activation campaign pins the old offline version',()=>assert.equal(beforeA1Pin.units['channel.offline'],ids['channel.offline']));
+await setRelease(server,owner,'channel.offline',a1Registration.body.version.id,{previous:ids['channel.offline']});
+const afterA1={...roleCampaign,id:'pr-offline-after'};await put('campaign',afterA1.id,afterA1);
+const afterA1Run=await runRole(execution,server,owner,afterA1,'cmo');
+check('a newly resolved campaign receives the activated offline candidate',()=>assert.ok(JSON.parse(afterA1Run.input).channelPractice.includes(offlineCandidate)));
+check('offline activation keeps code-owned role instructions unchanged',()=>assert.equal(afterA1Run.instructions,code.instructions));
+const a1Registry=await load('lib/prompt-registry.ts');
+const keptA1=await a1Registry.resolveCampaignPrompts(owner,beforeA1);
+check('activation does not rewrite an existing campaign pin',()=>assert.equal(keptA1.units['channel.offline'],ids['channel.offline']));
 
 // 6) 지정 캠페인(stagedCampaignIds): 목록에 없는 캠페인과 캠페인 없는 학습에는 적용하지 않는다.
 const registry=await load('lib/prompt-registry.ts');

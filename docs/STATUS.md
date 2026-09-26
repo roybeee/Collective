@@ -1,6 +1,16 @@
 # COLLECTIVE 현재 상태
 
-마지막 갱신: 2026-09-26 01:43 UTC (Claude A3 세션: #124 R3a 병합 반영, A3-1 카피 팩 v2 계약·채점기, 게시 보류 중)
+## Codex A1 작업 재개 (2026-09-26 01:52 UTC)
+
+- 원격 main `b16403df6ded5e67794f3d05e0939c9d22697620`을 PR #120(`feat/a1-local-channel-pack`)에 통합했다. 기존 트랙 R 변경과 게시 보류 이력은 보존한다.
+- GitHub 쓰기 403은 허용 저장소 설정 변경 후 복구됐고, PR #120이 생성됐다. 후보 단위는 `channel.offline`이며 코드 폴백은 유지된다.
+- 이전 후보 커밋 `2900d3e`: 전체 128/128 스위트·8,986 assertions, typecheck·lint gate·build passed. 통합 후 검증 결과는 PR 본문에 별도로 기록한다.
+- 이번 재개에서도 운영 OWNER 로그인을 확인했지만 `/api/version` 직접 탐색은 `net::ERR_BLOCKED_BY_CLIENT`였다. 로그인 성공과 운영 API 실행 성공을 구분한다.
+- Sites API 재조회: active, 버전 35. 새 게시·S8 재채점·후보 등록·쌍 평가·활성화는 not_run이다. 봉인 입력·출력은 열지 않았다.
+- D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
+
+
+마지막 갱신: 2026-09-26 02:05 UTC (Claude A3 세션: #120 A1 병합 반영, A3-1 카피 팩 v2 계약·채점기, 게시 보류 중)
 
 ## 현재 운영 상태
 

@@ -20,5 +20,9 @@ check('a Naver Place booking campaign gets the local channel decision for visit 
 check('a campaign linked to a store gets the local channel decision',()=>assert.ok(decisionOf({goal:'정규 등록을 늘린다.',products:'8회권',stores:'',channels:'Instagram',storeId:'store-1'}).includes('카카오')));
 check('Naver Place written without a space still counts',()=>assert.ok(practice.channelSkillIds({goal:'등록을 늘린다.',products:'',stores:'',channels:'네이버플레이스'}).includes('offline')));
 check('a marketplace campaign does not get the local channel decision',()=>assert.ok(!practice.campaignPractice({goal:'온라인 구매 전환을 늘린다.',products:'음반',stores:'',channels:'쿠팡 마켓플레이스, 자사몰'}).includes('당근')));
-check('the registry source file matches the code constant',()=>{const file=JSON.parse(readFileSync('prompts/channel.offline.json','utf8'));assert.equal(file.body,practice.channelSkills.find(s=>s.id==='offline').body)});
+// A1은 레지스트리 후보만 확장한다. 기존 코드 폴백·적용 범위는 그대로 검사한다.
+const candidate=JSON.parse(readFileSync('prompts/channel.offline.json','utf8')).body;
+check('the candidate retains the original local-channel decision',()=>assert.ok(candidate.startsWith(practice.channelSkills.find(s=>s.id==='offline').body)));
+check('the candidate is used for local and booking campaigns when supplied by the registry',()=>{for(const c of [local,booking])assert.ok(practice.campaignPractice(c,{offline:candidate}).includes(candidate))});
+check('supplying the candidate does not add offline practice to an online campaign',()=>assert.ok(!practice.campaignPractice(online,{offline:candidate}).includes(candidate)));
 console.log(JSON.stringify({passed:passed.length}));
