@@ -250,6 +250,27 @@
 5. 종료 조건(두 케이스 모두): `contract_json` pass(v2 원문), `copy_pack_variants` pass, `brand_voice_avoid_term` pass, 출력이 잘리지 않음(출력 토큰이 콘텐츠 `maxTokens` 10,000 미만). 결과는 `docs/releases/` 또는 이 절에 run id와 함께 적는다.
 6. 출력 토큰이 상한에 닿으면 `lib/role-execution.ts`에서 v2일 때만 상한을 올리는 PR을 따로 낸다(A3-1 남은 위험).
 
+### A3 종료 조건 run 기록 (3회)
+
+결론: 세 번 모두 **failed · real**이다. 실패는 모두 긴 v2 원문 끝부분의 구조 결함이었다. 대표 결정(2026-09-27, 선택지 답 "괄호 1개 보정 + 순서 되돌림")으로 운영 읽기와 채점이 최상위 `}` 1개 누락을 채워 읽고, #154의 스키마 순서 변경은 되돌렸다.
+
+비유: 편지는 다 썼는데 봉투 마지막 풀칠 한 번만 빠진 경우다. 내용이 다 있으니 우체국이 풀칠만 해 주기로 했다. 봉투 안의 속지까지 빠졌거나 편지가 문장 중간에 끊긴 경우는 계속 돌려보낸다.
+
+| run | 케이스 결과 | 원인 | 대응 |
+|---|---|---|---|
+| `a3634055` (2026-09-27 02:00 KST, 32,566토큰) | 국밥 Instagram 12/0 pass. 수학학원 릴스 `contract_json` fail | 원문이 최상위 객체의 마지막 `}` 하나만 빠진 채 끝났다. 내용은 완전했다(2채널×3안, 장면 4, 실험 2) | #148: 팩 규칙에 괄호 닫기 문장 |
+| `a81bb445` (2026-09-27 03:30 KST, 32,049토큰, 운영 버전 41) | 두 케이스 `contract_json` pass. 국밥 12/0 pass. 수학학원 `copy_pack_variants` fail | 실험 객체를 channels 배열에 넣고 shortform·experiments를 빠뜨렸다(끝부분 구조 붕괴) | #154: 스키마 순서를 shortform → experiments → channels로, 규칙에 'channels에는 채널 객체만' |
+| `b152f1fb` (#154 반영 뒤) | 국밥 새로 fail. 수학학원 다시 fail | 국밥: 실험 channel `Instagram 숏폼`이 팩 channels에 없다(순서 변경이 만든 퇴행). 수학학원: 다시 마지막 `}` 하나 누락 | 이번 결정(아래) |
+
+이번 결정(대표 2026-09-27):
+
+1. #154의 스키마 순서 변경을 되돌린다. `copyPackSchema`는 #154 이전과 같은 순서(`version → channels → shortform → experiments`)다. 규칙 문장은 순서 언급만 빼고 "channels 배열에는 채널 객체만 넣습니다(실험은 experiments에만)."를 남긴다. #148 괄호 닫기 규칙도 남긴다.
+2. 최상위 `}` **딱 1개만** 빠진 원문은 채워서 읽는다(`lib/role-output.ts` `contractJson`, #112 '잘린 JSON 거절' 방침 변경). 문자열 밖 괄호를 셌을 때 열린 것이 최상위 `{` 하나뿐이고 끝이 문자열 안이 아닐 때만이다. 안쪽 괄호가 열린 채 끝남, 문자열 중간에서 끝남, 뒤에 글이 붙음은 계속 거절한다. 운영 poll은 공급자 상태가 `completed`인 응답만 읽으므로 출력 한도로 끊긴 `incomplete` 응답에는 이 보정이 닿지 않는다.
+3. 채점 `contract_json`도 같은 기준이다(`+root-brace`, [평가](EVAL.ko.md)). 끝 여분 괄호는 운영만 떼고 읽고 채점은 계속 fail로 센다.
+
+- 스위치 `a3_copy_pack`이 꺼져 있으면 v1 제출은 바이트 동일하다(팩 스키마·규칙은 v2 지시에만 붙는다).
+- 다음: 게시 뒤 같은 두 케이스로 4회째 run. 이번 결정이 수학학원 `}` 누락을 흡수하는지, 순서 되돌림 뒤 국밥 실험 channel이 다시 팩 channels 안에 드는지 본다.
+
 ### 남은 위험
 
 - 평가 케이스 `capturedWith.outputContractVersion`은 여전히 코드 상수 `role-output-v1`이다(`lib/eval-server.ts`, 이 PR 범위 밖 파일). v2 케이스는 동결 요청의 `outputProfile`로 구분한다.

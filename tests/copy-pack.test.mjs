@@ -191,8 +191,10 @@ check('the v2 instruction adds the pack schema only for the content copy pack pr
 assert.ok(/최상위 객체/.test(pack.copyPackInstruction)&&/닫/.test(pack.copyPackInstruction),'closing rule');
 assert.ok(pack.copyPackInstruction.indexOf('최상위 객체')<pack.copyPackInstruction.indexOf(' 시스템이 팩을 output_1'),'closing rule precedes the section note so meeting rules keep it');
 // A3 종료 조건 재실행(2026-09-27, run a81bb445) 실측: 수학학원 릴스 원문이 실험 객체를 channels 배열에 넣고 shortform·experiments를 빠뜨렸다(끝부분 구조 붕괴).
-// 짧은 구조(shortform·experiments)를 먼저, 반복이 많은 channels를 마지막에 쓰게 하고, channels에는 채널 객체만 넣으라고 명시한다.
-{const sc=pack.copyPackSchema;assert.ok(sc.indexOf('shortform:')<sc.indexOf('experiments:')&&sc.indexOf('experiments:')<sc.indexOf('channels:'),'schema order: shortform, experiments, channels');}
+// channels에는 채널 객체만 넣으라고 명시한다. #154가 바꾼 스키마 순서(shortform → experiments → channels)는 run b152f1fb에서 국밥 실험 channel 퇴행을 만들어
+// 대표 결정(2026-09-27 '괄호 1개 보정 + 순서 되돌림')으로 #154 이전 순서(version → channels → shortform → experiments)로 되돌렸고, 규칙 문장에도 순서 언급을 두지 않는다.
+{const sc=pack.copyPackSchema,at=k=>sc.indexOf(k+':');assert.ok(at('version')<at('channels')&&at('channels')<at('shortform')&&at('shortform')<at('experiments'),'schema order: version, channels, shortform, experiments');
+ assert.ok(!/순서로 쓰고/.test(pack.copyPackInstruction),'no key-order sentence');}
 assert.ok(/channels 배열에는 채널 객체만/.test(pack.copyPackInstruction)&&pack.copyPackInstruction.indexOf('channels 배열에는 채널 객체만')<pack.copyPackInstruction.indexOf(' 시스템이 팩을 output_1'),'channels-only rule precedes the section note');
 {const experiment={title:'질문 시간 메시지 비교',channel:'Instagram 릴스',hypothesis:'가설',variable:'첫 문장',control:'A',treatment:'B',fixed:'15초',metric:'click_rate'};
  const variants=['A','B','C'].map((id,i)=>({id,angle:'각도 '+i,hook:'서로 다른 훅 '+i,body:'서로 다른 본문 '+i,cta:'신청하기'}));
