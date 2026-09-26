@@ -715,6 +715,81 @@ check('15k: consumer scope keeps its gate for the near twins (a misstatement blo
 // 같은 절 주의 끝 앞의 '계약하시고'(독자에게 권하는 말)는 압박이다: '피하세요'로 끝나도 주의 문장이 아니다(15k에서 '피하는 게 좋아요'를 주의 끝에 더하며 함께 막음).
 check('15k: a solicitation joined before a caution ending is not a caution, a quoted solicitation is',onWaitRules('정공서 받자마자 계약하시고 기다리라는 곳은 피하세요.')&&!judge('정공서 받자마자 계약하라는 곳은 피하세요.').issues.some(i=>i.ruleId===W8));
 
+// ════ 15l) 15k 면제가 놓친 적중 복구(2026-09-26, 합성) ════
+// e834e9d(15k) 검증에서 1393089는 해제 불가로 막았는데 15k 뒤 아무 이슈도 없던 나쁜 문장(R15L_LOST, 잃은 적중). 원인은 15k가 더한 면제 넷이다.
+// 1) '…는 것은 불가능·안 됩니다'(WAIT_IMPOSSIBLE_END)가 본사 연계 자문 규칙에도 걸려 '본사 지정 가맹거래사 말고 다른 전문가에게 자문받는 것은 불가능합니다'를 뺐고,
+//    대기기간 규칙에서는 '것'이 가리키는 행위를 보지 않아 '당일 계약하시면 드리는 할인을 나중에 받는 것은 불가능합니다'를 뺐다. 절이 물음표·쉼표에서 끊겨 '…불가능합니다? 저희는 가능합니다'도 뺐다.
+// 2) '협의' 뒤 25자 빈 창(NEGOTIATE_DENIED)이 '협의 가능하지만 7일 미만으로 줄일 수는 없습니다'(협의로 줄일 수 있다는 말)를 뺐다.
+// 3) 'X가 아닌 독립 자문자' 뒤 25자 창(NOT_HQ_ADVISOR)이 '… 받으시면 2주 기다리셔야 하니 참고하세요'(독립 자문자 깎아내림)를 뺐다.
+// 4) 주의 끝 '피하는 게 좋아요'가 '본사 제휴 가맹거래사 말고 다른 곳에서 자문받는 건 피하는 게 좋습니다'와 '…피하는 게 좋아요, 저희는 3일이면 됩니다'를 뺐다.
+// 고친 뒤: 불가 끝은 대기기간 규칙에만, 계약·서명·가맹금 수령 행위를 가리킬 때만(가계약·선점·예약금 같은 우회 낱말 제외), 문장 끝일 때만(물음표·쉼표 뒤 절이 없을 때) 뺀다.
+// 협의는 이음말 화이트리스트('협의로·협의해도·협의하더라도', '늘릴 수는 있어도')만, 독립 자문자는 '…에게 자문·검토·상담을 받으세요·구하세요'로 끝날 때만 뺀다.
+// 새 주의 끝은 따온 권유('…라는 곳은')를 피하라고 할 때만, 문장 끝일 때만 뺀다. 그 권유가 돈을 걸지 않고·없이 계약하라는 말이거나(대기기간 규칙) 본사 자문자 말고 다른·안 쓰는·거치지 않고(본사 연계 자문 규칙)면 빼지 않는다.
+// 판정기 clauseOf는 절을 끊은 경계(쉼표·물음표 등)를 절 뒤에 붙여 돌려준다. 1393089까지의 면제 끝은 그 경계를 받아 결과가 같다(R15L_OK의 쉼표·물음표 뒤 문장).
+// 알려진 오탐(1393089에서도 막힘, 이번 범위 밖, R15L_KNOWN_FP): 끝 '그 자리를 떠나세요', '같은 말은 믿지 마세요', '위반 소지가 있습니다', '안내는 사실과 다릅니다',
+// '아니요'로 시작하지 않는 부정 답(판정기 DENIAL), 독립 자문을 권하는 답. 알려진 틈(1393089에서도 통과): '…라는 곳은 피하세요, 저희는 3일이면 됩니다'(옛 주의 끝 뒤 쉼표 대비),
+// '본사 제휴 가맹거래사 말고 다른 곳에서 자문받는 건 피하세요'·'…안 쓰는 곳은 피하세요'(옛 주의 끝 '피하세요'의 본사 연계 자문), '가계약금을 걸지 않고 계약하라는 곳은 피하세요'.
+// 다시 막는 바른 문장(R15L_REBLOCKED, 1393089에서 막혔고 e834e9d에서 통과, 이번에 1393089처럼 막음): 계약 행위를 피하라는 새 주의 끝('계약하는 건 피하는 게 좋아요')은 '가계약금을 걸지 않고 계약하는 건 …'을,
+// 쉼표 뒤 절이 있는 불가 끝('…불가능합니다, 법 위반이니까요')은 '…불가능합니다, 저희는 가능합니다'를 함께 빼서 넣지 않았다. 판정기는 쉼표 뒤 절을 절 면제에 넘기지 않는다.
+// 두 문장 대비(R15L_KNOWN_GAPS 뒤 둘: '…불가능합니다. 저희는 가능합니다.')는 첫 문장이 그 자체로 바른 문장이라 절 면제로는 막을 수 없다(다른 문장의 '저희는 가능합니다'를 보는 판정이 필요하다, 이번 범위 밖).
+// 근거: mocked(순수 판정기, 합성 문장, 사실 없음, 외부 호출 0). COLLECTIVE 휴리스틱 · 법률 자문 아님. 패턴 규칙은 끝내 완전하지 않고 마지막 확인은 승인자다.
+const R15L_LOST=[
+ // 1) 불가 끝과 본사 연계 자문.
+ '본사 지정 가맹거래사 말고 다른 전문가에게 자문받는 것은 불가능합니다.','본사 제휴 변호사가 아닌 외부 변호사에게 자문받는 건 안 됩니다.','자문은 본사 지정 가맹거래사에게만 받으실 수 있고 외부 전문가에게 받는 것은 허용되지 않습니다.',
+ '본사 지정 변호사 자문 없이 7일 만에 계약하는 것은 불가능합니다.','본사 추천 가맹거래사를 거치지 않고 계약하는 것은 불가능합니다.','본사 제휴 가맹거래사를 통하지 않고 7일 만에 계약하는 것은 불가능합니다.',
+ '본사 지정 가맹거래사가 아닌 분께 자문받는 것은 불가능합니다.','자문은 본사 지정 변호사만 가능하고 다른 변호사에게 받는 것은 금지돼 있습니다.','본사 추천 가맹거래사 외의 전문가를 쓰는 것은 허용되지 않습니다.',
+ // 1) 불가 끝이 가리키는 행위가 계약·가맹금이 아니다, 물음표·쉼표·세미콜론 뒤 대비.
+ '설명회 당일 계약하시면 드리는 30% 할인을 나중에 받는 것은 불가능합니다.','정보공개서 받은 날 계약하셔야 받을 수 있는 혜택이라 다음에 받는 건 안 됩니다.','설명회 당일 계약하시면 드리는 사은품을 나중에 받는 것은 안 됩니다.',
+ '정보공개서 받고 5일 만에 계약하는 것은 불가능합니다? 저희는 가능합니다.','정보공개서를 받은 당일 계약하는 건 불가능합니다? 저희는 가능합니다.','정보공개서를 받은 당일 계약하는 건 불가능합니다, 저희는 가능합니다.',
+ '정보공개서를 받은 그 자리에서 계약하는 건 안 됩니다, 저희는 됩니다.','정보공개서를 받은 같은 자리에서 계약하는 것은 불가능합니다; 저희만 예외입니다.',
+ // 2) 협의로 정하거나 협의 가능하다고 한 뒤의 줄임 부정, 묻는 끝.
+ '대기기간은 협의로 정하되 7일보다 더 줄일 수는 없습니다.','대기기간은 협의 가능하지만 7일 미만으로 줄일 수는 없습니다.','대기기간은 협의 가능하지만 7일 미만으로 줄일 수는 없습니다','대기기간은 협의 가능합니다만 무조건 줄일 수는 없습니다.',
+ '대기기간은 협의 사항이라 본사가 일방적으로 줄일 수는 없습니다.','숙려기간은 본사와 협의로 3일로 하되 그 이하로 줄일 수는 없어요.','대기기간은 협의 하에 7일까지 가능하고 그보다 줄일 수는 없습니다.',
+ '숙려기간은 협의로 조정되며 임의로 줄일 수는 없습니다.','대기기간은 협의로 줄일 수 없을까요~','대기기간은 협의 가능하며 7일 밑으로 줄일 수는 없습니다.','대기기간은 협의 사항이지만 줄일 수는 없습니다.',
+ // 3) 독립 자문자를 깎아내리는 끝(참고하세요·유의하세요·알아두세요).
+ '본사 지정 변호사가 아닌 직접 고른 변호사에게 받으시면 2주 기다리셔야 하니 참고하세요.','본사 제휴 가맹거래사가 아닌 독립된 전문가에게 받으시면 14일 기다리셔야 하니 참고하세요.',
+ '본사 지정 가맹거래사가 아닌, 직접 고른 가맹거래사는 확인서 발급이 되지 않으니 유의하세요.','본사 지정 가맹거래사가 아닌 직접 고른 가맹거래사는 14일 그대로이니 참고하세요.',
+ '본사 추천 가맹거래사가 아닌 독립된 가맹거래사에게 받으면 대기기간이 그대로니 알아두세요.','본사 지정 가맹거래사가 아닌, 직접 고른 가맹거래사에게 받으시면 비용은 본인 부담이니 참고하세요.',
+ '본사 지정 가맹거래사가 아닌, 직접 고른 전문가에게는 추가 비용이 드니 참고하세요.','본사 추천 가맹거래사가 아닌 독립된 가맹거래사에게 받으시면 비용이 더 드니 참고하세요.',
+ // 4) 새 주의 끝(피하는 게 좋아요)의 본사 연계 자문과 쉼표 뒤 대비.
+ '본사 제휴 가맹거래사 말고 다른 곳에서 자문받는 건 피하는 게 좋습니다.','본사 제휴 가맹거래사를 안 쓰는 곳은 피하는 게 좋아요.','정공서 받자마자 계약하라는 곳은 피하는 게 좋아요, 저희는 3일이면 됩니다.',
+ '본사 제휴 가맹거래사 외에 다른 곳에서 자문받는 건 피하는 게 좋습니다.','본사 지정 가맹거래사 말고 다른 곳에서 자문받으라는 곳은 피하는 게 좋아요.','본사 지정 가맹거래사를 거치지 않고 계약하라는 곳은 피하는 게 좋아요.',
+ // 4) 새 주의 끝 앞의 돈을 걸지 않고·없이 계약(피하라는 것이 돈을 걸라는 말), 불가 끝 앞의 가계약·가계약금.
+ '가계약금을 걸지 않고 계약하는 건 피하는 게 좋아요.','가계약금을 걸지 않고 계약하라는 곳은 피하는 게 좋아요.','자리 선점금 안 내고 계약하는 건 피하는 게 좋아요.','우선협상 보증금을 안 걸고 계약하라는 곳은 피하는 게 좋아요.',
+ '가계약 없이 바로 계약하라는 곳은 피하는 게 좋아요.','설명회 당일 가계약금을 받는 것은 불가능합니다.','정보공개서 받은 당일 가계약하는 것은 안 됩니다.','가계약금을 받는 것은 불가능합니다.',
+];
+// 바른 문장(R15L_OK): 15k가 통과시킨 모양의 변형과 1393089까지의 면제 끝 뒤에 쉼표·물음표·괄호가 오는 문장. 모집·소비자 범위 모두 두 규칙 이슈가 없다.
+const R15L_OK=[
+ '대기기간은 협의를 해도 줄일 수 없습니다.','대기기간은 협의로도 절대 줄일 수 없습니다.','대기기간은 협의로 연장은 가능하지만 단축은 불가합니다.','숙려기간은 협의하셔도 단축할 수 없어요.',
+ '정공서 받자마자 계약하라는 곳은 피하는 게 좋아요!','정보공개서 받은 날 가맹금을 받는 것은 불가능합니다.','본사 지정 가맹거래사만 쓰라는 곳은 피하는 게 좋아요.',
+ '본사 지정 가맹거래사 자문을 안 받으면 계약 못 한다는 곳은 피하는 게 좋아요.','본사 지정 가맹거래사 말고는 안 된다는 곳은 피하는 게 좋아요.',
+ '본사 지정 변호사가 아닌 직접 고른 변호사에게 계약서 검토를 받으세요.','본사 추천 가맹거래사가 아닌, 독립된 전문가에게 상담을 받으시는 게 좋습니다.','본사와 제휴한 가맹거래사가 아닌 본사와 무관한 전문가에게 조언을 구하세요.',
+ '본사 지정 변호사가 아닌, 직접 고른 변호사에게 자문받으시길 권합니다.',
+ '정보공개서 받자마자 계약하는 것은 불가능합니다!','대기 없이 가맹금을 받는 것은 금지돼 있습니다.','정보공개서를 받은 날 도장을 찍는 것은 허용되지 않습니다.','정보공개서를 받은 그 자리에서 계약서에 서명하는 것은 불가능합니다.',
+ '설명회 현장에서 계약하는 것은 절대 불가능합니다.','정공서 받은 같은 자리에서 계약하는 건 법으로 금지돼 있습니다.','설명회 당일 계약하는 것은 불가능합니다.',
+ // 1393089까지의 면제 끝 뒤 쉼표·물음표·느낌표·괄호(판정기가 절 경계를 붙여 돌려줘도 그대로 뺀다).
+ '정공서 받자마자 계약하라는 곳은 피하세요, 신고 대상입니다.','가계약금을 요구하면 거절하세요, 가맹금에 해당합니다.','정보공개서 받자마자 계약하라는 곳은 조심하세요!','정보공개서를 받은 날 바로 계약하면 어떻게 되나요? 법 위반입니다.',
+ '가계약금을 먼저 내라는 곳은 피하세요(법 위반).','정보공개서 받은 날 계약하자는 말은 거짓입니다, 믿지 마세요.','본사 추천 가맹거래사를 꼭 이용하실 필요는 없습니다, 원하시는 분께 받으세요.',
+];
+// 알려진 오탐(1393089·e834e9d 모두 해제 불가, 이번 범위 밖). 고치면 이 목록에서 빼고 R15L_OK로 옮긴다.
+const R15L_KNOWN_FP=['정보공개서 없이 계약부터 하자고 하면 그 자리를 떠나세요.','"저희 제휴 가맹거래사 도장만 받으면 7일로 줄어요" 같은 말은 믿지 마세요.',
+ "'선입금하면 대기 없이 바로 계약' 같은 문구를 쓰는 광고는 가맹사업법 위반 소지가 있습니다.","'본사 지정 변호사 자문으로 즉시 계약 가능'이라는 안내는 사실과 다릅니다.",
+ 'Q. 계약금을 미리 넣어 두면 자리를 잡아 주나요? A. 대기기간 중에는 어떤 금액도 받지 않습니다.','Q. 대기기간 중에 가계약은 되나요? A. 가계약도 계약이라 대기기간 중에는 할 수 없습니다.',
+ '질문: 본사 제휴 가맹거래사 자문을 받아도 7일로 줄어드나요? 답변: 독립적인 자문이어야 하므로 직접 선택한 전문가에게 받으시길 권합니다.'];
+// 알려진 틈(1393089·e834e9d 모두 통과, 옛 주의 끝 '피하세요'의 약점). 고치면 이 목록에서 빼고 R15L_LOST로 옮긴다.
+const R15L_KNOWN_GAPS=['정공서 받자마자 계약하라는 곳은 피하세요, 저희는 3일이면 됩니다.','본사 제휴 가맹거래사 말고 다른 곳에서 자문받는 건 피하세요.','본사 제휴 가맹거래사를 안 쓰는 곳은 피하세요.',
+ '가계약금을 걸지 않고 계약하라는 곳은 피하세요.','정보공개서를 받은 당일 계약하는 건 불가능합니다. 저희는 가능합니다.','정공서 받자마자 계약하라는 곳은 피하는 게 좋아요. 저희는 3일이면 됩니다.',
+ '대기기간은 협의로 늘릴 수는 있어도 줄일 수는 없습니다. 저희는 됩니다.'];
+// 다시 막는 바른 문장(1393089 해제 불가, e834e9d 통과, 이번 해제 불가). 계약 행위·쉼표 뒤 절을 가를 수 있게 되면 R15L_OK로 옮긴다.
+const R15L_REBLOCKED=['정공서 받자마자 계약하는 건 피하는 게 좋아요.','대기기간 중에 가맹금을 입금하는 건 피하시는 게 좋습니다.','본사 지정 가맹거래사에게 자문받는 건 피하는 게 좋습니다.','정보공개서를 받은 당일 계약하는 건 불가능합니다, 법 위반이니까요.'];
+const r15lMiss=R15L_LOST.filter(t=>!onWaitRules(t));
+check(`15l: ${R15L_LOST.length} misstatements that 1393089 blocked and the 15k exemptions let through (impossible ending on the captive-advisor rule or on a non-contract act or before ?·,·;, negotiable period with a denied shortening, belittled independent advisor, 피하는 게 좋아요 on 말고·안 쓰는 or before a contrast) are hard_block again`+(r15lMiss.length?' '+JSON.stringify(r15lMiss):''),R15L_LOST.length>=40&&r15lMiss.length===0);
+check('15l: consumer scope keeps its gate for the recovered misstatements (a misstatement blocks a consumer caption only with recruitment context)',R15L_LOST.every(t=>{const bare=judge(t,{scope:'consumer'});return !bare.blocked||bare.recruitmentContext&&!bare.issues.some(i=>i.downgradedBy)}));
+const r15lLeak=R15L_OK.flatMap(t=>{const r=judge(t),c=judge(t,{scope:'consumer'}),rc=judge(t+RC,{scope:'consumer'});return onTwoRules(r)||onTwoRules(c)||rc.issues.some(i=>(i.ruleId===W8||i.ruleId===C8)&&i.tier!=='warn')?[t+' → '+ids(r).join()+' / '+ids(c).join()+' / '+ids(rc).join()]:[]});
+check(`15l: ${R15L_OK.length} accurate sentences (whitelisted negotiation connectives, recommended independent advice, impossible contract or fee acts at the sentence end, quoted or contract-act cautions, and the pre-15k caution endings followed by a comma, question mark, exclamation or parenthesis) raise no wait-bypass or captive-advisor issue`+(r15lLeak.length?' '+JSON.stringify(r15lLeak):''),R15L_OK.length>=25&&r15lLeak.length===0);
+const r15lKnown=[...R15L_KNOWN_FP.filter(t=>!onWaitRules(t)),...R15L_REBLOCKED.filter(t=>!onWaitRules(t)),...R15L_KNOWN_GAPS.filter(t=>onTwoRules(judge(t)))];
+check(`15l: the ${R15L_KNOWN_FP.length} documented pre-existing false positives and ${R15L_REBLOCKED.length} deliberately re-blocked accurate sentences are blocked, and the ${R15L_KNOWN_GAPS.length} documented gaps still pass (closing one moves it to R15L_OK or R15L_LOST)`+(r15lKnown.length?' '+JSON.stringify(r15lKnown):''),R15L_KNOWN_FP.length===7&&R15L_REBLOCKED.length===4&&R15L_KNOWN_GAPS.length===7&&r15lKnown.length===0);
+
 // ════ 16~22) 게이트(라우트) ════
 const WS='fc-owner';
 const boss=f.signIn('fc-boss','admin',1000,WS),admin=f.signIn('fc-admin','admin',2000,WS),member=f.signIn('fc-member','member',3000,WS);
@@ -910,4 +985,4 @@ check('23: role, meeting and brief submissions ran on the mock',beforeRun.bodies
 check('23: submissions for a franchise brand are byte-identical to the same brand without franchise records',same(beforeRun.bodies,afterRun.bodies));
 check('23: no franchise source, cost or R2 judge text reaches a model submission',afterRun.bodies.every(b=>!/sourceRef|disclosureVersionId|정보공개서 등록 버전|가상 정보공개서 모델본|storeType|dv-fc-model|franchise_recruit|fr-claims|가맹 규칙|COLLECTIVE 휴리스틱/.test(b))&&afterRun.bodies.some(b=>b.includes('franchise_fee')));
 
-console.log(JSON.stringify({passed:passed.length,violations:detected,consumer:CONSUMER.length,extraConsumer:EXTRA.length,normals:NORMALS.length,round2:{consumer:R2_CONSUMER_NONE.length+R2_CONSUMER_WARN.length,bypass:r2detected,legit:Object.values(R2_LEGIT).flat().length,value:R2_VALUE.length},round3:{consumer:R3_CONSUMER.length,bypass:r3detected},round4:{consumer:R4_CONSUMER_OK.length+R4_CONSUMER_BLOCK.length,bypass:r4Detected,legit:R4_LEGIT.length},round5:{consumer:R5_CONSUMER_OK.length,bypass:R5_RECRUIT.length-r5Miss.length,legit:R5_LEGIT.length},waitMisstatement:{bad:R8_BAD.length-r8Miss.length,ok:R8_OK.length,consumer:R8_CONSUMER.length},redTeam:{caught:R15_WAIT.length+R15_CAPTIVE.length-r15Miss.length,gaps:R15_GAPS.length,falsePositivesPassing:R15_FP.length-r15Leak.length,nearOk:R15_NEAR_OK.length,nearBad:R15_NEAR_BAD.length},redTeam2:{caught:R15J_KNOWN.length+R15J_BAD.length-r15jMiss.length,good:R15J_GOOD.length-r15jLeak.length,variantBad:R15J_VARIANT_BAD.length-r15jVariantMiss.length,variantOk:R15J_VARIANT_OK.length-r15jVariantLeak.length},falsePositiveFix:{reportedAndVariantsPassing:R15K_REPORTED.length+R15K_OK.length-r15kLeak.length,nearTwinsBlocked:R15K_BAD.length-r15kMiss.length}}));
+console.log(JSON.stringify({passed:passed.length,violations:detected,consumer:CONSUMER.length,extraConsumer:EXTRA.length,normals:NORMALS.length,round2:{consumer:R2_CONSUMER_NONE.length+R2_CONSUMER_WARN.length,bypass:r2detected,legit:Object.values(R2_LEGIT).flat().length,value:R2_VALUE.length},round3:{consumer:R3_CONSUMER.length,bypass:r3detected},round4:{consumer:R4_CONSUMER_OK.length+R4_CONSUMER_BLOCK.length,bypass:r4Detected,legit:R4_LEGIT.length},round5:{consumer:R5_CONSUMER_OK.length,bypass:R5_RECRUIT.length-r5Miss.length,legit:R5_LEGIT.length},waitMisstatement:{bad:R8_BAD.length-r8Miss.length,ok:R8_OK.length,consumer:R8_CONSUMER.length},redTeam:{caught:R15_WAIT.length+R15_CAPTIVE.length-r15Miss.length,gaps:R15_GAPS.length,falsePositivesPassing:R15_FP.length-r15Leak.length,nearOk:R15_NEAR_OK.length,nearBad:R15_NEAR_BAD.length},redTeam2:{caught:R15J_KNOWN.length+R15J_BAD.length-r15jMiss.length,good:R15J_GOOD.length-r15jLeak.length,variantBad:R15J_VARIANT_BAD.length-r15jVariantMiss.length,variantOk:R15J_VARIANT_OK.length-r15jVariantLeak.length},falsePositiveFix:{reportedAndVariantsPassing:R15K_REPORTED.length+R15K_OK.length-r15kLeak.length,nearTwinsBlocked:R15K_BAD.length-r15kMiss.length},lostCatchFix:{recovered:R15L_LOST.length-r15lMiss.length,accurate:R15L_OK.length-r15lLeak.length,knownFalsePositives:R15L_KNOWN_FP.length,reblocked:R15L_REBLOCKED.length,knownGaps:R15L_KNOWN_GAPS.length}}));

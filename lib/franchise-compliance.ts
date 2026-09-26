@@ -217,11 +217,13 @@ function negatedAfter(s:string,end:number):boolean{
 }
 // 해제 불가 규칙의 except는 매치가 든 절(쉼표·가운뎃점·더하기·줄표·세미콜론·괄호 사이)만 본다. 다른 절이나 괄호 주석의 '구독 이벤트'·'매출 1% 기부'·'(탈퇴는 자유)'로 면제되지 않는다.
 // 숫자 사이 쉼표('4,200')는 절 경계가 아니다.
+// 절 끝을 끊은 경계(쉼표·물음표·느낌표·괄호 등)는 절 뒤에 붙여 돌려준다. except가 문장 끝에서 끝나는 절과, 뒤에 다른 절이 이어지거나 물음표로 끝나는 절을 가를 수 있다
+// ('… 계약하는 것은 불가능합니다? 저희는 가능합니다', '… 불가능합니다, 저희는 가능합니다', 15l). 경계 뒤에서도 면제되는 끝은 lib/franchise-rules.ts가 경계를 허용한다(CLAUSE_END).
 const CLAUSE_CUT=/(?<!\d)[,，]|[,，](?!\d)|[;；·ㆍ\u119E+|!?()（）]|\s[-–—/]\s/g;
 function clauseOf(s:string,start:number,end:number){
- let from=0,to=s.length;
- for(const m of s.matchAll(CLAUSE_CUT)){const at=m.index!;if(at<start)from=at+m[0].length;else if(at>=end){to=at;break}}
- return s.slice(from,to);
+ let from=0,to=s.length,cut='';
+ for(const m of s.matchAll(CLAUSE_CUT)){const at=m.index!;if(at<start)from=at+m[0].length;else if(at>=end){to=at;cut=m[0];break}}
+ return s.slice(from,to)+cut;
 }
 // 적중(문장·매치 위치). all이 아니면 첫 적중에서 멈춘다. figure: 수치 자체를 막는 규칙이라 부정 면제가 없다. clauseExcept: except를 매치가 든 절에서만 본다.
 // consumerAlso는 소비자 범위에서만 본다(모집 범위는 캠페인 자체가 가맹 문맥이다). denied: 아니라고 답한 질문 문장(수치 규칙 밖에서 건너뛴다).
