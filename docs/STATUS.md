@@ -16,6 +16,11 @@
 - [게시·실행 근거](releases/2026-09-26-d721017.md). 봉인 요청·출력 원문은 열지 않았다.
 
 
+## 게시 확인 자동화 (2026-09-26)
+
+- `feat/public-version`(Claude A6 세션): 로그인 없이 `build`·`tree`만 주는 `/api/version/public`을 더한다(대표 결정 "둘 다": 공개 경로 추가 + 그 게시 전 한 번은 Chrome 확장으로 확인). 게시 뒤 개발 도구가 curl로 `runtime-verified`를 판정한다.
+- `feat/a6-3-auto-collect`(Claude A6 세션): 작업물 저장 때 자료 요청 자동 수집(A6-3) 진행 중.
+
 ## 운영 관리 화면 복구 (2026-09-26)
 
 - A1 PR #120은 `aefd4219aa335425243e41372c8ba8efa3009ee7`로 merged. CI passed, D1 이름 대조 passed. 운영 등록·쌍 평가·stage는 아직 not_run.
@@ -34,20 +39,20 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-26 05:10 UTC (Claude 트랙 R 세션: R15a-1 모집 자료 키트 순수 판정 모듈 PR, #134 E2E 프록시 수정 `merged`. 그 전 갱신: 03:45 UTC 같은 세션 #134)
+마지막 갱신: 2026-09-26 05:15 UTC (Claude 트랙 R 세션: R15a-1 모집 자료 키트 순수 판정 모듈 PR, main #133·#136·#137 병합 반영. 그 전 갱신: 04:58 UTC Claude A6 세션 A6-3)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
 | 운영 제품 커밋 | `d7210175b75e0855c3a25ae0de7ea7743be7753d` (#127 `merged`, 소유자 운영 검증·재채점·프롬프트 적용 화면). 묶음 13 `b16403d`(#124까지: 트랙 R R1b·R2, 게시 전 점검 수정, R3a, 가맹 기능은 `r_franchise` 기본 꺼짐)와 #120(비제품)을 포함한다 | 제품 tree `4f3b13022cbcfb256f85a4473db54bc10d347d77`(Codex 세션 기록, PR #128 `docs/releases/2026-09-26-d721017.md`, 병합 전) |
-| `origin/main` | `70ab664` (#130 A6-1 자료 요청 원장, `a6_data_requests` 기본 꺼짐) | d721017 뒤 #121(A3-1)·#128·#129(A3-2·A3-3a·A3-4 main 반영, `543731e`)·#132·#130이 들어왔다(제품 경로 포함). A3 쌓인 PR이 base 브랜치로 병합돼 main에 없던 문제는 #129로 해소됐다. 운영은 이 main보다 뒤다 |
+| `origin/main` | `8651021` (#137 A6-3 자료 요청 자동 수집) | d721017 뒤 #121(A3-1)·#128·#129(A3-2·A3-3a·A3-4 main 반영, `543731e`)·#132·#130·#134(E2E 도구)·#133(A6-2)·#136(`/api/version/public`)·#137이 들어왔다(제품 경로 포함). A3 쌓인 PR이 base 브랜치로 병합돼 main에 없던 문제는 #129로 해소됐다. 운영은 이 main보다 뒤다 |
 | Sites 게시 | `published`: Sites 버전 37(Codex 세션, `d721017`, 02:17:35 UTC)까지 이 세션이 확인했다. Codex PR #131(병합 전)은 그 뒤 버전 38(#128 head tree) 게시를 기록한다(이 세션은 확인하지 않음). 버전 36은 이 세션의 묶음 13 `b16403d`(자동 게시 첫 성공) | [b16403d 게시 기록](releases/2026-09-26-b16403d.md), [d721017 기록](releases/2026-09-26-d721017.md), 버전 38은 PR #131 |
 | 실행 검증 | `d721017`: `runtime-verified`(Codex 세션 02:22 UTC 경, 대표 소유자 화면 재확인 02:3x UTC: `/api/version` 200, tree `4f3b130…`). b16403d(버전 36)는 `/api/version`을 확인하기 전에 3분 뒤 버전 37로 교체돼 소급 기록하지 않는다(대표 판단). d721017이 b16403d를 포함한다 | 대표 보고(real), Codex 세션 기록(PR #128, 병합 전). 주소창 직접 접근 오류는 남아 있고 정상 조회 경로로 검증했다 |
 | 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` mode=email, role=owner (2026-09-25 03:30 UTC 경) |
 | Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 이번 게시도 기존 접근 설정 유지 | 게시 에이전트 보고 "기존 공개 접근 설정을 유지". 게시 뒤 접근 설정 재확인은 not_run |
 | 조사 워커 | online(lastSeen 2026-09-25 03:29 UTC, blocked 0, rotationReady true). 2026-09-24 14:15 UTC 새 설치기로 재설치(격리 점검 전부 통과) | `/api/research-worker/setup` 조회(real). gate 표시 `missing`이라 `RESEARCH_WORKER_APP_GATE=enforce`는 켜지 않는다 |
-| 열린 PR | #16 Android(draft, 제외), #133 A6-2 플레이스 대조(Claude A3 세션, #130 `merged` 뒤), #131 운영 API 복구·버전 38 기록(Codex, 문서), R15a-1 모집 자료 키트 판정 모듈(브랜치 `claude/franchise-recruitment-marketing-u8cpo2`, 이 갱신과 같은 PR) | GitHub 열린 PR 목록(GitHub MCP), 2026-09-26 03:30 UTC |
+| 열린 PR | #16 Android(draft, 제외), #131 운영 API 복구·버전 38 기록(Codex, 문서), R15a-1 모집 자료 키트 판정 모듈(브랜치 `claude/franchise-recruitment-marketing-u8cpo2`, 이 갱신과 같은 PR) | GitHub 열린 PR 목록(GitHub MCP), 2026-09-26 03:30 UTC |
 | main CI | `d721017`·`aefd421`·`b16403d` passed. 그 뒤 main 커밋의 CI는 이 갱신에서 조회하지 않았다 | GitHub Actions main 실행(run 36211135217·36210450483·36209066178 success, API 조회) |
 
 - 테스트 흔들림(2026-09-25 관찰, 제품 동작 변경 없음):
@@ -116,6 +121,8 @@
 - A3-3a 작업물 제안 실험(브랜치 `feat/a3-artifact-experiment`, Claude Code, A3-2 `feat/a3-brand-voice`(#122, 미병합) 위): 학습 action `create_experiment_from_artifact`로 승인된 콘텐츠 작업물의 카피 팩 제안 실험을 draft 바이럴 실험(`source.kind:'artifact'`, 사례 id 빈 값, 두 안의 실제 문안)으로 옮긴다. 미승인·낡은 브리프·낡은 팩·팩 오류·팩 없음·범위 밖은 409, 같은 작업물·판·제안은 멱등이다. 별도 스위치 없음(팩은 `a3_copy_pack`이 켜졌을 때만 생긴다). 캡션 소스 전환은 A3-3b로 트랙 R R3 뒤로 미뤘다. #121·#122 병합 뒤 rebase한다. [카피 팩 A3-3](COPY-PACK.ko.md)
 - A3-4 회의 개선본 카피 팩·골든 v2(브랜치 `feat/a3-meeting-copy-pack`, Claude Code, A3-3a(#123, 미병합) 위): 회의 시작 때 `a3_copy_pack`이 켜져 있으면 스냅샷에 프로필을 고정하고 콘텐츠 개선본만 카피 팩을 내 새 판에 묶는다(soft). 합성 dev 스펙 `syn-s9-fnb-insta`·`syn-s9-edu-reels`(스위치·확정 말투로 `outputProfile`·`brandVoice` 동결), 기대 계약 채점(`+expected-contract`, v2 요청 + v1 원문 → `contract_json` fail). 꺼짐·프로필 없음은 회의 제출 바이트 동일. 종료 조건 run(골든 v2 dev 2건, 예약 100,000·실측 약 30,000 예상)은 게시 뒤다. #121~#123 병합 뒤 rebase한다. [카피 팩 A3-4](COPY-PACK.ko.md)
 - A6-1 자료 요청(브랜치 `feat/a6-data-requests`, Claude Code, A3-1~A3-4 스택(#121~#125, 미병합) 위): 작업물의 '자료 필요' 표지(`[자료 필요: 담당/항목]`·`자료 필요:` 줄·`## 자료 필요` 목록·`[X 확인 필요]`·현재 판 카피 팩 `needsCheck`)를 결정론으로 모아 records kind `data_request`(열림)로 만들고, 같은 항목의 유효 사실이 확정되면 `/api/brand-facts` 저장 뒤 자동으로 닫는다(`fact_confirmed`, 실패하면 `closedRequests:null`과 멱등 `reconcile`). 스위치 `a6_data_requests`(기본 꺼짐)가 꺼져 있으면 쓰기 409, 사실 저장 응답 바이트 동일. 모델 호출 0, 실행기 불변. [자료 요청](DATA-REQUESTS.ko.md)
+- A6-2 플레이스 정보 대조(브랜치 `feat/a6-2-place-check`, Claude Code, A6-1 `feat/a6-1-data-requests`(#130, 미병합) 위, 진행 중): 관리자가 지점 네이버 플레이스 정보(주소·영업시간·휴무·전화·메뉴 가격)를 수동 스냅샷(records kind `place_snapshot`, 최근 10판)으로 입력하면 `effectiveBrandFacts`와 결정론으로 대조한다. conflict·place_missing은 점포 할 일(`place:<지점>:<플랫폼>:<항목>`), fact_missing은 `a6_data_requests`가 켜져 있을 때 지점 자료 요청(origin `place_check`), 다시 일치하면(재입력·사실 저장 뒤 재대조) 할 일 자동 완료. 스위치 `a6_place_check`(기본 꺼짐) 꺼짐이면 쓰기 409, `/api/stores` GET·사실 저장 응답 바이트 동일. 모델 호출·스크래핑·URL fetch 0. [플레이스 대조](PLACE-CHECK.ko.md)
+- A6-3 자료 요청 자동 수집(브랜치 `feat/a6-3-auto-collect`, Claude Code, `origin/main` `d59b97d` 기준, 진행 중): 역할 작업물·회의 개선본·브리프 초안·점포 진단 보고서 저장 직후 실행기 한 줄(`collectOnSave`·`collectBriefOnSave`·`collectStoreReportOnSave`, 스위치는 `lib/data-requests-server.ts`만 읽음)로 자료 요청을 모은다. 원천 확장: 품질 검수 `needs_data` 지적(항목 key 없음), `StoreReport.questions`, `BriefResult.questions`. 재개: 철회·만료 사실로 닫힌 `fact_confirmed` 요청은 다음 수집 때 다시 연다(`reopenedAt`·`previousResolution`), `answered`·`dismissed`는 그대로. 스위치 꺼짐이면 제출·저장·응답 바이트 동일, 수집 실패는 저장을 막지 않음, 모델 호출 0. A6 종료 조건 real 절차는 [자료 요청](DATA-REQUESTS.ko.md)
 
 ## 이력
 

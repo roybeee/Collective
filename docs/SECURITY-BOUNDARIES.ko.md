@@ -4,7 +4,7 @@
 
 ## 역할별 권한 (이메일 모드)
 
-마지막 갱신: 2026-09-26 KST (A6-1: `/api/data-requests` 자료 요청 보기·모으기·닫기 행. 트랙 R R3a: 캠페인 가맹 모집 목적 지정·해제 행, 발행 승인 행의 판정 범위. 트랙 R R2: 발행 승인 행에 가맹 모집 규칙 해제 불가 409, 직원도 보는 정보공개서 버전 요약 행. 트랙 R R1b: 가맹 사실 저장 조건과 `rebase_facts` 행. 이전: 트랙 R R1a·R4b: `/api/franchise` 가맹 설정·리드 원장·연락처 열람·정보주체 요청 행 추가, 대표 결정 22. 검토 반영: 설정 정정·다시 사용 행, 출처 고지 `record_source_notice` 행. 이전: F4a 캠페인 삭제 영향 조회 행·결정 7 규칙 보존, F5 채널 연결 브랜드·지점 단위, PR 6c 아카이브 원본 파일 삭제 행)
+마지막 갱신: 2026-09-26 KST (A6-2: `/api/place-checks` 플레이스 대조 보기·스냅샷 입력·할 일 처리 행. A6-1: `/api/data-requests` 자료 요청 보기·모으기·닫기 행. 트랙 R R3a: 캠페인 가맹 모집 목적 지정·해제 행, 발행 승인 행의 판정 범위. 트랙 R R2: 발행 승인 행에 가맹 모집 규칙 해제 불가 409, 직원도 보는 정보공개서 버전 요약 행. 트랙 R R1b: 가맹 사실 저장 조건과 `rebase_facts` 행. 이전: 트랙 R R1a·R4b: `/api/franchise` 가맹 설정·리드 원장·연락처 열람·정보주체 요청 행 추가, 대표 결정 22. 검토 반영: 설정 정정·다시 사용 행, 출처 고지 `record_source_notice` 행. 이전: F4a 캠페인 삭제 영향 조회 행·결정 7 규칙 보존, F5 채널 연결 브랜드·지점 단위, PR 6c 아카이브 원본 파일 삭제 행)
 
 같은 워크스페이스의 계정은 대표(owner)·관리자(admin)·직원(member) 중 하나다. 대표는 DB에 따로 저장하지 않고 같은 워크스페이스에서 가장 먼저 만든 관리자 계정으로 계산한다(`lib/auth-session.ts` `roleSql`). 판정은 서버 API가 하며, 화면에서 버튼을 숨기는 것은 보조 수단이다. 직원이 관리자 전용 작업을 요청하면 403이다. legacy 모드(로컬 개발·E2E)의 헤더 사용자는 모든 권한을 가진다.
 
@@ -26,9 +26,13 @@
 | 가맹 브랜드의 정보공개서 버전 요약 보기(버전 id·라벨·등록일·상태, 현재 버전, 사업연도 종료일, 기능 스위치 상태, 분기) | `/api/brand-facts` GET `franchise`, `/api/execution` GET `franchise` | 포함 | 포함 | 포함(후보 사실의 근거 입력과 발행 화면 차단 사유용. 파일 해시·보관 위치·감사 기록은 없고, 가맹 설정 GET `settings`는 403) |
 | 브랜드 말투 보기(현재 판·상태·모델에 가는 확정본, 작성·확정한 사람은 id·역할만) | `/api/brand-voice` GET | 허용 | 허용 | 허용 |
 | 브랜드 말투 초안 저장·확정·철회(A3-2. 오래된 `version`은 409. 확정본만 스위치 `a3_brand_voice`가 켜진 크리에이티브·콘텐츠 입력에 실리고, 전화·이메일 등은 브랜드 정체성과 같은 방식으로 가린다) | `/api/brand-voice` `save_draft`·`confirm`·`revoke` | 허용 | 허용 | 403 |
+| 운영 소스 트리 확인(`build`·`tree`만. 소유자 정보·`promptManifest`는 없음, 저장소가 공개라 새로 드러나는 것은 운영 트리뿐) | `/api/version/public` GET | 로그인 없이 허용 | 로그인 없이 허용 | 로그인 없이 허용 |
 | 자료 요청 보기(캠페인·브랜드 범위, 만든·닫은 사람은 id·역할만) | `/api/data-requests` GET | 허용 | 허용 | 허용 |
 | 자료 요청 모으기·만들기(A6-1. 작업물의 자료 필요 표지를 결정론으로 모음, 모델 호출 없음. `a6_data_requests` 꺼짐 409, 같은 항목이 열려 있으면 409) | `/api/data-requests` `collect`·`create` | 허용 | 허용 | 허용 |
 | 자료 요청 수동 닫기·필요 없음·확정 사실과 다시 대조(오래된 `version`·이미 닫힘 409, `a6_data_requests` 꺼짐 409. 사실 확정 때의 자동 닫기는 `save_fact` 권한을 따른다) | `/api/data-requests` `close`·`dismiss`·`reconcile` | 허용 | 허용 | 403 |
+| 플레이스 대조 보기(지점 스냅샷·대조 결과·플레이스 할 일, 입력한 사람은 id·역할만) | `/api/place-checks` GET `?storeId=` | 허용 | 허용 | 허용 |
+| 플레이스 스냅샷 입력(A6-2. 관리자가 옮겨 적은 값을 확정 사실과 결정론으로 대조, URL은 `place.naver.com`·`map.naver.com` https만 받고 열지 않음. `a6_place_check` 꺼짐 409, 보관 지점 409, 미래 확인일·다른 호스트·모르는 항목 400, 오래된 `version` 409) | `/api/place-checks` `save_snapshot` | 허용 | 허용 | 403 |
+| 플레이스 할 일 처리(기존 점포 할 일 `save_task`와 같은 권한. 완료는 근거 필수, 보고서 할 일 400, 오래된 `version` 409, `a6_place_check` 꺼짐 409. 사실 저장 뒤 자동 완료는 `save_fact` 권한을 따른다) | `/api/place-checks` `save_task` | 허용 | 허용 | 허용 |
 | 아카이브 자료 추가·후보로 되돌리기 | `/api/archive` `add_source`, `review_source`·`review_sources` (모든 항목이 `candidate`) | 허용 | 허용 | 허용 |
 | 아카이브 자료 확정·사용 제외(일괄 포함), 진단 채택, 의뢰 정보 수정 | `/api/archive` `review_source`·`review_sources` (`confirmed`·`excluded`가 하나라도 있으면), `confirm_diagnosis`, `save_intake` | 허용 | 허용 | 403 |
 | 아카이브 원본 파일 삭제(레코드는 남김, 되돌릴 수 없음) | `/api/archive` `delete_source_file` | 허용 | 허용 | 403 |

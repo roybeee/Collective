@@ -13,6 +13,8 @@ import {isRecruitmentObjective,OBJECTIVE_MESSAGES,type Brand,type Campaign,type 
 import {ApiError,str,json,failure,database,recordStatement,readRecord,listRecords,connection,stamp,acquireLock,releaseLock,validateCampaign} from '@/lib/server';
 // 보관 캠페인 검사(PR 5d)를 소유자 잠금 안에서 한다(PR 4a-2).
 import {assertNotArchived} from './campaign-archive';
+// 자료 요청 자동 수집(A6-3): 완료 초안 저장 뒤 questions를 모은다. 스위치는 보조 모듈이 읽고, 실패해도 예외를 던지지 않는다(응답 불변).
+import {collectBriefOnSave} from './data-requests-server';
 // inputMasking: 제출 본문의 가림 기록(필드·종류·건수, 허용 값이라 가리지 않은 탐지는 allowed:true, 값 없음, 레인 A 입력 최소화). 브랜드 자료 가림 기록(4.4 ③, brandArchiveInput)을 뒤에 합친다.
 type StoredDraft=BriefDraft&{providerId?:string;inputMasking?:InputMasking[]};
 const active=(d:BriefDraft)=>['starting','queued','in_progress','uncertain'].includes(d.status);
@@ -63,7 +65,7 @@ export async function executeBrief(owner:string,b:Record<string,unknown>){let lo
   if(r.status==='completed'){
    try{next.result=labelBriefResult(parseBrief(r.output[0].content[0].text,next.input))}catch(e){next.status='failed';next.error=(e as Error).message}
   }else if(r.status==='failed')next.error='HERMES가 초안 작성을 완료하지 못했습니다. 입력을 유지한 채 다시 요청할 수 있습니다.';
-  await recordStatement(owner,'brief_draft',id,next).run();if(['completed','failed','cancelled'].includes(next.status))await markUsageOutcome(owner,'hermes',next.providerId!,next.status==='completed'?'completed':next.status==='cancelled'?'cancelled':r.invalidOutput||r.status==='completed'?'invalid_output':'provider_failed');return json(publicDraft(next));
+  await recordStatement(owner,'brief_draft',id,next).run();await collectBriefOnSave(owner,next);if(['completed','failed','cancelled'].includes(next.status))await markUsageOutcome(owner,'hermes',next.providerId!,next.status==='completed'?'completed':next.status==='cancelled'?'cancelled':r.invalidOutput||r.status==='completed'?'invalid_output':'provider_failed');return json(publicDraft(next));
  }catch(e){
   if(pending){const uncertain=!(e instanceof ApiError)||e.status>=500;pending={...pending,status:uncertain?'uncertain':'failed',error:uncertain?'접수 여부를 확인하지 못했습니다. 같은 요청 확인으로 이어서 복구하세요.':(e as Error).message,updatedAt:stamp()};await recordStatement(owner,'brief_draft',pending.id,pending).run();return json(publicDraft(pending));}
   return failure(e);
