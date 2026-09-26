@@ -34,7 +34,7 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-26 03:57 UTC (Claude A6 세션: A6-2 플레이스 정보 대조 PR #133, main #134 병합 반영. 그 전 갱신: 03:45 UTC Claude 트랙 R 세션 E2E 흔들림 수정)
+마지막 갱신: 2026-09-26 04:54 UTC (Claude A6 세션: A6-3 자료 요청 자동 수집 진행 중 한 줄 추가. 그 전 갱신: 03:57 UTC Claude A6 세션 A6-2 플레이스 정보 대조 PR #133, main #134 병합 반영)
 
 ## 현재 운영 상태
 
@@ -117,6 +117,7 @@
 - A3-4 회의 개선본 카피 팩·골든 v2(브랜치 `feat/a3-meeting-copy-pack`, Claude Code, A3-3a(#123, 미병합) 위): 회의 시작 때 `a3_copy_pack`이 켜져 있으면 스냅샷에 프로필을 고정하고 콘텐츠 개선본만 카피 팩을 내 새 판에 묶는다(soft). 합성 dev 스펙 `syn-s9-fnb-insta`·`syn-s9-edu-reels`(스위치·확정 말투로 `outputProfile`·`brandVoice` 동결), 기대 계약 채점(`+expected-contract`, v2 요청 + v1 원문 → `contract_json` fail). 꺼짐·프로필 없음은 회의 제출 바이트 동일. 종료 조건 run(골든 v2 dev 2건, 예약 100,000·실측 약 30,000 예상)은 게시 뒤다. #121~#123 병합 뒤 rebase한다. [카피 팩 A3-4](COPY-PACK.ko.md)
 - A6-1 자료 요청(브랜치 `feat/a6-data-requests`, Claude Code, A3-1~A3-4 스택(#121~#125, 미병합) 위): 작업물의 '자료 필요' 표지(`[자료 필요: 담당/항목]`·`자료 필요:` 줄·`## 자료 필요` 목록·`[X 확인 필요]`·현재 판 카피 팩 `needsCheck`)를 결정론으로 모아 records kind `data_request`(열림)로 만들고, 같은 항목의 유효 사실이 확정되면 `/api/brand-facts` 저장 뒤 자동으로 닫는다(`fact_confirmed`, 실패하면 `closedRequests:null`과 멱등 `reconcile`). 스위치 `a6_data_requests`(기본 꺼짐)가 꺼져 있으면 쓰기 409, 사실 저장 응답 바이트 동일. 모델 호출 0, 실행기 불변. [자료 요청](DATA-REQUESTS.ko.md)
 - A6-2 플레이스 정보 대조(브랜치 `feat/a6-2-place-check`, Claude Code, A6-1 `feat/a6-1-data-requests`(#130, 미병합) 위, 진행 중): 관리자가 지점 네이버 플레이스 정보(주소·영업시간·휴무·전화·메뉴 가격)를 수동 스냅샷(records kind `place_snapshot`, 최근 10판)으로 입력하면 `effectiveBrandFacts`와 결정론으로 대조한다. conflict·place_missing은 점포 할 일(`place:<지점>:<플랫폼>:<항목>`), fact_missing은 `a6_data_requests`가 켜져 있을 때 지점 자료 요청(origin `place_check`), 다시 일치하면(재입력·사실 저장 뒤 재대조) 할 일 자동 완료. 스위치 `a6_place_check`(기본 꺼짐) 꺼짐이면 쓰기 409, `/api/stores` GET·사실 저장 응답 바이트 동일. 모델 호출·스크래핑·URL fetch 0. [플레이스 대조](PLACE-CHECK.ko.md)
+- A6-3 자료 요청 자동 수집(브랜치 `feat/a6-3-auto-collect`, Claude Code, `origin/main` `d59b97d` 기준, 진행 중): 역할 작업물·회의 개선본·브리프 초안·점포 진단 보고서 저장 직후 실행기 한 줄(`collectOnSave`·`collectBriefOnSave`·`collectStoreReportOnSave`, 스위치는 `lib/data-requests-server.ts`만 읽음)로 자료 요청을 모은다. 원천 확장: 품질 검수 `needs_data` 지적(항목 key 없음), `StoreReport.questions`, `BriefResult.questions`. 재개: 철회·만료 사실로 닫힌 `fact_confirmed` 요청은 다음 수집 때 다시 연다(`reopenedAt`·`previousResolution`), `answered`·`dismissed`는 그대로. 스위치 꺼짐이면 제출·저장·응답 바이트 동일, 수집 실패는 저장을 막지 않음, 모델 호출 0. A6 종료 조건 real 절차는 [자료 요청](DATA-REQUESTS.ko.md)
 
 ## 이력
 

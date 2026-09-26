@@ -4,24 +4,30 @@ import {canonicalFactKey,factCatalogItem,franchiseFactKey} from './fact-catalog'
 // 자료 요청(A6-1): 저장된 작업물의 '자료 필요' 표지를 결정론으로 뽑아 data_request(열림)로 만들고, 같은 항목의 유효 사실이 생기면 닫는다. 순수 모듈이다(모델 호출 0).
 // 저장·스위치·권한은 lib/data-requests-server.ts, 규칙과 근거는 docs/DATA-REQUESTS.ko.md.
 // 카피 팩(lib/copy-pack.ts)은 타입을 가져오지 않고 형식을 직접 확인해 읽는다(needsCheck는 선택 필드이고, 팩 형식이 바뀌어도 이 모듈은 읽을 수 있는 것만 읽는다).
-export type DataRequestActor={id:string;role:'owner'|'admin'|'member'};
+// role system: 저장 시점 자동 수집(A6-3)이 만든 요청. 사람 id·역할이 없다.
+export type DataRequestActor={id:string;role:'owner'|'admin'|'member'|'system'};
 export type DataRequestOrigin=
  {kind:'artifact_marker';artifactId:string;artifactVersion:number;role:string;excerpt:string}|
  {kind:'copy_pack';artifactId:string;artifactVersion:number;channel:string;variantId:string}|
  // A6-2 플레이스 대조의 fact_missing(플레이스 값은 있는데 확정 사실 없음). 스냅샷 id·판·플랫폼·항목(lib/place-check.ts).
- {kind:'place_check';snapshotId:string;snapshotVersion:number;platform:string;field:string};
+ {kind:'place_check';snapshotId:string;snapshotVersion:number;platform:string;field:string}|
+ // A6-3 원천 확장: 품질 검수 needs_data 지적(기준 또는 과제 역할·근거 발췌), 점포 진단 보고서 질문, 브리프 초안 질문(질문 필드).
+ {kind:'quality_check';artifactId:string;artifactVersion:number;check:string;excerpt:string}|
+ {kind:'store_report';reportId:string;storeVersion:number}|
+ {kind:'brief_draft';draftId:string;field:string};
 export type DataRequestResolution=
  {kind:'fact_confirmed';factId:string;factVersion:number;by:DataRequestActor;at:string}|
  {kind:'answered'|'dismissed';note:string;by:DataRequestActor;at:string};
 // scopeWarning store_link_needed: 지점 없는 캠페인이 지점마다 다른 항목(storeScoped)을 요청했다. 브랜드 범위로 만들고 '지점 연결 필요'를 보인다(data-truth-3).
+// reopenedAt·previousResolution: 사실이 철회·만료돼 다시 연 이력(A6-3). 마지막으로 다시 연 시각과 그때 지운 닫힘 근거(fact_confirmed)다.
 export type DataRequest={id:string;brandId:string;storeId?:string;campaignId?:string;status:'open'|'closed';factKey:string|null;label:string;text:string;assignee?:string;scopeWarning?:'store_link_needed';
- origins:DataRequestOrigin[];createdBy:DataRequestActor;createdAt:string;resolution?:DataRequestResolution;version:number;updatedAt:string};
+ origins:DataRequestOrigin[];createdBy:DataRequestActor;createdAt:string;resolution?:DataRequestResolution;reopenedAt?:string;previousResolution?:DataRequestResolution;version:number;updatedAt:string};
 // 상한: 수집 1회 새 요청 20건, 캠페인당 열린 요청 30건, 요청당 출처 10개. 발췌는 200자, 라벨은 60자, 원문은 200자.
 export const DATA_REQUEST_LIMITS={perCollect:20,openPerCampaign:30,origins:10,excerpt:200,label:60,text:200,note:500} as const;
 export const STORE_LINK_WARNING='지점 연결 필요: 지점마다 다른 항목이라 캠페인에 지점을 연결해야 지점 사실로 닫힙니다. 지금은 브랜드 공통 사실로만 닫힙니다.';
 
 // 작업물에서 뽑은 '자료 필요' 한 건. item은 요청 항목(예: '영업시간'), text는 표지 원문, excerpt는 표지가 있는 줄(200자).
-export type ExtractedNeed={item:string;assignee?:string;text:string;excerpt:string;source:'marker'|'copy_pack';channel?:string;variantId?:string};
+export type ExtractedNeed={item:string;assignee?:string;text:string;excerpt:string;source:'marker'|'copy_pack'|'quality'|'store_report'|'brief';channel?:string;variantId?:string;check?:string;field?:string};
 
 const clip=(s:string,n:number)=>s.length>n?s.slice(0,n):s;
 const oneLine=(s:string)=>s.replace(/\s+/g,' ').trim();
@@ -89,6 +95,19 @@ export function extractCopyPackNeeds(a:{version:number;copyPack?:unknown;copyPac
  });
 }
 
+// 품질 검수(quality 역할)의 needs_data 지적: checks(기준)·taskChecks(과제 역할) 중 상태가 needs_data인 것의 다음 조치(fix)가 항목이다.
+// 판정만 needs_data이고 지적이 없으면(발췌 입력 등) 뽑지 않는다. 본문의 '자료 필요' 표지는 extractMarkers가 따로 읽는다. 항목 key는 붙이지 않는다(keylessDraft).
+export function extractQualityNeeds(a:{role:string;qualityReview?:unknown}):ExtractedNeed[]{
+ const review=a.role==='quality'?obj(a.qualityReview):null;
+ if(!review)return [];
+ const list=(v:unknown,key:'criterion'|'role')=>(Array.isArray(v)?v:[]).map(obj).filter(x=>!!x&&x.status==='needs_data').map(x=>({check:clip(str(x![key]),40),fix:cleanItem(str(x!.fix)),finding:str(x!.finding)}));
+ return [...list(review.checks,'criterion'),...list(review.taskChecks,'role')].filter(x=>!!x.fix&&!PLACEHOLDER.test(x.fix)&&!/^해당\s?없음$/.test(x.fix)).map(x=>({item:clip(x.fix,120),text:clip(oneLine(`자료 필요(품질 검수 · ${x.check}): ${x.fix}`),DATA_REQUEST_LIMITS.text),excerpt:clip(oneLine(x.finding),DATA_REQUEST_LIMITS.excerpt),source:'quality' as const,check:x.check}));
+}
+// 점포 진단 보고서 questions(문자열 8개까지)와 브리프 초안 questions({field,question}). 질문 문장이 항목이다.
+const questionNeed=(question:string,prefix:string,source:'store_report'|'brief',field?:string):ExtractedNeed=>({item:clip(cleanItem(question),120),text:clip(oneLine(prefix+question),DATA_REQUEST_LIMITS.text),excerpt:'',source,...(field?{field}:{})});
+export const extractStoreReportNeeds=(questions:unknown):ExtractedNeed[]=>(Array.isArray(questions)?questions:[]).map(str).filter(Boolean).map(q=>questionNeed(q,'점포 진단 질문: ','store_report')).filter(n=>!!n.item);
+export const extractBriefNeeds=(questions:unknown):ExtractedNeed[]=>(Array.isArray(questions)?questions:[]).map(obj).filter(q=>!!q&&!!str(q.question)).map(q=>questionNeed(str(q!.question),'브리프 질문: ','brief',clip(str(q!.field),40))).filter(n=>!!n.item);
+
 // 이름 → 사실 카탈로그 key(가맹 항목 포함). 카탈로그에 없으면 null이다.
 function catalogKey(name:string):string|null{
  if(!name.trim())return null;
@@ -115,6 +134,8 @@ export function draftFor(need:Pick<ExtractedNeed,'item'|'text'|'assignee'>,scope
  return {brandId:scope.brandId,...(scope.storeId?{storeId:scope.storeId}:{}),...(scope.campaignId?{campaignId:scope.campaignId}:{}),factKey,label:requestLabel(need.item,factKey),text:need.text,
   ...(need.assignee?{assignee:need.assignee}:{}),...(storeScoped&&!scope.storeId?{scopeWarning:'store_link_needed' as const}:{})};
 }
+// 항목 key 없는 초안(품질 검수 지적). 카탈로그 라벨과 같은 문구여도 key를 붙이지 않아 사실 확정으로 자동으로 닫히지 않는다.
+export const keylessDraft=(need:Pick<ExtractedNeed,'item'|'text'|'assignee'>,scope:{brandId:string;storeId?:string;campaignId?:string}):NeedDraft=>({brandId:scope.brandId,...(scope.storeId?{storeId:scope.storeId}:{}),...(scope.campaignId?{campaignId:scope.campaignId}:{}),factKey:null,label:clip(need.item,DATA_REQUEST_LIMITS.label),text:need.text,...(need.assignee?{assignee:need.assignee}:{})});
 
 // 요청을 닫는 사실(없으면 null). 유효 사실 판정은 effectiveBrandFacts(확정·근거·확인 시점 ≤ 지금 < 유효 기한·범위·지점 우선)를 그대로 쓴다.
 // 지점 요청은 그 지점 사실과 브랜드 공통 사실로 닫히고, 브랜드 범위 요청은 브랜드 공통 사실로만 닫힌다. 항목 key가 없는 요청은 닫지 않는다.
@@ -125,29 +146,44 @@ export function closingFact(r:Pick<DataRequest,'brandId'|'storeId'|'factKey'>,fa
 }
 export const closedByFact=(r:DataRequest,f:Pick<BrandFact,'id'|'version'>,by:DataRequestActor,at:string):DataRequest=>({...r,status:'closed',resolution:{kind:'fact_confirmed',factId:f.id,factVersion:f.version,by,at},version:r.version+1,updatedAt:at});
 
-const originKey=(o:DataRequestOrigin)=>o.kind==='copy_pack'?`c|${o.artifactId}|${o.artifactVersion}|${o.channel}|${o.variantId}`:o.kind==='place_check'?`p|${o.snapshotId}|${o.snapshotVersion}|${o.field}`:`m|${o.artifactId}|${o.artifactVersion}|${o.excerpt}`;
+const originKey=(o:DataRequestOrigin)=>{
+ switch(o.kind){
+  case 'copy_pack':return `c|${o.artifactId}|${o.artifactVersion}|${o.channel}|${o.variantId}`;
+  case 'place_check':return `p|${o.snapshotId}|${o.snapshotVersion}|${o.field}`;
+  case 'quality_check':return `q|${o.artifactId}|${o.artifactVersion}|${o.check}`;
+  case 'store_report':return `s|${o.reportId}|${o.storeVersion}`;
+  case 'brief_draft':return `b|${o.draftId}|${o.field}`;
+  default:return `m|${o.artifactId}|${o.artifactVersion}|${o.excerpt}`;
+ }
+};
 // 출처 합치기: 같은 출처는 한 번만, 새 출처는 뒤에 붙이고 최근 10개만 남긴다. 바뀐 것이 없으면 같은 배열을 돌려준다.
 export function mergeOrigins(existing:DataRequestOrigin[],incoming:DataRequestOrigin[]):DataRequestOrigin[]{
  const seen=new Set(existing.map(originKey)),added=incoming.filter(o=>{const k=originKey(o);if(seen.has(k))return false;seen.add(k);return true});
  return added.length?[...existing,...added].slice(-DATA_REQUEST_LIMITS.origins):existing;
 }
 
-// 수집 계획. needs는 id를 붙인 초안과 출처다. 같은 id는 출처만 합친다. 닫힌 요청은 다시 열지 않고, 이미 유효 사실이 있는 항목은 만들지 않는다.
-// 새 요청은 수집 1회 20건, 캠페인의 열린 요청 30건까지다(넘치면 capped로 센다).
+// 재개(A6-3): 사실 확정으로 닫혔는데(fact_confirmed) 지금은 같은 항목의 유효 사실이 없으면(철회·만료·거절) 다시 연다. 수동 닫힘(answered·dismissed)은 그대로다.
+// 이력으로 reopenedAt과 지운 닫힘 근거(previousResolution)를 남기고 판을 올린다. 새 유효 사실(다른 판)이 있으면 닫힌 채로 둔다.
+export const reopenable=(r:DataRequest,facts:BrandFact[],now:number)=>r.status==='closed'&&r.resolution?.kind==='fact_confirmed'&&!!r.factKey&&!closingFact(r,facts,now);
+const reopened=({resolution,...rest}:DataRequest,now:string):DataRequest=>({...rest,status:'open',reopenedAt:now,...(resolution?{previousResolution:resolution}:{}),version:rest.version+1,updatedAt:now});
+// 수집 계획. needs는 id를 붙인 초안과 출처다. 같은 id는 출처만 합친다. 먼저 범위 안의 재개 대상(reopenable)을 다시 열고, 그 밖의 닫힌 요청은 다시 열지 않는다. 이미 유효 사실이 있는 항목은 만들지 않는다.
+// 새 요청은 수집 1회 20건, 캠페인의 열린 요청 30건까지다(넘치면 capped로 센다). 재개는 상한과 무관하다(원래 있던 요청이다).
 export type PlannedNeed={id:string;draft:NeedDraft;origins:DataRequestOrigin[]};
 export function planCollect({existing,needs,facts,by,now}:{existing:DataRequest[];needs:PlannedNeed[];facts:BrandFact[];by:DataRequestActor;now:string}){
- const byId=new Map(existing.map(r=>[r.id,r] as const)),grouped=new Map<string,PlannedNeed>();
+ const t=Date.parse(now),out=new Map<string,DataRequest>();
+ for(const r of existing)if(reopenable(r,facts,t))out.set(r.id,reopened(r,now));
+ const current=(id:string)=>out.get(id)??existing.find(r=>r.id===id),grouped=new Map<string,PlannedNeed>();
  for(const n of needs){const g=grouped.get(n.id);grouped.set(n.id,g?{...g,origins:[...g.origins,...n.origins]}:n)}
- const writes:DataRequest[]=[],skipped={closed:0,confirmed:0,capped:0};let created=0,merged=0,open=existing.filter(r=>r.status==='open').length;
+ const skipped={closed:0,confirmed:0,capped:0},reopenedCount=out.size;let created=0,merged=0,open=existing.filter(r=>r.status==='open').length+reopenedCount;
  for(const n of grouped.values()){
-  const old=byId.get(n.id);
+  const old=current(n.id);
   if(old?.status==='closed'){skipped.closed++;continue}
-  if(old){const origins=mergeOrigins(old.origins,n.origins);if(origins!==old.origins){writes.push({...old,origins,version:old.version+1,updatedAt:now});merged++}continue}
-  if(closingFact(n.draft,facts,Date.parse(now))){skipped.confirmed++;continue}
+  if(old){const origins=mergeOrigins(old.origins,n.origins);if(origins!==old.origins){out.set(n.id,out.has(n.id)?{...old,origins}:{...old,origins,version:old.version+1,updatedAt:now});merged++}continue}
+  if(closingFact(n.draft,facts,t)){skipped.confirmed++;continue}
   if(created>=DATA_REQUEST_LIMITS.perCollect||open>=DATA_REQUEST_LIMITS.openPerCampaign){skipped.capped++;continue}
-  writes.push({id:n.id,...n.draft,status:'open',origins:mergeOrigins([],n.origins),createdBy:by,createdAt:now,version:1,updatedAt:now});created++;open++;
+  out.set(n.id,{id:n.id,...n.draft,status:'open',origins:mergeOrigins([],n.origins),createdBy:by,createdAt:now,version:1,updatedAt:now});created++;open++;
  }
- return {writes,created,merged,skipped};
+ return {writes:[...out.values()],created,merged,reopened:reopenedCount,skipped};
 }
 // 화면·응답 정렬: 열린 요청 먼저, 그 안에서 최근 갱신 순.
 export const sortRequests=(rows:DataRequest[])=>[...rows].sort((a,b)=>(a.status===b.status?0:a.status==='open'?-1:1)||b.updatedAt.localeCompare(a.updatedAt));

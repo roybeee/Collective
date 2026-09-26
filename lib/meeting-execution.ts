@@ -10,6 +10,8 @@ import {sameEvidenceFactRefs} from '@/lib/brand-facts';
 import {meetingSubmissionId,requireMeetingWorker,retryFailedMeeting,meetingBasis,meetingStale,type MeetingBasis} from './meeting-repair';
 import {learningContext} from '@/lib/learning-server';
 import {gradeMeetingArtifacts} from './online-grading';
+// 자료 요청 자동 수집(A6-3): 개선본 저장 뒤 소유자 잠금 안에서 부른다. 스위치는 보조 모듈이 읽고, 실패해도 예외를 던지지 않는다(회의 완료·응답 불변).
+import {collectOnSave} from './data-requests-server';
 import {evidenceContext,currentFactRefs,type InputMasking} from '@/lib/ai-context';
 // 단계 제출(지시문·입력·가림 기록) 조립은 공개 순수 함수다(G1). 평가가 같은 함수로 단계 요청을 재현한다.
 import {buildMeetingSubmission} from '@/lib/meeting-input';
@@ -75,6 +77,7 @@ async function finish(owner:string,m:Meeting){
  m.invalidatedRoles=candidateArtifacts(m).invalidatedRoles;m.status='completed';m.updatedAt=stamp();m.error=undefined;
  statements.push(...writes(owner,m),recordStatement(owner,'campaign',c.id,{...c,status:quality.verdict==='ready_for_review'&&!m.invalidatedRoles.length?'review':'revision',updatedAt:stamp()}),eventStatement(owner,c.id,`팀 회의 완료 · ${changes.length}개 담당 개선본과 품질 재검토를 저장했습니다.`),...(flagged.length?[eventStatement(owner,c.id,`회의 개선본에 확인 전 금지 표현이 [확인 필요] 없이 쓰였습니다 · ${flagged.join(' · ')}. 검토 후 수정 요청하세요.`)]:[]),...(packFlagged.length?[eventStatement(owner,c.id,`회의 개선본 카피 팩에 형식 문제가 있습니다 · ${packFlagged.join(' · ')}. 작업물은 저장했습니다. 검토 후 수정 요청하세요.`)]:[]));
  await database().batch(statements);
+ await collectOnSave(owner,c,m.artifactIds);
 }
 
 // 완료된 단계의 후속 처리: 합의 단계는 개선 과제와 품질 재검토 단계를 추가하고, 품질 재검토는 작업물을 저장한다.

@@ -2,6 +2,8 @@ import {markUsageOutcomeSafely as markUsageOutcome} from './usage-outcome';
 import {storeContext,modelStoreContext} from './store-context';
 import {storeResearchInstructions,type Store} from './store-marketing';
 import {parseStoreReport} from './store-server';
+// 자료 요청 자동 수집(A6-3): 점포 진단 보고서 저장 뒤 questions를 모은다. 스위치는 보조 모듈이 읽고, 실패해도 예외를 던지지 않는다(조사 완료·응답 불변).
+import {collectStoreReportOnSave} from './data-requests-server';
 import {ApiError,str,json,failure,database,readRecord,listRecords,recordStatement,connection,acquireLock,releaseLock,stamp,type Connection} from '@/lib/server';
 import type {Brand} from '@/lib/agency';
 import {archiveCategories,researchActive,publicResearch,type BrandResearch,type ArchiveSource,type ChannelObservation,type Diagnostic} from '@/lib/archive';
@@ -123,6 +125,7 @@ export async function executeResearch(owner:string,b:Record<string,any>,submissi
   // 번호 수리를 보내지 않았으면(스위치 꺼짐·입력 상한·예산 가드·확정 거절) 지금의 안전한 제외 결과를 저장한다.
   if(conflict){if(await startRepair(owner,cfg,r,step,{errors:conflict.conflicts.map(c=>c.id+': '+c.reason),conflicts:conflict.conflicts},result.output[0].content[0].text,submissionTimeoutMs))return json(publicResearch(r));out.push(...deepWrites(owner,r,step,conflict,state.revision))}
   await database().batch([...out,...writes(owner,r)]);await markUsageOutcome(owner,'hermes',step.providerId,step.status==='failed'?'invalid_output':'completed');
+  if(step.stage==='store_diagnosis'&&step.status==='completed')await collectStoreReportOnSave(owner,r.id);
  }else if(['failed','cancelled'].includes(result.status)){await markUsageOutcome(owner,'hermes',step.providerId,result.invalidOutput?'invalid_output':result.status==='cancelled'?'cancelled':'provider_failed');if(conflictRepairing(step)&&await keepOriginal(owner,r,step))return json(publicResearch(r));r.status=result.status as 'failed'|'cancelled';step.status='failed';r.error=result.failureReason||'HERMES 조사가 종료됐습니다. 저장된 자료에서 이어서 새 조사를 시작할 수 있습니다.';await database().batch(writes(owner,r))}
  else await database().batch(writes(owner,r));
  return json(publicResearch(r));
