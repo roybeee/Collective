@@ -1,5 +1,13 @@
 # 공동작업 인계 (Claude ↔ ChatGPT/Codex)
 
+## 운영 관리 화면 복구 (2026-09-26)
+
+- A1 PR #120은 `aefd4219aa335425243e41372c8ba8efa3009ee7`로 merged. CI passed, D1 이름 대조 passed. 운영 등록·쌍 평가·stage는 아직 not_run.
+- `fix/owner-quality-operations`: 품질 콘솔에 소유자 전용 운영 버전 조회, 재채점, 후보 등록, 쌍 평가, 지정 캠페인 적용 폼을 추가한다. 기존 `/api/eval`, `/api/prompts`, `/api/version`과 권한·CSRF·예산·활성화 게이트를 그대로 쓴다.
+- `/api/eval?view=operations`는 동결 요청·출력·기대 판정·케이스별 채점 근거를 제외한 목록·합계만 반환한다. 자동 등록·자동 재시도·자동 전체 승격은 없다.
+- 게시 전 상태다. 검증·게시·운영 실행 결과는 PR과 릴리스 기록으로 구분한다.
+
+
 ## Codex A1 작업 재개 (2026-09-26 01:52 UTC)
 
 - 원격 main `b16403df6ded5e67794f3d05e0939c9d22697620`을 PR #120(`feat/a1-local-channel-pack`)에 통합했다. 기존 트랙 R 변경과 게시 보류 이력은 보존한다.
@@ -16,9 +24,9 @@
 
 ## 기준
 - 저장소: `roybeee/Collective`, 브랜치 `main`
-- 기준 SHA: `aefd421`(#120 A1, 병합 커밋). 운영은 `b16403d`(tree `68bfa40`, Sites 버전 36, `published`, `/api/version` 확인 전)이다. 묶음 13은 자동 게시([게시 절차 8절](PUBLISH.ko.md#8-자동-게시-chatgpt-예약-작업))로 게시했다. 보류했던 `b0ef304`는 따로 게시하지 않고 이 묶음에 포함됐다.
+- 기준 SHA: `aa49e6b`(#121 A3-1). 운영은 `d721017`(tree `4f3b130`, Sites 버전 37, Codex 세션 게시, `runtime-verified` 02:22 UTC 경)이고 묶음 13 `b16403d`(버전 36, 자동 게시)를 포함한다. A3-2·A3-3a·A3-4(#122·#123·#125)는 쌓인 base 브랜치로 병합돼 main에 없다(A3 세션 확인 필요).
 - 작성자/도구: Claude Code(트랙 R 세션)
-- 작성 시각: 2026-09-26 02:25 UTC
+- 작성 시각: 2026-09-26 02:45 UTC
 - 이 문서를 바꾸는 사람은 기준 SHA와 작성 시각을 같이 고친다.
 
 ## 먼저 읽을 것
@@ -41,7 +49,7 @@
   - 시작할 때 STATUS의 진행 중 작업에 한 줄을 적는다(브랜치 이름, 도구, 목표).
   - 같은 파일을 두 도구가 동시에 고치지 않는다. 파일 소유자는 1명이다.
 - 자주 충돌하는 줄이 있다. `lib/graders/index.ts`의 `GRADERS_VERSION`, `lib/graders/compliance-lexicon.ts`의 사전 버전, `docs/STATUS.md`다. 먼저 병합된 PR이 이기고, 뒤 PR은 `origin/main` 위로 다시 올려 버전을 이어 붙인다.
-- 게시 SHA는 한 번에 한 도구만 고른다. 게시 지시문이 나가 있거나 `sites-publish` 라벨 PR이 열려 있는 동안에는 다른 도구가 새 게시를 요청하지 않는다(지금: 없음. 묶음 13 `b16403d`는 `published`, 요청 PR #126의 라벨은 `sites-published`만 남겼다).
+- 게시 SHA는 한 번에 한 도구만 고른다. 게시 지시문이 나가 있거나 `sites-publish` 라벨 PR이 열려 있는 동안에는 다른 도구가 새 게시를 요청하지 않는다(지금: 없음. 버전 36 `b16403d`는 트랙 R 세션 자동 게시, 버전 37 `d721017`은 Codex 세션이 버전 36 성공을 확인한 뒤 게시했다).
 - 브라우저: 소유자 세션 Chrome 탭을 두 도구가 같이 쓰면 요청이 막힌다(2026-09-25 `ERR_BLOCKED_BY_CLIENT`). 도구마다 새 탭을 연다.
 
 ## 검증 명령 (`pnpm run` 금지, node로 직접)

@@ -132,11 +132,11 @@ check('every side has its own new idempotency key',()=>assert.ok(R1.results.ever
 const devActive=R1.results.find(x=>x.caseId===devCase.id&&x.variant==='active'),devCandidate=R1.results.find(x=>x.caseId===devCase.id&&x.variant==='candidate');
 check('the active side sends the code constants byte for byte (no active version)',()=>assert.ok(submitted(devActive).sent.instructions===instruction.buildRoleInstruction(devCase.request)&&submitted(devActive).sent.input===instruction.buildRoleInput(devCase.request)));
 check('the candidate side injects the candidate body through PromptSet',()=>assert.ok(submitted(devCandidate).sent.instructions===instruction.buildRoleInstruction({...devCase.request,prompts:{roles:{cmo:{...baseBody,focus:V1_FOCUS}}}})&&uses(submitted(devCandidate).sent,V1_FOCUS)&&devCandidate.promptHash!==devActive.promptHash));
-check('both sides are graded by the same thirteen graders and report a model',()=>assert.ok(R1.results.every(x=>x.graders.length===13&&x.model==='mock-eval-model')));
+check('both sides are graded by the same fourteen graders and report a model',()=>assert.ok(R1.results.every(x=>x.graders.length===14&&x.model==='mock-eval-model')));
 check('start and end gateway snapshot hashes are recorded and equal',()=>assert.ok(R1.gatewaySnapshot.eval.hash&&R1.gatewaySnapshotEnd.eval.hash===R1.gatewaySnapshot.eval.hash));
 check('pair run tokens count both submissions',()=>assert.equal(R1.usedTokens,6000));
 r=await evalGet('?pair='+R1.id);
-check('pair report compares the two sides and passes the gate',()=>assert.ok(r.status===200&&r.body.gate.ok===true&&r.body.gate.cases===2&&r.body.gate.sealedCases===1&&r.body.gate.sealedRegressions.length===0&&r.body.comparison.graders.length===13&&r.body.comparison.sharedCases===2,JSON.stringify(r.body.gate)));
+check('pair report compares the two sides and passes the gate',()=>assert.ok(r.status===200&&r.body.gate.ok===true&&r.body.gate.cases===2&&r.body.gate.sealedCases===1&&r.body.gate.sealedRegressions.length===0&&r.body.comparison.graders.length===14&&r.body.comparison.sharedCases===2,JSON.stringify(r.body.gate)));
 r=await evalGet(`?run=${R1.id}&caseId=${devCase.id}&variant=candidate`);
 check('each side keeps its own raw output',()=>assert.ok(r.status===200&&r.body.variant==='candidate'&&r.body.output===evalOutput(submitted(devCandidate).sent)));
 // 코드 기준으로 평가한 v2 run(R1b)은 v1 활성화 뒤 오래된 기준이 된다.

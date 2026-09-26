@@ -4,11 +4,12 @@ import {briefProhibitionConflict,unsupportedClaimTerm,industryMetricLeak,revisit
 import {factConflict,unconfirmedValueAssertion,inputBudget,brandIntroAsFact} from './ledger';
 import {meetingStepContract,revisionRepeat,seededDefectDetection} from './meeting';
 import {briefContract,briefInstructionViolation} from './brief';
+import {copyPackVariants} from './copy-pack';
 import {unnormalizedItem,rawNormalization} from './text';
 export type {Grader,GraderResult,GraderStatus,EvalItem,EvalKind,GradeContext,FactLedger,SeededDefect} from './types';
 export {INPUT_TOKEN_CAP} from './ledger';
 
-// 실패 유형 사전 v1(결정론 13종). 순서는 docs/EVAL.ko.md 정의표와 같다. 판정 임계값·ID 패턴은 이 파일들이 정본이다.
+// 실패 유형 사전 v1(결정론 13종) + 카피 팩 채점기 1종(A3-1). 순서는 docs/EVAL.ko.md 정의표와 같다. 판정 임계값·ID 패턴은 이 파일들이 정본이다.
 // 'v1+normalized': 원 JSON(raw)은 사람이 보는 정규화 렌더본(lib/output-normalize.ts)으로 채점한다. 'failure-types-v1'은 정규화 전 렌더본을 채점했다(품질 기준선 v1).
 // '+measure-v2': 13종은 같고 부정·규칙 문장 판정(negation.ts)과 unsupported_claim_term·revisit_cohort_definition 판정을 고쳤다(측정 도구 v2). 판정이 바뀌면 이 값을 올려
 // 같은 저울 재채점(regrade_run)의 버전 검사와 비교(gradersVersions)가 저울 변경을 구분하게 한다.
@@ -18,11 +19,12 @@ export {INPUT_TOKEN_CAP} from './ledger';
 // '+critique-clause': 재방문율 산식은 재방문율이 든 절 안에 있어야 정의다('X는 재방문율이 아니라 Y'·'재방문율을 계산할 수 없다'도 정의가 아니다, content.ts). 공용 부정에 '-지는·지도 않'을 더했다.
 // '+r3-measure': 공용 부정 판정에 인용 조사 '(이)라고'(절 경계 아님), 확정 뒤로 미룬 승인·결정, 대상 앞 금지·거절 수식('금지된 “…”'), 주의 규칙 이름 인용·'여부'·'확정 사실이 아니다'를 더했다(R3 기준선 실측). unsupported_claim_term·fact_conflict 판정이 바뀌었다. fact_conflict는 금지·보류 맥락 안 언급을 사용으로 세지 않고, input_budget은 회의 단계 상한 64,000을 쓴다.
 // '+meeting-normalized': 회의 단계를 운영과 같은 정규화본으로 채점하고 원문 경로 노출은 prevention으로 둔다(lib/eval-kinds.ts). 회의 단계의 internal_id_exposure 결과가 바뀌었다.
-export const GRADERS_VERSION='failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-measure+local-rerun+contract-read+channel-decision';
-export const GRADERS:Grader[]=[questionOnly,thinSection,contractJson,headingNesting,internalIdExposure,briefProhibitionConflict,factConflict,unconfirmedValueAssertion,unsupportedClaimTerm,industryMetricLeak,revisitCohortDefinition,localChannelCoverage,inputBudget];
+// '+copy-pack': 카피 팩 v2(A3-1). 원문의 contractVersion으로 계약을 골라 v2 팩 렌더본까지 채점하고, copy_pack_variants(14번째)를 더했다. v1 원문의 기존 13종 판정은 같다.
+export const GRADERS_VERSION='failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-measure+local-rerun+contract-read+channel-decision+copy-pack';
+export const GRADERS:Grader[]=[questionOnly,thinSection,contractJson,headingNesting,internalIdExposure,briefProhibitionConflict,factConflict,unconfirmedValueAssertion,unsupportedClaimTerm,industryMetricLeak,revisitCohortDefinition,localChannelCoverage,inputBudget,copyPackVariants];
 export const CONTENT_GRADERS=GRADERS.filter(g=>g.content).map(g=>g.id);
 // 채점기 확장 G3: 회의 단계(합의·개선본·재검토)·브리프 채점기와 원장 구역 규칙. 적용 kind 밖이면 not_applicable이라 역할·발언 채점 결과를 바꾸지 않는다.
-// GRADERS(13종)는 운영 온라인 채점·기존 비교·검토 사유 매핑이 그대로 쓰고, 회의·브리프 평가는 runGraders(item,ctx,ALL_GRADERS)로 부른다.
+// GRADERS(14종)는 운영 온라인 채점·기존 비교·검토 사유 매핑이 그대로 쓰고, 회의·브리프 평가는 runGraders(item,ctx,ALL_GRADERS)로 부른다.
 export const KIND_GRADERS:Grader[]=[meetingStepContract,revisionRepeat,seededDefectDetection,briefContract,briefInstructionViolation,brandIntroAsFact];
 export const ALL_GRADERS:Grader[]=[...GRADERS,...KIND_GRADERS];
 

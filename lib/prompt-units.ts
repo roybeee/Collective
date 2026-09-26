@@ -85,7 +85,7 @@ const lead=(s:string)=>s.slice(0,24);
 const squashed=(s:string)=>formsOf(s).squash;
 const codeOwnedPhrases=[lead(factDiscipline),lead(claimPolicy),lead(copyCompliancePolicy),lead(answerDiscipline),lead(measurementDiscipline),lead(directivePolicy),'근거 규칙','광고 표현 규칙','추천·광고 표시 규칙','측정 정의:','실무 스킬','필수 산출물','완료 전 점검','인계:'].map(squashed);
 const codeOwnedRules=[
- ...on('squash',/evidence\.(?:facts|directives)|facts\.(?:confirmed|candidate|prohibited)|contractversion|outputcontract|contexttruncated|idlabels|claimguard|respondsto|revisionrequest|previousdecisions|sourceassessment|brandintro|factpolicy|taskchecks|```|~~~/),
+ ...on('squash',/evidence\.(?:facts|directives)|facts\.(?:confirmed|candidate|prohibited)|contractversion|outputcontract|copypack|contexttruncated|idlabels|claimguard|respondsto|revisionrequest|previousdecisions|sourceassessment|brandintro|factpolicy|taskchecks|```|~~~/),
  ...on('folded',/\bsections\b|\boutput_?\d+\b/),
  ...on('letters',/json|제이슨|candidate|confirmed|prohibited/),
  ...on('squash',/외부(?:행동|도구\S{0,3}실행)|(?:메시지|문자|dm|이메일|메일|알림|푸시)\S{0,3}(?:발송|전송|보내)|광고\S{0,3}(?:집행|게재|송출)|(?:직접|바로|즉시|자동으로|대신)(?:집행|발송|전송|게시|결제|송금|업로드|구매|주문|제출)|결제\S{0,3}(?:진행|실행|완료|승인)|송금/),
