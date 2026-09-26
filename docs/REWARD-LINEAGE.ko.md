@@ -4,7 +4,7 @@
 
 비유: 식당 주방에서 레시피 판(버전)마다 "손님이 처음 먹고 바로 좋다고 했나, 메뉴판에 올랐나, 그 메뉴로 주문이 들어왔나"를 영수증에 적힌 레시피 번호로만 거슬러 세는 장부다. 번호가 없는 영수증은 어느 레시피에도 나눠 주지 않는다.
 
-- 상태: **B4-2a 순수 모듈을 구현했다**(`lib/reward-lineage.ts`, [8절](#8-b4-2a-구현-순수-모듈)). 서버·API·스위치·화면은 없다.
+- 상태: **B4-2a 순수 모듈과 B4-2b 서버·API·스위치를 구현했다**(`lib/reward-lineage.ts` [8절](#8-b4-2a-구현-순수-모듈), `lib/reward-lineage-server.ts`·`/api/reward-lineage` [9절](#9-b4-2b-구현-서버api스위치)). 스위치 `b4_reward_lineage`는 기본 꺼짐이고 화면(B4-2c)은 없다.
 - 레인: A([LANES](LANES.ko.md)). 기준 SHA `76fc96e`. 아래 `파일:줄`은 그 커밋 기준이다.
 - 착수 근거: 대표 지시(2026-09-27 "B2 2단계 빼고 남은 개발을 모두 진행하라").
 - 이름 구분: 이 문서의 **보상 L0~L4**는 보상 층이다. [DATA-PROCESSING](DATA-PROCESSING.ko.md)의 L1~L3(바이럴 사례 분석·발견·학습 규칙 초안의 모델 입력 경로)과는 다른 것이다. 코드 키는 영문(`human`·`publish`·`engagement`·`order`·`revisit`)을 쓴다.
@@ -154,9 +154,57 @@
   - usesVersion 부분 문자열, L4 측정 표시, 알 수 없는 사유 코드, 비교 방향 뒤집기, copy 무시
   - 기간 무시, 초안 규칙 채택, digest에 원문 포함, 줄 정렬 제거, 기본 등급
 
-## 9. 남은 위험
+## 9. B4-2b 구현 (서버·API·스위치)
+- **파일**
+  - 신규 `lib/reward-lineage-server.ts`: records를 읽어 `rewardLineage`에 넘긴다. 쓰기·잠금·모델·커넥터 호출이 없다(토큰 0).
+  - 신규 `app/api/reward-lineage/route.ts`: `GET ?from=&to=&brandId=&storeId=&campaignId=`만 있다.
+  - `lib/feature-flags.ts` `b4_reward_lineage`(기본 꺼짐), `lib/feature-status.ts` 기능표 `reward-lineage` 행(고객 보고서 행 다음).
+  - 새 kind 0개, D1 migration 0건. `lib/learning*.ts`·실행기·`meetings`는 고치지 않는다(`roleArtifactId`와 타입만 import).
+- **판정 순서**: 비로그인 401 → 직원 403 → 스위치 꺼짐 409 → 기간 400 → 범위(없음·다른 워크스페이스·서로 맞지 않음 404, 빠짐 400).
+  - 스위치는 이 서버 파일에서만 읽고, 읽기 실패는 꺼짐으로 본다.
+  - 대표·관리자는 200이다. 권한은 route와 서버가 함께 막는다.
+- **응답**: `{enabled:true,decision16,partial:{kinds},lineage}`. `lineage`는 `collective.reward-lineage.v1`이다.
+  - 같은 DB 상태면 `inputDigest`와 응답 바이트가 같다. 기록이 바뀌면 `inputDigest`가 바뀐다.
+- **기간**: 한국 날짜 `from`~`to`(양 끝 포함). 기본은 오늘까지 28일, 최대 180일이다. SQL 창은 앞뒤 하루씩 넓히고, 날짜 경계는 순수 모듈이 다시 거른다.
+- **범위**
+  - 브랜드는 필수다. `storeId`나 `campaignId`만 주면 그 기록의 브랜드를 쓴다.
+  - 범위 캠페인: 브랜드는 그 브랜드의 모든 캠페인이다. 지점은 그 지점 캠페인과 브랜드 공통 캠페인이다(고객 보고서와 같은 규칙). 캠페인은 그 캠페인만이다.
+  - 판정: 캠페인을 지워도 남는다. 그래서 브랜드 범위는 판정의 `brandId`로, 지점·캠페인 범위는 판정의 `campaignId`로 거른다. 지운 캠페인의 판정은 지점을 알 수 없어 지점 범위에서 빠진다.
+  - 주문: 지점 범위는 그 지점, 그 밖은 브랜드의 모든 지점이다. 캠페인 범위는 그 캠페인에 귀속된 주문만이다.
+  - 발행·실험: 범위 캠페인 것만 읽는다. 기간 주문의 게시 코드가 가리키는 범위 캠페인 발행도 읽는다(게시 관문 재검사). 규칙은 그 실험에서 나온 브랜드 규칙만이다.
+- **작업물 판과 규칙 계보**
+  - 판정·발행 copy·실험 출처가 가리키는 작업물의 현재 판과 이전 판(kind `history`)만 읽는다. 본문은 읽지 않는다.
+  - 역할 실행: 그 작업물 캠페인의 `learning_snapshot`을 읽고, `artifactId`가 없으면 `roleArtifactId(스냅샷 id)`로 작업물에 잇는다.
+  - 회의 작업물: `meetingId`의 `team_meeting` `snapshot.learning`을 `meeting:<회의>:<작업물>` 스냅샷으로 잇는다.
+  - 사건이 있는 작업물에 이어지는 스냅샷만 넘긴다. 그래서 `unallocated.rules.no_artifact_mapping`은 이 서버에서 0이다.
+  - 규칙 사본은 id·판·등급만 읽는다.
+- **캠페인 삭제 뒤**: 작업물·스냅샷은 지워지고 판정은 남는다. 판정은 `promptVersion` 줄에 남고, 규칙 계보는 없다(ruleRef unknown, 그 규칙 줄 없음).
+- **D1 한도**: 종류별 최근 5,000행만 읽는다. 넘으면 `partial.kinds`에 종류를 남긴다(`campaign`·`review_decision`·`execution_publication`·`store_order`·`viral_experiment`·`learning_rule`·`artifact`·`history`·`learning_snapshot`·`team_meeting`). 목록 조건은 JSON 배열 하나(`json_each`)로 바인드해 바인드 수가 고정이다.
+- **결정 16**: 저장 기록이 없는 운영 판정이다. 그래서 서버 상수 `DECISION16_STATE='not_run'`으로 둔다. 첫 실게시가 real로 판정되면 이 값만 바꾼다.
+- **RED 목록**(`tests/reward-lineage-server.test.mjs`, 모두 passed · mocked: 메모리 SQLite, 로컬 인증 헤더·이메일 세션, fetch 스텁)
+  1. `b4_reward_lineage`가 꺼져 있으면 409, 켜면 200이다.
+  2. 직원 403, 관리자·소유자 200, 비로그인 401이다.
+  3. fetch 호출 0회, `provider_usage` 0건이다(모델·커넥터 호출 없음).
+  4. 5,000행을 넘으면 `partial.kinds`에 표시한다.
+  5. 캠페인을 지운 뒤에도 판정은 promptVersion으로 남고 ruleRef는 unknown이다(규칙 줄·매핑 없음).
+  6. record-kinds 고정 목록이 그대로다(새 kind 없음).
+  7. `b4_reward_lineage` 기본값은 false다.
+  8. 범위 필터(브랜드·지점·캠페인)가 다른 범위 기록을 섞지 않는다.
+  9. 다른 owner의 기록은 보이지 않는다.
+  10. 같은 DB 상태면 `inputDigest`가 같다.
+  - 그 밖: roleArtifactId·회의 `snapshot.learning` 규칙 계보, 기간 전 첫 판정, 기간 400·180일, 서로 맞지 않는 범위 404, 저장 0건, 원문 없음(메모·캡션·규칙 본문·주문번호).
+- **변이 검사**: 21개 변이를 모두 잡았다. 대상은 아래와 같다.
+  - 스위치 무시, 권한 제거(route·서버), 스위치 기본값 켜짐, 행 상한 표시 제거, roleArtifactId 무시, 회의 snapshot.learning 무시
+  - 지점 캠페인 필터 제거, 주문 지점 필터 제거, 캠페인 범위 제거, 판정 범위를 늘 brandId로, 판정 범위를 늘 campaignId로, 소유자 조건 제거
+  - 기본 기간 90일, 최대 기간 181일, inputDigest 없음, 결정 16 real, 지점·브랜드 불일치 허용, 캠페인 불일치 허용, 기간 역순 허용
+  - 기간 전 판정 제외(1차 판정 오판), 발행 범위 캠페인 무시
+
+## 10. 남은 위험
 - **promptVersion 공백**: 레지스트리 이전 실행과 조회 실패는 promptVersion이 비어 `no_prompt_version`으로 빠진다. 초기에는 unallocated가 클 수 있다.
 - **L1 `live`**: 결정 16 전에는 실제 게시 증거가 아니다. 화면(B4-2c)이 `realPublish:false`를 함께 보여야 한다.
 - **규칙 중복 배분**: 규칙별 합계를 더해서 쓰면 과대 집계가 된다. 고지로만 막는다.
 - **표본**: 운영 판정 수가 적어 대부분 `insufficient`일 것이다. 비교는 5건 이상인 버전끼리만 나온다.
 - **Web Crypto**: `rewardLineage`는 전역 `crypto.subtle`에 기댄다. Workers와 Node 테스트 런타임에는 있다. 없는 환경에서는 `buildRewardLineage`와 `canonicalInput`을 쓰고 해시는 호출자가 붙인다.
+- **B4-2b 범위 규칙**: 지점 범위에 브랜드 공통 캠페인이 함께 든다. 그래서 같은 공통 캠페인 기록이 두 지점에 모두 보인다. 지운 캠페인의 판정은 지점 범위에서 빠지고 브랜드 범위에만 남는다.
+- **B4-2b 행 상한**: 판정이 5,000행을 넘으면 최근 행만 읽는다. 그래서 오래된 첫 판정이 빠져 1차 판정이 달라질 수 있다. 이때 `partial.kinds`에 `review_decision`이 나오므로 화면(B4-2c)이 '일부만 집계'를 함께 보여야 한다.
+- **결정 16 상수**: 첫 실게시가 real이 돼도 코드 상수를 바꾸기 전까지 `not_run`으로 보인다. 결정 16 판정 기록 PR에서 함께 바꾼다.

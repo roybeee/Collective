@@ -4,7 +4,7 @@
 
 ## 역할별 권한 (이메일 모드)
 
-마지막 갱신: 2026-09-27 KST (A8-2: `/api/customer-reports` 고객 보고서 미리보기·목록·다운로드·사실 팩·동결·검토 행. 트랙 R R15a-2a: 모집 자료·행사 행. A6-2: `/api/place-checks` 플레이스 대조 보기·스냅샷 입력·할 일 처리 행. A6-1: `/api/data-requests` 자료 요청 보기·모으기·닫기 행. 트랙 R R3a: 캠페인 가맹 모집 목적 지정·해제 행, 발행 승인 행의 판정 범위. 트랙 R R2: 발행 승인 행에 가맹 모집 규칙 해제 불가 409, 직원도 보는 정보공개서 버전 요약 행. 트랙 R R1b: 가맹 사실 저장 조건과 `rebase_facts` 행. 이전: 트랙 R R1a·R4b: `/api/franchise` 가맹 설정·리드 원장·연락처 열람·정보주체 요청 행 추가, 대표 결정 22. 검토 반영: 설정 정정·다시 사용 행, 출처 고지 `record_source_notice` 행. 이전: F4a 캠페인 삭제 영향 조회 행·결정 7 규칙 보존, F5 채널 연결 브랜드·지점 단위, PR 6c 아카이브 원본 파일 삭제 행)
+마지막 갱신: 2026-09-27 KST (B4-2b: `/api/reward-lineage` 보상 계보 보기 행. A8-2: `/api/customer-reports` 고객 보고서 미리보기·목록·다운로드·사실 팩·동결·검토 행. 트랙 R R15a-2a: 모집 자료·행사 행. A6-2: `/api/place-checks` 플레이스 대조 보기·스냅샷 입력·할 일 처리 행. A6-1: `/api/data-requests` 자료 요청 보기·모으기·닫기 행. 트랙 R R3a: 캠페인 가맹 모집 목적 지정·해제 행, 발행 승인 행의 판정 범위. 트랙 R R2: 발행 승인 행에 가맹 모집 규칙 해제 불가 409, 직원도 보는 정보공개서 버전 요약 행. 트랙 R R1b: 가맹 사실 저장 조건과 `rebase_facts` 행. 이전: 트랙 R R1a·R4b: `/api/franchise` 가맹 설정·리드 원장·연락처 열람·정보주체 요청 행 추가, 대표 결정 22. 검토 반영: 설정 정정·다시 사용 행, 출처 고지 `record_source_notice` 행. 이전: F4a 캠페인 삭제 영향 조회 행·결정 7 규칙 보존, F5 채널 연결 브랜드·지점 단위, PR 6c 아카이브 원본 파일 삭제 행)
 
 같은 워크스페이스의 계정은 대표(owner)·관리자(admin)·직원(member) 중 하나다. 대표는 DB에 따로 저장하지 않고 같은 워크스페이스에서 가장 먼저 만든 관리자 계정으로 계산한다(`lib/auth-session.ts` `roleSql`). 판정은 서버 API가 하며, 화면에서 버튼을 숨기는 것은 보조 수단이다. 직원이 관리자 전용 작업을 요청하면 403이다. legacy 모드(로컬 개발·E2E)의 헤더 사용자는 모든 권한을 가진다.
 
@@ -38,6 +38,7 @@
 | 사실 팩 받기(확정 사실만, 가맹 항목 제외, 확정한 사람 없음. `a8_customer_report` 꺼짐 409) | `/api/customer-reports` GET `?type=fact_pack` | 허용 | 허용 | 403 |
 | 고객 보고서 동결(끝난 주만, 진행 중·미래 주 400, `confirmed:true`와 확인 값 필수·불일치 409, 200KB 초과 413, 다시 동결하면 판+1. `a8_customer_report` 꺼짐 409, 소유자 잠금·빈도 제한) | `/api/customer-reports` `freeze` | 허용 | 허용 | 403 |
 | 고객 보고서 검토(지금 판에만, 옛 판·모르는 판 409. `a8_customer_report` 꺼짐 409) | `/api/customer-reports` `review` | 허용 | 403 | 403 |
+| 보상 계보 보기(B4-2b. 요청할 때 계산하고 저장하지 않음, 모델·커넥터 호출 없음. 기간 기본 28일·최대 180일, 종류별 5,000행 상한을 넘으면 `partial.kinds`. `b4_reward_lineage` 꺼짐 409, 다른 워크스페이스·서로 맞지 않는 브랜드·지점·캠페인 404. 판정자·주문번호·메모·캡션·규칙 본문 없음) | `/api/reward-lineage` GET `?from=&to=&brandId=&storeId=&campaignId=` | 허용 | 허용 | 403 |
 | 아카이브 자료 추가·후보로 되돌리기 | `/api/archive` `add_source`, `review_source`·`review_sources` (모든 항목이 `candidate`) | 허용 | 허용 | 허용 |
 | 아카이브 자료 확정·사용 제외(일괄 포함), 진단 채택, 의뢰 정보 수정 | `/api/archive` `review_source`·`review_sources` (`confirmed`·`excluded`가 하나라도 있으면), `confirm_diagnosis`, `save_intake` | 허용 | 허용 | 403 |
 | 아카이브 원본 파일 삭제(레코드는 남김, 되돌릴 수 없음) | `/api/archive` `delete_source_file` | 허용 | 허용 | 403 |
