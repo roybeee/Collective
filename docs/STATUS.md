@@ -1,5 +1,14 @@
 # COLLECTIVE 현재 상태
 
+## 운영 API 복구 및 남은 HERMES 장애 (2026-09-26 02:35 UTC)
+
+- 운영 API 접근 복구 완료. 소유자 품질 콘솔에서 버전 조회·재채점·후보 등록 성공(real). S8 두 run 재채점은 완료 출력 각 1건, 실패 0이다.
+- Sites v38 published, tree `a565f141…` 일치. GitHub `6240166`(main 포함, PR #128 CI success) 기준. 병합 중 들어온 #121 제품 변경은 미게시다.
+- `channel.offline@2cbe193eacdc` 등록 성공. 쌍 평가 `8fcd3726-b09f-464c-b111-d1d9e20c63fc`: HERMES 실행 실패 1, 사용량 미보고로 미실행 3, 완료 출력 0/4. 기록된 사용량 0은 실사용 0이 아니다.
+- 활성화 게이트 failed, stage/promote not_run. 추가 모델 요청 없이 평가 전용 HERMES의 첫 실패 원인과 실제 사용량 확인이 다음 작업이다. API 인증을 다시 시도할 문제가 아니다.
+- [배포 ID·검증·실행 근거](releases/2026-09-26-d721017.md). 봉인 입력·출력 원문과 공유 서버 설정은 변경하지 않았다.
+
+
 ## 운영 API 복구 결과 (2026-09-26 02:22 UTC)
 
 - PR #127 merged, Sites 버전 37 published, `d721017` tree `4f3b130…` runtime-verified. 품질 콘솔의 운영 상태 조회가 실제 API 호출에 성공했다.
