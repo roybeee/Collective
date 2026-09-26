@@ -111,8 +111,8 @@ export function matchView(raw:string):string{
  return numerals(t).replace(/[ \t]{2,}/g,' ').trim();
 }
 // 해제 불가 규칙의 두 번째 보기: 한글 사이 가운뎃점('수익·보장'), 띄운 줄표·빗금('수익 — 보장', '수익 / 보장'), 짧은 괄호 주석('월 순수익(인건비·임대료 제외 기준) 550만원')을 띄어쓰기로 본다.
-// 적중을 더하기만 한다(첫 보기의 적중은 그대로다).
-const ALT_SEP=/(?<=[가-힣])\s?[·ㆍ\u119E・‧]\s?(?=[가-힣])|(?<=[가-힣])\s[-‐‑‒–—―/]\s(?=[가-힣])/g,ALT_PAREN=/\s?\([^()\n]{1,24}\)\s?/g;
+// 적중을 더하기만 한다(첫 보기의 적중은 그대로다). 자문 조건을 단 괄호('7일(자문을 받은 경우)', '(자문 시)')는 떼지 않는다(떼면 조건 없는 7일로 읽힌다, 2026-09-26 레드팀).
+const ALT_SEP=/(?<=[가-힣])\s?[·ㆍ\u119E・‧]\s?(?=[가-힣])|(?<=[가-힣])\s[-‐‑‒–—―/]\s(?=[가-힣])/g,ALT_PAREN=/\s?\((?![^()\n]*(?:자문|변호사|거래사))[^()\n]{1,24}\)\s?/g;
 const altView=(s:string)=>s.replace(ALT_SEP,' ').replace(ALT_PAREN,' ').replace(/[ \t]{2,}/g,' ').trim();
 // parts: 이은 문장의 문장 보기(둘 또는 셋). 이은 문장의 적중은 여러 문장에 걸친 것만 센다(한 문장 안의 표현이 다른 문장의 낱말로 문맥을 얻지 않는다). from: 이은 문장의 첫 문장 순번.
 // ids: 이은 문장을 이룬 문장 순번(문장마다 경고 하나를 셀 때 쓴다).
@@ -131,12 +131,14 @@ function bridgesOf(sentences:Sentence[]):Sentence[]{
   const a=sentences[k],b=sentences[k+1],near=b.line<=a.line+2;
   const broken=brokenAt(a,b),asked=b.line===a.line&&/\?$/.test(a.raw),short=near&&a.s.length<=BRIDGE_SHORT&&b.s.length<=BRIDGE_SHORT;
   // 질문과 '아니요' 답은 잇지 않는다: 답은 따로 판정하고 질문은 deniedQuestions가 다룬다('Q. 로열티가 매출 따라 달라지나요?\nA. 아니요, 월 20만원 정액입니다', R2 최종 측정).
- const deniedPair=QUESTION.test(a.raw)&&DENIAL.test(b.raw);
+ // 뒤집는 답('아니요, 그 이상입니다', '아니요, 협의하면 짧아집니다')은 부정이 아니라 잇는다(deniedQuestions와 같은 NOT_DENIAL, 2026-09-26 레드팀).
+ const deniedPair=QUESTION.test(a.raw)&&DENIAL.test(b.raw)&&!NOT_DENIAL.test(b.raw);
  if((broken||asked||short)&&!deniedPair){const raw=a.raw+' '+b.raw;out.push({s:matchView(raw),raw,line:a.line,parts:[a.s,b.s],from:k,ids:[k,k+1]})}
   const c=sentences[k+2];
   if(c&&broken&&brokenAt(b,c)&&[a,b,c].every(x=>x.s.length<=BRIDGE_SHORT)){const raw=a.raw+' '+b.raw+' '+c.raw;out.push({s:matchView(raw),raw,line:a.line,parts:[a.s,b.s,c.s],from:k,ids:[k,k+1,k+2]})}
   // 답 표시만 있는 문장('A.', '답:')을 건너 질문과 답을 잇는다('Q. 순수익은 얼마나 되나요?\nA. 대부분 500 이상입니다', R2 5차 재검토).
-  if(c&&QUESTION.test(a.raw)&&ANSWER_MARK.test(b.raw)&&!DENIAL.test(c.raw)&&c.line>a.line&&c.line<=a.line+2){const raw=a.raw+' '+c.raw;out.push({s:matchView(raw),raw,line:a.line,parts:[a.s,c.s],from:k,ids:[k,k+2]})}
+  // 같은 줄의 'Q. …? A. 열흘이면 충분합니다'도 잇는다(마침표 뒤에서 끊겨 'A.'가 따로 남는다, 2026-09-26 블라인드 레드팀 2차). 아니라고 답한 줄은 그대로 잇지 않는다.
+  if(c&&QUESTION.test(a.raw)&&ANSWER_MARK.test(b.raw)&&!DENIAL.test(c.raw)&&c.line>=a.line&&c.line<=a.line+2){const raw=a.raw+' '+c.raw;out.push({s:matchView(raw),raw,line:a.line,parts:[a.s,c.s],from:k,ids:[k,k+2]})}
  }
  return out;
 }
@@ -148,7 +150,7 @@ function hardPool(sentences:Sentence[],bridges:Sentence[]):Sentence[]{
 // 묻고 아니라고 답한 질문('Q. 가계약금을 내면 자리를 잡아 주나요?\nA. 아니요. …')은 질문 속 표현을 주장으로 보지 않는다. 답은 다음 문장(또는 다음 줄)이 '아니요·아뇨·없습니다'로 시작해야 하고
 // '그 이상·오히려·더 많이'처럼 뒤집는 말이 없어야 한다. 답 속 표현은 따로 판정한다. 수치 자체를 막는 규칙(H6)에는 쓰지 않는다(R2 4차 재검토).
 const QUESTION=/(?:\?|(?:나요|까요|습니까)\s?\??)\s*$/,ANSWER_MARK=/^\s*(?:A|답|답변)\s?[.:：)]?\s*$/;
-const DENIAL=/^\s*(?:(?:A|답|답변)\s?[.:：)]\s*)?(?:아니요|아니오|아뇨|아닙니다|없습니다|안\s?됩니다)/,NOT_DENIAL=/그\s?(?:이상|보다)|오히려|더\s?(?:많|높|벌|나와|나옵)|넘습니다|넘어요|훨씬/;
+const DENIAL=/^\s*(?:(?:A|답|답변)\s?[.:：)]\s*)?(?:아니요|아니오|아뇨|아닙니다|없습니다|안\s?됩니다)/,NOT_DENIAL=/그\s?(?:이상|보다)|오히려|더\s?(?:많|높|벌|나와|나옵)|넘습니다|넘어요|훨씬|짧아|줄어|줄일|단축|빨라|앞당/;
 const sentenceKey=(x:Sentence)=>`${x.line}:${x.raw}`;
 function deniedQuestions(sentences:Sentence[]):Set<string>{
  const out=new Set<string>();
@@ -162,7 +164,8 @@ function deniedQuestions(sentences:Sentence[]):Set<string>{
  });
  return out;
 }
-type Matcher={match:string;also?:string;consumerAlso?:string;except?:string;cleared?:string};
+// more: match와 같은 조건으로 보되 따로 컴파일하는 정규식(lib/franchise-rules.ts ClaimMatcher.more, 20KB 넘는 정규식은 V8 최적화가 꺼진다).
+type Matcher={match:string;more?:readonly string[];also?:string;consumerAlso?:string;except?:string;cleared?:string};
 type Hit={x:Sentence;start:number;end:number};
 // ── 부정 ──
 // 부정은 매치된 서술 자신을 부정할 때만 인정한다(COLLECTIVE 휴리스틱). 세 모양이다.
@@ -214,11 +217,13 @@ function negatedAfter(s:string,end:number):boolean{
 }
 // 해제 불가 규칙의 except는 매치가 든 절(쉼표·가운뎃점·더하기·줄표·세미콜론·괄호 사이)만 본다. 다른 절이나 괄호 주석의 '구독 이벤트'·'매출 1% 기부'·'(탈퇴는 자유)'로 면제되지 않는다.
 // 숫자 사이 쉼표('4,200')는 절 경계가 아니다.
+// 절 끝을 끊은 경계(쉼표·물음표·느낌표·괄호 등)는 절 뒤에 붙여 돌려준다. except가 문장 끝에서 끝나는 절과, 뒤에 다른 절이 이어지거나 물음표로 끝나는 절을 가를 수 있다
+// ('… 계약하는 것은 불가능합니다? 저희는 가능합니다', '… 불가능합니다, 저희는 가능합니다', 15l). 경계 뒤에서도 면제되는 끝은 lib/franchise-rules.ts가 경계를 허용한다(CLAUSE_END).
 const CLAUSE_CUT=/(?<!\d)[,，]|[,，](?!\d)|[;；·ㆍ\u119E+|!?()（）]|\s[-–—/]\s/g;
 function clauseOf(s:string,start:number,end:number){
- let from=0,to=s.length;
- for(const m of s.matchAll(CLAUSE_CUT)){const at=m.index!;if(at<start)from=at+m[0].length;else if(at>=end){to=at;break}}
- return s.slice(from,to);
+ let from=0,to=s.length,cut='';
+ for(const m of s.matchAll(CLAUSE_CUT)){const at=m.index!;if(at<start)from=at+m[0].length;else if(at>=end){to=at;cut=m[0];break}}
+ return s.slice(from,to)+cut;
 }
 // 적중(문장·매치 위치). all이 아니면 첫 적중에서 멈춘다. figure: 수치 자체를 막는 규칙이라 부정 면제가 없다. clauseExcept: except를 매치가 든 절에서만 본다.
 // consumerAlso는 소비자 범위에서만 본다(모집 범위는 캠페인 자체가 가맹 문맥이다). denied: 아니라고 답한 질문 문장(수치 규칙 밖에서 건너뛴다).
@@ -227,17 +232,28 @@ type HitOpts={all:boolean;figure:boolean;clauseExcept:boolean;scope:ClaimScope;d
 const PART_TAIL=/^\s?(?:[은는이가:：]|은요|는요)?\s?$/;
 const tailLabel=(parts:readonly string[],hit:string)=>!/\d/.test(hit)&&parts.slice(0,-1).some(p=>{const k=p.lastIndexOf(hit);return k>=0&&PART_TAIL.test(p.slice(k+hit.length))});
 function hitSentences(m:Matcher,sentences:Sentence[],o:HitOpts):Hit[]{
- const match=new RegExp(m.match,'g'),also=m.also?new RegExp(m.also):null,ctx=m.consumerAlso&&o.scope==='consumer'?new RegExp(m.consumerAlso):null,except=m.except?new RegExp(m.except):null,out:Hit[]=[];
+ const matches=[m.match,...(m.more??[])].map(p=>new RegExp(p,'g')),also=m.also?new RegExp(m.also):null,ctx=m.consumerAlso&&o.scope==='consumer'?new RegExp(m.consumerAlso):null,except=m.except?new RegExp(m.except):null,out:Hit[]=[];
+ // 문장마다 첫 적중 하나(정규식 순서대로, 한 정규식 안에서는 앞에서부터).
+ // matchAll은 부를 때마다 정규식을 새로 만든다(명세의 복제). 원문이 큰 대기기간 규칙 묶음(18,000자 안팎)에서 느려 같은 정규식의 exec를 lastIndex로 돌린다(짧은 문장 수천 개 입력 측정 7.9초→0.5초).
+ const firstHit=(x:Sentence):Hit|null=>{
+  for(const match of matches){
+   match.lastIndex=0;
+   for(let hit=match.exec(x.s);hit;hit=match.exec(x.s)){
+    const text=hit[0],start=hit.index,end=start+text.length;
+    if(!text)match.lastIndex++;
+    if(x.parts&&x.parts.some(p=>p.includes(text))&&!(o.all&&tailLabel(x.parts,text)))continue;
+    if(!o.figure&&negatedAfter(x.s,end))continue;
+    if(except&&o.clauseExcept&&except.test(clauseOf(x.s,start,end)))continue;
+    return {x,start,end};
+   }
+  }
+  return null;
+ };
  for(const x of sentences){
   if(also&&!also.test(x.s)||ctx&&!ctx.test(x.s)||except&&!o.clauseExcept&&except.test(x.s))continue;
   if(!o.figure&&!x.parts&&o.denied?.has(sentenceKey(x)))continue;
-  for(const hit of x.s.matchAll(match)){
-   const start=hit.index!,end=start+hit[0].length;
-   if(x.parts&&x.parts.some(p=>p.includes(hit[0]))&&!(o.all&&tailLabel(x.parts,hit[0])))continue;
-   if(!o.figure&&negatedAfter(x.s,end))continue;
-   if(except&&o.clauseExcept&&except.test(clauseOf(x.s,start,end)))continue;
-   out.push({x,start,end});break;
-  }
+  const hit=firstHit(x);
+  if(hit)out.push(hit);
   if(out.length&&!o.all)break;
  }
  return out;
