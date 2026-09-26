@@ -50,6 +50,10 @@ export type GradeContext={
  brandName?:string;
  // 브리프 초안 요청의 사용자 입력 원문(현재 브리프 필드·시작/종료일·기준일). 여기 적힌 가격·날짜는 사용자가 준 값이라 단정으로 보지 않는다.
  briefInput?:string;
+ // 역할 입력에 실린 확정 브랜드 말투의 피할 표현(A3-2). 입력에 말투가 없던 항목은 없거나 null이고 brand_voice_avoid_term은 not_applicable이다.
+ brandVoice?:{avoidTerms:string[]}|null;
+ // 평가 역할 항목의 동결 요청이 요청한 출력 프로필(A3-4, 'copy-pack-v2'). 있으면 contract_json이 그 계약(role-output-v2)을 기대 계약으로 본다. 없으면 원문의 계약 버전으로 고른다.
+ outputProfile?:string|null;
 };
 export type Grader={id:string;content?:boolean;grade:(item:EvalItem,ctx:GradeContext)=>Verdict};
 export const verdict=(status:Verdict['status'],detail?:string|string[]):Verdict=>{

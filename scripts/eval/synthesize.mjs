@@ -8,7 +8,10 @@ import {moduleRuntime,deterministicClock,deterministicCrypto} from './runtime.mj
 // 같은 스펙·같은 코드면 출력이 바이트까지 같다(시각·uuid 결정적, 키 순서 고정). 외부 네트워크 호출은 0회이고, 스텁 밖 주소를 부르면 실패한다.
 // 거부(throw): 스키마·id(syn- 접두사) 위반, 스펙 문자열의 개인정보 패턴(확정 사실·지점 허용 값 제외), 입력에 글자 그대로 없는 금지 표현, 분기 체크리스트 누락.
 export const SPEC_SCHEMA=1;
-export const RECORD_KINDS=['brand','campaign','brand_fact','brand_source','campaign_directive','artifact','learning_rule','store','team_meeting','role_output_failure','metric'];
+export const RECORD_KINDS=['brand','campaign','brand_fact','brand_source','campaign_directive','artifact','learning_rule','store','team_meeting','role_output_failure','metric','feature_flag','brand_voice'];
+// 모의 DB에 켤 수 있는 기능 스위치(A3-4): 요청 조립을 바꾸는 카피 팩·브랜드 말투만. 레코드 id가 스위치 이름이고(syn- 접두사 예외) data는 {flag, enabled}다.
+// 켜면 운영과 같은 roleRequestFor가 콘텐츠 요청에 outputProfile을, 확정 brand_voice 레코드가 있으면 brandVoice를 넣어 동결한다.
+export const SPEC_FLAGS=['a3_copy_pack','a3_brand_voice'];
 // 스펙이 채워야 하는 요청 분기(설계 2-9: 합성 캠페인이 운영보다 깨끗하면 품질이 부풀려진다). 생성된 역할 요청에서 실제로 확인한다(스펙의 자기 신고를 믿지 않는다).
 export const CHECKLIST=['revisionRequest','reviewNote','previousDecisions','operatorPreferences','storeAllow','cautionRule','aiEdited','excerptTruncation'];
 const MEETING_TARGET=/^(?:discussion:[a-z]+|synthesis|revision:[a-z]+|quality)$/;
@@ -34,6 +37,7 @@ export function validateSpec(spec){
  if(!Array.isArray(spec.records)||!spec.records.length)fail('스펙 records가 비었습니다.');
  for(const r of spec.records){
   if(!isObject(r)||!RECORD_KINDS.includes(r.kind))fail(`허용하지 않는 레코드 종류입니다: ${r?.kind}`);
+  if(r.kind==='feature_flag'){if(!SPEC_FLAGS.includes(r.id)||!isObject(r.data)||r.data.flag!==r.id||typeof r.data.enabled!=='boolean')fail(`기능 스위치 레코드는 id가 ${SPEC_FLAGS.join('·')} 중 하나이고 data가 {flag:id, enabled:true|false}여야 합니다: ${r.id}`);continue}
   if(!SYN.test(r.id||'')||!isObject(r.data)||r.data.id!==undefined&&r.data.id!==r.id)fail(`레코드 id는 syn-로 시작하고 data.id와 같아야 합니다: ${r.id}`);
  }
  if(!spec.records.some(r=>r.kind==='campaign'&&r.id===spec.campaignId))fail('campaignId가 가리키는 campaign 레코드가 없습니다.');

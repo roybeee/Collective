@@ -42,7 +42,8 @@ function quotedUnits(line:string):CopyUnit[]{
   return spans.length?[{sentence,within:(at:number)=>spans.some(q=>at>=q.start&&at<q.end)}]:[];
  });
 }
-function copyUnits(item:EvalItem):CopyUnit[]{
+// 브랜드 말투 채점기(voice.ts brand_voice_avoid_term)도 같은 카피 구역을 쓴다.
+export function copyUnits(item:EvalItem):CopyUnit[]{
  if(item.kind==='discussion')return proseFields(item).flatMap(f=>f.split('\n')).flatMap(quotedUnits);
  return outsideProhibition(blocks(withoutBannedLists(bodyOf(item)))).filter(b=>!b.isLabel).flatMap(b=>COPY_ZONE.test(b.label)?sentences(b.line).map(sentence=>({sentence})):quotedUnits(b.line));
 }

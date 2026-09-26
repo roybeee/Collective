@@ -105,7 +105,7 @@
 - 케이스는 대상 단위를 쓰는 것만 남긴다(역할 스킬은 같은 역할 케이스, 채널 스킬은 그 채널이 적용되는 캠페인 케이스). 뺀 수는 `pair.skippedCases`. 남는 케이스가 없으면 400. 바이럴 발견 지시는 400(역할 케이스로 평가할 수 없다).
 - 후보가 등록돼 있지 않으면 404, 다른 단위의 버전이거나 지금 active와 같으면 400. `variant`는 `active` 또는 `pair`만 받는다(후보 단독 실행 없음).
 - 예산(결정 5, F1b-2 규칙 그대로): 두 제출이 각각 제출 직전 run 예산·월 상한 검사와 케이스 1건 예약(50,000)을 받는다. 한쪽만 끝나고 예산에 닿으면 나머지는 `not_run`이 되고 그 run은 게이트를 통과하지 못한다.
-- 채점: 두 쪽을 같은 채점기(14종)와 규제 가드레일로 채점한다. run 결과에는 케이스×쪽마다 채점기별 pass/fail, 보고 모델, 토큰을 남기고, 시작 시점 `gatewaySnapshot`과 종료 시점 `gatewaySnapshotEnd`(같은 평가 연결로 다시 잰 해시)를 남긴다. 출력 원문은 `eval_output` `<run>:<case>:<쪽>`.
+- 채점: 두 쪽을 같은 채점기(15종)와 규제 가드레일로 채점한다. run 결과에는 케이스×쪽마다 채점기별 pass/fail, 보고 모델, 토큰을 남기고, 시작 시점 `gatewaySnapshot`과 종료 시점 `gatewaySnapshotEnd`(같은 평가 연결로 다시 잰 해시)를 남긴다. 출력 원문은 `eval_output` `<run>:<case>:<쪽>`.
 - 결과 확인: `GET /api/eval?pair=<run>` → `{pair, comparison(두 쪽 McNemar 비교), gate}`. `GET /api/eval?run=<run>&caseId=<case>&variant=candidate`로 한쪽 출력 원문을 본다. pair run은 `?compare=`에 넣을 수 없다(400).
 
 ### 게이트 조건 (`lib/eval-stats.ts` `pairGate` + `lib/prompt-registry.ts`)
@@ -183,7 +183,7 @@ PROMPT_BASELINE_SHA=<40자리 기준 SHA> PROMPT_BASELINE_CAPTURE=tests/fixtures
 
 ## 남은 한계
 
-- F3b 게이트는 골든셋만큼만 안다. 쌍 평가는 결정론 채점기 14종의 비회귀만 보며 설득력·사실 정확성 전체를 판정하지 않는다. 봉인 케이스가 없는 pair run은 거부하지만(`sealed_missing`) 최소 케이스 수는 강제하지 않아, 봉인 1건짜리 run도 조건을 만족하면 통과한다(`gate.warnings`의 `small_sample`로만 알린다). 최소치는 대표 결정이 필요하다.
+- F3b 게이트는 골든셋만큼만 안다. 쌍 평가는 결정론 채점기 15종의 비회귀만 보며 설득력·사실 정확성 전체를 판정하지 않는다. 봉인 케이스가 없는 pair run은 거부하지만(`sealed_missing`) 최소 케이스 수는 강제하지 않아, 봉인 1건짜리 run도 조건을 만족하면 통과한다(`gate.warnings`의 `small_sample`로만 알린다). 최소치는 대표 결정이 필요하다.
 - 바이럴 발견 지시(`viral.discovery`)는 역할 평가 케이스로 쌍 평가할 수 없어 F3b 게이트로 활성화할 수 없다(롤백만 가능).
 - 쌍 평가의 두 쪽은 대상 단위만 바꾸고 다른 단위는 코드 상수로 둔다. 운영에서 다른 단위가 active면 조합 효과는 평가하지 않는다.
 - 경보 동결은 운영 연결의 모델 변경(`model_change`)과 운영 게이트웨이 변경(`gateway_change`)을 본다. 평가 연결 자체의 변경은 pair run 안 시작·종료 해시 비교로만 잡는다.

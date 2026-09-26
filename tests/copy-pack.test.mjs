@@ -173,7 +173,7 @@ check('copy_pack_variants is a content grader registered once and the version na
  const ids=graders.GRADERS.map(g=>g.id);
  assert.equal(ids.filter(id=>id==='copy_pack_variants').length,1);
  assert.ok(graders.CONTENT_GRADERS.includes('copy_pack_variants'));
- assert.ok(graders.GRADERS_VERSION.endsWith('+copy-pack'));
+ assert.ok(graders.GRADERS_VERSION.includes('+copy-pack'));
  const reask='요청하신 과업이 지정되지 않았습니다. 다음 중 원하시는 작업을 선택해 주세요.\n1. 초안 검수\n2. 요약';
  const r=plain(graders.runGraders(item(JSON.stringify({contractVersion:'role-output-v2',role:'content',sections:SECTIONS.map(s=>({...s,content:reask}))}))));
  assert.equal(r.find(x=>x.id==='question_only').status,'fail');assert.equal(r.find(x=>x.id==='copy_pack_variants').status,'not_applicable');

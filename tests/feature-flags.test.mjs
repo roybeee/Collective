@@ -8,11 +8,11 @@ const {sql,env,load}=testRuntime(async url=>{throw new Error('외부 호출 금�
 const flags=await load('lib/feature-flags.ts'),route=await load('app/api/feature-flags/route.ts');
 const passed=[];const check=(name,value)=>{assert.ok(value,name);passed.push(name)};
 const owner='flag-owner',other='flag-other';
-const known=['online_grading','b1_reason_required','a4_auto_attribution','a2_downgrade','a7_repair_turn','r_franchise','a3_copy_pack'];
+const known=['online_grading','b1_reason_required','a4_auto_attribution','a2_downgrade','a7_repair_turn','r_franchise','a3_copy_pack','a3_brand_voice'];
 
 // 1) 알려진 플래그와 기본값은 코드 상수다. 저장된 값이 없으면 모두 꺼져 있다.
 const catalog=JSON.parse(JSON.stringify(flags.FEATURE_FLAGS));
-check('the seven known flags are declared in code',known.every(f=>f in catalog)&&Object.keys(catalog).length===known.length);
+check('the eight known flags are declared in code',known.every(f=>f in catalog)&&Object.keys(catalog).length===known.length);
 check('every known flag defaults to off',known.every(f=>catalog[f].defaultEnabled===false));
 check('every flag is described in Korean',known.every(f=>/[가-힣]/.test(catalog[f].description)));
 check('the A7 repair turn switch says it spends tokens under the budget guard',/수리 요청을 1회/.test(catalog.a7_repair_turn?.description)&&/토큰 사용, 예산 가드 적용/.test(catalog.a7_repair_turn?.description));
