@@ -49,7 +49,7 @@ node scripts/run-framework.mjs build
 
 ## 4. 게시
 
-Sites 도구의 `save_version_and_deploy_private`로 게시한다. 결과로 받은 버전 번호와 deployment ID를 기록한다.
+Sites 접근 설정에 맞는 게시 도구를 쓴다. 공개(public) 사이트는 `save_site_version`으로 버전을 저장한 뒤 `deploy_site_version`으로 배포한다. 비공개 사이트는 `save_version_and_deploy_private`다. 접근 설정은 바꾸지 않는다. 결과로 받은 버전 번호와 deployment ID를 기록한다. COLLECTIVE는 2026-09-23부터 public이다(STATUS 'Sites 접근').
 
 ## 5. 실행 검증
 
@@ -96,3 +96,22 @@ git diff --name-only <sha> origin/main -- . ':!docs' ':!*.md' ':!tests' ':!e2e' 
    - Workers CPU 한도 초과
 4. 중단 조건을 넘으면 원인을 기록한다. 기능 스위치가 있는 동작(성장 계획 F2 이후)은 먼저 스위치로 끈다. 코드 문제면 롤백한다.
 5. 롤백은 직전에 `runtime-verified`였던 제품 커밋을 이 체크리스트 1~5단계로 다시 게시하는 것이다. 게시 1회와 같은 시간·크레딧이 들므로 0단계 사전 점검도 다시 한다. 롤백 게시는 `published`와 `/api/version` tree 일치 여부를 기록한다. `main`에는 게시되지 않은 제품 변경이 남으므로 정의상 `runtime-verified`가 아니다. 원인 수정이 병합·게시될 때까지 그 상태를 기록에 남긴다.
+
+## 8. 자동 게시 (ChatGPT 예약 작업)
+
+Sites는 ChatGPT 웹·데스크톱 안에서만 저장·게시되고 외부 API·CLI·웹훅이 없다([Sites 문서](https://learn.chatgpt.com/docs/sites)). 그래서 개발 도구가 게시를 직접 누르지 못한다. 대신 대표가 2026-09-25 ChatGPT 웹의 COLLECTIVE Sites 대화에 예약 작업 `COLLECTIVE 자동 게시`를 만들어 활성화했다. GitHub PR 활동을 트리거로 쓴다([예약 작업 문서](https://learn.chatgpt.com/docs/automations?surface=app)).
+
+- 게시 요청: 개발 도구가 PR 하나를 연다.
+  - 본문에 `PUBLISH-TARGET: <40자 SHA>`와 `PUBLISH-INSTRUCTION: docs/publish/<sha7>.md` 두 줄을 넣는다.
+  - 지시문은 이 체크리스트의 파일 목록·기대 해시 방식이다. 보내기 전에 임시 `GIT_INDEX_FILE`로 목표 tree 재현을 확인한다.
+  - 승인 문구는 지시문과 PR 본문에 적는다.
+- 실행 순서: 라벨 `sites-publish`를 먼저 붙이고, 그다음 지시문 파일 커밋을 push한다. 라벨을 붙이는 것만으로는 실행되지 않는다(작업 생성 때 편집기 보고). push가 PR 활동을 만든다.
+- 작업이 확인하는 것: PR이 열려 있고 라벨이 있는지, 지시문의 목표 커밋 = `PUBLISH-TARGET`인지, 그 커밋이 main에 들어 있는지, 그 커밋의 CI가 success인지. 하나라도 아니면 게시하지 않는다.
+- 작업이 하는 것: 지시문을 실행한다. 환경변수·접근 설정·D1·R2는 바꾸지 않는다. 결과(단계별 결과·해시 불일치 수·`TREE_EMBEDDED`·Sites 버전·deployment ID·Sites 커밋)를 PR 댓글로 남긴다. 라벨은 `sites-published` 또는 `sites-publish-blocked`로 바꾼다. 코드 push·병합·PR 닫기는 하지 않는다.
+- 라벨이 `sites-publish`로 남아 있는 동안에는 그 PR에 push·댓글을 더하지 않는다. 더하면 작업이 다시 실행된다. 결과 댓글을 받은 뒤 게시 기록(6절)을 같은 PR에 더하고 병합한다.
+- `sites-publish` 라벨 PR은 한 번에 하나만 둔다.
+- 0단계 사전 점검(크레딧)은 자동 게시에서 기록되지 않는다. 게시 1회 크레딧은 붙여 넣기 방식과 같다.
+- `runtime-verified`는 여전히 소유자 세션의 `/api/version`(5단계)이 필요하다.
+- 첫 실행(2026-09-25 22:36 UTC, #119 push): GitHub 트리거가 동작했다(real). 작업은 PR 본문 파싱, main 포함(compare `identical`), CI success, Sites 작업 사본 tree·접근 설정 읽기까지 하고 멈췄다. 지시문 5단계가 비공개 전용 도구(`save_version_and_deploy_private`)를 적어서, public 사이트의 접근 설정 유지 조건과 맞지 않았기 때문이다(blocked, 파일 적용·빌드·게시 미실행). 결과 댓글과 라벨 교체(`sites-publish-blocked`)도 동작했다. 지시문 생성기는 4단계의 공개 사이트 도구를 적도록 고쳤다. 다시 요청할 때는 라벨을 `sites-publish`로 되돌린 뒤 고친 지시문 커밋을 push한다.
+- 첫 실행이 멈추면 대표가 같은 지시문을 편집기에 붙여 넣는 방식으로 돌아간다. 예약 작업 안에서 Sites 저장·배포 도구가 동작하는지는 두 번째 실행에서 확인한다.
+- 두 번째 요청(2026-09-25 22:46 UTC 라벨 복구 → 22:47 UTC push): 23:20 UTC까지 결과 댓글·라벨 변화가 없었다(not_run 추정, 원인 미확인). 작업 설정의 이벤트는 '풀 리퀘스트, 리뷰, PR 및 리뷰 댓글 및 커밋 업데이트'였다. 문서는 가까이 들어온 이벤트를 한 실행으로 묶을 수 있다고 적는다. 작업 화면의 '지금 실행(Run now)'으로 대기 이벤트를 처리할 수 있다. 대표 결정으로 묶음 13 게시는 보류했다. 저장·배포 도구가 예약 작업 안에서 동작하는지는 아직 확인하지 못했다.

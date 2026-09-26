@@ -97,12 +97,12 @@ export function franchiseSwitch(flags:unknown):boolean|null{
  const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='r_franchise'):undefined;
  return record(state)&&typeof state.enabled==='boolean'?state.enabled:null;
 }
-// 가맹 모집 리드 원장(트랙 R R4b): 기능 스위치 r_franchise가 켜져 있어야 쓴다. 스위치는 소유자만 켠다(/api/feature-flags). 게이트 결과는 휴리스틱이다.
+// 가맹 모집 리드 원장(트랙 R R4b)과 캠페인 가맹 모집 목적(R3): 기능 스위치 r_franchise가 켜져 있어야 쓴다(목적 해제는 꺼져도 된다). 스위치는 소유자만 켠다(/api/feature-flags). 게이트 결과는 휴리스틱이다.
 function franchiseRow(flags:unknown):FeatureRow{
  const base={key:'franchise',label:'가맹 모집 리드 원장'},link:FeatureLink={label:'가맹 모집 화면으로 이동',view:'franchise'};
  const enabled=franchiseSwitch(flags);
  if(enabled===null)return {...base,status:'blocked',reason:'가맹 모집 스위치 상태를 확인하지 못했습니다',link};
- return enabled?{...base,status:'available',reason:'리드 · 연락처(암호화) · 법정 절차 판정(COLLECTIVE 휴리스틱 · 법률 자문 아님)'}:{...base,status:'blocked',reason:'기능 스위치 r_franchise 꺼짐 · 소유자가 켭니다',link};
+ return enabled?{...base,status:'available',reason:'리드 · 연락처(암호화) · 캠페인 가맹 모집 목적(대표·관리자) · 법정 절차 판정(COLLECTIVE 휴리스틱 · 법률 자문 아님)'}:{...base,status:'blocked',reason:'기능 스위치 r_franchise 꺼짐 · 소유자가 켭니다',link};
 }
 
 export function featureRows(input:FeatureInput={}):FeatureRow[]{

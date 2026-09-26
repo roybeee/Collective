@@ -49,7 +49,7 @@ F&B·방문형 뷰티/교육·커머스의 적용 차이를 적는다. 음식 �
 
 1. 정본 16단위 형식 검사, 기존 주입·브랜드·가격·코드 소유 문구 거부 회귀를 실행한다. `codeEqualUnits`에서 `channel.offline`만 제외한다(`PROMPT-REGISTRY.ko.md`의 후보 절차). 다른 15단위와 코드 폴백은 그대로다.
 2. 등록하지 않은 후보가 운영 역할·회의 제출을 바꾸지 않는지 기존 prompt-baseline·role-instruction·prompt-resolution 검사로 확인한다. 폴백 기준 fixture는 재캡처하지 않는다.
-3. 공개 저장소 경계: 시드 브랜드 검사 외에 실제 D1 브랜드·지점 이름 대조가 병합 전에 필요하다. 2026-09-25 22:34 UTC 현재 운영 로그인 화면은 열리지만 안전 로그인 제출이 실패해 대조는 `blocked`다. GitHub 앱 허용 저장소 누락을 사용자가 수정했고 작업 브랜치 생성이 성공했다. D1 대조 전에는 draft 상태를 유지한다.
+3. 공개 저장소 경계: D1 이름 대조 passed · real (2026-09-26). 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 확인하고 등록 검증 함수에 대조했다. 이름 원문은 공개 문서에 기록하지 않는다. GitHub 쓰기와 PR #120 생성도 성공했다.
 4. 위 대조 뒤 PR을 병합하고 병합 SHA로 후보를 등록한다. 레지스트리 등록·쌍 평가·활성화는 이번 실행에서 `not_run`이다. 예산과 승인 범위는 기존 결정 5를 따른다.
 5. 원문을 다루지 않는 평가 절차로 봉인 합계와 게이트를 확인한다. 통과 뒤 지정 캠페인 stage, 관찰, promote 순으로 진행한다. `promptManifest`와 릴리스 이벤트를 확인해야 `registry-active`다.
 
@@ -73,7 +73,8 @@ F&B·방문형 뷰티/교육·커머스의 적용 차이를 적는다. 음식 �
 | `python3 tests/research_worker_test.py` | passed, 13 중 12 실행·1 skipped | mocked gateway/real 로컬 테스트, 실서버 아님 |
 | `node scripts/run-framework.mjs build` | passed | real 로컬 빌드; 게시하지 않음 |
 | `git diff --check` | passed | real 공백 검사 |
-| 운영 D1 이름 대조·S8 재채점·실모델 쌍 평가 | blocked / not_run | 운영 로그인 미완료, 실모델 호출 0회 |
-| GitHub 브랜치 | passed · real | 앱 허용 저장소에 Collective 추가 후 생성 성공. PR은 D1 이름 대조 전 draft |
+| 운영 D1 이름 대조 | passed · real | OWNER 세션의 브랜드 4개·지점 1개와 별칭 대조 |
+| S8 재채점·실모델 쌍 평가 | not_run | OWNER 로그인은 성공. API 직접 탐색은 ERR_BLOCKED_BY_CLIENT, 실모델 호출 0회 |
+| GitHub 브랜치 | passed · real | 앱 허용 저장소에 Collective 추가 후 생성 성공. PR #120 생성 및 최신 main 통합 |
 
 검사들은 콘텐츠 후보의 형식과 연결 경계를 확인한다. 모델 출력의 실무 품질 향상이나 운영 활성화 성공으로 해석하지 않는다.

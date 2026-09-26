@@ -9,7 +9,7 @@ import type {UsageContext} from '@/lib/usage-ledger';
 import {learningContext} from '@/lib/learning-server';
 import {parseBrief,emptyPlan,type BriefDraft,type BriefInput} from '@/lib/brief';
 import {labelBriefResult} from '@/lib/brief-normalize';
-import type {Brand,Campaign,Artifact,Metric} from '@/lib/agency';
+import {isRecruitmentObjective,OBJECTIVE_MESSAGES,type Brand,type Campaign,type Artifact,type Metric} from '@/lib/agency';
 import {ApiError,str,json,failure,database,recordStatement,readRecord,listRecords,connection,stamp,acquireLock,releaseLock,validateCampaign} from '@/lib/server';
 // 보관 캠페인 검사(PR 5d)를 소유자 잠금 안에서 한다(PR 4a-2).
 import {assertNotArchived} from './campaign-archive';
@@ -34,10 +34,11 @@ export async function executeBrief(owner:string,b:Record<string,unknown>){let lo
    const existing=(await listRecords<StoredDraft>(owner,'brief_draft')).find(d=>d.id===id);if(existing)return json(publicDraft(existing));
    const cfg=await connection(owner);if(cfg.provider!=='hermes')throw new ApiError(409,'캠페인 초안 작성은 HERMES 연결을 사용합니다. 연결 및 설정에서 HERMES를 선택해 주세요.');
    const busy=(await listRecords<BriefDraft>(owner,'brief_draft')).find(active);if(busy)throw new ApiError(409,'이미 작성 중인 HERMES 초안이 있습니다. 대시보드에서 이어서 확인해 주세요.');
-   const raw=b.data&&typeof b.data==='object'&&!Array.isArray(b.data)?b.data as Record<string,unknown>:{};const input=validateCampaign({...raw,title:raw.title||'캠페인 초안'}) as BriefInput;input.title=typeof raw.title==='string'?raw.title.trim():'';input.plan={...emptyPlan(),...input.plan};
+   // 캠페인 목적(R3)은 요청에서 받지 않는다. 저장된 캠페인의 값만 이어받는다(아래 campaignId 분기).
+   const raw={...(b.data&&typeof b.data==='object'&&!Array.isArray(b.data)?b.data as Record<string,unknown>:{})};delete raw.objective;const input=validateCampaign({...raw,title:raw.title||'캠페인 초안'}) as BriefInput;input.title=typeof raw.title==='string'?raw.title.trim():'';input.plan={...emptyPlan(),...input.plan};
    let campaignId:string|undefined,campaignVersion:number|undefined;
    // 캠페인 브리프 초안은 잠금 안에서 캠페인을 읽은 직후 보관을 검사한다. 라우트 사전 검사(app/api/brief)를 통과한 뒤 보관된 경합도 409로 막는다(PR 4a-2).
-   if(b.campaignId){const c=await readRecord<Campaign>(owner,'campaign',str(b.campaignId,'캠페인',100,true));assertNotArchived(c);if(c.brandId!==input.brandId||c.version!==b.campaignVersion)throw new ApiError(409,'캠페인이 변경됐습니다. 최신 브리프에서 다시 요청하세요.');if(c.storeId){if(input.storeId&&input.storeId!==c.storeId)throw new ApiError(400,'캠페인의 지점이 일치하지 않습니다.');input.storeId=c.storeId;}campaignId=c.id;campaignVersion=c.version}
+   if(b.campaignId){const c=await readRecord<Campaign>(owner,'campaign',str(b.campaignId,'캠페인',100,true));assertNotArchived(c);if(c.brandId!==input.brandId||c.version!==b.campaignVersion)throw new ApiError(409,'캠페인이 변경됐습니다. 최신 브리프에서 다시 요청하세요.');if(c.storeId){if(input.storeId&&input.storeId!==c.storeId)throw new ApiError(400,'캠페인의 지점이 일치하지 않습니다.');input.storeId=c.storeId;}if(isRecruitmentObjective(c)){if(input.storeId)throw new ApiError(400,OBJECTIVE_MESSAGES.withStore);input.objective=c.objective}campaignId=c.id;campaignVersion=c.version}
    if(campaignId){const meeting=await database().prepare("SELECT id FROM jobs WHERE owner=? AND campaign_id=? AND role='meeting' AND status IN ('starting','queued','in_progress','uncertain')").bind(owner,campaignId).first();if(meeting)throw new ApiError(409,'팀 회의가 진행 중입니다. 회의를 완료하거나 중지한 뒤 초안을 작성하세요.');}
    // 이전 캠페인 3건·성과 6건·승인 작업물 4건 선택과 가림은 lib/brief-input.ts가 한다. 기준일은 지금 날짜(stamp)다.
    const built=buildBriefSubmission(briefRequestFor(await briefSources(owner,{campaignId,input,contextDate:stamp().slice(0,10)})));

@@ -5,7 +5,7 @@ import {storeInput,channelInput,checkedVersion,experimentInput,measurementInput,
 import {obj} from '@/lib/validate';
 import {channelCatalog,decisions,storeFields,storeMetricFields,type Store,type StoreChannel,type StoreExperiment,type StoreMeasurement,type StoreReport,type StoreTask} from '@/lib/store-marketing';
 import {publicResearch,researchActive,sourceSummary,type ArchiveSource,type BrandResearch} from '@/lib/archive';
-import type {Brand,Campaign,Artifact} from '@/lib/agency';
+import {isRecruitmentObjective,OBJECTIVE_MESSAGES,type Brand,type Campaign,type Artifact} from '@/lib/agency';
 import {emptyPlan,storeBriefCopy,storeCopyFields,syncStoreCopy,type StoreCopyKey} from '@/lib/brief';
 import {currentFactRefs} from '@/lib/ai-context';
 import {sameEvidenceFactRefs} from '@/lib/brand-facts';
@@ -60,7 +60,7 @@ export async function POST(req:Request){let lock='',owner='';try{
   // 기존 캠페인을 같은 브랜드의 지점에 한 번만 연결한다. 연결 뒤 지점 사실·운영 정보가 AI 팀에 전달되므로 현재 작업물 모두에 검토 표시(brandChanged)를, 입력 사실이 달라진 작업물에는 사실 변경 표시를 남긴다.
   // 제작·발행 기록이 있으면 연결하지 않는다. 기존 소재는 지점 없이 만들어져 연결 뒤 접수할 수 없다(R4).
   const campaign=await readRecord<Campaign>(owner,'campaign',str(b.campaignId,'캠페인',100,true));if(campaign.brandId!==store.brandId)throw new ApiError(400,'브랜드와 지점이 일치하지 않습니다.');
-  if(campaign.storeId)throw new ApiError(409,'이미 지점에 연결된 캠페인입니다. 연결한 지점은 바꿀 수 없습니다.');checkedVersion(campaign,b.version);
+  if(campaign.storeId)throw new ApiError(409,'이미 지점에 연결된 캠페인입니다. 연결한 지점은 바꿀 수 없습니다.');if(isRecruitmentObjective(campaign))throw new ApiError(400,OBJECTIVE_MESSAGES.withStore);checkedVersion(campaign,b.version);
   if(await db.prepare("SELECT id FROM jobs WHERE owner=? AND campaign_id=? AND status IN ('starting','queued','in_progress','uncertain')").bind(owner,campaign.id).first())throw new ApiError(409,'캠페인 AI 작업이 끝난 뒤 지점을 연결하세요.');
   if(await db.prepare("SELECT id FROM records WHERE owner=? AND parent_id=? AND kind IN ('execution_creative','execution_publication') LIMIT 1").bind(owner,campaign.id).first())throw new ApiError(409,'제작·발행 기록이 있는 캠페인은 지점에 연결할 수 없습니다. 기존 소재는 지점 정보 없이 만들어져 연결 뒤 발행할 수 없습니다. 지점 캠페인을 새로 만들어 제작하세요.');
   const linked:Campaign={...campaign,storeId:store.id,updatedAt:stamp()},refs=await currentFactRefs(db,owner,linked);
