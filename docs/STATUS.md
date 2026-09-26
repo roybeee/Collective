@@ -8,12 +8,11 @@
 - #143 · 레인 R · 보통 · 새 스위치 없음(가맹 모집 채널 단위 6개는 objective 캠페인에서만 켜지고, objective는 `r_franchise` 기본 꺼짐이라 지정 불가). 게시 전 확인: 운영 D1의 R3b 이전 objective 개선 회의 건수(읽기 전용, 레인 R 칸)
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-26 06:30 UTC
-- 진행 중: A8 설계 문서 [CUSTOMER-REPORT](CUSTOMER-REPORT.ko.md)(PR `docs/a8-design`). 코드는 3단계 종료 조건 뒤(원칙 12).
-- A3 종료 조건 run: 골든 v2 dev 2건을 운영 트리 `1ac4369`(8651021)에서 생성했다(로컬, 가져오기 전). 평가 HERMES 프로필이 Codex 주간 한도 소진(`codex_rate_limited`, 해제 2026-09-27 10:33 KST, 레인 Q #135)이라 실행은 그 뒤. 예약 100k·실측 약 30k.
-- A6 종료 조건 run: 대표가 확정할 지점·항목·값을 채팅으로 전달했다(ODA 지점 영업시간, 점주 확인, 2026-09-26). 입력 순서: `a6_data_requests` 켜기 → 자료 요청 수집(없으면 수동 create) → 사실 확정 → closed 확인. 토큰 0.
-- 막힌 것: 두 run 모두 소유자 세션 브라우저 조작이 필요하다. 개발 도구의 Chrome 조작(navigate·javascript_tool)은 자동 모드 안전 검사가 막고 있어, 대표가 맥에서 `/permissions`로 허용하거나 콘솔에 직접 붙여 넣어야 한다(원격 제어에서는 `/permissions` 불가).
-- 다음: A3·A6 run → A8-1 → A8-2 → A8-3 → B4 2부 → B3([순서](LANES.ko.md#레인-a-claude-a-세션)).
+갱신: 2026-09-26 15:58 UTC
+- A6 종료 조건: **passed · real**(2026-09-27 00:56 KST). 이문동점 영업시간 자료 요청 `dr-f08c16186f08`이 사실 확정으로 closed. [관찰 기록](observations/2026-09-27-lane-a-a6-end-condition.md). 운영 스위치 `a6_data_requests` 켜짐.
+- A3 종료 조건 run: 골든 v2 dev 2건 가져오기 완료(real, created 2, 운영 tree `1ac4369`에서 생성). 실행(`start_run`, 예약 100k)은 평가 HERMES 프로필 Codex 한도 해제(2026-09-27 10:33 KST) 뒤 10:35 KST에 시작한다.
+- A8: 설계 완료([CUSTOMER-REPORT](CUSTOMER-REPORT.ko.md)). 코드는 A3 종료 조건 뒤.
+- 다음: A3 run → A8-1 → A8-2 → A8-3 → B4 2부 → B3([순서](LANES.ko.md#레인-a-claude-a-세션)).
 
 ## 레인 R (Claude 트랙 R 세션 — 가맹 모집)
 갱신: 2026-09-26 12:45 UTC
@@ -72,7 +71,7 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-26 06:30 UTC (Claude A 세션: 레인 A 칸 — A8 설계, A3·A6 종료 조건 run 대기 사유)
+마지막 갱신: 2026-09-26 15:58 UTC (Claude A 세션: A6 종료 조건 real passed, A3 케이스 가져오기)
 
 ## 현재 운영 상태
 
