@@ -1,5 +1,5 @@
 import {ApiError,runtime,readRecord,listRecords,recordStatement,eventStatement,database,acquireLock,releaseLock,stamp,uid,str,num,encrypt,decrypt,type Actor} from './server';
-import {campaignBudget,type Artifact,type Brand,type Campaign} from './agency';
+import {campaignBudget,isRecruitmentObjective,type Artifact,type Brand,type Campaign} from './agency';
 import {confirmedFactContext} from './brand-facts-server';
 import type {BrandFact} from './brand-facts';
 import {evidenceContext} from './ai-context';
@@ -14,7 +14,7 @@ import {assertNotArchived} from './campaign-archive';
 import {AI_DISCLOSURE_LINE,hasKnownOrigin,isAiGenerated} from './ai-disclosure';
 import {factCaption,footnoteIssues,franchiseFactUseIssues,versionStates,FRANCHISE_FACT_MESSAGES,type VersionLite} from './franchise-facts';
 import {hasFranchiseContext,loadFranchiseContext,type FranchiseContext} from './franchise-facts-server';
-import {franchiseGateError,franchiseIssueLabels,judgeFranchiseText,mentionedFranchiseFacts,recruitmentLike,recruitmentWarning,type FranchiseJudgement} from './franchise-compliance';
+import {franchiseGateError,franchiseIssueLabels,judgeFranchiseText,mentionedFranchiseFacts,recruitmentLike,recruitmentWarning,type ClaimScope,type FranchiseJudgement} from './franchise-compliance';
 import {COMPLIANCE_NOTICE} from './graders/compliance';
 import {GATE_DISCLAIMER} from './franchise-gates';
 import {isInstant} from './franchise-rules';
@@ -28,18 +28,24 @@ const labeledCaption=(facts:Pick<BrandFact,'key'|'value'>[])=>facts.map(f=>factL
 // 없으면 labeledCaption과 같은 바이트라 기존 소재의 materialHash가 바뀌지 않는다. 참조 버전을 찾지 못하면 null(현재 소재가 아님).
 const sourced=(facts:readonly BrandFact[])=>facts.some(f=>!!f.sourceRef||!!f.cost);
 const creativeCaption=(facts:BrandFact[],versions:readonly VersionLite[])=>sourced(facts)?factCaption(facts,versions):labeledCaption(facts);
-// 사실 사용 게이트(가맹 문맥 브랜드만): 수익 항목(H6)·근거 없는 가맹 항목·교체된 정보공개서 버전의 사실은 소재·발행에 쓰지 않는다.
-function franchiseFactGate(fr:FranchiseContext,facts:BrandFact[]){
- if(!hasFranchiseContext(fr))return;
+// 판정 범위(트랙 R R3): 가맹 모집 목적(objective) 캠페인은 가맹 프로필 유무와 관계없이 모집 범위, 가맹 프로필 브랜드의 그 밖 캠페인은 소비자 범위,
+// 둘 다 아니면 판정하지 않는다(비가맹 경로 불변). 기능 스위치는 읽지 않는다(저장된 objective 캠페인은 저장값대로 점검하고, 끄는 길은 목적 해제다).
+const claimScope=(campaign:Pick<Campaign,'objective'>,fr:FranchiseContext):ClaimScope|null=>isRecruitmentObjective(campaign)?'recruitment':fr.profile?'consumer':null;
+// 사실 사용·각주 검사 범위: 가맹 문맥(프로필·정보공개서 버전) 브랜드와 objective 캠페인.
+const factScope=(campaign:Pick<Campaign,'objective'>,fr:FranchiseContext)=>hasFranchiseContext(fr)||isRecruitmentObjective(campaign);
+// 사실 사용 게이트(가맹 문맥 브랜드·objective 캠페인): 수익 항목(H6)·근거 없는 가맹 항목·교체된 정보공개서 버전의 사실은 소재·발행에 쓰지 않는다.
+function franchiseFactGate(campaign:Pick<Campaign,'objective'>,fr:FranchiseContext,facts:BrandFact[]){
+ if(!factScope(campaign,fr))return;
  const issues=franchiseFactUseIssues(facts,fr.versions,stamp());
  if(issues.length)throw new ApiError(409,issues[0].message);
 }
-// 가맹 모집 규칙 판정(트랙 R R2): 가맹 프로필이 있는 브랜드만 캡션 본문을 직접 판정한다(원장 해소·[확인 필요] 면제·인용 강등 없음). objective가 없는 캠페인은 소비자 범위다.
-// facts는 캠페인 범위의 유효 확정 사실(sourceRef 포함), at은 규칙 선택 시각(발행 예약 시각, 소재·카피는 지금)이다. 가맹 프로필이 없으면 null(비가맹 경로 불변).
+// 가맹 모집 규칙 판정(트랙 R R2·R3): 판정 범위(claimScope)가 있는 캠페인만 캡션 본문을 직접 판정한다(원장 해소·[확인 필요] 면제·인용 강등 없음).
+// facts는 캠페인 범위의 유효 확정 사실(sourceRef 포함), at은 규칙 선택 시각(발행 예약 시각, 소재·카피는 지금)이다. 범위가 없으면 null(비가맹 경로 불변).
 // 규칙 선택 시각은 시간대 있는 ISO 시각만 쓴다. 저장 기록의 예약 시각을 읽을 수 없으면 지금 시각 규칙으로 판정한다(판정을 건너뛰지 않는다).
 const ruleTime=(at:string)=>isInstant(at)?at:stamp();
 function franchiseJudgement(campaign:Campaign,fr:FranchiseContext,facts:BrandFact[],text:string,at:string):FranchiseJudgement|null{
- return fr.profile?judgeFranchiseText({text,at:ruleTime(at),now:stamp(),scope:'consumer',brandId:campaign.brandId,facts,versions:fr.versions}):null;
+ const scope=claimScope(campaign,fr);
+ return scope?judgeFranchiseText({text,at:ruleTime(at),now:stamp(),scope,brandId:campaign.brandId,facts,versions:fr.versions}):null;
 }
 // 차단(해제 불가·근거 필요)이면 409. 승인 입력 확인란·역할(대표 포함)은 이 판정을 바꾸지 못한다.
 function assertFranchiseText(j:FranchiseJudgement|null){const e=j&&franchiseGateError(j);if(e)throw new ApiError(e.status,e.message)}
@@ -58,24 +64,26 @@ export async function getExecution(owner:string,campaign:Campaign):Promise<Execu
  // 정보공개서 버전은 근거 있는 가맹 사실의 각주 계산에만 쓰인다(근거 없는 사실의 캡션은 버전과 무관하다).
  const current=await Promise.all(creatives.map(c=>creativeCurrent(campaign,brand,facts,c,fr.versions)));
  const state:ExecutionState={creatives:creatives.map((c,i)=>({...c,objectKey:'',current:current[i]})),publications,limits,publisher:credential?{connected:true,channelId:credential.channelId,account:credential.account,version:credential.version}:{connected:false},copies,copyCaptions:aiCopyCaptionsEnabled()};
- // 가맹 프로필이 없는 브랜드는 franchise 키가 없다(비가맹 응답 불변).
- return fr.profile?{...state,franchise:franchiseExecution(campaign,fr.profile,fr.versions,facts,publications)}:state;
+ // 판정 범위가 없는 캠페인(가맹 프로필 없는 브랜드의 소비자 캠페인)은 franchise 키가 없다(비가맹 응답 불변).
+ const scope=claimScope(campaign,fr);
+ return scope?{...state,franchise:franchiseExecution(campaign,scope,fr,facts,publications)}:state;
 }
 // 발행 화면의 가맹 정보(트랙 R R2). 초안·승인 발행마다 서버 승인 게이트와 같은 조건(사실 사용·각주·가맹 규칙 판정)의 차단 사유를 계산한다.
-function franchiseExecution(campaign:Campaign,profile:NonNullable<FranchiseContext['profile']>,versions:VersionLite[],facts:BrandFact[],publications:Publication[]):FranchiseExecution{
- const now=stamp(),states=versionStates(versions,now),live=publications.filter(p=>p.status==='draft'||p.status==='approved');
+// 모집 범위(objective 캠페인)는 소비자 캠페인 안내(recruitmentWarning)를 싣지 않고, 가맹 프로필이 없으면 branch가 null이다. 키 순서는 소비자 범위와 같다.
+function franchiseExecution(campaign:Campaign,scope:ClaimScope,fr:FranchiseContext,facts:BrandFact[],publications:Publication[]):FranchiseExecution{
+ const versions=fr.versions,branch=fr.profile?.branch??null,now=stamp(),states=versionStates(versions,now),live=publications.filter(p=>p.status==='draft'||p.status==='approved');
  const byId=new Map(franchiseFactUseIssues(facts,versions,now).map(x=>[x.id,x.message]));
  const verdicts=Object.fromEntries(live.map(p=>{
   const used=p.factRefs.flatMap(r=>facts.filter(f=>f.id===r.id&&f.version===r.version));
-  const labels=franchiseIssueLabels(judgeFranchiseText({text:p.caption,at:ruleTime(p.scheduledAt),now,scope:'consumer',brandId:campaign.brandId,facts,versions}));
+  const labels=franchiseIssueLabels(judgeFranchiseText({text:p.caption,at:ruleTime(p.scheduledAt),now,scope,brandId:campaign.brandId,facts,versions}));
   const factUse=[...new Set(used.flatMap(f=>byId.has(f.id)?[byId.get(f.id)!]:[]))];
   const mentioned=mentionedFranchiseFacts({text:p.caption,now,brandId:campaign.brandId,facts,versions});
   const footnote=footnoteIssues(p.caption,{used:used.filter(f=>!!f.sourceRef),mentioned},versions).length?[FRANCHISE_FACT_MESSAGES.footnoteMissing]:[];
   return [p.id,{blockers:[...factUse,...footnote,...labels.blockers],warnings:labels.warnings}];
  }));
  const text=[campaign.title,campaign.goal,campaign.audience,campaign.channels,...live.map(p=>p.caption)].filter(x=>typeof x==='string').join('\n');
- return {scope:'consumer',branch:profile.branch,versions:versions.map(v=>({id:v.id,label:v.label,registeredAt:v.registeredAt,state:states[v.id]})),blockedFacts:[...byId].map(([id,reason])=>({id,reason})),publications:verdicts,
-  recruitmentWarning:recruitmentLike(text)?recruitmentWarning(profile.branch):null,notice:COMPLIANCE_NOTICE,disclaimer:GATE_DISCLAIMER};
+ return {scope,branch,versions:versions.map(v=>({id:v.id,label:v.label,registeredAt:v.registeredAt,state:states[v.id]})),blockedFacts:[...byId].map(([id,reason])=>({id,reason})),publications:verdicts,
+  recruitmentWarning:scope==='consumer'&&branch!==null&&recruitmentLike(text)?recruitmentWarning(branch):null,notice:COMPLIANCE_NOTICE,disclaimer:GATE_DISCLAIMER};
 }
 export function assertVersion(record:{version:number},version:unknown){if(record.version!==version)throw new ApiError(409,'내용이 변경됐습니다. 새로고침 후 다시 확인하세요.')}
 export async function resolveFacts(owner:string,campaign:Campaign,refs:unknown,until=Date.now()):Promise<BrandFact[]>{
@@ -100,7 +108,7 @@ export async function captionCandidates(owner:string,campaign:Campaign):Promise<
  if(!artifacts.length)return [];
  const [{facts},fr]=await Promise.all([evidenceContext(database(),owner,campaign),loadFranchiseContext(owner,campaign.brandId)]);
  // 가맹 프로필이 있는 브랜드: 가맹 규칙 차단은 issues(고를 수 없음), 경고는 warnings. 판정 입력은 모델 입력(evidenceContext)이 아니라 sourceRef가 있는 확정 사실이다.
- const frFacts=fr.profile?await confirmedFactContext(owner,campaign.brandId,campaign.storeId):[],now=stamp();
+ const frFacts=claimScope(campaign,fr)?await confirmedFactContext(owner,campaign.brandId,campaign.storeId):[],now=stamp();
  return artifacts.flatMap(a=>copyBlocks(a.content).map((text,index)=>{
   const candidate:CaptionCandidate={artifactId:a.id,artifactVersion:a.version,index,text,issues:[...captionIssues(text,facts),...(hasKnownOrigin(a)?[]:[UNKNOWN_ORIGIN])],aiGenerated:isAiGenerated(a)};
   const j=franchiseJudgement(campaign,fr,frFacts,text,now);
@@ -121,7 +129,7 @@ async function approvedCopy(owner:string,campaign:Campaign,input:unknown,fr?:Fra
  if(issues.length)throw new ApiError(409,'이 카피는 캡션에 쓸 수 없습니다: '+issues.join(', '));
  // 가맹 규칙(트랙 R R2): 카피 본문을 지금 시각 규칙으로 판정한다. 캡션 전체는 발행 준비·승인 때 예약 시각 규칙으로 다시 판정한다.
  const context=fr??await loadFranchiseContext(owner,campaign.brandId);
- if(context.profile)assertFranchiseText(franchiseJudgement(campaign,context,await confirmedFactContext(owner,campaign.brandId,campaign.storeId),text,stamp()));
+ if(claimScope(campaign,context))assertFranchiseText(franchiseJudgement(campaign,context,await confirmedFactContext(owner,campaign.brandId,campaign.storeId),text,stamp()));
  // AI 생성물 여부는 작업물 출처(origin)에서 파생해 발행에 기록한다(결정 17). 캡션 표시 줄과 승인 게이트가 이 값을 쓴다.
  return {artifactId:artifact.id,artifactVersion:artifact.version,index,text,aiGenerated:isAiGenerated(artifact)};
 }
@@ -172,11 +180,11 @@ export async function saveCreative(owner:string,campaign:Campaign,input:Record<s
  assertVersion(campaign,input.campaignVersion);
  const title=creativeTitle(input.title);
  const facts=await resolveFacts(owner,campaign,input.factRefs),fr=await loadFranchiseContext(owner,campaign.brandId);
- franchiseFactGate(fr,facts);
+ franchiseFactGate(campaign,fr,facts);
  const caption=creativeCaption(facts,fr.versions);
  if(caption===null)throw new ApiError(409,FRANCHISE_FACT_MESSAGES.staleFact);
  if(caption.length>1800)throw new ApiError(400,'선택한 사실이 너무 깁니다. 짧은 안내 사실을 선택하세요.');
- if(fr.profile)assertFranchiseText(franchiseJudgement(campaign,fr,await confirmedFactContext(owner,campaign.brandId,campaign.storeId),caption,stamp()));
+ if(claimScope(campaign,fr))assertFranchiseText(franchiseJudgement(campaign,fr,await confirmedFactContext(owner,campaign.brandId,campaign.storeId),caption,stamp()));
  const bytes=await pngBytes(input.png),hash=await sha256(bytes),refs=facts.map(f=>({id:f.id,version:f.version}));
  const material=await materialHash(await readRecord<Brand>(owner,'brand',campaign.brandId),refs,caption);
  const prior=(await listRecords<ExecutionCreative>(owner,'execution_creative',campaign.id)).find(c=>c.pngHash===hash&&c.materialHash===material);
@@ -208,10 +216,10 @@ async function currentCreativeInputs(owner:string,campaign:Campaign,id:string){
 export async function currentCreative(owner:string,campaign:Campaign,id:string){return (await currentCreativeInputs(owner,campaign,id)).creative}
 // 가맹 사실 게이트·가맹 규칙 판정·각주 검사(트랙 R R1b·R2). 순서: 사실 사용(H6·근거 없음·교체 버전) → 가맹 규칙 판정(가맹 프로필 브랜드, at 시각 규칙) → 각주.
 // 각주: 캡션에 쓴 근거 있는 가맹 사실(used)과 캡션·카피에 값이 나온 현재 가맹 사실(mentioned)마다 정보공개서 각주 줄이 그대로 있어야 한다(각주를 지운 캡션 409).
-// 가맹 문맥(프로필·버전)이 없는 브랜드는 사실 조회 없이 끝난다(비가맹 경로 불변).
+// 가맹 문맥(프로필·버전)이 없는 브랜드의 소비자 캠페인은 사실 조회 없이 끝난다(비가맹 경로 불변). objective 캠페인은 가맹 문맥이 없어도 모집 범위로 판정한다(R3).
 async function franchiseCaptionGate(owner:string,campaign:Campaign,fr:FranchiseContext,used:BrandFact[],caption:string,at:string){
- franchiseFactGate(fr,used);
- if(!hasFranchiseContext(fr))return;
+ franchiseFactGate(campaign,fr,used);
+ if(!factScope(campaign,fr))return;
  const facts=await confirmedFactContext(owner,campaign.brandId,campaign.storeId);
  assertFranchiseText(franchiseJudgement(campaign,fr,facts,caption,at));
  const mentioned=mentionedFranchiseFacts({text:caption,now:stamp(),brandId:campaign.brandId,facts,versions:fr.versions});
