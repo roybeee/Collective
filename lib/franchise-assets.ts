@@ -1,4 +1,4 @@
-// 트랙 R R15a-1 모집 자료 키트(순수). 모집 자료 유형 7종·고정 절, 원문 SHA-256, 입력 검사, 승인 체크리스트, 승인·내보내기 판정(R2 모집 범위 전체 판정·H8·각주·근거 사실), 재검토 표시, 설명회·견학·박람회(정원·신청·참석) 판정만 계산한다.
+// 트랙 R R15a-1 모집 자료 키트(순수). 모집 자료 유형 7종·고정 절, 원문 SHA-256, 입력 검사, 승인 체크리스트, 승인·내보내기 판정(R2 모집 범위 전체 판정·H8·각주·근거 사실), 권장 안내 문장 경고, 재검토 표시, 설명회·견학·박람회(정원·신청·참석) 판정만 계산한다.
 // 저장(D1 `recruitment_asset`·`recruitment_event` 레코드)·API·화면·스위치 읽기·세션 역할 판정·잠금·요청 제한·감사·워크스페이스 할 일은 R15a-2 몫이다. 시계를 읽지 않는다(now 인자). 외부 호출이 없고 해시 계산만 웹 암호 API를 쓴다.
 // 근거: docs/FRANCHISE-RECRUITMENT-PLAN.ko.md 'R15'·'R2 구현 기록'·'R3 남은 일 (7)'. 결과는 COLLECTIVE 휴리스틱 · 법률 자문 아님. 모델 경계: lib/franchise.ts·lib/franchise-server.ts·lib/franchise-crypto.ts를 import하지 않는다(tests/franchise-model-boundary.test.mjs).
 import {FRANCHISE_RULES_VERSION,FRANCHISE_REVIEW_NET,isInstant,parseInstant,isDate,toKstDate,kstDateOf} from './franchise-rules';
@@ -19,8 +19,9 @@ const sortedUnique=<T extends string>(xs:readonly T[]):T[]=>[...new Set(xs)].sor
 const oneOf=<T extends string>(list:readonly T[],v:unknown):v is T=>typeof v==='string'&&(list as readonly string[]).includes(v);
 
 // ── 버전·한도·패턴 ──
-export const ASSETS_VERSION='fr-assets@2026-09-26.1';
-export const CHECKLIST_VERSION='fr-assets-checklist@2026-09-26.1';
+// .2: 대표 결정(2026-09-26 '3번') — 대기기간 두 문장·수익 질문 안내 문장을 필수 고정 문장에서 권장 문구로 바꿨다(누락·수정은 경고, 사유 코드 51 → 49). 체크리스트 대기기간 우회 항목 문구도 바뀌어 .1 승인은 checklist_outdated다.
+export const ASSETS_VERSION='fr-assets@2026-09-26.2';
+export const CHECKLIST_VERSION='fr-assets-checklist@2026-09-26.2';
 // 원문 20,000자에서 판정기는 약 0.2초 걸린다(실측). 배열 길이 상한을 넘는 기록은 invalid_record, 입력은 해당 입력 코드로 닫는다(fail closed).
 export const LIMITS=deepFreeze({bodyChars:20000,factRefs:20,placements:20,labelChars:100,capacity:1000,assetRefs:10,codes:1000} as const);
 // id는 서버가 만든 ASCII 값만 받는다. 가명 코드는 구분자('-'·'_')를 뺀 숫자 7자리 이상 연속을 막아 전화번호·주민번호 같은 값('010-0000-0101' 꼴 포함)이 코드로 들어오지 않게 한다.
@@ -39,14 +40,16 @@ export const SPOKEN_ASSET_TYPES=deepFreeze(['event_deck','first_call_script'] as
 
 // ── 고정 절 ──
 // heading = SECTION_MARK + title + (label ? ' ' + label : ''). 창업 페이지 문안에는 수익 수치 칸이 없다(H6). 나머지 5종은 자유 문안이라 절 검사를 하지 않는다.
+// recommendedLines: 템플릿(sectionTemplate)이 절 제목 아래 미리 채우는 권장 문장이다. 대표 결정(2026-09-26 '3번')으로 필수가 아니다: 빠지거나 고쳐도 승인·내보내기를 막지 않고
+// assetStructureWarnings가 경고로 알린다. 대기기간 우회 표현(가계약금·입금 순서 확정 등)은 판정기(h.wait_bypass_solicitation, 해제 불가)가 그대로 막는다.
 export const SECTION_MARK='■ ';
-export type SectionSpec={readonly id:string;readonly title:string;readonly label:string|null;readonly heading:string;readonly costLines:boolean;readonly fixedLines:readonly string[]};
+export type SectionSpec={readonly id:string;readonly title:string;readonly label:string|null;readonly heading:string;readonly costLines:boolean;readonly recommendedLines:readonly string[]};
 export const WAITING_NOTES=deepFreeze([
  '정보공개서를 받은 날부터 14일(변호사·가맹거래사에게 정보공개서 자문을 받았다면 7일)이 지나기 전에는 가맹계약을 체결하거나 가맹금을 받지 않습니다.',
  '가맹계약서안을 받은 날부터 14일(계약서 자문을 받았다면 7일)이 지나기 전에도 가맹계약을 체결하거나 가맹금을 받지 않습니다.',
 ] as const);
 export const REVENUE_QNA_NOTE='수익에 관한 질문은 정보공개서와 서면 자료로 안내합니다.';
-const section=(id:string,title:string,label:string|null,costLines:boolean,fixedLines:readonly string[]):SectionSpec=>({id,title,label,heading:SECTION_MARK+title+(label?' '+label:''),costLines,fixedLines:[...fixedLines]});
+const section=(id:string,title:string,label:string|null,costLines:boolean,recommendedLines:readonly string[]):SectionSpec=>({id,title,label,heading:SECTION_MARK+title+(label?' '+label:''),costLines,recommendedLines:[...recommendedLines]});
 const HEURISTIC_LABEL=`[${GATE_DISCLAIMER}]`;
 export const STARTUP_PAGE_SECTIONS:readonly SectionSpec[]=deepFreeze([
  section('why','왜 이 브랜드인가','[의견]',false,[]),
@@ -69,11 +72,12 @@ const SECTIONS_OF:Readonly<Partial<Record<AssetType,readonly SectionSpec[]>>>=de
 
 // ── 승인 체크리스트 ──
 // 앞의 세 항목은 R2 5차 측정에서 판정기가 많이 놓친 유형이다(대기기간 우회 18건 중 13건, 단체 가입 조건 14건 중 10건, 본사 연계 자문 14건 중 9건). 판정 이슈는 registryId로 항목에 붙인다.
+// 대기기간 안내 문장은 권장 문구라(대표 결정 2026-09-26) 체크리스트가 그 문장을 넣으라고 요구하지 않는다. 대기기간 우회 표현이 없는지는 그대로 확인한다.
 export const CHECKLIST_IDS=deepFreeze(['endorsement_disclosure','h7_branch_a','no_association_condition','no_captive_advisor','no_revenue_figures','no_wait_bypass'] as const);
 export type ChecklistItemId=typeof CHECKLIST_IDS[number];
 export type ChecklistItem={readonly id:ChecklistItemId;readonly text:string;readonly ruleIds:readonly string[]};
 export const CHECKLIST_ITEMS:readonly ChecklistItem[]=deepFreeze([
- {id:'no_wait_bypass',text:"대기기간 우회 없음: 가계약금·예약금·선점금·홀딩비, 입금 순서로 자리 확정, '바로 계약·대기 없이' 같은 표현이 없고, 정보공개서·계약서안을 받은 날부터 14일(자문 시 7일)이 지나기 전에는 계약하거나 가맹금을 받지 않는다고 안내합니다.",ruleIds:['h.wait_bypass_solicitation','kr.fr.disclosure_wait','kr.fr.draft_wait']},
+ {id:'no_wait_bypass',text:"대기기간 우회 없음: 가계약금·예약금·선점금·홀딩비, 입금 순서로 자리 확정, '바로 계약·대기 없이' 같은 표현이 없습니다(대기기간 안내 문장은 권장).",ruleIds:['h.wait_bypass_solicitation','kr.fr.disclosure_wait','kr.fr.draft_wait']},
  {id:'no_association_condition',text:'단체 가입 조건 없음: 가맹점사업자단체 가입·미가입을 계약 조건이나 지원·불이익의 조건으로 적지 않았습니다.',ruleIds:['kr.fr.association_condition','kr.fr.association_condition_2026']},
  {id:'no_captive_advisor',text:'본사 연계 자문 없음: 본부가 변호사·가맹거래사·행정사 같은 자문자를 지정·소개하거나 비용을 대는 것처럼, 본부 연계 자문으로 계약이 빨라지는 것처럼 쓰지 않았습니다.',ruleIds:['h.advice_shortening_evidence','h.captive_advisor_phrase']},
  {id:'no_revenue_figures',text:'수익 수치 없음: 평균매출·월 매출·순수익·수익률·투자금 회수 기간을 예시 점주·돌려 말하기·질문 답변 형태로도 쓰지 않았고, 수익 질문은 서면 절차 안내로만 답합니다(H6).',ruleIds:['h.net_profit_payback_claims','h.revenue_figures_no_ad','kr.fr.revenue_guarantee']},
@@ -115,7 +119,7 @@ export type EventCounts={applied:number;attended:number;noShow:number};
 export type RecruitmentEvent={id:string;brandId:string;campaignId:string;type:EventType;startsAt:string;placeLabel:string;capacity:number;spendRef:string|null;counts:EventCounts;codes:EventCode[];assetRefs:AssetRef[];status:'scheduled'|'cancelled';version:number;createdAt:string;updatedAt:string};
 
 // ── 사유 코드·결과 ──
-export const ASSET_CODES=deepFreeze(['asset_not_approved','attendance_before_event','block_unresolved','branch_not_a','campaign_not_recruitment','campaign_other_brand','capacity_below_applied','capacity_full','checklist_incomplete','checklist_outdated','code_duplicate','code_unknown','cost_table_missing','event_cancelled','event_started','fact_changed','fact_other_brand','fact_ref_missing','fact_revenue','fact_source_missing','fact_stale','fact_store_scoped','footnote_missing','h8_label_missing','hard_block','hash_mismatch','invalid_body','invalid_code','invalid_counts','invalid_event','invalid_fact_refs','invalid_input','invalid_placement','invalid_record','invalid_timestamp','invalid_type','not_approved','not_draft','not_exported','record_other_brand','revenue_qna_note_missing','review_needed','role_forbidden','section_duplicate','section_missing','section_order','section_unknown','spoken_revenue_figure','switch_off','version_not_current','waiting_note_missing'] as const);
+export const ASSET_CODES=deepFreeze(['asset_not_approved','attendance_before_event','block_unresolved','branch_not_a','campaign_not_recruitment','campaign_other_brand','capacity_below_applied','capacity_full','checklist_incomplete','checklist_outdated','code_duplicate','code_unknown','cost_table_missing','event_cancelled','event_started','fact_changed','fact_other_brand','fact_ref_missing','fact_revenue','fact_source_missing','fact_stale','fact_store_scoped','footnote_missing','h8_label_missing','hard_block','hash_mismatch','invalid_body','invalid_code','invalid_counts','invalid_event','invalid_fact_refs','invalid_input','invalid_placement','invalid_record','invalid_timestamp','invalid_type','not_approved','not_draft','not_exported','record_other_brand','review_needed','role_forbidden','section_duplicate','section_missing','section_order','section_unknown','spoken_revenue_figure','switch_off','version_not_current'] as const);
 export type AssetCode=typeof ASSET_CODES[number];
 // 한 판정 단계의 코드는 모두 같은 상태 코드다. 400: 클라이언트가 채울 입력·형식, 403: 역할, 409: 서버 상태(스위치·분기·승인·판정).
 export const ASSET_CODE_STATUS:Readonly<Record<AssetCode,400|403|409>>=deepFreeze({
@@ -123,8 +127,7 @@ export const ASSET_CODE_STATUS:Readonly<Record<AssetCode,400|403|409>>=deepFreez
  code_duplicate:409,code_unknown:400,cost_table_missing:409,event_cancelled:409,event_started:409,fact_changed:409,fact_other_brand:400,fact_ref_missing:409,fact_revenue:409,fact_source_missing:409,
  fact_stale:409,fact_store_scoped:400,footnote_missing:409,h8_label_missing:409,hard_block:409,hash_mismatch:409,invalid_body:400,invalid_code:400,invalid_counts:400,invalid_event:400,
  invalid_fact_refs:400,invalid_input:400,invalid_placement:400,invalid_record:400,invalid_timestamp:400,invalid_type:400,not_approved:409,not_draft:409,not_exported:409,record_other_brand:400,
- revenue_qna_note_missing:409,review_needed:409,role_forbidden:403,section_duplicate:409,section_missing:409,section_order:409,section_unknown:409,spoken_revenue_figure:409,switch_off:409,version_not_current:409,
- waiting_note_missing:409,
+ review_needed:409,role_forbidden:403,section_duplicate:409,section_missing:409,section_order:409,section_unknown:409,spoken_revenue_figure:409,switch_off:409,version_not_current:409,
 });
 // 고정 문구. 입력 값을 끼워 넣지 않는다. hard_block·block_unresolved는 판정 결과가 있으면 franchiseGateError 문구(원문 발췌 포함, 기존 발행 게이트와 같음)를 쓰고, 아래는 판정 결과가 없을 때의 문구다.
 export const ASSET_MESSAGES:Readonly<Record<AssetCode,string>>=deepFreeze({
@@ -168,7 +171,6 @@ export const ASSET_MESSAGES:Readonly<Record<AssetCode,string>>=deepFreeze({
  not_draft:'초안 상태의 자료만 승인할 수 있습니다.',
  not_exported:'내보낸 자료만 게시 위치를 기록할 수 있습니다.',
  record_other_brand:'이 브랜드의 기록이 아닙니다.',
- revenue_qna_note_missing:'질의응답 절에 수익 질문 안내 문장을 그대로 넣으세요(H6).',
  review_needed:'근거 사실이나 정보공개서 버전이 바뀌어 재검토가 필요합니다. 현재 사실로 새 버전을 저장하고 다시 승인하세요.',
  role_forbidden:'모집 자료 승인·내보내기·게시 기록과 행사 등록·변경은 대표·관리자만 할 수 있습니다.',
  section_duplicate:'고정 절 제목이 두 번 이상 있습니다.',
@@ -178,10 +180,13 @@ export const ASSET_MESSAGES:Readonly<Record<AssetCode,string>>=deepFreeze({
  spoken_revenue_figure:`설명회 원고·첫 통화 스크립트에 수익처럼 보이는 수치가 있습니다. 수익 질문은 서면 절차 안내 문장으로만 답합니다(H6). ${GATE_DISCLAIMER}`,
  switch_off:'가맹 모집 기능이 꺼져 있어 모집 자료·행사를 저장·승인·내보낼 수 없습니다.',
  version_not_current:'자료를 저장할 때의 정보공개서 버전이 현재 등록 버전이 아닙니다. 현재 버전의 사실로 새 버전을 저장하세요.',
- waiting_note_missing:'가맹 절차 절에 두 대기기간 안내 문장을 그대로 넣으세요.',
 });
-// 막지 않는 경고.
-export const ASSET_WARNING_MESSAGES=deepFreeze({briefingDeckMissing:'설명회에 승인된 설명회 덱(표준 순서)을 연결하지 않았습니다.'} as const);
+// 막지 않는 경고. 권장 안내 문장 두 경고는 저장·승인·내보내기 성공 결과의 warnings에 판정기 경고 뒤로 붙는다(assetStructureWarnings).
+export const ASSET_WARNING_MESSAGES=deepFreeze({
+ briefingDeckMissing:'설명회에 승인된 설명회 덱(표준 순서)을 연결하지 않았습니다.',
+ waitingNoteMissing:'가맹 절차 절에 대기기간 안내 권장 문장이 없습니다(권장, 내보내기는 막지 않음).',
+ revenueQnaNoteMissing:'질의응답 절에 수익 질문 안내 권장 문장이 없습니다(권장, 내보내기는 막지 않음).',
+} as const);
 // 상태 코드는 결정 객체로 돌려준다(lib/franchise-facts.ts FranchiseSaveCheck·franchiseGateError 관례). R15a-2: if(!d.ok) throw new ApiError(d.status,d.message).
 export type Decision<T>=
  |{ok:true;status:200;value:T;warnings:string[];ruleVersion:string;disclaimer:string}
@@ -372,7 +377,7 @@ export function validateAssetInput(input:unknown,ctx:AssetContext):Decision<Asse
   if(resolved.codes.length)return fail(resolved.codes);
   const effective=byId(effectiveAssetFacts(records.facts,brandId,now));
   const j=judgeFranchiseText({text:body,at:now,now,scope:'recruitment',brandId,facts:judgeFactsOf(resolved.facts,effective),versions:brandVersions});
-  return pass({type,body,factRefs,disclosureVersionId:currentDisclosureVersion(brandVersions,brandId,now)?.id??null,judgement:j},franchiseIssueLabels(j).warnings);
+  return pass({type,body,factRefs,disclosureVersionId:currentDisclosureVersion(brandVersions,brandId,now)?.id??null,judgement:j},assetWarnings(j,type,body));
  });
 }
 
@@ -390,51 +395,70 @@ export async function draftAsset(prev:RecruitmentAsset|null,value:AssetInputValu
 }
 
 // ── 절 구조 ──
-// 창업 페이지 문안·설명회 덱: 절마다 제목과 고정 문장을 줄바꿈으로 잇고 절 사이는 빈 줄 하나. 창업비용 표 몸통은 비운다(R15a-2가 factCaption으로 채운다). 그 밖의 유형은 ''.
+// 창업 페이지 문안·설명회 덱: 절마다 제목과 권장 문장을 줄바꿈으로 잇고 절 사이는 빈 줄 하나. 창업비용 표 몸통은 비운다(R15a-2가 factCaption으로 채운다). 그 밖의 유형은 ''.
 export function sectionTemplate(type:unknown):string{
  const sections=oneOf(ASSET_TYPES,type)?SECTIONS_OF[type]:undefined;
- return sections?sections.map(s=>[s.heading,...s.fixedLines].join('\n')).join('\n\n'):'';
+ return sections?sections.map(s=>[s.heading,...s.recommendedLines].join('\n')).join('\n\n'):'';
 }
-const FIXED_LINE_CODE:Readonly<Record<string,AssetCode>>={process:'waiting_note_missing',qna:'revenue_qna_note_missing'};
 const MARK=SECTION_MARK.trim();
 // 줄은 '\n'과, 화면에서 줄로 보일 수 있는 U+0085·U+2028·U+2029로 나눈다. 저장 원문에는 이 문자가 없지만(bodyOk) 직접 부르는 미리보기 원문에서도 ■ 줄을 놓치지 않는다(fail closed).
 const LINE_BREAK=/\n|\u0085|\u2028|\u2029/;
-// facts는 이 브랜드의 사실이다(assetGateIssues가 브랜드로 걸러 넘긴다). 제목 줄은 trim이 명세 heading과 정확히 같은 줄이다. 제목이 아닌데 ■로 시작하는 줄(공백 없는 '■수익' 포함)은 section_unknown이다.
-// 절 몸통은 제목 다음 줄부터 다음 제목 줄 또는 ■ 줄 앞까지이고, 몸통 줄 비교는 trim하지 않은 정확 일치다(footnoteIssues와 같다). 사실 줄은 NFC로 맞춰 비교한다(원문은 NFC로 저장되고 사실 값은 NFC가 아닐 수 있다).
+// 절 나누기(assetStructureIssues·assetStructureWarnings가 같이 쓴다). 제목 줄은 trim이 명세 heading과 정확히 같은 줄이다. 제목이 아닌데 ■로 시작하는 줄(공백 없는 '■수익' 포함)은 알 수 없는 절 줄이다.
+// 절 몸통은 (첫) 제목 다음 줄부터 다음 제목 줄 또는 ■ 줄 앞까지이고, 몸통 줄은 trim하지 않은 원래 줄이다(비교는 정확 일치, footnoteIssues와 같다).
+type SectionView={found:ReadonlyMap<string,readonly number[]>;unknown:boolean;bodyOf:(s:SectionSpec)=>Set<string>};
+function sectionView(sections:readonly SectionSpec[],body:string):SectionView{
+ const lines=body.split(LINE_BREAK),headings=sections.map(s=>s.heading),found=new Map<string,number[]>(),breaks:number[]=[];
+ let unknown=false;
+ lines.forEach((line,i)=>{
+  const t=line.trim();
+  if(headings.includes(t)){found.set(t,[...(found.get(t)??[]),i]);breaks.push(i)}
+  else if(t.startsWith(MARK)){unknown=true;breaks.push(i)}
+ });
+ const bodyOf=(s:SectionSpec):Set<string>=>{const at=found.get(s.heading);if(!at)return new Set();const end=breaks.find(b=>b>at[0])??lines.length;return new Set(lines.slice(at[0]+1,end))};
+ return {found,unknown,bodyOf};
+}
+// facts는 이 브랜드의 사실이다(assetGateIssues가 브랜드로 걸러 넘긴다). 사실 줄은 NFC로 맞춰 비교한다(원문은 NFC로 저장되고 사실 값은 NFC가 아닐 수 있다).
+// 권장 안내 문장(recommendedLines)은 여기서 보지 않는다. 빠지거나 고쳐도 막지 않고 assetStructureWarnings가 경고로 알린다(대표 결정 2026-09-26).
 export function assetStructureIssues(type:unknown,body:unknown,refFacts:readonly BrandFact[],facts:readonly BrandFact[],versions:readonly VersionLite[],now:string):AssetCode[]{
  const sections=oneOf(ASSET_TYPES,type)?SECTIONS_OF[type]:undefined;
  if(!sections)return [];
  if(typeof body!=='string')return ['section_missing'];
  try{
-  const lines=body.split(LINE_BREAK),headings=sections.map(s=>s.heading),codes:AssetCode[]=[],found=new Map<string,number[]>(),breaks:number[]=[];
-  lines.forEach((line,i)=>{
-   const t=line.trim();
-   if(headings.includes(t)){found.set(t,[...(found.get(t)??[]),i]);breaks.push(i)}
-   else if(t.startsWith(MARK)){codes.push('section_unknown');breaks.push(i)}
-  });
+  const view=sectionView(sections,body),codes:AssetCode[]=view.unknown?['section_unknown']:[];
   let last=-1;
-  for(const h of headings){
-   const at=found.get(h);
+  for(const s of sections){
+   const at=view.found.get(s.heading);
    if(!at){codes.push('section_missing');continue}
    if(at.length>1)codes.push('section_duplicate');
    if(at[0]<last)codes.push('section_order');
    last=Math.max(last,at[0]);
   }
-  const bodyOf=(s:SectionSpec):Set<string>=>{const at=found.get(s.heading);if(!at)return new Set();const end=breaks.find(b=>b>at[0])??lines.length;return new Set(lines.slice(at[0]+1,end))};
   const states=versionStates(versions,now);
   for(const s of sections){
-   const own=bodyOf(s);
-   if(s.costLines){
-    // 필요한 비용 사실 = 참조 사실 중 창업비용 구성 항목 ∪ 이 브랜드의 유효하고 현재 버전인 총 창업비용 사실 전부(매장 유형별). 0개이거나 사실 줄 하나라도 몸통에 없으면 cost_table_missing.
-    const required=new Map<string,BrandFact>();
-    for(const f of [...refFacts.filter(x=>franchiseItem(x.key)?.storeType==='required'),...effectiveOf(facts,now).filter(x=>franchiseItem(x.key)?.key==='startup_cost_total'&&!!x.sourceRef&&states[x.sourceRef.disclosureVersionId]==='current')])required.set(f.id,f);
-    if(!required.size||[...required.values()].some(f=>!factLine(f).normalize('NFC').split(LINE_BREAK).every(l=>own.has(l))))codes.push('cost_table_missing');
-   }
-   if(s.fixedLines.some(l=>!own.has(l)))codes.push(FIXED_LINE_CODE[s.id]);
+   if(!s.costLines)continue;
+   // 필요한 비용 사실 = 참조 사실 중 창업비용 구성 항목 ∪ 이 브랜드의 유효하고 현재 버전인 총 창업비용 사실 전부(매장 유형별). 0개이거나 사실 줄 하나라도 몸통에 없으면 cost_table_missing.
+   const own=view.bodyOf(s),required=new Map<string,BrandFact>();
+   for(const f of [...refFacts.filter(x=>franchiseItem(x.key)?.storeType==='required'),...effectiveOf(facts,now).filter(x=>franchiseItem(x.key)?.key==='startup_cost_total'&&!!x.sourceRef&&states[x.sourceRef.disclosureVersionId]==='current')])required.set(f.id,f);
+   if(!required.size||[...required.values()].some(f=>!factLine(f).normalize('NFC').split(LINE_BREAK).every(l=>own.has(l))))codes.push('cost_table_missing');
   }
   return sortedUnique(codes);
  }catch{return ['section_missing']}
 }
+// 권장 안내 문장 경고(막지 않음). 권장 문장이 있는 절마다, 그 문장이 모두 그 절 몸통에 정확히(trim 없이) 있어야 경고가 없다. 한 절에서 여러 줄이 빠져도 경고는 하나이고 순서는 절 순서다.
+// 절 안의 줄 순서·중복·다른 줄은 보지 않는다. 제목이 없거나 원문이 문자열이 아니면 권장 문장도 없는 것으로 본다(절 누락 자체는 assetStructureIssues의 section_missing이 막는다). 자유 문안 유형·모르는 유형은 [].
+const RECOMMENDED_WARNING:Readonly<Record<string,string>>={process:ASSET_WARNING_MESSAGES.waitingNoteMissing,qna:ASSET_WARNING_MESSAGES.revenueQnaNoteMissing};
+export function assetStructureWarnings(type:unknown,body:unknown):string[]{
+ const sections=oneOf(ASSET_TYPES,type)?SECTIONS_OF[type]:undefined;
+ if(!sections)return [];
+ const recommended=sections.filter(s=>s.recommendedLines.length>0),all=()=>[...new Set(recommended.map(s=>RECOMMENDED_WARNING[s.id]))];
+ if(typeof body!=='string')return all();
+ try{
+  const view=sectionView(sections,body);
+  return [...new Set(recommended.filter(s=>{const own=view.bodyOf(s);return s.recommendedLines.some(l=>!own.has(l))}).map(s=>RECOMMENDED_WARNING[s.id]))];
+ }catch{return all()}
+}
+// 성공 결과의 경고: 판정기 경고 다음에 권장 안내 문장 경고. 중복 없이 처음 나온 순서를 지킨다.
+const assetWarnings=(j:FranchiseJudgement,type:unknown,body:unknown):string[]=>[...new Set([...franchiseIssueLabels(j).warnings,...assetStructureWarnings(type,body)])];
 
 // ── 내용 게이트(승인·내보내기·미리보기 공유) ──
 const gateOf=(codes:readonly AssetCode[],j:FranchiseJudgement|null):GateIssues=>{
@@ -442,6 +466,7 @@ const gateOf=(codes:readonly AssetCode[],j:FranchiseJudgement|null):GateIssues=>
  return reasons.length?{codes:reasons,status:ASSET_CODE_STATUS[reasons[0]] as 400|409,judgement:j,message:messageOf(reasons,j)}:{codes:[],status:200,judgement:j,message:null};
 };
 // 1) 저장 당시 정보공개서 버전이 현재 등록 버전인가 2) 참조 사실(400 → 409) 3) 내용(모두 모음, 409): 절 구조, R2 모집 범위 판정, H8 표지(경고를 409로), 각주, 원문에 값이 나온 사실의 참조, 말로 쓰는 원고의 수익 안전망.
+// 권장 안내 문장 누락은 게이트 코드가 아니다(경고, assetStructureWarnings). 그래서 미리보기(assetGateIssues)의 codes에도 나오지 않는다.
 function contentGate(asset:RecruitmentAsset,g:{brandId:string;facts:readonly BrandFact[];versions:readonly VersionLite[];now:string}):GateIssues{
  const brandVersions=brandVersionsOf(g.versions,g.brandId),current=currentDisclosureVersion(brandVersions,g.brandId,g.now);
  if(!current||asset.disclosureVersionId!==current.id)return gateOf(['version_not_current'],null);
@@ -527,7 +552,7 @@ export async function approveDecision(asset:unknown,input:unknown,ctx:AssetConte
   if(input.bodyHash!==a.bodyHash||await assetBodyHash(a.body)!==a.bodyHash)return fail(['hash_mismatch']);
   const g=contentGate(a,r);
   if(!g.judgement||g.codes.length)return fail(g.codes.length?g.codes:['invalid_record'],g.judgement);
-  return pass({approval:{by:r.actor.id,role:r.actor.role,at:r.now,bodyHash:a.bodyHash,checklist:{version:CHECKLIST_VERSION,checked:[...CHECKLIST_IDS]}},judgement:g.judgement},franchiseIssueLabels(g.judgement).warnings);
+  return pass({approval:{by:r.actor.id,role:r.actor.role,at:r.now,bodyHash:a.bodyHash,checklist:{version:CHECKLIST_VERSION,checked:[...CHECKLIST_IDS]}},judgement:g.judgement},assetWarnings(g.judgement,a.type,a.body));
  });
 }
 function approvalOk(a:unknown,now:string):a is AssetApproval{
@@ -548,7 +573,7 @@ export async function exportDecision(asset:unknown,ctx:AssetContext&{actor:Asset
   const g=contentGate(a,r);
   if(!g.judgement||g.codes.length)return fail(g.codes.length?g.codes:['invalid_record'],g.judgement);
   const j=g.judgement;
-  return pass({body:a.body,record:{at:r.now,by:r.actor.id,role:r.actor.role,bodyHash:a.bodyHash,judgeVersion:j.version,assetsVersion:ASSETS_VERSION,checklistVersion:approval.checklist.version},judgement:j},franchiseIssueLabels(j).warnings);
+  return pass({body:a.body,record:{at:r.now,by:r.actor.id,role:r.actor.role,bodyHash:a.bodyHash,judgeVersion:j.version,assetsVersion:ASSETS_VERSION,checklistVersion:approval.checklist.version},judgement:j},assetWarnings(j,a.type,a.body));
  });
 }
 
