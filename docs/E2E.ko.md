@@ -17,6 +17,7 @@ node node_modules/@playwright/test/cli.js test -c playwright.auth.config.ts   # 
 ```
 
 - 서버는 Playwright가 `e2e/serve.mjs`로 직접 띄운다. 매 실행마다 `e2e/.state/`에 빈 로컬 D1을 만들고 `drizzle/*.sql`을 적용한 뒤 `wrangler dev --local`을 `127.0.0.1:8799`(`E2E_PORT`로 변경)에서 시작한다. 운영 D1/R2에는 연결하지 않는다.
+- `e2e/serve.mjs`는 wrangler를 띄우기 전에 `e2e/wrangler-proxy-fix.mjs`로 설치된 wrangler 4.92.0의 로컬 프록시(`node_modules/wrangler/wrangler-dist/ProxyWorker.js`)를 고친다. 끊긴 GET이 다음 요청까지 멈추던 버그를 wrangler 4.114·4.130 수정으로 되돌려 넣은 것이다. 한 번만 적용하고, 다른 wrangler 버전이면 건너뛰며, 원문이 다르면 서버를 띄우지 않고 멈춘다. 로컬에서 E2E를 돌리면 설치본이 바뀐다(`pnpm install --force`로 되돌린다). 운영 Workers에는 이 프록시가 없다.
 - 스크린샷(390×844 `mobile-*.png`, 1280×800 `desktop-*.png`), 실패 시 trace는 `e2e/artifacts/`에 남는다. 로컬 서버 stdout 전체(wrangler 요청 기록: 경로·상태·처리 시간)는 줄마다 UTC 시각을 붙여 `e2e/artifacts/server-default.log`(이메일 인증 여정은 `server-auth.log`)에 남는다. CI는 이 폴더를 늘 올리므로(`e2e-artifacts`), 응답 없이 멈춘 요청을 Playwright 시각과 맞춰 볼 수 있다(2026-09-25 `meeting-quality.spec.ts:40` 흔들림 조사용). 이 폴더와 `e2e/.state/`는 `.gitignore` 대상이라 빌드가 `dirty`로 표시되지 않는다.
 - 기본 설정(`playwright.config.ts`): 두 화면 크기(`mobile`, `desktop` 프로젝트) × 테스트 7개(`smoke` 5, `meeting-quality` 1, `execution` 1) = 14건.
 - 이메일 인증 설정(`playwright.auth.config.ts`): `email-auth` 1건(390px, HTTPS `127.0.0.1:8800`). 합계 15건.

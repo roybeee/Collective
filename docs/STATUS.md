@@ -26,7 +26,7 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-26 02:40 UTC (Claude 트랙 R 세션: 묶음 13 `b16403d` `published`(Sites 버전 36, 자동 게시 첫 성공) 뒤 Codex 세션이 `d721017`을 Sites 버전 37로 게시, #120·#127·#121 `merged` 반영. 그 전 갱신: 02:05 UTC Claude A3 세션 #121)
+마지막 갱신: 2026-09-26 03:30 UTC (Claude 트랙 R 세션: E2E 회의 테스트 흔들림 원인(wrangler 4.92 로컬 프록시)과 E2E 전용 수정 PR. 그 전 갱신: 02:40 UTC 묶음 13·버전 37 반영)
 
 ## 현재 운영 상태
 
@@ -42,8 +42,10 @@
 | 열린 PR | #16 Android(draft, 제외), #126 묶음 13 게시 기록(브랜치 `claude/franchise-recruitment-marketing-u8cpo2`, 이 갱신과 같은 PR), #128 평가 실행 실패 사유 집계(Codex, `docs/releases/2026-09-26-d721017.md` 포함) | GitHub 열린 PR 목록(GitHub MCP), 2026-09-26 02:40 UTC |
 | main CI | `d721017`·`aefd421`·`b16403d` passed, `aa49e6b` 실행 중(02:40 UTC) | GitHub Actions main 실행(run 36211135217·36210450483·36209066178 success, 36211867282 진행 중, API 조회) |
 
-- 테스트 흔들림(2026-09-25 관찰, 제품 동작 변경 없음, 원인 조사는 별도 작업):
-  - CI E2E `e2e/meeting-quality.spec.ts:40`('기준 자료가 바뀐 실패 회의…')가 오늘 3번 60초 시간 초과(#86 1회, #92 첫 CI 모바일·데스크톱). 매번 같은 파일 첫 테스트 직후 두 번째 테스트 첫 줄 `page.request.get('/api/workspace')`에서 멈추고, 같은 로그에 workerd `Broken pipe`가 있다. 재실행하면 통과하고 로컬 `--repeat-each 6`은 24/24 통과(재현 안 됨).
+- 테스트 흔들림(2026-09-25 관찰, 제품 동작 변경 없음):
+  - CI E2E `e2e/meeting-quality.spec.ts:40`('기준 자료가 바뀐 실패 회의…')가 오늘 3번 60초 시간 초과(#86 1회, #92 첫 CI 모바일·데스크톱). 매번 같은 파일 첫 테스트 직후 두 번째 테스트 첫 줄 `page.request.get('/api/workspace')`에서 멈추고, 같은 로그에 workerd `Broken pipe`가 있다. 재실행하면 통과하고 로컬 `--repeat-each 6`은 24/24 통과(재현 안 됨). 2026-09-26에도 #124 1회, #126 2회(재실행 포함) 같은 증상이었다.
+  - 원인(2026-09-26, Claude 트랙 R 세션 조사): 앱이 아니라 wrangler 4.92.0 `wrangler dev` 로컬 프록시(ProxyWorker)다. 사용자 워커로의 전달이 끊기면 전체 URL과 origin URL을 비교해 늘 "워커 재시작"으로 잘못 보고, GET을 재시도 큐에 넣기만 해서 다음 요청이 올 때까지 붙잡는다. workers:1이라 다음 요청이 없으면 60초 시간 초과다. 근거: CI 서버 로그(run 36212412068, `GET /api/workspace 200 OK (60794ms)`가 다음 테스트 첫 요청 65ms 뒤 끝남, 요청 1,585건 중 유일한 느린 요청, real), 로컬 CPU 부하 재현 1/24(real 로컬 workerd·D1·Chromium), wrangler 4.114(origin 비교)·4.130(끊긴 GET·HEAD 재시도) 수정 이력(npm tarball 대조). 운영 Workers에는 이 프록시가 없다. 끊김을 일으키는 계기(유휴 keep-alive 약 5초 경쟁 추정)는 확인하지 못했다.
+  - 수정: `e2e/wrangler-proxy-fix.mjs`가 E2E 서버를 띄우기 전(`e2e/serve.mjs`)에 wrangler 4.92.0의 ProxyWorker에만 두 수정을 되돌려 넣는다(정확한 원문 일치·한 번만 적용, 다른 버전은 건너뜀). 의존성 파일은 바꾸지 않는다. 효과 확인은 CI E2E 흔들림 빈도와 `e2e/artifacts/server-default.log`의 `ProxyWorker: … retrying/recovered` 줄로 한다. wrangler를 4.130 이상으로 올리면 지운다
   - `tests/email-auth.test.mjs` '소유자가 멤버·관리자 역할을 바꾼다'가 전체 스위트 병렬 실행에서 가끔 실패(오늘 3회 중 2회, 단독 6/6 통과). 소유자는 '가장 먼저 만든 관리자(created_at, id 순)'로 정해지므로, 계정 생성 시각이 겹치면 승격한 관리자가 소유자로 읽힐 수 있는 구조다(auth 코드는 #23 이후 변경 없음).
 - `AUTH_MODE` fail-closed(PR 1, `auth-2`)가 운영에 적용됐다. 운영 빌드에서 `AUTH_MODE`가 비면 모든 인증·업무 API가 503이다. Sites가 public인 동안 legacy로 되돌리지 않는다. 환경 revision 변경·복구·재게시 뒤에는 `/api/auth`가 mode=email인지, 위조 헤더 요청이 401인지 먼저 확인한다. 복구는 [이메일 로그인 복구 순서](EMAIL-AUTH.ko.md)를 따른다.
 - 확인 필요: 익명 업무 API 401은 443fff4 게시 뒤 확인했다(passed · real). 위조 헤더 요청 401은 not_run이다(자동 모드 안전 검사 정책). 소유자가 직접 확인한다. 민감 작업 재인증(step-up)은 아직 구현되지 않았다(PR #23 남은 위험).

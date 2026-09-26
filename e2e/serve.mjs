@@ -4,6 +4,7 @@
 import {existsSync, readdirSync, rmSync, mkdirSync, createWriteStream} from 'node:fs';
 import {spawn, spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
+import {applyProxyFix} from './wrangler-proxy-fix.mjs';
 
 const port = process.env.E2E_PORT || '8799';
 const emailAuth = process.env.E2E_EMAIL_AUTH === '1';
@@ -15,6 +16,10 @@ if (!existsSync(config)) {
   process.stderr.write(`${config}가 없습니다. 먼저 node scripts/run-framework.mjs build 를 실행하세요.\n`);
   process.exit(1);
 }
+
+// wrangler 4.92.0 로컬 프록시의 GET 멈춤 수정(e2e/wrangler-proxy-fix.mjs). E2E 서버를 띄우기 전에 한 번 적용한다.
+const proxyFix = applyProxyFix();
+process.stderr.write(`[serve] wrangler ${proxyFix.version} dev proxy fix: ${proxyFix.status}\n`);
 
 rmSync(state, {recursive: true, force: true});
 for (const file of readdirSync('drizzle').filter(f => f.endsWith('.sql')).sort()) {
