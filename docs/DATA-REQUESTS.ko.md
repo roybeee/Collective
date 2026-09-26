@@ -1,4 +1,4 @@
-# 자료 요청 (A6-1)
+# 자료 요청 (A6-1·A6-3)
 
 결론: 저장된 작업물의 '자료 필요' 표지를 결정론으로 뽑아 자료 요청(records kind `data_request`, 열림)으로 모은다. 관리자가 같은 항목의 사실을 확정해 유효 사실이 되면 요청이 자동으로 닫힌다(resolution `fact_confirmed`, 사실 id·판). 기능 스위치 `a6_data_requests`(기본 꺼짐, 소유자 단위)로 켠다. 모델 호출은 없고 실행기(역할·회의·브리프·발행)는 바꾸지 않는다.
 
@@ -6,7 +6,7 @@
 
 - 코드: `lib/data-requests.ts`(순수: 추출·항목 매핑·중복 제거·닫힘 판정), `lib/data-requests-server.ts`(수집·생성·닫기·필요 없음·다시 대조·`afterFactSaved`, 스위치 읽기), `app/api/data-requests/route.ts`, `app/data-requests-panel.tsx`(캠페인 상세 '작업물' 탭 끝)
 - 사실 확정 경로: `app/api/brand-facts/route.ts`가 `save_fact` 저장 뒤 `afterFactSaved`를 부른다. `lib/brand-facts-server.ts` `saveBrandFact`는 바꾸지 않았다.
-- 테스트: `tests/data-requests.test.mjs`(메모리 SQLite·합성 데이터·fetch 스텁, 외부 호출 0, `passed · mocked`)
+- 테스트: `tests/data-requests.test.mjs`(메모리 SQLite·합성 데이터·fetch 스텁, 외부 호출 0, `passed · mocked`), A6-3 자동 수집은 `tests/data-requests-auto.test.mjs`(모의 HERMES, `passed · mocked`)
 - 근거: 개선 계획 `exec-loop-1`(게시 전 `자료 필요` 차단)·`data-truth-3`(지점 범위), [성장 계획](GROWTH-PLAN.ko.md) A6
 
 ## 데이터 계약 (kind `data_request`)
@@ -60,7 +60,7 @@
 - 지점 요청은 그 지점 사실과 브랜드 공통 사실로 닫힌다.
 - 브랜드 범위 요청은 브랜드 공통 사실로만 닫힌다. 지점 사실로는 닫히지 않는다.
 - 후보·거절·만료·미래 확인일·근거 없는 사실로는 닫히지 않는다.
-- 이미 유효 사실이 있는 항목은 모을 때 새로 만들지 않는다(`skipped.confirmed`). 닫힌 요청은 다시 모아도 열지 않는다(`skipped.closed`). 수동으로 같은 항목을 만들면 다시 연다.
+- 이미 유효 사실이 있는 항목은 모을 때 새로 만들지 않는다(`skipped.confirmed`). 닫힌 요청은 다시 모아도 열지 않는다(`skipped.closed`). 단, 철회·만료 사실로 닫힌 요청은 다시 연다(A6-3 재개 규칙). 수동으로 같은 항목을 만들면 다시 연다.
 
 ## 사실 확정과 자동 닫기
 
@@ -92,9 +92,69 @@
 - `a6_data_requests`(기본 꺼짐). 스위치는 `lib/data-requests-server.ts`에서만 읽는다. 실행기는 스위치를 직접 import하지 않는다(`tests/franchise-objective.test.mjs` 6).
 - 켜기·끄기는 소유자만 한다(`/api/feature-flags`). 설정 기능표에 '자료 요청' 행이 있다.
 
+## A6-3 저장 시점 자동 수집·원천 확장·재개
+
+결론: 스위치 `a6_data_requests`가 켜져 있으면 작업물을 저장하는 순간 자료 요청을 모은다. 사람이 '모으기'를 누르지 않아도 된다. 원천은 작업물 표지에 더해 품질 검수 `needs_data` 지적, 점포 진단 보고서 질문, 브리프 초안 질문까지 넓혔다. 철회·만료된 사실로 닫힌 요청은 다음 수집 때 다시 연다. 모델 호출은 없다.
+
+비유: 전에는 사장이 가끔 작업물 더미를 뒤져 메모를 게시판에 옮겼다. 이제는 작업물을 서랍에 넣는 순간 메모가 게시판에 붙는다. 영업시간 메모가 사실 확정으로 '끝남' 칸에 갔더라도, 그 사실이 철회되면 다음 정리 때 다시 '할 일' 칸으로 돌아온다.
+
+### 호출 위치(실행기 한 줄)
+
+| 저장 지점 | 호출 | 잠금 |
+|---|---|---|
+| 역할 작업물 저장(`lib/role-execution.ts` poll, 작업물·job 완료·사용량 결과 기록 뒤) | `collectOnSave(owner,c,[aid])` | 소유자 잠금 안 |
+| 회의 개선본 저장(`lib/meeting-execution.ts` finish, 저장 batch 뒤) | `collectOnSave(owner,c,m.artifactIds)` | 소유자 잠금 안 |
+| 브리프 초안 완료(`lib/brief-execution.ts` poll, 초안 저장 뒤) | `collectBriefOnSave(owner,next)` | 소유자 잠금 안 |
+| 점포 진단 보고서 저장(`lib/research-execution.ts` store_diagnosis 완료 batch 뒤) | `collectStoreReportOnSave(owner,r.id)` | 조사 잠금(소유자 잠금 아님) |
+
+- 자리 선택: 온라인 채점처럼 잠금을 푼 뒤가 아니라 저장이 끝난 직후 잠금 안에서 부른다. 자료 요청 쓰기(수동 모으기·닫기·사실 저장 뒤 닫기)는 모두 소유자 잠금 안에서 하므로, 같은 잠금 안에서 모아야 사람이 그사이 닫은 요청을 덮어쓰지 않는다. 수집은 DB 읽기·쓰기 몇 번뿐이다.
+- 자동 수집의 쓰기는 판 비교(CAS)다. 새 요청은 `ON CONFLICT DO NOTHING`, 기존 요청은 `version`이 읽은 판일 때만 바꾼다. 조사 실행처럼 소유자 잠금 밖에서 불러도 사람이 닫은 요청을 다시 열지 않는다. 수동 모으기(`collect`)는 잠금 안이라 기존 쓰기를 그대로 쓴다.
+- 스위치는 `lib/data-requests-server.ts`에서만 읽는다(읽기 실패 = 꺼짐, `a6_data_requests_flag_unreadable`). 실행기는 `feature-flags`를 import하지 않는다. `lib/research-execution.ts`는 전부터 A7 수리 턴 스위치를 직접 읽었고 이번에 늘리지 않았다.
+- 스위치 꺼짐: 스위치 읽기 1회 말고는 아무것도 하지 않는다. 역할·회의·브리프·조사의 제출·저장 작업물·응답은 바이트 동일하다(fixture 재캡처 없음).
+- 실패: 도우미가 예외를 삼키고 `data_request_auto_collect_failed` 한 줄만 남긴다. 작업물 저장·job 완료·회의 완료·응답은 그대로다. 놓친 요청은 수동 `collect`로 다시 모은다(멱등).
+- 작성자: 자동 수집이 만든 요청의 `createdBy`는 `{id:'system',role:'system'}`이다.
+- 멱등: 결정적 id(A6-1과 같은 씨앗)라서 같은 저장을 다시 모아도 새 요청이 생기지 않고, 같은 출처는 한 번만 남는다. 역할 poll 재호출·수동 `collect` 뒤에도 요청 판이 그대로다.
+- 역할·회의 경로는 방금 저장한 작업물 id만 다시 읽어 모은다(저장본이 정본, `artifactUsable` 그대로). 캠페인의 다른 작업물은 수동 `collect`가 모은다.
+
+### 원천 확장(결정론)
+
+| 원천 | 읽는 것 | 범위 | 출처(origins) | 항목 key |
+|---|---|---|---|---|
+| 품질 검수 | 품질 검수(quality 역할·회의 품질 재검토) 작업물 `qualityReview.checks`·`taskChecks` 중 상태 `needs_data`의 `fix`(다음 조치). '해당 없음'·지시 틀은 뺀다 | 캠페인 | `quality_check`(작업물 id·판·기준 또는 역할·근거 발췌 200자) | 붙이지 않음(`keylessDraft`) |
+| 점포 진단 보고서 | `StoreReport.questions`(8개까지) | 지점(캠페인 없음) | `store_report`(보고서 id·지점 판) | `factKeyOf` |
+| 브리프 초안 | 완료 초안 `BriefResult.questions`(3개까지)의 `question` | 캠페인 초안은 그 캠페인, 새 캠페인 초안은 입력의 브랜드(·지점) | `brief_draft`(초안 id·질문 필드) | `factKeyOf` |
+
+- 품질 검수 요청은 항목 key가 없다. 문구가 카탈로그 라벨('영업시간')과 같아도 사실 확정으로 자동으로 닫히지 않고 관리자가 수동으로 닫는다. 검수 지적은 '무엇을 확인할지'이지 사실 항목 하나가 아니기 때문이다.
+- 판정만 `needs_data`이고 지적이 없으면(발췌 입력으로 내린 판정 등) 뽑지 않는다. 검수 본문 안의 '자료 필요' 표지는 기존 `extractMarkers`가 읽는다.
+- 점포 보고서·브리프 질문은 A6-1 항목 매핑 규칙 그대로다. 질문 문장 전체가 카탈로그 항목일 때만 key가 붙는다('휴무일' → `closed_days`, '주차 정보' → `parking`, '포장 용기 규격은 어떻게 되나요?' → 없음). key 없는 요청은 자동으로 닫히지 않는다.
+- 점포 보고서 요청의 id 씨앗은 수동 지점 요청·플레이스 대조와 같다('|지점|항목'). 같은 항목이 열려 있으면 출처만 합친다.
+
+### 재개 규칙(대표 결정 3)
+
+- 수집 1회(자동 수집·수동 `collect`·플레이스 대조 모두 `planCollect`)마다 먼저 범위 안의 닫힌 요청을 본다. `resolution.kind`가 `fact_confirmed`인데 지금 같은 항목의 유효 사실이 없으면(철회·거절·만료·근거 삭제) 다시 연다.
+- 이력: `status:'open'`, `resolution` 지움, `reopenedAt`(다시 연 시각), `previousResolution`(지운 닫힘 근거), `version+1`. 다시 닫히면 새 `resolution`이 붙고 `reopenedAt`·`previousResolution`은 남는다.
+- 새 유효 사실(같은 항목의 다른 판·다른 사실)이 있으면 닫힌 채로 둔다. 수동으로 닫은 요청(`answered`·`dismissed`)은 다시 열지 않는다.
+- 재개는 새 요청 상한(수집 1회 20건)과 무관하고, 다시 연 요청은 캠페인의 열린 요청 수에 들어간다. 수동 `collect` 응답에 `reopened`(다시 연 수)가 붙는다.
+- 사실 저장 경로(`afterFactSaved`)는 다시 열지 않는다. 사실이 철회된 순간이 아니라 다음 수집 때 연다.
+
+## A6 종료 조건 real 절차
+
+A6(A6-1 자료 요청·A6-2 플레이스 대조·A6-3 자동 수집)을 끝냈다고 적으려면 아래를 실제 서비스에서 한 번 통과해야 한다. 모델·조사 호출이 없어 토큰은 0이다.
+
+1. 게시: A6-3이 `merged`된 `main`을 Sites에 게시한다(`published`, [게시 절차](PUBLISH.ko.md)).
+2. 확인: `/api/version` `tree`가 게시한 제품 커밋의 tree와 같다(`runtime-verified`).
+3. 스위치: 소유자가 설정 기능표 또는 `/api/feature-flags`에서 `a6_data_requests`를 켠다.
+4. 수집: 지점이 연결된 점포 브랜드 캠페인의 '작업물' 탭에서 자료 요청을 연다. 이미 저장된 작업물은 '모으기'(`collect`)로 모은다. 0건이면 수동 만들기(`create`, 예: '영업시간')로 한 건을 만든다.
+5. 사실 확정: 대표·관리자가 브랜드 아카이브(또는 요청 행의 '사실 후보로 제안' 뒤 확정)에서 같은 항목의 사실을 근거·확인 시점·유효 기한과 함께 확정한다.
+6. 닫힘 확인: 요청이 `closed`이고 `resolution.kind`가 `fact_confirmed`, 사실 id·판이 맞는지 화면(닫힌 요청 목록 '사실 확정으로 닫힘')과 GET `/api/data-requests?campaignId=`로 본다.
+7. 기록: `docs/STATUS.md`에 검사 결과를 `passed · real`(또는 `failed`·`blocked` 사유)로 남긴다. 자동 수집(작업물 저장 순간)은 모델 실행이 필요해 이 절차에 넣지 않는다. 그 부분은 `tests/data-requests-auto.test.mjs`(`passed · mocked`)가 근거다.
+
 ## 남은 위험
 
 - 추출은 표지 형식에 기대는 결정론이다. 모델이 다른 표기('추가 확인 요망' 등)를 쓰면 모으지 못한다. 형식 밖 표기는 수동 만들기로 보완한다.
 - 섹션 목록의 '담당: 항목' 순서('점장: 좌석')는 담당을 항목으로 읽는다. 항목 key가 없어 자동으로 닫히지 않을 뿐 잘못 닫지는 않는다.
-- 닫힌 요청은 사실이 나중에 만료되거나 철회돼도 다시 열리지 않는다. 게시 전 차단(`exec-loop-1`)은 계속 작업물 본문의 표지를 직접 본다.
-- 발행 캡션 후보 판정과 플레이스 정보 대조(A6 후반부)는 이 PR 범위 밖이다.
+- 재개는 다음 수집 때만 일어난다. 사실이 철회된 뒤 그 캠페인에서 저장·모으기가 없으면 요청은 닫힌 채 남는다. 게시 전 차단(`exec-loop-1`)은 계속 작업물 본문의 표지를 직접 본다.
+- 새 캠페인 브리프 초안의 질문은 캠페인이 없어 브랜드(·지점) 범위 요청으로 남는다. 초안을 버려도 요청은 남으므로 필요 없으면 '필요 없음'으로 닫는다.
+- 품질 검수 지적 문구(`fix`)는 모델 문장이라 같은 지적도 판마다 문구가 달라 요청이 따로 생길 수 있다(최근 판 기준 정리는 수동).
+- 자동 수집이 실패하면 로그 한 줄만 남고 화면 알림은 없다. 수동 '모으기'가 복구 경로다.
+- 발행 캡션 후보 판정은 이 PR 범위 밖이다.
