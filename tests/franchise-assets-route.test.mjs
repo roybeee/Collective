@@ -461,6 +461,8 @@ check('H43: cancelling again is 200 unchanged and writes nothing',r.status===200
 r=await get(member,'view=events&brandId=fr-a');
 check('H44: followUps count scheduled events that started within 48 hours, with counts and no codes',r.status===200&&JSON.stringify(r.body.followUps)==='{"count":1,"attended":1,"noShow":1}');
 check('H44: the events view lists rows newest first with labels and linked asset states',r.body.events.length===4&&r.body.events[0].id===BRIEF.eventId&&r.body.events.every(e=>typeof e.typeLabel==='string')&&r.body.events.find(e=>e.id===BRIEF.eventId).assetRefs[0].status==='approved'&&r.body.events.find(e=>e.id===BRIEF.eventId).assetRefs[0].type==='startup_page'&&r.body.approvedAssets.some(a=>a.id===P&&a.version===2&&a.latest===true)&&!r.body.approvedAssets.some(a=>a.id===Z.assetId)&&r.body.enabled===true&&r.body.disclaimer===DISCLAIMER);
+// R15a-2b S1: 행사 편집기의 유형 선택지와 폐기된 연결 자료의 유형 라벨을 보기 응답에서 받는다(화면이 판정 모듈을 import하지 않게).
+check('T5-1: the events view lists the event types in screen order and the seven asset type labels in screen order',JSON.stringify(r.body.types)===JSON.stringify([{type:'briefing',label:'설명회'},{type:'tour',label:'견학'},{type:'expo',label:'박람회'}])&&JSON.stringify(r.body.assetTypes)===JSON.stringify(plain(fa.ASSET_TYPE_ORDER).map(t=>({type:t,label:fa.ASSET_TYPE_LABELS[t]})))&&r.body.assetTypes.length===7);
 setNow(Date.parse('2026-10-12T05:00:00Z')+49*HOUR);
 r=await get(member,'view=events&brandId=fr-a');
 check('H44: 49 hours after the start the follow-up count is 0',r.status===200&&r.body.followUps.count===0);
@@ -500,6 +502,17 @@ r=await exportAsset(admin,W,'copy',{requestId:RID_W});
 check('A1: switch off: an export replay is 409 REPLAY_EXPIRED (the gate reads the switch again)',fixed(r,409,'REPLAY_EXPIRED'));
 const offViews=await Promise.all([get(member,'view=assets&brandId=fr-a'),get(member,`view=asset&brandId=fr-a&assetId=${P}`),get(member,'view=events&brandId=fr-a')]);
 check('A1: switch off: the three views read with enabled false',offViews.every(v=>v.status===200&&v.body.enabled===false));
+// R15a-2b S2: 스위치가 꺼졌고 리드·정보주체 요청이 없어도 모집 자료·행사 기록이 있으면 대표·관리자 메뉴가 남는다(폐기·취소 화면에 닿게). 기록이 없는 워크스페이스는 그대로 false.
+const leadRows=Number(sql.prepare("SELECT COUNT(*) n FROM records WHERE owner=? AND kind IN ('franchise_lead','franchise_subject_request')").get(WS).n);
+const offStatus=await get(member,'view=status'),otherStatus=await get(boss2,'view=status');
+check('T5-2: with the switch off and no lead or subject request, recruitment records make hasRecords true',leadRows===0&&offStatus.status===200&&offStatus.body.enabled===false&&offStatus.body.hasRecords===true);
+check('T5-2: a workspace with no franchise records still reads hasRecords false',otherStatus.status===200&&otherStatus.body.hasRecords===false&&Number(sql.prepare("SELECT COUNT(*) n FROM records WHERE owner=? AND kind LIKE 'recruitment_%'").get(WS2).n)===0);
+// 교차 검토 TA-3: 모집 자료만·행사만 있어도 각각 hasRecords가 참이다(두 종류가 함께 있으면 한 종류의 누락을 다른 종류가 가린다). 옮긴 행은 되돌리고 개수를 확인한다.
+{const n=kind=>Number(sql.prepare("SELECT COUNT(*) n FROM records WHERE owner=? AND kind=?").get(WS,kind).n),park=(kind,from,to)=>sql.prepare("UPDATE records SET owner=? WHERE owner=? AND kind=?").run(to,from,kind);
+ const before=[n('recruitment_asset'),n('recruitment_event')];
+ park('recruitment_asset',WS,'ra-parked');const onlyEvents=await get(member,'view=status');park('recruitment_asset','ra-parked',WS);
+ park('recruitment_event',WS,'ra-parked');const onlyAssets=await get(member,'view=status');park('recruitment_event','ra-parked',WS);
+ check('T5-2: only events or only recruitment assets each keep hasRecords true (rows restored)',before.every(x=>x>0)&&onlyEvents.status===200&&onlyEvents.body.hasRecords===true&&onlyAssets.status===200&&onlyAssets.body.hasRecords===true&&n('recruitment_asset')===before[0]&&n('recruitment_event')===before[1]);}
 check('A1: the owner turns the switch back on',(await f.setFlag(boss,true)).status===200);
 const KEY=env.AGENCY_ENCRYPTION_KEY;delete env.AGENCY_ENCRYPTION_KEY;
 const keyless=[await portal(member,'키 없는 초안'),await post(boss,EV({startsAt:'2026-10-25T16:00:00+09:00',capacity:3}))];

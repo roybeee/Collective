@@ -53,8 +53,12 @@ check('views without tabs drop any tab',[parseNav('?view=campaigns&campaign=c1&t
 check('prototype keys are not store tabs',parseNav('?view=stores&tab=__proto__'),{view:'stores'});
 check('the learning tab guard accepts learning tabs only',['rules','jobs','ledger','facts',undefined].map(isLearningTab),[true,true,false,false,false]);
 check('non-ASCII id is dropped',parseNav('?view=brands&brand=%ED%95%9C%EA%B8%80'),{view:'brands'});
-// 트랙 R: 가맹 모집 화면(?view=franchise&brand=&tab=)은 브랜드와 탭(리드·정보주체 요청·설정)을 싣는다. 설정 탭 권한은 화면·서버가 따로 본다.
-check('franchise tabs are an allow-list',[...franchiseTabs],['leads','requests','settings']);
+// 트랙 R: 가맹 모집 화면(?view=franchise&brand=&tab=)은 브랜드와 탭(리드·정보주체 요청·모집 자료·행사·설정)을 싣는다. 설정 탭 권한은 화면·서버가 따로 본다.
+check('franchise tabs are an allow-list',[...franchiseTabs],['leads','requests','assets','events','settings']);
+// R15a-2b: 모집 자료·행사 탭도 주소로 열고 새로고침 때 복원한다.
+check('franchise view keeps the recruitment assets and events tabs',[parseNav('?view=franchise&brand=fr-a&tab=assets'),parseNav('?view=franchise&brand=fr-a&tab=events')],[{view:'franchise',brand:'fr-a',tab:'assets'},{view:'franchise',brand:'fr-a',tab:'events'}]);
+check('the franchise tab guard accepts the assets and events tabs',['assets','events'].map(isFranchiseTab),[true,true]);
+check('an events link round-trips',serializeNav({view:'franchise',brand:'fr-a',tab:'events'}),'?view=franchise&brand=fr-a&tab=events');
 check('franchise view keeps brand and a franchise tab',parseNav('?view=franchise&brand=fr-a&tab=requests'),{view:'franchise',brand:'fr-a',tab:'requests'});
 check('unknown franchise tab is dropped and the brand kept',parseNav('?view=franchise&brand=fr-a&tab=ledger'),{view:'franchise',brand:'fr-a'});
 check('franchise ignores store and bad brand ids',[parseNav('?view=franchise&brand=fr-a&store=s1'),parseNav('?view=franchise&brand=%3Cx%3E&tab=settings')],[{view:'franchise',brand:'fr-a'},{view:'franchise',tab:'settings'}]);
