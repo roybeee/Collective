@@ -8,9 +8,11 @@
 - #143 · 레인 R · 보통 · 새 스위치 없음(가맹 모집 채널 단위 6개는 objective 캠페인에서만 켜지고, objective는 `r_franchise` 기본 꺼짐이라 지정 불가). 게시 전 확인: 운영 D1의 R3b 이전 objective 개선 회의 건수(읽기 전용, 레인 R 칸)
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-26 15:58 UTC
+갱신: 2026-09-26 17:12 UTC
 - A6 종료 조건: **passed · real**(2026-09-27 00:56 KST). 이문동점 영업시간 자료 요청 `dr-f08c16186f08`이 사실 확정으로 closed. [관찰 기록](observations/2026-09-27-lane-a-a6-end-condition.md). 운영 스위치 `a6_data_requests` 켜짐.
-- A3 종료 조건 run: 골든 v2 dev 2건 가져오기 완료(real, created 2, 운영 tree `1ac4369`에서 생성). 실행(`start_run`, 예약 100k)은 평가 HERMES 프로필 Codex 한도 해제(2026-09-27 10:33 KST) 뒤 10:35 KST에 시작한다.
+- A3 종료 조건 run: **failed · real**(run `a3634055`, 2026-09-27 02:00 KST, 32,566토큰). 국밥 Instagram은 12/0 pass(`contract_json`·`copy_pack_variants`·`brand_voice_avoid_term` pass, 출력 약 4k). 수학학원 릴스는 `contract_json` fail: 원문이 최상위 객체의 마지막 `}` 하나만 빠진 채 끝났다(내용은 완전: 2채널×3안, 장면 4, 실험 2). 첫 시도 run `2092b0bb`은 서버 Codex 로그인 삭제로 실패(0토큰, 레인 Q 세션이 복구). 수정: v2 팩 지시에 괄호 닫기 규칙(PR `fix/copy-pack-closing-brace`) → 묶음 게시 → 같은 케이스 재실행.
+- 확인 필요(레인 R): `tests/check-prompts.test.mjs`가 macOS(대소문자 무시 파일 시스템)에서 `channel.leadad.json`·`channel.leadAd` 변형 충돌로 로컬 실패한다(Linux CI는 통과).
+- 제안(레인 Q): 계약 읽기는 최상위 `}` 하나 누락도 '잘린 JSON'으로 거절한다(#112 방침, `tests/role-output.test.mjs:26`). 출력 한도에 못 미친 응답(`incomplete` 아님)에 한해 최상위 `}` 하나를 채워 읽을지 검토 바란다(이번 실패 1건이 운영이면 invalid_output으로 약 1.6만 토큰 폐기).
 - A8: 설계 완료([CUSTOMER-REPORT](CUSTOMER-REPORT.ko.md)). 코드는 A3 종료 조건 뒤.
 - 다음: A3 run → A8-1 → A8-2 → A8-3 → B4 2부 → B3([순서](LANES.ko.md#레인-a-claude-a-세션)).
 
@@ -71,7 +73,7 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-26 15:58 UTC (Claude A 세션: A6 종료 조건 real passed, A3 케이스 가져오기)
+마지막 갱신: 2026-09-26 17:12 UTC (Claude A 세션: A3 종료 조건 run 결과와 괄호 닫기 수정)
 
 ## 현재 운영 상태
 

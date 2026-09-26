@@ -187,6 +187,9 @@ check('the v2 instruction adds the pack schema only for the content copy pack pr
  assert.ok(v2.startsWith(base.slice(0,base.indexOf('JSON 한 개만'))));
  assert.equal(instruction.buildRoleInstruction({role:'cmo',outputProfile:'copy-pack-v2'}),instruction.buildRoleInstruction({role:'cmo'}));
  assert.ok(/3~5/.test(pack.copyPackInstruction)&&/share_rate/.test(pack.copyPackInstruction)&&/짧게/.test(pack.copyPackInstruction));
+// A3 종료 조건 run(2026-09-27, run a3634055) 실측: v2 콘텐츠 원문이 최상위 객체의 마지막 }만 빠진 채 끝나 contract_json fail·invalid_output이 됐다. 팩 규칙은 괄호를 끝까지 닫으라고 명시하고, 회의 개선본 팩 규칙(잘라 쓰는 앞부분)에도 들어가야 한다.
+assert.ok(/최상위 객체/.test(pack.copyPackInstruction)&&/닫/.test(pack.copyPackInstruction),'closing rule');
+assert.ok(pack.copyPackInstruction.indexOf('최상위 객체')<pack.copyPackInstruction.indexOf(' 시스템이 팩을 output_1'),'closing rule precedes the section note so meeting rules keep it');
 });
 check('the request plan carries the v2 contract only for content with the profile',()=>{
  const req=(role,extra={})=>({role,campaign:{version:1},previous:[],...extra});
