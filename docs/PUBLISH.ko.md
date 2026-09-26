@@ -2,18 +2,11 @@
 
 이 저장소에는 게시 스크립트가 없다. 게시는 ChatGPT Sites 편집기 대화 또는 Codex가 수행한다.
 GitHub 병합(`merged`)은 배포가 아니다. 게시(`published`)와 실행 검증(`runtime-verified`)을 각각 기록한다. 용어는 `AGENTS.md`의 상태 어휘를 따른다.
-
-## 0. 사전 점검 (필수, 하나라도 아니면 게시하지 않는다)
-
-게시는 비싸다. 2026-09-23 게시 1회에 약 18분이 걸렸고 ChatGPT Work 크레딧이 179 → 0으로 소진됐으며 주간 한도도 함께 줄었다. 같은 계정을 HERMES와 Codex가 쓴다.
-
-- [ ] ChatGPT Work 남은 크레딧과 주간 한도를 확인해 기록했다. 게시 1회(위 수치)를 감당하고도 남는다.
-- [ ] 크레딧 자동 충전 설정 여부를 확인해 기록했다. 크레딧이 0이고 자동 충전이 켜져 있으면 한도를 넘는 순간 유료 충전이 일어날 수 있다는 점을 기록에 남겼다.
-- [ ] 앞으로 몇 시간 안에 이 한도가 필요한 HERMES 예약 실행이나 유료 모델 작업이 없다(있으면 그 뒤로 미룬다).
-- [ ] 게시는 다른 개발·조사 작업과 분리해 단독으로 진행한다. 같은 대화·세션에서 코드 수정을 섞지 않는다.
-- [ ] 게시할 GitHub 리비전이 `origin/main`이고 CI `verify`가 passed다.
+게시 비용 기록: 2026-09-23 게시 1회에 약 18분이 걸렸고 ChatGPT Work 크레딧이 179 → 0으로 소진됐다. 같은 계정을 HERMES와 Codex가 쓴다. 게시 전 크레딧·한도 사전 점검은 대표 결정(2026-09-27)으로 하지 않는다.
 
 ## 1. 기준 리비전 고정
+
+게시할 GitHub 리비전은 `origin/main`이고 CI `verify`가 passed여야 한다.
 
 ```bash
 git fetch origin --prune
@@ -96,7 +89,7 @@ git diff --name-only <sha> origin/main -- . ':!docs' ':!*.md' ':!tests' ':!e2e' 
    - 5xx 응답 증가(게시 전 같은 길이 기간 대비)
    - Workers CPU 한도 초과
 4. 중단 조건을 넘으면 원인을 기록한다. 기능 스위치가 있는 동작(성장 계획 F2 이후)은 먼저 스위치로 끈다. 코드 문제면 롤백한다.
-5. 롤백은 직전에 `runtime-verified`였던 제품 커밋을 이 체크리스트 1~5단계로 다시 게시하는 것이다. 게시 1회와 같은 시간·크레딧이 들므로 0단계 사전 점검도 다시 한다. 롤백 게시는 `published`와 `/api/version` tree 일치 여부를 기록한다. `main`에는 게시되지 않은 제품 변경이 남으므로 정의상 `runtime-verified`가 아니다. 원인 수정이 병합·게시될 때까지 그 상태를 기록에 남긴다.
+5. 롤백은 직전에 `runtime-verified`였던 제품 커밋을 이 체크리스트 1~5단계로 다시 게시하는 것이다. 롤백 게시는 `published`와 `/api/version` tree 일치 여부를 기록한다. `main`에는 게시되지 않은 제품 변경이 남으므로 정의상 `runtime-verified`가 아니다. 원인 수정이 병합·게시될 때까지 그 상태를 기록에 남긴다.
 
 ## 8. 자동 게시 (ChatGPT 예약 작업)
 
@@ -111,7 +104,6 @@ Sites는 ChatGPT 웹·데스크톱 안에서만 저장·게시되고 외부 API�
 - 작업이 하는 것: 지시문을 실행한다. 환경변수·접근 설정·D1·R2는 바꾸지 않는다. 결과(단계별 결과·해시 불일치 수·`TREE_EMBEDDED`·Sites 버전·deployment ID·Sites 커밋)를 PR 댓글로 남긴다. 라벨은 `sites-published` 또는 `sites-publish-blocked`로 바꾼다. 코드 push·병합·PR 닫기는 하지 않는다.
 - 라벨이 `sites-publish`로 남아 있는 동안에는 그 PR에 push·댓글을 더하지 않는다. 더하면 작업이 다시 실행된다. 결과 댓글을 받은 뒤 게시 기록(6절)을 같은 PR에 더하고 병합한다.
 - `sites-publish` 라벨 PR은 한 번에 하나만 둔다.
-- 0단계 사전 점검(크레딧)은 자동 게시에서 기록되지 않는다. 게시 1회 크레딧은 붙여 넣기 방식과 같다.
 - `runtime-verified`는 5단계 판정이다. 공개 경로 `/api/version/public`이 게시된 뒤에는 개발 도구가 curl로 직접 확인한다. 그 전 게시는 소유자 세션의 `/api/version`이 필요하다.
 - 첫 실행(2026-09-25 22:36 UTC, #119 push): GitHub 트리거가 동작했다(real). 작업은 PR 본문 파싱, main 포함(compare `identical`), CI success, Sites 작업 사본 tree·접근 설정 읽기까지 하고 멈췄다. 지시문 5단계가 비공개 전용 도구(`save_version_and_deploy_private`)를 적어서, public 사이트의 접근 설정 유지 조건과 맞지 않았기 때문이다(blocked, 파일 적용·빌드·게시 미실행). 결과 댓글과 라벨 교체(`sites-publish-blocked`)도 동작했다. 지시문 생성기는 4단계의 공개 사이트 도구를 적도록 고쳤다. 다시 요청할 때는 라벨을 `sites-publish`로 되돌린 뒤 고친 지시문 커밋을 push한다.
 - 첫 실행이 멈추면 대표가 같은 지시문을 편집기에 붙여 넣는 방식으로 돌아간다. 예약 작업 안에서 Sites 저장·배포 도구가 동작하는지는 두 번째 실행에서 확인한다.
