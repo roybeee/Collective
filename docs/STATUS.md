@@ -7,12 +7,13 @@
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-26 17:12 UTC
+갱신: 2026-09-26 17:31 UTC
+- 진행 중: A8-1 순수 모듈 PR(브랜치 `feat/a8-1-report-modules`, `lib/customer-report.ts`·`lib/fact-pack.ts`·테스트 2개, 연결·스위치·게시 없음, 토큰 0, [9절](CUSTOMER-REPORT.ko.md#9-a8-1-구현-순수-모듈)).
 - A6 종료 조건: **passed · real**(2026-09-27 00:56 KST). 이문동점 영업시간 자료 요청 `dr-f08c16186f08`이 사실 확정으로 closed. [관찰 기록](observations/2026-09-27-lane-a-a6-end-condition.md). 운영 스위치 `a6_data_requests` 켜짐.
 - A3 종료 조건 run: **failed · real**(run `a3634055`, 2026-09-27 02:00 KST, 32,566토큰). 국밥 Instagram은 12/0 pass(`contract_json`·`copy_pack_variants`·`brand_voice_avoid_term` pass, 출력 약 4k). 수학학원 릴스는 `contract_json` fail: 원문이 최상위 객체의 마지막 `}` 하나만 빠진 채 끝났다(내용은 완전: 2채널×3안, 장면 4, 실험 2). 첫 시도 run `2092b0bb`은 서버 Codex 로그인 삭제로 실패(0토큰, 레인 Q 세션이 복구). 수정: v2 팩 지시에 괄호 닫기 규칙(PR `fix/copy-pack-closing-brace`) → 묶음 게시 → 같은 케이스 재실행.
 - 확인 필요(레인 R): `tests/check-prompts.test.mjs`가 macOS(대소문자 무시 파일 시스템)에서 `channel.leadad.json`·`channel.leadAd` 변형 충돌로 로컬 실패한다(Linux CI는 통과).
 - 제안(레인 Q): 계약 읽기는 최상위 `}` 하나 누락도 '잘린 JSON'으로 거절한다(#112 방침, `tests/role-output.test.mjs:26`). 출력 한도에 못 미친 응답(`incomplete` 아님)에 한해 최상위 `}` 하나를 채워 읽을지 검토 바란다(이번 실패 1건이 운영이면 invalid_output으로 약 1.6만 토큰 폐기).
-- A8: 설계 완료([CUSTOMER-REPORT](CUSTOMER-REPORT.ko.md)). 코드는 A3 종료 조건 뒤.
+- A8: 대표 지시(2026-09-27 "B2 2단계 빼고 남은 개발을 모두 진행하라", 세션 29f7af 전달)로 A3 종료 조건을 기다리지 않고 착수했다. 설계 [CUSTOMER-REPORT](CUSTOMER-REPORT.ko.md).
 - 다음: A3 run → A8-1 → A8-2 → A8-3 → B4 2부 → B3([순서](LANES.ko.md#레인-a-claude-a-세션)).
 
 ## 레인 R (Claude 트랙 R 세션 — 가맹 모집)
