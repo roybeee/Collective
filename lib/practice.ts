@@ -1,4 +1,4 @@
-import type {Campaign} from './agency';
+import {isRecruitmentObjective,type Campaign} from './agency';
 import {factDiscipline,claimPolicy,copyCompliancePolicy,answerDiscipline,measurementDiscipline,campaignEvidencePolicy} from './campaign-policy';
 
 // Product work instructions, shared by individual jobs and meeting revisions.
@@ -63,7 +63,7 @@ export function rolePractice(role:string,phase:'full'|'discussion'='full',skill?
  const s=skill??p;
  return `실무 스킬 ${PRACTICE_VERSION} · ${s.focus}\n${s.methods.map((m,i)=>`${i+1}. ${m}`).join('\n')}\n${phase==='discussion'?'이번 발언은 담당 관점의 최대 병목 1개에 집중하세요. 앞선 발언의 구체적 주장 하나를 수용/반박/보완하고 근거·대안·검증 방법을 제시하세요. 전체 역할 산출물을 반복하지 마세요.':`필수 산출물:\n${s.outputs.map(x=>'- '+x).join('\n')}\n완료 전 점검:\n${s.review.map(x=>'- '+x).join('\n')}\n인계: ${s.handoff}\n전체 본문은 24000자 이내에서 필요한 표·실제 문안·산식을 완성하세요. 짧은 요약만으로 대체하지 마세요. 중복 설명은 줄이고 원문과 정확히 대응하는 위치를 표시하세요.`}`;
 }
-type ChannelScope=Pick<Campaign,'channels'|'products'|'stores'|'goal'|'storeId'>;
+export type ChannelScope=Pick<Campaign,'channels'|'products'|'stores'|'goal'|'storeId'|'objective'>;
 // 채널·업종 스킬 본문(레지스트리 단위 channel.<id>). 적용 조건(정규식)과 근거 정책(campaignEvidencePolicy)은 코드 소유다.
 export const channelSkills:readonly {id:string;applies:(c:ChannelScope)=>boolean;body:string}[]=[
  {id:'shortform',applies:c=>/instagram|인스타|tiktok|틱톡|shorts|쇼츠|릴스/i.test(c.channels||''),body:'숏폼: 첫 장면의 고객 맥락·궁금증과 뒤에서 회수할 약속을 연결. 완주·공유·저장·클릭을 섞지 말고 주지표를 선택. 유행 음원/포맷은 실제 확인 자료가 있을 때만 사용.'},
@@ -75,10 +75,14 @@ export const channelSkills:readonly {id:string;applies:(c:ChannelScope)=>boolean
 ];
 // 적용할 채널 스킬이 없을 때의 본문(단위 channel.default).
 export const defaultChannelSkill='채널이 미확정이면 목표 행동과 고객 상황으로 1순위 채널 및 선택 이유를 제안하되, 확정 정보로 취급하지 마세요.';
+// 가맹 모집 objective 캠페인(R3, 결정 26)은 소비자 채널 스킬 offline·search·commerce를 끈다('매장 QR' 모집에 방문 스킬, 모집 롱테일에 탐색·구매 의도 본문이 섞이지 않게).
+// objective가 없는 캠페인은 적용 조건·순서·channelSkillIds가 그대로다. channelSkillIds(promptVersion)와 campaignPractice(모델 본문)는 같은 목록을 쓴다.
+const CONSUMER_ONLY_SKILLS:readonly string[]=['offline','search','commerce'];
+const appliedChannelSkills=(c:ChannelScope)=>channelSkills.filter(s=>s.applies(c)&&!(isRecruitmentObjective(c)&&CONSUMER_ONLY_SKILLS.includes(s.id)));
 // 이 캠페인에 적용되는 채널 스킬 id. 없으면 default 하나다.
-export function channelSkillIds(c:ChannelScope){const ids=channelSkills.filter(s=>s.applies(c)).map(s=>s.id);return ids.length?ids:['default']}
+export function channelSkillIds(c:ChannelScope){const ids=appliedChannelSkills(c).map(s=>s.id);return ids.length?ids:['default']}
 export function campaignPractice(c:ChannelScope,channels?:Record<string,string>){
- const guides=channelSkills.filter(s=>s.applies(c)).map(s=>channels?.[s.id]??s.body);
+ const guides=appliedChannelSkills(c).map(s=>channels?.[s.id]??s.body);
  return [guides.length?guides.join('\n'):channels?.default??defaultChannelSkill,campaignEvidencePolicy(c)].join('\n');
 }
 export const viralPractice=`실무 분석: facts는 관찰 범위/장면·자막 위치/시점을 붙인 사실, hook은 첫 장면의 자극과 약속, retention은 전개·정보 공개 순서, sharing은 누구에게 왜 보낼지의 가설로 구분하세요. context에는 계정 규모·게시 경과시간·유료 배포·협업·시기 영향을 적고 미확인은 그대로 남기세요. counterEvidence에는 다른 설명과 저성과 비교 사례 또는 비교 불가 이유를 쓰세요. 아이디어마다 어떤 관찰에서 나온 가설인지, 브랜드에 맞게 바꿀 원리, 실패를 보여줄 신호를 명시하세요. 성공 사례의 표면적 문구를 복제하거나 조회수만으로 효과를 입증하지 마세요. 분석 자체는 학습 규칙 채택 근거가 아니며 실제 실험과 검토가 필요합니다.`;

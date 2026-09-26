@@ -22,8 +22,8 @@ import {resolveCampaignPrompts,runPromptVersion,roleRunUnits,joinVersions,f2aPro
 import {assertNotArchived,assertCampaignNotArchived} from './campaign-archive';
 import {TokenBudgetExceeded} from './token-budget';
 // 카피 팩 v2(A3-4): 회의 시작 때 스위치 a3_copy_pack을 한 번 읽어 스냅샷에 프로필을 고정한다. 꺼져 있으면 키가 없어 회의 제출·저장이 이전과 바이트 동일하다.
-import {isEnabled} from './feature-flags';
-import {COPY_PACK_PROFILE,briefChannelIssues} from './copy-pack';
+import {copyPackProfile} from './copy-pack-server';
+import {briefChannelIssues} from './copy-pack';
 import {ApiError,identity,str,json,failure,database,readRecord,listRecords,recordStatement,eventStatement,connection,acquireLock,releaseLock,stamp,type EventActor} from '@/lib/server';
 
 const activeStates=['starting','queued','in_progress','uncertain'];
@@ -134,7 +134,7 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:E
    // 브랜드 자료(4.4 ③ 사용자 자료 가림)와 그 가림 기록을 스냅샷에 둔다. 가림 기록은 모델 입력에 싣지 않는다.
    const archived=await brandArchiveInput(owner,c.brandId,c.storeId);
    // 카피 팩 프로필은 회의 시작 때 고정한다. 회의 중 스위치를 바꿔도 이 회의의 콘텐츠 개선본 계약은 같다.
-   const outputProfile=await isEnabled(owner,'a3_copy_pack')?COPY_PACK_PROFILE:undefined;
+   const outputProfile=(await copyPackProfile(owner,'content'))??undefined;
    const m:Meeting={skillVersion:PRACTICE_VERSION,id,campaignId:c.id,campaignVersion:c.version,agenda:str(b.agenda,'회의 안건',5000,true),status:'running',steps:initialSteps(id),createdAt:stamp(),updatedAt:stamp(),model:cfg.model,stopRequested:false,artifactIds:[],invalidatedRoles:[],previousMeetingId:previous?.id,snapshot:{prompts,...(outputProfile?{outputProfile}:{}),brandArchive:archived.archive,sourceMasking:archived.sourceMasking,campaign:c,brand,artifacts,metrics,learning,evidence:await evidenceContext(database(),owner,c),...(previous?{previous:{id:previous.id,agenda:previous.agenda,decisions:previous.steps.find(s=>s.phase==='synthesis')?.output as Synthesis,quality:previous.steps.find(s=>s.phase==='quality')?.output as QualityReview,discussion:previous.steps.filter(s=>s.phase==='discussion'&&s.status==='completed').map(s=>({id:s.id,role:s.role,output:s.output as Contribution})),...(previousFailure?{failure:{role:previousFailure.role,phase:previousFailure.phase,error:previousFailure.error||previous.error||'응답 검증 실패'}}:{})}}:{})}};
    await database().batch([database().prepare('INSERT INTO jobs(id,owner,campaign_id,role,status,model,campaign_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').bind(jobId(owner,m),owner,c.id,'meeting','in_progress',cfg.model,c.version,m.createdAt,m.updatedAt),recordStatement(owner,'team_meeting',m.id,m,c.id),eventStatement(owner,c.id,'팀 회의를 시작했습니다. 8명 의견 교환 → 개선 과제 → 품질 재검토.',by)]);
    return json(publicMeeting(m));
