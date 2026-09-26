@@ -400,10 +400,10 @@ run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
 ```
 
 - 두 쪽: `active` = off(동결 요청에서 `operatorPreferences`를 뺀 제출, `roleSubmission`과 바이트 동일), `candidate` = on(고른 규칙만으로 만든 운영 주입 블록 `operatorPreferenceBlock`을 넣은 제출). 동결 요청에 캡처 때 들어간 블록이 있어도 off는 빼고 on은 바꿔 넣는다. 프롬프트 본문은 동결 요청 그대로다(레지스트리 주입 없음).
-- 규칙: 1~8개, 같은 브랜드의 운영자 선호 규칙. 모르는 id·성과 규칙·종료(`retired`)·다른 브랜드 섞임·8개 초과는 400이고 run을 기록하지 않는다. 초안(`draft`)·중지 규칙도 평가한다(D5). 블록 순서는 운영 주입 순서(역할 지정 먼저, 최신순)다.
-- 대상 케이스: 고른 규칙이 **모두** 운영에서 주입될 역할 케이스(같은 브랜드·역할·채널, 상태·만료는 보지 않음)만 남긴다. 그래야 on 쪽이 '이 규칙만 적용 중일 때의 운영 제출'과 바이트 동일하다. 다른 브랜드·역할·채널 밖·회의 단계·브리프는 `pair.skippedCases`로 센다. 남는 케이스가 없으면 400.
+- 규칙: 1~8개, 같은 브랜드의 운영자 선호 규칙. 모르는 id·성과 규칙·종료(`retired`)·다른 브랜드 섞임·역할이 서로 다른 역할 지정 규칙 섞임·8개 초과는 400이고 run을 기록하지 않는다. 초안(`draft`)·중지 규칙도 평가한다(D5). 블록 순서는 운영 주입 순서(역할 지정 먼저, 최신순)다.
+- 대상 케이스: 고른 규칙이 **모두** 운영에서 주입될 역할 케이스(같은 브랜드·역할·채널, 상태·만료는 보지 않음)만 남긴다. 동결 요청의 캠페인 채널이 문자열이 아니면(옛 배열 등) 빈 값으로 보아 전체 채널(`*`) 규칙만 적용된다. 그래야 on 쪽이 '이 규칙만 적용 중일 때의 운영 제출'과 바이트 동일하다. 다른 브랜드·역할·채널 밖·회의 단계·브리프는 `pair.skippedCases`로 센다. 남는 케이스가 없으면 400.
 - 고정: 시작 때 규칙을 한 번 읽어 run의 `pair`에 `{kind, unit:'operator_preferences', brandId, activeVersionId:'off', candidateVersionId:'<규칙>@<버전>+…', rules:[{ruleRef, role, channel, status}], blockHash:'sha256:…', block, skippedCases}`를 남긴다. 뒤에 규칙을 고치거나 중지해도 두 쪽 본문은 바뀌지 않는다.
-- 모델 입력: 블록에는 제목·버전·본문·채널·만료만 있다. 규칙 id·인용·카운터는 run 메타에만 있다. `?pair=<run>` 조회는 블록 본문 대신 브랜드·규칙 참조·블록 해시를 보인다.
+- 모델 입력: 블록에는 제목·버전·본문·채널·만료만 있다. 규칙 id·인용·카운터는 run 메타에만 있다. `?pair=<run>` 조회와 목록(`GET /api/eval`의 `runs`)은 블록 본문 대신 브랜드·규칙 참조·블록 해시를 보인다. 본문은 `?run=<run>`에서 본다.
 - 예산·게이트: 두 쪽 모두 역할 예약 50,000을 잡고 위와 같은 예산·월 상한 검사를 받는다. 게이트는 기존 `pairGate` 그대로(봉인 1건 이상·봉인 회귀 0·같은 게이트웨이·같은 모델 등)다.
 - 활성화 금지: 이 run은 `pairGate`를 통과해도 프롬프트 레지스트리 `activate`·`stage`·`promote`의 근거가 되지 못한다(409, `lib/prompt-registry.ts` `passGate`).
 - 테스트: `tests/eval-preference-pair.test.mjs`(mocked: 모의 평가·운영 HERMES, 메모리 SQLite, 실제 `app/api/eval`·`app/api/prompts` 라우트).

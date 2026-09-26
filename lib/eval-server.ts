@@ -387,6 +387,8 @@ async function preferencePair(owner:string,value:Record<string,unknown>):Promise
  if(rules.some(r=>!operatorRule(r)))throw new ApiError(400,'운영자 선호 규칙이 아닙니다. 성과 규칙(바이럴·점포)은 선호 쌍 평가 대상이 아닙니다.');
  if(rules.some(r=>r.status==='retired'))throw new ApiError(400,'종료(retired)한 규칙은 선호 쌍 평가에 쓸 수 없습니다.');
  if(new Set(rules.map(r=>r.brandId)).size>1)throw new ApiError(400,'같은 브랜드의 운영자 선호 규칙만 함께 평가할 수 있습니다.');
+ // 역할이 다른 역할 지정 규칙은 함께 주입되는 역할 케이스가 없다. 케이스 0건 400보다 원인을 먼저 알린다.
+ if(new Set(rules.flatMap(r=>r.role?[r.role]:[])).size>1)throw new ApiError(400,'역할 지정 규칙의 역할이 서로 다릅니다. 같은 역할이거나 역할을 지정하지 않은 규칙만 함께 평가할 수 있습니다.');
  const frozen=preferencePairRules(rules);
  return {rules,pair:{kind:PREFERENCE_PAIR_KIND,unit:PREFERENCE_PAIR_KIND,brandId:frozen.brandId,activeVersionId:'off',candidateVersionId:frozen.candidateVersionId,rules:frozen.rules,blockHash:'sha256:'+await hex(JSON.stringify(frozen.block)),block:frozen.block}};
 }
@@ -643,6 +645,8 @@ async function pairRead(owner:string,runId:string){
  const pair=isPreferencePair(p)?{kind:p.kind,unit,brandId:p.brandId,activeVersionId,candidateVersionId,rules:p.rules,blockHash:p.blockHash,skippedCases}:{unit,candidateVersionId,activeVersionId,skippedCases};
  return {id:run.id,status:run.status,pair,...pairReport(run)};
 }
+// 목록에는 운영자 선호 쌍의 블록 본문(규칙 최대 8개)을 빼고 blockHash만 싣는다. 본문은 GET ?run=에서 본다.
+const runSummary=(run:EvalRun)=>isPreferencePair(run.pair)?{...run,pair:Object.fromEntries(Object.entries(run.pair).filter(([k])=>k!=='block'))}:run;
 const caseSummary=(c:EvalCase)=>({id:c.id,kind:c.kind??'role',role:c.role,label:c.label,set:c.set,campaignId:c.campaignId,source:c.source,capturedWith:c.capturedWith,prohibitedTerms:c.expectations.prohibitedTerms.length,setChanges:c.setChanges||[],...(c.captureCheck?{captureCheck:c.captureCheck}:{}),createdBy:c.createdBy,createdAt:c.createdAt,updatedAt:c.updatedAt});
 export async function evalRead(owner:string,params:URLSearchParams){
  if(params.has('diagnose'))return diagnoseRun(owner,str(params.get('diagnose'),'평가 실행',100,true));
@@ -666,7 +670,7 @@ export async function evalRead(owner:string,params:URLSearchParams){
  if(params.has('run'))return readRecord<EvalRun>(owner,'eval_run',id('run','평가 실행'));
  if(params.has('case'))return readRecord<EvalCase>(owner,'eval_case',id('case','평가 케이스'));
  const [conn,cases,runs,usage]=await Promise.all([optionalRecord<StoredConnection>(owner,'eval_connection','current'),listRecords<EvalCase>(owner,'eval_case'),listRecords<EvalRun>(owner,'eval_run'),evalMonthUsage(owner)]);
- return {connection:publicConnection(conn),cases:cases.map(caseSummary),runs,usage};
+ return {connection:publicConnection(conn),cases:cases.map(caseSummary),runs:runs.map(runSummary),usage};
 }
 const ACTIONS:Record<string,(owner:string,input:Record<string,unknown>,by:Who)=>Promise<unknown>>={
  save_connection:saveConnection,check_connection:(owner,_input,by)=>checkConnection(owner,by),capture_case:captureCase,save_case:saveCase,update_case:updateCase,delete_case:deleteCase,cancel_run:cancelRun,delete_run:deleteRun,regrade_run:regradeRun,set_budget_approval:setBudgetApproval,import_cases:(owner,input,by)=>importCases(owner,input,by),save_label:saveLabel,
