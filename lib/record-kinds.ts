@@ -189,7 +189,7 @@ export const blockingScopes=(owner:string,campaignId:string)=>campaignScopes('re
 // jobs 테이블의 캠페인 작업: 캠페인 실행 작업과 캠페인 실험의 규칙 초안 작업. 바인드 순서: campaignId, owner, campaignId.
 export const campaignJobs={where:`(campaign_id=? OR campaign_id IN (${GUIDANCE_GROUPS}))`,binds:(owner:string,campaignId:string)=>[campaignId,owner,campaignId]};
 
-// 결정 7(b) 표시와 동결 요약. 원문(대조안·실험안·유지 조건·결과 메모·수치 출처)은 담지 않는다.
+// 결정 7(b) 표시와 동결 요약. 원문(대조안·실험안·유지 조건·결과 메모·수치 출처)은 담지 않는다. 작업물 제안 실험(A3-3a)은 source에 종류(kind)만 남기고 작업물 id·판·카피 문안은 뺀다(실험 id 자체에는 작업물 id가 들어 있다).
 export type SourceCampaignDeleted={at:string;by:{id:string;email:string|null}|null};
 // 보존 규칙에 복사돼 있던 원천 실험 원문을 뺀다: 적용 범위(scope=실험의 유지 조건), sourceAssessment의 유지 조건·결과 메모·판정 사유.
 // 규칙 제목·문구(guidance)·연장 기록과 수치 판정(비율·표본·기간·통계·채택/중단)은 남긴다. 필수 문자열 필드는 빈 문자열로 둬 기존 모양을 지킨다.
@@ -198,11 +198,11 @@ export function retireRuleOfDeletedCampaign(r:LearningRule,mark:SourceCampaignDe
  const a=r.sourceAssessment,assessment=a?{...Object.fromEntries(Object.entries(a).filter(([k])=>!RULE_RAW_ASSESSMENT.includes(k))),conditions:'',notes:''} as NonNullable<LearningRule['sourceAssessment']>:undefined;
  return {...r,scope:'',...(assessment?{sourceAssessment:assessment}:{}),status:'retired',version:r.version+1,updatedAt:mark.at,sourceCampaignDeleted:mark};
 }
-export type FrozenExperimentSummary={id:string;experimentId:string;experimentVersion:number;brandId:string;campaignId:string;channel:string;title:string;hypothesis:string;metric:LearningMetric;minSample:number;minHours:number;minLift:number;status:ViralExperiment['status'];assessment:{status:string;label:string;controlRate:number|null;treatmentRate:number|null;lift:number|null}|null;controlSample:number|null;treatmentSample:number|null;startedAt:string|null;observedUntil:string|null;adoptedRuleIds:string[];frozenAt:string;sourceCampaignDeleted:SourceCampaignDeleted};
+export type FrozenExperimentSummary={id:string;experimentId:string;experimentVersion:number;brandId:string;campaignId:string;channel:string;title:string;hypothesis:string;metric:LearningMetric;minSample:number;minHours:number;minLift:number;status:ViralExperiment['status'];assessment:{status:string;label:string;controlRate:number|null;treatmentRate:number|null;lift:number|null}|null;controlSample:number|null;treatmentSample:number|null;startedAt:string|null;observedUntil:string|null;adoptedRuleIds:string[];frozenAt:string;sourceCampaignDeleted:SourceCampaignDeleted;source?:{kind:NonNullable<ViralExperiment['source']>['kind']}};
 export function freezeExperimentSummary(e:ViralExperiment,adoptedRuleIds:readonly string[],mark:SourceCampaignDeleted):FrozenExperimentSummary{
  const a=e.assessment;
  return {id:e.id,experimentId:e.id,experimentVersion:e.version,brandId:e.brandId,campaignId:e.campaignId,channel:e.channel,title:e.title,hypothesis:e.hypothesis,metric:e.metric,minSample:e.minSample,minHours:e.minHours,minLift:e.minLift,status:e.status,
   assessment:a?{status:a.status,label:a.label,controlRate:a.controlRate,treatmentRate:a.treatmentRate,lift:a.lift}:null,
   controlSample:e.result?.control.denominator??null,treatmentSample:e.result?.treatment.denominator??null,startedAt:e.startedAt,observedUntil:e.result?.observedUntil??null,
-  adoptedRuleIds:[...adoptedRuleIds],frozenAt:mark.at,sourceCampaignDeleted:mark};
+  adoptedRuleIds:[...adoptedRuleIds],frozenAt:mark.at,sourceCampaignDeleted:mark,...(e.source?{source:{kind:e.source.kind}}:{})};
 }
