@@ -220,7 +220,8 @@ const afterPlain=await creative(CFC,[revenueF.body]),afterRecruit=await creative
 check('6: after the unset the plain claim is a consumer warning (200) and the recruitment-worded claim stays 409',afterPlain.status===200&&afterRecruit.status===409&&afterRecruit.body.error.includes('승인으로 풀 수 없음'));
 const pubPlain=await publication(CFC,afterPlain.body.id),approvedPlain=await approve(CFC,pubPlain.body);
 check('6: the unset consumer caption approves with the franchise warning only',pubPlain.status===200&&approvedPlain.status===200&&(await execGet(boss,CFC.id)).body.franchise.scope==='consumer');
-check('6: execution and model runners do not import the feature switch directly (stored objective drives the scope)',['lib/execution-server.ts','lib/role-execution.ts','lib/meeting-execution.ts','lib/brief-execution.ts'].every(p=>!/from\s+'(?:\.\/|@\/lib\/)feature-flags'/.test(readFileSync(p,'utf8'))));
+// 다른 스위치(예: A3 a3_copy_pack)는 실행 경로가 읽어도 된다. 막는 것은 모집 범위를 r_franchise로 여닫는 것뿐이다.
+check('6: execution and model runners do not read the franchise switch (stored objective drives the scope)',['lib/execution-server.ts','lib/role-execution.ts','lib/meeting-execution.ts','lib/brief-execution.ts'].every(p=>!/r_franchise/.test(readFileSync(p,'utf8'))));
 
 // ════ 6b) 화면(원문 검사, mocked): 목적은 목적 선택란에서만 보내고, 선택란은 대표·관리자에게만 보인다(스위치가 꺼져도 지정된 캠페인은 해제할 수 있게) ════
 const briefSrc=readFileSync('app/campaign-brief.tsx','utf8');

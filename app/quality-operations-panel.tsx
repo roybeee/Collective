@@ -40,6 +40,8 @@ export function QualityOperationsPanel({campaigns}:{campaigns:Campaign[]}){
    <p>평가 연결: {data.evaluation.connection.status??'미설정'} · 월 사용 {data.evaluation.usage.usedTokens.toLocaleString()} / {data.evaluation.usage.monthlyCap.toLocaleString()} 토큰 · 예약 제외 잔여 {remaining.toLocaleString()}</p>
    <label className="block">평가 실행<NativeSelect aria-label="운영 평가 실행" value={runId} onChange={e=>setRunId(e.target.value)}><Option value="">실행 선택</Option>{data.evaluation.runs.map(r=><Option key={r.id} value={r.id}>{r.label||r.id} · {r.id} · {r.status}</Option>)}</NativeSelect></label>
    {run&&<div><p>{run.id} · {run.status} · 완료 {run.completed}/{run.total} · 사용 {run.usedTokens.toLocaleString()} 토큰</p>
+    <p>HERMES 실행 번호 확인: {run.submitted}/{run.total}</p>
+    {Object.keys(run.failures).length>0&&<pre aria-label="평가 실패 사유 집계" className="whitespace-pre-wrap break-all text-xs">{JSON.stringify(run.failures,null,2)}</pre>}
     <Button disabled={busy||['running','queued'].includes(run.status)||run.variant==='judge'} onClick={()=>void mutate('/api/eval',{action:'regrade_run',id:run.id},'재채점을 저장했습니다. 모델 토큰은 사용하지 않았습니다.')}>선택 실행 재채점 · 토큰 0</Button>
     {run.regrade&&<><p>최근 재채점: {run.regrade.at} · {run.regrade.gradersVersion}</p><pre className="whitespace-pre-wrap break-all text-xs">{JSON.stringify(run.regrade.totals,null,2)}</pre></>}
     {run.gate&&<><p>쌍 평가 게이트: {run.gate.ok?'통과':'미통과'}</p><pre className="whitespace-pre-wrap break-all text-xs">{JSON.stringify(run.gate,null,2)}</pre></>}
