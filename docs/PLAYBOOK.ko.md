@@ -1,4 +1,4 @@
-# 교정 기반 플레이북 (B3-1 · B3-2a · B3-2b)
+# 교정 기반 플레이북 (B3-1 · B3-2a · B3-2b · B3-2c)
 
 사람이 작업물·브리프 제안·자료·발행을 판정한 기록(B1 `review_decision`)에서 반복된 선호를 **운영자 선호 규칙**으로 만들어, 소유자가 승인한 뒤 AI 역할 입력에 전달한다.
 성과 실험에서 나온 학습 규칙(바이럴·점포)과 등급·만료·주입 블록을 분리한다. 이번 단계(B3-1)는 모델(HERMES·OpenAI)을 부르지 않는다. 규칙은 사람이 직접 쓰고, 교정 데이터를 외부 모델로 보내는 Reflector는 B3-2다.
@@ -12,6 +12,7 @@
 - 테스트: `tests/playbook.test.mjs` (mocked: 메모리 SQLite·헤더 세션·모의 HERMES, 플레이북 작업의 모델 호출 0)
 - B3-2a 교정 신호(교정 묶음·파생 피드백·재발률·경보 중 승인 동결): 아래 [B3-2a 절](#b3-2a-교정-신호), 테스트 `tests/playbook-signals.test.mjs`
 - B3-2b 선호 on/off 골든 쌍 평가(`POST /api/eval` `pair.kind: operator_preferences`): 아래 [B3-2b 절](#b3-2b-선호-onoff-쌍-평가), 테스트 `tests/eval-preference-pair.test.mjs`
+- B3-2c 선호 쌍 평가 첨부(`POST /api/learning` `playbook_attach_eval`)와 4단계 종료 조건 절차: 아래 [B3-2c 절](#b3-2c-선호-쌍-평가-첨부), 테스트 `tests/playbook-attach-eval.test.mjs`
 
 ## 등급과 만료 (대표 결정 9, 2026-09-24)
 
@@ -181,3 +182,37 @@ B3-2b는 운영자 선호 규칙이 역할 산출물을 나쁘게 만들지 않�
 - 판정: 기존 `pairGate`를 바꾸지 않고 쓴다(봉인 1건 이상·봉인 회귀 0·같은 게이트웨이·같은 모델·전 케이스 두 쪽 완료·후보 합격 수 ≥ off). 비회귀 게이트이며 개선을 주장하지 않는다.
 - 이 run은 프롬프트 레지스트리 활성화 게이트(`activate`·`stage`·`promote`)의 근거가 되지 못한다(409, `lib/prompt-registry.ts`).
 - 한계: 프롬프트 본문은 동결 요청 그대로라 레지스트리 active 버전이 있는 캠페인의 운영 제출과는 프롬프트 부분이 다를 수 있다(두 쪽 모두 같은 본문이라 비교는 공정하다). 회의·브리프 경로는 운영에서도 선호 블록을 넣지 않아 대상이 아니다.
+
+## B3-2c 선호 쌍 평가 첨부
+
+B3-2c는 끝난 선호 쌍 평가 run(B3-2b)을 **그 run이 평가한 규칙 버전에 감사 기록으로만** 붙인다(설계 권고 D4·D6, 대표 지시 "남은 개발 모두 진행"). 규칙 레코드의 버전·상태·만료·등급은 바꾸지 않으므로 `ruleRef`(`id@version`) 계보가 그대로 이어진다. 모델(HERMES·OpenAI)을 부르지 않는다.
+
+- 요청: `POST /api/learning {"action":"playbook_attach_eval","id":"playbook:9c1e","version":2,"runId":"r-abc"}`. **대표만**(관리자·직원 403), 스위치 `b3_playbook_signals` 꺼짐이면 409.
+- 거절:
+  - 400: 프롬프트 쌍 run·단독(active)·심사(judge) run(`pair.kind`가 `operator_preferences`가 아님), 다른 브랜드의 run, 그 규칙을 평가하지 않은 run
+  - 409: 진행 중(`completed`가 아님)·삭제한 run, 요청 `version`이 규칙의 지금 버전과 다름, run이 평가한 `ruleRef`에 요청 `id@version`이 없음(다른 버전을 평가함), 같은 run을 같은 버전에 다시 첨부
+- 감사 기록(`playbook_audit`, 추가만): 기존 감사 필드(`id`·`brandId`·`fromStatus`=`toStatus`·`expiresAt`)에 run id·게이트·쌍 수를 더한다.
+
+```json
+{"action":"attach_eval","ruleId":"playbook:9c1e","ruleVersion":2,"evalRunId":"r-abc","gate":{"passed":true,"reasons":[],"warnings":["small_sample"]},"pairs":3,"sealed":1,"actor":{"id":"u1","role":"owner"},"createdAt":"…"}
+```
+
+- `gate`는 `GET /api/eval?pair=<run>`과 같은 `pairGate`(`lib/eval-stats.ts`)의 판정이다. `passed`=비회귀 게이트 통과, `reasons`·`warnings`=사유 코드. `pairs`=on/off 케이스 쌍 수, `sealed`=봉인 케이스 수. 실패한 게이트도 실패로 첨부한다(기록이지 승인 조건이 아니다).
+- 평가 서버(`lib/eval-server.ts`)는 고치지 않는다. 평가 서버가 역할 실행을 거쳐 `lib/learning-server.ts`를 다시 불러 순환하므로, 판정의 원래 순수 모듈(`pairGate`)과 `EvalRun` 타입만 가져온다.
+- `attach_eval` 감사는 개선 루프 후보가 아니다(`lib/improvement-loops.ts`는 `activate`만 본다).
+- `performance_tested` 부여는 계속 409다(D6). 첨부는 등급을 바꾸지 않는다.
+- 보기: `GET /api/learning` `playbookEvals`(규칙 버전별로 가장 나중에 첨부한 게이트). 교정 신호와 같은 스위치·권한이다(대표·관리자, 직원 응답에는 키 없음, 꺼짐이면 키 없음). 화면은 운영자 선호 규칙 카드에 "v2 · 골든 on/off: 비회귀 통과 · run 앞 8자 · 쌍 3(봉인 1) · 경고 small_sample"을 보이고, 대표에게만 '평가 첨부'(run id 입력) 버튼을 둔다.
+
+### 4단계 종료 조건 절차
+
+운영자 선호 규칙이 실제 역할 산출물에 들어가 사람이 볼 수 있을 때까지를 한 번 끝까지 돌린다. 모델을 부르는 단계는 쌍 평가뿐이다.
+
+1. **대표 승인**: 이 절차(대상 브랜드·역할, 쌍 평가 토큰)를 대표가 승인한다.
+2. **초안**: 교정 신호 묶음 또는 사람 판정 2건 이상을 인용해 `playbook_create`로 초안을 만든다(주입 0건).
+3. **골든 캡처**: 같은 브랜드·역할의 역할 케이스를 골든셋에 캡처한다. 봉인(sealed) 케이스를 1건 이상 넣는다.
+4. **on/off 쌍 평가**: `POST /api/eval` `pair.kind: operator_preferences`로 초안 규칙을 평가한다(약 100k 토큰, 스모크 상한 초과면 건별 승인 `overBudgetApproved`).
+5. **첨부**: run이 `completed`가 되면 `playbook_attach_eval`로 그 규칙 버전에 붙인다. 화면에서 비회귀 통과·경고를 확인한다.
+6. **승인**: 대표가 `playbook_activate`로 승인한다(경보가 열려 있으면 409). 승인하면 버전이 1 오른다. 첨부는 평가한 버전에 남는다.
+7. **실제 주입**: 같은 브랜드·역할의 역할 실행을 1건 돌린다.
+8. **appliedRules 확인**: 보상 계보(`GET /api/reward-lineage`)의 `appliedRules`·`byRule`에 그 규칙의 `ruleRef`가 나오는지, 작업물 끝에 규칙 제목·버전이 적혔는지 본다.
+9. **기록**: run id·첨부 감사 id·주입 작업물 id·결과(passed/failed, real)를 `docs/observations/`에 남긴다.
