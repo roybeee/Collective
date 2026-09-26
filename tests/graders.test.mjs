@@ -55,6 +55,11 @@ const raw=sections=>JSON.stringify({contractVersion:c.version,role:'insight',sec
 check('contract_json passes a complete raw contract',()=>assert.equal(status('contract_json',{id:'r',kind:'role',role:'insight',contract:true,raw:raw(c.sections.map(s=>({id:s.id,content:long})))}),'pass'));
 // 운영은 JSON 끝 여분 괄호를 떼고 읽지만, 모델 원문 형식 결함이라 contract_json은 계속 fail로 센다(R3 기준선 S8 총괄 실측).
 check('contract_json still fails a raw contract with a stray closing brace',()=>assert.equal(status('contract_json',{id:'r',kind:'role',role:'insight',contract:true,raw:raw(c.sections.map(s=>({id:s.id,content:long})))+'}'}),'fail'));
+// 대표 결정(2026-09-27 '괄호 1개 보정 + 순서 되돌림', run a3634055·b152f1fb 실측, +root-brace): 최상위 '}' 딱 1개만 빠진 원문은 운영이 채워 읽으므로 contract_json도 pass다.
+// 안쪽 괄호까지 빠졌거나 문자열 중간에서 끝난 원문은 운영처럼 계속 fail이다.
+check('contract_json passes a raw contract missing only the root closing brace and fails other truncations',()=>{const full=raw(c.sections.map(s=>({id:s.id,content:long}))),item=r=>({id:'r',kind:'role',role:'insight',contract:true,raw:r});
+ assert.equal(status('contract_json',item(full.slice(0,-1))),'pass');
+ for(const bad of [full.slice(0,-2),full.slice(0,-10),full.slice(0,-1)+' 끝'])assert.equal(status('contract_json',item(bad)),'fail',bad.slice(-12));});
 check('contract_json fails a raw contract missing sections',()=>assert.equal(status('contract_json',{id:'r',kind:'role',role:'insight',contract:true,raw:raw([{id:'output_1',content:long}])}),'fail'));
 check('contract_json checks rendered titles when raw JSON is absent',()=>{assert.equal(status('contract_json',contract([long,long,long])),'pass');assert.equal(status('contract_json',{...contract([long,long,long]),text:rendered([long,long,long]).replace('## '+insightTitles[1],'## 다른 제목')}),'fail')});
 check('contract_json is not applicable to legacy runs',()=>assert.equal(status('contract_json',role(long)),'not_applicable'));
