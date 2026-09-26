@@ -8,7 +8,7 @@ import {PRACTICE_VERSION} from './practice';
 import {GRADERS_VERSION,type GraderResult,type GraderStatus,type FactLedger,type SeededDefect} from './graders/index';
 import type {OutputNormalization} from './output-normalize';
 import {COMPLIANCE_LEXICON} from './graders/compliance';
-import {caseKind,evalKind,reserveOf,roleId,EVAL_CASE_TOKEN_RESERVE,type EvalCaseKind,type EvalKindHandler,type EvalExpectations,type EvalRequest} from './eval-kinds';
+import {caseKind,evalKind,reserveOf,roleId,EVAL_CASE_TOKEN_RESERVE,type EvalCaseKind,type EvalKindHandler,type EvalExpectations,type EvalRequest,type EvalSide} from './eval-kinds';
 import {captureMeetingStep,captureBrief,type CaptureCheck} from './eval-capture';
 import {compareRuns,pairReport} from './eval-stats';
 import {gatewayBasis} from './gateway-snapshot';
@@ -20,6 +20,8 @@ import {pairPrompts,roleRunUnits,type PairPrompts} from './prompt-registry';
 import {evalMonthBudget,setBudgetApproval,EVAL_DEFAULT_MONTHLY_TOKEN_CAP} from './eval-budget-server';
 import {operationsSummary} from './eval-operations';
 import {hermesFailureCategory} from './hermes-failure';
+import {operatorRule,type LearningRule} from './learning';
+import {isPreferencePair,preferencePairRules,preferencePairCases,PREFERENCE_PAIR_KIND,PREFERENCE_PAIR_MAX,type PreferencePair} from './playbook-curator';
 
 // 서버 평가 실행(F1b-2). 골든셋 케이스(eval_case)를 평가 전용 HERMES 프로필에 보내고 lib/graders로 채점해 eval_run에 남긴다.
 // 대표 결정 5: 스모크 1회 tokenBudget 250,000 이하, 이번 UTC 월 누적(사용+진행 중 예약) 절대 상한은 lib/eval-budget-server.ts의 월 승인 cap(없으면 1,500,000).
@@ -51,8 +53,9 @@ export type EvalCaseResult={caseId:string;label:string;set:EvalSet;role:string;v
 type StopReason='budget_reached'|'monthly_cap_reached'|'usage_unreported';
 // deleted: delete_run은 결과·출력만 지우고 예산 장부(usedTokens·tokenBudget·createdAt)와 감사 기록(overBudgetApproved·sealedUsed)을 남긴다. 월 누적이 줄지 않게 하려는 것이다.
 // pair: 쌍 평가(F3b) 대상 단위·후보·active 버전과 두 쪽 본문(시작 때 고정). gatewaySnapshotEnd: pair run이 끝날 때 같은 방식으로 다시 잰 게이트웨이 기준.
+// 운영자 선호 쌍(B3-2b, kind operator_preferences)은 active가 off(블록 없음), candidate가 on(고른 규칙 블록)이고 규칙 참조·블록·블록 해시를 시작 때 고정한다.
 // regrades: 같은 저울 재채점 기록(아래 '같은 저울 재채점'). results와 별개이며 results를 바꾸지 않는다.
-export type EvalPair=PairPrompts&{skippedCases:number};
+export type EvalPair=(PairPrompts|PreferencePair)&{skippedCases:number};
 export type EvalRun={gatewaySnapshot?:EvalGatewayBasis;gatewaySnapshotEnd?:EvalGatewayBasis;pair?:EvalPair;id:string;label:string;variant:'active'|'pair'|'judge';set:EvalSet|null;caseIds:string[];tokenBudget:number;usedTokens:number;status:'queued'|'running'|'completed'|'cancelled'|'blocked';stopReason?:StopReason;blockedReason?:string;overBudgetApproved?:{reason:string;by:Who;at:string;exceeded:string[];monthCommitted:number};sealedUsed?:{by:Who;at:string;cases:number};host:string|null;createdBy:Who;createdAt:string;updatedAt:string;cancelledBy?:Who;deleted?:{by:Who;at:string;cases:number};results:EvalCaseResult[];regrades?:EvalRegrade[]};
 type Step={run:EvalRun;writes?:D1PreparedStatement[]};
 // 시작 시점 게이트웨이 기준(F2b): operational은 운영 연결의 최신 passed 스냅샷(평가 연결 기준이 아님), eval은 같은 스냅샷 함수로 잰 평가 연결 해시(막히면 blocked).
@@ -363,10 +366,35 @@ const pairOrder=(i:number):('active'|'candidate')[]=>i%2?['candidate','active']:
 const pendingResults=(cases:EvalCase[],pair:boolean):EvalCaseResult[]=>cases.flatMap((c,i)=>(pair?pairOrder(i):['active' as const]).map(variant=>({caseId:c.id,label:c.label,set:c.set,role:c.role,variant,reserve:reserveOf(c),status:'pending' as const})));
 // 시작 거부 정책: 연결 없음·격리 미확인·연결 확인 실패·운영과 같은 호스트면 run을 blocked로 기록하고 409로 답한다(시도와 원인이 남는다).
 // 실행 대상: 평가 run은 케이스(쌍 평가면 후보 단위를 쓰는 케이스), 심사 run(judge)은 보정 라벨이 있는 출력(lib/eval-judge-server.ts judgeTargets).
-async function runTargets(owner:string,input:Record<string,unknown>,variant:EvalRun['variant']):Promise<{caseIds:string[];results:EvalCaseResult[];sealed:number;set:EvalSet|null;pair?:EvalPair}>{
+type RunTargets={caseIds:string[];results:EvalCaseResult[];sealed:number;set:EvalSet|null;pair?:EvalPair};
+async function runTargets(owner:string,input:Record<string,unknown>,variant:EvalRun['variant']):Promise<RunTargets>{
  if(variant==='judge'){const t=await judgeTargets(owner,input.limit);return {caseIds:t.caseIds,results:t.results,sealed:0,set:null}}
+ if(variant==='pair'&&obj(input.pair)?.kind===PREFERENCE_PAIR_KIND)return preferenceTargets(owner,input);
  const prompts=variant==='pair'?await pairPrompts(owner,input.pair):undefined,all=supportedCases(await runCases(owner,input)),cases=prompts?pairCases(all,prompts.unit):all;
  return {caseIds:cases.map(c=>c.id),results:pendingResults(cases,!!prompts),sealed:cases.filter(c=>c.set==='sealed').length,set:Array.isArray(input.caseIds)?null:evalSet(input.set),...(prompts?{pair:{...prompts,skippedCases:all.length-cases.length}}:{})};
+}
+// ── 운영자 선호 on/off 쌍 평가(B3-2b, 설계 권고 D5·D8·D11) ──
+// pair:{kind:'operator_preferences', ruleIds:[1~8개]}. 같은 브랜드의 운영자 선호 규칙이어야 하고 종료(retired) 규칙은 받지 않는다. 초안·중지 규칙도 평가한다(D5).
+// 규칙을 시작 때 한 번 읽어 운영 주입 순서의 블록(operatorPreferenceBlock)·규칙 참조·블록 해시를 run에 고정한다. 뒤에 규칙을 고쳐도 두 쪽 본문은 그대로다.
+const PREFERENCE_RULES=`운영자 선호 쌍 평가 규칙(ruleIds)은 1~${PREFERENCE_PAIR_MAX}개여야 합니다.`;
+async function preferencePair(owner:string,value:Record<string,unknown>):Promise<{pair:PreferencePair;rules:LearningRule[]}>{
+ const listed=value.ruleIds;
+ if(!Array.isArray(listed)||!listed.length||listed.length>PREFERENCE_PAIR_MAX)throw new ApiError(400,PREFERENCE_RULES);
+ const ids=[...new Set(listed.map(id=>str(id,'운영자 선호 규칙',200,true)))],found=await Promise.all(ids.map(id=>optionalRecord<LearningRule>(owner,'learning_rule',id)));
+ const missing=ids.filter((_,i)=>!found[i]);
+ if(missing.length)throw new ApiError(400,`운영자 선호 규칙을 찾을 수 없습니다: ${missing.slice(0,3).join(', ')}`);
+ const rules=found as LearningRule[];
+ if(rules.some(r=>!operatorRule(r)))throw new ApiError(400,'운영자 선호 규칙이 아닙니다. 성과 규칙(바이럴·점포)은 선호 쌍 평가 대상이 아닙니다.');
+ if(rules.some(r=>r.status==='retired'))throw new ApiError(400,'종료(retired)한 규칙은 선호 쌍 평가에 쓸 수 없습니다.');
+ if(new Set(rules.map(r=>r.brandId)).size>1)throw new ApiError(400,'같은 브랜드의 운영자 선호 규칙만 함께 평가할 수 있습니다.');
+ const frozen=preferencePairRules(rules);
+ return {rules,pair:{kind:PREFERENCE_PAIR_KIND,unit:PREFERENCE_PAIR_KIND,brandId:frozen.brandId,activeVersionId:'off',candidateVersionId:frozen.candidateVersionId,rules:frozen.rules,blockHash:'sha256:'+await hex(JSON.stringify(frozen.block)),block:frozen.block}};
+}
+// 대상 케이스: 고른 규칙이 모두 운영에서 주입될 역할 케이스(preferencePairCases). 다른 브랜드·역할·채널 밖·회의 단계·브리프는 skippedCases로 센다. 남는 케이스가 없으면 400.
+async function preferenceTargets(owner:string,input:Record<string,unknown>):Promise<RunTargets>{
+ const {pair,rules}=await preferencePair(owner,obj(input.pair)!),all=supportedCases(await runCases(owner,input)),{cases,skippedCases}=preferencePairCases(all,rules);
+ if(!cases.length)throw new ApiError(400,'고른 운영자 선호 규칙이 모두 적용되는 역할 평가 케이스가 없습니다. 같은 브랜드·역할·채널의 역할 케이스를 고르세요(회의 단계·브리프는 대상이 아닙니다).');
+ return {caseIds:cases.map(c=>c.id),results:pendingResults(cases,true),sealed:cases.filter(c=>c.set==='sealed').length,set:Array.isArray(input.caseIds)?null:evalSet(input.set),pair:{...pair,skippedCases}};
 }
 async function startRun(owner:string,input:Record<string,unknown>,by:Who){
  const tokenBudget=budgetOf(input.tokenBudget),variant=runVariant(input);
@@ -438,7 +466,8 @@ async function submitCase(owner:string,run:EvalRun,conn:Conn,at:number):Promise<
  if(!kase)return {run:settle(withResult(run,at,{...r,status:'not_run',error:'평가 케이스가 삭제됐습니다.'}))};
  // 제출 본문은 케이스 종류의 조립(lib/eval-kinds.ts build)이 만든다. 역할은 운영 start와 같은 roleSubmission이라 선호 규칙이 있는 동결본도 운영 제출과 바이트 동일하다.
  // pair run은 이 쪽 본문(후보 또는 active, active가 코드 상수면 null)을 넘기고, 어디에 주입할지는 종류 처리기가 정한다.
- const pair=run.pair,side=pair?(r.variant==='candidate'?pair.candidateSet:pair.activeSet):undefined;
+ // 운영자 선호 쌍(B3-2b)은 active가 off, candidate가 on이고 run에 고정한 블록을 넘긴다.
+ const pair=run.pair,side:EvalSide|undefined=!pair?undefined:isPreferencePair(pair)?{preference:r.variant==='candidate'?'on':'off',block:pair.block}:r.variant==='candidate'?pair.candidateSet:pair.activeSet;
  let instructions:string,input:string;
  // 심사 run은 J1 심사 프롬프트(원 평가 출력·동결 요청)다. 입력 검사에 걸리거나 원 출력이 없으면 그 항목만 failed다.
  if(run.variant==='judge')try{({instructions,input}=await judgeSubmission(owner,r,kase,await connectionModel(owner)))}catch(e){if(e instanceof ApiError&&e.status<500)return {run:settle(withResult(run,at,{...r,status:'failed',error:e.message}))};throw e}
@@ -606,11 +635,13 @@ async function diagnoseRun(owner:string,id:string){
 // ── API 진입점(app/api/eval/route.ts). 권한 검사는 라우트가 한다(소유자만). ──
 function variantOf(v:unknown){if(v!=='active'&&v!=='candidate')throw new ApiError(400,'variant는 active 또는 candidate여야 합니다.');return v}
 // 쌍 평가 결과: 두 쪽 비교 통계와 활성화 게이트 판정(lib/eval-stats.ts pairReport). 본문(PromptSet)은 빼고 버전 id만 보인다.
+// 운영자 선호 쌍(B3-2b)은 블록 본문 대신 브랜드·규칙 참조·블록 해시를 더 보인다.
 async function pairRead(owner:string,runId:string){
  const run=await readRecord<EvalRun>(owner,'eval_run',runId);
  if(run.variant!=='pair'||!run.pair)throw new ApiError(400,'쌍 평가(pair) 실행이 아닙니다.');
- const {unit,candidateVersionId,activeVersionId,skippedCases}=run.pair;
- return {id:run.id,status:run.status,pair:{unit,candidateVersionId,activeVersionId,skippedCases},...pairReport(run)};
+ const p=run.pair,{unit,candidateVersionId,activeVersionId,skippedCases}=p;
+ const pair=isPreferencePair(p)?{kind:p.kind,unit,brandId:p.brandId,activeVersionId,candidateVersionId,rules:p.rules,blockHash:p.blockHash,skippedCases}:{unit,candidateVersionId,activeVersionId,skippedCases};
+ return {id:run.id,status:run.status,pair,...pairReport(run)};
 }
 const caseSummary=(c:EvalCase)=>({id:c.id,kind:c.kind??'role',role:c.role,label:c.label,set:c.set,campaignId:c.campaignId,source:c.source,capturedWith:c.capturedWith,prohibitedTerms:c.expectations.prohibitedTerms.length,setChanges:c.setChanges||[],...(c.captureCheck?{captureCheck:c.captureCheck}:{}),createdBy:c.createdBy,createdAt:c.createdAt,updatedAt:c.updatedAt});
 export async function evalRead(owner:string,params:URLSearchParams){

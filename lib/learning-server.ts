@@ -1,7 +1,7 @@
 import {ApiError,str,num,stamp,uid,readRecord,listRecords,recordStatement,database,eventStatement,isAdmin,type EventActor} from './server';
 import {learningChannels,learningMetrics,evaluateExperiment,ruleApplies,defaultVerifyChannel,operatorRule,ANY_CHANNEL,PLAYBOOK_MAX_CHARS,type ViralCase,type ViralAnalysis,type TestIdea,type ViralExperiment,type ExperimentResult,type LearningRule,type LearningSnapshot,type Arm,type StoreAssessment,type ReviewDecisionSummary,type PlaybookRecheck,type LearningData,type CorrectionDecision} from './learning';
 import {channelHosts,storeChannelName,channelRegistry} from './channels';
-import {normalizeRuleBody,ruleBodyProblem,ruleTitle,playbookExpiry,activationProblem,correctionClusters,playbookFeedback,recurrenceRate,MAX_ACTIVE_PER_ROLE,PLAYBOOK_MIN_CITATIONS,PLAYBOOK_MAX_CITATIONS} from './playbook-curator';
+import {normalizeRuleBody,ruleBodyProblem,ruleTitle,playbookExpiry,activationProblem,correctionClusters,playbookFeedback,recurrenceRate,preferenceOrder,MAX_ACTIVE_PER_ROLE,PLAYBOOK_MIN_CITATIONS,PLAYBOOK_MAX_CITATIONS} from './playbook-curator';
 import {isEnabled} from './feature-flags';
 // 경보 판정은 프롬프트 레지스트리(lib/prompt-registry.ts)가 쓰는 것과 같은 alarmState다. 레지스트리 파일은 평가 서버 의존을 끌고 오므로 판정의 원래 모듈에서 가져온다.
 import {alarmState} from './usage-model-alarm';
@@ -62,11 +62,11 @@ export async function learningContext(owner:string,c:Pick<Campaign,'brandId'|'ch
   .sort((a,b)=>Number(!!b.storeId)-Number(!!a.storeId)||b.createdAt.localeCompare(a.createdAt))
   .slice(0,12).map(modelRule);
 }
-// 운영자 선호 규칙(B3-1). 승인(active)·미만료·같은 브랜드·채널("*" 포함)·역할이 맞는 것만 역할당 8개까지. 역할 지정 규칙을 먼저, 그다음 최신순이다.
+// 운영자 선호 규칙(B3-1). 승인(active)·미만료·같은 브랜드·채널("*" 포함)·역할이 맞는 것만 역할당 8개까지. 역할 지정 규칙을 먼저, 그다음 최신순이다(preferenceOrder, 선호 쌍 평가 B3-2b와 공유).
 export async function operatorPreferenceContext(owner:string,c:Pick<Campaign,'brandId'|'channels'|'storeId'>,role:string){
  const rules=await listRecords<LearningRule>(owner,'learning_rule'),now=Date.now();
  return rules.filter(r=>operatorRule(r)&&ruleApplies(r,c.brandId,c.channels,now,c.storeId,role))
-  .sort((a,b)=>Number(!!b.role)-Number(!!a.role)||b.createdAt.localeCompare(a.createdAt)||a.id.localeCompare(b.id)).slice(0,MAX_ACTIVE_PER_ROLE);
+  .sort(preferenceOrder).slice(0,MAX_ACTIVE_PER_ROLE);
 }
 // 점포 실험 회고를 학습 규칙으로 승격한다. 게이트를 통과하지 못하면 null을 반환하고 회고만 저장된다.
 // 바이럴 실험의 sourceAssessment와 지표 체계가 달라 storeAssessment로 분리해 담는다.

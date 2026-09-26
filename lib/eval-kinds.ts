@@ -5,6 +5,7 @@ import {roles} from './agency';
 import {aiBrand} from './ai-context';
 import {voiceForRole} from './brand-voice';
 import {roleSubmission,type RoleSubmissionRequest} from './role-execution';
+import {preferenceSides,type OperatorPreferenceBlock} from './playbook-curator';
 import {runGraders,runPreventionGraders,GRADERS,GRADERS_VERSION,ALL_GRADERS,type GraderResult,type GraderStatus,type FactLedger,type GradeContext,type EvalItem,type SeededDefect} from './graders/index';
 import {bodyOf,rawNormalization} from './graders/text';
 import {outputObject,proseValues,briefPlanValues} from './graders/types';
@@ -26,6 +27,10 @@ export const EVAL_CASE_TOKEN_RESERVE=50000,EVAL_MEETING_STEP_TOKEN_RESERVE=10000
 export type EvalExpectations={prohibitedTerms:string[];facts:FactLedger|null;industry:string|string[]|null;localStore:boolean;inputTokenCap?:number;seededDefects?:SeededDefect[]};
 export type EvalRequest=RoleRequest|MeetingStepRequest|BriefRequest;
 type KindCase={id:string;role:string;kind?:string;request:EvalRequest;expectations:EvalExpectations};
+// 쌍 평가의 한 쪽. 프롬프트 쌍(F3b)은 본문(PromptSet, active가 코드 상수면 null), 운영자 선호 쌍(B3-2b)은 off·on과 run에 고정한 블록이다.
+export type PreferenceSide={preference:'off'|'on';block:OperatorPreferenceBlock};
+export type EvalSide=PromptSet|null|PreferenceSide;
+const preferenceSide=(side:EvalSide|undefined):side is PreferenceSide=>!!side&&'preference' in side;
 const obj=(v:unknown)=>v!==null&&typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:null;
 const baseContext=(e:EvalExpectations):GradeContext=>({prohibitedTerms:e.prohibitedTerms,facts:e.facts,industry:e.industry,localStore:e.localStore,...(e.inputTokenCap?{inputTokenCap:e.inputTokenCap}:{})});
 // 역할 담당 ID(에이전시 역할 목록). 회의 단계는 대상 단계의 담당, 브리프는 담당이 없어 BRIEF_ROLE이다.
@@ -44,7 +49,7 @@ function graded(item:EvalItem,ctx:GradeContext,graders=runGraders(item,ctx),role
 export type GradedCase=ReturnType<typeof graded>;
 export type EvalKindHandler={kind:EvalCaseKind;reserve:number;
  freeze:(request:unknown,role:unknown)=>{request:EvalRequest;role:string};
- build:(request:EvalRequest,side?:PromptSet|null)=>{instructions:string;input:string};
+ build:(request:EvalRequest,side?:EvalSide)=>{instructions:string;input:string};
  grade:(kase:KindCase,output:string,inputTokens:number|null)=>GradedCase;
  // 쌍 평가(pair) 대상 캠페인(roleRunUnits로 후보 단위를 쓰는지 본다). null이면 쌍 평가에서 뺀다.
  campaignOf:(request:EvalRequest)=>Record<string,unknown>|null;
@@ -63,7 +68,12 @@ function freezeRole(v:unknown,roleInput:unknown){
 }
 // side: 쌍 평가(pair)의 이 쪽 본문. undefined면 동결 요청 그대로, 아니면 그 본문(PromptSet, active가 코드 상수면 null → 주입 없음)을 요청 prompts로 주입한다.
 // 동결 요청의 다른 필드(운영자 선호 블록 포함)는 그대로다. 종류마다 주입 자리가 달라(회의 단계는 snapshot.prompts) 처리기가 정한다.
-function buildRole(request:EvalRequest,side?:PromptSet|null){const r=request as RoleRequest,{instructions,input}=roleSubmission(side===undefined?r:{...r,prompts:side??undefined});return {instructions,input}}
+// 운영자 선호 쌍(B3-2b)은 동결 요청의 operatorPreferences만 바꾼다: off는 키를 빼고, on은 run에 고정한 블록을 넣는다(preferenceSides). 조립은 운영과 같은 roleSubmission이다.
+function buildRole(request:EvalRequest,side?:EvalSide){
+ const r=request as RoleSubmissionRequest;
+ const {instructions,input}=roleSubmission(preferenceSide(side)?preferenceSides(r,side.block)[side.preference]:side===undefined?r:{...r,prompts:side??undefined});
+ return {instructions,input};
+}
 // lib/graders 13종(GRADERS)으로 채점한다. 회의·브리프용 채점기(KIND_GRADERS)는 역할 산출물에 붙이지 않아 역할 run의 기존 비교가 그대로다.
 // 브랜드 말투(A3-2): 동결 요청의 확정 말투가 입력에 실리는 역할(content·creative)이면 피할 표현을 채점 맥락에 넣는다. 없으면 키가 없어 기존 채점과 같다.
 // 기대 계약(A3-4): 동결 요청에 출력 프로필이 있으면 채점 맥락에 넣는다. contract_json이 요청한 계약으로 원문을 읽어 운영과 같이 v1 원문을 거부한다. 없으면 키가 없다.
@@ -108,7 +118,7 @@ function freezeBrief(v:unknown,roleInput:unknown){
  if(roleInput!==undefined&&roleInput!==BRIEF_ROLE)throw new ApiError(400,`브리프 케이스의 담당은 ${BRIEF_ROLE}입니다.`);
  return {request:briefRequestOf(v),role:BRIEF_ROLE};
 }
-function buildBrief(request:EvalRequest,side?:PromptSet|null){
+function buildBrief(request:EvalRequest,side?:EvalSide){
  if(side!==undefined)throw new Error('브리프는 쌍 평가 대상이 아닙니다.');
  const {instructions,input}=buildBriefSubmission(request as BriefRequest);
  return {instructions,input};
@@ -123,7 +133,7 @@ function gradeBrief(kase:KindCase,output:string,inputTokens:number|null){
 
 const HANDLERS:Record<EvalCaseKind,EvalKindHandler>={
  role:{kind:'role',reserve:EVAL_CASE_TOKEN_RESERVE,freeze:freezeRole,build:buildRole,grade:gradeRole,campaignOf:r=>obj((r as RoleRequest).campaign),factsOf:r=>ledgerOf((r as RoleRequest).evidence?.facts)},
- meeting_step:{kind:'meeting_step',reserve:EVAL_MEETING_STEP_TOKEN_RESERVE,freeze:freezeMeeting,build:(r,side)=>buildMeetingRequest(r as MeetingStepRequest,side),grade:gradeMeeting,campaignOf:r=>obj((r as MeetingStepRequest).meeting.snapshot.campaign),factsOf:r=>ledgerOf((r as MeetingStepRequest).meeting.snapshot.evidence?.facts)},
+ meeting_step:{kind:'meeting_step',reserve:EVAL_MEETING_STEP_TOKEN_RESERVE,freeze:freezeMeeting,build:(r,side)=>{if(preferenceSide(side))throw new Error('회의 단계는 운영자 선호 쌍 평가 대상이 아닙니다.');return buildMeetingRequest(r as MeetingStepRequest,side)},grade:gradeMeeting,campaignOf:r=>obj((r as MeetingStepRequest).meeting.snapshot.campaign),factsOf:r=>ledgerOf((r as MeetingStepRequest).meeting.snapshot.evidence?.facts)},
  brief:{kind:'brief',reserve:EVAL_BRIEF_TOKEN_RESERVE,freeze:freezeBrief,build:buildBrief,grade:gradeBrief,campaignOf:()=>null,factsOf:r=>ledgerOf((r as BriefRequest).context.evidence.facts)},
 };
 

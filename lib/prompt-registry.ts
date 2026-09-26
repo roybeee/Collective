@@ -8,6 +8,7 @@ import type {Store} from './store-marketing';
 import type {EvalRun} from './eval-server';
 import {pairGate} from './eval-stats';
 import {alarmState,alarmAckStatement} from './usage-model-alarm';
+import {isPreferencePair} from './playbook-curator';
 
 // 프롬프트 레지스트리(F3a, 대표 결정 2·3). git prompts/가 정본이다. 소유자가 단위와 sourceSha를 지정하면 공개 저장소 raw 경로에서 그 SHA와 현재 main의 같은 파일을 가져와
 // 본문이 같을 때만 불변 prompt_version으로 등록한다. 새 기계 자격증명·업로드 대체 경로는 없다.
@@ -209,6 +210,8 @@ async function passGate(owner:string,unit:string,versionId:string,evalRunId:stri
  const run=await optional<EvalRun>(owner,'eval_run',evalRunId);
  if(!run)throw new ApiError(409,`활성화 게이트를 통과하지 못했습니다: 쌍 평가 실행 ${evalRunId}을(를) 찾을 수 없습니다.`);
  if(run.variant!=='pair'||!run.pair)throw new ApiError(409,'활성화 게이트를 통과하지 못했습니다: 쌍 평가(pair) 실행이 아닙니다.');
+ // 운영자 선호 쌍 평가(B3-2b)는 규칙 블록 on/off 비교라 프롬프트 버전 근거가 아니다. pairGate 조건을 모두 통과해도 activate·stage·promote에 쓰지 못한다.
+ if(isPreferencePair(run.pair))throw new ApiError(409,'활성화 게이트를 통과하지 못했습니다: 운영자 선호 쌍 평가(operator_preferences) 실행은 프롬프트 활성화 근거로 쓸 수 없습니다. 이 단위의 프롬프트 쌍 평가(pair unit·candidateVersionId)를 하세요.');
  const gate=pairGate(run),alarms=(await alarmState(owner)).open,current=globalVersion(release),basis=run.pair.activeVersionId;
  const reasons=[
   ...(run.pair.unit!==unit||run.pair.candidateVersionId!==versionId?['이 단위·버전의 쌍 평가(pair) 실행이 아닙니다.']:[]),
