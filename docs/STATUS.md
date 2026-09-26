@@ -18,7 +18,7 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-26 02:45 UTC (Claude 트랙 R 세션: 묶음 13 `b16403d` `published`(Sites 버전 36, 자동 게시 첫 성공) 뒤 Codex 세션이 `d721017`을 Sites 버전 37로 게시, #120·#127·#121 `merged` 반영. 그 전 갱신: 02:05 UTC Claude A3 세션 #121)
+마지막 갱신: 2026-09-26 02:40 UTC (Claude 트랙 R 세션: 묶음 13 `b16403d` `published`(Sites 버전 36, 자동 게시 첫 성공) 뒤 Codex 세션이 `d721017`을 Sites 버전 37로 게시, #120·#127·#121 `merged` 반영. 그 전 갱신: 02:05 UTC Claude A3 세션 #121)
 
 ## 현재 운영 상태
 
@@ -27,7 +27,7 @@
 | 운영 제품 커밋 | `d7210175b75e0855c3a25ae0de7ea7743be7753d` (#127 `merged`, 소유자 운영 검증·재채점·프롬프트 적용 화면). 묶음 13 `b16403d`(#124까지: 트랙 R R1b·R2, 게시 전 점검 수정, R3a, 가맹 기능은 `r_franchise` 기본 꺼짐)와 #120(비제품)을 포함한다 | 제품 tree `4f3b13022cbcfb256f85a4473db54bc10d347d77`(Codex 세션 기록, PR #128 `docs/releases/2026-09-26-d721017.md`, 병합 전) |
 | `origin/main` | `aa49e6b` (#121 A3-1 카피 팩 v2, `a3_copy_pack` 기본 꺼짐) | d721017 뒤 #121이 들어왔다(제품 경로). 그래서 지금 main은 운영보다 앞서 있고, d721017의 `runtime-verified`는 확인 시점(02:22 UTC) 기준이다. A3-2 #122·A3-3a #123·A3-4 #125는 쌓인 base 브랜치(`feat/a3-copy-pack-v2`·`feat/a3-brand-voice`·`feat/a3-artifact-experiment`)로 병합돼 main에 들어오지 않았다(main에 `app/api/brand-voice/route.ts` 없음, 2026-09-26 02:40 UTC git 확인). A3 세션이 main으로 다시 올려야 한다 |
 | Sites 게시 | `published`: Sites 버전 37(Codex 세션, `d721017`, deployment `appgdep_6ab72b2c…` succeeded 02:17:35 UTC). 바로 앞 버전 36은 이 세션의 묶음 13 `b16403d`(deployment `appgdep_6ab72a5f…`, Sites 커밋 `34a5e8c`, `TREE_EMBEDDED`, 자동 게시 첫 성공) | [b16403d 게시 기록](releases/2026-09-26-b16403d.md). d721017 기록은 PR #128(병합 전). 그 앞: 8c22f0e(Sites 버전 35) [기록](releases/2026-09-25-8c22f0e.md) |
-| 실행 검증 | `d721017`: `runtime-verified`(Codex 세션 02:22 UTC 경, 대표 소유자 화면 재확인 02:4x UTC: `/api/version` 200, tree `4f3b130…`). b16403d(버전 36)는 `/api/version`을 확인하기 전에 3분 뒤 버전 37로 교체돼 소급 기록하지 않는다(대표 판단). d721017이 b16403d를 포함한다 | 대표 보고(real), Codex 세션 기록(PR #128, 병합 전). 주소창 직접 접근 오류는 남아 있고 정상 조회 경로로 검증했다 |
+| 실행 검증 | `d721017`: `runtime-verified`(Codex 세션 02:22 UTC 경, 대표 소유자 화면 재확인 02:3x UTC: `/api/version` 200, tree `4f3b130…`). b16403d(버전 36)는 `/api/version`을 확인하기 전에 3분 뒤 버전 37로 교체돼 소급 기록하지 않는다(대표 판단). d721017이 b16403d를 포함한다 | 대표 보고(real), Codex 세션 기록(PR #128, 병합 전). 주소창 직접 접근 오류는 남아 있고 정상 조회 경로로 검증했다 |
 | 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` mode=email, role=owner (2026-09-25 03:30 UTC 경) |
 | Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 이번 게시도 기존 접근 설정 유지 | 게시 에이전트 보고 "기존 공개 접근 설정을 유지". 게시 뒤 접근 설정 재확인은 not_run |
 | 조사 워커 | online(lastSeen 2026-09-25 03:29 UTC, blocked 0, rotationReady true). 2026-09-24 14:15 UTC 새 설치기로 재설치(격리 점검 전부 통과) | `/api/research-worker/setup` 조회(real). gate 표시 `missing`이라 `RESEARCH_WORKER_APP_GATE=enforce`는 켜지 않는다 |
