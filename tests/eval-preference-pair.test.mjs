@@ -57,8 +57,9 @@ const ruleA=withText(pref('playbook:pp-alpha-51e7',{role:'cmo',createdAt:at(1)})
 const ruleB=withText(pref('playbook:pp-bravo-83d2',{channel:'Instagram',status:'active',version:2,createdAt:at(2)}),'숫자는 브리프에 있는 값만 쓰고 단위를 붙여 적는다.');
 const ruleRetired=withText(pref('playbook:pp-retired-11aa',{status:'retired'}),'끝낸 규칙 본문이다.');
 const ruleOther=withText(pref('playbook:pp-other-22bb',{brandId:'pp-brand-2'}),'다른 브랜드의 선호 본문이다.');
+const ruleInsight=withText(pref('playbook:pp-insight-33cc',{role:'insight'}),'다른 역할(insight) 지정 선호 본문이다.');
 const ruleViral={origin:'viral',id:'exp:pp-viral:1',brandId:brand.id,channel:'YouTube',experimentId:'pp-viral',experimentVersion:1,caseId:'case',title:'성과 규칙',guidance:'단면을 먼저 보여 준다',scope:'',evidenceLevel:'observational',status:'active',version:1,expiresAt:future,createdAt:at(0),updatedAt:at(0)};
-for(const r of [ruleA,ruleB,ruleRetired,ruleOther,ruleViral])await put('learning_rule',r.id,r,r.brandId);
+for(const r of [ruleA,ruleB,ruleRetired,ruleOther,ruleInsight,ruleViral])await put('learning_rule',r.id,r,r.brandId);
 
 // ── 캠페인·케이스: 대상 dev·sealed cmo, 빠지는 케이스(다른 역할·다른 브랜드·채널 밖·회의 단계·브리프) ──
 await put('brand','pp-brand-2',{...brand,id:'pp-brand-2',name:'가상국밥',short:'GK'});
@@ -79,10 +80,13 @@ check('preferenceSides: off drops operatorPreferences, on carries the given bloc
 const picked=curator.preferencePairCases([devCase,insightCase,otherBrandCase,noChannelCase,shell('m','meeting_step','cmo'),shell('b','brief','brief')],[ruleA,ruleB]);
 check('preferencePairCases keeps only role cases where every rule applies and counts the rest',()=>assert.ok(picked.cases.length===1&&picked.cases[0].id===devCase.id&&picked.skippedCases===5,JSON.stringify(plain(picked))));
 check('preferencePairCases scopes draft rules like active ones (D5)',()=>assert.equal(curator.preferencePairCases([devCase],[{...ruleA,status:'draft'}]).cases.length,1));
+// 옛 케이스처럼 동결 요청의 캠페인 채널이 배열이면 채널은 빈 값으로 본다: 전체 채널(*) 규칙만 적용되고 채널 지정 규칙은 대상 밖으로 센다.
+const arrayChannelCase={...devCase,request:{...devCase.request,campaign:{...devCase.request.campaign,channels:['Instagram']}}};
+check('array campaign channels read as empty: an any-channel rule keeps the case, a channel rule skips it',()=>assert.ok(curator.preferencePairCases([arrayChannelCase],[ruleA]).cases.length===1&&curator.preferencePairCases([arrayChannelCase],[ruleB]).skippedCases===1&&curator.preferencePairCases([arrayChannelCase],[ruleA,ruleB]).cases.length===0));
 
 // 1) 시작 거부(400): 모르는 id·운영자 선호가 아닌 규칙·종료 규칙·다른 브랜드 섞임·8개 초과·빈 목록·해당 케이스 없음. run 기록과 제출이 없다.
 const startPref=(ruleIds,caseIds,extra={})=>evalPost({action:'start_run',pair:{kind:'operator_preferences',ruleIds},caseIds,tokenBudget:250000,label:'B3 가상분식 cmo 선호 on/off',...extra});
-for(const [name,ids,pattern] of [['an unknown rule id',['playbook:pp-missing'],/찾을 수 없/],['a performance (non operator) rule',[ruleViral.id],/운영자 선호 규칙이 아닙/],['a retired rule',[ruleA.id,ruleRetired.id],/종료/],['rules of another brand',[ruleA.id,ruleOther.id],/같은 브랜드의 운영자 선호 규칙만/],['more than 8 rule ids',Array.from({length:9},(_,i)=>'playbook:pp-many-'+i),/1~8/],['an empty rule list',[],/1~8/]]){
+for(const [name,ids,pattern] of [['an unknown rule id',['playbook:pp-missing'],/찾을 수 없/],['a performance (non operator) rule',[ruleViral.id],/운영자 선호 규칙이 아닙/],['a retired rule',[ruleA.id,ruleRetired.id],/종료/],['rules of another brand',[ruleA.id,ruleOther.id],/같은 브랜드의 운영자 선호 규칙만/],['rules pinned to different roles',[ruleA.id,ruleInsight.id],/역할 지정 규칙의 역할이 서로 다릅니다/],['more than 8 rule ids',Array.from({length:9},(_,i)=>'playbook:pp-many-'+i),/1~8/],['an empty rule list',[],/1~8/]]){
  r=await startPref(ids,[devCase.id,sealedCase.id]);
  check(`${name} is 400`,()=>assert.ok(r.status===400&&pattern.test(r.body.error),JSON.stringify(r)));
 }
@@ -101,6 +105,8 @@ r=await startPref([ruleB.id,ruleA.id,ruleA.id],[devCase.id,sealedCase.id,insight
 check('a preference pair run starts (200)',()=>assert.equal(r.status,200,JSON.stringify(r)));
 const P1=await drive(r.body.id),order=[ruleA,ruleB];
 const expectedBlock=curator.operatorPreferenceBlock(order);
+const listedP1=(await evalGet('')).body.runs.find(x=>x.id===P1.id);
+check('the run list carries only the block hash, the run read keeps the block',()=>assert.ok(listedP1&&listedP1.pair.blockHash===P1.pair.blockHash&&!('block' in listedP1.pair)&&P1.pair.block&&P1.pair.block.rules.length===2,JSON.stringify(listedP1?.pair)));
 check('run meta freezes kind, unit, brand, off/on ids, rule refs, block hash and skipped cases',()=>assert.ok(P1.variant==='pair'&&P1.pair.kind==='operator_preferences'&&P1.pair.unit==='operator_preferences'&&P1.pair.brandId===brand.id&&P1.pair.activeVersionId==='off'&&P1.pair.candidateVersionId===`${ruleA.id}@1+${ruleB.id}@2`&&P1.pair.skippedCases===5,JSON.stringify(P1.pair)));
 check('rule refs keep role, channel and status (draft allowed, D5) in injection order',()=>assert.deepEqual(P1.pair.rules,[{ruleRef:`${ruleA.id}@1`,role:'cmo',channel:'*',status:'draft'},{ruleRef:`${ruleB.id}@2`,role:null,channel:'Instagram',status:'active'}]));
 check('the frozen block is the production block and blockHash is its sha256',()=>assert.ok(JSON.stringify(P1.pair.block)===JSON.stringify(expectedBlock)&&P1.pair.blockHash==='sha256:'+sha(JSON.stringify(expectedBlock))));
