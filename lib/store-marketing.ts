@@ -1,5 +1,6 @@
 import type {LedgerSnapshot} from './store-operations';
 import type {PublicResearch,ArchiveSourceSummary} from './archive';
+import type {PlaceTaskSource} from './place-check';
 
 export const tradeAreas={residential:'주거 상권',office:'오피스 상권',destination:'목적 방문·관광 상권',mixed:'복합 상권',unknown:'조사 필요'} as const;
 export type Store={id:string;brandId:string;name:string;address:string;tradeArea:keyof typeof tradeAreas;customer:string;goal:string;daypart:string;menu:string;hours:string;access:string;capacity:string;economics:string;competitors:string;status:'active'|'archived';version:number;createdAt:string;updatedAt:string};
@@ -30,7 +31,8 @@ export type StoreExperiment={parentExperimentId?:string;review?:StoreReview;id:s
 // scope='baseline'은 처치 전 기준선이다. 판정·채택·규칙 승격에서는 제외한다.
 export type StoreMeasurement={scope?:'experiment'|'baseline';ledgerSnapshot?:LedgerSnapshot;id:string;storeId:string;experimentId:string;periodStart:string;periodEnd:string;source:string;definition:string;method:'manual'|'export';cohortMatured:boolean;values:Record<StoreMetricKey,number|null>;version:number;createdAt:string;updatedAt:string};
 export type StoreReport={id:string;storeId:string;brandId:string;storeVersion:number;summary:string;customer:string;bottleneck:string;actions:{channel:ChannelKey;priority:'first'|'next';action:string;reason:string;sourceIds:string[]}[];proposals:{title:string;channel:ChannelKey;hypothesis:string;control:string;treatment:string;measurement:string;sourceIds:string[]}[];measurementPlan:string;questions:string[];limitations:string;sourceIds:string[];status:'candidate';createdAt:string};
-export type StoreTask={id:string;storeId:string;reportId:string;title:string;channel:ChannelKey;status:'open'|'done';evidence:string;version:number;updatedAt:string};
+// source: 플레이스 대조(A6-2) 할 일만 가진다(reportId ''). 보고서 할 일에는 없다.
+export type StoreTask={id:string;storeId:string;reportId:string;title:string;channel:ChannelKey;status:'open'|'done';evidence:string;source?:PlaceTaskSource;version:number;updatedAt:string};
 export type StoreData={sources:ArchiveSourceSummary[];stores:Store[];channels:StoreChannel[];experiments:StoreExperiment[];measurements:StoreMeasurement[];reports:StoreReport[];tasks:StoreTask[];research:PublicResearch[]};
 export function storeMetrics(m?:StoreMeasurement){
  const v=m?.values;const n=(k:StoreMetricKey)=>v?.[k]??null;

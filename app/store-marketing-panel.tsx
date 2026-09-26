@@ -14,6 +14,7 @@ import {researchActive,researchStages} from '@/lib/archive';
 import {channelCatalog,checkStates,tradeAreas,storeFields,storeMetricFields,experimentStates,decisions,storeMetrics,storeReadiness,type Store,type StoreChannel,type StoreData,type StoreExperiment,type StoreMeasurement,type StoreReport,type StoreTask} from '@/lib/store-marketing';
 import {StoreDiagnosticPanel,StoreLedgerPanel,LedgerMeasurementDialog} from './store-operations-panel';
 import {pushNav} from '@/lib/nav-state';
+import {PlaceCheckPanel} from './place-check-panel';
 const empty:StoreData={stores:[],channels:[],experiments:[],measurements:[],reports:[],tasks:[],research:[],sources:[]};
 const today=()=>new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'});
 const channelName=(key:string)=>channelCatalog.find(c=>c.key===key)?.name||key;
@@ -72,6 +73,7 @@ export function StoreMarketingPanel({workspace,initialBrandId,initialStoreId,ini
      </article>})}</div><p className="subtle-note">빈칸은 미수집으로 유지합니다. 기록된 매출은 광고 순증 효과가 아니며, 채널별 도달·방문을 합산하지 않습니다.</p></TabsContent>
     <TabsContent value="research"><div className="section-heading"><h3>점포 조사 기록</h3><Button variant="outline" onClick={()=>void load()}><RefreshCw/>지금 상태 확인</Button></div>{!data.research.length&&<Blank>아직 점포 조사 기록이 없습니다.</Blank>}{data.research.map(r=><article className="store-research-record" key={r.id}><h3>{r.status==='completed'?'조사 결과 저장됨':r.status==='failed'?'조사 중단':r.status==='cancelled'?'사용자 중지':r.status==='uncertain'?'접수 확인 중':'조사 진행 중'}</h3><small>{new Date(r.createdAt).toLocaleString('ko-KR')} · {r.model}</small>{r.error&&<p className="form-error">{r.error}</p>}{r.steps.map(s=><details key={s.id}><summary>{researchStages[s.stage]} · {s.status==='completed'?'저장됨':s.status==='pending'?'대기':s.status==='failed'?'중단':'진행 확인'}</summary><p>{s.summary||'최종 응답을 기다리고 있습니다.'}</p>{s.limitations&&<p className="notice">{s.limitations}</p>}</details>)}</article>)}</TabsContent>
    </Tabs>
+   {tab==='channels'&&<PlaceCheckPanel key={store.id} store={store}/>}
   </>}
   {storeDialog&&<StoreDialog brands={workspace.brands} initial={storeDialog==='new'?undefined:storeDialog} brandId={brandId==='all'?workspace.brands[0]?.id:brandId} canResearch={workspace.connection.configured&&workspace.connection.provider==='hermes'} onClose={()=>setStoreDialog(null)} onSaved={async(id,brand,research)=>{setStoreDialog(null);setBrandId(brand);selectStore(id);if(research)try{await api('start',{id:clientId(),brandId:brand,storeId:id,mode:'deep'},'/api/archive/research');toast.success('지점 등록과 조사 접수가 완료됐습니다.')}catch(e){toast.warning('지점은 저장됐습니다. 조사 접수: '+(e as Error).message)}if(research||storeDialog!=='new')await latestLoad.current();scope.current?.(brand,id,false)}}/>}
   {store&&channelDialog&&<ChannelDialog key={channelDialog} store={store} channelKey={channelDialog} initial={data.channels.find(c=>c.key===channelDialog)} onClose={()=>setChannelDialog(null)} onSaved={load}/>}

@@ -194,7 +194,7 @@ check('campaign deletion removes its data requests and the dialog labels them',(
 const kinds=plain(registry.recordKinds),kind=kinds.find(k=>k.kind==='data_request');
 check('data_request is registered in the kind registry',()=>{
  assert.ok(kind&&kind.parent==='brand'&&kind.campaignDeletion==='delete'&&JSON.stringify(kind.links)==='["data_campaign"]'&&!kind.purge&&!kind.blocksDeletion,JSON.stringify(kind));
- assert.equal(kinds.indexOf(kind),kinds.findIndex(k=>k.kind==='brand_voice')-1);
+ assert.equal(kinds.indexOf(kind),kinds.findIndex(k=>k.kind==='place_snapshot')-1);
  const names=Object.keys(flags.FEATURE_FLAGS);
  assert.ok(flags.FEATURE_FLAGS.a6_data_requests.defaultEnabled===false&&names.indexOf('a6_data_requests')===names.indexOf('a3_brand_voice')+1);
  const row=f=>plain(status.featureRows({flags:f})).find(r=>r.key==='data-requests');
