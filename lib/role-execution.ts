@@ -10,8 +10,8 @@ import {markUsageOutcomeSafely as markUsageOutcome} from './usage-outcome';
 import {readBoundedJson} from './http-limits';
 import {sequenceAction} from './campaign-sequence';
 // 카피 팩 v2(A3-1): 스위치 a3_copy_pack이 켜진 소유자의 콘텐츠 역할만 요청에 outputProfile을 넣는다. 꺼져 있으면 키가 없어 제출·inputHash·저장이 이전과 바이트 동일하다.
-import {isEnabled} from './feature-flags';
-import {COPY_PACK_PROFILE,briefChannelIssues,type CopyPack,type CopyPackIssue} from './copy-pack';
+import {copyPackProfile} from './copy-pack-server';
+import {briefChannelIssues,type CopyPack,type CopyPackIssue} from './copy-pack';
 // 보관 캠페인 검사(PR 5d)를 소유자 잠금 안에서 한다(PR 4a-2). OpenAI 직접 경로도 HERMES와 같은 토큰 예산 가드(loop-4)로 예약·정리한다.
 import {assertNotArchived} from './campaign-archive';
 import {reserveDirectCall,releaseDirectCall,markTokenReservationRun,settleTokenReservation,TokenBudgetExceeded} from './token-budget';
@@ -82,12 +82,12 @@ export async function roleRequestWithRules(owner:string,c:Campaign,role:string,{
  // 가림 허용 값(레인 A): 브랜드 단위 캠페인이면 그 브랜드 active 지점의 주소·사업장 유선 번호. 모델 입력에는 싣지 않고, 0건이면 키가 없다(바이트 동일).
  const storeAllow=await brandStoreAllow(owner,c);
  // 카피 팩 v2: 콘텐츠 역할이고 스위치가 켜졌을 때만 스위치를 읽고 키를 넣는다. 평가 케이스 캡처(roleRequestFor)도 같은 요청을 동결한다.
- const copyPack=role==='content'&&await isEnabled(owner,'a3_copy_pack');
+ const copyPack=await copyPackProfile(owner,role);
  // 재작성 사유는 이 역할의 가장 최근 작업물(모든 상태) 이후의 실패만 쓴다. 브리프 버전이 없는 이전 실패 기록은 쓰지 않는다.
  const latestRoleArtifact=artifacts.filter(a=>a.role===role).reduce((latest,a)=>String(a.createdAt)>latest?String(a.createdAt):latest,'');const lastFailure=(await listRecords<RoleFailure>(owner,'role_output_failure',c.id)).filter(f=>f.role===role&&f.campaignVersion===c.version&&f.createdAt>latestRoleArtifact).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0];
  // 같은 브리프 버전에서 가장 최근 완료된 팀 회의의 안건·합의(ai-quality-2). 회의 안건에 쓴 지시가 다음 단일 역할 재작성에도 전달된다.
  const meeting=(await listRecords<Meeting>(owner,'team_meeting',c.id)).filter(m=>m.status==='completed'&&m.campaignVersion===c.version).sort((a,b)=>String(b.updatedAt||b.createdAt).localeCompare(String(a.updatedAt||a.createdAt)))[0];const synthesis=meeting?.steps.find(s=>s.phase==='synthesis')?.output as Synthesis|undefined;const previousDecisions=meeting?{agenda:meeting.agenda.slice(0,1500),decisions:synthesis?.decisions||'',questions:synthesis?.questions||''}:undefined;const revisionRequest=repair||lastFailure?{note:(repair as ReviewedArtifact|undefined)?.reviewNote||'',previousVersion:repair?.version??null,previousExcerpt:repair?.content.slice(0,2000)||'',lastFailure:lastFailure?.error||''}:undefined;
- return {request:{role,campaign:c,brand,archive,evidence,learning,previous,previousDecisions,revisionRequest,...(operatorRules.length?{operatorPreferences:operatorPreferenceBlock(operatorRules)}:{}),...(storeAllow.length?{storeAllow}:{}),...(copyPack?{outputProfile:COPY_PACK_PROFILE}:{})},operatorRules,sourceMasking};
+ return {request:{role,campaign:c,brand,archive,evidence,learning,previous,previousDecisions,revisionRequest,...(operatorRules.length?{operatorPreferences:operatorPreferenceBlock(operatorRules)}:{}),...(storeAllow.length?{storeAllow}:{}),...(copyPack?{outputProfile:copyPack}:{})},operatorRules,sourceMasking};
 }
 export async function roleRequestFor(owner:string,c:Campaign,role:string,sources:RoleSources,brand:Brand){return (await roleRequestWithRules(owner,c,role,sources,brand)).request}
 // 역할 제출 조립(운영 start 분기와 서버 평가 lib/eval-kinds.ts가 공유, Q1): 순수 지시문·가린 입력에 운영자 선호 블록과 권한 문장을 붙인다.

@@ -1,4 +1,4 @@
-import {campaignBudget,type Campaign} from './agency';
+import {campaignBudget,type Campaign,type CampaignObjective} from './agency';
 import type {Store} from './store-marketing';
 import {factDiscipline,claimPolicy,directivePolicy,measurementDiscipline} from './campaign-policy';
 
@@ -22,7 +22,8 @@ export type BriefSuggestion={field:BriefKey;value:string;reason:string};
 // 사용자가 브리프에 직접 적은 사실. 확인 1회로 사실 원장의 '확인 후보'로만 등록되며 확정은 관리자가 한다.
 export type FactCandidate={key:string;value:string;source:'사용자 브리프'};
 export type BriefResult={summary:string;suggestions:BriefSuggestion[];questions:{field:QuestionKey;question:string;why:string}[];assumptions:string[];contextUsed:string[];factCandidates?:FactCandidate[]};
-export type BriefInput={storeId?:string;brandId:string;title:string;goal:string;audience:string;channels:string;stores:string;products:string;budget:number|null;startDate:string;endDate:string;constraints:string;sources:string;plan:CampaignPlan};
+// objective: 저장된 가맹 모집 캠페인에서만 이어받는다(lib/brief-execution.ts). 소비자 캠페인 초안에는 키가 없다.
+export type BriefInput={storeId?:string;objective?:CampaignObjective;brandId:string;title:string;goal:string;audience:string;channels:string;stores:string;products:string;budget:number|null;startDate:string;endDate:string;constraints:string;sources:string;plan:CampaignPlan};
 export type BriefDraft={id:string;status:'starting'|'queued'|'in_progress'|'uncertain'|'completed'|'failed'|'cancelled';input:BriefInput;campaignId?:string;campaignVersion?:number;result?:BriefResult;error?:string;createdAt:string;updatedAt:string;model:string;savedCampaignId?:string};
 export type DraftMeta={id:string;generatedAt:string;model:string;values:Partial<Record<BriefKey,string>>;questions:BriefResult['questions'];assumptions:string[];contextUsed:string[]};
 export function valueOf(c:Partial<BriefInput>|Campaign,k:QuestionKey):string{const v=k in planFields?c.plan?.[k as PlanKey]:(c as unknown as Record<string,unknown>)[k];return v===undefined||v===null?'':String(v)}
