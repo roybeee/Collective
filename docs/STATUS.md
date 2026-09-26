@@ -8,8 +8,8 @@
 - #161 · 레인 R · 보통 · 새 스위치 없음(고정 안내 문장 권장화·R2 대기기간 오기재 hard_block 확장, 가맹 기능은 `r_franchise` 기본 꺼짐). 이 PR(R15a-2b 화면)이 병합되면 함께 싣는 편이 좋다(화면이 경고를 보인다)
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-26 21:32 UTC
-- 진행 중: 대표 결정 수정 PR #160(최상위 `}` 1개 누락 보정 읽기, 운영·채점 같은 기준 `+root-brace`, 카피 팩 스키마 순서 되돌림) → 묶음 17 게시 → A3 4회차. B4 2부는 #155·#157·#159로 `merged`(`b4_reward_lineage` 기본 꺼짐). A8 전체·#154는 묶음 16(Sites 버전 42)으로 게시됨. 다음: B3 본체(설계 중).
+갱신: 2026-09-26 21:52 UTC
+- 진행 중: B3-2a 교정 신호 PR(교정 묶음 90일 5건·규칙별 파생 피드백·같은 사유 재발률, 스위치 `b3_playbook_signals` 기본 꺼짐, 경보가 열리면 `playbook_activate` 409, 토큰 0, [PLAYBOOK](PLAYBOOK.ko.md) B3-2a 절). 다음: B3-2b 선호 on/off 쌍 평가(레인 Q 파일을 레인 A가 수정, 29f7af 리뷰) → B3-2c. #160(최상위 `}` 보정·순서 되돌림) `merged`, 묶음 17 게시는 A1 dev 쌍 평가 `5528b2f9` 종료 뒤 → A3 4회차. B4 2부 #155·#157·#159 `merged`.
 - A6 종료 조건: **passed · real**(2026-09-27 00:56 KST). 이문동점 영업시간 자료 요청 `dr-f08c16186f08`이 사실 확정으로 closed. [관찰 기록](observations/2026-09-27-lane-a-a6-end-condition.md). 운영 스위치 `a6_data_requests` 켜짐.
 - A3 종료 조건 run: 3회째도 **failed · real**(run `b152f1fb`, #154 반영 뒤). 국밥은 실험 channel `Instagram 숏폼`이 팩 channels에 없어 새로 fail(#154 순서 변경이 만든 퇴행), 수학학원은 다시 최상위 마지막 `}` 하나 누락. 대표 결정(2026-09-27 "괄호 1개 보정 + 순서 되돌림"): #154 스키마 순서 되돌림 + 최상위 `}` 딱 1개 누락은 운영 읽기·`contract_json` 모두 채워 읽음(`+root-brace`, #112 방침 변경). PR `fix/copy-pack-root-brace` → 묶음 게시 → 같은 두 케이스 4회째 run. 3회 기록은 [카피 팩](COPY-PACK.ko.md#a3-종료-조건-run-기록-3회). 1회차 `a3634055`(`}` 누락), 2회차 `a81bb445`(실험 객체가 channels에), 서버 로그인 실패 `2092b0bb`(0토큰).
 - 확인 필요(레인 R): `tests/check-prompts.test.mjs`가 macOS(대소문자 무시 파일 시스템)에서 `channel.leadad.json`·`channel.leadAd` 변형 충돌로 로컬 실패한다(Linux CI는 통과).

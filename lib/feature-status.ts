@@ -133,6 +133,13 @@ function rewardLineageRow(flags:unknown):FeatureRow{
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'보상 계보 스위치 상태를 확인하지 못했습니다',link};
  return state.enabled?{...base,status:'available',reason:'사람 판정·발행·반응(축소)·주문 귀속 결정론 집계 · 재방문 not_run · 자동 승격·강등 없음(모델 호출 없음, 화면은 B4-2c)'}:{...base,status:'blocked',reason:'기능 스위치 b4_reward_lineage 꺼짐 · 소유자가 켭니다',link};
 }
+// 교정 신호(B3-2a): 기능 스위치 b3_playbook_signals 상태를 읽는다. 켜지면 대표·관리자가 학습 규칙 탭에서 교정 묶음·규칙별 피드백·같은 사유 재발률을 본다.
+function playbookSignalsRow(flags:unknown):FeatureRow{
+ const base={key:'playbook-signals',label:'교정 신호(교정 묶음·규칙별 피드백·같은 사유 재발률)'},link:FeatureLink={label:'학습 화면 학습 규칙 탭에서 확인',view:'learning'};
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='b3_playbook_signals'):undefined;
+ if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'교정 신호 스위치 상태를 확인하지 못했습니다',link};
+ return state.enabled?{...base,status:'available',reason:'브랜드×역할 교정 90일 5건 이상 초안 대상 · 규칙 버전별 파생 피드백 · 4주 재발률(읽을 때 계산, 모델 호출 없음, 규칙 자동 변경 없음)'}:{...base,status:'blocked',reason:'기능 스위치 b3_playbook_signals 꺼짐 · 소유자가 켭니다',link};
+}
 export function featureRows(input:FeatureInput={}):FeatureRow[]{
  const now=typeof input.now==='number'?input.now:Date.now(),brands=brandIds(input.brands);
  return [
@@ -151,6 +158,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   placeCheckRow(input.flags),
   customerReportRow(input.flags),
   rewardLineageRow(input.flags),
+  playbookSignalsRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
   {key:'pos-auto',label:'POS 자동 수집',status:'unimplemented',reason:'POS 연동 없음 · CSV로 가져오세요'},
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},
