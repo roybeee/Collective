@@ -42,8 +42,9 @@ export const SPOKEN_ASSET_TYPES=deepFreeze(['event_deck','first_call_script'] as
 // heading = SECTION_MARK + title + (label ? ' ' + label : ''). 창업 페이지 문안에는 수익 수치 칸이 없다(H6). 나머지 5종은 자유 문안이라 절 검사를 하지 않는다.
 // recommendedLines: 템플릿(sectionTemplate)이 절 제목 아래 미리 채우는 권장 문장이다. 대표 결정(2026-09-26 '3번')으로 필수가 아니다: 빠지거나 고쳐도 승인·내보내기를 막지 않고
 // assetStructureWarnings가 경고로 알린다(approvalChecklist에 자료를 넘기면 해당 확인 항목 옆에도 붙는다).
-// 판정기(h.wait_bypass_solicitation, 해제 불가)는 우회 표현 목록(가계약금·홀딩비·입금 순서 확정·대기 없이·당일 계약 등)만 막는다. 법정 대기기간(14일, 자문 시 7일)을 짧게 잘못 적은 문장
-// ('3일이 지나면 계약', '다음 날 계약', '같은 날 계약', '대기기간은 선택 사항')은 막지 않고 권장 문장 경고만 남는다. 남은 위험이다(교차 검토 F1, 판정 규칙을 더할지는 대표 결정 대기).
+// 보완 통제(교차 검토 F1): 법정 대기기간(14일, 자문 시 7일)을 짧게·선택처럼·당일로 잘못 적은 문장('3일이 지나면 계약', '다음 날 계약', '같은 날 계약', '대기기간은 선택 사항',
+// '본사 법무팀 자문이면 7일')은 판정기가 해제 불가 hard_block(h.wait_bypass_solicitation·h.captive_advisor_phrase, fr-claims@2026-09-26.4)으로 막는다. 휴리스틱이라 처음 보는 표현을
+// 다 잡지는 못한다(계획 R15 기록의 측정값). 승인 체크리스트 '대기기간 우회 없음'을 사람이 확인하는 층은 그대로다.
 export const SECTION_MARK='■ ';
 export type SectionSpec={readonly id:string;readonly title:string;readonly label:string|null;readonly heading:string;readonly costLines:boolean;readonly recommendedLines:readonly string[]};
 export const WAITING_NOTES=deepFreeze([
