@@ -4,7 +4,7 @@
 
 비유: 가게 장부(주문·광고비)와 게시판(확정 사실)을 일주일마다 한 장짜리 결산표로 묶는다. 결산표는 사진을 찍어(동결) 두고, 사장님이 확인 도장(검토)을 찍는다.
 
-- 상태: **설계만 했다(코드 착수 전)**. 성장 계획 원칙 12에 따라 3단계 종료 조건(A3·A6 real run)을 채운 뒤 A8-1부터 착수한다.
+- 상태: **A8-1 순수 모듈([9절](#9-a8-1-구현-순수-모듈)), A8-2 서버·API([10절](#10-a8-2-구현-서버api)), A8-3 화면([11절](#11-a8-3-구현-화면))을 구현했다**. 스위치 `a8_customer_report`는 기본 꺼짐이다.
 - 레인: A([LANES](LANES.ko.md)). 기준 SHA `63f8873`. 아래 `파일:줄`은 그 커밋 기준이다.
 - 4단계 종료 조건: "점포 브랜드 주간 고객 보고서 1건을 대표가 검토했다(real)". 묶음 5(B3·B4 2부·A8·PR 5)에 싣는다.
 
@@ -137,3 +137,169 @@
 - **공유 파일**
   - `lib/record-kinds.ts`·`lib/feature-flags.ts`·`lib/feature-status.ts`는 트랙 R R15a-2와 겹칠 수 있다. LANES 규칙대로 먼저 연 PR이 이기고, 뒤 PR은 main을 merge해서 자기 항목만 더한다.
   - `prompts/`·`role-instruction`·`meetings`와 레인 Q의 `eval-*`·`quality-*`는 건드리지 않는다. 주 라벨은 교차 테스트로만 확인한다.
+
+## 9. A8-1 구현 (순수 모듈)
+
+결론: 보고서·사실 팩을 만드는 순수 함수와 지표 사전을 더했다. 서버·API·kind·스위치는 건드리지 않았고(A8-2), 모델·외부 호출은 0회다. 5절 A8-1 RED 목록은 `tests/customer-report.test.mjs`·`tests/fact-pack.test.mjs`가 고정한다.
+
+비유: 계산기와 결산표 양식만 먼저 만들었다. 장부를 꺼내 오는 창구(서버)와 도장 찍는 자리(동결·검토)는 다음 PR이다.
+
+### 9.1 지표 사전 `REPORT_METRICS`
+
+payload의 숫자 키는 모두 아래 id다(테스트가 확인한다). 정의는 A4 순수 함수를 그대로 쓴다(data-truth-9).
+
+| id | 구역 | 이름 | 단위 | 출처 | 정의 | 근거 코드 |
+|---|---|---|---|---|---|---|
+| `records` | 장부 | 주문 기록 | 건 | 사용자 기록 | 보고 주(한국 날짜 월~일)의 주문 기록 전체(취소·전액 환불 포함). | `store-attribution.ts orderMetrics records` |
+| `orders` | 장부 | 주문 수 | 건 | 사용자 기록 | 결제 완료이고 전액 환불이 아닌 주문. | `store-attribution.ts countedOrder` |
+| `cancelled` | 장부 | 취소 | 건 | 사용자 기록 | 상태가 취소인 주문 기록. | `store-operations.ts ledgerSummary cancelled` |
+| `refunded` | 장부 | 전액 환불 | 건 | 사용자 기록 | 상태가 전액 환불인 주문 기록. | `store-operations.ts ledgerSummary refunded` |
+| `netRevenue` | 장부 | 순매출 | 원 | 사용자 기록 | 모든 주문 기록의 결제액−환불액 합. | `store-attribution.ts orderMetrics netRevenue = ledgerSummary netRevenue` |
+| `contribution` | 장부 | 공헌이익 | 원 | 파생 | 순매출−주문 원가(식재료·포장·수수료·배달비·증정) 합. 원가를 모르는 주문이 1건이라도 있으면 null(추정 없음). | `store-operations.ts orderContribution` |
+| `unknownCostOrders` | 장부 | 원가 미입력 주문 | 건 | 사용자 기록 | 원가 항목 중 하나라도 비어 있는 주문 기록. | `store-attribution.ts orderMetrics unknownCostOrders` |
+| `newCustomers` | 장부 | 신규 고객 | 명 | 사용자 기록 | 센 주문 중 신규 여부가 참인 주문. 하나라도 모르면 null. | `store-attribution.ts orderMetrics newCustomers` |
+| `attributedOrders` | 장부 | 귀속 주문 | 건 | 파생 | 센 주문 중 유입 채널·캠페인·소재가 하나라도 있는 주문. 귀속≠증분. | `store-attribution.ts isAttributed` |
+| `adSpend` | 장부 | 광고비 | 원 | 사용자 기록 | 비용 장부 광고비 합. 네이버 검색광고 수집값을 옮긴 기록은 수집 기간 합계를 종료일 한 건으로 적는다(배분 없음). | `store-operations.ts ledgerSummary adSpend` |
+| `productionCost` | 장부 | 제작·협찬비 | 원 | 사용자 기록 | 비용 장부 제작·협찬비 합. | `store-operations.ts ledgerSummary productionCost` |
+| `spendTotal` | 장부 | 비용 합계 | 원 | 파생 | 광고비+제작·협찬비. | `store-attribution.ts unitEconomics spendTotal` |
+| `ledgerNet` | POS 대조 | 장부 순매출 | 원 | 사용자 기록 | 그 주 일별 장부 합계의 순매출. | `store-attribution.ts weeklyCompletenessFromDays` |
+| `ledgerOrders` | POS 대조 | 장부 주문 수 | 건 | 사용자 기록 | 그 주 일별 장부 합계의 주문 수. | `store-attribution.ts weeklyCompletenessFromDays` |
+| `posNet` | POS 대조 | POS 순매출 | 원 | 사용자 기록 | 매장 POS가 낸 그 주 순매출 합계. 없으면 null(missing_pos). | `store-attribution.ts PosWeeklyTotal netSales` |
+| `posOrders` | POS 대조 | POS 주문 수 | 건 | 사용자 기록 | 매장 POS가 낸 그 주 주문 수. 없으면 null. | `store-attribution.ts PosWeeklyTotal orderCount` |
+| `diffRate` | POS 대조 | POS 차이율 | 비율 | 파생 | |장부 순매출−POS 순매출|÷POS 순매출. 허용 오차 1% 안이면 pass. | `store-attribution.ts COMPLETENESS_TOLERANCE` |
+| `attributedContribution` | POS 대조 | 귀속 공헌이익 | 원 | 파생 | 그 주 귀속 주문의 공헌이익. 원가를 모르는 귀속 주문이 있으면 null. | `store-attribution.ts weeklyCompletenessFromDays` |
+| `measured` | north-star | north-star 측정 | 예/아니오 | 파생 | POS 대조를 통과한 주가 하나라도 있는가. | `store-attribution.ts northStar measured` |
+| `passedWeeks` | north-star | 대조 통과 주 | 주 | 파생 | 지난 4주 중 POS 대조 pass인 주. | `store-attribution.ts northStar` |
+| `excludedWeeks` | north-star | 제외한 주 | 주 | 파생 | 지난 4주 중 fail·missing_pos인 주. | `store-attribution.ts northStar` |
+| `northStarOrders` | north-star | north-star 귀속 주문 | 건 | 파생 | 통과한 주의 귀속 주문 합. | `store-attribution.ts northStar attributedOrders` |
+| `northStarContribution` | north-star | north-star 귀속 공헌이익 | 원 | 파생 | 통과한 주의 귀속 공헌이익 합. 하나라도 null이거나 통과 주가 없으면 null. | `store-attribution.ts northStar attributedContribution` |
+| `contributionAfterSpend` | 채널 | 비용 뺀 공헌이익 | 원 | 파생 | 채널 공헌이익−같은 채널 비용 합계. 공헌이익이 null이면 null. | `store-attribution.ts unitEconomics` |
+| `costPerOrder` | 채널 | 주문당 비용 | 원 | 파생 | 채널 비용 합계÷주문 수. | `store-attribution.ts unitEconomics` |
+| `costPerNewCustomer` | 채널 | 신규 고객당 비용 | 원 | 파생 | 채널 비용 합계÷신규 고객. | `store-attribution.ts unitEconomics` |
+| `revenuePerSpend` | 채널 | 비용 대비 순매출 | 비율 | 파생 | 순매출÷채널 비용 합계(ROAS). 귀속≠증분. | `store-attribution.ts unitEconomics` |
+| `connectorAdSpend` | 커넥터 | 커넥터 광고비 | 원 | 커넥터 실측 | 커넥터가 수집 기간 합계로 준 광고비. 모르면 null. | `measurement_draft storeValues.adSpend` |
+| `connectorConversions` | 커넥터 | 커넥터 전환 | 건 | 커넥터 실측 | 커넥터가 준 전환 수(광고 계정 전환 정의). | `measurement_draft storeValues.orders` |
+| `controlNumerator` | 커넥터 | 대조안 분자 | 건 | 커넥터 실측 | 대조안 수집 값의 분자(정의 참고). | `measurement_draft arms.control.value` |
+| `controlDenominator` | 커넥터 | 대조안 분모 | 건 | 커넥터 실측 | 대조안 수집 값의 분모(정의 참고). | `measurement_draft arms.control.value` |
+| `treatmentNumerator` | 커넥터 | 실험안 분자 | 건 | 커넥터 실측 | 실험안 수집 값의 분자(정의 참고). | `measurement_draft arms.treatment.value` |
+| `treatmentDenominator` | 커넥터 | 실험안 분모 | 건 | 커넥터 실측 | 실험안 수집 값의 분모(정의 참고). | `measurement_draft arms.treatment.value` |
+| `publications` | 발행 | 발행 건수 | 건 | 앱 기록 | 예약 시각(한국 날짜)이 보고 주인 발행을 상태별로 센다. | `execution.ts Publication status` |
+| `openDataRequests` | 할 일 | 열린 자료 요청 | 건 | 앱 기록 | 열린 자료 요청(라벨만). | `data-requests.ts DataRequest` |
+| `placeMismatches` | 할 일 | 플레이스 불일치 | 건 | 파생 | 플레이스 대조에서 일치가 아닌 항목(항목·상태만). | `place-check.ts PlaceCheckResult` |
+| `factCounts` | 사실 | 사실 건수 | 건 | 앱 기록 | 사실 팩의 확정·14일 안 만료·거절·제외 건수. | `fact-pack.ts FactPackCounts` |
+
+### 9.2 계약
+
+| 함수 | 입력 → 출력 | 규칙 |
+|---|---|---|
+| `isoWeekOfDate(date)`·`reportWeek(week)`·`weekClosed(week, today)` | 한국 날짜 ↔ `YYYY-Www`(월~일, `Asia/Seoul`) | 없는 주(W00·W54·그해에 없는 W53)는 `null`. 라벨은 `quality-console` `isoWeekOf`와 같다(테스트에서만 교차 확인, 런타임 import 없음) |
+| `aggregateLedger(week, orders, spend)` | 주문·비용 행 → `ReportLedger`(이번 주·전주 장부, 채널 단위경제, 주를 걸친 네이버 광고비 창) | 여기서 주문 행 필드와 비용 출처 문구가 떨어진다. `orders`는 게시 관문을 다시 본 주문(`publicationGateView`)을 넘긴다. `spend`는 보고 주 앞뒤 네이버 수집 기록까지 넘겨야 걸친 창을 찾는다 |
+| `buildReport(input)` | `{scope, week, ledger, days, posTotals, connectors?, publications?, dataRequests?, placeChecks?, facts?, allow?}` → `collective.customer-report.v1` | 사전 키만으로 새로 조립한다. 없는 주·다른 주의 장부는 `RangeError`. POS 대조·north-star는 보고 주를 포함한 최근 4주(`REPORT_TRAILING_WEEKS`). `days`는 게시 관문을 다시 본 일별 합계(`attributionReport`의 `regateDays`와 같게) |
+| `reportMarkdown`·`reportCsv`·`reportFileName` | payload → MD·CSV·파일 이름 | 렌더러는 payload만 읽는다. CSV는 `section,key,label,unit,value,previous` 한 줄에 값 하나, UTF-8 BOM·CRLF. 파일 이름은 `customer-report-<store|brand>-<id>-<YYYY-Www>.<json|md|csv>` |
+| `factPackInput(facts, brandId, storeId, now)` | 저장된 사실 → `{confirmed, rejected, excluded}` | 확정 = `effectiveBrandFacts`, 거절 = `scopedBrandFacts`의 금지 사실, 나머지는 후보·만료·근거 없음·가맹 건수 |
+| `buildFactPack({scope, now, ...})`·`factPackMarkdown`·`factPackCsv` | → `collective.fact-pack.v1` | 빌더도 가맹 항목을 다시 걸러 센다. `confirmedBy`는 싣지 않는다. 14일 안 만료에 `expiresInDays`. 세 형식의 `factId·version` 집합이 같다 |
+
+- **payload 키**: `schema, scope{type,id,brandId,name,address,businessPhone}, period{week,from,to,timeZone,previousWeek}, ledger{current,previous}, completeness[], northStar{measured,weeks,passedWeeks,excludedWeeks,northStarOrders,northStarContribution}, channels[], spendWarnings[], connectors[], publications{total,byStatus}, todos{dataRequests[{label}],placeMismatches[{field,label,state}]}, facts, notices[], masking[]`.
+- **공헌이익**: 빌더는 변동비율을 어디에도 넘기지 않는다. 장부에 원가 미입력 주문이 있으면 입력에 공헌이익이 적혀 와도 `null`로 둔다.
+- **커넥터**: `naver_ads`·`instagram`만. 커넥터·수집 기간·수집 시각·보고 주와의 관계(`within|crosses|outside`)·정의·한계·숫자 값(`storeValues`의 광고비·전환, arm의 분자·분모)만 옮기고 `comparable:false`로 고정한다. 계정 id·광고 대상·자격증명·`raw`·arm `source`는 읽지 않는다.
+- **가림**: `maskFields` 경로는 지점 이름, 채널 이름, 커넥터 정의·한계, 자료 요청 라벨이다. 허용 목록은 지점 주소, 확정 사업장 전화, `allow`(확정 사실 값)다. 사실 팩은 출처·거절 표현·이름을 가리고 확정 사실 값·지점 주소를 허용한다.
+- **고지**: `notices` 첫 두 줄은 "귀속≠증분"(`ATTRIBUTION_NOT_INCREMENTAL`)과 "자동 판정 아님"이다. MD 머리와 CSV `notice` 행에도 같은 문장이 들어간다.
+
+### 9.3 설계와 다르게 한 것·한계
+
+- north-star 키는 장부의 `attributedOrders`와 헷갈리지 않게 `northStarOrders`·`northStarContribution`으로 이름을 바꿨다. 창은 최근 4주로 정했다(설계에 없던 값).
+- v1 payload에는 코드·팔·소재·캠페인별 표를 넣지 않았다(D4 포함 범위에 없음). 그래서 4절 2의 "코드 설명, 소재·캠페인 제목" 가림 경로는 없다.
+- CSV는 `=+-@`·탭·CR로 시작하는 **문자열**에만 `'`를 붙이고 숫자(음수 포함)는 그대로 둔다. `usage-export`는 음수에도 붙인다. BOM·CRLF는 같다.
+- 네이버 옮긴 광고비 판별(`naver-<24자>-<시작일>` id, 비용일 = 종료일)과 발행 상태 이름(`PUBLICATION_STATUS_LABELS`)은 `lib/spend-transfer.ts`·`lib/execution.ts`에서 로컬로 옮겼다. 두 파일은 허용 import 목록 밖이다(`spend-transfer`는 `server`를 import한다). 발행 이름은 테스트가 같음을 확인한다. id 형식이 바뀌면 두 곳을 함께 고친다.
+- 같은 항목의 지점 사실에 `sourceRef`·`cost`가 있으면, 그 지점 사실은 가맹이라 빠지고 대신된 브랜드 사실도 없다. 실제로는 가맹 항목에만 근거가 붙어서 드물다.
+- 브랜드 범위 보고서(`scope.type='brand'`)는 POS 합계를 지점별로 거르지 않는다. 지점 합산 규칙은 A8-2에서 정한다.
+- import 경계 테스트는 타입 전용 import를 실행 그래프에서 뺀다. `lib/execution.ts`가 `franchise-facts`를 타입으로만 import하기 때문이다(컴파일하면 지워진다). 직접 import는 타입까지 전부 허용 목록(`store-attribution`·`store-operations`·`brand-facts`·`fact-catalog`·`pii-scan`·`fact-pack`)만 쓴다.
+- 가림은 패턴 기반이다. 사람 이름 등은 잡지 않는다(`docs/INPUT-MINIMIZATION.ko.md` 알려진 한계).
+
+## 10. A8-2 구현 (서버·API)
+
+결론: 미리보기·동결·대표 검토·동결본 목록·다운로드·사실 팩을 `lib/customer-report-server.ts`와 `app/api/customer-reports/route.ts`로 연결했다. 숫자는 점포 귀속 보고(`attributionReport`)와 같은 입력(게시 관문 재검사)이고, 모델·외부 호출은 0회다. 5절 A8-2 RED 목록은 `tests/customer-report-server.test.mjs`(실제 SQLite·실제 라우트)가 고정한다.
+
+비유: 결산표 양식(A8-1)에 장부를 꺼내 오는 창구와 사진 찍는 자리(동결), 도장 찍는 자리(검토)를 붙였다. 사진을 찍은 뒤 장부가 고쳐지면 사진 옆에 '장부가 바뀌었음(stale)' 표시가 뜬다.
+
+### 10.1 API (`/api/customer-reports`)
+
+| 요청 | 동작 | 스위치 꺼짐 | 권한 |
+|---|---|---|---|
+| `GET ?storeId=&week=YYYY-Www` · `?brandId=&week=` | 미리보기(저장 안 함) `{enabled,id,closed,preview,confirm,bytes,maxBytes,tooLarge,frozen}`. 진행 중인 주도 볼 수 있다(`closed:false`), 미래 주 400 | 409 | 대표·관리자 |
+| `GET ?brandId=&from=&to=(&storeId=)` | 동결본 목록 `{enabled,preview:null,frozen:[{id,scope,week,version,frozenAt,frozenBy,review,stale,versions}]}`. from·to는 ISO 주, 26주 이하 | 읽힘 | 대표·관리자 |
+| `GET ?id=&format=json\|md\|csv(&version=)` | 동결본 첨부(`attachment`·`no-store`·`nosniff`). version은 이전 판 5개 안에서 찾는다 | 읽힘 | 대표·관리자 |
+| `GET ?type=fact_pack&brandId=(&storeId=)&format=` | 사실 팩 첨부(파일 이름 `fact-pack-<브랜드>[-<지점>]-<한국 날짜>.<형식>`) | 409 | 대표·관리자 |
+| `POST {action:'freeze',storeId\|brandId,week,confirmed:true,expected:{orders,netRevenue,posStatus}}` | 동결 → `{id,version,stale:false}` | 409 | 대표·관리자 |
+| `POST {action:'review',id,version}` | 대표 검토 → `{id,version,review}`. 같은 판을 다시 검토하면 쓰지 않고 그 검토를 돌려준다 | 409 | 대표만 |
+
+- 판정 순서(쓰기): 로그인 401 → 같은 출처 403 → 모르는 작업 400 → 권한 403 → 스위치 409 → 범위(없음·다른 워크스페이스 404) → 입력 400(주 형식, 끝나지 않은 주, 확인 누락) → 확인 값 불일치 409 → 크기 413. 쓰기는 소유자 변경 잠금(`acquireLock`)과 빈도 제한(`executionRate`, 범위 `customer_reports`) 안에서 한다.
+- 스위치는 `lib/customer-report-server.ts`에서만 읽고 읽기 실패는 꺼짐으로 본다. 라우트는 `feature-flags`를 import하지 않는다.
+
+### 10.2 저장 (kind `customer_report`)
+
+- 행 id `<store|brand>:<지점·브랜드 id>:<YYYY-Www>`, parent는 브랜드 id(`not_campaign_scoped`, D7). kind 목록에서 `place_snapshot` 뒤, `brand_voice` 앞이다.
+- 행: `{id, scope{type,id,brandId}, week, version, report(collective.customer-report.v1), inputHash, frozenAt, frozenBy{id,role}, review, history[]}`. 이메일은 담지 않는다.
+- 다시 동결하면 `version+1`, `review:null`이고 이전 판(검토 포함)을 `history` 앞에 넣어 최근 5개만 둔다. 옛 판의 검토는 옛 판에 남는다.
+- payload 상한 200,000바이트(UTF-8). 넘으면 동결 413, 미리보기는 `tooLarge:true`로 알린다. 행은 이전 판 5개를 합쳐도 약 1.2MB 이하다.
+
+### 10.3 입력 (A8-1이 남긴 과제)
+
+- **게시 관문 재검사**: 주문(전주~보고 주)은 `publicationGateView`를 거친 값을, 일별 합계(최근 4주)는 `ledgerDays` 뒤 `regateDays`로 귀속이 바뀐 주문만큼 고친 값을 넘긴다. `attributionReport`와 같은 절차라 같은 fixture에서 주문 수·순매출·공헌이익·보고 주 완전성(장부 순매출·귀속 주문·귀속 공헌이익·상태)이 같다(테스트 고정, `attributionReport`는 export 한 단어, 재사용한 `publicationOrders`도 export 한 단어).
+- **주를 걸친 네이버 광고비**: 비용은 전주~보고 주 기록과, 보고 주 안에서 시작해 뒤 주 날짜(종료일)로 기록된 네이버 수집 광고비(id `naver-<24자>-<시작일>`)를 함께 넘긴다. 뒤 기록은 장부에 들어가지 않고 경고(`counted:false`)만 붙는다.
+- **브랜드 범위 POS 합산 규칙(지점별 대조 후 합산)**: 주마다 그 주에 장부 일별 합계나 POS 합계가 있는 지점(참여 지점)만 본다.
+  - 참여 지점 하나라도 POS 합계가 없으면 브랜드 POS를 두지 않는다 → `missing_pos`.
+  - 모두 있으면 지점마다 먼저 대조한다. 모두 통과면 합을 브랜드 POS로 둔다(주문 수는 하나라도 없으면 null). 지점 허용 오차의 합이 합의 허용 오차 안이라 브랜드도 통과다.
+  - 지점 불일치가 있는데 합에서 상쇄돼 통과로 보이면 브랜드 POS를 두지 않는다(통과로 세지 않고 north-star에서 뺀다). 합으로도 불일치면 합을 두어 `fail`로 보인다.
+  - 그 주에 기록도 POS도 없는 지점(휴점·개점 전)은 브랜드 대조를 막지 않는다.
+- 범위: 지점 보고서의 커넥터 초안·발행은 그 지점 캠페인과 브랜드 공통 캠페인(수집 광고비 옮기기와 같은 범위), 자료 요청은 그 지점과 브랜드 공통 요청이다. 브랜드 보고서는 브랜드의 모든 지점(보관 지점 포함)·캠페인이다. 사실 건수·허용 목록·사업장 전화는 지점 보고서가 그 지점과 브랜드 사실, 브랜드 보고서가 브랜드 사실만 쓴다.
+
+### 10.4 변경 감지 (`stale`)
+
+동결 때와 읽을 때 같은 함수로 입력 지문(sha256)을 만들어 다르면 `stale:true`다. 지문 입력:
+
+- 주문(최근 4주)·비용(전주~보고 주): 날짜별 행 수·판 합·마지막 저장 시각(SQL 집계라 주문 행을 읽지 않는다).
+- 주를 걸친 네이버 수집 광고비·POS 합계: 행별 판·저장 시각.
+- 게시 코드 주문의 게시: `{id, 판, 상태}`(게시가 취소되면 귀속이 바뀐다).
+- 사실: `{id, 판}`(지점 보고서는 그 지점과 브랜드 사실, 브랜드 보고서는 브랜드 사실).
+
+값이 같게 되돌아와도 저장이 있었으면 stale이다(보수적). 다시 동결하면 풀린다. 목록(최대 26주)은 지점마다 지문 조회 5번과 사실·게시 조회로 끝난다(보고서 수와 무관).
+
+### 10.5 설계와 다르게 한 것·한계
+
+- 설계의 GET 계약(`?storeId=&week=`)에 브랜드 미리보기(`?brandId=&week=`)와 동결본 목록(`?brandId=&from=&to=`)을 나눴다. 스위치가 꺼지면 미리보기는 409여야 하고 동결본은 읽혀야 해서, 목록을 미리보기와 다른 요청으로 뒀다.
+- 변경 감지 지문은 설계의 주문·비용 `{id,version}` 목록 대신 날짜별 행 수·판 합·마지막 저장 시각을 쓴다(26주 목록에서도 행 상한 없이 SQL 집계로 끝난다). 게시 관문 `{id,판,상태}`를 더했다. 커넥터 초안·발행·자료 요청·플레이스 대조의 변경은 stale에 들어가지 않는다(설계 3절 범위 그대로).
+- 검토와 사실 팩도 스위치가 꺼지면 409다(쓰기·새로 계산하는 내보내기). 동결본 목록·다운로드만 꺼져도 읽힌다.
+- 동결은 보관 지점도 막지 않는다(지난 주 결산은 보관 뒤에도 남길 수 있다).
+- 판을 골라 받은 파일 이름에는 판 번호가 없다(`reportFileName` 그대로). 같은 주의 여러 판을 받으면 이름이 겹친다.
+- 조회 한도: 지점마다 주문·비용 행 5,000건을 넘으면 400이다(설계 8절).
+
+## 11. A8-3 구현 (화면)
+
+결론: 점포 마케팅 지점 탭 '고객 보고서'와 브랜드 사실 탭의 '사실 팩 받기'를 붙였다. 화면은 숫자를 계산하지 않고 A8-2 API가 준 값을 그대로 보이고 보낸다. 모델·외부 호출은 0회다. 5절 A8-3 RED 목록은 `tests/customer-report-ui.test.mjs`·`tests/nav-state.test.mjs`(mocked, 서버 렌더)와 `e2e/customer-report.spec.ts`(실제 Chromium·로컬 빌드, API 응답은 `route.fulfill` 모의)가 고정한다.
+
+비유: 창구(A8-2)에 계산대 화면을 달았다. 화면은 창구가 계산한 결산표를 보여 주고, 사진을 찍을 때는 "이 숫자로 찍습니다"를 먼저 보여 준 뒤 그 숫자 그대로 창구에 넘긴다.
+
+### 11.1 화면
+
+| 부분 | 동작 | 권한·스위치 |
+|---|---|---|
+| 탭 `report`(`lib/nav-state.ts` `storeTabs`) | '조사 기록' 뒤 '고객 보고서'. `?tab=report`로 바로 열린다 | 대표·관리자만 보인다. 직원·계정 확인 전에는 탭과 내용이 없다 |
+| 주 선택 | 끝난 KST ISO 주(월~일) 최근 12주, 기본은 지난주. 라벨 `YYYY-Www (MM-DD~MM-DD)` | 스위치 켜짐만 |
+| 미리보기 | 장부 12개 지표(이번 주·전주, 지표 사전 이름·단위), 보고 주 POS 대조 상태, north-star 통과 주, 광고비 창 경고, 고지 첫 두 줄, 같은 주 동결본 안내, 크기 초과·진행 중 주 안내 | 스위치 켜짐만 |
+| 동결 대화상자 | 보낼 확인 값 `expected`(주문 수·순매출·POS 상태 `통과 (pass)`)를 그대로 보이고 같은 객체로 `POST {action:'freeze',…,confirmed:true,expected}`를 보낸다. 409면 서버 문구를 보이고 미리보기를 다시 불러온다 | 대표·관리자, 스위치 켜짐 |
+| 동결본 목록 | 최근 26주(`?brandId=&storeId=&from=&to=`). 판·동결 시각·검토 상태, `stale`이면 '장부 변경됨(stale)', 이전 판(최대 5개) 펼침 | 스위치가 꺼져도 보인다 |
+| '검토 완료' | 지금 판이 미검토일 때 `POST {action:'review',id,version}` | 대표만, 스위치 켜짐만 |
+| 다운로드 | 판마다 MD·CSV·JSON 받기(`?id=&format=&version=`). 파일 이름은 서버 `Content-Disposition` | 스위치가 꺼져도 받는다 |
+| '사실 팩 받기' | 브랜드 사실 탭(캠페인 안의 사실 패널에는 없음). 형식 MD·CSV·JSON, 적용 범위 지점을 고르면 `storeId`를 함께 보낸다. 꺼져 있으면 서버 409 문구를 보인다 | 대표·관리자만 |
+
+- 연결 줄: `app/store-marketing-panel.tsx`는 탭 목록 줄에 `<ReportTabTrigger/>`·`<ReportTabContent store={store}/>`(한 줄 수정)과 import 한 줄, `app/brand-facts-panel.tsx`는 `{!campaign&&<FactPackDownload …/>}` 한 줄과 import 한 줄이다.
+- 역할 판정은 `app/account-context.tsx`(`canChange`)와 같다. 화면은 보조 수단이고 판정은 서버가 한다(직원 403, 검토는 대표만).
+
+### 11.2 설계와 다르게 한 것·한계
+
+- 화면 목록은 26주(API 상한)이고 주 선택은 12주다. 26주보다 오래된 동결본은 화면에 나오지 않는다(API로는 읽힌다).
+- 스위치 상태는 동결본 목록 응답의 `enabled`로 안다. 사실 팩 버튼은 스위치 상태를 미리 읽지 않고, 누른 뒤 409 문구로 알린다.
+- 직원이 `?tab=report` 주소로 들어오면 탭 내용이 비어 보인다(탭은 없다). 주소는 그대로 둔다.
+- stale인 판도 '검토 완료'를 막지 않는다(서버와 같다). 목록에 '장부 변경됨'이 함께 보인다.
+- E2E의 역할(관리자·직원)은 `/api/auth` 응답만 모의한다. 서버 권한(직원 403·검토 대표만)은 `tests/customer-report-server.test.mjs`가 본다.

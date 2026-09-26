@@ -9,7 +9,6 @@ import {isEnabled} from './feature-flags';
 import {scanText} from './pii-scan';
 import {loadFranchiseContext} from './franchise-facts-server';
 import {factCaption,factLine,versionStates,type VersionLite} from './franchise-facts';
-import {franchiseIssueLabels} from './franchise-compliance';
 import {GATE_DISCLAIMER} from './franchise-gates';
 import {toKstDate} from './franchise-rules';
 import {franchiseItem,factLabel} from './fact-catalog';
@@ -17,7 +16,7 @@ import {isRecruitmentObjective,type Campaign,type Artifact} from './agency';
 import type {BrandFact} from './brand-facts';
 import {FRANCHISE_ERRORS,type FranchiseErrorKey,type AuditAction} from './franchise';
 import {ASSET_TYPE_ORDER,ASSET_TYPE_LABELS,EVENT_TYPE_LABELS as ASSET_EVENT_TYPE_LABELS,ASSET_MESSAGES,ASSET_RULES,ID_PATTERN,STARTUP_PAGE_SECTIONS,EVENT_DECK_SECTIONS,
- validateAssetInput,draftAsset,approveDecision,exportDecision,placementDecision,assetGateIssues,approvalChecklist,h7Notice,effectiveAssetFacts,sectionTemplate,markAssetsForReview,changedVersionIds,
+ validateAssetInput,draftAsset,approveDecision,exportDecision,placementDecision,assetGateIssues,assetWarnings,approvalChecklist,h7Notice,effectiveAssetFacts,sectionTemplate,markAssetsForReview,changedVersionIds,
  validateEvent,registerDecision,attendanceDecision,type RecruitmentAsset,type RecruitmentEvent,type AssetReview,type AssetType,type EventCounts,type Decision} from './franchise-assets';
 
 type Json=Record<string,unknown>;
@@ -364,7 +363,7 @@ async function assetsView(who:Viewer,brandId:string):Promise<Json>{
   facts:effective.map(f=>({id:f.id,version:f.version,key:f.key,label:factLabel(f.key),line:factLine(f),hasSource:!!f.sourceRef})),
   branch:ctx.branch,h7Notice:h7Notice(ctx.branch),enabled,role:who.role,limits:ASSET_LIMITS,rules:ASSET_RULES,disclaimer:GATE_DISCLAIMER};
 }
-// 상세: 원문 포함(rev 제외). 판정기는 이 보기에서만 돈다. drift는 참조 판과 현재 사실 판의 차이이고, 재검토 표시가 없어도 '현재 사실로 새 판 저장'을 안내한다.
+// 상세: 원문 포함(rev 제외). 판정기는 이 보기에서만 돈다. 경고는 저장·승인·내보내기 응답과 같은 순서(판정기 경고 → 권장 안내 문장 경고)이고, 권장 안내 문장 경고는 체크리스트 항목 옆에도 붙는다. drift는 참조 판과 현재 사실 판의 차이이고, 재검토 표시가 없어도 '현재 사실로 새 판 저장'을 안내한다.
 async function assetDetailView(who:Viewer,brandId:string,params:URLSearchParams):Promise<Json>{
  const owner=who.owner,now=stamp(),v=params.get('version');
  const row=await loadAsset(owner,brandId,params.get('assetId')??'',v===null||v===''?undefined:Number(v));
@@ -374,7 +373,7 @@ async function assetDetailView(who:Viewer,brandId:string,params:URLSearchParams)
  const drift=row.factRefs.map(r=>{const cur=ctx.facts.find(f=>f.id===r.id&&f.brandId===brandId);return {factId:r.id,refVersion:r.version,currentVersion:cur?cur.version:null,changed:!cur||cur.version!==r.version}});
  const resaveSuggested=row.review.needed||drift.some(d=>d.changed)||g.codes.some(c=>c==='fact_changed'||c==='version_not_current');
  return {asset:Object.fromEntries(Object.entries(row).filter(([k])=>k!=='rev')),latestVersion:versions.results[0]?.version??row.version,versions:versions.results.map(x=>({version:x.version,status:x.status})),
-  gate:{status:g.status,reasons:reasonMessages(g.codes),message:g.message,warnings:g.judgement?franchiseIssueLabels(g.judgement).warnings:[]},checklist:approvalChecklist(g.judgement,ctx.branch),
+  gate:{status:g.status,reasons:reasonMessages(g.codes),message:g.message,warnings:assetWarnings(g.judgement,row.type,row.body)},checklist:approvalChecklist(g.judgement,ctx.branch,row),
   drift,resaveSuggested,source:row.source??null,aiGenerated:!!row.aiGenerated,campaign:campaign?{id:campaign.id,title:campaign.title}:null,branch:ctx.branch,h7Notice:h7Notice(ctx.branch),enabled,disclaimer:GATE_DISCLAIMER};
 }
 // 행사: 행 전부(시작 시각 내림차순, 최대 200). followUps는 시작 뒤 48시간 안의 예정 행사 합계(가명 코드 없음). types·assetTypes는 화면 라벨(R15a-2b S1).

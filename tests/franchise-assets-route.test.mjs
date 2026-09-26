@@ -318,6 +318,41 @@ patch(assetKey(Y.assetId,1),'$.exportCount',70);
 r=await exportAsset(admin,Y);
 check('E25: exportCount keeps counting past the kept records',r.status===200&&assetRow(Y.assetId,1).exportCount===71&&assetRow(Y.assetId,1).exports.length===50&&assetRow(Y.assetId,1).exports[0].at===RECS[0].at);
 
+// ════ E26. 권장 안내 문장(대표 결정 2026-09-26 '3번'): 빠지거나 고쳐도 저장·승인·내보내기 200, 경고는 응답과 승인 전 상세 보기(체크리스트 항목 옆 포함)에 ════
+const W_WAIT=fa.ASSET_WARNING_MESSAGES.waitingNoteMissing,W_QNA=fa.ASSET_WARNING_MESSAGES.revenueQnaNoteMissing;
+const cut=(t,s)=>{assert.ok(t.includes(s),'잘라낼 문장이 없습니다');return t.replace(s,'')};
+const noWait=t=>cut(t,'\n'+fa.WAITING_NOTES.join('\n')),noQna=t=>cut(t,'\n'+fa.REVENUE_QNA_NOTE);
+const itemWarn=v=>Object.fromEntries(v.body.checklist.items.map(i=>[i.id,i.warnings]));
+const onlyOn=(v,want)=>JSON.stringify(itemWarn(v))===JSON.stringify(Object.fromEntries(v.body.checklist.items.map(i=>[i.id,want[i.id]??[]])));
+const sameList=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+const blockedBeforeRec=audits('asset_blocked').length,recAssets=[];
+// 저장 → 승인 전 상세 보기 → 승인 → 내보내기. 모두 200이어야 하는 흐름이다.
+const recFlow=async(type,body)=>{
+ const s=await save(member,{type,body}),a=s.body.result;recAssets.push(a);
+ const v=await get(member,`view=asset&brandId=fr-a&assetId=${a.assetId}`),ap=await approve(boss,a),x=await exportAsset(admin,a);
+ return {s,v,ap,x,a};
+};
+const recOk=(r,w)=>r.s.status===200&&r.v.status===200&&r.ap.status===200&&r.x.status===200&&sameList(r.s.body.warnings,w)&&sameList(r.ap.body.warnings,w)&&sameList(r.x.body.warnings,w)
+ &&r.v.body.gate.status===200&&r.v.body.gate.reasons.length===0&&sameList(r.v.body.gate.warnings,w)&&r.x.body.body===assetRow(r.a.assetId,1).body;
+const recPage=await recFlow('startup_page',noWait(page()));
+check('E26: a startup page without the waiting notes saves, shows the warning before approval, approves and exports (200) with only the waiting warning',recOk(recPage,[W_WAIT])&&onlyOn(recPage.v,{no_wait_bypass:[W_WAIT]}));
+const recDeck=await recFlow('event_deck',noQna(noWait(deck([]))));
+check('E26: a deck without the waiting notes and the revenue note gets both warnings in section order everywhere, each on its checklist item',recOk(recDeck,[W_WAIT,W_QNA])&&onlyOn(recDeck.v,{no_wait_bypass:[W_WAIT],no_revenue_figures:[W_QNA]}));
+const recEdit=await recFlow('startup_page',page().replace(fa.WAITING_NOTES[0],'정보공개서를 받은 날부터 14일이 지나기 전에는 가맹계약을 체결하지 않습니다.'));
+check('E26: an edited waiting sentence is 200 with the waiting warning',recOk(recEdit,[W_WAIT]));
+const recFull=await recFlow('startup_page',page([],['Q. 오픈 준비 기간은요? A. 문의 경로로 안내합니다.']));
+check('E26: a page with the notes has no warning in the responses, the detail view or the checklist',recOk(recFull,[])&&onlyOn(recFull.v,{}));
+const recMix=await recFlow('startup_page',noWait(page([],['입금 순서대로 자리 확정됩니다'])));
+const mixLabels=recMix.s.body.warnings;
+check('E26: a judge warning comes first and the waiting warning last, the same in the detail view and on the wait-bypass item',mixLabels.length===2&&mixLabels[0].startsWith('가맹 규칙 확인 · ')&&mixLabels[1]===W_WAIT&&recOk(recMix,mixLabels)&&onlyOn(recMix.v,{no_wait_bypass:mixLabels}));
+check('E26: none of these writes an asset_blocked receipt',audits('asset_blocked').length===blockedBeforeRec);
+r=await save(member,{body:noWait(page()).replace(H.process,()=>H.process+'\n가계약금 먼저 입금하시면 자리 확정')});
+const recBypass=r.body.result;recAssets.push(recBypass);
+r=await approve(boss,recBypass);
+const recBlock=audits('asset_blocked').find(b=>b.recordId===recBypass.assetId);
+check('E26: bypass wording in place of the notes is still 409 hard_block, and its receipt lists hard_block only (no removed codes)',codesAre(r,409,'hard_block')&&audits('asset_blocked').length===blockedBeforeRec+1&&!!recBlock&&sameList(recBlock.reasons,['hard_block'])&&!('warnings' in r.body));
+for(const a of recAssets)assert.equal((await retire(boss,a)).status,200);
+
 // ════ G. 게시 위치·폐기 ════
 r=await portal(member,FILL_WHY+' (게시)');
 const Z=r.body.result;

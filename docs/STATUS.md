@@ -3,32 +3,37 @@
 > 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 운영: `8651021`(Sites 버전 40, tree `1ac4369`, [기록](releases/2026-09-26-8651021.md)). 그 뒤 `merged`되고 아직 게시되지 않은 제품 PR: #139(R15a-1 순수 모듈, 연결 없음 — 급하지 않음).
+- 운영(갱신): `a8edf10`(Sites 버전 42, tree `5705e55`, [기록](releases/2026-09-27-a8edf10.md)). A8 전체·#154·#155 게시 완료.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
-- #143 · 레인 R · 보통 · 새 스위치 없음(가맹 모집 채널 단위 6개는 objective 캠페인에서만 켜지고, objective는 `r_franchise` 기본 꺼짐이라 지정 불가). 게시 전 확인: 운영 D1의 R3b 이전 objective 개선 회의 건수(읽기 전용, 레인 R 칸)
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-26 06:30 UTC
-- 진행 중: A8 설계 문서 [CUSTOMER-REPORT](CUSTOMER-REPORT.ko.md)(PR `docs/a8-design`). 코드는 3단계 종료 조건 뒤(원칙 12).
-- A3 종료 조건 run: 골든 v2 dev 2건을 운영 트리 `1ac4369`(8651021)에서 생성했다(로컬, 가져오기 전). 평가 HERMES 프로필이 Codex 주간 한도 소진(`codex_rate_limited`, 해제 2026-09-27 10:33 KST, 레인 Q #135)이라 실행은 그 뒤. 예약 100k·실측 약 30k.
-- A6 종료 조건 run: 대표가 확정할 지점·항목·값을 채팅으로 전달했다(ODA 지점 영업시간, 점주 확인, 2026-09-26). 입력 순서: `a6_data_requests` 켜기 → 자료 요청 수집(없으면 수동 create) → 사실 확정 → closed 확인. 토큰 0.
-- 막힌 것: 두 run 모두 소유자 세션 브라우저 조작이 필요하다. 개발 도구의 Chrome 조작(navigate·javascript_tool)은 자동 모드 안전 검사가 막고 있어, 대표가 맥에서 `/permissions`로 허용하거나 콘솔에 직접 붙여 넣어야 한다(원격 제어에서는 `/permissions` 불가).
-- 다음: A3·A6 run → A8-1 → A8-2 → A8-3 → B4 2부 → B3([순서](LANES.ko.md#레인-a-claude-a-세션)).
+갱신: 2026-09-26 19:28 UTC
+- 진행 중: B4-2c 닫힌 개선 루프 대장·학습 화면 보상 표 PR(`lib/improvement-loops.ts`, `POST /api/reward-lineage` `close` 대표만, kind `improvement_loop` 추가만, 학습 규칙 탭 '보상 계보' 절 — 직원 없음·close는 대표만, 스위치 `b4_reward_lineage` 기본 꺼짐, migration 0, 토큰 0, B4-2b 스냅샷 artifactId 계보 결함 수정, [REWARD-LINEAGE](REWARD-LINEAGE.ko.md) 11절: 종료 조건 '닫힌 개선 루프 5건' 셈법·2026-10-15 중단 규칙 판정 절차). B4-2b는 PR #157(이 브랜치의 기반). B4-2a는 #155로 `merged`. A8 전체·#154는 묶음 16(`a8edf10`)으로 게시 요청 중.
+- A6 종료 조건: **passed · real**(2026-09-27 00:56 KST). 이문동점 영업시간 자료 요청 `dr-f08c16186f08`이 사실 확정으로 closed. [관찰 기록](observations/2026-09-27-lane-a-a6-end-condition.md). 운영 스위치 `a6_data_requests` 켜짐.
+- A3 종료 조건 run: 2회째도 **failed · real**(run `a81bb445`, 2026-09-27 03:30 KST, 32,049토큰, 운영 버전 41 = 괄호 닫기 규칙 포함). `contract_json`은 두 케이스 모두 pass로 고쳐졌다. 국밥 12/0 pass. 수학학원은 `copy_pack_variants` fail: 실험 객체를 channels 배열에 넣고 shortform·experiments를 빠뜨렸다(끝부분 구조 붕괴, 1회차의 마지막 `}` 누락과 같은 계열). 수정: 스키마를 shortform → experiments → channels 순서로, channels에는 채널 객체만(PR `fix/copy-pack-key-order`) → 다음 묶음 게시 → 재실행. 1회차 run `a3634055`, 서버 로그인 실패 run `2092b0bb`(0토큰).
+- 확인 필요(레인 R): `tests/check-prompts.test.mjs`가 macOS(대소문자 무시 파일 시스템)에서 `channel.leadad.json`·`channel.leadAd` 변형 충돌로 로컬 실패한다(Linux CI는 통과).
+- 제안(레인 Q): 계약 읽기는 최상위 `}` 하나 누락도 '잘린 JSON'으로 거절한다(#112 방침, `tests/role-output.test.mjs:26`). 출력 한도에 못 미친 응답(`incomplete` 아님)에 한해 최상위 `}` 하나를 채워 읽을지 검토 바란다(이번 실패 1건이 운영이면 invalid_output으로 약 1.6만 토큰 폐기).
+- A8: 대표 지시(2026-09-27 "B2 2단계 빼고 남은 개발을 모두 진행하라", 세션 29f7af 전달)로 A3 종료 조건을 기다리지 않고 착수했다. 설계 [CUSTOMER-REPORT](CUSTOMER-REPORT.ko.md).
+- 다음: A3 run → A8-1 → A8-2 → A8-3 → B4 2부 → B3([순서](LANES.ko.md#레인-a-claude-a-세션)).
 
 ## 레인 R (Claude 트랙 R 세션 — 가맹 모집)
-갱신: 2026-09-26 12:45 UTC
-- 진행 중: R15a-2a 모집 자료·행사 기록과 가맹 API·사실 변경 재검토 훅 PR(브랜치 `claude/franchise-recruitment-marketing-u8cpo2`, 화면 없음, [계획 R15 기록](FRANCHISE-RECRUITMENT-PLAN.ko.md#r15-모집-자료-키트설명회-운영-r15a-자료-키트내보내기-게이트--r15b-결정론-모집-템플릿)). 병합하면 게시 대기열에 한 줄을 적는다.
-- 최근 `merged`: #143 R3b(게시 대기열에 있음, 레인 A B3 착수 가능), #139 R15a-1(대기열), #134 E2E 프록시 멈춤 수정(비제품).
-- 다음: R15a-2b(가맹 화면 탭: 모집 자료·행사) → R3c(업종 채점) → 트랙 R 계획 순서. R15a-3(워크스페이스 할 일)은 R6 뒤([순서](LANES.ko.md#레인-r-claude-트랙-r-세션)).
-- 대표 결정(2026-09-26): 앱 밖 모집 자료에 AI 생성물 표시를 붙이지 않는다("표시하지마", 화면도 묻지 않음, 결정 17 앱 발행 캡션은 그대로). 대표 결정 대기: 예비창업자용 고정 안내 문장(두 대기기간 안내, 수익 질문 안내) — 대표에게 뜻을 다시 설명하는 중, 그동안 현재 문장으로 진행.
-- 막힌 것: R3c는 운영 D1의 합성 S7 케이스 기대 업종 갱신(대표 승인)이 먼저다. 법률 검토(결정 20) 보류 중이라 모든 가맹 판정은 'COLLECTIVE 휴리스틱 · 법률 자문 아님'이다.
-- 확인 필요(레인 A 게시 점검): #143을 싣는 묶음 게시 전에 운영 D1에서 R3b 이전에 시작한 objective 개선 회의 건수를 읽기 전용으로 센다(평가 캡처 시 `assembly_drift`, [R3b 기록](FRANCHISE-RECRUITMENT-PLAN.ko.md#r3-모집-캠페인-objective채널-스킬)).
+갱신: 2026-09-26 21:22 UTC
+- 진행 중(브랜치 `claude/franchise-recruitment-marketing-u8cpo2`, 한 번에 PR 하나):
+  - 이 PR: 고정 안내 문장 권장화(대표 결정 (2) "3번") + R2 대기기간 오기재 hard_block 확장(보완 통제, `fr-claims@2026-09-26.4`) + macOS `check-prompts` 테스트 수정. 처음 보는 오기재 약 70% 차단, 인용 경고 문장 일부 오탐이 남은 위험이다([계획 기록](FRANCHISE-RECRUITMENT-PLAN.ko.md#r15-모집-자료-키트설명회-운영-r15a-자료-키트내보내기-게이트--r15b-결정론-모집-템플릿)).
+  - 다음 PR: R15a-2b 가맹 화면 탭(모집 자료·행사). 구현·교차 검토 끝(passed · mocked), 이 PR 병합 뒤 올린다.
+- 최근: #151 R3c 선행 S7 콘솔 키트 `merged`(문서·테스트, 게시 불필요). #139·#143·#145 `published`(묶음 15, Sites 버전 41, [기록](releases/2026-09-27-98f2283.md)).
+- 다음: R15a-2b → R3c(`franchise` 업종 사전·`GRADERS_VERSION`, S7 운영 갱신 real 확인 뒤) → R2 3차(절 단위 구성 판정, 오기재 재현율·인용 경고 오탐) → 트랙 R 계획 순서. R15a-3(워크스페이스 할 일)은 R6 뒤([순서](LANES.ko.md#레인-r-claude-트랙-r-세션)).
+- 대표 결정(2026-09-26): (1) 앱 밖 모집 자료에 AI 생성물 표시를 붙이지 않는다("표시하지마", 화면도 묻지 않음, 결정 17 앱 발행 캡션은 그대로). (2) 예비창업자용 고정 안내 문장(두 대기기간 안내, 수익 질문 안내)은 권장 문구다("3번"). 템플릿은 계속 채우고, 빠지면 경고만 하고 막지 않는다. 대신 대기기간을 틀리게 적은 문장은 R2 hard_block으로 막는다.
+- 대표 승인(2026-09-26 16:15 UTC): R3c 선행 작업, 운영 D1 합성 S7 케이스 기대 업종 갱신(8건 `['fnb']` → `['franchise','fnb']`). 실행: not_run(소유자 로그인 브라우저 콘솔에서 check → apply, 결과 한 줄을 레인 R에 붙여 넣음, [관찰 기록](observations/2026-09-26-lane-r-s7-industry.md)).
+- 막힌 것: S7 운영 갱신은 소유자 세션이 있어야 한다(이 클라우드 세션은 `/api/eval` 401). 법률 검토(결정 20) 보류 중이라 모든 가맹 판정은 'COLLECTIVE 휴리스틱 · 법률 자문 아님'이다. LR-1 확인 필요 추가: 소규모 본부 적용 제외 문장을 hard_block으로 막는 것.
+- 해소: #143 게시 전 확인(운영 objective 캠페인 0건, 그 개선 회의 0건, 레인 A, passed · real). 레인 A 확인 요청(macOS에서 `tests/check-prompts.test.mjs`가 대소문자 무시 파일 시스템 때문에 실패)은 이 PR에서 고쳤다(대문자 예 `channel.leadForm`, 대소문자만 다른 이름 금지 검사).
 - 제안(소유 레인 검토): `docs/DATA-PROCESSING.ko.md` 가맹 kind 목록에 `recruitment_asset`·`recruitment_event`를 더한다(이름·연락처 없음, 모델 입력 0). R2 판정기 `matchView`가 보이지 않는 문자(Cc·Co·Cn·Zl·Zp)를 지우게 하는 것은 레인 R 별도 PR로 한다.
-- 관찰: `tests/graders.test.mjs`의 입력별 1초 시간 검사가 전체 스위트 병렬 실행에서 한 번 실패했다(단독 3/3 통과, 재실행 통과). 레인 Q 파일이라 기록만 한다.
+- 관찰(레인 Q 파일): `tests/graders.test.mjs:274`(4만 자 입력 1초 검사)가 이 4코어 컨테이너에서 한계선에 있다('## x\n자료 필요'×4000 입력 0.93~1.07초, 같은 코드에서 3회 중 1~2회 실패). 채점기 코드와 무관한 부하 흔들림이다.
 
 ## 레인 Q (Codex 세션 — 품질·평가·운영)
 갱신: (레인 Q가 적는다)
 - 다음: #131·#135 병합 → A1 `channel.offline` 쌍 평가·stage → R4·A/A·R5 → J4 게이트, 게시 뒤 운영 감시([순서](LANES.ko.md#레인-q-codex-세션)).
+- 요청(레인 R, 2026-09-26): `scripts/eval/specs/syn-s7-franchise.json`의 `expectations.industry`는 S7 재가져오기(기존 8건 삭제 뒤 새로 생성·가져오기)를 계획할 때 그 PR에서만 `['franchise','fnb']`로 바꾼다. 그 전에 바꾸면 specHash가 달라져 재가져오기가 409다. 운영 D1 S7 8건은 대표 승인으로 레인 R 콘솔 키트가 바꾼다(D1이 정본). 갱신 전 S7 run을 재채점하면 `caseUpdatedAfterRun` 표시가 붙고 판정은 같다([관찰 기록](observations/2026-09-26-lane-r-s7-industry.md)).
 
 ## 이전 기록 (레인 도입 전)
 
@@ -72,16 +77,16 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-26 06:30 UTC (Claude A 세션: 레인 A 칸 — A8 설계, A3·A6 종료 조건 run 대기 사유)
+마지막 갱신: 2026-09-26 21:16 UTC (Claude A 세션: 묶음 16 `a8edf10` Sites 버전 42 게시·tree 확인)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `8651021f7ae7403b7cd07ac0ac15061e42fb5f2a` (#137 `merged`, 묶음 14: A3 전체 #121·#129, A6-1~3 #130·#133·#137, `/api/version/public` #136. 새 스위치 `a3_copy_pack`·`a3_brand_voice`·`a6_data_requests`·`a6_place_check`는 모두 기본 꺼짐) | 제품 tree `1ac4369e96e69a124f693540eea5df2fee3ccf67`. 직전 운영은 `8f0fb54`(#132 head, tree `98a5800`) |
+| 운영 제품 커밋 | `a8edf1043e3dc29129b6c9895911fd170dd93f83` (#155 `merged`, 묶음 16: A8 #150·#152·#153, #154, #155) | 제품 tree `5705e55c1b16c62cedfa02b49772c66216398db0`. 직전 운영 `98f2283`(tree `d11b2e1`) |
 | `origin/main` | `cf2c474` (#139 R15a-1 모집 자료 키트 순수 판정 모듈) | 운영 `8651021` 뒤 #139만 들어왔다(제품 경로 `lib/franchise-assets.ts`, 아직 연결 없음) |
-| Sites 게시 | `published`: Sites 버전 40, deployment `appgdep_6ab758798bdc8191b48a26537b9bb472` succeeded, Sites 커밋 `027b2ab`, 자동 게시(PR #138, 05:16:35 UTC push → 05:31 UTC 결과) | [게시 기록](releases/2026-09-26-8651021.md). 그 앞 버전 39는 `8f0fb54`(Codex 세션) |
-| 실행 검증 | `8651021`: 운영 tree 일치(real, 05:3x UTC). 공개 `/api/version/public` 200 tree `1ac4369…`, 소유자 세션 `/api/version`(Chrome 확장) 200 tree 일치·`promptManifest` null. main이 그 뒤 #139(트랙 R 순수 모듈)로 앞서 있어 main 전체의 `runtime-verified`는 아니다 | [게시 기록](releases/2026-09-26-8651021.md) |
+| Sites 게시 | `published`: Sites 버전 42, deployment `appgdep_6ab8195162c081918e18f189c57abf2e` succeeded(자동 게시 PR #156) | [게시 기록](releases/2026-09-27-a8edf10.md) |
+| 실행 검증 | `a8edf10`: 운영 tree 일치(real). 공개 `/api/version/public`·소유자 `/api/version` 모두 `5705e55…` | [게시 기록](releases/2026-09-27-a8edf10.md) |
 | 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` mode=email, role=owner (2026-09-25 03:30 UTC 경) |
 | Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 이번 게시도 기존 접근 설정 유지 | 게시 에이전트 보고 "기존 공개 접근 설정을 유지". 게시 뒤 접근 설정 재확인은 not_run |
 | 조사 워커 | online(lastSeen 2026-09-25 03:29 UTC, blocked 0, rotationReady true). 2026-09-24 14:15 UTC 새 설치기로 재설치(격리 점검 전부 통과) | `/api/research-worker/setup` 조회(real). gate 표시 `missing`이라 `RESEARCH_WORKER_APP_GATE=enforce`는 켜지 않는다 |
