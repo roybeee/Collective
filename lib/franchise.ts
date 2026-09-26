@@ -99,7 +99,8 @@ export const ESCROW_INSTITUTION_LABELS={bank:'은행',post_office:'체신관서'
 export const FORECAST_DUTY_LABELS={required:'산정서 필요',not_required:'불필요',unknown:'미확인(필요로 처리)'} as const;
 export const EVENT_TYPE_LABELS={created:'등록',stage_changed:'단계 변경',transition_blocked:'진행 차단',claimed:'담당 가져옴',assigned:'담당 지정',contact_updated:'연락처 수정',task_updated:'문의 조건 수정',source_noticed:'출처 고지',marketing_given:'광고성 정보 동의',marketing_withdrawn:'광고성 정보 철회',evidence_recorded:'증빙 기록',evidence_voided:'증빙 무효화',purged:'연락처 파기',erased:'연락처 삭제',reopened:'다시 열기'} as const;
 export type LeadEventType=keyof typeof EVENT_TYPE_LABELS;
-export const AUDIT_ACTION_LABELS={reveal:'연락처 보기',find:'연락처로 찾기',export:'내보내기',purge:'파기',erase:'정보주체 삭제',backdate:'이른 증빙 시각',evidence_void:'증빙 무효화',assign:'담당 지정',claim:'담당 가져옴',profile_save:'가맹 프로필 저장',version_register:'정보공개서 버전 등록',version_retire:'정보공개서 버전 사용 중지',template_register:'계약서안 템플릿 등록',template_retire:'계약서안 템플릿 사용 중지',version_amend:'정보공개서 버전 정정',template_amend:'계약서안 템플릿 정정',notice_register:'안내문 등록',notice_retire:'안내문 사용 중지',subject_request:'정보주체 요청 접수',subject_request_update:'정보주체 요청 처리',marketing_withdrawn:'광고성 정보 철회'} as const;
+export const AUDIT_ACTION_LABELS={reveal:'연락처 보기',find:'연락처로 찾기',export:'내보내기',purge:'파기',erase:'정보주체 삭제',backdate:'이른 증빙 시각',evidence_void:'증빙 무효화',assign:'담당 지정',claim:'담당 가져옴',profile_save:'가맹 프로필 저장',version_register:'정보공개서 버전 등록',version_retire:'정보공개서 버전 사용 중지',template_register:'계약서안 템플릿 등록',template_retire:'계약서안 템플릿 사용 중지',version_amend:'정보공개서 버전 정정',template_amend:'계약서안 템플릿 정정',notice_register:'안내문 등록',notice_retire:'안내문 사용 중지',subject_request:'정보주체 요청 접수',subject_request_update:'정보주체 요청 처리',marketing_withdrawn:'광고성 정보 철회',
+ asset_save:'모집 자료 저장',asset_approve:'모집 자료 승인',asset_export:'모집 자료 내보내기',asset_place:'모집 자료 게시 위치 기록',asset_retire:'모집 자료 폐기',asset_blocked:'모집 자료 승인·내보내기 막힘',event_save:'행사 등록·변경',event_cancel:'행사 취소',event_register:'행사 신청 기록',event_attendance:'행사 참석 기록'} as const;
 export type AuditAction=keyof typeof AUDIT_ACTION_LABELS;
 
 // ── 고정 문구 ──
@@ -141,6 +142,15 @@ export const FRANCHISE_ERRORS={
  UNKNOWN_ACTION:{status:400,text:'지원하지 않는 작업입니다.'},
  REQUEST_ID:{status:400,text:'요청 번호를 확인해 주세요.'},
  UNKNOWN_VIEW:{status:400,text:'지원하지 않는 화면입니다.'},
+ // 트랙 R R15a-2a 모집 자료·행사(lib/franchise-assets-server.ts). 값을 끼워 넣지 않는다.
+ ASSET_NOT_FOUND:{status:404,text:'모집 자료를 찾을 수 없습니다.'},
+ ASSET_STALE:{status:409,text:'모집 자료가 변경됐습니다. 새로고침한 뒤 다시 시도해 주세요.'},
+ ASSET_BLOCKED:{status:409,text:'모집 자료 게이트가 막았습니다. 사유를 확인해 주세요.'},
+ EXPORT_MODE:{status:400,text:'내보내기 방식(복사·내려받기)을 골라 주세요.'},
+ SOURCE_INVALID:{status:400,text:'같은 캠페인의 승인된 작업물 현재 판만 가져올 수 있습니다.'},
+ EVENT_NOT_FOUND:{status:404,text:'행사를 찾을 수 없습니다.'},
+ EVENT_STALE:{status:409,text:'행사 기록이 변경됐습니다. 새로고침한 뒤 다시 시도해 주세요.'},
+ SPEND_REF_UNAVAILABLE:{status:400,text:'모집 비용 기록(R5) 전에는 비용 참조를 넣을 수 없습니다.'},
 } as const satisfies Record<string,{status:number;text:string}>;
 export type FranchiseErrorKey=keyof typeof FRANCHISE_ERRORS;
 // 게이트 사유·경고 코드의 한국어 설명. REASON_CODES ∪ WARNING_CODES와 정확히 같은 키(테스트 고정).

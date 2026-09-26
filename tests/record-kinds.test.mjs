@@ -94,11 +94,15 @@ const franchise=kinds.filter(k=>k.kind.startsWith('franchise_')),franchiseNames=
 check('record parents include franchise_lead',JSON.parse(JSON.stringify(registry.recordParents)).includes('franchise_lead'));
 check('the ten track R kinds are registered',JSON.stringify(franchise.map(k=>k.kind).sort())===JSON.stringify([...franchiseNames].sort()));
 check('every franchise kind declares retention and subject erasure',franchise.every(k=>k.retention&&['statutory','policy'].includes(k.retention.basis)&&typeof k.retention.anchor==='string'&&k.retention.anchor.length>0&&typeof k.retention.ref==='string'&&k.retention.ref.length>0&&(k.retention.days===null||typeof k.retention.days==='number')&&['delete','minimize','legal_hold','none'].includes(k.subjectErasure)));
-check('no existing kind declares the retention axes',kinds.filter(k=>!k.kind.startsWith('franchise_')).every(k=>k.retention===undefined&&k.subjectErasure===undefined));
+check('no kind outside track R declares the retention axes',kinds.filter(k=>!/^(franchise|recruitment)_/.test(k.kind)).every(k=>k.retention===undefined&&k.subjectErasure===undefined));
 check('franchise kinds are outside campaign deletion without links or purge',franchise.every(k=>k.campaignDeletion==='not_campaign_scoped'&&!k.links&&k.purge===undefined&&/캠페인과 무관/.test(k.description)));
 check('lead keys, events and deliveries hang off the lead',['franchise_lead_key','franchise_lead_event','franchise_delivery'].every(k=>kindOf(k).parent==='franchise_lead')&&kindOf('franchise_lead').parent==='brand');
 check('lead contacts are minimized, keys deleted and evidence held on subject erasure',kindOf('franchise_lead').subjectErasure==='minimize'&&kindOf('franchise_lead_key').subjectErasure==='delete'&&kindOf('franchise_delivery').subjectErasure==='legal_hold'&&kindOf('franchise_lead_event').subjectErasure==='none'&&kindOf('franchise_lead').retention.days===180&&kindOf('franchise_audit').retention.days===365);
 check('the franchise block sits before the eval budget approval and signal group',Math.max(...franchise.map(k=>kinds.indexOf(k)))<kinds.findIndex(k=>k.kind==='eval_budget_approval')&&kinds.findIndex(k=>k.kind==='playbook_audit')<Math.min(...franchise.map(k=>kinds.indexOf(k))));
+// 트랙 R R15a-2a: 모집 자료·행사는 브랜드 행이고 캠페인과 무관하다(캠페인 id는 참조, 캠페인을 지워도 승인·내보내기·게시 증빙으로 남는다). franchise_audit 바로 뒤, data_request 앞에 둔다.
+const recruitment=['recruitment_asset','recruitment_event'].map(kindOf),auditAt=kinds.findIndex(k=>k.kind==='franchise_audit');
+check('the two R15a kinds declare retention and no subject erasure, hang off the brand and stay outside campaign deletion',recruitment.every(k=>k&&k.retention&&k.retention.basis==='policy'&&k.retention.anchor==='attributed_lead_evidence'&&k.retention.days===null&&typeof k.retention.ref==='string'&&k.retention.ref.length>0&&k.subjectErasure==='none'&&k.parent==='brand'&&k.campaignDeletion==='not_campaign_scoped'&&!k.links&&k.purge===undefined&&!k.blocksDeletion&&/캠페인과 무관/.test(k.description)));
+check('the R15a kinds sit right after franchise_audit and before data_request',kinds[auditAt+1].kind==='recruitment_asset'&&kinds[auditAt+2].kind==='recruitment_event'&&kinds[auditAt+3].kind==='data_request');
 
 // 5) 조건 생성: 같은 link의 kind를 묶고, kind가 id에 들어가는 link는 kind별로 나눈다.
 const scopes=JSON.parse(JSON.stringify(registry.campaignScopes('delete','o','c')));
