@@ -198,7 +198,7 @@ check('the fixture disclaimer reaches the screen',listHtml.includes(DISCLAIMER))
 // ════ X. 상호작용(R15a-2b 교차 검토): 쓰기 처리기·실패 뒤 할 일(명세 6.7–6.9·7.3–7.5·9.2)을 실제로 눌러 본다 ════
 // 훅 대역(useState·useEffect·useCallback·useRef·useId)으로 실제 화면 부품을 부르고 버튼을 누르고 칸에 적는다. 부품 경로와 key가 같으면 상태가 남고, key가 바뀌면 새로 시작한다(React와 같은 규칙).
 // 쓰기·읽기는 실제 경로로 보낸다. 실제로 만들기 어려운 응답(체크리스트 변경·404·꺼짐·재생·알 수 없는 코드 등)만 'stub' 표시한 곳에서 응답 대역을 쓴다. 근거: mocked(훅 대역·메모리 SQLite·응답 대역).
-const E=f.lib.FRANCHISE_ERRORS,blocked=[];
+const E=f.lib.FRANCHISE_ERRORS;
 const S={inst:new Map(),seen:new Set(),effects:[],dirty:false,cur:null,root:null,tree:[],ids:0,inflight:0,focus:[]};
 const sameDeps=(a,b)=>!!a&&!!b&&a.length===b.length&&a.every((x,i)=>Object.is(x,b[i])),slot=()=>[S.cur,S.cur.i++];
 const hooks={
@@ -386,8 +386,8 @@ stub(()=>{reads++;return reply(200,evView)},()=>reply(400,{error:'입력을 확�
 await mount(evUi.FranchiseEvents,{brandId:'fr-a',admin:false,onStatus:noop});const reads0=reads;await press('참석 저장');
 check('X14 (F6): code_unknown on attendance reloads the events and shows the reason',sent.at(-1).action==='event_attendance'&&reads===reads0+1&&screenText().includes(fa.ASSET_MESSAGES.code_unknown));
 
-// O2 (대표 지시 2): 대기기간·수익 질의응답 권장 문장이 없어도 화면은 서버 게이트만 따르고 스스로 막지 않는다.
-// 서버(lib/franchise-assets.ts)가 아직 그 문장을 409로 막으면 blocked로 남긴다(권장 전환 변경이 병합되기 전). 전환 뒤에는 저장·승인·내보내기 200을 그대로 확인한다.
+// O2 (대표 결정 (2) "3번"): 대기기간·수익 질의응답 권장 문장이 없어도 서버는 막지 않고 경고만 한다. 화면은 서버 게이트만 따르고 스스로 막지 않으며, 경고를 경고 줄로 보인다.
+// 권장 전환(lib/franchise-assets.ts, 사유 코드 51 → 49)이 이 브랜치에 들어와 있으므로 조건 없이 저장·승인·내보내기 200과 경고 문구를 확인한다.
 const RECOMMENDED=new Set([...fa.WAITING_NOTES,fa.REVENUE_QNA_NOTE]),strip=t=>t.split('\n').filter(l=>!RECOMMENDED.has(l)).join('\n');
 const DSEC=Object.fromEntries(fa.EVENT_DECK_SECTIONS.map(s=>[s.id,s.heading]));
 const DECK=[['story',[FILL_WHY]],['demo',['직영 공간에서 대표 메뉴를 시식합니다.']],['support',['오픈 첫 달 운영 교육을 지원합니다(계약 체결 가맹점, 개점일부터 30일간).']]].reduce((t,[id,ls])=>after(t,DSEC[id],ls),list0.templates.event_deck);
@@ -395,11 +395,10 @@ as(boss);for(const [type,full] of [['startup_page',PAGE],['event_deck',DECK]]){
  const body=strip(full);w=await write(member,'asset_save',assetsUi.saveInput(listX,null,saveForm({type,body})));
  const id=w.r.body.result?.assetId,d=w.r.status===200?await view(boss,{view:'asset',assetId:id}):null,g=d&&assetsUi.assetGates(d,true),codes=d?d.gate.reasons.map(r=>r.code):[];
  check(`O2: a ${type} without the recommended sentences saves (200) and the body really lacks them`,w.r.status===200&&body!==full&&[...RECOMMENDED].every(l=>!body.includes(l)));
- if(d.gate.status!==200&&codes.length>0&&codes.every(c=>c==='waiting_note_missing'||c==='revenue_qna_note_missing')){
-  blocked.push(`O2 ${type}: server gate still 409 [${codes.join(',')}] (in-flight lib/franchise-assets.ts change turns these into warnings)`);
-  check(`O2 blocked (${type}): the screen only mirrors the server gate`,g.showApprove&&!g.canApprove&&g.blockers.length===1&&g.blockers[0]==='게이트 사유를 고친 새 판을 저장해야 합니다.');
-  continue;
- }
+ check(`O2: ${type} gate has no reason code for the missing recommended sentences`,!codes.some(c=>c==='waiting_note_missing'||c==='revenue_qna_note_missing'));
+ const expected=type==='event_deck'?[fa.ASSET_WARNING_MESSAGES.waitingNoteMissing,fa.ASSET_WARNING_MESSAGES.revenueQnaNoteMissing]:[fa.ASSET_WARNING_MESSAGES.waitingNoteMissing];
+ check(`O2: ${type} gate warns about exactly the missing recommended sentences`,expected.every(m=>d.gate.warnings.includes(m))&&(type==='event_deck'||!d.gate.warnings.includes(fa.ASSET_WARNING_MESSAGES.revenueQnaNoteMissing)));
+ check(`O2: ${type} detail renders the recommended-sentence warning as a warning line`,expected.every(m=>render(common.WarningLines,{items:d.gate.warnings}).includes(m)));
  check(`O2: ${type} gate 200 and approvable without the sentences`,d.gate.status===200&&g.canApprove&&g.blockers.length===0);
  w=await write(boss,'asset_approve',assetsUi.approveInput(d,new Set(d.checklist.items.map(i=>i.id))));
  const ex=w.r.status===200?await write(boss,'asset_export',{assetId:id,version:d.asset.version,mode:'copy'}):null;
@@ -409,4 +408,4 @@ as(boss);for(const [type,full] of [['startup_page',PAGE],['event_deck',DECK]]){
 }
 check('X: the interaction checks made no external call and logged no request failure',f.calls.length===0&&!logged.some(l=>/franchise_request_failed|agency_request_failed/.test(l)));
 
-console.log(JSON.stringify({passed:passed.length,blocked}));
+console.log(JSON.stringify({passed:passed.length}));
