@@ -16,7 +16,7 @@
 | 단위 | 본문 | 코드가 계속 소유하는 것 |
 |---|---|---|
 | `role.<cmo·insight·strategy·creative·content·growth·data·quality>` | `{focus,methods,outputs,review,handoff}` | 머리말 `실무 스킬 <PRACTICE_VERSION>`, `필수 산출물:`·`완료 전 점검:`·`인계:` 제목, 분량 지시, 회의 발언 지시, `maxTokens`, 출력 계약 섹션(`lib/role-output.ts`, 제목·수) |
-| `channel.<shortform·youtube·community·search·commerce·offline·default>` | 문자열 | 적용 조건(정규식), `campaignEvidencePolicy`, 가맹 모집 목적(objective) 캠페인에서 offline·search·commerce를 끄는 규칙과 그 캠페인의 근거 정책(`franchiseEvidencePolicy`, 트랙 R R3) |
+| `channel.<shortform·youtube·community·search·commerce·offline·default>` | 문자열 | 적용 조건(정규식), `campaignEvidencePolicy`, 가맹 모집 목적(objective) 캠페인에서 offline·search·commerce를 끄는 규칙과 그 캠페인의 근거 정책(`franchiseEvidencePolicy`, 트랙 R R3. 머리말 '가맹 모집 규칙:'을 레지스트리 본문이 흉내 내지 못하게 하는 코드 소유 문구 검사는 R3b에서 더한다) |
 | `viral.discovery` | 문자열(`viralPractice`) | 연구원 역할 문장, 조사 도구·oEmbed 경로, 출력 스키마 |
 
 - 근거 규율(`evidenceDiscipline`)·사실 정책(`factPolicy`)·출력 계약·외부 행동 금지·JSON 계약 지시는 덮어쓸 수 없다. 그 문구(정책 문장 머리, `근거 규칙`·`필수 산출물`·`완료 전 점검`·`인계:`·`실무 스킬` 제목, 입력·계약 필드명(`evidence.facts`·`candidate`·`sections` 등), `JSON`·`제이슨`, 코드펜스, `외부 행동`·광고 집행·메시지 발송·직접 게시·결제 같은 외부 행동 지시, `근거가 없어도`·`확정 사실처럼` 같은 사실 정책 뒤집기)를 담은 본문은 거부한다. 띄어쓰기·전각·구두점 변형도 같은 표지로 본다.

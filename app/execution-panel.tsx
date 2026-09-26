@@ -81,7 +81,7 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
  // 서버가 계산한 사유(ExecutionState.franchise.blockedFacts, 트랙 R R2)를 먼저 쓰고, 없으면 버전 상태로 화면에서 계산한다.
  const serverBlocked=new Map((state?.franchise?.blockedFacts||[]).map(b=>[b.id,b.reason]));
  const blockReason=(f:BrandFact)=>{const known=serverBlocked.get(f.id);if(known)return known;if(!franchise)return '';const key=franchiseFactUseIssue(f,states);return key?FRANCHISE_FACT_MESSAGES[key]:''};
- // 가맹 규칙 판정(트랙 R R2): 초안·승인 발행의 차단 사유와 경고. 가맹 프로필이 없는 브랜드는 null이다.
+ // 가맹 규칙 판정(트랙 R R2·R3): 초안·승인 발행의 차단 사유와 경고. 판정 범위가 없는 캠페인(가맹 프로필 없는 브랜드의 소비자 캠페인)은 null이다.
  const franchiseOf=(p:Publication)=>state?.franchise?.publications[p.id]??null;
  const chosenNotes=franchise?footnoteLines(facts.filter(f=>selected.includes(f.id)),franchise.versions):[];
  async function createCard(){

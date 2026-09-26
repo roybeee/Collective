@@ -107,7 +107,7 @@ export async function captionCandidates(owner:string,campaign:Campaign):Promise<
  const artifacts=(await listRecords<Artifact>(owner,'artifact',campaign.id)).filter(a=>copySource(a,campaign));
  if(!artifacts.length)return [];
  const [{facts},fr]=await Promise.all([evidenceContext(database(),owner,campaign),loadFranchiseContext(owner,campaign.brandId)]);
- // 가맹 프로필이 있는 브랜드: 가맹 규칙 차단은 issues(고를 수 없음), 경고는 warnings. 판정 입력은 모델 입력(evidenceContext)이 아니라 sourceRef가 있는 확정 사실이다.
+ // 판정 범위가 있는 캠페인(가맹 모집 목적 또는 가맹 프로필 브랜드): 가맹 규칙 차단은 issues(고를 수 없음), 경고는 warnings. 판정 입력은 모델 입력(evidenceContext)이 아니라 sourceRef가 있는 확정 사실이다.
  const frFacts=claimScope(campaign,fr)?await confirmedFactContext(owner,campaign.brandId,campaign.storeId):[],now=stamp();
  return artifacts.flatMap(a=>copyBlocks(a.content).map((text,index)=>{
   const candidate:CaptionCandidate={artifactId:a.id,artifactVersion:a.version,index,text,issues:[...captionIssues(text,facts),...(hasKnownOrigin(a)?[]:[UNKNOWN_ORIGIN])],aiGenerated:isAiGenerated(a)};

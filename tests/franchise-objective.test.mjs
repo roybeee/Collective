@@ -68,6 +68,13 @@ check('3: echoing the policy raises no franchise judge issue in either scope',ju
 check('3: echoing the policy raises no compliance issue (default, consumer and recruitment franchise scope)',[null,{scope:'consumer'},{scope:'recruitment'}].every(fr=>comp.checkCompliance(P,{facts:null,franchise:fr}).issues.length===0));
 check('3: echoing the policy fails no grader',[null,'fnb','franchise'].every(industry=>!graders.runGraders({id:'p',kind:'role',role:'data',contract:false,text:P},{industry,facts:{confirmed:[],prohibited:[]}}).some(r=>r.status==='fail')));
 check('3: echoing the policy is not an unverified ad claim',policy.unverifiedClaims(P,policy.claimGuard({confirmed:[],prohibited:[]})).length===0);
+// 정책을 따른 산출물 문장: 사실 표시는 가맹 판정 H8과 채점기의 확정 표시를 함께 만족하고, 후기 자리표시는 추천·보증 표시 경고에 걸리지 않는다.
+const FACT_LINE='가맹비는 1,100만원입니다 [사실: 가맹비 · 확정 사실].',PLACEHOLDER='[점주 후기 자리 — 동의·경제적 이해관계 표시 확인 필요]';
+check('3: the policy prescribes exactly these labels',P.includes('[사실: 항목 · 확정 사실]')&&P.includes(PLACEHOLDER));
+const LEDGERS=[{confirmed:[{key:'가맹비',value:'1,100만원'}],prohibited:[]},{confirmed:[{key:'가맹비',value:'1,100만원'},{key:'menu_price',value:'도넛 2,500원'}],prohibited:[]},{confirmed:[],prohibited:[]}];
+check('3: a fact sentence labelled as the policy says fails no content grader (with and without a price ledger; thin_section only measures length)',LEDGERS.every(facts=>!graders.runGraders({id:'p',kind:'role',role:'content',contract:false,text:FACT_LINE},{industry:null,facts}).some(r=>r.status==='fail'&&r.id!=='thin_section')));
+check('3: the same label satisfies the franchise fact/opinion label rule (H8)',!jc.judgeFranchiseText({text:FACT_LINE,at:NOW,now:NOW,scope:'recruitment',brandId:'b',facts:[],versions:[]}).issues.some(i=>i.ruleId==='h.fact_opinion_labels'));
+check('3: the testimonial placeholder raises nothing in the judge or the lexicon',['recruitment','consumer'].every(scope=>jc.judgeFranchiseText({text:PLACEHOLDER,at:NOW,now:NOW,scope,brandId:'b',facts:[],versions:[]}).issues.length===0)&&[null,{scope:'consumer'},{scope:'recruitment'}].every(fr=>comp.checkCompliance(PLACEHOLDER,{facts:null,franchise:fr}).issues.length===0));
 
 // ════ 4) 브리프 이전 캠페인: 목적이 같은 캠페인만 ════
 const req=(input,campaigns)=>briefInput.briefRequestFor({campaignId:'now',input,brand:{id:'b1',name:'가상',short:'GV',category:'X',color:'#000',bg:'#fff',description:'',audience:'',tone:'',constraints:'',knowledge:''},evidence:{facts:{confirmed:[],candidates:[],prohibited:[]},directives:[]},archive:{sources:[],research:null},sourceMasking:[],trialLearning:null,campaigns,metrics:[],artifacts:[],contextDate:'2026-09-26',storeAllow:[]});
@@ -131,6 +138,18 @@ check('5: link_store refuses an objective campaign (400) and leaves it without a
 const storeCampaign=await saveNew(boss,{...DATA,title:'가상 1호점 캠페인',storeId:'fo-store'}),CS=rawCampaign(storeCampaign.body.id);
 const storeSet=await saveEdit(boss,CS,{...DATA,title:'가상 1호점 캠페인',objective:O});
 check('5: an existing store campaign cannot get objective even when the request omits storeId (400 after the merge)',storeCampaign.status===200&&CS.storeId==='fo-store'&&storeSet.status===400&&storeSet.body.error===agency.OBJECTIVE_MESSAGES.withStore&&!('objective' in rawCampaign(CS.id)));
+const CU=rawCampaign((await saveNew(boss,{...DATA,title:'가상 모집 3',objective:O})).body.id);
+const unsetWithStore=await saveEdit(boss,CU,{...DATA,title:'가상 모집 3',objective:null,storeId:'fo-store'});
+check('5: unsetting objective and attaching a store in one request is 400 (link_store checks production records)',unsetWithStore.status===400&&unsetWithStore.body.error===agency.OBJECTIVE_MESSAGES.unsetWithStore&&rawCampaign(CU.id).objective===O&&!rawCampaign(CU.id).storeId);
+const CD=rawCampaign((await saveNew(boss,{...DATA,title:'초안 캠페인'})).body.id);
+await server.recordStatement(WS,'brief_draft','fo-draft',{id:'fo-draft',campaignId:CD.id,campaignVersion:CD.version,status:'completed',input:{...DATA,title:'초안 캠페인',plan:{}},result:null,createdAt:NOW,updatedAt:NOW}).run();
+const draftSet=await act(boss,{action:'save_campaign',id:CD.id,version:CD.version,briefDraftId:'fo-draft',data:{...DATA,title:'초안 캠페인',objective:O}});
+check('5: a consumer-scope brief draft cannot be saved while the same save sets objective (409, like the store rule)',draftSet.status===409&&draftSet.body.error===agency.OBJECTIVE_MESSAGES.draftMismatch&&!('objective' in rawCampaign(CD.id)));
+const draftKeep=await act(boss,{action:'save_campaign',id:CD.id,version:CD.version,briefDraftId:'fo-draft',data:{...DATA,title:'초안 캠페인'}});
+check('5: the same draft saves when the objective does not change',draftKeep.status===200);
+await server.recordStatement(WS,'campaign','fo-junk',{...rawCampaign(CD.id),id:'fo-junk',objective:'FRANCHISE_RECRUITMENT',version:1}).run();
+const junk=await saveEdit(member,{id:'fo-junk',version:1},{...DATA,title:'직접 기록 캠페인'});
+check('5: a non-exact stored value is a consumer campaign: a member edit is 200 and the stray value is removed without an objective event',junk.status===200&&!('objective' in rawCampaign('fo-junk'))&&!events('fo-junk').some(e=>e.objectiveChange));
 const produced=await saveNew(boss,{...DATA,title:'제작한 소비자 캠페인'}),CP=rawCampaign(produced.body.id);
 await server.recordStatement(WS,'execution_creative','fo-cr-1',{id:'fo-cr-1',campaignId:CP.id},CP.id).run();
 const producedSet=await saveEdit(boss,CP,{...DATA,title:'제작한 소비자 캠페인',objective:O});
@@ -169,6 +188,14 @@ await server.recordStatement(WS,'brand_fact',legacyFee.id,legacyFee,N).run();
 const ffacts=await f.load('lib/franchise-facts.ts');
 const feeConsumer=await creative(CN,[legacyFee]),feeObjective=await creative(CNO,[legacyFee]);
 check('6: an unsourced franchise fee fact is refused in the objective campaign even without franchise records (fact gate) and untouched in the consumer campaign',feeConsumer.status===200&&feeObjective.status===409&&feeObjective.body.error===ffacts.FRANCHISE_FACT_MESSAGES.sourceMissingInUse);
+// 발행 쪽 게이트(발행 준비·승인·화면 판정): 소비자 캠페인 때 만든 소재·초안 발행이 남아 있는데 저장 목적이 objective가 된 경우(검증을 거치지 않은 직접 기록)에도 모집 범위로 막는다.
+const CN2=await campaign('fo-exec-n2',N),card2=await creative(CN2,[revenue.body]),draftPub=await publication(CN2,card2.body.id);
+check('6: the consumer card and draft publication save before objective (200)',card2.status===200&&draftPub.status===200);
+await server.recordStatement(WS,'campaign',CN2.id,{...rawCampaign(CN2.id),objective:O}).run();
+const pubAfter=await publication(CN2,card2.body.id),approveAfter=await approve(CN2,draftPub.body),stateN2=(await execGet(boss,CN2.id)).body.franchise;
+check('6: save_publication judges the caption in recruitment scope (409)',pubAfter.status===409&&pubAfter.body.error.includes('승인으로 풀 수 없음'));
+check('6: approval re-checks in recruitment scope (409, the draft stays a draft)',approveAfter.status===409&&approveAfter.body.error.includes('승인으로 풀 수 없음')&&(await server.readRecord(WS,'execution_publication',draftPub.body.id)).status==='draft');
+check('6: the publish tab blockers are computed in recruitment scope',stateN2.scope==='recruitment'&&(stateN2.publications[draftPub.body.id]?.blockers??[]).some(x=>x.startsWith('가맹 규칙(해제 불가)')));
 assert.equal((await f.setFlag(boss,false)).status,200);
 const whileOff=await creative(CNO,[revenue.body]);
 check('6: turning r_franchise off does not relax a stored objective campaign (the switch is not read)',whileOff.status===409&&whileOff.body.error.includes('승인으로 풀 수 없음'));
@@ -197,8 +224,8 @@ check('6: execution and model runners do not import the feature switch directly 
 
 // ════ 6b) 화면(원문 검사, mocked): 목적은 목적 선택란에서만 보내고, 선택란은 대표·관리자에게만 보인다(스위치가 꺼져도 지정된 캠페인은 해제할 수 있게) ════
 const briefSrc=readFileSync('app/campaign-brief.tsx','utf8');
-check('6b: the dialog strips the objective carried in the form and sends it only from the objective control (null to unset, no key for consumer campaigns)',briefSrc.includes('delete rest.objective')&&briefSrc.includes('...(objective||edit?.objective?{objective:objective||null}:{})')&&briefSrc.includes('data:briefData()'));
-check('6b: only owner/admin see the objective control, and an objective campaign disables store selection',briefSrc.includes('canManage&&(franchiseOn||!!edit?.objective)?')&&briefSrc.includes('const canManage=canChange(useAccount())')&&briefSrc.includes('disabled={!!lockedStoreId||!!objective||active||busy}'));
+check('6b: the dialog strips the objective carried in the form and sends it only from the objective control (null to unset, no key for consumer campaigns)',briefSrc.includes('delete rest.objective')&&briefSrc.includes('...(objective||storedObjective?{objective:objective||null}:{})')&&briefSrc.includes('const storedObjective=isRecruitmentObjective(edit)')&&briefSrc.includes('data:briefData()'));
+check('6b: only owner/admin see the objective control, and an objective campaign disables store selection',briefSrc.includes('canManage&&(franchiseOn||storedObjective||!!objective)?')&&briefSrc.includes('setFranchiseOn(false)')&&briefSrc.includes('const canManage=canChange(useAccount())')&&briefSrc.includes('disabled={!!lockedStoreId||!!objective||storedObjective||active||busy}')&&briefSrc.includes('edit&&!lockedStoreId&&!objective&&!storedObjective&&linkChoice'));
 const panelSrc=readFileSync('app/execution-panel.tsx','utf8');
 check('6b: the publish tab names the recruitment scope for objective campaigns and keeps the consumer sentence',panelSrc.includes("state.franchise.scope==='recruitment'?'가맹 모집 캠페인입니다.")&&panelSrc.includes('가맹 프로필이 있는 브랜드입니다. 캡션에 가맹 모집 규칙(소비자 캠페인 범위)을 적용합니다.'));
 

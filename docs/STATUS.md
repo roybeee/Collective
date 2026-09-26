@@ -1,19 +1,19 @@
 # COLLECTIVE 현재 상태
 
-마지막 갱신: 2026-09-26 00:31 UTC (Claude 트랙 R 세션: R3a 캠페인 가맹 모집 목적 PR, 결정 26·31 대표 결정)
+마지막 갱신: 2026-09-26 01:17 UTC (Claude 트랙 R 세션: R3a 캠페인 가맹 모집 목적 PR(교차 검토 반영), 결정 26·31 대표 결정)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
 | 운영 제품 커밋 | `8c22f0e8738653698dd4350cd2063e3755340c83` (#115 `merged`, 묶음 12: e8bd8e0 뒤 #113~#115, 제품 변경은 #113 채점 도구뿐) | 제품 tree `02260ba4d4bf50dbd617fd4f6dc2709c5e067cf2` |
-| `origin/main` | `b0ef304` (#118) | 8c22f0e 뒤 #116(문서)·#117(트랙 R R1b·R2)·#118(게시 전 점검 수정). 묶음 13 `b0ef304`(tree `cb16d6b`, 38줄) 게시 요청 #119(자동 게시, `docs/PUBLISH.ko.md` 8절)는 1차 실행(22:36 UTC)이 트리거·조건 확인까지 동작했으나 지시문의 게시 도구가 비공개 전용이라 blocked(게시 안 함)였다. 공개 사이트 도구로 고친 지시문으로 22:47 UTC에 재요청했지만 23:20 UTC까지 결과 댓글이 없었다(작업 설정의 이벤트에 '커밋 업데이트'는 포함). 대표 결정(2026-09-25 23:2x UTC, "gpt쪽 문제가있는것같으니 우선 스킵하고 다음 단계로 진행"): 묶음 13 게시는 보류하고 라벨을 뗐다. 재개할 때는 `docs/publish/b0ef304.md`(main)를 편집기에 붙여 넣거나 새 요청 PR을 연다. 그동안 다른 도구는 새 게시를 요청하지 않는다. 그동안 다른 도구는 새 게시를 요청하지 않는다 |
+| `origin/main` | `16981dd` (#119, 문서만) | 8c22f0e 뒤 #116(문서)·#117(트랙 R R1b·R2)·#118(게시 전 점검 수정)·#119(묶음 13 게시 지시문·보류 기록). 묶음 13 게시 대상은 제품 커밋 `b0ef304`(#118)이고 #119는 비제품 경로다. 묶음 13 `b0ef304`(tree `cb16d6b`, 38줄) 게시 요청 #119(자동 게시, `docs/PUBLISH.ko.md` 8절)는 1차 실행(22:36 UTC)이 트리거·조건 확인까지 동작했으나 지시문의 게시 도구가 비공개 전용이라 blocked(게시 안 함)였다. 공개 사이트 도구로 고친 지시문으로 22:47 UTC에 재요청했지만 23:20 UTC까지 결과 댓글이 없었다(작업 설정의 이벤트에 '커밋 업데이트'는 포함). 대표 결정(2026-09-25 23:2x UTC, "gpt쪽 문제가있는것같으니 우선 스킵하고 다음 단계로 진행"): 묶음 13 게시는 보류하고 라벨을 뗐다. 재개할 때는 `docs/publish/b0ef304.md`(main)를 편집기에 붙여 넣거나 새 요청 PR을 연다. 그동안 다른 도구는 새 게시를 요청하지 않는다. 그동안 다른 도구는 새 게시를 요청하지 않는다 |
 | Sites 게시 | `published`: Sites 버전 35, deployment `appgdep_6ab68fba…` succeeded, Sites 작업 사본 tree `02260ba…` = 8c22f0e tree | [게시 기록](releases/2026-09-25-8c22f0e.md)(편집기 보고, 2026-09-25 21:3x UTC 경). 그 앞: e8bd8e0(묶음 11) [기록](releases/2026-09-25-e8bd8e0.md), 트랙 R 단독 게시 73147a9(Sites 버전 31, tree `unknown`) [기록](releases/2026-09-25-73147a9.md) |
 | 실행 검증 | 8c22f0e: `/api/version` not_run. 마지막 `runtime-verified`는 e8bd8e0(2026-09-25 13:48 UTC) | 소유자 세션 `/api/version` tree `d8eacc9…` = e8bd8e0 tree(그 게시 기록) |
 | 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` mode=email, role=owner (2026-09-25 03:30 UTC 경) |
 | Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 이번 게시도 기존 접근 설정 유지 | 게시 에이전트 보고 "기존 공개 접근 설정을 유지". 게시 뒤 접근 설정 재확인은 not_run |
 | 조사 워커 | online(lastSeen 2026-09-25 03:29 UTC, blocked 0, rotationReady true). 2026-09-24 14:15 UTC 새 설치기로 재설치(격리 점검 전부 통과) | `/api/research-worker/setup` 조회(real). gate 표시 `missing`이라 `RESEARCH_WORKER_APP_GATE=enforce`는 켜지 않는다 |
-| 열린 PR | #16 Android(draft, 제외), #120 A1 로컬 채널 스킬 팩(다른 도구), 트랙 R R3a 캠페인 가맹 모집 목적 PR(브랜치 `claude/franchise-recruitment-marketing-u8cpo2`, 이 갱신과 같은 PR) | GitHub 열린 PR 목록(GitHub MCP), 2026-09-25 23:2x UTC |
+| 열린 PR | #16 Android(draft, 제외), #120 A1 로컬 채널 스킬 팩(draft, 다른 도구), #121 A3-1 카피 팩 v2·#122 A3-2 브랜드 말투 원장(다른 도구), 트랙 R R3a 캠페인 가맹 모집 목적 PR(브랜치 `claude/franchise-recruitment-marketing-u8cpo2`, 이 갱신과 같은 PR) | GitHub 열린 PR 목록(GitHub MCP), 2026-09-26 01:17 UTC |
 | main CI | `b0ef304`·`41ea80d`·`8ed30d0` passed | GitHub Actions main 실행(run 36196792023 success, API 조회), 2026-09-25 22:36 UTC |
 
 - 테스트 흔들림(2026-09-25 관찰, 제품 동작 변경 없음, 원인 조사는 별도 작업):

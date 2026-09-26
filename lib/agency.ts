@@ -13,6 +13,8 @@ export const OBJECTIVE_MESSAGES={
  adminOnly:'캠페인 목적은 대표·관리자만 바꿀 수 있습니다.',
  brandLocked:'가맹 모집 캠페인의 브랜드는 바꿀 수 없습니다. 목적을 해제하거나 새 캠페인을 만드세요.',
  hasExecution:'제작·발행 기록이 있는 캠페인에는 가맹 모집 목적을 지정할 수 없습니다. 새 가맹 모집 캠페인을 만드세요.',
+ draftMismatch:'초안을 요청한 뒤 캠페인 목적이 바뀌었습니다. 바뀐 목적을 먼저 저장하고 초안을 다시 작성해 주세요.',
+ unsetWithStore:'목적 해제와 지점 연결을 한 번에 할 수 없습니다. 목적 해제를 저장한 뒤 지점 연결을 쓰세요.',
 } as const;
 // derivedStatus·statusReason: 응답 전용 파생 상태와 근거(lib/campaign-status.ts). 저장하지 않으며 저장 status는 그대로다.
 export type Campaign = {derivedStatus?:string;statusReason?:string;storeId?:string;storeExperimentId?:string;objective?:CampaignObjective;plan?:CampaignPlan;draftMeta?:DraftMeta;budgetConfirmedAt?:string;id:string; brandId:string; title:string; goal:string; audience:string; channels:string; stores:string; products:string; budget:number|null; startDate:string; endDate:string; constraints:string; sources:string; status:string; version:number; createdAt:string; updatedAt:string;};

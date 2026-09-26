@@ -11,7 +11,7 @@
 | 작업 | API | 대표 | 관리자 | 직원 |
 |---|---|---|---|---|
 | 캠페인 작성·브리프 수정 | `/api/action` `save_campaign` | 허용 | 허용 | 허용 |
-| 캠페인 가맹 모집 목적(objective) 지정·해제(값 `franchise_recruitment`만, 그 밖 값 400. 지점과 함께·지점 캠페인·브랜드 변경 400, 제작·발행 기록이 있으면 지정 409. `r_franchise` 꺼짐이면 지정 409, 해제는 스위치와 무관. 브리프 초안은 저장값만 이어받는다) | `/api/action` `save_campaign` (`data.objective`) | 허용(캠페인 이벤트 `objectiveChange`) | 허용(캠페인 이벤트) | 403(값을 바꾸지 않는 저장은 허용) |
+| 캠페인 가맹 모집 목적(objective) 지정·해제(값 `franchise_recruitment`만, 그 밖 값 400. 지점과 함께·지점 캠페인·브랜드 변경·해제와 지점 연결을 한 요청에 400, 제작·발행 기록이 있으면 지정 409, 목적이 바뀐 저장에 그 전 목적의 캠페인 초안 409. `r_franchise` 꺼짐이면 지정 409, 해제는 스위치와 무관. 브리프 초안은 저장값만 이어받는다) | `/api/action` `save_campaign` (`data.objective`) | 허용(캠페인 이벤트 `objectiveChange`) | 허용(캠페인 이벤트) | 403(값을 바꾸지 않는 저장은 허용) |
 | AI 실행·브리프 초안 | `/api/run`, `/api/brief`, `/api/meetings` | 허용 | 허용 | 허용 |
 | 작업물 등록·수정 | `/api/action` `save_artifact` | 허용 | 허용 | 허용 |
 | 작업물 수정 요청 | `/api/action` `review_artifact` (`revision`) | 허용 | 허용 | 허용 |

@@ -18,7 +18,7 @@ export type NeedsReview={reason:string;at:string};
 export type PublicationCode={id:string;code:string;type:'coupon'|'pos_tag';storeId:string};
 export type Publication={id:string;campaignId:string;creativeId:string;creativeVersion:number;campaignVersion:number;pngHash:string;factRefs:FactRef[];caption:string;mediaUrl:string;mediaMode?:'auto'|'external';copy?:PublicationCopy;trackingCode?:PublicationCode;scheduledAt:string;plannedCostKRW:number;version:number;status:PublicationStatus;channelId?:string;credentialVersion?:number;limitsVersion?:number;approvedLimits?:{maxPublications:number;maxPlannedCostKRW:number};approvedBy?:string;approvedAt?:string;aiDisclosureConfirmedBy?:string;aiDisclosureConfirmedAt?:string;providerId?:string;providerStatus?:string;error?:string;attemptedAt?:string;attemptRestored?:boolean;needsReview?:NeedsReview|null;invalidatedReason?:string;reconfirmedBy?:string;reconfirmedAt?:string;resolvedBy?:string;resolvedAt?:string;createdAt:string;updatedAt?:string};
 export type PublisherStatus={connected:boolean;channelId?:string;account?:string;version?:number};
-// warnings: 가맹 프로필이 있는 브랜드의 가맹 규칙 경고(트랙 R R2). 비가맹 브랜드에는 키가 없다.
+// warnings: 가맹 모집 규칙 판정 범위가 있는 캠페인(가맹 모집 목적 캠페인 또는 가맹 프로필 브랜드 캠페인)의 경고(트랙 R R2·R3). 범위가 없으면 키가 없다.
 export type CaptionCandidate={artifactId:string;artifactVersion:number;index:number;text:string;issues:string[];aiGenerated:boolean;warnings?:string[]};
 // 가맹 모집 규칙 판정 범위가 있는 캠페인의 발행 화면 정보(트랙 R R2·R3). scope: 가맹 모집 목적(objective) 캠페인은 모집 범위, 가맹 프로필 브랜드의 그 밖 캠페인은 소비자 범위.
 // branch: 가맹 프로필이 없으면 null. blockedFacts: 카드에 쓸 수 없는 사실과 사유.

@@ -2,7 +2,7 @@ import {briefFields,valueOf,type BriefDraft,type BriefKey,type DraftMeta} from '
 import {verifyHermes,hermesEndpoint} from '@/lib/hermes';
 import {requireAdmin,actor,requireAdminActor} from '@/lib/server';
 import {deleteCampaign,ApiError,acquireLock,releaseLock,assertNoActiveJobs,database,secureMutation,json,failure,body,str,recordStatement,readRecord,listRecords,eventStatement,validateCampaign,stamp,uid,encrypt,configuration,connection} from '@/lib/server';
-import {roles,OBJECTIVE_MESSAGES,type Campaign,type Brand,type Artifact} from '@/lib/agency';
+import {roles,isRecruitmentObjective,CAMPAIGN_OBJECTIVE,OBJECTIVE_MESSAGES,type Campaign,type Brand,type Artifact} from '@/lib/agency';
 import {archiveState,stateWrite} from '@/lib/archive-server';
 import {campaignMeasurement} from '@/lib/campaign-measurements';
 import {currentFactRefs} from '@/lib/ai-context';
@@ -20,16 +20,21 @@ if(b.action==='save_campaign'){
  // B1: AI 제안을 고치거나 쓰지 않은 사유(선택). 모르는 코드는 아무것도 쓰기 전에 400이다.
  const suggestionReasons=requireReasonCodes(b.suggestionReasons,'brief_suggestion');
 
- if(b.id){const old=await readRecord<Campaign>(owner,'campaign',str(b.id,'캠페인',100,true));if(old.storeId&&!data.storeId)data.storeId=old.storeId;if(old.storeId&&data.storeId!==old.storeId)throw new ApiError(400,'점포 캠페인의 지점은 변경할 수 없습니다.');if(old.storeId&&old.brandId!==data.brandId)throw new ApiError(400,'점포 캠페인의 브랜드는 변경할 수 없습니다.');if(old.objective&&old.brandId!==data.brandId)throw new ApiError(400,OBJECTIVE_MESSAGES.brandLocked);if(draft?.campaignId&&draft.campaignVersion!==old.version)throw new ApiError(409,'초안을 작성한 뒤 캠페인이 변경됐습니다. 최신 브리프에서 다시 작성해 주세요.');if(draft?.campaignId&&(draft.input.storeId||'')!==(old.storeId||''))throw new ApiError(409,'초안을 요청한 뒤 캠페인이 지점에 연결됐습니다. 지점 정보를 반영해 초안을 다시 작성해 주세요.');if(draft?.savedCampaignId&&draft.savedCampaignId!==old.id)throw new ApiError(409,'이 초안은 다른 캠페인에 저장됐습니다.');if(b.version!==old.version)throw new ApiError(409,'다른 화면에서 브리프가 변경됐습니다. 새로고침 후 다시 저장해 주세요.');const running=await db.prepare("SELECT id FROM jobs WHERE owner=? AND campaign_id=? AND status IN ('starting','queued','in_progress','uncertain')").bind(owner,old.id).first();if(running)throw new ApiError(409,'AI 작업이 끝난 후 브리프를 수정해 주세요.');campaign={...old,...data,version:old.version+1,status:'draft',updatedAt:stamp()};const artifacts=await listRecords<Artifact>(owner,'artifact',old.id);for(const a of artifacts)writes.push(recordStatement(owner,'artifact',a.id,{...a,status:'outdated'},old.id));
+ if(b.id){const old=await readRecord<Campaign>(owner,'campaign',str(b.id,'캠페인',100,true));if(old.storeId&&!data.storeId)data.storeId=old.storeId;if(old.storeId&&data.storeId!==old.storeId)throw new ApiError(400,'점포 캠페인의 지점은 변경할 수 없습니다.');if(old.storeId&&old.brandId!==data.brandId)throw new ApiError(400,'점포 캠페인의 브랜드는 변경할 수 없습니다.');if(isRecruitmentObjective(old)&&old.brandId!==data.brandId)throw new ApiError(400,OBJECTIVE_MESSAGES.brandLocked);if(draft?.campaignId&&draft.campaignVersion!==old.version)throw new ApiError(409,'초안을 작성한 뒤 캠페인이 변경됐습니다. 최신 브리프에서 다시 작성해 주세요.');if(draft?.campaignId&&(draft.input.storeId||'')!==(old.storeId||''))throw new ApiError(409,'초안을 요청한 뒤 캠페인이 지점에 연결됐습니다. 지점 정보를 반영해 초안을 다시 작성해 주세요.');if(draft?.savedCampaignId&&draft.savedCampaignId!==old.id)throw new ApiError(409,'이 초안은 다른 캠페인에 저장됐습니다.');if(b.version!==old.version)throw new ApiError(409,'다른 화면에서 브리프가 변경됐습니다. 새로고침 후 다시 저장해 주세요.');const running=await db.prepare("SELECT id FROM jobs WHERE owner=? AND campaign_id=? AND status IN ('starting','queued','in_progress','uncertain')").bind(owner,old.id).first();if(running)throw new ApiError(409,'AI 작업이 끝난 후 브리프를 수정해 주세요.');campaign={...old,...data,version:old.version+1,status:'draft',updatedAt:stamp()};const artifacts=await listRecords<Artifact>(owner,'artifact',old.id);for(const a of artifacts)writes.push(recordStatement(owner,'artifact',a.id,{...a,status:'outdated'},old.id));
  }else campaign={...data,id:uid(),status:'draft',version:1,createdAt:stamp(),updatedAt:stamp()};
  // 캠페인 목적(R3, 결정 26): 바뀔 때만 검사한다(값을 그대로 다시 보내는 저장은 직원도 된다). 지정은 r_franchise가 켜져 있어야 하고(꺼짐 409가 역할 403보다 먼저),
  // 해제는 스위치와 무관하다(모집 범위를 끄는 길). 제작·발행 기록이 있는 캠페인에는 지정하지 않는다(모집 캠페인은 따로 만든다). 해제는 키를 지운다(null을 저장하지 않는다).
- const objectiveBefore=campaign.objective,objectiveAfter=requested===undefined?objectiveBefore:requested??undefined,objectiveChanged=objectiveAfter!==objectiveBefore;
+ // 판정은 isRecruitmentObjective 하나로 한다. 저장값이 정확한 값이 아니면(검증을 거치지 않은 직접 기록) 소비자 캠페인으로 보고 저장할 때 지운다.
+ const objectiveBefore=isRecruitmentObjective(campaign)?CAMPAIGN_OBJECTIVE:undefined,objectiveAfter=requested===undefined?objectiveBefore:requested??undefined,objectiveChanged=objectiveAfter!==objectiveBefore;
  if(objectiveChanged){
   if(objectiveAfter&&!await isEnabled(owner,'r_franchise'))throw new ApiError(409,OBJECTIVE_MESSAGES.off);
   if(who.role==='member')throw new ApiError(403,OBJECTIVE_MESSAGES.adminOnly);
   if(objectiveAfter&&b.id&&await db.prepare("SELECT id FROM records WHERE owner=? AND parent_id=? AND kind IN ('execution_creative','execution_publication') LIMIT 1").bind(owner,campaign.id).first())throw new ApiError(409,OBJECTIVE_MESSAGES.hasExecution);
  }
+ // 캠페인 초안은 요청 시점의 저장 목적으로 만들어졌다(브리프 초안이 목적을 이어받음). 목적이 바뀐 저장에 그 초안을 쓰지 않는다(지점 연결 409와 같은 규칙).
+ if(draft?.campaignId&&isRecruitmentObjective(draft.input)!==!!objectiveAfter)throw new ApiError(409,OBJECTIVE_MESSAGES.draftMismatch);
+ // 목적 해제와 지점 연결을 한 요청에 하지 않는다(지점 연결은 link_store가 작업·제작 기록을 검사한다).
+ if(objectiveBefore&&!objectiveAfter&&campaign.storeId)throw new ApiError(400,OBJECTIVE_MESSAGES.unsetWithStore);
  if(objectiveAfter)campaign.objective=objectiveAfter;else delete campaign.objective;
  if(campaign.objective&&campaign.storeId)throw new ApiError(400,OBJECTIVE_MESSAGES.withStore);
  if(draft?.result){
