@@ -3,8 +3,7 @@
 > 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 운영: `8651021`(Sites 버전 40, tree `1ac4369`, [기록](releases/2026-09-26-8651021.md)).
-- **묶음 15 게시 요청 중**(레인 A, 2026-09-26 17:27 UTC): `98f2283`(tree `d11b2e1`). 싣는 제품 PR: #139(R15a-1), #143(R3b), #145(R15a-2a), #148(카피 팩 괄호 닫기). #143 게시 전 확인: 운영 objective 캠페인 0건, 그 개선 회의 0건(읽기 전용, 소유자 세션, passed · real).
+- 운영(갱신): `98f2283`(Sites 버전 41, tree `d11b2e1`, [기록](releases/2026-09-27-98f2283.md)). #139·#143·#145·#148 게시 완료.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
@@ -73,16 +72,16 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-26 17:27 UTC (Claude A 세션: 묶음 15 `98f2283` 자동 게시 요청)
+마지막 갱신: 2026-09-26 17:39 UTC (Claude A 세션: 묶음 15 `98f2283` Sites 버전 41 게시·tree 확인)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `8651021f7ae7403b7cd07ac0ac15061e42fb5f2a` (#137 `merged`, 묶음 14: A3 전체 #121·#129, A6-1~3 #130·#133·#137, `/api/version/public` #136. 새 스위치 `a3_copy_pack`·`a3_brand_voice`·`a6_data_requests`·`a6_place_check`는 모두 기본 꺼짐) | 제품 tree `1ac4369e96e69a124f693540eea5df2fee3ccf67`. 직전 운영은 `8f0fb54`(#132 head, tree `98a5800`) |
+| 운영 제품 커밋 | `98f22833a32cd6e60bd000bdc752e1a6812ca349` (#148 `merged`, 묶음 15: 트랙 R #139·#143·#145, 레인 A #148) | 제품 tree `d11b2e1d0db931188eb6f5eb0fa12b29d58adbdc`. 직전 운영 `8651021`(tree `1ac4369`) |
 | `origin/main` | `cf2c474` (#139 R15a-1 모집 자료 키트 순수 판정 모듈) | 운영 `8651021` 뒤 #139만 들어왔다(제품 경로 `lib/franchise-assets.ts`, 아직 연결 없음) |
-| Sites 게시 | `published`: Sites 버전 40, deployment `appgdep_6ab758798bdc8191b48a26537b9bb472` succeeded, Sites 커밋 `027b2ab`, 자동 게시(PR #138, 05:16:35 UTC push → 05:31 UTC 결과) | [게시 기록](releases/2026-09-26-8651021.md). 그 앞 버전 39는 `8f0fb54`(Codex 세션) |
-| 실행 검증 | `8651021`: 운영 tree 일치(real, 05:3x UTC). 공개 `/api/version/public` 200 tree `1ac4369…`, 소유자 세션 `/api/version`(Chrome 확장) 200 tree 일치·`promptManifest` null. main이 그 뒤 #139(트랙 R 순수 모듈)로 앞서 있어 main 전체의 `runtime-verified`는 아니다 | [게시 기록](releases/2026-09-26-8651021.md) |
+| Sites 게시 | `published`: Sites 버전 41, deployment `appgdep_6ab8028d0af88191b6d40f94337b2948` succeeded(자동 게시 PR #149) | [게시 기록](releases/2026-09-27-98f2283.md) |
+| 실행 검증 | `98f2283`: 운영 tree 일치(real). 공개 `/api/version/public`·소유자 `/api/version` 모두 `d11b2e1…` | [게시 기록](releases/2026-09-27-98f2283.md) |
 | 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` mode=email, role=owner (2026-09-25 03:30 UTC 경) |
 | Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 이번 게시도 기존 접근 설정 유지 | 게시 에이전트 보고 "기존 공개 접근 설정을 유지". 게시 뒤 접근 설정 재확인은 not_run |
 | 조사 워커 | online(lastSeen 2026-09-25 03:29 UTC, blocked 0, rotationReady true). 2026-09-24 14:15 UTC 새 설치기로 재설치(격리 점검 전부 통과) | `/api/research-worker/setup` 조회(real). gate 표시 `missing`이라 `RESEARCH_WORKER_APP_GATE=enforce`는 켜지 않는다 |
