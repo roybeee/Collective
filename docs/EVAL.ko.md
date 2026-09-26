@@ -1,6 +1,6 @@
 # 평가 하네스 (F1a) · 실패 유형 사전 v1 · 규제 가드레일 (A2)
 
-결론: 역할·회의 산출물을 네트워크 없이 다시 채점하는 결정론 채점기 14종(v1 13종 + 카피 팩 1종)과 규제 표시 가드레일 8범주를 순수 함수로 둔다. 프롬프트·모델·입력을 바꾼 뒤 결과가 나빠지지 않았는지를 사람의 인상 대신 같은 저울로 잰다.
+결론: 역할·회의 산출물을 네트워크 없이 다시 채점하는 결정론 채점기 15종(v1 13종 + 카피 팩 1종 + 브랜드 말투 1종)과 규제 표시 가드레일 8범주를 순수 함수로 둔다. 프롬프트·모델·입력을 바꾼 뒤 결과가 나빠지지 않았는지를 사람의 인상 대신 같은 저울로 잰다.
 
 비유: 요리 대회에서 맛 평가는 심사위원이 하지만, "재료를 빼먹었는가", "금지 재료를 썼는가"는 체크리스트로 누구나 같은 답을 낸다. 이 문서의 채점기는 그 체크리스트다. 맛(설득력·창의성)은 판정하지 않는다.
 
@@ -26,7 +26,7 @@
 
 공통 규칙:
 - 입력(브리프 목표·회의 안건)은 채점하지 않는다. 금지 표현의 출처로만 쓴다.
-- 우선순위: `question_only`가 `fail`이면 내용 채점기 9종(`thin_section`, `brief_prohibition_conflict`, `fact_conflict`, `unconfirmed_value_assertion`, `unsupported_claim_term`, `industry_metric_leak`, `revisit_cohort_definition`, `local_channel_coverage`, `copy_pack_variants`)은 `not_applicable`로 둔다. 재질문 1건이 여러 유형으로 이중 계산되지 않게 한다. 구조 채점기(`contract_json`, `heading_nesting`, `internal_id_exposure`, `input_budget`)는 계속 채점한다.
+- 우선순위: `question_only`가 `fail`이면 내용 채점기 10종(`thin_section`, `brief_prohibition_conflict`, `fact_conflict`, `unconfirmed_value_assertion`, `unsupported_claim_term`, `industry_metric_leak`, `revisit_cohort_definition`, `local_channel_coverage`, `copy_pack_variants`, `brand_voice_avoid_term`)은 `not_applicable`로 둔다. 재질문 1건이 여러 유형으로 이중 계산되지 않게 한다. 구조 채점기(`contract_json`, `heading_nesting`, `internal_id_exposure`, `input_budget`)는 계속 채점한다.
 - 판정 임계값(역할 250자, 회의 발언 80자, 계약 섹션 150자, 입력 토큰 32,000)과 내부 식별자 패턴은 `lib/graders`가 정본이다.
 - 부정·배제 판정(`lib/graders/negation.ts`, 채점기와 가드레일이 같은 사전을 쓴다): 기본은 문장 전체가 아니라 대상 표현 바로 뒤 서술부(같은 절, 40자 안)만 본다. `않·말고·금지·제외·삭제·안 됩니다·안 합니다·피합니다·피해야·빼고·대신·불가·금물`은 절 안 어디에 있어도 부정이다. `아닌·아니라·없이·없습니다·없음`은 대상 바로 뒤 8자 안에 쉼표 없이 나올 때만 부정이다(예: "평범한 분식이 아닌 숯불 떡볶이"의 `아닌`은 숯불을 부정하지 않는다). `·`·`/`로 이은 나열은 한 대상으로 보고 나열 끝부터 서술부를 본다. 가운데 항목은 띄어 쓴 두 낱말까지 한 항목이다(`위장 후기·대량 홍보·추천 조작 없음`). `금지 표현: …`처럼 부정 라벨 뒤 나열도 부정이다. 연결 어미(`-고`·`-며`·`-지만`·`-되` 등, `안 되`는 제외. 뒤에 공백이나 쉼표: `알리며,`·`게시물이며,`. 쉼표 앞 `-고`는 동사 어간 뒤만 보고 `최초 입고,` 같은 명사 나열은 경계가 아니다)와 끝맺음 뒤 쉼표(`만든다,`·`보세요,`)가 절 경계다. 판정 전에 조건 주석 괄호(`(주류 제외)`, `(1인 1회, 중복 참여 금지)`)와 권유·강조 관용구(`잊지 말고`, `놓치지 마세요`, `어디에도 없습니다`)를 지운다. `(진행 금지)`처럼 괄호 전체가 앞 행위의 부정이면 남긴다.
   - 절 끝 부정(측정 v2): 대상이 속한 절(나열 끝부터 다음 절 경계까지. 따옴표 안의 연결 어미 "싸고 맛있는"은 경계가 아니다)의 끝 서술부(끝 문장부호·닫는 따옴표·끝 괄호 주석을 벗긴 끝 24자)가 대상 명사구에 대한 표현 사용의 부정·금지(`쓰지 않는다`·`사용하지 않는다`·`넣지 않는다`·`표기하지 않는다`·`금지`·`사용 보류`·`빼고`·`피한다` 등)면 대상과의 거리와 무관하게 부정이다. 40자 창을 넘는 긴 금지 목록("현재 확정된 가격·인기·판매 1위·…·효능 표현은 쓰지 않는다")을 위해서다. 단독 `보류`·`삭제`·`제외`는 대상 뒤 40자 안이고 그 사이에 따옴표 나열이 아닌 쉼표가 없을 때만 대상의 것이다("협찬 게시물은 표시 기준이 정해질 때까지 보류한다"는 부정, "헤드라인은 ‘지금 구매하세요’, 서브 문구는 보류한다"는 부정이 아니다). 표현 사용과 무관한 부정("할인 쿠폰을 발행하지 않습니다")과 `없음`·`아니다`는 먼 대상을 부정하지 않는다("효과, 부작용이 없습니다"는 효능 주장으로 남는다).
@@ -36,7 +36,7 @@
   - 금지 맥락 라벨(`prohibitiveLabel`, 측정 v2): 라벨·제목·표 머리칸을 가운뎃점·빗금·쉼표·`및`·`또는`·`과/와`로 나눈 항목이 모두 금지 항목이거나 보조 항목(이유·사유·근거·기준·목록·예시·처리·조치·조건·대안)이고 금지 항목이 하나 이상이면 그 구역 전체가 규칙 목록이다(`금지 또는 보류 표현`, `사용하지 않을 표현`). 금지 항목은 금지·보류 서술로 끝나는 항목이다(`금지`·`보류`·`삭제`·`제외`·`피할`·`쓰지/넣지/하지 않을` 뒤에 `표현`·`문구`·`항목`·`사항`·`것` 등만 올 수 있다). 금지어가 들어 있기만 한 항목(`보류 해제 후 실행`, `보류 없이 바로 진행`, `삭제 요청 대응 뒤 게시할 후기 이벤트`, `할인 제외 상품 홍보 문안`, `보류 여부`, `보류 사유`)은 금지 항목이 아니고, `대체 문구`·`대체 카피`는 실제로 쓸 카피라 보조 항목이 아니다. 괄호는 금지·보류 한 낱말(`(사용 금지)`, `(보류)`)일 때만 라벨의 일부로 보고 그 밖(`(보류 해제)`, `(근거 없는 표현 삭제)`)은 뺀다. 다른 항목과 섞이면(`채널 역할·…·금지 표현`, `추천안·나머지 안 보류 이유`, `선택/제외`) 금지 맥락이 아니다.
 - 라벨(구역 이름): 제목 줄, 또는 `**`·`__` 강조와 끝 콜론을 벗긴 뒤 문장부호 없는 30자 이하 짧은 줄(`**게시 카피**`, `게시 카피:`)이다. `라벨: 본문` 인라인 줄(`- 게시 카피: …`, `**카피 A:** …`)은 그 줄에만 라벨을 붙이고 둘러싼 라벨과 함께 본다.
 
-## 실패 유형 정의표 (v1 결정론 13종 + 카피 팩 1종 + G3 회의·브리프 6종)
+## 실패 유형 정의표 (v1 결정론 13종 + 카피 팩 1종 + 브랜드 말투 1종 + G3 회의·브리프 6종)
 
 | ID | 정의 | 판정 규칙(fail) | not_applicable |
 |---|---|---|---|
@@ -54,6 +54,7 @@
 | `local_channel_coverage` | F&B·점포 캠페인 CMO·strategy가 로컬 핵심 채널 후보를 다루지 않음 | 플레이스(네이버 지도·플레이스)·당근·배달앱(배민·쿠팡이츠·요기요·배달 플랫폼)·카카오 4개 채널군이 각각 채널 구역(라벨·줄에 "채널") 또는 결정 표현(선택·제외·보류·후순위·채택·쓰지 않·다루지 않)이 있는 줄에 나와야 한다. `자료 필요`로 시작하는 줄과 `=`로 시작하는 산식 줄은 세지 않는다. 4/4 미만이면 fail | `context.localStore`가 아님, cmo·strategy 외 역할, 회의 발언, `question_only` fail |
 | `input_budget` | 역할·회의 호출 입력 토큰이 절대 상한 초과 | 사용량 원장 `inputTokens > INPUT_TOKEN_CAP`. 역할 32,000, 회의 단계 64,000(`MEETING_INPUT_TOKEN_CAP`, R3 실측 뒤 위임 결정 2026-09-25). `context.inputTokenCap`으로 바꾼다 | 토큰 미확인, 브리프 초안·조사 호출(포함 여부 결정 전) |
 | `copy_pack_variants` (A3-1) | 카피 팩 v2 계약 위반(팩 없음·형식 오류·채널당 서로 다른 안 부족 등) | 원문 JSON이 `role-output-v2`이고 `parseCopyPack`(`lib/copy-pack.ts`)이 error 문제를 하나라도 냄: 팩 없음·버전 다름, 채널 1~4개 밖, 채널당 서로 다른 안 3개 미만(훅+본문을 공백·문장부호 정규화 뒤 같으면 1안) 또는 5개 초과, 안 id 빔·중복, 훅 120자·본문 1,200자·CTA 60자 초과·빈 값, CTA 여러 줄, 장면 3~10개 밖·0초 시작 아님·빈틈·겹침·마지막 끝 ≠ `durationSec`(6~60 정수), 실험 1~3개 밖·채널 없음·대조/실험안이 같은 채널의 서로 다른 안 id가 아님·지표가 `learningMetrics` 3종 밖. 브리프 채널 누락은 경고(warn)라 세지 않는다. [카피 팩](COPY-PACK.ko.md) | v1 원문, 저장 본문(`text`)만 있는 항목(온라인 채점), 역할 밖 항목, `question_only` fail |
+| `brand_voice_avoid_term` (A3-2) | 확정 브랜드 말투의 피할 표현(`avoidTerms`)을 카피에 씀 | 카피 구역 문장·따옴표 안 문구(`unsupported_claim_term`과 같은 구역. 금지·보류 라벨·표·목록은 뺀다)에 피할 표현이 부정·배제 없이 나옴(공용 부정 판정 `usesTerm`). "‘최고의’라는 표현은 쓰지 않는다"는 사용이 아니다. `[확인 필요]`는 면제 사유가 아니다. [카피 팩](COPY-PACK.ko.md) A3-2 | 역할 입력에 확정 말투(`brandVoice`)가 없던 항목(스위치 꺼짐·확정본 없음·content·creative 밖 역할), 피할 표현 0개, 역할 밖 항목, 온라인 채점(저장 본문만 봐 말투 입력을 모른다), `question_only` fail |
 | `meeting_step_contract` (G3) | 회의 합의·품질 재검토 단계의 필수 필드·형식 위반 | `parseMeetingStep`이 거부하거나, 실무 스킬 회의(contract)에서 재검토의 5개 기준 판정(checks)·합의 과제별 판정(taskChecks)이 빠짐 | 발언·개선본·역할·브리프 |
 | `revision_repeat` (G3) | 개선본이 원본을 거의 그대로 반복 | 공백·문장부호를 뺀 3글자 조각의 자카드 유사도 ≥ 0.9(약 5% 미만 수정). pass에도 유사도를 기록 | 개선본이 아닌 단계, 원본·개선본 본문 없음 |
 | `seeded_defect_detection` (G3) | 평가 케이스에 일부러 심은 결함을 재검토가 지적하지 못하거나 개선본이 그대로 남김 | `expectations.seededDefects[{id,role,marker,keywords}]`. 재검토는 marker·keywords 언급이면 지적, 개선본은 같은 역할 marker를 부정 없이 다시 쓰면 미수정. 잘못된 항목은 `grader_error` | 케이스에 `seededDefects` 없음 |
@@ -65,7 +66,7 @@
 
 결론: 원 JSON(`raw`) 채점은 사람이 보는 정규화 렌더본을 채점하고, 정규화가 가릴 수 있는 두 결함은 정규화 전 판정을 따로 남긴다. 정규화로 가린 결함은 예방된 것이 아니기 때문이다.
 
-- 채점 버전: `GRADERS_VERSION='failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-measure+local-rerun+contract-read+channel-decision+copy-pack'`(`lib/graders/index.ts`). `+meeting-normalized`는 회의 단계를 운영 정규화본으로 채점하고 원문 경로 노출을 `prevention`으로 둔다(아래 `prevention`). `+r3-measure`은 R3 기준선 실측 오탐 세 가지를 고쳤다. 인용 조사 '(이)라고'는 절 경계가 아니다('‘무료 자사 채널’이라고 단정하지 않는다'). 확정·확인 뒤로 미룬 승인·결정은 보류다('구매·혜택 유도 표현은 … 확정된 뒤 별도 승인합니다'. '확정된 뒤 바로 씁니다'는 사용). 대상 앞 금지·거절 수식은 금지 대상 표시다('금지된 “당일 전량 소진” 표현이 … 포함됨'). 다음도 주장 사용이 아니다.
+- 채점 버전: `GRADERS_VERSION='failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-measure+local-rerun+contract-read+channel-decision+copy-pack+voice-avoid'`(`lib/graders/index.ts`). `+meeting-normalized`는 회의 단계를 운영 정규화본으로 채점하고 원문 경로 노출을 `prevention`으로 둔다(아래 `prevention`). `+r3-measure`은 R3 기준선 실측 오탐 세 가지를 고쳤다. 인용 조사 '(이)라고'는 절 경계가 아니다('‘무료 자사 채널’이라고 단정하지 않는다'). 확정·확인 뒤로 미룬 승인·결정은 보류다('구매·혜택 유도 표현은 … 확정된 뒤 별도 승인합니다'. '확정된 뒤 바로 씁니다'는 사용). 대상 앞 금지·거절 수식은 금지 대상 표시다('금지된 “당일 전량 소진” 표현이 … 포함됨'). 다음도 주장 사용이 아니다.
   - 따옴표 안이 주의·금지 규칙 이름인 경우('‘할인 마감 문구 주의’ 버전 1').
   - '무료 여부'·'무료인가요'.
   - 대상이 주제어인 절의 '확정 사실이 아니다·확정 사실 목록에 없다·확인되지 않았다'.
@@ -84,6 +85,9 @@
   - 원 JSON 채점은 원문의 `contractVersion`으로 계약을 고른다(`rawOutputContract`). `role-output-v2`면 운영과 같이 팩 렌더본(채널별 카피 안·장면표·실험)을 계약 섹션 앞에 넣고 렌더한다. `contract_json`도 같은 계약으로 읽는다.
   - `copy_pack_variants`를 14번째 채점기로 더했다. v1 원문은 계약·렌더본이 그대로라 기존 13종 판정이 같고 새 채점기는 `not_applicable`이다.
   - 한계: 평가 항목은 요청한 계약을 모른다. v2로 요청했는데 모델이 v1로 답하면 운영은 계약 버전 불일치로 거부하지만 채점기는 v1 원문으로 채점한다(`contract_json` pass, `copy_pack_variants` not_applicable). A3-4 골든 v2 케이스에서 기대 계약을 케이스에 둔다.
+- `+voice-avoid`는 브랜드 말투(A3-2, [카피 팩](COPY-PACK.ko.md) A3-2 절)를 채점한다.
+  - `brand_voice_avoid_term`을 15번째 채점기로 더했다. 평가 역할 채점은 동결 요청의 `brandVoice`(content·creative 역할일 때만)에서 피할 표현을 읽어 채점 맥락(`GradeContext.brandVoice`)에 넣는다(`lib/eval-kinds.ts` `gradeRole`). 말투가 없는 케이스는 맥락이 그대로라 기존 14종 판정이 같고 새 채점기는 `not_applicable`이다.
+  - 한계: 운영 온라인 채점(`lib/online-grading.ts`)은 말투 입력을 모르므로 늘 `not_applicable`이다. 운영 작업물의 피할 표현은 평가 run으로 본다.
 - `+contract-read`는 운영 계약 읽기(`lib/role-output.ts`)를 고쳐 렌더본이 바뀐다(R3 기준선 계약 형식 실패 2건 실측).
   - 완결된 JSON 뒤의 여분 닫는 괄호('…}]}}')는 끝의 '}'·']'를 최대 8자까지 떼고 읽는다. `contract_json`은 원문을 그대로 읽어(`strictContractJson`) 계속 fail로 센다.
   - 재질문 판정의 '없다'는 작업·요청·과업이 바로 주어일 때만 본다('요청하신 작업이 없습니다'). '… 과업이 확인되지 않은 상태에서 … 단정할 수 없습니다'는 재질문이 아니다.
@@ -334,7 +338,7 @@ node scripts/eval/grade.mjs <case.json> [--json] [--detail]
 - 멱등 키: `collective-eval-` + SHA-256(`<run id>:<case id>`) 앞 40자. `Idempotency-Key`·`X-Hermes-Session-Key` 헤더에 쓴다. 운영 키(`collective-<uuid>`)와 접두사가 달라 저장된 운영 키를 재사용할 수 없고, run마다 달라 같은 케이스를 다시 평가해도 이전 결과를 돌려받지 않는다. 같은 run·케이스의 재시도는 같은 키라 중복 실행을 막는다.
 - 예산 중단: 제출 직전마다 위 표의 run 예산·월 절대 상한(제출 직전)을 본다. 넘으면 다음 제출을 멈추고, 남은 케이스는 `not_run`(`stopReason: budget_reached` 또는 `monthly_cap_reached`)이 된다. 제출한 케이스가 토큰 사용량 없이 끝나도 예산을 지킬 수 없으므로 같은 방식으로 멈춘다(`usage_unreported`). 케이스 하나가 자기 예약(`reserve`, 역할 50,000)보다 많이 쓰면 그 케이스만큼 run 예산을 넘을 수 있다. 그러면 다음 제출 직전 검사가 그 run을 멈추고, 늘어난 월 누적은 이후 run의 시작·제출 검사에 반영된다.
 - 오류 분류: 401/403은 `blocked`(인증), 연결 불가·다른 주소로 이동은 `blocked`(연결)로 run을 멈춘다. 이것은 `failed`와 다르다. 제출 전 케이스는 `not_run`이 된다. 조회하던(제출 중) 케이스는 `blocked`가 되고 `providerRunId`를 유지한다. 연결은 살아 있는데 격리 해제·연결 확인 실패·운영 호스트 충돌로 게이트만 막힌 경우도 같다. 막힐 때 제출 중인 HERMES 실행이 있으면, 저장된 평가 연결이 그 run을 보낸 호스트일 때 중지를 요청한다. 요청 결과(확인함·확인하지 못함·연결이 없어 요청 못 함)는 케이스 `error`에 남긴다. 429·5xx는 워커 백오프(`background_attempt`)로 재시도한다. 그 밖의 4xx·실행 번호 오류·HERMES 실패·중단 보고는 해당 케이스만 `failed`. 30분 넘게 끝나지 않은 케이스는 중지를 요청하고 `failed`로 둔다.
-- 채점: 케이스가 끝나면 서버가 `runGraders`(역할은 14종, 회의 단계·브리프는 G3 채점기를 더한 `ALL_GRADERS`, 8절)와 `checkCompliance`로 사람이 보는 정규화 렌더본을 채점한다. run에는 채점 버전(`gradersVersion`), 채점기별 `pass|fail|not_applicable|grader_error`(상세 200자), 요약 건수, 정규화 전 예방 판정(`prevention`, 2종)과 정규화 건수(`normalization`, 위 '정규화와 예방 판정'), 가드레일 등급별 건수·규칙 ID, 보고 모델, `providerRunId`, 토큰(입력·출력·합계), `durationMs`(제출~완료 관측, tick 간격 포함)를 남긴다. 모델 출력 원문과 발췌가 든 가드레일 상세는 `eval_output`(소유자 전용)에 둔다.
+- 채점: 케이스가 끝나면 서버가 `runGraders`(역할은 15종, 회의 단계·브리프는 G3 채점기를 더한 `ALL_GRADERS`, 8절)와 `checkCompliance`로 사람이 보는 정규화 렌더본을 채점한다. run에는 채점 버전(`gradersVersion`), 채점기별 `pass|fail|not_applicable|grader_error`(상세 200자), 요약 건수, 정규화 전 예방 판정(`prevention`, 2종)과 정규화 건수(`normalization`, 위 '정규화와 예방 판정'), 가드레일 등급별 건수·규칙 ID, 보고 모델, `providerRunId`, 토큰(입력·출력·합계), `durationMs`(제출~완료 관측, tick 간격 포함)를 남긴다. 모델 출력 원문과 발췌가 든 가드레일 상세는 `eval_output`(소유자 전용)에 둔다.
 - 봉인 세트: sealed 케이스를 쓰는 run은 `sealedUsed: {by, at, cases}`를 남긴다. 목적은 run `label`에 적는다.
 - `cancel_run`: 제출 중인 HERMES 실행에 중지를 요청하고(확인 여부를 케이스 `error`에 남김) 그 케이스는 `cancelled`, 남은 케이스는 `not_run`. `delete_run`: 끝난 run의 출력(`eval_output`)과 케이스 결과(`results`), 재채점 기록(`regrades`)을 지운다(진행 중이면 409, 이미 삭제했으면 409). run 행은 `deleted: {by, at, cases}`를 단 채 남는다. 결정 5 장부(`usedTokens`·`tokenBudget`·`createdAt`)와 감사 기록(`overBudgetApproved`·`sealedUsed`·`label`)을 보존해 월 누적이 삭제로 줄지 않게 하려는 것이다. 삭제한 run은 비교(`compare`)할 수 없다(409). AI 심사 보정 라벨(`judge_label`, J2)이 있는 run은 라벨의 근거가 사라지므로 `delete_run`이 409다.
 

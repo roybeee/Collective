@@ -23,6 +23,8 @@
 | 브랜드 사실 확정·거절, 확정·거절된 사실 수정(가맹 항목 확정은 정보공개서 근거 필수·`r_franchise` 꺼짐 409, 사용 거절은 스위치와 무관) | `/api/brand-facts` `save_fact` | 허용 | 허용 | 403 |
 | 가맹 사실을 새 정보공개서 버전으로 옮기기 | `/api/brand-facts` `rebase_facts` | 허용 | 허용 | 403 |
 | 가맹 브랜드의 정보공개서 버전 요약 보기(버전 id·라벨·등록일·상태, 현재 버전, 사업연도 종료일, 기능 스위치 상태, 분기) | `/api/brand-facts` GET `franchise`, `/api/execution` GET `franchise` | 포함 | 포함 | 포함(후보 사실의 근거 입력과 발행 화면 차단 사유용. 파일 해시·보관 위치·감사 기록은 없고, 가맹 설정 GET `settings`는 403) |
+| 브랜드 말투 보기(현재 판·상태·모델에 가는 확정본, 작성·확정한 사람은 id·역할만) | `/api/brand-voice` GET | 허용 | 허용 | 허용 |
+| 브랜드 말투 초안 저장·확정·철회(A3-2. 오래된 `version`은 409. 확정본만 스위치 `a3_brand_voice`가 켜진 크리에이티브·콘텐츠 입력에 실리고, 전화·이메일 등은 브랜드 정체성과 같은 방식으로 가린다) | `/api/brand-voice` `save_draft`·`confirm`·`revoke` | 허용 | 허용 | 403 |
 | 아카이브 자료 추가·후보로 되돌리기 | `/api/archive` `add_source`, `review_source`·`review_sources` (모든 항목이 `candidate`) | 허용 | 허용 | 허용 |
 | 아카이브 자료 확정·사용 제외(일괄 포함), 진단 채택, 의뢰 정보 수정 | `/api/archive` `review_source`·`review_sources` (`confirmed`·`excluded`가 하나라도 있으면), `confirm_diagnosis`, `save_intake` | 허용 | 허용 | 403 |
 | 아카이브 원본 파일 삭제(레코드는 남김, 되돌릴 수 없음) | `/api/archive` `delete_source_file` | 허용 | 허용 | 403 |

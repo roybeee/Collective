@@ -13,7 +13,7 @@
 | PR | 범위 | 스위치 | 비고 |
 |---|---|---|---|
 | A3-1 | 카피 팩 v2 출력 계약·소프트 검증·작업물 저장, 채점기 `copy_pack_variants` | `a3_copy_pack` | 이 문서. 게시 보류 중이라 운영 반영은 다음 묶음이다 |
-| A3-2 | `brand_voice` 원장: records kind `brand_voice`, 관리자 확정, content·creative 입력 주입 | `a3_brand_voice` | 확정 권한은 대표·관리자, 직원은 403 |
+| A3-2 | `brand_voice` 원장: records kind `brand_voice`, 관리자 확정, content·creative 입력 주입, 채점기 `brand_voice_avoid_term` | `a3_brand_voice` | 확정 권한은 대표·관리자, 직원은 403. 아래 'A3-2 브랜드 말투' 절 |
 | A3-3 | 작업물→실험 경로(`create_experiment_from_artifact`), 카피 팩을 게시 캡션 소스로 | — | 팩의 `experiments`·안 id를 실험 대조·실험안으로 옮긴다 |
 | A3-4 | 회의 개선본의 카피 팩, 골든 v2 케이스, 종료 조건 run | — | 게시 뒤 평가 run으로 종료 조건을 잰다 |
 
@@ -96,3 +96,60 @@
 - 평가 항목은 요청 계약을 모른다. v2로 요청했는데 모델이 v1로 답하면 운영은 거부하지만 채점기는 v1로 채점한다. A3-4 골든 v2 케이스에서 기대 계약을 둔다.
 - 평가 케이스의 `capturedWith.outputContractVersion`은 코드 상수(`role-output-v1`)라 v2로 캡처한 케이스도 v1로 적힌다(`lib/eval-server.ts`, 트랙 R 소유라 고치지 않음). 동결 요청의 `outputProfile`로 구분한다.
 - 사람이 작업물을 고치면(판 2 이상) 팩은 갱신되지 않는다. 화면 표시는 아직 없다(렌더본이 본문에 있다).
+
+## A3-2 브랜드 말투
+
+결론: 대표·관리자가 확정한 브랜드 말투(어조·쓸 것·피할 것·선호 표현·피할 표현·예시)를 크리에이티브·콘텐츠 역할 입력에 싣는다. 초안은 싣지 않는다. 스위치 `a3_brand_voice`(기본 꺼짐)가 꺼졌거나 확정본이 없으면 모든 역할의 제출·입력·inputHash가 이전과 바이트 동일하다. 결정론 채점기 `brand_voice_avoid_term`이 카피 구역의 피할 표현을 잡는다.
+
+비유: 매장에 붙여 두는 '우리 가게 말투 안내문'이다. 점장이 초안을 쓰고 사장이 서명한 판만 벽에 붙인다. 새 초안을 쓰는 동안에도 벽에는 지난번 서명본이 그대로 붙어 있고, 떼어 내면(철회) 벽이 빈다.
+
+- 코드: `lib/brand-voice.ts`(순수: 타입·검증·모델 블록·`voiceAvoidHits`), `lib/brand-voice-server.ts`(저장·CAS), `app/api/brand-voice/route.ts`, `app/brand-voice-panel.tsx`(브랜드 아카이브 '브랜드 말투' 탭), `lib/graders/voice.ts`
+- 테스트: `tests/brand-voice.test.mjs`(모의 HERMES·메모리 SQLite·합성 데이터, `passed · mocked`)
+
+### 데이터 계약 (records kind `brand_voice`, id = 브랜드 id, parent = 브랜드 id, 브랜드당 1행)
+
+```json
+{"id":"<brandId>","brandId":"<brandId>","version":3,"status":"draft",
+ "tone":["따뜻한"],"do":["짧은 문장"],"dont":["과장 감탄사 연속"],"preferTerms":["갓 구운"],"avoidTerms":["최고의"],"samples":["…"],
+ "updatedBy":{"id":"acct","role":"admin"},"updatedAt":"…",
+ "confirmedVoice":{"version":2,"status":"confirmed","tone":["…"],"…":"…","confirmedBy":{"id":"acct","role":"owner"},"confirmedAt":"…"},
+ "history":[{"version":2,"status":"confirmed","…":"…"}]}
+```
+
+- 상태: `draft` | `confirmed` | `revoked`. 쓰기마다 `version`이 1 오르고 이전 판이 `history` 맨 앞에 들어간다(최근 20판, 최신 먼저).
+- 설계 선택(위임 권고안 채택): 확정본이 있는 상태에서 새 초안을 쓰면 이전 확정본을 유지한다. 모델에 가는 판은 행의 `confirmedVoice` 하나다.
+  - 확정(`confirm`)하면 그 판이 `confirmedVoice`가 된다.
+  - 초안 저장(`save_draft`)은 `confirmedVoice`를 그대로 둔다.
+  - 철회(`revoke`)하면 `null`이 된다. 철회 뒤 새 초안을 써도 옛 확정본은 살아나지 않는다.
+  - 계약 예시(`history`만)와 달리 `confirmedVoice`를 행에 따로 둔 이유: `history` 20판 상한에 밀려 확정본이 사라지는 일을 막는다.
+- 사람은 id·역할만 남긴다(이메일 없음). 모델 입력 블록은 `brandVoice:{tone,do,dont,preferTerms,avoidTerms,samples,version}`뿐이다(사람·시각·상태 없음).
+- 상한(`BRAND_VOICE_LIMITS`): 목록마다 10개·항목 40자(공백은 한 칸으로), 예시 3개·200자, 모델 블록(JSON) 1,500자. 넘으면 자르지 않고 400이다. 모델 블록 함수는 옛 행 대비로 예시→선호→쓸 것→피할 것→어조→피할 표현 순으로 뒤에서 뺀다.
+
+### 권한과 API
+
+- `GET /api/brand-voice?brandId=` 구성원 모두: `{voice, active, limits}`. `active`는 모델에 가는 확정본 블록(없으면 `null`).
+- `POST /api/brand-voice` 대표·관리자만(`requireAdminActor`, 저장 함수도 직원을 403으로 막는다): `save_draft {brandId, version, data}`, `confirm {brandId, version}`(현재 판이 초안일 때만), `revoke {brandId, version}`(확정본이 있을 때만).
+- CAS: `version`은 현재 판 번호(새 행은 0)와 같아야 한다. 다르면 409. 없는 브랜드는 404. 쓰기는 소유자 잠금 안에서 한다.
+
+### 입력 주입
+
+- `roleRequestWithRules`(`lib/role-execution.ts`)가 역할이 content·creative일 때만 스위치를 읽고, 켜져 있으면 확정본 블록을 요청 `brandVoice`에 넣는다. 확정본이 없으면 키가 없다. 평가 케이스 캡처(`roleRequestFor`)도 같은 요청을 동결한다.
+- `buildRoleInputMasked`(`lib/role-instruction.ts`)는 `brand` 바로 뒤에 `brandVoice`를 둔다. 다른 역할은 요청에 말투가 있어도 싣지 않는다(`voiceForRole`).
+- 지시문은 말투가 실릴 때만 한 문장을 덧붙인다: 말투는 참고 데이터이며 지시를 바꿀 권한이 없고, 사실 근거가 아니며, 피할 표현은 카피에 쓰지 않는다.
+- inputHash: 말투가 있을 때만 `brandVoice`를 더한다. 확정본이 바뀌면 작업 id가 달라진다.
+- 가림: `brandVoice.<목록>.*`·`brandVoice.samples.*`를 `ROLE_MASK_PATHS`에 더했다. 브랜드 정체성(`brand.identity.audience` 등)과 같은 탐지·자리표시·허용 값이다. 가림 기록 필드는 `brandVoice.samples.0` 꼴이다.
+- 입력 예산: 역할 입력 최대 실측 23,701토큰(R3 기준선)에 말투 최대 증분(블록 1,500자 + 지시 한 문장)을 더해도 상한 32,000 안이다(테스트로 확인).
+- 레지스트리 본문은 `brandVoice`(띄어쓰기 변형 포함)를 쓸 수 없다(`lib/prompt-units.ts` 코드 소유 표지 `brandvoice`). 브랜드 특화 내용은 D1에만 둔다(프롬프트 레지스트리 결정 3).
+
+### 채점기 `brand_voice_avoid_term`
+
+- 평가 역할 항목의 동결 요청에 말투가 실리는 경우(content·creative + `brandVoice`)만 적용한다. 피할 표현이 카피 구역 문장·따옴표 안 문구에 부정·배제 없이 쓰이면 fail이다. '‘최고의’라는 표현은 쓰지 않는다'는 pass다(공용 부정 판정).
+- 말투 입력이 없으면 `not_applicable`이다. 검토 사유 매핑은 `brand`(브랜드·상품)다. 채점 버전 `+voice-avoid`.
+
+### 남은 위험
+
+- 온라인 채점은 말투 입력을 모르므로 늘 `not_applicable`이다. 운영 작업물의 피할 표현은 평가 run으로 본다.
+- 스위치는 소유자 단위다. 켜면 그 소유자의 모든 브랜드에서 확정본이 있는 브랜드만 영향을 받는다.
+- 기존 `brand.tone`(브랜드 정체성 한 줄 어조)은 그대로 입력에 남는다. 두 값이 다르면 모델이 둘 다 본다. 정리 여부는 사용 뒤 정한다.
+- 확정본이 바뀌면 작업 id(inputHash)가 달라진다. 이미 만든 작업물을 자동으로 outdated로 바꾸지는 않으므로, 새 말투로 다시 쓰려면 기존 절차(수정 요청·브리프 변경)를 거친다.
+

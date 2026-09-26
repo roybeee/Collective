@@ -13,7 +13,7 @@ export type ReasonDef={code:ReasonCode;label:string;description:string;graders:r
 const ALL:readonly ReviewTargetKind[]=['artifact','brief_suggestion','source','publication'];
 export const REVIEW_REASONS:readonly ReasonDef[]=[
  {code:'evidence',label:qualityCriteria.evidence,description:'출처·실측 없이 단정하거나 확인 전 값·표현을 표시 없이 씀',graders:['unconfirmed_value_assertion','unsupported_claim_term'],targets:ALL},
- {code:'brand',label:qualityCriteria.brand,description:'브랜드 정체성·상품·업종과 맞지 않음',graders:['industry_metric_leak'],targets:ALL},
+ {code:'brand',label:qualityCriteria.brand,description:'브랜드 정체성·상품·업종·확정 말투와 맞지 않음',graders:['industry_metric_leak','brand_voice_avoid_term'],targets:ALL},
  {code:'execution',label:qualityCriteria.execution,description:'실행할 초안·채널 계획·제작 지시가 비었거나 부족함',graders:['thin_section','local_channel_coverage','copy_pack_variants'],targets:['artifact','brief_suggestion','publication']},
  {code:'economics',label:qualityCriteria.economics,description:'예산·원가·운영 조건을 무시하거나 임의로 확정함',graders:[],targets:['artifact','brief_suggestion']},
  {code:'measurement',label:qualityCriteria.measurement,description:'지표 정의·기준 기간·대조군·판정 기준이 없거나 잘못됨',graders:['revisit_cohort_definition'],targets:['artifact','brief_suggestion']},
