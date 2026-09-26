@@ -137,7 +137,8 @@ function bridgesOf(sentences:Sentence[]):Sentence[]{
   const c=sentences[k+2];
   if(c&&broken&&brokenAt(b,c)&&[a,b,c].every(x=>x.s.length<=BRIDGE_SHORT)){const raw=a.raw+' '+b.raw+' '+c.raw;out.push({s:matchView(raw),raw,line:a.line,parts:[a.s,b.s,c.s],from:k,ids:[k,k+1,k+2]})}
   // 답 표시만 있는 문장('A.', '답:')을 건너 질문과 답을 잇는다('Q. 순수익은 얼마나 되나요?\nA. 대부분 500 이상입니다', R2 5차 재검토).
-  if(c&&QUESTION.test(a.raw)&&ANSWER_MARK.test(b.raw)&&!DENIAL.test(c.raw)&&c.line>a.line&&c.line<=a.line+2){const raw=a.raw+' '+c.raw;out.push({s:matchView(raw),raw,line:a.line,parts:[a.s,c.s],from:k,ids:[k,k+2]})}
+  // 같은 줄의 'Q. …? A. 열흘이면 충분합니다'도 잇는다(마침표 뒤에서 끊겨 'A.'가 따로 남는다, 2026-09-26 블라인드 레드팀 2차). 아니라고 답한 줄은 그대로 잇지 않는다.
+  if(c&&QUESTION.test(a.raw)&&ANSWER_MARK.test(b.raw)&&!DENIAL.test(c.raw)&&c.line>=a.line&&c.line<=a.line+2){const raw=a.raw+' '+c.raw;out.push({s:matchView(raw),raw,line:a.line,parts:[a.s,c.s],from:k,ids:[k,k+2]})}
  }
  return out;
 }
