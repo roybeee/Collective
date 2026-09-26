@@ -7,6 +7,8 @@ import {summarizeResult,planShortfall,decisionConflict} from './viral-stats';
 import type {StoreExperiment,StoreMeasurement,StoreReview} from './store-marketing';
 import {roles,type Brand,type Campaign,type Artifact} from './agency';
 import type {SourceCampaignDeleted} from './record-kinds';
+import type {CopyPackArtifact} from './copy-pack';
+import {artifactExperimentProblem,artifactExperimentDraft,artifactExperimentId,artifactConditions} from './artifact-experiment';
 export const RULE_DAYS=30;
 // 결정 7(b): 원 캠페인이 삭제된 바이럴 규칙은 종료 상태로만 남는다. 재검증·연장·상태 변경 대신 새 실험을 안내한다.
 function assertSourceCampaign(r:LearningRule&{sourceCampaignDeleted?:SourceCampaignDeleted}){if(r.sourceCampaignDeleted)throw new ApiError(409,'원 캠페인이 삭제되어 이 규칙은 재검증·연장·상태 변경을 할 수 없습니다. 캠페인을 선택해 새 실험을 만들어 주세요.')}
@@ -117,6 +119,30 @@ async function measuredSince(owner:string,r:LearningRule,since:string,viral?:Vir
 }
 // 서버가 연장을 거절하는 규칙인지: 측정 없이 한 번 연장했고 그 뒤 새 측정이 없다. GET /api/learning이 규칙마다 계산해 화면이 같은 판정으로 연장 버튼을 끈다.
 export async function renewBlocked(owner:string,r:LearningRule,viral?:ViralExperiment[]){return (r.renewCount||0)>=1&&!await measuredSince(owner,r,r.renewedAt??r.createdAt,viral)}
+// 실험 계획의 판정 기준 검사. 사례 기반(create_experiment)과 작업물 제안(create_experiment_from_artifact) 실험이 같은 검사를 쓴다.
+function experimentPlan(d:Record<string,unknown>){
+ const minSample=num(d.minSample,'최소 표본'),minHours=num(d.minHours,'최소 관찰 시간'),minLift=num(d.minLift,'목표 개선율');if(!Number.isInteger(minSample)||minSample<100||minHours<1||minHours>2160||minLift<=0||minLift>1000)throw new ApiError(400,'최소 표본 100 이상, 관찰 1~2160시간, 개선율 0 초과~1000%로 설정하세요.');
+ return {minSample,minHours,minLift};
+}
+// A3-3a: 승인된 콘텐츠 작업물의 카피 팩 제안 실험 하나를 바이럴 실험 초안으로 옮긴다. 사례가 없어 caseId·analysisId는 빈 문자열이고 출처는 source에 남는다.
+// 판정(lib/artifact-experiment.ts)을 통과하지 못하면 409다. 같은 작업물·판·제안 번호는 같은 실험 id라 다시 요청하면 기존 실험을 돌려준다(멱등).
+// 팩은 스위치 a3_copy_pack이 켜졌을 때만 생기므로 이 경로에 따로 스위치를 두지 않는다(팩이 없으면 409). 직원 권한은 create_experiment와 같다.
+async function createExperimentFromArtifact(owner:string,b:Record<string,unknown>,by?:PlaybookActor){
+ const campaign=await readRecord<Campaign>(owner,'campaign',str(b.campaignId,'캠페인',100,true)),a=await readRecord<CopyPackArtifact>(owner,'artifact',str(b.artifactId,'작업물',100,true));
+ if(a.campaignId!==campaign.id)throw new ApiError(400,'작업물이 속한 캠페인을 선택하세요.');
+ const index=b.index,version=b.artifactVersion;
+ if(typeof index!=='number'||!Number.isInteger(index)||index<0)throw new ApiError(400,'제안 실험 번호를 확인해 주세요.');
+ if(version!==a.version)throw new ApiError(409,'작업물이 변경됐습니다. 새로고침 후 다시 시도하세요.');
+ const problem=artifactExperimentProblem(a,campaign.version,index);if(problem)throw new ApiError(409,problem);
+ const id=artifactExperimentId(a.id,a.version,index),existing=await readRecord<ViralExperiment>(owner,'viral_experiment',id).catch((e:unknown)=>{if(e instanceof ApiError&&e.status===404)return null;throw e});
+ if(existing)return {id:existing.id,duplicate:true};
+ const d=(b.data&&typeof b.data==='object'?b.data:{}) as Record<string,unknown>,{minSample,minHours,minLift}=experimentPlan(d),draft=artifactExperimentDraft(a,index);
+ const verifyChannel=optional(d.verifyChannel)?draft.verifyChannel:str(d.verifyChannel,'검증할 채널',30,true);
+ if(!learningChannels.includes(verifyChannel))throw new ApiError(400,'검증할 채널을 선택하세요.');
+ const title=optional(d.title)?draft.title.slice(0,200):str(d.title,'실험 이름',200,true),conditions=optional(d.conditions)?artifactConditions(draft):str(d.conditions,'동일하게 유지할 조건',6000,true);
+ const now=stamp(),e:ViralExperiment={id,brandId:campaign.brandId,campaignId:campaign.id,caseId:'',analysisId:'',source:{kind:'artifact',artifactId:a.id,artifactVersion:a.version,index},title,channel:verifyChannel,hypothesis:draft.hypothesis,variable:draft.variable,control:draft.control,treatment:draft.treatment,metric:draft.metric,minSample,minHours,minLift,conditions,version:1,status:'draft',startedAt:null,createdAt:now,updatedAt:now,result:null,assessment:null};
+ await database().batch([recordStatement(owner,'viral_experiment',e.id,e,campaign.id),eventStatement(owner,campaign.id,`작업물 「${a.title}」의 제안 실험 「${e.title}」을 바이럴 실험으로 설계했습니다.`,by)]);return {id:e.id};
+}
 export async function learningAction(owner:string,b:any,by?:PlaybookActor){
  if(typeof b.action==='string'&&b.action.startsWith('playbook_'))return playbookAction(owner,b,by);
  if(b.action==='add_case'){
@@ -127,10 +153,11 @@ export async function learningAction(owner:string,b:any,by?:PlaybookActor){
  if(b.action==='save_analysis'){
   const c=await readRecord<ViralCase>(owner,'viral_case',str(b.caseId,'사례',100,true));const analysis=parseAnalysis(b.data,c,'manual');await recordStatement(owner,'viral_analysis',analysis.id,analysis,c.id).run();return {id:analysis.id};
  }
+ if(b.action==='create_experiment_from_artifact')return createExperimentFromArtifact(owner,b,by);
  if(b.action==='create_experiment'){
   const a=await readRecord<ViralAnalysis>(owner,'viral_analysis',str(b.analysisId,'분석',100,true)),c=await readRecord<ViralCase>(owner,'viral_case',a.caseId);
   const campaign=await readRecord<Campaign>(owner,'campaign',str(b.campaignId,'캠페인',100,true));if(campaign.brandId!==a.brandId)throw new ApiError(400,'동일 브랜드의 캠페인을 선택하세요.');
-  const d=b.data||{};const minSample=num(d.minSample,'최소 표본'),minHours=num(d.minHours,'최소 관찰 시간'),minLift=num(d.minLift,'목표 개선율');if(!Number.isInteger(minSample)||minSample<100||minHours<1||minHours>2160||minLift<=0||minLift>1000)throw new ApiError(400,'최소 표본 100 이상, 관찰 1~2160시간, 개선율 0 초과~1000%로 설정하세요.');
+  const d=b.data||{},{minSample,minHours,minLift}=experimentPlan(d);
   if(!Object.hasOwn(learningMetrics,d.metric))throw new ApiError(400,'주지표를 선택하세요.');
   // 검증할 채널은 사례 채널과 따로 받는다. 비우면 앱이 발행·수집할 수 있는 채널을 쓴다. 사례로 등록할 수 있는 채널만 고를 수 있다.
   const verifyChannel=d.verifyChannel===undefined||d.verifyChannel===null||d.verifyChannel===''?defaultVerifyChannel(c.channel):str(d.verifyChannel,'검증할 채널',30,true);

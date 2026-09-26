@@ -132,6 +132,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'franchise_delivery',parent:'franchise_lead',campaignDeletion:'not_campaign_scoped',retention:{basis:'statutory',anchor:'contract_closed',days:1095,ref:'제11조③·제32조① 준용 · 산정서 기록은 계약 체결일 5년(제9조⑥) · 미계약 리드는 H11'},subjectErasure:'legal_hold',description:'제공·자문·산정서·계약·가맹금·약정 증빙(추가 전용, 정정은 새 버전·무효화 행). 서버가 허용 필드만 다시 만들어 자유 텍스트·연락처 값이 들어갈 수 없다. 캠페인과 무관'},
  {kind:'franchise_subject_request',parent:'brand',campaignDeletion:'not_campaign_scoped',retention:{basis:'policy',anchor:'resolved',days:1095,ref:'처리 입증(휴리스틱)'},subjectErasure:'none',description:'정보주체 요청(유형·접수 경로·접수 시각·처리 기한·상태·처리 코드·리드 id). 요청자 이름·연락처는 담지 않는다. 캠페인과 무관'},
  {kind:'franchise_audit',parent:'brand',campaignDeletion:'not_campaign_scoped',retention:{basis:'policy',anchor:'recorded',days:365,ref:'운영 휴리스틱 · backdate 행은 연결된 증빙과 같이 보존'},subjectErasure:'none',description:'가맹 감사 기록(열람·찾기·내보내기·파기·삭제·이른 증빙 시각·설정 변경: 행위자 id와 역할·리드 id·필드 이름·목적 코드·건수). 값은 담지 않는다. 캠페인과 무관'},
+ // A3-2 브랜드 말투 원장(대표 결정 2). 브랜드당 1행(id=브랜드 id)이고 최근 20판을 행 안 history에 둔다(별도 history kind 없음). 캠페인과 무관하다. eval_budget_approval·비식별 신호·token_budget 묶음 앞에 둔다.
+ {kind:'brand_voice',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'브랜드 말투(어조·쓸 것·피할 것·선호 표현·피할 표현·예시, 상태 초안·확정·철회, 판 번호, 작성·확정한 사람 id와 역할·시각, 모델에 가는 마지막 확정본, 최근 20판 이력). 캠페인과 무관하고 이메일은 담지 않는다(A3-2)'},
  // Q2 평가 월 승인(품질 계획 v2). 소유자 범위이고 캠페인과 무관하다(lib/eval-budget-server.ts). 비식별 신호와 token_budget 묶음(마지막 3개, tests/token-budget.test.mjs 고정) 앞에 둔다.
  {kind:'eval_budget_approval',parent:'none',campaignDeletion:'not_campaign_scoped',description:'서버 평가 토큰 월 상한 대표 승인(UTC 월당 1행, id YYYY-MM: cap·사유·승인자·시각). 다시 승인하면 이전 승인을 history에 남긴다. 승인이 없는 달은 기본 1,500,000(결정 5)이고 월 상한 판정(시작·제출 직전)이 이 cap을 읽는다'},
  // F4b-2 비식별 이관(대표 결정 7). 캠페인 삭제 때 만들고 캠페인과 잇지 않는다(links 없음, 가명 키). 소유자가 완전 삭제를 고르면 만들지 않고 기존 행도 지운다(lib/server.ts).
@@ -187,7 +189,7 @@ export const blockingScopes=(owner:string,campaignId:string)=>campaignScopes('re
 // jobs 테이블의 캠페인 작업: 캠페인 실행 작업과 캠페인 실험의 규칙 초안 작업. 바인드 순서: campaignId, owner, campaignId.
 export const campaignJobs={where:`(campaign_id=? OR campaign_id IN (${GUIDANCE_GROUPS}))`,binds:(owner:string,campaignId:string)=>[campaignId,owner,campaignId]};
 
-// 결정 7(b) 표시와 동결 요약. 원문(대조안·실험안·유지 조건·결과 메모·수치 출처)은 담지 않는다.
+// 결정 7(b) 표시와 동결 요약. 원문(대조안·실험안·유지 조건·결과 메모·수치 출처)은 담지 않는다. 작업물 제안 실험(A3-3a)은 source에 종류(kind)만 남기고 작업물 id·판·카피 문안은 뺀다(실험 id 자체에는 작업물 id가 들어 있다).
 export type SourceCampaignDeleted={at:string;by:{id:string;email:string|null}|null};
 // 보존 규칙에 복사돼 있던 원천 실험 원문을 뺀다: 적용 범위(scope=실험의 유지 조건), sourceAssessment의 유지 조건·결과 메모·판정 사유.
 // 규칙 제목·문구(guidance)·연장 기록과 수치 판정(비율·표본·기간·통계·채택/중단)은 남긴다. 필수 문자열 필드는 빈 문자열로 둬 기존 모양을 지킨다.
@@ -196,11 +198,11 @@ export function retireRuleOfDeletedCampaign(r:LearningRule,mark:SourceCampaignDe
  const a=r.sourceAssessment,assessment=a?{...Object.fromEntries(Object.entries(a).filter(([k])=>!RULE_RAW_ASSESSMENT.includes(k))),conditions:'',notes:''} as NonNullable<LearningRule['sourceAssessment']>:undefined;
  return {...r,scope:'',...(assessment?{sourceAssessment:assessment}:{}),status:'retired',version:r.version+1,updatedAt:mark.at,sourceCampaignDeleted:mark};
 }
-export type FrozenExperimentSummary={id:string;experimentId:string;experimentVersion:number;brandId:string;campaignId:string;channel:string;title:string;hypothesis:string;metric:LearningMetric;minSample:number;minHours:number;minLift:number;status:ViralExperiment['status'];assessment:{status:string;label:string;controlRate:number|null;treatmentRate:number|null;lift:number|null}|null;controlSample:number|null;treatmentSample:number|null;startedAt:string|null;observedUntil:string|null;adoptedRuleIds:string[];frozenAt:string;sourceCampaignDeleted:SourceCampaignDeleted};
+export type FrozenExperimentSummary={id:string;experimentId:string;experimentVersion:number;brandId:string;campaignId:string;channel:string;title:string;hypothesis:string;metric:LearningMetric;minSample:number;minHours:number;minLift:number;status:ViralExperiment['status'];assessment:{status:string;label:string;controlRate:number|null;treatmentRate:number|null;lift:number|null}|null;controlSample:number|null;treatmentSample:number|null;startedAt:string|null;observedUntil:string|null;adoptedRuleIds:string[];frozenAt:string;sourceCampaignDeleted:SourceCampaignDeleted;source?:{kind:NonNullable<ViralExperiment['source']>['kind']}};
 export function freezeExperimentSummary(e:ViralExperiment,adoptedRuleIds:readonly string[],mark:SourceCampaignDeleted):FrozenExperimentSummary{
  const a=e.assessment;
  return {id:e.id,experimentId:e.id,experimentVersion:e.version,brandId:e.brandId,campaignId:e.campaignId,channel:e.channel,title:e.title,hypothesis:e.hypothesis,metric:e.metric,minSample:e.minSample,minHours:e.minHours,minLift:e.minLift,status:e.status,
   assessment:a?{status:a.status,label:a.label,controlRate:a.controlRate,treatmentRate:a.treatmentRate,lift:a.lift}:null,
   controlSample:e.result?.control.denominator??null,treatmentSample:e.result?.treatment.denominator??null,startedAt:e.startedAt,observedUntil:e.result?.observedUntil??null,
-  adoptedRuleIds:[...adoptedRuleIds],frozenAt:mark.at,sourceCampaignDeleted:mark};
+  adoptedRuleIds:[...adoptedRuleIds],frozenAt:mark.at,sourceCampaignDeleted:mark,...(e.source?{source:{kind:e.source.kind}}:{})};
 }
