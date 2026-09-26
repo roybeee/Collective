@@ -192,7 +192,7 @@ const eventsViewOf=(o={})=>({events:EVENTS,followUps:{count:1,attended:2,noShow:
 const eventsHtml=(view,admin)=>render(eventsUi.FranchiseEvents,{brandId:'fr-a',admin,onStatus:noop,initial:view});
 check('R15: owner/admin see new event, edit and cancel on scheduled rows, the follow-up chip and a cancelled row without forms',()=>{const html=keep(eventsHtml(eventsViewOf(),true));
  assert.ok(button(html,'새 행사'));assert.equal(count(html,'>수정</button>'),2);assert.equal(count(html,'>행사 취소</button>'),2);assert.ok(html.includes('행사 뒤 48시간 연락: 행사 1건 · 참석 2 · 불참 1'));assert.ok(html.includes('리드 탭에서 리드 코드로 찾아 연락 기록을 남기세요.'));
- assert.ok(html.includes('<b>박람회</b>')&&html.includes('취소 ')&&html.includes(' · 관리자'));assert.equal(count(html,'<summary>신청 기록</summary>'),2,'no forms on the cancelled row');assert.ok(html.includes('<h3>설명회·견학·박람회</h3>'));
+ assert.ok(html.includes('<b>박람회</b>')&&html.includes('취소 ')&&html.includes(' · 관리자'));assert.equal(count(html,'>신청 기록</summary>'),2,'no forms on the cancelled row');assert.ok(html.includes('<h3>설명회·견학·박람회</h3>'));
  assert.ok(html.includes('연결 자료: 포털 소개문 v1 (폐기) · 설명회 덱 개요·원고 v2 (승인) · 자료 v1 (확인 불가)'));assert.ok(html.includes('가상 직영점 · 정원 10 · 신청 5 · 참석 2 · 불참 1'));
 });
 check('R16: a member registers on a future event and records attendance only from the event day',()=>{const html=keep(eventsHtml(eventsViewOf(),false));
@@ -204,7 +204,7 @@ check('R16: a member registers on a future event and records attendance only fro
  const branchB=keep(eventsHtml(eventsViewOf({branch:'B',h7Notice:'분기 B(문의 수집만)입니다. 가상 안내.'}),true));assert.ok(!button(branchB,'새 행사')&&!button(branchB,'수정'));assert.equal(count(branchB,'>신청 기록하기</button>'),0);assert.equal(count(branchB,'>참석 저장</button>'),1,'attendance does not check the branch');assert.ok(branchB.includes('분기 B(문의 수집만)입니다. 가상 안내.'));
 });
 check('R17: with the switch off only owner/admin cancellation remains',()=>{const off=eventsViewOf({enabled:false});const admin=keep(eventsHtml(off,true)),member=keep(eventsHtml(off,false));
- for(const html of [admin,member]){for(const t of ['새 행사','수정','신청 기록하기','참석 저장'])assert.ok(!button(html,t),t);assert.ok(html.includes(eventsUi.EVENTS_OFF_NOTE));assert.equal(count(html,'<summary>'),0,'no registration or attendance sections at all')}
+ for(const html of [admin,member]){for(const t of ['새 행사','수정','신청 기록하기','참석 저장'])assert.ok(!button(html,t),t);assert.ok(html.includes(eventsUi.EVENTS_OFF_NOTE));assert.equal(count(html,'<summary'),0,'no registration or attendance sections at all')}
  assert.equal(count(admin,'>행사 취소</button>'),2);assert.ok(!button(member,'행사 취소'));
  const loading=keep(render(eventsUi.FranchiseEvents,{brandId:'fr-a',admin:true,onStatus:noop}));assert.ok(loading.includes('행사를 불러오고 있습니다.'));
  const empty=keep(eventsHtml(eventsViewOf({events:[],followUps:{count:0,attended:0,noShow:0}}),true));assert.ok(empty.includes('등록된 설명회·견학·박람회가 없습니다.'));assert.ok(!empty.includes('행사 뒤 48시간 연락'));
@@ -217,6 +217,61 @@ check('R18: the event editor offers three types, a KST start without now, a 100-
  assert.ok(html.includes('행사장·건물 이름만 적습니다. 연락처·주민등록번호 같은 개인정보는 받지 않습니다.'));assert.ok(html.includes('>캠페인 선택</option>'));assert.ok(submitDisabled(html,'행사 저장'));
  const edit=keep(render(eventsUi.EventEditor,{view:eventsViewOf(),event:eventOf({assetRefs:[{id:'ra-9',version:1,type:'portal_intro',status:'retired'}]}),busy:false,problem:null,onSave:async()=>true,onCancel:noop}));
  assert.ok(edit.includes('min="3"'),'capacity cannot go below the applications');assert.ok(edit.includes('이미 받은 신청 3명보다 줄일 수 없습니다.'));assert.ok(edit.includes('포털 소개문 v1: 승인 판이 아니라 연결에서 빠집니다'));assert.ok(edit.includes(`value="${eventsUi.kstLocal(eventOf().startsAt)}"`));assert.ok(edit.includes('모집 캠페인: 가상 가맹 모집 A'));assert.ok(!submitDisabled(edit,'행사 저장'));
+});
+// ── 교차 검토(R15a-2b): 게이트 409·여러 사유·체크리스트 재검토·캠페인 삭제·승인 단계 가드·편집기 잠금·행사 편집기 사전 검사·반복 컨트롤 이름 ──
+check('R20: a gate 409 lists the server reasons and never says nothing blocks',()=>{
+ const html=keep(sheetHtml(detailOf({gate:{status:409,reasons:[{code:'footnote_missing',message:'가맹 사실의 정보공개서 각주 줄이 원문에 없습니다.'},{code:'h8_label_missing',message:'가상 표지 사유.'}],message:'가상 게이트 문구.',warnings:['가상 권장 경고.']}}),true));
+ for(const t of ['가맹 사실의 정보공개서 각주 줄이 원문에 없습니다.','가상 표지 사유.','가상 게이트 문구.','주의: 가상 권장 경고.','게이트 사유를 고친 새 판을 저장해야 합니다.'])assert.ok(html.includes(t),t);
+ assert.ok(!html.includes('현재 사실 기준으로 막는 사유가 없습니다.'));assert.ok(!button(html,'승인하기'));
+});
+check('R21: every blocker is shown, not only the first',()=>{const html=keep(sheetHtml(detailOf({branch:'B',h7Notice:'분기 B(문의 수집만)입니다. 가상 안내.',gate:{status:409,reasons:[],message:null,warnings:[]}},{review:{needed:true,reasons:['fact_changed'],at:null}}),true));
+ for(const t of ['분기 B(문의 수집만)입니다. 가상 안내.','재검토가 필요합니다. 현재 사실로 새 판을 저장한 뒤 다시 승인하세요.','게이트 사유를 고친 새 판을 저장해야 합니다.'])assert.ok(html.includes(t),t)});
+check('R22: an approval under an older checklist offers the resave in the review section without a server suggestion',()=>{
+ const html=keep(sheetHtml(detailOf({},{status:'approved',approval:{...APPROVAL,checklist:{version:'fr-assets-checklist@old',checked:CL}}}),true));
+ assert.ok(html.includes('<h3>재검토</h3>'));assert.ok(html.includes('근거 사실·정보공개서 버전이나 체크리스트가 바뀌었습니다.'));assert.ok(button(html,'현재 사실로 새 판 저장'));assert.ok(!button(html,'복사'));
+});
+check('R23: a deleted campaign hides edit and resave with a note and keeps retire',()=>{
+ const view=detailOf({campaign:null,resaveSuggested:true,drift:DRIFT},{review:{needed:true,reasons:['fact_changed'],at:null}});
+ for(const [admin,html] of [[true,keep(sheetHtml(view,true))],[false,keep(sheetHtml(view,false))]]){for(const t of ['편집','현재 사실로 새 판 저장','승인하기'])assert.ok(!button(html,t),t);assert.ok(html.includes(assetsUi.CAMPAIGN_GONE_EDIT),String(admin));assert.equal(button(html,'폐기'),admin)}
+ const editor=keep(editorHtml({detail:view}));assert.ok(submitDisabled(editor,'초안 저장'));assert.ok(editor.includes(assetsUi.CAMPAIGN_GONE_EDIT));
+});
+check('R24: the approval step renders only for owner/admin on the latest draft',()=>{
+ assert.ok(!keep(sheetHtml(detailOf(),false,'approve')).includes('id="approve-title"'),'member');
+ const approvedView=keep(sheetHtml(detailOf({},{status:'approved',approval:APPROVAL}),true,'approve'));assert.ok(!approvedView.includes('id="approve-title"'));assert.ok(button(approvedView,'복사'),'the sheet falls back to the body');
+ assert.ok(!keep(sheetHtml(detailOf({},{status:'retired',retiredAt:at(-HOUR_MS)}),true,'approve')).includes('id="approve-title"'),'retired');
+ assert.ok(keep(sheetHtml(detailOf(),true,'approve')).includes('id="approve-title"'),'the draft still gets the step');
+});
+check('R25: the sheet editor follows the detail switch, not a stale list',()=>assert.ok(submitDisabled(keep(sheetHtml(detailOf({enabled:false}),true,'edit',assetsViewOf({enabled:true}))),'초안 저장')));
+check('R26: the editor locks the draft save for an empty body and stops at 20 facts',()=>{
+ assert.ok(submitDisabled(keep(editorHtml({detail:detailOf({},{body:''})})),'초안 저장'));
+ const facts=Array.from({length:21},(_,i)=>({id:'bf-'+i,version:1,key:'k'+i,label:'사실 '+i,line:'줄 '+i,hasSource:true}));
+ const html=keep(editorHtml({list:assetsViewOf({facts}),detail:detailOf({},{factRefs:facts.slice(0,20).map(x=>({id:x.id,version:1}))})}));
+ assert.equal((html.match(/<input type="checkbox"[^>]*disabled=""/g)||[]).length,1,'only the 21st fact is locked');
+});
+const eventEditorHtml=(view,event)=>render(eventsUi.EventEditor,{view,event,busy:false,problem:null,onSave:async()=>'ok',onCancel:noop});
+check('R27: the events tab offers a new event only with a recruitment campaign',()=>{assert.ok(!button(keep(eventsHtml(eventsViewOf({campaigns:[]}),true)),'새 행사'));assert.ok(button(keep(eventsHtml(eventsViewOf(),true)),'새 행사'))});
+check('R28: attendance save stays locked while the pre-check has a problem',()=>{
+ const html=keep(eventsHtml(eventsViewOf({events:[eventOf({startsAt:at(-HOUR_MS),counts:{applied:1,attended:0,noShow:0},codes:[{code:'LKB728BT',state:'attended'}]})]}),false));
+ assert.ok(submitDisabled(html,'참석 저장'));assert.ok(html.includes('참석으로 표시한 코드가 참석 수보다 많습니다.'));
+});
+check('R29: the event editor locks save below the applications or above 1,000 and allows ten linked assets',()=>{
+ assert.ok(submitDisabled(keep(eventEditorHtml(eventsViewOf(),eventOf({capacity:2,counts:{applied:3,attended:0,noShow:0}}))),'행사 저장'),'below the applications');
+ assert.ok(submitDisabled(keep(eventEditorHtml(eventsViewOf(),eventOf({capacity:1001}))),'행사 저장'),'above 1,000');
+ assert.ok(!submitDisabled(keep(eventEditorHtml(eventsViewOf(),eventOf({capacity:3,counts:{applied:3,attended:0,noShow:0}}))),'행사 저장'),'equal to the applications');
+ const assets=Array.from({length:11},(_,i)=>({id:'ra-'+i,version:1,type:'event_deck',typeLabel:'설명회 덱 개요·원고',latest:true})),ev=eventOf({assetRefs:assets.slice(0,10).map(a=>({id:a.id,version:1,type:'event_deck',status:'approved'}))});
+ assert.equal((keep(eventEditorHtml(eventsViewOf({approvedAssets:assets}),ev)).match(/<input type="checkbox"[^>]*disabled=""/g)||[]).length,1,'only the 11th asset is locked');
+});
+check('R30: a new briefing suggests the approved deck',()=>assert.ok(keep(eventEditorHtml(eventsViewOf(),null)).includes('설명회에는 승인된 설명회 덱(표준 순서)을 연결하기를 권합니다.')));
+check('R31: the event editor locks save and says why when the switch is off or the brand is not branch A',()=>{
+ const off=keep(eventEditorHtml(eventsViewOf({enabled:false}),eventOf()));assert.ok(submitDisabled(off,'행사 저장'));assert.ok(off.includes(eventsUi.EVENTS_OFF_NOTE));
+ const b=keep(eventEditorHtml(eventsViewOf({branch:'B',h7Notice:'분기 B(문의 수집만)입니다. 가상 안내.'}),eventOf()));assert.ok(submitDisabled(b,'행사 저장'));assert.ok(b.includes('분기 B(문의 수집만)입니다. 가상 안내.'));
+ const none=keep(eventEditorHtml(eventsViewOf({branch:null,h7Notice:null}),eventOf()));assert.ok(submitDisabled(none,'행사 저장'));assert.ok(none.includes(eventsUi.EDIT_BRANCH_NOTE));
+});
+check('R32: repeated controls carry their row context for screen readers',()=>{
+ const ed=keep(editorHtml({}));for(const f of FACTS)assert.ok(ed.includes(`aria-label="${f.label} 원문에 넣기"`),f.label);
+ const ev=keep(eventsHtml(eventsViewOf(),true)),row=`견학 ${common.kst(EVENTS[0].startsAt)}`;
+ for(const t of ['수정','행사 취소','신청 기록','참석 기록'])assert.ok(ev.includes(`aria-label="${row} ${t}"`),t);
+ assert.equal(count(ev,'aria-label="'+row+' 수정"'),1,'each row names itself');
 });
 check('R19: the new screens make no legal-compliance claim and show no AI disclosure',()=>{assert.ok(newHtml.length>=30);for(const html of newHtml){for(const bad of ['법적으로 적합','준수 완료','합법','AI 도움','name="ai-disclosure"'])assert.ok(!html.includes(bad),bad);assert.ok(!html.includes(disclosure.AI_DISCLOSURE_LINE))}});
 console.log(JSON.stringify({passed},null,2));

@@ -472,6 +472,12 @@ const leadRows=Number(sql.prepare("SELECT COUNT(*) n FROM records WHERE owner=? 
 const offStatus=await get(member,'view=status'),otherStatus=await get(boss2,'view=status');
 check('T5-2: with the switch off and no lead or subject request, recruitment records make hasRecords true',leadRows===0&&offStatus.status===200&&offStatus.body.enabled===false&&offStatus.body.hasRecords===true);
 check('T5-2: a workspace with no franchise records still reads hasRecords false',otherStatus.status===200&&otherStatus.body.hasRecords===false&&Number(sql.prepare("SELECT COUNT(*) n FROM records WHERE owner=? AND kind LIKE 'recruitment_%'").get(WS2).n)===0);
+// 교차 검토 TA-3: 모집 자료만·행사만 있어도 각각 hasRecords가 참이다(두 종류가 함께 있으면 한 종류의 누락을 다른 종류가 가린다). 옮긴 행은 되돌리고 개수를 확인한다.
+{const n=kind=>Number(sql.prepare("SELECT COUNT(*) n FROM records WHERE owner=? AND kind=?").get(WS,kind).n),park=(kind,from,to)=>sql.prepare("UPDATE records SET owner=? WHERE owner=? AND kind=?").run(to,from,kind);
+ const before=[n('recruitment_asset'),n('recruitment_event')];
+ park('recruitment_asset',WS,'ra-parked');const onlyEvents=await get(member,'view=status');park('recruitment_asset','ra-parked',WS);
+ park('recruitment_event',WS,'ra-parked');const onlyAssets=await get(member,'view=status');park('recruitment_event','ra-parked',WS);
+ check('T5-2: only events or only recruitment assets each keep hasRecords true (rows restored)',before.every(x=>x>0)&&onlyEvents.status===200&&onlyEvents.body.hasRecords===true&&onlyAssets.status===200&&onlyAssets.body.hasRecords===true&&n('recruitment_asset')===before[0]&&n('recruitment_event')===before[1]);}
 check('A1: the owner turns the switch back on',(await f.setFlag(boss,true)).status===200);
 const KEY=env.AGENCY_ENCRYPTION_KEY;delete env.AGENCY_ENCRYPTION_KEY;
 const keyless=[await portal(member,'키 없는 초안'),await post(boss,EV({startsAt:'2026-10-25T16:00:00+09:00',capacity:3}))];

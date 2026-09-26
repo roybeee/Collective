@@ -2,14 +2,14 @@
 // 가맹 모집 화면 '행사' 탭(트랙 R R15a-2b): 설명회·견학·박람회 목록, 행사 뒤 48시간 연락 칩, 등록·변경 대화상자(대표·관리자·분기 A), 취소(스위치가 꺼져도), 신청(가명 코드)·참석 기록(모든 역할).
 // 판정·권한은 서버(/api/franchise)가 한다. 화면은 보기 응답으로 버튼을 숨기고 사전 검사(가명 코드 형식·건수)로 헛요청만 줄인다. 참가자 이름·연락처 칸은 없고 비용 참조는 R5 전이라 늘 null이다.
 // 신청은 판 번호 없이 추가만 하는 비멱등 작업이라, 응답을 못 받은 같은 내용의 재시도만 같은 요청 번호를 쓴다(sendAttempt).
-import {useCallback,useEffect,useId,useState} from 'react';
+import {useCallback,useEffect,useId,useRef,useState} from 'react';
 import {Plus} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import {toKstDate,kstDateOf} from '@/lib/franchise-rules';
-import {franchiseGet,problemOf,messageOf,ProblemBox,Disclaimer,TimeField,WarningLines,kst,roleLabel,timeOf,stringWarnings,sendAttempt,followUpOf,
+import {franchiseGet,problemOf,messageOf,ProblemBox,Disclaimer,TimeField,WarningLines,kst,roleLabel,timeOf,stringWarnings,sendAttempt,followUpOf,reasonCodes,errorIs,
  type Json,type Problem,type PostResult,type Attempt,type TimeValue} from './franchise-common';
 
 type CodeState='applied'|'attended'|'no_show';
@@ -26,6 +26,7 @@ export const CODE_STATE_LABELS:Readonly<Record<CodeState,string>>={applied:'신�
 export const CODE_HINT='리드 코드(L로 시작)나 명찰 번호만. 이름·전화번호는 적지 않습니다.';
 export const CANCEL_CONFIRM='행사를 취소합니다. 신청·참석 기록은 남고 되돌릴 수 없습니다.';
 export const EVENTS_OFF_NOTE='기능 스위치가 꺼져 있어 행사 등록·변경·신청·참석 기록을 할 수 없습니다. 행사 취소는 할 수 있습니다.';
+export const EDIT_BRANCH_NOTE='가맹 준비도 분기 A(모집 가능) 브랜드만 행사를 등록·변경합니다.';
 export const LABEL_MAX=100,CAPACITY_MAX=1000,ASSET_REFS_MAX=10;
 const CODE_STATES=Object.keys(CODE_STATE_LABELS) as CodeState[];
 const STARTED_NOTE='시작한 행사입니다. 현장 참석은 참석 기록으로 남기세요.',FULL_NOTE='정원이 찼습니다.',BEFORE_DAY_NOTE='참석 기록은 행사일(KST)부터 할 수 있습니다.',BRANCH_NOTE='가맹 준비도 분기 A(모집 가능) 브랜드만 신청을 기록합니다.';
@@ -58,6 +59,8 @@ export function attendanceInput(e:EventItem,attended:string,noShow:string,marks:
  return {payload:{eventId:e.id,version:e.version,attended:a,noShow:n,codes},problem:null};
 }
 export type EventForm={type:string;campaignId:string;start:TimeValue;place:string;capacity:string;refs:Ref[]};
+// 행사 저장 결과: 개인정보가 든 장소(PII_IN_TEXT)면 대화상자가 장소 칸에 포커스한다(9.2).
+export type EventSaveOutcome='ok'|'pii'|'failed';
 // 행사 저장: 시작 시각은 KST로 적은 값만(‘지금’은 보내지 않는다), 비용 참조는 null 고정, 변경은 판 번호와 저장된 캠페인을 그대로 보낸다.
 export function eventInput(f:EventForm,event:EventItem|null):Json{
  return {...(event?{eventId:event.id,version:event.version}:{}),campaignId:event?event.campaignId:f.campaignId,type:f.type,startsAt:timeOf({now:false,local:f.start.local}),placeLabel:f.place.trim(),capacity:Number(f.capacity),spendRef:null,
@@ -85,11 +88,11 @@ export function FranchiseEvents({brandId,admin,onStatus,initial}:{brandId:string
   setProblem({...problemOf(r),warnings:undefined});
   const next=followUpOf(r);
   if(next==='close'){setDialog(null);void load()}
-  else if(next==='reload')void load();
+  else if(next==='reload'||reasonCodes(r).includes('code_unknown'))void load();
   else if(next==='status'){onStatus();void load()}
  }
  function done(r:PostResult,text:string){setMessage((r.body.replayed===true?'이미 처리된 요청입니다. ':'')+text);setWarnings(stringWarnings(r));void load()}
- async function saveEvent(payload:Json){const r=await run('event_save',payload);if(r.status===200){setDialog(null);done(r,'행사를 저장했습니다.');return true}fail(r);return false}
+ async function saveEvent(payload:Json):Promise<EventSaveOutcome>{const r=await run('event_save',payload);if(r.status===200){setDialog(null);done(r,'행사를 저장했습니다.');return 'ok'}fail(r);return errorIs(r,'PII_IN_TEXT')?'pii':'failed'}
  async function cancel(e:EventItem){
   if(!window.confirm(CANCEL_CONFIRM))return;
   const r=await run('event_cancel',{eventId:e.id,version:e.version});
@@ -124,16 +127,16 @@ export function FranchiseEvents({brandId,admin,onStatus,initial}:{brandId:string
 function EventRow({e,view,admin,now,busy,onEdit,onCancel,onRegister,onAttend}:{e:EventItem;view:EventsView;admin:boolean;now:string;busy:boolean;onEdit:()=>void;onCancel:()=>void;onRegister:(p:Json)=>Promise<boolean>;onAttend:(p:Json)=>Promise<boolean>}){
  const g=eventGates(e,admin,view.enabled,view.branch,now);
  const typeName=(t:string|null)=>t?view.assetTypes.find(x=>x.type===t)?.label??t:'자료',state=(s:string|null)=>s==='approved'?'승인':s==='retired'?'폐기':'확인 불가';
- const refs=e.assetRefs.length?e.assetRefs.map(r=>`${typeName(r.type)} v${r.version} (${state(r.status)})`).join(' · '):'없음';
+ const refs=e.assetRefs.length?e.assetRefs.map(r=>`${typeName(r.type)} v${r.version} (${state(r.status)})`).join(' · '):'없음',row=`${e.typeLabel} ${kst(e.startsAt)}`;
  return <li>
   <div className="franchise-bar"><b>{e.typeLabel}</b><span>{kst(e.startsAt)}</span><span className="status">{EVENT_STATUS_LABELS[e.status]}</span></div>
   <p className="subtle-note">{`${e.placeLabel} · 정원 ${e.capacity} · 신청 ${e.counts.applied} · 참석 ${e.counts.attended} · 불참 ${e.counts.noShow}`}</p>
   <p className="subtle-note">{`연결 자료: ${refs}`}</p>
   {e.status==='cancelled'&&<p className="subtle-note">{`취소 ${kst(e.cancelledAt)} · ${e.cancelledBy?roleLabel(e.cancelledBy.role):'-'}`}</p>}
-  {(g.canEdit||g.canCancel)&&<div className="franchise-bar">{g.canEdit&&<Button size="sm" variant="outline" disabled={busy} onClick={onEdit}>수정</Button>}{g.canCancel&&<Button size="sm" variant="outline" disabled={busy} onClick={onCancel}>행사 취소</Button>}</div>}
+  {(g.canEdit||g.canCancel)&&<div className="franchise-bar">{g.canEdit&&<Button size="sm" variant="outline" aria-label={`${row} 수정`} disabled={busy} onClick={onEdit}>수정</Button>}{g.canCancel&&<Button size="sm" variant="outline" aria-label={`${row} 행사 취소`} disabled={busy} onClick={onCancel}>행사 취소</Button>}</div>}
   {view.enabled&&e.status==='scheduled'&&<>
-   <details className="franchise-box"><summary>신청 기록</summary>{g.canRegister?<RegisterForm event={e} busy={busy} onRegister={onRegister}/>:<p className="subtle-note">{g.registerWhy}</p>}</details>
-   <details className="franchise-box"><summary>참석 기록</summary>{g.canAttend?<AttendanceForm event={e} busy={busy} onAttend={onAttend}/>:<p className="subtle-note">{g.attendWhy}</p>}</details>
+   <details className="franchise-box"><summary aria-label={`${row} 신청 기록`}>신청 기록</summary>{g.canRegister?<RegisterForm event={e} busy={busy} onRegister={onRegister}/>:<p className="subtle-note">{g.registerWhy}</p>}</details>
+   <details className="franchise-box"><summary aria-label={`${row} 참석 기록`}>참석 기록</summary>{g.canAttend?<AttendanceForm event={e} busy={busy} onAttend={onAttend}/>:<p className="subtle-note">{g.attendWhy}</p>}</details>
   </>}
  </li>;
 }
@@ -169,26 +172,29 @@ function AttendanceForm({event,busy,onAttend}:{event:EventItem;busy:boolean;onAt
 }
 
 // ── 등록·변경 대화상자(대표·관리자) ──
-export function EventEditor({view,event,busy,problem,onSave,onCancel}:{view:EventsView;event:EventItem|null;busy:boolean;problem:Problem|null;onSave:(payload:Json)=>Promise<boolean>;onCancel:()=>void}){
- const approved=(r:Ref)=>view.approvedAssets.some(a=>sameRef(a,r)),placeHint=useId();
+// 열려 있는 동안 스위치가 꺼지거나 분기가 A가 아니게 되면(다시 읽은 보기) 저장을 잠그고 이유를 보인다. 입력은 그대로 둔다.
+export function EventEditor({view,event,busy,problem,onSave,onCancel}:{view:EventsView;event:EventItem|null;busy:boolean;problem:Problem|null;onSave:(payload:Json)=>Promise<EventSaveOutcome>;onCancel:()=>void}){
+ const approved=(r:Ref)=>view.approvedAssets.some(a=>sameRef(a,r)),placeHint=useId(),placeRef=useRef<HTMLInputElement>(null);
+ const lockedWhy=!view.enabled?EVENTS_OFF_NOTE:view.branch!=='A'?view.h7Notice??EDIT_BRANCH_NOTE:null;
  const [f,setF]=useState<EventForm>(()=>event?{type:event.type,campaignId:event.campaignId,start:{now:false,local:kstLocal(event.startsAt)},place:event.placeLabel,capacity:String(event.capacity),refs:event.assetRefs.filter(r=>r.status==='approved').map(r=>({id:r.id,version:r.version}))}
   :{type:view.types[0]?.type??'',campaignId:'',start:{now:false,local:''},place:'',capacity:'',refs:[]});
  const set=(patch:Partial<EventForm>)=>setF({...f,...patch});
  const refs=f.refs.filter(approved),typeName=(t:string|null|undefined)=>t?view.assetTypes.find(x=>x.type===t)?.label??t:null;
  const lost=[...(event?event.assetRefs.filter(r=>r.status!=='approved'):[]),...f.refs.filter(r=>!approved(r)).map(r=>({...r,type:event?.assetRefs.find(x=>sameRef(x,r))?.type??null}))];
  const floor=Math.max(1,event?.counts.applied??0),cap=Number(f.capacity);
- const ready=!!f.type&&(!!event||!!f.campaignId)&&!!timeOf(f.start)&&!!f.place.trim()&&f.capacity.trim()!==''&&Number.isSafeInteger(cap)&&cap>=floor&&cap<=CAPACITY_MAX;
+ const ready=!lockedWhy&&!!f.type&&(!!event||!!f.campaignId)&&!!timeOf(f.start)&&!!f.place.trim()&&f.capacity.trim()!==''&&Number.isSafeInteger(cap)&&cap>=floor&&cap<=CAPACITY_MAX;
  const deckMissing=f.type==='briefing'&&!refs.some(r=>view.approvedAssets.find(a=>sameRef(a,r))?.type==='event_deck');
  const toggle=(r:Ref,on:boolean)=>set({refs:on?[...refs,r]:refs.filter(x=>!sameRef(x,r))});
  return <Dialog open onOpenChange={v=>{if(!v&&!busy)onCancel()}}><DialogContent className="max-h-[90dvh] overflow-y-auto"><DialogHeader><DialogTitle>{event?'행사 변경':'새 행사'}</DialogTitle><DialogDescription>설명회·견학·박람회를 기록합니다. 참가자 이름·연락처는 받지 않습니다.</DialogDescription></DialogHeader>
-  <form autoComplete="off" className="form-stack" onSubmit={e=>{e.preventDefault();if(ready&&!busy)void onSave(eventInput({...f,refs},event))}}><fieldset disabled={busy} className="form-stack">
+  <form autoComplete="off" className="form-stack" onSubmit={e=>{e.preventDefault();if(ready&&!busy)void onSave(eventInput({...f,refs},event)).then(o=>{if(o==='pii')placeRef.current?.focus()})}}><fieldset disabled={busy} className="form-stack">
+   {lockedWhy&&<p className="notice" role="note">{lockedWhy}</p>}
    <div className="form-two">
     <label className="field"><span>행사 유형</span><NativeSelect required value={f.type} onChange={e=>set({type:e.target.value})}>{view.types.map(t=><NativeSelectOption key={t.type} value={t.type}>{t.label}</NativeSelectOption>)}</NativeSelect></label>
     {event?<p className="subtle-note">{`모집 캠페인: ${view.campaigns.find(c=>c.id===event.campaignId)?.title??'보관되었거나 삭제된 캠페인'}`}</p>
      :<label className="field"><span>모집 캠페인</span><NativeSelect required value={f.campaignId} onChange={e=>set({campaignId:e.target.value})}><NativeSelectOption value="">캠페인 선택</NativeSelectOption>{view.campaigns.map(c=><NativeSelectOption key={c.id} value={c.id}>{c.title}</NativeSelectOption>)}</NativeSelect></label>}
    </div>
    <TimeField label="시작 시각" value={f.start} onChange={start=>set({start})} allowNow={false}/>
-   <label className="field"><span>장소</span><Input autoComplete="off" required maxLength={LABEL_MAX} aria-describedby={placeHint} placeholder="예: 가상 직영점 2층" value={f.place} onChange={e=>set({place:e.target.value})}/><small id={placeHint}>행사장·건물 이름만 적습니다. 연락처·주민등록번호 같은 개인정보는 받지 않습니다.</small></label>
+   <label className="field"><span>장소</span><Input autoComplete="off" ref={placeRef} required maxLength={LABEL_MAX} aria-describedby={placeHint} placeholder="예: 가상 직영점 2층" value={f.place} onChange={e=>set({place:e.target.value})}/><small id={placeHint}>행사장·건물 이름만 적습니다. 연락처·주민등록번호 같은 개인정보는 받지 않습니다.</small></label>
    <label className="field"><span>정원</span><Input type="number" required min={floor} max={CAPACITY_MAX} step={1} value={f.capacity} onChange={e=>set({capacity:e.target.value})}/>{event&&<small>{`이미 받은 신청 ${event.counts.applied}명보다 줄일 수 없습니다.`}</small>}</label>
    <fieldset className="field"><legend>{`연결 자료 (승인된 판, 최대 ${ASSET_REFS_MAX}개)`}</legend>
     {view.approvedAssets.length?view.approvedAssets.map(a=>{const on=refs.some(r=>sameRef(r,a));return <label key={`${a.id}:${a.version}`} className="franchise-inline"><input type="checkbox" checked={on} disabled={!on&&refs.length>=ASSET_REFS_MAX} onChange={e=>toggle({id:a.id,version:a.version},e.target.checked)}/>{` ${a.typeLabel} v${a.version}${a.latest?'':' (이전 판)'}`}</label>})

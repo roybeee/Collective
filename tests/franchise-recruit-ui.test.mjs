@@ -20,29 +20,33 @@ const iso=(d=0)=>new Date(f.clock.now()+d).toISOString();
 // ── 화면 링커(tests/franchise-ui-render.test.mjs와 같은 규칙). 화면 문맥의 Date는 서버와 같은 이동 시계다. ──
 const require=createRequire(import.meta.url),React=require('react'),{renderToStaticMarkup}=require('react-dom/server'),jsxRuntime=require('react/jsx-runtime');
 let screenFetch=async()=>{throw new Error('화면 네트워크 호출이 준비되지 않았습니다.')};
-const context=createContext({console,URL,URLSearchParams,Date:f.clock.ShiftDate,Intl,TextEncoder,crypto:globalThis.crypto,setTimeout,clearTimeout,fetch:(...a)=>screenFetch(...a)}),cache=new Map();
+const context=createContext({console,URL,URLSearchParams,Date:f.clock.ShiftDate,Intl,TextEncoder,crypto:globalThis.crypto,setTimeout,clearTimeout,fetch:(...a)=>screenFetch(...a)});
 const transpile=file=>ts.transpileModule(readFileSync(file,'utf8'),{fileName:file,compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 function importedNames(code){
  const names=new Map(),file=ts.createSourceFile('m.js',code,ts.ScriptTarget.ES2022,false,ts.ScriptKind.JS);
  for(const s of file.statements){if(!ts.isImportDeclaration(s))continue;const spec=s.moduleSpecifier.text,set=names.get(spec)||new Set(),clause=s.importClause;if(clause?.name)set.add('default');const bound=clause?.namedBindings;if(bound&&ts.isNamedImports(bound))for(const e of bound.elements)set.add((e.propertyName||e.name).text);names.set(spec,set)}
  return names;
 }
-function moduleFor(file){file=resolve(file);if(cache.has(file))return cache.get(file);const code=transpile(file),m=new SourceTextModule(code,{context,identifier:file});m.imports=importedNames(code);cache.set(file,m);return m}
-const synthetic=(names,value)=>new SyntheticModule([...names],function(){for(const n of names)this.setExport(n,value(n))},{context});
 const TAGS={Button:'button',Input:'input',Textarea:'textarea',NativeSelect:'select',NativeSelectOption:'option',DialogTitle:'h2',SheetTitle:'h2',DialogDescription:'p',SheetDescription:'p'};
 const part=name=>{function Part({children,variant,size,asChild,onOpenChange,onValueChange,...props}){void variant;void size;void asChild;void onOpenChange;void onValueChange;return React.createElement(TAGS[name]||'div',{...props,'data-part':name},children)}Part.displayName=name;return Part};
 const REAL_APP=new Set(['./franchise-common']);
-function link(spec,ref){
- if(spec==='react')return synthetic(ref.imports.get(spec)||new Set(),n=>React[n]);
- if(spec==='react/jsx-runtime')return synthetic(ref.imports.get(spec)||new Set(),n=>jsxRuntime[n]);
- if(spec.startsWith('@/components/ui/'))return synthetic(ref.imports.get(spec)||new Set(),part);
- if(spec==='lucide-react')return synthetic(ref.imports.get(spec)||new Set(),()=>()=>null);
- if(spec==='./account-context')return synthetic(ref.imports.get(spec)||new Set(),n=>n==='useAccount'?()=>null:()=>false);
- if(spec.startsWith('@/lib/'))return moduleFor(resolve(spec.slice(2))+'.ts');
- if(spec.startsWith('.')&&(ref.identifier.includes('/lib/')||REAL_APP.has(spec))){const base=resolve(dirname(ref.identifier),spec);return moduleFor(existsSync(base+'.ts')?base+'.ts':base+'.tsx')}
- throw new Error('예상하지 못한 import: '+spec);
+// 문맥마다 모듈 캐시를 따로 둔다. react는 문맥이 고른다: SSR 렌더는 실제 React, 아래 X절 상호작용 검사는 훅 대역.
+function loader(ctx,reactOf){
+ const cache=new Map(),synthetic=(names,value)=>new SyntheticModule([...names],function(){for(const n of names)this.setExport(n,value(n))},{context:ctx});
+ const moduleFor=file=>{file=resolve(file);if(cache.has(file))return cache.get(file);const code=transpile(file),m=new SourceTextModule(code,{context:ctx,identifier:file});m.imports=importedNames(code);cache.set(file,m);return m};
+ function link(spec,ref){
+  if(spec==='react')return synthetic(ref.imports.get(spec)||new Set(),reactOf);
+  if(spec==='react/jsx-runtime')return synthetic(ref.imports.get(spec)||new Set(),n=>jsxRuntime[n]);
+  if(spec.startsWith('@/components/ui/'))return synthetic(ref.imports.get(spec)||new Set(),part);
+  if(spec==='lucide-react')return synthetic(ref.imports.get(spec)||new Set(),()=>()=>null);
+  if(spec==='./account-context')return synthetic(ref.imports.get(spec)||new Set(),n=>n==='useAccount'?()=>null:()=>false);
+  if(spec.startsWith('@/lib/'))return moduleFor(resolve(spec.slice(2))+'.ts');
+  if(spec.startsWith('.')&&(ref.identifier.includes('/lib/')||REAL_APP.has(spec))){const base=resolve(dirname(ref.identifier),spec);return moduleFor(existsSync(base+'.ts')?base+'.ts':base+'.tsx')}
+  throw new Error('예상하지 못한 import: '+spec);
+ }
+ return async file=>{const m=moduleFor(file);if(m.status==='unlinked')await m.link(link);if(m.status!=='evaluated')await m.evaluate();return m.namespace};
 }
-async function load(file){const m=moduleFor(file);if(m.status==='unlinked')await m.link(link);if(m.status!=='evaluated')await m.evaluate();return m.namespace}
+const load=loader(context,n=>React[n]);
 const assetsUi=await load('app/franchise-assets-panel.tsx'),eventsUi=await load('app/franchise-events-panel.tsx'),common=await load('app/franchise-common.tsx'),disclosure=await load('lib/ai-disclosure.ts');
 const fa=await f.load('lib/franchise-assets.ts'),factsRoute=await f.load('app/api/brand-facts/route.ts');
 const render=(C,p)=>renderToStaticMarkup(React.createElement(C,p)),noop=()=>{},button=(html,label)=>html.includes(`>${label}</button>`),count=(h,t)=>h.split(t).length-1;
@@ -191,4 +195,218 @@ check('no disclosure text reached any rendered screen and no external call was m
 check('rendered screens make no legal-compliance claim',[listHtml,memberHtml,approveHtml,exportHtml,bossEventsHtml,memberEventsHtml,editorHtml].every(h=>!['법적으로 적합','준수 완료','합법'].some(t=>h.includes(t))));
 check('the fixture disclaimer reaches the screen',listHtml.includes(DISCLAIMER));
 
-console.log(JSON.stringify({passed:passed.length}));
+// ════ X. 상호작용(R15a-2b 교차 검토): 쓰기 처리기·실패 뒤 할 일(명세 6.7–6.9·7.3–7.5·9.2)을 실제로 눌러 본다 ════
+// 훅 대역(useState·useEffect·useCallback·useRef·useId)으로 실제 화면 부품을 부르고 버튼을 누르고 칸에 적는다. 부품 경로와 key가 같으면 상태가 남고, key가 바뀌면 새로 시작한다(React와 같은 규칙).
+// 쓰기·읽기는 실제 경로로 보낸다. 실제로 만들기 어려운 응답(체크리스트 변경·404·꺼짐·재생·알 수 없는 코드 등)만 'stub' 표시한 곳에서 응답 대역을 쓴다. 근거: mocked(훅 대역·메모리 SQLite·응답 대역).
+const E=f.lib.FRANCHISE_ERRORS,blocked=[];
+const S={inst:new Map(),seen:new Set(),effects:[],dirty:false,cur:null,root:null,tree:[],ids:0,inflight:0,focus:[]};
+const sameDeps=(a,b)=>!!a&&!!b&&a.length===b.length&&a.every((x,i)=>Object.is(x,b[i])),slot=()=>[S.cur,S.cur.i++];
+const hooks={
+ useState(init){const [c,i]=slot();if(!(i in c.s)){const s={v:typeof init==='function'?init():init};s.set=v=>{const n=typeof v==='function'?v(s.v):v;if(!Object.is(n,s.v)){s.v=n;S.dirty=true}};c.s[i]=s}return [c.s[i].v,c.s[i].set]},
+ useRef(init){const [c,i]=slot();if(!(i in c.s))c.s[i]={current:init};return c.s[i]},
+ useCallback(fn,deps){const [c,i]=slot(),s=c.s[i];if(s&&sameDeps(s.deps,deps))return s.v;c.s[i]={v:fn,deps};return fn},
+ useEffect(fn,deps){const [c,i]=slot(),s=c.s[i];if(s&&sameDeps(s.deps,deps))return;const prev=s?.cleanup,n={deps};c.s[i]=n;S.effects.push(()=>{if(typeof prev==='function')prev();n.cleanup=fn()})},
+ useId(){const [c,i]=slot();if(!(i in c.s))c.s[i]={v:':x'+(++S.ids)+':'};return c.s[i].v},
+};
+function draw(node,path,out){
+ if(node==null||typeof node==='boolean')return;
+ if(typeof node==='string'||typeof node==='number'){out.push(String(node));return}
+ if(Array.isArray(node)){node.forEach((c,i)=>draw(c,path+'['+(c&&typeof c==='object'&&c.key!=null?'k'+c.key:i)+']',out));return}
+ const {type,props,key}=node;
+ if(type===React.Fragment){draw(props.children,path+'/F'+(key??''),out);return}
+ if(typeof type==='function'){
+  const p=path+'/'+(type.displayName||type.name)+(key!=null?'#'+key:'');let c=S.inst.get(p);if(!c){c={s:[],i:0};S.inst.set(p,c)}
+  S.seen.add(p);c.i=0;const prev=S.cur;S.cur=c;let res;try{res=type(props)}finally{S.cur=prev}draw(res,p,out);return;
+ }
+ const el={type,props,children:[]};draw(props.children,path+'/'+type,el.children);
+ if(props.ref&&typeof props.ref==='object')props.ref.current={focus(){S.focus.push(props['aria-label']??props.placeholder??type)}};
+ out.push(el);
+}
+function redraw(){S.seen=new Set();const out=[];draw(S.root,'',out);S.tree=out;for(const [p,c] of S.inst)if(!S.seen.has(p)){for(const s of c.s)if(typeof s?.cleanup==='function')s.cleanup();S.inst.delete(p)}}
+// 그리기·효과·요청이 모두 멈출 때까지 기다린다(요청 중에는 타이머로 쉬고, 15초를 넘으면 실패).
+async function settle(){
+ const end=Date.now()+15000;
+ for(let quiet=0;;){
+  if(S.dirty||S.effects.length){S.dirty=false;redraw();for(const e of S.effects.splice(0))e();quiet=0}else if(S.inflight>0)quiet=0;else if(++quiet>=30)return;
+  if(Date.now()>end)throw new Error('settle timeout');
+  await new Promise(r=>S.inflight>0?setTimeout(r,1):setImmediate(r));
+ }
+}
+async function mount(C,props){S.inst=new Map();S.root=React.createElement(C,props);S.dirty=true;await settle()}
+const textOf=n=>typeof n==='string'?n:n.children.map(textOf).join(''),screenText=()=>S.tree.map(textOf).join('');
+function find(pred){const hits=[],walk=(nodes,anc)=>{for(const n of nodes)if(typeof n!=='string'){if(pred(n))hits.push({n,anc});walk(n.children,[...anc,n])}};walk(S.tree,[]);return hits}
+const within=partName=>{const h=find(n=>n.props['data-part']===partName)[0];return h?textOf(h.n):''};
+const btns=label=>find(n=>n.type==='button'&&textOf(n)===label),inert=h=>!!h.n.props.disabled||h.anc.some(a=>a.type==='fieldset'&&a.props.disabled);
+const locked=(label,i=0)=>{const b=btns(label)[i];assert.ok(b,'no button '+label);return inert(b)};
+async function press(label,i=0){
+ const b=btns(label)[i];assert.ok(b,'no button '+label+' in: '+screenText().slice(0,300));assert.ok(!inert(b),'disabled: '+label);
+ if(b.n.props.type==='submit')[...b.anc].reverse().find(a=>a.type==='form').props.onSubmit({preventDefault(){}});else b.n.props.onClick({preventDefault(){},stopPropagation(){}});
+ await settle();
+}
+const field=label=>n=>['input','textarea','select'].includes(n.type)&&(n.props['aria-label']===label||n.props.placeholder===label);
+const selectWith=first=>n=>n.type==='select'&&n.children.some(o=>typeof o!=='string'&&textOf(o)===first);
+const valueOf=pred=>{const h=find(pred)[0];assert.ok(h,'no field');return h.n.props.value};
+async function put(pred,value){const h=find(pred)[0];assert.ok(h,'no field');h.n.props.onChange({target:{value,checked:value},currentTarget:{value,checked:value,select(){}}});await settle()}
+const boxes=()=>find(n=>n.type==='input'&&n.props.type==='checkbox'),ticked=()=>boxes().filter(h=>h.n.props.checked).length;
+const boxBy=label=>boxes().find(h=>textOf(h.anc.at(-1)).includes(label));
+async function tick(label,on){const h=boxBy(label);assert.ok(h,'no checkbox '+label);h.n.props.onChange({target:{checked:on}});await settle()}
+async function tickAll(){for(let i=0;i<boxes().length;i++){const h=boxes()[i];if(!h.n.props.checked){h.n.props.onChange({target:{checked:true}});await settle()}}}
+const preText=label=>{const h=find(n=>n.type==='pre'&&n.props['aria-label']===label)[0];return h?textOf(h.n):null};
+// 화면 쓰기 기록(실제 경로·응답 대역 모두)과 응답 대역. window.confirm은 답을 정해 두고 물은 문구를 남긴다.
+const sent=[],win={answer:true,asked:[]},reply=(status,body)=>new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json'}});
+const stub=(get,post)=>{screenFetch=async(url,init={})=>init.method==='POST'?post(JSON.parse(init.body)):get(String(url))};
+const shimContext=createContext({console,AbortController,URL,URLSearchParams,Date:f.clock.ShiftDate,Intl,TextEncoder,crypto:globalThis.crypto,setTimeout,clearTimeout,
+ window:{confirm:m=>{win.asked.push(m);return win.answer}},
+ fetch:(url,init={})=>{if(init.method==='POST')sent.push(JSON.parse(init.body));S.inflight++;return Promise.resolve().then(()=>screenFetch(url,init)).then(async res=>{const text=await res.text();return {status:res.status,ok:res.ok,json:async()=>JSON.parse(text)}}).finally(()=>{S.inflight--})}});
+const X=loader(shimContext,n=>hooks[n]??React[n]),ui=await X('app/franchise-assets-panel.tsx'),evUi=await X('app/franchise-events-panel.tsx');
+const rowOf=(id,v)=>{const r=sql.prepare("SELECT data FROM records WHERE kind='recruitment_asset' AND json_extract(data,'$.id')=? AND json_extract(data,'$.version')=?").get(id,v);return r?JSON.parse(r.data):null};
+const sheet=(assetId,admin,props={})=>mount(ui.AssetSheet,{brandId:'fr-a',assetId,list:listX,admin,artifacts:ARTIFACTS,onClose:noop,onChanged:noop,onStatus:noop,...props});
+check('X0: owner turns the switch back on for the interaction checks',(await f.setFlag(boss,true)).status===200);
+const listX=await view(member,{view:'assets'}),portalSave=body=>write(member,'asset_save',assetsUi.saveInput(listX,null,saveForm({type:'portal_intro',body,picked:new Set()})));
+
+// X1 (F1): 승인 단계에서 모두 체크한 뒤 다른 사용자가 초안을 바꿔 ASSET_STALE로 다시 읽으면, 새 원문에는 체크가 없어야 한다.
+const A1=(await portalSave(FILL_WHY+' 교차 검토 승인 단계 초안입니다.')).r.body.result;
+as(boss);await sheet(A1.assetId,true);await press('승인하기');await tickAll();
+check('X1: the admin ticks all six items on v1',ticked()===6&&!locked('승인')&&preText('승인할 원문').includes('교차 검토 승인 단계 초안입니다.'));
+w=await write(member,'asset_save',assetsUi.saveInput(listX,await view(member,{view:'asset',assetId:A1.assetId}),{type:'portal_intro',campaignId:'',body:FILL_WHY+' 다른 사용자가 바꾼 원문입니다.',picked:new Set(),source:null,base:1}));
+check('X1: a member replaces the v1 draft with v2 meanwhile',w.r.status===200&&w.r.body.result.version===2&&rowOf(A1.assetId,1)===null);
+as(boss);await press('승인');
+check('X1 (F1): after ASSET_STALE the approval step shows v2 with every tick cleared and approve locked',screenText().includes(E.ASSET_STALE.text)&&preText('승인할 원문').includes('다른 사용자가 바꾼 원문입니다.')&&ticked()===0&&locked('승인')&&rowOf(A1.assetId,2).status==='draft');
+await tickAll();await press('승인');
+check('X1: ticking again against v2 approves v2',screenText().includes('v2을 승인했습니다.')&&rowOf(A1.assetId,2).status==='approved');
+
+// X2 (stub): 같은 원문이어도 checklist_outdated·hash_mismatch로 막히면 체크를 지운다.
+for(const code of ['checklist_outdated','hash_mismatch']){
+ stub(()=>reply(200,bossD),()=>reply(409,{error:E.ASSET_BLOCKED.text,reasons:[{code,message:fa.ASSET_MESSAGES[code]}]}));
+ await sheet(D.assetId,true);await press('승인하기');await tickAll();const before=ticked();await press('승인');
+ check(`X2: ${code} on approve clears the ticks of the same body`,before===6&&sent.at(-1).action==='asset_approve'&&ticked()===0&&locked('승인')&&screenText().includes(fa.ASSET_MESSAGES[code]));
+}
+
+// X3: 편집 중 다른 사용자가 먼저 저장하면(ASSET_STALE) 충돌 상자와 최신 원문을 보이고 내 입력은 남는다. '최신 판 위에 저장'은 최신 판 번호로 다시 보낸다.
+const C1=(await portalSave(FILL_WHY+' 충돌 확인용 초안입니다.')).r.body.result,MINE=FILL_WHY+' 내가 고친 원문입니다.';
+as(member);await sheet(C1.assetId,false);await press('편집');await put(field('원문'),MINE);
+w=await write(boss,'asset_save',assetsUi.saveInput(listX,await view(boss,{view:'asset',assetId:C1.assetId}),{type:'portal_intro',campaignId:'',body:FILL_WHY+' 대표가 먼저 저장한 원문입니다.',picked:new Set(),source:null,base:1}));
+as(member);await press('초안 저장');
+check('X3: ASSET_STALE on save shows the conflict box with the newer body and keeps my text',w.r.status===200&&screenText().includes('다른 사용자가 v2을 저장했습니다.')&&preText('최신 판 원문').includes('대표가 먼저 저장한 원문입니다.')&&valueOf(field('원문'))===MINE&&sent.at(-1).baseVersion===1);
+await press('최신 판 위에 저장');
+check('X3: saving on top of the latest version sends that version and stores my text as v3',sent.at(-1).baseVersion===2&&screenText().includes('v3 초안을 저장했습니다.')&&rowOf(C1.assetId,3)?.body===MINE);
+
+// X4 (F2·SOURCE_INVALID): 새 자료. 자유 유형으로 바꾸면 템플릿이 넣은 사실 참조도 빠진다(손으로 고른 사실은 남는다). 오래된 작업물을 고르면 서버가 400을 주고 화면은 출처를 풀고 새로고침을 안내한다.
+const STALE_ART={id:'art-stale',campaignId:'ca-a',role:'cmo',title:'목록이 오래된 작업물',content:'오래된 작업물 본문',status:'approved',version:1,origin:'manual',createdAt:'2026-10-04T00:00:00.000Z'};
+as(member);await sheet(null,false,{artifacts:[...ARTIFACTS,STALE_ART]});
+check('X4: a new asset opens as a startup page with the template and its cost fact ticked',valueOf(field('자료 유형'))==='startup_page'&&valueOf(field('원문'))===listX.templates.startup_page&&boxBy('총 창업비용').n.props.checked===true);
+await put(field('자료 유형'),'portal_intro');
+check('X4 (F2): switching to a free type empties the body and drops the template cost fact',valueOf(field('원문'))===''&&boxBy('총 창업비용').n.props.checked===false);
+await tick('총 창업비용',true);await put(field('자료 유형'),'naver_search');
+check('X4: a fact ticked by hand survives the next type switch',boxBy('총 창업비용').n.props.checked===true);
+await tick('총 창업비용',false);await put(field('자료 유형'),'portal_intro');
+await put(selectWith('캠페인 선택'),'ca-a');await put(field('가져올 작업물'),'art-stale');await press('가져오기');
+check('X4: importing an artifact sets the source and inserts its text',screenText().includes('출처: 목록이 오래된 작업물 v1')&&valueOf(field('원문'))==='오래된 작업물 본문');
+await put(field('원문'),FILL_WHY+' 새 포털 소개문입니다.');await press('초안 저장');
+check('X4: SOURCE_INVALID releases the chosen source and asks for a refresh, keeping the text',sent.at(-1).source?.artifactId==='art-stale'&&screenText().includes(E.SOURCE_INVALID.text)&&screenText().includes('워크스페이스 작업물 목록이 오래됐을 수 있습니다.')&&!screenText().includes('출처: 목록이 오래된 작업물')&&btns('출처 연결 해제').length===0&&valueOf(field('원문'))===FILL_WHY+' 새 포털 소개문입니다.');
+await press('초안 저장');
+const N1=sent.at(-1);
+check('X4: the retry sends no source and no template fact, and the sheet opens the saved v1',!('source' in N1)&&JSON.stringify(N1.factRefs)==='[]'&&N1.type==='portal_intro'&&screenText().includes('포털 소개문 · v1')&&screenText().includes('v1 초안을 저장했습니다.'));
+const N1id=JSON.parse(sql.prepare("SELECT data FROM records WHERE kind='recruitment_asset' AND json_extract(data,'$.body')=?").get(N1.body).data).id,N1view=await view(boss,{view:'asset',assetId:N1id});
+check('X4 (F2): that draft passes the gate for owner/admin (no stray cost fact, no footnote_missing)',N1view.gate.status===200&&assetsUi.assetGates(N1view,true).canApprove);
+
+// X5 (stub): 현재 사실로 새 판 저장이 사실을 빼면 먼저 묻는다. 거절하면 보내지 않고, 수락하면 뺀 사실 없이 최신 판 기준으로 보낸다.
+const pD=await view(boss,{view:'asset',assetId:P.assetId}),pDrop={...pD,resaveSuggested:true,drift:[...pD.drift,{factId:'bf-deleted',refVersion:1,currentVersion:null,changed:true}]};
+stub(()=>reply(200,pDrop),b=>reply(200,{ok:true,result:{assetId:b.assetId,version:pD.latestVersion+1}}));
+win.answer=false;win.asked.length=0;await sheet(P.assetId,true);let before=sent.length;await press('현재 사실로 새 판 저장');
+check('X5: a resave that drops a fact asks first and sends nothing when declined',win.asked.length===1&&win.asked[0].includes('근거에서 뺄 사실 1개')&&sent.length===before);
+win.answer=true;await press('현재 사실로 새 판 저장');
+check('X5: once confirmed it sends the current fact versions without the dropped fact on the latest version',sent.length===before+1&&sent.at(-1).action==='asset_save'&&sent.at(-1).baseVersion===pD.latestVersion&&!JSON.stringify(sent.at(-1).factRefs).includes('bf-deleted')&&screenText().includes('다시 승인해야 내보낼 수 있습니다.'));
+
+// X6: 게시 위치. 연락처가 든 라벨은 서버가 거절하고 화면은 입력을 두고 그 칸에 포커스한다. 성공하면 앞뒤 공백을 뺀 라벨을 보내고 칸을 비운다.
+const PLACE='예: 창업 포털 소개 글';
+as(boss);await sheet(P.assetId,true);S.focus.length=0;await put(field(PLACE),'담당 lead.x@example.com 게시');await press('게시 위치 기록');
+check('X6: a placement label with a contact is refused, kept and focused',screenText().includes(E.PII_IN_TEXT.text)&&valueOf(field(PLACE))==='담당 lead.x@example.com 게시'&&S.focus.includes(PLACE));
+await put(field(PLACE),'  가상 창업 포털 게시 글  ');await press('게시 위치 기록');
+check('X6: a recorded placement sends the trimmed label and clears the field',sent.at(-1).label==='가상 창업 포털 게시 글'&&valueOf(field(PLACE))===''&&screenText().includes('게시 위치를 기록했습니다(모두 1곳).'));
+
+// X7 (stub): 상세 읽기 실패는 다시 불러오기로 풀리고 오류 줄이 사라진다.
+let readFails=true;stub(()=>readFails?reply(500,{error:'잠시 불러오지 못했습니다.'}):reply(200,bossD),()=>reply(500,{}));
+await sheet(D.assetId,true);
+check('X7: a failed detail read shows the error and a retry',screenText().includes('잠시 불러오지 못했습니다.')&&btns('다시 불러오기').length===1);
+readFails=false;await press('다시 불러오기');
+check('X7: a successful retry clears the error',!screenText().includes('잠시 불러오지 못했습니다.')&&btns('다시 불러오기').length===0&&screenText().includes('포털 소개문 · v1'));
+
+// X8 (stub): 404는 시트를 닫고 목록을 다시 읽는다. 409 OFF는 패널 상태를 다시 읽는다.
+const spy={close:0,changed:0,status:0},spyProps={onClose:()=>{spy.close++},onChanged:()=>{spy.changed++},onStatus:()=>{spy.status++}};
+stub(()=>reply(200,bossD),b=>b.action==='asset_retire'?reply(404,{error:E.ASSET_NOT_FOUND.text}):reply(409,{error:E.OFF.text}));
+win.answer=true;await sheet(D.assetId,true,spyProps);await press('폐기');
+check('X8: a 404 closes the sheet and reloads the list',spy.close===1&&spy.changed===1&&spy.status===0);
+await press('승인하기');await tickAll();await press('승인');
+check('X8: 409 OFF re-reads the panel status',spy.status===1&&screenText().includes(E.OFF.text));
+
+// X9 (stub): 거절된 내보내기는 서버 문제만 보이고 아무것도 쓰지 않는다. 복사 대체 상자는 응답 body만 담는다. 재생 응답은 '이미 처리된 요청' 문구를 붙인다.
+let exportReply=()=>reply(409,{error:E.ASSET_STALE.text});
+stub(()=>reply(200,pD),b=>b.action==='asset_export'?exportReply():reply(200,{ok:true,replayed:true,result:{version:pD.asset.version,status:'retired'}}));
+await sheet(P.assetId,true);await press('복사');
+check('X9: a refused export shows the server problem and no copy box',screenText().includes(E.ASSET_STALE.text)&&!screenText().includes('내보낸 원문을 받지 못했습니다')&&!screenText().includes(assetsUi.COPY_FALLBACK));
+exportReply=()=>reply(200,{ok:true,body:'■ 서버가 돌려준 원문',filename:'f.txt',replayed:true});await press('복사');
+check('X9: without a clipboard the copy box holds the returned body, not the screen body',valueOf(field('내보낸 원문 (직접 복사)'))==='■ 서버가 돌려준 원문'&&screenText().includes('같은 요청을 다시 받았습니다'));
+win.answer=true;await press('폐기');
+check('X9: a replayed write says it was already handled',screenText().includes(`이미 처리된 요청입니다. v${pD.asset.version}을 폐기했습니다.`));
+
+// X10: 신청. 전화번호 모양 코드는 보내지 않는다. 기록되면 칸을 비우고, 중복 코드(409)면 칸을 둔다.
+w=await write(boss,'event_save',eventsUi.eventInput({type:'tour',campaignId:'ca-a',start:{now:false,local:kstLocalOf(5*24*HOUR)},place:'가상 견학장',capacity:'10',refs:[{id:A1.assetId,version:2}]},null));
+const E3=w.r.body.result?.eventId,CODE='예: LKB728BT';
+check('X10: owner/admin create a tour linked to the approved v2',w.r.status===200&&typeof E3==='string');
+as(member);await mount(evUi.FranchiseEvents,{brandId:'fr-a',admin:false,onStatus:noop});
+await put(field(CODE),'B-123-4567');before=sent.length;await press('신청 기록하기');
+check('X10: a phone-like code is refused on screen and not sent',sent.length===before&&screenText().includes('숫자 7자리 이상(전화번호 형태)은 받지 않습니다.'));
+await put(field(CODE),'LKX100AA');await press('신청 기록하기');
+check('X10: a recorded registration clears the code',sent.at(-1).action==='event_register'&&sent.at(-1).code==='LKX100AA'&&valueOf(field(CODE))===''&&screenText().includes('신청을 기록했습니다(신청 1/10).'));
+await put(field(CODE),'LKX100AA');await press('신청 기록하기');
+check('X10: a duplicate code keeps the input',sent.at(-1).code==='LKX100AA'&&valueOf(field(CODE))==='LKX100AA'&&screenText().includes(fa.ASSET_MESSAGES.code_duplicate)&&eventRow(E3).counts.applied===1);
+
+// X11–X13: 행사 변경 대화상자. 개인정보가 든 장소는 그 칸에 포커스, 그새 폐기된 연결 자료는 다시 읽은 뒤 빼고 저장, 꺼짐은 패널 상태를 다시 읽고 저장을 잠근다, 삭제된 행사는 닫는다.
+const spyE={status:0},PLACE_E='예: 가상 직영점 2층';
+as(boss);await mount(evUi.FranchiseEvents,{brandId:'fr-a',admin:true,onStatus:()=>{spyE.status++}});await press('수정',0);
+check('X11: the edit dialog opens on the new tour',within('DialogContent').includes('행사 변경')&&valueOf(field(PLACE_E))==='가상 견학장');
+await put(field(PLACE_E),'가상 견학장 lead.x@example.com');S.focus.length=0;await press('행사 저장');
+check('X11 (F6): a place with a contact is refused, the dialog stays and the place field gets focus',screenText().includes(E.PII_IN_TEXT.text)&&within('DialogContent').includes('행사 변경')&&S.focus.includes(PLACE_E));
+await put(field(PLACE_E),'가상 견학장 2층');w=await write(boss,'asset_retire',{assetId:A1.assetId,version:2});as(boss);await press('행사 저장');
+check('X11: a linked asset retired meanwhile is refused and the reloaded dialog says it drops out',w.r.status===200&&JSON.stringify(sent.at(-1).assetRefs)===JSON.stringify([{id:A1.assetId,version:2}])&&within('DialogContent').includes('승인 판이 아니라 연결에서 빠집니다')&&valueOf(field(PLACE_E))==='가상 견학장 2층');
+await press('행사 저장');
+check('X11: saving again sends only approved links and closes the dialog',JSON.stringify(sent.at(-1).assetRefs)==='[]'&&within('DialogContent')===''&&screenText().includes('행사를 저장했습니다.')&&eventRow(E3).placeLabel==='가상 견학장 2층');
+await press('수정',0);await put(field(PLACE_E),'가상 견학장 3층');
+check('X12: owner turns the switch off while the dialog is open',(await f.setFlag(boss,false)).status===200);as(boss);await press('행사 저장');
+check('X12 (F6): 409 OFF re-reads the panel status and the open dialog locks its save with the off note, keeping the input',spyE.status===1&&locked('행사 저장')&&within('DialogContent').includes(eventsUi.EVENTS_OFF_NOTE)&&valueOf(field(PLACE_E))==='가상 견학장 3층');
+await press('취소');check('X12: owner turns the switch back on',(await f.setFlag(boss,true)).status===200);
+as(boss);await mount(evUi.FranchiseEvents,{brandId:'fr-a',admin:true,onStatus:noop});await press('수정',0);
+sql.prepare("DELETE FROM records WHERE kind='recruitment_event' AND json_extract(data,'$.id')=?").run(E3);await press('행사 저장');
+check('X13: a deleted event closes the dialog and shows the server message',within('DialogContent')===''&&screenText().includes(E.EVENT_NOT_FOUND.text));
+
+// X14 (stub): 참석 기록이 모르는 코드(code_unknown)로 400이면 행사를 다시 읽는다.
+const evView=await view(member,{view:'events'});let reads=0;
+stub(()=>{reads++;return reply(200,evView)},()=>reply(400,{error:'입력을 확인해 주세요.',reasons:[{code:'code_unknown',message:fa.ASSET_MESSAGES.code_unknown}]}));
+await mount(evUi.FranchiseEvents,{brandId:'fr-a',admin:false,onStatus:noop});const reads0=reads;await press('참석 저장');
+check('X14 (F6): code_unknown on attendance reloads the events and shows the reason',sent.at(-1).action==='event_attendance'&&reads===reads0+1&&screenText().includes(fa.ASSET_MESSAGES.code_unknown));
+
+// O2 (대표 지시 2): 대기기간·수익 질의응답 권장 문장이 없어도 화면은 서버 게이트만 따르고 스스로 막지 않는다.
+// 서버(lib/franchise-assets.ts)가 아직 그 문장을 409로 막으면 blocked로 남긴다(권장 전환 변경이 병합되기 전). 전환 뒤에는 저장·승인·내보내기 200을 그대로 확인한다.
+const RECOMMENDED=new Set([...fa.WAITING_NOTES,fa.REVENUE_QNA_NOTE]),strip=t=>t.split('\n').filter(l=>!RECOMMENDED.has(l)).join('\n');
+const DSEC=Object.fromEntries(fa.EVENT_DECK_SECTIONS.map(s=>[s.id,s.heading]));
+const DECK=[['story',[FILL_WHY]],['demo',['직영 공간에서 대표 메뉴를 시식합니다.']],['support',['오픈 첫 달 운영 교육을 지원합니다(계약 체결 가맹점, 개점일부터 30일간).']]].reduce((t,[id,ls])=>after(t,DSEC[id],ls),list0.templates.event_deck);
+as(boss);for(const [type,full] of [['startup_page',PAGE],['event_deck',DECK]]){
+ const body=strip(full);w=await write(member,'asset_save',assetsUi.saveInput(listX,null,saveForm({type,body})));
+ const id=w.r.body.result?.assetId,d=w.r.status===200?await view(boss,{view:'asset',assetId:id}):null,g=d&&assetsUi.assetGates(d,true),codes=d?d.gate.reasons.map(r=>r.code):[];
+ check(`O2: a ${type} without the recommended sentences saves (200) and the body really lacks them`,w.r.status===200&&body!==full&&[...RECOMMENDED].every(l=>!body.includes(l)));
+ if(d.gate.status!==200&&codes.length>0&&codes.every(c=>c==='waiting_note_missing'||c==='revenue_qna_note_missing')){
+  blocked.push(`O2 ${type}: server gate still 409 [${codes.join(',')}] (in-flight lib/franchise-assets.ts change turns these into warnings)`);
+  check(`O2 blocked (${type}): the screen only mirrors the server gate`,g.showApprove&&!g.canApprove&&g.blockers.length===1&&g.blockers[0]==='게이트 사유를 고친 새 판을 저장해야 합니다.');
+  continue;
+ }
+ check(`O2: ${type} gate 200 and approvable without the sentences`,d.gate.status===200&&g.canApprove&&g.blockers.length===0);
+ w=await write(boss,'asset_approve',assetsUi.approveInput(d,new Set(d.checklist.items.map(i=>i.id))));
+ const ex=w.r.status===200?await write(boss,'asset_export',{assetId:id,version:d.asset.version,mode:'copy'}):null;
+ check(`O2: ${type} approves and exports (200) with the stored body`,w.r.status===200&&ex?.r.status===200&&ex.r.body.body===d.asset.body);
+ const shown=[...d.gate.warnings,...common.stringWarnings(w.r),...common.stringWarnings(ex.r)];
+ check(`O2: ${type} server warnings, if any, render as warning lines`,shown.every(x=>render(common.WarningLines,{items:[x]}).includes('주의: ')));
+}
+check('X: the interaction checks made no external call and logged no request failure',f.calls.length===0&&!logged.some(l=>/franchise_request_failed|agency_request_failed/.test(l)));
+
+console.log(JSON.stringify({passed:passed.length,blocked}));

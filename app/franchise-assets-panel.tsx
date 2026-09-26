@@ -46,6 +46,7 @@ export const COPY_FALLBACK='클립보드에 복사하지 못했습니다. 아래
 const NO_CAMPAIGN='가맹 모집 목적 캠페인이 없어 새 자료를 만들 수 없습니다. 캠페인 브리프에서 목적을 ‘가맹 모집’으로 지정하세요(대표·관리자).';
 const COST_MISSING='현재 등록 버전 정보공개서에 근거한 총 창업비용 사실이 없어 창업 페이지·설명회 덱 템플릿의 창업비용 표가 비어 있습니다. 이대로는 승인되지 않습니다. 브랜드 아카이브의 확인 사실에서 등록하세요.';
 const CAMPAIGN_GONE='캠페인이 삭제돼 승인·내보내기를 할 수 없습니다. 게시 위치 기록과 폐기는 할 수 있습니다.';
+export const CAMPAIGN_GONE_EDIT='캠페인이 삭제돼 새 판을 저장할 수 없습니다.';
 const REVIEW_BLOCK='재검토가 필요합니다. 현재 사실로 새 판을 저장한 뒤 다시 승인하세요.';
 const GATE_BLOCK='게이트 사유를 고친 새 판을 저장해야 합니다.';
 const OUTDATED_BLOCK='체크리스트가 바뀌었습니다. 새 판으로 저장해 다시 승인해야 내보낼 수 있습니다.';
@@ -58,6 +59,7 @@ export const latestOf=(v:AssetDetailView)=>v.asset.version===v.latestVersion;
 export const checklistOutdated=(v:AssetDetailView)=>v.asset.status==='approved'&&!!v.asset.approval&&v.asset.approval.checklist.version!==v.checklist.version;
 export type AssetGates={showApprove:boolean;canApprove:boolean;showExport:boolean;canExport:boolean;canPlace:boolean;canRetire:boolean;canEdit:boolean;canResave:boolean;blockers:string[]};
 // 승인·내보내기는 대표·관리자·최신 판·스위치 켜짐·분기 A·캠페인 있음·재검토 없음·게이트 200일 때만. 서버 경고(권장 문장 포함)는 막지 않는다. 게시 위치는 어느 판이든, 폐기는 스위치가 꺼져도 된다.
+// 편집·현재 사실로 새 판은 스위치 켜짐·최신 판·폐기 아님·캠페인 있음(8절). 캠페인이 삭제되면 서버가 저장을 campaign_other_brand로 거절하므로 버튼 대신 안내를 둔다.
 export function assetGates(v:AssetDetailView,admin:boolean):AssetGates{
  const L=latestOf(v),e=v.enabled,s=v.asset.status,outdated=checklistOutdated(v);
  const ok=v.branch==='A'&&v.campaign!==null&&!v.asset.review.needed&&v.gate.status===200;
@@ -72,7 +74,7 @@ export function assetGates(v:AssetDetailView,admin:boolean):AssetGates{
   if(showExport&&outdated)blockers.push(OUTDATED_BLOCK);
  }
  return {showApprove,canApprove,showExport,canExport,canPlace:admin&&e&&s==='approved'&&v.asset.exports.length>0&&v.asset.placements.length<PLACEMENTS_MAX,
-  canRetire:admin&&s!=='retired',canEdit:e&&L&&s!=='retired',canResave:e&&L&&s!=='retired'&&(v.resaveSuggested||outdated),blockers};
+  canRetire:admin&&s!=='retired',canEdit:e&&L&&s!=='retired'&&v.campaign!==null,canResave:e&&L&&s!=='retired'&&v.campaign!==null&&(v.resaveSuggested||outdated),blockers};
 }
 // 현재 사실로 새 판: 참조를 현재 사실 판으로 올리고 없어진 사실은 뺀다. 기준 판은 최신 판, 출처는 보내지 않는다(이어받음).
 export function resaveInput(v:AssetDetailView):{payload:Json;dropped:string[]}|null{
@@ -232,7 +234,7 @@ export function AssetSheet({brandId,assetId,list,admin,artifacts,onClose,onChang
    {loadError&&<div role="alert" className="load-error"><span>{loadError.message}</span>{loadError.status===404&&version!==null?<Button variant="outline" size="sm" onClick={()=>setVersion(null)}>최신 판 열기</Button>:<Button variant="outline" size="sm" onClick={()=>void load()}>다시 불러오기</Button>}</div>}
    {mode==='edit'&&(id===null||view)?<AssetEditor key={editorKey} list={list} artifacts={artifacts} detail={id===null?null:view} busy={busy} enabled={view?view.enabled:list.enabled} conflict={conflict} onSave={save}
      onCancel={()=>{setConflict(false);if(id===null)onClose();else setMode('view')}} onRestart={()=>{setConflict(false);setEditorKey(k=>k+1)}}/>
-    :view&&g?(mode==='approve'&&g.showApprove?<ApprovalStep key={approveKey} view={view} busy={busy} blockers={g.blockers} onApprove={c=>void approve(c)} onCancel={()=>setMode('view')}/>
+    :view&&g?(mode==='approve'&&g.showApprove?<ApprovalStep key={`${view.asset.id}:${view.asset.version}:${view.asset.bodyHash}:${approveKey}`} view={view} busy={busy} blockers={g.blockers} onApprove={c=>void approve(c)} onCancel={()=>setMode('view')}/>
      :<AssetBody view={view} g={g} admin={admin} artifacts={artifacts} busy={busy} now={now} fallback={fallback} who={who} on={{version:n=>{setVersion(n===view.latestVersion?null:n);setMode('view')},edit:()=>{setConflict(false);setEditorKey(k=>k+1);setMode('edit')},
       approve:()=>setMode('approve'),resave:()=>void resave(),exportAs:how=>void exportAs(how),place,retire:()=>void retire(),closeFallback:()=>setFallback(null)}}/>):null}
    {(message||problem||warnings.length>0)&&<div className="franchise-status">{message&&<p role="status">{message}</p>}<WarningLines items={warnings}/><ProblemBox problem={problem}/></div>}
@@ -242,7 +244,7 @@ export function AssetSheet({brandId,assetId,list,admin,artifacts,onClose,onChang
 
 type BodyActions={version:(n:number)=>void;edit:()=>void;approve:()=>void;resave:()=>void;exportAs:(how:'copy'|'download')=>void;place:(label:string,on:string)=>Promise<boolean>;retire:()=>void;closeFallback:()=>void};
 function AssetBody({view,g,admin,artifacts,busy,now,fallback,who,on}:{view:AssetDetailView;g:AssetGates;admin:boolean;artifacts:readonly Artifact[];busy:boolean;now:string;fallback:string|null;who:(id:string,role:string)=>string;on:BodyActions}){
- const a=view.asset,source=a.source,range=placementRange(view,now),changed=view.drift.filter(d=>d.changed);
+ const a=view.asset,source=a.source,range=placementRange(view,now),changed=view.drift.filter(d=>d.changed),gone=view.enabled&&latestOf(view)&&a.status!=='retired'&&view.campaign===null;
  return <>
   <section className="franchise-box" aria-label="판과 상태">
    <div className="franchise-bar">{view.versions.map(x=><Button key={x.version} size="sm" variant={x.version===a.version?'default':'outline'} aria-current={x.version===a.version?'true':undefined} onClick={()=>on.version(x.version)}>{`v${x.version} (${ASSET_STATUS_LABELS[x.status]})`}</Button>)}</div>
@@ -283,7 +285,7 @@ function AssetBody({view,g,admin,artifacts,busy,now,fallback,who,on}:{view:Asset
    {g.canPlace&&range&&<PlaceForm range={range} busy={busy} onPlace={on.place}/>}
    {admin&&a.status==='approved'&&a.placements.length>=PLACEMENTS_MAX&&<p className="subtle-note">게시 위치는 20곳까지 기록합니다.</p>}
   </Section>
-  {(g.canEdit||g.canRetire)&&<div className="franchise-bar">{g.canEdit&&<Button disabled={busy} onClick={on.edit}>편집</Button>}{g.canRetire&&<Button variant="outline" disabled={busy} onClick={on.retire}>폐기</Button>}</div>}
+  {(g.canEdit||g.canRetire||gone)&&<div className="franchise-bar">{g.canEdit&&<Button disabled={busy} onClick={on.edit}>편집</Button>}{gone&&<p className="subtle-note">{CAMPAIGN_GONE_EDIT}</p>}{g.canRetire&&<Button variant="outline" disabled={busy} onClick={on.retire}>폐기</Button>}</div>}
  </>;
 }
 
@@ -328,24 +330,31 @@ export function AssetEditor({list,artifacts,detail,busy,enabled,conflict,onSave,
  const [type,setType]=useState(()=>detail?detail.asset.type:first),[campaignId,setCampaignId]=useState(()=>detail?detail.asset.campaignId:'');
  const [body,setBody]=useState(()=>detail?detail.asset.body:templateOf(first));
  const [picked,setPicked]=useState<ReadonlySet<string>>(()=>new Set(detail?detail.asset.factRefs.map(r=>r.id):templateOf(first)?list.templateFactRefs.map(r=>r.id):[]));
+ // 템플릿이 더한(사용자가 직접 고르지 않은) 근거 사실. 유형을 바꿔 원문이 새 유형의 템플릿(자유 유형은 빈 원문)으로 바뀌면 함께 뺀다. 손으로 고른 사실은 남긴다.
+ const [auto,setAuto]=useState<ReadonlySet<string>>(()=>new Set(!detail&&templateOf(first)?list.templateFactRefs.map(r=>r.id):[]));
  const [source,setSource]=useState<EditorForm['source']>(null),[base,setBase]=useState<number|null>(()=>detail?detail.latestVersion:null);
  const [note,setNote]=useState(''),[seed,setSeed]=useState(''),[withContent,setWithContent]=useState(true),bodyRef=useRef<HTMLTextAreaElement>(null);
  const known=new Set(list.facts.map(f=>f.id)),gone=[...picked].filter(x=>!known.has(x)),live=[...picked].filter(x=>known.has(x)).length;
- const withRefs=(ids:readonly string[])=>{const next=new Set(picked);for(const x of ids)next.add(x);return next};
+ // 템플릿 사실을 더한다. 이미 고른 사실은 그대로 두고 새로 더한 것만 템플릿 몫으로 표시한다.
+ function withTemplateRefs(from:ReadonlySet<string>,fromAuto:ReadonlySet<string>){const next=new Set(from),mark=new Set(fromAuto);for(const r of list.templateFactRefs)if(!next.has(r.id)){next.add(r.id);mark.add(r.id)}setPicked(next);setAuto(mark)}
  function changeType(next:string){
-  if(!body.trim()||body===templateOf(type)){const t=templateOf(next);setBody(t);if(t)setPicked(withRefs(list.templateFactRefs.map(r=>r.id)));setNote('')}
+  if(!body.trim()||body===templateOf(type)){
+   const t=templateOf(next),kept=new Set([...picked].filter(x=>!auto.has(x)));setBody(t);setNote('');
+   if(t)withTemplateRefs(kept,new Set());else{setPicked(kept);setAuto(new Set())}
+  }
   else setNote('템플릿 넣기로 바꿀 수 있습니다.');
   setType(next);
  }
- function applyTemplate(){if(body.trim()&&!window.confirm('현재 원문을 템플릿으로 바꿉니다. 계속할까요?'))return;setBody(templateOf(type));setPicked(withRefs(list.templateFactRefs.map(r=>r.id)));setNote('')}
+ function applyTemplate(){if(body.trim()&&!window.confirm('현재 원문을 템플릿으로 바꿉니다. 계속할까요?'))return;setBody(templateOf(type));withTemplateRefs(picked,auto);setNote('')}
  function insert(text:string,over:string){const next=insertAt(body,text,bodyRef.current?.selectionStart);if(next===null){setNote(over);return false}setBody(next);setNote('');return true}
- function toggleFact(x:string,on:boolean){const next=new Set(picked);if(on)next.add(x);else next.delete(x);setPicked(next)}
+ function toggleFact(x:string,on:boolean){const next=new Set(picked);if(on)next.add(x);else next.delete(x);setPicked(next);if(auto.has(x)){const a=new Set(auto);a.delete(x);setAuto(a)}}
  function importSeed(){const a=artifacts.find(x=>x.id===seed);if(!a)return;setSource({artifactId:a.id,version:a.version,title:a.title});if(withContent)insert(a.content,'길이 초과로 본문은 넣지 않았습니다.')}
  async function submit(nextBase:number|null){setBase(nextBase);if(await onSave(saveInput(list,detail,{type,campaignId,body,picked,source,base:nextBase}))==='source_invalid')setSource(null)}
- const seeds=campaignId?seedOptions(artifacts,campaignId):[],inherited=detail?.asset.source??null;
- const invalid=busy||!enabled||!body.trim()||body.length>BODY_MAX||(!detail&&!campaignId);
+ const seeds=campaignId?seedOptions(artifacts,campaignId):[],inherited=detail?.asset.source??null,campaignGone=!!detail&&detail.campaign===null;
+ const invalid=busy||!enabled||campaignGone||!body.trim()||body.length>BODY_MAX||(!detail&&!campaignId);
  return <form autoComplete="off" className="form-stack" onSubmit={e=>{e.preventDefault();if(!invalid)void submit(base)}}><fieldset disabled={busy} className="form-stack">
   {!enabled&&<p className="notice" role="note">{ASSETS_OFF_NOTE}</p>}
+  {campaignGone&&<p className="notice" role="note">{CAMPAIGN_GONE_EDIT}</p>}
   {conflict&&detail&&<div role="alert" className="franchise-problem">
    <p>{`다른 사용자가 v${detail.latestVersion}을 저장했습니다. 최신 판 원문을 확인하세요. 내 원문으로 새 판을 만들면 바로 앞 판이 초안일 때 그 초안은 새 판으로 바뀝니다.`}</p>
    <pre aria-label="최신 판 원문" tabIndex={0} className="whitespace-pre-wrap break-words text-sm">{detail.asset.body}</pre>
@@ -366,7 +375,7 @@ export function AssetEditor({list,artifacts,detail,busy,enabled,conflict,onSave,
    {list.facts.length?list.facts.map(f=>{const on=picked.has(f.id);return <div key={f.id} className="franchise-bar">
     <label className="franchise-inline"><input type="checkbox" checked={on} disabled={!on&&live>=FACT_REFS_MAX} onChange={e=>toggleFact(f.id,e.target.checked)}/>{` ${f.label}`}</label>
     <small>{f.hasSource?f.line:`${f.line} · 정보공개서 근거 없음`}</small>
-    <Button type="button" size="sm" variant="outline" onClick={()=>insert(f.line,'20,000자를 넘어 넣지 않았습니다.')}>원문에 넣기</Button>
+    <Button type="button" size="sm" variant="outline" aria-label={`${f.label} 원문에 넣기`} onClick={()=>insert(f.line,'20,000자를 넘어 넣지 않았습니다.')}>원문에 넣기</Button>
    </div>}):<p className="subtle-note">쓸 수 있는 확인 사실이 없습니다.</p>}
    {gone.map(x=><p key={x} className="franchise-flag">{`더 이상 쓸 수 없는 사실 ${x}: 저장하면 근거에서 빠집니다`}</p>)}
   </fieldset>

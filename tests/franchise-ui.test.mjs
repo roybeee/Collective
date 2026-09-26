@@ -184,6 +184,15 @@ await acheck('U4: sendAttempt keeps the request id only when no response arrived
  mode='offline';await common.sendAttempt('event_register',{...payload,code:'LKB728BT'},first.next);assert.notEqual(ids[4],ids[0],'changed content gets a new id');
  mode='conflict';const got=await common.sendAttempt('event_register',payload,{id:'rq-keep-000002',key});assert.equal(ids.at(-1),'rq-keep-000002');assert.equal(got.r.status,409);assert.equal(got.next,null,'a received error drops the attempt');
 });
+// 교차 검토 F4: 5xx도 받은 응답이다(명세 3절 3–4단계는 status 0만 같은 번호). JSON 500과 본문을 못 읽는 게이트웨이 502 모두 시도를 버리고 같은 내용의 다음 전송은 새 번호를 쓴다.
+await acheck('U4: a received 5xx (JSON 500 or non-JSON 502) drops the attempt and the same content gets a new id',async()=>{
+ const ids=[];let mode='json500';
+ fetchImpl=async(url,init)=>{ids.push(JSON.parse(init.body).requestId);return mode==='json500'?reply(500,{error:'가상 서버 오류'}):{status:502,ok:false,json:async()=>{throw new SyntaxError('Unexpected token <')}}};
+ const payload={brandId:'fr-a',eventId:'re-1',code:'LKB728BT'};
+ const a=await common.sendAttempt('event_register',payload,null);assert.equal(a.r.status,500);assert.equal(ids.length,1,'a received 500 is not resent');assert.equal(a.next,null,'500 drops the attempt');
+ mode='html502';const b=await common.sendAttempt('event_register',payload,a.next);assert.equal(b.r.status,502);assert.notEqual(ids[1],ids[0],'a new id after a 500');assert.equal(b.next,null,'502 drops the attempt');assert.match(b.r.body.error,/응답을 읽지 못했습니다/);
+ const c=await common.sendAttempt('event_register',payload,b.next);assert.equal(ids.length,3);assert.notEqual(ids[2],ids[1],'a new id after a non-JSON 502');assert.equal(c.next,null);
+});
 check('U5: followUpOf maps responses to keep, status, close and reload',()=>{
  const E=lib.FRANCHISE_ERRORS,f=(status,body={})=>common.followUpOf({status,body});
  assert.deepEqual([f(0,{error:'네트워크 오류'}),f(400,{error:E.PII_IN_TEXT.text}),f(429,{error:'요청이 많습니다.'}),f(500,{error:'x'}),f(503,{error:E.KEY_MISSING.text})],['keep','keep','keep','keep','keep']);
@@ -218,19 +227,28 @@ const GATE_CASES=[
  ['owner/admin, switch off, approved and exported',detailOf({enabled:false},{...approved,exports:[EXP]}),true,G(false,false,true,false,false,true,false,false,[OFF_NOTE])],
  ['member, switch off',detailOf({enabled:false,resaveSuggested:true}),false,G(false,false,false,false,false,false,false,false)],
  ['owner/admin, branch B',detailOf({branch:'B',h7Notice:H7}),true,G(true,false,false,false,false,true,true,false,[H7])],
- ['owner/admin, campaign deleted',detailOf({campaign:null}),true,G(true,false,false,false,false,true,true,false,[GONE])],
+ ['owner/admin, campaign deleted: no edit (a save could only fail with campaign_other_brand)',detailOf({campaign:null}),true,G(true,false,false,false,false,true,false,false,[GONE])],
+ ['member, campaign deleted: no edit either',detailOf({campaign:null}),false,G(false,false,false,false,false,false,false,false)],
+ ['owner/admin, campaign deleted with a resave suggestion: no resave',detailOf({campaign:null,resaveSuggested:true}),true,G(true,false,false,false,false,true,false,false,[GONE])],
  ['owner/admin, review needed',detailOf({resaveSuggested:true},{review:{needed:true,reasons:['fact_changed'],at:'2026-10-04T00:00:00.000Z'}}),true,G(true,false,false,false,false,true,true,true,[REVIEW])],
  ['owner/admin, gate 409',detailOf({gate:{status:409,reasons:[{code:'hard_block',message:'막힘'}],message:'막힘',warnings:[]}}),true,G(true,false,false,false,false,true,true,false,[GATE])],
  ['owner/admin, approved under an older checklist',detailOf({},{...approved,approval:{...APPROVAL,checklist:{version:'fr-assets-checklist@old',checked:CL_IDS}}}),true,G(false,false,true,false,false,true,true,true,[OUTDATED])],
  ['member, approved under an older checklist can resave',detailOf({},{...approved,approval:{...APPROVAL,checklist:{version:'fr-assets-checklist@old',checked:CL_IDS}}}),false,G(false,false,false,false,false,false,true,true)],
  ['every blocker in order',detailOf({enabled:false,branch:'C',h7Notice:H7,campaign:null,gate:{status:409,reasons:[],message:null,warnings:[]}},{review:{needed:true,reasons:['version_changed'],at:null}}),true,G(true,false,false,false,false,true,false,false,[OFF_NOTE,H7,GONE,REVIEW,GATE])],
+ ['owner/admin, approved latest, branch B: no export',detailOf({branch:'B',h7Notice:H7},approved),true,G(false,false,true,false,false,true,true,false,[H7])],
+ ['owner/admin, approved and exported latest, campaign deleted: placement and retire only',detailOf({campaign:null},{...approved,exports:[EXP]}),true,G(false,false,true,false,true,true,false,false,[GONE])],
+ ['owner/admin, approved latest, review needed: resave instead of export',detailOf({resaveSuggested:true},{...approved,review:{needed:true,reasons:['fact_changed'],at:null}}),true,G(false,false,true,false,false,true,true,true,[REVIEW])],
+ ['owner/admin, approved latest, gate 409: no export',detailOf({gate:{status:409,reasons:[{code:'hard_block',message:'막힘'}],message:null,warnings:[]}},approved),true,G(false,false,true,false,false,true,true,false,[GATE])],
+ ['owner/admin, retired latest with exports: no placement',detailOf({},{status:'retired',approval:APPROVAL,exports:[EXP]}),true,G(false,false,false,false,false,false,false,false)],
+ ['owner/admin, unknown branch without a notice adds no empty blocker',detailOf({branch:null,h7Notice:null}),true,G(true,false,false,false,false,true,true,false,[])],
  ['gate warnings alone never block approval',detailOf({gate:{status:200,reasons:[],message:null,warnings:['권장 문장이 없습니다(권장).']}}),true,G(true,true,false,false,false,true,true,false)],
 ];
 for(const [name,view,admin,want] of GATE_CASES)check('U7: assetGates '+name,()=>assert.deepEqual(plain(assetsUi.assetGates(view,admin)),want));
-check('U7: latestOf and checklistOutdated',()=>{assert.equal(assetsUi.latestOf(detailOf()),true);assert.equal(assetsUi.latestOf(detailOf({},{version:2})),false);assert.equal(assetsUi.checklistOutdated(detailOf({},approved)),false);assert.equal(assetsUi.checklistOutdated(detailOf({},{...approved,approval:{...APPROVAL,checklist:{version:'x',checked:[]}}})),true);assert.equal(assetsUi.checklistOutdated(detailOf({checklist:{...CHECKLIST,version:'y'}})),false,'a draft has no approval to outdate')});
+check('U7: latestOf and checklistOutdated',()=>{assert.equal(assetsUi.latestOf(detailOf()),true);assert.equal(assetsUi.latestOf(detailOf({},{version:2})),false);assert.equal(assetsUi.checklistOutdated(detailOf({},approved)),false);assert.equal(assetsUi.checklistOutdated(detailOf({},{...approved,approval:{...APPROVAL,checklist:{version:'x',checked:[]}}})),true);assert.equal(assetsUi.checklistOutdated(detailOf({checklist:{...CHECKLIST,version:'y'}})),false,'a draft has no approval to outdate');
+ assert.equal(assetsUi.checklistOutdated(detailOf({},{status:'retired',approval:{...APPROVAL,checklist:{version:'x',checked:[]}}})),false,'a retired version is not outdated')});
 const DRIFT=[{factId:'bf-1',refVersion:1,currentVersion:2,changed:true},{factId:'bf-2',refVersion:1,currentVersion:null,changed:true},{factId:'bf-3',refVersion:4,currentVersion:4,changed:false}];
 check('U8: resaveInput maps drift to current fact versions, drops missing facts and sends the latest version as base',()=>{
- assert.equal(assetsUi.resaveInput(detailOf()),null,'no suggestion');assert.equal(assetsUi.resaveInput(detailOf({resaveSuggested:true,enabled:false,drift:DRIFT})),null,'switch off');assert.equal(assetsUi.resaveInput(detailOf({resaveSuggested:true,drift:DRIFT},{version:2})),null,'old version');
+ assert.equal(assetsUi.resaveInput(detailOf()),null,'no suggestion');assert.equal(assetsUi.resaveInput(detailOf({resaveSuggested:true,enabled:false,drift:DRIFT})),null,'switch off');assert.equal(assetsUi.resaveInput(detailOf({resaveSuggested:true,drift:DRIFT},{version:2})),null,'old version');assert.equal(assetsUi.resaveInput(detailOf({resaveSuggested:true,drift:DRIFT,campaign:null})),null,'campaign deleted');
  const x=plain(assetsUi.resaveInput(detailOf({resaveSuggested:true,drift:DRIFT},{factRefs:[{id:'bf-1',version:1},{id:'bf-2',version:1},{id:'bf-3',version:4}]})));
  assert.deepEqual(x,{payload:{assetId:'ra-1',baseVersion:3,type:'startup_page',body:'원문',factRefs:[{id:'bf-1',version:2},{id:'bf-3',version:4}]},dropped:['bf-2']});
  assert.ok(!('source' in x.payload),'the source is inherited, not resent');
@@ -303,6 +321,10 @@ const EVENT_CASES=[
  ['at the KST event day start',EVENT({startsAt:'2026-10-05T15:00:00.000Z'}),false,true,'A','2026-10-05T15:00:00.000Z',EG(false,false,false,true,STARTED,null)],
 ];
 for(const [name,e,admin,enabled,branch,now,want] of EVENT_CASES)check('U12: eventGates '+name,()=>assert.deepEqual(plain(eventsUi.eventGates(e,admin,enabled,branch,now)),want));
+check('U12: the switch off closes attendance even on the event day, and a started full event says it started',()=>{
+ assert.equal(eventsUi.eventGates(EVENT({startsAt:'2026-10-05T02:00:00.000Z'}),false,false,'A',NOW).canAttend,false);
+ assert.equal(eventsUi.eventGates(EVENT({startsAt:'2026-10-05T02:00:00.000Z',counts:{applied:10,attended:0,noShow:0}}),false,true,'A',NOW).registerWhy,STARTED);
+});
 check('U10: codeProblem matches the server pseudonym rule at every boundary',()=>{
  const future=new Date(Date.now()+30*86400000).toISOString(),ev={id:'re-1',brandId:'fr-a',campaignId:'ca-a',type:'tour',startsAt:future,placeLabel:'가상',capacity:100,spendRef:null,counts:{applied:0,attended:0,noShow:0},codes:[],assetRefs:[],status:'scheduled',version:1,createdAt:NOW,updatedAt:NOW};
  const server=code=>fa.registerDecision(ev,{code:code===''?null:code},{enabled:true,brandId:'fr-a',branch:'A',now:new Date().toISOString()}).ok;
@@ -324,6 +346,8 @@ check('U12: attendanceInput checks counts and code marks and sends only non-appl
  const marked=eventsUi.attendanceInput(e,'1','0',{LKB728BT:'attended',LKC111AA:'attended',LKD222BB:'applied'});assert.equal(marked.payload,null);assert.match(marked.problem,/참석으로 표시한 코드/);
  const marked2=eventsUi.attendanceInput(e,'0','0',{LKB728BT:'applied',LKC111AA:'applied'});assert.equal(marked2.payload,null,'a code left as no-show by default still counts');assert.match(marked2.problem,/불참으로 표시한 코드/);
  assert.deepEqual(plain(eventsUi.attendanceInput(e,'0','0',{LKB728BT:'applied',LKC111AA:'applied',LKD222BB:'applied'}).payload.codes),[],'codes left as applied go back to applied');
+ const reversed=EVENT({codes:[{code:'LKD222BB',state:'no_show'},{code:'LKC111AA',state:'attended'},{code:'LKB728BT',state:'applied'}]});
+ assert.deepEqual(plain(eventsUi.attendanceInput(reversed,'1','1',{}).payload.codes),[{code:'LKC111AA',state:'attended'},{code:'LKD222BB',state:'no_show'}],'codes are sent in code order whatever the view order');
 });
 check('eventInput builds new and changed event saves with spendRef null, a number capacity and the stored campaign',()=>{
  const form={type:'briefing',campaignId:'ca-a',start:{now:false,local:'2026-10-20T14:00'},place:'  가상 직영점 ',capacity:'12',refs:[{id:'ra-1',version:2}]};
