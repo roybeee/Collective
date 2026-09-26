@@ -38,7 +38,7 @@
 운영 앱: `https://mealzip-agency.hflameb.chatgpt.site`(tree `1ac4369`, 묶음 14 = `8651021`). `/api/eval`은 소유자 전용이다. 로그인하지 않으면 401이다.
 
 1. 소유자로 로그인한 앱 페이지를 연다. 개발자 도구(F12) → Console. 대표가 직접 하거나, 대표가 허용한 개발 도구가 대표의 로그인 브라우저에서 한다(`docs/PUBLISH.ko.md` 5단계와 같은 same-origin 방식).
-2. 아래 스니펫을 통째로 붙여 넣고 Enter. 첫 실행은 `const MODE='check';` 그대로다. 쓰기가 없다. Chrome이 붙여 넣기 경고를 띄우면 안내대로 `allow pasting`을 입력한 뒤 다시 붙여 넣는다.
+2. 아래 스니펫을 통째로 붙여 넣고 Enter. 첫 실행은 `const MODE='check';` 그대로다. 쓰기가 없다. Chrome이 붙여 넣기 경고를 띄우면 안내대로 `allow pasting`(한국어 화면은 `붙여넣기 허용`)을 입력한 뒤 다시 붙여 넣는다.
 3. 출력 한 줄을 본다. `ok` true, `found` 8, `toChange` 8, `already` 0이어야 한다. 다르면 멈추고 그 줄을 레인 R에 붙여 넣는다.
 4. 스니펫의 `const MODE='check';`를 `const MODE='apply';`로 바꿔 한 번 더 붙여 넣는다.
 5. 출력 한 줄(`ok` true, `changed` 8, `verified` 8 예상)을 레인 R에 붙여 넣는다. 레인 R이 아래 '실행 기록'에 적는다.

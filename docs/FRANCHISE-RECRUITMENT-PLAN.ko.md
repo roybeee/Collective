@@ -702,6 +702,7 @@ R4a가 `lib/franchise-rules.ts`에 만들고 R2·R4b가 쓴다. 레코드는 `{i
   - 교차 검토(3관점 + 반박 검증): 확정 13건 중 12건 수정, 1건은 R3c로 넘김(아래). 변이 검사 1차 42개 모두 잡힘, 수정 뒤 56개 중 55개 잡힘(남은 1개는 결과가 같은 중복 규칙).
   - R3c·게시 점검으로 넘기는 것: R3b 이전에 시작한 objective 개선 회의를 평가 케이스로 캡처하면 지시문이 달라 `assembly_drift`로 잡힌다(`lib/eval-capture.ts`는 R3c·레인 Q 파일). 게시 전 운영 D1에서 읽기 전용으로 `kind='team_meeting'`, 스냅샷 캠페인 objective `franchise_recruitment`, `skillVersion` `2026-09-25.1`인 건수를 세고 그 회의는 캡처하지 않는다. 레지스트리 활성화는 묶음 게시 → capture_case dev 5건·봉인 1건 → 쌍 평가 → 대표 승인 순서다(케이스 0건이면 `pairCases` 400).
   - 남은 일 (6)(모델 입력 확정 사실의 정보공개서 버전·기준일)은 R1 후속으로 미룬다. `lib/ai-context.ts`가 모델 입력의 뿌리이고, 바꾸면 objective inputHash·회의 스냅샷·평가 원장 모양이 같이 바뀌며, 지금 정책은 날짜를 발행 캡션 각주가 채우게 한다.
+- R3c 선행(2026-09-26): 대표 승인(16:15 UTC, "R3c 선행 작업, 운영 D1 합성 S7 케이스 기대 업종 갱신을 승인한다. 진행하라."). 운영 D1의 합성 S7 역할 케이스 8건에서 `expectations.industry`만 `['fnb']` → `['franchise','fnb']`로 바꾼다. 지금 채점기에는 `franchise` 사전이 없어 판정이 같고, R3c 사전 게시 전에 운영에 있어야 한다. 이 세션에는 소유자 로그인이 없어 소유자 브라우저 콘솔 키트로 실행한다([관찰 기록](observations/2026-09-26-lane-r-s7-industry.md), `tests/r3c-s7-industry.test.mjs` passed · mocked). 운영 실행은 not_run이다. 저장소 스펙 `syn-s7-franchise.json`은 바꾸지 않는다(specHash가 바뀌어 재가져오기가 409, 레인 Q 파일).
 
 ### R4 파이프라인·법정 절차 게이트
 
