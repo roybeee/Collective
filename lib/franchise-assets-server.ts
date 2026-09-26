@@ -377,7 +377,7 @@ async function assetDetailView(who:Viewer,brandId:string,params:URLSearchParams)
   gate:{status:g.status,reasons:reasonMessages(g.codes),message:g.message,warnings:g.judgement?franchiseIssueLabels(g.judgement).warnings:[]},checklist:approvalChecklist(g.judgement,ctx.branch),
   drift,resaveSuggested,source:row.source??null,aiGenerated:!!row.aiGenerated,campaign:campaign?{id:campaign.id,title:campaign.title}:null,branch:ctx.branch,h7Notice:h7Notice(ctx.branch),enabled,disclaimer:GATE_DISCLAIMER};
 }
-// 행사: 행 전부(시작 시각 내림차순, 최대 200). followUps는 시작 뒤 48시간 안의 예정 행사 합계(가명 코드 없음).
+// 행사: 행 전부(시작 시각 내림차순, 최대 200). followUps는 시작 뒤 48시간 안의 예정 행사 합계(가명 코드 없음). types·assetTypes는 화면 라벨(R15a-2b S1).
 async function eventsView(who:Viewer,brandId:string):Promise<Json>{
  const owner=who.owner,now=stamp(),t=Date.parse(now);
  const [rows,pool,campaigns,fr,enabled]=await Promise.all([listRecords<EventRow>(owner,'recruitment_event',brandId),assetPool(owner,brandId,null),listRecords<Campaign>(owner,'campaign'),loadFranchiseContext(owner,brandId),isEnabled(owner,'r_franchise')]);
@@ -388,5 +388,7 @@ async function eventsView(who:Viewer,brandId:string):Promise<Json>{
   assetRefs:e.assetRefs.map(r=>{const p=pool.find(a=>a.id===r.id&&a.version===r.version&&a.brandId===brandId);return {id:r.id,version:r.version,type:p?.type??null,status:p?.status??null}})}));
  return {events,followUps:{count:due.length,attended:due.reduce((n,e)=>n+e.counts.attended,0),noShow:due.reduce((n,e)=>n+e.counts.noShow,0)},
   approvedAssets:pool.filter(p=>p.brandId===brandId&&p.status==='approved').sort((a,b)=>typeRank(a.type)-typeRank(b.type)||byId(a,b)||b.version-a.version).map(p=>({id:p.id,version:p.version,type:p.type,typeLabel:typeLabel(p.type),latest:latest.get(p.id)===p.version})),
-  campaigns:recruitCampaigns(campaigns,brandId),branch:fr.profile?.branch??null,h7Notice:h7Notice(fr.profile?.branch??null),enabled,disclaimer:GATE_DISCLAIMER};
+  campaigns:recruitCampaigns(campaigns,brandId),branch:fr.profile?.branch??null,h7Notice:h7Notice(fr.profile?.branch??null),enabled,disclaimer:GATE_DISCLAIMER,
+  // R15a-2b: 행사 편집기의 유형 선택지(설명회·견학·박람회 순)와 연결 자료 유형 라벨(폐기된 판은 approvedAssets에 없다). 화면은 라벨을 이 보기에서 받는다.
+  types:Object.entries(ASSET_EVENT_TYPE_LABELS).map(([type,label])=>({type,label})),assetTypes:ASSET_TYPE_ORDER.map(t=>({type:t,label:ASSET_TYPE_LABELS[t]}))};
 }

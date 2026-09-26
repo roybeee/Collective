@@ -21,7 +21,7 @@ const synthetic=(names,value)=>new SyntheticModule([...names],function(){for(con
 // 화면 부품 대역: 이름에 맞는 기본 HTML 요소로 children과 속성을 그대로 그린다(asChild·variant 같은 부품 전용 속성은 버린다).
 const TAGS={Button:'button',Input:'input',Textarea:'textarea',NativeSelect:'select',NativeSelectOption:'option',DialogTitle:'h2',SheetTitle:'h2',DialogDescription:'p',SheetDescription:'p'};
 const part=name=>{function Part({children,variant,size,asChild,onOpenChange,onValueChange,...props}){void variant;void size;void asChild;void onOpenChange;void onValueChange;return React.createElement(TAGS[name]||'div',{...props,'data-part':name},children)}Part.displayName=name;return Part};
-const REAL_APP=new Set(['./franchise-common','./franchise-lead-detail','./franchise-settings']);
+const REAL_APP=new Set(['./franchise-common','./franchise-lead-detail','./franchise-settings','./franchise-assets-panel','./franchise-events-panel']);
 function link(spec,ref){
  if(spec==='react')return synthetic(ref.imports.get(spec)||new Set(),n=>React[n]);
  if(spec==='react/jsx-runtime')return synthetic(ref.imports.get(spec)||new Set(),n=>jsxRuntime[n]);
@@ -87,4 +87,136 @@ check('lead registration asks only the minimum and turns autofill off',()=>{asse
 check('marketing consent is unchecked by default and owner/admin only',()=>{assert.ok(has(createAdmin,'광고성 정보 수신 동의를 따로 받았습니다'));assert.ok(!/type="checkbox" checked=""[^>]*\/?> 광고성/.test(createAdmin));assert.ok(!has(createMember,'광고성 정보 수신 동의를 따로 받았습니다'));assert.ok(has(createMember,'광고성 정보 동의는 기본으로 ‘동의 없음’입니다.'))});
 check('the default basis is an inquiry response and the assignee choice is owner/admin only',()=>{assert.match(createMember,/checked=""[^>]*\/> 문의 응대\(제15조①4호\)/);assert.ok(has(createAdmin,'담당자'));assert.ok(has(createAdmin,'담당 없음'));assert.ok(!has(createMember,'>담당 없음<'))});
 check('rendered screens make no legal-compliance claim',()=>{for(const html of [adminHtml,memberHtml,createAdmin,createMember])for(const bad of ['법적으로 적합','준수 완료','합법'])assert.ok(!html.includes(bad))});
+// ── R15a-2b 모집 자료·행사 탭: 합성 보기 응답(지도 6절 모양, 시각은 지금 기준 상대값)으로 렌더한다. 근거: mocked(SSR, 효과·네트워크 없음) ──
+const assetsUi=await load('app/franchise-assets-panel.tsx'),eventsUi=await load('app/franchise-events-panel.tsx'),common=await load('app/franchise-common.tsx'),rules=await load('lib/franchise-rules.ts'),disclosure=await load('lib/ai-disclosure.ts');
+const HOUR_MS=3600000,DAY_MS=86400000,at=d=>new Date(Date.now()+d).toISOString(),count=(html,text)=>html.split(text).length-1;
+const TYPES=[['startup_page','창업 페이지 문안'],['portal_intro','포털 소개문'],['naver_search','네이버 검색 문안'],['meta_lead_ad','메타 리드광고 문안'],['expo_banner','박람회 배너·리플렛 문안'],['event_deck','설명회 덱 개요·원고'],['first_call_script','첫 통화 스크립트']].map(([type,label])=>({type,label}));
+const TEMPLATE='■ 왜 이 브랜드인가 [의견]\n\n■ 창업비용 표 [사실]\n총 창업비용 · 소형 매장: 4,500만원\n\n■ 문의 경로';
+const FACTS=[{id:'bf-total',version:2,key:'startup_cost_total',label:'총 창업비용',line:'총 창업비용 · 소형 매장: 4,500만원',hasSource:true},{id:'bf-count',version:1,key:'franchise_store_count',label:'가맹점 수',line:'가맹점 수: 12개',hasSource:false}];
+const CAMPAIGNS=[{id:'ca-a',title:'가상 가맹 모집 A'}];
+const assetsViewOf=(o={})=>({assets:[],campaigns:CAMPAIGNS,types:TYPES,templates:{startup_page:TEMPLATE,event_deck:'■ 브랜드 이야기 [의견]'},templateFactRefs:[{id:'bf-total',version:2}],costFactsMissing:false,facts:FACTS,branch:'A',h7Notice:null,enabled:true,role:'admin',rules:{checklistVersion:'fr-assets-checklist@test'},disclaimer:DISCLAIMER,...o});
+const summaryOf=(o={},latest={})=>({assetId:'ra-1',type:'startup_page',typeLabel:'창업 페이지 문안',campaignId:'ca-a',campaignTitle:'가상 가맹 모집 A',campaignMissing:false,latest:{version:2,status:'draft',bodyHash:'b'.repeat(64),review:{needed:false,reasons:[],at:null},approval:null,exportCount:0,lastExportAt:null,placements:[],updatedAt:at(-HOUR_MS),...latest},versions:[{version:2,status:'draft',exportCount:0}],...o});
+const CL=['no_wait_bypass','no_association_condition','no_captive_advisor','no_revenue_figures','h7_branch_a','endorsement_disclosure'];
+const CHECKLIST={version:'fr-assets-checklist@test',items:CL.map((id,i)=>({id,text:`확인 항목 ${i+1}: ${id}`,ruleIds:[],warnings:i===0?['판정기가 대기기간 표현을 확인하라고 알렸습니다.']:[]})),h7Notice:null};
+const EXPORTED={at:at(-2*DAY_MS),by:'u-admin',role:'admin'},APPROVAL={by:'u-admin',role:'admin',at:at(-3*DAY_MS),bodyHash:'b'.repeat(64),checklist:{version:'fr-assets-checklist@test',checked:CL}};
+const detailOf=(o={},a={})=>({asset:{id:'ra-1',campaignId:'ca-a',type:'startup_page',version:2,body:'■ 왜 이 브랜드인가 [의견]\n가상 원문 첫 줄',bodyHash:'b'.repeat(64),factRefs:[{id:'bf-total',version:2}],status:'draft',approval:null,placements:[],exports:[],review:{needed:false,reasons:[],at:null},source:null,savedBy:{id:'u-member',role:'member'},exportCount:0,updatedAt:at(-HOUR_MS),...a},
+ latestVersion:2,versions:[{version:2,status:a.status??'draft'},{version:1,status:'approved'}],drift:[{factId:'bf-total',refVersion:2,currentVersion:2,changed:false}],resaveSuggested:false,gate:{status:200,reasons:[],message:null,warnings:[]},checklist:CHECKLIST,campaign:{id:'ca-a',title:'가상 가맹 모집 A'},branch:'A',h7Notice:null,enabled:true,disclaimer:DISCLAIMER,...o});
+const ART=[{id:'art-ai',campaignId:'ca-a',status:'approved',version:2,title:'가상 AI 작업물',content:'가상 작업물 본문',role:'cmo',origin:'ai',createdAt:at(-DAY_MS),factsChanged:true},{id:'art-draft',campaignId:'ca-a',status:'draft',version:1,title:'가상 초안 작업물',content:'초안',role:'cmo',origin:'manual',createdAt:at(-HOUR_MS)},{id:'art-other',campaignId:'ca-a2',status:'approved',version:1,title:'다른 캠페인 작업물',content:'다른',role:'cmo',origin:'manual',createdAt:at(-HOUR_MS)}];
+const listHtml=(view,admin)=>render(assetsUi.FranchiseAssets,{brandId:'fr-a',admin,artifacts:ART,onStatus:noop,initial:view});
+const sheetHtml=(view,admin,initialMode='view',list=assetsViewOf())=>render(assetsUi.AssetSheet,{brandId:'fr-a',assetId:view.asset.id,list,admin,artifacts:ART,onClose:noop,onChanged:noop,onStatus:noop,initial:view,initialMode});
+const editorHtml=(props)=>render(assetsUi.AssetEditor,{list:assetsViewOf(),artifacts:ART,detail:null,busy:false,enabled:true,conflict:false,onSave:async()=>'ok',onCancel:noop,onRestart:noop,...props});
+const approveHtml=(view,initialChecked,blockers=[])=>render(assetsUi.ApprovalStep,{view,busy:false,blockers,onApprove:noop,onCancel:noop,initialChecked});
+const newHtml=[];const keep=html=>{newHtml.push(html);return html};
+const submitDisabled=(html,label)=>new RegExp(`<button[^>]*disabled=""[^>]*>${label}</button>`).test(html),button=(html,label)=>html.includes(`>${label}</button>`);
+
+check('R1: the panel shows the recruitment assets and events tabs, and no settings tab before the role is known',()=>{const html=keep(render(panel.FranchisePanel,{workspace:{brands:[{id:'fr-a',name:'가상 브랜드'}],campaigns:[],artifacts:[]}}));assert.ok(html.includes('>모집 자료</div>'));assert.ok(html.includes('>행사</div>'));assert.ok(!html.includes('>설정</div>'));assert.ok(html.includes('h-auto max-w-full flex-wrap'))});
+const LIST=assetsViewOf({assets:[
+ summaryOf({},{review:{needed:true,reasons:['fact_changed','version_changed'],at:at(-HOUR_MS)}}),
+ summaryOf({assetId:'ra-2',type:'portal_intro',typeLabel:'포털 소개문',versions:[{version:3,status:'approved',exportCount:2},{version:2,status:'approved',exportCount:0},{version:1,status:'retired',exportCount:0}]},{version:3,status:'approved',approval:{by:'u-owner',role:'owner',at:at(-2*DAY_MS)},exportCount:2,lastExportAt:at(-DAY_MS),placements:[{label:'창업 포털 소개 글',confirmedAt:'2026-10-04'}]}),
+ summaryOf({assetId:'ra-3',type:'naver_search',typeLabel:'네이버 검색 문안',campaignId:'ca-gone',campaignTitle:null,campaignMissing:true},{status:'retired'}),
+]});
+check('R2: the list shows state, review, approver role, exports, placements and a deleted campaign',()=>{const html=keep(listHtml(LIST,true));
+ for(const t of ['<b>창업 페이지 문안</b>','v2','초안','재검토 필요 · 근거 사실 변경 · 정보공개서 버전 변경','<b>포털 소개문</b>','승인됨','승인 대표 · ','내보내기 2회 · 마지막 ','게시 위치 1곳: 창업 포털 소개 글 (2026-10-04)','판 3개','폐기','캠페인 삭제됨','가상 가맹 모집 A · 수정 '])assert.ok(html.includes(t),t);
+ assert.equal(count(html,'>열기</button>'),3);assert.ok(html.includes('aria-label="모집 자료 목록"'))});
+check('R3: with the switch on every role can start a new asset; off shows the note and no button',()=>{
+ for(const admin of [true,false])assert.ok(button(keep(listHtml(LIST,admin)),'새 모집 자료'),String(admin));
+ const off=keep(listHtml(assetsViewOf({...LIST,enabled:false}),true));assert.ok(!off.includes('새 모집 자료'));assert.ok(off.includes(assetsUi.ASSETS_OFF_NOTE));
+ const empty=keep(listHtml(assetsViewOf(),false));assert.ok(empty.includes('아직 모집 자료가 없습니다.'));
+ const noCampaign=keep(listHtml(assetsViewOf({campaigns:[]}),true));assert.ok(!noCampaign.includes('새 모집 자료'));assert.ok(noCampaign.includes('가맹 모집 목적 캠페인이 없어 새 자료를 만들 수 없습니다.'));
+ const noCost=keep(listHtml(assetsViewOf({costFactsMissing:true}),true));assert.ok(noCost.includes('총 창업비용 사실이 없어 창업 페이지·설명회 덱 템플릿의 창업비용 표가 비어 있습니다.'));
+ const branchB=keep(listHtml(assetsViewOf({branch:'B',h7Notice:'분기 B(문의 수집만)입니다. 가상 안내.'}),true));assert.ok(branchB.includes('분기 B(문의 수집만)입니다. 가상 안내.'));assert.ok(button(branchB,'새 모집 자료'),'drafts do not depend on the branch');
+ const loading=keep(render(assetsUi.FranchiseAssets,{brandId:'fr-a',admin:true,artifacts:[],onStatus:noop}));assert.ok(loading.includes('모집 자료를 불러오고 있습니다.'));
+});
+check('R4: owner/admin on the latest draft sees approve, edit and retire but no export',()=>{const html=keep(sheetHtml(detailOf(),true));for(const t of ['승인하기','편집','폐기'])assert.ok(button(html,t),t);assert.ok(!button(html,'복사'));assert.ok(html.includes('현재 사실 기준으로 막는 사유가 없습니다.'));assert.ok(html.includes('aria-current="true"'));assert.ok(html.includes('창업 페이지 문안 · v2'));assert.ok(html.includes('초안 · 가상 가맹 모집 A · 저장 '))});
+check('R5: a member reads the checklist without checkboxes and sees no approve, export, retire or placement',()=>{const html=keep(sheetHtml(detailOf({},{...detailOf().asset,status:'approved',approval:APPROVAL,exports:[EXPORTED],exportCount:1}),false));
+ for(const t of ['승인하기','복사','내려받기(.txt)','폐기','게시 위치 기록'])assert.ok(!button(html,t),t);for(const i of CHECKLIST.items)assert.ok(html.includes(i.text),i.id);
+ assert.equal(count(html,'type="checkbox"'),0);assert.ok(html.includes('승인 전 확인 항목(대표·관리자가 확인)'));assert.ok(button(html,'편집'),'members still draft');assert.ok(html.includes('내보내기 1회'))});
+check('R6: the approved latest version offers copy and download; placement needs a first export and uses its KST date range',()=>{
+ const noExport=keep(sheetHtml(detailOf({},{status:'approved',approval:APPROVAL}),true));assert.ok(button(noExport,'복사')&&button(noExport,'내려받기(.txt)'));assert.ok(noExport.includes(assetsUi.EXPORT_NOTE));assert.ok(!noExport.includes('type="date"'));
+ const exported=keep(sheetHtml(detailOf({},{status:'approved',approval:APPROVAL,exports:[EXPORTED],exportCount:1}),true));
+ assert.ok(exported.includes(`type="date"`)&&exported.includes(`min="${rules.kstDateOf(EXPORTED.at)}"`)&&exported.includes(`max="${rules.toKstDate(new Date().toISOString())}"`));assert.ok(button(exported,'게시 위치 기록'));assert.ok(exported.includes('placeholder="예: 창업 포털 소개 글"'));
+});
+check('R7: an old version is evidence only: no edit, approve or export',()=>{const html=keep(sheetHtml(detailOf({latestVersion:3,versions:[{version:3,status:'draft'},{version:2,status:'approved'}]},{status:'approved',approval:APPROVAL}),true));assert.ok(html.includes('최신 판 아님. 옛 판은 증빙·행사 연결·게시 위치 기록용입니다.'));for(const t of ['편집','승인하기','복사'])assert.ok(!button(html,t),t);assert.ok(button(html,'폐기'))});
+const DRIFT=[{factId:'bf-total',refVersion:1,currentVersion:2,changed:true},{factId:'bf-gone',refVersion:1,currentVersion:null,changed:true}];
+check('R8: a resave suggestion lists the drift and offers a new version from current facts only with the switch on',()=>{const html=keep(sheetHtml(detailOf({resaveSuggested:true,drift:DRIFT},{review:{needed:true,reasons:['fact_changed'],at:at(-HOUR_MS)}}),false));
+ assert.ok(html.includes('bf-total: v1 → v2'));assert.ok(html.includes('bf-gone: v1 → 사실 없음(근거에서 뺍니다)'));assert.ok(button(html,'현재 사실로 새 판 저장'));assert.ok(html.includes('재검토 필요 · 근거 사실 변경'));
+ const off=keep(sheetHtml(detailOf({resaveSuggested:true,drift:DRIFT,enabled:false}),true));assert.ok(!button(off,'현재 사실로 새 판 저장'))});
+check('R9: branch B shows the H7 notice and no approve button',()=>{const html=keep(sheetHtml(detailOf({branch:'B',h7Notice:'분기 B(문의 수집만)입니다. 가상 안내.'}),true));assert.ok(html.includes('분기 B(문의 수집만)입니다. 가상 안내.'));assert.ok(!button(html,'승인하기'));assert.ok(button(html,'편집'))});
+check('R10: the approval step has six unchecked boxes, item warnings, gate warnings and a disabled approve button',()=>{
+ const view=detailOf({gate:{status:200,reasons:[],message:null,warnings:['권장 문장이 없습니다(권장).']}}),html=keep(sheetHtml(view,true,'approve'));
+ assert.ok(html.includes('승인 확인'));assert.equal(count(html,'type="checkbox"'),6);assert.ok(!/type="checkbox"[^>]*checked=""/.test(html));assert.ok(html.includes('id="chk-no_wait_bypass-w"'));assert.ok(html.includes('aria-describedby="chk-no_wait_bypass-w"'));
+ assert.ok(html.includes('주의: 판정기가 대기기간 표현을 확인하라고 알렸습니다.'));assert.ok(html.includes('주의: 권장 문장이 없습니다(권장).'));assert.ok(submitDisabled(html,'승인'));assert.ok(html.includes('aria-label="승인할 원문"'));assert.ok(button(html,'돌아가기'));
+});
+check('R10: approve enables only with every item checked; warnings alone never block it',()=>{
+ const view=detailOf({gate:{status:200,reasons:[],message:null,warnings:['권장 문장이 없습니다(권장).']}});
+ const all=keep(approveHtml(view,CL));assert.ok(button(all,'승인')&&!submitDisabled(all,'승인'));assert.equal(count(all,'checked=""'),6);
+ assert.ok(submitDisabled(keep(approveHtml(view,CL.slice(0,5))),'승인'));
+ assert.ok(submitDisabled(keep(approveHtml(view,CL,['게이트 사유를 고친 새 판을 저장해야 합니다.'])),'승인'),'a blocker keeps it disabled');
+});
+check('R11: an asset sourced from an AI artifact shows only the neutral source line, with no disclosure prompt, line or badge',()=>{
+ const view={...detailOf({},{source:{artifactId:'art-ai',version:2,origin:'ai'},aiGenerated:true}),source:{artifactId:'art-ai',version:2,origin:'ai'},aiGenerated:true};
+ const seen=keep(sheetHtml(view,true)),step=keep(sheetHtml(view,true,'approve'));
+ assert.ok(seen.includes('출처 작업물 가상 AI 작업물 v2'));
+ for(const html of [seen,step]){assert.ok(!html.includes(disclosure.AI_DISCLOSURE_LINE));for(const t of ['AI 도움','표시 문구','type="radio"','name="ai-disclosure"'])assert.ok(!html.includes(t),t)}
+ assert.ok(keep(sheetHtml({...view,asset:{...view.asset,source:{artifactId:'art-missing',version:4,origin:null}}},true)).includes('출처 작업물 art-missing v4'));
+});
+check('R12: a new asset editor lists the seven types in order, the campaigns, the prefilled template and its fact refs',()=>{
+ const html=keep(editorHtml({}));
+ const select=html.slice(html.indexOf('aria-label="자료 유형"'));assert.deepEqual([...select.slice(0,select.indexOf('</select>')).matchAll(/<option value="([a-z_]+)"/g)].map(m=>m[1]),TYPES.map(t=>t.type));
+ assert.ok(html.includes('>캠페인 선택</option>')&&html.includes('>가상 가맹 모집 A</option>'));assert.ok(html.includes('■ 창업비용 표 [사실]\n총 창업비용 · 소형 매장: 4,500만원'));
+ assert.ok(/<input type="checkbox" checked=""[^>]*> 총 창업비용/.test(html),'template fact ref checked');assert.ok(/<input type="checkbox"(?![^>]*checked="")[^>]*> 가맹점 수/.test(html));assert.ok(html.includes('정보공개서 근거 없음'));
+ assert.ok(button(html,'원문에 넣기')&&button(html,'템플릿 넣기'));assert.ok(html.includes('maxLength="20000"')||html.includes('maxlength="20000"'));assert.ok(html.includes('/ 20,000자'));assert.ok(submitDisabled(html,'초안 저장'),'no campaign chosen yet');
+ assert.ok(!html.includes('승인된 작업물에서 가져오기'),'seeding waits for a campaign');
+ assert.ok(keep(editorHtml({list:assetsViewOf({costFactsMissing:true})})).includes('총 창업비용 사실이 없어'));
+ const off=keep(editorHtml({enabled:false}));assert.ok(off.includes(assetsUi.ASSETS_OFF_NOTE));assert.ok(submitDisabled(off,'초안 저장'));
+});
+check('R13: the edit editor locks the type and campaign, warns about draft replacement and seeds only approved artifacts of the campaign',()=>{
+ const view=detailOf({},{factRefs:[{id:'bf-total',version:2},{id:'bf-gone',version:1}],source:{artifactId:'art-ai',version:2,origin:'ai'}});
+ const html=keep(editorHtml({detail:view}));
+ assert.ok(/<select[^>]*aria-label="자료 유형"[^>]*disabled=""|<select[^>]*disabled=""[^>]*aria-label="자료 유형"/.test(html));assert.ok(html.includes('모집 캠페인: 가상 가맹 모집 A'));assert.ok(html.includes(assetsUi.DRAFT_REPLACE_NOTE));
+ assert.ok(html.includes('가상 AI 작업물 · v2 · 작성 뒤 사실·브랜드 정보 변경'));for(const t of ['가상 초안 작업물','다른 캠페인 작업물','AI 도움','직접 작성'])assert.ok(!html.includes(t),t);
+ const offEdit=keep(editorHtml({detail:view,enabled:false}));assert.ok(offEdit.includes(assetsUi.ASSETS_OFF_NOTE));assert.ok(submitDisabled(offEdit,'초안 저장'),'the switch off locks a complete edit');
+ assert.ok(html.includes('출처(이어받음): 가상 AI 작업물 v2'));assert.ok(html.includes('더 이상 쓸 수 없는 사실 bf-gone: 저장하면 근거에서 빠집니다'));assert.ok(!submitDisabled(html,'초안 저장'));
+ const conflict=keep(editorHtml({detail:{...view,latestVersion:3,asset:{...view.asset,version:3,body:'다른 사용자의 최신 원문'}},conflict:true}));
+ assert.ok(conflict.includes('다른 사용자가 v3을 저장했습니다.'));assert.ok(conflict.includes('다른 사용자의 최신 원문'));assert.ok(button(conflict,'최신 판 위에 저장')&&button(conflict,'최신 판으로 다시 시작'));
+});
+check('R14: with the switch off owner/admin keep only retire on an approved asset',()=>{const html=keep(sheetHtml(detailOf({enabled:false},{status:'approved',approval:APPROVAL,exports:[EXPORTED]}),true));for(const t of ['편집','승인하기','복사','게시 위치 기록'])assert.ok(!button(html,t),t);assert.ok(!html.includes('type="date"'));assert.ok(button(html,'폐기'));assert.ok(html.includes(assetsUi.ASSETS_OFF_NOTE))});
+check('R14: a retired latest version has no edit and no retire button',()=>{const html=keep(sheetHtml(detailOf({},{status:'retired',retiredAt:at(-HOUR_MS),retiredBy:{id:'u-admin',role:'admin'}}),true));assert.ok(!button(html,'편집')&&!button(html,'폐기'));assert.ok(html.includes('폐기 ')&&html.includes(' · 관리자'))});
+check('WarningLines renders string warnings and nothing when empty',()=>{assert.equal(renderToStaticMarkup(React.createElement(common.WarningLines,{items:['가','나']})),'<ul class="franchise-warnings"><li>주의: 가</li><li>주의: 나</li></ul>');assert.equal(renderToStaticMarkup(React.createElement(common.WarningLines,{items:[]})),'')});
+
+const eventOf=(o={})=>({id:'re-f',campaignId:'ca-a',type:'tour',typeLabel:'견학',startsAt:at(3*DAY_MS),placeLabel:'가상 직영점',capacity:10,counts:{applied:3,attended:0,noShow:0},codes:[{code:'LKB728BT',state:'applied'}],assetRefs:[],status:'scheduled',version:2,createdBy:{id:'u-admin',role:'admin'},...o});
+const EVENTS=[eventOf({assetRefs:[{id:'ra-9',version:1,type:'portal_intro',status:'retired'},{id:'ra-1',version:2,type:'event_deck',status:'approved'},{id:'ra-x',version:1,type:null,status:null}]}),
+ eventOf({id:'re-p',type:'briefing',typeLabel:'설명회',startsAt:at(-HOUR_MS),counts:{applied:5,attended:2,noShow:1},codes:[{code:'LKC111AA',state:'attended'},{code:'LKD222BB',state:'applied'}]}),
+ eventOf({id:'re-c',type:'expo',typeLabel:'박람회',startsAt:at(-5*DAY_MS),status:'cancelled',cancelledAt:at(-6*DAY_MS),cancelledBy:{id:'u-admin',role:'admin'}})];
+const eventsViewOf=(o={})=>({events:EVENTS,followUps:{count:1,attended:2,noShow:1},approvedAssets:[{id:'ra-1',version:2,type:'event_deck',typeLabel:'설명회 덱 개요·원고',latest:true},{id:'ra-1',version:1,type:'event_deck',typeLabel:'설명회 덱 개요·원고',latest:false}],campaigns:CAMPAIGNS,types:[{type:'briefing',label:'설명회'},{type:'tour',label:'견학'},{type:'expo',label:'박람회'}],assetTypes:TYPES,branch:'A',h7Notice:null,enabled:true,disclaimer:DISCLAIMER,...o});
+const eventsHtml=(view,admin)=>render(eventsUi.FranchiseEvents,{brandId:'fr-a',admin,onStatus:noop,initial:view});
+check('R15: owner/admin see new event, edit and cancel on scheduled rows, the follow-up chip and a cancelled row without forms',()=>{const html=keep(eventsHtml(eventsViewOf(),true));
+ assert.ok(button(html,'새 행사'));assert.equal(count(html,'>수정</button>'),2);assert.equal(count(html,'>행사 취소</button>'),2);assert.ok(html.includes('행사 뒤 48시간 연락: 행사 1건 · 참석 2 · 불참 1'));assert.ok(html.includes('리드 탭에서 리드 코드로 찾아 연락 기록을 남기세요.'));
+ assert.ok(html.includes('<b>박람회</b>')&&html.includes('취소 ')&&html.includes(' · 관리자'));assert.equal(count(html,'<summary>신청 기록</summary>'),2,'no forms on the cancelled row');assert.ok(html.includes('<h3>설명회·견학·박람회</h3>'));
+ assert.ok(html.includes('연결 자료: 포털 소개문 v1 (폐기) · 설명회 덱 개요·원고 v2 (승인) · 자료 v1 (확인 불가)'));assert.ok(html.includes('가상 직영점 · 정원 10 · 신청 5 · 참석 2 · 불참 1'));
+});
+check('R16: a member registers on a future event and records attendance only from the event day',()=>{const html=keep(eventsHtml(eventsViewOf(),false));
+ for(const t of ['새 행사','수정','행사 취소'])assert.ok(!button(html,t),t);assert.equal(count(html,'>신청 기록하기</button>'),1);assert.equal(count(html,'>참석 저장</button>'),1);
+ const codeInput=(html.match(/<input[^>]*placeholder="예: LKB728BT"[^>]*>/)||[''])[0];assert.match(codeInput,/autocomplete="off"/i);assert.match(codeInput,/maxlength="64"/i);assert.ok(html.includes(eventsUi.CODE_HINT));
+ assert.ok(html.includes('참석 기록은 행사일(KST)부터 할 수 있습니다.'));assert.ok(html.includes('시작한 행사입니다. 현장 참석은 참석 기록으로 남기세요.'));
+ assert.ok(html.includes('aria-label="LKC111AA 상태"'));assert.ok(html.includes('value="2"')&&html.includes('value="1"'),'attendance starts from the recorded counts');
+ const full=keep(eventsHtml(eventsViewOf({events:[eventOf({counts:{applied:10,attended:0,noShow:0}})]}),false));assert.ok(full.includes('정원이 찼습니다.'));assert.equal(count(full,'>신청 기록하기</button>'),0);
+ const branchB=keep(eventsHtml(eventsViewOf({branch:'B',h7Notice:'분기 B(문의 수집만)입니다. 가상 안내.'}),true));assert.ok(!button(branchB,'새 행사')&&!button(branchB,'수정'));assert.equal(count(branchB,'>신청 기록하기</button>'),0);assert.equal(count(branchB,'>참석 저장</button>'),1,'attendance does not check the branch');assert.ok(branchB.includes('분기 B(문의 수집만)입니다. 가상 안내.'));
+});
+check('R17: with the switch off only owner/admin cancellation remains',()=>{const off=eventsViewOf({enabled:false});const admin=keep(eventsHtml(off,true)),member=keep(eventsHtml(off,false));
+ for(const html of [admin,member]){for(const t of ['새 행사','수정','신청 기록하기','참석 저장'])assert.ok(!button(html,t),t);assert.ok(html.includes(eventsUi.EVENTS_OFF_NOTE));assert.equal(count(html,'<summary>'),0,'no registration or attendance sections at all')}
+ assert.equal(count(admin,'>행사 취소</button>'),2);assert.ok(!button(member,'행사 취소'));
+ const loading=keep(render(eventsUi.FranchiseEvents,{brandId:'fr-a',admin:true,onStatus:noop}));assert.ok(loading.includes('행사를 불러오고 있습니다.'));
+ const empty=keep(eventsHtml(eventsViewOf({events:[],followUps:{count:0,attended:0,noShow:0}}),true));assert.ok(empty.includes('등록된 설명회·견학·박람회가 없습니다.'));assert.ok(!empty.includes('행사 뒤 48시간 연락'));
+});
+check('R18: the event editor offers three types, a KST start without now, a 100-character place, a bounded capacity and approved versions only',()=>{
+ const html=keep(render(eventsUi.EventEditor,{view:eventsViewOf(),event:null,busy:false,problem:null,onSave:async()=>true,onCancel:noop}));
+ assert.deepEqual([...html.matchAll(/<option value="(briefing|tour|expo)"[^>]*>([^<]+)</g)].map(m=>m[2]),['설명회','견학','박람회']);assert.equal(count(html,'type="datetime-local"'),1);assert.ok(!html.includes('지금(서버 시각)'));
+ assert.ok(/maxLength="100"|maxlength="100"/.test(html));assert.ok(/type="number"[^>]*min="1"[^>]*max="1000"|min="1"[^>]*max="1000"[^>]*type="number"/.test(html)||(html.includes('min="1"')&&html.includes('max="1000"')));
+ assert.ok(html.includes('설명회 덱 개요·원고 v2')&&html.includes('설명회 덱 개요·원고 v1 (이전 판)'));assert.ok(html.includes('모집 비용 연결은 R5 뒤에 합니다.'));assert.ok(!/spendRef|비용 참조/.test(html));
+ assert.ok(html.includes('행사장·건물 이름만 적습니다. 연락처·주민등록번호 같은 개인정보는 받지 않습니다.'));assert.ok(html.includes('>캠페인 선택</option>'));assert.ok(submitDisabled(html,'행사 저장'));
+ const edit=keep(render(eventsUi.EventEditor,{view:eventsViewOf(),event:eventOf({assetRefs:[{id:'ra-9',version:1,type:'portal_intro',status:'retired'}]}),busy:false,problem:null,onSave:async()=>true,onCancel:noop}));
+ assert.ok(edit.includes('min="3"'),'capacity cannot go below the applications');assert.ok(edit.includes('이미 받은 신청 3명보다 줄일 수 없습니다.'));assert.ok(edit.includes('포털 소개문 v1: 승인 판이 아니라 연결에서 빠집니다'));assert.ok(edit.includes(`value="${eventsUi.kstLocal(eventOf().startsAt)}"`));assert.ok(edit.includes('모집 캠페인: 가상 가맹 모집 A'));assert.ok(!submitDisabled(edit,'행사 저장'));
+});
+check('R19: the new screens make no legal-compliance claim and show no AI disclosure',()=>{assert.ok(newHtml.length>=30);for(const html of newHtml){for(const bad of ['법적으로 적합','준수 완료','합법','AI 도움','name="ai-disclosure"'])assert.ok(!html.includes(bad),bad);assert.ok(!html.includes(disclosure.AI_DISCLOSURE_LINE))}});
 console.log(JSON.stringify({passed},null,2));
