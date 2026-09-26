@@ -19,6 +19,7 @@ import {roles,type Campaign,type Brand} from './agency';
 import {pairPrompts,roleRunUnits,type PairPrompts} from './prompt-registry';
 import {evalMonthBudget,setBudgetApproval,EVAL_DEFAULT_MONTHLY_TOKEN_CAP} from './eval-budget-server';
 import {operationsSummary} from './eval-operations';
+import {hermesFailureCategory} from './hermes-failure';
 
 // 서버 평가 실행(F1b-2). 골든셋 케이스(eval_case)를 평가 전용 HERMES 프로필에 보내고 lib/graders로 채점해 eval_run에 남긴다.
 // 대표 결정 5: 스모크 1회 tokenBudget 250,000 이하, 이번 UTC 월 누적(사용+진행 중 예약) 절대 상한은 lib/eval-budget-server.ts의 월 승인 cap(없으면 1,500,000).
@@ -582,6 +583,26 @@ function regradeCompare(a:EvalRun,b:EvalRun){
  return {...compareRuns(regradeOutcomes(a,x),regradeOutcomes(b,y)),regrade:{baseline:meta(x),candidate:meta(y)}};
 }
 
+// Read-only recovery diagnosis. Never submit, stop, regrade, reconcile usage, or expose provider text.
+// Only the earliest unsuccessful submitted result is queried, on the original saved host.
+async function diagnoseRun(owner:string,id:string){
+ const run=await readRecord<EvalRun>(owner,'eval_run',id);
+ if(run.deleted||ACTIVE.includes(run.status))throw new ApiError(409,'종료된 평가 실행만 진단할 수 있습니다.');
+ const result=run.results.find(r=>r.providerRunId&&r.status!=='completed');
+ if(!result?.providerRunId||!RUN_ID.test(result.providerRunId))throw new ApiError(409,'진단할 HERMES 실행 번호가 없습니다.');
+ const conn=await stopConnection(owner,run.host);
+ if(!conn)throw new ApiError(409,'평가 연결이 바뀌어 원래 HERMES 실행을 조회할 수 없습니다.');
+ let response:Record<string,unknown>;
+ try{response=await evalRequest(conn,'/v1/runs/'+result.providerRunId)}catch(e){if(e instanceof EvalBlocked)throw new ApiError(409,e.message);throw e}
+ if(response.object!=='hermes.run'||response.run_id!==result.providerRunId)throw new ApiError(502,'평가 HERMES 실행 결과가 일치하지 않습니다.');
+ const status=runStatus(response.status);
+ if(!status)throw new ApiError(502,'평가 HERMES 실행 상태를 확인하지 못했습니다.');
+ return {runId:run.id,providerRunId:result.providerRunId,checkedAt:stamp(),status,
+  failure:status==='failed'||status==='cancelled'?hermesFailureCategory(response.error):null,
+  reportedTokens:usageOf(response),recordedDurationMs:result.durationMs??null,
+  activity:typeof response.last_event==='string'&&/^[a-z_.]{1,80}$/.test(response.last_event)?response.last_event:null};
+}
+
 // ── API 진입점(app/api/eval/route.ts). 권한 검사는 라우트가 한다(소유자만). ──
 function variantOf(v:unknown){if(v!=='active'&&v!=='candidate')throw new ApiError(400,'variant는 active 또는 candidate여야 합니다.');return v}
 // 쌍 평가 결과: 두 쪽 비교 통계와 활성화 게이트 판정(lib/eval-stats.ts pairReport). 본문(PromptSet)은 빼고 버전 id만 보인다.
@@ -593,6 +614,7 @@ async function pairRead(owner:string,runId:string){
 }
 const caseSummary=(c:EvalCase)=>({id:c.id,kind:c.kind??'role',role:c.role,label:c.label,set:c.set,campaignId:c.campaignId,source:c.source,capturedWith:c.capturedWith,prohibitedTerms:c.expectations.prohibitedTerms.length,setChanges:c.setChanges||[],...(c.captureCheck?{captureCheck:c.captureCheck}:{}),createdBy:c.createdBy,createdAt:c.createdAt,updatedAt:c.updatedAt});
 export async function evalRead(owner:string,params:URLSearchParams){
+ if(params.has('diagnose'))return diagnoseRun(owner,str(params.get('diagnose'),'평가 실행',100,true));
  if(params.get('view')==='operations'){
   const [conn,cases,runs,usage]=await Promise.all([optionalRecord<StoredConnection>(owner,'eval_connection','current'),listRecords<EvalCase>(owner,'eval_case'),listRecords<EvalRun>(owner,'eval_run'),evalMonthUsage(owner)]);
   return {connection:publicConnection(conn),usage,...operationsSummary(cases,runs)};
