@@ -111,8 +111,8 @@ export function matchView(raw:string):string{
  return numerals(t).replace(/[ \t]{2,}/g,' ').trim();
 }
 // 해제 불가 규칙의 두 번째 보기: 한글 사이 가운뎃점('수익·보장'), 띄운 줄표·빗금('수익 — 보장', '수익 / 보장'), 짧은 괄호 주석('월 순수익(인건비·임대료 제외 기준) 550만원')을 띄어쓰기로 본다.
-// 적중을 더하기만 한다(첫 보기의 적중은 그대로다).
-const ALT_SEP=/(?<=[가-힣])\s?[·ㆍ\u119E・‧]\s?(?=[가-힣])|(?<=[가-힣])\s[-‐‑‒–—―/]\s(?=[가-힣])/g,ALT_PAREN=/\s?\([^()\n]{1,24}\)\s?/g;
+// 적중을 더하기만 한다(첫 보기의 적중은 그대로다). 자문 조건을 단 괄호('7일(자문을 받은 경우)', '(자문 시)')는 떼지 않는다(떼면 조건 없는 7일로 읽힌다, 2026-09-26 레드팀).
+const ALT_SEP=/(?<=[가-힣])\s?[·ㆍ\u119E・‧]\s?(?=[가-힣])|(?<=[가-힣])\s[-‐‑‒–—―/]\s(?=[가-힣])/g,ALT_PAREN=/\s?\((?![^()\n]*(?:자문|변호사|거래사))[^()\n]{1,24}\)\s?/g;
 const altView=(s:string)=>s.replace(ALT_SEP,' ').replace(ALT_PAREN,' ').replace(/[ \t]{2,}/g,' ').trim();
 // parts: 이은 문장의 문장 보기(둘 또는 셋). 이은 문장의 적중은 여러 문장에 걸친 것만 센다(한 문장 안의 표현이 다른 문장의 낱말로 문맥을 얻지 않는다). from: 이은 문장의 첫 문장 순번.
 // ids: 이은 문장을 이룬 문장 순번(문장마다 경고 하나를 셀 때 쓴다).
@@ -131,7 +131,8 @@ function bridgesOf(sentences:Sentence[]):Sentence[]{
   const a=sentences[k],b=sentences[k+1],near=b.line<=a.line+2;
   const broken=brokenAt(a,b),asked=b.line===a.line&&/\?$/.test(a.raw),short=near&&a.s.length<=BRIDGE_SHORT&&b.s.length<=BRIDGE_SHORT;
   // 질문과 '아니요' 답은 잇지 않는다: 답은 따로 판정하고 질문은 deniedQuestions가 다룬다('Q. 로열티가 매출 따라 달라지나요?\nA. 아니요, 월 20만원 정액입니다', R2 최종 측정).
- const deniedPair=QUESTION.test(a.raw)&&DENIAL.test(b.raw);
+ // 뒤집는 답('아니요, 그 이상입니다', '아니요, 협의하면 짧아집니다')은 부정이 아니라 잇는다(deniedQuestions와 같은 NOT_DENIAL, 2026-09-26 레드팀).
+ const deniedPair=QUESTION.test(a.raw)&&DENIAL.test(b.raw)&&!NOT_DENIAL.test(b.raw);
  if((broken||asked||short)&&!deniedPair){const raw=a.raw+' '+b.raw;out.push({s:matchView(raw),raw,line:a.line,parts:[a.s,b.s],from:k,ids:[k,k+1]})}
   const c=sentences[k+2];
   if(c&&broken&&brokenAt(b,c)&&[a,b,c].every(x=>x.s.length<=BRIDGE_SHORT)){const raw=a.raw+' '+b.raw+' '+c.raw;out.push({s:matchView(raw),raw,line:a.line,parts:[a.s,b.s,c.s],from:k,ids:[k,k+1,k+2]})}
@@ -148,7 +149,7 @@ function hardPool(sentences:Sentence[],bridges:Sentence[]):Sentence[]{
 // 묻고 아니라고 답한 질문('Q. 가계약금을 내면 자리를 잡아 주나요?\nA. 아니요. …')은 질문 속 표현을 주장으로 보지 않는다. 답은 다음 문장(또는 다음 줄)이 '아니요·아뇨·없습니다'로 시작해야 하고
 // '그 이상·오히려·더 많이'처럼 뒤집는 말이 없어야 한다. 답 속 표현은 따로 판정한다. 수치 자체를 막는 규칙(H6)에는 쓰지 않는다(R2 4차 재검토).
 const QUESTION=/(?:\?|(?:나요|까요|습니까)\s?\??)\s*$/,ANSWER_MARK=/^\s*(?:A|답|답변)\s?[.:：)]?\s*$/;
-const DENIAL=/^\s*(?:(?:A|답|답변)\s?[.:：)]\s*)?(?:아니요|아니오|아뇨|아닙니다|없습니다|안\s?됩니다)/,NOT_DENIAL=/그\s?(?:이상|보다)|오히려|더\s?(?:많|높|벌|나와|나옵)|넘습니다|넘어요|훨씬/;
+const DENIAL=/^\s*(?:(?:A|답|답변)\s?[.:：)]\s*)?(?:아니요|아니오|아뇨|아닙니다|없습니다|안\s?됩니다)/,NOT_DENIAL=/그\s?(?:이상|보다)|오히려|더\s?(?:많|높|벌|나와|나옵)|넘습니다|넘어요|훨씬|짧아|줄어|줄일|단축|빨라|앞당/;
 const sentenceKey=(x:Sentence)=>`${x.line}:${x.raw}`;
 function deniedQuestions(sentences:Sentence[]):Set<string>{
  const out=new Set<string>();
@@ -230,13 +231,18 @@ const tailLabel=(parts:readonly string[],hit:string)=>!/\d/.test(hit)&&parts.sli
 function hitSentences(m:Matcher,sentences:Sentence[],o:HitOpts):Hit[]{
  const matches=[m.match,...(m.more??[])].map(p=>new RegExp(p,'g')),also=m.also?new RegExp(m.also):null,ctx=m.consumerAlso&&o.scope==='consumer'?new RegExp(m.consumerAlso):null,except=m.except?new RegExp(m.except):null,out:Hit[]=[];
  // 문장마다 첫 적중 하나(정규식 순서대로, 한 정규식 안에서는 앞에서부터).
+ // matchAll은 부를 때마다 정규식을 새로 만든다(명세의 복제). 원문이 큰 대기기간 규칙 묶음(18,000자 안팎)에서 느려 같은 정규식의 exec를 lastIndex로 돌린다(짧은 문장 수천 개 입력 측정 7.9초→0.5초).
  const firstHit=(x:Sentence):Hit|null=>{
-  for(const match of matches)for(const hit of x.s.matchAll(match)){
-   const start=hit.index!,end=start+hit[0].length;
-   if(x.parts&&x.parts.some(p=>p.includes(hit[0]))&&!(o.all&&tailLabel(x.parts,hit[0])))continue;
-   if(!o.figure&&negatedAfter(x.s,end))continue;
-   if(except&&o.clauseExcept&&except.test(clauseOf(x.s,start,end)))continue;
-   return {x,start,end};
+  for(const match of matches){
+   match.lastIndex=0;
+   for(let hit=match.exec(x.s);hit;hit=match.exec(x.s)){
+    const text=hit[0],start=hit.index,end=start+text.length;
+    if(!text)match.lastIndex++;
+    if(x.parts&&x.parts.some(p=>p.includes(text))&&!(o.all&&tailLabel(x.parts,text)))continue;
+    if(!o.figure&&negatedAfter(x.s,end))continue;
+    if(except&&o.clauseExcept&&except.test(clauseOf(x.s,start,end)))continue;
+    return {x,start,end};
+   }
   }
   return null;
  };

@@ -452,6 +452,16 @@ check('R11 (F1 closed): a misstated waiting period that replaces the notes saves
 check('R11 (F1 closed): the same line next to the kept notes is 409 hard_block at approval and export too',gapBeside.length===7&&gapBeside.every(Boolean));
 check('R11 (F1 closed): a captive-advisor shortening line in the support section is 409 hard_block (captive-advisor rule) at approval and export',await BLOCKED_AT(PAGE(bs=>lines('support',l=>[...l,'본사가 지정한 가맹거래사 자문을 받으시면 7일로 줄어 계약이 빨라집니다.'])(NO_WAIT(bs))),'a-gap-captive','h.captive_advisor_phrase'));
 check('R11: a correct 14-day line in place of the notes still approves and exports with only the waiting warning',allPass(await APPROVE_EXPORT(PAGE(lines('process',()=>['정보공개서를 받으신 뒤 14일이 지나야 계약할 수 있습니다.'])),'startup_page','a-gap-ok'),[W_WAIT]));
+// R11 레드팀 반영(2026-09-26): 'D+3', 요일, 표, 짧은 두 문장, 본사 쪽 자문 같은 오기재도 409 hard_block이고, 법 설명·경고 문장(오탐이던 문장)은 권장 문장 경고만 남기고 승인·내보내기된다.
+const RED_TEAM=[['정보공개서 수령 D+3 계약 가능','h.wait_bypass_solicitation'],['월요일에 정보공개서 받으시면 금요일에 계약하실 수 있어요.','h.wait_bypass_solicitation'],['계약 가능일: 정보공개서 수령 다음 날','h.wait_bypass_solicitation'],
+ ['정보공개서 먼저 드려요. 3일 뒤 계약합니다.','h.wait_bypass_solicitation'],['저희 쪽 가맹거래사님께 확인받으시면 7일이면 됩니다.','h.captive_advisor_phrase']];
+const redBlocked=[];
+for(const [k,[l,rule]] of RED_TEAM.entries())redBlocked.push(await BLOCKED_AT(PAGE(lines('process',()=>[l])),'a-red-'+k,rule));
+check('R11: red-team misstatements (D+3, weekday span, table form, split sentences, HQ-side advisor) in place of the notes are 409 hard_block at approval and export',redBlocked.length===5&&redBlocked.every(Boolean));
+const CAUTIONS=['정보공개서를 받은 날 계약하거나 가맹금을 받는 것은 법 위반입니다.','정보공개서를 드린 날 바로 계약을 권하는 본사는 피하세요.','본사가 추천한 가맹거래사를 꼭 이용하실 필요는 없습니다.'];
+const cautionPass=[];
+for(const [k,l] of CAUTIONS.entries())cautionPass.push(allPass(await APPROVE_EXPORT(PAGE(lines('process',()=>[l])),'startup_page','a-caution-'+k),[W_WAIT]));
+check('R11: legal warnings that used to be false positives approve and export with only the waiting warning',cautionPass.length===3&&cautionPass.every(Boolean));
 const BYPASSES=['가계약금 먼저 입금하시면 자리 확정해 드립니다','홀딩비 100만원을 내시면 상권을 잡아 둡니다','대기 없이 바로 계약 가능합니다','대기기간 14일을 기다리지 않아도 됩니다','자문을 받으시면 대기기간 없이 계약할 수 있습니다','상담 당일 계약 가능합니다','예약금을 먼저 넣으시면 입금 순서대로 자리를 확정합니다'];
 const bypassBlocked=[];
 for(const [k,l] of BYPASSES.entries()){const r=await APP(await DRAFT(PAGE(lines('process',()=>[l])),['f-total'],'startup_page',CTX,'a-bypass-'+k));bypassBlocked.push(is(r,'hard_block')&&r.status===409&&r.judgement.issues.some(x=>x.tier==='hard_block'))}

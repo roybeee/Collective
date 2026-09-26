@@ -456,14 +456,116 @@ check('15h: the accurate statements do not block a consumer caption either'+(r8C
 // 소비자 범위의 관문은 그대로다: 캡션에 가맹 모집 문구가 없으면 경고로 낮추고, 있으면 가맹 문맥 낱말(정보공개서·가맹)이 든 오기재 문장은 해제 불가다.
 check('15h: consumer scope keeps its gate: a misstatement blocks a consumer caption only with recruitment context, and one naming 정보공개서 or 가맹 is unremovable there',R8_BAD.every(([t])=>{const bare=judge(t,{scope:'consumer'});return !bare.blocked||bare.recruitmentContext&&!bare.issues.some(i=>i.downgradedBy)})
  &&R8_BAD.filter(([t])=>/정보\s?공개서|가맹/.test(t)).every(([t,id])=>judge(t+RC,{scope:'consumer'}).issues.some(i=>i.ruleId===id&&i.tier==='hard_block')));
-// 괄호에만 자문 조건을 단 7~13일 문장은 해제 불가 규칙의 두 번째 보기가 짧은 괄호를 떼어 읽어 자문 조건이 없는 7일이 된다. 14일 기본값을 함께 적어야 한다(보수적 차단, 권장 문장은 통과).
-check('15h: a 7-day line whose advice condition sits only in a short parenthesis is blocked (the 14-day default is missing); the same condition outside the parenthesis passes',judge('정보공개서를 받은 날부터 7일(자문 시)이 지나면 계약할 수 있습니다.').issues.some(i=>i.ruleId===W8&&i.tier==='hard_block')&&!judge('자문을 받으셨다면 정보공개서를 받은 날부터 7일이 지나면 계약할 수 있습니다.').blocked);
+// 괄호에만 자문 조건을 단 7~13일 문장('7일(자문 시)')은 자문 조건을 적은 바른 문장이다. 해제 불가 규칙의 두 번째 보기는 자문 조건 괄호를 떼지 않는다(2026-09-26 레드팀 반영, 전에는 보수적으로 막았다).
+// 14일 기본값이 빠진 것은 권장 문장 경고(자료 관리)가 본다.
+check('15h: a 7-day line whose advice condition sits only in a short parenthesis passes like the same condition outside the parenthesis',!judge('정보공개서를 받은 날부터 7일(자문 시)이 지나면 계약할 수 있습니다.').blocked&&!judge('자문을 받으셨다면 정보공개서를 받은 날부터 7일이 지나면 계약할 수 있습니다.').blocked);
 // 대기기간 오기재 표현은 규칙의 more(따로 컴파일하는 정규식)에 둔다. 한 정규식 원문이 20,480자를 넘으면 V8이 정규식 최적화를 꺼 판정이 열 배 가까이 느려진다(합성 24,000자 한 문장 기준).
 const REGEX_SOURCES=Object.entries(rules.FRANCHISE_CLAIM_MATCHERS).flatMap(([id,m])=>[[id,m.match],...(m.recruitmentMatch?[[id+' (recruitment)',m.match+'|'+m.recruitmentMatch]]:[]),...(m.more??[]).map((x,k)=>[id+' more '+k,x])]);
 const bigSources=REGEX_SOURCES.filter(([,x])=>x.length>=20480).map(([id,x])=>id+' '+x.length);
-check('15h: every compiled franchise matcher regex stays under the 20,480-character V8 optimization limit, the misstatement forms compile separately and are frozen'+(bigSources.length?' '+JSON.stringify(bigSources):''),bigSources.length===0&&rules.FRANCHISE_CLAIM_MATCHERS[W8].more?.length===1&&Object.isFrozen(rules.FRANCHISE_CLAIM_MATCHERS[W8].more)&&rules.FRANCHISE_CLAIM_MATCHERS[W8].more.every(x=>new RegExp(x,'g')&&!rules.FRANCHISE_CLAIM_MATCHERS[W8].match.includes(x)));
+check('15h: every compiled franchise matcher regex stays under the 20,480-character V8 optimization limit, the misstatement forms compile separately and are frozen'+(bigSources.length?' '+JSON.stringify(bigSources):''),bigSources.length===0&&rules.FRANCHISE_CLAIM_MATCHERS[W8].more?.length>=1&&Object.isFrozen(rules.FRANCHISE_CLAIM_MATCHERS[W8].more)&&rules.FRANCHISE_CLAIM_MATCHERS[W8].more.every(x=>new RegExp(x,'g')&&!rules.FRANCHISE_CLAIM_MATCHERS[W8].match.includes(x)));
 check('15h: 24,000-character one-sentence inputs around the new forms finish within one second',['정보공개서 '.repeat(4800),'대기기간 '.repeat(5000),'7일 '.repeat(8000),'본사가 지정한 '.repeat(3400),('정보공개서를 받은 날부터 7일이 지나면 계약 '.repeat(900))].every(t=>{const s=Date.now();judge(t);return Date.now()-s<1000}));
-check('15h: no new hard_block id or registry rule (decision 25 keeps 8 ids, 54 rules) and the claims version is bumped',rules.FRANCHISE_HARD_BLOCK_IDS.length===8&&rules.FRANCHISE_RULES.length===54&&rules.FRANCHISE_RULES_VERSION==='2026-09-25.1'&&rules.FRANCHISE_CLAIMS_VERSION==='fr-claims@2026-09-26.1'&&judge('대기기간은 7일입니다.').version.startsWith('fr-claims@2026-09-26.1+'));
+check('15h: no new hard_block id or registry rule (decision 25 keeps 8 ids, 54 rules) and the claims version is bumped',rules.FRANCHISE_HARD_BLOCK_IDS.length===8&&rules.FRANCHISE_RULES.length===54&&rules.FRANCHISE_RULES_VERSION==='2026-09-25.1'&&rules.FRANCHISE_CLAIMS_VERSION==='fr-claims@2026-09-26.2'&&judge('대기기간은 7일입니다.').version.startsWith('fr-claims@2026-09-26.2+'));
+
+// ════ 15i) 대기기간 오기재 레드팀 반영(2026-09-26, 합성) ════
+// 레드팀 우회 131건: 127건을 해제 불가로 막는다(125건 대기기간 우회 규칙, 본사 쪽 자문·본사 발급 자문 확인서 2건은 본사 연계 자문 규칙). 4건은 알려진 틈으로 남기고 승인자 확인에 맡긴다
+// (날짜 계산이 필요한 '3/2 발송, 3/5 계약'·'교부일 10월 1일 / 계약일 10월 3일', 한 줄 Q&A에서 '아니요!'가 따로 끊긴 뒤의 '저희는 3일이면 됩니다', 문서 낱말 없는 '검토 기간은 3일'). 틈을 닫으면 R15_GAPS 기대값을 바꾼다.
+// 오탐 65건(법 위반·피하세요·신고 대상 같은 경고, 반박, 묻는 문장, 자문 조건 괄호, 계약 당일 사본·요약본, 교육·설치·승인 대기, 청약철회 숙려 기간, 자문자 선택 자유)은 두 범위 모두 두 규칙 이슈가 없다.
+// 가까운 바른 문장 110건(요일·내일·D+14·16일차·현장·원데이·소비자 일정)도 막지 않는다. 근거: mocked(순수 판정기, 합성 문장, 사실 없음, 외부 호출 0). COLLECTIVE 휴리스틱 · 법률 자문 아님.
+// '소규모 본부라 대기기간 적용 대상이 아닙니다'는 제3조 적용 배제와 겹칠 수 있어 LR-1 확인 대상이다(확인 전까지 강화 쪽으로 막는다).
+const R15_WAIT=[
+ '정보공개서 수령 D+3 계약 가능','공개서 수령 → 3일 → 계약','월요일에 정보공개서 받으시면 금요일에 계약하실 수 있어요.','이번 주 월요일 정보공개서 드리고 금요일 계약 진행합니다.','정보공개서 수령 후 3 days 뒤 계약 가능',
+ 'Disclosure document 받고 3일이면 contract 가능!','FDD 받으시고 3일 뒤 계약하시면 됩니다.','정보 공개서 받으시고 사흘 후 계약서 쓰시면 돼요.','정보공개서 받은 그 주 안에 계약 마무리해 드려요.','정보공개서 받고 이번 주 안에 계약하시면 가맹비 할인!',
+ '이번 주 정보공개서 받으시고 다음 주 월요일에 계약하시죠.','정보공개서 먼저 드려요. 3일 뒤 계약합니다.','정보공개서 수령.\n다음 날 계약.','정보공개서는 오늘 드립니다. 계약은 내일 하시죠.','오늘 정보공개서 받으시면\n모레 계약 가능합니다','정보공개서 드리고요. 사흘 지나면 계약 가능해요.',
+ 'Q. 정보공개서 받고 언제 계약할 수 있나요?\nA. 3일 후부터 가능합니다.','Q: 대기기간이 꼭 14일인가요?\nA: 아니요, 협의하면 짧아집니다.','FAQ) 계약은 언제? → 정보공개서 받고 사흘 후','정보공개서 교부: D-day / 가맹계약: D+3','숙려기간 : 없음',
+ '정보공개서 수령 후 계약까지: 5일','계약 가능일: 정보공개서 수령 다음 날','대기기간 | 7일','계약금 입금 시점: 정보공개서 수령 당일','공개서 받고 3일이면 도장 찍어요','정보공개서 받자마자 도장 쾅!','정보공개서 받고 며칠이면 계약 가능해요.','14일 기다리는 건 옛날 얘기예요.',
+ '정보공개서 수령일은 소급해서 적어드릴게요.','정보공개서 수령 확인서는 2주 전 날짜로 작성해 주시면 됩니다.','계약서 날짜는 2주 뒤로 적고 오늘 서명하시면 됩니다.','가맹금은 먼저 받고 계약서는 14일 뒤 날짜로 작성합니다.','대기기간 중에도 가맹비 선입금 가능합니다.',
+ '14일 대기 기간 중 계약금 입금하시면 우선권 드려요.','14일은 본사 내부 기준이라 줄일 수 있어요.','14일은 권장 사항입니다.','14일 대기는 형식일 뿐입니다.','대기기간은 본인이 포기하시면 됩니다.','예비 점주님 동의 시 대기기간 없이 진행합니다.','점주님이 원하시면 대기기간 스킵 가능해요.',
+ '대기기간 skip 가능','정보공개서 받고 three days 뒤 계약','정보공개서 수령 후 1 week 뒤 계약 가능','정보공개서 받고 세 밤 자면 계약!','정보공개서 받고 이십사 시간 뒤 계약','정보공개서 받고 3-4일 후 계약','정보공개서 받으시고 5~7일 뒤 계약',
+ '📌 정보공개서 수령 후 3일 → 가맹계약 체결 가능','정보공개서✔ 계약✔ 하루 만에 끝!','상담-정보공개서-계약 원데이 진행','원스톱 창업: 정보공개서 수령과 계약을 하루에','정개서 받고 3일 뒤 계약','계약서 샘플 드리고 다음 날 계약합니다.','가맹비는 정보공개서와 함께 입금해 주세요.',
+ '정보공개서 받으실 때 가맹비 절반 먼저 입금해 주세요.','정보공개서 수령 시 교육비 선납','정보공개서 받으시면서 가맹금 10% 먼저 받습니다.','정보공개서 설명 들으시고 계약금 500만원 입금하시면 됩니다.','정보공개서 받으시는 날 보증금 입금','가맹금은 14일 전에 먼저 받고 있습니다.',
+ '대기기간 중 가맹금 선입금 필수','가맹금 입금은 대기기간과 무관합니다.','교육비는 대기기간과 상관없이 먼저 받습니다.','자문은 형식적인 거라 서명만 하시면 7일로 줄어듭니다.','자문 받았다고 체크만 하시면 7일 뒤 계약됩니다.','자문 확인서에 서명만 해주시면 대기기간 7일로 줄어요.',
+ '보통 1주일 정도면 계약하십니다.','14일은 최대 기간이고 더 빨리도 가능합니다.','14일 이내 언제든 계약 가능합니다.','정보공개서 받으신 날부터 14일 안에 계약하시면 가맹비 50% 할인','정보공개서 수령 후 14일 이내 계약 시 혜택 드립니다.','14일 전 계약 시 추가 혜택 드립니다.',
+ '대기기간 끝나기 전 계약하시면 가맹비 할인','2주 기다리다 자리 뺏깁니다. 지금 계약하세요.','법정 대기기간 14일은 작년부터 폐지됐습니다.','대기기간 제도가 없어졌습니다.','14일 대기 규정은 소규모 가맹본부엔 적용 안 됩니다.','저희는 소규모 본부라 대기기간 적용 대상이 아닙니다.',
+ '온라인으로 정보공개서 받으시면 대기기간이 없습니다.','정보공개서 검토 기간 3일, 이후 계약','정보공개서 검토 시간 넉넉히 3일 드려요.','14일이 아니라 7일만 기다리시면 됩니다.','7일만 기다리시면 계약 가능합니다.','대기는 딱 일주일!','법정 대기 기간? 저희는 3일!',
+ '다른 곳은 14일, 저희는 사흘!','계약까지 걸리는 시간: 평균 3일','상담부터 계약까지 평균 5일','사업설명회 참석 후 현장 계약 시 100만원 할인','박람회 현장 계약 특전!','정보공개서는 계약하시면 보내 드려요.','정보공개서 없이도 계약 가능합니다.',
+ '정보공개서는 나중에 받으셔도 됩니다. 계약 먼저 하시죠.','계약은 2주 뒤, 가맹비는 오늘!','2주 뒤 계약하시되 가맹비는 미리 입금해 주세요.','대기기간 14일은 계약일 기준으로 역산해서 서류 처리합니다.','정보공개서 수령 확인서 날짜는 비워 두세요.','정보공개서 받으시고 3일 후, 계약서 작성',
+ '정보공개서 제공 ▶ 3일 ▶ 가맹계약','정보공개서 제공(1일차) → 가맹계약(4일차)','1일차 정보공개서 수령 / 3일차 가맹계약 체결','Day 1 정보공개서, Day 3 계약','정보공개서 받으신 후 삼사일 뒤 계약','정보공개서 받으시고 이삼일 뒤 계약 가능해요.',
+ '정보공개서 받으신 뒤 7일, 자문 없어도 OK','계약서안 받으시고 3일 뒤 도장 찍으시면 됩니다.','가맹계약서 초안 검토는 하루면 충분합니다. 다음 날 계약하세요.','계약서안은 미리 보실 필요 없이 계약 당일 설명드립니다.','계약서는 당일에 보여드리고 바로 서명합니다.','대기기간? 그런 거 없어요 ㅎㅎ',
+ '대기기간 ㄴㄴ 바로 계약 ㄱㄱ','대기기간 X 바로 계약 O','대기기간 0일','대기기간 zero!','정보공개서 수령 즉시 오픈 준비 시작, 계약은 3일 차에!','정보공개서 수령 후 삼 일이면 계약 가능!','정보공개서 제공일 +3일 가맹계약','정보공개서, 계약서안, 계약서 한 번에 처리해 드립니다.',
+ '정보공개서 설명 → 계약서 서명 → 가맹비 입금, 하루에 끝!','정보공개서 받으시면 내일이라도 계약 가능합니다.','정보공개서 받으시면 모레 계약하셔도 됩니다.','정보공개서 받으시면 글피에 계약하시죠.','정보공개서 받으시고 이번 주말에 계약하시죠.','대기기간은 원칙적으로 7일입니다.',
+];
+const R15_CAPTIVE=['저희 쪽 가맹거래사님께 확인받으시면 7일이면 됩니다.','가맹거래사 자문 확인서는 본사에서 발급해 드립니다.'];
+const R15_GAPS=['정보공개서 3/2 발송, 3/5 계약 체결','정보공개서 교부일: 10월 1일 / 계약일: 10월 3일','Q. 14일 꼭 기다려야 하나요? A. 아니요! 저희는 3일이면 됩니다.','검토 기간은 3일 드립니다.'];
+const R15_FP=[
+ '정보공개서를 받은 날 계약하거나 가맹금을 받는 것은 법 위반입니다.','정보공개서를 드린 날 바로 계약을 권하는 본사는 피하세요.','대기기간을 생략해 달라는 요청에도 응하지 않습니다.','14일이 지나기 전에 계약하자고 하면 거절하세요.',
+ 'Q. 대기기간을 줄일 수 있나요? A. 변호사나 가맹거래사 자문을 받으시면 7일로 줄어듭니다.','정보공개서를 받은 날 서명하시는 것은 수령 확인서뿐입니다.','본사가 추천하는 변호사에게 자문을 받으실 의무는 없습니다.','본사가 선정한 가맹거래사를 이용하도록 강요하지 않습니다.',
+ '정보공개서 제공 후 14일이 지나면 바로 계약하실 수 있습니다.','대기기간이 끝나면 바로 계약하실 수 있습니다.','대기기간은 선택이 아닌 법적 의무입니다.','14일 대기기간은 선택 사항이 아닌 의무 사항입니다.','정보공개서를 받은 다음 날 계약할 수 있나요?',
+ '7일 만에 계약할 수 있나요? 변호사나 가맹거래사 자문을 받으신 경우에만 가능합니다.','정보공개서를 받은 날 바로 계약하면 어떻게 되나요? 법 위반입니다.','정보공개서를 받은 뒤 7일 안에 계약 상담을 한 번 더 진행합니다.','정보공개서를 받은 뒤 7일 안에 계약 여부를 결정하실 필요는 없습니다.',
+ '정보공개서를 받은 뒤 3일 안에 계약금을 요구하는 곳은 피하세요.','정보공개서를 받은 다음 날 가맹금을 달라는 본사는 신고 대상입니다.','정보공개서를 드린 날 계약금을 받는 행위는 공정거래위원회 제재 대상입니다.','정보공개서를 받은 날부터 7일(자문을 받은 경우)이 지나면 계약할 수 있습니다.',
+ 'We do not offer same-day contracts; the 14-day waiting period always applies.','정보공개서를 받은 당일 가맹금을 받는 본사가 있다면 신고해 주세요.','정보공개서를 받자마자 계약서에 서명하라고 하면 거절하셔도 됩니다.',
+ '정보공개서를 받으신 날 바로 계약하시라고 권하지 않습니다.','정보공개서를 받은 뒤 이틀 만에 계약서에 서명했다가 후회하는 사례가 많습니다.','정보공개서를 받은 즉시 계약금을 요구한다면 의심하세요.','정보공개서를 계약 당일 처음 받으셨다면 계약을 미루세요.','정보공개서는 계약할 때 다시 설명해 드립니다.',
+ '계약서안은 계약 당일 최종본과 비교해 드립니다.','계약 당일 정보공개서 사본을 한 부 더 드립니다.','계약 전날 정보공개서 요약본을 보내 드립니다.','정보공개서 수령부터 계약까지 최소 7일은 필요합니다(자문 시).','상권 분석 보고서 열람 기간은 3일입니다.','교육 신청 후 대기 기간은 3일입니다.',
+ '장비 설치 대기 기간은 이틀입니다.','숙려기간은 짧게 느껴질 수 있지만 꼭 활용하세요.','대기기간 14일이 짧게 느껴지실 수도 있습니다.','14일을 기다리실 필요가 없다는 말은 거짓입니다.','14일을 기다릴 필요가 없는 경우는 없습니다.','본사가 지정한 가맹거래사에게만 자문을 받아야 하는 것은 아닙니다.',
+ '본사가 지정한 자문인을 써야 한다는 조건은 없습니다.','본사가 추천한 가맹거래사를 꼭 이용하실 필요는 없습니다.','본사가 소개하는 변호사가 있더라도 다른 변호사를 고르셔도 됩니다.','Q. 대기기간을 줄일 수 있나요?\nA. 변호사나 가맹거래사 자문을 받으시면 7일로 줄어듭니다.',
+ 'Q. 정보공개서를 받은 다음 날 계약할 수 있나요?\nA. 법에 따라 14일이 지나야 합니다.','Q. 7일 만에 계약할 수 있나요?\nA. 변호사·가맹거래사 자문을 받으신 경우에만 7일이 지나면 가능합니다.','정보공개서를 드린 날 계약 체결 예정일을 안내해 드립니다.',
+ '정보공개서를 받으시고 바로 계약하실 수는 없습니다.','정보공개서를 받은 뒤 바로 계약하는 일은 없습니다.','정보공개서를 받은 날 계약서에 서명하거나 가맹금을 내시면 안 됩니다.','정보공개서를 받은 날 계약서에 서명하셔야 하는 것은 수령 확인서뿐입니다.',
+ '정보공개서를 받은 날 서명하시는 서류는 수령 확인서 한 장입니다.','정보공개서를 받은 날 계약하라는 본사는 조심하세요.','정보공개서를 받은 날 계약하자는 곳은 일단 의심해 보세요.','정보공개서를 받은 날 가맹금을 요구하면 공정위에 신고할 수 있습니다.',
+ '정보공개서를 받은 날부터 7일 안에 계약하면 법 위반입니다(자문을 받지 않은 경우).','자문을 받지 않고 정보공개서를 받은 날부터 7일 만에 계약하면 법 위반입니다.','대기기간을 줄여 준다며 본사가 소개하는 가맹거래사는 주의하세요.','대기기간을 생략할 수 있다는 안내는 잘못된 것입니다.',
+ '계약 당일에는 정보공개서를 받으신 날짜를 확인합니다.','계약 전날 정보공개서를 받으신 날짜와 자문 확인서를 다시 확인해 주세요.','계약 당일 정보공개서를 받으신 날부터 14일이 지났는지 확인합니다.','가맹 승인 대기 기간은 약 3일입니다.','청약철회 숙려 기간은 7일입니다.',
+];
+const R15_NEAR_OK=[
+ '월요일에 정보공개서를 받으셨다면 다다음 주 화요일 이후에 계약하실 수 있습니다.','매주 월요일 정보공개서 설명회, 금요일 계약 상담을 진행합니다.','정보공개서는 내일 보내 드리고, 계약은 14일이 지난 뒤에 합니다.','정보공개서를 받으시면 내일 상담 일정을 잡아 드립니다.',
+ '정보공개서는 이번 주 안에 보내 드립니다.','정보공개서 수령 D+14 이후 계약 가능합니다.','정보공개서 수령(D-day) → 대기 14일 → 가맹계약(D+15)','1일차 정보공개서 수령 / 16일차 이후 가맹계약 체결','정보공개서 받으실 때 가맹비 금액과 반환 조건도 확인하세요.',
+ '정보공개서 수령 시 수령 확인서에 서명해 주세요.','정보공개서 수령 확인서는 받은 날짜로 작성해 주세요.','대기기간은 소급하지 않고 정보공개서를 받은 날부터 셉니다.','대기기간 제도는 폐지되지 않았습니다.','대기기간은 모든 가맹본부에 예외 없이 적용됩니다.',
+ '14일을 기다리시는 동안 궁금한 점을 정리해 보세요.','정보공개서 검토 기간은 14일입니다.','박람회 현장에서는 상담만 하고 계약은 하지 않습니다.','현장 계약은 받지 않습니다.','교육비는 대기기간이 끝난 뒤 계약 체결 시 받습니다.','대기기간 중에는 가맹금을 받지 않습니다.',
+ '가맹금은 대기기간이 지난 뒤 받습니다.','가맹금은 14일이 지난 뒤 계약 체결일에 받습니다.','계약서 날짜는 실제 서명한 날로 적습니다.','정보공개서, 계약서안, 가맹계약은 각각 다른 날 진행합니다.','상담부터 계약까지 평균 3주가 걸립니다.','계약까지 걸리는 시간: 평균 20일',
+ '정보공개서를 받으신 뒤 며칠 동안 충분히 검토하세요.','정보공개서를 받으신 다음 날부터 14일을 셉니다.','정보공개서 받은 날부터 이틀 뒤에 설명회가 있습니다.','대기기간 없음이라고 광고하는 곳은 피하세요.','대기기간이 없다고 말하는 본부는 믿지 마세요.','대기는 보통 14일입니다.',
+ '가맹 문의 후 대기 없이 바로 상담해 드립니다.','Q. 정보공개서 받고 언제 계약할 수 있나요?\nA. 14일이 지난 뒤부터 가능합니다.','Q. 대기기간이 꼭 14일인가요?\nA. 아니요, 자문을 받으시면 7일로 줄어듭니다.',
+ 'Q. 대기기간이 꼭 14일인가요?\nA. 아니요. 변호사·가맹거래사 자문을 받으시면 7일입니다.','정보공개서를 받은 후 14일, 자문 시 7일이 지나야 계약 가능합니다.','저희는 14일, 자문 시 7일을 지킵니다.','다른 곳은 3일이라고 하지만 저희는 14일을 지킵니다.',
+ '정보공개서 설명 들으시고 계약 여부는 천천히 결정하세요.','정보공개서 설명 들으시고 14일 뒤 계약합니다.','정보공개서 받자마자 도장 찍지 마세요.','정보공개서와 함께 가맹금 예치 안내문을 드립니다.','가맹비는 정보공개서와 함께 안내해 드립니다.','계약금은 정보공개서와 함께 받지 않습니다.',
+ '정보공개서 제공 3일 전 상담 예약 필수','정보공개서 제공 후 3일 이내 상담사가 연락드립니다.','이번 주 금요일에 정보공개서를 드리고, 계약은 다다음 주 금요일에 합니다.','정보공개서는 월요일에 드리고 계약은 3주 뒤 월요일에 합니다.','모레 정보공개서 설명회가 열립니다.',
+ '글피까지 정보공개서를 보내 드립니다.','정보공개서는 계약 당일이 아니라 적어도 14일 전에 드립니다.','교육은 계약 후 3일차에 시작합니다.','정보공개서 받으신 날이 1일차입니다.','자문 확인서는 변호사나 가맹거래사가 직접 발급합니다.','본사는 자문 확인서를 대신 작성해 드리지 않습니다.',
+ '저희 쪽 변호사는 계약서 문구만 설명해 드립니다.','자문은 형식적인 절차가 아닙니다.','자문 확인서에 서명만 받는다고 대기기간이 줄어들지 않습니다.','14일 이내 계약 해지 시 전액 환불해 드립니다.','14일 이내 계약 체결은 법으로 금지돼 있습니다.','14일 전 계약은 할 수 없습니다.',
+ '대기기간 14일이 끝나기 전에 계약하시면 위반입니다.','보통 2주 정도면 계약하십니다.','보통 3일 정도면 인테리어 견적이 나옵니다.','평균 5일이면 상권 분석 보고서를 받아 보실 수 있습니다.','오늘 정보공개서 받으시면 14일 뒤 계약 가능합니다.','정보공개서 받으시면서 궁금한 점은 바로 물어보세요.',
+ '정보공개서 수령 시 신분증을 지참해 주세요.','숙려기간: 14일 (자문 시 7일)','대기기간 | 14일 (자문 시 7일)','계약 가능일: 정보공개서 수령 후 15일째 되는 날','계약금 입금 시점: 가맹계약 체결일','Day 15 이후 가맹계약 체결',
+ '정보공개서는 온라인으로 받으셔도 대기기간은 똑같이 14일입니다.','대기기간이 없어지는 경우는 없습니다.','14일 기다리는 게 길게 느껴지실 수 있습니다.','2주 기다리시는 동안 다른 점포를 둘러보셔도 됩니다.','대기기간 동안 자리가 나갈까 걱정되시면 상권 보호 조항을 확인하세요.',
+ '정보공개서를 받으시면 대기기간 동안 변호사 자문을 받아 보세요.','정보공개서 받고 일주일 뒤 가맹 설명회에 오세요.','계약서안을 받으신 다음 날 궁금한 조항을 여쭤보세요.','정보공개서를 받은 날 계약하지 않으셔도 됩니다.','대기기간을 줄일 수 있다는 광고는 허위입니다.',
+ '대기기간을 단축해 드린다는 말은 거짓입니다.','계약은 대기기간이 끝난 다음 날 바로 가능합니다.','정보공개서 교부 후 보름이 지나면 바로 계약하실 수 있습니다.','정보공개서 받고 이틀 뒤 상담 예약을 도와드립니다.','가맹 계약은 정보공개서를 받고 14일 뒤에 합니다.','7일 만에 계약할 수 있나요?',
+ '정보공개서를 받고 3일 뒤 계약할 수 있나요?','대기기간 14일 동안 저희는 3일마다 안부 전화를 드립니다.','대기기간 중 저희는 3일 안에 질문에 답변드립니다.','예약은 3일 전까지 해 주세요.','월요일에 주문하시면 금요일에 받아 보실 수 있어요.','원데이 클래스는 당일 결제만 가능합니다.',
+ '하루 만에 완판된 신메뉴!','주문 후 3일차에 발송됩니다.','D+3 이내 배송 완료','정기 구독 계약은 언제든 해지 가능합니다.','케이크 예약금은 픽업 당일 결제해 주세요.','내일 오픈 기념 이벤트가 있습니다.','현장 결제 시 10% 할인','이번 주말 팝업 현장에서 만나요!',
+ '정보공개서 수령 시 서명해 주세요.','정보공개서 설명과 가맹비 안내를 하루에 진행합니다.','정보공개서 수령 확인서 서명은 당일 진행합니다.','정보공개서 설명 듣고 계약하는 것은 14일 뒤입니다.','14일을 기다리시면 좋은 결정을 놓치지 않습니다.','정보공개서 받으실 때 서명하실 서류를 안내해 드립니다.',
+];
+const R15_NEAR_BAD=[
+ '정보공개서 받으시고 모레 바로 계약 가능합니다.','정보공개서 수령 D+5 가맹계약','화요일에 정보공개서 드리면 목요일에 가맹계약 체결합니다.','정보공개서 받으시고 내일 가맹비 입금해 주세요.','정보공개서 수령 후 2 days 뒤 계약!','공개서 수령 -> 5일 -> 계약 체결','대기기간: 없음',
+ '대기기간은 원하시면 스킵해 드립니다.','가맹비는 대기기간 중에도 먼저 받습니다.','정보공개서 수령 확인서는 3주 전 날짜로 적어 주세요.','Q. 정보공개서 받은 다음 날 계약할 수 있나요?\nA. 네, 가능합니다.','Q. 대기기간을 줄일 수 있나요?\nA. 네, 협의 가능합니다.',
+ 'FDD 받고 3일이면 계약 OK','계약서안 받으시고 이틀 뒤 계약서 쓰시면 됩니다.','정보공개서 수령 즉시 계약금 입금','정보공개서 드리고 3일 차에 가맹계약','정보공개서 받고 이삼일이면 계약 가능!','14일은 형식적인 기준이라 줄여 드립니다.','대기기간 14일은 본사 재량으로 단축합니다.',
+ '법정 대기 기간? 저희는 이틀!','지금 계약 안 하시면 2주 기다리다 좋은 자리 다 나갑니다.',
+];
+const onRule=(t,id)=>judge(t).issues.some(i=>i.ruleId===id&&i.tier==='hard_block');
+const r15Miss=[...R15_WAIT.map(t=>[t,W8]),...R15_CAPTIVE.map(t=>[t,C8]),...R15_NEAR_BAD.map(t=>[t,W8])].filter(([t,id])=>!onRule(t,id)).map(([t])=>t);
+check(`15i: ${R15_WAIT.length+R15_CAPTIVE.length} red-team bypasses (D+N, N일차, arrows, weekdays, 내일·모레·글피, English, 도장, split sentences, Q&A, tables, 대기기간 중 가맹금, backdating, abolished or exempt claims, sham advice, one-day flows) and ${R15_NEAR_BAD.length} variants are hard_block with the right rule`+(r15Miss.length?' '+JSON.stringify(r15Miss):''),R15_WAIT.length===125&&R15_CAPTIVE.length===2&&R15_NEAR_BAD.length>=20&&r15Miss.length===0);
+// 알려진 틈(승인자 확인): 막히지 않는 것을 고정해 두고, 틈을 닫으면 이 기대값을 바꾼다.
+check('15i: the 4 documented gaps (calendar-date arithmetic, a split one-line Q&A answer, 검토 기간 without a document noun) are still not caught by the waiting-period rules',R15_GAPS.length===4&&R15_GAPS.every(t=>!judge(t).issues.some(i=>i.ruleId===W8||i.ruleId===C8)));
+const r15Leak=[...R15_FP,...R15_NEAR_OK].flatMap(t=>{const r=judge(t),c=judge(t,{scope:'consumer'});return r.issues.some(i=>i.ruleId===W8||i.ruleId===C8)||c.issues.some(i=>(i.ruleId===W8||i.ruleId===C8)&&i.tier!=='warn')||c.blocked?[t+' → '+ids(r).join()+' / '+ids(c).join()]:[]});
+check(`15i: ${R15_FP.length} red-team false positives and ${R15_NEAR_OK.length} near-miss legitimate sentences raise no wait-bypass or captive-advisor issue in recruitment scope and do not block a consumer caption`+(r15Leak.length?' '+JSON.stringify(r15Leak):''),R15_FP.length===65&&R15_NEAR_OK.length>=100&&r15Leak.length===0);
+// 경고 끝 면제(except)는 같은 절의 권유·압박에는 쓰지 않는다: '계약하지 않으면 후회하는 사례가 많습니다', '자리 뺏기지 않게 주의하세요', '14일 기다리다 자리 놓치는 일은 피하세요', '계약 가능하니 … 주의하세요'는
+// 9c1612a에서 막히던(또는 새로 막는) 권유다. 자문자 선택 자유 면제는 자문자를 목적어로 쓴 문장만 본다('… 다른 변호사 찾으실 필요 없습니다', '따로 자문받으실 필요는 없습니다'는 본사 자문 권유다).
+// 바른 경고('입금하지 않도록 주의하세요', '놓칠까 봐 가계약금을 내시는 일은 피하세요', '14일이 지나지 않으면 계약하실 수 없습니다', '자문을 받지 않으면 … 법 위반입니다')는 그대로 통과한다.
+const R15_PRESSURE=[['정보공개서 받은 날 바로 계약하지 않으면 후회하는 사례가 많습니다.',W8],['가계약금 넣어 두시고 자리 뺏기지 않게 주의하세요.',W8],['대기기간 14일 기다리다 좋은 자리 놓치는 일은 피하세요.',W8],
+ ['홀딩비 내고 상권 잡아 두지 않으면 후회하는 경우가 많습니다.',W8],['대기기간 없이 계약 가능하니 다른 브랜드와 헷갈리지 않게 주의하세요.',W8],['정보공개서 받은 다음 날 계약하시면 됩니다, 14일 기다리는 건 시간 낭비니 피하세요.',W8],
+ ['본사 지정 가맹거래사 자문 받으시면 7일이라 다른 변호사 찾으실 필요 없습니다.',C8],['본사 전속 변호사가 있어 따로 자문받으실 필요는 없습니다.',C8],['본사 지정 변호사로 7일 계약하시고 날짜는 자유롭게 고르셔도 됩니다.',C8]];
+const R15_CAUTION_OK=['가계약금을 요구하는 곳에 입금하지 않도록 주의하세요.','좋은 자리를 놓칠까 봐 가계약금을 내시는 일은 피하세요.','14일이 지나지 않으면 계약하실 수 없습니다.','자문을 받지 않으면 7일 안에 계약하면 법 위반입니다.',
+ '가계약금을 요구하는 본사는 조심하세요.','가계약금 받는 곳은 신고 대상입니다.','대기기간을 줄여 준다는 곳이 있으니 주의하세요.'];
+const pressureMiss=R15_PRESSURE.filter(([t,id])=>!onRule(t,id)).map(([t])=>t),cautionLeak=R15_CAUTION_OK.filter(t=>judge(t).issues.some(i=>i.ruleId===W8||i.ruleId===C8));
+check('15i: the caution-ending exemption does not cover pressure in the same clause, the free-choice exemption needs the advisor as object, and plain cautions still pass'+(pressureMiss.length||cautionLeak.length?' '+JSON.stringify([pressureMiss,cautionLeak]):''),pressureMiss.length===0&&cautionLeak.length===0);
+check('15i: a red-team false positive blocked by another rule keeps that rule (trade-area claim), only the waiting-period issue is gone',(j=>j.blocked&&ids(j).includes('kr.fr.trade_area_claims')&&!ids(j).includes(W8))(judge('상권 분석 보고서 열람 기간은 3일입니다.')));
+// 판정기: 자문 조건 괄호는 두 번째 보기에서도 떼지 않고, '아니요' 뒤에 줄이는 말이 오는 답은 질문과 잇는다. 같은 문장에 괄호 밖 7일이 있으면 여전히 막는다.
+check('15i: the advice parenthesis is kept in the second view, and a 7-day line with an unrelated parenthesis is still blocked',!judge('정보공개서를 받은 날부터 7일(자문을 받은 경우)이 지나면 계약할 수 있습니다.').blocked&&onRule('정보공개서를 받은 날부터 7일(영업일 기준)이 지나면 계약할 수 있습니다.',W8));
+check('15i: a denying answer that shortens the period is bridged to its question, a denying answer with the advice condition is not a claim',onRule('Q: 대기기간이 꼭 14일인가요?\nA: 아니요, 협의하면 짧아집니다.',W8)&&!judge('Q: 대기기간이 꼭 14일인가요?\nA: 아니요, 자문을 받으시면 7일로 줄어듭니다.').blocked&&!judge('Q. 대기기간을 줄일 수 있나요?\nA. 아니요. 자문을 받으시면 7일, 그렇지 않으면 14일입니다.').blocked);
+check('15i: an asking question is not a claim but an affirmed one is, and a soliciting question still blocks',!judge('정보공개서를 받은 다음 날 계약할 수 있나요?').blocked&&onRule('Q. 정보공개서 받은 다음 날 계약할 수 있나요?\nA. 네, 가능합니다.',W8)&&onRule('Q. 대기기간을 줄일 수 있나요?\nA. 네, 협의 가능합니다.',W8)&&onRule('정보공개서 받은 다음 날 계약하실래요?',W8));
+check('15i: the waiting-period forms compile in several chunks, each under the V8 limit',rules.FRANCHISE_CLAIM_MATCHERS[W8].more.length>=2&&rules.FRANCHISE_CLAIM_MATCHERS[W8].more.every(x=>x.length<20480));
+// 짧은 문장 수천 개(판정기가 문장마다 정규식을 복제하지 않는다)와 새 표현 주변의 긴 한 문장.
+check('15i: thousands of short sentences and 24,000-character inputs around the red-team forms finish within the time budget',[['대기기간? '.repeat(4000),2000],['Q. 정보공개서 받고 언제 계약할 수 있나요? '.repeat(900),2000],['월요일 정보공개서 '.repeat(2400),1000],['정보공개서 수령 D+3 '.repeat(1800),1000],['가맹금은 대기기간 '.repeat(2400),1000],['정보공개서, 계약서안, 계약서 '.repeat(1200),1000]].every(([t,ms])=>{const s=Date.now();judge(t);return Date.now()-s<ms}));
 
 // ════ 16~22) 게이트(라우트) ════
 const WS='fc-owner';
@@ -660,4 +762,4 @@ check('23: role, meeting and brief submissions ran on the mock',beforeRun.bodies
 check('23: submissions for a franchise brand are byte-identical to the same brand without franchise records',same(beforeRun.bodies,afterRun.bodies));
 check('23: no franchise source, cost or R2 judge text reaches a model submission',afterRun.bodies.every(b=>!/sourceRef|disclosureVersionId|정보공개서 등록 버전|가상 정보공개서 모델본|storeType|dv-fc-model|franchise_recruit|fr-claims|가맹 규칙|COLLECTIVE 휴리스틱/.test(b))&&afterRun.bodies.some(b=>b.includes('franchise_fee')));
 
-console.log(JSON.stringify({passed:passed.length,violations:detected,consumer:CONSUMER.length,extraConsumer:EXTRA.length,normals:NORMALS.length,round2:{consumer:R2_CONSUMER_NONE.length+R2_CONSUMER_WARN.length,bypass:r2detected,legit:Object.values(R2_LEGIT).flat().length,value:R2_VALUE.length},round3:{consumer:R3_CONSUMER.length,bypass:r3detected},round4:{consumer:R4_CONSUMER_OK.length+R4_CONSUMER_BLOCK.length,bypass:r4Detected,legit:R4_LEGIT.length},round5:{consumer:R5_CONSUMER_OK.length,bypass:R5_RECRUIT.length-r5Miss.length,legit:R5_LEGIT.length},waitMisstatement:{bad:R8_BAD.length-r8Miss.length,ok:R8_OK.length,consumer:R8_CONSUMER.length}}));
+console.log(JSON.stringify({passed:passed.length,violations:detected,consumer:CONSUMER.length,extraConsumer:EXTRA.length,normals:NORMALS.length,round2:{consumer:R2_CONSUMER_NONE.length+R2_CONSUMER_WARN.length,bypass:r2detected,legit:Object.values(R2_LEGIT).flat().length,value:R2_VALUE.length},round3:{consumer:R3_CONSUMER.length,bypass:r3detected},round4:{consumer:R4_CONSUMER_OK.length+R4_CONSUMER_BLOCK.length,bypass:r4Detected,legit:R4_LEGIT.length},round5:{consumer:R5_CONSUMER_OK.length,bypass:R5_RECRUIT.length-r5Miss.length,legit:R5_LEGIT.length},waitMisstatement:{bad:R8_BAD.length-r8Miss.length,ok:R8_OK.length,consumer:R8_CONSUMER.length},redTeam:{caught:R15_WAIT.length+R15_CAPTIVE.length-r15Miss.length,gaps:R15_GAPS.length,falsePositivesPassing:R15_FP.length-r15Leak.length,nearOk:R15_NEAR_OK.length,nearBad:R15_NEAR_BAD.length}}));
