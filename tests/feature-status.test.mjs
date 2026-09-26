@@ -30,7 +30,7 @@ const view=r=>r&&{status:r.status,reason:r.reason,link:r.link};
 // --- 3단계와 라벨 ----------------------------------------------------------------------
 check('status labels are the three user-facing stages',featureStatusLabels,{available:'사용 가능',blocked:'조건 부족',unimplemented:'미구현'});
 const rows=featureRows(full());
-check('row keys are unique and in display order',rows.map(r=>r.key),['brand','ai','text','review','quality-ops','metrics','worker','png','buffer','measurement','franchise','data-requests','place-check','customer-report','pos-csv','pos-auto','video','ads']);
+check('row keys are unique and in display order',rows.map(r=>r.key),['brand','ai','text','review','quality-ops','metrics','worker','png','buffer','measurement','franchise','data-requests','place-check','customer-report','reward-lineage','pos-csv','pos-auto','video','ads']);
 ok('every row uses one of the three stages',rows.every(r=>['available','blocked','unimplemented'].includes(r.status)));
 ok('the required rows are present by label',['HERMES 연결','조사 작업자 연결','PNG 정보 카드','Instagram 예약 발행(Buffer)','성과 자동 수집','POS 주문 CSV 가져오기'].every(label=>rows.some(r=>r.label.includes(label))));
 check('video, ads and POS auto collection are not implemented',['video','ads','pos-auto'].map(k=>row(full(),k).status),['unimplemented','unimplemented','unimplemented']);
@@ -120,7 +120,7 @@ ok('settings loads the switch list for the table',readFileSync('app/panels.tsx',
 const none=featureRows();
 check('without input the same rows are returned',none.map(r=>r.key),rows.map(r=>r.key));
 check('without input nothing that depends on live state claims to be available',none.filter(r=>['ai','worker','png','buffer','measurement','franchise'].includes(r.key)).map(r=>r.status),['blocked','blocked','blocked','blocked','blocked','blocked']);
-check('unknown live states say the state could not be checked',none.filter(r=>r.status==='blocked').map(r=>r.reason),['AI 연결 상태를 확인하지 못했습니다','작업자 상태를 확인하지 못했습니다','확정 사실 수를 확인하지 못했습니다','Buffer 연결 상태를 확인하지 못했습니다','채널 연결 상태를 확인하지 못했습니다','가맹 모집 스위치 상태를 확인하지 못했습니다','자료 요청 스위치 상태를 확인하지 못했습니다','플레이스 대조 스위치 상태를 확인하지 못했습니다','고객 보고서 스위치 상태를 확인하지 못했습니다']);
+check('unknown live states say the state could not be checked',none.filter(r=>r.status==='blocked').map(r=>r.reason),['AI 연결 상태를 확인하지 못했습니다','작업자 상태를 확인하지 못했습니다','확정 사실 수를 확인하지 못했습니다','Buffer 연결 상태를 확인하지 못했습니다','채널 연결 상태를 확인하지 못했습니다','가맹 모집 스위치 상태를 확인하지 못했습니다','자료 요청 스위치 상태를 확인하지 못했습니다','플레이스 대조 스위치 상태를 확인하지 못했습니다','고객 보고서 스위치 상태를 확인하지 못했습니다','보상 계보 스위치 상태를 확인하지 못했습니다']);
 ok('an empty object input behaves like no input',JSON.stringify(featureRows({}).map(r=>[r.key,r.status]))===JSON.stringify(none.map(r=>[r.key,r.status])));
 ok('broken shapes fall back to the safe default',featureRows({connection:'x',worker:7,brands:'x',campaigns:{},facts:{},channels:'x',brandChannels:'x',publishers:[]}).filter(r=>['ai','worker','png','buffer','measurement'].includes(r.key)).every(r=>r.status==='blocked'));
 check('an empty channel list is blocked, not available',row(full({channels:[]}),'measurement').status,'blocked');

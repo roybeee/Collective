@@ -190,6 +190,15 @@ check('the v2 instruction adds the pack schema only for the content copy pack pr
 // A3 종료 조건 run(2026-09-27, run a3634055) 실측: v2 콘텐츠 원문이 최상위 객체의 마지막 }만 빠진 채 끝나 contract_json fail·invalid_output이 됐다. 팩 규칙은 괄호를 끝까지 닫으라고 명시하고, 회의 개선본 팩 규칙(잘라 쓰는 앞부분)에도 들어가야 한다.
 assert.ok(/최상위 객체/.test(pack.copyPackInstruction)&&/닫/.test(pack.copyPackInstruction),'closing rule');
 assert.ok(pack.copyPackInstruction.indexOf('최상위 객체')<pack.copyPackInstruction.indexOf(' 시스템이 팩을 output_1'),'closing rule precedes the section note so meeting rules keep it');
+// A3 종료 조건 재실행(2026-09-27, run a81bb445) 실측: 수학학원 릴스 원문이 실험 객체를 channels 배열에 넣고 shortform·experiments를 빠뜨렸다(끝부분 구조 붕괴).
+// 짧은 구조(shortform·experiments)를 먼저, 반복이 많은 channels를 마지막에 쓰게 하고, channels에는 채널 객체만 넣으라고 명시한다.
+{const sc=pack.copyPackSchema;assert.ok(sc.indexOf('shortform:')<sc.indexOf('experiments:')&&sc.indexOf('experiments:')<sc.indexOf('channels:'),'schema order: shortform, experiments, channels');}
+assert.ok(/channels 배열에는 채널 객체만/.test(pack.copyPackInstruction)&&pack.copyPackInstruction.indexOf('channels 배열에는 채널 객체만')<pack.copyPackInstruction.indexOf(' 시스템이 팩을 output_1'),'channels-only rule precedes the section note');
+{const experiment={title:'질문 시간 메시지 비교',channel:'Instagram 릴스',hypothesis:'가설',variable:'첫 문장',control:'A',treatment:'B',fixed:'15초',metric:'click_rate'};
+ const variants=['A','B','C'].map((id,i)=>({id,angle:'각도 '+i,hook:'서로 다른 훅 '+i,body:'서로 다른 본문 '+i,cta:'신청하기'}));
+ const broken={version:'copy-pack-v2',channels:[{channel:'Instagram 릴스',purpose:'신청',destination:'블로그',variants},experiment]};
+ const {issues}=pack.parseCopyPack(broken),codes=issues.filter(i=>i.level==='error').map(i=>i.code);
+ assert.ok(codes.length>=2,'experiment object inside channels and missing shortform are errors: '+codes.join(','));}
 });
 check('the request plan carries the v2 contract only for content with the profile',()=>{
  const req=(role,extra={})=>({role,campaign:{version:1},previous:[],...extra});

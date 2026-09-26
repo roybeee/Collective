@@ -3,14 +3,14 @@
 > 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 운영(갱신): `98f2283`(Sites 버전 41, tree `d11b2e1`, [기록](releases/2026-09-27-98f2283.md)). #139·#143·#145·#148 게시 완료.
+- 운영(갱신): `a8edf10`(Sites 버전 42, tree `5705e55`, [기록](releases/2026-09-27-a8edf10.md)). A8 전체·#154·#155 게시 완료.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-26 17:51 UTC
-- 진행 중: A8-2 서버·API PR(브랜치 `feat/a8-2-report-server`, A8-1 PR #150 위. `lib/customer-report-server.ts`·`app/api/customer-reports/route.ts`, kind `customer_report`, 스위치 `a8_customer_report` 기본 꺼짐, 게시 없음, 토큰 0, [10절](CUSTOMER-REPORT.ko.md#10-a8-2-구현-서버api)). A8-1 순수 모듈은 #150으로 `merged`.
+갱신: 2026-09-26 19:28 UTC
+- 진행 중: B4-2c 닫힌 개선 루프 대장·학습 화면 보상 표 PR(`lib/improvement-loops.ts`, `POST /api/reward-lineage` `close` 대표만, kind `improvement_loop` 추가만, 학습 규칙 탭 '보상 계보' 절 — 직원 없음·close는 대표만, 스위치 `b4_reward_lineage` 기본 꺼짐, migration 0, 토큰 0, B4-2b 스냅샷 artifactId 계보 결함 수정, [REWARD-LINEAGE](REWARD-LINEAGE.ko.md) 11절: 종료 조건 '닫힌 개선 루프 5건' 셈법·2026-10-15 중단 규칙 판정 절차). B4-2b는 PR #157(이 브랜치의 기반). B4-2a는 #155로 `merged`. A8 전체·#154는 묶음 16(`a8edf10`)으로 게시 요청 중.
 - A6 종료 조건: **passed · real**(2026-09-27 00:56 KST). 이문동점 영업시간 자료 요청 `dr-f08c16186f08`이 사실 확정으로 closed. [관찰 기록](observations/2026-09-27-lane-a-a6-end-condition.md). 운영 스위치 `a6_data_requests` 켜짐.
-- A3 종료 조건 run: **failed · real**(run `a3634055`, 2026-09-27 02:00 KST, 32,566토큰). 국밥 Instagram은 12/0 pass(`contract_json`·`copy_pack_variants`·`brand_voice_avoid_term` pass, 출력 약 4k). 수학학원 릴스는 `contract_json` fail: 원문이 최상위 객체의 마지막 `}` 하나만 빠진 채 끝났다(내용은 완전: 2채널×3안, 장면 4, 실험 2). 첫 시도 run `2092b0bb`은 서버 Codex 로그인 삭제로 실패(0토큰, 레인 Q 세션이 복구). 수정: v2 팩 지시에 괄호 닫기 규칙(PR `fix/copy-pack-closing-brace`) → 묶음 게시 → 같은 케이스 재실행.
+- A3 종료 조건 run: 2회째도 **failed · real**(run `a81bb445`, 2026-09-27 03:30 KST, 32,049토큰, 운영 버전 41 = 괄호 닫기 규칙 포함). `contract_json`은 두 케이스 모두 pass로 고쳐졌다. 국밥 12/0 pass. 수학학원은 `copy_pack_variants` fail: 실험 객체를 channels 배열에 넣고 shortform·experiments를 빠뜨렸다(끝부분 구조 붕괴, 1회차의 마지막 `}` 누락과 같은 계열). 수정: 스키마를 shortform → experiments → channels 순서로, channels에는 채널 객체만(PR `fix/copy-pack-key-order`) → 다음 묶음 게시 → 재실행. 1회차 run `a3634055`, 서버 로그인 실패 run `2092b0bb`(0토큰).
 - 확인 필요(레인 R): `tests/check-prompts.test.mjs`가 macOS(대소문자 무시 파일 시스템)에서 `channel.leadad.json`·`channel.leadAd` 변형 충돌로 로컬 실패한다(Linux CI는 통과).
 - 제안(레인 Q): 계약 읽기는 최상위 `}` 하나 누락도 '잘린 JSON'으로 거절한다(#112 방침, `tests/role-output.test.mjs:26`). 출력 한도에 못 미친 응답(`incomplete` 아님)에 한해 최상위 `}` 하나를 채워 읽을지 검토 바란다(이번 실패 1건이 운영이면 invalid_output으로 약 1.6만 토큰 폐기).
 - A8: 대표 지시(2026-09-27 "B2 2단계 빼고 남은 개발을 모두 진행하라", 세션 29f7af 전달)로 A3 종료 조건을 기다리지 않고 착수했다. 설계 [CUSTOMER-REPORT](CUSTOMER-REPORT.ko.md).
@@ -77,16 +77,16 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-26 17:57 UTC (Claude A 세션: A8-2 서버·API PR)
+마지막 갱신: 2026-09-26 21:16 UTC (Claude A 세션: 묶음 16 `a8edf10` Sites 버전 42 게시·tree 확인)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `98f22833a32cd6e60bd000bdc752e1a6812ca349` (#148 `merged`, 묶음 15: 트랙 R #139·#143·#145, 레인 A #148) | 제품 tree `d11b2e1d0db931188eb6f5eb0fa12b29d58adbdc`. 직전 운영 `8651021`(tree `1ac4369`) |
+| 운영 제품 커밋 | `a8edf1043e3dc29129b6c9895911fd170dd93f83` (#155 `merged`, 묶음 16: A8 #150·#152·#153, #154, #155) | 제품 tree `5705e55c1b16c62cedfa02b49772c66216398db0`. 직전 운영 `98f2283`(tree `d11b2e1`) |
 | `origin/main` | `cf2c474` (#139 R15a-1 모집 자료 키트 순수 판정 모듈) | 운영 `8651021` 뒤 #139만 들어왔다(제품 경로 `lib/franchise-assets.ts`, 아직 연결 없음) |
-| Sites 게시 | `published`: Sites 버전 41, deployment `appgdep_6ab8028d0af88191b6d40f94337b2948` succeeded(자동 게시 PR #149) | [게시 기록](releases/2026-09-27-98f2283.md) |
-| 실행 검증 | `98f2283`: 운영 tree 일치(real). 공개 `/api/version/public`·소유자 `/api/version` 모두 `d11b2e1…` | [게시 기록](releases/2026-09-27-98f2283.md) |
+| Sites 게시 | `published`: Sites 버전 42, deployment `appgdep_6ab8195162c081918e18f189c57abf2e` succeeded(자동 게시 PR #156) | [게시 기록](releases/2026-09-27-a8edf10.md) |
+| 실행 검증 | `a8edf10`: 운영 tree 일치(real). 공개 `/api/version/public`·소유자 `/api/version` 모두 `5705e55…` | [게시 기록](releases/2026-09-27-a8edf10.md) |
 | 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` mode=email, role=owner (2026-09-25 03:30 UTC 경) |
 | Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 이번 게시도 기존 접근 설정 유지 | 게시 에이전트 보고 "기존 공개 접근 설정을 유지". 게시 뒤 접근 설정 재확인은 not_run |
 | 조사 워커 | online(lastSeen 2026-09-25 03:29 UTC, blocked 0, rotationReady true). 2026-09-24 14:15 UTC 새 설치기로 재설치(격리 점검 전부 통과) | `/api/research-worker/setup` 조회(real). gate 표시 `missing`이라 `RESEARCH_WORKER_APP_GATE=enforce`는 켜지 않는다 |
