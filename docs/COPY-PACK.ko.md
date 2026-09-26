@@ -14,7 +14,8 @@
 |---|---|---|---|
 | A3-1 | 카피 팩 v2 출력 계약·소프트 검증·작업물 저장, 채점기 `copy_pack_variants` | `a3_copy_pack` | 이 문서. 게시 보류 중이라 운영 반영은 다음 묶음이다 |
 | A3-2 | `brand_voice` 원장: records kind `brand_voice`, 관리자 확정, content·creative 입력 주입, 채점기 `brand_voice_avoid_term` | `a3_brand_voice` | 확정 권한은 대표·관리자, 직원은 403. 아래 'A3-2 브랜드 말투' 절 |
-| A3-3 | 작업물→실험 경로(`create_experiment_from_artifact`), 카피 팩을 게시 캡션 소스로 | — | 팩의 `experiments`·안 id를 실험 대조·실험안으로 옮긴다 |
+| A3-3a | 작업물→실험 경로(`create_experiment_from_artifact`) | — (팩이 `a3_copy_pack`에서만 생긴다) | 팩의 `experiments`와 안의 실제 문안을 실험 대조·실험안으로 옮긴다. 아래 'A3-3 작업물 제안 실험' 절 |
+| A3-3b | 카피 팩을 게시 캡션 소스로 | — | 트랙 R R3 뒤로 미룸(`lib/execution-server.ts`는 트랙 R 소유) |
 | A3-4 | 회의 개선본의 카피 팩, 골든 v2 케이스, 종료 조건 run | — | 게시 뒤 평가 run으로 종료 조건을 잰다 |
 
 ## 적용한 대표 결정 (위임 권고안)
@@ -153,3 +154,51 @@
 - 기존 `brand.tone`(브랜드 정체성 한 줄 어조)은 그대로 입력에 남는다. 두 값이 다르면 모델이 둘 다 본다. 정리 여부는 사용 뒤 정한다.
 - 확정본이 바뀌면 작업 id(inputHash)가 달라진다. 이미 만든 작업물을 자동으로 outdated로 바꾸지는 않으므로, 새 말투로 다시 쓰려면 기존 절차(수정 요청·브리프 변경)를 거친다.
 
+## A3-3 작업물 제안 실험
+
+결론: A3-3을 둘로 나눴다. 이 PR(A3-3a)은 승인된 콘텐츠 작업물의 카피 팩 제안 실험(`copyPack.experiments[index]`)을 draft 바이럴 실험으로 옮기는 경로 `create_experiment_from_artifact`만 더한다. 카피 팩을 게시 캡션 소스로 바꾸는 일(A3-3b)은 `lib/execution-server.ts`를 트랙 R가 갖고 있어 R3 뒤로 미뤘다. 기존 사례 기반 실험(`create_experiment`)의 경로·검사·저장 형식은 바이트 동일하다.
+
+비유: 지금까지 실험 노트는 남의 가게 사례를 분석한 페이지에서만 뜯어 쓸 수 있었다. 이제 우리 문안 주문서(카피 팩)의 '제안 실험' 칸에서도 뜯어 쓸 수 있다. 다만 사장이 서명한(승인) 이번 판 주문서여야 하고, 주문서 칸이 틀렸거나(오류) 편지를 고쳐 쓴 뒤라 주문서가 옛 판이면 뜯어 쓸 수 없다.
+
+- 코드: `lib/artifact-experiment.ts`(순수: 판정·문안·화면 목록, 서버와 화면이 같이 씀), `lib/learning-server.ts`(`create_experiment_from_artifact`, 계획 검사 `experimentPlan` 공용), `lib/learning.ts`(`ExperimentSource`, `ViralExperiment.source?`), `lib/record-kinds.ts`(동결 요약 `source.kind`), `app/learning-panel.tsx`(콘텐츠 실험 탭 '작업물 제안 실험' 목록·만들기, 실험 카드 출처 줄)
+- 라우트: `POST /api/learning`(기존 `app/api/learning/route.ts`가 `learningAction`으로 넘긴다. 라우트 파일 변경 없음)
+- 테스트: `tests/artifact-experiment.test.mjs`(메모리 SQLite·헤더 세션·합성 데이터, 모델·외부 호출 0회, `passed · mocked`)
+
+### 요청과 저장
+
+```json
+{"action":"create_experiment_from_artifact","campaignId":"c-…","artifactId":"ai-…","artifactVersion":1,"index":0,
+ "data":{"minSample":200,"minHours":72,"minLift":10,"verifyChannel":"Instagram","title":"(선택)","conditions":"(선택)"}}
+```
+
+- `data`의 `minSample`·`minHours`·`minLift`는 `create_experiment`와 같은 이름·검사다(최소 표본 100 이상 정수, 관찰 1~2160시간, 개선율 0 초과~1000%, 어기면 400).
+- 사례 기반과 다른 점: `hypothesis`·`variable`·`control`·`treatment`·`metric`은 받지 않고 팩에서 가져온다. `title`을 비우면 팩 실험 제목, `conditions`를 비우면 팩의 `fixed`(`고정: …`, 없으면 표준 문장)다. `verifyChannel`을 비우면 팩 채널 이름을 학습 채널 별칭으로 읽은 값(읽지 못하면 Instagram)이며, 사례 채널 예외가 없어 학습 채널만 고를 수 있다.
+- 저장: `viral_experiment` id `artifact:<작업물 id>:<판>:<제안 번호>`(멱등 키), `caseId:''`, `analysisId:''`, `caseChannel` 없음, `source:{kind:'artifact',artifactId,artifactVersion,index}`, `status:'draft'`. `control`·`treatment`는 안 id가 아니라 그 채널 안의 실제 문안이다(`안 A · 각도` / `훅:` / `본문:` / `CTA:` / 있으면 `확인 필요:` 줄). 지표는 팩 지표(바이럴 3지표)다. 캠페인 이벤트 1건을 남긴다.
+
+### 판정 (`artifactExperimentProblem`)
+
+| 조건 | 어기면 |
+|---|---|
+| `campaignId`가 작업물의 캠페인 | 400 |
+| `index`가 0 이상 정수 | 400 |
+| 작업물이 있음 | 404 |
+| `artifactVersion` = 저장된 작업물 판 | 409 |
+| 콘텐츠 역할, 승인(`approved`), 현재 브리프 판(`artifactUsable`) | 409 |
+| `copyPack`이 있고 `copyPackArtifactVersion` = 작업물 판(사람 수정·회의 개선으로 낡지 않음) | 409 |
+| `copyPackIssues`에 error 없음(warn은 통과) | 409 |
+| `experiments[index]`가 있고 지표가 바이럴 3지표, 대조·실험안이 팩 채널의 안 | 409 |
+
+- 같은 작업물·판·제안 번호 재요청은 판정을 다시 통과하면 새로 만들지 않고 `{id, duplicate:true}`로 기존 실험을 돌려준다.
+- 권한: `create_experiment`와 같다(직원도 초안을 만든다). 별도 기능 스위치는 없다. 팩은 `a3_copy_pack`이 켜졌을 때만 생기므로 스위치가 꺼진 소유자는 팩이 없어 409다.
+
+### 사례 없는 실험이 지나는 기존 경로
+
+- 시작·결과 판정·사후확률 요약·규칙 채택(`adopt_rule`)은 그대로다. 채택 규칙은 `caseId:''`, `caseChannel`은 검증 채널, 30일 시험 규칙이다. 재검증(`retest_rule`)은 원 실험을 복제하므로 `source`가 따라간다.
+- 캠페인 삭제(결정 7): 규칙은 retired로 보존되고 원천 실험 동결 요약에는 `source:{kind:'artifact'}`만 남는다. 작업물 id·판·카피 문안(대조·실험안)은 싣지 않는다. 동결 요약의 `experimentId`는 실험 id라 작업물 id(해시·UUID 꼴)를 담는다.
+- 화면: 콘텐츠 실험 탭 위에 '작업물 제안 실험' 목록을 둔다(워크스페이스 작업물 중 선택 브랜드 캠페인의 카피 팩 있는 콘텐츠 작업물). 만들 수 없는 제안은 서버와 같은 사유 문구를, 이미 만든 제안은 '실험 있음'을 보인다. 실험 카드에는 `작업물 제안 실험 · 작업물 v1 · 제안 1` 줄이 붙는다.
+
+### 남은 위험
+
+- 동결 요약 표시(`lib/learning-view.ts` `frozenSummaryLines`)는 출처 종류를 아직 보이지 않는다(그 파일은 이 PR 범위 밖).
+- 사람이 작업물을 고치면 팩 필드가 사라져(`save_artifact`가 새 객체를 쓴다) 그 판에서는 실험을 만들 수 없다. 이미 만든 실험은 옛 판 문안을 그대로 가진다.
+- 화면 목록은 워크스페이스 응답의 작업물(`copyPack` 포함)을 쓴다. 작업물 승인 직후 워크스페이스를 새로 불러오기 전에는 목록이 옛 상태일 수 있고, 서버 판정이 최종이다.

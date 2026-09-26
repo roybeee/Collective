@@ -14,8 +14,10 @@ export type ViralAnalysis={id:string;caseId:string;brandId:string;facts:string;h
 export type Arm={denominator:number|null;numerator:number|null;source:string};
 export type ExperimentResult={control:Arm;treatment:Arm;comparable:boolean;notes:string;observedUntil:string;recordedAt:string};
 export type Assessment={status:'insufficient'|'promising'|'not_supported'|'inconclusive';label:string;controlRate:number|null;treatmentRate:number|null;lift:number|null;reasons:string[]};
-// channel은 검증할 채널, caseChannel은 원 사례 채널이다. caseChannel이 없는 이전 실험은 channel이 사례 채널이다.
-export type ViralExperiment={id:string;brandId:string;campaignId:string;caseId:string;analysisId:string;title:string;channel:string;caseChannel?:string;hypothesis:string;variable:string;control:string;treatment:string;metric:LearningMetric;minSample:number;minHours:number;minLift:number;conditions:string;version:number;status:'draft'|'running'|'evaluated';startedAt:string|null;createdAt:string;updatedAt:string;result:ExperimentResult|null;assessment:Assessment|null;stats?:ViralStats|null;completedLooks?:number};
+// 사례가 아닌 출처(A3-3a): 승인된 콘텐츠 작업물의 카피 팩 제안 실험(copyPack.experiments[index]). 이 실험은 caseId·analysisId가 빈 문자열이고 caseChannel이 없다.
+export type ExperimentSource={kind:'artifact';artifactId:string;artifactVersion:number;index:number};
+// channel은 검증할 채널, caseChannel은 원 사례 채널이다. caseChannel이 없는 이전 실험은 channel이 사례 채널이다. source가 없는 실험은 사례 기반이다.
+export type ViralExperiment={id:string;brandId:string;campaignId:string;caseId:string;analysisId:string;source?:ExperimentSource;title:string;channel:string;caseChannel?:string;hypothesis:string;variable:string;control:string;treatment:string;metric:LearningMetric;minSample:number;minHours:number;minLift:number;conditions:string;version:number;status:'draft'|'running'|'evaluated';startedAt:string|null;createdAt:string;updatedAt:string;result:ExperimentResult|null;assessment:Assessment|null;stats?:ViralStats|null;completedLooks?:number};
 // 점포 실험 회고에서 승격된 규칙의 근거. 바이럴 실험의 sourceAssessment와 지표 체계가 달라 분리한다.
 // 모르는 값은 null로 남긴다. 관찰 기록이며 인과 효과가 아니다.
 export type StoreAssessment={decision:'adopt'|'stop';primaryMetric:string;primaryMetricLabel:string;target:number|null;observed:number|null;periodStart:string;periodEnd:string;measurementSource:string;evidenceLevel:'observation'|'comparison'|'repeated';failureType:string;confounders:string;nextAction:string};
