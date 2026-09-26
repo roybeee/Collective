@@ -437,17 +437,21 @@ check('R9: with the asset the waiting warning follows the deposit net on the wai
 check('R10: a free asset type never gets the recommended-line warnings, even when it quotes nothing',same(VAL('동네 도넛 브랜드',[],'portal_intro').warnings,[])&&same((await EXP(FORGE('동네 도넛 브랜드'))).warnings,[])&&same((await EXP(FORGE('매장에서 뵙겠습니다',[],'first_call_script'))).warnings,[]));
 check('R10: a bare body is still refused for a member (403), switch off (409) and branch B (409)',is(await APP(dPageBare,APPROVE_IN(dPageBare),{...CTX,actor:MEMBER}),'role_forbidden')&&is(await EXP(APageBare,{...XCTX,enabled:false}),'switch_off')&&is(await EXP(APageBare,{...XCTX,branch:'B'}),'branch_not_a')&&is(await APP(dPageBare,APPROVE_IN(dPageBare),{...ACTX,branch:'C'}),'branch_not_a'));
 // 교차 검토 반영(F1·TA-3·TA-4·TA-5).
-// R11 알려진 틈(F1, 대표 결정 대기): 판정기는 우회 표현 목록만 막는다. 법정 대기기간을 짧게 잘못 적은 문장은 권장 문장 경고만 남기고 승인·내보내기된다.
-// 판정 규칙(레지스트리) 또는 절 안 기간 검사를 더하기로 결정하면 이 기대값을 409로 바꾼다. 권장 문장을 그대로 두고 옆에 적으면 경고도 없다(바꾸기 전에도 있던 틈).
+// R11 대기기간 오기재(교차 검토 F1, 대표 결정 3번 보완 2026-09-26): 판정기의 해제 불가 규칙(h.wait_bypass_solicitation, 본사 연계 자문은 h.captive_advisor_phrase)이
+// 법정 대기기간(14일, 자문 시 7일)을 짧게 잘못 적은 문장을 막는다. 권장 문장 대신 적어도, 권장 문장을 그대로 두고 옆에 적어도 저장은 초안으로 되고(판정 미리보기) 승인·내보내기는 409 hard_block이다.
 const APPROVE_EXPORT=async(body,type,id)=>{const d=await DRAFT(body,['f-total'],type,CTX,id),a=await APP(d);return {v:VAL(body,['f-total'],type),a,x:a.ok?await EXP({...plain(d),status:'approved',approval:plain(a.value.approval)}):a}};
 const allPass=(r,w)=>OK(r.v)&&OK(r.a)&&OK(r.x)&&same(r.v.warnings,w)&&same(r.a.warnings,w)&&same(r.x.warnings,w);
+const hardOn=(r,rule)=>is(r,'hard_block')&&r.status===409&&r.judgement.issues.some(x=>x.ruleId===rule&&x.tier==='hard_block')&&r.message.includes('승인으로 풀 수 없음');
+const BLOCKED_AT=async(body,id,rule)=>{const v=VAL(body,['f-total'],'startup_page'),a=await APP(await DRAFT(body,['f-total'],'startup_page',CTX,id)),x=await EXP(FORGE(body,['f-total'],'startup_page'));
+ return OK(v)&&v.value.judgement.issues.some(i=>i.ruleId===rule&&i.tier==='hard_block')&&hardOn(a,rule)&&hardOn(x,rule)};
 const MISSTATED=['정보공개서를 받은 날부터 3일이 지나면 가맹계약을 체결할 수 있습니다.','정보공개서를 받은 날부터 7일이 지나면 가맹계약을 체결하거나 가맹금을 받을 수 있습니다.','정보공개서를 받은 다음 날 계약하실 수 있습니다.',
  '정보공개서와 계약서안을 같은 날 드리고 그날 계약합니다.','14일 대기기간은 선택 사항입니다.','가맹금은 정보공개서를 드린 날 받습니다.','정보공개서 제공 뒤 바로 계약금을 받습니다.'];
 const gapReplaced=[],gapBeside=[];
-for(const [k,l] of MISSTATED.entries()){gapReplaced.push(allPass(await APPROVE_EXPORT(PAGE(lines('process',()=>[l])),'startup_page','a-gap-r'+k),[W_WAIT]));gapBeside.push(allPass(await APPROVE_EXPORT(PAGE(lines('process',ls=>[...ls,l])),'startup_page','a-gap-b'+k),[]))}
-check('R11 (known gap F1): a misstated waiting period that replaces the notes approves and exports with only the waiting warning',gapReplaced.length===7&&gapReplaced.every(Boolean));
-check('R11 (known gap F1): the same line next to the kept notes approves and exports with no warning at all',gapBeside.length===7&&gapBeside.every(Boolean));
-check('R11 (known gap F1): a captive-advisor shortening line in the support section passes with only the waiting warning',allPass(await APPROVE_EXPORT(PAGE(bs=>lines('support',l=>[...l,'본사가 지정한 가맹거래사 자문을 받으시면 7일로 줄어 계약이 빨라집니다.'])(NO_WAIT(bs))),'startup_page','a-gap-captive'),[W_WAIT]));
+for(const [k,l] of MISSTATED.entries()){gapReplaced.push(await BLOCKED_AT(PAGE(lines('process',()=>[l])),'a-gap-r'+k,'h.wait_bypass_solicitation'));gapBeside.push(await BLOCKED_AT(PAGE(lines('process',ls=>[...ls,l])),'a-gap-b'+k,'h.wait_bypass_solicitation'))}
+check('R11 (F1 closed): a misstated waiting period that replaces the notes saves as a draft but is 409 hard_block (wait-bypass rule) at approval and export',gapReplaced.length===7&&gapReplaced.every(Boolean));
+check('R11 (F1 closed): the same line next to the kept notes is 409 hard_block at approval and export too',gapBeside.length===7&&gapBeside.every(Boolean));
+check('R11 (F1 closed): a captive-advisor shortening line in the support section is 409 hard_block (captive-advisor rule) at approval and export',await BLOCKED_AT(PAGE(bs=>lines('support',l=>[...l,'본사가 지정한 가맹거래사 자문을 받으시면 7일로 줄어 계약이 빨라집니다.'])(NO_WAIT(bs))),'a-gap-captive','h.captive_advisor_phrase'));
+check('R11: a correct 14-day line in place of the notes still approves and exports with only the waiting warning',allPass(await APPROVE_EXPORT(PAGE(lines('process',()=>['정보공개서를 받으신 뒤 14일이 지나야 계약할 수 있습니다.'])),'startup_page','a-gap-ok'),[W_WAIT]));
 const BYPASSES=['가계약금 먼저 입금하시면 자리 확정해 드립니다','홀딩비 100만원을 내시면 상권을 잡아 둡니다','대기 없이 바로 계약 가능합니다','대기기간 14일을 기다리지 않아도 됩니다','자문을 받으시면 대기기간 없이 계약할 수 있습니다','상담 당일 계약 가능합니다','예약금을 먼저 넣으시면 입금 순서대로 자리를 확정합니다'];
 const bypassBlocked=[];
 for(const [k,l] of BYPASSES.entries()){const r=await APP(await DRAFT(PAGE(lines('process',()=>[l])),['f-total'],'startup_page',CTX,'a-bypass-'+k));bypassBlocked.push(is(r,'hard_block')&&r.status===409&&r.judgement.issues.some(x=>x.tier==='hard_block'))}

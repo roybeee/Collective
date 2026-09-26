@@ -162,7 +162,8 @@ function deniedQuestions(sentences:Sentence[]):Set<string>{
  });
  return out;
 }
-type Matcher={match:string;also?:string;consumerAlso?:string;except?:string;cleared?:string};
+// more: match와 같은 조건으로 보되 따로 컴파일하는 정규식(lib/franchise-rules.ts ClaimMatcher.more, 20KB 넘는 정규식은 V8 최적화가 꺼진다).
+type Matcher={match:string;more?:readonly string[];also?:string;consumerAlso?:string;except?:string;cleared?:string};
 type Hit={x:Sentence;start:number;end:number};
 // ── 부정 ──
 // 부정은 매치된 서술 자신을 부정할 때만 인정한다(COLLECTIVE 휴리스틱). 세 모양이다.
@@ -227,17 +228,23 @@ type HitOpts={all:boolean;figure:boolean;clauseExcept:boolean;scope:ClaimScope;d
 const PART_TAIL=/^\s?(?:[은는이가:：]|은요|는요)?\s?$/;
 const tailLabel=(parts:readonly string[],hit:string)=>!/\d/.test(hit)&&parts.slice(0,-1).some(p=>{const k=p.lastIndexOf(hit);return k>=0&&PART_TAIL.test(p.slice(k+hit.length))});
 function hitSentences(m:Matcher,sentences:Sentence[],o:HitOpts):Hit[]{
- const match=new RegExp(m.match,'g'),also=m.also?new RegExp(m.also):null,ctx=m.consumerAlso&&o.scope==='consumer'?new RegExp(m.consumerAlso):null,except=m.except?new RegExp(m.except):null,out:Hit[]=[];
- for(const x of sentences){
-  if(also&&!also.test(x.s)||ctx&&!ctx.test(x.s)||except&&!o.clauseExcept&&except.test(x.s))continue;
-  if(!o.figure&&!x.parts&&o.denied?.has(sentenceKey(x)))continue;
-  for(const hit of x.s.matchAll(match)){
+ const matches=[m.match,...(m.more??[])].map(p=>new RegExp(p,'g')),also=m.also?new RegExp(m.also):null,ctx=m.consumerAlso&&o.scope==='consumer'?new RegExp(m.consumerAlso):null,except=m.except?new RegExp(m.except):null,out:Hit[]=[];
+ // 문장마다 첫 적중 하나(정규식 순서대로, 한 정규식 안에서는 앞에서부터).
+ const firstHit=(x:Sentence):Hit|null=>{
+  for(const match of matches)for(const hit of x.s.matchAll(match)){
    const start=hit.index!,end=start+hit[0].length;
    if(x.parts&&x.parts.some(p=>p.includes(hit[0]))&&!(o.all&&tailLabel(x.parts,hit[0])))continue;
    if(!o.figure&&negatedAfter(x.s,end))continue;
    if(except&&o.clauseExcept&&except.test(clauseOf(x.s,start,end)))continue;
-   out.push({x,start,end});break;
+   return {x,start,end};
   }
+  return null;
+ };
+ for(const x of sentences){
+  if(also&&!also.test(x.s)||ctx&&!ctx.test(x.s)||except&&!o.clauseExcept&&except.test(x.s))continue;
+  if(!o.figure&&!x.parts&&o.denied?.has(sentenceKey(x)))continue;
+  const hit=firstHit(x);
+  if(hit)out.push(hit);
   if(out.length&&!o.all)break;
  }
  return out;
