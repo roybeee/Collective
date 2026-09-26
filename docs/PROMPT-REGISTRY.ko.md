@@ -16,7 +16,7 @@
 | 단위 | 본문 | 코드가 계속 소유하는 것 |
 |---|---|---|
 | `role.<cmo·insight·strategy·creative·content·growth·data·quality>` | `{focus,methods,outputs,review,handoff}` | 머리말 `실무 스킬 <PRACTICE_VERSION>`, `필수 산출물:`·`완료 전 점검:`·`인계:` 제목, 분량 지시, 회의 발언 지시, `maxTokens`, 출력 계약 섹션(`lib/role-output.ts`, 제목·수) |
-| `channel.<shortform·youtube·community·search·commerce·offline·default>` | 문자열 | 적용 조건(정규식), `campaignEvidencePolicy`, 가맹 모집 목적(objective) 캠페인에서 offline·search·commerce를 끄는 규칙과 그 캠페인의 근거 정책(`franchiseEvidencePolicy`, 트랙 R R3. 머리말 '가맹 모집 규칙:'을 레지스트리 본문이 흉내 내지 못하게 하는 코드 소유 문구 검사는 R3b에서 더한다) |
+| `channel.<shortform·youtube·community·search·commerce·offline·franchise·portal·keyword·expo·leadad·referral·default>` | 문자열 | 적용 조건(정규식), `campaignEvidencePolicy`, 가맹 모집 목적(objective) 캠페인에서 offline·search·commerce를 끄는 규칙과 그 캠페인의 근거 정책(`franchiseEvidencePolicy`, 트랙 R R3), 가맹 모집 단위 6개(franchise·portal·keyword·expo·leadad·referral)를 objective 캠페인에서만 켜는 규칙(R3b), 역할·회의 지시문에서 objective 캠페인의 30일 재방문율 정의를 가맹 모집 규칙으로 바꾸는 것(R3b). 머리말 '가맹 모집 규칙'은 코드 소유 문구라 레지스트리 본문이 흉내 내면(띄어쓰기·구두점·결합 부호를 끼워도) `code_owned`로 거부한다(R3b) |
 | `viral.discovery` | 문자열(`viralPractice`) | 연구원 역할 문장, 조사 도구·oEmbed 경로, 출력 스키마 |
 
 - 근거 규율(`evidenceDiscipline`)·사실 정책(`factPolicy`)·출력 계약·외부 행동 금지·JSON 계약 지시는 덮어쓸 수 없다. 그 문구(정책 문장 머리, `근거 규칙`·`필수 산출물`·`완료 전 점검`·`인계:`·`실무 스킬` 제목, 입력·계약 필드명(`evidence.facts`·`candidate`·`sections` 등), `JSON`·`제이슨`, 코드펜스, `외부 행동`·광고 집행·메시지 발송·직접 게시·결제 같은 외부 행동 지시, `근거가 없어도`·`확정 사실처럼` 같은 사실 정책 뒤집기)를 담은 본문은 거부한다. 띄어쓰기·전각·구두점 변형도 같은 표지로 본다.
@@ -36,7 +36,7 @@
 
 ## CI 검사 (`node scripts/check-prompts.mjs [디렉터리]`)
 
-통과하지 않으면 비영 종료하고 `FAIL <파일>: [사유] 메시지`를 쓴다. 사유: `schema`(형식·파일 이름·unit 불일치), `hidden`(줄바꿈·제어 문자, 너비 없는 공백·양방향 제어·Unicode Tags 같은 형식 문자, 이체 선택자, 사용자 정의 영역·미할당 문자, NFC가 아닌 본문), `missing`(단위 파일 없음), `length`(단위당 6,000자 초과), `code_owned`, `injection`(이전·앞서·지금까지의 지시 무시, 상위 규칙보다 우선, system prompt, 역할 전환 요구 등), `url`(URL·hxxp·www·모든 TLD의 도메인과 `[.]`·`dot` 표기·IPv4·`//호스트`·`data:`·`@계정`), `brand`(코드 시드 브랜드명과 그 앞부분·약칭·`<한글 표기> / <브랜드명>` 병기·코드에 이미 공개된 한글 표기 `codeBrandAliases`), `price`(`원`·`₩`·통화 코드), `product_import`. 등록 API도 같은 규칙(`lib/prompt-units.ts`)을 쓰며, 브랜드 식별어에 소유자 D1의 브랜드·지점 이름과 약칭(영문 3자·한글 2자 이상)을 더한다.
+통과하지 않으면 비영 종료하고 `FAIL <파일>: [사유] 메시지`를 쓴다. 사유: `schema`(형식·파일 이름·unit 불일치, 단위 id 형식: 영문 소문자 `<종류>.<이름>`, 하이픈·숫자·대문자 불가. 코드 단위 id도 같은 검사, R3b), `hidden`(줄바꿈·제어 문자, 너비 없는 공백·양방향 제어·Unicode Tags 같은 형식 문자, 이체 선택자, 사용자 정의 영역·미할당 문자, 그 밖의 기본 무시 가능 코드 포인트와 점자 빈칸 U+2800(R3b), NFC가 아닌 본문), `missing`(단위 파일 없음), `length`(단위당 6,000자 초과), `code_owned`(코드 소유 섹션 머리·필드명·JSON 계약 흉내, '가맹 모집 규칙' 포함), `injection`(이전·앞서·지금까지의 지시 무시, 상위 규칙보다 우선, system prompt, 역할 전환 요구 등), `url`(URL·hxxp·www·모든 TLD의 도메인과 `[.]`·`dot` 표기·IPv4·`//호스트`·`data:`·`@계정`), `brand`(코드 시드 브랜드명과 그 앞부분·약칭·`<한글 표기> / <브랜드명>` 병기·코드에 이미 공개된 한글 표기 `codeBrandAliases`), `price`(`원`·`₩`·통화 코드), `product_import`. 등록 API도 같은 규칙(`lib/prompt-units.ts`)을 쓰며, 브랜드 식별어에 소유자 D1의 브랜드·지점 이름과 약칭(영문 3자·한글 2자 이상)을 더한다.
 
 - 대조는 NFKC 정규화·소문자화한 본문과, 거기서 공백을 뺀 사본, 글자·숫자만 남긴 사본으로 한다. 브랜드 식별어는 글자 사이에 공백·하이픈·구두점이 끼어도 같은 이름으로 본다(영문 4자 이하는 영문 경계, 한글 2자는 앞 한글 경계를 둬 `today`·`로드맵 달성` 같은 우연 일치를 피한다).
 - `codeBrandAliases`에는 앱 소스(`lib`·`app`)에 이미 공개된 표기만 둔다. `tests/check-prompts.test.mjs`가 목록의 모든 표기가 앱 소스에 있는지 확인한다.

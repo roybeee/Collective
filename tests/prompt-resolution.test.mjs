@@ -10,7 +10,7 @@ import {sha,seed,mockHermes,runRole,runMeeting,roleCampaign,meetingCampaign,bran
 const raw=rawGithub(),hermes=mockHermes(raw.handler);
 const {sql,load}=testRuntime(hermes.fetch);
 const server=await load('lib/server.ts'),route=await load('app/api/prompts/route.ts'),execution=await load('lib/role-execution.ts'),meeting=await load('lib/meeting-execution.ts'),learning=await load('lib/learning-execution.ts');
-const practice=await load('lib/practice.ts'),roleOutput=await load('lib/role-output.ts'),archiveServer=await load('lib/archive-server.ts'),aiContext=await load('lib/ai-context.ts'),learningServer=await load('lib/learning-server.ts'),units=await load('lib/prompt-units.ts');
+const practice=await load('lib/practice.ts'),roleOutput=await load('lib/role-output.ts'),archiveServer=await load('lib/archive-server.ts'),aiContext=await load('lib/ai-context.ts'),learningServer=await load('lib/learning-server.ts'),units=await load('lib/prompt-units.ts'),policy=await load('lib/campaign-policy.ts');
 const owner='pr-res-owner',passed=[];
 const check=(name,fn)=>{fn();passed.push(name)};
 const put=await seed(server,sql,owner);
@@ -45,7 +45,7 @@ raw.publishRepo(SOURCE_SHA);raw.publishRepo('main');
 for(const ref of [SOURCE_SHA,'main'])raw.publish(ref,'channel.offline',units.codeUnitBody('channel.offline'));
 const ids={};
 for(const u of units.promptUnits){const r=await post({action:'register',unit:u.unit,sourceSha:SOURCE_SHA});ids[u.unit]=r.body.version?.id;await setRelease(server,owner,u.unit,ids[u.unit])}
-check('all 16 units registered',()=>assert.equal(Object.values(ids).filter(Boolean).length,16));
+check('all 22 units registered',()=>assert.equal(Object.values(ids).filter(Boolean).length,22));
 await put('artifact',codeArtifact.id,{...codeArtifact,status:'outdated'},roleCampaign.id);
 const expected=['role.cmo','channel.shortform','channel.search','channel.offline'].map(u=>ids[u]).join('+');
 const regHash=await oracleHash(roleCampaign,{promptVersion:expected});
@@ -58,6 +58,17 @@ check('registry promptVersion is unit@sha256[0..12] of the role and applied chan
 check('artifact, learning_snapshot and provider_usage share the registry promptVersion (F2a join key)',()=>assert.ok(regSnapshot.promptVersion===expected&&regSnapshot.promptSource==='registry'&&regUsage.promptVersion===expected));
 const pin=await pinOf(roleCampaign),campaignUnits=units.promptUnits.filter(u=>u.kind!=='viral').map(u=>u.unit);
 check('the campaign pin fixes every campaign unit (not the brand-level viral unit)',()=>assert.ok(pin.campaignVersion===1&&JSON.stringify(Object.keys(pin.units).sort())===JSON.stringify([...campaignUnits].sort())&&pin.promptVersion===campaignUnits.map(u=>ids[u]).join('+')));
+
+// 2b) 가맹 모집 objective 캠페인(R3b): 같은 레지스트리에서 역할 단위와 objective로 켜진 채널 단위(shortform·franchise·keyword·leadad)만 promptVersion에 들어간다.
+// 소비자 채널 단위(search·offline)는 빠지고, 입력 channelPractice는 코드 조립과 같으며, 지시문은 소비자 30일 정의 자리에 가맹 모집 규칙이 들어간다.
+const objectiveCampaign={...roleCampaign,id:'pr-role-objective',objective:'franchise_recruitment'};
+const objectiveRun=await runRole(execution,server,owner,objectiveCampaign,'cmo');
+const objectiveExpected=['role.cmo','channel.shortform','channel.franchise','channel.keyword','channel.leadad'].map(u=>ids[u]).join('+');
+const objectiveArtifact=await artifactOf(objectiveCampaign,'cmo');
+check('objective role run completes and records role.cmo, shortform, franchise, keyword and leadad versions',()=>assert.ok(objectiveRun.status==='completed'&&objectiveExpected.split('+').every(x=>/@[0-9a-f]{12}$/.test(x))&&objectiveArtifact.promptVersion===objectiveExpected,JSON.stringify({status:objectiveRun.status,pv:objectiveArtifact?.promptVersion})));
+check('objective role input channelPractice equals the code assembly for the campaign',()=>assert.equal(JSON.parse(objectiveRun.input).channelPractice,practice.campaignPractice(objectiveCampaign)));
+check('objective role instructions replace only the 30-day definition with the franchise policy',()=>assert.equal(objectiveRun.instructions,code.instructions.replace(policy.measurementDiscipline,()=>policy.franchiseEvidencePolicy)));
+check('the consumer expectation is unchanged by the objective run',()=>assert.equal(expected,['role.cmo','channel.shortform','channel.search','channel.offline'].map(u=>ids[u]).join('+')));
 
 // 3) 회의: 같은 공용 해석기. 코드 기본값과 같은 본문이면 단계별 지시·입력이 기준 커밋과 바이트 동일하다.
 const met=await runMeeting(meeting,server,owner,meetingCampaign,'pr-meeting');

@@ -1,5 +1,6 @@
 // prompts/ 정본 검사(F3a, 대표 결정 2·3). CI verify 잡이 실행하고, 하나라도 통과하지 않으면 비영으로 끝난다.
-// 검사: 파일 이름=단위, 스키마(schema 1·unit·body), 단위 목록과 1:1, 단위당 6,000자 상한, 코드 소유 영역 문구, 명령형 주입 패턴, 본문 URL,
+// 검사: 단위 id 형식(영문 소문자 <종류>.<이름>, 파일 이름과 코드 단위 모두), 파일 이름=단위, 스키마(schema 1·unit·body), 단위 목록과 1:1, 단위당 6,000자 상한,
+// 코드 소유 영역 문구(가맹 모집 규칙 머리말 포함), 명령형 주입 패턴, 본문 URL,
 // 브랜드·지점명(lib/agency.ts 시드 브랜드명 등 코드에서 가져온 목록), 가격 표기. 규칙은 등록 API와 같은 lib/prompt-units.ts 하나다.
 // prompts/는 비제품 경로다. 앱 소스(app·lib·server·components·hooks)가 prompts/를 import하면 실패로 본다.
 // 사용: node scripts/check-prompts.mjs [검사할 디렉터리, 기본 prompts]. 저장소 루트 기준으로 동작한다.
@@ -20,6 +21,7 @@ const fail=(file,reason,message)=>failures.push(`FAIL ${file}: [${reason}] ${mes
 
 function checkFile(name){
  const path=join(dir,name),unit=name.replace(/\.json$/,'');
+ if(!units.UNIT_ID.test(unit))return fail(name,'schema','단위 id 형식이 아닙니다. 파일 이름은 영문 소문자 <종류>.<이름>.json만 씁니다(하이픈·밑줄·숫자·대문자 불가).');
  if(!units.unitOf(unit))return fail(name,'schema','알 수 없는 단위 파일입니다. 파일 이름은 <단위>.json이어야 합니다.');
  if(statSync(path).size>units.PROMPT_FILE_MAX_BYTES)return fail(name,'length',`파일이 ${units.PROMPT_FILE_MAX_BYTES}바이트를 넘습니다.`);
  let json;try{json=JSON.parse(readFileSync(path,'utf8'))}catch{return fail(name,'schema','JSON 형식이 아닙니다.')}
@@ -30,6 +32,7 @@ function checkDirectory(){
  if(!existsSync(dir)||!statSync(dir).isDirectory())return fail(relative(root,dir)||dir,'schema','검사할 디렉터리가 없습니다.');
  const names=readdirSync(dir).sort();
  for(const name of names.filter(n=>!n.endsWith('.json')))fail(name,'schema','prompts/에는 <단위>.json 파일만 둡니다.');
+ for(const u of units.promptUnits)if(!units.UNIT_ID.test(u.unit))fail(units.unitFile(u.unit),'schema','코드 단위 id 형식이 아닙니다(영문 소문자 <종류>.<이름>). 이 형식이 아니면 버전 id로 활성화·쌍 평가를 할 수 없습니다.');
  for(const u of units.promptUnits)if(!names.includes(units.unitFile(u.unit)))fail(units.unitFile(u.unit),'missing','단위 파일이 없습니다. 모든 단위의 정본 파일이 있어야 등록할 수 있습니다.');
  return names.filter(n=>n.endsWith('.json')).map(n=>({name:n,chars:checkFile(n)}));
 }

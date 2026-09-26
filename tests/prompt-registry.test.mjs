@@ -117,10 +117,14 @@ r=await get('?impact='+encodeURIComponent('role.cmo@000000000000'));
 check('impact of an unknown version is 404',()=>assert.equal(r.status,404));
 r=await get('?impact=not-a-version');
 check('a malformed version id is 400',()=>assert.equal(r.status,400));
+// 버전 id 형식(R3b): 등록 API의 versionIdOf 인라인 정규식(lib/prompt-units.ts VERSION_ID와 같은 모양, tests/check-prompts.test.mjs가 소스 일치를 본다).
+// 하이픈이 든 id는 단위가 없어서도 400이므로, 아는 단위(role.cmo)에 모양만 틀린 해시(대문자·11자)를 붙인 id로 정규식 자체를 고정한다(정규식이 없으면 404).
+for(const q of ['?version=','?impact=']){r=await get(q+encodeURIComponent('channel.lead-ad@0123456789ab'));check(`a hyphenated unit version id is 400 (${q.slice(1,-1)})`,()=>assert.equal(r.status,400))}
+for(const q of ['?version=','?impact='])for(const id of ['role.cmo@0123456789AB','role.cmo@0123456789a']){r=await get(q+encodeURIComponent(id));check(`a known unit with a malformed hash is 400, not 404 (${q.slice(1,-1)} ${id})`,()=>assert.equal(r.status,400))}
 r=await get('?version='+encodeURIComponent(cmoV2));
 check('one version can be read with its body',()=>assert.ok(r.status===200&&r.body.version.body.focus===cmoBody2.focus));
 r=await get();
-check('overview lists every unit, versions without bodies, the release and the manifest',()=>assert.ok(r.status===200&&r.body.units.length===16&&r.body.versions.length===2&&r.body.versions.every(x=>x.body===undefined)&&r.body.units.find(u=>u.unit==='role.cmo').release.active===cmoV2&&r.body.manifest===manifest([{unit:'role.cmo',active:cmoV2}])));
+check('overview lists every unit, versions without bodies, the release and the manifest',()=>assert.ok(r.status===200&&r.body.units.length===22&&r.body.versions.length===2&&r.body.versions.every(x=>x.body===undefined)&&r.body.units.find(u=>u.unit==='role.cmo').release.active===cmoV2&&r.body.manifest===manifest([{unit:'role.cmo',active:cmoV2}])));
 
 // E) 롤백: 포인터 1회 조작. 영향 작업물에는 재확인 표시만 남기고(본문·갱신 시각 불변) 그 버전을 고정한 캠페인 해석을 푼다.
 const artRow=()=>sql.prepare('SELECT data,updated_at FROM records WHERE id=?').get(`${owner}:artifact:${art.id}`);

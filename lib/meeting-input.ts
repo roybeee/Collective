@@ -1,4 +1,4 @@
-import {aiBudget} from './agency';
+import {aiBudget,isRecruitmentObjective} from './agency';
 import {campaignPractice} from './practice';
 import {meetingInstructions,candidateArtifacts,respondsToHandles,discussionRef,artifactRef,meetingCopyPack,withoutCopyPack,type Meeting,type MeetingStep,type Contribution} from './meetings';
 import {labelArchive} from './role-output';
@@ -33,11 +33,12 @@ export function meetingContext(m:Meeting,s:MeetingStep,storeAllow:readonly strin
  return {value:masked.value,findings:inputMaskingRecord(masked)};
 }
 // 한 단계의 제출: m은 대상 단계 직전까지의 회의 기록(대상 단계는 아직 완료 전, 뒤 단계는 대기이거나 없음)이다. 완료된 회의 기록을 그대로 넣으면 뒤 단계 발언이 섞인다.
+// 가맹 모집 objective 판정은 회의 시작 때 고정한 스냅샷 캠페인으로 한다(R3b: 개선 회의 지시문의 30일 정의 자리에 가맹 모집 규칙).
 // maskingRecord는 단계 기록(team_meeting.steps[].inputMasking)에 남는 값이다: 입력 가림 기록 뒤에 브랜드 자료 가림 기록(snapshot.sourceMasking)을 합친다(값 없음, 모델 입력에 싣지 않음).
 // Meeting 기록을 평가 요청으로 그대로 저장하지 않는다: 가림 전 스냅샷(snapshot.brand 원 레코드·intake 포함)과 단계 실행 메타(providerId·오류 문구)가 들어 있다.
 // 평가 동결(G2)은 meetingContext가 읽는 필드만 남기고 저장 전에 가린다(두 번 가린 결과 = 한 번 가린 결과).
 export function buildMeetingSubmission(m:Meeting,stepId:string,storeAllow:readonly string[]):{instructions:string;input:string;maskingRecord:InputMasking[]}{
  const s=m.steps.find(t=>t.id===stepId);if(!s)throw new Error('회의 단계를 찾을 수 없습니다.');
  const built=meetingContext(m,s,storeAllow);
- return {instructions:meetingInstructions(s,!!m.skillVersion,m.snapshot.prompts?.set,meetingCopyPack(m,s))+(s.correction?CORRECTION:''),input:JSON.stringify(built.value),maskingRecord:[...built.findings,...(m.snapshot.sourceMasking||[])]};
+ return {instructions:meetingInstructions(s,!!m.skillVersion,m.snapshot.prompts?.set,meetingCopyPack(m,s),isRecruitmentObjective(m.snapshot.campaign))+(s.correction?CORRECTION:''),input:JSON.stringify(built.value),maskingRecord:[...built.findings,...(m.snapshot.sourceMasking||[])]};
 }
