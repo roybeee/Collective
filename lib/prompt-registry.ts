@@ -1,7 +1,7 @@
 import {ApiError,database,listRecords,readRecord,recordStatement,stamp,uid,str} from './server';
 import {HttpBodyError,readBoundedJson} from './http-limits';
 import {promptUnits,unitOf,unitFile,unitVersionId,versionUnit,canonicalBody,parseUnitFile,validateUnitBody,brandTermsFromCode,brandShort,PromptUnitError,PROMPT_FILE_MAX_BYTES,type UnitBody} from './prompt-units';
-import {channelSkillIds,type PromptSet,type RoleSkill} from './practice';
+import {channelSkillIds,type ChannelScope,type PromptSet,type RoleSkill} from './practice';
 import type {Campaign,Artifact,Brand} from './agency';
 import type {Publication} from './execution';
 import type {Store} from './store-marketing';
@@ -34,7 +34,8 @@ export const f2aPromptVersion=async(skillVersion:string|null|undefined,instructi
 const unitIndex=(id:string)=>promptUnits.findIndex(u=>u.unit===versionUnit(id));
 export const joinVersions=(ids:string[])=>[...ids].sort((a,b)=>unitIndex(a)-unitIndex(b)).join('+');
 // 한 역할 실행(또는 회의 단계)이 쓰는 단위: 역할 스킬과 이 캠페인에 적용되는 채널 스킬.
-export const roleRunUnits=(role:string,c:Pick<Campaign,'channels'|'products'|'stores'|'goal'>)=>['role.'+role,...channelSkillIds(c).map(k=>'channel.'+k)];
+// 채널 판정 범위(ChannelScope)는 지점(storeId)과 가맹 모집 목적(objective, R3)을 함께 본다.
+export const roleRunUnits=(role:string,c:ChannelScope)=>['role.'+role,...channelSkillIds(c).map(k=>'channel.'+k)];
 // 레지스트리 promptVersion: 이 실행이 쓴 레지스트리 단위 버전(unit@sha256 앞 12자)을 '+'로 잇는다. 모두 코드 상수면 null이고 호출자가 F2a 규칙을 쓴다.
 export function runPromptVersion(r:Pick<PromptResolution,'units'>,units:string[]){const ids=units.map(u=>r.units[u]).filter((id):id is string=>!!id);return ids.length?joinVersions(ids):null}
 export const usesVersion=(promptVersion:unknown,id:string)=>typeof promptVersion==='string'&&promptVersion.split('+').includes(id);
