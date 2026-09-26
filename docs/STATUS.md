@@ -1,5 +1,13 @@
 # COLLECTIVE 현재 상태
 
+## HERMES 실제 차단 원인과 서버 수정 (2026-09-26 04:00 UTC)
+
+- 실제 원인은 Codex 공급자 사용 한도 소진(429)이다. 평가 프로필이 전역 인증 풀의 한도 상태를 읽지 못해 이를 인증 실패로 오판했다. 재로그인 문제로 안내하면 안 된다.
+- 서버의 quota 조회를 기존 `read_credential_pool`의 프로필 상속 규칙에 맞췄다. Hermes 수정 커밋 `4754494e3e09837c6a0160ed3f11287081831e2f`; 회귀 포함 17 tests passed · mocked. 운영 코드 반영·평가 서비스 재시작·`active` 및 실제 프로필의 `codex_rate_limited` 판정 확인 passed · real.
+- 서버가 보고한 해제 시각: **2026-09-27 01:33:06 UTC / 10:33:06 KST**. 한도 해제 전 새 쌍 평가 blocked, stage/promote not_run. 한도 변경·인증 초기화·모델 변경은 하지 않았다.
+- S8 재채점과 후보 등록은 이미 성공했다. 쌍 평가의 0은 보고된 값이며 공급자 사용량은 미보고(null), 실제 사용량 0으로 해석하지 않는다. 후보 `channel.offline@2cbe193eacdc`는 아직 registry-active가 아니다.
+- [수정·검증·후속 절차](releases/2026-09-26-hermes-profile-quota.md). 저장소에는 서버 패치 재현 스크립트와 가짜 인증을 쓰는 회귀 검사만 보관하며 비밀값은 없다.
+
 ## HERMES 평가 실패 복구 진행 (2026-09-26 03:02 UTC)
 
 - 기준 main `1ed5ce98b59538d67d1095ee3a5b82a532fc8fd7`, 브랜치 `fix/hermes-eval-recovery` (Codex).
