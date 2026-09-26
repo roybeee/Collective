@@ -1,7 +1,7 @@
 import {campaignEvidencePolicy} from './campaign-policy';
 import {aiBrand,withoutPlanOwner,withoutAssignees,productionAllow,inputMaskingRecord,BRAND_MASK_PATHS,DIRECTIVE_MASK_PATHS,FACT_MASK_PATHS,STORE_MASK_PATHS,campaignMaskPaths,metricMaskPaths,type EvidenceContext,type InputMasking} from './ai-context';
 import {maskFields} from './pii-scan';
-import {briefInstructions,type BriefInput} from './brief';
+import {briefInstructionsFor,type BriefInput} from './brief';
 import {isRecruitmentObjective,type Brand,type Campaign,type Artifact,type Metric} from './agency';
 
 // 브리프 초안 제출(지시문·입력·가림 기록) 조립을 서버 의존 없이 만드는 순수 함수(G1). lib/brief-execution.ts start 분기는 DB에서 읽은 원자료와 stamp() 기준일을 넘기고
@@ -31,5 +31,5 @@ export function briefRequestFor({campaignId,input,brand,evidence,archive,sourceM
 // maskingRecord는 초안 기록(brief_draft.inputMasking)에 남는 값이다: 입력 가림 기록 뒤에 브랜드 자료 가림 기록을 합친다(값 없음, 모델 입력에 싣지 않음).
 export function buildBriefSubmission({input,context:c,contextDate,storeAllow}:BriefRequest):{instructions:string;input:string;maskingRecord:InputMasking[]}{
  const masked=maskFields({brand:aiBrand(c.brand),evidence:{facts:c.evidence.facts,directives:c.evidence.directives},brandArchive:withoutAssignees(c.archive),currentBrief:withoutPlanOwner(input),trialLearning:c.trialLearning,previousCampaigns:c.previousCampaigns.map(p=>withoutPlanOwner(p)),recordedMetrics:c.recordedMetrics,approvedLearnings:c.approvedLearnings,contextDate},BRIEF_MASK_PATHS,{allow:productionAllow(c.evidence,c.archive,storeAllow)});
- return {instructions:briefInstructions+'\n'+campaignEvidencePolicy(input),input:JSON.stringify(masked.value),maskingRecord:[...inputMaskingRecord(masked),...c.sourceMasking]};
+ return {instructions:briefInstructionsFor(input)+'\n'+campaignEvidencePolicy(input),input:JSON.stringify(masked.value),maskingRecord:[...inputMaskingRecord(masked),...c.sourceMasking]};
 }
