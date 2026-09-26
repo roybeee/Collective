@@ -7,8 +7,8 @@
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-26 18:46 UTC
-- 진행 중: B4-2a 보상 계보 순수 모듈 PR #155(`lib/reward-lineage.ts`, 연결 없음, 토큰 0, 설계 [REWARD-LINEAGE](REWARD-LINEAGE.ko.md), 선행 판정 **축소 착수**: 결정 16 `not_run`이라 L2 reduced, L4 not_run, 중단 규칙 판정일 2026-10-15). A8-1·A8-2·A8-3은 #150·#152·#153으로 `merged`(다음 묶음 게시 대기).
+갱신: 2026-09-26 19:04 UTC
+- 진행 중: B4-2b 보상 계보 서버·API·스위치 PR(`lib/reward-lineage-server.ts`, `GET /api/reward-lineage` 대표·관리자, 직원 403, 스위치 `b4_reward_lineage` 기본 꺼짐, 새 kind·migration 0, 토큰 0, 결정 16 `not_run` 상수, [REWARD-LINEAGE](REWARD-LINEAGE.ko.md) 9절). B4-2a는 #155로 `merged`. A8 전체·#154는 묶음 16(`a8edf10`)으로 게시 요청 중.
 - A6 종료 조건: **passed · real**(2026-09-27 00:56 KST). 이문동점 영업시간 자료 요청 `dr-f08c16186f08`이 사실 확정으로 closed. [관찰 기록](observations/2026-09-27-lane-a-a6-end-condition.md). 운영 스위치 `a6_data_requests` 켜짐.
 - A3 종료 조건 run: 2회째도 **failed · real**(run `a81bb445`, 2026-09-27 03:30 KST, 32,049토큰, 운영 버전 41 = 괄호 닫기 규칙 포함). `contract_json`은 두 케이스 모두 pass로 고쳐졌다. 국밥 12/0 pass. 수학학원은 `copy_pack_variants` fail: 실험 객체를 channels 배열에 넣고 shortform·experiments를 빠뜨렸다(끝부분 구조 붕괴, 1회차의 마지막 `}` 누락과 같은 계열). 수정: 스키마를 shortform → experiments → channels 순서로, channels에는 채널 객체만(PR `fix/copy-pack-key-order`) → 다음 묶음 게시 → 재실행. 1회차 run `a3634055`, 서버 로그인 실패 run `2092b0bb`(0토큰).
 - 확인 필요(레인 R): `tests/check-prompts.test.mjs`가 macOS(대소문자 무시 파일 시스템)에서 `channel.leadad.json`·`channel.leadAd` 변형 충돌로 로컬 실패한다(Linux CI는 통과).

@@ -126,6 +126,13 @@ function customerReportRow(flags:unknown):FeatureRow{
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'고객 보고서 스위치 상태를 확인하지 못했습니다',link};
  return state.enabled?{...base,status:'available',reason:'끝난 주 장부·POS 대조·north-star 결정론 집계 · 동결·대표 검토 · JSON·Markdown·CSV 다운로드(모델 호출 없음)'}:{...base,status:'blocked',reason:'기능 스위치 a8_customer_report 꺼짐 · 소유자가 켭니다',link};
 }
+// 보상 계보(B4-2b): 기능 스위치 b4_reward_lineage 상태를 읽는다. 켜지면 대표·관리자가 GET /api/reward-lineage로 읽기 전용 집계를 본다(화면은 B4-2c).
+function rewardLineageRow(flags:unknown):FeatureRow{
+ const base={key:'reward-lineage',label:'보상 계보(프롬프트 버전·학습 규칙별 보상, 읽기 전용)'},link:FeatureLink={label:'학습 화면으로 이동(보상 계보 표는 B4-2c)',view:'learning'};
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='b4_reward_lineage'):undefined;
+ if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'보상 계보 스위치 상태를 확인하지 못했습니다',link};
+ return state.enabled?{...base,status:'available',reason:'사람 판정·발행·반응(축소)·주문 귀속 결정론 집계 · 재방문 not_run · 자동 승격·강등 없음(모델 호출 없음, 화면은 B4-2c)'}:{...base,status:'blocked',reason:'기능 스위치 b4_reward_lineage 꺼짐 · 소유자가 켭니다',link};
+}
 export function featureRows(input:FeatureInput={}):FeatureRow[]{
  const now=typeof input.now==='number'?input.now:Date.now(),brands=brandIds(input.brands);
  return [
@@ -143,6 +150,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   dataRequestsRow(input.flags),
   placeCheckRow(input.flags),
   customerReportRow(input.flags),
+  rewardLineageRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
   {key:'pos-auto',label:'POS 자동 수집',status:'unimplemented',reason:'POS 연동 없음 · CSV로 가져오세요'},
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},
