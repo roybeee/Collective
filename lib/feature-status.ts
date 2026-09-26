@@ -112,6 +112,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   aiRow(input.connection),
   {key:'text',label:'카피 · 대본 · 제작 지시서',status:'available',reason:'텍스트 작업물(AI 작성 또는 직접 등록)'},
   {key:'review',label:'작업물 검수와 버전 승인',status:'available',reason:'검토 · 수정 요청 · 승인'},
+  {key:'quality-ops',label:'소유자 운영 검증·재채점·프롬프트 적용',status:'available',reason:'품질 콘솔 → 운영 상태 조회 · 쌍 평가 게이트 통과 후 지정 캠페인 적용'},
   {key:'metrics',label:'실측 데이터 · 손익 계산',status:'available',reason:'직접 입력'},
   workerRow(input.worker),
   pngRow(input.facts,brands,now),

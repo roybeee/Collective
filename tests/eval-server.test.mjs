@@ -313,4 +313,6 @@ check('another workspace owner gets 404',()=>assert.ok(strangerGet.status===404&
 r=await post(JSON.stringify({action:'update_case',id:insightCase.id,label:'x'.repeat(1100000)}),owner,ownerS);
 check('oversized body is 413',()=>assert.equal(r.status,413));
 check('no external network call',()=>assert.deepEqual(external,[]));
+const opsSummary=await get('?view=operations',owner,ownerS);
+check('operations summary contains no frozen request or result rows',()=>assert.ok(opsSummary.status===200&&Array.isArray(opsSummary.body.runs)&&opsSummary.body.cases.every(c=>!('request' in c)&&!('expectations' in c))&&opsSummary.body.runs.every(r=>!('results' in r))));
 console.log(JSON.stringify({passed:passed.length}));

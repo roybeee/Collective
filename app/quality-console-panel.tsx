@@ -11,6 +11,7 @@ import {isModelAlias} from '@/lib/usage-summary';
 import {MIN_SAMPLE,kstDate,type ConsoleSummary,type MeetingCompletion} from '@/lib/quality-console';
 import {MIN_KAPPA_N,kappaBand,type CriterionKappaRow} from '@/lib/quality-kappa';
 import {AdminOnly} from './account-context';
+import {QualityOperationsPanel} from './quality-operations-panel';
 import {JudgeLabelPanel} from './judge-label-panel';
 
 // B2 품질 콘솔(소유자·관리자 전용 시트). GET /api/quality-console(lib/quality-console-server.ts)의 집계를 보여 주기만 하고 다시 계산하지 않는다.
@@ -122,6 +123,7 @@ export function QualityConsolePanel({open,onClose,campaigns}:{open:boolean;onClo
  }
  return <Sheet open={open} onOpenChange={v=>{if(!v)onClose()}}><SheetContent className="quality-console-sheet"><SheetHeader><SheetTitle>품질 콘솔</SheetTitle><SheetDescription>역할·스킬·프롬프트 버전·보고 모델별 1차 승인율, 사람 판정 사유, 폐기 토큰, 회의 완주율과 판정 보정(κ)을 모델 호출 없이 집계합니다.</SheetDescription></SheetHeader>
   <div className="quality-console">
+   <AdminOnly owner><QualityOperationsPanel campaigns={campaigns}/></AdminOnly>
    <p className="notice">{data?.notice||'기록을 LLM 없이 센 집계입니다. 자동 판정이 아니며 작업물을 합격·불합격 처리하지 않습니다.'}</p>
    <form className="quality-toolbar" onSubmit={e=>{e.preventDefault();void load(query)}}>
     <label>시작일(한국 시간)<Input type="date" value={shown.from} onChange={e=>setRange(r=>({...r,from:e.target.value}))}/></label>

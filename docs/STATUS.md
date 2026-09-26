@@ -1,5 +1,13 @@
 # COLLECTIVE 현재 상태
 
+## 운영 관리 화면 복구 (2026-09-26)
+
+- A1 PR #120은 `aefd4219aa335425243e41372c8ba8efa3009ee7`로 merged. CI passed, D1 이름 대조 passed. 운영 등록·쌍 평가·stage는 아직 not_run.
+- `fix/owner-quality-operations`: 품질 콘솔에 소유자 전용 운영 버전 조회, 재채점, 후보 등록, 쌍 평가, 지정 캠페인 적용 폼을 추가한다. 기존 `/api/eval`, `/api/prompts`, `/api/version`과 권한·CSRF·예산·활성화 게이트를 그대로 쓴다.
+- `/api/eval?view=operations`는 동결 요청·출력·기대 판정·케이스별 채점 근거를 제외한 목록·합계만 반환한다. 자동 등록·자동 재시도·자동 전체 승격은 없다.
+- 게시 전 상태다. 검증·게시·운영 실행 결과는 PR과 릴리스 기록으로 구분한다.
+
+
 ## Codex A1 작업 재개 (2026-09-26 01:52 UTC)
 
 - 원격 main `b16403df6ded5e67794f3d05e0939c9d22697620`을 PR #120(`feat/a1-local-channel-pack`)에 통합했다. 기존 트랙 R 변경과 게시 보류 이력은 보존한다.
