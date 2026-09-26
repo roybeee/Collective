@@ -34,24 +34,26 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-26 03:02 UTC (Claude A3·A6 세션: A6-1 자료 요청 원장, #129 위)
+마지막 갱신: 2026-09-26 03:45 UTC (Claude 트랙 R 세션: E2E 회의 테스트 흔들림 원인(wrangler 4.92 로컬 프록시)과 E2E 전용 수정 PR, #130 병합 반영. 그 전 갱신: 03:02 UTC Claude A3·A6 세션 #130)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
 | 운영 제품 커밋 | `d7210175b75e0855c3a25ae0de7ea7743be7753d` (#127 `merged`, 소유자 운영 검증·재채점·프롬프트 적용 화면). 묶음 13 `b16403d`(#124까지: 트랙 R R1b·R2, 게시 전 점검 수정, R3a, 가맹 기능은 `r_franchise` 기본 꺼짐)와 #120(비제품)을 포함한다 | 제품 tree `4f3b13022cbcfb256f85a4473db54bc10d347d77`(Codex 세션 기록, PR #128 `docs/releases/2026-09-26-d721017.md`, 병합 전) |
-| `origin/main` | `aa49e6b` (#121 A3-1 카피 팩 v2, `a3_copy_pack` 기본 꺼짐) | d721017 뒤 #121이 들어왔다(제품 경로). 그래서 지금 main은 운영보다 앞서 있고, d721017의 `runtime-verified`는 확인 시점(02:22 UTC) 기준이다. A3-2 #122·A3-3a #123·A3-4 #125는 쌓인 base 브랜치(`feat/a3-copy-pack-v2`·`feat/a3-brand-voice`·`feat/a3-artifact-experiment`)로 병합돼 main에 들어오지 않았다(main에 `app/api/brand-voice/route.ts` 없음, 2026-09-26 02:40 UTC git 확인). A3 세션이 main으로 다시 올려야 한다 |
-| Sites 게시 | `published`: Sites 버전 37(Codex 세션, `d721017`, deployment `appgdep_6ab72b2c…` succeeded 02:17:35 UTC). 바로 앞 버전 36은 이 세션의 묶음 13 `b16403d`(deployment `appgdep_6ab72a5f…`, Sites 커밋 `34a5e8c`, `TREE_EMBEDDED`, 자동 게시 첫 성공) | [b16403d 게시 기록](releases/2026-09-26-b16403d.md). d721017 기록은 PR #128(병합 전). 그 앞: 8c22f0e(Sites 버전 35) [기록](releases/2026-09-25-8c22f0e.md) |
+| `origin/main` | `70ab664` (#130 A6-1 자료 요청 원장, `a6_data_requests` 기본 꺼짐) | d721017 뒤 #121(A3-1)·#128·#129(A3-2·A3-3a·A3-4 main 반영, `543731e`)·#132·#130이 들어왔다(제품 경로 포함). A3 쌓인 PR이 base 브랜치로 병합돼 main에 없던 문제는 #129로 해소됐다. 운영은 이 main보다 뒤다 |
+| Sites 게시 | `published`: Sites 버전 37(Codex 세션, `d721017`, 02:17:35 UTC)까지 이 세션이 확인했다. Codex PR #131(병합 전)은 그 뒤 버전 38(#128 head tree) 게시를 기록한다(이 세션은 확인하지 않음). 버전 36은 이 세션의 묶음 13 `b16403d`(자동 게시 첫 성공) | [b16403d 게시 기록](releases/2026-09-26-b16403d.md), [d721017 기록](releases/2026-09-26-d721017.md), 버전 38은 PR #131 |
 | 실행 검증 | `d721017`: `runtime-verified`(Codex 세션 02:22 UTC 경, 대표 소유자 화면 재확인 02:3x UTC: `/api/version` 200, tree `4f3b130…`). b16403d(버전 36)는 `/api/version`을 확인하기 전에 3분 뒤 버전 37로 교체돼 소급 기록하지 않는다(대표 판단). d721017이 b16403d를 포함한다 | 대표 보고(real), Codex 세션 기록(PR #128, 병합 전). 주소창 직접 접근 오류는 남아 있고 정상 조회 경로로 검증했다 |
 | 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` mode=email, role=owner (2026-09-25 03:30 UTC 경) |
 | Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 이번 게시도 기존 접근 설정 유지 | 게시 에이전트 보고 "기존 공개 접근 설정을 유지". 게시 뒤 접근 설정 재확인은 not_run |
 | 조사 워커 | online(lastSeen 2026-09-25 03:29 UTC, blocked 0, rotationReady true). 2026-09-24 14:15 UTC 새 설치기로 재설치(격리 점검 전부 통과) | `/api/research-worker/setup` 조회(real). gate 표시 `missing`이라 `RESEARCH_WORKER_APP_GATE=enforce`는 켜지 않는다 |
-| 열린 PR | #16 Android(draft, 제외), #126 묶음 13 게시 기록(브랜치 `claude/franchise-recruitment-marketing-u8cpo2`, 이 갱신과 같은 PR), #128 평가 실행 실패 사유 집계(Codex, `docs/releases/2026-09-26-d721017.md` 포함) | GitHub 열린 PR 목록(GitHub MCP), 2026-09-26 02:40 UTC |
-| main CI | `d721017`·`aefd421`·`b16403d` passed, `aa49e6b` 실행 중(02:40 UTC) | GitHub Actions main 실행(run 36211135217·36210450483·36209066178 success, 36211867282 진행 중, API 조회) |
+| 열린 PR | #16 Android(draft, 제외), #133 A6-2 플레이스 대조(Claude A3 세션, #130 `merged` 뒤), #131 운영 API 복구·버전 38 기록(Codex, 문서), #134 E2E 프록시 멈춤 수정(브랜치 `claude/franchise-recruitment-marketing-u8cpo2`, 이 갱신과 같은 PR) | GitHub 열린 PR 목록(GitHub MCP), 2026-09-26 03:30 UTC |
+| main CI | `d721017`·`aefd421`·`b16403d` passed. 그 뒤 main 커밋의 CI는 이 갱신에서 조회하지 않았다 | GitHub Actions main 실행(run 36211135217·36210450483·36209066178 success, API 조회) |
 
-- 테스트 흔들림(2026-09-25 관찰, 제품 동작 변경 없음, 원인 조사는 별도 작업):
-  - CI E2E `e2e/meeting-quality.spec.ts:40`('기준 자료가 바뀐 실패 회의…')가 오늘 3번 60초 시간 초과(#86 1회, #92 첫 CI 모바일·데스크톱). 매번 같은 파일 첫 테스트 직후 두 번째 테스트 첫 줄 `page.request.get('/api/workspace')`에서 멈추고, 같은 로그에 workerd `Broken pipe`가 있다. 재실행하면 통과하고 로컬 `--repeat-each 6`은 24/24 통과(재현 안 됨).
+- 테스트 흔들림(2026-09-25 관찰, 제품 동작 변경 없음):
+  - CI E2E `e2e/meeting-quality.spec.ts:40`('기준 자료가 바뀐 실패 회의…')가 오늘 3번 60초 시간 초과(#86 1회, #92 첫 CI 모바일·데스크톱). 매번 같은 파일 첫 테스트 직후 두 번째 테스트 첫 줄 `page.request.get('/api/workspace')`에서 멈추고, 같은 로그에 workerd `Broken pipe`가 있다. 재실행하면 통과하고 로컬 `--repeat-each 6`은 24/24 통과(재현 안 됨). 2026-09-26에도 #124 1회, #126 2회(재실행 포함) 같은 증상이었다.
+  - 원인(2026-09-26, Claude 트랙 R 세션 조사): 앱이 아니라 wrangler 4.92.0 `wrangler dev` 로컬 프록시(ProxyWorker)다. 사용자 워커로의 전달이 끊기면 전체 URL과 origin URL을 비교해 늘 "워커 재시작"으로 잘못 보고, GET을 재시도 큐에 넣기만 해서 다음 요청이 올 때까지 붙잡는다. workers:1이라 다음 요청이 없으면 60초 시간 초과다. 근거: CI 서버 로그(run 36212412068, `GET /api/workspace 200 OK (60794ms)`가 다음 테스트 첫 요청 65ms 뒤 끝남, 요청 1,585건 중 유일한 느린 요청, real), 로컬 CPU 부하 재현 1/24(real 로컬 workerd·D1·Chromium), wrangler 4.114(origin 비교)·4.130(끊긴 GET·HEAD 재시도) 수정 이력(npm tarball 대조). 운영 Workers에는 이 프록시가 없다. 끊김을 일으키는 계기(유휴 keep-alive 약 5초 경쟁 추정)는 확인하지 못했다.
+  - 수정: `e2e/wrangler-proxy-fix.mjs`가 E2E 서버를 띄우기 전(`e2e/serve.mjs`)에 wrangler 4.92.0의 ProxyWorker에만 두 수정을 되돌려 넣는다(정확한 원문 일치·한 번만 적용, 다른 버전은 건너뜀). 의존성 파일은 바꾸지 않는다. 효과 확인은 CI E2E 흔들림 빈도와 `e2e/artifacts/server-default.log`의 `ProxyWorker: … retrying/recovered` 줄로 한다. wrangler를 4.130 이상으로 올리면 지운다
   - `tests/email-auth.test.mjs` '소유자가 멤버·관리자 역할을 바꾼다'가 전체 스위트 병렬 실행에서 가끔 실패(오늘 3회 중 2회, 단독 6/6 통과). 소유자는 '가장 먼저 만든 관리자(created_at, id 순)'로 정해지므로, 계정 생성 시각이 겹치면 승격한 관리자가 소유자로 읽힐 수 있는 구조다(auth 코드는 #23 이후 변경 없음).
 - `AUTH_MODE` fail-closed(PR 1, `auth-2`)가 운영에 적용됐다. 운영 빌드에서 `AUTH_MODE`가 비면 모든 인증·업무 API가 503이다. Sites가 public인 동안 legacy로 되돌리지 않는다. 환경 revision 변경·복구·재게시 뒤에는 `/api/auth`가 mode=email인지, 위조 헤더 요청이 401인지 먼저 확인한다. 복구는 [이메일 로그인 복구 순서](EMAIL-AUTH.ko.md)를 따른다.
 - 확인 필요: 익명 업무 API 401은 443fff4 게시 뒤 확인했다(passed · real). 위조 헤더 요청 401은 not_run이다(자동 모드 안전 검사 정책). 소유자가 직접 확인한다. 민감 작업 재인증(step-up)은 아직 구현되지 않았다(PR #23 남은 위험).
