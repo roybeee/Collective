@@ -15,6 +15,7 @@ export const FEATURE_FLAGS={
  a6_data_requests:{defaultEnabled:false,description:'작업물의 자료 필요 표지를 자료 요청으로 모으고, 관리자가 같은 항목의 사실을 확정하면 요청을 자동으로 닫는다(A6 자료 요청, 모델 호출 없음). 꺼도 조회는 계속된다.'},
  a6_place_check:{defaultEnabled:false,description:'관리자가 옮겨 적은 지점 플레이스 정보(주소·영업시간·휴무·전화·메뉴 가격)를 확정 사실과 대조해 다른 항목을 점포 할 일로 열고, 다시 일치하면 닫는다(A6-2, 모델 호출·스크래핑 없음). 꺼도 조회는 계속된다.'},
  a8_customer_report:{defaultEnabled:false,description:'대표·관리자가 끝난 주의 점포 고객 보고서(장부·POS 대조·north-star·채널 단위경제·커넥터 참고값)를 미리 보고 동결하며, 사실 팩을 받는다. 대표가 동결 판을 검토한다(A8, 모델 호출 없음). 꺼도 동결한 보고서 목록·다운로드는 계속된다.'},
+ b4_reward_lineage:{defaultEnabled:false,description:'대표·관리자가 사람 판정·발행·반응·주문 보상을 프롬프트 버전·학습 규칙별로 모은 보상 계보(읽기 전용 집계)를 본다(B4 2부, 모델·커넥터 호출 없음). 자동 승격·강등은 없다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};
