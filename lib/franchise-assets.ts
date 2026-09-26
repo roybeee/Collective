@@ -41,7 +41,9 @@ export const SPOKEN_ASSET_TYPES=deepFreeze(['event_deck','first_call_script'] as
 // ── 고정 절 ──
 // heading = SECTION_MARK + title + (label ? ' ' + label : ''). 창업 페이지 문안에는 수익 수치 칸이 없다(H6). 나머지 5종은 자유 문안이라 절 검사를 하지 않는다.
 // recommendedLines: 템플릿(sectionTemplate)이 절 제목 아래 미리 채우는 권장 문장이다. 대표 결정(2026-09-26 '3번')으로 필수가 아니다: 빠지거나 고쳐도 승인·내보내기를 막지 않고
-// assetStructureWarnings가 경고로 알린다. 대기기간 우회 표현(가계약금·입금 순서 확정 등)은 판정기(h.wait_bypass_solicitation, 해제 불가)가 그대로 막는다.
+// assetStructureWarnings가 경고로 알린다(approvalChecklist에 자료를 넘기면 해당 확인 항목 옆에도 붙는다).
+// 판정기(h.wait_bypass_solicitation, 해제 불가)는 우회 표현 목록(가계약금·홀딩비·입금 순서 확정·대기 없이·당일 계약 등)만 막는다. 법정 대기기간(14일, 자문 시 7일)을 짧게 잘못 적은 문장
+// ('3일이 지나면 계약', '다음 날 계약', '같은 날 계약', '대기기간은 선택 사항')은 막지 않고 권장 문장 경고만 남는다. 남은 위험이다(교차 검토 F1, 판정 규칙을 더할지는 대표 결정 대기).
 export const SECTION_MARK='■ ';
 export type SectionSpec={readonly id:string;readonly title:string;readonly label:string|null;readonly heading:string;readonly costLines:boolean;readonly recommendedLines:readonly string[]};
 export const WAITING_NOTES=deepFreeze([
@@ -447,18 +449,21 @@ export function assetStructureIssues(type:unknown,body:unknown,refFacts:readonly
 // 권장 안내 문장 경고(막지 않음). 권장 문장이 있는 절마다, 그 문장이 모두 그 절 몸통에 정확히(trim 없이) 있어야 경고가 없다. 한 절에서 여러 줄이 빠져도 경고는 하나이고 순서는 절 순서다.
 // 절 안의 줄 순서·중복·다른 줄은 보지 않는다. 제목이 없거나 원문이 문자열이 아니면 권장 문장도 없는 것으로 본다(절 누락 자체는 assetStructureIssues의 section_missing이 막는다). 자유 문안 유형·모르는 유형은 [].
 const RECOMMENDED_WARNING:Readonly<Record<string,string>>={process:ASSET_WARNING_MESSAGES.waitingNoteMissing,qna:ASSET_WARNING_MESSAGES.revenueQnaNoteMissing};
-export function assetStructureWarnings(type:unknown,body:unknown):string[]{
+// 권장 문장이 빠진 절(절 순서). assetStructureWarnings와 approvalChecklist가 같이 쓴다.
+function missingRecommended(type:unknown,body:unknown):SectionSpec[]{
  const sections=oneOf(ASSET_TYPES,type)?SECTIONS_OF[type]:undefined;
  if(!sections)return [];
- const recommended=sections.filter(s=>s.recommendedLines.length>0),all=()=>[...new Set(recommended.map(s=>RECOMMENDED_WARNING[s.id]))];
- if(typeof body!=='string')return all();
+ const recommended=sections.filter(s=>s.recommendedLines.length>0);
+ if(typeof body!=='string')return recommended;
  try{
   const view=sectionView(sections,body);
-  return [...new Set(recommended.filter(s=>{const own=view.bodyOf(s);return s.recommendedLines.some(l=>!own.has(l))}).map(s=>RECOMMENDED_WARNING[s.id]))];
- }catch{return all()}
+  return recommended.filter(s=>{const own=view.bodyOf(s);return s.recommendedLines.some(l=>!own.has(l))});
+ }catch{return recommended}
 }
-// 성공 결과의 경고: 판정기 경고 다음에 권장 안내 문장 경고. 중복 없이 처음 나온 순서를 지킨다.
-const assetWarnings=(j:FranchiseJudgement,type:unknown,body:unknown):string[]=>[...new Set([...franchiseIssueLabels(j).warnings,...assetStructureWarnings(type,body)])];
+export function assetStructureWarnings(type:unknown,body:unknown):string[]{return [...new Set(missingRecommended(type,body).map(s=>RECOMMENDED_WARNING[s.id]))]}
+// 저장·승인·내보내기 성공 결과와 상세 보기의 경고: 판정기 경고 다음에 권장 안내 문장 경고. Set으로 중복을 없애고 처음 나온 순서를 지킨다.
+// 판정기 경고 라벨끼리 문구가 같아도 하나로 합친다(의도한 동작, 라벨은 규칙·발췌·근거를 담아 실제로는 겹치지 않는다). 판정 결과가 없으면(상세 보기가 판정 전 단계에서 멈춤) 권장 안내 문장 경고만.
+export function assetWarnings(j:FranchiseJudgement|null,type:unknown,body:unknown):string[]{return [...new Set([...(j?franchiseIssueLabels(j).warnings:[]),...assetStructureWarnings(type,body)])]}
 
 // ── 내용 게이트(승인·내보내기·미리보기 공유) ──
 const gateOf=(codes:readonly AssetCode[],j:FranchiseJudgement|null):GateIssues=>{
@@ -509,9 +514,17 @@ function checklistWarnings(j:unknown):{registryId:string;text:string}[]{
  }catch{return []}
 }
 export function h7Notice(branch:unknown):string|null{return branch==='A'?null:branch==='B'?H7_NOTICES.B:branch==='C'?H7_NOTICES.C:H7_NOTICES.undetermined}
-export function approvalChecklist(judgement:FranchiseJudgement|null,branch:unknown):ApprovalChecklist{
- const warned=checklistWarnings(judgement);
- return {version:CHECKLIST_VERSION,items:CHECKLIST_ITEMS.map(i=>({id:i.id,text:i.text,ruleIds:[...i.ruleIds],warnings:warned.filter(w=>i.ruleIds.includes(w.registryId)).map(w=>w.text)})),h7Notice:h7Notice(branch)};
+// 권장 안내 문장 경고가 붙는 항목(교차 검토 F1): 대기기간 안내 → 대기기간 우회 항목, 수익 질문 안내 → 수익 수치 항목. 승인자가 확인란 옆에서 본다.
+const RECOMMENDED_ITEM:Readonly<Record<string,ChecklistItemId>>={process:'no_wait_bypass',qna:'no_revenue_figures'};
+function recommendedMisses(asset:unknown):SectionSpec[]{
+ if(!isRecord(asset))return [];
+ try{return missingRecommended(asset.type,asset.body)}catch{return []}
+}
+// asset(유형·원문이 있는 기록, 선택)을 넘기면 권장 안내 문장 경고를 판정 경고 뒤에 해당 항목 옆으로 붙인다. 넘기지 않으면 판정 경고만(이전과 같음).
+export function approvalChecklist(judgement:FranchiseJudgement|null,branch:unknown,asset?:unknown):ApprovalChecklist{
+ const warned=checklistWarnings(judgement),missed=recommendedMisses(asset);
+ return {version:CHECKLIST_VERSION,items:CHECKLIST_ITEMS.map(i=>({id:i.id,text:i.text,ruleIds:[...i.ruleIds],
+  warnings:[...warned.filter(w=>i.ruleIds.includes(w.registryId)).map(w=>w.text),...missed.filter(s=>RECOMMENDED_ITEM[s.id]===i.id).map(s=>RECOMMENDED_WARNING[s.id])]})),h7Notice:h7Notice(branch)};
 }
 // 빈 칸이 있는 배열은 빈 칸을 undefined로 본다(길이·Set 크기가 맞아도 빠진 항목이 있으면 미완료).
 const completeChecklist=(checked:readonly unknown[])=>{

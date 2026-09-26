@@ -432,9 +432,44 @@ const WARN_LINE='입금 순서대로 자리 확정됩니다',pageMix=PAGE(bs=>li
 const vMix=VAL(pageMix),dMix=await DRAFT(pageMix,['f-total'],'startup_page',CTX,'a-page-mix'),aMix=await APP(dMix),xMix=aMix.ok?await EXP({...plain(dMix),status:'approved',approval:plain(aMix.value.approval)}):null;
 const judgeFirst=r=>OK(r)&&r.warnings.length===2&&r.warnings[0].startsWith('가맹 규칙 확인 · ')&&r.warnings[1]===W_WAIT;
 check('R9: judge warnings come first and the recommended-line warning follows at save, approval and export',judgeFirst(vMix)&&same(vMix.warnings,[...plain(jc.franchiseIssueLabels(vMix.value.judgement).warnings),W_WAIT])&&judgeFirst(aMix)&&judgeFirst(xMix)&&same(aMix.warnings,plain(vMix.warnings))&&same(xMix.warnings,plain(vMix.warnings)));
-check('R9: the checklist still shows the deposit net next to the wait-bypass item, never the recommended-line warning',(c=>c.items.every(i=>!i.warnings.includes(W_WAIT)&&!i.warnings.includes(W_QNA))&&c.items.find(i=>i.id==='no_wait_bypass').warnings.length===1)(fa.approvalChecklist(vMix.value.judgement,'A')));
+check('R9: without the asset the checklist shows only the deposit net next to the wait-bypass item, never the recommended-line warning',(c=>c.items.every(i=>!i.warnings.includes(W_WAIT)&&!i.warnings.includes(W_QNA))&&c.items.find(i=>i.id==='no_wait_bypass').warnings.length===1)(fa.approvalChecklist(vMix.value.judgement,'A')));
+check('R9: with the asset the waiting warning follows the deposit net on the wait-bypass item only',(c=>same(c.items.find(i=>i.id==='no_wait_bypass').warnings,[plain(jc.franchiseIssueLabels(vMix.value.judgement).warnings)[0],W_WAIT])&&c.items.every(i=>i.id==='no_wait_bypass'||i.warnings.length===0))(fa.approvalChecklist(vMix.value.judgement,'A',dMix)));
 check('R10: a free asset type never gets the recommended-line warnings, even when it quotes nothing',same(VAL('동네 도넛 브랜드',[],'portal_intro').warnings,[])&&same((await EXP(FORGE('동네 도넛 브랜드'))).warnings,[])&&same((await EXP(FORGE('매장에서 뵙겠습니다',[],'first_call_script'))).warnings,[]));
 check('R10: a bare body is still refused for a member (403), switch off (409) and branch B (409)',is(await APP(dPageBare,APPROVE_IN(dPageBare),{...CTX,actor:MEMBER}),'role_forbidden')&&is(await EXP(APageBare,{...XCTX,enabled:false}),'switch_off')&&is(await EXP(APageBare,{...XCTX,branch:'B'}),'branch_not_a')&&is(await APP(dPageBare,APPROVE_IN(dPageBare),{...ACTX,branch:'C'}),'branch_not_a'));
+// 교차 검토 반영(F1·TA-3·TA-4·TA-5).
+// R11 알려진 틈(F1, 대표 결정 대기): 판정기는 우회 표현 목록만 막는다. 법정 대기기간을 짧게 잘못 적은 문장은 권장 문장 경고만 남기고 승인·내보내기된다.
+// 판정 규칙(레지스트리) 또는 절 안 기간 검사를 더하기로 결정하면 이 기대값을 409로 바꾼다. 권장 문장을 그대로 두고 옆에 적으면 경고도 없다(바꾸기 전에도 있던 틈).
+const APPROVE_EXPORT=async(body,type,id)=>{const d=await DRAFT(body,['f-total'],type,CTX,id),a=await APP(d);return {v:VAL(body,['f-total'],type),a,x:a.ok?await EXP({...plain(d),status:'approved',approval:plain(a.value.approval)}):a}};
+const allPass=(r,w)=>OK(r.v)&&OK(r.a)&&OK(r.x)&&same(r.v.warnings,w)&&same(r.a.warnings,w)&&same(r.x.warnings,w);
+const MISSTATED=['정보공개서를 받은 날부터 3일이 지나면 가맹계약을 체결할 수 있습니다.','정보공개서를 받은 날부터 7일이 지나면 가맹계약을 체결하거나 가맹금을 받을 수 있습니다.','정보공개서를 받은 다음 날 계약하실 수 있습니다.',
+ '정보공개서와 계약서안을 같은 날 드리고 그날 계약합니다.','14일 대기기간은 선택 사항입니다.','가맹금은 정보공개서를 드린 날 받습니다.','정보공개서 제공 뒤 바로 계약금을 받습니다.'];
+const gapReplaced=[],gapBeside=[];
+for(const [k,l] of MISSTATED.entries()){gapReplaced.push(allPass(await APPROVE_EXPORT(PAGE(lines('process',()=>[l])),'startup_page','a-gap-r'+k),[W_WAIT]));gapBeside.push(allPass(await APPROVE_EXPORT(PAGE(lines('process',ls=>[...ls,l])),'startup_page','a-gap-b'+k),[]))}
+check('R11 (known gap F1): a misstated waiting period that replaces the notes approves and exports with only the waiting warning',gapReplaced.length===7&&gapReplaced.every(Boolean));
+check('R11 (known gap F1): the same line next to the kept notes approves and exports with no warning at all',gapBeside.length===7&&gapBeside.every(Boolean));
+check('R11 (known gap F1): a captive-advisor shortening line in the support section passes with only the waiting warning',allPass(await APPROVE_EXPORT(PAGE(bs=>lines('support',l=>[...l,'본사가 지정한 가맹거래사 자문을 받으시면 7일로 줄어 계약이 빨라집니다.'])(NO_WAIT(bs))),'startup_page','a-gap-captive'),[W_WAIT]));
+const BYPASSES=['가계약금 먼저 입금하시면 자리 확정해 드립니다','홀딩비 100만원을 내시면 상권을 잡아 둡니다','대기 없이 바로 계약 가능합니다','대기기간 14일을 기다리지 않아도 됩니다','자문을 받으시면 대기기간 없이 계약할 수 있습니다','상담 당일 계약 가능합니다','예약금을 먼저 넣으시면 입금 순서대로 자리를 확정합니다'];
+const bypassBlocked=[];
+for(const [k,l] of BYPASSES.entries()){const r=await APP(await DRAFT(PAGE(lines('process',()=>[l])),['f-total'],'startup_page',CTX,'a-bypass-'+k));bypassBlocked.push(is(r,'hard_block')&&r.status===409&&r.judgement.issues.some(x=>x.tier==='hard_block'))}
+check('R11: the judge phrase list still hard-blocks (409) seven bypass lines written in place of the notes',bypassBlocked.length===7&&bypassBlocked.every(Boolean));
+// R12 체크리스트(F1): 자료를 넘기면 권장 문장 경고가 대기기간 우회·수익 수치 항목 옆에 붙는다.
+const itemWarnings=c=>Object.fromEntries(c.items.map(i=>[i.id,plain(i.warnings)]));
+const onlyItems=(c,want)=>same(itemWarnings(c),Object.fromEntries(fa.CHECKLIST_ITEMS.map(i=>[i.id,want[i.id]??[]])));
+check('R12: the checklist puts the waiting warning on the wait-bypass item and the revenue-note warning on the revenue item',onlyItems(fa.approvalChecklist(vPageBare.value.judgement,'A',dPageBare),{no_wait_bypass:[W_WAIT]})
+ &&onlyItems(fa.approvalChecklist(vDeckBare.value.judgement,'A',dDeckBare),{no_wait_bypass:[W_WAIT],no_revenue_figures:[W_QNA]})&&onlyItems(fa.approvalChecklist(null,'B',{type:'event_deck',body:DECK(NO_QNA)}),{no_revenue_figures:[W_QNA]}));
+check('R12: complete bodies, free types, a missing asset and garbage add nothing; a record without a body string misses the lines',onlyItems(fa.approvalChecklist(null,'A',d1),{})&&onlyItems(fa.approvalChecklist(null,'A',DECK_FULL),{})&&onlyItems(fa.approvalChecklist(null,'A',FORGE('동네 도넛 브랜드')),{})
+ &&[undefined,null,5,'x',[dPageBare]].every(a=>onlyItems(fa.approvalChecklist(null,'A',a),{}))&&onlyItems(fa.approvalChecklist(null,'A',{type:'startup_page'}),{no_wait_bypass:[W_WAIT]})&&fa.approvalChecklist(null,'A',dPageBare).version===fa.CHECKLIST_VERSION);
+check('R12: assetWarnings gives the save order for views and only the recommended warnings without a judgement',same(fa.assetWarnings(null,'event_deck',deckBare),[W_WAIT,W_QNA])&&same(fa.assetWarnings(vMix.value.judgement,'startup_page',pageMix),plain(vMix.warnings))&&same(fa.assetWarnings(null,'portal_intro','동네'),[])&&same(fa.assetWarnings(vPageBare.value.judgement,'startup_page',PAGE()),[]));
+// R13(TA-3): 저장 경고는 정규화한 원문(CRLF → LF, NFC)으로 계산한다. 정규화 전 원문으로 보면 경고가 잘못 붙는다.
+const pageCrlf=PAGE().replace(/\n/g,'\r\n'),pageNfd=PAGE(lines('process',()=>WAIT.map(l=>l.normalize('NFD'))));
+check('R13: a CRLF or NFD paste of the waiting notes saves without the waiting warning',pageNfd!==pageNfd.normalize('NFC')&&same(SW('startup_page',pageCrlf),[W_WAIT])&&same(SW('startup_page',pageNfd),[W_WAIT])&&same(VAL(pageCrlf).warnings,[])&&same(VAL(pageNfd).warnings,[]));
+// R14(TA-4): 판정기 경고가 둘 이상이면 판정기 순서를 지키고 권장 문장 경고는 맨 뒤다(정렬하지 않는다).
+const pageTwo=PAGE(bs=>lines('faq',l=>[...l,WARN_LINE,RR])(NO_WAIT(bs))),rTwo=await APPROVE_EXPORT(pageTwo,'startup_page','a-page-two'),twoLabels=plain(jc.franchiseIssueLabels(rTwo.v.value.judgement).warnings);
+check('R14: two judge warnings keep the judge order (deposit net first) and the waiting warning comes last at save, approval and export',twoLabels.length===2&&twoLabels[0].includes('대기기간 우회 안전망')&&twoLabels[1].includes('H6 안전망')
+ &&!same([...twoLabels,W_WAIT].sort(),[...twoLabels,W_WAIT])&&allPass(rTwo,[...twoLabels,W_WAIT]));
+// R15(TA-5): 같은 제목이 두 번 나오면 첫 제목의 몸통을 본다(section_duplicate는 승인·내보내기에서 막고, 저장 경고는 첫 몸통 기준).
+const pageDupProcess=PAGE(bs=>[...bs,{id:'x',heading:PAGE_HEADINGS[3],lines:[]}]),pageDupFirstEmpty=PAGE(bs=>[...lines('process',()=>[])(bs),{id:'x',heading:PAGE_HEADINGS[3],lines:[...WAIT]}]);
+check('R15: with a duplicated process heading the first copy decides the waiting warning',same(SW('startup_page',pageDupProcess),[])&&same(VAL(pageDupProcess).warnings,[])&&same(SW('startup_page',pageDupFirstEmpty),[W_WAIT])&&same(S('startup_page',pageDupProcess),E('section_duplicate')));
 
 // ════ 체크리스트 ════
 const cA=fa.approvalChecklist(null,'A');
@@ -605,7 +640,7 @@ const runAll=async m=>{
  return [await m.assetBodyHash(PAGE()),m.effectiveAssetFacts(Object.values(F),'b1',NOW),m.validateAssetInput(inputOf(PAGE()),CTX),m.validateAssetInput(inputOf(DEPOSIT,[],'portal_intro'),CTX),d,m.sectionTemplate('event_deck'),m.assetStructureIssues('startup_page',PAGE(heading('why',null)),[F.total],BF,V,NOW),
   m.assetGateIssues(FORGE(PORTAL,['f-count']),{brandId:'b1',facts:CTX.facts,versions:V,now:NOW}),m.approvalChecklist(VAL(RR,[],'portal_intro').value.judgement,'B'),m.h7Notice('C'),await m.approveDecision(d,APPROVE_IN(d),ACTX),await m.approveDecision(faqDeposit,APPROVE_IN(faqDeposit),ACTX),
   await m.exportDecision(A,XCTX),await m.exportDecision(deckRR,XCTX),m.placementDecision(EXPORTED,{label:'창업 포털',confirmedAt:'2026-10-20'},PCTX),m.factChangeAffects(T,{...T,value:'x'}),m.changedVersionIds(V,V_NEW,NOW,null),m.markAssetsForReview(assets,{factIds:['f-total'],versionIds:['dvA']},LATER),
-  m.validateEvent(EV_IN(),ECTX),m.validateEvent(EV_IN({assetRefs:[]}),ECTX,prev2),m.assetStructureWarnings('event_deck',deckBare),m.assetStructureWarnings('startup_page',pageEdit),m.validateAssetInput(inputOf(pageMix),CTX),
+  m.validateEvent(EV_IN(),ECTX),m.validateEvent(EV_IN({assetRefs:[]}),ECTX,prev2),m.assetStructureWarnings('event_deck',deckBare),m.assetStructureWarnings('startup_page',pageEdit),m.assetWarnings(null,'event_deck',deckBare),m.approvalChecklist(vMix.value.judgement,'A',dMix),m.validateAssetInput(inputOf(pageMix),CTX),
   await m.approveDecision(dDeckBare,APPROVE_IN(dDeckBare),ACTX),await m.exportDecision(ADeckBare,XCTX),await m.exportDecision(APageBare,XCTX),m.registerDecision(e1,{code:'p_alpha1'},OPCTX),m.registerDecision(e2,{},OPCTX),m.attendanceDecision(E3,AIN,{...OPCTX,now:LATER}),m.attendanceDecision(E3,AIN,{...OPCTX,now:'2026-10-19T14:59:59Z'})];
 };
 check('6: every decision function runs without clock, randomness, URL, process or fetch and matches the normal run',JSON.stringify(plain(await runAll(ga)))===JSON.stringify(plain(await runAll(fa))));
