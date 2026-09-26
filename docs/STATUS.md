@@ -10,7 +10,7 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-26 02:05 UTC (Claude A3 세션: #120 A1 병합 반영, A3-1 카피 팩 v2 계약·채점기, 게시 보류 중)
+마지막 갱신: 2026-09-26 02:05 UTC (Claude A3 세션: #120 A1 병합 반영, A3-2 브랜드 말투 원장·채점기, 게시 보류 중)
 
 ## 현재 운영 상태
 
@@ -86,6 +86,7 @@
 - 결정 17(AI 생성물 표시) 미결: AI 카피 캡션은 `AI_COPY_CAPTIONS=enabled`가 아니면 꺼져 있다(#29).
 - `docs/STATUS.md`·`prompt_plan.md`는 여러 레인이 함께 쓰므로 병합 순서대로 rebase해 갱신한다.
 - A3-1 카피 팩 v2(브랜치 `feat/a3-copy-pack-v2`, Claude Code, 기준 `b0ef304`): 콘텐츠 역할 출력 계약 `role-output-v2`(채널당 3~5안 카피·숏폼 장면 배열·제안 실험)와 채점기 `copy_pack_variants`(`+copy-pack`)를 더한다. 스위치 `a3_copy_pack`(기본 꺼짐)이 켜진 소유자의 콘텐츠 단독 실행만 쓰고, 꺼져 있으면 제출 바이트 동일하다. 게시 보류 중이라 운영 반영은 다음 묶음이다. [카피 팩](COPY-PACK.ko.md)
+- A3-2 브랜드 말투(브랜치 `feat/a3-brand-voice`, Claude Code, A3-1 `feat/a3-copy-pack-v2`(#121, 미병합) 위): records kind `brand_voice`(관리자 초안·대표·관리자 확정·철회, CAS 409, 직원 403)와 채점기 `brand_voice_avoid_term`(`+voice-avoid`, 15종)을 더한다. 스위치 `a3_brand_voice`(기본 꺼짐)가 켜지고 확정본이 있을 때만 크리에이티브·콘텐츠 입력에 `brandVoice`가 실리고, 아니면 제출 바이트 동일하다. #121 병합 뒤 rebase한다. [카피 팩 A3-2](COPY-PACK.ko.md)
 
 ## 이력
 
