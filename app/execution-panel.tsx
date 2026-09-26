@@ -81,7 +81,7 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
  // 서버가 계산한 사유(ExecutionState.franchise.blockedFacts, 트랙 R R2)를 먼저 쓰고, 없으면 버전 상태로 화면에서 계산한다.
  const serverBlocked=new Map((state?.franchise?.blockedFacts||[]).map(b=>[b.id,b.reason]));
  const blockReason=(f:BrandFact)=>{const known=serverBlocked.get(f.id);if(known)return known;if(!franchise)return '';const key=franchiseFactUseIssue(f,states);return key?FRANCHISE_FACT_MESSAGES[key]:''};
- // 가맹 규칙 판정(트랙 R R2): 초안·승인 발행의 차단 사유와 경고. 가맹 프로필이 없는 브랜드는 null이다.
+ // 가맹 규칙 판정(트랙 R R2·R3): 초안·승인 발행의 차단 사유와 경고. 판정 범위가 없는 캠페인(가맹 프로필 없는 브랜드의 소비자 캠페인)은 null이다.
  const franchiseOf=(p:Publication)=>state?.franchise?.publications[p.id]??null;
  const chosenNotes=franchise?footnoteLines(facts.filter(f=>selected.includes(f.id)),franchise.versions):[];
  async function createCard(){
@@ -153,7 +153,7 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
     {state.limits?.paused&&<div role="status" className="rounded border p-3 space-y-1"><strong>새 발행 접수가 중지됐습니다.</strong> <span>이미 Buffer에 접수된 예약은 중지되지 않습니다. 아래 예약은 Buffer에서 취소 여부를 확인하세요.</span>{submitted.length?<ul aria-label="이미 접수된 예약">{submitted.map(p=><li key={p.id}>{new Date(p.scheduledAt).toLocaleString()} · {publicationLabels[p.status]}{p.providerId?' · 게시 번호 '+p.providerId:''}</li>)}</ul>:<p>이미 접수된 예약은 없습니다.</p>}</div>}
    </section>
    <section className="rounded-xl border p-4 space-y-3"><h3 className="font-semibold">3. 발행 준비·승인</h3>
-    {state.franchise&&<div role="note" className="text-sm space-y-1"><p>가맹 프로필이 있는 브랜드입니다. 캡션에 가맹 모집 규칙(소비자 캠페인 범위)을 적용합니다. 수익 보장·매출 수치 같은 해제 불가 표현은 대표 승인으로도 풀리지 않습니다.</p><p>{state.franchise.notice} {state.franchise.disclaimer}</p></div>}
+    {state.franchise&&<div role="note" className="text-sm space-y-1"><p>{state.franchise.scope==='recruitment'?'가맹 모집 캠페인입니다. 캡션에 가맹 모집 규칙(모집 범위: 생산·판매 채널·직영 매장 인기 같은 표현 포함)을 적용합니다. 수익 보장·매출 수치 같은 해제 불가 표현은 대표 승인으로도 풀리지 않습니다.':'가맹 프로필이 있는 브랜드입니다. 캡션에 가맹 모집 규칙(소비자 캠페인 범위)을 적용합니다. 수익 보장·매출 수치 같은 해제 불가 표현은 대표 승인으로도 풀리지 않습니다.'}</p><p>{state.franchise.notice} {state.franchise.disclaimer}</p></div>}
     {state.franchise?.recruitmentWarning&&<p role="status" className="rounded border p-3 text-sm">{state.franchise.recruitmentWarning}</p>}
     <p>승인하면 앱이 이 PNG를 공개 주소(/media/해시.png)로 제공하고, Buffer는 그 주소에서 이미지를 가져갑니다. 앱 사이트가 공개(public) 상태일 때만 Buffer가 가져올 수 있어, 승인 직후 로그인 없이 접근되는지 확인합니다. 취소·실패하거나 초안으로 되돌리면 공개를 멈춥니다.</p>
     <form className="grid gap-2" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget),copy=String(f.get('copy')||''),trackingCode=codeType?{type:codeType,...(campaign.storeId?{}:{storeId:String(f.get('codeStoreId')||'')})}:null;void perform(async()=>{const r=await action<Publication>('save_publication',{creativeId:f.get('creativeId'),mediaUrl:String(f.get('mediaUrl')||''),scheduledAt:new Date(String(f.get('scheduledAt'))).toISOString(),plannedCostKRW:Number(f.get('plannedCostKRW')),...(copy?{copy:JSON.parse(copy)}:{}),...(trackingCode?{trackingCode}:{})});setCodeType('');return r},r=>r?.trackingCode?`발행 초안을 저장했습니다. 게시 코드(${r.trackingCode.code})를 캡션 끝에 넣었습니다. 이미지와 계정·시각·비용을 확인해 승인하세요.`:'발행 초안을 저장했습니다. 이미지와 계정·시각·비용을 확인해 승인하세요.')}}>

@@ -1,6 +1,7 @@
 import {ApiError,readRecord,recordStatement,stamp,str,type Actor} from './server';
 import type {Brand} from './agency';
-import {parseVoiceBody,activeVoiceInput,voiceBody,BRAND_VOICE_LIMITS,type BrandVoice,type BrandVoiceInput,type VoiceBody,type VoiceSnapshot,type VoiceActor} from './brand-voice';
+import {isEnabled} from './feature-flags';
+import {parseVoiceBody,activeVoiceInput,VOICE_ROLES,voiceBody,BRAND_VOICE_LIMITS,type BrandVoice,type BrandVoiceInput,type VoiceBody,type VoiceSnapshot,type VoiceActor} from './brand-voice';
 
 // 브랜드 말투 원장(A3-2) 저장. records kind brand_voice(id=brandId, parent=brandId, 브랜드당 1행, 최근 20판 history를 행 안에 둔다).
 // 쓰기(save_draft·confirm·revoke)는 대표·관리자만 한다(라우트가 requireAdminActor로 막고, 여기서도 직원을 403으로 막는다). 모든 쓰기는 version 비교(CAS)로 409를 낸다.
@@ -12,6 +13,12 @@ export async function readBrandVoice(owner:string,brandId:string):Promise<BrandV
 }
 // 역할 입력용 확정본 블록(없으면 null). lib/role-execution.ts가 스위치가 켜진 content·creative 역할에서만 부른다.
 export async function confirmedVoiceInput(owner:string,brandId:string):Promise<BrandVoiceInput|null>{return activeVoiceInput(await readBrandVoice(owner,brandId))}
+// 역할 요청에 싣는 확정 말투. 실행기(role-execution)는 스위치를 직접 import하지 않는다(tests/franchise-objective.test.mjs 6). content·creative 역할만 스위치를 읽고, 스위치 읽기 실패는 꺼짐으로 본다.
+export async function roleVoiceInput(owner:string,role:string,brandId:string):Promise<BrandVoiceInput|null>{
+ if(!VOICE_ROLES.includes(role))return null;
+ const on=await isEnabled(owner,'a3_brand_voice').catch(()=>{console.error('a3_brand_voice_flag_unreadable');return false});
+ return on?confirmedVoiceInput(owner,brandId):null;
+}
 // 판 하나(history 항목·확정본): 행에서 id·확정본·history를 뺀 값.
 const snapshotOf=(v:VoiceSnapshot):VoiceSnapshot=>({...voiceBody(v),version:v.version,status:v.status,updatedBy:v.updatedBy,updatedAt:v.updatedAt,...(v.confirmedBy?{confirmedBy:v.confirmedBy,confirmedAt:v.confirmedAt}:{})});
 type Change={body:VoiceBody;status:VoiceSnapshot['status'];by:VoiceActor;confirmed:boolean;keepConfirmed:boolean};

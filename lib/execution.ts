@@ -18,11 +18,12 @@ export type NeedsReview={reason:string;at:string};
 export type PublicationCode={id:string;code:string;type:'coupon'|'pos_tag';storeId:string};
 export type Publication={id:string;campaignId:string;creativeId:string;creativeVersion:number;campaignVersion:number;pngHash:string;factRefs:FactRef[];caption:string;mediaUrl:string;mediaMode?:'auto'|'external';copy?:PublicationCopy;trackingCode?:PublicationCode;scheduledAt:string;plannedCostKRW:number;version:number;status:PublicationStatus;channelId?:string;credentialVersion?:number;limitsVersion?:number;approvedLimits?:{maxPublications:number;maxPlannedCostKRW:number};approvedBy?:string;approvedAt?:string;aiDisclosureConfirmedBy?:string;aiDisclosureConfirmedAt?:string;providerId?:string;providerStatus?:string;error?:string;attemptedAt?:string;attemptRestored?:boolean;needsReview?:NeedsReview|null;invalidatedReason?:string;reconfirmedBy?:string;reconfirmedAt?:string;resolvedBy?:string;resolvedAt?:string;createdAt:string;updatedAt?:string};
 export type PublisherStatus={connected:boolean;channelId?:string;account?:string;version?:number};
-// warnings: 가맹 프로필이 있는 브랜드의 가맹 규칙 경고(트랙 R R2). 비가맹 브랜드에는 키가 없다.
+// warnings: 가맹 모집 규칙 판정 범위가 있는 캠페인(가맹 모집 목적 캠페인 또는 가맹 프로필 브랜드 캠페인)의 경고(트랙 R R2·R3). 범위가 없으면 키가 없다.
 export type CaptionCandidate={artifactId:string;artifactVersion:number;index:number;text:string;issues:string[];aiGenerated:boolean;warnings?:string[]};
-// 가맹 프로필이 있는 브랜드의 발행 화면 정보(트랙 R R2). scope: objective 없는 캠페인은 소비자 캠페인 규칙만 적용한다. blockedFacts: 카드에 쓸 수 없는 사실과 사유.
+// 가맹 모집 규칙 판정 범위가 있는 캠페인의 발행 화면 정보(트랙 R R2·R3). scope: 가맹 모집 목적(objective) 캠페인은 모집 범위, 가맹 프로필 브랜드의 그 밖 캠페인은 소비자 범위.
+// branch: 가맹 프로필이 없으면 null. blockedFacts: 카드에 쓸 수 없는 사실과 사유.
 // publications: 초안·승인 발행의 가맹 규칙 차단 사유(서버가 같은 조건을 409로 막는다)와 경고. recruitmentWarning: 모집처럼 읽히는 캠페인 경고(승인 화면만, 서버는 막지 않는다).
-export type FranchiseExecution={scope:'consumer';branch:string;versions:{id:string;label:string;registeredAt:string|null;state:VersionState}[];blockedFacts:{id:string;reason:string}[];publications:Record<string,{blockers:string[];warnings:string[]}>;recruitmentWarning:string|null;notice:string;disclaimer:string};
+export type FranchiseExecution={scope:'consumer'|'recruitment';branch:string|null;versions:{id:string;label:string;registeredAt:string|null;state:VersionState}[];blockedFacts:{id:string;reason:string}[];publications:Record<string,{blockers:string[];warnings:string[]}>;recruitmentWarning:string|null;notice:string;disclaimer:string};
 export type ExecutionState={creatives:ExecutionCreative[];publications:Publication[];limits:ExecutionLimits|null;publisher:PublisherStatus;copies:CaptionCandidate[];copyCaptions:boolean;franchise?:FranchiseExecution};
 export const publicationLabels:Record<PublicationStatus,string>={draft:'승인 전',approved:'실행 승인',submitting:'접수 확인 중',uncertain:'접수 여부 미확인',accepted:'예약 접수',blocked:'공급자 확인 필요',published:'게시 확인',failed:'발행 실패',cancelled:'취소'};
 // 관리자가 Buffer 미접수를 확인하고 차감을 되돌린 시도(attemptRestored)는 한도에서 뺀다.

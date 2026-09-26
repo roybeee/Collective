@@ -1,13 +1,30 @@
 import type {CampaignPlan,DraftMeta} from './brief';
 export type Brand = {intake?:import('./archive').BrandIntake;id:string; name:string; short:string; category:string; color:string; bg:string; description:string; audience:string; tone:string; constraints:string; knowledge:string};
+// 캠페인 목적(트랙 R R3, 결정 26): 가맹 모집 캠페인만 objective 키가 있다. 소비자 캠페인은 키가 없고 기본값을 저장하지 않는다(역할·회의·브리프 제출 바이트 불변).
+// 판정은 이 함수 하나로 한다(채널 스킬·근거 정책·실행 가드레일 범위). 정확히 같은 값만 인정한다(대문자·공백·다른 값은 소비자 캠페인).
+export const CAMPAIGN_OBJECTIVE='franchise_recruitment' as const;
+export type CampaignObjective=typeof CAMPAIGN_OBJECTIVE;
+export const objectiveLabels:Record<CampaignObjective,string>={franchise_recruitment:'가맹 모집'};
+export const isRecruitmentObjective=(c:{objective?:unknown}|null|undefined)=>c?.objective===CAMPAIGN_OBJECTIVE;
+export const OBJECTIVE_MESSAGES={
+ invalid:'캠페인 목적을 확인해 주세요. 가맹 모집만 지정할 수 있습니다.',
+ withStore:'가맹 모집 캠페인은 지점에 연결할 수 없습니다. 지점 없이 브랜드 공통 캠페인으로 만드세요.',
+ off:'가맹 모집 기능이 꺼져 있어 가맹 모집 목적을 지정할 수 없습니다. 목적 해제와 다른 브리프 수정은 그대로 할 수 있습니다.',
+ adminOnly:'캠페인 목적은 대표·관리자만 바꿀 수 있습니다.',
+ brandLocked:'가맹 모집 캠페인의 브랜드는 바꿀 수 없습니다. 목적을 해제하거나 새 캠페인을 만드세요.',
+ hasExecution:'제작·발행 기록이 있는 캠페인에는 가맹 모집 목적을 지정할 수 없습니다. 새 가맹 모집 캠페인을 만드세요.',
+ draftMismatch:'초안을 요청한 뒤 캠페인 목적이 바뀌었습니다. 바뀐 목적을 먼저 저장하고 초안을 다시 작성해 주세요.',
+ unsetWithStore:'목적 해제와 지점 연결을 한 번에 할 수 없습니다. 목적 해제를 저장한 뒤 지점 연결을 쓰세요.',
+} as const;
 // derivedStatus·statusReason: 응답 전용 파생 상태와 근거(lib/campaign-status.ts). 저장하지 않으며 저장 status는 그대로다.
-export type Campaign = {derivedStatus?:string;statusReason?:string;storeId?:string;storeExperimentId?:string;plan?:CampaignPlan;draftMeta?:DraftMeta;budgetConfirmedAt?:string;id:string; brandId:string; title:string; goal:string; audience:string; channels:string; stores:string; products:string; budget:number|null; startDate:string; endDate:string; constraints:string; sources:string; status:string; version:number; createdAt:string; updatedAt:string;};
+export type Campaign = {derivedStatus?:string;statusReason?:string;storeId?:string;storeExperimentId?:string;objective?:CampaignObjective;plan?:CampaignPlan;draftMeta?:DraftMeta;budgetConfirmedAt?:string;id:string; brandId:string; title:string; goal:string; audience:string; channels:string; stores:string; products:string; budget:number|null; startDate:string; endDate:string; constraints:string; sources:string; status:string; version:number; createdAt:string; updatedAt:string;};
 // brandChanged·factsChanged: 작성 뒤 브랜드 정보·사실 원장이 바뀐 작업물. unverifiedClaims: 저장 전 검사에서 [확인 필요] 없이 발견된 금지·미확인 광고 표현.
 export type Artifact = {factRefs?:import('./brand-facts').EvidenceFactRef[]; factsChanged?:boolean; brandChanged?:boolean; unverifiedClaims?:string[]; campaignVersion?:number; outputContractVersion?:string; id:string; campaignId:string; role:string; title:string; content:string; status:string; version:number; origin:string; createdAt:string};
 export type Run = {id:string; campaignId:string; role:string; status:string; error:string|null; createdAt:string; model:string; tokens:number};
 export type Metric = {id:string; campaignId:string; period:string; revenue:number|null; variableCosts:number|null; adSpend:number|null; productionCost:number|null; orders:number|null; baselineContribution:number|null; notes:string;schemaVersion?:2;version?:number;periodStart?:string;periodEnd?:string;scope?:string;source?:string;definition?:string;method?:'manual'|'export';updatedAt?:string};
 // storeSync: 지점 수정 때 자동 갱신한 브리프 필드와 사용자가 고쳐 갱신하지 않은 충돌 필드(lib/brief.ts storeCopyFields 키).
-export type Event = {id:string; campaignId:string; message:string; createdAt:string; actor?:{id:string; email:string|null}; storeSync?:{updated:string[]; conflicts:string[]}};
+// objectiveChange: 캠페인 목적 지정·해제 감사(바꾼 사람의 역할).
+export type Event = {id:string; campaignId:string; message:string; createdAt:string; actor?:{id:string; email:string|null}; storeSync?:{updated:string[]; conflicts:string[]}; objectiveChange?:{from:CampaignObjective|null;to:CampaignObjective|null;role:'owner'|'admin'}};
 export const roles = [
  {id:'cmo',name:'총괄 파트너',en:'Managing partner',initial:'MP',color:'#d9f36c',job:'목표를 실행 가능한 과제로',deliverable:'목표·범위·예산·일정과 미확정 사항을 구분한 실행 브리프. 예산과 성과 수치를 임의 확정하지 말 것.'},
  {id:'insight',name:'고객 인사이트',en:'Research & intelligence',initial:'RI',color:'#d9e5ff',job:'고객이 선택하는 이유를 발견',deliverable:'제공 자료에서 관찰한 사실, 출처, 추론, 검증할 가설을 구분. 검색한 자료는 URL과 기준 시점을 제시. 검색하지 못한 내용은 자료 필요로 표시하고 최신 시장조사를 했다고 주장하지 말 것.'},
