@@ -3,7 +3,7 @@ import {maskFields} from './pii-scan';
 import {productionAllow,withoutPlanOwner,withoutAssignees} from './ai-context';
 import {MEETING_MASK_PATHS,MEETING_ARTIFACT_FIELDS,buildMeetingSubmission} from './meeting-input';
 import {BRIEF_MASK_PATHS,buildBriefSubmission,type BriefRequest} from './brief-input';
-import type {Meeting,MeetingStep,MeetingPhase} from './meetings';
+import {withoutCopyPack,type Meeting,type MeetingStep,type MeetingPhase} from './meetings';
 import type {PromptSet} from './practice';
 
 // 회의 단계·브리프 평가 요청의 동결(G2). 저장 요청은 조립(lib/meeting-input.ts·lib/brief-input.ts)이 읽는 필드만 남기고, 운영 제출과 같은 가림을 원자료 자리에 적용한다.
@@ -73,15 +73,17 @@ export function meetingBefore(m:Meeting,stepId:string):Meeting{
  if(!PHASES.includes(target.phase))throw bad('평가할 수 없는 회의 단계입니다.');
  return {...m,steps:[...m.steps.slice(0,at),{id:target.id,role:target.role,phase:target.phase,status:'pending',...(target.task?{task:target.task}:{})}]};
 }
+// 카피 팩 개선본(A3-4)의 팩 필드는 조립이 읽지 않으므로(렌더본이 content에 있다) 저장하지 않는다. 출력 프로필(snapshot.outputProfile)은 콘텐츠 개선 지시를 바꾸므로 남긴다.
+const stepOf=(t:MeetingStep):MeetingStep=>t.phase==='revision'&&isRecord(t.output)?{...t,output:withoutCopyPack(t.output)}:t;
 function minimalMeeting(m:Meeting):FrozenMeeting{
  const s=m.snapshot;
  const snapshot:Meeting['snapshot']={
-  ...(s.prompts?{prompts:s.prompts}:{}),...(s.brandArchive?{brandArchive:withoutAssignees(s.brandArchive)}:{}),...(s.sourceMasking?{sourceMasking:s.sourceMasking}:{}),
+  ...(s.prompts?{prompts:s.prompts}:{}),...(s.outputProfile?{outputProfile:s.outputProfile}:{}),...(s.brandArchive?{brandArchive:withoutAssignees(s.brandArchive)}:{}),...(s.sourceMasking?{sourceMasking:s.sourceMasking}:{}),
   campaign:withoutPlanOwner(s.campaign),brand:pick(s.brand as unknown as Record<string,unknown>,BRAND_FIELDS) as unknown as Meeting['snapshot']['brand'],
   artifacts:s.artifacts.map(a=>pick(a as unknown as Record<string,unknown>,MEETING_ARTIFACT_FIELDS) as unknown as Meeting['snapshot']['artifacts'][number]),
   metrics:s.metrics,learning:s.learning,...(s.evidence?{evidence:{facts:s.evidence.facts,directives:s.evidence.directives} as Meeting['snapshot']['evidence']}:{}),...(s.previous?{previous:s.previous}:{}),
  };
- return {id:m.id,campaignId:m.campaignId,...(m.skillVersion?{skillVersion:m.skillVersion}:{}),agenda:m.agenda,steps:m.steps.map(t=>pick(t as unknown as Record<string,unknown>,STEP_FIELDS) as unknown as MeetingStep),snapshot};
+ return {id:m.id,campaignId:m.campaignId,...(m.skillVersion?{skillVersion:m.skillVersion}:{}),agenda:m.agenda,steps:m.steps.map(t=>stepOf(pick(t as unknown as Record<string,unknown>,STEP_FIELDS) as unknown as MeetingStep)),snapshot};
 }
 const meetingAllow=(m:FrozenMeeting,storeAllow:readonly string[])=>productionAllow(m.snapshot.evidence,m.snapshot.brandArchive,storeAllow);
 // 동결: 직전 기록으로 자르고, 조립이 읽는 필드만 남기고, 운영 가림 경로의 원자료를 같은 허용 값으로 가린다. 개선본 출력은 제목·본문만 가린다(다른 단계 출력은 운영도 가리지 않는다).

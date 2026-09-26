@@ -1,6 +1,6 @@
 import {aiBudget} from './agency';
 import {campaignPractice} from './practice';
-import {meetingInstructions,candidateArtifacts,respondsToHandles,discussionRef,artifactRef,type Meeting,type MeetingStep,type Contribution} from './meetings';
+import {meetingInstructions,candidateArtifacts,respondsToHandles,discussionRef,artifactRef,meetingCopyPack,withoutCopyPack,type Meeting,type MeetingStep,type Contribution} from './meetings';
 import {labelArchive} from './role-output';
 import {aiBrand,withoutPlanOwner,withoutAssignees,productionAllow,inputMaskingRecord,BRAND_MASK_PATHS,DIRECTIVE_MASK_PATHS,FACT_MASK_PATHS,STORE_MASK_PATHS,campaignMaskPaths,metricMaskPaths,type InputMasking} from './ai-context';
 import {maskFields} from './pii-scan';
@@ -26,7 +26,8 @@ export function meetingContext(m:Meeting,s:MeetingStep,storeAllow:readonly strin
   originalArtifacts:snapshot.artifacts.map(a=>({ref:artifactRef(a),...pick(a,MEETING_ARTIFACT_FIELDS),content:a.content.slice(0,8000),excerpt:a.content.length>8000})),
   discussion:m.steps.filter(t=>t.phase==='discussion'&&t.status==='completed').map(t=>{const o=t.output as Contribution;return {ref:discussionRef(t.role),role:t.role,...o,respondsTo:o.respondsTo.map(ref)}}),
   synthesis:m.steps.find(t=>t.phase==='synthesis')?.output,
-  completedRevisions:m.steps.filter(t=>t.phase==='revision'&&t.status==='completed').map(t=>({role:t.role,...t.output})),
+  // 카피 팩 개선본(A3-4)은 팩 렌더본이 content에 있으므로 팩 필드(copyPack·copyPackIssues)는 싣지 않는다. 팩이 없으면 이전과 같다.
+  completedRevisions:m.steps.filter(t=>t.phase==='revision'&&t.status==='completed').map(t=>({role:t.role,...(t.output&&withoutCopyPack(t.output))})),
   task:s.task,...(s.phase==='quality'?{candidateArtifacts:candidateArtifacts(m).artifacts.map(a=>({ref:artifactRef(a),...pick(a,CANDIDATE_FIELDS),content:a.content.slice(0,CANDIDATE_CONTENT_LIMIT),excerpt:a.content.length>CANDIDATE_CONTENT_LIMIT})),invalidatedRoles:candidateArtifacts(m).invalidatedRoles}:{})};
  const masked=maskFields(raw,MEETING_MASK_PATHS,{allow:productionAllow(snapshot.evidence,snapshot.brandArchive,storeAllow)});
  return {value:masked.value,findings:inputMaskingRecord(masked)};
@@ -38,5 +39,5 @@ export function meetingContext(m:Meeting,s:MeetingStep,storeAllow:readonly strin
 export function buildMeetingSubmission(m:Meeting,stepId:string,storeAllow:readonly string[]):{instructions:string;input:string;maskingRecord:InputMasking[]}{
  const s=m.steps.find(t=>t.id===stepId);if(!s)throw new Error('회의 단계를 찾을 수 없습니다.');
  const built=meetingContext(m,s,storeAllow);
- return {instructions:meetingInstructions(s,!!m.skillVersion,m.snapshot.prompts?.set)+(s.correction?CORRECTION:''),input:JSON.stringify(built.value),maskingRecord:[...built.findings,...(m.snapshot.sourceMasking||[])]};
+ return {instructions:meetingInstructions(s,!!m.skillVersion,m.snapshot.prompts?.set,meetingCopyPack(m,s))+(s.correction?CORRECTION:''),input:JSON.stringify(built.value),maskingRecord:[...built.findings,...(m.snapshot.sourceMasking||[])]};
 }

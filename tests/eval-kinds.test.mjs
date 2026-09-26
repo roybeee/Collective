@@ -80,7 +80,7 @@ for(const res of legacy.results){
  const kase=captured.find(c=>c.id===res.caseId),body=sentFor(res);
  check(`${kase.label} promptHash is unchanged`,()=>assert.equal(res.promptHash,oldHash(kase.request)));
  check(`${kase.label} body equals the pure role builders`,()=>assert.ok(body.instructions===instruction.buildRoleInstruction(kase.request)&&body.input===instruction.buildRoleInput(kase.request)&&!('operatorPreferences' in JSON.parse(body.input))));
- check(`${kase.label} is graded by the role kind`,()=>assert.ok(res.graders.length===14&&res.variant==='active'));
+ check(`${kase.label} is graded by the role kind`,()=>assert.ok(res.graders.length===15&&res.variant==='active'));
 }
 check('the role kind build equals the pure builders without preferences',()=>assert.deepEqual(plain(kinds.evalKind('role').build(captured[0].request)),{instructions:instruction.buildRoleInstruction(captured[0].request),input:instruction.buildRoleInput(captured[0].request)}));
 

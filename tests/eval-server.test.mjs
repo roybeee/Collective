@@ -23,7 +23,7 @@ const {sql,env,load}=testRuntime(async(url,options={})=>{
  const id=/^\/v1\/runs\/([\w-]+)$/.exec(path)?.[1];if(!id||!hermesRuns.has(id))return new Response('{}',{status:404});
  if(mode.poll==='running')return Response.json({object:'hermes.run',run_id:id,status:'running'});
  if(mode.poll==='unavailable')return new Response('{}',{status:503});
- if(mode.poll==='failed')return Response.json({object:'hermes.run',run_id:id,status:'failed',error:'synthetic',usage:{total_tokens:40}});
+ if(mode.poll==='failed')return Response.json({object:'hermes.run',run_id:id,status:'failed',error:mode.error??'synthetic',usage:mode.failedUsage??{total_tokens:40}});
  return Response.json({object:'hermes.run',run_id:id,status:'completed',output:roleFixture(hermesRuns.get(id).input),usage:mode.usage,model:'mock-eval-model'});
 });
 const server=await load('lib/server.ts'),route=await load('app/api/eval/route.ts'),background=await load('lib/background-execution.ts');
@@ -194,9 +194,9 @@ for(const res of run1.results){
  check(`${res.role} idempotency key derives from run and case`,()=>assert.ok(res.idempotencyKey===expectedKey(run1.id,res.caseId)&&sub.headers['idempotency-key']===res.idempotencyKey&&sub.headers['x-hermes-session-key']===res.idempotencyKey));
  check(`${res.role} key never reuses a stored production key`,()=>assert.ok(!productionKeys.includes(res.idempotencyKey)));
  check(`${res.role} result records model, provider run, tokens and duration`,()=>assert.ok(res.model==='mock-eval-model'&&/^eval_\d+$/.test(res.providerRunId)&&res.tokens.total===1500&&res.tokens.input===1000&&res.tokens.output===500&&Number.isFinite(res.durationMs)&&res.durationMs>=0));
- check(`${res.role} graded by the fourteen graders and compliance`,()=>assert.ok(res.graders.length===14&&res.graders.every(g=>['pass','fail','not_applicable','grader_error'].includes(g.status))&&Object.values(res.summary).reduce((a,b)=>a+b,0)===14&&typeof res.compliance.version==='string'&&res.variant==='active'));
+ check(`${res.role} graded by the fifteen graders and compliance`,()=>assert.ok(res.graders.length===15&&res.graders.every(g=>['pass','fail','not_applicable','grader_error'].includes(g.status))&&Object.values(res.summary).reduce((a,b)=>a+b,0)===15&&typeof res.compliance.version==='string'&&res.variant==='active'));
  // 채점 방식 기록: 정규화 뒤 채점(graders)과 별도로 정규화 전 예방 판정·정규화 건수를 남긴다(값 없이 건수만).
- check(`${res.role} records the grading version, prevention verdicts and normalization counts`,()=>assert.ok(res.gradersVersion==='failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-measure+local-rerun+contract-read+channel-decision+copy-pack'&&res.prevention.map(g=>g.id).join()==='heading_nesting,internal_id_exposure'&&res.prevention.every(g=>['pass','fail','not_applicable'].includes(g.status))&&Object.keys(res.normalization).join()==='schemaPaths,headings'&&Number.isInteger(res.normalization.schemaPaths)&&Number.isInteger(res.normalization.headings)));
+ check(`${res.role} records the grading version, prevention verdicts and normalization counts`,()=>assert.ok(res.gradersVersion==='failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-measure+local-rerun+contract-read+channel-decision+copy-pack+voice-avoid+expected-contract'&&res.prevention.map(g=>g.id).join()==='heading_nesting,internal_id_exposure'&&res.prevention.every(g=>['pass','fail','not_applicable'].includes(g.status))&&Object.keys(res.normalization).join()==='schemaPaths,headings'&&Number.isInteger(res.normalization.schemaPaths)&&Number.isInteger(res.normalization.headings)));
 }
 check('run accumulates reported tokens',()=>assert.equal(run1.usedTokens,3000));
 const insightResult=run1.results.find(x=>x.caseId===insightCase.id);
@@ -208,8 +208,8 @@ r=await post({action:'start_run',caseIds:[insightCase.id],tokenBudget:100000});
 const run2=await drive(r.body.id);
 check('two runs of the same case use different idempotency keys',()=>assert.ok(run2.results[0].idempotencyKey!==insightResult.idempotencyKey&&run2.results[0].idempotencyKey===expectedKey(run2.id,insightCase.id)));
 r=await get(`?compare=${run1.id},${run2.id}`);
-check('comparison pairs the shared case per grader without claiming improvement',()=>assert.ok(r.status===200&&r.body.sharedCases===1&&r.body.graders.length===14&&r.body.graders.every(g=>g.n<=1&&g.verdict!=='improved')));
-check('comparison also reports the model-text (prevention) verdicts and normalization tallies',()=>assert.ok(r.body.prevention.map(g=>g.id).join()==='heading_nesting,internal_id_exposure'&&r.body.normalization.candidate.recorded===1&&r.body.gradersVersions.candidate[0]==='failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-measure+local-rerun+contract-read+channel-decision+copy-pack'));
+check('comparison pairs the shared case per grader without claiming improvement',()=>assert.ok(r.status===200&&r.body.sharedCases===1&&r.body.graders.length===15&&r.body.graders.every(g=>g.n<=1&&g.verdict!=='improved')));
+check('comparison also reports the model-text (prevention) verdicts and normalization tallies',()=>assert.ok(r.body.prevention.map(g=>g.id).join()==='heading_nesting,internal_id_exposure'&&r.body.normalization.candidate.recorded===1&&r.body.gradersVersions.candidate[0]==='failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-measure+local-rerun+contract-read+channel-decision+copy-pack+voice-avoid+expected-contract'));
 
 // 예산 소진·사용량 미보고·인증·연결 실패·격리 재확인·시간 초과·취소
 const normalUsage=mode.usage;mode.usage={input_tokens:30000,output_tokens:10000,total_tokens:40000};
@@ -296,6 +296,25 @@ check('owner deletes a finished run: outputs and results go, the budget ledger s
 r=await get(`?compare=${run1.id},${spent.id}`);
 check('a deleted run cannot be compared',()=>assert.equal(r.status,409));
 
+// Diagnosis reads an existing failed provider run without resubmission or access to sealed text.
+mode.poll='failed';mode.error={code:'invalid_api_key',message:'SECRET_SEALED_OUTPUT'};mode.failedUsage={};
+const beforeDiagCalls=evalCalls.length,beforeDiagRecord=JSON.stringify(await server.readRecord(owner,'eval_run',failedRun.id));
+r=await get('?diagnose='+failedRun.id);
+check('diagnosis reports provider auth failure and unknown usage',()=>assert.ok(r.status===200&&r.body.failure==='모델 인증 실패'&&r.body.reportedTokens.total===null));
+check('diagnosis is one GET, with no submit or stop',()=>assert.ok(evalCalls.length===beforeDiagCalls+1&&evalCalls.at(-1).method==='GET'&&/^\/v1\/runs\/[^/]+$/.test(evalCalls.at(-1).path)));
+check('diagnosis never exposes provider error or sealed content',()=>assert.ok(!JSON.stringify(r.body).includes('SECRET')));
+const afterDiagRecord=JSON.stringify(await server.readRecord(owner,'eval_run',failedRun.id));
+check('diagnosis does not change scores or usage ledger',()=>assert.equal(afterDiagRecord,beforeDiagRecord));
+r=await get('?diagnose='+failedRun.id,other);check('diagnosis cannot read another owner run',()=>assert.equal(r.status,404));
+const originalConnection=await server.readRecord(owner,'eval_connection','current');
+await put('eval_connection','current',{...originalConnection,host:'changed.example.com'});
+const beforeChanged=evalCalls.length;r=await get('?diagnose='+failedRun.id);
+check('diagnosis rejects changed host without calling provider',()=>assert.ok(r.status===409&&evalCalls.length===beforeChanged));
+await put('eval_connection','current',originalConnection);
+mode.auth=false;r=await get('?diagnose='+failedRun.id);mode.auth=true;
+check('diagnosis classifies gateway auth failure separately',()=>assert.ok(r.status===409&&/평가 HERMES 인증/.test(r.body.error)));
+mode.poll='completed';delete mode.error;delete mode.failedUsage;
+
 // E) 권한: owner만. member·admin 403, 다른 owner 404, 비로그인 401, 크기 제한 413.
 env.AUTH_MODE='email';env.AUTH_ORIGIN='https://agency.test';
 const signIn=(id,role,createdAt,ws)=>{const token=createHash('sha256').update(id).digest('hex');sql.prepare('INSERT INTO auth_users(id,email,workspace_owner,role,status,created_at) VALUES(?,?,?,?,?,?)').run(id,id+'@test.invalid',ws,role,'active',createdAt);sql.prepare('INSERT INTO auth_sessions VALUES(?,?,?,?)').run(createHash('sha256').update(token).digest('hex'),id,Date.now()+60000,Date.now());return {cookie:'__Host-collective_session='+token,origin:'https://agency.test'}};
@@ -315,4 +334,5 @@ check('oversized body is 413',()=>assert.equal(r.status,413));
 check('no external network call',()=>assert.deepEqual(external,[]));
 const opsSummary=await get('?view=operations',owner,ownerS);
 check('operations summary contains no frozen request or result rows',()=>assert.ok(opsSummary.status===200&&Array.isArray(opsSummary.body.runs)&&opsSummary.body.cases.every(c=>!('request' in c)&&!('expectations' in c))&&opsSummary.body.runs.every(r=>!('results' in r))));
+r=await get('?diagnose='+failedRun.id,owner,memberS);check('diagnosis is owner only',()=>assert.equal(r.status,403));
 console.log(JSON.stringify({passed:passed.length}));

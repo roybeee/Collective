@@ -17,7 +17,7 @@ const status=(id,item,ctx={})=>results(item,ctx).find(r=>r.id===id)?.status;
 const detail=(id,item,ctx={})=>results(item,ctx).find(r=>r.id===id)?.detail||'';
 const omit=(obj,key)=>Object.fromEntries(Object.entries(obj).filter(([k])=>k!==key));
 const NEW=['meeting_step_contract','revision_repeat','seeded_defect_detection','brief_contract','brief_instruction_violation','brand_intro_as_fact'];
-const V1=['question_only','thin_section','contract_json','heading_nesting','internal_id_exposure','brief_prohibition_conflict','fact_conflict','unconfirmed_value_assertion','unsupported_claim_term','industry_metric_leak','revisit_cohort_definition','local_channel_coverage','input_budget','copy_pack_variants'];
+const V1=['question_only','thin_section','contract_json','heading_nesting','internal_id_exposure','brief_prohibition_conflict','fact_conflict','unconfirmed_value_assertion','unsupported_claim_term','industry_metric_leak','revisit_cohort_definition','local_channel_coverage','input_budget','copy_pack_variants','brand_voice_avoid_term'];
 
 const long='퇴근길 직장인이 20분 안에 저녁을 포장하려는 상황을 우선 가정합니다. 현재 대안은 편의점 도시락과 배달이며 가장 큰 장벽은 매장 앞 대기 시간입니다. [가설] 픽업 선반을 두면 대기 불만이 줄어든다. 반증 조건은 설치 뒤에도 대기 문의가 줄지 않는 경우입니다. [자료 필요] 시간대별 주문량, 담당 점장, 오픈 1주 전 확인.';
 const role=(text,extra={})=>({id:'t',kind:'role',role:'cmo',text,...extra});
@@ -39,22 +39,22 @@ const review=(over={})=>({verdict:'revise',summary:'근거 표시 보완 필요'
 const strictQuality=(out,extra={})=>step('quality',out,{contract:true,taskRoles:['creative','content'],...extra});
 
 // ── 등록·버전 ──
-check('the role registry keeps its thirteen v1 graders plus the copy pack grader and the G3 graders are a separate list',()=>{
+check('the role registry keeps its thirteen v1 graders plus the copy pack and brand voice graders and the G3 graders are a separate list',()=>{
  assert.deepEqual([...GRADERS.map(g=>g.id)],V1);
  assert.deepEqual([...KIND_GRADERS.map(g=>g.id)],NEW);
  assert.deepEqual([...ALL_GRADERS.map(g=>g.id)],[...V1,...NEW]);
 });
-check('the grading version moves past measure-v2 with the G3 graders, dictionaries, compound failure labels, absent-expression negation, critique clauses, meeting normalization, R3 measurement fixes, local-channel rerun fixes, contract reading, local channel decision lines and the copy pack grader',()=>assert.equal(GRADERS_VERSION,'failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-measure+local-rerun+contract-read+channel-decision+copy-pack'));
-// 기존 역할·발언 채점은 그대로다: 앞 14종(GRADERS) 결과가 같고 새 6종은 적용 kind 밖이라 not_applicable.
+check('the grading version moves past measure-v2 with the G3 graders, dictionaries, compound failure labels, absent-expression negation, critique clauses, meeting normalization, R3 measurement fixes, local-channel rerun fixes, contract reading, local channel decision lines, the copy pack grader and the brand voice grader',()=>assert.equal(GRADERS_VERSION,'failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-measure+local-rerun+contract-read+channel-decision+copy-pack+voice-avoid+expected-contract'));
+// 기존 역할·발언 채점은 그대로다: 앞 15종(GRADERS) 결과가 같고 새 6종은 적용 kind 밖이라 not_applicable.
 check('G3 graders leave role and discussion results unchanged (not applicable outside their kinds)',()=>{
  const ctx={...cleanCtx,seededDefects:[{id:'d1',role:'cmo',marker:'업계 최초'}],briefInput:'목표: 오픈'};
  for(const item of [role(long),contractItem,talk(goodTalk,{role:'cmo'}),role('요청하신 과업이 지정되지 않았습니다. 다음 중 원하시는 작업을 선택해 주세요.\n1. 초안 검수\n2. 요약')]){
   const base=runGraders(item,ctx).map(r=>JSON.stringify(r)),ext=results(item,ctx);
-  assert.deepEqual(ext.slice(0,14).map(r=>JSON.stringify(r)),base,item.id);
-  assert.ok(ext.slice(14).every(r=>r.status==='not_applicable'),JSON.stringify(ext.slice(14)));
+  assert.deepEqual(ext.slice(0,15).map(r=>JSON.stringify(r)),base,item.id);
+  assert.ok(ext.slice(15).every(r=>r.status==='not_applicable'),JSON.stringify(ext.slice(15)));
  }
 });
-check('input and call items get not_applicable from every G3 grader',()=>{for(const item of [{id:'g',kind:'input',text:long},{id:'u',kind:'call',inputTokens:9000}])assert.ok(results(item,{...cleanCtx,brandIntro:'가상분식은 2004년부터 국내산 쌀떡만 쓴다.'}).slice(14).every(r=>r.status==='not_applicable'))});
+check('input and call items get not_applicable from every G3 grader',()=>{for(const item of [{id:'g',kind:'input',text:long},{id:'u',kind:'call',inputTokens:9000}])assert.ok(results(item,{...cleanCtx,brandIntro:'가상분식은 2004년부터 국내산 쌀떡만 쓴다.'}).slice(15).every(r=>r.status==='not_applicable'))});
 
 // ── meeting_step_contract ──
 check('meeting_step_contract passes a well-formed synthesis',()=>assert.equal(status('meeting_step_contract',step('synthesis',synthesis())),'pass'));

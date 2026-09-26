@@ -1,4 +1,5 @@
-import {substanceProblem,scrubInternalIds,parseRoleOutput,strictContractJson} from '../role-output';
+import {substanceProblem,scrubInternalIds,parseRoleOutput,strictContractJson,roleOutputContract} from '../role-output';
+import {COPY_PACK_PROFILE} from '../copy-pack';
 import {parseMeetingStep,DISCUSSION_MIN_CHARS,type MeetingStep} from '../meetings';
 import {verdict,type Grader,type EvalItem} from './types';
 import {isText,bodyOf,fieldText,proseFields,withoutUrls,contractTitles,placeholderOnly,sectionsOf,excerpt,itemContract} from './text';
@@ -42,11 +43,15 @@ function discussionContract(item:EvalItem){
  try{parseMeetingStep(JSON.stringify(item.fields),step,previous);return verdict('pass')}
  catch(error){const message=(error as Error).message;return message.startsWith('회의 발언 수정 필요')?verdict('pass','형식 통과(실질은 별도 채점)'):verdict('fail',message)}
 }
-export const contractJson:Grader={id:'contract_json',grade(item){
+// 기대 계약(A3-4): 평가 맥락에 출력 프로필 'copy-pack-v2'가 있으면 원문 버전과 무관하게 그 계약으로 읽는다(운영 poll은 저장 계약으로 읽는다).
+// 그래서 v2로 요청했는데 v1로 답한 원문은 운영처럼 계약 버전 불일치로 fail이다. 콘텐츠 밖 역할은 프로필을 무시하므로(roleOutputContract) v1 계약 그대로다.
+// 프로필이 없으면 원문의 contractVersion으로 고른다(itemContract, 이전과 같다).
+const expectedContract=(item:EvalItem,outputProfile?:string|null)=>outputProfile===COPY_PACK_PROFILE?roleOutputContract(item.role||'',{copyPack:true}):itemContract(item);
+export const contractJson:Grader={id:'contract_json',grade(item,ctx){
  if(item.kind==='discussion')return discussionContract(item);
  if(item.kind!=='role'||item.role==='quality'||!item.contract)return verdict('not_applicable','계약 이전(legacy) 실행 또는 계약 밖 산출물');
  const role=item.role||'';
- if(item.raw){if(!strictContractJson(item.raw))return verdict('fail','원문이 JSON 형식이 아님(운영은 끝 여분 괄호만 떼고 읽음)');try{parseRoleOutput(item.raw,role,itemContract(item));return verdict('pass')}catch(error){return verdict('fail',(error as Error).message)}}
+ if(item.raw){if(!strictContractJson(item.raw))return verdict('fail','원문이 JSON 형식이 아님(운영은 끝 여분 괄호만 떼고 읽음)');try{parseRoleOutput(item.raw,role,expectedContract(item,ctx.outputProfile));return verdict('pass')}catch(error){return verdict('fail',(error as Error).message)}}
  const titles=contractTitles(role),found=(item.text||'').split('\n').flatMap(l=>{const t=/^##\s+(.+)$/.exec(l)?.[1]?.trim();return t&&titles.includes(t)?[t]:[]});
  return found.join('\u0000')===titles.join('\u0000')?verdict('pass','렌더본 약식(원 JSON 없음)'):verdict('fail','계약 제목 누락·중복·순서 오류');
 }};
