@@ -59,7 +59,9 @@ const FIXED=['lib/role-execution.ts','lib/meeting-execution.ts','lib/brief-execu
 check('the eight fixed model-path roots exist',FIXED.every(f=>existsSync(f)));
 const dynamicRoots=files.filter(f=>f.startsWith('lib/')&&f!=='lib/client.ts'&&/\.ts$/.test(f)&&(/\bfetch\s*\(/.test(readFileSync(f,'utf8'))||specifiers(readFileSync(f,'utf8')).some(s=>s==='./hermes'||s==='@/lib/hermes'||s==='../hermes')));
 check('dynamic roots cover the HERMES client and the connectors',['lib/hermes.ts','lib/execution.ts','lib/prompt-registry.ts'].every(f=>dynamicRoots.includes(f))&&dynamicRoots.some(f=>f.startsWith('lib/connectors/')));
-const FORBIDDEN=['lib/franchise.ts','lib/franchise-server.ts','lib/franchise-crypto.ts','lib/franchise-assets-server.ts','app/api/franchise/route.ts','app/franchise-panel.tsx','app/franchise-lead-detail.tsx','app/franchise-settings.tsx','app/franchise-common.tsx'];
+const FORBIDDEN=['lib/franchise.ts','lib/franchise-server.ts','lib/franchise-crypto.ts','lib/franchise-assets-server.ts','app/api/franchise/route.ts','app/franchise-panel.tsx','app/franchise-lead-detail.tsx','app/franchise-settings.tsx','app/franchise-common.tsx','app/franchise-assets-panel.tsx','app/franchise-events-panel.tsx'];
+// 목록의 파일이 실제로 그래프에 있어야 검사가 의미 있다(이름이 바뀌면 조용히 빠지지 않게).
+check('every forbidden franchise module exists in the graph',FORBIDDEN.every(f=>graph.has(f)));
 const roots=[...new Set([...FIXED,...dynamicRoots])],hits=reachable(graph,roots,FORBIDDEN);
 assert.deepEqual(hits,[],'모델 경로가 가맹 리드 모듈에 닿습니다: '+hits.map(h=>h[2]).join(' | '));passed.push(`no model-path root (${roots.length}) reaches a franchise lead module`);
 const reached=new Set(roots.flatMap(root=>{const seen=new Set([root]),queue=[root];while(queue.length){const at=queue.shift();for(const next of graph.get(at)||[])if(!seen.has(next)){seen.add(next);queue.push(next)}}return [...seen]}));

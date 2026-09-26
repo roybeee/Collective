@@ -6,7 +6,7 @@ import type {ReactNode} from 'react';
 import {clientId} from '@/lib/client';
 import {Input} from '@/components/ui/input';
 import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select';
-import {GATE_DISCLAIMER,kstLabel,SOURCE_LABELS,BUDGET_LABELS,TIMING_LABELS,type LeadTask,type LeadBasis,type LeadMarketing,type ContactState,type BasisType,type MarketingStatus,type Branch,type CodeMessage} from '@/lib/franchise';
+import {GATE_DISCLAIMER,FRANCHISE_ERRORS,kstLabel,SOURCE_LABELS,BUDGET_LABELS,TIMING_LABELS,type LeadTask,type LeadBasis,type LeadMarketing,type ContactState,type BasisType,type MarketingStatus,type Branch,type CodeMessage,type FranchiseErrorKey} from '@/lib/franchise';
 import type {LeadStage,ForecastDuty} from '@/lib/franchise-gates';
 
 export type Json=Record<string,unknown>;
@@ -132,3 +132,30 @@ export const actorLabel=(actor:{id:string;role:string},assignees:readonly Assign
 export function Section({title,children,note}:{title:string;children:ReactNode;note?:ReactNode}){return <section className="franchise-box"><h3>{title}</h3>{note&&<p className="subtle-note">{note}</p>}{children}</section>}
 // CSV 파일 저장: 서버가 만든 문자열(BOM 포함)을 그대로 파일로 내려받는다. 화면 상태에 남기지 않는다.
 export function saveCsv(name:string,csv:string){const a=document.createElement('a'),url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+
+// ── R15a-2b 모집 자료·행사 탭 공용 ──
+// 텍스트 파일 저장: 서버가 준 원문 문자열을 그대로 쓴다. BOM을 넣지 않고 줄바꿈을 바꾸지 않는다. 화면 상태에 남기지 않는다.
+export function saveText(name:string,body:string){const a=document.createElement('a'),url=URL.createObjectURL(new Blob([body],{type:'text/plain;charset=utf-8'}));a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+// 클립보드 복사. 성공하면 true, API가 없거나 권한·보안 문맥 때문에 실패하면 false다. 던지지 않는다.
+export async function copyText(body:string):Promise<boolean>{try{if(typeof navigator==='undefined'||typeof navigator.clipboard?.writeText!=='function')return false;await navigator.clipboard.writeText(body);return true}catch{return false}}
+// 200 응답의 경고. 모집 자료·행사 작업은 string[]를 준다(권장 문장 안내 포함, 막지 않는다). 리드 작업의 CodeMessage[]는 여기서 읽지 않는다. 문자열이 아닌 항목은 버린다.
+export const stringWarnings=(r:PostResult):string[]=>{const w=(r.body as Json).warnings;return Array.isArray(w)?w.filter((x):x is string=>typeof x==='string'):[]};
+export function WarningLines({items}:{items:readonly string[]}){return items.length?<ul className="franchise-warnings">{items.map((w,i)=><li key={i}>주의: {w}</li>)}</ul>:null}
+// 요청 번호: 응답을 못 받은(status 0) 같은 내용의 재시도만 같은 번호를 쓴다(서버 영수증이 한 번만 반영). 내용이 바뀌었거나 응답을 받았으면 새 번호.
+export type Attempt={id:string;key:string}|null;
+export const attemptId=(last:Attempt,key:string)=>last&&last.key===key?last.id:clientId();
+// 쓰기 한 번: key=[작업, 보낼 값] → 요청 번호 → 보내기. 응답이 없을 때(status 0)만 다음 시도에 같은 번호를 넘긴다('새 자료 저장'·'신청 기록' 같은 비멱등 작업이 두 번 반영되지 않게).
+export async function sendAttempt(action:string,payload:Json,last:Attempt):Promise<{r:PostResult;next:Attempt}>{
+ const key=JSON.stringify([action,payload]),id=attemptId(last,key),r=await franchisePost(action,payload,id);
+ return {r,next:r.status===0?{id,key}:null};
+}
+// 실패 뒤 화면이 할 일: keep(입력 유지)·reload(보기·목록 다시 읽기)·close(닫고 목록 다시 읽기)·status(패널 상태·배너 다시 읽기).
+export type FollowUp='keep'|'reload'|'close'|'status';
+export const reasonCodes=(r:PostResult):string[]=>Array.isArray(r.body.reasons)?r.body.reasons.map(x=>x.code):[];
+export const errorIs=(r:PostResult,key:FranchiseErrorKey)=>r.body.error===FRANCHISE_ERRORS[key].text;
+export function followUpOf(r:PostResult):FollowUp{
+ if(r.status===403)return 'status';
+ if(r.status===404)return 'close';
+ if(r.status===409)return errorIs(r,'OFF')||reasonCodes(r).includes('switch_off')?'status':'reload';
+ return 'keep';
+}

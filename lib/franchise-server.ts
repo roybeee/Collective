@@ -1045,8 +1045,9 @@ function other(c:Ctx):Promise<Outcome>{
 
 // ── GET 보기 ──
 export const FRANCHISE_VIEWS=['status','intake','board','lead','settings','requests','audit','assets','asset','events'] as const;
+// hasRecords: 리드·정보주체 요청·모집 자료·행사 기록이 하나라도 있으면 참(R15a-2b S2). 스위치가 꺼져도 폐기·행사 취소 화면에 대표·관리자가 닿게 한다(lib/nav-state.ts franchiseMenuVisible).
 async function statusView(who:Actor){
- const any=await database().prepare("SELECT 1 FROM records WHERE owner=? AND kind IN ('franchise_lead','franchise_subject_request') LIMIT 1").bind(who.owner).first();
+ const any=await database().prepare("SELECT 1 FROM records WHERE owner=? AND kind IN ('franchise_lead','franchise_subject_request','recruitment_asset','recruitment_event') LIMIT 1").bind(who.owner).first();
  return {enabled:await isEnabled(who.owner,'r_franchise'),role:who.role,hasRecords:!!any,contactKey:keyPresent()?'ready':'missing',disclaimer:GATE_DISCLAIMER};
 }
 async function intakeView(who:Actor,brandId:string){
