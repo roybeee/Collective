@@ -1,5 +1,27 @@
 # COLLECTIVE 현재 상태
 
+> 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
+
+## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
+- 운영: `8651021`(Sites 버전 40, tree `1ac4369`, [기록](releases/2026-09-26-8651021.md)). 그 뒤 `merged`되고 아직 게시되지 않은 제품 PR: #139(R15a-1 순수 모듈, 연결 없음 — 급하지 않음).
+- 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
+
+## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
+갱신: 2026-09-26 05:43 UTC
+- 진행 중: 없음(레인 도입 PR `docs/lanes`).
+- 다음: A3·A6 종료 조건 run → A8 → B4 2부 → B3([순서](LANES.ko.md#레인-a-claude-a-세션)).
+- 막힌 것: A6 종료 조건의 사실 확정과 A3·A6 스위치 켜기는 대표 확인이 필요하다.
+
+## 레인 R (Claude 트랙 R 세션 — 가맹 모집)
+갱신: (레인 R가 적는다)
+- 다음: R3b → R15a-2 → 트랙 R 계획 순서([순서](LANES.ko.md#레인-r-claude-트랙-r-세션)).
+
+## 레인 Q (Codex 세션 — 품질·평가·운영)
+갱신: (레인 Q가 적는다)
+- 다음: #131·#135 병합 → A1 `channel.offline` 쌍 평가·stage → R4·A/A·R5 → J4 게이트, 게시 뒤 운영 감시([순서](LANES.ko.md#레인-q-codex-세션)).
+
+## 이전 기록 (레인 도입 전)
+
 ## HERMES 평가 실패 복구 진행 (2026-09-26 03:02 UTC)
 
 - 기준 main `1ed5ce98b59538d67d1095ee3a5b82a532fc8fd7`, 브랜치 `fix/hermes-eval-recovery` (Codex).
@@ -18,6 +40,7 @@
 
 ## 게시 확인 자동화 (2026-09-26)
 
+- 묶음 14 게시(Claude A6 세션, `published` Sites 버전 40, tree 확인): 기준 운영 `8f0fb54`(tree `98a5800`, 소유자 세션 `/api/version`으로 확인) → 목표 `8651021`(tree `1ac4369`, A3 전체·A6-1~3·`/api/version/public`). 자동 게시(`sites-publish` 라벨 PR), 지시문 `docs/publish/8651021.md`. 결과는 요청 PR 댓글과 게시 기록에 적는다. 그동안 다른 도구는 새 게시를 요청하지 않는다.
 - `feat/public-version`(Claude A6 세션): 로그인 없이 `build`·`tree`만 주는 `/api/version/public`을 더한다(대표 결정 "둘 다": 공개 경로 추가 + 그 게시 전 한 번은 Chrome 확장으로 확인). 게시 뒤 개발 도구가 curl로 `runtime-verified`를 판정한다.
 - `feat/a6-3-auto-collect`(Claude A6 세션): 작업물 저장 때 자료 요청 자동 수집(A6-3) 진행 중.
 
@@ -39,21 +62,21 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-26 05:15 UTC (Claude 트랙 R 세션: R15a-1 모집 자료 키트 순수 판정 모듈 PR, main #133·#136·#137 병합 반영. 그 전 갱신: 04:58 UTC Claude A6 세션 A6-3)
+마지막 갱신: 2026-09-26 05:43 UTC (Claude A 세션: 세션별 레인 도입 `docs/LANES.ko.md`, STATUS 레인 칸·게시 대기열 신설)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `d7210175b75e0855c3a25ae0de7ea7743be7753d` (#127 `merged`, 소유자 운영 검증·재채점·프롬프트 적용 화면). 묶음 13 `b16403d`(#124까지: 트랙 R R1b·R2, 게시 전 점검 수정, R3a, 가맹 기능은 `r_franchise` 기본 꺼짐)와 #120(비제품)을 포함한다 | 제품 tree `4f3b13022cbcfb256f85a4473db54bc10d347d77`(Codex 세션 기록, PR #128 `docs/releases/2026-09-26-d721017.md`, 병합 전) |
-| `origin/main` | `8651021` (#137 A6-3 자료 요청 자동 수집) | d721017 뒤 #121(A3-1)·#128·#129(A3-2·A3-3a·A3-4 main 반영, `543731e`)·#132·#130·#134(E2E 도구)·#133(A6-2)·#136(`/api/version/public`)·#137이 들어왔다(제품 경로 포함). A3 쌓인 PR이 base 브랜치로 병합돼 main에 없던 문제는 #129로 해소됐다. 운영은 이 main보다 뒤다 |
-| Sites 게시 | `published`: Sites 버전 37(Codex 세션, `d721017`, 02:17:35 UTC)까지 이 세션이 확인했다. Codex PR #131(병합 전)은 그 뒤 버전 38(#128 head tree) 게시를 기록한다(이 세션은 확인하지 않음). 버전 36은 이 세션의 묶음 13 `b16403d`(자동 게시 첫 성공) | [b16403d 게시 기록](releases/2026-09-26-b16403d.md), [d721017 기록](releases/2026-09-26-d721017.md), 버전 38은 PR #131 |
-| 실행 검증 | `d721017`: `runtime-verified`(Codex 세션 02:22 UTC 경, 대표 소유자 화면 재확인 02:3x UTC: `/api/version` 200, tree `4f3b130…`). b16403d(버전 36)는 `/api/version`을 확인하기 전에 3분 뒤 버전 37로 교체돼 소급 기록하지 않는다(대표 판단). d721017이 b16403d를 포함한다 | 대표 보고(real), Codex 세션 기록(PR #128, 병합 전). 주소창 직접 접근 오류는 남아 있고 정상 조회 경로로 검증했다 |
+| 운영 제품 커밋 | `8651021f7ae7403b7cd07ac0ac15061e42fb5f2a` (#137 `merged`, 묶음 14: A3 전체 #121·#129, A6-1~3 #130·#133·#137, `/api/version/public` #136. 새 스위치 `a3_copy_pack`·`a3_brand_voice`·`a6_data_requests`·`a6_place_check`는 모두 기본 꺼짐) | 제품 tree `1ac4369e96e69a124f693540eea5df2fee3ccf67`. 직전 운영은 `8f0fb54`(#132 head, tree `98a5800`) |
+| `origin/main` | `cf2c474` (#139 R15a-1 모집 자료 키트 순수 판정 모듈) | 운영 `8651021` 뒤 #139만 들어왔다(제품 경로 `lib/franchise-assets.ts`, 아직 연결 없음) |
+| Sites 게시 | `published`: Sites 버전 40, deployment `appgdep_6ab758798bdc8191b48a26537b9bb472` succeeded, Sites 커밋 `027b2ab`, 자동 게시(PR #138, 05:16:35 UTC push → 05:31 UTC 결과) | [게시 기록](releases/2026-09-26-8651021.md). 그 앞 버전 39는 `8f0fb54`(Codex 세션) |
+| 실행 검증 | `8651021`: 운영 tree 일치(real, 05:3x UTC). 공개 `/api/version/public` 200 tree `1ac4369…`, 소유자 세션 `/api/version`(Chrome 확장) 200 tree 일치·`promptManifest` null. main이 그 뒤 #139(트랙 R 순수 모듈)로 앞서 있어 main 전체의 `runtime-verified`는 아니다 | [게시 기록](releases/2026-09-26-8651021.md) |
 | 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` mode=email, role=owner (2026-09-25 03:30 UTC 경) |
 | Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 이번 게시도 기존 접근 설정 유지 | 게시 에이전트 보고 "기존 공개 접근 설정을 유지". 게시 뒤 접근 설정 재확인은 not_run |
 | 조사 워커 | online(lastSeen 2026-09-25 03:29 UTC, blocked 0, rotationReady true). 2026-09-24 14:15 UTC 새 설치기로 재설치(격리 점검 전부 통과) | `/api/research-worker/setup` 조회(real). gate 표시 `missing`이라 `RESEARCH_WORKER_APP_GATE=enforce`는 켜지 않는다 |
 | 열린 PR | #16 Android(draft, 제외), #131 운영 API 복구·버전 38 기록(Codex, 문서), R15a-1 모집 자료 키트 판정 모듈(브랜치 `claude/franchise-recruitment-marketing-u8cpo2`, 이 갱신과 같은 PR) | GitHub 열린 PR 목록(GitHub MCP), 2026-09-26 03:30 UTC |
-| main CI | `d721017`·`aefd421`·`b16403d` passed. 그 뒤 main 커밋의 CI는 이 갱신에서 조회하지 않았다 | GitHub Actions main 실행(run 36211135217·36210450483·36209066178 success, API 조회) |
+| main CI | `8651021`·`301b784`·`d59b97d` passed | GitHub Actions main 실행(`8651021` run 36219919890 success) |
 
 - 테스트 흔들림(2026-09-25 관찰, 제품 동작 변경 없음):
   - CI E2E `e2e/meeting-quality.spec.ts:40`('기준 자료가 바뀐 실패 회의…')가 오늘 3번 60초 시간 초과(#86 1회, #92 첫 CI 모바일·데스크톱). 매번 같은 파일 첫 테스트 직후 두 번째 테스트 첫 줄 `page.request.get('/api/workspace')`에서 멈추고, 같은 로그에 workerd `Broken pipe`가 있다. 재실행하면 통과하고 로컬 `--repeat-each 6`은 24/24 통과(재현 안 됨). 2026-09-26에도 #124 1회, #126 2회(재실행 포함) 같은 증상이었다.
