@@ -7,8 +7,9 @@
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-26 19:28 UTC
-- 진행 중: B4-2c 닫힌 개선 루프 대장·학습 화면 보상 표 PR(`lib/improvement-loops.ts`, `POST /api/reward-lineage` `close` 대표만, kind `improvement_loop` 추가만, 학습 규칙 탭 '보상 계보' 절 — 직원 없음·close는 대표만, 스위치 `b4_reward_lineage` 기본 꺼짐, migration 0, 토큰 0, B4-2b 스냅샷 artifactId 계보 결함 수정, [REWARD-LINEAGE](REWARD-LINEAGE.ko.md) 11절: 종료 조건 '닫힌 개선 루프 5건' 셈법·2026-10-15 중단 규칙 판정 절차). B4-2b는 PR #157(이 브랜치의 기반). B4-2a는 #155로 `merged`. A8 전체·#154는 묶음 16(`a8edf10`)으로 게시 요청 중.
+갱신: 2026-09-26 21:48 UTC
+- 진행 중(B3-2a): 교정 신호 PR(브랜치 `feat/b3-2a-playbook-signals`, 기준 `6cacdba`) — 브랜드×역할 교정 묶음(90일 5건 eligible·인용 id 미리 채움·coveredBy)·규칙 버전별 파생 피드백(읽을 때 계산, `feedback` 0 유지, 보상 계보 byRule과 같은 정의)·같은 사유 재발률(4주, n<20 표본 부족)을 `GET /api/learning`에 대표·관리자만 덧붙임(스위치 `b3_playbook_signals` 기본 꺼짐, 꺼지면 응답 바이트 동일), 열린 모델·게이트웨이 경보 동안 `playbook_activate` 409(스위치 무관, ack 해제, 중지·연장 허용). migration 0, 토큰 0. [PLAYBOOK](PLAYBOOK.ko.md) B3-2a 절.
+- 이전 진행: B4-2c 닫힌 개선 루프 대장·학습 화면 보상 표 PR(`lib/improvement-loops.ts`, `POST /api/reward-lineage` `close` 대표만, kind `improvement_loop` 추가만, 학습 규칙 탭 '보상 계보' 절 — 직원 없음·close는 대표만, 스위치 `b4_reward_lineage` 기본 꺼짐, migration 0, 토큰 0, B4-2b 스냅샷 artifactId 계보 결함 수정, [REWARD-LINEAGE](REWARD-LINEAGE.ko.md) 11절: 종료 조건 '닫힌 개선 루프 5건' 셈법·2026-10-15 중단 규칙 판정 절차). B4-2b는 PR #157(이 브랜치의 기반). B4-2a는 #155로 `merged`. A8 전체·#154는 묶음 16(`a8edf10`)으로 게시 요청 중.
 - A6 종료 조건: **passed · real**(2026-09-27 00:56 KST). 이문동점 영업시간 자료 요청 `dr-f08c16186f08`이 사실 확정으로 closed. [관찰 기록](observations/2026-09-27-lane-a-a6-end-condition.md). 운영 스위치 `a6_data_requests` 켜짐.
 - A3 종료 조건 run: 2회째도 **failed · real**(run `a81bb445`, 2026-09-27 03:30 KST, 32,049토큰, 운영 버전 41 = 괄호 닫기 규칙 포함). `contract_json`은 두 케이스 모두 pass로 고쳐졌다. 국밥 12/0 pass. 수학학원은 `copy_pack_variants` fail: 실험 객체를 channels 배열에 넣고 shortform·experiments를 빠뜨렸다(끝부분 구조 붕괴, 1회차의 마지막 `}` 누락과 같은 계열). 수정: 스키마를 shortform → experiments → channels 순서로, channels에는 채널 객체만(PR `fix/copy-pack-key-order`) → 다음 묶음 게시 → 재실행. 1회차 run `a3634055`, 서버 로그인 실패 run `2092b0bb`(0토큰).
 - 확인 필요(레인 R): `tests/check-prompts.test.mjs`가 macOS(대소문자 무시 파일 시스템)에서 `channel.leadad.json`·`channel.leadAd` 변형 충돌로 로컬 실패한다(Linux CI는 통과).

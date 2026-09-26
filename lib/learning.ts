@@ -46,7 +46,18 @@ export type CurationSuggestion={kind:'duplicate'|'conflict';ruleIds:[string,stri
 // 운영자 선호 규칙 중지 때 그 규칙이 주입된 작업물의 재확인 표시(캠페인 이력 event의 playbookRecheck를 작업물 단위로 편 것). 작업물 내용은 바꾸지 않는다.
 // pending: 중지 시점에 아직 실행 중이던 작업(작업물 저장 전)이다. artifactVersion은 null이고, 완료돼 작업물이 저장되면 GET이 그 버전의 일반 표시로 바꾸며 작업물 없이 끝나면 뺀다.
 export type PlaybookRecheck={id:string;ruleId:string;ruleVersion:number;artifactId:string;artifactVersion:number|null;pending?:true;campaignId:string;jobId:string;role:string;reason:'rule_paused';createdAt:string};
-export type LearningData={reviewDecisions?:ReviewDecisionSummary[];playbookSuggestions?:CurationSuggestion[];playbookRechecks?:PlaybookRecheck[];guidances?:LearningGuidance[];expiringRules?:LearningRule[];cases:ViralCase[];analyses:ViralAnalysis[];experiments:ViralExperiment[];rules:LearningRule[];snapshots:LearningSnapshot[];jobs:LearningJob[];observations:(ViralCase&{caseId:string})[];jobOutputs:{id:string;output:string}[]};
+// ── B3-2a 교정 신호(스위치 b3_playbook_signals, 대표·관리자만). 읽을 때 계산하고 저장하지 않는다. 규칙 상태·만료·feedback 카운터를 바꾸지 않는다(docs/PLAYBOOK.ko.md B3-2a).
+// 교정 = 작업물 판정 중 revision이거나 사람이 고친 판(origin ai_edited)의 approved. 브랜드×역할로 90일 안 5건 이상이면 eligible(규칙 초안 쓰기 대상)이다.
+export const PLAYBOOK_CLUSTER_MIN=5,CLUSTER_WINDOW_DAYS=90;
+// 신호 계산에 넘기는 작업물 판정 요약(메모·행위자 없음). brandId는 기록의 브랜드, 없으면 캠페인의 브랜드, 알 수 없으면 null이다.
+export type CorrectionDecision={id:string;brandId:string|null;targetKind:string;targetId:string;role:string|null;decision:string;reasonCodes:readonly string[];origin?:string;createdAt:string};
+// decisionIds: eligible일 때만 채우는 인용 판정 id(최신순, 인용 상한까지). coveredBy: 이 교정을 이미 인용한 운영자 선호 규칙 id.
+export type CorrectionCluster={brandId:string;role:string|null;window:{from:string;to:string};corrections:number;eligible:boolean;reasonCodes:Record<string,number>;decisionIds:string[];coveredBy:string[]};
+// 규칙 버전별 파생 피드백. helpful = 주입된 작업물의 첫 판정이 수정 없는 승인(firstPassApproval의 approvedFirst와 같은 정의), recurrence = 첫 판정 수정 요청의 사유가 인용 판정 사유와 겹침.
+export type PlaybookFeedback={ruleId:string;ruleVersion:number;injectedArtifacts:number;decidedFirst:number;helpful:number;recurrence:number;otherRevision:number;editedFirst:number;status:'measured'|'insufficient';notice:string};
+// 같은 사유 재발률: 4주 창에서 그 사유로 교정받은 작업물 / 판정받은 작업물(n). n<20이면 rate null·'표본 부족'.
+export type RecurrenceRow={brandId:string;role:string|null;reasonCode:string;weeks:number;rate:number|null;n:number;status:'measured'|'표본 부족'};
+export type LearningData={correctionClusters?:CorrectionCluster[];playbookFeedback?:PlaybookFeedback[];recurrence?:RecurrenceRow[];reviewDecisions?:ReviewDecisionSummary[];playbookSuggestions?:CurationSuggestion[];playbookRechecks?:PlaybookRecheck[];guidances?:LearningGuidance[];expiringRules?:LearningRule[];cases:ViralCase[];analyses:ViralAnalysis[];experiments:ViralExperiment[];rules:LearningRule[];snapshots:LearningSnapshot[];jobs:LearningJob[];observations:(ViralCase&{caseId:string})[];jobOutputs:{id:string;output:string}[]};
 export function evaluateExperiment(e:ViralExperiment,result:ExperimentResult):Assessment{
  const a=result.control,b=result.treatment,reasons:string[]=[];
  const rate=(x:Arm)=>x.denominator!==null&&x.denominator>0&&x.numerator!==null?x.numerator/x.denominator:null;

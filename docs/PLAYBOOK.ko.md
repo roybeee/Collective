@@ -1,4 +1,4 @@
-# 교정 기반 플레이북 (B3-1)
+# 교정 기반 플레이북 (B3-1 · B3-2a)
 
 사람이 작업물·브리프 제안·자료·발행을 판정한 기록(B1 `review_decision`)에서 반복된 선호를 **운영자 선호 규칙**으로 만들어, 소유자가 승인한 뒤 AI 역할 입력에 전달한다.
 성과 실험에서 나온 학습 규칙(바이럴·점포)과 등급·만료·주입 블록을 분리한다. 이번 단계(B3-1)는 모델(HERMES·OpenAI)을 부르지 않는다. 규칙은 사람이 직접 쓰고, 교정 데이터를 외부 모델로 보내는 Reflector는 B3-2다.
@@ -10,6 +10,7 @@
 - 화면: `app/learning-panel.tsx` 학습 규칙 탭의 운영자 선호 영역
 - records kind: `learning_rule`(규칙), `playbook_audit`(감사, 새 kind) — `lib/record-kinds.ts`. 중지 때 재확인 표시는 새 kind 없이 캠페인 이력(`event`)의 `playbookRecheck` detail이다.
 - 테스트: `tests/playbook.test.mjs` (mocked: 메모리 SQLite·헤더 세션·모의 HERMES, 플레이북 작업의 모델 호출 0)
+- B3-2a 교정 신호(교정 묶음·파생 피드백·재발률·경보 중 승인 동결): 아래 [B3-2a 절](#b3-2a-교정-신호), 테스트 `tests/playbook-signals.test.mjs`
 
 ## 등급과 만료 (대표 결정 9, 2026-09-24)
 
@@ -49,7 +50,7 @@
 | 작업 | 전 상태 → 후 상태 | 검사 |
 |---|---|---|
 | `playbook_create` | → `draft` | 본문·인용·등급 |
-| `playbook_activate`(승인) | `draft`·`paused` → `active` | 버전 일치, 역할당 활성 8개 상한(초과 409), 만료 = 지금 + 60일 |
+| `playbook_activate`(승인) | `draft`·`paused` → `active` | 버전 일치, 열린 모델·게이트웨이 경보가 있으면 409(B3-2a D3), 역할당 활성 8개 상한(초과 409), 만료 = 지금 + 60일 |
 | `playbook_pause`(중지) | `active` → `paused` | 주입된 작업물 재확인 표시, 영향 건수 반환 |
 | `playbook_renew`(연장) | `active` 유지 | 만료 = 지금 + 60일, 상한 재확인 |
 
@@ -72,9 +73,8 @@
 - 규칙이 있으면 `inputHash`에 같은 블록을 넣어 새 실행 id가 되고, `learning_snapshot`에 `operatorPreferences`(주입한 규칙 사본)와 `artifactId`(이 실행이 저장할 작업물 id)를 남긴다.
 - 평가 케이스 캡처(`lib/eval-server.ts captureCase`)는 `roleRequestFor` 결과를 그대로 동결하므로 동결본에는 모델용 블록만 있다(규칙 id·인용·카운터 없음).
   동결본만으로 운영 제출을 바이트 그대로 다시 만들 수 있다: 입력 = `withOperatorPreferences(buildRoleInput(request), request.operatorPreferences)`, 지시문 = `withPreferenceAuthority(buildRoleInstruction(request), request.operatorPreferences)`(`tests/playbook.test.mjs`가 확인).
-- 알려진 한계: 순수 조립 함수(`lib/role-instruction.ts`)와 평가 실행 제출(`lib/eval-server.ts submitCase`)은 이번 단계의 소유 밖이라 블록과 권한 문장을 아직 넣지 않는다.
-  그래서 **활성 운영자 선호 규칙이 적용된 캠페인에서 캡처한 평가 케이스는 평가 실행 입력이 운영 입력과 다르다**(블록·권한 문장 빠짐). 규칙 0건이면 영향이 없다.
-  B3-2에서 위 두 식을 `buildRoleInput`·`buildRoleInstruction`(또는 `submitCase`)으로 옮기고, 그 전에는 규칙이 적용된 캠페인의 캡처 케이스로 골든 on/off 비교(`performance_tested`)를 하지 않는다(부여 경로도 409로 막혀 있다).
+- 평가 실행 제출: Q1(#86)부터 운영 start와 서버 평가(`lib/eval-kinds.ts`)가 같은 역할 제출 조립 `roleSubmission`(`lib/role-execution.ts`)을 쓴다. 동결본에 블록이 있으면 평가 실행 입력·지시문에도 블록과 권한 문장이 들어가 운영 제출과 바이트 동일하다.
+  B3-1 때 적었던 한계(평가 실행 입력에 블록·권한 문장이 빠짐)는 이것으로 해소됐다. 블록이 없는 동결본(규칙 0건·옛 동결본)은 순수 함수 출력과 바이트 동일하다.
 - B5 맥락 리플레이는 저장된 HERMES 제출 입력(`hermes_submission`의 `input`)을 읽으므로 블록이 들어간 운영 입력을 그대로 본다. 규칙 0건이면 제출 본문이 이전과 바이트 동일하다.
 
 ## Curator (`lib/playbook-curator.ts`, 순수)
@@ -118,6 +118,43 @@
 ## B3-2 예정
 
 - **Reflector**: 교정 데이터(판정 이력·선호 쌍)를 외부 모델로 보내 규칙 초안을 제안한다. 대표 결정 12에 따라 **F4b 데이터 처리 문서가 먼저**다. 제안은 `playbook_create`와 같은 검사(인용 2건 이상·같은 브랜드·본문 검사)를 거친 `draft`로만 들어오고 승인은 사람이 한다.
-- **helpful/harmful 카운터** 갱신: `learning_snapshot.operatorPreferences`와 `artifactId`로 규칙이 주입된 작업물의 판정(`review_decision`)을 이어 센다.
+- **helpful/harmful 카운터**: 저장하지 않고 읽을 때 계산하기로 했다(B3-2a, 아래 절). 저장 필드 `feedback`은 0으로 두고 쓰지 않는다.
 - **performance_tested** 부여: 골든 on/off 비교(평가 run)를 첨부할 때만 연다. 지금은 `playbook_grade`·생성 모두 409다.
-- 입력·지시문 조립 함수(`buildRoleInput`·`buildRoleInstruction`)에 `operatorPreferences` 블록과 권한 문장을 옮겨(규칙 0건이면 키·문장 생략 유지) 평가 실행도 운영과 같은 제출을 만들게 하고, `tests/eval-server.test.mjs`에 활성 규칙이 있을 때 캡처로 다시 만든 입력 = 운영 입력 검사를 더한다. 회의·브리프 경로 주입 여부도 정한다.
+- 평가 실행과 운영 제출의 일치는 Q1(#86) `roleSubmission`으로 해소됐다(주입 블록 절). 회의·브리프 경로 주입 여부는 아직 정하지 않았다.
+
+## B3-2a 교정 신호
+
+B3-2a는 교정 데이터를 **읽을 때 모아 보여 주기만** 한다. 모델(HERMES·OpenAI)을 부르지 않고, 규칙(`learning_rule`)을 쓰지 않으며, 상태·만료·저장 필드 `feedback`(0 유지)을 바꾸지 않는다. Reflector(외부 모델 초안)는 여전히 F4b 뒤다.
+
+- 순수 계산: `lib/playbook-curator.ts` `correctionClusters`·`playbookFeedback`·`recurrenceRate`. 타입·상수: `lib/learning.ts`(`PLAYBOOK_CLUSTER_MIN=5`, `CLUSTER_WINDOW_DAYS=90`).
+- 서버: `lib/learning-server.ts` `playbookSignals`. 작업물 판정(최근 5,000건)을 요약(메모 길이·행위자 없음)하고 브랜드는 인용 검사와 같이 기록의 `brandId`, 없으면 캠페인의 브랜드로 정한다(알 수 없으면 제외).
+- 스위치 `b3_playbook_signals`(기본 꺼짐)는 `lib/learning-server.ts`에서만 읽고, 읽기에 실패하면 꺼짐으로 본다.
+  - 꺼짐: `GET /api/learning` 응답이 이전과 **바이트 동일**하고 새 키가 없다.
+  - 켜짐: 대표·관리자에게만 `correctionClusters`·`playbookFeedback`·`recurrence` 키를 응답 끝에 덧붙인다. **직원 응답에는 키가 없다**(보상 계보와 같은 권한 관례). 화면도 대표·관리자만 그린다.
+- 화면: 학습 규칙 탭 운영자 선호 영역 아래 '교정 신호' 절(`app/learning-panel.tsx` `PlaybookSignals`). 초안 대상 묶음의 '규칙 초안 쓰기'는 역할과 인용을 미리 채운 `playbook_create` 폼을 연다(생성은 소유자만, 본문은 사람이 쓴다, 저장하면 초안).
+
+### (a) 교정 묶음 `correctionClusters`
+
+- 교정 = 작업물 판정 중 `revision`, 또는 사람이 고친 판(`origin: ai_edited`)의 `approved`.
+- 브랜드×역할로 최근 90일(`window`는 한국 날짜 `from`~`to`)을 센다. **5건 이상이면 `eligible`** 이고 `decisionIds`에 인용할 판정 id를 최신순으로 인용 상한(20건)까지 미리 채운다. 미달이면 `decisionIds`는 빈 배열이다.
+- `coveredBy`: 그 묶음의 교정을 이미 인용한 같은 브랜드 운영자 선호 규칙 id.
+- 담는 값은 id·역할·건수·사유 코드별 건수뿐이다(메모·이메일·본문 없음).
+
+### (b) 규칙 버전별 파생 피드백 `playbookFeedback`
+
+- 주입 기록(`learning_snapshot`의 `operatorPreferences`·`artifactId`)으로 규칙 버전(`ruleId`·`ruleVersion`)과 작업물을 잇고, 작업물마다 **기록 순서상 첫 판정**을 본다. AI 작성(`ai`·`ai_edited`)의 첫 판정만 `decidedFirst`에 넣는다.
+  - `helpful`: 사람이 고치지 않은 판(`ai`)의 첫 판정이 `approved`. `firstPassApproval`의 1차 승인과 같은 정의라 보상 계보 `byRule`의 `approvedFirst`와 같은 값이다(`tests/playbook-signals.test.mjs` 교차 검사).
+  - `editedFirst`: 사람이 먼저 고친 판(`ai_edited`)의 첫 판정.
+  - `recurrence`: `ai` 첫 판정이 `revision`이고 사유 코드가 규칙이 인용한 판정의 사유 코드와 겹침. 겹치지 않으면 `otherRevision`. 네 값의 합이 `decidedFirst`다.
+- 첫 판정이 5건 미만이면 `status: insufficient`. 모든 줄에 "자동 판정 아님: 규칙 상태·만료를 바꾸지 않습니다." 고지(`notice`)를 붙인다.
+
+### (c) 같은 사유 재발률 `recurrence`
+
+- 브랜드×역할×사유 코드. 사유 목록은 90일 교정 묶음에 나온 코드다(4주 창에 0건이어도 남는다).
+- 4주 창에서 `n` = 판정받은 작업물 수, `rate` = 그중 그 사유로 교정받은 작업물 비율(소수 넷째 자리). **n<20이면 `rate: null`, `status: "표본 부족"`**(GROWTH-PLAN KPI '같은 사유 교정 재발률'의 표본 하한).
+
+### (d) 경보 중 승인 동결(D3)
+
+- 열린 모델·게이트웨이 변경 경보(`model_change`·`gateway_change`, 결정 10)가 있으면 `playbook_activate`를 **409**로 막는다. 스위치와 무관하게 늘 적용한다.
+- 판정은 프롬프트 레지스트리의 활성화 게이트와 같은 `alarmState`(`lib/usage-model-alarm.ts`, `lib/prompt-registry.ts`가 쓰는 함수)이고, 해제도 같은 확인 절차(`POST /api/prompts` `acknowledge_alarms`, 소유자)다.
+- `playbook_pause`(주입을 줄임)와 `playbook_renew`(적용 중 규칙의 만료만 늘림)는 막지 않는다.
