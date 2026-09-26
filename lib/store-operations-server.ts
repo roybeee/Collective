@@ -225,13 +225,13 @@ export async function reportLabels(owner:string,orders:readonly StoreOrder[],fou
  return {creativeLabels,publicationNames};
 }
 // 게시 코드로 귀속된 주문(기준 기간 시작부터 조회 기간 끝까지). 보고서는 이 주문들의 게시 관문을 지금 게시 상태로 다시 본다(A4-2, publicationGateView).
-async function publicationOrders(owner:string,storeId:string,from:string,to:string){
+export async function publicationOrders(owner:string,storeId:string,from:string,to:string){
  const rows=await database().prepare("SELECT data FROM records WHERE owner=? AND kind='store_order' AND parent_id=? AND json_extract(data,'$.orderDate') >= ? AND json_extract(data,'$.orderDate') <= ? AND json_extract(data,'$.codeAttribution.publicationId') IS NOT NULL").bind(owner,storeId,from,to).all<{data:string}>();
  return rows.results.map(r=>JSON.parse(r.data) as StoreOrder);
 }
 // 게시 관문은 지금 게시 상태로 다시 본다. 가져온 뒤 게시가 취소·발행 실패·확인 전 상태로 바뀐 주문은 주문 기록에서 고쳤을 때와 같은 모양(publicationGateView)으로 집계한다.
 // 그래서 같은 사실 상태면 주문을 고쳤든 안 고쳤든 코드·팔·소재·캠페인·게시·채널별 표와 주간 귀속(north-star)이 같다.
-async function attributionReport(owner:string,store:Store,b:Record<string,unknown>){
+export async function attributionReport(owner:string,store:Store,b:Record<string,unknown>){
  const period=recentPeriod(),from=operationDate(b.from||period.from,'조회 시작일'),to=operationDate(b.to||period.to,'조회 종료일');if(from>to)throw new ApiError(400,'조회 기간을 확인하세요.');
  if(addDays(from,REPORT_LIMITS.periodDays-1)<to)throw new ApiError(400,`조회 기간은 ${REPORT_LIMITS.periodDays}일(26주) 이하로 정하세요.`);
  const first=weekStart(from),baseTo=blank(b.baselineTo)?addDays(first,-1):operationDate(b.baselineTo,'기준 종료일'),baseFrom=blank(b.baselineFrom)?addDays(first,-28):operationDate(b.baselineFrom,'기준 시작일');

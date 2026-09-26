@@ -4,7 +4,7 @@
 
 비유: 가게 장부(주문·광고비)와 게시판(확정 사실)을 일주일마다 한 장짜리 결산표로 묶는다. 결산표는 사진을 찍어(동결) 두고, 사장님이 확인 도장(검토)을 찍는다.
 
-- 상태: **A8-1 순수 모듈을 구현했다(연결 없음, [9절](#9-a8-1-구현-순수-모듈))**. A8-2(서버·API)·A8-3(화면)은 착수 전이다.
+- 상태: **A8-1 순수 모듈([9절](#9-a8-1-구현-순수-모듈))과 A8-2 서버·API([10절](#10-a8-2-구현-서버api))를 구현했다**. A8-3(화면)은 착수 전이다. 스위치 `a8_customer_report`는 기본 꺼짐이다.
 - 레인: A([LANES](LANES.ko.md)). 기준 SHA `63f8873`. 아래 `파일:줄`은 그 커밋 기준이다.
 - 4단계 종료 조건: "점포 브랜드 주간 고객 보고서 1건을 대표가 검토했다(real)". 묶음 5(B3·B4 2부·A8·PR 5)에 싣는다.
 
@@ -215,3 +215,61 @@ payload의 숫자 키는 모두 아래 id다(테스트가 확인한다). 정의�
 - 브랜드 범위 보고서(`scope.type='brand'`)는 POS 합계를 지점별로 거르지 않는다. 지점 합산 규칙은 A8-2에서 정한다.
 - import 경계 테스트는 타입 전용 import를 실행 그래프에서 뺀다. `lib/execution.ts`가 `franchise-facts`를 타입으로만 import하기 때문이다(컴파일하면 지워진다). 직접 import는 타입까지 전부 허용 목록(`store-attribution`·`store-operations`·`brand-facts`·`fact-catalog`·`pii-scan`·`fact-pack`)만 쓴다.
 - 가림은 패턴 기반이다. 사람 이름 등은 잡지 않는다(`docs/INPUT-MINIMIZATION.ko.md` 알려진 한계).
+
+## 10. A8-2 구현 (서버·API)
+
+결론: 미리보기·동결·대표 검토·동결본 목록·다운로드·사실 팩을 `lib/customer-report-server.ts`와 `app/api/customer-reports/route.ts`로 연결했다. 숫자는 점포 귀속 보고(`attributionReport`)와 같은 입력(게시 관문 재검사)이고, 모델·외부 호출은 0회다. 5절 A8-2 RED 목록은 `tests/customer-report-server.test.mjs`(실제 SQLite·실제 라우트)가 고정한다.
+
+비유: 결산표 양식(A8-1)에 장부를 꺼내 오는 창구와 사진 찍는 자리(동결), 도장 찍는 자리(검토)를 붙였다. 사진을 찍은 뒤 장부가 고쳐지면 사진 옆에 '장부가 바뀌었음(stale)' 표시가 뜬다.
+
+### 10.1 API (`/api/customer-reports`)
+
+| 요청 | 동작 | 스위치 꺼짐 | 권한 |
+|---|---|---|---|
+| `GET ?storeId=&week=YYYY-Www` · `?brandId=&week=` | 미리보기(저장 안 함) `{enabled,id,closed,preview,confirm,bytes,maxBytes,tooLarge,frozen}`. 진행 중인 주도 볼 수 있다(`closed:false`), 미래 주 400 | 409 | 대표·관리자 |
+| `GET ?brandId=&from=&to=(&storeId=)` | 동결본 목록 `{enabled,preview:null,frozen:[{id,scope,week,version,frozenAt,frozenBy,review,stale,versions}]}`. from·to는 ISO 주, 26주 이하 | 읽힘 | 대표·관리자 |
+| `GET ?id=&format=json\|md\|csv(&version=)` | 동결본 첨부(`attachment`·`no-store`·`nosniff`). version은 이전 판 5개 안에서 찾는다 | 읽힘 | 대표·관리자 |
+| `GET ?type=fact_pack&brandId=(&storeId=)&format=` | 사실 팩 첨부(파일 이름 `fact-pack-<브랜드>[-<지점>]-<한국 날짜>.<형식>`) | 409 | 대표·관리자 |
+| `POST {action:'freeze',storeId\|brandId,week,confirmed:true,expected:{orders,netRevenue,posStatus}}` | 동결 → `{id,version,stale:false}` | 409 | 대표·관리자 |
+| `POST {action:'review',id,version}` | 대표 검토 → `{id,version,review}`. 같은 판을 다시 검토하면 쓰지 않고 그 검토를 돌려준다 | 409 | 대표만 |
+
+- 판정 순서(쓰기): 로그인 401 → 같은 출처 403 → 모르는 작업 400 → 권한 403 → 스위치 409 → 범위(없음·다른 워크스페이스 404) → 입력 400(주 형식, 끝나지 않은 주, 확인 누락) → 확인 값 불일치 409 → 크기 413. 쓰기는 소유자 변경 잠금(`acquireLock`)과 빈도 제한(`executionRate`, 범위 `customer_reports`) 안에서 한다.
+- 스위치는 `lib/customer-report-server.ts`에서만 읽고 읽기 실패는 꺼짐으로 본다. 라우트는 `feature-flags`를 import하지 않는다.
+
+### 10.2 저장 (kind `customer_report`)
+
+- 행 id `<store|brand>:<지점·브랜드 id>:<YYYY-Www>`, parent는 브랜드 id(`not_campaign_scoped`, D7). kind 목록에서 `place_snapshot` 뒤, `brand_voice` 앞이다.
+- 행: `{id, scope{type,id,brandId}, week, version, report(collective.customer-report.v1), inputHash, frozenAt, frozenBy{id,role}, review, history[]}`. 이메일은 담지 않는다.
+- 다시 동결하면 `version+1`, `review:null`이고 이전 판(검토 포함)을 `history` 앞에 넣어 최근 5개만 둔다. 옛 판의 검토는 옛 판에 남는다.
+- payload 상한 200,000바이트(UTF-8). 넘으면 동결 413, 미리보기는 `tooLarge:true`로 알린다. 행은 이전 판 5개를 합쳐도 약 1.2MB 이하다.
+
+### 10.3 입력 (A8-1이 남긴 과제)
+
+- **게시 관문 재검사**: 주문(전주~보고 주)은 `publicationGateView`를 거친 값을, 일별 합계(최근 4주)는 `ledgerDays` 뒤 `regateDays`로 귀속이 바뀐 주문만큼 고친 값을 넘긴다. `attributionReport`와 같은 절차라 같은 fixture에서 주문 수·순매출·공헌이익·보고 주 완전성(장부 순매출·귀속 주문·귀속 공헌이익·상태)이 같다(테스트 고정, `attributionReport`는 export 한 단어, 재사용한 `publicationOrders`도 export 한 단어).
+- **주를 걸친 네이버 광고비**: 비용은 전주~보고 주 기록과, 보고 주 안에서 시작해 뒤 주 날짜(종료일)로 기록된 네이버 수집 광고비(id `naver-<24자>-<시작일>`)를 함께 넘긴다. 뒤 기록은 장부에 들어가지 않고 경고(`counted:false`)만 붙는다.
+- **브랜드 범위 POS 합산 규칙(지점별 대조 후 합산)**: 주마다 그 주에 장부 일별 합계나 POS 합계가 있는 지점(참여 지점)만 본다.
+  - 참여 지점 하나라도 POS 합계가 없으면 브랜드 POS를 두지 않는다 → `missing_pos`.
+  - 모두 있으면 지점마다 먼저 대조한다. 모두 통과면 합을 브랜드 POS로 둔다(주문 수는 하나라도 없으면 null). 지점 허용 오차의 합이 합의 허용 오차 안이라 브랜드도 통과다.
+  - 지점 불일치가 있는데 합에서 상쇄돼 통과로 보이면 브랜드 POS를 두지 않는다(통과로 세지 않고 north-star에서 뺀다). 합으로도 불일치면 합을 두어 `fail`로 보인다.
+  - 그 주에 기록도 POS도 없는 지점(휴점·개점 전)은 브랜드 대조를 막지 않는다.
+- 범위: 지점 보고서의 커넥터 초안·발행은 그 지점 캠페인과 브랜드 공통 캠페인(수집 광고비 옮기기와 같은 범위), 자료 요청은 그 지점과 브랜드 공통 요청이다. 브랜드 보고서는 브랜드의 모든 지점(보관 지점 포함)·캠페인이다. 사실 건수·허용 목록·사업장 전화는 지점 보고서가 그 지점과 브랜드 사실, 브랜드 보고서가 브랜드 사실만 쓴다.
+
+### 10.4 변경 감지 (`stale`)
+
+동결 때와 읽을 때 같은 함수로 입력 지문(sha256)을 만들어 다르면 `stale:true`다. 지문 입력:
+
+- 주문(최근 4주)·비용(전주~보고 주): 날짜별 행 수·판 합·마지막 저장 시각(SQL 집계라 주문 행을 읽지 않는다).
+- 주를 걸친 네이버 수집 광고비·POS 합계: 행별 판·저장 시각.
+- 게시 코드 주문의 게시: `{id, 판, 상태}`(게시가 취소되면 귀속이 바뀐다).
+- 사실: `{id, 판}`(지점 보고서는 그 지점과 브랜드 사실, 브랜드 보고서는 브랜드 사실).
+
+값이 같게 되돌아와도 저장이 있었으면 stale이다(보수적). 다시 동결하면 풀린다. 목록(최대 26주)은 지점마다 지문 조회 5번과 사실·게시 조회로 끝난다(보고서 수와 무관).
+
+### 10.5 설계와 다르게 한 것·한계
+
+- 설계의 GET 계약(`?storeId=&week=`)에 브랜드 미리보기(`?brandId=&week=`)와 동결본 목록(`?brandId=&from=&to=`)을 나눴다. 스위치가 꺼지면 미리보기는 409여야 하고 동결본은 읽혀야 해서, 목록을 미리보기와 다른 요청으로 뒀다.
+- 변경 감지 지문은 설계의 주문·비용 `{id,version}` 목록 대신 날짜별 행 수·판 합·마지막 저장 시각을 쓴다(26주 목록에서도 행 상한 없이 SQL 집계로 끝난다). 게시 관문 `{id,판,상태}`를 더했다. 커넥터 초안·발행·자료 요청·플레이스 대조의 변경은 stale에 들어가지 않는다(설계 3절 범위 그대로).
+- 검토와 사실 팩도 스위치가 꺼지면 409다(쓰기·새로 계산하는 내보내기). 동결본 목록·다운로드만 꺼져도 읽힌다.
+- 동결은 보관 지점도 막지 않는다(지난 주 결산은 보관 뒤에도 남길 수 있다).
+- 판을 골라 받은 파일 이름에는 판 번호가 없다(`reportFileName` 그대로). 같은 주의 여러 판을 받으면 이름이 겹친다.
+- 조회 한도: 지점마다 주문·비용 행 5,000건을 넘으면 400이다(설계 8절).
