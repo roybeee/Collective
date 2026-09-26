@@ -1,5 +1,13 @@
 # 공동작업 인계 (Claude ↔ ChatGPT/Codex)
 
+## 운영 API 복구 결과 (2026-09-26 02:22 UTC)
+
+- PR #127 merged, Sites 버전 37 published, `d721017` tree `4f3b130…` runtime-verified. 품질 콘솔의 운영 상태 조회가 실제 API 호출에 성공했다.
+- S8 두 run 재채점 passed(완료 출력 각 1건, 실패 0, 추가 모델 토큰 0). `channel.offline@2cbe193eacdc` 등록 성공.
+- 쌍 평가 `8fcd3726-b09f-464c-b111-d1d9e20c63fc`는 완료 출력 0/4, 사용 0 토큰으로 끝나 게이트 failed. stage/promote not_run. 실패 사유를 원문 대신 정해진 분류·건수로 운영 화면에 추가한다.
+- [게시·실행 근거](releases/2026-09-26-d721017.md). 봉인 요청·출력 원문은 열지 않았다.
+
+
 ## 운영 관리 화면 복구 (2026-09-26)
 
 - A1 PR #120은 `aefd4219aa335425243e41372c8ba8efa3009ee7`로 merged. CI passed, D1 이름 대조 passed. 운영 등록·쌍 평가·stage는 아직 not_run.

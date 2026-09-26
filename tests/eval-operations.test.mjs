@@ -12,4 +12,7 @@ check('case response is an allowlist',()=>assert.deepEqual(Object.keys(result.ca
 check('regrade totals and identity remain available',()=>assert.equal(result.runs[0].regrade.id,'grade-1'));
 check('progress and tokens remain exact',()=>assert.equal(result.runs[0].completed,1));
 check('source is not mutated',()=>assert.equal(run.results[0].label,secret));
+const failed=operationsSummary([], [{...run,results:[{status:'failed',error:secret},{status:'failed',error:'평가 HERMES 요청을 처리하지 못했습니다 (400).'},{status:'failed',error:'동결한 요청으로 지시문을 만들지 못했습니다.'}]}]).runs[0];
+check('unknown errors are not exposed',()=>assert.ok(!JSON.stringify(failed).includes(secret)));
+check('safe HTTP and assembly failure classes preserve counts',()=>assert.deepEqual(JSON.parse(JSON.stringify(failed.failures)),{'기타 실행 오류':1,'평가 HERMES HTTP 400':1,'동결 요청 조립 실패':1}));
 console.log(JSON.stringify({passed:n}));
