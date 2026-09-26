@@ -8,7 +8,7 @@ const {sql,env,load}=testRuntime(async url=>{throw new Error('외부 호출 금�
 const flags=await load('lib/feature-flags.ts'),route=await load('app/api/feature-flags/route.ts');
 const passed=[];const check=(name,value)=>{assert.ok(value,name);passed.push(name)};
 const owner='flag-owner',other='flag-other';
-const known=['online_grading','b1_reason_required','a4_auto_attribution','a2_downgrade','a7_repair_turn','r_franchise','a3_copy_pack','a3_brand_voice','a6_data_requests','a6_place_check'];
+const known=['online_grading','b1_reason_required','a4_auto_attribution','a2_downgrade','a7_repair_turn','r_franchise','a3_copy_pack','a3_brand_voice','a6_data_requests','a6_place_check','a8_customer_report'];
 
 // 1) 알려진 플래그와 기본값은 코드 상수다. 저장된 값이 없으면 모두 꺼져 있다.
 const catalog=JSON.parse(JSON.stringify(flags.FEATURE_FLAGS));

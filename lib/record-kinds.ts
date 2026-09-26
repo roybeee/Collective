@@ -139,6 +139,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'data_request',parent:'brand',campaignDeletion:'delete',links:['data_campaign'],description:'자료 요청(작업물의 자료 필요 표지에서 뽑은 항목·사실 항목 key·범위(브랜드·지점·캠페인)·출처 작업물과 판·상태 열림/닫힘·닫은 근거(확정 사실 id·판 또는 수동 답변·필요 없음 메모)·만든·닫은 사람 id와 역할). 캠페인 요청은 캠페인과 함께 지운다(A6-1)'},
  // A6-2 플레이스 대조 스냅샷. 지점 행(parent = 지점 id, id=<지점>:<플랫폼>)이고 최근 10판을 행 안 history에 둔다. data_request 뒤, brand_voice 앞에 둔다.
  {kind:'place_snapshot',parent:'store',campaignDeletion:'not_campaign_scoped',description:'플레이스 대조 스냅샷(플랫폼·공식 호스트 URL·확인일·관리자가 옮겨 적은 주소·영업시간·휴무·전화·메뉴 가격·확정 사실과의 대조 결과(사실 id·판)·입력한 사람 id와 역할·최근 10판 이력). 캠페인과 무관하고 이메일은 담지 않는다(A6-2)'},
+ // A8-2 고객 보고서 동결본. 브랜드 행(parent = 브랜드 id, id=<store|brand>:<지점·브랜드 id>:<YYYY-Www>)이고 이전 판 5개를 행 안 history에 둔다. place_snapshot 뒤, brand_voice 앞에 둔다.
+ {kind:'customer_report',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'주간 고객 보고서 동결본(범위·보고 주·판 번호·collective.customer-report.v1 payload(집계 숫자·가린 라벨만)·입력 지문(sha256)·동결한 사람 id와 역할·대표 검토(판·id·역할·시각)·이전 판 5개). 캠페인과 무관하고(D7) 주문 행·이메일은 담지 않는다(A8-2)'},
  // A3-2 브랜드 말투 원장(대표 결정 2). 브랜드당 1행(id=브랜드 id)이고 최근 20판을 행 안 history에 둔다(별도 history kind 없음). 캠페인과 무관하다. eval_budget_approval·비식별 신호·token_budget 묶음 앞에 둔다.
  {kind:'brand_voice',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'브랜드 말투(어조·쓸 것·피할 것·선호 표현·피할 표현·예시, 상태 초안·확정·철회, 판 번호, 작성·확정한 사람 id와 역할·시각, 모델에 가는 마지막 확정본, 최근 20판 이력). 캠페인과 무관하고 이메일은 담지 않는다(A3-2)'},
  // Q2 평가 월 승인(품질 계획 v2). 소유자 범위이고 캠페인과 무관하다(lib/eval-budget-server.ts). 비식별 신호와 token_budget 묶음(마지막 3개, tests/token-budget.test.mjs 고정) 앞에 둔다.

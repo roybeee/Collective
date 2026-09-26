@@ -228,7 +228,7 @@ const kinds=plain(registry.recordKinds),kind=kinds.find(k=>k.kind==='place_snaps
 check('place_snapshot, the a6_place_check switch and the feature row are registered',()=>{
  assert.ok(kind&&kind.parent==='store'&&kind.campaignDeletion==='not_campaign_scoped'&&!kind.links&&!kind.purge,JSON.stringify(kind));
  assert.equal(kinds.indexOf(kind),kinds.findIndex(k=>k.kind==='data_request')+1);
- assert.equal(kinds.indexOf(kind),kinds.findIndex(k=>k.kind==='brand_voice')-1);
+ assert.ok(kinds.indexOf(kind)<kinds.findIndex(k=>k.kind==='brand_voice'));
  const names=Object.keys(flags.FEATURE_FLAGS);
  assert.ok(flags.FEATURE_FLAGS.a6_place_check.defaultEnabled===false&&names.indexOf('a6_place_check')===names.indexOf('a6_data_requests')+1);
  const row=f=>plain(status.featureRows({flags:f})).find(r=>r.key==='place-check');
