@@ -26,21 +26,21 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-26 02:05 UTC (Claude A3 세션: #120 A1 병합 반영, A3-1 카피 팩 v2 계약·채점기, 게시 보류 중)
+마지막 갱신: 2026-09-26 02:40 UTC (Claude 트랙 R 세션: 묶음 13 `b16403d` `published`(Sites 버전 36, 자동 게시 첫 성공) 뒤 Codex 세션이 `d721017`을 Sites 버전 37로 게시, #120·#127·#121 `merged` 반영. 그 전 갱신: 02:05 UTC Claude A3 세션 #121)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `8c22f0e8738653698dd4350cd2063e3755340c83` (#115 `merged`, 묶음 12: e8bd8e0 뒤 #113~#115, 제품 변경은 #113 채점 도구뿐) | 제품 tree `02260ba4d4bf50dbd617fd4f6dc2709c5e067cf2` |
-| `origin/main` | `16981dd` (#119, 문서만) | 8c22f0e 뒤 #116(문서)·#117(트랙 R R1b·R2)·#118(게시 전 점검 수정)·#119(묶음 13 게시 지시문·보류 기록). 묶음 13 게시 대상은 제품 커밋 `b0ef304`(#118)이고 #119는 비제품 경로다. 묶음 13 `b0ef304`(tree `cb16d6b`, 38줄) 게시 요청 #119(자동 게시, `docs/PUBLISH.ko.md` 8절)는 1차 실행(22:36 UTC)이 트리거·조건 확인까지 동작했으나 지시문의 게시 도구가 비공개 전용이라 blocked(게시 안 함)였다. 공개 사이트 도구로 고친 지시문으로 22:47 UTC에 재요청했지만 23:20 UTC까지 결과 댓글이 없었다(작업 설정의 이벤트에 '커밋 업데이트'는 포함). 대표 결정(2026-09-25 23:2x UTC, "gpt쪽 문제가있는것같으니 우선 스킵하고 다음 단계로 진행"): 묶음 13 게시는 보류하고 라벨을 뗐다. 재개할 때는 `docs/publish/b0ef304.md`(main)를 편집기에 붙여 넣거나 새 요청 PR을 연다. 그동안 다른 도구는 새 게시를 요청하지 않는다. 그동안 다른 도구는 새 게시를 요청하지 않는다 |
-| Sites 게시 | `published`: Sites 버전 35, deployment `appgdep_6ab68fba…` succeeded, Sites 작업 사본 tree `02260ba…` = 8c22f0e tree | [게시 기록](releases/2026-09-25-8c22f0e.md)(편집기 보고, 2026-09-25 21:3x UTC 경). 그 앞: e8bd8e0(묶음 11) [기록](releases/2026-09-25-e8bd8e0.md), 트랙 R 단독 게시 73147a9(Sites 버전 31, tree `unknown`) [기록](releases/2026-09-25-73147a9.md) |
-| 실행 검증 | 8c22f0e: `/api/version` not_run. 마지막 `runtime-verified`는 e8bd8e0(2026-09-25 13:48 UTC) | 소유자 세션 `/api/version` tree `d8eacc9…` = e8bd8e0 tree(그 게시 기록) |
+| 운영 제품 커밋 | `d7210175b75e0855c3a25ae0de7ea7743be7753d` (#127 `merged`, 소유자 운영 검증·재채점·프롬프트 적용 화면). 묶음 13 `b16403d`(#124까지: 트랙 R R1b·R2, 게시 전 점검 수정, R3a, 가맹 기능은 `r_franchise` 기본 꺼짐)와 #120(비제품)을 포함한다 | 제품 tree `4f3b13022cbcfb256f85a4473db54bc10d347d77`(Codex 세션 기록, PR #128 `docs/releases/2026-09-26-d721017.md`, 병합 전) |
+| `origin/main` | `aa49e6b` (#121 A3-1 카피 팩 v2, `a3_copy_pack` 기본 꺼짐) | d721017 뒤 #121이 들어왔다(제품 경로). 그래서 지금 main은 운영보다 앞서 있고, d721017의 `runtime-verified`는 확인 시점(02:22 UTC) 기준이다. A3-2 #122·A3-3a #123·A3-4 #125는 쌓인 base 브랜치(`feat/a3-copy-pack-v2`·`feat/a3-brand-voice`·`feat/a3-artifact-experiment`)로 병합돼 main에 들어오지 않았다(main에 `app/api/brand-voice/route.ts` 없음, 2026-09-26 02:40 UTC git 확인). A3 세션이 main으로 다시 올려야 한다 |
+| Sites 게시 | `published`: Sites 버전 37(Codex 세션, `d721017`, deployment `appgdep_6ab72b2c…` succeeded 02:17:35 UTC). 바로 앞 버전 36은 이 세션의 묶음 13 `b16403d`(deployment `appgdep_6ab72a5f…`, Sites 커밋 `34a5e8c`, `TREE_EMBEDDED`, 자동 게시 첫 성공) | [b16403d 게시 기록](releases/2026-09-26-b16403d.md). d721017 기록은 PR #128(병합 전). 그 앞: 8c22f0e(Sites 버전 35) [기록](releases/2026-09-25-8c22f0e.md) |
+| 실행 검증 | `d721017`: `runtime-verified`(Codex 세션 02:22 UTC 경, 대표 소유자 화면 재확인 02:3x UTC: `/api/version` 200, tree `4f3b130…`). b16403d(버전 36)는 `/api/version`을 확인하기 전에 3분 뒤 버전 37로 교체돼 소급 기록하지 않는다(대표 판단). d721017이 b16403d를 포함한다 | 대표 보고(real), Codex 세션 기록(PR #128, 병합 전). 주소창 직접 접근 오류는 남아 있고 정상 조회 경로로 검증했다 |
 | 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` mode=email, role=owner (2026-09-25 03:30 UTC 경) |
 | Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 이번 게시도 기존 접근 설정 유지 | 게시 에이전트 보고 "기존 공개 접근 설정을 유지". 게시 뒤 접근 설정 재확인은 not_run |
 | 조사 워커 | online(lastSeen 2026-09-25 03:29 UTC, blocked 0, rotationReady true). 2026-09-24 14:15 UTC 새 설치기로 재설치(격리 점검 전부 통과) | `/api/research-worker/setup` 조회(real). gate 표시 `missing`이라 `RESEARCH_WORKER_APP_GATE=enforce`는 켜지 않는다 |
-| 열린 PR | #16 Android(draft, 제외), #120 A1 로컬 채널 스킬 팩(draft, 다른 도구), #121 A3-1 카피 팩 v2·#122 A3-2 브랜드 말투 원장(다른 도구), 트랙 R R3a 캠페인 가맹 모집 목적 PR(브랜치 `claude/franchise-recruitment-marketing-u8cpo2`, 이 갱신과 같은 PR) | GitHub 열린 PR 목록(GitHub MCP), 2026-09-26 01:17 UTC |
-| main CI | `b0ef304`·`41ea80d`·`8ed30d0` passed | GitHub Actions main 실행(run 36196792023 success, API 조회), 2026-09-25 22:36 UTC |
+| 열린 PR | #16 Android(draft, 제외), #126 묶음 13 게시 기록(브랜치 `claude/franchise-recruitment-marketing-u8cpo2`, 이 갱신과 같은 PR), #128 평가 실행 실패 사유 집계(Codex, `docs/releases/2026-09-26-d721017.md` 포함) | GitHub 열린 PR 목록(GitHub MCP), 2026-09-26 02:40 UTC |
+| main CI | `d721017`·`aefd421`·`b16403d` passed, `aa49e6b` 실행 중(02:40 UTC) | GitHub Actions main 실행(run 36211135217·36210450483·36209066178 success, 36211867282 진행 중, API 조회) |
 
 - 테스트 흔들림(2026-09-25 관찰, 제품 동작 변경 없음, 원인 조사는 별도 작업):
   - CI E2E `e2e/meeting-quality.spec.ts:40`('기준 자료가 바뀐 실패 회의…')가 오늘 3번 60초 시간 초과(#86 1회, #92 첫 CI 모바일·데스크톱). 매번 같은 파일 첫 테스트 직후 두 번째 테스트 첫 줄 `page.request.get('/api/workspace')`에서 멈추고, 같은 로그에 workerd `Broken pipe`가 있다. 재실행하면 통과하고 로컬 `--repeat-each 6`은 24/24 통과(재현 안 됨).
