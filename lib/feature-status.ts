@@ -104,6 +104,13 @@ function franchiseRow(flags:unknown):FeatureRow{
  if(enabled===null)return {...base,status:'blocked',reason:'가맹 모집 스위치 상태를 확인하지 못했습니다',link};
  return enabled?{...base,status:'available',reason:'리드 · 연락처(암호화) · 캠페인 가맹 모집 목적(대표·관리자) · 법정 절차 판정(COLLECTIVE 휴리스틱 · 법률 자문 아님)'}:{...base,status:'blocked',reason:'기능 스위치 r_franchise 꺼짐 · 소유자가 켭니다',link};
 }
+// 자료 요청(A6-1): 기능 스위치 a6_data_requests 상태를 읽는다. 켜지면 캠페인 상세 '작업물' 탭에서 모으고, 사실 확정으로 자동으로 닫힌다.
+function dataRequestsRow(flags:unknown):FeatureRow{
+ const base={key:'data-requests',label:'자료 요청(작업물의 자료 필요 → 사실 확정)'},link:FeatureLink={label:'캠페인을 열어 작업물 탭에서 확인',view:'campaigns'};
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='a6_data_requests'):undefined;
+ if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'자료 요청 스위치 상태를 확인하지 못했습니다',link};
+ return state.enabled?{...base,status:'available',reason:'작업물의 자료 필요 표지 모으기 · 같은 항목 사실 확정 때 자동 닫힘(모델 호출 없음)'}:{...base,status:'blocked',reason:'기능 스위치 a6_data_requests 꺼짐 · 소유자가 켭니다',link};
+}
 
 export function featureRows(input:FeatureInput={}):FeatureRow[]{
  const now=typeof input.now==='number'?input.now:Date.now(),brands=brandIds(input.brands);
@@ -119,6 +126,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   bufferRow(input.publishers,brands,input.campaigns),
   measurementRow(input.channels,input.brandChannels,brands,now),
   franchiseRow(input.flags),
+  dataRequestsRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
   {key:'pos-auto',label:'POS 자동 수집',status:'unimplemented',reason:'POS 연동 없음 · CSV로 가져오세요'},
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},

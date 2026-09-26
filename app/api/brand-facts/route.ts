@@ -3,6 +3,7 @@ import {getBrandFacts,saveBrandFact,rebaseFranchiseFacts,franchiseFactsOverview}
 import {factOverview,importFactCandidates} from '@/lib/fact-import';
 import {flagPublicationsForFactChange} from '@/lib/execution-server';
 import {executionRate} from '@/lib/execution-rate';
+import {afterFactSaved} from '@/lib/data-requests-server';
 
 export async function GET(req:Request){
  try{
@@ -36,6 +37,7 @@ export async function POST(req:Request){
   const {affectsPublications,...saved}=await saveBrandFact(owner,input,who);
   // 사실이 저장된 뒤 확인하므로 실패해도 저장은 유지하고, 확인하지 못했음(null)을 알린다.
   const reviewPublications=affectsPublications?await flagPublicationsForFactChange(database(),owner,[saved.id]).catch(()=>{console.error('fact_publication_flag_failed');return null}):0;
-  return json({...saved,reviewPublications});
+  // 자료 요청(A6-1): 스위치가 켜졌을 때만 closedRequests를 싣는다(꺼짐이면 응답 바이트 동일, 닫기 실패면 null이고 사실 저장은 유지).
+  return json({...saved,reviewPublications,...await afterFactSaved(owner,saved.fact,who)});
  }catch(error){return failure(error)}finally{if(lock)await releaseLock(owner,lock)}
 }
