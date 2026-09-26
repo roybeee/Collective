@@ -7,8 +7,8 @@
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-26 18:10 UTC
-- 진행 중: A8-3 화면 PR(브랜치 `feat/a8-3-report-ui`, A8-2 PR #152 위. 지점 탭 '고객 보고서'·동결 대화상자·대표 '검토 완료'·다운로드, 사실 탭 '사실 팩 받기', `app/customer-report-panel.tsx`, E2E `e2e/customer-report.spec.ts`, 스위치 `a8_customer_report` 기본 꺼짐, 묶음 5로 게시, 토큰 0, [11절](CUSTOMER-REPORT.ko.md#11-a8-3-구현-화면)). A8-2 서버·API는 PR #152 병합 대기, A8-1 순수 모듈은 #150으로 `merged`.
+갱신: 2026-09-26 18:38 UTC
+- 진행 중: B4-2a 보상 계보 순수 모듈 PR(브랜치 `feat/b4-2a-reward-lineage`, `76fc96e` 위). 보상 L0~L4를 promptVersion·ruleRef(`ruleId@version`)별로 모으는 결정론 집계 `lib/reward-lineage.ts`, 서버·API·스위치 없음, 토큰 0. 선행 판정 **축소 착수**(결정 16 `not_run`이라 L2 reduced, L4 not_run, 중단 규칙 판정일 2026-10-15). 설계 [REWARD-LINEAGE](REWARD-LINEAGE.ko.md). A8-3 화면은 #153으로 `merged`(묶음 5로 게시 대기).
 - A6 종료 조건: **passed · real**(2026-09-27 00:56 KST). 이문동점 영업시간 자료 요청 `dr-f08c16186f08`이 사실 확정으로 closed. [관찰 기록](observations/2026-09-27-lane-a-a6-end-condition.md). 운영 스위치 `a6_data_requests` 켜짐.
 - A3 종료 조건 run: **failed · real**(run `a3634055`, 2026-09-27 02:00 KST, 32,566토큰). 국밥 Instagram은 12/0 pass(`contract_json`·`copy_pack_variants`·`brand_voice_avoid_term` pass, 출력 약 4k). 수학학원 릴스는 `contract_json` fail: 원문이 최상위 객체의 마지막 `}` 하나만 빠진 채 끝났다(내용은 완전: 2채널×3안, 장면 4, 실험 2). 첫 시도 run `2092b0bb`은 서버 Codex 로그인 삭제로 실패(0토큰, 레인 Q 세션이 복구). 수정: v2 팩 지시에 괄호 닫기 규칙(PR `fix/copy-pack-closing-brace`) → 묶음 게시 → 같은 케이스 재실행.
 - 확인 필요(레인 R): `tests/check-prompts.test.mjs`가 macOS(대소문자 무시 파일 시스템)에서 `channel.leadad.json`·`channel.leadAd` 변형 충돌로 로컬 실패한다(Linux CI는 통과).

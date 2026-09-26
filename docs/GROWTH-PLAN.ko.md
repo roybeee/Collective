@@ -229,7 +229,7 @@
 | `app/api/action/route.ts`, `app/panels.tsx` | PR 1 → PR 2 → B1 → PR 5 | PR 1·2 병합됨. 원안의 "B1 → PR 2"에서 바뀌었다. |
 | `lib/research-worker.ts` | PR 1 → F2 → PR 6 앱 측(`security-ops-4`·`-7`) → B2 digest 큐 | PR 1 병합됨 |
 | `lib/server.ts` 삭제 연쇄, `tests/delete-campaign.test.mjs` | PR 1 → PR 2 → PR 3 → F4a → F4b (`ux-9`는 건수 API를 쓴다) | PR 1·2 병합됨, PR 3이 테스트 파일을 수정 중 |
-| `lib/learning.ts`, `lib/learning-server.ts` | PR 1 → B4 1부 → PR 4b → B3 → B4 2부 | PR 1 병합됨 |
+| `lib/learning.ts`, `lib/learning-server.ts` | PR 1 → B4 1부 → PR 4b → B4 2부 → B3 ([LANES](LANES.ko.md) 레인 A 순서) | PR 1 병합됨. B4 2부는 learning 파일을 고치지 않고 타입만 import한다([REWARD-LINEAGE](REWARD-LINEAGE.ko.md)) |
 | `lib/store-operations.ts`, `lib/store-operations-server.ts` | PR 1 → A4 → PR 4b → A5 | PR 1 병합됨 |
 | `lib/quality.ts` | PR 2(`ai-quality-6`) → A2 런타임 연결 | PR 2 병합됨 |
 | `lib/usage-ledger.ts`, `lib/hermes.ts` | F2 → PR 4a | 대기 |
