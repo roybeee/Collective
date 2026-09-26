@@ -1,9 +1,10 @@
-import {identity,actor,secureMutation,body,str,json,failure,ApiError,acquireLock,releaseLock,database} from '@/lib/server';
+import {identity,actor,secureMutation,body,str,json,failure,ApiError,acquireLock,releaseLock,database,stamp} from '@/lib/server';
 import {getBrandFacts,saveBrandFact,rebaseFranchiseFacts,franchiseFactsOverview} from '@/lib/brand-facts-server';
 import {factOverview,importFactCandidates} from '@/lib/fact-import';
 import {flagPublicationsForFactChange} from '@/lib/execution-server';
 import {executionRate} from '@/lib/execution-rate';
 import {afterFactSaved} from '@/lib/data-requests-server';
+import {markAssetsForChange} from '@/lib/franchise-assets-server';
 
 export async function GET(req:Request){
  try{
@@ -32,12 +33,16 @@ export async function POST(req:Request){
   if(input.action==='rebase_facts'){
    const {ids,...moved}=await rebaseFranchiseFacts(owner,input,who);
    const reviewPublications=ids.length?await flagPublicationsForFactChange(database(),owner,ids).catch(()=>{console.error('fact_publication_flag_failed');return null}):0;
-   return json({...moved,reviewPublications});
+   // 트랙 R R15a-2: 옮긴 사실을 근거로 쓴 모집 자료에 재검토를 표시한다. 표시가 없으면 응답이 이전과 같다.
+   const reviewAssets=ids.length?await markAssetsForChange(owner,str(input.brandId,'브랜드',100,true),{factIds:ids},stamp()).catch(()=>{console.error('fact_asset_flag_failed');return null}):0;
+   return json({...moved,reviewPublications,...(reviewAssets!==0?{reviewAssets}:{})});
   }
   const {affectsPublications,...saved}=await saveBrandFact(owner,input,who);
   // 사실이 저장된 뒤 확인하므로 실패해도 저장은 유지하고, 확인하지 못했음(null)을 알린다.
   const reviewPublications=affectsPublications?await flagPublicationsForFactChange(database(),owner,[saved.id]).catch(()=>{console.error('fact_publication_flag_failed');return null}):0;
+  // 트랙 R R15a-2: 판이 오른 사실(수정)을 근거로 쓴 모집 자료에 재검토를 표시한다(쪽 번호·기한 연장 포함). 표시가 없으면 응답이 이전과 같다.
+  const reviewAssets=saved.version>1?await markAssetsForChange(owner,saved.fact.brandId,{factIds:[saved.id]},stamp()).catch(()=>{console.error('fact_asset_flag_failed');return null}):0;
   // 자료 요청(A6-1): 스위치가 켜졌을 때만 closedRequests를 싣는다(꺼짐이면 응답 바이트 동일, 닫기 실패면 null이고 사실 저장은 유지).
-  return json({...saved,reviewPublications,...await afterFactSaved(owner,saved.fact,who)});
+  return json({...saved,reviewPublications,...(reviewAssets!==0?{reviewAssets}:{}),...await afterFactSaved(owner,saved.fact,who)});
  }catch(error){return failure(error)}finally{if(lock)await releaseLock(owner,lock)}
 }
