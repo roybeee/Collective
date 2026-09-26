@@ -92,6 +92,23 @@ check('1: the module has exactly the seven specified import lines',same(importLi
 const specs=[...src.matchAll(/\bfrom\s*'([^']+)'|\bimport\s*\(\s*['"`]([^'"`]+)|\brequire\s*\(\s*['"`]([^'"`]+)/g)].map(m=>m[1]??m[2]??m[3]);
 const FORBIDDEN=['./server','./execution-server','./brand-facts-server','./franchise-facts-server','./franchise','./franchise-server','./franchise-crypto','./feature-flags','./prompt-registry','./execution-media'];
 check('1: brand-facts is a type-only import, no .ts extension, no @/ path, no forbidden module, no dynamic import',importLines.find(l=>l.includes("'./brand-facts'")).startsWith('import type ')&&specs.length===7&&specs.every(s=>s.startsWith('./')&&!s.endsWith('.ts')&&!FORBIDDEN.includes(s))&&!/\bimport\s*\(|\brequire\s*\(/.test(src)&&!src.includes("'@/"));
+// 모듈 참조를 TypeScript 구문 트리로도 모은다(tests/franchise-model-boundary.test.mjs parseImports와 같은 노드): 따옴표 종류, export from, 한 줄의 여러 문장, import(), require, import 타입, import =.
+const moduleRefs=text=>{
+ const out=[],sf=ts.createSourceFile('m.ts',text,ts.ScriptTarget.Latest,false,ts.ScriptKind.TS),lit=n=>n&&(ts.isStringLiteral(n)||ts.isNoSubstitutionTemplateLiteral(n))?n.text:'(opaque)';
+ const visit=n=>{
+  if(ts.isImportDeclaration(n))out.push({kind:n.importClause?.isTypeOnly?'import type':'import',spec:lit(n.moduleSpecifier)});
+  else if(ts.isExportDeclaration(n)&&n.moduleSpecifier)out.push({kind:'export',spec:lit(n.moduleSpecifier)});
+  else if(ts.isImportEqualsDeclaration(n)&&ts.isExternalModuleReference(n.moduleReference))out.push({kind:'import=',spec:lit(n.moduleReference.expression)});
+  else if(ts.isImportTypeNode(n))out.push({kind:'import type()',spec:ts.isLiteralTypeNode(n.argument)?lit(n.argument.literal):'(opaque)'});
+  else if(ts.isCallExpression(n)&&(n.expression.kind===ts.SyntaxKind.ImportKeyword||(ts.isIdentifier(n.expression)&&n.expression.text==='require')))out.push({kind:'call',spec:lit(n.arguments[0])});
+  ts.forEachChild(n,visit);
+ };
+ visit(sf);return out;
+};
+const SPECS=['./franchise-rules','./franchise-compliance','./franchise-facts','./franchise-gates','./fact-catalog','./agency','./brand-facts'],srcRefs=moduleRefs(src);
+check('1: the syntax tree holds exactly the seven module references, all static imports and brand-facts type-only',same(srcRefs,SPECS.map(spec=>({kind:spec==='./brand-facts'?'import type':'import',spec}))));
+const SNEAK=['export {} from "./franchise";','const a=0;import {x} from "./franchise";','import * as s from "./server";','const m=import("./feature-flags");','const r=require("./franchise-crypto");','type T=typeof import("./franchise-server");','import fs = require("./execution-server");','export * from \'./prompt-registry\';'];
+check('1: the syntax-tree check catches double quotes, export-from, mid-line imports, import(), require, import types and import =',SNEAK.every(t=>{const refs=moduleRefs(src+'\n'+t);return refs.length===8&&FORBIDDEN.includes(refs[7].spec)&&!same(refs,plain(srcRefs))}));
 const code=src.replace(/^\s*\/\/.*$/gm,'');
 const CLOCK=/(?<!new\s+)\bDate\s*\(|new\s+Date\b(?!\s*\(\s*[^)\s])|\bDate\s*\[|\bDate\.(now|parse)\b|Reflect\.construct|performance\.|Math\.random|\bprocess\.|\bcrypto\.(?!subtle\.digest\()|globalThis|\beval\s*\(|\bFunction\s*\(/;
 check('2: the clock pattern catches bypass forms and allows only crypto.subtle.digest',['new Date;','new Date ()','Date()','Date["now"]()','Date.parse(x)','Reflect.construct(Date,[])','Math.random()','process.env.X','crypto.randomUUID()','crypto.getRandomValues(a)','crypto.subtle.encrypt(a)','globalThis.fetch'].every(x=>CLOCK.test(x))&&!CLOCK.test("crypto.subtle.digest('SHA-256',b)")&&!CLOCK.test('new Date(ms).getUTCDay()'));
@@ -172,9 +189,16 @@ const v16=fa.validateAssetInput({...inputOf(PAGE(),['f-total','f-menu']),factRef
 check('16: a startup page with f-total validates to the normal form',OK(v16)&&v16.value.type==='startup_page'&&v16.value.body===PAGE()&&same(v16.value.factRefs,[{id:'f-menu',version:1},{id:'f-total',version:1}])&&v16.value.disclosureVersionId==='dvA'&&v16.value.judgement.blocked===false&&typeof v16.value.judgement.version==='string'&&same(v16.warnings,plain(jc.franchiseIssueLabels(v16.value.judgement).warnings)));
 check('17: switch off wins over a malformed input, the timestamp check comes first',is(fa.validateAssetInput(null,{...CTX,enabled:false}),'switch_off')&&is(fa.validateAssetInput(inputOf(PAGE()),{...CTX,enabled:'yes'}),'switch_off')&&is(fa.validateAssetInput(null,{...CTX,enabled:false,now:'2026-10-10 09:00'}),'invalid_timestamp'));
 check('18: a non-object input is invalid_input',[null,'x',5,[],true].every(x=>is(fa.validateAssetInput(x,CTX),'invalid_input')));
+check('18: the input stage comes before the campaign stage',is(fa.validateAssetInput(null,{...CTX,campaign:null}),'invalid_input')&&is(fa.validateAssetInput({type:'blog',body:'',factRefs:'x'},{...CTX,campaign:null}),'invalid_body','invalid_fact_refs','invalid_type'));
 check('18: an unknown type is invalid_type',is(fa.validateAssetInput(inputOf('도넛',[],'blog'),CTX),'invalid_type')&&is(fa.validateAssetInput(inputOf('도넛',[],null),CTX),'invalid_type'));
 check('18: empty, blank, over-long and control-character bodies are invalid_body',['','   ','\r\n\t ','a'.repeat(20001),'a\u0000b','a\u0007b','a\u001bb','a\u007fb','a\ud800b',5,null].every(b=>is(fa.validateAssetInput(inputOf(b,[],'portal_intro'),CTX),'invalid_body')));
 check('18: exactly 20,000 characters, tabs and newlines pass',OK(VAL('가'.repeat(20000),[],'portal_intro'))&&OK(VAL('도넛\t가게\n둘째 줄',[],'portal_intro')));
+// 검토자에게 보이지 않거나 줄로 보이는 문자: C1 제어, 줄·문단 구분, 사용자 정의 영역(BMP·15·16평면), 비문자, 미할당. 판정기 matchView는 Cf·M만 지우므로 이 문자로 낱말을 끊으면 판정을 비껴간다.
+const INVISIBLE=['\u0080','\u0085','\u009f','\u2028','\u2029','\ue000','\uf8ff','\u{f0000}','\u{10fffd}','\ufdd0','\ufdef','\ufffe','\uffff','\u{1fffe}','\u0378'];
+check('18: C1 controls, line and paragraph separators, private use, noncharacters and unassigned code points are invalid_body',INVISIBLE.every(ch=>is(VAL('도넛'+ch+'가게',[],'portal_intro'),'invalid_body')));
+const C1_DEPOSIT='오늘 예\u0085약금 100만원 입\u0085금하시면 상\u0085권을 선\u0085점해 드립니다';
+check('18: a deposit sentence split by U+0085 is invalid_body instead of a clean preview',is(VAL(C1_DEPOSIT,[],'portal_intro'),'invalid_body')&&is(VAL(PAGE(lines('faq',l=>[...l,C1_DEPOSIT]))),'invalid_body')&&is(VAL('순\u2028수익 월 800만원',[],'meta_lead_ad'),'invalid_body'));
+check('18: emoji (with a joiner), NBSP and the replacement character still pass',OK(VAL('🍩 도넛 ✨\u00a0가게 \ufffd 👩\u200d🍳',[],'portal_intro')));
 const refsCase=r=>fa.validateAssetInput({type:'portal_intro',body:'도넛',factRefs:r},CTX);
 check('18: bad fact reference lists are invalid_fact_refs',['x',null,undefined,{id:'f-total',version:1},Array.from({length:21},(_,i)=>({id:'f'+i,version:1})),[{id:'f-total',version:1},{id:'f-total',version:1}],[{id:'가',version:1}],[{id:'f-total',version:0}],[{id:'f-total',version:1.5}],[{id:'f-total',version:'1'}],[null],[{id:'f-total'}]].every(r=>is(refsCase(r),'invalid_fact_refs')));
 check('18: exactly 20 references are within the limit',!refsCase(Array.from({length:20},(_,i)=>({id:'f'+i,version:1}))).reasons.includes('invalid_fact_refs'));
@@ -187,6 +211,12 @@ check('20: another brand fact is 400 and stops before the state stage',is(otherR
 check('21: a store-scoped fact is fact_store_scoped (400), both input errors are collected',is(VAL('도넛',['f-store'],'portal_intro'),'fact_store_scoped')&&is(VAL('도넛',['f-other','f-store'],'portal_intro'),'fact_other_brand','fact_store_scoped'));
 check('22: missing, re-versioned, candidate, expired, future and sourceless facts are fact_changed (409)',is(VAL('도넛',['f-none'],'portal_intro'),'fact_changed')&&is(fa.validateAssetInput({type:'portal_intro',body:'도넛',factRefs:[{id:'f-total',version:2}]},CTX),'fact_changed')
  &&['f-cand','f-exp','f-future','f-blank'].every(id=>is(VAL('도넛',[id],'portal_intro'),'fact_changed'))&&VAL('도넛',['f-exp'],'portal_intro').status===409&&is(VAL('도넛',['f-cand','f-exp'],'portal_intro'),'fact_changed'));
+// 빈 칸이 있는 배열(sparse)은 빈 칸을 undefined로 보고 검사한다(every는 빈 칸을 건너뛴다). JSON에서는 나오지 않지만 순수 함수 호출자에게도 fail closed여야 한다.
+const SPARSE_INCLUDES=['가맹비'];SPARSE_INCLUDES.length=2;
+const SPARSE_REFS=[{id:'f-total',version:1}];SPARSE_REFS.length=2;
+const SPARSE_FACTS=[...CTX.facts];SPARSE_FACTS.length+=1;
+check('22: sparse fact references are invalid_fact_refs, a sparse fact list or string list in the context is invalid_record',is(fa.validateAssetInput({type:'portal_intro',body:'도넛',factRefs:SPARSE_REFS},CTX),'invalid_fact_refs')&&is(fa.validateAssetInput(inputOf('도넛',[],'portal_intro'),{...CTX,facts:SPARSE_FACTS}),'invalid_record')
+ &&is(fa.validateAssetInput(inputOf('도넛',[],'portal_intro'),{...CTX,facts:[...CTX.facts.filter(f=>f.id!=='f-total'),{...F.total,cost:{...F.total.cost,includes:SPARSE_INCLUDES}}]}),'invalid_record'));
 const dupFact=fa.validateAssetInput(inputOf('도넛',['f-menu'],'portal_intro'),{...CTX,facts:[...CTX.facts,{...F.menu,brandId:'b1',status:'candidate'}]});
 check('22: an ambiguous fact id (two records) is fact_changed',is(dupFact,'fact_changed'));
 const revRef=VAL('도넛',['f-rev'],'portal_intro'),both=VAL('도넛',['f-rev','f-nosrc'],'portal_intro');
@@ -194,9 +224,13 @@ check('23: revenue, sourceless and stale facts map to their codes and fixed mess
  &&is(both,'fact_revenue','fact_source_missing')&&both.message===FM.revenueNoAd+' '+FM.sourceMissingInUse);
 const effIds=fa.effectiveAssetFacts(Object.values(F),'b1',NOW).map(f=>f.id).sort(asc);
 check('24: effective facts equal effectiveBrandFacts for brand-level input',same(effIds,bf.effectiveBrandFacts(Object.values(F),'b1',undefined,Date.parse(NOW)).map(f=>f.id).sort(asc))&&same(effIds,['f-claim','f-count','f-menu','f-nosrc','f-prod','f-rev','f-total'])&&fa.effectiveAssetFacts(Object.values(F),'b1','yesterday').length===0);
+const FNOW={...base,id:'f-now',key:'hours',value:'매일 영업',verifiedAt:NOW},FDATE={...base,id:'f-date',key:'delivery',value:'포장 가능',validUntil:'2027-04-01'},nowCtx={...CTX,facts:[...CTX.facts,FNOW,FDATE]};
+const effNow=fa.effectiveAssetFacts(nowCtx.facts,'b1',NOW).map(f=>f.id);
+check('24: verifiedAt equal to now is effective, a date-only validUntil is excluded without failing validation',effNow.includes('f-now')&&!effNow.includes('f-date')&&OK(fa.validateAssetInput(inputOf('도넛',['f-now'],'portal_intro'),nowCtx))&&OK(fa.validateAssetInput(inputOf('도넛',[],'portal_intro'),nowCtx))&&is(fa.validateAssetInput(inputOf('도넛',['f-date'],'portal_intro'),nowCtx),'fact_changed'));
 const DEPOSIT='오늘 예약금 100만원 입금하시면 상권을 선점해 드립니다';
 const v25=VAL(DEPOSIT,[],'portal_intro');
 check('25: a draft with an unremovable sentence still saves and previews the hard block',OK(v25)&&v25.value.judgement.hardBlocked===true);
+check('25: the preview judges with the brand revenue facts, so an unreferenced revenue value is hard-blocked',VAL('강남점 3,200만원 기록',[],'portal_intro').value.judgement.hardBlocked===true);
 
 // ════ 초안 ════
 const d1=await DRAFT(PAGE());
@@ -225,6 +259,23 @@ check('30: fact lines outside the cost section are cost_table_missing',same(S('s
 check('30: no referenced cost fact and no brand total cost fact is cost_table_missing',same(S('startup_page',PAGE(),[],BF.filter(f=>f.id!=='f-total')),['cost_table_missing']));
 const total2={...F.total,id:'f-total2',value:'6,000만원',cost:{...F.total.cost,storeType:'매장형',areaM2:50}};
 check('30: every current total cost fact of the brand (per store type) must be in the table',same(S('startup_page',PAGE(),[F.total],[...BF,total2]),['cost_table_missing'])&&same(S('startup_page',PAGE(lines('cost',()=>[ff.factLine(F.total),ff.factLine(total2),FOOT])),[F.total],[...BF,total2]),[])&&same(S('startup_page',PAGE(),[F.total],[...BF,{...total2,brandId:'b1',sourceRef:SRC(12,{disclosureVersionId:'dvZ'})}]),[]));
+// 참조한 창업비용 구성 항목(storeType 필수) 사실도 비용 표에 있어야 한다. f-nosrc는 근거가 없어 참조할 수 없으므로 근거 있는 가맹비 사실을 따로 둔다.
+const FEE={...base,id:'f-fee',key:'franchise_fee',value:'700만원',sourceRef:SRC(14)},FEE_CTX={...XCTX,facts:[...CTX.facts,FEE]};
+const feePage=PAGE(lines('cost',()=>[ff.factLine(F.total),ff.factLine(FEE),FOOT]));
+check('30: a referenced cost-component fact must also be in the cost table',same(S('startup_page',PAGE(),[F.total,FEE],[...BF,FEE]),['cost_table_missing'])&&same(S('startup_page',feePage,[F.total,FEE],[...BF,FEE]),[])
+ &&is(await EXP(FORGE(PAGE(),['f-fee','f-total'],'startup_page'),FEE_CTX),'cost_table_missing')&&OK(await EXP(FORGE(feePage,['f-fee','f-total'],'startup_page'),FEE_CTX)));
+// 사실·버전 라벨은 NFC가 아닐 수 있다(저장소는 trim만 한다). 원문은 NFC로 저장되므로 사실 줄·각주 줄도 NFC로 맞춰 비교한다.
+const TOTAL_NFD={...F.total,cost:{...F.total.cost,storeType:'소형 매장'.normalize('NFD')}},NFD_CTX={...CTX,facts:[...CTX.facts.filter(f=>f.id!=='f-total'),TOTAL_NFD]};
+const nfdPage=PAGE(lines('cost',()=>[ff.factLine(TOTAL_NFD),FOOT])),vNfdPage=fa.validateAssetInput(inputOf(nfdPage),NFD_CTX);
+const dNfdPage=vNfdPage.ok?await fa.draftAsset(null,vNfdPage.value,META):null;
+check('30: an NFD cost fact pasted verbatim is compared in NFC and approves',OK(vNfdPage)&&vNfdPage.value.body!==nfdPage&&same(S('startup_page',vNfdPage.value.body,[TOTAL_NFD],[...BF.filter(f=>f.id!=='f-total'),TOTAL_NFD]),[])&&OK(await APP(dNfdPage,APPROVE_IN(dNfdPage),{...NFD_CTX,actor:OWNER})));
+const V_NFD=V.map(v=>v.id==='dvA'?{...v,label:'2026년 1차'.normalize('NFD')}:v),footNfd=ff.footnoteLine(F.prod,V_NFD);
+const vNfdFoot=fa.validateAssetInput(inputOf('손으로 빚은 도넛\n'+footNfd,['f-prod'],'portal_intro'),{...CTX,versions:V_NFD});
+const dNfdFoot=vNfdFoot.ok?await fa.draftAsset(null,vNfdFoot.value,META):null;
+check('30: an NFD version label in a footnote pasted verbatim is compared in NFC and approves',footNfd!==footNfd.normalize('NFC')&&OK(vNfdFoot)&&OK(await APP(dNfdFoot,APPROVE_IN(dNfdFoot),{...ACTX,versions:V_NFD})));
+// 줄로 보일 수 있는 U+0085·U+2028·U+2029 뒤의 ■ 제목도 절 검사가 본다(저장 원문에는 이 문자가 없지만 직접 부르는 미리보기도 fail closed).
+check('29: a ■ line after U+0085, U+2028 or U+2029 is still a section line',['\u0085','\u2028','\u2029'].every(sep=>same(S('startup_page',PAGE(lines('support',l=>[l[0]+sep+'■ 예상 수익']))),['section_unknown'])&&same(S('startup_page',PAGE(lines('support',l=>[l[0]+sep+PAGE_HEADINGS[0]]))),['section_duplicate'])&&is(VAL(PAGE(lines('support',l=>[l[0]+sep+'■ 예상 수익']))),'invalid_body')));
+check('31: a stray ■ line ends the section before the waiting notes, fixed lines match exactly without trim',same(S('startup_page',PAGE(lines('process',()=>['■ 참고',...WAIT]))),['section_unknown','waiting_note_missing'])&&same(S('startup_page',PAGE(lines('process',()=>[WAIT[0]+' ',WAIT[1]]))),['waiting_note_missing']));
 check('31: a missing or misplaced waiting note is waiting_note_missing',same(S('startup_page',PAGE(lines('process',()=>[WAIT[0]]))),E('waiting_note_missing'))&&same(S('startup_page',PAGE(bs=>lines('faq',l=>[...l,...WAIT])(lines('process',()=>[])(bs)))),['waiting_note_missing']));
 check('32: the deck is complete, loses its revenue note or is out of order',same(S('event_deck',DECK()),[])&&VAL(DECK(),['f-total'],'event_deck').value.judgement.issues.length===0&&same(S('event_deck',DECK(lines('qna',()=>[]))),E('revenue_qna_note_missing'))&&same(S('event_deck',DECK(bs=>[bs[0],bs[2],bs[1],...bs.slice(3)])),['section_order']));
 check('33: free asset types have no structure check, a non-string body misses every heading',['portal_intro','first_call_script','naver_search','meta_lead_ad','expo_banner'].every(t=>same(S(t,'■ 예상 수익\n자유 문안'),[]))&&same(S('startup_page',null),['section_missing'])&&same(S('event_deck',5),['section_missing']));
@@ -234,12 +285,24 @@ const bothApproved=await Promise.all([OWNER,ADMIN].map(actor=>fa.approveDecision
 check('34: owner and admin approve with the full approval record',bothApproved.every((r,i)=>OK(r)&&same(r.value.approval,{by:[OWNER,ADMIN][i].id,role:[OWNER,ADMIN][i].role,at:NOW,bodyHash:d1.bodyHash,checklist:{version:fa.CHECKLIST_VERSION,checked:[...fa.CHECKLIST_IDS].sort(asc)}})&&r.value.judgement.blocked===false));
 const r35=await Promise.all([MEMBER,{id:'u-v',role:'viewer'},null,{role:'owner'},{id:'',role:'owner'},{id:'u\u0001x',role:'owner'},{id:'u'.repeat(201),role:'admin'},{id:5,role:'admin'},{id:'u-x',role:'Owner'}].map(actor=>APP(d1,APPROVE_IN(d1),{...CTX,actor})));
 check('35: member, viewer, a missing actor and malformed actor ids are 403',r35.every(r=>is(r,'role_forbidden')&&r.status===403)&&OK(await APP(d1,APPROVE_IN(d1),{...CTX,actor:{id:'u'.repeat(200),role:'admin'}})));
+check('35: actor ids with a C1 control, a line separator or a private-use character are 403',(await Promise.all(['u\u0085x','u\u2028x','u\ue000x'].map(id=>APP(d1,APPROVE_IN(d1),{...CTX,actor:{id,role:'owner'}})))).every(r=>is(r,'role_forbidden')));
+check('35: the role check comes before the record check (403 like the route ADMIN_ONLY)',is(await APP({...d1,brandId:'b2'},APPROVE_IN(d1),{...CTX,actor:MEMBER}),'role_forbidden')&&is(await APP({...d1,status:'wip'},APPROVE_IN(d1),{...CTX,actor:MEMBER}),'role_forbidden'));
 check('36: switch off wins over a member actor, the timestamp over both',is(await APP(d1,APPROVE_IN(d1),{...CTX,enabled:false,actor:MEMBER}),'switch_off')&&is(await APP(d1,APPROVE_IN(d1),{...CTX,enabled:false,actor:MEMBER,now:'yesterday'}),'invalid_timestamp'));
 const branchRes=await Promise.all(['B','C','undetermined',null,'a','',undefined].map(branch=>APP(d1,APPROVE_IN(d1),{...ACTX,branch})));
 check('37: branches other than A are branch_not_a (409) with H7 and the disclaimer',branchRes.every(r=>is(r,'branch_not_a')&&r.status===409&&r.message.includes('H7')&&r.message.includes(DISCLAIMER)));
 check('4: a malformed record or another brand record is 400 before the branch check',is(await APP({...d1,status:'wip'},APPROVE_IN(d1),{...ACTX,branch:'B'}),'invalid_record')&&is(await APP({...d1,brandId:'b2'},APPROVE_IN(d1),{...ACTX,branch:'B'}),'record_other_brand')&&is(await APP(d1,APPROVE_IN(d1),{...ACTX,facts:[...CTX.facts,{id:'bad'}]}),'invalid_record'));
 check('6-7: campaign mismatch is 400, a consumer campaign 409',is(await APP(d1,APPROVE_IN(d1),{...ACTX,campaign:{...CAMP,id:'c9'}}),'campaign_other_brand')&&is(await APP(d1,APPROVE_IN(d1),{...ACTX,campaign:null}),'campaign_other_brand')&&is(await APP(d1,APPROVE_IN(d1),{...ACTX,campaign:{...CONSUMER,id:'c1'}}),'campaign_not_recruitment'));
+const B2_CAMP={id:'c1',brandId:'b2',objective:'franchise_recruitment'};
+check('6: a campaign with the asset campaign id but another brand is campaign_other_brand',is(await APP(d1,APPROVE_IN(d1),{...ACTX,campaign:B2_CAMP}),'campaign_other_brand')&&is(await EXP(FORGE(PAGE(),['f-total'],'startup_page'),{...XCTX,campaign:B2_CAMP}),'campaign_other_brand'));
+check('5-6: the branch check comes before the campaign check',is(await APP(d1,APPROVE_IN(d1),{...ACTX,branch:'B',campaign:{...CAMP,id:'c9'}}),'branch_not_a')&&is(await EXP(FORGE(PAGE(),['f-total'],'startup_page'),{...XCTX,branch:'B',campaign:{...CAMP,id:'c9'}}),'branch_not_a'));
+check('8-9: an approved record that is also flagged is not_draft',is(await APP({...d1,status:'approved',review:{needed:true,reasons:['fact_changed'],at:NOW}}),'not_draft'));
 const cl=checked=>({bodyHash:d1.bodyHash,checklist:{version:fa.CHECKLIST_VERSION,checked}});
+const dropEach=await Promise.all(fa.CHECKLIST_IDS.map(id=>APP(d1,cl(fa.CHECKLIST_IDS.filter(x=>x!==id)))));
+check('38: leaving out any one of the six items is checklist_incomplete (400)',dropEach.length===6&&dropEach.every(r=>is(r,'checklist_incomplete')&&r.status===400));
+check('38: six copies of one item or five items plus an unknown id are checklist_incomplete',(await Promise.all([cl(Array(6).fill('no_wait_bypass')),cl([...fa.CHECKLIST_IDS.filter(x=>x!=='h7_branch_a'),'zz_unknown'])].map(i=>APP(d1,i)))).every(r=>is(r,'checklist_incomplete')));
+// 빈 칸이 있는 배열(sparse): 길이 6이고 Set 크기도 6이지만 every는 빈 칸을 건너뛴다. JSON에서는 나오지 않지만 순수 함수 호출자에게도 fail closed여야 한다.
+const SPARSE=fa.CHECKLIST_IDS.filter(x=>x!=='no_captive_advisor');SPARSE.length=6;
+check('38: a sparse checklist array with one hole is checklist_incomplete',SPARSE.length===6&&!(5 in SPARSE)&&is(await APP(d1,cl(SPARSE)),'checklist_incomplete'));
 check('38: a missing, unknown or duplicated item or a malformed checklist is checklist_incomplete (400)',(await Promise.all([cl(fa.CHECKLIST_IDS.slice(1)),cl([...fa.CHECKLIST_IDS.slice(1),'zz_unknown']),cl([...fa.CHECKLIST_IDS,fa.CHECKLIST_IDS[0]]),cl([...fa.CHECKLIST_IDS.slice(1),fa.CHECKLIST_IDS[1]]),cl('all'),cl(null),{bodyHash:d1.bodyHash,checklist:'x'},{bodyHash:d1.bodyHash},null,'x'].map(i=>APP(d1,i)))).every(r=>is(r,'checklist_incomplete')&&r.status===400));
 check('38: an old checklist version is checklist_outdated (409) even when items are missing',is(await APP(d1,{bodyHash:d1.bodyHash,checklist:{version:'fr-assets-checklist@2026-09-01.1',checked:[...fa.CHECKLIST_IDS]}}),'checklist_outdated')&&is(await APP(d1,{bodyHash:d1.bodyHash,checklist:{version:'fr-assets-checklist@2026-09-01.1',checked:[]}}),'checklist_outdated'));
 check('39: a different input hash or a body changed after saving is hash_mismatch',is(await APP(d1,{...APPROVE_IN(d1),bodyHash:sha64('다른 원문')}),'hash_mismatch')&&is(await APP({...d1,body:d1.body+' '}),'hash_mismatch')&&is(await APP(d1,{checklist:APPROVE_IN(d1).checklist}),'hash_mismatch'));
@@ -247,6 +310,9 @@ check('40: an approved or retired record is not_draft, a flagged draft is review
 const faqDeposit=await DRAFT(PAGE(lines('faq',l=>[...l,DEPOSIT])));
 const r41=await APP(faqDeposit);
 check('41: an unremovable sentence is hard_block (409) even for the owner with every item checked',is(r41,'hard_block')&&r41.status===409&&r41.message.includes('승인으로 풀 수 없음')&&r41.judgement?.hardBlocked===true&&r41.message.startsWith(jc.franchiseGateError(r41.judgement).message));
+check('41: a lone judge code carries exactly the judge message',r41.message===jc.franchiseGateError(r41.judgement).message);
+const warnApproved=await APP(await DRAFT('입금 순서대로 자리 확정됩니다',[],'portal_intro'));
+check('34: approval returns the judge warnings',OK(warnApproved)&&warnApproved.warnings.length===1&&same(warnApproved.warnings,plain(jc.franchiseIssueLabels(warnApproved.value.judgement).warnings)));
 const hand=await DRAFT('손으로 빚은 도넛',[],'portal_intro'),handRef=await DRAFT('손으로 빚은 도넛',['f-prod'],'portal_intro'),handFoot=await DRAFT('손으로 빚은 도넛\n'+FOOT,['f-prod'],'portal_intro');
 const r42=await APP(hand);
 check('42: a handmade claim without its fact is block_unresolved, with the fact and footnote it passes',is(r42,'block_unresolved')&&r42.message.startsWith('가맹 모집 규칙상 근거 사실이 필요한 표현입니다')&&is(await APP(handRef),'footnote_missing')&&OK(await APP(handFoot)));
@@ -275,6 +341,12 @@ check('49: a draft, missing or invalid approval is not_approved (409)',(await Pr
 check('50: a different approval hash or a body changed after approval is hash_mismatch',is(await EXP({...A,approval:{...A.approval,bodyHash:sha64('다른 원문')}}),'hash_mismatch')&&is(await EXP({...A,body:A.body+'\n'}),'hash_mismatch')&&is(await EXP({...A,bodyHash:sha64('x'),approval:{...A.approval,bodyHash:sha64('x')}}),'hash_mismatch'));
 check('51: a flagged record is review_needed',is(await EXP({...A,review:{needed:true,reasons:['version_changed'],at:NOW}}),'review_needed'));
 check('52: an old approval checklist is checklist_outdated, a partial current one not_approved',is(await EXP({...A,approval:{...A.approval,checklist:{version:'fr-assets-checklist@2026-09-01.1',checked:[...fa.CHECKLIST_IDS]}}}),'checklist_outdated')&&is(await EXP({...A,approval:{...A.approval,checklist:{version:fa.CHECKLIST_VERSION,checked:fa.CHECKLIST_IDS.slice(1)}}}),'not_approved'));
+const withChecked=checked=>({...A,approval:{...A.approval,checklist:{version:fa.CHECKLIST_VERSION,checked}}});
+check('52: a stored approval with six copies of one item, an unknown id or a hole is not_approved',is(await EXP(withChecked(Array(6).fill('no_wait_bypass'))),'not_approved')&&is(await EXP(withChecked([...fa.CHECKLIST_IDS.slice(1),'zz_unknown'])),'not_approved')&&is(await EXP(withChecked(SPARSE)),'not_approved'));
+check('49: the role check comes before the record check, the hash check before the review flag',is(await EXP({...A,brandId:'b2'},{...XCTX,actor:MEMBER}),'role_forbidden')&&is(await EXP({...A,type:'blog'},{...XCTX,actor:MEMBER}),'role_forbidden')&&is(await EXP({...A,body:A.body+'\n',review:{needed:true,reasons:['fact_changed'],at:NOW}}),'hash_mismatch'));
+// 저장된 기록의 원문도 입력 검사와 같은 불변식을 지켜야 한다(정규형·1~20,000자·금지 문자 없음, 해시는 16진 64자). 다른 쓰기 경로가 판정기를 비껴가지 못하게 invalid_record로 닫는다.
+const NUL_DEPOSIT=[...DEPOSIT].join('\u0000'),BAD_BODIES=[NUL_DEPOSIT,'','   ','도넛 '.repeat(8000),'가'.repeat(20001),'도넛 가게\r입니다','도넛\ud800','도넛\u0085가게',C1_DEPOSIT,'가'.normalize('NFD')+' 도넛','도넛\u0007가게',PAGE(lines('support',l=>[l[0]+'\u2028■ 예상 수익']))];
+check('4: a stored body outside the input invariants is invalid_record at approval and export',is(await APP({...FORGE(NUL_DEPOSIT),status:'draft',approval:null}),'invalid_record')&&(await Promise.all(BAD_BODIES.map(b=>EXP(FORGE(b))))).every(r=>is(r,'invalid_record'))&&is(await EXP({...A,bodyHash:'x',approval:{...A.approval,bodyHash:A.bodyHash}}),'invalid_record'));
 const ASSOC='점주협의회에 가입하면 가맹 계약을 해지합니다';
 const r53=await EXP(FORGE(DEPOSIT)),r53b=await EXP(FORGE(ASSOC),{...XCTX,now:'2027-01-05T09:00:00+09:00'}),r53c=await EXP(FORGE(ASSOC));
 check('53: a forged approved record with unremovable sentences is hard_block, rules chosen by date',is(r53,'hard_block')&&is(r53b,'hard_block')&&r53b.judgement.issues.some(x=>x.registryId==='kr.fr.association_condition_2026')&&!r53b.judgement.issues.some(x=>x.registryId==='kr.fr.association_condition')&&r53c.judgement.issues.some(x=>x.registryId==='kr.fr.association_condition'));
@@ -303,6 +375,8 @@ const warnOf=(text,id)=>{const j=VAL(text,[],'portal_intro').value.judgement,c=f
 check('58: the deposit net goes to the wait-bypass item',warnOf('입금 순서대로 자리 확정됩니다','no_wait_bypass'));
 check('58: the revenue net goes to the revenue item',warnOf(RR,'no_revenue_figures'));
 check('58: the endorsement warning goes to the endorsement item',warnOf('점주님 인터뷰: 이 브랜드로 인생이 바뀌었어요','endorsement_disclosure'));
+const mixJ=VAL('손으로 빚은 도넛. 입금 순서대로 자리 확정됩니다',[],'portal_intro').value.judgement,mixC=fa.approvalChecklist(mixJ,'A');
+check('58: with a block issue and a warning, only the warning is shown, next to its item',mixJ.issues.some(x=>x.tier==='block')&&mixJ.issues.some(x=>x.tier==='warn')&&mixC.items.every(i=>i.warnings.every(w=>typeof w==='string'&&w.startsWith('가맹 규칙 확인 · ')))&&same(mixC.items.map(i=>i.warnings.length),ITEMS.map(x=>x[0]==='no_wait_bypass'?1:0)));
 check('58: a garbage judgement gives no warnings',fa.approvalChecklist('x','A').items.every(i=>i.warnings.length===0)&&fa.approvalChecklist({issues:[null]},'A').items.every(i=>i.warnings.length===0));
 
 // ════ 재검토 ════
@@ -325,12 +399,21 @@ const applied=assets.map(a=>{const m=plain(m1).find(x=>x.id===a.id&&x.version===
 check('60: applying the same change again gives nothing',same(fa.markAssetsForReview(applied,{factIds:['f-total']},'2026-10-21T09:00:00+09:00'),[]));
 const m3=plain(fa.markAssetsForReview(applied,{versionIds:['dvA']},'2026-10-21T09:00:00+09:00'));
 check('60: a version change merges reasons and keeps the first flag time',same(m3.find(x=>x.id==='a-2').review,{needed:true,reasons:['fact_changed','version_changed'],at:LATER})&&same(m3.find(x=>x.id==='a-1').review,{needed:true,reasons:['version_changed'],at:'2026-10-21T09:00:00+09:00'})&&!m3.some(x=>x.id==='a-3')&&m3.length===3);
+const m4=plain(fa.markAssetsForReview([RA('a-5',['f-total'],'approved',{version:2}),RA('a-5',['f-total'],'draft',{version:1,review:{needed:true,reasons:['version_changed'],at:NOW}})],{factIds:['f-total']},LATER));
+check('60: reasons are merged in ASCII order and the same id is ordered by version',same(m4,[{id:'a-5',version:1,review:{needed:true,reasons:['fact_changed','version_changed'],at:NOW}},{id:'a-5',version:2,review:{needed:true,reasons:['fact_changed'],at:LATER}}]));
+check('60: a record with a malformed stored body is skipped',same(fa.markAssetsForReview([{...RA('a-6',['f-total']),body:''},{...RA('a-7',['f-total']),body:NUL_DEPOSIT}],{factIds:['f-total']},LATER),[]));
 check('60: malformed inputs give nothing and never throw',[[null,{factIds:['f-total']},LATER],[assets,null,LATER],[assets,{factIds:'f-total'},LATER],[assets,{factIds:['f-total']},'yesterday'],[[null,5,'x'],{factIds:['f-total']},LATER]].every(([a,c,t])=>Array.isArray(fa.markAssetsForReview(a,c,t))&&fa.markAssetsForReview(a,c,t).length===0));
 check('61: changedVersionIds finds the current version that stopped being current or whose note changed',same(fa.changedVersionIds(V,V_NEW,NOW,null),['dvA'])&&same(fa.changedVersionIds(V,V,NOW,'dvA'),['dvA'])&&same(fa.changedVersionIds(V,V,NOW,null),[])&&same(fa.changedVersionIds(V,[...V,{...V_NEW[2],validFrom:'2026-11-01T00:00:00+09:00'}],NOW,null),[])
  &&same(fa.changedVersionIds(V,V.map(v=>v.id==='dvX'?{...v,status:'retired'}:v),NOW,null),['dvX'])&&same(fa.changedVersionIds(V_NEW,V_NEW,NOW,null),[])&&same(fa.changedVersionIds(V_NEW,V_NEW,NOW,'dvA'),[])&&same(fa.changedVersionIds(V_NEW,V_NEW,NOW,'dvB'),['dvB'])&&same(fa.changedVersionIds(null,V,NOW,null),[])&&same(fa.changedVersionIds(V,V_NEW,'yesterday',null),[])&&same(fa.changedVersionIds(V,[5],NOW,null),[]));
 const flaggedA={...A,review:{needed:true,reasons:['fact_changed'],at:LATER}},flaggedD={...d1,review:{needed:true,reasons:['fact_changed'],at:LATER}};
 const fresh=await fa.draftAsset(flaggedD,VAL(PAGE(lines('why',l=>[...l,'새 문장입니다.']))).value,{...META,id:d1.id,now:LATER});
 check('62: after flagging, approval and export are review_needed until a new draft version clears it',is(await APP(flaggedD),'review_needed')&&is(await EXP(flaggedA),'review_needed')&&fresh.review.needed===false&&fresh.version===2&&OK(await APP(fresh)));
+// 같은 원문을 다시 저장해도 prev가 더는 쓸 수 없으면(재검토 표시, 옛 체크리스트 승인, 승인 없는 approved, 폐기) 새 초안 버전을 만든다. 그래야 review_needed·checklist_outdated 문구가 안내하는 재승인 길이 열린다.
+const samePage=VAL(PAGE()).value,stuck=[flaggedA,flaggedD,{...A,approval:{...A.approval,checklist:{version:'fr-assets-checklist@2026-09-01.1',checked:[...fa.CHECKLIST_IDS]}}},{...A,approval:null},{...A,status:'retired'}];
+const resaved=await Promise.all(stuck.map(p=>fa.draftAsset(p,samePage,{...META,id:A.id,now:LATER})));
+check('62: re-saving the same body of a flagged, outdated-checklist, approval-less or retired record makes a new draft version that approves',resaved.every(r=>r.version===2&&r.status==='draft'&&r.approval===null&&same(r.review,{needed:false,reasons:[],at:null})&&same(r.exports,[])&&same(r.placements,[])&&r.body===A.body&&r.bodyHash===A.bodyHash&&r.createdAt===NOW&&r.updatedAt===LATER)
+ &&(await Promise.all(resaved.map(r=>APP(r)))).every(OK)&&is(await EXP(stuck[2]),'checklist_outdated'));
+check('26: an approved record with the current checklist and no review flag is kept unchanged',await fa.draftAsset(A,samePage,{...META,id:A.id,now:LATER})===A);
 
 // ════ 행사 ════
 const DECK_A=await APPROVED(DECK(),['f-total'],'event_deck'),PAGE_D=await DRAFT(PAGE(),['f-total'],'startup_page',CTX,'a-page-draft'),PAGE_A=await APPROVED(PAGE(),['f-total'],'startup_page',CTX,'a-page-ok');
@@ -350,6 +433,13 @@ check('65: a consumer campaign is 409, another brand campaign 400',is(VE({},{...
 const prev2=EVENT({counts:{applied:2,attended:0,noShow:0},codes:[{code:'p_alpha1',state:'applied'}]});
 check('66: capacity below applications and a cancelled event are refused',is(VE({capacity:1},ECTX,prev2),'capacity_below_applied')&&OK(VE({capacity:2},ECTX,prev2))&&is(VE({},ECTX,{...prev2,status:'cancelled'}),'event_cancelled')&&is(VE({capacity:1},ECTX,{...prev2,status:'cancelled'}),'capacity_below_applied','event_cancelled'));
 check('66: a malformed, other-brand or other-campaign previous event is refused',is(VE({},ECTX,{...prev2,counts:null}),'invalid_record')&&is(VE({},ECTX,{...prev2,brandId:'b2'}),'record_other_brand')&&is(VE({},ECTX,{...prev2,campaignId:'c9'}),'campaign_other_brand')&&OK(VE({},ECTX,null)));
+check('66: a capacity reduction above the applications is allowed',OK(VE({capacity:10},ECTX,{...prev2,capacity:30})));
+check('66: a previous event malformed only in its codes or version is invalid_record',is(VE({},ECTX,{...prev2,codes:[{code:'01000000101',state:'applied'}]}),'invalid_record')&&is(VE({},ECTX,{...prev2,codes:[{code:'ab',state:'applied'}]}),'invalid_record')&&is(VE({},ECTX,{...prev2,codes:[{code:'010-0000-0101',state:'applied'}]}),'invalid_record')&&is(VE({},ECTX,{...prev2,version:0}),'invalid_record'));
+check('64-65: role before branch, input before campaign, other-brand link before the version lookup',is(VE({},{...ECTX,actor:MEMBER,branch:'B'}),'role_forbidden')&&is(VE({type:'seminar'},{...ECTX,campaign:CONSUMER}),'invalid_event')&&VE({type:'seminar'},{...ECTX,campaign:CONSUMER}).status===400&&is(VE({assetRefs:[{id:'a-other',version:9}]}),'record_other_brand'));
+check('65: place labels and actor ids with a C1 control or a line separator are refused',is(VE({placeLabel:'본사\u0085교육장'}),'invalid_event')&&is(VE({placeLabel:'본사\u2028교육장'}),'invalid_event')&&is(VE({},{...ECTX,actor:{id:'u\u0085x',role:'admin'}}),'role_forbidden'));
+const LINK10=Array.from({length:10},(_,i)=>({id:'a-l'+i,version:1,brandId:'b1',status:'approved',type:'expo_banner'})),LCTX={...ECTX,assets:[...ECTX.assets,...LINK10]};
+const eSorted=VE({type:'expo',assetRefs:[{id:'a-l9',version:1},{id:'a-l1',version:1}]},LCTX),eNfd=VE({placeLabel:'가상 창업센터'.normalize('NFD')});
+check('65: exactly ten linked assets pass, links come back sorted, the place label is NFC',OK(VE({type:'expo',assetRefs:LINK10.map(a=>({id:a.id,version:1}))},LCTX))&&same(eSorted.value.assetRefs,[{id:'a-l1',version:1},{id:'a-l9',version:1}])&&eNfd.value.placeLabel==='가상 창업센터'&&eNfd.value.placeLabel.length===7);
 const OPCTX={enabled:true,brandId:'b1',branch:'A',now:NOW};
 const REG=(e,input={},ctx=OPCTX)=>fa.registerDecision(e,input,ctx);
 const e0=EVENT(),r1=REG(e0),e1={...e0,counts:plain(r1.value.counts),codes:plain(r1.value.codes)},r2=REG(e1,{code:'p_alpha1'}),e2={...e1,counts:plain(r2.value.counts),codes:plain(r2.value.codes)};
@@ -360,7 +450,16 @@ check('67: cancelled, full and started are collected; branch B is branch_not_a',
 check('67: phone-like, short, spaced or non-string codes are invalid_code',['01000000101','ab','abc def','p_alpha1\n',5,{},'가나다라마바'].every(code=>is(REG(e1,{code}),'invalid_code'))&&is(REG(e1,null),'invalid_input'));
 check('67: a repeated code is code_duplicate, codes stay sorted, any role may register',is(REG({...e2,capacity:5},{code:'p_alpha1'}),'code_duplicate')&&is(REG(e2,{code:'p_alpha1'}),'capacity_full','code_duplicate')&&same(REG({...e2,capacity:5},{code:'p_Zeta01'}).value.codes,[{code:'p_Zeta01',state:'applied'},{code:'p_alpha1',state:'applied'}])&&OK(REG(e1,{code:null})));
 check('67: switch, timestamp and record checks come first',is(REG(e1,{},{...OPCTX,enabled:false,branch:'B'}),'switch_off')&&is(REG(e1,{},{...OPCTX,now:'yesterday'}),'invalid_timestamp')&&is(REG({...e1,brandId:'b2'},{},{...OPCTX,branch:'B'}),'record_other_brand')&&is(REG({...e1,capacity:0}),'invalid_record')&&is(REG({...e1,codes:[{code:'01000000101',state:'applied'}]}),'invalid_record'));
+check('67: a seven-digit run is invalid_code, six digits pass',is(REG(e1,{code:'p1234567'}),'invalid_code')&&OK(REG(e1,{code:'p123456'})));
+// 구분자('-'·'_')로 끊은 전화·주민번호 꼴도 막는다(명세 2.1의 목적). 합성 번호만 쓴다(공개 저장소 경계).
+const SEP_CODES=['010-0000-0101','010_0000_0101','010-00000-101','p-010-0000-0101-x','900101-123-4567','ab-123-4567'];
+check('67: phone or resident-number-like codes split by - or _ are invalid_code, six digits across separators pass',SEP_CODES.every(code=>is(REG(e1,{code}),'invalid_code'))&&OK(REG(e1,{code:'ab-123-456'})));
+check('67: a stored event holding such a code is invalid_record',is(REG({...e1,codes:[{code:'010-0000-0101',state:'applied'}]}),'invalid_record')&&is(REG({...e1,codes:[{code:'010_0000_0101',state:'applied'}]}),'invalid_record'));
+check('67: an input error is reported alone even when the event is also full',is(REG(e2,{code:'ab'}),'invalid_code')&&REG(e2,{code:'ab'}).status===400);
+const codesN=n=>Array.from({length:n},(_,i)=>({code:'c-'+String(i).padStart(4,'0'),state:'applied'}));
+check('67: an event with exactly 1000 codes is readable, 1001 is invalid_record',OK(REG({...e1,capacity:1000,codes:codesN(1000)}))&&is(REG({...e1,capacity:1000,codes:codesN(1001)}),'invalid_record'));
 const E3=EVENT({capacity:30,counts:{applied:3,attended:0,noShow:0},codes:[{code:'p_alpha1',state:'applied'},{code:'p_beta22',state:'applied'},{code:'p_gamma3',state:'attended'}]});
+check('67: a code already attended or marked no-show is still code_duplicate',is(REG(E3,{code:'p_gamma3'}),'code_duplicate')&&is(REG({...E3,codes:[...E3.codes,{code:'p_delta4',state:'no_show'}]},{code:'p_delta4'}),'code_duplicate'));
 const ATT=(input,now=NOW,x={})=>fa.attendanceDecision(E3,input,{...OPCTX,now,...x});
 const AIN={attended:2,noShow:1,codes:[{code:'p_alpha1',state:'attended'},{code:'p_beta22',state:'no_show'}]};
 check('68: the day before the event (KST 23:59:59) is attendance_before_event (400)',is(ATT(AIN,'2026-10-19T14:59:59Z'),'attendance_before_event')&&ATT(AIN,'2026-10-19T14:59:59Z').status===400&&is(ATT({attended:-1},'2026-10-19T14:59:59Z'),'attendance_before_event'));
@@ -371,6 +470,11 @@ check('68: counts over applications or capacity, negative or fractional counts a
 check('68: attended may exceed applications up to capacity (walk-ins)',OK(ATT({attended:30,noShow:0},LATER)));
 check('68: unknown codes are code_unknown, malformed codes invalid_code, both collected with counts',is(ATT({attended:1,noShow:0,codes:[{code:'p_unknown1',state:'attended'}]},LATER),'code_unknown')&&[[{code:'ab',state:'attended'}],[{code:'p_alpha1',state:'applied'}],'x',[{code:'p_alpha1',state:'attended'},{code:'p_alpha1',state:'no_show'}]].every(codes=>is(ATT({attended:1,noShow:1,codes},LATER),'invalid_code'))&&is(ATT({attended:99,noShow:0,codes:[{code:'p_unknown1',state:'attended'}]},LATER),'code_unknown','invalid_counts')&&is(ATT(null,LATER),'invalid_input'));
 check('68: cancelled is 409, switch off 409, branch B still records',is(fa.attendanceDecision({...E3,status:'cancelled'},AIN,{...OPCTX,now:LATER}),'event_cancelled')&&is(ATT(AIN,LATER,{enabled:false}),'switch_off')&&OK(ATT(AIN,LATER,{branch:'B'}))&&is(ATT(AIN,'yesterday'),'invalid_timestamp')&&is(fa.attendanceDecision({...E3,brandId:'b2'},AIN,{...OPCTX,now:LATER}),'record_other_brand'));
+check('68: a cancelled event is event_cancelled even the day before',is(fa.attendanceDecision({...E3,status:'cancelled'},AIN,{...OPCTX,now:'2026-10-19T14:59:59Z'}),'event_cancelled'));
+check('68: everyone may be a no-show (noShow equal to applications)',OK(ATT({attended:0,noShow:3},LATER)));
+check('68: separator-split phone-like marks are invalid_code, a stored event holding one is invalid_record',SEP_CODES.every(code=>is(ATT({attended:1,noShow:0,codes:[{code,state:'attended'}]},LATER),'invalid_code'))&&is(fa.attendanceDecision({...E3,codes:[...E3.codes,{code:'010-0000-0101',state:'applied'}]},AIN,{...OPCTX,now:LATER}),'invalid_record'));
+const SPARSE_MARKS=[{code:'p_alpha1',state:'attended'}];SPARSE_MARKS.length=2;
+check('68: a sparse marks array is invalid_code',is(ATT({attended:1,noShow:0,codes:SPARSE_MARKS},LATER),'invalid_code'));
 const EXPORTED={...A,exports:[{at:'2026-10-09T15:30:00Z',by:'u-admin',role:'admin',bodyHash:A.bodyHash,judgeVersion:'j',assetsVersion:fa.ASSETS_VERSION,checklistVersion:fa.CHECKLIST_VERSION}]};
 const PCTX={enabled:true,brandId:'b1',actor:ADMIN,now:LATER};
 const PL=(input,a=EXPORTED,ctx=PCTX)=>fa.placementDecision(a,input,ctx);
@@ -379,10 +483,19 @@ check('69: an exported approved asset records a placement dated today',OK(p69)&&
 check('69: a future date, a date before the KST export day, the 21st place or a bad label is invalid_placement',[{label:'창업 포털',confirmedAt:'2026-10-21'},{label:'창업 포털',confirmedAt:'2026-10-09'},{label:'',confirmedAt:'2026-10-15'},{label:'가'.repeat(101),confirmedAt:'2026-10-15'},{label:'창업\u0000포털',confirmedAt:'2026-10-15'},{label:'창업 포털',confirmedAt:'2026/10/15'},{label:'창업 포털',confirmedAt:'2026-10-15T00:00:00+09:00'},null].every(i=>is(PL(i),'invalid_placement'))
  &&is(PL({label:'창업 포털',confirmedAt:'2026-10-15'},{...EXPORTED,placements:Array.from({length:20},(_,i)=>({label:'p'+i,confirmedAt:'2026-10-15'}))}),'invalid_placement')&&OK(PL({label:'창업 포털',confirmedAt:'2026-10-15'},{...EXPORTED,placements:Array.from({length:19},(_,i)=>({label:'p'+i,confirmedAt:'2026-10-15'}))})));
 check('69: never exported is not_exported, a draft not_approved, a member 403',is(PL({label:'창업 포털',confirmedAt:'2026-10-15'},A),'not_exported')&&is(PL({label:'창업 포털',confirmedAt:'2026-10-15'},{...EXPORTED,status:'draft'}),'not_approved')&&is(PL({label:'창업 포털',confirmedAt:'2026-10-15'},EXPORTED,{...PCTX,actor:MEMBER}),'role_forbidden')&&is(PL({label:'창업 포털',confirmedAt:'2026-10-15'},EXPORTED,{...PCTX,enabled:false,actor:MEMBER}),'switch_off')&&is(PL({},EXPORTED,{...PCTX,now:'x'}),'invalid_timestamp')&&is(PL({},{...EXPORTED,brandId:'b2'}),'record_other_brand')&&is(PL({},{...EXPORTED,exports:[{at:'soon'}]}),'invalid_record'));
+const EXP2={...EXPORTED,exports:[{...EXPORTED.exports[0],at:'2026-10-11T10:00:00+09:00'},{...EXPORTED.exports[0],at:'2026-10-15T10:00:00+09:00'}]};
+check('69: today is the KST date of now in any offset, the first export sets the lower bound',OK(PL({label:'창업 포털',confirmedAt:'2026-10-20'},EXPORTED,{...PCTX,now:'2026-10-19T16:00:00Z'}))&&is(PL({label:'창업 포털',confirmedAt:'2026-10-20'},EXPORTED,{...PCTX,now:'2026-10-20T00:30:00+14:00'}),'invalid_placement')
+ &&OK(PL({label:'창업 포털',confirmedAt:'2026-10-12'},EXP2))&&is(PL({label:'창업 포털',confirmedAt:'2026-10-10'},EXP2),'invalid_placement'));
+const pNfd=PL({label:'창업 포털'.normalize('NFD'),confirmedAt:'2026-10-15'});
+check('69: the role check comes before the record check, labels are NFC and refuse C1 controls, a malformed stored body is invalid_record',is(PL({label:'p',confirmedAt:'2026-10-15'},{...EXPORTED,brandId:'b2'},{...PCTX,actor:MEMBER}),'role_forbidden')&&pNfd.value.placement.label==='창업 포털'
+ &&is(PL({label:'창업\u0085포털',confirmedAt:'2026-10-15'}),'invalid_placement')&&is(PL({label:'창업\u2028포털',confirmedAt:'2026-10-15'}),'invalid_placement')&&is(PL({label:'p',confirmedAt:'2026-10-15'},{...EXPORTED,body:NUL_DEPOSIT}),'invalid_record'));
 
 // ════ 게이트 함수 직접 호출(R15a-2 미리보기) ════
 const g1=fa.assetGateIssues(A,{brandId:'b1',facts:CTX.facts,versions:V,now:NOW}),g2=fa.assetGateIssues(FORGE(PORTAL,['f-count']),{brandId:'b1',facts:CTX.facts,versions:V,now:NOW}),g3=fa.assetGateIssues(A,{brandId:'b1',facts:CTX.facts,versions:V_NEW,now:NOW}),g4=fa.assetGateIssues({...A,factRefs:[{id:'f-store',version:1}]},{brandId:'b1',facts:CTX.facts,versions:V,now:NOW});
 check('3.7: the gate returns codes, stage status, judgement and message',same(g1.codes,[])&&g1.status===200&&g1.message===null&&g1.judgement.blocked===false&&same(g2.codes,['footnote_missing','h8_label_missing'])&&g2.status===409&&g2.message===r54.message&&same(g3.codes,['version_not_current'])&&g3.judgement===null&&same(g4.codes,['fact_store_scoped'])&&g4.status===400&&same(fa.assetGateIssues(A,{brandId:'b1',facts:CTX.facts,versions:V,now:'x'}).codes,['invalid_timestamp'])&&same(fa.assetGateIssues(null,{brandId:'b1',facts:[],versions:V,now:NOW}).codes,['invalid_record'])&&(g=>same(g.codes,['record_other_brand'])&&g.status===400&&g.judgement===null)(fa.assetGateIssues({...A,brandId:'b2'},{brandId:'b1',facts:CTX.facts,versions:V,now:NOW})));
+const GCTX={brandId:'b1',facts:CTX.facts,versions:V,now:NOW},refsN=n=>Array.from({length:n},(_,i)=>({id:'f-r'+String(i).padStart(2,'0'),version:1}));
+check('3.7: a stored record with exactly 20 references reaches the fact stage, 21 is invalid_record',same(fa.assetGateIssues({...A,factRefs:refsN(20)},GCTX).codes,['fact_changed'])&&same(fa.assetGateIssues({...A,factRefs:refsN(21)},GCTX).codes,['invalid_record']));
+check('3.7: a stored body outside the input invariants is invalid_record in the gate',BAD_BODIES.every(b=>same(fa.assetGateIssues(FORGE(b),GCTX).codes,['invalid_record'])));
 
 // ════ 던지지 않음 ════
 const HUGE=Array.from({length:10000},()=>({id:'f-total',version:1}));

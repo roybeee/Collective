@@ -23,7 +23,7 @@ export const ASSETS_VERSION='fr-assets@2026-09-26.1';
 export const CHECKLIST_VERSION='fr-assets-checklist@2026-09-26.1';
 // 원문 20,000자에서 판정기는 약 0.2초 걸린다(실측). 배열 길이 상한을 넘는 기록은 invalid_record, 입력은 해당 입력 코드로 닫는다(fail closed).
 export const LIMITS=deepFreeze({bodyChars:20000,factRefs:20,placements:20,labelChars:100,capacity:1000,assetRefs:10,codes:1000} as const);
-// id는 서버가 만든 ASCII 값만 받는다. 가명 코드는 숫자 7자리 이상 연속을 막아 전화번호·주민번호 같은 값이 코드로 들어오지 않게 한다.
+// id는 서버가 만든 ASCII 값만 받는다. 가명 코드는 구분자('-'·'_')를 뺀 숫자 7자리 이상 연속을 막아 전화번호·주민번호 같은 값('010-0000-0101' 꼴 포함)이 코드로 들어오지 않게 한다.
 // 판정은 비공개 정규식으로 한다. 내보내는 값은 얼린 사본이라 가져간 쪽이 compile을 불러도 이 모듈의 판정은 바뀌지 않는다.
 const ID_RE=/^[A-Za-z0-9._:-]{1,128}$/,PSEUDONYM_RE=/^[A-Za-z0-9_-]{6,64}$/,LONG_DIGITS=/\d{7}/,HEX64=/^[0-9a-f]{64}$/;
 export const ID_PATTERN:RegExp=Object.freeze(new RegExp(ID_RE.source));
@@ -204,24 +204,32 @@ export type EventInputValue={type:EventType;startsAt:string;placeLabel:string;ca
 // ── 공통 보조 ──
 const isStr=(v:unknown):v is string=>typeof v==='string';
 const filled=(v:unknown):v is string=>typeof v==='string'&&v.length>0;
-const strList=(v:unknown):v is string[]=>Array.isArray(v)&&v.every(isStr);
+// 배열 원소 검사는 빈 칸(sparse hole)을 undefined로 채운 사본에 한다(every·some·filter는 빈 칸을 건너뛴다). JSON에는 빈 칸이 없지만 순수 함수 호출자에게도 fail closed다.
+const dense=(v:readonly unknown[]):unknown[]=>Array.from(v);
+const strList=(v:unknown):v is string[]=>Array.isArray(v)&&dense(v).every(isStr);
 const validId=(v:unknown):v is string=>typeof v==='string'&&ID_RE.test(v);
 const posInt=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=1;
 const countInt=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0;
 const ctxOf=(v:unknown):Record<string,unknown>=>isRecord(v)?v:{};
 const byId=<T extends {id:string}>(xs:readonly T[]):T[]=>[...xs].sort((a,b)=>ascii(a.id,b.id));
-// 제어 문자(U+0000–U+001F·U+007F)와 짝 없는 서로게이트를 찾는다. 정규식 대신 codePointAt 루프를 쓴다(lint no-control-regex 기준선 유지).
+// 원문·라벨·actor id에 넣을 수 없는 문자를 찾는다: C0·C1 제어 문자(U+0000–U+001F·U+007F–U+009F, 원문의 줄바꿈·탭만 허용), 짝 없는 서로게이트, 줄·문단 구분(U+2028·U+2029),
+// 사용자 정의 영역(U+E000–U+F8FF, 15·16평면), 미할당(Cn, 비문자 U+FDD0–U+FDEF·끝이 FFFE·FFFF 포함). 판정기 matchView는 Cf·M만 지우므로 이런 문자로 낱말을 끊으면 판정을 비껴가고,
+// 검토자에게는 보이지 않거나 줄로 보인다(lib/prompt-units.ts hiddenChars 선례). 명세 3.4의 U+0000–U+001F·U+007F 범위를 fail closed로 넓혔다(교차 검토 반영).
+// 범위는 정규식 대신 codePointAt 루프로 본다(lint no-control-regex 기준선 유지). 미할당만 \p{Cn}으로 본다(런타임 유니코드 표 기준, 비문자는 표와 무관하게 늘 Cn).
 // 짝 없는 서로게이트는 UTF-8로 바꿀 때 U+FFFD가 되어 서로 다른 원문이 같은 해시가 될 수 있으므로 함께 막는다.
+const UNASSIGNED=/\p{Cn}/u;
 function hasControl(s:string,allowBreaks:boolean):boolean{
  for(let i=0;i<s.length;){
   const c=s.codePointAt(i)??0;
-  if((c<0x20&&!(allowBreaks&&(c===0x0a||c===0x09)))||c===0x7f||(c>=0xd800&&c<=0xdfff))return true;
+  if((c<0x20&&!(allowBreaks&&(c===0x0a||c===0x09)))||(c>=0x7f&&c<=0x9f)||(c>=0xd800&&c<=0xdfff)||c===0x2028||c===0x2029||(c>=0xe000&&c<=0xf8ff)||c>=0xf0000)return true;
   i+=c>0xffff?2:1;
  }
- return false;
+ return UNASSIGNED.test(s);
 }
 // 저장 전 정규화는 여기 한 곳뿐이다: CRLF·CR → LF, 유니코드 NFC. 해시(assetBodyHash)는 정규화하지 않는다.
 const normalBody=(s:string)=>s.replace(/\r\n?/g,'\n').normalize('NFC');
+// 원문 불변식(입력 검사와 저장된 기록이 같이 쓴다): 정규형이고, trim이 비지 않고, 20,000자 이하이고, 금지 문자가 없다.
+const bodyOk=(v:unknown):v is string=>typeof v==='string'&&v.length<=LIMITS.bodyChars&&!!v.trim()&&!hasControl(v,true)&&normalBody(v)===v;
 const labelOf=(v:unknown):string|null=>{
  if(typeof v!=='string')return null;
  const s=v.normalize('NFC').trim();
@@ -230,9 +238,10 @@ const labelOf=(v:unknown):string|null=>{
 const actorIdOk=(v:unknown):v is string=>typeof v==='string'&&v.length>=1&&v.length<=200&&!hasControl(v,false);
 // 대표·관리자만. 그 밖의 역할과 형식이 틀린 actor는 모두 403(fail closed).
 const adminActor=(a:unknown):a is {id:string;role:'owner'|'admin'}=>isRecord(a)&&actorIdOk(a.id)&&(a.role==='owner'||a.role==='admin');
-const pseudonymOk=(v:unknown):v is string=>typeof v==='string'&&PSEUDONYM_RE.test(v)&&!LONG_DIGITS.test(v);
+// 명세 2.1의 숫자 7자리 규칙을 그 목적(전화·주민번호 차단)대로 구분자를 뺀 값에 적용한다(fail closed 강화, 교차 검토 반영).
+const pseudonymOk=(v:unknown):v is string=>typeof v==='string'&&PSEUDONYM_RE.test(v)&&!LONG_DIGITS.test(v.replace(/[-_]/g,''));
 function refsOk(v:unknown,max:number):v is AssetRef[]{
- if(!Array.isArray(v)||v.length>max||!v.every(x=>isRecord(x)&&validId(x.id)&&posInt(x.version)))return false;
+ if(!Array.isArray(v)||v.length>max||!dense(v).every(x=>isRecord(x)&&validId(x.id)&&posInt(x.version)))return false;
  return new Set(v.map(x=>(x as AssetRef).id)).size===v.length;
 }
 const refList=(v:readonly AssetRef[]):AssetRef[]=>v.map(r=>({id:r.id,version:r.version})).sort((a,b)=>ascii(a.id,b.id)||a.version-b.version);
@@ -252,20 +261,21 @@ const versionOk=(v:unknown):v is VersionLite=>isRecord(v)&&isStr(v.id)&&isStr(v.
 // 문맥의 사실·버전 기록. 하나라도 형식이 틀리면 invalid_record로 닫는다(판정기에 넘기기 전).
 function recordsOf(c:Record<string,unknown>):{facts:BrandFact[];versions:VersionLite[]}|null{
  const facts=c.facts,versions=c.versions;
- return Array.isArray(facts)&&facts.every(factOk)&&Array.isArray(versions)&&versions.every(versionOk)?{facts,versions}:null;
+ return Array.isArray(facts)&&dense(facts).every(factOk)&&Array.isArray(versions)&&dense(versions).every(versionOk)?{facts,versions}:null;
 }
 const ASSET_STATUSES:readonly AssetStatus[]=['draft','approved','retired'];
+// 저장된 원문도 입력 검사와 같은 불변식(bodyOk)과 16진 64자 해시를 지켜야 한다. 다른 쓰기 경로·잘못된 기록의 원문이 판정기를 비껴가지 못하게 invalid_record로 닫는다(교차 검토 반영).
 function assetOk(a:unknown):a is RecruitmentAsset{
  if(!isRecord(a))return false;
  const rv=a.review;
- return validId(a.id)&&filled(a.brandId)&&filled(a.campaignId)&&oneOf(ASSET_TYPES,a.type)&&posInt(a.version)&&isStr(a.body)&&isStr(a.bodyHash)&&refsOk(a.factRefs,LIMITS.factRefs)
+ return validId(a.id)&&filled(a.brandId)&&filled(a.campaignId)&&oneOf(ASSET_TYPES,a.type)&&posInt(a.version)&&bodyOk(a.body)&&isStr(a.bodyHash)&&HEX64.test(a.bodyHash)&&refsOk(a.factRefs,LIMITS.factRefs)
   &&(a.disclosureVersionId===null||isStr(a.disclosureVersionId))&&oneOf(ASSET_STATUSES,a.status)&&(a.approval===null||isRecord(a.approval))
-  &&Array.isArray(a.placements)&&a.placements.length<=LIMITS.placements&&a.placements.every(isRecord)&&Array.isArray(a.exports)&&a.exports.every(x=>isRecord(x)&&isInstant(x.at))
-  &&isRecord(rv)&&typeof rv.needed==='boolean'&&Array.isArray(rv.reasons)&&rv.reasons.every(x=>oneOf(REVIEW_REASONS,x))&&(rv.at===null||isStr(rv.at))&&isStr(a.createdAt)&&isStr(a.updatedAt);
+  &&Array.isArray(a.placements)&&a.placements.length<=LIMITS.placements&&dense(a.placements).every(isRecord)&&Array.isArray(a.exports)&&dense(a.exports).every(x=>isRecord(x)&&isInstant(x.at))
+  &&isRecord(rv)&&typeof rv.needed==='boolean'&&Array.isArray(rv.reasons)&&dense(rv.reasons).every(x=>oneOf(REVIEW_REASONS,x))&&(rv.at===null||isStr(rv.at))&&isStr(a.createdAt)&&isStr(a.updatedAt);
 }
 const CODE_STATES:readonly EventCode['state'][]=['applied','attended','no_show'];
 function codesOk(v:unknown,states:readonly EventCode['state'][]):v is EventCode[]{
- if(!Array.isArray(v)||v.length>LIMITS.codes||!v.every(x=>isRecord(x)&&pseudonymOk(x.code)&&oneOf(states,x.state)))return false;
+ if(!Array.isArray(v)||v.length>LIMITS.codes||!dense(v).every(x=>isRecord(x)&&pseudonymOk(x.code)&&oneOf(states,x.state)))return false;
  return new Set(v.map(x=>(x as EventCode).code)).size===v.length;
 }
 const capacityOk=(v:unknown):v is number=>posInt(v)&&v<=LIMITS.capacity;
@@ -276,7 +286,8 @@ function eventOk(e:unknown):e is RecruitmentEvent{
   &&isRecord(n)&&countInt(n.applied)&&countInt(n.attended)&&countInt(n.noShow)&&codesOk(e.codes,CODE_STATES)&&refsOk(e.assetRefs,LIMITS.assetRefs)
   &&(e.status==='scheduled'||e.status==='cancelled')&&posInt(e.version)&&isStr(e.createdAt)&&isStr(e.updatedAt);
 }
-const brandVersionsOf=(versions:readonly VersionLite[],brandId:string)=>byId(versions.filter(v=>v.brandId===brandId));
+// 버전 라벨은 NFC로 맞춘 사본을 쓴다. 저장소는 라벨을 trim만 하고 원문은 NFC로 저장되므로, 각주 줄 비교가 NFD 라벨에서 늘 실패하지 않게 한다.
+const brandVersionsOf=(versions:readonly VersionLite[],brandId:string)=>byId(versions.filter(v=>v.brandId===brandId).map(v=>({...v,label:v.label.normalize('NFC')})));
 
 // ── 결정 ──
 const JUDGE_CODES:readonly AssetCode[]=['block_unresolved','hard_block'];
@@ -349,7 +360,7 @@ export function validateAssetInput(input:unknown,ctx:AssetContext):Decision<Asse
   if(!isRecord(input))return fail(['invalid_input']);
   const codes:AssetCode[]=[],type=input.type,body=typeof input.body==='string'?normalBody(input.body):null,refs=input.factRefs;
   if(!oneOf(ASSET_TYPES,type))codes.push('invalid_type');
-  if(body===null||!body.trim()||body.length>LIMITS.bodyChars||hasControl(body,true))codes.push('invalid_body');
+  if(body===null||!bodyOk(body))codes.push('invalid_body');
   if(!refsOk(refs,LIMITS.factRefs))codes.push('invalid_fact_refs');
   if(codes.length||!oneOf(ASSET_TYPES,type)||body===null||!refsOk(refs,LIMITS.factRefs))return fail(codes);
   const brandId=c.brandId,campaign=c.campaign;
@@ -366,10 +377,14 @@ export function validateAssetInput(input:unknown,ctx:AssetContext):Decision<Asse
 }
 
 // ── 초안 ──
-// 검사를 통과한 값만 받는다(판정하지 않는다). 유형·원문·참조(id·version)·정보공개서 버전이 모두 같으면 prev를 그대로 돌려준다(쓰기 없음, 승인 유지).
+// 검사를 통과한 값만 받는다(판정하지 않는다). 유형·원문·참조(id·version)·정보공개서 버전이 모두 같고 prev를 아직 쓸 수 있으면 prev를 그대로 돌려준다(쓰기 없음, 승인 유지).
+// 쓸 수 있음 = 재검토 표시가 없고, 초안이거나 현재 체크리스트 버전으로 승인된 기록. 재검토 표시·옛 체크리스트 승인·승인 없는 approved·폐기는 같은 원문이어도 새 초안 버전을 만든다.
+// 그래야 review_needed·checklist_outdated 문구가 안내하는 '새 버전 저장 뒤 재승인' 길이 막히지 않는다(교차 검토 반영). 폐기 기록을 같은 원문으로 다시 초안으로 되살리는 것은 리뷰 포인트다.
+const keepable=(p:RecruitmentAsset):boolean=>isRecord(p.review)&&p.review.needed===false
+ &&(p.status==='draft'||(p.status==='approved'&&isRecord(p.approval)&&isRecord(p.approval.checklist)&&p.approval.checklist.version===CHECKLIST_VERSION));
 export async function draftAsset(prev:RecruitmentAsset|null,value:AssetInputValue,meta:{id:string;brandId:string;campaignId:string;now:string}):Promise<RecruitmentAsset>{
  const factRefs=refList(value.factRefs);
- if(prev&&prev.type===value.type&&prev.body===value.body&&sameRefs(prev.factRefs,factRefs)&&prev.disclosureVersionId===value.disclosureVersionId)return prev;
+ if(prev&&keepable(prev)&&prev.type===value.type&&prev.body===value.body&&sameRefs(prev.factRefs,factRefs)&&prev.disclosureVersionId===value.disclosureVersionId)return prev;
  return {id:meta.id,brandId:meta.brandId,campaignId:meta.campaignId,type:value.type,version:(prev?.version??0)+1,body:value.body,bodyHash:await assetBodyHash(value.body),factRefs,disclosureVersionId:value.disclosureVersionId,
   status:'draft',approval:null,placements:[],exports:[],review:{needed:false,reasons:[],at:null},createdAt:prev?.createdAt??meta.now,updatedAt:meta.now};
 }
@@ -382,14 +397,16 @@ export function sectionTemplate(type:unknown):string{
 }
 const FIXED_LINE_CODE:Readonly<Record<string,AssetCode>>={process:'waiting_note_missing',qna:'revenue_qna_note_missing'};
 const MARK=SECTION_MARK.trim();
+// 줄은 '\n'과, 화면에서 줄로 보일 수 있는 U+0085·U+2028·U+2029로 나눈다. 저장 원문에는 이 문자가 없지만(bodyOk) 직접 부르는 미리보기 원문에서도 ■ 줄을 놓치지 않는다(fail closed).
+const LINE_BREAK=/\n|\u0085|\u2028|\u2029/;
 // facts는 이 브랜드의 사실이다(assetGateIssues가 브랜드로 걸러 넘긴다). 제목 줄은 trim이 명세 heading과 정확히 같은 줄이다. 제목이 아닌데 ■로 시작하는 줄(공백 없는 '■수익' 포함)은 section_unknown이다.
-// 절 몸통은 제목 다음 줄부터 다음 제목 줄 또는 ■ 줄 앞까지이고, 몸통 줄 비교는 trim하지 않은 정확 일치다(footnoteIssues와 같다).
+// 절 몸통은 제목 다음 줄부터 다음 제목 줄 또는 ■ 줄 앞까지이고, 몸통 줄 비교는 trim하지 않은 정확 일치다(footnoteIssues와 같다). 사실 줄은 NFC로 맞춰 비교한다(원문은 NFC로 저장되고 사실 값은 NFC가 아닐 수 있다).
 export function assetStructureIssues(type:unknown,body:unknown,refFacts:readonly BrandFact[],facts:readonly BrandFact[],versions:readonly VersionLite[],now:string):AssetCode[]{
  const sections=oneOf(ASSET_TYPES,type)?SECTIONS_OF[type]:undefined;
  if(!sections)return [];
  if(typeof body!=='string')return ['section_missing'];
  try{
-  const lines=body.split('\n'),headings=sections.map(s=>s.heading),codes:AssetCode[]=[],found=new Map<string,number[]>(),breaks:number[]=[];
+  const lines=body.split(LINE_BREAK),headings=sections.map(s=>s.heading),codes:AssetCode[]=[],found=new Map<string,number[]>(),breaks:number[]=[];
   lines.forEach((line,i)=>{
    const t=line.trim();
    if(headings.includes(t)){found.set(t,[...(found.get(t)??[]),i]);breaks.push(i)}
@@ -411,7 +428,7 @@ export function assetStructureIssues(type:unknown,body:unknown,refFacts:readonly
     // 필요한 비용 사실 = 참조 사실 중 창업비용 구성 항목 ∪ 이 브랜드의 유효하고 현재 버전인 총 창업비용 사실 전부(매장 유형별). 0개이거나 사실 줄 하나라도 몸통에 없으면 cost_table_missing.
     const required=new Map<string,BrandFact>();
     for(const f of [...refFacts.filter(x=>franchiseItem(x.key)?.storeType==='required'),...effectiveOf(facts,now).filter(x=>franchiseItem(x.key)?.key==='startup_cost_total'&&!!x.sourceRef&&states[x.sourceRef.disclosureVersionId]==='current')])required.set(f.id,f);
-    if(!required.size||[...required.values()].some(f=>!factLine(f).split('\n').every(l=>own.has(l))))codes.push('cost_table_missing');
+    if(!required.size||[...required.values()].some(f=>!factLine(f).normalize('NFC').split(LINE_BREAK).every(l=>own.has(l))))codes.push('cost_table_missing');
    }
    if(s.fixedLines.some(l=>!own.has(l)))codes.push(FIXED_LINE_CODE[s.id]);
   }
@@ -471,7 +488,12 @@ export function approvalChecklist(judgement:FranchiseJudgement|null,branch:unkno
  const warned=checklistWarnings(judgement);
  return {version:CHECKLIST_VERSION,items:CHECKLIST_ITEMS.map(i=>({id:i.id,text:i.text,ruleIds:[...i.ruleIds],warnings:warned.filter(w=>i.ruleIds.includes(w.registryId)).map(w=>w.text)})),h7Notice:h7Notice(branch)};
 }
-const completeChecklist=(checked:readonly unknown[])=>checked.length===CHECKLIST_IDS.length&&new Set(checked).size===checked.length&&checked.every(x=>oneOf(CHECKLIST_IDS,x));
+// 빈 칸이 있는 배열은 빈 칸을 undefined로 본다(길이·Set 크기가 맞아도 빠진 항목이 있으면 미완료).
+const completeChecklist=(checked:readonly unknown[])=>{
+ if(checked.length!==CHECKLIST_IDS.length)return false;
+ const xs=dense(checked);
+ return new Set(xs).size===xs.length&&xs.every(x=>oneOf(CHECKLIST_IDS,x));
+};
 
 // ── 승인·내보내기 공통 앞 단계 ──
 // now → 스위치(409) → 역할(403) → 기록 형식·브랜드(400) → 분기 A(409) → 캠페인(400) → 모집 목적(409). R15a-2 라우트의 OFF(409)·ADMIN_ONLY(403)와 같은 순서의 방어 중복이다.
@@ -570,7 +592,7 @@ export function factChangeAffects(before:BrandFact|null,after:BrandFact|null):bo
 // before에서 current였고 after에서 current가 아니거나 각주(라벨·등록일)가 바뀐(noteChangedId) 버전 id. 형식이 틀리면 [].
 export function changedVersionIds(before:readonly VersionLite[],after:readonly VersionLite[],now:string,noteChangedId:string|null):string[]{
  try{
-  if(!Array.isArray(before)||!before.every(versionOk)||!Array.isArray(after)||!after.every(versionOk)||!isInstant(now))return [];
+  if(!Array.isArray(before)||!dense(before).every(versionOk)||!Array.isArray(after)||!dense(after).every(versionOk)||!isInstant(now))return [];
   const was=versionStates(before,now),next=versionStates(after,now);
   return sortedUnique(before.filter(v=>was[v.id]==='current'&&(next[v.id]!=='current'||v.id===noteChangedId)).map(v=>v.id));
  }catch{return []}
