@@ -3,7 +3,7 @@
 > 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 운영(갱신): `98f2283`(Sites 버전 41, tree `d11b2e1`, [기록](releases/2026-09-27-98f2283.md)). #139·#143·#145·#148 게시 완료.
+- 운영(갱신): `a8edf10`(Sites 버전 42, tree `5705e55`, [기록](releases/2026-09-27-a8edf10.md)). A8 전체·#154·#155 게시 완료.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
@@ -78,16 +78,16 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-26 17:57 UTC (Claude A 세션: A8-2 서버·API PR)
+마지막 갱신: 2026-09-26 21:16 UTC (Claude A 세션: 묶음 16 `a8edf10` Sites 버전 42 게시·tree 확인)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `98f22833a32cd6e60bd000bdc752e1a6812ca349` (#148 `merged`, 묶음 15: 트랙 R #139·#143·#145, 레인 A #148) | 제품 tree `d11b2e1d0db931188eb6f5eb0fa12b29d58adbdc`. 직전 운영 `8651021`(tree `1ac4369`) |
+| 운영 제품 커밋 | `a8edf1043e3dc29129b6c9895911fd170dd93f83` (#155 `merged`, 묶음 16: A8 #150·#152·#153, #154, #155) | 제품 tree `5705e55c1b16c62cedfa02b49772c66216398db0`. 직전 운영 `98f2283`(tree `d11b2e1`) |
 | `origin/main` | `cf2c474` (#139 R15a-1 모집 자료 키트 순수 판정 모듈) | 운영 `8651021` 뒤 #139만 들어왔다(제품 경로 `lib/franchise-assets.ts`, 아직 연결 없음) |
-| Sites 게시 | `published`: Sites 버전 41, deployment `appgdep_6ab8028d0af88191b6d40f94337b2948` succeeded(자동 게시 PR #149) | [게시 기록](releases/2026-09-27-98f2283.md) |
-| 실행 검증 | `98f2283`: 운영 tree 일치(real). 공개 `/api/version/public`·소유자 `/api/version` 모두 `d11b2e1…` | [게시 기록](releases/2026-09-27-98f2283.md) |
+| Sites 게시 | `published`: Sites 버전 42, deployment `appgdep_6ab8195162c081918e18f189c57abf2e` succeeded(자동 게시 PR #156) | [게시 기록](releases/2026-09-27-a8edf10.md) |
+| 실행 검증 | `a8edf10`: 운영 tree 일치(real). 공개 `/api/version/public`·소유자 `/api/version` 모두 `5705e55…` | [게시 기록](releases/2026-09-27-a8edf10.md) |
 | 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` mode=email, role=owner (2026-09-25 03:30 UTC 경) |
 | Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 이번 게시도 기존 접근 설정 유지 | 게시 에이전트 보고 "기존 공개 접근 설정을 유지". 게시 뒤 접근 설정 재확인은 not_run |
 | 조사 워커 | online(lastSeen 2026-09-25 03:29 UTC, blocked 0, rotationReady true). 2026-09-24 14:15 UTC 새 설치기로 재설치(격리 점검 전부 통과) | `/api/research-worker/setup` 조회(real). gate 표시 `missing`이라 `RESEARCH_WORKER_APP_GATE=enforce`는 켜지 않는다 |
