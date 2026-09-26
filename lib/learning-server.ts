@@ -1,7 +1,10 @@
-import {ApiError,str,num,stamp,uid,readRecord,listRecords,recordStatement,database,eventStatement,type EventActor} from './server';
-import {learningChannels,learningMetrics,evaluateExperiment,ruleApplies,defaultVerifyChannel,operatorRule,ANY_CHANNEL,PLAYBOOK_MAX_CHARS,type ViralCase,type ViralAnalysis,type TestIdea,type ViralExperiment,type ExperimentResult,type LearningRule,type LearningSnapshot,type Arm,type StoreAssessment,type ReviewDecisionSummary,type PlaybookRecheck} from './learning';
+import {ApiError,str,num,stamp,uid,readRecord,listRecords,recordStatement,database,eventStatement,isAdmin,type EventActor} from './server';
+import {learningChannels,learningMetrics,evaluateExperiment,ruleApplies,defaultVerifyChannel,operatorRule,ANY_CHANNEL,PLAYBOOK_MAX_CHARS,type ViralCase,type ViralAnalysis,type TestIdea,type ViralExperiment,type ExperimentResult,type LearningRule,type LearningSnapshot,type Arm,type StoreAssessment,type ReviewDecisionSummary,type PlaybookRecheck,type LearningData,type CorrectionDecision} from './learning';
 import {channelHosts,storeChannelName,channelRegistry} from './channels';
-import {normalizeRuleBody,ruleBodyProblem,ruleTitle,playbookExpiry,activationProblem,MAX_ACTIVE_PER_ROLE,PLAYBOOK_MIN_CITATIONS,PLAYBOOK_MAX_CITATIONS} from './playbook-curator';
+import {normalizeRuleBody,ruleBodyProblem,ruleTitle,playbookExpiry,activationProblem,correctionClusters,playbookFeedback,recurrenceRate,MAX_ACTIVE_PER_ROLE,PLAYBOOK_MIN_CITATIONS,PLAYBOOK_MAX_CITATIONS} from './playbook-curator';
+import {isEnabled} from './feature-flags';
+// 경보 판정은 프롬프트 레지스트리(lib/prompt-registry.ts)가 쓰는 것과 같은 alarmState다. 레지스트리 파일은 평가 서버 의존을 끌고 오므로 판정의 원래 모듈에서 가져온다.
+import {alarmState} from './usage-model-alarm';
 import type {ReviewDecision} from './review-decisions';
 import {summarizeResult,planShortfall,decisionConflict} from './viral-stats';
 import type {StoreExperiment,StoreMeasurement,StoreReview} from './store-marketing';
@@ -275,9 +278,16 @@ async function playbookRule(owner:string,b:Record<string,unknown>){
  if(r.version!==b.version)throw new ApiError(409,'규칙 상태가 변경됐습니다. 새로고침 후 다시 시도하세요.');
  return r;
 }
-// 승인(초안·중지 → 적용 중): 역할당 활성 8개 상한을 넘으면 409. 승인 시점부터 60일 뒤 만료된다.
+// 경보 동결(B3-2a D3, 결정 10): 열린 모델·게이트웨이 경보가 있으면 승인하지 않는다. 스위치와 무관하게 늘 적용하고, 해제는 프롬프트 레지스트리의 acknowledge_alarms(같은 확인 기록)다.
+// 중지·연장은 막지 않는다(중지는 주입을 줄이고, 연장은 이미 적용 중인 규칙의 만료만 늘린다).
+async function assertNoOpenAlarm(owner:string){
+ const {open}=await alarmState(owner);
+ if(open.length)throw new ApiError(409,`모델·게이트웨이 변경 경보 ${open.length}건이 열려 있어 운영자 선호 규칙 승인을 동결합니다(결정 10). 골든 스모크를 다시 돌려 확인하고 프롬프트 레지스트리에서 경보를 확인(acknowledge_alarms)해 해제하세요.`);
+}
+// 승인(초안·중지 → 적용 중): 경보가 열려 있으면 409, 역할당 활성 8개 상한을 넘으면 409. 승인 시점부터 60일 뒤 만료된다.
 async function activatePlaybookRule(owner:string,b:Record<string,unknown>,by:PlaybookActor){
  const r=await playbookRule(owner,b);if(r.status!=='draft'&&r.status!=='paused')throw new ApiError(409,'초안이나 중지한 규칙만 승인할 수 있습니다.');
+ await assertNoOpenAlarm(owner);
  const problem=activationProblem(r,await listRecords<LearningRule>(owner,'learning_rule'));if(problem)throw new ApiError(409,problem);
  const at=stamp(),next:LearningRule={...r,status:'active',expiresAt:playbookExpiry(),version:r.version+1,updatedAt:at};
  await database().batch([recordStatement(owner,'learning_rule',r.id,next,r.brandId),auditStatement(owner,next,'activate',r.status,by)]);
@@ -347,4 +357,23 @@ async function playbookAction(owner:string,b:Record<string,unknown>,by?:Playbook
  const run=playbookActions[String(b.action)];if(!run)throw new ApiError(400,'지원하지 않는 학습 작업입니다.');
  if(!by||by.role!=='owner')throw new ApiError(403,'소유자만 변경할 수 있습니다.');
  return run(owner,b,by);
+}
+
+// ── B3-2a 교정 신호(GET /api/learning, 스위치 b3_playbook_signals 기본 꺼짐). 스위치는 이 파일에서만 읽고 읽기 실패는 꺼짐으로 본다.
+// 꺼져 있거나 직원이면 빈 객체라 응답이 바이트 동일하다. 켜져 있으면 대표·관리자에게 correctionClusters·playbookFeedback·recurrence를 덧붙인다.
+// 읽을 때 계산하고 저장하지 않는다(learning_rule 쓰기·상태·만료·feedback 카운터 변경 없음, 모델 호출 없음). 계산은 lib/playbook-curator.ts 순수 함수다.
+export const SIGNAL_DECISION_LIMIT=5000;
+export async function playbookSignalsOn(owner:string){
+ return isEnabled(owner,'b3_playbook_signals').catch(()=>{console.error('b3_playbook_signals_flag_unreadable');return false});
+}
+// 작업물 판정 요약(최근 5,000건, 기록 순서). 메모 길이·행위자는 담지 않는다. 브랜드는 기록의 brandId, 없으면 캠페인의 브랜드다(인용 검사와 같은 판정).
+async function signalDecisions(owner:string):Promise<CorrectionDecision[]>{
+ const [rows,brands]=await Promise.all([database().prepare("SELECT data FROM records WHERE owner=? AND kind='review_decision' AND json_extract(data,'$.targetKind')='artifact' ORDER BY rowid DESC LIMIT ?").bind(owner,SIGNAL_DECISION_LIMIT).all<{data:string}>(),campaignBrands(owner)]);
+ return rows.results.map(r=>JSON.parse(r.data) as ReviewDecision).reverse().map(d=>({id:d.id,brandId:decisionBrand(d,brands),targetKind:d.targetKind,targetId:d.targetId,role:d.role,decision:d.decision,reasonCodes:d.reasonCodes??[],...(d.origin?{origin:d.origin}:{}),createdAt:d.createdAt}));
+}
+// snapshots는 라우트가 이미 읽은 learning_snapshot 목록(형식 미확정 records)이다. 주입 기록(artifactId·operatorPreferences)만 본다.
+export async function playbookSignals(owner:string,req:Request,rules:readonly LearningRule[],snapshots:readonly unknown[]):Promise<Pick<LearningData,'correctionClusters'|'playbookFeedback'|'recurrence'>>{
+ if(!await playbookSignalsOn(owner)||!await isAdmin(req))return {};
+ const decisions=await signalDecisions(owner),now=Date.now();
+ return {correctionClusters:correctionClusters(decisions,rules,now),playbookFeedback:playbookFeedback(rules,snapshots as readonly LearningSnapshot[],decisions),recurrence:recurrenceRate(decisions,now)};
 }
