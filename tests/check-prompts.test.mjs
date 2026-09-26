@@ -123,7 +123,10 @@ const cases=[
 ];
 for(const [name,r,reason] of cases)check(`${name} fails the check with [${reason}] (exit≠0)`,()=>{assert.notEqual(r.status,0);assert.ok(r.stderr.includes(`[${reason}]`),r.stderr)});
 // 단위 id 형식(R3b): 하이픈·대문자·밑줄·숫자가 든 파일 이름은 형식 사유로 거부한다(알 수 없는 단위 사유보다 먼저).
-for(const id of ['channel.lead-ad','channel.leadAd','channel.lead_ad','channel.lead2']){
+// 대문자 예는 정본 파일과 대소문자만 다른 이름을 쓰지 않는다. macOS(대소문자 무시 파일 시스템)에서는 임시 복사본의 channel.leadad.json을 덮어써 검사가 틀어진다.
+const BAD_FILE_IDS=['channel.lead-ad','channel.leadForm','channel.lead_ad','channel.lead2'];
+check('bad file ids never differ from a canonical prompt file only by letter case',()=>{const names=new Set(readdirSync('prompts').map(f=>f.toLowerCase()));assert.ok(BAD_FILE_IDS.every(id=>!names.has((id+'.json').toLowerCase())))});
+for(const id of BAD_FILE_IDS){
  const r=added(id+'.json',{schema:1,unit:id,body:'리드 광고: 합성 본문.'});
  check(`an added ${id}.json fails with [schema] and only the unit id shape reason`,()=>{assert.notEqual(r.status,0);assert.ok(r.stderr.includes(`FAIL ${id}.json: [schema]`)&&r.stderr.includes('단위 id 형식')&&!r.stderr.includes('알 수 없는 단위'),r.stderr)});
 }
