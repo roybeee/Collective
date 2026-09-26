@@ -5,6 +5,7 @@
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
 - 운영: `8651021`(Sites 버전 40, tree `1ac4369`, [기록](releases/2026-09-26-8651021.md)). 그 뒤 `merged`되고 아직 게시되지 않은 제품 PR: #139(R15a-1 순수 모듈, 연결 없음 — 급하지 않음).
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
+- #143 · 레인 R · 보통 · 새 스위치 없음(가맹 모집 채널 단위 6개는 objective 캠페인에서만 켜지고, objective는 `r_franchise` 기본 꺼짐이라 지정 불가). 게시 전 확인: 운영 D1의 R3b 이전 objective 개선 회의 건수(읽기 전용, 레인 R 칸)
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
 갱신: 2026-09-26 06:30 UTC
@@ -15,13 +16,13 @@
 - 다음: A3·A6 run → A8-1 → A8-2 → A8-3 → B4 2부 → B3([순서](LANES.ko.md#레인-a-claude-a-세션)).
 
 ## 레인 R (Claude 트랙 R 세션 — 가맹 모집)
-갱신: 2026-09-26 08:40 UTC
-- 진행 중: R3b 가맹 모집 채널 단위 6개·머리말 보호·objective 캠페인 30일 정의 교체 PR(브랜치 `claude/franchise-recruitment-marketing-u8cpo2`, [계획 R3 기록](FRANCHISE-RECRUITMENT-PLAN.ko.md#r3-모집-캠페인-objective채널-스킬)). 코드 상수·정본 파일만이고 레지스트리 활성화는 하지 않는다. 병합하면 게시 대기열에 한 줄을 적는다.
-- 최근 `merged`: #139 R15a-1 모집 자료 키트 순수 판정 모듈(런타임 연결 없음, 게시 대기열에 있음), #134 E2E 로컬 프록시 멈춤 수정(비제품, CI에서 `dev proxy fix: patched` 확인, 효과는 main CI 흔들림 빈도로 본다), #124 R3a(운영 버전 37 이후 포함, 스위치 `r_franchise` 꺼짐).
-- 다음: R3b 병합 → R15a-2(모집 자료 기록·API·화면, `lib/record-kinds.ts`) → R3c(업종 채점) → 트랙 R 계획 순서([순서](LANES.ko.md#레인-r-claude-트랙-r-세션)).
+갱신: 2026-09-26 09:00 UTC
+- 최근 `merged`: #143 R3b 가맹 모집 채널 단위 6개·머리말 보호·objective 캠페인 30일 정의 교체(`2fafd3f`, 게시 대기열에 적음). 이제 레인 A의 B3가 `prompts/`·`lib/prompt-units.ts`·`lib/role-instruction.ts`·`lib/meetings.ts`를 이어서 고칠 수 있다([공유 파일 순서](LANES.ko.md#공유-코드-파일-순서)). 그 전: #139 R15a-1(대기열), #134 E2E 프록시 멈춤 수정(비제품), #124 R3a(운영 포함, 스위치 꺼짐).
+- 진행 중: R15a-2 모집 자료 기록·API(·화면) 설계. `lib/record-kinds.ts`, `app/api/franchise/route.ts`, `app/franchise-panel.tsx`를 고친다. 워크스페이스 할 일(행사 뒤 48시간 연락)은 레인 A의 A8과 파일이 겹치면 미룬다.
+- 다음: R15a-2 → R3c(업종 채점) → 트랙 R 계획 순서([순서](LANES.ko.md#레인-r-claude-트랙-r-세션)).
 - 대표 결정 대기(권장값으로 진행 중): R15a-1의 (1) 앱 밖 모집 자료의 AI 생성물 표시(권장: R15a-2에서 자료 출처 저장 뒤 결정), (2) 예비창업자용 고정 안내 문장(권장: 현재 문장, LR-1 회신 뒤 버전 올림).
 - 막힌 것: R3c는 운영 D1의 합성 S7 케이스 기대 업종 갱신(대표 승인)이 먼저다. 법률 검토(결정 20)는 보류 중이라 모든 가맹 판정은 'COLLECTIVE 휴리스틱 · 법률 자문 아님'이다.
-- 확인 필요(레인 A 게시 점검): R3b를 싣는 묶음 게시 전에, 운영 D1에서 R3b 이전에 시작한 objective 개선 회의 건수를 읽기 전용으로 센다(평가 캡처 시 `assembly_drift`로 잡힌다. R3b 계획 기록 참조). 트랙 R은 게시를 요청하지 않고 대기열에만 적는다(레인 규칙 #140 확인, 2026-09-26).
+- 확인 필요(레인 A 게시 점검): #143을 싣는 묶음 게시 전에, 운영 D1에서 R3b 이전에 시작한 objective 개선 회의(`kind='team_meeting'`, 스냅샷 캠페인 objective `franchise_recruitment`, `skillVersion` `2026-09-25.1`) 건수를 읽기 전용으로 센다. 있으면 그 회의는 평가 케이스로 캡처하지 않는다(`assembly_drift`로 잡힌다, [R3b 기록](FRANCHISE-RECRUITMENT-PLAN.ko.md#r3-모집-캠페인-objective채널-스킬)). 레지스트리 활성화는 레인 Q의 쌍 평가·대표 승인 뒤다.
 
 ## 레인 Q (Codex 세션 — 품질·평가·운영)
 갱신: (레인 Q가 적는다)
