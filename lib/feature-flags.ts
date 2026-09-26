@@ -12,6 +12,7 @@ export const FEATURE_FLAGS={
  r_franchise:{defaultEnabled:false,description:'가맹 모집 화면과 쓰기 API(리드·연락처·제공 증빙·가맹 설정)를 켠다. 꺼도 조회·연락처 보기·내보내기·파기·정보주체 요청 처리는 계속된다(트랙 R, COLLECTIVE 휴리스틱 · 법률 자문 아님).'},
  a3_copy_pack:{defaultEnabled:false,description:'콘텐츠 역할 단독 실행을 카피 팩 v2 계약으로 받는다(채널당 3~5안 카피·숏폼 장면 배열·제안 실험을 작업물에 구조화 저장). 팩 형식 문제는 작업물을 막지 않고 표시만 한다.'},
  a3_brand_voice:{defaultEnabled:false,description:'대표·관리자가 확정한 브랜드 말투(어조·쓸 것·피할 것·선호 표현·피할 표현·예시)를 크리에이티브·콘텐츠 역할 입력에 싣는다. 초안은 싣지 않는다. 꺼도 말투 원장 조회·편집은 계속된다.'},
+ a6_data_requests:{defaultEnabled:false,description:'작업물의 자료 필요 표지를 자료 요청으로 모으고, 관리자가 같은 항목의 사실을 확정하면 요청을 자동으로 닫는다(A6 자료 요청, 모델 호출 없음). 꺼도 조회는 계속된다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};
