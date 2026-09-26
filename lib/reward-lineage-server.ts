@@ -5,11 +5,13 @@
 // 판정은 캠페인을 지워도 남으므로 브랜드 범위에서는 판정의 brandId로, 지점·캠페인 범위에서는 판정의 campaignId로 거른다(지운 캠페인은 지점을 알 수 없어 지점 범위에서 빠진다).
 // 규칙 계보: 역할 실행 스냅샷은 roleArtifactId(작업 id)로, 회의 작업물은 그 회의 snapshot.learning으로 작업물에 잇는다. 사건이 있는 작업물의 스냅샷만 넘긴다.
 // D1 한도: 종류별 최근 REWARD_ROW_LIMIT행만 읽고 넘으면 partial.kinds에 종류를 남긴다. 목록 조건은 JSON 배열 하나(json_each)로 바인드해 바인드 수가 고정이다.
-import {ApiError,database,readRecord,str} from './server';
+// B4-2c: GET 응답에 닫힌 개선 루프 대장(loops, lib/improvement-loops.ts)을 더하고, POST close(대표만)가 루프 수치를 improvement_loop 행에 동결한다(추가만, 원문 없음).
+import {ApiError,database,readRecord,stamp,str} from './server';
 import {isEnabled} from './feature-flags';
 import {roleArtifactId} from './role-execution';
 import {addDays} from './store-attribution';
 import {rewardLineage,type RewardArtifact,type RewardInput,type RewardLineage,type RewardPublication,type RewardSnapshot} from './reward-lineage';
+import {improvementLoops,loopCandidates,loopSpan,type ImprovementLoopRecord,type ImprovementLoops,type LoopPlaybookAudit,type LoopReleaseEvent} from './improvement-loops';
 import type {ReviewDecision} from './review-decisions';
 import type {Brand,Campaign} from './agency';
 import type {Store} from './store-marketing';
@@ -23,10 +25,18 @@ export const REWARD_LINEAGE_MESSAGES={
  scope:'브랜드(brandId)·지점(storeId)·캠페인(campaignId) 중 하나를 정하세요.',
  period:'기간은 YYYY-MM-DD 형식의 한국 시간 날짜(시작일 ≤ 종료일)로 입력하세요.',
  range:`기간은 최대 ${REWARD_MAX_DAYS}일까지 조회할 수 있습니다.`,
+ ownerOnly:'개선 루프 닫기는 대표(소유자)만 할 수 있습니다.',
+ action:'지원하지 않는 보상 계보 작업입니다.',
+ loop:'개선 루프를 찾을 수 없습니다. 새로고침한 뒤 다시 확인하세요.',
+ version:'개선 루프의 판 번호가 바뀌었습니다. 새로고침한 뒤 다시 닫으세요.',
+ notClosable:'닫을 수 있는 개선 루프가 아닙니다(활성화 뒤 14일이 지나고 전후 1차 판정이 각각 5건 이상이며 롤백되지 않은 루프만 닫습니다).',
+ confirm:'닫을 때 본 전후 1차 판정 수(expected)를 함께 보내 주세요.',
+ changed:'닫으려는 사이 수치가 바뀌었습니다. 새로고침한 뒤 다시 확인하고 닫으세요.',
 } as const;
 const M=REWARD_LINEAGE_MESSAGES;
-export type RewardKind='campaign'|'review_decision'|'execution_publication'|'store_order'|'viral_experiment'|'learning_rule'|'artifact'|'history'|'learning_snapshot'|'team_meeting';
-export type RewardLineageResponse={enabled:true;decision16:RewardInput['decision16'];partial:{kinds:RewardKind[]};lineage:RewardLineage};
+export type RewardKind='campaign'|'review_decision'|'execution_publication'|'store_order'|'viral_experiment'|'learning_rule'|'artifact'|'history'|'learning_snapshot'|'team_meeting'|'prompt_release_event'|'playbook_audit'|'improvement_loop';
+export type LoopsResponse=ImprovementLoops&{partial:{kinds:RewardKind[]}};
+export type RewardLineageResponse={enabled:true;decision16:RewardInput['decision16'];partial:{kinds:RewardKind[]};lineage:RewardLineage;loops:LoopsResponse};
 
 export async function rewardLineageOn(owner:string){
  return isEnabled(owner,'b4_reward_lineage').catch(()=>{console.error('b4_reward_lineage_flag_unreadable');return false});
@@ -51,7 +61,7 @@ type Period=ReturnType<typeof periodOf>;
 // ── 범위: 다른 워크스페이스·없는 기록은 404, 서로 맞지 않는 범위도 404 ──
 type Scope={brandId:string;storeId:string|null;campaignId:string|null};
 const optional=(v:string|null,label:string)=>v===null||v===''?null:str(v,label,100,true);
-async function scopeOf(owner:string,params:URLSearchParams):Promise<Scope>{
+async function scopeOf(owner:string,params:Pick<URLSearchParams,'get'>):Promise<Scope>{
  const brandParam=optional(params.get('brandId'),'브랜드'),storeId=optional(params.get('storeId'),'지점'),campaignId=optional(params.get('campaignId'),'캠페인');
  const [store,campaign]=await Promise.all([storeId?readRecord<Store>(owner,'store',storeId):null,campaignId?readRecord<Campaign>(owner,'campaign',campaignId):null]);
  const brandId=brandParam||store?.brandId||campaign?.brandId;
@@ -129,7 +139,8 @@ async function ruleLinks(snapshots:readonly RewardSnapshot[],meetings:readonly {
  const role=mapped.filter(m=>eventIds.has(m.artifactId)),byMeeting=new Map(meetings.map(m=>[m.id,m.learning]));
  const meetingPairs=[...new Set(artifacts.filter(a=>a.meetingId&&eventIds.has(a.id)&&byMeeting.has(a.meetingId)).map(a=>`${a.meetingId}\u0000${a.id}`))].sort();
  const fromMeetings:RewardSnapshot[]=meetingPairs.map(pair=>{const [meetingId,artifactId]=pair.split('\u0000');return {id:`meeting:${meetingId}:${artifactId}`,artifactId,rules:byMeeting.get(meetingId)||[]}});
- return {snapshots:[...role.map(m=>({id:m.s.id,rules:m.s.rules,...(m.s.operatorPreferences?.length?{operatorPreferences:m.s.operatorPreferences}:{})})),...fromMeetings],
+ // 스냅샷 자체 artifactId(운영자 선호를 주입한 실행)는 그대로 넘긴다. 빼면 roleArtifactIds에도 없어 규칙 계보가 끊긴다(B4-2c에서 고침).
+ return {snapshots:[...role.map(m=>({id:m.s.id,...(m.s.artifactId?{artifactId:m.s.artifactId}:{}),rules:m.s.rules,...(m.s.operatorPreferences?.length?{operatorPreferences:m.s.operatorPreferences}:{})})),...fromMeetings],
   roleArtifactIds:Object.fromEntries(role.filter(m=>!m.s.artifactId).map(m=>[m.s.id,m.artifactId]))};
 }
 const artifactOf=({id,version,role,origin,promptVersion,aiSource}:ArtifactRow):RewardArtifact=>({id,version,role,origin,promptVersion,aiSource});
@@ -143,16 +154,70 @@ async function lineageInput(owner:string,s:Scope,p:Period){
  const versions=[...current.rows,...history.rows];
  const [snapshots,meetings]=await Promise.all([readSnapshots(owner,ids(versions.map(a=>a.campaignId))),readMeetings(owner,ids(versions.map(a=>a.meetingId)))]);
  const links=await ruleLinks(snapshots.rows,meetings.rows,versions,eventIds);
- const read:Record<RewardKind,Read<unknown>>={campaign:campaignRead,review_decision:decisions,execution_publication:publications,store_order:orders,viral_experiment:experiments,learning_rule:rules,artifact:current,history,learning_snapshot:snapshots,team_meeting:meetings};
+ const read:Partial<Record<RewardKind,Read<unknown>>>={campaign:campaignRead,review_decision:decisions,execution_publication:publications,store_order:orders,viral_experiment:experiments,learning_rule:rules,artifact:current,history,learning_snapshot:snapshots,team_meeting:meetings};
  const input:RewardInput={period:{from:p.from,to:p.to},scope:s,decision16:DECISION16_STATE,decisions:decisions.rows,artifacts:versions.map(artifactOf),snapshots:links.snapshots,roleArtifactIds:links.roleArtifactIds,
   publications:publications.rows,orders:orders.rows,experiments:experiments.rows,rules:rules.rows};
- return {input,partial:(Object.keys(read) as RewardKind[]).filter(k=>read[k].truncated)};
+ return {input,partial:(Object.keys(read) as RewardKind[]).filter(k=>read[k]?.truncated)};
+}
+
+// ── B4-2c 개선 루프: 프롬프트 이벤트(워크스페이스)·이 브랜드의 규칙 감사·닫은 루프를 읽고, 후보 창을 모두 덮는 기간을 한 번 읽어 순수 모듈에 넘긴다 ──
+// 승인은 있는지만 본다(사유 원문은 읽지 않는다). 규칙 역할은 승인 감사가 가리키는 운영자 선호 규칙에서 읽는다.
+function readReleaseEvents(owner:string){
+ const select=`json_object('id',${field('id')},'unit',${field('unit')},'action',${field('action')},'from',${field('from')},'to',${field('to')},'evalRunId',${field('evalRunId')},'at',${field('at')},`
+  +`'approval',json(CASE WHEN ${field('approval')} IS NULL THEN NULL ELSE json_object('at',${field('approval.at')}) END))`;
+ return rows<LoopReleaseEvent>(owner,'prompt_release_event',select,'1=1',[],recent('at'));
+}
+function readAudits(owner:string,brandId:string){
+ return rows<LoopPlaybookAudit>(owner,'playbook_audit',`json_object('id',${field('id')},'ruleId',${field('ruleId')},'brandId',${field('brandId')},'action',${field('action')},'ruleVersion',${field('ruleVersion')},'createdAt',${field('createdAt')})`,'parent_id=?',[brandId],recent('createdAt'));
+}
+function readRuleRoles(owner:string,brandId:string,ruleIds:string){
+ return rows<{id:string;role:string|null}>(owner,'learning_rule',`json_object('id',${field('id')},'role',${field('role')})`,`parent_id=? AND ${inList(field('id'))}`,[brandId,ruleIds],'id');
+}
+const readClosures=(owner:string)=>rows<ImprovementLoopRecord>(owner,'improvement_loop','data','1=1',[],recent('closedAt'));
+async function loopsFor(owner:string,scope:Scope,today=kstToday()){
+ const [events,audits,closures]=await Promise.all([readReleaseEvents(owner),readAudits(owner,scope.brandId),readClosures(owner)]);
+ const roles=await readRuleRoles(owner,scope.brandId,ids(audits.rows.filter(a=>a.action==='activate').map(a=>a.ruleId))),roleOf=new Map(roles.rows.map(r=>[r.id,r.role||null]));
+ const playbookAudits=audits.rows.map(a=>({...a,role:roleOf.get(a.ruleId)??null})),span=loopSpan(loopCandidates({releaseEvents:events.rows,playbookAudits,brandId:scope.brandId,today}),today);
+ const read=span?await lineageInput(owner,scope,{from:span.from,to:span.to,start:addDays(span.from,-1),end:addDays(span.to,2)}):null;
+ const report=await improvementLoops({today,brandId:scope.brandId,releaseEvents:events.rows,playbookAudits,closures:closures.rows,reward:read?.input??null});
+ const own:[RewardKind,Read<unknown>][]=[['prompt_release_event',events],['playbook_audit',audits],['learning_rule',roles],['improvement_loop',closures]];
+ const kinds=[...new Set([...own.filter(([,r])=>r.truncated).map(([k])=>k),...(read?.partial??[])])].sort();
+ return {...report,partial:{kinds}};
 }
 
 // 판정 순서: 권한 403 → 스위치 꺼짐 409 → 기간 400 → 범위(없음·다른 워크스페이스 404, 빠짐 400). 저장하지 않는다.
 export async function rewardLineageReport(owner:string,params:URLSearchParams,role:'owner'|'admin'|'member'):Promise<RewardLineageResponse>{
  if(role==='member')throw new ApiError(403,M.adminOnly);
  if(!await rewardLineageOn(owner))throw new ApiError(409,M.off);
- const period=periodOf(params),scope=await scopeOf(owner,params),{input,partial}=await lineageInput(owner,scope,period);
- return {enabled:true,decision16:DECISION16_STATE,partial:{kinds:partial},lineage:await rewardLineage(input)};
+ const period=periodOf(params),scope=await scopeOf(owner,params),[{input,partial},loops]=await Promise.all([lineageInput(owner,scope,period),loopsFor(owner,scope)]);
+ return {enabled:true,decision16:DECISION16_STATE,partial:{kinds:partial},lineage:await rewardLineage(input),loops};
+}
+
+// ── 쓰기: 개선 루프 닫기(호출자가 소유자 잠금·빈도 제한을 잡는다) ──
+// 대표만. 판 번호(version: 닫기 전 0, 닫은 뒤 1)가 다르면 409, closable이 아니면 409, 본 수치(expected 전후 1차 판정·승인 수)가 지금과 다르면 409.
+// 지금 계산한 비교 수치와 inputDigest를 improvement_loop 행에 동결한다(INSERT만, 같은 루프가 이미 있으면 409). 이후 데이터가 바뀌어도 닫은 루프는 이 행을 그대로 보인다.
+type LoopActor={id:string;role:'owner'|'admin'|'member'};
+const scopeParams=(input:Record<string,unknown>):Pick<URLSearchParams,'get'>=>({get:(k:string)=>['brandId','storeId','campaignId'].includes(k)&&typeof input[k]==='string'?input[k] as string:null});
+const sameCounts=(expected:unknown,side:{decidedFirst:number;approvedFirst:number})=>!!expected&&typeof expected==='object'&&(expected as Record<string,unknown>).decidedFirst===side.decidedFirst&&(expected as Record<string,unknown>).approvedFirst===side.approvedFirst;
+async function closeLoop(owner:string,input:Record<string,unknown>,who:LoopActor){
+ const scope=await scopeOf(owner,scopeParams(input)),loopId=str(input.loopId,'개선 루프',200,true),loops=await loopsFor(owner,scope);
+ const loop=loops.loops.find(l=>l.id===loopId);
+ if(!loop)throw new ApiError(404,M.loop);
+ if(input.version!==loop.version)throw new ApiError(409,M.version);
+ if(loop.status!=='closable'||!loop.inputDigest)throw new ApiError(409,M.notClosable);
+ const expected=input.expected&&typeof input.expected==='object'?input.expected as Record<string,unknown>:null;
+ if(!expected)throw new ApiError(400,M.confirm);
+ if(!sameCounts(expected.before,loop.comparison.before)||!sameCounts(expected.after,loop.comparison.after))throw new ApiError(409,M.changed);
+ const at=stamp(),record:ImprovementLoopRecord={id:loop.id,version:1,source:loop.source,activatedAt:loop.activatedAt,activatedDay:loop.activatedDay,windows:loop.windows,scope:{brandId:scope.brandId,storeId:scope.storeId,campaignId:scope.campaignId},
+  comparison:loop.comparison,inputDigest:loop.inputDigest,closedBy:{id:who.id,role:'owner'},closedAt:at};
+ const written=await database().prepare('INSERT OR IGNORE INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').bind(`${owner}:improvement_loop:${loop.id}`,owner,'improvement_loop','',JSON.stringify(record),at).run();
+ if(!written.meta.changes)throw new ApiError(409,M.version);
+ return {id:loop.id,version:record.version,inputDigest:record.inputDigest,closedAt:at};
+}
+// 판정 순서: 모르는 작업 400 → 권한 403(대표만) → 스위치 꺼짐 409 → 범위 400·404 → 루프 404 → 판 번호 409 → 상태 409 → 확인 값 400·409.
+export async function rewardLineageAction(owner:string,input:Record<string,unknown>,who:LoopActor){
+ if(input.action!=='close')throw new ApiError(400,M.action);
+ if(who.role!=='owner')throw new ApiError(403,M.ownerOnly);
+ if(!await rewardLineageOn(owner))throw new ApiError(409,M.off);
+ return closeLoop(owner,input,who);
 }

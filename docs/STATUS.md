@@ -3,12 +3,12 @@
 > 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 운영(갱신): `98f2283`(Sites 버전 41, tree `d11b2e1`, [기록](releases/2026-09-27-98f2283.md)). #139·#143·#145·#148 게시 완료.
+- 운영(갱신): `a8edf10`(Sites 버전 42, tree `5705e55`, [기록](releases/2026-09-27-a8edf10.md)). A8 전체·#154·#155 게시 완료.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-26 21:17 UTC
-- 진행 중: B4-2b 보상 계보 서버·API·스위치 PR(`lib/reward-lineage-server.ts`, `GET /api/reward-lineage` 대표·관리자, 직원 403, 스위치 `b4_reward_lineage` 기본 꺼짐, 새 kind·migration 0, 토큰 0, 결정 16 `not_run` 상수, [REWARD-LINEAGE](REWARD-LINEAGE.ko.md) 9절). B4-2a는 #155로 `merged`. A8 전체·#154는 묶음 16(`a8edf10`)으로 게시 요청 중.
+갱신: 2026-09-26 21:32 UTC
+- 진행 중: 대표 결정 수정 PR #160(최상위 `}` 1개 누락 보정 읽기, 운영·채점 같은 기준 `+root-brace`, 카피 팩 스키마 순서 되돌림) → 묶음 17 게시 → A3 4회차. B4 2부는 #155·#157·#159로 `merged`(`b4_reward_lineage` 기본 꺼짐). A8 전체·#154는 묶음 16(Sites 버전 42)으로 게시됨. 다음: B3 본체(설계 중).
 - A6 종료 조건: **passed · real**(2026-09-27 00:56 KST). 이문동점 영업시간 자료 요청 `dr-f08c16186f08`이 사실 확정으로 closed. [관찰 기록](observations/2026-09-27-lane-a-a6-end-condition.md). 운영 스위치 `a6_data_requests` 켜짐.
 - A3 종료 조건 run: 3회째도 **failed · real**(run `b152f1fb`, #154 반영 뒤). 국밥은 실험 channel `Instagram 숏폼`이 팩 channels에 없어 새로 fail(#154 순서 변경이 만든 퇴행), 수학학원은 다시 최상위 마지막 `}` 하나 누락. 대표 결정(2026-09-27 "괄호 1개 보정 + 순서 되돌림"): #154 스키마 순서 되돌림 + 최상위 `}` 딱 1개 누락은 운영 읽기·`contract_json` 모두 채워 읽음(`+root-brace`, #112 방침 변경). PR `fix/copy-pack-root-brace` → 묶음 게시 → 같은 두 케이스 4회째 run. 3회 기록은 [카피 팩](COPY-PACK.ko.md#a3-종료-조건-run-기록-3회). 1회차 `a3634055`(`}` 누락), 2회차 `a81bb445`(실험 객체가 channels에), 서버 로그인 실패 `2092b0bb`(0토큰).
 - 확인 필요(레인 R): `tests/check-prompts.test.mjs`가 macOS(대소문자 무시 파일 시스템)에서 `channel.leadad.json`·`channel.leadAd` 변형 충돌로 로컬 실패한다(Linux CI는 통과).
@@ -78,16 +78,16 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-26 17:57 UTC (Claude A 세션: A8-2 서버·API PR)
+마지막 갱신: 2026-09-26 21:16 UTC (Claude A 세션: 묶음 16 `a8edf10` Sites 버전 42 게시·tree 확인)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `98f22833a32cd6e60bd000bdc752e1a6812ca349` (#148 `merged`, 묶음 15: 트랙 R #139·#143·#145, 레인 A #148) | 제품 tree `d11b2e1d0db931188eb6f5eb0fa12b29d58adbdc`. 직전 운영 `8651021`(tree `1ac4369`) |
+| 운영 제품 커밋 | `a8edf1043e3dc29129b6c9895911fd170dd93f83` (#155 `merged`, 묶음 16: A8 #150·#152·#153, #154, #155) | 제품 tree `5705e55c1b16c62cedfa02b49772c66216398db0`. 직전 운영 `98f2283`(tree `d11b2e1`) |
 | `origin/main` | `cf2c474` (#139 R15a-1 모집 자료 키트 순수 판정 모듈) | 운영 `8651021` 뒤 #139만 들어왔다(제품 경로 `lib/franchise-assets.ts`, 아직 연결 없음) |
-| Sites 게시 | `published`: Sites 버전 41, deployment `appgdep_6ab8028d0af88191b6d40f94337b2948` succeeded(자동 게시 PR #149) | [게시 기록](releases/2026-09-27-98f2283.md) |
-| 실행 검증 | `98f2283`: 운영 tree 일치(real). 공개 `/api/version/public`·소유자 `/api/version` 모두 `d11b2e1…` | [게시 기록](releases/2026-09-27-98f2283.md) |
+| Sites 게시 | `published`: Sites 버전 42, deployment `appgdep_6ab8195162c081918e18f189c57abf2e` succeeded(자동 게시 PR #156) | [게시 기록](releases/2026-09-27-a8edf10.md) |
+| 실행 검증 | `a8edf10`: 운영 tree 일치(real). 공개 `/api/version/public`·소유자 `/api/version` 모두 `5705e55…` | [게시 기록](releases/2026-09-27-a8edf10.md) |
 | 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` mode=email, role=owner (2026-09-25 03:30 UTC 경) |
 | Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 이번 게시도 기존 접근 설정 유지 | 게시 에이전트 보고 "기존 공개 접근 설정을 유지". 게시 뒤 접근 설정 재확인은 not_run |
 | 조사 워커 | online(lastSeen 2026-09-25 03:29 UTC, blocked 0, rotationReady true). 2026-09-24 14:15 UTC 새 설치기로 재설치(격리 점검 전부 통과) | `/api/research-worker/setup` 조회(real). gate 표시 `missing`이라 `RESEARCH_WORKER_APP_GATE=enforce`는 켜지 않는다 |
