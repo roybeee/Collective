@@ -16,6 +16,11 @@
 - [게시·실행 근거](releases/2026-09-26-d721017.md). 봉인 요청·출력 원문은 열지 않았다.
 
 
+## 게시 확인 자동화 (2026-09-26)
+
+- `feat/public-version`(Claude A6 세션): 로그인 없이 `build`·`tree`만 주는 `/api/version/public`을 더한다(대표 결정 "둘 다": 공개 경로 추가 + 그 게시 전 한 번은 Chrome 확장으로 확인). 게시 뒤 개발 도구가 curl로 `runtime-verified`를 판정한다.
+- `feat/a6-3-auto-collect`(Claude A6 세션): 작업물 저장 때 자료 요청 자동 수집(A6-3) 진행 중.
+
 ## 운영 관리 화면 복구 (2026-09-26)
 
 - A1 PR #120은 `aefd4219aa335425243e41372c8ba8efa3009ee7`로 merged. CI passed, D1 이름 대조 passed. 운영 등록·쌍 평가·stage는 아직 not_run.
@@ -34,7 +39,7 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-26 03:57 UTC (Claude A6 세션: A6-2 플레이스 정보 대조 PR #133, main #134 병합 반영. 그 전 갱신: 03:45 UTC Claude 트랙 R 세션 E2E 흔들림 수정)
+마지막 갱신: 2026-09-26 04:45 UTC (Claude A6 세션: 공개 버전 확인 경로 `/api/version/public` PR, A6-3 진행 중)
 
 ## 현재 운영 상태
 

@@ -57,5 +57,9 @@ providerFail=true;r=await request(run,'POST',{action:'start',campaignId:cid,role
 r=await request(version,'GET',null);
 check('version reports build and tree to the owner',r.status===200&&typeof r.data.build==='string'&&typeof r.data.tree==='string');
 check('an uninjected build never claims a source identity',r.data.tree==='unknown');
+// 공개 버전 신원(2026-09-26 대표 결정): 로그인 없이 build·tree만 준다. 소유자 정보(promptManifest)는 싣지 않는다.
+const publicVersion=await load('app/api/version/public/route.ts');await publicVersion.evaluate();
+r=await request(publicVersion,'GET',null,{'oai-authenticated-user-id':null});
+check('public version answers anonymous requests with build and tree only',r.status===200&&typeof r.data.build==='string'&&r.data.tree==='unknown'&&JSON.stringify(Object.keys(r.data).sort())===JSON.stringify(['build','tree']));
 check('version is owner-only',(await request(version,'GET',null,{'oai-authenticated-user-id':null})).status===401);
 console.log(JSON.stringify({passed:passed.length,checks:passed},null,2));
