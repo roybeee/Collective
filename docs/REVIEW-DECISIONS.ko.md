@@ -16,7 +16,7 @@
 |---|---|---|---|---|
 | `evidence` | 근거 | 출처·실측 없이 단정하거나 확인 전 값·표현을 표시 없이 씀 | 전체 | `unconfirmed_value_assertion`, `unsupported_claim_term` |
 | `brand` | 브랜드·상품 | 브랜드 정체성·상품·업종과 맞지 않음 | 전체 | `industry_metric_leak` |
-| `execution` | 제작·실행 | 실행할 초안·채널 계획·제작 지시가 비었거나 부족함 | 작업물·브리프 제안·발행 | `thin_section`, `local_channel_coverage` |
+| `execution` | 제작·실행 | 실행할 초안·채널 계획·제작 지시가 비었거나 부족함 | 작업물·브리프 제안·발행 | `thin_section`, `local_channel_coverage`, `copy_pack_variants` |
 | `economics` | 예산·운영 | 예산·원가·운영 조건을 무시하거나 임의로 확정함 | 작업물·브리프 제안 | 없음(결정론 채점기 없음) |
 | `measurement` | 측정·실험 | 지표 정의·기준 기간·대조군·판정 기준이 없거나 잘못됨 | 작업물·브리프 제안 | `revisit_cohort_definition` |
 | `compliance` | 규제·표시 | 표시·광고 규제, 플랫폼 정책, 권리 확인이 필요한 표현 | 전체 | A2 규제 가드레일(`checkCompliance`) 전체 |

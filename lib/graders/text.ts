@@ -1,4 +1,4 @@
-import {renderRoleOutput,roleOutputContract} from '../role-output';
+import {renderRoleOutput,roleOutputContract,rawOutputContract} from '../role-output';
 import {NO_NORMALIZATION,type OutputNormalization} from '../output-normalize';
 import type {EvalItem} from './types';
 
@@ -15,10 +15,12 @@ export const proseFields=(item:EvalItem)=>PROSE_FIELDS.map(k=>str(item.fields?.[
 // meetings.ts fieldText와 같은 형식: 필드마다 '## 이름' 제목을 붙여 재질문은 필드 단위로 본다.
 export const fieldText=(item:EvalItem)=>PROSE_FIELDS.map(k=>`## ${k}\n${str(item.fields?.[k])}`).join('\n');
 // 원 JSON만 있으면 앱과 같은 규칙(정규화 포함)으로 렌더한다. normalize=false는 정규화 전 렌더본(예방 판정용)이다.
+// 계약은 원문의 contractVersion으로 고른다(role-output-v2면 카피 팩 계약, 그 밖은 v1). v2 팩 렌더본도 운영과 같이 섹션 앞에 들어간다.
 // 계약 위반 JSON은 섹션 본문을 이어 붙여 내용 채점만 가능하게 한다(정규화 없음).
+export const itemContract=(item:EvalItem)=>rawOutputContract(item.raw||'',item.role||'');
 function renderRaw(item:EvalItem,normalize=true){
  const raw=item.raw||'';
- try{return renderRoleOutput(raw,item.role||'',roleOutputContract(item.role||''),{normalize}).content}catch{}
+ try{return renderRoleOutput(raw,item.role||'',itemContract(item),{normalize}).content}catch{}
  try{
   const parsed=JSON.parse(raw.trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'')) as {sections?:{id?:unknown;content?:unknown}[]};
   return (parsed.sections||[]).map(s=>`## ${str(s?.id)}\n\n${str(s?.content)}`).join('\n\n');
@@ -34,7 +36,7 @@ export const unnormalizedItem=(item:EvalItem):EvalItem|null=>item.text===undefin
 // 원 JSON 렌더에서 정규화가 바꾼 건수(값 없음). 계약 위반으로 이어 붙인 본문은 정규화하지 않으므로 0이다. 저장 본문 항목은 null.
 export function rawNormalization(item:EvalItem):OutputNormalization|null{
  if(item.text!==undefined||!item.raw)return null;
- try{return renderRoleOutput(item.raw,item.role||'',roleOutputContract(item.role||'')).normalization}catch{return NO_NORMALIZATION}
+ try{return renderRoleOutput(item.raw,item.role||'',itemContract(item)).normalization}catch{return NO_NORMALIZATION}
 }
 // 문장 단위: 표 행은 칸으로, 나머지는 문장부호 뒤 공백으로 나눈다.
 export const sentences=(line:string)=>(line.trim().startsWith('|')?line.split('|'):[line]).flatMap(c=>c.split(/(?<=[.?!])\s+/)).map(s=>s.trim()).filter(Boolean);

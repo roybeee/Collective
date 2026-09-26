@@ -7,7 +7,7 @@
 | 항목 | 값 | 근거 |
 |---|---|---|
 | 운영 제품 커밋 | `8c22f0e8738653698dd4350cd2063e3755340c83` (#115 `merged`, 묶음 12: e8bd8e0 뒤 #113~#115, 제품 변경은 #113 채점 도구뿐) | 제품 tree `02260ba4d4bf50dbd617fd4f6dc2709c5e067cf2` |
-| `origin/main` | `41ea80d` (#117) | 8c22f0e 뒤 #116(문서)·#117(트랙 R R1b·R2). 다음 묶음 13은 41ea80d에 게시 전 점검 수정(이 PR)을 더한 main 커밋이다. 이 PR 병합 뒤 게시 요청 PR을 연다(자동 게시, `docs/PUBLISH.ko.md` 8절). 그동안 다른 도구는 새 게시를 요청하지 않는다 |
+| `origin/main` | `b0ef304` (#118) | 8c22f0e 뒤 #116(문서)·#117(트랙 R R1b·R2). 다음 묶음 13은 41ea80d에 게시 전 점검 수정(이 PR)을 더한 main 커밋이다. 이 PR 병합 뒤 게시 요청 PR을 연다(자동 게시, `docs/PUBLISH.ko.md` 8절). 그동안 다른 도구는 새 게시를 요청하지 않는다 |
 | Sites 게시 | `published`: Sites 버전 35, deployment `appgdep_6ab68fba…` succeeded, Sites 작업 사본 tree `02260ba…` = 8c22f0e tree | [게시 기록](releases/2026-09-25-8c22f0e.md)(편집기 보고, 2026-09-25 21:3x UTC 경). 그 앞: e8bd8e0(묶음 11) [기록](releases/2026-09-25-e8bd8e0.md), 트랙 R 단독 게시 73147a9(Sites 버전 31, tree `unknown`) [기록](releases/2026-09-25-73147a9.md) |
 | 실행 검증 | 8c22f0e: `/api/version` not_run. 마지막 `runtime-verified`는 e8bd8e0(2026-09-25 13:48 UTC) | 소유자 세션 `/api/version` tree `d8eacc9…` = e8bd8e0 tree(그 게시 기록) |
 | 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` mode=email, role=owner (2026-09-25 03:30 UTC 경) |
@@ -75,6 +75,7 @@
 - E2E 규칙: 테스트 route 처리기에서 `route.fetch()`는 부하 중 응답이 멈출 수 있어(화면 폴링이 끝나지 않은 reload에 막힘) 미리 받은 응답을 `route.fulfill`로 돌려준다(#37, PR 5b에서 기존 스펙 정리).
 - 결정 17(AI 생성물 표시) 미결: AI 카피 캡션은 `AI_COPY_CAPTIONS=enabled`가 아니면 꺼져 있다(#29).
 - `docs/STATUS.md`·`prompt_plan.md`는 여러 레인이 함께 쓰므로 병합 순서대로 rebase해 갱신한다.
+- A3-1 카피 팩 v2(브랜치 `feat/a3-copy-pack-v2`, Claude Code, 기준 `b0ef304`): 콘텐츠 역할 출력 계약 `role-output-v2`(채널당 3~5안 카피·숏폼 장면 배열·제안 실험)와 채점기 `copy_pack_variants`(`+copy-pack`)를 더한다. 스위치 `a3_copy_pack`(기본 꺼짐)이 켜진 소유자의 콘텐츠 단독 실행만 쓰고, 꺼져 있으면 제출 바이트 동일하다. 게시 보류 중이라 운영 반영은 다음 묶음이다. [카피 팩](COPY-PACK.ko.md)
 
 ## 이력
 

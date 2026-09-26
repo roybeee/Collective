@@ -5,6 +5,7 @@ import {directivePolicy} from './campaign-policy';
 import {PRACTICE_VERSION,rolePractice,evidenceDiscipline,campaignPractice,type PromptSet} from './practice';
 import {qualityContract} from './quality';
 import {roles,aiBudget,type Campaign,type Brand,type Artifact} from './agency';
+import {COPY_PACK_PROFILE,copyPackSchema,copyPackInstruction} from './copy-pack';
 
 // 역할 실행의 HERMES/OpenAI 지시문(instructions)·입력(input) 조립을 서버 의존 없이 만드는 순수 함수(F1a).
 // lib/role-execution.ts start 분기는 DB에서 읽은 값을 넘기고 이 출력을 그대로 보낸다(F1b). tests/role-instruction.test.mjs가 캡처 스냅샷
@@ -14,7 +15,9 @@ export type PreviousDecisions={agenda:string;decisions:string;questions:string};
 // previous: 캠페인의 작업물 목록(role-execution.ts의 previous). upstreamContext가 사용 가능한 앞선 역할 작업물만 고른다.
 // prompts: 캠페인에 고정한 레지스트리 해석 결과(lib/prompt-registry.ts). 없거나 비어 있는 단위는 코드 상수를 써서 이전과 바이트 동일하다.
 // storeAllow: 브랜드 단위 캠페인의 지점 허용 값(lib/store-allow-server.ts). 가림 허용 목록에만 쓰고 모델 입력에는 싣지 않는다. 없으면 키가 없다.
-export type RoleRequest={role:string;campaign:Campaign;brand:Brand;archive:{confirmedSources?:object[]};evidence:Pick<EvidenceContext,'facts'|'directives'>;learning:unknown;previous:Artifact[];previousDecisions?:PreviousDecisions;revisionRequest?:RevisionRequest;prompts?:PromptSet;storeAllow?:string[]};
+// outputProfile: 출력 계약 프로필. 'copy-pack-v2'면 콘텐츠 역할이 카피 팩 v2 계약(lib/copy-pack.ts)으로 답한다. 다른 역할은 무시한다. 없으면 키가 없어 이전과 바이트 동일하다.
+export type RoleRequest={role:string;campaign:Campaign;brand:Brand;archive:{confirmedSources?:object[]};evidence:Pick<EvidenceContext,'facts'|'directives'>;learning:unknown;previous:Artifact[];previousDecisions?:PreviousDecisions;revisionRequest?:RevisionRequest;prompts?:PromptSet;storeAllow?:string[];outputProfile?:typeof COPY_PACK_PROFILE};
+const copyPackOf=(r:Pick<RoleRequest,'outputProfile'>)=>r.outputProfile===COPY_PACK_PROFILE;
 function roleOf(id:string){
  const role=roles.find(r=>r.id===id);
  if(!role)throw new Error('Unknown agency role');
@@ -24,9 +27,9 @@ const revisionInstruction=(r:Pick<RoleRequest,'revisionRequest'>)=>r.revisionReq
 // 입력 경로는 라벨을 앞세운다('확정 사실(evidence.facts.confirmed)'). 모델이 경로 대신 라벨을 본문에 쓰게 한다(품질 기준선 v1 internal_id_exposure).
 const factPolicy="확정 사실(evidence.facts.confirmed)만 사실 근거이며 근거·확인일·유효기한과 함께 사용합니다. 후보 사실(candidate)은 미확정, 거절된 사실(prohibited)은 쓰지 않을 표현입니다. 브리프나 아카이브와 충돌하면 충돌을 명시하고 추정으로 확정 사실을 덮어쓰지 마세요. 원장에 없는 가격·개점일·메뉴 등은 미확정으로 표시하세요.";
 // 앞선 작업물 발췌와 이번 호출의 산출물 계약. 계약은 저장용(role_output_contract)으로도 쓰인다.
-export function roleRequestPlan(r:Pick<RoleRequest,'role'|'campaign'|'previous'>){
+export function roleRequestPlan(r:Pick<RoleRequest,'role'|'campaign'|'previous'|'outputProfile'>){
  const priorContext=upstreamContext(r.previous,r.role,r.campaign.version);
- return {priorContext,outputContract:{...roleOutputContract(r.role),contextTruncated:priorContext.some(a=>a.excerpt)}};
+ return {priorContext,outputContract:{...roleOutputContract(r.role,{copyPack:copyPackOf(r)}),contextTruncated:priorContext.some(a=>a.excerpt)}};
 }
 // 입력 최소화(레인 A): 브랜드 정체성 허용 목록, 담당자 자리표시, 자유 텍스트 가림(허용: 확정 사실·지점 주소·사업장 유선 번호). 가릴 탐지 0이면 이전과 바이트 동일하다.
 const ROLE_MASK_PATHS=[...BRAND_MASK_PATHS,...DIRECTIVE_MASK_PATHS,...FACT_MASK_PATHS,...STORE_MASK_PATHS,...campaignMaskPaths('campaign'),'previous.*.title','previous.*.content','previousDecisions.agenda','previousDecisions.decisions','previousDecisions.questions','revisionRequest.note','revisionRequest.previousExcerpt'];
@@ -44,8 +47,9 @@ function baseInstruction(role:ReturnType<typeof roleOf>,prompts?:PromptSet){
 // 계약 섹션 제목은 앱이 '## 제목'으로 렌더한다. 본문의 #·## 제목과 빈 섹션은 섹션 경계를 깨뜨린다(heading_nesting, 품질 기준선 v1 5/11).
 const sectionFormat=' 계약 섹션 제목(## 제목)은 시스템이 붙입니다. 각 content 안에서는 #·## 제목을 쓰지 말고 ### 이하 소제목만 쓰세요. 빈 섹션 없이 모든 content를 본문으로 채우고, content를 소제목으로 시작하더라도 그 아래에 본문을 쓰세요.';
 // 계약 섹션 목록은 앞선 작업물 발췌 여부(contextTruncated)와 무관하므로 역할만으로 정해진다.
-export function buildRoleInstruction(r:Pick<RoleRequest,'role'|'revisionRequest'|'prompts'>):string{
- const role=roleOf(r.role),outputContract=roleOutputContract(role.id),revision=revisionInstruction(r);
- const contractInstruction='\n지금 '+role.name+' 담당 과업을 실행합니다. 자료 부족은 작업 선택 질문으로 반환하지 말고 조건부 초안과 확인 계획에 표시하세요. 사실 정확성은 별도 사용자 검토가 필요합니다.'+(role.id==='quality'?'':'\nJSON 한 개만 반환하세요: {contractVersion:'+JSON.stringify(outputContract.version)+',role:'+JSON.stringify(role.id)+',sections:[{id:"output_1",content:"마크다운 초안"}]'+(r.revisionRequest?',changes:"요청 반영 위치"':'')+'}. 필수 sections: '+JSON.stringify(outputContract.sections)+'. 모든 id를 한 번씩 포함하고 각 content에 해당 산출물을 작성하세요.'+sectionFormat+revision);
+// 카피 팩 v2(콘텐츠 + outputProfile)면 JSON 형식에 copyPack 스키마를, 끝에 팩 규칙을 덧붙인다. 아니면 두 조각이 빈 문자열이라 이전과 바이트 동일하다.
+export function buildRoleInstruction(r:Pick<RoleRequest,'role'|'revisionRequest'|'prompts'|'outputProfile'>):string{
+ const role=roleOf(r.role),outputContract=roleOutputContract(role.id,{copyPack:copyPackOf(r)}),revision=revisionInstruction(r),packed=!!outputContract.copyPack;
+ const contractInstruction='\n지금 '+role.name+' 담당 과업을 실행합니다. 자료 부족은 작업 선택 질문으로 반환하지 말고 조건부 초안과 확인 계획에 표시하세요. 사실 정확성은 별도 사용자 검토가 필요합니다.'+(role.id==='quality'?'':'\nJSON 한 개만 반환하세요: {contractVersion:'+JSON.stringify(outputContract.version)+',role:'+JSON.stringify(role.id)+',sections:[{id:"output_1",content:"마크다운 초안"}]'+(r.revisionRequest?',changes:"요청 반영 위치"':'')+(packed?','+copyPackSchema:'')+'}. 필수 sections: '+JSON.stringify(outputContract.sections)+'. 모든 id를 한 번씩 포함하고 각 content에 해당 산출물을 작성하세요.'+sectionFormat+(packed?copyPackInstruction:'')+revision);
  return baseInstruction(role,r.prompts)+contractInstruction+(role.id==='quality'?'\n'+qualityContract+'\n형식: {verdict:"ready_for_review|revise|needs_data",summary:"결론",findings:"종합 발견 사항",checks:[],taskChecks:[]} 이번 단독 검수에는 합의 과제가 없으므로 taskChecks는 반드시 빈 배열 []로 두고, 역할별 지적은 checks의 location·fix에 적으세요. 실제 checks를 모두 채우고 JSON 한 개만 반환하세요.'+(r.revisionRequest?' 요청 반영 위치는 findings 끝에 changes 절로 적으세요.':''):'');
 }

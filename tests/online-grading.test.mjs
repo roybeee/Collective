@@ -85,7 +85,7 @@ const g=grades[0];
 check('switch on grades the saved role artifact once',run.body.status==='completed'&&grades.length===1&&graderCalls>0);
 check('grading references the artifact id and version',g.artifactId===run.artifactId&&g.artifactVersion===1&&g.id===`${run.artifactId}:1`&&g.campaignId==='og-on'&&g.campaignVersion===1&&g.parentId==='og-on');
 check('grading records source, job and role',g.source==='role'&&g.jobId===run.job.id&&g.role==='cmo'&&g.meetingId===null);
-check('grading has the thirteen grader verdicts and their summary',g.status==='graded'&&g.graders.length===13&&g.graders.every(x=>['pass','fail','not_applicable','grader_error'].includes(x.status))&&Object.values(g.summary).reduce((a,b)=>a+b,0)===13&&g.gradersVersion===graders.GRADERS_VERSION);
+check('grading has the fourteen grader verdicts and their summary',g.status==='graded'&&g.graders.length===14&&g.graders.every(x=>['pass','fail','not_applicable','grader_error'].includes(x.status))&&Object.values(g.summary).reduce((a,b)=>a+b,0)===14&&g.gradersVersion===graders.GRADERS_VERSION);
 check('grading has a compliance summary without excerpts',typeof g.compliance.block==='number'&&typeof g.compliance.warn==='number'&&g.compliance.issues.every(i=>!('excerpt' in i))&&/^[\w.-]+$/.test(g.compliance.version));
 check('grading records the time it took in ms',Number.isInteger(g.durationMs)&&g.durationMs>=0);
 check('grading context uses current facts, store scope and reported input tokens',g.context.facts==='current'&&g.context.confirmedFacts===1&&g.context.prohibitedFacts===1&&g.context.localStore===true&&g.context.industry===null&&g.context.inputTokens===1200);
