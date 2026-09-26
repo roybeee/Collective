@@ -18,6 +18,7 @@
 
 ## 게시 확인 자동화 (2026-09-26)
 
+- 묶음 14 게시 요청(Claude A6 세션): 기준 운영 `8f0fb54`(tree `98a5800`, 소유자 세션 `/api/version`으로 확인) → 목표 `8651021`(tree `1ac4369`, A3 전체·A6-1~3·`/api/version/public`). 자동 게시(`sites-publish` 라벨 PR), 지시문 `docs/publish/8651021.md`. 결과는 요청 PR 댓글과 게시 기록에 적는다. 그동안 다른 도구는 새 게시를 요청하지 않는다.
 - `feat/public-version`(Claude A6 세션): 로그인 없이 `build`·`tree`만 주는 `/api/version/public`을 더한다(대표 결정 "둘 다": 공개 경로 추가 + 그 게시 전 한 번은 Chrome 확장으로 확인). 게시 뒤 개발 도구가 curl로 `runtime-verified`를 판정한다.
 - `feat/a6-3-auto-collect`(Claude A6 세션): 작업물 저장 때 자료 요청 자동 수집(A6-3) 진행 중.
 
@@ -39,7 +40,7 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-26 04:58 UTC (Claude A6 세션: A6-3 자료 요청 자동 수집 PR, main #136 병합 반영)
+마지막 갱신: 2026-09-26 05:16 UTC (Claude A6 세션: 묶음 14 `8651021` 자동 게시 요청)
 
 ## 현재 운영 상태
 
