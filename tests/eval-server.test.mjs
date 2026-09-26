@@ -23,7 +23,7 @@ const {sql,env,load}=testRuntime(async(url,options={})=>{
  const id=/^\/v1\/runs\/([\w-]+)$/.exec(path)?.[1];if(!id||!hermesRuns.has(id))return new Response('{}',{status:404});
  if(mode.poll==='running')return Response.json({object:'hermes.run',run_id:id,status:'running'});
  if(mode.poll==='unavailable')return new Response('{}',{status:503});
- if(mode.poll==='failed')return Response.json({object:'hermes.run',run_id:id,status:'failed',error:'synthetic',usage:{total_tokens:40}});
+ if(mode.poll==='failed')return Response.json({object:'hermes.run',run_id:id,status:'failed',error:mode.error??'synthetic',usage:mode.failedUsage??{total_tokens:40}});
  return Response.json({object:'hermes.run',run_id:id,status:'completed',output:roleFixture(hermesRuns.get(id).input),usage:mode.usage,model:'mock-eval-model'});
 });
 const server=await load('lib/server.ts'),route=await load('app/api/eval/route.ts'),background=await load('lib/background-execution.ts');
@@ -296,6 +296,25 @@ check('owner deletes a finished run: outputs and results go, the budget ledger s
 r=await get(`?compare=${run1.id},${spent.id}`);
 check('a deleted run cannot be compared',()=>assert.equal(r.status,409));
 
+// Diagnosis reads an existing failed provider run without resubmission or access to sealed text.
+mode.poll='failed';mode.error={code:'invalid_api_key',message:'SECRET_SEALED_OUTPUT'};mode.failedUsage={};
+const beforeDiagCalls=evalCalls.length,beforeDiagRecord=JSON.stringify(await server.readRecord(owner,'eval_run',failedRun.id));
+r=await get('?diagnose='+failedRun.id);
+check('diagnosis reports provider auth failure and unknown usage',()=>assert.ok(r.status===200&&r.body.failure==='모델 인증 실패'&&r.body.reportedTokens.total===null));
+check('diagnosis is one GET, with no submit or stop',()=>assert.ok(evalCalls.length===beforeDiagCalls+1&&evalCalls.at(-1).method==='GET'&&/^\/v1\/runs\/[^/]+$/.test(evalCalls.at(-1).path)));
+check('diagnosis never exposes provider error or sealed content',()=>assert.ok(!JSON.stringify(r.body).includes('SECRET')));
+const afterDiagRecord=JSON.stringify(await server.readRecord(owner,'eval_run',failedRun.id));
+check('diagnosis does not change scores or usage ledger',()=>assert.equal(afterDiagRecord,beforeDiagRecord));
+r=await get('?diagnose='+failedRun.id,other);check('diagnosis cannot read another owner run',()=>assert.equal(r.status,404));
+const originalConnection=await server.readRecord(owner,'eval_connection','current');
+await put('eval_connection','current',{...originalConnection,host:'changed.example.com'});
+const beforeChanged=evalCalls.length;r=await get('?diagnose='+failedRun.id);
+check('diagnosis rejects changed host without calling provider',()=>assert.ok(r.status===409&&evalCalls.length===beforeChanged));
+await put('eval_connection','current',originalConnection);
+mode.auth=false;r=await get('?diagnose='+failedRun.id);mode.auth=true;
+check('diagnosis classifies gateway auth failure separately',()=>assert.ok(r.status===409&&/평가 HERMES 인증/.test(r.body.error)));
+mode.poll='completed';delete mode.error;delete mode.failedUsage;
+
 // E) 권한: owner만. member·admin 403, 다른 owner 404, 비로그인 401, 크기 제한 413.
 env.AUTH_MODE='email';env.AUTH_ORIGIN='https://agency.test';
 const signIn=(id,role,createdAt,ws)=>{const token=createHash('sha256').update(id).digest('hex');sql.prepare('INSERT INTO auth_users(id,email,workspace_owner,role,status,created_at) VALUES(?,?,?,?,?,?)').run(id,id+'@test.invalid',ws,role,'active',createdAt);sql.prepare('INSERT INTO auth_sessions VALUES(?,?,?,?)').run(createHash('sha256').update(token).digest('hex'),id,Date.now()+60000,Date.now());return {cookie:'__Host-collective_session='+token,origin:'https://agency.test'}};
@@ -315,4 +334,5 @@ check('oversized body is 413',()=>assert.equal(r.status,413));
 check('no external network call',()=>assert.deepEqual(external,[]));
 const opsSummary=await get('?view=operations',owner,ownerS);
 check('operations summary contains no frozen request or result rows',()=>assert.ok(opsSummary.status===200&&Array.isArray(opsSummary.body.runs)&&opsSummary.body.cases.every(c=>!('request' in c)&&!('expectations' in c))&&opsSummary.body.runs.every(r=>!('results' in r))));
+r=await get('?diagnose='+failedRun.id,owner,memberS);check('diagnosis is owner only',()=>assert.equal(r.status,403));
 console.log(JSON.stringify({passed:passed.length}));
