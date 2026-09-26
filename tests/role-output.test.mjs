@@ -23,7 +23,14 @@ for(const ask of ['요청하신 작업이 없습니다. 원하는 방향을 알�
 // R3 기준선(2026-09-25 S8 총괄 실측): 완결된 JSON 뒤에 닫는 괄호를 더 붙인 응답('…}]}}')은 여분 괄호만 떼고 읽는다(최대 8자). 잘린 JSON·뒤에 붙은 글은 계속 거절한다.
 const json=JSON.stringify(valid),expected=parseRoleOutput(json,'insight',contract);
 for(const tail of ['}',']}\n','}'.repeat(8)])assert.equal(parseRoleOutput(json+tail,'insight',contract),expected,JSON.stringify(tail));
-for(const bad of [json.slice(0,-1),json+' 끝',json+'}'.repeat(9)])assert.throws(()=>parseRoleOutput(bad,'insight',contract),bad.slice(-12));
+// 대표 결정(2026-09-27 '괄호 1개 보정 + 순서 되돌림', A3 종료 조건 run a3634055·b152f1fb 수학학원 실측): 최상위 객체의 마지막 '}' 딱 1개만 빠진 원문은 채워서 읽는다(#112 '잘린 JSON 거절' 방침 변경).
+// 문자열 안의 괄호·이스케이프한 따옴표는 세지 않는다. 안쪽 괄호가 열린 채 끝남, 문자열 중간에서 끝남, 뒤에 글이 붙음, 여분 괄호 9자 이상은 계속 거절한다.
+for(const root of [json.slice(0,-1),json.slice(0,-1)+'\n','```json\n'+json.slice(0,-1)+'\n```'])assert.equal(parseRoleOutput(root,'insight',contract),expected,JSON.stringify(root.slice(-12)));
+{const tricky=JSON.stringify({...valid,sections:valid.sections.map(s=>({...s,content:s.content+' 예시 {"a":[1,2]} 와 \\" 따옴표 } ] {'}))});
+ assert.equal(parseRoleOutput(tricky.slice(0,-1),'insight',contract),parseRoleOutput(tricky,'insight',contract),'braces and escaped quotes inside strings are not counted');}
+const withChanges=JSON.stringify({...valid,changes:'수정 요청 반영 메모입니다'});
+assert.equal(parseRoleOutput(withChanges.slice(0,-1),'insight',contract),parseRoleOutput(withChanges,'insight',contract),'root brace after a closed top-level string');
+for(const bad of [json+' 끝',json+'}'.repeat(9),json.slice(0,-2),json.slice(0,-3),json.slice(0,-1)+' 끝',json.slice(0,-1)+',',json.slice(0,-10),withChanges.slice(0,-3),withChanges.slice(0,-2)+'\\',json.slice(0,json.indexOf('"sections"')+4)])assert.throws(()=>parseRoleOutput(bad,'insight',contract),bad.slice(-12));
 assert.throws(()=>parseRoleOutput(JSON.stringify({...valid,sections:valid.sections.map(s=>({...s,content:bad}))}),'insight',contract));
 assert.throws(()=>parseRoleOutput(JSON.stringify({...valid,sections:valid.sections.map(s=>({...s,content:'가'.repeat(40001)}))}),'insight',contract));
 assert.equal(parseRoleOutput('기존 실행의 사용 가능한 결과','cmo'),'기존 실행의 사용 가능한 결과');

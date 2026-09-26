@@ -7,10 +7,10 @@
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-26 19:04 UTC
+갱신: 2026-09-26 21:17 UTC
 - 진행 중: B4-2b 보상 계보 서버·API·스위치 PR(`lib/reward-lineage-server.ts`, `GET /api/reward-lineage` 대표·관리자, 직원 403, 스위치 `b4_reward_lineage` 기본 꺼짐, 새 kind·migration 0, 토큰 0, 결정 16 `not_run` 상수, [REWARD-LINEAGE](REWARD-LINEAGE.ko.md) 9절). B4-2a는 #155로 `merged`. A8 전체·#154는 묶음 16(`a8edf10`)으로 게시 요청 중.
 - A6 종료 조건: **passed · real**(2026-09-27 00:56 KST). 이문동점 영업시간 자료 요청 `dr-f08c16186f08`이 사실 확정으로 closed. [관찰 기록](observations/2026-09-27-lane-a-a6-end-condition.md). 운영 스위치 `a6_data_requests` 켜짐.
-- A3 종료 조건 run: 2회째도 **failed · real**(run `a81bb445`, 2026-09-27 03:30 KST, 32,049토큰, 운영 버전 41 = 괄호 닫기 규칙 포함). `contract_json`은 두 케이스 모두 pass로 고쳐졌다. 국밥 12/0 pass. 수학학원은 `copy_pack_variants` fail: 실험 객체를 channels 배열에 넣고 shortform·experiments를 빠뜨렸다(끝부분 구조 붕괴, 1회차의 마지막 `}` 누락과 같은 계열). 수정: 스키마를 shortform → experiments → channels 순서로, channels에는 채널 객체만(PR `fix/copy-pack-key-order`) → 다음 묶음 게시 → 재실행. 1회차 run `a3634055`, 서버 로그인 실패 run `2092b0bb`(0토큰).
+- A3 종료 조건 run: 3회째도 **failed · real**(run `b152f1fb`, #154 반영 뒤). 국밥은 실험 channel `Instagram 숏폼`이 팩 channels에 없어 새로 fail(#154 순서 변경이 만든 퇴행), 수학학원은 다시 최상위 마지막 `}` 하나 누락. 대표 결정(2026-09-27 "괄호 1개 보정 + 순서 되돌림"): #154 스키마 순서 되돌림 + 최상위 `}` 딱 1개 누락은 운영 읽기·`contract_json` 모두 채워 읽음(`+root-brace`, #112 방침 변경). PR `fix/copy-pack-root-brace` → 묶음 게시 → 같은 두 케이스 4회째 run. 3회 기록은 [카피 팩](COPY-PACK.ko.md#a3-종료-조건-run-기록-3회). 1회차 `a3634055`(`}` 누락), 2회차 `a81bb445`(실험 객체가 channels에), 서버 로그인 실패 `2092b0bb`(0토큰).
 - 확인 필요(레인 R): `tests/check-prompts.test.mjs`가 macOS(대소문자 무시 파일 시스템)에서 `channel.leadad.json`·`channel.leadAd` 변형 충돌로 로컬 실패한다(Linux CI는 통과).
 - 제안(레인 Q): 계약 읽기는 최상위 `}` 하나 누락도 '잘린 JSON'으로 거절한다(#112 방침, `tests/role-output.test.mjs:26`). 출력 한도에 못 미친 응답(`incomplete` 아님)에 한해 최상위 `}` 하나를 채워 읽을지 검토 바란다(이번 실패 1건이 운영이면 invalid_output으로 약 1.6만 토큰 폐기).
 - A8: 대표 지시(2026-09-27 "B2 2단계 빼고 남은 개발을 모두 진행하라", 세션 29f7af 전달)로 A3 종료 조건을 기다리지 않고 착수했다. 설계 [CUSTOMER-REPORT](CUSTOMER-REPORT.ko.md).
