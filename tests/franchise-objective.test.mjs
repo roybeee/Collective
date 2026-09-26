@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync,readdirSync} from 'node:fs';
 import {deflateSync} from 'node:zlib';
+import {createHash} from 'node:crypto';
 import {franchiseFixture,captureConsole} from './helpers/franchise-fixture.mjs';
 import {testRuntime} from './helpers/runtime.mjs';
 import {seed,mockHermes,runRole,runMeeting,roleCampaign,meetingCampaign,brand as seedBrand} from './helpers/prompt-seed.mjs';
@@ -72,6 +73,59 @@ const EDGES=[
  [{channels:'EXPO 부스'},['franchise','expo']],
  [{channels:'파워 링크'},['franchise','keyword']],
  [{channels:'큐알 코드'},['franchise','referral']],
+ // 교차 검토(R3B-TRIG-1·TA-1): 트리거 낱말 하나만 든 문구로 정규식의 대안마다 고정한다. 한 대안을 지우면 해당 행이 실패한다(ALL·OFD는 다른 낱말이 같이 걸려 대안 하나를 가리지 못한다).
+ [{channels:'포털'},['franchise','portal']],
+ [{channels:'입점 문의'},['franchise','portal']],
+ [{channels:'창업카페'},['franchise','portal']],
+ [{channels:'커뮤니티'},['community','franchise','portal']],
+ [{channels:'네이버'},['franchise','keyword']],
+ [{channels:'naver'},['franchise','keyword']],
+ [{channels:'NAVER'},['franchise','keyword']],
+ [{channels:'검색 광고'},['franchise','keyword']],
+ [{channels:'키워드 광고'},['franchise','keyword']],
+ [{channels:'블로그'},['franchise','keyword']],
+ [{channels:'파워링크'},['franchise','keyword']],
+ [{channels:'박람회'},['franchise','expo']],
+ [{channels:'가맹 설명회'},['franchise','expo']],
+ [{channels:'엑스포'},['franchise','expo']],
+ [{channels:'본사 견학'},['franchise','expo']],
+ [{channels:'expo'},['franchise','expo']],
+ [{channels:'메타'},['franchise','leadad']],
+ [{channels:'Meta'},['franchise','leadad']],
+ [{channels:'meta ads'},['franchise','leadad']],
+ [{channels:'페이스북'},['franchise','leadad']],
+ [{channels:'facebook'},['franchise','leadad']],
+ [{channels:'Facebook'},['franchise','leadad']],
+ [{channels:'리드광고'},['franchise','leadad']],
+ [{channels:'리드 광고'},['franchise','leadad']],
+ [{channels:'lead ad'},['franchise','leadad']],
+ [{channels:'lead ads'},['franchise','leadad']],
+ [{channels:'LEAD ADS'},['franchise','leadad']],
+ [{channels:'instagram'},['shortform','franchise','leadad']],
+ [{channels:'지인 추천'},['franchise','referral']],
+ [{channels:'점주'},['franchise','referral']],
+ [{channels:'매장 QR'},['franchise','referral']],
+ [{channels:'metaverse 전시, metadata 정리'},['franchise']],
+ // 교차 검토(R3B-TRIG-2·T1): '예비 점주'를 대상으로 보고 뺀 명세 의도(§2)를 '예비 가맹점주'·'점주 모집'(모집 대상)까지 넓힌다. 기존·가맹점주의 소개·추천은 그대로 켠다.
+ [{channels:'예비 가맹점주 대상 창업 카페'},['franchise','portal']],
+ [{channels:'예비 가맹점주 설명회'},['franchise','expo']],
+ [{channels:'예비가맹점주 모집'},['franchise']],
+ [{channels:'예비  점주 카페'},['franchise']],
+ [{channels:'가맹점주 모집 광고'},['franchise']],
+ [{channels:'신규 점주 모집'},['franchise']],
+ [{channels:'점주 모집 광고'},['franchise']],
+ [{channels:'기존 가맹점주 소개'},['franchise','referral']],
+ [{channels:'기존 점주 인터뷰'},['franchise','referral']],
+ [{channels:'가맹점주 추천'},['franchise','referral']],
+ // 교차 검토(T2): 영문 expo는 낱말 경계를 둔다(exposure·expose·export는 박람회가 아니다). 숫자·한글이 바로 붙은 표기는 켠다.
+ [{channels:'Instagram exposure'},['shortform','franchise','leadad']],
+ [{channels:'expose'},['franchise']],
+ [{channels:'Export 광고'},['franchise']],
+ [{channels:'노출(Exposure)'},['franchise']],
+ [{channels:'EXPO부스'},['franchise','expo']],
+ [{channels:'창업expo'},['franchise','expo']],
+ [{channels:'expos 2027'},['franchise','expo']],
+ [{channels:'Expo2027'},['franchise','expo']],
 ];
 for(const [c,want] of EDGES)check(`1: objective ${JSON.stringify(c)} gets ${want.join(', ')}`,same(idsOf({goal:'',products:'',stores:'',...c,objective:O}),want));
 check('1: objective with a storeId (frozen eval request) still drops offline',!idsOf({...OFD,objective:O,storeId:'s1'}).includes('offline'));
@@ -85,6 +139,17 @@ const WORKSPACE_TERMS=[...units.brandTermsFromCode(),'가상분식','가상동 1
 const validBody=id=>{try{units.validateUnitBody('channel.'+id,bodyOf(id),WORKSPACE_TERMS);return true}catch{return false}};
 check('1b: every recruitment body is one trimmed NFC line and passes the registry body check (code and synthetic workspace brand terms)',NEW_IDS.every(id=>{const b=bodyOf(id);return !/[\r\n]/.test(b)&&b===b.trim()&&b===b.normalize('NFC')&&validBody(id)}));
 check('1b: each recruitment body is the code unit body of its registry unit',NEW_IDS.every(id=>units.codeUnitBody('channel.'+id)===bodyOf(id)));
+// 교차 검토(TA-2): 본문을 명세 §2 문자열의 길이·sha256으로 고정한다. 정본 파일은 codeEqualUnits(check-prompts.test)가 코드와 같게 묶으므로 코드와 파일을 같이 고쳐도
+// 개인정보 최소화·동의·가맹 중개·경제적 이해관계 문장이 빠지거나 수익 예시 문구가 붙으면 여기서 실패한다. 본문을 바꾸는 PR은 이 표를 명세와 함께 고친다.
+const BODY_PIN={
+ franchise:[841,'c37d25bb1debb75d01d93b3a5234492d4a11979a8b56c7a68157b73a90763a01'],
+ portal:[198,'0400898ab2ab60f872a3247e9031bde311d7b6b40fda54018c6e58b3b43b0ce2'],
+ keyword:[195,'41cafa50a06ac421565b18f2d854e1e1addcd0937ec2b0cb4b224b3080851738'],
+ expo:[218,'aed1d4ed4ef3796503d0f86fd312008115a573f51f9bf989a181a61c1ad3d8ff'],
+ leadad:[183,'ea4f5446ec1b5493ce0985a3d0f1eb0516bc4c21956a689f5dadc587a9a021fd'],
+ referral:[179,'2e48c2fb4eda31f6adc6dadf2fb4f6af6cc37de811b49485fe9db5ff48aef37a'],
+};
+for(const id of NEW_IDS)check(`1b: channel.${id} is pinned to the spec text (${BODY_PIN[id][0]} chars, sha256 ${BODY_PIN[id][1].slice(0,12)})`,bodyOf(id).length===BODY_PIN[id][0]&&createHash('sha256').update(bodyOf(id),'utf8').digest('hex')===BODY_PIN[id][1]);
 const PLAN={
  franchise:[...agency.roles.map(r=>r.name),'창업 페이지 문안','포털 소개문','네이버 검색 문안','메타 리드광고 문안','박람회 배너·리플렛 문안','설명회 덱 개요·원고','첫 통화 스크립트','[의견]','수익 수치 칸은 두지 않는다'],
  portal:['수집 출처와 동의 범위'],
@@ -344,6 +409,11 @@ check('7: the consumer meeting completes (enhanced) and rebuilding each step giv
 check('7: an objective snapshot replaces only the 30-day definition in every enhanced meeting step instruction',meetingRows.every(r=>r.replaced));
 check('7: the objective meeting input changes only campaign and channelPractice',meetingRows.every(r=>r.keys));
 check('7: a meeting without skillVersion (not enhanced) keeps identical instructions under objective',meetingRows.every(r=>r.plain));
+// 교차 검토(TA-3): 회의 경로도 한 판정(lib/agency.ts isRecruitmentObjective)의 정확한 값만 스위치한다. 정확하지 않은 저장값(옛 기록·손상 스냅샷)은 소비자 지시문·실무 텍스트로 다시 만든다.
+const LOOSE=['franchise','FRANCHISE_RECRUITMENT',' franchise_recruitment','franchise_recruitment ',true,''];
+const withValue=(m,v)=>({...m,snapshot:{...m.snapshot,campaign:{...m.snapshot.campaign,objective:v}}});
+const looseRows=done.steps.flatMap(st=>{const a=meetingInput.buildMeetingSubmission(done,st.id,[]),ai=JSON.parse(a.input);return LOOSE.map(v=>{const b=meetingInput.buildMeetingSubmission(withValue(done,v),st.id,[]),bi=JSON.parse(b.input);return b.instructions===a.instructions&&bi.channelPractice===ai.channelPractice&&same(diffKeys(bi,ai),['campaign'])&&bi.campaign.objective===v})});
+check('7: a non-exact stored objective value rebuilds every meeting step with the consumer instructions and channel practice',looseRows.length===12*LOOSE.length&&looseRows.every(Boolean));
 const retryStep=done.steps.find(t=>t.phase==='discussion'),retried=m=>({...m,steps:m.steps.map(t=>t.id===retryStep.id?{...t,correction:{error:'합성 검증 실패'}}:t)});
 const ra=meetingInput.buildMeetingSubmission(retried(done),retryStep.id,[]),rb=meetingInput.buildMeetingSubmission(withObjective(retried(done)),retryStep.id,[]);
 check('7: a correction retry step keeps its correction sentence and gets the same replacement',ra.instructions.startsWith(meetingInput.buildMeetingSubmission(done,retryStep.id,[]).instructions)&&ra.instructions.length>meetingInput.buildMeetingSubmission(done,retryStep.id,[]).instructions.length&&rb.instructions===ra.instructions.replace(MD,()=>P));

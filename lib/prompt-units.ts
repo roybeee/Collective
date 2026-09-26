@@ -38,8 +38,9 @@ export function codeUnitBody(unit:string):UnitBody{
  return u.key==='default'?defaultChannelSkill:channelSkills.find(s=>s.id===u.key)!.body;
 }
 // 리뷰 화면에 보이지 않는 문자는 받지 않는다: 줄바꿈·제어(Cc), 형식(Cf: 너비 없는 공백·양방향 제어·Unicode Tags), 사용자 정의 영역(Co), 미할당(Cn), 줄·문단 구분(Zl·Zp),
-// 이체 선택자(데이터 밀반입에 쓰는 U+FE00대·U+E0100대), 결합 자소 접합자, 한글 채움 문자. NFC가 아닌 본문도 거부한다. 정본 파일에는 이런 문자가 없다.
-const hiddenChars=/[\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Zl}\p{Zp}\u034F\u115F\u1160\u180B-\u180F\u3164\uFE00-\uFE0F\uFFA0\u{E0100}-\u{E01EF}]/u;
+// 이체 선택자(데이터 밀반입에 쓰는 U+FE00대·U+E0100대), 결합 자소 접합자, 한글 채움 문자, 그 밖의 기본 무시 가능 코드 포인트(그려지지 않는 크메르 모음 U+17B4·U+17B5 등)와
+// 빈칸처럼 보이는 점자 빈칸(U+2800). NFC가 아닌 본문도 거부한다. 정본 파일에는 이런 문자가 없다.
+const hiddenChars=/[\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}\u034F\u115F\u1160\u180B-\u180F\u2800\u3164\uFE00-\uFE0F\uFFA0\u{E0100}-\u{E01EF}]/u;
 function text(value:unknown,label:string,max:number):string{
  if(typeof value!=='string'||!value.trim()||value.length>max||value!==value.trim())return fail('schema',`${label}은(는) 앞뒤 공백 없는 ${max}자 이하 문자열이어야 합니다.`);
  if(hiddenChars.test(value)||value!==value.normalize('NFC'))return fail('hidden',`${label}에 줄바꿈·제어 문자나 보이지 않는 문자(너비 없는 공백·양방향 제어·Unicode Tags·이체 선택자·사용자 정의 영역)가 있거나 NFC 정규형이 아닙니다.`);
@@ -85,10 +86,13 @@ const on=(form:keyof Forms,...patterns:RegExp[]):Rule[]=>patterns.map(pattern=>(
 const matched=(rules:readonly Rule[],f:Forms)=>rules.find(r=>r.pattern.test(f[r.form]));
 // 코드 소유 섹션의 표지: 근거 규율·광고 표현·추천·광고 표시·측정·상시 지시 정책 문장의 머리, 역할 스킬 머리말·제목, 입력 필드명, JSON 계약, 외부 행동 금지, 사실 정책을 뒤집는 문구,
 // 가맹 모집 규칙(가맹 모집 objective 캠페인의 코드 소유 근거 정책 머리말, R3b. 정책 머리가 이 문구로 시작하는지는 tests/check-prompts.test.mjs가 고정한다).
+// 가맹 모집 규칙은 letters 형태(글자·숫자만)로도 찾는다: '가맹·모집·규칙:'·'"가맹 모집" 규칙'·결합 부호를 끼운 흉내도 막는다(교차 검토 S1). 다른 머리의 구두점 변형은 기존 한계로 남는다.
 const lead=(s:string)=>s.slice(0,24);
 const squashed=(s:string)=>formsOf(s).squash;
-const codeOwnedPhrases=[lead(factDiscipline),lead(claimPolicy),lead(copyCompliancePolicy),lead(answerDiscipline),lead(measurementDiscipline),lead(directivePolicy),'근거 규칙','광고 표현 규칙','추천·광고 표시 규칙','측정 정의:','가맹 모집 규칙','실무 스킬','필수 산출물','완료 전 점검','인계:'].map(squashed);
+const FRANCHISE_HEADING='가맹 모집 규칙';
+const codeOwnedPhrases=[lead(factDiscipline),lead(claimPolicy),lead(copyCompliancePolicy),lead(answerDiscipline),lead(measurementDiscipline),lead(directivePolicy),'근거 규칙','광고 표현 규칙','추천·광고 표시 규칙','측정 정의:',FRANCHISE_HEADING,'실무 스킬','필수 산출물','완료 전 점검','인계:'].map(squashed);
 const codeOwnedRules=[
+ ...on('letters',new RegExp(formsOf(FRANCHISE_HEADING).letters)),
  ...on('squash',/evidence\.(?:facts|directives)|facts\.(?:confirmed|candidate|prohibited)|contractversion|outputcontract|copypack|brandvoice|contexttruncated|idlabels|claimguard|respondsto|revisionrequest|previousdecisions|sourceassessment|brandintro|factpolicy|taskchecks|```|~~~/),
  ...on('folded',/\bsections\b|\boutput_?\d+\b/),
  ...on('letters',/json|제이슨|candidate|confirmed|prohibited/),
