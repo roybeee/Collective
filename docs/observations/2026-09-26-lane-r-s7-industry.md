@@ -35,7 +35,7 @@
 - 이 요청은 레인 Q가 읽는 `docs/STATUS.md` 레인 Q 칸에도 있어야 한다(`docs/LANES.ko.md`: `scripts/eval/`은 Q 칸에 요청). 이 문서만으로는 전달되지 않는다.
 
 ## 실행 방법
-운영 앱: `https://mealzip-agency.hflameb.chatgpt.site`(tree `1ac4369`, 묶음 14 = `8651021`). `/api/eval`은 소유자 전용이다. 로그인하지 않으면 401이다.
+운영 앱: `https://mealzip-agency.hflameb.chatgpt.site`(2026-09-26 17:35 UTC 빌드 tree `d11b2e1`, 묶음 15 = `98f2283`. 채점기 변경 없음이라 위 근거는 그대로다). `/api/eval`은 소유자 전용이다. 로그인하지 않으면 401이다.
 
 1. 소유자로 로그인한 앱 페이지를 연다. 개발자 도구(F12) → Console. 대표가 직접 하거나, 대표가 허용한 개발 도구가 대표의 로그인 브라우저에서 한다(`docs/PUBLISH.ko.md` 5단계와 같은 same-origin 방식).
 2. 아래 스니펫을 통째로 붙여 넣고 Enter. 첫 실행은 `const MODE='check';` 그대로다. 쓰기가 없다. Chrome이 붙여 넣기 경고를 띄우면 안내대로 `allow pasting`(한국어 화면은 `붙여넣기 허용`)을 입력한 뒤 다시 붙여 넣는다.
