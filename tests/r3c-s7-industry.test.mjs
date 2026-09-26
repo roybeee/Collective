@@ -1,7 +1,8 @@
 // R3c 선행 콘솔 키트(docs/observations/2026-09-26-lane-r-s7-industry.md): 운영 D1 합성 S7 케이스 8건의 기대 업종 ['fnb'] → ['franchise','fnb'].
 // 문서의 스니펫을 그대로 꺼내 실제 /api/eval 라우트(app/api/eval/route.ts, 메모리 SQLite)에 대고 check·apply·rollback으로 돌린다(문서와 검사가 갈라지지 않게).
 // 수용: check는 쓰기 0, apply는 S7 8건의 industry만 바꾸고 나머지는 바이트까지 그대로, 다시 apply는 쓰기 0, 전제가 하나라도 어긋나면 쓰기 0으로 멈춤,
-// 중간 실패 뒤 다시 apply로 남은 건만 바꿈, rollback은 가져온 원본 기대 판정으로 되돌림, 출력에 케이스 내용과 = ? & % 없음, 오늘 채점기로는 두 업종 목록의 판정이 같음.
+// 중간 실패 뒤 다시 apply로 남은 건만 바꿈(4xx는 그 건이 그대로라고, 5xx·응답 없음·읽을 수 없는 응답은 바뀌었을 수도 있다고 알림), 처음 읽은 뒤 바뀐 케이스는 쓰지 않음,
+// rollback은 가져온 원본 기대 판정으로 되돌림, 출력에 케이스 내용·소유자·서버 오류 본문과 = ? & % 없음, 오늘 채점기로는 두 업종 목록의 판정이 같음.
 // 근거: mocked(메모리 SQLite, 로컬 인증 헤더 주입, fetch 심, 합성 스펙 syn-s7-franchise·syn-s2-bakery). 외부 네트워크 호출은 0회다.
 import assert from 'node:assert/strict';
 import {readFileSync,existsSync} from 'node:fs';
@@ -33,12 +34,13 @@ check('the snippet declares the fixed target constants',()=>{for(const line of [
 const withMode=mode=>snippet.split('\n').map(l=>l.trim()===MODE_LINE?l.replace(MODE_LINE,`const MODE='${mode}';`):l).join('\n');
 
 // 1) 모의 런타임과 실제 합성 스펙 데이터. S7 8건과 S2 15건(구경꾼)을 가져온다.
-let writes=0;
+let writes=0,unlockFail=false;
 const external=[];
-const {sql,load}=testRuntime(async url=>{external.push(String(url));throw new Error('모의 런타임은 외부 호출을 하지 않습니다: '+url)},{beforeRun:()=>{writes++}});
+// unlockFail: 다음 잠금 해제(releaseLock의 DELETE)가 던진다(모의 D1 오류). 라우트는 이미 쓴 뒤 finally에서 던진다.
+const {sql,load}=testRuntime(async url=>{external.push(String(url));throw new Error('모의 런타임은 외부 호출을 하지 않습니다: '+url)},{beforeRun:st=>{writes++;if(unlockFail&&/^DELETE FROM mutation_locks/.test(st.query)){unlockFail=false;throw new Error('모의 잠금 해제 실패')}}});
 const server=await load('lib/server.ts'),evalServer=await load('lib/eval-server.ts'),route=await load('app/api/eval/route.ts');
 const graders=await load('lib/graders/index.ts'),content=await load('lib/graders/content.ts'),industry=await load('lib/graders/industry.ts');
-const owner='r3c-owner',by={id:owner,email:null},ORIGIN='https://agency.test';
+const owner='r3c-owner',by={id:owner,email:'owner-r3c@example.test'},ORIGIN='https://agency.test';
 const generator={commit:'c'.repeat(40),tree:'d'.repeat(40)};
 const s7Spec=JSON.parse(readFileSync('scripts/eval/specs/syn-s7-franchise.json','utf8')),s2Spec=JSON.parse(readFileSync('scripts/eval/specs/syn-s2-bakery.json','utf8'));
 const s7=await synthesizeCases(clone(s7Spec),{generator}),s2=await synthesizeCases(clone(s2Spec),{generator});
@@ -60,14 +62,21 @@ check('the fixture has 8 S7 cases and 15 bystanders before any run',()=>assert.o
 // 실제 라우트를 소유자로 직접 부르는 도우미(시나리오 준비용. 스니펫 호출과 따로 센다).
 const routePost=async input=>{const res=await route.POST(new Request(ORIGIN+'/api/eval',{method:'POST',headers:{'oai-authenticated-user-id':owner,'content-type':'application/json',origin:ORIGIN},body:JSON.stringify(input)}));return {status:res.status,body:await res.json()}};
 const setIndustry=async(id,value)=>{const r=await routePost({action:'update_case',id,expectations:{...original[id].expectations,industry:value}});assert.equal(r.status,200,JSON.stringify(r.body))};
+const caseUrl=id=>`/api/eval?case=${encodeURIComponent(id)}`;
 const addRun=async(status,caseIds)=>{const at=new Date().toISOString(),id='run-'+status+'-'+caseIds.length;await server.recordStatement(owner,'eval_run',id,{id,label:'준비용',variant:'active',set:'dev',caseIds,tokenBudget:1000,usedTokens:0,status,host:null,createdBy:by,createdAt:at,updatedAt:at,results:[]}).run()};
 
 // 2) 스니펫이 부르는 fetch 심: 상대 경로 /api/eval만 실제 라우트로 넘긴다. auth: owner(소유자 헤더), none(헤더 없음 → 실제 401), forbidden(모의 403).
-// failAt·failKind: n번째 POST를 500으로 돌려주거나(쓰기 없음), 라우트가 쓴 뒤 응답을 잃고 던지거나(lost), 쓴 뒤 응답의 금지 표현을 비워 돌려준다(tamper, 모의 서버 이상).
-// tamperRead: 쓰기가 한 번이라도 있은 뒤 그 케이스를 다시 읽으면 specHash를 바꿔 돌려준다(모의: 확인 읽기가 어긋남).
-// getFail: 이 경로의 GET을 {status}로 돌려준다(모의: 목록 500, 케이스 404).
+// failAt·failKind: failAt번째 POST에만 적용한다.
+//  쓰기 전 거부: '409body'(라우트를 부르지 않는 모의 409, 오류 본문에 케이스 내용과 = ? & %), 'inuse'(그 케이스를 쓰는 queued run을 넣고 실제 라우트 → 실제 409).
+//  쓰기 여부를 알 수 없음: '500'(라우트를 부르지 않는 모의 500), '502after'(라우트가 쓴 뒤 모의 프록시 502), 'unlock'(라우트가 쓴 뒤 releaseLock이 던짐 → Next.js처럼 500, 잠금 행이 남음),
+//  'lost'(라우트가 쓴 뒤 응답을 잃고 던짐), 'truncated'(라우트가 쓴 뒤 200 본문이 잘림), 'shapeless'(라우트가 쓴 뒤 expectations가 없는 200 JSON).
+//  응답 이상(모의 서버 이상): 'tamper'(응답의 금지 표현을 비움), 'tamperIndustry'(응답의 업종을 FROM으로).
+// fx {id,nth,before,fn,status}: 이번 실행에서 그 케이스의 nth번째 GET에만 적용한다. before는 라우트보다 먼저 부른다(실제 동시 편집). fn은 응답 본문을 바꾸고(모의), status는 모의 오류 응답이다.
+//  apply의 바꿀 케이스는 1=처음 읽기, 2=쓰기 직전 읽기, 3=쓴 뒤 다시 읽기다. 이미 목표 값인 케이스는 1=처음 읽기, 2=다시 읽기다.
+// getFail {url,status,raw}: 이 경로의 GET을 모의 응답으로 돌려준다(목록 500, 케이스 404, raw면 그 본문 그대로).
 const calls=[],printed=[];
-let auth='owner',failAt=0,failKind='',posts=0,tamperRead='',getFail=null;
+const LEAK='가상분식머신 a=b?c&d% 모의 거부';
+let auth='owner',failAt=0,failKind='',posts=0,fx=null,getFail=null,reads={};
 const shim=async(url,options={})=>{
  const method=String(options.method||'GET').toUpperCase(),headers=new Headers(options.headers||{});
  calls.push({url:String(url),method,credentials:options.credentials,cache:options.cache,contentType:headers.get('content-type'),body:options.body});
@@ -76,20 +85,34 @@ const shim=async(url,options={})=>{
  if(auth==='owner')headers.set('oai-authenticated-user-id',owner);
  if(method==='POST'){
   headers.set('origin',ORIGIN);posts++;
-  if(posts===failAt&&failKind==='500')return Response.json({error:'처리하지 못했습니다.'},{status:500});
-  const res=await route.POST(new Request(ORIGIN+url,{method,headers,body:options.body}));
-  if(posts===failAt&&failKind==='lost')throw new TypeError('Failed to fetch');
-  if(posts===failAt&&failKind==='tamper'){const body=await res.json();return Response.json({...body,expectations:{...body.expectations,prohibitedTerms:[]}},{status:res.status})}
+  const hit=posts===failAt;
+  if(hit&&failKind==='500')return new Response('Internal Server Error',{status:500});
+  if(hit&&failKind==='409body')return Response.json({error:LEAK},{status:409});
+  if(hit&&failKind==='inuse')await addRun('queued',[JSON.parse(options.body).id]);
+  if(hit&&failKind==='unlock')unlockFail=true;
+  let res;
+  try{res=await route.POST(new Request(ORIGIN+url,{method,headers,body:options.body}))}
+  catch{return new Response('Internal Server Error',{status:500})}
+  finally{unlockFail=false;if(hit&&failKind==='inuse')sql.prepare("DELETE FROM records WHERE owner=? AND kind='eval_run'").run(owner)}
+  if(hit&&failKind==='lost')throw new TypeError('Failed to fetch');
+  if(hit&&failKind==='502after')return new Response('Bad Gateway',{status:502});
+  if(hit&&failKind==='shapeless'){await res.text();return Response.json({ok:true},{status:200})}
+  if(hit&&failKind==='truncated'){const text=await res.text();return new Response(text.slice(0,Math.floor(text.length/2)),{status:200,headers:{'content-type':'application/json'}})}
+  if(hit&&failKind==='tamper'){const body=await res.json();return Response.json({...body,expectations:{...body.expectations,prohibitedTerms:[]}},{status:res.status})}
+  if(hit&&failKind==='tamperIndustry'){const body=await res.json();return Response.json({...body,expectations:{...body.expectations,industry:FROM}},{status:res.status})}
   return res;
  }
- if(getFail&&url===getFail.url)return Response.json({error:'모의 실패'},{status:getFail.status});
+ if(getFail&&url===getFail.url)return getFail.raw!==undefined?new Response(getFail.raw,{status:getFail.status,headers:{'content-type':'application/json'}}):Response.json({error:'모의 실패'},{status:getFail.status});
+ const n=reads[url]=(reads[url]||0)+1,hit=fx&&url===caseUrl(fx.id)&&n===fx.nth;
+ if(hit&&fx.status)return Response.json({error:'모의 실패'},{status:fx.status});
+ if(hit&&fx.before)await fx.before();
  const res=await route.GET(new Request(ORIGIN+url,{method,headers}));
- if(tamperRead&&posts>0&&url===`/api/eval?case=${encodeURIComponent(tamperRead)}`){const body=await res.json();return Response.json({...body,specHash:'0'.repeat(32)},{status:res.status})}
+ if(hit&&fx.fn){const body=await res.json();return Response.json(fx.fn(body),{status:res.status})}
  return res;
 };
 const runs=[];
-const run=async(mode,{as='owner',fail=0,kind='',tamper='',get=null}={})=>{
- auth=as;failAt=fail;failKind=kind;tamperRead=tamper;getFail=get;posts=0;writes=0;
+const run=async(mode,{as='owner',fail=0,kind='',fx:effect=null,get=null}={})=>{
+ auth=as;failAt=fail;failKind=kind;fx=effect;getFail=get;posts=0;writes=0;reads={};
  const start=calls.length,lines=[],other=[];
  const con={log:(...a)=>lines.push(a.map(String).join(' ')),info:(...a)=>other.push(a),warn:(...a)=>other.push(a),error:(...a)=>other.push(a),table:(...a)=>other.push(a),dir:(...a)=>other.push(a)};
  const returned=await runInNewContext(withMode(mode),{fetch:shim,console:con});
@@ -106,6 +129,8 @@ check('check reports ok, 8 found and 8 to change',()=>assert.ok(r.summary.mode==
 check('check lists the 8 S7 ids as pending and nothing as changed',()=>assert.ok(canonical([...r.summary.pendingIds].sort())===canonical(s7Ids)&&r.summary.changedIds.length===0&&r.summary.failed.length===0));
 check('check sends no POST and writes nothing',()=>assert.ok(quiet(r)&&r.calls.every(c=>c.method==='GET')));
 check('check leaves every eval_case row byte-identical',()=>assert.deepEqual(caseRows(),freshCases));
+// 바꿀 순서(목록 순서). 쓰기 직전 읽기와 동시 편집 시나리오가 몇 번째 건에서 멈추는지 정한다.
+const listOrder=[...r.summary.pendingIds];
 
 // b) apply: S7 8건만 바뀐다. industry 밖 기대 판정·요청·키·해시·세트·이름·출처·생성기는 그대로.
 r=await run('apply');
@@ -139,9 +164,13 @@ const aborts=async(name,mode,prepare,pattern,opts={},extra=()=>{})=>{
  return res;
 };
 await aborts('a queued run that uses an S7 case','apply',()=>addRun('queued',[s7Ids[2]]),/진행 중.*평가 실행/);
+await aborts('check while a queued run uses an S7 case','check',()=>addRun('queued',[s7Ids[0]]),/진행 중.*평가 실행/);
 await aborts('a running run that uses an S7 case','apply',()=>addRun('running',[s2Rows(freshCases).map(x=>JSON.parse(x.data).id)[0],s7Ids[5]]),/진행 중.*평가 실행/);
 await aborts('an S7 case whose industry is neither FROM nor TO','apply',()=>setIndustry(s7Ids[4],['education']),/기대 업종/,{},res=>check('the odd-industry stop still reports found 8',()=>assert.equal(res.summary.found,8)));
 await aborts('an S7 case whose industry is the single string fnb','apply',()=>setIndustry(s7Ids[1],'fnb'),/기대 업종/);
+// 업종은 [주 업종, ...허용 업종] 순서가 뜻을 가진다. 순서가 바뀐 목록과 fnb를 품은 다른 목록도 FROM·TO가 아니다.
+await aborts('an S7 case whose industry is TO reordered (fnb first)','apply',()=>setIndustry(s7Ids[2],['fnb','franchise']),/기대 업종/);
+await aborts('an S7 case whose industry contains fnb plus another industry','apply',()=>setIndustry(s7Ids[3],['fnb','education']),/기대 업종/);
 await aborts('a missing S7 case (7 found)','apply',async()=>{assert.equal((await routePost({action:'delete_case',id:s7Ids[0]})).status,200)},/8건.*7건/,{},res=>check('the missing-case stop reports found 7',()=>assert.equal(res.summary.found,7)));
 await aborts('an extra S7 case (9 found)','apply',async()=>{const extra=clone(s7);extra.cases=[{...extra.cases[0],externalKey:S7_PREFIX+'role:extra'}];assert.equal((await evalServer.importCases(owner,extra,by,generator.tree)).created,1)},/8건.*9건/,{},res=>check('the extra-case stop reports found 9',()=>assert.equal(res.summary.found,9)));
 await aborts('GET /api/eval without a login (401)','apply',async()=>{},/로그인.*HTTP 401/,{as:'none'},res=>check('the 401 stop makes a single GET',()=>assert.ok(res.calls.length===1&&res.calls[0].method==='GET')));
@@ -149,11 +178,23 @@ await aborts('GET /api/eval as a non-owner (403, mocked)','apply',async()=>{},/�
 await aborts('GET /api/eval failing with 500 (mocked)','apply',async()=>{},/목록.*HTTP 500/,{get:{url:'/api/eval',status:500}});
 await aborts('a case read failing with 404 (mocked)','apply',async()=>{},/케이스를 읽지 못했습니다.*HTTP 404/,{get:{url:`/api/eval?case=${encodeURIComponent(s7Ids[5])}`,status:404}});
 await aborts('an unknown MODE','Apply',async()=>{},/MODE/,{},res=>check('an unknown MODE makes no request at all',()=>assert.equal(res.calls.length,0)));
+// 모의: 로그인 화면 같은 JSON이 아닌 200 본문. 브라우저 오류 문구는 본문 앞부분을 되풀이하므로 = ? & %와 케이스 내용을 앞에 둔다.
+await aborts('a case read that returns a non-JSON 200 body (mocked)','apply',async()=>{},/예상하지 못한 오류/,{get:{url:caseUrl(s7Ids[1]),status:200,raw:LEAK}},res=>check('the unexpected-error stop prints one line without the body text or = ? & %',()=>assert.ok(res.lines.length===1&&!/[=?&%]/.test(res.lines[0])&&!res.lines[0].includes('가상분식머신')&&!res.lines[0].includes('모의 거부'),res.lines[0])));
 
 // d-2) 전제에 걸리지 않는 것: 끝난 run, 같은 캠페인의 다른 키·수동 케이스는 무시하고 센다.
 restore(fresh);await addRun('completed',s7Ids);
 r=await run('check');
 check('a completed run that used S7 cases does not block',()=>assert.ok(r.summary.ok===true&&r.summary.toChange===8,r.returned));
+restore(fresh);await addRun('queued',s2Rows(freshCases).slice(0,2).map(x=>JSON.parse(x.data).id));
+r=await run('apply');
+check('a queued run that uses only other cases does not block apply',()=>assert.ok(r.summary.ok===true&&r.summary.changed===8&&r.summary.verified===8,r.returned));
+restore(fresh);
+{
+ const v2=clone(s7);v2.cases=[{...v2.cases[0],externalKey:'syn-s7-franchise-v2:role:cmo'}];
+ assert.equal((await evalServer.importCases(owner,v2,by,generator.tree)).created,1);
+}
+r=await run('check');
+check('a same-campaign key that only shares the spec id prefix (syn-s7-franchise-v2:) is ignored',()=>assert.ok(r.summary.ok===true&&r.summary.found===8&&r.summary.ignored===1,r.returned));
 restore(fresh);
 {
  const copy=clone(s7);copy.cases=[{...copy.cases[0],externalKey:'syn-s7-copy:role:cmo'}];
@@ -179,29 +220,98 @@ check('a mixed-state apply ends with all 8 verified',()=>assert.equal(r.summary.
 check('a mixed-state apply leaves the 3 already-changed rows byte-identical',()=>assert.deepEqual(changedIds(mixed,caseRows()),s7Ids.slice(3)));
 check('a mixed-state apply ends with the same expectations as a clean apply',()=>{const now=Object.fromEntries(parsed(caseRows()).map(c=>[c.id,c]));for(const id of s7Ids)assert.equal(JSON.stringify(now[id].expectations),JSON.stringify(appliedCases[id].expectations),id)});
 
-// f) 중간 실패: 4번째 POST가 500(쓰기 없음) 또는 쓴 뒤 응답을 잃음. 그 자리에서 멈추고, 다시 apply하면 나머지를 끝낸다.
-for(const [kind,status,written] of [['500',500,3],['lost',0,4]]){
+// f) 중간 실패: 4번째 POST. 4xx는 서버가 쓰기 전에 거부했으니 그 건은 그대로다. 5xx·응답 없음·읽을 수 없는 응답은 서버가 이미 썼을 수 있어 '바뀌었을 수도'라고 알린다.
+// 어느 쪽이든 그 자리에서 멈추고, 다시 apply하면 D1을 새로 읽어 쓴 건은 already로 세고 나머지를 끝낸다.
+const REJECTED_RE=/거부.*바뀌지 않았습니다/,MAYBE_RE=/바뀌었을 수도/;
+for(const [kind,status,written,pattern] of [
+ ['inuse',409,3,REJECTED_RE],
+ ['409body',409,3,REJECTED_RE],
+ ['500',500,3,/서버 오류.*바뀌었을 수도/],
+ ['502after',502,4,/서버 오류.*바뀌었을 수도/],
+ ['unlock',500,4,/서버 오류.*바뀌었을 수도/],
+ ['lost',0,4,/응답을 받지 못해.*바뀌었을 수도/],
+ ['truncated',200,4,/응답을 읽지 못해.*바뀌었을 수도/],
+ ['shapeless',200,4,/응답을 읽지 못해.*바뀌었을 수도/],
+]){
  restore(fresh);
  const res=await run('apply',{fail:4,kind});
  const failedId=res.summary.failed[0]?.id;
- check(`a ${kind} failure on the 4th update stops with ok false and a reason`,()=>assert.ok(res.summary.ok===false&&/멈췄습니다/.test(res.summary.reason||'')&&res.posts===4,res.returned));
+ check(`a ${kind} failure on the 4th update stops with ok false and the matching reason`,()=>assert.ok(res.summary.ok===false&&pattern.test(res.summary.reason||'')&&res.posts===4,res.returned));
  check(`a ${kind} failure reports the failed id with status ${status} only`,()=>assert.ok(res.summary.failed.length===1&&canonical(Object.keys(res.summary.failed[0]).sort())===canonical(['id','status'])&&res.summary.failed[0].status===status&&s7Ids.includes(failedId)));
- check(`a ${kind} failure reports 3 changed ids and 5 pending ids`,()=>assert.ok(res.summary.changed===3&&res.summary.changedIds.length===3&&res.summary.pendingIds.length===5&&res.summary.pendingIds.includes(failedId)&&canonical([...res.summary.changedIds,...res.summary.pendingIds].sort())===canonical(s7Ids)));
+ check(`a ${kind} failure reports 3 changed ids and 5 pending ids`,()=>assert.ok(res.summary.changed===3&&res.summary.changedIds.length===3&&res.summary.pendingIds.length===5&&res.summary.pendingIds[0]===failedId&&canonical([...res.summary.changedIds,...res.summary.pendingIds].sort())===canonical(s7Ids)));
  check(`a ${kind} failure leaves ${written} S7 rows written and S2 untouched`,()=>{const now=caseRows();assert.equal(changedIds(freshCases,now).length,written);assert.deepEqual(s2Rows(now),s2Rows(freshCases))});
+ check(`a ${kind} failure: the reason matches D1 for the failed id (${written===4?'written':'not written'})`,()=>{const row=parsed(caseRows()).find(c=>c.id===failedId);assert.equal(canonical(row.expectations.industry),canonical(written===4?TO:FROM));assert.ok(written===4?MAYBE_RE.test(res.summary.reason):true)});
+ if(kind==='409body')check('a rejected update does not echo the server error body or = ? & %',()=>assert.ok(!res.lines[0].includes('가상분식머신')&&!res.lines[0].includes('모의 거부')&&!/[=?&%]/.test(res.lines[0]),res.lines[0]));
+ if(kind==='unlock'){
+  // 잠금 행이 남는다. 곧바로 다시 실행하면 첫 쓰기가 실제 409(잠금 충돌)로 거부된다(쓰기 전). 잠금이 만료되면(2분) 끝난다.
+  check('an unlock failure leaves the lock row behind',()=>assert.equal(sql.prepare('SELECT count(*) AS n FROM mutation_locks WHERE owner=?').get(owner).n,1));
+  const before=caseRows(),blocked=await run('apply');
+  check('an immediate rerun after an unlock failure stops at a real 409 lock conflict without writing',()=>{assert.ok(blocked.summary.ok===false&&REJECTED_RE.test(blocked.summary.reason||'')&&blocked.summary.failed[0].status===409&&blocked.posts===1&&blocked.summary.already===4&&blocked.summary.changed===0,blocked.returned);assert.deepEqual(caseRows(),before)});
+  sql.prepare('UPDATE mutation_locks SET expires_at=0').run();
+ }
  const again=await run('apply');
  check(`after a ${kind} failure a second apply completes the rest`,()=>assert.ok(again.summary.ok===true&&again.summary.changed===8-written&&again.summary.already===written&&again.summary.verified===8,again.returned));
  check(`after a ${kind} failure the final rows equal a clean apply`,()=>{const now=Object.fromEntries(parsed(caseRows()).map(c=>[c.id,c]));for(const id of s7Ids)assert.equal(JSON.stringify(now[id].expectations),JSON.stringify(appliedCases[id].expectations),id)});
 }
 
-// f-2) 확인 실패(모의 서버 이상): 갱신 응답의 업종 밖 키가 달라지면 그 자리에서 멈추고, 다시 읽은 값이 어긋나면 ok false로 끝난다.
+// f-2) 응답 확인(모의 서버 이상): 갱신 응답의 업종 밖 키가 달라지거나 업종이 목표 값이 아니면 그 자리에서 멈춘다.
 restore(fresh);
 r=await run('apply',{fail:4,kind:'tamper'});
 check('a response whose other expectations keys differ stops the loop at that case',()=>assert.ok(r.summary.ok===false&&/예상과 달라/.test(r.summary.reason||'')&&r.posts===4&&r.summary.changed===3&&r.summary.failed.length===1&&r.summary.failed[0].status===200,r.returned));
 r=await run('apply');
 check('after a tampered response a second apply finds the stored row correct and completes',()=>assert.ok(r.summary.ok===true&&r.summary.already===4&&r.summary.changed===4&&r.summary.verified===8,r.returned));
 restore(fresh);
-r=await run('apply',{tamper:s7Ids[3]});
-check('a re-read that does not match the first read ends with ok false and 7 verified',()=>assert.ok(r.summary.ok===false&&/다시 읽은/.test(r.summary.reason||'')&&r.summary.changed===8&&r.summary.verified===7,r.returned));
+r=await run('apply',{fail:4,kind:'tamperIndustry'});
+check('a response whose industry is not the target stops the loop at that case',()=>assert.ok(r.summary.ok===false&&/예상과 달라/.test(r.summary.reason||'')&&r.posts===4&&r.summary.changed===3&&r.summary.failed.length===1&&r.summary.failed[0].status===200,r.returned));
+
+// f-3) 쓰기 직전 다시 읽기: 처음 읽은 뒤 그 케이스가 바뀌었으면(다른 탭·세션) 그 건은 쓰지 않고 멈춘다. 이미 쓴 건은 그대로다.
+// 실제 동시 편집: 두 번째 건을 쓰기 직전에 소유자가 실제 update_case로 금지 표현을 하나 더한다. 스니펫이 처음 읽은 값으로 덮어쓰면 안 된다.
+restore(fresh);
+{
+ const target=listOrder[1],extraTerm='동시 편집 금지어',terms=[...original[target].expectations.prohibitedTerms,extraTerm];
+ const edit=async()=>{const b=await routePost({action:'update_case',id:target,expectations:{...original[target].expectations,prohibitedTerms:terms}});assert.equal(b.status,200,JSON.stringify(b.body))};
+ r=await run('apply',{fx:{id:target,nth:2,before:edit}});
+ const stored=()=>parsed(caseRows()).find(c=>c.id===target).expectations;
+ check('a concurrent edit before the pre-write read stops without writing that case',()=>assert.ok(r.summary.ok===false&&/처음 읽은 뒤/.test(r.summary.reason||'')&&r.posts===1&&r.summary.changed===1&&r.summary.changedIds[0]===listOrder[0]&&r.summary.pendingIds[0]===target&&r.summary.failed.length===0,r.returned));
+ check('the concurrent edit survives: the extra prohibited term stays and industry is still FROM',()=>assert.ok(canonical(stored().prohibitedTerms)===canonical(terms)&&canonical(stored().industry)===canonical(FROM)));
+ r=await run('apply');
+ check('a rerun after a concurrent edit completes and keeps the edited prohibited terms',()=>assert.ok(r.summary.ok===true&&r.summary.already===1&&r.summary.changed===7&&r.summary.verified===8&&canonical(stored().prohibitedTerms)===canonical(terms)&&canonical(stored().industry)===canonical(TO),r.returned));
+}
+// 모의: 쓰기 직전 읽기가 처음 읽기와 다르거나(업종이 이미 목표 값, 해시, 금지 표현) 읽히지 않는다.
+for(const [name,effect,pattern] of [
+ ['industry already at TO',{fn:b=>({...b,expectations:{...b.expectations,industry:TO}})},/처음 읽은 뒤/],
+ ['a different specHash',{fn:b=>({...b,specHash:'0'.repeat(32)})},/처음 읽은 뒤/],
+ ['emptied prohibited terms',{fn:b=>({...b,expectations:{...b.expectations,prohibitedTerms:[]}})},/처음 읽은 뒤/],
+ ['HTTP 404',{status:404},/쓰기 직전.*HTTP 404/],
+]){
+ restore(fresh);
+ const target=listOrder[2],res=await run('apply',{fx:{id:target,nth:2,...effect}});
+ check(`a pre-write read with ${name} stops before writing that case`,()=>{assert.ok(res.summary.ok===false&&pattern.test(res.summary.reason||'')&&res.posts===2&&res.summary.changed===2&&res.summary.pendingIds[0]===target&&res.summary.failed.length===0,res.returned);assert.equal(parsed(caseRows()).find(c=>c.id===target).updatedAt,original[target].updatedAt)});
+}
+
+// f-4) 쓴 뒤 다시 읽기(모의 서버 이상): 네 번째 S7 케이스의 세 번째 읽기(쓴 뒤)만 한 필드를 바꿔 돌려준다. 어느 필드든 ok false, 7건 확인으로 끝난다.
+const reread={
+ request:b=>({...b,request:{...b.request,changedAfterWrite:true}}),
+ externalKey:b=>({...b,externalKey:b.externalKey+'-x'}),
+ specHash:b=>({...b,specHash:'0'.repeat(32)}),
+ set:b=>({...b,set:'sealed'}),
+ label:b=>({...b,label:b.label+' 바뀜'}),
+ source:b=>({...b,source:'capture'}),
+ generator:b=>({...b,generator:{...b.generator,tree:'e'.repeat(40)}}),
+ campaignId:b=>({...b,campaignId:'other-campaign'}),
+ 'expectations.industry':b=>({...b,expectations:{...b.expectations,industry:FROM}}),
+ 'expectations.prohibitedTerms':b=>({...b,expectations:{...b.expectations,prohibitedTerms:[]}}),
+};
+check('every re-read field exists on the imported S7 case',()=>{for(const f of ['request','externalKey','specHash','set','label','source','generator','campaignId'])assert.ok(original[s7Ids[3]][f]!==undefined&&original[s7Ids[3]][f]!==null,f)});
+for(const [field,fn] of Object.entries(reread)){
+ restore(fresh);
+ const res=await run('apply',{fx:{id:s7Ids[3],nth:3,fn}});
+ check(`a re-read whose ${field} differs ends with ok false, 8 changed and 7 verified`,()=>assert.ok(res.summary.ok===false&&/다시 읽은/.test(res.summary.reason||'')&&res.summary.changed===8&&res.summary.verified===7,res.returned));
+}
+// 쓰기 0인 두 번째 apply도 다시 읽기가 어긋나면 ok false다(확인 기준은 8건 고정).
+restore(afterApply);
+r=await run('apply',{fx:{id:s7Ids[3],nth:2,fn:reread.specHash}});
+check('a no-op apply whose re-read does not match ends with ok false, 0 changed and 7 verified',()=>assert.ok(r.summary.ok===false&&/다시 읽은/.test(r.summary.reason||'')&&r.summary.changed===0&&r.summary.verified===7&&quiet(r),r.returned));
 
 // g) rollback: TO → FROM. 되돌린 기대 판정은 가져온 원본과 같다. 전제는 apply의 거울이다.
 restore(afterApply);
@@ -214,6 +324,7 @@ restore(fresh);
 r=await run('rollback');
 check('rollback on the imported state changes 0, counts 8 already and writes nothing',()=>assert.ok(r.summary.ok===true&&r.summary.changed===0&&r.summary.already===8&&r.summary.verified===8&&quiet(r)&&JSON.stringify(caseRows())===JSON.stringify(freshCases),r.returned));
 await aborts('rollback with an S7 case outside FROM and TO','rollback',async()=>{restore(afterApply);await setIndustry(s7Ids[6],['education'])},/기대 업종/);
+await aborts('rollback with an S7 case whose industry is TO reordered','rollback',async()=>{restore(afterApply);await setIndustry(s7Ids[2],['fnb','franchise'])},/기대 업종/);
 await aborts('rollback while a queued run uses an S7 case','rollback',async()=>{restore(afterApply);await addRun('queued',[s7Ids[7]])},/진행 중.*평가 실행/);
 
 // h) 출력: 실행마다 요약 JSON 한 줄만 찍고 돌려준다. 케이스 내용·금지 표현·사실 값·스펙 문자열·= ? & %가 없다.
@@ -225,6 +336,7 @@ const content7=[...new Set([...leaves(s7Spec.records),...s7.cases.flatMap(c=>[..
 check('the content list is not empty and includes the brand name and the prohibited terms',()=>assert.ok(content7.length>50&&content7.includes('가상분식머신')&&s7Spec.expectations.prohibitedTerms.every(t=>content7.includes(t))));
 check('printed output contains no S7 case content, spec strings, fact values or prohibited terms',()=>{const all=printed.join('\n');assert.equal(content7.find(t=>all.includes(t)),undefined)});
 check('printed output never names an industry value',()=>assert.ok(printed.every(line=>!/fnb|franchise|education/.test(line))));
+check('printed output never names the owner id or email (createdBy)',()=>assert.ok(printed.every(line=>!line.includes(owner)&&!line.includes(by.email)&&!line.includes('@'))));
 check('every snippet request is same-origin, no-store and relative to /api/eval',()=>assert.ok(calls.every(c=>c.credentials==='same-origin'&&c.cache==='no-store'&&c.url.startsWith('/api/eval'))));
 check('every snippet POST is JSON update_case',()=>assert.ok(calls.filter(c=>c.method==='POST').every(c=>c.contentType==='application/json'&&JSON.parse(c.body).action==='update_case')));
 
@@ -251,6 +363,7 @@ const okApply=runs.find(x=>x.summary.mode==='apply'&&x.summary.ok&&x.summary.cha
 check('the doc shows two output examples (success and stop)',()=>assert.equal(examples.length,2));
 check('the success example has the same keys and value kinds as a real apply summary',()=>assert.equal(shape(examples[0]),shape(okApply.summary)));
 check('the stop example has the same keys and value kinds as a real stop summary',()=>assert.equal(shape(examples[1]),shape(stopped.summary)));
+check('the stop example reason is the reason a real 500 stop prints',()=>assert.equal(examples[1].reason,stopped.summary.reason));
 check('the doc key table names every summary key',()=>{const table=section('s7-keys');for(const k of new Set([...Object.keys(okApply.summary),...Object.keys(stopped.summary)]))assert.ok(table.includes('`'+k+'`'),k)});
 check('the doc examples carry no real case id and none of = ? & %',()=>{const text=JSON.stringify(examples);assert.ok(!s7Ids.some(id=>text.includes(id))&&!/[=?&%]/.test(text))});
 
