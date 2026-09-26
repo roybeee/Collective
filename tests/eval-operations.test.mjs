@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {pureLoader} from '../scripts/eval/load-ts.mjs';
+const {operationsSummary}=await pureLoader(process.cwd())('lib/eval-operations.ts');
+const secret='DO_NOT_EXPOSE_FROZEN_INPUT_OR_OUTPUT';
+const one={id:'case-1',kind:'role',role:'cmo',set:'sealed',label:secret,request:{content:secret},expectations:{prohibitedTerms:[secret]}};
+const run={id:'run-1',label:'S8',status:'completed',variant:'active',usedTokens:10,createdAt:'2026-09-26T00:00:00Z',results:[{caseId:one.id,status:'completed',label:secret,graders:[{reason:secret}]}],regrades:[{id:'grade-1',at:'now',gradersVersion:'v1',totals:{completed:1},cases:[{output:secret}]}],pair:{unit:'channel.offline',candidateVersionId:'candidate',candidateSet:{content:secret}}};
+let n=0;const check=(name,fn)=>{fn();n++};
+const result=operationsSummary([one],[run,{...run,id:'deleted',deleted:{at:'now'}}]);
+check('frozen content, labels and case grading never leave summary',()=>assert.ok(!JSON.stringify(result).includes(secret)));
+check('deleted runs excluded',()=>assert.equal(result.runs.length,1));
+check('case response is an allowlist',()=>assert.deepEqual(Object.keys(result.cases[0]).sort(),['id','kind','role','set']));
+check('regrade totals and identity remain available',()=>assert.equal(result.runs[0].regrade.id,'grade-1'));
+check('progress and tokens remain exact',()=>assert.equal(result.runs[0].completed,1));
+check('source is not mutated',()=>assert.equal(run.results[0].label,secret));
+console.log(JSON.stringify({passed:n}));

@@ -30,7 +30,7 @@ const view=r=>r&&{status:r.status,reason:r.reason,link:r.link};
 // --- 3단계와 라벨 ----------------------------------------------------------------------
 check('status labels are the three user-facing stages',featureStatusLabels,{available:'사용 가능',blocked:'조건 부족',unimplemented:'미구현'});
 const rows=featureRows(full());
-check('row keys are unique and in display order',rows.map(r=>r.key),['brand','ai','text','review','metrics','worker','png','buffer','measurement','franchise','pos-csv','pos-auto','video','ads']);
+check('row keys are unique and in display order',rows.map(r=>r.key),['brand','ai','text','review','quality-ops','metrics','worker','png','buffer','measurement','franchise','pos-csv','pos-auto','video','ads']);
 ok('every row uses one of the three stages',rows.every(r=>['available','blocked','unimplemented'].includes(r.status)));
 ok('the required rows are present by label',['HERMES 연결','조사 작업자 연결','PNG 정보 카드','Instagram 예약 발행(Buffer)','성과 자동 수집','POS 주문 CSV 가져오기'].every(label=>rows.some(r=>r.label.includes(label))));
 check('video, ads and POS auto collection are not implemented',['video','ads','pos-auto'].map(k=>row(full(),k).status),['unimplemented','unimplemented','unimplemented']);
