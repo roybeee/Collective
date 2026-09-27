@@ -8,13 +8,14 @@
 //    '다음 할 일'은 AI 연결을 마친 워크스페이스에만 보이므로, 실제 /api/workspace 응답을 미리 받아 연결 상태(configured)만 참으로 바꿔 돌려준다(mocked 연결, real 할 일).
 // 6) R6d-2 소재 실험 선별(유입·비용 탭): '플랫폼 보고, 원장 리드 아님'이 첫 줄, 계획(오늘 시작) → 결과(판정·중간 확인 경고) → 확인 층 표본 부족 → 취소.
 // 7) R7a 공공 벤치마크 탭: 고정 문구, 키 없음 막힘(적재 409, 외부 호출 0), 가상 키 저장 → 적재 버튼 열림(누르지 않음) → 키 지우기. 공공데이터포털은 호출하지 않는다.
+// 8) R15b-2 모집 카드 묶음: 템플릿 → 저장 → 승인 → PNG 내려받기(1080×1350·1080×1920, 카드 수만큼), 쓸 수 없는 코드 400.
 // 9) R9a 너처링: 탭 안내·AI 초안 409(연결 없음)·정보성·광고성 템플릿 저장·정보 요청 → 보낸 뒤 기록(요청당 1회)·광고성 기록 막힘·외부 요청 0.
 // 직원 역할 화면(비용·가져오기 영역 없음)은 legacy 헤더 요청자가 늘 소유자라 여기서 재현할 수 없다. 실제 이메일 세션 직원으로 e2e/email-auth.spec.ts에서 본다.
 // 근거: real Chromium·빌드 결과·로컬 D1(wrangler --local) / mocked 인증(legacy 로그인 헤더). 요청 가로채기는 쓰지 않는다(docs/E2E.ko.md 규칙).
 // 모든 값은 가상이다(브랜드는 시드 브랜드 ofd, 이름 김가상·이테스트, 전화 010-0000-12xx, 이메일 *@example.com). 결과는 COLLECTIVE 휴리스틱 · 법률 자문 아님.
 import {createHash} from 'node:crypto';
-import {readFileSync} from 'node:fs';
-import {test, expect, type Browser, type Page, type Response, type TestInfo} from '@playwright/test';
+import {readFileSync,writeFileSync} from 'node:fs';
+import {test, expect, type Browser, type Download, type Page, type Response, type TestInfo} from '@playwright/test';
 
 const IDENTITY_HEADER = 'oai-authenticated-user-id';
 const BRAND = 'ofd';
@@ -566,6 +567,101 @@ test('R7a 공공 벤치마크: 고정 문구가 먼저, 키 없음 막힘(외부
   await context.close();
 });
 
+// 8) R15b-2 모집 카드 묶음: 템플릿 넣기 → 카드 4장 원문 저장(게이트 200) → 승인 → 대기기간 확인 뒤 'PNG 내려받기'가 규격별로 카드 수만큼 PNG를 내려받는다.
+//    PNG는 서명·IHDR 크기(1080×1350, 1080×1920)를 본다. 브라우저 BarcodeDetector가 있으면 QR 카드를 읽어 링크가 원문과 같은지도 본다(없으면 건너뛴 사실을 주석으로 남긴다).
+//    쓸 수 없는 코드(발급하지 않은 코드)의 카드 묶음은 승인이 400 card_qr_invalid다.
+const pngSize = (bytes: Buffer) => ({signature: bytes.subarray(0, 8).toString('hex'), width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20)});
+test('R15b-2 모집 카드 묶음: 템플릿 → 승인 → PNG 내려받기(두 규격), 쓸 수 없는 코드 400', async ({browser}, testInfo) => {
+  test.setTimeout(150_000);
+  const owner = `e2e-fr-r15b-${testInfo.project.name}-${Date.now()}`;
+  const {context, page} = await ownerPage(browser, testInfo, owner);
+  const campaignId = await prepareFranchise(page, `가상 가맹 모집 R15b ${testInfo.project.name}`);
+  const issued = await franchise(page, 'code_issue', {channel: 'expo', label: '가상 박람회 카드'});
+  expect(issued.status, JSON.stringify(issued.body)).toBe(200);
+  const code = (issued.body.result as {code: string}).code;
+  const link = `https://ofd.example.kr/franchise?utm_content=${code}`;
+  const cardBody = ['■ 1장 [의견]', '매장에서 매일 굽는 우유 도넛 브랜드입니다.', '', '■ 2장', '가맹 절차와 지원 내용은 상담에서 서면으로 안내합니다.', '', '■ 3장', '정보공개서를 먼저 받고 충분히 검토하세요.', '', '■ 4장', '가맹 문의', `QR ${link}`].join('\n');
+
+  // 1) 모집 자료 탭: 유형 '모집 카드 묶음(PNG)'을 고르면 안내 문구가 보이고, 템플릿 넣기로 카드 4장 뼈대가 들어간다.
+  await page.goto(`/?view=franchise&brand=${BRAND}&tab=assets`);
+  await page.getByRole('button', {name: '새 모집 자료', exact: true}).click();
+  const sheet = page.getByRole('dialog');
+  await sheet.getByRole('combobox', {name: /모집 캠페인/}).selectOption(campaignId);
+  await sheet.getByRole('combobox', {name: '자료 유형', exact: true}).selectOption('card_bundle');
+  await expect(sheet.getByText(/카드 묶음: '■ 1장'부터 차례로 3~5장/)).toBeVisible();
+  const bodyBox = sheet.getByRole('textbox', {name: '원문', exact: true});
+  await expect(bodyBox).toHaveValue(/■ 4장\n가맹 문의\nQR https:\/\//);
+  await shot(page, testInfo, 'r15b-1-template');
+
+  // 2) 원문을 채워 저장하면 v1 초안이 되고, 게이트는 막는 사유가 없다.
+  await bodyBox.fill(cardBody);
+  const saved = page.waitForResponse(franchiseAction('asset_save'));
+  await sheet.getByRole('button', {name: '초안 저장', exact: true}).click();
+  const savedResponse = await saved;
+  expect(savedResponse.status()).toBe(200);
+  const asset = (await savedResponse.json() as {result: {assetId: string; version: number; bodyHash: string}}).result;
+  await expect(sheet.getByText('v1 초안을 저장했습니다.', {exact: true})).toBeVisible();
+  await expect(sheet.getByText('현재 사실 기준으로 막는 사유가 없습니다.', {exact: true})).toBeVisible();
+
+  // 3) 승인(API, 승인 화면 자체는 #186 여정이 본다).
+  const view = await (await page.request.get(`/api/franchise?view=asset&brandId=${BRAND}&assetId=${asset.assetId}`)).json() as {waitReview: {version: string; candidates: unknown[]}; checklist: {version: string; items: {id: string}[]}};
+  const checklistInput = {version: view.checklist.version, checked: view.checklist.items.map(i => i.id)};
+  const approved = await franchise(page, 'asset_approve', {assetId: asset.assetId, version: asset.version, bodyHash: asset.bodyHash, checklist: checklistInput,
+    waitReview: {version: view.waitReview.version, confirmed: true, candidates: view.waitReview.candidates.length}});
+  expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+  await page.reload();
+  await page.getByRole('button', {name: /모집 카드 묶음\(PNG\) v1 열기/}).click();
+
+  // 4) 확인란 전에는 PNG 버튼이 잠기고, 확인 뒤 피드 규격 PNG 4장을 내려받는다.
+  const feedButton = sheet.getByRole('button', {name: 'PNG 내려받기(1080×1350 피드)', exact: true});
+  const storyButton = sheet.getByRole('button', {name: 'PNG 내려받기(1080×1920 스토리)', exact: true});
+  await expect(feedButton).toBeDisabled();
+  await sheet.getByRole('checkbox', {name: /문장 \d+개를 읽었고/}).check();
+  await expect(feedButton).toBeEnabled();
+  const downloads: Download[] = [];
+  page.on('download', d => downloads.push(d));
+  const exported = page.waitForResponse(franchiseAction('asset_export'));
+  await feedButton.click();
+  expect((await exported).status()).toBe(200);
+  await expect(sheet.getByText('PNG 4장(1080×1350 피드)을 내려받았습니다. 내보내기 기록 1건을 남겼습니다.', {exact: true})).toBeVisible();
+  await expect.poll(() => downloads.length).toBe(4);
+  const feed = await Promise.all(downloads.map(async d => ({name: d.suggestedFilename(), bytes: readFileSync(await d.path())})));
+  expect(feed.map(x => x.name)).toEqual([1, 2, 3, 4].map(i => `${asset.assetId}-v1-feed-${i}.png`));
+  for (const x of feed) expect(pngSize(x.bytes)).toEqual({signature: '89504e470d0a1a0a', width: 1080, height: 1350});
+  feed.forEach((x, i) => writeFileSync(`e2e/artifacts/franchise-r15b-card-${i + 1}-${testInfo.project.name}.png`, x.bytes));
+  await shot(page, testInfo, 'r15b-2-feed');
+
+  // 5) 스토리 규격도 4장, 1080×1920.
+  downloads.length = 0;
+  const exported2 = page.waitForResponse(franchiseAction('asset_export'));
+  await storyButton.click();
+  expect((await exported2).status()).toBe(200);
+  await expect.poll(() => downloads.length).toBe(4);
+  for (const d of downloads) expect(pngSize(readFileSync(await d.path()))).toEqual({signature: '89504e470d0a1a0a', width: 1080, height: 1920});
+  await expect(sheet.getByText('내보내기 2회', {exact: true})).toBeVisible();
+
+  // 6) QR 카드(4장)를 브라우저 판독기로 읽는다(있을 때만).
+  const decoded = await page.evaluate(async b64 => {
+    const Detector = (globalThis as unknown as {BarcodeDetector?: new (o: {formats: string[]}) => {detect: (s: ImageBitmap) => Promise<{rawValue: string}[]>}}).BarcodeDetector;
+    if (!Detector) return null;
+    const blob = await (await fetch(`data:image/png;base64,${b64}`)).blob();
+    const found = await new Detector({formats: ['qr_code']}).detect(await createImageBitmap(blob));
+    return found.map(x => x.rawValue);
+  }, feed[3].bytes.toString('base64'));
+  if (decoded === null) testInfo.annotations.push({type: 'not_run', description: 'BarcodeDetector 없음: QR 판독은 PR 작성 때 OpenCV로 따로 확인'});
+  else expect(decoded).toEqual([link]);
+
+  // 7) 발급하지 않은 코드의 카드 묶음은 승인이 400 card_qr_invalid다.
+  const bad = await franchise(page, 'asset_save', {campaignId, type: 'card_bundle', factRefs: [], body: cardBody.replace(code, 'RZZZZZZZ')});
+  expect(bad.status, JSON.stringify(bad.body)).toBe(200);
+  const badAsset = bad.body.result as {assetId: string; version: number; bodyHash: string};
+  const badView = await (await page.request.get(`/api/franchise?view=asset&brandId=${BRAND}&assetId=${badAsset.assetId}`)).json() as {waitReview: {version: string; candidates: unknown[]}};
+  const refused = await franchise(page, 'asset_approve', {assetId: badAsset.assetId, version: badAsset.version, bodyHash: badAsset.bodyHash, checklist: checklistInput,
+    waitReview: {version: badView.waitReview.version, confirmed: true, candidates: badView.waitReview.candidates.length}});
+  expect(refused.status).toBe(400);
+  expect(reasonCodes(refused.body)).toEqual(['card_qr_invalid']);
+  await context.close();
+});
 // 9) R9a 너처링: '너처링' 탭 첫 줄이 '앱은 보내지 않음', HERMES 연결이 없으면 AI 초안은 409 안내(모의 연결 없음), 정보성 템플릿 저장 → 리드 상세에서 정보 요청 기록 → 템플릿으로 보낸 뒤 기록 → 같은 요청은 다시 고를 수 없음.
 //    광고성 템플릿은 저장되지만 리드 상세의 발송 기록 선택지에서 막혀 있다(R9b 전). 앱의 외부 발송은 없다(요청은 /api/franchise뿐).
 test('R9a 너처링: 템플릿 저장 → 정보 요청 → 보낸 뒤 기록(요청당 1회), 광고성 기록 막힘', async ({browser}, testInfo) => {

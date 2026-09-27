@@ -11,6 +11,8 @@ import {Textarea} from '@/components/ui/textarea';
 import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select';
 import {Sheet,SheetContent,SheetHeader,SheetTitle,SheetDescription} from '@/components/ui/sheet';
 import {toKstDate,kstDateOf} from '@/lib/franchise-rules';
+// R15b-2: 카드 묶음 PNG는 브라우저에서 그린다(판정은 서버, 렌더러는 자리 계산·그리기만).
+import {downloadCardBundle,CARD_SIZES,CARD_SIZE_KEYS,type CardSize} from '@/lib/franchise-card-render';
 import type {WorkspaceData} from '@/lib/client';
 import {useAccount} from './account-context';
 import {franchiseGet,problemOf,messageOf,ProblemBox,Disclaimer,Section,WarningLines,FranchiseLoadError,kst,roleLabel,saveText,copyText,stringWarnings,sendAttempt,followUpOf,reasonCodes,errorIs,
@@ -25,7 +27,7 @@ export type AssetSummary={assetId:string;type:string;typeLabel:string;campaignId
  latest:{version:number;status:Status;bodyHash:string;review:Review;approval:{by:string;role:string;at:string}|null;exportCount:number;lastExportAt:string|null;placements:{label:string;confirmedAt:string}[];updatedAt:string};
  versions:{version:number;status:Status;exportCount:number}[]};
 export type FactOption={id:string;version:number;key:string;label:string;line:string;hasSource:boolean};
-export type AssetsView={assets:AssetSummary[];campaigns:{id:string;title:string}[];types:{type:string;label:string}[];templates:{startup_page:string;event_deck:string};templateFactRefs:Ref[];costFactsMissing:boolean;
+export type AssetsView={assets:AssetSummary[];campaigns:{id:string;title:string}[];types:{type:string;label:string}[];templates:{startup_page:string;event_deck:string;card_bundle?:string};templateFactRefs:Ref[];costFactsMissing:boolean;
  facts:FactOption[];branch:string|null;h7Notice:string|null;enabled:boolean;role:string;rules:{checklistVersion:string};disclaimer:string};
 export type AssetRecord={id:string;campaignId:string;type:string;version:number;body:string;bodyHash:string;factRefs:Ref[];status:Status;
  approval:{by:string;role:string;at:string;bodyHash:string;checklist:{version:string;checked:string[]}}|null;placements:{label:string;confirmedAt:string}[];
@@ -41,6 +43,9 @@ export type WaitCandidate={line:number;start:number;end:number};
 export const ASSET_STATUS_LABELS:Readonly<Record<Status,string>>={draft:'초안',approved:'승인됨',retired:'폐기'};
 export const REVIEW_REASON_LABELS:Readonly<Record<string,string>>={fact_changed:'근거 사실 변경',version_changed:'정보공개서 버전 변경'};
 export const BODY_MAX=20000,FACT_REFS_MAX=20,LABEL_MAX=100,PLACEMENTS_MAX=20;
+// R15b-2 카드 묶음 원문 안내(판정은 서버가 한다).
+export const CARD_HELP="카드 묶음: '■ 1장'부터 차례로 3~5장, 카드마다 220자·10줄 이하(QR 카드 90자·4줄). 수치는 근거로 고른 사실의 값 그대로만 씁니다(날짜·시각·대표 전화번호 제외). QR 줄은 'QR https://창업 페이지 주소?utm_content=모집 코드' 한 줄이고 모집 코드는 '유입·비용' 탭에서 발급합니다.";
+export const CARD_EXPORT_NOTE='PNG는 승인한 원문을 브라우저에서 카드마다 그린 파일입니다. 내려받은 묶음은 사람이 직접 올립니다. 인쇄·게시 전에 QR을 한 번 찍어 보세요.';
 export const EXPORT_NOTE='복사·내려받기마다 내보내기 기록이 1건씩 남습니다. 내보낸 원문은 승인한 원문과 같은 바이트입니다.';
 export const RETIRE_CONFIRM='이 판을 폐기합니다. 폐기한 판은 내보내거나 행사에 새로 연결할 수 없고 되돌릴 수 없습니다. 승인·내보내기·게시 기록은 증빙으로 남습니다.';
 export const DRAFT_REPLACE_NOTE='초안을 다시 저장하면 바로 앞 초안 판은 새 판으로 바뀝니다(승인·내보내기 기록이 있는 판은 남습니다).';
@@ -133,7 +138,8 @@ const resultOf=(r:PostResult)=>(r.body.result??{}) as Json;
 const Blockers=({items}:{items:readonly string[]})=><>{items.map(b=><p key={b} className="subtle-note">{b}</p>)}</>;
 
 // ── 탭 본체 ──
-export function FranchiseAssets({brandId,admin,artifacts,onStatus,initial}:{brandId:string;admin:boolean;artifacts:readonly Artifact[];onStatus:()=>void;initial?:AssetsView}){
+export type CardBrand={name:string;color?:string};
+export function FranchiseAssets({brandId,brand,admin,artifacts,onStatus,initial}:{brandId:string;brand?:CardBrand;admin:boolean;artifacts:readonly Artifact[];onStatus:()=>void;initial?:AssetsView}){
  const me=useAccount()?.id??null;
  const [list,setList]=useState<AssetsView|null>(initial??null),[error,setError]=useState(''),[open,setOpen]=useState<{assetId:string|null}|null>(null);
  const load=useCallback(async(signal?:AbortSignal)=>{
@@ -159,14 +165,14 @@ export function FranchiseAssets({brandId,admin,artifacts,onStatus,initial}:{bran
    </li>})}</ul>:<p className="subtle-note">아직 모집 자료가 없습니다.</p>}
    <Disclaimer/>
   </>}
-  {open&&list&&<AssetSheet key={open.assetId??'new'} brandId={brandId} assetId={open.assetId} list={list} admin={admin} artifacts={artifacts} onClose={()=>setOpen(null)} onChanged={()=>void load()} onStatus={onStatus}/>}
+  {open&&list&&<AssetSheet key={open.assetId??'new'} brandId={brandId} brand={brand} assetId={open.assetId} list={list} admin={admin} artifacts={artifacts} onClose={()=>setOpen(null)} onChanged={()=>void load()} onStatus={onStatus}/>}
  </div>;
 }
 
 // ── 상세 시트: 보기·편집·승인 단계(대화상자 안의 대화상자 대신 시트 안 모드) ──
 type Mode='view'|'edit'|'approve';
 export type SaveOutcome='ok'|'source_invalid'|'failed';
-export function AssetSheet({brandId,assetId,list,admin,artifacts,onClose,onChanged,onStatus,initial,initialMode}:{brandId:string;assetId:string|null;list:AssetsView;admin:boolean;artifacts:readonly Artifact[];
+export function AssetSheet({brandId,brand,assetId,list,admin,artifacts,onClose,onChanged,onStatus,initial,initialMode}:{brandId:string;brand?:CardBrand;assetId:string|null;list:AssetsView;admin:boolean;artifacts:readonly Artifact[];
  onClose:()=>void;onChanged:()=>void;onStatus:()=>void;initial?:AssetDetailView;initialMode?:Mode}){
  const me=useAccount()?.id??null,who=(id:string,role:string)=>id===me?'나':roleLabel(role);
  const [id,setId]=useState(assetId),[version,setVersion]=useState<number|null>(null),[view,setView]=useState<AssetDetailView|null>(initial??null);
@@ -221,14 +227,25 @@ export function AssetSheet({brandId,assetId,list,admin,artifacts,onClose,onChang
   fail(r);
   const codes=reasonCodes(r);if(codes.includes('hash_mismatch')||codes.includes('checklist_outdated')||codes.includes('wait_review_outdated')){setApproveKey(k=>k+1);void load()}
  }
- async function exportAs(how:'copy'|'download',waitConfirmed:boolean){
+ async function exportAs(how:'copy'|'download',waitConfirmed:boolean,size?:CardSize){
   if(!view)return;setFallback(null);
   const r=await run('asset_export',{assetId:view.asset.id,version:view.asset.version,mode:how,...waitReviewInput(view,waitConfirmed)});
   if(r.status!==200){fail(r);if(reasonCodes(r).includes('wait_review_outdated'))void load();return}
+  if(size){await deliverCards(r,size);void load();onChanged();return}
   const out=await deliverExport(r.body,how);
   if(!out)setProblem({error:'내보낸 원문을 받지 못했습니다. 새로고침한 뒤 다시 시도하세요.'});
   else{setFallback(out.fallback);setMessage(out.message);setWarnings(stringWarnings(r))}
   void load();onChanged();
+ }
+ // 카드 묶음 PNG: 응답 body(승인 원문)만 그린다. 그리기가 실패하면 파일을 하나도 내려받지 않고 문제 상자에 알린다(내보내기 기록은 이미 남았다).
+ async function deliverCards(r:PostResult,size:CardSize){
+  const b=r.body;
+  if(!view||typeof b.body!=='string'){setProblem({error:'내보낸 원문을 받지 못했습니다. 새로고침한 뒤 다시 시도하세요.'});return}
+  try{
+   const n=await downloadCardBundle(b.body,{assetId:view.asset.id,version:view.asset.version,size,brand:brand??{name:''}});
+   setMessage(b.replayed===true?'같은 요청을 다시 받았습니다(내보내기 기록은 늘지 않았습니다).':`PNG ${n}장(${CARD_SIZES[size].label})을 내려받았습니다. 내보내기 기록 1건을 남겼습니다.`);
+   setWarnings(stringWarnings(r));
+  }catch(e){setProblem({error:`PNG를 만들지 못했습니다: ${(e as Error).message} (내보내기 기록은 남았습니다.)`})}
  }
  async function place(label:string,on:string):Promise<boolean>{
   if(!view)return false;
@@ -254,13 +271,13 @@ export function AssetSheet({brandId,assetId,list,admin,artifacts,onClose,onChang
      onCancel={()=>{setConflict(false);if(id===null)onClose();else setMode('view')}} onRestart={()=>{setConflict(false);setEditorKey(k=>k+1)}}/>
     :view&&g?(mode==='approve'&&g.showApprove?<ApprovalStep key={`${view.asset.id}:${view.asset.version}:${view.asset.bodyHash}:${approveKey}`} view={view} busy={busy} blockers={g.blockers} onApprove={(c,w)=>void approve(c,w)} onCancel={()=>setMode('view')}/>
      :<AssetBody brandId={brandId} view={view} g={g} admin={admin} artifacts={artifacts} busy={busy} now={now} fallback={fallback} who={who} on={{version:n=>{setVersion(n===view.latestVersion?null:n);setMode('view')},edit:()=>{setConflict(false);setEditorKey(k=>k+1);setMode('edit')},
-      approve:()=>setMode('approve'),resave:()=>void resave(),exportAs:(how,w)=>void exportAs(how,w),place,retire:()=>void retire(),closeFallback:()=>setFallback(null)}}/>):null}
+      approve:()=>setMode('approve'),resave:()=>void resave(),exportAs:(how,w,size)=>void exportAs(how,w,size),place,retire:()=>void retire(),closeFallback:()=>setFallback(null)}}/>):null}
    {(message||problem||warnings.length>0)&&<div className="franchise-status">{message&&<p role="status">{message}</p>}<WarningLines items={warnings}/><ProblemBox problem={problem}/></div>}
   </div>
  </SheetContent></Sheet>;
 }
 
-type BodyActions={version:(n:number)=>void;edit:()=>void;approve:()=>void;resave:()=>void;exportAs:(how:'copy'|'download',waitConfirmed:boolean)=>void;place:(label:string,on:string)=>Promise<boolean>;retire:()=>void;closeFallback:()=>void};
+type BodyActions={version:(n:number)=>void;edit:()=>void;approve:()=>void;resave:()=>void;exportAs:(how:'copy'|'download',waitConfirmed:boolean,size?:CardSize)=>void;place:(label:string,on:string)=>Promise<boolean>;retire:()=>void;closeFallback:()=>void};
 function AssetBody({brandId,view,g,admin,artifacts,busy,now,fallback,who,on}:{brandId:string;view:AssetDetailView;g:AssetGates;admin:boolean;artifacts:readonly Artifact[];busy:boolean;now:string;fallback:string|null;who:(id:string,role:string)=>string;on:BodyActions}){
  const a=view.asset,source=a.source,range=placementRange(view,now),changed=view.drift.filter(d=>d.changed),gone=view.enabled&&latestOf(view)&&a.status!=='retired'&&view.campaign===null;
  return <>
@@ -331,10 +348,12 @@ export function WaitConfirm({view,checked,onChange,id}:{view:AssetDetailView;che
  return <div className="field"><label className="franchise-inline"><input id={id} type="checkbox" checked={checked} aria-describedby={`${id}-note`} onChange={e=>onChange(e.target.checked)}/>{` ${WAIT_CONFIRM_TEXT(n)}`}</label>
   <small id={`${id}-note`}>{WAIT_NOTE}</small></div>;
 }
-function ExportControls({view,busy,onExport}:{view:AssetDetailView;busy:boolean;onExport:(how:'copy'|'download',waitConfirmed:boolean)=>void}){
- const [ok,setOk]=useState(false),off=busy||!ok;
+function ExportControls({view,busy,onExport}:{view:AssetDetailView;busy:boolean;onExport:(how:'copy'|'download',waitConfirmed:boolean,size?:CardSize)=>void}){
+ const [ok,setOk]=useState(false),off=busy||!ok,cards=view.asset.type==='card_bundle';
  return <div className="form-stack"><WaitConfirm view={view} checked={ok} onChange={setOk} id="export-wait-confirm"/>
-  <div className="franchise-bar"><Button disabled={off} onClick={()=>onExport('copy',ok)}>복사</Button><Button variant="outline" disabled={off} onClick={()=>onExport('download',ok)}>내려받기(.txt)</Button></div><p className="subtle-note">{EXPORT_NOTE}</p></div>;
+  <div className="franchise-bar"><Button disabled={off} onClick={()=>onExport('copy',ok)}>복사</Button><Button variant="outline" disabled={off} onClick={()=>onExport('download',ok)}>내려받기(.txt)</Button>
+   {cards&&CARD_SIZE_KEYS.map(size=><Button key={size} variant="outline" disabled={off} onClick={()=>onExport('download',ok,size)}>{`PNG 내려받기(${CARD_SIZES[size].label})`}</Button>)}</div>
+  <p className="subtle-note">{EXPORT_NOTE}</p>{cards&&<p className="subtle-note">{CARD_EXPORT_NOTE}</p>}</div>;
 }
 export function ApprovalStep({view,busy,blockers,onApprove,onCancel,initialChecked,initialWaitConfirmed}:{view:AssetDetailView;busy:boolean;blockers:readonly string[];onApprove:(checked:ReadonlySet<string>,waitConfirmed:boolean)=>void;onCancel:()=>void;initialChecked?:readonly string[];initialWaitConfirmed?:boolean}){
  const [checked,setChecked]=useState<ReadonlySet<string>>(()=>new Set(initialChecked??[])),[waitOk,setWaitOk]=useState(initialWaitConfirmed===true);
@@ -363,7 +382,9 @@ export function ApprovalStep({view,busy,blockers,onApprove,onCancel,initialCheck
 // ── 편집기(edit 모드): 상태는 편집 모드에 들어갈 때 한 번만 초기화하고, 보기를 다시 읽어도 입력을 지우지 않는다 ──
 export function AssetEditor({list,artifacts,detail,busy,enabled,conflict,onSave,onCancel,onRestart}:{list:AssetsView;artifacts:readonly Artifact[];detail:AssetDetailView|null;busy:boolean;enabled:boolean;conflict:boolean;
  onSave:(payload:Json)=>Promise<SaveOutcome>;onCancel:()=>void;onRestart:()=>void}){
- const templateOf=(t:string)=>t==='startup_page'||t==='event_deck'?list.templates[t]:'',first=list.types[0]?.type??'';
+ const templateOf=(t:string)=>t==='startup_page'||t==='event_deck'?list.templates[t]:t==='card_bundle'?list.templates.card_bundle??'':'',first=list.types[0]?.type??'';
+ // 창업비용 표가 있는 템플릿만 비용 사실을 근거로 미리 고른다(카드 묶음 템플릿은 사실 칸을 비워 둔다).
+ const costTemplate=(t:string)=>t==='startup_page'||t==='event_deck';
  const [type,setType]=useState(()=>detail?detail.asset.type:first),[campaignId,setCampaignId]=useState(()=>detail?detail.asset.campaignId:'');
  const [body,setBody]=useState(()=>detail?detail.asset.body:templateOf(first));
  const [picked,setPicked]=useState<ReadonlySet<string>>(()=>new Set(detail?detail.asset.factRefs.map(r=>r.id):templateOf(first)?list.templateFactRefs.map(r=>r.id):[]));
@@ -377,12 +398,12 @@ export function AssetEditor({list,artifacts,detail,busy,enabled,conflict,onSave,
  function changeType(next:string){
   if(!body.trim()||body===templateOf(type)){
    const t=templateOf(next),kept=new Set([...picked].filter(x=>!auto.has(x)));setBody(t);setNote('');
-   if(t)withTemplateRefs(kept,new Set());else{setPicked(kept);setAuto(new Set())}
+   if(t&&costTemplate(next))withTemplateRefs(kept,new Set());else{setPicked(kept);setAuto(new Set())}
   }
   else setNote('템플릿 넣기로 바꿀 수 있습니다.');
   setType(next);
  }
- function applyTemplate(){if(body.trim()&&!window.confirm('현재 원문을 템플릿으로 바꿉니다. 계속할까요?'))return;setBody(templateOf(type));withTemplateRefs(picked,auto);setNote('')}
+ function applyTemplate(){if(body.trim()&&!window.confirm('현재 원문을 템플릿으로 바꿉니다. 계속할까요?'))return;setBody(templateOf(type));if(costTemplate(type))withTemplateRefs(picked,auto);setNote('')}
  function insert(text:string,over:string){const next=insertAt(body,text,bodyRef.current?.selectionStart);if(next===null){setNote(over);return false}setBody(next);setNote('');return true}
  function toggleFact(x:string,on:boolean){const next=new Set(picked);if(on)next.add(x);else next.delete(x);setPicked(next);if(auto.has(x)){const a=new Set(auto);a.delete(x);setAuto(a)}}
  function importSeed(){const a=artifacts.find(x=>x.id===seed);if(!a)return;setSource({artifactId:a.id,version:a.version,title:a.title});if(withContent)insert(a.content,'길이 초과로 본문은 넣지 않았습니다.')}
@@ -403,7 +424,8 @@ export function AssetEditor({list,artifacts,detail,busy,enabled,conflict,onSave,
    {detail?<p className="subtle-note">{`모집 캠페인: ${detail.campaign?.title??'캠페인 삭제됨'}`}</p>
     :<label className="field"><span>모집 캠페인</span><NativeSelect required value={campaignId} onChange={e=>{setCampaignId(e.target.value);setSeed('');setSource(null)}}><NativeSelectOption value="">캠페인 선택</NativeSelectOption>{list.campaigns.map(c=><NativeSelectOption key={c.id} value={c.id}>{c.title}</NativeSelectOption>)}</NativeSelect></label>}
   </div>
-  {(type==='startup_page'||type==='event_deck')&&<div className="franchise-bar"><Button type="button" size="sm" variant="outline" onClick={applyTemplate}>템플릿 넣기</Button>{list.costFactsMissing&&<small>{COST_MISSING}</small>}</div>}
+  {(type==='startup_page'||type==='event_deck'||type==='card_bundle')&&<div className="franchise-bar"><Button type="button" size="sm" variant="outline" onClick={applyTemplate}>템플릿 넣기</Button>{list.costFactsMissing&&costTemplate(type)&&<small>{COST_MISSING}</small>}</div>}
+  {type==='card_bundle'&&<p className="subtle-note">{CARD_HELP}</p>}
   {note&&<p className="subtle-note" role="status">{note}</p>}
   <label className="field"><span>원문</span><Textarea autoComplete="off" ref={bodyRef} aria-label="원문" aria-describedby="asset-body-count" maxLength={BODY_MAX} rows={14} className="min-h-[40vh]" value={body} onChange={e=>setBody(e.target.value)}/>
    <small id="asset-body-count">{`${body.length.toLocaleString('ko-KR')} / 20,000자`}</small></label>
