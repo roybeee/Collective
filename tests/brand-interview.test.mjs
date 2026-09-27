@@ -1,0 +1,50 @@
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {testRuntime} from './helpers/runtime.mjs';
+let network=[],failSubmit=false,output='',providerStatus='completed';
+const rt=testRuntime(async(url,init={})=>{
+ network.push({url:String(url),init});
+ if(String(url).endsWith('/v1/capabilities'))return Response.json({features:{}});
+ if(String(url).endsWith('/v1/runs')){if(failSubmit)throw new Error('timeout');return Response.json({run_id:'interview-run',status:'queued'})}
+ if(String(url).endsWith('/stop'))return Response.json({object:'hermes.run',run_id:'interview-run',status:'cancelled'});
+ if(String(url).endsWith('/v1/runs/interview-run'))return Response.json({object:'hermes.run',run_id:'interview-run',status:providerStatus,output,usage:{total_tokens:20}});
+ throw new Error('Unexpected request '+url);
+});
+Object.assign(rt.env,{AUTH_MODE:'email',AUTH_ORIGIN:'https://app.test'});
+const server=await rt.load('lib/server.ts'),route=await rt.load('app/api/archive/interview/route.ts'),core=await rt.load('lib/brand-interview.ts'),archive=await rt.load('app/api/archive/route.ts');
+const owner='workspace',admin='a'.repeat(64),member='b'.repeat(64);await server.seedBrands(owner);
+for(const [id,role,token] of [['admin','admin',admin],['member','member',member]]){
+ rt.sql.prepare('INSERT INTO auth_users(id,email,workspace_owner,role,status,created_at) VALUES(?,?,?,?,?,?)').run(id,id+'@test.invalid',owner,role,'active',Date.now());
+ rt.sql.prepare('INSERT INTO auth_sessions VALUES(?,?,?,?)').run(createHash('sha256').update(token).digest('hex'),id,Date.now()+3600000,Date.now());
+}
+const headers=token=>({cookie:'__Host-collective_session='+token,origin:'https://app.test','content-type':'application/json'});
+const call=async(data,token=member)=>{const r=await route.POST(new Request('https://app.test/api/archive/interview',{method:'POST',headers:headers(token),body:JSON.stringify({brandId:'oda',...data})}));return {status:r.status,data:await r.json()}};
+let passed=0;const check=(name,v)=>{assert.ok(v,name);passed++};
+check('8 required sections',core.interviewSections.length===8);check('24 additional questions',core.interviewSections.reduce((n,s)=>n+s.followups.length,0)===24);check('missing questions recommended',core.recommendedQuestions({})[0].section==='story');
+check('audio mismatch rejected',!!core.interviewAudioProblem('x.mp3',new TextEncoder().encode('plain text')));check('webm recognized',!core.interviewAudioProblem('x.webm',new Uint8Array([26,69,223,163])));
+let r=await call({action:'save',answers:{story:'동네 사람을 위한 브랜드입니다.'},attachments:[],role:'점주',title:'인터뷰'});check('member can save draft',r.status===200);let s=r.data;check('candidate only',s.status==='candidate');
+check('stale write rejected',(await call({action:'save',id:s.id,version:0,answers:{},attachments:[]})).status===409);
+check('cross-brand read rejected',(await call({action:'start',id:s.id,version:s.version,brandId:'ofd'})).status===404);
+check('missing attachment rejected',(await call({action:'save',id:s.id,version:s.version,answers:{},attachments:['foreign']})).status===400);
+check('oversized answer rejected',(await call({action:'save',id:s.id,version:s.version,answers:{story:'a'.repeat(5001)},attachments:[]})).status===400);
+check('unauth rejected',(await call({action:'save',answers:{},attachments:[]},'')).status===401);
+const csrf=await route.POST(new Request('https://app.test/api/archive/interview',{method:'POST',headers:{...headers(member),origin:'https://evil.test'},body:'{}'}));check('CSRF rejected',csrf.status===403);
+check('missing Hermes blocks start',(await call({action:'start',id:s.id,version:s.version})).status===409);
+const secret=await server.encrypt(JSON.stringify({provider:'hermes',key:'test-key',endpoint:'https://hermes.example.com'}));rt.sql.prepare('INSERT INTO settings(owner,secret,model,updated_at) VALUES(?,?,?,?)').run(owner,secret,'HERMES',server.stamp());
+failSubmit=true;r=await call({action:'start',id:s.id,version:s.version});s=r.data;check('timeout preserves recoverable request',s.interview.job.status==='uncertain');
+const firstKey=network.at(-1).init.headers['Idempotency-Key'];
+const beforeCancel=network.length;check('uncertain cancel does not create a run',(await call({action:'cancel',id:s.id,version:s.version})).status===409&&network.length===beforeCancel);
+check('pending edits rejected',(await call({action:'save',id:s.id,version:s.version,answers:{},attachments:[]})).status===409);
+failSubmit=false;providerStatus='running';r=await call({action:'poll',id:s.id,version:s.version});s=r.data;check('restart recovers same submission key',network.findLast(n=>n.url.endsWith('/v1/runs')).init.headers['Idempotency-Key']===firstKey);
+check('provider details private',!('providerId'in s.interview.job)&&!('evidence'in s.interview.job)&&!('endpoint'in s.interview.job));
+const count=network.filter(n=>n.url.endsWith('/v1/runs')).length;await call({action:'start',id:s.id,version:s.version});check('duplicate start does not submit',network.filter(n=>n.url.endsWith('/v1/runs')).length===count);
+output=JSON.stringify({sections:[{section:'story',answer:'동네 고객 중심 브랜드',quote:'동네 사람을 위한 브랜드입니다.',sourceId:s.id}]});providerStatus='completed';r=await call({action:'poll',id:s.id,version:s.version});s=r.data;check('grounded proposal accepted',s.interview.proposals.length===1);check('no automatic overwrite',s.interview.answers.story==='동네 사람을 위한 브랜드입니다.');
+r=await call({action:'apply',id:s.id,version:s.version,selected:[0]});s=r.data;check('append preserves manual text',s.interview.answers.story.includes('동네 사람을 위한 브랜드입니다.')&&s.interview.answers.story.includes('동네 고객 중심 브랜드'));check('proposal consumed',s.interview.proposals.length===0);check('double apply rejected',(await call({action:'apply',id:s.id,version:s.version,selected:[0]})).status===400);
+const ungrounded=()=>core.parseInterviewProposals(JSON.stringify({sections:[{section:'goals',answer:'매출 100억',quote:'없는 원문',sourceId:s.id}]}),{[s.id]:s.content});assert.throws(ungrounded);passed++;
+const review=await archive.POST(new Request('https://app.test/api/archive',{method:'POST',headers:headers(member),body:JSON.stringify({action:'review_source',brandId:'oda',id:s.id,version:s.version,status:'confirmed'})}));check('member cannot confirm',review.status===403);
+const confirmed=await archive.POST(new Request('https://app.test/api/archive',{method:'POST',headers:headers(admin),body:JSON.stringify({action:'review_source',brandId:'oda',id:s.id,version:s.version,status:'confirmed'})}));check('admin can confirm',confirmed.status===200);
+s=await server.readRecord(owner,'brand_source',s.id);r=await call({action:'save',id:s.id,version:s.version,answers:{story:'수정 답변'},attachments:[]});s=r.data;check('edit invalidates confirmation',s.status==='candidate');
+const audio=server.uid();await server.recordStatement(owner,'brand_source',audio,{id:audio,brandId:'oda',status:'candidate',content:'',fileName:'voice.webm',objectKey:'private/audio'},'oda').run();r=await call({action:'save',id:s.id,version:s.version,answers:s.interview.answers,attachments:[audio]});s=r.data;
+check('audio consent required',(await call({action:'transcribe',id:s.id,version:s.version,sourceId:audio,consent:false})).status===400);
+r=await call({action:'transcribe',id:s.id,version:s.version,sourceId:audio,consent:true});check('unsupported audio capability explicit',r.status===409&&r.data.error.includes('음성 전사 연결'));check('no guessed audio endpoint called',network.every(n=>!n.url.endsWith('/v1/audio/transcriptions')));
+console.log(JSON.stringify({passed}));
