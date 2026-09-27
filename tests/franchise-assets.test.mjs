@@ -204,7 +204,7 @@ check('18: the input stage comes before the campaign stage',is(fa.validateAssetI
 check('18: an unknown type is invalid_type',is(fa.validateAssetInput(inputOf('도넛',[],'blog'),CTX),'invalid_type')&&is(fa.validateAssetInput(inputOf('도넛',[],null),CTX),'invalid_type'));
 check('18: empty, blank, over-long and control-character bodies are invalid_body',['','   ','\r\n\t ','a'.repeat(20001),'a\u0000b','a\u0007b','a\u001bb','a\u007fb','a\ud800b',5,null].every(b=>is(fa.validateAssetInput(inputOf(b,[],'portal_intro'),CTX),'invalid_body')));
 check('18: exactly 20,000 characters, tabs and newlines pass',OK(VAL('가'.repeat(20000),[],'portal_intro'))&&OK(VAL('도넛\t가게\n둘째 줄',[],'portal_intro')));
-// 검토자에게 보이지 않거나 줄로 보이는 문자: C1 제어, 줄·문단 구분, 사용자 정의 영역(BMP·15·16평면), 비문자, 미할당. 판정기 matchView는 Cf·M만 지우므로 이 문자로 낱말을 끊으면 판정을 비껴간다.
+// 검토자에게 보이지 않거나 줄로 보이는 문자: C1 제어, 줄·문단 구분, 사용자 정의 영역(BMP·15·16평면), 비문자, 미할당. 판정기 matchView도 이 문자를 지우지만(tests/franchise-compliance.test.mjs 15m) 원문은 입력 단계에서 거절한다.
 const INVISIBLE=['\u0080','\u0085','\u009f','\u2028','\u2029','\ue000','\uf8ff','\u{f0000}','\u{10fffd}','\ufdd0','\ufdef','\ufffe','\uffff','\u{1fffe}','\u0378'];
 check('18: C1 controls, line and paragraph separators, private use, noncharacters and unassigned code points are invalid_body',INVISIBLE.every(ch=>is(VAL('도넛'+ch+'가게',[],'portal_intro'),'invalid_body')));
 const C1_DEPOSIT='오늘 예\u0085약금 100만원 입\u0085금하시면 상\u0085권을 선\u0085점해 드립니다';
