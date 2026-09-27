@@ -51,7 +51,7 @@ const CAUSAL=/때문|덕분|효과|개선됐|개선되|악화|원인|인해|초�
 check('the screen uses no causal wording',!CAUSAL.test(text)&&!CAUSAL.test(html(null).replace(/<[^>]+>/g,' ')));
 check('firstPassText follows the sample rule',ui.firstPassText({n:0,approvedFirst:0,firstPassRate:null})==='미측정'&&ui.firstPassText({n:4,approvedFirst:4,firstPassRate:null})==='표본 부족 (n=4)');
 const panel=readFileSync('app/usage-panel.tsx','utf8');
-check('the usage panel renders the table from the usage response',/<QualityTable table=\{data\.qualityTable\}\/>/.test(panel)&&/qualityTable:data\.qualityTable&&Array\.isArray\(data\.qualityTable\.rows\)/.test(panel));
+check('the usage panel renders the table only for owners and admins and only when the response carries it',/\{canAdmin&&data\.qualityTable!==undefined&&<QualityTable table=\{data\.qualityTable\}\/>\}/.test(panel)&&/canAdmin=canChange\(useAccount\(\)\)/.test(panel)&&/qualityTable:data\.qualityTable===undefined\?undefined:/.test(panel));
 const notice=readFileSync('lib/quality-digest-queue-server.ts','utf8').match(/DIGEST_NOTICE='([^']+)'/)[1];
 check('the stored notice has no causal wording',!CAUSAL.test(notice)&&/자동 판정이 아니며/.test(notice));
 console.log(JSON.stringify({passed}));

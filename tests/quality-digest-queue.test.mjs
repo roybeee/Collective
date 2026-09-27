@@ -1,6 +1,6 @@
 // B2 2단계 워커 digest 큐 회귀(docs/QUALITY-CONSOLE.ko.md '2단계'). 실제 SQLite(node:sqlite)·실제 워커 tick·실제 사용량 라우트, 합성 데이터. 외부·모델 호출 0(mocked: fetch 스텁).
 // 순수 판정(무효율 2배 경계·기존 경보 묶기·골든 하락·예산 문턱·보존 제안·표 합치기), 스위치 꺼짐 tick 0회, 켜짐 주 1회 1건·두 번째 tick no-op, 같은 변경 중복 경보 0,
-// 다른 소유자 섞임 0, 캠페인·작업물 상태 불변, 처리 시간 기록, 실패 뒤 재시도, 사용량 표 권한(직원 200·비로그인 401)과 kind·스위치 등록을 확인한다.
+// 다른 소유자 섞임 0, 캠페인·작업물 상태 불변, 처리 시간 기록, 실패 뒤 재시도, 사용량 표 권한(직원 응답에 키 없음·관리자 있음·비로그인 401)과 kind·스위치 등록을 확인한다.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
@@ -136,19 +136,21 @@ check('before the retry time the queue stays idle',(await queue.runDigestQueue(O
 rt.sql.prepare("UPDATE records SET data=json_set(data,'$.retryAt',?) WHERE owner=? AND kind='quality_digest' AND json_extract(data,'$.status')='failed'").run(iso(Date.now()-1000),O);
 check('after the retry time the digest completes in the same row',(await queue.runDigestQueue(O,failWeek)).status==='processed'&&JSON.parse(rows('quality_digest').at(-1).data).status==='completed'&&rows('quality_digest').length===3);
 
-// 6) 사용량 화면 표: 사용량 화면 권한 그대로(비로그인 401, 직원 200), 마지막 완료 주, 다른 소유자 404가 아니라 자기 표
+// 6) 사용량 화면 표: 품질 콘솔과 같은 권한(소유자·관리자). 직원 응답에는 qualityTable 키가 없고 기존 사용량 필드는 그대로, 비로그인 401
 const get=headers=>usageRoute.GET(new Request('https://agency.test/api/usage',{headers}));
 const legacy=plain(await (await get({'oai-authenticated-user-id':O})).json()).qualityTable;
-check('the usage response carries the latest completed week table',legacy&&legacy.week===JSON.parse(rows('quality_digest').at(-1).data).week&&Array.isArray(legacy.rows)&&typeof legacy.notice==='string');
+check('the usage response carries the latest completed week table for the owner',legacy&&legacy.week===JSON.parse(rows('quality_digest').at(-1).data).week&&Array.isArray(legacy.rows)&&typeof legacy.notice==='string');
 Object.assign(rt.env,{AUTH_MODE:'email',AUTH_ORIGIN:'https://agency.test'});
 const sha=v=>createHash('sha256').update(v).digest('hex');
 const signIn=(id,role,ws)=>{const t=sha(id);rt.sql.prepare('INSERT INTO auth_users(id,email,workspace_owner,role,status,created_at) VALUES(?,?,?,?,?,?)').run(id,id+'@test.invalid',ws,role,'active',1000);rt.sql.prepare('INSERT INTO auth_sessions VALUES(?,?,?,?)').run(sha(t),id,Date.now()+60000,Date.now());return {cookie:'__Host-collective_session='+t}};
-const [anon,member,stranger]=await Promise.all([get({}),get(signIn('dq-member','member',O)),get(signIn('dq-stranger','admin',X))]);
+const [anon,member,admin,stranger]=await Promise.all([get({}),get(signIn('dq-member','member',O)),get(signIn('dq-admin','admin',O)),get(signIn('dq-stranger','admin',X))]);
 check('unauthenticated usage is a 401',anon.status===401);
-const memberTable=(await member.json()).qualityTable,strangerTable=(await stranger.json()).qualityTable;
-check('a member reads the table like the rest of the usage screen',member.status===200&&memberTable.week===legacy.week);
-check('another workspace sees only its own table',stranger.status===200&&strangerTable.rows.every(r=>r.role!=='cmo')&&!JSON.stringify(strangerTable).includes('run-now'));
-check('the table carries no artifact content, memo or email',!/실행 초안|@test\.invalid|전략/.test(JSON.stringify(memberTable)));
+const memberBody=await member.json(),adminBody=await admin.json(),strangerTable=(await stranger.json()).qualityTable;
+check('a member reads usage without the quality table key',member.status===200&&!('qualityTable' in memberBody));
+check('a member keeps every other usage field the admin gets',JSON.stringify(Object.keys(memberBody).sort())===JSON.stringify(Object.keys(adminBody).filter(k=>k!=='qualityTable').sort())&&Array.isArray(memberBody.entries)&&memberBody.entries.length===adminBody.entries.length);
+check('an admin reads the table like the quality console',admin.status===200&&adminBody.qualityTable?.week===legacy.week);
+check('another workspace admin sees only its own table',stranger.status===200&&strangerTable.rows.every(r=>r.role!=='cmo')&&!JSON.stringify(strangerTable).includes('run-now'));
+check('the table carries no artifact content, memo or email',!/실행 초안|@test\.invalid|전략/.test(JSON.stringify(adminBody.qualityTable)));
 
 // 7) 등록과 구조: 스위치·kind·기능 상태 행·워커 연결
 const catalog=plain(flags.FEATURE_FLAGS),names=Object.keys(catalog);
