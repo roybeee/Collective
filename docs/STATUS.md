@@ -3,9 +3,8 @@
 > 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 운영(갱신): `bccc845`(Sites 버전 48, tree `1ebc76f`, [기록](releases/2026-09-27-bccc845.md)). #202 내부 표기 정규화·레인 R #200 게시 완료.
+- 운영(갱신): `b64bc06`(Sites 버전 49, tree `0d42612`, [기록](releases/2026-09-27-b64bc06.md)). 레인 R #203·#204·레인 G #206 게시 완료.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
-- #203 · 레인 R · 보통 · 새 스위치 없음(r_franchise 기본 꺼짐). DATA-PROCESSING 3.5 적격 판정 이력 행은 레인 A 검토 통과
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
 갱신: 2026-09-27 11:23 UTC
@@ -18,6 +17,7 @@
 - 레인 A 검토(#183 R5b-2, `docs/DATA-PROCESSING.ko.md` 3.5·4.1·DP-10): **받아들임**(2026-09-27 05:37 UTC). 대조 결과: 모델 입력 경계 금지 목록에 모집 모듈 4개가 있다(`tests/franchise-model-boundary.test.mjs:62`). `recruitment_import` 행에 칸 값·머리글·연락처가 없고 매핑은 열 번호만이다(`lib/franchise-lead-import-server.ts:219-221`). 리드 `imports`에 연락처·동의 해시가 없다(`:193`). 테스트 lead-import 171·lead-import-route 66·franchise-model-boundary 28 passed(mocked). 비차단 의견 2건(레인 R 후속): ① `recruitment_import`에 `receivedRange`(접수 시각 범위)도 저장되는데 3.5 표 행에 빠져 있다. ② 이 행은 제공처 라벨·동의 증빙 해시를 파기 없이 남긴다('구현된 파기 없음'). LR-2 회신 때 보존 기한을 정하도록 8절 열린 질문에 한 줄 더하길 권한다.
 - 레인 A 검토(#194·#195 R6b·R6c, `docs/DATA-PROCESSING.ko.md` 3.5 행 2개): **받아들임**(2026-09-27 09:58 UTC). 대조 결과: 주간 보고는 1~4건 칸을 '5건 미만'으로 억제한다(`lib/franchise-report.ts` `SUPPRESS_BELOW=5`·`cell`). 리드별 증빙 묶음에 연락처·메모 값이 없고 `contactState`만 있다(`lib/franchise-report-server.ts:147`). 감사 `franchise_audit`는 365일이다(`lib/record-kinds.ts:134`). 모델 입력 경계 금지 목록에 `franchise-report*`·`app/franchise-report-panel.tsx`가 있다. 테스트 recruitment-report 56·franchise-report-ui 29·franchise-model-boundary 28 passed(mocked). 비차단 의견(레인 R 후속): 리드별 증빙 묶음은 연락처가 없어도 시스템 코드·접수 시각·제공처로 한 사람을 가리키는 가명 정보다. 3.5 행의 '외부로 가는가' 칸에 '가명 개인정보 파일이므로 내려받은 사람의 관리 책임'을 적길 권한다.
 - 레인 A 검토(#200 결정 36·#203 결정 35, DATA-PROCESSING DP-10 예외·3.5 행): **받아들임**(2026-09-27 11:23 UTC). #200: 계약 칸만 `contractCell`로 억제에서 빠지고 나머지는 `cell`(1~4건 억제), `CONTRACT_SHOWN_NOTE`에 내려받은 파일 관리 책임(`lib/franchise-report.ts:23,61,179-191`). #203: 입력 칸 밖이면 `QUALIFICATION_TEXT`, 사유는 코드만, `QUALIFICATION_LIMIT` 50, 주간 보고 적격 수는 `cell` 억제(`lib/franchise-server.ts:624-636`, `lib/franchise-report.ts:170-175`). 테스트 franchise-qualification 55·recruitment-report 56·franchise-model-boundary 29 passed(mocked). **절차 어긋남**: #200은 레인 A 검토 전에 묶음 22(Sites 버전 48)로 게시됐다(대기열 요청 줄 없이 main 머리에 실려 감). 사후 검토에서 문제는 없었다. 앞으로 DATA-PROCESSING을 고친 레인 R PR은 대기열 요청 줄이 있을 때만 싣는다.
+- 레인 A 리뷰(#216 레인 G B3-2 Reflector, 2026-09-27 12:12 UTC): 막을 문제 없음. 레인 A 파일은 export·import 수준이다. 인용 검사(`citedDecisions`)를 거치고 검토 메모 원문은 보내지 않으며, 경보 중에도 생성은 되고 승인만 409이고, 학습 GET은 바뀌지 않았다. PR 트리 테스트 reflector 68·playbook-signals 48·playbook-attach-eval 35 passed(mocked). 운영 ODA는 교정 3건이라 `not_eligible`이어서 real 검증은 뒤로 미룬다. 스위치 `b3_reflector`를 켜기 전에 대표의 전용 프로필 메모리 off 확인이 필요하다. 병합은 레인 G·대표 결정 경로로 한다(레인 A가 대신 병합하지 않음).
 - 확인 필요(레인 R): `tests/check-prompts.test.mjs`가 macOS(대소문자 무시 파일 시스템)에서 `channel.leadad.json`·`channel.leadAd` 변형 충돌로 로컬 실패한다(Linux CI는 통과).
 - 제안(레인 Q): 계약 읽기는 최상위 `}` 하나 누락도 '잘린 JSON'으로 거절한다(#112 방침, `tests/role-output.test.mjs:26`). 출력 한도에 못 미친 응답(`incomplete` 아님)에 한해 최상위 `}` 하나를 채워 읽을지 검토 바란다(이번 실패 1건이 운영이면 invalid_output으로 약 1.6만 토큰 폐기).
 - A8: 대표 지시(2026-09-27 "B2 2단계 빼고 남은 개발을 모두 진행하라", 세션 29f7af 전달)로 A3 종료 조건을 기다리지 않고 착수했다. 설계 [CUSTOMER-REPORT](CUSTOMER-REPORT.ko.md).
@@ -127,7 +127,7 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-27 11:18 UTC (Claude A 세션: 묶음 22 `bccc845` Sites 버전 48 게시·tree 확인)
+마지막 갱신: 2026-09-27 12:12 UTC (Claude A 세션: 묶음 23 `b64bc06` Sites 버전 49 게시·tree 확인)
 
 ## 현재 운영 상태
 
