@@ -76,7 +76,7 @@ check('the old S7 expectation (fnb only) now fails recruitment output that franc
  const t='가맹 상담 신청자에게 정보공개서 제공 일정을 먼저 안내한다. 쇼룸에서는 떡볶이 대표 메뉴 시식을 한다.';
  assert.equal(leak(t,['fnb']).status,'fail');assert.equal(leak(t,['franchise','fnb']).status,'pass');
 });
-check('the grading version carries the franchise-industry tag at the end',()=>assert.ok(GRADERS_VERSION.endsWith('+root-brace+channels-close+franchise-industry')));
+check('the grading version carries the franchise-industry tag at the end',()=>assert.ok(GRADERS_VERSION.endsWith('+root-brace+channels-close+franchise-industry+revision-labels')));
 check('the franchise dictionary finishes quickly on 40,000-character inputs',()=>{
  for(const text of ['가맹'.repeat(20000),'가맹 '.repeat(13000),'예비 '.repeat(13000),'정보 '.repeat(13000),('가맹점 '.repeat(30)+'\n').repeat(400)]){
   const t=Date.now();leak(text,'fnb');assert.ok(Date.now()-t<1500,text.slice(0,6)+' '+(Date.now()-t));
