@@ -3,13 +3,8 @@
 > 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 운영(갱신): `f56909d`(Sites 버전 45, tree `2ff1fad`, [기록](releases/2026-09-27-f56909d.md)). #178 과반 게이트·레인 R #175~#177·A1 v4 후보 #179 게시 완료.
+- 운영(갱신): `1f2fac1`(Sites 버전 46, tree `d8b7763`, [기록](releases/2026-09-27-1f2fac1.md)). #189 보상 계보 브랜드 범위 수정·레인 R #180·#182·#183·#186·#188 게시 완료.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
-- #180 · 레인 R · 보통 · 새 스위치 없음(R2 3차-a 대기기간 절 단위 구성 판정, `fr-claims@2026-09-27.2`, 가맹 프로필 브랜드의 캡션·발행·모집 자료 판정에서 오기재 차단이 늘고 경고 인용 오탐이 줆, GRADERS_VERSION 그대로)
-- #182 · 레인 R · 보통 · 새 스위치 없음(R2 3차-b 대기기간 구성 판정 보강, `fr-claims@2026-09-27.3`, 테스트 문자열 5,130개에서 3차-a 대비 판정 변화 0건, 새 문장 모양의 오기재 차단이 늚)
-- #183 · 레인 R · 보통 · 새 스위치 없음(r_franchise 기본 꺼짐). DATA-PROCESSING 3.5·4.1·DP-10 변경은 레인 A 검토 통과(아래 레인 A 칸)
-- #186 · 레인 R · 보통 · 새 스위치 없음(r_franchise 기본 꺼짐). 모집 자료 승인·내보내기에 대기기간 우회 문장 확인란이 생기고 확인이 없으면 409(`fr-assets@2026-09-27.3`). 화면과 서버가 함께 게시돼야 한다
-- #188 · 레인 R · 보통 · 새 스위치 없음(r_franchise 기본 꺼짐). R5c 가맹 화면 '유입·비용' 탭(모집 코드·모집 비용·리드 파일 가져오기, 리드 코드·귀속·보드 필터, 행사 비용 연결). 화면만이고 서버는 #177·#183과 함께 실려야 동작한다
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
 갱신: 2026-09-27 06:48 UTC
@@ -17,7 +12,7 @@
 - A6 종료 조건: **passed · real**(2026-09-27 00:56 KST). 이문동점 영업시간 자료 요청 `dr-f08c16186f08`이 사실 확정으로 closed. [관찰 기록](observations/2026-09-27-lane-a-a6-end-condition.md). 운영 스위치 `a6_data_requests` 켜짐.
 - A3 종료 조건 run: 5회째 **passed · real**(run `86349108`, 운영 `7851185` Sites 버전 44, 32,653토큰). 국밥 12 pass·0 fail, 수학학원 11 pass·0 fail(`copy_pack_variants` pass). 두 원문 모두 보정 없이 바로 JSON이었다(`+channels-close`는 이 run에서 쓰이지 않음). 1~4회 실패 기록과 결정은 [카피 팩](COPY-PACK.ko.md#a3-종료-조건-run-기록-4회). 스위치 `a3_copy_pack` 켜기는 대표 결정으로 따로 한다.
 - B4 중단 규칙: 대표 결정(2026-09-27 "오늘 바로 진행해")으로 10-15 판정을 앞당겼다. 주문 CSV 0건 → **blocked**(L3·L4 운영 사용·KPI 주장 보류, 코드·L0·L1·개선 루프 대장 유지). 스위치 `b4_reward_lineage` 켜짐(대표 지시 D9), `b3_playbook_signals` 켜짐(B3 승인). [관찰 기록](observations/2026-09-27-lane-a-b4-stop-rule.md).
-- B3 4단계 종료 조건: 1~7단계 **passed · real**, 8단계 **passed · real**(캠페인 범위 `byRule`에 `@2`·대표 판정 1건). 규칙 `playbook:24e71fa4` 대표 승인 → active v2(경보 해제 뒤, 만료 11-26). ODA CMO 재작성 작업물 `ai-4fb50c2c3…` 끝에 규칙 v2 표기, 스냅샷 `operatorPreferences@2`, 개선 루프 후보 등록. 브랜드 범위는 작업물 판정(brandId null)을 빠뜨리는 결함이 있어 고침(PR `fix/reward-lineage-brand-scope-decisions`, 게시 필요). [관찰 기록](observations/2026-09-27-lane-a-b3-stage4.md). 스위치 `a3_copy_pack` 켜짐(대표 지시 09-27 "승인한다 진행하라", 04:49:06 UTC).
+- B3 4단계 종료 조건: 1~7단계 **passed · real**, 8단계 **passed · real**(캠페인 범위 `byRule`에 `@2`·대표 판정 1건). 규칙 `playbook:24e71fa4` 대표 승인 → active v2(경보 해제 뒤, 만료 11-26). ODA CMO 재작성 작업물 `ai-4fb50c2c3…` 끝에 규칙 v2 표기, 스냅샷 `operatorPreferences@2`, 개선 루프 후보 등록. 브랜드 범위 결함은 #189로 고쳐 Sites 버전 46에서 확인(`?brandId=oda` byRule `@2` 3/1/2). [관찰 기록](observations/2026-09-27-lane-a-b3-stage4.md). 스위치 `a3_copy_pack` 켜짐(대표 지시 09-27 "승인한다 진행하라", 04:49:06 UTC).
 - 레인 A 검토(#183 R5b-2, `docs/DATA-PROCESSING.ko.md` 3.5·4.1·DP-10): **받아들임**(2026-09-27 05:37 UTC). 대조 결과: 모델 입력 경계 금지 목록에 모집 모듈 4개가 있다(`tests/franchise-model-boundary.test.mjs:62`). `recruitment_import` 행에 칸 값·머리글·연락처가 없고 매핑은 열 번호만이다(`lib/franchise-lead-import-server.ts:219-221`). 리드 `imports`에 연락처·동의 해시가 없다(`:193`). 테스트 lead-import 171·lead-import-route 66·franchise-model-boundary 28 passed(mocked). 비차단 의견 2건(레인 R 후속): ① `recruitment_import`에 `receivedRange`(접수 시각 범위)도 저장되는데 3.5 표 행에 빠져 있다. ② 이 행은 제공처 라벨·동의 증빙 해시를 파기 없이 남긴다('구현된 파기 없음'). LR-2 회신 때 보존 기한을 정하도록 8절 열린 질문에 한 줄 더하길 권한다.
 - 확인 필요(레인 R): `tests/check-prompts.test.mjs`가 macOS(대소문자 무시 파일 시스템)에서 `channel.leadad.json`·`channel.leadAd` 변형 충돌로 로컬 실패한다(Linux CI는 통과).
 - 제안(레인 Q): 계약 읽기는 최상위 `}` 하나 누락도 '잘린 JSON'으로 거절한다(#112 방침, `tests/role-output.test.mjs:26`). 출력 한도에 못 미친 응답(`incomplete` 아님)에 한해 최상위 `}` 하나를 채워 읽을지 검토 바란다(이번 실패 1건이 운영이면 invalid_output으로 약 1.6만 토큰 폐기).
@@ -93,7 +88,7 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-27 04:46 UTC (Claude A 세션: 묶음 19 `f56909d` Sites 버전 45 게시·tree 확인)
+마지막 갱신: 2026-09-27 08:17 UTC (Claude A 세션: 묶음 20 `1f2fac1` Sites 버전 46 게시·tree 확인)
 
 ## 현재 운영 상태
 

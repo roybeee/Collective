@@ -31,3 +31,7 @@
 - 대표가 새 CMO 작업물을 06:41:36 UTC에 수정 요청으로 판정했다. 메모: SEO(구글맵·홈페이지)와 GEO/AEO 카테고리 검토 필요.
 - `GET /api/reward-lineage?campaignId=37da2d59…`의 `byRule`: `playbook:24e71fa4…@2`(operator_preference), 1차 판정 1·수정 요청 1, `insufficient`. **8단계 passed · real.**
 - 같은 시각 `?brandId=oda`는 `byRule`·`byPromptVersion`이 모두 비었다. 원인은 작업물 판정의 `brandId`가 null(캠페인만 기록)인데, 브랜드 범위가 판정 `brandId`로 걸렀기 때문이다(`lib/reward-lineage-server.ts` `readDecisions`). 레인 A 결함이라 고쳤다(PR `fix/reward-lineage-brand-scope-decisions`, Red-Green 확인). 게시 뒤 브랜드 범위로 다시 본다.
+
+## 브랜드 범위 확인 (묶음 20 게시 뒤, 2026-09-27 08:0x UTC)
+- 대표 GEO 정정 요청(생성형 AI 검색 최적화) → CMO 재작성 `ai-21e8ab2c7…` → 대표 승인.
+- `GET /api/reward-lineage?brandId=oda`의 `byRule`: `playbook:24e71fa4…@2` 1차 판정 3·승인 1·수정 요청 2. 캠페인 범위와 같다. **#189 운영 확인 passed · real.**
