@@ -13,7 +13,7 @@ import {sha64,plain,DISCLAIMER} from './helpers/franchise-fixture.mjs';
 
 let fetchCalls=0;
 const rt=testRuntime(async()=>{fetchCalls++;throw new Error('외부 호출 금지')});
-const fa=await rt.load('lib/franchise-assets.ts'),ff=await rt.load('lib/franchise-facts.ts'),fr=await rt.load('lib/franchise-rules.ts'),bf=await rt.load('lib/brand-facts.ts'),jc=await rt.load('lib/franchise-compliance.ts'),wr=await rt.load('lib/franchise-wait-review.ts');
+const fa=await rt.load('lib/franchise-assets.ts'),fc=await rt.load('lib/franchise-cards.ts'),ff=await rt.load('lib/franchise-facts.ts'),fr=await rt.load('lib/franchise-rules.ts'),bf=await rt.load('lib/brand-facts.ts'),jc=await rt.load('lib/franchise-compliance.ts'),wr=await rt.load('lib/franchise-wait-review.ts');
 const passed=[];const check=(name,val)=>{assert.ok(val,name);passed.push(name)};
 const same=(a,b)=>JSON.stringify(plain(a))===JSON.stringify(b);
 const asc=(a,b)=>a<b?-1:a>b?1:0;
@@ -89,12 +89,12 @@ const src=readFileSync('lib/franchise-assets.ts','utf8');
 const IMPORTS=["import {FRANCHISE_RULES_VERSION,FRANCHISE_REVIEW_NET,isInstant,parseInstant,isDate,toKstDate,kstDateOf} from './franchise-rules';",
  "import {judgeFranchiseText,franchiseGateError,franchiseIssueLabels,mentionedFranchiseFacts,type FranchiseJudgement} from './franchise-compliance';",
  "import {factLine,footnoteIssues,franchiseFactUseIssue,versionStates,currentDisclosureVersion,FRANCHISE_FACT_MESSAGES,type VersionLite} from './franchise-facts';",
- "import {GATE_DISCLAIMER} from './franchise-gates';","import {waitReviewSummary,WAIT_REVIEW_VERSION} from './franchise-wait-review';","import {franchiseItem} from './fact-catalog';","import {isRecruitmentObjective} from './agency';","import type {BrandFact} from './brand-facts';"];
+ "import {GATE_DISCLAIMER} from './franchise-gates';","import {waitReviewSummary,WAIT_REVIEW_VERSION} from './franchise-wait-review';","import {franchiseItem} from './fact-catalog';","import {checkCardBundle,cardTemplate,parseCards,CARD_MESSAGES,CARD_WARNINGS,type CardCodeLite} from './franchise-cards';","import {isRecruitmentObjective} from './agency';","import type {BrandFact} from './brand-facts';"];
 const importLines=(src.match(/^\s*import\s.*$/gm)||[]).map(x=>x.trim());
-check('1: the module has exactly the eight specified import lines',same(importLines,IMPORTS));
+check('1: the module has exactly the nine specified import lines (R15b-2 card module)',same(importLines,IMPORTS));
 const specs=[...src.matchAll(/\bfrom\s*'([^']+)'|\bimport\s*\(\s*['"`]([^'"`]+)|\brequire\s*\(\s*['"`]([^'"`]+)/g)].map(m=>m[1]??m[2]??m[3]);
 const FORBIDDEN=['./server','./execution-server','./brand-facts-server','./franchise-facts-server','./franchise','./franchise-server','./franchise-crypto','./feature-flags','./prompt-registry','./execution-media'];
-check('1: brand-facts is a type-only import, no .ts extension, no @/ path, no forbidden module, no dynamic import',importLines.find(l=>l.includes("'./brand-facts'")).startsWith('import type ')&&specs.length===8&&specs.every(s=>s.startsWith('./')&&!s.endsWith('.ts')&&!FORBIDDEN.includes(s))&&!/\bimport\s*\(|\brequire\s*\(/.test(src)&&!src.includes("'@/"));
+check('1: brand-facts is a type-only import, no .ts extension, no @/ path, no forbidden module, no dynamic import',importLines.find(l=>l.includes("'./brand-facts'")).startsWith('import type ')&&specs.length===9&&specs.every(s=>s.startsWith('./')&&!s.endsWith('.ts')&&!FORBIDDEN.includes(s))&&!/\bimport\s*\(|\brequire\s*\(/.test(src)&&!src.includes("'@/"));
 // 모듈 참조를 TypeScript 구문 트리로도 모은다(tests/franchise-model-boundary.test.mjs parseImports와 같은 노드): 따옴표 종류, export from, 한 줄의 여러 문장, import(), require, import 타입, import =.
 const moduleRefs=(text,file='m.ts')=>{
  const out=[],sf=ts.createSourceFile(file,text,ts.ScriptTarget.Latest,false,file.endsWith('.tsx')?ts.ScriptKind.TSX:ts.ScriptKind.TS),lit=n=>n&&(ts.isStringLiteral(n)||ts.isNoSubstitutionTemplateLiteral(n))?n.text:'(opaque)';
@@ -108,10 +108,10 @@ const moduleRefs=(text,file='m.ts')=>{
  };
  visit(sf);return out;
 };
-const SPECS=['./franchise-rules','./franchise-compliance','./franchise-facts','./franchise-gates','./franchise-wait-review','./fact-catalog','./agency','./brand-facts'],srcRefs=moduleRefs(src);
-check('1: the syntax tree holds exactly the eight module references, all static imports and brand-facts type-only',same(srcRefs,SPECS.map(spec=>({kind:spec==='./brand-facts'?'import type':'import',spec}))));
+const SPECS=['./franchise-rules','./franchise-compliance','./franchise-facts','./franchise-gates','./franchise-wait-review','./fact-catalog','./franchise-cards','./agency','./brand-facts'],srcRefs=moduleRefs(src);
+check('1: the syntax tree holds exactly the nine module references, all static imports and brand-facts type-only',same(srcRefs,SPECS.map(spec=>({kind:spec==='./brand-facts'?'import type':'import',spec}))));
 const SNEAK=['export {} from "./franchise";','const a=0;import {x} from "./franchise";','import * as s from "./server";','const m=import("./feature-flags");','const r=require("./franchise-crypto");','type T=typeof import("./franchise-server");','import fs = require("./execution-server");','export * from \'./prompt-registry\';'];
-check('1: the syntax-tree check catches double quotes, export-from, mid-line imports, import(), require, import types and import =',SNEAK.every(t=>{const refs=moduleRefs(src+'\n'+t);return refs.length===9&&FORBIDDEN.includes(refs[8].spec)&&!same(refs,plain(srcRefs))}));
+check('1: the syntax-tree check catches double quotes, export-from, mid-line imports, import(), require, import types and import =',SNEAK.every(t=>{const refs=moduleRefs(src+'\n'+t);return refs.length===10&&FORBIDDEN.includes(refs[9].spec)&&!same(refs,plain(srcRefs))}));
 const code=src.replace(/^\s*\/\/.*$/gm,'');
 const CLOCK=/(?<!new\s+)\bDate\s*\(|new\s+Date\b(?!\s*\(\s*[^)\s])|\bDate\s*\[|\bDate\.(now|parse)\b|Reflect\.construct|performance\.|Math\.random|\bprocess\.|\bcrypto\.(?!subtle\.digest\()|globalThis|\beval\s*\(|\bFunction\s*\(/;
 check('2: the clock pattern catches bypass forms and allows only crypto.subtle.digest',['new Date;','new Date ()','Date()','Date["now"]()','Date.parse(x)','Reflect.construct(Date,[])','Math.random()','process.env.X','crypto.randomUUID()','crypto.getRandomValues(a)','crypto.subtle.encrypt(a)','globalThis.fetch'].every(x=>CLOCK.test(x))&&!CLOCK.test("crypto.subtle.digest('SHA-256',b)")&&!CLOCK.test('new Date(ms).getUTCDay()'));
@@ -130,8 +130,8 @@ check('5: the resolver maps @/, relative and .ts specifiers and TSX sources',res
  &&same(moduleRefs("import {A} from '@/lib/franchise-assets';\nexport const V=()=><div>{A}</div>;",'app/x.tsx'),[{kind:'import',spec:'@/lib/franchise-assets'}]));
 
 // ════ 상수 ════
-check('7: seven asset types sorted with fixed labels and a permutation for screen order',same(fa.ASSET_TYPES,['event_deck','expo_banner','first_call_script','meta_lead_ad','naver_search','portal_intro','startup_page'])&&same(fa.ASSET_TYPE_ORDER,['startup_page','portal_intro','naver_search','meta_lead_ad','expo_banner','event_deck','first_call_script'])&&same([...fa.ASSET_TYPE_ORDER].sort(asc),plain(fa.ASSET_TYPES))
- &&same(fa.ASSET_TYPE_LABELS,{startup_page:'창업 페이지 문안',portal_intro:'포털 소개문',naver_search:'네이버 검색 문안',meta_lead_ad:'메타 리드광고 문안',expo_banner:'박람회 배너·리플렛 문안',event_deck:'설명회 덱 개요·원고',first_call_script:'첫 통화 스크립트'})&&same(fa.SPOKEN_ASSET_TYPES,['event_deck','first_call_script']));
+check('7: nine asset types sorted with fixed labels and a permutation for screen order',same(fa.ASSET_TYPES,['card_bundle','event_deck','expo_banner','first_call_script','interview_video','meta_lead_ad','naver_search','portal_intro','startup_page'])&&same(fa.ASSET_TYPE_ORDER,['startup_page','portal_intro','naver_search','meta_lead_ad','expo_banner','card_bundle','event_deck','first_call_script','interview_video'])&&same([...fa.ASSET_TYPE_ORDER].sort(asc),plain(fa.ASSET_TYPES))
+ &&same(fa.ASSET_TYPE_LABELS,{startup_page:'창업 페이지 문안',portal_intro:'포털 소개문',naver_search:'네이버 검색 문안',meta_lead_ad:'메타 리드광고 문안',expo_banner:'박람회 배너·리플렛 문안',card_bundle:'모집 카드 묶음(PNG)',event_deck:'설명회 덱 개요·원고',first_call_script:'첫 통화 스크립트',interview_video:'인터뷰 영상 대본(15초)·완성본'})&&same(fa.SPOKEN_ASSET_TYPES,['event_deck','first_call_script','interview_video']));
 const PAGE_HEADINGS=['■ 왜 이 브랜드인가 [의견]','■ 창업비용 표 [사실]','■ 지원 내용 [조건·기간 병기]','■ 가맹 절차와 정보공개서 제공 뒤 대기기간 [COLLECTIVE 휴리스틱 · 법률 자문 아님]','■ 자주 묻는 질문','■ 문의 경로'];
 const DECK_HEADINGS=['■ 브랜드 이야기 [의견]','■ 메뉴 시연 또는 직영 공간 견학·시식','■ 창업비용 표 [사실]','■ 지원 [조건·기간 병기]','■ 가맹 절차와 두 대기기간 [COLLECTIVE 휴리스틱 · 법률 자문 아님]','■ 질의응답'];
 const WAIT=['정보공개서를 받은 날부터 14일(변호사·가맹거래사에게 정보공개서 자문을 받았다면 7일)이 지나기 전에는 가맹계약을 체결하거나 가맹금을 받지 않습니다.','가맹계약서안을 받은 날부터 14일(계약서 자문을 받았다면 7일)이 지나기 전에도 가맹계약을 체결하거나 가맹금을 받지 않습니다.'];
@@ -159,12 +159,12 @@ const H7={B:`분기 B(문의 수집만)입니다. 정보공개서 등록·변경
 check('9: the H7 notices are pinned with the disclaimer',same(fa.H7_NOTICES,H7));
 check('9: no checklist item requires the recommended sentences (CEO decision 2026-09-26), the wait-bypass item marks them as recommended',fa.CHECKLIST_ITEMS.every(i=>!i.text.includes('14일')&&!i.text.includes('안내합니다')&&![...WAIT,QNA].some(l=>i.text.includes(l)))&&fa.CHECKLIST_ITEMS.find(i=>i.id==='no_wait_bypass').text.endsWith('(대기기간 안내 문장은 권장).'));
 const unionIds=[...new Set([...ITEMS.flatMap(x=>x[2]),'h.fact_opinion_labels'])].sort(asc);
-check('10: asset rules carry versions, disclaimer, KST and registry rule ids',fa.ASSETS_VERSION==='fr-assets@2026-09-27.3'&&fa.CHECKLIST_VERSION==='fr-assets-checklist@2026-09-26.2'&&same(fa.ASSET_RULES,{assetsVersion:'fr-assets@2026-09-27.3',checklistVersion:'fr-assets-checklist@2026-09-26.2',rulesVersion:fr.FRANCHISE_RULES_VERSION,ruleIds:unionIds,disclaimer:DISCLAIMER,timezone:'+09:00'})&&fa.ASSET_RULES.ruleIds.every(id=>ruleIds.has(id)));
-const STATUS={asset_not_approved:409,attendance_before_event:400,block_unresolved:409,branch_not_a:409,campaign_not_recruitment:409,campaign_other_brand:400,capacity_below_applied:409,capacity_full:409,checklist_incomplete:400,checklist_outdated:409,code_duplicate:409,code_unknown:400,cost_table_missing:409,event_cancelled:409,event_started:409,fact_changed:409,fact_other_brand:400,fact_ref_missing:409,fact_revenue:409,fact_source_missing:409,fact_stale:409,fact_store_scoped:400,footnote_missing:409,h8_label_missing:409,hard_block:409,hash_mismatch:409,invalid_body:400,invalid_code:400,invalid_counts:400,invalid_event:400,invalid_fact_refs:400,invalid_input:400,invalid_placement:400,invalid_record:400,invalid_timestamp:400,invalid_type:400,not_approved:409,not_draft:409,not_exported:409,record_other_brand:400,review_needed:409,role_forbidden:403,section_duplicate:409,section_missing:409,section_order:409,section_unknown:409,spoken_revenue_figure:409,switch_off:409,version_not_current:409,wait_review_missing:409,wait_review_outdated:409};
+check('10: asset rules carry versions, disclaimer, KST and registry rule ids',fa.ASSETS_VERSION==='fr-assets@2026-09-28.5'&&fa.CHECKLIST_VERSION==='fr-assets-checklist@2026-09-26.2'&&same(fa.ASSET_RULES,{assetsVersion:'fr-assets@2026-09-28.5',checklistVersion:'fr-assets-checklist@2026-09-26.2',rulesVersion:fr.FRANCHISE_RULES_VERSION,ruleIds:unionIds,disclaimer:DISCLAIMER,timezone:'+09:00'})&&fa.ASSET_RULES.ruleIds.every(id=>ruleIds.has(id)));
+const STATUS={asset_not_approved:409,attendance_before_event:400,block_unresolved:409,branch_not_a:409,campaign_not_recruitment:409,campaign_other_brand:400,capacity_below_applied:409,capacity_full:409,card_number_unbacked:400,card_qr_invalid:400,card_structure:400,checklist_incomplete:400,checklist_outdated:409,code_duplicate:409,code_unknown:400,cost_table_missing:409,event_cancelled:409,event_started:409,fact_changed:409,fact_other_brand:400,fact_ref_missing:409,fact_revenue:409,fact_source_missing:409,fact_stale:409,fact_store_scoped:400,footnote_missing:409,h8_label_missing:409,hard_block:409,hash_mismatch:409,invalid_body:400,invalid_code:400,invalid_counts:400,invalid_event:400,invalid_fact_refs:400,invalid_input:400,invalid_placement:400,invalid_record:400,invalid_timestamp:400,invalid_type:400,not_approved:409,not_draft:409,not_exported:409,record_other_brand:400,review_needed:409,role_forbidden:403,section_duplicate:409,section_missing:409,section_order:409,section_unknown:409,spoken_revenue_figure:409,switch_off:409,version_not_current:409,wait_review_missing:409,wait_review_outdated:409};
 const FM=plain(ff.FRANCHISE_FACT_MESSAGES);
 const MESSAGES={asset_not_approved:'승인된 모집 자료 버전만 행사에 연결할 수 있습니다.',attendance_before_event:'행사일(KST) 전에는 참석·불참을 기록할 수 없습니다.',block_unresolved:'가맹 모집 규칙상 근거 사실이 필요한 표현이 남아 있습니다.',
  branch_not_a:`가맹 준비도 분기가 A(모집 가능)로 기록된 브랜드만 모집 자료를 승인·내보내고 설명회·견학·박람회를 열 수 있습니다(H7). ${DISCLAIMER}`,campaign_not_recruitment:'가맹 모집 목적 캠페인에서만 모집 자료와 행사를 만들 수 있습니다.',campaign_other_brand:'이 브랜드의 캠페인이 아닙니다.',
- capacity_below_applied:'정원은 이미 받은 신청 수보다 작게 줄일 수 없습니다.',capacity_full:'정원이 찼습니다. 신청을 더 받을 수 없습니다.',checklist_incomplete:'승인 체크리스트의 모든 항목을 확인해야 승인할 수 있습니다.',checklist_outdated:'승인 체크리스트가 바뀌었습니다. 새로고침하고 새 체크리스트로 다시 확인하세요.',
+ capacity_below_applied:'정원은 이미 받은 신청 수보다 작게 줄일 수 없습니다.',capacity_full:'정원이 찼습니다. 신청을 더 받을 수 없습니다.',card_number_unbacked:fc.CARD_MESSAGES.card_number_unbacked,card_qr_invalid:fc.CARD_MESSAGES.card_qr_invalid,card_structure:fc.CARD_MESSAGES.card_structure,checklist_incomplete:'승인 체크리스트의 모든 항목을 확인해야 승인할 수 있습니다.',checklist_outdated:'승인 체크리스트가 바뀌었습니다. 새로고침하고 새 체크리스트로 다시 확인하세요.',
  code_duplicate:'이미 신청 기록이 있는 가명 코드입니다.',code_unknown:'신청 기록에 없는 가명 코드입니다.',cost_table_missing:'창업비용 표 절에 매장 유형별 총 창업비용과 선택한 창업비용 사실의 사실 줄(유형·금액·포함·불포함)을 그대로 넣으세요.',event_cancelled:'취소된 행사입니다.',
  event_started:'시작한 행사에는 신청을 받을 수 없습니다. 현장 참석은 참석 기록으로 남기세요.',fact_changed:'선택한 사실이 변경됐거나 확정·유효 상태가 아닙니다. 새로고침 후 다시 선택하세요.',fact_other_brand:'다른 브랜드의 사실은 이 브랜드 모집 자료의 근거로 쓸 수 없습니다.',
  fact_ref_missing:'원문에 값이 나온 가맹 사실을 근거 사실로 선택하세요. 사실이 바뀌면 이 자료를 재검토하기 위해 필요합니다.',fact_revenue:FM.revenueNoAd,fact_source_missing:FM.sourceMissingInUse,fact_stale:FM.staleFact,fact_store_scoped:'지점 사실은 브랜드 모집 자료의 근거로 쓸 수 없습니다.',
@@ -179,7 +179,7 @@ const MESSAGES={asset_not_approved:'승인된 모집 자료 버전만 행사에 
  version_not_current:'자료를 저장할 때의 정보공개서 버전이 현재 등록 버전이 아닙니다. 현재 버전의 사실로 새 버전을 저장하세요.',
  wait_review_missing:"강조된 대기기간·계약·가맹금·정보공개서 문장을 읽고 '대기기간 우회 문장 없음'을 확인해야 승인·내보내기할 수 있습니다.",
  wait_review_outdated:'강조할 문장 목록이 바뀌었습니다. 새로고침하고 강조된 문장을 다시 확인하세요.'};
-check('11: 51 sorted unique codes with the fixed status table, the two recommended-line codes are gone',fa.ASSET_CODES.length===51&&['waiting_note_missing','revenue_qna_note_missing'].every(c=>!fa.ASSET_CODES.includes(c)&&!(c in fa.ASSET_CODE_STATUS)&&!(c in fa.ASSET_MESSAGES))&&fa.ASSET_CODES.every((c,i)=>i===0||fa.ASSET_CODES[i-1]<c)&&same(fa.ASSET_CODES,Object.keys(STATUS).sort(asc))&&same(fa.ASSET_CODE_STATUS,STATUS));
+check('11: 54 sorted unique codes with the fixed status table, the two recommended-line codes are gone',fa.ASSET_CODES.length===54&&['waiting_note_missing','revenue_qna_note_missing'].every(c=>!fa.ASSET_CODES.includes(c)&&!(c in fa.ASSET_CODE_STATUS)&&!(c in fa.ASSET_MESSAGES))&&fa.ASSET_CODES.every((c,i)=>i===0||fa.ASSET_CODES[i-1]<c)&&same(fa.ASSET_CODES,Object.keys(STATUS).sort(asc))&&same(fa.ASSET_CODE_STATUS,STATUS));
 check('11: every code has its fixed non-empty message',same(fa.ASSET_MESSAGES,MESSAGES)&&Object.values(MESSAGES).every(m=>m.length>0)&&same(fa.ASSET_WARNING_MESSAGES,{briefingDeckMissing:'설명회에 승인된 설명회 덱(표준 순서)을 연결하지 않았습니다.',waitingNoteMissing:W_WAIT,revenueQnaNoteMissing:W_QNA}));
 const odd=fa.validateAssetInput({type:'blog-ZZTOP',body:'\u0000비밀X',factRefs:[]},CTX);
 check('11: odd input values never reach the message',is(odd,'invalid_body','invalid_type')&&!odd.message.includes('ZZTOP')&&!odd.message.includes('비밀X')&&odd.message===MESSAGES.invalid_body+' '+MESSAGES.invalid_type);
@@ -423,7 +423,7 @@ check('R2: both bare bodies approve (200) with the full approval record and the 
 const APageBare={...plain(dPageBare),status:'approved',approval:plain(aPageBare.value.approval)},ADeckBare={...plain(dDeckBare),status:'approved',approval:plain(aDeckBare.value.approval)};
 const xPageBare=await EXP(APageBare),xDeckBare=await EXP(ADeckBare);
 check('R3: both bare bodies export their exact body (200) with the same warnings and the bumped versions',OK(xPageBare)&&xPageBare.value.body===pageBare&&same(xPageBare.warnings,[W_WAIT])&&OK(xDeckBare)&&xDeckBare.value.body===deckBare&&same(xDeckBare.warnings,[W_WAIT,W_QNA])
- &&xDeckBare.value.record.assetsVersion==='fr-assets@2026-09-27.3'&&xDeckBare.value.record.checklistVersion==='fr-assets-checklist@2026-09-26.2');
+ &&xDeckBare.value.record.assetsVersion==='fr-assets@2026-09-28.5'&&xDeckBare.value.record.checklistVersion==='fr-assets-checklist@2026-09-26.2');
 check('R3: the gate preview has no code for the bare bodies',(g=>same(g.codes,[])&&g.status===200&&g.message===null)(fa.assetGateIssues(APageBare,RGCTX))&&(g=>same(g.codes,[])&&g.status===200)(fa.assetGateIssues(ADeckBare,RGCTX)));
 const noRecWarn=r=>OK(r)&&!r.warnings.includes(W_WAIT)&&!r.warnings.includes(W_QNA);
 const DECK_FULL=await APPROVED(DECK(),['f-total'],'event_deck',CTX,'a-deck-full');
@@ -684,10 +684,42 @@ let compileThrew=false;try{ga.ID_PATTERN.compile('^.*$')}catch{compileThrew=true
 let pseudoThrew=false;try{ga.PSEUDONYM_PATTERN.compile('^.*$')}catch{pseudoThrew=true}
 check('12: compiling the exported patterns cannot loosen the module checks',compileThrew&&pseudoThrew&&same(ga.validateAssetInput({type:'portal_intro',body:'도넛',factRefs:[{id:'가',version:1}]},CTX).reasons,['invalid_fact_refs'])&&same(ga.registerDecision(e1,{code:'ab'},OPCTX).reasons,['invalid_code']));
 
+// ════ C) 카드 묶음(R15b-2): 카드 단계(400)가 내용 단계(409) 앞, 초안은 경고만 ════
+const QR_URL='https://ofd.example.kr/f?utm_content=R2345678',CODES_OK=[{code:'R2345678',brandId:'b1',retiredOn:null}];
+const CCTX={...CTX,codes:CODES_OK};
+const CARD_BODY=(x={})=>['■ 1장 [의견]',x.why??FILL_WHY,'','■ 2장 [사실]',...ff.factLine(F.total).split('\n'),FOOT,'','■ 3장 [COLLECTIVE 휴리스틱 · 법률 자문 아님]',fa.WAITING_NOTES[0],'','■ 4장','가맹 문의',...(x.noQr?[]:['QR '+(x.url??QR_URL)])].join('\n');
+const cardTpl=fa.sectionTemplate('card_bundle'),cardTplCards=plain(fc.parseCards(cardTpl).cards);
+check('C1: the card template is four cards with the two recommended wait sentences on card 3 and the placeholder QR line',cardTplCards.length===4&&same(cardTplCards[2].lines,[...fa.WAITING_NOTES])&&cardTplCards[3].qr==='https://'&&cardTplCards[2].label==='[COLLECTIVE 휴리스틱 · 법률 자문 아님]');
+const vTpl=VAL(cardTpl,[],'card_bundle',CCTX);
+check('C2: saving the empty template is allowed and warns with the card messages (no block at save)',OK(vTpl)&&[fc.CARD_MESSAGES.card_structure,fc.CARD_MESSAGES.card_qr_invalid].every(m=>vTpl.warnings.includes(m)));
+const dTpl=await DRAFT(cardTpl,[],'card_bundle',CCTX,'a-card-tpl');
+check('C3: approving the unfilled template is 400 card_qr_invalid and card_structure',is(await APP(dTpl,APPROVE_IN(dTpl),{...ACTX,codes:CODES_OK}),'card_qr_invalid','card_structure'));
+const dCard=await DRAFT(CARD_BODY(),['f-total'],'card_bundle',CCTX,'a-card');
+const aCard=await APP(dCard,APPROVE_IN(dCard),{...ACTX,codes:CODES_OK});
+check('C4: a filled bundle with a brand code in use approves (200)',OK(aCard));
+const approvedCard={...plain(dCard),status:'approved',approval:plain(aCard.value.approval)};
+const xCard=await EXP(approvedCard,{...XCTX,codes:CODES_OK});
+check('C5: the approved bundle exports its exact body',OK(xCard)&&xCard.value.body===CARD_BODY());
+check('C6: export after the code is retired (today) is 400 card_qr_invalid',is(await EXP(approvedCard,{...XCTX,codes:[{code:'R2345678',brandId:'b1',retiredOn:'2026-10-10'}]}),'card_qr_invalid'));
+check('C7: export without a code book fails closed with card_qr_invalid',is(await EXP(approvedCard,XCTX),'card_qr_invalid'));
+check('C8: another brand code is 400 card_qr_invalid',is(await EXP(approvedCard,{...XCTX,codes:[{code:'R2345678',brandId:'b2',retiredOn:null}]}),'card_qr_invalid'));
+const dNum=await DRAFT(CARD_BODY({why:'가맹점 120개를 돌파한 브랜드입니다.'}),['f-total'],'card_bundle',CCTX,'a-card-num');
+check('C9: a number that is not in the referenced facts is 400 card_number_unbacked at approval',is(await APP(dNum,APPROVE_IN(dNum),{...ACTX,codes:CODES_OK}),'card_number_unbacked'));
+check('C10: the preview gate shows the card code with 400 before the content stage',(g=>same(g.codes,['card_number_unbacked'])&&g.status===400)(fa.assetGateIssues(dNum,{...GCTX,codes:CODES_OK})));
+const dHard=await DRAFT(CARD_BODY({why:'월 순수익 500만원 보장, 가맹점 120개'}),['f-total'],'card_bundle',CCTX,'a-card-hard');
+check('C11: the card stage runs before the judge, so an unbacked number is reported before the hard block',is(await APP(dHard,APPROVE_IN(dHard),{...ACTX,codes:CODES_OK}),'card_number_unbacked'));
+const dHard2=await DRAFT(CARD_BODY({why:'월 순수익 보장'}),['f-total'],'card_bundle',CCTX,'a-card-hard2');
+check('C12: without card issues the hard block (409) still applies to a bundle',is(await APP(dHard2,APPROVE_IN(dHard2),{...ACTX,codes:CODES_OK}),'hard_block'));
+const dNoQr=await DRAFT(CARD_BODY({noQr:true}),['f-total'],'card_bundle',CCTX,'a-card-noqr');
+const aNoQr=await APP(dNoQr,APPROVE_IN(dNoQr),ACTX);
+check('C13: a bundle without a QR line approves with the no-QR warning',OK(aNoQr)&&aNoQr.warnings.includes(fc.CARD_WARNINGS.noQr)&&same(fa.assetStructureWarnings('card_bundle',CARD_BODY({noQr:true})),[fc.CARD_WARNINGS.noQr])&&same(fa.assetStructureWarnings('card_bundle',CARD_BODY()),[]));
+check('C14: other types ignore the code book and the card stage',OK(await APP(await DRAFT(PAGE(),['f-total'],'startup_page',CTX,'a-page-c14'),undefined,{...ACTX,codes:null}))&&same(fa.assetStructureWarnings('portal_intro','QR x'),[]));
+check('C15: a missing referenced fact is left to the content stage (409), not the card stage',is(await APP({...plain(dCard),factRefs:[{id:'f-gone',version:1}]},APPROVE_IN(dCard),{...ACTX,codes:CODES_OK}),'fact_changed'));
+
 // ════ 71) 사유 코드 전부·외부 호출 ════
 const missingSeen=plain(fa.ASSET_CODES).filter(c=>!seen.has(c)),missingProduced=plain(fa.ASSET_CODES).filter(c=>!produced.has(c));
 assert.deepEqual(missingSeen,[],'기대값으로 확인하지 않은 코드: '+missingSeen.join(', '));passed.push('71: all 49 codes are asserted as expected values');
-assert.deepEqual(missingProduced,[],'실제로 나오지 않은 코드: '+missingProduced.join(', '));passed.push('71: all 51 codes were produced by a decision');
+assert.deepEqual(missingProduced,[],'실제로 나오지 않은 코드: '+missingProduced.join(', '));passed.push('71: all 54 codes were produced by a decision');
 check(`71: the status invariant held on every failure result (${failCount})`,failCount>=300);
 check('71: no external call was made',fetchCalls===0);
 

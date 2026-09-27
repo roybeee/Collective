@@ -21,7 +21,7 @@ const synthetic=(names,value)=>new SyntheticModule([...names],function(){for(con
 // 화면 부품 대역: 이름에 맞는 기본 HTML 요소로 children과 속성을 그대로 그린다(asChild·variant 같은 부품 전용 속성은 버린다).
 const TAGS={Button:'button',Input:'input',Textarea:'textarea',NativeSelect:'select',NativeSelectOption:'option',DialogTitle:'h2',SheetTitle:'h2',DialogDescription:'p',SheetDescription:'p'};
 const part=name=>{function Part({children,variant,size,asChild,onOpenChange,onValueChange,...props}){void variant;void size;void asChild;void onOpenChange;void onValueChange;return React.createElement(TAGS[name]||'div',{...props,'data-part':name},children)}Part.displayName=name;return Part};
-const REAL_APP=new Set(['./franchise-common','./franchise-lead-detail','./franchise-settings','./franchise-assets-panel','./franchise-events-panel','./franchise-inflow-panel','./franchise-import-panel','./franchise-report-panel','./franchise-experiment-panel','./franchise-benchmark-panel','./franchise-nurture-panel','./franchise-lead-nurture']);
+const REAL_APP=new Set(['./franchise-common','./franchise-lead-detail','./franchise-settings','./franchise-assets-panel','./franchise-events-panel','./franchise-inflow-panel','./franchise-import-panel','./franchise-report-panel','./franchise-experiment-panel','./franchise-benchmark-panel','./franchise-nurture-panel','./franchise-lead-nurture','./franchise-media-box']);
 function link(spec,ref){
  if(spec==='react')return synthetic(ref.imports.get(spec)||new Set(),n=>React[n]);
  if(spec==='react/jsx-runtime')return synthetic(ref.imports.get(spec)||new Set(),n=>jsxRuntime[n]);

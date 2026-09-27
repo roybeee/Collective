@@ -113,7 +113,7 @@ const has=(list:readonly string[],action:string)=>list.includes(action);
 const ON_LEAD:readonly string[]=[...EVIDENCE_ACTIONS,...LEAD_MUTATIONS,'reveal_contact','erase_lead'];
 // 모집 자료 승인·내보내기·게시 위치·폐기와 행사 등록·변경·취소는 대표·관리자만(직원 403). 초안 저장·신청·참석은 모든 역할.
 // 모집 코드 발급·사용 중지, 모집 비용 기록·무효화, 리드 모집 코드 제외(R5b-1), 리드 CSV 검사·미리보기·확정(R5b-2, 제3자가 준 파일)도 대표·관리자만.
-const ADMIN_ACTIONS:readonly string[]=[...SETTINGS_ACTIONS,...EVIDENCE_ACTIONS,'export_leads','purge','erase_lead','update_subject_request','assign_lead','reopen_lead','asset_approve','asset_export','asset_place','asset_retire','event_save','event_cancel',...RECRUITMENT_ACTIONS,'strike_lead_code',...IMPORT_ACTIONS,...REPORT_ACTIONS,...EXPERIMENT_ACTIONS,...BENCHMARK_ACTIONS,...NURTURE_ADMIN];
+const ADMIN_ACTIONS:readonly string[]=[...SETTINGS_ACTIONS,...EVIDENCE_ACTIONS,'export_leads','purge','erase_lead','update_subject_request','assign_lead','reopen_lead','asset_approve','asset_export','asset_place','asset_retire','asset_media','event_save','event_cancel',...RECRUITMENT_ACTIONS,'strike_lead_code',...IMPORT_ACTIONS,...REPORT_ACTIONS,...EXPERIMENT_ACTIONS,...BENCHMARK_ACTIONS,...NURTURE_ADMIN];
 // 연락처 키가 없어도 되는 작업(설정, 파기·삭제, 정보주체 요청, 광고성 정보 철회, 모집 자료·행사 9개). 그 밖은 리드 조회 전에 503이다.
 // 리드 CSV 파일 검사(R5b-2)는 연락처를 다루지 않아 키가 없어도 된다. 미리보기·확정은 중복 키·암호화가 필요하다.
 const KEY_EXEMPT:readonly string[]=[...SETTINGS_ACTIONS,'purge','erase_lead','add_subject_request','update_subject_request',...ASSET_ACTIONS,...EVENT_ACTIONS,...RECRUITMENT_ACTIONS,...IMPORT_KEY_EXEMPT,...REPORT_ACTIONS,...EXPERIMENT_ACTIONS,...BENCHMARK_ACTIONS,...NURTURE_ACTIONS];

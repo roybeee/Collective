@@ -7,6 +7,7 @@ import {factLine,footnoteIssues,franchiseFactUseIssue,versionStates,currentDiscl
 import {GATE_DISCLAIMER} from './franchise-gates';
 import {waitReviewSummary,WAIT_REVIEW_VERSION} from './franchise-wait-review';
 import {franchiseItem} from './fact-catalog';
+import {checkCardBundle,cardTemplate,parseCards,CARD_MESSAGES,CARD_WARNINGS,type CardCodeLite} from './franchise-cards';
 import {isRecruitmentObjective} from './agency';
 import type {BrandFact} from './brand-facts';
 
@@ -22,7 +23,9 @@ const oneOf=<T extends string>(list:readonly T[],v:unknown):v is T=>typeof v==='
 // ── 버전·한도·패턴 ──
 // .2: 대표 결정(2026-09-26 '3번') — 대기기간 두 문장·수익 질문 안내 문장을 필수 고정 문장에서 권장 문구로 바꿨다(누락·수정은 경고, 사유 코드 51 → 49). 체크리스트 대기기간 우회 항목 문구도 바뀌어 .1 승인은 checklist_outdated다.
 // .3: 대표 결정 34(2026-09-27) — 승인·내보내기에 '대기기간 우회 문장 없음' 사람 확인(waitReview)을 받는다. 없으면 409(wait_review_missing·wait_review_outdated, 사유 코드 49 → 51).
-export const ASSETS_VERSION='fr-assets@2026-09-27.3';
+// .4: R15b-2(2026-09-27) — 자료 유형 card_bundle(모집 카드 묶음, PNG 3~5장)과 카드 단계 사유 코드 3개(400, 사유 코드 51 → 54).
+// .5: R15b-3(2026-09-28) — 자료 유형 interview_video(15초 대본, 말로 쓰는 원고라 수익 안전망 409). 완성본 해시는 lib/franchise-media.ts.
+export const ASSETS_VERSION='fr-assets@2026-09-28.5';
 export const CHECKLIST_VERSION='fr-assets-checklist@2026-09-26.2';
 // 원문 20,000자에서 판정기는 약 0.2초 걸린다(실측). 배열 길이 상한을 넘는 기록은 invalid_record, 입력은 해당 입력 코드로 닫는다(fail closed).
 export const LIMITS=deepFreeze({bodyChars:20000,factRefs:20,placements:20,labelChars:100,capacity:1000,assetRefs:10,codes:1000} as const);
@@ -33,12 +36,12 @@ export const ID_PATTERN:RegExp=Object.freeze(new RegExp(ID_RE.source));
 export const PSEUDONYM_PATTERN:RegExp=Object.freeze(new RegExp(PSEUDONYM_RE.source));
 
 // ── 자료 유형 ──
-export const ASSET_TYPES=deepFreeze(['event_deck','expo_banner','first_call_script','meta_lead_ad','naver_search','portal_intro','startup_page'] as const);
+export const ASSET_TYPES=deepFreeze(['card_bundle','event_deck','expo_banner','first_call_script','interview_video','meta_lead_ad','naver_search','portal_intro','startup_page'] as const);
 export type AssetType=typeof ASSET_TYPES[number];
-export const ASSET_TYPE_ORDER=deepFreeze(['startup_page','portal_intro','naver_search','meta_lead_ad','expo_banner','event_deck','first_call_script'] as const);
-export const ASSET_TYPE_LABELS:Readonly<Record<AssetType,string>>=deepFreeze({startup_page:'창업 페이지 문안',portal_intro:'포털 소개문',naver_search:'네이버 검색 문안',meta_lead_ad:'메타 리드광고 문안',expo_banner:'박람회 배너·리플렛 문안',event_deck:'설명회 덱 개요·원고',first_call_script:'첫 통화 스크립트'});
-// 말로 쓰는 원고. 수익 안전망 경고(h.revenue_like_figure_review)를 이 두 유형에서만 409로 올린다.
-export const SPOKEN_ASSET_TYPES=deepFreeze(['event_deck','first_call_script'] as const);
+export const ASSET_TYPE_ORDER=deepFreeze(['startup_page','portal_intro','naver_search','meta_lead_ad','expo_banner','card_bundle','event_deck','first_call_script','interview_video'] as const);
+export const ASSET_TYPE_LABELS:Readonly<Record<AssetType,string>>=deepFreeze({startup_page:'창업 페이지 문안',portal_intro:'포털 소개문',naver_search:'네이버 검색 문안',meta_lead_ad:'메타 리드광고 문안',expo_banner:'박람회 배너·리플렛 문안',card_bundle:'모집 카드 묶음(PNG)',event_deck:'설명회 덱 개요·원고',first_call_script:'첫 통화 스크립트',interview_video:'인터뷰 영상 대본(15초)·완성본'});
+// 말로 쓰는 원고. 수익 안전망 경고(h.revenue_like_figure_review)를 이 세 유형(설명회 원고·첫 통화·인터뷰 대본)에서만 409로 올린다.
+export const SPOKEN_ASSET_TYPES=deepFreeze(['event_deck','first_call_script','interview_video'] as const);
 
 // ── 고정 절 ──
 // heading = SECTION_MARK + title + (label ? ' ' + label : ''). 창업 페이지 문안에는 수익 수치 칸이 없다(H6). 나머지 5종은 자유 문안이라 절 검사를 하지 않는다.
@@ -126,11 +129,11 @@ export type EventCounts={applied:number;attended:number;noShow:number};
 export type RecruitmentEvent={id:string;brandId:string;campaignId:string;type:EventType;startsAt:string;placeLabel:string;capacity:number;spendRef:string|null;counts:EventCounts;codes:EventCode[];assetRefs:AssetRef[];status:'scheduled'|'cancelled';version:number;createdAt:string;updatedAt:string};
 
 // ── 사유 코드·결과 ──
-export const ASSET_CODES=deepFreeze(['asset_not_approved','attendance_before_event','block_unresolved','branch_not_a','campaign_not_recruitment','campaign_other_brand','capacity_below_applied','capacity_full','checklist_incomplete','checklist_outdated','code_duplicate','code_unknown','cost_table_missing','event_cancelled','event_started','fact_changed','fact_other_brand','fact_ref_missing','fact_revenue','fact_source_missing','fact_stale','fact_store_scoped','footnote_missing','h8_label_missing','hard_block','hash_mismatch','invalid_body','invalid_code','invalid_counts','invalid_event','invalid_fact_refs','invalid_input','invalid_placement','invalid_record','invalid_timestamp','invalid_type','not_approved','not_draft','not_exported','record_other_brand','review_needed','role_forbidden','section_duplicate','section_missing','section_order','section_unknown','spoken_revenue_figure','switch_off','version_not_current','wait_review_missing','wait_review_outdated'] as const);
+export const ASSET_CODES=deepFreeze(['asset_not_approved','attendance_before_event','block_unresolved','branch_not_a','campaign_not_recruitment','campaign_other_brand','capacity_below_applied','capacity_full','card_number_unbacked','card_qr_invalid','card_structure','checklist_incomplete','checklist_outdated','code_duplicate','code_unknown','cost_table_missing','event_cancelled','event_started','fact_changed','fact_other_brand','fact_ref_missing','fact_revenue','fact_source_missing','fact_stale','fact_store_scoped','footnote_missing','h8_label_missing','hard_block','hash_mismatch','invalid_body','invalid_code','invalid_counts','invalid_event','invalid_fact_refs','invalid_input','invalid_placement','invalid_record','invalid_timestamp','invalid_type','not_approved','not_draft','not_exported','record_other_brand','review_needed','role_forbidden','section_duplicate','section_missing','section_order','section_unknown','spoken_revenue_figure','switch_off','version_not_current','wait_review_missing','wait_review_outdated'] as const);
 export type AssetCode=typeof ASSET_CODES[number];
 // 한 판정 단계의 코드는 모두 같은 상태 코드다. 400: 클라이언트가 채울 입력·형식, 403: 역할, 409: 서버 상태(스위치·분기·승인·판정).
 export const ASSET_CODE_STATUS:Readonly<Record<AssetCode,400|403|409>>=deepFreeze({
- asset_not_approved:409,attendance_before_event:400,block_unresolved:409,branch_not_a:409,campaign_not_recruitment:409,campaign_other_brand:400,capacity_below_applied:409,capacity_full:409,checklist_incomplete:400,checklist_outdated:409,
+ asset_not_approved:409,attendance_before_event:400,block_unresolved:409,branch_not_a:409,campaign_not_recruitment:409,campaign_other_brand:400,capacity_below_applied:409,capacity_full:409,card_number_unbacked:400,card_qr_invalid:400,card_structure:400,checklist_incomplete:400,checklist_outdated:409,
  code_duplicate:409,code_unknown:400,cost_table_missing:409,event_cancelled:409,event_started:409,fact_changed:409,fact_other_brand:400,fact_ref_missing:409,fact_revenue:409,fact_source_missing:409,
  fact_stale:409,fact_store_scoped:400,footnote_missing:409,h8_label_missing:409,hard_block:409,hash_mismatch:409,invalid_body:400,invalid_code:400,invalid_counts:400,invalid_event:400,
  invalid_fact_refs:400,invalid_input:400,invalid_placement:400,invalid_record:400,invalid_timestamp:400,invalid_type:400,not_approved:409,not_draft:409,not_exported:409,record_other_brand:400,
@@ -147,6 +150,9 @@ export const ASSET_MESSAGES:Readonly<Record<AssetCode,string>>=deepFreeze({
  campaign_other_brand:'이 브랜드의 캠페인이 아닙니다.',
  capacity_below_applied:'정원은 이미 받은 신청 수보다 작게 줄일 수 없습니다.',
  capacity_full:'정원이 찼습니다. 신청을 더 받을 수 없습니다.',
+ card_number_unbacked:CARD_MESSAGES.card_number_unbacked,
+ card_qr_invalid:CARD_MESSAGES.card_qr_invalid,
+ card_structure:CARD_MESSAGES.card_structure,
  checklist_incomplete:'승인 체크리스트의 모든 항목을 확인해야 승인할 수 있습니다.',
  checklist_outdated:'승인 체크리스트가 바뀌었습니다. 새로고침하고 새 체크리스트로 다시 확인하세요.',
  code_duplicate:'이미 신청 기록이 있는 가명 코드입니다.',
@@ -206,10 +212,11 @@ type Failure=Extract<Decision<never>,{ok:false}>;
 // ── 입력·문맥 타입 ──
 export type CampaignLite={id:string;brandId:string;objective?:unknown};
 // facts: 이 브랜드의 사실 기록 전부와 참조 id로 읽은 다른 브랜드 기록(R15a-2가 넘긴다). versions: 정보공개서 버전(다른 브랜드 것이 섞여도 된다).
-export type AssetContext={enabled:boolean;brandId:string;branch:string|null;campaign:CampaignLite|null;facts:readonly BrandFact[];versions:readonly VersionLite[];now:string};
+// codes: 카드 묶음(card_bundle) QR 줄에 든 모집 코드의 장부 행(R15b-2가 넘긴다). 없으면 QR이 있는 카드 묶음은 card_qr_invalid로 닫힌다.
+export type AssetContext={enabled:boolean;brandId:string;branch:string|null;campaign:CampaignLite|null;facts:readonly BrandFact[];versions:readonly VersionLite[];now:string;codes?:readonly CardCodeLite[]|null};
 export type AssetActor={id:string;role:string};
 export type AssetInputValue={type:AssetType;body:string;factRefs:AssetFactRef[];disclosureVersionId:string|null;judgement:FranchiseJudgement};
-export type GateContext={brandId:string;facts:readonly BrandFact[];versions:readonly VersionLite[];now:string};
+export type GateContext={brandId:string;facts:readonly BrandFact[];versions:readonly VersionLite[];now:string;codes?:readonly CardCodeLite[]|null};
 export type GateIssues={codes:AssetCode[];status:200|400|409;judgement:FranchiseJudgement|null;message:string|null};
 export type ApprovalChecklist={version:string;items:{id:ChecklistItemId;text:string;ruleIds:string[];warnings:string[]}[];h7Notice:string|null};
 export type EventContext={enabled:boolean;brandId:string;branch:string|null;campaign:CampaignLite|null;assets:readonly Pick<RecruitmentAsset,'id'|'version'|'brandId'|'status'|'type'>[];actor:AssetActor;now:string};
@@ -387,7 +394,8 @@ export function validateAssetInput(input:unknown,ctx:AssetContext):Decision<Asse
   if(resolved.codes.length)return fail(resolved.codes);
   const effective=byId(effectiveAssetFacts(records.facts,brandId,now));
   const j=judgeFranchiseText({text:body,at:now,now,scope:'recruitment',brandId,facts:judgeFactsOf(resolved.facts,effective),versions:brandVersions});
-  return pass({type,body,factRefs,disclosureVersionId:currentDisclosureVersion(brandVersions,brandId,now)?.id??null,judgement:j},assetWarnings(j,type,body));
+  const cards=cardStage(type,body,{brandId,now,facts:resolved.facts,versions:brandVersions,codes:c.codes as AssetContext['codes']}).map(x=>ASSET_MESSAGES[x]);
+  return pass({type,body,factRefs,disclosureVersionId:currentDisclosureVersion(brandVersions,brandId,now)?.id??null,judgement:j},[...assetWarnings(j,type,body),...cards]);
  });
 }
 
@@ -407,8 +415,20 @@ export async function draftAsset(prev:RecruitmentAsset|null,value:AssetInputValu
 // ── 절 구조 ──
 // 창업 페이지 문안·설명회 덱: 절마다 제목과 권장 문장을 줄바꿈으로 잇고 절 사이는 빈 줄 하나. 창업비용 표 몸통은 비운다(R15a-2가 factCaption으로 채운다). 그 밖의 유형은 ''.
 export function sectionTemplate(type:unknown):string{
+ if(type==='card_bundle')return cardTemplate({processLabel:HEURISTIC_LABEL,processLines:WAITING_NOTES});
  const sections=oneOf(ASSET_TYPES,type)?SECTIONS_OF[type]:undefined;
  return sections?sections.map(s=>[s.heading,...s.recommendedLines].join('\n')).join('\n\n'):'';
+}
+// ── 카드 묶음 단계(R15b) ──
+// 카드 묶음만 본다: 구조·원장에 없는 수치·유입 코드 QR(모두 400). 수치는 근거로 선택해 확인을 마친 사실(resolveRefs 뒤)로만 받친다. 권장 안내 문장은 줄 그대로면 통과한다.
+// 초안 저장은 막지 않고 경고로 보이고, 승인·내보내기·미리보기에서 내용 단계(409) 앞에 막는다. 참조 사실이 풀리지 않으면 여기서는 보지 않는다(내용 단계가 막는다).
+function cardStage(type:unknown,body:unknown,g:{brandId:string;now:string;facts:readonly BrandFact[];versions:readonly VersionLite[];codes:AssetContext['codes']}):AssetCode[]{
+ if(type!=='card_bundle')return [];
+ return checkCardBundle(body,{brandId:g.brandId,today:toKstDate(g.now),facts:g.facts,versions:g.versions,codes:g.codes,allowedLines:[...WAITING_NOTES,REVENUE_QNA_NOTE]}).codes;
+}
+function cardGate(asset:RecruitmentAsset,g:{brandId:string;facts:readonly BrandFact[];versions:readonly VersionLite[];now:string;codes?:AssetContext['codes']}):AssetCode[]{
+ const brandVersions=brandVersionsOf(g.versions,g.brandId),resolved=resolveRefs(refList(asset.factRefs),g.facts,g.brandId,g.now,brandVersions);
+ return resolved.codes.length?[]:cardStage(asset.type,asset.body,{...g,facts:resolved.facts,versions:brandVersions,codes:g.codes});
 }
 const MARK=SECTION_MARK.trim();
 // 줄은 '\n'과, 화면에서 줄로 보일 수 있는 U+0085·U+2028·U+2029로 나눈다. 저장 원문에는 이 문자가 없지만(bodyOk) 직접 부르는 미리보기 원문에서도 ■ 줄을 놓치지 않는다(fail closed).
@@ -468,7 +488,10 @@ function missingRecommended(type:unknown,body:unknown):SectionSpec[]{
   return recommended.filter(s=>{const own=view.bodyOf(s);return s.recommendedLines.some(l=>!own.has(l))});
  }catch{return recommended}
 }
-export function assetStructureWarnings(type:unknown,body:unknown):string[]{return [...new Set(missingRecommended(type,body).map(s=>RECOMMENDED_WARNING[s.id]))]}
+export function assetStructureWarnings(type:unknown,body:unknown):string[]{
+ const noQr=type==='card_bundle'&&!parseCards(body).cards.some(c=>c.qr!==null)?[CARD_WARNINGS.noQr]:[];
+ return [...new Set([...missingRecommended(type,body).map(s=>RECOMMENDED_WARNING[s.id]),...noQr])];
+}
 // 저장·승인·내보내기 성공 결과와 상세 보기의 경고: 판정기 경고 다음에 권장 안내 문장 경고. Set으로 중복을 없애고 처음 나온 순서를 지킨다.
 // 판정기 경고 라벨끼리 문구가 같아도 하나로 합친다(의도한 동작, 라벨은 규칙·발췌·근거를 담아 실제로는 겹치지 않는다). 판정 결과가 없으면(상세 보기가 판정 전 단계에서 멈춤) 권장 안내 문장 경고만.
 export function assetWarnings(j:FranchiseJudgement|null,type:unknown,body:unknown):string[]{return [...new Set([...(j?franchiseIssueLabels(j).warnings:[]),...assetStructureWarnings(type,body)])]}
@@ -508,6 +531,8 @@ export function assetGateIssues(asset:unknown,ctx:GateContext):GateIssues{
   const records=recordsOf(c);
   if(!assetOk(asset)||!filled(brandId)||!records)return gateOf(['invalid_record'],null);
   if(asset.brandId!==brandId)return gateOf(['record_other_brand'],null);
+  const cards=cardGate(asset,{brandId,now,...records,codes:c.codes as AssetContext['codes']});
+  if(cards.length)return gateOf(cards,null);
   return contentGate(asset,{brandId,now,...records});
  }catch(e){return gateOf([errorCode(e)],null)}
 }
@@ -552,7 +577,7 @@ export function waitReviewIssue(body:string,input:unknown):'wait_review_missing'
 
 // ── 승인·내보내기 공통 앞 단계 ──
 // now → 스위치(409) → 역할(403) → 기록 형식·브랜드(400) → 분기 A(409) → 캠페인(400) → 모집 목적(409). R15a-2 라우트의 OFF(409)·ADMIN_ONLY(403)와 같은 순서의 방어 중복이다.
-type Ready={asset:RecruitmentAsset;actor:{id:string;role:'owner'|'admin'};brandId:string;now:string;facts:BrandFact[];versions:VersionLite[]};
+type Ready={asset:RecruitmentAsset;actor:{id:string;role:'owner'|'admin'};brandId:string;now:string;facts:BrandFact[];versions:VersionLite[];codes:AssetContext['codes']};
 function readyFor(asset:unknown,ctx:unknown):Ready|Failure{
  const c=ctxOf(ctx),now=c.now,actor=c.actor,brandId=c.brandId,campaign=c.campaign;
  if(!isInstant(now))return fail(['invalid_timestamp']);
@@ -564,7 +589,7 @@ function readyFor(asset:unknown,ctx:unknown):Ready|Failure{
  if(c.branch!=='A')return fail(['branch_not_a']);
  if(!isRecord(campaign)||campaign.id!==asset.campaignId||campaign.brandId!==brandId)return fail(['campaign_other_brand']);
  if(!isRecruitmentObjective(campaign))return fail(['campaign_not_recruitment']);
- return {asset,actor,brandId,now,...records};
+ return {asset,actor,brandId,now,...records,codes:Array.isArray(c.codes)?c.codes as CardCodeLite[]:null};
 }
 const isFailure=(x:Ready|Failure):x is Failure=>'ok' in x;
 
@@ -582,6 +607,8 @@ export async function approveDecision(asset:unknown,input:unknown,ctx:AssetConte
   if(input.bodyHash!==a.bodyHash||await assetBodyHash(a.body)!==a.bodyHash)return fail(['hash_mismatch']);
   const wr=waitReviewIssue(a.body,input);
   if(wr)return fail([wr]);
+  const cards=cardGate(a,r);
+  if(cards.length)return fail(cards);
   const g=contentGate(a,r);
   if(!g.judgement||g.codes.length)return fail(g.codes.length?g.codes:['invalid_record'],g.judgement);
   return pass({approval:{by:r.actor.id,role:r.actor.role,at:r.now,bodyHash:a.bodyHash,checklist:{version:CHECKLIST_VERSION,checked:[...CHECKLIST_IDS]},waitReview:waitReviewSummary(a.body)},judgement:g.judgement},assetWarnings(g.judgement,a.type,a.body));
@@ -605,6 +632,8 @@ export async function exportDecision(asset:unknown,ctx:AssetContext&{actor:Asset
   if(a.review.needed)return fail(['review_needed']);
   const wr=waitReviewIssue(a.body,input);
   if(wr)return fail([wr]);
+  const cards=cardGate(a,r);
+  if(cards.length)return fail(cards);
   const g=contentGate(a,r);
   if(!g.judgement||g.codes.length)return fail(g.codes.length?g.codes:['invalid_record'],g.judgement);
   const j=g.judgement;

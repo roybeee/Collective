@@ -15,7 +15,10 @@ import {franchiseItem,factLabel} from './fact-catalog';
 import {isRecruitmentObjective,type Campaign,type Artifact} from './agency';
 import type {BrandFact} from './brand-facts';
 import {FRANCHISE_ERRORS,type FranchiseErrorKey,type AuditAction} from './franchise';
-import {spendUsable} from './franchise-recruitment-server';
+import {spendUsable,codeBook} from './franchise-recruitment-server';
+import {recruitmentTokens} from './franchise-recruitment';
+import {parseCards,type CardCodeLite} from './franchise-cards';
+import {mediaDecision,MEDIA_MESSAGES,MEDIA_VERSION,type MediaRecord} from './franchise-media';
 import {ASSET_TYPE_ORDER,ASSET_TYPE_LABELS,EVENT_TYPE_LABELS as ASSET_EVENT_TYPE_LABELS,ASSET_MESSAGES,ASSET_RULES,ID_PATTERN,STARTUP_PAGE_SECTIONS,EVENT_DECK_SECTIONS,
  validateAssetInput,draftAsset,approveDecision,exportDecision,placementDecision,assetGateIssues,assetWarnings,approvalChecklist,h7Notice,effectiveAssetFacts,sectionTemplate,markAssetsForReview,changedVersionIds,
  validateEvent,registerDecision,attendanceDecision,type RecruitmentAsset,type RecruitmentEvent,type AssetReview,type AssetType,type EventCounts,type Decision} from './franchise-assets';
@@ -26,15 +29,16 @@ type ActorLite={id:string;role:string};
 // 출처 작업물(같은 캠페인의 승인된 현재 판). origin은 작업물 origin이고 모르면 null. aiGenerated는 origin이 ai·ai_edited일 때 참.
 export type AssetSource={artifactId:string;version:number;origin:'manual'|'ai'|'ai_edited'|null};
 // rev: 쓰기 순번(1부터, 잠금 밖 재검토 표시도 올린다). exports는 최대 50개(첫 기록은 게시 확인일 하한이라 남긴다), 전체 건수는 exportCount.
-export type AssetRow=RecruitmentAsset&{rev:number;source:AssetSource|null;aiGenerated:boolean;savedBy:ActorLite;exportCount:number;retiredAt?:string;retiredBy?:ActorLite};
+// media: 인터뷰 영상 완성본 해시(R15b-3, 대표·관리자, 파일은 올리지 않는다).
+export type AssetRow=RecruitmentAsset&{rev:number;source:AssetSource|null;aiGenerated:boolean;savedBy:ActorLite;exportCount:number;retiredAt?:string;retiredBy?:ActorLite;media?:MediaRecord[]};
 export type EventRow=RecruitmentEvent&{createdBy:ActorLite;cancelledAt?:string;cancelledBy?:ActorLite};
-export const ASSET_ACTIONS=['asset_save','asset_approve','asset_export','asset_place','asset_retire'] as const;
+export const ASSET_ACTIONS=['asset_save','asset_approve','asset_export','asset_place','asset_retire','asset_media'] as const;
 export const EVENT_ACTIONS=['event_save','event_cancel','event_register','event_attendance'] as const;
 export type AssetAction=typeof ASSET_ACTIONS[number]|typeof EVENT_ACTIONS[number];
 // 넘기면 LIMIT 409.
 export const ASSET_LIMITS=Object.freeze({assetsPerBrand:100,versionsPerAsset:10,eventsPerBrand:200,exportsKept:50});
 // 감사 행에 더하는 필드(값 없음: id·판·해시·방식·버전·사유 코드·건수만).
-export type AssetAuditExtra={recordId?:string;assetVersion?:number;bodyHash?:string;mode?:'copy'|'download';checklistVersion?:string;judgeVersion?:string;reasons?:string[];eventVersion?:number;eventCounts?:EventCounts;withCode?:boolean;aiGenerated?:boolean;placementCount?:number};
+export type AssetAuditExtra={mediaSha256?:string;recordId?:string;assetVersion?:number;bodyHash?:string;mode?:'copy'|'download';checklistVersion?:string;judgeVersion?:string;reasons?:string[];eventVersion?:number;eventCounts?:EventCounts;withCode?:boolean;aiGenerated?:boolean;placementCount?:number};
 // franchise-server가 넘기는 쓰기 창구: commit은 UNIQUE 실패를 stale 키의 409로 바꾸고, receipt는 영수증 감사 행(au-<rid>)을 만든다.
 export type AssetPort={commit:(stmts:D1PreparedStatement[],stale:FranchiseErrorKey)=>Promise<unknown>;receipt:(action:AuditAction,result:Json,extra:AssetAuditExtra,target:string|null,status?:number)=>D1PreparedStatement};
 export type AssetArgs={owner:string;brandId:string;now:string;enabled:boolean;actor:ActorLite;input:Json;action:AssetAction;port:AssetPort};
@@ -110,11 +114,17 @@ async function factContext(owner:string,brandId:string,refs:unknown):Promise<Fac
  }
  return {branch:fr.profile?.branch??null,versions:fr.versions,facts};
 }
+// R15b-2 카드 묶음: QR 줄에 든 모집 코드의 장부 행(코드·브랜드·사용 중지일만)을 id로 읽는다. 카드 묶음이 아니거나 QR 줄·코드가 없으면 [].
+async function cardCodes(owner:string,type:unknown,body:unknown):Promise<CardCodeLite[]>{
+ if(type!=='card_bundle')return [];
+ const qr=parseCards(body).cards.find(c=>c.qr!==null)?.qr,values=qr?recruitmentTokens(qr).codes:[];
+ return values.length?(await codeBook(owner,values)).codes.map(c=>({code:c.code,brandId:c.brandId,retiredOn:c.retiredOn})):[];
+}
 const campaignOf=(owner:string,id:unknown)=>typeof id==='string'&&id.length>0&&id.length<=100?optionalRecord<Campaign>(owner,'campaign',id):Promise.resolve(null);
 const liteOf=(c:Campaign|null)=>c?{id:c.id,brandId:c.brandId,objective:c.objective}:null;
 async function decisionContext(x:{owner:string;brandId:string;now:string;enabled:boolean},row:AssetRow){
- const [ctx,campaign]=await Promise.all([factContext(x.owner,x.brandId,row.factRefs),campaignOf(x.owner,row.campaignId)]);
- return {enabled:x.enabled,brandId:x.brandId,branch:ctx.branch,campaign:liteOf(campaign),facts:ctx.facts,versions:ctx.versions,now:x.now};
+ const [ctx,campaign,codes]=await Promise.all([factContext(x.owner,x.brandId,row.factRefs),campaignOf(x.owner,row.campaignId),cardCodes(x.owner,row.type,row.body)]);
+ return {enabled:x.enabled,brandId:x.brandId,branch:ctx.branch,campaign:liteOf(campaign),facts:ctx.facts,versions:ctx.versions,now:x.now,codes};
 }
 // 행사 연결 후보: 이 브랜드 자료 판의 요약 ∪ 참조 id·판의 레코드 키 조회(최대 10개, 같은 소유자의 다른 브랜드 자료면 record_other_brand).
 type PoolRow=Pick<RecruitmentAsset,'id'|'version'|'brandId'|'status'|'type'>;
@@ -135,6 +145,7 @@ export async function runAssetAction(x:AssetArgs):Promise<Outcome>{
   case 'asset_export':return assetExport(x);
   case 'asset_place':return assetPlace(x);
   case 'asset_retire':return assetRetire(x);
+  case 'asset_media':return assetMedia(x);
   case 'event_save':return eventSave(x);
   case 'event_cancel':return eventCancel(x);
   case 'event_register':return eventRegister(x);
@@ -157,8 +168,8 @@ async function assetSave(x:AssetArgs):Promise<Outcome>{
  const i=x.input,prev=given(i.assetId)?await loadAsset(x.owner,x.brandId,i.assetId):null;
  if(prev&&i.baseVersion!==prev.version)fail('ASSET_STALE');
  const campaignId=prev?prev.campaignId:str(i.campaignId,'캠페인',100,true);
- const [ctx,campaign]=await Promise.all([factContext(x.owner,x.brandId,i.factRefs),campaignOf(x.owner,campaignId)]);
- const d=validateAssetInput(i,{enabled:x.enabled,brandId:x.brandId,branch:ctx.branch,campaign:liteOf(campaign),facts:ctx.facts,versions:ctx.versions,now:x.now});
+ const [ctx,campaign,codes]=await Promise.all([factContext(x.owner,x.brandId,i.factRefs),campaignOf(x.owner,campaignId),cardCodes(x.owner,i.type,i.body)]);
+ const d=validateAssetInput(i,{enabled:x.enabled,brandId:x.brandId,branch:ctx.branch,campaign:liteOf(campaign),facts:ctx.facts,versions:ctx.versions,now:x.now,codes});
  if(!d.ok)throw decisionError(d);
  const source=await sourceOf(x.owner,i.source,campaignId,prev?.source??null);
  const draft=await draftAsset(prev,d.value,{id:prev?.id??'ra-'+uid(),brandId:x.brandId,campaignId,now:x.now});
@@ -240,6 +251,18 @@ async function assetPlace(x:AssetArgs):Promise<Outcome>{
  const result={assetId:row.id,version:row.version,placements:next.placements.length};
  await x.port.commit([rowGuard(x.owner,'recruitment_asset',rowIdOf(row),'$.rev',revOf(row)),recordStatement(x.owner,'recruitment_asset',rowIdOf(row),next,x.brandId),
   x.port.receipt('asset_place',result,{recordId:row.id,assetVersion:row.version,placementCount:next.placements.length},assetTarget(x))],'ASSET_STALE');
+ return {result};
+}
+// 인터뷰 영상 완성본 해시(R15b-3, 대표·관리자): 승인된 인터뷰 영상 대본 판에 SHA-256·크기·촬영일·라벨만 더한다. 라벨은 개인정보 검사를 한다. 감사에는 해시만 남긴다.
+async function assetMedia(x:AssetArgs):Promise<Outcome>{
+ const row=await loadAsset(x.owner,x.brandId,x.input.assetId,x.input.version??0);
+ if(typeof x.input.label==='string'&&scanText(x.input.label).length)fail('PII_IN_TEXT');
+ const d=mediaDecision(row,x.input,{enabled:x.enabled,actor:x.actor,now:x.now});
+ if(!d.ok)throw new FranchiseAssetError(d.status,d.message,{reasons:d.reasons.map(code=>({code,message:MEDIA_MESSAGES[code]})),ruleVersion:MEDIA_VERSION,disclaimer:GATE_DISCLAIMER});
+ const next:AssetRow={...row,media:[...(row.media??[]),d.value],rev:nextRev(row)};
+ const result={assetId:row.id,version:row.version,media:next.media!.length,sha256:d.value.sha256};
+ await x.port.commit([rowGuard(x.owner,'recruitment_asset',rowIdOf(row),'$.rev',revOf(row)),recordStatement(x.owner,'recruitment_asset',rowIdOf(row),next,x.brandId),
+  x.port.receipt('asset_media',result,{recordId:row.id,assetVersion:row.version,mediaSha256:d.value.sha256},assetTarget(x))],'ASSET_STALE');
  return {result};
 }
 // 폐기(대표·관리자, 스위치가 꺼져도 된다): 어느 판이든. 이미 폐기면 쓰기 없음.
@@ -364,7 +387,7 @@ async function assetsView(who:Viewer,brandId:string):Promise<Json>{
   const text=sectionTemplate(type),cost=(type==='startup_page'?STARTUP_PAGE_SECTIONS:EVENT_DECK_SECTIONS).find(s=>s.costLines);
   return caption&&cost?text.replace(cost.heading,()=>cost.heading+'\n'+caption):text;
  };
- return {assets,campaigns:recruitCampaigns(campaigns,brandId),types:ASSET_TYPE_ORDER.map(t=>({type:t,label:ASSET_TYPE_LABELS[t]})),templates:{startup_page:template('startup_page'),event_deck:template('event_deck')},
+ return {assets,campaigns:recruitCampaigns(campaigns,brandId),types:ASSET_TYPE_ORDER.map(t=>({type:t,label:ASSET_TYPE_LABELS[t]})),templates:{startup_page:template('startup_page'),event_deck:template('event_deck'),card_bundle:sectionTemplate('card_bundle')},
   templateFactRefs:costFacts.map(f=>({id:f.id,version:f.version})),costFactsMissing:!costFacts.length,
   facts:effective.map(f=>({id:f.id,version:f.version,key:f.key,label:factLabel(f.key),line:factLine(f),hasSource:!!f.sourceRef})),
   branch:ctx.branch,h7Notice:h7Notice(ctx.branch),enabled,role:who.role,limits:ASSET_LIMITS,rules:ASSET_RULES,disclaimer:GATE_DISCLAIMER};
@@ -373,9 +396,9 @@ async function assetsView(who:Viewer,brandId:string):Promise<Json>{
 async function assetDetailView(who:Viewer,brandId:string,params:URLSearchParams):Promise<Json>{
  const owner=who.owner,now=stamp(),v=params.get('version');
  const row=await loadAsset(owner,brandId,params.get('assetId')??'',v===null||v===''?undefined:Number(v));
- const [ctx,campaign,enabled,versions]=await Promise.all([factContext(owner,brandId,row.factRefs),campaignOf(owner,row.campaignId),isEnabled(owner,'r_franchise'),
+ const [ctx,campaign,enabled,codes,versions]=await Promise.all([factContext(owner,brandId,row.factRefs),campaignOf(owner,row.campaignId),isEnabled(owner,'r_franchise'),cardCodes(owner,row.type,row.body),
   database().prepare("SELECT json_extract(data,'$.version') AS version,json_extract(data,'$.status') AS status FROM records WHERE owner=? AND kind='recruitment_asset' AND parent_id=? AND json_extract(data,'$.id')=? ORDER BY json_extract(data,'$.version') DESC").bind(owner,brandId,row.id).all<{version:number;status:string}>()]);
- const g=assetGateIssues(row,{brandId,facts:ctx.facts,versions:ctx.versions,now});
+ const g=assetGateIssues(row,{brandId,facts:ctx.facts,versions:ctx.versions,now,codes});
  const drift=row.factRefs.map(r=>{const cur=ctx.facts.find(f=>f.id===r.id&&f.brandId===brandId);return {factId:r.id,refVersion:r.version,currentVersion:cur?cur.version:null,changed:!cur||cur.version!==r.version}});
  const resaveSuggested=row.review.needed||drift.some(d=>d.changed)||g.codes.some(c=>c==='fact_changed'||c==='version_not_current');
  return {asset:Object.fromEntries(Object.entries(row).filter(([k])=>k!=='rev')),latestVersion:versions.results[0]?.version??row.version,versions:versions.results.map(x=>({version:x.version,status:x.status})),
