@@ -118,6 +118,9 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'prompt_registration',parent:'none',campaignDeletion:'not_campaign_scoped',description:'프롬프트 등록 시도 기록(단위·sourceSha·registered/idempotent/blocked·사유·행위자). 본문은 담지 않는다(F3a)'},
  {kind:'prompt_release_event',parent:'none',campaignDeletion:'not_campaign_scoped',description:'프롬프트 활성화·지정 캠페인 적용·승격·pin 재설정 이벤트(단위·전후 버전·sourceSha·평가 run·승인 사유·조작 전후 매니페스트). 추가만 한다(F3b, registry-active 근거)'},
  {kind:'prompt_alarm_ack',parent:'none',campaignDeletion:'not_campaign_scoped',description:'모델·게이트웨이 변경 경보 확인(동결 해제) 기록: 확인한 경보 id·사유·근거 평가 run·행위자. 확인 뒤 새 경보는 다시 동결한다(F3b, 결정 10)'},
+ // B2 2단계 주간 품질 집계(워커 tick 'digest' 큐, lib/quality-digest-queue-server.ts). 소유자 범위(parent 없음)이고 캠페인과 무관하다. 모델 변경 확인(prompt_alarm_ack) 뒤, playbook_audit 앞에 둔다.
+ {kind:'quality_digest',parent:'none',campaignDeletion:'not_campaign_scoped',description:'주간 품질 집계(행 id = ISO 주, 주당 1행: 역할×프롬프트 버전×보고 모델 건수·토큰·1차 승인율, 기준별 κ 상태, 드리프트 판정 요약, 보존 정리 제안, 처리 시간). 작업물 본문·메모·이메일·계정 id는 담지 않는다(B2 2단계)'},
+ {kind:'quality_drift_alarm',parent:'none',campaignDeletion:'not_campaign_scoped',description:'주간 드리프트 경보(보고 모델·게이트웨이 변경 재사용, 역할 무효율 2배, 골든 스모크 하락, 토큰 예산 소진율). 같은 변경은 같은 id라 한 번만 추가하고 캠페인·프롬프트 상태를 바꾸지 않는다(B2 2단계)'},
  // 운영자 선호 규칙(B3-1, 대표 결정 9). 규칙 자체는 learning_rule(origin review·preference, grade operator_preference)이고 캠페인과 무관하다(experimentId 빈 문자열).
 // 중지 때 재확인 표시는 새 kind 없이 캠페인 이력(event)의 playbookRecheck detail로 남겨 캠페인과 함께 지운다.
  // token_budget 묶음(마지막 3개, tests/token-budget.test.mjs 고정) 앞에 둔다.
