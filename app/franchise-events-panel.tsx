@@ -1,6 +1,7 @@
 'use client';
 // 가맹 모집 화면 '행사' 탭(트랙 R R15a-2b): 설명회·견학·박람회 목록, 행사 뒤 48시간 연락 칩, 등록·변경 대화상자(대표·관리자·분기 A), 취소(스위치가 꺼져도), 신청(가명 코드)·참석 기록(모든 역할).
-// 판정·권한은 서버(/api/franchise)가 한다. 화면은 보기 응답으로 버튼을 숨기고 사전 검사(가명 코드 형식·건수)로 헛요청만 줄인다. 참가자 이름·연락처 칸은 없고 비용 참조는 R5 전이라 늘 null이다.
+// 판정·권한은 서버(/api/franchise)가 한다. 화면은 보기 응답으로 버튼을 숨기고 사전 검사(가명 코드 형식·건수)로 헛요청만 줄인다. 참가자 이름·연락처 칸은 없다.
+// 비용 참조(R5c): 대표·관리자에게 같은 브랜드의 유효한 모집 비용(GET spend)을 선택지로 보인다. 고르지 않으면 null이고, 무효화된 비용은 서버가 400으로 막는다.
 // 신청은 판 번호 없이 추가만 하는 비멱등 작업이라, 응답을 못 받은 같은 내용의 재시도만 같은 요청 번호를 쓴다(sendAttempt).
 import {useCallback,useEffect,useId,useRef,useState} from 'react';
 import {Plus} from 'lucide-react';
@@ -9,13 +10,13 @@ import {Input} from '@/components/ui/input';
 import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import {toKstDate,kstDateOf} from '@/lib/franchise-rules';
-import {franchiseGet,problemOf,messageOf,ProblemBox,Disclaimer,TimeField,WarningLines,kst,roleLabel,timeOf,stringWarnings,sendAttempt,followUpOf,reasonCodes,errorIs,
+import {franchiseGet,problemOf,messageOf,ProblemBox,Disclaimer,TimeField,WarningLines,kst,roleLabel,timeOf,stringWarnings,sendAttempt,followUpOf,reasonCodes,errorIs,won,
  type Json,type Problem,type PostResult,type Attempt,type TimeValue} from './franchise-common';
 
 type CodeState='applied'|'attended'|'no_show';
 type Ref={id:string;version:number};
 export type EventItem={id:string;campaignId:string;type:string;typeLabel:string;startsAt:string;placeLabel:string;capacity:number;counts:{applied:number;attended:number;noShow:number};
- codes:{code:string;state:CodeState}[];assetRefs:{id:string;version:number;type:string|null;status:string|null}[];status:'scheduled'|'cancelled';version:number;
+ codes:{code:string;state:CodeState}[];assetRefs:{id:string;version:number;type:string|null;status:string|null}[];status:'scheduled'|'cancelled';version:number;spendRef?:string|null;
  createdBy:{id:string;role:string};cancelledAt?:string;cancelledBy?:{id:string;role:string}};
 export type EventsView={events:EventItem[];followUps:{count:number;attended:number;noShow:number};approvedAssets:{id:string;version:number;type:string;typeLabel:string;latest:boolean}[];
  campaigns:{id:string;title:string}[];types:{type:string;label:string}[];assetTypes:{type:string;label:string}[];branch:string|null;h7Notice:string|null;enabled:boolean;disclaimer:string};
@@ -58,12 +59,20 @@ export function attendanceInput(e:EventItem,attended:string,noShow:string,marks:
  if(codes.filter(c=>c.state==='no_show').length>n)return bad('불참으로 표시한 코드가 불참 수보다 많습니다.');
  return {payload:{eventId:e.id,version:e.version,attended:a,noShow:n,codes},problem:null};
 }
-export type EventForm={type:string;campaignId:string;start:TimeValue;place:string;capacity:string;refs:Ref[]};
+export type EventForm={type:string;campaignId:string;start:TimeValue;place:string;capacity:string;refs:Ref[];spendRef?:string};
+// 비용 선택지: 모집 비용 보기(GET spend)의 유효 행만. 라벨은 채널·기간·부가세 제외 금액이다. 보기 모양이 다르면 빈 목록이다.
+export type SpendChoice={id:string;label:string};
+type SpendRowLite={id:string;channel:string;period:{from:string;to:string};amountExVat:number;status:string};
+export function spendChoices(view:unknown):SpendChoice[]{
+ const v=view as {spend?:unknown;channels?:unknown}|null,rows=Array.isArray(v?.spend)?v.spend as SpendRowLite[]:[],channels=Array.isArray(v?.channels)?v.channels as {key:string;label:string}[]:[];
+ const name=(k:string)=>channels.find(c=>c.key===k)?.label??k,span=(p:{from:string;to:string})=>p.from===p.to?p.from:`${p.from}~${p.to}`;
+ return rows.filter(r=>r.status==='active').map(r=>({id:r.id,label:`${name(r.channel)} ${span(r.period)} · ${won(r.amountExVat)}`}));
+}
 // 행사 저장 결과: 개인정보가 든 장소(PII_IN_TEXT)면 대화상자가 장소 칸에 포커스한다(9.2).
 export type EventSaveOutcome='ok'|'pii'|'failed';
-// 행사 저장: 시작 시각은 KST로 적은 값만(‘지금’은 보내지 않는다), 비용 참조는 null 고정, 변경은 판 번호와 저장된 캠페인을 그대로 보낸다.
+// 행사 저장: 시작 시각은 KST로 적은 값만(‘지금’은 보내지 않는다), 비용 참조는 고른 비용 id(없으면 null), 변경은 판 번호와 저장된 캠페인을 그대로 보낸다.
 export function eventInput(f:EventForm,event:EventItem|null):Json{
- return {...(event?{eventId:event.id,version:event.version}:{}),campaignId:event?event.campaignId:f.campaignId,type:f.type,startsAt:timeOf({now:false,local:f.start.local}),placeLabel:f.place.trim(),capacity:Number(f.capacity),spendRef:null,
+ return {...(event?{eventId:event.id,version:event.version}:{}),campaignId:event?event.campaignId:f.campaignId,type:f.type,startsAt:timeOf({now:false,local:f.start.local}),placeLabel:f.place.trim(),capacity:Number(f.capacity),spendRef:f.spendRef||null,
   assetRefs:f.refs.map(r=>({id:r.id,version:r.version}))};
 }
 const resultOf=(r:PostResult)=>(r.body.result??{}) as Json;
@@ -73,11 +82,13 @@ const sameRef=(a:Ref,b:Ref)=>a.id===b.id&&a.version===b.version;
 export function FranchiseEvents({brandId,admin,onStatus,initial}:{brandId:string;admin:boolean;onStatus:()=>void;initial?:EventsView}){
  const [view,setView]=useState<EventsView|null>(initial??null),[error,setError]=useState(''),[now,setNow]=useState(()=>new Date().toISOString());
  const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[warnings,setWarnings]=useState<string[]>([]),[problem,setProblem]=useState<Problem|null>(null);
- const [attempts,setAttempts]=useState<Record<string,Attempt>>({}),[dialog,setDialog]=useState<{eventId:string|null}|null>(null);
+ const [attempts,setAttempts]=useState<Record<string,Attempt>>({}),[dialog,setDialog]=useState<{eventId:string|null}|null>(null),[spends,setSpends]=useState<SpendChoice[]>([]);
  const load=useCallback(async(signal?:AbortSignal)=>{
   try{const d=await franchiseGet<EventsView>({view:'events',brandId},signal);if(!signal?.aborted){setView(d);setError('');setNow(new Date().toISOString())}}
   catch(e){if(!signal?.aborted)setError(messageOf(e))}
- },[brandId]);
+  // 비용 선택지(대표·관리자만 읽는다). 읽지 못하면 선택지 없이 연결 없음만 보인다.
+  if(admin)try{const s=await franchiseGet<Json>({view:'spend',brandId},signal);if(!signal?.aborted)setSpends(spendChoices(s))}catch{/* 비용 보기 없이도 행사는 저장한다. */}
+ },[brandId,admin]);
  useEffect(()=>{const c=new AbortController();void Promise.resolve().then(()=>{if(!c.signal.aborted)return load(c.signal)});return ()=>c.abort()},[load]);
  async function run(action:string,payload:Json):Promise<PostResult>{
   setBusy(true);setProblem(null);setMessage('');setWarnings([]);
@@ -120,7 +131,7 @@ export function FranchiseEvents({brandId,admin,onStatus,initial}:{brandId:string
    <Disclaimer/>
   </>}
   {(message||problem||warnings.length>0)&&!dialog&&<div className="franchise-status">{message&&<p role="status">{message}</p>}<WarningLines items={warnings}/><ProblemBox problem={problem}/></div>}
-  {dialog&&view&&(dialog.eventId===null||editing)&&<EventEditor key={dialog.eventId??'new'} view={view} event={editing} busy={busy} problem={problem} onSave={saveEvent} onCancel={()=>{setDialog(null);setProblem(null)}}/>}
+  {dialog&&view&&(dialog.eventId===null||editing)&&<EventEditor key={dialog.eventId??'new'} view={view} event={editing} busy={busy} problem={problem} spends={spends} onSave={saveEvent} onCancel={()=>{setDialog(null);setProblem(null)}}/>}
  </div>;
 }
 
@@ -173,11 +184,13 @@ function AttendanceForm({event,busy,onAttend}:{event:EventItem;busy:boolean;onAt
 
 // ── 등록·변경 대화상자(대표·관리자) ──
 // 열려 있는 동안 스위치가 꺼지거나 분기가 A가 아니게 되면(다시 읽은 보기) 저장을 잠그고 이유를 보인다. 입력은 그대로 둔다.
-export function EventEditor({view,event,busy,problem,onSave,onCancel}:{view:EventsView;event:EventItem|null;busy:boolean;problem:Problem|null;onSave:(payload:Json)=>Promise<EventSaveOutcome>;onCancel:()=>void}){
+export function EventEditor({view,event,busy,problem,spends=[],onSave,onCancel}:{view:EventsView;event:EventItem|null;busy:boolean;problem:Problem|null;spends?:readonly SpendChoice[];onSave:(payload:Json)=>Promise<EventSaveOutcome>;onCancel:()=>void}){
  const approved=(r:Ref)=>view.approvedAssets.some(a=>sameRef(a,r)),placeHint=useId(),placeRef=useRef<HTMLInputElement>(null);
  const lockedWhy=!view.enabled?EVENTS_OFF_NOTE:view.branch!=='A'?view.h7Notice??EDIT_BRANCH_NOTE:null;
- const [f,setF]=useState<EventForm>(()=>event?{type:event.type,campaignId:event.campaignId,start:{now:false,local:kstLocal(event.startsAt)},place:event.placeLabel,capacity:String(event.capacity),refs:event.assetRefs.filter(r=>r.status==='approved').map(r=>({id:r.id,version:r.version}))}
-  :{type:view.types[0]?.type??'',campaignId:'',start:{now:false,local:''},place:'',capacity:'',refs:[]});
+ const [f,setF]=useState<EventForm>(()=>event?{type:event.type,campaignId:event.campaignId,start:{now:false,local:kstLocal(event.startsAt)},place:event.placeLabel,capacity:String(event.capacity),refs:event.assetRefs.filter(r=>r.status==='approved').map(r=>({id:r.id,version:r.version})),spendRef:event.spendRef??''}
+  :{type:view.types[0]?.type??'',campaignId:'',start:{now:false,local:''},place:'',capacity:'',refs:[],spendRef:''});
+ // 지금 연결된 비용이 선택지에 없으면(읽기 실패 등) 그 값을 그대로 둔다. 서버가 유효한 비용인지 다시 본다.
+ const spendOptions=f.spendRef&&!spends.some(s=>s.id===f.spendRef)?[...spends,{id:f.spendRef,label:'지금 연결된 비용'}]:spends;
  const set=(patch:Partial<EventForm>)=>setF({...f,...patch});
  const refs=f.refs.filter(approved),typeName=(t:string|null|undefined)=>t?view.assetTypes.find(x=>x.type===t)?.label??t:null;
  const lost=[...(event?event.assetRefs.filter(r=>r.status!=='approved'):[]),...f.refs.filter(r=>!approved(r)).map(r=>({...r,type:event?.assetRefs.find(x=>sameRef(x,r))?.type??null}))];
@@ -202,7 +215,8 @@ export function EventEditor({view,event,busy,problem,onSave,onCancel}:{view:Even
     {lost.map(r=><p key={`${r.id}:${r.version}`} className="franchise-flag">{`${typeName(r.type)??r.id} v${r.version}: 승인 판이 아니라 연결에서 빠집니다`}</p>)}
     {deckMissing&&<small>설명회에는 승인된 설명회 덱(표준 순서)을 연결하기를 권합니다. 연결하지 않아도 저장되고 경고가 남습니다.</small>}
    </fieldset>
-   <p className="subtle-note">모집 비용 연결은 R5 뒤에 합니다.</p>
+   <label className="field"><span>모집 비용 연결 (선택)</span><NativeSelect value={f.spendRef??''} onChange={e=>set({spendRef:e.target.value})}><NativeSelectOption value="">연결 없음</NativeSelectOption>{spendOptions.map(s=><NativeSelectOption key={s.id} value={s.id}>{s.label}</NativeSelectOption>)}</NativeSelect>
+    <small>유입·비용 탭에서 기록한 이 브랜드의 유효한 모집 비용만 고릅니다. 연결한 비용은 행사를 취소하거나 연결을 바꾸기 전에는 무효화할 수 없습니다.</small></label>
    <ProblemBox problem={problem}/>
    <div className="form-actions"><Button type="button" variant="outline" onClick={onCancel}>취소</Button><Button type="submit" disabled={!ready||busy}>행사 저장</Button></div>
   </fieldset></form>

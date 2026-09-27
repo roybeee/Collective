@@ -54,7 +54,9 @@ check('prototype keys are not store tabs',parseNav('?view=stores&tab=__proto__')
 check('the learning tab guard accepts learning tabs only',['rules','jobs','ledger','facts',undefined].map(isLearningTab),[true,true,false,false,false]);
 check('non-ASCII id is dropped',parseNav('?view=brands&brand=%ED%95%9C%EA%B8%80'),{view:'brands'});
 // 트랙 R: 가맹 모집 화면(?view=franchise&brand=&tab=)은 브랜드와 탭(리드·정보주체 요청·모집 자료·행사·설정)을 싣는다. 설정 탭 권한은 화면·서버가 따로 본다.
-check('franchise tabs are an allow-list',[...franchiseTabs],['leads','requests','assets','events','settings']);
+check('franchise tabs are an allow-list',[...franchiseTabs],['leads','requests','assets','events','inflow','settings']);
+// R5c: 유입·비용 탭(행사 뒤, 설정 앞)도 주소로 열고 새로고침 때 복원한다.
+check('franchise view keeps the inflow tab and its link round-trips',[parseNav('?view=franchise&brand=fr-a&tab=inflow'),serializeNav({view:'franchise',brand:'fr-a',tab:'inflow'}),isFranchiseTab('inflow')],[{view:'franchise',brand:'fr-a',tab:'inflow'},'?view=franchise&brand=fr-a&tab=inflow',true]);
 // R15a-2b: 모집 자료·행사 탭도 주소로 열고 새로고침 때 복원한다.
 check('franchise view keeps the recruitment assets and events tabs',[parseNav('?view=franchise&brand=fr-a&tab=assets'),parseNav('?view=franchise&brand=fr-a&tab=events')],[{view:'franchise',brand:'fr-a',tab:'assets'},{view:'franchise',brand:'fr-a',tab:'events'}]);
 check('the franchise tab guard accepts the assets and events tabs',['assets','events'].map(isFranchiseTab),[true,true]);

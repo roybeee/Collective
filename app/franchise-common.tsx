@@ -14,8 +14,12 @@ export type FranchiseStatus={enabled:boolean;role:'owner'|'admin'|'member';hasRe
 export type NoticeOption={id:string;versionLabel:string;sha256:string;createdAt:string};
 export type Intake={enabled:boolean;notices:NoticeOption[];profileBranch:Branch|null;storageLabels?:string[];memoHint:string;contactNote:string;disclaimer:string};
 export type MaskedContact={name:string;phone:string|null;email:string|null;hasPhone:boolean;hasEmail:boolean};
+// 모집 코드 귀속(R5b-1, 서버가 읽을 때 계산). 라벨·사유는 서버 문구를 그대로 보인다.
+export type AttributionView={state:'attributed'|'unattributed'|'conflict';basis?:'code'|'import';label:string;detail:string|null;code?:string;channel?:string;channelLabel?:string;reason?:string;retroactive?:boolean;late?:boolean};
 export type LeadSummary={id:string;systemCode:string;stage:LeadStage;closeReason:string|null;assigneeId:string|null;assignedToMe:boolean;contactState:ContactState;contact:MaskedContact|null;task:LeadTask;basisType:BasisType;
- sourceNoticePending:boolean;marketingStatus:MarketingStatus;eligibility:{met:number;total:number}|null;lastActivityAt:string;retentionUntil:string|null;retentionLabel:string;version:number;createdAt:string};
+ sourceNoticePending:boolean;marketingStatus:MarketingStatus;eligibility:{met:number;total:number}|null;lastActivityAt:string;retentionUntil:string|null;retentionLabel:string;version:number;createdAt:string;attribution?:AttributionView};
+export type LeadCodeView={code:string;at:string;source:'manual'|'import'};
+export type LeadImportView={importId:string;channel:string;channelLabel:string;eventId:string|null;provider:string;providedOn:string;receivedAt:string;receivedPrecision:'time'|'day';merged:boolean;at:string};
 export type EventView={id:string;type:string;at:string;actor:{id:string;role:string};from?:LeadStage;to?:LeadStage;reasons?:CodeMessage[];fields?:string[];taskFields?:string[];basis?:{type?:string};consent?:{method?:string;at?:string};
  withdrawnAt?:string;evidenceId?:string;evidenceType?:string;supersedes?:string;voided?:boolean;closeReason?:string;assigneeId?:string|null};
 export type SideView={startDate:string|null;days:number|null;periodEnd:string|null;shortened:boolean;extended:boolean};
@@ -25,10 +29,11 @@ export type EvidenceView={id:string;evidenceType:string;recordedAt:string;record
 // 개점 판정은 계약·가맹금 예치 단계에서만 온다(그 밖은 null).
 export type GateView={window:WindowView;forecastDuty:ForecastDuty;stageChecks:{opened:{ok:boolean;reasons:CodeMessage[];warnings:CodeMessage[]}|null};disclaimer:string};
 export type LeadDetail=LeadSummary&{hasMemo:boolean;basis:LeadBasis;marketing:LeadMarketing;marketingRecheck:boolean;firstContactAt:string|null;contractedAt:string|null;closedAt:string|null;closedFrom:LeadStage|null;
- events:EventView[];allowedActions:string[];allowedMoves:LeadStage[];marketingOptions:('given'|'withdrawn')[];disclaimer:string;evidence?:EvidenceView[];gate?:GateView};
+ events:EventView[];allowedActions:string[];allowedMoves:LeadStage[];marketingOptions:('given'|'withdrawn')[];disclaimer:string;evidence?:EvidenceView[];gate?:GateView;
+ codes?:LeadCodeView[];codeStrikes?:{code:string;at:string;reason:string}[];imports?:LeadImportView[]};
 export type Assignee={id:string;label:string};
 export type Board={enabled:boolean;branch:Branch|null;leads:LeadSummary[];total:number;counts:{byStage:Record<string,number>};
- todos:{sourceNoticePending:number;subjectRequestsDueSoon:number;contactsExpiringSoon:number;marketingRecheck:number;purgePending?:number};recheckLabel:string;assignees:Assignee[];disclaimer:string;contactNote:string};
+ todos:{sourceNoticePending:number;subjectRequestsDueSoon:number;contactsExpiringSoon:number;marketingRecheck:number;purgePending?:number;codeConflict?:number};recheckLabel:string;assignees:Assignee[];disclaimer:string;contactNote:string};
 // 게이트 409·거절된 제공 400·중복 409가 싣는 필드. 값(연락처)은 싣지 않는다.
 export type Problem={error:string;reasons?:CodeMessage[];warnings?:CodeMessage[];window?:WindowView;earliestContractAt?:string|null;disclaimer?:string;duplicateOf?:{systemCode:string|null}};
 export type PostBody=Json&Partial<Problem>&{ok?:boolean;result?:Json;replayed?:boolean;lead?:LeadDetail};
@@ -76,6 +81,8 @@ export function ProblemBox({problem}:{problem:Problem|null}){
  </div>;
 }
 export const Disclaimer=()=><small className="franchise-disclaimer">{GATE_DISCLAIMER}</small>;
+// 원 단위 금액(모집 비용, R5c): 천 단위 쉼표와 '원'. 부가세 제외 금액을 보일 때 쓴다.
+export const won=(n:number)=>`${new Intl.NumberFormat('ko-KR').format(n)}원`;
 export const kst=(at:string|null|undefined)=>at?kstLabel(at)??'-':'-';
 
 // 시각 입력. '지금(서버 시각)'이면 'now'를 보내 서버 기록 시각을 쓴다. 아니면 한국시간으로 적은 시각을 +09:00 시각으로 보낸다.
@@ -145,9 +152,12 @@ export function WarningLines({items}:{items:readonly string[]}){return items.len
 export type Attempt={id:string;key:string}|null;
 export const attemptId=(last:Attempt,key:string)=>last&&last.key===key?last.id:clientId();
 // 쓰기 한 번: key=[작업, 보낼 값] → 요청 번호 → 보내기. 응답이 없을 때(status 0)만 다음 시도에 같은 번호를 넘긴다('새 자료 저장'·'신청 기록' 같은 비멱등 작업이 두 번 반영되지 않게).
+// R5c(명세 5절·UI-Q1): 비멱등 생성 세 작업(코드 발급·비용 기록·리드 가져오기 확정)은 5xx 뒤에도 같은 내용이면 같은 번호를 쓴다. 커밋 뒤 5xx가 나도 서버 영수증(입력 해시 대조)이 한 번만 반영한다.
+export const RETRY_5XX_ACTIONS:readonly string[]=['code_issue','spend_record','lead_import_confirm'];
 export async function sendAttempt(action:string,payload:Json,last:Attempt):Promise<{r:PostResult;next:Attempt}>{
  const key=JSON.stringify([action,payload]),id=attemptId(last,key),r=await franchisePost(action,payload,id);
- return {r,next:r.status===0?{id,key}:null};
+ const keep=r.status===0||(r.status>=500&&RETRY_5XX_ACTIONS.includes(action));
+ return {r,next:keep?{id,key}:null};
 }
 // 실패 뒤 화면이 할 일: keep(입력 유지)·reload(보기·목록 다시 읽기)·close(닫고 목록 다시 읽기)·status(패널 상태·배너 다시 읽기).
 export type FollowUp='keep'|'reload'|'close'|'status';

@@ -11,7 +11,9 @@ import {Sheet,SheetContent,SheetHeader,SheetTitle,SheetDescription} from '@/comp
 import {STAGE_LABELS,BASIS_LABELS,REFERRAL_LABELS,MARKETING_METHOD_LABELS,MARKETING_STATUS_LABELS,CLOSE_REASON_LABELS,REVEAL_PURPOSE_LABELS,BACKDATE_REASON_LABELS,CORRECTION_REASON_LABELS,
  SUBJECT_REQUEST_TYPE_LABELS,SUBJECT_CHANNEL_LABELS,CONTACT_FIELD_LABELS,CONTACT_STATE_LABELS,EVIDENCE_TYPE_LABELS,DELIVERY_DOC_LABELS,DELIVERY_METHOD_LABELS,ELECTRONIC_CHANNEL_LABELS,HAND_EVIDENCE_LABELS,
  ADVISOR_TYPE_LABELS,FEE_CATEGORY_LABELS,ESCROW_INSTITUTION_LABELS,FORECAST_DUTY_LABELS,EVENT_TYPE_LABELS,CONTACT_NOTE,RETENTION_LABEL,RECHECK_LABEL,MEMO_HINT,DUE_LABEL,
- type LeadTask,type RevealPurpose,type CloseReason,type MarketingMethod,type SubjectRequestType,type SubjectChannel,type ContactField} from '@/lib/franchise';
+ STRIKE_REASON_LABELS,type LeadTask,type RevealPurpose,type CloseReason,type MarketingMethod,type SubjectRequestType,type SubjectChannel,type ContactField,type StrikeReason} from '@/lib/franchise';
+import {RECRUITMENT_ATTRIBUTION_NOTE,RECRUITMENT_MESSAGES,MAX_CODES_PER_LEAD,normalizeRecruitmentCode,isRecruitmentCode} from '@/lib/franchise-recruitment';
+import {toKstDate} from '@/lib/franchise-rules';
 import {franchiseGet,franchisePost,problemOf,messageOf,ProblemBox,Disclaimer,Section,TimeField,HashField,StorageField,LabelSelect,TaskFields,NOW,timeOf,kstDate,kst,labelOf,actorLabel,
  type Json,type LeadDetail,type Intake,type Assignee,type Problem,type PostResult,type TimeValue,type EvidenceView,type GateView,type SideView} from './franchise-common';
 
@@ -76,6 +78,7 @@ function LeadBody({lead,act,busy,admin,intake,assignees,campaigns,brandId}:Commo
   <StageBox {...c}/>
   {admin&&lead.gate&&<GateCard gate={lead.gate} stage={lead.stage}/>}
   {can(lead,'update_task')&&<Section title="문의 조건"><TaskForm key={lead.version} {...c} campaigns={campaigns}/></Section>}
+  <LeadCodes key={'c'+lead.version} {...c} admin={admin}/>
   {can(lead,'update_contact')&&<Section title="연락처 수정" note="빈칸은 그대로 둡니다. 바꿀 값만 적으세요. 수정은 이력에 항목 이름만 남습니다."><ContactForm key={lead.version} {...c}/></Section>}
   <BasisBox {...c} notices={notices}/>
   <MarketingBox key={'m'+lead.version} {...c} notices={notices}/>
@@ -84,6 +87,41 @@ function LeadBody({lead,act,busy,admin,intake,assignees,campaigns,brandId}:Commo
   {can(lead,'erase_lead')&&<Section title="연락처 삭제 실행 (정보주체 요청)" note={ERASE_CONFIRM+' 이 리드에 접수된 삭제 요청은 완료로 기록합니다.'}><div><Button variant="outline" disabled={busy} onClick={()=>{if(window.confirm(ERASE_CONFIRM))void act('erase_lead',{},eraseDone,true)}}>삭제 실행</Button></div></Section>}
   <Timeline lead={lead} assignees={assignees}/>
  </>;
+}
+
+// ── 모집 코드·유입(R5c) ──
+// 귀속은 서버가 읽을 때 계산한 라벨·사유를 그대로 보인다. 코드는 추가만 하고(본인 담당 또는 대표·관리자), 잘못 넣은 코드는 대표·관리자가 사유를 골라 제외한다(되돌리지 않음).
+export const CODE_NOT_REGISTERED='등록되지 않은 모집 코드가 있습니다. 저장은 했고, 그 코드를 발급하면 귀속됩니다.';
+// 리드 코드 저장 응답의 경고(문자열 코드). 등록되지 않은 코드도 저장하고 이 경고로만 알린다.
+export const codeNotRegistered=(r:PostResult)=>(Array.isArray(r.body.warnings)?r.body.warnings as unknown[]:[]).includes('code_not_registered');
+export const STRIKE_CONFIRM='이 코드를 귀속에서 뺍니다. 제외 기록은 되돌릴 수 없습니다.';
+// 쉼표·줄바꿈으로 나눈 코드. 칸 안의 공백·하이픈은 서버와 같은 정규화로 없앤다(같은 코드는 한 번만).
+export function parseCodes(text:string):string[]{return [...new Set(text.split(/[,;\n，、]+/).map(normalizeRecruitmentCode).filter(Boolean))]}
+export function codesProblem(codes:readonly string[],current=0):string|null{
+ if(!codes.length)return '모집 코드를 적어 주세요.';
+ if(current+codes.length>MAX_CODES_PER_LEAD)return `한 리드에 모집 코드는 ${MAX_CODES_PER_LEAD}개까지입니다.`;
+ return codes.every(isRecruitmentCode)?null:RECRUITMENT_MESSAGES.code_format;
+}
+export function LeadCodes({lead,act,busy,admin}:Common&{admin:boolean}){
+ const a=lead.attribution,codes=lead.codes??[],struck=new Map((lead.codeStrikes??[]).map(s=>[s.code,s]));
+ const [text,setText]=useState(''),[note,setNote]=useState(''),[reasons,setReasons]=useState<Record<string,StrikeReason|''>>({});
+ const parsed=parseCodes(text),problem=text.trim()?codesProblem(parsed,codes.length):null,canStrike=admin&&can(lead,'strike_lead_code');
+ async function add(){const r=await act('add_lead_codes',{codes:parsed},'모집 코드를 추가했습니다.');if(r){setText('');setNote(codeNotRegistered(r)?CODE_NOT_REGISTERED:'')}}
+ function strike(code:string){const reason=reasons[code];if(reason&&window.confirm(STRIKE_CONFIRM))void act('strike_lead_code',{code,reason},'모집 코드를 귀속에서 뺐습니다.')}
+ return <Section title="모집 코드·유입" note={RECRUITMENT_ATTRIBUTION_NOTE}>
+  <p>유입 귀속: <b>{a?.label??'-'}</b>{a?.detail&&<span className="subtle-note"> · {a.detail}</span>}</p>
+  {codes.length?<ul className="franchise-list" aria-label="리드 모집 코드">{codes.map(x=>{const s=struck.get(x.code);return <li key={x.code}><code>{x.code}</code> <small>{x.source==='import'?'파일 가져오기':'직접 입력'} · {kst(x.at)}</small>
+   {s?<small className="franchise-flag"> 제외됨 ({labelOf(STRIKE_REASON_LABELS,s.reason)})</small>:canStrike&&<span className="franchise-bar"><LabelSelect label="제외 사유" labels={STRIKE_REASON_LABELS} value={reasons[x.code]??''} empty="사유 선택" onChange={v=>setReasons({...reasons,[x.code]:v})}/>
+    <Button size="sm" variant="outline" aria-label={`${x.code} 제외`} disabled={busy||!reasons[x.code]} onClick={()=>strike(x.code)}>제외</Button></span>}</li>})}</ul>
+   :<p className="subtle-note">넣은 모집 코드가 없습니다.</p>}
+  {can(lead,'add_lead_codes')&&<form autoComplete="off" className="franchise-bar" onSubmit={e=>{e.preventDefault();if(!problem&&parsed.length)void add()}}>
+   <label className="field"><span>모집 코드 추가 (쉼표로 여러 개)</span><Input autoComplete="off" maxLength={80} spellCheck={false} placeholder="예: R2345678" value={text} onChange={e=>{setText(e.target.value);setNote('')}}/></label>
+   <Button type="submit" variant="outline" disabled={busy||!parsed.length||!!problem}>코드 추가</Button>
+  </form>}
+  {problem&&<p role="alert" className="form-error">{problem}</p>}
+  {note&&<p className="franchise-flag" role="status">{note}</p>}
+  {!!lead.imports?.length&&<><h4>제공처 파일 기록</h4><ul className="franchise-list" aria-label="제공처 파일 기록">{lead.imports.map(i=><li key={i.importId}>{`${i.channelLabel} · ${i.provider} · 제공일 ${i.providedOn} · 접수 ${i.receivedPrecision==='day'?toKstDate(i.receivedAt)+'(날짜만)':kst(i.receivedAt)}${i.merged?' · 기존 리드에 합침':''}`}</li>)}</ul></>}
+ </Section>;
 }
 
 // 삭제 실행 결과 문구: 함께 완료로 기록한 삭제 요청 수를 알린다.
