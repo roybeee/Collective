@@ -15,7 +15,9 @@ import {franchiseItem,factLabel} from './fact-catalog';
 import {isRecruitmentObjective,type Campaign,type Artifact} from './agency';
 import type {BrandFact} from './brand-facts';
 import {FRANCHISE_ERRORS,type FranchiseErrorKey,type AuditAction} from './franchise';
-import {spendUsable} from './franchise-recruitment-server';
+import {spendUsable,codeBook} from './franchise-recruitment-server';
+import {recruitmentTokens} from './franchise-recruitment';
+import {parseCards,type CardCodeLite} from './franchise-cards';
 import {ASSET_TYPE_ORDER,ASSET_TYPE_LABELS,EVENT_TYPE_LABELS as ASSET_EVENT_TYPE_LABELS,ASSET_MESSAGES,ASSET_RULES,ID_PATTERN,STARTUP_PAGE_SECTIONS,EVENT_DECK_SECTIONS,
  validateAssetInput,draftAsset,approveDecision,exportDecision,placementDecision,assetGateIssues,assetWarnings,approvalChecklist,h7Notice,effectiveAssetFacts,sectionTemplate,markAssetsForReview,changedVersionIds,
  validateEvent,registerDecision,attendanceDecision,type RecruitmentAsset,type RecruitmentEvent,type AssetReview,type AssetType,type EventCounts,type Decision} from './franchise-assets';
@@ -110,11 +112,17 @@ async function factContext(owner:string,brandId:string,refs:unknown):Promise<Fac
  }
  return {branch:fr.profile?.branch??null,versions:fr.versions,facts};
 }
+// R15b-2 카드 묶음: QR 줄에 든 모집 코드의 장부 행(코드·브랜드·사용 중지일만)을 id로 읽는다. 카드 묶음이 아니거나 QR 줄·코드가 없으면 [].
+async function cardCodes(owner:string,type:unknown,body:unknown):Promise<CardCodeLite[]>{
+ if(type!=='card_bundle')return [];
+ const qr=parseCards(body).cards.find(c=>c.qr!==null)?.qr,values=qr?recruitmentTokens(qr).codes:[];
+ return values.length?(await codeBook(owner,values)).codes.map(c=>({code:c.code,brandId:c.brandId,retiredOn:c.retiredOn})):[];
+}
 const campaignOf=(owner:string,id:unknown)=>typeof id==='string'&&id.length>0&&id.length<=100?optionalRecord<Campaign>(owner,'campaign',id):Promise.resolve(null);
 const liteOf=(c:Campaign|null)=>c?{id:c.id,brandId:c.brandId,objective:c.objective}:null;
 async function decisionContext(x:{owner:string;brandId:string;now:string;enabled:boolean},row:AssetRow){
- const [ctx,campaign]=await Promise.all([factContext(x.owner,x.brandId,row.factRefs),campaignOf(x.owner,row.campaignId)]);
- return {enabled:x.enabled,brandId:x.brandId,branch:ctx.branch,campaign:liteOf(campaign),facts:ctx.facts,versions:ctx.versions,now:x.now};
+ const [ctx,campaign,codes]=await Promise.all([factContext(x.owner,x.brandId,row.factRefs),campaignOf(x.owner,row.campaignId),cardCodes(x.owner,row.type,row.body)]);
+ return {enabled:x.enabled,brandId:x.brandId,branch:ctx.branch,campaign:liteOf(campaign),facts:ctx.facts,versions:ctx.versions,now:x.now,codes};
 }
 // 행사 연결 후보: 이 브랜드 자료 판의 요약 ∪ 참조 id·판의 레코드 키 조회(최대 10개, 같은 소유자의 다른 브랜드 자료면 record_other_brand).
 type PoolRow=Pick<RecruitmentAsset,'id'|'version'|'brandId'|'status'|'type'>;
@@ -157,8 +165,8 @@ async function assetSave(x:AssetArgs):Promise<Outcome>{
  const i=x.input,prev=given(i.assetId)?await loadAsset(x.owner,x.brandId,i.assetId):null;
  if(prev&&i.baseVersion!==prev.version)fail('ASSET_STALE');
  const campaignId=prev?prev.campaignId:str(i.campaignId,'캠페인',100,true);
- const [ctx,campaign]=await Promise.all([factContext(x.owner,x.brandId,i.factRefs),campaignOf(x.owner,campaignId)]);
- const d=validateAssetInput(i,{enabled:x.enabled,brandId:x.brandId,branch:ctx.branch,campaign:liteOf(campaign),facts:ctx.facts,versions:ctx.versions,now:x.now});
+ const [ctx,campaign,codes]=await Promise.all([factContext(x.owner,x.brandId,i.factRefs),campaignOf(x.owner,campaignId),cardCodes(x.owner,i.type,i.body)]);
+ const d=validateAssetInput(i,{enabled:x.enabled,brandId:x.brandId,branch:ctx.branch,campaign:liteOf(campaign),facts:ctx.facts,versions:ctx.versions,now:x.now,codes});
  if(!d.ok)throw decisionError(d);
  const source=await sourceOf(x.owner,i.source,campaignId,prev?.source??null);
  const draft=await draftAsset(prev,d.value,{id:prev?.id??'ra-'+uid(),brandId:x.brandId,campaignId,now:x.now});
@@ -364,7 +372,7 @@ async function assetsView(who:Viewer,brandId:string):Promise<Json>{
   const text=sectionTemplate(type),cost=(type==='startup_page'?STARTUP_PAGE_SECTIONS:EVENT_DECK_SECTIONS).find(s=>s.costLines);
   return caption&&cost?text.replace(cost.heading,()=>cost.heading+'\n'+caption):text;
  };
- return {assets,campaigns:recruitCampaigns(campaigns,brandId),types:ASSET_TYPE_ORDER.map(t=>({type:t,label:ASSET_TYPE_LABELS[t]})),templates:{startup_page:template('startup_page'),event_deck:template('event_deck')},
+ return {assets,campaigns:recruitCampaigns(campaigns,brandId),types:ASSET_TYPE_ORDER.map(t=>({type:t,label:ASSET_TYPE_LABELS[t]})),templates:{startup_page:template('startup_page'),event_deck:template('event_deck'),card_bundle:sectionTemplate('card_bundle')},
   templateFactRefs:costFacts.map(f=>({id:f.id,version:f.version})),costFactsMissing:!costFacts.length,
   facts:effective.map(f=>({id:f.id,version:f.version,key:f.key,label:factLabel(f.key),line:factLine(f),hasSource:!!f.sourceRef})),
   branch:ctx.branch,h7Notice:h7Notice(ctx.branch),enabled,role:who.role,limits:ASSET_LIMITS,rules:ASSET_RULES,disclaimer:GATE_DISCLAIMER};
@@ -373,9 +381,9 @@ async function assetsView(who:Viewer,brandId:string):Promise<Json>{
 async function assetDetailView(who:Viewer,brandId:string,params:URLSearchParams):Promise<Json>{
  const owner=who.owner,now=stamp(),v=params.get('version');
  const row=await loadAsset(owner,brandId,params.get('assetId')??'',v===null||v===''?undefined:Number(v));
- const [ctx,campaign,enabled,versions]=await Promise.all([factContext(owner,brandId,row.factRefs),campaignOf(owner,row.campaignId),isEnabled(owner,'r_franchise'),
+ const [ctx,campaign,enabled,codes,versions]=await Promise.all([factContext(owner,brandId,row.factRefs),campaignOf(owner,row.campaignId),isEnabled(owner,'r_franchise'),cardCodes(owner,row.type,row.body),
   database().prepare("SELECT json_extract(data,'$.version') AS version,json_extract(data,'$.status') AS status FROM records WHERE owner=? AND kind='recruitment_asset' AND parent_id=? AND json_extract(data,'$.id')=? ORDER BY json_extract(data,'$.version') DESC").bind(owner,brandId,row.id).all<{version:number;status:string}>()]);
- const g=assetGateIssues(row,{brandId,facts:ctx.facts,versions:ctx.versions,now});
+ const g=assetGateIssues(row,{brandId,facts:ctx.facts,versions:ctx.versions,now,codes});
  const drift=row.factRefs.map(r=>{const cur=ctx.facts.find(f=>f.id===r.id&&f.brandId===brandId);return {factId:r.id,refVersion:r.version,currentVersion:cur?cur.version:null,changed:!cur||cur.version!==r.version}});
  const resaveSuggested=row.review.needed||drift.some(d=>d.changed)||g.codes.some(c=>c==='fact_changed'||c==='version_not_current');
  return {asset:Object.fromEntries(Object.entries(row).filter(([k])=>k!=='rev')),latestVersion:versions.results[0]?.version??row.version,versions:versions.results.map(x=>({version:x.version,status:x.status})),

@@ -85,7 +85,7 @@ for(const a of ARTIFACTS)await server.recordStatement(WS,'artifact',a.id,a,a.cam
 
 // ── 화면이 만든 요청으로 실제 기록을 만든다 ──
 const list0=await view(member,{view:'assets'});
-check('the assets view gives the screen its types, campaigns, template, template refs and facts',list0.types.length===7&&list0.types[0].type==='startup_page'&&list0.campaigns.map(c=>c.id).join()==='ca-a,ca-a2'&&list0.templates.startup_page.includes('총 창업비용 · 소형 매장: 4,500만원')&&list0.templateFactRefs.length===1&&list0.costFactsMissing===false&&list0.facts.length===1&&list0.enabled===true&&list0.branch==='A');
+check('the assets view gives the screen its types, campaigns, template, template refs and facts',list0.types.length===8&&list0.types[0].type==='startup_page'&&list0.campaigns.map(c=>c.id).join()==='ca-a,ca-a2'&&list0.templates.startup_page.includes('총 창업비용 · 소형 매장: 4,500만원')&&list0.templateFactRefs.length===1&&list0.costFactsMissing===false&&list0.facts.length===1&&list0.enabled===true&&list0.branch==='A');
 check('seed options from the workspace artifacts are the approved artifacts of the campaign',JSON.stringify(plain(assetsUi.seedOptions(ARTIFACTS,'ca-a')).map(o=>o.id))==='["art-ai"]');
 const SEC=Object.fromEntries(fa.STARTUP_PAGE_SECTIONS.map(s=>[s.id,s.heading])),after=(text,heading,lines)=>text.replace(heading,()=>[heading,...lines].join('\n'));
 const FILL_WHY='매일 아침 굽는 도넛으로 동네 손님과 가까워진 브랜드입니다.';
@@ -126,7 +126,7 @@ context.URL=URL;delete context.Blob;delete context.document;
 
 // ── 행사: 화면 요청 모양(eventInput·registerInput·attendanceInput)을 실제 경로로 ──
 const events0=await view(boss,{view:'events'});
-check('S1: the events view carries event types and asset types for the editor',JSON.stringify(events0.types.map(t=>t.label))==='["설명회","견학","박람회"]'&&events0.assetTypes.length===7&&events0.approvedAssets.some(a=>a.id===Q.assetId&&a.version===1&&a.latest));
+check('S1: the events view carries event types and asset types for the editor',JSON.stringify(events0.types.map(t=>t.label))==='["설명회","견학","박람회"]'&&events0.assetTypes.length===8&&events0.approvedAssets.some(a=>a.id===Q.assetId&&a.version===1&&a.latest));
 const kstLocalOf=d=>eventsUi.kstLocal(iso(d));
 w=await write(boss,'event_save',eventsUi.eventInput({type:'tour',campaignId:'ca-a',start:{now:false,local:kstLocalOf(3*24*HOUR)},place:' 가상 직영점 ',capacity:'1000',refs:[{id:Q.assetId,version:1}]},null));
 const E1=w.r.body.result?.eventId;check('owner/admin create a future tour with the screen payload',w.r.status===200&&eventRow(E1).placeLabel==='가상 직영점'&&eventRow(E1).capacity===1000&&eventRow(E1).spendRef===null);

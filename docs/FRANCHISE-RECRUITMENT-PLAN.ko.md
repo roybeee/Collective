@@ -1157,6 +1157,16 @@ R4a가 `lib/franchise-rules.ts`에 만들고 R2·R4b가 쓴다. 레코드는 `{i
   - 모델 경계: 두 모듈을 `tests/franchise-model-boundary.test.mjs` FORBIDDEN에 더했다. `franchise-recruitment` 가져오기 허용 목록(RC-S1)에 `lib/franchise-cards.ts`를 더했다.
   - 검사: `franchise-qr` 18, `franchise-cards` 48, `franchise-model-boundary` 29, `recruitment-codes` 146. 변이 22개 중 21개를 잡았다. 남은 1개(남는 비트 0 채우기 제거)는 결과가 같은 변이다.
   - 남은 위험(휴리스틱, 법률 자문 아님): 한글 수사('팔천만 원')는 수치 검사가 보지 않는다(R2 판정기의 H6·H8 몫). 인쇄 전 사람이 QR을 한 번 찍어 본다.
+- R15b-2 구현 기록(2026-09-27, passed · mocked, 로컬 E2E real Chromium):
+  - 모집 자료 유형 `card_bundle`('모집 카드 묶음(PNG)', 화면 순서는 박람회 배너 뒤)을 더했다. 저장·승인·체크리스트·대기기간 확인(결정 34)·R2 판정·각주·근거 사실·재검토·내보내기 기록·게시 위치·증빙 묶음을 기존 모집 자료와 그대로 같이 쓴다. `fr-assets@2026-09-27.4`, 사유 코드 51 → 54.
+  - 카드 단계(400)를 승인·내보내기·미리보기에서 내용 단계(409) 앞에 둔다: `card_structure`·`card_number_unbacked`·`card_qr_invalid`. 수치는 근거로 고른 사실만 받치고, 권장 대기기간 안내 문장은 줄 그대로면 통과한다. 초안 저장은 막지 않고 같은 문구를 경고로 보인다. hard_block은 이 단계와 무관하게 그대로다.
+  - 서버는 QR 줄의 모집 코드만 id로 읽는다(`codeBook`). 코드는 같은 브랜드에서 발급했고 오늘(KST)이 사용 중지일 전이어야 한다. 그래서 내보낸 뒤 코드를 중지하면 다음 내보내기부터 400이다.
+  - 템플릿: 카드 4장(1장 [의견], 2장 [사실], 3장 휴리스틱 표지와 대기기간 권장 문장 두 줄, 4장 '가맹 문의'와 `QR https://`). 비용 사실은 미리 고르지 않는다.
+  - 화면: 편집기에 카드 묶음 안내 문구, 템플릿 넣기. 내보내기 칸에 'PNG 내려받기(1080×1350 피드)'·'(1080×1920 스토리)'. 대기기간 확인 전에는 잠긴다. 누르면 내보내기 기록을 남기고, 응답 원문(승인 원문과 같은 바이트)만 브라우저에서 카드마다 그려 내려받는다(`lib/franchise-card-render.ts`, 기존 렌더러 무수정). 그리기가 실패하면 파일을 하나도 내려받지 않는다. 증빙은 원문 해시다. PNG 바이트는 글꼴·브라우저에 따라 달라질 수 있다.
+  - 모델 경계: 렌더러도 FORBIDDEN이다. 화면은 렌더러만 import한다(판정 모듈 직접 import 없음, `tests/franchise-ui.test.mjs` S2).
+  - 검사: `franchise-assets` 282(C1~C15), 새 `franchise-cards-route` 18(실제 라우트·메모리 SQLite·발급·중지한 모집 코드), `franchise-assets-route` 216, `franchise-recruit-ui` 117, `franchise-ui` 117, `recruitment-codes` 146, `franchise-model-boundary` 29. 연결 변이 9개를 모두 잡았다.
+  - 로컬 E2E(`e2e/franchise-recruit.spec.ts` 7번, real Chromium·로컬 D1 / mocked 인증, 모바일·데스크톱 2/2 passed): 템플릿 → 저장(게이트 200) → 승인 → 확인 뒤 PNG 4장(1080×1350)·4장(1080×1920) 내려받기(PNG 서명·IHDR 크기, 파일 이름), 브라우저 `BarcodeDetector`로 QR 카드를 읽어 링크가 원문과 같음, 발급하지 않은 코드의 카드 묶음 승인 400 `card_qr_invalid`.
+  - not_run: 운영 real 확인(게시 뒤 대표가 `r_franchise`를 켠 다음), 실제 인쇄물 QR 스캔. 인터뷰 영상 완성본 해시는 R15b-3이다.
 
 ### 테스트 계획
 

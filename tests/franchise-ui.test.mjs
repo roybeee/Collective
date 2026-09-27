@@ -389,7 +389,7 @@ check('revealed contacts are tappable links',()=>assert.ok(lead.includes('<a hre
 check('franchise screens make no legal-compliance claim',()=>{for(const [f,s] of Object.entries(src))for(const bad of ['법적으로 적합','준수 완료','합법'])assert.ok(!s.includes(bad),f+' '+bad)});
 // ── 5) R15a-2b 원문 고정: 가져오기 경계·내보내기 원문·파일 저장·자동 완성·확인 문구·표시 문구 없음(대표 지시 2026-09-26)·탭 연결 ──
 const assetsSrc=src['app/franchise-assets-panel.tsx'],eventsSrc=src['app/franchise-events-panel.tsx'],newScreens=[['app/franchise-assets-panel.tsx',assetsSrc],['app/franchise-events-panel.tsx',eventsSrc]];
-const ALLOWED_IMPORTS=new Set(['react','lucide-react','@/components/ui/button','@/components/ui/input','@/components/ui/textarea','@/components/ui/native-select','@/components/ui/dialog','@/components/ui/sheet','@/lib/franchise-rules','@/lib/client','./franchise-common','./account-context']);
+const ALLOWED_IMPORTS=new Set(['react','lucide-react','@/components/ui/button','@/components/ui/input','@/components/ui/textarea','@/components/ui/native-select','@/components/ui/dialog','@/components/ui/sheet','@/lib/franchise-rules','@/lib/client','./franchise-common','./account-context','@/lib/franchise-card-render']);
 function importsOf(file,text){
  const sf=ts.createSourceFile(file,text,ts.ScriptTarget.ES2022,true,ts.ScriptKind.TSX),out=[];
  const visit=n=>{
@@ -400,7 +400,7 @@ function importsOf(file,text){
  visit(sf);return out;
 }
 check('S2: the new screens import only the allowed modules (no judge code, no disclosure module, no toast)',()=>{for(const [f,s] of newScreens){const imports=importsOf(f,s);assert.ok(imports.length>0);for(const i of imports){assert.ok(ALLOWED_IMPORTS.has(i.spec),f+' '+i.spec);assert.ok(!/franchise-assets|ai-disclosure|sonner|franchise-compliance|fact-catalog|graders|brand-facts|campaign-archive|server/.test(i.spec),f+' '+i.spec)}
- for(const i of imports.filter(x=>x.spec==='@/lib/client'))assert.ok(i.typeOnly,f+' @/lib/client is type-only');for(const i of imports.filter(x=>x.spec==='@/lib/franchise-rules'))assert.ok(i.names.every(n=>['toKstDate','kstDateOf'].includes(n)),f+' franchise-rules names')}});
+ for(const i of imports.filter(x=>x.spec==='@/lib/client'))assert.ok(i.typeOnly,f+' @/lib/client is type-only');for(const i of imports.filter(x=>x.spec==='@/lib/franchise-rules'))assert.ok(i.names.every(n=>['toKstDate','kstDateOf'].includes(n)),f+' franchise-rules names');for(const i of imports.filter(x=>x.spec==='@/lib/franchise-card-render'))assert.ok(f==='app/franchise-assets-panel.tsx'&&i.names.every(n=>['downloadCardBundle','CARD_SIZES','CARD_SIZE_KEYS','CardSize'].includes(n)),f+' card renderer names (R15b-2, assets panel only)')}});
 check('S2: the import collector sees imports, re-exports, dynamic imports and require',()=>assert.deepEqual(importsOf('x.tsx',"import type {A} from '@/lib/client';\nexport {b} from './b';\nconst c=import('@/lib/ai-disclosure');const d=require('sonner');").map(i=>i.spec),['@/lib/client','./b','@/lib/ai-disclosure','sonner']));
 check('S3: exports save or copy only the body returned by the server',()=>{
  assert.ok(assetsSrc.includes("typeof b.body==='string'&&typeof b.filename==='string'"));assert.ok(assetsSrc.includes('saveText(b.filename,b.body)'));assert.ok(assetsSrc.includes('copyText(b.body)'));
@@ -422,7 +422,7 @@ check('S9: every write goes through sendAttempt, and a failure goes through foll
 check('S10: the panel wires the two tabs, wraps the tab row and keeps the settings trigger pinned',()=>{
  assert.ok(panel.includes("import {FranchiseAssets} from './franchise-assets-panel';"));assert.ok(panel.includes("import {FranchiseEvents} from './franchise-events-panel';"));
  assert.ok(panel.includes('<TabsList className="h-auto max-w-full flex-wrap"><TabsTrigger value="leads">리드</TabsTrigger><TabsTrigger value="requests">정보주체 요청</TabsTrigger><TabsTrigger value="assets">모집 자료</TabsTrigger><TabsTrigger value="events">행사</TabsTrigger><TabsTrigger value="inflow">유입·비용</TabsTrigger><TabsTrigger value="report">성과</TabsTrigger>{admin&&<TabsTrigger value="settings">설정</TabsTrigger>}</TabsList>'));
- assert.ok(panel.includes(":shown==='assets'?<FranchiseAssets key={brandId} brandId={brandId} admin={admin} artifacts={workspace.artifacts} onStatus={()=>void loadStatus()}/>"));
+ assert.ok(panel.includes(":shown==='assets'?<FranchiseAssets key={brandId} brandId={brandId} brand={brands.find(b=>b.id===brandId)} admin={admin} artifacts={workspace.artifacts} onStatus={()=>void loadStatus()}/>"));
  assert.ok(panel.includes(":shown==='events'?<FranchiseEvents key={brandId} brandId={brandId} admin={admin} onStatus={()=>void loadStatus()}/>"));
  assert.ok(panel.indexOf(":shown==='requests'?")<panel.indexOf(":shown==='assets'?")&&panel.indexOf(":shown==='events'?")<panel.indexOf(":shown==='inflow'?")&&panel.indexOf(":shown==='inflow'?")<panel.indexOf(":shown==='report'?")&&panel.indexOf(":shown==='report'?")<panel.indexOf(':<FranchiseSettings'),'new branches sit between requests and settings');
  assert.ok(panel.includes("import {FranchiseInflow} from './franchise-inflow-panel';"));
