@@ -24,7 +24,8 @@ for(const [id,expected] of Object.entries(SPECS)){
  check(`${id}: no sealed industry`,()=>assert.ok(spec.expectations.industry.every(x=>!SEALED_INDUSTRIES.includes(x))));
  check(`${id}: the channels reach the commerce skill through the generic word, not a seller name`,()=>assert.ok(campaign.channels.includes('커머스')&&!/올리브영|무신사|olive|musinsa/i.test(campaign.channels),campaign.channels));
  check(`${id}: not a local store campaign`,()=>assert.equal(spec.expectations.localStore,false));
- check(`${id}: the campaign applies channel.commerce and not the store skill`,()=>{const ids=practice.channelSkillIds(campaign);assert.ok(ids.includes('commerce')&&!ids.includes('offline'),ids.join())});
+ // 레인 Q 권장: commerce와 shortform(Instagram, A1 Advantage+ 후보)이 둘 다 켜지는 채널 구성을 유지한다.
+ check(`${id}: the campaign applies channel.commerce and channel.shortform and not the store skill`,()=>{const ids=practice.channelSkillIds(campaign);assert.ok(ids.includes('commerce')&&ids.includes('shortform')&&!ids.includes('offline'),ids.join())});
  // 동결 요청을 평가 제출과 같은 조립(evalKind('role').build)으로 펼쳐 모델 입력의 채널 지시를 본다.
  const out=await synthesizeCases(spec,{generator}),roles=out.cases.filter(c=>c.kind==='role'),practiceOf=c=>JSON.parse(kinds.evalKind('role').build(c.request).input).channelPractice;
  check(`${id}: eight role cases`,()=>assert.equal(roles.length,8));
