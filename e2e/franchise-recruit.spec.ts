@@ -3,6 +3,8 @@
 //    서버에 확인 없이 보내면 409 wait_review_missing이고, 체크한 뒤 승인·내려받기·복사가 성공한다.
 // 2) #188 R5c 유입·비용 탭: 모집 코드 발급 → 사용 중지, 모집 비용 기록 → 무효화, 행사에 비용 연결, 리드 CSV 가져오기(검사·미리보기·확정).
 // 3) R6c 성과 탭: 읽는 법 문구·면책이 숫자보다 먼저, 작은 표본 표기, 진행 중인 주 확정 불가, 지난주 확정·Markdown 내려받기, 리드 상세 증빙 묶음(연락처 원문 없음).
+// 4) R6d 워크스페이스 할 일: 미응대 문의 건수와 면책이 첫 화면 '다음 할 일'에 보이고(리드 이름·연락처 없음), 누르면 가맹 모집 리드 탭으로 간다.
+//    '다음 할 일'은 AI 연결을 마친 워크스페이스에만 보이므로, 실제 /api/workspace 응답을 미리 받아 연결 상태(configured)만 참으로 바꿔 돌려준다(mocked 연결, real 할 일).
 // 직원 역할 화면(비용·가져오기 영역 없음)은 legacy 헤더 요청자가 늘 소유자라 여기서 재현할 수 없다. 실제 이메일 세션 직원으로 e2e/email-auth.spec.ts에서 본다.
 // 근거: real Chromium·빌드 결과·로컬 D1(wrangler --local) / mocked 인증(legacy 로그인 헤더). 요청 가로채기는 쓰지 않는다(docs/E2E.ko.md 규칙).
 // 모든 값은 가상이다(브랜드는 시드 브랜드 ofd, 이름 김가상·이테스트, 전화 010-0000-12xx, 이메일 *@example.com). 결과는 COLLECTIVE 휴리스틱 · 법률 자문 아님.
@@ -354,5 +356,40 @@ test('R6c 성과 탭: 문구·면책이 숫자보다 먼저, 작은 표본 표�
   expect((await bundleDownload).suggestedFilename()).toMatch(/^recruitment-evidence-ofd-lead-.+\.json$/);
   await expect(sheet.getByText('증빙 묶음을 내려받았습니다', {exact: false})).toBeVisible();
   await shot(page, testInfo, 'r6-3-evidence-bundle');
+  await context.close();
+});
+
+test('R6d 워크스페이스 할 일: 미응대 문의 건수·면책이 다음 할 일에 보이고 가맹 리드 탭으로 간다', async ({browser}, testInfo) => {
+  test.setTimeout(120_000);
+  const owner = `e2e-fr-r6d-${testInfo.project.name}-${Date.now()}`;
+  const {context, page} = await ownerPage(browser, testInfo, owner);
+  await prepareFranchise(page, `가상 가맹 모집 R6d ${testInfo.project.name}`);
+  // 준비(API): 첫 연락이 없는 가상 문의 2건.
+  for (let i = 0; i < 2; i++) {
+    const lead = await franchise(page, 'create_lead', {contact: {name: '김가상', phone: `010-0000-14${String(i).padStart(2, '0')}`}, task: {region: '', budgetBand: 'unknown', timingBand: 'unknown', sourceChannel: 'walk_in'}, basis: {type: 'inquiry_response'}});
+    expect(lead.status, JSON.stringify(lead.body)).toBe(200);
+  }
+  // 실제 응답(real): 가맹 할 일은 브랜드 id·건수만 있다.
+  const workspace = await (await page.request.get('/api/workspace')).json() as {connection: Record<string, unknown>; franchiseTasks?: {items: {task: string; count: number; brandId: string}[]; disclaimer: string}};
+  expect(workspace.franchiseTasks?.items).toEqual([{task: 'unanswered', count: 2, brandId: BRAND}]);
+  expect(workspace.franchiseTasks?.disclaimer).toBe('COLLECTIVE 휴리스틱 · 법률 자문 아님');
+  expect(JSON.stringify(workspace.franchiseTasks)).not.toContain('김가상');
+  // 연결 상태만 참으로 바꾼 같은 응답을 돌려준다(docs/E2E.ko.md 가로채기 규칙: 미리 받은 응답을 fulfill).
+  await page.route('**/api/workspace', route => route.fulfill({json: {...workspace, connection: {...workspace.connection, configured: true}}}));
+  await page.goto('/');
+  const next = page.locator('section.next-tasks');
+  const item = next.locator('[data-franchise-task="unanswered"]');
+  await expect(item).toContainText('미응대 문의');
+  await expect(item).toContainText('첫 연락 기록이 없는 문의 2건');
+  await expect(item).toContainText('COLLECTIVE 휴리스틱 · 법률 자문 아님');
+  await expect(next).not.toContainText('김가상');
+  await expect(next).not.toContainText('010-0000-14');
+  await shot(page, testInfo, 'r6d-1-next-tasks');
+  await item.click();
+  await expect(page).toHaveURL(/view=franchise/);
+  await expect(page).toHaveURL(/tab=leads/);
+  await expect(page).toHaveURL(new RegExp(`brand=${BRAND}`));
+  await expect(page.getByRole('tab', {name: '리드', exact: true})).toHaveAttribute('aria-selected', 'true');
+  await shot(page, testInfo, 'r6d-2-franchise-leads');
   await context.close();
 });
