@@ -15,8 +15,11 @@ import {ApiError,str,json,failure,database,recordStatement,readRecord,listRecord
 import {assertNotArchived} from './campaign-archive';
 // 자료 요청 자동 수집(A6-3): 완료 초안 저장 뒤 questions를 모은다. 스위치는 보조 모듈이 읽고, 실패해도 예외를 던지지 않는다(응답 불변).
 import {collectBriefOnSave} from './data-requests-server';
+// 입력 축소(input_diet, PR 4b): 스위치는 보조 모듈이 읽고 조립 인자로 넘긴다. 꺼지면 제출이 이전과 바이트 동일하다. 입력 문자 수 분해(inputChars)는 스위치와 무관하게 초안 기록에 숫자만 남긴다.
+import {inputDietEnabled} from './input-diet-server';
+import {inputChars,type InputChars,type InputDietReport} from '@/lib/input-diet';
 // inputMasking: 제출 본문의 가림 기록(필드·종류·건수, 허용 값이라 가리지 않은 탐지는 allowed:true, 값 없음, 레인 A 입력 최소화). 브랜드 자료 가림 기록(4.4 ③, brandArchiveInput)을 뒤에 합친다.
-type StoredDraft=BriefDraft&{providerId?:string;inputMasking?:InputMasking[]};
+type StoredDraft=BriefDraft&{providerId?:string;inputMasking?:InputMasking[];inputChars?:InputChars;inputDiet?:InputDietReport};
 const active=(d:BriefDraft)=>['starting','queued','in_progress','uncertain'].includes(d.status);
 const publicDraft=({providerId:_,...draft}:StoredDraft)=>draft;
 // 사용량 조인 키(F2a). 브리프 초안은 jobs 행이 없어 초안 id를 실행 단위로 쓴다. 인라인 지시라 스킬 버전은 없다.
@@ -43,8 +46,8 @@ export async function executeBrief(owner:string,b:Record<string,unknown>){let lo
    if(b.campaignId){const c=await readRecord<Campaign>(owner,'campaign',str(b.campaignId,'캠페인',100,true));assertNotArchived(c);if(c.brandId!==input.brandId||c.version!==b.campaignVersion)throw new ApiError(409,'캠페인이 변경됐습니다. 최신 브리프에서 다시 요청하세요.');if(c.storeId){if(input.storeId&&input.storeId!==c.storeId)throw new ApiError(400,'캠페인의 지점이 일치하지 않습니다.');input.storeId=c.storeId;}if(isRecruitmentObjective(c)){if(input.storeId)throw new ApiError(400,OBJECTIVE_MESSAGES.withStore);input.objective=c.objective}campaignId=c.id;campaignVersion=c.version}
    if(campaignId){const meeting=await database().prepare("SELECT id FROM jobs WHERE owner=? AND campaign_id=? AND role='meeting' AND status IN ('starting','queued','in_progress','uncertain')").bind(owner,campaignId).first();if(meeting)throw new ApiError(409,'팀 회의가 진행 중입니다. 회의를 완료하거나 중지한 뒤 초안을 작성하세요.');}
    // 이전 캠페인 3건·성과 6건·승인 작업물 4건 선택과 가림은 lib/brief-input.ts가 한다. 기준일은 지금 날짜(stamp)다.
-   const built=buildBriefSubmission(briefRequestFor(await briefSources(owner,{campaignId,input,contextDate:stamp().slice(0,10)})));
-   const prepared:StoredDraft={id,input,status:'starting',campaignId,campaignVersion,model:cfg.model,createdAt:stamp(),updatedAt:stamp(),inputMasking:built.maskingRecord};
+   const built=buildBriefSubmission(briefRequestFor(await briefSources(owner,{campaignId,input,contextDate:stamp().slice(0,10)})),{inputDiet:await inputDietEnabled(owner)});
+   const prepared:StoredDraft={id,input,status:'starting',campaignId,campaignVersion,model:cfg.model,createdAt:stamp(),updatedAt:stamp(),inputMasking:built.maskingRecord,inputChars:inputChars(built.input,built.instructions),...(built.diet?{inputDiet:built.diet}:{})};
    await database().batch([recordStatement(owner,'brief_draft',id,prepared),hermesSubmissionStatement(owner,'brief-'+id,{instructions:built.instructions,input:built.input})]);
    pending=prepared;
    const result=await submitHermes(owner,'brief-'+id,cfg);

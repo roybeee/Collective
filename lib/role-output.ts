@@ -183,10 +183,11 @@ export function renderRoleOutput(content:string,role:string,contract?:RoleOutput
 export function artifactUsable(a:Artifact,campaignVersion:number){
  return ['review','approved'].includes(a.status)&&(!a.campaignVersion||a.campaignVersion===campaignVersion)&&!!a.content.trim()&&!isQuestionOnly(a.content);
 }
-export function upstreamContext(artifacts:Artifact[],role:string,campaignVersion:number){
- const index=roles.findIndex(r=>r.id===role);
+// excerptOf: 한도를 넘는 본문을 줄이는 방식. 없으면 앞부분 절단이다. 입력 축소(input_diet, lib/input-diet.ts sectionExcerpt)는 같은 한도를 섹션에 나눠 모든 섹션을 싣는다.
+export function upstreamContext(artifacts:Artifact[],role:string,campaignVersion:number,excerptOf?:(content:string,limit:number)=>string){
+ const index=roles.findIndex(r=>r.id===role),limit=role==='quality'?24000:6000;
  return roles.slice(0,index).flatMap(prior=>{
   const a=artifacts.filter(a=>a.role===prior.id&&artifactUsable(a,campaignVersion)).sort((a,b)=>b.version-a.version||b.createdAt?.localeCompare(a.createdAt))[0];
-  return a?[{ref:`${prior.name} v${a.version}`,version:a.version,role:a.role,title:a.title,content:a.content.slice(0,role==='quality'?24000:6000),excerpt:a.content.length>(role==='quality'?24000:6000),originalLength:a.content.length}]:[];
+  return a?[{ref:`${prior.name} v${a.version}`,version:a.version,role:a.role,title:a.title,content:excerptOf?excerptOf(a.content,limit):a.content.slice(0,limit),excerpt:a.content.length>limit,originalLength:a.content.length}]:[];
  });
 }
