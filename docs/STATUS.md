@@ -5,6 +5,7 @@
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
 - 운영(갱신): `9a760e4`(Sites 버전 43, tree `90f8c67`, [기록](releases/2026-09-27-9a760e4.md)). B3·B4 2부·#160·#158·레인 R #161·#163 게시 완료.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
+- #173 · 레인 R · 보통 · 새 스위치 없음(GRADERS_VERSION +franchise-industry, 운영 S7 real 갱신 완료. 게시 뒤 운영 dev·봉인 골든 재채점으로 새 fail 0건 확인 필요)
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
 갱신: 2026-09-27 01:13 UTC
@@ -19,15 +20,17 @@
 - 다음: A3 run → A8-1 → A8-2 → A8-3 → B4 2부 → B3([순서](LANES.ko.md#레인-a-claude-a-세션)).
 
 ## 레인 R (Claude 트랙 R 세션 — 가맹 모집)
-갱신: 2026-09-26 22:09 UTC
-- 진행 중: R3c `franchise` 업종 사전·`GRADERS_VERSION`(브랜치 `r3c-industry`, 구현·교차 검토 중). 운영 S7 기대 업종 갱신이 real로 확인된 뒤에만 병합한다(먼저 게시하면 S7 가맹 모집 표현이 새 `industry_metric_leak` fail).
+갱신: 2026-09-27 03:11 UTC
+- 세션: 2026-09-27부터 레인 R을 맥 로컬 Claude 세션이 이어받았다(대표 지시, 대표 외출 중). 원래 클라우드 세션의 R3c 작업은 GitHub에 없어 맥 세션이 다시 만들었다. 클라우드 세션에는 R3c 병합 뒤 최신 main에서 이어가라고 알렸다.
+- 진행 중: #173 R3c `franchise` 업종 사전·`GRADERS_VERSION +franchise-industry`(CI 뒤 병합). 게시 대기열에 요청했다. 게시 뒤 운영 dev·봉인 골든 재채점으로 새 fail 0건을 확인한다(소유자 세션).
 - 최근: #163 R15a-2b 가맹 화면 탭·#161 고정 문장 권장화·R2 보완 통제 `merged`(게시 대기열에 함께 요청). #151 R3c 선행 S7 콘솔 키트 `merged`. #139·#143·#145 `published`(묶음 15).
 - 다음: R3c(`franchise` 업종 사전·`GRADERS_VERSION`, S7 운영 갱신 real 확인 뒤) → R2 3차(절 단위 구성 판정, 오기재 재현율·인용 경고 오탐) → 트랙 R 계획 순서. R15a-3(워크스페이스 할 일)은 R6 뒤([순서](LANES.ko.md#레인-r-claude-트랙-r-세션)).
 - 대표 결정(2026-09-26): (1) 앱 밖 모집 자료에 AI 생성물 표시를 붙이지 않는다("표시하지마", 화면도 묻지 않음, 결정 17 앱 발행 캡션은 그대로). (2) 예비창업자용 고정 안내 문장(두 대기기간 안내, 수익 질문 안내)은 권장 문구다("3번"). 템플릿은 계속 채우고, 빠지면 경고만 하고 막지 않는다. 대신 대기기간을 틀리게 적은 문장은 R2 hard_block으로 막는다.
-- 대표 승인(2026-09-26 16:15 UTC): R3c 선행 작업, 운영 D1 합성 S7 케이스 기대 업종 갱신(8건 `['fnb']` → `['franchise','fnb']`). 실행: not_run(소유자 로그인 브라우저 콘솔에서 check → apply, 결과 한 줄을 레인 R에 붙여 넣음, [관찰 기록](observations/2026-09-26-lane-r-s7-industry.md)).
-- 막힌 것: S7 운영 갱신은 소유자 세션이 있어야 한다(이 클라우드 세션은 `/api/eval` 401). 법률 검토(결정 20) 보류 중이라 모든 가맹 판정은 'COLLECTIVE 휴리스틱 · 법률 자문 아님'이다. LR-1 확인 필요 추가: 소규모 본부 적용 제외 문장을 hard_block으로 막는 것.
-- 해소: #143 게시 전 확인(운영 objective 캠페인 0건, 그 개선 회의 0건, 레인 A, passed · real). 레인 A 확인 요청(macOS `tests/check-prompts.test.mjs` 대소문자 충돌)은 #161에서 고쳤다.
+- 대표 승인(2026-09-26 16:15 UTC): R3c 선행 작업, 운영 D1 합성 S7 케이스 기대 업종 갱신(8건 `['fnb']` → `['franchise','fnb']`). 실행: passed · real(2026-09-27 00:30~00:40 UTC, 대표 소유자 콘솔. check `toChange` 8 → apply `changed` 8·`verified` 8 → 다시 check `already` 8, [관찰 기록](observations/2026-09-26-lane-r-s7-industry.md)).
+- 막힌 것: 법률 검토(결정 20) 보류 중이라 모든 가맹 판정은 'COLLECTIVE 휴리스틱 · 법률 자문 아님'이다. LR-1 확인 필요 추가: 소규모 본부 적용 제외 문장을 hard_block으로 막는 것.
+- 해소: S7 운영 기대 업종 갱신 real(위 대표 승인 줄). #172 결정 32 R5 리드 가져오기 범위(연락처 포함 B안, 제공처 파일별 집계) 기록 `merged`. #143 게시 전 확인(운영 objective 캠페인 0건, 그 개선 회의 0건, 레인 A, passed · real). 레인 A 확인 요청(macOS `tests/check-prompts.test.mjs` 대소문자 충돌)은 #161에서 고쳤다.
 - 제안(소유 레인 검토): `docs/DATA-PROCESSING.ko.md` 가맹 kind 목록에 `recruitment_asset`·`recruitment_event`를 더한다(이름·연락처 없음, 모델 입력 0). R2 판정기 `matchView`가 보이지 않는 문자(Cc·Co·Cn·Zl·Zp)를 지우게 하는 것은 레인 R 별도 PR로 한다.
+- 확인 필요(소유 레인 없음, F4b-2 #70): `lib/deidentified-signals.ts:34` `token(v,max=120)` 때문에 채점기 버전 문자열(main 224자, #173 뒤 243자)이 120자를 넘어 비식별 신호의 `grading.gradersVersion`이 null로 저장된다. R3c 전부터 있던 결함이다.
 - 관찰(레인 Q 파일): `tests/graders.test.mjs:274`(4만 자 입력 1초 검사)가 이 4코어 컨테이너에서 한계선에 있다('## x\n자료 필요'×4000 입력 0.93~1.07초, 같은 코드에서 3회 중 1~2회 실패). 채점기 코드와 무관한 부하 흔들림이다.
 
 ## 레인 Q (Codex 세션 — 품질·평가·운영)
