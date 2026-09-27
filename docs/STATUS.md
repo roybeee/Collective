@@ -63,6 +63,21 @@
 - 확인 필요(소유 레인 없음, F4b-2 #70): `lib/deidentified-signals.ts:34` `token(v,max=120)` 때문에 채점기 버전 문자열(main 224자, #173 뒤 243자)이 120자를 넘어 비식별 신호의 `grading.gradersVersion`이 null로 저장된다. R3c 전부터 있던 결함이다.
 - 관찰(레인 Q 파일): `tests/graders.test.mjs:274`(4만 자 입력 1초 검사)가 이 4코어 컨테이너에서 한계선에 있다('## x\n자료 필요'×4000 입력 0.93~1.07초, 같은 코드에서 3회 중 1~2회 실패). 채점기 코드와 무관한 부하 흔들림이다.
 
+## 레인 G (Claude G 세션 roybee-86 — 성장 계획 잔여 개발)
+갱신: 2026-09-27 11:45 UTC
+- 결정: 대표 지시(2026-09-27 "코드 쪽 남은 것 전부 개발·배포·게시까지 마무리"). B2 2단계 포함은 대표가 다시 확인했다. 범위와 순서는 [LANES](LANES.ko.md#레인-g-claude-g-세션-roybee-86).
+- 진행 중(브랜치, 모두 기준 `530387b`~`6a45a27`, 미병합):
+  - `feat/4b-loop1-collect`: `loop-1` 성과 수집 화면·초안·경고 + `security-ops-5` 수집 실패 노출·재연결 필요·백오프.
+  - `feat/4b-key-rotation`: `security-ops-6` 암호문 `v1:kid`·AAD·여러 키 복호화, 새 형식 쓰기는 기본 꺼짐 스위치(롤백 안전).
+  - `feat/b2-stage2-digest`: B2 2단계 워커 digest 큐·드리프트 경보·사용량 표(스위치 기본 꺼짐, 앱 쪽 tick만).
+  - `feat/b3-2-reflector`: B3-2 Reflector(대표·관리자 전용 미리보기→전송, DP-2 허용 목록, DP-3 fail-closed, 격리 HERMES 프로필과 대표 확인 기록이 있어야 실행, 초안만 저장, 스위치 기본 꺼짐).
+  - `feat/a4-4-png-code`: A4-4 게시 코드 넣은 파생 PNG(원본 `pngHash` 불변, 스위치 기본 꺼짐).
+  - `feat/a1-commerce-audit`: A1 커머스·감사 묶음 후보 콘텐츠. 병합 뒤 레인 Q가 쌍 평가·활성화.
+  - `feat/4b-input-diet`: `ai-quality-9`+`loop-10` 입력 축소·아카이브 요약(스위치 꺼짐이면 제출 바이트 동일). 켜기 전 레인 Q on/off 쌍 평가.
+  - #206 `fix/signal-graders-version`: 비식별 신호 `gradersVersion` 120자 절단 결함(레인 R '확인 필요' 항목). 게이트 5개 passed · mocked(167/167, 11,865).
+- 다음: `loop-2`(게시물과 실험 arm 연결, 게시물 ID·자동 상태 확인·측정 원천 자동 등록)는 `loop-1` 병합 뒤.
+- 막힌 것(코드 밖): Reflector 실제 실행은 DATA-PROCESSING 7절의 사람 확인 항목(8절 3번 HERMES 세션 메모리, 법률 검토 결과 등)이 채워져야 한다. 코드는 그 전에도 스위치 꺼짐으로 병합·게시할 수 있다.
+
 ## 레인 Q (Codex 세션 — 품질·평가·운영)
 - A1 `channel.offline` **promoted · registry-active**(2026-09-27 10:33 UTC, 대표 지시 "전체적용"): 모든 캠페인에 v4 적용. 서버가 저장된 3개 run으로 과반 게이트를 다시 판정해 통과했고, `/api/version` promptManifest = promote 이벤트 manifestAfter. 롤백은 `rollback`(expectedActive `channel.offline@a6df00903daa`)이면 코드 상수로 돌아간다. 이전 기록: staged · registry-active(2026-09-27 10:10 UTC, Claude 29f7af 대행, 대표 승인): v4 `@a6df00903daa`(#179 `f56909d`)를 ODA PIZZERIA 휘경 C107 오픈 캠페인(`37da2d59`)에만 stage. 근거 봉인 반복 3회 `f465ad09`·`2b649008`·`acfe9d77`(각 17케이스·34제출, 합계 1,589,183토큰) 과반 게이트(#178, 게시 v45): 봉인 과반 회귀 0(단일 run 실패 8건은 모두 1/3), 합격 후보 150 ≥ active 149, input_budget 17/17. 운영 `/api/version` promptManifest = stage 이벤트 manifestAfter. 경보 gateway_change 2026-09-27은 스모크 `8c85ed1e` 비회귀로 확인(`662244dc`). 다음: ODA 역할 실행 관찰 뒤 대표 결정으로 promote 또는 rollback. 이전 후보 v1~v3 경과는 #158·#169·#179 PR 본문.
 - Claude 29f7af 대행(2026-09-27 04:04 UTC): 대표 결정 "v4 + 반복 채점"으로 A1 활성화를 맡음. `pairGateMajority`와 `evalRunIds` 과반 게이트(이 PR). A1 후보 v1 봉인 `284fa4be` 회귀 3·개선 3, v2 dev `5528b2f9` 회귀 7·개선 3, v3 dev `3c0f6572` 회귀 10·개선 10. 경보 2건(gateway_change 9/25·9/26) 스모크 `9b27392c` 비회귀로 확인(`a7867c13`). 9·10월 평가 월 상한 1,000만(대표 지시 '예산 제한 없음').
