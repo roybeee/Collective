@@ -3,14 +3,15 @@ import {openRecordSecret} from '@/lib/credential-crypto-server';
 import {authEnv} from '@/lib/auth-session';
 import type {Campaign} from '@/lib/agency';
 import {providerPublicationStatus,type Publication} from '@/lib/execution';
-import {getExecution,saveLimits,connectPublisher,disconnectPublisher,saveCreative,savePublication,publicationFor,approvePublication,reservePublication,publicationKeepingReview,saveProviderResult,cancelPublication,reconfirmPublication,resolveUncertain,retireMedia,externalMediaReview,type PublisherCredential} from '@/lib/execution-server';
+import {getExecution,saveLimits,connectPublisher,disconnectPublisher,saveCreative,savePublication,publicationFor,currentCreative,approvePublication,reservePublication,publicationKeepingReview,saveProviderResult,cancelPublication,reconfirmPublication,resolveUncertain,retireMedia,externalMediaReview,type PublisherCredential} from '@/lib/execution-server';
 import {submitBuffer,inspectBuffer,listBufferChannels} from '@/lib/publisher-buffer';
+import {registerCodedPng} from '@/lib/coded-png-server';
 import {readBoundedJson,HttpBodyError} from '@/lib/http-limits';
 import {executionRate} from '@/lib/execution-rate';
 import {reviewActor,requireReasonCodes,publicationDecisionStatement} from '@/lib/review-decisions-server';
 
 // 관리자 전용 실행. 승인·해제·확정한 실제 계정을 기록한다.
-const adminActions=['connect_buffer','disconnect_buffer','buffer_channels','save_limits','approve','execute','cancel','reconfirm','resolve_uncertain'];
+const adminActions=['connect_buffer','disconnect_buffer','buffer_channels','save_limits','approve','execute','cancel','reconfirm','resolve_uncertain','register_coded_png'];
 export async function GET(req:Request){try{const owner=await identity(req),id=str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true),campaign=await readRecord<Campaign>(owner,'campaign',id);return json(await getExecution(owner,campaign))}catch(e){return failure(e)}}
 export async function POST(req:Request){let owner='',lock='';try{
  owner=await identity(req);secureMutation(req);
@@ -32,6 +33,8 @@ export async function POST(req:Request){let owner='',lock='';try{
  if(input.action==='save_publication')return json(await savePublication(owner,campaign,input,origin,who));
  const p=await publicationFor(owner,campaign,input.id,input.version);
  if(input.action==='approve')return json(await approvePublication(owner,campaign,p,input,who!,origin));
+ // A4-4: 게시 코드가 있는 초안에 코드 넣은 파생 PNG를 연결한다(관리자, 스위치 a4_png_code).
+ if(input.action==='register_coded_png')return json(await registerCodedPng(owner,campaign,p,input,who!,()=>currentCreative(owner,campaign,p.creativeId)));
  // B1: 발행 취소·되돌림(반려)은 사유 코드(선택)와 함께 review_decision 1건을 남긴다. 모르는 코드는 상태를 바꾸기 전에 400이다.
  // 판정은 상태 변경과 같은 묶음(db.batch)으로 쓴다. 판정 쓰기가 실패하면 상태도 바뀌지 않아 같은 버전으로 다시 시도할 수 있다.
  if(input.action==='cancel'||input.action==='reconfirm'){
