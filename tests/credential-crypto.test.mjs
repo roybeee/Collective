@@ -43,7 +43,7 @@ const unreadable=e=>e instanceof server.ApiError&&e.status===409&&e.message.incl
 
 // ════ 1) 스위치 꺼짐(기본): 옛 형식 읽기 회귀 0, 쓰기는 옛 형식·AGENCY_ENCRYPTION_KEY ════
 const A='crypto-a';
-check('crypto_v1_write is a known switch, off by default, registered last',flags.FEATURE_FLAGS.crypto_v1_write?.defaultEnabled===false&&Object.keys(flags.FEATURE_FLAGS).at(-1)==='crypto_v1_write'&&await flags.isEnabled(A,'crypto_v1_write')===false&&/롤백/.test(flags.FEATURE_FLAGS.crypto_v1_write.description));
+check('crypto_v1_write is a known switch, off by default, registered after b3_playbook_signals',flags.FEATURE_FLAGS.crypto_v1_write?.defaultEnabled===false&&Object.keys(flags.FEATURE_FLAGS).indexOf('crypto_v1_write')>Object.keys(flags.FEATURE_FLAGS).indexOf('b3_playbook_signals')&&await flags.isEnabled(A,'crypto_v1_write')===false&&/롤백/.test(flags.FEATURE_FLAGS.crypto_v1_write.description));
 const legacySecret=await oldEncrypt(K_OLD,'legacy-plain-value');
 check('a ciphertext written by the old code reads back unchanged',await server.decrypt(legacySecret)==='legacy-plain-value');
 check('an AAD passed for an old-format ciphertext is ignored (old ciphertexts have none)',await server.decrypt(legacySecret,'crypto-a:settings:connection')==='legacy-plain-value');
