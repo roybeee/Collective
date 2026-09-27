@@ -464,7 +464,7 @@ const REGEX_SOURCES=Object.entries(rules.FRANCHISE_CLAIM_MATCHERS).flatMap(([id,
 const bigSources=REGEX_SOURCES.filter(([,x])=>x.length>=20480).map(([id,x])=>id+' '+x.length);
 check('15h: every compiled franchise matcher regex stays under the 20,480-character V8 optimization limit, the misstatement forms compile separately and are frozen'+(bigSources.length?' '+JSON.stringify(bigSources):''),bigSources.length===0&&rules.FRANCHISE_CLAIM_MATCHERS[W8].more?.length>=1&&Object.isFrozen(rules.FRANCHISE_CLAIM_MATCHERS[W8].more)&&rules.FRANCHISE_CLAIM_MATCHERS[W8].more.every(x=>new RegExp(x,'g')&&!rules.FRANCHISE_CLAIM_MATCHERS[W8].match.includes(x)));
 check('15h: 24,000-character one-sentence inputs around the new forms finish within one second',['정보공개서 '.repeat(4800),'대기기간 '.repeat(5000),'7일 '.repeat(8000),'본사가 지정한 '.repeat(3400),('정보공개서를 받은 날부터 7일이 지나면 계약 '.repeat(900))].every(t=>{const s=Date.now();judge(t);return Date.now()-s<1000}));
-check('15h: no new hard_block id or registry rule (decision 25 keeps 8 ids, 54 rules) and the claims version is bumped',rules.FRANCHISE_HARD_BLOCK_IDS.length===8&&rules.FRANCHISE_RULES.length===54&&rules.FRANCHISE_RULES_VERSION==='2026-09-25.1'&&rules.FRANCHISE_CLAIMS_VERSION==='fr-claims@2026-09-27.2'&&judge('대기기간은 7일입니다.').version.startsWith('fr-claims@2026-09-27.2+'));
+check('15h: no new hard_block id or registry rule (decision 25 keeps 8 ids, 54 rules) and the claims version is bumped',rules.FRANCHISE_HARD_BLOCK_IDS.length===8&&rules.FRANCHISE_RULES.length===54&&rules.FRANCHISE_RULES_VERSION==='2026-09-25.1'&&rules.FRANCHISE_CLAIMS_VERSION==='fr-claims@2026-09-27.3'&&judge('대기기간은 7일입니다.').version.startsWith('fr-claims@2026-09-27.3+'));
 
 // ════ 15i) 대기기간 오기재 레드팀 반영(2026-09-26, 합성) ════
 // 레드팀 우회 131건: 127건을 해제 불가로 막는다(125건 대기기간 우회 규칙, 본사 쪽 자문·본사 발급 자문 확인서 2건은 본사 연계 자문 규칙). 4건은 알려진 틈으로 남기고 승인자 확인에 맡긴다
@@ -844,6 +844,23 @@ const WC_BAD=['"대기기간 중에도 계약금은 받을 수 있다"는 말은
 const wcBadMiss=WC_BAD.filter(t=>!onW8Hard(t));
 check('15n: a warning followed by a reversal and an unadvised 8-day date gap still block'+(wcBadMiss.length?' '+JSON.stringify(wcBadMiss):''),wcBadMiss.length===0);
 check('15n: 24,000-character inputs around the composition forms finish within one second',['계약하시는 날 정보공개서 '.repeat(1500),'3/2 정보공개서 3/5 계약 '.repeat(1500),'대기기간 면제 '.repeat(3000),'"대기기간" 저희도 '.repeat(2000),'월요일 금요일 계약 정보공개서 '.repeat(1200)].every(t=>{const s=Date.now();judge(t);return Date.now()-s<1000}));
+
+// ════ 15o) R2 3차-b: 블라인드 2차로 개발, 3차로 측정(2026-09-27, 합성) ════
+// 2차(tests/fixtures/r2-wait-blind-2.json)는 3차-a의 측정 전용이었고 3차-b에서 개발에 썼다. 3차(r2-wait-blind-3.json)는 고치는 데 쓰지 않은 측정 전용이고 결과를 하한으로 고정한다.
+// 3차 측정: 3차 전(c0c8290) 오기재 차단 34/100·오탐 6/100 → 3차-a 44/100·7/100 → 3차-b 46/100·6/100. 처음 보는 오기재의 절반 남짓은 여전히 놓친다(승인자 확인 층).
+const BLIND2=JSON.parse(readFileSync(new URL('./fixtures/r2-wait-blind-2.json',import.meta.url),'utf8')),BLIND3=JSON.parse(readFileSync(new URL('./fixtures/r2-wait-blind-3.json',import.meta.url),'utf8'));
+// 알려진 틈 1건: 요약본을 먼저 주고 본문은 계약 당일에 준다(요약본 재전달 같은 바른 문장과 가르지 못한다).
+const BLIND2_GAP=['정보공개서 요약본만 먼저 보시고, 본문은 계약 당일에 드릴게요.'];
+const blind2Miss=BLIND2.bad.filter(x=>!onW8Hard(x.t)).map(x=>x.t);
+check(`15o: ${BLIND2.bad.length-BLIND2_GAP.length} of ${BLIND2.bad.length} blind round-2 misstatements are hard_block on the waiting-period rule, the documented gap is not`+(!same(blind2Miss,BLIND2_GAP)?' '+JSON.stringify(blind2Miss):''),BLIND2.bad.length===100&&same(blind2Miss,BLIND2_GAP));
+const blind2Leak=BLIND2.good.filter(x=>onTwoRules(judge(x.t))||onTwoRules(judge(x.t,{scope:'consumer'}))).map(x=>x.t);
+check('15o: the 100 blind round-2 accurate sentences raise no wait-bypass or captive-advisor issue and only the documented cost-zero block remains'+(blind2Leak.length?' '+JSON.stringify(blind2Leak):''),BLIND2.good.length===100&&blind2Leak.length===0&&BLIND2.good.filter(x=>judge(x.t).blocked).length===1);
+const blind3Blocked=BLIND3.bad.filter(x=>onW8Hard(x.t)).length;
+check(`15o: blind round-3 (measurement only) keeps at least 46 of 100 misstatements hard_block on the waiting-period rule (now ${blind3Blocked})`,BLIND3.bad.length===100&&blind3Blocked>=46);
+// 3차 바른 문장 가운데 대기 규칙 이슈 4건(나열한 돈 이름 설명, '위반 신호', 포기 각서 주의, 설명회 불가 안내)은 알려진 오탐이다. 늘면 실패한다.
+const blind3Leak=BLIND3.good.filter(x=>onTwoRules(judge(x.t))||onTwoRules(judge(x.t,{scope:'consumer'}))).length;
+check(`15o: blind round-3 accurate sentences with a wait-rule issue stay at most 4 (now ${blind3Leak}) and blocked accurate sentences at most 6`,BLIND3.good.length===100&&blind3Leak<=4&&BLIND3.good.filter(x=>judge(x.t).blocked).length<=6);
+check('15o: a lone question is not a claim, a proposal after receipt is',!onW8Hard('정보공개서를 받고 3일 뒤 계약할 수 있나요?')&&onW8Hard('서류 받고 이틀 생각해 보시고 연락 주세요, 그때 계약금 받겠습니다.')&&!onW8Hard('계약 진행 여부는 정보공개서 수령 후 3일 뒤 알려 주세요.'));
 
 // ════ 16~22) 게이트(라우트) ════
 const WS='fc-owner';

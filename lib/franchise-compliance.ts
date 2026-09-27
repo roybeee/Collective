@@ -550,7 +550,9 @@ export function judgeFranchiseText(i:FranchiseJudgeInput):FranchiseJudgement{
  const waitRule=applicable.find(r=>r.id===WAIT_RULE);
  if(waitRule&&!drafts.some(d=>d.ruleId===WAIT_RULE)){
   const ctx=i.scope==='consumer'?new RegExp(FRANCHISE_CLAIM_MATCHERS[WAIT_RULE].consumerAlso??''):null;
-  const found=waitComposition(sentences,x=>deniedWait.has(sentenceKey(x as Sentence))||!!ctx&&!ctx.test(x.s));
+  // 패턴 규칙의 경고·반박·법 설명 끝(except)으로 끝나는 문장은 구성 적중도 보지 않는다('…라는 곳은 피하는 게 좋아요', '…본사는 신고 대상입니다').
+  const caution=FRANCHISE_CLAIM_MATCHERS[WAIT_RULE].except?new RegExp(FRANCHISE_CLAIM_MATCHERS[WAIT_RULE].except):null;
+  const found=waitComposition(sentences,x=>deniedWait.has(sentenceKey(x as Sentence))||!!ctx&&!ctx.test(x.s)||!!caution&&caution.test(x.s));
   if(found){const x:Sentence={...found.sentence};drafts.push({rule:waitRule,ruleId:WAIT_RULE,title:FRANCHISE_CLAIM_MATCHERS[WAIT_RULE].title,reason:'pattern',hit:{x,start:0,end:x.s.length},tier:tierOf(waitRule)})}
  }
  // H6: 수익 항목(adUse:false) 사실의 값·금액·비율이 본문에 있으면 표현과 관계없이 해제 불가 차단이다(교체된 버전 사실 포함).
