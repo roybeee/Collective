@@ -1,6 +1,6 @@
 'use client';
 // 가맹 리드 상세(트랙 R R4b): 가린 연락처, 연락처 보기(목적·항목 감사 기록, 60초 뒤 화면에서 지움), 담당, 단계 이동과 막힌 사유, 과업·연락처 수정,
-// 수집 근거·출처 고지, 광고성 정보 동의·철회, 정보주체 요청, 대표·관리자 전용 계약 가능 시각·증빙 기록·증빙 목록·삭제 실행, 이력(값 없음).
+// 수집 근거·출처 고지, 광고성 정보 동의·철회, 정보주체 요청, 적격 판정(대표 결정 35, 사유 코드만·이력), 대표·관리자 전용 계약 가능 시각·증빙 기록·증빙 목록·삭제 실행, 이력(값 없음).
 // 버튼은 서버가 돌려준 allowedActions·allowedMoves·marketingOptions로만 보인다. 판정·권한은 서버가 다시 본다(COLLECTIVE 휴리스틱 · 법률 자문 아님).
 import {useCallback,useEffect,useState} from 'react';
 import {Button} from '@/components/ui/button';
@@ -11,7 +11,7 @@ import {Sheet,SheetContent,SheetHeader,SheetTitle,SheetDescription} from '@/comp
 import {STAGE_LABELS,BASIS_LABELS,REFERRAL_LABELS,MARKETING_METHOD_LABELS,MARKETING_STATUS_LABELS,CLOSE_REASON_LABELS,REVEAL_PURPOSE_LABELS,BACKDATE_REASON_LABELS,CORRECTION_REASON_LABELS,
  SUBJECT_REQUEST_TYPE_LABELS,SUBJECT_CHANNEL_LABELS,CONTACT_FIELD_LABELS,CONTACT_STATE_LABELS,EVIDENCE_TYPE_LABELS,DELIVERY_DOC_LABELS,DELIVERY_METHOD_LABELS,ELECTRONIC_CHANNEL_LABELS,HAND_EVIDENCE_LABELS,
  ADVISOR_TYPE_LABELS,FEE_CATEGORY_LABELS,ESCROW_INSTITUTION_LABELS,FORECAST_DUTY_LABELS,EVENT_TYPE_LABELS,CONTACT_NOTE,RETENTION_LABEL,RECHECK_LABEL,MEMO_HINT,DUE_LABEL,
- STRIKE_REASON_LABELS,type LeadTask,type RevealPurpose,type CloseReason,type MarketingMethod,type SubjectRequestType,type SubjectChannel,type ContactField,type StrikeReason} from '@/lib/franchise';
+ STRIKE_REASON_LABELS,QUALIFICATION_VERDICT_LABELS,QUALIFICATION_REASON_LABELS,QUALIFICATION_REASONS_BY_VERDICT,QUALIFICATION_NOTE,type QualificationVerdict,type QualificationReason,type LeadTask,type RevealPurpose,type CloseReason,type MarketingMethod,type SubjectRequestType,type SubjectChannel,type ContactField,type StrikeReason} from '@/lib/franchise';
 import {RECRUITMENT_ATTRIBUTION_NOTE,RECRUITMENT_MESSAGES,MAX_CODES_PER_LEAD,normalizeRecruitmentCode,isRecruitmentCode} from '@/lib/franchise-recruitment';
 import {toKstDate} from '@/lib/franchise-rules';
 import {franchiseGet,franchisePost,problemOf,messageOf,ProblemBox,Disclaimer,Section,TimeField,HashField,StorageField,LabelSelect,TaskFields,NOW,timeOf,kstDate,kst,labelOf,actorLabel,
@@ -79,6 +79,7 @@ function LeadBody({lead,act,busy,admin,intake,assignees,campaigns,brandId}:Commo
   {admin&&lead.gate&&<GateCard gate={lead.gate} stage={lead.stage}/>}
   {can(lead,'update_task')&&<Section title="문의 조건"><TaskForm key={lead.version} {...c} campaigns={campaigns}/></Section>}
   <LeadCodes key={'c'+lead.version} {...c} admin={admin}/>
+  <QualificationBox key={'q'+lead.version} {...c} assignees={assignees}/>
   {can(lead,'update_contact')&&<Section title="연락처 수정" note="빈칸은 그대로 둡니다. 바꿀 값만 적으세요. 수정은 이력에 항목 이름만 남습니다."><ContactForm key={lead.version} {...c}/></Section>}
   <BasisBox {...c} notices={notices}/>
   <MarketingBox key={'m'+lead.version} {...c} notices={notices}/>
@@ -122,6 +123,26 @@ export function LeadCodes({lead,act,busy,admin}:Common&{admin:boolean}){
   {problem&&<p role="alert" className="form-error">{problem}</p>}
   {note&&<p className="franchise-flag" role="status">{note}</p>}
   {!!lead.imports?.length&&<><h4>제공처 파일 기록</h4><ul className="franchise-list" aria-label="제공처 파일 기록">{lead.imports.map(i=><li key={i.importId}>{`${i.channelLabel} · ${i.provider} · 제공일 ${i.providedOn} · 접수 ${i.receivedPrecision==='day'?toKstDate(i.receivedAt)+'(날짜만)':kst(i.receivedAt)}${i.merged?' · 기존 리드에 합침':''}`}</li>)}</ul></>}
+ </Section>;
+}
+
+// ── 적격 판정(대표 결정 35) ──
+// 사람이 지금 적격 기준 버전을 보고 판정과 사유 코드를 고른다(자유 문구 칸 없음). 판정을 바꾸면 새 행이 이력에 더해진다. 판정 권한은 서버가 다시 본다.
+export const qualificationLine=(q:{verdict:string;reason:string;criteriaVersion:number})=>`${labelOf(QUALIFICATION_VERDICT_LABELS,q.verdict)} · ${labelOf(QUALIFICATION_REASON_LABELS,q.reason)} · 기준 v${q.criteriaVersion}`;
+export const qualificationReasonLabels=(verdict:QualificationVerdict|''):Record<string,string>=>verdict?Object.fromEntries(QUALIFICATION_REASONS_BY_VERDICT[verdict].map(r=>[r,QUALIFICATION_REASON_LABELS[r]])):{};
+export function QualificationBox({lead,act,busy,assignees}:Common&{assignees:readonly Assignee[]}){
+ const cur=lead.qualification??null,history=lead.qualifications??[],criteria=lead.criteriaVersion??null;
+ const [verdict,setVerdict]=useState<QualificationVerdict|''>(''),[reason,setReason]=useState<QualificationReason|''>('');
+ async function save(){if(!verdict||!reason||criteria===null)return;const r=await act('qualify_lead',{verdict,reason,criteriaVersion:criteria},'적격 판정을 기록했습니다.');if(r){setVerdict('');setReason('')}}
+ return <Section title="적격 판정" note={QUALIFICATION_NOTE}>
+  <p>현재 판정: <b>{cur?qualificationLine(cur):'판정 없음'}</b>{cur&&!cur.current&&<small className="franchise-flag"> {criteria===null?'적격 기준이 없습니다':`지금 기준(v${criteria})보다 이전 기준으로 한 판정입니다`}</small>}{lead.eligibility&&<span className="subtle-note"> · 적격 점수 {lead.eligibility.met}/{lead.eligibility.total}(정렬용)</span>}</p>
+  {can(lead,'qualify_lead')&&(criteria===null?<p className="subtle-note">설정에서 적격 기준을 먼저 저장해야 판정할 수 있습니다.</p>:
+   <form className="franchise-bar" aria-label="적격 판정 기록" onSubmit={e=>{e.preventDefault();void save()}}>
+    <LabelSelect label="판정" labels={QUALIFICATION_VERDICT_LABELS} value={verdict} empty="판정 선택" onChange={v=>{setVerdict(v);setReason('')}}/>
+    <LabelSelect label="사유" labels={qualificationReasonLabels(verdict)} value={reason} empty="사유 선택" onChange={v=>setReason(v as QualificationReason)}/>
+    <Button type="submit" variant="outline" disabled={busy||!verdict||!reason}>{`판정 기록 (기준 v${criteria})`}</Button>
+   </form>)}
+  {history.length?<ul className="franchise-list" aria-label="적격 판정 이력">{history.map(q=><li key={q.at+q.verdict+q.reason}>{qualificationLine(q)} <small className="subtle-note">{kst(q.at)} · {actorLabel(q.by,assignees)}</small></li>)}</ul>:<p className="subtle-note">판정 이력이 없습니다.</p>}
  </Section>;
 }
 
@@ -416,7 +437,7 @@ function eventLine(e:LeadDetail['events'][number]){
  return [labelOf(EVENT_TYPE_LABELS,e.type),e.from||e.to?`${e.from?STAGE_LABELS[e.from]:''} → ${e.to?STAGE_LABELS[e.to]:''}`:null,e.closeReason?'사유 '+labelOf(CLOSE_REASON_LABELS,e.closeReason):null,
   e.fields?.length?'항목 '+e.fields.map(f=>labelOf(CONTACT_FIELD_LABELS,f)).join('·'):null,e.taskFields?.length?'항목 '+e.taskFields.map(f=>labelOf(TASK_FIELD_LABELS,f)).join('·'):null,
   e.basis?.type?'근거 '+labelOf(BASIS_LABELS,e.basis.type):null,e.consent?.method?'방법 '+labelOf(MARKETING_METHOD_LABELS,e.consent.method):null,e.evidenceType?labelOf(EVIDENCE_TYPE_LABELS,e.evidenceType):null,
-  e.assigneeId!==undefined&&e.type==='assigned'?(e.assigneeId?'담당 지정':'담당 없음'):null].filter(Boolean).join(' · ');
+  e.assigneeId!==undefined&&e.type==='assigned'?(e.assigneeId?'담당 지정':'담당 없음'):null,e.qualification?qualificationLine(e.qualification):null].filter(Boolean).join(' · ');
 }
 function Timeline({lead,assignees}:{lead:LeadDetail;assignees:readonly Assignee[]}){
  return <Section title="이력">{lead.events.length?<ul className="franchise-list">{lead.events.map(e=><li key={e.id}><p>{eventLine(e)}</p>{!!e.reasons?.length&&<ul>{e.reasons.map(r=><li key={r.code}>{r.message}</li>)}</ul>}<p className="subtle-note">{kst(e.at)} · {actorLabel(e.actor,assignees)}</p></li>)}</ul>:<p className="subtle-note">이력이 없습니다.</p>}</Section>;

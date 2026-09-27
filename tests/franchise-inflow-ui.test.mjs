@@ -227,6 +227,26 @@ check('IN-E1: owner/admin see the spend select and no R5 placeholder text',edito
 w=await write(boss,'event_save',eventsUi.eventInput({type:'expo',campaignId:'ca-r',start:{now:false,local:eventsUi.kstLocal(expo.startsAt)},place:expo.placeLabel,capacity:String(expo.capacity),refs:[],spendRef:S3},expo));
 check('IN-E1: saving with the chosen spend stores the reference; voiding that spend is then refused',w.r.status===200&&JSON.parse(sql.prepare("SELECT data FROM records WHERE kind='recruitment_event' AND json_extract(data,'$.id')=?").get(EXPO).data).spendRef===S3&&(await write(boss,'spend_void',inflowUi.voidInput(spendRow(S3),'entry_error'))).r.status===409);
 
+// ════ 적격 판정 화면(대표 결정 35, QU-*) ════
+{
+ const qualBox=lead=>render(detailUi.QualificationBox,{lead,act:async()=>null,busy:false,assignees:[]});
+ let d=await view(member,{view:'lead',leadId:L2});
+ let html=qualBox(d);
+ check('QU-1: without criteria the box says to save criteria first and shows no judgment form',d.criteriaVersion===null&&html.includes('설정에서 적격 기준을 먼저 저장')&&!html.includes('판정 기록 (기준')&&html.includes('판정 없음'));
+ check('QU-1: setup criteria version 1',(await f.profile(boss,'fr-a',{storageLabels:[LABEL],branch:'A',eligibility:{budgetBands:['100m_150m'],regions:['서울 강남구'],timingBands:['within_3m']}},1)).status===200);
+ d=await view(member,{view:'lead',leadId:L2});html=qualBox(d);
+ check('QU-2: the assigned member sees the verdict and reason selects and the button names the criteria version (no free-text field)',html.includes('>판정 기록 (기준 v1)</button>')&&html.includes('aria-label="적격 판정 기록"')&&!/<textarea|<input/.test(html.slice(html.indexOf('aria-label="적격 판정 기록"'),html.indexOf('판정 기록 (기준 v1)'))));
+ check('QU-2: the reason options follow the verdict',JSON.stringify(Object.keys(detailUi.qualificationReasonLabels('rejected')))===JSON.stringify([...f.lib.QUALIFICATION_REASONS_BY_VERDICT.rejected])&&Object.keys(detailUi.qualificationReasonLabels('')).length===0);
+ w=await write(member,'qualify_lead',{leadId:L2,version:d.version,verdict:'hold',reason:'awaiting_reply',criteriaVersion:d.criteriaVersion});
+ check('QU-3: the screen payload records a judgment',w.r.status===200&&w.r.body.lead.qualification.verdict==='hold');
+ html=qualBox(w.r.body.lead);
+ check('QU-3: the box shows the current judgment and the history line with verdict, reason and criteria version',html.includes('<b>보류 · 답변 대기 · 기준 v1</b>')&&html.includes('aria-label="적격 판정 이력"'));
+ const mine=await view(boss,{view:'board',qualification:'hold'});
+ check('QU-4: the board qualification filter the screen sends returns the judged lead with its verdict',mine.leads.length===1&&mine.leads[0].id===L2&&mine.leads[0].qualification.verdict==='hold'&&mine.leads[0].qualification.current===true);
+ const other=await view(boss,{view:'lead',leadId:L1});
+ check('QU-5: an owner sees the form on any lead; without the server-given action the form is hidden but the current judgment stays',other.allowedActions.includes('qualify_lead')&&qualBox(other).includes('판정 기록 (기준 v1)')&&!qualBox({...w.r.body.lead,allowedActions:w.r.body.lead.allowedActions.filter(a=>a!=='qualify_lead')}).includes('판정 기록 (기준')&&qualBox({...w.r.body.lead,allowedActions:[]}).includes('보류 · 답변 대기'));
+}
+
 // ── 값 노출 없음 ──
 check('no contact value or spend evidence text reaches the console',P.flat().every(v=>!logged.join('\n').includes(v))&&!logged.join('\n').includes('가상 포털 9월 소진 내역'));
 console.log(JSON.stringify({passed:passed.length}));
