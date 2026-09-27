@@ -1,4 +1,4 @@
-// 트랙 R 가맹 리드 원장(R1a·R4b) 순수 모듈: 코드·한국어 라벨·고정 문구, 연락처 정규화·가림, 보존 기한, 역할 판정, 적격 점수, CSV 칸, 게이트 설명.
+// 트랙 R 가맹 리드 원장(R1a·R4b) 순수 모듈: 코드·한국어 라벨·고정 문구, 연락처 정규화·가림, 보존 기한, 역할 판정, 적격 점수·적격 판정(대표 결정 35), CSV 칸, 게이트 설명.
 // 서버(lib/franchise-server.ts)와 화면이 같은 판정을 쓴다. 저장·암호화·네트워크·시계는 없다. 현재 시각이 필요한 함수는 now를 받는다.
 // 대표 결정 22(2026-09-25): 리드에 이름·연락처를 저장한다(필드 암호화, 목록 가림, 열람 감사). 결정 20(법률 검토 보류): 모든 기한·게이트는 COLLECTIVE 휴리스틱이며 법률 자문이 아니다.
 import {GATE_DISCLAIMER,type LeadStage,type ReasonCode,type WarningCode,type GateResult,type ContractWindow,type SideWindow} from './franchise-gates';
@@ -103,17 +103,37 @@ export const ADVISOR_TYPE_LABELS={attorney:'변호사',franchise_consultant:'가
 export const FEE_CATEGORY_LABELS={a_join:'가입비·교육비·계약금',b_security:'보증금·담보',c_opening:'설비·인테리어·임차료',d_periodic:'정기 대가',e_other:'그 밖의 대가'} as const;
 export const ESCROW_INSTITUTION_LABELS={bank:'은행',post_office:'체신관서',insurer:'보험회사',trust:'신탁업자'} as const;
 export const FORECAST_DUTY_LABELS={required:'산정서 필요',not_required:'불필요',unknown:'미확인(필요로 처리)'} as const;
-export const EVENT_TYPE_LABELS={created:'등록',stage_changed:'단계 변경',transition_blocked:'진행 차단',claimed:'담당 가져옴',assigned:'담당 지정',contact_updated:'연락처 수정',task_updated:'문의 조건 수정',source_noticed:'출처 고지',marketing_given:'광고성 정보 동의',marketing_withdrawn:'광고성 정보 철회',evidence_recorded:'증빙 기록',evidence_voided:'증빙 무효화',purged:'연락처 파기',erased:'연락처 삭제',reopened:'다시 열기',codes_added:'모집 코드 추가',codes_struck:'모집 코드 제외',import_merged:'제공처 파일 병합'} as const;
+export const EVENT_TYPE_LABELS={created:'등록',stage_changed:'단계 변경',transition_blocked:'진행 차단',claimed:'담당 가져옴',assigned:'담당 지정',contact_updated:'연락처 수정',task_updated:'문의 조건 수정',source_noticed:'출처 고지',marketing_given:'광고성 정보 동의',marketing_withdrawn:'광고성 정보 철회',evidence_recorded:'증빙 기록',evidence_voided:'증빙 무효화',purged:'연락처 파기',erased:'연락처 삭제',reopened:'다시 열기',codes_added:'모집 코드 추가',codes_struck:'모집 코드 제외',import_merged:'제공처 파일 병합',qualification_recorded:'적격 판정'} as const;
 export type LeadEventType=keyof typeof EVENT_TYPE_LABELS;
 export const AUDIT_ACTION_LABELS={reveal:'연락처 보기',find:'연락처로 찾기',export:'내보내기',purge:'파기',erase:'정보주체 삭제',backdate:'이른 증빙 시각',evidence_void:'증빙 무효화',assign:'담당 지정',claim:'담당 가져옴',profile_save:'가맹 프로필 저장',version_register:'정보공개서 버전 등록',version_retire:'정보공개서 버전 사용 중지',template_register:'계약서안 템플릿 등록',template_retire:'계약서안 템플릿 사용 중지',version_amend:'정보공개서 버전 정정',template_amend:'계약서안 템플릿 정정',notice_register:'안내문 등록',notice_retire:'안내문 사용 중지',subject_request:'정보주체 요청 접수',subject_request_update:'정보주체 요청 처리',marketing_withdrawn:'광고성 정보 철회',
  asset_save:'모집 자료 저장',asset_approve:'모집 자료 승인',asset_export:'모집 자료 내보내기',asset_place:'모집 자료 게시 위치 기록',asset_retire:'모집 자료 폐기',asset_blocked:'모집 자료 승인·내보내기 막힘',event_save:'행사 등록·변경',event_cancel:'행사 취소',event_register:'행사 신청 기록',event_attendance:'행사 참석 기록',
  code_issue:'모집 코드 발급',code_retire:'모집 코드 사용 중지',code_strike:'리드 모집 코드 제외',spend_record:'모집 비용 기록',spend_void:'모집 비용 무효화',lead_import:'리드 CSV 가져오기',lead_import_rejected:'리드 CSV 거부',
- report_freeze:'모집 주간 보고 확정',report_export:'모집 주간 보고 내려받기',evidence_export:'증빙 묶음 내보내기'} as const;
+ report_freeze:'모집 주간 보고 확정',report_export:'모집 주간 보고 내려받기',evidence_export:'증빙 묶음 내보내기',qualification:'적격 판정 기록'} as const;
 export type AuditAction=keyof typeof AUDIT_ACTION_LABELS;
 // 트랙 R R5b-1 리드 모집 코드 제외 사유(관리자, 코드만 남기고 자유 문구는 받지 않는다).
 export const STRIKE_REASON_LABELS={typo:'오기',wrong_lead:'다른 리드',gaming:'귀속 조작 의심',other:'기타'} as const;
 export type StrikeReason=keyof typeof STRIKE_REASON_LABELS;
 export const STRIKE_REASONS=keysOf(STRIKE_REASON_LABELS);
+// 대표 결정 35(2026-09-27) 적격 판정: 사람이 적격 기준 버전을 보고 적격·보류·거절을 사유 코드와 함께 기록한다. 자유 문구는 받지 않는다. 자동 판정·자동 탈락은 없다(모델 호출 0).
+// 판정을 바꾸면 리드의 qualifications에 새 행을 더한다(덮어쓰지 않는다). 현재 판정은 마지막 행이다. 모두 lib/franchise-gates.ts APPROVAL_REASON_PATTERN을 만족한다(테스트 고정).
+export const QUALIFICATION_VERDICT_LABELS={qualified:'적격',hold:'보류',rejected:'거절'} as const;
+export type QualificationVerdict=keyof typeof QUALIFICATION_VERDICT_LABELS;
+export const QUALIFICATION_VERDICTS=keysOf(QUALIFICATION_VERDICT_LABELS);
+export const QUALIFICATION_REASON_LABELS={criteria_met:'적격 기준 충족',hq_exception:'기준 일부 미충족 · 본부 판단으로 적격',
+ budget_unconfirmed:'예산 확인 필요',timing_unconfirmed:'창업 시기 확인 필요',region_review:'희망 지역 검토 필요',awaiting_reply:'답변 대기',
+ budget_short:'예산 부족',region_unavailable:'모집 불가 지역',timing_mismatch:'창업 시기 불일치',no_intent:'창업 의사 없음',duplicate:'중복 문의',other:'기타'} as const;
+export type QualificationReason=keyof typeof QUALIFICATION_REASON_LABELS;
+export const QUALIFICATION_REASONS_BY_VERDICT:Readonly<Record<QualificationVerdict,readonly QualificationReason[]>>=Object.freeze({
+ qualified:Object.freeze(['criteria_met','hq_exception'] as const),
+ hold:Object.freeze(['budget_unconfirmed','timing_unconfirmed','region_review','awaiting_reply','other'] as const),
+ rejected:Object.freeze(['budget_short','region_unavailable','timing_mismatch','no_intent','duplicate','other'] as const),
+});
+export const qualificationReasonOk=(verdict:unknown,reason:unknown)=>typeof verdict==='string'&&Object.hasOwn(QUALIFICATION_REASONS_BY_VERDICT,verdict)&&typeof reason==='string'&&(QUALIFICATION_REASONS_BY_VERDICT[verdict as QualificationVerdict] as readonly string[]).includes(reason);
+// 보드 필터: 현재 판정 또는 판정 없음.
+export const QUALIFICATION_FILTER_LABELS={...QUALIFICATION_VERDICT_LABELS,none:'판정 없음'} as const;
+export const QUALIFICATION_FILTERS=keysOf(QUALIFICATION_FILTER_LABELS);
+export const QUALIFICATION_LIMIT=50;
+export const QUALIFICATION_NOTE='적격·보류·거절은 사람이 적격 기준 버전을 보고 사유 코드와 함께 정합니다. 적격 점수는 정렬용이고 자동 판정·자동 탈락은 없습니다. 판정을 바꾸면 이력으로 남습니다.';
 
 // ── 고정 문구 ──
 // 서버는 이 문구를 그대로 던진다(값을 끼워 넣지 않는다).
@@ -186,6 +206,11 @@ export const FRANCHISE_ERRORS={
  REPORT_NOT_FOUND:{status:404,text:'확정한 보고서가 없습니다.'},
  REPORT_FORMAT:{status:400,text:'형식은 md·csv·json 중 하나입니다.'},
  EVIDENCE_SCOPE:{status:400,text:'증빙 묶음 범위는 리드(lead) 또는 모집 자료(asset)입니다.'},
+ // 대표 결정 35 적격 판정.
+ QUALIFICATION_NO_CRITERIA:{status:409,text:'적격 기준이 없습니다. 설정에서 적격 기준을 먼저 저장한 뒤 판정해 주세요.'},
+ QUALIFICATION_CRITERIA_CHANGED:{status:409,text:'적격 기준이 바뀌었습니다. 새로고침해 지금 기준을 확인한 뒤 판정해 주세요.'},
+ QUALIFICATION_REASON:{status:400,text:'판정에 맞는 사유를 목록에서 골라 주세요.'},
+ QUALIFICATION_TEXT:{status:400,text:'판정 사유는 목록의 코드만 받습니다. 자유 문구는 적지 않습니다.'},
 } as const satisfies Record<string,{status:number;text:string}>;
 export type FranchiseErrorKey=keyof typeof FRANCHISE_ERRORS;
 // 게이트 사유·경고 코드의 한국어 설명. REASON_CODES ∪ WARNING_CODES와 정확히 같은 키(테스트 고정).
@@ -247,10 +272,21 @@ export type LeadRecord={id:string;brandId:string;systemCode:string;stage:LeadSta
  purgedAt?:string;erasedAt?:string;codes?:LeadCode[];codeStrikes?:LeadCodeStrike[];
  // R5b-2: 가져온 리드의 접수 시각(제공처 시각)·정밀도·만든 가져오기 id와 제공처 파일 기록. 없으면 접수 시각은 createdAt이다.
  receivedAt?:string;receivedPrecision?:'time'|'day';importId?:string;imports?:LeadImportRef[];
+ // 대표 결정 35: 적격 판정 이력(추가만). 없으면 판정 없음.
+ qualifications?:LeadQualification[];
  version:number;createdAt:string;createdBy:ActorSnapshot;updatedAt:string};
 export type EligibilityCriteria={version:number;budgetBands:readonly string[];regions:readonly string[];timingBands:readonly string[]};
 
 // ── 정규화 ──
+// 적격 판정 한 행(대표 결정 35). score는 판정 때의 적격 점수(기준 충족 항목 수)다. 사유는 코드뿐이다.
+export type LeadQualification={verdict:QualificationVerdict;reason:QualificationReason;criteriaVersion:number;score:{met:number;total:4}|null;at:string;by:ActorSnapshot};
+// 현재 판정: 마지막 행. asOf를 주면 그 시각까지의 마지막 행(주간 보고가 쓴다).
+export function currentQualification<Q extends {at:string}>(lead:{qualifications?:readonly Q[]},asOf?:string):Q|null{
+ const rows=lead.qualifications??[],limit=asOf===undefined?null:Date.parse(asOf);
+ for(let i=rows.length-1;i>=0;i--){if(limit===null||Date.parse(rows[i].at)<=limit)return rows[i]}
+ return null;
+}
+
 const PHONE_SEPARATORS=/[\s+\-‐-―.()]/g;
 // 숫자와 구분자(공백·+·-·.·괄호)만 받는다. 82로 시작하면 국가번호로 보고 0을 붙인다(국내 번호는 항상 0으로 시작한다).
 export function normalizePhone(raw:unknown):string|null{
@@ -338,7 +374,7 @@ export function leadActions(who:Who,lead:ActionLead,enabled:boolean):string[]{
  const admin=isAdminRole(who.role),present=lead.contactState==='present',closed=lead.stage==='closed',out:string[]=[];
  if(present&&canReveal(who,lead))out.push('reveal_contact');
  if(present&&canEditLead(who,lead)&&(enabled||admin))out.push('update_contact');
- if(present&&enabled&&canEditLead(who,lead))out.push('update_task','add_lead_codes');
+ if(present&&enabled&&canEditLead(who,lead))out.push('update_task','add_lead_codes','qualify_lead');
  if(allowedMoves(who,lead,enabled).length)out.push('move_stage');
  if(admin&&enabled&&present&&closed)out.push('reopen_lead');
  if(enabled&&present&&lead.assigneeId===null)out.push('claim_lead');
@@ -389,4 +425,4 @@ export function describeWindow(w:ContractWindow){
 }
 
 // 화면 선택 목록 묶음(intake 보기가 그대로 돌려준다).
-export const FRANCHISE_LABELS={stages:STAGE_LABELS,budgets:BUDGET_LABELS,timings:TIMING_LABELS,sources:SOURCE_LABELS,basis:INTAKE_BASIS_LABELS,referralFrom:REFERRAL_LABELS,marketingMethods:MARKETING_METHOD_LABELS,marketingStatus:MARKETING_STATUS_LABELS,closeReasons:CLOSE_REASON_LABELS,revealPurposes:REVEAL_PURPOSE_LABELS,exportPurposes:EXPORT_PURPOSE_LABELS,backdateReasons:BACKDATE_REASON_LABELS,correctionReasons:CORRECTION_REASON_LABELS,subjectRequestTypes:SUBJECT_REQUEST_TYPE_LABELS,subjectRequestStatus:SUBJECT_REQUEST_STATUS_LABELS,subjectResolutions:SUBJECT_RESOLUTION_LABELS,subjectChannels:SUBJECT_CHANNEL_LABELS,branches:BRANCH_LABELS,contactFields:CONTACT_FIELD_LABELS,contactStates:CONTACT_STATE_LABELS,evidenceTypes:EVIDENCE_TYPE_LABELS,amendReasons:REGISTRY_AMEND_REASON_LABELS,boardTodos:BOARD_TODO_LABELS,strikeReasons:STRIKE_REASON_LABELS,deliveryDocs:DELIVERY_DOC_LABELS,deliveryMethods:DELIVERY_METHOD_LABELS,electronicChannels:ELECTRONIC_CHANNEL_LABELS,handEvidence:HAND_EVIDENCE_LABELS,advisorTypes:ADVISOR_TYPE_LABELS,feeCategories:FEE_CATEGORY_LABELS,escrowInstitutions:ESCROW_INSTITUTION_LABELS,forecastDuty:FORECAST_DUTY_LABELS,eventTypes:EVENT_TYPE_LABELS,auditActions:AUDIT_ACTION_LABELS} as const;
+export const FRANCHISE_LABELS={stages:STAGE_LABELS,budgets:BUDGET_LABELS,timings:TIMING_LABELS,sources:SOURCE_LABELS,basis:INTAKE_BASIS_LABELS,referralFrom:REFERRAL_LABELS,marketingMethods:MARKETING_METHOD_LABELS,marketingStatus:MARKETING_STATUS_LABELS,closeReasons:CLOSE_REASON_LABELS,revealPurposes:REVEAL_PURPOSE_LABELS,exportPurposes:EXPORT_PURPOSE_LABELS,backdateReasons:BACKDATE_REASON_LABELS,correctionReasons:CORRECTION_REASON_LABELS,subjectRequestTypes:SUBJECT_REQUEST_TYPE_LABELS,subjectRequestStatus:SUBJECT_REQUEST_STATUS_LABELS,subjectResolutions:SUBJECT_RESOLUTION_LABELS,subjectChannels:SUBJECT_CHANNEL_LABELS,branches:BRANCH_LABELS,contactFields:CONTACT_FIELD_LABELS,contactStates:CONTACT_STATE_LABELS,evidenceTypes:EVIDENCE_TYPE_LABELS,amendReasons:REGISTRY_AMEND_REASON_LABELS,boardTodos:BOARD_TODO_LABELS,strikeReasons:STRIKE_REASON_LABELS,qualificationVerdicts:QUALIFICATION_VERDICT_LABELS,qualificationReasons:QUALIFICATION_REASON_LABELS,qualificationFilters:QUALIFICATION_FILTER_LABELS,deliveryDocs:DELIVERY_DOC_LABELS,deliveryMethods:DELIVERY_METHOD_LABELS,electronicChannels:ELECTRONIC_CHANNEL_LABELS,handEvidence:HAND_EVIDENCE_LABELS,advisorTypes:ADVISOR_TYPE_LABELS,feeCategories:FEE_CATEGORY_LABELS,escrowInstitutions:ESCROW_INSTITUTION_LABELS,forecastDuty:FORECAST_DUTY_LABELS,eventTypes:EVENT_TYPE_LABELS,auditActions:AUDIT_ACTION_LABELS} as const;

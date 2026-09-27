@@ -3,15 +3,16 @@
 // 귀속·비용 기간 합계는 R5 순수 함수(attributeLead·spendInWindow·alignedWindow·receivedAtOf)를 수정 없이 부른다(R5 명세 2.4·2.5·2.7.4의 R6 규칙).
 // 작은 표본(H12·DP-10): 1~4건 칸은 억제하고(0은 보인다), 비율은 분모 20 미만이면 숨긴다. 1~4건 채널은 한 줄로 합친다. 보완 억제(합계에서 역산 막기)는 하지 않는다.
 // 대표 결정 36(2026-09-27, DP-10 예외): 계약 건수(코호트 계약과 같은 값인 코호트 '계약' 단계 칸·보고 주 계약·계약 리드·증빙 완결)는 1건부터 보이고, 계약당 비용은 계약 20건 전에도 '지출 합계 / 계약 N건'과 '표본 부족'을 함께 보인다.
+// 대표 결정 35(2026-09-27): 적격 수와 적격 리드당 비용은 문의 월 코호트 기준이다. 사람이 기록한 적격 판정(asOf까지의 마지막 판정)을 세고 기준 버전별로 나눈다. 적격 수는 다른 칸처럼 1~4건 억제, 적격 리드당 비용은 20 미만이면 숨긴다.
 // 모든 보고에 귀속≠증분과 'COLLECTIVE 휴리스틱 · 법률 자문 아님'을 붙인다. 예상매출·수익·회수기간은 만들지 않는다(설계 원칙 8).
 import {GATE_DISCLAIMER,type LeadStage} from './franchise-gates';
 import {isDate,isInstant,parseInstant,toKstDate,addDays,FRANCHISE_RULES,type FranchiseRule} from './franchise-rules';
 import {RECRUITMENT_CHANNELS,RECRUITMENT_CHANNEL_LABELS,RECRUITMENT_ATTRIBUTION_NOTE,PLATFORM_REPORTED_NOTE,NO_PRORATION_NOTE,RECRUITMENT_VERSION,attributeLead,receivedAtOf,spendInWindow,alignedWindow,
  type CodeBook,type LeadCodes,type LeadAttribution,type SpendRow,type PlatformMetrics} from './franchise-recruitment';
-import {STAGE_LABELS,stageOrder,csvFile} from './franchise';
+import {STAGE_LABELS,stageOrder,csvFile,currentQualification} from './franchise';
 
 // ── 버전·기준·고정 문구 ──
-export const REPORT_VERSION='fr-report@2026-09-27.3';
+export const REPORT_VERSION='fr-report@2026-09-27.4';
 export const REPORT_SCHEMA='collective.recruitment-report.v1';
 export const RATIO_MIN_N=20,SUPPRESS_BELOW=5,COHORT_MATURE_DAYS=90,RULE_STALE_DAYS=180,COHORT_MONTHS=6;
 export const SUPPRESSED_LABEL='5건 미만';
@@ -20,7 +21,7 @@ export const SMALL_CHANNELS_KEY='_small',SMALL_CHANNELS_LABEL='5건 미만 채�
 export const PROVIDER_TIME_LABEL='제공처 시각',SERVER_TIME_LABEL='서버 접수 시각';
 export const STL_REFERENCE_NOTE='speed-to-lead 1시간은 미국 참고치입니다(한국 공개 통계를 찾지 못했습니다). 목표가 아니고, 목표는 첫 4주 실측 뒤 정합니다.';
 export const CONTRACT_SHOWN_NOTE='계약 건수와 계약당 비용은 1건부터 그대로 적습니다(대표 결정 36, DP-10 예외: 본부가 이미 아는 자기 계약). 확정본을 밖으로 보내면 계약 상대를 특정할 수 있으니, 내려받은 파일은 내려받은 사람이 관리합니다.';
-export const QUALIFIED_NOTE='적격 리드당 비용은 비워 둡니다. 적격 기준 버전을 적용한 사람의 적격 판정 기록이 아직 없습니다(적격 점수는 보드 정렬용이라 쓰지 않습니다).';
+export const QUALIFIED_NOTE=`적격 수와 적격 리드당 비용은 문의 월 코호트 표에 있습니다(대표 결정 35). 사람이 적격 기준 버전을 보고 기록한 판정 가운데 집계 시점까지의 마지막 판정을 세고, 기준 버전별 적격 수를 함께 적습니다. 적격 리드당 비용은 코호트 모집 지출 합 ÷ 적격 수이고 적격 ${RATIO_MIN_N}건 미만이면 숨깁니다. 적격 점수(보드 정렬용)는 쓰지 않습니다.`;
 export const REPORT_NOTES:readonly string[]=Object.freeze([
  RECRUITMENT_ATTRIBUTION_NOTE,
  '자동 판정 아님: 리드 원장·모집 비용·코드 장부를 정해진 규칙으로 모은 집계입니다. 채널의 좋고 나쁨이나 원인을 판정하지 않으며, 판단은 대표가 합니다. 모델 호출은 0건입니다.',
@@ -68,9 +69,9 @@ export function rate(num:number,den:number):Rate{
  return {value:round(num/den,4),state:'shown'};
 }
 // 금액 비율(CPL·계약당 비용): 분모 20 미만은 나누지 않는다. 계약당 비용만 예외로 20 미만에도 나누고 지출 합계·계약 수와 '표본 부족'을 함께 둔다(small_sample_shown, 대표 결정 36).
-export type CostState='shown'|'no_spend'|'no_leads'|'no_contracts'|'straddling'|'small_sample'|'small_sample_shown';
+export type CostState='shown'|'no_spend'|'no_leads'|'no_contracts'|'no_qualified'|'straddling'|'small_sample'|'small_sample_shown';
 export type Cost={value:number|null;state:CostState;spend?:number;contracts?:number};
-function costOf(spend:number|null,den:number,state:'known'|'no_spend'|'straddling',zero:'no_leads'|'no_contracts'):Cost{
+function costOf(spend:number|null,den:number,state:'known'|'no_spend'|'straddling',zero:'no_leads'|'no_contracts'|'no_qualified'):Cost{
  if(state!=='known')return {value:null,state};
  if(spend===null)return {value:null,state:'no_spend'};
  if(den<=0)return {value:null,state:zero};
@@ -81,7 +82,9 @@ function costOf(spend:number|null,den:number,state:'known'|'no_spend'|'straddlin
 // ── 입력 ──
 export type ReportLeadInput={id:string;brandId:string;stage:string;closedFrom:string|null;createdAt:string;receivedAt?:string;receivedPrecision?:'time'|'day';importId?:string;
  firstContactAt:string|null;contractedAt:string|null;codes?:readonly {code:string;at:string;source?:'manual'|'import'}[];codeStrikes?:readonly {code:string;at:string}[];
- imports?:readonly {importId:string;channel:string;eventId:string|null;merged:boolean}[]};
+ imports?:readonly {importId:string;channel:string;eventId:string|null;merged:boolean}[];
+ // 적격 판정 이력(대표 결정 35). 판정·기준 버전·시각만 쓴다(사유 코드·행위자는 보고에 싣지 않는다).
+ qualifications?:readonly {verdict:string;criteriaVersion:number;at:string}[]};
 export type ReportSpendRow=SpendRow&{platform?:PlatformMetrics|null};
 export type ReportInput={brandId:string;week:string;asOf:string;leads:readonly unknown[];book:CodeBook;spend:readonly unknown[];blockedAttempts:readonly unknown[];contractEvidence:readonly unknown[];rules?:readonly FranchiseRule[]};
 const isRecord=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
@@ -133,7 +136,7 @@ function costOf_(week:readonly Lead[],spend:readonly ReportSpendRow[],w:ReportWe
  const platform:PlatformRow[]=keys.flatMap(k=>{const mine=rows.filter(r=>r.channel===k).map(r=>r.platform??null);
   const row={key:k,label:RECRUITMENT_CHANNEL_LABELS[k],impressions:sumKnown(mine.map(p=>p?.impressions)),clicks:sumKnown(mine.map(p=>p?.clicks)),formSubmits:sumKnown(mine.map(p=>p?.formSubmits)),note:PLATFORM_REPORTED_NOTE};
   return row.impressions===null&&row.clicks===null&&row.formSubmits===null?[]:[row]});
- return {window:{from:w.from,to:w.to},totalSpend:win.included.reduce((s,r)=>s+r.amountExVat,0),straddlingRows:win.straddling.length,channels,platform,qualified:{value:null,note:QUALIFIED_NOTE}};
+ return {window:{from:w.from,to:w.to},totalSpend:win.included.reduce((s,r)=>s+r.amountExVat,0),straddlingRows:win.straddling.length,channels,platform};
 }
 
 // ── speed-to-lead(보고 주 접수) ──
@@ -160,14 +163,24 @@ function speedOf(week:readonly Lead[],asOfMs:number){
 // ── 문의 월 코호트·계약당 비용 ──
 export const FUNNEL_STAGES:readonly LeadStage[]=Object.freeze(['contacted','consulted','briefing','disclosed','draft_provided','contracted','fee_escrowed','opened'] as LeadStage[]);
 export type CohortStage={stage:LeadStage;label:string;reached:Cell;rate:Rate};
-export type Cohort={month:string;from:string;to:string;mature:boolean;size:Cell;stages:CohortStage[];closed:Cell;contracts:Cell;spend:number|null;spendState:'known'|'no_spend'|'straddling';costPerContract:Cost};
+export type CohortQualification={qualified:Cell;hold:Cell;rejected:Cell;unjudged:Cell;byVersion:{version:number;qualified:Cell}[];costPerQualified:Cost};
+export type Cohort={month:string;from:string;to:string;mature:boolean;size:Cell;stages:CohortStage[];closed:Cell;contracts:Cell;spend:number|null;spendState:'known'|'no_spend'|'straddling';costPerContract:Cost;qualification:CohortQualification};
+// 코호트 적격 판정(대표 결정 35): asOf까지의 마지막 판정. 알 수 없는 판정 값·기준 버전은 판정 없음으로 센다.
+const VERDICT_KEYS=['qualified','hold','rejected'] as const;
+function qualificationOf(mine:readonly Lead[],asOf:string,spend:number|null,spendState:'known'|'no_spend'|'straddling'):CohortQualification{
+ const current=mine.map(x=>currentQualification(x.l,asOf)).map(q=>q&&(VERDICT_KEYS as readonly string[]).includes(q.verdict)&&Number.isSafeInteger(q.criteriaVersion)&&q.criteriaVersion>0?q:null);
+ const n=(v:string)=>current.filter(q=>q?.verdict===v).length,qualified=current.filter(q=>q?.verdict==='qualified') as {criteriaVersion:number}[];
+ const versions=[...new Set(qualified.map(q=>q.criteriaVersion))].sort((a,b)=>a-b);
+ return {qualified:cell(qualified.length),hold:cell(n('hold')),rejected:cell(n('rejected')),unjudged:cell(current.filter(q=>!q).length),
+  byVersion:versions.map(version=>({version,qualified:cell(qualified.filter(q=>q.criteriaVersion===version).length)})),costPerQualified:costOf(spend,qualified.length,spendState,'no_qualified')};
+}
 function cohortOf(month:string,leads:readonly Lead[],spend:readonly ReportSpendRow[],asOf:string):Cohort{
  const from=month+'-01',to=monthEnd(month),mine=leads.filter(x=>x.receivedDate>=from&&x.receivedDate<=to);
  const stages=FUNNEL_STAGES.map(s=>{const n=mine.filter(x=>reached(x.l)>=stageOrder(s)).length,c=s==='contracted';return {stage:s,label:STAGE_LABELS[s],reached:c?contractCell(n):cell(n),rate:c?contractRate(n,mine.length):rate(n,mine.length)}});
  const contracts=mine.filter(x=>reached(x.l)>=stageOrder('contracted')).length,win=spendInWindow(spend,from,to,{asOf}),chans=Object.values(win.byChannel);
  const spendState=win.straddling.length?'straddling' as const:chans.length?'known' as const:'no_spend' as const,total=chans.length?chans.reduce((s,c)=>s+c.total,0):null;
  return {month,from,to,mature:addDays(to,COHORT_MATURE_DAYS)<=toKstDate(asOf),size:cell(mine.length),stages,closed:cell(mine.filter(x=>x.l.stage==='closed').length),contracts:contractCell(contracts),
-  spend:total,spendState,costPerContract:costOf(total,contracts,spendState,'no_contracts')};
+  spend:total,spendState,costPerContract:costOf(total,contracts,spendState,'no_contracts'),qualification:qualificationOf(mine,asOf,total,spendState)};
 }
 
 // ── 법정 게이트·규칙 신선도 ──
@@ -213,7 +226,7 @@ const won=(n:number)=>String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g,',')
 export const cellText=(c:Cell)=>c.suppressed?SUPPRESSED_LABEL:String(c.n);
 const RATE_TEXT:Readonly<Record<RateState,string>>={shown:'',small_sample:`${SMALL_SAMPLE_LABEL}(n<${RATIO_MIN_N})`,suppressed:SUPPRESSED_LABEL,none:'-'};
 export const rateText=(r:Rate)=>r.state==='shown'&&r.value!==null?`${round(r.value*100,1)}%`:RATE_TEXT[r.state];
-const COST_TEXT:Readonly<Record<CostState,string>>={shown:'',no_spend:'비용 모름',no_leads:'리드 0건',no_contracts:'계약 0건',straddling:'비용 기간 불일치',small_sample:`${SMALL_SAMPLE_LABEL}(n<${RATIO_MIN_N})`,small_sample_shown:`${SMALL_SAMPLE_LABEL}(n<${RATIO_MIN_N})`};
+const COST_TEXT:Readonly<Record<CostState,string>>={shown:'',no_spend:'비용 모름',no_leads:'리드 0건',no_contracts:'계약 0건',no_qualified:'적격 0건',straddling:'비용 기간 불일치',small_sample:`${SMALL_SAMPLE_LABEL}(n<${RATIO_MIN_N})`,small_sample_shown:`${SMALL_SAMPLE_LABEL}(n<${RATIO_MIN_N})`};
 export function costText(c:Cost):string{
  if(c.state==='shown'&&c.value!==null)return won(c.value);
  if(c.state==='small_sample_shown'&&c.value!==null&&typeof c.spend==='number'&&typeof c.contracts==='number')return `${won(c.value)} (지출 합계 ${won(c.spend)} / 계약 ${c.contracts}건 · ${COST_TEXT.small_sample_shown})`;
@@ -231,13 +244,14 @@ function reportRows(r:RecruitmentReport):Row[]{
   ['비용',`${c.window.from}~${c.window.to}`,'주 안 비용 합계',won(c.totalSpend)],['비용',`${c.window.from}~${c.window.to}`,'걸친 비용 행',String(c.straddlingRows)],
   ...c.channels.flatMap((ch):Row[]=>[['채널 CPL',ch.label,'비용',moneyText(ch.spend)],['채널 CPL',ch.label,'리드(코드+파일)',cellText(ch.leads)],['채널 CPL',ch.label,'CPL(코드+파일)',costText(ch.cpl)],['채널 CPL',ch.label,'CPL(코드만)',costText(ch.cplCode)],
    ...(ch.aligned?[['채널 CPL',ch.label,'정렬 창',`${ch.aligned.from}~${ch.aligned.to}`] as Row]:[])]),
-  ['채널 CPL','적격 리드당 비용','값','비움'],
   ...c.platform.flatMap((p):Row[]=>[['플랫폼 보고',p.label,'노출',num(p.impressions)],['플랫폼 보고',p.label,'클릭',num(p.clicks)],['플랫폼 보고',p.label,'양식 제출',num(p.formSubmits)]]),
   ...r.speedToLead.groups.flatMap((s):Row[]=>[['speed-to-lead',s.label,'접수',cellText(s.received)],['speed-to-lead',s.label,'첫 연락',cellText(s.contacted)],['speed-to-lead',s.label,'미응대',cellText(s.uncontacted)],
    ['speed-to-lead',s.label,'중앙값(분)',s.medianState==='shown'?String(s.medianMinutes):s.medianState==='suppressed'?SUPPRESSED_LABEL:'-'],['speed-to-lead',s.label,'첫 연락 비율',rateText(s.contactedRate)]]),
   ['speed-to-lead','제공처 시각','날짜만 있어 제외',cellText(r.speedToLead.excludedDayPrecision)],
   ...r.cohorts.flatMap((k):Row[]=>[['코호트',k.month,'문의',cellText(k.size)],['코호트',k.month,'성숙',k.mature?'성숙':'미성숙'],...k.stages.map((s):Row=>['코호트',k.month,s.label,`${cellText(s.reached)} (${rateText(s.rate)})`]),
-   ['코호트',k.month,'종결',cellText(k.closed)],['코호트',k.month,'비용',k.spendState==='straddling'?'비용 기간 불일치':moneyText(k.spend)],['코호트',k.month,'계약',cellText(k.contracts)],['코호트',k.month,'계약당 비용',costText(k.costPerContract)]]),
+   ['코호트',k.month,'종결',cellText(k.closed)],['코호트',k.month,'비용',k.spendState==='straddling'?'비용 기간 불일치':moneyText(k.spend)],['코호트',k.month,'계약',cellText(k.contracts)],['코호트',k.month,'계약당 비용',costText(k.costPerContract)],
+   ['코호트',k.month,'적격',cellText(k.qualification.qualified)],...k.qualification.byVersion.map((x):Row=>['코호트',k.month,`적격(기준 v${x.version})`,cellText(x.qualified)]),
+   ['코호트',k.month,'보류',cellText(k.qualification.hold)],['코호트',k.month,'거절',cellText(k.qualification.rejected)],['코호트',k.month,'판정 없음',cellText(k.qualification.unjudged)],['코호트',k.month,'적격 리드당 비용',costText(k.qualification.costPerQualified)]]),
   ['법정 게이트','보고 주','계약',cellText(g.contractsInWeek)],['법정 게이트','보고 주','서버 거부 시도',String(g.blockedAttempts)],['법정 게이트','전체','계약 리드',cellText(g.contracted)],['법정 게이트','전체','증빙 완결',cellText(g.evidenceComplete)],
   ['규칙 신선도',`${RULE_STALE_DAYS}일`,'확인 시각이 지난 규칙',`${r.rules.stale} / ${r.rules.checked}`],
  ];

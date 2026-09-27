@@ -7,7 +7,7 @@ import {clientId} from '@/lib/client';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select';
-import {GATE_DISCLAIMER,FRANCHISE_ERRORS,kstLabel,SOURCE_LABELS,BUDGET_LABELS,TIMING_LABELS,type LeadTask,type LeadBasis,type LeadMarketing,type ContactState,type BasisType,type MarketingStatus,type Branch,type CodeMessage,type FranchiseErrorKey} from '@/lib/franchise';
+import {GATE_DISCLAIMER,FRANCHISE_ERRORS,kstLabel,SOURCE_LABELS,BUDGET_LABELS,TIMING_LABELS,type LeadTask,type LeadBasis,type LeadMarketing,type ContactState,type BasisType,type MarketingStatus,type Branch,type CodeMessage,type FranchiseErrorKey,type QualificationVerdict,type QualificationReason} from '@/lib/franchise';
 import type {LeadStage,ForecastDuty} from '@/lib/franchise-gates';
 
 export type Json=Record<string,unknown>;
@@ -18,11 +18,14 @@ export type MaskedContact={name:string;phone:string|null;email:string|null;hasPh
 // 모집 코드 귀속(R5b-1, 서버가 읽을 때 계산). 라벨·사유는 서버 문구를 그대로 보인다.
 export type AttributionView={state:'attributed'|'unattributed'|'conflict';basis?:'code'|'import';label:string;detail:string|null;code?:string;channel?:string;channelLabel?:string;reason?:string;retroactive?:boolean;late?:boolean};
 export type LeadSummary={id:string;systemCode:string;stage:LeadStage;closeReason:string|null;assigneeId:string|null;assignedToMe:boolean;contactState:ContactState;contact:MaskedContact|null;task:LeadTask;basisType:BasisType;
- sourceNoticePending:boolean;marketingStatus:MarketingStatus;eligibility:{met:number;total:number}|null;lastActivityAt:string;retentionUntil:string|null;retentionLabel:string;version:number;createdAt:string;attribution?:AttributionView};
+ sourceNoticePending:boolean;marketingStatus:MarketingStatus;eligibility:{met:number;total:number}|null;qualification?:QualificationView|null;lastActivityAt:string;retentionUntil:string|null;retentionLabel:string;version:number;createdAt:string;attribution?:AttributionView};
+// 현재 적격 판정(대표 결정 35). current는 지금 적격 기준 버전으로 한 판정인지다.
+export type QualificationView={verdict:QualificationVerdict;reason:QualificationReason;criteriaVersion:number;at:string;current:boolean};
+export type QualificationRow={verdict:QualificationVerdict;reason:QualificationReason;criteriaVersion:number;score:{met:number;total:number}|null;at:string;by:{id:string;role:string}};
 export type LeadCodeView={code:string;at:string;source:'manual'|'import'};
 export type LeadImportView={importId:string;channel:string;channelLabel:string;eventId:string|null;provider:string;providedOn:string;receivedAt:string;receivedPrecision:'time'|'day';merged:boolean;at:string};
 export type EventView={id:string;type:string;at:string;actor:{id:string;role:string};from?:LeadStage;to?:LeadStage;reasons?:CodeMessage[];fields?:string[];taskFields?:string[];basis?:{type?:string};consent?:{method?:string;at?:string};
- withdrawnAt?:string;evidenceId?:string;evidenceType?:string;supersedes?:string;voided?:boolean;closeReason?:string;assigneeId?:string|null};
+ withdrawnAt?:string;evidenceId?:string;evidenceType?:string;supersedes?:string;voided?:boolean;closeReason?:string;assigneeId?:string|null;qualification?:{verdict:string;reason:string;criteriaVersion:number}};
 export type SideView={startDate:string|null;days:number|null;periodEnd:string|null;shortened:boolean;extended:boolean};
 export type WindowView={at:string|null;atKst:string|null;disclosureSide:SideView;draftSide:SideView;blockers:CodeMessage[];notes:CodeMessage[];warnings:CodeMessage[];ruleVersion:string;disclaimer:string};
 export type EvidenceView={id:string;evidenceType:string;recordedAt:string;recordedBy:{id:string;role:string};backdateApproval:{role:string;reasonCode:string}|null;supersedes:string|null;correctionReason:string|null;
@@ -31,7 +34,7 @@ export type EvidenceView={id:string;evidenceType:string;recordedAt:string;record
 export type GateView={window:WindowView;forecastDuty:ForecastDuty;stageChecks:{opened:{ok:boolean;reasons:CodeMessage[];warnings:CodeMessage[]}|null};disclaimer:string};
 export type LeadDetail=LeadSummary&{hasMemo:boolean;basis:LeadBasis;marketing:LeadMarketing;marketingRecheck:boolean;firstContactAt:string|null;contractedAt:string|null;closedAt:string|null;closedFrom:LeadStage|null;
  events:EventView[];allowedActions:string[];allowedMoves:LeadStage[];marketingOptions:('given'|'withdrawn')[];disclaimer:string;evidence?:EvidenceView[];gate?:GateView;
- codes?:LeadCodeView[];codeStrikes?:{code:string;at:string;reason:string}[];imports?:LeadImportView[]};
+ codes?:LeadCodeView[];codeStrikes?:{code:string;at:string;reason:string}[];imports?:LeadImportView[];criteriaVersion?:number|null;qualifications?:QualificationRow[]};
 export type Assignee={id:string;label:string};
 export type Board={enabled:boolean;branch:Branch|null;leads:LeadSummary[];total:number;counts:{byStage:Record<string,number>};
  todos:{sourceNoticePending:number;subjectRequestsDueSoon:number;contactsExpiringSoon:number;marketingRecheck:number;purgePending?:number;codeConflict?:number};recheckLabel:string;assignees:Assignee[];disclaimer:string;contactNote:string};
