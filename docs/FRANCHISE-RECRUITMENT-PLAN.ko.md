@@ -903,7 +903,7 @@ R4a가 `lib/franchise-rules.ts`에 만들고 R2·R4b가 쓴다. 레코드는 `{i
     - 두 판이 '한 변수만' 다른지는 기계로 판정하지 않는다. 같은 유형·같은 브랜드·서로 다른 판만 검사하고 바꾼 변수를 사람이 적는다.
     - 수치는 모집 비용 행의 플랫폼 보고 칸을 끌어오지 않고 실험마다 따로 입력한다(판별로 나뉘지 않은 비용 행이 있어서).
     - 채택·중단 확정(규칙 만들기)은 두지 않았다. 권고와 경고까지만 보인다.
-    - `docs/DATA-PROCESSING.ko.md` 3.5 `recruitment_experiment` 행은 레인 A 검토를 위해 별도 문서 PR로 낸다.
+    - `docs/DATA-PROCESSING.ko.md` 3.5 `recruitment_experiment` 행은 레인 A 검토를 위해 별도 문서 PR #209로 냈다(병합 보류).
   - not_run: 운영 real 확인(게시 뒤, 대표가 `r_franchise`를 켠 뒤), 직원 화면의 실제 이메일 세션 확인(경로 검사만).
 
 - 결정 36 구현 기록(2026-09-27, passed · mocked):

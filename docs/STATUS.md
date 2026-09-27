@@ -47,7 +47,7 @@
   - 확인 필요(레인 A): `docs/DATA-PROCESSING.ko.md`에 두 가지를 적었다. #200은 DP-10에 결정 36 예외(근거·위험)를, 3.5 주간 보고 확정본 행에 같은 예외와 내려받은 파일 관리 책임을 적었다. #203은 3.5에 적격 판정 이력 행(코드만, 모델 전송 0)을 더했다. 검토 바란다. 게시 대기열 요청 줄은 받아들인 뒤 넣는다.
   - R6d-1 #204 `merged`(`e811b0c`): 워크스페이스 할 일 5종(미응대·계약 가능일 3일 전·증빙 결손·변경등록 기한 30일 전·H10 재검토). `/api/workspace` `franchiseTasks`(브랜드 id·건수만, 스위치 꺼지면 키 없음), 첫 화면 '다음 할 일'에서 가맹 화면 브랜드·탭으로 이동. 새 스위치 없음(`r_franchise` 뒤). 검사 passed · mocked(franchise-workspace 50, franchise-workspace-route 33), 로컬 E2E passed · real Chromium·로컬 D1 / mocked 인증·연결 상태(2/2). 운영 real not_run.
   - R6d-2(이 PR): 소재 실험 선별. 새 kind `recruitment_experiment`, 작업 `experiment_plan`·`experiment_result`·`experiment_cancel`(대표·관리자), 보기 `experiments`, '유입·비용' 탭 아래 화면. 계획은 기간 시작 전만, 팔당 최소 표본 100, 판정은 `lib/viral-stats.ts` 무수정, 결과에 '플랫폼 보고, 원장 리드 아님', 확인 층은 코드 귀속·적격·설명회 참석 건수(20건 미만 비율 숨김). 새 스위치 없음. 검사 passed · mocked(franchise-experiment 43, franchise-experiment-route 36), 로컬 E2E passed · real Chromium·로컬 D1 / mocked 인증(2/2). 운영 real not_run.
-  - 확인 필요(레인 A): R6d-2 새 kind의 `docs/DATA-PROCESSING.ko.md` 3.5 행은 별도 문서 PR로 낸다(병합하지 않고 레인 A 검토를 기다린다).
+  - 확인 필요(레인 A): R6d-2 새 kind의 `docs/DATA-PROCESSING.ko.md` 3.5 행은 별도 문서 PR #209로 냈다(병합하지 않고 레인 A 검토를 기다린다).
 - 최근 병합: #191 가맹 모집 E2E `merged`(`1c6fcc7`). #188 R5c 유입·비용 탭 `merged`(`ec822e3`). #186 결정 34 모집 자료 승인·내보내기 대기기간 우회 문장 사람 확인 `merged`(`14a6278`). #185 R3c 재채점 관찰 기록·DATA-PROCESSING 의견 반영(문서) `merged`(`1117812`). #183 R5b-2 리드 CSV 가져오기 기록·API `merged`(`ae96871`).
   - 결정 32 B안: 매핑한 이름·전화·이메일 열만 결정 22 경로로 저장한다. 매핑하지 않은 열에 개인정보가 있으면 파일 전체를 거부한다.
   - 교차 파일 병합(대표 결정 '리드 1건, 집계는 파일별'): 기존 리드에 제공처 기록만 덧붙이고, 제공처별 리드 수는 파일마다 한 명으로 센다.
