@@ -36,10 +36,10 @@
 - 다음: A3 run → A8-1 → A8-2 → A8-3 → B4 2부 → B3([순서](LANES.ko.md#레인-a-claude-a-세션)).
 
 ## 레인 R (Claude 트랙 R 세션 — 가맹 모집)
-갱신: 2026-09-27 15:18 UTC
+갱신: 2026-09-27 15:40 UTC
 - R7a 공공 벤치마크 merged(#231 `36f169f`, 병렬 `lane-r-r7a` 세션): 가맹 모집 '벤치마크' 탭(V9), 사람이 버튼으로 적재·토큰 0, 키는 브랜드별 암호문(키 없음 409·외부 호출 0). 테스트 passed · mocked(187/187), 로컬 E2E 14/14. DATA-PROCESSING #232는 레인 A 검토 통과·병합(`2da58e5`). not_run: 게시, real 적재 1회(대표 키 저장 뒤), API 필드 이름·단위 실측 확인(틀리면 SCHEMA_MISMATCH로 저장 0).
 - R15b 결정론 모집 템플릿: R15b-1 merged(#230 `46865e0`, 순수 모듈 `lib/franchise-qr.ts`·`lib/franchise-cards.ts`, 런타임 연결 없음, 검사 passed · mocked(franchise-qr 18, franchise-cards 48, 변이 21/22)). R15b-2(#234, 자료 유형 `card_bundle`·PNG 내려받기)는 CI 뒤 병합한다.
-- 진행 중: R9a 정보성 너처링 초안. R9a-1(#235)은 순수 모듈이다(목적·분류·매체, 자리표시 템플릿 검사, 광고성 고정 요소, R2 판정, 허용 입력만 쓰는 모델 제출 조립, 요청당 1회 발송 기록 판정). 검사 passed · mocked(38, 변이 13/13). R9a-2(이 PR)는 HERMES 초안 1회(모델에 리드 정보 0건), 템플릿 저장·폐기, 리드 정보 요청·보낸 뒤 발송 기록(요청당 1회, 광고성 409), '너처링' 탭과 리드 상세 화면이다. 새 kind는 `franchise_message_template`·`franchise_nurture_draft`, 새 스위치는 없다(`r_franchise` 뒤). 검사 passed · mocked(franchise-nurture-route 34, 연결 변이 14/14). 로컬 E2E passed · real Chromium·로컬 D1 / mocked 인증(2/2). DATA-PROCESSING 짝 PR #238은 레인 A 검토 통과(조건: 3.5 정보 요청 행에 실제 요청만 기록·감사 확인 문장, 반영함).
+- 진행 중: R9a 정보성 너처링 초안. R9a-1 merged(#235 `d71d85a`): 순수 모듈이다(목적·분류·매체, 자리표시 템플릿 검사, 광고성 고정 요소, R2 판정, 허용 입력만 쓰는 모델 제출 조립, 요청당 1회 발송 기록 판정). 검사 passed · mocked(38, 변이 13/13). R9a-2(이 PR)는 HERMES 초안 1회(모델에 리드 정보 0건), 템플릿 저장·폐기, 리드 정보 요청·보낸 뒤 발송 기록(요청당 1회, 광고성 409), '너처링' 탭과 리드 상세 화면이다. 새 kind는 `franchise_message_template`·`franchise_nurture_draft`, 새 스위치는 없다(`r_franchise` 뒤). 검사 passed · mocked(franchise-nurture-route 34, 연결 변이 14/14). 로컬 E2E passed · real Chromium·로컬 D1 / mocked 인증(2/2). DATA-PROCESSING 짝 PR #238은 레인 A 검토 통과(조건: 3.5 정보 요청 행에 실제 요청만 기록·감사 확인 문장, 반영함).
 - 성장1 마감(레인 R 몫, 2026-09-27): [인계 기록](observations/2026-09-27-lane-r-growth1-handoff.md). 트랙 R 전체 마감은 성장1 종료 조건이 아니다.
   - 회귀(C12): main `431e417` `node scripts/test.mjs` passed · mocked(184/184 스위트, 12,670). 레인 R PR 21개(#173~#209)의 레인 밖 파일 삭제·이름 변경 0건, 라우트·기능 삭제 0건(지운 줄은 모두 목록·문구·버전 태그를 넓혀 다시 쓴 것). 레인 R 회귀 0건.
   - 5절 Q/R 키 확대 레인 R 몫: 가맹 연락처 암호화 키와 HMAC 중복 키 모두 **not_run**(R8 발동 조건 결정 28 없음). 담당 R(코드)·대표(키 값). 재개 조건: 결정 28, 대표의 `AGENCY_ENCRYPTION_KEY` 교체 결정, OFD 실제 리드 저장 시작 중 먼저 오는 것. 다음 확인일 2026-10-05(월) KST. 영향: 키를 바꾸면 중복 경고·가져오기 병합·연락처 찾기가 오류 없이 틀리고, 옛 키를 빼면 연락처 보기·내보내기·파기가 500. 그 전까지 `AGENCY_ENCRYPTION_KEY`는 바꾸지 않는다(#211 문서와 같음).
@@ -347,9 +347,11 @@ PR #19(`docs/email-auth-release`, 커밋 aa06574·b242019)가 기록했으나 `m
 
 
 ## 레인 I (Codex — 브랜드 인터뷰 신규 제품 기능)
-갱신: 2026-09-27 14:20 UTC
+갱신: 2026-09-27 15:12 UTC
 - 대표 신규 지시로 `feat/brand-interview-studio` 개발. 기준 `431e4175a9d8d581533979b4aa378bbcd8ff908d`. [범위·운영 인수](BRAND-INTERVIEW.ko.md).
 - 구현: 필수 8섹션/추가 24질문, 수기 저장, 파일 드롭·원본 보관, 브라우저 녹음, HERMES 섹션 후보 정리·원문 인용 검증·선택 반영, 관리자 확정 후 기존 캠페인 근거 연결.
 - 음성 전사: 로컬 STT 서비스 코드와 웹 어댑터 포함. 공유 HERMES 서버 설치 및 실제 음성 검증 `not_run`. Plaud MCP 직접 조회 미구현, Plaud TXT 첨부 가능.
 - 게시 `not_run`: LANES의 레인 A 단독 게시를 유지. 이 작업은 성장1 종료 범위에 추가하지 않는다.
 - 검사: 전체 185/185 스위트 12,701 assertions passed·mocked, 전사 큐 7 passed·mocked, typecheck/lint/build passed. 브라우저 E2E blocked(Chromium 다운로드 네트워크 실패). 다음: 브라우저 E2E·공유 서버 전사 설치 검증 → 레인 A 통합/게시 판단.
+
+- 레인 I 후속: 업종별 질문지 11종+공통 선택·저장, 답변 보존, 추천/자동 정리 업종 반영. 이전 인터뷰 스튜디오는 #233 merged 및 Sites 50 runtime-verified(별도 기록 PR #236). 이번 업종 기능은 typecheck/lint/build 및 인터뷰 40 checks passed(mocked). 전체 검사와 모바일·데스크톱 E2E는 CI에서 확인 후 게시.
