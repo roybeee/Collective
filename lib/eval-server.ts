@@ -9,7 +9,7 @@ import {GRADERS_VERSION,type GraderResult,type GraderStatus,type FactLedger,type
 import type {OutputNormalization} from './output-normalize';
 import {COMPLIANCE_LEXICON} from './graders/compliance';
 import {caseKind,evalKind,reserveOf,roleId,EVAL_CASE_TOKEN_RESERVE,type EvalCaseKind,type EvalKindHandler,type EvalExpectations,type EvalRequest,type EvalSide} from './eval-kinds';
-import {captureMeetingStep,captureBrief,type CaptureCheck} from './eval-capture';
+import {captureMeetingStep,captureBrief,captureViralAnalysis,type CaptureCheck} from './eval-capture';
 import {compareRuns,pairReport} from './eval-stats';
 import {gatewayBasis} from './gateway-snapshot';
 import {APP_TREE} from './app-version';
@@ -17,6 +17,7 @@ import {labelRead,saveLabel,runHasLabels} from './judge-labels-server';
 import {judgeTargets,judgeSubmission,judgeGrade,judgeRead,type JudgeResultInfo} from './eval-judge-server';
 import {roles,type Campaign,type Brand} from './agency';
 import {pairPrompts,roleRunUnits,type PairPrompts} from './prompt-registry';
+import {unitOf} from './prompt-units';
 import {evalMonthBudget,setBudgetApproval,EVAL_DEFAULT_MONTHLY_TOKEN_CAP} from './eval-budget-server';
 import {operationsSummary} from './eval-operations';
 import {hermesFailureCategory} from './hermes-failure';
@@ -202,7 +203,7 @@ async function storeCase(owner:string,fields:CaseFields,by:Who,ext:External|null
  return kase;
 }
 // 역할: 운영 역할 실행과 같은 DB 읽기(roleSources·roleRequestFor)로 요청을 만들어 JSON 그대로 동결한다(운영자 선호 블록 포함). 실행 가능 여부 검사(409)는 적용하지 않는다.
-// 회의 단계({meetingId, stepId})·브리프({briefDraftId})는 lib/eval-capture.ts가 운영 기록으로 요청을 만들고 운영과 같은 가림을 거쳐 동결하며, 드리프트 판정을 captureCheck에 남긴다.
+// 회의 단계({meetingId, stepId})·브리프({briefDraftId})·바이럴 사례 분석({jobId})은 lib/eval-capture.ts가 운영 기록으로 요청을 만들고 운영과 같은 가림을 거쳐 동결하며, 드리프트 판정을 captureCheck에 남긴다.
 async function captureCase(owner:string,input:Record<string,unknown>,by:Who){
  const kind=caseKind(input.kind),ext=externalOf(input),existing=await existingExternal(owner,ext);
  if(existing)return existing;
@@ -215,7 +216,7 @@ async function captureCase(owner:string,input:Record<string,unknown>,by:Who){
  return storeCase(owner,{kind,role,request:frozen,expectations:expectationsOf(input.expectations,facts),campaignId:c.id,source:'capture',set:evalSet(input.set),label:str(input.label??'','케이스 이름',200)||`${name} · ${c.title} · 브리프 v${c.version}`},by,ext);
 }
 async function captureRecord(owner:string,kind:Exclude<EvalCaseKind,'role'>,input:Record<string,unknown>,by:Who,ext:External|null){
- const c=kind==='meeting_step'?await captureMeetingStep(owner,input):await captureBrief(owner,input);
+ const c=kind==='meeting_step'?await captureMeetingStep(owner,input):kind==='brief'?await captureBrief(owner,input):await captureViralAnalysis(owner,input);
  if(JSON.stringify(c.request).length>MAX_REQUEST_CHARS)throw new ApiError(413,'평가 요청이 너무 커서 평가 케이스로 저장할 수 없습니다.');
  return storeCase(owner,{kind,role:c.role,request:c.request,expectations:expectationsOf(input.expectations,c.facts),campaignId:c.campaignId,source:'capture',set:evalSet(input.set),label:str(input.label??'','케이스 이름',200)||c.label,captureCheck:c.captureCheck},by,ext);
 }
@@ -356,9 +357,15 @@ function runVariant(input:Record<string,unknown>){
 }
 // 쌍 평가 케이스: 후보 단위를 쓰는 케이스만 남긴다(역할 스킬은 같은 역할, 채널 스킬은 그 채널이 적용되는 캠페인). 쓰지 않는 케이스는 두 쪽 본문이 같아 토큰만 쓴다.
 // 캠페인은 종류 처리기가 정한다(역할 request.campaign, 회의 단계 meeting.snapshot.campaign). 브리프는 레지스트리 단위가 없어 늘 빠진다(skippedCases).
+// 바이럴 발견 지시(viral.discovery, 캠페인 없음)는 바이럴 사례 분석(viral_analysis) 케이스만 쓴다. 역할·회의·브리프 케이스는 빠지고, 바이럴 케이스는 캠페인 단위 쌍 평가에서 빠진다.
+function usesUnit(c:EvalCase,unit:string){
+ if(unitOf(unit)?.kind==='viral')return c.kind==='viral_analysis';
+ const campaign=evalKind(c.kind).campaignOf(c.request);
+ return !!campaign&&roleRunUnits(c.role,campaign as Campaign).includes(unit);
+}
 function pairCases(cases:EvalCase[],unit:string){
- const kept=cases.filter(c=>{const campaign=evalKind(c.kind).campaignOf(c.request);return !!campaign&&roleRunUnits(c.role,campaign as Campaign).includes(unit)});
- if(!kept.length)throw new ApiError(400,`${unit}을(를) 쓰는 평가 케이스가 없습니다. 역할 스킬은 같은 역할 케이스, 채널 스킬은 그 채널이 적용되는 캠페인 케이스를 고르세요.`);
+ const kept=cases.filter(c=>usesUnit(c,unit));
+ if(!kept.length)throw new ApiError(400,unitOf(unit)?.kind==='viral'?`${unit} 쌍 평가는 바이럴 사례 분석(viral_analysis) 케이스만 씁니다. 역할·회의 단계·브리프 케이스는 대상이 아닙니다.`:`${unit}을(를) 쓰는 평가 케이스가 없습니다. 역할 스킬은 같은 역할 케이스, 채널 스킬은 그 채널이 적용되는 캠페인 케이스를 고르세요.`);
  return kept;
 }
 // 케이스마다 두 쪽을 이어서 제출한다. 순서 효과를 줄이려고 케이스마다 active→candidate와 candidate→active를 번갈아 쓴다.

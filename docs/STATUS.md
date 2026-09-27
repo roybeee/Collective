@@ -81,13 +81,13 @@
 - 다음: `loop-2`(게시물과 실험 arm 연결, 게시물 ID·자동 상태 확인·측정 원천 자동 등록)는 `loop-1` 병합 뒤.
 - 막힌 것(코드 밖): Reflector 실제 실행은 DATA-PROCESSING 7절의 사람 확인 항목(8절 3번 HERMES 세션 메모리, 법률 검토 결과 등)이 채워져야 한다. 코드는 그 전에도 스위치 꺼짐으로 병합·게시할 수 있다.
 
-## 레인 Q (Codex 세션 — 품질·평가·운영)
-- A1 `channel.offline` **promoted · registry-active**(2026-09-27 10:33 UTC, 대표 지시 "전체적용"): 모든 캠페인에 v4 적용. 서버가 저장된 3개 run으로 과반 게이트를 다시 판정해 통과했고, `/api/version` promptManifest = promote 이벤트 manifestAfter. 롤백은 `rollback`(expectedActive `channel.offline@a6df00903daa`)이면 코드 상수로 돌아간다. 이전 기록: staged · registry-active(2026-09-27 10:10 UTC, Claude 29f7af 대행, 대표 승인): v4 `@a6df00903daa`(#179 `f56909d`)를 ODA PIZZERIA 휘경 C107 오픈 캠페인(`37da2d59`)에만 stage. 근거 봉인 반복 3회 `f465ad09`·`2b649008`·`acfe9d77`(각 17케이스·34제출, 합계 1,589,183토큰) 과반 게이트(#178, 게시 v45): 봉인 과반 회귀 0(단일 run 실패 8건은 모두 1/3), 합격 후보 150 ≥ active 149, input_budget 17/17. 운영 `/api/version` promptManifest = stage 이벤트 manifestAfter. 경보 gateway_change 2026-09-27은 스모크 `8c85ed1e` 비회귀로 확인(`662244dc`). 다음: ODA 역할 실행 관찰 뒤 대표 결정으로 promote 또는 rollback. 이전 후보 v1~v3 경과는 #158·#169·#179 PR 본문.
-- Claude 29f7af 대행(2026-09-27 04:04 UTC): 대표 결정 "v4 + 반복 채점"으로 A1 활성화를 맡음. `pairGateMajority`와 `evalRunIds` 과반 게이트(이 PR). A1 후보 v1 봉인 `284fa4be` 회귀 3·개선 3, v2 dev `5528b2f9` 회귀 7·개선 3, v3 dev `3c0f6572` 회귀 10·개선 10. 경보 2건(gateway_change 9/25·9/26) 스모크 `9b27392c` 비회귀로 확인(`a7867c13`). 9·10월 평가 월 상한 1,000만(대표 지시 '예산 제한 없음').
-갱신: (레인 Q가 적는다)
-- 다음: #131·#135 병합 → A1 `channel.offline` 쌍 평가·stage → R4·A/A·R5 → J4 게이트, 게시 뒤 운영 감시([순서](LANES.ko.md#레인-q-codex-세션)).
+## 레인 Q (Claude 29f7af 세션 — 품질·평가·운영, 2026-09-27 대표 결정으로 Codex에서 인계)
+갱신: 2026-09-27 12:55 UTC (성장1 마감)
+- 성장1 마감 레인 Q 몫: [레인 Q 성장1 마감 기록](observations/2026-09-27-lane-q-growth1-closeout.md)(C07·C08·C10·C12 행, 5절 인계, 게시 뒤 감시 기준).
+- A1 `channel.offline` v4 `@a6df00903daa` **promoted · registry-active**(봉인 반복 3회 과반 통과). `channel.commerce`·`channel.shortform`은 봉인 반복 평가 진행 중, `viral.discovery`는 등록만(바이럴 분석 케이스 준비 뒤 활성화, #223 평가 경로 병합됨).
+- 진행: C07 입력 축소 on/off 쌍 평가 연결(#218 병합 뒤 PR). 게시 뒤 24~72시간 감시는 레인 A의 최종 묶음 게시 시각부터 시작.
+- #131·#135는 위 마감 기록과 `docs/releases/2026-09-26-*.md`로 대체하고 닫았다(오래된 STATUS 절은 옮기지 않음).
 - 요청(레인 R, 2026-09-26): `scripts/eval/specs/syn-s7-franchise.json`의 `expectations.industry`는 S7 재가져오기(기존 8건 삭제 뒤 새로 생성·가져오기)를 계획할 때 그 PR에서만 `['franchise','fnb']`로 바꾼다. 그 전에 바꾸면 specHash가 달라져 재가져오기가 409다. 운영 D1 S7 8건은 대표 승인으로 레인 R 콘솔 키트가 바꾼다(D1이 정본). 갱신 전 S7 run을 재채점하면 `caseUpdatedAfterRun` 표시가 붙고 판정은 같다([관찰 기록](observations/2026-09-26-lane-r-s7-industry.md)).
-
 ## 이전 기록 (레인 도입 전)
 
 ## HERMES 평가 실패 복구 진행 (2026-09-26 03:02 UTC)
