@@ -1,4 +1,5 @@
 import type {ArchiveSource,ArchiveCategory} from './archive';
+import {industryQuestion,type InterviewIndustryId} from './brand-interview-industries';
 export const interviewSections = [
  {id:'story',title:'브랜드의 시작과 약속',category:'brand',question:'이 브랜드를 시작하게 된 계기와, 고객에게 꼭 지키고 싶은 약속은 무엇인가요?',followups:['그 생각을 실제로 지킨 최근 사례를 들려주세요.','고객이 우리를 한 문장으로 기억한다면 어떤 말이면 좋을까요?','절대 바꾸고 싶지 않은 가치와 피하고 싶은 이미지는 무엇인가요?']},
  {id:'product',title:'상품·가격·선택 이유',category:'product',question:'처음 온 고객에게 가장 추천하는 상품은 무엇이고, 왜 그것을 추천하시나요?',followups:['판매가·원가·마진·베스트셀러와 알리고 싶은 상품이 다른가요?','재료·제조법·서비스 중 경쟁사가 쉽게 따라 하기 어려운 점은요?','차별점을 보여줄 사진·실험·후기·인증 자료가 있나요?']},
@@ -13,12 +14,12 @@ export type InterviewSectionId=typeof interviewSections[number]['id'];
 export type InterviewAnswers=Partial<Record<InterviewSectionId,string>>;
 export type InterviewProposal={section:InterviewSectionId;answer:string;quote:string;sourceId:string};
 export type InterviewJob={id:string;status:'queued'|'uncertain'|'completed'|'failed'|'cancelled';providerId?:string;endpoint:string;sourceIds:string[];evidence:Record<string,string>;error?:string;createdAt:string;updatedAt:string};
-export type InterviewData={role:string;answers:InterviewAnswers;attachments:string[];proposals:InterviewProposal[];job?:InterviewJob;consentAt?:string};
+export type InterviewData={industry?:InterviewIndustryId;role:string;answers:InterviewAnswers;attachments:string[];proposals:InterviewProposal[];job?:InterviewJob;consentAt?:string};
 export type InterviewSource=ArchiveSource&{interview:InterviewData};
 export const interviewBusy=(d:InterviewData)=>!!d.job&&['queued','uncertain'].includes(d.job.status);
 export function interviewContent(answers:InterviewAnswers){return interviewSections.filter(s=>answers[s.id]?.trim()).map(s=>`## ${s.title}\n${answers[s.id]!.trim()}`).join('\n\n')}
 export function interviewProgress(answers:InterviewAnswers){return interviewSections.filter(s=>answers[s.id]?.trim()).length}
-export function recommendedQuestions(answers:InterviewAnswers){return interviewSections.flatMap<{section:InterviewSectionId;question:string;reason:string}>(s=>!answers[s.id]?.trim()?[{section:s.id,question:s.question,reason:'필수 답변 미입력'}]:answers[s.id]!.trim().length<60?[{section:s.id,question:s.followups[0],reason:'구체적인 사례 보완'}]:[]).slice(0,5)}
+export function recommendedQuestions(answers:InterviewAnswers,industry:InterviewIndustryId='general'){const common= interviewSections.flatMap<{section:InterviewSectionId;question:string;reason:string}>(s=>!answers[s.id]?.trim()?[{section:s.id,question:s.question,reason:'필수 답변 미입력'}]:answers[s.id]!.trim().length<60?[{section:s.id,question:s.followups[0],reason:'구체적인 사례 보완'}]:[]).slice(0,5);const tailored=interviewSections.filter(s=>(answers[s.id]?.trim().length||0)<60).flatMap(s=>{const question=industryQuestion(industry,s.id);return question?[{section:s.id,question,reason:'업종 관점 보완'}]:[]}).slice(0,2);return [...common.slice(0,5-tailored.length),...tailored]}
 export function parseInterviewProposals(output:string,evidence:Record<string,string>):InterviewProposal[]{
  const raw:unknown=JSON.parse(output.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''));
  if(!raw||typeof raw!=='object'||!('sections'in raw)||!Array.isArray(raw.sections)||raw.sections.length>24)throw new Error('인터뷰 정리 응답 형식이 올바르지 않습니다.');
