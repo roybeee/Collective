@@ -85,7 +85,7 @@ check('RM-R1 thresholds are exposed as frozen constants',rep.RATIO_MIN_N===20&&r
  check('RM-I2 manual and imported leads are counted apart',r.inflow.manual.n===16&&r.inflow.imported.n===5);
  check('RM-I2 retroactive and late badges are counted apart and suppressed when small',same(r.inflow.retroactive,{n:null,suppressed:true})&&same(r.inflow.late,{n:null,suppressed:true}));
  check('RM-I3 a channel with five or more keeps its own row',ch('portal')&&ch('portal').total.n===7&&ch('portal').code.n===7&&ch('portal').file.n===0&&ch('expo').total.n===5&&ch('expo').file.n===5);
- check('RM-I3 channels with one to four leads merge into one row (DP-10) that is shown when the sum reaches five',ch('_small')&&ch('_small').merged===true&&same(ch('_small').channels,['search_ad','lead_ad','youtube'])&&ch('_small').total.n===6&&!ch('search_ad')&&!ch('lead_ad'));
+ check('RM-I3 channels with one to four leads merge into one row (DP-10) that is shown when the sum reaches five',ch('_small')&&ch('_small').merged===true&&same(ch('_small').channels,['search_ad','lead_ad','youtube'])&&same(ch('_small').channelLabels,['네이버 검색광고','메타 리드광고','유튜브'])&&ch('_small').total.n===6&&!ch('search_ad')&&!ch('lead_ad'));
  check('RM-I3 channels with no lead are not listed',!ch('community')&&!ch('store_qr'));
  check('RM-I4 the attributed rate is hidden under twenty leads',build({leads:leads.slice(0,10)}).inflow.attributedRate.state==='small_sample'&&build({leads:leads.slice(0,10)}).inflow.attributedRate.value===null);
  const big=build({leads:[...leads,...many(10,()=>lead(inWeek('23'),{codes:[tok('RAAAAAAA',inWeek('23'))]}))]});

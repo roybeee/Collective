@@ -14,7 +14,7 @@ import {toKstDate,kstDateOf} from '@/lib/franchise-rules';
 import type {WorkspaceData} from '@/lib/client';
 import {useAccount} from './account-context';
 import {franchiseGet,problemOf,messageOf,ProblemBox,Disclaimer,Section,WarningLines,FranchiseLoadError,kst,roleLabel,saveText,copyText,stringWarnings,sendAttempt,followUpOf,reasonCodes,errorIs,
- type Json,type Problem,type PostBody,type PostResult,type Attempt} from './franchise-common';
+ EvidenceExport,type Json,type Problem,type PostBody,type PostResult,type Attempt} from './franchise-common';
 
 type Artifact=WorkspaceData['artifacts'][number];
 type Status='draft'|'approved'|'retired';
@@ -253,7 +253,7 @@ export function AssetSheet({brandId,assetId,list,admin,artifacts,onClose,onChang
    {mode==='edit'&&(id===null||view)?<AssetEditor key={editorKey} list={list} artifacts={artifacts} detail={id===null?null:view} busy={busy} enabled={view?view.enabled:list.enabled} conflict={conflict} onSave={save}
      onCancel={()=>{setConflict(false);if(id===null)onClose();else setMode('view')}} onRestart={()=>{setConflict(false);setEditorKey(k=>k+1)}}/>
     :view&&g?(mode==='approve'&&g.showApprove?<ApprovalStep key={`${view.asset.id}:${view.asset.version}:${view.asset.bodyHash}:${approveKey}`} view={view} busy={busy} blockers={g.blockers} onApprove={(c,w)=>void approve(c,w)} onCancel={()=>setMode('view')}/>
-     :<AssetBody view={view} g={g} admin={admin} artifacts={artifacts} busy={busy} now={now} fallback={fallback} who={who} on={{version:n=>{setVersion(n===view.latestVersion?null:n);setMode('view')},edit:()=>{setConflict(false);setEditorKey(k=>k+1);setMode('edit')},
+     :<AssetBody brandId={brandId} view={view} g={g} admin={admin} artifacts={artifacts} busy={busy} now={now} fallback={fallback} who={who} on={{version:n=>{setVersion(n===view.latestVersion?null:n);setMode('view')},edit:()=>{setConflict(false);setEditorKey(k=>k+1);setMode('edit')},
       approve:()=>setMode('approve'),resave:()=>void resave(),exportAs:(how,w)=>void exportAs(how,w),place,retire:()=>void retire(),closeFallback:()=>setFallback(null)}}/>):null}
    {(message||problem||warnings.length>0)&&<div className="franchise-status">{message&&<p role="status">{message}</p>}<WarningLines items={warnings}/><ProblemBox problem={problem}/></div>}
   </div>
@@ -261,7 +261,7 @@ export function AssetSheet({brandId,assetId,list,admin,artifacts,onClose,onChang
 }
 
 type BodyActions={version:(n:number)=>void;edit:()=>void;approve:()=>void;resave:()=>void;exportAs:(how:'copy'|'download',waitConfirmed:boolean)=>void;place:(label:string,on:string)=>Promise<boolean>;retire:()=>void;closeFallback:()=>void};
-function AssetBody({view,g,admin,artifacts,busy,now,fallback,who,on}:{view:AssetDetailView;g:AssetGates;admin:boolean;artifacts:readonly Artifact[];busy:boolean;now:string;fallback:string|null;who:(id:string,role:string)=>string;on:BodyActions}){
+function AssetBody({brandId,view,g,admin,artifacts,busy,now,fallback,who,on}:{brandId:string;view:AssetDetailView;g:AssetGates;admin:boolean;artifacts:readonly Artifact[];busy:boolean;now:string;fallback:string|null;who:(id:string,role:string)=>string;on:BodyActions}){
  const a=view.asset,source=a.source,range=placementRange(view,now),changed=view.drift.filter(d=>d.changed),gone=view.enabled&&latestOf(view)&&a.status!=='retired'&&view.campaign===null;
  return <>
   <section className="franchise-box" aria-label="판과 상태">
@@ -303,6 +303,7 @@ function AssetBody({view,g,admin,artifacts,busy,now,fallback,who,on}:{view:Asset
    {g.canPlace&&range&&<PlaceForm range={range} busy={busy} onPlace={on.place}/>}
    {admin&&a.status==='approved'&&a.placements.length>=PLACEMENTS_MAX&&<p className="subtle-note">게시 위치는 20곳까지 기록합니다.</p>}
   </Section>
+  {admin&&<EvidenceExport brandId={brandId} scope="asset" target={a.id}/>}
   {(g.canEdit||g.canRetire||gone)&&<div className="franchise-bar">{g.canEdit&&<Button disabled={busy} onClick={on.edit}>편집</Button>}{gone&&<p className="subtle-note">{CAMPAIGN_GONE_EDIT}</p>}{g.canRetire&&<Button variant="outline" disabled={busy} onClick={on.retire}>폐기</Button>}</div>}
  </>;
 }

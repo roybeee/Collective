@@ -15,7 +15,7 @@ import {STAGE_LABELS,BASIS_LABELS,REFERRAL_LABELS,MARKETING_METHOD_LABELS,MARKET
 import {RECRUITMENT_ATTRIBUTION_NOTE,RECRUITMENT_MESSAGES,MAX_CODES_PER_LEAD,normalizeRecruitmentCode,isRecruitmentCode} from '@/lib/franchise-recruitment';
 import {toKstDate} from '@/lib/franchise-rules';
 import {franchiseGet,franchisePost,problemOf,messageOf,ProblemBox,Disclaimer,Section,TimeField,HashField,StorageField,LabelSelect,TaskFields,NOW,timeOf,kstDate,kst,labelOf,actorLabel,
- type Json,type LeadDetail,type Intake,type Assignee,type Problem,type PostResult,type TimeValue,type EvidenceView,type GateView,type SideView} from './franchise-common';
+ EvidenceExport,type Json,type LeadDetail,type Intake,type Assignee,type Problem,type PostResult,type TimeValue,type EvidenceView,type GateView,type SideView} from './franchise-common';
 
 // done: 성공 문구. 응답에 따라 달라지면 함수로 준다.
 type Act=(action:string,payload:Json,done?:string|((result:Json)=>string),noVersion?:boolean)=>Promise<PostResult|null>;
@@ -84,6 +84,7 @@ function LeadBody({lead,act,busy,admin,intake,assignees,campaigns,brandId}:Commo
   <MarketingBox key={'m'+lead.version} {...c} notices={notices}/>
   {can(lead,'add_subject_request')&&<SubjectQuick key={'s'+lead.version} {...c}/>}
   {admin&&lead.evidence&&<EvidenceSection {...c} brandId={brandId} assignees={assignees}/>}
+  {admin&&<EvidenceExport brandId={brandId} scope="lead" target={lead.id}/>}
   {can(lead,'erase_lead')&&<Section title="연락처 삭제 실행 (정보주체 요청)" note={ERASE_CONFIRM+' 이 리드에 접수된 삭제 요청은 완료로 기록합니다.'}><div><Button variant="outline" disabled={busy} onClick={()=>{if(window.confirm(ERASE_CONFIRM))void act('erase_lead',{},eraseDone,true)}}>삭제 실행</Button></div></Section>}
   <Timeline lead={lead} assignees={assignees}/>
  </>;

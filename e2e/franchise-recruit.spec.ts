@@ -2,6 +2,7 @@
 // 1) #186 결정 34: 모집 자료의 대기기간·계약·가맹금·정보공개서 후보 문장이 원문 보기와 승인 단계에서 <mark>로 강조되고, 확인란을 체크하기 전에는 승인·복사·내려받기 버튼이 잠긴다.
 //    서버에 확인 없이 보내면 409 wait_review_missing이고, 체크한 뒤 승인·내려받기·복사가 성공한다.
 // 2) #188 R5c 유입·비용 탭: 모집 코드 발급 → 사용 중지, 모집 비용 기록 → 무효화, 행사에 비용 연결, 리드 CSV 가져오기(검사·미리보기·확정).
+// 3) R6c 성과 탭: 읽는 법 문구·면책이 숫자보다 먼저, 작은 표본 표기, 진행 중인 주 확정 불가, 지난주 확정·Markdown 내려받기, 리드 상세 증빙 묶음(연락처 원문 없음).
 // 직원 역할 화면(비용·가져오기 영역 없음)은 legacy 헤더 요청자가 늘 소유자라 여기서 재현할 수 없다. 실제 이메일 세션 직원으로 e2e/email-auth.spec.ts에서 본다.
 // 근거: real Chromium·빌드 결과·로컬 D1(wrangler --local) / mocked 인증(legacy 로그인 헤더). 요청 가로채기는 쓰지 않는다(docs/E2E.ko.md 규칙).
 // 모든 값은 가상이다(브랜드는 시드 브랜드 ofd, 이름 김가상·이테스트, 전화 010-0000-12xx, 이메일 *@example.com). 결과는 COLLECTIVE 휴리스틱 · 법률 자문 아님.
@@ -269,5 +270,89 @@ test('#188 R5c 유입·비용: 모집 코드 중지·비용 무효화·행사 �
   const board = await (await page.request.get(`/api/franchise?view=board&brandId=${BRAND}`)).json() as {total: number};
   expect(board.total).toBe(2);
   await shot(page, testInfo, '188-9-import-confirmed');
+  await context.close();
+});
+
+// ISO 주(YYYY-Www, 월~일)를 한국 날짜 문자열에서 코드로 계산한다.
+function isoWeek(date: string) {
+  const t = Date.parse(date + 'T00:00:00Z'), monday = (d: number) => (new Date(d).getUTCDay() + 6) % 7;
+  const thursday = t + (3 - monday(t)) * 86400000, year = new Date(thursday).getUTCFullYear(), jan4 = Date.UTC(year, 0, 4);
+  return `${year}-W${String(Math.floor((thursday - (jan4 - monday(jan4) * 86400000)) / (7 * 86400000)) + 1).padStart(2, '0')}`;
+}
+
+test('R6c 성과 탭: 문구·면책이 숫자보다 먼저, 작은 표본 표기, 지난주 확정·내려받기, 리드 증빙 묶음', async ({browser}, testInfo) => {
+  test.setTimeout(150_000);
+  const owner = `e2e-fr-r6-${testInfo.project.name}-${Date.now()}`;
+  const {context, page} = await ownerPage(browser, testInfo, owner);
+  await prepareFranchise(page, `가상 가맹 모집 R6 ${testInfo.project.name}`);
+  const today = koreaToday();
+
+  // 준비(API): 모집 코드 1개, 오늘 비용 1건, 코드를 넣은 가상 리드 6건.
+  const issued = await franchise(page, 'code_issue', {channel: 'portal', label: '가상 포털 소개', validFrom: addDays(today, -30)});
+  expect(issued.status, JSON.stringify(issued.body)).toBe(200);
+  const code = (issued.body.result as {code: string}).code;
+  const spent = await franchise(page, 'spend_record', {channel: 'portal', date: today, amount: 1234567, vat: 'excluded', funding: 'hq_budget', evidence: '가상 포털 관리 화면 소진'});
+  expect(spent.status, JSON.stringify(spent.body)).toBe(200);
+  for (let i = 0; i < 6; i++) {
+    const lead = await franchise(page, 'create_lead', {contact: {name: '김가상', phone: `010-0000-13${String(i).padStart(2, '0')}`}, task: {region: '', budgetBand: 'unknown', timingBand: 'unknown', sourceChannel: 'walk_in'}, basis: {type: 'inquiry_response'}, codes: [code]});
+    expect(lead.status, JSON.stringify(lead.body)).toBe(200);
+  }
+
+  // 1) 이번 주: 읽는 법 문구와 면책이 표보다 먼저, 리드 6건, CPL은 '표본 부족', 진행 중인 주라 확정 버튼 없음.
+  await page.goto(`/?view=franchise&brand=${BRAND}&tab=report`);
+  const notes = page.getByRole('list', {name: '보고 읽는 법'});
+  await expect(notes).toContainText('귀속≠증분');
+  await expect(notes).toContainText('모델 호출은 0건');
+  const inflow = page.getByRole('table', {name: '유입 건수'});
+  await expect(inflow.getByRole('row').filter({hasText: '전체'})).toContainText('6');
+  const order = await page.evaluate(() => {
+    const text = document.body.innerText;
+    return {note: text.indexOf('귀속≠증분'), disclaimer: text.lastIndexOf('COLLECTIVE 휴리스틱 · 법률 자문 아님'), table: text.indexOf('수기 등록')};
+  });
+  expect(order.note).toBeGreaterThan(-1);
+  expect(order.note).toBeLessThan(order.table);
+  expect(order.disclaimer).toBeLessThan(order.table);
+  const costs = page.getByRole('table', {name: '채널별 비용과 CPL'});
+  await expect(costs).toContainText('표본 부족(n<20)');
+  await expect(costs).toContainText('1,234,567원');
+  await expect(page.getByText('진행 중인 주입니다.', {exact: false})).toBeVisible();
+  await expect(page.getByRole('button', {name: '이 주 보고 확정', exact: true})).toHaveCount(0);
+  await shot(page, testInfo, 'r6-1-report-open-week');
+
+  // 2) 지난주(끝난 주)를 골라 확정 → 판 1 → Markdown 내려받기.
+  const lastWeek = isoWeek(addDays(today, -7));
+  await page.getByLabel('보고 주', {exact: true}).fill(lastWeek);
+  await page.getByRole('button', {name: '보기', exact: true}).click();
+  await expect(page.getByRole('heading', {name: new RegExp(`^${lastWeek} `)})).toBeVisible();
+  page.once('dialog', dialog => void dialog.accept());
+  const frozen = page.waitForResponse(franchiseAction('report_freeze'));
+  await page.getByRole('button', {name: '이 주 보고 확정', exact: true}).click();
+  const frozenResponse = await frozen;
+  expect(frozenResponse.status(), JSON.stringify(await frozenResponse.json())).toBe(200);
+  await expect(page.getByText('확정 판 1', {exact: false})).toBeVisible();
+  await shot(page, testInfo, 'r6-2-report-frozen');
+  const exported = page.waitForResponse(franchiseAction('report_export'));
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', {name: 'Markdown 내려받기', exact: true}).click();
+  expect((await exported).status()).toBe(200);
+  expect((await download).suggestedFilename()).toBe(`recruitment-report-${BRAND}-${lastWeek}.md`);
+
+  // 3) 리드 상세에서 증빙 묶음(JSON) 내려받기: 연락처 원문 없음.
+  await page.getByRole('tab', {name: '리드', exact: true}).click();
+  const board = await (await page.request.get(`/api/franchise?view=board&brandId=${BRAND}`)).json() as {leads: {systemCode: string}[]};
+  await page.getByRole('button', {name: `리드 ${board.leads[0].systemCode} 열기`, exact: true}).click();
+  const sheet = page.getByRole('dialog');
+  const bundled = page.waitForResponse(franchiseAction('evidence_export'));
+  const bundleDownload = page.waitForEvent('download');
+  await sheet.getByRole('button', {name: '증빙 묶음 내려받기', exact: true}).click();
+  const bundleResponse = await bundled;
+  expect(bundleResponse.status()).toBe(200);
+  const bundle = await bundleResponse.json() as {body: string};
+  expect(bundle.body).not.toContain('김가상');
+  expect(bundle.body).not.toContain('010-0000-13');
+  expect((JSON.parse(bundle.body) as {lead: {systemCode: string}}).lead.systemCode).toBe(board.leads[0].systemCode);
+  expect((await bundleDownload).suggestedFilename()).toMatch(/^recruitment-evidence-ofd-lead-.+\.json$/);
+  await expect(sheet.getByText('증빙 묶음을 내려받았습니다', {exact: false})).toBeVisible();
+  await shot(page, testInfo, 'r6-3-evidence-bundle');
   await context.close();
 });
