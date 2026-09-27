@@ -11,13 +11,14 @@ import type {GatewayChange} from '@/lib/gateway-snapshot';
 import {filterUsage,isModelAlias,modelLabel,summarizeUsage,usageKindNames,type AliasPricing,type UsageFilter} from '@/lib/usage-summary';
 import {roles} from '@/lib/agency';
 import {AdminOnly,canChange,useAccount} from './account-context';
+import {QualityTable,type QualityTableView} from './usage-quality-table';
 
 type CampaignName={id:string;title:string};
 type GatewayStatus={snapshot:{date:string;takenAt:string;status:'passed'|'blocked';hash:string|null;blockedReason:string|null}|null;changes:GatewayChange[]};
 // 토큰 예산 요약(loop-4, lib/token-budget.ts tokenBudgetSummary). 한국 시간 달력 월 누계다.
 type BudgetLine={limit:number|null;used:number;inProgress:number;remaining:number|null;unknownUsage:number};
 type BudgetSummary={month:string;workspace:BudgetLine;campaigns:(BudgetLine&{campaignId:string;title:string})[];campaignOptions:CampaignName[];warning:string|null};
-type UsageData={entries:ProviderUsage[];pricing:UsagePricing[];notice:string;campaigns:CampaignName[];modelChanges:ModelChange[];gateway:GatewayStatus|null;budget:BudgetSummary|null;aliasPricing:AliasPricing[];aliasPricingWarning:string|null};
+type UsageData={entries:ProviderUsage[];pricing:UsagePricing[];notice:string;campaigns:CampaignName[];modelChanges:ModelChange[];gateway:GatewayStatus|null;budget:BudgetSummary|null;aliasPricing:AliasPricing[];aliasPricingWarning:string|null;qualityTable?:QualityTableView|null};
 const statusNames:Record<string,string>={completed:'완료',failed:'실패',error:'실패',cancelled:'취소',canceled:'취소',stopped:'중지',interrupted:'중단',incomplete:'미완료'};
 const outcomeNames:Record<string,string>={completed:'저장 완료 · 내용 검토 별도',invalid_output:'결과 요건 미충족',cancelled:'취소',provider_failed:'공급자 실행 실패',storage_failed:'결과 저장 실패'};
 const count=(value:number|null)=>value===null?'미확인':value.toLocaleString('ko-KR');
@@ -37,7 +38,7 @@ async function usageData():Promise<UsageData>{
  const response=await fetch('/api/usage',{cache:'no-store'}),data=await response.json() as Partial<UsageData>&{error?:string};
  if(!response.ok)throw new Error(data.error||'사용량을 불러오지 못했습니다.');
  if(!Array.isArray(data.entries)||!Array.isArray(data.pricing))throw new Error('사용량 응답을 확인하지 못했습니다.');
- return {...data,campaigns:Array.isArray(data.campaigns)?data.campaigns:[],modelChanges:Array.isArray(data.modelChanges)?data.modelChanges:[],gateway:data.gateway&&Array.isArray(data.gateway.changes)?data.gateway:null,budget:data.budget&&data.budget.workspace&&Array.isArray(data.budget.campaigns)?data.budget:null,aliasPricing:Array.isArray(data.aliasPricing)?data.aliasPricing:[],aliasPricingWarning:typeof data.aliasPricingWarning==='string'?data.aliasPricingWarning:null} as UsageData;
+ return {...data,campaigns:Array.isArray(data.campaigns)?data.campaigns:[],modelChanges:Array.isArray(data.modelChanges)?data.modelChanges:[],gateway:data.gateway&&Array.isArray(data.gateway.changes)?data.gateway:null,budget:data.budget&&data.budget.workspace&&Array.isArray(data.budget.campaigns)?data.budget:null,aliasPricing:Array.isArray(data.aliasPricing)?data.aliasPricing:[],qualityTable:data.qualityTable===undefined?undefined:data.qualityTable&&Array.isArray(data.qualityTable.rows)&&Array.isArray(data.qualityTable.alarms)&&Array.isArray(data.qualityTable.retention?.suggestions)?data.qualityTable:null,aliasPricingWarning:typeof data.aliasPricingWarning==='string'?data.aliasPricingWarning:null} as UsageData;
 }
 function UsageRows({entries,campaigns}:{entries:ProviderUsage[];campaigns:CampaignName[]}){
  return <div className="mt-5 overflow-x-auto"><table className="w-full text-left text-sm" style={{minWidth:940}}>
@@ -191,7 +192,8 @@ function AliasPricingForm({saved,warning,onSaved}:{saved:AliasPricing[];warning:
 export function UsagePanel(){
  const [data,setData]=useState<UsageData|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[visible,setVisible]=useState(30),[filter,setFilter]=useState<UsageFilter>({});
  // 내보내기는 소유자 전용 API다(/api/usage/export). legacy는 요청자가 곧 소유자다. 판정은 서버가 한다.
- const canOwn=canChange(useAccount(),true),entries=data?filterUsage(data.entries,filter):[];
+ // 주간 품질 표는 품질 콘솔과 같이 소유자·관리자만 본다(서버도 직원 응답에서 qualityTable을 뺀다).
+ const canOwn=canChange(useAccount(),true),canAdmin=canChange(useAccount()),entries=data?filterUsage(data.entries,filter):[];
  const refresh=useCallback(async()=>{
   try{const next=await usageData();setData(next);setError('')}catch(error){setError(error instanceof Error?error.message:'사용량을 불러오지 못했습니다.')}finally{setLoading(false)}
  },[]);
@@ -207,7 +209,7 @@ export function UsagePanel(){
   <p className="notice">{data?.notice||'비용은 직접 등록한 단가로 계산한 추정치입니다. 도구 요금·할인·캐시 요금·세금은 포함하지 않습니다.'}</p>
   {error&&<p className="form-error" role="alert">{error}</p>}
   {loading&&!data?<p role="status">사용량 불러오는 중…</p>:data&&<>
-   <ModelAlarm changes={data.modelChanges}/><GatewayAlarm gateway={data.gateway}/>{data.budget&&<TokenBudget budget={data.budget} onSaved={refresh}/>}
+   <ModelAlarm changes={data.modelChanges}/><GatewayAlarm gateway={data.gateway}/>{data.budget&&<TokenBudget budget={data.budget} onSaved={refresh}/>}{canAdmin&&data.qualityTable!==undefined&&<QualityTable table={data.qualityTable}/>}
    {!data.pricing.length&&<p className="subtle-note">아직 등록한 단가가 없습니다. 기반 모델과 입력·출력 토큰, 적용 단가가 확인되기 전의 비용은 미확인으로 남습니다.</p>}
    {data.entries.length?<>
     <UsageFilters entries={data.entries} campaigns={data.campaigns} filter={filter} onChange={next=>{setFilter(next);setVisible(30)}}/>

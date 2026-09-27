@@ -146,4 +146,58 @@ node scripts/quality-digest.mjs --sqlite <찾은 .sqlite> --week 2026-W39 [--own
 2. `node scripts/quality-digest.mjs <저장한.json>`으로 실행한다. 서버와 같은 함수로 같은 마크다운을 낸다. `campaignId`·`partial`이 있으면 머리말에 밝힌다. 주는 응답의 `week`를 쓴다. `--week`를 주었는데 응답의 주와 다르면 종료 코드 2로 멈춘다(다른 주 이름이 붙은 다이제스트를 막는다).
 3. 저장한 JSON과 출력에는 본문이나 메모가 없다. 그래도 워크스페이스 운영 기록이므로 저장소에 커밋하지 말고 `outputs/` 같은 무시 경로에 둔다.
 
-워커 큐 실행과 Slack 전달은 2단계에서 한다(성장 계획 B2 2단계, digest 큐).
+워커 큐 실행은 아래 2단계가 한다. Slack 전달은 아직 없다(외부 전송이라 따로 정한다).
+
+# 2단계: 워커 digest 큐·드리프트 경보·사용량 화면 표
+
+대표 결정(2026-09-27)으로 B2 2단계를 개발했다. 공유 서버의 파이썬 워커(`server/research-worker/`)는 바꾸지 않았다. 워커가 이미 부르는 앱 tick(`POST /api/research-worker`) 안에서 끝난다. 모델(HERMES·OpenAI)과 외부 API는 부르지 않는다.
+
+| 층 | 파일 |
+|---|---|
+| 순수 판정 | `lib/quality-drift.ts` `invalidRateChecks`·`modelChangeAlarms`·`gatewayChangeAlarms`·`goldenCheck`·`budgetCheck`·`driftAlarms`·`retentionSuggestion`·`usageTable` |
+| 큐·저장 | `lib/quality-digest-queue-server.ts` `runDigestQueue`(워커 tick), `latestQualityTable`(사용량 화면) |
+| tick 연결 | `lib/research-worker.ts` `workerTick` 다섯째 인자(넘겼을 때만 'digest' 큐를 순환에 넣는다), `app/api/research-worker/route.ts` |
+| 화면 | `app/usage-quality-table.tsx`(설정 → AI 사용량과 비용) |
+| 테스트 | `tests/quality-digest-queue.test.mjs`·`tests/usage-quality-table.test.mjs` |
+
+## 스위치와 주기
+
+- 스위치 `b2_digest_queue`(기본 꺼짐, 소유자가 켠다). 꺼져 있으면 digest 차례에 스위치 1행만 읽고 끝난다(집계·쓰기 0회). 스위치는 `*-server.ts` 보조 모듈이 읽고 읽기 실패는 꺼짐이다.
+- 켜져 있으면 워커 tick의 순환(조사 → 실행 → 측정 → digest)에서 digest 차례가 올 때 지난 ISO 주(KST, `lastFullWeek`)의 집계가 없으면 1회 만든다. 행 id가 주(`quality_digest` `2026-W39`)라 같은 주의 두 번째 tick은 읽기 1회로 끝난다(no-op). 동시에 두 번 만들어져도 완료 행은 덮지 않는다.
+- 실패하면 `status: failed`와 1시간 뒤 `retryAt`을 남기고 tick은 `retry`를 돌려준다. 그 전의 차례는 건너뛰고, 그 뒤 같은 행을 완료로 바꾼다.
+- 처리 시간: 시작부터 기록 직전까지 `durationMs`를 남긴다. 워커 HTTP 타임아웃은 60초이고 digest는 한 tick에서 다른 큐와 함께 돌지 않는다. `DIGEST_TIME_BUDGET_MS`(30초)를 넘으면 `withinBudget: false`로 표시한다(중단하지는 않는다).
+- 소유자 격리: 모든 조회·쓰기는 소유자 범위다. 워커 인증이 tick의 소유자를 정한다.
+
+## 주간 집계 레코드(`quality_digest`)
+
+1단계 주간 묶음(`consoleWeek`, 같은 정의·표본 규칙·조회 상한)을 그대로 쓰고, 아래만 남긴다. 작업물 본문·메모·이메일·계정 id는 없다.
+
+- `table`: 역할 × 프롬프트 버전 × 보고 모델 표(아래). `totals`·`meetings`: 한눈에 보기 숫자. `kappa`: 기준별 n·상태·κ(n<20이면 `insufficient`, κ 없음)·`needed`. `partial`: 조회 상한.
+- `drift`: 판정 요약(역할별 무효율, 골든 비교, 예산 문턱, 이번 주 모델·게이트웨이 변경 수). `alarms`: 이번에 낸 경보 id·종류·요약. `retention`: 보존 정리 제안. `durationMs`·`withinBudget`·`notice`.
+- 캠페인과 무관(`not_campaign_scoped`)하다. 보정·경보 결과는 캠페인·작업물·프롬프트 상태와 경보 확인(`prompt_alarm_ack`)을 바꾸지 않는다.
+
+## 드리프트 경보(`quality_drift_alarm`, 새 정의)
+
+경보는 사람이 볼 기록이다. 자동 판정·자동 동결이 아니다. 같은 변경은 같은 id라 `INSERT OR IGNORE`로 한 번만 남는다.
+
+| 경보 | 조건 | id(중복 방지) |
+|---|---|---|
+| 보고 모델 변경 | 기존 `model_change`(F2a)를 다시 판정하지 않고, 그 주에 관측된 행을 전환(공급자·전→후)마다 1건으로 묶는다 | `model_change:<첫 원 경보 id>` |
+| 게이트웨이 변경 | 기존 `gateway_change`(F2b)를 같은 방식으로 묶는다 | `gateway_change:<첫 원 경보 id>` |
+| 역할 무효율 2배 | 역할 실행(`kind role`) 중 출력이 돌아온 실행(completed·thin_output·invalid_output)의 `invalid_output` 비율. 이번 주 n≥5, 직전 20건이 모두 있을 때만 판정한다. 이번 주 비율 ≥ 2 × max(직전 비율, 1/20)이고 이번 주 형식 오류가 1건 이상이면 경보. 공급자 실패·취소·저장 실패는 분모에서 뺀다 | `invalid_rate:<역할>:<주>` |
+| 골든 스모크 하락 | 이번 주에 끝난 마지막 active 평가 run(쌍·심사·삭제 제외)과 그 앞 run을 같은 케이스끼리 비교한다. 통과 = 완료이고 fail·grader_error 0, 실패 = 완료인데 fail이 있거나 실행 실패. 막힘·미실행·취소·채점 오류는 판정하지 않는다. 직전 통과 케이스가 이번에 실패하면 경보(케이스 단위라 비율 표본 규칙을 쓰지 않는다) | `golden_drop:<run id>` |
+| 토큰 예산 소진율 | 집계 시점의 이번 달(KST) 사용/상한(`tokenBudgetSummary`, 워크스페이스·캠페인별). 넘은 문턱(80%·100%) 중 가장 높은 것 1건 | `token_budget:<월>:<범위>:<문턱>` |
+
+- 상태 어휘: `alarm`·`ok`·`insufficient`(표본 부족)·`unmeasured`(잴 기록 없음 — 이번 주 역할 실행 0, 끝난 골든 run 0, 예산 상한 미설정). 모르는 값을 0이나 0%로 적지 않는다.
+- 같은 모델 전환이 한 주에 여러 번 관측되면 경보 1건에 원 경보 id를 모두 담는다. 같은 주를 다시 만들거나 다음 주로 넘어가도 같은 변경의 경보는 늘지 않는다(테스트).
+
+## 보존 정리 제안(F4b)
+
+비식별 평가 신호(`deidentified_signal`, 90일 보관)의 건수만 센다. 만료가 지났는데 남은 행(워커의 하루 1회 정리가 실패했을 수 있다)과 14일 안에 만료되는 행을 제안 문장으로 붙인다. 제안은 기록을 지우거나 바꾸지 않는다.
+
+## 사용량 화면 표(3단계)
+
+- `GET /api/usage`의 `qualityTable`: 마지막 **완료** 주간 집계의 표·경보·보존 제안·고지(행 1개만 읽는다). 역할별 1차 승인율을 담아 품질 콘솔과 같은 권한이다: 소유자·관리자 응답에만 이 키가 있고, 직원 응답에는 키가 없으며(다른 사용량 필드는 그대로) 화면도 표를 숨긴다. 비로그인은 401이다.
+- 행은 1단계 콘솔 행(역할×스킬 버전×프롬프트 버전×보고 모델)에서 스킬 버전만 합쳐 다시 센 것이다. 1차 승인율은 합친 건수로 다시 낸다. 지표 정의와 워크스페이스 숫자 대응(data-truth-9)은 위 '지표 정의'와 같다.
+- 표시 규칙: 1차 판정 0건은 '미측정', 1~4건은 '표본 부족 (n=3)', 보고 모델을 모르면 '미측정', 별칭은 '(실제 모델 미확인)', 토큰 미보고 실행은 '미측정 N건'으로 따로 적는다. 레지스트리가 아닌 실행의 프롬프트 버전은 '코드 상수'다.
+- 화면 문구에 인과 표현(때문·덕분·효과·개선·원인 등)을 쓰지 않는다(테스트). 집계가 없으면 스위치 이름과 함께 안내한다.

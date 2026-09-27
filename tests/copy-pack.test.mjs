@@ -236,5 +236,5 @@ check('other breakages stay rejected: extra truncation, trailing text, a second 
  }
  assert.ok(roleOutput.strictContractJson(full));
 });
-check('the grading version carries the channels-close tag',()=>assert.ok(graders.GRADERS_VERSION.endsWith('+root-brace+channels-close+franchise-industry+revision-labels')));
+check('the grading version carries the channels-close tag',()=>assert.ok(graders.GRADERS_VERSION.endsWith('+root-brace+channels-close+franchise-industry+revision-labels+viral-analysis')));
 console.log(JSON.stringify({passed:passed.length}));

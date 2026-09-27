@@ -4,6 +4,7 @@ import {campaignRuns,type CampaignSequence} from '@/lib/campaign-detail';
 import {statusRecordsQuery,withDerivedStatus,type StatusMeeting,type StatusPublication} from '@/lib/campaign-status';
 import {actor,json,failure,seedBrands,listRecords,publicConnection,database} from '@/lib/server';
 import {workerStatus} from '@/lib/research-worker';
+import {franchiseWorkspaceTasks} from '@/lib/franchise-workspace-server';
 
 export async function GET(req:Request){
  try{
@@ -19,6 +20,7 @@ export async function GET(req:Request){
   return json({
    briefDrafts:briefDrafts.filter(d=>!d.savedCampaignId&&d.status!=='cancelled').slice(0,10).map(d=>({id:d.id,status:d.status,title:d.input.title||d.input.goal,brandId:d.input.brandId,campaignId:d.campaignId,createdAt:d.createdAt})),
    // campaigns[].status는 저장값 그대로 두고 화면용 파생 상태(derivedStatus·statusReason, lib/campaign-status.ts)를 더한다.
+   ...await franchiseWorkspaceTasks(who),
    brands,campaigns:withDerivedStatus(campaigns,{artifacts,runs,sequences,meetings:meetings.results,publications:publications.results,metrics}),artifacts,metrics,events:events.slice(0,60),runs,sequences,worker,connection:{...shared,...(admin?{endpoint}:{}),canConfigure:shared.canConfigure&&admin},preview:process.env.NODE_ENV==='development',
   });
  }catch(e){return failure(e)}

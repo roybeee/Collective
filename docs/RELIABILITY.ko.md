@@ -85,12 +85,20 @@
 
 - 성과 수집(`lib/measurement-collection.ts` `collectForExperiment`, 워커 `collectDueMeasurements`도 같은 경로)은 실험의 `brandId`와 실험 캠페인의 `storeId`로 자격증명을 고른다. 우선순위는 지점 단위 > 브랜드 단위 > 워크스페이스 기본(기존 소유자 단위 레코드)이고, 다른 브랜드의 자격증명은 후보가 아니다. 셋 다 없으면 기존 '연결 전' 409로 끝나며 외부 API를 부르지 않는다. 식별 규칙·검증·권한은 [보안 경계](SECURITY-BOUNDARIES.ko.md#성과-수집-채널-자격증명-단위-f5)를 따른다.
 - 수집 초안의 arm 기록에 실제로 쓴 단위(`credential`: `level`·`brandId`·`storeId`)를 남긴다. 이 필드가 없는 이전 기록은 워크스페이스 기본으로 수집한 것이다.
-- 한 실험의 두 arm이 다른 단위(다른 계정)로 수집됐으면 초안 한계(`measurement_draft.limitations`)에 '두 실험안을 서로 다른 연결(…)로 수집했습니다' 경고를 붙인다. 같은 arm을 이전 수집과 다른 단위로 다시 가져온 경우(워커 재수집 중 브랜드·지점 연결을 추가·해제한 경우 등)에는 그 arm 기록과 초안 한계에 '이전 수집(…)과 다른 연결(…)로 가져왔습니다'를 붙인다. 기간 경고와 달리 Instagram에도 붙는다. 이 경고를 실험 카드에 보여 주는 일은 loop-1(PR 4b)이다.
+- 한 실험의 두 arm이 다른 단위(다른 계정)로 수집됐으면 초안 한계(`measurement_draft.limitations`)에 '두 실험안을 서로 다른 연결(…)로 수집했습니다' 경고를 붙인다. 같은 arm을 이전 수집과 다른 단위로 다시 가져온 경우(워커 재수집 중 브랜드·지점 연결을 추가·해제한 경우 등)에는 그 arm 기록과 초안 한계에 '이전 수집(…)과 다른 연결(…)로 가져왔습니다'를 붙인다. 기간 경고와 달리 Instagram에도 붙는다. 이 경고는 실험 카드의 '자동 수집 성과'에 초안 한계로 보인다(loop-1).
 - 기존 데이터 마이그레이션은 없다. 기존 레코드는 워크스페이스 기본으로 계속 읽는다. 검증: `tests/channel-credentials-brand.test.mjs`(mocked, fetch 스텁의 Authorization 헤더로 브랜드 A 실험이 브랜드 B 토큰을 쓰지 않음과 연결 불일치 경고를 확인), `tests/measurements.test.mjs`(mocked, 무범위 기존 동작).
+
+### 성과 자동 수집 실패 (security-ops-5)
+
+- 워커(`collectDueMeasurements`)는 실패를 분류 코드로 저장한다(`measurement_source.errorCode`·`failures`, `lastError`는 코드별 고정 사유). 인증 실패(`reauth_required`)와 연결 없음(`not_connected`)은 같은 자격증명으로 다시 해도 성공하지 않는다. 채널 5xx·응답 없음은 `upstream_unavailable`, 그 밖의 4xx는 `request_rejected`다.
+- 실험 카드: 마지막 수집·연속 실패 수·사유·다음 시도·재연결 필요를 보인다. 진행 중 실험의 재연결 필요 대상은 워크스페이스 첫 화면 알림(`GET /api/learning?only=collect_alerts`)에도 오른다. 이 표시는 스위치와 무관하다.
+- 스위치 `collect_guard`(기본 꺼짐): 켜면 재연결 필요 실패에서 그 대상을 바로 멈추고(`stopped`, `stoppedFor: 'reauth'`), 연속 실패 1회까지 6시간, 2회 12시간, 3회 이상 24시간 뒤에 다시 시도한다. 꺼져 있으면 기존처럼 6시간마다 다시 시도한다. 스위치를 읽지 못하면 꺼짐이다.
+- 멈춘 대상은 다시 연결한 뒤 실험 카드의 '성과 가져오기'로 다시 시작한다. 수동 수집은 대상을 새로 써서 실패 수·멈춤을 지운다.
+- 근거: `tests/measurement-status.test.mjs`(mocked, 주입한 시계로 6→6→12→24→24시간 확인).
 
 ### 기능 스위치
 
-`lib/feature-flags.ts`가 알려진 스위치와 기본값의 정본이다. 모두 기본 꺼짐이다: `online_grading`, `b1_reason_required`, `a4_auto_attribution`, `a2_downgrade`, `a7_repair_turn`. 서버 코드는 `isEnabled(owner, flag)`로 읽는다. 저장은 소유자 범위 `feature_flag` 행(스위치당 1행)이며 행이 없으면 기본값이다. 캐시가 없어 쓰기는 다음 요청부터 반영된다(게시 불필요).
+`lib/feature-flags.ts`가 알려진 스위치와 기본값의 정본이다. 모두 기본 꺼짐이다: `online_grading`, `b1_reason_required`, `a4_auto_attribution`, `a2_downgrade`, `a7_repair_turn`, `collect_guard`(성과 자동 수집 실패 절). 서버 코드는 `isEnabled(owner, flag)`로 읽는다. 저장은 소유자 범위 `feature_flag` 행(스위치당 1행)이며 행이 없으면 기본값이다. 캐시가 없어 쓰기는 다음 요청부터 반영된다(게시 불필요).
 
 - 조회: `GET /api/feature-flags`(로그인한 모든 역할, 변경자는 소유자에게만).
 - 변경: `POST /api/feature-flags` `{"action":"set","flag":"online_grading","enabled":false}`, 기본값 복귀는 `{"action":"reset","flag":"..."}`. 워크스페이스 소유자만(관리자·직원 403). 모르는 스위치·불리언이 아닌 값은 400.
