@@ -5,6 +5,7 @@ import {MEETING_MASK_PATHS,MEETING_ARTIFACT_FIELDS,buildMeetingSubmission} from 
 import {BRIEF_MASK_PATHS,buildBriefSubmission,type BriefRequest} from './brief-input';
 import {withoutCopyPack,type Meeting,type MeetingStep,type MeetingPhase} from './meetings';
 import type {PromptSet} from './practice';
+import type {InputDietOptions} from './input-diet';
 
 // 회의 단계·브리프 평가 요청의 동결(G2). 저장 요청은 조립(lib/meeting-input.ts·lib/brief-input.ts)이 읽는 필드만 남기고, 운영 제출과 같은 가림을 원자료 자리에 적용한다.
 // 조립은 다시 가리지만 가린 자리표시는 다시 탐지되지 않아 결과가 같다(두 번 가린 결과 = 한 번 가린 결과). 그래서 동결본으로 만든 제출은 운영 제출과 바이트가 같다.
@@ -108,9 +109,11 @@ function withPromptSet(s:Meeting['snapshot'],set:PromptSet|null):Meeting['snapsh
  const rest=Object.fromEntries(Object.entries(s).filter(([k])=>k!=='prompts')) as Meeting['snapshot'];
  return set?{...rest,prompts:{...(s.prompts||{}),source:'registry',set}}:rest;
 }
-export function buildMeetingRequest({meeting,stepId,storeAllow}:MeetingStepRequest,side?:PromptSet|null){
+// options: 입력 축소 스위치 상태(input_diet, C07). 동결 회의에는 snapshot.inputDiet가 없어 넘기지 않으면 꺼짐 조립이다(지금 평가 기본 조립과 바이트 동일).
+// 입력 축소 쌍 평가의 두 쪽과 켜진 회의의 캡처 드리프트 판정만 {inputDiet:true}를 넘긴다.
+export function buildMeetingRequest({meeting,stepId,storeAllow}:MeetingStepRequest,side?:PromptSet|null,options:InputDietOptions={}){
  const m=side===undefined?meeting:{...meeting,snapshot:withPromptSet(meeting.snapshot,side)};
- const {instructions,input}=buildMeetingSubmission(m as unknown as Meeting,stepId,storeAllow);
+ const {instructions,input}=buildMeetingSubmission(m as unknown as Meeting,stepId,storeAllow,options);
  return {instructions,input};
 }
 export const targetStep=(r:MeetingStepRequest)=>r.meeting.steps.find(s=>s.id===r.stepId)!;
