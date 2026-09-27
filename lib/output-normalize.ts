@@ -79,10 +79,25 @@ export function lowerBodyHeadings(text:string){
  const out=mapProseLines(text,l=>{if(!TOP_HEADING.test(l))return l;count++;return l.replace(TOP_HEADING,'###')});
  return {text:out,count};
 }
-// 계약 섹션 본문·'수정 요청 반영 위치' 본문에 쓴다.
-export function normalizeSectionBody(text:string):{text:string;normalization:OutputNormalization}{
- const headings=lowerBodyHeadings(text),paths=labelSchemaPaths(headings.text);
- return {text:paths.text,normalization:{schemaPaths:paths.count,headings:headings.count}};
+// (3) 수정 요청 반영의 내부 표기(2026-09-27 ODA CMO 재작성 실측): 지시문(lib/role-instruction.ts revisionInstruction)이 revisionRequest의 note·lastFailure와 changes 절을 부르므로
+//     모델이 그 이름과 계약 섹션 id(output_N)를 그대로 쓴다. 계약 렌더(titles가 있을 때)에서만 output_N → '‘섹션 제목’ 절', 필드 이름 → 화면 말로 바꾼다. 모르는 번호·인라인 코드·URL은 그대로 둔다.
+const REVISION_LABELS:Readonly<Record<string,string>>={'revisionRequest.note':'검토 메모','revisionRequest.lastFailure':'직전 실패 사유','revisionRequest.previousVersion':'이전 판',revisionRequest:'수정 요청',previousVersion:'이전 판',lastFailure:'직전 실패 사유'};
+const REVISION_REF=/(?<![\w/.])(output_\d+|revisionRequest(?:\.(?:note|lastFailure|previousVersion))?|previousVersion|lastFailure)(?![\w.])([가-힣]{0,3})/g;
+function labelRevisionRefs(text:string,titles:Readonly<Record<string,string>>){
+ let count=0;
+ const out=mapProseLines(text,l=>l.split(INLINE).map((part,i)=>i%2?part:part.replace(REVISION_REF,(match:string,ref:string,tail:string)=>{
+  const label=ref.startsWith('output_')?(titles[ref]?`‘${titles[ref]}’ 절`:''):REVISION_LABELS[ref];
+  if(!label)return match;
+  count++;
+  const particle=PARTICLE.exec(tail)?.[0];
+  return label+(particle?particleFor(label,particle)+tail.slice(particle.length):tail);
+ })).join(''));
+ return {text:out,count};
+}
+// 계약 섹션 본문·'수정 요청 반영 위치' 본문에 쓴다. titles(섹션 id → 제목)는 계약 렌더에서만 넘긴다.
+export function normalizeSectionBody(text:string,titles?:Readonly<Record<string,string>>):{text:string;normalization:OutputNormalization}{
+ const headings=lowerBodyHeadings(text),paths=labelSchemaPaths(headings.text),refs=titles?labelRevisionRefs(paths.text,titles):{text:paths.text,count:0};
+ return {text:refs.text,normalization:{schemaPaths:paths.count+refs.count,headings:headings.count}};
 }
 // 품질 검수 JSON: 경로만 바꾼다(제목은 qualityMarkdown이 만든다). JSON 원문 텍스트가 아니라 문자열 값마다 풀어서 정규화하고 다시 인코딩한다.
 // 원문 텍스트에 걸면 \n·\t 이스케이프 바로 뒤, 같은 줄 URL 뒤, 두 문자열에 걸친 백틱 사이의 경로를 놓친다. 경로가 없는 문자열과 JSON 바깥 형식(울타리·들여쓰기)은 바이트 그대로다.

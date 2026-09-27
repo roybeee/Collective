@@ -219,4 +219,29 @@ check('quality JSON paths after escapes, URLs and cross-string backticks are lab
  assert.equal(out.split('\n').length,pretty.split('\n').length);
  assert.equal(normalizeQualityOutput('검수 결과: campaign.goal 확인 필요').text,'검수 결과: campaign.goal 확인 필요');
 });
+// ── 수정 요청 반영 위치의 내부 표기(2026-09-27 ODA CMO 재작성 실측): 지시문이 revisionRequest의 note·lastFailure와 changes 절을 부르므로 모델이 그 이름과 계약 섹션 id(output_N)를 그대로 쓴다.
+// 렌더본에서 output_N은 그 계약 섹션 제목으로, 수정 요청 필드 이름은 화면 말로 바꾼다. 원 응답(raw)은 그대로다.
+const cmoTitles=roleOutputContract('cmo').sections.map(s=>s.title);
+const cmoBody='첫 방문 고객을 늘리려면 지도 정보부터 맞춘다. '.repeat(8);
+const leaked='revisionRequest.note인 ‘SEO 검토’를 output_1의 ‘채널 우선순위’와 output_2에 반영했습니다. output_3을 고쳤고 revisionRequest 반영 위치를 적었습니다. previousVersion 1의 구조는 유지했고 lastFailure는 비어 있어 revisionRequest.lastFailure로 반영할 것이 없습니다.';
+const leakedRaw=raw('cmo',[cmoBody,cmoBody,cmoBody],leaked);
+check('the changes section maps output_N to contract titles and revision fields to screen words',()=>{
+ const {content,normalization}=renderRoleOutput(leakedRaw,'cmo',roleOutputContract('cmo'));
+ const tail=content.slice(content.indexOf('## 수정 요청 반영 위치'));
+ assert.ok(!/output_\d|revisionRequest|previousVersion|lastFailure/.test(tail),tail);
+ assert.ok(tail.includes(`‘${cmoTitles[0]}’ 절의 ‘채널 우선순위’`)&&tail.includes(`‘${cmoTitles[1]}’ 절에 반영`)&&tail.includes(`‘${cmoTitles[2]}’ 절을 고쳤고`),tail);
+ assert.ok(tail.includes('검토 메모인 ‘SEO 검토’')&&tail.includes('수정 요청 반영 위치를')&&tail.includes('이전 판 1의')&&tail.includes('직전 실패 사유는 비어')&&tail.includes('직전 실패 사유로 반영할'),tail);
+ assert.equal(normalization.schemaPaths,8,JSON.stringify(normalization));
+ assert.ok(JSON.parse(leakedRaw).changes===leaked,'raw untouched');
+});
+check('output_N inside code, URLs and unknown ids stays as is',()=>{
+ const {content}=renderRoleOutput(raw('cmo',[cmoBody,cmoBody,cmoBody],'`output_1` 표기와 https://x.test/output_2 주소, output_9, my_output_1은 그대로 둡니다.'),'cmo',roleOutputContract('cmo'));
+ const tail=content.slice(content.indexOf('## 수정 요청 반영 위치'));
+ assert.ok(tail.includes('`output_1`')&&tail.includes('https://x.test/output_2')&&tail.includes('output_9')&&tail.includes('my_output_1'),tail);
+});
+check('without contract titles (legacy or normalize off) nothing changes',()=>{
+ assert.equal(normalizeSectionBody('output_1을 고쳤습니다.').text,'output_1을 고쳤습니다.');
+ const off=renderRoleOutput(leakedRaw,'cmo',roleOutputContract('cmo'),{normalize:false}).content;
+ assert.ok(off.includes('output_1의')&&off.includes('revisionRequest.note'));
+});
 console.log(JSON.stringify({passed:passed.length}));
