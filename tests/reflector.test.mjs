@@ -47,7 +47,7 @@ const setFlag=enabled=>flags.setFeatureFlag(O,{flag:'b3_reflector',enabled},{id:
 rt.sql.prepare('INSERT INTO settings(owner,secret,model,updated_at) VALUES(?,?,?,?)').run(O,await server.encrypt(JSON.stringify({provider:'hermes',endpoint:OPS,key:'ops-only'})),'HERMES',new Date().toISOString());
 
 // 2) 합성 데이터(실제 고객·매장 정보 아님). 모델로 가면 안 되는 표지: 검토 메모·브랜드 메모·의뢰 정보·점포 주소·주문 해시·행위자 이메일·원 캠페인 id.
-const MEMO='검토메모비밀REVIEWNOTE',BRAND_MEMO='브랜드메모비밀MEMOSECRET',ORDER_HASH='a'.repeat(64),STORE='서울 가상구 비밀로 77';
+const MEMO='검토메모비밀REVIEWNOTE 연락 010-9876-5432',BRAND_MEMO='브랜드메모비밀MEMOSECRET',ORDER_HASH='a'.repeat(64),STORE='서울 가상구 비밀로 77';
 await server.seedBrands(O);
 const oda=await server.readRecord(O,'brand','oda');await put('brand','oda',{...oda,knowledge:BRAND_MEMO,description:'소개 원문 비밀 INTROSECRET'});
 const campaign=(id,brandId)=>({id,brandId,title:'합성 캠페인 '+id,goal:'평일 방문을 늘린다.',audience:'가상 주민(가설)',channels:'Instagram',stores:STORE,products:'',budget:null,startDate:'',endDate:'',constraints:'',sources:'주문 '+ORDER_HASH,status:'draft',version:1,createdAt:ago(60),updatedAt:ago(60)});
@@ -101,6 +101,9 @@ check('correction and section keys are in the allowlist',input.corrections.every
 check('corrections use pseudonymous labels d1… and c1…',JSON.stringify(input.corrections.map(c=>c.ref))==='["d1","d2","d3","d4","d5","d6"]'&&input.corrections.every(c=>c.campaign===null||/^c\d$/.test(c.campaign)));
 const bodyText=JSON.stringify(pv.data.body);
 check('no review memo, brand memo, intro, store, order hash, actor, email or raw ids in the body',[MEMO,BRAND_MEMO,'INTROSECRET',STORE,ORDER_HASH,'rf-owner','@test.invalid','camp-oda-1','camp-oda-2','rd-1','art-1'].every(x=>!bodyText.includes(x)));
+// 레인 A 리뷰 ②: 검토 메모(reviewNote)는 본문 경로가 없다(DP-2). 메모에 전화번호를 심어도 탐지 0·본문에 없음이고, 입력 검사는 모든 문자열 값을 보므로 경로가 생기면 걸린다.
+check('reviewNote with a phone number never reaches the body or findings',pv.data.findings.length===0&&!bodyText.includes('010-9876-5432'));
+check('the input scan walks every string value, so a reviewNote path would be caught',JSON.stringify(plain(reflector.inputFindings({...input,corrections:[{...input.corrections[0],reviewNote:'연락 010-9876-5432'}]})))==='[{"field":"corrections.0.reviewNote","kind":"phone","count":1}]');
 const edited=input.corrections.find(c=>c.sections.length);
 check('edited corrections carry changed section excerpts (before/after, 600 chars) and reason codes',edited&&edited.sections[0].title==='카피'&&edited.sections[0].before.includes('할인')&&edited.sections[0].after.includes('평일 오후')&&input.corrections.filter(c=>c.decision==='revision').every(c=>JSON.stringify(c.reasonCodes)==='["voice"]'));
 
@@ -183,6 +186,23 @@ poll.output=JSON.stringify({candidates:[
 r=await call(ADMIN,{action:'reflector_run',...target,previewHash:pv2.data.previewHash,confirmed:true});
 const run2=r.data.id;r=await call(ADMIN,{action:'reflector_check',id:run2});
 check('output address, verbatim excerpt quotes and duplicates are rejected',r.data.status==='completed'&&JSON.stringify(r.data.rejected.map(x=>x.reason))==='["pii","quotes_source","duplicate"]'&&r.data.ruleIds.length===1);
+
+// 11b) 레인 A 리뷰 ①·③: 인용은 저장 직전에 citedDecisions(같은 브랜드 판정 2건 이상)를 그대로 다시 통과해야 한다(실행 뒤 판정의 브랜드가 바뀌면 거절).
+// 모델·게이트웨이 경보가 열려 있어도 초안 생성은 허용되고 승인(playbook_activate)만 409다(B3-2a 동결과 같다).
+const pvA=await call(ADMIN,{action:'reflector_preview',...target});
+r=await call(ADMIN,{action:'reflector_run',...target,previewHash:pvA.data.previewHash,confirmed:true});const runA=r.data.id;
+const rd2=await server.readRecord(O,'review_decision','rd-2');
+await put('review_decision','rd-2',{...rd2,campaignId:'camp-ofd'});
+await put('model_change','hermes:9:rf',{id:'hermes:9:rf',key:'hermes',provider:'hermes',kind:'role',from:{reported:'hermes-agent',actual:null},to:{reported:'hermes-agent-2',actual:null},providerRunId:'run-rf',observedAt:new Date().toISOString()});
+poll.output=JSON.stringify({candidates:[{text:'제품명은 첫 줄에 한 번만 쓴다.',citations:['d1','d2']},{text:'마무리 문장은 방문 행동 하나만 제안한다.',citations:['d3','d4']}]});
+r=await call(ADMIN,{action:'reflector_check',id:runA});
+check('a citation that no longer passes citedDecisions (other brand) blocks that draft',r.data.status==='completed'&&JSON.stringify(r.data.rejected)==='[{"index":0,"reason":"citations"}]'&&r.data.ruleIds.length===1);
+const alarmDraft=await server.readRecord(O,'learning_rule',r.data.ruleIds[0]);
+check('drafts are created while a model alarm is open',alarmDraft.status==='draft'&&JSON.stringify(alarmDraft.citations)==='["rd-3","rd-4"]');
+const frozen=await learningRoute.POST(new Request('https://app.test/api/learning',{method:'POST',headers:{...session(OWNER),'content-type':'application/json'},body:JSON.stringify({action:'playbook_activate',id:alarmDraft.id,version:alarmDraft.version})}));
+check('only activation is frozen by the open alarm (409)',frozen.status===409&&/경보/.test((await frozen.json()).error)&&(await server.readRecord(O,'learning_rule',alarmDraft.id)).status==='draft');
+rt.sql.prepare("DELETE FROM records WHERE owner=? AND kind='model_change'").run(O);
+await put('review_decision','rd-2',rd2);
 
 // 12) 도구 흔적이 있으면 결과를 버린다(초안 0)
 const pv3=await call(ADMIN,{action:'reflector_preview',...target});

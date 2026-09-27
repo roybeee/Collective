@@ -260,7 +260,7 @@ GET `/api/reflector?brandId=` → 스위치·전용 연결(호스트·상태, �
 - `brand`는 `aiBrand(brand).identity`(정체성)만이다. 소개·브랜드 메모·의뢰 정보는 없다.
 - `ref`는 판정 id 대신 가명 라벨(d1…), `campaign`은 캠페인 id 대신 가명 라벨(c1…)이다. 라벨 → 판정 id 대응표는 실행 기록(`labels`)에만 두고 모델에 보내지 않는다.
 - `sections`는 선호 쌍(`preferencePair`)의 AI 원본(before)과 사람 확정본(after)에서 달라진 섹션(제목 `#~###` 단위, 편집 통계와 같은 규칙) 최대 3개, 쪽마다 600자까지다. 사람 확정본이 없으면(수정 요청만 받은 판) 빈 배열이고 사유 코드만 간다.
-- 넣지 않는 것: 검토 메모 원문(`reviewNote`), 브랜드 메모·의뢰 정보, 점포 맥락, `orderRefs`·주문·성과 수치, 행위자(계정 id·이메일), 원 캠페인 id·판정 id·작업물 id. `tests/reflector.test.mjs`가 키 집합과 심어 둔 표지가 본문에 없음을 확인한다.
+- 넣지 않는 것(검토 메모는 본문 경로가 없고, 입력 검사는 모든 문자열 값을 보므로 경로가 생기면 DP-3에 걸린다): 검토 메모 원문(`reviewNote`), 브랜드 메모·의뢰 정보, 점포 맥락, `orderRefs`·주문·성과 수치, 행위자(계정 id·이메일), 원 캠페인 id·판정 id·작업물 id. `tests/reflector.test.mjs`가 키 집합과 심어 둔 표지가 본문에 없음을 확인한다.
 - 지시문(`REFLECTOR_INSTRUCTIONS`)은 코드 상수다. 도구를 쓰지 말고, 발췌를 그대로 옮기지 말고, 연락처·주소·URL·가격 수치를 넣지 말고, 인용 2개 이상을 적으라고 요구한다.
 
 ### 전송 전 검사와 기록(DP-3·DP-4)
@@ -289,7 +289,9 @@ GET `/api/reflector?brandId=` → 스위치·전용 연결(호스트·상태, �
   - `duplicate`: 같은 실행의 같은 본문
 - 초안은 `playbook_create`와 같은 모양이다: `learning_rule`(`origin: review`, `grade: operator_preference`, `status: draft`, 역할 = 실행 역할, 채널 `*`, 인용 = 판정 id, 만료 60일). `scope`는 "사람 판정 N건 인용 · Reflector 초안"이다. 인용은 판정 id(작업물 id·판 참조)만이고 교정 원문은 담지 않는다.
 - 초안마다 `playbook_audit` `create`를 남기고 `source: reflector`·`reflectorRunId`를 더한다(행위자 id·역할만).
-- 승인 전 주입 0건이다. 승인은 운영자 선호 규칙 카드의 기존 승인(대표, 경보 동결·역할당 8개 상한 적용)이다.
+- 인용 검사는 저장 직전에 `citedDecisions`를 그대로 다시 부른다. 실행 뒤 판정의 브랜드가 바뀌어(원 캠페인 변경 등) 같은 브랜드 판정 2건 이상이 되지 않으면 그 후보는 `citations`로 거절한다.
+- 승인 전 주입 0건이다. 승인은 운영자 선호 규칙 카드의 기존 승인(대표, 경보 동결·역할당 8개 상한 적용)이다. 모델·게이트웨이 경보가 열려 있어도 Reflector 초안 생성은 막지 않고 승인(`playbook_activate`)만 409다(B3-2a D3와 같다).
+- `GET /api/learning` 응답은 바꾸지 않았다(새 키 없음). Reflector 상태는 `GET /api/reflector`에만 있다.
 
 ### 예산·멱등·보존·삭제
 
