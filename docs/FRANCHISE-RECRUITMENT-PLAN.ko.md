@@ -891,6 +891,20 @@ R4a가 `lib/franchise-rules.ts`에 만들고 R2·R4b가 쓴다. 레코드는 `{i
     - 리드 보드에 새 할 일 필터(미응대·계약 가능일·증빙 결손)는 더하지 않았다. 같은 시기 적격 판정 기록 작업이 보드 화면을 고쳐 겹침을 피했다. 할 일은 탭으로만 간다.
     - '다음 할 일' 카드는 기존 화면 규칙대로 AI 연결을 마친 워크스페이스에만 보인다. 연결 전에는 가맹 할 일도 보이지 않는다.
   - not_run: 운영 real 확인(게시 뒤, 대표가 `r_franchise`를 켠 뒤), 직원 화면의 실제 이메일 세션 확인(경로 검사만).
+- R6d-1 병합: #204 `merged`(`e811b0c`).
+- R6d-2 구현 기록(2026-09-27, passed · mocked, 로컬 브라우저 passed · real Chromium·로컬 D1 / mocked 인증):
+  - 새 모듈 `lib/franchise-experiment.ts`(순수, `fr-exp@2026-09-27.1`, `lib/viral-stats.ts` `summarizeResult`를 수정 없이 부름), `lib/franchise-experiment-server.ts`(읽기·쓰기·영수증), 화면 `app/franchise-experiment-panel.tsx`('유입·비용' 탭 아래 '소재 실험 선별').
+  - 새 kind `recruitment_experiment`(행 id `rx-<uuid>`, 브랜드 행, `recruitment_report` 바로 뒤). 작업 `experiment_plan`·`experiment_result`·`experiment_cancel`(대표·관리자, 감사는 실험 id만), 보기 `experiments`(모든 역할). 새 스위치 없음(`r_franchise` 뒤, 취소는 꺼져도 됨).
+  - 계획: 같은 브랜드·같은 유형의 승인 자료 판 2개(재검토 걸린 판 409), 채널, 주지표(클릭률 또는 양식 제출률), 바꾼 변수·가설(개인정보 검사), 팔당 최소 표본 100 이상(`lib/learning-server.ts` experimentPlan과 같음)·관찰 1~2160시간·목표 개선율, 기간(92일 이하). 시작일이 오늘(KST)보다 이르면 409 `period_started`(가설과 판정 기준은 시작 전에 적는다).
+  - 결과: 사람이 입력한 플랫폼 보고 분모·반응 수, 비교 가능 여부, 측정 끝 날짜(기간 안, 오늘 이하). 판정은 `lib/learning.ts` evaluateExperiment와 같은 기준(근거 부족·관찰상 개선·개선 가설 미지지·차이 불명확)이고 통계는 viral-stats가 낸다(중간 확인·반복 확인 경고 포함). 결과에 '플랫폼 보고, 원장 리드 아님'을 붙인다. 판 대조 409, 최근 10회를 남긴다.
+  - 확인 층: 판별 코드 귀속 리드, 그 가운데 현재 적격 판정(대표 결정 35)이 적격인 리드, 연결된 설명회 참석을 기간 안 건수로 보이고 원장 리드 20건 미만이면 비율을 숨긴다. 저장하지 않고 읽을 때 센다.
+  - 검사: `franchise-experiment` 43(EX-S1~EX-N3), `franchise-experiment-route` 36(ER-A1~ER-X4, 실제 경로·메모리 SQLite), `record-kinds` 51, `franchise-model-boundary`(FORBIDDEN에 새 모듈 3개), `franchise-ui`, `franchise-inflow-ui`, `franchise-ui-render`, `recruitment-codes`. 로컬 E2E(`e2e/franchise-recruit.spec.ts` R6d-2): passed 2/2(mobile·desktop).
+  - 계획과 다르게 한 것:
+    - 두 판이 '한 변수만' 다른지는 기계로 판정하지 않는다. 같은 유형·같은 브랜드·서로 다른 판만 검사하고 바꾼 변수를 사람이 적는다.
+    - 수치는 모집 비용 행의 플랫폼 보고 칸을 끌어오지 않고 실험마다 따로 입력한다(판별로 나뉘지 않은 비용 행이 있어서).
+    - 채택·중단 확정(규칙 만들기)은 두지 않았다. 권고와 경고까지만 보인다.
+    - `docs/DATA-PROCESSING.ko.md` 3.5 `recruitment_experiment` 행은 레인 A 검토를 위해 별도 문서 PR #209로 냈다(병합 보류).
+  - not_run: 운영 real 확인(게시 뒤, 대표가 `r_franchise`를 켠 뒤), 직원 화면의 실제 이메일 세션 확인(경로 검사만).
 
 - 결정 36 구현 기록(2026-09-27, passed · mocked):
   - 보고 순수 모듈 `lib/franchise-report.ts`를 `fr-report@2026-09-27.3`으로 올렸다(운영 확정본 없음, R6b·R6c는 게시 전).

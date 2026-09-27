@@ -4,7 +4,7 @@
 
 ## 역할별 권한 (이메일 모드)
 
-마지막 갱신: 2026-09-27 KST (트랙 R 대표 결정 35: `/api/franchise` 리드 적격 판정 기록 행(대표·관리자, 직원은 본인 담당만, 사유 코드만, 추가 전용 이력·감사). 트랙 R R6b: `/api/franchise` 모집 주간 보고 보기(모든 역할, 집계만)·확정·확정본 내려받기와 리드별·모집 자료별 증빙 묶음 내보내기 행(대표·관리자, 감사). 트랙 R R5b-2: `/api/franchise` 리드 CSV 파일 검사·미리보기·확정과 가져오기 기록 보기 행(대표 결정 32 B안, 연락처는 매핑한 이름·전화·이메일 열만, 대표·관리자만). 트랙 R R5b-1: `/api/franchise` 모집 코드 발급·사용 중지, 모집 코드·귀속 보기, 리드 모집 코드 넣기·제외, 모집 비용 기록·무효화·보기 행과 행사 비용 참조 조건. B3-2c: `/api/learning` `playbook_attach_eval` 선호 쌍 평가 첨부 행(대표만, 보기는 대표·관리자). B3-2a: `/api/learning` GET 교정 신호 행(대표·관리자만), 운영자 선호 규칙 승인은 열린 모델·게이트웨이 경보 동안 409. B4-2c: `/api/reward-lineage` 개선 루프 닫기 행, 보기 행에 개선 루프 대장. B4-2b: `/api/reward-lineage` 보상 계보 보기 행. A8-2: `/api/customer-reports` 고객 보고서 미리보기·목록·다운로드·사실 팩·동결·검토 행. 트랙 R R15a-2a: 모집 자료·행사 행. A6-2: `/api/place-checks` 플레이스 대조 보기·스냅샷 입력·할 일 처리 행. A6-1: `/api/data-requests` 자료 요청 보기·모으기·닫기 행. 트랙 R R3a: 캠페인 가맹 모집 목적 지정·해제 행, 발행 승인 행의 판정 범위. 트랙 R R2: 발행 승인 행에 가맹 모집 규칙 해제 불가 409, 직원도 보는 정보공개서 버전 요약 행. 트랙 R R1b: 가맹 사실 저장 조건과 `rebase_facts` 행. 이전: 트랙 R R1a·R4b: `/api/franchise` 가맹 설정·리드 원장·연락처 열람·정보주체 요청 행 추가, 대표 결정 22. 검토 반영: 설정 정정·다시 사용 행, 출처 고지 `record_source_notice` 행. 이전: F4a 캠페인 삭제 영향 조회 행·결정 7 규칙 보존, F5 채널 연결 브랜드·지점 단위, PR 6c 아카이브 원본 파일 삭제 행)
+마지막 갱신: 2026-09-27 KST (PR 4b loop-1: `/api/measurements` `collect` 행(대표·관리자, 직원 403)·수집 상태 보기 행. security-ops-6: `/api/action` `reseal_credentials` 연결 자격증명 전체 재암호화 행(대표만). 트랙 R 대표 결정 35: `/api/franchise` 리드 적격 판정 기록 행(대표·관리자, 직원은 본인 담당만, 사유 코드만, 추가 전용 이력·감사). 트랙 R R6b: `/api/franchise` 모집 주간 보고 보기(모든 역할, 집계만)·확정·확정본 내려받기와 리드별·모집 자료별 증빙 묶음 내보내기 행(대표·관리자, 감사). 트랙 R R5b-2: `/api/franchise` 리드 CSV 파일 검사·미리보기·확정과 가져오기 기록 보기 행(대표 결정 32 B안, 연락처는 매핑한 이름·전화·이메일 열만, 대표·관리자만). 트랙 R R5b-1: `/api/franchise` 모집 코드 발급·사용 중지, 모집 코드·귀속 보기, 리드 모집 코드 넣기·제외, 모집 비용 기록·무효화·보기 행과 행사 비용 참조 조건. B3-2c: `/api/learning` `playbook_attach_eval` 선호 쌍 평가 첨부 행(대표만, 보기는 대표·관리자). B3-2a: `/api/learning` GET 교정 신호 행(대표·관리자만), 운영자 선호 규칙 승인은 열린 모델·게이트웨이 경보 동안 409. B4-2c: `/api/reward-lineage` 개선 루프 닫기 행, 보기 행에 개선 루프 대장. B4-2b: `/api/reward-lineage` 보상 계보 보기 행. A8-2: `/api/customer-reports` 고객 보고서 미리보기·목록·다운로드·사실 팩·동결·검토 행. 트랙 R R15a-2a: 모집 자료·행사 행. A6-2: `/api/place-checks` 플레이스 대조 보기·스냅샷 입력·할 일 처리 행. A6-1: `/api/data-requests` 자료 요청 보기·모으기·닫기 행. 트랙 R R3a: 캠페인 가맹 모집 목적 지정·해제 행, 발행 승인 행의 판정 범위. 트랙 R R2: 발행 승인 행에 가맹 모집 규칙 해제 불가 409, 직원도 보는 정보공개서 버전 요약 행. 트랙 R R1b: 가맹 사실 저장 조건과 `rebase_facts` 행. 이전: 트랙 R R1a·R4b: `/api/franchise` 가맹 설정·리드 원장·연락처 열람·정보주체 요청 행 추가, 대표 결정 22. 검토 반영: 설정 정정·다시 사용 행, 출처 고지 `record_source_notice` 행. 이전: F4a 캠페인 삭제 영향 조회 행·결정 7 규칙 보존, F5 채널 연결 브랜드·지점 단위, PR 6c 아카이브 원본 파일 삭제 행)
 
 같은 워크스페이스의 계정은 대표(owner)·관리자(admin)·직원(member) 중 하나다. 대표는 DB에 따로 저장하지 않고 같은 워크스페이스에서 가장 먼저 만든 관리자 계정으로 계산한다(`lib/auth-session.ts` `roleSql`). 판정은 서버 API가 하며, 화면에서 버튼을 숨기는 것은 보조 수단이다. 직원이 관리자 전용 작업을 요청하면 403이다. legacy 모드(로컬 개발·E2E)의 헤더 사용자는 모든 권한을 가진다.
 
@@ -49,8 +49,11 @@
 | 캠페인 상시 지시 추가 | `/api/directives` `add` | 허용 | 허용 | 허용 |
 | 캠페인 상시 지시 삭제 | `/api/directives` `remove` | 허용 | 허용 | 본인 역할(직원)이 남긴 지시만. 관리자·대표가 남긴 지시는 403 |
 | HERMES·OpenAI 연결 저장·해제 | `/api/action` `save_hermes`·`save_connection`·`disconnect` | 허용 | 허용 | 403 |
+| 연결 자격증명 전체 재암호화(security-ops-6. `crypto_v1_write` 꺼짐이면 409, 건수·종류·사유 코드만 응답) | `/api/action` `reseal_credentials` | 허용 | 403 | 403 |
 | HERMES 연결 주소 조회 | `/api/workspace` `connection.endpoint` | 포함 | 포함 | 응답에서 제외 |
 | 채널 연결 변경(워크스페이스 기본·브랜드·지점 단위) | `/api/channels` POST `save_credential`·`revoke_credential` (`brandId`·`storeId` 선택) | 허용 | 허용 | 403 |
+| 성과 수집 시작(loop-1. 진행 중 실험만, 아니면 409. 다른 워크스페이스의 실험 404, 기간은 YYYY-MM-DD·시작≤종료, 대상 필수, 모르는 arm 400 — 모두 외부 API 호출 전. 자격증명은 실험 브랜드·캠페인 지점에서 고르며 다른 브랜드 것은 쓰지 않는다(F5). 이전에는 로그인 사용자 누구나 호출했다) | `/api/measurements` `collect` | 허용 | 허용 | 403 |
+| 성과 수집 상태 보기(실험별 초안·자동 수집 대상의 마지막 수집·연속 실패 수·분류 코드와 정해진 사유·재연결 필요·다음 시도, 재연결 알림. 토큰·URL·커넥터 문구·응답 원문 없음) | `/api/learning` GET `measurements`·`collectAlerts`, `?only=collect_alerts` | 포함 | 포함 | 포함 |
 | 사용량 단가 변경 | `/api/usage` POST | 허용 | 허용 | 403 |
 | 발행 설정·승인·실행·취소(가맹 모집 목적(objective) 캠페인은 가맹 프로필과 무관하게 모집 범위, 그 밖 가맹 프로필 브랜드 캠페인은 소비자 범위로 가맹 모집 규칙 판정. 해제 불가 표현은 대표·관리자 승인으로도 409, 결정 25. 판정은 기능 스위치를 읽지 않는다) | `/api/execution` `connect_buffer`·`save_limits`·`approve`·`execute`·`cancel` | 허용 | 허용 | 403 |
 | 가맹 설정(프로필·정보공개서 버전·계약서안 템플릿·개인정보 안내문 등록·사용 중지·다시 사용, 버전 등록일·유효 기간과 템플릿 확인 항목 정정), 설정·감사 기록 조회 | `/api/franchise` `save_profile`·`register_*`·`retire_*`·`amend_disclosure_version`·`amend_contract_template`, GET `settings`·`audit` | 허용(정정은 사유·감사) | 허용(정정은 사유·감사) | 403 |
@@ -78,6 +81,8 @@
 | 모집 주간 보고 보기(유입·채널 CPL·speed-to-lead·문의 월 코호트·법정 게이트 집계. 1~4건 칸 억제, 분모 20 미만 비율·CPL 숨김, 귀속≠증분 표시, 리드 id·연락처·코드 없음. 스위치가 꺼져도 읽는다) | `/api/franchise` GET `report` | 허용 | 허용 | 허용 |
 | 모집 주간 보고 확정(끝난 주만, 확인한 다이제스트와 다시 계산한 값이 다르면 409, 판 이력 5개, 스위치 꺼짐 409) / 확정본 내려받기(md·csv·json, 스위치가 꺼져도 된다) | `/api/franchise` `report_freeze` / `report_export` | 허용(감사) / 허용(감사, 파일 해시) | 허용(감사) / 허용(감사, 파일 해시) | 403 |
 | 증빙 묶음 내보내기(리드별 여정: 시스템 코드·단계·귀속과 입력·이벤트·증빙 기록·계약 가능 시각·계약 게이트 / 모집 자료별: 판별 해시·승인·연결 코드·귀속 리드 수·비용. 연락처·메모 값 없음, 같은 기록이면 같은 해시, 스위치가 꺼져도 된다) | `/api/franchise` `evidence_export` | 허용(감사, 묶음 해시) | 허용(감사, 묶음 해시) | 403 |
+| 모집 소재 실험 계획(같은 브랜드·같은 유형의 승인 자료 판 2개, 팔당 최소 표본 100, 기간 시작 전만, 가설·변수 개인정보 400, 스위치 꺼짐 409) / 결과 입력(사람이 입력한 플랫폼 보고 분모·반응 수, 판 대조 409, 기간 밖·미래 날짜 400) / 취소(스위치가 꺼져도 된다) | `/api/franchise` `experiment_plan` / `experiment_result` / `experiment_cancel` | 허용(감사, 실험 id만) | 허용(감사, 실험 id만) | 403 |
+| 모집 소재 실험 보기(계획·최근 판정·viral-stats 통계, '플랫폼 보고, 원장 리드 아님' 표시, 확인 층은 코드 귀속 리드·설명회 참석 건수만이고 20건 미만 비율 숨김, 리드 id·연락처 없음. 스위치가 꺼져도 읽는다) | `/api/franchise` GET `experiments` | 허용 | 허용 | 허용 |
 | 가맹 모집 기능 스위치 `r_franchise` | `/api/feature-flags` | 허용 | 403 | 403 |
 | 서버 설치 파일 발급 | `/api/research-worker/setup` `download` | 아래 목록 판정 | 아래 목록 판정 | 403 |
 | 서버 작업자 연결 해제 | `/api/research-worker/setup` `revoke` | 허용 | 허용 | 403 |
@@ -171,8 +176,44 @@ enforce 상태에서 공통 gate를 교체하면 설치된 워커는 모두 403�
 - **상태 응답.** GET `/api/channels`의 `channels`는 워크스페이스 기본만 보여 준다(기존 필드 그대로). `byBrand`는 브랜드마다 채널별 브랜드 단위 상태와 저장된 지점 단위 상태를 주고, 만료가 7일 안이거나 지난 토큰에는 `warning`을 붙인다. `?brandId=`(`&storeId=`)를 주면 그 단위의 수집이 쓸 자격증명(`resolved[].resolvedScope`)을 함께 준다. 어느 응답에도 비밀값은 없다. 조회는 기존처럼 같은 워크스페이스의 로그인 사용자면 역할과 관계없이 허용한다.
 - **마이그레이션 없음.** 기존 소유자 단위 레코드는 옮기거나 다시 쓰지 않고 워크스페이스 기본으로 계속 읽는다. 범위 없이 부르는 저장·조회·해제는 이전과 같은 id·필드·응답이다.
 - **발행용 Buffer 자격증명과 대조.** `publisher_credential`은 처음부터 브랜드 단위(id `<owner>:publisher_credential:<brandId>`, parent 브랜드)이고 워크스페이스 기본이나 지점 단위가 없다. 성과 수집 자격증명은 브랜드 단위를 같은 규칙(다른 브랜드 것은 쓰지 않음)으로 따르되, 호환을 위해 워크스페이스 기본을 마지막 후보로 둔다. Buffer 규칙은 이번에 바꾸지 않았다.
-- **남은 일.** 브랜드는 삭제 경로가 없고 지점은 보관만 하므로 브랜드·지점 단위 자격증명의 삭제 연쇄는 두지 않았다. 지점을 보관해도 그 지점 자격증명은 자동으로 해제되지 않고 그 지점 캠페인의 수집에 계속 쓰인다(보관 시 자동 해제는 동작 변경이라 별도 결정). 캠페인 삭제는 `channel_credential`을 건드리지 않는다(`not_campaign_scoped`). 암호화 키 회전(security-ops-6)·수집 실패 표시(security-ops-5)·loop-1은 PR 4b 잔여다.
+- **남은 일.** 브랜드는 삭제 경로가 없고 지점은 보관만 하므로 브랜드·지점 단위 자격증명의 삭제 연쇄는 두지 않았다. 지점을 보관해도 그 지점 자격증명은 자동으로 해제되지 않고 그 지점 캠페인의 수집에 계속 쓰인다(보관 시 자동 해제는 동작 변경이라 별도 결정). 캠페인 삭제는 `channel_credential`을 건드리지 않는다(`not_campaign_scoped`). 수집 실패 표시(security-ops-5)·loop-1은 아래 항목에서 붙였다. 암호화 키 회전은 [아래 절](#자격증명-암호화-키-버전aad회전-security-ops-6)을 본다.
 - **loop-1은 open이다.** F5는 loop-1의 선행 작업(브랜드 단위 자격증명)만 한다. loop-1 본체(실행 중인 실험 카드의 `/api/measurements` collect 버튼, `/api/learning` GET의 `measurement_draft`·`measurement_source`(`lastFetchedAt`·`lastError`·`stopped`), 결과 입력 모달의 초안 값 미리 채우기, 수집 실패·토큰 만료 경고)는 PR 4b에서 한다. 그때 실험 카드의 만료 판정은 GET `/api/channels?brandId=&storeId=`의 `resolved[].resolvedScope`·`expiresAt`을 재사용한다.
+- **loop-1·security-ops-5 (PR 4b).** 위 항목의 본체를 붙였다. 근거는 `tests/measurement-status.test.mjs`·`tests/measurement-collect-ui.test.mjs`(mocked)다.
+  - 진행 중 실험 카드의 'A/B 성과 가져오기'(대표·관리자, 이 실험 채널의 연결이 `resolved[]`에 있을 때만)가 `/api/measurements` `collect`를 부른다. 직원 요청은 403이다. 수집 상태·만료 경고는 모든 역할이 본다.
+  - GET `/api/learning`의 `measurements[]`는 저장 레코드가 아니라 보기 형태(`lib/measurement-status.ts`)다. `lastError`는 `{code, reason}`이고 코드는 `reauth_required`·`not_connected`·`upstream_unavailable`·`request_rejected`·`unknown`, 사유는 코드별 고정 문구다. 워커도 커넥터 문구 대신 이 고정 사유만 저장한다. 이 필드 전에 저장된 원문 `lastError`는 `unknown`으로만 보인다.
+  - 인증 오류(커넥터 `ConnectorAuthError`)와 연결 없음(`ConnectorMissingError`)은 '재연결 필요'로 실험 카드와 워크스페이스 첫 화면 알림에 오른다. 스위치 `collect_guard`(기본 꺼짐)를 켜면 그 대상을 바로 멈추고, 연속 실패 백오프(6→12→24시간)를 쓴다([신뢰성](RELIABILITY.ko.md#성과-자동-수집-실패-security-ops-5)).
+  - Instagram 토큰 만료 조회·장수명 토큰 자동 갱신은 하지 않았다. 커넥터는 사용자가 입력한 토큰과 만료일만 보관하고, 갱신에 필요한 앱 비밀값·교환 흐름이 코드와 문서 어디에도 없다. 만료 경고는 저장된 만료일(`resolved[].expiresAt`)로만 한다.
+
+## 자격증명 암호화 키 버전·AAD·회전 (security-ops-6)
+
+마지막 갱신: 2026-09-27 KST (PR 4b 잔여 security-ops-6). 근거는 `tests/credential-crypto.test.mjs`(mocked: 메모리 SQLite, 로컬 인증 헤더·세션 주입, HERMES fetch 스텁. 암호화는 실제 WebCrypto AES-GCM)다. 운영 게시·키 회전은 하지 않았다(not_run).
+
+- **형식.** 옛 형식은 `iv.data`(base64, 키 ID·AAD 없음, `AGENCY_ENCRYPTION_KEY`)다. 새 형식은 `v1:<키 ID>:<iv>:<data>`이고 키 ID는 키 바이트의 SHA-256(도메인 구분 접두) 앞 12자라 환경변수에 따로 적지 않는다. 읽기는 두 형식을 모두 받는다(`lib/credential-crypto.ts`).
+- **AAD.** 새 형식에만 쓴다. 값은 암호문이 놓인 자리다. records는 행 id 규칙과 같은 `<owner>:<kind>:<id>`(`channel_credential`은 `<channel>[:<brandId>[:<storeId>]]`, `publisher_credential`은 `<brandId>`), AI 연결은 소유자당 1행이라 `<owner>:settings:connection`이다. 세 곳 모두 레코드를 다른 id·소유자로 옮기는 코드가 없고, 옮긴 v1 암호문은 풀리지 않는다(409). 옛 암호문은 AAD 없이 읽으므로 전체 재암호화 전까지는 옮겨도 풀린다.
+- **키 목록.** `AGENCY_ENCRYPTION_KEYS`(선택)는 쉼표로 나눈 base64 32바이트 키 목록이고 첫 값이 현재 키다. 읽기는 목록 순서, 그다음 `AGENCY_ENCRYPTION_KEY`를 후보로 쓴다(옛 형식은 `AGENCY_ENCRYPTION_KEY`부터). 둘 다 없으면 기존처럼 503이다. 형식이 틀린 값(base64 아님, 32바이트 아님)은 몇 번째 값인지만 적은 503이고 값은 문구에 없다. `AGENCY_ENCRYPTION_KEY`는 이전 코드와 같은 해석(16·24·32바이트)을 유지한다.
+- **스위치 `crypto_v1_write`(기본 꺼짐, 소유자 범위).** 꺼짐이면 쓰기는 옛 형식·`AGENCY_ENCRYPTION_KEY`라 이전 코드로 롤백해도 읽힌다. 켜짐이면 AI 연결 저장(`save_hermes`·`save_connection`)·채널 연결·Buffer 연결을 현재 키와 AAD로 v1에 쓰고, 채널·Buffer 자격증명을 읽을 때 옛 형식·이전 키 암호문을 현재 키로 다시 쓴다(지연 재암호화, 읽은 행과 같을 때만 바꾸는 CAS, `updated_at`·연결 버전 유지). AI 연결(settings)은 읽는 곳이 `lib/server.ts`라 지연 재암호화하지 않고 저장·전체 재암호화 때만 바꾼다. 스위치는 `lib/credential-crypto-server.ts`에서만 읽는다.
+- **복호화 실패.** 키가 목록에 없거나, 맞는 키가 없거나, AAD가 다르거나, 형식이 깨졌으면 `SecretUnreadableError` 409('저장된 연결을 … 다시 등록하세요')다. 이전에는 일반 500이었다. 작업 공간 화면은 AI 연결을 풀지 못해도 열리고(`connection.unreadable`), 같은 연결을 다시 저장할 수 있다. 가맹 연락처(`lib/franchise-crypto.ts`)는 자체 500 문구를 그대로 쓴다.
+- **전체 재암호화.** 대표만 `/api/action` `reseal_credentials`로 한다(관리자·직원 403, 스위치 꺼짐 409). 그 소유자의 AI 연결·채널·Buffer 자격증명을 현재 키·AAD로 다시 쓰고 `resealed`·`current`·`changed`(읽는 사이 바뀜, 다시 실행)·`failed`(종류별)·`reasons`(사유 코드별) 건수만 돌려준다. 키·평문·암호문은 응답·로그·이벤트에 없다. 지연 재암호화 실패 로그는 `credential_reseal_failed`와 kind뿐이다.
+- **범위 밖.** 평가 전용 HERMES 연결(`lib/eval-server.ts`, 레인 Q)과 가맹 연락처 필드(`lib/franchise-crypto.ts`, 레인 R)는 계속 옛 형식·`AGENCY_ENCRYPTION_KEY`로 쓰고 AAD가 없다. 새 키 목록으로도 읽히지만 전체 재암호화 대상이 아니다. 가맹 리드 중복 키 HMAC도 `AGENCY_ENCRYPTION_KEY`에서 파생한다. 그래서 **`AGENCY_ENCRYPTION_KEY`는 값을 바꾸거나 지우지 않는다**. 두 레인이 `sealRecordSecret`·`openRecordSecret`으로 옮기고 중복 키 파생 키를 분리하기 전까지 회전은 아래 세 종류에만 적용된다.
+
+### 키 생성·백업
+
+- 생성: `openssl rand -base64 32`. 값은 Sites 환경변수에만 넣고 저장소·채팅·이슈·로그에 붙이지 않는다.
+- 백업: 대표가 관리하는 비밀번호 관리자(오프라인 사본 포함)에 키마다 만든 날짜와 키 ID(아래 확인 방법)를 함께 적는다. 키를 잃으면 그 키로 쓴 연결은 복구할 수 없고 다시 등록해야 한다.
+- 키 ID 확인(값을 화면에 내지 않음): `printf '%s' "$KEY" | node -e "const k=Buffer.from(require('fs').readFileSync(0,'utf8').trim(),'base64');const h=require('crypto').createHash('sha256').update(Buffer.concat([Buffer.from('collective:credential-key-id:v1\\n'),k])).digest('hex');console.log(h.slice(0,12))"`.
+
+### 회전 순서
+
+1. **새 키 추가.** 새 키를 만들고 Sites 환경변수 `AGENCY_ENCRYPTION_KEYS=<새 키>,<지금 AGENCY_ENCRYPTION_KEY 값>`을 넣는다. `AGENCY_ENCRYPTION_KEY`는 그대로 둔다. 게시 뒤 연결 상태(`/api/workspace`의 `connection.configured`, 채널 연결 상태)가 바뀌지 않았는지 본다. 스위치가 꺼져 있으면 쓰기는 여전히 옛 형식·`AGENCY_ENCRYPTION_KEY`다.
+2. **스위치 켜기.** 대표가 `/api/feature-flags`에서 `crypto_v1_write`를 켠다. 이때부터 새로 저장하는 연결은 v1·새 키이고, 읽는 채널·Buffer 자격증명은 새 키로 바뀐다.
+3. **전체 재암호화.** 대표가 `reseal_credentials`를 실행한다. `failed`가 0이 아니면 그 종류의 연결을 화면에서 다시 등록한다. `changed`가 있으면 다시 실행한다. `resealed`가 0이고 `current`만 남을 때까지 반복한다.
+4. **이전 키 제거.** `AGENCY_ENCRYPTION_KEYS`에서 이전 값을 뺀다(`AGENCY_ENCRYPTION_KEY`는 위 범위 밖 사유로 남긴다). 다음 회전은 `<더 새 키>,<지금 현재 키>`로 1부터 반복한다.
+
+### 롤백 주의
+
+- 스위치를 켜기 전에는 이 PR 이전 코드로 롤백해도 모든 연결이 읽힌다.
+- 스위치를 켠 뒤 v1로 쓴 연결은 이전 코드가 읽지 못한다(이전 코드는 `iv.data`만 안다). 롤백이 필요하면 먼저 스위치를 끄고, 그 뒤 저장·재암호화된 연결(AI 연결·채널·Buffer)을 롤백 뒤 다시 등록한다. 스위치를 끄는 것만으로 v1 암호문이 옛 형식으로 돌아가지는 않는다.
+- 새 코드 안에서는 스위치를 꺼도 v1·옛 형식을 모두 읽는다. `AGENCY_ENCRYPTION_KEYS`에서 아직 v1 암호문이 남은 키를 빼면 그 연결은 409가 된다.
 
 ## 입력과 공급자 응답
 

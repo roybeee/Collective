@@ -1,4 +1,5 @@
-import {identity,requireAdminActor,secureMutation,readRecord,json,failure,str,stamp,ApiError,acquireLock,releaseLock,decrypt,type Actor} from '@/lib/server';
+import {identity,requireAdminActor,secureMutation,readRecord,json,failure,str,stamp,ApiError,acquireLock,releaseLock,type Actor} from '@/lib/server';
+import {openRecordSecret} from '@/lib/credential-crypto-server';
 import {authEnv} from '@/lib/auth-session';
 import type {Campaign} from '@/lib/agency';
 import {providerPublicationStatus,type Publication} from '@/lib/execution';
@@ -50,7 +51,7 @@ export async function POST(req:Request){let owner='',lock='';try{
   if(!p.providerId)throw new ApiError(409,'공급자 게시 번호가 없습니다. Buffer에서 접수 여부를 직접 확인하세요. 자동 재전송은 차단됩니다.');
   const credential=await readRecord<PublisherCredential>(owner,'publisher_credential',campaign.brandId);
   if(credential.channelId!==p.channelId)throw new ApiError(409,'원래 발행 계정으로 연결한 뒤 조회하세요.');
-  const remote=await inspectBuffer(await decrypt(credential.secret),p.providerId);
+  const remote=await inspectBuffer(await openRecordSecret(owner,'publisher_credential',campaign.brandId,credential.secret),p.providerId);
   if(remote.channelId!==p.channelId)throw new ApiError(409,'공급자 게시 계정이 다릅니다.');
   const status=providerPublicationStatus(remote.status),review=await externalMediaReview(p,status,origin);
   const updated:Publication={...p,status,providerStatus:remote.status,...(review?{needsReview:review}:{}),version:p.version+1,updatedAt:stamp()};await publicationKeepingReview(owner,updated,campaign.id).run();
