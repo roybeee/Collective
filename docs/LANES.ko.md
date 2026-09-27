@@ -32,6 +32,13 @@
 - 레인에 없는 새 일이 생기면, 먼저 발견한 세션이 STATUS의 자기 레인 칸에 "제안"으로 적고 대표 확인을 받은 뒤 이 표에 더한다.
 - 다른 레인의 PR을 대신 병합하거나 고치지 않는다. 막히면 그 레인 칸의 '막힌 것'에 적는다.
 
+## 레인 I — 브랜드 인터뷰 (2026-09-27 대표 신규 지시)
+
+- 담당: 이번 Codex 세션. 대표의 브랜드 인터뷰·파일 드롭·녹음·자동 정리 개발 지시로 승인된 독립 작업이다. 기존 A/R/Q/G 업무를 가져오지 않는다.
+- 브랜치: `feat/brand-interview-studio`. 소유: `lib/brand-interview*`, `app/brand-interview-panel.tsx`, `app/api/archive/interview/`, `server/interview-transcriber/`, 전용 검사·문서.
+- 기존 파일 최소 연결: `app/brand-archive.tsx` 인터뷰 탭, `app/api/archive/file/route.ts` 음성 형식, `app/globals.css` 전용 스타일.
+- 게시는 하지 않는다. 음성 서비스 설치/실제 검증 뒤 레인 A가 검토하여 묶음에 포함한다. 성장1 마감 조건에 추가하지 않는다.
+
 ## 레인별 개발 순서
 
 ### 레인 A (Claude A 세션)
