@@ -209,7 +209,7 @@ function leadGateOf(rows:readonly EvidenceRow[],signedAt?:string):FranchiseLead{
 }
 const windowInputOf=(ctx:GateContext,gate:FranchiseLead):ContractWindowInput=>({deliveries:gate.deliveries,advice:gate.advice,disclosureVersions:ctx.disclosureVersions,contractTemplates:ctx.contractTemplates,holidays:ctx.holidays});
 // 모집 주간 보고·증빙 묶음(R6b)의 게이트 요약: 증빙 기록(정정·무효 표시), 계약 가능 시각 창, 계약 게이트(계약 기록이 있을 때만), 산정서 의무. 판정 맥락은 한 번만 읽는다.
-async function gateSummaries(owner:string,brandId:string,leads:readonly LeadRecord[],now:string):Promise<Map<string,LeadGateSummary>>{
+export async function gateSummaries(owner:string,brandId:string,leads:readonly LeadRecord[],now:string):Promise<Map<string,LeadGateSummary>>{
  const out=new Map<string,LeadGateSummary>();
  if(!leads.length)return out;
  const {ctx}=await gateContext(owner,brandId);
