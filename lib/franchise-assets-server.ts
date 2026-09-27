@@ -19,6 +19,7 @@ import {spendUsable} from './franchise-recruitment-server';
 import {ASSET_TYPE_ORDER,ASSET_TYPE_LABELS,EVENT_TYPE_LABELS as ASSET_EVENT_TYPE_LABELS,ASSET_MESSAGES,ASSET_RULES,ID_PATTERN,STARTUP_PAGE_SECTIONS,EVENT_DECK_SECTIONS,
  validateAssetInput,draftAsset,approveDecision,exportDecision,placementDecision,assetGateIssues,assetWarnings,approvalChecklist,h7Notice,effectiveAssetFacts,sectionTemplate,markAssetsForReview,changedVersionIds,
  validateEvent,registerDecision,attendanceDecision,type RecruitmentAsset,type RecruitmentEvent,type AssetReview,type AssetType,type EventCounts,type Decision} from './franchise-assets';
+import {waitReviewCandidates,WAIT_REVIEW_VERSION} from './franchise-wait-review';
 
 type Json=Record<string,unknown>;
 type ActorLite={id:string;role:string};
@@ -182,6 +183,8 @@ async function blocked(x:AssetArgs,row:AssetRow,d:Failure):Promise<never>{
  if(d.status===409)await x.port.commit([x.port.receipt('asset_blocked',{error:FRANCHISE_ERRORS.ASSET_BLOCKED.text,reasons:reasonMessages(d.reasons),ruleVersion:d.ruleVersion,disclaimer:d.disclaimer},{recordId:row.id,assetVersion:row.version,reasons:[...d.reasons]},assetTarget(x),409)],'ASSET_STALE');
  throw decisionError(d);
 }
+// 대기기간 우회 문장 확인(결정 34)의 감사 값: 누가·언제는 감사 행의 actor·at, 어느 판은 recordId·assetVersion·bodyHash다. 여기서는 확인한 판과 강조 후보 수만 더한다(문장 원문 없음).
+const waitReviewAudit=(w:{version:string;candidates:number}|undefined)=>w?{waitReviewVersion:w.version,waitReviewCandidates:w.candidates}:{};
 // 승인·내보내기는 최신 판만(옛 승인 판은 증빙과 행사 연결용).
 async function latestAsset(x:AssetArgs){
  const row=await loadAsset(x.owner,x.brandId,x.input.assetId);
@@ -195,7 +198,7 @@ async function assetApprove(x:AssetArgs):Promise<Outcome>{
  const approval=d.value.approval,next:AssetRow={...row,status:'approved',approval,rev:nextRev(row),updatedAt:x.now};
  const result={assetId:row.id,version:row.version,status:'approved',approvedAt:approval.at,checklistVersion:approval.checklist.version};
  await x.port.commit([rowGuard(x.owner,'recruitment_asset',rowIdOf(row),'$.rev',revOf(row)),recordStatement(x.owner,'recruitment_asset',rowIdOf(row),next,x.brandId),
-  x.port.receipt('asset_approve',result,{recordId:row.id,assetVersion:row.version,bodyHash:row.bodyHash,checklistVersion:approval.checklist.version,aiGenerated:!!row.aiGenerated},assetTarget(x))],'ASSET_STALE');
+  x.port.receipt('asset_approve',result,{recordId:row.id,assetVersion:row.version,bodyHash:row.bodyHash,checklistVersion:approval.checklist.version,...waitReviewAudit(approval.waitReview),aiGenerated:!!row.aiGenerated},assetTarget(x))],'ASSET_STALE');
  return {result,extra:{aiGenerated:!!row.aiGenerated,warnings:d.warnings,ruleVersion:d.ruleVersion,disclaimer:d.disclaimer}};
 }
 const exportFilename=(type:AssetType,brandId:string,now:string,version:number)=>`recruitment-${type}-${brandId.replace(/[^A-Za-z0-9_-]/g,'_').slice(0,80)}-${toKstDate(now).replace(/-/g,'')}-v${version}.txt`;
@@ -205,13 +208,13 @@ async function assetExport(x:AssetArgs):Promise<Outcome>{
  const mode=x.input.mode;
  if(mode!=='copy'&&mode!=='download')fail('EXPORT_MODE');
  const row=await latestAsset(x);
- const d=await exportDecision(row,{...await decisionContext(x,row),actor:x.actor});
+ const d=await exportDecision(row,{...await decisionContext(x,row),actor:x.actor},x.input);
  if(!d.ok)return blocked(x,row,d);
  const record=d.value.record,all=[...row.exports,record],exports=all.length>ASSET_LIMITS.exportsKept?[all[0],...all.slice(-(ASSET_LIMITS.exportsKept-1))]:all;
  const next:AssetRow={...row,exports,exportCount:exportCountOf(row)+1,rev:nextRev(row)};
  const result={assetId:row.id,version:row.version,bodyHash:row.bodyHash,mode,exportedAt:record.at};
  await x.port.commit([rowGuard(x.owner,'recruitment_asset',rowIdOf(row),'$.rev',revOf(row)),recordStatement(x.owner,'recruitment_asset',rowIdOf(row),next,x.brandId),
-  x.port.receipt('asset_export',result,{recordId:row.id,assetVersion:row.version,bodyHash:row.bodyHash,mode,judgeVersion:record.judgeVersion,checklistVersion:record.checklistVersion,aiGenerated:!!row.aiGenerated},assetTarget(x))],'ASSET_STALE');
+  x.port.receipt('asset_export',result,{recordId:row.id,assetVersion:row.version,bodyHash:row.bodyHash,mode,judgeVersion:record.judgeVersion,checklistVersion:record.checklistVersion,...waitReviewAudit(record.waitReview),aiGenerated:!!row.aiGenerated},assetTarget(x))],'ASSET_STALE');
  return {result,extra:exportPayload(row,d,x.brandId,x.now)};
 }
 // 내보내기 재생(lib/franchise-server.ts replay가 5분 안·대표·관리자일 때 부른다): 행을 다시 읽고 스위치·문맥을 새로 읽어 판정을 다시 돌린다(읽기 전용). exports는 늘리지 않는다.
@@ -220,7 +223,9 @@ async function assetExport(x:AssetArgs):Promise<Outcome>{
 export async function replayAssetExport(owner:string,brandId:string,who:ActorLite,audit:{recordId?:unknown;assetVersion?:unknown;bodyHash?:unknown;at?:unknown},now:string):Promise<Json>{
  let row:AssetRow;
  try{row=await loadAsset(owner,brandId,audit.recordId,audit.assetVersion)}catch(e){if(e instanceof FranchiseAssetError)fail('REPLAY_EXPIRED');throw e}
- const d=await exportDecision(row,{...await decisionContext({owner,brandId,now,enabled:await isEnabled(owner,'r_franchise')},row),actor:actorOf(who)});
+ // 재생은 감사 행에 남은 확인(판·후보 수)으로 다시 판정한다. 원문이 같으면 후보 수도 같다.
+ const w=audit as {waitReviewVersion?:unknown;waitReviewCandidates?:unknown};
+ const d=await exportDecision(row,{...await decisionContext({owner,brandId,now,enabled:await isEnabled(owner,'r_franchise')},row),actor:actorOf(who)},{waitReview:{confirmed:true,version:w.waitReviewVersion,candidates:w.waitReviewCandidates}});
  if(!d.ok||row.bodyHash!==audit.bodyHash)fail('REPLAY_EXPIRED');
  const exportedAt=typeof audit.at==='string'&&Number.isFinite(Date.parse(audit.at))?audit.at:now;
  return exportPayload(row,d,brandId,exportedAt);
@@ -375,6 +380,8 @@ async function assetDetailView(who:Viewer,brandId:string,params:URLSearchParams)
  const resaveSuggested=row.review.needed||drift.some(d=>d.changed)||g.codes.some(c=>c==='fact_changed'||c==='version_not_current');
  return {asset:Object.fromEntries(Object.entries(row).filter(([k])=>k!=='rev')),latestVersion:versions.results[0]?.version??row.version,versions:versions.results.map(x=>({version:x.version,status:x.status})),
   gate:{status:g.status,reasons:reasonMessages(g.codes),message:g.message,warnings:assetWarnings(g.judgement,row.type,row.body)},checklist:approvalChecklist(g.judgement,ctx.branch,row),
+  // 결정 34: 승인·내보내기 화면이 강조할 문장(원문 오프셋). 확인 입력의 candidates는 이 목록의 길이다.
+  waitReview:{version:WAIT_REVIEW_VERSION,candidates:waitReviewCandidates(row.body)},
   drift,resaveSuggested,source:row.source??null,aiGenerated:!!row.aiGenerated,campaign:campaign?{id:campaign.id,title:campaign.title}:null,branch:ctx.branch,h7Notice:h7Notice(ctx.branch),enabled,disclaimer:GATE_DISCLAIMER};
 }
 // 행사: 행 전부(시작 시각 내림차순, 최대 200). followUps는 시작 뒤 48시간 안의 예정 행사 합계(가명 코드 없음). types·assetTypes는 화면 라벨(R15a-2b S1).

@@ -5,6 +5,7 @@ import {FRANCHISE_RULES_VERSION,FRANCHISE_REVIEW_NET,isInstant,parseInstant,isDa
 import {judgeFranchiseText,franchiseGateError,franchiseIssueLabels,mentionedFranchiseFacts,type FranchiseJudgement} from './franchise-compliance';
 import {factLine,footnoteIssues,franchiseFactUseIssue,versionStates,currentDisclosureVersion,FRANCHISE_FACT_MESSAGES,type VersionLite} from './franchise-facts';
 import {GATE_DISCLAIMER} from './franchise-gates';
+import {waitReviewSummary,WAIT_REVIEW_VERSION} from './franchise-wait-review';
 import {franchiseItem} from './fact-catalog';
 import {isRecruitmentObjective} from './agency';
 import type {BrandFact} from './brand-facts';
@@ -20,7 +21,8 @@ const oneOf=<T extends string>(list:readonly T[],v:unknown):v is T=>typeof v==='
 
 // ── 버전·한도·패턴 ──
 // .2: 대표 결정(2026-09-26 '3번') — 대기기간 두 문장·수익 질문 안내 문장을 필수 고정 문장에서 권장 문구로 바꿨다(누락·수정은 경고, 사유 코드 51 → 49). 체크리스트 대기기간 우회 항목 문구도 바뀌어 .1 승인은 checklist_outdated다.
-export const ASSETS_VERSION='fr-assets@2026-09-26.2';
+// .3: 대표 결정 34(2026-09-27) — 승인·내보내기에 '대기기간 우회 문장 없음' 사람 확인(waitReview)을 받는다. 없으면 409(wait_review_missing·wait_review_outdated, 사유 코드 49 → 51).
+export const ASSETS_VERSION='fr-assets@2026-09-27.3';
 export const CHECKLIST_VERSION='fr-assets-checklist@2026-09-26.2';
 // 원문 20,000자에서 판정기는 약 0.2초 걸린다(실측). 배열 길이 상한을 넘는 기록은 invalid_record, 입력은 해당 입력 코드로 닫는다(fail closed).
 export const LIMITS=deepFreeze({bodyChars:20000,factRefs:20,placements:20,labelChars:100,capacity:1000,assetRefs:10,codes:1000} as const);
@@ -105,10 +107,12 @@ export const ASSET_RULES:{readonly assetsVersion:string;readonly checklistVersio
 export type AssetFactRef={id:string;version:number};
 export type AssetRef={id:string;version:number};
 export type AssetStatus='draft'|'approved'|'retired';
-export type AssetApproval={by:string;role:'owner'|'admin';at:string;bodyHash:string;checklist:{version:string;checked:ChecklistItemId[]}};
+// waitReview: 대기기간 우회 문장 확인(결정 34). 확인한 판(WAIT_REVIEW_VERSION)과 강조 후보 수만 남긴다(문장 원문 없음). 결정 34 전 승인에는 없다.
+export type WaitReviewRecord={version:string;candidates:number};
+export type AssetApproval={by:string;role:'owner'|'admin';at:string;bodyHash:string;checklist:{version:string;checked:ChecklistItemId[]};waitReview?:WaitReviewRecord};
 // confirmedAt: KST 'YYYY-MM-DD'.
 export type AssetPlacement={label:string;confirmedAt:string};
-export type AssetExportRecord={at:string;by:string;role:'owner'|'admin';bodyHash:string;judgeVersion:string;assetsVersion:string;checklistVersion:string};
+export type AssetExportRecord={at:string;by:string;role:'owner'|'admin';bodyHash:string;judgeVersion:string;assetsVersion:string;checklistVersion:string;waitReview?:WaitReviewRecord};
 export const REVIEW_REASONS=deepFreeze(['fact_changed','version_changed'] as const);
 export type ReviewReason=typeof REVIEW_REASONS[number];
 export type AssetReview={needed:boolean;reasons:ReviewReason[];at:string|null};
@@ -122,7 +126,7 @@ export type EventCounts={applied:number;attended:number;noShow:number};
 export type RecruitmentEvent={id:string;brandId:string;campaignId:string;type:EventType;startsAt:string;placeLabel:string;capacity:number;spendRef:string|null;counts:EventCounts;codes:EventCode[];assetRefs:AssetRef[];status:'scheduled'|'cancelled';version:number;createdAt:string;updatedAt:string};
 
 // ── 사유 코드·결과 ──
-export const ASSET_CODES=deepFreeze(['asset_not_approved','attendance_before_event','block_unresolved','branch_not_a','campaign_not_recruitment','campaign_other_brand','capacity_below_applied','capacity_full','checklist_incomplete','checklist_outdated','code_duplicate','code_unknown','cost_table_missing','event_cancelled','event_started','fact_changed','fact_other_brand','fact_ref_missing','fact_revenue','fact_source_missing','fact_stale','fact_store_scoped','footnote_missing','h8_label_missing','hard_block','hash_mismatch','invalid_body','invalid_code','invalid_counts','invalid_event','invalid_fact_refs','invalid_input','invalid_placement','invalid_record','invalid_timestamp','invalid_type','not_approved','not_draft','not_exported','record_other_brand','review_needed','role_forbidden','section_duplicate','section_missing','section_order','section_unknown','spoken_revenue_figure','switch_off','version_not_current'] as const);
+export const ASSET_CODES=deepFreeze(['asset_not_approved','attendance_before_event','block_unresolved','branch_not_a','campaign_not_recruitment','campaign_other_brand','capacity_below_applied','capacity_full','checklist_incomplete','checklist_outdated','code_duplicate','code_unknown','cost_table_missing','event_cancelled','event_started','fact_changed','fact_other_brand','fact_ref_missing','fact_revenue','fact_source_missing','fact_stale','fact_store_scoped','footnote_missing','h8_label_missing','hard_block','hash_mismatch','invalid_body','invalid_code','invalid_counts','invalid_event','invalid_fact_refs','invalid_input','invalid_placement','invalid_record','invalid_timestamp','invalid_type','not_approved','not_draft','not_exported','record_other_brand','review_needed','role_forbidden','section_duplicate','section_missing','section_order','section_unknown','spoken_revenue_figure','switch_off','version_not_current','wait_review_missing','wait_review_outdated'] as const);
 export type AssetCode=typeof ASSET_CODES[number];
 // 한 판정 단계의 코드는 모두 같은 상태 코드다. 400: 클라이언트가 채울 입력·형식, 403: 역할, 409: 서버 상태(스위치·분기·승인·판정).
 export const ASSET_CODE_STATUS:Readonly<Record<AssetCode,400|403|409>>=deepFreeze({
@@ -131,6 +135,7 @@ export const ASSET_CODE_STATUS:Readonly<Record<AssetCode,400|403|409>>=deepFreez
  fact_stale:409,fact_store_scoped:400,footnote_missing:409,h8_label_missing:409,hard_block:409,hash_mismatch:409,invalid_body:400,invalid_code:400,invalid_counts:400,invalid_event:400,
  invalid_fact_refs:400,invalid_input:400,invalid_placement:400,invalid_record:400,invalid_timestamp:400,invalid_type:400,not_approved:409,not_draft:409,not_exported:409,record_other_brand:400,
  review_needed:409,role_forbidden:403,section_duplicate:409,section_missing:409,section_order:409,section_unknown:409,spoken_revenue_figure:409,switch_off:409,version_not_current:409,
+ wait_review_missing:409,wait_review_outdated:409,
 });
 // 고정 문구. 입력 값을 끼워 넣지 않는다. hard_block·block_unresolved는 판정 결과가 있으면 franchiseGateError 문구(원문 발췌 포함, 기존 발행 게이트와 같음)를 쓰고, 아래는 판정 결과가 없을 때의 문구다.
 export const ASSET_MESSAGES:Readonly<Record<AssetCode,string>>=deepFreeze({
@@ -183,6 +188,8 @@ export const ASSET_MESSAGES:Readonly<Record<AssetCode,string>>=deepFreeze({
  spoken_revenue_figure:`설명회 원고·첫 통화 스크립트에 수익처럼 보이는 수치가 있습니다. 수익 질문은 서면 절차 안내 문장으로만 답합니다(H6). ${GATE_DISCLAIMER}`,
  switch_off:'가맹 모집 기능이 꺼져 있어 모집 자료·행사를 저장·승인·내보낼 수 없습니다.',
  version_not_current:'자료를 저장할 때의 정보공개서 버전이 현재 등록 버전이 아닙니다. 현재 버전의 사실로 새 버전을 저장하세요.',
+ wait_review_missing:'강조된 대기기간·계약·가맹금·정보공개서 문장을 읽고 \'대기기간 우회 문장 없음\'을 확인해야 승인·내보내기할 수 있습니다.',
+ wait_review_outdated:'강조할 문장 목록이 바뀌었습니다. 새로고침하고 강조된 문장을 다시 확인하세요.',
 });
 // 막지 않는 경고. 권장 안내 문장 두 경고는 저장·승인·내보내기 성공 결과의 warnings에 판정기 경고 뒤로 붙는다(assetStructureWarnings).
 export const ASSET_WARNING_MESSAGES=deepFreeze({
@@ -534,6 +541,15 @@ const completeChecklist=(checked:readonly unknown[])=>{
  return new Set(xs).size===xs.length&&xs.every(x=>oneOf(CHECKLIST_IDS,x));
 };
 
+// ── 대기기간 우회 문장 확인(결정 34) ──
+// 입력 {waitReview:{version,confirmed:true,candidates:N}}. 확인이 없거나 false면 wait_review_missing, 판이나 후보 수가 서버가 원문에서 센 것과 다르면 wait_review_outdated(둘 다 409).
+// 후보는 강조용이라 막지 않는다. 판정기(R2)의 hard_block·block은 이 확인으로 풀리지 않는다(결정 25).
+export function waitReviewIssue(body:string,input:unknown):'wait_review_missing'|'wait_review_outdated'|null{
+ const w=isRecord(input)?input.waitReview:undefined;
+ if(!isRecord(w)||w.confirmed!==true)return 'wait_review_missing';
+ return w.version===WAIT_REVIEW_VERSION&&w.candidates===waitReviewSummary(body).candidates?null:'wait_review_outdated';
+}
+
 // ── 승인·내보내기 공통 앞 단계 ──
 // now → 스위치(409) → 역할(403) → 기록 형식·브랜드(400) → 분기 A(409) → 캠페인(400) → 모집 목적(409). R15a-2 라우트의 OFF(409)·ADMIN_ONLY(403)와 같은 순서의 방어 중복이다.
 type Ready={asset:RecruitmentAsset;actor:{id:string;role:'owner'|'admin'};brandId:string;now:string;facts:BrandFact[];versions:VersionLite[]};
@@ -564,9 +580,11 @@ export async function approveDecision(asset:unknown,input:unknown,ctx:AssetConte
   if(input.checklist.version!==CHECKLIST_VERSION)return fail(['checklist_outdated']);
   if(!completeChecklist(input.checklist.checked))return fail(['checklist_incomplete']);
   if(input.bodyHash!==a.bodyHash||await assetBodyHash(a.body)!==a.bodyHash)return fail(['hash_mismatch']);
+  const wr=waitReviewIssue(a.body,input);
+  if(wr)return fail([wr]);
   const g=contentGate(a,r);
   if(!g.judgement||g.codes.length)return fail(g.codes.length?g.codes:['invalid_record'],g.judgement);
-  return pass({approval:{by:r.actor.id,role:r.actor.role,at:r.now,bodyHash:a.bodyHash,checklist:{version:CHECKLIST_VERSION,checked:[...CHECKLIST_IDS]}},judgement:g.judgement},assetWarnings(g.judgement,a.type,a.body));
+  return pass({approval:{by:r.actor.id,role:r.actor.role,at:r.now,bodyHash:a.bodyHash,checklist:{version:CHECKLIST_VERSION,checked:[...CHECKLIST_IDS]},waitReview:waitReviewSummary(a.body)},judgement:g.judgement},assetWarnings(g.judgement,a.type,a.body));
  });
 }
 function approvalOk(a:unknown,now:string):a is AssetApproval{
@@ -574,7 +592,8 @@ function approvalOk(a:unknown,now:string):a is AssetApproval{
   &&isRecord(a.checklist)&&typeof a.checklist.version==='string'&&strList(a.checklist.checked);
 }
 // 같은 입력이면 같은 결과다(사실·버전 배열 순서와 무관). body는 원문 그대로(해시한 바이트와 같음)이고, R15a-2는 record를 exports에 덧붙이고 body만 복사·내려받기로 내준다.
-export async function exportDecision(asset:unknown,ctx:AssetContext&{actor:AssetActor}):Promise<Decision<{body:string;record:AssetExportRecord;judgement:FranchiseJudgement}>>{
+// input.waitReview: 내보내는 사람의 대기기간 우회 문장 확인(결정 34). 승인자의 확인과 따로 받는다.
+export async function exportDecision(asset:unknown,ctx:AssetContext&{actor:AssetActor},input?:unknown):Promise<Decision<{body:string;record:AssetExportRecord;judgement:FranchiseJudgement}>>{
  return guardedAsync(async()=>{
   const r=readyFor(asset,ctx);
   if(isFailure(r))return r;
@@ -584,10 +603,12 @@ export async function exportDecision(asset:unknown,ctx:AssetContext&{actor:Asset
   if(!completeChecklist(approval.checklist.checked))return fail(['not_approved']);
   if(await assetBodyHash(a.body)!==a.bodyHash||approval.bodyHash!==a.bodyHash)return fail(['hash_mismatch']);
   if(a.review.needed)return fail(['review_needed']);
+  const wr=waitReviewIssue(a.body,input);
+  if(wr)return fail([wr]);
   const g=contentGate(a,r);
   if(!g.judgement||g.codes.length)return fail(g.codes.length?g.codes:['invalid_record'],g.judgement);
   const j=g.judgement;
-  return pass({body:a.body,record:{at:r.now,by:r.actor.id,role:r.actor.role,bodyHash:a.bodyHash,judgeVersion:j.version,assetsVersion:ASSETS_VERSION,checklistVersion:approval.checklist.version},judgement:j},assetWarnings(j,a.type,a.body));
+  return pass({body:a.body,record:{at:r.now,by:r.actor.id,role:r.actor.role,bodyHash:a.bodyHash,judgeVersion:j.version,assetsVersion:ASSETS_VERSION,checklistVersion:approval.checklist.version,waitReview:waitReviewSummary(a.body)},judgement:j},assetWarnings(j,a.type,a.body));
  });
 }
 
