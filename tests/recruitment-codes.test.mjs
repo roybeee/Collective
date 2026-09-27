@@ -58,11 +58,11 @@ check('RC-S1 the source has no store-marketing string',!SRC.includes('store-mark
 const CODE=SRC.replace(/^\s*\/\/.*$/gm,'');
 check('RC-S1 no fetch call, clock, randomness, environment or any',!/\bfetch\s*\(/.test(SRC)&&!/\bDate\.now\b|new\s+Date\s*\(\s*\)|Math\.random|\bcrypto\.|\bprocess\.|globalThis/.test(CODE)&&!/\bany\b/.test(CODE));
 check('RC-S1 no record-kind literal or storage call',!/recordStatement|readRecord|listRecords|optionalRecord|recruitment_(code|spend|import)/.test(SRC));
-// 앱 경로 경계: 어떤 app·lib·components·hooks·db 파일도 두 순수 모듈을 import하지 않는다(가져오기 모듈이 모집 모듈을 쓰는 것만 허용).
+// 앱 경로 경계: 두 순수 모듈을 import하는 파일은 가져오기 모듈(모집 모듈을 쓴다)과 R5b-1 서버 모듈(lib/franchise-recruitment-server.ts, 모델 경계 FORBIDDEN)뿐이다.
 const walk=d=>readdirSync(d).flatMap(x=>{const p=join(d,x);return statSync(p).isDirectory()?(x==='node_modules'||x.startsWith('.')?[]:walk(p)):/\.(ts|tsx)$/.test(x)&&!x.endsWith('.d.ts')?[p]:[]});
 const resolveRef=(from,spec)=>{const base=spec.startsWith('@/')?spec.slice(2):spec.startsWith('.')?join(dirname(from),spec):null;return base===null?null:join(base).replace(/\.tsx?$/,'')};
 const importers=['app','lib','components','hooks','db'].flatMap(walk).filter(p=>moduleRefs(readFileSync(p,'utf8'),p).some(r=>['lib/franchise-recruitment','lib/franchise-lead-import'].includes(resolveRef(p,r.spec))));
-check('RC-S1 no app path imports the two R5a modules (only the lead-import module uses the recruitment module)',same(importers,[join('lib','franchise-lead-import.ts')]));
+check('RC-S1 only the lead-import module and the R5b-1 server import the two R5a modules',same([...importers].sort(),[join('lib','franchise-lead-import.ts'),join('lib','franchise-recruitment-server.ts')].sort()));
 
 // ════ 상수·채널 ════
 check('RC-CH1 ten channels in plan order with the Korean labels',same(rc.RECRUITMENT_CHANNELS,[{key:'portal',label:'창업 포털'},{key:'search_ad',label:'네이버 검색광고'},{key:'expo',label:'박람회'},{key:'briefing',label:'사업설명회'},{key:'lead_ad',label:'메타 리드광고'},{key:'youtube',label:'유튜브'},{key:'blog_post',label:'블로그'},{key:'store_qr',label:'매장 QR'},{key:'owner_referral',label:'점주 추천'},{key:'community',label:'커뮤니티'}]));

@@ -107,6 +107,7 @@ check('franchise row is available when r_franchise is on',row(full({flags:flagLi
 ok('franchise available reason keeps the heuristic disclaimer',row(full({flags:flagList(true)}),'franchise').reason.includes('COLLECTIVE 휴리스틱 · 법률 자문 아님'));
 ok('franchise available reason names the campaign recruitment objective (R3)',row(full({flags:flagList(true)}),'franchise').reason.includes('캠페인 가맹 모집 목적(대표·관리자)'));
 ok('franchise available reason names the recruitment asset and event tabs (R15a-2b)',row(full({flags:flagList(true)}),'franchise').reason.includes('모집 자료(승인·내보내기 대표·관리자)·설명회 행사'));
+ok('franchise available reason names the inflow codes and recruitment spend before the legal gate (R5b-1)',(r=>r.includes('유입 코드·모집 비용(대표·관리자) · 법정 절차 판정'))(row(full({flags:flagList(true)}),'franchise').reason));
 check('franchise row is blocked with the switch reason when off',view(row(full({flags:flagList(false)}),'franchise')),{status:'blocked',reason:'기능 스위치 r_franchise 꺼짐 · 소유자가 켭니다',link:{label:'가맹 모집 화면으로 이동',view:'franchise'}});
 check('unknown or broken flag state is not available',[row(full(),'franchise').status,row(full({flags:'x'}),'franchise').status,row(full({flags:[{flag:'r_franchise'}]}),'franchise').status],['blocked','blocked','blocked']);
 check('franchiseSwitch reads on, off and unknown',[franchiseSwitch(flagList(true)),franchiseSwitch(flagList(false)),franchiseSwitch(null),franchiseSwitch([{flag:'r_franchise',enabled:'yes'}]),franchiseSwitch([{flag:'online_grading',enabled:true}])],[true,false,null,null,null]);

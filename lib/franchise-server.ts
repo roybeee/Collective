@@ -18,11 +18,12 @@ import {versionStates,type VersionLite} from './franchise-facts';
 import {flagPublicationsForFactChange} from './execution-server';
 import {ASSET_ACTIONS,EVENT_ACTIONS,FranchiseAssetError,runAssetAction,replayAssetExport,assetView,markAssetsForVersionChange,type AssetAction,type AssetAuditExtra} from './franchise-assets-server';
 import type {BrandFact} from './brand-facts';
+import {RECRUITMENT_ACTIONS,INPUT_BOUND,INFLOW_FILTERS,FranchiseRecruitmentError,runRecruitmentAction,recruitmentTargetOf,recruitmentView,readLeadCodes,unregisteredCount,attributionsOf,attributionView,inflowMatch,type RecruitmentAction,type RecruitmentAuditExtra} from './franchise-recruitment-server';
 import {FRANCHISE_ERRORS,FRANCHISE_LABELS,CONTACT_FIELDS,BUDGET_BANDS,TIMING_BANDS,SOURCE_CHANNELS,BASIS_TYPES,REFERRAL_FROM,MARKETING_METHODS,CLOSE_REASONS,REVEAL_PURPOSES,EXPORT_PURPOSES,BACKDATE_REASONS,CORRECTION_REASONS,REGISTRY_AMEND_REASONS,BOARD_TODOS,SUBJECT_REQUEST_TYPES,SUBJECT_REQUEST_STATUS,SUBJECT_RESOLUTIONS,SUBJECT_CHANNELS,BRANCHES,EXPORT_COLUMNS,
  STAGE_LABELS,SOURCE_LABELS,BUDGET_LABELS,TIMING_LABELS,BASIS_LABELS,MARKETING_STATUS_LABELS,CONTACT_NOTE,DUE_LABEL,RETENTION_LABEL,RECHECK_LABEL,MEMO_HINT,ACTIVITY_EVENTS,
  normalizePhone,normalizeEmail,normalizeName,formatPhone,maskName,maskPhone,maskEmail,stageOrder,retentionUntil,isContactExpired,marketingRecheckDue,subjectDueAt,auditCutoff,isAdminRole,isOwnLead,canSeeLead,canEditLead,canReveal,canClose,
- leadActions,allowedMoves,marketingOptions,eligibilityScore,csvFile,leadSystemCode,codeMessages,describeGate,describeWindow,isGeneralStage,isEvidenceStage,isBoardQuery,
- type FranchiseErrorKey,type LeadRecord,type ActorSnapshot,type Who,type Branch,type EligibilityCriteria,type ContactField,type LeadTask,type LeadBasis,type LeadMarketing,type EvidenceType,type CorrectionReason,type LeadEventType,type AuditAction,type ContactState} from './franchise';
+ leadActions,allowedMoves,marketingOptions,eligibilityScore,csvFile,leadSystemCode,codeMessages,describeGate,describeWindow,isGeneralStage,isEvidenceStage,isBoardQuery,STRIKE_REASONS,
+ type FranchiseErrorKey,type LeadRecord,type LeadCode,type ActorSnapshot,type Who,type Branch,type EligibilityCriteria,type ContactField,type LeadTask,type LeadBasis,type LeadMarketing,type EvidenceType,type CorrectionReason,type LeadEventType,type AuditAction,type ContactState} from './franchise';
 
 type Json=Record<string,unknown>;
 // ── 오류 ──
@@ -31,7 +32,7 @@ export class FranchiseError extends ApiError{constructor(status:number,message:s
 function fail(key:FranchiseErrorKey,extra?:Json):never{const e=FRANCHISE_ERRORS[key];throw new FranchiseError(e.status,e.text,extra)}
 function bad(message:string):never{throw new ApiError(400,message)}
 export function franchiseFailure(error:unknown){
- if(error instanceof FranchiseError||error instanceof FranchiseAssetError)return json({error:error.message,...error.extra},error.status);
+ if(error instanceof FranchiseError||error instanceof FranchiseAssetError||error instanceof FranchiseRecruitmentError)return json({error:error.message,...error.extra},error.status);
  if(error instanceof ApiError||error instanceof AuthError)return json({error:error.message},error.status);
  console.error('franchise_request_failed');
  return json({error:'처리하지 못했습니다. 입력한 내용을 유지한 채 다시 시도해 주세요.'},500);
@@ -47,10 +48,10 @@ type TemplateRow=Registered&{label:string;sha256:string;checkedItems:number[];st
 type NoticeRow=Registered&{versionLabel:string;text:string;sha256:string;controllerName:string;processorNames:string[]};
 type EvidenceRow={id:string;leadId:string;brandId:string;evidenceType:EvidenceType;recordedAt:string;recordedBy:ActorSnapshot;backdateApproval:BackdateApproval|null;supersedes:string|null;correctionReason:CorrectionReason|null;docSha256:string|null;storageLabel:string|null;payload:Json|null;voided?:true};
 type Receipt={requestAction?:string;status?:number;result?:Json;target?:string|null};
-type EventRow={id:string;leadId:string;brandId:string;type:LeadEventType;at:string;actor:ActorSnapshot;from?:LeadStage;to?:LeadStage;reasonCodes?:string[];fields?:ContactField[];taskFields?:string[];basis?:Json;consent?:Json;withdrawnAt?:string;evidenceId?:string;evidenceType?:EvidenceType;supersedes?:string|null;voided?:true;closeReason?:string|null;assigneeId?:string|null}&Receipt;
+type EventRow={id:string;leadId:string;brandId:string;type:LeadEventType;at:string;actor:ActorSnapshot;from?:LeadStage;to?:LeadStage;reasonCodes?:string[];fields?:ContactField[];taskFields?:string[];count?:number;basis?:Json;consent?:Json;withdrawnAt?:string;evidenceId?:string;evidenceType?:EvidenceType;supersedes?:string|null;voided?:true;closeReason?:string|null;assigneeId?:string|null}&Receipt;
 type AuditRow={id:string;brandId:string;action:AuditAction;actor:ActorSnapshot;at:string;leadId?:string;recordId?:string;fields?:ContactField[];purpose?:string;contactMode?:'masked'|'full';count?:number;matchedLeadIds?:string[];counts?:{leads:number;keys:number;audits:number;remaining:number};byBrand?:Record<string,number>;trigger?:'board_open'|'manual'|'inline';reasonCode?:string;changedFields?:string[];assigneeId?:string|null;alreadyErased?:boolean;
  // 재생 묶음: 열람은 그때 리드 버전, 내보내기는 내보낸 리드 id·버전·연락처 유무의 SHA-256. 재생은 이 값이 같을 때만 값을 다시 만든다.
- leadVersion?:number;leadSetSha256?:string;requestIds?:string[]}&AssetAuditExtra&Receipt;
+ leadVersion?:number;leadSetSha256?:string;requestIds?:string[];inputSha256?:string}&AssetAuditExtra&RecruitmentAuditExtra&Receipt;
 type SubjectRequestRow={id:string;brandId:string;leadId:string|null;type:string;channel:string;receivedAt:string;dueAt:string;status:string;resolution:string|null;resolvedAt:string|null;version:number;createdAt:string;createdBy:ActorSnapshot};
 type KeyRow={id:string;leadId:string;brandId:string;type:'phone'|'email';createdAt:string};
 
@@ -91,28 +92,30 @@ const changesOf=(r:D1Result|undefined)=>Number(r?.meta?.changes??0);
 // ── 작업 목록 ──
 const SETTINGS_ACTIONS=['save_profile','register_disclosure_version','retire_disclosure_version','amend_disclosure_version','register_contract_template','retire_contract_template','amend_contract_template','register_privacy_notice','retire_privacy_notice'] as const;
 const EVIDENCE_ACTIONS=['record_delivery','record_advice','record_forecast','record_contract','record_fee','record_agreement','void_evidence'] as const;
-const LEAD_MUTATIONS=['update_contact','update_task','move_stage','reopen_lead','claim_lead','assign_lead','record_source_notice','set_marketing_consent'] as const;
+const LEAD_MUTATIONS=['update_contact','update_task','move_stage','reopen_lead','claim_lead','assign_lead','record_source_notice','set_marketing_consent','add_lead_codes','strike_lead_code'] as const;
 const OTHER_ACTIONS=['create_lead','reveal_contact','find_contact','export_leads','purge','erase_lead','add_subject_request','update_subject_request'] as const;
 // 트랙 R R15a-2a 모집 자료·행사 작업 9개(lib/franchise-assets-server.ts).
-export const FRANCHISE_ACTIONS=[...SETTINGS_ACTIONS,...EVIDENCE_ACTIONS,...LEAD_MUTATIONS,...OTHER_ACTIONS,...ASSET_ACTIONS,...EVENT_ACTIONS] as const;
+// 트랙 R R5b-1 모집 코드·비용 작업 4개(lib/franchise-recruitment-server.ts).
+export const FRANCHISE_ACTIONS=[...SETTINGS_ACTIONS,...EVIDENCE_ACTIONS,...LEAD_MUTATIONS,...OTHER_ACTIONS,...ASSET_ACTIONS,...EVENT_ACTIONS,...RECRUITMENT_ACTIONS] as const;
 type Action=typeof FRANCHISE_ACTIONS[number];
 const has=(list:readonly string[],action:string)=>list.includes(action);
 // leadId로 기존 리드를 읽는 작업.
 const ON_LEAD:readonly string[]=[...EVIDENCE_ACTIONS,...LEAD_MUTATIONS,'reveal_contact','erase_lead'];
 // 모집 자료 승인·내보내기·게시 위치·폐기와 행사 등록·변경·취소는 대표·관리자만(직원 403). 초안 저장·신청·참석은 모든 역할.
-const ADMIN_ACTIONS:readonly string[]=[...SETTINGS_ACTIONS,...EVIDENCE_ACTIONS,'export_leads','purge','erase_lead','update_subject_request','assign_lead','reopen_lead','asset_approve','asset_export','asset_place','asset_retire','event_save','event_cancel'];
+// 모집 코드 발급·사용 중지, 모집 비용 기록·무효화, 리드 모집 코드 제외(R5b-1)도 대표·관리자만.
+const ADMIN_ACTIONS:readonly string[]=[...SETTINGS_ACTIONS,...EVIDENCE_ACTIONS,'export_leads','purge','erase_lead','update_subject_request','assign_lead','reopen_lead','asset_approve','asset_export','asset_place','asset_retire','event_save','event_cancel',...RECRUITMENT_ACTIONS,'strike_lead_code'];
 // 연락처 키가 없어도 되는 작업(설정, 파기·삭제, 정보주체 요청, 광고성 정보 철회, 모집 자료·행사 9개). 그 밖은 리드 조회 전에 503이다.
-const KEY_EXEMPT:readonly string[]=[...SETTINGS_ACTIONS,'purge','erase_lead','add_subject_request','update_subject_request',...ASSET_ACTIONS,...EVENT_ACTIONS];
-// 스위치가 꺼져도 되는 작업. 광고성 정보 철회도 된다. 대표·관리자는 정보주체 요청 처리(정정·출처 고지·종결)도 한다. 모집 자료 폐기·행사 취소는 보호 방향이라 된다.
-const OFF_EXEMPT:readonly string[]=['reveal_contact','find_contact','export_leads','purge','erase_lead','add_subject_request','update_subject_request','asset_retire','event_cancel'];
+const KEY_EXEMPT:readonly string[]=[...SETTINGS_ACTIONS,'purge','erase_lead','add_subject_request','update_subject_request',...ASSET_ACTIONS,...EVENT_ACTIONS,...RECRUITMENT_ACTIONS];
+// 스위치가 꺼져도 되는 작업. 광고성 정보 철회도 된다. 대표·관리자는 정보주체 요청 처리(정정·출처 고지·종결)도 한다. 모집 자료 폐기·행사 취소·모집 비용 무효화·모집 코드 사용 중지는 보호 방향이라 된다.
+const OFF_EXEMPT:readonly string[]=['reveal_contact','find_contact','export_leads','purge','erase_lead','add_subject_request','update_subject_request','asset_retire','event_cancel','spend_void','code_retire'];
 const NO_VERSION:readonly string[]=['reveal_contact','erase_lead'];
 
-type Ctx={who:Actor;owner:string;action:Action;input:Json;rid:string;now:string;brandId:string;enabled:boolean;by:ActorSnapshot};
+type Ctx={who:Actor;owner:string;action:Action;input:Json;rid:string;now:string;brandId:string;enabled:boolean;by:ActorSnapshot;inputSha256?:string};
 type Outcome={result:Json;lead?:LeadRecord|null;extra?:Json;leadView?:false};
 const receipt=(c:Ctx,result:Json,target?:string|null):Receipt=>({requestAction:c.action,status:200,result,...(target!==undefined?{target}:{})});
 const receiptEvent=(c:Ctx,lead:{id:string;brandId:string},type:LeadEventType,result:Json,extra:Partial<EventRow>={}):EventRow=>({id:'ev-'+c.rid,leadId:lead.id,brandId:lead.brandId,type,at:c.now,actor:c.by,...extra,...receipt(c,result,lead.id)});
 const plainEvent=(c:Ctx,lead:{id:string;brandId:string},type:LeadEventType,extra:Partial<EventRow>={}):EventRow=>({id:'ev-'+uid(),leadId:lead.id,brandId:lead.brandId,type,at:c.now,actor:c.by,...extra});
-const receiptAudit=(c:Ctx,action:AuditAction,result:Json,extra:Partial<AuditRow>={},target?:string|null):AuditRow=>({id:'au-'+c.rid,brandId:c.brandId,action,actor:c.by,at:c.now,...extra,...receipt(c,result,target)});
+const receiptAudit=(c:Ctx,action:AuditAction,result:Json,extra:Partial<AuditRow>={},target?:string|null):AuditRow=>({id:'au-'+c.rid,brandId:c.brandId,action,actor:c.by,at:c.now,...extra,...(c.inputSha256?{inputSha256:c.inputSha256}:{}),...receipt(c,result,target)});
 const plainAudit=(c:Ctx,action:AuditAction,extra:Partial<AuditRow>={}):AuditRow=>({id:'au-'+uid(),brandId:c.brandId,action,actor:c.by,at:c.now,...extra});
 // 리드를 바꾸는 작업은 버전을 올린다. 가맹희망자 활동(ACTIVITY_EVENTS)만 마지막 활동 시각을 바꾼다.
 const bump=(c:Ctx,lead:LeadRecord,patch:Partial<LeadRecord>,activity:LeadEventType|null):LeadRecord=>({...lead,...patch,version:lead.version+1,updatedAt:c.now,...(activity&&ACTIVITY_EVENTS.includes(activity)?{lastActivityAt:c.now}:{})});
@@ -126,8 +129,13 @@ function targetOf(action:string,input:Json):string|null|undefined{
  if(has(ASSET_ACTIONS,action))return String(input.assetId??'');
  if(action==='event_save')return typeof input.eventId==='string'&&input.eventId?input.eventId:null;
  if(has(EVENT_ACTIONS,action))return String(input.eventId??'');
+ // 모집 코드·비용(R5b-1): 발급·비용 기록은 null(입력 해시로 대조), 사용 중지는 코드, 무효화는 비용 id.
+ if(has(RECRUITMENT_ACTIONS,action))return recruitmentTargetOf(action,input);
  return undefined;
 }
+// 영수증 입력 해시: requestId를 뺀 입력을 키 정렬 정본 JSON으로 만든 SHA-256(INPUT_BOUND 작업만). 같은 요청 번호로 다른 입력을 보내면 재생하지 않고 409다.
+const canonical=(v:unknown):unknown=>Array.isArray(v)?v.map(canonical):isRecord(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
+async function inputHashOf(input:Json){const rest:Json={};for(const k of Object.keys(input))if(k!=='requestId')rest[k]=input[k];return sha256Hex(JSON.stringify(canonical(rest)))}
 
 // ── 설정 읽기 ──
 const profileOf=(owner:string,brandId:string)=>optionalRecord<FranchiseProfile>(owner,'franchise_profile',brandId);
@@ -196,23 +204,26 @@ async function maskedContact(lead:LeadRecord,now:string,full:boolean){
 }
 const stateOf=(lead:LeadRecord,now:string):ContactState=>isContactExpired(lead,now)?'expired':lead.contactState;
 // 보드 행은 이름과 표시할 연락처 하나(전화 우선)만 복호화한다.
-async function leadSummary(who:Who,lead:LeadRecord,now:string,criteria:EligibilityCriteria|null,full:boolean):Promise<LeadSummary>{
+// attribution: 모집 코드 귀속(R5b-1, 읽을 때 계산). 넘기지 않으면 칸이 없다.
+async function leadSummary(who:Who,lead:LeadRecord,now:string,criteria:EligibilityCriteria|null,full:boolean,attribution?:Json):Promise<LeadSummary>{
  const state=stateOf(lead,now);
  return {id:lead.id,systemCode:lead.systemCode,stage:lead.stage,closeReason:lead.closeReason,assigneeId:lead.assigneeId,assignedToMe:lead.assigneeId===who.id,contactState:state,
   contact:await maskedContact(lead,now,full),task:lead.task,basisType:lead.basis.type,sourceNoticePending:state==='present'&&lead.basis.type==='referral'&&!lead.basis.sourceNoticedAt,
-  marketingStatus:lead.marketing.status,eligibility:eligibilityScore(lead,criteria),lastActivityAt:lead.lastActivityAt,retentionUntil:retentionUntil(lead),retentionLabel:RETENTION_LABEL,version:lead.version,createdAt:lead.createdAt};
+  marketingStatus:lead.marketing.status,eligibility:eligibilityScore(lead,criteria),lastActivityAt:lead.lastActivityAt,retentionUntil:retentionUntil(lead),retentionLabel:RETENTION_LABEL,version:lead.version,createdAt:lead.createdAt,...(attribution?{attribution}:{})};
 }
 function eventView(e:EventRow){
  return {id:e.id,type:e.type,at:e.at,actor:{id:e.actor.id,role:e.actor.role},...(e.from?{from:e.from}:{}),...(e.to?{to:e.to}:{}),...(e.reasonCodes?{reasons:codeMessages(e.reasonCodes)}:{}),...(e.fields?{fields:e.fields}:{}),...(e.taskFields?{taskFields:e.taskFields}:{}),
   ...(e.basis?{basis:e.basis}:{}),...(e.consent?{consent:e.consent}:{}),...(e.withdrawnAt?{withdrawnAt:e.withdrawnAt}:{}),...(e.evidenceId?{evidenceId:e.evidenceId}:{}),...(e.evidenceType?{evidenceType:e.evidenceType}:{}),...(e.supersedes?{supersedes:e.supersedes}:{}),
-  ...(e.voided?{voided:true}:{}),...(e.closeReason?{closeReason:e.closeReason}:{}),...(e.assigneeId!==undefined?{assigneeId:e.assigneeId}:{})};
+  ...(e.voided?{voided:true}:{}),...(e.closeReason?{closeReason:e.closeReason}:{}),...(e.assigneeId!==undefined?{assigneeId:e.assigneeId}:{}),...(e.count!==undefined?{count:e.count}:{})};
 }
 async function leadDetail(who:Who,owner:string,lead:LeadRecord,now:string,enabled:boolean){
  const admin=isAdminRole(who.role),{ctx,profile}=await gateContext(owner,lead.brandId);
- const summary=await leadSummary(who,lead,now,profile?.eligibility??null,true);
+ const a=(await attributionsOf(owner,[lead])).get(lead.id);
+ const summary=await leadSummary(who,lead,now,profile?.eligibility??null,true,a?attributionView(a):undefined);
  const events=(await listRecords<EventRow>(owner,'franchise_lead_event',lead.id)).filter(e=>e.leadId===lead.id).sort((a,b)=>ms(b.at)-ms(a.at)||(a.id<b.id?1:-1)).slice(0,200).map(eventView);
  const actionLead={...lead,contactState:summary.contactState};
  const detail:Json={...summary,hasMemo:summary.contactState==='present'&&lead.memo!==null,basis:lead.basis,marketing:lead.marketing,marketingRecheck:marketingRecheckDue(lead,now),firstContactAt:lead.firstContactAt,contractedAt:lead.contractedAt,closedAt:lead.closedAt,closedFrom:lead.closedFrom,
+  codes:(lead.codes??[]).map(c=>({code:c.code,at:c.at,source:c.source})),codeStrikes:(lead.codeStrikes??[]).map(x=>({code:x.code,at:x.at,reason:x.reason})),
   events,allowedActions:leadActions(who,actionLead,enabled),allowedMoves:allowedMoves(who,actionLead,enabled),marketingOptions:marketingOptions(who,actionLead,enabled),disclaimer:GATE_DISCLAIMER};
  if(!admin)return detail;
  const rows=await evidenceRows(owner,lead),active=new Set(activeEvidence(rows).map(r=>r.id)),gate=leadGateOf(rows);
@@ -538,17 +549,39 @@ async function createLead(c:Ctx):Promise<Outcome>{
  if(!phone&&!email)fail('CONTACT_REQUIRED');
  const memo=readMemo(i.memo),task=await readTask(c,i.task,null),basis=await readBasis(c,i.basis);
  const marketing:LeadMarketing=i.marketing===undefined||i.marketing===null||(isRecord(i.marketing)&&i.marketing.status==='none')?{status:'none'}:isRecord(i.marketing)?await readMarketingGiven(c,i.marketing):bad('광고성 정보 동의 입력을 확인해 주세요.');
+ const codes=i.codes===undefined||i.codes===null?[]:readLeadCodes(i.codes,[]);
  const assigneeId=await readAssignee(c,i.assigneeId,true),leadId=uid();
  const keys=await contactKeys(c,{phone,email},leadId),systemCode=await newSystemCode(c.owner);
  const lead:LeadRecord={id:leadId,brandId:c.brandId,systemCode,stage:'inquiry',closeReason:null,closedFrom:null,assigneeId,
   contact:{name:await sealField(name),phone:phone?await sealField(phone):null,email:email?await sealField(email):null},memo:memo?await sealField(memo):null,contactState:'present',
-  task,basis,marketing,firstContactAt:null,lastActivityAt:c.now,contractedAt:null,closedAt:null,version:1,createdAt:c.now,createdBy:c.by,updatedAt:c.now};
+  task,basis,marketing,firstContactAt:null,lastActivityAt:c.now,contractedAt:null,closedAt:null,...(codes.length?{codes:codes.map(code=>leadCode(c,code))}:{}),version:1,createdAt:c.now,createdBy:c.by,updatedAt:c.now};
  const result={leadId,systemCode,version:1,stage:'inquiry'};
  const basisEvent={type:basis.type,...(basis.noticeId?{noticeId:basis.noticeId,noticeGivenAt:basis.noticeGivenAt}:{}),...(basis.referralFrom?{referralFrom:basis.referralFrom}:{})};
  await commit([leadStmt(c.owner,lead),...keys.map(k=>keyInsert(c,leadId,k)),eventStmt(c.owner,receiptEvent(c,lead,'created',result,{basis:basisEvent})),
   ...(marketing.status==='given'?[eventStmt(c.owner,plainEvent(c,lead,'marketing_given',{consent:{method:marketing.method,at:marketing.at,noticeId:marketing.noticeId}}))]:[])]);
  await verifyKeys(c,keys,leadId,[database().prepare("DELETE FROM records WHERE owner=? AND kind='franchise_lead' AND id=?").bind(c.owner,`${c.owner}:franchise_lead:${leadId}`),database().prepare("DELETE FROM records WHERE owner=? AND kind='franchise_lead_event' AND parent_id=?").bind(c.owner,leadId),deleteKeys(c.owner,leadId)]);
- return {result,lead};
+ return {result,lead,...(await codeWarnings(c,codes))};
+}
+// ── 리드 모집 코드(R5b-1) ──
+const leadCode=(c:Ctx,code:string):LeadCode=>({code,at:c.now,by:c.by,source:'manual'});
+async function codeWarnings(c:Ctx,codes:readonly string[]):Promise<{extra?:Json}>{return await unregisteredCount(c.owner,c.brandId,codes)?{extra:{warnings:['code_not_registered']}}:{}}
+// 추가만 한다(앞 코드는 바뀌지 않는다). 가맹희망자 활동이 아니라 마지막 활동·보존 기한을 늘리지 않는다(codes_added는 ACTIVITY_EVENTS 밖). 이벤트는 필드 이름과 건수만 남긴다.
+async function addLeadCodes(c:Ctx,lead:LeadRecord):Promise<Outcome>{
+ const current=lead.codes??[],added=readLeadCodes(c.input.codes,current);
+ if(!added.length)bad('바뀐 내용이 없습니다.');
+ const updated=bump(c,lead,{codes:[...current,...added.map(code=>leadCode(c,code))]},'codes_added'),result={leadId:lead.id,version:updated.version,count:added.length};
+ await commit([leadStmt(c.owner,updated),eventStmt(c.owner,receiptEvent(c,lead,'codes_added',result,{taskFields:['codes'],count:added.length}))]);
+ return {result,lead:updated,...(await codeWarnings(c,added))};
+}
+// 제외(대표·관리자): 코드를 지우지 않고 제외 기록을 더한다(되돌리지 않는다). 파기·삭제된 리드에도 된다. 감사에는 사유 코드만 남긴다.
+async function strikeLeadCode(c:Ctx,lead:LeadRecord):Promise<Outcome>{
+ const reason=pick(STRIKE_REASONS,c.input.reason,'제외 사유를 골라 주세요.'),code=readLeadCodes([c.input.code],[])[0];
+ if(!(lead.codes??[]).some(x=>x.code===code))fail('LEAD_CODE_NOT_ON_LEAD');
+ const strikes=lead.codeStrikes??[];
+ if(strikes.some(x=>x.code===code))fail('LEAD_CODE_STRUCK');
+ const updated=bump(c,lead,{codeStrikes:[...strikes,{code,at:c.now,by:c.by,reason}]},'codes_struck'),result={leadId:lead.id,version:updated.version,count:1};
+ await commit([leadStmt(c.owner,updated),eventStmt(c.owner,receiptEvent(c,lead,'codes_struck',result,{taskFields:['codes'],count:1})),auditStmt(c.owner,plainAudit(c,'code_strike',{leadId:lead.id,reasons:[reason]}))]);
+ return {result,lead:updated};
 }
 async function updateContact(c:Ctx,lead:LeadRecord):Promise<Outcome>{
  const i=c.input,ci=isRecord(i.contact)?i.contact:{},given=(k:string)=>Object.hasOwn(ci,k)&&ci[k]!==undefined,cur=lead.contact!;
@@ -927,7 +960,7 @@ function leadRoleCheck(c:Ctx,lead:LeadRecord){
  }
 }
 // 연락처가 파기·삭제된 리드에 허용하는 작업: 종결, 증빙·무효화, 삭제(멱등), 광고성 정보 철회(보호 방향). 정보주체 요청은 리드 작업이 아니다.
-const allowedWithoutContact=(action:string,input:Json)=>action==='erase_lead'||has(EVIDENCE_ACTIONS,action)||(action==='move_stage'&&input.to==='closed')||(action==='set_marketing_consent'&&input.status==='withdrawn');
+const allowedWithoutContact=(action:string,input:Json)=>action==='erase_lead'||action==='strike_lead_code'||has(EVIDENCE_ACTIONS,action)||(action==='move_stage'&&input.to==='closed')||(action==='set_marketing_consent'&&input.status==='withdrawn');
 function offAllowed(action:string,input:Json,who:Actor){
  if(has(OFF_EXEMPT,action)||(action==='set_marketing_consent'&&input.status==='withdrawn'))return true;
  return isAdminRole(who.role)&&(action==='update_contact'||action==='record_source_notice'||(action==='move_stage'&&input.to==='closed'));
@@ -935,11 +968,18 @@ function offAllowed(action:string,input:Json,who:Actor){
 async function receiptIdOf(userId:string,action:string,requestId:string){return (await sha256Hex(userId+'\n'+action+'\n'+requestId)).slice(0,40)}
 // 영수증 재생: 같은 사람·작업·요청 번호면 저장한 상태·결과를 그대로 돌려주고 새 행을 쓰지 않는다. 다른 대상이면 409. 열람·내보내기 값은 5분 안에만, 지금 권한이 있을 때만,
 // 감사 행이 적은 것과 같을 때만(열람: 리드 버전, 내보내기: 리드 묶음 해시·건수) 다시 만든다. 그 사이 연락처·리드가 바뀌었으면 REPLAY_EXPIRED다(감사 기록보다 많이 주지 않는다).
-async function replay(who:Actor,action:Action,input:Json,rid:string,now:string):Promise<Response|null>{
+// 모집 코드·비용(R5b-1): 같은 요청 번호를 다른 모집 코드·비용 작업에 쓰면 재생하지 않고 409다(영수증 id가 작업마다 달라 따로 찾는다).
+async function reusedElsewhere(who:Actor,action:string,requestId:string){
+ if(!has(RECRUITMENT_ACTIONS,action))return false;
+ const ids=await Promise.all(RECRUITMENT_ACTIONS.filter(a=>a!==action).map(async a=>`${who.owner}:franchise_audit:au-${await receiptIdOf(who.id,a,requestId)}`));
+ return !!await database().prepare(`SELECT 1 FROM records WHERE owner=? AND id IN (${ids.map(()=>'?').join(',')}) LIMIT 1`).bind(who.owner,...ids).first();
+}
+async function replay(who:Actor,action:Action,input:Json,rid:string,now:string,requestId:string,inputSha256?:string):Promise<Response|null>{
  const owner=who.owner,row=await database().prepare('SELECT kind,data FROM records WHERE owner=? AND id IN (?,?) LIMIT 1').bind(owner,`${owner}:franchise_lead_event:ev-${rid}`,`${owner}:franchise_audit:au-${rid}`).first<{kind:string;data:string}>();
- if(!row)return null;
+ if(!row){if(await reusedElsewhere(who,action,requestId))fail('REQUEST_REUSED');return null}
  const r=JSON.parse(row.data) as (EventRow|AuditRow)&{leadId?:string},target=targetOf(action,input),brandId=typeof input.brandId==='string'?input.brandId.trim():'';
  if(r.requestAction!==action||r.brandId!==brandId||(target!==undefined&&(r.target??null)!==target))fail('REQUEST_REUSED');
+ if(inputSha256!==undefined&&(r as AuditRow).inputSha256!==inputSha256)fail('REQUEST_REUSED');
  const status=r.status??200,result=(r.result??{}) as Json;
  if(status!==200)return json({ok:false,...result,result,replayed:true},status);
  const fresh=Date.parse(now)-Date.parse(r.at)<=300000,admin=isAdminRole(who.role);
@@ -970,8 +1010,8 @@ export async function franchisePost(req:Request):Promise<Response>{
  const owner=who.owner,lockKey=owner+':franchise',token=await acquireLock(lockKey);
  try{
   await executionRate(owner,'franchise');
-  const now=stamp(),rid=await receiptIdOf(who.id,action,requestId);
-  const replayed=await replay(who,action as Action,input,rid,now);
+  const now=stamp(),rid=await receiptIdOf(who.id,action,requestId),inputSha256=has(INPUT_BOUND,action)?await inputHashOf(input):undefined;
+  const replayed=await replay(who,action as Action,input,rid,now,requestId,inputSha256);
   if(replayed)return replayed;
   const enabled=await isEnabled(owner,'r_franchise'),withdrawal=action==='set_marketing_consent'&&input.status==='withdrawn';
   if(!enabled&&!offAllowed(action,input,who))fail('OFF');
@@ -983,7 +1023,7 @@ export async function franchisePost(req:Request):Promise<Response>{
    if(action==='create_lead'&&((typeof input.assigneeId==='string'&&input.assigneeId!==who.id)||(isRecord(input.marketing)&&input.marketing.status==='given')))fail('ADMIN_ONLY');
   }
   if(!has(KEY_EXEMPT,action)&&!withdrawal)requireContactKey();
-  const c:Ctx={who,owner,action:action as Action,input,rid,now,brandId,enabled,by:snap(who)};
+  const c:Ctx={who,owner,action:action as Action,input,rid,now,brandId,enabled,by:snap(who),...(inputSha256?{inputSha256}:{})};
   let out:Outcome;
   if(has(ON_LEAD,action)){
    let lead=await loadLead(c);
@@ -1016,6 +1056,8 @@ function onLead(c:Ctx,lead:LeadRecord):Promise<Outcome>{
   case 'record_fee':return recordFee(c,lead);
   case 'record_agreement':return recordAgreement(c,lead);
   case 'void_evidence':return voidEvidence(c,lead);
+  case 'add_lead_codes':return addLeadCodes(c,lead);
+  case 'strike_lead_code':return strikeLeadCode(c,lead);
   default:return fail('UNKNOWN_ACTION');
  }
 }
@@ -1023,6 +1065,9 @@ function other(c:Ctx):Promise<Outcome>{
  // 모집 자료·행사(R15a-2a): commit·영수증을 port로 넘긴다(새 모듈은 이 모듈을 import하지 않는다).
  if(has(ASSET_ACTIONS,c.action)||has(EVENT_ACTIONS,c.action))return runAssetAction({owner:c.owner,brandId:c.brandId,now:c.now,enabled:c.enabled,actor:{id:c.who.id,role:c.who.role},input:c.input,action:c.action as AssetAction,
   port:{commit:(s,stale)=>commit(s,stale),receipt:(a,r,x,t,s)=>auditStmt(c.owner,{...receiptAudit(c,a,r,x,t),...(s?{status:s}:{})})}});
+ // 모집 코드·비용(R5b-1): 같은 port 방식(새 모듈은 이 모듈을 import하지 않는다).
+ if(has(RECRUITMENT_ACTIONS,c.action))return runRecruitmentAction({owner:c.owner,brandId:c.brandId,now:c.now,enabled:c.enabled,actor:{id:c.who.id,role:c.who.role},input:c.input,action:c.action as RecruitmentAction,
+  port:{commit:(s,stale)=>commit(s,stale),receipt:(a,r,x,t)=>auditStmt(c.owner,receiptAudit(c,a,r,x,t))}});
  switch(c.action){
   case 'save_profile':return saveProfile(c);
   case 'register_disclosure_version':return registerVersion(c);
@@ -1044,10 +1089,10 @@ function other(c:Ctx):Promise<Outcome>{
 }
 
 // ── GET 보기 ──
-export const FRANCHISE_VIEWS=['status','intake','board','lead','settings','requests','audit','assets','asset','events'] as const;
-// hasRecords: 리드·정보주체 요청·모집 자료·행사 기록이 하나라도 있으면 참(R15a-2b S2). 스위치가 꺼져도 폐기·행사 취소 화면에 대표·관리자가 닿게 한다(lib/nav-state.ts franchiseMenuVisible).
+export const FRANCHISE_VIEWS=['status','intake','board','lead','settings','requests','audit','assets','asset','events','codes','spend'] as const;
+// hasRecords: 리드·정보주체 요청·모집 자료·행사·모집 비용·모집 코드 기록이 하나라도 있으면 참(R15a-2b S2, R5b-1). 스위치가 꺼져도 폐기·행사 취소·비용 무효화·코드 사용 중지 화면에 대표·관리자가 닿게 한다(lib/nav-state.ts franchiseMenuVisible).
 async function statusView(who:Actor){
- const any=await database().prepare("SELECT 1 FROM records WHERE owner=? AND kind IN ('franchise_lead','franchise_subject_request','recruitment_asset','recruitment_event') LIMIT 1").bind(who.owner).first();
+ const any=await database().prepare("SELECT 1 FROM records WHERE owner=? AND kind IN ('franchise_lead','franchise_subject_request','recruitment_asset','recruitment_event','recruitment_spend','recruitment_code') LIMIT 1").bind(who.owner).first();
  return {enabled:await isEnabled(who.owner,'r_franchise'),role:who.role,hasRecords:!!any,contactKey:keyPresent()?'ready':'missing',disclaimer:GATE_DISCLAIMER};
 }
 async function intakeView(who:Actor,brandId:string){
@@ -1062,8 +1107,8 @@ async function assigneesOf(who:Actor){
 }
 async function boardView(who:Actor,brandId:string,params:URLSearchParams){
  const owner=who.owner,admin=isAdminRole(who.role);
- const stage=params.get('stage')||'',assignee=params.get('assignee')||'',source=params.get('source')||'',q=(params.get('q')||'').trim(),sort=params.get('sort')||'activity',todo=params.get('todo')||'';
- if((stage&&!oneOf(LEAD_STAGES,stage))||(source&&!oneOf(SOURCE_CHANNELS,source))||(todo&&!oneOf(BOARD_TODOS,todo))||!['activity','eligibility'].includes(sort)||q.length>40||assignee.length>200)bad('필터를 확인해 주세요.');
+ const stage=params.get('stage')||'',assignee=params.get('assignee')||'',source=params.get('source')||'',q=(params.get('q')||'').trim(),sort=params.get('sort')||'activity',todo=params.get('todo')||'',inflow=params.get('inflow')||'';
+ if((stage&&!oneOf(LEAD_STAGES,stage))||(source&&!oneOf(SOURCE_CHANNELS,source))||(todo&&!oneOf(BOARD_TODOS,todo))||(inflow&&!INFLOW_FILTERS.includes(inflow))||!['activity','eligibility'].includes(sort)||q.length>40||assignee.length>200)bad('필터를 확인해 주세요.');
  // 검색어는 리드 코드 앞부분이나 지역 이름만 받는다. 전화·이메일·숫자가 든 검색어는 주소에 실리므로 400(값은 되돌려주지 않는다).
  if(q&&(!isBoardQuery(q)||scanText(q).length))fail('SEARCH_INPUT');
  // 대표·관리자가 보드를 열면 만료 연락처를 먼저 파기한다(잠금이 잡혀 있으면 건너뛴다). 스위치·키와 관계없이 돈다.
@@ -1073,7 +1118,7 @@ async function boardView(who:Actor,brandId:string,params:URLSearchParams){
  }
  requireContactKey();
  const now=stamp(),[enabled,profile,all,requests]=await Promise.all([isEnabled(owner,'r_franchise'),profileOf(owner,brandId),listRecords<LeadRecord>(owner,'franchise_lead',brandId),listRecords<SubjectRequestRow>(owner,'franchise_subject_request',brandId)]);
- const visible=all.filter(l=>l.brandId===brandId&&canSeeLead(who,l)),criteria=profile?.eligibility??null;
+ const visible=all.filter(l=>l.brandId===brandId&&canSeeLead(who,l)),criteria=profile?.eligibility??null,attributions=await attributionsOf(owner,visible);
  const byStage=Object.fromEntries(LEAD_STAGES.map(s=>[s,visible.filter(l=>l.stage===s).length]));
  const soon=(t:string|null,days:number)=>t!==null&&Date.parse(t)>Date.parse(now)&&Date.parse(t)<=Date.parse(now)+days*86400000;
  // 할 일 칩과 같은 판정으로 보드를 거른다(todo 필터). 파기 대기는 대표·관리자만.
@@ -1082,6 +1127,7 @@ async function boardView(who:Actor,brandId:string,params:URLSearchParams){
   expiring:l=>soon(retentionUntil(l),14),
   marketing_recheck:l=>marketingRecheckDue(l,now),
   purge_pending:l=>admin&&isContactExpired(l,now),
+  code_conflict:l=>attributions.get(l.id)?.state==='conflict',
  };
  const todos={
   sourceNoticePending:visible.filter(TODO.source_notice).length,
@@ -1089,13 +1135,14 @@ async function boardView(who:Actor,brandId:string,params:URLSearchParams){
   contactsExpiringSoon:visible.filter(TODO.expiring).length,
   marketingRecheck:visible.filter(TODO.marketing_recheck).length,
   ...(admin?{purgePending:visible.filter(TODO.purge_pending).length}:{}),
+  codeConflict:visible.filter(TODO.code_conflict).length,
  };
  const needle=q.normalize('NFKC');
- const filtered=visible.filter(l=>(!stage||l.stage===stage)&&(!source||l.task.sourceChannel===source)&&(!todo||TODO[todo](l))&&(!assignee||(assignee==='me'?l.assigneeId===who.id:assignee==='unassigned'?l.assigneeId===null:l.assigneeId===assignee))&&(!needle||l.systemCode.startsWith(needle.toUpperCase())||(!!l.task.region&&l.task.region.includes(needle))));
+ const filtered=visible.filter(l=>(!stage||l.stage===stage)&&(!source||l.task.sourceChannel===source)&&(!todo||TODO[todo](l))&&(!inflow||inflowMatch(attributions.get(l.id),inflow))&&(!assignee||(assignee==='me'?l.assigneeId===who.id:assignee==='unassigned'?l.assigneeId===null:l.assigneeId===assignee))&&(!needle||l.systemCode.startsWith(needle.toUpperCase())||(!!l.task.region&&l.task.region.includes(needle))));
  const score=(l:LeadRecord)=>eligibilityScore(l,criteria)?.met??0;
  filtered.sort((a,b)=>(sort==='eligibility'?score(b)-score(a):0)||Date.parse(b.lastActivityAt)-Date.parse(a.lastActivityAt)||byId(a,b));
  const leads:LeadSummary[]=[];
- for(const l of filtered.slice(0,500))leads.push(await leadSummary(who,l,now,criteria,false));
+ for(const l of filtered.slice(0,500)){const a=attributions.get(l.id);leads.push(await leadSummary(who,l,now,criteria,false,a?attributionView(a):undefined))}
  return {enabled,branch:profile?.branch??null,leads,total:filtered.length,counts:{byStage},todos,recheckLabel:RECHECK_LABEL,assignees:await assigneesOf(who),disclaimer:GATE_DISCLAIMER,contactNote:CONTACT_NOTE};
 }
 async function leadGetView(who:Actor,brandId:string,params:URLSearchParams){
@@ -1135,5 +1182,7 @@ export async function franchiseGet(req:Request):Promise<Response>{
  if(view==='requests')return json(await requestsView(who,brandId));
  // 모집 자료·행사 보기(R15a-2a): 모든 역할, 연락처 키 불필요.
  if(view==='assets'||view==='asset'||view==='events')return json(await assetView(who,brandId,view,params));
+ // 모집 코드(모든 역할)·모집 비용(대표·관리자) 보기(R5b-1): 연락처 키 불필요.
+ if(view==='codes'||view==='spend')return json(await recruitmentView(who,brandId,view,params));
  return json(await auditView(who,brandId));
 }
