@@ -79,14 +79,14 @@ check('EX-R15 zero-control reactions cannot be judged',plain(ex.resultDecision(e
 check('EX-R16 cancel is allowed once',plain(ex.cancelDecision(exp())).ok&&plain(ex.cancelDecision(exp({status:'cancelled'}))).status===409&&plain(ex.cancelDecision(exp({status:'evaluated'}))).ok);
 
 // ════ EX-L 확인 층(원장) ════
-const lead=(assetId,version,d)=>({assetRef:assetId?{assetId,version}:null,receivedDate:d});
-const leads=[...Array.from({length:20},()=>lead('ra-1',2,'2026-10-10')),lead('ra-1',1,'2026-10-06'),lead('ra-1',1,'2026-10-30'),lead(null,0,'2026-10-10'),lead('ra-1',2,'2026-10-04')];
+const lead=(assetId,version,d,q=false)=>({assetRef:assetId?{assetId,version}:null,receivedDate:d,qualified:q});
+const leads=[...Array.from({length:20},(_,i)=>lead('ra-1',2,'2026-10-10',i<5)),lead('ra-1',1,'2026-10-06',true),lead('ra-1',1,'2026-10-30'),lead(null,0,'2026-10-10'),lead('ra-1',2,'2026-10-04')];
 const events=[{assetRefs:[{id:'ra-1',version:2}],startsDate:'2026-10-12',attended:7,cancelled:false},{assetRefs:[{id:'ra-1',version:2}],startsDate:'2026-10-13',attended:5,cancelled:true},{assetRefs:[{id:'ra-1',version:1}],startsDate:'2026-10-12',attended:2,cancelled:false}];
 const L=plain(ex.ledgerConfirm(P,leads,events));
 check('EX-L1 ledger counts per arm inside the period only',L.control.leads===1&&L.treatment.leads===20);
 check('EX-L2 attendance counts per arm, cancelled events excluded',L.treatment.attended===7&&L.control.attended===2);
 check('EX-L3 the rate is hidden below 20 ledger leads and shown at 20',L.control.attendedPerLead===null&&Math.abs(L.treatment.attendedPerLead-0.35)<1e-9&&L.minForRate===20);
-check('EX-L4 qualified leads stay empty with a note (no qualification record yet)',L.control.qualified===null&&L.treatment.qualified===null&&L.qualifiedNote.includes('적격 판정 기록'));
+check('EX-L4 qualified leads (current human verdict) are counted per arm; rate hidden under 20',L.control.qualified===1&&L.treatment.qualified===5&&L.control.qualifiedPerLead===null&&Math.abs(L.treatment.qualifiedPerLead-0.25)<1e-9);
 
 // ════ EX-N 문구 ════
 check('EX-N1 the platform-reported note leads the notes',ex.EXPERIMENT_NOTES[0].includes('플랫폼 보고, 원장 리드 아님'));

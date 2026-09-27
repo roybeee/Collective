@@ -1,13 +1,13 @@
 // 트랙 R R6d-2 모집 소재 실험 선별 서버: D1 `recruitment_experiment`(실험마다 한 행, id rx-<uuid>, 브랜드 행) 저장, /api/franchise 작업 3개(experiment_plan·experiment_result·experiment_cancel,
 // 대표·관리자)와 GET 보기 experiments(모든 역할). 판정은 순수 모듈 lib/franchise-experiment.ts가 하고(lib/viral-stats.ts 무수정 사용) 이 모듈은 문맥 읽기·쓰기·영수증만 한다.
 // lib/franchise-server.ts가 잠금·요청 제한·영수증 재생·스위치·브랜드·역할을 먼저 보고 작업을 넘긴다. commit·영수증은 port로 받아 이 모듈은 franchise-server를 import하지 않는다.
-// 수치는 사람이 입력한 플랫폼 보고 값이다(원장 리드 아님). 확인 층(코드 귀속 리드·설명회 참석)은 읽을 때 건수로만 계산한다. 감사 행에는 실험 id만 남긴다(가설·수치 없음).
+// 수치는 사람이 입력한 플랫폼 보고 값이다(원장 리드 아님). 확인 층(코드 귀속 리드·적격 판정 리드·설명회 참석)은 읽을 때 건수로만 계산한다. 감사 행에는 실험 id만 남긴다(가설·수치 없음).
 // 모델 경계(DP-10): 모델 경로가 이 모듈에 닿지 않는다(tests/franchise-model-boundary.test.mjs FORBIDDEN). 외부·모델 호출이 없다(LLM 0). 결과는 COLLECTIVE 휴리스틱 · 법률 자문 아님.
 import {ApiError,database,readRecord,listRecords,recordStatement,uid} from './server';
 import {isEnabled} from './feature-flags';
 import {toKstDate} from './franchise-rules';
 import {GATE_DISCLAIMER} from './franchise-gates';
-import {FRANCHISE_ERRORS,type FranchiseErrorKey,type AuditAction,type LeadRecord} from './franchise';
+import {FRANCHISE_ERRORS,currentQualification,type FranchiseErrorKey,type AuditAction,type LeadRecord} from './franchise';
 import {attributeLead,PLATFORM_REPORTED_NOTE,RECRUITMENT_CHANNEL_LABELS} from './franchise-recruitment';
 import {codeBook,FranchiseRecruitmentError} from './franchise-recruitment-server';
 import {reportLeadCodes} from './franchise-report';
@@ -100,7 +100,7 @@ export async function experimentsView(who:Viewer,brandId:string,now:string):Prom
   listRecords<EventRow>(owner,'recruitment_event',brandId),isEnabled(owner,'r_franchise')]);
  const leads=leadRows.filter(l=>l.brandId===brandId),book=await codeBook(owner,leads.flatMap(l=>(l.codes??[]).map(c=>c.code)));
  const ledgerLeads:LedgerLead[]=leads.map(l=>{const codes=reportLeadCodes(l),a=attributeLead(codes,book,{asOf:now});
-  return {assetRef:a.state==='attributed'&&a.basis==='code'&&a.assetRef?{assetId:a.assetRef.id,version:a.assetRef.version}:null,receivedDate:toKstDate(codes.receivedAt)}});
+  return {assetRef:a.state==='attributed'&&a.basis==='code'&&a.assetRef?{assetId:a.assetRef.id,version:a.assetRef.version}:null,receivedDate:toKstDate(codes.receivedAt),qualified:currentQualification(l)?.verdict==='qualified'}});
  const ledgerEvents:LedgerEvent[]=events.filter(e=>e.brandId===brandId).map(e=>({assetRefs:e.assetRefs??[],startsDate:toKstDate(e.startsAt),attended:e.counts?.attended??0,cancelled:e.status==='cancelled'}));
  const experiments=rows.filter(r=>r.brandId===brandId).sort((a,b)=>a.createdAt<b.createdAt?1:a.createdAt>b.createdAt?-1:a.id<b.id?1:-1).map(r=>({id:r.id,status:r.status,version:r.version,plan:r.plan,
   channelLabel:RECRUITMENT_CHANNEL_LABELS[r.plan.channel],metric:EXPERIMENT_METRICS[r.plan.metric],latest:r.looks.at(-1)??null,looks:r.looks.length,createdAt:r.createdAt,cancelled:r.cancelled?{at:r.cancelled.at}:null,

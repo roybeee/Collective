@@ -128,10 +128,21 @@ for(const [provider,t] of [[PROVIDER_TOKEN+'A','10:00'],[PROVIDER_TOKEN+'B','11:
  imported.push(await post({...importFile(provider,t),action:'lead_import_confirm',confirm:true,expected:{planSha256:p.body.result?.planSha256,toCreate:p.body.result?.toCreate}}));
 }
 check('RR-M1: an imported lead with mapped contacts and a merged second provider file are stored before the runs',imported.every(x=>x.status===200)&&imported[0].body.result.created===1&&imported[1].body.result.merged.existing.count===1);
+// 적격 판정(대표 결정 35)도 심는다: 적격 기준을 저장하고 리드마다 판정을 두 번(바꿈) 기록한다. 판정 사유는 코드만 받으므로 사유 코드·판정 값 문자열을 심는다.
+const QUAL_REASONS=['region_unavailable','timing_unconfirmed'];
+const criteria=await post({action:'save_profile',brandId:brand.id,version:1,profile:{branch:'A',forecastInputs:{sme:true,storesAtFyEnd:3},eligibility:{budgetBands:['lt_50m'],regions:[TOKEN],timingBands:['within_3m']}}});
+const judged=[];
+for(const l of leads){
+ const leadRow=JSON.parse(sql.prepare("SELECT data FROM records WHERE kind='franchise_lead' AND json_extract(data,'$.id')=?").get(l.leadId).data);
+ const a=await post({action:'qualify_lead',brandId:brand.id,leadId:l.leadId,version:leadRow.version,verdict:'hold',reason:QUAL_REASONS[1],criteriaVersion:1});
+ const b=await post({action:'qualify_lead',brandId:brand.id,leadId:l.leadId,version:leadRow.version+1,verdict:'rejected',reason:QUAL_REASONS[0],criteriaVersion:1});
+ judged.push(a.status,b.status);
+}
+check('QL-M1: eligibility criteria and two qualification judgments per lead are stored before the runs',criteria.status===200&&judged.every(x=>x===200));
 const role=await runRole(execution,server,owner,roleCampaign,'cmo');
 const met=await runMeeting(meeting,server,owner,meetingCampaign,'fb-meeting');
 check('role and meeting runs completed on the mock',role.status==='completed'&&met.meeting.status==='completed'&&posted.length>1);
-const leadStrings=[NAME,PHONE,PHONE_DIGITS,EMAIL,'이테스트','010-0000-0120','01000000120','lead.two@example.com',MEMO,TOKEN,...leads.flatMap(l=>[l.systemCode,l.leadId]),ASSET_TOKEN,PLACE_TOKEN,PSEUDO,assetSaved.body.result.assetId,eventSaved.body.result.eventId,CODE_LABEL_TOKEN,SPEND_TOKEN,issued.body.result.code,spent.body.result.spendId,IMPORT_NAME,IMPORT_PHONE,IMPORT_PHONE.replace(/-/g,''),IMPORT_EMAIL,PROVIDER_TOKEN,imported[0].body.result.importId,...imported[0].body.result.leadCodes];
+const leadStrings=[...QUAL_REASONS,NAME,PHONE,PHONE_DIGITS,EMAIL,'이테스트','010-0000-0120','01000000120','lead.two@example.com',MEMO,TOKEN,...leads.flatMap(l=>[l.systemCode,l.leadId]),ASSET_TOKEN,PLACE_TOKEN,PSEUDO,assetSaved.body.result.assetId,eventSaved.body.result.eventId,CODE_LABEL_TOKEN,SPEND_TOKEN,issued.body.result.code,spent.body.result.spendId,IMPORT_NAME,IMPORT_PHONE,IMPORT_PHONE.replace(/-/g,''),IMPORT_EMAIL,PROVIDER_TOKEN,imported[0].body.result.importId,...imported[0].body.result.leadCodes];
 const submissions=sql.prepare("SELECT data FROM records WHERE kind='hermes_submission'").all().map(r=>r.data);
 const leak=(texts,where)=>{const found=leadStrings.filter(s=>texts.some(t=>String(t).includes(s)));assert.deepEqual(found,[],`${where}에 리드 유래 문자열이 있습니다`)};
 leak(posted,'HERMES 제출 본문');passed.push('no posted HERMES body contains a lead-derived string');

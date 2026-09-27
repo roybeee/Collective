@@ -124,7 +124,7 @@ check('RM-R1 thresholds are exposed as frozen constants',rep.RATIO_MIN_N===20&&r
  check('RM-P5 spend without leads gives a null CPL marked no_leads',same(noLead.cost.channels.find(x=>x.key==='community').cpl,{value:null,state:'no_leads'}));
  check('RM-P6 platform-reported numbers are a separate list that sums known values per channel and keeps unknown as null',same(r.cost.platform.find(x=>x.key==='portal'),{key:'portal',label:'창업 포털',impressions:10000,clicks:350,formSubmits:40,note:rc.PLATFORM_REPORTED_NOTE})&&r.cost.platform.every(x=>x.key!=='search_ad'));
  check('RM-P6 platform numbers never enter the CPL (portal CPL stays spend / ledger leads)',c('portal').cpl.value===600000/25);
- check('RM-P7 the qualified-lead cost is empty with a fixed note (no human qualification record yet)',same(r.cost.qualified,{value:null,note:rep.QUALIFIED_NOTE}));
+ check('RM-P7 the weekly cost section no longer carries an empty qualified-lead cost; the note points to the cohort table (decision 35)',!Object.hasOwn(r.cost,'qualified')&&/코호트/.test(rep.QUALIFIED_NOTE)&&/사람/.test(rep.QUALIFIED_NOTE));
 }
 
 // ════ RM-T speed-to-lead ════
@@ -185,6 +185,33 @@ check('RM-R1 thresholds are exposed as frozen constants',rep.RATIO_MIN_N===20&&r
  check('RM-K5 with twenty contracts the cost per contract is spend / contracts',same(twenty.cohorts.find(c=>c.month==='2026-05').costPerContract,{value:100000,state:'shown'})&&twenty.cohorts.find(c=>c.month==='2026-05').contracts.n===20);
  const none=build({leads:many(6,()=>lead('2026-05-10T10:00:00+09:00')),spend:[spendRow('rs-n','portal','2026-05-01','2026-05-31',1)]});
  check('RM-K5 known spend and no contract is no_contracts',same(none.cohorts.find(c=>c.month==='2026-05').costPerContract,{value:null,state:'no_contracts'}));
+}
+
+// ════ RM-Q 적격 판정 코호트(대표 결정 35) ════
+{
+ const q=(verdict,at,criteriaVersion=1)=>({verdict,reason:'other',criteriaVersion,score:null,at,by:{id:'x',role:'owner'}});
+ const J='2026-06-20T10:00:00+09:00',LATER='2026-09-28T02:00:00Z';
+ const leads=[
+  ...many(12,()=>lead('2026-06-10T10:00:00+09:00',{qualifications:[q('qualified',J)]})),                           // 적격 v1 12
+  ...many(10,()=>lead('2026-06-11T10:00:00+09:00',{qualifications:[q('hold',J),q('qualified','2026-07-01T00:00:00Z',2)]})), // 보류 뒤 적격 v2 10
+  ...many(3,()=>lead('2026-06-12T10:00:00+09:00',{qualifications:[q('qualified',J),q('rejected','2026-07-02T00:00:00Z')]})), // 적격 뒤 거절 3
+  ...many(2,()=>lead('2026-06-13T10:00:00+09:00',{qualifications:[q('hold',J)]})),                               // 보류 2
+  ...many(6,()=>lead('2026-06-14T10:00:00+09:00')),                                                             // 판정 없음 6
+  ...many(5,()=>lead('2026-06-15T10:00:00+09:00',{qualifications:[q('qualified',LATER)]})),                       // asOf 뒤 판정 → 판정 없음
+  ...many(3,()=>lead('2026-07-10T10:00:00+09:00',{qualifications:[q('qualified','2026-07-11T00:00:00Z')]})),        // 7월 적격 3
+ ];
+ const spend=[spendRow('rs-q6','portal','2026-06-01','2026-06-30',4400000),spendRow('rs-q7','portal','2026-07-01','2026-07-31',300000)];
+ const r=build({leads,spend}),k=m=>r.cohorts.find(c=>c.month===m);
+ const jq=k('2026-06').qualification,jl=k('2026-07').qualification;
+ check('RM-Q1 each cohort counts the current human judgment at asOf: qualified, hold, rejected and unjudged',jq.qualified.n===22&&same(jq.rejected,{n:null,suppressed:true})&&same(jq.hold,{n:null,suppressed:true})&&jq.unjudged.n===11&&k('2026-06').size.n===38);
+ check('RM-Q1 a judgment after asOf does not count yet (the lead is unjudged)',build({leads,spend,asOf:'2026-09-28T03:00:00Z'}).cohorts.find(c=>c.month==='2026-06').qualification.qualified.n===27);
+ check('RM-Q2 qualified leads are split by the criteria version of their judgment, oldest version first, with the 1~4 rule',same(jq.byVersion,[{version:1,qualified:{n:12,suppressed:false}},{version:2,qualified:{n:10,suppressed:false}}])&&same(jl.byVersion,[{version:1,qualified:{n:null,suppressed:true}}]));
+ check('RM-Q3 cost per qualified lead is the cohort spend / qualified leads with twenty or more',same(jq.costPerQualified,{value:200000,state:'shown'}));
+ check('RM-Q3 under twenty qualified leads the cost per qualified lead is hidden (small sample, no contract-style exemption)',same(jl.costPerQualified,{value:null,state:'small_sample'}));
+ check('RM-Q3 known spend and no qualified lead is no_qualified; unknown spend is no_spend',same(build({leads:many(6,()=>lead('2026-05-10T10:00:00+09:00')),spend:[spendRow('rs-q5','portal','2026-05-01','2026-05-31',1)]}).cohorts.find(c=>c.month==='2026-05').qualification.costPerQualified,{value:null,state:'no_qualified'})&&k('2026-04').qualification.costPerQualified.state==='no_spend');
+ const md=rep.reportMarkdown(r),csv=rep.reportCsv(r);
+ check('RM-Q4 Markdown and CSV carry the qualified count, the per-version counts and the cost per qualified lead',/\| 코호트 \| 2026-06 \| 적격 \| 22 \|/.test(md)&&/\| 코호트 \| 2026-06 \| 적격\(기준 v2\) \| 10 \|/.test(md)&&/\| 코호트 \| 2026-06 \| 적격 리드당 비용 \| 200,000원 \|/.test(md)&&csv.includes('"적격 리드당 비용"')&&!md.includes('비움'));
+ check('RM-Q4 no reason code or actor reaches the report',!/"reason"|other|"by"/.test(JSON.stringify(r.cohorts)));
 }
 
 // ════ RM-G 법정 게이트 ════
@@ -253,7 +280,7 @@ check('RM-R1 thresholds are exposed as frozen constants',rep.RATIO_MIN_N===20&&r
  check('RM-O3 the file name is ascii, brand-safe and week-stamped',rep.reportFileName({...r,brandId:'a b/../c'},'md')==='recruitment-report-a_b____c-2026-W39.md'&&rep.reportFileName(r,'csv').endsWith('.csv'));
 }
 
-const IDS=['RM-S1','RM-W1','RM-W2','RM-C1','RM-R1','RM-I1','RM-I2','RM-I3','RM-I4','RM-I5','RM-P1','RM-P2','RM-P3','RM-P4','RM-P5','RM-P6','RM-P7','RM-T1','RM-T2','RM-T3','RM-T4','RM-T5','RM-T6','RM-K1','RM-K2','RM-K3','RM-K4','RM-K5','RM-K6','RM-G1','RM-G2','RM-G3','RM-F1','RM-D1','RM-D2','RM-D3','RM-D4','RM-X1','RM-N1','RM-N2','RM-N3','RM-O1','RM-O2','RM-O3'];
+const IDS=['RM-S1','RM-W1','RM-W2','RM-C1','RM-R1','RM-I1','RM-I2','RM-I3','RM-I4','RM-I5','RM-P1','RM-P2','RM-P3','RM-P4','RM-P5','RM-P6','RM-P7','RM-T1','RM-T2','RM-T3','RM-T4','RM-T5','RM-T6','RM-K1','RM-K2','RM-K3','RM-K4','RM-K5','RM-K6','RM-Q1','RM-Q2','RM-Q3','RM-Q4','RM-G1','RM-G2','RM-G3','RM-F1','RM-D1','RM-D2','RM-D3','RM-D4','RM-X1','RM-N1','RM-N2','RM-N3','RM-O1','RM-O2','RM-O3'];
 const missing=IDS.filter(id=>!passed.some(n=>n.startsWith(id+' ')));
 assert.deepEqual(missing,[],'이름에 없는 사례 번호: '+missing.join(', '));passed.push(`every R6a case id (${IDS.length}) has a named check`);
 check('no external call was made',fetchCalls===0);

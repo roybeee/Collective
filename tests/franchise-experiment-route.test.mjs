@@ -60,7 +60,13 @@ const RESULT={control:{denominator:5000,numerator:100},treatment:{denominator:50
 r=await post(boss,{action:'experiment_result',brandId:'fr-a',experimentId:EX,version:1,...RESULT});
 check('ER-R1 no result before the period starts',r.status===400||r.status===409);
 setNow(Date.parse('2026-10-05T03:00:00Z')); // 10-05 12:00 KST: 기간 안
-for(let i=0;i<3;i++){const c=await f.createLead(boss,'fr-a',{codes:[CODE]});assert.equal(c.status,200,JSON.stringify(c.body))}
+const coded=[];
+for(let i=0;i<3;i++){const c=await f.createLead(boss,'fr-a',{codes:[CODE]});assert.equal(c.status,200,JSON.stringify(c.body));coded.push(c.body.result.leadId)}
+// 적격 판정(대표 결정 35) 1건: 적격 기준을 저장하고 코드 귀속 리드 하나를 적격으로 기록한다.
+r=await f.profile(boss,'fr-a',{storageLabels:['본사 문서함'],eligibility:{budgetBands:['100m_150m'],regions:['서울 강남구'],timingBands:['within_3m']}},1);
+assert.equal(r.status,200,JSON.stringify(r.body));
+r=await post(boss,{action:'qualify_lead',brandId:'fr-a',leadId:coded[0],version:f.leadRow(coded[0]).version,verdict:'qualified',reason:'criteria_met',criteriaVersion:1});
+assert.equal(r.status,200,JSON.stringify(r.body));
 await f.createLead(boss,'fr-a');
 r=await post(boss,{action:'experiment_result',brandId:'fr-a',experimentId:EX,version:9,...RESULT,observedUntil:'2026-10-04'});
 check('ER-R2 a stale version is refused (409)',r.status===409);
@@ -81,7 +87,7 @@ r=await get(member,'view=experiments&brandId=fr-a');
 const v=r.body,e=v.experiments?.[0];
 check('ER-V1 members can read experiments with the notes first and the disclaimer',r.status===200&&v.notes[0].includes('플랫폼 보고, 원장 리드 아님')&&v.disclaimer===DISCLAIMER&&v.minSample===100);
 check('ER-V2 the latest look and plan are shown',e.id===EX&&e.status==='evaluated'&&e.looks===2&&e.latest.assessment.status==='promising'&&e.channelLabel==='창업 포털');
-check('ER-V3 ledger confirm counts code-attributed leads per arm, rate hidden under 20',e.ledger.treatment.leads===3&&e.ledger.control.leads===0&&e.ledger.treatment.attendedPerLead===null&&e.ledger.treatment.qualified===null);
+check('ER-V3 ledger confirm counts code-attributed leads per arm, rate hidden under 20',e.ledger.treatment.leads===3&&e.ledger.control.leads===0&&e.ledger.treatment.attendedPerLead===null&&e.ledger.treatment.qualified===1&&e.ledger.control.qualified===0&&e.ledger.treatment.qualifiedPerLead===null);
 check('ER-V4 approved asset versions are offered for new plans',v.assets.length===2&&v.assets.every(a=>a.type==='portal_intro'));
 const text=JSON.stringify(v),leadRows=f.rows('franchise_lead');
 check('ER-V5 no lead id, system code, name or phone in the view',leadRows.every(l=>!text.includes(l.id)&&!text.includes(l.systemCode))&&!/이테스트|010-/.test(text));

@@ -1,7 +1,7 @@
 'use client';
 // 가맹 모집 화면 '유입·비용' 탭의 소재 실험 선별(트랙 R R6d-2). 읽는 법 문구('플랫폼 보고, 원장 리드 아님'이 첫 줄)와 면책을 숫자보다 먼저 보인다.
 // 대표·관리자는 기간 시작 전에 가설·바꾼 변수·판정 기준을 적고(계획), 기간 중·뒤에 두 판의 플랫폼 보고 수치를 입력하고(결과), 실험을 취소한다. 직원은 읽기만 한다.
-// 판정은 서버(lib/franchise-experiment.ts, lib/viral-stats.ts 무수정)가 한다. 확인 층(원장 코드 귀속 리드·설명회 참석)은 건수만, 20건 미만이면 비율을 숨긴다. COLLECTIVE 휴리스틱 · 법률 자문 아님.
+// 판정은 서버(lib/franchise-experiment.ts, lib/viral-stats.ts 무수정)가 한다. 확인 층(원장 코드 귀속 리드·적격 판정 리드·설명회 참석)은 건수만, 20건 미만이면 비율을 숨긴다. COLLECTIVE 휴리스틱 · 법률 자문 아님.
 import {useCallback,useEffect,useState} from 'react';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
@@ -14,9 +14,9 @@ type Arm={assetId:string;version:number};
 type Counts={denominator:number;numerator:number};
 type Look={result:{control:Counts;treatment:Counts;comparable:boolean;observedUntil:string};assessment:{status:string;label:string;controlRate:number|null;treatmentRate:number|null;lift:number|null;reasons:string[]};
  stats:{probBetter:number;liftLow:number|null;liftHigh:number|null;recommendation:string;warning:{message:string}|null}|null;recordedAt:string};
-type LedgerArm={leads:number;attended:number;attendedPerLead:number|null;qualified:null};
+type LedgerArm={leads:number;qualified:number;qualifiedPerLead:number|null;attended:number;attendedPerLead:number|null};
 type Experiment={id:string;status:'planned'|'evaluated'|'cancelled';version:number;channelLabel:string;metric:{label:string;numerator:string;denominator:string};
- plan:{variable:string;hypothesis:string;control:Arm;treatment:Arm;minSample:number;minHours:number;minLift:number;period:{from:string;to:string}};latest:Look|null;looks:number;ledger:{control:LedgerArm;treatment:LedgerArm;minForRate:number;qualifiedNote:string}};
+ plan:{variable:string;hypothesis:string;control:Arm;treatment:Arm;minSample:number;minHours:number;minLift:number;period:{from:string;to:string}};latest:Look|null;looks:number;ledger:{control:LedgerArm;treatment:LedgerArm;minForRate:number}};
 export type ExperimentsView={enabled:boolean;role:string;experiments:Experiment[];assets:{id:string;version:number;type:string}[];notes:string[];metrics:Record<string,{label:string}>;minSample:number;today:string;platformNote:string;disclaimer:string};
 
 const STATUS_LABELS={planned:'계획됨',evaluated:'결과 입력됨',cancelled:'취소됨'} as const;
@@ -87,7 +87,7 @@ function ExperimentCard({brandId,e,admin,enabled,today,platformNote,onDone}:{bra
   const r=await franchisePost('experiment_cancel',{brandId,experimentId:e.id,version:e.version});
   setBusy(false);if(r.status===200)onDone();else setProblem(problemOf(r));
  }
- const l=e.latest,rateOf=(a:LedgerArm)=>a.attendedPerLead===null?`표본 부족(n<${e.ledger.minForRate})`:pct(a.attendedPerLead);
+ const l=e.latest,rateOf=(v:number|null)=>v===null?`표본 부족(n<${e.ledger.minForRate})`:pct(v);
  return <article className="franchise-box" aria-label={`소재 실험 ${e.plan.variable}`}>
   <h4>{`${e.channelLabel} · ${e.metric.label} · ${e.plan.variable}`} <small className="status">{STATUS_LABELS[e.status]}</small></h4>
   <p>{`가설: ${e.plan.hypothesis}`}</p>
@@ -101,10 +101,10 @@ function ExperimentCard({brandId,e,admin,enabled,today,platformNote,onDone}:{bra
    <p className="subtle-note">{`결과 입력 ${e.looks}회`}</p>
   </div>}
   <table className="franchise-table" aria-label="확인 층(원장)">
-   <thead><tr><th>판</th><th>원장 리드(코드 귀속)</th><th>설명회 참석</th><th>참석 ÷ 리드</th><th>적격 리드</th></tr></thead>
-   <tbody>{(['control','treatment'] as const).map(k=><tr key={k}><td>{k==='control'?'대조안':'실험안'}</td><td>{e.ledger[k].leads}</td><td>{e.ledger[k].attended}</td><td>{rateOf(e.ledger[k])}</td><td>기록 없음</td></tr>)}</tbody>
+   <thead><tr><th>판</th><th>원장 리드(코드 귀속)</th><th>적격 리드</th><th>적격 ÷ 리드</th><th>설명회 참석</th><th>참석 ÷ 리드</th></tr></thead>
+   <tbody>{(['control','treatment'] as const).map(k=><tr key={k}><td>{k==='control'?'대조안':'실험안'}</td><td>{e.ledger[k].leads}</td><td>{e.ledger[k].qualified}</td><td>{rateOf(e.ledger[k].qualifiedPerLead)}</td><td>{e.ledger[k].attended}</td><td>{rateOf(e.ledger[k].attendedPerLead)}</td></tr>)}</tbody>
   </table>
-  <p className="subtle-note">{e.ledger.qualifiedNote}</p>
+  <p className="subtle-note">적격 리드는 사람이 기록한 현재 적격 판정입니다. 귀속≠증분입니다.</p>
   {admin&&enabled&&e.status!=='cancelled'&&today>=e.plan.period.from&&<ResultForm brandId={brandId} e={e} today={today} onDone={onDone}/>}
   {admin&&e.status!=='cancelled'&&<Button variant="outline" size="sm" disabled={busy} onClick={()=>void cancel()}>실험 취소</Button>}
   <ProblemBox problem={problem}/>

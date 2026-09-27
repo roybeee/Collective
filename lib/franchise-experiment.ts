@@ -1,7 +1,7 @@
 // 트랙 R R6d-2 모집 소재 실험 선별 순수 모듈. 같은 채널·같은 기간에 한 변수만 바꾼 두 모집 자료 판(recruitment_asset)의 플랫폼 보고 수치를
 // 사람이 입력하면 lib/viral-stats.ts를 수정 없이 불러 판정한다. 가설·바꾼 변수·주지표·판정 기준(팔당 최소 표본 100, lib/learning-server.ts experimentPlan과 같음)은
 // 기간 시작 전에 적는다(시작일이 오늘보다 이르면 409). 결과에는 '플랫폼 보고, 원장 리드 아님'을 붙이고, 확인 층(원장 코드 귀속 리드·설명회 참석)은 건수로만 보이고
-// n<20이면 비율을 숨긴다. 적격 판정 기록은 아직 없어 적격 리드 칸은 비운다. 시계·조회·모델 호출이 없다(LLM 0). 결과는 COLLECTIVE 휴리스틱 · 법률 자문 아님.
+// n<20이면 비율을 숨긴다. 적격 리드는 대표 결정 35 적격 판정의 현재 판정(적격)이다. 시계·조회·모델 호출이 없다(LLM 0). 결과는 COLLECTIVE 휴리스틱 · 법률 자문 아님.
 import {isDate,addDays,kstMidnight,parseInstant} from './franchise-rules';
 import {GATE_DISCLAIMER} from './franchise-gates';
 import {isRecruitmentChannel,PLATFORM_REPORTED_NOTE,type RecruitmentChannel} from './franchise-recruitment';
@@ -15,12 +15,11 @@ export const EXPERIMENT_MIN_SAMPLE=100,EXPERIMENT_MAX_HOURS=2160,EXPERIMENT_MAX_
 export const LEDGER_RATE_MIN=20;
 export const EXPERIMENT_METRICS={ctr:{label:'클릭률',numerator:'클릭',denominator:'노출'},form_rate:{label:'양식 제출률',numerator:'양식 제출',denominator:'클릭'}} as const;
 export type ExperimentMetric=keyof typeof EXPERIMENT_METRICS;
-export const QUALIFIED_NOTE='적격 판정 기록이 아직 없어 적격 리드 수는 비웁니다.';
 export const EXPERIMENT_NOTES=[
  `수치는 ${PLATFORM_REPORTED_NOTE}입니다. 원장 리드·계약과 섞지 않습니다.`,
  '가설·바꾼 변수·판정 기준은 기간 시작 전에 적었고 바꾸지 않습니다.',
  '두 판은 각각 승인(R2 판정)을 거친 모집 자료입니다. 수익 수치를 넣은 변형은 만들지 않습니다(H6).',
- '확인 층의 원장 리드·설명회 참석은 건수로 보이고 20건 미만이면 비율을 숨깁니다. 귀속≠증분입니다.',
+ '확인 층의 원장 리드·적격 리드(사람 판정)·설명회 참석은 건수로 보이고 원장 리드 20건 미만이면 비율을 숨깁니다. 귀속≠증분입니다.',
 ] as const;
 
 export const EXPERIMENT_CODES=['invalid_input','channel_unknown','metric_unknown','text_invalid','text_pii','arm_invalid','arms_same','asset_other_brand','asset_type_mismatch','plan_invalid','period_invalid',
@@ -152,17 +151,19 @@ export function resultDecision(exp:ExperimentLite,input:unknown,ctx:{today:strin
 }
 export function cancelDecision(exp:ExperimentLite):ExperimentDecision<true>{return exp.status==='cancelled'?fail(['experiment_closed']):pass(true)}
 
-// ── 확인 층(원장): 판별 코드 귀속 리드·설명회 참석 건수. 비율은 원장 리드 20건 이상일 때만 ──
-export type LedgerLead={assetRef:ExperimentArm|null;receivedDate:string};
+// ── 확인 층(원장): 판별 코드 귀속 리드·적격 리드·설명회 참석 건수. 비율은 원장 리드 20건 이상일 때만 ──
+// qualified는 서버가 넣는 현재 적격 판정(대표 결정 35, lib/franchise.ts currentQualification이 qualified)이다.
+export type LedgerLead={assetRef:ExperimentArm|null;receivedDate:string;qualified:boolean};
 export type LedgerEvent={assetRefs:readonly {id:string;version:number}[];startsDate:string;attended:number;cancelled:boolean};
-export type LedgerArm={leads:number;attended:number;attendedPerLead:number|null;qualified:null};
-export function ledgerConfirm(plan:ExperimentPlan,leads:readonly LedgerLead[],events:readonly LedgerEvent[]):{control:LedgerArm;treatment:LedgerArm;minForRate:number;qualifiedNote:string}{
+export type LedgerArm={leads:number;qualified:number;qualifiedPerLead:number|null;attended:number;attendedPerLead:number|null};
+export function ledgerConfirm(plan:ExperimentPlan,leads:readonly LedgerLead[],events:readonly LedgerEvent[]):{control:LedgerArm;treatment:LedgerArm;minForRate:number}{
  const inPeriod=(d:string)=>d>=plan.period.from&&d<=plan.period.to;
  const arm=(a:ExperimentArm):LedgerArm=>{
-  const n=leads.filter(l=>l.assetRef?.assetId===a.assetId&&l.assetRef.version===a.version&&inPeriod(l.receivedDate)).length;
+  const mine=leads.filter(l=>l.assetRef?.assetId===a.assetId&&l.assetRef.version===a.version&&inPeriod(l.receivedDate)),n=mine.length,q=mine.filter(l=>l.qualified).length;
   const attended=events.filter(e=>!e.cancelled&&inPeriod(e.startsDate)&&e.assetRefs.some(r=>r.id===a.assetId&&r.version===a.version)).reduce((s,e)=>s+e.attended,0);
-  return {leads:n,attended,attendedPerLead:n>=LEDGER_RATE_MIN?attended/n:null,qualified:null};
+  const shown=n>=LEDGER_RATE_MIN;
+  return {leads:n,qualified:q,qualifiedPerLead:shown?q/n:null,attended,attendedPerLead:shown?attended/n:null};
  };
- return {control:arm(plan.control),treatment:arm(plan.treatment),minForRate:LEDGER_RATE_MIN,qualifiedNote:QUALIFIED_NOTE};
+ return {control:arm(plan.control),treatment:arm(plan.treatment),minForRate:LEDGER_RATE_MIN};
 }
 export const periodDays=(p:{from:string;to:string})=>Math.round((Date.parse(p.to+'T00:00:00Z')-Date.parse(p.from+'T00:00:00Z'))/DAY_MS)+1;
