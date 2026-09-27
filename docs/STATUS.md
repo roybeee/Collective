@@ -23,17 +23,22 @@
 - 다음: A3 run → A8-1 → A8-2 → A8-3 → B4 2부 → B3([순서](LANES.ko.md#레인-a-claude-a-세션)).
 
 ## 레인 R (Claude 트랙 R 세션 — 가맹 모집)
-갱신: 2026-09-27 04:51 UTC
+갱신: 2026-09-27 05:42 UTC
 - 세션: 2026-09-27부터 레인 R을 맥 로컬 Claude 세션이 이어받았다(대표 지시, 대표 외출 중). 원래 클라우드 세션의 R3c 작업은 GitHub에 없어 맥 세션이 다시 만들었다. 클라우드 세션에는 R3c 병합 뒤 최신 main에서 이어가라고 알렸다.
-- 진행 중: #182 R2 3차-b(브랜치 `feat/r2-3b-wait-clause`, CI 뒤 병합, 게시 대기열 요청). 구성 판정 보강: 선입금 뒤 교부, 이름을 바꾼 계약 전 돈, 적용 제외·선택 사항, 한 문장 대비, 서수·상대 날 등. 묻는 문장·경고 끝 문장은 뺀다. 측정 전용 블라인드 3차: 오기재 차단 34(3차 전)→44(3차-a)→46/100, 오탐 6→7→6/100. 결론: 규칙만으로는 처음 보는 오기재의 절반 남짓을 놓치므로 승인 화면의 사람 확인을 돕는 쪽을 제안한다(대표 결정 필요). `fr-claims@2026-09-27.3`.
-- 진행 중: R3c 게시됨(묶음 18, 04:04 UTC tree `9cef246`). 운영 dev(`eab8911d`)·봉인(`284fa4be`) 재채점은 not_run이다. 권한 분류기가 운영 평가 데이터 쓰기를 거부해서 대표가 직접 실행해야 한다.
-- 최근 병합: #180 R2 3차-a 절 단위 구성 판정 `merged`(`dc0b0d8`, 게시 대기열 요청, 측정 전용 블라인드 2차 오기재 42→53/100·오탐 14→6/100). R5b-1(#177, `ce4c2ff`) `merged`: 모집 코드·모집 비용 기록과 API(`code_issue`·`code_retire`·`spend_record`·`spend_void`, GET `codes`·`spend`), 리드 모집 코드 추가·제외(`add_lead_codes`·`strike_lead_code`), 보드 `code_conflict` 할 일과 `inflow` 필터, 새 kind `recruitment_code`·`recruitment_spend`. 검사 passed · mocked(160/160, recruitment-route 74, 변이 21/21), 운영 real 확인 not_run(게시 대기, 게시 뒤 대표가 `r_franchise`를 켠 다음 확인). #176 `matchView` 보이지 않는 문자 `merged`(`c0c8290`, 묶음 19 게시 완료). #175 R5a 순수 모듈 `merged`(런타임 연결 0, 게시 불필요). #173 R3c `merged`(`7851185`).
+- 진행 중: 결정 34 모집 자료 승인·내보내기의 대기기간 우회 문장 사람 확인(브랜치 `feat/r15a-wait-confirm`). 강조 후보 문장을 보이고 확인란을 두며, 확인이 없으면 서버가 409로 막는다. 감사에는 판·후보 수만 남긴다.
+- 최근 병합: #183 R5b-2 리드 CSV 가져오기 기록·API `merged`(`ae96871`).
+  - 결정 32 B안: 매핑한 이름·전화·이메일 열만 결정 22 경로로 저장한다. 매핑하지 않은 열에 개인정보가 있으면 파일 전체를 거부한다.
+  - 교차 파일 병합(대표 결정 '리드 1건, 집계는 파일별'): 기존 리드에 제공처 기록만 덧붙이고, 제공처별 리드 수는 파일마다 한 명으로 센다.
+  - 새 kind `recruitment_import`, 작업 `lead_import_inspect`·`lead_import_preview`·`lead_import_confirm`, 보기 `imports`. 행 한도는 100이다.
+  - 검사: passed · mocked(162/162, lead-import-route 66, 변이 35/35). 실제 파일 가져오기는 LR-1 회신 뒤에 한다(LR-2 범위에 '제3자 제공 연락처 대량 수령' 추가).
+- 최근 병합(이어서): #182 R2 3차-b `merged`(`d66b569`, 게시 대기열 요청, 측정 전용 블라인드 3차 오기재 34→46/100). #180 R2 3차-a 절 단위 구성 판정 `merged`(`dc0b0d8`, 게시 대기열 요청, 측정 전용 블라인드 2차 오기재 42→53/100·오탐 14→6/100). R5b-1(#177, `ce4c2ff`) `merged`: 모집 코드·모집 비용 기록과 API(`code_issue`·`code_retire`·`spend_record`·`spend_void`, GET `codes`·`spend`), 리드 모집 코드 추가·제외(`add_lead_codes`·`strike_lead_code`), 보드 `code_conflict` 할 일과 `inflow` 필터, 새 kind `recruitment_code`·`recruitment_spend`. 검사 passed · mocked(160/160, recruitment-route 74, 변이 21/21), 운영 real 확인 not_run(게시 대기, 게시 뒤 대표가 `r_franchise`를 켠 다음 확인). #176 `matchView` 보이지 않는 문자 `merged`(`c0c8290`, 묶음 19 게시 완료). #175 R5a 순수 모듈 `merged`(런타임 연결 0, 게시 불필요). #173 R3c `merged`(`7851185`).
 - 최근: #163 R15a-2b 가맹 화면 탭·#161 고정 문장 권장화·R2 보완 통제 `merged`(게시 대기열에 함께 요청). #151 R3c 선행 S7 콘솔 키트 `merged`. #139·#143·#145 `published`(묶음 15).
-- 다음: R2 3차-b PR → R5b-2 CSV 가져오기(결정 32, 교차 파일 중복 병합 규칙은 대표 확인 필요) → R5c 화면 → 트랙 R 계획 순서. R15a-3(워크스페이스 할 일)은 R6 뒤([순서](LANES.ko.md#레인-r-claude-트랙-r-세션)).
+- 다음: 결정 34 승인 화면 사람 확인(진행 중) → R5c 화면 → 트랙 R 계획 순서. R15a-3(워크스페이스 할 일)은 R6 뒤([순서](LANES.ko.md#레인-r-claude-트랙-r-세션)).
+- 대표 결정(2026-09-27): 결정 33 '14일째'는 대기기간을 채운 것으로 본다(판정 그대로, H2보다 하루 느슨해 LR-1 때 다시 확인). 결정 34 R2 다음 개선은 승인 화면의 사람 확인이고 대기기간 규칙 보강은 멈춘다.
 - 대표 결정(2026-09-26): (1) 앱 밖 모집 자료에 AI 생성물 표시를 붙이지 않는다("표시하지마", 화면도 묻지 않음, 결정 17 앱 발행 캡션은 그대로). (2) 예비창업자용 고정 안내 문장(두 대기기간 안내, 수익 질문 안내)은 권장 문구다("3번"). 템플릿은 계속 채우고, 빠지면 경고만 하고 막지 않는다. 대신 대기기간을 틀리게 적은 문장은 R2 hard_block으로 막는다.
 - 대표 승인(2026-09-26 16:15 UTC): R3c 선행 작업, 운영 D1 합성 S7 케이스 기대 업종 갱신(8건 `['fnb']` → `['franchise','fnb']`). 실행: passed · real(2026-09-27 00:30~00:40 UTC, 대표 소유자 콘솔. check `toChange` 8 → apply `changed` 8·`verified` 8 → 다시 check `already` 8, [관찰 기록](observations/2026-09-26-lane-r-s7-industry.md)).
 - 막힌 것: 법률 검토(결정 20) 보류 중이라 모든 가맹 판정은 'COLLECTIVE 휴리스틱 · 법률 자문 아님'이다. LR-1 확인 필요 추가: 소규모 본부 적용 제외 문장을 hard_block으로 막는 것.
-- 해소: S7 운영 기대 업종 갱신 real(위 대표 승인 줄). #172 결정 32 R5 리드 가져오기 범위(연락처 포함 B안, 제공처 파일별 집계) 기록 `merged`. #143 게시 전 확인(운영 objective 캠페인 0건, 그 개선 회의 0건, 레인 A, passed · real). 레인 A 확인 요청(macOS `tests/check-prompts.test.mjs` 대소문자 충돌)은 #161에서 고쳤다.
+- 해소: R3c 게시 뒤 운영 재채점 passed · real(2026-09-27 05:35 UTC, 대표 지시로 메인 세션이 대표 로그인 브라우저에서 실행, 토큰 0, [관찰 기록](observations/2026-09-27-lane-r-r3c-regrade.md)). dev `eab8911d` fail 10(09-25와 같은 구성, `industry_metric_leak` 0), 봉인 `284fa4be` fail 9(`industry_metric_leak` 8건은 모두 fnb, R3c 전과 같음). franchise 적중 0, 새 fail 0. #183 DATA-PROCESSING 변경은 레인 A가 받아들였다(#184, 게시 대기열 #183 줄은 레인 A가 넣음). 레인 A 비차단 의견 2건(3.5 `receivedRange` 행, 8절·LR-2 `recruitment_import` 보존 기한)은 이 문서 PR에서 반영. S7 운영 기대 업종 갱신 real(위 대표 승인 줄). #172 결정 32 R5 리드 가져오기 범위(연락처 포함 B안, 제공처 파일별 집계) 기록 `merged`. #143 게시 전 확인(운영 objective 캠페인 0건, 그 개선 회의 0건, 레인 A, passed · real). 레인 A 확인 요청(macOS `tests/check-prompts.test.mjs` 대소문자 충돌)은 #161에서 고쳤다.
 - 제안(소유 레인 검토): `docs/DATA-PROCESSING.ko.md` 가맹 kind 목록에 `recruitment_asset`·`recruitment_event`를 더한다(이름·연락처 없음, 모델 입력 0).
 - 확인 필요(소유 레인 없음, F4b-2 #70): `lib/deidentified-signals.ts:34` `token(v,max=120)` 때문에 채점기 버전 문자열(main 224자, #173 뒤 243자)이 120자를 넘어 비식별 신호의 `grading.gradersVersion`이 null로 저장된다. R3c 전부터 있던 결함이다.
 - 관찰(레인 Q 파일): `tests/graders.test.mjs:274`(4만 자 입력 1초 검사)가 이 4코어 컨테이너에서 한계선에 있다('## x\n자료 필요'×4000 입력 0.93~1.07초, 같은 코드에서 3회 중 1~2회 실패). 채점기 코드와 무관한 부하 흔들림이다.
