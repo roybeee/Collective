@@ -3,8 +3,8 @@ export type GraderStatus='pass'|'fail'|'not_applicable'|'grader_error';
 export type GraderResult={id:string;status:GraderStatus;detail?:string};
 export type Verdict={status:Exclude<GraderStatus,'grader_error'>;detail?:string};
 // input: 사람이 쓴 입력(브리프 목표·회의 안건). brief: 브리프 초안. role: 역할 산출물(quality 포함). discussion: 회의 발언.
-// meeting_step: 회의의 합의·개선본·품질 재검토 단계(G3). call: 사용량 원장의 호출 1건.
-export type EvalKind='input'|'brief'|'role'|'discussion'|'meeting_step'|'call';
+// meeting_step: 회의의 합의·개선본·품질 재검토 단계(G3). call: 사용량 원장의 호출 1건. viral_analysis: 바이럴 사례 분석(L1) 출력(바이럴 채점기 VIRAL_GRADERS만 채점).
+export type EvalKind='input'|'brief'|'role'|'discussion'|'meeting_step'|'call'|'viral_analysis';
 export type EvalItem={
  id:string;
  kind:EvalKind;
@@ -54,6 +54,8 @@ export type GradeContext={
  brandVoice?:{avoidTerms:string[]}|null;
  // 평가 역할 항목의 동결 요청이 요청한 출력 프로필(A3-4, 'copy-pack-v2'). 있으면 contract_json이 그 계약(role-output-v2)을 기대 계약으로 본다. 없으면 원문의 계약 버전으로 고른다.
  outputProfile?:string|null;
+ // 바이럴 사례 분석 평가의 동결 사례·관찰 기록(case와 observations). 없으면 viral_unobserved_metric은 not_applicable이다.
+ viralCase?:{case:unknown;observations:unknown[]}|null;
 };
 export type Grader={id:string;content?:boolean;grade:(item:EvalItem,ctx:GradeContext)=>Verdict};
 export const verdict=(status:Verdict['status'],detail?:string|string[]):Verdict=>{

@@ -1,5 +1,5 @@
 {
- "baseSha": "43a019a619c8acfd208555308ea7a88bb4131c04",
+ "baseSha": "ea55ecb696cf74230e1282133d225ae3c9bcc475",
  "roles": [
   {
    "role": "cmo",
@@ -378,8 +378,8 @@
   {
    "kind": "analysis",
    "instructions": {
-    "sha256": "1f799478e43554585ce7a4b1bd23b8d9145d84e0ecefd016f509669bfbe7dffe",
-    "length": 1035
+    "sha256": "552f88b7ac4c76f851f21790114a081a0fe3bedba361727a1ad2a1a38c32b36e",
+    "length": 1110
    },
    "input": {
     "sha256": "ce38db92cbc44bfe5a18114a4f4d8f707dfb831ce29b74255d720347d1b53d8f",
@@ -389,8 +389,8 @@
   {
    "kind": "discovery",
    "instructions": {
-    "sha256": "b691d1e0f493b88a7d2917b7d48199ae500e0678f1012ac0481d35301d009c6e",
-    "length": 1832
+    "sha256": "e5c3d4023f76bbf42b0f7a5a1d3851568293b7827edb6ddfb8ffb1a5573b2a4d",
+    "length": 1907
    }
   }
  ],

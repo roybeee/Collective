@@ -1,5 +1,7 @@
-import {ApiError, encrypt, decrypt, readRecord, listRecords, recordStatement, stamp, database, str} from './server';
+import {ApiError, readRecord, listRecords, recordStatement, stamp, database, str} from './server';
+import {openRecordSecret, sealRecordSecret} from './credential-crypto-server';
 import {connectorFor, connectorKeys, connectors} from './connectors';
+import {ConnectorMissingError} from './connectors/errors';
 import type {ChannelCredential, ConnectorKey} from './connectors/types';
 import type {Brand} from './agency';
 import type {Store} from './store-marketing';
@@ -111,7 +113,7 @@ export async function saveCredential(owner: string, channel: unknown, input: Rec
  const record: StoredCredential = {
   channel: connector.key,
   ...unit,
-  secret: await encrypt(JSON.stringify(credential)),
+  secret: await sealRecordSecret(owner, 'channel_credential', recordId(connector.key, unit), JSON.stringify(credential)),
   account: verified.account,
   ...(verified.expiresAt ? {expiresAt: verified.expiresAt} : {}),
   createdAt: previous?.createdAt || stamp(),
@@ -124,8 +126,9 @@ export async function saveCredential(owner: string, channel: unknown, input: Rec
 export async function loadCredential(owner: string, channel: unknown, scope?: CredentialScope): Promise<{credential: ChannelCredential; resolvedScope: ResolvedScope}> {
  const connector = connectorFor(channel);
  const hit = await resolve(owner, connector.key, normalized(scope));
- if (!hit) throw new ApiError(409, `${connector.label} 연결이 필요합니다. 연결 및 설정에서 등록해 주세요.`);
- return {credential: JSON.parse(await decrypt(hit.record.secret)) as ChannelCredential, resolvedScope: hit.scope};
+ if (!hit) throw new ConnectorMissingError(`${connector.label} 연결이 필요합니다. 연결 및 설정에서 등록해 주세요.`);
+ const secret = await openRecordSecret(owner, 'channel_credential', recordId(connector.key, 'brandId' in hit.scope ? hit.scope : {}), hit.record.secret);
+ return {credential: JSON.parse(secret) as ChannelCredential, resolvedScope: hit.scope};
 }
 
 // 요청한 단위의 레코드만 지운다. 브랜드를 해제해도 그 지점·워크스페이스 기본은 남는다.

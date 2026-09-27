@@ -17,6 +17,9 @@ export const FEATURE_FLAGS={
  a8_customer_report:{defaultEnabled:false,description:'대표·관리자가 끝난 주의 점포 고객 보고서(장부·POS 대조·north-star·채널 단위경제·커넥터 참고값)를 미리 보고 동결하며, 사실 팩을 받는다. 대표가 동결 판을 검토한다(A8, 모델 호출 없음). 꺼도 동결한 보고서 목록·다운로드는 계속된다.'},
  b4_reward_lineage:{defaultEnabled:false,description:'대표·관리자가 사람 판정·발행·반응·주문 보상을 프롬프트 버전·학습 규칙별로 모은 보상 계보(읽기 전용 집계)를 본다(B4 2부, 모델·커넥터 호출 없음). 자동 승격·강등은 없다.'},
  b3_playbook_signals:{defaultEnabled:false,description:'대표·관리자가 학습 화면에서 브랜드×역할 교정 묶음(90일 5건 이상이면 규칙 초안 대상)·운영자 선호 규칙별 피드백·같은 사유 재발률(4주)을 본다(B3-2a, 읽을 때 계산, 모델 호출 없음). 규칙 상태·만료를 자동으로 바꾸지 않는다.'},
+ crypto_v1_write:{defaultEnabled:false,description:'연결 자격증명(AI 연결·성과 수집 채널·Buffer 발행)을 새 암호문 형식(키 ID·저장 위치 AAD)과 현재 키로 쓰고, 옛 형식·이전 키 암호문은 읽을 때 현재 키로 다시 쓴다. 대표 전체 재암호화도 켜져 있을 때만 된다. 켜면 이전 코드로 롤백했을 때 새로 쓴 연결을 읽지 못한다(security-ops-6).'},
+ collect_guard:{defaultEnabled:false,description:'성과 자동 수집(워커)이 인증 오류(토큰 무효·연결 없음)를 만나면 그 대상을 바로 멈추고 재연결 필요로 표시하며, 연속 실패가 늘면 다음 시도 간격을 6→12→24시간으로 늘린다(PR 4b security-ops-5). 꺼도 실패 분류·실험 카드 경고·워크스페이스 알림은 계속된다.'},
+ a4_png_code:{defaultEnabled:false,description:'관리자가 게시 코드가 있는 발행 초안에 코드를 그린 파생 PNG를 만들어 연결하고, 승인하면 그 파생 PNG를 앱 공개 주소로 제공한다(A4-4, 원본 소재 PNG·해시는 그대로, 승인 때 코드 PNG 확인 필수). 끄면 파생 PNG가 연결된 초안은 승인·접수하지 않는다(취소는 가능).'},
  input_diet:{defaultEnabled:false,description:'역할·회의·브리프 입력을 줄인다(PR 4b): 캠페인 메타 제거, 선행 작업물 섹션별 예산(모든 섹션 포함), 회의 단계별 작업물 축소(품질 재검토 본문 중복 제거), 브랜드 자료 역할별 요약(digest)과 입력 상한. 확정 사실·근거 규율·출력 계약은 그대로다. 켜기 전에 레인 Q 쌍 평가가 필요하다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;

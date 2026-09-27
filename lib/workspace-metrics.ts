@@ -1,6 +1,7 @@
 // 대시보드·사이드바 숫자의 정의. 화면마다 따로 세지 않도록 여기서만 센다(tests/workspace-metrics.test.mjs로 고정).
 import {roles,statuses,type Artifact,type Campaign,type Run} from './agency';
 import {artifactUsable} from './role-output';
+import {franchiseNextTasks,type FranchiseNextTask,type FranchiseWorkspaceTasks} from './franchise-tasks';
 
 // 캠페인 상태(lib/agency.ts statuses): draft 브리프 작성 · ready 실행 준비 · running AI 작업 중 · blocked 진행 막힘 · review 검토 대기 · approved 기획 승인 ·
 // revision 수정 요청 · executing 발행 진행 · measuring 성과 기록.
@@ -60,9 +61,9 @@ export function failedRuns(runs:readonly Run[],campaigns:readonly Pick<Campaign,
 // 온보딩 완료 = 브랜드·AI 연결·첫 캠페인 세 항목.
 export function onboardingComplete(data:{brands:readonly unknown[];campaigns:readonly unknown[];connection:{configured:boolean}}){return data.brands.length>0&&data.connection.configured&&data.campaigns.length>0}
 // 다음 할 일: workspace 응답에 있는 정보(실행·작업물)로만 만든다. campaignId는 가장 최근 항목의 캠페인.
-export type NextTask={kind:'failed-run'|'needs-work';count:number;campaignId:string};
+export type NextTask={kind:'failed-run'|'needs-work';count:number;campaignId:string}|FranchiseNextTask;
 // 보관 캠페인의 실패·보완 항목은 할 일로 올리지 않는다.
-export function nextTasks(data:{campaigns:readonly (Campaign&StatusView)[];artifacts:readonly Artifact[];runs:readonly Run[]}):NextTask[]{
+export function nextTasks(data:{campaigns:readonly (Campaign&StatusView)[];artifacts:readonly Artifact[];runs:readonly Run[];franchiseTasks?:FranchiseWorkspaceTasks|null}):NextTask[]{
  const campaigns=visibleCampaigns(data.campaigns),failed=failedRuns(data.runs,campaigns),work=needsWorkArtifacts(data.artifacts,campaigns).toSorted((a,b)=>b.createdAt.localeCompare(a.createdAt));
- return [...(failed.length?[{kind:'failed-run' as const,count:failed.length,campaignId:failed[0].campaignId}]:[]),...(work.length?[{kind:'needs-work' as const,count:work.length,campaignId:work[0].campaignId}]:[])];
+ return [...(failed.length?[{kind:'failed-run' as const,count:failed.length,campaignId:failed[0].campaignId}]:[]),...(work.length?[{kind:'needs-work' as const,count:work.length,campaignId:work[0].campaignId}]:[]),...franchiseNextTasks(data.franchiseTasks)];
 }
