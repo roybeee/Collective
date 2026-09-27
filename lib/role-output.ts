@@ -161,7 +161,7 @@ export function renderRoleOutput(content:string,role:string,contract?:RoleOutput
  if(isQuestionOnly(content))return outputError('담당 과업 대신 작업 선택을 요청했습니다.');
  if(!contract||role==='quality'&&!normalize)return {content,normalization:NO_NORMALIZATION};
  if(role==='quality'){const q=normalizeQualityOutput(content);return {content:q.text,normalization:q.normalization}}
- const section=normalize?normalizeSectionBody:(text:string)=>({text,normalization:NO_NORMALIZATION});
+ const titles=Object.fromEntries(contract.sections.map(s=>[s.id,s.title])),section=normalize?(text:string)=>normalizeSectionBody(text,titles):(text:string)=>({text,normalization:NO_NORMALIZATION});
  const raw=contractJson(content);
  if(!raw||typeof raw!=='object')return outputError('결과 객체가 필요합니다.');
  const result=raw as Record<string,unknown>;
