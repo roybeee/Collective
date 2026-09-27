@@ -1,5 +1,6 @@
 import {ApiError, encrypt, decrypt, readRecord, listRecords, recordStatement, stamp, database, str} from './server';
 import {connectorFor, connectorKeys, connectors} from './connectors';
+import {ConnectorMissingError} from './connectors/errors';
 import type {ChannelCredential, ConnectorKey} from './connectors/types';
 import type {Brand} from './agency';
 import type {Store} from './store-marketing';
@@ -124,7 +125,7 @@ export async function saveCredential(owner: string, channel: unknown, input: Rec
 export async function loadCredential(owner: string, channel: unknown, scope?: CredentialScope): Promise<{credential: ChannelCredential; resolvedScope: ResolvedScope}> {
  const connector = connectorFor(channel);
  const hit = await resolve(owner, connector.key, normalized(scope));
- if (!hit) throw new ApiError(409, `${connector.label} 연결이 필요합니다. 연결 및 설정에서 등록해 주세요.`);
+ if (!hit) throw new ConnectorMissingError(`${connector.label} 연결이 필요합니다. 연결 및 설정에서 등록해 주세요.`);
  return {credential: JSON.parse(await decrypt(hit.record.secret)) as ChannelCredential, resolvedScope: hit.scope};
 }
 
