@@ -15,9 +15,10 @@ export function shiftClock(){
  class ShiftDate extends Date{constructor(...args){super(...(args.length?args:[Date.now()+state.offset]))}static now(){return Date.now()+state.offset}}
  return {ShiftDate,set:ms=>{state.offset=ms},get:()=>state.offset,now:()=>Date.now()+state.offset,iso:(deltaMs=0)=>new Date(Date.now()+state.offset+deltaMs).toISOString()};
 }
-export async function franchiseFixture(){
+// options.fetch: 외부 호출 스텁(R7a 벤치마크 스위트). 없으면 모든 외부 호출이 실패한다. 어느 쪽이든 호출 주소는 calls에 남는다.
+export async function franchiseFixture(options={}){
  const clock=shiftClock(),calls=[];
- const rt=moduleRuntime(async url=>{calls.push(String(url));throw new Error('외부 호출 금지')},{},{Date:clock.ShiftDate});
+ const rt=moduleRuntime(async(url,init)=>{calls.push(String(url));if(options.fetch)return options.fetch(String(url),init);throw new Error('외부 호출 금지')},{},{Date:clock.ShiftDate});
  const {sql,env,load}=rt;
  const server=await load('lib/server.ts'),route=await load('app/api/franchise/route.ts'),flagRoute=await load('app/api/feature-flags/route.ts');
  const flags=await load('lib/feature-flags.ts'),lib=await load('lib/franchise.ts'),fcrypto=await load('lib/franchise-crypto.ts');
