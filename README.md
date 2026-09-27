@@ -15,7 +15,7 @@ Private marketing workspace for Mealzip. Built with React, Vinext, Cloudflare Wo
 
 ## Connection
 
-The default connection is an authenticated HTTPS HERMES gateway in **연결 및 설정**, checked for run submission, status, stopping, and durable idempotency. Existing OpenAI connections remain supported; choosing HERMES never silently falls back to an OpenAI API call. Secrets are AES-GCM encrypted using the server-only `AGENCY_ENCRYPTION_KEY` (32 bytes, base64). Never rotate the encryption key without re-encrypting stored credentials. Do not commit `.env` or secrets.
+The default connection is an authenticated HTTPS HERMES gateway in **연결 및 설정**, checked for run submission, status, stopping, and durable idempotency. Existing OpenAI connections remain supported; choosing HERMES never silently falls back to an OpenAI API call. Secrets are AES-GCM encrypted using the server-only `AGENCY_ENCRYPTION_KEY` (32 bytes, base64). Never rotate the encryption key without re-encrypting stored credentials; rotation uses the optional `AGENCY_ENCRYPTION_KEYS` list and the procedure in `docs/SECURITY-BOUNDARIES.ko.md` (security-ops-6). Do not commit `.env` or secrets.
 
 The model must support Responses background execution and web search. The default model is `gpt-6-astra`; users can set an available compatible model. Official references: https://developers.openai.com/api/docs/guides/agents and https://developers.openai.com/api/docs/models/gpt-6-astra .
 
