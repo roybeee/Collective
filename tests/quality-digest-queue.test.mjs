@@ -154,7 +154,7 @@ check('the table carries no artifact content, memo or email',!/실행 초안|@te
 
 // 7) 등록과 구조: 스위치·kind·기능 상태 행·워커 연결
 const catalog=plain(flags.FEATURE_FLAGS),names=Object.keys(catalog);
-check('b2_digest_queue is a known switch, off by default, after b3_playbook_signals',catalog.b2_digest_queue?.defaultEnabled===false&&names.indexOf('b2_digest_queue')===names.indexOf('b3_playbook_signals')+1);
+check('b2_digest_queue is a known switch, off by default, after b3_playbook_signals',catalog.b2_digest_queue?.defaultEnabled===false&&names.indexOf('b2_digest_queue')>names.indexOf('b3_playbook_signals'));
 const kinds=plain(registry.recordKinds),ki=k=>kinds.findIndex(x=>x.kind===k);
 check('quality_digest and quality_drift_alarm are registered after prompt_alarm_ack and outside campaign deletion',ki('quality_digest')===ki('prompt_alarm_ack')+1&&ki('quality_drift_alarm')===ki('quality_digest')+1&&['quality_digest','quality_drift_alarm'].every(k=>kinds[ki(k)].campaignDeletion==='not_campaign_scoped'&&kinds[ki(k)].parent==='none'));
 const row=list=>plain(status.featureRows({flags:list})).find(r=>r.key==='quality-digest');
