@@ -44,7 +44,7 @@ function link(spec,ref){
 }
 const load=async file=>{const m=moduleFor(file);if(m.status==='unlinked')await m.link(link);if(m.status!=='evaluated')await m.evaluate();return m.namespace};
 const ui=await load('app/franchise-report-panel.tsx'),common=await load('app/franchise-common.tsx');
-const rc=await f.load('lib/franchise-recruitment.ts');
+const rc=await f.load('lib/franchise-recruitment.ts'),rep=await f.load('lib/franchise-report.ts');
 const render=(C,p)=>renderToStaticMarkup(React.createElement(C,p));
 const button=(html,label)=>html.includes(`>${label}</button>`);
 const asUser=session=>async(url,init={})=>{
@@ -134,11 +134,21 @@ check('RU-6 evidenceInput for an asset names assetId',JSON.stringify(common.evid
 const detailSrc=readFileSync('app/franchise-lead-detail.tsx','utf8'),assetSrc=readFileSync('app/franchise-assets-panel.tsx','utf8'),panelSrc=readFileSync('app/franchise-panel.tsx','utf8');
 check('RU-6 the lead detail and the asset detail show the evidence button to owners and admins only',/\{admin&&<EvidenceExport brandId=\{brandId\} scope="lead" target=\{lead\.id\}\/>\}/.test(detailSrc)&&/\{admin&&<EvidenceExport brandId=\{brandId\} scope="asset" target=\{a\.id\}\/>\}/.test(assetSrc));
 
+// ════ RU-8 적격 판정 코호트(대표 결정 35) ════
+{
+ const saved=await f.profile(boss,'fr-a',{branch:'A',eligibility:{budgetBands:['100m_150m'],regions:['서울 강남구'],timingBands:['within_3m']}},1);
+ check('RU-8 setup: criteria version 1 is saved',saved.status===200);
+ for(const id of leads.slice(0,5)){const q=await f.post(boss,{action:'qualify_lead',brandId:'fr-a',leadId:id,version:f.leadRow(id).version,verdict:'qualified',reason:'criteria_met',criteriaVersion:1});assert.equal(q.status,200,JSON.stringify(q.body))}
+ const qv=await view(member,{view:'report',week:'2026-W40'}),qhtml=render(ui.FranchiseReport,{brandId:'fr-a',admin:false,initial:qv});
+ check('RU-8 the report screen has the cohort qualification table with the note, counts by criteria version and the cost per qualified lead',qhtml.includes('적격 판정(문의 월 코호트)')&&qhtml.includes(esc(rep.QUALIFIED_NOTE))&&qhtml.includes('<td>2026-09</td><td>5</td><td>v1 5</td><td>0</td><td>0</td><td>5건 미만</td><td>표본 부족(n&lt;20)</td>'));
+ check('RU-8 the old empty qualified-lead note under the CPL table is gone',!qhtml.includes('비워 둡니다'));
+}
+
 // ════ RU-7 탭 연결 ════
 check('RU-7 the franchise panel has a 성과 tab after 유입·비용 that renders the report panel',panelSrc.includes('<TabsTrigger value="inflow">유입·비용</TabsTrigger><TabsTrigger value="report">성과</TabsTrigger>')&&panelSrc.includes("shown==='report'?<FranchiseReport key={brandId} brandId={brandId} admin={admin}/>"));
 check('RU-7 no external or model call was made',f.calls.length===0&&!logged.some(l=>/franchise_request_failed/.test(l)));
 
-const IDS=['RU-1','RU-2','RU-3','RU-4','RU-5','RU-6','RU-7'];
+const IDS=['RU-1','RU-2','RU-3','RU-4','RU-5','RU-6','RU-7','RU-8'];
 const missing=IDS.filter(id=>!passed.some(n=>n.startsWith(id+' ')));
 assert.deepEqual(missing,[],'이름에 없는 사례 번호: '+missing.join(', '));passed.push(`every R6c case id (${IDS.length}) has a named check`);
 console.log(JSON.stringify({passed:passed.length}));

@@ -101,7 +101,6 @@ export function ReportBody({r}:{r:RecruitmentReport}){
   <Section title="채널 CPL" note={`${c.window.from} ~ ${c.window.to} 안에 기간이 모두 든 비용만 셉니다. 걸친 비용이 있으면 CPL을 비우고 맞춘 기간을 보입니다.`}>
    <p>{`주 안 비용 합계 ${moneyText(c.totalSpend)} · 걸친 비용 ${c.straddlingRows}건`}</p>
    {c.channels.length?<Table caption="채널별 비용과 CPL" head={['채널','비용','리드(코드+파일)','CPL(코드+파일)','CPL(코드만)','맞춘 기간']} rows={c.channels.map(ch=>[ch.label,moneyText(ch.spend),cellText(ch.leads),costText(ch.cpl),costText(ch.cplCode),ch.aligned?`${ch.aligned.from} ~ ${ch.aligned.to}`:'-'])}/>:<p className="subtle-note">이 주의 비용·귀속 리드가 없습니다.</p>}
-   <p className="subtle-note">{QUALIFIED_NOTE}</p>
    {c.platform.length>0&&<Table caption="플랫폼 보고 수치" head={['채널','노출','클릭','양식 제출','구분']} rows={c.platform.map(p=>[p.label,p.impressions===null?'모름':String(p.impressions),p.clicks===null?'모름':String(p.clicks),p.formSubmits===null?'모름':String(p.formSubmits),p.note])}/>}
   </Section>
   <Section title="speed-to-lead(첫 연락까지)" note={STL_REFERENCE_NOTE}>
@@ -111,6 +110,10 @@ export function ReportBody({r}:{r:RecruitmentReport}){
   <Section title="문의 월 코호트" note="문의 월(한국 날짜) 기준입니다. 비율은 코호트 20건 이상일 때만 보입니다. 계약 칸은 1건부터 보이고, 계약당 비용은 계약 20건 전에는 지출 합계·계약 수와 '표본 부족'을 함께 적습니다(대표 결정 36).">
    <Table caption="문의 월 코호트" head={['문의 월','문의','성숙',...(r.cohorts[0]?.stages??[]).map(x=>x.label),'종결','비용','계약당 비용']}
     rows={r.cohorts.map(k=>[k.month,cellText(k.size),k.mature?'성숙':'미성숙',...k.stages.map(x=>`${cellText(x.reached)} (${rateText(x.rate)})`),cellText(k.closed),k.spendState==='straddling'?'비용 기간 불일치':moneyText(k.spend),costText(k.costPerContract)])}/>
+  </Section>
+  <Section title="적격 판정(문의 월 코호트)" note={QUALIFIED_NOTE}>
+   <Table caption="코호트 적격 판정" head={['문의 월','적격','기준 버전별 적격','보류','거절','판정 없음','적격 리드당 비용']}
+    rows={r.cohorts.map(k=>{const q=k.qualification;return [k.month,cellText(q.qualified),q.byVersion.length?q.byVersion.map(x=>`v${x.version} ${cellText(x.qualified)}`).join(' · '):'-',cellText(q.hold),cellText(q.rejected),cellText(q.unjudged),costText(q.costPerQualified)]})}/>
   </Section>
   <Section title="법정 게이트·규칙">
    <Table caption="법정 게이트와 규칙 신선도" head={['항목','값']} rows={[['보고 주 계약',cellText(g.contractsInWeek)],['보고 주 서버 거부 시도',String(g.blockedAttempts)],['계약 리드(전체)',cellText(g.contracted)],['증빙 완결(전체)',cellText(g.evidenceComplete)],
