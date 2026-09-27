@@ -16,7 +16,7 @@ node node_modules/@playwright/test/cli.js test
 node node_modules/@playwright/test/cli.js test -c playwright.auth.config.ts   # 이메일 인증 1건
 ```
 
-- 서버는 Playwright가 `e2e/serve.mjs`로 직접 띄운다. 매 실행마다 `e2e/.state/`에 빈 로컬 D1을 만들고 `drizzle/*.sql`을 적용한 뒤 `wrangler dev --local`을 `127.0.0.1:8799`(`E2E_PORT`로 변경)에서 시작한다. 운영 D1/R2에는 연결하지 않는다.
+- 서버는 Playwright가 `e2e/serve.mjs`로 직접 띄운다. 매 실행마다 `e2e/.state/`에 빈 로컬 D1을 만들고 `drizzle/*.sql`을 적용한 뒤 `wrangler dev --local`을 `127.0.0.1:8799`(`E2E_PORT`로 변경)에서 시작한다. 운영 D1/R2에는 연결하지 않는다. 기본 설정은 가맹 리드 가져오기가 연락처를 암호화해 저장하도록 공개된 테스트 전용 고정 키(`AGENCY_ENCRYPTION_KEY`, 32바이트 0x07)를 넘긴다. 운영 키와 무관하다.
 - `e2e/serve.mjs`는 wrangler를 띄우기 전에 `e2e/wrangler-proxy-fix.mjs`로 설치된 wrangler 4.92.0의 로컬 프록시(`node_modules/wrangler/wrangler-dist/ProxyWorker.js`)를 고친다. 끊긴 GET이 다음 요청까지 멈추던 버그를 wrangler 4.114·4.130 수정으로 되돌려 넣은 것이다. 한 번만 적용하고, 다른 wrangler 버전이면 건너뛰며, 원문이 다르면 서버를 띄우지 않고 멈춘다. 로컬에서 E2E를 돌리면 설치본이 바뀐다(`pnpm install --force`로 되돌린다). 운영 Workers에는 이 프록시가 없다.
 - 스크린샷(390×844 `mobile-*.png`, 1280×800 `desktop-*.png`), 실패 시 trace는 `e2e/artifacts/`에 남는다. 로컬 서버 stdout 전체(wrangler 요청 기록: 경로·상태·처리 시간)는 줄마다 UTC 시각을 붙여 `e2e/artifacts/server-default.log`(이메일 인증 여정은 `server-auth.log`)에 남는다. CI는 이 폴더를 늘 올리므로(`e2e-artifacts`), 응답 없이 멈춘 요청을 Playwright 시각과 맞춰 볼 수 있다(2026-09-25 `meeting-quality.spec.ts:40` 흔들림 조사용). 이 폴더와 `e2e/.state/`는 `.gitignore` 대상이라 빌드가 `dirty`로 표시되지 않는다.
 - 기본 설정(`playwright.config.ts`): 두 화면 크기(`mobile`, `desktop` 프로젝트) × 테스트 7개(`smoke` 5, `meeting-quality` 1, `execution` 1) = 14건.
@@ -33,8 +33,10 @@ node node_modules/@playwright/test/cli.js test -c playwright.auth.config.ts   # 
 | 사용량 가격 | 명시한 모델별 단가 저장 | real Chromium/로컬 D1, mocked 인증 |
 | 캠페인 삭제(목록 ⋯ 메뉴) | 대시보드 표에 삭제·더 보기 없음, 삭제 영향 조회 건수(작업물 1건)·결정 7 안내 표시, 제목 불일치 시 비활성·일치 시 활성, 삭제 뒤 `GET /api/campaigns/[id]` 404 | real Chromium/로컬 D1, mocked 인증 |
 | 회의 실패 단계 재작성 | 완료 발언 유지, 단계/시도 지정 POST, 이후 GET 조회만 발생 | real Chromium, mocked 인증·회의 응답·작업자 상태 |
+| 가맹 모집 자료 승인·내보내기의 대기기간 확인(#186 결정 34, `franchise-recruit.spec.ts`) | 포털 소개문 초안의 후보 문장 2개(정보공개서·가맹금/계약)만 원문 보기와 승인 단계에서 `<mark>` 강조, 체크리스트를 모두 체크해도 확인란 전에는 승인 버튼 잠김, 확인 없는 `asset_approve`·`asset_export` 409 `wait_review_missing`, 확인 뒤 승인 200(요청에 판·후보 수 2), 확인란 전 복사·내려받기 잠김, 확인 뒤 내려받은 파일·클립보드 원문이 승인 원문과 같음, 내보내기 2회 | real Chromium·로컬 D1 / mocked 인증 |
+| 가맹 모집 유입·비용 탭(#188 R5c, `franchise-recruit.spec.ts`) | 모집 코드 발급 → 사용 중지(`중지 오늘`), 모집 비용 기록 → 무효화(입력 오류), 새 행사에 유효 비용 연결(선택지는 유효 비용 1건, `event_save` spendRef 저장), 가상 2행 리드 CSV 검사 → 미리보기(만들 리드 2건, 연락처 원문 없음) → 확정 대화 → 가져오기 기록·보드 2건 | real Chromium·로컬 D1(테스트 전용 암호화 키) / mocked 인증. 직원 화면은 이메일 인증 설정에서 본다 |
 | 확인 사실 → PNG 제작 → 새로고침 뒤 내려받기 | 확인 사실 등록, `save_creative` 200, `/api/execution/asset` 200과 1080×1080 PNG, 새로고침 뒤 내려받기 링크 유지, 발행 이력 없음 | real Chromium Canvas·로컬 D1/R2 / mocked 인증. 외부 게시 없음 |
-| 이메일 로그인·초대·세션 유지·권한 제한·폐기(별도 설정) | 관리자 초기 등록, 쿠키 속성, 새로고침 유지, 초대·멤버403, 직원 화면의 캠페인 삭제·채널 연결 버튼 미표시(관리자 화면의 캠페인 목록에는 더 보기 메뉴 표시), 위조 GPT 헤더401, 재사용401, 재설정·해제 뒤 세션401 | real HTTPS Chromium·로컬 workerd/D1·native scrypt. 실제 메일·운영 서버 호출 없음 |
+| 이메일 로그인·초대·세션 유지·권한 제한·폐기(별도 설정) | 관리자 초기 등록, 쿠키 속성, 새로고침 유지, 초대·멤버403, 직원 화면의 캠페인 삭제·채널 연결 버튼 미표시(관리자 화면의 캠페인 목록에는 더 보기 메뉴 표시), 가맹 모집 유입·비용 탭의 직원 화면에 모집 비용·리드 파일 가져오기·가져오기 기록 미표시와 `GET /api/franchise?view=spend·imports` 403(관리자 화면에는 표시), 위조 GPT 헤더401, 재사용401, 재설정·해제 뒤 세션401 | real HTTPS Chromium·로컬 workerd/D1·native scrypt. 실제 메일·운영 서버 호출 없음 |
 
 ## 실제(real)와 모의(mocked)의 경계
 

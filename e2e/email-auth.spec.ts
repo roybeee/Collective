@@ -66,6 +66,21 @@ test('이메일 로그인·초대·세션 유지·권한 제한·폐기',async({
  await member.getByText('모델별 단가 설정',{exact:true}).click();
  await expect(member.locator('details').filter({hasText:'모델별 단가 설정'}).getByText('관리자만 변경할 수 있습니다.',{exact:true})).toBeVisible();
  await expect(member.getByLabel('실제 모델 ID',{exact:true})).toHaveCount(0);
+ // 트랙 R R5c '유입·비용' 탭: 직원 화면에는 모집 비용·리드 파일 가져오기 영역이 없고(모집 코드 목록과 요청 안내만), 서버도 비용·가져오기 기록 보기를 403으로 막는다.
+ // 관리자(소유자)가 가맹 스위치를 켜고 시드 브랜드 ofd를 분기 A로 기록한다. 값은 모두 가상이다. 같은 탭의 관리자 화면에는 두 영역이 보인다(대조).
+ expect((await post('/api/feature-flags',{action:'set',flag:'r_franchise',enabled:true})).status()).toBe(200);
+ expect((await post('/api/franchise',{action:'save_profile',requestId:'e2e-auth-franchise-profile',brandId:'ofd',version:0,profile:{branch:'A',forecastInputs:{sme:true,storesAtFyEnd:3,fiscalYearEnd:null},holidays:null,storageLabels:[],eligibility:null}})).status()).toBe(200);
+ await member.goto('/?view=franchise&brand=ofd&tab=inflow');
+ await expect(member.getByRole('heading',{name:'모집 코드',exact:true})).toBeVisible();
+ await expect(member.getByText('모집 코드 발급과 중지는 대표·관리자에게 요청하세요.',{exact:false})).toBeVisible();
+ for(const name of ['모집 비용','리드 파일 가져오기','가져오기 기록'])await expect(member.getByRole('heading',{name,exact:true})).toHaveCount(0);
+ await expect(member.getByLabel('가져올 CSV 파일',{exact:true})).toHaveCount(0);
+ await member.screenshot({path:'e2e/artifacts/franchise-188-member-inflow-mobile.png',fullPage:true});
+ for(const view of ['spend','imports'])expect((await member.request.get(`/api/franchise?view=${view}&brandId=ofd`)).status()).toBe(403);
+ await page.goto('/?view=franchise&brand=ofd&tab=inflow');
+ for(const name of ['모집 코드','모집 비용','리드 파일 가져오기','가져오기 기록'])await expect(page.getByRole('heading',{name,exact:true})).toBeVisible();
+ await page.screenshot({path:'e2e/artifacts/franchise-188-admin-inflow-mobile.png',fullPage:true});
+ await page.goto('/');
  const accounts=await (await page.request.get('/api/accounts')).json() as {accounts:{id:string;email:string}[]};
  const userId=accounts.accounts.find(a=>a.email==='member@example.test')!.id;
  const reset=await (await post('/api/accounts',{action:'reset',userId})).json() as {token:string};
