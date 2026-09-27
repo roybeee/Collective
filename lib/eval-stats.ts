@@ -69,7 +69,7 @@ export type PairCaseOutcome=CaseOutcome&{variant?:string;set?:string;model?:stri
 type BasisHash={hash?:string|null}|null|undefined;
 export type PairGatewayBasis={operational?:BasisHash;eval?:BasisHash}|null|undefined;
 export type PairRunOutcomes={id:string;variant?:string;status?:string;deleted?:unknown;gatewaySnapshot?:PairGatewayBasis;gatewaySnapshotEnd?:PairGatewayBasis;results:readonly PairCaseOutcome[]};
-export type PairGateCode='not_pair'|'not_completed'|'incomplete_cases'|'gateway_changed'|'model_changed'|'fewer_passes'|'sealed_missing'|'sealed_regression'|'input_budget';
+export type PairGateCode='not_pair'|'not_completed'|'incomplete_cases'|'gateway_changed'|'model_changed'|'fewer_passes'|'sealed_missing'|'sealed_regression'|'input_budget'|'case_set_mismatch';
 // warnings: 거부 사유가 아닌 참고 경고(small_sample: 대응 쌍이 MIN_PAIRS 미만). 최소 케이스 수는 강제하지 않는다(대표 결정 전).
 export type PairGate={ok:boolean;reasons:{code:PairGateCode;message:string}[];warnings:{code:'small_sample';message:string}[];cases:number;sealedCases:number;passes:{pairs:number;active:number;candidate:number};sealedRegressions:{caseId:string;grader:string}[];inputBudget:{pass:number;total:number};models:Record<PairVariant,(string|null)[]>;gateway:{start:string|null;end:string|null}};
 
@@ -121,6 +121,48 @@ export function pairGate(run:PairRunOutcomes):PairGate{
  const f=pairFacts(run),gateway={start:hashOf(run.gatewaySnapshot,'eval'),end:hashOf(run.gatewaySnapshotEnd,'eval')},reasons=pairReasons(run,f,gateway);
  const warnings=f.passes.pairs<MIN_PAIRS?[{code:'small_sample' as const,message:`대응 ${f.passes.pairs}쌍(케이스 ${f.caseIds.length}건 · 봉인 ${f.sealedCases}건)으로 ${MIN_PAIRS}쌍 미만입니다. 최소 케이스 수는 강제하지 않으며(대표 결정 전) 이 게이트는 비회귀만 봅니다.`}]:[];
  return {ok:!reasons.length,reasons,warnings,cases:f.caseIds.length,sealedCases:f.sealedCases,passes:f.passes,sealedRegressions:f.sealedRegressions,inputBudget:f.inputBudget,models:f.models,gateway};
+}
+// ── 반복 쌍 평가 과반 게이트(대표 결정 2026-09-27 "v4 + 반복 채점") ──
+// 같은 단위·후보·기준(호출자가 검사)으로 돌린 pair run 여러 개를 (케이스·채점기)마다 과반으로 판정한다. 모델 출력의 흔들림 한 번이 회귀로 잡히지 않게 하려는 것이다.
+// 회귀: active가 과반 pass이고 후보가 과반 fail(동률은 후보에 불리하게 fail). input_budget: 후보가 케이스마다 과반 pass. 합격 수: 양쪽 과반 판정이 있는 대응 짝끼리 센다.
+// 구조 조건(pair·완료·케이스 완료·게이트웨이·모델·봉인 포함)은 run마다 pairGate 그대로 보고, 보고 모델은 모든 run에서 같아야 하며 케이스 구성도 같아야 한다.
+// run 하나면 pairGate와 같다(repeats 1).
+const STRUCTURAL:readonly PairGateCode[]=['not_pair','not_completed','incomplete_cases','gateway_changed','model_changed','sealed_missing'];
+type Votes={sealed:boolean;a:string[];b:string[]};
+const votesOf=(xs:string[],v:string)=>xs.filter(x=>x===v).length;
+function majorityVotes(runs:readonly PairRunOutcomes[]){
+ const votes=new Map<string,Votes>();
+ for(const run of runs){
+  const f=pairFacts(run);
+  for(const p of f.pairs){const k=`${p.caseId}\u0000${p.grader}`,v=votes.get(k)??{sealed:p.sealed,a:[],b:[]};votes.set(k,{sealed:v.sealed,a:[...v.a,p.a],b:[...v.b,p.b]})}
+ }
+ return votes;
+}
+export function pairGateMajority(runs:readonly PairRunOutcomes[]):PairGate&{repeats:number}{
+ if(!runs.length)throw new Error('반복 쌍 평가 run이 없습니다.');
+ if(runs.length===1)return {...pairGate(runs[0]),repeats:1};
+ const k=runs.length,half=k/2,gates=runs.map(pairGate),facts=runs.map(pairFacts);
+ const structural=STRUCTURAL.flatMap(code=>{const bad=runs.filter((_,i)=>gates[i].reasons.some(r=>r.code===code));return bad.length?[{code,message:`${gates[runs.indexOf(bad[0])].reasons.find(r=>r.code===code)!.message} (run ${bad.map(r=>r.id).join(', ')})`}]:[]});
+ const caseKey=(f:Facts)=>[...f.caseIds].sort().join(','),sameCases=facts.every(f=>caseKey(f)===caseKey(facts[0]));
+ const models=[...new Set(gates.flatMap(g=>[...g.models.active,...g.models.candidate]))],sameModel=models.length===1&&models[0]!==null;
+ const votes=[...majorityVotes(runs)].map(([key,v])=>{const [caseId,grader]=key.split('\u0000');return {caseId,grader,...v}});
+ const decided=votes.map(v=>({...v,aPass:votesOf(v.a,'pass')>half,aFail:votesOf(v.a,'fail')>half,bPass:votesOf(v.b,'pass')>half,bFail:votesOf(v.b,'pass')<=half}));
+ const pairs=decided.filter(v=>(v.aPass||v.aFail));
+ const passes={pairs:pairs.length,active:pairs.filter(v=>v.aPass).length,candidate:pairs.filter(v=>v.bPass).length};
+ const sealedRegressions=decided.filter(v=>v.sealed&&v.aPass&&v.bFail).map(({caseId,grader})=>({caseId,grader}));
+ const caseIds=facts[0].caseIds,budgetPass=caseIds.filter(id=>votesOf(runs.map(run=>splitPair(run).candidate.results.find(r=>r.caseId===id)?.graders?.find(g=>g.id==='input_budget')?.status??''),'pass')>half).length;
+ const inputBudget={pass:budgetPass,total:caseIds.length};
+ const rules:[boolean,PairGateCode,string][]=[
+  [!sameCases,'case_set_mismatch',`반복 쌍 평가 run들의 케이스 구성이 다릅니다(${runs.map(r=>r.id).join(', ')}). 같은 케이스로 다시 평가하세요.`],
+  [!sameModel&&!structural.some(r=>r.code==='model_changed'),'model_changed',`보고 모델이 반복 run 사이에 같지 않거나 보고되지 않았습니다(${models.map(m=>m??'미보고').join(', ')||'없음'}).`],
+  [passes.candidate<passes.active,'fewer_passes',`과반 판정 코드 채점 합격 수가 후보 ${passes.candidate} < active ${passes.active}입니다(대응 ${passes.pairs}쌍, 반복 ${k}회).`],
+  [sealedRegressions.length>0,'sealed_regression',`봉인 세트 과반 회귀 ${sealedRegressions.length}건(active 과반 pass → 후보 과반 fail, 반복 ${k}회: ${sealedRegressions.slice(0,5).map(x=>x.grader).join(', ')}).`],
+  [!inputBudget.total||inputBudget.pass<inputBudget.total,'input_budget',`input_budget 후보 과반 합격이 ${inputBudget.pass}/${inputBudget.total}건입니다(반복 ${k}회). 후보는 케이스마다 과반 pass여야 합니다.`],
+ ];
+ const reasons=[...structural,...rules.filter(([failed])=>failed).map(([,code,message])=>({code,message}))];
+ const sealedCases=facts[0].sealedCases;
+ const warnings=passes.pairs<MIN_PAIRS?[{code:'small_sample' as const,message:`과반 판정 대응 ${passes.pairs}쌍(케이스 ${caseIds.length}건 · 봉인 ${sealedCases}건, 반복 ${k}회)으로 ${MIN_PAIRS}쌍 미만입니다. 최소 케이스 수는 강제하지 않으며(대표 결정 전) 이 게이트는 비회귀만 봅니다.`}]:[];
+ return {ok:!reasons.length,reasons,warnings,cases:caseIds.length,sealedCases,passes,sealedRegressions,inputBudget,models:{active:gates.flatMap(g=>g.models.active),candidate:gates.flatMap(g=>g.models.candidate)},gateway:{start:gates[0].gateway.start,end:gates[k-1].gateway.end},repeats:k};
 }
 // GET /api/eval?pair=<run>: 두 쪽 비교 통계와 게이트 판정.
 export const pairReport=(run:PairRunOutcomes)=>{const {active,candidate}=splitPair(run);return {comparison:compareRuns(active,candidate),gate:pairGate(run)}};
