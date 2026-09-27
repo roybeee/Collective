@@ -54,19 +54,26 @@ export const SIDO_NAMES=deepFreeze(['서울','서울시','서울특별시','부�
  '세종','세종시','세종특별자치시','경기','경기도','강원','강원도','강원특별자치도','충북','충청북도','충남','충청남도','전북','전라북도','전북특별자치도','전남','전라남도','경북','경상북도','경남','경상남도','제주','제주도','제주특별자치도']);
 
 // ── 민감 열 이름(모든 머리글, 매핑과 무관) ──
-export const SENSITIVE_HEADER_TERMS_KO=deepFreeze(['이름','성명','성함','신청자','고객명','회원명','대표자','예비창업자','문의자','담당자','닉네임','아이디','연락처','전화','휴대폰','핸드폰','휴대전화','이메일','메일','카카오','카톡','주소','거주','생년','생일','나이','연령','주민','성별','계좌','카드','직업','직장','소득','자산','재산','건강','종교','문의내용','내용','메모','비고','요청사항','질문','의견','남기실']);
-export const SENSITIVE_HEADER_TOKENS_EN=deepFreeze(['phone','mobile','tel','telephone','email','mail','address','addr','birth','birthday','birthdate','dob','gender','sex','age','account','card','memo','message','comment','note','notes','nickname','username','kakao','income','job','occupation']);
-export const NAME_QUALIFIERS=deepFreeze(['full','first','last','user','customer','applicant','contact']);
-export const ID_QUALIFIERS=deepFreeze(['lead','user','member','customer','applicant','kakao']);
-// 한국어: NFKC·공백 제거 뒤 포함 검사. 영어: 소문자 토큰(영숫자 밖 문자와 camelCase 경계로 나눔) 하나라도 목록에 있으면 민감하다.
-// name은 토큰이 name 하나이거나 앞 토큰이 NAME_QUALIFIERS일 때만, id는 토큰이 id 하나이거나 앞 토큰이 ID_QUALIFIERS일 때만 민감하다(campaign_name·form_id는 통과).
+// 맨 '문의'·'상담'은 넣지 않는다(접수 시각 열 '문의일시'·'상담신청일시'를 막지 않으려고). 상담은 '상담내용'·'상담요청'만 넣는다.
+export const SENSITIVE_HEADER_TERMS_KO=deepFreeze(['이름','성명','성함','신청자','고객명','회원명','대표자','예비창업자','문의자','담당자','닉네임','아이디','연락처','전화','휴대폰','핸드폰','휴대전화','이메일','메일','카카오','카톡','주소','거주','생년','생일','나이','연령','주민','성별','계좌','카드','직업','직장','소득','자산','재산','건강','종교','문의내용','내용','메모','비고','요청사항','질문','의견','남기실',
+ '신청인','작성자','예금주','고객','사항','상담내용','상담요청','제목','휴대','연락','폰번호','전번','출생','우편']);
+export const SENSITIVE_HEADER_TOKENS_EN=deepFreeze(['phone','mobile','tel','telephone','email','mail','address','addr','birth','birthday','birthdate','dob','gender','sex','age','account','card','memo','message','comment','note','notes','nickname','username','kakao','income','job','occupation',
+ 'fullname','firstname','lastname','surname','ssn','rrn','passport','ip','hp','cell','contact','zip','zipcode','postal','postcode']);
+// 붙여 쓴 영어 머리글(phonenumber·dateofbirth·kakaotalk 등): 토큰 안에 이 조각이 있으면 민감하다. content는 utm_content 때문에 조각에 넣지 않는다(토큰이 content 하나인 머리글만 민감하다).
+export const SENSITIVE_HEADER_STEMS_EN=deepFreeze(['phone','mail','birth','contact','comment','remark','inquir','question','kakao','passport','address']);
+export const NAME_QUALIFIERS=deepFreeze(['full','first','last','user','customer','applicant','contact','given','family','real','nick']);
+export const ID_QUALIFIERS=deepFreeze(['lead','user','member','customer','applicant','kakao','external','leadgen']);
+// 한국어: NFKC·공백 제거 뒤 포함 검사. 영어: 소문자 토큰(영숫자 밖 문자와 camelCase 경계로 나눔) 하나라도 목록에 있거나 조각을 품으면 민감하다. 토큰을 이어 붙인 값이 목록에 있어도 민감하다('H.P'·'E.Mail').
+// name은 토큰이 name 하나이거나 앞 토큰이 NAME_QUALIFIERS일 때만, id는 토큰이 id 하나이거나 앞 토큰이 ID_QUALIFIERS일 때만, content는 토큰이 content 하나일 때만 민감하다(campaign_name·form_id·utm_content는 통과).
 export function isSensitiveHeader(header:unknown):boolean{
  try{
   if(typeof header!=='string')return false;
   const n=header.normalize('NFKC'),ko=n.replace(/\s+/g,'');
   if(SENSITIVE_HEADER_TERMS_KO.some(t=>ko.includes(t)))return true;
   const tokens=n.replace(/([a-z0-9])([A-Z])/g,'$1 $2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-  return tokens.some((t,i)=>SENSITIVE_HEADER_TOKENS_EN.includes(t)
+  if(SENSITIVE_HEADER_TOKENS_EN.includes(tokens.join('')))return true;
+  return tokens.some((t,i)=>SENSITIVE_HEADER_TOKENS_EN.includes(t)||SENSITIVE_HEADER_STEMS_EN.some(x=>t.includes(x))
+   ||t==='content'&&tokens.length===1
    ||t==='name'&&(tokens.length===1||i>0&&NAME_QUALIFIERS.includes(tokens[i-1]))
    ||t==='id'&&(tokens.length===1||i>0&&ID_QUALIFIERS.includes(tokens[i-1])));
  }catch{return true}
@@ -451,7 +458,8 @@ export async function leadImportPlanSha256(p:PlanHashInput):Promise<string>{
 
 // ── 판정 ──
 export type LeadImportContext={enabled:boolean;brandId:string;branch:string|null;actor:RecruitmentActor;now:string;today:string;storageLabels:readonly string[];coveredPeriods:readonly {from:string;to:string}[];event:EventLite|null;fileExists:boolean;book:CodeBook;bind:unknown};
-export type LeadImportPlan={fileSha256:string;hadBom:boolean;planSha256:string;rows:NormalizedLeadRow[];toCreate:number;skipped:{overlap:number;duplicateInFile:number};
+// rows: 파일의 데이터 행 수(= toCreate + skipped 합). normalizedRows: 만들 행의 정규화 목록(서버 전용, R5b-2는 응답에서 뺀다, 명세 2.6.6).
+export type LeadImportPlan={fileSha256:string;hadBom:boolean;planSha256:string;rows:number;normalizedRows:NormalizedLeadRow[];toCreate:number;skipped:{overlap:number;duplicateInFile:number};
  warnings:{budgetUnmapped:number;timingUnmapped:number;droppedTokens:number;truncatedTokens:number;possibleDuplicateInFile:number;expiringWithin14d:number;periodIncludesExportDay:boolean};
  receivedRange:{from:string;to:string}|null;mapping:Partial<Record<LeadImportTarget,number>>;provenance:Provenance;providerKey:string;eventId:string|null;channel:RecruitmentChannel;dropInFileDuplicates:boolean;transcodedFrom:string|null;
  attribution:{code:Record<string,number>;unattributed:Record<string,number>;conflict:number};headers:string[];ruleVersion:string;importVersion:string;note:string};
@@ -562,7 +570,7 @@ export async function leadImportDecision(input:unknown,ctx:LeadImportContext):Pr
    else attribution.unattributed[a.reason]=(attribution.unattributed[a.reason]??0)+1;
   }
   const times=rows.map(r=>r.receivedAt).sort(ascii);
-  return pass({fileSha256:file.fileSha256,hadBom:file.hadBom,planSha256,rows,toCreate:rows.length,skipped:{overlap,duplicateInFile},warnings,
+  return pass({fileSha256:file.fileSha256,hadBom:file.hadBom,planSha256,rows:file.rows.length,normalizedRows:rows,toCreate:rows.length,skipped:{overlap,duplicateInFile},warnings,
    receivedRange:times.length?{from:times[0],to:times[times.length-1]}:null,mapping:map,provenance,providerKey,eventId,channel:ch,dropInFileDuplicates:drop,transcodedFrom:transcoded,
    attribution,headers:file.headers,ruleVersion:RECRUITMENT_VERSION,importVersion:LEAD_IMPORT_VERSION,note:RECRUITMENT_ATTRIBUTION_NOTE},warningCodes);
  });

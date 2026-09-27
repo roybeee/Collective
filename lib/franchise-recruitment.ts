@@ -90,15 +90,17 @@ export function generateRecruitmentCode(random:Uint8Array):string|null{
 }
 export const MAX_CODES_PER_LEAD=5;
 const decodeOnce=(v:string)=>{try{return decodeURIComponent(v)}catch{return v}};
-// 칸에서 모집 코드를 꺼낸다. 칸을 공백·, ; |로 덩어리로 나누고, '='·'://'가 든 덩어리(주소·쿼리)는 '#' 앞에서 모든 utm_content 값(키 대소문자 무시, 퍼센트 해독 한 번)만 꺼낸다.
-// 나머지 덩어리는 '/'로 더 나눈다. 칸 안 위치 순서로 정규화해 R 형식만 먼저 나온 것을 남기고(중복 제거) 5개까지 쓴다. dropped: R 형식이 아닌 토큰 수(점포 코드 포함), truncated: 5개 초과.
+// 칸에서 모집 코드를 꺼낸다. 칸을 공백·, ; |로 덩어리로 나누고, '='가 든 덩어리(쿼리)는 '#' 앞에서 모든 utm_content 값(키 대소문자 무시, 퍼센트 해독 한 번)만 꺼낸다.
+// '#' 뒤는 조각이라 해시 라우팅 주소('/#/apply?utm_content=…')의 값은 꺼내지 않는다(명세 6.2 RC-T '# 뒤 무시'의 해석).
+// 나머지 덩어리(쿼리 없는 주소 포함)는 '/'로 더 나눈다('https://x.test/r/R2345678'의 경로 코드를 꺼내고 스킴·호스트·경로 조각은 버린 수에 든다).
+// 칸 안 위치 순서로 정규화해 R 형식만 먼저 나온 것을 남기고(중복 제거) 5개까지 쓴다. dropped: R 형식이 아닌 토큰 수(점포 코드 포함), truncated: 5개 초과.
 export function recruitmentTokens(cell:string):{codes:string[];dropped:number;truncated:boolean}{
  try{
   if(typeof cell!=='string')return {codes:[],dropped:0,truncated:false};
   const text=cell.normalize('NFKC'),found:{at:number;raw:string}[]=[];
   for(const m of text.matchAll(/[^\s,;|]+/g)){
    const chunk=m[0],at=m.index??0;
-   if(chunk.includes('=')||chunk.includes('://')){
+   if(chunk.includes('=')){
     for(const u of chunk.split('#')[0].matchAll(/(?:^|[?&])utm_content=([^&]*)/gi))found.push({at:at+(u.index??0),raw:decodeOnce(u[1])});
    }else{
     let off=0;
@@ -161,7 +163,7 @@ export const RECRUITMENT_MESSAGES:Readonly<Record<RecruitmentCode,string>>=deepF
  amount_negative:'금액은 음수일 수 없습니다. 환불은 기존 행을 교체해 순액으로 다시 적어 주세요.',
  amount_invalid:'금액은 0 이상 1,000억 이하의 원 단위 정수여야 합니다.',
  vat_invalid:'부가세 포함 여부(포함·제외)를 골라 주세요. 계산서 공급가액을 알면 제외로 그 값을 넣으세요.',
- original_invalid:'외화 원금은 KRW가 아닌 세 글자 통화 코드와 소수 둘째 자리까지의 금액이어야 합니다.',
+ original_invalid:'외화 원금은 KRW가 아닌 세 글자 통화 코드와 소수 둘째 자리까지의 금액이어야 합니다. 원화 금액이 0이면 외화 원금을 적지 않습니다.',
  funding_invalid:'비용 출처는 본부 모집 예산만 고를 수 있습니다.',
  ad_fund_forbidden:'광고분담금은 모집 비용 출처로 쓸 수 없습니다(결정 27 기본값).',
  referral_reward_forbidden:'점주 추천에는 금전 보상을 기록하지 않습니다(결정 27 기본값). 추천 활동은 금액 0으로 적고, 추천 카드 제작비는 해당 매체 채널로 적어 주세요.',
@@ -490,6 +492,8 @@ export function spendDecision(input:unknown,ctx:SpendContext):RecruitmentDecisio
   if(channel==='owner_referral'&&typeof amount==='number'&&amount>0)bad.push('referral_reward_forbidden');
   const original=originalOf(get(input,'original'));
   if(original===false)bad.push('original_invalid');
+  // 외화 원금은 원화 소진액이 있는 외화 청구에만 적는다(0원 행에 외화 금액을 실으면 원장 비용이 0으로 줄어든다). 점주 추천은 금액 0이라 외화 원금도 금전 보상으로 본다.
+  else if(original&&amount===0)bad.push(channel==='owner_referral'?'referral_reward_forbidden':'original_invalid');
   const platform=platformOf(get(input,'platform'));
   if(platform===false)bad.push('platform_metric_invalid');
   const ackRaw=get(input,'acknowledgeDuplicate');
