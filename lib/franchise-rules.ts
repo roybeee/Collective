@@ -320,7 +320,7 @@ export function registryIssues(now:string,rules:readonly FranchiseRule[]=FRANCHI
 // ── 모집 표현 판정 상수(R2) ──
 // 캡션·발행 게이트 판정기(lib/franchise-compliance.ts)가 쓴다. 공식 규칙의 표현 정규식은 규제 사전(lib/graders/compliance-lexicon.ts 범주 franchise_recruit)에 있고,
 // 여기에는 휴리스틱 표현 정규식·근거 사실 조건·해제 불가 목록만 둔다. 규칙 레지스트리(FRANCHISE_RULES·FRANCHISE_RULES_VERSION)는 바꾸지 않는다.
-export const FRANCHISE_CLAIMS_VERSION='fr-claims@2026-09-27.1';
+export const FRANCHISE_CLAIMS_VERSION='fr-claims@2026-09-27.2';
 // 해제 불가 목록(결정 25, 대표 기본값으로 적용 2026-09-25). 원장·[확인 필요]·인용·관리자·대표 승인 어느 것으로도 풀리지 않는다. 완화는 법률 검토(LR-1) 뒤 코드 PR로만 한다.
 export const FRANCHISE_HARD_BLOCK_IDS=Object.freeze(['h.captive_advisor_phrase','h.net_profit_payback_claims','h.revenue_figures_no_ad','h.wait_bypass_solicitation','kr.fr.association_condition','kr.fr.association_condition_2026','kr.fr.insurance_mark','kr.fr.revenue_guarantee'] as const);
 // 휴리스틱 표현 정규식(문장 단위). also: 같은 문장에 함께 있어야 함. except: 면제(해제 불가 규칙은 매치가 든 절에서만 본다). cleared: 본문에 있으면 해소. title: 화면에 보일 짧은 이름.
