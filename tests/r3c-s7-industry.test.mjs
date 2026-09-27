@@ -2,7 +2,7 @@
 // 문서의 스니펫을 그대로 꺼내 실제 /api/eval 라우트(app/api/eval/route.ts, 메모리 SQLite)에 대고 check·apply·rollback으로 돌린다(문서와 검사가 갈라지지 않게).
 // 수용: check는 쓰기 0, apply는 S7 8건의 industry만 바꾸고 나머지는 바이트까지 그대로, 다시 apply는 쓰기 0, 전제가 하나라도 어긋나면 쓰기 0으로 멈춤,
 // 중간 실패 뒤 다시 apply로 남은 건만 바꿈(4xx는 그 건이 그대로라고, 5xx·응답 없음·읽을 수 없는 응답은 바뀌었을 수도 있다고 알림), 처음 읽은 뒤 바뀐 케이스는 쓰지 않음,
-// rollback은 가져온 원본 기대 판정으로 되돌림, 출력에 케이스 내용·소유자·서버 오류 본문과 = ? & % 없음, 오늘 채점기로는 두 업종 목록의 판정이 같음.
+// rollback은 가져온 원본 기대 판정으로 되돌림, 출력에 케이스 내용·소유자·서버 오류 본문과 = ? & % 없음, R3c 뒤 채점기로는 ['fnb']만 가맹 모집 표현을 유출로 봄.
 // 근거: mocked(메모리 SQLite, 로컬 인증 헤더 주입, fetch 심, 합성 스펙 syn-s7-franchise·syn-s2-bakery). 외부 네트워크 호출은 0회다.
 import assert from 'node:assert/strict';
 import {readFileSync,existsSync} from 'node:fs';
@@ -340,9 +340,10 @@ check('printed output never names the owner id or email (createdBy)',()=>assert.
 check('every snippet request is same-origin, no-store and relative to /api/eval',()=>assert.ok(calls.every(c=>c.credentials==='same-origin'&&c.cache==='no-store'&&c.url.startsWith('/api/eval'))));
 check('every snippet POST is JSON update_case',()=>assert.ok(calls.filter(c=>c.method==='POST').every(c=>c.contentType==='application/json'&&JSON.parse(c.body).action==='update_case')));
 
-// i) 채점기 동등성(mocked, 오늘의 lib/graders): franchise 사전이 없어 ['fnb']와 ['franchise','fnb']의 판정이 같다.
-// R3c가 franchise 사전을 더하면 첫 검사가 의도대로 실패한다. 그때 R3c PR이 이 절을 '두 목록의 판정이 갈린다'로 바꾼다(그래서 D1 갱신이 먼저다).
-check('today there is no franchise dictionary in INDUSTRY_TERMS',()=>assert.ok(!Object.hasOwn(industry.INDUSTRY_TERMS,'franchise')));
+// i) 채점기 판정(mocked, R3c 뒤의 lib/graders): franchise 사전이 생겨 ['fnb']와 ['franchise','fnb']의 판정이 갈린다.
+// ['fnb']로 남은 S7은 가맹 모집 표현이 새 industry_metric_leak fail이 된다. 그래서 운영 D1 갱신이 R3c보다 먼저였다(2026-09-27 apply real, 관찰 기록 '실행 기록').
+// R3c 전(사전 없음)에는 두 목록의 판정이 같았다(이 절의 이전 판, 180/180 passed · mocked).
+check('R3c adds a franchise dictionary to INDUSTRY_TERMS',()=>assert.ok(Object.hasOwn(industry.INDUSTRY_TERMS,'franchise')));
 const item=text=>({id:'t',kind:'role',role:'content',text});
 const outputs=[
  '가맹 상담 신청자에게 정보공개서 제공 일정을 먼저 안내한다. 쇼룸에서는 떡볶이·어묵 대표 메뉴 시식을 한다.',
@@ -352,9 +353,10 @@ const outputs=[
  '창업 커뮤니티 글에는 가맹 문의 경로와 정보공개서 확인 절차만 적고, 수익 문구는 쓰지 않는다.',
 ];
 const leakOf=(text,ind)=>content.industryMetricLeak.grade(item(text),{industry:ind});
-check('industry_metric_leak gives identical verdicts for fnb and franchise+fnb on S7-like outputs',()=>{for(const t of outputs)assert.equal(JSON.stringify(leakOf(t,TO)),JSON.stringify(leakOf(t,FROM)),t)});
-check('the equivalence sample is not vacuous: it has both pass and fail verdicts',()=>{const s=outputs.map(t=>leakOf(t,FROM).status);assert.ok(s.includes('pass')&&s.includes('fail'),s.join())});
-check('the full grader set gives identical results for both industry lists',()=>{for(const t of outputs)assert.equal(JSON.stringify(graders.runGraders(item(t),{industry:TO,prohibitedTerms:s7Spec.expectations.prohibitedTerms,localStore:false})),JSON.stringify(graders.runGraders(item(t),{industry:FROM,prohibitedTerms:s7Spec.expectations.prohibitedTerms,localStore:false})),t)});
+check('fnb only (the old S7 expectation) reports a franchise hit on every S7-like output',()=>{for(const t of outputs){const r=leakOf(t,FROM);assert.equal(r.status,'fail',t);assert.match(r.detail,/franchise: /,t)}});
+check('franchise+fnb (the updated S7 expectation) reports no franchise hit on S7-like outputs',()=>{for(const t of outputs)assert.ok(!/franchise: /.test(leakOf(t,TO).detail||''),t)});
+check('the sample is not vacuous: franchise+fnb still has both pass and fail verdicts (other industries stay graded)',()=>{const s=outputs.map(t=>leakOf(t,TO).status);assert.ok(s.includes('pass')&&s.includes('fail'),s.join())});
+check('the full grader set differs between the two lists only in industry_metric_leak',()=>{const other=ind=>t=>JSON.stringify(graders.runGraders(item(t),{industry:ind,prohibitedTerms:s7Spec.expectations.prohibitedTerms,localStore:false}).filter(r=>r.id!=='industry_metric_leak'));for(const t of outputs)assert.equal(other(TO)(t),other(FROM)(t),t)});
 
 // j) 문서의 예상 출력 모양이 스니펫 출력과 같다(키 순서와 값 종류).
 const examples=fenced(section('s7-output'),'json').map(x=>JSON.parse(x));
