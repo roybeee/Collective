@@ -27,7 +27,9 @@ check('one file per unit and nothing else',()=>assert.deepEqual(files,plain(unit
 check('eight role skills, channel skills and the viral discovery unit',()=>assert.deepEqual(plain(units.promptUnits.map(u=>u.kind)).reduce((n,k)=>({...n,[k]:(n[k]||0)+1}),{}),{role:8,channel:13,viral:1}));
 // F3a 기준: 정본 본문은 코드 상수(폴백)와 같다. 개선 제안으로 정본을 바꾸는 PR은 이 목록에서 그 단위를 뺀다(등록·평가 뒤 활성화).
 // A1은 레지스트리 콘텐츠 후보만 변경한다. 코드 폴백과 운영 제출 기준선은 그대로다.
-const codeEqualUnits=units.promptUnits.map(u=>u.unit).filter(unit=>unit!=='channel.offline');
+// A1 커머스·감사 묶음(tests/a1-commerce-audit-practice.test.mjs)도 후보 단위 셋을 뺀다.
+const A1_CANDIDATE_UNITS=['channel.offline','channel.commerce','channel.shortform','viral.discovery'];
+const codeEqualUnits=units.promptUnits.map(u=>u.unit).filter(unit=>!A1_CANDIDATE_UNITS.includes(unit));
 for(const unit of codeEqualUnits){
  const file=JSON.parse(readFileSync('prompts/'+units.unitFile(unit),'utf8'));
  check(`${unit} canonical file equals the code constant`,()=>assert.equal(units.canonicalJson(unit,file.body),JSON.stringify(plain(units.codeUnitBody(unit)))));
