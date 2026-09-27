@@ -342,9 +342,11 @@ PR #19(`docs/email-auth-release`, 커밋 aa06574·b242019)가 기록했으나 `m
 
 
 ## 레인 I (Codex — 브랜드 인터뷰 신규 제품 기능)
-갱신: 2026-09-27 14:20 UTC
+갱신: 2026-09-27 15:12 UTC
 - 대표 신규 지시로 `feat/brand-interview-studio` 개발. 기준 `431e4175a9d8d581533979b4aa378bbcd8ff908d`. [범위·운영 인수](BRAND-INTERVIEW.ko.md).
 - 구현: 필수 8섹션/추가 24질문, 수기 저장, 파일 드롭·원본 보관, 브라우저 녹음, HERMES 섹션 후보 정리·원문 인용 검증·선택 반영, 관리자 확정 후 기존 캠페인 근거 연결.
 - 음성 전사: 로컬 STT 서비스 코드와 웹 어댑터 포함. 공유 HERMES 서버 설치 및 실제 음성 검증 `not_run`. Plaud MCP 직접 조회 미구현, Plaud TXT 첨부 가능.
 - 게시 `not_run`: LANES의 레인 A 단독 게시를 유지. 이 작업은 성장1 종료 범위에 추가하지 않는다.
 - 검사: 전체 185/185 스위트 12,701 assertions passed·mocked, 전사 큐 7 passed·mocked, typecheck/lint/build passed. 브라우저 E2E blocked(Chromium 다운로드 네트워크 실패). 다음: 브라우저 E2E·공유 서버 전사 설치 검증 → 레인 A 통합/게시 판단.
+
+- 레인 I 후속: 업종별 질문지 11종+공통 선택·저장, 답변 보존, 추천/자동 정리 업종 반영. 이전 인터뷰 스튜디오는 #233 merged 및 Sites 50 runtime-verified(별도 기록 PR #236). 이번 업종 기능은 typecheck/lint/build 및 인터뷰 40 checks passed(mocked). 전체 검사와 모바일·데스크톱 E2E는 CI에서 확인 후 게시.
