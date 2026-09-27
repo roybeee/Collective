@@ -13,6 +13,7 @@
 - #213 · 레인 G · 보통 · `collect_guard` 기본 꺼짐(직원 collect 403 새 제한)
 - #220 · 레인 G · 급함(운영 `/api/context-replay` 404) · 새 스위치 없음
 - #223 · 레인 Q · 보통 · 새 스위치 없음(바이럴 수집 콘텐츠 지시 무시 문장이 운영 제출을 바꿈)
+- #235 · 레인 R · 보통 · 새 스위치 없음(r_franchise 기본 꺼짐, 순수 모듈만·런타임 연결 없음)
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
 갱신: 2026-09-27 14:03 UTC
@@ -34,8 +35,10 @@
 - 다음: A3 run → A8-1 → A8-2 → A8-3 → B4 2부 → B3([순서](LANES.ko.md#레인-a-claude-a-세션)).
 
 ## 레인 R (Claude 트랙 R 세션 — 가맹 모집)
-갱신: 2026-09-27 14:30 UTC
-- 진행 중: R15b 결정론 모집 템플릿. R15b-1(이 PR)은 순수 모듈 `lib/franchise-qr.ts`(QR 부호기, 의존성 없음, 참조 부호기와 행렬 80개 일치)와 `lib/franchise-cards.ts`(카드 3~5장, 원장에 없는 수치 400, 유입 코드 QR 400)다. 런타임 연결이 없어 게시가 필요 없다. 검사 passed · mocked(franchise-qr 18, franchise-cards 48, 변이 21/22, 남은 1개는 결과가 같은 변이). 다음은 R15b-2(자료 유형 `card_bundle`·화면·PNG 내려받기)다.
+갱신: 2026-09-27 15:15 UTC
+- R7a 공공 벤치마크 merged(#231 `36f169f`, 병렬 `lane-r-r7a` 세션): 가맹 모집 '벤치마크' 탭(V9), 사람이 버튼으로 적재·토큰 0, 키는 브랜드별 암호문(키 없음 409·외부 호출 0). 테스트 passed · mocked(187/187), 로컬 E2E 14/14. DATA-PROCESSING #232는 레인 A 검토 통과·병합(`2da58e5`). not_run: 게시, real 적재 1회(대표 키 저장 뒤), API 필드 이름·단위 실측 확인(틀리면 SCHEMA_MISMATCH로 저장 0).
+- R15b 결정론 모집 템플릿: R15b-1 merged(#230 `46865e0`, 순수 모듈 `lib/franchise-qr.ts`·`lib/franchise-cards.ts`, 런타임 연결 없음, 검사 passed · mocked(franchise-qr 18, franchise-cards 48, 변이 21/22)). R15b-2(#234, 자료 유형 `card_bundle`·PNG 내려받기)는 CI 뒤 병합한다.
+- 진행 중: R9a 정보성 너처링 초안. R9a-1(이 PR)은 순수 모듈 `lib/franchise-nurture.ts`다. 목적·분류·매체, 자리표시 템플릿 검사, 광고성 고정 요소, R2 판정, 허용 입력만 쓰는 모델 제출 조립, 요청당 1회 수동 발송 기록 판정을 담았다. 런타임 연결이 없어 게시가 필요 없다. 검사 passed · mocked(franchise-nurture 38, 변이 13/13). R9a-2(서버·HERMES 초안)는 DATA-PROCESSING 짝 PR과 함께 레인 A 검토 뒤 병합한다.
 - 성장1 마감(레인 R 몫, 2026-09-27): [인계 기록](observations/2026-09-27-lane-r-growth1-handoff.md). 트랙 R 전체 마감은 성장1 종료 조건이 아니다.
   - 회귀(C12): main `431e417` `node scripts/test.mjs` passed · mocked(184/184 스위트, 12,670). 레인 R PR 21개(#173~#209)의 레인 밖 파일 삭제·이름 변경 0건, 라우트·기능 삭제 0건(지운 줄은 모두 목록·문구·버전 태그를 넓혀 다시 쓴 것). 레인 R 회귀 0건.
   - 5절 Q/R 키 확대 레인 R 몫: 가맹 연락처 암호화 키와 HMAC 중복 키 모두 **not_run**(R8 발동 조건 결정 28 없음). 담당 R(코드)·대표(키 값). 재개 조건: 결정 28, 대표의 `AGENCY_ENCRYPTION_KEY` 교체 결정, OFD 실제 리드 저장 시작 중 먼저 오는 것. 다음 확인일 2026-10-05(월) KST. 영향: 키를 바꾸면 중복 경고·가져오기 병합·연락처 찾기가 오류 없이 틀리고, 옛 키를 빼면 연락처 보기·내보내기·파기가 500. 그 전까지 `AGENCY_ENCRYPTION_KEY`는 바꾸지 않는다(#211 문서와 같음).
