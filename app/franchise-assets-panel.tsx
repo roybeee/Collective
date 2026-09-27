@@ -13,6 +13,7 @@ import {Sheet,SheetContent,SheetHeader,SheetTitle,SheetDescription} from '@/comp
 import {toKstDate,kstDateOf} from '@/lib/franchise-rules';
 // R15b-2: 카드 묶음 PNG는 브라우저에서 그린다(판정은 서버, 렌더러는 자리 계산·그리기만).
 import {downloadCardBundle,CARD_SIZES,CARD_SIZE_KEYS,type CardSize} from '@/lib/franchise-card-render';
+import {MediaBox,type MediaView} from './franchise-media-box';
 import type {WorkspaceData} from '@/lib/client';
 import {useAccount} from './account-context';
 import {franchiseGet,problemOf,messageOf,ProblemBox,Disclaimer,Section,WarningLines,FranchiseLoadError,kst,roleLabel,saveText,copyText,stringWarnings,sendAttempt,followUpOf,reasonCodes,errorIs,
@@ -31,7 +32,7 @@ export type AssetsView={assets:AssetSummary[];campaigns:{id:string;title:string}
  facts:FactOption[];branch:string|null;h7Notice:string|null;enabled:boolean;role:string;rules:{checklistVersion:string};disclaimer:string};
 export type AssetRecord={id:string;campaignId:string;type:string;version:number;body:string;bodyHash:string;factRefs:Ref[];status:Status;
  approval:{by:string;role:string;at:string;bodyHash:string;checklist:{version:string;checked:string[]}}|null;placements:{label:string;confirmedAt:string}[];
- exports:{at:string;by:string;role:string}[];review:Review;source:{artifactId:string;version:number;origin:string|null}|null;savedBy:Actor;exportCount:number;retiredAt?:string;retiredBy?:Actor;updatedAt:string};
+ exports:{at:string;by:string;role:string}[];media?:MediaView[];review:Review;source:{artifactId:string;version:number;origin:string|null}|null;savedBy:Actor;exportCount:number;retiredAt?:string;retiredBy?:Actor;updatedAt:string};
 export type AssetDetailView={asset:AssetRecord;latestVersion:number;versions:{version:number;status:Status}[];drift:{factId:string;refVersion:number;currentVersion:number|null;changed:boolean}[];
  resaveSuggested:boolean;gate:{status:number;reasons:{code:string;message:string}[];message:string|null;warnings:string[]};checklist:{version:string;items:{id:string;text:string;ruleIds:string[];warnings:string[]}[];h7Notice:string|null};
  campaign:{id:string;title:string}|null;branch:string|null;h7Notice:string|null;enabled:boolean;disclaimer:string;
@@ -247,6 +248,13 @@ export function AssetSheet({brandId,brand,assetId,list,admin,artifacts,onClose,o
    setWarnings(stringWarnings(r));
   }catch(e){setProblem({error:`PNG를 만들지 못했습니다: ${(e as Error).message} (내보내기 기록은 남았습니다.)`})}
  }
+ // 인터뷰 영상 완성본 해시(R15b-3): 파일은 올리지 않고 해시·크기·촬영일·라벨만 보낸다.
+ async function recordMedia(payload:Json):Promise<boolean>{
+  if(!view)return false;
+  const r=await run('asset_media',{assetId:view.asset.id,version:view.asset.version,...payload});
+  if(r.status===200){done(r,'완성본 해시를 기록했습니다.');return true}
+  fail(r);return false;
+ }
  async function place(label:string,on:string):Promise<boolean>{
   if(!view)return false;
   const r=await run('asset_place',{assetId:view.asset.id,version:view.asset.version,label:label.trim(),confirmedAt:on});
@@ -271,13 +279,13 @@ export function AssetSheet({brandId,brand,assetId,list,admin,artifacts,onClose,o
      onCancel={()=>{setConflict(false);if(id===null)onClose();else setMode('view')}} onRestart={()=>{setConflict(false);setEditorKey(k=>k+1)}}/>
     :view&&g?(mode==='approve'&&g.showApprove?<ApprovalStep key={`${view.asset.id}:${view.asset.version}:${view.asset.bodyHash}:${approveKey}`} view={view} busy={busy} blockers={g.blockers} onApprove={(c,w)=>void approve(c,w)} onCancel={()=>setMode('view')}/>
      :<AssetBody brandId={brandId} view={view} g={g} admin={admin} artifacts={artifacts} busy={busy} now={now} fallback={fallback} who={who} on={{version:n=>{setVersion(n===view.latestVersion?null:n);setMode('view')},edit:()=>{setConflict(false);setEditorKey(k=>k+1);setMode('edit')},
-      approve:()=>setMode('approve'),resave:()=>void resave(),exportAs:(how,w,size)=>void exportAs(how,w,size),place,retire:()=>void retire(),closeFallback:()=>setFallback(null)}}/>):null}
+      approve:()=>setMode('approve'),resave:()=>void resave(),exportAs:(how,w,size)=>void exportAs(how,w,size),place,media:recordMedia,retire:()=>void retire(),closeFallback:()=>setFallback(null)}}/>):null}
    {(message||problem||warnings.length>0)&&<div className="franchise-status">{message&&<p role="status">{message}</p>}<WarningLines items={warnings}/><ProblemBox problem={problem}/></div>}
   </div>
  </SheetContent></Sheet>;
 }
 
-type BodyActions={version:(n:number)=>void;edit:()=>void;approve:()=>void;resave:()=>void;exportAs:(how:'copy'|'download',waitConfirmed:boolean,size?:CardSize)=>void;place:(label:string,on:string)=>Promise<boolean>;retire:()=>void;closeFallback:()=>void};
+type BodyActions={media:(payload:Json)=>Promise<boolean>;version:(n:number)=>void;edit:()=>void;approve:()=>void;resave:()=>void;exportAs:(how:'copy'|'download',waitConfirmed:boolean,size?:CardSize)=>void;place:(label:string,on:string)=>Promise<boolean>;retire:()=>void;closeFallback:()=>void};
 function AssetBody({brandId,view,g,admin,artifacts,busy,now,fallback,who,on}:{brandId:string;view:AssetDetailView;g:AssetGates;admin:boolean;artifacts:readonly Artifact[];busy:boolean;now:string;fallback:string|null;who:(id:string,role:string)=>string;on:BodyActions}){
  const a=view.asset,source=a.source,range=placementRange(view,now),changed=view.drift.filter(d=>d.changed),gone=view.enabled&&latestOf(view)&&a.status!=='retired'&&view.campaign===null;
  return <>
@@ -315,6 +323,7 @@ function AssetBody({brandId,view,g,admin,artifacts,busy,now,fallback,who,on}:{br
    <p className="subtle-note">{`내보내기 ${a.exportCount}회`}</p>
    {a.exports.length>0&&<ul>{a.exports.slice(-5).reverse().map((x,i)=><li key={i}>{`${kst(x.at)} · ${who(x.by,x.role)}`}</li>)}</ul>}
   </Section>
+  {a.type==='interview_video'&&<MediaBox media={a.media??[]} canRecord={admin&&view.enabled&&a.status==='approved'} busy={busy} today={toKstDate(now)} onRecord={on.media}/>}
   <Section title="게시 위치">
    {a.placements.length?<ul>{a.placements.map((p,i)=><li key={i}>{`${p.label} (${p.confirmedAt})`}</li>)}</ul>:<p className="subtle-note">기록한 게시 위치가 없습니다.</p>}
    {g.canPlace&&range&&<PlaceForm range={range} busy={busy} onPlace={on.place}/>}

@@ -363,7 +363,7 @@ check('registerInput trims the code, sends null without one and refuses a phone-
 // ── 4) 원문 검사: 개인정보 취급·역할·스위치·면책 ──
 const files=readdirSync('app').filter(x=>/^franchise.*\.tsx$/.test(x)).map(x=>'app/'+x),src=Object.fromEntries(files.map(f=>[f,readFileSync(f,'utf8')]));
 const panel=src['app/franchise-panel.tsx'],lead=src['app/franchise-lead-detail.tsx'],settings=src['app/franchise-settings.tsx'],shared=src['app/franchise-common.tsx'];
-check('the fourteen franchise screen modules exist',()=>assert.deepEqual(files.sort(),['app/franchise-assets-panel.tsx','app/franchise-benchmark-panel.tsx','app/franchise-common.tsx','app/franchise-events-panel.tsx','app/franchise-experiment-panel.tsx','app/franchise-import-panel.tsx','app/franchise-inflow-panel.tsx','app/franchise-lead-detail.tsx','app/franchise-lead-nurture.tsx','app/franchise-next-task.tsx','app/franchise-nurture-panel.tsx','app/franchise-panel.tsx','app/franchise-report-panel.tsx','app/franchise-settings.tsx']));
+check('the fifteen franchise screen modules exist',()=>assert.deepEqual(files.sort(),['app/franchise-assets-panel.tsx','app/franchise-benchmark-panel.tsx','app/franchise-common.tsx','app/franchise-events-panel.tsx','app/franchise-experiment-panel.tsx','app/franchise-import-panel.tsx','app/franchise-inflow-panel.tsx','app/franchise-lead-detail.tsx','app/franchise-lead-nurture.tsx','app/franchise-media-box.tsx','app/franchise-next-task.tsx','app/franchise-nurture-panel.tsx','app/franchise-panel.tsx','app/franchise-report-panel.tsx','app/franchise-settings.tsx']));
 check('franchise screens never log or keep values in browser storage',()=>{for(const [f,s] of Object.entries(src))for(const bad of ['console.','localStorage','sessionStorage','indexedDB','document.cookie','history.pushState','location.search'])assert.ok(!s.includes(bad),f+' '+bad)});
 check('every contact input turns autofill off',()=>{
  const inputs=[...panel.matchAll(/<(?:Input|Textarea)[^>]*value=\{(?:f\.(?:name|phone|email|memo)|phone|email)\}[^>]*>/g),...lead.matchAll(/<(?:Input|Textarea)[^>]*value=\{f\.(?:name|phone|email|memo)\}[^>]*>/g)].map(m=>m[0]);
@@ -389,7 +389,7 @@ check('revealed contacts are tappable links',()=>assert.ok(lead.includes('<a hre
 check('franchise screens make no legal-compliance claim',()=>{for(const [f,s] of Object.entries(src))for(const bad of ['법적으로 적합','준수 완료','합법'])assert.ok(!s.includes(bad),f+' '+bad)});
 // ── 5) R15a-2b 원문 고정: 가져오기 경계·내보내기 원문·파일 저장·자동 완성·확인 문구·표시 문구 없음(대표 지시 2026-09-26)·탭 연결 ──
 const assetsSrc=src['app/franchise-assets-panel.tsx'],eventsSrc=src['app/franchise-events-panel.tsx'],newScreens=[['app/franchise-assets-panel.tsx',assetsSrc],['app/franchise-events-panel.tsx',eventsSrc]];
-const ALLOWED_IMPORTS=new Set(['react','lucide-react','@/components/ui/button','@/components/ui/input','@/components/ui/textarea','@/components/ui/native-select','@/components/ui/dialog','@/components/ui/sheet','@/lib/franchise-rules','@/lib/client','./franchise-common','./account-context','@/lib/franchise-card-render']);
+const ALLOWED_IMPORTS=new Set(['react','lucide-react','@/components/ui/button','@/components/ui/input','@/components/ui/textarea','@/components/ui/native-select','@/components/ui/dialog','@/components/ui/sheet','@/lib/franchise-rules','@/lib/client','./franchise-common','./account-context','@/lib/franchise-card-render','./franchise-media-box']);
 function importsOf(file,text){
  const sf=ts.createSourceFile(file,text,ts.ScriptTarget.ES2022,true,ts.ScriptKind.TSX),out=[];
  const visit=n=>{

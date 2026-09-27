@@ -18,6 +18,7 @@ import {FRANCHISE_ERRORS,type FranchiseErrorKey,type AuditAction} from './franch
 import {spendUsable,codeBook} from './franchise-recruitment-server';
 import {recruitmentTokens} from './franchise-recruitment';
 import {parseCards,type CardCodeLite} from './franchise-cards';
+import {mediaDecision,MEDIA_MESSAGES,MEDIA_VERSION,type MediaRecord} from './franchise-media';
 import {ASSET_TYPE_ORDER,ASSET_TYPE_LABELS,EVENT_TYPE_LABELS as ASSET_EVENT_TYPE_LABELS,ASSET_MESSAGES,ASSET_RULES,ID_PATTERN,STARTUP_PAGE_SECTIONS,EVENT_DECK_SECTIONS,
  validateAssetInput,draftAsset,approveDecision,exportDecision,placementDecision,assetGateIssues,assetWarnings,approvalChecklist,h7Notice,effectiveAssetFacts,sectionTemplate,markAssetsForReview,changedVersionIds,
  validateEvent,registerDecision,attendanceDecision,type RecruitmentAsset,type RecruitmentEvent,type AssetReview,type AssetType,type EventCounts,type Decision} from './franchise-assets';
@@ -28,15 +29,16 @@ type ActorLite={id:string;role:string};
 // 출처 작업물(같은 캠페인의 승인된 현재 판). origin은 작업물 origin이고 모르면 null. aiGenerated는 origin이 ai·ai_edited일 때 참.
 export type AssetSource={artifactId:string;version:number;origin:'manual'|'ai'|'ai_edited'|null};
 // rev: 쓰기 순번(1부터, 잠금 밖 재검토 표시도 올린다). exports는 최대 50개(첫 기록은 게시 확인일 하한이라 남긴다), 전체 건수는 exportCount.
-export type AssetRow=RecruitmentAsset&{rev:number;source:AssetSource|null;aiGenerated:boolean;savedBy:ActorLite;exportCount:number;retiredAt?:string;retiredBy?:ActorLite};
+// media: 인터뷰 영상 완성본 해시(R15b-3, 대표·관리자, 파일은 올리지 않는다).
+export type AssetRow=RecruitmentAsset&{rev:number;source:AssetSource|null;aiGenerated:boolean;savedBy:ActorLite;exportCount:number;retiredAt?:string;retiredBy?:ActorLite;media?:MediaRecord[]};
 export type EventRow=RecruitmentEvent&{createdBy:ActorLite;cancelledAt?:string;cancelledBy?:ActorLite};
-export const ASSET_ACTIONS=['asset_save','asset_approve','asset_export','asset_place','asset_retire'] as const;
+export const ASSET_ACTIONS=['asset_save','asset_approve','asset_export','asset_place','asset_retire','asset_media'] as const;
 export const EVENT_ACTIONS=['event_save','event_cancel','event_register','event_attendance'] as const;
 export type AssetAction=typeof ASSET_ACTIONS[number]|typeof EVENT_ACTIONS[number];
 // 넘기면 LIMIT 409.
 export const ASSET_LIMITS=Object.freeze({assetsPerBrand:100,versionsPerAsset:10,eventsPerBrand:200,exportsKept:50});
 // 감사 행에 더하는 필드(값 없음: id·판·해시·방식·버전·사유 코드·건수만).
-export type AssetAuditExtra={recordId?:string;assetVersion?:number;bodyHash?:string;mode?:'copy'|'download';checklistVersion?:string;judgeVersion?:string;reasons?:string[];eventVersion?:number;eventCounts?:EventCounts;withCode?:boolean;aiGenerated?:boolean;placementCount?:number};
+export type AssetAuditExtra={mediaSha256?:string;recordId?:string;assetVersion?:number;bodyHash?:string;mode?:'copy'|'download';checklistVersion?:string;judgeVersion?:string;reasons?:string[];eventVersion?:number;eventCounts?:EventCounts;withCode?:boolean;aiGenerated?:boolean;placementCount?:number};
 // franchise-server가 넘기는 쓰기 창구: commit은 UNIQUE 실패를 stale 키의 409로 바꾸고, receipt는 영수증 감사 행(au-<rid>)을 만든다.
 export type AssetPort={commit:(stmts:D1PreparedStatement[],stale:FranchiseErrorKey)=>Promise<unknown>;receipt:(action:AuditAction,result:Json,extra:AssetAuditExtra,target:string|null,status?:number)=>D1PreparedStatement};
 export type AssetArgs={owner:string;brandId:string;now:string;enabled:boolean;actor:ActorLite;input:Json;action:AssetAction;port:AssetPort};
@@ -143,6 +145,7 @@ export async function runAssetAction(x:AssetArgs):Promise<Outcome>{
   case 'asset_export':return assetExport(x);
   case 'asset_place':return assetPlace(x);
   case 'asset_retire':return assetRetire(x);
+  case 'asset_media':return assetMedia(x);
   case 'event_save':return eventSave(x);
   case 'event_cancel':return eventCancel(x);
   case 'event_register':return eventRegister(x);
@@ -248,6 +251,18 @@ async function assetPlace(x:AssetArgs):Promise<Outcome>{
  const result={assetId:row.id,version:row.version,placements:next.placements.length};
  await x.port.commit([rowGuard(x.owner,'recruitment_asset',rowIdOf(row),'$.rev',revOf(row)),recordStatement(x.owner,'recruitment_asset',rowIdOf(row),next,x.brandId),
   x.port.receipt('asset_place',result,{recordId:row.id,assetVersion:row.version,placementCount:next.placements.length},assetTarget(x))],'ASSET_STALE');
+ return {result};
+}
+// 인터뷰 영상 완성본 해시(R15b-3, 대표·관리자): 승인된 인터뷰 영상 대본 판에 SHA-256·크기·촬영일·라벨만 더한다. 라벨은 개인정보 검사를 한다. 감사에는 해시만 남긴다.
+async function assetMedia(x:AssetArgs):Promise<Outcome>{
+ const row=await loadAsset(x.owner,x.brandId,x.input.assetId,x.input.version??0);
+ if(typeof x.input.label==='string'&&scanText(x.input.label).length)fail('PII_IN_TEXT');
+ const d=mediaDecision(row,x.input,{enabled:x.enabled,actor:x.actor,now:x.now});
+ if(!d.ok)throw new FranchiseAssetError(d.status,d.message,{reasons:d.reasons.map(code=>({code,message:MEDIA_MESSAGES[code]})),ruleVersion:MEDIA_VERSION,disclaimer:GATE_DISCLAIMER});
+ const next:AssetRow={...row,media:[...(row.media??[]),d.value],rev:nextRev(row)};
+ const result={assetId:row.id,version:row.version,media:next.media!.length,sha256:d.value.sha256};
+ await x.port.commit([rowGuard(x.owner,'recruitment_asset',rowIdOf(row),'$.rev',revOf(row)),recordStatement(x.owner,'recruitment_asset',rowIdOf(row),next,x.brandId),
+  x.port.receipt('asset_media',result,{recordId:row.id,assetVersion:row.version,mediaSha256:d.value.sha256},assetTarget(x))],'ASSET_STALE');
  return {result};
 }
 // 폐기(대표·관리자, 스위치가 꺼져도 된다): 어느 판이든. 이미 폐기면 쓰기 없음.

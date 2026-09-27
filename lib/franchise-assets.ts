@@ -24,7 +24,8 @@ const oneOf=<T extends string>(list:readonly T[],v:unknown):v is T=>typeof v==='
 // .2: 대표 결정(2026-09-26 '3번') — 대기기간 두 문장·수익 질문 안내 문장을 필수 고정 문장에서 권장 문구로 바꿨다(누락·수정은 경고, 사유 코드 51 → 49). 체크리스트 대기기간 우회 항목 문구도 바뀌어 .1 승인은 checklist_outdated다.
 // .3: 대표 결정 34(2026-09-27) — 승인·내보내기에 '대기기간 우회 문장 없음' 사람 확인(waitReview)을 받는다. 없으면 409(wait_review_missing·wait_review_outdated, 사유 코드 49 → 51).
 // .4: R15b-2(2026-09-27) — 자료 유형 card_bundle(모집 카드 묶음, PNG 3~5장)과 카드 단계 사유 코드 3개(400, 사유 코드 51 → 54).
-export const ASSETS_VERSION='fr-assets@2026-09-27.4';
+// .5: R15b-3(2026-09-28) — 자료 유형 interview_video(15초 대본, 말로 쓰는 원고라 수익 안전망 409). 완성본 해시는 lib/franchise-media.ts.
+export const ASSETS_VERSION='fr-assets@2026-09-28.5';
 export const CHECKLIST_VERSION='fr-assets-checklist@2026-09-26.2';
 // 원문 20,000자에서 판정기는 약 0.2초 걸린다(실측). 배열 길이 상한을 넘는 기록은 invalid_record, 입력은 해당 입력 코드로 닫는다(fail closed).
 export const LIMITS=deepFreeze({bodyChars:20000,factRefs:20,placements:20,labelChars:100,capacity:1000,assetRefs:10,codes:1000} as const);
@@ -35,12 +36,12 @@ export const ID_PATTERN:RegExp=Object.freeze(new RegExp(ID_RE.source));
 export const PSEUDONYM_PATTERN:RegExp=Object.freeze(new RegExp(PSEUDONYM_RE.source));
 
 // ── 자료 유형 ──
-export const ASSET_TYPES=deepFreeze(['card_bundle','event_deck','expo_banner','first_call_script','meta_lead_ad','naver_search','portal_intro','startup_page'] as const);
+export const ASSET_TYPES=deepFreeze(['card_bundle','event_deck','expo_banner','first_call_script','interview_video','meta_lead_ad','naver_search','portal_intro','startup_page'] as const);
 export type AssetType=typeof ASSET_TYPES[number];
-export const ASSET_TYPE_ORDER=deepFreeze(['startup_page','portal_intro','naver_search','meta_lead_ad','expo_banner','card_bundle','event_deck','first_call_script'] as const);
-export const ASSET_TYPE_LABELS:Readonly<Record<AssetType,string>>=deepFreeze({startup_page:'창업 페이지 문안',portal_intro:'포털 소개문',naver_search:'네이버 검색 문안',meta_lead_ad:'메타 리드광고 문안',expo_banner:'박람회 배너·리플렛 문안',card_bundle:'모집 카드 묶음(PNG)',event_deck:'설명회 덱 개요·원고',first_call_script:'첫 통화 스크립트'});
-// 말로 쓰는 원고. 수익 안전망 경고(h.revenue_like_figure_review)를 이 두 유형에서만 409로 올린다.
-export const SPOKEN_ASSET_TYPES=deepFreeze(['event_deck','first_call_script'] as const);
+export const ASSET_TYPE_ORDER=deepFreeze(['startup_page','portal_intro','naver_search','meta_lead_ad','expo_banner','card_bundle','event_deck','first_call_script','interview_video'] as const);
+export const ASSET_TYPE_LABELS:Readonly<Record<AssetType,string>>=deepFreeze({startup_page:'창업 페이지 문안',portal_intro:'포털 소개문',naver_search:'네이버 검색 문안',meta_lead_ad:'메타 리드광고 문안',expo_banner:'박람회 배너·리플렛 문안',card_bundle:'모집 카드 묶음(PNG)',event_deck:'설명회 덱 개요·원고',first_call_script:'첫 통화 스크립트',interview_video:'인터뷰 영상 대본(15초)·완성본'});
+// 말로 쓰는 원고. 수익 안전망 경고(h.revenue_like_figure_review)를 이 세 유형(설명회 원고·첫 통화·인터뷰 대본)에서만 409로 올린다.
+export const SPOKEN_ASSET_TYPES=deepFreeze(['event_deck','first_call_script','interview_video'] as const);
 
 // ── 고정 절 ──
 // heading = SECTION_MARK + title + (label ? ' ' + label : ''). 창업 페이지 문안에는 수익 수치 칸이 없다(H6). 나머지 5종은 자유 문안이라 절 검사를 하지 않는다.

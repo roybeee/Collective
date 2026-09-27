@@ -10,6 +10,7 @@
 // 7) R7a 공공 벤치마크 탭: 고정 문구, 키 없음 막힘(적재 409, 외부 호출 0), 가상 키 저장 → 적재 버튼 열림(누르지 않음) → 키 지우기. 공공데이터포털은 호출하지 않는다.
 // 8) R15b-2 모집 카드 묶음: 템플릿 → 저장 → 승인 → PNG 내려받기(1080×1350·1080×1920, 카드 수만큼), 쓸 수 없는 코드 400.
 // 9) R9a 너처링: 탭 안내·AI 초안 409(연결 없음)·정보성·광고성 템플릿 저장·정보 요청 → 보낸 뒤 기록(요청당 1회)·광고성 기록 막힘·외부 요청 0.
+// 10) R15b-3 인터뷰 영상 완성본: 승인된 15초 대본 판에서 파일의 SHA-256만 기록(파일 업로드 없음).
 // 직원 역할 화면(비용·가져오기 영역 없음)은 legacy 헤더 요청자가 늘 소유자라 여기서 재현할 수 없다. 실제 이메일 세션 직원으로 e2e/email-auth.spec.ts에서 본다.
 // 근거: real Chromium·빌드 결과·로컬 D1(wrangler --local) / mocked 인증(legacy 로그인 헤더). 요청 가로채기는 쓰지 않는다(docs/E2E.ko.md 규칙).
 // 모든 값은 가상이다(브랜드는 시드 브랜드 ofd, 이름 김가상·이테스트, 전화 010-0000-12xx, 이메일 *@example.com). 결과는 COLLECTIVE 휴리스틱 · 법률 자문 아님.
@@ -731,5 +732,41 @@ test('R9a 너처링: 템플릿 저장 → 정보 요청 → 보낸 뒤 기록(�
   await expect(logForm.getByRole('combobox', {name: '답한 정보 요청', exact: true}).locator('option')).toHaveCount(1);
   await shot(page, testInfo, 'r9a-2-logged');
   expect(outbound).toEqual([]);
+  await context.close();
+});
+
+// 10) R15b-3 인터뷰 영상 완성본: 승인된 15초 대본 판에서 파일을 고르면 브라우저가 SHA-256만 계산해 기록한다(파일은 올리지 않음, 요청 본문에 해시·크기·촬영일·라벨만).
+test('R15b-3 인터뷰 영상 완성본: 파일을 올리지 않고 SHA-256만 기록', async ({browser}, testInfo) => {
+  test.setTimeout(120_000);
+  const owner = `e2e-fr-r15b3-${testInfo.project.name}-${Date.now()}`;
+  const {context, page} = await ownerPage(browser, testInfo, owner);
+  const campaignId = await prepareFranchise(page, `가상 가맹 모집 R15b-3 ${testInfo.project.name}`);
+  const script = '[인터뷰] 매일 아침 반죽을 직접 치댑니다. 손님이 웃을 때 가장 보람을 느낍니다.';
+  const saved = await franchise(page, 'asset_save', {campaignId, type: 'interview_video', factRefs: [], body: script});
+  expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+  const asset = saved.body.result as {assetId: string; version: number; bodyHash: string};
+  const view = await (await page.request.get(`/api/franchise?view=asset&brandId=${BRAND}&assetId=${asset.assetId}`)).json() as {waitReview: {version: string; candidates: unknown[]}; checklist: {version: string; items: {id: string}[]}};
+  const approved = await franchise(page, 'asset_approve', {assetId: asset.assetId, version: 1, bodyHash: asset.bodyHash, checklist: {version: view.checklist.version, checked: view.checklist.items.map(i => i.id)},
+    waitReview: {version: view.waitReview.version, confirmed: true, candidates: view.waitReview.candidates.length}});
+  expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+
+  await page.goto(`/?view=franchise&brand=${BRAND}&tab=assets`);
+  await page.getByRole('button', {name: /인터뷰 영상 대본\(15초\)·완성본 v1 열기/}).click();
+  const sheet = page.getByRole('dialog');
+  const form = sheet.getByRole('form', {name: '완성본 해시 기록'});
+  const video = Buffer.from('가상 인터뷰 영상 바이트 e2e');
+  await form.getByLabel('완성본 파일').setInputFiles({name: 'interview-final.mp4', mimeType: 'video/mp4', buffer: video});
+  await form.getByPlaceholder('예: 대표 인터뷰 15초 최종본').fill('대표 인터뷰 15초 최종본');
+  const recorded = page.waitForResponse(franchiseAction('asset_media'));
+  await form.getByRole('button', {name: '해시 기록', exact: true}).click();
+  const response = await recorded;
+  expect(response.status()).toBe(200);
+  const sent = response.request().postDataJSON() as Record<string, unknown>;
+  const expected = createHash('sha256').update(video).digest('hex');
+  expect(sent).toMatchObject({sha256: expected, bytes: video.length, label: '대표 인터뷰 15초 최종본'});
+  expect(Object.keys(sent).sort()).toEqual(['action', 'assetId', 'brandId', 'bytes', 'filmedOn', 'label', 'requestId', 'sha256', 'version']);
+  await expect(sheet.getByRole('list', {name: '완성본 해시 기록'}).getByRole('listitem')).toHaveCount(1);
+  await expect(sheet.getByText(`SHA-256 ${expected.slice(0, 16)}…`, {exact: false})).toBeVisible();
+  await shot(page, testInfo, 'r15b3-media');
   await context.close();
 });

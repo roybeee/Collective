@@ -1228,6 +1228,12 @@ R4a가 `lib/franchise-rules.ts`에 만들고 R2·R4b가 쓴다. 레코드는 `{i
   - 검사: `franchise-assets` 282(C1~C15), 새 `franchise-cards-route` 18(실제 라우트·메모리 SQLite·발급·중지한 모집 코드), `franchise-assets-route` 216, `franchise-recruit-ui` 117, `franchise-ui` 117, `recruitment-codes` 146, `franchise-model-boundary` 29. 연결 변이 9개를 모두 잡았다.
   - 로컬 E2E(`e2e/franchise-recruit.spec.ts` 8번, real Chromium·로컬 D1 / mocked 인증, 모바일·데스크톱 2/2 passed): 템플릿 → 저장(게이트 200) → 승인 → 확인 뒤 PNG 4장(1080×1350)·4장(1080×1920) 내려받기(PNG 서명·IHDR 크기, 파일 이름), 브라우저 `BarcodeDetector`로 QR 카드를 읽어 링크가 원문과 같음, 발급하지 않은 코드의 카드 묶음 승인 400 `card_qr_invalid`.
   - not_run: 운영 real 확인(게시 뒤 대표가 `r_franchise`를 켠 다음), 실제 인쇄물 QR 스캔. 인터뷰 영상 완성본 해시는 R15b-3이다.
+- R15b-3 구현 기록(2026-09-28, passed · mocked, 로컬 E2E real Chromium):
+  - 모집 자료 유형 `interview_video`('인터뷰 영상 대본(15초)·완성본')를 더했다. 본문은 content 역할의 15초 대본이다(승인된 작업물에서 가져오기로 시작할 수 있다). 모집 자료 흐름(R2 판정·체크리스트의 추천·보증 표시·대기기간 확인)을 그대로 거친다. 말로 쓰는 원고라 수익 안전망 경고를 409로 올린다. `fr-assets@2026-09-28.5`.
+  - 새 순수 모듈 `lib/franchise-media.ts`(`fr-media@2026-09-28.1`)와 작업 `asset_media`(대표·관리자). 승인된 판에 완성본 파일의 SHA-256·크기·촬영일(승인일 ~ 오늘, KST)·라벨(개인정보 검사)만 남긴다. 같은 해시는 409이고 판마다 10개까지다. 영상 파일은 올리지 않는다. 브라우저가 파일을 읽어 해시만 계산한다(`app/franchise-media-box.tsx`). 감사에는 해시와 id만 남기고 라벨은 남기지 않는다.
+  - 점주 인터뷰의 추천 동의 기록(`testimonial_consent`)은 R2 조건부 kind라 첫 점주 후기 때 만든다. 이번 범위에서 대표 인터뷰는 체크리스트 '추천·보증 표시'로 확인한다.
+  - 검사: `franchise-media` 17(순수 판정 순서·촬영일 범위·중복·한도, 실제 라우트의 저장·403·409·라벨 개인정보 400·감사 값 없음·수익 주장 대본 승인 409). 로컬 E2E(`e2e/franchise-recruit.spec.ts` 10번, 2/2): 파일을 고르면 요청 본문에 해시·크기·촬영일·라벨만 가고, 해시 값이 파일 SHA-256과 같다.
+  - not_run: 실제 촬영본 대조(게시 뒤).
 
 ### 테스트 계획
 
