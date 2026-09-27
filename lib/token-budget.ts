@@ -85,6 +85,7 @@ async function submissionCampaign(db:Db,owner:string,submissionId:string){
 const LEARNING_ROLES=['viral_analysis','viral_discovery','viral_guidance'];
 async function submissionKind(db:Db,owner:string,submissionId:string):Promise<UsageKind|null>{
  if(submissionId.startsWith('brief-'))return 'brief';
+ if(submissionId.startsWith('nurture-'))return 'nurture';
  const job=await db.prepare('SELECT role FROM jobs WHERE id=? AND owner=?').bind(submissionId,owner).first<{role:string}>();
  if(job)return LEARNING_ROLES.includes(job.role)?'learning':'role';
  const parent=await db.prepare("SELECT EXISTS(SELECT 1 FROM records c WHERE c.id=s.owner||':campaign:'||s.parent_id AND c.owner=s.owner AND c.kind='campaign') AS campaign,EXISTS(SELECT 1 FROM records b WHERE b.id=s.owner||':brand:'||s.parent_id AND b.owner=s.owner AND b.kind='brand') AS brand FROM records s WHERE s.id=? AND s.owner=? AND s.kind='hermes_submission'").bind(`${owner}:hermes_submission:${submissionId}`,owner).first<{campaign:number;brand:number}>();

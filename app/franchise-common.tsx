@@ -34,7 +34,8 @@ export type EvidenceView={id:string;evidenceType:string;recordedAt:string;record
 export type GateView={window:WindowView;forecastDuty:ForecastDuty;stageChecks:{opened:{ok:boolean;reasons:CodeMessage[];warnings:CodeMessage[]}|null};disclaimer:string};
 export type LeadDetail=LeadSummary&{hasMemo:boolean;basis:LeadBasis;marketing:LeadMarketing;marketingRecheck:boolean;firstContactAt:string|null;contractedAt:string|null;closedAt:string|null;closedFrom:LeadStage|null;
  events:EventView[];allowedActions:string[];allowedMoves:LeadStage[];marketingOptions:('given'|'withdrawn')[];disclaimer:string;evidence?:EvidenceView[];gate?:GateView;
- codes?:LeadCodeView[];codeStrikes?:{code:string;at:string;reason:string}[];imports?:LeadImportView[];criteriaVersion?:number|null;qualifications?:QualificationRow[]};
+ codes?:LeadCodeView[];codeStrikes?:{code:string;at:string;reason:string}[];imports?:LeadImportView[];criteriaVersion?:number|null;qualifications?:QualificationRow[];
+ infoRequests?:{id:string;purpose:string;at:string;by:{id:string;role:string};used:boolean}[];messageLogs?:{id:string;templateId:string;templateVersion:number;classification:string;medium:string;requestId:string|null;at:string;by:{id:string;role:string}}[]};
 export type Assignee={id:string;label:string};
 export type Board={enabled:boolean;branch:Branch|null;leads:LeadSummary[];total:number;counts:{byStage:Record<string,number>};
  todos:{sourceNoticePending:number;subjectRequestsDueSoon:number;contactsExpiringSoon:number;marketingRecheck:number;purgePending?:number;codeConflict?:number};recheckLabel:string;assignees:Assignee[];disclaimer:string;contactNote:string};

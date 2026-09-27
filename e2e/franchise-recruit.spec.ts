@@ -9,6 +9,7 @@
 // 6) R6d-2 소재 실험 선별(유입·비용 탭): '플랫폼 보고, 원장 리드 아님'이 첫 줄, 계획(오늘 시작) → 결과(판정·중간 확인 경고) → 확인 층 표본 부족 → 취소.
 // 7) R7a 공공 벤치마크 탭: 고정 문구, 키 없음 막힘(적재 409, 외부 호출 0), 가상 키 저장 → 적재 버튼 열림(누르지 않음) → 키 지우기. 공공데이터포털은 호출하지 않는다.
 // 8) R15b-2 모집 카드 묶음: 템플릿 → 저장 → 승인 → PNG 내려받기(1080×1350·1080×1920, 카드 수만큼), 쓸 수 없는 코드 400.
+// 9) R9a 너처링: 탭 안내·AI 초안 409(연결 없음)·정보성·광고성 템플릿 저장·정보 요청 → 보낸 뒤 기록(요청당 1회)·광고성 기록 막힘·외부 요청 0.
 // 직원 역할 화면(비용·가져오기 영역 없음)은 legacy 헤더 요청자가 늘 소유자라 여기서 재현할 수 없다. 실제 이메일 세션 직원으로 e2e/email-auth.spec.ts에서 본다.
 // 근거: real Chromium·빌드 결과·로컬 D1(wrangler --local) / mocked 인증(legacy 로그인 헤더). 요청 가로채기는 쓰지 않는다(docs/E2E.ko.md 규칙).
 // 모든 값은 가상이다(브랜드는 시드 브랜드 ofd, 이름 김가상·이테스트, 전화 010-0000-12xx, 이메일 *@example.com). 결과는 COLLECTIVE 휴리스틱 · 법률 자문 아님.
@@ -659,5 +660,76 @@ test('R15b-2 모집 카드 묶음: 템플릿 → 승인 → PNG 내려받기(두
     waitReview: {version: badView.waitReview.version, confirmed: true, candidates: badView.waitReview.candidates.length}});
   expect(refused.status).toBe(400);
   expect(reasonCodes(refused.body)).toEqual(['card_qr_invalid']);
+  await context.close();
+});
+// 9) R9a 너처링: '너처링' 탭 첫 줄이 '앱은 보내지 않음', HERMES 연결이 없으면 AI 초안은 409 안내(모의 연결 없음), 정보성 템플릿 저장 → 리드 상세에서 정보 요청 기록 → 템플릿으로 보낸 뒤 기록 → 같은 요청은 다시 고를 수 없음.
+//    광고성 템플릿은 저장되지만 리드 상세의 발송 기록 선택지에서 막혀 있다(R9b 전). 앱의 외부 발송은 없다(요청은 /api/franchise뿐).
+test('R9a 너처링: 템플릿 저장 → 정보 요청 → 보낸 뒤 기록(요청당 1회), 광고성 기록 막힘', async ({browser}, testInfo) => {
+  test.setTimeout(120_000);
+  const owner = `e2e-fr-r9a-${testInfo.project.name}-${Date.now()}`;
+  const {context, page} = await ownerPage(browser, testInfo, owner);
+  await prepareFranchise(page, `가상 가맹 모집 R9a ${testInfo.project.name}`);
+  const lead = await franchise(page, 'create_lead', {contact: {name: '김가상', phone: '010-0000-1501'}, task: {region: '', budgetBand: 'unknown', timingBand: 'unknown', sourceChannel: 'walk_in'}, basis: {type: 'inquiry_response'}});
+  expect(lead.status, JSON.stringify(lead.body)).toBe(200);
+  const outbound: string[] = [];
+  page.on('request', r => {if (!r.url().includes('127.0.0.1') && !r.url().includes('localhost')) outbound.push(r.url())});
+
+  // 1) 너처링 탭: 첫 줄 안내, AI 초안은 HERMES 연결이 없어 409 안내.
+  await page.goto(`/?view=franchise&brand=${BRAND}&tab=nurture`);
+  await expect(page.getByText('앱은 메시지를 보내지 않습니다.', {exact: false}).first()).toBeVisible();
+  await page.getByRole('combobox', {name: '너처링 목적', exact: true}).selectOption('process_guide');
+  await page.getByRole('combobox', {name: '너처링 매체', exact: true}).selectOption('email');
+  const drafted = page.waitForResponse(franchiseAction('nurture_draft_start'));
+  await page.getByRole('button', {name: 'AI 초안 만들기', exact: true}).click();
+  expect((await drafted).status()).toBe(409);
+  await expect(page.getByText(/HERMES/).first()).toBeVisible();
+
+  // 2) 정보성 템플릿을 직접 써서 저장한다.
+  await page.getByRole('textbox', {name: '템플릿 제목', exact: true}).fill('{브랜드} 가맹 절차 안내');
+  await page.getByRole('textbox', {name: '템플릿 본문', exact: true}).fill('{이름}님, 요청하신 가맹 절차를 안내합니다.\n정보공개서를 먼저 받고 충분히 검토하신 뒤 상담해 주세요.\n문의: {담당자} {문의처}');
+  const saved = page.waitForResponse(franchiseAction('nurture_template_save'));
+  await page.getByRole('button', {name: '템플릿 저장', exact: true}).click();
+  expect((await saved).status()).toBe(200);
+  await expect(page.getByText('템플릿을 저장했습니다(v1).', {exact: true})).toBeVisible();
+  await expect(page.getByRole('list', {name: '너처링 템플릿 목록'}).getByRole('listitem')).toHaveCount(1);
+
+  // 3) 광고성 템플릿(고정 요소 포함, 문자)도 저장한다.
+  await page.getByRole('combobox', {name: '너처링 목적', exact: true}).selectOption('briefing_invite');
+  await page.getByRole('combobox', {name: '너처링 매체', exact: true}).selectOption('sms');
+  await page.getByRole('textbox', {name: '템플릿 본문', exact: true}).fill('(광고) {브랜드}\n{이름}님, 이번 달 창업 설명회에 초대합니다.\n무료 수신거부: {수신거부}');
+  const savedAd = page.waitForResponse(franchiseAction('nurture_template_save'));
+  await page.getByRole('button', {name: '템플릿 저장', exact: true}).click();
+  expect((await savedAd).status()).toBe(200);
+  await expect(page.getByRole('list', {name: '너처링 템플릿 목록'}).getByRole('listitem')).toHaveCount(2);
+  await shot(page, testInfo, 'r9a-1-templates');
+
+  // 4) 리드 상세: 정보 요청 기록 → 보낸 템플릿·요청을 골라 기록. 광고성 템플릿 선택지는 막혀 있다.
+  await page.goto(`/?view=franchise&brand=${BRAND}`);
+  const board = await (await page.request.get(`/api/franchise?view=board&brandId=${BRAND}`)).json() as {leads: {systemCode: string}[]};
+  await page.getByRole('button', {name: `리드 ${board.leads[0].systemCode} 열기`, exact: true}).click();
+  const sheet = page.getByRole('dialog');
+  const requestForm = sheet.getByRole('form', {name: '정보 요청 기록'});
+  await requestForm.getByRole('combobox', {name: '요청한 정보', exact: true}).selectOption('process_guide');
+  const requested = page.waitForResponse(franchiseAction('add_info_request'));
+  await requestForm.getByRole('button', {name: '정보 요청 기록', exact: true}).click();
+  expect((await requested).status()).toBe(200);
+  await expect(sheet.getByText('정보 요청을 기록했습니다.', {exact: false})).toBeVisible();
+  const logForm = sheet.getByRole('form', {name: '발송 기록'});
+  const templateSelect = logForm.getByRole('combobox', {name: '보낸 템플릿', exact: true});
+  await expect(templateSelect.locator('option', {hasText: '광고성: R9b 전 기록 불가'})).toBeDisabled();
+  await templateSelect.selectOption({label: '가맹 절차 안내 · 이메일 · v1'});
+  const requestSelect = logForm.getByRole('combobox', {name: '답한 정보 요청', exact: true});
+  await requestSelect.selectOption({index: 1});
+  const logged = page.waitForResponse(franchiseAction('log_lead_message'));
+  await logForm.getByRole('button', {name: '보낸 뒤 기록', exact: true}).click();
+  const loggedResponse = await logged;
+  expect(loggedResponse.status()).toBe(200);
+  expect(loggedResponse.request().postDataJSON() as Record<string, unknown>).toMatchObject({medium: 'email', templateVersion: 1});
+  await expect(sheet.getByText('발송 기록을 남겼습니다.', {exact: false})).toBeVisible();
+  await expect(sheet.getByRole('list', {name: '발송 기록'}).getByRole('listitem')).toHaveCount(1);
+  // 5) 답한 요청은 다시 고를 수 없다(요청당 1회).
+  await expect(logForm.getByRole('combobox', {name: '답한 정보 요청', exact: true}).locator('option')).toHaveCount(1);
+  await shot(page, testInfo, 'r9a-2-logged');
+  expect(outbound).toEqual([]);
   await context.close();
 });

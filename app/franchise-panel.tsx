@@ -26,6 +26,7 @@ import {FranchiseEvents} from './franchise-events-panel';
 import {FranchiseInflow} from './franchise-inflow-panel';
 import {FranchiseReport} from './franchise-report-panel';
 import {FranchiseBenchmark} from './franchise-benchmark-panel';
+import {FranchiseNurture} from './franchise-nurture-panel';
 import {RECRUITMENT_CHANNEL_LABELS,FILE_BASIS_LABEL,UNATTRIBUTED_LABEL} from '@/lib/franchise-recruitment';
 
 type Campaigns=readonly {id:string;title:string}[];
@@ -74,7 +75,7 @@ export function FranchisePanel({workspace,initialBrandId,initialTab,onScopeChang
   {status&&!enabled&&<p className="notice" role="note">{OFF_BANNER}</p>}
   {intakeError&&<div role="alert" className="load-error"><span>{intakeError}</span><Button variant="outline" size="sm" onClick={()=>void loadIntake()}>다시 불러오기</Button></div>}
   {intake&&branch!=='A'&&<p className="notice" role="note">{branch==='B'||branch==='C'?FRANCHISE_ERRORS.BRANCH_BLOCKED.text:UNDETERMINED_BANNER}{admin?' 설정 탭의 가맹 프로필에서 분기를 기록합니다.':''}</p>}
-  <Tabs value={shown} onValueChange={pickTab}><TabsList className="h-auto max-w-full flex-wrap"><TabsTrigger value="leads">리드</TabsTrigger><TabsTrigger value="requests">정보주체 요청</TabsTrigger><TabsTrigger value="assets">모집 자료</TabsTrigger><TabsTrigger value="events">행사</TabsTrigger><TabsTrigger value="inflow">유입·비용</TabsTrigger><TabsTrigger value="report">성과</TabsTrigger><TabsTrigger value="benchmark">벤치마크</TabsTrigger>{admin&&<TabsTrigger value="settings">설정</TabsTrigger>}</TabsList></Tabs>
+  <Tabs value={shown} onValueChange={pickTab}><TabsList className="h-auto max-w-full flex-wrap"><TabsTrigger value="leads">리드</TabsTrigger><TabsTrigger value="requests">정보주체 요청</TabsTrigger><TabsTrigger value="assets">모집 자료</TabsTrigger><TabsTrigger value="events">행사</TabsTrigger><TabsTrigger value="inflow">유입·비용</TabsTrigger><TabsTrigger value="report">성과</TabsTrigger><TabsTrigger value="benchmark">벤치마크</TabsTrigger><TabsTrigger value="nurture">너처링</TabsTrigger>{admin&&<TabsTrigger value="settings">설정</TabsTrigger>}</TabsList></Tabs>
   {!status?!statusError&&<p role="status">가맹 모집 정보를 불러오고 있습니다.</p>
    :shown==='leads'?<LeadsTab key={brandId} brandId={brandId} status={status} admin={admin} intake={intake} campaigns={campaigns} onRequests={()=>pickTab('requests')}/>
    :shown==='requests'?<RequestsTab key={brandId} brandId={brandId} admin={admin} keyReady={status.contactKey==='ready'}/>
@@ -83,6 +84,7 @@ export function FranchisePanel({workspace,initialBrandId,initialTab,onScopeChang
    :shown==='inflow'?<FranchiseInflow key={brandId} brandId={brandId} brandName={brands.find(b=>b.id===brandId)?.name??''} admin={admin} branch={branch||null} storageLabels={intake?.storageLabels??[]} onStatus={()=>void loadStatus()}/>
    :shown==='report'?<FranchiseReport key={brandId} brandId={brandId} admin={admin}/>
    :shown==='benchmark'?<FranchiseBenchmark key={brandId} brandId={brandId} admin={admin}/>
+   :shown==='nurture'?<FranchiseNurture key={brandId} brandId={brandId} admin={admin}/>
    :<FranchiseSettings key={brandId} brandId={brandId} enabled={enabled} onChanged={()=>void loadIntake()}/>}
  </section>;
 }

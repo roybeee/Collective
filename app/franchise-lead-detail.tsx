@@ -16,6 +16,7 @@ import {RECRUITMENT_ATTRIBUTION_NOTE,RECRUITMENT_MESSAGES,MAX_CODES_PER_LEAD,nor
 import {toKstDate} from '@/lib/franchise-rules';
 import {franchiseGet,franchisePost,problemOf,messageOf,ProblemBox,Disclaimer,Section,TimeField,HashField,StorageField,LabelSelect,TaskFields,NOW,timeOf,kstDate,kst,labelOf,actorLabel,
  EvidenceExport,type Json,type LeadDetail,type Intake,type Assignee,type Problem,type PostResult,type TimeValue,type EvidenceView,type GateView,type SideView} from './franchise-common';
+import {LeadNurture} from './franchise-lead-nurture';
 
 // done: 성공 문구. 응답에 따라 달라지면 함수로 준다.
 type Act=(action:string,payload:Json,done?:string|((result:Json)=>string),noVersion?:boolean)=>Promise<PostResult|null>;
@@ -80,6 +81,7 @@ function LeadBody({lead,act,busy,admin,intake,assignees,campaigns,brandId}:Commo
   {can(lead,'update_task')&&<Section title="문의 조건"><TaskForm key={lead.version} {...c} campaigns={campaigns}/></Section>}
   <LeadCodes key={'c'+lead.version} {...c} admin={admin}/>
   <QualificationBox key={'q'+lead.version} {...c} assignees={assignees}/>
+  <LeadNurture key={'n'+lead.version} brandId={brandId} lead={lead} act={act} busy={busy} assignees={assignees} allowed={lead.allowedActions}/>
   {can(lead,'update_contact')&&<Section title="연락처 수정" note="빈칸은 그대로 둡니다. 바꿀 값만 적으세요. 수정은 이력에 항목 이름만 남습니다."><ContactForm key={lead.version} {...c}/></Section>}
   <BasisBox {...c} notices={notices}/>
   <MarketingBox key={'m'+lead.version} {...c} notices={notices}/>

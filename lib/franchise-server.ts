@@ -22,6 +22,8 @@ import {IMPORT_ACTIONS,IMPORT_NO_LOCK,IMPORT_INPUT_BOUND,IMPORT_KEY_EXEMPT,Franc
 import {REPORT_ACTIONS,REPORT_OFF_EXEMPT,FranchiseReportError,runReportAction,reportTargetOf,reportView,replayReportExport,type ReportAction,type ReportAuditExtra,type LeadGateSummary} from './franchise-report-server';
 import {EXPERIMENT_ACTIONS,EXPERIMENT_OFF_EXEMPT,EXPERIMENT_INPUT_BOUND,runExperimentAction,experimentTargetOf,experimentsView,type ExperimentAction} from './franchise-experiment-server';
 import {BENCHMARK_ACTIONS,BENCHMARK_OFF_EXEMPT,BENCHMARK_NO_LOCK,runBenchmarkAction,benchmarkView,type BenchmarkAction} from './franchise-benchmark-server';
+import {NURTURE_ACTIONS,NURTURE_OFF_EXEMPT,NURTURE_NO_LOCK,NURTURE_ADMIN,runNurtureAction,nurtureView,templateForLog,nurtureJudgeContext,nurtureError,type NurtureAction} from './franchise-nurture-server';
+import {infoRequestDecision,messageLogDecision} from './franchise-nurture';
 import {RECRUITMENT_ACTIONS,INPUT_BOUND,INFLOW_FILTERS,FranchiseRecruitmentError,runRecruitmentAction,recruitmentTargetOf,recruitmentView,readLeadCodes,unregisteredCount,attributionsOf,attributionView,inflowMatch,type RecruitmentAction,type RecruitmentAuditExtra} from './franchise-recruitment-server';
 import {FRANCHISE_ERRORS,FRANCHISE_LABELS,CONTACT_FIELDS,BUDGET_BANDS,TIMING_BANDS,SOURCE_CHANNELS,INTAKE_BASIS_TYPES,needsSourceNotice,REFERRAL_FROM,MARKETING_METHODS,CLOSE_REASONS,REVEAL_PURPOSES,EXPORT_PURPOSES,BACKDATE_REASONS,CORRECTION_REASONS,REGISTRY_AMEND_REASONS,BOARD_TODOS,SUBJECT_REQUEST_TYPES,SUBJECT_REQUEST_STATUS,SUBJECT_RESOLUTIONS,SUBJECT_CHANNELS,BRANCHES,EXPORT_COLUMNS,
  STAGE_LABELS,SOURCE_LABELS,BUDGET_LABELS,TIMING_LABELS,BASIS_LABELS,MARKETING_STATUS_LABELS,CONTACT_NOTE,DUE_LABEL,RETENTION_LABEL,RECHECK_LABEL,MEMO_HINT,ACTIVITY_EVENTS,
@@ -53,7 +55,7 @@ type TemplateRow=Registered&{label:string;sha256:string;checkedItems:number[];st
 type NoticeRow=Registered&{versionLabel:string;text:string;sha256:string;controllerName:string;processorNames:string[]};
 type EvidenceRow={id:string;leadId:string;brandId:string;evidenceType:EvidenceType;recordedAt:string;recordedBy:ActorSnapshot;backdateApproval:BackdateApproval|null;supersedes:string|null;correctionReason:CorrectionReason|null;docSha256:string|null;storageLabel:string|null;payload:Json|null;voided?:true};
 type Receipt={requestAction?:string;status?:number;result?:Json;target?:string|null};
-type EventRow={id:string;leadId:string;brandId:string;type:LeadEventType;at:string;actor:ActorSnapshot;importId?:string;from?:LeadStage;to?:LeadStage;reasonCodes?:string[];fields?:ContactField[];taskFields?:string[];count?:number;basis?:Json;consent?:Json;withdrawnAt?:string;evidenceId?:string;evidenceType?:EvidenceType;supersedes?:string|null;voided?:true;closeReason?:string|null;assigneeId?:string|null;qualification?:QualificationCodes}&Receipt;
+type EventRow={id:string;leadId:string;brandId:string;type:LeadEventType;at:string;actor:ActorSnapshot;importId?:string;from?:LeadStage;to?:LeadStage;reasonCodes?:string[];fields?:ContactField[];taskFields?:string[];count?:number;basis?:Json;consent?:Json;withdrawnAt?:string;evidenceId?:string;evidenceType?:EvidenceType;supersedes?:string|null;voided?:true;closeReason?:string|null;assigneeId?:string|null;qualification?:QualificationCodes;nurture?:Json}&Receipt;
 // 적격 판정 이벤트·감사 행의 값(코드만, 대표 결정 35).
 type QualificationCodes={verdict:string;reason:string;criteriaVersion:number};
 type AuditRow={id:string;brandId:string;action:AuditAction;actor:ActorSnapshot;at:string;leadId?:string;recordId?:string;fields?:ContactField[];purpose?:string;contactMode?:'masked'|'full';count?:number;matchedLeadIds?:string[];counts?:{leads:number;keys:number;audits:number;remaining:number};byBrand?:Record<string,number>;trigger?:'board_open'|'manual'|'inline';reasonCode?:string;changedFields?:string[];assigneeId?:string|null;alreadyErased?:boolean;
@@ -99,27 +101,27 @@ const changesOf=(r:D1Result|undefined)=>Number(r?.meta?.changes??0);
 // ── 작업 목록 ──
 const SETTINGS_ACTIONS=['save_profile','register_disclosure_version','retire_disclosure_version','amend_disclosure_version','register_contract_template','retire_contract_template','amend_contract_template','register_privacy_notice','retire_privacy_notice'] as const;
 const EVIDENCE_ACTIONS=['record_delivery','record_advice','record_forecast','record_contract','record_fee','record_agreement','void_evidence'] as const;
-const LEAD_MUTATIONS=['update_contact','update_task','move_stage','reopen_lead','claim_lead','assign_lead','record_source_notice','set_marketing_consent','add_lead_codes','strike_lead_code','qualify_lead'] as const;
+const LEAD_MUTATIONS=['update_contact','update_task','move_stage','reopen_lead','claim_lead','assign_lead','record_source_notice','set_marketing_consent','add_lead_codes','strike_lead_code','qualify_lead','add_info_request','log_lead_message'] as const;
 const OTHER_ACTIONS=['create_lead','reveal_contact','find_contact','export_leads','purge','erase_lead','add_subject_request','update_subject_request'] as const;
 // 트랙 R R15a-2a 모집 자료·행사 작업 9개(lib/franchise-assets-server.ts).
 // 트랙 R R5b-1 모집 코드·비용 작업 4개(lib/franchise-recruitment-server.ts). R5b-2 리드 CSV 가져오기 작업 3개(lib/franchise-lead-import-server.ts).
 // 트랙 R R6b 모집 주간 보고 확정·내려받기와 증빙 묶음 작업 3개(lib/franchise-report-server.ts).
-export const FRANCHISE_ACTIONS=[...SETTINGS_ACTIONS,...EVIDENCE_ACTIONS,...LEAD_MUTATIONS,...OTHER_ACTIONS,...ASSET_ACTIONS,...EVENT_ACTIONS,...RECRUITMENT_ACTIONS,...IMPORT_ACTIONS,...REPORT_ACTIONS,...EXPERIMENT_ACTIONS,...BENCHMARK_ACTIONS] as const;
+export const FRANCHISE_ACTIONS=[...SETTINGS_ACTIONS,...EVIDENCE_ACTIONS,...LEAD_MUTATIONS,...OTHER_ACTIONS,...ASSET_ACTIONS,...EVENT_ACTIONS,...RECRUITMENT_ACTIONS,...IMPORT_ACTIONS,...REPORT_ACTIONS,...EXPERIMENT_ACTIONS,...BENCHMARK_ACTIONS,...NURTURE_ACTIONS] as const;
 type Action=typeof FRANCHISE_ACTIONS[number];
 const has=(list:readonly string[],action:string)=>list.includes(action);
 // leadId로 기존 리드를 읽는 작업.
 const ON_LEAD:readonly string[]=[...EVIDENCE_ACTIONS,...LEAD_MUTATIONS,'reveal_contact','erase_lead'];
 // 모집 자료 승인·내보내기·게시 위치·폐기와 행사 등록·변경·취소는 대표·관리자만(직원 403). 초안 저장·신청·참석은 모든 역할.
 // 모집 코드 발급·사용 중지, 모집 비용 기록·무효화, 리드 모집 코드 제외(R5b-1), 리드 CSV 검사·미리보기·확정(R5b-2, 제3자가 준 파일)도 대표·관리자만.
-const ADMIN_ACTIONS:readonly string[]=[...SETTINGS_ACTIONS,...EVIDENCE_ACTIONS,'export_leads','purge','erase_lead','update_subject_request','assign_lead','reopen_lead','asset_approve','asset_export','asset_place','asset_retire','event_save','event_cancel',...RECRUITMENT_ACTIONS,'strike_lead_code',...IMPORT_ACTIONS,...REPORT_ACTIONS,...EXPERIMENT_ACTIONS,...BENCHMARK_ACTIONS];
+const ADMIN_ACTIONS:readonly string[]=[...SETTINGS_ACTIONS,...EVIDENCE_ACTIONS,'export_leads','purge','erase_lead','update_subject_request','assign_lead','reopen_lead','asset_approve','asset_export','asset_place','asset_retire','event_save','event_cancel',...RECRUITMENT_ACTIONS,'strike_lead_code',...IMPORT_ACTIONS,...REPORT_ACTIONS,...EXPERIMENT_ACTIONS,...BENCHMARK_ACTIONS,...NURTURE_ADMIN];
 // 연락처 키가 없어도 되는 작업(설정, 파기·삭제, 정보주체 요청, 광고성 정보 철회, 모집 자료·행사 9개). 그 밖은 리드 조회 전에 503이다.
 // 리드 CSV 파일 검사(R5b-2)는 연락처를 다루지 않아 키가 없어도 된다. 미리보기·확정은 중복 키·암호화가 필요하다.
-const KEY_EXEMPT:readonly string[]=[...SETTINGS_ACTIONS,'purge','erase_lead','add_subject_request','update_subject_request',...ASSET_ACTIONS,...EVENT_ACTIONS,...RECRUITMENT_ACTIONS,...IMPORT_KEY_EXEMPT,...REPORT_ACTIONS,...EXPERIMENT_ACTIONS,...BENCHMARK_ACTIONS];
+const KEY_EXEMPT:readonly string[]=[...SETTINGS_ACTIONS,'purge','erase_lead','add_subject_request','update_subject_request',...ASSET_ACTIONS,...EVENT_ACTIONS,...RECRUITMENT_ACTIONS,...IMPORT_KEY_EXEMPT,...REPORT_ACTIONS,...EXPERIMENT_ACTIONS,...BENCHMARK_ACTIONS,...NURTURE_ACTIONS];
 // 영수증 입력 해시를 묶는 작업(같은 요청 번호·다른 입력은 409): 모집 코드 발급·비용 기록(R5b-1), 리드 CSV 확정(R5b-2).
 const BOUND:readonly string[]=[...INPUT_BOUND,...IMPORT_INPUT_BOUND,...EXPERIMENT_INPUT_BOUND];
 // 스위치가 꺼져도 되는 작업. 광고성 정보 철회도 된다. 대표·관리자는 정보주체 요청 처리(정정·출처 고지·종결)도 한다. 모집 자료 폐기·행사 취소·모집 비용 무효화·모집 코드 사용 중지는 보호 방향이라 된다.
 // 모집 주간 보고 내려받기·증빙 묶음(R6b)은 읽기·입증이라 된다(확정은 켜져야 한다).
-const OFF_EXEMPT:readonly string[]=['reveal_contact','find_contact','export_leads','purge','erase_lead','add_subject_request','update_subject_request','asset_retire','event_cancel','spend_void','code_retire',...REPORT_OFF_EXEMPT,...EXPERIMENT_OFF_EXEMPT,...BENCHMARK_OFF_EXEMPT];
+const OFF_EXEMPT:readonly string[]=['reveal_contact','find_contact','export_leads','purge','erase_lead','add_subject_request','update_subject_request','asset_retire','event_cancel','spend_void','code_retire',...REPORT_OFF_EXEMPT,...EXPERIMENT_OFF_EXEMPT,...BENCHMARK_OFF_EXEMPT,...NURTURE_OFF_EXEMPT];
 const NO_VERSION:readonly string[]=['reveal_contact','erase_lead'];
 
 type Ctx={who:Actor;owner:string;action:Action;input:Json;rid:string;now:string;brandId:string;enabled:boolean;by:ActorSnapshot;inputSha256?:string};
@@ -248,7 +250,7 @@ const qualificationView=(q:LeadQualification|null,criteria:EligibilityCriteria|n
 function eventView(e:EventRow){
  return {id:e.id,type:e.type,at:e.at,actor:{id:e.actor.id,role:e.actor.role},...(e.from?{from:e.from}:{}),...(e.to?{to:e.to}:{}),...(e.reasonCodes?{reasons:codeMessages(e.reasonCodes)}:{}),...(e.fields?{fields:e.fields}:{}),...(e.taskFields?{taskFields:e.taskFields}:{}),
   ...(e.basis?{basis:e.basis}:{}),...(e.consent?{consent:e.consent}:{}),...(e.withdrawnAt?{withdrawnAt:e.withdrawnAt}:{}),...(e.evidenceId?{evidenceId:e.evidenceId}:{}),...(e.evidenceType?{evidenceType:e.evidenceType}:{}),...(e.supersedes?{supersedes:e.supersedes}:{}),
-  ...(e.voided?{voided:true}:{}),...(e.closeReason?{closeReason:e.closeReason}:{}),...(e.assigneeId!==undefined?{assigneeId:e.assigneeId}:{}),...(e.count!==undefined?{count:e.count}:{}),...(e.importId?{importId:e.importId}:{}),...(e.qualification?{qualification:e.qualification}:{})};
+  ...(e.voided?{voided:true}:{}),...(e.closeReason?{closeReason:e.closeReason}:{}),...(e.assigneeId!==undefined?{assigneeId:e.assigneeId}:{}),...(e.count!==undefined?{count:e.count}:{}),...(e.importId?{importId:e.importId}:{}),...(e.qualification?{qualification:e.qualification}:{}),...(e.nurture?{nurture:e.nurture}:{})};
 }
 async function leadDetail(who:Who,owner:string,lead:LeadRecord,now:string,enabled:boolean){
  const admin=isAdminRole(who.role),{ctx,profile}=await gateContext(owner,lead.brandId);
@@ -262,6 +264,9 @@ async function leadDetail(who:Who,owner:string,lead:LeadRecord,now:string,enable
   imports:importRefsView(lead.imports??[]),
   // 적격 판정 이력(대표 결정 35, 최근 것 먼저)과 지금 적격 기준 버전(없으면 null, 판정할 수 없다).
   criteriaVersion:profile?.eligibility?.version??null,qualifications:[...(lead.qualifications??[])].reverse().map(q=>({verdict:q.verdict,reason:q.reason,criteriaVersion:q.criteriaVersion,score:q.score,at:q.at,by:{id:q.by.id,role:q.by.role}})),
+  // 정보 요청·발송 기록(R9a, 최근 것 먼저): 코드·id·시각·행위자만.
+  infoRequests:[...(lead.infoRequests??[])].reverse().map(r=>({id:r.id,purpose:r.purpose,at:r.at,by:{id:r.by.id,role:r.by.role},used:(lead.messageLogs??[]).some(l=>l.requestId===r.id)})),
+  messageLogs:[...(lead.messageLogs??[])].reverse().map(l=>({id:l.id,templateId:l.templateId,templateVersion:l.templateVersion,classification:l.classification,medium:l.medium,requestId:l.requestId,at:l.at,by:{id:l.by.id,role:l.by.role}})),
   events,allowedActions:leadActions(who,actionLead,enabled),allowedMoves:allowedMoves(who,actionLead,enabled),marketingOptions:marketingOptions(who,actionLead,enabled),disclaimer:GATE_DISCLAIMER};
  if(!admin)return detail;
  const rows=await evidenceRows(owner,lead),active=new Set(activeEvidence(rows).map(r=>r.id)),gate=leadGateOf(rows);
@@ -620,6 +625,25 @@ async function strikeLeadCode(c:Ctx,lead:LeadRecord):Promise<Outcome>{
  if(strikes.some(x=>x.code===code))fail('LEAD_CODE_STRUCK');
  const updated=bump(c,lead,{codeStrikes:[...strikes,{code,at:c.now,by:c.by,reason}]},'codes_struck'),result={leadId:lead.id,version:updated.version,count:1};
  await commit([leadStmt(c.owner,updated),eventStmt(c.owner,receiptEvent(c,lead,'codes_struck',result,{taskFields:['codes'],count:1})),auditStmt(c.owner,plainAudit(c,'code_strike',{leadId:lead.id,reasons:[reason]}))]);
+ return {result,lead:updated};
+}
+// ── 정보 요청·발송 기록(R9a-2) ──
+// 정보 요청: 가맹희망자가 자료·안내를 요청한 사실(목적 코드만). 가맹희망자 활동이라 마지막 활동 시각을 옮긴다. 발송 기록: 사람이 직접 보낸 뒤 남기는 기록(템플릿 id·판·분류·매체·요청 id).
+// 정보성은 이 리드의 요청 기록 하나에 한 번만(요청당 1회), 광고성은 R9b 전 409. 본문·연락처 값은 이벤트·감사에 없다. 앱은 보내지 않는다.
+async function recordInfoRequest(c:Ctx,lead:LeadRecord):Promise<Outcome>{
+ const d=infoRequestDecision(c.input,{enabled:c.enabled,now:c.now,id:'rq-'+c.rid,by:c.by,requests:lead.infoRequests??[]});
+ if(!d.ok)nurtureError(d);
+ const updated=bump(c,lead,{infoRequests:[...(lead.infoRequests??[]),d.value]},'info_requested'),result={leadId:lead.id,version:updated.version,requestId:d.value.id,purpose:d.value.purpose};
+ await commit([leadStmt(c.owner,updated),eventStmt(c.owner,receiptEvent(c,lead,'info_requested',result,{nurture:{purpose:d.value.purpose}})),auditStmt(c.owner,plainAudit(c,'info_request',{leadId:lead.id}))]);
+ return {result,lead:updated};
+}
+async function logLeadMessage(c:Ctx,lead:LeadRecord):Promise<Outcome>{
+ const [template,ctx]=await Promise.all([templateForLog(c.owner,lead.brandId,c.input.templateId,c.input.templateVersion),nurtureJudgeContext(c.owner,lead.brandId)]);
+ const d=messageLogDecision(c.input,{enabled:c.enabled,now:c.now,id:'ml-'+c.rid,by:c.by,template,contactPresent:lead.contactState==='present',requests:lead.infoRequests??[],logs:lead.messageLogs??[],brandId:lead.brandId,facts:ctx.facts,versions:ctx.versions});
+ if(!d.ok)nurtureError(d);
+ const v=d.value,updated=bump(c,lead,{messageLogs:[...(lead.messageLogs??[]),v]},'message_logged');
+ const result={leadId:lead.id,version:updated.version,logId:v.id,templateId:v.templateId,templateVersion:v.templateVersion,classification:v.classification,medium:v.medium,requestId:v.requestId};
+ await commit([leadStmt(c.owner,updated),eventStmt(c.owner,receiptEvent(c,lead,'message_logged',result,{nurture:{templateVersion:v.templateVersion,classification:v.classification,medium:v.medium}})),auditStmt(c.owner,plainAudit(c,'message_log',{leadId:lead.id}))]);
  return {result,lead:updated};
 }
 // ── 적격 판정(대표 결정 35) ──
@@ -1011,7 +1035,7 @@ async function loadLead(c:Ctx){
 function leadRoleCheck(c:Ctx,lead:LeadRecord){
  const a=c.action,member=!isAdminRole(c.who.role);
  if(!member)return;
- if((a==='update_contact'||a==='update_task'||a==='record_source_notice'||a==='reveal_contact'||a==='qualify_lead')&&!(a==='reveal_contact'?canReveal(c.who,lead):canEditLead(c.who,lead)))fail('NOT_ASSIGNED');
+ if((a==='update_contact'||a==='update_task'||a==='record_source_notice'||a==='reveal_contact'||a==='qualify_lead'||a==='add_info_request'||a==='log_lead_message')&&!(a==='reveal_contact'?canReveal(c.who,lead):canEditLead(c.who,lead)))fail('NOT_ASSIGNED');
  if(a==='move_stage'){
   if(!isOwnLead(c.who,lead))fail('NOT_ASSIGNED');
   if(c.input.to==='closed'&&!canClose(c.who,lead))fail('ADMIN_ONLY');
@@ -1068,7 +1092,7 @@ export async function franchisePost(req:Request):Promise<Response>{
  const requestId=input.requestId;
  if(typeof requestId!=='string'||!/^[A-Za-z0-9_-]{8,64}$/.test(requestId))fail('REQUEST_ID');
  // 리드 CSV 검사·미리보기(R5b-2)는 쓰기·영수증이 없어 잠금과 영수증 재생을 건너뛴다(요청 제한은 센다, 명세 4.3 NO_LOCK).
- const noLock=has(IMPORT_NO_LOCK,action)||has(BENCHMARK_NO_LOCK,action);
+ const noLock=has(IMPORT_NO_LOCK,action)||has(BENCHMARK_NO_LOCK,action)||has(NURTURE_NO_LOCK,action);
  const owner=who.owner,lockKey=owner+':franchise',token=noLock?null:await acquireLock(lockKey);
  try{
   await executionRate(owner,'franchise');
@@ -1121,6 +1145,8 @@ function onLead(c:Ctx,lead:LeadRecord):Promise<Outcome>{
   case 'add_lead_codes':return addLeadCodes(c,lead);
   case 'strike_lead_code':return strikeLeadCode(c,lead);
   case 'qualify_lead':return recordQualification(c,lead);
+  case 'add_info_request':return recordInfoRequest(c,lead);
+  case 'log_lead_message':return logLeadMessage(c,lead);
   default:return fail('UNKNOWN_ACTION');
  }
 }
@@ -1144,6 +1170,9 @@ function other(c:Ctx):Promise<Outcome>{
  // 공공 벤치마크(R7a): 같은 port 방식에 영수증 id(rid)를 넘긴다. 적재는 자기 잠금을 쓴다(새 모듈은 이 모듈을 import하지 않는다).
  if(has(BENCHMARK_ACTIONS,c.action))return runBenchmarkAction({owner:c.owner,brandId:c.brandId,now:c.now,rid:c.rid,actor:{id:c.who.id,role:c.who.role},input:c.input,action:c.action as BenchmarkAction,
   port:{commit:(s,stale)=>commit(s,stale),receipt:(a,r,x,t)=>auditStmt(c.owner,receiptAudit(c,a,r,x,t))}});
+ // 너처링 템플릿·초안(R9a-2): 같은 port 방식. 초안 시작·조회는 HERMES 호출이라 가맹 잠금 밖이다(새 모듈은 이 모듈을 import하지 않는다).
+ if(has(NURTURE_ACTIONS,c.action))return runNurtureAction({owner:c.owner,brandId:c.brandId,now:c.now,enabled:c.enabled,actor:{id:c.who.id,role:c.who.role},input:c.input,action:c.action as NurtureAction,
+  port:{commit:(s,stale)=>commit(s,stale),receipt:(a,r,x,t)=>auditStmt(c.owner,receiptAudit(c,a,r,x,t))}});
  switch(c.action){
   case 'save_profile':return saveProfile(c);
   case 'register_disclosure_version':return registerVersion(c);
@@ -1165,7 +1194,7 @@ function other(c:Ctx):Promise<Outcome>{
 }
 
 // ── GET 보기 ──
-export const FRANCHISE_VIEWS=['status','intake','board','lead','settings','requests','audit','assets','asset','events','codes','spend','imports','report','experiments','benchmark'] as const;
+export const FRANCHISE_VIEWS=['status','intake','board','lead','settings','requests','audit','assets','asset','events','codes','spend','imports','report','experiments','benchmark','nurture'] as const;
 // hasRecords: 리드·정보주체 요청·모집 자료·행사·모집 비용·모집 코드 기록이 하나라도 있으면 참(R15a-2b S2, R5b-1). 스위치가 꺼져도 폐기·행사 취소·비용 무효화·코드 사용 중지 화면에 대표·관리자가 닿게 한다(lib/nav-state.ts franchiseMenuVisible).
 async function statusView(who:Actor){
  const any=await database().prepare("SELECT 1 FROM records WHERE owner=? AND kind IN ('franchise_lead','franchise_subject_request','recruitment_asset','recruitment_event','recruitment_spend','recruitment_code') LIMIT 1").bind(who.owner).first();
@@ -1268,5 +1297,7 @@ export async function franchiseGet(req:Request):Promise<Response>{
  if(view==='experiments')return json(await experimentsView(who,brandId,stamp()));
  // 공공 벤치마크(R7a, 모든 역할, 키 값 없음): 연락처 키 불필요, 스위치가 꺼져도 읽는다.
  if(view==='benchmark')return json(await benchmarkView(who,brandId,stamp()));
+ // 너처링 템플릿·초안(R9a-2, 모든 역할, 리드 없음): 연락처 키 불필요, 스위치가 꺼져도 읽는다.
+ if(view==='nurture')return json(await nurtureView(who,brandId));
  return json(await auditView(who,brandId));
 }
