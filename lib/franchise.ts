@@ -109,7 +109,8 @@ export const AUDIT_ACTION_LABELS={reveal:'연락처 보기',find:'연락처로 �
  asset_save:'모집 자료 저장',asset_approve:'모집 자료 승인',asset_export:'모집 자료 내보내기',asset_place:'모집 자료 게시 위치 기록',asset_retire:'모집 자료 폐기',asset_blocked:'모집 자료 승인·내보내기 막힘',event_save:'행사 등록·변경',event_cancel:'행사 취소',event_register:'행사 신청 기록',event_attendance:'행사 참석 기록',
  code_issue:'모집 코드 발급',code_retire:'모집 코드 사용 중지',code_strike:'리드 모집 코드 제외',spend_record:'모집 비용 기록',spend_void:'모집 비용 무효화',lead_import:'리드 CSV 가져오기',lead_import_rejected:'리드 CSV 거부',
  report_freeze:'모집 주간 보고 확정',report_export:'모집 주간 보고 내려받기',evidence_export:'증빙 묶음 내보내기',qualification:'적격 판정 기록',
- experiment_plan:'소재 실험 계획',experiment_result:'소재 실험 결과 입력',experiment_cancel:'소재 실험 취소'} as const;
+ experiment_plan:'소재 실험 계획',experiment_result:'소재 실험 결과 입력',experiment_cancel:'소재 실험 취소',
+ benchmark_key_save:'공공데이터 키 저장',benchmark_key_clear:'공공데이터 키 삭제',benchmark_load:'공공 벤치마크 적재'} as const;
 export type AuditAction=keyof typeof AUDIT_ACTION_LABELS;
 // 트랙 R R5b-1 리드 모집 코드 제외 사유(관리자, 코드만 남기고 자유 문구는 받지 않는다).
 export const STRIKE_REASON_LABELS={typo:'오기',wrong_lead:'다른 리드',gaming:'귀속 조작 의심',other:'기타'} as const;
@@ -215,6 +216,12 @@ export const FRANCHISE_ERRORS={
  // 트랙 R R6d-2 소재 실험 선별(lib/franchise-experiment-server.ts).
  EXPERIMENT_NOT_FOUND:{status:404,text:'소재 실험을 찾을 수 없습니다.'},
  EXPERIMENT_STALE:{status:409,text:'소재 실험이 변경됐습니다. 새로고침한 뒤 다시 시도해 주세요.'},
+ // 트랙 R R7a 공공 벤치마크(lib/franchise-benchmark-server.ts).
+ BENCHMARK_KEY_MISSING:{status:409,text:'공공데이터 키가 저장되지 않아 적재하지 않았습니다(외부 호출 0). 대표·관리자가 벤치마크 탭에서 키를 저장하세요.'},
+ BENCHMARK_KEY_INVALID:{status:400,text:'공공데이터포털에서 받은 일반 인증키를 그대로 붙여 넣어 주세요.'},
+ BENCHMARK_KEY_UNREADABLE:{status:409,text:'저장된 공공데이터 키를 읽지 못했습니다. 키를 다시 저장하세요.'},
+ BENCHMARK_RUNNING:{status:409,text:'벤치마크 적재가 이미 진행 중입니다. 끝난 뒤 다시 시도하세요.'},
+ BENCHMARK_INPUT:{status:400,text:'적재 조건을 확인해 주세요.'},
 } as const satisfies Record<string,{status:number;text:string}>;
 export type FranchiseErrorKey=keyof typeof FRANCHISE_ERRORS;
 // 게이트 사유·경고 코드의 한국어 설명. REASON_CODES ∪ WARNING_CODES와 정확히 같은 키(테스트 고정).

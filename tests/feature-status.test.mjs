@@ -30,7 +30,7 @@ const view=r=>r&&{status:r.status,reason:r.reason,link:r.link};
 // --- 3단계와 라벨 ----------------------------------------------------------------------
 check('status labels are the three user-facing stages',featureStatusLabels,{available:'사용 가능',blocked:'조건 부족',unimplemented:'미구현'});
 const rows=featureRows(full());
-check('row keys are unique and in display order',rows.map(r=>r.key),['brand','ai','text','review','quality-ops','metrics','worker','png','buffer','measurement','franchise','data-requests','place-check','customer-report','reward-lineage','playbook-signals','quality-digest','pos-csv','pos-auto','video','ads']);
+check('row keys are unique and in display order',rows.map(r=>r.key),['brand','ai','text','review','quality-ops','metrics','worker','png','buffer','measurement','franchise','data-requests','place-check','customer-report','reward-lineage','playbook-signals','quality-digest','franchise-benchmark','pos-csv','pos-auto','video','ads']);
 ok('every row uses one of the three stages',rows.every(r=>['available','blocked','unimplemented'].includes(r.status)));
 ok('the required rows are present by label',['HERMES 연결','조사 작업자 연결','PNG 정보 카드','Instagram 예약 발행(Buffer)','성과 자동 수집','POS 주문 CSV 가져오기'].every(label=>rows.some(r=>r.label.includes(label))));
 check('video, ads and POS auto collection are not implemented',['video','ads','pos-auto'].map(k=>row(full(),k).status),['unimplemented','unimplemented','unimplemented']);
@@ -110,6 +110,9 @@ ok('franchise available reason names the recruitment asset and event tabs (R15a-
 ok('franchise available reason names the inflow codes and recruitment spend before the legal gate (R5b-1)',(r=>r.includes('유입 코드·모집 비용(대표·관리자) · 법정 절차 판정'))(row(full({flags:flagList(true)}),'franchise').reason));
 check('franchise row is blocked with the switch reason when off',view(row(full({flags:flagList(false)}),'franchise')),{status:'blocked',reason:'기능 스위치 r_franchise 꺼짐 · 소유자가 켭니다',link:{label:'가맹 모집 화면으로 이동',view:'franchise'}});
 check('unknown or broken flag state is not available',[row(full(),'franchise').status,row(full({flags:'x'}),'franchise').status,row(full({flags:[{flag:'r_franchise'}]}),'franchise').status],['blocked','blocked','blocked']);
+// 트랙 R R7a: 공공 벤치마크 행은 r_franchise를 따르고 벤치마크 탭으로 이어진다. 켜져 있어도 키가 없으면 막힌다고 적는다.
+check('R7a benchmark row follows r_franchise and links to the benchmark tab',[view(row(full({flags:flagList(true)}),'franchise-benchmark')).status,view(row(full({flags:flagList(false)}),'franchise-benchmark')).status,JSON.stringify(row(full({flags:flagList(true)}),'franchise-benchmark').link)],['available','blocked','{"label":"가맹 모집의 벤치마크 탭으로 이동","view":"franchise","tab":"benchmark"}']);
+ok('R7a benchmark reason says the key is needed, tokens are zero and it is not our forecast basis',(r=>r.includes('키가 없으면 적재 막힘')&&r.includes('토큰 0')&&r.includes('자사 예상매출 근거가 아님'))(row(full({flags:flagList(true)}),'franchise-benchmark').reason));
 check('franchiseSwitch reads on, off and unknown',[franchiseSwitch(flagList(true)),franchiseSwitch(flagList(false)),franchiseSwitch(null),franchiseSwitch([{flag:'r_franchise',enabled:'yes'}]),franchiseSwitch([{flag:'online_grading',enabled:true}])],[true,false,null,null,null]);
 {const panelsSrc=readFileSync('app/panels.tsx','utf8');
  ok('only the owner sees the franchise switch button',panelsSrc.includes("r.key==='franchise'&&account?.isOwner&&franchiseOn!==null"));
@@ -122,7 +125,7 @@ ok('settings loads the switch list for the table',readFileSync('app/panels.tsx',
 const none=featureRows();
 check('without input the same rows are returned',none.map(r=>r.key),rows.map(r=>r.key));
 check('without input nothing that depends on live state claims to be available',none.filter(r=>['ai','worker','png','buffer','measurement','franchise'].includes(r.key)).map(r=>r.status),['blocked','blocked','blocked','blocked','blocked','blocked']);
-check('unknown live states say the state could not be checked',none.filter(r=>r.status==='blocked').map(r=>r.reason),['AI 연결 상태를 확인하지 못했습니다','작업자 상태를 확인하지 못했습니다','확정 사실 수를 확인하지 못했습니다','Buffer 연결 상태를 확인하지 못했습니다','채널 연결 상태를 확인하지 못했습니다','가맹 모집 스위치 상태를 확인하지 못했습니다','자료 요청 스위치 상태를 확인하지 못했습니다','플레이스 대조 스위치 상태를 확인하지 못했습니다','고객 보고서 스위치 상태를 확인하지 못했습니다','보상 계보 스위치 상태를 확인하지 못했습니다','교정 신호 스위치 상태를 확인하지 못했습니다','주간 품질 집계 스위치 상태를 확인하지 못했습니다']);
+check('unknown live states say the state could not be checked',none.filter(r=>r.status==='blocked').map(r=>r.reason),['AI 연결 상태를 확인하지 못했습니다','작업자 상태를 확인하지 못했습니다','확정 사실 수를 확인하지 못했습니다','Buffer 연결 상태를 확인하지 못했습니다','채널 연결 상태를 확인하지 못했습니다','가맹 모집 스위치 상태를 확인하지 못했습니다','자료 요청 스위치 상태를 확인하지 못했습니다','플레이스 대조 스위치 상태를 확인하지 못했습니다','고객 보고서 스위치 상태를 확인하지 못했습니다','보상 계보 스위치 상태를 확인하지 못했습니다','교정 신호 스위치 상태를 확인하지 못했습니다','주간 품질 집계 스위치 상태를 확인하지 못했습니다','공공 벤치마크 스위치 상태를 확인하지 못했습니다']);
 ok('an empty object input behaves like no input',JSON.stringify(featureRows({}).map(r=>[r.key,r.status]))===JSON.stringify(none.map(r=>[r.key,r.status])));
 ok('broken shapes fall back to the safe default',featureRows({connection:'x',worker:7,brands:'x',campaigns:{},facts:{},channels:'x',brandChannels:'x',publishers:[]}).filter(r=>['ai','worker','png','buffer','measurement'].includes(r.key)).every(r=>r.status==='blocked'));
 check('an empty channel list is blocked, not available',row(full({channels:[]}),'measurement').status,'blocked');
