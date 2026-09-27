@@ -869,6 +869,28 @@ R4a가 `lib/franchise-rules.ts`에 만들고 R2·R4b가 쓴다. 레코드는 `{i
   - 검사: `franchise-report-ui` 29(RU-1~RU-7, 실제 경로·메모리 SQLite·SSR), `franchise-ui` 117(화면 모듈 9개·탭 순서), `franchise-ui-render` 55, `nav-state` 92, `recruitment-metrics` 74, `franchise-model-boundary` 28(FORBIDDEN에 성과 화면).
   - 로컬 E2E(`e2e/franchise-recruit.spec.ts` R6c): passed 2/2(mobile·desktop, real Chromium·로컬 D1 / mocked 인증).
   - not_run: 운영 real 확인(게시 뒤, 대표가 `r_franchise`를 켠 뒤), 직원 화면의 실제 이메일 세션 확인(SSR 검사만).
+- R6d 분할(2026-09-27): R6d-1 워크스페이스 할 일 5종, R6d-2 소재 실험 선별(`lib/viral-stats.ts`). 레인 A 동의(LANES 공유 파일 행, #196): 기능 본체는 `lib/franchise-*`, `app/api/workspace/route.ts`·`lib/workspace-metrics.ts`에는 호출 1줄 수준만, 스위치는 `lib/franchise-*-server.ts`에서 읽는다.
+- R6d-1 구현 기록(2026-09-27, passed · mocked, 로컬 브라우저 passed · real Chromium·로컬 D1 / mocked 인증·연결 상태):
+  - 새 모듈 3개. `lib/franchise-tasks.ts`(표시 정의, import 없음, 첫 화면 번들용), `lib/franchise-workspace.ts`(판정 순수 모듈 `fr-tasks@2026-09-27.1`, 시계·조회·모델 호출 없음), `lib/franchise-workspace-server.ts`(읽기·스위치·역할). 화면 항목 `app/franchise-next-task.tsx`.
+  - 응답: `/api/workspace`에 `franchiseTasks:{items:[{task,count,brandId}],ruleVersion,disclaimer}`를 더한다. 스위치 `r_franchise`가 꺼지면 키가 없다(이전 응답과 같은 모양). 리드 id·가명 코드·이름·연락처는 없다. 세다가 실패해도 워크스페이스 응답은 막지 않는다(서버 기록에 사유만).
+  - 판정(모두 COLLECTIVE 휴리스틱 · 법률 자문 아님):
+    - 미응대: 문의 단계·첫 연락 없음·연락처 있음(파기·삭제 리드 제외).
+    - 계약 가능일 3일 전: 계약·종결 전 리드의 계약 가능 시각이 지금 뒤 3일 안. 계약 가능 시각은 R6b 주간 보고와 같은 `gateSummaries`(`lib/franchise-server.ts`, 이번에 export만 더함)로 계산한다.
+    - 증빙 결손: 계약 기록이 있고 지금 증빙으로 계약 게이트를 다시 돌리면 통과하지 못한다(주간 보고 '증빙 완결'의 반대편).
+    - 변경등록 기한 30일 전: 현재 등록 버전의 유효 기간 끝이 30일 안(뒤를 잇는 등록 버전이 없을 때), 현재 버전 없이 마지막 버전이 지남, 또는 가맹 프로필 사업연도 종료일이 있으면 정기 변경등록(사업연도 종료 후 120일, 신청일 미정이라 가장 이른 기한)이 30일 안이거나 지났고 그 뒤 등록한 버전이 없음. 브랜드 수로 센다.
+    - H10 재검토: 승인 상태 모집 자료 판에 코드 귀속 리드가 20명 이상이면 판 수로 센다(30명 전).
+  - 역할: 리드 할 일은 볼 수 있는 리드만 센다(직원은 본인 담당·미배정). 변경등록은 설정 화면(대표·관리자)으로 가므로 직원에게는 없다. H10은 자료 단위라 모든 역할에 보인다.
+  - 화면: 첫 화면 '다음 할 일' 카드에 캠페인 할 일 뒤로 붙는다. 누르면 가맹 모집 화면의 그 브랜드·탭(미응대·계약 가능일·증빙 결손은 리드, 변경등록은 설정, H10은 모집 자료)으로 간다. 건수·브랜드 이름·면책만 보인다.
+  - 공유 파일: `app/api/workspace/route.ts` import 1줄·호출 1줄. `lib/workspace-metrics.ts` import 1줄과 `NextTask` 합집합·`nextTasks` 선택 인자 `franchiseTasks`·반환 끝 호출(기존 줄 3곳 수정, 호출 1줄보다 많아 레인 A 칸에 검토 요청). `app/workspace.tsx` import 1줄과 다음 할 일 `map` 분기 1곳(계획 공유 파일 표 R6 '할 일 표시').
+  - 검사: `franchise-workspace` 50(WT-S1~WT-X2), `franchise-workspace-route` 33(WR-F1~WR-W5, 실제 경로·메모리 SQLite), `franchise-model-boundary` 28(FORBIDDEN에 새 판정·서버 모듈). 로컬 E2E(`e2e/franchise-recruit.spec.ts` R6d): passed 2/2(mobile·desktop).
+  - 계획과 다르게 한 것:
+    - H10 재검토 기준 20명은 계획에 수치가 없어 정했다(30명 전 여유). 재검토 완료 기록은 없다. 자료 판을 사용 중지하거나 새 판으로 바꾸면 빠진다.
+    - 변경등록 기한은 버전 유효 기간 끝과 정기(사업연도) 기한만 본다. 사유 발생 30일·분기 종료 30일 기한은 사유 발생일 기록이 없어 세지 않는다.
+    - 계약 가능일은 정보공개서·계약서안 제공 단계 리드만 읽는다(문의·상담 단계는 제공 기록이 없어 읽지 않는다).
+    - 미응대는 시간 기준을 두지 않는다(1시간은 미국 참고치라 할 일 기준으로 쓰지 않는다).
+    - 리드 보드에 새 할 일 필터(미응대·계약 가능일·증빙 결손)는 더하지 않았다. 같은 시기 적격 판정 기록 작업이 보드 화면을 고쳐 겹침을 피했다. 할 일은 탭으로만 간다.
+    - '다음 할 일' 카드는 기존 화면 규칙대로 AI 연결을 마친 워크스페이스에만 보인다. 연결 전에는 가맹 할 일도 보이지 않는다.
+  - not_run: 운영 real 확인(게시 뒤, 대표가 `r_franchise`를 켠 뒤), 직원 화면의 실제 이메일 세션 확인(경로 검사만).
 
 - 결정 36 구현 기록(2026-09-27, passed · mocked):
   - 보고 순수 모듈 `lib/franchise-report.ts`를 `fr-report@2026-09-27.3`으로 올렸다(운영 확정본 없음, R6b·R6c는 게시 전).
