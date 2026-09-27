@@ -44,7 +44,7 @@ check('the role registry keeps its thirteen v1 graders plus the copy pack and br
  assert.deepEqual([...KIND_GRADERS.map(g=>g.id)],NEW);
  assert.deepEqual([...ALL_GRADERS.map(g=>g.id)],[...V1,...NEW]);
 });
-check('the grading version moves past measure-v2 with the G3 graders, dictionaries, compound failure labels, absent-expression negation, critique clauses, meeting normalization, R3 measurement fixes, local-channel rerun fixes, contract reading, local channel decision lines, the copy pack grader and the brand voice grader',()=>assert.equal(GRADERS_VERSION,'failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-measure+local-rerun+contract-read+channel-decision+copy-pack+voice-avoid+expected-contract+root-brace'));
+check('the grading version moves past measure-v2 with the G3 graders, dictionaries, compound failure labels, absent-expression negation, critique clauses, meeting normalization, R3 measurement fixes, local-channel rerun fixes, contract reading, local channel decision lines, the copy pack grader, the brand voice grader and the franchise industry dictionary',()=>assert.equal(GRADERS_VERSION,'failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-measure+local-rerun+contract-read+channel-decision+copy-pack+voice-avoid+expected-contract+root-brace+franchise-industry'));
 // 기존 역할·발언 채점은 그대로다: 앞 15종(GRADERS) 결과가 같고 새 6종은 적용 kind 밖이라 not_applicable.
 check('G3 graders leave role and discussion results unchanged (not applicable outside their kinds)',()=>{
  const ctx={...cleanCtx,seededDefects:[{id:'d1',role:'cmo',marker:'업계 최초'}],briefInput:'목표: 오픈'};
@@ -140,7 +140,7 @@ check('brand_intro_as_fact grades revisions and rendered briefs but not discussi
 
 // ── 업종 사전: 새 업종, 배열(주 업종+허용 업종), 공용 용어 제외 ──
 const leak=(text,ind)=>status('industry_metric_leak',role(text),{industry:ind});
-check('the industry dictionary adds fnb, education, popup and retail next to the v1 industries',()=>assert.deepEqual(Object.keys(industry.INDUSTRY_TERMS).sort(),['beauty','education','fnb','kpop','locker','popup','retail']));
+check('the industry dictionary adds fnb, education, popup and retail next to the v1 industries (and franchise in R3c)',()=>assert.deepEqual(Object.keys(industry.INDUSTRY_TERMS).sort(),['beauty','education','fnb','franchise','kpop','locker','popup','retail']));
 check('content.ts keeps exporting the same dictionary',()=>assert.equal(content.INDUSTRY_TERMS,industry.INDUSTRY_TERMS));
 check('each new industry catches its own metrics in another campaign',()=>{
  for(const [id,text] of [['fnb','원산지 표시를 메뉴판에 적고 테이블 회전을 본다.'],['education','수강생 입학 상담 전환과 커리큘럼 만족도를 본다.'],['popup','회차별 입장 정원과 입장객 수를 기록한다.'],['retail','지점별 재고와 진열 면적을 맞춘다.']]){
