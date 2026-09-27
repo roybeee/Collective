@@ -57,7 +57,7 @@ const PREFERENCE='첫 문장은 고객의 평일 상황으로 시작한다.';
 await put('learning_rule','pref-1',{id:'pref-1',origin:'review',grade:'operator_preference',role:'cmo',citations:['d-1','d-2'],feedback:{helpful:0,harmful:0},brandId:'syn-brand-p',channel:'*',experimentId:'',experimentVersion:0,caseId:'',title:'평일 상황으로 시작',guidance:PREFERENCE,scope:'',status:'active',version:1,expiresAt:new Date(Date.now()+30*86400000).toISOString(),createdAt:now,updatedAt:now},'syn-brand-p');
 
 // A) kind 골격(순수): 종류 목록, 없으면 role, 회의 단계·브리프 처리기(G2, tests/eval-meeting-brief.test.mjs가 동작을 본다), 알 수 없는 종류 400, 예약량.
-check('the case kinds are role, meeting_step and brief',()=>assert.deepEqual(plain(kinds.EVAL_CASE_KINDS),['role','meeting_step','brief']));
+check('the case kinds are role, meeting_step, brief and viral_analysis',()=>assert.deepEqual(plain(kinds.EVAL_CASE_KINDS),['role','meeting_step','brief','viral_analysis']));
 check('a missing kind reads as role (no migration)',()=>assert.ok(kinds.caseKind(undefined)==='role'&&kinds.caseKind('role')==='role'&&kinds.evalKind(undefined).kind==='role'));
 for(const bad of ['judge','ROLE','',5,null])check(`unknown kind ${JSON.stringify(bad)} is 400`,()=>rejects(()=>kinds.caseKind(bad),/kind|종류/));
 check('meeting_step and brief have handlers (G2): meeting reserves 100,000, brief 50,000',()=>assert.ok(kinds.caseKind('meeting_step')==='meeting_step'&&kinds.evalKind('meeting_step').kind==='meeting_step'&&kinds.reserveOf({kind:'meeting_step'})===100000&&kinds.evalKind('brief').kind==='brief'&&kinds.reserveOf({kind:'brief'})===50000));

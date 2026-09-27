@@ -6,26 +6,29 @@ import {aiBrand} from './ai-context';
 import {voiceForRole} from './brand-voice';
 import {roleSubmission,type RoleSubmissionRequest} from './role-execution';
 import {preferenceSides,type OperatorPreferenceBlock} from './playbook-curator';
-import {runGraders,runPreventionGraders,GRADERS,GRADERS_VERSION,ALL_GRADERS,type GraderResult,type GraderStatus,type FactLedger,type GradeContext,type EvalItem,type SeededDefect} from './graders/index';
+import {runGraders,runPreventionGraders,GRADERS,GRADERS_VERSION,ALL_GRADERS,VIRAL_GRADERS,viralProse,type GraderResult,type GraderStatus,type FactLedger,type GradeContext,type EvalItem,type SeededDefect} from './graders/index';
 import {bodyOf,rawNormalization} from './graders/text';
 import {outputObject,proseValues,briefPlanValues} from './graders/types';
 import {checkCompliance} from './graders/compliance';
 import {buildBriefSubmission,type BriefRequest} from './brief-input';
 import {meetingStepRequestOf,buildMeetingRequest,briefRequestOf,targetStep,type MeetingStepRequest} from './eval-freeze';
 import {scrubMeetingOutput,meetingLabels,type Synthesis} from './meetings';
+import {viralAnalysisSubmission,type ViralAnalysisRequest} from './learning-execution';
 
 // 평가 종류(Q1 골격, G2 회의·브리프). 평가 케이스(eval_case.kind)마다 요청 동결(freeze: 입력 → 저장 요청·담당), 제출 조립(build: 동결 요청 → {instructions,input}),
 // 채점(grade: 출력 → 채점 결과), 케이스 1건 예약 토큰(reserve), 쌍 평가 대상 캠페인(campaignOf)을 한 처리기에 둔다. lib/eval-server.ts는 케이스의 kind로 처리기를 고른다.
 // kind가 없는 옛 케이스는 role이다(이행 불필요). 요청은 종류별 모양이 달라 처리기 계약은 unknown으로 받고, 각 처리기가 저장 때 검사한 모양으로 읽는다.
-export const EVAL_CASE_KINDS=['role','meeting_step','brief'] as const;
+export const EVAL_CASE_KINDS=['role','meeting_step','brief','viral_analysis'] as const;
 export type EvalCaseKind=typeof EVAL_CASE_KINDS[number];
 // 케이스 1건 예약(역할 EVAL_CASE_TOKEN_RESERVE): HERMES 제출에 토큰 상한이 없어 한 건이 쓸 양을 미리 잡아 둔다. 실측 역할 1회 7,343~13,997토큰(docs/observations/2026-09-23-live-run.md)의 약 3.5배다.
 // 회의 단계는 원 작업물 8개(각 8,000자)·재검토 후보(각 24,000자)가 입력에 들어가 파일럿 실측 전까지 100,000으로 잡는다(설계 2-8). 브리프는 미측정이라 역할과 같게 둔다.
 // 예약은 종류 처리기의 값만 쓴다(케이스별 덮어쓰기 없음).
 export const EVAL_CASE_TOKEN_RESERVE=50000,EVAL_MEETING_STEP_TOKEN_RESERVE=100000,EVAL_BRIEF_TOKEN_RESERVE=50000;
+// 바이럴 사례 분석(viral_analysis): 입력은 사례(관찰 14,000자·자막 20,000자 상한)와 관찰 기록 목록이다. 실측 전이라 역할과 같게 둔다(docs/EVAL.ko.md 8절).
+export const EVAL_VIRAL_ANALYSIS_TOKEN_RESERVE=50000;
 // 기대 판정 = lib/graders 채점 컨텍스트. industry는 단일 업종 ID 또는 [주 업종, ...허용 업종](G3). seededDefects는 회의 재검토·개선본이 찾아야 할 심은 결함(G3).
 export type EvalExpectations={prohibitedTerms:string[];facts:FactLedger|null;industry:string|string[]|null;localStore:boolean;inputTokenCap?:number;seededDefects?:SeededDefect[]};
-export type EvalRequest=RoleRequest|MeetingStepRequest|BriefRequest;
+export type EvalRequest=RoleRequest|MeetingStepRequest|BriefRequest|ViralAnalysisRequest;
 type KindCase={id:string;role:string;kind?:string;request:EvalRequest;expectations:EvalExpectations};
 // 쌍 평가의 한 쪽. 프롬프트 쌍(F3b)은 본문(PromptSet, active가 코드 상수면 null), 운영자 선호 쌍(B3-2b)은 off·on과 run에 고정한 블록이다.
 export type PreferenceSide={preference:'off'|'on';block:OperatorPreferenceBlock};
@@ -35,7 +38,7 @@ const obj=(v:unknown)=>v!==null&&typeof v==='object'&&!Array.isArray(v)?v as Rec
 const baseContext=(e:EvalExpectations):GradeContext=>({prohibitedTerms:e.prohibitedTerms,facts:e.facts,industry:e.industry,localStore:e.localStore,...(e.inputTokenCap?{inputTokenCap:e.inputTokenCap}:{})});
 // 역할 담당 ID(에이전시 역할 목록). 회의 단계는 대상 단계의 담당, 브리프는 담당이 없어 BRIEF_ROLE이다.
 export function roleId(v:unknown){const id=str(v,'담당',40,true);if(!roles.some(r=>r.id===id))throw new ApiError(400,'담당을 선택해 주세요.');return id}
-export const BRIEF_ROLE='brief';
+export const BRIEF_ROLE='brief',VIRAL_ANALYSIS_ROLE='viral_analysis';
 
 // 채점 결과: lib/graders와 규제 가드레일. run에는 판정·요약만, 발췌가 든 가드레일 상세(report)는 eval_output에 둔다.
 // prevention(정규화 전 heading_nesting·internal_id_exposure)과 normalization 건수는 역할 산출물 렌더에 있다. 회의 단계는 원문의 internal_id_exposure만 예방 판정으로 두고(정규화 건수 없음), 브리프는 빈 목록이다.
@@ -131,10 +134,36 @@ function gradeBrief(kase:KindCase,output:string,inputTokens:number|null){
  return graded(item,ctx,runGraders(item,ctx,ALL_GRADERS));
 }
 
+// ── viral_analysis: 운영 사례 분석(L1)과 같은 조립(lib/learning-execution.ts viralAnalysisSubmission) ──
+// 저장 요청은 운영 입력 그대로 {brand, case, observations}다(brand는 운영이 보낸 가린 정체성 필드). 담당은 VIRAL_ANALYSIS_ROLE이다.
+// 조사(L2)는 입력에 요청 시각(requestedAt)이 들어가 재현할 수 없어 평가 종류가 아니다({query, requestedAt} 모양은 400).
+const caseText=(c:Record<string,unknown>|null)=>!!c&&typeof c.id==='string'&&typeof c.brandId==='string'&&typeof c.scope==='string'&&typeof c.observations==='string'&&!!c.observations.trim();
+function freezeViral(v:unknown,roleInput:unknown){
+ if(roleInput!==undefined&&roleInput!==VIRAL_ANALYSIS_ROLE)throw new ApiError(400,`바이럴 사례 분석 케이스의 담당은 ${VIRAL_ANALYSIS_ROLE}입니다.`);
+ const r=obj(v),observations=r?.observations;
+ if(!r||!obj(r.brand)||!caseText(obj(r.case))||!Array.isArray(observations)||!observations.every(o=>obj(o)))throw new ApiError(400,'바이럴 사례 분석 요청(request)은 {brand:{}, case:{id, brandId, scope, observations}, observations:[]} 형식이어야 합니다. 조사(query·requestedAt)는 평가 대상이 아닙니다.');
+ const request={brand:r.brand,case:r.case,observations} as ViralAnalysisRequest;
+ try{viralAnalysisSubmission(request)}catch{throw new ApiError(400,'바이럴 사례 분석 요청으로 지시문을 만들 수 없습니다. 형식을 확인하세요.')}
+ return {request,role:VIRAL_ANALYSIS_ROLE};
+}
+// side: undefined(active run)·null(쌍 평가 active가 코드 상수)은 코드 상수, PromptSet은 그 viral 본문(없으면 코드 상수)이다. 운영자 선호 쌍은 대상이 아니다.
+function buildViral(request:EvalRequest,side?:EvalSide){
+ if(preferenceSide(side))throw new Error('바이럴 사례 분석은 운영자 선호 쌍 평가 대상이 아닙니다.');
+ return viralAnalysisSubmission(request as ViralAnalysisRequest,side?.viral);
+}
+// 채점 항목: 원 JSON(raw)과 사람이 읽는 분석 문장(text, 규제 가드레일이 읽는다). 채점기는 바이럴 목록(VIRAL_GRADERS)만 쓰고, 관찰 밖 수치 판정에 동결 사례·관찰을 준다.
+function gradeViral(kase:KindCase,output:string,inputTokens:number|null){
+ const r=kase.request as ViralAnalysisRequest,base:EvalItem={id:kase.id,kind:'viral_analysis',role:VIRAL_ANALYSIS_ROLE,raw:output,inputTokens};
+ const item={...base,text:viralProse(base).join('\n\n')},ctx:GradeContext={...baseContext(kase.expectations),viralCase:{case:r.case,observations:r.observations}};
+ return graded(item,ctx,runGraders(item,ctx,VIRAL_GRADERS));
+}
+
 const HANDLERS:Record<EvalCaseKind,EvalKindHandler>={
  role:{kind:'role',reserve:EVAL_CASE_TOKEN_RESERVE,freeze:freezeRole,build:buildRole,grade:gradeRole,campaignOf:r=>obj((r as RoleRequest).campaign),factsOf:r=>ledgerOf((r as RoleRequest).evidence?.facts)},
  meeting_step:{kind:'meeting_step',reserve:EVAL_MEETING_STEP_TOKEN_RESERVE,freeze:freezeMeeting,build:(r,side)=>{if(preferenceSide(side))throw new Error('회의 단계는 운영자 선호 쌍 평가 대상이 아닙니다.');return buildMeetingRequest(r as MeetingStepRequest,side)},grade:gradeMeeting,campaignOf:r=>obj((r as MeetingStepRequest).meeting.snapshot.campaign),factsOf:r=>ledgerOf((r as MeetingStepRequest).meeting.snapshot.evidence?.facts)},
  brief:{kind:'brief',reserve:EVAL_BRIEF_TOKEN_RESERVE,freeze:freezeBrief,build:buildBrief,grade:gradeBrief,campaignOf:()=>null,factsOf:r=>ledgerOf((r as BriefRequest).context.evidence.facts)},
+ // 캠페인이 없어 캠페인 기준 쌍 평가(역할·채널 단위)에서는 빠지고, viral.discovery 쌍 평가만 대상이다(lib/eval-server.ts pairCases).
+ viral_analysis:{kind:'viral_analysis',reserve:EVAL_VIRAL_ANALYSIS_TOKEN_RESERVE,freeze:freezeViral,build:buildViral,grade:gradeViral,campaignOf:()=>null,factsOf:()=>null},
 };
 
 const known=(v:unknown):v is EvalCaseKind=>typeof v==='string'&&(EVAL_CASE_KINDS as readonly string[]).includes(v);
