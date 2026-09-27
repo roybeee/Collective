@@ -5,6 +5,7 @@ import {executeLearning} from './learning-execution';
 import {executeBrief} from './brief-execution';
 import {advanceEvalRun} from './eval-server';
 import {roles} from './agency';
+import {publicationWork} from './publication-link-server';
 import type {Meeting} from './meetings';
 import type {BriefDraft} from './brief';
 import type {CampaignSequence} from './campaign-sequence';
@@ -39,6 +40,8 @@ async function pendingWork(owner:string):Promise<Work[]>{
  // 평가 run은 tick마다 케이스 하나를 제출하거나 조회한다. 진행 중 평가 run은 소유자당 1개(EVAL_MAX_ACTIVE_RUNS)라 순번에 평가 작업은 최대 1개이고,
  // 운영 작업이 차례를 기다리는 간격은 평가 때문에 한 순번에 한 tick만 늘어난다.
  for(const run of evalRuns.results)work.push({id:'eval:'+run.id,run:()=>advanceEvalRun(owner,run.id)});
+ // loop-2: 예약 접수 발행의 Buffer 상태 확인과 게시된 발행의 성과 수집 대상 등록(스위치 publication_auto_link, 꺼지면 빈 목록).
+ work.push(...await publicationWork(owner));
  return work.sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
 }
 

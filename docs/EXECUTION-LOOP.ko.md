@@ -45,6 +45,17 @@
 - **화면**: 캡션 후보에 'AI 생성물 · ' 표시와 표시 줄 미리보기, 준비된 발행 카드에 **AI 생성물** 배지와 표시 줄 미리보기, 승인 영역에 필수 확인란 **AI 생성물 표시 확인**이 있다. 체크 전에는 승인 버튼 옆에 차단 사유가 보인다.
 - **스위치**: `AI_COPY_CAPTIONS`는 그대로 꺼 둔다. 꺼져 있으면 AI 카피 준비와 승인된 카피 발행의 접수가 409다. 대표가 문구 초안을 확정하고 법률 검토를 마친 뒤 켠다.
 
+## 실험 안 연결 (loop-2)
+
+게시물이 바이럴 실험의 어느 안(arm)인지 발행 기록에 남기고, 게시된 Instagram 게시물의 성과를 loop-1 자동 수집으로 넘긴다(`lib/publication-link-server.ts`).
+
+- **연결**: 발행 준비의 '콘텐츠 실험 연결 (선택)'에서 이 캠페인의 진행 중 Instagram 실험과 안을 고르면 발행에 `experimentId`·`arm`(control|treatment)을 저장한다. 필드 이름은 학습 규칙·보상 계보가 쓰는 `experimentId`와 같다. 준비 뒤 연결·해제(`link_experiment`, `experiment:null`이면 해제)는 관리자만 한다. 준비 때 연결은 발행 준비 권한을 따르고, 검증이 실패하면 초안도 만들지 않는다.
+- **거절**: 다른 캠페인·다른 브랜드·Instagram이 아닌 실험 400, 모르는 안 400, 없는 실험 404, 진행 중이 아닌 실험 409, 같은 안에 살아 있는(취소·실패 아닌) 다른 발행이 있으면 409, 취소·실패한 발행의 연결 409.
+- **Instagram 게시물 ID**: Buffer 게시 조회(`inspectBuffer`)가 요청하는 필드는 `id`·`status`·`channelId`뿐이고, 코드와 이 문서가 확인한 [게시 상태](https://developers.buffer.com/types/PostStatus.html) 범위에서 외부 게시 ID·주소는 확인되지 않았다. 그래서 게시 확인(`published`)된 발행에 관리자가 숫자 게시물 ID(와 선택으로 instagram.com 게시물·릴스 주소)를 한 번 적는다(`link_media`, 발행 `media{mediaId,permalink,linkedBy,linkedAt}`). 게시 확인 전 409, 형식 오류 400, 다른 발행이 이미 쓴 ID 409다.
+- **자동 수집 대상**: 게시 확인·실험 연결·게시물 ID가 모두 있으면 그 안의 `measurement_source`(id `<실험>:<안>`, 대상 = 게시물 ID, 롤링, `publicationId`, 첫 수집 전 `pending`)를 만든다. 이미 있으면 쓰지 않는다(같은 게시물이면 `exists`, 다른 대상이면 `conflict`). 끝난 실험은 등록하지 않는다. 첫 수집은 다음 워커 tick의 loop-1 수집이 한다.
+- **스위치 `publication_auto_link`(기본 꺼짐)**: 켜면 (1) 게시물 ID를 적거나 연결할 때 위 등록을 하고, (2) 앱 워커 tick(`lib/background-execution.ts`)이 예약 접수 발행의 Buffer 상태를 발행마다 30분 간격으로 확인한다(예약 1시간 전~7일 뒤, 화면의 '실제 게시 상태 조회'와 같은 판정). 게시 확인된 연결 발행의 등록도 한다. 확인 기록은 `publication_check`(발행당 1행)에 둔다. 꺼지면 워커는 발행 기록을 읽지도 Buffer를 부르지도 않고, 게시물 ID를 적어도 대상을 만들지 않는다(응답 `switch_off`). 이때는 실험 카드의 '성과 가져오기'로 같은 게시물 ID를 수집한다. 공유 서버 Python 워커는 바꾸지 않았다.
+- **보상 계보**: L2(반응)는 아직 실험 `source`(작업물)로만 잇는다. 발행 `experimentId`로 게시–실험을 잇는 계보는 이번 범위 밖이다.
+
 ## 앱 공개 주소
 
 - 주소는 `<origin>/media/<sha256>.png`이다. origin은 `AUTH_ORIGIN`을 우선하고, 없으면 요청 주소의 origin을 쓴다. 파일명이 내용 해시라 추측할 수 없고 내용이 바뀌지 않는다.

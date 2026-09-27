@@ -152,6 +152,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'improvement_loop',parent:'none',campaignDeletion:'not_campaign_scoped',description:'대표가 닫은 개선 루프 동결본(프롬프트 활성화·승격 또는 운영자 선호 규칙 승인의 출처 id·단위·전후 버전·규칙 id와 판, 전후 14일 창, 범위, 창별 1차 판정·발행·주문 경로 수치와 설명용 비교 확률, 입력 지문(sha256), 닫은 사람 id와 역할·시각). 추가만 하고 원문·이메일·승인 사유는 담지 않는다(B4-2c)'},
  // A3-2 브랜드 말투 원장(대표 결정 2). 브랜드당 1행(id=브랜드 id)이고 최근 20판을 행 안 history에 둔다(별도 history kind 없음). 캠페인과 무관하다. eval_budget_approval·비식별 신호·token_budget 묶음 앞에 둔다.
  {kind:'brand_voice',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'브랜드 말투(어조·쓸 것·피할 것·선호 표현·피할 표현·예시, 상태 초안·확정·철회, 판 번호, 작성·확정한 사람 id와 역할·시각, 모델에 가는 마지막 확정본, 최근 20판 이력). 캠페인과 무관하고 이메일은 담지 않는다(A3-2)'},
+ // loop-2 발행 자동 확인 기록(스위치 publication_auto_link). 발행당 1행(id=발행 id, parent 캠페인)이고 워커가 마지막으로 본 시각·상태·오류·수집 대상 등록 결과만 둔다. brand_voice 뒤, eval_budget_approval 앞에 둔다.
+ {kind:'publication_check',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'워커의 발행 Buffer 상태 자동 확인 기록(마지막 확인 시각·발행 상태·오류 문구·성과 수집 대상 등록 결과). 30분 간격 판정에만 쓴다'},
  // Q2 평가 월 승인(품질 계획 v2). 소유자 범위이고 캠페인과 무관하다(lib/eval-budget-server.ts). 비식별 신호와 token_budget 묶음(마지막 3개, tests/token-budget.test.mjs 고정) 앞에 둔다.
  {kind:'eval_budget_approval',parent:'none',campaignDeletion:'not_campaign_scoped',description:'서버 평가 토큰 월 상한 대표 승인(UTC 월당 1행, id YYYY-MM: cap·사유·승인자·시각). 다시 승인하면 이전 승인을 history에 남긴다. 승인이 없는 달은 기본 1,500,000(결정 5)이고 월 상한 판정(시작·제출 직전)이 이 cap을 읽는다'},
  // F4b-2 비식별 이관(대표 결정 7). 캠페인 삭제 때 만들고 캠페인과 잇지 않는다(links 없음, 가명 키). 소유자가 완전 삭제를 고르면 만들지 않고 기존 행도 지운다(lib/server.ts).

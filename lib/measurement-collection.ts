@@ -62,6 +62,9 @@ export type MeasurementSource = {
  // 워커 재수집 때 to를 마지막 완결일(어제, Asia/Seoul)까지 넓힌다. 실험 종료일이 있으면 그날까지, from은 유지한다.
  // 같은 실험의 롤링 arm은 같은 tick에 같은 to로 함께 다시 수집한다. 이 필드가 없는 이전 대상은 처음 기간을 그대로 다시 조회한다.
  rolling?: boolean;
+ // loop-2: 게시된 발행에서 자동 등록한 대상. pending은 아직 한 번도 가져오지 않았다는 표시이고 첫 수집 성공 때 레코드를 새로 쓰며 사라진다.
+ publicationId?: string;
+ pending?: boolean;
 };
 
 const arms = ['control', 'treatment'] as const;
