@@ -146,6 +146,7 @@ function qualityDigestRow(flags:unknown):FeatureRow{
  const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='b2_digest_queue'):undefined;
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'주간 품질 집계 스위치 상태를 확인하지 못했습니다',link};
  return state.enabled?{...base,status:'available',reason:'조사 작업자가 주 1회 지난주 집계·경보를 기록(모델 호출 없음, 캠페인 상태 변경 없음)'}:{...base,status:'blocked',reason:'기능 스위치 b2_digest_queue 꺼짐 · 소유자가 켭니다',link};
+}
 // Reflector(B3-2): 기능 스위치 b3_reflector 상태를 읽는다. 켜지면 대표·관리자가 학습 규칙 탭에서 교정 5건 이상 묶음의 규칙 초안을 격리 HERMES로 제안받는다.
 function reflectorRow(flags:unknown):FeatureRow{
  const base={key:'reflector',label:'Reflector 규칙 초안 제안(교정 묶음 → 운영자 선호 규칙 초안)'},link:FeatureLink={label:'학습 화면 학습 규칙 탭에서 확인',view:'learning'};
