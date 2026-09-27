@@ -6,6 +6,7 @@
 - 운영(갱신): `9a760e4`(Sites 버전 43, tree `90f8c67`, [기록](releases/2026-09-27-9a760e4.md)). B3·B4 2부·#160·#158·레인 R #161·#163 게시 완료.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 - #173 · 레인 R · 보통 · 새 스위치 없음(GRADERS_VERSION +franchise-industry, 운영 S7 real 갱신 완료. 게시 뒤 운영 dev·봉인 골든 재채점으로 새 fail 0건 확인 필요)
+- #176 · 레인 R · 보통 · 새 스위치 없음(R2 판정 보기가 보이지 않는 문자 Cc·Co·Cn·Zl·Zp를 지움, `fr-claims@2026-09-27.1`, 테스트 문자열 5,058개 중 판정 변화는 이 문자로 끊은 우회 2건이고 둘 다 막힘, GRADERS_VERSION 그대로)
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
 갱신: 2026-09-27 01:13 UTC
@@ -22,7 +23,7 @@
 ## 레인 R (Claude 트랙 R 세션 — 가맹 모집)
 갱신: 2026-09-27 03:31 UTC
 - 세션: 2026-09-27부터 레인 R을 맥 로컬 Claude 세션이 이어받았다(대표 지시, 대표 외출 중). 원래 클라우드 세션의 R3c 작업은 GitHub에 없어 맥 세션이 다시 만들었다. 클라우드 세션에는 R3c 병합 뒤 최신 main에서 이어가라고 알렸다.
-- 진행 중: R2 판정기 `matchView` 보이지 않는 문자 PR(브랜치 `fix/r2-matchview-invisible`). 판정 보기가 Cc(줄바꿈 제외, 탭·CR은 띄어쓰기)·Co·Cn·Zl·Zp를 지운다. 해제 불가 문장을 이 문자로 끊은 180건이 모두 막힌다(전 모집 범위 2건). 이모지 조합 문자는 범주 밖. `FRANCHISE_CLAIMS_VERSION` `fr-claims@2026-09-27.1`, `GRADERS_VERSION` 그대로.
+- 진행 중: #176 R2 판정기 `matchView` 보이지 않는 문자(브랜치 `fix/r2-matchview-invisible`, CI 뒤 병합, 게시 대기열 요청). 판정 보기가 Cc(줄바꿈 제외, 탭·CR은 띄어쓰기)·Co·Cn·Zl·Zp를 지운다. 해제 불가 문장을 이 문자로 끊은 180건이 모두 막힌다(전 모집 범위 2건). 이모지 조합 문자는 범주 밖. `FRANCHISE_CLAIMS_VERSION` `fr-claims@2026-09-27.1`, `GRADERS_VERSION` 그대로.
 - 최근 병합: #173 R3c `franchise` 업종 사전·`GRADERS_VERSION +franchise-industry` `merged`(`7851185`). 게시 대기열에 요청했다. 게시 뒤 운영 dev·봉인 골든 재채점으로 새 fail 0건을 확인한다(소유자 세션).
 - 최근: #163 R15a-2b 가맹 화면 탭·#161 고정 문장 권장화·R2 보완 통제 `merged`(게시 대기열에 함께 요청). #151 R3c 선행 S7 콘솔 키트 `merged`. #139·#143·#145 `published`(묶음 15).
 - 다음: `matchView` PR → R2 3차(절 단위 구성 판정, 오기재 재현율·인용 경고 오탐) → 트랙 R 계획 순서. R15a-3(워크스페이스 할 일)은 R6 뒤([순서](LANES.ko.md#레인-r-claude-트랙-r-세션)).
