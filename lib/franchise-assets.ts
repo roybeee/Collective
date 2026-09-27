@@ -221,7 +221,7 @@ const countInt=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeIntege
 const ctxOf=(v:unknown):Record<string,unknown>=>isRecord(v)?v:{};
 const byId=<T extends {id:string}>(xs:readonly T[]):T[]=>[...xs].sort((a,b)=>ascii(a.id,b.id));
 // 원문·라벨·actor id에 넣을 수 없는 문자를 찾는다: C0·C1 제어 문자(U+0000–U+001F·U+007F–U+009F, 원문의 줄바꿈·탭만 허용), 짝 없는 서로게이트, 줄·문단 구분(U+2028·U+2029),
-// 사용자 정의 영역(U+E000–U+F8FF, 15·16평면), 미할당(Cn, 비문자 U+FDD0–U+FDEF·끝이 FFFE·FFFF 포함). 판정기 matchView는 Cf·M만 지우므로 이런 문자로 낱말을 끊으면 판정을 비껴가고,
+// 사용자 정의 영역(U+E000–U+F8FF, 15·16평면), 미할당(Cn, 비문자 U+FDD0–U+FDEF·끝이 FFFE·FFFF 포함). 판정기 matchView도 이런 문자를 지우지만(2026-09-27 전에는 Cf·M만 지워 낱말을 끊으면 판정을 비껴갔다),
 // 검토자에게는 보이지 않거나 줄로 보인다(lib/prompt-units.ts hiddenChars 선례). 명세 3.4의 U+0000–U+001F·U+007F 범위를 fail closed로 넓혔다(교차 검토 반영).
 // 범위는 정규식 대신 codePointAt 루프로 본다(lint no-control-regex 기준선 유지). 미할당만 \p{Cn}으로 본다(런타임 유니코드 표 기준, 비문자는 표와 무관하게 늘 Cn).
 // 짝 없는 서로게이트는 UTF-8로 바꿀 때 U+FFFD가 되어 서로 다른 원문이 같은 해시가 될 수 있으므로 함께 막는다.
