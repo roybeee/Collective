@@ -58,6 +58,7 @@
 - 관찰(레인 Q 파일): `tests/graders.test.mjs:274`(4만 자 입력 1초 검사)가 이 4코어 컨테이너에서 한계선에 있다('## x\n자료 필요'×4000 입력 0.93~1.07초, 같은 코드에서 3회 중 1~2회 실패). 채점기 코드와 무관한 부하 흔들림이다.
 
 ## 레인 Q (Codex 세션 — 품질·평가·운영)
+- A1 `channel.offline` **staged · registry-active**(2026-09-27 10:10 UTC, Claude 29f7af 대행, 대표 승인): v4 `@a6df00903daa`(#179 `f56909d`)를 ODA PIZZERIA 휘경 C107 오픈 캠페인(`37da2d59`)에만 stage. 근거 봉인 반복 3회 `f465ad09`·`2b649008`·`acfe9d77`(각 17케이스·34제출, 합계 1,589,183토큰) 과반 게이트(#178, 게시 v45): 봉인 과반 회귀 0(단일 run 실패 8건은 모두 1/3), 합격 후보 150 ≥ active 149, input_budget 17/17. 운영 `/api/version` promptManifest = stage 이벤트 manifestAfter. 경보 gateway_change 2026-09-27은 스모크 `8c85ed1e` 비회귀로 확인(`662244dc`). 다음: ODA 역할 실행 관찰 뒤 대표 결정으로 promote 또는 rollback. 이전 후보 v1~v3 경과는 #158·#169·#179 PR 본문.
 - Claude 29f7af 대행(2026-09-27 04:04 UTC): 대표 결정 "v4 + 반복 채점"으로 A1 활성화를 맡음. `pairGateMajority`와 `evalRunIds` 과반 게이트(이 PR). A1 후보 v1 봉인 `284fa4be` 회귀 3·개선 3, v2 dev `5528b2f9` 회귀 7·개선 3, v3 dev `3c0f6572` 회귀 10·개선 10. 경보 2건(gateway_change 9/25·9/26) 스모크 `9b27392c` 비회귀로 확인(`a7867c13`). 9·10월 평가 월 상한 1,000만(대표 지시 '예산 제한 없음').
 갱신: (레인 Q가 적는다)
 - 다음: #131·#135 병합 → A1 `channel.offline` 쌍 평가·stage → R4·A/A·R5 → J4 게이트, 게시 뒤 운영 감시([순서](LANES.ko.md#레인-q-codex-세션)).
