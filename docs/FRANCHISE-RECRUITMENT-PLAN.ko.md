@@ -860,6 +860,14 @@ R4a가 `lib/franchise-rules.ts`에 만들고 R2·R4b가 쓴다. 레코드는 `{i
   - 검사: `recruitment-report` 56(RP-V1~RP-M1 22개 사례), `record-kinds` 50, `franchise-model-boundary` 28(FORBIDDEN에 보고 서버, 모델 경로 kind 문자열 검사에 `recruitment_report`), `recruitment-codes` 146, `security-boundaries` 50, `franchise-pipeline` 217. 변이 20개(보고 서버 15·가맹 서버 연결 5)를 모두 잡았다.
   - 계획과 다르게 한 것: 증빙 묶음의 '앱 발행물'(objective 캠페인의 `execution_publication`)은 넣지 않았다. 자료별 묶음은 R15a 모집 자료만이다. 확정본 크기 상한은 두지 않았다(보고서 모양이 채널 10개·코호트 6개로 고정돼 작다).
   - not_run: 화면(R6c), 운영 real 확인(게시 뒤, 대표가 `r_franchise`를 켠 뒤).
+- R6c 구현 기록(2026-09-27, passed · mocked, 로컬 브라우저 passed · real Chromium·로컬 D1 / mocked 인증):
+  - 화면: 가맹 탭 '성과'(`report`, 유입·비용 뒤·설정 앞, 계획 화면 V8). 새 파일 `app/franchise-report-panel.tsx`. 보고의 읽는 법 문구 7개(귀속≠증분이 첫 줄)와 'COLLECTIVE 휴리스틱 · 법률 자문 아님'을 모든 숫자보다 먼저 그린다. 주 고르기(ISO 주), 유입·채널별 유입·채널 CPL·플랫폼 보고·speed-to-lead·문의 월 코호트·법정 게이트와 규칙 신선도 표. 1~4건 칸 '5건 미만', 분모 20 미만 '표본 부족(n<20)'은 서버 값 그대로다.
+  - 역할: 직원은 집계만 본다(확정·내려받기 버튼 없음). 대표·관리자는 끝난 주를 확정하고(확인 대화, 확인한 다이제스트를 보냄, 409 `REPORT_CHANGED`면 다시 불러오고 안내), 확정본을 Markdown·CSV·JSON으로 내려받고, 이전 판을 내려받는다. 스위치가 꺼지면 확정은 숨기고 내려받기는 남긴다.
+  - 증빙 묶음 버튼(`EvidenceExport`, `app/franchise-common.tsx`): 리드 상세(리드별 여정)와 모집 자료 상세(자료별 묶음)에 대표·관리자만 보인다.
+  - 보고 순수 모듈: 합친 채널 줄에 채널 이름(`channelLabels`)을 더하고 표기 도우미(`cellText`·`rateText`·`costText`·`moneyText`)를 내보냈다. 판을 `fr-report@2026-09-27.2`로 올렸다(보고 모양 변경, 운영 확정본 없음).
+  - 검사: `franchise-report-ui` 29(RU-1~RU-7, 실제 경로·메모리 SQLite·SSR), `franchise-ui` 117(화면 모듈 9개·탭 순서), `franchise-ui-render` 55, `nav-state` 92, `recruitment-metrics` 74, `franchise-model-boundary` 28(FORBIDDEN에 성과 화면).
+  - 로컬 E2E(`e2e/franchise-recruit.spec.ts` R6c): passed 2/2(mobile·desktop, real Chromium·로컬 D1 / mocked 인증).
+  - not_run: 운영 real 확인(게시 뒤, 대표가 `r_franchise`를 켠 뒤), 직원 화면의 실제 이메일 세션 확인(SSR 검사만).
 
 ### R7 경쟁·시장 벤치마크
 
