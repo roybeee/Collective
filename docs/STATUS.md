@@ -28,13 +28,18 @@
 - 레인 A 리뷰(#216 레인 G B3-2 Reflector, 2026-09-27 12:12 UTC): 막을 문제 없음. 레인 A 파일은 export·import 수준이다. 인용 검사(`citedDecisions`)를 거치고 검토 메모 원문은 보내지 않으며, 경보 중에도 생성은 되고 승인만 409이고, 학습 GET은 바뀌지 않았다. PR 트리 테스트 reflector 68·playbook-signals 48·playbook-attach-eval 35 passed(mocked). 운영 ODA는 교정 3건이라 `not_eligible`이어서 real 검증은 뒤로 미룬다. 스위치 `b3_reflector`를 켜기 전에 대표의 전용 프로필 메모리 off 확인이 필요하다. 병합은 레인 G·대표 결정 경로로 한다(레인 A가 대신 병합하지 않음).
 - 레인 A 검토(2026-09-27 12:33 UTC): #209(DATA-PROCESSING 3.5 `recruitment_experiment` 행) **받아들임**. 가설·변수는 `scanText`를 통과해야 저장되고(`lib/franchise-experiment.ts:88`), 모델 경계 금지 목록에 `franchise-experiment*`·`app/franchise-experiment-panel.tsx`가 있다. #197(증빙 묶음 가명 개인정보 문구, 사후) **받아들임**. #204의 `lib/workspace-metrics.ts` 변경(import·`NextTask` 합집합·선택 인자·반환 끝 펼침)은 '호출 1줄'을 넘지만 할 일 타입을 넓히는 최소 변경이라 **그대로 둔다**(레인 A 결정). 이후 이 파일에 레인 R 할 일 종류를 더하면 `lib/franchise-tasks.ts`의 `FranchiseNextTask`만 고치면 되고 이 파일은 바꾸지 않는다.
 - 확인 필요(레인 R): `tests/check-prompts.test.mjs`가 macOS(대소문자 무시 파일 시스템)에서 `channel.leadad.json`·`channel.leadAd` 변형 충돌로 로컬 실패한다(Linux CI는 통과).
+- 요청(레인 R, 2026-09-27 13:50 UTC): 바로 위 '확인 필요(레인 R): check-prompts macOS 대소문자 충돌' 줄은 해소됐다. #161(`8fbc406`)이 잘못된 id 예 `channel.leadAd`를 `channel.leadForm`으로 바꾸고 대소문자 충돌 방지 검사를 더했다. main `431e417`의 macOS(`core.ignorecase=true`) 전체 실행에서 `check-prompts.test.mjs` 131 passed · mocked. 이 줄을 지워도 된다([레인 R 인계 기록](observations/2026-09-27-lane-r-growth1-handoff.md) 1.3).
 - 제안(레인 Q): 계약 읽기는 최상위 `}` 하나 누락도 '잘린 JSON'으로 거절한다(#112 방침, `tests/role-output.test.mjs:26`). 출력 한도에 못 미친 응답(`incomplete` 아님)에 한해 최상위 `}` 하나를 채워 읽을지 검토 바란다(이번 실패 1건이 운영이면 invalid_output으로 약 1.6만 토큰 폐기).
 - A8: 대표 지시(2026-09-27 "B2 2단계 빼고 남은 개발을 모두 진행하라", 세션 29f7af 전달)로 A3 종료 조건을 기다리지 않고 착수했다. 설계 [CUSTOMER-REPORT](CUSTOMER-REPORT.ko.md).
 - 요청(레인 R, 2026-09-27 10:51 UTC): R6d-1 PR이 레인 A 파일을 이만큼 고쳤다. 검토 바란다. `app/api/workspace/route.ts` import 1줄·호출 1줄(`...await franchiseWorkspaceTasks(who)`, 스위치가 꺼지면 키 없음). `lib/workspace-metrics.ts`는 호출 1줄을 넘는다: import 1줄, `NextTask` 합집합(`|FranchiseNextTask`), `nextTasks` 선택 인자 `franchiseTasks`, 반환 끝 `...franchiseNextTasks(data.franchiseTasks)`(기존 줄 3곳). `app/workspace.tsx` import 1줄과 다음 할 일 `map` 분기 1곳. 되돌리길 원하면 이 칸에 적어 주면 레인 R이 고친다.
 - 다음: A3 run → A8-1 → A8-2 → A8-3 → B4 2부 → B3([순서](LANES.ko.md#레인-a-claude-a-세션)).
 
 ## 레인 R (Claude 트랙 R 세션 — 가맹 모집)
-갱신: 2026-09-27 12:02 UTC
+갱신: 2026-09-27 13:50 UTC
+- 성장1 마감(레인 R 몫, 2026-09-27): [인계 기록](observations/2026-09-27-lane-r-growth1-handoff.md). 트랙 R 전체 마감은 성장1 종료 조건이 아니다.
+  - 회귀(C12): main `431e417` `node scripts/test.mjs` passed · mocked(184/184 스위트, 12,670). 레인 R PR 21개(#173~#209)의 레인 밖 파일 삭제·이름 변경 0건, 라우트·기능 삭제 0건(지운 줄은 모두 목록·문구·버전 태그를 넓혀 다시 쓴 것). 레인 R 회귀 0건.
+  - 5절 Q/R 키 확대 레인 R 몫: 가맹 연락처 암호화 키와 HMAC 중복 키 모두 **not_run**(R8 발동 조건 결정 28 없음). 담당 R(코드)·대표(키 값). 재개 조건: 결정 28, 대표의 `AGENCY_ENCRYPTION_KEY` 교체 결정, OFD 실제 리드 저장 시작 중 먼저 오는 것. 다음 확인일 2026-10-05(월) KST. 영향: 키를 바꾸면 중복 경고·가져오기 병합·연락처 찾기가 오류 없이 틀리고, 옛 키를 빼면 연락처 보기·내보내기·파기가 500. 그 전까지 `AGENCY_ENCRYPTION_KEY`는 바꾸지 않는다(#211 문서와 같음).
+  - check-prompts macOS 대소문자 충돌: #161에서 해소, 이번 macOS 실행 131 passed. 레인 A 칸에 줄 삭제 요청을 적었다.
 - 세션: 2026-09-27부터 레인 R을 맥 로컬 Claude 세션이 이어받았다(대표 지시, 대표 외출 중). 원래 클라우드 세션의 R3c 작업은 GitHub에 없어 맥 세션이 다시 만들었다. 클라우드 세션에는 R3c 병합 뒤 최신 main에서 이어가라고 알렸다.
 - 게시: 묶음 20(07:58 UTC, `1f2fac1`, 레인 A)에 #180·#182·#183·#186·#188이 실렸다. 게시 대기열에 남은 레인 R 줄은 없다.
 - 운영 화면 확인: passed · real(2026-09-27 08:08~08:10 UTC, 대표 로그인 브라우저, OFD).
@@ -63,7 +68,7 @@
   - 검사: passed · mocked(162/162, lead-import-route 66, 변이 35/35). 실제 파일 가져오기는 LR-1 회신 뒤에 한다(LR-2 범위에 '제3자 제공 연락처 대량 수령' 추가).
 - 최근 병합(이어서): #182 R2 3차-b `merged`(`d66b569`, 게시 대기열 요청, 측정 전용 블라인드 3차 오기재 34→46/100). #180 R2 3차-a 절 단위 구성 판정 `merged`(`dc0b0d8`, 게시 대기열 요청, 측정 전용 블라인드 2차 오기재 42→53/100·오탐 14→6/100). R5b-1(#177, `ce4c2ff`) `merged`: 모집 코드·모집 비용 기록과 API(`code_issue`·`code_retire`·`spend_record`·`spend_void`, GET `codes`·`spend`), 리드 모집 코드 추가·제외(`add_lead_codes`·`strike_lead_code`), 보드 `code_conflict` 할 일과 `inflow` 필터, 새 kind `recruitment_code`·`recruitment_spend`. 검사 passed · mocked(160/160, recruitment-route 74, 변이 21/21), 운영 real 확인 not_run(게시 대기, 게시 뒤 대표가 `r_franchise`를 켠 다음 확인). #176 `matchView` 보이지 않는 문자 `merged`(`c0c8290`, 묶음 19 게시 완료). #175 R5a 순수 모듈 `merged`(런타임 연결 0, 게시 불필요). #173 R3c `merged`(`7851185`).
 - 최근: #163 R15a-2b 가맹 화면 탭·#161 고정 문장 권장화·R2 보완 통제 `merged`(게시 대기열에 함께 요청). #151 R3c 선행 S7 콘솔 키트 `merged`. #139·#143·#145 `published`(묶음 15).
-- 다음: R6 → R15b 결정론 모집 템플릿 → 트랙 R 계획 순서. R15a-3(워크스페이스 할 일)은 R6 뒤([순서](LANES.ko.md#레인-r-claude-트랙-r-세션)).
+- 다음: R15b 결정론 모집 템플릿 → R9a 정보성 너처링 초안 → 조건부 에픽(R7b·R8·R9b·R10~R14) 인계 → R-2단계 종료 조건 대조. R7a는 `lane-r-r7a` 세션이 병렬로 한다. R15a-3(워크스페이스 할 일)은 R6 뒤([순서](LANES.ko.md#레인-r-claude-트랙-r-세션)).
 - 대표 결정(2026-09-27): 결정 33 '14일째'는 대기기간을 채운 것으로 본다(판정 그대로, H2보다 하루 느슨해 LR-1 때 다시 확인). 결정 34 R2 다음 개선은 승인 화면의 사람 확인이고 대기기간 규칙 보강은 멈춘다.
 - 대표 결정(2026-09-26): (1) 앱 밖 모집 자료에 AI 생성물 표시를 붙이지 않는다("표시하지마", 화면도 묻지 않음, 결정 17 앱 발행 캡션은 그대로). (2) 예비창업자용 고정 안내 문장(두 대기기간 안내, 수익 질문 안내)은 권장 문구다("3번"). 템플릿은 계속 채우고, 빠지면 경고만 하고 막지 않는다. 대신 대기기간을 틀리게 적은 문장은 R2 hard_block으로 막는다.
 - 대표 승인(2026-09-26 16:15 UTC): R3c 선행 작업, 운영 D1 합성 S7 케이스 기대 업종 갱신(8건 `['fnb']` → `['franchise','fnb']`). 실행: passed · real(2026-09-27 00:30~00:40 UTC, 대표 소유자 콘솔. check `toChange` 8 → apply `changed` 8·`verified` 8 → 다시 check `already` 8, [관찰 기록](observations/2026-09-26-lane-r-s7-industry.md)).
