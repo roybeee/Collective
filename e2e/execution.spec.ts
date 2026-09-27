@@ -56,6 +56,16 @@ test('확인 사실로 실제 PNG를 만들고 새로고침 뒤 내려받는다'
  const codedResponse=await coded;expect(codedResponse.status()).toBe(200);const codedDraft=await codedResponse.json();
  expect(codedDraft.trackingCode).toMatchObject({type:'coupon'});expect(codedDraft.caption.startsWith('대표 메뉴: 테스트 대표 메뉴 107\n\n주문할 때 쿠폰 코드 '+codedDraft.trackingCode.code)).toBe(true);expect(codedDraft.caption).toMatch(/[을를] 알려 주세요\.$/);
  const codedArticle=page.locator('article',{hasText:codedDraft.trackingCode.code});await expect(codedArticle.getByRole('button',{name:'코드 복사',exact:true})).toBeVisible();await expect(codedArticle).toContainText(storeName);await expect(codedArticle).toContainText('소재: '+creativeTitle);
+ // A4-4: 스위치 a4_png_code를 켜면 실제 Canvas가 원본 위에 코드 라벨을 그린 파생 PNG를 만들어 초안에 연결한다. 원본 소재 해시는 그대로이고 승인에는 코드 PNG 확인이 필요하다.
+ expect((await page.request.post('/api/feature-flags',{data:{action:'set',flag:'a4_png_code',enabled:true}})).status()).toBe(200);
+ await page.reload();await page.getByRole('tab',{name:'제작·발행',exact:true}).click();
+ const registered=page.waitForResponse(r=>r.url().endsWith('/api/execution')&&r.request().postDataJSON()?.action==='register_coded_png');
+ await page.locator('article',{hasText:codedDraft.trackingCode.code}).getByRole('button',{name:'코드 넣은 PNG 만들기',exact:true}).click();
+ const registeredResponse=await registered;expect(registeredResponse.status()).toBe(200);const codedPng=(await registeredResponse.json()).codedPng;
+ expect(codedPng).toMatchObject({sourceHash:state.creatives[0].pngHash,code:codedDraft.trackingCode.code});expect(codedPng.hash).not.toBe(state.creatives[0].pngHash);
+ const derived=await page.request.get('/api/execution/asset?codedPng='+codedDraft.id);expect(derived.status()).toBe(200);const derivedBytes=await derived.body();expect(derivedBytes.readUInt32BE(16)).toBe(1080);expect(derivedBytes.readUInt32BE(20)).toBe(1080);
+ const codedCard=page.locator('article',{hasText:codedDraft.trackingCode.code});await expect(codedCard.getByAltText('승인 대상 코드 PNG')).toBeVisible();await expect(codedCard.getByAltText('원본 소재 PNG')).toBeVisible();
+ await expect(codedCard.getByRole('checkbox',{name:/코드 PNG 확인/})).toBeVisible();await expect(codedCard.getByRole('list',{name:'승인 차단 사유',exact:true})).toContainText('코드 PNG 확인 필요');
  await page.screenshot({path:`e2e/artifacts/${info.project.name}-execution.png`,fullPage:true});
  // ux-2 권고 (3): 주문 귀속 안내는 '주문 장부 열기' 버튼이다. 브랜드 공통 캠페인은 같은 브랜드의 운영 중 지점을 골라 그 지점의 주문 장부로 간다(주소 ?view=stores&brand=&store=&tab=ledger).
  // 권고 (2): 이 캠페인·소재로 귀속한 주문을 하나 기록해 두고, 열린 장부의 '주문 보기'에서 소재·캠페인으로 걸러 본다.

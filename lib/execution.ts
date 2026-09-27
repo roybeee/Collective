@@ -16,10 +16,13 @@ export type PublicationCopy={artifactId:string;artifactVersion:number;index:numb
 export type NeedsReview={reason:string;at:string};
 // A4-2 게시 코드: 이 발행에만 발급한 추적 코드(lib/publication-codes.ts). 캡션 끝 코드 줄과 주문 장부의 게시별 귀속이 같은 코드를 쓴다.
 export type PublicationCode={id:string;code:string;type:'coupon'|'pos_tag';storeId:string};
+// A4-4 코드 넣은 파생 PNG(스위치 a4_png_code). 원본 소재 PNG(pngHash)는 그대로 두고, 게시 코드를 그린 파생 PNG의 해시(hash)로 공개·접수한다.
+// sourceHash: 파생의 바탕이 된 원본 소재 PNG 해시. code·codeId: 이미지에 그린 게시 코드(trackingCode와 같아야 한다). 비공개 파일은 kind execution_coded_png에 있다.
+export type CodedPng={hash:string;sourceHash:string;code:string;codeId:string;registeredBy:string;registeredAt:string};
 // loop-2 게시물–실험 arm 연결(lib/publication-link-server.ts). experimentId·arm: 이 게시가 어느 바이럴 실험의 어느 안인지(같은 캠페인·Instagram·진행 중 실험만).
 // mediaId·permalink: Instagram 게시물 ID(숫자)와 주소. Buffer 게시 조회는 외부 게시 ID를 주지 않아(코드·문서로 확인된 필드는 id·status·channelId뿐) 관리자가 게시 확인 뒤 한 번 입력한다.
 export type PublicationMediaLink={mediaId:string;permalink?:string;linkedBy:string;linkedAt:string};
-export type Publication={experimentId?:string;arm?:'control'|'treatment';media?:PublicationMediaLink;id:string;campaignId:string;creativeId:string;creativeVersion:number;campaignVersion:number;pngHash:string;factRefs:FactRef[];caption:string;mediaUrl:string;mediaMode?:'auto'|'external';copy?:PublicationCopy;trackingCode?:PublicationCode;scheduledAt:string;plannedCostKRW:number;version:number;status:PublicationStatus;channelId?:string;credentialVersion?:number;limitsVersion?:number;approvedLimits?:{maxPublications:number;maxPlannedCostKRW:number};approvedBy?:string;approvedAt?:string;aiDisclosureConfirmedBy?:string;aiDisclosureConfirmedAt?:string;providerId?:string;providerStatus?:string;error?:string;attemptedAt?:string;attemptRestored?:boolean;needsReview?:NeedsReview|null;invalidatedReason?:string;reconfirmedBy?:string;reconfirmedAt?:string;resolvedBy?:string;resolvedAt?:string;createdAt:string;updatedAt?:string};
+export type Publication={experimentId?:string;arm?:'control'|'treatment';media?:PublicationMediaLink;id:string;campaignId:string;creativeId:string;creativeVersion:number;campaignVersion:number;pngHash:string;factRefs:FactRef[];caption:string;mediaUrl:string;mediaMode?:'auto'|'external';copy?:PublicationCopy;trackingCode?:PublicationCode;codedPng?:CodedPng;scheduledAt:string;plannedCostKRW:number;version:number;status:PublicationStatus;channelId?:string;credentialVersion?:number;limitsVersion?:number;approvedLimits?:{maxPublications:number;maxPlannedCostKRW:number};approvedBy?:string;approvedAt?:string;aiDisclosureConfirmedBy?:string;aiDisclosureConfirmedAt?:string;codedPngConfirmedBy?:string;codedPngConfirmedAt?:string;providerId?:string;providerStatus?:string;error?:string;attemptedAt?:string;attemptRestored?:boolean;needsReview?:NeedsReview|null;invalidatedReason?:string;reconfirmedBy?:string;reconfirmedAt?:string;resolvedBy?:string;resolvedAt?:string;createdAt:string;updatedAt?:string};
 export type PublisherStatus={connected:boolean;channelId?:string;account?:string;version?:number};
 // warnings: 가맹 모집 규칙 판정 범위가 있는 캠페인(가맹 모집 목적 캠페인 또는 가맹 프로필 브랜드 캠페인)의 경고(트랙 R R2·R3). 범위가 없으면 키가 없다.
 export type CaptionCandidate={artifactId:string;artifactVersion:number;index:number;text:string;issues:string[];aiGenerated:boolean;warnings?:string[]};
@@ -27,7 +30,8 @@ export type CaptionCandidate={artifactId:string;artifactVersion:number;index:num
 // branch: 가맹 프로필이 없으면 null. blockedFacts: 카드에 쓸 수 없는 사실과 사유.
 // publications: 초안·승인 발행의 가맹 규칙 차단 사유(서버가 같은 조건을 409로 막는다)와 경고. recruitmentWarning: 모집처럼 읽히는 캠페인 경고(승인 화면만, 서버는 막지 않는다).
 export type FranchiseExecution={scope:'consumer'|'recruitment';branch:string|null;versions:{id:string;label:string;registeredAt:string|null;state:VersionState}[];blockedFacts:{id:string;reason:string}[];publications:Record<string,{blockers:string[];warnings:string[]}>;recruitmentWarning:string|null;notice:string;disclaimer:string};
-export type ExecutionState={creatives:ExecutionCreative[];publications:Publication[];limits:ExecutionLimits|null;publisher:PublisherStatus;copies:CaptionCandidate[];copyCaptions:boolean;franchise?:FranchiseExecution};
+// pngCode: A4-4 스위치 a4_png_code가 켜졌을 때만 true로 있다(꺼져 있으면 키가 없어 이전 응답과 같다).
+export type ExecutionState={creatives:ExecutionCreative[];publications:Publication[];limits:ExecutionLimits|null;publisher:PublisherStatus;copies:CaptionCandidate[];copyCaptions:boolean;franchise?:FranchiseExecution;pngCode?:true};
 export const publicationLabels:Record<PublicationStatus,string>={draft:'승인 전',approved:'실행 승인',submitting:'접수 확인 중',uncertain:'접수 여부 미확인',accepted:'예약 접수',blocked:'공급자 확인 필요',published:'게시 확인',failed:'발행 실패',cancelled:'취소'};
 // 관리자가 Buffer 미접수를 확인하고 차감을 되돌린 시도(attemptRestored)는 한도에서 뺀다.
 export function executionTotals(publications:Publication[]){const attempted=publications.filter(p=>!!p.attemptedAt&&!p.attemptRestored);return {attempts:attempted.length,plannedCostKRW:attempted.reduce((n,p)=>n+p.plannedCostKRW,0)}}
@@ -43,6 +47,10 @@ export function providerPublicationStatus(status:string):PublicationStatus{retur
 // 게시 코드 줄(결정론 문구, AI 생성물 아님). 목적격 조사는 코드 끝 글자를 읽는 소리로 고른다(엘·엠·엔·알, 영·일·삼·육·칠·팔은 '을').
 const objectParticle=(code:string)=>/[LMNR013678]$/.test(code)?'을':'를';
 export function codeLine(code:Pick<PublicationCode,'type'|'code'>){return code.type==='coupon'?`주문할 때 쿠폰 코드 ${code.code}${objectParticle(code.code)} 알려 주세요.`:`주문할 때 코드 ${code.code}${objectParticle(code.code)} 말씀해 주세요.`}
+// A4-4 이미지에 그리는 짧은 코드 라벨(결정론 문구, AI 생성물 아님). 캡션 코드 줄과 같은 코드를 쓴다.
+export function codeLabel(code:Pick<PublicationCode,'type'|'code'>){return (code.type==='coupon'?'쿠폰 코드 ':'주문 코드 ')+code.code}
+// 공개 주소·접수·공개 해제에 쓰는 PNG 해시. 코드 넣은 파생 PNG가 있으면 그 해시, 없으면 원본 소재 해시다(소재 일치 검사는 늘 원본 pngHash로 한다).
+export const mediaHash=(p:Pick<Publication,'pngHash'>&{codedPng?:Pick<CodedPng,'hash'>})=>p.codedPng?.hash??p.pngHash;
 // 코드가 있을 때만 캡션 끝에 빈 줄+코드 줄을 붙인다. 코드가 없으면 이전 결과와 바이트 단위로 같다.
 // 결정 17: AI 카피(copy.aiGenerated)면 사실 문구 뒤·코드 줄 앞에 빈 줄+AI 생성물 표시 줄을 넣는다. 카피 없음·문자열 카피·사람 카피는 이전 결과와 바이트 단위로 같다.
 export const composeCaption=(copy:string|Pick<PublicationCopy,'text'|'aiGenerated'>|undefined,factCaption:string,code?:Pick<PublicationCode,'type'|'code'>)=>{const text=typeof copy==='string'?copy:copy?.text,disclosure=typeof copy==='string'?null:disclosureLine(copy);const caption=text?text+'\n\n'+factCaption:factCaption,disclosed=disclosure?caption+'\n\n'+disclosure:caption;return code?disclosed+'\n\n'+codeLine(code):disclosed};
@@ -96,18 +104,22 @@ export function approvalDrift(p:Publication,credential:{channelId?:string;versio
  if(p.needsReview)drift.push('사용한 사실');
  // 결정 17: 표시 확인 기록 없는 AI 카피 승인은 접수하지 않는다. 드리프트로 보여 화면이 재확인(초안으로 되돌리기)을 안내하게 한다.
  if(p.copy?.aiGenerated===true&&!p.aiDisclosureConfirmedAt)drift.push('AI 생성물 표시 확인');
+ // A4-4: 파생 PNG 확인 기록 없는 승인도 접수하지 않는다.
+ if(p.codedPng&&!p.codedPngConfirmedAt)drift.push('코드 PNG 확인');
  return drift;
 }
 // 승인 버튼 옆에 보이는 차단 사유. 서버도 같은 조건을 409로 막는다. AI 카피 발행은 AI 생성물 표시 확인란도 체크해야 한다(결정 17).
 // franchise: 가맹 규칙 차단 사유(트랙 R R2, ExecutionState.franchise.publications[id]). 없으면 이전과 같은 배열이다.
-export function approvalBlockers({campaign,publication,state,factCount,rightsConfirmed,aiDisclosureConfirmed=false,franchise}:{campaign:Pick<Campaign,'status'|'startDate'|'endDate'>&{budget?:number|null;budgetConfirmedAt?:string};publication:Pick<Publication,'scheduledAt'|'creativeId'|'needsReview'|'copy'>&{plannedCostKRW?:number};state:Pick<ExecutionState,'creatives'|'limits'|'publisher'>;factCount:number;rightsConfirmed:boolean;aiDisclosureConfirmed?:boolean;franchise?:{blockers:string[]}|null}):string[]{
+export function approvalBlockers({campaign,publication,state,factCount,rightsConfirmed,aiDisclosureConfirmed=false,codedPngConfirmed=false,franchise}:{campaign:Pick<Campaign,'status'|'startDate'|'endDate'>&{budget?:number|null;budgetConfirmedAt?:string};publication:Pick<Publication,'scheduledAt'|'creativeId'|'needsReview'|'copy'>&{plannedCostKRW?:number;codedPng?:Pick<CodedPng,'hash'>};state:Pick<ExecutionState,'creatives'|'limits'|'publisher'>;factCount:number;rightsConfirmed:boolean;aiDisclosureConfirmed?:boolean;codedPngConfirmed?:boolean;franchise?:{blockers:string[]}|null}):string[]{
  const creative=state.creatives.find(c=>c.id===publication.creativeId);
- return [...(!state.limits?['한도 미설정 · 기본 한도(발행 1회·0원)를 저장하세요.']:[]),...(!state.publisher.connected?['채널 미연결 · Buffer Instagram 채널을 연결하세요.']:[]),...(!factCount?['사실 없음 · 근거와 유효 기한이 있는 사실을 확정하세요.']:[]),...campaignGateIssues(campaign,publication.scheduledAt),...budgetIssues(campaign,publication.plannedCostKRW||0,state.limits),...(creative?.current===false||publication.needsReview?['사실 변경 · 소재 입력이나 사용한 사실이 바뀌었습니다. 이 초안을 취소하고 새 PNG로 새 초안을 만드세요.']:[]),...(!rightsConfirmed?['권리 확인 필요 · PNG·문구 사용 권리 확인란을 체크하세요.']:[]),...(publication.copy?.aiGenerated&&!aiDisclosureConfirmed?['AI 생성물 표시 확인 필요 · 캡션 끝 AI 생성물 표시 문구를 확인하고 확인란을 체크하세요.']:[]),...(franchise?.blockers??[])];
+ return [...(!state.limits?['한도 미설정 · 기본 한도(발행 1회·0원)를 저장하세요.']:[]),...(!state.publisher.connected?['채널 미연결 · Buffer Instagram 채널을 연결하세요.']:[]),...(!factCount?['사실 없음 · 근거와 유효 기한이 있는 사실을 확정하세요.']:[]),...campaignGateIssues(campaign,publication.scheduledAt),...budgetIssues(campaign,publication.plannedCostKRW||0,state.limits),...(creative?.current===false||publication.needsReview?['사실 변경 · 소재 입력이나 사용한 사실이 바뀌었습니다. 이 초안을 취소하고 새 PNG로 새 초안을 만드세요.']:[]),...(!rightsConfirmed?['권리 확인 필요 · PNG·문구 사용 권리 확인란을 체크하세요.']:[]),...(publication.copy?.aiGenerated&&!aiDisclosureConfirmed?['AI 생성물 표시 확인 필요 · 캡션 끝 AI 생성물 표시 문구를 확인하고 확인란을 체크하세요.']:[]),...(publication.codedPng&&!codedPngConfirmed?['코드 PNG 확인 필요 · 게시 코드를 넣은 이미지를 원본과 비교해 확인하고 확인란을 체크하세요.']:[]),...(franchise?.blockers??[])];
 }
 // 화면의 발행 승인 요청 본문. AI 카피 발행에만 'AI 생성물 표시 확인' 체크 값(aiDisclosureConfirmed)을 싣는다(결정 17). 사람 카피·카피 없는 발행은 이전 본문과 같다.
 export function approvalRequest(p:Pick<Publication,'copy'>,state:Pick<ExecutionState,'publisher'|'limits'>|null,aiChecked:boolean){
  return {confirmed:true,rightsConfirmed:true,immutableMediaConfirmed:true,channelId:state?.publisher.channelId,credentialVersion:state?.publisher.version,limitsVersion:state?.limits?.version,...(p.copy?.aiGenerated?{aiDisclosureConfirmed:aiChecked}:{})};
 }
+// A4-4: 승인 요청 본문에 더하는 '코드 PNG 확인' 체크 값. 코드 넣은 파생 PNG가 있는 발행에만 싣고, 없으면 빈 객체라 이전 본문과 같다.
+export const codedPngApproval=(p:{codedPng?:Pick<CodedPng,'hash'>},checked:boolean)=>p.codedPng?{codedPngConfirmed:checked}:{};
 // 제작·발행 탭 상단 체크리스트. 완료되지 않은 첫 단계가 현재 단계다.
 export function publishSteps(state:Pick<ExecutionState,'creatives'|'publications'|'limits'|'publisher'>,factCount:number){
  const live=state.publications.filter(p=>p.status!=='cancelled');

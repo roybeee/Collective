@@ -74,3 +74,30 @@ export async function renderFactCard(brand:Brand,facts:BrandFact[],footnote:stri
  if(!png.startsWith('data:image/png;base64,'))throw new Error('PNG 파일을 만들지 못했습니다.');
  return png;
 }
+
+// A4-4 게시 코드 라벨 자리(순수): 브랜드 이름 칸(y 64~208)과 사실 칸(y 250~) 사이 빈 줄 y 212~246에 오른쪽 정렬한다. 원본 카드의 글자·각주를 가리지 않는다.
+// textWidth는 22px 굵은 글꼴로 잰 라벨 폭이다. 카드 여백(좌우 72px) 안에 들어가지 않으면 null이다.
+export const CODE_BADGE={top:212,height:34,right:1008,left:72,paddingX:14,size:22};
+export function codeBadgeBox(textWidth:number){
+ const width=Math.ceil(textWidth)+CODE_BADGE.paddingX*2,x=CODE_BADGE.right-width;
+ return Number.isFinite(textWidth)&&textWidth>0&&x>=CODE_BADGE.left?{x,y:CODE_BADGE.top,width,height:CODE_BADGE.height}:null;
+}
+// A4-4: 저장된 원본 소재 PNG를 그대로 그리고 그 위 빈 줄에 게시 코드 라벨만 더한 파생 PNG를 만든다(원본 소재·해시는 바꾸지 않는다).
+export async function renderCodedCard(original:Blob,label:string):Promise<string>{
+ if(typeof document==='undefined')throw new Error('이미지 제작은 브라우저에서 실행하세요.');
+ const bitmap=await createImageBitmap(original);
+ try{
+  if(bitmap.width!==SIZE||bitmap.height!==SIZE)throw new Error('원본 소재가 1080×1080 PNG가 아닙니다. 소재를 다시 만드세요.');
+  if(document.fonts)await document.fonts.ready;
+  const canvas=document.createElement('canvas');canvas.width=SIZE;canvas.height=SIZE;
+  const context=canvas.getContext('2d');if(!context)throw new Error('이미지 제작 기능을 사용할 수 없습니다.');
+  context.drawImage(bitmap,0,0);
+  context.font=`700 ${CODE_BADGE.size}px ${FONT}`;
+  const box=codeBadgeBox(context.measureText(label).width);if(!box)throw new Error('게시 코드 라벨이 카드에 들어가지 않습니다.');
+  context.fillStyle='#172018';context.fillRect(box.x,box.y,box.width,box.height);
+  context.fillStyle='#ffffff';context.textBaseline='middle';context.fillText(label,box.x+CODE_BADGE.paddingX,box.y+box.height/2);
+  const png=canvas.toDataURL('image/png');
+  if(!png.startsWith('data:image/png;base64,'))throw new Error('PNG 파일을 만들지 못했습니다.');
+  return png;
+ }finally{bitmap.close()}
+}

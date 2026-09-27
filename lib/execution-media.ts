@@ -85,10 +85,13 @@ function appOrigin(origin:string){
  if((url.protocol!=='https:'&&!local)||url.username||url.password)throw invalid();return url.origin;
 }
 async function assertHash(object:R2ObjectBody,hash:string,message:string){if(await sha256(new Uint8Array(await object.arrayBuffer()))!==hash)throw new ApiError(409,message)}
+// 비공개 파일 정리(A4-4 파생 PNG 교체). 실패는 기록만 한다.
+export const discardPng=(key:string)=>removeObject(key);
 async function removeObject(key:string){try{await runtime.BUCKET?.delete(key)}catch(e){console.error('execution_media_cleanup_failed',e instanceof Error?e.message:'unknown')}}
 async function ownPublicMedia(owner:string,hash:string){try{return await readRecord<PublicMedia>(owner,'public_media',hash)}catch(e){if(e instanceof ApiError&&e.status===404)return null;throw e}}
+// A4-4: 코드 넣은 파생 PNG(kind execution_coded_png)도 같은 필드(pngHash·objectKey)로 비공개 원본을 찾는다.
 async function creativeObjectKey(owner:string,hash:string){
- const row=await database().prepare("SELECT json_extract(data,'$.objectKey') AS objectKey FROM records WHERE owner=? AND kind='execution_creative' AND json_extract(data,'$.pngHash')=? AND json_extract(data,'$.objectKey')<>'' ORDER BY updated_at DESC LIMIT 1").bind(owner,hash).first<{objectKey:string}>();
+ const row=await database().prepare("SELECT json_extract(data,'$.objectKey') AS objectKey FROM records WHERE owner=? AND kind IN ('execution_creative','execution_coded_png') AND json_extract(data,'$.pngHash')=? AND json_extract(data,'$.objectKey')<>'' ORDER BY updated_at DESC LIMIT 1").bind(owner,hash).first<{objectKey:string}>();
  if(!row?.objectKey)throw new ApiError(404,'원본 소재 파일을 찾을 수 없습니다.');return row.objectKey;
 }
 export function isOwnMediaUrl(url:string,origin:string){try{const u=new URL(url),o=new URL(origin);return o.origin!=='null'&&u.origin===o.origin&&!u.username&&!u.password&&!u.search&&!u.hash&&OWN_PATH.test(u.pathname)}catch{return false}}
