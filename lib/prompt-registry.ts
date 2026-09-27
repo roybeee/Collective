@@ -183,10 +183,10 @@ async function registeredVersion(owner:string,unit:string,id:string){
  try{return await verifiedVersion(owner,unit,id)}catch(error){if(error instanceof CorruptRecord)conflict('저장된 프롬프트 버전이 손상됐습니다. 기록을 확인하세요.');throw error}
 }
 const unitVersion=(unit:string,value:unknown)=>{const id=versionIdOf(value);return versionUnit(id)===unit?id:bad('버전이 이 단위의 버전이 아닙니다.')};
+// 바이럴 발견 지시(viral.discovery)도 쌍 평가한다. 대상 케이스는 바이럴 사례 분석(viral_analysis)뿐이고(lib/eval-server.ts pairCases, 역할 케이스만이면 400), 두 쪽 본문은 PromptSet.viral이다.
 export async function pairPrompts(owner:string,value:unknown):Promise<PairPrompts>{
  const o=value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:bad('쌍 평가 대상(pair)은 {unit, candidateVersionId} 형식이어야 합니다.');
  const unit=unitOf(o.unit)?.unit??bad('쌍 평가할 프롬프트 단위를 확인하세요.');
- if(unitOf(unit)!.kind==='viral')bad('바이럴 발견 지시는 역할 평가 케이스로 쌍 평가할 수 없습니다.');
  const candidateVersionId=unitVersion(unit,o.candidateVersionId),activeVersionId=globalVersion(await releaseOf(owner,unit));
  if(activeVersionId===candidateVersionId)bad('후보 버전이 지금 전체 적용 중인 active와 같습니다.');
  const [candidate,active]=await Promise.all([registeredVersion(owner,unit,candidateVersionId),activeVersionId?registeredVersion(owner,unit,activeVersionId):null]);
@@ -252,7 +252,10 @@ const pinsOf=(owner:string,campaigns:Campaign[])=>Promise.all(campaigns.map(c=>o
 // activate: 전체 캠페인에 적용. stage: 지정 캠페인에만 적용하고 나머지는 baseline(지금 전체 적용 버전)을 계속 쓴다. 이미 고정(pin)한 캠페인은 reset_pins 전까지 고정 버전을 쓴다.
 async function activate(owner:string,input:Record<string,unknown>,who:Who,mode:'activate'|'stage'){
  noCanary(input);if(mode==='activate')noScope(input);
- const unit=unitOf(input.unit)?.unit??bad('활성화할 프롬프트 단위를 확인하세요.'),versionId=unitVersion(unit,input.versionId),evalRunIds=gateRunIds(input),evalRunId=evalRunIds[0],many=evalRunIds.length>1?{evalRunIds}:{},reason=approvalReason(input.approval);
+ const unit=unitOf(input.unit)?.unit??bad('활성화할 프롬프트 단위를 확인하세요.');
+ // 바이럴 발견 지시는 캠페인이 없는 브랜드 단위 해석(resolveUnitPrompt)이라 지정 캠페인 적용(stage)이 뜻이 없다. activate(단일 또는 evalRunIds 과반 게이트)로만 적용한다.
+ if(mode==='stage'&&unitOf(unit)!.kind==='viral')bad(`${unit}은(는) 캠페인이 없는 바이럴 지시라 지정 캠페인 적용(stage)을 쓰지 않습니다. 쌍 평가 게이트를 통과한 뒤 activate로 적용하세요.`);
+ const versionId=unitVersion(unit,input.versionId),evalRunIds=gateRunIds(input),evalRunId=evalRunIds[0],many=evalRunIds.length>1?{evalRunIds}:{},reason=approvalReason(input.approval);
  const campaigns=mode==='stage'?await campaignsOf(owner,input.campaignIds):[],version=await registeredVersion(owner,unit,versionId),release=await releaseOf(owner,unit);
  if(release?.stagedCampaignIds.length)conflict('이 단위는 지정 캠페인 적용(staged) 중입니다. promote로 전체 적용하거나 rollback한 뒤 다시 하세요.');
  if(release?.active===versionId)conflict('이미 active인 버전입니다.');
