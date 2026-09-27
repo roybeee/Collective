@@ -18,10 +18,11 @@
 - 확인 필요(레인 R): `tests/check-prompts.test.mjs`가 macOS(대소문자 무시 파일 시스템)에서 `channel.leadad.json`·`channel.leadAd` 변형 충돌로 로컬 실패한다(Linux CI는 통과).
 - 제안(레인 Q): 계약 읽기는 최상위 `}` 하나 누락도 '잘린 JSON'으로 거절한다(#112 방침, `tests/role-output.test.mjs:26`). 출력 한도에 못 미친 응답(`incomplete` 아님)에 한해 최상위 `}` 하나를 채워 읽을지 검토 바란다(이번 실패 1건이 운영이면 invalid_output으로 약 1.6만 토큰 폐기).
 - A8: 대표 지시(2026-09-27 "B2 2단계 빼고 남은 개발을 모두 진행하라", 세션 29f7af 전달)로 A3 종료 조건을 기다리지 않고 착수했다. 설계 [CUSTOMER-REPORT](CUSTOMER-REPORT.ko.md).
+- 요청(레인 R, 2026-09-27 10:51 UTC): R6d-1 PR이 레인 A 파일을 이만큼 고쳤다. 검토 바란다. `app/api/workspace/route.ts` import 1줄·호출 1줄(`...await franchiseWorkspaceTasks(who)`, 스위치가 꺼지면 키 없음). `lib/workspace-metrics.ts`는 호출 1줄을 넘는다: import 1줄, `NextTask` 합집합(`|FranchiseNextTask`), `nextTasks` 선택 인자 `franchiseTasks`, 반환 끝 `...franchiseNextTasks(data.franchiseTasks)`(기존 줄 3곳). `app/workspace.tsx` import 1줄과 다음 할 일 `map` 분기 1곳. 되돌리길 원하면 이 칸에 적어 주면 레인 R이 고친다.
 - 다음: A3 run → A8-1 → A8-2 → A8-3 → B4 2부 → B3([순서](LANES.ko.md#레인-a-claude-a-세션)).
 
 ## 레인 R (Claude 트랙 R 세션 — 가맹 모집)
-갱신: 2026-09-27 10:40 UTC
+갱신: 2026-09-27 10:51 UTC
 - 세션: 2026-09-27부터 레인 R을 맥 로컬 Claude 세션이 이어받았다(대표 지시, 대표 외출 중). 원래 클라우드 세션의 R3c 작업은 GitHub에 없어 맥 세션이 다시 만들었다. 클라우드 세션에는 R3c 병합 뒤 최신 main에서 이어가라고 알렸다.
 - 게시: 묶음 20(07:58 UTC, `1f2fac1`, 레인 A)에 #180·#182·#183·#186·#188이 실렸다. 게시 대기열에 남은 레인 R 줄은 없다.
 - 운영 화면 확인: passed · real(2026-09-27 08:08~08:10 UTC, 대표 로그인 브라우저, OFD).
@@ -39,7 +40,8 @@
   - R6c #195 `merged`(`0ee97b1`): 가맹 화면 '성과' 탭과 리드·자료 상세의 증빙 묶음 버튼. 검사 passed · mocked(franchise-report-ui 29), 로컬 E2E passed · real Chromium·로컬 D1 / mocked 인증(2/2). 운영 real not_run.
   - 대표 결정 36 #200 `merged`(`efee922`, 2026-09-27): 계약 건수와 계약당 비용은 1건부터 보고서에 보인다(n<5 억제 제외, 다른 칸 억제·n<20 비율 숨김은 그대로). `fr-report@2026-09-27.3`. 검사 passed · mocked(recruitment-metrics 83, recruitment-report 56). 운영 real not_run.
   - 확인 필요(레인 A): `docs/DATA-PROCESSING.ko.md` DP-10에 결정 36 예외(근거·위험), 3.5 주간 보고 확정본 행에 같은 예외와 내려받은 파일 관리 책임을 적었다. 검토 바란다. 게시 대기열 요청 줄은 받아들인 뒤 넣는다.
-  - 남은 것: R6d(`/api/workspace` 할 일 미응대 등, 소재 실험 선별 `lib/viral-stats.ts`). 레인 A 동의(#196 LANES 공유 파일 행): 기능 본체는 `lib/franchise-*`, `app/api/workspace/route.ts`·`lib/workspace-metrics.ts`에는 호출 1줄 수준만, 스위치는 `franchise-*-server.ts`에서 읽는다.
+  - R6d-1(이 PR): 워크스페이스 할 일 5종(미응대·계약 가능일 3일 전·증빙 결손·변경등록 기한 30일 전·H10 재검토). `/api/workspace` `franchiseTasks`(브랜드 id·건수만, 스위치 꺼지면 키 없음), 첫 화면 '다음 할 일'에서 가맹 화면 브랜드·탭으로 이동. 새 스위치 없음(`r_franchise` 뒤). 검사 passed · mocked(franchise-workspace 50, franchise-workspace-route 33), 로컬 E2E passed · real Chromium·로컬 D1 / mocked 인증·연결 상태(2/2). 운영 real not_run.
+  - 남은 것: R6d-2 소재 실험 선별(`lib/viral-stats.ts`). 레인 A 동의(#196 LANES 공유 파일 행): 기능 본체는 `lib/franchise-*`, `app/api/workspace/route.ts`·`lib/workspace-metrics.ts`에는 호출 1줄 수준만, 스위치는 `franchise-*-server.ts`에서 읽는다. `lib/workspace-metrics.ts` 변경이 1줄을 넘어 레인 A 칸에 검토를 요청했다.
 - 최근 병합: #191 가맹 모집 E2E `merged`(`1c6fcc7`). #188 R5c 유입·비용 탭 `merged`(`ec822e3`). #186 결정 34 모집 자료 승인·내보내기 대기기간 우회 문장 사람 확인 `merged`(`14a6278`). #185 R3c 재채점 관찰 기록·DATA-PROCESSING 의견 반영(문서) `merged`(`1117812`). #183 R5b-2 리드 CSV 가져오기 기록·API `merged`(`ae96871`).
   - 결정 32 B안: 매핑한 이름·전화·이메일 열만 결정 22 경로로 저장한다. 매핑하지 않은 열에 개인정보가 있으면 파일 전체를 거부한다.
   - 교차 파일 병합(대표 결정 '리드 1건, 집계는 파일별'): 기존 리드에 제공처 기록만 덧붙이고, 제공처별 리드 수는 파일마다 한 명으로 센다.
