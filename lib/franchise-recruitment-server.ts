@@ -10,7 +10,7 @@ import {loadFranchiseContext} from './franchise-facts-server';
 import {toKstDate,isDate} from './franchise-rules';
 import {GATE_DISCLAIMER} from './franchise-gates';
 import {FRANCHISE_ERRORS,isAdminRole,type FranchiseErrorKey,type AuditAction,type LeadRecord} from './franchise';
-import {RECRUITMENT_CHANNELS,RECRUITMENT_CHANNEL_LABELS,RECRUITMENT_MESSAGES,RECRUITMENT_ATTRIBUTION_NOTE,RECRUITMENT_VERSION,PLATFORM_REPORTED_NOTE,NO_PRORATION_NOTE,MAX_CODES_PER_LEAD,
+import {RECRUITMENT_CHANNELS,RECRUITMENT_CHANNEL_LABELS,RECRUITMENT_MESSAGES,RECRUITMENT_ATTRIBUTION_NOTE,FILE_BASIS_LABEL,RECRUITMENT_VERSION,PLATFORM_REPORTED_NOTE,NO_PRORATION_NOTE,MAX_CODES_PER_LEAD,
  normalizeRecruitmentCode,isRecruitmentCode,generateRecruitmentCode,recruitmentUtmQuery,codeIssueDecision,codeRetireDecision,spendDecision,spendVoidDecision,spendInWindow,alignedWindow,attributeLead,attributionLabel,receivedAtOf,
  type RecruitmentDecision,type CodeIssueValue,type SpendValue,type SpendVoidReason,type RecruitmentCodeLite,type TrackingValue,type CodeBook,type LeadAttribution,type AssetRef,type SpendRow,type UnattributedReason} from './franchise-recruitment';
 
@@ -193,9 +193,11 @@ export async function unregisteredCount(owner:string,brandId:string,codes:readon
 
 // ── 귀속(읽을 때 계산) ──
 const liteOf=(c:CodeRow):RecruitmentCodeLite=>({code:c.code,brandId:c.brandId,channel:c.channel,validFrom:c.validFrom,createdAt:c.createdAt,retiredOn:c.retiredOn??null,retiredAt:c.retiredAt??null,campaignId:c.campaignId??null,assetRef:c.assetRef??null,eventId:c.eventId??null});
-const leadCodesOf=(l:LeadRecord)=>({brandId:l.brandId,receivedAt:receivedAtOf(l),codes:(l.codes??[]).map(c=>({code:c.code,at:c.at,source:c.source})),strikes:(l.codeStrikes??[]).map(s=>({code:s.code,at:s.at}))});
+// 가져온 리드(R5b-2)는 리드를 만든 가져오기의 채널·행사로 제공처 파일 기준 귀속을 받는다(명세 2.7.3). 병합으로 덧붙은 제공처 기록은 귀속을 바꾸지 않는다.
+const importOf=(l:LeadRecord)=>{const i=l.importId?(l.imports??[]).find(x=>x.importId===l.importId&&!x.merged):undefined;return i?{importId:i.importId,channel:i.channel,eventId:i.eventId??null}:null};
+const leadCodesOf=(l:LeadRecord)=>({brandId:l.brandId,receivedAt:receivedAtOf(l),codes:(l.codes??[]).map(c=>({code:c.code,at:c.at,source:c.source})),strikes:(l.codeStrikes??[]).map(s=>({code:s.code,at:s.at})),import:importOf(l)});
 // 코드 장부: 값 목록의 모집 코드(모든 브랜드, 다른 브랜드 사유용)와 점포 추적 코드 값·생성 시각만 id로 90개씩 읽는다. 점포 코드 전체를 읽지 않는다.
-async function codeBook(owner:string,values:readonly string[]):Promise<CodeBook>{
+export async function codeBook(owner:string,values:readonly string[]):Promise<CodeBook>{
  const ids=[...new Set(values)].flatMap(v=>[`${owner}:recruitment_code:${v}`,`${owner}:tracking_code:${v}`]);
  const codes:RecruitmentCodeLite[]=[],tracking:TrackingValue[]=[];
  for(const part of chunks(ids)){
@@ -206,6 +208,7 @@ async function codeBook(owner:string,values:readonly string[]):Promise<CodeBook>
 }
 export function attributionView(a:LeadAttribution):Json{
  const {label,detail}=attributionLabel(a);
+ if(a.state==='attributed'&&a.basis==='import')return {state:a.state,basis:a.basis,label,detail,channel:a.channel,channelLabel:RECRUITMENT_CHANNEL_LABELS[a.channel],importId:a.importId,eventId:a.eventId};
  if(a.state==='attributed')return {state:a.state,basis:a.basis,label,detail,code:a.code,channel:a.channel,channelLabel:RECRUITMENT_CHANNEL_LABELS[a.channel],campaignId:a.campaignId,assetRef:a.assetRef,eventId:a.eventId,retroactive:a.retroactive,late:a.late,alsoMatched:a.alsoMatched};
  if(a.state==='conflict')return {state:a.state,label,detail,code:a.code};
  return {state:a.state,label,detail,reason:a.reason};
@@ -215,13 +218,14 @@ export async function attributionsOf(owner:string,leads:readonly LeadRecord[]):P
  const book=await codeBook(owner,leads.flatMap(l=>(l.codes??[]).map(c=>c.code)));
  return new Map(leads.map(l=>[l.id,attributeLead(leadCodesOf(l),book)]));
 }
-// 보드 필터 inflow: 모집 채널 키 · unattributed · conflict.
-export const INFLOW_FILTERS:readonly string[]=[...RECRUITMENT_CHANNELS.map(c=>c.key),'unattributed','conflict'];
+// 보드 필터 inflow: 모집 채널 키(코드 귀속만) · import(제공처 파일 기준, R5b-2) · unattributed · conflict.
+export const INFLOW_FILTERS:readonly string[]=[...RECRUITMENT_CHANNELS.map(c=>c.key),'import','unattributed','conflict'];
 export function inflowMatch(a:LeadAttribution|undefined,filter:string){
  if(!a)return false;
  if(filter==='unattributed')return a.state==='unattributed';
  if(filter==='conflict')return a.state==='conflict';
- return a.state==='attributed'&&a.channel===filter;
+ if(filter==='import')return a.state==='attributed'&&a.basis==='import';
+ return a.state==='attributed'&&a.basis==='code'&&a.channel===filter;
 }
 
 // ── GET 보기 ──
@@ -240,10 +244,13 @@ async function codesView(who:Viewer,brandId:string):Promise<Json>{
  const clash=new Set(book.tracking.map(t=>normalizeRecruitmentCode(t.value)));
  const byCode=new Map<string,Tally>(),byChannel:Record<string,Tally>=Object.fromEntries(RECRUITMENT_CHANNELS.map(c=>[c.key,tally()]));
  const unattributed:Record<UnattributedReason|'conflict',number>={no_code:0,unknown_code:0,other_brand:0,before_valid_from:0,after_retired:0,conflict:0};
+ // 제공처 파일 기준(R5b-2, 명세 2.7.3): 코드 귀속과 다른 열로 채널별 건수만 센다.
+ const fileBasis:Record<string,number>=Object.fromEntries(RECRUITMENT_CHANNELS.map(c=>[c.key,0]));
  for(const l of leads){
   const a=attributeLead(leadCodesOf(l),book);
   if(a.state==='conflict'){unattributed.conflict++;continue}
   if(a.state==='unattributed'){unattributed[a.reason]++;continue}
+  if(a.basis==='import'){fileBasis[a.channel]++;continue}
   for(const t of [byCode.get(a.code)??(byCode.set(a.code,tally()),byCode.get(a.code)!),byChannel[a.channel]]){t.attributed++;if(a.retroactive)t.retroactive++;if(a.late)t.late++}
  }
  const titles=new Map(campaigns.map(c=>[c.id,c.title??null])),latest=new Map<string,number>();
@@ -252,7 +259,7 @@ async function codesView(who:Viewer,brandId:string):Promise<Json>{
  const list=[...codes].sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt)||(a.code<b.code?-1:1)).map(c=>({code:c.code,channel:c.channel,channelLabel:RECRUITMENT_CHANNEL_LABELS[c.channel]??c.channel,label:c.label,validFrom:c.validFrom,status:c.status,retiredOn:c.retiredOn??null,
   campaignId:c.campaignId??null,campaignTitle:c.campaignId?titles.get(c.campaignId)??null:null,campaignMissing:!!c.campaignId&&!titles.has(c.campaignId),assetRef:c.assetRef??null,assetState:assetState(c.assetRef??null),eventId:c.eventId??null,utmCampaign:c.utmCampaign??null,utmQuery:recruitmentUtmQuery({code:c.code,utmCampaign:c.utmCampaign??null}),
   createdAt:c.createdAt,createdBy:c.createdBy?{id:c.createdBy.id,role:c.createdBy.role}:null,version:c.version,conflict:clash.has(c.code),attributed:{total:byCode.get(c.code)?.attributed??0,retroactive:byCode.get(c.code)?.retroactive??0,late:byCode.get(c.code)?.late??0}}));
- return {attributionNote:RECRUITMENT_ATTRIBUTION_NOTE,codes:list,byChannel,unattributed,leadCount:leads.length,channels:RECRUITMENT_CHANNELS.map(c=>({key:c.key,label:c.label})),enabled,role:who.role,ruleVersion:RECRUITMENT_VERSION,disclaimer:GATE_DISCLAIMER};
+ return {attributionNote:RECRUITMENT_ATTRIBUTION_NOTE,codes:list,byChannel,fileBasis,fileBasisLabel:FILE_BASIS_LABEL,unattributed,leadCount:leads.length,channels:RECRUITMENT_CHANNELS.map(c=>({key:c.key,label:c.label})),enabled,role:who.role,ruleVersion:RECRUITMENT_VERSION,disclaimer:GATE_DISCLAIMER};
 }
 // 비용 보기(대표·관리자): 비용 목록(무효화·교체 표시)과 선택 창의 채널별 합계·걸친 행 수·정렬 창. 일할하지 않는다.
 async function spendView(who:Viewer,brandId:string,params:URLSearchParams):Promise<Json>{
