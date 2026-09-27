@@ -18,6 +18,7 @@ export const FEATURE_FLAGS={
  b4_reward_lineage:{defaultEnabled:false,description:'대표·관리자가 사람 판정·발행·반응·주문 보상을 프롬프트 버전·학습 규칙별로 모은 보상 계보(읽기 전용 집계)를 본다(B4 2부, 모델·커넥터 호출 없음). 자동 승격·강등은 없다.'},
  b3_playbook_signals:{defaultEnabled:false,description:'대표·관리자가 학습 화면에서 브랜드×역할 교정 묶음(90일 5건 이상이면 규칙 초안 대상)·운영자 선호 규칙별 피드백·같은 사유 재발률(4주)을 본다(B3-2a, 읽을 때 계산, 모델 호출 없음). 규칙 상태·만료를 자동으로 바꾸지 않는다.'},
  crypto_v1_write:{defaultEnabled:false,description:'연결 자격증명(AI 연결·성과 수집 채널·Buffer 발행)을 새 암호문 형식(키 ID·저장 위치 AAD)과 현재 키로 쓰고, 옛 형식·이전 키 암호문은 읽을 때 현재 키로 다시 쓴다. 대표 전체 재암호화도 켜져 있을 때만 된다. 켜면 이전 코드로 롤백했을 때 새로 쓴 연결을 읽지 못한다(security-ops-6).'},
+ collect_guard:{defaultEnabled:false,description:'성과 자동 수집(워커)이 인증 오류(토큰 무효·연결 없음)를 만나면 그 대상을 바로 멈추고 재연결 필요로 표시하며, 연속 실패가 늘면 다음 시도 간격을 6→12→24시간으로 늘린다(PR 4b security-ops-5). 꺼도 실패 분류·실험 카드 경고·워크스페이스 알림은 계속된다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};

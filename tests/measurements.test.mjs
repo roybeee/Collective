@@ -227,7 +227,8 @@ igPad=0;
 
 // --- 끝난 실험은 수집도 끝난다 ----------------------------------------------
 // naverId는 위에서 save_results를 거쳐 running이 아니다.
-check('a finished experiment no longer accepts collection',(await mz('collect',{experimentId:naverId,arm:'control',channel:'naver_ads',target:'cmp-1',from:'2026-09-01',to:'2026-09-07'})).status===400);
+// loop-1: 진행 중이 아닌 실험은 상태 충돌(409)이다. 입력 오류(400)와 구분한다.
+check('a finished experiment no longer accepts collection',(await mz('collect',{experimentId:naverId,arm:'control',channel:'naver_ads',target:'cmp-1',from:'2026-09-01',to:'2026-09-07'})).status===409);
 now+=7*3600000; // 수집 간격(6시간)을 넘긴 시점으로 이동한다.
 r=await collector.namespace.collectDueMeasurements(owner);
 check('the worker stops collecting for a finished experiment',r.status==='stopped');
