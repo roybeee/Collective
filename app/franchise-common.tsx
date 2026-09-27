@@ -2,8 +2,9 @@
 // 가맹 모집 화면(트랙 R) 공용: /api/franchise 읽기·쓰기, 응답 모양, 오류·게이트 사유 표시, 시각·문서 해시 입력.
 // 연락처 원문은 콘솔·브라우저 저장소·주소에 두지 않는다. 원문은 연락처 보기 응답을 받은 화면 상태에만 잠시 둔다(app/franchise-lead-detail.tsx).
 // 판정은 모두 서버가 한다. 화면은 서버가 돌려준 allowedActions·allowedMoves·역할로 버튼을 숨길 뿐이다.
-import type {ReactNode} from 'react';
+import {useState,type ReactNode} from 'react';
 import {clientId} from '@/lib/client';
+import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select';
 import {GATE_DISCLAIMER,FRANCHISE_ERRORS,kstLabel,SOURCE_LABELS,BUDGET_LABELS,TIMING_LABELS,type LeadTask,type LeadBasis,type LeadMarketing,type ContactState,type BasisType,type MarketingStatus,type Branch,type CodeMessage,type FranchiseErrorKey} from '@/lib/franchise';
@@ -168,4 +169,24 @@ export function followUpOf(r:PostResult):FollowUp{
  if(r.status===404)return 'close';
  if(r.status===409)return errorIs(r,'OFF')||reasonCodes(r).includes('switch_off')?'status':'reload';
  return 'keep';
+}
+
+// ── 증빙 묶음 내려받기(트랙 R R6b evidence_export, 대표·관리자, 감사) ──
+// 리드 상세(리드별 여정)와 모집 자료 상세(자료별 묶음)가 쓴다. 묶음은 JSON이고 연락처·메모 값은 없다. 감사 기록에는 묶음 해시만 남는다.
+export const EVIDENCE_EXPORT_NOTE='실증 요청·신고에 낼 증빙 묶음(JSON)을 내려받습니다. 연락처·메모 값은 없고, 내려받기는 감사 기록에 남습니다.';
+export const evidenceInput=(scope:'lead'|'asset',target:string):Json=>({scope,...(scope==='lead'?{leadId:target}:{assetId:target})});
+export function EvidenceExport({brandId,scope,target}:{brandId:string;scope:'lead'|'asset';target:string}){
+ const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[problem,setProblem]=useState<Problem|null>(null);
+ async function run(){
+  setBusy(true);setMessage('');setProblem(null);
+  try{
+   const r=await franchisePost('evidence_export',{brandId,...evidenceInput(scope,target)});
+   if(r.status!==200){setProblem(problemOf(r));return}
+   const b=r.body as Json;saveText(String(b.fileName),String(b.body));setMessage(`증빙 묶음을 내려받았습니다(SHA-256 ${String(b.sha256).slice(0,12)}…).`);
+  }finally{setBusy(false)}
+ }
+ return <Section title="증빙 묶음" note={EVIDENCE_EXPORT_NOTE}>
+  <div><Button variant="outline" size="sm" disabled={busy} onClick={()=>void run()}>증빙 묶음 내려받기</Button></div>
+  {(message||problem)&&<div className="franchise-status">{message&&<p role="status">{message}</p>}<ProblemBox problem={problem}/></div>}
+ </Section>;
 }

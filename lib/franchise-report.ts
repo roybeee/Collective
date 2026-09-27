@@ -10,7 +10,7 @@ import {RECRUITMENT_CHANNELS,RECRUITMENT_CHANNEL_LABELS,RECRUITMENT_ATTRIBUTION_
 import {STAGE_LABELS,stageOrder,csvFile} from './franchise';
 
 // ── 버전·기준·고정 문구 ──
-export const REPORT_VERSION='fr-report@2026-09-27.1';
+export const REPORT_VERSION='fr-report@2026-09-27.2';
 export const REPORT_SCHEMA='collective.recruitment-report.v1';
 export const RATIO_MIN_N=20,SUPPRESS_BELOW=5,COHORT_MATURE_DAYS=90,RULE_STALE_DAYS=180,COHORT_MONTHS=6;
 export const SUPPRESSED_LABEL='5건 미만';
@@ -91,16 +91,16 @@ const kstDateOf=(at:string)=>isInstant(at)?toKstDate(at):'';
 const reached=(l:ReportLeadInput)=>stageOrder(l.stage==='closed'?(l.closedFrom??'inquiry'):l.stage);
 
 // ── 유입(보고 주 접수) ──
-export type ChannelInflow={key:string;label:string;channels:string[];merged:boolean;code:Cell;file:Cell;total:Cell};
+export type ChannelInflow={key:string;label:string;channels:string[];channelLabels:string[];merged:boolean;code:Cell;file:Cell;total:Cell};
 // 코드·파일 둘 중 한쪽이 1~4건이면 두 칸을 모두 억제한다(줄 합계에서 빼서 역산하지 못하게).
 function splitCells(code:number,file:number){const small=(n:number)=>n>0&&n<SUPPRESS_BELOW;return small(code)||small(file)?{code:{n:null,suppressed:true},file:{n:null,suppressed:true}}:{code:cell(code),file:cell(file)}}
 function inflowChannels(week:readonly Lead[]):ChannelInflow[]{
  const counts=RECRUITMENT_CHANNELS.map(c=>{const mine=week.filter(x=>x.attribution.state==='attributed'&&x.attribution.channel===c.key);const code=mine.filter(x=>x.attribution.state==='attributed'&&x.attribution.basis==='code').length;return {key:c.key,label:c.label,code,file:mine.length-code}}).filter(c=>c.code+c.file>0);
  const big=counts.filter(c=>c.code+c.file>=SUPPRESS_BELOW),small=counts.filter(c=>c.code+c.file<SUPPRESS_BELOW);
- const rows:ChannelInflow[]=big.map(c=>({key:c.key,label:c.label,channels:[c.key],merged:false,...splitCells(c.code,c.file),total:cell(c.code+c.file)}));
+ const rows:ChannelInflow[]=big.map(c=>({key:c.key,label:c.label,channels:[c.key],channelLabels:[c.label],merged:false,...splitCells(c.code,c.file),total:cell(c.code+c.file)}));
  if(!small.length)return rows;
  const code=small.reduce((s,c)=>s+c.code,0),file=small.reduce((s,c)=>s+c.file,0);
- return [...rows,{key:SMALL_CHANNELS_KEY,label:SMALL_CHANNELS_LABEL,channels:small.map(c=>c.key),merged:true,...splitCells(code,file),total:cell(code+file)}];
+ return [...rows,{key:SMALL_CHANNELS_KEY,label:SMALL_CHANNELS_LABEL,channels:small.map(c=>c.key),channelLabels:small.map(c=>c.label),merged:true,...splitCells(code,file),total:cell(code+file)}];
 }
 function inflowOf(week:readonly Lead[]){
  const n=(f:(x:Lead)=>boolean)=>week.filter(f).length,att=(x:Lead)=>x.attribution;
@@ -202,12 +202,13 @@ export function reportDigestSource(r:RecruitmentReport):string{return JSON.strin
 
 // ── 내보내기(Markdown·CSV). 보고서 값만 쓴다 ──
 const won=(n:number)=>String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g,',')+'원';
-const cellText=(c:Cell)=>c.suppressed?SUPPRESSED_LABEL:String(c.n);
+// 화면(app/franchise-report-panel.tsx)과 Markdown·CSV가 같은 표기를 쓴다.
+export const cellText=(c:Cell)=>c.suppressed?SUPPRESSED_LABEL:String(c.n);
 const RATE_TEXT:Readonly<Record<RateState,string>>={shown:'',small_sample:`${SMALL_SAMPLE_LABEL}(n<${RATIO_MIN_N})`,suppressed:SUPPRESSED_LABEL,none:'-'};
-const rateText=(r:Rate)=>r.state==='shown'&&r.value!==null?`${round(r.value*100,1)}%`:RATE_TEXT[r.state];
+export const rateText=(r:Rate)=>r.state==='shown'&&r.value!==null?`${round(r.value*100,1)}%`:RATE_TEXT[r.state];
 const COST_TEXT:Readonly<Record<CostState,string>>={shown:'',no_spend:'비용 모름',no_leads:'리드 0건',no_contracts:'계약 0건',straddling:'비용 기간 불일치',small_sample:`${SMALL_SAMPLE_LABEL}(n<${RATIO_MIN_N})`};
-const costText=(c:Cost)=>c.state==='shown'&&c.value!==null?won(c.value):COST_TEXT[c.state];
-const moneyText=(n:number|null)=>n===null?'비용 모름':won(n);
+export const costText=(c:Cost)=>c.state==='shown'&&c.value!==null?won(c.value):COST_TEXT[c.state];
+export const moneyText=(n:number|null)=>n===null?'비용 모름':won(n);
 const num=(n:number|null)=>n===null?'모름':String(n);
 type Row=[section:string,item:string,metric:string,value:string];
 function reportRows(r:RecruitmentReport):Row[]{
