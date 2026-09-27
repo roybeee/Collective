@@ -59,7 +59,7 @@ const FIXED=['lib/role-execution.ts','lib/meeting-execution.ts','lib/brief-execu
 check('the eight fixed model-path roots exist',FIXED.every(f=>existsSync(f)));
 const dynamicRoots=files.filter(f=>f.startsWith('lib/')&&f!=='lib/client.ts'&&/\.ts$/.test(f)&&(/\bfetch\s*\(/.test(readFileSync(f,'utf8'))||specifiers(readFileSync(f,'utf8')).some(s=>s==='./hermes'||s==='@/lib/hermes'||s==='../hermes')));
 check('dynamic roots cover the HERMES client and the connectors',['lib/hermes.ts','lib/execution.ts','lib/prompt-registry.ts'].every(f=>dynamicRoots.includes(f))&&dynamicRoots.some(f=>f.startsWith('lib/connectors/')));
-const FORBIDDEN=['lib/franchise.ts','lib/franchise-server.ts','lib/franchise-crypto.ts','lib/franchise-assets-server.ts','app/api/franchise/route.ts','app/franchise-panel.tsx','app/franchise-lead-detail.tsx','app/franchise-settings.tsx','app/franchise-common.tsx','app/franchise-assets-panel.tsx','app/franchise-events-panel.tsx','lib/franchise-recruitment.ts','lib/franchise-lead-import.ts'];
+const FORBIDDEN=['lib/franchise.ts','lib/franchise-server.ts','lib/franchise-crypto.ts','lib/franchise-assets-server.ts','app/api/franchise/route.ts','app/franchise-panel.tsx','app/franchise-lead-detail.tsx','app/franchise-settings.tsx','app/franchise-common.tsx','app/franchise-assets-panel.tsx','app/franchise-events-panel.tsx','lib/franchise-recruitment.ts','lib/franchise-lead-import.ts','lib/franchise-recruitment-server.ts'];
 // 목록의 파일이 실제로 그래프에 있어야 검사가 의미 있다(이름이 바뀌면 조용히 빠지지 않게).
 check('every forbidden franchise module exists in the graph',FORBIDDEN.every(f=>graph.has(f)));
 const roots=[...new Set([...FIXED,...dynamicRoots])],hits=reachable(graph,roots,FORBIDDEN);
@@ -68,9 +68,9 @@ const reached=new Set(roots.flatMap(root=>{const seen=new Set([root]),queue=[roo
 const opaqueHits=[...reached].filter(f=>parsed.get(f)?.opaque.length).map(f=>f+': '+parsed.get(f).opaque.join(', '));
 assert.deepEqual(opaqueHits,[],'모델 경로에 경로를 알 수 없는 import()·require()가 있습니다: '+opaqueHits.join(' | '));passed.push(`no file reachable from the model roots (${reached.size}) has a non-literal import() or require()`);
 check('the franchise modules are in the graph',['lib/franchise.ts','lib/franchise-server.ts','lib/franchise-crypto.ts','lib/franchise-assets-server.ts','app/api/franchise/route.ts'].every(f=>graph.has(f))&&graph.get('app/api/franchise/route.ts').includes('lib/franchise-server.ts')&&graph.get('lib/franchise-server.ts').includes('lib/franchise-assets-server.ts'));
-// 트랙 R R15a-2a(DP-10): 모집 자료·행사 kind 문자열은 모델 루트에서 닿는 파일 어디에도 없다(레지스트리 제외). 행을 읽는 코드는 FORBIDDEN 모듈 하나뿐이다.
-const recruitmentKinds=[...reached].filter(f=>f!=='lib/record-kinds.ts'&&/recruitment_(asset|event)/.test(readFileSync(f,'utf8')));
-assert.deepEqual(recruitmentKinds,[],'모델 경로 파일에 모집 자료·행사 kind가 있습니다: '+recruitmentKinds.join(', '));passed.push('no file reachable from the model roots names the recruitment asset or event kinds');
+// 트랙 R R15a-2a·R5b-1(DP-10): 모집 자료·행사·코드·비용·가져오기 kind 문자열은 모델 루트에서 닿는 파일 어디에도 없다(레지스트리 제외). 행을 읽는 코드는 FORBIDDEN 모듈뿐이다.
+const recruitmentKinds=[...reached].filter(f=>f!=='lib/record-kinds.ts'&&/recruitment_(asset|event|code|spend|import)/.test(readFileSync(f,'utf8')));
+assert.deepEqual(recruitmentKinds,[],'모델 경로 파일에 모집 kind가 있습니다: '+recruitmentKinds.join(', '));passed.push('no file reachable from the model roots names a recruitment asset, event, code, spend or import kind');
 // ── 2) 검사기 자체 확인 ──
 const synthetic=new Map([['r.ts',['a.ts']],['a.ts',['b.ts']],['b.ts',['f.ts']],['c.ts',[]]]);
 check('checker reports a transitive path to a forbidden file',JSON.stringify(reachable(synthetic,['r.ts'],['f.ts']))==='[["r.ts","f.ts","r.ts -> a.ts -> b.ts -> f.ts"]]'&&reachable(synthetic,['c.ts'],['f.ts']).length===0);
@@ -112,10 +112,16 @@ const assetSaved=await post({action:'asset_save',brandId:brand.id,campaignId:REC
 const eventSaved=await post({action:'event_save',brandId:brand.id,campaignId:RECRUIT_CAMPAIGN,type:'tour',startsAt:new Date(Date.now()+30*86400000).toISOString(),placeLabel:'가상 직영점 '+PLACE_TOKEN,capacity:10,spendRef:null,assetRefs:[]});
 const registered=await post({action:'event_register',brandId:brand.id,eventId:eventSaved.body.result?.eventId,code:PSEUDO});
 check('a recruitment asset draft, a tour and a pseudonymous registration are stored',assetSaved.status===200&&eventSaved.status===200&&registered.status===200&&registered.body.result.counts.applied===1);
+// 모집 코드·비용(R5b-1, RR-M1)도 심는다: 라벨 토큰이 든 코드, 증빙 토큰이 든 비용, 그 코드를 넣은 리드.
+const CODE_LABEL_TOKEN='가상코드라벨토큰',SPEND_TOKEN='가상비용증빙토큰';
+const issued=await post({action:'code_issue',brandId:brand.id,channel:'expo',label:'가상 부스 '+CODE_LABEL_TOKEN});
+const spent=await post({action:'spend_record',brandId:brand.id,channel:'expo',period:{from:'2026-01-01',to:'2026-01-31'},amount:1234567,vat:'excluded',funding:'hq_budget',evidence:'가상 정산 '+SPEND_TOKEN});
+const coded=await post({action:'add_lead_codes',brandId:brand.id,leadId:leads[0].leadId,version:1,codes:[issued.body.result?.code]});
+check('RR-M1: a recruitment code, a spend and a lead code are stored before the runs',issued.status===200&&spent.status===200&&coded.status===200);
 const role=await runRole(execution,server,owner,roleCampaign,'cmo');
 const met=await runMeeting(meeting,server,owner,meetingCampaign,'fb-meeting');
 check('role and meeting runs completed on the mock',role.status==='completed'&&met.meeting.status==='completed'&&posted.length>1);
-const leadStrings=[NAME,PHONE,PHONE_DIGITS,EMAIL,'이테스트','010-0000-0120','01000000120','lead.two@example.com',MEMO,TOKEN,...leads.flatMap(l=>[l.systemCode,l.leadId]),ASSET_TOKEN,PLACE_TOKEN,PSEUDO,assetSaved.body.result.assetId,eventSaved.body.result.eventId];
+const leadStrings=[NAME,PHONE,PHONE_DIGITS,EMAIL,'이테스트','010-0000-0120','01000000120','lead.two@example.com',MEMO,TOKEN,...leads.flatMap(l=>[l.systemCode,l.leadId]),ASSET_TOKEN,PLACE_TOKEN,PSEUDO,assetSaved.body.result.assetId,eventSaved.body.result.eventId,CODE_LABEL_TOKEN,SPEND_TOKEN,issued.body.result.code,spent.body.result.spendId];
 const submissions=sql.prepare("SELECT data FROM records WHERE kind='hermes_submission'").all().map(r=>r.data);
 const leak=(texts,where)=>{const found=leadStrings.filter(s=>texts.some(t=>String(t).includes(s)));assert.deepEqual(found,[],`${where}에 리드 유래 문자열이 있습니다`)};
 leak(posted,'HERMES 제출 본문');passed.push('no posted HERMES body contains a lead-derived string');

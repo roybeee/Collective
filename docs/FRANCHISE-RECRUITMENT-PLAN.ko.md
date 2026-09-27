@@ -779,6 +779,16 @@ R4a가 `lib/franchise-rules.ts`에 만들고 R2·R4b가 쓴다. 레코드는 `{i
   - 검사: `recruitment-codes` 143, `lead-import` 150, `franchise-model-boundary` 26. 명세 R5a 사례 id마다 이름 붙은 검사가 있고, 빠지면 스위트가 실패한다.
   - 변이: 1차 42개 모두 잡혔다.
   - 교차 검토(3관점 + 반박 검증): 확정 20건을 고쳤다. 민감 열 이름 목록 확대(연락·휴대·폰번호·전번·예금주·H.P·fullName 등), 스킴 URL 속 코드 읽기, 계획의 행 수·정규화 행 분리, 원화 0원일 때 외화 원금 거부, 테스트 변이 생존 16건 보강.
+- R5b-1 구현 기록(2026-09-27, passed · mocked):
+  - 새 모듈 `lib/franchise-recruitment-server.ts`: 작업 `code_issue`·`code_retire`·`spend_record`·`spend_void`, 보기 `codes`(모든 역할, 귀속≠증분 문구가 맨 앞)·`spend`(대표·관리자), 보드·리드 보기의 코드 귀속(읽을 때 계산). `lib/franchise-server.ts`는 port 방식으로 넘기고 새 모듈은 그 파일을 import하지 않는다.
+  - 새 kind: `recruitment_code`(retain, links `data_campaign`, purge keep, 삭제를 막지 않음), `recruitment_spend`(not_campaign_scoped). 둘 다 `recruitment_event` 바로 뒤, `data_request` 앞이다.
+  - 리드: `codes`(추가만, 최대 5개)·`codeStrikes`(관리자 제외 기록) 선택 칸, 작업 `add_lead_codes`·`strike_lead_code`, 이벤트 `codes_added`·`codes_struck`(마지막 활동·보존 기한 불변), 보드 할 일 `code_conflict`와 필터 `inflow`.
+  - 멱등: 코드·비용 행은 INSERT(같은 코드 경쟁은 `CODE_TAKEN` 409), 사용 중지·무효화는 판 대조(`CODE_STALE`·`SPEND_STALE` 409). `code_issue`·`spend_record` 영수증에 입력 해시를 넣어 같은 요청 번호·다른 입력은 `REQUEST_REUSED` 409다. 같은 요청 번호를 다른 모집 코드·비용 작업에 써도 409다.
+  - 행사 `spendRef`: 같은 브랜드의 무효화되지 않은 모집 비용만 받는다(`SPEND_REF_UNKNOWN` 400이 `SPEND_REF_UNAVAILABLE`을 대신한다). 행사가 참조한 비용의 무효화·교체는 409다(취소한 행사는 세지 않는다).
+  - 스위치: 새 스위치 없음. `r_franchise`가 꺼지면 발급·비용 기록·리드 코드 추가·제외는 409, 사용 중지·무효화는 된다(보호 방향).
+  - 계획·명세와 다른 점: 명세 4.1의 port `insert`는 두지 않았다. 새 모듈이 R15a-2a 선례처럼 INSERT 문을 직접 만든다(franchise-server를 import하지 않는 조건은 같다). `strike_lead_code` 제외 사유는 코드 4개(`typo`·`wrong_lead`·`gaming`·`other`)만 받는다.
+  - 검사: `recruitment-route` 74(명세 RR-C1~C6·RR-P1~P3·RR-S1~S6·RR-E1·RR-A1~A5·RR-V1·RR-L1~L2), `franchise-model-boundary` 27(RR-M1), `franchise-assets-route` 210(H35·J 교체와 유효 참조 200), `record-kinds` 48, `franchise-lib` 63, `feature-status` 89, `recruitment-codes` 143. 서버 쪽 변이 21개(명세 6.3의 27~30·32·42·48·49 포함)를 모두 잡았다.
+  - not_run: 운영 real 확인(게시 뒤, 대표가 `r_franchise`를 켠 뒤, 명세 6.4), 화면(R5c), CSV 가져오기(R5b-2).
 
 ### R6 퍼널 측정·주간 보고·증빙 묶음
 

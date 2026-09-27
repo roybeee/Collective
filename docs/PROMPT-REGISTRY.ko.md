@@ -129,6 +129,17 @@
 - 최소 케이스 수는 강제하지 않는다(대표 결정 전). 대응 쌍이 30쌍 미만이면 `gate.warnings`에 `small_sample` 경고를 싣고 거부하지 않는다. `activate`·`stage`·`promote` 응답의 `event.gate`에 `cases`·`sealedCases`·`warnings`가 있다.
 - 진행 중(queued·running) run이 쓰는 케이스의 기대 판정·세트는 `update_case`로 바꿀 수 없다(409, 이름은 가능). 한 run의 두 쪽이 다른 기준으로 채점되는 것을 막는다.
 
+### 반복 쌍 평가 과반 게이트 (`lib/eval-stats.ts` `pairGateMajority`, 대표 결정 2026-09-27)
+
+결론: 같은 모델도 매번 조금씩 다르게 써서, 봉인 16케이스에서 버전과 무관한 판정 뒤바뀜이 몇 건씩 난다(A1 `channel.offline` v1 봉인 run `284fa4be`: 회귀 3·개선 3). 봉인 회귀 0건 조건을 흔들림 한 번이 막지 않도록, 같은 쌍 평가를 여러 번 돌려 과반으로 판정한다.
+
+- 사용: `activate`·`stage`에 `evalRunId` 대신 `evalRunIds`(2~5개, 서로 다른 run)를 준다. 둘을 함께 주거나 1개·6개 이상·중복이면 400이다. `promote`는 stage 때 저장한 run들로 다시 판정한다.
+- 모든 run이 이 단위·후보 버전의 pair run이어야 하고, 기준(active)이 서로 같고 지금 전체 적용 버전과 같아야 한다. 운영자 선호 쌍 run은 하나라도 섞이면 409다.
+- 구조 조건(pair·완료·모든 케이스 두 쪽 완료·게이트웨이 해시·보고 모델·봉인 1건 이상)은 run마다 위 표 그대로 본다. 보고 모델은 모든 run에서 하나여야 하고, 케이스 구성이 run마다 다르면 `case_set_mismatch`다.
+- 과반 판정(케이스·채점기마다, 위 후보 보정 포함): 봉인 회귀는 active가 과반 pass이고 후보가 과반 pass가 아닐 때다(짝수 반복의 동률은 후보에 불리하게 회귀로 센다). 합격 수는 active 과반 판정이 있는 대응 짝끼리 센다. `input_budget`은 후보가 케이스마다 과반 pass여야 한다.
+- run 하나(`evalRunId`)는 기존 `pairGate`와 판정이 같다. 이벤트와 포인터에는 `evalRunId`(첫 run)와 `evalRunIds`(전부)를 남기고, `event.gate.repeats`에 반복 횟수를 싣는다.
+- 권장 반복은 3회다. 봉인 16케이스 쌍 평가 1회에 약 50만 토큰, 1시간 20분이 든다.
+
 ### 활성화·지정 캠페인·승격 (`POST /api/prompts`, owner 전용)
 
 ```json
@@ -162,7 +173,7 @@
 1. 후보 PR 병합: `prompts/<단위>.json` 본문을 바꾸는 PR을 리뷰해 `main`에 병합한다(D1 이름 대조 기록 포함, 아래 '남은 한계'). 병합 커밋 SHA를 적어 둔다.
 2. 등록: `POST /api/prompts` `{"action":"register","unit":"<단위>","sourceSha":"<병합 SHA>"}` → 버전 id(`<단위>@<12자>`). 502(blocked)면 잠시 뒤 같은 SHA로 다시 한다.
 3. 경보 확인: `GET /api/prompts`의 `alarms.open`이 비어 있는지 본다. 있으면 위 해제 절차부터 한다.
-4. 쌍 평가: `POST /api/eval` `start_run`(`pair`, 봉인 세트 포함, `tokenBudget` ≤ 250,000). 워커가 끝낼 때까지 `GET /api/eval?run=<id>`로 본다.
+4. 쌍 평가: `POST /api/eval` `start_run`(`pair`, 봉인 세트 포함, `tokenBudget` ≤ 250,000). 워커가 끝낼 때까지 `GET /api/eval?run=<id>`로 본다. 흔들림을 걸러야 하면 같은 케이스로 3회 돌려 6단계에서 `evalRunIds`로 준다(위 '반복 쌍 평가 과반 게이트').
 5. 결과 확인: `GET /api/eval?pair=<id>` → `gate.ok`, `gate.reasons`, 합격 수, `sealedCases`·봉인 회귀, `input_budget`, 모델, 게이트웨이 시작·종료 해시, `comparison`의 n·b·c·p. 표본이 30쌍 미만이면 "개선"이라고 쓰지 않는다(비교 통계 규칙).
 6. 지정 캠페인 적용: `stage`(`campaignIds` 1~50개, 승인 사유). 응답 `pinnedCampaignIds`에 있는 캠페인이 새 버전을 받아야 하면 `reset_pins`.
 7. 관찰: 지정 캠페인의 작업물·회의·품질 판정과 `provider_usage`를 `promptVersion`으로 나눠 본다(F2a 조인 키). 지정 밖 캠페인은 그대로다.
