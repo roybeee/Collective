@@ -464,7 +464,7 @@ const REGEX_SOURCES=Object.entries(rules.FRANCHISE_CLAIM_MATCHERS).flatMap(([id,
 const bigSources=REGEX_SOURCES.filter(([,x])=>x.length>=20480).map(([id,x])=>id+' '+x.length);
 check('15h: every compiled franchise matcher regex stays under the 20,480-character V8 optimization limit, the misstatement forms compile separately and are frozen'+(bigSources.length?' '+JSON.stringify(bigSources):''),bigSources.length===0&&rules.FRANCHISE_CLAIM_MATCHERS[W8].more?.length>=1&&Object.isFrozen(rules.FRANCHISE_CLAIM_MATCHERS[W8].more)&&rules.FRANCHISE_CLAIM_MATCHERS[W8].more.every(x=>new RegExp(x,'g')&&!rules.FRANCHISE_CLAIM_MATCHERS[W8].match.includes(x)));
 check('15h: 24,000-character one-sentence inputs around the new forms finish within one second',['정보공개서 '.repeat(4800),'대기기간 '.repeat(5000),'7일 '.repeat(8000),'본사가 지정한 '.repeat(3400),('정보공개서를 받은 날부터 7일이 지나면 계약 '.repeat(900))].every(t=>{const s=Date.now();judge(t);return Date.now()-s<1000}));
-check('15h: no new hard_block id or registry rule (decision 25 keeps 8 ids, 54 rules) and the claims version is bumped',rules.FRANCHISE_HARD_BLOCK_IDS.length===8&&rules.FRANCHISE_RULES.length===54&&rules.FRANCHISE_RULES_VERSION==='2026-09-25.1'&&rules.FRANCHISE_CLAIMS_VERSION==='fr-claims@2026-09-26.4'&&judge('대기기간은 7일입니다.').version.startsWith('fr-claims@2026-09-26.4+'));
+check('15h: no new hard_block id or registry rule (decision 25 keeps 8 ids, 54 rules) and the claims version is bumped',rules.FRANCHISE_HARD_BLOCK_IDS.length===8&&rules.FRANCHISE_RULES.length===54&&rules.FRANCHISE_RULES_VERSION==='2026-09-25.1'&&rules.FRANCHISE_CLAIMS_VERSION==='fr-claims@2026-09-27.1'&&judge('대기기간은 7일입니다.').version.startsWith('fr-claims@2026-09-27.1+'));
 
 // ════ 15i) 대기기간 오기재 레드팀 반영(2026-09-26, 합성) ════
 // 레드팀 우회 131건: 127건을 해제 불가로 막는다(125건 대기기간 우회 규칙, 본사 쪽 자문·본사 발급 자문 확인서 2건은 본사 연계 자문 규칙). 4건은 알려진 틈으로 남기고 승인자 확인에 맡긴다
@@ -789,6 +789,24 @@ const r15lLeak=R15L_OK.flatMap(t=>{const r=judge(t),c=judge(t,{scope:'consumer'}
 check(`15l: ${R15L_OK.length} accurate sentences (whitelisted negotiation connectives, recommended independent advice, impossible contract or fee acts at the sentence end, quoted or contract-act cautions, and the pre-15k caution endings followed by a comma, question mark, exclamation or parenthesis) raise no wait-bypass or captive-advisor issue`+(r15lLeak.length?' '+JSON.stringify(r15lLeak):''),R15L_OK.length>=25&&r15lLeak.length===0);
 const r15lKnown=[...R15L_KNOWN_FP.filter(t=>!onWaitRules(t)),...R15L_REBLOCKED.filter(t=>!onWaitRules(t)),...R15L_KNOWN_GAPS.filter(t=>onTwoRules(judge(t)))];
 check(`15l: the ${R15L_KNOWN_FP.length} documented pre-existing false positives and ${R15L_REBLOCKED.length} deliberately re-blocked accurate sentences are blocked, and the ${R15L_KNOWN_GAPS.length} documented gaps still pass (closing one moves it to R15L_OK or R15L_LOST)`+(r15lKnown.length?' '+JSON.stringify(r15lKnown):''),R15L_KNOWN_FP.length===7&&R15L_REBLOCKED.length===4&&R15L_KNOWN_GAPS.length===7&&r15lKnown.length===0);
+
+// ════ 15m) 보이지 않는 문자로 끊은 표현(2026-09-27, 합성) ════
+// 판정 보기(matchView)는 서식 문자(Cf)·결합 문자(M)에 더해 검토자에게 보이지 않거나 줄로 보이는 문자도 지운다: 제어 문자(Cc, 줄바꿈 제외. 탭·CR은 띄어쓰기로 본다),
+// 사용자 정의 영역(Co), 미할당·비문자(Cn), 줄·문단 구분(Zl·Zp). R15a 자료 원문은 입력 단계에서 이런 문자를 거절하고(tests/franchise-assets.test.mjs 18), 캡션·발행 게이트는 이 보기가 막는다.
+// 이모지 조합 문자는 이 범주가 아니다: ZWJ U+200D·태그 U+E0020–E007F는 Cf(원래 지움), 이형 선택자 U+FE0F는 Mn(원래 지움), 피부색 U+1F3FB–1F3FF는 Sk, 키캡 U+20E3은 Me다.
+const HIDDEN_CHARS=['\u0001','\u001b','\u007f','\u0080','\u0085','\u009f','\u2028','\u2029','\ue000','\uf8ff','\u{f0000}','\u{10fffd}','\ufdd0','\ufdef','\ufffe','\uffff','\u{1fffe}','\u0378'];
+const HIDDEN_BASES=['월 순수익 500만원 보장','오늘 예약금 100만원 입금하시면 상권을 선점해 드립니다','순수익 월 800만원','가계약금 받습니다','정보공개서를 받은 날부터 3일이 지나면 계약할 수 있습니다.'];
+const hiddenCp=c=>'U+'+c.codePointAt(0).toString(16).toUpperCase();
+const everyLetter=(t,c)=>[...t].join(c),inWord=(t,c)=>t.replace(/([가-힣])([가-힣])/g,'$1'+c+'$2');
+check('15m: the bases are hard_block in the recruitment scope and in a consumer caption with a recruitment line',HIDDEN_BASES.every(t=>judge(t).hardBlocked&&judge(t+RC,{scope:'consumer'}).hardBlocked));
+const hiddenMiss=HIDDEN_BASES.flatMap(t=>HIDDEN_CHARS.flatMap(c=>[[everyLetter(t,c),'every letter'],[inWord(t,c),'inside words']].flatMap(([x,how])=>{const r=judge(x),k=judge(x+RC,{scope:'consumer'});return r.hardBlocked&&k.hardBlocked&&same(ids(r),ids(judge(t)))?[]:[`${hiddenCp(c)} ${how}: ${t}`]})));
+check(`15m: ${HIDDEN_BASES.length} hard_block sentences split by ${HIDDEN_CHARS.length} invisible characters (C0·C1 controls, DEL, line and paragraph separators, private use, noncharacters, unassigned) keep the same rules`+(hiddenMiss.length?' '+JSON.stringify(hiddenMiss.slice(0,12)):''),hiddenMiss.length===0);
+check('15m: a tab between every letter reads like spaced letters and still blocks',HIDDEN_BASES.every(t=>judge(everyLetter(t,'\t')).hardBlocked));
+check('15m: the view deletes invisible characters, reads a tab as a space and keeps a line break',jc.matchView('수\u0085익 보\u2028장')==='수익 보장'&&jc.matchView('순\ue000수익\u{f0000} 월\u0378 800만원\ufffe')==='순수익 월 800만원'&&jc.matchView('가맹 문의\t환영')==='가맹 문의 환영'&&jc.matchView('도넛\r매일 굽습니다')==='도넛 매일 굽습니다'&&jc.matchView('수익\n보장')==='수익\n보장');
+// 이모지(ZWJ 조합·피부색·키캡·국기·태그 국기)와 NBSP·대체 문자는 보이는 글자라 판정이 그대로다.
+const EMOJI_LINES=['👩\u200d🍳 셰프가 만든 도넛 🍩','가족 👨\u200d👩\u200d👧\u200d👦 세트 출시','🏳\ufe0f\u200d🌈 프라이드 한정 도넛','👍🏽 오늘도 완판','1\ufe0f\u20e3 첫 주문 할인','🏴\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F} 영국식 스콘','🇰🇷 국산 밀','Fresh donuts daily 🍩\u00a0open 10am \ufffd'];
+check('15m: emoji sequences use no deleted category (ZWJ and tags are Cf, VS16 is Mn, skin tones are Sk, keycap is Me)',EMOJI_LINES.every(t=>!/(?!\n)[\p{Cc}\p{Co}\p{Cn}\p{Zl}\p{Zp}]/u.test(t))&&/\p{Cf}/u.test('\u200d')&&/\p{Cf}/u.test('\u{E0067}')&&/\p{Mn}/u.test('\ufe0f')&&/\p{Sk}/u.test('🏽')&&/\p{Me}/u.test('\u20e3'));
+check('15m: consumer emoji lines raise no issue, and emoji or a ZWJ inside a hard_block phrase still blocks',EMOJI_LINES.every(t=>!judge(t,{scope:'consumer'}).issues.length&&!judge(t).hardBlocked)&&judge('수익💰보장').hardBlocked&&judge('수익\u200d보장').hardBlocked&&judge('👩\u200d🍳 월 순수익 500만원 보장 🙌🏻').hardBlocked);
 
 // ════ 16~22) 게이트(라우트) ════
 const WS='fc-owner';
