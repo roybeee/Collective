@@ -107,7 +107,8 @@ export const EVENT_TYPE_LABELS={created:'등록',stage_changed:'단계 변경',t
 export type LeadEventType=keyof typeof EVENT_TYPE_LABELS;
 export const AUDIT_ACTION_LABELS={reveal:'연락처 보기',find:'연락처로 찾기',export:'내보내기',purge:'파기',erase:'정보주체 삭제',backdate:'이른 증빙 시각',evidence_void:'증빙 무효화',assign:'담당 지정',claim:'담당 가져옴',profile_save:'가맹 프로필 저장',version_register:'정보공개서 버전 등록',version_retire:'정보공개서 버전 사용 중지',template_register:'계약서안 템플릿 등록',template_retire:'계약서안 템플릿 사용 중지',version_amend:'정보공개서 버전 정정',template_amend:'계약서안 템플릿 정정',notice_register:'안내문 등록',notice_retire:'안내문 사용 중지',subject_request:'정보주체 요청 접수',subject_request_update:'정보주체 요청 처리',marketing_withdrawn:'광고성 정보 철회',
  asset_save:'모집 자료 저장',asset_approve:'모집 자료 승인',asset_export:'모집 자료 내보내기',asset_place:'모집 자료 게시 위치 기록',asset_retire:'모집 자료 폐기',asset_blocked:'모집 자료 승인·내보내기 막힘',event_save:'행사 등록·변경',event_cancel:'행사 취소',event_register:'행사 신청 기록',event_attendance:'행사 참석 기록',
- code_issue:'모집 코드 발급',code_retire:'모집 코드 사용 중지',code_strike:'리드 모집 코드 제외',spend_record:'모집 비용 기록',spend_void:'모집 비용 무효화',lead_import:'리드 CSV 가져오기',lead_import_rejected:'리드 CSV 거부'} as const;
+ code_issue:'모집 코드 발급',code_retire:'모집 코드 사용 중지',code_strike:'리드 모집 코드 제외',spend_record:'모집 비용 기록',spend_void:'모집 비용 무효화',lead_import:'리드 CSV 가져오기',lead_import_rejected:'리드 CSV 거부',
+ report_freeze:'모집 주간 보고 확정',report_export:'모집 주간 보고 내려받기',evidence_export:'증빙 묶음 내보내기'} as const;
 export type AuditAction=keyof typeof AUDIT_ACTION_LABELS;
 // 트랙 R R5b-1 리드 모집 코드 제외 사유(관리자, 코드만 남기고 자유 문구는 받지 않는다).
 export const STRIKE_REASON_LABELS={typo:'오기',wrong_lead:'다른 리드',gaming:'귀속 조작 의심',other:'기타'} as const;
@@ -175,6 +176,16 @@ export const FRANCHISE_ERRORS={
  // 트랙 R R5b-2 리드 CSV 가져오기(lib/franchise-lead-import-server.ts). 리드 문구인 STALE을 쓰지 않는다.
  IMPORT_DUPLICATE:{status:409,text:'이미 가져온 파일입니다(같은 파일 해시).'},
  IMPORT_RETRY:{status:409,text:'리드 코드를 만들지 못했습니다. 다시 시도해 주세요.'},
+ // 트랙 R R6b 모집 주간 보고·증빙 묶음(lib/franchise-report-server.ts).
+ REPORT_WEEK:{status:400,text:'보고 주는 있는 ISO 주(YYYY-Www)로 정해 주세요.'},
+ REPORT_WEEK_FUTURE:{status:400,text:'아직 시작하지 않은 주입니다. 이번 주까지 볼 수 있습니다.'},
+ REPORT_WEEK_OPEN:{status:400,text:'끝난 주(일요일까지, 한국 날짜)만 확정할 수 있습니다.'},
+ REPORT_CONFIRM:{status:400,text:'확정할 보고서를 확인한 뒤 확인한 다이제스트를 함께 보내 주세요.'},
+ REPORT_CHANGED:{status:409,text:'확인한 뒤 원장이 바뀌어 보고서가 달라졌습니다. 다시 불러와 확인한 뒤 확정해 주세요.'},
+ REPORT_STALE:{status:409,text:'보고서 확정 기록이 변경됐습니다. 새로고침한 뒤 다시 시도해 주세요.'},
+ REPORT_NOT_FOUND:{status:404,text:'확정한 보고서가 없습니다.'},
+ REPORT_FORMAT:{status:400,text:'형식은 md·csv·json 중 하나입니다.'},
+ EVIDENCE_SCOPE:{status:400,text:'증빙 묶음 범위는 리드(lead) 또는 모집 자료(asset)입니다.'},
 } as const satisfies Record<string,{status:number;text:string}>;
 export type FranchiseErrorKey=keyof typeof FRANCHISE_ERRORS;
 // 게이트 사유·경고 코드의 한국어 설명. REASON_CODES ∪ WARNING_CODES와 정확히 같은 키(테스트 고정).

@@ -849,6 +849,17 @@ R4a가 `lib/franchise-rules.ts`에 만들고 R2·R4b가 쓴다. 레코드는 `{i
     - speed-to-lead 중앙값은 첫 연락 5건 미만이면 숨긴다(개별 값 노출 방지). 첫 연락이 접수보다 이르면 제외하고 건수만 센다.
     - 규칙 신선도는 코드 규칙 레지스트리(`FRANCHISE_RULES`, `proposed` 제외)만 센다.
   - not_run: 저장·API·화면(R6b·R6c), 운영 real 확인(게시 뒤).
+- R6b 구현 기록(2026-09-27, passed · mocked):
+  - 새 모듈 `lib/franchise-report-server.ts`: 보기 `report`(모든 역할, 집계만, 스위치가 꺼져도 읽음, 연락처 키 불필요), 작업 `report_freeze`(대표·관리자, 스위치 켜짐)·`report_export`·`evidence_export`(대표·관리자, 스위치가 꺼져도 됨, 감사). `lib/franchise-server.ts`는 port(commit·영수증·게이트 요약)로 넘기고 새 모듈은 그 파일을 import하지 않는다.
+  - 새 kind `recruitment_report`(행 id `<브랜드 id>:<ISO 주>`, 판 번호·이전 판 5개, 집계만). `recruitment_import` 바로 뒤, `data_request` 앞이다.
+  - 확정: 끝난 주만 받는다. 확인(`confirmed:true`)과 미리보기의 다이제스트(`expected.digest`, asOf를 뺀 보고서의 SHA-256)가 있어야 하고, 지금 다시 계산한 다이제스트와 다르면 409 `REPORT_CHANGED`다. 다시 확정하면 새 판이고 이전 판은 이력에 남는다. 보기는 확정 뒤 원장이 바뀌었는지(`changedSinceFreeze`)를 보인다.
+  - 내려받기: 확정본만(md·csv·json, 판 선택). 감사 행에는 파일 SHA-256만 남는다. 같은 요청 번호는 5분 안·대표·관리자·같은 해시일 때만 재생한다(아니면 `REPLAY_EXPIRED`).
+  - 증빙 묶음(`collective.recruitment-evidence.v1`): 리드별 여정(시스템 코드·단계·접수·첫 연락·계약 시각, 귀속과 입력 id, 모집 코드·제외, 제공처 파일 기록, 귀속 자료 판의 해시·승인, 이벤트, 증빙 기록과 정정·무효 표시, 계약 가능 시각 창, 계약 게이트 결과, 산정서 의무, 규칙 버전)과 모집 자료별 묶음(판별 원문·해시·상태·승인·내보내기·게시 위치, 연결 코드, 판별 코드 귀속 리드 수, 연결 비용과 플랫폼 보고 수치, 연결 행사). 연락처·메모 값은 없다. 묶음 해시는 asOf를 뺀 JSON의 SHA-256이라 같은 기록이면 같은 해시다.
+  - 주간 보고의 법정 게이트 칸은 서버가 채운다: 서버 거부 시도는 `transition_blocked` 이벤트, 증빙 완결은 계약 리드마다 지금 증빙으로 계약 게이트(`checkTransition` `contracted`)를 다시 돌린 결과다.
+  - 문서: `docs/SECURITY-BOUNDARIES.ko.md` 행 3개, `docs/DATA-PROCESSING.ko.md` 3.5 행 2개(확정본·증빙 묶음 내보내기).
+  - 검사: `recruitment-report` 56(RP-V1~RP-M1 22개 사례), `record-kinds` 50, `franchise-model-boundary` 28(FORBIDDEN에 보고 서버, 모델 경로 kind 문자열 검사에 `recruitment_report`), `recruitment-codes` 146, `security-boundaries` 50, `franchise-pipeline` 217. 변이 20개(보고 서버 15·가맹 서버 연결 5)를 모두 잡았다.
+  - 계획과 다르게 한 것: 증빙 묶음의 '앱 발행물'(objective 캠페인의 `execution_publication`)은 넣지 않았다. 자료별 묶음은 R15a 모집 자료만이다. 확정본 크기 상한은 두지 않았다(보고서 모양이 채널 10개·코호트 6개로 고정돼 작다).
+  - not_run: 화면(R6c), 운영 real 확인(게시 뒤, 대표가 `r_franchise`를 켠 뒤).
 
 ### R7 경쟁·시장 벤치마크
 
