@@ -162,6 +162,18 @@ await flags.setFeatureFlag(O,{flag:'b4_reward_lineage',enabled:false},{id:O,emai
 check('switch off again: admin and owner get a 409, member still a 403',(await G('?brandId=b2',adminS)).status===409&&(await G('?brandId=b2',ownerS)).status===409&&(await G('?brandId=b2',memberS)).status===403);
 
 // ── 11) 토큰 0: 외부 호출 0회, provider_usage 0건, GET만 ──
+// ── 운영 판정 형태(artifactDecisionStatement): 작업물 판정은 brandId를 null로 두고 campaignId만 적는다(2026-09-27 운영 실측, B3 4단계 ODA).
+// 브랜드 범위도 그 브랜드 캠페인의 판정을 세야 한다. 다른 브랜드 캠페인의 판정은 섞이지 않는다.
+for(const id of ['by1','by2'])await save(O,'brand',id,{id,name:'브랜드 '+id});
+await save(O,'campaign','cy1',campaign('cy1','by1'));await save(O,'campaign','cy2',campaign('cy2','by2'));
+const AY1=await artOf('job-y1'),AY2=await artOf('job-y2');
+await save(O,'artifact',AY1,artifact(AY1,'cy1',PV.c1),'cy1');await save(O,'learning_snapshot','job-y1',snapshot('job-y1','cy1',[rule('ry1',1,'operator_preference')]),'cy1');await decision(O,AY1,'cy1',null,PV.c1,'revision',ago(1));
+await save(O,'artifact',AY2,artifact(AY2,'cy2',PV.c2),'cy2');await save(O,'learning_snapshot','job-y2',snapshot('job-y2','cy2',[rule('ry2',1)]),'cy2');await decision(O,AY2,'cy2',null,PV.c2,'approved',ago(1));
+await flags.setFeatureFlag(O,{flag:'b4_reward_lineage',enabled:true},{id:O,email:null});
+const [yb1,yb2,yc1]=await Promise.all([G('?brandId=by1',ownerS),G('?brandId=by2',ownerS),G('?campaignId=cy1',ownerS)]);
+check('brand scope counts artifact decisions stored with brandId null through their campaign',yb1.status===200&&JSON.stringify(refs(yb1.body))==='["ry1@1"]'&&yb1.body.lineage.byRule[0].human.decidedFirst===1&&yb1.body.lineage.byRule[0].human.revisions===1&&row(yb1.body,PV.c1)?.human.decidedFirst===1);
+check('brand scope does not take null-brand decisions of another brand campaign',JSON.stringify(refs(yb2.body))==='["ry2@1"]'&&!row(yb2.body,PV.c1)&&!row(yb1.body,PV.c2));
+check('brand and campaign scope agree on the same campaign',JSON.stringify(refs(yc1.body))===JSON.stringify(refs(yb1.body))&&yc1.body.lineage.byRule[0].human.decidedFirst===1);
 check('no external call was made (no HERMES, no model, no connector)',fetchCalls===0);
 check('no provider usage row was written',sql.prepare("SELECT COUNT(*) n FROM records WHERE kind='provider_usage'").get().n===0);
 check('the server imports role-execution only for roleArtifactId and has no network code',/import \{roleArtifactId\} from '\.\/role-execution';/.test(src('lib/reward-lineage-server.ts'))&&!/hermes|openai|fetch\(/.test(src('lib/reward-lineage-server.ts'))&&!/hermes|openai|fetch\(/.test(src('app/api/reward-lineage/route.ts')));
