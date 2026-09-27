@@ -305,6 +305,32 @@ check('after promote a new campaign resolves v2 and a pinned outside campaign ke
 r=await prompts({action:'promote',unit:'role.cmo'});
 check('promote without a staging is 409',()=>assert.equal(r.status,409));
 
+// 9-2) 반복 채점 과반 게이트(대표 결정 2026-09-27): 같은 단위·후보·기준의 pair run 2~5개를 evalRunIds로 준다.
+// 봉인 누설이 3회 중 1회면 흔들림으로 보고 통과, 2회면 과반 회귀로 거부한다. evalRunId 하나는 기존 pairGate 그대로다.
+const V3_FOCUS='합성 반복 초점: 방문 동기와 측정 자료를 함께 정한다';
+const v3=await register('role.cmo',{...baseBody,focus:V3_FOCUS});
+const sealedLeak={leak:sent=>isSealed(sent)&&uses(sent,V3_FOCUS)};
+const M1=await pairRun(v3,[devCase.id,sealedCase.id],sealedLeak),M2=await pairRun(v3,[devCase.id,sealedCase.id]),M3=await pairRun(v3,[devCase.id,sealedCase.id]),M4=await pairRun(v3,[devCase.id,sealedCase.id],sealedLeak);
+check('repeat pair runs complete against the promoted v2 basis',()=>assert.ok([M1,M2,M3,M4].every(x=>x.status==='completed'&&x.pair.activeVersionId===v2)));
+r=await evalGet('?pair='+M1.id);
+check('a single leaky run still fails the single-run gate (sealed_regression)',()=>assert.ok(r.body.gate.ok===false&&r.body.gate.reasons.some(x=>x.code==='sealed_regression')));
+const stageMany=(ids,extra={})=>prompts({action:'stage',unit:'role.cmo',versionId:v3,evalRunIds:ids,campaignIds:[S.id],approval,...extra});
+r=await stageMany([M1.id]);
+check('evalRunIds needs two to five runs (400)',()=>assert.ok(r.status===400&&/2~5/.test(r.body.error),JSON.stringify(r.body)));
+r=await stageMany([M1.id,M1.id,M2.id]);
+check('evalRunIds refuses a repeated run (400)',()=>assert.equal(r.status,400));
+r=await stageMany([M1.id,M2.id,M3.id],{evalRunId:M2.id});
+check('evalRunId and evalRunIds together are refused (400)',()=>assert.equal(r.status,400));
+r=await stageMany([M1.id,M4.id,M2.id]);
+check('a sealed leak in two of three runs is a majority regression (409)',()=>assert.ok(r.status===409&&/과반 회귀/.test(r.body.error),JSON.stringify(r.body)));
+r=await stageMany([M1.id,M2.id,R7.id]);
+check('a run of another candidate among evalRunIds is refused (409)',()=>assert.ok(r.status===409&&/이 단위·버전의 쌍 평가/.test(r.body.error),JSON.stringify(r.body)));
+r=await stageMany([M1.id,M2.id,M3.id]);rel=await release();ev=events().at(-1);
+check('a sealed leak in one of three runs passes the majority gate and stages',()=>assert.ok(r.status===200&&rel.active===v3&&rel.evalRunId===M1.id&&JSON.stringify(rel.evalRunIds)===JSON.stringify([M1.id,M2.id,M3.id]),JSON.stringify(r.body)));
+check('the stage event records every run and the repeat count',()=>assert.ok(ev.action==='stage'&&JSON.stringify(ev.evalRunIds)===JSON.stringify([M1.id,M2.id,M3.id])&&ev.gate.repeats===3&&ev.gate.sealedCases===1,JSON.stringify(ev)));
+r=await prompts({action:'promote',unit:'role.cmo'});rel=await release();ev=events().at(-1);
+check('promote re-checks the same runs by majority and records them',()=>assert.ok(r.status===200&&rel.active===v3&&rel.stagedCampaignIds.length===0&&JSON.stringify(ev.evalRunIds)===JSON.stringify([M1.id,M2.id,M3.id])&&ev.gate.repeats===3,JSON.stringify(r.body)));
+
 // 10) 권한: owner만. member·admin 403, 다른 owner 404, 비로그인 401.
 env.AUTH_MODE='email';env.AUTH_ORIGIN='https://agency.test';
 const signIn=(id,role,createdAt,ws)=>{const token=createHash('sha256').update(id).digest('hex');sql.prepare('INSERT INTO auth_users(id,email,workspace_owner,role,status,created_at) VALUES(?,?,?,?,?,?)').run(id,id+'@test.invalid',ws,role,'active',createdAt);sql.prepare('INSERT INTO auth_sessions VALUES(?,?,?,?)').run(createHash('sha256').update(token).digest('hex'),id,Date.now()+60000,Date.now());return {cookie:'__Host-collective_session='+token,origin:'https://agency.test'}};
@@ -316,5 +342,6 @@ for(const input of actions){
 }
 r=await prompts({action:'promote',unit:'role.cmo'},owner,{...ownerS,origin:'https://evil.test'});
 check('cross-origin activation mutation is 403',()=>assert.equal(r.status,403));
+
 check('no external network call (GitHub raw and both HERMES are mocked)',()=>assert.deepEqual(hermes.external,[]));
 console.log(JSON.stringify({passed:passed.length}));
