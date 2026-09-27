@@ -26,3 +26,8 @@
 ## 남은 것
 - 대표가 새 CMO 작업물(`ai-4fb50c2c3…`)을 판정하면 `byRule`에 `playbook:24e71fa4…@2`가 나오는지 보고 이 파일 아래에 덧붙인다.
 - 개선 루프 전후 14일 비교는 승인일(2026-09-27)부터 14일 뒤 닫을 수 있다(`b4_reward_lineage` 켜짐). 주문(L3)은 B4 중단 규칙 blocked라 KPI로 쓰지 않는다.
+
+## 8단계 확인 (2026-09-27 06:4x UTC 덧붙임)
+- 대표가 새 CMO 작업물을 06:41:36 UTC에 수정 요청으로 판정했다. 메모: SEO(구글맵·홈페이지)와 GEO/AEO 카테고리 검토 필요.
+- `GET /api/reward-lineage?campaignId=37da2d59…`의 `byRule`: `playbook:24e71fa4…@2`(operator_preference), 1차 판정 1·수정 요청 1, `insufficient`. **8단계 passed · real.**
+- 같은 시각 `?brandId=oda`는 `byRule`·`byPromptVersion`이 모두 비었다. 원인은 작업물 판정의 `brandId`가 null(캠페인만 기록)인데, 브랜드 범위가 판정 `brandId`로 걸렀기 때문이다(`lib/reward-lineage-server.ts` `readDecisions`). 레인 A 결함이라 고쳤다(PR `fix/reward-lineage-brand-scope-decisions`, Red-Green 확인). 게시 뒤 브랜드 범위로 다시 본다.

@@ -93,11 +93,12 @@ async function scopeCampaigns(owner:string,s:Scope){
  const store=s.storeId?` AND COALESCE(${field('storeId')},'') IN ('',?)`:'',one=s.campaignId?` AND ${field('id')}=?`:'';
  return rows<string>(owner,'campaign',`json_quote(${field('id')})`,`${field('brandId')}=?${store}${one}`,[s.brandId,...(s.storeId?[s.storeId]:[]),...(s.campaignId?[s.campaignId]:[])],'id');
 }
-// 판정: 기간 창에 판정한 작업물의 모든 판정(1차 판정을 기록 순서로 정한다). 브랜드 범위는 brandId, 지점·캠페인 범위는 campaignId로 거른다.
+// 판정: 기간 창에 판정한 작업물의 모든 판정(1차 판정을 기록 순서로 정한다). 지점·캠페인 범위는 campaignId로 거른다.
+// 브랜드 범위는 brandId가 같거나 campaignId가 그 브랜드 캠페인인 판정이다. 작업물 판정은 brandId를 null로 두고 campaignId만 적기 때문이다(lib/review-decisions-server.ts artifactDecisionStatement, 2026-09-27 운영 실측).
 function readDecisions(owner:string,s:Scope,p:Period,campaigns:string){
- const narrow=!!(s.storeId||s.campaignId),scope=narrow?inList(field('campaignId')):`${field('brandId')}=?`,bind=narrow?campaigns:s.brandId;
+ const narrow=!!(s.storeId||s.campaignId),scope=narrow?inList(field('campaignId')):`(${field('brandId')}=? OR ${inList(field('campaignId'))})`,binds=narrow?[campaigns]:[s.brandId,campaigns];
  const window=`SELECT ${field('targetId')} FROM records WHERE owner=? AND kind='review_decision' AND ${field('targetKind')}='artifact' AND ${scope} AND ${field('createdAt')}>=? AND ${field('createdAt')}<?`;
- return rows<ReviewDecision>(owner,'review_decision','data',`${field('targetKind')}='artifact' AND ${scope} AND ${field('targetId')} IN (${window})`,[bind,owner,bind,p.start,p.end],recent('createdAt'));
+ return rows<ReviewDecision>(owner,'review_decision','data',`${field('targetKind')}='artifact' AND ${scope} AND ${field('targetId')} IN (${window})`,[...binds,owner,...binds,p.start,p.end],recent('createdAt'));
 }
 // 주문: 범위 지점(지점 범위는 그 지점, 아니면 브랜드의 모든 지점)의 기간 주문. 캠페인 범위는 그 캠페인에 귀속된 주문만이다.
 function readOrders(owner:string,s:Scope,p:Period){
