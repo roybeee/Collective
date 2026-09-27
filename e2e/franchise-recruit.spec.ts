@@ -7,6 +7,7 @@
 // 5) R6d 워크스페이스 할 일: 미응대 문의 건수와 면책이 첫 화면 '다음 할 일'에 보이고(리드 이름·연락처 없음), 누르면 가맹 모집 리드 탭으로 간다.
 //    '다음 할 일'은 AI 연결을 마친 워크스페이스에만 보이므로, 실제 /api/workspace 응답을 미리 받아 연결 상태(configured)만 참으로 바꿔 돌려준다(mocked 연결, real 할 일).
 // 6) R6d-2 소재 실험 선별(유입·비용 탭): '플랫폼 보고, 원장 리드 아님'이 첫 줄, 계획(오늘 시작) → 결과(판정·중간 확인 경고) → 확인 층 표본 부족 → 취소.
+// 7) R7a 공공 벤치마크 탭: 고정 문구, 키 없음 막힘(적재 409, 외부 호출 0), 가상 키 저장 → 적재 버튼 열림(누르지 않음) → 키 지우기. 공공데이터포털은 호출하지 않는다.
 // 직원 역할 화면(비용·가져오기 영역 없음)은 legacy 헤더 요청자가 늘 소유자라 여기서 재현할 수 없다. 실제 이메일 세션 직원으로 e2e/email-auth.spec.ts에서 본다.
 // 근거: real Chromium·빌드 결과·로컬 D1(wrangler --local) / mocked 인증(legacy 로그인 헤더). 요청 가로채기는 쓰지 않는다(docs/E2E.ko.md 규칙).
 // 모든 값은 가상이다(브랜드는 시드 브랜드 ofd, 이름 김가상·이테스트, 전화 010-0000-12xx, 이메일 *@example.com). 결과는 COLLECTIVE 휴리스틱 · 법률 자문 아님.
@@ -523,5 +524,43 @@ test('R6d-2 소재 실험 선별: 문구가 먼저, 계획 → 결과(viral-stat
   await card.getByRole('button', {name: '실험 취소', exact: true}).click();
   expect((await cancelled).status()).toBe(200);
   await expect(card).toContainText('취소됨');
+  await context.close();
+});
+
+test('R7a 공공 벤치마크: 고정 문구가 먼저, 키 없음 막힘(외부 호출 0) → 가상 키 저장 → 적재 버튼 열림 → 키 지우기', async ({browser}, testInfo) => {
+  test.setTimeout(120_000);
+  const owner = `e2e-fr-r7a-${testInfo.project.name}-${Date.now()}`;
+  const {context, page} = await ownerPage(browser, testInfo, owner);
+  await prepareFranchise(page, `가상 가맹 모집 R7a ${testInfo.project.name}`);
+  // 외부(공공데이터포털) 호출은 하지 않는다: 화면의 적재 버튼은 누르지 않고, API 적재는 키가 없을 때만 보낸다(409, 외부 호출 0).
+  const noKey = await franchise(page, 'benchmark_load', {year: 2025, brands: ['가상도넛'], industry: ''});
+  expect(noKey.status).toBe(409);
+
+  // 1) 벤치마크 탭: 고정 문구와 면책, 키 없음 막힘, 적재 버튼 잠김.
+  await page.goto(`/?view=franchise&brand=${BRAND}&tab=benchmark`);
+  await expect(page.getByText('타 브랜드 공개 수치. 자사 예상매출 근거가 아님', {exact: true})).toBeVisible();
+  await expect(page.getByRole('status').filter({hasText: '외부 호출 0'})).toBeVisible();
+  await expect(page.getByText('저장 안 됨', {exact: true})).toBeVisible();
+  await expect(page.getByRole('button', {name: '적재', exact: true})).toBeDisabled();
+  await shot(page, testInfo, 'r7a-1-no-key');
+
+  // 2) 가상 키(테스트 전용 합성 값, 실제 공공데이터 키 아님)를 저장하면 저장됨으로 바뀌고 적재 버튼이 열린다. 키는 화면에 다시 보이지 않는다.
+  const syntheticKey = 'E2eSyntheticKeyNotReal0000000000';
+  await page.getByLabel('공공데이터 일반 인증키', {exact: true}).fill(syntheticKey);
+  const saved = page.waitForResponse(franchiseAction('benchmark_key_save'));
+  await page.getByRole('button', {name: '키 저장', exact: true}).click();
+  expect((await saved).status()).toBe(200);
+  await expect(page.getByText(/^저장됨/)).toBeVisible();
+  await expect(page.getByRole('button', {name: '적재', exact: true})).toBeEnabled();
+  expect(await page.content()).not.toContain(syntheticKey);
+  await shot(page, testInfo, 'r7a-2-key-saved');
+
+  // 3) 키 지우기: 확인 대화 → 저장 안 됨, 적재 버튼 다시 잠김.
+  page.once('dialog', dialog => void dialog.accept());
+  const cleared = page.waitForResponse(franchiseAction('benchmark_key_clear'));
+  await page.getByRole('button', {name: '키 지우기', exact: true}).click();
+  expect((await cleared).status()).toBe(200);
+  await expect(page.getByText('저장 안 됨', {exact: true})).toBeVisible();
+  await expect(page.getByRole('button', {name: '적재', exact: true})).toBeDisabled();
   await context.close();
 });

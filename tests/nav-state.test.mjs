@@ -54,7 +54,9 @@ check('prototype keys are not store tabs',parseNav('?view=stores&tab=__proto__')
 check('the learning tab guard accepts learning tabs only',['rules','jobs','ledger','facts',undefined].map(isLearningTab),[true,true,false,false,false]);
 check('non-ASCII id is dropped',parseNav('?view=brands&brand=%ED%95%9C%EA%B8%80'),{view:'brands'});
 // 트랙 R: 가맹 모집 화면(?view=franchise&brand=&tab=)은 브랜드와 탭(리드·정보주체 요청·모집 자료·행사·설정)을 싣는다. 설정 탭 권한은 화면·서버가 따로 본다.
-check('franchise tabs are an allow-list',[...franchiseTabs],['leads','requests','assets','events','inflow','report','settings']);
+check('franchise tabs are an allow-list',[...franchiseTabs],['leads','requests','assets','events','inflow','report','benchmark','settings']);
+// 트랙 R R7a: '벤치마크' 탭(계획 화면 V9, app/franchise-benchmark-panel.tsx)의 주소가 왕복한다.
+check('franchise view keeps the benchmark tab and its link round-trips',[parseNav('?view=franchise&brand=fr-a&tab=benchmark'),serializeNav({view:'franchise',brand:'fr-a',tab:'benchmark'}),isFranchiseTab('benchmark')],[{view:'franchise',brand:'fr-a',tab:'benchmark'},'?view=franchise&brand=fr-a&tab=benchmark',true]);
 // R6c: 성과 탭(유입·비용 뒤, 설정 앞)도 주소로 열고 새로고침 때 복원한다.
 check('franchise view keeps the report tab and its link round-trips',[parseNav('?view=franchise&brand=fr-a&tab=report'),serializeNav({view:'franchise',brand:'fr-a',tab:'report'}),isFranchiseTab('report')],[{view:'franchise',brand:'fr-a',tab:'report'},'?view=franchise&brand=fr-a&tab=report',true]);
 // R5c: 유입·비용 탭(행사 뒤, 설정 앞)도 주소로 열고 새로고침 때 복원한다.
