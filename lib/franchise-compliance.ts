@@ -77,13 +77,15 @@ const normalized=(t:unknown)=>typeof t==='string'?joinVertical(composeJamo(t).no
 // 2) 한 글자씩 띄우거나 점을 찍은 낱말: '수 익 보 장'·'수.익.보.장'·'수·익·보·장'·'R O I'·'7 일 만 에'는 붙인다(한 글자 토큰이 둘 이상 이어질 때만).
 // 3) 한글·혼합 수: '오백만원'→'500만원', '사천이백만 원'→'4200만 원', '4천2백만원'·'4천200만원'→'4200만원', '1.5천 개'→'1500 개', '2천여 개'→'2000여 개', '3억 2천'→'3억 2000만', '18프로'→'18%'.
 // 4) 서식 문자(\p{Cf}: 폭 없는 문자, 방향 표시 U+202A~202E, 보이지 않는 연산자 U+2061~2064)와 따옴표('수익을 “보장”합니다')는 지운다.
+//    검토자에게 보이지 않거나 줄로 보이는 문자도 지운다: 제어 문자(\p{Cc}, 줄바꿈 제외. 탭·CR은 띄어쓰기로 본다), 사용자 정의 영역(\p{Co}), 미할당·비문자(\p{Cn}), 줄·문단 구분(\p{Zl}·\p{Zp}).
+//    U+0085·U+2028로 끊은 '예약금'·'순수익'도 '예약금'·'순수익'이다(2026-09-27). 이모지 조합 문자(ZWJ·태그는 Cf, 이형 선택자는 M, 피부색은 Sk, 키캡은 Me)는 이 범주가 아니다.
 //    숫자로 시작하는 토큰 안의 로마자 O는 0이다('5OO만원'→'500만원'). 로마자와 섞인 키릴·그리스 글자는 닮은 로마자로 읽는다('RОI'). 한글 수+백·천은 '오백'→'5백', '삼천'→'3천'이다.
 // 가운뎃점·띄운 줄표·괄호 주석은 목록·절 경계라 이 보기에서 그대로 두고, 해제 불가 규칙만 보는 두 번째 보기(altView)에서 띄어쓰기로 본다.
 const QUOTES=/["'“”‘’„‟「」『』〝〞]/g,DIGIT_O=/(?<![A-Za-z\d])\d[\d,.]*[Oo][\dOo,.]*(?![A-Za-z])/g,MIXED_LATIN=/[A-Za-z\u0370-\u03FF\u0400-\u04FF]+/g;
 const CONFUSABLE:Record<string,string>={А:'A',В:'B',Е:'E',К:'K',М:'M',Н:'H',О:'O',Р:'P',С:'C',Т:'T',Х:'X',У:'Y',а:'a',е:'e',о:'o',р:'p',с:'c',у:'y',х:'x',і:'i',І:'I',ј:'j',ѕ:'s',Ѕ:'S',Α:'A',Β:'B',Ε:'E',Ζ:'Z',Η:'H',Ι:'I',Κ:'K',Μ:'M',Ν:'N',Ο:'O',Ρ:'P',Τ:'T',Υ:'Y',Χ:'X',ο:'o'};
 const deconfuse=(t:string)=>t.replace(MIXED_LATIN,w=>/[A-Za-z]/.test(w)&&/[\u0370-\u04FF]/.test(w)?[...w].map(c=>CONFUSABLE[c]??c).join(''):w);
 const ZERO_WIDTH=/\p{Cf}/gu,SYMBOLS=/[\p{Extended_Pictographic}\p{So}⃣️]/gu,PAREN_SHORT=/\(([가-힣]{1,2})\)/g;
-const MARKS=/\p{M}/gu,FILLER=/[\u115F\u1160\u3164\uFFA0]/g;
+const MARKS=/\p{M}/gu,FILLER=/[\u115F\u1160\u3164\uFFA0]/g,HIDDEN=/(?!\n)[\p{Cc}\p{Co}\p{Cn}\p{Zl}\p{Zp}]/gu;
 const HANJA:Record<string,string>={保障:'보장',保證:'보증',收益:'수익',賣出:'매출',特許:'특허',萬:'만',千:'천',億:'억',月:'월'};
 const HANJA_RE=new RegExp(Object.keys(HANJA).join('|'),'g');
 // 'ㅡ'(U+3161, NFKC 뒤 U+1173)를 줄표로 쓴 경우도 구분 기호다.
@@ -106,7 +108,7 @@ function numerals(s:string){
   }).replace(KO_HUNDREDS,(_m,d:string,u:string)=>`${HDIGIT[d]}${u}`).replace(PERCENT_WORD,'%');
 }
 export function matchView(raw:string):string{
- const t=deconfuse(raw.replace(ZERO_WIDTH,'').replace(MARKS,'').replace(FILLER,' ').replace(HANJA_RE,h=>HANJA[h]).replace(SYMBOLS,' ').replace(PAREN_SHORT,'$1').replace(INTRA_SEP,' ').replace(QUOTES,'')
+ const t=deconfuse(raw.replace(/[\t\r]/g,' ').replace(HIDDEN,'').replace(ZERO_WIDTH,'').replace(MARKS,'').replace(FILLER,' ').replace(HANJA_RE,h=>HANJA[h]).replace(SYMBOLS,' ').replace(PAREN_SHORT,'$1').replace(INTRA_SEP,' ').replace(QUOTES,'')
   .replace(DIGIT_O,m=>m.replace(/[Oo]/g,'0'))).replace(SPACED_RUN,m=>m.replace(/[ .·ㆍ\u119E・‧\-_/*~|]/g,''));
  return numerals(t).replace(/[ \t]{2,}/g,' ').trim();
 }
