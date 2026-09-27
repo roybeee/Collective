@@ -10,6 +10,7 @@ import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select';
 import {RECRUITMENT_CHANNELS,RECRUITMENT_CHANNEL_LABELS,RECRUITMENT_ATTRIBUTION_NOTE,RECRUITMENT_MESSAGES,UNATTRIBUTED_LABEL,UNATTRIBUTED_REASON_LABELS,PLATFORM_REPORTED_NOTE} from '@/lib/franchise-recruitment';
 import {franchiseGet,problemOf,messageOf,ProblemBox,Disclaimer,Section,LabelSelect,kst,won,copyText,sendAttempt,followUpOf,reasonCodes,type Json,type Problem,type PostResult,type Attempt} from './franchise-common';
 import {LeadImport,type ImportsView,type ImportEvent} from './franchise-import-panel';
+import {FranchiseExperiments} from './franchise-experiment-panel';
 
 // ── 보기 모양(서버 lib/franchise-recruitment-server.ts codes·spend 보기) ──
 type Tally={attributed:number;retroactive:number;late:number};
@@ -112,6 +113,7 @@ export function FranchiseInflow({brandId,brandName,admin,branch,storageLabels,on
    <CodesSection brandId={brandId} codes={codes} admin={admin} enabled={enabled} branch={branch} options={options} onChanged={()=>void load()} onStatus={onStatus}/>
    {admin&&<SpendSection brandId={brandId} spend={spend} enabled={enabled} options={options} win={win} setWin={setWin} initialForm={initialSpendForm} onLoad={next=>{range.current=next;void load()}} onStatus={onStatus}/>}
    {admin&&imports&&<LeadImport brandId={brandId} brandName={brandName} storageLabels={storageLabels} events={options?.events??[]} imports={imports} canImport={enabled&&branch==='A'} onImported={()=>void load()}/>}
+   <FranchiseExperiments brandId={brandId} admin={admin}/>
   </>}
  </div>;
 }

@@ -51,6 +51,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'judge_output',parent:'eval_run',campaignDeletion:'not_campaign_scoped',description:'AI 심사 응답 원문과 파서 결과(기준별 점수·판단 불가·인용·이유, 라벨 항목·원 평가 run 연결). 심사 run의 결과에는 점수만 두고 인용·이유는 여기에만 둔다(소유자 전용)'},
  {kind:'eval_run',parent:'none',campaignDeletion:'not_campaign_scoped',description:'서버 평가 실행(케이스별 채점 결과·토큰·예산 승인·봉인 세트 사용 기록). delete_run은 결과·출력만 지우고 행은 월 예산 장부로 남긴다'},
  {kind:'event',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'캠페인 이력 이벤트'},
+ // A4-4 코드 넣은 파생 PNG. 발행 1건당 1행(id = 발행 id, parent = 캠페인)이고 발행 기록처럼 캠페인을 지워도 남긴다(발행 기록이 이미 삭제를 거부한다).
+ {kind:'execution_coded_png',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'게시 코드를 그린 파생 PNG(발행·소재 id, 원본 소재 PNG 해시·파생 PNG 해시, 게시 코드와 코드 id, 비공개 파일 키, 등록한 사람 id·시각). 공개 사본은 승인 때 public_media로 만든다(A4-4)'},
  {kind:'execution_creative',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'제작한 소재. 있으면 캠페인 삭제를 거부한다'},
  {kind:'execution_limits',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'발행 한도 설정'},
  {kind:'execution_provider_audit',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'발행 공급자 응답 감사 기록. 발행 기록과 함께 생겨 삭제 거부 대상 캠페인에만 있다'},
@@ -145,6 +147,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'recruitment_import',parent:'brand',campaignDeletion:'not_campaign_scoped',retention:{basis:'policy',anchor:'recorded',days:null,ref:'가져오기 입증·중복 방지(휴리스틱) · 구현된 파기 없음'},subjectErasure:'none',description:'가맹 리드 CSV 가져오기(행 id = 원본 바이트 SHA-256: 가져오기 id(ri-)·BOM·인코딩·변환 표시·계획 해시·모집 채널·제공처 라벨과 키·제공일·내보내기 기간·동의 증빙 해시와 보관 위치 라벨·행사 id·수집 근거 유형과 관리자 선언 표시·매핑 열 번호·건수(행·새 리드·기존 리드 병합·파일 안 병합·제공처 파일 리드 수·건너뜀·경고·귀속 요약)·접수 시각 범위·두 규칙 버전·가져온 사람 id와 역할). 캠페인과 무관. 칸 값·머리글 이름·리드 값·연락처는 담지 않는다'},
  // 트랙 R R6b 모집 주간 보고 확정본(행 id = <브랜드 id>:<ISO 주>, 브랜드 행). recruitment_import 바로 뒤, data_request 앞이다.
  {kind:'recruitment_report',parent:'brand',campaignDeletion:'not_campaign_scoped',retention:{basis:'policy',anchor:'recorded',days:null,ref:'주간 보고 입증(휴리스틱) · 구현된 파기 없음'},subjectErasure:'none',description:'가맹 모집 주간 보고 확정본(행 id = 브랜드 id:ISO 주: 보고 주·판 번호·집계 보고서(유입·채널 CPL·플랫폼 보고·speed-to-lead·문의 월 코호트·법정 게이트·규칙 신선도, 1~4건 칸 억제)·다이제스트·확정 시각·확정한 사람 id와 역할·이전 판 5개). 집계만 담고 리드 id·가명 코드·모집 코드·연락처는 담지 않는다. 캠페인과 무관'},
+ // 트랙 R R6d-2 모집 소재 실험(행 id = rx-<uuid>, 브랜드 행). recruitment_report 바로 뒤, data_request 앞이다.
+ {kind:'recruitment_experiment',parent:'brand',campaignDeletion:'not_campaign_scoped',retention:{basis:'policy',anchor:'recorded',days:null,ref:'소재 실험 입증(휴리스틱) · 구현된 파기 없음'},subjectErasure:'none',description:'가맹 모집 소재 실험(가설·바꾼 변수·채널·주지표·대조안과 실험안 모집 자료 판·팔당 최소 표본·관찰 시간·목표 개선율·기간, 사람이 입력한 플랫폼 보고 분모·반응 수와 판정·viral-stats 통계 최근 10회, 상태·판 번호·만든 사람 id와 역할). 플랫폼 보고 수치만 담고 리드 id·가명 코드·연락처는 담지 않는다. 캠페인과 무관'},
  // A6-1 자료 요청. 브랜드 행(parent = 브랜드 id)이고 캠페인 요청은 data.campaignId로 캠페인과 함께 지운다. brand_voice 앞에 둔다(brand_voice는 eval_budget_approval 바로 앞 고정, tests/brand-voice.test.mjs).
  {kind:'data_request',parent:'brand',campaignDeletion:'delete',links:['data_campaign'],description:'자료 요청(작업물의 자료 필요 표지에서 뽑은 항목·사실 항목 key·범위(브랜드·지점·캠페인)·출처 작업물과 판·상태 열림/닫힘·닫은 근거(확정 사실 id·판 또는 수동 답변·필요 없음 메모)·만든·닫은 사람 id와 역할). 캠페인 요청은 캠페인과 함께 지운다(A6-1)'},
  // A6-2 플레이스 대조 스냅샷. 지점 행(parent = 지점 id, id=<지점>:<플랫폼>)이고 최근 10판을 행 안 history에 둔다. data_request 뒤, brand_voice 앞에 둔다.

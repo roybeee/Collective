@@ -2,13 +2,16 @@ import {ApiError, str, stamp, readRecord, listRecords, recordStatement, database
 import {connectorFor} from './connectors';
 import {loadCredential, type CredentialScope, type ResolvedScope} from './channel-credentials';
 import {channelNameForConnector} from './channels';
+import {ConnectorAuthError, ConnectorMissingError} from './connectors/errors';
+import {isEnabled} from './feature-flags';
+import {COLLECT_INTERVAL_MS, STOP_REASONS, REAUTH_CODES, collectErrorReasons, retryDelayMs, type CollectErrorCode} from './measurement-status';
 import type {ConnectorKey, CollectionWindow, Collected} from './connectors/types';
 import type {Arm, ViralExperiment} from './learning';
 import type {StoreMetricKey} from './store-marketing';
 import type {Campaign} from './agency';
 
-// 워커가 같은 대상을 과도하게 다시 부르지 않도록 하는 최소 간격.
-export const COLLECT_INTERVAL_MS = 6 * 3600000;
+// 워커가 같은 대상을 과도하게 다시 부르지 않도록 하는 최소 간격(정의는 lib/measurement-status.ts).
+export {COLLECT_INTERVAL_MS};
 
 // arm 하나의 수집 기록. 두 arm이 서로 다른 기간·정의에서 왔는지 비교 전에 확인할 수 있도록 arm별로 보관한다.
 // target·storeValues(PR 4b-2): 그 수집의 광고 대상과 점포 지표(광고비 등). 최상위 storeValues는 마지막 수집 arm의 값으로 덮이므로 비용 장부로 옮길 값은 arm별로 읽는다(lib/spend-transfer.ts).
@@ -46,10 +49,16 @@ export type MeasurementSource = {
  target: string;
  window: CollectionWindow;
  lastFetchedAt: string;
+ // 워커 실패 사유. 커넥터 문구 대신 분류 코드(errorCode)의 정해진 사유만 저장한다(security-ops-5). 이 필드가 생기기 전 레코드에는 문구가 남아 있어 화면·API로 내보내지 않는다.
  lastError: string | null;
+ errorCode?: CollectErrorCode;
+ // 연속 실패 수. 성공하거나 사람이 다시 수집하면 레코드를 새로 쓰므로 0으로 돌아간다.
+ failures?: number;
  // 실험이 끝나면 더 이상 수집하지 않는다. 종료 조건이 없으면 외부 API 호출이 무한히 누적된다.
  stopped?: boolean;
  stoppedReason?: string;
+ // 인증 오류로 멈춘 대상(스위치 collect_guard). 실험 종료로 멈춘 대상과 구분해 '재연결 필요'로 보인다.
+ stoppedFor?: 'reauth';
  // 워커 재수집 때 to를 마지막 완결일(어제, Asia/Seoul)까지 넓힌다. 실험 종료일이 있으면 그날까지, from은 유지한다.
  // 같은 실험의 롤링 arm은 같은 tick에 같은 to로 함께 다시 수집한다. 이 필드가 없는 이전 대상은 처음 기간을 그대로 다시 조회한다.
  rolling?: boolean;
@@ -60,6 +69,17 @@ const armLabels = {control: '대조안', treatment: '실험안'} as const;
 const seoulDay = (at: number | string) => new Date(at).toLocaleDateString('en-CA', {timeZone: 'Asia/Seoul'});
 // 마지막 완결일(어제, Asia/Seoul). 오늘은 집계가 끝나지 않은 날이라 롤링 상한으로 쓰지 않는다(R5).
 const lastCompleteDay = () => seoulDay(Date.now() - 86400000);
+// 수집 기간은 YYYY-MM-DD이고 시작일이 종료일보다 늦을 수 없다. 자격증명을 풀거나 외부 API를 부르기 전에 확인한다.
+function collectionWindow(input: Record<string, unknown>): CollectionWindow {
+ const day = (value: unknown, label: string) => {
+  const v = str(value, label, 20, true);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || !Number.isFinite(Date.parse(v))) throw new ApiError(400, `${label}을 YYYY-MM-DD 형식으로 입력하세요.`);
+  return v;
+ };
+ const window = {from: day(input.from, '수집 시작일'), to: day(input.to, '수집 종료일')};
+ if (window.from > window.to) throw new ApiError(400, '수집 기간을 확인하세요.');
+ return window;
+}
 // Instagram 미디어 인사이트는 게시 이후 누적값이라 요청 기간이 값에 영향을 주지 않는다. 기간 불일치·당일 부분 집계 경고는 기간 집계 커넥터에만 붙인다.
 const windowed = (channel: ConnectorKey) => channel !== 'instagram';
 // 수집 기간이 수집일(Asia/Seoul)까지 닿으면 당일 부분 집계다. 기간 문자열이 같아도 수집 시각에 따라 값이 다르다.
@@ -67,7 +87,7 @@ export const partialDay = (entry: Pick<MeasurementArmDraft, 'window' | 'fetchedA
 
 // 이전 초안은 기간·정의를 하나만 가졌다(마지막으로 수집한 arm의 것). 그 값을 값이 있는 arm의 기록으로 해석하되,
 // 기간은 그 arm의 수집 대상(measurement_source)에 남은 기간을 우선 쓴다. 다른 arm의 기간이 붙어 불일치가 가려지지 않게 한다(R6).
-function armsOf(draft: MeasurementDraft | null, sources: MeasurementSource[]): NonNullable<MeasurementDraft['arms']> {
+export function armsOf(draft: MeasurementDraft | null, sources: MeasurementSource[]): NonNullable<MeasurementDraft['arms']> {
  if (!draft) return {};
  if (draft.arms) return draft.arms;
  return Object.fromEntries(arms.filter(a => draft[a]).map(a => [a, {value: draft[a], window: sources.find(s => s.arm === a)?.window ?? draft.window, definition: draft.definition, limitations: draft.limitations, fetchedAt: draft.fetchedAt}]));
@@ -114,12 +134,12 @@ export async function collectForExperiment(owner: string, input: Record<string, 
  const arm = arms.find(a => a === input.arm);
  if (!arm) throw new ApiError(400, '대조안 또는 실험안을 선택하세요.');
  const connector = connectorFor(input.channel);
- if (experiment.status !== 'running') throw new ApiError(400, '진행 중인 실험에만 성과를 수집할 수 있습니다.');
+ if (experiment.status !== 'running') throw new ApiError(409, '진행 중인 실험에만 성과를 수집할 수 있습니다.');
  // 다른 채널의 수치를 실험 arm에 넣으면 판정 자체가 무의미해진다. 저장소의 다른 비교 경로와 같은 기준이다.
  const channelName = channelNameForConnector(connector.key);
  if (channelName !== experiment.channel) throw new ApiError(400, `이 실험의 채널은 ${experiment.channel}입니다. ${connector.label} 성과는 넣을 수 없습니다.`);
  const target = str(input.target, '광고 대상 ID', 100, true);
- const window: CollectionWindow = {from: str(input.from, '수집 시작일', 20, true), to: str(input.to, '수집 종료일', 20, true)};
+ const window = collectionWindow(input);
 
  // 우선순위는 지점 > 브랜드 > 워크스페이스 기본이다. 다른 브랜드의 자격증명은 후보가 아니다(lib/channel-credentials.ts).
  const {credential, resolvedScope} = await loadCredential(owner, connector.key, await credentialScope(owner, experiment));
@@ -172,9 +192,9 @@ export async function collectForExperiment(owner: string, input: Record<string, 
 async function stopReason(owner: string, experimentId: string) {
  try {
   const experiment = await readRecord<ViralExperiment>(owner, 'viral_experiment', experimentId);
-  return experiment.status === 'running' ? null : '실험이 종료되어 수집을 멈췄습니다.';
+  return experiment.status === 'running' ? null : STOP_REASONS.ended;
  } catch (error) {
-  if (error instanceof ApiError && error.status === 404) return '실험 기록이 없어 수집을 멈췄습니다.';
+  if (error instanceof ApiError && error.status === 404) return STOP_REASONS.missing;
   throw error;
  }
 }
@@ -197,11 +217,30 @@ async function rollingTo(owner: string, group: MeasurementSource[]) {
  return group.reduce((to, s) => s.window.to > to ? s.window.to : to, bound);
 }
 
-// 워커가 호출한다. 기한이 된 대상 하나(롤링 대상이면 같은 실험의 롤링 arm까지)만 진행하고, 실패는 기록만 하고 다음 tick에 다시 시도한다.
+// security-ops-5: 실패를 커넥터 문구가 아니라 종류로 나눈다. 인증 실패·연결 없음은 같은 자격증명으로 다시 시도해도 성공하지 않는다.
+export function classifyCollectError(error: unknown): CollectErrorCode {
+ if (error instanceof ConnectorAuthError) return 'reauth_required';
+ if (error instanceof ConnectorMissingError) return 'not_connected';
+ if (error instanceof ApiError) return error.status >= 500 ? 'upstream_unavailable' : 'request_rejected';
+ return 'unknown';
+}
+
+// 스위치 collect_guard(기본 꺼짐): 인증 오류 즉시 멈춤과 연속 실패 백오프. 스위치를 읽지 못하면 꺼짐으로 본다(기존 6시간 재시도).
+export async function collectGuardEnabled(owner: string) {
+ try {
+  return await isEnabled(owner, 'collect_guard');
+ } catch {
+  return false;
+ }
+}
+
+// 워커가 호출한다. 기한이 된 대상 하나(롤링 대상이면 같은 실험의 롤링 arm까지)만 진행하고, 실패는 분류 코드로 기록하고 다음 기한에 다시 시도한다.
+// 스위치가 켜지면 인증 오류는 즉시 멈추고(재연결 필요), 연속 실패가 늘면 다음 시도 간격을 6→12→24시간으로 늘린다.
 export async function collectDueMeasurements(owner: string) {
- const sources = await listRecords<MeasurementSource>(owner, 'measurement_source');
+ const [sources, guard] = await Promise.all([listRecords<MeasurementSource>(owner, 'measurement_source'), collectGuardEnabled(owner)]);
+ const interval = (s: MeasurementSource) => guard ? retryDelayMs(s.failures ?? (s.lastError ? 1 : 0)) : COLLECT_INTERVAL_MS;
  const due = sources
-  .filter(s => !s.stopped && Date.now() - Date.parse(s.lastFetchedAt) >= COLLECT_INTERVAL_MS)
+  .filter(s => !s.stopped && Date.now() - Date.parse(s.lastFetchedAt) >= interval(s))
   .sort((a, b) => a.lastFetchedAt.localeCompare(b.lastFetchedAt));
  const source = due[0];
  if (!source) return {status: 'idle' as const};
@@ -210,7 +249,11 @@ export async function collectDueMeasurements(owner: string) {
   await recordStatement(owner, 'measurement_source', source.id, {...source, stopped: true, stoppedReason: reason, lastFetchedAt: stamp()}, source.experimentId).run();
   return {status: 'stopped' as const};
  }
- const fail = (s: MeasurementSource, error: unknown) => recordStatement(owner, 'measurement_source', s.id, {...s, lastFetchedAt: stamp(), lastError: error instanceof ApiError ? error.message : '성과를 가져오지 못했습니다.'}, s.experimentId).run();
+ const fail = (s: MeasurementSource, error: unknown) => {
+  const code = classifyCollectError(error), stop = guard && REAUTH_CODES.includes(code);
+  const failed: MeasurementSource = {...s, lastFetchedAt: stamp(), lastError: collectErrorReasons[code], errorCode: code, failures: (s.failures ?? (s.lastError ? 1 : 0)) + 1, ...(stop ? {stopped: true, stoppedFor: 'reauth' as const, stoppedReason: STOP_REASONS.reauth} : {})};
+  return recordStatement(owner, 'measurement_source', s.id, failed, s.experimentId).run();
+ };
  // 롤링 대상은 같은 실험의 롤링 arm을 이번 tick에 같은 to로 함께 다시 수집한다. 수동 수집 시각이 달라도 두 arm의 기간이 어긋나지 않는다(loop-9).
  const group = source.rolling === true ? sources.filter(s => s.experimentId === source.experimentId && s.rolling === true && !s.stopped) : [source];
  let to: string;

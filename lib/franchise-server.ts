@@ -20,6 +20,7 @@ import {ASSET_ACTIONS,EVENT_ACTIONS,FranchiseAssetError,runAssetAction,replayAss
 import type {BrandFact} from './brand-facts';
 import {IMPORT_ACTIONS,IMPORT_NO_LOCK,IMPORT_INPUT_BOUND,IMPORT_KEY_EXEMPT,FranchiseImportError,runLeadImportAction,importsView,importRefsView,type ImportAction,type LeadImportAuditExtra} from './franchise-lead-import-server';
 import {REPORT_ACTIONS,REPORT_OFF_EXEMPT,FranchiseReportError,runReportAction,reportTargetOf,reportView,replayReportExport,type ReportAction,type ReportAuditExtra,type LeadGateSummary} from './franchise-report-server';
+import {EXPERIMENT_ACTIONS,EXPERIMENT_OFF_EXEMPT,EXPERIMENT_INPUT_BOUND,runExperimentAction,experimentTargetOf,experimentsView,type ExperimentAction} from './franchise-experiment-server';
 import {RECRUITMENT_ACTIONS,INPUT_BOUND,INFLOW_FILTERS,FranchiseRecruitmentError,runRecruitmentAction,recruitmentTargetOf,recruitmentView,readLeadCodes,unregisteredCount,attributionsOf,attributionView,inflowMatch,type RecruitmentAction,type RecruitmentAuditExtra} from './franchise-recruitment-server';
 import {FRANCHISE_ERRORS,FRANCHISE_LABELS,CONTACT_FIELDS,BUDGET_BANDS,TIMING_BANDS,SOURCE_CHANNELS,INTAKE_BASIS_TYPES,needsSourceNotice,REFERRAL_FROM,MARKETING_METHODS,CLOSE_REASONS,REVEAL_PURPOSES,EXPORT_PURPOSES,BACKDATE_REASONS,CORRECTION_REASONS,REGISTRY_AMEND_REASONS,BOARD_TODOS,SUBJECT_REQUEST_TYPES,SUBJECT_REQUEST_STATUS,SUBJECT_RESOLUTIONS,SUBJECT_CHANNELS,BRANCHES,EXPORT_COLUMNS,
  STAGE_LABELS,SOURCE_LABELS,BUDGET_LABELS,TIMING_LABELS,BASIS_LABELS,MARKETING_STATUS_LABELS,CONTACT_NOTE,DUE_LABEL,RETENTION_LABEL,RECHECK_LABEL,MEMO_HINT,ACTIVITY_EVENTS,
@@ -102,22 +103,22 @@ const OTHER_ACTIONS=['create_lead','reveal_contact','find_contact','export_leads
 // 트랙 R R15a-2a 모집 자료·행사 작업 9개(lib/franchise-assets-server.ts).
 // 트랙 R R5b-1 모집 코드·비용 작업 4개(lib/franchise-recruitment-server.ts). R5b-2 리드 CSV 가져오기 작업 3개(lib/franchise-lead-import-server.ts).
 // 트랙 R R6b 모집 주간 보고 확정·내려받기와 증빙 묶음 작업 3개(lib/franchise-report-server.ts).
-export const FRANCHISE_ACTIONS=[...SETTINGS_ACTIONS,...EVIDENCE_ACTIONS,...LEAD_MUTATIONS,...OTHER_ACTIONS,...ASSET_ACTIONS,...EVENT_ACTIONS,...RECRUITMENT_ACTIONS,...IMPORT_ACTIONS,...REPORT_ACTIONS] as const;
+export const FRANCHISE_ACTIONS=[...SETTINGS_ACTIONS,...EVIDENCE_ACTIONS,...LEAD_MUTATIONS,...OTHER_ACTIONS,...ASSET_ACTIONS,...EVENT_ACTIONS,...RECRUITMENT_ACTIONS,...IMPORT_ACTIONS,...REPORT_ACTIONS,...EXPERIMENT_ACTIONS] as const;
 type Action=typeof FRANCHISE_ACTIONS[number];
 const has=(list:readonly string[],action:string)=>list.includes(action);
 // leadId로 기존 리드를 읽는 작업.
 const ON_LEAD:readonly string[]=[...EVIDENCE_ACTIONS,...LEAD_MUTATIONS,'reveal_contact','erase_lead'];
 // 모집 자료 승인·내보내기·게시 위치·폐기와 행사 등록·변경·취소는 대표·관리자만(직원 403). 초안 저장·신청·참석은 모든 역할.
 // 모집 코드 발급·사용 중지, 모집 비용 기록·무효화, 리드 모집 코드 제외(R5b-1), 리드 CSV 검사·미리보기·확정(R5b-2, 제3자가 준 파일)도 대표·관리자만.
-const ADMIN_ACTIONS:readonly string[]=[...SETTINGS_ACTIONS,...EVIDENCE_ACTIONS,'export_leads','purge','erase_lead','update_subject_request','assign_lead','reopen_lead','asset_approve','asset_export','asset_place','asset_retire','event_save','event_cancel',...RECRUITMENT_ACTIONS,'strike_lead_code',...IMPORT_ACTIONS,...REPORT_ACTIONS];
+const ADMIN_ACTIONS:readonly string[]=[...SETTINGS_ACTIONS,...EVIDENCE_ACTIONS,'export_leads','purge','erase_lead','update_subject_request','assign_lead','reopen_lead','asset_approve','asset_export','asset_place','asset_retire','event_save','event_cancel',...RECRUITMENT_ACTIONS,'strike_lead_code',...IMPORT_ACTIONS,...REPORT_ACTIONS,...EXPERIMENT_ACTIONS];
 // 연락처 키가 없어도 되는 작업(설정, 파기·삭제, 정보주체 요청, 광고성 정보 철회, 모집 자료·행사 9개). 그 밖은 리드 조회 전에 503이다.
 // 리드 CSV 파일 검사(R5b-2)는 연락처를 다루지 않아 키가 없어도 된다. 미리보기·확정은 중복 키·암호화가 필요하다.
-const KEY_EXEMPT:readonly string[]=[...SETTINGS_ACTIONS,'purge','erase_lead','add_subject_request','update_subject_request',...ASSET_ACTIONS,...EVENT_ACTIONS,...RECRUITMENT_ACTIONS,...IMPORT_KEY_EXEMPT,...REPORT_ACTIONS];
+const KEY_EXEMPT:readonly string[]=[...SETTINGS_ACTIONS,'purge','erase_lead','add_subject_request','update_subject_request',...ASSET_ACTIONS,...EVENT_ACTIONS,...RECRUITMENT_ACTIONS,...IMPORT_KEY_EXEMPT,...REPORT_ACTIONS,...EXPERIMENT_ACTIONS];
 // 영수증 입력 해시를 묶는 작업(같은 요청 번호·다른 입력은 409): 모집 코드 발급·비용 기록(R5b-1), 리드 CSV 확정(R5b-2).
-const BOUND:readonly string[]=[...INPUT_BOUND,...IMPORT_INPUT_BOUND];
+const BOUND:readonly string[]=[...INPUT_BOUND,...IMPORT_INPUT_BOUND,...EXPERIMENT_INPUT_BOUND];
 // 스위치가 꺼져도 되는 작업. 광고성 정보 철회도 된다. 대표·관리자는 정보주체 요청 처리(정정·출처 고지·종결)도 한다. 모집 자료 폐기·행사 취소·모집 비용 무효화·모집 코드 사용 중지는 보호 방향이라 된다.
 // 모집 주간 보고 내려받기·증빙 묶음(R6b)은 읽기·입증이라 된다(확정은 켜져야 한다).
-const OFF_EXEMPT:readonly string[]=['reveal_contact','find_contact','export_leads','purge','erase_lead','add_subject_request','update_subject_request','asset_retire','event_cancel','spend_void','code_retire',...REPORT_OFF_EXEMPT];
+const OFF_EXEMPT:readonly string[]=['reveal_contact','find_contact','export_leads','purge','erase_lead','add_subject_request','update_subject_request','asset_retire','event_cancel','spend_void','code_retire',...REPORT_OFF_EXEMPT,...EXPERIMENT_OFF_EXEMPT];
 const NO_VERSION:readonly string[]=['reveal_contact','erase_lead'];
 
 type Ctx={who:Actor;owner:string;action:Action;input:Json;rid:string;now:string;brandId:string;enabled:boolean;by:ActorSnapshot;inputSha256?:string};
@@ -145,6 +146,8 @@ function targetOf(action:string,input:Json):string|null|undefined{
  if(has(IMPORT_ACTIONS,action))return null;
  // 모집 주간 보고·증빙 묶음(R6b): 확정은 주, 내려받기는 주·형식·판, 증빙 묶음은 범위·대상 id.
  if(has(REPORT_ACTIONS,action))return reportTargetOf(action,input);
+ // 소재 실험(R6d-2): 계획은 null(입력 해시로 대조), 결과·취소는 실험 id.
+ if(has(EXPERIMENT_ACTIONS,action))return experimentTargetOf(action,input);
  return undefined;
 }
 // 영수증 입력 해시: requestId를 뺀 입력을 키 정렬 정본 JSON으로 만든 SHA-256(INPUT_BOUND 작업만). 같은 요청 번호로 다른 입력을 보내면 재생하지 않고 409다.
@@ -206,7 +209,7 @@ function leadGateOf(rows:readonly EvidenceRow[],signedAt?:string):FranchiseLead{
 }
 const windowInputOf=(ctx:GateContext,gate:FranchiseLead):ContractWindowInput=>({deliveries:gate.deliveries,advice:gate.advice,disclosureVersions:ctx.disclosureVersions,contractTemplates:ctx.contractTemplates,holidays:ctx.holidays});
 // 모집 주간 보고·증빙 묶음(R6b)의 게이트 요약: 증빙 기록(정정·무효 표시), 계약 가능 시각 창, 계약 게이트(계약 기록이 있을 때만), 산정서 의무. 판정 맥락은 한 번만 읽는다.
-async function gateSummaries(owner:string,brandId:string,leads:readonly LeadRecord[],now:string):Promise<Map<string,LeadGateSummary>>{
+export async function gateSummaries(owner:string,brandId:string,leads:readonly LeadRecord[],now:string):Promise<Map<string,LeadGateSummary>>{
  const out=new Map<string,LeadGateSummary>();
  if(!leads.length)return out;
  const {ctx}=await gateContext(owner,brandId);
@@ -1134,6 +1137,9 @@ function other(c:Ctx):Promise<Outcome>{
  // 모집 주간 보고·증빙 묶음(R6b): 같은 port 방식에 게이트 요약을 더한다(새 모듈은 이 모듈을 import하지 않는다).
  if(has(REPORT_ACTIONS,c.action))return runReportAction({owner:c.owner,brandId:c.brandId,now:c.now,actor:{id:c.who.id,role:c.who.role},input:c.input,action:c.action as ReportAction,
   port:{commit:(s,stale)=>commit(s,stale),receipt:(a,r,x,t)=>auditStmt(c.owner,receiptAudit(c,a,r,x,t)),gates:gateSummaries}});
+ // 소재 실험 선별(R6d-2): 같은 port 방식(새 모듈은 이 모듈을 import하지 않는다).
+ if(has(EXPERIMENT_ACTIONS,c.action))return runExperimentAction({owner:c.owner,brandId:c.brandId,now:c.now,actor:{id:c.who.id,role:c.who.role},input:c.input,action:c.action as ExperimentAction,
+  port:{commit:(s,stale)=>commit(s,stale),receipt:(a,r,x,t)=>auditStmt(c.owner,receiptAudit(c,a,r,x,t))}});
  switch(c.action){
   case 'save_profile':return saveProfile(c);
   case 'register_disclosure_version':return registerVersion(c);
@@ -1155,7 +1161,7 @@ function other(c:Ctx):Promise<Outcome>{
 }
 
 // ── GET 보기 ──
-export const FRANCHISE_VIEWS=['status','intake','board','lead','settings','requests','audit','assets','asset','events','codes','spend','imports','report'] as const;
+export const FRANCHISE_VIEWS=['status','intake','board','lead','settings','requests','audit','assets','asset','events','codes','spend','imports','report','experiments'] as const;
 // hasRecords: 리드·정보주체 요청·모집 자료·행사·모집 비용·모집 코드 기록이 하나라도 있으면 참(R15a-2b S2, R5b-1). 스위치가 꺼져도 폐기·행사 취소·비용 무효화·코드 사용 중지 화면에 대표·관리자가 닿게 한다(lib/nav-state.ts franchiseMenuVisible).
 async function statusView(who:Actor){
  const any=await database().prepare("SELECT 1 FROM records WHERE owner=? AND kind IN ('franchise_lead','franchise_subject_request','recruitment_asset','recruitment_event','recruitment_spend','recruitment_code') LIMIT 1").bind(who.owner).first();
@@ -1254,5 +1260,7 @@ export async function franchiseGet(req:Request):Promise<Response>{
  if(view==='imports')return json(await importsView(who,brandId));
  // 모집 주간 보고(R6b, 모든 역할, 집계만): 연락처 키 불필요, 스위치가 꺼져도 읽는다.
  if(view==='report')return json(await reportView(who,brandId,params,stamp(),gateSummaries));
+ // 소재 실험 선별(R6d-2, 모든 역할, 확인 층은 건수만): 연락처 키 불필요, 스위치가 꺼져도 읽는다.
+ if(view==='experiments')return json(await experimentsView(who,brandId,stamp()));
  return json(await auditView(who,brandId));
 }
