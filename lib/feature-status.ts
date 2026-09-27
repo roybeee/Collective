@@ -140,6 +140,13 @@ function playbookSignalsRow(flags:unknown):FeatureRow{
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'교정 신호 스위치 상태를 확인하지 못했습니다',link};
  return state.enabled?{...base,status:'available',reason:'브랜드×역할 교정 90일 5건 이상 초안 대상 · 규칙 버전별 파생 피드백 · 4주 재발률(읽을 때 계산, 모델 호출 없음, 규칙 자동 변경 없음)'}:{...base,status:'blocked',reason:'기능 스위치 b3_playbook_signals 꺼짐 · 소유자가 켭니다',link};
 }
+// 주간 품질 집계(B2 2단계): 기능 스위치 b2_digest_queue 상태를 읽는다. 켜지면 워커 tick이 주 1회 집계·드리프트 경보를 남기고 사용량 화면에 역할×프롬프트 버전×보고 모델 표가 보인다.
+function qualityDigestRow(flags:unknown):FeatureRow{
+ const base={key:'quality-digest',label:'주간 품질 집계 · 드리프트 경보(워커 digest 큐)'},link:FeatureLink={label:'설정의 AI 사용량에서 확인',view:'settings',section:'settings-ai'};
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='b2_digest_queue'):undefined;
+ if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'주간 품질 집계 스위치 상태를 확인하지 못했습니다',link};
+ return state.enabled?{...base,status:'available',reason:'조사 작업자가 주 1회 지난주 집계·경보를 기록(모델 호출 없음, 캠페인 상태 변경 없음)'}:{...base,status:'blocked',reason:'기능 스위치 b2_digest_queue 꺼짐 · 소유자가 켭니다',link};
+}
 export function featureRows(input:FeatureInput={}):FeatureRow[]{
  const now=typeof input.now==='number'?input.now:Date.now(),brands=brandIds(input.brands);
  return [
@@ -159,6 +166,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   customerReportRow(input.flags),
   rewardLineageRow(input.flags),
   playbookSignalsRow(input.flags),
+  qualityDigestRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
   {key:'pos-auto',label:'POS 자동 수집',status:'unimplemented',reason:'POS 연동 없음 · CSV로 가져오세요'},
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},
