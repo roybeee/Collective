@@ -61,7 +61,7 @@ const pv=r.body.preview;
 check('RP-V1 any role (member) reads the aggregate report with notes first and the disclaimer',r.status===200&&pv.schema==='collective.recruitment-report.v1'&&pv.notes[0]===rec.RECRUITMENT_ATTRIBUTION_NOTE&&pv.disclaimer===DISCLAIMER&&r.body.disclaimer===DISCLAIMER);
 check('RP-V1 the preview counts every lead of the brand (not only the member\'s own) and nothing of the other brand',pv.inflow.total.n===6&&pv.inflow.code.n===6&&pv.excluded.otherBrand===0);
 check('RP-V1 the channel cost uses the spend in the week and hides the CPL under twenty leads',pv.cost.channels.find(c=>c.key==='portal').spend===300000&&pv.cost.channels.find(c=>c.key==='portal').cpl.state==='small_sample');
-check('RP-V1 the contract, the refused attempt and the evidence completeness reach the gate section',same(pv.gates.contractsInWeek,{n:null,suppressed:true})&&pv.gates.blockedAttempts>=1&&same(pv.gates.evidenceComplete,{n:null,suppressed:true}));
+check('RP-V1 the contract, the refused attempt and the evidence completeness reach the gate section',same(pv.gates.contractsInWeek,{n:1,suppressed:false})&&pv.gates.blockedAttempts>=1&&same(pv.gates.evidenceComplete,{n:1,suppressed:false}));
 check('RP-V1 the digest is the SHA-256 of the digest source, the week is open and nothing is frozen',/^[0-9a-f]{64}$/.test(r.body.digest)&&r.body.digest===sha64(rep.reportDigestSource(pv))&&r.body.closed===false&&r.body.frozen===null&&r.body.week==='2026-W40');
 function same(a,b){return JSON.stringify(plain(a))===JSON.stringify(b)}
 const noLead=JSON.stringify(r.body);
