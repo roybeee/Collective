@@ -147,6 +147,13 @@ function qualityDigestRow(flags:unknown):FeatureRow{
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'주간 품질 집계 스위치 상태를 확인하지 못했습니다',link};
  return state.enabled?{...base,status:'available',reason:'조사 작업자가 주 1회 지난주 집계·경보를 기록(모델 호출 없음, 캠페인 상태 변경 없음)'}:{...base,status:'blocked',reason:'기능 스위치 b2_digest_queue 꺼짐 · 소유자가 켭니다',link};
 }
+// 가맹 경쟁 브랜드 공공 벤치마크(트랙 R R7a): r_franchise 스위치 뒤. 대표·관리자가 가맹 모집 → 벤치마크 탭에서 공공데이터 키를 저장한 뒤 버튼으로 적재한다(키가 없으면 막힘, 외부 호출 0).
+function franchiseBenchmarkRow(flags:unknown):FeatureRow{
+ const base={key:'franchise-benchmark',label:'가맹 경쟁 브랜드 공공 벤치마크(공정위 공개 API)'},link:FeatureLink={label:'가맹 모집의 벤치마크 탭으로 이동',view:'franchise',tab:'benchmark'};
+ const enabled=franchiseSwitch(flags);
+ if(enabled===null)return {...base,status:'blocked',reason:'공공 벤치마크 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:'대표·관리자가 공공데이터 키를 저장한 뒤 버튼으로 적재(토큰 0, 주기 조회 없음) · 키가 없으면 적재 막힘 · 타 브랜드 공개 수치이며 자사 예상매출 근거가 아님',link}:{...base,status:'blocked',reason:'기능 스위치 r_franchise 꺼짐 · 소유자가 켭니다',link};
+}
 export function featureRows(input:FeatureInput={}):FeatureRow[]{
  const now=typeof input.now==='number'?input.now:Date.now(),brands=brandIds(input.brands);
  return [
@@ -167,6 +174,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   rewardLineageRow(input.flags),
   playbookSignalsRow(input.flags),
   qualityDigestRow(input.flags),
+  franchiseBenchmarkRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
   {key:'pos-auto',label:'POS 자동 수집',status:'unimplemented',reason:'POS 연동 없음 · CSV로 가져오세요'},
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},
