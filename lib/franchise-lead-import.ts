@@ -1,12 +1,14 @@
 // 트랙 R 리드 CSV 가져오기 순수 모듈(R5a): 전송·해독(UTF-8만), 구조, 민감 열 이름, 칸 값 개인정보 검사, 매핑, 행 정규화, 제공 증빙 형식, 기간 겹침, 파일 해시·계획 해시.
-// 저장·API·화면·kind·수집 근거(명세 2.7, A안 전용)는 R5b-2·R5c가 더한다. 가명 코드(leadSystemCode)도 서버가 만든다. 모듈은 시계·난수·조회를 읽지 않고 외부 호출이 없다.
+// R5b-2(대표 결정 32 B안): 이름·전화·이메일 머리글 열을 연락처 대상으로 매핑할 수 있다. 매핑한 연락처 열에서만 이름·전화·이메일을 받고, 매핑하지 않은 열의 개인정보는 파일 전체를 거부한다.
+// 수집 근거(명세 2.7.1)와 파일 안·기존 리드 연락처 병합(대표 결정 '리드 1건, 집계는 파일별')도 여기서 판정한다. 기존 리드 대조(HMAC 조회)는 서버가 mergeExisting으로 넘긴다.
+// 저장·API·화면은 서버(lib/franchise-lead-import-server.ts)·R5c가 한다. 가명 코드(leadSystemCode)도 서버가 만든다. 모듈은 시계·난수·조회를 읽지 않고 외부 호출이 없다.
 // 브라우저 사전 검사(localFileCheck)와 서버 판정이 같은 함수를 쓴다. 칸 값·탐지 종류는 문구·오류 어디에도 싣지 않는다(행 번호와 열 번호 또는 통과한 머리글 이름만).
 // 근거: R5 구현 명세 초안 2의 2.6·3절(계획 R5 I1~I5·P1~P3). 값 패턴 검사는 최선 노력이며(lib/pii-scan.ts 한계), 모든 판정은 COLLECTIVE 휴리스틱이고 법률 자문이 아니다.
 import {parseCsv,IMPORT_LIMITS} from './order-import';
 import {RECRUITMENT_VERSION,RECRUITMENT_DISCLAIMER,RECRUITMENT_ATTRIBUTION_NOTE,PROVENANCE_CHANNELS,EVENT_CHANNELS,isRecruitmentChannel,recruitmentTokens,attributeLead,type RecruitmentChannel,type CodeBook,type EventLite,type RecruitmentActor} from './franchise-recruitment';
 import {scanText} from './pii-scan';
 import {isDate,isInstant,parseInstant,toKstDate,addDays} from './franchise-rules';
-import {BUDGET_LABELS,TIMING_LABELS,UNCONVERTED_RETENTION_DAYS} from './franchise';
+import {BUDGET_LABELS,TIMING_LABELS,UNCONVERTED_RETENTION_DAYS,normalizeName,normalizePhone,normalizeEmail} from './franchise';
 
 function deepFreeze<T>(value:T):T{
  if(value&&typeof value==='object'&&!Object.isFrozen(value)){Object.freeze(value);for(const k of Object.keys(value))deepFreeze((value as Record<string,unknown>)[k])}
@@ -40,14 +42,29 @@ async function sha256Hex(data:Uint8Array):Promise<string>{
 
 // ── 버전·한도·대상 ──
 // 인코딩·대상·금지 대상·민감 열 이름·가져오기 전용 탐지·시각 문법·지역 규칙·한도의 판. 가져오기 기록에 저장한다.
-export const LEAD_IMPORT_VERSION='fr-lead-import@2026-09-27.1';
-// 바이트·행 한도는 IMPORT_LIMITS(주문 가져오기)보다 작거나 같다. 리드는 행마다 리드·생성 이벤트 두 문장이라 200행이면 402문장이다. base64 133,336자 = 100,000바이트.
-export const LEAD_IMPORT_LIMITS=deepFreeze({maxBytes:100000,maxBase64:133336,maxRows:200,maxCodesPerRow:5,maxErrors:50,maxPiiPositions:20,
+export const LEAD_IMPORT_VERSION='fr-lead-import@2026-09-27.2';
+// 바이트·행 한도는 IMPORT_LIMITS(주문 가져오기)보다 작거나 같다. 결정 32로 새 리드는 리드·중복 키 두 개·생성 이벤트 네 문장이라 100행이면 확정 한 batch가 402문장이다(명세의 200행·402문장 예산을 지킨다). base64 133,336자 = 100,000바이트.
+export const LEAD_IMPORT_LIMITS=deepFreeze({maxBytes:100000,maxBase64:133336,maxRows:100,maxCodesPerRow:5,maxErrors:50,maxPiiPositions:20,
  maxAgeDays:UNCONVERTED_RETENTION_DAYS,maxPeriodDays:180,futureToleranceMs:300000,expiringWarnDays:14});
-export const LEAD_IMPORT_TARGETS=deepFreeze({receivedAt:'접수 시각',region:'희망 시·도·시·군·구',budgetBand:'예산 구간',timingBand:'희망 시기',codes:'모집 코드',landingUrl:'유입 주소(utm_content)'});
+export const LEAD_IMPORT_TARGETS=deepFreeze({receivedAt:'접수 시각',region:'희망 시·도·시·군·구',budgetBand:'예산 구간',timingBand:'희망 시기',codes:'모집 코드',landingUrl:'유입 주소(utm_content)',contactName:'이름(연락처)',contactPhone:'전화(연락처)',contactEmail:'이메일(연락처)'});
 export type LeadImportTarget=keyof typeof LEAD_IMPORT_TARGETS;
 const TARGET_KEYS=Object.keys(LEAD_IMPORT_TARGETS) as LeadImportTarget[];
-// 민감·고유식별 열과 문의 내용 같은 자유 텍스트는 매핑할 대상 자체가 없다(계획 I4).
+// 연락처 대상(결정 32): 이름·전화·이메일 머리글 열만 연결할 수 있고 결정 22의 R4b 원장과 같이 암호화해 저장한다.
+export const CONTACT_TARGETS=deepFreeze(['contactName','contactPhone','contactEmail'] as const);
+export type ContactTarget=typeof CONTACT_TARGETS[number];
+// 연락처 머리글: NFKC → 소문자 → 공백·_·-·.·· 제거 뒤 아래 값과 정확히 같아야 한다. '휴대폰1'·'이름(한자)'·'연락번호'처럼 조금이라도 다르면 연락처 열이 아니고 민감 열 이름 검사로 파일 전체를 거부한다.
+export const CONTACT_HEADER_ALIASES=deepFreeze({contactName:['이름','성명','성함','신청자','신청자명','신청인','고객명','문의자','name','fullname'],
+ contactPhone:['연락처','전화','전화번호','휴대폰','휴대폰번호','핸드폰','핸드폰번호','휴대전화','휴대전화번호','phone','phonenumber','mobile','mobilenumber','tel','hp','cellphone'],
+ contactEmail:['이메일','이메일주소','메일','email','emailaddress']} as Record<ContactTarget,readonly string[]>);
+const contactHeaderKey=(h:string)=>h.normalize('NFKC').toLowerCase().replace(/[\s_.·-]+/g,'');
+export function contactColumnKind(header:unknown):ContactTarget|null{
+ try{
+  if(typeof header!=='string')return null;
+  const k=contactHeaderKey(header);
+  return CONTACT_TARGETS.find(t=>CONTACT_HEADER_ALIASES[t].includes(k))??null;
+ }catch{return null}
+}
+// 민감·고유식별 열과 문의 내용 같은 자유 텍스트는 매핑할 대상 자체가 없다(계획 I4). 이름·전화·이메일은 위 연락처 대상으로만 연결한다.
 export const FORBIDDEN_TARGETS=deepFreeze(['name','phone','email','address','birthDate','residentId','gender','account','card','memo','message','externalId','ip']);
 // 17개 시·도의 정식·약칭. 지역 칸의 첫 토큰이어야 한다(사람 이름이 '동'으로 끝나도 통과하지 못하게).
 export const SIDO_NAMES=deepFreeze(['서울','서울시','서울특별시','부산','부산시','부산광역시','대구','대구시','대구광역시','인천','인천시','인천광역시','광주','광주시','광주광역시','대전','대전시','대전광역시','울산','울산시','울산광역시',
@@ -79,7 +96,8 @@ export function isSensitiveHeader(header:unknown):boolean{
  }catch{return true}
 }
 // 추천 매핑: NFKC·공백 제거·소문자로 별칭과 정확히 같은 머리글만. 민감 머리글은 고르지 않는다. 한 열은 한 대상에만.
-export const LEAD_MAPPING_ALIASES=deepFreeze({receivedAt:['접수일시','신청일시','문의일시','등록일시','접수일'],region:['희망지역','창업희망지역','지역'],budgetBand:['예산','창업예산'],timingBand:['희망시기','창업시기'],codes:['모집코드','유입코드','코드'],landingUrl:['유입URL','랜딩URL']} as Record<LeadImportTarget,readonly string[]>);
+export const LEAD_MAPPING_ALIASES=deepFreeze({receivedAt:['접수일시','신청일시','문의일시','등록일시','접수일'],region:['희망지역','창업희망지역','지역'],budgetBand:['예산','창업예산'],timingBand:['희망시기','창업시기'],codes:['모집코드','유입코드','코드'],landingUrl:['유입URL','랜딩URL'],
+ contactName:[...CONTACT_HEADER_ALIASES.contactName],contactPhone:[...CONTACT_HEADER_ALIASES.contactPhone],contactEmail:[...CONTACT_HEADER_ALIASES.contactEmail]} as Record<LeadImportTarget,readonly string[]>);
 const aliasKey=(h:string)=>h.normalize('NFKC').replace(/\s+/g,'').toLowerCase();
 export function suggestLeadMapping(headers:readonly string[]):Partial<Record<LeadImportTarget,number>>{
  const out:Partial<Record<LeadImportTarget,number>>=Object.create(null);
@@ -87,8 +105,9 @@ export function suggestLeadMapping(headers:readonly string[]):Partial<Record<Lea
   if(!Array.isArray(headers))return out;
   const list=Array.from(headers as unknown[]),used=new Set<number>();
   for(const target of TARGET_KEYS){
-   const aliases=LEAD_MAPPING_ALIASES[target].map(aliasKey);
-   const i=list.findIndex((h,j)=>!used.has(j)&&typeof h==='string'&&!isSensitiveHeader(h)&&aliases.includes(aliasKey(h)));
+   const aliases=LEAD_MAPPING_ALIASES[target].map(aliasKey),contact=(CONTACT_TARGETS as readonly string[]).includes(target);
+   // 연락처 대상은 같은 종류의 연락처 머리글만, 그 밖 대상은 민감하지 않은 머리글만 고른다.
+   const i=list.findIndex((h,j)=>!used.has(j)&&typeof h==='string'&&(contact?contactColumnKind(h)===target:!isSensitiveHeader(h)&&aliases.includes(aliasKey(h))));
    if(i>=0){out[target]=i;used.add(i)}
   }
   return out;
@@ -98,10 +117,10 @@ export function suggestLeadMapping(headers:readonly string[]):Partial<Record<Lea
 export const providerKeyOf=(label:unknown):string=>{try{return typeof label==='string'?label.normalize('NFKC').replace(/\s+/g,'').toLowerCase():''}catch{return ''}};
 
 // ── 사유 코드·상태·문구 ──
-export const LEAD_IMPORT_ROW_CODES=deepFreeze(['received_missing','received_invalid','received_date_only','received_future','received_too_old','received_after_provided','received_outside_period','region_invalid'] as const);
+export const LEAD_IMPORT_ROW_CODES=deepFreeze(['received_missing','received_invalid','received_date_only','received_future','received_too_old','received_after_provided','received_outside_period','region_invalid','contact_missing','contact_name_invalid','contact_phone_invalid','contact_email_invalid'] as const);
 export const LEAD_IMPORT_SKIP_CODES=deepFreeze(['overlap','duplicate_in_file'] as const);
 export const LEAD_IMPORT_WARNING_CODES=deepFreeze(['budget_unmapped','timing_unmapped','dropped_tokens','truncated_tokens','possible_duplicate_in_file','expiring_within_14d','period_includes_export_day'] as const);
-const ERROR_CODES=['file_too_large','encoding_invalid','csv_invalid','too_many_rows','sensitive_column_in_file','pii_in_file','channel_unknown','mapping_invalid','mapping_forbidden','provenance_required','provenance_invalid','provider_pii','period_invalid','storage_labels_unset','event_channel_mismatch','event_other_brand','confirm_required','row_invalid','invalid_input',
+const ERROR_CODES=['file_too_large','encoding_invalid','csv_invalid','too_many_rows','sensitive_column_in_file','pii_in_file','channel_unknown','mapping_invalid','mapping_forbidden','provenance_required','provenance_invalid','provider_pii','period_invalid','storage_labels_unset','event_channel_mismatch','event_other_brand','confirm_required','row_invalid','invalid_input','contact_mapping_invalid','basis_invalid',
  'role_forbidden','switch_off','branch_not_a','event_cancelled','file_duplicate','no_new_rows','expected_mismatch'] as const;
 export const LEAD_IMPORT_CODES=deepFreeze([...ERROR_CODES,...LEAD_IMPORT_ROW_CODES,...LEAD_IMPORT_SKIP_CODES,...LEAD_IMPORT_WARNING_CODES] as const);
 export type LeadImportCode=typeof LEAD_IMPORT_CODES[number];
@@ -109,9 +128,9 @@ type ErrorCode=typeof ERROR_CODES[number];
 export type LeadRowCode=typeof LEAD_IMPORT_ROW_CODES[number];
 // 한 단계의 코드는 같은 상태다. 행 코드는 row_invalid(400) 안에만 나오고, 건너뜀·경고는 성공 결과(200)의 건수다.
 export const LEAD_IMPORT_CODE_STATUS:Readonly<Record<LeadImportCode,200|400|403|409>>=deepFreeze({
- file_too_large:400,encoding_invalid:400,csv_invalid:400,too_many_rows:400,sensitive_column_in_file:400,pii_in_file:400,channel_unknown:400,mapping_invalid:400,mapping_forbidden:400,provenance_required:400,provenance_invalid:400,provider_pii:400,period_invalid:400,storage_labels_unset:400,event_channel_mismatch:400,event_other_brand:400,confirm_required:400,row_invalid:400,invalid_input:400,
+ file_too_large:400,encoding_invalid:400,csv_invalid:400,too_many_rows:400,sensitive_column_in_file:400,pii_in_file:400,channel_unknown:400,mapping_invalid:400,mapping_forbidden:400,provenance_required:400,provenance_invalid:400,provider_pii:400,period_invalid:400,storage_labels_unset:400,event_channel_mismatch:400,event_other_brand:400,confirm_required:400,row_invalid:400,invalid_input:400,contact_mapping_invalid:400,basis_invalid:400,
  role_forbidden:403,switch_off:409,branch_not_a:409,event_cancelled:409,file_duplicate:409,no_new_rows:409,expected_mismatch:409,
- received_missing:400,received_invalid:400,received_date_only:400,received_future:400,received_too_old:400,received_after_provided:400,received_outside_period:400,region_invalid:400,
+ received_missing:400,received_invalid:400,received_date_only:400,received_future:400,received_too_old:400,received_after_provided:400,received_outside_period:400,region_invalid:400,contact_missing:400,contact_name_invalid:400,contact_phone_invalid:400,contact_email_invalid:400,
  overlap:200,duplicate_in_file:200,budget_unmapped:200,timing_unmapped:200,dropped_tokens:200,truncated_tokens:200,possible_duplicate_in_file:200,expiring_within_14d:200,period_includes_export_day:200,
 });
 // 고정 문구. 입력 값을 끼워 넣지 않는다. pii_in_file의 {count}만 걸린 칸 수로 바꾼다. csv_invalid는 parseCsv 문구(줄 번호·한도만)를 그대로 쓰고 주문 문구 하나만 리드 문구로 바꾼다.
@@ -135,6 +154,8 @@ export const LEAD_IMPORT_MESSAGES:Readonly<Record<LeadImportCode,string>>=deepFr
  confirm_required:'확정하려면 미리보기에서 받은 계획 해시와 생성 건수를 함께 보내 주세요.',
  row_invalid:'고칠 행이 있어 가져오지 않았습니다. 행 번호와 열을 확인해 파일을 고친 뒤 다시 올려 주세요.',
  invalid_input:'입력 형식을 확인하세요.',
+ contact_mapping_invalid:'연락처는 이름·전화·이메일 머리글 열에만 연결하고, 이름 열과 전화·이메일 열 가운데 하나 이상을 함께 연결해 주세요(결정 32).',
+ basis_invalid:'수집 근거를 확인하세요. 창업 포털·박람회는 제3자 제공 수령 또는 위탁 수집(문의 응대), 점주 추천은 제3자 소개(가맹점주) 또는 문의 응대, 그 밖 채널은 문의 응대만 고를 수 있습니다. 동의는 가져오기에서 고를 수 없습니다.',
  role_forbidden:'리드 파일 검사·미리보기·가져오기는 대표·관리자만 할 수 있습니다.',
  switch_off:'가맹 모집 기능이 꺼져 있어 리드 파일을 가져올 수 없습니다.',
  branch_not_a:`가맹 준비도 분기가 A(모집 가능)로 기록된 브랜드만 리드 파일을 가져올 수 있습니다(H7). ${RECRUITMENT_DISCLAIMER}`,
@@ -150,6 +171,10 @@ export const LEAD_IMPORT_MESSAGES:Readonly<Record<LeadImportCode,string>>=deepFr
  received_after_provided:'접수일이 제공일보다 뒤입니다.',
  received_outside_period:'접수일이 선언한 내보내기 기간 밖입니다.',
  region_invalid:'지역은 시·도로 시작하고 시·군·구·읍·면·동으로 끝나는 행정구역만 적어 주세요.',
+ contact_missing:'이름과 전화번호·이메일 중 하나 이상이 있어야 합니다.',
+ contact_name_invalid:'이름 형식을 확인하세요(40자 이하, 숫자·<> 없음).',
+ contact_phone_invalid:'전화번호 형식을 확인하세요.',
+ contact_email_invalid:'이메일 형식을 확인하세요.',
  overlap:'이전 가져오기의 내보내기 기간과 겹쳐 건너뛴 행입니다.',
  duplicate_in_file:'파일 안 중복으로 건너뛴 행입니다.',
  budget_unmapped:'예산 값을 알 수 없어 미정으로 둔 행입니다.',
@@ -261,6 +286,26 @@ export function importPiiHits(cell:unknown):number{
   return n+compressedHits(copy);
  }catch{return 1}
 }
+// 연락처 머리글 열의 칸(결정 32): 이름 열은 개인정보 형식이 하나도 없어야 한다. 전화·이메일 열은 전화·이메일만 그 열의 값으로 받고,
+// 고유식별번호·결제정보·주소·고객 id, 가린 휴대폰·주민등록번호, 구분자를 지운 주민등록번호는 어느 열에서도 걸린다. 던지면 걸린 것으로 본다(fail closed).
+function rrnCompressed(copy:string):boolean{
+ for(const m of copy.matchAll(CHUNK)){const d=m[0].replace(/\D/g,'');if(d.length===13&&validYymmdd(d.slice(0,6))&&/[1-8]/.test(d[6]))return true}
+ return false;
+}
+export function contactCellHits(cell:unknown,target:ContactTarget):number{
+ try{
+  if(typeof cell!=='string')return 0;
+  if(target==='contactName')return importPiiHits(cell);
+  let copy=asciiDigits(cell);
+  if(copy.includes('%'))copy=decodeOnce(copy);
+  const other=(s:string)=>scanText(s).filter(f=>f.kind!=='phone'&&f.kind!=='email').reduce((a,f)=>a+f.count,0);
+  let n=other(cell)+other(copy);
+  if([...copy.matchAll(MASKED_PHONE)].some(m=>m[0].includes('*')))n++;
+  if(MASKED_RRN.test(copy))n++;
+  if(rrnCompressed(copy))n++;
+  return n;
+ }catch{return 1}
+}
 // 같은 행에서 이웃한 세 칸이 010 / 1234 / 5678 꼴이면(머리글이 일반 이름인 분리 휴대폰 열) 세 칸 모두 걸린 것으로 본다.
 function splitPhoneColumns(cells:readonly string[]):number[]{
  const out:number[]=[];
@@ -284,13 +329,15 @@ async function fileStage(bytes:Uint8Array):Promise<Parsed|Failure>{
  }
  if(parsed.rows.length>LEAD_IMPORT_LIMITS.maxRows)return fail(['too_many_rows']);
  // 1단계 머리글: 이름이 민감하거나 머리글 값 자체에 개인정보 형식이 있으면 거부한다. 열 번호만 싣는다(머리글 자체가 이름·연락처일 수 있다).
- const headerErrors=parsed.headers.flatMap((h,i)=>isSensitiveHeader(h)||importPiiHits(h)>0?[{column:`${i+1}번째 열`}]:[]);
+ // 연락처 머리글(결정 32)은 이 단계를 통과하고, 판정 단계에서 연락처 대상으로 매핑하지 않았으면 파일 전체를 거부한다.
+ const kinds=parsed.headers.map(contactColumnKind);
+ const headerErrors=parsed.headers.flatMap((h,i)=>(isSensitiveHeader(h)&&!kinds[i])||importPiiHits(h)>0?[{column:`${i+1}번째 열`}]:[]);
  if(headerErrors.length)return fail(['sensitive_column_in_file'],{errors:headerErrors.slice(0,LEAD_IMPORT_LIMITS.maxErrors)});
  // 2단계 칸 값: 매핑과 관계없이 모든 칸. 위치는 parseCsv의 실제 줄 번호와 1단계를 통과한 머리글 이름이다.
  const hits:LeadImportError[]=[];
  parsed.rows.forEach((cells,r)=>{
   const flagged=new Set<number>(splitPhoneColumns(cells));
-  cells.forEach((v,c)=>{if(importPiiHits(v)>0)flagged.add(c)});
+  cells.forEach((v,c)=>{const k=kinds[c];if((k?contactCellHits(v,k):importPiiHits(v))>0)flagged.add(c)});
   for(const c of [...flagged].sort((a,b)=>a-b))hits.push({row:parsed.lines[r],column:parsed.headers[c]});
  });
  if(hits.length)return fail(['pii_in_file'],{message:piiMessage(hits.length),errors:hits.slice(0,LEAD_IMPORT_LIMITS.maxPiiPositions)});
@@ -436,6 +483,34 @@ function provenanceOf(raw:unknown,channel:unknown,today:string,storageLabels:rea
  return {value:{provider:label,providedOn:on,period:span,consentRef},providerKey:providerKeyOf(label)};
 }
 
+// 연락처 매핑(결정 32): 연락처 대상은 같은 종류의 연락처 머리글 열에만, 이름은 전화·이메일 가운데 하나 이상과 함께 연결한다. 원장 가져오기(requireContact)는 연락처가 필수다.
+function contactMappingOk(map:Partial<Record<LeadImportTarget,number>>,headers:readonly string[],required:boolean):boolean{
+ if(CONTACT_TARGETS.some(t=>map[t]!==undefined&&contactColumnKind(headers[map[t] as number])!==t))return false;
+ const name=map.contactName!==undefined,reach=map.contactPhone!==undefined||map.contactEmail!==undefined;
+ return name===reach&&(!required||name);
+}
+// 매핑하지 않은 연락처 머리글 열: 파일 전체를 거부한다(열 번호만).
+function unmappedContactColumns(map:Partial<Record<LeadImportTarget,number>>,headers:readonly string[]):LeadImportError[]{
+ const used=new Set(Object.values(map));
+ return headers.flatMap((h,i)=>contactColumnKind(h)&&!used.has(i)?[{column:`${i+1}번째 열`}]:[]);
+}
+
+// ── 가져오기 수집 근거(명세 2.7.1, R5b-2) ──
+// 창업 포털·박람회: 제3자 제공 수령(provided) 또는 위탁 수집(inquiry_response). 어느 쪽이든 동의 증빙 참조가 필수다(제공 증빙 규칙). 점주 추천: 제3자 소개(가맹점주) 또는 문의 응대.
+// 그 밖 채널: 문의 응대만. 동의(consent)는 받지 않는다(COLLECTIVE가 보지 않은 안내 사실을 기록하지 않는다). 열린 질문 14가 풀릴 때까지 관리자가 가져오기마다 선언한다.
+export type ImportBasis={type:'provided'}|{type:'inquiry_response'}|{type:'referral';referralFrom:'franchisee'};
+export const IMPORT_BASIS_BY_CHANNEL:Readonly<Record<string,readonly string[]>>=deepFreeze({portal:['provided','inquiry_response'],expo:['provided','inquiry_response'],owner_referral:['referral','inquiry_response']});
+export function importBasisDecision(channel:unknown,raw:unknown):{ok:true;basis:ImportBasis}|{ok:false}{
+ try{
+  if(!isRecruitmentChannel(channel)||!isRecord(raw)||!keysOk(raw,['type','referralFrom']))return {ok:false};
+  const type=get(raw,'type'),from=get(raw,'referralFrom'),allowed=Object.hasOwn(IMPORT_BASIS_BY_CHANNEL,channel)?IMPORT_BASIS_BY_CHANNEL[channel]:['inquiry_response'];
+  if(typeof type!=='string'||!allowed.includes(type))return {ok:false};
+  if(type==='referral')return absent(from)||from==='franchisee'?{ok:true,basis:{type:'referral',referralFrom:'franchisee'}}:{ok:false};
+  if(!absent(from))return {ok:false};
+  return {ok:true,basis:{type} as ImportBasis};
+ }catch{return {ok:false}}
+}
+
 // ── 계획 해시 ──
 // 키 정렬한 정본 JSON. undefined 키는 빼고, 배열 순서는 지킨다.
 function canonical(v:unknown,depth=0):string{
@@ -445,8 +520,11 @@ function canonical(v:unknown,depth=0):string{
  if(typeof v==='object'){const o=v as Record<string,unknown>;return '{'+Object.keys(o).sort(ascii).filter(k=>o[k]!==undefined).map(k=>JSON.stringify(k)+':'+canonical(o[k],depth+1)).join(',')+'}'}
  return 'null';
 }
-export type NormalizedLeadRow={line:number;receivedAt:string;receivedPrecision:'time'|'day';region:string;budgetBand:string;timingBand:string;codes:string[]};
-export type PlanHashInput={brandId:string;channel:string;mapping:Partial<Record<LeadImportTarget,number>>;provenance:Provenance;providerKey:string;eventId:string|null;dropInFileDuplicates:boolean;transcodedFrom:string|null;bind:unknown;today:string;fileSha256:string;rows:readonly NormalizedLeadRow[]};
+// contact·merge는 연락처를 매핑했을 때만 있다(연락처 없는 파일의 행·계획 해시는 R5a와 같다). merge: create(새 리드), in_file(같은 파일의 앞 행과 같은 사람), existing(연락처 중복 키가 기존 리드와 겹침).
+export type LeadRowContact={name:string;phone:string|null;email:string|null};
+export type LeadRowMerge={type:'create'}|{type:'in_file';line:number}|{type:'existing';leadId:string};
+export type NormalizedLeadRow={line:number;receivedAt:string;receivedPrecision:'time'|'day';region:string;budgetBand:string;timingBand:string;codes:string[];contact?:LeadRowContact;merge?:LeadRowMerge};
+export type PlanHashInput={brandId:string;channel:string;mapping:Partial<Record<LeadImportTarget,number>>;provenance:Provenance;providerKey:string;eventId:string|null;dropInFileDuplicates:boolean;transcodedFrom:string|null;bind:unknown;today:string;fileSha256:string;rows:readonly NormalizedLeadRow[];basis?:ImportBasis};
 // 계획 해시: 브랜드·채널·매핑·제공 증빙(정규화 값과 providerKey)·행사·파일 안 중복 선택·변환 표시·서버 판정 값(bind)·오늘·두 규칙 판·파일 해시·정규화 행(접수 시각 순, 동률은 줄 번호 순).
 export async function leadImportPlanSha256(p:PlanHashInput):Promise<string>{
  try{
@@ -456,14 +534,47 @@ export async function leadImportPlanSha256(p:PlanHashInput):Promise<string>{
  }catch{return ''}
 }
 
+// ── 연락처 병합 ──
+// 행마다 merge를 채운다(rows를 고친다). 전화는 정규화한 숫자, 이메일은 소문자로 대조한다. 기존 리드 대조(existing)는 이 파일의 대표 행(create)만 가리킬 수 있다.
+// existing이 형식에 맞지 않거나(배열·행 번호·리드 id) 대표 행이 아닌 행을 가리키면 null(호출자가 invalid_input).
+function mergeRows(rows:NormalizedLeadRow[],existing:unknown):true|null{
+ const owner=new Map<string,number>();
+ for(const r of rows){
+  if(!r.contact)return null;
+  const keys=[r.contact.phone?'p:'+r.contact.phone:'',r.contact.email?'e:'+r.contact.email:''].filter(Boolean);
+  const hit=keys.map(k=>owner.get(k)).find(x=>x!==undefined);
+  r.merge=hit===undefined?{type:'create'}:{type:'in_file',line:hit};
+  for(const k of keys)if(!owner.has(k))owner.set(k,hit??r.line);
+ }
+ if(absent(existing))return true;
+ if(!Array.isArray(existing))return null;
+ const target=new Map<number,string>(),primary=new Set(rows.filter(r=>r.merge?.type==='create').map(r=>r.line));
+ for(const m of Array.from(existing as unknown[])){
+  const line=isRecord(m)?m.line:undefined,leadId=isRecord(m)?m.leadId:undefined;
+  if(!isRecord(m)||!keysOk(m,['line','leadId'])||typeof line!=='number'||!primary.has(line)||target.has(line)||!validId(leadId))return null;
+  target.set(line,leadId);
+ }
+ const claimed=new Map<string,number>();
+ for(const r of rows){
+  const leadId=r.merge?.type==='create'?target.get(r.line):undefined;
+  if(leadId===undefined)continue;
+  const first=claimed.get(leadId);
+  if(first!==undefined)r.merge={type:'in_file',line:first};else{r.merge={type:'existing',leadId};claimed.set(leadId,r.line)}
+ }
+ return true;
+}
+
 // ── 판정 ──
-export type LeadImportContext={enabled:boolean;brandId:string;branch:string|null;actor:RecruitmentActor;now:string;today:string;storageLabels:readonly string[];coveredPeriods:readonly {from:string;to:string}[];event:EventLite|null;fileExists:boolean;book:CodeBook;bind:unknown};
+// requireContact: 원장 가져오기(결정 32 B안)는 연락처 매핑과 수집 근거가 필수다(서버가 true로 넘긴다). mergeExisting: 서버가 HMAC 중복 키로 찾은 기존 리드(행 번호 → 리드 id).
+export type ExistingMatch={line:number;leadId:string};
+export type LeadImportContext={enabled:boolean;brandId:string;branch:string|null;actor:RecruitmentActor;now:string;today:string;storageLabels:readonly string[];coveredPeriods:readonly {from:string;to:string}[];event:EventLite|null;fileExists:boolean;book:CodeBook;bind:unknown;requireContact?:boolean;mergeExisting?:readonly ExistingMatch[]};
 // rows: 파일의 데이터 행 수(= toCreate + skipped 합). normalizedRows: 만들 행의 정규화 목록(서버 전용, R5b-2는 응답에서 뺀다, 명세 2.6.6).
 export type LeadImportPlan={fileSha256:string;hadBom:boolean;planSha256:string;rows:number;normalizedRows:NormalizedLeadRow[];toCreate:number;skipped:{overlap:number;duplicateInFile:number};
  warnings:{budgetUnmapped:number;timingUnmapped:number;droppedTokens:number;truncatedTokens:number;possibleDuplicateInFile:number;expiringWithin14d:number;periodIncludesExportDay:boolean};
  receivedRange:{from:string;to:string}|null;mapping:Partial<Record<LeadImportTarget,number>>;provenance:Provenance;providerKey:string;eventId:string|null;channel:RecruitmentChannel;dropInFileDuplicates:boolean;transcodedFrom:string|null;
- attribution:{code:Record<string,number>;unattributed:Record<string,number>;conflict:number};headers:string[];ruleVersion:string;importVersion:string;note:string};
-const DECISION_KEYS=['csvBase64','transcodedFrom','channel','mapping','provenance','eventId','dropInFileDuplicates','confirm','expected'];
+ basis:ImportBasis|null;merged:{existing:{count:number;rows:number[]};inFile:{count:number;rows:number[]}};providerLeadCount:number;
+ attribution:{code:Record<string,number>;unattributed:Record<string,number>;conflict:number;fileBasis:Record<string,number>};headers:string[];ruleVersion:string;importVersion:string;note:string};
+const DECISION_KEYS=['csvBase64','transcodedFrom','channel','mapping','provenance','eventId','dropInFileDuplicates','confirm','expected','basis'];
 const periodOk=(p:unknown):p is {from:string;to:string}=>isRecord(p)&&isDate(p.from)&&isDate(p.to);
 function contextOk(c:Record<string,unknown>):boolean{
  return typeof c.brandId==='string'&&!!c.brandId&&isInstant(c.now)&&isDate(c.today)&&Array.isArray(c.storageLabels)&&Array.from(c.storageLabels as unknown[]).every(x=>typeof x==='string')
@@ -511,13 +622,35 @@ export async function leadImportDecision(input:unknown,ctx:LeadImportContext):Pr
    if(confirm!==true||!isRecord(expected)||!keysOk(expected,['planSha256','toCreate'])||typeof ps!=='string'||!HEX64.test(ps)||!countInt(tc))bad.push('confirm_required');
    else want={planSha256:ps,toCreate:tc};
   }
+  // 연락처 매핑(결정 32)과 수집 근거(명세 2.7.1). 원장 가져오기는 둘 다 필수다.
+  const required=c.requireContact===true;
+  if(!Array.isArray(mapping)&&!contactMappingOk(mapping,file.headers,required))bad.push('contact_mapping_invalid');
+  const basisRaw=get(input,'basis');let basis:ImportBasis|null=null;
+  if(required||!absent(basisRaw)){
+   const b=importBasisDecision(channel,basisRaw);
+   if(b.ok)basis=b.basis;else if(isRecruitmentChannel(channel))bad.push('basis_invalid');
+  }
   if(bad.length)return fail(bad);
   const ch=channel as RecruitmentChannel,map=mapping as Partial<Record<LeadImportTarget,number>>,{value:provenance,providerKey}=prov as {value:Provenance;providerKey:string},transcoded=transcodedFrom as string|null;
+  // 매핑하지 않은 연락처 머리글 열이 있으면 파일 전체를 거부한다(매핑하지 않은 열의 개인정보, 결정 32).
+  const unmapped=unmappedContactColumns(map,file.headers);
+  if(unmapped.length)return fail(['sensitive_column_in_file'],{errors:unmapped.slice(0,LEAD_IMPORT_LIMITS.maxErrors)});
+  const withContact=map.contactName!==undefined;
   // 행
   const L=LEAD_IMPORT_LIMITS,oldest=addDays(today,-L.maxAgeDays),expiringBy=addDays(today,L.expiringWarnDays);
   const errors:LeadImportError[]=[],normalized:(NormalizedLeadRow&{kstDay:string;dropped:number;truncated:boolean;budgetUnmapped:boolean;timingUnmapped:boolean})[]=[];
   const cellOf=(cells:readonly string[],t:LeadImportTarget)=>map[t]===undefined?'':cells[map[t] as number]??'';
   const columnOf=(t:LeadImportTarget)=>file.headers[map[t] as number];
+  // 연락처 칸: 이름은 필수, 전화·이메일은 하나 이상. 정규화는 R4b 수기 등록과 같은 함수다(값은 오류에 싣지 않는다).
+  const rowContact=(cells:readonly string[],rowErr:(t:LeadImportTarget,code:LeadRowCode)=>void):LeadRowContact=>{
+   const raw=(t:LeadImportTarget)=>cellOf(cells,t).trim(),nameRaw=raw('contactName'),phoneRaw=raw('contactPhone'),emailRaw=raw('contactEmail');
+   const name=nameRaw?normalizeName(nameRaw):null,phone=phoneRaw?normalizePhone(phoneRaw):null,email=emailRaw?normalizeEmail(emailRaw):null;
+   if(!nameRaw)rowErr('contactName','contact_missing');else if(!name)rowErr('contactName','contact_name_invalid');
+   if(phoneRaw&&!phone)rowErr('contactPhone','contact_phone_invalid');
+   if(emailRaw&&!email)rowErr('contactEmail','contact_email_invalid');
+   if(!phoneRaw&&!emailRaw)rowErr(map.contactPhone!==undefined?'contactPhone':'contactEmail','contact_missing');
+   return {name:name??'',phone,email};
+  };
   file.rows.forEach((cells,r)=>{
    const line=file.lines[r],rowErr=(t:LeadImportTarget,code:LeadRowCode)=>errors.push({row:line,column:columnOf(t),code});
    const rec=parseReceivedAt(cellOf(cells,'receivedAt'),ch);
@@ -535,7 +668,8 @@ export async function leadImportDecision(input:unknown,ctx:LeadImportContext):Pr
    const budget=bandOf(cellOf(cells,'budgetBand'),BUDGET_LABELS),timing=bandOf(cellOf(cells,'timingBand'),TIMING_LABELS);
    // 코드 열 먼저, 유입 주소 다음(칸 안 위치 순서), 최대 5개.
    const tokens=recruitmentTokens(cellOf(cells,'codes')+'\n'+cellOf(cells,'landingUrl'));
-   if(rec.ok)normalized.push({line,receivedAt:rec.at,receivedPrecision:rec.precision,region:region??'',budgetBand:budget.value,timingBand:timing.value,codes:tokens.codes,
+   const contact=withContact?rowContact(cells,rowErr):undefined;
+   if(rec.ok)normalized.push({line,receivedAt:rec.at,receivedPrecision:rec.precision,region:region??'',budgetBand:budget.value,timingBand:timing.value,codes:tokens.codes,...(contact?{contact}:{}),
     kstDay,dropped:tokens.dropped,truncated:tokens.truncated,budgetUnmapped:budget.unmapped,timingUnmapped:timing.unmapped});
   });
   if(errors.length)return fail(['row_invalid'],{errors:errors.slice(0,L.maxErrors)});
@@ -549,29 +683,37 @@ export async function leadImportDecision(input:unknown,ctx:LeadImportContext):Pr
    if(seen.has(key)){if(drop){duplicateInFile++;continue}possibleDuplicateInFile++}
    seen.add(key);created.push(row);
   }
-  const rows:NormalizedLeadRow[]=created.map(r=>({line:r.line,receivedAt:r.receivedAt,receivedPrecision:r.receivedPrecision,region:r.region,budgetBand:r.budgetBand,timingBand:r.timingBand,codes:r.codes}));
+  const rows:NormalizedLeadRow[]=created.map(r=>({line:r.line,receivedAt:r.receivedAt,receivedPrecision:r.receivedPrecision,region:r.region,budgetBand:r.budgetBand,timingBand:r.timingBand,codes:r.codes,...(r.contact?{contact:r.contact}:{})}));
+  // 연락처 병합(대표 결정 2026-09-27 '리드 1건, 집계는 파일별'): 같은 파일의 앞 행과 전화·이메일이 같으면 그 행의 사람이고(in_file),
+  // 서버가 중복 키로 찾은 기존 리드와 겹치면 새 리드를 만들지 않는다(existing). 같은 기존 리드를 가리키는 두 번째 행은 같은 사람이라 in_file이다.
+  if(withContact&&!mergeRows(rows,c.mergeExisting))return fail(['invalid_input']);
+  const creates=rows.filter(r=>!r.merge||r.merge.type==='create');
   const hashRows=[...rows].sort((a,b)=>ascii(a.receivedAt,b.receivedAt)||a.line-b.line);
-  const planSha256=await leadImportPlanSha256({brandId,channel:ch,mapping:map,provenance,providerKey,eventId,dropInFileDuplicates:drop,transcodedFrom:transcoded,bind:c.bind??null,today,fileSha256:file.fileSha256,rows:hashRows});
+  const planSha256=await leadImportPlanSha256({brandId,channel:ch,mapping:map,provenance,providerKey,eventId,dropInFileDuplicates:drop,transcodedFrom:transcoded,bind:c.bind??null,today,fileSha256:file.fileSha256,rows:hashRows,...(basis?{basis}:{})});
   // 상태
   if(c.fileExists!==false)state.push('file_duplicate');
   if(!rows.length)state.push('no_new_rows');
-  if(want&&(want.planSha256!==planSha256||want.toCreate!==rows.length))state.push('expected_mismatch');
+  if(want&&(want.planSha256!==planSha256||want.toCreate!==creates.length))state.push('expected_mismatch');
   if(state.length)return fail(state);
   const warnings={budgetUnmapped:created.filter(r=>r.budgetUnmapped).length,timingUnmapped:created.filter(r=>r.timingUnmapped).length,droppedTokens:created.reduce((a,r)=>a+r.dropped,0),truncatedTokens:created.filter(r=>r.truncated).length,
    possibleDuplicateInFile,expiringWithin14d:created.filter(r=>addDays(r.kstDay,L.maxAgeDays)<=expiringBy).length,periodIncludesExportDay:provenance.period.to===provenance.providedOn};
   const warningCodes=[warnings.budgetUnmapped?'budget_unmapped':'',warnings.timingUnmapped?'timing_unmapped':'',warnings.droppedTokens?'dropped_tokens':'',warnings.truncatedTokens?'truncated_tokens':'',
    warnings.possibleDuplicateInFile?'possible_duplicate_in_file':'',warnings.expiringWithin14d?'expiring_within_14d':'',warnings.periodIncludesExportDay?'period_includes_export_day':''].filter(Boolean);
-  // 코드 귀속 요약(명세 2.4). 가져온 파일의 토큰은 가져오기 시각의 'import' 토큰이라 늦은 입력이 아니다. 제공처 파일 기준 귀속(2.7.3)은 R5b-2가 더한다.
-  const attribution={code:Object.create(null) as Record<string,number>,unattributed:Object.create(null) as Record<string,number>,conflict:0},at=iso(nowMs);
-  for(const r of rows){
+  // 코드 귀속 요약(명세 2.4, 새로 만들 리드만). 가져온 파일의 토큰은 가져오기 시각의 'import' 토큰이라 늦은 입력이 아니다.
+  // 코드로 귀속되지 않은 행(충돌 제외)은 제공처 파일 기준(명세 2.7.3, Q-R5-2 권고안)으로 이 가져오기의 채널에 따로 센다.
+  const attribution={code:Object.create(null) as Record<string,number>,unattributed:Object.create(null) as Record<string,number>,conflict:0,fileBasis:Object.create(null) as Record<string,number>},at=iso(nowMs);
+  for(const r of creates){
    const a=attributeLead({brandId,receivedAt:r.receivedAt,codes:r.codes.map(code=>({code,at,source:'import' as const})),strikes:[]},c.book as CodeBook);
    if(a.state==='attributed')attribution.code[a.channel]=(attribution.code[a.channel]??0)+1;
    else if(a.state==='conflict')attribution.conflict++;
-   else attribution.unattributed[a.reason]=(attribution.unattributed[a.reason]??0)+1;
+   else{attribution.unattributed[a.reason]=(attribution.unattributed[a.reason]??0)+1;attribution.fileBasis[ch]=(attribution.fileBasis[ch]??0)+1}
   }
+  const linesOf=(type:LeadRowMerge['type'])=>rows.filter(r=>r.merge?.type===type).map(r=>r.line);
+  const existingLines=linesOf('existing'),inFileLines=linesOf('in_file');
   const times=rows.map(r=>r.receivedAt).sort(ascii);
-  return pass({fileSha256:file.fileSha256,hadBom:file.hadBom,planSha256,rows:file.rows.length,normalizedRows:rows,toCreate:rows.length,skipped:{overlap,duplicateInFile},warnings,
+  return pass({fileSha256:file.fileSha256,hadBom:file.hadBom,planSha256,rows:file.rows.length,normalizedRows:rows,toCreate:creates.length,skipped:{overlap,duplicateInFile},warnings,
    receivedRange:times.length?{from:times[0],to:times[times.length-1]}:null,mapping:map,provenance,providerKey,eventId,channel:ch,dropInFileDuplicates:drop,transcodedFrom:transcoded,
+   basis,merged:{existing:{count:existingLines.length,rows:existingLines},inFile:{count:inFileLines.length,rows:inFileLines}},providerLeadCount:creates.length+existingLines.length,
    attribution,headers:file.headers,ruleVersion:RECRUITMENT_VERSION,importVersion:LEAD_IMPORT_VERSION,note:RECRUITMENT_ATTRIBUTION_NOTE},warningCodes);
  });
 }

@@ -13,7 +13,7 @@ import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@
 import type {WorkspaceData} from '@/lib/client';
 import {franchiseTabs,type FranchiseTab} from '@/lib/nav-state';
 import {LEAD_STAGES} from '@/lib/franchise-gates';
-import {GATE_DISCLAIMER,CONTACT_NOTE,OFF_BANNER,UNDETERMINED_BANNER,FRANCHISE_ERRORS,MEMO_HINT,RETENTION_LABEL,DUE_LABEL,STAGE_LABELS,SOURCE_LABELS,BUDGET_LABELS,TIMING_LABELS,BASIS_LABELS,REFERRAL_LABELS,
+import {GATE_DISCLAIMER,CONTACT_NOTE,OFF_BANNER,UNDETERMINED_BANNER,FRANCHISE_ERRORS,MEMO_HINT,RETENTION_LABEL,DUE_LABEL,STAGE_LABELS,SOURCE_LABELS,BUDGET_LABELS,TIMING_LABELS,BASIS_LABELS,INTAKE_BASIS_TYPES,REFERRAL_LABELS,
  MARKETING_METHOD_LABELS,EXPORT_PURPOSE_LABELS,CONTACT_STATE_LABELS,SUBJECT_REQUEST_TYPE_LABELS,SUBJECT_REQUEST_STATUS_LABELS,SUBJECT_RESOLUTION_LABELS,SUBJECT_CHANNEL_LABELS,BOARD_TODO_LABELS,isAdminRole,isBoardQuery,
  type LeadTask,type BasisType,type ExportPurpose,type BoardTodo} from '@/lib/franchise';
 import {canChange,useAccount} from './account-context';
@@ -185,7 +185,7 @@ export function CreateLeadDialog({brandId,admin,intake,assignees,campaigns,onClo
    <label className="field"><span>이메일</span><Input autoComplete="off" type="email" maxLength={254} placeholder="name@example.com" value={f.email} onChange={e=>set({email:e.target.value})}/><small>전화·이메일 중 하나 이상</small></label>
    <label className="field"><span>메모 (선택, 1000자)</span><Textarea autoComplete="off" rows={3} maxLength={1000} value={f.memo} onChange={e=>set({memo:e.target.value})}/><small>{MEMO_HINT}</small></label>
    <TaskFields task={f.task} onChange={task=>set({task})} campaigns={campaigns}/>
-   <fieldset className="field"><legend>수집 근거</legend>{(Object.keys(BASIS_LABELS) as BasisType[]).map(b=><label key={b} className="franchise-inline"><input type="radio" name="franchise-basis" checked={f.basis===b} onChange={()=>set({basis:b})}/> {BASIS_LABELS[b]}</label>)}</fieldset>
+   <fieldset className="field"><legend>수집 근거</legend>{INTAKE_BASIS_TYPES.map(b=><label key={b} className="franchise-inline"><input type="radio" name="franchise-basis" checked={f.basis===b} onChange={()=>set({basis:b})}/> {BASIS_LABELS[b]}</label>)}</fieldset>
    {f.basis==='consent'&&<div className="form-two"><label className="field"><span>안내한 개인정보 안내문</span><NativeSelect required value={f.noticeId} onChange={e=>set({noticeId:e.target.value})}><NativeSelectOption value="">안내문 선택</NativeSelectOption>{notices.map(n=><NativeSelectOption key={n.id} value={n.id}>{n.versionLabel}</NativeSelectOption>)}</NativeSelect>{!notices.length&&<small>대표·관리자가 설정에서 안내문을 먼저 등록해야 합니다.</small>}</label><TimeField label="안내 시각" value={f.noticeAt} onChange={noticeAt=>set({noticeAt})}/></div>}
    {f.basis==='referral'&&<><LabelSelect label="소개한 사람" labels={REFERRAL_LABELS} value={f.referralFrom} empty="선택" required onChange={referralFrom=>set({referralFrom})}/><p className="subtle-note">처음 연락할 때 어디서 연락처를 받았는지 알리고, 리드 상세에서 ‘고지함’을 기록하세요.</p></>}
    {admin?<fieldset className="field"><legend>광고성 정보 수신 동의 (선택)</legend>

@@ -27,9 +27,15 @@ export const TIMING_BANDS=keysOf(TIMING_LABELS);
 export const SOURCE_LABELS={referral:'지인·점주 추천',phone_inquiry:'전화 문의',walk_in:'매장 방문',expo:'박람회',portal:'창업 포털',online_form_manual:'온라인 양식(수기 옮김)',other:'기타'} as const;
 export type SourceChannel=keyof typeof SOURCE_LABELS;
 export const SOURCE_CHANNELS=keysOf(SOURCE_LABELS);
-export const BASIS_LABELS={inquiry_response:'문의 응대(제15조①4호)',consent:'동의(제15조①1호)',referral:'제3자 소개(출처 고지 필요)'} as const;
+// provided(제3자 제공 수령)는 리드 CSV 가져오기(R5b-2, 결정 32)에서 관리자가 선언할 때만 생긴다. 수기 등록 선택지는 INTAKE_BASIS_LABELS(세 가지)다.
+export const BASIS_LABELS={inquiry_response:'문의 응대(제15조①4호)',consent:'동의(제15조①1호)',referral:'제3자 소개(출처 고지 필요)',provided:'제3자 제공 수령(출처 고지 필요)'} as const;
 export type BasisType=keyof typeof BASIS_LABELS;
 export const BASIS_TYPES=keysOf(BASIS_LABELS);
+export const INTAKE_BASIS_LABELS={inquiry_response:BASIS_LABELS.inquiry_response,consent:BASIS_LABELS.consent,referral:BASIS_LABELS.referral} as const;
+export type IntakeBasisType=keyof typeof INTAKE_BASIS_LABELS;
+export const INTAKE_BASIS_TYPES=keysOf(INTAKE_BASIS_LABELS);
+// 출처 고지 할 일(제20조, 휴리스틱): 제3자 소개와 제3자 제공 수령.
+export const needsSourceNotice=(basis:{type?:unknown}|null|undefined)=>!!basis&&(basis.type==='referral'||basis.type==='provided');
 export const REFERRAL_LABELS={franchisee:'가맹점주',acquaintance:'지인',partner:'협력사',other:'기타'} as const;
 export type ReferralFrom=keyof typeof REFERRAL_LABELS;
 export const REFERRAL_FROM=keysOf(REFERRAL_LABELS);
@@ -97,11 +103,11 @@ export const ADVISOR_TYPE_LABELS={attorney:'변호사',franchise_consultant:'가
 export const FEE_CATEGORY_LABELS={a_join:'가입비·교육비·계약금',b_security:'보증금·담보',c_opening:'설비·인테리어·임차료',d_periodic:'정기 대가',e_other:'그 밖의 대가'} as const;
 export const ESCROW_INSTITUTION_LABELS={bank:'은행',post_office:'체신관서',insurer:'보험회사',trust:'신탁업자'} as const;
 export const FORECAST_DUTY_LABELS={required:'산정서 필요',not_required:'불필요',unknown:'미확인(필요로 처리)'} as const;
-export const EVENT_TYPE_LABELS={created:'등록',stage_changed:'단계 변경',transition_blocked:'진행 차단',claimed:'담당 가져옴',assigned:'담당 지정',contact_updated:'연락처 수정',task_updated:'문의 조건 수정',source_noticed:'출처 고지',marketing_given:'광고성 정보 동의',marketing_withdrawn:'광고성 정보 철회',evidence_recorded:'증빙 기록',evidence_voided:'증빙 무효화',purged:'연락처 파기',erased:'연락처 삭제',reopened:'다시 열기',codes_added:'모집 코드 추가',codes_struck:'모집 코드 제외'} as const;
+export const EVENT_TYPE_LABELS={created:'등록',stage_changed:'단계 변경',transition_blocked:'진행 차단',claimed:'담당 가져옴',assigned:'담당 지정',contact_updated:'연락처 수정',task_updated:'문의 조건 수정',source_noticed:'출처 고지',marketing_given:'광고성 정보 동의',marketing_withdrawn:'광고성 정보 철회',evidence_recorded:'증빙 기록',evidence_voided:'증빙 무효화',purged:'연락처 파기',erased:'연락처 삭제',reopened:'다시 열기',codes_added:'모집 코드 추가',codes_struck:'모집 코드 제외',import_merged:'제공처 파일 병합'} as const;
 export type LeadEventType=keyof typeof EVENT_TYPE_LABELS;
 export const AUDIT_ACTION_LABELS={reveal:'연락처 보기',find:'연락처로 찾기',export:'내보내기',purge:'파기',erase:'정보주체 삭제',backdate:'이른 증빙 시각',evidence_void:'증빙 무효화',assign:'담당 지정',claim:'담당 가져옴',profile_save:'가맹 프로필 저장',version_register:'정보공개서 버전 등록',version_retire:'정보공개서 버전 사용 중지',template_register:'계약서안 템플릿 등록',template_retire:'계약서안 템플릿 사용 중지',version_amend:'정보공개서 버전 정정',template_amend:'계약서안 템플릿 정정',notice_register:'안내문 등록',notice_retire:'안내문 사용 중지',subject_request:'정보주체 요청 접수',subject_request_update:'정보주체 요청 처리',marketing_withdrawn:'광고성 정보 철회',
  asset_save:'모집 자료 저장',asset_approve:'모집 자료 승인',asset_export:'모집 자료 내보내기',asset_place:'모집 자료 게시 위치 기록',asset_retire:'모집 자료 폐기',asset_blocked:'모집 자료 승인·내보내기 막힘',event_save:'행사 등록·변경',event_cancel:'행사 취소',event_register:'행사 신청 기록',event_attendance:'행사 참석 기록',
- code_issue:'모집 코드 발급',code_retire:'모집 코드 사용 중지',code_strike:'리드 모집 코드 제외',spend_record:'모집 비용 기록',spend_void:'모집 비용 무효화'} as const;
+ code_issue:'모집 코드 발급',code_retire:'모집 코드 사용 중지',code_strike:'리드 모집 코드 제외',spend_record:'모집 비용 기록',spend_void:'모집 비용 무효화',lead_import:'리드 CSV 가져오기',lead_import_rejected:'리드 CSV 거부'} as const;
 export type AuditAction=keyof typeof AUDIT_ACTION_LABELS;
 // 트랙 R R5b-1 리드 모집 코드 제외 사유(관리자, 코드만 남기고 자유 문구는 받지 않는다).
 export const STRIKE_REASON_LABELS={typo:'오기',wrong_lead:'다른 리드',gaming:'귀속 조작 의심',other:'기타'} as const;
@@ -166,6 +172,9 @@ export const FRANCHISE_ERRORS={
  LEAD_CODE_INVALID:{status:400,text:'모집 코드는 R로 시작하는 8자이고 리드마다 5개까지 넣을 수 있습니다.'},
  LEAD_CODE_NOT_ON_LEAD:{status:400,text:'이 리드에 없는 모집 코드입니다.'},
  LEAD_CODE_STRUCK:{status:409,text:'이미 제외한 모집 코드입니다.'},
+ // 트랙 R R5b-2 리드 CSV 가져오기(lib/franchise-lead-import-server.ts). 리드 문구인 STALE을 쓰지 않는다.
+ IMPORT_DUPLICATE:{status:409,text:'이미 가져온 파일입니다(같은 파일 해시).'},
+ IMPORT_RETRY:{status:409,text:'리드 코드를 만들지 못했습니다. 다시 시도해 주세요.'},
 } as const satisfies Record<string,{status:number;text:string}>;
 export type FranchiseErrorKey=keyof typeof FRANCHISE_ERRORS;
 // 게이트 사유·경고 코드의 한국어 설명. REASON_CODES ∪ WARNING_CODES와 정확히 같은 키(테스트 고정).
@@ -212,16 +221,22 @@ export type Role='owner'|'admin'|'member';
 export type Who={id:string;role:Role};
 export type ActorSnapshot={id:string;role:Role|'system'};
 export type LeadTask={region:string;budgetBand:BudgetBand;timingBand:TimingBand;sourceChannel:SourceChannel;campaignId:string|null};
-export type LeadBasis={type:BasisType;noticeId?:string;noticeGivenAt?:string;referralFrom?:ReferralFrom;sourceNoticedAt?:string|null};
+// provided(R5b-2): 리드를 만든 가져오기 id·제공처 라벨·제공일. 동의 증빙 해시는 가져오기 기록에만 둔다(리드에 64자리 16진을 두지 않는다).
+export type LeadBasis={type:BasisType;noticeId?:string;noticeGivenAt?:string;referralFrom?:ReferralFrom;sourceNoticedAt?:string|null;importId?:string;provider?:string;providedOn?:string};
 export type LeadMarketing={status:MarketingStatus;method?:MarketingMethod;at?:string;noticeId?:string;withdrawnAt?:string};
 // 트랙 R R5b-1: 리드 모집 코드는 추가만 한다(최대 5개, 첫 유효 코드가 귀속을 정한다). 잘못 넣은 코드는 관리자가 제외 기록으로 뺀다(되돌리지 않는다). 두 칸 모두 선택 필드라 옛 리드는 그대로다.
 export type LeadCode={code:string;at:string;by:ActorSnapshot;source:'manual'|'import'};
 export type LeadCodeStrike={code:string;at:string;by:ActorSnapshot;reason:StrikeReason};
+// 트랙 R R5b-2 제공처 파일 기록(리드 1건, 집계는 파일별): 리드를 만든 가져오기와, 같은 사람이 든 뒤 파일의 가져오기를 추가만 한다. 연락처 값은 없다.
+export type LeadImportRef={importId:string;channel:string;eventId:string|null;provider:string;providerKey:string;providedOn:string;receivedAt:string;receivedPrecision:'time'|'day';at:string;merged:boolean};
 // contact·memo 값은 'v1.' 접두 암호문만 저장한다. 가린 값은 저장하지 않고 읽을 때 만든다.
 export type LeadRecord={id:string;brandId:string;systemCode:string;stage:LeadStage;closeReason:CloseReason|null;closedFrom:LeadStage|null;assigneeId:string|null;
  contact:{name:string;phone:string|null;email:string|null}|null;memo:string|null;contactState:'present'|'purged'|'erased';
  task:LeadTask;basis:LeadBasis;marketing:LeadMarketing;firstContactAt:string|null;lastActivityAt:string;contractedAt:string|null;closedAt:string|null;
- purgedAt?:string;erasedAt?:string;codes?:LeadCode[];codeStrikes?:LeadCodeStrike[];version:number;createdAt:string;createdBy:ActorSnapshot;updatedAt:string};
+ purgedAt?:string;erasedAt?:string;codes?:LeadCode[];codeStrikes?:LeadCodeStrike[];
+ // R5b-2: 가져온 리드의 접수 시각(제공처 시각)·정밀도·만든 가져오기 id와 제공처 파일 기록. 없으면 접수 시각은 createdAt이다.
+ receivedAt?:string;receivedPrecision?:'time'|'day';importId?:string;imports?:LeadImportRef[];
+ version:number;createdAt:string;createdBy:ActorSnapshot;updatedAt:string};
 export type EligibilityCriteria={version:number;budgetBands:readonly string[];regions:readonly string[];timingBands:readonly string[]};
 
 // ── 정규화 ──
@@ -317,7 +332,7 @@ export function leadActions(who:Who,lead:ActionLead,enabled:boolean):string[]{
  if(admin&&enabled&&present&&closed)out.push('reopen_lead');
  if(enabled&&present&&lead.assigneeId===null)out.push('claim_lead');
  if(admin&&enabled&&present)out.push('assign_lead');
- if(present&&lead.basis.type==='referral'&&canEditLead(who,lead)&&(enabled||admin))out.push('record_source_notice');
+ if(present&&needsSourceNotice(lead.basis)&&canEditLead(who,lead)&&(enabled||admin))out.push('record_source_notice');
  if(marketingOptions(who,lead,enabled).length)out.push('set_marketing_consent');
  if(admin&&enabled&&!!lead.codes?.length)out.push('strike_lead_code');
  if(admin&&enabled&&!closed)out.push('record_delivery','record_advice','record_forecast','record_contract','record_fee','record_agreement','void_evidence');
@@ -363,4 +378,4 @@ export function describeWindow(w:ContractWindow){
 }
 
 // 화면 선택 목록 묶음(intake 보기가 그대로 돌려준다).
-export const FRANCHISE_LABELS={stages:STAGE_LABELS,budgets:BUDGET_LABELS,timings:TIMING_LABELS,sources:SOURCE_LABELS,basis:BASIS_LABELS,referralFrom:REFERRAL_LABELS,marketingMethods:MARKETING_METHOD_LABELS,marketingStatus:MARKETING_STATUS_LABELS,closeReasons:CLOSE_REASON_LABELS,revealPurposes:REVEAL_PURPOSE_LABELS,exportPurposes:EXPORT_PURPOSE_LABELS,backdateReasons:BACKDATE_REASON_LABELS,correctionReasons:CORRECTION_REASON_LABELS,subjectRequestTypes:SUBJECT_REQUEST_TYPE_LABELS,subjectRequestStatus:SUBJECT_REQUEST_STATUS_LABELS,subjectResolutions:SUBJECT_RESOLUTION_LABELS,subjectChannels:SUBJECT_CHANNEL_LABELS,branches:BRANCH_LABELS,contactFields:CONTACT_FIELD_LABELS,contactStates:CONTACT_STATE_LABELS,evidenceTypes:EVIDENCE_TYPE_LABELS,amendReasons:REGISTRY_AMEND_REASON_LABELS,boardTodos:BOARD_TODO_LABELS,strikeReasons:STRIKE_REASON_LABELS,deliveryDocs:DELIVERY_DOC_LABELS,deliveryMethods:DELIVERY_METHOD_LABELS,electronicChannels:ELECTRONIC_CHANNEL_LABELS,handEvidence:HAND_EVIDENCE_LABELS,advisorTypes:ADVISOR_TYPE_LABELS,feeCategories:FEE_CATEGORY_LABELS,escrowInstitutions:ESCROW_INSTITUTION_LABELS,forecastDuty:FORECAST_DUTY_LABELS,eventTypes:EVENT_TYPE_LABELS,auditActions:AUDIT_ACTION_LABELS} as const;
+export const FRANCHISE_LABELS={stages:STAGE_LABELS,budgets:BUDGET_LABELS,timings:TIMING_LABELS,sources:SOURCE_LABELS,basis:INTAKE_BASIS_LABELS,referralFrom:REFERRAL_LABELS,marketingMethods:MARKETING_METHOD_LABELS,marketingStatus:MARKETING_STATUS_LABELS,closeReasons:CLOSE_REASON_LABELS,revealPurposes:REVEAL_PURPOSE_LABELS,exportPurposes:EXPORT_PURPOSE_LABELS,backdateReasons:BACKDATE_REASON_LABELS,correctionReasons:CORRECTION_REASON_LABELS,subjectRequestTypes:SUBJECT_REQUEST_TYPE_LABELS,subjectRequestStatus:SUBJECT_REQUEST_STATUS_LABELS,subjectResolutions:SUBJECT_RESOLUTION_LABELS,subjectChannels:SUBJECT_CHANNEL_LABELS,branches:BRANCH_LABELS,contactFields:CONTACT_FIELD_LABELS,contactStates:CONTACT_STATE_LABELS,evidenceTypes:EVIDENCE_TYPE_LABELS,amendReasons:REGISTRY_AMEND_REASON_LABELS,boardTodos:BOARD_TODO_LABELS,strikeReasons:STRIKE_REASON_LABELS,deliveryDocs:DELIVERY_DOC_LABELS,deliveryMethods:DELIVERY_METHOD_LABELS,electronicChannels:ELECTRONIC_CHANNEL_LABELS,handEvidence:HAND_EVIDENCE_LABELS,advisorTypes:ADVISOR_TYPE_LABELS,feeCategories:FEE_CATEGORY_LABELS,escrowInstitutions:ESCROW_INSTITUTION_LABELS,forecastDuty:FORECAST_DUTY_LABELS,eventTypes:EVENT_TYPE_LABELS,auditActions:AUDIT_ACTION_LABELS} as const;

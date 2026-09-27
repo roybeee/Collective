@@ -47,12 +47,14 @@ const notAfter=(at:unknown,asOf:number|null)=>{if(asOf===null)return true;const 
 
 // ── 버전·면책·고정 문구 ──
 // 코드 형식·채널·귀속·비용 규칙의 판. 모든 판정의 ruleVersion이고 코드·비용 행과 가져오기 기록에 저장한다. 규칙을 바꾸면 판을 올린다(R5b-2가 2.7을 더할 때 포함).
-export const RECRUITMENT_VERSION='fr-recruitment@2026-09-27.1';
+export const RECRUITMENT_VERSION='fr-recruitment@2026-09-27.2';
 export const RECRUITMENT_DISCLAIMER=GATE_DISCLAIMER;
 export const RECRUITMENT_ATTRIBUTION_NOTE='귀속≠증분: 모집 코드로 귀속된 리드는 그 채널·자료가 없었어도 들어왔을 수 있습니다. 귀속 수치는 채널·자료의 인과 효과를 증명하지 않습니다.';
 export const PLATFORM_REPORTED_NOTE='플랫폼 보고, 원장 리드 아님';
 export const NO_PRORATION_NOTE='기간 비용은 일할하지 않습니다. 보고 기간에 일부만 걸친 비용은 따로 보입니다.';
 export const UNATTRIBUTED_LABEL='유입 미확인';
+// 제공처 파일 기준 귀속(R5b-2, 명세 2.7.3): 코드가 없는 가져온 리드를 가져오기 채널로 따로 센다. 코드 귀속과 다른 열이다.
+export const FILE_BASIS_LABEL='제공처 파일 기준';
 export const LATE_TOKEN_HOURS=72;
 
 // ── 모집 채널(계획 :738 순서) ──
@@ -318,10 +320,13 @@ export function codeRetireDecision(code:unknown,input:unknown,ctx:CodeRetireCont
 export type TrackingValue={value:string;createdAt:string};
 export type RecruitmentCodeLite={code:string;brandId:string;channel:RecruitmentChannel;validFrom:string;createdAt:string;retiredOn:string|null;retiredAt:string|null;campaignId:string|null;assetRef:AssetRef|null;eventId:string|null};
 export type CodeBook={codes:readonly RecruitmentCodeLite[];tracking:readonly TrackingValue[]};
-export type LeadCodes={brandId:string;receivedAt:string;codes:readonly {code:string;at:string;source?:'manual'|'import'}[];strikes:readonly {code:string;at:string}[]};
+// import: 리드를 만든 가져오기(R5b-2). 있으면 코드 귀속이 없을 때 제공처 파일 기준으로 센다.
+export type ImportContext={importId:string;channel:string;eventId:string|null};
+export type LeadCodes={brandId:string;receivedAt:string;codes:readonly {code:string;at:string;source?:'manual'|'import'}[];strikes:readonly {code:string;at:string}[];import?:ImportContext|null};
 export type UnattributedReason='no_code'|'unknown_code'|'other_brand'|'before_valid_from'|'after_retired';
 export type LeadAttribution=
  |{state:'attributed';basis:'code';code:string;channel:RecruitmentChannel;campaignId:string|null;assetRef:AssetRef|null;eventId:string|null;alsoMatched:number;retroactive:boolean;late:boolean}
+ |{state:'attributed';basis:'import';channel:RecruitmentChannel;importId:string;eventId:string|null}
  |{state:'conflict';code:string}
  |{state:'unattributed';reason:UnattributedReason};
 export const UNATTRIBUTED_REASON_LABELS:Readonly<Record<UnattributedReason,string>>=deepFreeze({no_code:'코드 없음',unknown_code:'등록되지 않은 코드',other_brand:'다른 브랜드 코드',before_valid_from:'적용 시작일 전 접수',after_retired:'사용 중지 뒤 접수'});
@@ -344,6 +349,7 @@ function seen(lead:unknown,book:unknown,opts:unknown):Seen|null{
 const retirementApplies=(code:Record<string,unknown>,asOf:number|null)=>typeof code.retiredOn==='string'&&isDate(code.retiredOn)&&notAfter(code.retiredAt,asOf);
 const refOf=(v:unknown):AssetRef|null=>isRecord(v)&&typeof v.id==='string'&&typeof v.version==='number'?{id:v.id,version:v.version}:null;
 const sameTarget=(a:Record<string,unknown>,b:Record<string,unknown>)=>{const x=refOf(a.assetRef),y=refOf(b.assetRef);return a.channel===b.channel&&(a.campaignId??null)===(b.campaignId??null)&&(x===null?y===null:y!==null&&x.id===y.id&&x.version===y.version)};
+const importOf=(v:unknown):{importId:string;channel:RecruitmentChannel;eventId:string|null}|null=>isRecord(v)&&typeof v.importId==='string'&&v.importId.length>0&&isRecruitmentChannel(v.channel)?{importId:v.importId,channel:v.channel,eventId:typeof v.eventId==='string'?v.eventId:null}:null;
 // 입력 순서대로 토큰을 본다: 제외 기록된 토큰은 없는 것으로 본다 → 같은 값의 모집 코드가 없거나 다른 브랜드면 건너뛴다 → KST 접수일이 적용 시작일 전이거나 사용 중지일 이후면 건너뛴다
 // → 여기까지 온 첫 토큰이 결정한다. 그 값이 점포 코드 값이면 conflict이고 다음 토큰으로 넘어가지 않는다(보수). 결정한 토큰이 없으면 unattributed다.
 export function attributeLead(lead:LeadCodes,book:CodeBook,opts?:{asOf?:string}):LeadAttribution{
@@ -362,6 +368,9 @@ export function attributeLead(lead:LeadCodes,book:CodeBook,opts?:{asOf?:string})
   const judged=live.map(t=>({t,...judge(t)}));
   const first=judged.findIndex(j=>j.code!==undefined);
   if(first<0){
+   // 코드 귀속이 없으면 가져온 리드는 제공처 파일 기준(명세 2.7.3). 충돌은 아래에서 그대로 conflict다(코드가 이긴다).
+   const imp=importOf(s.lead.import);
+   if(imp)return {state:'attributed',basis:'import',channel:imp.channel,importId:imp.importId,eventId:imp.eventId};
    if(!live.length)return {state:'unattributed',reason:'no_code'};
    return {state:'unattributed',reason:REASON_ORDER.find(r=>judged.some(j=>j.reason===r))??'unknown_code'};
   }
@@ -381,6 +390,8 @@ export function attributionInputs(lead:LeadCodes&{id:string},book:CodeBook,opts?
   if(!s)return [];
   const out=new Set<string>();
   if(typeof s.lead.id==='string')out.add('lead:'+s.lead.id);
+  const imp=importOf(s.lead.import);
+  if(imp)out.add('import:'+imp.importId);
   const values=new Set(s.tokens.map(t=>t.code));
   for(const t of s.tokens)out.add(`token:${t.code}@${String(t.at)}`);
   for(const x of s.strikes)out.add(`strike:${x.code}@${String(x.at)}`);
@@ -397,7 +408,8 @@ export function attributionInputs(lead:LeadCodes&{id:string},book:CodeBook,opts?
 // 표시: unattributed는 모두 '유입 미확인'이고 사유는 부가 문구다. conflict는 '유입 미확인 · 점포 코드와 같은 값'. 귀속은 채널 라벨과 소급·늦은 입력 배지.
 export function attributionLabel(a:LeadAttribution):{label:string;detail:string|null}{
  try{
-  if(isRecord(a)&&a.state==='attributed'&&isRecruitmentChannel(a.channel)){
+  if(isRecord(a)&&a.state==='attributed'&&a.basis==='import'&&isRecruitmentChannel(a.channel))return {label:`${FILE_BASIS_LABEL} · ${RECRUITMENT_CHANNEL_LABELS[a.channel]}`,detail:null};
+  if(isRecord(a)&&a.state==='attributed'&&a.basis!=='import'&&isRecruitmentChannel(a.channel)){
    const badges=[...(a.retroactive===true?['소급 등록 코드']:[]),...(a.late===true?[`접수 ${LATE_TOKEN_HOURS}시간 뒤 입력`]:[])];
    return {label:RECRUITMENT_CHANNEL_LABELS[a.channel],detail:badges.length?badges.join(' · '):null};
   }
