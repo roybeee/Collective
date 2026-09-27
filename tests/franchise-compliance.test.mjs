@@ -464,7 +464,7 @@ const REGEX_SOURCES=Object.entries(rules.FRANCHISE_CLAIM_MATCHERS).flatMap(([id,
 const bigSources=REGEX_SOURCES.filter(([,x])=>x.length>=20480).map(([id,x])=>id+' '+x.length);
 check('15h: every compiled franchise matcher regex stays under the 20,480-character V8 optimization limit, the misstatement forms compile separately and are frozen'+(bigSources.length?' '+JSON.stringify(bigSources):''),bigSources.length===0&&rules.FRANCHISE_CLAIM_MATCHERS[W8].more?.length>=1&&Object.isFrozen(rules.FRANCHISE_CLAIM_MATCHERS[W8].more)&&rules.FRANCHISE_CLAIM_MATCHERS[W8].more.every(x=>new RegExp(x,'g')&&!rules.FRANCHISE_CLAIM_MATCHERS[W8].match.includes(x)));
 check('15h: 24,000-character one-sentence inputs around the new forms finish within one second',['정보공개서 '.repeat(4800),'대기기간 '.repeat(5000),'7일 '.repeat(8000),'본사가 지정한 '.repeat(3400),('정보공개서를 받은 날부터 7일이 지나면 계약 '.repeat(900))].every(t=>{const s=Date.now();judge(t);return Date.now()-s<1000}));
-check('15h: no new hard_block id or registry rule (decision 25 keeps 8 ids, 54 rules) and the claims version is bumped',rules.FRANCHISE_HARD_BLOCK_IDS.length===8&&rules.FRANCHISE_RULES.length===54&&rules.FRANCHISE_RULES_VERSION==='2026-09-25.1'&&rules.FRANCHISE_CLAIMS_VERSION==='fr-claims@2026-09-27.1'&&judge('대기기간은 7일입니다.').version.startsWith('fr-claims@2026-09-27.1+'));
+check('15h: no new hard_block id or registry rule (decision 25 keeps 8 ids, 54 rules) and the claims version is bumped',rules.FRANCHISE_HARD_BLOCK_IDS.length===8&&rules.FRANCHISE_RULES.length===54&&rules.FRANCHISE_RULES_VERSION==='2026-09-25.1'&&rules.FRANCHISE_CLAIMS_VERSION==='fr-claims@2026-09-27.2'&&judge('대기기간은 7일입니다.').version.startsWith('fr-claims@2026-09-27.2+'));
 
 // ════ 15i) 대기기간 오기재 레드팀 반영(2026-09-26, 합성) ════
 // 레드팀 우회 131건: 127건을 해제 불가로 막는다(125건 대기기간 우회 규칙, 본사 쪽 자문·본사 발급 자문 확인서 2건은 본사 연계 자문 규칙). 4건은 알려진 틈으로 남기고 승인자 확인에 맡긴다
@@ -545,7 +545,8 @@ const onRule=(t,id)=>judge(t).issues.some(i=>i.ruleId===id&&i.tier==='hard_block
 const r15Miss=[...R15_WAIT.map(t=>[t,W8]),...R15_CAPTIVE.map(t=>[t,C8]),...R15_NEAR_BAD.map(t=>[t,W8])].filter(([t,id])=>!onRule(t,id)).map(([t])=>t);
 check(`15i: ${R15_WAIT.length+R15_CAPTIVE.length} red-team bypasses (D+N, N일차, arrows, weekdays, 내일·모레·글피, English, 도장, split sentences, Q&A, tables, 대기기간 중 가맹금, backdating, abolished or exempt claims, sham advice, one-day flows) and ${R15_NEAR_BAD.length} variants are hard_block with the right rule`+(r15Miss.length?' '+JSON.stringify(r15Miss):''),R15_WAIT.length===125&&R15_CAPTIVE.length===2&&R15_NEAR_BAD.length>=20&&r15Miss.length===0);
 // 알려진 틈(승인자 확인): 막히지 않는 것을 고정해 두고, 틈을 닫으면 이 기대값을 바꾼다.
-check('15i: the 4 documented gaps (calendar-date arithmetic, a split one-line Q&A answer, 검토 기간 without a document noun) are still not caught by the waiting-period rules',R15_GAPS.length===4&&R15_GAPS.every(t=>!judge(t).issues.some(i=>i.ruleId===W8||i.ruleId===C8)));
+// R2 3차(15m 뒤 15n): 날짜 계산 두 건과 한 줄 Q&A는 절 단위 구성 판정이 닫았다. 문서 낱말 없는 '검토 기간은 3일'만 남은 틈이다.
+check('15i: 3 of the 4 documented gaps (calendar-date arithmetic, a split one-line Q&A answer) are now hard_block on the waiting-period rule, and 검토 기간 without a document noun is still not caught',R15_GAPS.length===4&&R15_GAPS.slice(0,3).every(t=>judge(t).issues.some(i=>i.ruleId===W8&&i.tier==='hard_block'))&&!judge(R15_GAPS[3]).issues.some(i=>i.ruleId===W8||i.ruleId===C8));
 const r15Leak=[...R15_FP,...R15_NEAR_OK].flatMap(t=>{const r=judge(t),c=judge(t,{scope:'consumer'});return r.issues.some(i=>i.ruleId===W8||i.ruleId===C8)||c.issues.some(i=>(i.ruleId===W8||i.ruleId===C8)&&i.tier!=='warn')||c.blocked?[t+' → '+ids(r).join()+' / '+ids(c).join()]:[]});
 check(`15i: ${R15_FP.length} red-team false positives and ${R15_NEAR_OK.length} near-miss legitimate sentences raise no wait-bypass or captive-advisor issue in recruitment scope and do not block a consumer caption`+(r15Leak.length?' '+JSON.stringify(r15Leak):''),R15_FP.length===65&&R15_NEAR_OK.length>=100&&r15Leak.length===0);
 // 경고 끝 면제(except)는 같은 절의 권유·압박에는 쓰지 않는다: '계약하지 않으면 후회하는 사례가 많습니다', '자리 뺏기지 않게 주의하세요', '14일 기다리다 자리 놓치는 일은 피하세요', '계약 가능하니 … 주의하세요'는
@@ -757,6 +758,8 @@ const R15L_LOST=[
  // 4) 새 주의 끝 앞의 돈을 걸지 않고·없이 계약(피하라는 것이 돈을 걸라는 말), 불가 끝 앞의 가계약·가계약금.
  '가계약금을 걸지 않고 계약하는 건 피하는 게 좋아요.','가계약금을 걸지 않고 계약하라는 곳은 피하는 게 좋아요.','자리 선점금 안 내고 계약하는 건 피하는 게 좋아요.','우선협상 보증금을 안 걸고 계약하라는 곳은 피하는 게 좋아요.',
  '가계약 없이 바로 계약하라는 곳은 피하는 게 좋아요.','설명회 당일 가계약금을 받는 것은 불가능합니다.','정보공개서 받은 당일 가계약하는 것은 안 됩니다.','가계약금을 받는 것은 불가능합니다.',
+ // R2 3차(15n): 알려진 틈이던 두 문장 대비(앞 문장의 규칙을 뒤 문장 '저희는 가능·됩니다'가 뒤집음).
+ '정보공개서를 받은 당일 계약하는 건 불가능합니다. 저희는 가능합니다.','대기기간은 협의로 늘릴 수는 있어도 줄일 수는 없습니다. 저희는 됩니다.',
 ];
 // 바른 문장(R15L_OK): 15k가 통과시킨 모양의 변형과 1393089까지의 면제 끝 뒤에 쉼표·물음표·괄호가 오는 문장. 모집·소비자 범위 모두 두 규칙 이슈가 없다.
 const R15L_OK=[
@@ -770,16 +773,16 @@ const R15L_OK=[
  // 1393089까지의 면제 끝 뒤 쉼표·물음표·느낌표·괄호(판정기가 절 경계를 붙여 돌려줘도 그대로 뺀다).
  '정공서 받자마자 계약하라는 곳은 피하세요, 신고 대상입니다.','가계약금을 요구하면 거절하세요, 가맹금에 해당합니다.','정보공개서 받자마자 계약하라는 곳은 조심하세요!','정보공개서를 받은 날 바로 계약하면 어떻게 되나요? 법 위반입니다.',
  '가계약금을 먼저 내라는 곳은 피하세요(법 위반).','정보공개서 받은 날 계약하자는 말은 거짓입니다, 믿지 마세요.','본사 추천 가맹거래사를 꼭 이용하실 필요는 없습니다, 원하시는 분께 받으세요.',
+ // R2 3차(15n): 1393089·e834e9d의 알려진 오탐 6건. 우회 문구를 따와 경고로 끝나는 문장(경고 틀)과 '아니요' 없이 막는 답(answerDenies).
+ '정보공개서 없이 계약부터 하자고 하면 그 자리를 떠나세요.','"저희 제휴 가맹거래사 도장만 받으면 7일로 줄어요" 같은 말은 믿지 마세요.',"'선입금하면 대기 없이 바로 계약' 같은 문구를 쓰는 광고는 가맹사업법 위반 소지가 있습니다.","'본사 지정 변호사 자문으로 즉시 계약 가능'이라는 안내는 사실과 다릅니다.",'Q. 계약금을 미리 넣어 두면 자리를 잡아 주나요? A. 대기기간 중에는 어떤 금액도 받지 않습니다.','Q. 대기기간 중에 가계약은 되나요? A. 가계약도 계약이라 대기기간 중에는 할 수 없습니다.',
 ];
 // 알려진 오탐(1393089·e834e9d 모두 해제 불가, 이번 범위 밖). 고치면 이 목록에서 빼고 R15L_OK로 옮긴다.
-const R15L_KNOWN_FP=['정보공개서 없이 계약부터 하자고 하면 그 자리를 떠나세요.','"저희 제휴 가맹거래사 도장만 받으면 7일로 줄어요" 같은 말은 믿지 마세요.',
- "'선입금하면 대기 없이 바로 계약' 같은 문구를 쓰는 광고는 가맹사업법 위반 소지가 있습니다.","'본사 지정 변호사 자문으로 즉시 계약 가능'이라는 안내는 사실과 다릅니다.",
- 'Q. 계약금을 미리 넣어 두면 자리를 잡아 주나요? A. 대기기간 중에는 어떤 금액도 받지 않습니다.','Q. 대기기간 중에 가계약은 되나요? A. 가계약도 계약이라 대기기간 중에는 할 수 없습니다.',
+// R2 3차(15n)가 고친 6건은 R15L_OK 끝으로 옮겼다(경고 틀·'아니요' 없이 막는 답). 남은 1건은 자문자를 권하는 답이다.
+const R15L_KNOWN_FP=[
  '질문: 본사 제휴 가맹거래사 자문을 받아도 7일로 줄어드나요? 답변: 독립적인 자문이어야 하므로 직접 선택한 전문가에게 받으시길 권합니다.'];
 // 알려진 틈(1393089·e834e9d 모두 통과, 옛 주의 끝 '피하세요'의 약점). 고치면 이 목록에서 빼고 R15L_LOST로 옮긴다.
 const R15L_KNOWN_GAPS=['정공서 받자마자 계약하라는 곳은 피하세요, 저희는 3일이면 됩니다.','본사 제휴 가맹거래사 말고 다른 곳에서 자문받는 건 피하세요.','본사 제휴 가맹거래사를 안 쓰는 곳은 피하세요.',
- '가계약금을 걸지 않고 계약하라는 곳은 피하세요.','정보공개서를 받은 당일 계약하는 건 불가능합니다. 저희는 가능합니다.','정공서 받자마자 계약하라는 곳은 피하는 게 좋아요. 저희는 3일이면 됩니다.',
- '대기기간은 협의로 늘릴 수는 있어도 줄일 수는 없습니다. 저희는 됩니다.'];
+ '가계약금을 걸지 않고 계약하라는 곳은 피하세요.','정공서 받자마자 계약하라는 곳은 피하는 게 좋아요. 저희는 3일이면 됩니다.'];
 // 다시 막는 바른 문장(1393089 해제 불가, e834e9d 통과, 이번 해제 불가). 계약 행위·쉼표 뒤 절을 가를 수 있게 되면 R15L_OK로 옮긴다.
 const R15L_REBLOCKED=['정공서 받자마자 계약하는 건 피하는 게 좋아요.','대기기간 중에 가맹금을 입금하는 건 피하시는 게 좋습니다.','본사 지정 가맹거래사에게 자문받는 건 피하는 게 좋습니다.','정보공개서를 받은 당일 계약하는 건 불가능합니다, 법 위반이니까요.'];
 const r15lMiss=R15L_LOST.filter(t=>!onWaitRules(t));
@@ -788,7 +791,7 @@ check('15l: consumer scope keeps its gate for the recovered misstatements (a mis
 const r15lLeak=R15L_OK.flatMap(t=>{const r=judge(t),c=judge(t,{scope:'consumer'}),rc=judge(t+RC,{scope:'consumer'});return onTwoRules(r)||onTwoRules(c)||rc.issues.some(i=>(i.ruleId===W8||i.ruleId===C8)&&i.tier!=='warn')?[t+' → '+ids(r).join()+' / '+ids(c).join()+' / '+ids(rc).join()]:[]});
 check(`15l: ${R15L_OK.length} accurate sentences (whitelisted negotiation connectives, recommended independent advice, impossible contract or fee acts at the sentence end, quoted or contract-act cautions, and the pre-15k caution endings followed by a comma, question mark, exclamation or parenthesis) raise no wait-bypass or captive-advisor issue`+(r15lLeak.length?' '+JSON.stringify(r15lLeak):''),R15L_OK.length>=25&&r15lLeak.length===0);
 const r15lKnown=[...R15L_KNOWN_FP.filter(t=>!onWaitRules(t)),...R15L_REBLOCKED.filter(t=>!onWaitRules(t)),...R15L_KNOWN_GAPS.filter(t=>onTwoRules(judge(t)))];
-check(`15l: the ${R15L_KNOWN_FP.length} documented pre-existing false positives and ${R15L_REBLOCKED.length} deliberately re-blocked accurate sentences are blocked, and the ${R15L_KNOWN_GAPS.length} documented gaps still pass (closing one moves it to R15L_OK or R15L_LOST)`+(r15lKnown.length?' '+JSON.stringify(r15lKnown):''),R15L_KNOWN_FP.length===7&&R15L_REBLOCKED.length===4&&R15L_KNOWN_GAPS.length===7&&r15lKnown.length===0);
+check(`15l: the ${R15L_KNOWN_FP.length} documented pre-existing false positives and ${R15L_REBLOCKED.length} deliberately re-blocked accurate sentences are blocked, and the ${R15L_KNOWN_GAPS.length} documented gaps still pass (closing one moves it to R15L_OK or R15L_LOST)`+(r15lKnown.length?' '+JSON.stringify(r15lKnown):''),R15L_KNOWN_FP.length===1&&R15L_REBLOCKED.length===4&&R15L_KNOWN_GAPS.length===5&&r15lKnown.length===0);
 
 // ════ 15m) 보이지 않는 문자로 끊은 표현(2026-09-27, 합성) ════
 // 판정 보기(matchView)는 서식 문자(Cf)·결합 문자(M)에 더해 검토자에게 보이지 않거나 줄로 보이는 문자도 지운다: 제어 문자(Cc, 줄바꿈 제외. 탭·CR은 띄어쓰기로 본다),
@@ -807,6 +810,40 @@ check('15m: the view deletes invisible characters, reads a tab as a space and ke
 const EMOJI_LINES=['👩\u200d🍳 셰프가 만든 도넛 🍩','가족 👨\u200d👩\u200d👧\u200d👦 세트 출시','🏳\ufe0f\u200d🌈 프라이드 한정 도넛','👍🏽 오늘도 완판','1\ufe0f\u20e3 첫 주문 할인','🏴\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F} 영국식 스콘','🇰🇷 국산 밀','Fresh donuts daily 🍩\u00a0open 10am \ufffd'];
 check('15m: emoji sequences use no deleted category (ZWJ and tags are Cf, VS16 is Mn, skin tones are Sk, keycap is Me)',EMOJI_LINES.every(t=>!/(?!\n)[\p{Cc}\p{Co}\p{Cn}\p{Zl}\p{Zp}]/u.test(t))&&/\p{Cf}/u.test('\u200d')&&/\p{Cf}/u.test('\u{E0067}')&&/\p{Mn}/u.test('\ufe0f')&&/\p{Sk}/u.test('🏽')&&/\p{Me}/u.test('\u20e3'));
 check('15m: consumer emoji lines raise no issue, and emoji or a ZWJ inside a hard_block phrase still blocks',EMOJI_LINES.every(t=>!judge(t,{scope:'consumer'}).issues.length&&!judge(t).hardBlocked)&&judge('수익💰보장').hardBlocked&&judge('수익\u200d보장').hardBlocked&&judge('👩\u200d🍳 월 순수익 500만원 보장 🙌🏻').hardBlocked);
+
+// ════ 15n) R2 3차: 대기기간 절 단위 구성 판정(2026-09-27, 합성) ════
+// lib/franchise-wait-clause.ts가 문서·행위·때·틀을 따로 읽어 조합한다. 대기기간 우회 규칙(W8, 해제 불가 id 그대로)의 패턴이 못 잡은 오기재를 더하고,
+// 우회 문구를 따와 경고하는 문장·'아니요' 없이 막는 답·바른 금지 서술은 W8·본사 연계 자문 규칙의 적중에서 뺀다. COLLECTIVE 휴리스틱 · 법률 자문 아님.
+// 블라인드 1차(tests/fixtures/r2-wait-blind-1.json, 구현을 안 본 생성기 240문장)는 개발에 썼다. 고치기 전 판정기(c0c8290)는 오기재 120건 중 43건을 막고 바른 문장 120건 중 17건을 막았다.
+const wc=await f.load('lib/franchise-wait-clause.ts');
+const BLIND1=JSON.parse(readFileSync(new URL('./fixtures/r2-wait-blind-1.json',import.meta.url),'utf8'));
+const onW8Hard=t=>judge(t).issues.some(i=>i.ruleId===W8&&i.tier==='hard_block');
+const blindMiss=BLIND1.bad.filter(x=>!onW8Hard(x.t)).map(x=>x.c+': '+x.t);
+check(`15n: all ${BLIND1.bad.length} blind round-1 misstatements (same-day documents, waiver frames, on-site payment, odd-order short periods, two-sentence contrast, date math, quote endorsement, renamed or early fees) are hard_block on the waiting-period rule`+(blindMiss.length?' '+JSON.stringify(blindMiss.slice(0,10)):''),BLIND1.bad.length===120&&blindMiss.length===0);
+const blindLeak=BLIND1.good.flatMap(x=>{const r=judge(x.t),c=judge(x.t,{scope:'consumer'});return onTwoRules(r)||onTwoRules(c)?[x.c+': '+x.t+' → '+ids(r).join()]:[]});
+check(`15n: the ${BLIND1.good.length} blind round-1 accurate sentences (quote warnings, FAQ denials without 아니요, accurate rules, process info, caution advice, consumer copy) raise no wait-bypass or captive-advisor issue`+(blindLeak.length?' '+JSON.stringify(blindLeak.slice(0,10)):''),BLIND1.good.length===120&&blindLeak.length===0);
+// 두 건은 다른 규칙(상권 주장·창업비용 표현)의 기존 판정이라 이번 범위 밖이다. 고치면 이 목록을 줄인다.
+const blindOther=BLIND1.good.filter(x=>judge(x.t).blocked).map(x=>x.t);
+check('15n: only the 2 documented other-rule blocks remain among the round-1 accurate sentences'+(blindOther.length!==2?' '+JSON.stringify(blindOther):''),blindOther.length===2&&blindOther.every(t=>judge(t).issues.every(i=>i.ruleId!==W8&&i.ruleId!==C8)));
+check('15n: consumer scope keeps its gate (a round-1 misstatement blocks a consumer caption only with recruitment context)',BLIND1.bad.every(x=>{const bare=judge(x.t,{scope:'consumer'});return !bare.blocked||bare.recruitmentContext&&!bare.issues.some(i=>i.downgradedBy)}));
+// 구성 종류별 대표 문장(순수 모듈).
+const WC_KINDS=[['same_day_document','계약하시는 날 정보공개서를 같이 드립니다.'],['waiver','대기기간은 가맹희망자분이 동의서에 서명하시면 면제됩니다.'],['onsite_contract','설명회 현장에서 가맹비 입금하시면 특별 할인 적용됩니다.'],
+ ['date_gap','정보공개서 교부일 2026-10-12, 계약일 2026-10-20 확정되었습니다.'],['short_period','정보공개서 수령 → 계약: 5일'],['quote_endorse','컨설턴트분이 "자문 받으면 이틀이면 된다"고 하셨다면 그대로 진행하셔도 됩니다.'],
+ ['early_fee','가맹비는 계약 전 교육 예약비 명목으로 먼저 받습니다.']];
+const asSentence=t=>({s:jc.matchView(t.normalize('NFKC')),raw:t.normalize('NFKC'),line:0});
+check('15n: each composition kind fires on its representative sentence',WC_KINDS.every(([k,t])=>wc.waitComposition([asSentence(t)],()=>false)?.kind===k));
+check('15n: a rule sentence and a reversal on the next line are a contrast; three lines apart they are not',wc.waitComposition([{...asSentence('법상 정보공개서 받고 14일이 지나야 계약할 수 있습니다.'),line:0},{...asSentence('하지만 저희는 바로 가능합니다.'),line:1}],()=>false)?.kind==='contrast'
+ &&wc.waitComposition([{...asSentence('법상 정보공개서 받고 14일이 지나야 계약할 수 있습니다.'),line:0},{...asSentence('하지만 저희는 바로 가능합니다.'),line:3}],()=>false)===null);
+// 경계: 기간을 채운 날짜·요일, 자문 7일, 매주 일정, 계약 상담, 다시 설명, 경고 뒤 되는 쪽 말.
+const WC_OK=['정보공개서 10/1 발송, 10/16 계약 가능합니다.','변호사 자문을 받으셨다면 정보공개서 10월 1일 수령, 10월 9일 계약도 가능합니다.','매주 월요일 정보공개서 설명회, 금요일 계약 상담을 진행합니다.',
+ '정보공개서는 계약할 때 다시 설명해 드립니다.','이번 주 금요일에 정보공개서를 드리고, 계약은 다다음 주 금요일에 합니다.','대기기간은 본사 재량이 아닙니다.','정보공개서 수령 D+14 이후 계약 가능합니다.',
+ '정보공개서 교부일: 10월 1일 / 계약일: 10월 20일','정보공개서 교부일 2026-10-12, 계약일 2026-10-28 확정되었습니다.'];
+const wcLeak=WC_OK.filter(t=>onTwoRules(judge(t)));
+check('15n: boundary sentences (full 14-day or advised 7-day gaps, weekly schedules, consultations, re-explaining, not-discretionary) raise no wait issue'+(wcLeak.length?' '+JSON.stringify(wcLeak):''),wcLeak.length===0);
+const WC_BAD=['"대기기간 중에도 계약금은 받을 수 있다"는 말은 믿지 마세요, 저희는 바로 됩니다.','정보공개서 10월 1일 수령, 10월 9일 계약 가능합니다.'];
+const wcBadMiss=WC_BAD.filter(t=>!onW8Hard(t));
+check('15n: a warning followed by a reversal and an unadvised 8-day date gap still block'+(wcBadMiss.length?' '+JSON.stringify(wcBadMiss):''),wcBadMiss.length===0);
+check('15n: 24,000-character inputs around the composition forms finish within one second',['계약하시는 날 정보공개서 '.repeat(1500),'3/2 정보공개서 3/5 계약 '.repeat(1500),'대기기간 면제 '.repeat(3000),'"대기기간" 저희도 '.repeat(2000),'월요일 금요일 계약 정보공개서 '.repeat(1200)].every(t=>{const s=Date.now();judge(t);return Date.now()-s<1000}));
 
 // ════ 16~22) 게이트(라우트) ════
 const WS='fc-owner';
