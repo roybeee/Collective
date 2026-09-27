@@ -1,5 +1,6 @@
 import {ApiError, str, stamp} from '../server';
 import {HttpBodyError, readBoundedJson} from '../http-limits';
+import {ConnectorAuthError} from './errors';
 import type {Connector, Collected, NaverAdsCredential} from './types';
 
 // 고정 호스트만 호출한다. 사용자가 URL을 입력하는 경로가 없으므로 SSRF 표면이 없다.
@@ -35,7 +36,7 @@ async function send(credential: NaverAdsCredential, path: string, query = '') {
  } catch {
   throw new ApiError(502, '네이버 검색광고 응답을 받지 못했습니다. 잠시 후 다시 시도해 주세요.');
  }
- if (response.status === 401 || response.status === 403) throw new ApiError(400, '네이버 검색광고 인증에 실패했습니다. API 키, 비밀키, Customer ID를 확인하세요.');
+ if (response.status === 401 || response.status === 403) throw new ConnectorAuthError('네이버 검색광고 인증에 실패했습니다. API 키, 비밀키, Customer ID를 확인하세요.');
  if (!response.ok) throw new ApiError(response.status >= 500 ? 502 : 400, `네이버 검색광고 요청을 처리하지 못했습니다 (${response.status}).`);
  return response;
 }

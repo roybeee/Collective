@@ -1,5 +1,6 @@
 import {ApiError, str, stamp} from '../server';
 import {HttpBodyError, readBoundedJson} from '../http-limits';
+import {ConnectorAuthError} from './errors';
 import type {Connector, Collected, InstagramCredential} from './types';
 
 // 고정 호스트만 호출한다. 사용자가 URL을 입력하는 경로가 없으므로 SSRF 표면이 없다.
@@ -31,7 +32,7 @@ async function call(credential: InstagramCredential, path: string, query = '') {
  }
  const error = payload.error as {code?: number; message?: string} | undefined;
  if (error || !response.ok) {
-  if (error?.code === 190 || response.status === 401 || response.status === 403) throw new ApiError(400, 'Instagram 액세스 토큰이 유효하지 않거나 만료됐습니다. 새 장수명 토큰을 발급해 등록하세요.');
+  if (error?.code === 190 || response.status === 401 || response.status === 403) throw new ConnectorAuthError('Instagram 액세스 토큰이 유효하지 않거나 만료됐습니다. 새 장수명 토큰을 발급해 등록하세요.');
   throw new ApiError(response.status >= 500 ? 502 : 400, `Instagram 요청을 처리하지 못했습니다 (${response.status}).`);
  }
  return payload;
