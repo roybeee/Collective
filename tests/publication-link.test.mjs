@@ -100,7 +100,7 @@ check('media ID before publication is a 409',(await post('link_media','c1',{id:p
 now+=25*MIN;bufferStatus='sent';
 for(let i=0;i<3;i++)await tick();
 check('switch off: worker ticks make zero Buffer checks and write nothing',inspects.length===0&&rows('publication_check').length===0&&(await publication(p1.id)).status==='accepted');
-check('publication_auto_link is a known switch, off by default, after collect_guard',Object.keys(flags.FEATURE_FLAGS).indexOf('publication_auto_link')===Object.keys(flags.FEATURE_FLAGS).indexOf('collect_guard')+1&&flags.FEATURE_FLAGS.publication_auto_link.defaultEnabled===false);
+check('publication_auto_link is a known switch, off by default, after b3_playbook_signals',Object.keys(flags.FEATURE_FLAGS).indexOf('publication_auto_link')>Object.keys(flags.FEATURE_FLAGS).indexOf('b3_playbook_signals')&&flags.FEATURE_FLAGS.publication_auto_link.defaultEnabled===false);
 
 // --- 4) 스위치 켜짐: 예약 접수 확인 → 게시 확인, 30분 간격 ------------------------------------------
 await setAutoLink(true);

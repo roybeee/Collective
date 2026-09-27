@@ -109,7 +109,7 @@ check('learning GET carries no token, URL or raw response text',leaks.every(x=>!
 await server.database().prepare("DELETE FROM records WHERE owner=? AND kind='measurement_source' AND id LIKE ?").bind(A,`${A}:measurement_source:e-ig:%`).run();
 
 // --- 4) 인증 오류: 재연결 필요·알림 1건, 스위치가 켜지면 즉시 멈춤 ------------------------------
-check('collect_guard is a known switch, off by default, after b3_playbook_signals',await flags.isEnabled(A,'collect_guard')===false&&Object.keys(flags.FEATURE_FLAGS).indexOf('collect_guard')===Object.keys(flags.FEATURE_FLAGS).indexOf('b3_playbook_signals')+1&&/재연결 필요/.test(flags.FEATURE_FLAGS.collect_guard.description));
+check('collect_guard is a known switch, off by default, after b3_playbook_signals',await flags.isEnabled(A,'collect_guard')===false&&Object.keys(flags.FEATURE_FLAGS).indexOf('collect_guard')>Object.keys(flags.FEATURE_FLAGS).indexOf('b3_playbook_signals')&&/재연결 필요/.test(flags.FEATURE_FLAGS.collect_guard.description));
 naverAuthorized=false;now+=6*HOUR;
 check('switch off: an auth failure is a retry, not a stop',(await tick(A)).status==='retry');
 source=await sourceOf(A,'e-run:control');

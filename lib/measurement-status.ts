@@ -87,7 +87,7 @@ export function sourceView(s: MeasurementSource, backoff: boolean): SourceView {
   window: windowOf(s.window),
   rolling: s.rolling === true,
   // 발행에서 자동 등록한 뒤 아직 가져오지 않은 대상(loop-2)은 마지막 수집 시각이 없다.
- lastFetchedAt: Number.isFinite(last) && !(s.pending && !failing) ? new Date(last).toISOString() : null,
+  lastFetchedAt: Number.isFinite(last) && !(s.pending && !failing) ? new Date(last).toISOString() : null,
   failures,
   lastError: code ? {code, reason: collectErrorReasons[code]} : null,
   reauthRequired: !!code && REAUTH_CODES.includes(code) && (!stopped || s.stoppedFor === 'reauth'),

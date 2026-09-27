@@ -4,6 +4,9 @@
 // 2) #188 R5c 유입·비용 탭: 모집 코드 발급 → 사용 중지, 모집 비용 기록 → 무효화, 행사에 비용 연결, 리드 CSV 가져오기(검사·미리보기·확정).
 // 3) R6c 성과 탭: 읽는 법 문구·면책이 숫자보다 먼저, 작은 표본 표기, 진행 중인 주 확정 불가, 지난주 확정·Markdown 내려받기, 리드 상세 증빙 묶음(연락처 원문 없음).
 // 4) 대표 결정 35 적격 판정: 적격 기준 저장 → 리드 상세에서 판정·사유 코드 선택 → 기록(기준 버전 표시) → 판정 변경이 이력으로 남음 → 보드 '적격 판정' 필터·열 → 성과 탭 코호트 적격 표.
+// 5) R6d 워크스페이스 할 일: 미응대 문의 건수와 면책이 첫 화면 '다음 할 일'에 보이고(리드 이름·연락처 없음), 누르면 가맹 모집 리드 탭으로 간다.
+//    '다음 할 일'은 AI 연결을 마친 워크스페이스에만 보이므로, 실제 /api/workspace 응답을 미리 받아 연결 상태(configured)만 참으로 바꿔 돌려준다(mocked 연결, real 할 일).
+// 6) R6d-2 소재 실험 선별(유입·비용 탭): '플랫폼 보고, 원장 리드 아님'이 첫 줄, 계획(오늘 시작) → 결과(판정·중간 확인 경고) → 확인 층 표본 부족 → 취소.
 // 직원 역할 화면(비용·가져오기 영역 없음)은 legacy 헤더 요청자가 늘 소유자라 여기서 재현할 수 없다. 실제 이메일 세션 직원으로 e2e/email-auth.spec.ts에서 본다.
 // 근거: real Chromium·빌드 결과·로컬 D1(wrangler --local) / mocked 인증(legacy 로그인 헤더). 요청 가로채기는 쓰지 않는다(docs/E2E.ko.md 규칙).
 // 모든 값은 가상이다(브랜드는 시드 브랜드 ofd, 이름 김가상·이테스트, 전화 010-0000-12xx, 이메일 *@example.com). 결과는 COLLECTIVE 휴리스틱 · 법률 자문 아님.
@@ -421,5 +424,104 @@ test('결정 35 적격 판정: 리드 상세 판정·이력, 보드 필터·열,
   await expect(table).toContainText('적격 리드당 비용');
   await expect(table.getByRole('row').filter({hasText: koreaToday().slice(0, 7)})).toContainText('5건 미만');
   await shot(page, testInfo, 'q-3-report-cohort');
+  await context.close();
+});
+
+test('R6d 워크스페이스 할 일: 미응대 문의 건수·면책이 다음 할 일에 보이고 가맹 리드 탭으로 간다', async ({browser}, testInfo) => {
+  test.setTimeout(120_000);
+  const owner = `e2e-fr-r6d-${testInfo.project.name}-${Date.now()}`;
+  const {context, page} = await ownerPage(browser, testInfo, owner);
+  await prepareFranchise(page, `가상 가맹 모집 R6d ${testInfo.project.name}`);
+  // 준비(API): 첫 연락이 없는 가상 문의 2건.
+  for (let i = 0; i < 2; i++) {
+    const lead = await franchise(page, 'create_lead', {contact: {name: '김가상', phone: `010-0000-14${String(i).padStart(2, '0')}`}, task: {region: '', budgetBand: 'unknown', timingBand: 'unknown', sourceChannel: 'walk_in'}, basis: {type: 'inquiry_response'}});
+    expect(lead.status, JSON.stringify(lead.body)).toBe(200);
+  }
+  // 실제 응답(real): 가맹 할 일은 브랜드 id·건수만 있다.
+  const workspace = await (await page.request.get('/api/workspace')).json() as {connection: Record<string, unknown>; franchiseTasks?: {items: {task: string; count: number; brandId: string}[]; disclaimer: string}};
+  expect(workspace.franchiseTasks?.items).toEqual([{task: 'unanswered', count: 2, brandId: BRAND}]);
+  expect(workspace.franchiseTasks?.disclaimer).toBe('COLLECTIVE 휴리스틱 · 법률 자문 아님');
+  expect(JSON.stringify(workspace.franchiseTasks)).not.toContain('김가상');
+  // 연결 상태만 참으로 바꾼 같은 응답을 돌려준다(docs/E2E.ko.md 가로채기 규칙: 미리 받은 응답을 fulfill).
+  await page.route('**/api/workspace', route => route.fulfill({json: {...workspace, connection: {...workspace.connection, configured: true}}}));
+  await page.goto('/');
+  const next = page.locator('section.next-tasks');
+  const item = next.locator('[data-franchise-task="unanswered"]');
+  await expect(item).toContainText('미응대 문의');
+  await expect(item).toContainText('첫 연락 기록이 없는 문의 2건');
+  await expect(item).toContainText('COLLECTIVE 휴리스틱 · 법률 자문 아님');
+  await expect(next).not.toContainText('김가상');
+  await expect(next).not.toContainText('010-0000-14');
+  await shot(page, testInfo, 'r6d-1-next-tasks');
+  await item.click();
+  await expect(page).toHaveURL(/view=franchise/);
+  await expect(page).toHaveURL(/tab=leads/);
+  await expect(page).toHaveURL(new RegExp(`brand=${BRAND}`));
+  await expect(page.getByRole('tab', {name: '리드', exact: true})).toHaveAttribute('aria-selected', 'true');
+  await shot(page, testInfo, 'r6d-2-franchise-leads');
+  await context.close();
+});
+
+// 준비(API): 같은 유형(포털 소개문)의 승인 자료 판. 체크리스트와 대기기간 확인(결정 34)을 함께 보낸다.
+async function approvedAsset(page: Page, campaignId: string, body: string) {
+  const saved = await franchise(page, 'asset_save', {campaignId, type: 'portal_intro', body, factRefs: []});
+  expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+  const asset = saved.body.result as {assetId: string; version: number; bodyHash: string};
+  const view = await (await page.request.get(`/api/franchise?view=asset&brandId=${BRAND}&assetId=${asset.assetId}`)).json() as {checklist: {version: string; items: {id: string}[]}; waitReview: {version: string; candidates: unknown[]}};
+  const approved = await franchise(page, 'asset_approve', {assetId: asset.assetId, version: asset.version, bodyHash: asset.bodyHash, checklist: {version: view.checklist.version, checked: view.checklist.items.map(i => i.id)},
+    waitReview: {version: view.waitReview.version, confirmed: true, candidates: view.waitReview.candidates.length}});
+  expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+  return asset;
+}
+
+test('R6d-2 소재 실험 선별: 문구가 먼저, 계획 → 결과(viral-stats 판정·중간 확인 경고) → 확인 층 표본 부족 → 취소', async ({browser}, testInfo) => {
+  test.setTimeout(120_000);
+  const owner = `e2e-fr-r6d2-${testInfo.project.name}-${Date.now()}`;
+  const {context, page} = await ownerPage(browser, testInfo, owner);
+  const campaignId = await prepareFranchise(page, `가상 가맹 모집 R6d-2 ${testInfo.project.name}`);
+  await approvedAsset(page, campaignId, '가상 브랜드 가맹 상담을 받습니다.');
+  await approvedAsset(page, campaignId, '가상 브랜드 가맹 상담을 지금 받습니다.');
+  const today = koreaToday();
+
+  // 1) 유입·비용 탭의 소재 실험 선별: '플랫폼 보고, 원장 리드 아님'이 첫 줄이다.
+  await page.goto(`/?view=franchise&brand=${BRAND}&tab=inflow`);
+  const notes = page.getByRole('list', {name: '소재 실험 읽는 법'});
+  await expect(notes.getByRole('listitem').first()).toContainText('플랫폼 보고, 원장 리드 아님');
+  // 2) 계획: 오늘 시작(시작 전 기록), 최소 관찰 24시간.
+  const form = page.getByRole('form', {name: '소재 실험 계획'});
+  await form.getByLabel('바꾼 변수', {exact: true}).fill('상담 문장의 "지금"');
+  await form.getByLabel('가설', {exact: true}).fill('즉시성을 더하면 클릭률이 오른다');
+  await form.getByLabel('최소 관찰 시간(시간)', {exact: true}).fill('24');
+  await form.getByLabel('기간 시작', {exact: true}).fill(today);
+  const planned = page.waitForResponse(franchiseAction('experiment_plan'));
+  await form.getByRole('button', {name: '실험 계획 적기', exact: true}).click();
+  expect((await planned).status()).toBe(200);
+  const card = page.getByRole('article', {name: '소재 실험 상담 문장의 "지금"'});
+  await expect(card).toContainText('계획됨');
+  await shot(page, testInfo, 'r6d2-1-planned');
+
+  // 3) 결과: 플랫폼 보고 수치 입력 → 판정·권고와 중간 확인 경고(관찰 시간이 아직 지나지 않음).
+  const result = card.getByRole('form', {name: '소재 실험 결과 입력'});
+  await result.getByLabel('대조안 노출', {exact: true}).fill('5000');
+  await result.getByLabel('대조안 클릭', {exact: true}).fill('100');
+  await result.getByLabel('실험안 노출', {exact: true}).fill('5000');
+  await result.getByLabel('실험안 클릭', {exact: true}).fill('150');
+  await result.getByRole('checkbox', {name: /비교 가능합니다/}).check();
+  const entered = page.waitForResponse(franchiseAction('experiment_result'));
+  await result.getByRole('button', {name: '결과 입력', exact: true}).click();
+  expect((await entered).status()).toBe(200);
+  const latest = card.getByLabel('최근 결과');
+  await expect(latest).toContainText('플랫폼 보고, 원장 리드 아님');
+  await expect(latest).toContainText('관찰상 개선');
+  await expect(latest).toContainText('중간 확인 경고');
+  await expect(card.getByRole('table', {name: '확인 층(원장)'})).toContainText('표본 부족(n<20)');
+  await shot(page, testInfo, 'r6d2-2-result');
+
+  // 4) 취소: 확인 대화 → 취소됨.
+  page.once('dialog', dialog => void dialog.accept());
+  const cancelled = page.waitForResponse(franchiseAction('experiment_cancel'));
+  await card.getByRole('button', {name: '실험 취소', exact: true}).click();
+  expect((await cancelled).status()).toBe(200);
+  await expect(card).toContainText('취소됨');
   await context.close();
 });

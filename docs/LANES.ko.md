@@ -20,6 +20,7 @@
 | **A** 제품 기능 | Claude A 세션 | 성장 계획 A·B 트랙 제품 기능(`docs/GROWTH-PLAN.ko.md`). A3·A6 마무리, A8, B4 2부, B3, 조건부 A5 | **게시 담당(단독)** |
 | **R** 가맹 모집 | Claude 트랙 R 세션 | 트랙 R 전체(`docs/FRANCHISE-RECRUITMENT-PLAN.ko.md`) | 하지 않음. 게시 대기열에 적는다 |
 | **Q** 품질·평가·운영 | Codex 세션 | 품질 계획 v2 잔여(R4·A/A·R5·J4), 평가 하네스·HERMES·품질 콘솔, 프롬프트 레지스트리 운영(A1 `channel.offline` 쌍 평가·활성화), 게시 뒤 운영 감시 | 하지 않음. 게시 대기열에 적는다 |
+| **G** 성장 계획 잔여 개발 | Claude G 세션(roybee-86) | 대표 지시(2026-09-27 "코드 쪽 남은 것 전부 개발·배포·게시까지")로 맡은 성장 계획 잔여 코드: B3-2 Reflector, PR 4b 잔여(`loop-1`·`loop-2`·`loop-10`·`security-ops-5`·`-6`·`ai-quality-9`), B2 2단계, A4-4, A1 커머스·감사 묶음 콘텐츠, 비식별 신호 채점기 버전 결함 | 하지 않음. 게시 대기열에 적는다 |
 
 - 레인에 없는 새 일이 생기면, 먼저 발견한 세션이 STATUS의 자기 레인 칸에 "제안"으로 적고 대표 확인을 받은 뒤 이 표에 더한다.
 - 다른 레인의 PR을 대신 병합하거나 고치지 않는다. 막히면 그 레인 칸의 '막힌 것'에 적는다.
@@ -34,6 +35,15 @@
 3. B4 2부 보상 계보. 결정 16(첫 실게시)을 먼저 확인한다.
 4. B3 교정 플레이북. `lib/learning.ts`와 역할 입력을 고친다. 레인 R의 R3b가 병합된 뒤 시작한다(아래 공유 파일 순서).
 5. 조건부 A5, B5 GEPA, B4 3부. W24 발동 조건을 확인한 뒤 착수하거나 `not_run`을 기록한다.
+
+### 레인 G (Claude G 세션, roybee-86)
+- 결정: 대표 지시(2026-09-27). B2 2단계는 같은 날 오전 "B2 2단계 빼고" 지시를 대표가 다시 확인해 포함했다("포함해서 개발").
+- 한 작업 = 한 PR, base는 항상 `main`, 새 런타임 동작은 기본 꺼짐 스위치 뒤에 둔다. 병합 뒤 게시 대기열에 요청 줄을 넣고 게시는 레인 A가 묶음으로 한다.
+1. 병렬(파일이 겹치지 않음): `security-ops-6` 키 회전, B2 2단계, B3-2 Reflector, A4-4, A1 커머스·감사 콘텐츠, `ai-quality-9`+`loop-10` 입력 축소, 채점기 버전 결함(#206).
+2. `loop-1`+`security-ops-5`(성과 수집 화면·실패 표시) → 병합 뒤 `loop-2`(게시물과 실험 arm 연결). 같은 파일(`lib/measurement-collection.ts`, 학습 화면)을 쓰므로 순서대로 한다.
+- 레인 Q로 넘기는 것: A1 새 묶음의 등록·봉인 쌍 평가·stage·promote(세션 29f7af), 입력 축소 스위치를 켜기 전 on/off 쌍 평가.
+- 레인 A와 겹치는 파일: `lib/learning-server.ts`는 레인 A 소유라 Reflector는 새 모듈(`lib/playbook-reflector*`)에 두고 호출 1줄만 더한다. 설계는 PR로 레인 A에 공유한다.
+- 조건부 A5·B5 GEPA·B4 3부는 위 레인 A 5번 그대로 둔다(W24 판단).
 
 ### 레인 R (Claude 트랙 R 세션)
 1. R3b 새 채널 단위 6개. `prompts/channel.*`, `lib/prompt-units.ts`, `lib/role-instruction.ts`, `lib/meetings.ts`를 고친다.
