@@ -6,7 +6,7 @@
 - 운영(갱신): `bccc845`(Sites 버전 48, tree `1ebc76f`, [기록](releases/2026-09-27-bccc845.md)). #202 내부 표기 정규화·레인 R #200 게시 완료.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 - #203 · 레인 R · 보통 · 새 스위치 없음(r_franchise 기본 꺼짐). DATA-PROCESSING 3.5 적격 판정 이력 행은 레인 A 검토 통과
-- #204 · 레인 R · 보통 · 새 스위치 없음(r_franchise 기본 꺼짐)
+- #208 · 레인 R · 보통 · 새 스위치 없음(r_franchise 기본 꺼짐)
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
 갱신: 2026-09-27 11:23 UTC
@@ -26,7 +26,7 @@
 - 다음: A3 run → A8-1 → A8-2 → A8-3 → B4 2부 → B3([순서](LANES.ko.md#레인-a-claude-a-세션)).
 
 ## 레인 R (Claude 트랙 R 세션 — 가맹 모집)
-갱신: 2026-09-27 11:46 UTC
+갱신: 2026-09-27 12:02 UTC
 - 세션: 2026-09-27부터 레인 R을 맥 로컬 Claude 세션이 이어받았다(대표 지시, 대표 외출 중). 원래 클라우드 세션의 R3c 작업은 GitHub에 없어 맥 세션이 다시 만들었다. 클라우드 세션에는 R3c 병합 뒤 최신 main에서 이어가라고 알렸다.
 - 게시: 묶음 20(07:58 UTC, `1f2fac1`, 레인 A)에 #180·#182·#183·#186·#188이 실렸다. 게시 대기열에 남은 레인 R 줄은 없다.
 - 운영 화면 확인: passed · real(2026-09-27 08:08~08:10 UTC, 대표 로그인 브라우저, OFD).
@@ -62,7 +62,7 @@
 - 막힌 것: 법률 검토(결정 20) 보류 중이라 모든 가맹 판정은 'COLLECTIVE 휴리스틱 · 법률 자문 아님'이다. LR-1 확인 필요 추가: 소규모 본부 적용 제외 문장을 hard_block으로 막는 것.
 - 해소: #194·#195 `docs/DATA-PROCESSING.ko.md` 3.5 행 2개(주간 보고 확정본·증빙 묶음 내보내기)는 레인 A가 받아들였다(#196, 2026-09-27 09:58 UTC). 비차단 의견(리드별 증빙 묶음은 시스템 코드·접수 시각·제공처로 한 사람을 가리키는 가명 개인정보, 내려받은 사람의 관리 책임)은 3.5 행 '외부로 가는가' 칸에 반영했다. R3c 게시 뒤 운영 재채점 passed · real(2026-09-27 05:35 UTC, 대표 지시로 메인 세션이 대표 로그인 브라우저에서 실행, 토큰 0, [관찰 기록](observations/2026-09-27-lane-r-r3c-regrade.md)). dev `eab8911d` fail 10(09-25와 같은 구성, `industry_metric_leak` 0), 봉인 `284fa4be` fail 9(`industry_metric_leak` 8건은 모두 fnb, R3c 전과 같음). franchise 적중 0, 새 fail 0. #183 DATA-PROCESSING 변경은 레인 A가 받아들였다(#184, 게시 대기열 #183 줄은 레인 A가 넣음). 레인 A 비차단 의견 2건(3.5 `receivedRange` 행, 8절·LR-2 `recruitment_import` 보존 기한)은 이 문서 PR에서 반영. S7 운영 기대 업종 갱신 real(위 대표 승인 줄). #172 결정 32 R5 리드 가져오기 범위(연락처 포함 B안, 제공처 파일별 집계) 기록 `merged`. #143 게시 전 확인(운영 objective 캠페인 0건, 그 개선 회의 0건, 레인 A, passed · real). 레인 A 확인 요청(macOS `tests/check-prompts.test.mjs` 대소문자 충돌)은 #161에서 고쳤다.
 - 제안(소유 레인 검토): `docs/DATA-PROCESSING.ko.md` 가맹 kind 목록에 `recruitment_asset`·`recruitment_event`를 더한다(이름·연락처 없음, 모델 입력 0).
-- 확인 필요(소유 레인 없음, F4b-2 #70): `lib/deidentified-signals.ts:34` `token(v,max=120)` 때문에 채점기 버전 문자열(main 224자, #173 뒤 243자)이 120자를 넘어 비식별 신호의 `grading.gradersVersion`이 null로 저장된다. R3c 전부터 있던 결함이다.
+- 해소(#206 `merged`, 다른 레인이 고침): 비식별 신호 `grading.gradersVersion`이 120자 상한에 걸려 null로 저장되던 결함(`lib/deidentified-signals.ts`).
 - 관찰(레인 Q 파일): `tests/graders.test.mjs:274`(4만 자 입력 1초 검사)가 이 4코어 컨테이너에서 한계선에 있다('## x\n자료 필요'×4000 입력 0.93~1.07초, 같은 코드에서 3회 중 1~2회 실패). 채점기 코드와 무관한 부하 흔들림이다.
 
 ## 레인 G (Claude G 세션 roybee-86 — 성장 계획 잔여 개발)
