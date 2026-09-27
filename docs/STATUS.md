@@ -3,20 +3,17 @@
 > 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 운영(갱신): `7851185`(Sites 버전 44, tree `9cef246`, [기록](releases/2026-09-27-7851185.md)). #170 A3 `+channels-close`·레인 R #173 게시 완료(#173 게시 뒤 재채점 확인은 레인 R).
+- 운영(갱신): `f56909d`(Sites 버전 45, tree `2ff1fad`, [기록](releases/2026-09-27-f56909d.md)). #178 과반 게이트·레인 R #175~#177·A1 v4 후보 #179 게시 완료.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
-- #178 · 레인 Q(Claude 29f7af 대행) · 보통 · 새 스위치 없음(`evalRunIds` 과반 게이트, 기존 `evalRunId` 경로 불변). A1 활성화의 봉인 반복 평가 전에 필요
-- #176 · 레인 R · 보통 · 새 스위치 없음(R2 판정 보기가 보이지 않는 문자 Cc·Co·Cn·Zl·Zp를 지움, `fr-claims@2026-09-27.1`, 테스트 문자열 5,058개 중 판정 변화는 이 문자로 끊은 우회 2건이고 둘 다 막힘, GRADERS_VERSION 그대로)
 - #180 · 레인 R · 보통 · 새 스위치 없음(R2 3차-a 대기기간 절 단위 구성 판정, `fr-claims@2026-09-27.2`, 가맹 프로필 브랜드의 캡션·발행·모집 자료 판정에서 오기재 차단이 늘고 경고 인용 오탐이 줆, GRADERS_VERSION 그대로)
-- #177 · 레인 R · 보통 · 새 스위치 없음(r_franchise 기본 꺼짐)
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-27 01:13 UTC
+갱신: 2026-09-27 04:32 UTC
 - 진행 중: B3-2a 교정 신호 PR(교정 묶음 90일 5건·규칙별 파생 피드백·같은 사유 재발률, 스위치 `b3_playbook_signals` 기본 꺼짐, 경보가 열리면 `playbook_activate` 409, 토큰 0, [PLAYBOOK](PLAYBOOK.ko.md) B3-2a 절). B3-2b 선호 on/off 쌍 평가 PR(브랜치 `feat/b3-2b-preference-pair`, B3-2a 위): `POST /api/eval` `pair.kind: operator_preferences`, off=동결 요청에서 블록 뺌·on=고른 규칙만의 운영 주입 블록, 기존 `pairGate` 그대로, 초안 평가(D5), 프롬프트 활성화 근거 금지(409), 테스트 mocked·토큰 0, [PLAYBOOK](PLAYBOOK.ko.md) B3-2b 절. 레인 Q 파일(`lib/eval-server.ts`·`lib/eval-kinds.ts`·`lib/prompt-registry.ts`)을 레인 A가 고쳤고 29f7af가 리뷰한다. B3-2c 선호 쌍 평가 첨부(브랜치 `feat/b3-2c-attach-eval`, B3-2b 위): `playbook_attach_eval`(대표만, 스위치 꺼짐 409)이 끝난 선호 쌍 run을 평가한 규칙 버전에 `playbook_audit` `attach_eval`로만 남김(규칙 버전·상태 불변, `performance_tested` 계속 409), 화면에 규칙 버전별 최신 게이트, 4단계 종료 조건 절차는 [PLAYBOOK](PLAYBOOK.ko.md) B3-2c 절, 테스트 mocked·토큰 0. #160(최상위 `}` 보정·순서 되돌림) `merged`, 묶음 17 게시는 A1 dev 쌍 평가 `5528b2f9` 종료 뒤 → A3 4회차. B4 2부 #155·#157·#159 `merged`.
 - A6 종료 조건: **passed · real**(2026-09-27 00:56 KST). 이문동점 영업시간 자료 요청 `dr-f08c16186f08`이 사실 확정으로 closed. [관찰 기록](observations/2026-09-27-lane-a-a6-end-condition.md). 운영 스위치 `a6_data_requests` 켜짐.
-- A3 종료 조건 run: 4회째도 **failed · real**(run `2fc1ebd8`, 운영 `9a760e4`). 국밥은 모두 pass(순서 되돌림으로 실험 channel 복구). 수학학원은 채널 목록을 닫는 `}]`를 빠뜨려 shortform·experiments가 채널 객체 안으로 들어가 `contract_json` fail(2회째 `a81bb445`와 같은 유형, 4회 모두 끝부분 구조 결함). 대표 결정(2026-09-27 "좁은 보정 1개 추가"): `}]` 누락만 그 자리에 채워 읽음(`+channels-close`, 운영 읽기·`contract_json` 같게). PR `fix/a3-channels-close-repair` → 게시 → A1 v3 `3c0f6572` 뒤 5회째 run. 기록은 [카피 팩](COPY-PACK.ko.md#a3-종료-조건-run-기록-4회).
+- A3 종료 조건 run: 5회째 **passed · real**(run `86349108`, 운영 `7851185` Sites 버전 44, 32,653토큰). 국밥 12 pass·0 fail, 수학학원 11 pass·0 fail(`copy_pack_variants` pass). 두 원문 모두 보정 없이 바로 JSON이었다(`+channels-close`는 이 run에서 쓰이지 않음). 1~4회 실패 기록과 결정은 [카피 팩](COPY-PACK.ko.md#a3-종료-조건-run-기록-4회). 스위치 `a3_copy_pack` 켜기는 대표 결정으로 따로 한다.
 - B4 중단 규칙: 대표 결정(2026-09-27 "오늘 바로 진행해")으로 10-15 판정을 앞당겼다. 주문 CSV 0건 → **blocked**(L3·L4 운영 사용·KPI 주장 보류, 코드·L0·L1·개선 루프 대장 유지). 스위치 `b4_reward_lineage` 켜짐(대표 지시 D9), `b3_playbook_signals` 켜짐(B3 승인). [관찰 기록](observations/2026-09-27-lane-a-b4-stop-rule.md).
-- B3 4단계 종료 조건: 대표 승인(2026-09-27 "b3 승인한다"). 2단계 초안에서 멈춤(`blocked`): 운영 사람 판정(`review_decision`) 0건이라 같은 브랜드 판정 2건 인용이 안 된다. 대표가 ODA 검토 대기 작업물(cmo·insight 각 1건)을 판정하면 초안을 만든다. 봉인 케이스는 프롬프트 수정 세션이 만들지 않는다([SEALED-CASES](SEALED-CASES.ko.md)). 쌍 평가는 A1 v3 `3c0f6572` 뒤에 한다.
+- B3 4단계 종료 조건: 1~5단계 완료(real). 대표 판정 2건(ODA cmo·insight 수정 요청)으로 초안 `playbook:24e71fa4` v1(ODA 전 역할·전 채널)을 만들었다. 봉인 케이스 `34e1f921`(growth)은 전용 에이전트가 캡처했다(이 세션은 id만 봄). 선호 쌍 평가 run `3fb5122b`(dev cmo + 봉인 growth, 73,312토큰): 게이트 통과, 봉인 회귀 0, input_budget 2/2, 경고 small_sample. 첨부 `attach_eval` 완료. 다음은 6단계 대표 승인(`playbook_activate`), 7단계 ODA 역할 실행 1건, 8단계 appliedRules 확인, 9단계 관찰 기록.
 - 확인 필요(레인 R): `tests/check-prompts.test.mjs`가 macOS(대소문자 무시 파일 시스템)에서 `channel.leadad.json`·`channel.leadAd` 변형 충돌로 로컬 실패한다(Linux CI는 통과).
 - 제안(레인 Q): 계약 읽기는 최상위 `}` 하나 누락도 '잘린 JSON'으로 거절한다(#112 방침, `tests/role-output.test.mjs:26`). 출력 한도에 못 미친 응답(`incomplete` 아님)에 한해 최상위 `}` 하나를 채워 읽을지 검토 바란다(이번 실패 1건이 운영이면 invalid_output으로 약 1.6만 토큰 폐기).
 - A8: 대표 지시(2026-09-27 "B2 2단계 빼고 남은 개발을 모두 진행하라", 세션 29f7af 전달)로 A3 종료 조건을 기다리지 않고 착수했다. 설계 [CUSTOMER-REPORT](CUSTOMER-REPORT.ko.md).
@@ -86,7 +83,7 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-27 04:04 UTC (Claude A 세션: 묶음 18 `7851185` Sites 버전 44 게시·tree 확인)
+마지막 갱신: 2026-09-27 04:46 UTC (Claude A 세션: 묶음 19 `f56909d` Sites 버전 45 게시·tree 확인)
 
 ## 현재 운영 상태
 
