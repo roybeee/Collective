@@ -539,7 +539,7 @@ run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
   - `syn-s7-franchise.json`(무인 분식 자판기 가맹 상담 리드, B2B, fnb).
   - `syn-s8-pilates.json`(동네 필라테스 체험 수업 예약, education, 점포 목표).
   - 골든 v2(A3-4): `syn-s9-fnb-insta.json`(동네 국밥집 점심, fnb, Instagram 피드)·`syn-s9-edu-reels.json`(동네 수학학원 설명회, education, Instagram 릴스). 콘텐츠 역할 1케이스씩이고 `a3_copy_pack`·`a3_brand_voice` 스위치와 확정 `brand_voice` 레코드가 있어 동결 요청에 `outputProfile`·`brandVoice`가 들어간다. 아직 운영에 가져오지 않았다(게시 뒤, [카피 팩](COPY-PACK.ko.md) A3-4 절).
-  - 커머스 dev(A1 커머스 후보 쌍 평가용, 레인 Q 요청 2026-09-27): `syn-s10-fnb-commerce.json`(떡볶이 밀키트 온라인 판매, fnb)·`syn-s11-kpop-commerce.json`(합성 아티스트 팬덤 상품 예약 판매, kpop). 역할 8케이스씩이다. 둘 다 채널에 실명 판매처 없이 일반 문구 '커머스'를 써서 `channel.commerce`가 켜지고, 현장 스킬은 켜지지 않는 점포 아닌 캠페인이다(`tests/eval-specs-commerce.test.mjs`). 봉인 업종(beauty·popup·retail)은 쓰지 않았다(레인 Q 결정). 운영 가져오기는 게시된 커밋에서 레인 Q가 한다.
+  - 커머스 dev(A1 커머스 후보 쌍 평가용, 레인 Q 요청 2026-09-27): `syn-s12-fnb-commerce.json`(떡볶이 밀키트 온라인 판매, fnb)·`syn-s13-kpop-commerce.json`(합성 아티스트 팬덤 상품 예약 판매, kpop). 역할 8케이스씩이다. 둘 다 채널에 실명 판매처 없이 일반 문구 '커머스'를 써서 `channel.commerce`가 켜지고, 현장 스킬은 켜지지 않는 점포 아닌 캠페인이다(`tests/eval-specs-commerce.test.mjs`). 봉인 업종(beauty·popup·retail)은 쓰지 않았다(레인 Q 결정). 운영 가져오기는 게시된 커밋에서 레인 Q가 한다.
   - 셋 다 역할 8케이스다. 2026-09-25 운영 트리 `449a677`에서 생성해 운영에 가져왔다(real). 봉인 업종(beauty·popup·retail)을 피했다. 수정 요청·운영자 선호·사람 수정본·발췌 잘림 분기를 캠페인마다 다른 역할에 둔다. 상류 작업물에는 운영처럼 결함을 심었다(금지 표현이 든 카피 초안, 거절 사실 사용, 관찰 기간 없는 전환율 정의, 확인 안 된 칸 수로 잡은 목표).
 
   `tests/eval-synthesize.test.mjs`가 저장소의 모든 스펙이 지금 코드로 생성되고 체크리스트 8종을 채우는지 본다(스펙이 코드 변경으로 썩지 않게).

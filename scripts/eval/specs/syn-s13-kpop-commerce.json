@@ -1,10 +1,10 @@
 {
  "schema": 1,
- "id": "syn-s11-kpop-commerce",
- "label": "S11 팬덤 상품 예약 판매",
+ "id": "syn-s13-kpop-commerce",
+ "label": "S13 팬덤 상품 예약 판매",
  "set": "dev",
  "now": "2026-03-10T09:00:00.000Z",
- "campaignId": "syn-s11-kpop-commerce-campaign",
+ "campaignId": "syn-s13-kpop-commerce-campaign",
  "expectations": {
   "prohibitedTerms": [
    "차트 1위 확정",
@@ -18,7 +18,7 @@
  "records": [
   {
    "kind": "brand",
-   "id": "syn-s11-kpop-commerce-brand",
+   "id": "syn-s13-kpop-commerce-brand",
    "data": {
     "name": "가상레이블",
     "short": "GLB",
@@ -34,9 +34,9 @@
   },
   {
    "kind": "campaign",
-   "id": "syn-s11-kpop-commerce-campaign",
+   "id": "syn-s13-kpop-commerce-campaign",
    "data": {
-    "brandId": "syn-s11-kpop-commerce-brand",
+    "brandId": "syn-s13-kpop-commerce-brand",
     "title": "가상밴드 미니 2집 예약 판매 3주",
     "goal": "예약 판매 기간의 자사 커머스 예약 구매를 늘리고, 발매 뒤 첫 주 판매처별 구매 수를 본다.",
     "audience": "가상밴드 팬덤(가설)",
@@ -56,10 +56,10 @@
   },
   {
    "kind": "brand_fact",
-   "id": "syn-s11-kpop-commerce-fact-release",
-   "parent": "syn-s11-kpop-commerce-brand",
+   "id": "syn-s13-kpop-commerce-fact-release",
+   "parent": "syn-s13-kpop-commerce-brand",
    "data": {
-    "brandId": "syn-s11-kpop-commerce-brand",
+    "brandId": "syn-s13-kpop-commerce-brand",
     "key": "발매일",
     "value": "2026년 4월 2일",
     "status": "confirmed",
@@ -72,10 +72,10 @@
   },
   {
    "kind": "brand_fact",
-   "id": "syn-s11-kpop-commerce-fact-seller",
-   "parent": "syn-s11-kpop-commerce-brand",
+   "id": "syn-s13-kpop-commerce-fact-seller",
+   "parent": "syn-s13-kpop-commerce-brand",
    "data": {
-    "brandId": "syn-s11-kpop-commerce-brand",
+    "brandId": "syn-s13-kpop-commerce-brand",
     "key": "판매처",
     "value": "자사 커머스·팬덤 플랫폼 스토어",
     "status": "confirmed",
@@ -88,10 +88,10 @@
   },
   {
    "kind": "brand_fact",
-   "id": "syn-s11-kpop-commerce-fact-sales",
-   "parent": "syn-s11-kpop-commerce-brand",
+   "id": "syn-s13-kpop-commerce-fact-sales",
+   "parent": "syn-s13-kpop-commerce-brand",
    "data": {
-    "brandId": "syn-s11-kpop-commerce-brand",
+    "brandId": "syn-s13-kpop-commerce-brand",
     "key": "판매 실적",
     "value": "예약 판매 첫날 전량 매진",
     "status": "rejected",
@@ -104,10 +104,10 @@
   },
   {
    "kind": "brand_fact",
-   "id": "syn-s11-kpop-commerce-fact-bonus",
-   "parent": "syn-s11-kpop-commerce-brand",
+   "id": "syn-s13-kpop-commerce-fact-bonus",
+   "parent": "syn-s13-kpop-commerce-brand",
    "data": {
-    "brandId": "syn-s11-kpop-commerce-brand",
+    "brandId": "syn-s13-kpop-commerce-brand",
     "key": "구매 혜택",
     "value": "자사 커머스 구매자 포토카드 1종 추가",
     "status": "candidate",
@@ -120,10 +120,10 @@
   },
   {
    "kind": "campaign_directive",
-   "id": "syn-s11-kpop-commerce-directive",
-   "parent": "syn-s11-kpop-commerce-campaign",
+   "id": "syn-s13-kpop-commerce-directive",
+   "parent": "syn-s13-kpop-commerce-campaign",
    "data": {
-    "campaignId": "syn-s11-kpop-commerce-campaign",
+    "campaignId": "syn-s13-kpop-commerce-campaign",
     "text": "합성 지시: 판매처 이름은 공지 문안에 적힌 표기 그대로 쓴다.",
     "createdAt": "2026-03-10T09:00:00.000Z",
     "createdBy": {
@@ -135,10 +135,10 @@
   },
   {
    "kind": "store",
-   "id": "syn-s11-kpop-commerce-store",
-   "parent": "syn-s11-kpop-commerce-brand",
+   "id": "syn-s13-kpop-commerce-store",
+   "parent": "syn-s13-kpop-commerce-brand",
    "data": {
-    "brandId": "syn-s11-kpop-commerce-brand",
+    "brandId": "syn-s13-kpop-commerce-brand",
     "status": "active",
     "name": "가상레이블 수령 데스크",
     "address": "가상로 55 1층",
@@ -152,11 +152,11 @@
   },
   {
    "kind": "learning_rule",
-   "id": "syn-s11-kpop-commerce-rule-caution",
+   "id": "syn-s13-kpop-commerce-rule-caution",
    "data": {
     "origin": "store",
     "direction": "caution",
-    "brandId": "syn-s11-kpop-commerce-brand",
+    "brandId": "syn-s13-kpop-commerce-brand",
     "channel": "*",
     "experimentId": "",
     "experimentVersion": 0,
@@ -173,7 +173,7 @@
   },
   {
    "kind": "learning_rule",
-   "id": "syn-s11-kpop-commerce-pref-content",
+   "id": "syn-s13-kpop-commerce-pref-content",
    "data": {
     "origin": "review",
     "grade": "operator_preference",
@@ -186,7 +186,7 @@
      "helpful": 0,
      "harmful": 0
     },
-    "brandId": "syn-s11-kpop-commerce-brand",
+    "brandId": "syn-s13-kpop-commerce-brand",
     "channel": "*",
     "experimentId": "",
     "experimentVersion": 0,
@@ -203,16 +203,16 @@
   },
   {
    "kind": "team_meeting",
-   "id": "syn-s11-kpop-commerce-meeting-prev",
-   "parent": "syn-s11-kpop-commerce-campaign",
+   "id": "syn-s13-kpop-commerce-meeting-prev",
+   "parent": "syn-s13-kpop-commerce-campaign",
    "data": {
-    "campaignId": "syn-s11-kpop-commerce-campaign",
+    "campaignId": "syn-s13-kpop-commerce-campaign",
     "campaignVersion": 1,
     "agenda": "합성 안건: 예약 판매 공지 순서를 정한다.",
     "status": "completed",
     "steps": [
      {
-      "id": "syn-s11-kpop-commerce-meeting-prev:synthesis",
+      "id": "syn-s13-kpop-commerce-meeting-prev:synthesis",
       "role": "cmo",
       "phase": "synthesis",
       "status": "completed",
@@ -235,10 +235,10 @@
   },
   {
    "kind": "artifact",
-   "id": "syn-s11-kpop-commerce-art-cmo",
-   "parent": "syn-s11-kpop-commerce-campaign",
+   "id": "syn-s13-kpop-commerce-art-cmo",
+   "parent": "syn-s13-kpop-commerce-campaign",
    "data": {
-    "campaignId": "syn-s11-kpop-commerce-campaign",
+    "campaignId": "syn-s13-kpop-commerce-campaign",
     "campaignVersion": 1,
     "role": "cmo",
     "title": "합성 총괄 파트너",
@@ -251,10 +251,10 @@
   },
   {
    "kind": "artifact",
-   "id": "syn-s11-kpop-commerce-art-insight",
-   "parent": "syn-s11-kpop-commerce-campaign",
+   "id": "syn-s13-kpop-commerce-art-insight",
+   "parent": "syn-s13-kpop-commerce-campaign",
    "data": {
-    "campaignId": "syn-s11-kpop-commerce-campaign",
+    "campaignId": "syn-s13-kpop-commerce-campaign",
     "campaignVersion": 1,
     "role": "insight",
     "title": "합성 인사이트",
@@ -267,10 +267,10 @@
   },
   {
    "kind": "artifact",
-   "id": "syn-s11-kpop-commerce-art-strategy",
-   "parent": "syn-s11-kpop-commerce-campaign",
+   "id": "syn-s13-kpop-commerce-art-strategy",
+   "parent": "syn-s13-kpop-commerce-campaign",
    "data": {
-    "campaignId": "syn-s11-kpop-commerce-campaign",
+    "campaignId": "syn-s13-kpop-commerce-campaign",
     "campaignVersion": 1,
     "role": "strategy",
     "title": "합성 전략",
@@ -284,10 +284,10 @@
   },
   {
    "kind": "artifact",
-   "id": "syn-s11-kpop-commerce-art-creative",
-   "parent": "syn-s11-kpop-commerce-campaign",
+   "id": "syn-s13-kpop-commerce-art-creative",
+   "parent": "syn-s13-kpop-commerce-campaign",
    "data": {
-    "campaignId": "syn-s11-kpop-commerce-campaign",
+    "campaignId": "syn-s13-kpop-commerce-campaign",
     "campaignVersion": 1,
     "role": "creative",
     "title": "합성 크리에이티브",
@@ -300,10 +300,10 @@
   },
   {
    "kind": "artifact",
-   "id": "syn-s11-kpop-commerce-art-content",
-   "parent": "syn-s11-kpop-commerce-campaign",
+   "id": "syn-s13-kpop-commerce-art-content",
+   "parent": "syn-s13-kpop-commerce-campaign",
    "data": {
-    "campaignId": "syn-s11-kpop-commerce-campaign",
+    "campaignId": "syn-s13-kpop-commerce-campaign",
     "campaignVersion": 1,
     "role": "content",
     "title": "합성 콘텐츠",
@@ -316,10 +316,10 @@
   },
   {
    "kind": "artifact",
-   "id": "syn-s11-kpop-commerce-art-growth",
-   "parent": "syn-s11-kpop-commerce-campaign",
+   "id": "syn-s13-kpop-commerce-art-growth",
+   "parent": "syn-s13-kpop-commerce-campaign",
    "data": {
-    "campaignId": "syn-s11-kpop-commerce-campaign",
+    "campaignId": "syn-s13-kpop-commerce-campaign",
     "campaignVersion": 1,
     "role": "growth",
     "title": "합성 그로스",
@@ -332,10 +332,10 @@
   },
   {
    "kind": "artifact",
-   "id": "syn-s11-kpop-commerce-art-data",
-   "parent": "syn-s11-kpop-commerce-campaign",
+   "id": "syn-s13-kpop-commerce-art-data",
+   "parent": "syn-s13-kpop-commerce-campaign",
    "data": {
-    "campaignId": "syn-s11-kpop-commerce-campaign",
+    "campaignId": "syn-s13-kpop-commerce-campaign",
     "campaignVersion": 1,
     "role": "data",
     "title": "합성 데이터",
@@ -349,10 +349,10 @@
   },
   {
    "kind": "artifact",
-   "id": "syn-s11-kpop-commerce-art-quality",
-   "parent": "syn-s11-kpop-commerce-campaign",
+   "id": "syn-s13-kpop-commerce-art-quality",
+   "parent": "syn-s13-kpop-commerce-campaign",
    "data": {
-    "campaignId": "syn-s11-kpop-commerce-campaign",
+    "campaignId": "syn-s13-kpop-commerce-campaign",
     "campaignVersion": 1,
     "role": "quality",
     "title": "합성 품질",

@@ -14,7 +14,7 @@ const check=(name,fn)=>{fn();passed.push(name)};
 const generator={commit:'c'.repeat(40),tree:'d'.repeat(40)};
 const bodyOf=id=>practice.channelSkills.find(s=>s.id===id).body;
 // 봉인 업종(beauty·popup·retail)은 dev에 쓰지 않는다(docs/SEALED-CASES.ko.md, 레인 Q 결정 2026-09-27). 채널은 실명 판매처 없이 일반 문구 '커머스'로 적용 조건에 건다.
-const SPECS={'syn-s10-fnb-commerce':'fnb','syn-s11-kpop-commerce':'kpop'},SEALED_INDUSTRIES=['beauty','popup','retail'];
+const SPECS={'syn-s12-fnb-commerce':'fnb','syn-s13-kpop-commerce':'kpop'},SEALED_INDUSTRIES=['beauty','popup','retail'];
 
 for(const [id,expected] of Object.entries(SPECS)){
  const spec=JSON.parse(readFileSync(`scripts/eval/specs/${id}.json`,'utf8'));
