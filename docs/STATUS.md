@@ -13,6 +13,7 @@
 - #213 · 레인 G · 보통 · `collect_guard` 기본 꺼짐(직원 collect 403 새 제한)
 - #220 · 레인 G · 급함(운영 `/api/context-replay` 404) · 새 스위치 없음
 - #223 · 레인 Q · 보통 · 새 스위치 없음(바이럴 수집 콘텐츠 지시 무시 문장이 운영 제출을 바꿈)
+- #234 · 레인 R · 보통 · 새 스위치 없음(r_franchise 기본 꺼짐, 모집 자료 유형 `card_bundle`·PNG는 브라우저에서 그림, 마이그레이션 없음)
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
 갱신: 2026-09-27 14:03 UTC
@@ -34,9 +35,9 @@
 - 다음: A3 run → A8-1 → A8-2 → A8-3 → B4 2부 → B3([순서](LANES.ko.md#레인-a-claude-a-세션)).
 
 ## 레인 R (Claude 트랙 R 세션 — 가맹 모집)
-갱신: 2026-09-27 14:25 UTC
+갱신: 2026-09-27 15:20 UTC
 - 진행 중: R15b 결정론 모집 템플릿.
-  - R15b-1(#230): 순수 모듈 `lib/franchise-qr.ts`(QR 부호기, 의존성 없음, 참조 부호기와 행렬 80개 일치)와 `lib/franchise-cards.ts`(카드 3~5장, 원장에 없는 수치 400, 유입 코드 QR 400). 런타임 연결 없음. 검사 passed · mocked(franchise-qr 18, franchise-cards 48, 변이 21/22, 남은 1개는 결과가 같은 변이).
+  - R15b-1 merged(#230 `46865e0`): 순수 모듈 `lib/franchise-qr.ts`(QR 부호기, 의존성 없음, 참조 부호기와 행렬 80개 일치)와 `lib/franchise-cards.ts`(카드 3~5장, 원장에 없는 수치 400, 유입 코드 QR 400). 런타임 연결 없음. 검사 passed · mocked(franchise-qr 18, franchise-cards 48, 변이 21/22, 남은 1개는 결과가 같은 변이).
   - R15b-2(이 PR): 자료 유형 `card_bundle`의 저장·승인·내보내기 게이트(카드 단계 400을 내용 단계 앞에), QR 모집 코드 장부 조회, 화면 템플릿·PNG 내려받기(1080×1350·1080×1920). 새 스위치 없음(`r_franchise` 뒤). 검사 passed · mocked(franchise-assets 282, franchise-cards-route 18, 연결 변이 9/9). 로컬 E2E passed · real Chromium·로컬 D1 / mocked 인증(2/2, 브라우저 판독기로 QR 링크 일치). 운영 real not_run.
 - 성장1 마감(레인 R 몫, 2026-09-27): [인계 기록](observations/2026-09-27-lane-r-growth1-handoff.md). 트랙 R 전체 마감은 성장1 종료 조건이 아니다.
   - 회귀(C12): main `431e417` `node scripts/test.mjs` passed · mocked(184/184 스위트, 12,670). 레인 R PR 21개(#173~#209)의 레인 밖 파일 삭제·이름 변경 0건, 라우트·기능 삭제 0건(지운 줄은 모두 목록·문구·버전 태그를 넓혀 다시 쓴 것). 레인 R 회귀 0건.
