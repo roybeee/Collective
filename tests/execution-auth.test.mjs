@@ -13,7 +13,8 @@ for(const [id,role,token] of [['admin','admin','a'.repeat(64)],['member','member
 }
 const request=(token,data,origin='https://app.test')=>new Request('https://app.test/api/execution'+(data?'':'?campaignId=c'),{method:data?'POST':'GET',headers:{cookie:'__Host-collective_session='+token,'oai-authenticated-user-id':'forged-workspace',origin,'content-type':'application/json'},...(data?{body:JSON.stringify({campaignId:'c',...data})}:{})});
 let passed=0;
-for(const action of ['save_limits','connect_buffer','disconnect_buffer','buffer_channels','approve','execute','cancel','reconfirm','resolve_uncertain']){assert.equal((await route.POST(request('b'.repeat(64),{action}))).status,403,action);passed++}
+// A4-4 코드 넣은 PNG 등록(register_coded_png)도 발행 승인처럼 관리자만 한다.
+for(const action of ['save_limits','connect_buffer','disconnect_buffer','buffer_channels','approve','execute','cancel','reconfirm','resolve_uncertain','register_coded_png']){assert.equal((await route.POST(request('b'.repeat(64),{action}))).status,403,action);passed++}
 // A4-2: 게시 코드를 발급하는 발행 준비(trackingCode가 있는 save_publication)는 관리자만 한다. 직원은 값과 상관없이 403이고 추적 코드가 생기지 않는다.
 // 코드 없는 준비(필드 없음·null)는 권한으로 막지 않는다(여기서는 없는 소재라 404).
 const codeCount=()=>rt.sql.prepare("SELECT COUNT(*) AS n FROM records WHERE owner='workspace' AND kind='tracking_code'").get().n;

@@ -51,6 +51,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'judge_output',parent:'eval_run',campaignDeletion:'not_campaign_scoped',description:'AI 심사 응답 원문과 파서 결과(기준별 점수·판단 불가·인용·이유, 라벨 항목·원 평가 run 연결). 심사 run의 결과에는 점수만 두고 인용·이유는 여기에만 둔다(소유자 전용)'},
  {kind:'eval_run',parent:'none',campaignDeletion:'not_campaign_scoped',description:'서버 평가 실행(케이스별 채점 결과·토큰·예산 승인·봉인 세트 사용 기록). delete_run은 결과·출력만 지우고 행은 월 예산 장부로 남긴다'},
  {kind:'event',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'캠페인 이력 이벤트'},
+ // A4-4 코드 넣은 파생 PNG. 발행 1건당 1행(id = 발행 id, parent = 캠페인)이고 발행 기록처럼 캠페인을 지워도 남긴다(발행 기록이 이미 삭제를 거부한다).
+ {kind:'execution_coded_png',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'게시 코드를 그린 파생 PNG(발행·소재 id, 원본 소재 PNG 해시·파생 PNG 해시, 게시 코드와 코드 id, 비공개 파일 키, 등록한 사람 id·시각). 공개 사본은 승인 때 public_media로 만든다(A4-4)'},
  {kind:'execution_creative',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'제작한 소재. 있으면 캠페인 삭제를 거부한다'},
  {kind:'execution_limits',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'발행 한도 설정'},
  {kind:'execution_provider_audit',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'발행 공급자 응답 감사 기록. 발행 기록과 함께 생겨 삭제 거부 대상 캠페인에만 있다'},

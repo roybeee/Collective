@@ -4,9 +4,10 @@ import {confirmedFactContext} from './brand-facts-server';
 import type {BrandFact} from './brand-facts';
 import {evidenceContext} from './ai-context';
 import {factLabel} from './fact-catalog';
-import {approvalDrift,budgetIssues,campaignGateIssues,captionIssues,composeCaption,copyBlocks,executionTotals,providerPublicationStatus,publicationLabels,reviewStatuses,uncertainResolvable,CREATIVE_TITLE_MAX,type CaptionCandidate,type ExecutionCreative,type ExecutionLimits,type ExecutionState,type FranchiseExecution,type NeedsReview,type Publication,type PublicationCode,type PublicationCopy,type PublicationStatus,type FactRef} from './execution';
+import {approvalDrift,budgetIssues,campaignGateIssues,captionIssues,composeCaption,copyBlocks,executionTotals,mediaHash,providerPublicationStatus,publicationLabels,reviewStatuses,uncertainResolvable,CREATIVE_TITLE_MAX,type CaptionCandidate,type ExecutionCreative,type ExecutionLimits,type ExecutionState,type FranchiseExecution,type NeedsReview,type Publication,type PublicationCode,type PublicationCopy,type PublicationStatus,type FactRef} from './execution';
 import {isOwnMediaUrl,mediaUrl,pngBytes,publishPublicMedia,retirePublicMedia,sha256,storePngThen,verifyMedia} from './execution-media';
 import {inspectBuffer,verifyBuffer} from './publisher-buffer';
+import {assertCodedPngUsable,pngCodeEnabled} from './coded-png-server';
 import {issuePublicationCode} from './publication-codes';
 import {CODE_ALPHABET,CODE_MAX,type TrackingCode} from './tracking-codes';
 import type {Store} from './store-marketing';
@@ -65,8 +66,9 @@ export async function getExecution(owner:string,campaign:Campaign):Promise<Execu
  const current=await Promise.all(creatives.map(c=>creativeCurrent(campaign,brand,facts,c,fr.versions)));
  const state:ExecutionState={creatives:creatives.map((c,i)=>({...c,objectKey:'',current:current[i]})),publications,limits,publisher:credential?{connected:true,channelId:credential.channelId,account:credential.account,version:credential.version}:{connected:false},copies,copyCaptions:aiCopyCaptionsEnabled()};
  // 판정 범위가 없는 캠페인(가맹 프로필 없는 브랜드의 소비자 캠페인)은 franchise 키가 없다(비가맹 응답 불변).
- const scope=claimScope(campaign,fr);
- return scope?{...state,franchise:franchiseExecution(campaign,scope,fr,facts,publications)}:state;
+ // A4-4: 스위치 a4_png_code가 켜졌을 때만 pngCode 키를 끝에 붙인다(꺼져 있으면 이전 응답과 같다).
+ const scope=claimScope(campaign,fr),pngCode=await pngCodeEnabled(owner)?{pngCode:true as const}:{};
+ return scope?{...state,franchise:franchiseExecution(campaign,scope,fr,facts,publications),...pngCode}:{...state,...pngCode};
 }
 // 발행 화면의 가맹 정보(트랙 R R2). 초안·승인 발행마다 서버 승인 게이트와 같은 조건(사실 사용·각주·가맹 규칙 판정)의 차단 사유를 계산한다.
 // 모집 범위(objective 캠페인)는 소비자 캠페인 안내(recruitmentWarning)를 싣지 않고, 가맹 프로필이 없으면 branch가 null이다. 키 순서는 소비자 범위와 같다.
@@ -154,10 +156,10 @@ export async function connectPublisher(owner:string,campaign:Campaign,input:Reco
  await recordStatement(owner,'publisher_credential',campaign.brandId,value,campaign.brandId).run();return {connected:true,channelId,account,version:value.version};
 }
 // 승인을 새 버전의 초안으로 되돌린다. 승인 필드와 자동 공개 주소를 비운다(JSON 저장 시 undefined 필드는 빠진다).
-function toDraft(p:Publication,reason:string):Publication{return {...p,status:'draft',version:p.version+1,mediaUrl:p.mediaMode==='auto'?'':p.mediaUrl,channelId:undefined,credentialVersion:undefined,limitsVersion:undefined,approvedLimits:undefined,approvedBy:undefined,approvedAt:undefined,aiDisclosureConfirmedBy:undefined,aiDisclosureConfirmedAt:undefined,needsReview:undefined,invalidatedReason:reason,updatedAt:stamp()}}
+function toDraft(p:Publication,reason:string):Publication{return {...p,status:'draft',version:p.version+1,mediaUrl:p.mediaMode==='auto'?'':p.mediaUrl,channelId:undefined,credentialVersion:undefined,limitsVersion:undefined,approvedLimits:undefined,approvedBy:undefined,approvedAt:undefined,aiDisclosureConfirmedBy:undefined,aiDisclosureConfirmedAt:undefined,codedPngConfirmedBy:undefined,codedPngConfirmedAt:undefined,needsReview:undefined,invalidatedReason:reason,updatedAt:stamp()}}
 // 승인에서 벗어난 발행의 앱 공개 주소 참조를 해제한다. 호출자는 owner 변경 잠금을 가진다. 실패해도 상태 변경은 유지하고 기록만 남긴다.
 export async function retireMedia(owner:string,publications:Publication[]){
- for(const p of publications)if(p.mediaMode==='auto'&&p.mediaUrl)await retirePublicMedia(owner,p.pngHash,p.id).catch(e=>console.error('execution_media_retire_failed',e instanceof Error?e.message:'unknown'));
+ for(const p of publications)if(p.mediaMode==='auto'&&p.mediaUrl)await retirePublicMedia(owner,mediaHash(p),p.id).catch(e=>console.error('execution_media_retire_failed',e instanceof Error?e.message:'unknown'));
 }
 // exec-loop-11: 자격증명을 지우고 이 브랜드의 모든 승인을 초안으로 되돌리며 감사 이벤트를 남긴다. 이미 접수된 예약은 Buffer에서 처리한다.
 export async function disconnectPublisher(owner:string,campaign:Campaign,input:Record<string,unknown>,who:Who){
@@ -282,6 +284,8 @@ export async function approvalInputs(owner:string,campaign:Campaign,p:Publicatio
  // 스위치를 켠 뒤 표시 문구 상수가 바뀌면 남은 초안·승인의 캡션에는 이전 표시 줄이 있다. 재확인으로는 캡션이 바뀌지 않으므로 취소·재준비를 안내한다(결정 17).
  if(p.copy?.aiGenerated===true&&!p.caption.includes(AI_DISCLOSURE_LINE))throw new ApiError(409,'AI 생성물 표시 문구가 준비 뒤 바뀌었습니다. 이 발행을 취소하고 다시 준비하세요.');
  if(creative.version!==p.creativeVersion||creative.pngHash!==p.pngHash||composeCaption(p.copy,creative.caption,p.trackingCode)!==p.caption)throw new ApiError(409,'소재가 변경됐습니다. 다시 준비하세요.');
+ // A4-4: 코드 넣은 파생 PNG가 연결된 발행은 스위치가 켜져 있고 파생의 바탕이 이 원본 소재·게시 코드여야 한다.
+ await assertCodedPngUsable(owner,p);
  // 기록된 AI 생성물 판정(이 필드 이전 기록 포함)이 작업물 출처와 다르면 캡션 표시 줄이 맞지 않으므로 다시 준비하게 한다(결정 17).
  if(p.copy){const copy=await approvedCopy(owner,campaign,p.copy,fr);if(copy.text!==p.copy.text)throw new ApiError(409,'카피 작업물이 바뀌었습니다. 캡션 후보를 다시 고르세요.');if(copy.aiGenerated!==(p.copy.aiGenerated===true))throw new ApiError(409,'카피 작업물의 AI 생성물 판정이 준비 때와 다릅니다. 이 발행을 취소하고 캡션 후보를 다시 골라 준비하세요.')}
  // 가맹 사실 게이트·가맹 규칙·각주(트랙 R R1b·R2). 소재·발행 두 행의 캡션을 함께 고쳐 각주를 지워도 여기서 막는다. 승인 입력 확인란·역할(대표 포함)로는 풀리지 않는다.
@@ -303,13 +307,15 @@ export async function approvePublication(owner:string,campaign:Campaign,p:Public
  // 결정 17: AI 카피 발행은 캡션 끝 표시 줄을 확인했다는 체크(aiDisclosureConfirmed:true)가 있어야 승인한다. 확인자·시각은 승인자와 같은 방식으로 남긴다.
  const aiCopy=p.copy?.aiGenerated===true;
  if(aiCopy&&input.aiDisclosureConfirmed!==true)throw new ApiError(409,'AI 카피를 쓴 발행입니다. 캡션 끝 표시 문구를 확인하고 AI 생성물 표시를 확인하세요.');
+ // A4-4: 코드 넣은 파생 PNG는 사람이 이미지를 확인했다는 체크(codedPngConfirmed:true)가 있어야 승인한다. 확인자·시각을 남기고 공개는 파생 해시로 한다.
+ if(p.codedPng&&input.codedPngConfirmed!==true)throw new ApiError(409,'코드 넣은 PNG를 쓴 발행입니다. 이미지의 게시 코드와 원본 내용을 확인하고 코드 PNG 확인을 체크하세요.');
  const {credential,limits}=await approvalInputs(owner,campaign,p);
  const changed=[...(input.channelId!==credential.channelId||input.credentialVersion!==credential.version?['발행 계정']:[]),...(input.limitsVersion!==limits.version?['발행 횟수 한도']:[])];
  if(changed.length)throw new ApiError(409,`화면에 표시된 정보가 변경됐습니다(${changed.join(', ')}). 새로고침하고 다시 확인하세요.`);
  // 자동 모드는 승인된 발행만 앱 공개 주소로 제공한다. 외부 호스트는 원본 해시와 같은지 확인한다.
- let url=p.mediaUrl;if(external)await verifyMedia(p.mediaUrl,p.pngHash,origin);else url=await publishPublicMedia(owner,p.pngHash,p.id,origin);
- const approved:Publication={...p,status:'approved',version:p.version+1,mediaUrl:url,channelId:credential.channelId,credentialVersion:credential.version,limitsVersion:limits.version,approvedLimits:{maxPublications:limits.maxPublications,maxPlannedCostKRW:limits.maxPlannedCostKRW},approvedBy:who.id,approvedAt:stamp(),...(aiCopy?{aiDisclosureConfirmedBy:who.id,aiDisclosureConfirmedAt:stamp()}:{}),invalidatedReason:undefined,updatedAt:stamp()};
- try{await recordStatement(owner,'execution_publication',p.id,approved,campaign.id).run()}catch(e){if(!external)await retirePublicMedia(owner,p.pngHash,p.id).catch(()=>{});throw e}
+ let url=p.mediaUrl;if(external)await verifyMedia(p.mediaUrl,p.pngHash,origin);else url=await publishPublicMedia(owner,mediaHash(p),p.id,origin);
+ const approved:Publication={...p,status:'approved',version:p.version+1,mediaUrl:url,channelId:credential.channelId,credentialVersion:credential.version,limitsVersion:limits.version,approvedLimits:{maxPublications:limits.maxPublications,maxPlannedCostKRW:limits.maxPlannedCostKRW},approvedBy:who.id,approvedAt:stamp(),...(aiCopy?{aiDisclosureConfirmedBy:who.id,aiDisclosureConfirmedAt:stamp()}:{}),...(p.codedPng?{codedPngConfirmedBy:who.id,codedPngConfirmedAt:stamp()}:{}),invalidatedReason:undefined,updatedAt:stamp()};
+ try{await recordStatement(owner,'execution_publication',p.id,approved,campaign.id).run()}catch(e){if(!external)await retirePublicMedia(owner,mediaHash(p),p.id).catch(()=>{});throw e}
  return approved;
 }
 // Called with the owner mutation lock. Persist the attempt BEFORE any publish call.
@@ -324,7 +330,7 @@ export async function reservePublication(owner:string,campaign:Campaign,p:Public
  // 횟수와 비용 중 무엇이 막았는지 따로 알린다(exec-loop-10). 참고로 입력한 예정 비용도 0원보다 크면 상한에 포함된다.
  if(total.attempts>=limits.maxPublications)throw new ApiError(409,`발행 횟수 한도를 초과합니다(누적 발행 시도 ${total.attempts}회 · 한도 ${limits.maxPublications}회).`);
  if(total.plannedCostKRW+p.plannedCostKRW>limits.maxPlannedCostKRW)throw new ApiError(409,`예정 비용 상한을 초과합니다(누적 ${total.plannedCostKRW.toLocaleString('ko-KR')}원 + 이번 ${p.plannedCostKRW.toLocaleString('ko-KR')}원 · 상한 ${limits.maxPlannedCostKRW.toLocaleString('ko-KR')}원).`);
- await verifyMedia(p.mediaUrl,p.pngHash,origin);
+ await verifyMedia(p.mediaUrl,mediaHash(p),origin);
  const token=await decrypt(credential.secret);
  const pending:Publication={...p,status:'submitting',attemptedAt:stamp(),updatedAt:stamp(),version:p.version+1};
  await publicationKeepingReview(owner,pending,campaign.id).run();
