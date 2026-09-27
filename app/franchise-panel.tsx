@@ -19,14 +19,18 @@ import {GATE_DISCLAIMER,CONTACT_NOTE,OFF_BANNER,UNDETERMINED_BANNER,FRANCHISE_ER
 import {canChange,useAccount} from './account-context';
 import {franchiseGet,franchisePost,problemOf,messageOf,ProblemBox,Disclaimer,TimeField,TaskFields,LabelSelect,saveCsv,NOW,timeOf,kst,labelOf,
  type FranchiseStatus,type Intake,type Board,type LeadSummary,type LeadDetail,type Assignee,type Problem,type TimeValue} from './franchise-common';
-import {FranchiseLeadDetail,ERASE_CONFIRM,assigneeLabel,eraseDone} from './franchise-lead-detail';
+import {FranchiseLeadDetail,ERASE_CONFIRM,assigneeLabel,eraseDone,parseCodes,codesProblem,codeNotRegistered,CODE_NOT_REGISTERED} from './franchise-lead-detail';
 import {FranchiseSettings} from './franchise-settings';
 import {FranchiseAssets} from './franchise-assets-panel';
 import {FranchiseEvents} from './franchise-events-panel';
+import {FranchiseInflow} from './franchise-inflow-panel';
+import {RECRUITMENT_CHANNEL_LABELS,FILE_BASIS_LABEL,UNATTRIBUTED_LABEL} from '@/lib/franchise-recruitment';
 
 type Campaigns=readonly {id:string;title:string}[];
-type Filters={stage:string;assignee:string;source:string;q:string;todo:BoardTodo|'';sort:'activity'|'eligibility'};
-const noFilters:Filters={stage:'',assignee:'',source:'',q:'',todo:'',sort:'activity'};
+type Filters={stage:string;assignee:string;source:string;q:string;todo:BoardTodo|'';inflow:string;sort:'activity'|'eligibility'};
+const noFilters:Filters={stage:'',assignee:'',source:'',q:'',todo:'',inflow:'',sort:'activity'};
+// 유입 필터(R5c): 모집 채널(코드 귀속)·제공처 파일 기준·유입 미확인·점포 코드와 충돌. 서버 INFLOW_FILTERS와 같은 키다.
+export const INFLOW_FILTER_LABELS:Readonly<Record<string,string>>={...RECRUITMENT_CHANNEL_LABELS,import:FILE_BASIS_LABEL,unattributed:UNATTRIBUTED_LABEL,conflict:'모집 코드 충돌'};
 // 검색어가 코드·지역이 아니면(전화·이메일·숫자) 보내지 않는다. 서버도 400이다.
 export const SEARCH_HINT='검색은 리드 코드(L로 시작)나 지역 이름만 받습니다. 전화·이메일은 ‘연락처로 찾기’를 쓰세요(주소창에 남지 않고 기록이 남습니다).';
 const isTab=(v:string):v is FranchiseTab=>(franchiseTabs as readonly string[]).includes(v);
@@ -68,12 +72,13 @@ export function FranchisePanel({workspace,initialBrandId,initialTab,onScopeChang
   {status&&!enabled&&<p className="notice" role="note">{OFF_BANNER}</p>}
   {intakeError&&<div role="alert" className="load-error"><span>{intakeError}</span><Button variant="outline" size="sm" onClick={()=>void loadIntake()}>다시 불러오기</Button></div>}
   {intake&&branch!=='A'&&<p className="notice" role="note">{branch==='B'||branch==='C'?FRANCHISE_ERRORS.BRANCH_BLOCKED.text:UNDETERMINED_BANNER}{admin?' 설정 탭의 가맹 프로필에서 분기를 기록합니다.':''}</p>}
-  <Tabs value={shown} onValueChange={pickTab}><TabsList className="h-auto max-w-full flex-wrap"><TabsTrigger value="leads">리드</TabsTrigger><TabsTrigger value="requests">정보주체 요청</TabsTrigger><TabsTrigger value="assets">모집 자료</TabsTrigger><TabsTrigger value="events">행사</TabsTrigger>{admin&&<TabsTrigger value="settings">설정</TabsTrigger>}</TabsList></Tabs>
+  <Tabs value={shown} onValueChange={pickTab}><TabsList className="h-auto max-w-full flex-wrap"><TabsTrigger value="leads">리드</TabsTrigger><TabsTrigger value="requests">정보주체 요청</TabsTrigger><TabsTrigger value="assets">모집 자료</TabsTrigger><TabsTrigger value="events">행사</TabsTrigger><TabsTrigger value="inflow">유입·비용</TabsTrigger>{admin&&<TabsTrigger value="settings">설정</TabsTrigger>}</TabsList></Tabs>
   {!status?!statusError&&<p role="status">가맹 모집 정보를 불러오고 있습니다.</p>
    :shown==='leads'?<LeadsTab key={brandId} brandId={brandId} status={status} admin={admin} intake={intake} campaigns={campaigns} onRequests={()=>pickTab('requests')}/>
    :shown==='requests'?<RequestsTab key={brandId} brandId={brandId} admin={admin} keyReady={status.contactKey==='ready'}/>
    :shown==='assets'?<FranchiseAssets key={brandId} brandId={brandId} admin={admin} artifacts={workspace.artifacts} onStatus={()=>void loadStatus()}/>
    :shown==='events'?<FranchiseEvents key={brandId} brandId={brandId} admin={admin} onStatus={()=>void loadStatus()}/>
+   :shown==='inflow'?<FranchiseInflow key={brandId} brandId={brandId} brandName={brands.find(b=>b.id===brandId)?.name??''} admin={admin} branch={branch||null} storageLabels={intake?.storageLabels??[]} onStatus={()=>void loadStatus()}/>
    :<FranchiseSettings key={brandId} brandId={brandId} enabled={enabled} onChanged={()=>void loadIntake()}/>}
  </section>;
 }
@@ -90,7 +95,7 @@ function LeadsTab({brandId,status,admin,intake,campaigns,onRequests}:{brandId:st
   setLoading(true);setError('');
   try{
    const params:Record<string,string>={view:'board',brandId,sort:filters.sort};
-   for(const k of ['stage','assignee','source','q','todo'] as const)if(filters[k])params[k]=filters[k];
+   for(const k of ['stage','assignee','source','q','todo','inflow'] as const)if(filters[k])params[k]=filters[k];
    const d=await franchiseGet<Board>(params,signal);if(!signal?.aborted)setBoard(d);
   }catch(e){if(!signal?.aborted)setError(messageOf(e))}
   finally{if(!signal?.aborted)setLoading(false)}
@@ -121,6 +126,7 @@ function LeadsTab({brandId,status,admin,intake,campaigns,onRequests}:{brandId:st
     <label className="field"><span>단계</span><NativeSelect value={filters.stage} onChange={e=>setFilters({...filters,stage:e.target.value})}><NativeSelectOption value="">전체</NativeSelectOption>{LEAD_STAGES.map(s=><NativeSelectOption key={s} value={s}>{STAGE_LABELS[s]}{board?` ${board.counts.byStage[s]??0}`:''}</NativeSelectOption>)}</NativeSelect></label>
     <label className="field"><span>담당</span><NativeSelect value={filters.assignee} onChange={e=>setFilters({...filters,assignee:e.target.value})}><NativeSelectOption value="">{admin?'전체':'내 리드와 담당 없음'}</NativeSelectOption><NativeSelectOption value="me">내 리드</NativeSelectOption><NativeSelectOption value="unassigned">담당 없음</NativeSelectOption>{admin&&assignees.filter(a=>a.label!=='나').map(a=><NativeSelectOption key={a.id} value={a.id}>{a.label}</NativeSelectOption>)}</NativeSelect></label>
     <LabelSelect label="유입" labels={SOURCE_LABELS} value={filters.source} empty="전체" onChange={source=>setFilters({...filters,source})}/>
+    <LabelSelect label="모집 귀속" labels={INFLOW_FILTER_LABELS} value={filters.inflow} empty="전체" onChange={inflow=>setFilters({...filters,inflow})}/>
     <label className="field"><span>검색 (코드·지역)</span><Input value={query} maxLength={40} placeholder="L로 시작하는 코드 또는 지역" onChange={e=>setQuery(e.target.value)}/></label>
     <Button type="submit" variant="outline">검색</Button>
     <LabelSelect label="정렬" labels={{activity:'최근 활동',eligibility:'적격 충족'}} value={filters.sort} onChange={sort=>setFilters({...filters,sort})}/>
@@ -131,22 +137,22 @@ function LeadsTab({brandId,status,admin,intake,campaigns,onRequests}:{brandId:st
    {error&&<div role="alert" className="load-error"><span>{error}</span><Button variant="outline" size="sm" onClick={()=>void load()}>다시 불러오기</Button></div>}
    {!board?loading&&<p role="status">리드를 불러오고 있습니다.</p>:board.leads.length?<>
     <div className="ledger-table-wrap"><table className="ledger-table franchise-table"><caption className="sr-only">가맹 리드 목록</caption>
-     <thead><tr><th>코드</th><th>이름</th><th>연락처</th><th>단계</th><th>담당</th><th>유입</th><th>지역</th><th>예산</th><th>시기</th><th>적격</th><th>마지막 활동</th><th>보존 기한</th></tr></thead>
+     <thead><tr><th>코드</th><th>이름</th><th>연락처</th><th>단계</th><th>담당</th><th>유입</th><th>모집 귀속</th><th>지역</th><th>예산</th><th>시기</th><th>적격</th><th>마지막 활동</th><th>보존 기한</th></tr></thead>
      <tbody>{board.leads.map(l=><tr key={l.id}>
       <td><button type="button" className="campaign-name" aria-label={`리드 ${l.systemCode} 열기`} onClick={()=>setOpen({id:l.id})}>{l.systemCode}</button></td>
       <td>{l.contact?.name??CONTACT_STATE_LABELS[l.contactState]}</td>
       <td>{l.contact?l.contact.phone??l.contact.email??'-':'-'}</td>
       <td><span className="status">{STAGE_LABELS[l.stage]}</span>{l.sourceNoticePending&&<small className="franchise-flag"> 출처 고지 필요</small>}</td>
       <td>{assigneeLabel(l,assignees)}{enabled&&l.assigneeId===null&&l.contactState==='present'&&<> <Button size="sm" variant="outline" disabled={busy} onClick={()=>claim(l)}>가져오기</Button></>}</td>
-      <td>{SOURCE_LABELS[l.task.sourceChannel]}</td><td>{l.task.region||'-'}</td><td>{BUDGET_LABELS[l.task.budgetBand]}</td><td>{TIMING_LABELS[l.task.timingBand]}</td>
+      <td>{SOURCE_LABELS[l.task.sourceChannel]}</td><td>{l.attribution?.label??'-'}</td><td>{l.task.region||'-'}</td><td>{BUDGET_LABELS[l.task.budgetBand]}</td><td>{TIMING_LABELS[l.task.timingBand]}</td>
       <td>{l.eligibility?`${l.eligibility.met}/${l.eligibility.total}`:'-'}</td><td>{kst(l.lastActivityAt)}</td><td>{l.retentionUntil?kst(l.retentionUntil):'-'}</td>
      </tr>)}</tbody>
     </table></div>
     <p className="subtle-note">{board.total>board.leads.length?`${board.total}건 중 ${board.leads.length}건을 보여 줍니다. 필터를 좁혀 주세요.`:`${board.total}건`} · 보존 기한은 {RETENTION_LABEL}</p>
-   </>:<p className="subtle-note">{filters.stage||filters.assignee||filters.source||filters.q||filters.todo?'조건에 맞는 리드가 없습니다.':'아직 등록된 리드가 없습니다.'}{!admin?' 직원은 내 리드와 담당 없는 리드만 봅니다.':''}</p>}
+   </>:<p className="subtle-note">{filters.stage||filters.assignee||filters.source||filters.q||filters.todo||filters.inflow?'조건에 맞는 리드가 없습니다.':'아직 등록된 리드가 없습니다.'}{!admin?' 직원은 내 리드와 담당 없는 리드만 봅니다.':''}</p>}
   </>}
   {open&&<FranchiseLeadDetail key={open.id} brandId={brandId} leadId={open.id} initial={open.initial} admin={admin} intake={intake} assignees={assignees} campaigns={campaigns} onClose={()=>setOpen(null)} onChanged={()=>void load()}/>}
-  {dialog==='create'&&<CreateLeadDialog brandId={brandId} admin={admin} intake={intake} assignees={assignees} campaigns={campaigns} onClose={()=>setDialog('')} onCreated={(id,lead)=>{setDialog('');setMessage('리드를 등록했습니다.');void load();setOpen({id,initial:lead})}}/>}
+  {dialog==='create'&&<CreateLeadDialog brandId={brandId} admin={admin} intake={intake} assignees={assignees} campaigns={campaigns} onClose={()=>setDialog('')} onCreated={(id,lead,note)=>{setDialog('');setMessage('리드를 등록했습니다.'+(note?' '+note:''));void load();setOpen({id,initial:lead})}}/>}
   {dialog==='export'&&<ExportDialog brandId={brandId} onClose={()=>setDialog('')} onDone={text=>{setDialog('');setMessage(text)}}/>}
   {dialog==='find'&&<FindDialog brandId={brandId} onClose={()=>setDialog('')} onOpen={id=>{setDialog('');setOpen({id})}}/>}
  </div>;
@@ -154,28 +160,29 @@ function LeadsTab({brandId,status,admin,intake,campaigns,onRequests}:{brandId:st
 
 // 할 일 칩: 누르면 그 할 일에 해당하는 리드만 보드에 보인다(서버 todo 필터). 파기 대기는 대표·관리자만.
 function todoChips(t:Board['todos'],admin:boolean):[BoardTodo,number][]{
- return [['source_notice',t.sourceNoticePending],['expiring',t.contactsExpiringSoon],['marketing_recheck',t.marketingRecheck],...(admin&&t.purgePending!==undefined?[['purge_pending',t.purgePending] as [BoardTodo,number]]:[])];
+ return [['source_notice',t.sourceNoticePending],['expiring',t.contactsExpiringSoon],['marketing_recheck',t.marketingRecheck],...(t.codeConflict!==undefined?[['code_conflict',t.codeConflict] as [BoardTodo,number]]:[]),...(admin&&t.purgePending!==undefined?[['purge_pending',t.purgePending] as [BoardTodo,number]]:[])];
 }
 
 // ── 리드 등록 ──
-type CreateForm={name:string;phone:string;email:string;memo:string;task:LeadTask;basis:BasisType;noticeId:string;noticeAt:TimeValue;referralFrom:string;marketing:boolean;method:string;marketingAt:TimeValue;marketingNoticeId:string;assignee:string};
-const blankCreate:CreateForm={name:'',phone:'',email:'',memo:'',task:{region:'',budgetBand:'unknown',timingBand:'unknown',sourceChannel:'phone_inquiry',campaignId:null},basis:'inquiry_response',noticeId:'',noticeAt:NOW,referralFrom:'',
+type CreateForm={name:string;phone:string;email:string;memo:string;codes:string;task:LeadTask;basis:BasisType;noticeId:string;noticeAt:TimeValue;referralFrom:string;marketing:boolean;method:string;marketingAt:TimeValue;marketingNoticeId:string;assignee:string};
+const blankCreate:CreateForm={name:'',phone:'',email:'',memo:'',codes:'',task:{region:'',budgetBand:'unknown',timingBand:'unknown',sourceChannel:'phone_inquiry',campaignId:null},basis:'inquiry_response',noticeId:'',noticeAt:NOW,referralFrom:'',
  marketing:false,method:'',marketingAt:NOW,marketingNoticeId:'',assignee:'__self'};
 // 최소 수집: 이름(필수)·전화/이메일(하나 이상)·메모(선택). 입력은 이 대화상자 상태에만 두고 닫으면 사라진다. 브라우저 자동 완성에 남지 않게 autoComplete를 끈다.
-export function CreateLeadDialog({brandId,admin,intake,assignees,campaigns,onClose,onCreated}:{brandId:string;admin:boolean;intake:Intake|null;assignees:readonly Assignee[];campaigns:Campaigns;onClose:()=>void;onCreated:(id:string,lead?:LeadDetail)=>void}){
+export function CreateLeadDialog({brandId,admin,intake,assignees,campaigns,onClose,onCreated}:{brandId:string;admin:boolean;intake:Intake|null;assignees:readonly Assignee[];campaigns:Campaigns;onClose:()=>void;onCreated:(id:string,lead?:LeadDetail,note?:string)=>void}){
  const [f,setF]=useState<CreateForm>(blankCreate),[busy,setBusy]=useState(false),[problem,setProblem]=useState<Problem|null>(null);
  const notices=intake?.notices??[],set=(patch:Partial<CreateForm>)=>setF({...f,...patch});
- const missing=!f.name.trim()||(!f.phone.trim()&&!f.email.trim())||(f.basis==='consent'&&(!f.noticeId||!timeOf(f.noticeAt)))||(f.basis==='referral'&&!f.referralFrom)
+ const codes=parseCodes(f.codes),codeProblem=f.codes.trim()?codesProblem(codes):null;
+ const missing=!!codeProblem||!f.name.trim()||(!f.phone.trim()&&!f.email.trim())||(f.basis==='consent'&&(!f.noticeId||!timeOf(f.noticeAt)))||(f.basis==='referral'&&!f.referralFrom)
   ||(admin&&f.marketing&&(!f.method||!f.marketingNoticeId||!timeOf(f.marketingAt)));
  async function submit(){
   setBusy(true);setProblem(null);
   try{
    const basis=f.basis==='consent'?{type:'consent',noticeId:f.noticeId,noticeGivenAt:timeOf(f.noticeAt)}:f.basis==='referral'?{type:'referral',referralFrom:f.referralFrom}:{type:'inquiry_response'};
-   const r=await franchisePost('create_lead',{brandId,contact:{name:f.name,...(f.phone.trim()?{phone:f.phone}:{}),...(f.email.trim()?{email:f.email}:{})},...(f.memo.trim()?{memo:f.memo}:{}),task:{...f.task,region:f.task.region.trim()},basis,
+   const r=await franchisePost('create_lead',{brandId,contact:{name:f.name,...(f.phone.trim()?{phone:f.phone}:{}),...(f.email.trim()?{email:f.email}:{})},...(f.memo.trim()?{memo:f.memo}:{}),...(codes.length?{codes}:{}),task:{...f.task,region:f.task.region.trim()},basis,
     ...(admin&&f.marketing?{marketing:{status:'given',method:f.method,at:timeOf(f.marketingAt),noticeId:f.marketingNoticeId}}:{}),...(admin&&f.assignee!=='__self'?{assigneeId:f.assignee==='__none'?null:f.assignee}:{})});
    const id=r.body.result?.leadId;
    if(r.status!==200||typeof id!=='string'){setProblem(problemOf(r));return}
-   setF(blankCreate);onCreated(id,r.body.lead);
+   setF(blankCreate);onCreated(id,r.body.lead,codeNotRegistered(r)?CODE_NOT_REGISTERED:undefined);
   }finally{setBusy(false)}
  }
  return <Dialog open onOpenChange={v=>{if(!v&&!busy)onClose()}}><DialogContent className="wide-dialog"><DialogHeader><DialogTitle>리드 등록</DialogTitle><DialogDescription>{CONTACT_NOTE} 주소·생년월일·주민등록번호·계좌번호는 받지 않습니다.</DialogDescription></DialogHeader>
@@ -185,6 +192,7 @@ export function CreateLeadDialog({brandId,admin,intake,assignees,campaigns,onClo
    <label className="field"><span>이메일</span><Input autoComplete="off" type="email" maxLength={254} placeholder="name@example.com" value={f.email} onChange={e=>set({email:e.target.value})}/><small>전화·이메일 중 하나 이상</small></label>
    <label className="field"><span>메모 (선택, 1000자)</span><Textarea autoComplete="off" rows={3} maxLength={1000} value={f.memo} onChange={e=>set({memo:e.target.value})}/><small>{MEMO_HINT}</small></label>
    <TaskFields task={f.task} onChange={task=>set({task})} campaigns={campaigns}/>
+   <label className="field"><span>모집 코드 (선택, 쉼표로 여러 개)</span><Input autoComplete="off" maxLength={80} spellCheck={false} placeholder="예: R2345678" value={f.codes} onChange={e=>set({codes:e.target.value})}/><small>{codeProblem??'문의자가 알려 준 코드나 유입 주소의 utm_content 값입니다. 귀속은 서버가 계산합니다.'}</small></label>
    <fieldset className="field"><legend>수집 근거</legend>{INTAKE_BASIS_TYPES.map(b=><label key={b} className="franchise-inline"><input type="radio" name="franchise-basis" checked={f.basis===b} onChange={()=>set({basis:b})}/> {BASIS_LABELS[b]}</label>)}</fieldset>
    {f.basis==='consent'&&<div className="form-two"><label className="field"><span>안내한 개인정보 안내문</span><NativeSelect required value={f.noticeId} onChange={e=>set({noticeId:e.target.value})}><NativeSelectOption value="">안내문 선택</NativeSelectOption>{notices.map(n=><NativeSelectOption key={n.id} value={n.id}>{n.versionLabel}</NativeSelectOption>)}</NativeSelect>{!notices.length&&<small>대표·관리자가 설정에서 안내문을 먼저 등록해야 합니다.</small>}</label><TimeField label="안내 시각" value={f.noticeAt} onChange={noticeAt=>set({noticeAt})}/></div>}
    {f.basis==='referral'&&<><LabelSelect label="소개한 사람" labels={REFERRAL_LABELS} value={f.referralFrom} empty="선택" required onChange={referralFrom=>set({referralFrom})}/><p className="subtle-note">처음 연락할 때 어디서 연락처를 받았는지 알리고, 리드 상세에서 ‘고지함’을 기록하세요.</p></>}

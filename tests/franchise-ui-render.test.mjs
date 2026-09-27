@@ -21,7 +21,7 @@ const synthetic=(names,value)=>new SyntheticModule([...names],function(){for(con
 // 화면 부품 대역: 이름에 맞는 기본 HTML 요소로 children과 속성을 그대로 그린다(asChild·variant 같은 부품 전용 속성은 버린다).
 const TAGS={Button:'button',Input:'input',Textarea:'textarea',NativeSelect:'select',NativeSelectOption:'option',DialogTitle:'h2',SheetTitle:'h2',DialogDescription:'p',SheetDescription:'p'};
 const part=name=>{function Part({children,variant,size,asChild,onOpenChange,onValueChange,...props}){void variant;void size;void asChild;void onOpenChange;void onValueChange;return React.createElement(TAGS[name]||'div',{...props,'data-part':name},children)}Part.displayName=name;return Part};
-const REAL_APP=new Set(['./franchise-common','./franchise-lead-detail','./franchise-settings','./franchise-assets-panel','./franchise-events-panel']);
+const REAL_APP=new Set(['./franchise-common','./franchise-lead-detail','./franchise-settings','./franchise-assets-panel','./franchise-events-panel','./franchise-inflow-panel','./franchise-import-panel']);
 function link(spec,ref){
  if(spec==='react')return synthetic(ref.imports.get(spec)||new Set(),n=>React[n]);
  if(spec==='react/jsx-runtime')return synthetic(ref.imports.get(spec)||new Set(),n=>jsxRuntime[n]);
@@ -83,7 +83,7 @@ check('a lead with a memo offers append by default and says replace overwrites',
 check('the erasure section says open erasure requests are closed',()=>assert.ok(has(adminHtml,'이 리드에 접수된 삭제 요청은 완료로 기록합니다.')));
 const createProps=admin=>({brandId:'fr-a',admin,intake,assignees,campaigns:[{id:'c-1',title:'가상 캠페인'}],onClose:noop,onCreated:noop});
 const createAdmin=render(panel.CreateLeadDialog,createProps(true)),createMember=render(panel.CreateLeadDialog,createProps(false));
-check('lead registration asks only the minimum and turns autofill off',()=>{assert.ok(has(createMember,'이름 *'));assert.ok(has(createMember,'전화·이메일 중 하나 이상'));assert.equal((createMember.match(/autoComplete="off"|autocomplete="off"/gi)||[]).length,5,'form + name, phone, email, memo');for(const t of ['주소 입력','생년월일 입력','주민등록번호 입력'])assert.ok(!has(createMember,t))});
+check('lead registration asks only the minimum and turns autofill off',()=>{assert.ok(has(createMember,'이름 *'));assert.ok(has(createMember,'전화·이메일 중 하나 이상'));assert.equal((createMember.match(/autoComplete="off"|autocomplete="off"/gi)||[]).length,6,'form + name, phone, email, memo, recruitment codes (R5c)');assert.ok(has(createMember,'모집 코드 (선택, 쉼표로 여러 개)'));for(const t of ['주소 입력','생년월일 입력','주민등록번호 입력'])assert.ok(!has(createMember,t))});
 check('marketing consent is unchecked by default and owner/admin only',()=>{assert.ok(has(createAdmin,'광고성 정보 수신 동의를 따로 받았습니다'));assert.ok(!/type="checkbox" checked=""[^>]*\/?> 광고성/.test(createAdmin));assert.ok(!has(createMember,'광고성 정보 수신 동의를 따로 받았습니다'));assert.ok(has(createMember,'광고성 정보 동의는 기본으로 ‘동의 없음’입니다.'))});
 check('the default basis is an inquiry response and the assignee choice is owner/admin only',()=>{assert.match(createMember,/checked=""[^>]*\/> 문의 응대\(제15조①4호\)/);assert.ok(has(createAdmin,'담당자'));assert.ok(has(createAdmin,'담당 없음'));assert.ok(!has(createMember,'>담당 없음<'))});
 check('rendered screens make no legal-compliance claim',()=>{for(const html of [adminHtml,memberHtml,createAdmin,createMember])for(const bad of ['법적으로 적합','준수 완료','합법'])assert.ok(!html.includes(bad))});
@@ -109,7 +109,7 @@ const approveHtml=(view,initialChecked,blockers=[],initialWaitConfirmed=true)=>r
 const newHtml=[];const keep=html=>{newHtml.push(html);return html};
 const submitDisabled=(html,label)=>new RegExp(`<button[^>]*disabled=""[^>]*>${label}</button>`).test(html),button=(html,label)=>html.includes(`>${label}</button>`);
 
-check('R1: the panel shows the recruitment assets and events tabs, and no settings tab before the role is known',()=>{const html=keep(render(panel.FranchisePanel,{workspace:{brands:[{id:'fr-a',name:'가상 브랜드'}],campaigns:[],artifacts:[]}}));assert.ok(html.includes('>모집 자료</div>'));assert.ok(html.includes('>행사</div>'));assert.ok(!html.includes('>설정</div>'));assert.ok(html.includes('h-auto max-w-full flex-wrap'))});
+check('R1: the panel shows the recruitment assets and events tabs, and no settings tab before the role is known',()=>{const html=keep(render(panel.FranchisePanel,{workspace:{brands:[{id:'fr-a',name:'가상 브랜드'}],campaigns:[],artifacts:[]}}));assert.ok(html.includes('>모집 자료</div>'));assert.ok(html.includes('>행사</div>'));assert.ok(html.includes('>유입·비용</div>'));assert.ok(html.indexOf('>행사</div>')<html.indexOf('>유입·비용</div>'));assert.ok(!html.includes('>설정</div>'));assert.ok(html.includes('h-auto max-w-full flex-wrap'))});
 const LIST=assetsViewOf({assets:[
  summaryOf({},{review:{needed:true,reasons:['fact_changed','version_changed'],at:at(-HOUR_MS)}}),
  summaryOf({assetId:'ra-2',type:'portal_intro',typeLabel:'포털 소개문',versions:[{version:3,status:'approved',exportCount:2},{version:2,status:'approved',exportCount:0},{version:1,status:'retired',exportCount:0}]},{version:3,status:'approved',approval:{by:'u-owner',role:'owner',at:at(-2*DAY_MS)},exportCount:2,lastExportAt:at(-DAY_MS),placements:[{label:'창업 포털 소개 글',confirmedAt:'2026-10-04'}]}),
@@ -222,7 +222,7 @@ check('R18: the event editor offers three types, a KST start without now, a 100-
  const html=keep(render(eventsUi.EventEditor,{view:eventsViewOf(),event:null,busy:false,problem:null,onSave:async()=>true,onCancel:noop}));
  assert.deepEqual([...html.matchAll(/<option value="(briefing|tour|expo)"[^>]*>([^<]+)</g)].map(m=>m[2]),['설명회','견학','박람회']);assert.equal(count(html,'type="datetime-local"'),1);assert.ok(!html.includes('지금(서버 시각)'));
  assert.ok(/maxLength="100"|maxlength="100"/.test(html));assert.ok(/type="number"[^>]*min="1"[^>]*max="1000"|min="1"[^>]*max="1000"[^>]*type="number"/.test(html)||(html.includes('min="1"')&&html.includes('max="1000"')));
- assert.ok(html.includes('설명회 덱 개요·원고 v2')&&html.includes('설명회 덱 개요·원고 v1 (이전 판)'));assert.ok(html.includes('모집 비용 연결은 R5 뒤에 합니다.'));assert.ok(!/spendRef|비용 참조/.test(html));
+ assert.ok(html.includes('설명회 덱 개요·원고 v2')&&html.includes('설명회 덱 개요·원고 v1 (이전 판)'));assert.ok(!html.includes('R5 뒤'));assert.ok(html.includes('모집 비용 연결'));assert.ok(html.includes('>연결 없음</option>'));assert.ok(!/spendRef/.test(html));
  assert.ok(html.includes('행사장·건물 이름만 적습니다. 연락처·주민등록번호 같은 개인정보는 받지 않습니다.'));assert.ok(html.includes('>캠페인 선택</option>'));assert.ok(submitDisabled(html,'행사 저장'));
  const edit=keep(render(eventsUi.EventEditor,{view:eventsViewOf(),event:eventOf({assetRefs:[{id:'ra-9',version:1,type:'portal_intro',status:'retired'}]}),busy:false,problem:null,onSave:async()=>true,onCancel:noop}));
  assert.ok(edit.includes('min="3"'),'capacity cannot go below the applications');assert.ok(edit.includes('이미 받은 신청 3명보다 줄일 수 없습니다.'));assert.ok(edit.includes('포털 소개문 v1: 승인 판이 아니라 연결에서 빠집니다'));assert.ok(edit.includes(`value="${eventsUi.kstLocal(eventOf().startsAt)}"`));assert.ok(edit.includes('모집 캠페인: 가상 가맹 모집 A'));assert.ok(!submitDisabled(edit,'행사 저장'));
