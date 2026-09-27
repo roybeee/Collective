@@ -8,6 +8,7 @@ import {COMPLIANCE_LEXICON,FR_BARE_AMOUNT_RE,FR_CONTEXT,FR_RECRUIT_EXTRA,FR_STOR
 import {COMPLIANCE_NOTICE} from './graders/compliance';
 import {VALUE_KINDS,krwAmounts,storeCountClaimList,storeCountHolds,type AmountSpan,type StoreCountClaim} from './graders/ledger';
 import {FRANCHISE_CLAIMS_VERSION,FRANCHISE_CLAIM_EVIDENCE,FRANCHISE_CLAIM_LOGIC,FRANCHISE_CLAIM_MATCHERS,FRANCHISE_FIGURE_IDS,FRANCHISE_HARD_BLOCK_IDS,FRANCHISE_DEPOSIT_NET,FRANCHISE_OFFICIAL_EXTENSIONS,FRANCHISE_REVIEW_NET,kstDateOf,rulesAt,type ClaimEvidence,type ClaimExtension,type FranchiseRule,type RuleBasis,type RuleScope} from './franchise-rules';
+import {answerDenies,waitComposition,waitWarningFrame} from './franchise-wait-clause';
 import {franchiseFactKey,franchiseItem} from './fact-catalog';
 import {costDetailLine,versionStates,type VersionLite} from './franchise-facts';
 import {GATE_DISCLAIMER} from './franchise-gates';
@@ -154,14 +155,14 @@ function hardPool(sentences:Sentence[],bridges:Sentence[]):Sentence[]{
 const QUESTION=/(?:\?|(?:나요|까요|습니까)\s?\??)\s*$/,ANSWER_MARK=/^\s*(?:A|답|답변)\s?[.:：)]?\s*$/;
 const DENIAL=/^\s*(?:(?:A|답|답변)\s?[.:：)]\s*)?(?:아니요|아니오|아뇨|아닙니다|없습니다|안\s?됩니다)/,NOT_DENIAL=/그\s?(?:이상|보다)|오히려|더\s?(?:많|높|벌|나와|나옵)|넘습니다|넘어요|훨씬|짧아|줄어|줄일|단축|빨라|앞당/;
 const sentenceKey=(x:Sentence)=>`${x.line}:${x.raw}`;
-function deniedQuestions(sentences:Sentence[]):Set<string>{
+function deniedQuestions(sentences:Sentence[],denies:(raw:string)=>boolean=raw=>DENIAL.test(raw)):Set<string>{
  const out=new Set<string>();
  sentences.forEach((x,k)=>{
   if(!QUESTION.test(x.raw))return;
   let n=k+1;
   while(n<sentences.length&&ANSWER_MARK.test(sentences[n].raw))n++;
   const a=sentences[n];
-  if(!a||a.line>x.line+2||!DENIAL.test(a.raw))return;
+  if(!a||a.line>x.line+2||!denies(a.raw))return;
   if(!NOT_DENIAL.test(sentences.slice(n,n+2).filter(y=>y.line===a.line).map(y=>y.raw).join(' ')))out.add(sentenceKey(x));
  });
  return out;
@@ -230,7 +231,8 @@ function clauseOf(s:string,start:number,end:number){
 // 적중(문장·매치 위치). all이 아니면 첫 적중에서 멈춘다. figure: 수치 자체를 막는 규칙이라 부정 면제가 없다. clauseExcept: except를 매치가 든 절에서만 본다.
 // consumerAlso는 소비자 범위에서만 본다(모집 범위는 캠페인 자체가 가맹 문맥이다). denied: 아니라고 답한 질문 문장(수치 규칙 밖에서 건너뛴다).
 // 이은 문장에서 값 규칙(all)의 라벨이 앞 문장 끝에 있으면('창업비용\n총 5,500') 뒤 문장의 값과 이어진 주장으로 본다(라벨에 수가 없을 때만).
-type HitOpts={all:boolean;figure:boolean;clauseExcept:boolean;scope:ClaimScope;denied?:ReadonlySet<string>};
+// frameExcept: 대기기간 우회·본사 연계 자문 규칙만, 우회 문구를 따와 경고하는 문장을 건너뛴다(lib/franchise-wait-clause.ts waitWarningFrame, R2 3차).
+type HitOpts={all:boolean;figure:boolean;clauseExcept:boolean;scope:ClaimScope;denied?:ReadonlySet<string>;frameExcept?:(x:Sentence)=>boolean};
 const PART_TAIL=/^\s?(?:[은는이가:：]|은요|는요)?\s?$/;
 const tailLabel=(parts:readonly string[],hit:string)=>!/\d/.test(hit)&&parts.slice(0,-1).some(p=>{const k=p.lastIndexOf(hit);return k>=0&&PART_TAIL.test(p.slice(k+hit.length))});
 function hitSentences(m:Matcher,sentences:Sentence[],o:HitOpts):Hit[]{
@@ -254,6 +256,7 @@ function hitSentences(m:Matcher,sentences:Sentence[],o:HitOpts):Hit[]{
  for(const x of sentences){
   if(also&&!also.test(x.s)||ctx&&!ctx.test(x.s)||except&&!o.clauseExcept&&except.test(x.s))continue;
   if(!o.figure&&!x.parts&&o.denied?.has(sentenceKey(x)))continue;
+  if(o.frameExcept?.(x))continue;
   const hit=firstHit(x);
   if(hit)out.push(hit);
   if(out.length&&!o.all)break;
@@ -491,10 +494,12 @@ const TIER_ORDER:Record<FranchiseTier,number>={hard_block:0,block:1,warn:2};
 const ascii=(a:string,b:string)=>a<b?-1:a>b?1:0;
 // H9 수치 주장: 경고 표현(매치) 앞뒤 15자 안의 비율·거리·가맹 값 종류 본문 값.
 const numericClaim=(h:Hit)=>{const w=h.x.s.slice(Math.max(0,h.start-H9_WINDOW),h.end+H9_WINDOW);return H9_NUMERIC.test(w)||FR_KINDS.some(k=>k.body(w).length>0)};
-const HARD=new Set<string>(FRANCHISE_HARD_BLOCK_IDS),FIGURES=new Set<string>(FRANCHISE_FIGURE_IDS),REVENUE_RULES=new Set<string>([H6,'h.net_profit_payback_claims','kr.fr.revenue_guarantee']),WAIT_RULE='h.wait_bypass_solicitation';
+const HARD=new Set<string>(FRANCHISE_HARD_BLOCK_IDS),FIGURES=new Set<string>(FRANCHISE_FIGURE_IDS),REVENUE_RULES=new Set<string>([H6,'h.net_profit_payback_claims','kr.fr.revenue_guarantee']),WAIT_RULE='h.wait_bypass_solicitation',WAIT_FRAME_RULES=new Set<string>([WAIT_RULE,'h.captive_advisor_phrase']);
 export function judgeFranchiseText(i:FranchiseJudgeInput):FranchiseJudgement{
  const text=normalized(i.text),sentences=sentencesOf(text),bridges=bridgesOf(sentences),softSentences=[...sentences,...bridges],hardSentences=hardPool(sentences,bridges),date=kstDateOf(i.at);
  const denied=deniedQuestions(sentences);
+ // 대기기간 우회·본사 연계 자문 규칙은 '아니요' 없이 막는 답('A. 대기기간 중에는 어떤 금액도 받지 않습니다')도 아니라는 답으로 본다(R2 3차, lib/franchise-wait-clause.ts answerDenies).
+ const deniedWait=deniedQuestions(sentences,raw=>DENIAL.test(raw)||answerDenies(raw));
  // 소비자 범위는 캡션(본문 전체)에 가맹 모집 문구가 있을 때만 가맹 규칙이 막는다. 없으면 모든 이슈를 경고로 낮춰 승인 화면에만 보인다(결정 25 기본값을 소비자 캠페인에 맞게 좁힘).
  // '본사'·'창업 N주년'·'점포' 같은 느슨한 낱말은 모집 문구가 아니다(RECRUITMENT_LIKE). 모집 범위는 캠페인 자체가 모집이다.
  const context=i.scope==='recruitment'||recruitmentLikeIn(text);
@@ -512,7 +517,7 @@ export function judgeFranchiseText(i:FranchiseJudgeInput):FranchiseJudgement{
   const extra=i.scope==='recruitment'?FR_RECRUIT_EXTRA[ruleId]??(lexicon?undefined:FRANCHISE_CLAIM_MATCHERS[rule.id].recruitmentMatch):undefined;
   const matcher:Matcher=extra?{...base,match:`${base.match}|${extra}`}:base;
   if(matcher.cleared&&new RegExp(matcher.cleared).test(text))continue;
-  const evidence=FRANCHISE_CLAIM_EVIDENCE[ruleId],values=evidence?.kind==='values',hard=HARD.has(rule.id),opts={figure:FIGURES.has(rule.id),clauseExcept:hard,scope:i.scope,denied};
+  const evidence=FRANCHISE_CLAIM_EVIDENCE[ruleId],values=evidence?.kind==='values',hard=HARD.has(rule.id),waitish=WAIT_FRAME_RULES.has(rule.id),opts={figure:FIGURES.has(rule.id),clauseExcept:hard,scope:i.scope,denied:waitish?deniedWait:denied,frameExcept:waitish?waitWarningFrame:undefined};
   // 모든 규칙이 줄바꿈으로 끊은 표현을 이은 문장도 본다(이은 문장은 뒤에 둔다). 해제 불가 규칙은 두 번째 보기도 본다.
   const pool=hard?hardSentences:softSentences;
   const draft=(reason:FranchiseReason,hit:Hit,extension?:ClaimExtension)=>drafts.push({rule,ruleId,title,lexicon,extension,reason,hit,tier:tierOf(rule)});
@@ -539,6 +544,14 @@ export function judgeFranchiseText(i:FranchiseJudgeInput):FranchiseJudgement{
   if(!ext.length)continue;
   const te=extension.textEvidence,textMet=!!te&&new RegExp(te.textPattern).test(ext[0].x.s)&&current.some(f=>f.frKey===te.factKey&&new RegExp(te.valuePattern).test(f.value));
   if(new RegExp(extension.strong).test(ext[0].x.s)||!((evidence&&evidenceMet(evidence,current,text))||textMet))draft('pattern',ext[0],extension);
+ }
+ // R2 3차 구성 판정(lib/franchise-wait-clause.ts): 대기기간 우회 규칙의 패턴이 못 잡은 오기재(계약 당일 문서 전달, 면제 틀, 설명회 현장 계약·가맹금, 표·화살표의 짧은 기간,
+ // 날짜 계산, 두 문장 대비, 따와서 권하기, 가맹금 먼저 받기)를 같은 해제 불가 규칙으로 더한다. 소비자 범위는 패턴 규칙과 같이 문장에 가맹 문맥 낱말이 있어야 한다.
+ const waitRule=applicable.find(r=>r.id===WAIT_RULE);
+ if(waitRule&&!drafts.some(d=>d.ruleId===WAIT_RULE)){
+  const ctx=i.scope==='consumer'?new RegExp(FRANCHISE_CLAIM_MATCHERS[WAIT_RULE].consumerAlso??''):null;
+  const found=waitComposition(sentences,x=>deniedWait.has(sentenceKey(x as Sentence))||!!ctx&&!ctx.test(x.s));
+  if(found){const x:Sentence={...found.sentence};drafts.push({rule:waitRule,ruleId:WAIT_RULE,title:FRANCHISE_CLAIM_MATCHERS[WAIT_RULE].title,reason:'pattern',hit:{x,start:0,end:x.s.length},tier:tierOf(waitRule)})}
  }
  // H6: 수익 항목(adUse:false) 사실의 값·금액·비율이 본문에 있으면 표현과 관계없이 해제 불가 차단이다(교체된 버전 사실 포함).
  const h6=applicable.find(r=>r.id===H6);

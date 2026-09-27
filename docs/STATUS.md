@@ -3,32 +3,30 @@
 > 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 운영(갱신): `9a760e4`(Sites 버전 43, tree `90f8c67`, [기록](releases/2026-09-27-9a760e4.md)). B3·B4 2부·#160·#158·레인 R #161·#163 게시 완료.
+- 운영(갱신): `f56909d`(Sites 버전 45, tree `2ff1fad`, [기록](releases/2026-09-27-f56909d.md)). #178 과반 게이트·레인 R #175~#177·A1 v4 후보 #179 게시 완료.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
-- #178 · 레인 Q(Claude 29f7af 대행) · 보통 · 새 스위치 없음(`evalRunIds` 과반 게이트, 기존 `evalRunId` 경로 불변). A1 활성화의 봉인 반복 평가 전에 필요
-- #173 · 레인 R · 보통 · 새 스위치 없음(GRADERS_VERSION +franchise-industry, 운영 S7 real 갱신 완료. 게시 뒤 운영 dev·봉인 골든 재채점으로 새 fail 0건 확인 필요)
-- #176 · 레인 R · 보통 · 새 스위치 없음(R2 판정 보기가 보이지 않는 문자 Cc·Co·Cn·Zl·Zp를 지움, `fr-claims@2026-09-27.1`, 테스트 문자열 5,058개 중 판정 변화는 이 문자로 끊은 우회 2건이고 둘 다 막힘, GRADERS_VERSION 그대로)
+- #180 · 레인 R · 보통 · 새 스위치 없음(R2 3차-a 대기기간 절 단위 구성 판정, `fr-claims@2026-09-27.2`, 가맹 프로필 브랜드의 캡션·발행·모집 자료 판정에서 오기재 차단이 늘고 경고 인용 오탐이 줆, GRADERS_VERSION 그대로)
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-27 01:13 UTC
+갱신: 2026-09-27 04:32 UTC
 - 진행 중: B3-2a 교정 신호 PR(교정 묶음 90일 5건·규칙별 파생 피드백·같은 사유 재발률, 스위치 `b3_playbook_signals` 기본 꺼짐, 경보가 열리면 `playbook_activate` 409, 토큰 0, [PLAYBOOK](PLAYBOOK.ko.md) B3-2a 절). B3-2b 선호 on/off 쌍 평가 PR(브랜치 `feat/b3-2b-preference-pair`, B3-2a 위): `POST /api/eval` `pair.kind: operator_preferences`, off=동결 요청에서 블록 뺌·on=고른 규칙만의 운영 주입 블록, 기존 `pairGate` 그대로, 초안 평가(D5), 프롬프트 활성화 근거 금지(409), 테스트 mocked·토큰 0, [PLAYBOOK](PLAYBOOK.ko.md) B3-2b 절. 레인 Q 파일(`lib/eval-server.ts`·`lib/eval-kinds.ts`·`lib/prompt-registry.ts`)을 레인 A가 고쳤고 29f7af가 리뷰한다. B3-2c 선호 쌍 평가 첨부(브랜치 `feat/b3-2c-attach-eval`, B3-2b 위): `playbook_attach_eval`(대표만, 스위치 꺼짐 409)이 끝난 선호 쌍 run을 평가한 규칙 버전에 `playbook_audit` `attach_eval`로만 남김(규칙 버전·상태 불변, `performance_tested` 계속 409), 화면에 규칙 버전별 최신 게이트, 4단계 종료 조건 절차는 [PLAYBOOK](PLAYBOOK.ko.md) B3-2c 절, 테스트 mocked·토큰 0. #160(최상위 `}` 보정·순서 되돌림) `merged`, 묶음 17 게시는 A1 dev 쌍 평가 `5528b2f9` 종료 뒤 → A3 4회차. B4 2부 #155·#157·#159 `merged`.
 - A6 종료 조건: **passed · real**(2026-09-27 00:56 KST). 이문동점 영업시간 자료 요청 `dr-f08c16186f08`이 사실 확정으로 closed. [관찰 기록](observations/2026-09-27-lane-a-a6-end-condition.md). 운영 스위치 `a6_data_requests` 켜짐.
-- A3 종료 조건 run: 4회째도 **failed · real**(run `2fc1ebd8`, 운영 `9a760e4`). 국밥은 모두 pass(순서 되돌림으로 실험 channel 복구). 수학학원은 채널 목록을 닫는 `}]`를 빠뜨려 shortform·experiments가 채널 객체 안으로 들어가 `contract_json` fail(2회째 `a81bb445`와 같은 유형, 4회 모두 끝부분 구조 결함). 대표 결정(2026-09-27 "좁은 보정 1개 추가"): `}]` 누락만 그 자리에 채워 읽음(`+channels-close`, 운영 읽기·`contract_json` 같게). PR `fix/a3-channels-close-repair` → 게시 → A1 v3 `3c0f6572` 뒤 5회째 run. 기록은 [카피 팩](COPY-PACK.ko.md#a3-종료-조건-run-기록-4회).
+- A3 종료 조건 run: 5회째 **passed · real**(run `86349108`, 운영 `7851185` Sites 버전 44, 32,653토큰). 국밥 12 pass·0 fail, 수학학원 11 pass·0 fail(`copy_pack_variants` pass). 두 원문 모두 보정 없이 바로 JSON이었다(`+channels-close`는 이 run에서 쓰이지 않음). 1~4회 실패 기록과 결정은 [카피 팩](COPY-PACK.ko.md#a3-종료-조건-run-기록-4회). 스위치 `a3_copy_pack` 켜기는 대표 결정으로 따로 한다.
 - B4 중단 규칙: 대표 결정(2026-09-27 "오늘 바로 진행해")으로 10-15 판정을 앞당겼다. 주문 CSV 0건 → **blocked**(L3·L4 운영 사용·KPI 주장 보류, 코드·L0·L1·개선 루프 대장 유지). 스위치 `b4_reward_lineage` 켜짐(대표 지시 D9), `b3_playbook_signals` 켜짐(B3 승인). [관찰 기록](observations/2026-09-27-lane-a-b4-stop-rule.md).
-- B3 4단계 종료 조건: 대표 승인(2026-09-27 "b3 승인한다"). 2단계 초안에서 멈춤(`blocked`): 운영 사람 판정(`review_decision`) 0건이라 같은 브랜드 판정 2건 인용이 안 된다. 대표가 ODA 검토 대기 작업물(cmo·insight 각 1건)을 판정하면 초안을 만든다. 봉인 케이스는 프롬프트 수정 세션이 만들지 않는다([SEALED-CASES](SEALED-CASES.ko.md)). 쌍 평가는 A1 v3 `3c0f6572` 뒤에 한다.
+- B3 4단계 종료 조건: 1~5단계 완료(real). 대표 판정 2건(ODA cmo·insight 수정 요청)으로 초안 `playbook:24e71fa4` v1(ODA 전 역할·전 채널)을 만들었다. 봉인 케이스 `34e1f921`(growth)은 전용 에이전트가 캡처했다(이 세션은 id만 봄). 선호 쌍 평가 run `3fb5122b`(dev cmo + 봉인 growth, 73,312토큰): 게이트 통과, 봉인 회귀 0, input_budget 2/2, 경고 small_sample. 첨부 `attach_eval` 완료. 다음은 6단계 대표 승인(`playbook_activate`), 7단계 ODA 역할 실행 1건, 8단계 appliedRules 확인, 9단계 관찰 기록.
 - 확인 필요(레인 R): `tests/check-prompts.test.mjs`가 macOS(대소문자 무시 파일 시스템)에서 `channel.leadad.json`·`channel.leadAd` 변형 충돌로 로컬 실패한다(Linux CI는 통과).
 - 제안(레인 Q): 계약 읽기는 최상위 `}` 하나 누락도 '잘린 JSON'으로 거절한다(#112 방침, `tests/role-output.test.mjs:26`). 출력 한도에 못 미친 응답(`incomplete` 아님)에 한해 최상위 `}` 하나를 채워 읽을지 검토 바란다(이번 실패 1건이 운영이면 invalid_output으로 약 1.6만 토큰 폐기).
 - A8: 대표 지시(2026-09-27 "B2 2단계 빼고 남은 개발을 모두 진행하라", 세션 29f7af 전달)로 A3 종료 조건을 기다리지 않고 착수했다. 설계 [CUSTOMER-REPORT](CUSTOMER-REPORT.ko.md).
 - 다음: A3 run → A8-1 → A8-2 → A8-3 → B4 2부 → B3([순서](LANES.ko.md#레인-a-claude-a-세션)).
 
 ## 레인 R (Claude 트랙 R 세션 — 가맹 모집)
-갱신: 2026-09-27 03:47 UTC
+갱신: 2026-09-27 04:19 UTC
 - 세션: 2026-09-27부터 레인 R을 맥 로컬 Claude 세션이 이어받았다(대표 지시, 대표 외출 중). 원래 클라우드 세션의 R3c 작업은 GitHub에 없어 맥 세션이 다시 만들었다. 클라우드 세션에는 R3c 병합 뒤 최신 main에서 이어가라고 알렸다.
-- 진행 중: #176 R2 판정기 `matchView` 보이지 않는 문자(브랜치 `fix/r2-matchview-invisible`, CI 뒤 병합, 게시 대기열 요청). 판정 보기가 Cc(줄바꿈 제외, 탭·CR은 띄어쓰기)·Co·Cn·Zl·Zp를 지운다. 해제 불가 문장을 이 문자로 끊은 180건이 모두 막힌다(전 모집 범위 2건). 이모지 조합 문자는 범주 밖. `FRANCHISE_CLAIMS_VERSION` `fr-claims@2026-09-27.1`, `GRADERS_VERSION` 그대로.
-- 진행 중: R5b-1 모집 코드·비용 기록·API(맥 세션 병렬, PR 대기).
-- 최근 병합: #173 R3c `franchise` 업종 사전·`GRADERS_VERSION +franchise-industry` `merged`(`7851185`). 게시 대기열에 요청했다. 게시 뒤 운영 dev·봉인 골든 재채점으로 새 fail 0건을 확인한다(소유자 세션).
-- 최근: #175 R5a 순수 모듈 `merged`(런타임 연결 0, 게시 불필요). #163 R15a-2b 가맹 화면 탭·#161 고정 문장 권장화·R2 보완 통제 `merged`(게시 대기열에 함께 요청). #151 R3c 선행 S7 콘솔 키트 `merged`. #139·#143·#145 `published`(묶음 15).
-- 다음: `matchView` PR → R2 3차(절 단위 구성 판정, 오기재 재현율·인용 경고 오탐) → R5b-1 → R5b-2(결정 32 반영) → R5c → 트랙 R 계획 순서. R15a-3(워크스페이스 할 일)은 R6 뒤([순서](LANES.ko.md#레인-r-claude-트랙-r-세션)).
+- 진행 중: #180 R2 3차-a 대기기간 절 단위 구성 판정(브랜치 `feat/r2-3-wait-clause`, CI 뒤 병합, 게시 대기열 요청, 새 모듈 `lib/franchise-wait-clause.ts`). 문서·행위·때·틀을 따로 읽어 오기재를 `h.wait_bypass_solicitation`(해제 불가 id 그대로)에 더하고, 따와서 경고하는 문장·'아니요' 없이 막는 답은 두 대기 규칙에서 뺀다. 블라인드 2차(측정 전용 200문장): 오기재 차단 42→53/100, 바른 문장 오탐 14→6/100. `fr-claims@2026-09-27.2`, `GRADERS_VERSION` 그대로.
+- 진행 중: R3c 게시됨(묶음 18, 04:04 UTC tree `9cef246`). 운영 dev(`eab8911d`)·봉인(`284fa4be`) 재채점은 not_run이다. 권한 분류기가 운영 평가 데이터 쓰기를 거부해서 대표가 직접 실행해야 한다.
+- 최근 병합: R5b-1(#177, `ce4c2ff`) `merged`: 모집 코드·모집 비용 기록과 API(`code_issue`·`code_retire`·`spend_record`·`spend_void`, GET `codes`·`spend`), 리드 모집 코드 추가·제외(`add_lead_codes`·`strike_lead_code`), 보드 `code_conflict` 할 일과 `inflow` 필터, 새 kind `recruitment_code`·`recruitment_spend`. 검사 passed · mocked(160/160, recruitment-route 74, 변이 21/21), 운영 real 확인 not_run(게시 대기, 게시 뒤 대표가 `r_franchise`를 켠 다음 확인). #176 `matchView` 보이지 않는 문자 `merged`(`c0c8290`, 게시 대기열 요청). #175 R5a 순수 모듈 `merged`(런타임 연결 0, 게시 불필요). #173 R3c `merged`(`7851185`).
+- 최근: #163 R15a-2b 가맹 화면 탭·#161 고정 문장 권장화·R2 보완 통제 `merged`(게시 대기열에 함께 요청). #151 R3c 선행 S7 콘솔 키트 `merged`. #139·#143·#145 `published`(묶음 15).
+- 다음: R2 3차-a PR → R2 3차-b(블라인드 2차로 개발, 새 3차 세트로 측정) → R5b-2 CSV 가져오기(결정 32, 교차 파일 중복 병합 규칙은 대표 확인 필요) → R5c 화면 → 트랙 R 계획 순서. R15a-3(워크스페이스 할 일)은 R6 뒤([순서](LANES.ko.md#레인-r-claude-트랙-r-세션)).
 - 대표 결정(2026-09-26): (1) 앱 밖 모집 자료에 AI 생성물 표시를 붙이지 않는다("표시하지마", 화면도 묻지 않음, 결정 17 앱 발행 캡션은 그대로). (2) 예비창업자용 고정 안내 문장(두 대기기간 안내, 수익 질문 안내)은 권장 문구다("3번"). 템플릿은 계속 채우고, 빠지면 경고만 하고 막지 않는다. 대신 대기기간을 틀리게 적은 문장은 R2 hard_block으로 막는다.
 - 대표 승인(2026-09-26 16:15 UTC): R3c 선행 작업, 운영 D1 합성 S7 케이스 기대 업종 갱신(8건 `['fnb']` → `['franchise','fnb']`). 실행: passed · real(2026-09-27 00:30~00:40 UTC, 대표 소유자 콘솔. check `toChange` 8 → apply `changed` 8·`verified` 8 → 다시 check `already` 8, [관찰 기록](observations/2026-09-26-lane-r-s7-industry.md)).
 - 막힌 것: 법률 검토(결정 20) 보류 중이라 모든 가맹 판정은 'COLLECTIVE 휴리스틱 · 법률 자문 아님'이다. LR-1 확인 필요 추가: 소규모 본부 적용 제외 문장을 hard_block으로 막는 것.
@@ -85,7 +83,7 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-27 00:41 UTC (Claude A 세션: 묶음 17 `9a760e4` Sites 버전 43 게시·tree 확인)
+마지막 갱신: 2026-09-27 04:46 UTC (Claude A 세션: 묶음 19 `f56909d` Sites 버전 45 게시·tree 확인)
 
 ## 현재 운영 상태
 
