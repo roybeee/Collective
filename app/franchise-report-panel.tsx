@@ -108,7 +108,7 @@ export function ReportBody({r}:{r:RecruitmentReport}){
    <Table caption="speed-to-lead" head={['기준 시각','접수','첫 연락','미응대','중앙값(분)','첫 연락 비율']} rows={s.groups.map(x=>[x.label,cellText(x.received),cellText(x.contacted),cellText(x.uncontacted),x.medianState==='shown'?String(x.medianMinutes):x.medianState==='suppressed'?'5건 미만':'-',rateText(x.contactedRate)])}/>
    <p className="subtle-note">{`제공처 시각이 날짜만 있어 뺀 리드: ${cellText(s.excludedDayPrecision)}`}</p>
   </Section>
-  <Section title="문의 월 코호트" note="문의 월(한국 날짜) 기준입니다. 비율은 코호트 20건 이상일 때만 보입니다. 계약당 비용은 계약 20건 전에는 나누지 않습니다.">
+  <Section title="문의 월 코호트" note="문의 월(한국 날짜) 기준입니다. 비율은 코호트 20건 이상일 때만 보입니다. 계약 칸은 1건부터 보이고, 계약당 비용은 계약 20건 전에는 지출 합계·계약 수와 '표본 부족'을 함께 적습니다(대표 결정 36).">
    <Table caption="문의 월 코호트" head={['문의 월','문의','성숙',...(r.cohorts[0]?.stages??[]).map(x=>x.label),'종결','비용','계약당 비용']}
     rows={r.cohorts.map(k=>[k.month,cellText(k.size),k.mature?'성숙':'미성숙',...k.stages.map(x=>`${cellText(x.reached)} (${rateText(x.rate)})`),cellText(k.closed),k.spendState==='straddling'?'비용 기간 불일치':moneyText(k.spend),costText(k.costPerContract)])}/>
   </Section>

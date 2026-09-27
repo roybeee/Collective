@@ -75,6 +75,7 @@
 | `lib/record-kinds.ts`, `lib/feature-flags.ts`, `lib/feature-status.ts` | 먼저 연 PR | 나머지 | 끝 고정 묶음 앞에 자기 레인 항목을 붙인다. 고정 목록 테스트는 자기 항목만 더한다 |
 | `lib/learning.ts`, `lib/learning-server.ts` | A | — | B3·B4 2부 |
 | `lib/franchise-*`, `app/api/franchise*` | R | — | |
+| `app/api/workspace/route.ts`, `lib/workspace-metrics.ts` | A | R | 레인 R 기능(워크스페이스 할 일 등)은 `lib/franchise-*` 순수·서버 모듈에 두고, 이 파일에는 호출 1줄 수준만 더한다. 스위치(`r_franchise`)는 `lib/franchise-*-server.ts`에서 읽는다. 1줄로 안 되면 레인 A에 요청한다(2026-09-27, R6d) |
 | `lib/eval-*`, `lib/online-grading.ts`, `lib/prompt-registry.ts`, `scripts/eval/` | Q | — | A·R가 고쳐야 하면 Q 칸에 요청한다 |
 
 ## 세션 시작 점검 (모든 레인)

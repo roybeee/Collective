@@ -167,7 +167,16 @@ check('RM-R1 thresholds are exposed as frozen constants',rep.RATIO_MIN_N===20&&r
  check('RM-K2 stage rates are shown with twenty or more in the cohort',same(st('2026-06','contacted').rate,{value:Math.round(10/22*1e4)/1e4,state:'shown'})&&st('2026-06','disclosed').rate.state==='suppressed');
  check('RM-K2 closed leads are counted',same(k('2026-06').closed,{n:null,suppressed:true}));
  check('RM-K3 maturity is receipt month end + 90 days on or before the asOf KST date',k('2026-06').mature===true&&k('2026-07').mature===false&&k('2026-05').mature===true);
- check('RM-K4 cost per contract under twenty contracts is not divided (small sample) but the spend total is kept',k('2026-06').spend===1200000&&k('2026-06').spendState==='known'&&same(k('2026-06').costPerContract,{value:null,state:'small_sample'})&&same(k('2026-06').contracts,{n:null,suppressed:true}));
+ check('RM-K4 cost per contract under twenty contracts keeps the spend total and is marked small sample',k('2026-06').spend===1200000&&k('2026-06').spendState==='known'&&k('2026-06').costPerContract.state==='small_sample_shown');
+ // 대표 결정 36(2026-09-27): 계약 건수와 계약당 비용은 1건부터 보인다(n<5 억제에서 뺀다). 다른 칸의 억제와 n<20 비율 숨김은 그대로다.
+ check('RM-K6 the cohort contract count is shown from one contract (not suppressed)',same(k('2026-06').contracts,{n:2,suppressed:false}));
+ check('RM-K6 cost per contract under twenty contracts shows spend / contracts with the spend total, the count and the small-sample state',same(k('2026-06').costPerContract,{value:600000,state:'small_sample_shown',spend:1200000,contracts:2})&&rep.costText(k('2026-06').costPerContract)==='600,000원 (지출 합계 1,200,000원 / 계약 2건 · 표본 부족(n<20))');
+ check('RM-K6 the contracted stage cell is the contract count and is shown too; its rate needs twenty in the cohort but is not hidden for a small numerator',same(st('2026-06','contracted').reached,{n:2,suppressed:false})&&same(st('2026-06','contracted').rate,{value:Math.round(2/22*1e4)/1e4,state:'shown'})&&same(st('2026-04','contracted').rate,{value:null,state:'none'})&&same(st('2026-07','contracted').rate,{value:null,state:'small_sample'}));
+ check('RM-K6 the other stage cells, the closed cell and their rates keep their suppression and small-sample rules',same(st('2026-06','disclosed').reached,{n:null,suppressed:true})&&st('2026-06','disclosed').rate.state==='suppressed'&&same(k('2026-06').closed,{n:null,suppressed:true}));
+ const one=build({leads:[lead('2026-05-10T10:00:00+09:00',{stage:'contracted',contractedAt:'2026-06-10T10:00:00+09:00'})],spend:[spendRow('rs-one','portal','2026-05-01','2026-05-31',900000)]});
+ const may=one.cohorts.find(c=>c.month==='2026-05');
+ check('RM-K6 a single contract is shown with its cost per contract',same(may.contracts,{n:1,suppressed:false})&&same(may.costPerContract,{value:900000,state:'small_sample_shown',spend:900000,contracts:1})&&same(may.size,{n:null,suppressed:true})&&same(may.stages.find(x=>x.stage==='contracted').reached,{n:1,suppressed:false})&&may.stages.find(x=>x.stage==='contracted').rate.state==='small_sample');
+ check('RM-K6 channel CPL keeps hiding under twenty leads (the exemption is for contracts only)',!Object.hasOwn(build({leads:[lead(inWeek('22'),{codes:[tok('RAAAAAAA',inWeek('22'))]})],spend:[spendRow('rs-c','portal','2026-09-21','2026-09-27',1000)]}).cost.channels[0].cpl,'spend'));
  check('RM-K4 a month with a spend row straddling it has no cost per contract',k('2026-08').spendState==='straddling'&&k('2026-08').costPerContract.state==='straddling'&&k('2026-09').spendState==='straddling');
  check('RM-K4 a month with no spend row is no_spend and a month without contracts is no_contracts when spend is known',k('2026-04').spendState==='no_spend'&&k('2026-04').costPerContract.state==='no_spend');
  const late=build({leads:[...many(5,()=>lead('2026-09-01T00:00:00Z',{createdAt:'2026-09-22T00:00:00Z',receivedAt:'2026-08-31T23:00:00+09:00',receivedPrecision:'time',importId:'ri-6',imports:[{importId:'ri-6',channel:'portal',eventId:null,merged:false}]}))]});
@@ -186,6 +195,8 @@ check('RM-R1 thresholds are exposed as frozen constants',rep.RATIO_MIN_N===20&&r
  check('RM-G1 contracts recorded in the week are counted on the KST date',r.gates.contractsInWeek.n===5);
  check('RM-G1 server-rejected attempts are counted only inside the week (they are attempts, not people)',r.gates.blockedAttempts===2);
  check('RM-G2 evidence completeness counts contracted leads of this brand only',r.gates.contracted.n===6&&r.gates.evidenceComplete.n===5);
+ const one=build({leads:[lead('2026-08-01T10:00:00+09:00',{stage:'contracted',contractedAt:inWeek('23')})].map(l=>({...l,id:'lead-one'})),contractEvidence:[{leadId:'lead-one',complete:true}]});
+ check('RM-G3 one contract in the week, one contracted lead and its evidence completeness are shown (decision 36)',same(one.gates.contractsInWeek,{n:1,suppressed:false})&&same(one.gates.contracted,{n:1,suppressed:false})&&same(one.gates.evidenceComplete,{n:1,suppressed:false}));
 }
 
 // ════ RM-F 규칙 신선도 ════
@@ -224,6 +235,8 @@ check('RM-R1 thresholds are exposed as frozen constants',rep.RATIO_MIN_N===20&&r
  const r=build({});
  check('RM-N1 notes open with attribution is not increment and include the platform, proration, sample, suppression and no-model notes',r.notes[0]===rc.RECRUITMENT_ATTRIBUTION_NOTE&&r.notes.some(n=>n.startsWith(rc.PLATFORM_REPORTED_NOTE))&&r.notes.includes(rc.NO_PRORATION_NOTE)&&r.notes.some(n=>/20/.test(n)&&/비율/.test(n))&&r.notes.some(n=>/5건 미만/.test(n))&&r.notes.some(n=>/모델/.test(n)&&/0/.test(n)));
  check('RM-N1 the disclaimer is the gate disclaimer',r.disclaimer===DISCLAIMER);
+ check('RM-N3 the notes say contract counts are shown from one and the downloaded file is the downloader\'s responsibility',r.notes.includes(rep.CONTRACT_SHOWN_NOTE)&&/계약/.test(rep.CONTRACT_SHOWN_NOTE)&&/1건/.test(rep.CONTRACT_SHOWN_NOTE)&&/내려받은 사람이 관리/.test(rep.CONTRACT_SHOWN_NOTE)&&/특정/.test(rep.CONTRACT_SHOWN_NOTE));
+ check('RM-N3 the suppression note names the contract exemption',r.notes.some(n=>/5건 미만/.test(n)&&/계약/.test(n)));
  check('RM-N2 the report has no revenue forecast, payback or per-applicant profit field',!/revenue|profit|payback|forecast|수익|회수/.test(JSON.stringify(Object.keys(r)))&&!/expectedRevenue|payback/.test(SRC));
 }
 
@@ -240,7 +253,7 @@ check('RM-R1 thresholds are exposed as frozen constants',rep.RATIO_MIN_N===20&&r
  check('RM-O3 the file name is ascii, brand-safe and week-stamped',rep.reportFileName({...r,brandId:'a b/../c'},'md')==='recruitment-report-a_b____c-2026-W39.md'&&rep.reportFileName(r,'csv').endsWith('.csv'));
 }
 
-const IDS=['RM-S1','RM-W1','RM-W2','RM-C1','RM-R1','RM-I1','RM-I2','RM-I3','RM-I4','RM-I5','RM-P1','RM-P2','RM-P3','RM-P4','RM-P5','RM-P6','RM-P7','RM-T1','RM-T2','RM-T3','RM-T4','RM-T5','RM-T6','RM-K1','RM-K2','RM-K3','RM-K4','RM-K5','RM-G1','RM-G2','RM-F1','RM-D1','RM-D2','RM-D3','RM-D4','RM-X1','RM-N1','RM-N2','RM-O1','RM-O2','RM-O3'];
+const IDS=['RM-S1','RM-W1','RM-W2','RM-C1','RM-R1','RM-I1','RM-I2','RM-I3','RM-I4','RM-I5','RM-P1','RM-P2','RM-P3','RM-P4','RM-P5','RM-P6','RM-P7','RM-T1','RM-T2','RM-T3','RM-T4','RM-T5','RM-T6','RM-K1','RM-K2','RM-K3','RM-K4','RM-K5','RM-K6','RM-G1','RM-G2','RM-G3','RM-F1','RM-D1','RM-D2','RM-D3','RM-D4','RM-X1','RM-N1','RM-N2','RM-N3','RM-O1','RM-O2','RM-O3'];
 const missing=IDS.filter(id=>!passed.some(n=>n.startsWith(id+' ')));
 assert.deepEqual(missing,[],'이름에 없는 사례 번호: '+missing.join(', '));passed.push(`every R6a case id (${IDS.length}) has a named check`);
 check('no external call was made',fetchCalls===0);
