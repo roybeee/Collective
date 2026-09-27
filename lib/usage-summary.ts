@@ -29,7 +29,7 @@ type Filterable=Pick<ProviderUsage,'campaignId'|'kind'|'role'>;
 export function filterUsage<T extends Filterable>(entries:T[],filter:UsageFilter){
  return entries.filter(e=>(!filter.campaignId||e.campaignId===filter.campaignId)&&(!filter.kind||e.kind===filter.kind)&&(!filter.role||e.role===filter.role));
 }
-export const usageKindNames:Record<string,string>={role:'역할 실행',meeting:'팀 회의',brief:'브리프 초안',research:'브랜드 조사',learning:'바이럴 학습'};
+export const usageKindNames:Record<string,string>={role:'역할 실행',meeting:'팀 회의',brief:'브리프 초안',research:'브랜드 조사',learning:'바이럴 학습',nurture:'가맹 너처링 초안'};
 // 별칭 단가 선언(loop-5, 결정 10: 별칭 hermes-agent 유지). 소유자가 별칭 뒤의 기반 모델과 단가를 선언하면 별칭 실행 비용을 읽을 때 추정한다.
 // 원장(provider_usage) 원본은 바꾸지 않는다. 적용 시작일(YYYY-MM-DD)은 한국 시간 그날 0시부터이고, 실행마다 관측 시각 이전에 시작한 가장 늦은 선언을 쓴다.
 export type AliasPricing={provider:'hermes';alias:string;baseModel:string;priceVersion:string;currency:string;inputPerMillion:number;outputPerMillion:number;source:string;effectiveFrom:string;declaredAt:string};

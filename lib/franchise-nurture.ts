@@ -179,17 +179,19 @@ export function parseNurtureOutput(text:unknown,medium:Medium):{subject:string|n
 }
 
 // ── 정보 요청·수동 발송 기록(리드 기록 안, 값 없음) ──
-export type InfoRequest={id:string;purpose:Purpose;at:string;by:string};
-export type MessageLog={id:string;templateId:string;templateVersion:number;classification:Classification;medium:Medium;requestId:string|null;at:string;by:string};
-export function infoRequestDecision(input:unknown,ctx:{enabled:boolean;now:string;id:string;by:string;requests:readonly InfoRequest[]}):NurtureDecision<InfoRequest>{
+// by: 기록한 사람(id·역할). 리드 기록 안에 두므로 리드 값과 함께 지워진다.
+export type NurtureActor={id:string;role:string};
+export type InfoRequest={id:string;purpose:Purpose;at:string;by:NurtureActor};
+export type MessageLog={id:string;templateId:string;templateVersion:number;classification:Classification;medium:Medium;requestId:string|null;at:string;by:NurtureActor};
+export function infoRequestDecision(input:unknown,ctx:{enabled:boolean;now:string;id:string;by:NurtureActor;requests:readonly {id:string}[]}):NurtureDecision<InfoRequest>{
  if(ctx.enabled!==true)return fail(['switch_off']);
  if(!isRecord(input)||!oneOf(INFO_PURPOSES,input.purpose)||!isInstant(ctx.now))return fail(['invalid_input']);
  if(ctx.requests.length>=LIMITS.requests)return fail(['limit']);
- return {ok:true,value:{id:ctx.id,purpose:input.purpose,at:ctx.now,by:ctx.by},warnings:[]};
+ return {ok:true,value:{id:ctx.id,purpose:input.purpose,at:ctx.now,by:{id:ctx.by.id,role:ctx.by.role}},warnings:[]};
 }
 export type LogTemplate={id:string;version:number;purpose:Purpose;medium:Medium;subject:string|null;body:string};
 // 순서: 스위치 → 입력 → 분류(광고성 409) → 매체 → 요청(정보성: 이 리드의 요청 기록, 요청당 1회) → 연락처 → 템플릿 다시 판정 → 한도.
-export function messageLogDecision(input:unknown,ctx:{enabled:boolean;now:string;id:string;by:string;template:LogTemplate|null;contactPresent:boolean;requests:readonly InfoRequest[];logs:readonly MessageLog[];brandId:string;facts:readonly BrandFact[];versions:readonly VersionLite[]}):NurtureDecision<MessageLog>{
+export function messageLogDecision(input:unknown,ctx:{enabled:boolean;now:string;id:string;by:NurtureActor;template:LogTemplate|null;contactPresent:boolean;requests:readonly {id:string}[];logs:readonly {requestId:string|null}[];brandId:string;facts:readonly BrandFact[];versions:readonly VersionLite[]}):NurtureDecision<MessageLog>{
  try{
   if(ctx.enabled!==true)return fail(['switch_off']);
   const t=ctx.template;
@@ -197,14 +199,15 @@ export function messageLogDecision(input:unknown,ctx:{enabled:boolean;now:string
   const cls=classificationOf(t.purpose);
   if(cls==='advertising')return fail(['advertising_before_r9b']);
   if(input.medium!==t.medium)return fail(['medium_mismatch']);
-  const requestId=typeof input.requestId==='string'?input.requestId:null;
+  // 입력 이름은 infoRequestId다(API 요청 번호 requestId와 겹치지 않게).
+  const requestId=typeof input.infoRequestId==='string'?input.infoRequestId:null;
   if(!requestId||!ctx.requests.some(r=>r.id===requestId))return fail(['request_missing']);
   if(ctx.logs.some(l=>l.requestId===requestId))return fail(['request_used']);
   if(!ctx.contactPresent)return fail(['contact_unavailable']);
   const again=templateDecision(t,{enabled:true,brandId:ctx.brandId,now:ctx.now,facts:ctx.facts,versions:ctx.versions});
   if(!again.ok)return fail(['template_blocked']);
   if(ctx.logs.length>=LIMITS.logs)return fail(['limit']);
-  return {ok:true,value:{id:ctx.id,templateId:t.id,templateVersion:t.version,classification:cls,medium:t.medium,requestId,at:ctx.now,by:ctx.by},warnings:[]};
+  return {ok:true,value:{id:ctx.id,templateId:t.id,templateVersion:t.version,classification:cls,medium:t.medium,requestId,at:ctx.now,by:{id:ctx.by.id,role:ctx.by.role}},warnings:[]};
  }catch{return fail(['invalid_input'])}
 }
 export const NURTURE_DISCLAIMER=GATE_DISCLAIMER;

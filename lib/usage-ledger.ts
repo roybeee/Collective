@@ -4,8 +4,9 @@ import {APP_TREE} from './app-version';
 import {observeReportedModelSafely} from './usage-model-alarm';
 
 export type UsageProvider='hermes'|'openai';
-export type UsageKind='role'|'meeting'|'brief'|'research'|'learning';
-export const usageKinds:readonly UsageKind[]=['role','meeting','brief','research','learning'];
+// nurture: 트랙 R R9a 가맹 너처링 템플릿 초안(lib/nurture-draft.ts, 제출 id 'nurture-<초안 id>').
+export type UsageKind='role'|'meeting'|'brief'|'research'|'learning'|'nurture';
+export const usageKinds:readonly UsageKind[]=['role','meeting','brief','research','learning','nurture'];
 // 사용량 조인 키(F2a, loop-8). 첫 관측(INSERT) 때 한 번 채우고 이후 폴링으로 바꾸지 않는다. 모르는 값은 0이나 빈 문자열이 아니라 null이다.
 // jobId: jobs.id(역할·회의·조사·학습) 또는 브리프 초안 id. promptVersion: '<스킬 버전>:<지시 sha256 앞 12자>', 스킬 버전이 없는 인라인 지시는 'inline:<해시>'.
 // appTree: 기록한 배포의 소스 트리(lib/app-version.ts, 개발 실행은 null). durationMs: 제출 원문 저장 시각부터 종료 관측까지.
