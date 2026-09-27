@@ -31,6 +31,8 @@ const obj=(v:unknown):Rec=>v&&typeof v==='object'&&!Array.isArray(v)?v as Rec:{}
 const text=(v:unknown)=>typeof v==='string'?v:'';
 const count=(v:unknown)=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0?v:null;
 // 버전·모델·채점기 id처럼 코드·공급자가 만드는 짧은 토큰만 받는다. 공백·한글이 든 값은 원문일 수 있어 버린다(URL 모양은 아래 검사가 버린다).
+// 채점기 버전(GRADERS_VERSION)은 태그를 이어 붙여 길어진다(2026-09-27 243자). 공백·한글 없는 코드 값 규칙은 같고 상한만 따로 둔다.
+const VERSION_TOKEN_MAX=512;
 const token=(v:unknown,max=120)=>typeof v==='string'&&v.length<=max&&/^[A-Za-z0-9][A-Za-z0-9._:@+/-]*$/.test(v)?v:null;
 const tokens=(values:readonly unknown[],max=MAX_TOKENS_LIST)=>[...new Set(values.map(v=>token(v)).filter((v):v is string=>!!v))].slice(0,max);
 const ROLE_IDS=new Set(roles.map(r=>r.id));
@@ -48,7 +50,7 @@ const VERDICTS=new Set(['ready_for_review','revise','needs_data']),CHECK_STATUSE
 const allowed=(set:ReadonlySet<string>,v:unknown)=>typeof v==='string'&&set.has(v)?v:null;
 function gradingOf(g:Rec):SignalGrading{
  const graders=(Array.isArray(g.graders)?g.graders:[]).map(obj),ids=(status:string)=>tokens(graders.filter(x=>x.status===status).map(x=>x.id),40),compliance=obj(g.compliance);
- return {artifactVersion:count(g.artifactVersion)??0,status:allowed(GRADING_STATUSES,g.status)??'unknown',gradersVersion:token(g.gradersVersion),passed:ids('pass'),failed:ids('fail'),errored:ids('grader_error'),complianceBlock:count(compliance.block),complianceWarn:count(compliance.warn)};
+ return {artifactVersion:count(g.artifactVersion)??0,status:allowed(GRADING_STATUSES,g.status)??'unknown',gradersVersion:token(g.gradersVersion,VERSION_TOKEN_MAX),passed:ids('pass'),failed:ids('fail'),errored:ids('grader_error'),complianceBlock:count(compliance.block),complianceWarn:count(compliance.warn)};
 }
 // AI가 만든 작업물(ai)과 사람이 고친 AI 작업물(ai_edited, B1 이전 사람 수정본 포함)만 평가 신호가 된다. 직접 작성은 모델·스킬 판정이 아니다.
 function aiOrigin(a:Rec):'ai'|'ai_edited'|null{

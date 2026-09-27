@@ -41,8 +41,8 @@ check('code run writes no campaign pin',()=>assert.equal(sql.prepare("SELECT COU
 
 // 2) 모든 단위를 API로 등록(코드 기본값과 같은 본문)하고 포인터를 직접 설정한다.
 raw.publishRepo(SOURCE_SHA);raw.publishRepo('main');
-// A1 정본은 새 후보다. 이 절의 '코드와 같은 본문' 대조는 실제 코드 폴백을 명시적으로 등록한다.
-for(const ref of [SOURCE_SHA,'main'])raw.publish(ref,'channel.offline',units.codeUnitBody('channel.offline'));
+// A1 정본은 새 후보다(channel.offline, 커머스·감사 묶음의 channel.commerce·channel.shortform·viral.discovery). 이 절의 '코드와 같은 본문' 대조는 실제 코드 폴백을 명시적으로 등록한다.
+for(const ref of [SOURCE_SHA,'main'])for(const unit of ['channel.offline','channel.commerce','channel.shortform','viral.discovery'])raw.publish(ref,unit,units.codeUnitBody(unit));
 const ids={};
 for(const u of units.promptUnits){const r=await post({action:'register',unit:u.unit,sourceSha:SOURCE_SHA});ids[u.unit]=r.body.version?.id;await setRelease(server,owner,u.unit,ids[u.unit])}
 check('all 22 units registered',()=>assert.equal(Object.values(ids).filter(Boolean).length,22));

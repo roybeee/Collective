@@ -1,4 +1,5 @@
-import {ApiError,runtime,readRecord,listRecords,recordStatement,eventStatement,database,acquireLock,releaseLock,stamp,uid,str,num,encrypt,decrypt,type Actor} from './server';
+import {ApiError,runtime,readRecord,listRecords,recordStatement,eventStatement,database,acquireLock,releaseLock,stamp,uid,str,num,type Actor} from './server';
+import {openRecordSecret,sealRecordSecret} from './credential-crypto-server';
 import {campaignBudget,isRecruitmentObjective,type Artifact,type Brand,type Campaign} from './agency';
 import {confirmedFactContext} from './brand-facts-server';
 import type {BrandFact} from './brand-facts';
@@ -152,7 +153,7 @@ export async function connectPublisher(owner:string,campaign:Campaign,input:Reco
  if(old)assertVersion(old,input.version);else if(input.version!==undefined&&input.version!==null)throw new ApiError(409,'발행 연결이 바뀌었습니다. 새로고침 후 다시 연결하세요.');
  const token=str(input.token,'Buffer API 키',5000,true),organizationId=str(input.organizationId,'Buffer 조직',100,true),channelId=str(input.channelId,'Instagram 채널',100,true);
  const account=await verifyBuffer(token,organizationId,channelId);
- const value:PublisherCredential={secret:await encrypt(token),channelId,account,organizationId,version:(old?.version||0)+1};
+ const value:PublisherCredential={secret:await sealRecordSecret(owner,'publisher_credential',campaign.brandId,token),channelId,account,organizationId,version:(old?.version||0)+1};
  await recordStatement(owner,'publisher_credential',campaign.brandId,value,campaign.brandId).run();return {connected:true,channelId,account,version:value.version};
 }
 // 승인을 새 버전의 초안으로 되돌린다. 승인 필드와 자동 공개 주소를 비운다(JSON 저장 시 undefined 필드는 빠진다).
@@ -331,7 +332,7 @@ export async function reservePublication(owner:string,campaign:Campaign,p:Public
  if(total.attempts>=limits.maxPublications)throw new ApiError(409,`발행 횟수 한도를 초과합니다(누적 발행 시도 ${total.attempts}회 · 한도 ${limits.maxPublications}회).`);
  if(total.plannedCostKRW+p.plannedCostKRW>limits.maxPlannedCostKRW)throw new ApiError(409,`예정 비용 상한을 초과합니다(누적 ${total.plannedCostKRW.toLocaleString('ko-KR')}원 + 이번 ${p.plannedCostKRW.toLocaleString('ko-KR')}원 · 상한 ${limits.maxPlannedCostKRW.toLocaleString('ko-KR')}원).`);
  await verifyMedia(p.mediaUrl,mediaHash(p),origin);
- const token=await decrypt(credential.secret);
+ const token=await openRecordSecret(owner,'publisher_credential',campaign.brandId,credential.secret);
  const pending:Publication={...p,status:'submitting',attemptedAt:stamp(),updatedAt:stamp(),version:p.version+1};
  await publicationKeepingReview(owner,pending,campaign.id).run();
  return {pending,token};
@@ -385,7 +386,7 @@ export async function resolveUncertain(owner:string,campaign:Campaign,p:Publicat
   if((await listRecords<Publication>(owner,'execution_publication',campaign.id)).some(x=>x.id!==p.id&&x.providerId===providerId))throw new ApiError(409,'다른 발행에 연결된 Buffer 게시 ID입니다.');
   const credential=await optionalRecord<PublisherCredential>(owner,'publisher_credential',campaign.brandId);
   if(!credential||credential.channelId!==p.channelId)throw new ApiError(409,'원래 발행 계정으로 연결한 뒤 확인하세요.');
-  const remote=await inspectBuffer(await decrypt(credential.secret),providerId);
+  const remote=await inspectBuffer(await openRecordSecret(owner,'publisher_credential',campaign.brandId,credential.secret),providerId);
   if(remote.channelId!==p.channelId)throw new ApiError(409,'이 발행의 Instagram 채널에 있는 Buffer 게시가 아닙니다.');
   next={...p,...resolved,status:providerPublicationStatus(remote.status),providerId,providerStatus:remote.status,error:undefined};
   message=`접수 확인 · Buffer 게시 ID로 '${publicationLabels[next.status]}' 상태를 확정했습니다.`;
