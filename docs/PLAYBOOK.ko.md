@@ -1,4 +1,4 @@
-# 교정 기반 플레이북 (B3-1 · B3-2a · B3-2b · B3-2c)
+# 교정 기반 플레이북 (B3-1 · B3-2a · B3-2b · B3-2c · B3-2 Reflector)
 
 사람이 작업물·브리프 제안·자료·발행을 판정한 기록(B1 `review_decision`)에서 반복된 선호를 **운영자 선호 규칙**으로 만들어, 소유자가 승인한 뒤 AI 역할 입력에 전달한다.
 성과 실험에서 나온 학습 규칙(바이럴·점포)과 등급·만료·주입 블록을 분리한다. 이번 단계(B3-1)는 모델(HERMES·OpenAI)을 부르지 않는다. 규칙은 사람이 직접 쓰고, 교정 데이터를 외부 모델로 보내는 Reflector는 B3-2다.
@@ -13,6 +13,7 @@
 - B3-2a 교정 신호(교정 묶음·파생 피드백·재발률·경보 중 승인 동결): 아래 [B3-2a 절](#b3-2a-교정-신호), 테스트 `tests/playbook-signals.test.mjs`
 - B3-2b 선호 on/off 골든 쌍 평가(`POST /api/eval` `pair.kind: operator_preferences`): 아래 [B3-2b 절](#b3-2b-선호-onoff-쌍-평가), 테스트 `tests/eval-preference-pair.test.mjs`
 - B3-2c 선호 쌍 평가 첨부(`POST /api/learning` `playbook_attach_eval`)와 4단계 종료 조건 절차: 아래 [B3-2c 절](#b3-2c-선호-쌍-평가-첨부), 테스트 `tests/playbook-attach-eval.test.mjs`
+- B3-2 Reflector(교정 묶음 → 격리 HERMES 1회 → 규칙 초안, `POST /api/reflector`): 아래 [B3-2 Reflector 절](#b3-2-reflector), 테스트 `tests/reflector.test.mjs`
 
 ## 등급과 만료 (대표 결정 9, 2026-09-24)
 
@@ -119,7 +120,7 @@
 
 ## B3-2 예정
 
-- **Reflector**: 교정 데이터(판정 이력·선호 쌍)를 외부 모델로 보내 규칙 초안을 제안한다. 대표 결정 12에 따라 **F4b 데이터 처리 문서가 먼저**다. 제안은 `playbook_create`와 같은 검사(인용 2건 이상·같은 브랜드·본문 검사)를 거친 `draft`로만 들어오고 승인은 사람이 한다.
+- **Reflector**: 코드는 아래 [B3-2 Reflector 절](#b3-2-reflector)에 있다(스위치 `b3_reflector` 기본 꺼짐). 운영에서 켜는 것은 [데이터 처리 7절](DATA-PROCESSING.ko.md#7-b3-reflectora5-착수-조건)의 사람 확인 항목(법률 검토·HERMES 운영 주체·도구 설정)을 채운 뒤다.
 - **helpful/harmful 카운터**: 저장하지 않고 읽을 때 계산하기로 했다(B3-2a, 아래 절). 저장 필드 `feedback`은 0으로 두고 쓰지 않는다.
 - **performance_tested** 부여: 골든 on/off 비교(평가 run)를 첨부할 때만 연다. 지금은 `playbook_grade`·생성 모두 409다.
 - 평가 실행과 운영 제출의 일치는 Q1(#86) `roleSubmission`으로 해소됐다(주입 블록 절). 회의·브리프 경로 주입 여부는 아직 정하지 않았다.
@@ -216,3 +217,83 @@ B3-2c는 끝난 선호 쌍 평가 run(B3-2b)을 **그 run이 평가한 규칙 �
 7. **실제 주입**: 같은 브랜드·역할의 역할 실행을 1건 돌린다.
 8. **appliedRules 확인**: 보상 계보(`GET /api/reward-lineage`)의 `appliedRules`·`byRule`에 그 규칙의 `ruleRef`가 나오는지, 작업물 끝에 규칙 제목·버전이 적혔는지 본다.
 9. **기록**: run id·첨부 감사 id·주입 작업물 id·결과(passed/failed, real)를 `docs/observations/`에 남긴다.
+
+## B3-2 Reflector
+
+같은 브랜드×역할의 교정이 쌓이면 운영자 버튼으로 교정 사유와 바뀐 부분 발췌를 **Reflector 전용 HERMES 격리 프로필**에 1회 보내 운영자 선호 규칙 **초안**을 받는다. 초안은 `playbook_create`와 같은 검사를 통과한 것만 저장하고, 승인·주입은 기존 사람 승인 흐름(`playbook_activate`, 대표) 그대로다. 자동 활성화는 없다. 데이터 처리 기준은 [DATA-PROCESSING 4.3](DATA-PROCESSING.ko.md#43-b3-reflectora5가-지킬-추가-규칙-제안-법률-검토-전) DP-1~DP-9를 따른다.
+
+- 순수 규칙(본문 조립·허용 목록·DP-3 검사·도구 흔적·후보 검사): `lib/reflector.ts`
+- 서버(스위치·권한·격리 연결·발동 조건·제출·결과·초안 저장·보존 정리): `lib/reflector-server.ts`, API `app/api/reflector/route.ts`
+- 화면: `app/reflector-section.tsx`(학습 규칙 탭, 운영자 선호 영역 아래, 대표·관리자만). `app/learning-panel.tsx`에는 import·마운트 한 줄만 더했다.
+- records kind: `reflector_run`(실행·제출 원문·응답 원문), `reflector_connection`(전용 연결), `reflector_isolation`(대표 격리 확인) — `lib/record-kinds.ts`
+- 테스트: `tests/reflector.test.mjs` (mocked: 메모리 SQLite·이메일 세션·모의 Reflector HERMES fetch 스텁·합성 데이터, 외부 호출 0, 운영 HERMES 호출 0)
+
+### 스위치·권한·발동 조건
+
+- 스위치 `b3_reflector`(기본 꺼짐)는 `lib/reflector-server.ts`에서만 읽고 읽기 실패는 꺼짐으로 본다. 꺼져 있으면 미리보기·실행·결과 확인이 모두 409(`blocked: switch_off`)이고 HERMES 호출은 0회다. GET은 `{"enabled":false}`만 돌려준다.
+- 대표·관리자만 쓴다. 직원은 GET·POST 모두 403이다. 전용 연결 저장·격리 확인은 대표만 한다(관리자 403).
+- 발동 조건은 B3-2a 교정 묶음(`correctionClusters`)과 같은 계산이다: 같은 브랜드×역할에서 90일 안 교정(수정 요청, 사람이 고친 판의 승인) **5건 이상**. 미만이면 409(`blocked: not_eligible`, `detail: {corrections, min}`)이고 호출 0회다. 보내는 교정은 묶음의 `decisionIds`(최신순, 인용 상한 20건)다.
+
+### 2단계 흐름
+
+`POST /api/reflector`
+
+1. `{"action":"reflector_preview","brandId":"oda","role":"content"}` → 보낼 본문(`body.instructions`·`body.input`), `previewHash`(`sha256:` + 본문 JSON의 SHA-256), DP-3 탐지 결과 `findings`(필드 경로·종류·건수), `blocked`, 연결 상태 `gate`. **전송 0회, 저장 없음.**
+2. `{"action":"reflector_run","brandId":"oda","role":"content","previewHash":"sha256:…","confirmed":true}` → 서버가 본문을 다시 만들어 해시가 같을 때만 보낸다.
+   - 409 사유(`blocked`): `preview_mismatch`(미리보기 뒤 본문이 바뀜), `pii_detected`(`detail.findings`에 필드·종류·건수만), `no_connection`·`connection_not_ready`·`isolation_unconfirmed`·`same_host`(격리 프로필 조건), `in_progress`(같은 브랜드×역할에 다른 해시의 실행이 진행 중), `budget_exceeded`(토큰 예산 가드).
+   - `confirmed: true`가 없으면 400이다. 같은 브랜드×역할에 **같은 해시**의 실행이 진행 중이면 새로 보내지 않고 그 실행을 `duplicate: true`로 돌려준다.
+3. `{"action":"reflector_check","id":"reflector-…"}` → 진행 중이면 같은 전용 연결(같은 호스트)로 조회하고, 끝나면 사용량을 기록하고 결과를 처리한다. 끝난 실행을 다시 확인하면 아무것도 바꾸지 않는다. 화면은 진행 중인 실행을 5초마다 확인한다.
+
+GET `/api/reflector?brandId=` → 스위치·전용 연결(호스트·상태, 키 없음)·격리 확인 여부·연결 게이트·역할별 교정 건수와 발동 가능 여부·최근 실행 10건(제출 원문·응답 원문·라벨 대응표 없음).
+
+### 보내는 본문(DP-1·DP-2)
+
+허용 목록은 코드 상수다(`REFLECTOR_INPUT_KEYS`·`REFLECTOR_BRAND_KEYS`·`REFLECTOR_CORRECTION_KEYS`·`REFLECTOR_SECTION_KEYS`). 레코드를 펼치지 않고 키를 골라 만든다.
+
+```json
+{"task":"operator_preference_rule_candidates","role":"content",
+ "brand":{"name":"…","short":"…","category":"…","color":"…","tone":"…","audience":"…","constraints":"…"},
+ "corrections":[{"ref":"d1","campaign":"c1","decision":"revision","reasonCodes":["voice"],"skillVersion":"content@v3","sections":[]},
+                {"ref":"d5","campaign":"c2","decision":"approved","reasonCodes":[],"skillVersion":"content@v3","sections":[{"title":"카피","before":"…","after":"…"}]}]}
+```
+
+- `brand`는 `aiBrand(brand).identity`(정체성)만이다. 소개·브랜드 메모·의뢰 정보는 없다.
+- `ref`는 판정 id 대신 가명 라벨(d1…), `campaign`은 캠페인 id 대신 가명 라벨(c1…)이다. 라벨 → 판정 id 대응표는 실행 기록(`labels`)에만 두고 모델에 보내지 않는다.
+- `sections`는 선호 쌍(`preferencePair`)의 AI 원본(before)과 사람 확정본(after)에서 달라진 섹션(제목 `#~###` 단위, 편집 통계와 같은 규칙) 최대 3개, 쪽마다 600자까지다. 사람 확정본이 없으면(수정 요청만 받은 판) 빈 배열이고 사유 코드만 간다.
+- 넣지 않는 것: 검토 메모 원문(`reviewNote`), 브랜드 메모·의뢰 정보, 점포 맥락, `orderRefs`·주문·성과 수치, 행위자(계정 id·이메일), 원 캠페인 id·판정 id·작업물 id. `tests/reflector.test.mjs`가 키 집합과 심어 둔 표지가 본문에 없음을 확인한다.
+- 지시문(`REFLECTOR_INSTRUCTIONS`)은 코드 상수다. 도구를 쓰지 말고, 발췌를 그대로 옮기지 말고, 연락처·주소·URL·가격 수치를 넣지 말고, 인용 2개 이상을 적으라고 요구한다.
+
+### 전송 전 검사와 기록(DP-3·DP-4)
+
+- 입력의 모든 문자열 값을 `lib/pii-scan.ts` `scanText`로 검사한다(전화·이메일·주소·결제정보·고유식별번호·고객 식별자). 하나라도 있으면 **fail-closed**: 미리보기는 `blocked: true`와 필드·종류·건수를 보이고, 실행은 409(`pii_detected`)로 보내지 않는다. 가려서 보내기는 법률 검토 뒤 정한다(DP-3).
+- 오류·차단 응답에는 필드 경로·종류·건수만 싣는다. 본문·탐지값·키를 콘솔·오류 문구·이벤트에 남기지 않는다(테스트가 콘솔 출력 전체를 확인한다).
+- 저장하는 제출 원문은 전송 본문 그대로다(`reflector_run.submission.body` = HERMES로 보낸 바이트, 같은 `Idempotency-Key`). 저장한 뒤 보내고, 429·5xx·연결 오류로 접수가 불확실하면 `submitting`으로 남겨 결과 확인이 같은 키로 다시 보낸다.
+- 미리보기는 운영자 화면에 본문을 보여 준다(DP-5 사람 확인). 사람 이름·민감정보는 패턴으로 다 잡지 못하므로 확인 체크가 있어야 보낼 수 있다.
+
+### 격리 프로필(DP-7)
+
+- HERMES 전용이다. OpenAI 직접 경로는 없다(`lib/reflector-server.ts`는 `openai`·`api.openai.com`을 부르지 않는다).
+- 운영 HERMES 연결을 쓰지 않는다. 대표가 **Reflector 전용 연결**(주소·키, `reflector_save_connection`)을 따로 저장한다. 운영 연결과 같은 호스트면 400이고, 키는 기존 연결과 같은 방식(`lib/server.ts` `encrypt`, AES-GCM)으로 암호화한다. 저장할 때 `/v1/capabilities`(실행·조회·중지·영구 멱등)와 인증 보호를 확인하고, 실패하면 `blocked` 상태로 저장해 실행을 막는다.
+- 대표의 **격리 확인 기록**(`reflector_confirm_isolation`, "이 Reflector 프로필은 세션 메모리·스킬 축적이 꺼져 있고 도구(웹·브라우저·MCP)가 없습니다.")이 지금 연결에 대해 있어야 한다. 연결을 다시 저장하면 확인을 다시 해야 한다. 둘 중 하나라도 없으면 실행 409다.
+- 코드는 프로필의 메모리·도구 설정을 직접 확인하지 못한다. 대표 확인 기록에 의존한다(평가 연결의 격리 확인과 같은 한계).
+- **도구 흔적 폐기**: 조회 응답에 도구 흔적이 있으면 결과를 버리고(`discarded`) 초안을 만들지 않는다. 흔적 판정은 알려진 이름의 필드만 본다: `tool_calls`·`tools_used`·`tool_events`·`tool_results`·`tool_invocations`·`tools`(응답과 `usage`), `last_event`·`events[].type/event/name`의 tool·function_call·browser·web_search·web_extract. HERMES run 응답의 도구 호출 목록 필드는 문서화돼 있지 않아([DATA-PROCESSING 8절](DATA-PROCESSING.ko.md#8-확인-필요-목록) 4번), **흔적이 없다는 것이 도구 미사용의 증명은 아니다**.
+
+### 결과와 초안(DP-6)
+
+- 응답은 JSON `{"candidates":[{"text":"…","citations":["d1","d5"]}]}`이다. 형식이 틀리면 실행을 `failed`로 두고 초안을 만들지 않는다(응답 원문은 실행 기록에 남는다).
+- 후보는 최대 5개이고 6번째부터 `over_limit`으로 거절한다. 후보마다 아래를 통과해야 초안이 된다. 거절은 순번과 사유 코드만 남긴다.
+  - `text`: `playbook_create`와 같은 본문 검사(`ruleBodyProblem`: 400자, 연락처, URL·도메인·핸들, 명령형 주입, 근거 규율 우회, 코드 소유 정책, 동형 문자)
+  - `pii`: DP-3 출력 검사(`scanText`, 주소 등 본문 검사가 보지 않는 패턴)
+  - `quotes_source`: 보낸 발췌를 25자 이상 이어서 그대로 옮김(교정 원문 인용 금지)
+  - `citation_outside`: 입력에 없는 라벨(다른 브랜드 판정 id 포함), `citations`: 인용 2건 미만·20건 초과 또는 `playbook_create`와 같은 인용 검사(`citedDecisions`: 실제 기록·같은 브랜드) 실패
+  - `duplicate`: 같은 실행의 같은 본문
+- 초안은 `playbook_create`와 같은 모양이다: `learning_rule`(`origin: review`, `grade: operator_preference`, `status: draft`, 역할 = 실행 역할, 채널 `*`, 인용 = 판정 id, 만료 60일). `scope`는 "사람 판정 N건 인용 · Reflector 초안"이다. 인용은 판정 id(작업물 id·판 참조)만이고 교정 원문은 담지 않는다.
+- 초안마다 `playbook_audit` `create`를 남기고 `source: reflector`·`reflectorRunId`를 더한다(행위자 id·역할만).
+- 승인 전 주입 0건이다. 승인은 운영자 선호 규칙 카드의 기존 승인(대표, 경보 동결·역할당 8개 상한 적용)이다.
+
+### 예산·멱등·보존·삭제
+
+- 제출 전에 토큰 예산 가드(loop-4, `reserveTokenBudget`)가 예약한다. 넘으면 409(`budget_exceeded`)이고 보내지 않으며 실행 기록도 남기지 않는다. 사용량은 `kind: learning`(역할 `reflector`)으로 기록하고 끝나면 예약을 정리한다.
+- 멱등: 제출 키는 실행마다 새로 만들고(`collective-reflector-<uuid>`), 재전송은 같은 키다. 같은 브랜드×역할에 진행 중인 실행은 1건이다(소유자 잠금 안에서 판정).
+- 보존: `reflector_run`은 만든 날부터 **90일**(`expiresAt`)이 지나면 Reflector 읽기·쓰기 때 지운다. 90일은 문서에 값이 없어 둔 COLLECTIVE 휴리스틱이며 **법률 검토 뒤 확정**한다.
+- 삭제 연쇄: `reflector_run`은 브랜드 행(parent = 브랜드 id)이고, 입력에 들어간 캠페인(`campaignIds`) 중 하나를 지우면 함께 지운다(캠페인 삭제 대화상자의 'AI 요청·응답 원문'). 새 경로 `data_campaigns`(`campaignIds` 배열 포함 판정)를 `lib/record-kinds.ts`에 더했다. 앱에는 브랜드 삭제 경로가 아직 없다. 만든 초안(`learning_rule`)은 운영자 선호 규칙의 기존 정책을 따른다.

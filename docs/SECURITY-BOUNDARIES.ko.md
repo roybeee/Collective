@@ -43,6 +43,8 @@
 | 교정 신호 보기(B3-2a. 교정 묶음·규칙 버전별 파생 피드백·같은 사유 재발률, 요청할 때 계산하고 저장하지 않음, 모델 호출 없음. `b3_playbook_signals` 꺼짐이면 키 없음·응답 바이트 동일. 판정·규칙 id와 사유 코드별 건수만, 메모·이메일·규칙 본문 없음. 직원 응답에는 키가 없다) | `/api/learning` GET `correctionClusters`·`playbookFeedback`·`recurrence` | 포함 | 포함 | 제외 |
 | 선호 쌍 평가 첨부(B3-2c. 끝난 운영자 선호 쌍 평가 run을 그 run이 평가한 규칙 버전에 `playbook_audit` `attach_eval`로만 남김, 규칙 버전·상태·만료·등급 불변, 모델 호출 없음. 프롬프트 쌍·단독 run·다른 브랜드·그 규칙을 평가하지 않은 run 400, 진행 중·삭제 run·다른 버전을 평가한 run·오래된 `version`·중복 첨부 409, `b3_playbook_signals` 꺼짐 409. 행위자는 id·역할만) | `/api/learning` `playbook_attach_eval` | 허용 | 403 | 403 |
 | 선호 쌍 평가 첨부 보기(B3-2c. 규칙 버전별 최신 첨부 게이트: run id·통과 여부·사유·경고 코드·쌍 수. 교정 신호와 같은 스위치·권한, 꺼짐이면 키 없음. 직원 응답에는 키가 없다) | `/api/learning` GET `playbookEvals` | 포함 | 포함 | 제외 |
+| Reflector 미리보기·실행·결과 확인(B3-2. 같은 브랜드×역할 교정 90일 5건 이상만, 미만 409. 미리보기는 보낼 본문·DP-3 탐지 결과(필드·종류·건수)만 돌려주고 전송 0. 실행은 미리보기 해시 일치·탐지 0건·Reflector 전용 연결·대표 격리 확인·토큰 예산 안일 때만 1회, 아니면 409와 `blocked` 사유. 브랜드×역할당 진행 중 1건. 결과는 도구 흔적이 있으면 폐기, 후보는 `playbook_create`와 같은 검사를 통과한 것만 초안. `b3_reflector` 꺼짐이면 모두 409) | `/api/reflector` `reflector_preview`·`reflector_run`·`reflector_check`, GET | 허용 | 허용 | 거부(403) |
+| Reflector 전용 HERMES 연결 저장·격리 확인 기록(운영 HERMES와 같은 호스트 400, 키 암호화. 연결을 다시 저장하면 확인을 다시 해야 한다) | `/api/reflector` `reflector_save_connection`·`reflector_confirm_isolation` | 허용 | 거부(403) | 거부(403) |
 | 아카이브 자료 추가·후보로 되돌리기 | `/api/archive` `add_source`, `review_source`·`review_sources` (모든 항목이 `candidate`) | 허용 | 허용 | 허용 |
 | 아카이브 자료 확정·사용 제외(일괄 포함), 진단 채택, 의뢰 정보 수정 | `/api/archive` `review_source`·`review_sources` (`confirmed`·`excluded`가 하나라도 있으면), `confirm_diagnosis`, `save_intake` | 허용 | 허용 | 403 |
 | 아카이브 원본 파일 삭제(레코드는 남김, 되돌릴 수 없음) | `/api/archive` `delete_source_file` | 허용 | 허용 | 403 |

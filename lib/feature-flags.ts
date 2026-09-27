@@ -17,6 +17,7 @@ export const FEATURE_FLAGS={
  a8_customer_report:{defaultEnabled:false,description:'대표·관리자가 끝난 주의 점포 고객 보고서(장부·POS 대조·north-star·채널 단위경제·커넥터 참고값)를 미리 보고 동결하며, 사실 팩을 받는다. 대표가 동결 판을 검토한다(A8, 모델 호출 없음). 꺼도 동결한 보고서 목록·다운로드는 계속된다.'},
  b4_reward_lineage:{defaultEnabled:false,description:'대표·관리자가 사람 판정·발행·반응·주문 보상을 프롬프트 버전·학습 규칙별로 모은 보상 계보(읽기 전용 집계)를 본다(B4 2부, 모델·커넥터 호출 없음). 자동 승격·강등은 없다.'},
  b3_playbook_signals:{defaultEnabled:false,description:'대표·관리자가 학습 화면에서 브랜드×역할 교정 묶음(90일 5건 이상이면 규칙 초안 대상)·운영자 선호 규칙별 피드백·같은 사유 재발률(4주)을 본다(B3-2a, 읽을 때 계산, 모델 호출 없음). 규칙 상태·만료를 자동으로 바꾸지 않는다.'},
+ b3_reflector:{defaultEnabled:false,description:'대표·관리자가 같은 브랜드×역할 교정 5건 이상 묶음을 Reflector 전용 HERMES 격리 프로필에 1회 보내 운영자 선호 규칙 초안(최대 5개, 인용 필수, 초안만·승인은 사람)을 제안받는다(B3-2, 토큰 사용·예산 가드 적용). 미리보기 확인·개인정보 탐지 시 전송 차단·대표 격리 확인이 있어야 보낸다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};
