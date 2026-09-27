@@ -163,7 +163,12 @@ check('1b: the bodies leave the fact label format to the code-owned policy and n
 const ECHO=[...NEW_IDS.map(bodyOf),[...NEW_IDS.map(bodyOf),P].join('\n')];
 check('1b: echoing the recruitment bodies raises no franchise judge issue in either scope',ECHO.every(text=>['recruitment','consumer'].every(scope=>jc.judgeFranchiseText({text,at:NOW,now:NOW,scope,brandId:'b',facts:[],versions:[]}).issues.length===0)));
 check('1b: echoing the recruitment bodies raises no compliance issue (default, consumer and recruitment franchise scope)',ECHO.every(text=>[null,{scope:'consumer'},{scope:'recruitment'}].every(fr=>comp.checkCompliance(text,{facts:null,franchise:fr}).issues.length===0)));
-check('1b: echoing the recruitment bodies fails no grader but thin_section (industry null, fnb, franchise; cmo, content, data, quality)',ECHO.every(text=>[null,'fnb','franchise'].every(industry=>['cmo','content','data','quality'].every(role=>!graders.runGraders({id:'p',kind:'role',role,contract:false,text},{industry,facts:{confirmed:[],prohibited:[]}}).some(r=>r.status==='fail'&&r.id!=='thin_section')))));
+const ECHO_ROLES=['cmo','content','data','quality'],echoGrade=(text,role,industry)=>graders.runGraders({id:'p',kind:'role',role,contract:false,text},{industry,facts:{confirmed:[],prohibited:[]}});
+check('1b: echoing the recruitment bodies fails no grader but thin_section (industry null, franchise, franchise+fnb; cmo, content, data, quality)',ECHO.every(text=>[null,'franchise',['franchise','fnb']].every(industry=>ECHO_ROLES.every(role=>!echoGrade(text,role,industry).some(r=>r.status==='fail'&&r.id!=='thin_section')))));
+// R3c(+franchise-industry): 가맹이 아닌 소비자 업종(fnb)으로 채점하면 모집 본문은 industry_metric_leak의 franchise 적중으로만 fail이다(의도한 유출 판정).
+const fnbLeak=text=>ECHO_ROLES.map(role=>echoGrade(text,role,'fnb').filter(r=>r.status==='fail'&&r.id!=='thin_section'));
+check('1b: under an fnb-only industry the recruitment bodies fail nothing but industry_metric_leak (besides thin_section), and only on franchise hits',ECHO.every(text=>fnbLeak(text).every(fails=>fails.every(r=>r.id==='industry_metric_leak'&&r.detail.split('; ').every(h=>h.startsWith('franchise: '))))));
+check('1b: under an fnb-only industry the channel.franchise body and the joined bodies do leak (the franchise dictionary is not vacuous here)',[ECHO[NEW_IDS.indexOf('franchise')],ECHO.at(-1)].every(text=>fnbLeak(text).every(fails=>fails.length===1)));
 check('1b: echoing the recruitment bodies is not an unverified ad claim',ECHO.every(text=>policy.unverifiedClaims(text,policy.claimGuard({confirmed:[],prohibited:[]})).length===0));
 
 // ════ 2) 역할 제출 바이트: 기준 fixture의 모든 케이스에서 지시문은 같고, 입력은 campaign·channelPractice만 달라진다 ════
@@ -213,7 +218,10 @@ check('3: the policy names no amount, period figure or startup-cost claim word (
 const judge=scope=>jc.judgeFranchiseText({text:P,at:NOW,now:NOW,scope,brandId:'b',facts:[],versions:[]});
 check('3: echoing the policy raises no franchise judge issue in either scope',judge('recruitment').issues.length===0&&judge('consumer').issues.length===0);
 check('3: echoing the policy raises no compliance issue (default, consumer and recruitment franchise scope)',[null,{scope:'consumer'},{scope:'recruitment'}].every(fr=>comp.checkCompliance(P,{facts:null,franchise:fr}).issues.length===0));
-check('3: echoing the policy fails no grader',[null,'fnb','franchise'].every(industry=>!graders.runGraders({id:'p',kind:'role',role:'data',contract:false,text:P},{industry,facts:{confirmed:[],prohibited:[]}}).some(r=>r.status==='fail')));
+const policyFails=industry=>graders.runGraders({id:'p',kind:'role',role:'data',contract:false,text:P},{industry,facts:{confirmed:[],prohibited:[]}}).filter(r=>r.status==='fail');
+check('3: echoing the policy fails no grader (industry null, franchise, franchise+fnb)',[null,'franchise',['franchise','fnb']].every(industry=>policyFails(industry).length===0));
+// R3c(+franchise-industry): 소비자 업종(fnb)만 둔 케이스에서는 가맹 정책 문장이 franchise 사전 적중으로만 fail이다(의도한 유출 판정).
+check('3: under an fnb-only industry the policy fails only industry_metric_leak on franchise hits',(f=>f.length===1&&f[0].id==='industry_metric_leak'&&f[0].detail.split('; ').every(h=>h.startsWith('franchise: ')))(policyFails('fnb')));
 check('3: echoing the policy is not an unverified ad claim',policy.unverifiedClaims(P,policy.claimGuard({confirmed:[],prohibited:[]})).length===0);
 // 정책을 따른 산출물 문장: 사실 표시는 가맹 판정 H8과 채점기의 확정 표시를 함께 만족하고, 후기 자리표시는 추천·보증 표시 경고에 걸리지 않는다.
 const FACT_LINE='가맹비는 1,100만원입니다 [사실: 가맹비 · 확정 사실].',PLACEHOLDER='[점주 후기 자리 — 동의·경제적 이해관계 표시 확인 필요]';

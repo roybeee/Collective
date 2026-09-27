@@ -52,7 +52,7 @@ export const contractJson:Grader={id:'contract_json',grade(item,ctx){
  if(item.kind==='discussion')return discussionContract(item);
  if(item.kind!=='role'||item.role==='quality'||!item.contract)return verdict('not_applicable','계약 이전(legacy) 실행 또는 계약 밖 산출물');
  const role=item.role||'';
- if(item.raw){if(!strictContractJson(item.raw))return verdict('fail','원문이 JSON 형식이 아님(운영은 끝 여분 괄호를 떼고 읽음, 최상위 } 1개 누락만 채워 읽으며 채점도 같음)');try{parseRoleOutput(item.raw,role,expectedContract(item,ctx.outputProfile));return verdict('pass')}catch(error){return verdict('fail',(error as Error).message)}}
+ if(item.raw){if(!strictContractJson(item.raw))return verdict('fail','원문이 JSON 형식이 아님(운영은 끝 여분 괄호를 떼고 읽음, 최상위 } 1개 누락과 채널 목록 }] 누락만 채워 읽으며 채점도 같음)');try{parseRoleOutput(item.raw,role,expectedContract(item,ctx.outputProfile));return verdict('pass')}catch(error){return verdict('fail',(error as Error).message)}}
  const titles=contractTitles(role),found=(item.text||'').split('\n').flatMap(l=>{const t=/^##\s+(.+)$/.exec(l)?.[1]?.trim();return t&&titles.includes(t)?[t]:[]});
  return found.join('\u0000')===titles.join('\u0000')?verdict('pass','렌더본 약식(원 JSON 없음)'):verdict('fail','계약 제목 누락·중복·순서 오류');
 }};

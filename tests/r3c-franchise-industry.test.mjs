@@ -30,6 +30,8 @@ const RECRUIT=[
  '가맹비와 교육비는 확정 사실로만 적는다.',
  '가맹 설명회 신청 폼을 리드 광고에 연결한다.',
  '가맹 계약 전환율과 계약당 비용을 따로 본다.',
+ '프랜차이즈 창업 박람회에서 상담 예약을 받는다.',
+ '가맹 창업 설명회 일정을 리드 광고로 알린다.',
 ];
 // 소비자 캠페인이 흔히 쓰는 '가맹'·'창업'·'점주' 낱말. 가맹 모집 운영 용어가 아니다(R2 소비자 범위의 모집 문구 판정과 같은 방향).
 const CONSUMER=[
@@ -46,11 +48,17 @@ const CONSUMER=[
  '1호점 점주님을 모시고 시식회를 한다.',
  '예비 신부 할인과 예비 창업자 특강 후기를 모은다.',
  '공정위 표준 가맹 계약서를 따르는 매장이라고만 쓴다.',
+ // R3c 교차 검토 확정 오탐 3건: 지역화폐·결제·배달앱의 가맹 신청·안내, 가맹 계약 만료 폐점 안내, 청소년 창업 박람회.
+ '지역화폐 가맹 신청하세요.',
+ '배달앱 가맹 안내를 매장 입구에 붙였다.',
+ '카드 결제 가맹 안내 문자를 받았다.',
+ '가맹 계약 만료로 10월 31일 폐점합니다.',
+ '청소년 창업 박람회에 떡볶이 부스를 낸다.',
 ];
 
 check('the industry dictionary has a franchise entry next to the G3 industries',()=>assert.deepEqual(Object.keys(industry.INDUSTRY_TERMS).sort(),['beauty','education','fnb','franchise','kpop','locker','popup','retail']));
 check('franchise does not match any cross-industry common term',()=>{for(const t of industry.COMMON_TERMS)assert.ok(!industry.INDUSTRY_TERMS.franchise.test(t),t)});
-check('recruitment terms leak into non-franchise campaigns (fnb, education, locker) with a franchise hit',()=>{
+check('recruitment terms (including franchise-qualified startup fairs) leak into non-franchise campaigns (fnb, education, locker) with a franchise hit',()=>{
  for(const t of RECRUIT)for(const ind of ['fnb','education','locker',['fnb','retail']]){const r=leak(t,ind);assert.equal(r.status,'fail',t+' '+ind);assert.match(r.detail,/franchise: /,t)}
 });
 check('recruitment terms pass when franchise is the primary or an allowed industry',()=>{
@@ -68,7 +76,7 @@ check('the old S7 expectation (fnb only) now fails recruitment output that franc
  const t='가맹 상담 신청자에게 정보공개서 제공 일정을 먼저 안내한다. 쇼룸에서는 떡볶이 대표 메뉴 시식을 한다.';
  assert.equal(leak(t,['fnb']).status,'fail');assert.equal(leak(t,['franchise','fnb']).status,'pass');
 });
-check('the grading version carries the franchise-industry tag at the end',()=>assert.ok(GRADERS_VERSION.endsWith('+root-brace+franchise-industry')));
+check('the grading version carries the franchise-industry tag at the end',()=>assert.ok(GRADERS_VERSION.endsWith('+root-brace+channels-close+franchise-industry')));
 check('the franchise dictionary finishes quickly on 40,000-character inputs',()=>{
  for(const text of ['가맹'.repeat(20000),'가맹 '.repeat(13000),'예비 '.repeat(13000),'정보 '.repeat(13000),('가맹점 '.repeat(30)+'\n').repeat(400)]){
   const t=Date.now();leak(text,'fnb');assert.ok(Date.now()-t<1500,text.slice(0,6)+' '+(Date.now()-t));

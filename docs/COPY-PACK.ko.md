@@ -250,7 +250,7 @@
 5. 종료 조건(두 케이스 모두): `contract_json` pass(v2 원문), `copy_pack_variants` pass, `brand_voice_avoid_term` pass, 출력이 잘리지 않음(출력 토큰이 콘텐츠 `maxTokens` 10,000 미만). 결과는 `docs/releases/` 또는 이 절에 run id와 함께 적는다.
 6. 출력 토큰이 상한에 닿으면 `lib/role-execution.ts`에서 v2일 때만 상한을 올리는 PR을 따로 낸다(A3-1 남은 위험).
 
-### A3 종료 조건 run 기록 (3회)
+### A3 종료 조건 run 기록 (4회)
 
 결론: 세 번 모두 **failed · real**이다. 실패는 모두 긴 v2 원문 끝부분의 구조 결함이었다. 대표 결정(2026-09-27, 선택지 답 "괄호 1개 보정 + 순서 되돌림")으로 운영 읽기와 채점이 최상위 `}` 1개 누락을 채워 읽고, #154의 스키마 순서 변경은 되돌렸다.
 
@@ -270,6 +270,20 @@
 
 - 스위치 `a3_copy_pack`이 꺼져 있으면 v1 제출은 바이트 동일하다(팩 스키마·규칙은 v2 지시에만 붙는다).
 - 다음: 게시 뒤 같은 두 케이스로 4회째 run. 이번 결정이 수학학원 `}` 누락을 흡수하는지, 순서 되돌림 뒤 국밥 실험 channel이 다시 팩 channels 안에 드는지 본다.
+
+4회째(run `2fc1ebd8`, 2026-09-27 09:38–09:42 KST, 31,943토큰, 운영 `9a760e4` Sites 버전 43): **failed · real**.
+
+| 케이스 | 결과 | 원인 |
+|---|---|---|
+| 국밥 | 15종 모두 pass·not_applicable | 순서 되돌림 뒤 실험 channel이 팩 channels 안에 다시 들었다 |
+| 수학학원 | `contract_json` fail, `copy_pack_variants` not_applicable | 마지막 채널의 variants를 닫은 뒤 채널 객체와 channels 배열을 닫는 `}]`를 빠뜨리고 shortform·experiments를 채널 객체 안에 이어 썼다(`{` 16·`}` 15, `[` 36·`]` 35). 2회째 `a81bb445`와 같은 끝부분 구조 붕괴다 |
+
+수학학원은 4번 모두 긴 원문 끝부분의 구조 결함으로 실패했다. 대표 결정(2026-09-27, 선택지 답 "좁은 보정 1개 추가"):
+
+4. copyPack.channels의 `}]`만 빠진 원문은 그 자리에 `}]`를 넣어 읽는다(`lib/role-output.ts` `channelsCloseCompleted`, 운영 읽기와 `contract_json` 모두, `+channels-close`). 처음 나오는 `]` 뒤 `shortform`·`experiments` 키 앞에만 넣는다. 넣은 원문이 그대로 JSON이고 shortform·experiments가 copyPack 바로 아래로 올라올 때만 받는다(다른 배열 뒤에 넣어 채널 객체 안에 남으면 거절). 다른 잘림, 뒤에 붙은 글, 최상위 `}` 보정과 겹친 누락, variants가 열린 채인 원문은 계속 거절한다.
+
+- 4회째 실제 원문에 같은 규칙을 적용하면 JSON이 되고 채널 1개(3안)·장면 4·실험 1(같은 채널 A/B)로 읽힌다(Chrome 확장, 운영 원문 same-origin 확인, 저장소에는 원문을 넣지 않음).
+- 다음: 게시 뒤 같은 두 케이스로 5회째 run(평가 슬롯은 A1 v3 `3c0f6572` 뒤).
 
 ### 남은 위험
 

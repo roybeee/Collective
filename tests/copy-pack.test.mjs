@@ -211,4 +211,30 @@ check('the request plan carries the v2 contract only for content with the profil
 check('registry bodies cannot claim the code-owned copyPack contract',()=>{
  for(const body of ['카피 팩은 copyPack 필드로 쓴다.','copy pack 형식을 지킨다.'])assert.throws(()=>units.validateUnitBody('channel.shortform',body),e=>e.reason==='code_owned',body);
 });
+// ── 채널 목록 닫기 보정(대표 결정 2026-09-27 '좁은 보정 1개 추가', A3 run a81bb445·2fc1ebd8 실측, +channels-close) ──
+// 수학학원 원문은 마지막 채널의 variants를 닫은 뒤 채널 객체와 channels 배열을 닫는 '}]'를 빠뜨리고 shortform·experiments를 이어 썼다.
+// 그 자리에 '}]'만 넣어 JSON이 되고 채널 객체에 shortform·experiments가 남지 않을 때만 운영 읽기와 contract_json이 받는다.
+const full=rawV2(),unclosed=full.replace(']}],"shortform":','],"shortform":'),expOnly=rawV2(makePack({shortform:undefined})).replace(']}],"experiments":','],"experiments":');
+check('the unclosed-channels fixture reproduces the A3 shape (one } and one ] short, not JSON)',()=>{
+ assert.notEqual(unclosed,full);assert.throws(()=>JSON.parse(unclosed));
+ const count=(t,c)=>t.split(c).length-1;assert.ok(count(unclosed,'{')-count(unclosed,'}')===1&&count(unclosed,'[')-count(unclosed,']')===1);
+});
+check('an output that only left copyPack.channels unclosed is read like the closed one and passes contract_json and copy_pack_variants',()=>{
+ assert.equal(roleOutput.renderRoleOutput(unclosed,'content',v2Contract).content,roleOutput.renderRoleOutput(full,'content',v2Contract).content);
+ assert.ok(roleOutput.strictContractJson(unclosed));
+ const g=graded(unclosed);assert.equal(g.contract_json.status,'pass',JSON.stringify(g.contract_json));assert.equal(g.copy_pack_variants.status,'pass',JSON.stringify(g.copy_pack_variants));
+ assert.ok(roleOutput.strictContractJson(expOnly),'experiments right after the unclosed channels');
+});
+check('other breakages stay rejected: extra truncation, trailing text, a second missing closer, unclosed variants, a valid output is untouched',()=>{
+ const second=unclosed.replace('}]},"experiments":','}],"experiments":'),openVariants=full.replace('}]}],"shortform":','},"shortform":');
+// 앞 배열(마지막 variant의 needsCheck) 뒤에 넣으면 JSON은 되지만 shortform·experiments가 채널 객체 안에 남는다. 이 경우도 거절한다.
+ const lastVariant=rawV2(makePack({channels:[channel('Instagram 피드',[V3[1],V3[2],V3[0]])]})),inVariant=lastVariant.replace('"needsCheck":["가격"]}]}],"shortform":','"needsCheck":["가격"],"shortform":').replace('"metric":"click_rate"}]}}','"metric":"click_rate"}]}]}}');
+ assert.ok(second!==unclosed&&openVariants!==full&&inVariant!==lastVariant&&JSON.parse(inVariant.replace('"needsCheck":["가격"],','"needsCheck":["가격"]}],')).copyPack.channels[0].shortform,'fixtures changed');
+ for(const bad of [unclosed.slice(0,-1),unclosed+' 끝',second,openVariants,inVariant]){
+  assert.ok(!roleOutput.strictContractJson(bad),bad.slice(-40));assert.equal(graded(bad).contract_json.status,'fail');
+  assert.throws(()=>roleOutput.renderRoleOutput(bad,'content',v2Contract),/JSON 형식/);
+ }
+ assert.ok(roleOutput.strictContractJson(full));
+});
+check('the grading version carries the channels-close tag',()=>assert.ok(graders.GRADERS_VERSION.endsWith('+root-brace+channels-close+franchise-industry')));
 console.log(JSON.stringify({passed:passed.length}));
