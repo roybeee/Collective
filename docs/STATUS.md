@@ -6,6 +6,7 @@
 - 운영(갱신): `b64bc06`(Sites 버전 49, tree `0d42612`, [기록](releases/2026-09-27-b64bc06.md)). 레인 R #203·#204·레인 G #206 게시 완료.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 - #208 · 레인 R · 보통 · 새 스위치 없음(r_franchise 기본 꺼짐)
+- #231 · 레인 R · 보통 · 새 스위치 없음(r_franchise 기본 꺼짐, 공공데이터 키가 없으면 외부 호출 0, 새 kind 3개 `franchise_benchmark`·`benchmark_fetch`·`benchmark_credential`, 마이그레이션 없음). DATA-PROCESSING #232 레인 A 검토 통과
 - #210 · 레인 G · 보통 · 새 스위치 없음(prompts 콘텐츠만, 레지스트리 반영은 레인 Q 쌍 평가 뒤)
 - #211 · 레인 G · 보통 · `crypto_v1_write` 기본 꺼짐, 선택 환경변수 `AGENCY_ENCRYPTION_KEYS`(없어도 동작 동일)
 - #212 · 레인 G · 보통 · `a4_png_code` 기본 꺼짐, 새 kind `execution_coded_png`
