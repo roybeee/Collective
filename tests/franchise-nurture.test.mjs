@@ -67,17 +67,17 @@ check('NU-O2 sms ignores the subject',same(nu.parseNurtureOutput('{"subject":"x"
 check('NU-O3 broken or empty output is null (no partial body)',[null,'','본문만','{"body":""}','{"body":3}','{bad json}','x'.repeat(20001)].every(t=>nu.parseNurtureOutput(t,'email')===null));
 
 // ════ NU-L 정보 요청·발송 기록 ════
-const R1={id:'rq-1',purpose:'requested_material',at:NOW,by:'u1'};
-const IR=(input,x={})=>plain(nu.infoRequestDecision(input,{enabled:true,now:NOW,id:'rq-2',by:'u1',requests:[],...x}));
+const U1={id:'u1',role:'member'},R1={id:'rq-1',purpose:'requested_material',at:NOW,by:U1};
+const IR=(input,x={})=>plain(nu.infoRequestDecision(input,{enabled:true,now:NOW,id:'rq-2',by:U1,requests:[],...x}));
 check('NU-L1 an info request takes only an informational purpose',IR({purpose:'process_guide'}).ok&&same(IR({purpose:'benefit'}).reasons,['invalid_input'])&&same(IR({purpose:'process_guide'},{requests:Array(50).fill(R1)}).reasons,['limit'])&&same(IR({purpose:'process_guide'},{enabled:false}).reasons,['switch_off']));
 const T1={id:'nt-1',version:2,...INFO},T_AD={id:'nt-2',version:1,...AD};
-const L=(input,x={})=>plain(nu.messageLogDecision(input,{enabled:true,now:NOW,id:'ml-1',by:'u1',template:T1,contactPresent:true,requests:[R1],logs:[],brandId:'b1',facts:[],versions:[],...x}));
-const good=L({medium:'email',requestId:'rq-1'});
-check('NU-L2 a log links template version, classification, medium and the request',good.ok&&same(good.value,{id:'ml-1',templateId:'nt-1',templateVersion:2,classification:'info_requested',medium:'email',requestId:'rq-1',at:NOW,by:'u1'}));
+const L=(input,x={})=>plain(nu.messageLogDecision(input,{enabled:true,now:NOW,id:'ml-1',by:U1,template:T1,contactPresent:true,requests:[R1],logs:[],brandId:'b1',facts:[],versions:[],...x}));
+const good=L({medium:'email',infoRequestId:'rq-1'});
+check('NU-L2 a log links template version, classification, medium and the request',good.ok&&same(good.value,{id:'ml-1',templateId:'nt-1',templateVersion:2,classification:'info_requested',medium:'email',requestId:'rq-1',at:NOW,by:{id:'u1',role:'member'}}));
 check('NU-L3 advertising logs are 409 before R9b',same(L({medium:'sms'},{template:T_AD}).reasons,['advertising_before_r9b'])&&L({medium:'sms'},{template:T_AD}).status===409);
-check('NU-L4 medium mismatch, missing and used requests',same(L({medium:'sms',requestId:'rq-1'}).reasons,['medium_mismatch'])&&same(L({medium:'email'}).reasons,['request_missing'])&&same(L({medium:'email',requestId:'rq-9'}).reasons,['request_missing'])&&same(L({medium:'email',requestId:'rq-1'},{logs:[{...good.value,id:'ml-0'}]}).reasons,['request_used']));
-check('NU-L5 no contact is 409 and a template that is blocked now is 409',same(L({medium:'email',requestId:'rq-1'},{contactPresent:false}).reasons,['contact_unavailable'])&&same(L({medium:'email',requestId:'rq-1'},{template:{...T1,body:'월 순수익 500만원 보장'}}).reasons,['template_blocked']));
-check('NU-L6 switch off, no template and log limit',same(L({medium:'email',requestId:'rq-1'},{enabled:false}).reasons,['switch_off'])&&same(L({medium:'email',requestId:'rq-1'},{template:null}).reasons,['invalid_input'])&&same(L({medium:'email',requestId:'rq-1'},{logs:Array.from({length:200},(_,i)=>({...good.value,id:'x'+i,requestId:'o'+i}))}).reasons,['limit']));
+check('NU-L4 medium mismatch, missing and used requests',same(L({medium:'sms',infoRequestId:'rq-1'}).reasons,['medium_mismatch'])&&same(L({medium:'email'}).reasons,['request_missing'])&&same(L({medium:'email',infoRequestId:'rq-9'}).reasons,['request_missing'])&&same(L({medium:'email',infoRequestId:'rq-1'},{logs:[{...good.value,id:'ml-0'}]}).reasons,['request_used']));
+check('NU-L5 no contact is 409 and a template that is blocked now is 409',same(L({medium:'email',infoRequestId:'rq-1'},{contactPresent:false}).reasons,['contact_unavailable'])&&same(L({medium:'email',infoRequestId:'rq-1'},{template:{...T1,body:'월 순수익 500만원 보장'}}).reasons,['template_blocked']));
+check('NU-L6 switch off, no template and log limit',same(L({medium:'email',infoRequestId:'rq-1'},{enabled:false}).reasons,['switch_off'])&&same(L({medium:'email',infoRequestId:'rq-1'},{template:null}).reasons,['invalid_input'])&&same(L({medium:'email',infoRequestId:'rq-1'},{logs:Array.from({length:200},(_,i)=>({...good.value,id:'x'+i,requestId:'o'+i}))}).reasons,['limit']));
 
 // ════ NU-C 사유 코드 ════
 check('NU-C1 codes are sorted, each has a status and a message',same([...nu.NURTURE_CODES].sort(),plain(nu.NURTURE_CODES))&&nu.NURTURE_CODES.every(c=>[400,409].includes(nu.NURTURE_CODE_STATUS[c])&&typeof nu.NURTURE_MESSAGES[c]==='string'&&nu.NURTURE_MESSAGES[c].length>5)&&Object.keys(nu.NURTURE_CODE_STATUS).length===nu.NURTURE_CODES.length);
