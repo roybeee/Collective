@@ -59,7 +59,7 @@ const FIXED=['lib/role-execution.ts','lib/meeting-execution.ts','lib/brief-execu
 check('the eight fixed model-path roots exist',FIXED.every(f=>existsSync(f)));
 const dynamicRoots=files.filter(f=>f.startsWith('lib/')&&f!=='lib/client.ts'&&/\.ts$/.test(f)&&(/\bfetch\s*\(/.test(readFileSync(f,'utf8'))||specifiers(readFileSync(f,'utf8')).some(s=>s==='./hermes'||s==='@/lib/hermes'||s==='../hermes')));
 check('dynamic roots cover the HERMES client and the connectors',['lib/hermes.ts','lib/execution.ts','lib/prompt-registry.ts'].every(f=>dynamicRoots.includes(f))&&dynamicRoots.some(f=>f.startsWith('lib/connectors/')));
-const FORBIDDEN=['lib/franchise.ts','lib/franchise-server.ts','lib/franchise-crypto.ts','lib/franchise-assets-server.ts','app/api/franchise/route.ts','app/franchise-panel.tsx','app/franchise-lead-detail.tsx','app/franchise-settings.tsx','app/franchise-common.tsx','app/franchise-assets-panel.tsx','app/franchise-events-panel.tsx','lib/franchise-recruitment.ts','lib/franchise-lead-import.ts','lib/franchise-recruitment-server.ts'];
+const FORBIDDEN=['lib/franchise.ts','lib/franchise-server.ts','lib/franchise-crypto.ts','lib/franchise-assets-server.ts','app/api/franchise/route.ts','app/franchise-panel.tsx','app/franchise-lead-detail.tsx','app/franchise-settings.tsx','app/franchise-common.tsx','app/franchise-assets-panel.tsx','app/franchise-events-panel.tsx','lib/franchise-recruitment.ts','lib/franchise-lead-import.ts','lib/franchise-recruitment-server.ts','lib/franchise-lead-import-server.ts'];
 // 목록의 파일이 실제로 그래프에 있어야 검사가 의미 있다(이름이 바뀌면 조용히 빠지지 않게).
 check('every forbidden franchise module exists in the graph',FORBIDDEN.every(f=>graph.has(f)));
 const roots=[...new Set([...FIXED,...dynamicRoots])],hits=reachable(graph,roots,FORBIDDEN);
@@ -118,10 +118,20 @@ const issued=await post({action:'code_issue',brandId:brand.id,channel:'expo',lab
 const spent=await post({action:'spend_record',brandId:brand.id,channel:'expo',period:{from:'2026-01-01',to:'2026-01-31'},amount:1234567,vat:'excluded',funding:'hq_budget',evidence:'가상 정산 '+SPEND_TOKEN});
 const coded=await post({action:'add_lead_codes',brandId:brand.id,leadId:leads[0].leadId,version:1,codes:[issued.body.result?.code]});
 check('RR-M1: a recruitment code, a spend and a lead code are stored before the runs',issued.status===200&&spent.status===200&&coded.status===200);
+// 리드 CSV 가져오기(R5b-2, 결정 32)도 심는다: 매핑한 이름·전화·이메일과 제공처 라벨 토큰이 든 파일을 미리보기·확정한다. 같은 사람이 든 두 번째 파일은 병합된다.
+const IMPORT_NAME='가져온이름토큰',IMPORT_PHONE='010-0000-0177',IMPORT_EMAIL='imported.lead@example.com',PROVIDER_TOKEN='가상제공처토큰';
+const kst=d=>new Date(Date.now()+9*3600000+d*86400000).toISOString().slice(0,10);
+const importFile=(provider,t)=>{const csv=`접수일시,희망지역,이름,휴대폰,이메일\n${kst(-1)} ${t},서울 강남구,${IMPORT_NAME},${IMPORT_PHONE},${IMPORT_EMAIL}\n`;return {action:'lead_import_preview',brandId:brand.id,csvBase64:Buffer.from(csv).toString('base64'),channel:'community',mapping:{receivedAt:0,region:1,contactName:2,contactPhone:3,contactEmail:4},provenance:{provider,providedOn:kst(0),period:{from:kst(-1),to:kst(0)}},basis:{type:'inquiry_response'}}};
+const imported=[];
+for(const [provider,t] of [[PROVIDER_TOKEN+'A','10:00'],[PROVIDER_TOKEN+'B','11:00']]){
+ const p=await post(importFile(provider,t));
+ imported.push(await post({...importFile(provider,t),action:'lead_import_confirm',confirm:true,expected:{planSha256:p.body.result?.planSha256,toCreate:p.body.result?.toCreate}}));
+}
+check('RR-M1: an imported lead with mapped contacts and a merged second provider file are stored before the runs',imported.every(x=>x.status===200)&&imported[0].body.result.created===1&&imported[1].body.result.merged.existing.count===1);
 const role=await runRole(execution,server,owner,roleCampaign,'cmo');
 const met=await runMeeting(meeting,server,owner,meetingCampaign,'fb-meeting');
 check('role and meeting runs completed on the mock',role.status==='completed'&&met.meeting.status==='completed'&&posted.length>1);
-const leadStrings=[NAME,PHONE,PHONE_DIGITS,EMAIL,'이테스트','010-0000-0120','01000000120','lead.two@example.com',MEMO,TOKEN,...leads.flatMap(l=>[l.systemCode,l.leadId]),ASSET_TOKEN,PLACE_TOKEN,PSEUDO,assetSaved.body.result.assetId,eventSaved.body.result.eventId,CODE_LABEL_TOKEN,SPEND_TOKEN,issued.body.result.code,spent.body.result.spendId];
+const leadStrings=[NAME,PHONE,PHONE_DIGITS,EMAIL,'이테스트','010-0000-0120','01000000120','lead.two@example.com',MEMO,TOKEN,...leads.flatMap(l=>[l.systemCode,l.leadId]),ASSET_TOKEN,PLACE_TOKEN,PSEUDO,assetSaved.body.result.assetId,eventSaved.body.result.eventId,CODE_LABEL_TOKEN,SPEND_TOKEN,issued.body.result.code,spent.body.result.spendId,IMPORT_NAME,IMPORT_PHONE,IMPORT_PHONE.replace(/-/g,''),IMPORT_EMAIL,PROVIDER_TOKEN,imported[0].body.result.importId,...imported[0].body.result.leadCodes];
 const submissions=sql.prepare("SELECT data FROM records WHERE kind='hermes_submission'").all().map(r=>r.data);
 const leak=(texts,where)=>{const found=leadStrings.filter(s=>texts.some(t=>String(t).includes(s)));assert.deepEqual(found,[],`${where}에 리드 유래 문자열이 있습니다`)};
 leak(posted,'HERMES 제출 본문');passed.push('no posted HERMES body contains a lead-derived string');

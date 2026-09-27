@@ -1,4 +1,4 @@
-// R5a 모집 코드·채널·귀속·비용 순수 모듈(lib/franchise-recruitment.ts) 회귀. 명세 docs(R5 구현 명세 초안 2) 6.2의 R5a 사례 RC-·RA-(RA-9 제외, R5b-2)·RS-·RD-를 사례 번호 이름으로 둔다.
+// R5a 모집 코드·채널·귀속·비용 순수 모듈(lib/franchise-recruitment.ts) 회귀. 명세 docs(R5 구현 명세 초안 2) 6.2의 R5a 사례 RC-·RA-·RS-·RD-를 사례 번호 이름으로 둔다. RA-9(제공처 파일 기준 귀속)은 R5b-2가 더했다.
 // 확인: 구문 import 경계(RC-S1), 코드 형식·생성·토큰·UTM(RC-F·RC-T), 채널(RC-CH), 발급·사용 중지 판정(RC-D·RC-R), 코드 귀속(asOf·제외·사용 중지·소급·늦은 입력, RA), 비용 판정·무효화·기간 합계·정렬 창(RS),
 // 결정 객체 불변식·표지 문자열·얼린 상수(RD). 근거: mocked(순수 함수, 합성 입력, 외부 호출 0회). 저장·API·화면·kind·스위치는 R5b·R5c가 맡는다. 법률 적합성은 not_run(LR-1 대상, 결정 20 보류).
 import assert from 'node:assert/strict';
@@ -58,11 +58,11 @@ check('RC-S1 the source has no store-marketing string',!SRC.includes('store-mark
 const CODE=SRC.replace(/^\s*\/\/.*$/gm,'');
 check('RC-S1 no fetch call, clock, randomness, environment or any',!/\bfetch\s*\(/.test(SRC)&&!/\bDate\.now\b|new\s+Date\s*\(\s*\)|Math\.random|\bcrypto\.|\bprocess\.|globalThis/.test(CODE)&&!/\bany\b/.test(CODE));
 check('RC-S1 no record-kind literal or storage call',!/recordStatement|readRecord|listRecords|optionalRecord|recruitment_(code|spend|import)/.test(SRC));
-// 앱 경로 경계: 두 순수 모듈을 import하는 파일은 가져오기 모듈(모집 모듈을 쓴다)과 R5b-1 서버 모듈(lib/franchise-recruitment-server.ts, 모델 경계 FORBIDDEN)뿐이다.
+// 앱 경로 경계: 두 순수 모듈을 import하는 파일은 가져오기 모듈(모집 모듈을 쓴다)과 R5b-1·R5b-2 서버 모듈(lib/franchise-recruitment-server.ts·lib/franchise-lead-import-server.ts, 모델 경계 FORBIDDEN)뿐이다.
 const walk=d=>readdirSync(d).flatMap(x=>{const p=join(d,x);return statSync(p).isDirectory()?(x==='node_modules'||x.startsWith('.')?[]:walk(p)):/\.(ts|tsx)$/.test(x)&&!x.endsWith('.d.ts')?[p]:[]});
 const resolveRef=(from,spec)=>{const base=spec.startsWith('@/')?spec.slice(2):spec.startsWith('.')?join(dirname(from),spec):null;return base===null?null:join(base).replace(/\.tsx?$/,'')};
 const importers=['app','lib','components','hooks','db'].flatMap(walk).filter(p=>moduleRefs(readFileSync(p,'utf8'),p).some(r=>['lib/franchise-recruitment','lib/franchise-lead-import'].includes(resolveRef(p,r.spec))));
-check('RC-S1 only the lead-import module and the R5b-1 server import the two R5a modules',same([...importers].sort(),[join('lib','franchise-lead-import.ts'),join('lib','franchise-recruitment-server.ts')].sort()));
+check('RC-S1 only the lead-import module and the R5b-1 and R5b-2 servers import the two R5a modules',same([...importers].sort(),[join('lib','franchise-lead-import.ts'),join('lib','franchise-recruitment-server.ts'),join('lib','franchise-lead-import-server.ts')].sort()));
 
 // ════ 상수·채널 ════
 check('RC-CH1 ten channels in plan order with the Korean labels',same(rc.RECRUITMENT_CHANNELS,[{key:'portal',label:'창업 포털'},{key:'search_ad',label:'네이버 검색광고'},{key:'expo',label:'박람회'},{key:'briefing',label:'사업설명회'},{key:'lead_ad',label:'메타 리드광고'},{key:'youtube',label:'유튜브'},{key:'blog_post',label:'블로그'},{key:'store_qr',label:'매장 QR'},{key:'owner_referral',label:'점주 추천'},{key:'community',label:'커뮤니티'}]));
@@ -167,6 +167,12 @@ const early='2026-10-05T01:00:00Z';
 check('RA-2 leading invalid tokens (unregistered, other brand, before validFrom) are skipped',att(L([UNKNOWN,'R4567892','R3456789','R2345678'],{receivedAt:early})).code==='R2345678');
 check('RA-3 14:59:59Z (KST 23:59 on 10-05) is before validFrom 10-06 and 15:00:00Z is attributed',att(L(['R3456789'],{receivedAt:'2026-10-05T14:59:59Z'})).reason==='before_valid_from'&&att(L(['R3456789'],{receivedAt:'2026-10-05T15:00:00Z'})).code==='R3456789');
 check('RA-4 no code is unattributed no_code labelled 유입 미확인',eqv(att(L([])),{state:'unattributed',reason:'no_code'})&&eqv(rc.attributionLabel(att(L([]))),{label:'유입 미확인',detail:'코드 없음'})&&rc.UNATTRIBUTED_LABEL==='유입 미확인');
+// RA-9(R5b-2, 명세 2.7.3·Q-R5-2 권고안): 코드 귀속을 먼저 쓰고, 코드가 없는(또는 모두 무효인) 가져온 리드만 제공처 파일 기준으로 가져오기 채널에 따로 센다. 충돌은 그대로다.
+const IMP={importId:'ri-1',channel:'portal',eventId:null};
+check('RA-9 a code-less imported lead is attributed on the provider-file basis to the import channel',eqv(att(L([],{import:IMP})),{state:'attributed',basis:'import',channel:'portal',importId:'ri-1',eventId:null})&&eqv(att(L([UNKNOWN],{import:{...IMP,channel:'expo',eventId:'e9'}})),{state:'attributed',basis:'import',channel:'expo',importId:'ri-1',eventId:'e9'}));
+check('RA-9 a valid code wins over the import and a conflict stays a conflict',att(L(['R3456789'],{import:IMP})).basis==='code'&&att(L(['R3456789'],{import:IMP})).channel==='expo'&&att(L(['R6789234'],{import:IMP})).state==='conflict');
+check('RA-9 an import with an unknown channel or no import id falls back to 유입 미확인',att(L([],{import:{...IMP,channel:'naver_place'}})).state==='unattributed'&&att(L([],{import:{...IMP,importId:''}})).state==='unattributed'&&att(L([],{import:null})).reason==='no_code');
+check('RA-9 the label is 제공처 파일 기준 · the channel and the import id enters the attribution inputs',eqv(rc.attributionLabel(att(L([],{import:IMP}))),{label:'제공처 파일 기준 · 창업 포털',detail:null})&&rc.FILE_BASIS_LABEL==='제공처 파일 기준'&&rc.attributionInputs({...L([],{import:IMP}),id:'l1'},BOOK).includes('import:ri-1')&&!rc.attributionInputs({...L([]),id:'l1'},BOOK).some(x=>x.startsWith('import:')));
 const reason=codes=>att(L(codes,{receivedAt:'2026-10-08T03:00:00Z'})).reason;
 const cBlate=C('R9234567',{validFrom:'2026-10-20'});
 const bookP={...BOOK,codes:[...BOOK.codes,cBlate]};
@@ -290,7 +296,7 @@ const deepFrozen=v=>!v||typeof v!=='object'||Object.isFrozen(v)&&Object.values(v
 check('RD exported constants are deeply frozen and the exported pattern is a frozen copy',['RECRUITMENT_CHANNELS','RECRUITMENT_CHANNEL_KEYS','PROVENANCE_CHANNELS','EVENT_CHANNELS','AD_FUND_TERMS','AGENCY_FEE_TERMS','RECRUITMENT_CODES','RECRUITMENT_WARNING_CODES','RECRUITMENT_CODE_STATUS','RECRUITMENT_MESSAGES','RECRUITMENT_CHANNEL_LABELS','ASSET_TYPE_CHANNELS','SPEND_VOID_REASONS','SPEND_LIMITS','UNATTRIBUTED_REASON_LABELS'].every(k=>rc[k]&&deepFrozen(rc[k]))&&Object.isFrozen(rc.RECRUITMENT_CODE_PATTERN));
 let compileThrew=false;try{rc.RECRUITMENT_CODE_PATTERN.compile('^.*$')}catch{compileThrew=true}
 check('RD compiling the exported pattern cannot loosen the module check',compileThrew&&!rc.isRecruitmentCode('C2345678'));
-check('RD versions and disclaimer',/^fr-recruitment@\d{4}-\d{2}-\d{2}\.1$/.test(rc.RECRUITMENT_VERSION)&&rc.RECRUITMENT_DISCLAIMER===DISCLAIMER);
+check('RD versions and disclaimer (R5b-2 raised the rule version for the provider-file basis)',rc.RECRUITMENT_VERSION==='fr-recruitment@2026-09-27.2'&&rc.RECRUITMENT_DISCLAIMER===DISCLAIMER);
 check('RD the decision functions never throw on garbage',[undefined,null,0,'x',[],{},new Proxy({},{get(){throw new Error('x')},ownKeys(){throw new Error('x')}})].every(g=>{try{rc.codeIssueDecision(g,g);rc.codeIssueDecision(IIN,g);rc.codeRetireDecision(g,g,g);rc.spendDecision(g,g);rc.spendDecision(SIN,g);rc.spendVoidDecision(g,g,g);rc.attributeLead(g,g,g);rc.attributionInputs(g,g,g);rc.attributionLabel(g);rc.spendInWindow(g,g,g,g);rc.alignedWindow(g,g,g,g,g);rc.recruitmentTokens(g);rc.recruitmentUtmQuery(g);return true}catch{return false}}));
 
 // ════ 사유 코드 전부·외부 호출 ════
@@ -299,12 +305,11 @@ const missingProduced=errorCodes.filter(c=>!produced.has(c)),missingWarned=plain
 assert.deepEqual(missingProduced,[],'실제로 나오지 않은 사유 코드: '+missingProduced.join(', '));passed.push(`RD all ${errorCodes.length} failure codes were produced by a decision`);
 assert.deepEqual(missingWarned,[],'실제로 나오지 않은 경고 코드: '+missingWarned.join(', '));passed.push(`RD all ${rc.RECRUITMENT_WARNING_CODES.length} warning codes were produced by a decision`);
 check(`RD the status invariant held on every failure result (${failCount})`,failCount>=150);
-// 사례 번호 전수: 6.2의 R5a 사례가 모두 이름에 있고 RA-9(R5b-2)는 없다.
-const IDS=['RC-S1','RC-F1','RC-F2','RC-F3','RC-F4','RC-F5','RC-F6','RC-T','RC-CH1','RC-CH2','RC-CH3','RC-D1','RC-D2','RC-D3','RC-D4','RC-D5','RC-D6','RC-D7','RC-D8','RC-D8b','RC-D9','RC-R','RA-1','RA-2','RA-3','RA-4','RA-5','RA-6','RA-7','RA-8','RA-10','RA-11','RA-12','RA-13','RS-1','RS-2','RS-3','RS-4','RS-5','RS-5b','RS-6','RS-6b','RS-6c','RS-7','RS-8','RS-8b','RS-9','RS-10','RS-10b','RS-11','RS-12','RS-13','RS-13b','RS-14','RS-15','RS-16','RS-17','RS-18','RD'];
+// 사례 번호 전수: 6.2의 R5a 사례와 R5b-2의 RA-9가 모두 이름에 있다.
+const IDS=['RC-S1','RC-F1','RC-F2','RC-F3','RC-F4','RC-F5','RC-F6','RC-T','RC-CH1','RC-CH2','RC-CH3','RC-D1','RC-D2','RC-D3','RC-D4','RC-D5','RC-D6','RC-D7','RC-D8','RC-D8b','RC-D9','RC-R','RA-1','RA-2','RA-3','RA-4','RA-5','RA-6','RA-7','RA-8','RA-9','RA-10','RA-11','RA-12','RA-13','RS-1','RS-2','RS-3','RS-4','RS-5','RS-5b','RS-6','RS-6b','RS-6c','RS-7','RS-8','RS-8b','RS-9','RS-10','RS-10b','RS-11','RS-12','RS-13','RS-13b','RS-14','RS-15','RS-16','RS-17','RS-18','RD'];
 check('RC-CH3 a store channel key recording spend is 400 channel_unknown',is(spend({channel:'naver_place'}),'channel_unknown')&&is(spend({channel:'blog'}),'channel_unknown'));
 const missingIds=IDS.filter(id=>!passed.some(n=>n.startsWith(id+' ')));
-assert.deepEqual(missingIds,[],'이름에 없는 사례 번호: '+missingIds.join(', '));passed.push(`every R5a case id of this suite (${IDS.length}) has a named check and RA-9 is left to R5b-2`);
-check('no RA-9 case in R5a',!passed.some(n=>n.startsWith('RA-9 ')));
+assert.deepEqual(missingIds,[],'이름에 없는 사례 번호: '+missingIds.join(', '));passed.push(`every R5a and R5b-2 case id of this suite (${IDS.length}) has a named check`);
 check('no external call was made',fetchCalls===0);
 
 console.log(JSON.stringify({passed:passed.length}));
