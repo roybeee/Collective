@@ -15,6 +15,7 @@ import {franchiseItem,factLabel} from './fact-catalog';
 import {isRecruitmentObjective,type Campaign,type Artifact} from './agency';
 import type {BrandFact} from './brand-facts';
 import {FRANCHISE_ERRORS,type FranchiseErrorKey,type AuditAction} from './franchise';
+import {spendUsable} from './franchise-recruitment-server';
 import {ASSET_TYPE_ORDER,ASSET_TYPE_LABELS,EVENT_TYPE_LABELS as ASSET_EVENT_TYPE_LABELS,ASSET_MESSAGES,ASSET_RULES,ID_PATTERN,STARTUP_PAGE_SECTIONS,EVENT_DECK_SECTIONS,
  validateAssetInput,draftAsset,approveDecision,exportDecision,placementDecision,assetGateIssues,assetWarnings,approvalChecklist,h7Notice,effectiveAssetFacts,sectionTemplate,markAssetsForReview,changedVersionIds,
  validateEvent,registerDecision,attendanceDecision,type RecruitmentAsset,type RecruitmentEvent,type AssetReview,type AssetType,type EventCounts,type Decision} from './franchise-assets';
@@ -246,12 +247,12 @@ async function assetRetire(x:AssetArgs):Promise<Outcome>{
   x.port.receipt('asset_retire',result,{recordId:row.id,assetVersion:row.version},assetTarget(x))],'ASSET_STALE');
  return {result};
 }
-// 행사 등록·변경(대표·관리자, 분기 A): 판 CAS → 비용 참조(R5 전에는 null만) → 장소 개인정보 → 캠페인·연결 후보·분기 → 판정 → 한도.
+// 행사 등록·변경(대표·관리자, 분기 A): 판 CAS → 비용 참조(R5b-1: 같은 브랜드의 무효화되지 않은 모집 비용 기록만, 아니면 400) → 장소 개인정보 → 캠페인·연결 후보·분기 → 판정 → 한도.
 async function eventSave(x:AssetArgs):Promise<Outcome>{
  const i=x.input,prev=given(i.eventId)?await loadEvent(x.owner,x.brandId,i.eventId):null;
  if(prev&&i.version!==prev.version)fail('EVENT_STALE');
  const spendRef=i.spendRef===undefined?null:i.spendRef;
- if(spendRef!==null)fail('SPEND_REF_UNAVAILABLE');
+ if(spendRef!==null&&!await spendUsable(x.owner,x.brandId,spendRef))fail('SPEND_REF_UNKNOWN');
  if(typeof i.placeLabel==='string'&&scanText(i.placeLabel).length)fail('PII_IN_TEXT');
  const [campaign,pool,fr]=await Promise.all([campaignOf(x.owner,i.campaignId),assetPool(x.owner,x.brandId,i.assetRefs),loadFranchiseContext(x.owner,x.brandId)]);
  const d=validateEvent({...i,spendRef},{enabled:x.enabled,brandId:x.brandId,branch:fr.profile?.branch??null,campaign:liteOf(campaign),assets:pool,actor:x.actor,now:x.now},prev);
