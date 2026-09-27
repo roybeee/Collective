@@ -386,7 +386,7 @@ check('H35: event_save in a branch B brand is 409 branch_not_a',codesAre(r,409,'
 insertRow(assetKey('ra-fb',1),'recruitment_asset','fr-b',{...assetRow(Y.assetId,1),id:'ra-fb',brandId:'fr-b',campaignId:'ca-b'});
 snap=snapshot();
 const spend=await post(boss,EV({spendRef:'sp-1'})),piiPlace=await post(boss,EV({placeLabel:'문의 010-0000-0999'})),draftLink=await post(boss,EV({assetRefs:[{id:CR.assetId,version:1}]})),otherLink=await post(boss,EV({assetRefs:[{id:'ra-fb',version:1}]}));
-check('H35: a spend reference is 400 SPEND_REF_UNAVAILABLE and a phone number in the place is 400 PII_IN_TEXT',fixed(spend,400,'SPEND_REF_UNAVAILABLE')&&fixed(piiPlace,400,'PII_IN_TEXT'));
+check('H35: an unknown spend reference is 400 SPEND_REF_UNKNOWN (R5b-1) and a phone number in the place is 400 PII_IN_TEXT',fixed(spend,400,'SPEND_REF_UNKNOWN')&&fixed(piiPlace,400,'PII_IN_TEXT'));
 check('H35: a draft link is 409 asset_not_approved and another brand approved link is 400 record_other_brand, all writing nothing',codesAre(draftLink,409,'asset_not_approved')&&codesAre(otherLink,400,'record_other_brand')&&snapshot()===snap);
 r=await post(boss,EV({type:'briefing',startsAt:'2026-10-25T14:00:00+09:00',capacity:30,assetRefs:[{id:P,version:2}]}));
 const BRIEF=r.body.result;
@@ -630,7 +630,7 @@ const FORBIDDEN=/법적으로 적합|준수 완료|합법/;
 check('I49: no response and no new module makes a legal-adequacy claim',!responses.some(b=>FORBIDDEN.test(JSON.stringify(b)))&&!FORBIDDEN.test(readFileSync('lib/franchise-assets-server.ts','utf8')));
 check('I49: the console holds no body text or pseudonymous code and no unexpected failure',TOKENS.every(t=>!logged.some(l=>l.includes(t)))&&!logged.some(l=>/franchise_request_failed|agency_request_failed|asset_flag_failed/.test(l)));
 check('I49: no external call was made',f.calls.length===0);
-const NEW_ERRORS={ASSET_NOT_FOUND:404,ASSET_STALE:409,ASSET_BLOCKED:409,EXPORT_MODE:400,SOURCE_INVALID:400,EVENT_NOT_FOUND:404,EVENT_STALE:409,SPEND_REF_UNAVAILABLE:400};
+const NEW_ERRORS={ASSET_NOT_FOUND:404,ASSET_STALE:409,ASSET_BLOCKED:409,EXPORT_MODE:400,SOURCE_INVALID:400,EVENT_NOT_FOUND:404,EVENT_STALE:409,SPEND_REF_UNKNOWN:400};
 check('I49: the eight new fixed errors are Korean with 400, 404 or 409',Object.entries(NEW_ERRORS).every(([k,s])=>E[k]&&E[k].status===s&&/[가-힣]/.test(E[k].text)));
 
 // ════ J. 교차 검토 보강: 커밋 경합·재생 대상·옛 판·행사 변경 경로 ════
@@ -711,7 +711,11 @@ check('J: retiring the older version retires only that version',r.status===200&&
 const GE=(await post(boss,EV({startsAt:'2026-11-25T14:00:00+09:00',capacity:5}))).body.result.eventId;
 snap=snapshot();
 const editPii=await post(boss,EV({eventId:GE,version:1,startsAt:'2026-11-25T14:00:00+09:00',capacity:5,placeLabel:'문의 010-0000-0999'})),editSpend=await post(boss,EV({eventId:GE,version:1,startsAt:'2026-11-25T14:00:00+09:00',capacity:5,spendRef:'sp-probe1'}));
-check('J: an edit with a phone number in the place is 400 PII_IN_TEXT and one with a spend reference is 400 SPEND_REF_UNAVAILABLE, both writing nothing',fixed(editPii,400,'PII_IN_TEXT')&&fixed(editSpend,400,'SPEND_REF_UNAVAILABLE')&&eventRow(GE).version===1&&snapshot()===snap);
+check('J: an edit with a phone number in the place is 400 PII_IN_TEXT and one with an unknown spend reference is 400 SPEND_REF_UNKNOWN, both writing nothing',fixed(editPii,400,'PII_IN_TEXT')&&fixed(editSpend,400,'SPEND_REF_UNKNOWN')&&eventRow(GE).version===1&&snapshot()===snap);
+// R5b-1: 같은 브랜드의 유효한 모집 비용 기록은 연결된다(200).
+const spendRec=await post(boss,{action:'spend_record',brandId:'fr-a',channel:'briefing',date:'2026-10-01',amount:0,vat:'excluded',funding:'hq_budget',evidence:'가상 증빙 라벨'});
+const editSpendOk=await post(boss,EV({eventId:GE,version:1,startsAt:'2026-11-25T14:00:00+09:00',capacity:5,spendRef:spendRec.body.result?.spendId}));
+check('J: an edit with a valid spend reference of the brand is 200 and stores the reference',spendRec.status===200&&editSpendOk.status===200&&eventRow(GE).spendRef===spendRec.body.result.spendId&&eventRow(GE).version===2);
 
 // ════ K. 재검토 훅 실패(명세 5.4)와 판 2 이상 사실 수정 ════
 // 후보 조회(json_each factRefs)를 실패시키면 사실·버전 변경은 유지되고 reviewAssets:null과 고정 코드 한 줄만 남는다.
