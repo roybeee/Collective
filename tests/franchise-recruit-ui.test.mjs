@@ -102,16 +102,16 @@ const D=w.r.body.result;check('a member saves a third draft',w.r.status===200);
 const detailQ=await view(boss,{view:'asset',assetId:Q.assetId});
 const gq=assetsUi.assetGates(detailQ,true);
 check('the detail view drives the owner/admin gates for a fresh draft',gq.showApprove&&gq.canApprove&&!gq.showExport&&gq.canEdit&&gq.canRetire&&gq.blockers.length===0&&detailQ.checklist.items.length===6);
-w=await write(boss,'asset_approve',assetsUi.approveInput(detailQ,new Set(detailQ.checklist.items.map(i=>i.id))));
+w=await write(boss,'asset_approve',assetsUi.approveInput(detailQ,new Set(detailQ.checklist.items.map(i=>i.id)),undefined,true));
 check('owner/admin approve with the screen payload (every checklist item, the viewed hash)',w.r.status===200&&w.r.body.result.status==='approved'&&Array.isArray(common.stringWarnings(w.r)));
 const memberDetailQ=await view(member,{view:'asset',assetId:Q.assetId});
-w=await write(member,'asset_approve',assetsUi.approveInput(memberDetailQ,new Set(memberDetailQ.checklist.items.map(i=>i.id))));
+w=await write(member,'asset_approve',assetsUi.approveInput(memberDetailQ,new Set(memberDetailQ.checklist.items.map(i=>i.id)),undefined,true));
 check('a member approval is refused by the server with status follow-up (the screen hides the button)',w.r.status===403&&common.followUpOf(w.r)==='status');
 const detailP=await view(boss,{view:'asset',assetId:P.assetId}),gp=assetsUi.assetGates(detailP,true);
 check('the AI-sourced startup page passes the gate and can be approved without any disclosure step',detailP.gate.status===200&&gp.canApprove&&detailP.asset.source.origin==='ai');
-w=await write(boss,'asset_approve',assetsUi.approveInput(detailP,new Set(detailP.checklist.items.map(i=>i.id))));
+w=await write(boss,'asset_approve',assetsUi.approveInput(detailP,new Set(detailP.checklist.items.map(i=>i.id)),undefined,true));
 check('the AI-sourced page is approved as saved (no disclosure version in between)',w.r.status===200&&w.r.body.result.version===1&&w.r.body.aiGenerated===true&&(await view(boss,{view:'asset',assetId:P.assetId})).versions.length===1);
-w=await write(boss,'asset_export',{assetId:P.assetId,version:1,mode:'copy'});
+w=await write(boss,'asset_export',{assetId:P.assetId,version:1,mode:'copy',...assetsUi.waitReviewInput(detailP,true)});
 const exported=w.r.body;
 check('the export body is the stored body byte for byte, with no disclosure line added',w.r.status===200&&exported.body===assetRow(P.assetId,1).body&&sha64(exported.body)===assetRow(P.assetId,1).bodyHash&&!exported.body.includes(disclosure.AI_DISCLOSURE_LINE)&&exported.body.startsWith('■ '));
 const copied=await assetsUi.deliverExport(exported,'copy');
@@ -119,7 +119,7 @@ check('without a clipboard the copy box gets exactly the returned body',copied.f
 const made=[];
 class StubURL extends URL{static createObjectURL(b){made.push(b);return 'blob:stub'}static revokeObjectURL(){}}
 context.URL=StubURL;context.Blob=Blob;context.document={createElement:()=>({click(){}})};
-w=await write(boss,'asset_export',{assetId:Q.assetId,version:1,mode:'download'});
+w=await write(boss,'asset_export',{assetId:Q.assetId,version:1,mode:'download',...assetsUi.waitReviewInput(detailQ,true)});
 const downloaded=await assetsUi.deliverExport(w.r.body,'download');
 check('a download saves exactly the returned body under the server file name',w.r.status===200&&downloaded.fallback===null&&made.length===1&&(await made[0].text())===assetRow(Q.assetId,1).body&&/^recruitment-portal_intro-fr-a-\d{8}-v1\.txt$/.test(w.r.body.filename));
 context.URL=URL;delete context.Blob;delete context.document;
@@ -161,7 +161,7 @@ const memberP=await view(member,{view:'asset',assetId:P.assetId}),memberHtml=ren
 check('R5 real: a member reads the six checklist texts without checkboxes and no admin buttons',memberP.checklist.items.every(i=>memberHtml.includes(i.text.replace(/'/g,'&#x27;').replace(/&(?!#)/g,'&amp;')))&&count(memberHtml,'type="checkbox"')===0&&!['승인하기','복사','폐기','게시 위치 기록'].some(t=>button(memberHtml,t)));
 check('R11 real: the AI-sourced asset shows only the neutral source line',memberHtml.includes('출처 작업물 가상 AI 작업물 v2')&&noDisclosure(memberHtml));
 const bossD=await view(boss,{view:'asset',assetId:D.assetId}),approveHtml=render(assetsUi.AssetSheet,{brandId:'fr-a',assetId:D.assetId,list:list0,admin:true,artifacts:ARTIFACTS,onClose:noop,onChanged:noop,onStatus:noop,initial:bossD,initialMode:'approve'});
-check('R10 real: the approval step shows six unchecked items, a disabled approve and no disclosure choice',count(approveHtml,'type="checkbox"')===6&&!approveHtml.includes('checked=""')&&submitDisabled(approveHtml,'승인')&&noDisclosure(approveHtml));
+check('R10 real: the approval step shows six unchecked items and the wait-review confirmation, a disabled approve and no disclosure choice',count(approveHtml,'type="checkbox"')===7&&!approveHtml.includes('checked=""')&&submitDisabled(approveHtml,'승인')&&noDisclosure(approveHtml));
 const bossQ=await view(boss,{view:'asset',assetId:Q.assetId}),exportHtml=render(assetsUi.AssetSheet,{brandId:'fr-a',assetId:Q.assetId,list:list0,admin:true,artifacts:ARTIFACTS,onClose:noop,onChanged:noop,onStatus:noop,initial:bossQ});
 check('R6 real: an exported approved asset offers copy, download and a dated placement form',button(exportHtml,'복사')&&button(exportHtml,'내려받기(.txt)')&&exportHtml.includes('type="date"')&&exportHtml.includes('min="2026-10-05"')&&exportHtml.includes('max="2026-10-05"'));
 w=await write(boss,'asset_place',{assetId:Q.assetId,version:1,label:'창업 포털 소개 글',confirmedAt:'2026-10-05'});
@@ -267,7 +267,7 @@ const listX=await view(member,{view:'assets'}),portalSave=body=>write(member,'as
 // X1 (F1): 승인 단계에서 모두 체크한 뒤 다른 사용자가 초안을 바꿔 ASSET_STALE로 다시 읽으면, 새 원문에는 체크가 없어야 한다.
 const A1=(await portalSave(FILL_WHY+' 교차 검토 승인 단계 초안입니다.')).r.body.result;
 as(boss);await sheet(A1.assetId,true);await press('승인하기');await tickAll();
-check('X1: the admin ticks all six items on v1',ticked()===6&&!locked('승인')&&preText('승인할 원문').includes('교차 검토 승인 단계 초안입니다.'));
+check('X1: the admin ticks all six items and the wait-review confirmation on v1',ticked()===7&&!locked('승인')&&preText('승인할 원문').includes('교차 검토 승인 단계 초안입니다.'));
 w=await write(member,'asset_save',assetsUi.saveInput(listX,await view(member,{view:'asset',assetId:A1.assetId}),{type:'portal_intro',campaignId:'',body:FILL_WHY+' 다른 사용자가 바꾼 원문입니다.',picked:new Set(),source:null,base:1}));
 check('X1: a member replaces the v1 draft with v2 meanwhile',w.r.status===200&&w.r.body.result.version===2&&rowOf(A1.assetId,1)===null);
 as(boss);await press('승인');
@@ -279,7 +279,7 @@ check('X1: ticking again against v2 approves v2',screenText().includes('v2을 �
 for(const code of ['checklist_outdated','hash_mismatch']){
  stub(()=>reply(200,bossD),()=>reply(409,{error:E.ASSET_BLOCKED.text,reasons:[{code,message:fa.ASSET_MESSAGES[code]}]}));
  await sheet(D.assetId,true);await press('승인하기');await tickAll();const before=ticked();await press('승인');
- check(`X2: ${code} on approve clears the ticks of the same body`,before===6&&sent.at(-1).action==='asset_approve'&&ticked()===0&&locked('승인')&&screenText().includes(fa.ASSET_MESSAGES[code]));
+ check(`X2: ${code} on approve clears the ticks of the same body`,before===7&&sent.at(-1).action==='asset_approve'&&ticked()===0&&locked('승인')&&screenText().includes(fa.ASSET_MESSAGES[code]));
 }
 
 // X3: 편집 중 다른 사용자가 먼저 저장하면(ASSET_STALE) 충돌 상자와 최신 원문을 보이고 내 입력은 남는다. '최신 판 위에 저장'은 최신 판 번호로 다시 보낸다.
@@ -343,7 +343,10 @@ check('X8: 409 OFF re-reads the panel status',spy.status===1&&screenText().inclu
 // X9 (stub): 거절된 내보내기는 서버 문제만 보이고 아무것도 쓰지 않는다. 복사 대체 상자는 응답 body만 담는다. 재생 응답은 '이미 처리된 요청' 문구를 붙인다.
 let exportReply=()=>reply(409,{error:E.ASSET_STALE.text});
 stub(()=>reply(200,pD),b=>b.action==='asset_export'?exportReply():reply(200,{ok:true,replayed:true,result:{version:pD.asset.version,status:'retired'}}));
-await sheet(P.assetId,true);await press('복사');
+await sheet(P.assetId,true);
+// 결정 34: 내보내는 사람도 '대기기간 우회 문장 없음'을 확인해야 복사·내려받기 버튼이 열린다.
+check('X9w: copy and download stay locked until the exporter ticks the wait-review confirmation',locked('복사')&&locked('내려받기(.txt)')&&ticked()===0);
+await tickAll();await press('복사');
 check('X9: a refused export shows the server problem and no copy box',screenText().includes(E.ASSET_STALE.text)&&!screenText().includes('내보낸 원문을 받지 못했습니다')&&!screenText().includes(assetsUi.COPY_FALLBACK));
 exportReply=()=>reply(200,{ok:true,body:'■ 서버가 돌려준 원문',filename:'f.txt',replayed:true});await press('복사');
 check('X9: without a clipboard the copy box holds the returned body, not the screen body',valueOf(field('내보낸 원문 (직접 복사)'))==='■ 서버가 돌려준 원문'&&screenText().includes('같은 요청을 다시 받았습니다'));
@@ -400,8 +403,8 @@ as(boss);for(const [type,full] of [['startup_page',PAGE],['event_deck',DECK]]){
  check(`O2: ${type} gate warns about exactly the missing recommended sentences`,expected.every(m=>d.gate.warnings.includes(m))&&(type==='event_deck'||!d.gate.warnings.includes(fa.ASSET_WARNING_MESSAGES.revenueQnaNoteMissing)));
  check(`O2: ${type} detail renders the recommended-sentence warning as a warning line`,expected.every(m=>render(common.WarningLines,{items:d.gate.warnings}).includes(m)));
  check(`O2: ${type} gate 200 and approvable without the sentences`,d.gate.status===200&&g.canApprove&&g.blockers.length===0);
- w=await write(boss,'asset_approve',assetsUi.approveInput(d,new Set(d.checklist.items.map(i=>i.id))));
- const ex=w.r.status===200?await write(boss,'asset_export',{assetId:id,version:d.asset.version,mode:'copy'}):null;
+ w=await write(boss,'asset_approve',assetsUi.approveInput(d,new Set(d.checklist.items.map(i=>i.id)),undefined,true));
+ const ex=w.r.status===200?await write(boss,'asset_export',{assetId:id,version:d.asset.version,mode:'copy',...assetsUi.waitReviewInput(d,true)}):null;
  check(`O2: ${type} approves and exports (200) with the stored body`,w.r.status===200&&ex?.r.status===200&&ex.r.body.body===d.asset.body);
  const shown=[...d.gate.warnings,...common.stringWarnings(w.r),...common.stringWarnings(ex.r)];
  check(`O2: ${type} server warnings, if any, render as warning lines`,shown.every(x=>render(common.WarningLines,{items:[x]}).includes('주의: ')));

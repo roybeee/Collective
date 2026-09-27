@@ -105,7 +105,7 @@ const ART=[{id:'art-ai',campaignId:'ca-a',status:'approved',version:2,title:'가
 const listHtml=(view,admin)=>render(assetsUi.FranchiseAssets,{brandId:'fr-a',admin,artifacts:ART,onStatus:noop,initial:view});
 const sheetHtml=(view,admin,initialMode='view',list=assetsViewOf())=>render(assetsUi.AssetSheet,{brandId:'fr-a',assetId:view.asset.id,list,admin,artifacts:ART,onClose:noop,onChanged:noop,onStatus:noop,initial:view,initialMode});
 const editorHtml=(props)=>render(assetsUi.AssetEditor,{list:assetsViewOf(),artifacts:ART,detail:null,busy:false,enabled:true,conflict:false,onSave:async()=>'ok',onCancel:noop,onRestart:noop,...props});
-const approveHtml=(view,initialChecked,blockers=[])=>render(assetsUi.ApprovalStep,{view,busy:false,blockers,onApprove:noop,onCancel:noop,initialChecked});
+const approveHtml=(view,initialChecked,blockers=[],initialWaitConfirmed=true)=>render(assetsUi.ApprovalStep,{view,busy:false,blockers,onApprove:noop,onCancel:noop,initialChecked,initialWaitConfirmed});
 const newHtml=[];const keep=html=>{newHtml.push(html);return html};
 const submitDisabled=(html,label)=>new RegExp(`<button[^>]*disabled=""[^>]*>${label}</button>`).test(html),button=(html,label)=>html.includes(`>${label}</button>`);
 
@@ -142,16 +142,25 @@ check('R8: a resave suggestion lists the drift and offers a new version from cur
  assert.ok(html.includes('bf-total: v1 → v2'));assert.ok(html.includes('bf-gone: v1 → 사실 없음(근거에서 뺍니다)'));assert.ok(button(html,'현재 사실로 새 판 저장'));assert.ok(html.includes('재검토 필요 · 근거 사실 변경'));
  const off=keep(sheetHtml(detailOf({resaveSuggested:true,drift:DRIFT,enabled:false}),true));assert.ok(!button(off,'현재 사실로 새 판 저장'))});
 check('R9: branch B shows the H7 notice and no approve button',()=>{const html=keep(sheetHtml(detailOf({branch:'B',h7Notice:'분기 B(문의 수집만)입니다. 가상 안내.'}),true));assert.ok(html.includes('분기 B(문의 수집만)입니다. 가상 안내.'));assert.ok(!button(html,'승인하기'));assert.ok(button(html,'편집'))});
-check('R10: the approval step has six unchecked boxes, item warnings, gate warnings and a disabled approve button',()=>{
+// 결정 34: 체크리스트 6항목에 더해 '대기기간 우회 문장 없음' 확인란 1개가 있다(모두 7개).
+check('R10: the approval step has seven unchecked boxes (six items and the wait-review confirmation), item warnings, gate warnings and a disabled approve button',()=>{
  const view=detailOf({gate:{status:200,reasons:[],message:null,warnings:['권장 문장이 없습니다(권장).']}}),html=keep(sheetHtml(view,true,'approve'));
- assert.ok(html.includes('승인 확인'));assert.equal(count(html,'type="checkbox"'),6);assert.ok(!/type="checkbox"[^>]*checked=""/.test(html));assert.ok(html.includes('id="chk-no_wait_bypass-w"'));assert.ok(html.includes('aria-describedby="chk-no_wait_bypass-w"'));
+ assert.ok(html.includes('승인 확인'));assert.equal(count(html,'type="checkbox"'),7);assert.ok(html.includes('id="approve-wait-confirm"'));assert.ok(!/type="checkbox"[^>]*checked=""/.test(html));assert.ok(html.includes('id="chk-no_wait_bypass-w"'));assert.ok(html.includes('aria-describedby="chk-no_wait_bypass-w"'));
  assert.ok(html.includes('주의: 판정기가 대기기간 표현을 확인하라고 알렸습니다.'));assert.ok(html.includes('주의: 권장 문장이 없습니다(권장).'));assert.ok(submitDisabled(html,'승인'));assert.ok(html.includes('aria-label="승인할 원문"'));assert.ok(button(html,'돌아가기'));
 });
 check('R10: approve enables only with every item checked; warnings alone never block it',()=>{
  const view=detailOf({gate:{status:200,reasons:[],message:null,warnings:['권장 문장이 없습니다(권장).']}});
- const all=keep(approveHtml(view,CL));assert.ok(button(all,'승인')&&!submitDisabled(all,'승인'));assert.equal(count(all,'checked=""'),6);
+ const all=keep(approveHtml(view,CL));assert.ok(button(all,'승인')&&!submitDisabled(all,'승인'));assert.equal(count(all,'checked=""'),7);
+ assert.ok(submitDisabled(keep(approveHtml(view,CL,[],false)),'승인'),'every item without the wait-review confirmation keeps it disabled');
  assert.ok(submitDisabled(keep(approveHtml(view,CL.slice(0,5))),'승인'));
  assert.ok(submitDisabled(keep(approveHtml(view,CL,['게이트 사유를 고친 새 판을 저장해야 합니다.'])),'승인'),'a blocker keeps it disabled');
+});
+// 결정 34: 강조 조각을 이으면 원문 그대로이고, 강조된 조각은 후보 문장이다. 겹치거나 범위를 벗어난 후보는 버린다. 승인 단계 원문에 <mark>로 보인다.
+check('R10w: highlight segments rebuild the body exactly and mark only valid candidates, the approval body shows them as <mark>',()=>{
+ const body='첫 문장입니다. 정보공개서는 미리 드립니다.\n가맹비 안내',segs=assetsUi.highlightSegments(body,[{line:0,start:9,end:24},{line:0,start:10,end:12},{line:1,start:25,end:31},{line:9,start:30,end:99}]);
+ assert.equal(segs.map(x=>x.text).join(''),body);assert.equal(JSON.stringify(segs.filter(x=>x.mark).map(x=>x.text)),JSON.stringify([body.slice(9,24),body.slice(25,31)]));
+ const view=detailOf({waitReview:{version:'fr-wait-review@2026-09-27.1',candidates:[{line:0,start:0,end:5}]}}),html=keep(approveHtml(view,CL,[],false));
+ assert.ok(html.includes('<mark class="franchise-wait-mark">'));assert.ok(html.includes('문장 1개를 읽었고'));
 });
 check('R11: an asset sourced from an AI artifact shows only the neutral source line, with no disclosure prompt, line or badge',()=>{
  const view={...detailOf({},{source:{artifactId:'art-ai',version:2,origin:'ai'},aiGenerated:true}),source:{artifactId:'art-ai',version:2,origin:'ai'},aiGenerated:true};

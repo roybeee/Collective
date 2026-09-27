@@ -19,7 +19,7 @@ const passed=[];const check=(name,val)=>{assert.ok(val,name);passed.push(name)};
 const setNow=ms=>f.clock.set(ms-Date.now()),nowMs=()=>f.clock.now(),iso=(d=0)=>new Date(nowMs()+d).toISOString();
 const kstDay=(d=0)=>new Date(nowMs()+9*HOUR+d).toISOString().slice(0,10);
 setNow(Date.parse('2026-10-05T03:00:00Z'));
-const fa=await f.load('lib/franchise-assets.ts'),factsRoute=await f.load('app/api/brand-facts/route.ts');
+const fa=await f.load('lib/franchise-assets.ts'),wrm=await f.load('lib/franchise-wait-review.ts'),factsRoute=await f.load('app/api/brand-facts/route.ts');
 const E=plain(f.lib.FRANCHISE_ERRORS),T=k=>E[k].text;
 const LOCKED='다른 작업을 저장하고 있습니다. 잠시 후 다시 시도하세요.';
 const WS='ra-owner',WS2='ra-owner-2';
@@ -98,8 +98,10 @@ const deck=story=>[['story',[FILL_WHY,...story]],['demo',['우유 도넛을 함�
 const CHECK={version:fa.CHECKLIST_VERSION,checked:plain(fa.CHECKLIST_IDS)};
 const save=(s,x)=>post(s,{action:'asset_save',brandId:'fr-a',campaignId:'ca-a',type:'startup_page',factRefs:TREFS,...x});
 const portal=(s,body,x={})=>save(s,{type:'portal_intro',factRefs:[],body,...x});
-const approve=(s,a,x={})=>post(s,{action:'asset_approve',brandId:'fr-a',assetId:a.assetId,version:a.version,bodyHash:a.bodyHash,checklist:CHECK,...x});
-const exportAsset=(s,a,mode='copy',x={})=>post(s,{action:'asset_export',brandId:'fr-a',assetId:a.assetId,version:a.version,mode,...x});
+// 결정 34: 화면처럼 저장된 원문의 강조 후보 수로 대기기간 우회 문장 확인을 싣는다(행이 없으면 싣지 않는다).
+const WRV=a=>{let row=null;try{row=assetRow(a.assetId,a.version)}catch{row=null}return row?{waitReview:{version:wrm.WAIT_REVIEW_VERSION,confirmed:true,candidates:wrm.waitReviewSummary(row.body).candidates}}:{}};
+const approve=(s,a,x={})=>post(s,{action:'asset_approve',brandId:'fr-a',assetId:a.assetId,version:a.version,bodyHash:a.bodyHash,checklist:CHECK,...WRV(a),...x});
+const exportAsset=(s,a,mode='copy',x={})=>post(s,{action:'asset_export',brandId:'fr-a',assetId:a.assetId,version:a.version,mode,...WRV(a),...x});
 const place=(s,a,x={})=>post(s,{action:'asset_place',brandId:'fr-a',assetId:a.assetId,version:a.version,label:'창업 포털',confirmedAt:kstDay(),...x});
 const retire=(s,a,x={})=>post(s,{action:'asset_retire',brandId:'fr-a',assetId:a.assetId,version:a.version,...x});
 const forgeApproval=a=>{patch(assetKey(a.assetId,a.version),'$.status','approved');patch(assetKey(a.assetId,a.version),'$.approval',{by:'ra-boss',role:'owner',at:iso(-60000),bodyHash:a.bodyHash,checklist:CHECK})};
@@ -325,6 +327,30 @@ const noWait=t=>cut(t,'\n'+fa.WAITING_NOTES.join('\n')),noQna=t=>cut(t,'\n'+fa.R
 const itemWarn=v=>Object.fromEntries(v.body.checklist.items.map(i=>[i.id,i.warnings]));
 const onlyOn=(v,want)=>JSON.stringify(itemWarn(v))===JSON.stringify(Object.fromEntries(v.body.checklist.items.map(i=>[i.id,want[i.id]??[]])));
 const sameList=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+// ════ W) 결정 34(대표 결정 2026-09-27): 대기기간 우회 문장 사람 확인(서버 강제) ════
+// 상세 보기가 강조 후보(원문 오프셋)를 싣고, 승인·내보내기는 확인이 없으면 409다. 감사에는 판·후보 수만 남고 문장 원문은 남지 않는다.
+{
+ const ws=await save(member,{type:'startup_page',body:page()}),wa=ws.body.result;
+ const wv=await get(member,`view=asset&brandId=fr-a&assetId=${wa.assetId}`),wbody=assetRow(wa.assetId,1).body,cands=wv.body.waitReview?.candidates??[];
+ check('W1: the detail view carries the wait-review version and candidate sentences as body offsets that cover whole sentences',ws.status===200&&wv.status===200&&wv.body.waitReview.version===wrm.WAIT_REVIEW_VERSION&&cands.length>0
+  &&cands.every(c=>Number.isInteger(c.start)&&c.end>c.start&&c.end<=wbody.length&&wbody.slice(c.start,c.end).trim()===wbody.slice(c.start,c.end))&&cands.length===wrm.waitReviewSummary(wbody).candidates
+  &&cands.some(c=>/정보공개서|계약|가맹/.test(wbody.slice(c.start,c.end))));
+ const blockedBeforeW=audits('asset_blocked').length;
+ const noConfirm=await approve(boss,wa,{waitReview:null}),falseConfirm=await approve(boss,wa,{waitReview:{version:wrm.WAIT_REVIEW_VERSION,confirmed:false,candidates:cands.length}}),stale=await approve(boss,wa,{waitReview:{version:wrm.WAIT_REVIEW_VERSION,confirmed:true,candidates:cands.length+1}});
+ const reasonsOf=r=>(r.body.reasons??[]).map(x=>x.code);
+ check('W2: approving without the wait-review confirmation is 409 wait_review_missing, a stale count 409 wait_review_outdated, and the draft stays',noConfirm.status===409&&reasonsOf(noConfirm).join()==='wait_review_missing'&&falseConfirm.status===409&&reasonsOf(falseConfirm).join()==='wait_review_missing'
+  &&stale.status===409&&reasonsOf(stale).join()==='wait_review_outdated'&&assetRow(wa.assetId,1).status==='draft');
+ check('W2: each refusal leaves one asset_blocked audit row with the reason code only',audits('asset_blocked').length===blockedBeforeW+3&&audits('asset_blocked').slice(-3).every(b=>b.status===409&&!JSON.stringify(b).includes(wbody.slice(cands[0].start,cands[0].end))));
+ const ok=await approve(boss,wa),row=assetRow(wa.assetId,1),apAudit=audits('asset_approve').find(a=>a.recordId===wa.assetId);
+ check('W3: approving with the confirmation stores the reviewed version and candidate count and audits them without sentence text',ok.status===200&&row.approval.waitReview.version===wrm.WAIT_REVIEW_VERSION&&row.approval.waitReview.candidates===cands.length
+  &&apAudit&&apAudit.waitReviewVersion===wrm.WAIT_REVIEW_VERSION&&apAudit.waitReviewCandidates===cands.length&&apAudit.actor&&apAudit.at&&apAudit.assetVersion===1&&!cands.some(c=>JSON.stringify(apAudit).includes(wbody.slice(c.start,c.end))));
+ const xNo=await exportAsset(admin,wa,'copy',{waitReview:null}),xOk=await exportAsset(admin,wa,'download'),xAudit=audits('asset_export').find(a=>a.recordId===wa.assetId);
+ check('W4: exporting needs the exporter confirmation too (409 without it), then exports and audits the review without sentence text',xNo.status===409&&reasonsOf(xNo).join()==='wait_review_missing'&&xOk.status===200&&xOk.body.body===wbody
+  &&assetRow(wa.assetId,1).exports.length===1&&assetRow(wa.assetId,1).exports[0].waitReview.candidates===cands.length&&xAudit.waitReviewCandidates===cands.length&&!cands.some(c=>JSON.stringify(xAudit).includes(wbody.slice(c.start,c.end))));
+ // 뒤 검사(F26 재검토 표시 건수)에 섞이지 않게 이 자료는 폐기한다.
+ const wr2=await retire(admin,wa);
+ check('W5: the reviewed asset retires (200)',wr2.status===200);
+}
 const blockedBeforeRec=audits('asset_blocked').length,recAssets=[];
 // 저장 → 승인 전 상세 보기 → 승인 → 내보내기. 모두 200이어야 하는 흐름이다.
 const recFlow=async(type,body)=>{
@@ -336,6 +362,7 @@ const recOk=(r,w)=>r.s.status===200&&r.v.status===200&&r.ap.status===200&&r.x.st
  &&r.v.body.gate.status===200&&r.v.body.gate.reasons.length===0&&sameList(r.v.body.gate.warnings,w)&&r.x.body.body===assetRow(r.a.assetId,1).body;
 const recPage=await recFlow('startup_page',noWait(page()));
 check('E26: a startup page without the waiting notes saves, shows the warning before approval, approves and exports (200) with only the waiting warning',recOk(recPage,[W_WAIT])&&onlyOn(recPage.v,{no_wait_bypass:[W_WAIT]}));
+
 const recDeck=await recFlow('event_deck',noQna(noWait(deck([]))));
 check('E26: a deck without the waiting notes and the revenue note gets both warnings in section order everywhere, each on its checklist item',recOk(recDeck,[W_WAIT,W_QNA])&&onlyOn(recDeck.v,{no_wait_bypass:[W_WAIT],no_revenue_figures:[W_QNA]}));
 const recEdit=await recFlow('startup_page',page().replace(fa.WAITING_NOTES[0],'정보공개서를 받은 날부터 14일이 지나기 전에는 가맹계약을 체결하지 않습니다.'));
@@ -609,7 +636,7 @@ const auditJson=JSON.stringify(sql.prepare("SELECT data FROM records WHERE kind=
 const TOKENS=[TOKEN_BODY,PLACE_TOKEN,PLACE_EV,'LKB728BT','LKF333CC','LKD111AA','LKE222BB','LKJ777HH',DEPOSIT,'예약금',RR,'가맹점 수 안내','출처 확인 초안',FILL_WHY];
 check('I47: no audit row holds body text, place labels or pseudonymous codes',TOKENS.every(t=>!auditJson.includes(t)));
 // 부분 유출(원문·라벨 앞머리 등)도 잡도록 자료·행사 감사 행의 키를 허용 목록으로 고정한다.
-const AUDIT_KEYS=new Set(['id','brandId','action','actor','at','requestAction','status','result','target','recordId','assetVersion','bodyHash','mode','checklistVersion','judgeVersion','reasons','eventVersion','eventCounts','withCode','aiGenerated','placementCount']);
+const AUDIT_KEYS=new Set(['id','brandId','action','actor','at','requestAction','status','result','target','recordId','assetVersion','bodyHash','mode','checklistVersion','judgeVersion','reasons','eventVersion','eventCounts','withCode','aiGenerated','placementCount','waitReviewVersion','waitReviewCandidates']);
 const assetAudits=()=>sql.prepare("SELECT data FROM records WHERE kind='franchise_audit'").all().map(x=>JSON.parse(x.data)).filter(a=>NEW_ACTIONS.includes(a.action));
 const auditKeysOk=()=>assetAudits().every(a=>Object.keys(a).every(k=>AUDIT_KEYS.has(k)));
 check('I47: every asset and event audit row carries only the allowed keys',assetAudits().length>=NEW_ACTIONS.length&&auditKeysOk());

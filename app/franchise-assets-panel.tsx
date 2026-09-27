@@ -32,7 +32,10 @@ export type AssetRecord={id:string;campaignId:string;type:string;version:number;
  exports:{at:string;by:string;role:string}[];review:Review;source:{artifactId:string;version:number;origin:string|null}|null;savedBy:Actor;exportCount:number;retiredAt?:string;retiredBy?:Actor;updatedAt:string};
 export type AssetDetailView={asset:AssetRecord;latestVersion:number;versions:{version:number;status:Status}[];drift:{factId:string;refVersion:number;currentVersion:number|null;changed:boolean}[];
  resaveSuggested:boolean;gate:{status:number;reasons:{code:string;message:string}[];message:string|null;warnings:string[]};checklist:{version:string;items:{id:string;text:string;ruleIds:string[];warnings:string[]}[];h7Notice:string|null};
- campaign:{id:string;title:string}|null;branch:string|null;h7Notice:string|null;enabled:boolean;disclaimer:string};
+ campaign:{id:string;title:string}|null;branch:string|null;h7Notice:string|null;enabled:boolean;disclaimer:string;
+ // 결정 34: 강조할 대기기간·계약·가맹금·정보공개서 문장(원문 오프셋). 결정 34 전 서버 응답에는 없을 수 있다.
+ waitReview?:{version:string;candidates:WaitCandidate[]}};
+export type WaitCandidate={line:number;start:number;end:number};
 
 // ── 표시값(판정 규칙이 아니다. 한도는 서버가 다시 본다) ──
 export const ASSET_STATUS_LABELS:Readonly<Record<Status,string>>={draft:'초안',approved:'승인됨',retired:'폐기'};
@@ -82,8 +85,23 @@ export function resaveInput(v:AssetDetailView):{payload:Json;dropped:string[]}|n
  const factRefs=v.drift.flatMap(d=>d.currentVersion===null?[]:[{id:d.factId,version:d.currentVersion}]);
  return {payload:{assetId:v.asset.id,baseVersion:v.latestVersion,type:v.asset.type,body:v.asset.body,factRefs},dropped:v.drift.filter(d=>d.currentVersion===null).map(d=>d.factId)};
 }
-export function approveInput(v:AssetDetailView,checked:ReadonlySet<string>,target?:{version:number;bodyHash:string}):Json{
- return {assetId:v.asset.id,version:target?.version??v.asset.version,bodyHash:target?.bodyHash??v.asset.bodyHash,checklist:{version:v.checklist.version,checked:v.checklist.items.map(i=>i.id).filter(id=>checked.has(id))}};
+// 대기기간 우회 문장 확인(결정 34): 확인했을 때만 싣는다. candidates는 화면이 강조한 문장 수이고, 서버가 원문에서 센 수와 다르면 409 wait_review_outdated다.
+export function waitReviewInput(v:AssetDetailView,confirmed:boolean):Json{
+ return confirmed&&v.waitReview?{waitReview:{version:v.waitReview.version,confirmed:true,candidates:v.waitReview.candidates.length}}:{};
+}
+// 원문을 강조 조각으로 나눈다(겹치거나 범위를 벗어난 후보는 버린다). 원문을 바꾸지 않는다: 조각을 이으면 원문이다.
+export function highlightSegments(body:string,candidates:readonly WaitCandidate[]):{text:string;mark:boolean}[]{
+ const out:{text:string;mark:boolean}[]=[];let at=0;
+ for(const c of [...candidates].sort((a,b)=>a.start-b.start)){
+  if(!(Number.isInteger(c.start)&&Number.isInteger(c.end))||c.start<at||c.end<=c.start||c.end>body.length)continue;
+  if(c.start>at)out.push({text:body.slice(at,c.start),mark:false});
+  out.push({text:body.slice(c.start,c.end),mark:true});at=c.end;
+ }
+ if(at<body.length)out.push({text:body.slice(at),mark:false});
+ return out;
+}
+export function approveInput(v:AssetDetailView,checked:ReadonlySet<string>,target?:{version:number;bodyHash:string},waitConfirmed=false):Json{
+ return {assetId:v.asset.id,version:target?.version??v.asset.version,bodyHash:target?.bodyHash??v.asset.bodyHash,checklist:{version:v.checklist.version,checked:v.checklist.items.map(i=>i.id).filter(id=>checked.has(id))},...waitReviewInput(v,waitConfirmed)};
 }
 // 승인 버튼: 체크리스트 모든 항목을 확인해야 한다(항목이 없으면 누를 수 없다). 경고는 조건이 아니다.
 export const approveReady=(v:AssetDetailView,checked:ReadonlySet<string>)=>v.checklist.items.length>0&&v.checklist.items.every(i=>checked.has(i.id));
@@ -196,17 +214,17 @@ export function AssetSheet({brandId,assetId,list,admin,artifacts,onClose,onChang
   fail(r);
   if(r.status===409&&reasonCodes(r).some(c=>FACT_CODES.includes(c))){setEditorKey(k=>k+1);setMode('edit')}
  }
- async function approve(checked:ReadonlySet<string>){
+ async function approve(checked:ReadonlySet<string>,waitConfirmed:boolean){
   if(!view)return;
-  const r=await run('asset_approve',approveInput(view,checked)),res=resultOf(r);
+  const r=await run('asset_approve',approveInput(view,checked,undefined,waitConfirmed)),res=resultOf(r);
   if(r.status===200){setMode('view');done(r,`v${String(res.version)}을 승인했습니다.`);return}
   fail(r);
-  const codes=reasonCodes(r);if(codes.includes('hash_mismatch')||codes.includes('checklist_outdated'))setApproveKey(k=>k+1);
+  const codes=reasonCodes(r);if(codes.includes('hash_mismatch')||codes.includes('checklist_outdated')||codes.includes('wait_review_outdated')){setApproveKey(k=>k+1);void load()}
  }
- async function exportAs(how:'copy'|'download'){
+ async function exportAs(how:'copy'|'download',waitConfirmed:boolean){
   if(!view)return;setFallback(null);
-  const r=await run('asset_export',{assetId:view.asset.id,version:view.asset.version,mode:how});
-  if(r.status!==200){fail(r);return}
+  const r=await run('asset_export',{assetId:view.asset.id,version:view.asset.version,mode:how,...waitReviewInput(view,waitConfirmed)});
+  if(r.status!==200){fail(r);if(reasonCodes(r).includes('wait_review_outdated'))void load();return}
   const out=await deliverExport(r.body,how);
   if(!out)setProblem({error:'내보낸 원문을 받지 못했습니다. 새로고침한 뒤 다시 시도하세요.'});
   else{setFallback(out.fallback);setMessage(out.message);setWarnings(stringWarnings(r))}
@@ -234,15 +252,15 @@ export function AssetSheet({brandId,assetId,list,admin,artifacts,onClose,onChang
    {loadError&&<div role="alert" className="load-error"><span>{loadError.message}</span>{loadError.status===404&&version!==null?<Button variant="outline" size="sm" onClick={()=>setVersion(null)}>최신 판 열기</Button>:<Button variant="outline" size="sm" onClick={()=>void load()}>다시 불러오기</Button>}</div>}
    {mode==='edit'&&(id===null||view)?<AssetEditor key={editorKey} list={list} artifacts={artifacts} detail={id===null?null:view} busy={busy} enabled={view?view.enabled:list.enabled} conflict={conflict} onSave={save}
      onCancel={()=>{setConflict(false);if(id===null)onClose();else setMode('view')}} onRestart={()=>{setConflict(false);setEditorKey(k=>k+1)}}/>
-    :view&&g?(mode==='approve'&&g.showApprove?<ApprovalStep key={`${view.asset.id}:${view.asset.version}:${view.asset.bodyHash}:${approveKey}`} view={view} busy={busy} blockers={g.blockers} onApprove={c=>void approve(c)} onCancel={()=>setMode('view')}/>
+    :view&&g?(mode==='approve'&&g.showApprove?<ApprovalStep key={`${view.asset.id}:${view.asset.version}:${view.asset.bodyHash}:${approveKey}`} view={view} busy={busy} blockers={g.blockers} onApprove={(c,w)=>void approve(c,w)} onCancel={()=>setMode('view')}/>
      :<AssetBody view={view} g={g} admin={admin} artifacts={artifacts} busy={busy} now={now} fallback={fallback} who={who} on={{version:n=>{setVersion(n===view.latestVersion?null:n);setMode('view')},edit:()=>{setConflict(false);setEditorKey(k=>k+1);setMode('edit')},
-      approve:()=>setMode('approve'),resave:()=>void resave(),exportAs:how=>void exportAs(how),place,retire:()=>void retire(),closeFallback:()=>setFallback(null)}}/>):null}
+      approve:()=>setMode('approve'),resave:()=>void resave(),exportAs:(how,w)=>void exportAs(how,w),place,retire:()=>void retire(),closeFallback:()=>setFallback(null)}}/>):null}
    {(message||problem||warnings.length>0)&&<div className="franchise-status">{message&&<p role="status">{message}</p>}<WarningLines items={warnings}/><ProblemBox problem={problem}/></div>}
   </div>
  </SheetContent></Sheet>;
 }
 
-type BodyActions={version:(n:number)=>void;edit:()=>void;approve:()=>void;resave:()=>void;exportAs:(how:'copy'|'download')=>void;place:(label:string,on:string)=>Promise<boolean>;retire:()=>void;closeFallback:()=>void};
+type BodyActions={version:(n:number)=>void;edit:()=>void;approve:()=>void;resave:()=>void;exportAs:(how:'copy'|'download',waitConfirmed:boolean)=>void;place:(label:string,on:string)=>Promise<boolean>;retire:()=>void;closeFallback:()=>void};
 function AssetBody({view,g,admin,artifacts,busy,now,fallback,who,on}:{view:AssetDetailView;g:AssetGates;admin:boolean;artifacts:readonly Artifact[];busy:boolean;now:string;fallback:string|null;who:(id:string,role:string)=>string;on:BodyActions}){
  const a=view.asset,source=a.source,range=placementRange(view,now),changed=view.drift.filter(d=>d.changed),gone=view.enabled&&latestOf(view)&&a.status!=='retired'&&view.campaign===null;
  return <>
@@ -254,7 +272,7 @@ function AssetBody({view,g,admin,artifacts,busy,now,fallback,who,on}:{view:Asset
    {a.status==='retired'&&<p className="subtle-note">{`폐기 ${kst(a.retiredAt)} · ${a.retiredBy?who(a.retiredBy.id,a.retiredBy.role):'-'}`}</p>}
   </section>
   <section className="franchise-box" aria-label="원문 보기">
-   <pre aria-label="원문" tabIndex={0} className="whitespace-pre-wrap break-words text-sm">{a.body}</pre>
+   <HighlightedBody view={view} label="원문"/>
    <p className="subtle-note">{`${a.body.length.toLocaleString('ko-KR')}자 · 원문 해시 ${a.bodyHash.slice(0,12)}…`}</p>
   </section>
   <Section title="승인·내보내기 게이트">
@@ -275,7 +293,7 @@ function AssetBody({view,g,admin,artifacts,busy,now,fallback,who,on}:{view:Asset
    {g.showApprove&&(g.canApprove?<div><Button disabled={busy} onClick={on.approve}>승인하기</Button></div>:<Blockers items={g.blockers}/>)}
   </Section>
   <Section title="내보내기">
-   {g.showExport&&(g.canExport?<><div className="franchise-bar"><Button disabled={busy} onClick={()=>on.exportAs('copy')}>복사</Button><Button variant="outline" disabled={busy} onClick={()=>on.exportAs('download')}>내려받기(.txt)</Button></div><p className="subtle-note">{EXPORT_NOTE}</p></>:<Blockers items={g.blockers}/>)}
+   {g.showExport&&(g.canExport?<ExportControls key={`${a.id}:${a.version}:${a.bodyHash}`} view={view} busy={busy} onExport={on.exportAs}/>:<Blockers items={g.blockers}/>)}
    {fallback!==null&&<div className="form-stack"><p role="alert">{COPY_FALLBACK}</p><Textarea readOnly aria-label="내보낸 원문 (직접 복사)" rows={8} value={fallback} onFocus={e=>e.currentTarget.select()}/><div><Button size="sm" variant="outline" onClick={on.closeFallback}>닫기</Button></div></div>}
    <p className="subtle-note">{`내보내기 ${a.exportCount}회`}</p>
    {a.exports.length>0&&<ul>{a.exports.slice(-5).reverse().map((x,i)=><li key={i}>{`${kst(x.at)} · ${who(x.by,x.role)}`}</li>)}</ul>}
@@ -300,22 +318,40 @@ function PlaceForm({range,busy,onPlace}:{range:{min:string;max:string};busy:bool
 }
 
 // ── 승인 단계(대표·관리자): 승인할 원문, 체크리스트(모든 항목 확인), 항목·게이트 경고(막지 않는다) ──
-export function ApprovalStep({view,busy,blockers,onApprove,onCancel,initialChecked}:{view:AssetDetailView;busy:boolean;blockers:readonly string[];onApprove:(checked:ReadonlySet<string>)=>void;onCancel:()=>void;initialChecked?:readonly string[]}){
- const [checked,setChecked]=useState<ReadonlySet<string>>(()=>new Set(initialChecked??[]));
- const ready=approveReady(view,checked)&&!blockers.length;
+// 대기기간 우회 문장 확인(결정 34): 강조한 문장을 읽고 확인해야 승인·내보내기 버튼이 열린다. 서버도 같은 확인을 요구한다(없으면 409).
+const WAIT_CONFIRM_TEXT=(n:number)=>`강조한 대기기간·계약·가맹금·정보공개서 문장 ${n}개를 읽었고, 대기기간을 우회하거나 줄여 말하는 문장이 없습니다.`;
+const WAIT_NOTE='강조는 낱말로 고른 후보이고 막지 않습니다. 판정기가 놓치는 우회 표현이 있어 사람이 확인합니다. COLLECTIVE 휴리스틱 · 법률 자문 아님.';
+export function HighlightedBody({view,label}:{view:AssetDetailView;label:string}){
+ const parts=highlightSegments(view.asset.body,view.waitReview?.candidates??[]);
+ return <pre aria-label={label} tabIndex={0} className="whitespace-pre-wrap break-words text-sm">{parts.map((p,i)=>p.mark?<mark key={i} className="franchise-wait-mark">{p.text}</mark>:<span key={i}>{p.text}</span>)}</pre>;
+}
+export function WaitConfirm({view,checked,onChange,id}:{view:AssetDetailView;checked:boolean;onChange:(on:boolean)=>void;id:string}){
+ const n=view.waitReview?.candidates.length??0;
+ return <div className="field"><label className="franchise-inline"><input id={id} type="checkbox" checked={checked} aria-describedby={`${id}-note`} onChange={e=>onChange(e.target.checked)}/>{` ${WAIT_CONFIRM_TEXT(n)}`}</label>
+  <small id={`${id}-note`}>{WAIT_NOTE}</small></div>;
+}
+function ExportControls({view,busy,onExport}:{view:AssetDetailView;busy:boolean;onExport:(how:'copy'|'download',waitConfirmed:boolean)=>void}){
+ const [ok,setOk]=useState(false),off=busy||!ok;
+ return <div className="form-stack"><WaitConfirm view={view} checked={ok} onChange={setOk} id="export-wait-confirm"/>
+  <div className="franchise-bar"><Button disabled={off} onClick={()=>onExport('copy',ok)}>복사</Button><Button variant="outline" disabled={off} onClick={()=>onExport('download',ok)}>내려받기(.txt)</Button></div><p className="subtle-note">{EXPORT_NOTE}</p></div>;
+}
+export function ApprovalStep({view,busy,blockers,onApprove,onCancel,initialChecked,initialWaitConfirmed}:{view:AssetDetailView;busy:boolean;blockers:readonly string[];onApprove:(checked:ReadonlySet<string>,waitConfirmed:boolean)=>void;onCancel:()=>void;initialChecked?:readonly string[];initialWaitConfirmed?:boolean}){
+ const [checked,setChecked]=useState<ReadonlySet<string>>(()=>new Set(initialChecked??[])),[waitOk,setWaitOk]=useState(initialWaitConfirmed===true);
+ const ready=approveReady(view,checked)&&waitOk&&!blockers.length;
  function toggle(id:string,on:boolean){const next=new Set(checked);if(on)next.add(id);else next.delete(id);setChecked(next)}
  return <section className="franchise-box" aria-labelledby="approve-title">
   <h3 id="approve-title">승인 확인</h3>
   {view.checklist.h7Notice&&<p className="notice" role="note">{view.checklist.h7Notice}</p>}
   <Blockers items={blockers}/>
-  <pre aria-label="승인할 원문" tabIndex={0} className="whitespace-pre-wrap break-words text-sm">{view.asset.body}</pre>
+  <HighlightedBody view={view} label="승인할 원문"/>
   <p className="subtle-note">{`${view.asset.body.length.toLocaleString('ko-KR')}자 · 승인하면 이 원문(해시)이 승인 기록에 묶입니다.`}</p>
-  <form autoComplete="off" className="form-stack" onSubmit={e=>{e.preventDefault();if(ready&&!busy)onApprove(checked)}}><fieldset disabled={busy} className="form-stack">
+  <form autoComplete="off" className="form-stack" onSubmit={e=>{e.preventDefault();if(ready&&!busy)onApprove(checked,waitOk)}}><fieldset disabled={busy} className="form-stack">
    <fieldset className="field"><legend>{`승인 체크리스트 (${view.checklist.items.length}개 모두 확인)`}</legend>
     {view.checklist.items.map(i=><div key={i.id}><label className="franchise-inline"><input type="checkbox" checked={checked.has(i.id)} aria-describedby={i.warnings.length?`chk-${i.id}-w`:undefined} onChange={e=>toggle(i.id,e.target.checked)}/>{` ${i.text}`}</label>
      {i.warnings.length>0&&<ul id={`chk-${i.id}-w`} className="franchise-warnings">{i.warnings.map((w,k)=><li key={k}>{`주의: ${w}`}</li>)}</ul>}</div>)}
     <small>{`체크리스트 ${view.checklist.version}`}</small>
    </fieldset>
+   <WaitConfirm view={view} checked={waitOk} onChange={setWaitOk} id="approve-wait-confirm"/>
    <WarningLines items={view.gate.warnings}/>
    <div className="form-actions"><Button type="button" variant="outline" onClick={onCancel}>돌아가기</Button><Button type="submit" disabled={!ready||busy}>승인</Button></div>
   </fieldset></form>

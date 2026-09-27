@@ -13,7 +13,7 @@ import {sha64,plain,DISCLAIMER} from './helpers/franchise-fixture.mjs';
 
 let fetchCalls=0;
 const rt=testRuntime(async()=>{fetchCalls++;throw new Error('외부 호출 금지')});
-const fa=await rt.load('lib/franchise-assets.ts'),ff=await rt.load('lib/franchise-facts.ts'),fr=await rt.load('lib/franchise-rules.ts'),bf=await rt.load('lib/brand-facts.ts'),jc=await rt.load('lib/franchise-compliance.ts');
+const fa=await rt.load('lib/franchise-assets.ts'),ff=await rt.load('lib/franchise-facts.ts'),fr=await rt.load('lib/franchise-rules.ts'),bf=await rt.load('lib/brand-facts.ts'),jc=await rt.load('lib/franchise-compliance.ts'),wr=await rt.load('lib/franchise-wait-review.ts');
 const passed=[];const check=(name,val)=>{assert.ok(val,name);passed.push(name)};
 const same=(a,b)=>JSON.stringify(plain(a))===JSON.stringify(b);
 const asc=(a,b)=>a<b?-1:a>b?1:0;
@@ -75,11 +75,13 @@ const inputOf=(body,refs=['f-total'],type='startup_page',x={})=>({type,body,fact
 const VAL=(body,refs,type,ctx=CTX)=>fa.validateAssetInput(inputOf(body,refs,type),ctx);
 const META={id:'a-page',brandId:'b1',campaignId:'c1',now:NOW};
 const DRAFT=async(body,refs=['f-total'],type='startup_page',ctx=CTX,id='a-'+type)=>{const v=VAL(body,refs,type,ctx);assert.ok(v.ok,'초안 입력: '+JSON.stringify(plain(v.reasons??[])));return fa.draftAsset(null,v.value,{...META,id,now:ctx.now})};
-const APPROVE_IN=a=>({bodyHash:a.bodyHash,checklist:{version:fa.CHECKLIST_VERSION,checked:[...fa.CHECKLIST_IDS]}});
+// 결정 34: 승인·내보내기 입력에 대기기간 우회 문장 확인(판·후보 수)을 싣는다. 원문이 이상한 기록이면 후보 0개로 센다.
+const WR=a=>({waitReview:{version:wr.WAIT_REVIEW_VERSION,confirmed:true,candidates:wr.waitReviewSummary(a?.body).candidates}});
+const APPROVE_IN=a=>({bodyHash:a.bodyHash,checklist:{version:fa.CHECKLIST_VERSION,checked:[...fa.CHECKLIST_IDS]},...WR(a)});
 const ACTX={...CTX,actor:OWNER},XCTX={...CTX,actor:ADMIN};
 const APPROVED=async(body,refs=['f-total'],type='startup_page',ctx=CTX,id)=>{const d=await DRAFT(body,refs,type,ctx,id);const r=await fa.approveDecision(d,APPROVE_IN(d),{...ctx,actor:OWNER});assert.ok(r.ok,'승인: '+JSON.stringify(plain(r.reasons??[]))+' '+r.message);return {...plain(d),status:'approved',approval:plain(r.value.approval)}};
 const FORGE=(body,refs=[],type='portal_intro',x={})=>{const h=sha64(body);return {id:'a-forge',brandId:'b1',campaignId:'c1',type,version:1,body,bodyHash:h,factRefs:refs.map(id=>({id,version:1})).sort((a,b)=>asc(a.id,b.id)),disclosureVersionId:'dvA',status:'approved',approval:{by:'u-owner',role:'owner',at:NOW,bodyHash:h,checklist:{version:fa.CHECKLIST_VERSION,checked:[...fa.CHECKLIST_IDS]}},placements:[],exports:[],review:{needed:false,reasons:[],at:null},createdAt:NOW,updatedAt:NOW,...x}};
-const EXP=(a,ctx=XCTX)=>fa.exportDecision(a,ctx);
+const EXP=(a,ctx=XCTX,input=WR(a))=>fa.exportDecision(a,ctx,input);
 const APP=(a,input=APPROVE_IN(a),ctx=ACTX)=>fa.approveDecision(a,input,ctx);
 
 // ════ 순수성·경계 ════
@@ -87,12 +89,12 @@ const src=readFileSync('lib/franchise-assets.ts','utf8');
 const IMPORTS=["import {FRANCHISE_RULES_VERSION,FRANCHISE_REVIEW_NET,isInstant,parseInstant,isDate,toKstDate,kstDateOf} from './franchise-rules';",
  "import {judgeFranchiseText,franchiseGateError,franchiseIssueLabels,mentionedFranchiseFacts,type FranchiseJudgement} from './franchise-compliance';",
  "import {factLine,footnoteIssues,franchiseFactUseIssue,versionStates,currentDisclosureVersion,FRANCHISE_FACT_MESSAGES,type VersionLite} from './franchise-facts';",
- "import {GATE_DISCLAIMER} from './franchise-gates';","import {franchiseItem} from './fact-catalog';","import {isRecruitmentObjective} from './agency';","import type {BrandFact} from './brand-facts';"];
+ "import {GATE_DISCLAIMER} from './franchise-gates';","import {waitReviewSummary,WAIT_REVIEW_VERSION} from './franchise-wait-review';","import {franchiseItem} from './fact-catalog';","import {isRecruitmentObjective} from './agency';","import type {BrandFact} from './brand-facts';"];
 const importLines=(src.match(/^\s*import\s.*$/gm)||[]).map(x=>x.trim());
-check('1: the module has exactly the seven specified import lines',same(importLines,IMPORTS));
+check('1: the module has exactly the eight specified import lines',same(importLines,IMPORTS));
 const specs=[...src.matchAll(/\bfrom\s*'([^']+)'|\bimport\s*\(\s*['"`]([^'"`]+)|\brequire\s*\(\s*['"`]([^'"`]+)/g)].map(m=>m[1]??m[2]??m[3]);
 const FORBIDDEN=['./server','./execution-server','./brand-facts-server','./franchise-facts-server','./franchise','./franchise-server','./franchise-crypto','./feature-flags','./prompt-registry','./execution-media'];
-check('1: brand-facts is a type-only import, no .ts extension, no @/ path, no forbidden module, no dynamic import',importLines.find(l=>l.includes("'./brand-facts'")).startsWith('import type ')&&specs.length===7&&specs.every(s=>s.startsWith('./')&&!s.endsWith('.ts')&&!FORBIDDEN.includes(s))&&!/\bimport\s*\(|\brequire\s*\(/.test(src)&&!src.includes("'@/"));
+check('1: brand-facts is a type-only import, no .ts extension, no @/ path, no forbidden module, no dynamic import',importLines.find(l=>l.includes("'./brand-facts'")).startsWith('import type ')&&specs.length===8&&specs.every(s=>s.startsWith('./')&&!s.endsWith('.ts')&&!FORBIDDEN.includes(s))&&!/\bimport\s*\(|\brequire\s*\(/.test(src)&&!src.includes("'@/"));
 // 모듈 참조를 TypeScript 구문 트리로도 모은다(tests/franchise-model-boundary.test.mjs parseImports와 같은 노드): 따옴표 종류, export from, 한 줄의 여러 문장, import(), require, import 타입, import =.
 const moduleRefs=(text,file='m.ts')=>{
  const out=[],sf=ts.createSourceFile(file,text,ts.ScriptTarget.Latest,false,file.endsWith('.tsx')?ts.ScriptKind.TSX:ts.ScriptKind.TS),lit=n=>n&&(ts.isStringLiteral(n)||ts.isNoSubstitutionTemplateLiteral(n))?n.text:'(opaque)';
@@ -106,10 +108,10 @@ const moduleRefs=(text,file='m.ts')=>{
  };
  visit(sf);return out;
 };
-const SPECS=['./franchise-rules','./franchise-compliance','./franchise-facts','./franchise-gates','./fact-catalog','./agency','./brand-facts'],srcRefs=moduleRefs(src);
-check('1: the syntax tree holds exactly the seven module references, all static imports and brand-facts type-only',same(srcRefs,SPECS.map(spec=>({kind:spec==='./brand-facts'?'import type':'import',spec}))));
+const SPECS=['./franchise-rules','./franchise-compliance','./franchise-facts','./franchise-gates','./franchise-wait-review','./fact-catalog','./agency','./brand-facts'],srcRefs=moduleRefs(src);
+check('1: the syntax tree holds exactly the eight module references, all static imports and brand-facts type-only',same(srcRefs,SPECS.map(spec=>({kind:spec==='./brand-facts'?'import type':'import',spec}))));
 const SNEAK=['export {} from "./franchise";','const a=0;import {x} from "./franchise";','import * as s from "./server";','const m=import("./feature-flags");','const r=require("./franchise-crypto");','type T=typeof import("./franchise-server");','import fs = require("./execution-server");','export * from \'./prompt-registry\';'];
-check('1: the syntax-tree check catches double quotes, export-from, mid-line imports, import(), require, import types and import =',SNEAK.every(t=>{const refs=moduleRefs(src+'\n'+t);return refs.length===8&&FORBIDDEN.includes(refs[7].spec)&&!same(refs,plain(srcRefs))}));
+check('1: the syntax-tree check catches double quotes, export-from, mid-line imports, import(), require, import types and import =',SNEAK.every(t=>{const refs=moduleRefs(src+'\n'+t);return refs.length===9&&FORBIDDEN.includes(refs[8].spec)&&!same(refs,plain(srcRefs))}));
 const code=src.replace(/^\s*\/\/.*$/gm,'');
 const CLOCK=/(?<!new\s+)\bDate\s*\(|new\s+Date\b(?!\s*\(\s*[^)\s])|\bDate\s*\[|\bDate\.(now|parse)\b|Reflect\.construct|performance\.|Math\.random|\bprocess\.|\bcrypto\.(?!subtle\.digest\()|globalThis|\beval\s*\(|\bFunction\s*\(/;
 check('2: the clock pattern catches bypass forms and allows only crypto.subtle.digest',['new Date;','new Date ()','Date()','Date["now"]()','Date.parse(x)','Reflect.construct(Date,[])','Math.random()','process.env.X','crypto.randomUUID()','crypto.getRandomValues(a)','crypto.subtle.encrypt(a)','globalThis.fetch'].every(x=>CLOCK.test(x))&&!CLOCK.test("crypto.subtle.digest('SHA-256',b)")&&!CLOCK.test('new Date(ms).getUTCDay()'));
@@ -157,8 +159,8 @@ const H7={B:`분기 B(문의 수집만)입니다. 정보공개서 등록·변경
 check('9: the H7 notices are pinned with the disclaimer',same(fa.H7_NOTICES,H7));
 check('9: no checklist item requires the recommended sentences (CEO decision 2026-09-26), the wait-bypass item marks them as recommended',fa.CHECKLIST_ITEMS.every(i=>!i.text.includes('14일')&&!i.text.includes('안내합니다')&&![...WAIT,QNA].some(l=>i.text.includes(l)))&&fa.CHECKLIST_ITEMS.find(i=>i.id==='no_wait_bypass').text.endsWith('(대기기간 안내 문장은 권장).'));
 const unionIds=[...new Set([...ITEMS.flatMap(x=>x[2]),'h.fact_opinion_labels'])].sort(asc);
-check('10: asset rules carry versions, disclaimer, KST and registry rule ids',fa.ASSETS_VERSION==='fr-assets@2026-09-26.2'&&fa.CHECKLIST_VERSION==='fr-assets-checklist@2026-09-26.2'&&same(fa.ASSET_RULES,{assetsVersion:'fr-assets@2026-09-26.2',checklistVersion:'fr-assets-checklist@2026-09-26.2',rulesVersion:fr.FRANCHISE_RULES_VERSION,ruleIds:unionIds,disclaimer:DISCLAIMER,timezone:'+09:00'})&&fa.ASSET_RULES.ruleIds.every(id=>ruleIds.has(id)));
-const STATUS={asset_not_approved:409,attendance_before_event:400,block_unresolved:409,branch_not_a:409,campaign_not_recruitment:409,campaign_other_brand:400,capacity_below_applied:409,capacity_full:409,checklist_incomplete:400,checklist_outdated:409,code_duplicate:409,code_unknown:400,cost_table_missing:409,event_cancelled:409,event_started:409,fact_changed:409,fact_other_brand:400,fact_ref_missing:409,fact_revenue:409,fact_source_missing:409,fact_stale:409,fact_store_scoped:400,footnote_missing:409,h8_label_missing:409,hard_block:409,hash_mismatch:409,invalid_body:400,invalid_code:400,invalid_counts:400,invalid_event:400,invalid_fact_refs:400,invalid_input:400,invalid_placement:400,invalid_record:400,invalid_timestamp:400,invalid_type:400,not_approved:409,not_draft:409,not_exported:409,record_other_brand:400,review_needed:409,role_forbidden:403,section_duplicate:409,section_missing:409,section_order:409,section_unknown:409,spoken_revenue_figure:409,switch_off:409,version_not_current:409};
+check('10: asset rules carry versions, disclaimer, KST and registry rule ids',fa.ASSETS_VERSION==='fr-assets@2026-09-27.3'&&fa.CHECKLIST_VERSION==='fr-assets-checklist@2026-09-26.2'&&same(fa.ASSET_RULES,{assetsVersion:'fr-assets@2026-09-27.3',checklistVersion:'fr-assets-checklist@2026-09-26.2',rulesVersion:fr.FRANCHISE_RULES_VERSION,ruleIds:unionIds,disclaimer:DISCLAIMER,timezone:'+09:00'})&&fa.ASSET_RULES.ruleIds.every(id=>ruleIds.has(id)));
+const STATUS={asset_not_approved:409,attendance_before_event:400,block_unresolved:409,branch_not_a:409,campaign_not_recruitment:409,campaign_other_brand:400,capacity_below_applied:409,capacity_full:409,checklist_incomplete:400,checklist_outdated:409,code_duplicate:409,code_unknown:400,cost_table_missing:409,event_cancelled:409,event_started:409,fact_changed:409,fact_other_brand:400,fact_ref_missing:409,fact_revenue:409,fact_source_missing:409,fact_stale:409,fact_store_scoped:400,footnote_missing:409,h8_label_missing:409,hard_block:409,hash_mismatch:409,invalid_body:400,invalid_code:400,invalid_counts:400,invalid_event:400,invalid_fact_refs:400,invalid_input:400,invalid_placement:400,invalid_record:400,invalid_timestamp:400,invalid_type:400,not_approved:409,not_draft:409,not_exported:409,record_other_brand:400,review_needed:409,role_forbidden:403,section_duplicate:409,section_missing:409,section_order:409,section_unknown:409,spoken_revenue_figure:409,switch_off:409,version_not_current:409,wait_review_missing:409,wait_review_outdated:409};
 const FM=plain(ff.FRANCHISE_FACT_MESSAGES);
 const MESSAGES={asset_not_approved:'승인된 모집 자료 버전만 행사에 연결할 수 있습니다.',attendance_before_event:'행사일(KST) 전에는 참석·불참을 기록할 수 없습니다.',block_unresolved:'가맹 모집 규칙상 근거 사실이 필요한 표현이 남아 있습니다.',
  branch_not_a:`가맹 준비도 분기가 A(모집 가능)로 기록된 브랜드만 모집 자료를 승인·내보내고 설명회·견학·박람회를 열 수 있습니다(H7). ${DISCLAIMER}`,campaign_not_recruitment:'가맹 모집 목적 캠페인에서만 모집 자료와 행사를 만들 수 있습니다.',campaign_other_brand:'이 브랜드의 캠페인이 아닙니다.',
@@ -174,8 +176,10 @@ const MESSAGES={asset_not_approved:'승인된 모집 자료 버전만 행사에 
  review_needed:'근거 사실이나 정보공개서 버전이 바뀌어 재검토가 필요합니다. 현재 사실로 새 버전을 저장하고 다시 승인하세요.',role_forbidden:'모집 자료 승인·내보내기·게시 기록과 행사 등록·변경은 대표·관리자만 할 수 있습니다.',
  section_duplicate:'고정 절 제목이 두 번 이상 있습니다.',section_missing:'고정 절 제목이 빠졌습니다. 제목 줄을 템플릿 그대로 두세요.',section_order:'고정 절 순서가 템플릿과 다릅니다.',section_unknown:'템플릿에 없는 절 제목(■)이 있습니다.',
  spoken_revenue_figure:`설명회 원고·첫 통화 스크립트에 수익처럼 보이는 수치가 있습니다. 수익 질문은 서면 절차 안내 문장으로만 답합니다(H6). ${DISCLAIMER}`,switch_off:'가맹 모집 기능이 꺼져 있어 모집 자료·행사를 저장·승인·내보낼 수 없습니다.',
- version_not_current:'자료를 저장할 때의 정보공개서 버전이 현재 등록 버전이 아닙니다. 현재 버전의 사실로 새 버전을 저장하세요.'};
-check('11: 49 sorted unique codes with the fixed status table, the two recommended-line codes are gone',fa.ASSET_CODES.length===49&&['waiting_note_missing','revenue_qna_note_missing'].every(c=>!fa.ASSET_CODES.includes(c)&&!(c in fa.ASSET_CODE_STATUS)&&!(c in fa.ASSET_MESSAGES))&&fa.ASSET_CODES.every((c,i)=>i===0||fa.ASSET_CODES[i-1]<c)&&same(fa.ASSET_CODES,Object.keys(STATUS).sort(asc))&&same(fa.ASSET_CODE_STATUS,STATUS));
+ version_not_current:'자료를 저장할 때의 정보공개서 버전이 현재 등록 버전이 아닙니다. 현재 버전의 사실로 새 버전을 저장하세요.',
+ wait_review_missing:"강조된 대기기간·계약·가맹금·정보공개서 문장을 읽고 '대기기간 우회 문장 없음'을 확인해야 승인·내보내기할 수 있습니다.",
+ wait_review_outdated:'강조할 문장 목록이 바뀌었습니다. 새로고침하고 강조된 문장을 다시 확인하세요.'};
+check('11: 51 sorted unique codes with the fixed status table, the two recommended-line codes are gone',fa.ASSET_CODES.length===51&&['waiting_note_missing','revenue_qna_note_missing'].every(c=>!fa.ASSET_CODES.includes(c)&&!(c in fa.ASSET_CODE_STATUS)&&!(c in fa.ASSET_MESSAGES))&&fa.ASSET_CODES.every((c,i)=>i===0||fa.ASSET_CODES[i-1]<c)&&same(fa.ASSET_CODES,Object.keys(STATUS).sort(asc))&&same(fa.ASSET_CODE_STATUS,STATUS));
 check('11: every code has its fixed non-empty message',same(fa.ASSET_MESSAGES,MESSAGES)&&Object.values(MESSAGES).every(m=>m.length>0)&&same(fa.ASSET_WARNING_MESSAGES,{briefingDeckMissing:'설명회에 승인된 설명회 덱(표준 순서)을 연결하지 않았습니다.',waitingNoteMissing:W_WAIT,revenueQnaNoteMissing:W_QNA}));
 const odd=fa.validateAssetInput({type:'blog-ZZTOP',body:'\u0000비밀X',factRefs:[]},CTX);
 check('11: odd input values never reach the message',is(odd,'invalid_body','invalid_type')&&!odd.message.includes('ZZTOP')&&!odd.message.includes('비밀X')&&odd.message===MESSAGES.invalid_body+' '+MESSAGES.invalid_type);
@@ -301,7 +305,7 @@ check('33: free asset types have no structure check, a non-string body misses ev
 
 // ════ 승인 ════
 const bothApproved=await Promise.all([OWNER,ADMIN].map(actor=>fa.approveDecision(d1,{...APPROVE_IN(d1),checklist:{version:fa.CHECKLIST_VERSION,checked:[...fa.CHECKLIST_IDS].reverse()}},{...CTX,actor})));
-check('34: owner and admin approve with the full approval record',bothApproved.every((r,i)=>OK(r)&&same(r.value.approval,{by:[OWNER,ADMIN][i].id,role:[OWNER,ADMIN][i].role,at:NOW,bodyHash:d1.bodyHash,checklist:{version:fa.CHECKLIST_VERSION,checked:[...fa.CHECKLIST_IDS].sort(asc)}})&&r.value.judgement.blocked===false));
+check('34: owner and admin approve with the full approval record',bothApproved.every((r,i)=>OK(r)&&same(r.value.approval,{by:[OWNER,ADMIN][i].id,role:[OWNER,ADMIN][i].role,at:NOW,bodyHash:d1.bodyHash,checklist:{version:fa.CHECKLIST_VERSION,checked:[...fa.CHECKLIST_IDS].sort(asc)},waitReview:plain(wr.waitReviewSummary(d1.body))})&&r.value.judgement.blocked===false));
 const r35=await Promise.all([MEMBER,{id:'u-v',role:'viewer'},null,{role:'owner'},{id:'',role:'owner'},{id:'u\u0001x',role:'owner'},{id:'u'.repeat(201),role:'admin'},{id:5,role:'admin'},{id:'u-x',role:'Owner'}].map(actor=>APP(d1,APPROVE_IN(d1),{...CTX,actor})));
 check('35: member, viewer, a missing actor and malformed actor ids are 403',r35.every(r=>is(r,'role_forbidden')&&r.status===403)&&OK(await APP(d1,APPROVE_IN(d1),{...CTX,actor:{id:'u'.repeat(200),role:'admin'}})));
 check('35: actor ids with a C1 control, a line separator or a private-use character are 403',(await Promise.all(['u\u0085x','u\u2028x','u\ue000x'].map(id=>APP(d1,APPROVE_IN(d1),{...CTX,actor:{id,role:'owner'}})))).every(r=>is(r,'role_forbidden')));
@@ -352,7 +356,25 @@ check('2 (approve): the fact stage re-runs at approval (400 then 409)',is(await 
 // ════ 내보내기 ════
 const A=await APPROVED(PAGE());
 const x48=await EXP(A);
-check('48: an approved page exports its exact body with the export record',OK(x48)&&x48.value.body===PAGE()&&x48.value.body===A.body&&sha64(x48.value.body)===x48.value.record.bodyHash&&same(x48.value.record,{at:NOW,by:'u-admin',role:'admin',bodyHash:A.bodyHash,judgeVersion:x48.value.judgement.version,assetsVersion:fa.ASSETS_VERSION,checklistVersion:fa.CHECKLIST_VERSION})&&same(x48.warnings,plain(jc.franchiseIssueLabels(x48.value.judgement).warnings)));
+check('48: an approved page exports its exact body with the export record',OK(x48)&&x48.value.body===PAGE()&&x48.value.body===A.body&&sha64(x48.value.body)===x48.value.record.bodyHash&&same(x48.value.record,{at:NOW,by:'u-admin',role:'admin',bodyHash:A.bodyHash,judgeVersion:x48.value.judgement.version,assetsVersion:fa.ASSETS_VERSION,checklistVersion:fa.CHECKLIST_VERSION,waitReview:plain(wr.waitReviewSummary(A.body))})&&same(x48.warnings,plain(jc.franchiseIssueLabels(x48.value.judgement).warnings)));
+
+// 결정 34(대표 결정 2026-09-27): 대기기간 우회 문장 사람 확인. 확인이 없거나 false면 wait_review_missing, 판·후보 수가 다르면 wait_review_outdated(둘 다 409). 막지는 않고 확인만 강제한다.
+const WR_OFF=[undefined,null,{},{waitReview:null},{waitReview:{...WR(A).waitReview,confirmed:false}},{waitReview:{...WR(A).waitReview,confirmed:'true'}},{waitReview:{version:wr.WAIT_REVIEW_VERSION,candidates:WR(A).waitReview.candidates}}];
+check('34w: approval without a confirmed wait review is wait_review_missing (409)',(await Promise.all(WR_OFF.map(w=>APP(d1,{...APPROVE_IN(d1),waitReview:w?.waitReview})))).every(r=>is(r,E('wait_review_missing')[0])&&r.status===409));
+check('34w: a stale version or another candidate count is wait_review_outdated (409)',is(await APP(d1,{...APPROVE_IN(d1),waitReview:{...WR(d1).waitReview,version:'fr-wait-review@2026-01-01.1'}}),E('wait_review_outdated')[0])
+ &&is(await APP(d1,{...APPROVE_IN(d1),waitReview:{...WR(d1).waitReview,candidates:WR(d1).waitReview.candidates+1}}),'wait_review_outdated')&&is(await APP(d1,{...APPROVE_IN(d1),waitReview:{...WR(d1).waitReview,candidates:String(WR(d1).waitReview.candidates)}}),'wait_review_outdated'));
+check('48w: export without the exporter confirmation is wait_review_missing, a stale count wait_review_outdated',(await Promise.all(WR_OFF.map(w=>fa.exportDecision(A,XCTX,w)))).every(r=>is(r,'wait_review_missing')&&r.status===409)
+ &&is(await EXP(A,XCTX,{waitReview:{...WR(A).waitReview,candidates:0}}),'wait_review_outdated'));
+check('48w: the hash and review stages come before the wait review, the content gate after it',is(await EXP({...A,body:A.body+'\n'},XCTX,{}),'hash_mismatch')&&is(await EXP({...A,review:{needed:true,reasons:['version_changed'],at:NOW}},XCTX,{}),'review_needed')
+ &&is(await EXP(FORGE(DECK(lines('story',l=>[...l,'가맹점 월 매출 3,200만원'])),['f-total'],'event_deck'),XCTX,{}),'wait_review_missing'));
+check('48w: the wait review never unlocks a hard_block (decision 25)',is(await EXP(FORGE(DECK(lines('story',l=>[...l,'가맹점 월 매출 3,200만원'])),['f-total'],'event_deck')),'hard_block'));
+check('48w: the stored records carry only the review version and candidate count, no sentence text',Object.keys(x48.value.record.waitReview).sort().join()==='candidates,version'&&typeof x48.value.record.waitReview.candidates==='number'&&x48.value.record.waitReview.candidates>0);
+
+// 강조 후보(순수): 대기기간·문서·계약·돈·때 낱말이 든 문장만, 원문 오프셋으로. 줄바꿈·문장부호에서 끊고 앞뒤 공백은 뺀다. 막지 않는다.
+const WR_TEXT='도넛을 매일 굽습니다. 정보공개서는 상담 때 드립니다!\n  가맹비는 계약 뒤 받습니다.\n\n오늘도 맛있게 드세요?';
+const wrC=wr.waitReviewCandidates(WR_TEXT),wrS=wrC.map(c=>WR_TEXT.slice(c.start,c.end));
+check('48w: candidates are the cue sentences as trimmed body offsets with their line numbers',same(wrS,['정보공개서는 상담 때 드립니다!','가맹비는 계약 뒤 받습니다.'])&&same(wrC.map(c=>c.line),[0,1])&&wr.waitReviewSummary(WR_TEXT).candidates===2
+ &&same(plain(wr.waitReviewCandidates(null)),[])&&wr.waitReviewSummary('동네 도넛 가게입니다.').candidates===0&&wr.waitReviewCandidates('ＦＤＤ 발송 안내').length===1&&wr.WAIT_REVIEW_VERSION==='fr-wait-review@2026-09-27.1');
 check('49: switch off is 409, a member is 403',is(await EXP(A,{...XCTX,enabled:false}),'switch_off')&&(await EXP(A,{...XCTX,actor:MEMBER})).status===403&&is(await EXP(A,{...XCTX,actor:MEMBER}),'role_forbidden')&&is(await EXP(A,{...XCTX,actor:{id:'u-v',role:'viewer'}}),'role_forbidden'));
 check('49: branch, record and campaign checks precede the approval check',is(await EXP(A,{...XCTX,branch:'C'}),'branch_not_a')&&is(await EXP({...A,brandId:'b2'}),'record_other_brand')&&is(await EXP({...A,type:'blog'}),'invalid_record')&&is(await EXP(A,{...XCTX,campaign:CONSUMER}),'campaign_other_brand')&&is(await EXP(A,{...XCTX,campaign:{...CONSUMER,id:'c1'}}),'campaign_not_recruitment'));
 const badApprovals=[{...A,status:'draft'},{...A,approval:null},{...A,approval:{...A.approval,role:'member'}},{...A,approval:{...A.approval,at:LATER}},{...A,approval:{...A.approval,at:'2026-10-10'}},{...A,approval:{...A.approval,by:''}},{...A,approval:{...A.approval,bodyHash:'x'}},{...A,approval:{...A.approval,bodyHash:A.bodyHash.toUpperCase()}},{...A,approval:{...A.approval,checklist:null}},{...A,approval:{...A.approval,checklist:{version:fa.CHECKLIST_VERSION,checked:'all'}}},{...A,status:'retired'}];
@@ -401,7 +423,7 @@ check('R2: both bare bodies approve (200) with the full approval record and the 
 const APageBare={...plain(dPageBare),status:'approved',approval:plain(aPageBare.value.approval)},ADeckBare={...plain(dDeckBare),status:'approved',approval:plain(aDeckBare.value.approval)};
 const xPageBare=await EXP(APageBare),xDeckBare=await EXP(ADeckBare);
 check('R3: both bare bodies export their exact body (200) with the same warnings and the bumped versions',OK(xPageBare)&&xPageBare.value.body===pageBare&&same(xPageBare.warnings,[W_WAIT])&&OK(xDeckBare)&&xDeckBare.value.body===deckBare&&same(xDeckBare.warnings,[W_WAIT,W_QNA])
- &&xDeckBare.value.record.assetsVersion==='fr-assets@2026-09-26.2'&&xDeckBare.value.record.checklistVersion==='fr-assets-checklist@2026-09-26.2');
+ &&xDeckBare.value.record.assetsVersion==='fr-assets@2026-09-27.3'&&xDeckBare.value.record.checklistVersion==='fr-assets-checklist@2026-09-26.2');
 check('R3: the gate preview has no code for the bare bodies',(g=>same(g.codes,[])&&g.status===200&&g.message===null)(fa.assetGateIssues(APageBare,RGCTX))&&(g=>same(g.codes,[])&&g.status===200)(fa.assetGateIssues(ADeckBare,RGCTX)));
 const noRecWarn=r=>OK(r)&&!r.warnings.includes(W_WAIT)&&!r.warnings.includes(W_QNA);
 const DECK_FULL=await APPROVED(DECK(),['f-total'],'event_deck',CTX,'a-deck-full');
@@ -665,7 +687,7 @@ check('12: compiling the exported patterns cannot loosen the module checks',comp
 // ════ 71) 사유 코드 전부·외부 호출 ════
 const missingSeen=plain(fa.ASSET_CODES).filter(c=>!seen.has(c)),missingProduced=plain(fa.ASSET_CODES).filter(c=>!produced.has(c));
 assert.deepEqual(missingSeen,[],'기대값으로 확인하지 않은 코드: '+missingSeen.join(', '));passed.push('71: all 49 codes are asserted as expected values');
-assert.deepEqual(missingProduced,[],'실제로 나오지 않은 코드: '+missingProduced.join(', '));passed.push('71: all 49 codes were produced by a decision');
+assert.deepEqual(missingProduced,[],'실제로 나오지 않은 코드: '+missingProduced.join(', '));passed.push('71: all 51 codes were produced by a decision');
 check(`71: the status invariant held on every failure result (${failCount})`,failCount>=300);
 check('71: no external call was made',fetchCalls===0);
 
