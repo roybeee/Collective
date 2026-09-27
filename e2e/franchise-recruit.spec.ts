@@ -3,7 +3,8 @@
 //    서버에 확인 없이 보내면 409 wait_review_missing이고, 체크한 뒤 승인·내려받기·복사가 성공한다.
 // 2) #188 R5c 유입·비용 탭: 모집 코드 발급 → 사용 중지, 모집 비용 기록 → 무효화, 행사에 비용 연결, 리드 CSV 가져오기(검사·미리보기·확정).
 // 3) R6c 성과 탭: 읽는 법 문구·면책이 숫자보다 먼저, 작은 표본 표기, 진행 중인 주 확정 불가, 지난주 확정·Markdown 내려받기, 리드 상세 증빙 묶음(연락처 원문 없음).
-// 4) R6d 워크스페이스 할 일: 미응대 문의 건수와 면책이 첫 화면 '다음 할 일'에 보이고(리드 이름·연락처 없음), 누르면 가맹 모집 리드 탭으로 간다.
+// 4) 대표 결정 35 적격 판정: 적격 기준 저장 → 리드 상세에서 판정·사유 코드 선택 → 기록(기준 버전 표시) → 판정 변경이 이력으로 남음 → 보드 '적격 판정' 필터·열 → 성과 탭 코호트 적격 표.
+// 5) R6d 워크스페이스 할 일: 미응대 문의 건수와 면책이 첫 화면 '다음 할 일'에 보이고(리드 이름·연락처 없음), 누르면 가맹 모집 리드 탭으로 간다.
 //    '다음 할 일'은 AI 연결을 마친 워크스페이스에만 보이므로, 실제 /api/workspace 응답을 미리 받아 연결 상태(configured)만 참으로 바꿔 돌려준다(mocked 연결, real 할 일).
 // 직원 역할 화면(비용·가져오기 영역 없음)은 legacy 헤더 요청자가 늘 소유자라 여기서 재현할 수 없다. 실제 이메일 세션 직원으로 e2e/email-auth.spec.ts에서 본다.
 // 근거: real Chromium·빌드 결과·로컬 D1(wrangler --local) / mocked 인증(legacy 로그인 헤더). 요청 가로채기는 쓰지 않는다(docs/E2E.ko.md 규칙).
@@ -356,6 +357,72 @@ test('R6c 성과 탭: 문구·면책이 숫자보다 먼저, 작은 표본 표�
   expect((await bundleDownload).suggestedFilename()).toMatch(/^recruitment-evidence-ofd-lead-.+\.json$/);
   await expect(sheet.getByText('증빙 묶음을 내려받았습니다', {exact: false})).toBeVisible();
   await shot(page, testInfo, 'r6-3-evidence-bundle');
+  await context.close();
+});
+
+test('결정 35 적격 판정: 리드 상세 판정·이력, 보드 필터·열, 성과 탭 코호트 적격 표', async ({browser}, testInfo) => {
+  test.setTimeout(120_000);
+  const owner = `e2e-fr-q-${testInfo.project.name}-${Date.now()}`;
+  const {context, page} = await ownerPage(browser, testInfo, owner);
+  await prepareFranchise(page, `가상 가맹 모집 적격 ${testInfo.project.name}`);
+
+  // 준비(API): 적격 기준 버전 1, 가상 리드 2건.
+  const criteria = await franchise(page, 'save_profile', {version: 1, profile: {branch: 'A', forecastInputs: {sme: true, storesAtFyEnd: 3, fiscalYearEnd: null}, holidays: null, storageLabels: [STORAGE_LABEL],
+    eligibility: {budgetBands: ['100m_150m'], regions: ['서울 강남구'], timingBands: ['within_3m']}}});
+  expect(criteria.status, JSON.stringify(criteria.body)).toBe(200);
+  for (let i = 0; i < 2; i++) {
+    const lead = await franchise(page, 'create_lead', {contact: {name: '이테스트', phone: `010-0000-14${String(i).padStart(2, '0')}`}, task: {region: '서울 강남구', budgetBand: '100m_150m', timingBand: 'within_3m', sourceChannel: 'walk_in'}, basis: {type: 'inquiry_response'}});
+    expect(lead.status, JSON.stringify(lead.body)).toBe(200);
+  }
+
+  // 1) 리드 상세: 판정·사유를 골라 기록 → 현재 판정과 이력. 자유 문구 칸은 없다.
+  await page.goto(`/?view=franchise&brand=${BRAND}`);
+  const board = await (await page.request.get(`/api/franchise?view=board&brandId=${BRAND}`)).json() as {leads: {systemCode: string}[]};
+  const target = board.leads[0].systemCode;
+  await page.getByRole('button', {name: `리드 ${target} 열기`, exact: true}).click();
+  const sheet = page.getByRole('dialog');
+  const form = sheet.getByRole('form', {name: '적격 판정 기록'});
+  await expect(form.getByRole('textbox')).toHaveCount(0);
+  await form.getByRole('combobox', {name: '판정', exact: true}).selectOption('qualified');
+  await form.getByRole('combobox', {name: '사유', exact: true}).selectOption('criteria_met');
+  const judged = page.waitForResponse(franchiseAction('qualify_lead'));
+  await form.getByRole('button', {name: '판정 기록 (기준 v1)', exact: true}).click();
+  const judgedResponse = await judged;
+  expect(judgedResponse.status(), JSON.stringify(await judgedResponse.json())).toBe(200);
+  expect((judgedResponse.request().postDataJSON() as Record<string, unknown>)).toMatchObject({verdict: 'qualified', reason: 'criteria_met', criteriaVersion: 1});
+  await expect(sheet.getByText('적격 판정을 기록했습니다.', {exact: false})).toBeVisible();
+  await expect(sheet.getByText('적격 · 적격 기준 충족 · 기준 v1', {exact: true}).first()).toBeVisible();
+
+  // 2) 판정을 보류로 바꾼다: 이전 판정은 이력에 남는다.
+  await form.getByRole('combobox', {name: '판정', exact: true}).selectOption('hold');
+  await form.getByRole('combobox', {name: '사유', exact: true}).selectOption('awaiting_reply');
+  const changed = page.waitForResponse(franchiseAction('qualify_lead'));
+  await form.getByRole('button', {name: '판정 기록 (기준 v1)', exact: true}).click();
+  expect((await changed).status()).toBe(200);
+  const history = sheet.getByRole('list', {name: '적격 판정 이력'});
+  await expect(history.getByRole('listitem')).toHaveCount(2);
+  await expect(history.getByRole('listitem').first()).toContainText('보류 · 답변 대기 · 기준 v1');
+  await expect(history.getByRole('listitem').nth(1)).toContainText('적격 · 적격 기준 충족 · 기준 v1');
+  await shot(page, testInfo, 'q-1-lead-judgment');
+  await page.keyboard.press('Escape');
+  await expect(sheet).toHaveCount(0);
+
+  // 3) 보드: '적격 판정' 필터로 보류만, 판정 열에 '보류'.
+  const filtered = page.waitForResponse(r => r.url().includes('/api/franchise?') && r.url().includes('qualification=hold'));
+  await page.getByRole('combobox', {name: '적격 판정', exact: true}).selectOption('hold');
+  expect((await filtered).status()).toBe(200);
+  const rows = page.getByRole('table', {name: '가맹 리드 목록'}).getByRole('row');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(1)).toContainText(target);
+  await expect(rows.nth(1)).toContainText('보류');
+  await shot(page, testInfo, 'q-2-board-filter');
+
+  // 4) 성과 탭: 코호트 적격 표(작은 칸 억제, 적격 리드당 비용 칸).
+  await page.goto(`/?view=franchise&brand=${BRAND}&tab=report`);
+  const table = page.getByRole('table', {name: '코호트 적격 판정'});
+  await expect(table).toContainText('적격 리드당 비용');
+  await expect(table.getByRole('row').filter({hasText: koreaToday().slice(0, 7)})).toContainText('5건 미만');
+  await shot(page, testInfo, 'q-3-report-cohort');
   await context.close();
 });
 

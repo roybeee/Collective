@@ -14,7 +14,7 @@ import type {WorkspaceData} from '@/lib/client';
 import {franchiseTabs,type FranchiseTab} from '@/lib/nav-state';
 import {LEAD_STAGES} from '@/lib/franchise-gates';
 import {GATE_DISCLAIMER,CONTACT_NOTE,OFF_BANNER,UNDETERMINED_BANNER,FRANCHISE_ERRORS,MEMO_HINT,RETENTION_LABEL,DUE_LABEL,STAGE_LABELS,SOURCE_LABELS,BUDGET_LABELS,TIMING_LABELS,BASIS_LABELS,INTAKE_BASIS_TYPES,REFERRAL_LABELS,
- MARKETING_METHOD_LABELS,EXPORT_PURPOSE_LABELS,CONTACT_STATE_LABELS,SUBJECT_REQUEST_TYPE_LABELS,SUBJECT_REQUEST_STATUS_LABELS,SUBJECT_RESOLUTION_LABELS,SUBJECT_CHANNEL_LABELS,BOARD_TODO_LABELS,isAdminRole,isBoardQuery,
+ MARKETING_METHOD_LABELS,EXPORT_PURPOSE_LABELS,CONTACT_STATE_LABELS,SUBJECT_REQUEST_TYPE_LABELS,SUBJECT_REQUEST_STATUS_LABELS,SUBJECT_RESOLUTION_LABELS,SUBJECT_CHANNEL_LABELS,BOARD_TODO_LABELS,QUALIFICATION_FILTER_LABELS,QUALIFICATION_VERDICT_LABELS,isAdminRole,isBoardQuery,
  type LeadTask,type BasisType,type ExportPurpose,type BoardTodo} from '@/lib/franchise';
 import {canChange,useAccount} from './account-context';
 import {franchiseGet,franchisePost,problemOf,messageOf,ProblemBox,Disclaimer,TimeField,TaskFields,LabelSelect,saveCsv,NOW,timeOf,kst,labelOf,
@@ -28,8 +28,8 @@ import {FranchiseReport} from './franchise-report-panel';
 import {RECRUITMENT_CHANNEL_LABELS,FILE_BASIS_LABEL,UNATTRIBUTED_LABEL} from '@/lib/franchise-recruitment';
 
 type Campaigns=readonly {id:string;title:string}[];
-type Filters={stage:string;assignee:string;source:string;q:string;todo:BoardTodo|'';inflow:string;sort:'activity'|'eligibility'};
-const noFilters:Filters={stage:'',assignee:'',source:'',q:'',todo:'',inflow:'',sort:'activity'};
+type Filters={stage:string;assignee:string;source:string;q:string;todo:BoardTodo|'';inflow:string;qualification:string;sort:'activity'|'eligibility'};
+const noFilters:Filters={stage:'',assignee:'',source:'',q:'',todo:'',inflow:'',qualification:'',sort:'activity'};
 // 유입 필터(R5c): 모집 채널(코드 귀속)·제공처 파일 기준·유입 미확인·점포 코드와 충돌. 서버 INFLOW_FILTERS와 같은 키다.
 export const INFLOW_FILTER_LABELS:Readonly<Record<string,string>>={...RECRUITMENT_CHANNEL_LABELS,import:FILE_BASIS_LABEL,unattributed:UNATTRIBUTED_LABEL,conflict:'모집 코드 충돌'};
 // 검색어가 코드·지역이 아니면(전화·이메일·숫자) 보내지 않는다. 서버도 400이다.
@@ -97,7 +97,7 @@ function LeadsTab({brandId,status,admin,intake,campaigns,onRequests}:{brandId:st
   setLoading(true);setError('');
   try{
    const params:Record<string,string>={view:'board',brandId,sort:filters.sort};
-   for(const k of ['stage','assignee','source','q','todo','inflow'] as const)if(filters[k])params[k]=filters[k];
+   for(const k of ['stage','assignee','source','q','todo','inflow','qualification'] as const)if(filters[k])params[k]=filters[k];
    const d=await franchiseGet<Board>(params,signal);if(!signal?.aborted)setBoard(d);
   }catch(e){if(!signal?.aborted)setError(messageOf(e))}
   finally{if(!signal?.aborted)setLoading(false)}
@@ -129,6 +129,7 @@ function LeadsTab({brandId,status,admin,intake,campaigns,onRequests}:{brandId:st
     <label className="field"><span>담당</span><NativeSelect value={filters.assignee} onChange={e=>setFilters({...filters,assignee:e.target.value})}><NativeSelectOption value="">{admin?'전체':'내 리드와 담당 없음'}</NativeSelectOption><NativeSelectOption value="me">내 리드</NativeSelectOption><NativeSelectOption value="unassigned">담당 없음</NativeSelectOption>{admin&&assignees.filter(a=>a.label!=='나').map(a=><NativeSelectOption key={a.id} value={a.id}>{a.label}</NativeSelectOption>)}</NativeSelect></label>
     <LabelSelect label="유입" labels={SOURCE_LABELS} value={filters.source} empty="전체" onChange={source=>setFilters({...filters,source})}/>
     <LabelSelect label="모집 귀속" labels={INFLOW_FILTER_LABELS} value={filters.inflow} empty="전체" onChange={inflow=>setFilters({...filters,inflow})}/>
+    <LabelSelect label="적격 판정" labels={QUALIFICATION_FILTER_LABELS} value={filters.qualification} empty="전체" onChange={qualification=>setFilters({...filters,qualification})}/>
     <label className="field"><span>검색 (코드·지역)</span><Input value={query} maxLength={40} placeholder="L로 시작하는 코드 또는 지역" onChange={e=>setQuery(e.target.value)}/></label>
     <Button type="submit" variant="outline">검색</Button>
     <LabelSelect label="정렬" labels={{activity:'최근 활동',eligibility:'적격 충족'}} value={filters.sort} onChange={sort=>setFilters({...filters,sort})}/>
@@ -139,7 +140,7 @@ function LeadsTab({brandId,status,admin,intake,campaigns,onRequests}:{brandId:st
    {error&&<div role="alert" className="load-error"><span>{error}</span><Button variant="outline" size="sm" onClick={()=>void load()}>다시 불러오기</Button></div>}
    {!board?loading&&<p role="status">리드를 불러오고 있습니다.</p>:board.leads.length?<>
     <div className="ledger-table-wrap"><table className="ledger-table franchise-table"><caption className="sr-only">가맹 리드 목록</caption>
-     <thead><tr><th>코드</th><th>이름</th><th>연락처</th><th>단계</th><th>담당</th><th>유입</th><th>모집 귀속</th><th>지역</th><th>예산</th><th>시기</th><th>적격</th><th>마지막 활동</th><th>보존 기한</th></tr></thead>
+     <thead><tr><th>코드</th><th>이름</th><th>연락처</th><th>단계</th><th>담당</th><th>유입</th><th>모집 귀속</th><th>지역</th><th>예산</th><th>시기</th><th>적격</th><th>판정</th><th>마지막 활동</th><th>보존 기한</th></tr></thead>
      <tbody>{board.leads.map(l=><tr key={l.id}>
       <td><button type="button" className="campaign-name" aria-label={`리드 ${l.systemCode} 열기`} onClick={()=>setOpen({id:l.id})}>{l.systemCode}</button></td>
       <td>{l.contact?.name??CONTACT_STATE_LABELS[l.contactState]}</td>
@@ -147,11 +148,11 @@ function LeadsTab({brandId,status,admin,intake,campaigns,onRequests}:{brandId:st
       <td><span className="status">{STAGE_LABELS[l.stage]}</span>{l.sourceNoticePending&&<small className="franchise-flag"> 출처 고지 필요</small>}</td>
       <td>{assigneeLabel(l,assignees)}{enabled&&l.assigneeId===null&&l.contactState==='present'&&<> <Button size="sm" variant="outline" disabled={busy} onClick={()=>claim(l)}>가져오기</Button></>}</td>
       <td>{SOURCE_LABELS[l.task.sourceChannel]}</td><td>{l.attribution?.label??'-'}</td><td>{l.task.region||'-'}</td><td>{BUDGET_LABELS[l.task.budgetBand]}</td><td>{TIMING_LABELS[l.task.timingBand]}</td>
-      <td>{l.eligibility?`${l.eligibility.met}/${l.eligibility.total}`:'-'}</td><td>{kst(l.lastActivityAt)}</td><td>{l.retentionUntil?kst(l.retentionUntil):'-'}</td>
+      <td>{l.eligibility?`${l.eligibility.met}/${l.eligibility.total}`:'-'}</td><td>{l.qualification?<>{QUALIFICATION_VERDICT_LABELS[l.qualification.verdict]}{!l.qualification.current&&<small className="franchise-flag"> 이전 기준</small>}</>:'-'}</td><td>{kst(l.lastActivityAt)}</td><td>{l.retentionUntil?kst(l.retentionUntil):'-'}</td>
      </tr>)}</tbody>
     </table></div>
     <p className="subtle-note">{board.total>board.leads.length?`${board.total}건 중 ${board.leads.length}건을 보여 줍니다. 필터를 좁혀 주세요.`:`${board.total}건`} · 보존 기한은 {RETENTION_LABEL}</p>
-   </>:<p className="subtle-note">{filters.stage||filters.assignee||filters.source||filters.q||filters.todo||filters.inflow?'조건에 맞는 리드가 없습니다.':'아직 등록된 리드가 없습니다.'}{!admin?' 직원은 내 리드와 담당 없는 리드만 봅니다.':''}</p>}
+   </>:<p className="subtle-note">{filters.stage||filters.assignee||filters.source||filters.q||filters.todo||filters.inflow||filters.qualification?'조건에 맞는 리드가 없습니다.':'아직 등록된 리드가 없습니다.'}{!admin?' 직원은 내 리드와 담당 없는 리드만 봅니다.':''}</p>}
   </>}
   {open&&<FranchiseLeadDetail key={open.id} brandId={brandId} leadId={open.id} initial={open.initial} admin={admin} intake={intake} assignees={assignees} campaigns={campaigns} onClose={()=>setOpen(null)} onChanged={()=>void load()}/>}
   {dialog==='create'&&<CreateLeadDialog brandId={brandId} admin={admin} intake={intake} assignees={assignees} campaigns={campaigns} onClose={()=>setDialog('')} onCreated={(id,lead,note)=>{setDialog('');setMessage('리드를 등록했습니다.'+(note?' '+note:''));void load();setOpen({id,initial:lead})}}/>}
