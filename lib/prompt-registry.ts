@@ -6,7 +6,7 @@ import type {Campaign,Artifact,Brand} from './agency';
 import type {Publication} from './execution';
 import type {Store} from './store-marketing';
 import type {EvalRun} from './eval-server';
-import {pairGate} from './eval-stats';
+import {pairGateMajority} from './eval-stats';
 import {alarmState,alarmAckStatement} from './usage-model-alarm';
 import {isPreferencePair} from './playbook-curator';
 
@@ -16,10 +16,10 @@ import {isPreferencePair} from './playbook-curator';
 // 해석: 캠페인 단위로 한 번 고정(campaign_prompt_pin)하고 역할 실행·회의가 같이 쓴다. 비어 있거나 active가 없으면 코드 상수(바이트 동일), 조회 실패·손상은 코드 폴백 + fallback 표시.
 export type Who={id:string;email:string|null};
 export type PromptVersionRecord={id:string;unit:string;body:UnitBody;sha256:string;sourceSha:string;sourceMeta:{repo:string;path:string;mainRef:'main';fetchedAt:string};registeredBy:Who;registeredAt:string};
-export type ReleaseEvent={action:'rollback'|'activate'|'stage'|'promote';from:string|null;to:string|null;at:string;by:Who|null;evalRunId?:string};
+export type ReleaseEvent={action:'rollback'|'activate'|'stage'|'promote';from:string|null;to:string|null;at:string;by:Who|null;evalRunId?:string;evalRunIds?:string[]};
 // active: 단위별 활성 버전 포인터. previous: 롤백 대상(없으면 롤백 시 코드 상수). evalRunId·approvedBy는 F3b 활성화가 채운다. targets는 쓰지 않는다(비율 카나리 없음, 대표 결정 2).
 // stagedCampaignIds가 비어 있지 않으면 active는 그 캠페인에만 적용하고, 나머지 캠페인과 캠페인 없는 바이럴 학습은 baseline(스테이징 전 전체 적용 버전, 없으면 코드 상수)을 쓴다.
-export type PromptRelease={id:string;unit:string;active:string|null;previous:string|null;targets:string[];stagedCampaignIds:string[];baseline?:string|null;evalRunId:string|null;approvedBy:Who|null;updatedAt:string;history:ReleaseEvent[]};
+export type PromptRelease={id:string;unit:string;active:string|null;previous:string|null;targets:string[];stagedCampaignIds:string[];baseline?:string|null;evalRunId:string|null;evalRunIds?:string[];approvedBy:Who|null;updatedAt:string;history:ReleaseEvent[]};
 export type CampaignPromptPin={id:string;campaignId:string;campaignVersion:number;units:Record<string,string>;promptVersion:string;pinnedAt:string};
 export type PromptFallback='lookup_failed'|'corrupt_record';
 export type PromptResolution={source:'code'|'registry';units:Record<string,string>;set?:PromptSet;fallback?:PromptFallback};
@@ -167,10 +167,10 @@ async function rollback(owner:string,input:Record<string,unknown>,who:Who){
 // ── 활성화 게이트(F3b, 대표 결정 2·5·10) ──
 // 쌍 평가 두 쪽 본문: 후보 버전과 지금 전체 캠페인에 적용되는 버전(없으면 코드 상수). eval-server가 pair run 시작 때 한 번 읽어 run에 고정한다.
 export type PairPrompts={unit:string;candidateVersionId:string;activeVersionId:string|null;candidateSet:PromptSet;activeSet:PromptSet|null};
-type GateSummary={cases:number;sealedCases:number;passes:{pairs:number;active:number;candidate:number};inputBudget:{pass:number;total:number};models:string[];gateway:{start:string|null;end:string|null};warnings:string[]};
+type GateSummary={cases:number;sealedCases:number;passes:{pairs:number;active:number;candidate:number};inputBudget:{pass:number;total:number};models:string[];gateway:{start:string|null;end:string|null};warnings:string[];repeats?:number};
 // 레지스트리 이벤트(docs/PUBLISH.ko.md 7절 registry-active 기록의 근거): 조작 전·후 매니페스트와 승인·평가 근거를 남긴다. 추가만 하고 고치지 않는다.
 // rollback은 승인·평가 근거 없이(null) 해제한 지정 캠페인(stagedCampaignIds)과 영향 수(impact)를 남긴다.
-export type ReleaseEventRecord={id:string;unit:string|null;action:'activate'|'stage'|'promote'|'rollback'|'reset_pins';from:string|null;to:string|null;sourceSha:string|null;evalRunId:string|null;approval:{reason:string|null;by:Who;at:string}|null;stagedCampaignIds:string[];gate?:GateSummary;impact?:{artifacts:number;publications:number};pins?:{campaignId:string;campaignVersion:number;promptVersion:string}[];by:Who;manifestBefore:string|null;manifestAfter:string|null;at:string};
+export type ReleaseEventRecord={id:string;unit:string|null;action:'activate'|'stage'|'promote'|'rollback'|'reset_pins';from:string|null;to:string|null;sourceSha:string|null;evalRunId:string|null;evalRunIds?:string[];approval:{reason:string|null;by:Who;at:string}|null;stagedCampaignIds:string[];gate?:GateSummary;impact?:{artifacts:number;publications:number};pins?:{campaignId:string;campaignVersion:number;promptVersion:string}[];by:Who;manifestBefore:string|null;manifestAfter:string|null;at:string};
 const MAX_CAMPAIGNS=50,CANARY=['percent','percentage','ratio','canary','weight','traffic','rollout'];
 const conflict=(message:string):never=>{throw new ApiError(409,message)};
 async function releaseOf(owner:string,unit:string){
@@ -206,22 +206,37 @@ async function campaignsOf(owner:string,value:unknown){
 }
 // 게이트: 이 단위·버전의 pair run이 끝났고 조건(lib/eval-stats.ts pairGate)을 모두 만족하며, 그 run의 active 쪽이 지금 전체 적용 버전과 같고,
 // 모델·게이트웨이 경보(결정 10)가 마지막 확인 이후 열려 있지 않아야 한다. 사유를 모두 모아 409로 답한다.
-async function passGate(owner:string,unit:string,versionId:string,evalRunId:string,release:PromptRelease|null){
+// 반복 채점(대표 결정 2026-09-27): evalRunIds로 같은 단위·후보·기준의 pair run 2~5개를 주면 pairGateMajority가 (케이스·채점기) 과반으로 판정한다. run 하나면 pairGate와 같다.
+const MAX_GATE_RUNS=5;
+function gateRunIds(input:Record<string,unknown>):string[]{
+ if(input.evalRunIds===undefined)return [str(input.evalRunId,'평가 실행',160,true)];
+ if(input.evalRunId!==undefined)bad('evalRunId와 evalRunIds 중 하나만 주세요.');
+ const list=input.evalRunIds;
+ if(!Array.isArray(list)||list.length<2||list.length>MAX_GATE_RUNS)throw new ApiError(400,`반복 쌍 평가(evalRunIds)는 2~${MAX_GATE_RUNS}개여야 합니다. 하나면 evalRunId를 쓰세요.`);
+ const ids=list.map((id:unknown)=>str(id,'평가 실행',160,true));
+ if(new Set(ids).size!==ids.length)bad('반복 쌍 평가(evalRunIds)에 같은 실행이 두 번 들어 있습니다.');
+ return ids;
+}
+async function gateRun(owner:string,evalRunId:string){
  const run=await optional<EvalRun>(owner,'eval_run',evalRunId);
  if(!run)throw new ApiError(409,`활성화 게이트를 통과하지 못했습니다: 쌍 평가 실행 ${evalRunId}을(를) 찾을 수 없습니다.`);
  if(run.variant!=='pair'||!run.pair)throw new ApiError(409,'활성화 게이트를 통과하지 못했습니다: 쌍 평가(pair) 실행이 아닙니다.');
  // 운영자 선호 쌍 평가(B3-2b)는 규칙 블록 on/off 비교라 프롬프트 버전 근거가 아니다. pairGate 조건을 모두 통과해도 activate·stage·promote에 쓰지 못한다.
  if(isPreferencePair(run.pair))throw new ApiError(409,'활성화 게이트를 통과하지 못했습니다: 운영자 선호 쌍 평가(operator_preferences) 실행은 프롬프트 활성화 근거로 쓸 수 없습니다. 이 단위의 프롬프트 쌍 평가(pair unit·candidateVersionId)를 하세요.');
- const gate=pairGate(run),alarms=(await alarmState(owner)).open,current=globalVersion(release),basis=run.pair.activeVersionId;
+ return run as EvalRun&{pair:NonNullable<EvalRun['pair']>};
+}
+async function passGate(owner:string,unit:string,versionId:string,evalRunIds:readonly string[],release:PromptRelease|null){
+ const runs=[];for(const id of evalRunIds)runs.push(await gateRun(owner,id));
+ const gate=pairGateMajority(runs),alarms=(await alarmState(owner)).open,current=globalVersion(release),bases=[...new Set(runs.map(r=>r.pair.activeVersionId))];
  const reasons=[
-  ...(run.pair.unit!==unit||run.pair.candidateVersionId!==versionId?['이 단위·버전의 쌍 평가(pair) 실행이 아닙니다.']:[]),
-  ...(basis!==current?[`평가 뒤 active가 바뀌었습니다(평가 기준 ${basis??'코드 상수'} · 현재 ${current??'코드 상수'}). 현재 active로 쌍 평가를 다시 하세요.`]:[]),
+  ...(runs.some(r=>r.pair.unit!==unit||r.pair.candidateVersionId!==versionId)?['이 단위·버전의 쌍 평가(pair) 실행이 아닙니다.']:[]),
+  ...(bases.length>1?[`반복 쌍 평가 run들의 기준(active)이 서로 다릅니다(${bases.map(b=>b??'코드 상수').join(', ')}).`]:bases[0]!==current?[`평가 뒤 active가 바뀌었습니다(평가 기준 ${bases[0]??'코드 상수'} · 현재 ${current??'코드 상수'}). 현재 active로 쌍 평가를 다시 하세요.`]:[]),
   ...gate.reasons.map(r=>r.message),
   ...(alarms.length?[`모델·게이트웨이 변경 경보 ${alarms.length}건이 열려 있어 동결 중입니다(결정 10). 골든 스모크를 다시 돌려 확인하고 acknowledge_alarms로 해제하세요.`]:[]),
  ];
  if(reasons.length)throw new ApiError(409,'활성화 게이트를 통과하지 못했습니다: '+reasons.join(' / '));
  const models=[...new Set([...gate.models.active,...gate.models.candidate].filter((m):m is string=>!!m))];
- return {cases:gate.cases,sealedCases:gate.sealedCases,passes:gate.passes,inputBudget:gate.inputBudget,models,gateway:gate.gateway,warnings:gate.warnings.map(w=>w.message)};
+ return {cases:gate.cases,sealedCases:gate.sealedCases,passes:gate.passes,inputBudget:gate.inputBudget,models,gateway:gate.gateway,warnings:gate.warnings.map(w=>w.message),...(gate.repeats>1?{repeats:gate.repeats}:{})};
 }
 // 매니페스트: 단위별 적용 상태(단위 순)의 sha256. 스테이징 중인 단위는 baseline과 지정 캠페인까지 넣어 stage·promote 전후가 구분된다.
 const manifestEntry=(r:PromptRelease)=>Array.isArray(r.stagedCampaignIds)&&r.stagedCampaignIds.length?{unit:r.unit,active:r.active,baseline:r.baseline??null,stagedCampaignIds:r.stagedCampaignIds}:{unit:r.unit,active:r.active};
@@ -237,13 +252,13 @@ const pinsOf=(owner:string,campaigns:Campaign[])=>Promise.all(campaigns.map(c=>o
 // activate: 전체 캠페인에 적용. stage: 지정 캠페인에만 적용하고 나머지는 baseline(지금 전체 적용 버전)을 계속 쓴다. 이미 고정(pin)한 캠페인은 reset_pins 전까지 고정 버전을 쓴다.
 async function activate(owner:string,input:Record<string,unknown>,who:Who,mode:'activate'|'stage'){
  noCanary(input);if(mode==='activate')noScope(input);
- const unit=unitOf(input.unit)?.unit??bad('활성화할 프롬프트 단위를 확인하세요.'),versionId=unitVersion(unit,input.versionId),evalRunId=str(input.evalRunId,'평가 실행',160,true),reason=approvalReason(input.approval);
+ const unit=unitOf(input.unit)?.unit??bad('활성화할 프롬프트 단위를 확인하세요.'),versionId=unitVersion(unit,input.versionId),evalRunIds=gateRunIds(input),evalRunId=evalRunIds[0],many=evalRunIds.length>1?{evalRunIds}:{},reason=approvalReason(input.approval);
  const campaigns=mode==='stage'?await campaignsOf(owner,input.campaignIds):[],version=await registeredVersion(owner,unit,versionId),release=await releaseOf(owner,unit);
  if(release?.stagedCampaignIds.length)conflict('이 단위는 지정 캠페인 적용(staged) 중입니다. promote로 전체 적용하거나 rollback한 뒤 다시 하세요.');
  if(release?.active===versionId)conflict('이미 active인 버전입니다.');
- const gate=await passGate(owner,unit,versionId,evalRunId,release),at=stamp(),from=release?.active??null,ids=campaigns.map(c=>c.id),pins=await pinsOf(owner,campaigns);
- const next:PromptRelease={id:unit,unit,active:versionId,previous:from,targets:[],stagedCampaignIds:ids,baseline:mode==='stage'?from:null,evalRunId,approvedBy:who,updatedAt:at,history:[...(release?.history||[]),{action:mode,from,to:versionId,at,by:who,evalRunId}].slice(-50)};
- const result=await commitRelease(owner,next,{unit,action:mode,from,to:versionId,sourceSha:version.sourceSha,evalRunId,approval:{reason,by:who,at},stagedCampaignIds:ids,gate,by:who,at});
+ const gate=await passGate(owner,unit,versionId,evalRunIds,release),at=stamp(),from=release?.active??null,ids=campaigns.map(c=>c.id),pins=await pinsOf(owner,campaigns);
+ const next:PromptRelease={id:unit,unit,active:versionId,previous:from,targets:[],stagedCampaignIds:ids,baseline:mode==='stage'?from:null,evalRunId,...many,approvedBy:who,updatedAt:at,history:[...(release?.history||[]),{action:mode,from,to:versionId,at,by:who,evalRunId,...many}].slice(-50)};
+ const result=await commitRelease(owner,next,{unit,action:mode,from,to:versionId,sourceSha:version.sourceSha,evalRunId,...many,approval:{reason,by:who,at},stagedCampaignIds:ids,gate,by:who,at});
  return mode==='stage'?{...result,pinnedCampaignIds:campaigns.filter((c,i)=>pins[i]?.campaignVersion===c.version).map(c=>c.id)}:result;
 }
 // promote: 스테이징한 버전을 전체 캠페인에 적용한다. 같은 평가 run으로 게이트를 다시 확인하고(기준 = baseline) 경보 동결을 다시 본다. 자동 승격은 없다.
@@ -252,9 +267,10 @@ async function promote(owner:string,input:Record<string,unknown>,who:Who){
  const unit=unitOf(input.unit)?.unit??bad('승격할 프롬프트 단위를 확인하세요.'),release=await releaseOf(owner,unit),reason=input.approval===undefined?null:approvalReason(input.approval);
  if(!release)throw new ApiError(404,'항목을 찾을 수 없습니다.');
  if(!release.stagedCampaignIds.length||!release.active||!release.evalRunId)throw new ApiError(409,'지정 캠페인 적용(staged) 중인 버전이 없습니다. stage 뒤에 promote하세요.');
- const gate=await passGate(owner,unit,release.active,release.evalRunId,release),version=await registeredVersion(owner,unit,release.active),at=stamp(),from=release.baseline??null;
- const next:PromptRelease={...release,stagedCampaignIds:[],baseline:null,approvedBy:who,updatedAt:at,history:[...release.history,{action:'promote' as const,from,to:release.active,at,by:who,evalRunId:release.evalRunId}].slice(-50)};
- return commitRelease(owner,next,{unit,action:'promote',from,to:release.active,sourceSha:version.sourceSha,evalRunId:release.evalRunId,approval:{reason,by:who,at},stagedCampaignIds:release.stagedCampaignIds,gate,by:who,at});
+ const runIds=release.evalRunIds?.length?release.evalRunIds:[release.evalRunId],many=runIds.length>1?{evalRunIds:runIds}:{};
+ const gate=await passGate(owner,unit,release.active,runIds,release),version=await registeredVersion(owner,unit,release.active),at=stamp(),from=release.baseline??null;
+ const next:PromptRelease={...release,stagedCampaignIds:[],baseline:null,approvedBy:who,updatedAt:at,history:[...release.history,{action:'promote' as const,from,to:release.active,at,by:who,evalRunId:release.evalRunId,...many}].slice(-50)};
+ return commitRelease(owner,next,{unit,action:'promote',from,to:release.active,sourceSha:version.sourceSha,evalRunId:release.evalRunId,...many,approval:{reason,by:who,at},stagedCampaignIds:release.stagedCampaignIds,gate,by:who,at});
 }
 // reset_pins: 지정한 캠페인의 해석 고정(pin)을 명시적으로 푼다. 다음 역할 실행·회의가 그때 적용되는 버전으로 다시 고정한다. 진행 중 작업은 저장된 원문을 그대로 쓴다.
 async function resetPins(owner:string,input:Record<string,unknown>,who:Who){
