@@ -8,6 +8,11 @@ import type {MeetingPhase} from './meetings';
 // 지시문(instructions)은 바꾸지 않는다. 근거 규율·사실 정책·출력 계약·확정 사실(evidence.facts)·factPolicy는 줄이지 않는다.
 export const INPUT_DIET_VERSION='input-diet-v1';
 export type InputDietOptions={inputDiet?:boolean};
+// 레인 Q on/off 쌍 평가 연결점(B3-2b 선호 쌍 pair.kind 'operator_preferences'와 같은 방식, docs/INPUT-DIET.ko.md). 평가 파일은 이 PR에서 고치지 않는다.
+// 쌍의 active 쪽은 off, candidate 쪽은 on이다. 같은 동결 요청에 이 인자를 넘겨 roleSubmission·buildMeetingSubmission·buildBriefSubmission을 부르면 두 쪽 본문이 나온다.
+// 동결 요청에는 스위치 상태가 없다(역할 요청에 키 없음, 회의 동결은 snapshot.inputDiet를 남기지 않음). 그래서 두 쪽은 이 인자로만 갈린다.
+export const INPUT_DIET_PAIR_KIND='input_diet';
+export const INPUT_DIET_SIDES={off:{inputDiet:false},on:{inputDiet:true}} as const satisfies Record<'off'|'on',InputDietOptions>;
 
 // ── ② 프롬프트용 캠페인 메타 제거: 초안 메타(draftMeta: plan 사본·가정·질문·사용 맥락)·상태·시각. 예산 표시는 aiBudget이 원 레코드로 계산하므로 budgetConfirmedAt도 뺀다 ──
 export const CAMPAIGN_DIET_KEYS=['draftMeta','status','derivedStatus','statusReason','createdAt','updatedAt','budgetConfirmedAt'] as const;

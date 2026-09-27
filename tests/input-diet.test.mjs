@@ -162,7 +162,20 @@ check('brief off: no inputDiet key and inputChars recorded',!('inputDiet' in dra
 const briefRequest=JSON.parse(JSON.stringify(briefInput.briefRequestFor(await briefExec.briefSources(owner,{input:draftOff.input,contextDate:draftOff.createdAt.slice(0,10)}))));
 check('brief assembly default is off (evaluation path) and on differs only when asked',!('diet' in briefInput.buildBriefSubmission(briefRequest))&&'diet' in briefInput.buildBriefSubmission(briefRequest,{inputDiet:true}));
 
-// ════ 8) 스위치·구조 ════
+// ════ 8) 레인 Q 쌍 평가 연결점: 평가 동결 요청(lib/eval-freeze.ts, 읽기만)에 INPUT_DIET_SIDES를 넘겨 두 쪽 본문을 만든다 ════
+const freeze=await load('lib/eval-freeze.ts'),{off:OFF,on:ON}=diet.INPUT_DIET_SIDES;
+check('pair kind and sides are fixed values (active off, candidate on)',diet.INPUT_DIET_PAIR_KIND==='input_diet'&&same(diet.INPUT_DIET_SIDES,{off:{inputDiet:false},on:{inputDiet:true}}));
+// 역할: 운영 캡처와 같은 JSON 동결본. off 쪽은 인자 없는 기본 조립(지금 평가 build)과 바이트 동일하다.
+const frozenRole=JSON.parse(JSON.stringify(await requestFor(owner,dietCampaignRow.id,'strategy'))),roleOff=execution.roleSubmission(frozenRole,OFF),roleOn=execution.roleSubmission(frozenRole,ON);
+check('role pair: frozen request has no switch key, off equals the current evaluation build, on differs only in input',!('inputDiet' in frozenRole)&&roleOff.input===execution.roleSubmission(frozenRole).input&&roleOff.instructions===roleOn.instructions&&roleOn.input.length<roleOff.input.length&&same(JSON.parse(roleOn.input).evidence,JSON.parse(roleOff.input).evidence));
+// 회의 단계: 켜짐 회의 기록을 동결해도 스위치 상태가 남지 않아 두 쪽이 인자로만 갈린다. 품질 재검토 쌍은 개선본 본문 중복 여부가 기대 차이다.
+const frozenMeeting=freeze.freezeMeetingRequest(stored,qualityStep.id,[]),meetOff=meetingInput.buildMeetingSubmission(frozenMeeting.meeting,frozenMeeting.stepId,frozenMeeting.storeAllow,OFF),meetOn=meetingInput.buildMeetingSubmission(frozenMeeting.meeting,frozenMeeting.stepId,frozenMeeting.storeAllow,ON);
+check('meeting pair: frozen record drops snapshot.inputDiet, off equals the current evaluation build, on removes the duplicate revision body',!('inputDiet' in frozenMeeting.meeting.snapshot)&&meetOff.input===freeze.buildMeetingRequest(frozenMeeting).input&&meetOff.instructions===meetOn.instructions&&count(meetOn.input,REVISED)*2===count(meetOff.input,REVISED)&&meetOn.input.length<meetOff.input.length);
+// 브리프: 동결본 두 쪽. 지금 평가는 브리프를 쌍 평가에서 뺀다(레지스트리 단위 없음). 입력 축소 쌍은 대상이 될 수 있다.
+const frozenBrief=freeze.freezeBriefRequest(briefRequest),briefPairOff=briefInput.buildBriefSubmission(frozenBrief,OFF),briefPairOn=briefInput.buildBriefSubmission(frozenBrief,ON);
+check('brief pair: off equals the default build, on keeps instructions and facts and shortens the archive',briefPairOff.input===briefInput.buildBriefSubmission(frozenBrief).input&&briefPairOff.instructions===briefPairOn.instructions&&same(JSON.parse(briefPairOn.input).evidence,JSON.parse(briefPairOff.input).evidence)&&briefPairOn.input.length<briefPairOff.input.length);
+
+// ════ 9) 스위치·구조 ════
 check('input_diet is a known flag, off by default',flags.FEATURE_FLAGS.input_diet?.defaultEnabled===false&&await flags.isEnabled('diet-nobody','input_diet')===false);
 check('no external calls',hermes.external.length===0);
 check('agency roles cover every digest category row',agency.roles.every(r=>Object.hasOwn(diet.ROLE_ARCHIVE_CATEGORIES,r.id)&&Object.hasOwn(diet.HANDOFF_SECTIONS,r.id)));

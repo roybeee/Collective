@@ -28,7 +28,26 @@
 - 역할: `roleSubmission(request, {inputDiet})`·`buildRoleInputMasked(r, {inputDiet})`. 운영 start가 스위치 상태를 넘긴다. 역할 `inputHash`에 켜짐일 때만 `inputDiet` 버전이 들어간다(꺼짐은 이전과 같다).
 - 회의: 시작 때 스위치를 한 번 읽어 `snapshot.inputDiet`에 고정한다. 단계 제출은 `buildMeetingSubmission(m, stepId, storeAllow, {inputDiet: !!m.snapshot.inputDiet})`. 회의 중간에 스위치를 바꿔도 그 회의는 같은 조립을 쓴다.
 - 브리프: `buildBriefSubmission(request, {inputDiet})`. 운영 start가 스위치 상태를 넘긴다.
-- 평가(레인 Q): 평가 파일(`lib/eval-*`)은 고치지 않았다. 세 조립 함수는 인자를 넘기지 않으면 꺼짐이라 평가는 지금처럼 꺼짐으로 돈다. on/off 쌍 평가는 같은 동결 요청에 `{inputDiet:false}`·`{inputDiet:true}`를 넘겨 두 본문을 만든다(운영자 선호 쌍과 같은 방식). 켜진 워크스페이스에서 캡처(`lib/eval-capture.ts`)의 드리프트 판정은 저장 제출(켜짐)과 기본 조립(꺼짐)을 비교하므로 `assembly_drift`로 나온다. 활성화 전에 레인 Q가 캡처에 스위치 상태를 넘기도록 고쳐야 한다.
+- 평가(레인 Q): 평가 파일(`lib/eval-*`)은 고치지 않았다. 세 조립 함수는 인자를 넘기지 않으면 꺼짐이라 평가는 지금처럼 꺼짐으로 돈다. on/off 쌍 평가 연결 방법은 아래 '레인 Q 연결' 절이다.
+
+## 레인 Q 연결: `pair.kind: 'input_diet'` (평가 파일은 이 PR에서 고치지 않음)
+
+B3-2b 운영자 선호 쌍(#165, `pair.kind: 'operator_preferences'`)과 같은 모양으로 붙인다. 이 PR이 제공하는 연결점은 `lib/input-diet.ts`의 `INPUT_DIET_PAIR_KIND = 'input_diet'`와 `INPUT_DIET_SIDES = {off:{inputDiet:false}, on:{inputDiet:true}}`다(`lib/playbook-curator.ts`의 `PREFERENCE_PAIR_KIND`·`preferenceSides`에 해당).
+
+| 붙일 곳(레인 Q 파일) | 호출할 함수와 인자 | 비고 |
+|---|---|---|
+| `lib/eval-server.ts` `runTargets` | `pair:{kind:'input_diet'}`이면 고정 pair `{kind:'input_diet', unit:'input_diet', activeVersionId:'off', candidateVersionId:INPUT_DIET_VERSION}` | 규칙·본문 선택이 없다. 대상은 역할·회의 단계·브리프 케이스 전부(skippedCases 0). 봉인 케이스 1건 이상은 기존 게이트 조건 |
+| `lib/eval-kinds.ts` `buildRole` | `roleSubmission(r, INPUT_DIET_SIDES[side.inputDiet])` | 쪽 타입 예: `{inputDiet:'off'\|'on'}`(`PreferenceSide`와 같은 판별). 동결 요청은 그대로 두고 인자만 바꾼다 |
+| `lib/eval-kinds.ts` `meeting_step.build` → `lib/eval-freeze.ts` `buildMeetingRequest` | `buildMeetingSubmission(meeting, stepId, storeAllow, INPUT_DIET_SIDES[side.inputDiet])` | 지금 `buildMeetingRequest`는 옵션을 넘기지 않는다. 네 번째 인자를 전달하도록 한 줄 고친다. 동결 회의는 `snapshot.inputDiet`를 남기지 않아 두 쪽이 인자로만 갈린다 |
+| `lib/eval-kinds.ts` `buildBrief` | `buildBriefSubmission(r, INPUT_DIET_SIDES[side.inputDiet])` | 지금은 쪽이 있으면 던진다(레지스트리 쌍 제외). 입력 축소 쪽만 허용한다 |
+| `lib/eval-capture.ts` 드리프트 판정 | 회의: `buildMeetingSubmission(meetingBefore(m, stepId), stepId, storeAllow, {inputDiet: !!m.snapshot.inputDiet})`. 브리프: 저장 초안에 `inputDiet` 기록이 있으면 `{inputDiet:true}` | 켜진 워크스페이스의 `assembly_drift` 오경보를 막는다. 역할 캡처는 드리프트 비교가 없다 |
+
+기대 차이(두 쪽 본문 진단·게이트 해석용, `tests/input-diet.test.mjs` 2·6·8절이 고정):
+- `instructions`는 두 쪽이 바이트 동일하다. 쪽을 가르는 것은 입력뿐이다.
+- 두 쪽 입력에서 같은 것: `evidence`(확정·거절·후보 사실, 상시 지시), `factPolicy`, `task.outputContract`, 학습·운영자 선호 블록, 브랜드 정체성·말투.
+- on에서만 달라지는 것: `campaign`의 메타 7개 키 없음, 역할 `task.deliverable` 없음, `brandArchive.confirmedSources` 요약·역할 카테고리(뺀 수는 `omittedSources`), 채널·성과 없는 역할의 `observations` 비움, 역할 `previous`와 회의 `originalArtifacts`·`candidateArtifacts`의 섹션별 예산, 회의 의견 교환 요약·인계, 품질 재검토의 원본 id·버전·길이와 `completedRevisions` 본문 없음, 상한을 넘으면 `brandArchive.inputCapOmitted`.
+- off 쪽은 인자 없는 기본 조립(지금 평가 build)과 바이트 동일하다.
+- 채점: 입력측 `input_budget`은 on 쪽 제공자 보고 입력 토큰이 줄어야 한다. 품질 판정은 `pairGate`(합격 수 on ≥ off, 봉인 회귀 0, 모델·게이트웨이 동일, 전 케이스 두 쪽 완료)로 보고, 쌍 30 미만이면 `non_regression`·`insufficient`만 쓴다. 특히 볼 곳: 카테고리에서 빠진 자료가 필요한 역할, 인계 섹션 없는 역할의 의견 교환, 상한으로 자료가 빠진 품질 담당.
 
 ## 기록
 
