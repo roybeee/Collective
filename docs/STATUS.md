@@ -6,13 +6,20 @@
 - 운영(갱신): `b64bc06`(Sites 버전 49, tree `0d42612`, [기록](releases/2026-09-27-b64bc06.md)). 레인 R #203·#204·레인 G #206 게시 완료.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 - #208 · 레인 R · 보통 · 새 스위치 없음(r_franchise 기본 꺼짐)
+- #210 · 레인 G · 보통 · 새 스위치 없음(prompts 콘텐츠만, 레지스트리 반영은 레인 Q 쌍 평가 뒤)
+- #211 · 레인 G · 보통 · `crypto_v1_write` 기본 꺼짐, 선택 환경변수 `AGENCY_ENCRYPTION_KEYS`(없어도 동작 동일)
+- #212 · 레인 G · 보통 · `a4_png_code` 기본 꺼짐, 새 kind `execution_coded_png`
+- #213 · 레인 G · 보통 · `collect_guard` 기본 꺼짐(직원 collect 403 새 제한)
+- #220 · 레인 G · 급함(운영 `/api/context-replay` 404) · 새 스위치 없음
+- #223 · 레인 Q · 보통 · 새 스위치 없음(바이럴 수집 콘텐츠 지시 무시 문장이 운영 제출을 바꿈)
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-27 12:33 UTC
+갱신: 2026-09-27 13:08 UTC
 - 진행 중: B3-2a 교정 신호 PR(교정 묶음 90일 5건·규칙별 파생 피드백·같은 사유 재발률, 스위치 `b3_playbook_signals` 기본 꺼짐, 경보가 열리면 `playbook_activate` 409, 토큰 0, [PLAYBOOK](PLAYBOOK.ko.md) B3-2a 절). B3-2b 선호 on/off 쌍 평가 PR(브랜치 `feat/b3-2b-preference-pair`, B3-2a 위): `POST /api/eval` `pair.kind: operator_preferences`, off=동결 요청에서 블록 뺌·on=고른 규칙만의 운영 주입 블록, 기존 `pairGate` 그대로, 초안 평가(D5), 프롬프트 활성화 근거 금지(409), 테스트 mocked·토큰 0, [PLAYBOOK](PLAYBOOK.ko.md) B3-2b 절. 레인 Q 파일(`lib/eval-server.ts`·`lib/eval-kinds.ts`·`lib/prompt-registry.ts`)을 레인 A가 고쳤고 29f7af가 리뷰한다. B3-2c 선호 쌍 평가 첨부(브랜치 `feat/b3-2c-attach-eval`, B3-2b 위): `playbook_attach_eval`(대표만, 스위치 꺼짐 409)이 끝난 선호 쌍 run을 평가한 규칙 버전에 `playbook_audit` `attach_eval`로만 남김(규칙 버전·상태 불변, `performance_tested` 계속 409), 화면에 규칙 버전별 최신 게이트, 4단계 종료 조건 절차는 [PLAYBOOK](PLAYBOOK.ko.md) B3-2c 절, 테스트 mocked·토큰 0. #160(최상위 `}` 보정·순서 되돌림) `merged`, 묶음 17 게시는 A1 dev 쌍 평가 `5528b2f9` 종료 뒤 → A3 4회차. B4 2부 #155·#157·#159 `merged`.
 - A6 종료 조건: **passed · real**(2026-09-27 00:56 KST). 이문동점 영업시간 자료 요청 `dr-f08c16186f08`이 사실 확정으로 closed. [관찰 기록](observations/2026-09-27-lane-a-a6-end-condition.md). 운영 스위치 `a6_data_requests` 켜짐.
 - A3 종료 조건 run: 5회째 **passed · real**(run `86349108`, 운영 `7851185` Sites 버전 44, 32,653토큰). 국밥 12 pass·0 fail, 수학학원 11 pass·0 fail(`copy_pack_variants` pass). 두 원문 모두 보정 없이 바로 JSON이었다(`+channels-close`는 이 run에서 쓰이지 않음). 1~4회 실패 기록과 결정은 [카피 팩](COPY-PACK.ko.md#a3-종료-조건-run-기록-4회). 스위치 `a3_copy_pack` 켜기는 대표 결정으로 따로 한다.
 - B4 중단 규칙: 대표 결정(2026-09-27 "오늘 바로 진행해")으로 10-15 판정을 앞당겼다. 주문 CSV 0건 → **blocked**(L3·L4 운영 사용·KPI 주장 보류, 코드·L0·L1·개선 루프 대장 유지). 스위치 `b4_reward_lineage` 켜짐(대표 지시 D9), `b3_playbook_signals` 켜짐(B3 승인). [관찰 기록](observations/2026-09-27-lane-a-b4-stop-rule.md).
+- **성장1 마감(GROWTH-1-CLOSEOUT)** 2026-09-27 13:08 UTC: 중간 판정 `개발 종료 blocked / 운영 인수 blocked / 효과 검증 not_run`([레인 A 마감 기록](observations/2026-09-27-lane-a-growth1-closeout.md)). 레인 A 몫(C02·C11·C12) 필수 결함 0. 4절 공통 검사 7종 passed(main `66c2ad4`). 개선 계획 95건 매핑 lost 0이고, unmapped `ux-12`는 #226으로 구현했다([매핑](observations/2026-09-27-lane-a-improvement-map.md)). 막힘: 레인 G #216·#217·#218·#219 미병합, 최종 묶음 미게시. 다음: 01:30 KST 게시 창에 대기열 묶음 게시 → 레인 G PR 병합 뒤 최종 묶음 → 판정 갱신.
 - B3 4단계 종료 조건: 1~7단계 **passed · real**, 8단계 **passed · real**(캠페인 범위 `byRule`에 `@2`·대표 판정 1건). 규칙 `playbook:24e71fa4` 대표 승인 → active v2(경보 해제 뒤, 만료 11-26). ODA CMO 재작성 작업물 `ai-4fb50c2c3…` 끝에 규칙 v2 표기, 스냅샷 `operatorPreferences@2`, 개선 루프 후보 등록. 브랜드 범위 결함은 #189로 고쳐 Sites 버전 46에서 확인(`?brandId=oda` byRule `@2` 3/1/2). [관찰 기록](observations/2026-09-27-lane-a-b3-stage4.md). 스위치 `a3_copy_pack` 켜짐(대표 지시 09-27 "승인한다 진행하라", 04:49:06 UTC).
 - 내부 표기 정규화: ODA CMO 재작성본 끝 '수정 요청 반영 위치'에 `revisionRequest`·`output_1` 등이 남던 문제(B3 규칙 '기술 표기 대신'과 어긋남)를 렌더 정규화로 고쳤다(#202, `+revision-labels`, Sites 버전 48 게시). 원 응답과 지시문은 그대로다.
 - 레인 A 검토(#183 R5b-2, `docs/DATA-PROCESSING.ko.md` 3.5·4.1·DP-10): **받아들임**(2026-09-27 05:37 UTC). 대조 결과: 모델 입력 경계 금지 목록에 모집 모듈 4개가 있다(`tests/franchise-model-boundary.test.mjs:62`). `recruitment_import` 행에 칸 값·머리글·연락처가 없고 매핑은 열 번호만이다(`lib/franchise-lead-import-server.ts:219-221`). 리드 `imports`에 연락처·동의 해시가 없다(`:193`). 테스트 lead-import 171·lead-import-route 66·franchise-model-boundary 28 passed(mocked). 비차단 의견 2건(레인 R 후속): ① `recruitment_import`에 `receivedRange`(접수 시각 범위)도 저장되는데 3.5 표 행에 빠져 있다. ② 이 행은 제공처 라벨·동의 증빙 해시를 파기 없이 남긴다('구현된 파기 없음'). LR-2 회신 때 보존 기한을 정하도록 8절 열린 질문에 한 줄 더하길 권한다.
@@ -130,7 +137,7 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-27 12:12 UTC (Claude A 세션: 묶음 23 `b64bc06` Sites 버전 49 게시·tree 확인)
+마지막 갱신: 2026-09-27 13:08 UTC (Claude A 세션: 성장1 마감 중간 판정, 게시 대기열 요청 줄 정리)
 
 ## 현재 운영 상태
 
