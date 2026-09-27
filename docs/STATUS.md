@@ -21,7 +21,7 @@
 - 다음: A3 run → A8-1 → A8-2 → A8-3 → B4 2부 → B3([순서](LANES.ko.md#레인-a-claude-a-세션)).
 
 ## 레인 R (Claude 트랙 R 세션 — 가맹 모집)
-갱신: 2026-09-27 09:41 UTC
+갱신: 2026-09-27 10:11 UTC
 - 세션: 2026-09-27부터 레인 R을 맥 로컬 Claude 세션이 이어받았다(대표 지시, 대표 외출 중). 원래 클라우드 세션의 R3c 작업은 GitHub에 없어 맥 세션이 다시 만들었다. 클라우드 세션에는 R3c 병합 뒤 최신 main에서 이어가라고 알렸다.
 - 게시: 묶음 20(07:58 UTC, `1f2fac1`, 레인 A)에 #180·#182·#183·#186·#188이 실렸다. 게시 대기열에 남은 레인 R 줄은 없다.
 - 운영 화면 확인: passed · real(2026-09-27 08:08~08:10 UTC, 대표 로그인 브라우저, OFD).
@@ -37,6 +37,8 @@
   - R6a #193 `merged`(`823ac96`): 순수 계산 모듈 `lib/franchise-report.ts`(런타임 연결 0, 게시 불필요). 검사 passed · mocked(recruitment-metrics 74, 변이 22/22).
   - R6b #194 `merged`(`8d43b21`): 보기 `report`(모든 역할, 집계만), `report_freeze`·`report_export`·`evidence_export`(대표·관리자, 감사), 새 kind `recruitment_report`, 새 스위치 없음(`r_franchise` 뒤). 검사 passed · mocked(recruitment-report 56, 변이 20/20). 게시 대기열 요청.
   - R6c #195(이 PR): 가맹 화면 '성과' 탭과 리드·자료 상세의 증빙 묶음 버튼. 검사 passed · mocked(franchise-report-ui 29), 로컬 E2E passed · real Chromium·로컬 D1 / mocked 인증(2/2). 운영 real not_run.
+  - 대표 결정 36(2026-09-27, 이 PR): 계약 건수와 계약당 비용은 1건부터 보고서에 보인다(n<5 억제 제외, 다른 칸 억제·n<20 비율 숨김은 그대로). `fr-report@2026-09-27.3`. 검사 passed · mocked(recruitment-metrics 83, recruitment-report 56). 운영 real not_run.
+  - 확인 필요(레인 A): `docs/DATA-PROCESSING.ko.md` DP-10에 결정 36 예외(근거·위험), 3.5 주간 보고 확정본 행에 같은 예외와 내려받은 파일 관리 책임을 적었다. 검토 바란다. 게시 대기열 요청 줄은 받아들인 뒤 넣는다.
   - 남은 것: R6d(`/api/workspace` 할 일 미응대 등, 소재 실험 선별 `lib/viral-stats.ts`).
   - 확인 필요(레인 A): `docs/DATA-PROCESSING.ko.md` 3.5에 R6b 행 2개(주간 보고 확정본·증빙 묶음 내보내기)를 더했다. 검토 바란다.
 - 최근 병합: #191 가맹 모집 E2E `merged`(`1c6fcc7`). #188 R5c 유입·비용 탭 `merged`(`ec822e3`). #186 결정 34 모집 자료 승인·내보내기 대기기간 우회 문장 사람 확인 `merged`(`14a6278`). #185 R3c 재채점 관찰 기록·DATA-PROCESSING 의견 반영(문서) `merged`(`1117812`). #183 R5b-2 리드 CSV 가져오기 기록·API `merged`(`ae96871`).

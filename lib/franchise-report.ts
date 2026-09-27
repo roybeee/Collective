@@ -2,6 +2,7 @@
 // 모듈은 시계·난수·조회·모델을 쓰지 않는다(LLM 호출 0). 현재 시각(asOf)·리드·코드 장부·비용 행·거부 시도·증빙 완결 여부는 모두 인자로 받는다.
 // 귀속·비용 기간 합계는 R5 순수 함수(attributeLead·spendInWindow·alignedWindow·receivedAtOf)를 수정 없이 부른다(R5 명세 2.4·2.5·2.7.4의 R6 규칙).
 // 작은 표본(H12·DP-10): 1~4건 칸은 억제하고(0은 보인다), 비율은 분모 20 미만이면 숨긴다. 1~4건 채널은 한 줄로 합친다. 보완 억제(합계에서 역산 막기)는 하지 않는다.
+// 대표 결정 36(2026-09-27, DP-10 예외): 계약 건수(코호트 계약과 같은 값인 코호트 '계약' 단계 칸·보고 주 계약·계약 리드·증빙 완결)는 1건부터 보이고, 계약당 비용은 계약 20건 전에도 '지출 합계 / 계약 N건'과 '표본 부족'을 함께 보인다.
 // 모든 보고에 귀속≠증분과 'COLLECTIVE 휴리스틱 · 법률 자문 아님'을 붙인다. 예상매출·수익·회수기간은 만들지 않는다(설계 원칙 8).
 import {GATE_DISCLAIMER,type LeadStage} from './franchise-gates';
 import {isDate,isInstant,parseInstant,toKstDate,addDays,FRANCHISE_RULES,type FranchiseRule} from './franchise-rules';
@@ -10,7 +11,7 @@ import {RECRUITMENT_CHANNELS,RECRUITMENT_CHANNEL_LABELS,RECRUITMENT_ATTRIBUTION_
 import {STAGE_LABELS,stageOrder,csvFile} from './franchise';
 
 // ── 버전·기준·고정 문구 ──
-export const REPORT_VERSION='fr-report@2026-09-27.2';
+export const REPORT_VERSION='fr-report@2026-09-27.3';
 export const REPORT_SCHEMA='collective.recruitment-report.v1';
 export const RATIO_MIN_N=20,SUPPRESS_BELOW=5,COHORT_MATURE_DAYS=90,RULE_STALE_DAYS=180,COHORT_MONTHS=6;
 export const SUPPRESSED_LABEL='5건 미만';
@@ -18,12 +19,14 @@ export const SMALL_SAMPLE_LABEL='표본 부족';
 export const SMALL_CHANNELS_KEY='_small',SMALL_CHANNELS_LABEL='5건 미만 채널 합침';
 export const PROVIDER_TIME_LABEL='제공처 시각',SERVER_TIME_LABEL='서버 접수 시각';
 export const STL_REFERENCE_NOTE='speed-to-lead 1시간은 미국 참고치입니다(한국 공개 통계를 찾지 못했습니다). 목표가 아니고, 목표는 첫 4주 실측 뒤 정합니다.';
+export const CONTRACT_SHOWN_NOTE='계약 건수와 계약당 비용은 1건부터 그대로 적습니다(대표 결정 36, DP-10 예외: 본부가 이미 아는 자기 계약). 확정본을 밖으로 보내면 계약 상대를 특정할 수 있으니, 내려받은 파일은 내려받은 사람이 관리합니다.';
 export const QUALIFIED_NOTE='적격 리드당 비용은 비워 둡니다. 적격 기준 버전을 적용한 사람의 적격 판정 기록이 아직 없습니다(적격 점수는 보드 정렬용이라 쓰지 않습니다).';
 export const REPORT_NOTES:readonly string[]=Object.freeze([
  RECRUITMENT_ATTRIBUTION_NOTE,
  '자동 판정 아님: 리드 원장·모집 비용·코드 장부를 정해진 규칙으로 모은 집계입니다. 채널의 좋고 나쁨이나 원인을 판정하지 않으며, 판단은 대표가 합니다. 모델 호출은 0건입니다.',
  `작은 표본: 분모가 ${RATIO_MIN_N}건 미만인 비율과 CPL·계약당 비용은 숨기고 '${SMALL_SAMPLE_LABEL}'으로 적습니다.`,
- `1~4건 칸은 '${SUPPRESSED_LABEL}'으로 억제하고, 1~4건 채널은 한 줄로 합칩니다(DP-10). 0건은 그대로 적습니다.`,
+ `1~4건 칸은 '${SUPPRESSED_LABEL}'으로 억제하고, 1~4건 채널은 한 줄로 합칩니다(DP-10). 0건은 그대로 적습니다. 계약 칸은 억제하지 않습니다(대표 결정 36).`,
+ CONTRACT_SHOWN_NOTE,
  `${PLATFORM_REPORTED_NOTE}: 광고 계정이 보고한 노출·클릭·양식 제출은 따로 적고 CPL 계산에 쓰지 않습니다.`,
  NO_PRORATION_NOTE,
  '단계·첫 연락·계약은 집계 시점(asOf)의 리드 기록 기준입니다. 계약당 비용은 문의 월 코호트이고, 문의 월 말일부터 90일이 지나기 전 코호트는 미성숙입니다.',
@@ -53,6 +56,10 @@ export type Cell={n:number|null;suppressed:boolean};
 export type RateState='shown'|'small_sample'|'suppressed'|'none';
 export type Rate={value:number|null;state:RateState};
 export const cell=(n:number):Cell=>n>0&&n<SUPPRESS_BELOW?{n:null,suppressed:true}:{n,suppressed:false};
+// 계약 칸(대표 결정 36): 억제하지 않는다.
+export const contractCell=(n:number):Cell=>({n,suppressed:false});
+// 계약 단계 비율: 분모 20 미만은 숨기지만(그대로), 분자 1~4건은 억제하지 않는다(분자가 보이는 계약 칸이다).
+function contractRate(num:number,den:number):Rate{return den>0&&den>=RATIO_MIN_N?{value:round(num/den,4),state:'shown'}:rate(num,den)}
 const round=(x:number,digits:number)=>{const f=10**digits;return Math.round(x*f)/f};
 export function rate(num:number,den:number):Rate{
  if(den<=0)return {value:null,state:'none'};
@@ -60,14 +67,14 @@ export function rate(num:number,den:number):Rate{
  if(num>0&&num<SUPPRESS_BELOW)return {value:null,state:'suppressed'};
  return {value:round(num/den,4),state:'shown'};
 }
-// 금액 비율(CPL·계약당 비용): 분모 20 미만은 나누지 않는다.
-export type CostState='shown'|'no_spend'|'no_leads'|'no_contracts'|'straddling'|'small_sample';
-export type Cost={value:number|null;state:CostState};
+// 금액 비율(CPL·계약당 비용): 분모 20 미만은 나누지 않는다. 계약당 비용만 예외로 20 미만에도 나누고 지출 합계·계약 수와 '표본 부족'을 함께 둔다(small_sample_shown, 대표 결정 36).
+export type CostState='shown'|'no_spend'|'no_leads'|'no_contracts'|'straddling'|'small_sample'|'small_sample_shown';
+export type Cost={value:number|null;state:CostState;spend?:number;contracts?:number};
 function costOf(spend:number|null,den:number,state:'known'|'no_spend'|'straddling',zero:'no_leads'|'no_contracts'):Cost{
  if(state!=='known')return {value:null,state};
  if(spend===null)return {value:null,state:'no_spend'};
  if(den<=0)return {value:null,state:zero};
- if(den<RATIO_MIN_N)return {value:null,state:'small_sample'};
+ if(den<RATIO_MIN_N)return zero==='no_contracts'?{value:Math.round(spend/den),state:'small_sample_shown',spend,contracts:den}:{value:null,state:'small_sample'};
  return {value:Math.round(spend/den),state:'shown'};
 }
 
@@ -156,10 +163,10 @@ export type CohortStage={stage:LeadStage;label:string;reached:Cell;rate:Rate};
 export type Cohort={month:string;from:string;to:string;mature:boolean;size:Cell;stages:CohortStage[];closed:Cell;contracts:Cell;spend:number|null;spendState:'known'|'no_spend'|'straddling';costPerContract:Cost};
 function cohortOf(month:string,leads:readonly Lead[],spend:readonly ReportSpendRow[],asOf:string):Cohort{
  const from=month+'-01',to=monthEnd(month),mine=leads.filter(x=>x.receivedDate>=from&&x.receivedDate<=to);
- const stages=FUNNEL_STAGES.map(s=>{const n=mine.filter(x=>reached(x.l)>=stageOrder(s)).length;return {stage:s,label:STAGE_LABELS[s],reached:cell(n),rate:rate(n,mine.length)}});
+ const stages=FUNNEL_STAGES.map(s=>{const n=mine.filter(x=>reached(x.l)>=stageOrder(s)).length,c=s==='contracted';return {stage:s,label:STAGE_LABELS[s],reached:c?contractCell(n):cell(n),rate:c?contractRate(n,mine.length):rate(n,mine.length)}});
  const contracts=mine.filter(x=>reached(x.l)>=stageOrder('contracted')).length,win=spendInWindow(spend,from,to,{asOf}),chans=Object.values(win.byChannel);
  const spendState=win.straddling.length?'straddling' as const:chans.length?'known' as const:'no_spend' as const,total=chans.length?chans.reduce((s,c)=>s+c.total,0):null;
- return {month,from,to,mature:addDays(to,COHORT_MATURE_DAYS)<=toKstDate(asOf),size:cell(mine.length),stages,closed:cell(mine.filter(x=>x.l.stage==='closed').length),contracts:cell(contracts),
+ return {month,from,to,mature:addDays(to,COHORT_MATURE_DAYS)<=toKstDate(asOf),size:cell(mine.length),stages,closed:cell(mine.filter(x=>x.l.stage==='closed').length),contracts:contractCell(contracts),
   spend:total,spendState,costPerContract:costOf(total,contracts,spendState,'no_contracts')};
 }
 
@@ -168,7 +175,7 @@ function gatesOf(leads:readonly Lead[],w:ReportWeek,blocked:readonly unknown[],e
  const contracted=leads.filter(x=>x.l.contractedAt),ids=new Set(contracted.map(x=>x.l.id));
  const complete=new Set(evidence.filter((e):e is {leadId:string;complete:boolean}=>isRecord(e)&&str(e.leadId)&&e.complete===true).map(e=>e.leadId).filter(id=>ids.has(id)));
  const inWeek=(at:unknown)=>typeof at==='string'&&isInstant(at)&&kstDateOf(at)>=w.from&&kstDateOf(at)<=w.to;
- return {contractsInWeek:cell(contracted.filter(x=>inWeek(x.l.contractedAt)).length),blockedAttempts:blocked.filter(b=>isRecord(b)&&inWeek(b.at)).length,contracted:cell(contracted.length),evidenceComplete:cell(complete.size)};
+ return {contractsInWeek:contractCell(contracted.filter(x=>inWeek(x.l.contractedAt)).length),blockedAttempts:blocked.filter(b=>isRecord(b)&&inWeek(b.at)).length,contracted:contractCell(contracted.length),evidenceComplete:contractCell(complete.size)};
 }
 function rulesOf(rules:readonly FranchiseRule[],asOf:string){
  const live=rules.filter(r=>isRecord(r)&&r.status!=='proposed'),cutoff=parseInstant(asOf)-RULE_STALE_DAYS*DAY_MS;
@@ -206,8 +213,12 @@ const won=(n:number)=>String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g,',')
 export const cellText=(c:Cell)=>c.suppressed?SUPPRESSED_LABEL:String(c.n);
 const RATE_TEXT:Readonly<Record<RateState,string>>={shown:'',small_sample:`${SMALL_SAMPLE_LABEL}(n<${RATIO_MIN_N})`,suppressed:SUPPRESSED_LABEL,none:'-'};
 export const rateText=(r:Rate)=>r.state==='shown'&&r.value!==null?`${round(r.value*100,1)}%`:RATE_TEXT[r.state];
-const COST_TEXT:Readonly<Record<CostState,string>>={shown:'',no_spend:'비용 모름',no_leads:'리드 0건',no_contracts:'계약 0건',straddling:'비용 기간 불일치',small_sample:`${SMALL_SAMPLE_LABEL}(n<${RATIO_MIN_N})`};
-export const costText=(c:Cost)=>c.state==='shown'&&c.value!==null?won(c.value):COST_TEXT[c.state];
+const COST_TEXT:Readonly<Record<CostState,string>>={shown:'',no_spend:'비용 모름',no_leads:'리드 0건',no_contracts:'계약 0건',straddling:'비용 기간 불일치',small_sample:`${SMALL_SAMPLE_LABEL}(n<${RATIO_MIN_N})`,small_sample_shown:`${SMALL_SAMPLE_LABEL}(n<${RATIO_MIN_N})`};
+export function costText(c:Cost):string{
+ if(c.state==='shown'&&c.value!==null)return won(c.value);
+ if(c.state==='small_sample_shown'&&c.value!==null&&typeof c.spend==='number'&&typeof c.contracts==='number')return `${won(c.value)} (지출 합계 ${won(c.spend)} / 계약 ${c.contracts}건 · ${COST_TEXT.small_sample_shown})`;
+ return COST_TEXT[c.state];
+}
 export const moneyText=(n:number|null)=>n===null?'비용 모름':won(n);
 const num=(n:number|null)=>n===null?'모름':String(n);
 type Row=[section:string,item:string,metric:string,value:string];
