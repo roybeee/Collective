@@ -103,14 +103,15 @@ export const ADVISOR_TYPE_LABELS={attorney:'변호사',franchise_consultant:'가
 export const FEE_CATEGORY_LABELS={a_join:'가입비·교육비·계약금',b_security:'보증금·담보',c_opening:'설비·인테리어·임차료',d_periodic:'정기 대가',e_other:'그 밖의 대가'} as const;
 export const ESCROW_INSTITUTION_LABELS={bank:'은행',post_office:'체신관서',insurer:'보험회사',trust:'신탁업자'} as const;
 export const FORECAST_DUTY_LABELS={required:'산정서 필요',not_required:'불필요',unknown:'미확인(필요로 처리)'} as const;
-export const EVENT_TYPE_LABELS={created:'등록',stage_changed:'단계 변경',transition_blocked:'진행 차단',claimed:'담당 가져옴',assigned:'담당 지정',contact_updated:'연락처 수정',task_updated:'문의 조건 수정',source_noticed:'출처 고지',marketing_given:'광고성 정보 동의',marketing_withdrawn:'광고성 정보 철회',evidence_recorded:'증빙 기록',evidence_voided:'증빙 무효화',purged:'연락처 파기',erased:'연락처 삭제',reopened:'다시 열기',codes_added:'모집 코드 추가',codes_struck:'모집 코드 제외',import_merged:'제공처 파일 병합',qualification_recorded:'적격 판정'} as const;
+export const EVENT_TYPE_LABELS={created:'등록',stage_changed:'단계 변경',transition_blocked:'진행 차단',claimed:'담당 가져옴',assigned:'담당 지정',contact_updated:'연락처 수정',task_updated:'문의 조건 수정',source_noticed:'출처 고지',marketing_given:'광고성 정보 동의',marketing_withdrawn:'광고성 정보 철회',evidence_recorded:'증빙 기록',evidence_voided:'증빙 무효화',purged:'연락처 파기',erased:'연락처 삭제',reopened:'다시 열기',codes_added:'모집 코드 추가',codes_struck:'모집 코드 제외',import_merged:'제공처 파일 병합',qualification_recorded:'적격 판정',info_requested:'정보 요청',message_logged:'발송 기록'} as const;
 export type LeadEventType=keyof typeof EVENT_TYPE_LABELS;
 export const AUDIT_ACTION_LABELS={reveal:'연락처 보기',find:'연락처로 찾기',export:'내보내기',purge:'파기',erase:'정보주체 삭제',backdate:'이른 증빙 시각',evidence_void:'증빙 무효화',assign:'담당 지정',claim:'담당 가져옴',profile_save:'가맹 프로필 저장',version_register:'정보공개서 버전 등록',version_retire:'정보공개서 버전 사용 중지',template_register:'계약서안 템플릿 등록',template_retire:'계약서안 템플릿 사용 중지',version_amend:'정보공개서 버전 정정',template_amend:'계약서안 템플릿 정정',notice_register:'안내문 등록',notice_retire:'안내문 사용 중지',subject_request:'정보주체 요청 접수',subject_request_update:'정보주체 요청 처리',marketing_withdrawn:'광고성 정보 철회',
  asset_save:'모집 자료 저장',asset_approve:'모집 자료 승인',asset_export:'모집 자료 내보내기',asset_place:'모집 자료 게시 위치 기록',asset_retire:'모집 자료 폐기',asset_blocked:'모집 자료 승인·내보내기 막힘',event_save:'행사 등록·변경',event_cancel:'행사 취소',event_register:'행사 신청 기록',event_attendance:'행사 참석 기록',
  code_issue:'모집 코드 발급',code_retire:'모집 코드 사용 중지',code_strike:'리드 모집 코드 제외',spend_record:'모집 비용 기록',spend_void:'모집 비용 무효화',lead_import:'리드 CSV 가져오기',lead_import_rejected:'리드 CSV 거부',
  report_freeze:'모집 주간 보고 확정',report_export:'모집 주간 보고 내려받기',evidence_export:'증빙 묶음 내보내기',qualification:'적격 판정 기록',
  experiment_plan:'소재 실험 계획',experiment_result:'소재 실험 결과 입력',experiment_cancel:'소재 실험 취소',
- benchmark_key_save:'공공데이터 키 저장',benchmark_key_clear:'공공데이터 키 삭제',benchmark_load:'공공 벤치마크 적재'} as const;
+ benchmark_key_save:'공공데이터 키 저장',benchmark_key_clear:'공공데이터 키 삭제',benchmark_load:'공공 벤치마크 적재',
+ nurture_template_save:'너처링 템플릿 저장',nurture_template_retire:'너처링 템플릿 폐기',info_request:'정보 요청 기록',message_log:'발송 기록'} as const;
 export type AuditAction=keyof typeof AUDIT_ACTION_LABELS;
 // 트랙 R R5b-1 리드 모집 코드 제외 사유(관리자, 코드만 남기고 자유 문구는 받지 않는다).
 export const STRIKE_REASON_LABELS={typo:'오기',wrong_lead:'다른 리드',gaming:'귀속 조작 의심',other:'기타'} as const;
@@ -222,6 +223,11 @@ export const FRANCHISE_ERRORS={
  BENCHMARK_KEY_UNREADABLE:{status:409,text:'저장된 공공데이터 키를 읽지 못했습니다. 키를 다시 저장하세요.'},
  BENCHMARK_RUNNING:{status:409,text:'벤치마크 적재가 이미 진행 중입니다. 끝난 뒤 다시 시도하세요.'},
  BENCHMARK_INPUT:{status:400,text:'적재 조건을 확인해 주세요.'},
+ // 트랙 R R9a-2 너처링 템플릿.
+ NURTURE_NOT_FOUND:{status:404,text:'너처링 템플릿을 찾지 못했습니다.'},
+ NURTURE_STALE:{status:409,text:'다른 사용자가 먼저 템플릿을 바꿨습니다. 새로고침한 뒤 다시 시도하세요.'},
+ NURTURE_KIND_FIXED:{status:400,text:'저장한 템플릿의 목적·매체는 바꿀 수 없습니다. 새 템플릿으로 만드세요.'},
+ NURTURE_DRAFT_INVALID:{status:400,text:'완료된 이 브랜드의 너처링 초안만 템플릿으로 가져올 수 있습니다.'},
 } as const satisfies Record<string,{status:number;text:string}>;
 export type FranchiseErrorKey=keyof typeof FRANCHISE_ERRORS;
 // 게이트 사유·경고 코드의 한국어 설명. REASON_CODES ∪ WARNING_CODES와 정확히 같은 키(테스트 고정).
@@ -285,7 +291,12 @@ export type LeadRecord={id:string;brandId:string;systemCode:string;stage:LeadSta
  receivedAt?:string;receivedPrecision?:'time'|'day';importId?:string;imports?:LeadImportRef[];
  // 대표 결정 35: 적격 판정 이력(추가만). 없으면 판정 없음.
  qualifications?:LeadQualification[];
+ // 트랙 R R9a: 정보 요청(가맹희망자 활동)과 사람이 직접 보낸 뒤 남긴 발송 기록(추가만, 값·본문 없음). 템플릿 id·판·분류·매체·요청 id만.
+ infoRequests?:LeadInfoRequest[];messageLogs?:LeadMessageLog[];
  version:number;createdAt:string;createdBy:ActorSnapshot;updatedAt:string};
+// R9a 정보 요청·발송 기록 행(판정은 lib/franchise-nurture.ts. 이 모듈은 순수 리드 모듈이라 그 모듈을 import하지 않고 모양만 둔다).
+export type LeadInfoRequest={id:string;purpose:string;at:string;by:{id:string;role:string}};
+export type LeadMessageLog={id:string;templateId:string;templateVersion:number;classification:string;medium:string;requestId:string|null;at:string;by:{id:string;role:string}};
 export type EligibilityCriteria={version:number;budgetBands:readonly string[];regions:readonly string[];timingBands:readonly string[]};
 
 // ── 정규화 ──
@@ -348,7 +359,7 @@ export function retentionUntil(lead:Pick<LeadRecord,'contactState'|'contractedAt
 }
 export function isContactExpired(lead:Pick<LeadRecord,'contactState'|'contractedAt'|'closedAt'|'lastActivityAt'>,now:string){const until=retentionUntil(lead);return until!==null&&Date.parse(until)<=msOf(now)}
 // 가맹희망자와 관련된 활동만 마지막 활동 시각을 바꾼다. 열람·찾기·담당 지정·내보내기·철회·정보주체 요청·차단된 전이·파기는 바꾸지 않는다(내부 조작이 보존 기한을 늘리지 않게).
-export const ACTIVITY_EVENTS:readonly LeadEventType[]=Object.freeze(['created','stage_changed','reopened','contact_updated','task_updated','source_noticed','marketing_given','evidence_recorded']);
+export const ACTIVITY_EVENTS:readonly LeadEventType[]=Object.freeze(['created','stage_changed','reopened','contact_updated','task_updated','source_noticed','marketing_given','evidence_recorded','info_requested']);
 // 광고성 정보 수신 동의 2년 재확인(정보통신망법 관행, 휴리스틱). 발송 기능은 없고 할 일로만 띄운다.
 export function marketingRecheckDue(lead:Pick<LeadRecord,'marketing'>,now:string){return lead.marketing.status==='given'&&!!lead.marketing.at&&msOf(now)-msOf(lead.marketing.at)>=MARKETING_RECHECK_DAYS*DAY}
 export const subjectDueAt=(receivedAt:string)=>iso(msOf(receivedAt)+DSR_DUE_DAYS*DAY);
@@ -385,7 +396,7 @@ export function leadActions(who:Who,lead:ActionLead,enabled:boolean):string[]{
  const admin=isAdminRole(who.role),present=lead.contactState==='present',closed=lead.stage==='closed',out:string[]=[];
  if(present&&canReveal(who,lead))out.push('reveal_contact');
  if(present&&canEditLead(who,lead)&&(enabled||admin))out.push('update_contact');
- if(present&&enabled&&canEditLead(who,lead))out.push('update_task','add_lead_codes','qualify_lead');
+ if(present&&enabled&&canEditLead(who,lead))out.push('update_task','add_lead_codes','qualify_lead','add_info_request','log_lead_message');
  if(allowedMoves(who,lead,enabled).length)out.push('move_stage');
  if(admin&&enabled&&present&&closed)out.push('reopen_lead');
  if(enabled&&present&&lead.assigneeId===null)out.push('claim_lead');

@@ -1007,7 +1007,7 @@ R4a가 `lib/franchise-rules.ts`에 만들고 R2·R4b가 쓴다. 레코드는 `{i
 
 - R9a 수용 기준: 초안에는 자리표시만 있고 이름·연락처가 없다. 모델 입력은 템플릿 목적·분류·브랜드 정체성·확정 사실·퍼널 집계뿐이다. 분류는 필수다: '요청받은 1회 정보'는 요청 이벤트와 연결돼야 하고 요청당 1회다. 이 분류에는 LR-2(Q8) 회신 전까지 'COLLECTIVE 해석 · 법률 자문 아님' 표지를 붙이고, 회신이 다르면 분류 규칙을 코드 PR로 고친다. 설명회 초대·혜택·재상담 유도·뉴스레터는 광고성으로 분류한다. R9a는 (광고)·전송자 명칭·무료 수신거부 문구가 고정된 광고성 템플릿의 저장까지만 받고, 광고성 수동 발송 기록은 R9b 전에는 409다. 알림톡 템플릿은 정보성 전용이다. R2 hard_block이 든 초안은 거부된다. 앱은 수동 발송 기록(매체·분류·템플릿 버전·서버 시각·행위자)만 받고, 외부 발송 API를 부르는 코드는 0줄이다(정적 검사). HERMES 실패·타임아웃은 기존 복구 경로를 따르고 부분 본문을 저장하지 않으며, 같은 요청은 멱등 키로 1건이다.
 - R9a 소유 파일: 새 `lib/nurture.ts`·`lib/nurture-server.ts`, `lib/usage-ledger.ts`(`UsageKind`에 'nurture', `:7`), `lib/token-budget.ts`(예약 종류, `:15`), `lib/record-kinds.ts`, `tests/nurture.test.mjs`. 예산 가드는 그대로 쓴다.
-- R9a 분할(2026-09-27): R9a-1은 순수 모듈과 테스트다(런타임 연결 없음). R9a-2는 초안 작성(HERMES 1회, 기존 복구 경로)·템플릿 기록·정보 요청·수동 발송 기록 서버와 API다. R9a-3은 화면과 로컬 E2E다. R9a-2는 모델 전송 경로가 새로 생기므로 `docs/DATA-PROCESSING.ko.md` 짝 PR을 레인 A가 받아들인 뒤 병합한다.
+- R9a 분할(2026-09-27): R9a-1은 순수 모듈과 테스트다(런타임 연결 없음). R9a-2는 초안 작성(HERMES 1회, 기존 복구 경로)·템플릿 기록·정보 요청·수동 발송 기록 서버·API·화면·로컬 E2E다(처음 나눈 R9a-3 화면을 합쳤다). R9a-2는 모델 전송 경로가 새로 생기므로 `docs/DATA-PROCESSING.ko.md` 짝 PR을 레인 A가 받아들인 뒤 병합한다.
 - R9a-1 구현 기록(2026-09-27, passed · mocked):
   - `lib/franchise-nurture.ts`(`fr-nurture@2026-09-27.1`). 소유 파일 이름은 레인 R 범위에 맞춰 `lib/franchise-nurture*`로 바꿨다(계획의 `lib/nurture*` 대신).
   - 목적 7개: 정보성 3개(요청 자료 회신·정보공개서 받는 법·가맹 절차)는 '요청받은 1회 정보', 광고성 4개(설명회·견학 초대·창업 혜택·재상담·소식지). 매체는 이메일·문자·알림톡이고, 알림톡은 정보성 전용이다. 분류 표지는 'COLLECTIVE 해석 · 법률 자문 아님'(LR-2 Q8 전)이다.
@@ -1015,6 +1015,14 @@ R4a가 `lib/franchise-rules.ts`에 만들고 R2·R4b가 쓴다. 레코드는 `{i
   - 모델 제출 조립: 입력 JSON 키는 목적·분류·매체·브랜드(이름·업종·소개·말투)·확정 사실 줄 12개까지뿐이다. 개인정보가 든 칸·줄은 뺀다. 리드·연락처·가명 코드·시스템 코드 인자가 없다. 퍼널 집계는 넣지 않았다(초안에 쓸 곳이 없어 전송 면을 줄임, 계획과 다름). 출력은 JSON 한 개만 읽고, 형식이 틀리면 부분 본문 없이 null이다.
   - 정보 요청(정보성 목적만, 리드당 50)과 수동 발송 기록 판정. 발송 기록 순서는 스위치 → 광고성 409(R9b 전) → 매체 일치 → 이 리드의 요청 기록 필수·요청당 1회 409 → 연락처 없음 409 → 템플릿을 지금 규칙으로 다시 판정 → 한도다. 발송 API는 0줄이다(정적 검사).
   - 검사: `franchise-nurture` 38. 변이 13개를 모두 잡았다.
+- R9a-2 구현 기록(2026-09-27, passed · mocked, 로컬 E2E real Chromium):
+  - 초안: `lib/nurture-draft.ts`(모델 경로 루트라 `lib/franchise-*` 가맹 모듈 규칙 밖에 두었다. 가맹 모듈은 모델 경로를 import하지 않는다는 기존 검사를 지키려는 것이다). HERMES 1회, 브리프 초안과 같은 복구 경로(접수 → 조회·복구·중지, 5xx·429는 확인 불가로 두고 같은 멱등 키로 복구). 보낸 확정 사실 줄은 이 브랜드의 확정·유효 사실이고, 지점 사실·수익 항목·현재 버전이 아닌 정보공개서 근거 사실은 뺀다. 완료 출력은 JSON이고 템플릿 검사(자리표시·개인정보·광고성 고정 요소·R2)를 통과할 때만 결과를 저장한다. 형식 오류·막힘은 본문 없이 사유 코드만 남긴다. 사용량 종류 `nurture`, 토큰 예산 예약 종류 `nurture`.
+  - 서버: `lib/franchise-nurture-server.ts`(FORBIDDEN). 작업은 `nurture_draft_start`·`nurture_draft_poll`(가맹 잠금 밖, 초안 id 멱등)·`nurture_template_save`(모든 역할, 검사 통과만 새 판)·`nurture_template_retire`(대표·관리자, 스위치 꺼져도 됨), 보기는 `nurture`다. 새 kind는 `franchise_message_template`·`franchise_nurture_draft`다(계획의 `lead_message_template`·`lead_message_log` 대신). 가맹 kind는 `franchise_*` 이름이어야 보존 축을 선언할 수 있다(record-kinds 검사).
+  - 리드 작업(`lib/franchise-server.ts`): `add_info_request`(정보 요청, 가맹희망자 활동이라 마지막 활동 시각을 옮긴다)와 `log_lead_message`(사람이 보낸 뒤의 기록). 담당 직원은 자기 리드만 한다. 기록은 리드 행 안(`infoRequests`·`messageLogs`, 추가만)에 두어 리드 삭제·파기와 함께 간다. 이벤트 `info_requested`·`message_logged`와 감사에는 코드·id만 남는다. 입력 이름은 `infoRequestId`다(API 요청 번호 `requestId`와 겹치지 않게).
+  - 화면: 가맹 탭 '너처링'(`app/franchise-nurture-panel.tsx`). 첫 줄은 '앱은 메시지를 보내지 않습니다'이고, AI 초안 만들기·복구·중지, 자리표시 안내, 템플릿 저장·복사·폐기가 있다. 리드 상세 '정보 요청·발송 기록'(`app/franchise-lead-nurture.tsx`)에서 광고성 템플릿 선택지는 막혀 있고, 답한 요청은 다시 고를 수 없다.
+  - 검사: `franchise-nurture-route` 34(모의 HERMES로 제출 본문·제출 원문 행·콘솔에 리드 유래 문자열 0건, 수익·지점 사실 미전송, 멱등, 중복 409, hard_block·형식 오류는 본문 없이 실패, 503 → 확인 불가 → 복구, 요청당 1회, 광고성 409, 역할·스위치·감사), `franchise-nurture` 38, `franchise-model-boundary` 33(초안 모듈은 모델 루트이고 가맹 리드 모듈에 닿지 않음), `record-kinds` 52. 연결 변이 14개를 모두 잡았다.
+  - 로컬 E2E(`e2e/franchise-recruit.spec.ts` R9a, real Chromium·로컬 D1 / mocked 인증, 2/2): 탭 안내, HERMES 연결 없음 409, 정보성·광고성 템플릿 저장, 리드 상세 정보 요청 → 보낸 뒤 기록 → 같은 요청을 다시 고를 수 없음, 광고성 선택지 막힘, 앱 밖 요청 0건.
+  - not_run: 실제 HERMES 초안(운영 게시·스위치 뒤), 실제 발송(앱은 보내지 않는다). DATA-PROCESSING 2.1·3.5·DP-10 짝 PR #238은 레인 A 검토 통과(조건: 3.5 정보 요청 행에 실제 요청만 기록·감사 확인 문장, 반영).
 - R9b(조건부): 매체별 동의(R8) 확인, 첫머리 (광고), 전송자 명칭·연락처, 무료 수신거부. 21:00~08:00 KST 발송 기록 거부(전자우편 야간 컷오프는 법정 요건이 아니라 COLLECTIVE 휴리스틱이다), 카카오 광고성은 20:50 컷오프. '(광/고)' 같은 변칙 표기 거부. 철회 리드의 광고성 기록 409. 처리 결과 통지 14일·2년 재확인 할 일.
 
 ### R10 공개 수집 (조건부)

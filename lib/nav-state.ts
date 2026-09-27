@@ -12,7 +12,7 @@ export type StoreTab=typeof storeTabs[number];
 export const brandTabs=['overview','sources','facts','intake','research'] as const;
 export type BrandTab=typeof brandTabs[number];
 // 가맹 모집 화면의 탭(app/franchise-panel.tsx, 트랙 R): 리드·정보주체 요청·모집 자료·행사(R15a-2b)·유입·비용(R5c)·설정. 설정 탭은 대표·관리자에게만 보이고, 직원에게는 리드 탭으로 보인다(서버도 403).
-export const franchiseTabs=['leads','requests','assets','events','inflow','report','benchmark','settings'] as const;
+export const franchiseTabs=['leads','requests','assets','events','inflow','report','benchmark','nurture','settings'] as const;
 export type FranchiseTab=typeof franchiseTabs[number];
 export type NavTab=LearningTab|StoreTab|BrandTab|FranchiseTab;
 export type NavState={view:NavView;campaign?:string;brand?:string;store?:string;tab?:NavTab};
