@@ -159,13 +159,13 @@ const CONTRACT_MOMENT=re('(?:계약|체결|서명|사인)\\s?(?:을\\s?|를\\s?)
 const BEFORE_MOMENT=re('(?:계약|체결|계약일)[^.\\n]{0,12}?(?:\\d+|열|보름|이)\\s?(?:일|주)[^.\\n]{0,6}?(?:전|이전|앞)|(?:계약|체결)\\s?(?:전에|전까지|이전에|하시기\\s?전)');
 const GIVE=re('(?:드리|드립|드려|교부|전달|발송|보내|수령|받|제공|설명|가져|건네|내드|사인|서명|보여|보시|훑어|들으|읽어)');
 // 다시 설명·사본 한 부 더·최종본과 비교·받은 날짜 확인·받으셨다면(가정)은 처음 주는 것이 아니다.
-const SAME_DAY_NOT=/다시|한\s?번\s?더|한\s?부\s?더|사본|최종본과|비교|재확인|날짜(?:를|가)?\s?확인|(?:셨|았|었)다면/;
+const SAME_DAY_NOT=/요약|다시|한\s?번\s?더|한\s?부\s?더|사본|최종본과|비교|재확인|날짜(?:를|가)?\s?확인|(?:셨|았|었)다면/;
 function sameDayDocument(s:string):boolean{
  return !SAME_DAY_NOT.test(s)&&(DOC_RE.test(s)||/서류|수령\s?확인서/.test(s))&&CONTRACT_MOMENT.test(s)&&GIVE.test(s)&&!BEFORE_MOMENT.test(s)&&!LONG_RE.test(s)&&!DENY_RE.test(s);
 }
 // 대기기간을 면제·해당 없음·안 지켜도 되는 것으로 적는다('대기기간은 동의서에 서명하시면 면제됩니다', '14일 대기기간 규정은 해당 없습니다').
 const WAIVE=re('(?:면제|해당\\s?(?:사항\\s?)?(?:이\\s?)?없|해당\\s?(?:되지|안\\s?되)|적용\\s?(?:대상이\\s?)?(?:아니|안\\s?됩|되지\\s?않)|안\\s?지켜도|지키지\\s?않아도|필요\\s?없다고\\s?하시면|생략(?:됩|해\\s?드|하셔도|가능)|신경\\s?(?:안|쓰지\\s?않)|포기(?:하시면|하셔도|각서|확인서|동의서)|(?:면제|생략|포기)\\s?(?:확인서|동의서|각서)|가이드\\s?라인|강제(?:는|가)?\\s?(?:아니|아닙)|강제성(?:이|은)?\\s?없|예외로\\s?(?:처리|해\\s?드|적용|진행)|(?:권고|권장|참고|선택)\\s?사항|선택\\s?가능|[Oo]ptional|not\\s?required|불필요|적용\\s?(?:을\\s?)?(?:안\\s?받|받지\\s?않)|대상이\\s?(?:아닙|아니)|대상\\s?(?:에서\\s?)?제외|생략(?:합니다|해요|됩니다)|재량)');
-const WAIVE_DENIED=re('(?:면제|생략|포기|단축|예외)\\s?(?:(?:는|은|가|이|도|를|을)\\s?)?(?:되지|할\\s?수|하실\\s?수|될\\s?수|해\\s?드릴\\s?수|받을\\s?수)\\s?(?:는\\s?)?(?:않|없)|예외\\s?없이|면제\\s?(?:대상이\\s?)?아닙|(?:면제|생략)(?:는|은)\\s?없|해당\\s?없는\\s?경우는\\s?없|(?:재량|가이드\\s?라인|권고\\s?사항|권장\\s?사항|참고\\s?사항|선택\\s?사항)(?:이|은|는)?\\s?(?:아닙|아니)|강제\\s?(?:사항|규정)?(?:입니다|이에요)');
+const WAIVE_DENIED=re('(?:면제|생략|포기|단축|예외)\\s?(?:(?:는|은|가|이|도|를|을)\\s?)?(?:되지|할\\s?수|하실\\s?수|될\\s?수|해\\s?드릴\\s?수|받을\\s?수)\\s?(?:는\\s?)?(?:않|없)|예외\\s?없이|면제\\s?(?:대상이\\s?)?아닙|(?:면제|생략)(?:는|은)\\s?없|해당\\s?없는\\s?경우는\\s?없|(?:재량|가이드\\s?라인|권고\\s?사항|권장\\s?사항|참고\\s?사항|선택\\s?사항)(?:이|은|는)?\\s?(?:아닙|아니|아닌)|강제\\s?(?:사항|규정)?(?:입니다|이에요)');
 function waiver(s:string):boolean{
  return WAIT_RE.test(s)&&WAIVE.test(s)&&!WAIVE_DENIED.test(s)&&!re(CAUTION_IMP).test(s)&&!/(?:위반|불법|위법|믿지\s?마|속지\s?마|사실과\s?다)/.test(s);
 }
@@ -182,11 +182,13 @@ const LAYOUT=/[→⇒>:=|/①②③④⑤⑥⑦⑧⑨⑩]|D\s?[+-]|week|days?|co
 const WAIT_CELL=re(`${WAIT_TERM}\\s?[:=|]\\s?`);
 // 받은 뒤 순서('서류 받고 이틀 생각해 보시고 … 계약금', '오늘 받고 모레 서명')도 모양으로 본다. 오픈 일정('D+30 오픈')은 기간이 아니다.
 const SEQUENCE=/받고|받으시고|수령\s?(?:후|하시고|하고)|받은\s?(?:후|뒤|다음)|교부\s?후|전달\s?후/;
+// 받은 뒤 순서는 행위를 제안하는 말('그때 계약금 받겠습니다', '모레 서명하시죠')일 때만 본다. 묻는 말·경고·다른 일(계약 상담·조건 설명·결정)은 아니다.
+const PROPOSE=/(?:계약금|가맹비|가맹금)\s?(?:을|를)?\s?받겠|(?:서명|계약|사인|체결)(?:하시죠|해요|합니다|하세요|하시면\s?됩니다|하시면\s?돼요|진행합니다)|입금(?:해\s?주세요|하시면)|도장\s?(?:찍|주)/;
 const OPENING=/D\s?\+\s?\d{1,3}\s?(?:일\s?)?(?:그랜드\s?)?(?:오픈|개점|착공|인테리어|교육)/g;
 function shortPeriod(raw:string):boolean{
  const s=raw.replace(OPENING,' ');
  const docish=DOC_RE.test(s)||WAIT_RE.test(s)||/서류/.test(s);
- if(!docish||!(/(?:계약|체결|서명|사인|contract|sign|가맹금|가맹비)/.test(s)||WAIT_CELL.test(s))||!(LAYOUT.test(s)||SEQUENCE.test(s))||LONG_RE.test(s)||DENY_RE.test(s))return false;
+ if(!docish||!(/(?:계약|체결|서명|사인|contract|sign|가맹금|가맹비)/.test(s)||WAIT_CELL.test(s))||!(LAYOUT.test(s)||SEQUENCE.test(s)&&PROPOSE.test(s))||LONG_RE.test(s)||DENY_RE.test(s))return false;
  const ps=[...periodsOf(s),...relativeDays(s)];
  for(const m of s.matchAll(/D\s?-\s?(\d{1,2})(?!\d)/g))ps.push(Number(m[1]));
  if(/그\s?다음\s?날/.test(s)&&ps.length)ps.push(ps[ps.length-1]+1);
@@ -275,7 +277,7 @@ export function waitComposition(sentences:readonly ClauseSentence[],skip:(x:Clau
   // 아니라고 답한 질문(skip)은 질문 자체를 주장으로 보지 않지만, 규칙을 묻고 뒤 문장이 뒤집는 대비는 본다.
   // 날짜가 둘 이상인 문장은 날짜 계산이 정한다(기간을 채운 '교부일 10/1, 계약일 10/20'은 계약일 문서 전달이 아니다).
   const dated=datesOf(x.raw).length>=2;
-  const kind:WaitCompositionKind|null=skip(x)||framed?null:dated?(dateGapShort(x.raw)&&!DENY_RE.test(s)?'date_gap':null):sameDayDocument(s)?'same_day_document':waiver(s)?'waiver':onsiteContract(s)?'onsite_contract'
+  const kind:WaitCompositionKind|null=skip(x)||framed||/\?\s*$/.test(x.raw)?null:dated?(dateGapShort(x.raw)&&!DENY_RE.test(s)?'date_gap':null):sameDayDocument(s)?'same_day_document':waiver(s)?'waiver':onsiteContract(s)?'onsite_contract'
    :shortPeriod(x.raw)||bareShort(x.raw)?'short_period':quoteEndorse(x,next)?'quote_endorse':earlyFee(s)?'early_fee':contrastInside(x)?'contrast':null;
   const qa=!kind&&next&&/\?\s*$/.test(x.raw)?{s:x.s+' '+next.s,raw:x.raw+' '+next.raw,line:x.line}:null;
   if(qa&&!waitWarningFrame(next!)&&(qaWaiver(x,next)||earlyFee(qa.s)))return {kind:qaWaiver(x,next)?'waiver':'early_fee',sentence:qa};
