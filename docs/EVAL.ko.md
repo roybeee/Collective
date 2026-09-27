@@ -36,7 +36,7 @@
   - 금지 맥락 라벨(`prohibitiveLabel`, 측정 v2): 라벨·제목·표 머리칸을 가운뎃점·빗금·쉼표·`및`·`또는`·`과/와`로 나눈 항목이 모두 금지 항목이거나 보조 항목(이유·사유·근거·기준·목록·예시·처리·조치·조건·대안)이고 금지 항목이 하나 이상이면 그 구역 전체가 규칙 목록이다(`금지 또는 보류 표현`, `사용하지 않을 표현`). 금지 항목은 금지·보류 서술로 끝나는 항목이다(`금지`·`보류`·`삭제`·`제외`·`피할`·`쓰지/넣지/하지 않을` 뒤에 `표현`·`문구`·`항목`·`사항`·`것` 등만 올 수 있다). 금지어가 들어 있기만 한 항목(`보류 해제 후 실행`, `보류 없이 바로 진행`, `삭제 요청 대응 뒤 게시할 후기 이벤트`, `할인 제외 상품 홍보 문안`, `보류 여부`, `보류 사유`)은 금지 항목이 아니고, `대체 문구`·`대체 카피`는 실제로 쓸 카피라 보조 항목이 아니다. 괄호는 금지·보류 한 낱말(`(사용 금지)`, `(보류)`)일 때만 라벨의 일부로 보고 그 밖(`(보류 해제)`, `(근거 없는 표현 삭제)`)은 뺀다. 다른 항목과 섞이면(`채널 역할·…·금지 표현`, `추천안·나머지 안 보류 이유`, `선택/제외`) 금지 맥락이 아니다.
 - 라벨(구역 이름): 제목 줄, 또는 `**`·`__` 강조와 끝 콜론을 벗긴 뒤 문장부호 없는 30자 이하 짧은 줄(`**게시 카피**`, `게시 카피:`)이다. `라벨: 본문` 인라인 줄(`- 게시 카피: …`, `**카피 A:** …`)은 그 줄에만 라벨을 붙이고 둘러싼 라벨과 함께 본다.
 
-## 실패 유형 정의표 (v1 결정론 13종 + 카피 팩 1종 + 브랜드 말투 1종 + G3 회의·브리프 6종)
+## 실패 유형 정의표 (v1 결정론 13종 + 카피 팩 1종 + 브랜드 말투 1종 + G3 회의·브리프 6종 + 바이럴 사례 분석 4종)
 
 | ID | 정의 | 판정 규칙(fail) | not_applicable |
 |---|---|---|---|
@@ -61,6 +61,10 @@
 | `brief_contract` (G3) | 브리프 초안 형식 위반(앱이 조용히 버리는 것 포함) | `parseBrief` 거부, 질문 3개 초과, 허용 밖·중복 제안 키, 사실 후보 10개 초과 | 브리프가 아닌 항목, 원 JSON 없음 |
 | `brief_instruction_violation` (G3) | 브리프 지시 위반 | 보호 항목 제안, 사용자 입력(`ctx.briefInput`)·확정 원장에 없는 가격·날짜 단정, 금지 표현(`prohibitedTerms` ∪ 원장 거절값)의 부정 없는 사용. 대상은 요약·제안 값 | 브리프가 아닌 항목 |
 | `brand_intro_as_fact` (G3) | 미확인 브랜드 소개를 '확인 사실' 구역에 적음 | 확인·확정·검증된 사실 라벨 구역(미확인·후보·가정·가설 제외, 첫 칸이 그 라벨인 표 행 포함)의 문장이 소개문과 8자 이상 일치하고 확정 사실 값·브랜드 이름 밖이며 `[확인 필요]`·미확인 표시가 없음. 바꿔 쓴 소개문은 잡지 못한다 | 소개문 없음, role·meeting_step·brief가 아닌 항목 |
+| `viral_analysis_contract` (바이럴) | 사례 분석(L1) 출력이 운영 파서(`parseAnalysis`) 형식을 어김 | JSON 객체가 아님(코드펜스는 벗겨 읽음), 분석 7필드(facts·hook·retention·sharing·context·counterEvidence·unknowns) 중 없음·빈 값·6,000자 초과, 실험안 1~3개 밖, 실험안의 주지표가 share_rate·completion_rate·click_rate 밖이거나 가설·변수·대조·실험 문장이 비었음 | 바이럴 사례 분석이 아닌 항목 |
+| `viral_counter_evidence` (바이럴) | 반례·미확인을 비워 둠 | counterEvidence·unknowns가 비었거나 자리 채움 말뿐('없음'·'해당 없음'·'-'·'N/A' 등) | JSON이 아님(형식 채점기가 맡음) |
+| `viral_unobserved_metric` (바이럴) | 사례·관찰 기록에 없는 수치(조회수·재생·공유 등 지표 수, 백분율, 배수)를 단정 | 관찰 분석 필드(facts·hook·retention·sharing·context·counterEvidence, JSON이 아니면 원문)의 문장에서 뽑은 지표 수·`%`·`배`가 허용 값에 없음. 허용 값 = 동결 사례·관찰의 제목·범위·관찰·자막·비교 조건에 적힌 모든 수(만·천·억 환산 포함)와 views·baselineViews, 둘로 계산한 배수·백분율(반올림 0~2자리). '약·대략·정도·여·가량·수준'이 붙으면 5% 안을 같은 값으로 본다. 미확인·[확인 필요]·추정·가설·예상·예시 문장과 실험안(ideas, 앞으로 볼 목표)·unknowns는 보지 않는다 | 바이럴 사례 분석이 아닌 항목, 동결 사례 없음 |
+| `viral_prohibited_term` (바이럴) | 금지 표현을 분석·실험안 문장에 씀 | 금지 표현(`prohibitedTerms` ∪ 원장 거절값)을 부정·배제 없이 사용(공용 `usesTerm`) | 바이럴 사례 분석이 아닌 항목, 금지 표현 없음 |
 
 ### 정규화와 예방 판정 (`failure-types-v1+normalized`)
 
@@ -394,6 +398,7 @@ run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
 - 두 쪽: `active`는 레지스트리 전체 적용 버전(없으면 코드 상수, 이때 제출 본문은 `active` run과 바이트 동일), `candidate`는 후보 버전 본문을 주입한다. 역할은 `RoleRequest.prompts`, 회의 단계는 동결한 회의 스냅샷의 `snapshot.prompts.set`이다. 대상 단위 밖은 두 쪽 모두 코드 상수다. run의 `pair`에 단위·후보·active 버전 id와 두 쪽 본문을 시작 때 고정한다.
 - 결과 행: 케이스마다 두 행(`variant: active|candidate`). 순서는 케이스마다 `active→candidate`, `candidate→active`를 번갈아 쓴다. 멱등 키는 `<run>:<case>:<쪽>`으로 쪽마다 다르다.
 - 대상 단위를 쓰지 않는 케이스(다른 역할, 채널이 적용되지 않는 캠페인)는 빼고 `pair.skippedCases`에 수를 남긴다. 회의 단계는 대상 단계 담당과 스냅샷 캠페인(`meeting.snapshot.campaign`)으로 본다. 브리프는 레지스트리 단위가 없어 늘 빠진다. 남는 케이스가 없으면 400.
+- 바이럴 발견 지시(`viral.discovery`, 레인 Q 바이럴 평가 PR 1): 대상은 바이럴 사례 분석(`viral_analysis`) 케이스뿐이다. 역할·회의 단계·브리프 케이스는 빠지고 그것만 고르면 400이다. 반대로 역할·채널 단위 쌍 평가에서 바이럴 케이스는 캠페인이 없어 빠진다. 두 쪽 본문은 `PromptSet.viral`(active가 코드 상수면 `viralPractice`)이고, 코드 소유 문장(보안 문장 포함)은 두 쪽 모두 같다. 활성화는 기존 게이트(`evalRunId` 또는 `evalRunIds` 과반)로 `activate`만 쓰고 `stage`는 400이다(캠페인 없는 브랜드 단위 해석).
 - 예산: 두 제출 모두 위 3절 표의 run 예산·월 상한 검사를 제출 직전마다 받는다. 한 케이스가 한쪽만 끝나고 멈추면 게이트를 통과하지 못한다.
 - 게이트웨이: 시작 때 `gatewaySnapshot`, 끝날 때(`completed`) 같은 평가 연결로 `gatewaySnapshotEnd`를 잰다. 두 해시가 다르면 게이트 거부다.
 - 판정: `lib/eval-stats.ts` `pairGate`(순수). 비교 통계(`comparison`)는 참고용이며 게이트는 비회귀 조건(합격 수 후보 ≥ active(두 쪽 모두 모델 원문 기준 판정 — `prevention`이 있으면 그 판정. 후보 재질문으로 not_applicable이 된 채점기·후보 grader_error는 fail), 봉인 케이스 1건 이상·봉인 회귀 0, `input_budget` 후보 전부 pass, 모델·게이트웨이 동일, 전 케이스 두 쪽 완료)만 본다. 대응 30쌍 미만은 `gate.warnings`(`small_sample`)로만 알린다.
@@ -474,14 +479,14 @@ run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
 
 ### 8. 평가 종류(`kind`, Q1·G2)
 
-결론: 케이스 종류마다 처리기 하나(`lib/eval-kinds.ts`)가 요청 동결·제출 조립·채점·예약·쌍 평가 대상 캠페인을 함께 맡는다. 세 종류 모두 운영과 같은 조립을 써서 평가 제출이 운영 제출과 바이트가 같다. 역할은 운영자 선호 규칙까지, 회의 단계·브리프는 운영 가림까지 같다.
+결론: 케이스 종류마다 처리기 하나(`lib/eval-kinds.ts`)가 요청 동결·제출 조립·채점·예약·쌍 평가 대상 캠페인을 함께 맡는다. 네 종류(역할·회의 단계·브리프·바이럴 사례 분석) 모두 운영과 같은 조립을 써서 평가 제출이 운영 제출과 바이트가 같다. 역할은 운영자 선호 규칙까지, 회의 단계·브리프는 운영 가림까지 같다.
 
 - 처리기:
   - `freeze`: 저장할 요청과 담당을 정한다. 역할은 운영 요청 구조 검사이고 지금 조립기가 받아야 한다. 회의 단계·브리프는 아래 동결을 거친다(2절 표).
   - `build`: 동결 요청 → `{instructions, input}`. 쌍 평가(5절)의 쪽 본문을 어디에 주입할지도 처리기가 정한다(역할은 `RoleRequest.prompts`, 회의 단계는 `snapshot.prompts.set`, 브리프는 대상 아님).
   - `grade`: 출력 → 채점 결과(3절 '채점').
-  - `reserve`: 케이스 1건 예약(3절). 역할·브리프 50,000, 회의 단계 100,000이다. 케이스마다 바꾸는 입력은 없다.
-  - `campaignOf`: 쌍 평가 대상 캠페인. 역할은 `request.campaign`, 회의 단계는 `meeting.snapshot.campaign`, 브리프는 없음(쌍 평가 제외).
+  - `reserve`: 케이스 1건 예약(3절). 역할·브리프·바이럴 사례 분석 50,000, 회의 단계 100,000이다. 케이스마다 바꾸는 입력은 없다.
+  - `campaignOf`: 쌍 평가 대상 캠페인. 역할은 `request.campaign`, 회의 단계는 `meeting.snapshot.campaign`, 브리프·바이럴 사례 분석은 없음(바이럴은 `viral.discovery` 쌍 평가만 대상, 5절).
 - 역할 제출 조립(`roleSubmission`, `lib/role-execution.ts`): 운영 start 분기와 평가가 함께 쓴다. 동결 요청에 운영자 선호 블록(`operatorPreferences`)이 있으면 입력 끝에 블록을, 지시문 끝에 권한 문장을 붙인다. 블록이 없으면 순수 조립(`buildRoleInstruction`·`buildRoleInput`)과 바이트 동일하다.
 - 기존 케이스의 `promptHash`:
   - 선호 블록이 없는 동결본(규칙 0건 캠페인에서 캡처한 옛 케이스)은 제출 본문과 `promptHash`가 Q1 전과 같다(합성 재현, `mocked`).
@@ -509,6 +514,13 @@ run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
   - 회의 20단계 중 최대는 52,268(운영 MAPDAL 재검토)이고, 다음은 28,653(개선본)이다. 나머지는 23k 이하다.
   - 역할 최대는 23,701이라 역할 상한 32,000은 그대로 둔다.
   - 쌍 평가 게이트의 `input_budget` 전부 pass 조건은 회의 단계에 64,000으로 적용된다.
+- 바이럴 사례 분석(`viral_analysis`, 레인 Q 바이럴 평가 PR 1, 대표 승인 2026-09-27): 운영 사례 분석(L1)과 같은 조립(`lib/learning-execution.ts` `viralAnalysisSubmission`)을 쓴다. 운영 `start_analysis`도 이 순수 함수로 제출하므로 평가 제출과 운영 제출이 바이트 동일하다.
+  - 저장 요청: 운영 입력 그대로 `{brand, case, observations}`다(brand는 운영이 보낸 가린 정체성 7필드). `freeze`는 brand 객체, case의 id·brandId·scope·비지 않은 observations, observations 객체 목록을 보고 다른 키는 버린다. 형식이 틀리거나 조사 모양(`{query, requestedAt}`)이면 400. 담당은 `viral_analysis`(다른 담당 400).
+  - 조립·쪽 본문: `build`에 쪽이 없거나(active run) null(쌍 평가 active가 코드 상수)이면 코드 상수 `viralPractice`, PromptSet이면 그 `viral` 본문이다. 운영자 선호 쌍은 대상이 아니다.
+  - 캡처: `{"action":"capture_case","kind":"viral_analysis","jobId":"<학습 작업 id>"}`. 끝난(completed·failed·cancelled) 사례 분석 작업만 받는다. `jobId` 없음 400, 없는 작업 404, 조사(L2) 작업 400(입력에 요청 시각 `requestedAt`이 들어가 재현할 수 없다), 규칙 초안(L3) 400, 진행 중 409. 운영과 같은 DB 읽기(사례·관찰 기록·`learningBrand` 가림)로 다시 만들고 그때 쓴 본문(작업의 `promptVersion` 버전, 없으면 코드 상수)으로 조립해 `hermes_submission`과 비교한다. 드리프트: 지시문이 다르면 `code_changed`, 브랜드 가림 기록(`inputMasking`)이 다르면 `store_allow_changed`, 작업 뒤 사례·관찰 기록이 바뀌었으면 `context_changed`, 그 밖은 `assembly_drift`(경보). 캠페인·사실 원장은 없다(null).
+  - 채점: `lib/graders/viral.ts` `VIRAL_GRADERS`(위 정의표의 바이럴 4종 + `input_budget` 역할 상한 32,000). 채점 본문(규제 가드레일이 읽음)은 분석·실험안 문장이다. 예방 판정·정규화 건수는 없다. 역할·회의·브리프 채점 목록(GRADERS·KIND_GRADERS)에 넣지 않아 그 결과는 바뀌지 않는다. 채점 버전 태그 `+viral-analysis`.
+  - 예약: `EVAL_VIRAL_ANALYSIS_TOKEN_RESERVE` 50,000(미측정이라 역할과 같게 둔다).
+  - 테스트: `tests/viral-analysis-eval.test.mjs`(mocked: 모의 운영·평가 HERMES, raw.githubusercontent.com 스텁, 메모리 SQLite, 합성 사례. 순수 함수와 운영 제출 바이트 동일, 보안 문장 1회·위치, 처리기 freeze·build·grade, 캡처와 드리프트 6종, 채점기 통과·실패 유형, viral.discovery 쌍 평가·게이트 통과 activate·회귀 409·stage 400·역할 케이스 400, 권한 401·403).
 - 테스트: `tests/eval-meeting-brief.test.mjs`(합성 회의 12단계·교정 재시도 1회와 기준일을 고정한 브리프를 운영 경로로 만든 뒤 캡처한다. 동결본 제출이 운영 첫 제출과 바이트 동일, 다시 동결해도 같음, 저장 케이스에 가릴 값·실행 메타 없음, 드리프트 사유 5종, 예약 100,000, 단계별 채점기, 직접 저장 형식 400, 쌍 평가 주입, 발췌 상한 한계 재현. 뮤테이션 7종(가림·개선본 가림·교정 제거·채점기·브리프 가림·예약·실행 메타)을 모두 잡는다), `tests/eval-kinds.test.mjs`(종류 목록·기본 role·목록 밖 400, 예약, 선호 규칙 캠페인의 제출이 운영 start 제출과 바이트 동일, 선호 블록 없는 옛 케이스 `promptHash` 불변, `externalKey` 멱등·409. 합성 데이터, 평가·운영 HERMES fetch 스텁, `mocked`).
 
 ### 9. 합성 케이스 생성기·가져오기(G4)
