@@ -273,7 +273,7 @@ GET `/api/reflector?brandId=` → 스위치·전용 연결(호스트·상태, �
 ### 격리 프로필(DP-7)
 
 - HERMES 전용이다. OpenAI 직접 경로는 없다(`lib/reflector-server.ts`는 `openai`·`api.openai.com`을 부르지 않는다).
-- 운영 HERMES 연결을 쓰지 않는다. 대표가 **Reflector 전용 연결**(주소·키, `reflector_save_connection`)을 따로 저장한다. 운영 연결과 같은 호스트면 400이고, 키는 기존 연결과 같은 방식(`lib/server.ts` `encrypt`, AES-GCM)으로 암호화한다. 저장할 때 `/v1/capabilities`(실행·조회·중지·영구 멱등)와 인증 보호를 확인하고, 실패하면 `blocked` 상태로 저장해 실행을 막는다.
+- 운영 HERMES 연결을 쓰지 않는다. 대표가 **Reflector 전용 연결**(주소·키, `reflector_save_connection`)을 따로 저장한다. 운영 연결과 같은 호스트면 400이다. 호스트는 이름(소문자, 끝 점 제거)으로만 비교하므로 포트가 달라도 막힌다. 443이 아닌 포트는 공통 주소 검사(`lib/hermes.ts` `hermesEndpoint`)가 먼저 400으로 거부하고 `:443`은 포트 없는 주소와 같게 본다(테스트 7). 키는 기존 연결과 같은 방식(`lib/server.ts` `encrypt`, AES-GCM)으로 암호화한다. 저장할 때 `/v1/capabilities`(실행·조회·중지·영구 멱등)와 인증 보호를 확인하고, 실패하면 `blocked` 상태로 저장해 실행을 막는다.
 - 대표의 **격리 확인 기록**(`reflector_confirm_isolation`, "이 Reflector 프로필은 세션 메모리·스킬 축적이 꺼져 있고 도구(웹·브라우저·MCP)가 없습니다.")이 지금 연결에 대해 있어야 한다. 연결을 다시 저장하면 확인을 다시 해야 한다. 둘 중 하나라도 없으면 실행 409다.
 - 코드는 프로필의 메모리·도구 설정을 직접 확인하지 못한다. 대표 확인 기록에 의존한다(평가 연결의 격리 확인과 같은 한계).
 - **도구 흔적 폐기**: 조회 응답에 도구 흔적이 있으면 결과를 버리고(`discarded`) 초안을 만들지 않는다. 흔적 판정은 알려진 이름의 필드만 본다: `tool_calls`·`tools_used`·`tool_events`·`tool_results`·`tool_invocations`·`tools`(응답과 `usage`), `last_event`·`events[].type/event/name`의 tool·function_call·browser·web_search·web_extract. HERMES run 응답의 도구 호출 목록 필드는 문서화돼 있지 않아([DATA-PROCESSING 8절](DATA-PROCESSING.ko.md#8-확인-필요-목록) 4번), **흔적이 없다는 것이 도구 미사용의 증명은 아니다**.

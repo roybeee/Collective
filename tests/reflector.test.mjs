@@ -112,6 +112,7 @@ const hash=pv.data.previewHash,runReq=(token=ADMIN,extra={})=>call(token,{action
 let r=await runReq();
 check('run without a Reflector connection is 409 no_connection and sends nothing',r.status===409&&r.data.blocked==='no_connection'&&posts.length===0&&count('reflector_run')===0);
 check('the operational HERMES host cannot be the Reflector connection',(await call(OWNER,{action:'reflector_save_connection',endpoint:OPS,key:'x'})).status===400);
+for(const variant of [OPS+':443',OPS+':8443',OPS.replace('hermes.','HERMES.')+'.'])check(`the operational host is refused regardless of port, case or trailing dot (${variant})`,(await call(OWNER,{action:'reflector_save_connection',endpoint:variant,key:'x'})).status===400&&count('reflector_connection')===0);
 r=await call(OWNER,{action:'reflector_save_connection',endpoint:RF,key:'rf-secret-key'});
 const stored=rows('reflector_connection')[0];
 check('owner saves the connection after a capabilities check and the key is encrypted',r.status===200&&r.data.status==='ready'&&r.data.isolation.confirmed===false&&!JSON.stringify(stored).includes('rf-secret-key')&&stored.secret.includes('.'));
