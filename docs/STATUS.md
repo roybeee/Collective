@@ -7,6 +7,8 @@
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 - #178 · 레인 Q(Claude 29f7af 대행) · 보통 · 새 스위치 없음(`evalRunIds` 과반 게이트, 기존 `evalRunId` 경로 불변). A1 활성화의 봉인 반복 평가 전에 필요
 - #176 · 레인 R · 보통 · 새 스위치 없음(R2 판정 보기가 보이지 않는 문자 Cc·Co·Cn·Zl·Zp를 지움, `fr-claims@2026-09-27.1`, 테스트 문자열 5,058개 중 판정 변화는 이 문자로 끊은 우회 2건이고 둘 다 막힘, GRADERS_VERSION 그대로)
+- #180 · 레인 R · 보통 · 새 스위치 없음(R2 3차-a 대기기간 절 단위 구성 판정, `fr-claims@2026-09-27.2`, 가맹 프로필 브랜드의 캡션·발행·모집 자료 판정에서 오기재 차단이 늘고 경고 인용 오탐이 줆, GRADERS_VERSION 그대로)
+- #177 · 레인 R · 보통 · 새 스위치 없음(r_franchise 기본 꺼짐)
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
 갱신: 2026-09-27 01:13 UTC
@@ -21,13 +23,13 @@
 - 다음: A3 run → A8-1 → A8-2 → A8-3 → B4 2부 → B3([순서](LANES.ko.md#레인-a-claude-a-세션)).
 
 ## 레인 R (Claude 트랙 R 세션 — 가맹 모집)
-갱신: 2026-09-27 03:47 UTC
+갱신: 2026-09-27 04:19 UTC
 - 세션: 2026-09-27부터 레인 R을 맥 로컬 Claude 세션이 이어받았다(대표 지시, 대표 외출 중). 원래 클라우드 세션의 R3c 작업은 GitHub에 없어 맥 세션이 다시 만들었다. 클라우드 세션에는 R3c 병합 뒤 최신 main에서 이어가라고 알렸다.
-- 진행 중: #176 R2 판정기 `matchView` 보이지 않는 문자(브랜치 `fix/r2-matchview-invisible`, CI 뒤 병합, 게시 대기열 요청). 판정 보기가 Cc(줄바꿈 제외, 탭·CR은 띄어쓰기)·Co·Cn·Zl·Zp를 지운다. 해제 불가 문장을 이 문자로 끊은 180건이 모두 막힌다(전 모집 범위 2건). 이모지 조합 문자는 범주 밖. `FRANCHISE_CLAIMS_VERSION` `fr-claims@2026-09-27.1`, `GRADERS_VERSION` 그대로.
-- 진행 중: R5b-1 모집 코드·비용 기록·API(맥 세션 병렬, PR 대기).
-- 최근 병합: #173 R3c `franchise` 업종 사전·`GRADERS_VERSION +franchise-industry` `merged`(`7851185`). 게시 대기열에 요청했다. 게시 뒤 운영 dev·봉인 골든 재채점으로 새 fail 0건을 확인한다(소유자 세션).
-- 최근: #175 R5a 순수 모듈 `merged`(런타임 연결 0, 게시 불필요). #163 R15a-2b 가맹 화면 탭·#161 고정 문장 권장화·R2 보완 통제 `merged`(게시 대기열에 함께 요청). #151 R3c 선행 S7 콘솔 키트 `merged`. #139·#143·#145 `published`(묶음 15).
-- 다음: `matchView` PR → R2 3차(절 단위 구성 판정, 오기재 재현율·인용 경고 오탐) → R5b-1 → R5b-2(결정 32 반영) → R5c → 트랙 R 계획 순서. R15a-3(워크스페이스 할 일)은 R6 뒤([순서](LANES.ko.md#레인-r-claude-트랙-r-세션)).
+- 진행 중: #180 R2 3차-a 대기기간 절 단위 구성 판정(브랜치 `feat/r2-3-wait-clause`, CI 뒤 병합, 게시 대기열 요청, 새 모듈 `lib/franchise-wait-clause.ts`). 문서·행위·때·틀을 따로 읽어 오기재를 `h.wait_bypass_solicitation`(해제 불가 id 그대로)에 더하고, 따와서 경고하는 문장·'아니요' 없이 막는 답은 두 대기 규칙에서 뺀다. 블라인드 2차(측정 전용 200문장): 오기재 차단 42→53/100, 바른 문장 오탐 14→6/100. `fr-claims@2026-09-27.2`, `GRADERS_VERSION` 그대로.
+- 진행 중: R3c 게시됨(묶음 18, 04:04 UTC tree `9cef246`). 운영 dev(`eab8911d`)·봉인(`284fa4be`) 재채점은 not_run이다. 권한 분류기가 운영 평가 데이터 쓰기를 거부해서 대표가 직접 실행해야 한다.
+- 최근 병합: R5b-1(#177, `ce4c2ff`) `merged`: 모집 코드·모집 비용 기록과 API(`code_issue`·`code_retire`·`spend_record`·`spend_void`, GET `codes`·`spend`), 리드 모집 코드 추가·제외(`add_lead_codes`·`strike_lead_code`), 보드 `code_conflict` 할 일과 `inflow` 필터, 새 kind `recruitment_code`·`recruitment_spend`. 검사 passed · mocked(160/160, recruitment-route 74, 변이 21/21), 운영 real 확인 not_run(게시 대기, 게시 뒤 대표가 `r_franchise`를 켠 다음 확인). #176 `matchView` 보이지 않는 문자 `merged`(`c0c8290`, 게시 대기열 요청). #175 R5a 순수 모듈 `merged`(런타임 연결 0, 게시 불필요). #173 R3c `merged`(`7851185`).
+- 최근: #163 R15a-2b 가맹 화면 탭·#161 고정 문장 권장화·R2 보완 통제 `merged`(게시 대기열에 함께 요청). #151 R3c 선행 S7 콘솔 키트 `merged`. #139·#143·#145 `published`(묶음 15).
+- 다음: R2 3차-a PR → R2 3차-b(블라인드 2차로 개발, 새 3차 세트로 측정) → R5b-2 CSV 가져오기(결정 32, 교차 파일 중복 병합 규칙은 대표 확인 필요) → R5c 화면 → 트랙 R 계획 순서. R15a-3(워크스페이스 할 일)은 R6 뒤([순서](LANES.ko.md#레인-r-claude-트랙-r-세션)).
 - 대표 결정(2026-09-26): (1) 앱 밖 모집 자료에 AI 생성물 표시를 붙이지 않는다("표시하지마", 화면도 묻지 않음, 결정 17 앱 발행 캡션은 그대로). (2) 예비창업자용 고정 안내 문장(두 대기기간 안내, 수익 질문 안내)은 권장 문구다("3번"). 템플릿은 계속 채우고, 빠지면 경고만 하고 막지 않는다. 대신 대기기간을 틀리게 적은 문장은 R2 hard_block으로 막는다.
 - 대표 승인(2026-09-26 16:15 UTC): R3c 선행 작업, 운영 D1 합성 S7 케이스 기대 업종 갱신(8건 `['fnb']` → `['franchise','fnb']`). 실행: passed · real(2026-09-27 00:30~00:40 UTC, 대표 소유자 콘솔. check `toChange` 8 → apply `changed` 8·`verified` 8 → 다시 check `already` 8, [관찰 기록](observations/2026-09-26-lane-r-s7-industry.md)).
 - 막힌 것: 법률 검토(결정 20) 보류 중이라 모든 가맹 판정은 'COLLECTIVE 휴리스틱 · 법률 자문 아님'이다. LR-1 확인 필요 추가: 소규모 본부 적용 제외 문장을 hard_block으로 막는 것.
