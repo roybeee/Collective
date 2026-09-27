@@ -120,15 +120,25 @@ function rootBraceCompleted(text:string):string|null{
  return !scan.broken&&!scan.inString&&scan.open==='{'?text+'}':null;
 }
 const parsedOrNull=(text:string|null):{value:unknown}|null=>{if(text===null)return null;try{return {value:JSON.parse(text)}}catch{return null}};
-// 모델 원문이 JSON인지(contract_json 채점). 최상위 '}' 1개 보정은 운영 읽기(contractJson)와 같게 받고(+root-brace), 끝 여분 괄호는 떼지 않아 계속 fail이다.
-export function strictContractJson(content:string){const text=unfenced(content);return !!(parsedOrNull(text)||parsedOrNull(rootBraceCompleted(text)))}
+// 채널 목록 닫기 보정(대표 결정 2026-09-27 '좁은 보정 1개 추가'): A3 종료 조건 run a81bb445·2fc1ebd8에서 수학학원 원문이 마지막 채널의 variants를 닫은 뒤
+// 채널 객체와 copyPack.channels 배열을 닫는 '}]'를 빠뜨리고 shortform·experiments를 이어 썼다. 처음 나오는 ']' 뒤 shortform·experiments 키 앞에 '}]'만 넣는다.
+// 넣은 원문이 그대로 JSON이고 shortform·experiments가 copyPack 바로 아래로 올라올 때만 돌려주고, 아니면 null이다(다른 배열 뒤에 넣어 채널 객체 안에 남는 경우·다른 잘림·최상위 '}' 보정과 겹친 원문은 거절).
+const CHANNELS_UNCLOSED=/\]\s*,\s*"(?:shortform|experiments)"\s*:/;
+function channelsCloseCompleted(text:string):string|null{
+ const m=CHANNELS_UNCLOSED.exec(text);
+ if(!m)return null;
+ const fixed=text.slice(0,m.index+1)+'}]'+text.slice(m.index+1),pack=(parsedOrNull(fixed)?.value as {copyPack?:object}|undefined)?.copyPack;
+ return pack&&('shortform' in pack||'experiments' in pack)?fixed:null;
+}
+// 모델 원문이 JSON인지(contract_json 채점). 최상위 '}' 1개 보정(+root-brace)과 채널 목록 닫기 보정(+channels-close)은 운영 읽기(contractJson)와 같게 받고, 끝 여분 괄호는 떼지 않아 계속 fail이다.
+export function strictContractJson(content:string){const text=unfenced(content);return !!(parsedOrNull(text)||parsedOrNull(rootBraceCompleted(text))||parsedOrNull(channelsCloseCompleted(text)))}
 // 완결된 JSON 객체 뒤에 닫는 괄호를 더 붙인 응답('…}]}}', R3 기준선 2026-09-25 S8 총괄 실측)은 여분 괄호만 떼고 읽는다.
-// 끝의 '}'·']'를 최대 8자까지 하나씩 떼며 다시 읽는다. 최상위 '}' 1개 누락은 위 보정으로 읽고, 그 밖의 잘린 JSON이나 뒤에 붙은 글은 그대로 형식 오류다.
+// 끝의 '}'·']'를 최대 8자까지 하나씩 떼며 다시 읽는다. 최상위 '}' 1개 누락과 채널 목록 '}]' 누락은 위 보정으로 읽고, 그 밖의 잘린 JSON이나 뒤에 붙은 글은 그대로 형식 오류다.
 const MAX_TRAILING_CLOSERS=8;
 function contractJson(content:string):unknown{
  const text=unfenced(content);
  try{return JSON.parse(text)}catch{}
- const root=parsedOrNull(rootBraceCompleted(text));
+ const root=parsedOrNull(rootBraceCompleted(text))??parsedOrNull(channelsCloseCompleted(text));
  if(root)return root.value;
  for(let end=text.length-1;end>=text.length-MAX_TRAILING_CLOSERS&&/[}\]]/.test(text[end]);end--){try{return JSON.parse(text.slice(0,end))}catch{}}
  return outputError('필수 산출물 JSON 형식이 아닙니다.');

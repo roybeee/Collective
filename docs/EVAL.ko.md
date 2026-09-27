@@ -66,7 +66,7 @@
 
 결론: 원 JSON(`raw`) 채점은 사람이 보는 정규화 렌더본을 채점하고, 정규화가 가릴 수 있는 두 결함은 정규화 전 판정을 따로 남긴다. 정규화로 가린 결함은 예방된 것이 아니기 때문이다.
 
-- 채점 버전: `GRADERS_VERSION='failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-measure+local-rerun+contract-read+channel-decision+copy-pack+voice-avoid+expected-contract+root-brace'`(`lib/graders/index.ts`). `+meeting-normalized`는 회의 단계를 운영 정규화본으로 채점하고 원문 경로 노출을 `prevention`으로 둔다(아래 `prevention`). `+r3-measure`은 R3 기준선 실측 오탐 세 가지를 고쳤다. 인용 조사 '(이)라고'는 절 경계가 아니다('‘무료 자사 채널’이라고 단정하지 않는다'). 확정·확인 뒤로 미룬 승인·결정은 보류다('구매·혜택 유도 표현은 … 확정된 뒤 별도 승인합니다'. '확정된 뒤 바로 씁니다'는 사용). 대상 앞 금지·거절 수식은 금지 대상 표시다('금지된 “당일 전량 소진” 표현이 … 포함됨'). 다음도 주장 사용이 아니다.
+- 채점 버전: `GRADERS_VERSION='failure-types-v1+normalized+measure-v2+g3+compound-labels+absent-expr+critique-clause+meeting-normalized+r3-measure+local-rerun+contract-read+channel-decision+copy-pack+voice-avoid+expected-contract+root-brace+channels-close'`(`lib/graders/index.ts`). `+meeting-normalized`는 회의 단계를 운영 정규화본으로 채점하고 원문 경로 노출을 `prevention`으로 둔다(아래 `prevention`). `+r3-measure`은 R3 기준선 실측 오탐 세 가지를 고쳤다. 인용 조사 '(이)라고'는 절 경계가 아니다('‘무료 자사 채널’이라고 단정하지 않는다'). 확정·확인 뒤로 미룬 승인·결정은 보류다('구매·혜택 유도 표현은 … 확정된 뒤 별도 승인합니다'. '확정된 뒤 바로 씁니다'는 사용). 대상 앞 금지·거절 수식은 금지 대상 표시다('금지된 “당일 전량 소진” 표현이 … 포함됨'). 다음도 주장 사용이 아니다.
   - 따옴표 안이 주의·금지 규칙 이름인 경우('‘할인 마감 문구 주의’ 버전 1').
   - '무료 여부'·'무료인가요'.
   - 대상이 주제어인 절의 '확정 사실이 아니다·확정 사실 목록에 없다·확인되지 않았다'.
@@ -94,6 +94,7 @@
   - 프로필이 없는 케이스는 맥락이 그대로라 판정이 같다. 콘텐츠 밖 역할은 계약이 프로필을 무시하므로(v1) 판정이 같다. `copy_pack_variants`는 바꾸지 않았다(v1 원문은 계속 `not_applicable`, 판정 위치는 `contract_json` 한 곳).
   - 한계: 운영 온라인 채점은 동결 요청이 없어 이 판정을 하지 않는다. 운영의 v1 답은 이미 `invalid_output`으로 거부된다.
 - `+root-brace`는 최상위 `}` 딱 1개만 빠진 원문을 운영 계약 읽기(`lib/role-output.ts`)가 채워 읽고 `contract_json`도 pass로 본다(대표 결정 2026-09-27, A3 종료 조건 run `a3634055`·`b152f1fb` 실측, [카피 팩](COPY-PACK.ko.md) A3 종료 조건 run 기록 절). 문자열 밖 괄호를 셌을 때 열린 것이 최상위 `{` 하나뿐이고 끝이 문자열 안이 아닐 때만이며, 안쪽 괄호가 열린 채·문자열 중간에서 끝났거나 뒤에 글이 붙은 원문은 계속 fail이다. 끝 여분 괄호는 운영만 떼고 읽고 `contract_json`은 계속 fail로 센다(`+contract-read`와 같다).
+- `+channels-close`는 copyPack.channels를 닫는 `}]`만 빠진 채 shortform·experiments를 이어 쓴 원문을 운영 계약 읽기가 그 자리에 `}]`를 넣어 읽고 `contract_json`도 pass로 본다(대표 결정 2026-09-27, A3 종료 조건 run `a81bb445`·`2fc1ebd8` 실측, [카피 팩](COPY-PACK.ko.md) A3 종료 조건 run 기록 절). 넣은 원문이 그대로 JSON이고 shortform·experiments가 copyPack 바로 아래로 올라올 때만이며, 다른 잘림·겹친 누락은 계속 fail이다.
 - `+contract-read`는 운영 계약 읽기(`lib/role-output.ts`)를 고쳐 렌더본이 바뀐다(R3 기준선 계약 형식 실패 2건 실측).
   - 완결된 JSON 뒤의 여분 닫는 괄호('…}]}}')는 끝의 '}'·']'를 최대 8자까지 떼고 읽는다. `contract_json`은 원문을 그대로 읽어(`strictContractJson`) 계속 fail로 센다.
   - 재질문 판정의 '없다'는 작업·요청·과업이 바로 주어일 때만 본다('요청하신 작업이 없습니다'). '… 과업이 확인되지 않은 상태에서 … 단정할 수 없습니다'는 재질문이 아니다.
