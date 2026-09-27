@@ -3,7 +3,7 @@
 > 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 운영(갱신): `b64bc06`(Sites 버전 49, tree `0d42612`, [기록](releases/2026-09-27-b64bc06.md)). 레인 R #203·#204·레인 G #206 게시 완료.
+- 운영(갱신): `8891e5e`(Sites 버전 51, tree `2be9df8`, runtime-verified, [기록](releases/2026-09-27-8891e5e.md)). 업종별 인터뷰 질문지 게시 완료.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 - #208 · 레인 R · 보통 · 새 스위치 없음(r_franchise 기본 꺼짐)
 - #231 · 레인 R · 보통 · 새 스위치 없음(r_franchise 기본 꺼짐, 공공데이터 키가 없으면 외부 호출 0, 새 kind 3개 `franchise_benchmark`·`benchmark_fetch`·`benchmark_credential`, 마이그레이션 없음). DATA-PROCESSING #232 레인 A 검토 통과
@@ -148,15 +148,15 @@
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `a8edf1043e3dc29129b6c9895911fd170dd93f83` (#155 `merged`, 묶음 16: A8 #150·#152·#153, #154, #155) | 제품 tree `5705e55c1b16c62cedfa02b49772c66216398db0`. 직전 운영 `98f2283`(tree `d11b2e1`) |
-| `origin/main` | `cf2c474` (#139 R15a-1 모집 자료 키트 순수 판정 모듈) | 운영 `8651021` 뒤 #139만 들어왔다(제품 경로 `lib/franchise-assets.ts`, 아직 연결 없음) |
-| Sites 게시 | `published`: Sites 버전 42, deployment `appgdep_6ab8195162c081918e18f189c57abf2e` succeeded(자동 게시 PR #156) | [게시 기록](releases/2026-09-27-a8edf10.md) |
-| 실행 검증 | `a8edf10`: 운영 tree 일치(real). 공개 `/api/version/public`·소유자 `/api/version` 모두 `5705e55…` | [게시 기록](releases/2026-09-27-a8edf10.md) |
+| 운영 제품 커밋 | `8891e5efa206f6c55a5b448496c4dafcd5fa2574` (#239 merged) | tree `2be9df870386717d1d45e1a1252440156d05cdcc`, 직전 Sites 50 |
+| `origin/main` | `8891e5e` (2026-09-27 15:30 UTC 확인) | 게시 목표와 동일 |
+| Sites 게시 | `published`: Sites 51, deployment `appgdep_6ab9368136e88191b83afce84ff0eee2` succeeded | [게시 기록](releases/2026-09-27-8891e5e.md) |
+| 실행 검증 | `runtime-verified`: 공개 `/api/version/public` tree `2be9df8…` 일치(real) | 2026-09-27 15:30 UTC |
 | 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` mode=email, role=owner (2026-09-25 03:30 UTC 경) |
 | Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 이번 게시도 기존 접근 설정 유지 | 게시 에이전트 보고 "기존 공개 접근 설정을 유지". 게시 뒤 접근 설정 재확인은 not_run |
 | 조사 워커 | online(lastSeen 2026-09-25 03:29 UTC, blocked 0, rotationReady true). 2026-09-24 14:15 UTC 새 설치기로 재설치(격리 점검 전부 통과) | `/api/research-worker/setup` 조회(real). gate 표시 `missing`이라 `RESEARCH_WORKER_APP_GATE=enforce`는 켜지 않는다 |
 | 열린 PR | #16 Android(draft, 제외), #131 운영 API 복구·버전 38 기록(Codex, 문서), R15a-1 모집 자료 키트 판정 모듈(브랜치 `claude/franchise-recruitment-marketing-u8cpo2`, 이 갱신과 같은 PR) | GitHub 열린 PR 목록(GitHub MCP), 2026-09-26 03:30 UTC |
-| main CI | `8651021`·`301b784`·`d59b97d` passed | GitHub Actions main 실행(`8651021` run 36219919890 success) |
+| main CI | `8891e5e` verify·e2e-smoke passed | [run 36329104104](https://github.com/roybeee/Collective/actions/runs/36329104104) |
 
 - 테스트 흔들림(2026-09-25 관찰, 제품 동작 변경 없음):
   - CI E2E `e2e/meeting-quality.spec.ts:40`('기준 자료가 바뀐 실패 회의…')가 오늘 3번 60초 시간 초과(#86 1회, #92 첫 CI 모바일·데스크톱). 매번 같은 파일 첫 테스트 직후 두 번째 테스트 첫 줄 `page.request.get('/api/workspace')`에서 멈추고, 같은 로그에 workerd `Broken pipe`가 있다. 재실행하면 통과하고 로컬 `--repeat-each 6`은 24/24 통과(재현 안 됨). 2026-09-26에도 #124 1회, #126 2회(재실행 포함) 같은 증상이었다.
@@ -343,11 +343,8 @@ PR #19(`docs/email-auth-release`, 커밋 aa06574·b242019)가 기록했으나 `m
 
 
 ## 레인 I (Codex — 브랜드 인터뷰 신규 제품 기능)
-갱신: 2026-09-27 15:12 UTC
-- 대표 신규 지시로 `feat/brand-interview-studio` 개발. 기준 `431e4175a9d8d581533979b4aa378bbcd8ff908d`. [범위·운영 인수](BRAND-INTERVIEW.ko.md).
-- 구현: 필수 8섹션/추가 24질문, 수기 저장, 파일 드롭·원본 보관, 브라우저 녹음, HERMES 섹션 후보 정리·원문 인용 검증·선택 반영, 관리자 확정 후 기존 캠페인 근거 연결.
-- 음성 전사: 로컬 STT 서비스 코드와 웹 어댑터 포함. 공유 HERMES 서버 설치 및 실제 음성 검증 `not_run`. Plaud MCP 직접 조회 미구현, Plaud TXT 첨부 가능.
-- 게시 `not_run`: LANES의 레인 A 단독 게시를 유지. 이 작업은 성장1 종료 범위에 추가하지 않는다.
-- 검사: 전체 185/185 스위트 12,701 assertions passed·mocked, 전사 큐 7 passed·mocked, typecheck/lint/build passed. 브라우저 E2E blocked(Chromium 다운로드 네트워크 실패). 다음: 브라우저 E2E·공유 서버 전사 설치 검증 → 레인 A 통합/게시 판단.
-
-- 레인 I 후속: 업종별 질문지 11종+공통 선택·저장, 답변 보존, 추천/자동 정리 업종 반영. 이전 인터뷰 스튜디오는 #233 merged 및 Sites 50 runtime-verified(별도 기록 PR #236). 이번 업종 기능은 typecheck/lint/build 및 인터뷰 40 checks passed(mocked). 전체 검사와 모바일·데스크톱 E2E는 CI에서 확인 후 게시.
+갱신: 2026-09-27 15:30 UTC
+- 인터뷰 스튜디오 #233은 Sites 50 게시, 업종별 질문지 #239는 Sites 51 게시·runtime-verified. [최신 게시 기록](releases/2026-09-27-8891e5e.md).
+- 공통 8섹션·24추가 질문 + 11업종·88질문, 선택 저장/재접속, 업종 변경 시 답변·첨부 보존, 추천과 HERMES 안내 반영. 기존 인터뷰는 공통. [범위](BRAND-INTERVIEW.ko.md).
+- 검사: 인터뷰 40 checks 및 로컬 전체 188 suites / 12,833 assertions passed(mocked). main CI verify·e2e-smoke passed(실제 Chromium/로컬 D1·R2, 인증·외부 연결 mocked).
+- 남은 것: HERMES 운영 자료 정리 확인, 공유 서버 STT 설치·실제 음성 전사 검증 not_run. Plaud 직접 MCP 연결 미구현, TXT 첨부 지원. 성장1 종료 범위에는 추가하지 않음.
