@@ -943,6 +943,51 @@ R4a가 `lib/franchise-rules.ts`에 만들고 R2·R4b가 쓴다. 레코드는 `{i
   - 저장: 원자료 해시, 요청 파라미터, 수집 시각, API 수정일, 기준년도와 추정 실적년도(확인 필요), 원 단위 값과 변환값, 0은 null. 대표자명·사업자·법인등록번호는 적재하지 않는다.
   - 벤치마크 값은 브랜드 사실로 확정할 수 없다(400). 화면에 '타 브랜드 공개 수치. 자사 예상매출 근거가 아님'을 고정한다. 파생 지표(폐점률·순증감)는 공식과 분모를 함께 보인다. 토큰 0.
 - R7b(조건부): 경쟁 모집 광고 표본과 예비창업자 장벽 신호를 경량 조사한다. 입력은 경쟁 브랜드 이름·공식 URL 허용 목록뿐이고 작성자 식별정보는 모으지 않는다(`lib/archive-research.ts:7-8`). 출처는 candidate로만 저장한다. 발동 조건은 월 토큰 상한 설정(`lib/token-budget.ts:18`의 미설정 경고 해소)과 조사 서버 재설치다.
+- R7a 구현 기록(2026-09-27, 레인 R R7a PR, 병합 전. 기준 `431e417`):
+  - 모듈
+    - 순수 모듈 `lib/franchise-benchmark.ts`: 적재 입력 검사, 공공데이터 키 형식, 응답 스키마 검사·정규화, 선별, 파생 지표. 규칙 버전 `fr-benchmark@2026-09-27.1`.
+    - 서버 `lib/franchise-benchmark-server.ts`: 작업 `benchmark_key_save`·`benchmark_key_clear`·`benchmark_load`, GET 보기 `benchmark`.
+    - 공정위 API 커넥터 `lib/connectors/ftc-franchise.ts`: fetch를 쓰는 유일한 모듈이고 가맹·벤치마크 모듈을 import하지 않는다.
+    - 브랜드 사실 확정 차단 판정 `lib/franchise-benchmark-source.ts`: `lib/brand-facts-server.ts`는 호출 1줄로 쓴다.
+    - 화면 `app/franchise-benchmark-panel.tsx`: 가맹 모집의 새 탭 '벤치마크'(V9). `lib/nav-state.ts` 탭 목록에 `benchmark`를 더했다.
+  - 권한·스위치: 키 저장·삭제·적재는 대표·관리자만 하고 직원은 403이다. 보기는 모든 역할이 쓴다. 키 저장과 적재는 `r_franchise`가 켜져야 하고(꺼지면 409), 키 삭제와 보기는 꺼져도 된다.
+  - 공공데이터 키
+    - 환경 변수가 아니라 브랜드별 `benchmark_credential` 레코드에 AES-GCM v1 암호문으로 저장한다. AAD는 레코드 id다.
+    - 키 값은 응답·감사·로그에 싣지 않는다. 인코딩된 키(`%2B` 등)는 한 번 풀어 저장한다.
+    - 키가 없으면 적재는 409이고 외부 호출은 0이다. 화면에는 '막힘'으로 보인다. 기록 상태는 not_run이라 적재 기록 행을 만들지 않는다.
+  - 호출 규율
+    - 고정 호스트 `apis.data.go.kr`의 `/1130000/FftcBrandFrcsStatsService/getBrandFrcsStats`만 부르고 리다이렉트는 거부한다.
+    - 호출당 20초, 응답 200KB, 재시도 최대 3회(지수 백오프 250·500·1000ms). 재시도는 5xx·429·네트워크 오류·호출 시간 초과에만 한다.
+    - 한 번의 적재는 전체 100초 안에 끝낸다. 쪽마다 400행씩 최대 30쪽을 읽는다.
+  - 상태와 중복
+    - 적재 상태는 success·failed·blocked·timeout이다. blocked는 `SERVICE_NOT_REGISTERED`(미승인·키 미등록·HTTP 401/403)와 `SERVICE_KEY_EXPIRED`다. 진행 중에는 '적재 중'이다.
+    - 적재마다 `benchmark_fetch` 행에 마지막 활동, 실패 원인 코드, 시도·재시도 횟수를 남긴다. '적재 중'이 5분을 넘으면 보기에서 '중단됨'으로 보인다.
+    - 같은 적재가 진행 중이면 409다(잠금 `owner+':franchise-benchmark'`). 같은 요청 번호로 다시 보내면 외부 호출 없이 기존 결과를 돌려준다.
+  - 저장(`franchise_benchmark`, 성공한 적재만)
+    - 원자료 해시(쪽별 SHA-256을 이은 SHA-256), 요청 조건, 수집 시각, API 수정일, 기준년도와 추정 실적년도(기준년도−1, 확인 필요)를 둔다.
+    - 금액은 천원 원값과 원 단위 변환값을 함께 둔다. 금액 0은 null이다.
+    - 대표자명·사업자등록번호·법인등록번호·가맹본부명은 허용 목록 밖이라 저장하지 않는다.
+  - 선별: 브랜드 이름 30개 이하, 또는 업종 검색어로 가맹점 수가 많은 30개를 고른다. 이름은 NFKC·대소문자·공백을 접어 맞춘다. 찾지 못한 이름과 30개 초과 여부를 남긴다.
+  - 브랜드 사실 확정 차단: 근거에 `franchise_benchmark:` 참조나 공정위 통계 API 주소가 있으면 사실 확정은 역할과 관계없이 400이다. 후보 제안은 그대로 받는다.
+  - 화면
+    - '타 브랜드 공개 수치. 자사 예상매출 근거가 아님'을 숫자보다 먼저 고정한다.
+    - 순증감(`신규 개점 − (계약 종료 + 계약 해지)`)과 폐점률(`(계약 종료 + 계약 해지) ÷ 연말 가맹점 수`)은 공식과 분자·분모를 함께 보인다. 분모가 20 미만이면 비율을 숨긴다(H12).
+    - LLM·모델 호출은 0이다. 판정 표기는 'COLLECTIVE 휴리스틱 · 법률 자문 아님'이다.
+  - 검사
+    - `tests/franchise-benchmark.test.mjs`(51) passed · mocked: 입력, 키, 스키마·단위·0 변환·개인 필드, 선별, 파생 지표, 커넥터 재시도·백오프·타임아웃·200KB·미승인.
+    - `tests/franchise-benchmark-route.test.mjs`(47) passed · mocked: 역할·스위치, 키 암호문, 성공·미승인·타임아웃·200KB·스키마 불일치·쪽 넘김·중복 실행·재전송, 보기, 사실 확정 400, 감사·누출.
+    - `tests/franchise-benchmark-ui.test.mjs`(18) passed · mocked: 화면 SSR 계약.
+    - 모델 경계 `tests/franchise-model-boundary.test.mjs`에 벤치마크 모듈 3개와 키·적재 행을 넣었다. 모델 전송은 0건이다(passed · mocked).
+    - 로컬 E2E(`e2e/franchise-recruit.spec.ts` 'R7a 공공 벤치마크') passed 2/2(mobile·desktop). 가상 키만 쓰고 외부 호출은 0이다(real Chromium·로컬 D1 / mocked 인증).
+  - 계획과 다르게 한 것
+    - fetch 모듈을 `lib/franchise-benchmark*`가 아니라 `lib/connectors/ftc-franchise.ts`에 두었다. 모델 경계 검사가 fetch를 쓰는 lib 모듈을 모델 경로 루트로 보고 가맹 모듈 fetch 0을 요구하기 때문이다.
+    - 0을 null로 바꾸는 것은 금액에만 한다. 건수 0(계약 해지 0건 등)은 실제 값이라 그대로 둔다.
+    - [D1] 정보공개서 목록 API는 쓰지 않는다. [D2] 쪽의 브랜드별 가맹점 현황 서비스 하나만 쓴다.
+    - API가 브랜드 이름 필터를 지원하는지 확인하지 못했다. 그래서 기준년도 전체를 쪽 상한까지 읽고 서버에서 거른다.
+    - API 수정일은 응답 `Last-Modified` 헤더로 두고, 없으면 null이다.
+    - 외부 응답 검사는 zod가 아니라 손으로 쓴 허용 목록 검사다. 테스트 런타임이 npm 패키지를 링크하지 않는다.
+  - 확인 필요: 엔드포인트, 파라미터(`yr`·`pageNo`·`numOfRows`·`resultType`), 필드 이름(`BENCHMARK_FIELDS`), 천원 단위, 기준년도 해석. 다르면 SCHEMA_MISMATCH로 실패하고 아무것도 저장하지 않는다. 고칠 곳은 `BENCHMARK_FIELDS`와 커넥터 상수다.
+  - not_run: real 적재 1회(대표가 공공데이터 키를 저장한 뒤), 운영 게시·운영 확인(게시 전).
 
 ### R8 연락처·동의 원장 (조건부)
 

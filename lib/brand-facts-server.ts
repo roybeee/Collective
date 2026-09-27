@@ -7,6 +7,7 @@ import {isEnabled} from './feature-flags';
 import {checkFranchiseFactSave,readCostDetail,readSourceRef,sameJson,versionStates,FRANCHISE_FACT_MESSAGES,type VersionLite} from './franchise-facts';
 import {hasFranchiseContext,loadFranchiseContext,staleFranchiseFactIds,type FranchiseContext} from './franchise-facts-server';
 import {GATE_DISCLAIMER} from './franchise-gates';
+import {isBenchmarkSource,BENCHMARK_FACT_BLOCKED} from './franchise-benchmark-source';
 
 // 확정·거절한 사람과 시각. 이 필드가 생기기 전에 저장된 사실에는 없다.
 export type FactDecision={confirmedBy?:{id:string;email:string|null};confirmedAt?:string};
@@ -59,6 +60,7 @@ function factInput(data:Record<string,unknown>,confirmed:unknown):Pick<BrandFact
  const source=str(data.source??'','확인 근거',3000);
  const verifiedAt=factDate(data.verifiedAt,'확인 시점'),validUntil=factDate(data.validUntil,'유효 기한');
  if(status==='confirmed'){
+  if(isBenchmarkSource(source))throw new ApiError(400,BENCHMARK_FACT_BLOCKED);
   if(confirmed!==true)throw new ApiError(400,'확인 사실로 저장하려면 명시적으로 확인하세요.');
   if(!source||!verifiedAt||!validUntil)throw new ApiError(400,'확인 근거·확인 시점·유효 기한이 필요합니다.');
   if(Date.parse(verifiedAt)>Date.now()||Date.parse(validUntil)<=Date.now())throw new ApiError(400,'확인 시점은 현재 이전, 유효 기한은 현재 이후여야 합니다.');

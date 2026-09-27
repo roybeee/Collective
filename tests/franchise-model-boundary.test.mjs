@@ -59,7 +59,7 @@ const FIXED=['lib/role-execution.ts','lib/meeting-execution.ts','lib/brief-execu
 check('the eight fixed model-path roots exist',FIXED.every(f=>existsSync(f)));
 const dynamicRoots=files.filter(f=>f.startsWith('lib/')&&f!=='lib/client.ts'&&/\.ts$/.test(f)&&(/\bfetch\s*\(/.test(readFileSync(f,'utf8'))||specifiers(readFileSync(f,'utf8')).some(s=>s==='./hermes'||s==='@/lib/hermes'||s==='../hermes')));
 check('dynamic roots cover the HERMES client and the connectors',['lib/hermes.ts','lib/execution.ts','lib/prompt-registry.ts'].every(f=>dynamicRoots.includes(f))&&dynamicRoots.some(f=>f.startsWith('lib/connectors/')));
-const FORBIDDEN=['lib/franchise.ts','lib/franchise-server.ts','lib/franchise-crypto.ts','lib/franchise-assets-server.ts','app/api/franchise/route.ts','app/franchise-panel.tsx','app/franchise-lead-detail.tsx','app/franchise-settings.tsx','app/franchise-common.tsx','app/franchise-assets-panel.tsx','app/franchise-events-panel.tsx','app/franchise-inflow-panel.tsx','app/franchise-import-panel.tsx','lib/franchise-recruitment.ts','lib/franchise-lead-import.ts','lib/franchise-recruitment-server.ts','lib/franchise-lead-import-server.ts','lib/franchise-report.ts','lib/franchise-report-server.ts','app/franchise-report-panel.tsx','lib/franchise-workspace.ts','lib/franchise-workspace-server.ts','lib/franchise-experiment.ts','lib/franchise-experiment-server.ts','app/franchise-experiment-panel.tsx','lib/franchise-cards.ts','lib/franchise-qr.ts'];
+const FORBIDDEN=['lib/franchise.ts','lib/franchise-server.ts','lib/franchise-crypto.ts','lib/franchise-assets-server.ts','app/api/franchise/route.ts','app/franchise-panel.tsx','app/franchise-lead-detail.tsx','app/franchise-settings.tsx','app/franchise-common.tsx','app/franchise-assets-panel.tsx','app/franchise-events-panel.tsx','app/franchise-inflow-panel.tsx','app/franchise-import-panel.tsx','lib/franchise-recruitment.ts','lib/franchise-lead-import.ts','lib/franchise-recruitment-server.ts','lib/franchise-lead-import-server.ts','lib/franchise-report.ts','lib/franchise-report-server.ts','app/franchise-report-panel.tsx','lib/franchise-workspace.ts','lib/franchise-workspace-server.ts','lib/franchise-experiment.ts','lib/franchise-experiment-server.ts','app/franchise-experiment-panel.tsx','lib/franchise-benchmark.ts','lib/franchise-benchmark-server.ts','app/franchise-benchmark-panel.tsx','lib/franchise-cards.ts','lib/franchise-qr.ts'];
 // 목록의 파일이 실제로 그래프에 있어야 검사가 의미 있다(이름이 바뀌면 조용히 빠지지 않게).
 check('every forbidden franchise module exists in the graph',FORBIDDEN.every(f=>graph.has(f)));
 const roots=[...new Set([...FIXED,...dynamicRoots])],hits=reachable(graph,roots,FORBIDDEN);
@@ -71,6 +71,10 @@ check('the franchise modules are in the graph',['lib/franchise.ts','lib/franchis
 // 트랙 R R15a-2a·R5b-1·R6b(DP-10): 모집 자료·행사·코드·비용·가져오기·보고 kind 문자열은 모델 루트에서 닿는 파일 어디에도 없다(레지스트리 제외). 행을 읽는 코드는 FORBIDDEN 모듈뿐이다.
 const recruitmentKinds=[...reached].filter(f=>f!=='lib/record-kinds.ts'&&/recruitment_(asset|event|code|spend|import|report)/.test(readFileSync(f,'utf8')));
 assert.deepEqual(recruitmentKinds,[],'모델 경로 파일에 모집 kind가 있습니다: '+recruitmentKinds.join(', '));passed.push('no file reachable from the model roots names a recruitment asset, event, code, spend, import or report kind');
+// 트랙 R R7a(DP-10): 공공 벤치마크 kind 문자열도 모델 루트에서 닿는 파일에 없다(레지스트리 제외). 공정위 API 커넥터는 fetch를 쓰는 루트지만 벤치마크·리드 모듈을 import하지 않는다.
+const benchmarkKinds=[...reached].filter(f=>f!=='lib/record-kinds.ts'&&/franchise_benchmark|benchmark_(fetch|credential)/.test(readFileSync(f,'utf8')));
+assert.deepEqual(benchmarkKinds,[],'모델 경로 파일에 벤치마크 kind가 있습니다: '+benchmarkKinds.join(', '));passed.push('no file reachable from the model roots names a benchmark kind');
+check('R7a: the FTC connector is a model-path root that reaches no franchise module',roots.includes('lib/connectors/ftc-franchise.ts')&&reachable(graph,['lib/connectors/ftc-franchise.ts'],FORBIDDEN).length===0);
 // ── 2) 검사기 자체 확인 ──
 const synthetic=new Map([['r.ts',['a.ts']],['a.ts',['b.ts']],['b.ts',['f.ts']],['c.ts',[]]]);
 check('checker reports a transitive path to a forbidden file',JSON.stringify(reachable(synthetic,['r.ts'],['f.ts']))==='[["r.ts","f.ts","r.ts -> a.ts -> b.ts -> f.ts"]]'&&reachable(synthetic,['c.ts'],['f.ts']).length===0);
@@ -139,10 +143,15 @@ for(const l of leads){
  judged.push(a.status,b.status);
 }
 check('QL-M1: eligibility criteria and two qualification judgments per lead are stored before the runs',criteria.status===200&&judged.every(x=>x===200));
+// 공공 벤치마크(R7a)도 심는다: 공공데이터 키(암호문)와 토큰 브랜드 이름이 든 적재 행. 적재는 외부 호출이라 행을 직접 넣는다(키 저장은 외부 호출 없음).
+const BENCH_KEY='BenchKeyToken0123456789abcdefXYZ',BENCH_BRAND='가상벤치마크브랜드토큰',BENCH_ID='bf-boundary-1';
+const keySaved=await post({action:'benchmark_key_save',brandId:brand.id,apiKey:BENCH_KEY});
+await server.recordStatement(owner,'franchise_benchmark',BENCH_ID,{id:BENCH_ID,brandId:brand.id,fetchId:BENCH_ID,dataset:'ftc_brand_frcs_stats',baseYear:2025,performanceYear:2024,request:{year:2025,brands:[BENCH_BRAND],industry:null},rows:[{brandName:BENCH_BRAND,industryLarge:'외식',industryMiddle:'제과제빵',apiYear:'2025',stores:77,newStores:7,contractEnded:1,contractTerminated:1,ownerChanged:0,avgSales:{rawThousandKrw:424242,krw:424242000},avgSalesPerArea:{rawThousandKrw:null,krw:null}}],missing:[],truncated:false,rawSha256:'a'.repeat(64),collectedAt:'2026-09-27T00:00:00.000Z',apiModifiedAt:null,ruleVersion:'x'},brand.id).run();
+check('R7a: a public data key and a benchmark row are stored before the runs',keySaved.status===200);
 const role=await runRole(execution,server,owner,roleCampaign,'cmo');
 const met=await runMeeting(meeting,server,owner,meetingCampaign,'fb-meeting');
 check('role and meeting runs completed on the mock',role.status==='completed'&&met.meeting.status==='completed'&&posted.length>1);
-const leadStrings=[...QUAL_REASONS,NAME,PHONE,PHONE_DIGITS,EMAIL,'이테스트','010-0000-0120','01000000120','lead.two@example.com',MEMO,TOKEN,...leads.flatMap(l=>[l.systemCode,l.leadId]),ASSET_TOKEN,PLACE_TOKEN,PSEUDO,assetSaved.body.result.assetId,eventSaved.body.result.eventId,CODE_LABEL_TOKEN,SPEND_TOKEN,issued.body.result.code,spent.body.result.spendId,IMPORT_NAME,IMPORT_PHONE,IMPORT_PHONE.replace(/-/g,''),IMPORT_EMAIL,PROVIDER_TOKEN,imported[0].body.result.importId,...imported[0].body.result.leadCodes];
+const leadStrings=[...QUAL_REASONS,NAME,PHONE,PHONE_DIGITS,EMAIL,'이테스트','010-0000-0120','01000000120','lead.two@example.com',MEMO,TOKEN,...leads.flatMap(l=>[l.systemCode,l.leadId]),ASSET_TOKEN,PLACE_TOKEN,PSEUDO,assetSaved.body.result.assetId,eventSaved.body.result.eventId,CODE_LABEL_TOKEN,SPEND_TOKEN,issued.body.result.code,spent.body.result.spendId,IMPORT_NAME,IMPORT_PHONE,IMPORT_PHONE.replace(/-/g,''),IMPORT_EMAIL,PROVIDER_TOKEN,imported[0].body.result.importId,...imported[0].body.result.leadCodes,BENCH_KEY,BENCH_BRAND,BENCH_ID,'424242'];
 const submissions=sql.prepare("SELECT data FROM records WHERE kind='hermes_submission'").all().map(r=>r.data);
 const leak=(texts,where)=>{const found=leadStrings.filter(s=>texts.some(t=>String(t).includes(s)));assert.deepEqual(found,[],`${where}에 리드 유래 문자열이 있습니다`)};
 leak(posted,'HERMES 제출 본문');passed.push('no posted HERMES body contains a lead-derived string');
