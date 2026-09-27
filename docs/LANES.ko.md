@@ -57,12 +57,12 @@
 2. R15a-2 모집 자료 키트 기록·API·화면. `lib/record-kinds.ts`를 고친다.
 3. 그 뒤는 트랙 R 계획 순서를 따른다(R3c `lib/graders/industry.ts`, R5 등).
 
-### 레인 Q (Codex 세션)
-1. 열린 #131(운영 API 복구 기록)·#135(Codex 한도 오판 수정)를 병합한다.
-2. A1 `channel.offline` 쌍 평가를 다시 하고, 통과하면 지정 캠페인에 stage한다. HERMES 쿼터가 복구된 뒤에 한다.
-3. R4 대표 라벨링 대기열 운영(주 20건), A/A 10건(10월 한도, 약 0.22M), R5 채택 판정 → J4 게이트 PR.
-4. 게시 뒤 24~72시간 운영 감시(`invalid_output` 비율, 5xx, Workers CPU). 결과는 자기 레인 칸에 적는다.
-
+### 레인 Q (Claude 29f7af 세션)
+- 결정: 대표 지시(2026-09-27 "이 세션이 모두 맡기"). Codex 세션이 맡던 레인 Q를 Claude 29f7af 세션이 인계받았다.
+1. 평가 연결·활성화 판정/보류: A1 새 묶음(`channel.commerce`·`channel.shortform`)의 봉인 반복 3회 과반 평가 → 대표 stage 선택 → promote, 입력 축소(C07) on/off 쌍 평가 연결과 판정, `viral.discovery`는 바이럴 분석 케이스 준비 뒤 activate.
+2. 사람 라벨 R4(주 20건)·A/A 10건(10월)·R5 채택 판정 → J4 게이트. 채택 전 AI judge는 차단 게이트로 쓰지 않는다.
+3. 게시 뒤 24~72시간 운영 감시(`invalid_output` 비율, 5xx, Workers CPU). 기준과 결과는 [레인 Q 성장1 마감 기록](observations/2026-09-27-lane-q-growth1-closeout.md)과 자기 레인 칸에 적는다.
+- #131·#135(Codex 기록)는 대체 기록으로 옮기고 닫았다.
 ## 게시 (레인 A 단독)
 - 게시는 레인 A만 요청한다. 방식은 자동 게시(`docs/PUBLISH.ko.md` 8절)다. 다른 레인은 Sites 편집기 붙여 넣기도, 게시 요청 PR도 만들지 않는다.
 - 다른 레인이 게시가 필요하면 STATUS의 **게시 대기열**에 한 줄을 적는다(병합된 PR 번호, 급한 정도, 스위치 기본값).
