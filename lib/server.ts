@@ -74,6 +74,7 @@ export async function assertNoActiveBriefs(owner:string){const drafts=await list
 // 캠페인 삭제를 막는 사유(없으면 null). 삭제와 삭제 영향 조회가 같은 판정을 쓴다. 보호 대상 kind는 lib/record-kinds.ts의 blocksDeletion이다.
 async function campaignDeletionBlock(owner:string,id:string){
  const db=database(),blocking=scopesSql('SELECT id',owner,blockingScopes(owner,id));
+ if(await db.prepare("SELECT id FROM records WHERE owner=? AND kind='meta_ads_write_operation' AND parent_id=? LIMIT 1").bind(owner,id).first())return 'Meta 생성 준비·전송 기록이 있어 삭제할 수 없습니다. 외부 객체 대조 이력을 유지하도록 캠페인을 보관하세요.';
  if(await db.prepare(blocking.sql+' LIMIT 1').bind(...blocking.binds).first())return '제작·발행 또는 주문 귀속 이력이 있어 삭제할 수 없습니다. 실행 기록을 보존하고 예약 취소는 Buffer에서 확인하세요.';
  const running=await db.prepare(`SELECT id FROM jobs WHERE owner=? AND ${campaignJobs.where} AND status IN ('starting','queued','in_progress','uncertain') LIMIT 1`).bind(owner,...campaignJobs.binds(owner,id)).first();
  if(running)return '진행 중인 AI 작업이 있습니다. 캠페인의 AI 팀에서 작업을 완료하거나 취소한 뒤 삭제해 주세요.';

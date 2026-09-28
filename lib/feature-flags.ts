@@ -4,6 +4,7 @@
 import {ApiError,database,listRecords,recordStatement,stamp} from './server';
 
 export const FEATURE_FLAGS={
+ meta_ads_paused_write:{defaultEnabled:false,description:'소유자가 별도 쓰기 권한·현재 계획/소재 검수·명시 확인을 거쳐 Meta에 PAUSED 판매 캠페인만 만든다. 광고세트·광고·예산·ACTIVE 변경 없음. 꺼도 결과 미확인 작업의 읽기 대조·연결 해제는 가능하다.'},
  online_grading:{defaultEnabled:false,description:'운영 작업물 저장 뒤 결정론 채점기를 온라인으로 돌려 기록한다(F2 온라인 채점).'},
  b1_reason_required:{defaultEnabled:false,description:'수정 요청·반려 때 사유 코드 선택을 필수로 한다(B1 판정 로그).'},
  a4_auto_attribution:{defaultEnabled:false,description:'추적 코드가 맞는 주문을 캠페인에 자동 귀속한다(A4 점포 실측).'},
