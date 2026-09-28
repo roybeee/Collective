@@ -1,0 +1,35 @@
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {testRuntime} from './helpers/runtime.mjs';
+let failAudit=false;
+const {load,sql,env}=testRuntime(async()=>{throw new Error('No external conversion transmission allowed')},{beforeRun:s=>{if(failAudit&&s.values.includes('meta_conversion_audit'))throw new Error('Injected storage failure')}});
+const server=await load('lib/server.ts'),route=await load('app/api/meta-ads/conversions/route.ts');
+let passed=0;const check=(v,n)=>{assert.ok(v,n);passed++};
+const owner='conversion-owner',headers={'oai-authenticated-user-id':owner,origin:'https://agency.test'},write=(kind,id,data,parent)=>server.recordStatement(owner,kind,id,data,parent).run();
+await write('brand','b',{id:'b'});await write('store','s',{id:'s',brandId:'b',status:'active'},'b');await write('campaign','c',{id:'c',brandId:'b',storeId:'s',status:'draft'});
+const day=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'}),order={id:'o',storeId:'s',orderDate:day,status:'paid',paidAmount:12000,refundAmount:0,version:1};
+await write('store_order','o',order,'s');await write('storefront_order_link','link',{id:'link',orderId:'o',storeId:'s',brandId:'b'},'s');
+const decode=async r=>({status:r.status,body:await r.json()}),get=(h=headers,c='c')=>route.GET(new Request('https://agency.test/api/meta-ads/conversions?campaignId='+c,{headers:h})).then(decode);
+const input={campaignId:'c',orderId:'o',action:'prepare',expectedVersion:0,expectedOrderVersion:1,confirmed:true,consentGranted:true,purpose:'meta_ads_measurement',evidenceRef:'consent-001',isTest:false,eventTime:Math.floor(Date.now()/1000)};
+const post=(b={},h=headers)=>route.POST(new Request('https://agency.test/api/meta-ads/conversions',{method:'POST',headers:{...h,'content-type':'application/json'},body:JSON.stringify({...input,...b})})).then(decode);
+check((await get({})).status===401,'anonymous');check((await get({'oai-authenticated-user-id':'other'})).status===404,'workspace isolation');check((await post({}, {...headers,origin:'https://evil.test'})).status===403,'CSRF');
+for(const patch of [{consentGranted:false},{isTest:true},{confirmed:false},{purpose:'other'},{evidenceRef:'customer@example.com'},{eventTime:Math.floor(Date.now()/1000)+3600}])check((await post(patch)).status===400,'invalid contract '+JSON.stringify(patch));
+check((await post({expectedOrderVersion:0})).status===409,'order CAS');let r=await post();check(r.status===200,'prepare');let v=r.body;const event=v.records[0];check(event.eventName==='Purchase'&&event.eventId.startsWith('purchase_')&&event.value===12000,'purchase contract');check(v.externalTransmissions===0&&v.mayTransmit===false,'zero transmissions');
+check((await post()).status===409,'ledger CAS');r=await post({expectedVersion:1});check(r.status===200&&r.body.records.length===1,'duplicate prepare stays one');
+await write('campaign','c2',{id:'c2',brandId:'b',storeId:'s',status:'draft'});r=await post({campaignId:'c2',expectedVersion:1});check(r.status===200&&r.body.records[0].eventId===event.eventId,'campaign switch cannot duplicate purchase');
+await write('store_order','o',{...order,refundAmount:1000,version:2},'s');v=(await get()).body;check(v.orders[0].issues.some(x=>x.includes('환불')),'refund immediately invalidates');check((await post({expectedVersion:1,expectedOrderVersion:2})).status===409,'refund cannot create new purchase');
+r=await post({action:'revoke',expectedVersion:1});check(r.status===200&&r.body.records[0].consent==='revoked','revoke despite order change');check(r.body.records[0].eventId===event.eventId,'revoke preserves identity');
+await write('store_order','o',order,'s');check((await post({expectedVersion:2})).status===409,'withdrawal cannot silently regrant');
+await write('store','s',{id:'s',brandId:'other',status:'active'},'other');check((await get()).status===409,'brand isolation');
+await write('store','s',{id:'s',brandId:'b',status:'active'},'b');
+await write('store_order','o2',{...order,id:'o2'},'s');check((await post({orderId:'o2'})).status===404,'manual/unlinked order blocked');
+await write('storefront_order_link','link2',{id:'link2',orderId:'o2',storeId:'s',brandId:'b'},'s');
+failAudit=true;check((await post({orderId:'o2'})).status===500,'storage failure returned');check((await get()).body.records.length===1,'atomic batch rolled back event on audit failure');failAudit=false;
+const concurrent=await Promise.all([post({orderId:'o2'}),post({orderId:'o2'})]);check(concurrent.filter(x=>x.status===200).length===1&&concurrent.filter(x=>x.status===409).length===1,'simultaneous prepare creates one event');check((await get()).body.records.length===2,'exactly one extra purchase');
+for(const status of ['cancelled','refunded']){await write('store_order','o2',{...order,id:'o2',status,refundAmount:12000,version:2},'s');check((await post({orderId:'o2',expectedVersion:1,expectedOrderVersion:2})).status===409,'non-paid blocked '+status)}
+const audit=await server.listRecords(owner,'meta_conversion_audit','s');check(audit.length===3&&audit.some(x=>x.consent==='granted'&&x.orderId==='o'&&x.version===1),'immutable consent audit survives withdrawal');
+check(!(JSON.stringify((await get()).body).includes('orderNumber')),'no external order/customer identifier in view');
+check((await post({action:'activate'})).status===400,'no activation bypass');
+env.AUTH_MODE='email';env.AUTH_ORIGIN='https://agency.test';sql.prepare('INSERT INTO auth_users(id,email,workspace_owner,role,status,created_at) VALUES(?,?,?,?,?,?)').run('workspace-owner','owner@test.invalid',owner,'admin','active',1);
+for(const role of ['admin','member']){const token=createHash('sha256').update(role).digest('hex');sql.prepare('INSERT INTO auth_users(id,email,workspace_owner,role,status,created_at) VALUES(?,?,?,?,?,?)').run(role,role+'@test.invalid',owner,role,'active',1000);sql.prepare('INSERT INTO auth_sessions VALUES(?,?,?,?)').run(createHash('sha256').update(token).digest('hex'),role,Date.now()+60000,Date.now());const h={cookie:'__Host-collective_session='+token,origin:'https://agency.test'};check((await post({},h)).status===403,'owner only '+role);check((await get(h)).body.canEdit===false,'read only '+role);}
+console.log(JSON.stringify({passed}));

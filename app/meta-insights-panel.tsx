@@ -5,6 +5,7 @@ import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {NativeSelect} from '@/components/ui/native-select';
 import {Table,TableHeader,TableBody,TableRow,TableHead,TableCell} from '@/components/ui/table';
+import {MetaCampaignPicker} from './meta-campaign-picker';
 import {metaInsightTemplate,parseMetaInsightImport,summarizeMetaInsights,type MetaAttribution,type MetaInsightReport} from '@/lib/meta-insights';
 import {metaSyncErrors,type MetaSyncState} from '@/lib/meta-sync-state';
 import s from './meta-insights-panel.module.css';
@@ -38,6 +39,7 @@ export function MetaInsightsPanel({campaignId}:{campaignId:string}){
      <div className={s.columns}><label htmlFor={id+'account'}>광고 계정 ID<Input id={id+'account'} inputMode="numeric" value={accountId} onChange={e=>{setAccountId(e.target.value);change()}} placeholder="act_를 제외한 숫자" required/></label><label htmlFor={id+'campaign'}>Meta 캠페인 ID<Input id={id+'campaign'} inputMode="numeric" value={externalCampaignId} onChange={e=>{setExternalCampaignId(e.target.value);change()}} required/></label><label htmlFor={id+'since'}>시작일<Input type="date" id={id+'since'} value={since} onChange={e=>{setSince(e.target.value);change()}} required/></label><label htmlFor={id+'until'}>종료일<Input type="date" id={id+'until'} value={until} onChange={e=>{setUntil(e.target.value);change()}} required/></label></div>
      <label htmlFor={id+'attribution'}>전환 인정 기간<NativeSelect id={id+'attribution'} value={attribution} onChange={e=>{setAttribution(e.target.value as MetaAttribution);change()}}><option value="7d_click_1d_view">클릭 7일 · 조회 1일</option><option value="1d_click">클릭 1일</option><option value="7d_click">클릭 7일</option></NativeSelect></label>
      <p className={s.help}>원화 · 서울 시간 · 노출 날짜 기준 · 최대 31일 / 500행</p>
+     {view.connection&&<MetaCampaignPicker key={view.connection.accountId+':'+view.connection.version+':'+view.connection.updatedAt} campaignId={campaignId} connection={view.connection} disabled={disabled} onSelect={value=>{setExternalCampaignId(value);setAccountId(view.connection!.accountId);change()}}/>}
      {view.connection&&<Button type="button" onClick={()=>void action('sync')}><RefreshCw size={16}/>{busy?'처리 중…':'연결한 계정에서 수집'}</Button>}
      <div className={s.import}><div><b>CSV로 가져오기</b><Button type="button" size="sm" variant="ghost" onClick={download}><Download size={15}/>양식 받기</Button></div><p>광고별·일별 성과를 양식에 옮겨 주세요. 분류별 중복 행과 고객 정보는 제외하세요. 구매·구매 금액을 모르면 빈칸으로 남깁니다.</p><Input type="file" aria-label="Meta 성과 CSV" accept=".csv,text/csv" onChange={async e=>{change();setCsv('');setFileName('');const file=e.target.files?.[0];if(!file)return;if(file.size>150000){setError('파일은 150KB 이하로 나누어 주세요.');return}try{setCsv(await file.text());setFileName(file.name);setError('')}catch{setError('파일을 읽지 못했습니다. 다시 선택하세요.')}}}/>{fileName&&<span className={s.help}>{fileName}</span>}<Button type="submit" variant="outline" disabled={!csv}><Upload size={16}/>가져올 내용 확인</Button></div>
     </fieldset>
