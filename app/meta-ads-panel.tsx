@@ -6,6 +6,8 @@ import {Input} from '@/components/ui/input';
 import {Checkbox} from '@/components/ui/checkbox';
 import {RadioGroup,RadioGroupItem} from '@/components/ui/radio-group';
 import {NativeSelect} from '@/components/ui/native-select';
+import {Tabs,TabsList,TabsTrigger,TabsContent} from '@/components/ui/tabs';
+import {MetaInsightsPanel} from './meta-insights-panel';
 import {metaChecks,metaMoneyFields,metaTextFields,metaReadiness,parseMetaPlan,type MetaPlanInput,type MetaPlan} from '@/lib/meta-ads';
 import s from './meta-ads-panel.module.css';
 type View={input:MetaPlanInput;plan:MetaPlan|null;version:number;campaignVersion:number;canEdit:boolean;readiness:ReturnType<typeof metaReadiness>;links:{storeId:string|null;storeExperimentId:string|null}};
@@ -15,6 +17,9 @@ const money=(n:number|null)=>n===null?'미입력':n.toLocaleString('ko-KR')+'원
 const message=(e:unknown)=>e instanceof Error?e.message:'불러오지 못했습니다.';
 const checkHelp={inventory:'광고를 보고 구매할 고객에게 제공할 수 있는 수량입니다.',fulfillment:'배송 기간이나 예약 가능 시간, 담당자를 확인하세요.',refunds:'구매 전에 취소·환불 조건을 확인할 수 있어야 합니다.',rights:'사진, 영상, 음악과 상품의 사용 권한을 확인하세요.',measurement:'구매·문의 이후 결과를 확인할 위치를 정하세요.',consent:'고객의 동의와 데이터 처리 범위를 확인하세요.'};
 export function MetaAdsPanel({campaignId}:{campaignId:string}){
+ return <Tabs defaultValue="plan" key={campaignId}><TabsList aria-label="Meta 작업"><TabsTrigger value="plan">실행 준비</TabsTrigger><TabsTrigger value="insights">광고 성과</TabsTrigger></TabsList><TabsContent value="plan"><MetaPlanPanel campaignId={campaignId}/></TabsContent><TabsContent value="insights"><MetaInsightsPanel campaignId={campaignId}/></TabsContent></Tabs>;
+}
+function MetaPlanPanel({campaignId}:{campaignId:string}){
  const id=useId(),heading=useRef<HTMLHeadingElement>(null);
  const [view,setView]=useState<View|null>(null),[input,setInput]=useState<MetaPlanInput|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[saved,setSaved]=useState(''),[dirty,setDirty]=useState(false),[retry,setRetry]=useState(0),[step,setStep]=useState(0);
  useEffect(()=>{const controller=new AbortController();void fetch('/api/meta-ads?campaignId='+encodeURIComponent(campaignId),{signal:controller.signal}).then(async r=>{const v=await r.json() as View & {error?:string};if(!r.ok)throw new Error(v.error||'조회 실패');return v as View}).then(v=>{setView(v);setInput(v.input);setDirty(false);setError('')}).catch(e=>{if(!controller.signal.aborted)setError(message(e))}).finally(()=>{if(!controller.signal.aborted)setLoading(false)});return()=>controller.abort()},[campaignId,retry]);
@@ -77,6 +82,6 @@ export function MetaAdsPanel({campaignId}:{campaignId:string}){
    {view.plan&&view.plan.campaignVersion!==view.campaignVersion&&<p className={s.warning}>캠페인이 변경되었습니다. 현재 브리프를 확인한 뒤 준비 계획을 다시 저장하세요.</p>}
    {error&&<p role="alert" className={s.error}>{error} 입력은 유지되었습니다. 충돌이 발생했다면 최신 계획을 불러와 확인하세요.</p>}{saved&&<p role="status" className={s.success}>{saved}</p>}
   </form>
-  <div className={s.availability}><ShieldCheck size={20}/><div><h3>지금은 광고 실행을 준비하는 단계입니다</h3><p>계획 저장으로 광고가 시작되거나 비용이 발생하지 않습니다. 계정 연결·전환 측정·소재 검수·집행 승인은 다음 개발 단계에서 제공됩니다.</p></div></div>
+  <div className={s.availability}><ShieldCheck size={20}/><div><h3>계획 저장으로 광고가 시작되지 않습니다</h3><p>광고 성과 탭에서 계정을 읽기 연결하거나 성과 파일을 가져올 수 있습니다. 전환 전송·소재 검수·집행 승인은 별도 단계입니다.</p></div></div>
  </section>;
 }

@@ -1,0 +1,52 @@
+'use client';
+import {useEffect,useId,useState} from 'react';
+import {BarChart3,Download,Link2,RefreshCw,Upload} from 'lucide-react';
+import {Button} from '@/components/ui/button';
+import {Input} from '@/components/ui/input';
+import {NativeSelect} from '@/components/ui/native-select';
+import {Table,TableHeader,TableBody,TableRow,TableHead,TableCell} from '@/components/ui/table';
+import {metaInsightTemplate,parseMetaInsightImport,summarizeMetaInsights,type MetaAttribution,type MetaInsightReport} from '@/lib/meta-insights';
+import s from './meta-insights-panel.module.css';
+type View={report:MetaInsightReport|null;summary:ReturnType<typeof summarizeMetaInsights>|null;version:number;campaignVersion:number;canEdit:boolean;stale:boolean;connection:{accountId:string;brandId:string;version:number;updatedAt:string}|null};
+const money=(v:number|null)=>v===null?'미확인':(v/100).toLocaleString('ko-KR',{maximumFractionDigits:2})+'원';
+const errorText=(e:unknown)=>e instanceof Error?e.message:'처리하지 못했습니다. 다시 시도하세요.';
+export function MetaInsightsPanel({campaignId}:{campaignId:string}){
+ const id=useId(),[view,setView]=useState<View|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[success,setSuccess]=useState(''),[retry,setRetry]=useState(0);
+ const [accountId,setAccountId]=useState(''),[externalCampaignId,setExternalCampaignId]=useState(''),[since,setSince]=useState(''),[until,setUntil]=useState(''),[attribution,setAttribution]=useState<MetaAttribution>('7d_click_1d_view'),[token,setToken]=useState(''),[csv,setCsv]=useState(''),[fileName,setFileName]=useState('');
+ const [preview,setPreview]=useState<ReturnType<typeof summarizeMetaInsights>|null>(null);
+ useEffect(()=>{const abort=new AbortController();void fetch('/api/meta-ads/insights?campaignId='+encodeURIComponent(campaignId),{signal:abort.signal}).then(async r=>{const v=await r.json() as View & {error?:string;unchanged?:boolean};if(!r.ok)throw new Error(v.error||'조회 실패');return v as View}).then(v=>{setView(v);setAccountId(v.connection?.accountId??v.report?.accountId??'');if(v.report){setExternalCampaignId(v.report.externalCampaignId);setSince(v.report.since);setUntil(v.report.until);setAttribution(v.report.attribution)}setError('')}).catch(e=>{if(!abort.signal.aborted)setError(errorText(e))});return()=>abort.abort()},[campaignId,retry]);
+ const input={accountId,externalCampaignId,since,until,attribution,currency:'KRW',timeZone:'Asia/Seoul',csv};
+ async function action(action:'connect'|'disconnect'|'sync'|'import'){
+  if(!view)return;setBusy(true);setError('');setSuccess('');
+  try{const r=await fetch('/api/meta-ads/insights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...input,action,campaignId,campaignVersion:view.campaignVersion,expectedVersion:view.version,connectionVersion:view.connection?.version??0,...(action==='connect'?{token,readEnabled:true}:{})})});const v=await r.json() as View & {error?:string;unchanged?:boolean};if(!r.ok)throw new Error(v.error||'처리 실패');setView(v);if(action==='connect')setToken('');setPreview(null);setSuccess(action==='connect'?'이 브랜드의 광고 성과 읽기를 연결했습니다.':action==='disconnect'?'읽기 연결을 해제했습니다. 저장된 성과는 유지됩니다.':v.unchanged?'같은 성과가 이미 저장되어 있습니다. 중복으로 합산하지 않았습니다.':'성과를 저장했습니다. 기존 표를 이번 조회 범위로 교체했습니다.')}catch(e){setError(errorText(e))}finally{setBusy(false)}
+ }
+ function validate(){setError('');setSuccess('');try{setPreview(summarizeMetaInsights(parseMetaInsightImport(input).rows))}catch(e){setPreview(null);setError(errorText(e))}}
+ function download(){const url=URL.createObjectURL(new Blob(['\uFEFF'+metaInsightTemplate],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='collective-meta-insights.csv';a.click();URL.revokeObjectURL(url)}
+ const change=()=>{setPreview(null);setSuccess('')},disabled=busy||!view?.canEdit;
+ if(!view)return <section className={s.root} aria-label="Meta 광고 성과"><div className={s.empty}>{error?<><p role="alert">{error}</p><Button onClick={()=>setRetry(n=>n+1)}>다시 불러오기</Button></>:<p role="status">광고 성과를 불러오고 있습니다…</p>}</div></section>;
+ const summary=view.summary,r=view.report;
+ return <section className={s.root} aria-label="Meta 광고 성과" aria-busy={busy}>
+  <header className={s.header}><div><span className={s.eyebrow}>COLLECTIVE / RESULTS</span><h2>광고의 반응을 확인하세요</h2><p>Meta 성과를 가져오고, 실제 주문과 비교할 기준을 남깁니다.</p></div><Button variant="outline" disabled={busy} onClick={()=>setRetry(n=>n+1)}><RefreshCw size={16}/>새로고침</Button></header>
+  <div className={s.metrics}>{[{label:'광고비',value:summary?money(summary.spendMinor):'수집 대기'},{label:'Meta 보고 구매',value:summary?.purchases===null||!summary?'미확인':summary.purchases.toLocaleString()+'건'},{label:'Meta 보고 구매 금액',value:summary?money(summary.purchaseValueMinor):'미확인'},{label:'실제 주문 매출',value:'주문 대조 대기'}].map(x=><div key={x.label}><span>{x.label}</span><strong>{x.value}</strong></div>)}</div>
+  <p className={s.caption}>Meta 구매 금액은 광고에 귀속된 보고값입니다. 환불을 뺀 실매출·순이익·광고로 늘어난 매출과는 다릅니다.</p>
+  {view.stale&&<p className={s.warning}>캠페인이 변경된 뒤 아직 성과를 다시 확인하지 않았습니다. 현재 브랜드와 조회 범위를 확인하세요.</p>}
+  <div className={s.workspace}>
+   <div className={s.card}><div className={s.title}><BarChart3 size={20}/><h3>성과 가져오기</h3></div><form onSubmit={e=>{e.preventDefault();validate()}}>
+    <fieldset disabled={disabled} className={s.fields}><legend className={s.srOnly}>조회 범위와 파일</legend>
+     <div className={s.columns}><label htmlFor={id+'account'}>광고 계정 ID<Input id={id+'account'} inputMode="numeric" value={accountId} onChange={e=>{setAccountId(e.target.value);change()}} placeholder="act_를 제외한 숫자" required/></label><label htmlFor={id+'campaign'}>Meta 캠페인 ID<Input id={id+'campaign'} inputMode="numeric" value={externalCampaignId} onChange={e=>{setExternalCampaignId(e.target.value);change()}} required/></label><label htmlFor={id+'since'}>시작일<Input type="date" id={id+'since'} value={since} onChange={e=>{setSince(e.target.value);change()}} required/></label><label htmlFor={id+'until'}>종료일<Input type="date" id={id+'until'} value={until} onChange={e=>{setUntil(e.target.value);change()}} required/></label></div>
+     <label htmlFor={id+'attribution'}>전환 인정 기간<NativeSelect id={id+'attribution'} value={attribution} onChange={e=>{setAttribution(e.target.value as MetaAttribution);change()}}><option value="7d_click_1d_view">클릭 7일 · 조회 1일</option><option value="1d_click">클릭 1일</option><option value="7d_click">클릭 7일</option></NativeSelect></label>
+     <p className={s.help}>원화 · 서울 시간 · 노출 날짜 기준 · 최대 31일 / 500행</p>
+     {view.connection&&<Button type="button" onClick={()=>void action('sync')}><RefreshCw size={16}/>{busy?'처리 중…':'연결한 계정에서 수집'}</Button>}
+     <div className={s.import}><div><b>CSV로 가져오기</b><Button type="button" size="sm" variant="ghost" onClick={download}><Download size={15}/>양식 받기</Button></div><p>광고별·일별 성과를 양식에 옮겨 주세요. 분류별 중복 행과 고객 정보는 제외하세요. 구매·구매 금액을 모르면 빈칸으로 남깁니다.</p><Input type="file" aria-label="Meta 성과 CSV" accept=".csv,text/csv" onChange={async e=>{change();setCsv('');setFileName('');const file=e.target.files?.[0];if(!file)return;if(file.size>150000){setError('파일은 150KB 이하로 나누어 주세요.');return}try{setCsv(await file.text());setFileName(file.name);setError('')}catch{setError('파일을 읽지 못했습니다. 다시 선택하세요.')}}}/>{fileName&&<span className={s.help}>{fileName}</span>}<Button type="submit" variant="outline" disabled={!csv}><Upload size={16}/>가져올 내용 확인</Button></div>
+    </fieldset>
+    {preview&&<div className={s.preview}><b>저장 전 확인</b><p>광고비 {money(preview.spendMinor)} · 노출 {preview.impressions.toLocaleString()}회 · 클릭 {preview.clicks.toLocaleString()}회</p><p>저장하면 기존 성과 표를 이번 파일로 교체합니다. 이전 범위에 더하지 않습니다.</p><Button type="button" disabled={disabled} onClick={()=>void action('import')}>확인한 성과 저장</Button></div>}
+   </form></div>
+   <aside className={s.card}><div className={s.title}><Link2 size={20}/><h3>브랜드 광고 계정</h3></div>{view.connection?<><span className={s.connected}>읽기 연결됨</span><p className={s.account}>계정 {view.connection.accountId}</p><p className={s.help}>이 브랜드의 캠페인에서만 사용합니다. 연결 해제 후에도 저장한 성과는 남습니다.</p><Button variant="outline" disabled={disabled} onClick={()=>void action('disconnect')}>읽기 연결 해제</Button></>:<p>계정을 연결하면 파일 없이 성과를 가져올 수 있습니다. 연결 전에는 외부 조회가 꺼져 있습니다.</p>}
+    <form onSubmit={e=>{e.preventDefault();void action('connect')}}><fieldset disabled={disabled} className={s.fields}><legend className={s.srOnly}>읽기 연결</legend><label htmlFor={id+'token'}>{view.connection?'새 읽기 권한 토큰':'Meta 읽기 권한 토큰'}<Input id={id+'token'} type="password" autoComplete="off" value={token} onChange={e=>setToken(e.target.value)} maxLength={4096} required/></label><p className={s.help}>위 광고 계정의 ads_read 권한이 필요합니다. 토큰은 암호화해 저장하며 화면에 다시 표시하지 않습니다.</p><Button type="submit" variant="outline" disabled={!token||!accountId}>{view.connection?'연결 갱신':'광고 성과 읽기 연결'}</Button></fieldset></form><div className={s.boundary}><b>광고 집행과 분리되어 있습니다</b><p>이 연결은 성과 조회만 합니다. 광고 생성·예산 변경·고객 전환 전송은 실행하지 않습니다.</p></div>
+   </aside>
+  </div>
+  {!view.canEdit&&<p className={s.help}>계정 연결과 성과 저장은 대표·관리자만 할 수 있습니다.</p>}
+  {error&&<p className={s.error} role="alert">{error} 저장된 성과는 유지됩니다.</p>}{success&&<p className={s.success} role="status">{success}</p>}
+  <div className={s.results}><div className={s.title}><h3>저장된 성과</h3>{r&&<span>{r.source==='manual'?'수동 입력 · Meta 검증 없음':'Meta API 수집'}</span>}</div>{r?<><p className={s.caption}>{r.since} — {r.until} · {r.attribution} · {new Date(r.collectedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})} KST 수집</p><Table><TableHeader><TableRow><TableHead>날짜 / 광고 ID</TableHead><TableHead>광고비</TableHead><TableHead>노출</TableHead><TableHead>클릭</TableHead><TableHead>보고 구매</TableHead></TableRow></TableHeader><TableBody>{r.rows.slice(0,50).map(row=><TableRow key={row.date+row.adId}><TableCell>{row.date}<small className={s.adId}>{row.adId}</small></TableCell><TableCell>{money(row.spendMinor)}</TableCell><TableCell>{row.impressions.toLocaleString()}</TableCell><TableCell>{row.clicks.toLocaleString()}</TableCell><TableCell>{row.purchases??'미확인'}</TableCell></TableRow>)}</TableBody></Table>{r.rows.length===0&&<p className={s.empty}>해당 기간에 반환된 광고 성과가 없습니다.</p>}{r.rows.length>50&&<p className={s.caption}>전체 {r.rows.length}행 중 앞 50행 표시 · 요약에는 전체 행을 반영했습니다.</p>}</>:<div className={s.empty}><BarChart3 size={26}/><p>아직 가져온 성과가 없습니다.</p><span>계정을 연결하거나 CSV 파일을 확인해 첫 성과를 저장하세요.</span></div>}</div>
+ </section>;
+}
