@@ -3,7 +3,7 @@
 > 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 현재 운영: #263 `81070c379d427c62ba36a7c6a94b44b4e2d014a3`, Sites65, tree `06e2d226327c9992cf485be44c43d25cb60fe3c1` (2026-09-28 13:40 UTC published/runtime-verified). 성장2 최종 M2 전송·M5 집행/정지·M6 관측/승격은 `codex/growth2-finish`에서 검증 완료, 병합·게시 대기. 실제 Meta 전송·집행은 not_run.
+- 현재 운영: #264 `dabf656c4249b6e7b446276909cd8d80305caa8d`, Sites67, tree `9a5be85f566d554b57db1d992c6004e7ef2fd408`. 2026-09-29 KST merged/published/runtime-verified. 성장2 필수 개발 종료 passed, 운영 인수 blocked, 실제 전송·집행·효과 검증 not_run. [릴리스](releases/2026-09-29-dabf656.md).
 - 성장1 필수 코드 게시 대기 0건. #216·#218·#219·#225는 통합 #244로 병합·게시했다. #206·#208·#210~#214·#217·#220·#223·#231·#235·#237과 관련 문서도 현재 제품에 포함된다.
 - 기존 대기열의 미병합·404 문구는 과거 상태다. R 신규 PR #234·#241·#242·#243 및 인터뷰 게시 문서 #236·#240은 별도 소유자 작업이며 성장1 필수 잔여가 아니다.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
@@ -12,7 +12,7 @@
 갱신: 2026-09-28 (Codex: 성장2 남은 개발 종료 검증)
 - 성장2 남은 코드 구현·검토 passed. Pixel/CAPI 내구성 큐·동의/철회, 승인된 제한 집행·부모 우선 비상 정지·정산, 불변 실험 설계·무작위 배정·관측·통계 판정·규칙 승인 및 낡은 근거 차단. [요구사항별 종료 판정](GROWTH-2-CLOSEOUT.ko.md). 새 `meta_ads_capi`·`meta_ads_execution`은 기본 OFF.
 - 최종 로컬 검증 passed: 전체 227/227 suites·14,123 assertions(외부 mocked), 브라우저104 + 최종 수정 뒤 핵심8(real local Chromium/D1, 외부 mocked), 이메일 인증1(real local), 타입·빌드·프롬프트22·lint 기준선70/39. Python 워커13·설치70·맵달19 passed. 새 비즈니스 모듈10개 V8 함수 커버리지141/151=93.4%(외부 mocked; 문장/분기 커버리지 아님). 코드·보안 재검토 HIGH/CRITICAL 잔여0.
-- 소스 병합·게시 상태는 릴리스 후 별도 기록한다. 실계정/실몰 연결·고객 전송·광고 지출·효과 검증은 not_run이며 운영 접근/동의/별도 금액·기간 승인이 필요하다. 아래 과거 증분별 미구현 문구는 해당 시점의 기록이다.
+- #264 소스 병합·Sites67 게시·공개 버전 일치 검증 완료. 최종 CI verify/e2e-smoke 각각 passed(227 suites·14,123 assertions, 브라우저104+인증1). 실계정/실몰 연결·고객 전송·광고 지출·효과 검증은 not_run이며 운영 접근/동의/별도 금액·기간 승인이 필요하다. 아래 과거 증분별 미구현 문구는 해당 시점의 기록이다.
 - #262 통합은 merged/published/runtime-verified, CI verify와 e2e-smoke 각각 success(214 suites·13,851 assertions, 브라우저96+인증1, 맵달19). 후속 `codex/growth2-image-provenance`: 내부 PNG 원본 해시와 Meta 업로드 영수증 연결, PAUSED 광고세트/소재/광고 단계별 생성·알려진 ID 조회 복구, 기존 후보의 불변 사전등록 추가. 실제 업로드·Meta 생성·전환 전송·지출은 not_run. [원본](META-IMAGE-UPLOAD-M4.ko.md)·[하위 생성](META-AD-CREATE-M4.ko.md)·[사전등록](META-LEARNING-M6.ko.md).
 - 후속 로컬 검증: 218/218 suites·13,965 assertions passed(외부 mocked), 브라우저100 passed(real local Chromium/D1, 외부 mocked), 타입·빌드·프롬프트22 passed, lint 기존70 errors/39 warnings 유지. 코드·보안 검토 passed; 연결 갱신 뒤 미송신 준비 재사용과 알려진 ID 읽기 복구 회귀 수정 포함. 원격 CI 결과는 확인 후 별도 기록한다.
 - 진행: `codex/growth2-remaining`, #261 캠페인 선택 원본 통합 + M2 전환 준비·맵달 주문 어댑터 + M4 외부 구성 읽기 검증 + M5 로컬 예약 + M6 다음 실험 후보. 모바일 인터뷰 입력 유실 회귀 수정. 로컬 214/214 suites·13,851 assertions passed(외부 mocked), 타입/빌드/lint gate70·39/프롬프트22 passed. 전체 브라우저96 passed(real local Chromium/D1, 인증/외부 mocked), 이메일 인증1 passed(real local), 맵달 어댑터19 passed(real SQLite, mocked PG/HTTP). 마지막 보고 캐시 수정 뒤 전용24 assertions·타입·빌드 passed. 원격 CI/운영 게시 확인은 별도 후속.
@@ -161,15 +161,15 @@
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `3f7adbec84d2a622a5291b7e0281c32335db1d98` (#258) | tree `04d895fc3c89f10fbd78154fa8ad31a6fb6edd1c`, [릴리스](releases/2026-09-28-3f7adbe.md) |
-| `origin/main` | 게시 기준 `3f7adbe`; 이 PR은 예산 검토·서명 수신 후속 캠페인 선택 변경 | 후속 병합 뒤 게시/실행 검증을 별도로 갱신 |
-| Sites 게시 | `published`: 버전 61, deployment `appgdep_6aba1a42cef88191ae962877d1d7ee0c` succeeded | 2026-09-28 07:42:04 UTC |
-| 실행 검증 | `runtime-verified`: 공개 `/api/version/public` tree 일치 | build `2026-09-28T07:41:17.853Z`; 이번 소유자 API·프롬프트 매니페스트 재조회 not_run |
-| 인증 | 이메일 소유자 로그인 OWNER 유지, 익명/위조 헤더 C08 요청 401 | 실제 운영 UI·HTTP, 데이터 변경 없음 |
-| Sites 접근 | public, 환경 revision 4 유지 | Sites 응답·이번 작업에서 설정 변경 없음 |
-| 조사 워커 | online, lastSeen 2026-09-28 10:24:44 KST | 운영 설정 화면(real), 기존 token rotation/app gate 꺼짐 유지 |
-| 열린 별도 범위 PR | #16 Android, #234·#241·#242·#243 R, #236·#240 인터뷰 게시 기록 | 2026-09-28 GitHub 조회, 성장1 필수 잔여 아님 |
-| 제품 CI | 제품과 동일한 PR 최종 tree에서 verify·e2e-smoke passed | [run 36391990441](https://github.com/roybeee/Collective/actions/runs/36391990441), 205 suites·13,575 assertions, E2E 84 + 이메일 인증 1 |
+| 운영 제품 커밋 | `dabf656c4249b6e7b446276909cd8d80305caa8d` (#264) | tree `9a5be85f566d554b57db1d992c6004e7ef2fd408`, [릴리스](releases/2026-09-29-dabf656.md) |
+| `origin/main` | 게시 제품 `dabf656`; 이 후속은 게시 기록만 변경 | 비제품 변경은 PUBLISH 5절 기준으로 구분 |
+| Sites 게시 | `published`: 버전67, deployment `appgdep_6aba814f60f48191a6a7333d3cd270eb` succeeded | 2026-09-28 15:01:57 UTC (09-29 KST) |
+| 실행 검증 | `runtime-verified`: 공개 `/api/version/public` tree 일치 | build `2026-09-28T14:34:11.527Z` |
+| 인증 | 소유자 로그인 캠페인 열림, 새 집행 API 익명401 | 실제 운영 UI·HTTP, 데이터 변경 없음 |
+| Sites 접근 | public, 환경 revision4 유지 | 설정 변경 없음 |
+| 조사 워커 | 이번 게시에서 온라인 상태 재확인 not_run | 활성화 시 서버에서 온라인 조건을 검사 |
+| 제품 CI | 최종 동일 tree의 verify·e2e-smoke 각각 passed | [run36436910511](https://github.com/roybeee/Collective/actions/runs/36436910511), 227 suites·14,123 assertions, E2E104+인증1 |
+| 성장2 판정 | 개발 종료 passed / 운영 인수 blocked / 효과 검증 not_run | [종료 판정](GROWTH-2-CLOSEOUT.ko.md) |
 | 성장1 판정 | 개발 종료 passed / 운영 인수 blocked / 효과 검증 not_run | [최종 판정·조건부 인계](observations/2026-09-28-lane-a-growth1-closeout.md) |
 
 - 테스트 흔들림(2026-09-25 관찰, 제품 동작 변경 없음):
