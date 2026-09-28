@@ -9,7 +9,9 @@
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-28 03:09 UTC (Codex: Meta 준비 UI/UX 개선 게시)
+갱신: 2026-09-28 05:41 UTC (Codex: 성장2 Meta M1 연속 개발)
+- 대표의 잔여 개발 계속 지시에 따라 M1 계정 읽기 연결·광고 성과 수집·CSV 가져오기 구현. [범위/검증](META-ADS-M1.ko.md). 기본 외부 읽기 꺼짐, 브랜드별 연결, 기존 암호화/삭제 정책 재사용. 실제 주문 매출과 Meta 보고 매출 분리. 전용 70 assertions·타입·빌드·프롬프트·lint 기준선 passed, 전체 검사와 브라우저 CI는 진행 중. 아직 merged/published가 아니다.
+- 실제 Meta 읽기 검증은 테스트 계정/토큰 미제공으로 blocked. 이 대기가 후속 M2 주문·환불 구현을 막지 않는다. M1 다음 예약 수집·목록 선택과 M2~M6를 순차 진행한다.
 - Meta UI/UX 개선 #250 `merged`(`8e9a1c7`) · Sites 55 `published` · 공개 운영 버전 tree `runtime-verified`. 네 단계 입력, 준비 상태/다음 할 일, 실시간 기여이익·구매 수, 미완성 저장·재조회. CI 198/198 suites·13,302 assertions, E2E 76+인증 1 passed. 데스크톱/모바일 화면 검토, 실제 Meta 연동·집행 not_run. [근거](releases/2026-09-28-8e9a1c7.md).
 - 성장2 Meta 첫 증분: #247 `merged`(`5be1478`) · Sites 53 `published` · 소유자 운영 tree `runtime-verified`. [M0 구현](META-ADS-M0.ko.md): 캠페인 탭·준비도·계획 저장·버전 충돌·역할/소유자 격리·집행 차단. CI 198/198 suites·13,297 assertions, E2E 76+인증 1 passed. 운영 새 탭·v0 누락 안내·집행 비활성 확인(real, 읽기만). M0 실제 상품/계정/이벤트 계약 확정과 M1~M6는 후속, Meta 연동·지출·전환 전송·효과 검증 not_run. [게시 근거](releases/2026-09-28-5be1478.md).
 - 성장2 계획 추가(2026-09-28 대표 요청): [E-M 자사몰·콘텐츠 기반 Meta 광고](GROWTH-2-META-ADS.ko.md). M0~M6(준비도→읽기 연결→전환/원장→소재 실험→비활성 초안→승인된 제한 집행→보고/학습), G0 개발/실집행/확대 분리. 계획 추가 뒤 후속 개발 지시로 위 M0를 착수했다. 계정 연결·광고 집행 not_run. 실제 소유 범위는 LANES에 기록.
