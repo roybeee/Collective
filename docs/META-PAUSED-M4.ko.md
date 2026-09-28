@@ -28,7 +28,7 @@ Meta 작업의 **비활성 초안** 탭에서 현재 계획·소재 검수·별�
 - [Campaign](https://github.com/facebook/facebook-python-business-sdk/blob/main/facebook_business/adobjects/campaign.py): OUTCOME_SALES, PAUSED, account_id, name, configured_status, effective_status.
 - [User permissions](https://github.com/facebook/facebook-python-business-sdk/blob/main/facebook_business/adobjects/user.py): GET permissions, Permission의 permission/status 모델.
 
-공급자 모의 44 assertions: 기본 disabled·입력 차단·PAUSED·예산 미포함·영속 예약·동시 요청·결과불명·원문 비밀값 미노출·GET 대조·생성 뒤 DB 실패. D1 journal18 assertions: 소유자 격리·중복 준비·CAS·외부 ID 불변·확정 상태/캠페인 판. 운영 API 모의35 assertions: 기본 꺼짐·소유자 권한·CSRF·별도 암호화 토큰·권한/계정 확인·현재 검수·준비/생성 분리·중복/새 키 우회 거부·꺼진 상태 GET 대조. 기존 M3 모의30 회귀와 기능 스위치/삭제 정책 검사도 수행한다.
+공급자 모의 44 assertions: 기본 disabled·입력 차단·PAUSED·예산 미포함·영속 예약·동시 요청·결과불명·원문 비밀값 미노출·GET 대조·생성 뒤 DB 실패. D1 journal18 assertions: 소유자 격리·중복 준비·CAS·외부 ID 불변·확정 상태/캠페인 판. 운영 API 모의36 assertions: 기본 꺼짐·소유자 권한·CSRF·별도 암호화 토큰·권한/계정 확인·현재 검수·준비/생성 분리·중복/새 키 우회 거부·꺼진 상태 GET 대조. 기존 M3 모의30 회귀와 기능 스위치/삭제 정책 검사도 수행한다.
 
 모바일·데스크톱 E2E는 기본 꺼짐과 읽기 연결 없는 쓰기 요청 거절, 입력 보존, 탭/본문 너비를 검증한다. 외부 Meta 응답은 단위/API 검사에서만 모의했다. 실제 계정 생성/PAUSED 실검증은 권한·승인 자산 미제공으로 blocked, 실제 광고비·고객 전환 전송0.
 

@@ -71,7 +71,7 @@ check('only viral learning rules are retired and marked',JSON.stringify(kinds.fi
 check('frozen experiment summary is a retained brand record',policyOf('viral_experiment_summary')==='retain'&&kinds.find(k=>k.kind==='viral_experiment_summary').parent==='brand');
 check('store experiments and tombstones are retained',policyOf('store_experiment')==='retain'&&policyOf('deleted_campaign')==='retain');
 check('viral experiments and their revisions are deleted',policyOf('viral_experiment')==='delete'&&policyOf('experiment_revision')==='delete');
-check('execution and attributed order history blocks deletion',JSON.stringify(kinds.filter(k=>k.blocksDeletion).map(k=>k.kind).sort())===JSON.stringify(['execution_creative','execution_publication','store_order']));
+check('execution, Meta write and attributed order history block deletion',JSON.stringify(kinds.filter(k=>k.blocksDeletion).map(k=>k.kind).sort())===JSON.stringify(['execution_creative','execution_publication','meta_ads_write_operation','store_order']));
 check('blocking kinds are never deleted',kinds.filter(k=>k.blocksDeletion).every(k=>k.campaignDeletion==='retain'));
 // A4: 추적 코드는 주문 장부의 귀속 근거라 캠페인을 지워도 남긴다(코드 재사용으로 옛 인쇄물 주문이 다른 캠페인에 붙지 않게). 삭제를 막지는 않는다.
 const kindOf=kind=>kinds.find(k=>k.kind===kind);
