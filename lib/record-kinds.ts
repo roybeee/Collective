@@ -72,6 +72,7 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'learning_task',parent:'none',campaignDeletion:'delete',links:['guidance_job'],description:'학습 작업 입력. 캠페인 실험의 규칙 초안 작업만 지운다'},
  {kind:'measurement_draft',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'바이럴 실험 자동 수집 성과 초안'},
  {kind:'measurement_source',parent:'viral_experiment',campaignDeletion:'delete',links:['experiment_child'],description:'바이럴 실험 성과 반복 수집 대상'},
+ {kind:'meta_ads_creative_review',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'기존 소재·근거·실험 참조와 Meta 광고 문구 검토 판. 집행 승인이 아님'},
  {kind:'meta_ads_insights',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'Meta 광고 성과 최신 스냅샷(계정·기간·귀속 기준·수집 시각). 실제 주문 매출과 분리'},
  {kind:'meta_ads_plan',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'Meta 광고 준비 계획(상품·범위·비용·기간·확인 사항·판·작성자). 집행 승인과 자격증명은 저장하지 않는다'},
  {kind:'metric',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'캠페인 성과 기록'},
