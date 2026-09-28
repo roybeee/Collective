@@ -9,6 +9,7 @@
 
 ### 레인 A: M5 예산 검토 첫 증분 (2026-09-28)
 - `feat/meta-spend-approval`: lib/meta-budget-review.ts, app/api/meta-ads/budget, app/meta-budget-panel.tsx, Meta 탭 연결, 전용 tests/e2e, 레코드/삭제 목록 및 문서.
+- CI에서 확인한 M3 새로고침 경합 보완: app/meta-creative-panel.tsx·e2e/meta-creative.spec.ts의 조회 중 입력/검토 잠금과 지연 응답 회귀.
 - 현재 계획·소재·계정·기간의 로컬 예산 검토/철회만 기록한다. 지출 승인·예약·외부 예산 변환·활성화는 제공하지 않는다. 실제 집행은 전체 외부 자산을 포함한 별도 승인 필요.
 
 ## 2026-09-28 M4 비활성 캠페인 공급자·전송 기록 경계
