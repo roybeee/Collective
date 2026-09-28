@@ -3,14 +3,14 @@
 > 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 운영(2026-09-28 01:28 UTC): `641f37b`, Sites 52, tree `a7f6cd8c3a33c7906e1e36e60465a8aa0254b3e9`, `published` · `runtime-verified`. [릴리스](releases/2026-09-28-641f37b.md).
+- 운영(2026-09-28 02:30 UTC): `5be1478`, Sites 53, tree `13f96e598cd6101b4a4397335b4e4c943c469adb`, `published` · `runtime-verified`. [릴리스](releases/2026-09-28-5be1478.md). 성장2 Meta 판매 준비 계획 첫 증분(#247) 포함.
 - 성장1 필수 코드 게시 대기 0건. #216·#218·#219·#225는 통합 #244로 병합·게시했다. #206·#208·#210~#214·#217·#220·#223·#231·#235·#237과 관련 문서도 현재 제품에 포함된다.
 - 기존 대기열의 미병합·404 문구는 과거 상태다. R 신규 PR #234·#241·#242·#243 및 인터뷰 게시 문서 #236·#240은 별도 소유자 작업이며 성장1 필수 잔여가 아니다.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-28 02:06 UTC (Codex: 성장2 Meta M0 구현·검증)
-- 진행 중: `feat/growth2-meta-readiness`, 기준 `9ac45ed`. [M0 판매 준비 계획](META-ADS-M0.ko.md): 캠페인 탭·저장 API·입력 검증·버전 충돌·준비도·집행 차단. 외부 연동/집행은 not_run. 검증 및 게시 결과는 병합/릴리스 기록에서 확정한다.
+갱신: 2026-09-28 02:34 UTC (Codex: 성장2 Meta M0 첫 증분 게시·실행 확인)
+- 성장2 Meta 첫 증분: #247 `merged`(`5be1478`) · Sites 53 `published` · 소유자 운영 tree `runtime-verified`. [M0 구현](META-ADS-M0.ko.md): 캠페인 탭·준비도·계획 저장·버전 충돌·역할/소유자 격리·집행 차단. CI 198/198 suites·13,297 assertions, E2E 76+인증 1 passed. 운영 새 탭·v0 누락 안내·집행 비활성 확인(real, 읽기만). M0 실제 상품/계정/이벤트 계약 확정과 M1~M6는 후속, Meta 연동·지출·전환 전송·효과 검증 not_run. [게시 근거](releases/2026-09-28-5be1478.md).
 - 성장2 계획 추가(2026-09-28 대표 요청): [E-M 자사몰·콘텐츠 기반 Meta 광고](GROWTH-2-META-ADS.ko.md). M0~M6(준비도→읽기 연결→전환/원장→소재 실험→비활성 초안→승인된 제한 집행→보고/학습), G0 개발/실집행/확대 분리. 계획 추가 뒤 후속 개발 지시로 위 M0를 착수했다. 계정 연결·광고 집행 not_run. 실제 소유 범위는 LANES에 기록.
 
 - **성장1 개발 종료 passed / 운영 인수 blocked / 효과 검증 not_run**. C01~C12 통합·197/197 suites(13,261 assertions)·CI verify/E2E·Sites 52·소유자 운영 버전 확인 완료. [최종 종료 판정 및 조건부 인계](observations/2026-09-28-lane-a-growth1-closeout.md). 아래 09-27 중간 판정과 미병합/미게시 상태를 대체한다.
@@ -136,21 +136,21 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-28 01:28 UTC (대표 위임 Codex: 성장1 최종 통합·Sites 52·종료 판정)
+마지막 갱신: 2026-09-28 02:34 UTC (Codex: 성장2 Meta 준비 계획·Sites 53)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `641f37bd908a61411e3303af690e5cd241275fe8` (#244) | tree `a7f6cd8c3a33c7906e1e36e60465a8aa0254b3e9`, [릴리스](releases/2026-09-28-641f37b.md) |
-| `origin/main` | 제품 기준 `641f37b`, 이 갱신은 문서만 변경 | 게시 제품 이후 미게시 제품 변경 0건 확인 |
-| Sites 게시 | `published`: 버전 52, deployment `appgdep_6ab9c1965d1881918661af469f6ea39b` succeeded | 2026-09-28 01:23:54 UTC |
-| 실행 검증 | `runtime-verified`: 공개·소유자 버전 모두 제품 tree 일치 | build `2026-09-28T01:13:54.672Z`, 프롬프트 매니페스트 기존 유지 |
+| 운영 제품 커밋 | `5be14782db524a1ff056823be63a06aee36e355d` (#247) | tree `13f96e598cd6101b4a4397335b4e4c943c469adb`, [릴리스](releases/2026-09-28-5be1478.md) |
+| `origin/main` | 제품 기준 `5be1478`, 이 갱신은 문서만 변경 | 게시 제품 이후 미게시 제품 변경 0건 확인 |
+| Sites 게시 | `published`: 버전 53, deployment `appgdep_6ab9d0ed505c8191b79ec4a9894fd5b0` succeeded | 2026-09-28 02:30:05 UTC |
+| 실행 검증 | `runtime-verified`: 소유자 품질 콘솔의 `/api/version` tree 일치 | build `2026-09-28T02:28:02.841Z`, 프롬프트 매니페스트 기존 유지 |
 | 인증 | 이메일 소유자 로그인 OWNER 유지, 익명/위조 헤더 C08 요청 401 | 실제 운영 UI·HTTP, 데이터 변경 없음 |
 | Sites 접근 | public, 환경 revision 4 유지 | Sites 응답·이번 작업에서 설정 변경 없음 |
 | 조사 워커 | online, lastSeen 2026-09-28 10:24:44 KST | 운영 설정 화면(real), 기존 token rotation/app gate 꺼짐 유지 |
 | 열린 별도 범위 PR | #16 Android, #234·#241·#242·#243 R, #236·#240 인터뷰 게시 기록 | 2026-09-28 GitHub 조회, 성장1 필수 잔여 아님 |
-| main CI | `641f37b` verify·e2e-smoke passed | [run 36365132295](https://github.com/roybeee/Collective/actions/runs/36365132295), E2E 74 + 이메일 인증 1 |
+| 제품 CI | 제품과 동일한 PR 최종 tree에서 verify·e2e-smoke passed | [run 36369170275](https://github.com/roybeee/Collective/actions/runs/36369170275), 198 suites·13,297 assertions, E2E 76 + 이메일 인증 1 |
 | 성장1 판정 | 개발 종료 passed / 운영 인수 blocked / 효과 검증 not_run | [최종 판정·조건부 인계](observations/2026-09-28-lane-a-growth1-closeout.md) |
 
 - 테스트 흔들림(2026-09-25 관찰, 제품 동작 변경 없음):
