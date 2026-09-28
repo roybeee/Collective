@@ -10,7 +10,7 @@ export type CampaignDeletionPolicy='delete'|'retain'|'retire_and_mark'|'not_camp
 export const recordParents=['none','brand','campaign','store','viral_case','viral_experiment','brand_fact','media','eval_run','franchise_lead'] as const;
 export type RecordParent=typeof recordParents[number];
 // 레코드가 캠페인에 이어지는 경로. 삭제와 삭제 영향 조회가 같은 조건을 쓴다.
-export type CampaignLink='self'|'parent'|'brief_draft'|'draft_submission'|'job_submission'|'experiment_child'|'experiment_rule'|'guidance_job'|'sequence_attempt'|'data_campaign';
+export type CampaignLink='self'|'parent'|'brief_draft'|'draft_submission'|'job_submission'|'experiment_child'|'experiment_rule'|'guidance_job'|'sequence_attempt'|'data_campaign'|'data_campaigns';
 // 소유자가 캠페인 삭제에서 '학습 자산까지 완전 삭제'를 고를 때(F4b-2, 결정 7) 남기는 kind(retain·retire_and_mark)의 동작. 남기는 kind는 모두 정한다(tests/record-kinds.test.mjs).
 // keep: 완전 삭제에서도 남김 · delete: 이 캠페인에 이어진 행을 남기지 않고 삭제 · not_created: 기본 삭제가 만드는 보존 요약이라 완전 삭제는 만들지 않음
 // · delete_all: 캠페인과 상관없이 소유자의 기존 행을 모두 지움(현재 이 값을 쓰는 kind는 없다. 비식별 평가 신호는 다른 캠페인의 이관분을 지우지 않도록 not_created다)
@@ -81,6 +81,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'public_media',parent:'media',campaignDeletion:'not_campaign_scoped',description:'공개 제공 소재 파일과 발행 참조'},
  {kind:'public_media_ref',parent:'media',campaignDeletion:'not_campaign_scoped',description:'공개 소재 파일의 소유자 참조'},
  {kind:'publisher_credential',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'브랜드 발행 채널(Buffer) 자격증명(암호화)'},
+ // loop-2 발행 자동 확인 기록(스위치 publication_auto_link). 발행당 1행(id=발행 id, parent 캠페인)이고 워커가 마지막으로 본 시각·상태·오류·수집 대상 등록 결과만 둔다. publisher_credential 뒤에 둔다.
+ {kind:'publication_check',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'워커의 발행 Buffer 상태 자동 확인 기록(마지막 확인 시각·발행 상태·오류 문구·성과 수집 대상 등록 결과). 30분 간격 판정에만 쓴다'},
  {kind:'role_output_contract',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'담당자 출력 계약'},
  {kind:'role_output_failure',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'담당자 출력 검증 실패 원문'},
  {kind:'store',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'지점'},
@@ -125,6 +127,11 @@ export const recordKinds:readonly RecordKind[]=[
 // 중지 때 재확인 표시는 새 kind 없이 캠페인 이력(event)의 playbookRecheck detail로 남겨 캠페인과 함께 지운다.
  // token_budget 묶음(마지막 3개, tests/token-budget.test.mjs 고정) 앞에 둔다.
  {kind:'playbook_audit',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'운영자 선호 규칙 감사 기록(생성·승인·중지·연장, 전후 상태·규칙 버전·만료·중지 때 재확인 작업물 수·행위자 id·역할). 추가만 하고 이메일·본문 원문은 담지 않는다(B3-1)'},
+ // B3-2 Reflector(docs/PLAYBOOK.ko.md 'B3-2 Reflector'). 실행 기록은 브랜드 행이고 입력에 들어간 캠페인(campaignIds, 모델에는 가명 라벨)을 지우면 함께 지운다.
+ // 제출·응답 원문 보존은 만든 날부터 90일(expiresAt, 법률 검토 뒤 확정하는 휴리스틱)이고 Reflector 읽기·쓰기 때 지난 행을 지운다. 연결·격리 확인은 대표가 저장하는 워크스페이스 1행씩이다.
+ {kind:'reflector_run',parent:'brand',campaignDeletion:'delete',links:['data_campaigns'],description:'Reflector 실행(브랜드·역할·미리보기 해시·전송한 제출 원문·라벨→판정 id·HERMES 실행 번호·응답 원문·도구 흔적·만든 초안 id·거절 사유 코드·실행한 사람 id와 역할). 입력 캠페인을 지우면 함께 지우고 만든 날부터 90일(expiresAt)이 지나면 지운다. 이메일·검토 메모 원문은 담지 않는다'},
+ {kind:'reflector_connection',parent:'none',campaignDeletion:'not_campaign_scoped',description:'Reflector 전용 HERMES 연결(주소·키 암호화, 운영 연결과 다른 호스트, 확인 상태·저장한 대표 id와 역할)'},
+ {kind:'reflector_isolation',parent:'none',campaignDeletion:'not_campaign_scoped',description:'Reflector 격리 프로필 대표 확인 기록(세션 메모리·스킬 축적 꺼짐·도구 없음 문구, 확인한 연결 호스트·저장 시각, 확인한 대표 id와 역할·시각). 연결을 다시 저장하면 새로 확인해야 한다'},
  // 트랙 R 가맹 모집(R1a·R4b, 대표 결정 20·22). 모두 캠페인과 무관하고(캠페인 id는 귀속 참조일 뿐) 보존·정보주체 삭제 축을 선언한다. 구현된 삭제는 리드 연락처 파기(180일·계약 리드 종결 뒤 1095일),
  // 중복 키 삭제, 365일 지난 감사 기록(backdate 제외) 삭제뿐이고 나머지 보존 값은 선언이다(lib/franchise-server.ts). 비식별 신호·eval_budget_approval·token_budget 묶음 앞에 둔다.
  {kind:'franchise_profile',parent:'brand',campaignDeletion:'not_campaign_scoped',retention:{basis:'policy',anchor:'updated',days:null,ref:'이력은 감사 기록'},subjectErasure:'none',description:'가맹 프로필(준비도 분기·산정서 판단 입력·공휴일 목록·보관 위치 라벨·적격 기준 버전). 캠페인과 무관. 개인정보 없음'},
@@ -194,11 +201,13 @@ export const linkClauses:Record<CampaignLink,LinkClause>={
  guidance_job:{where:`id IN (SELECT ? || ':' || ? || ':' || id FROM jobs WHERE owner=? AND campaign_id IN (${GUIDANCE_GROUPS}))`,binds:(o,c,k)=>[o,k,o,o,c],kindInBinds:true},
  sequence_attempt:{where:'id=?',binds:(o,c,k)=>[`${o}:${k}:sequence:${c}`],kindInBinds:true},
  data_campaign:{where:"json_extract(data,'$.campaignId')=?",binds:(o,c)=>[c]},
+ // 여러 캠페인을 입력으로 쓴 기록(Reflector 실행). campaignIds 배열에 캠페인이 있으면 대상이다.
+ data_campaigns:{where:"EXISTS (SELECT 1 FROM json_each(data,'$.campaignIds') WHERE json_each.value=?)",binds:(o,c)=>[c]},
 };
 // 다른 행(초안·jobs·실험)을 참조해 대상을 찾는 경로. 참조 대상(초안·작업·실험)보다 먼저 실행해야 한다.
 export const derivedLinks:ReadonlySet<CampaignLink>=new Set<CampaignLink>(['draft_submission','job_submission','guidance_job','experiment_child','experiment_rule']);
 // 파생 경로를 먼저, 캠페인 자신을 마지막에 둔다.
-const LINK_ORDER:readonly CampaignLink[]=['draft_submission','job_submission','guidance_job','experiment_child','experiment_rule','data_campaign','brief_draft','sequence_attempt','parent','self'];
+const LINK_ORDER:readonly CampaignLink[]=['draft_submission','job_submission','guidance_job','experiment_child','experiment_rule','data_campaign','data_campaigns','brief_draft','sequence_attempt','parent','self'];
 export type CampaignScope={link:CampaignLink;kinds:string[];where:string;binds:unknown[]};
 // 정책이 같은 kind를 경로별로 묶어 조건을 만든다. 같은 경로의 kind는 한 문장으로 처리해 D1 호출 수를 줄인다.
 export function campaignScopes(policy:CampaignDeletionPolicy,owner:string,campaignId:string,filter:(k:RecordKind)=>boolean=()=>true):CampaignScope[]{

@@ -9,6 +9,7 @@ import type {EvalRun} from './eval-server';
 import {pairGateMajority} from './eval-stats';
 import {alarmState,alarmAckStatement} from './usage-model-alarm';
 import {isPreferencePair} from './playbook-curator';
+import {INPUT_DIET_PAIR_KIND} from './input-diet';
 
 // 프롬프트 레지스트리(F3a, 대표 결정 2·3). git prompts/가 정본이다. 소유자가 단위와 sourceSha를 지정하면 공개 저장소 raw 경로에서 그 SHA와 현재 main의 같은 파일을 가져와
 // 본문이 같을 때만 불변 prompt_version으로 등록한다. 새 기계 자격증명·업로드 대체 경로는 없다.
@@ -223,6 +224,8 @@ async function gateRun(owner:string,evalRunId:string){
  if(run.variant!=='pair'||!run.pair)throw new ApiError(409,'활성화 게이트를 통과하지 못했습니다: 쌍 평가(pair) 실행이 아닙니다.');
  // 운영자 선호 쌍 평가(B3-2b)는 규칙 블록 on/off 비교라 프롬프트 버전 근거가 아니다. pairGate 조건을 모두 통과해도 activate·stage·promote에 쓰지 못한다.
  if(isPreferencePair(run.pair))throw new ApiError(409,'활성화 게이트를 통과하지 못했습니다: 운영자 선호 쌍 평가(operator_preferences) 실행은 프롬프트 활성화 근거로 쓸 수 없습니다. 이 단위의 프롬프트 쌍 평가(pair unit·candidateVersionId)를 하세요.');
+ // 입력 축소 쌍 평가(C07, input_diet)는 스위치 input_diet 꺼짐·켜짐 비교라 프롬프트 버전 근거가 아니다. 스위치 켜기 판단은 GET /api/eval?pair=<run> 게이트 결과로 한다.
+ if((run.pair as {kind?:unknown}).kind===INPUT_DIET_PAIR_KIND)throw new ApiError(409,'활성화 게이트를 통과하지 못했습니다: 입력 축소 쌍 평가(input_diet) 실행은 프롬프트 활성화 근거로 쓸 수 없습니다. 스위치 input_diet 켜기 판단 근거로만 씁니다(GET /api/eval?pair=). 이 단위의 프롬프트 쌍 평가(pair unit·candidateVersionId)를 하세요.');
  return run as EvalRun&{pair:NonNullable<EvalRun['pair']>};
 }
 async function passGate(owner:string,unit:string,versionId:string,evalRunIds:readonly string[],release:PromptRelease|null){

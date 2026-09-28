@@ -26,6 +26,9 @@ import {TokenBudgetExceeded} from './token-budget';
 // 카피 팩 v2(A3-4): 회의 시작 때 스위치 a3_copy_pack을 한 번 읽어 스냅샷에 프로필을 고정한다. 꺼져 있으면 키가 없어 회의 제출·저장이 이전과 바이트 동일하다.
 import {copyPackProfile} from './copy-pack-server';
 import {briefChannelIssues} from './copy-pack';
+// 입력 축소(input_diet, PR 4b): 회의 시작 때 스위치를 한 번 읽어 스냅샷에 고정한다(보조 모듈). 꺼져 있으면 키가 없어 회의 제출이 이전과 바이트 동일하다. 단계 입력 문자 수 분해(inputChars)는 스위치와 무관하게 단계 기록에 숫자만 남긴다.
+import {inputDietEnabled} from './input-diet-server';
+import {inputChars,INPUT_DIET_VERSION,type InputDietReport,type InputChars} from './input-diet';
 import {ApiError,identity,str,json,failure,database,readRecord,listRecords,recordStatement,eventStatement,connection,acquireLock,releaseLock,stamp,type EventActor} from '@/lib/server';
 
 const activeStates=['starting','queued','in_progress','uncertain'];
@@ -40,7 +43,7 @@ const meetingUsage=(owner:string,m:Meeting,s:MeetingStep):UsageContext=>({kind:'
 // 단계 제출의 promptVersion: 이 단계 역할·채널의 레지스트리 단위가 있으면 그 버전, 없으면 F2a 규칙(스킬 버전:지시 해시).
 async function stepPromptVersion(m:Meeting,s:MeetingStep,instructions:string){return runPromptVersion({units:m.snapshot.prompts?.units||{}},roleRunUnits(s.role,m.snapshot.campaign))??f2aPromptVersion(m.skillVersion,instructions)}
 // 가림 기록(필드·종류·건수, 허용 값이라 가리지 않은 탐지는 allowed:true, 값 없음)은 단계 기록(team_meeting.steps[].inputMasking)에 남는다. 브랜드 자료 가림 기록(snapshot.sourceMasking)을 뒤에 합친다. 저장본(hermes_submission)이 곧 전송본이고 복구도 같은 본문을 보낸다.
-type MaskedStep=MeetingStep&{inputMasking?:InputMasking[]};
+type MaskedStep=MeetingStep&{inputMasking?:InputMasking[];inputChars?:InputChars;inputDiet?:InputDietReport};
 async function finish(owner:string,m:Meeting){
  const c=await readRecord<Campaign>(owner,'campaign',m.campaignId);
  const current=(await listRecords<Artifact>(owner,'artifact',c.id)).filter(a=>a.status!=='outdated');
@@ -138,7 +141,8 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:E
    const archived=await brandArchiveInput(owner,c.brandId,c.storeId);
    // 카피 팩 프로필은 회의 시작 때 고정한다. 회의 중 스위치를 바꿔도 이 회의의 콘텐츠 개선본 계약은 같다.
    const outputProfile=(await copyPackProfile(owner,'content'))??undefined;
-   const m:Meeting={skillVersion:PRACTICE_VERSION,id,campaignId:c.id,campaignVersion:c.version,agenda:str(b.agenda,'회의 안건',5000,true),status:'running',steps:initialSteps(id),createdAt:stamp(),updatedAt:stamp(),model:cfg.model,stopRequested:false,artifactIds:[],invalidatedRoles:[],previousMeetingId:previous?.id,snapshot:{prompts,...(outputProfile?{outputProfile}:{}),brandArchive:archived.archive,sourceMasking:archived.sourceMasking,campaign:c,brand,artifacts,metrics,learning,evidence:await evidenceContext(database(),owner,c),...(previous?{previous:{id:previous.id,agenda:previous.agenda,decisions:previous.steps.find(s=>s.phase==='synthesis')?.output as Synthesis,quality:previous.steps.find(s=>s.phase==='quality')?.output as QualityReview,discussion:previous.steps.filter(s=>s.phase==='discussion'&&s.status==='completed').map(s=>({id:s.id,role:s.role,output:s.output as Contribution})),...(previousFailure?{failure:{role:previousFailure.role,phase:previousFailure.phase,error:previousFailure.error||previous.error||'응답 검증 실패'}}:{})}}:{})}};
+   const inputDiet=await inputDietEnabled(owner);
+   const m:Meeting={skillVersion:PRACTICE_VERSION,id,campaignId:c.id,campaignVersion:c.version,agenda:str(b.agenda,'회의 안건',5000,true),status:'running',steps:initialSteps(id),createdAt:stamp(),updatedAt:stamp(),model:cfg.model,stopRequested:false,artifactIds:[],invalidatedRoles:[],previousMeetingId:previous?.id,snapshot:{prompts,...(outputProfile?{outputProfile}:{}),...(inputDiet?{inputDiet:INPUT_DIET_VERSION}:{}),brandArchive:archived.archive,sourceMasking:archived.sourceMasking,campaign:c,brand,artifacts,metrics,learning,evidence:await evidenceContext(database(),owner,c),...(previous?{previous:{id:previous.id,agenda:previous.agenda,decisions:previous.steps.find(s=>s.phase==='synthesis')?.output as Synthesis,quality:previous.steps.find(s=>s.phase==='quality')?.output as QualityReview,discussion:previous.steps.filter(s=>s.phase==='discussion'&&s.status==='completed').map(s=>({id:s.id,role:s.role,output:s.output as Contribution})),...(previousFailure?{failure:{role:previousFailure.role,phase:previousFailure.phase,error:previousFailure.error||previous.error||'응답 검증 실패'}}:{})}}:{})}};
    await database().batch([database().prepare('INSERT INTO jobs(id,owner,campaign_id,role,status,model,campaign_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').bind(jobId(owner,m),owner,c.id,'meeting','in_progress',cfg.model,c.version,m.createdAt,m.updatedAt),recordStatement(owner,'team_meeting',m.id,m,c.id),eventStatement(owner,c.id,'팀 회의를 시작했습니다. 8명 의견 교환 → 개선 과제 → 품질 재검토.',by)]);
    return json(publicMeeting(m));
   }
@@ -163,7 +167,7 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:E
    // 전환 구간(DP3-B-02): 자료 가림 이전에 시작한 회의(스냅샷에 가림 기록 없음)는 스냅샷 자료를 새 회의와 같은 규칙으로 가려 저장하고 보낸다(한 번만).
    if(m.snapshot.brandArchive?.confirmedSources&&!m.snapshot.sourceMasking){const masked=await maskedArchiveSnapshot(owner,m.snapshot.campaign.brandId,m.snapshot.campaign.storeId,m.snapshot.brandArchive);m.snapshot={...m.snapshot,brandArchive:masked.archive,sourceMasking:masked.sourceMasking}}
    // 지시문(교정 재시도 문장 포함)·입력·가림 기록은 lib/meeting-input.ts가 만든다. 전환 가림은 자료만 바꾸므로 지시문과 promptVersion은 그 전과 같다.
-   const built=buildMeetingSubmission(m,s.id,await brandStoreAllow(owner,m.snapshot.campaign));s.promptVersion=await stepPromptVersion(m,s,built.instructions);(s as MaskedStep).inputMasking=built.maskingRecord;
+   const built=buildMeetingSubmission(m,s.id,await brandStoreAllow(owner,m.snapshot.campaign),{inputDiet:!!m.snapshot.inputDiet});s.promptVersion=await stepPromptVersion(m,s,built.instructions);(s as MaskedStep).inputMasking=built.maskingRecord;(s as MaskedStep).inputChars=inputChars(built.input,built.instructions);if(built.diet)(s as MaskedStep).inputDiet=built.diet;
    await database().batch([...writes(owner,m),hermesSubmissionStatement(owner,meetingSubmissionId(s),{instructions:built.instructions,input:built.input},m.campaignId)]);
    prepared=m;
    const r=await submitHermes(owner,meetingSubmissionId(s),cfg);s.providerId=r.id;s.status='running';m.status='running';m.updatedAt=stamp();

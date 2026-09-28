@@ -405,3 +405,5 @@ export async function playbookSignals(owner:string,req:Request,rules:readonly Le
  const [decisions,evals]=await Promise.all([signalDecisions(owner),playbookEvals(owner)]),now=Date.now();
  return {correctionClusters:correctionClusters(decisions,rules,now),playbookFeedback:playbookFeedback(rules,snapshots as readonly LearningSnapshot[],decisions),recurrence:recurrenceRate(decisions,now),playbookEvals:evals};
 }
+// B3-2 Reflector(lib/reflector-server.ts)가 초안 저장에 playbook_create와 같은 인용 검사·감사 기록과 같은 교정 판정 요약을 쓴다.
+export {citedDecisions,auditStatement,signalDecisions,type PlaybookActor};

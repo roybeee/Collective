@@ -253,9 +253,10 @@ check('members read the budget summary',g.status===200&&g.body.budget.workspace.
 env.AUTH_MODE='legacy';
 
 // 10) 모든 운영 HERMES 제출이 공통 함수 한 곳을 지난다: /v1/runs 제출은 lib/hermes.ts(운영)와 lib/eval-server.ts(평가 전용 연결·자체 월 예산)에만 있다.
+// B3-2 Reflector(lib/reflector-server.ts)는 전용 격리 연결로 보내고 제출 전에 같은 가드(reserveTokenBudget)를 직접 부른다(tests/reflector.test.mjs 예산 초과 409).
 const walk=d=>readdirSync(d).flatMap(f=>{const p=join(d,f);return statSync(p).isDirectory()?walk(p):/\.(ts|tsx)$/.test(f)?[p]:[]});
 const runPosters=['app','lib','server'].flatMap(d=>{try{return walk(d)}catch{return []}}).filter(f=>readFileSync(f,'utf8').includes("'/v1/runs'"));
-check('only the common submitter and the separate eval runner post HERMES runs',JSON.stringify(runPosters.sort())===JSON.stringify([join('lib','eval-server.ts'),join('lib','hermes.ts')]));
+check('only the common submitter, the separate eval runner and the budget-guarded Reflector post HERMES runs',JSON.stringify(runPosters.sort())===JSON.stringify([join('lib','eval-server.ts'),join('lib','hermes.ts'),join('lib','reflector-server.ts')])&&/reserveTokenBudget\(/.test(readFileSync(join('lib','reflector-server.ts'),'utf8')));
 check('role, meeting, brief, research and learning submit through submitHermes',['role','meeting','brief','research','learning'].every(k=>/import \{[^}]*submitHermes[^}]*\} from '(?:@\/lib|\.)\/hermes'/.test(readFileSync(`lib/${k}-execution.ts`,'utf8'))));
 const evalSource=readFileSync('lib/eval-server.ts','utf8');
 check('eval runs keep their own monthly budget and do not use the operational submitter',/EVAL_MONTHLY_TOKEN_CAP/.test(evalSource)&&!/submitHermes/.test(evalSource));
