@@ -3,13 +3,16 @@
 > 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 운영(2026-09-28 07:42 UTC): `3f7adbe`, Sites61, tree `04d895fc3c89f10fbd78154fa8ad31a6fb6edd1c`, `published` · `runtime-verified`. [릴리스](releases/2026-09-28-3f7adbe.md). 비활성 생성 #258 포함, 기본 꺼짐. 예산 검토 #259·서명 수신 #260은 검증 중이며 이 PR은 그 위의 캠페인 선택 변경이다.
+- 운영 확인(2026-09-28 12:20 UTC): `5a1bf5f`, Sites63, tree `f46e859dd34113336c0871686dc2d2d3212de900`. 공개 `/api/version/public`과 origin/main tree 일치, Sites get_site 버전63. #259·#260은 merged/runtime-verified이며 아래 과거 “검증 중” 서술을 대체한다. 현재 성장2 후속 작업은 통합 검사·게시 준비 중이다.
 - 성장1 필수 코드 게시 대기 0건. #216·#218·#219·#225는 통합 #244로 병합·게시했다. #206·#208·#210~#214·#217·#220·#223·#231·#235·#237과 관련 문서도 현재 제품에 포함된다.
 - 기존 대기열의 미병합·404 문구는 과거 상태다. R 신규 PR #234·#241·#242·#243 및 인터뷰 게시 문서 #236·#240은 별도 소유자 작업이며 성장1 필수 잔여가 아니다.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-28 08:03 UTC (Codex: 캠페인 선택 통합 검증)
+갱신: 2026-09-28 12:46 UTC (Codex: 맵달 대상 성장2 후속 통합)
+- 진행: `codex/growth2-remaining`, #261 캠페인 선택 원본 통합 + M2 전환 준비·맵달 주문 어댑터 + M4 외부 구성 읽기 검증 + M5 로컬 예약 + M6 다음 실험 후보. 모바일 인터뷰 입력 유실 회귀 수정. 로컬 214/214 suites·13,851 assertions passed(외부 mocked), 타입/빌드/lint gate70·39/프롬프트22 passed. 전체 브라우저96 passed(real local Chromium/D1, 인증/외부 mocked), 이메일 인증1 passed(real local), 맵달 어댑터19 passed(real SQLite, mocked PG/HTTP). 마지막 보고 캐시 수정 뒤 전용24 assertions·타입·빌드 passed. 원격 CI/운영 게시 확인은 별도 후속.
+- 첫 몰 `mapdal.kr` 확정. 원격 코드 `e7c39e7`과 공개 healthz db=pg 확인. 실제 PG 읽기·주문 전송·맵달 서버 설치 not_run. 정형 환불 근거 없는 CANCELLED/DEPOSIT_AFTER_CANCEL은 보류, 일반 MARKETING 동의를 Meta 전송 동의로 승격하지 않는다. [연결 계약](MAPDAL-INTEGRATION.ko.md).
+- 전체 성장2 개발 종료는 아직 아니다. [전환 준비](META-CONVERSIONS-M2.ko.md)는 Pixel/CAPI 전송 미구현, [광고 구성](META-AD-BUNDLE-M4.ko.md)은 GET 검증이며 광고세트/광고 생성 미구현, [예약](META-RESERVATION-M5.ko.md)은 실제 활성화/정지 미구현, [다음 실험](META-LEARNING-M6.ko.md)은 초안이며 통계 판정/규칙 승격 미구현이다. 현재 공개 사이트 반영과 실집행·효과 검증을 구분한다.
 - Meta M1 첫 증분 #253 merged(`e8fce70`) · Sites 56 published · 공개 tree runtime-verified. CI 199/199 suites·13,372 assertions, E2E 76+인증1 passed. [릴리스](releases/2026-09-28-e8fce70.md). 실제 계정 읽기는 토큰/계정 미제공으로 blocked이며 전체 M1 종료로 표시하지 않는다.
 - M2 주문·환불 #254 merged(`27c2162`) · Sites 57 published · 공개 tree runtime-verified. CI 200/200 suites·13,404 assertions, E2E 78+인증1 passed. [릴리스](releases/2026-09-28-27c2162.md). 실몰 어댑터·웹훅·Pixel/CAPI는 후속, 외부 고객 전송 0.
 - M3 소재·실험 검수 #255 merged(`8b437a0`) · Sites 58 published · 공개 tree runtime-verified. CI 201/201 suites·13,434 assertions, E2E 80+인증1 passed. [릴리스](releases/2026-09-28-8b437a0.md). 광고 생성/활성화 없음.

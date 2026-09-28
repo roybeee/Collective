@@ -1,5 +1,21 @@
 import {test,expect} from '@playwright/test';
 test.use({launchOptions:{args:['--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream']}});
+test('인터뷰 초기 조회가 끝나기 전에는 답변과 저장을 잠근다',async({browser},testInfo)=>{
+ const context=await browser.newContext({baseURL:testInfo.project.use.baseURL,viewport:testInfo.project.use.viewport,extraHTTPHeaders:{'oai-authenticated-user-id':'interview-loading-'+testInfo.project.name+'-'+Date.now()}});
+ const page=await context.newPage();await page.request.get('/api/workspace');
+ let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve});
+ await page.route('**/api/archive/interview?*',async route=>{await gate;await route.fulfill({json:{interviews:[]}})});
+ try{
+  await page.goto('/?view=brands&brand=oda');await page.getByRole('tab',{name:'브랜드 인터뷰',exact:true}).click();
+  const panel=page.locator('.interview-studio');
+  await expect(panel.getByLabel('브랜드의 시작과 약속 · 답변')).toBeDisabled();
+  await expect(panel.getByRole('button',{name:'인터뷰 저장',exact:true})).toBeDisabled();
+  release();
+  await expect(panel.getByLabel('브랜드의 시작과 약속 · 답변')).toBeEnabled();
+  await panel.getByLabel('브랜드의 시작과 약속 · 답변').fill('초기 조회가 끝난 뒤 작성한 답변');
+  await expect(panel.getByText('1 / 8 섹션 기록')).toBeVisible();
+ }finally{release();await page.unrouteAll({behavior:'wait'});await context.close()}
+});
 test('인터뷰 질문, 파일 드롭, 녹음, 저장·재접속·확정',async({browser},testInfo)=>{
  const context=await browser.newContext({baseURL:testInfo.project.use.baseURL,viewport:testInfo.project.use.viewport,permissions:['microphone'],extraHTTPHeaders:{'oai-authenticated-user-id':'interview-'+testInfo.project.name+'-'+Date.now()}});
  const page=await context.newPage();await page.request.get('/api/workspace');await page.goto('/?view=brands&brand=oda');
