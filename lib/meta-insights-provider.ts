@@ -38,3 +38,18 @@ export async function collectMetaRead(token:string,input:{accountId:string;exter
  }
  throw new MetaReadError('format','성과 페이지가 너무 많습니다. 조회 기간을 줄여 주세요.');
 }
+
+export type MetaCampaignOption={id:string;name:string;status:string;effectiveStatus:string;objective:string};
+// Explicit one-page browse; opaque cursors are copied into our fixed-host URL, never followed as URLs.
+export async function listMetaCampaigns(token:string,accountId:string,cursor:unknown='') {
+ if(typeof cursor!=='string'||cursor.length>2000||(cursor!==''&&!/^[\x21-\x7e]+$/.test(cursor)))throw new MetaReadError('format','캠페인 목록의 다음 페이지를 다시 확인하세요.');
+ const read=client(token),a=await account(read,accountId),payload=await read('act_'+a.accountId+'/campaigns',{fields:'id,account_id,name,status,effective_status,objective',limit:'50',...(cursor?{after:cursor}:{})});
+ if(!Array.isArray(payload.data)||payload.data.length>50)throw new MetaReadError('format','캠페인 목록 응답을 확인하지 못했습니다.');
+ const seen=new Set<string>(),items:MetaCampaignOption[]=payload.data.map(value=>{const r=object(value);
+  if(typeof r.id!=='string'||!/^\d{1,30}$/.test(r.id)||r.account_id!==a.accountId||seen.has(r.id)||typeof r.name!=='string'||!r.name.trim()||r.name.length>500||/[\x00-\x1f\x7f]/.test(r.name)||[r.status,r.effective_status,r.objective].some(v=>typeof v!=='string'||!v||v.length>100||!/^[A-Z0-9_]+$/.test(v)))throw new MetaReadError('format','광고 계정과 캠페인 목록의 범위를 확인하지 못했습니다.');
+  seen.add(r.id);return {id:r.id,name:r.name,status:r.status as string,effectiveStatus:r.effective_status as string,objective:r.objective as string};
+ });
+ const paging=object(payload.paging),next=object(paging.cursors).after;
+ if(paging.next&&(typeof next!=='string'||!next||next.length>2000||!/^[\x21-\x7e]+$/.test(next)||next===cursor))throw new MetaReadError('format','캠페인 목록의 다음 페이지를 확인하지 못했습니다.');
+ return {accountId:a.accountId,items,nextCursor:paging.next?next as string:null};
+}
