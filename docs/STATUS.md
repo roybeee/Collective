@@ -3,15 +3,16 @@
 > 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 운영(2026-09-28 03:07 UTC): `8e9a1c7`, Sites 55, tree `1b058ad7ace74aa66e46441274a04a9cc12a24db`, `published` · `runtime-verified`. [릴리스](releases/2026-09-28-8e9a1c7.md). Meta 단계별 준비 화면 #250 및 최신 인터뷰 #248 포함.
+- 운영(2026-09-28 05:57 UTC): `e8fce70`, Sites 56, tree `ade856e001e1a08c9432c618bb7faddcff0b12d8`, `published` · `runtime-verified`. [릴리스](releases/2026-09-28-e8fce70.md). Meta 읽기 연결/성과 #253 포함. M2 주문/환불은 이 PR의 미게시 변경이다.
 - 성장1 필수 코드 게시 대기 0건. #216·#218·#219·#225는 통합 #244로 병합·게시했다. #206·#208·#210~#214·#217·#220·#223·#231·#235·#237과 관련 문서도 현재 제품에 포함된다.
 - 기존 대기열의 미병합·404 문구는 과거 상태다. R 신규 PR #234·#241·#242·#243 및 인터뷰 게시 문서 #236·#240은 별도 소유자 작업이며 성장1 필수 잔여가 아니다.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-28 05:41 UTC (Codex: 성장2 Meta M1 연속 개발)
-- 대표의 잔여 개발 계속 지시에 따라 M1 계정 읽기 연결·광고 성과 수집·CSV 가져오기 구현. [범위/검증](META-ADS-M1.ko.md). 기본 외부 읽기 꺼짐, 브랜드별 연결, 기존 암호화/삭제 정책 재사용. 실제 주문 매출과 Meta 보고 매출 분리. 전용 70 assertions·타입·빌드·프롬프트·lint 기준선 passed, 전체 검사와 브라우저 CI는 진행 중. 아직 merged/published가 아니다.
-- 실제 Meta 읽기 검증은 테스트 계정/토큰 미제공으로 blocked. 이 대기가 후속 M2 주문·환불 구현을 막지 않는다. M1 다음 예약 수집·목록 선택과 M2~M6를 순차 진행한다.
+갱신: 2026-09-28 05:58 UTC (Codex: M1 게시 후 M2 주문·환불 개발)
+- Meta M1 첫 증분 #253 merged(`e8fce70`) · Sites 56 published · 공개 tree runtime-verified. CI 199/199 suites·13,372 assertions, E2E 76+인증1 passed. [릴리스](releases/2026-09-28-e8fce70.md). 실제 계정 읽기는 토큰/계정 미제공으로 blocked이며 전체 M1 종료로 표시하지 않는다.
+- M2 공통 자사몰 CSV·기존 store_order 반영·개정 순서/중복/환불·반영 이력·주문 대조 화면 구현. 전용 32 assertions, 타입/lint/프롬프트/빌드 passed. 전체 CI와 모바일·데스크톱 신규 여정 확인 후 병합·게시한다. [계약](STOREFRONT-ORDERS-M2.ko.md). 실몰 어댑터·웹훅·Pixel/CAPI는 후속, 외부 고객 전송 0.
+- 이후 M3 소재/실험 작업대와 남은 읽기 자동화·M4~M6를 계속 진행한다.
 - Meta UI/UX 개선 #250 `merged`(`8e9a1c7`) · Sites 55 `published` · 공개 운영 버전 tree `runtime-verified`. 네 단계 입력, 준비 상태/다음 할 일, 실시간 기여이익·구매 수, 미완성 저장·재조회. CI 198/198 suites·13,302 assertions, E2E 76+인증 1 passed. 데스크톱/모바일 화면 검토, 실제 Meta 연동·집행 not_run. [근거](releases/2026-09-28-8e9a1c7.md).
 - 성장2 Meta 첫 증분: #247 `merged`(`5be1478`) · Sites 53 `published` · 소유자 운영 tree `runtime-verified`. [M0 구현](META-ADS-M0.ko.md): 캠페인 탭·준비도·계획 저장·버전 충돌·역할/소유자 격리·집행 차단. CI 198/198 suites·13,297 assertions, E2E 76+인증 1 passed. 운영 새 탭·v0 누락 안내·집행 비활성 확인(real, 읽기만). M0 실제 상품/계정/이벤트 계약 확정과 M1~M6는 후속, Meta 연동·지출·전환 전송·효과 검증 not_run. [게시 근거](releases/2026-09-28-5be1478.md).
 - 성장2 계획 추가(2026-09-28 대표 요청): [E-M 자사몰·콘텐츠 기반 Meta 광고](GROWTH-2-META-ADS.ko.md). M0~M6(준비도→읽기 연결→전환/원장→소재 실험→비활성 초안→승인된 제한 집행→보고/학습), G0 개발/실집행/확대 분리. 계획 추가 뒤 후속 개발 지시로 위 M0를 착수했다. 계정 연결·광고 집행 not_run. 실제 소유 범위는 LANES에 기록.
@@ -139,21 +140,21 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-28 03:09 UTC (Codex: Meta UI/UX 개선·Sites 55)
+마지막 갱신: 2026-09-28 05:58 UTC (Codex: Meta 성과 Sites 56·M2 개발)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `8e9a1c7bc5544574b4f4c8d77f7de517e01d0df8` (#250) | tree `1b058ad7ace74aa66e46441274a04a9cc12a24db`, [릴리스](releases/2026-09-28-8e9a1c7.md) |
-| `origin/main` | 제품 기준 `8e9a1c7`, 이 갱신은 문서만 변경 | 게시 제품 이후 미게시 제품 변경 0건 확인 |
-| Sites 게시 | `published`: 버전 55, deployment `appgdep_6ab9d9d9e4fc81918604de1371261618` succeeded | 2026-09-28 03:07:16 UTC |
-| 실행 검증 | `runtime-verified`: 공개 `/api/version/public` tree 일치 | build `2026-09-28T02:57:55.356Z`; 이번 소유자 API·프롬프트 매니페스트 재조회 not_run |
+| 운영 제품 커밋 | `e8fce7041634b6d84e8f92657ec7b415a6d36492` (#253) | tree `ade856e001e1a08c9432c618bb7faddcff0b12d8`, [릴리스](releases/2026-09-28-e8fce70.md) |
+| `origin/main` | 게시 기준 `e8fce70`; 이 PR은 M2 후속 제품 변경 | M2 병합 뒤 게시/실행 검증을 별도로 갱신 |
+| Sites 게시 | `published`: 버전 56, deployment `appgdep_6aba01b882448191a7c81df553207054` succeeded | 2026-09-28 05:57:22 UTC |
+| 실행 검증 | `runtime-verified`: 공개 `/api/version/public` tree 일치 | build `2026-09-28T05:56:34.789Z`; 이번 소유자 API·프롬프트 매니페스트 재조회 not_run |
 | 인증 | 이메일 소유자 로그인 OWNER 유지, 익명/위조 헤더 C08 요청 401 | 실제 운영 UI·HTTP, 데이터 변경 없음 |
 | Sites 접근 | public, 환경 revision 4 유지 | Sites 응답·이번 작업에서 설정 변경 없음 |
 | 조사 워커 | online, lastSeen 2026-09-28 10:24:44 KST | 운영 설정 화면(real), 기존 token rotation/app gate 꺼짐 유지 |
 | 열린 별도 범위 PR | #16 Android, #234·#241·#242·#243 R, #236·#240 인터뷰 게시 기록 | 2026-09-28 GitHub 조회, 성장1 필수 잔여 아님 |
-| 제품 CI | 제품과 동일한 PR 최종 tree에서 verify·e2e-smoke passed | [run 36371683891](https://github.com/roybeee/Collective/actions/runs/36371683891), 198 suites·13,302 assertions, E2E 76 + 이메일 인증 1 |
+| 제품 CI | 제품과 동일한 PR 최종 tree에서 verify·e2e-smoke passed | [run 36383154775](https://github.com/roybeee/Collective/actions/runs/36383154775), 199 suites·13,372 assertions, E2E 76 + 이메일 인증 1 |
 | 성장1 판정 | 개발 종료 passed / 운영 인수 blocked / 효과 검증 not_run | [최종 판정·조건부 인계](observations/2026-09-28-lane-a-growth1-closeout.md) |
 
 - 테스트 흔들림(2026-09-25 관찰, 제품 동작 변경 없음):

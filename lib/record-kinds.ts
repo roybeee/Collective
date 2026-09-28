@@ -92,6 +92,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'store_diagnostic',parent:'store',campaignDeletion:'not_campaign_scoped',description:'지점 진단'},
  {kind:'store_experiment',parent:'store',campaignDeletion:'retain',links:['data_campaign'],purge:'keep',description:'점포 실험. 캠페인과 연결돼도 그대로 남는다(결정 7)'},
  {kind:'store_measurement',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포 실험 측정'},
+ {kind:'storefront_order_revision',parent:'store',campaignDeletion:'not_campaign_scoped',description:'외부 몰 주문 반영 이력(개정·결제·누적 환불·장부 판·행위자). 매출 집계에 사용하지 않음'},
+ {kind:'storefront_order_link',parent:'store',campaignDeletion:'not_campaign_scoped',description:'외부 몰 주문의 기존 store_order 연결·외부 개정 번호·내용 해시·장부 판. 별도 매출 원장이 아님'},
  {kind:'store_order',parent:'store',campaignDeletion:'retain',links:['data_campaign'],blocksDeletion:true,purge:'keep',description:'지점 주문 장부. 캠페인에 귀속된 주문이 있으면 캠페인 삭제를 거부한다'},
  {kind:'store_report',parent:'store',campaignDeletion:'not_campaign_scoped',description:'지점 조사 보고서'},
  {kind:'store_spend',parent:'store',campaignDeletion:'not_campaign_scoped',description:'지점 비용 장부'},

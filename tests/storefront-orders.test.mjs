@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {testRuntime} from './helpers/runtime.mjs';
+const {load,env,sql}=testRuntime(async()=>{throw new Error('External calls forbidden')});
+const lib=await load('lib/storefront-orders.ts'),server=await load('lib/server.ts'),route=await load('app/api/storefront-orders/route.ts');
+let passed=0;const check=(v,n)=>{assert.ok(v,n);passed++};
+const owner='shop-owner',headers={'oai-authenticated-user-id':owner,origin:'https://agency.test'};
+await server.recordStatement(owner,'store','shop',{id:'shop',brandId:'brand',version:1,status:'active'}).run();
+const csv=(revision=1,paid=10000,refund=0,status='paid',id='ORDER-001')=>lib.storefrontTemplate+`${id},${revision},2026-09-01,${status},${paid},${refund},delivery\n`;
+const post=async(b={},h=headers)=>{const r=await route.POST(new Request('https://agency.test/api/storefront-orders',{method:'POST',headers:{...h,'content-type':'application/json'},body:JSON.stringify({action:'preview',storeId:'shop',sourceKey:'my-shop',csv:csv(),...b})}));return {status:r.status,body:await r.json()}};
+const importCsv=async(text)=>{const p=await post({csv:text});if(p.status!==200)return p;return post({action:'import',csv:text,previewKey:p.body.previewKey})};
+const orders=()=>sql.prepare("SELECT data FROM records WHERE kind='store_order'").all().map(x=>JSON.parse(x.data));
+check((await post({},{})).status===401,'anonymous');check((await post({}, {...headers,origin:'https://evil.test'})).status===403,'CSRF');check((await post({}, {'oai-authenticated-user-id':'other'})).status===404,'owner isolation');
+let r=await post();check(r.body.created===1&&orders().length===0,'preview no writes');check((await post({action:'import',previewKey:'wrong'})).status===409&&orders().length===0,'preview binding');
+r=await importCsv(csv());check(r.status===200&&r.body.created===1&&orders()[0].paidAmount===10000,'create');check(orders()[0].channel==='unknown'&&!orders()[0].campaignId&&Object.values(orders()[0].costs).every(x=>x===null),'no invented attribution or costs');
+r=await importCsv(csv());check(r.body.duplicates===1&&orders().length===1&&orders()[0].version===1,'duplicate no revenue inflation');
+r=await importCsv(csv(3,10000,3000));check(r.body.updated===1&&orders()[0].refundAmount===3000&&orders()[0].version===2,'partial refund');
+r=await importCsv(csv(2));check(r.body.older===1&&orders()[0].refundAmount===3000,'out of order does not undo refund');
+check((await importCsv(csv(3,10000,4000))).status===409,'same revision divergent payload');
+r=await importCsv(csv(4,10000,10000,'refunded'));check(r.body.updated===1&&orders()[0].status==='refunded','full refund');
+check(sql.prepare("SELECT COUNT(*) n FROM records WHERE kind='storefront_order_revision'").get().n===3,'only applied revisions in audit');
+check((await importCsv(csv(5,10000,10000,'refunded').replace('2026-09-01','2026-09-02'))).status===409,'stable order date');
+const current=orders()[0];await server.recordStatement(owner,'store_order',current.id,{...current,version:current.version+1,note:'manual correction'},'shop').run();check((await importCsv(csv(5))).status===409&&orders()[0].note==='manual correction','manual edit not overwritten');
+check((await post({sourceKey:'another-shop'})).status===409,'cross source duplicate guarded');
+for(const text of [csv().replace('ORDER-001','010-1234-5678'),csv().replace('order_id','email'),csv().replace(',1,',',0,'),csv().replace('10000,0','10000,10001'),csv().replace('10000,0','10000.5,0'),csv().replace('2026-09-01','2026-02-30'),csv().replace('2026-09-01','2099-01-01'),csv().replace('paid','shipped'),csv().replace('delivery','online'),csv()+csv().split('\n')[1]+'\n'])check((await post({csv:text})).status===400,'invalid CSV');
+// Entire batch rejects if a later row conflicts; earlier valid order must not persist.
+const batch=csv(1,5000,0,'paid','ORDER-002')+csv(5).split('\n')[1]+'\n';check((await post({csv:batch})).status===409&&orders().length===1,'atomic preview conflict');
+const fresh=csv(1,5000,0,'paid','ORDER-003'),p=await post({csv:fresh});await server.recordStatement(owner,'store','shop',{id:'shop',brandId:'brand',version:2,status:'active'}).run();check((await post({action:'import',csv:fresh,previewKey:p.body.previewKey})).status===409,'store version invalidates preview');
+// Refund may arrive before initial payment event; later old revisions must not add another purchase.
+r=await importCsv(csv(7,7000,7000,'cancelled','ORDER-004'));check(r.status===200,'refund first accepted');r=await importCsv(csv(1,7000,0,'paid','ORDER-004'));check(r.body.older===1&&orders().find(x=>x.orderNumber==='ORDER-004').status==='cancelled','late payment ignored');
+env.AUTH_MODE='email';env.AUTH_ORIGIN='https://agency.test';const token=createHash('sha256').update('member').digest('hex');sql.prepare('INSERT INTO auth_users(id,email,workspace_owner,role,status,created_at) VALUES(?,?,?,?,?,?)').run('member','member@test.invalid',owner,'member','active',1000);sql.prepare('INSERT INTO auth_sessions VALUES(?,?,?,?)').run(createHash('sha256').update(token).digest('hex'),'member',Date.now()+60000,Date.now());check((await post({}, {cookie:'__Host-collective_session='+token,origin:'https://agency.test'})).status===403,'member cannot import');env.AUTH_MODE='legacy';
+await server.recordStatement(owner,'store','shop',{id:'shop',brandId:'brand',version:3,status:'archived'}).run();check((await post()).status===409,'archived');
+console.log(JSON.stringify({passed}));
