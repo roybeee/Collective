@@ -1,0 +1,2 @@
+export const metaSyncErrors={auth:'읽기 권한 토큰을 갱신하세요.',permission:'광고 계정과 캠페인의 읽기 권한을 확인하세요.',rate_limit:'호출 제한입니다. 잠시 후 직접 다시 수집하세요.',unavailable:'Meta에 연결하지 못했습니다. 연결 상태를 확인한 뒤 다시 수집하세요.',format:'응답 형식을 확인하지 못했습니다. 조회 범위를 줄이거나 원본 성과를 확인하세요.'} as const;
+export type MetaSyncState={id:string;campaignId:string;brandId:string;accountId:string;externalCampaignId:string;since:string;until:string;attribution:string;attemptedAt:string;finishedAt:string|null;lastSucceededAt:string|null;status:'running'|'succeeded'|'failed';errorCode:keyof typeof metaSyncErrors|null;version:number};
