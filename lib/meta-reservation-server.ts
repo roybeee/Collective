@@ -1,3 +1,4 @@
+import type {MetaExecution} from './meta-execution';
 import type {Campaign} from './agency';
 import type {MetaPlan} from './meta-ads';
 import {metaBudgetEnvelope} from './meta-budget-review';
@@ -14,10 +15,12 @@ export async function reservationRecords(owner:string){
 }
 export async function metaReservationView(owner:string,c:Campaign,canEdit:boolean){
  const [bundle,records,plan]=await Promise.all([viewMetaAdBundle(owner,c),reservationRecords(owner),optionalRecord<MetaPlan>(owner,'meta_ads_plan',c.id)]);
+ const executions=await database().prepare("SELECT data FROM records WHERE owner=? AND kind='meta_ads_execution' AND parent_id=?").bind(owner,c.id).all<{data:string}>();
+ const maySpend=executions.results.some(r=>(JSON.parse(r.data) as MetaExecution).maySpend);
  const envelope=metaBudgetEnvelope(plan),active=records.filter(r=>r.campaignId===c.id&&r.state!=='released'),reserved=active.reduce((sum,r)=>sum+r.amount,0);
  const issues=[...envelope.issues,...(bundle.verifiedScope?[]:['최신 외부 광고 구성 확인']),...(active.length?['기존 예약의 해제 또는 결과 확인']:[])];
  if(c.status==='archived')issues.push('보관되지 않은 캠페인');
- return {records:records.filter(r=>r.campaignId===c.id).map(r=>({...r,stale:!bundle.verifiedScope||r.scopeDigest!==bundle.verifiedScope.scopeDigest})),scopeDigest:bundle.verifiedScope?.scopeDigest??null,allocatable:envelope.allocatable,reserved,issues,canEdit,maySpend:false,executionBlockers:['실제 Meta 활성화·중단 어댑터와 공급자 한도 검증은 아직 연결되지 않았습니다.','예약은 앱의 계획 장부이며 실제 청구 상한이나 광고 중단을 보장하지 않습니다.']};
+ return {records:records.filter(r=>r.campaignId===c.id).map(r=>({...r,stale:!bundle.verifiedScope||r.scopeDigest!==bundle.verifiedScope.scopeDigest})),scopeDigest:bundle.verifiedScope?.scopeDigest??null,allocatable:envelope.allocatable,reserved,issues,canEdit,maySpend,executionBlockers:['실행 패널에서 별도 승인한 구성만 활성화하며, 외부 중단과 최종 광고비 대조까지 예약을 유지합니다.','예약은 앱의 계획 장부이며 실제 청구 상한이나 광고 중단을 보장하지 않습니다.']};
 }
 export async function reserveMetaBudget(owner:string,actorId:string,c:Campaign,b:Record<string,unknown>){
  if(c.status==='archived')throw new ApiError(409,'보관된 캠페인입니다.');
@@ -41,6 +44,8 @@ export async function releaseMetaBudget(owner:string,actorId:string,c:Campaign,b
  const r=await readRecord<MetaReservation>(owner,'meta_ads_reservation',str(b.id,'예약',100,true));
  if(r.campaignId!==c.id||r.brandId!==c.brandId)throw new ApiError(404,'이 캠페인의 예약이 아닙니다.');
  if(r.version!==b.expectedVersion||r.state!=='reserved')throw new ApiError(409,'예약 상태가 변경되었거나 외부 결과가 미확인입니다.');
+ const executions=await database().prepare("SELECT data FROM records WHERE owner=? AND kind='meta_ads_execution' AND parent_id=?").bind(owner,c.id).all<{data:string}>();
+ if(executions.results.some(row=>{const e=JSON.parse(row.data) as MetaExecution;return e.reservationId===r.id&&!['settled','revoked'].includes(e.state)}))throw new ApiError(409,'외부 중단과 최종 광고비 대조를 마칠 때까지 예약을 유지합니다.');
  const next={...r,state:'released' as const,version:r.version+1,updatedAt:stamp(),releasedBy:actorId};
  const changed=await database().prepare("UPDATE records SET data=?,updated_at=? WHERE owner=? AND kind='meta_ads_reservation' AND id=? AND data=?").bind(JSON.stringify(next),next.updatedAt,owner,`${owner}:meta_ads_reservation:${r.id}`,JSON.stringify(r)).run();
  if(!changed.meta.changes)throw new ApiError(409,'다른 요청이 예약을 변경했습니다.');

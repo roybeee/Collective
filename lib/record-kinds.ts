@@ -23,6 +23,15 @@ export type SubjectErasure='delete'|'minimize'|'legal_hold'|'none';
 export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;retention?:RetentionPolicy;subjectErasure?:SubjectErasure;description:string};
 
 export const recordKinds:readonly RecordKind[]=[
+ {kind:'meta_capi_connection',parent:'store',campaignDeletion:'not_campaign_scoped',description:'지점 전환 전용 연결·암호화 자격증명'},
+ {kind:'meta_capi_outbox',parent:'store',campaignDeletion:'not_campaign_scoped',description:'구매 전환 전송·재시도·수락 원장'},
+ {kind:'meta_capi_audit',parent:'store',campaignDeletion:'not_campaign_scoped',description:'고객 식별 원문 없는 전환 전송 감사'},
+ {kind:'meta_ads_execution',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'승인 범위·활성화·정지·지출 대조 원장'},
+ {kind:'meta_experiment_design',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'사전등록에 연결한 불변 배정·통계 설계'},
+ {kind:'meta_experiment_unit',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'비식별 단위별 무작위 배정·노출·주문 참조 최신 관측'},
+ {kind:'meta_experiment_observation',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'단위별 관측 정정 전후의 추가 전용 원장'},
+ {kind:'meta_experiment_result',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'원자료 식별자에 고정된 성숙 실험 판정'},
+ {kind:'meta_experiment_rule',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'실험 결과에서 제안·승인한 규칙 계보'},
  {kind:'meta_ads_child_create',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'Meta 비활성 하위 광고 단계별 전송·불변 영수증'},
  {kind:'meta_ads_image_upload',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'Meta 원본 이미지 업로드 시도·불변 영수증. 결과 미확인 작업 재전송 금지'},
  {kind:'account_event',parent:'none',campaignDeletion:'not_campaign_scoped',description:'계정 초대·역할 변경·잠금 등 워크스페이스 계정 감사 기록'},

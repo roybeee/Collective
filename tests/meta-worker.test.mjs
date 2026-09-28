@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {testRuntime} from './helpers/runtime.mjs';
+const {load}=testRuntime(async()=>{throw Error('No external call');});
+const server=await load('lib/server.ts'),worker=await load('lib/research-worker.ts');
+const owner='meta-worker',token=await worker.registerWorker(owner),hash=await worker.workerHash(token),calls=[];
+await server.recordStatement(owner,'brand_research','job',{id:'job',status:'running',createdAt:new Date().toISOString()},'b').run();
+const cb=name=>async()=>{calls.push(name);return {status:'processed'};};
+const tick=()=>worker.workerTick({owner,hash},async()=>{calls.push('research');return Response.json({});},cb('measurement'),cb('execution'),cb('digest'),cb('meta_execution'),cb('meta_conversion'));
+for(let i=0;i<12;i++)await tick();
+assert.equal(new Set(calls).size,6);for(const name of new Set(calls))assert.equal(calls.filter(n=>n===name).length,2,name+' no starvation');
+const before=calls.length;await assert.rejects(()=>worker.workerTick({owner,hash:'wrong'},async()=>Response.json({}),undefined,undefined,undefined,cb('meta_execution'),cb('meta_conversion')));assert.equal(calls.length,before);
+console.log(JSON.stringify({passed:9}));

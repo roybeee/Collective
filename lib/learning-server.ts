@@ -1,4 +1,5 @@
 import {ApiError,str,num,stamp,uid,readRecord,listRecords,recordStatement,database,eventStatement,isAdmin,type EventActor} from './server';
+import {metaRuleEvidenceCurrent} from './meta-experiment-evidence';
 import {learningChannels,learningMetrics,evaluateExperiment,ruleApplies,defaultVerifyChannel,operatorRule,ANY_CHANNEL,PLAYBOOK_MAX_CHARS,type ViralCase,type ViralAnalysis,type TestIdea,type ViralExperiment,type ExperimentResult,type LearningRule,type LearningSnapshot,type Arm,type StoreAssessment,type ReviewDecisionSummary,type PlaybookRecheck,type LearningData,type CorrectionDecision,type PlaybookEvalGate} from './learning';
 import {channelHosts,storeChannelName,channelRegistry} from './channels';
 import {normalizeRuleBody,ruleBodyProblem,ruleTitle,playbookExpiry,activationProblem,correctionClusters,playbookFeedback,recurrenceRate,preferenceOrder,isPreferencePair,MAX_ACTIVE_PER_ROLE,PLAYBOOK_MIN_CITATIONS,PLAYBOOK_MAX_CITATIONS} from './playbook-curator';
@@ -55,12 +56,14 @@ export function parseAnalysis(raw:any,c:ViralCase,origin:'manual'|'hermes'):Vira
 // 모델 입력의 규칙은 판정 통계 도입 이전과 같게 둔다. 통계 요약·확정 기록은 화면·감사용이며 역할 지시문에 뜻이 정의돼 있지 않다.
 const MODEL_OMIT=['stats','decision','decisionReason','decisionConflict'];
 // 원 사례 채널·연장 근거 측정 시각도 화면·감사용이다. 모델에는 검증 채널(channel)만 전달한다.
-const MODEL_RULE_OMIT=['caseChannel','renewMeasuredAt'];
+const MODEL_RULE_OMIT=['caseChannel','renewMeasuredAt','metaAssessment'];
 const modelRule=(rule:LearningRule):LearningRule=>{const r=Object.fromEntries(Object.entries(rule).filter(([k])=>!MODEL_RULE_OMIT.includes(k))) as LearningRule;return r.sourceAssessment?{...r,sourceAssessment:Object.fromEntries(Object.entries(r.sourceAssessment).filter(([k])=>!MODEL_OMIT.includes(k))) as NonNullable<LearningRule['sourceAssessment']>}:r};
 // 성과 규칙(learning 블록). 운영자 선호 규칙은 다른 블록(operatorPreferenceContext)으로 가므로 뺀다. 브리프·회의 경로도 이 함수만 쓴다(운영자 선호 주입은 역할 실행만, B3-1).
 export async function learningContext(owner:string,c:Pick<Campaign,'brandId'|'channels'|'storeId'>){
  const rules=await listRecords<LearningRule>(owner,'learning_rule');
- return rules.filter(r=>!operatorRule(r)&&ruleApplies(r,c.brandId,c.channels,Date.now(),c.storeId))
+ const applicable=rules.filter(r=>!operatorRule(r)&&ruleApplies(r,c.brandId,c.channels,Date.now(),c.storeId));
+ const evidence=await Promise.all(applicable.map(async r=>r.origin!=='meta'||!!r.metaAssessment&&await metaRuleEvidenceCurrent(owner,r.metaAssessment)));
+ return applicable.filter((_,i)=>evidence[i])
   // 지점 전용 규칙이 더 구체적이므로 먼저 전달한다.
   .sort((a,b)=>Number(!!b.storeId)-Number(!!a.storeId)||b.createdAt.localeCompare(a.createdAt))
   .slice(0,12).map(modelRule);
@@ -212,6 +215,7 @@ export async function learningAction(owner:string,b:any,by?:PlaybookActor){
    const renewed={...r,expiresAt:expiry(),...(measuredAt?{renewMeasuredAt:measuredAt}:{renewCount:(r.renewCount||0)+1}),renewedAt:stamp(),renewReason:reason,version:r.version+1,updatedAt:stamp()};
    await recordStatement(owner,'learning_rule',r.id,renewed,r.brandId).run();return {id:r.id,expiresAt:renewed.expiresAt,renewCount:renewed.renewCount||0};
   }
+  if(r.origin==='meta')throw new ApiError(409,'Meta 실험 관측 화면에서 새로운 사전등록으로 재검증하세요.');
   if(r.origin==='store')throw new ApiError(409,'점포 실험에서 승격된 규칙은 점포 마케팅 화면에서 후속 실험을 만드세요.');
   const source=await readRecord<ViralExperiment>(owner,'viral_experiment',r.experimentId);
   let campaign:Campaign;

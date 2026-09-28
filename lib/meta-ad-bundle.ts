@@ -4,6 +4,7 @@ import {META_READ_API_VERSION} from './meta-insights-provider';
 import {readBoundedJson} from './http-limits';
 export type MetaAdBundleInput={operationId:string;imageUploadReceiptId?:string;adsetId:string;creativeId:string;adId:string;pageId:string;pixelId:string;expectedMetaImageHash:string;callToActionType:'LEARN_MORE'|'SHOP_NOW';dailyBudgetKrw:number;graphDailyBudget:string;budgetUnitEvidence:string;ageMin:number;ageMax:number;country:'KR'};
 export type MetaAdBundleScope=MetaAdBundleInput&{accountId:string;campaignId:string;landingUrl:string;startAt:string;endAt:string;hook:string;body:string;assetBytesVerified:false;sourceBytesVerified?:boolean;sourcePngHash?:string|null};
+export type VerifiedMetaAdBundleScope=MetaAdBundleScope&{scopeDigest:string;verifiedAt:string};
 export class MetaAdBundleError extends Error{constructor(public code:'invalid'|'mismatch'|'unknown',message:string){super(message)}}
 const obj=(v:unknown):Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:{};
 export function parseMetaAdBundle(value:unknown):MetaAdBundleInput{

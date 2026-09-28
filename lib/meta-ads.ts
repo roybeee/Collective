@@ -28,5 +28,5 @@ export function metaReadiness(plan:MetaPlan|null,campaignVersion:number,now=Date
  if(p.endAt&&Date.parse(p.endAt)<=now)missing.push('종료된 기간 다시 설정');
  if(plan&&plan.campaignVersion!==campaignVersion)missing.push('변경된 캠페인 기준으로 계획 다시 저장');
  const unitContribution=p.price===null||p.unitCost===null||p.variableCost===null?null:p.price-p.unitCost-p.variableCost;
- return {missing,planningComplete:missing.length===0,canActivate:false as const,approval:'not_requested' as const,unitContribution,external:{read:false,draftWrite:false,activate:false,conversionSend:false},blockers:['Meta 계정 권한 연결 미검증','주문·전환 어댑터 미검증','소재·실험안 검수 미완료','집행 승인·예산 예약 미구현'],salesEvidence:p.goal==='purchase'?'구매·순매출 대조 필요':'매출 미검증'};
+ return {missing,planningComplete:missing.length===0,canActivate:false as const,approval:'not_requested' as const,unitContribution,external:{read:false,draftWrite:false,activate:false,conversionSend:false},blockers:['Meta 계정 권한 연결 미검증','주문·전환 어댑터 미검증','소재·실험안 검수 미완료','집행·정지 탭에서 현재 승인·감시 상태 확인'],salesEvidence:p.goal==='purchase'?'구매·순매출 대조 필요':'매출 미검증'};
 }

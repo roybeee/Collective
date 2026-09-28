@@ -1,4 +1,3 @@
-import type {MetaPerformanceSnapshot} from './meta-performance-report';
 export class MetaLearningInputError extends Error {}
 function text(value:unknown,label:string,max:number){if(typeof value!=='string'||!value.trim()||value.length>max)throw new MetaLearningInputError(label+' 내용을 확인하세요.');return value.trim();}
 
@@ -27,7 +26,7 @@ export function candidateInput(value:unknown){
  if(!Number.isSafeInteger(v.creativeVersion)||Number(v.creativeVersion)<1||typeof v.creativeHash!=='string'||!/^[a-f0-9]{64}$/.test(v.creativeHash))throw new MetaLearningInputError('조회한 소재의 판과 파일 식별자를 확인하세요.');
  return {...fields,metric:v.metric as MetaCandidate['metric'],minSample:Number(v.minSample),creativeId:text(v.creativeId,'연결 소재',100),creativeVersion:Number(v.creativeVersion),creativeHash:v.creativeHash};
 }
-export function learningEvidence(snapshot:MetaPerformanceSnapshot){
+export function learningEvidence(snapshot:{report:{meta?:{matured:boolean}|null;ledger?:{netRevenue:number}|null}}){
  const r=snapshot.report;
  return r.meta?.matured&&r.ledger&&r.ledger.netRevenue>0?'observation_only' as const:'insufficient' as const;
 }

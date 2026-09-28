@@ -1,0 +1,7 @@
+import assert from 'node:assert/strict';
+import {testRuntime} from './helpers/runtime.mjs';
+const {load}=testRuntime(()=>{throw new Error('no external requests')});
+const lib=await load('lib/meta-execution.ts');let passed=0;const check=(v,n)=>{assert.ok(v,n);passed++};
+check(lib.krwGraphBudget(1000)==='1000','KRW offset1 deterministic conversion');assert.throws(()=>lib.krwGraphBudget(1.5));passed++;assert.throws(()=>lib.krwGraphBudget(-1));passed++;
+const now=Date.now(),approval={maxSpend:10000,dailyTarget:1000,lossLimit:3000,safetyReserve:1000,expiresAt:new Date(now+60000).toISOString(),activationDeadline:new Date(now+30000).toISOString(),emergencyStopMandate:true,scope:{startAt:new Date(now+10000).toISOString(),endAt:new Date(now+120000).toISOString(),dailyBudgetKrw:1000,graphDailyBudget:'1000',sourceBytesVerified:true},state:'approved'};
+check(lib.executionStopReason(approval,{totalSpend:0,dailySpend:0},true,now)===null,'inside limits');check(lib.executionStopReason(approval,{totalSpend:3000,dailySpend:0},true,now)==='loss_limit','conservative spend-as-loss stop');check(lib.executionStopReason(approval,{totalSpend:0,dailySpend:1000},true,now)==='daily_limit','daily limit');check(lib.executionStopReason(approval,{totalSpend:0,dailySpend:0},true,now+60001)==='approval_expired','approval expires');check(lib.executionStopReason(approval,{totalSpend:0,dailySpend:0},false,now)==='scope_changed','current evidence changes stop');console.log(JSON.stringify({passed}));

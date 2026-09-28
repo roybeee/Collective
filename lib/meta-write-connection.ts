@@ -1,5 +1,5 @@
 import {openRecordSecret,sealRecordSecret} from './credential-crypto-server';
-import {ApiError,readRecord,stamp} from './server';
+import {ApiError,readRecord,stamp,database} from './server';
 import {readBoundedJson} from './http-limits';
 import {metaId} from './meta-insights';
 import {META_READ_API_VERSION,verifyMetaRead} from './meta-insights-provider';
@@ -8,8 +8,13 @@ export type MetaWriteConnection={channel:'meta_ads_write';brandId:string;account
 export const metaWriteConnectionId=(brandId:string)=>'meta_ads_write:'+brandId;
 export async function readMetaWriteConnection(owner:string,brandId:string){try{return await readRecord<MetaWriteConnection>(owner,'channel_credential',metaWriteConnectionId(brandId))}catch(e){if(e instanceof ApiError&&e.status===404)return null;throw e}}
 export const publicMetaWriteConnection=(c:MetaWriteConnection|null)=>c?{accountId:c.accountId,brandId:c.brandId,updatedAt:c.updatedAt,version:c.version}:null;
+
+export async function assertMetaWriteConnectionChange(owner:string,brandId:string,nextAccountId:string|null){
+ const rows=await database().prepare("SELECT data FROM records WHERE owner=? AND kind='meta_ads_execution' AND json_extract(data,'$.brandId')=? AND json_extract(data,'$.state') NOT IN ('settled','revoked') LIMIT 1001").bind(owner,brandId).all<{data:string}>();
+ if(rows.results.length>1000||rows.results.some(row=>{const e=JSON.parse(row.data) as {scope?:{accountId?:string}};return !nextAccountId||e.scope?.accountId!==nextAccountId}))throw new ApiError(409,'미정산 광고 실행이 있습니다. 중단·최종 광고비 대조 전에는 쓰기 연결 해제나 다른 계정으로 변경할 수 없습니다. 같은 계정 토큰 교체는 가능합니다.');
+}
 export async function prepareMetaWriteConnection(owner:string,brandId:string,account:unknown,token:unknown,version:number){
- await readRecord(owner,'brand',brandId);const accountId=metaId(account,'광고 계정'),reading=await readMetaConnection(owner,brandId);
+ await readRecord(owner,'brand',brandId);const accountId=metaId(account,'광고 계정');await assertMetaWriteConnectionChange(owner,brandId,accountId);const reading=await readMetaConnection(owner,brandId);
  if(!reading?.readEnabled||reading.accountId!==accountId)throw new ApiError(409,'같은 브랜드·광고 계정의 읽기 연결을 먼저 확인하세요.');
  if(typeof token!=='string'||token.length<10||token.length>4096||!/^[A-Za-z0-9_.|\-]+$/.test(token))throw new ApiError(400,'별도 Meta 쓰기 권한 토큰을 확인하세요.');
  const secret=await sealRecordSecret(owner,'channel_credential',metaWriteConnectionId(brandId),token);

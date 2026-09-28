@@ -3,7 +3,7 @@ import {metaReadiness} from '@/lib/meta-ads';
 import {metaCreativeContext,viewMetaCreative} from '@/lib/meta-creative-server';
 import {isEnabled} from '@/lib/feature-flags';
 import {readMetaConnection} from '@/lib/meta-read-connection';
-import {metaWriteConnectionId,metaWriteToken,prepareMetaWriteConnection,publicMetaWriteConnection,readMetaWriteConnection,type MetaWriteConnection} from '@/lib/meta-write-connection';
+import {assertMetaWriteConnectionChange,metaWriteConnectionId,metaWriteToken,prepareMetaWriteConnection,publicMetaWriteConnection,readMetaWriteConnection,type MetaWriteConnection} from '@/lib/meta-write-connection';
 import {MetaInsightError,metaId} from '@/lib/meta-insights';
 import {MetaReadError} from '@/lib/meta-insights-provider';
 import {createPausedMetaCampaign,verifyPausedMetaCampaign,MetaPausedError} from '@/lib/meta-paused-campaign';
@@ -16,8 +16,8 @@ export async function GET(req:Request){try{const who=await actor(req),c=await re
 export async function POST(req:Request){let owner='',lock='';try{const who=await requireOwnerActor(req);secureMutation(req);const b=await body(req);if(!['connect','disconnect','prepare','create','reconcile'].includes(String(b.action)))throw new ApiError(400,'지원하지 않는 비활성 초안 작업입니다.');owner=who.owner;lock=await acquireLock(owner);const c=await readRecord<Campaign>(owner,'campaign',str(b.campaignId,'캠페인',100,true)),x=await context(owner,c);
  if(b.action==='connect'||b.action==='disconnect'){
   if(b.connectionVersion!==(x.connection?.version??0))throw new ApiError(409,'연결이 변경되었습니다. 다시 조회하세요.');
-  if(b.action==='disconnect'){await database().prepare("DELETE FROM records WHERE owner=? AND kind='channel_credential' AND id=?").bind(owner,`${owner}:channel_credential:${metaWriteConnectionId(c.brandId)}`).run();return json(view(c,await context(owner,c),true))}
-  if(!x.enabled||b.allowPausedCreation!==true||c.status==='archived')throw new ApiError(409,'비활성 초안 생성 기능과 별도 쓰기 연결 동의를 확인하세요.');const accountId=metaId(b.accountId,'광고 계정');if((await listRecords<MetaWriteConnection>(owner,'channel_credential')).some(v=>v.channel==='meta_ads_write'&&v.accountId===accountId&&v.brandId!==c.brandId))throw new ApiError(409,'다른 브랜드의 쓰기 연결 계정입니다.');
+  if(b.action==='disconnect'){await assertMetaWriteConnectionChange(owner,c.brandId,null);await database().prepare("DELETE FROM records WHERE owner=? AND kind='channel_credential' AND id=?").bind(owner,`${owner}:channel_credential:${metaWriteConnectionId(c.brandId)}`).run();return json(view(c,await context(owner,c),true))}
+  const accountId=metaId(b.accountId,'광고 계정'),sameAccount=x.connection?.accountId===accountId;await assertMetaWriteConnectionChange(owner,c.brandId,accountId);if(b.allowPausedCreation!==true||!sameAccount&&(!x.enabled||c.status==='archived'))throw new ApiError(409,'비활성 초안 생성 기능과 별도 쓰기 연결 동의를 확인하세요.');if((await listRecords<MetaWriteConnection>(owner,'channel_credential')).some(v=>v.channel==='meta_ads_write'&&v.accountId===accountId&&v.brandId!==c.brandId))throw new ApiError(409,'다른 브랜드의 쓰기 연결 계정입니다.');
   const saved=await prepareMetaWriteConnection(owner,c.brandId,accountId,b.token,(x.connection?.version??0)+1);await recordStatement(owner,'channel_credential',metaWriteConnectionId(c.brandId),saved).run();return json(view(c,await context(owner,c),true));
  }
  if(b.action==='reconcile'){

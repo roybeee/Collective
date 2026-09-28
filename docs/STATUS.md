@@ -3,18 +3,21 @@
 > 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 운영 확인(2026-09-28 13:05 UTC): `ac3e9a4`, Sites64, tree `6eb59d10a1627f139155dd624b396cf606999cd6`. 공개 `/api/version/public`과 origin/main tree 일치. #261·#262 merged/published/runtime-verified. [검증 기록](releases/2026-09-28-ac3e9a4.md). 후속 이미지 원본 추적·실험 사전등록은 별도 개발 중이다.
+- 현재 운영: #263 `81070c379d427c62ba36a7c6a94b44b4e2d014a3`, Sites65, tree `06e2d226327c9992cf485be44c43d25cb60fe3c1` (2026-09-28 13:40 UTC published/runtime-verified). 성장2 최종 M2 전송·M5 집행/정지·M6 관측/승격은 `codex/growth2-finish`에서 검증 완료, 병합·게시 대기. 실제 Meta 전송·집행은 not_run.
 - 성장1 필수 코드 게시 대기 0건. #216·#218·#219·#225는 통합 #244로 병합·게시했다. #206·#208·#210~#214·#217·#220·#223·#231·#235·#237과 관련 문서도 현재 제품에 포함된다.
 - 기존 대기열의 미병합·404 문구는 과거 상태다. R 신규 PR #234·#241·#242·#243 및 인터뷰 게시 문서 #236·#240은 별도 소유자 작업이며 성장1 필수 잔여가 아니다.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-28 12:46 UTC (Codex: 맵달 대상 성장2 후속 통합)
+갱신: 2026-09-28 (Codex: 성장2 남은 개발 종료 검증)
+- 성장2 남은 코드 구현·검토 passed. Pixel/CAPI 내구성 큐·동의/철회, 승인된 제한 집행·부모 우선 비상 정지·정산, 불변 실험 설계·무작위 배정·관측·통계 판정·규칙 승인 및 낡은 근거 차단. [요구사항별 종료 판정](GROWTH-2-CLOSEOUT.ko.md). 새 `meta_ads_capi`·`meta_ads_execution`은 기본 OFF.
+- 최종 로컬 검증 passed: 전체 227/227 suites·14,123 assertions(외부 mocked), 브라우저104 + 최종 수정 뒤 핵심8(real local Chromium/D1, 외부 mocked), 이메일 인증1(real local), 타입·빌드·프롬프트22·lint 기준선70/39. Python 워커13·설치70·맵달19 passed. 새 비즈니스 모듈10개 V8 함수 커버리지141/151=93.4%(외부 mocked; 문장/분기 커버리지 아님). 코드·보안 재검토 HIGH/CRITICAL 잔여0.
+- 소스 병합·게시 상태는 릴리스 후 별도 기록한다. 실계정/실몰 연결·고객 전송·광고 지출·효과 검증은 not_run이며 운영 접근/동의/별도 금액·기간 승인이 필요하다. 아래 과거 증분별 미구현 문구는 해당 시점의 기록이다.
 - #262 통합은 merged/published/runtime-verified, CI verify와 e2e-smoke 각각 success(214 suites·13,851 assertions, 브라우저96+인증1, 맵달19). 후속 `codex/growth2-image-provenance`: 내부 PNG 원본 해시와 Meta 업로드 영수증 연결, PAUSED 광고세트/소재/광고 단계별 생성·알려진 ID 조회 복구, 기존 후보의 불변 사전등록 추가. 실제 업로드·Meta 생성·전환 전송·지출은 not_run. [원본](META-IMAGE-UPLOAD-M4.ko.md)·[하위 생성](META-AD-CREATE-M4.ko.md)·[사전등록](META-LEARNING-M6.ko.md).
 - 후속 로컬 검증: 218/218 suites·13,965 assertions passed(외부 mocked), 브라우저100 passed(real local Chromium/D1, 외부 mocked), 타입·빌드·프롬프트22 passed, lint 기존70 errors/39 warnings 유지. 코드·보안 검토 passed; 연결 갱신 뒤 미송신 준비 재사용과 알려진 ID 읽기 복구 회귀 수정 포함. 원격 CI 결과는 확인 후 별도 기록한다.
 - 진행: `codex/growth2-remaining`, #261 캠페인 선택 원본 통합 + M2 전환 준비·맵달 주문 어댑터 + M4 외부 구성 읽기 검증 + M5 로컬 예약 + M6 다음 실험 후보. 모바일 인터뷰 입력 유실 회귀 수정. 로컬 214/214 suites·13,851 assertions passed(외부 mocked), 타입/빌드/lint gate70·39/프롬프트22 passed. 전체 브라우저96 passed(real local Chromium/D1, 인증/외부 mocked), 이메일 인증1 passed(real local), 맵달 어댑터19 passed(real SQLite, mocked PG/HTTP). 마지막 보고 캐시 수정 뒤 전용24 assertions·타입·빌드 passed. 원격 CI/운영 게시 확인은 별도 후속.
 - 첫 몰 `mapdal.kr` 확정. 원격 코드 `e7c39e7`과 공개 healthz db=pg 확인. 실제 PG 읽기·주문 전송·맵달 서버 설치 not_run. 정형 환불 근거 없는 CANCELLED/DEPOSIT_AFTER_CANCEL은 보류, 일반 MARKETING 동의를 Meta 전송 동의로 승격하지 않는다. [연결 계약](MAPDAL-INTEGRATION.ko.md).
-- 전체 성장2 개발 종료는 아직 아니다. [전환 준비](META-CONVERSIONS-M2.ko.md)는 Pixel/CAPI 전송 미구현, [광고 구성](META-AD-BUNDLE-M4.ko.md)과 PAUSED 생성은 실제 계정 검증 미실행, [예약](META-RESERVATION-M5.ko.md)은 실제 활성화/정지 미구현, [다음 실험](META-LEARNING-M6.ko.md)은 사전등록까지이며 실험군 관측·통계 판정/규칙 승격 미구현이다. 현재 공개 사이트 반영과 실집행·효과 검증을 구분한다.
+- 이전에 미구현이던 Pixel/CAPI 전송, 실제 활성화/정지, 실험 관측·판정·규칙 승격은 이번 최종 변경에서 구현했다. 개발 검증과 실계정 운영·효과 검증은 분리한다.
 - Meta M1 첫 증분 #253 merged(`e8fce70`) · Sites 56 published · 공개 tree runtime-verified. CI 199/199 suites·13,372 assertions, E2E 76+인증1 passed. [릴리스](releases/2026-09-28-e8fce70.md). 실제 계정 읽기는 토큰/계정 미제공으로 blocked이며 전체 M1 종료로 표시하지 않는다.
 - M2 주문·환불 #254 merged(`27c2162`) · Sites 57 published · 공개 tree runtime-verified. CI 200/200 suites·13,404 assertions, E2E 78+인증1 passed. [릴리스](releases/2026-09-28-27c2162.md). 실몰 어댑터·웹훅·Pixel/CAPI는 후속, 외부 고객 전송 0.
 - M3 소재·실험 검수 #255 merged(`8b437a0`) · Sites 58 published · 공개 tree runtime-verified. CI 201/201 suites·13,434 assertions, E2E 80+인증1 passed. [릴리스](releases/2026-09-28-8b437a0.md). 광고 생성/활성화 없음.
