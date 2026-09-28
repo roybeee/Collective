@@ -1,5 +1,6 @@
 import {META_CONVERSION_PURPOSE,type MetaConversionEvent} from '@/lib/meta-conversion';
 import {conversionContext,conversionId,conversionView} from '@/lib/meta-conversion-server';
+import {advanceMetaConversionWork,configureMetaCapi,disconnectMetaCapi,metaPixelEnvelope,queueMetaCapi,purgeMetaCapiMatching,limitMetaConversionMutation} from '@/lib/meta-capi-server';
 import {ApiError,acquireLock,actor,body,database,failure,json,recordStatement,releaseLock,requireOwnerActor,secureMutation,stamp,str} from '@/lib/server';
 export async function GET(req:Request){try{const who=await actor(req),{store}=await conversionContext(who.owner,str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true));return json(await conversionView(who.owner,store,who.role==='owner'));}catch(e){return failure(e)}}
 function validateContract(b:Record<string,unknown>,orderDate:string){
@@ -10,14 +11,23 @@ function validateContract(b:Record<string,unknown>,orderDate:string){
 }
 export async function POST(req:Request){let owner='',lock='';try{
  const who=await requireOwnerActor(req);secureMutation(req);const b=await body(req);
- if(!['prepare','revoke'].includes(String(b.action)))throw new ApiError(400,'지원하지 않는 전환 작업입니다.');
- owner=who.owner;lock=await acquireLock(owner);const {campaign,store}=await conversionContext(owner,str(b.campaignId,'캠페인',100,true)),view=await conversionView(owner,store,true),orderId=str(b.orderId,'주문',100,true),order=view.orders.find(x=>x.id===orderId),previous=view.records.find(x=>x.orderId===orderId);
+ if(!['prepare','revoke','configure','disconnect','queue','advance','pixel'].includes(String(b.action)))throw new ApiError(400,'지원하지 않는 전환 작업입니다.');
+ owner=who.owner;
+ if(b.action!=='revoke')await limitMetaConversionMutation(owner);
+ if(b.action==='advance'){if(b.confirmed!==true)throw new ApiError(400,'예약한 전환 전송 실행을 확인하세요.');const {store}=await conversionContext(owner,str(b.campaignId,'캠페인',100,true));await advanceMetaConversionWork(owner);return json(await conversionView(owner,store,true));}
+ lock=await acquireLock(owner);const {campaign,store}=await conversionContext(owner,str(b.campaignId,'캠페인',100,true));
+ if(b.action==='configure'){await configureMetaCapi(owner,store,b);return json(await conversionView(owner,store,true));}
+ if(b.action==='disconnect'){if(b.confirmed!==true)throw new ApiError(400,'연결 해제를 확인하세요.');await disconnectMetaCapi(owner,store,b.expectedConnectionVersion);return json(await conversionView(owner,store,true));}
+ if(b.action==='queue'){await queueMetaCapi(owner,campaign,store,b);return json(await conversionView(owner,store,true));}
+ if(b.action==='pixel')return json({envelope:await metaPixelEnvelope(owner,store,str(b.eventId,'구매 이벤트',100,true))});
+ const view=await conversionView(owner,store,true),orderId=str(b.orderId,'주문',100,true),order=view.orders.find(x=>x.id===orderId),previous=view.records.find(x=>x.orderId===orderId);
  if(b.expectedVersion!==(previous?.version??0))throw new ApiError(409,'전환 기록이 변경되었습니다. 다시 불러오세요.');
  if(b.action==='revoke'){
   if(b.confirmed!==true)throw new ApiError(400,'동의 철회를 확인하세요.');
-  if(!previous||previous.consent==='revoked')throw new ApiError(409,'철회할 동의 기록이 없습니다.');
+  if(!previous)throw new ApiError(409,'철회할 동의 기록이 없습니다.');
+  if(previous.consent==='revoked'){await purgeMetaCapiMatching(owner,previous.id);return json(await conversionView(owner,store,true));}
   const next={...previous,consent:'revoked' as const,version:previous.version+1,updatedAt:stamp(),actorId:who.id};
-  await persist(owner,next);return json(await conversionView(owner,store,true));
+  await persist(owner,next);await purgeMetaCapiMatching(owner,next.id);return json(await conversionView(owner,store,true));
  }
  if(!order)throw new ApiError(404,'이 지점의 자사몰 연결 주문을 찾을 수 없습니다.');
  validateContract(b,order.orderDate);

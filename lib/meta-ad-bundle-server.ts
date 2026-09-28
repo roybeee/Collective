@@ -10,7 +10,8 @@ import {isEnabled} from './feature-flags';
 import {storefrontDigest} from './storefront-orders';
 import {ApiError,listRecords} from './server';
 import type {MetaAdBundleInput,MetaAdBundleScope} from './meta-ad-bundle';
-export type VerifiedMetaAdBundleScope=MetaAdBundleScope&{scopeDigest:string;verifiedAt:string};
+import type {VerifiedMetaAdBundleScope} from './meta-ad-bundle';
+export type {VerifiedMetaAdBundleScope} from './meta-ad-bundle';
 export type MetaAdBundle={id:string;campaignId:string;brandId:string;campaignVersion:number;version:number;input:MetaAdBundleInput;evidenceFingerprint:string;status:'prepared'|'reviewed'|'verified'|'unknown';verifiedScope:VerifiedMetaAdBundleScope|null;reviewedBy:string|null;reviewedAt:string|null;updatedAt:string;updatedBy:string};
 export async function metaAdBundleContext(owner:string,c:Campaign){
  const [creative,connection,writeConnection,operations,saved,enabled]=await Promise.all([metaCreativeContext(owner,c),readMetaConnection(owner,c.brandId),readMetaWriteConnection(owner,c.brandId),listRecords<PausedCampaignOperation>(owner,'meta_ads_write_operation',c.id),optionalRecord<MetaAdBundle>(owner,'meta_ads_bundle',c.id),isEnabled(owner,'meta_ads_bundle')]);

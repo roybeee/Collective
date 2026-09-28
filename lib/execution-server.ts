@@ -4,7 +4,8 @@ import {campaignBudget,isRecruitmentObjective,type Artifact,type Brand,type Camp
 import {confirmedFactContext} from './brand-facts-server';
 import type {BrandFact} from './brand-facts';
 import {evidenceContext} from './ai-context';
-import {factLabel} from './fact-catalog';
+import {creativeCaption,creativeCurrent,materialHash} from './execution-creative-basis';
+export {materialHash} from './execution-creative-basis';
 import {approvalDrift,budgetIssues,campaignGateIssues,captionIssues,composeCaption,copyBlocks,executionTotals,mediaHash,providerPublicationStatus,publicationLabels,reviewStatuses,uncertainResolvable,CREATIVE_TITLE_MAX,type CaptionCandidate,type ExecutionCreative,type ExecutionLimits,type ExecutionState,type FranchiseExecution,type NeedsReview,type Publication,type PublicationCode,type PublicationCopy,type PublicationStatus,type FactRef} from './execution';
 import {isOwnMediaUrl,mediaUrl,pngBytes,publishPublicMedia,retirePublicMedia,sha256,storePngThen,verifyMedia} from './execution-media';
 import {inspectBuffer,verifyBuffer} from './publisher-buffer';
@@ -14,7 +15,7 @@ import {CODE_ALPHABET,CODE_MAX,type TrackingCode} from './tracking-codes';
 import type {Store} from './store-marketing';
 import {assertNotArchived} from './campaign-archive';
 import {AI_DISCLOSURE_LINE,hasKnownOrigin,isAiGenerated} from './ai-disclosure';
-import {factCaption,footnoteIssues,franchiseFactUseIssues,versionStates,FRANCHISE_FACT_MESSAGES,type VersionLite} from './franchise-facts';
+import {footnoteIssues,franchiseFactUseIssues,versionStates,FRANCHISE_FACT_MESSAGES} from './franchise-facts';
 import {hasFranchiseContext,loadFranchiseContext,type FranchiseContext} from './franchise-facts-server';
 import {franchiseGateError,franchiseIssueLabels,judgeFranchiseText,mentionedFranchiseFacts,recruitmentLike,recruitmentWarning,type ClaimScope,type FranchiseJudgement} from './franchise-compliance';
 import {COMPLIANCE_NOTICE} from './graders/compliance';
@@ -24,12 +25,6 @@ import {isInstant} from './franchise-rules';
 export type PublisherCredential={secret:string;version:number;channelId:string;account:string;organizationId?:string};
 type Who=Pick<Actor,'id'|'email'>;
 export async function optionalRecord<T>(owner:string,kind:string,id:string){try{return await readRecord<T>(owner,kind,id)}catch(e){if(e instanceof ApiError&&e.status===404)return null;throw e}}
-// 캡션과 PNG에는 내부 key 대신 표준 항목 라벨을 쓴다(data-truth-12).
-const labeledCaption=(facts:Pick<BrandFact,'key'|'value'>[])=>facts.map(f=>factLabel(f.key)+': '+f.value).join('\n');
-// 트랙 R R1b: 정보공개서 근거(sourceRef)·창업비용 상세가 있는 가맹 사실이 있으면 사실 줄에 매장 유형·기준일·포함·불포함을 싣고 캡션 끝에 결정론 각주를 붙인다.
-// 없으면 labeledCaption과 같은 바이트라 기존 소재의 materialHash가 바뀌지 않는다. 참조 버전을 찾지 못하면 null(현재 소재가 아님).
-const sourced=(facts:readonly BrandFact[])=>facts.some(f=>!!f.sourceRef||!!f.cost);
-const creativeCaption=(facts:BrandFact[],versions:readonly VersionLite[])=>sourced(facts)?factCaption(facts,versions):labeledCaption(facts);
 // 판정 범위(트랙 R R3): 가맹 모집 목적(objective) 캠페인은 가맹 프로필 유무와 관계없이 모집 범위, 가맹 프로필 브랜드의 그 밖 캠페인은 소비자 범위,
 // 둘 다 아니면 판정하지 않는다(비가맹 경로 불변). 기능 스위치는 읽지 않는다(저장된 objective 캠페인은 저장값대로 점검하고, 끄는 길은 목적 해제다).
 const claimScope=(campaign:Pick<Campaign,'objective'>,fr:FranchiseContext):ClaimScope|null=>isRecruitmentObjective(campaign)?'recruitment':fr.profile?'consumer':null;
@@ -51,16 +46,6 @@ function franchiseJudgement(campaign:Campaign,fr:FranchiseContext,facts:BrandFac
 }
 // 차단(해제 불가·근거 필요)이면 409. 승인 입력 확인란·역할(대표 포함)은 이 판정을 바꾸지 못한다.
 function assertFranchiseText(j:FranchiseJudgement|null){const e=j&&franchiseGateError(j);if(e)throw new ApiError(e.status,e.message)}
-// 소재 입력 지문(exec-loop-8): 브랜드 이름·색, 사실 {id,version}, 캡션. 입력이 같으면 브리프 버전이 바뀌어도 소재를 다시 만들 필요가 없다.
-export async function materialHash(brand:Pick<Brand,'name'|'color'>,refs:FactRef[],caption:string){return sha256(new TextEncoder().encode(JSON.stringify([brand.name,brand.color,refs.map(r=>[r.id,r.version]),caption])))}
-async function creativeCurrent(campaign:Campaign,brand:Brand|null,facts:BrandFact[],c:ExecutionCreative,versions:readonly VersionLite[]){
- const used=c.factRefs.map(r=>facts.find(f=>f.id===r.id&&f.version===r.version));
- // 지점 연결 전에 만든 소재는 접수 때 currentCreative가 거부하므로 화면에서도 현재 소재가 아니다(R4).
- if(used.some(f=>!f)||!brand||c.storeId!==campaign.storeId)return false;
- if(!c.materialHash)return c.campaignVersion===campaign.version;
- const caption=creativeCaption(used as BrandFact[],versions);
- return caption!==null&&c.materialHash===await materialHash(brand,c.factRefs,caption);
-}
 export async function getExecution(owner:string,campaign:Campaign):Promise<ExecutionState>{
  const [creatives,publications,limits,credential,brand,facts,copies,fr]=await Promise.all([listRecords<ExecutionCreative>(owner,'execution_creative',campaign.id),listRecords<Publication>(owner,'execution_publication',campaign.id),optionalRecord<ExecutionLimits>(owner,'execution_limits',campaign.id),optionalRecord<PublisherCredential>(owner,'publisher_credential',campaign.brandId),optionalRecord<Brand>(owner,'brand',campaign.brandId),confirmedFactContext(owner,campaign.brandId,campaign.storeId),captionCandidates(owner,campaign),loadFranchiseContext(owner,campaign.brandId)]);
  // 정보공개서 버전은 근거 있는 가맹 사실의 각주 계산에만 쓰인다(근거 없는 사실의 캡션은 버전과 무관하다).

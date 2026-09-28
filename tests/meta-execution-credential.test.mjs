@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {testRuntime} from './helpers/runtime.mjs';
+const {load}=testRuntime(()=>{throw new Error('no external')});const s=await load('lib/server.ts'),w=await load('lib/meta-write-connection.ts');let passed=0;
+await s.recordStatement('o','meta_ads_execution','e',{id:'e',brandId:'b',scope:{accountId:'123'},state:'active'},'c').run();
+await assert.rejects(()=>w.assertMetaWriteConnectionChange('o','b',null));passed++;
+await assert.rejects(()=>w.assertMetaWriteConnectionChange('o','b','999'));passed++;
+await w.assertMetaWriteConnectionChange('o','b','123');passed++;
+await w.assertMetaWriteConnectionChange('other','b',null);passed++;
+await s.recordStatement('o','meta_ads_execution','e',{id:'e',brandId:'b',scope:{accountId:'123'},state:'settled'},'c').run();await w.assertMetaWriteConnectionChange('o','b',null);passed++;
+const generic=await load('lib/channel-credentials.ts');await assert.rejects(()=>generic.revokeCredential('o','meta_ads_write',{brandId:'b'}));passed++;console.log(JSON.stringify({passed}));

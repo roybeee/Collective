@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {testRuntime} from './helpers/runtime.mjs';
+let offset=1,userCurrency='KRW',spend='100.01',bad=false,posts=[];
+const {load}=testRuntime(async(url,o)=>{assert.equal(o.redirect,'manual');const u=new URL(url);if(o.method==='POST'){posts.push(new URLSearchParams(o.body).get('status'));return Response.json({success:!bad})}if(u.pathname.endsWith('/me'))return Response.json({currency:{currency_offset:offset,user_currency:userCurrency}});return Response.json({data:[{account_id:'1',adset_id:'2',account_currency:'KRW',spend}]})});
+const p=await load('lib/meta-execution-provider.ts');let passed=0;
+await p.verifyExecutionCurrency('synthetic_token',{dailyBudgetKrw:1000,graphDailyBudget:'1000'});passed++;
+offset=100;await p.verifyExecutionCurrency('synthetic_token',{dailyBudgetKrw:1000,graphDailyBudget:'100000'});passed++;
+await assert.rejects(()=>p.verifyExecutionCurrency('synthetic_token',{dailyBudgetKrw:1000,graphDailyBudget:'1000'}));passed++;
+userCurrency='USD';await assert.rejects(()=>p.verifyExecutionCurrency('synthetic_token'));passed++;userCurrency='KRW';
+assert.equal((await p.readExecutionSpend('synthetic_token',{accountId:'1',adsetId:'2'})).totalSpend,101);passed++;
+spend='-10';await assert.rejects(()=>p.readExecutionSpend('synthetic_token',{accountId:'1',adsetId:'2'}));passed++;
+await p.writeExecutionStatus('synthetic_token','2','ACTIVE');assert.deepEqual(posts,['ACTIVE']);passed++;
+bad=true;await assert.rejects(()=>p.writeExecutionStatus('synthetic_token','2','PAUSED'));passed++;
+console.log(JSON.stringify({passed}));

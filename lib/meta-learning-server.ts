@@ -26,7 +26,7 @@ export async function metaLearningView(owner:string,c:Campaign,canEdit:boolean,c
   periodReports={...periodReports,[key]:current};snapshots.push(await snapshotStatus(owner,c,s,current));
  }
  const creativeStale=(r:MetaLearningDecision)=>!!r.candidate&&!execution.creatives.some(v=>v.current&&v.id===r.candidate?.creativeId&&v.version===r.candidate.creativeVersion&&v.pngHash===r.candidate.creativeHash);
- const displayed=await Promise.all(records.map(async r=>{const stale=r.brandId!==c.brandId||(snapshots.find(s=>s.id===r.snapshotId)?.stale??true)||creativeStale(r);return {...r,stale,candidateDigest:r.candidate?await candidateDigest(r):null,resultStatus:r.registration?(stale?'invalid' as const:'insufficient' as const):r.evidenceStatus};}));
+ const displayed=await Promise.all(records.map(async r=>{const stale=r.brandId!==c.brandId||r.campaignVersion!==c.version||(!r.registration&&(snapshots.find(s=>s.id===r.snapshotId)?.stale??true))||creativeStale(r);return {...r,stale,candidateDigest:r.candidate?await candidateDigest(r):null,resultStatus:r.registration?(stale?'invalid' as const:'insufficient' as const):r.evidenceStatus};}));
  return {records:displayed,snapshots,version:records[0]?.version??0,canEdit:canEdit&&c.status!=='archived',canPreregister:canPreregister&&c.status!=='archived',creatives:execution.creatives.filter(v=>v.current).map(v=>({id:v.id,title:v.title||'확인 사실 소재',version:v.version,pngHash:v.pngHash})),mayActivate:false};
 }
 const candidateDigest=(r:MetaLearningDecision)=>storefrontDigest({id:r.id,version:r.version,campaignId:r.campaignId,brandId:r.brandId,campaignVersion:r.campaignVersion,snapshotId:r.snapshotId,sourceDigest:r.sourceDigest,sourceVersion:r.sourceVersion,candidate:r.candidate});

@@ -75,7 +75,7 @@ const recruitmentKinds=[...reached].filter(f=>f!=='lib/record-kinds.ts'&&/recrui
 assert.deepEqual(recruitmentKinds,[],'모델 경로 파일에 모집 kind가 있습니다: '+recruitmentKinds.join(', '));passed.push('no file reachable from the model roots names a recruitment asset, event, code, spend, import or report kind');
 // 트랙 R R7a(DP-10): 공공 벤치마크 kind 문자열도 모델 루트에서 닿는 파일에 없다(레지스트리 제외). 공정위 API 커넥터는 fetch를 쓰는 루트지만 벤치마크·리드 모듈을 import하지 않는다.
 const benchmarkKinds=[...reached].filter(f=>f!=='lib/record-kinds.ts'&&/franchise_benchmark|benchmark_(fetch|credential)/.test(readFileSync(f,'utf8')));
-assert.deepEqual(benchmarkKinds,[],'모델 경로 파일에 벤치마크 kind가 있습니다: '+benchmarkKinds.join(', '));passed.push('no file reachable from the model roots names a benchmark kind');
+assert.deepEqual(benchmarkKinds,[],'모델 경로 파일에 벤치마크 kind가 있습니다: '+reachable(graph,roots,benchmarkKinds).map(h=>h[2]).join(' | '));passed.push('no file reachable from the model roots names a benchmark kind');
 check('R7a: the FTC connector is a model-path root that reaches no franchise module',roots.includes('lib/connectors/ftc-franchise.ts')&&reachable(graph,['lib/connectors/ftc-franchise.ts'],FORBIDDEN).length===0);
 // ── 2) 검사기 자체 확인 ──
 const synthetic=new Map([['r.ts',['a.ts']],['a.ts',['b.ts']],['b.ts',['f.ts']],['c.ts',[]]]);

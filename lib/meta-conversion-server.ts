@@ -5,6 +5,7 @@ import type {StorefrontOrderLink} from './storefront-orders';
 import {storefrontDigest} from './storefront-orders';
 import {conversionOrderIssues,type MetaConversionEvent,type MetaConversionView} from './meta-conversion';
 import {ApiError,listRecords,readRecord} from './server';
+import {metaCapiView} from './meta-capi-server';
 export const conversionId=(owner:string,brandId:string,storeId:string,orderId:string)=>storefrontDigest(['meta-purchase-v1',owner,brandId,storeId,orderId]).then(x=>'purchase_'+x);
 export async function conversionContext(owner:string,campaignId:string){
  const campaign=await readRecord<Campaign>(owner,'campaign',campaignId);
@@ -15,6 +16,6 @@ export async function conversionContext(owner:string,campaignId:string){
 }
 export async function conversionView(owner:string,store:Store,canEdit:boolean):Promise<MetaConversionView>{
  const [links,orders,records]=await Promise.all([listRecords<StorefrontOrderLink>(owner,'storefront_order_link',store.id),listRecords<StoreOrder>(owner,'store_order',store.id),listRecords<MetaConversionEvent>(owner,'meta_conversion_event',store.id)]);
- const scoped=records.filter(x=>x.brandId===store.brandId&&x.storeId===store.id),linked=new Set(links.filter(x=>x.brandId===store.brandId&&x.storeId===store.id).map(x=>x.orderId));
- return {canEdit,mayTransmit:false,externalTransmissions:0,transmissionBlockers:['외부 전환 전송 기능은 비활성 상태입니다.','Meta 데이터셋·고객 동의 수집 경로·허용 필드 계약과 실제 테스트 검증 후 별도 활성화가 필요합니다.'],records:scoped,orders:orders.filter(x=>x.storeId===store.id&&linked.has(x.id)).map(x=>{const event=scoped.find(e=>e.orderId===x.id)??null;return {id:x.id,orderDate:x.orderDate,status:x.status,paidAmount:x.paidAmount,refundAmount:x.refundAmount,version:x.version,issues:conversionOrderIssues(x,event??undefined),event}})};
+ const capi=await metaCapiView(owner,store),scoped=records.filter(x=>x.brandId===store.brandId&&x.storeId===store.id).map(x=>({...x,externalTransmissions:capi.operations.find(o=>o.id===x.id)?.attempts??0})),linked=new Set(links.filter(x=>x.brandId===store.brandId&&x.storeId===store.id).map(x=>x.orderId));
+ return {canEdit,capi,mayTransmit:capi.enabled&&!!capi.connection?.connected,externalTransmissions:capi.operations.reduce((n,x)=>n+x.attempts,0),transmissionBlockers:[...(!capi.enabled?['외부 전환 전송 기능 스위치가 꺼져 있습니다.']:[]),...(!capi.connection?.connected?['전환 전용 데이터셋·토큰·자사몰 주소 연결이 필요합니다.']:[]),'주문별 별도 고객 필드 동의와 전송 예약이 필요합니다.'],records:scoped,orders:orders.filter(x=>x.storeId===store.id&&linked.has(x.id)).map(x=>{const event=scoped.find(e=>e.orderId===x.id)??null;return {id:x.id,orderDate:x.orderDate,status:x.status,paidAmount:x.paidAmount,refundAmount:x.refundAmount,version:x.version,issues:conversionOrderIssues(x,event??undefined),event}})};
 }
