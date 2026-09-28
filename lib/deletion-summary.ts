@@ -14,7 +14,7 @@ const deletedGroups:readonly Group[]=[
  {label:'작업물',kinds:['artifact']},{label:'실행',kinds:[JOBS]},{label:'회의',kinds:['team_meeting']},{label:'성과',kinds:['metric']},
  {label:'작업물 이전 버전',kinds:['history']},{label:'온라인 채점 결과',kinds:['grading']},{label:'바이럴 실험',kinds:['viral_experiment']},
  {label:'실험 정정·수집 기록',kinds:['experiment_revision','measurement_draft','measurement_source','learning_guidance']},
- {label:'Meta 광고 준비 계획',kinds:['meta_ads_plan','meta_ads_insights','meta_ads_creative_review']},
+ {label:'Meta 광고 준비 계획',kinds:['meta_ads_plan','meta_ads_insights','meta_ads_creative_review','meta_ads_report']},
  {label:'브리프 초안',kinds:['brief_draft']},{label:'상시 지시',kinds:['campaign_directive']},{label:'자료 요청',kinds:['data_request']},{label:'캠페인 이력',kinds:['event']},
  {label:'AI 요청·응답 원문',kinds:['hermes_submission','openai_submission','learning_task','learning_job_output','role_output_contract','role_output_failure','learning_snapshot','campaign_prompt_pin','reflector_run']},
  {label:'연속 실행·발행 설정',kinds:['campaign_sequence','background_attempt','execution_limits','publication_check']},{label:'캠페인 토큰 상한',kinds:['token_budget']},
