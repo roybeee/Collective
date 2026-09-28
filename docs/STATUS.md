@@ -3,21 +3,16 @@
 > 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 운영(갱신): `b64bc06`(Sites 버전 49, tree `0d42612`, [기록](releases/2026-09-27-b64bc06.md)). 레인 R #203·#204·레인 G #206 게시 완료.
+- 운영(2026-09-28 01:28 UTC): `641f37b`, Sites 52, tree `a7f6cd8c3a33c7906e1e36e60465a8aa0254b3e9`, `published` · `runtime-verified`. [릴리스](releases/2026-09-28-641f37b.md).
+- 성장1 필수 코드 게시 대기 0건. #216·#218·#219·#225는 통합 #244로 병합·게시했다. #206·#208·#210~#214·#217·#220·#223·#231·#235·#237과 관련 문서도 현재 제품에 포함된다.
+- 기존 대기열의 미병합·404 문구는 과거 상태다. R 신규 PR #234·#241·#242·#243 및 인터뷰 게시 문서 #236·#240은 별도 소유자 작업이며 성장1 필수 잔여가 아니다.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
-- #208 · 레인 R · 보통 · 새 스위치 없음(r_franchise 기본 꺼짐)
-- #231 · 레인 R · 보통 · 새 스위치 없음(r_franchise 기본 꺼짐, 공공데이터 키가 없으면 외부 호출 0, 새 kind 3개 `franchise_benchmark`·`benchmark_fetch`·`benchmark_credential`, 마이그레이션 없음). DATA-PROCESSING #232 레인 A 검토 통과
-- #210 · 레인 G · 보통 · 새 스위치 없음(prompts 콘텐츠만, 레지스트리 반영은 레인 Q 쌍 평가 뒤)
-- #211 · 레인 G · 보통 · `crypto_v1_write` 기본 꺼짐, 선택 환경변수 `AGENCY_ENCRYPTION_KEYS`(없어도 동작 동일)
-- #212 · 레인 G · 보통 · `a4_png_code` 기본 꺼짐, 새 kind `execution_coded_png`
-- #213 · 레인 G · 보통 · `collect_guard` 기본 꺼짐(직원 collect 403 새 제한)
-- #220 · 레인 G · 급함(운영 `/api/context-replay` 404) · 새 스위치 없음
-- #223 · 레인 Q · 보통 · 새 스위치 없음(바이럴 수집 콘텐츠 지시 무시 문장이 운영 제출을 바꿈)
-- #235 · 레인 R · 보통 · 새 스위치 없음(r_franchise 기본 꺼짐, 순수 모듈만·런타임 연결 없음)
-- #237 · 레인 R · 보통 · 새 스위치 없음(r_franchise 기본 꺼짐, 새 kind 2개 `franchise_message_template`·`franchise_nurture_draft`, 사용량 종류 `nurture`, HERMES 초안은 사람이 누를 때만, 마이그레이션 없음). DATA-PROCESSING #238 레인 A 검토 통과
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-27 14:03 UTC
+갱신: 2026-09-28 01:28 UTC (대표 위임 Codex 최종 통합)
+- **성장1 개발 종료 passed / 운영 인수 blocked / 효과 검증 not_run**. C01~C12 통합·197/197 suites(13,261 assertions)·CI verify/E2E·Sites 52·소유자 운영 버전 확인 완료. [최종 종료 판정 및 조건부 인계](observations/2026-09-28-lane-a-growth1-closeout.md). 아래 09-27 중간 판정과 미병합/미게시 상태를 대체한다.
+- 남은 것은 실제 게시·주문/POS·A8 보고, 개별 활성화 게이트와 Q의 24/72시간 감시다. 24h 09-29 10:23:54, 72h 10-01 10:23:54 KST. 자동 예약 생성은 하지 않았으며 담당·재개 조건·다음 확인일은 종료 기록에 있다.
+
 - 진행 중: B3-2a 교정 신호 PR(교정 묶음 90일 5건·규칙별 파생 피드백·같은 사유 재발률, 스위치 `b3_playbook_signals` 기본 꺼짐, 경보가 열리면 `playbook_activate` 409, 토큰 0, [PLAYBOOK](PLAYBOOK.ko.md) B3-2a 절). B3-2b 선호 on/off 쌍 평가 PR(브랜치 `feat/b3-2b-preference-pair`, B3-2a 위): `POST /api/eval` `pair.kind: operator_preferences`, off=동결 요청에서 블록 뺌·on=고른 규칙만의 운영 주입 블록, 기존 `pairGate` 그대로, 초안 평가(D5), 프롬프트 활성화 근거 금지(409), 테스트 mocked·토큰 0, [PLAYBOOK](PLAYBOOK.ko.md) B3-2b 절. 레인 Q 파일(`lib/eval-server.ts`·`lib/eval-kinds.ts`·`lib/prompt-registry.ts`)을 레인 A가 고쳤고 29f7af가 리뷰한다. B3-2c 선호 쌍 평가 첨부(브랜치 `feat/b3-2c-attach-eval`, B3-2b 위): `playbook_attach_eval`(대표만, 스위치 꺼짐 409)이 끝난 선호 쌍 run을 평가한 규칙 버전에 `playbook_audit` `attach_eval`로만 남김(규칙 버전·상태 불변, `performance_tested` 계속 409), 화면에 규칙 버전별 최신 게이트, 4단계 종료 조건 절차는 [PLAYBOOK](PLAYBOOK.ko.md) B3-2c 절, 테스트 mocked·토큰 0. #160(최상위 `}` 보정·순서 되돌림) `merged`, 묶음 17 게시는 A1 dev 쌍 평가 `5528b2f9` 종료 뒤 → A3 4회차. B4 2부 #155·#157·#159 `merged`.
 - A6 종료 조건: **passed · real**(2026-09-27 00:56 KST). 이문동점 영업시간 자료 요청 `dr-f08c16186f08`이 사실 확정으로 closed. [관찰 기록](observations/2026-09-27-lane-a-a6-end-condition.md). 운영 스위치 `a6_data_requests` 켜짐.
 - A3 종료 조건 run: 5회째 **passed · real**(run `86349108`, 운영 `7851185` Sites 버전 44, 32,653토큰). 국밥 12 pass·0 fail, 수학학원 11 pass·0 fail(`copy_pack_variants` pass). 두 원문 모두 보정 없이 바로 JSON이었다(`+channels-close`는 이 run에서 쓰이지 않음). 1~4회 실패 기록과 결정은 [카피 팩](COPY-PACK.ko.md#a3-종료-조건-run-기록-4회). 스위치 `a3_copy_pack` 켜기는 대표 결정으로 따로 한다.
@@ -83,25 +78,17 @@
 - 관찰(레인 Q 파일): `tests/graders.test.mjs:274`(4만 자 입력 1초 검사)가 이 4코어 컨테이너에서 한계선에 있다('## x\n자료 필요'×4000 입력 0.93~1.07초, 같은 코드에서 3회 중 1~2회 실패). 채점기 코드와 무관한 부하 흔들림이다.
 
 ## 레인 G (Claude G 세션 roybee-86 — 성장 계획 잔여 개발)
-갱신: 2026-09-27 11:45 UTC
-- 결정: 대표 지시(2026-09-27 "코드 쪽 남은 것 전부 개발·배포·게시까지 마무리"). B2 2단계 포함은 대표가 다시 확인했다. 범위와 순서는 [LANES](LANES.ko.md#레인-g-claude-g-세션-roybee-86).
-- 진행 중(브랜치, 모두 기준 `530387b`~`6a45a27`, 미병합):
-  - `feat/4b-loop1-collect`: `loop-1` 성과 수집 화면·초안·경고 + `security-ops-5` 수집 실패 노출·재연결 필요·백오프.
-  - `feat/4b-key-rotation`: `security-ops-6` 암호문 `v1:kid`·AAD·여러 키 복호화, 새 형식 쓰기는 기본 꺼짐 스위치(롤백 안전).
-  - `feat/b2-stage2-digest`: B2 2단계 워커 digest 큐·드리프트 경보·사용량 표(스위치 기본 꺼짐, 앱 쪽 tick만).
-  - `feat/b3-2-reflector`: B3-2 Reflector(대표·관리자 전용 미리보기→전송, DP-2 허용 목록, DP-3 fail-closed, 격리 HERMES 프로필과 대표 확인 기록이 있어야 실행, 초안만 저장, 스위치 기본 꺼짐).
-  - `feat/a4-4-png-code`: A4-4 게시 코드 넣은 파생 PNG(원본 `pngHash` 불변, 스위치 기본 꺼짐).
-  - `feat/a1-commerce-audit`: A1 커머스·감사 묶음 후보 콘텐츠. 병합 뒤 레인 Q가 쌍 평가·활성화.
-  - `feat/4b-input-diet`: `ai-quality-9`+`loop-10` 입력 축소·아카이브 요약(스위치 꺼짐이면 제출 바이트 동일). 켜기 전 레인 Q on/off 쌍 평가.
-  - #206 `fix/signal-graders-version`: 비식별 신호 `gradersVersion` 120자 절단 결함(레인 R '확인 필요' 항목). 게이트 5개 passed · mocked(167/167, 11,865).
-- 다음: `loop-2`(게시물과 실험 arm 연결, 게시물 ID·자동 상태 확인·측정 원천 자동 등록)는 `loop-1` 병합 뒤.
-- 막힌 것(코드 밖): Reflector 실제 실행은 DATA-PROCESSING 7절의 사람 확인 항목(8절 3번 HERMES 세션 메모리, 법률 검토 결과 등)이 채워져야 한다. 코드는 그 전에도 스위치 꺼짐으로 병합·게시할 수 있다.
+갱신: 2026-09-28 01:28 UTC (대표 위임 Codex 통합 결과)
+- 성장1 필수 코드 #206·#210·#211·#212·#213·#216·#217·#218·#219·#220은 모두 main에 포함, Sites 52로 게시·실행 tree 확인 완료. #216·#218·#219 충돌은 #244에서 기존 G/R 기능을 보존해 해결했다. Q #225도 함께 통합했다.
+- 코드별 검사·운영 확인·꺼짐 기본값·한계는 [최종 종료 기록](observations/2026-09-28-lane-a-growth1-closeout.md)에 모았다. 필수 미병합 코드 0건이며 실제 활성화와 효과 검증을 완료로 세지 않는다.
+- 조건부: Reflector 격리/데이터 전제·교정 5건, 입력 축소 쌍 평가, 실제 키 회전과 Q/R 확대, 공급자 자동 갱신·게시 ID 실응답. 담당·재개 조건·다음 확인일은 종료 기록 5절 인계 표를 따른다.
 
 ## 레인 Q (Claude 29f7af 세션 — 품질·평가·운영, 2026-09-27 대표 결정으로 Codex에서 인계)
-갱신: 2026-09-27 12:55 UTC (성장1 마감)
+갱신: 2026-09-28 01:28 UTC (최종 묶음 게시·감시 인계)
 - 성장1 마감 레인 Q 몫: [레인 Q 성장1 마감 기록](observations/2026-09-27-lane-q-growth1-closeout.md)(C07·C08·C10·C12 행, 5절 인계, 게시 뒤 감시 기준).
 - A1 `channel.offline` v4 `@a6df00903daa` **promoted · registry-active**(봉인 반복 3회 과반 통과). `channel.commerce`·`channel.shortform`은 봉인 반복 평가 진행 중, `viral.discovery`는 등록만(바이럴 분석 케이스 준비 뒤 활성화, #223 평가 경로 병합됨).
-- 진행: C07 입력 축소 on/off 쌍 평가 연결 #225 구현·검사 완료, #218 뒤 통합 중. 역할·회의·브리프 비교 및 원 기록 스위치 상태 기반 캡처 드리프트 수정 포함. 실평가·활성화는 not_run. 게시 뒤 24~72시간 감시는 레인 A의 최종 묶음 게시 시각부터 시작.
+- C07 #225는 #218과 #244로 merged, Sites 52 published/runtime-verified. 입력 축소 실평가·활성화는 not_run(다음 확인 09-29). 프롬프트 active/매니페스트는 이번 게시에서 변경하지 않았다.
+- 최종 묶음 감시 시작 2026-09-28 10:23:54 KST, 24h 09-29 10:23:54, 72h 10-01 10:23:54. 기존 1/20 invalid_output 기준선·3/20 중단 조건 유지. 운영 인수 감시 종료는 not_run. [현재 증거·한계·인계](observations/2026-09-28-lane-a-growth1-closeout.md).
 - #131·#135는 위 마감 기록과 `docs/releases/2026-09-26-*.md`로 대체하고 닫았다(오래된 STATUS 절은 옮기지 않음).
 - 요청(레인 R, 2026-09-26): `scripts/eval/specs/syn-s7-franchise.json`의 `expectations.industry`는 S7 재가져오기(기존 8건 삭제 뒤 새로 생성·가져오기)를 계획할 때 그 PR에서만 `['franchise','fnb']`로 바꾼다. 그 전에 바꾸면 specHash가 달라져 재가져오기가 409다. 운영 D1 S7 8건은 대표 승인으로 레인 R 콘솔 키트가 바꾼다(D1이 정본). 갱신 전 S7 run을 재채점하면 `caseUpdatedAfterRun` 표시가 붙고 판정은 같다([관찰 기록](observations/2026-09-26-lane-r-s7-industry.md)).
 ## 이전 기록 (레인 도입 전)
@@ -146,21 +133,22 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-27 13:08 UTC (Claude A 세션: 성장1 마감 중간 판정, 게시 대기열 요청 줄 정리)
+마지막 갱신: 2026-09-28 01:28 UTC (대표 위임 Codex: 성장1 최종 통합·Sites 52·종료 판정)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `a8edf1043e3dc29129b6c9895911fd170dd93f83` (#155 `merged`, 묶음 16: A8 #150·#152·#153, #154, #155) | 제품 tree `5705e55c1b16c62cedfa02b49772c66216398db0`. 직전 운영 `98f2283`(tree `d11b2e1`) |
-| `origin/main` | `cf2c474` (#139 R15a-1 모집 자료 키트 순수 판정 모듈) | 운영 `8651021` 뒤 #139만 들어왔다(제품 경로 `lib/franchise-assets.ts`, 아직 연결 없음) |
-| Sites 게시 | `published`: Sites 버전 42, deployment `appgdep_6ab8195162c081918e18f189c57abf2e` succeeded(자동 게시 PR #156) | [게시 기록](releases/2026-09-27-a8edf10.md) |
-| 실행 검증 | `a8edf10`: 운영 tree 일치(real). 공개 `/api/version/public`·소유자 `/api/version` 모두 `5705e55…` | [게시 기록](releases/2026-09-27-a8edf10.md) |
-| 인증 | `AUTH_MODE=email`, 계정 1개(소유자) | 운영 `/api/auth` mode=email, role=owner (2026-09-25 03:30 UTC 경) |
-| Sites 접근 | public(사용자 명시 승인, 접근 설정 revision2). 이번 게시도 기존 접근 설정 유지 | 게시 에이전트 보고 "기존 공개 접근 설정을 유지". 게시 뒤 접근 설정 재확인은 not_run |
-| 조사 워커 | online(lastSeen 2026-09-25 03:29 UTC, blocked 0, rotationReady true). 2026-09-24 14:15 UTC 새 설치기로 재설치(격리 점검 전부 통과) | `/api/research-worker/setup` 조회(real). gate 표시 `missing`이라 `RESEARCH_WORKER_APP_GATE=enforce`는 켜지 않는다 |
-| 열린 PR | #16 Android(draft, 제외), #131 운영 API 복구·버전 38 기록(Codex, 문서), R15a-1 모집 자료 키트 판정 모듈(브랜치 `claude/franchise-recruitment-marketing-u8cpo2`, 이 갱신과 같은 PR) | GitHub 열린 PR 목록(GitHub MCP), 2026-09-26 03:30 UTC |
-| main CI | `8651021`·`301b784`·`d59b97d` passed | GitHub Actions main 실행(`8651021` run 36219919890 success) |
+| 운영 제품 커밋 | `641f37bd908a61411e3303af690e5cd241275fe8` (#244) | tree `a7f6cd8c3a33c7906e1e36e60465a8aa0254b3e9`, [릴리스](releases/2026-09-28-641f37b.md) |
+| `origin/main` | 제품 기준 `641f37b`, 이 갱신은 문서만 변경 | 게시 제품 이후 미게시 제품 변경 0건 확인 |
+| Sites 게시 | `published`: 버전 52, deployment `appgdep_6ab9c1965d1881918661af469f6ea39b` succeeded | 2026-09-28 01:23:54 UTC |
+| 실행 검증 | `runtime-verified`: 공개·소유자 버전 모두 제품 tree 일치 | build `2026-09-28T01:13:54.672Z`, 프롬프트 매니페스트 기존 유지 |
+| 인증 | 이메일 소유자 로그인 OWNER 유지, 익명/위조 헤더 C08 요청 401 | 실제 운영 UI·HTTP, 데이터 변경 없음 |
+| Sites 접근 | public, 환경 revision 4 유지 | Sites 응답·이번 작업에서 설정 변경 없음 |
+| 조사 워커 | online, lastSeen 2026-09-28 10:24:44 KST | 운영 설정 화면(real), 기존 token rotation/app gate 꺼짐 유지 |
+| 열린 별도 범위 PR | #16 Android, #234·#241·#242·#243 R, #236·#240 인터뷰 게시 기록 | 2026-09-28 GitHub 조회, 성장1 필수 잔여 아님 |
+| main CI | `641f37b` verify·e2e-smoke passed | [run 36365132295](https://github.com/roybeee/Collective/actions/runs/36365132295), E2E 74 + 이메일 인증 1 |
+| 성장1 판정 | 개발 종료 passed / 운영 인수 blocked / 효과 검증 not_run | [최종 판정·조건부 인계](observations/2026-09-28-lane-a-growth1-closeout.md) |
 
 - 테스트 흔들림(2026-09-25 관찰, 제품 동작 변경 없음):
   - CI E2E `e2e/meeting-quality.spec.ts:40`('기준 자료가 바뀐 실패 회의…')가 오늘 3번 60초 시간 초과(#86 1회, #92 첫 CI 모바일·데스크톱). 매번 같은 파일 첫 테스트 직후 두 번째 테스트 첫 줄 `page.request.get('/api/workspace')`에서 멈추고, 같은 로그에 workerd `Broken pipe`가 있다. 재실행하면 통과하고 로컬 `--repeat-each 6`은 24/24 통과(재현 안 됨). 2026-09-26에도 #124 1회, #126 2회(재실행 포함) 같은 증상이었다.
