@@ -5,7 +5,7 @@ import {modelSourceContent} from './source-masking';
 import {readBoundedJson} from './http-limits';
 import {interviewSections,interviewContent,interviewBusy,parseInterviewProposals,audioFile,type InterviewSource,type InterviewAnswers,type InterviewJob} from './brand-interview';
 import type {ArchiveSource} from './archive';
-import {isInterviewIndustry,interviewIndustry} from './brand-interview-industries';
+import {isInterviewIndustry,interviewIndustry,industryQuestionGuide} from './brand-interview-industries';
 
 export function publicInterview(s:InterviewSource){const source=Object.fromEntries(Object.entries(s).filter(([k])=>k!=='objectKey'));const job=s.interview.job;return {...source,interview:{...s.interview,job:job?{id:job.id,status:job.status,error:job.error,createdAt:job.createdAt,updatedAt:job.updatedAt}:undefined}}}
 export async function getInterview(owner:string,brandId:string,id:string){const s=await readRecord<InterviewSource>(owner,'brand_source',id);if(s.brandId!==brandId||!s.interview)throw new ApiError(404,'인터뷰를 찾을 수 없습니다.');return s}
@@ -35,7 +35,7 @@ export async function startInterview(owner:string,s:InterviewSource){
  if(Object.values(evidence).join('').length>100000)throw new ApiError(400,'한 번에 100,000자까지 정리합니다. 인터뷰를 나누어 주세요.');
  const id=uid(),job:InterviewJob={id,status:'uncertain',endpoint:cfg.endpoint!,sourceIds:Object.keys(evidence),evidence,createdAt:stamp(),updatedAt:stamp()};
  s={...s,version:s.version+1,interview:{...s.interview,proposals:[],job}};
- await database().batch([recordStatement(owner,'brand_source',s.id,s,s.brandId),hermesSubmissionStatement(owner,id,{input:JSON.stringify({sources:evidence}),instructions:instruction+'\n선택한 질문지: '+JSON.stringify(interviewIndustry(s.interview.industry))+'\n질문지는 분류를 돕는 안내이며 사실 근거가 아닙니다. 질문의 전제를 답변으로 만들지 마세요.'},s.brandId)]);
+ await database().batch([recordStatement(owner,'brand_source',s.id,s,s.brandId),hermesSubmissionStatement(owner,id,{input:JSON.stringify({sources:evidence}),instructions:instruction+'\n선택한 질문지: '+JSON.stringify({industry:interviewIndustry(s.interview.industry).label,sections:interviewSections.map(section=>({id:section.id,question:section.question,decision:section.decision,collect:section.fields,industry:industryQuestionGuide(s.interview.industry,section.id)}))})+'\n질문지는 분류를 돕는 안내이며 사실 근거가 아닙니다. 질문의 전제를 답변으로 만들지 마세요. 기간·단위·자료 출처·확정 여부를 보존하고, 빠진 값은 만들지 마세요. 고객의 희망 목표와 확인된 실적을 구분하세요. 인터뷰에 제공된 답변 예시나 가상 수치는 실제 실적으로 취급하지 마세요.'},s.brandId)]);
  return submitInterview(owner,s,cfg);
 }
 async function submitInterview(owner:string,s:InterviewSource,cfg:Connection){

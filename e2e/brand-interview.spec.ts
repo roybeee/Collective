@@ -6,6 +6,10 @@ test('인터뷰 질문, 파일 드롭, 녹음, 저장·재접속·확정',async(
  await page.getByRole('tab',{name:'브랜드 인터뷰',exact:true}).click();
  const panel=page.locator('.interview-studio');await expect(panel.getByText('0 / 8 섹션 기록')).toBeVisible();
  await panel.getByLabel('업종별 질문지',{exact:true}).selectOption('restaurant');await expect(panel.locator('.interview-industry-question')).toContainText('음식점');
+ await expect(panel.locator('.interview-question-purpose').first()).toContainText('왜 필요한가요');
+ await expect(panel.locator('.interview-industry-question')).toContainText('확인할 자료');
+ await panel.getByText('답변 예시 보기 · 가상 예시, 실제 브랜드 정보 아님',{exact:true}).click();
+ await expect(panel.getByLabel('브랜드의 시작과 약속 · 답변')).toHaveValue('');
  await panel.getByLabel('인터뷰 제목',{exact:true}).fill('현장 인터뷰 테스트');
  await panel.getByLabel('브랜드의 시작과 약속 · 답변').fill('직장인이 매일 부담 없이 먹는 화덕피자를 만들고 싶었습니다.');
  await panel.getByRole('button',{name:'변경 내용 저장',exact:true}).click();await expect(panel.getByText('1 / 8 섹션 기록')).toBeVisible();
