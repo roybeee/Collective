@@ -7,6 +7,7 @@ import {Checkbox} from '@/components/ui/checkbox';
 import {RadioGroup,RadioGroupItem} from '@/components/ui/radio-group';
 import {NativeSelect} from '@/components/ui/native-select';
 import {Tabs,TabsList,TabsTrigger,TabsContent} from '@/components/ui/tabs';
+import {MetaBudgetPanel} from './meta-budget-panel';
 import {MetaPausedPanel} from './meta-paused-panel';
 import {MetaReportPanel} from './meta-report-panel';
 import {MetaInsightsPanel} from './meta-insights-panel';
@@ -21,7 +22,7 @@ const money=(n:number|null)=>n===null?'미입력':n.toLocaleString('ko-KR')+'원
 const message=(e:unknown)=>e instanceof Error?e.message:'불러오지 못했습니다.';
 const checkHelp={inventory:'광고를 보고 구매할 고객에게 제공할 수 있는 수량입니다.',fulfillment:'배송 기간이나 예약 가능 시간, 담당자를 확인하세요.',refunds:'구매 전에 취소·환불 조건을 확인할 수 있어야 합니다.',rights:'사진, 영상, 음악과 상품의 사용 권한을 확인하세요.',measurement:'구매·문의 이후 결과를 확인할 위치를 정하세요.',consent:'고객의 동의와 데이터 처리 범위를 확인하세요.'};
 export function MetaAdsPanel({campaignId}:{campaignId:string}){
- return <Tabs defaultValue="plan" key={campaignId}><TabsList aria-label="Meta 작업" style={{maxWidth:'100%',height:'auto',flexWrap:'wrap'}}><TabsTrigger value="plan">실행 준비</TabsTrigger><TabsTrigger value="insights">광고 성과</TabsTrigger><TabsTrigger value="orders">주문 대조</TabsTrigger><TabsTrigger value="creative">소재·실험</TabsTrigger><TabsTrigger value="report">성과 대조</TabsTrigger><TabsTrigger value="paused">비활성 초안</TabsTrigger></TabsList><TabsContent value="plan"><MetaPlanPanel campaignId={campaignId}/></TabsContent><TabsContent value="insights"><MetaInsightsPanel campaignId={campaignId}/></TabsContent><TabsContent value="orders"><StorefrontOrdersPanel campaignId={campaignId}/></TabsContent><TabsContent value="creative"><MetaCreativePanel campaignId={campaignId}/></TabsContent><TabsContent value="report"><MetaReportPanel campaignId={campaignId}/></TabsContent><TabsContent value="paused"><MetaPausedPanel campaignId={campaignId}/></TabsContent></Tabs>;
+ return <Tabs defaultValue="plan" key={campaignId}><TabsList aria-label="Meta 작업" style={{maxWidth:'100%',height:'auto',flexWrap:'wrap'}}><TabsTrigger value="plan">실행 준비</TabsTrigger><TabsTrigger value="insights">광고 성과</TabsTrigger><TabsTrigger value="orders">주문 대조</TabsTrigger><TabsTrigger value="creative">소재·실험</TabsTrigger><TabsTrigger value="report">성과 대조</TabsTrigger><TabsTrigger value="paused">비활성 초안</TabsTrigger><TabsTrigger value="budget">예산 검토</TabsTrigger></TabsList><TabsContent value="plan"><MetaPlanPanel campaignId={campaignId}/></TabsContent><TabsContent value="insights"><MetaInsightsPanel campaignId={campaignId}/></TabsContent><TabsContent value="orders"><StorefrontOrdersPanel campaignId={campaignId}/></TabsContent><TabsContent value="creative"><MetaCreativePanel campaignId={campaignId}/></TabsContent><TabsContent value="report"><MetaReportPanel campaignId={campaignId}/></TabsContent><TabsContent value="paused"><MetaPausedPanel campaignId={campaignId}/></TabsContent><TabsContent value="budget"><MetaBudgetPanel campaignId={campaignId}/></TabsContent></Tabs>;
 }
 function MetaPlanPanel({campaignId}:{campaignId:string}){
  const id=useId(),heading=useRef<HTMLHeadingElement>(null);

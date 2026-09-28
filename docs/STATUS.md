@@ -9,14 +9,14 @@
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-28 07:53 UTC (Codex: 자사몰 서명 수신 검증)
+갱신: 2026-09-28 08:00 UTC (Codex: 예산 검토 경합 보완 통합·서명 수신 검증)
 - Meta M1 첫 증분 #253 merged(`e8fce70`) · Sites 56 published · 공개 tree runtime-verified. CI 199/199 suites·13,372 assertions, E2E 76+인증1 passed. [릴리스](releases/2026-09-28-e8fce70.md). 실제 계정 읽기는 토큰/계정 미제공으로 blocked이며 전체 M1 종료로 표시하지 않는다.
 - M2 주문·환불 #254 merged(`27c2162`) · Sites 57 published · 공개 tree runtime-verified. CI 200/200 suites·13,404 assertions, E2E 78+인증1 passed. [릴리스](releases/2026-09-28-27c2162.md). 실몰 어댑터·웹훅·Pixel/CAPI는 후속, 외부 고객 전송 0.
 - M3 소재·실험 검수 #255 merged(`8b437a0`) · Sites 58 published · 공개 tree runtime-verified. CI 201/201 suites·13,434 assertions, E2E 80+인증1 passed. [릴리스](releases/2026-09-28-8b437a0.md). 광고 생성/활성화 없음.
 - M6 보고 기반 #256 merged(`991c289`) · Sites59 published · 공개 tree runtime-verified. CI 202/202 suites·13,464 assertions, E2E82+인증1 passed. [릴리스](releases/2026-09-28-991c289.md). 전체 M6 종료/효과 검증이 아니다.
 - M1 수집 복구 #257 merged(`8d76730`) · Sites60 published · 공개 tree runtime-verified. CI 202/202 suites·13,476 assertions, E2E82+인증1 passed. [릴리스](releases/2026-09-28-8d76730.md). 시도/실패 지속·정상 자료 보존·같은 값의 새 수집 시각 확인, 자동 재시도 없음. 실제 계정 검증 blocked.
 - M4 캠페인 첫 증분 #258 merged(`3f7adbe`) · Sites61 published · 공개 tree runtime-verified. CI205/205 suites·13,575 assertions, E2E84+인증1 passed. [릴리스](releases/2026-09-28-3f7adbe.md). 기본 꺼짐·별도 권한·PAUSED 캠페인 하나만, 실제 생성/지출 없음. 전체 M4 종료가 아니다.
-- M5 로컬 예산 검토: 현재 계획·소재·계정 범위와 금액/기간·안전 여유를 대조하고 불변 검토/철회 기록. 지출 권한 없음. 로컬206/206 suites·13,610 assertions, 전용35·타입/lint70·39/프롬프트22/빌드 passed. PR #259 CI·E2E 검증 중, 별도 병합/게시. 계약은 해당 PR의 META-BUDGET-M5 문서에 있다.
+- M5 로컬 예산 검토: 현재 계획·소재·계정 범위와 금액/기간·안전 여유를 대조하고 불변 검토/철회 기록. 지출 권한 없음. 로컬206/206 suites·13,610 assertions, 전용35·타입/lint70·39/프롬프트22/빌드 passed. PR #259 CI·E2E 검증 중, 별도 병합/게시. [계약](META-BUDGET-M5.ko.md). 초기 E2E의 M3 재조회/확인 경합을 보완했고 최신 #259 head를 이 브랜치에도 통합해 함께 검증한다. #259 병합 뒤 이 PR을 병합한다.
 - M2 서명 웹훅: 소유자 연결/키 교체·기본 수신 꺼짐·명시 켜기, HMAC/시각·본문 한도·현재 연결 검증, 기존 CSV 장부 규칙 재사용. 로컬206/206 suites·13,617 assertions·전용42·기존 주문32 passed. 타입/lint70·39/프롬프트22/빌드 passed. [계약](STOREFRONT-WEBHOOKS.ko.md). CI/E2E 뒤 병합·게시. 실몰 서버 설정/운영 주문 수신 not_run.
 - 다음: 연결 계정 캠페인 선택 UI, 외부 광고세트/소재/광고와 별도 지출 승인·예약 계약.
 - Meta UI/UX 개선 #250 `merged`(`8e9a1c7`) · Sites 55 `published` · 공개 운영 버전 tree `runtime-verified`. 네 단계 입력, 준비 상태/다음 할 일, 실시간 기여이익·구매 수, 미완성 저장·재조회. CI 198/198 suites·13,302 assertions, E2E 76+인증 1 passed. 데스크톱/모바일 화면 검토, 실제 Meta 연동·집행 not_run. [근거](releases/2026-09-28-8e9a1c7.md).

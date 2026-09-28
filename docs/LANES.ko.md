@@ -11,6 +11,11 @@
 - `feat/storefront-signed-webhook`: 주문 반영 공통 서버 추출, storefront-webhooks 설정/수신 API, 서명/형식 모듈, 기존 주문 화면의 연결 패널, 전용 tests/e2e·문서.
 - 새 연결 기본 수신 꺼짐. 소유자가 켠 범용 COLLECTIVE 양식의 서명 주문만 기존 장부에 반영한다. 실몰 서버 설정·고객 전환 외부 전송은 하지 않는다.
 
+### 레인 A: M5 예산 검토 첫 증분 (2026-09-28)
+- `feat/meta-spend-approval`: lib/meta-budget-review.ts, app/api/meta-ads/budget, app/meta-budget-panel.tsx, Meta 탭 연결, 전용 tests/e2e, 레코드/삭제 목록 및 문서.
+- CI에서 확인한 M3 새로고침 경합 보완: app/meta-creative-panel.tsx·e2e/meta-creative.spec.ts의 조회 중 입력/검토 잠금과 지연 응답 회귀.
+- 현재 계획·소재·계정·기간의 로컬 예산 검토/철회만 기록한다. 지출 승인·예약·외부 예산 변환·활성화는 제공하지 않는다. 실제 집행은 전체 외부 자산을 포함한 별도 승인 필요.
+
 ## 2026-09-28 M4 비활성 캠페인 공급자·전송 기록 경계
 
 - 연속 개발 지시에 따른 후속. `feat/meta-paused-provider`, 기준 `8b437a0`, 게시 전 최신 main 통합.
