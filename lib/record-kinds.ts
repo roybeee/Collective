@@ -76,6 +76,7 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'meta_ads_insights',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'Meta 광고 성과 최신 스냅샷(계정·기간·귀속 기준·수집 시각). 실제 주문 매출과 분리'},
  {kind:'meta_ads_report',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'Meta/장부/캠페인 귀속 대조 보고의 불변 집계 기록'},
  {kind:'meta_ads_sync_state',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'Meta 읽기 수집의 마지막 시도·성공·오류 분류; 토큰과 원문 오류 없음'},
+ {kind:'meta_ads_write_operation',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'비활성 Meta 캠페인 생성의 준비·전송 예약·외부 ID·결과 확인 기록; 외부 객체 대조를 위해 캠페인 삭제 차단'},
  {kind:'meta_ads_plan',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'Meta 광고 준비 계획(상품·범위·비용·기간·확인 사항·판·작성자). 집행 승인과 자격증명은 저장하지 않는다'},
  {kind:'metric',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'캠페인 성과 기록'},
  {kind:'model_change',parent:'none',campaignDeletion:'not_campaign_scoped',description:'보고 모델 변경 경보. 별칭은 실제 모델 미확인(actual=null)으로 적는다(결정 10)'},
