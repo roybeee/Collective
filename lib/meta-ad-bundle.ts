@@ -2,20 +2,21 @@
 import {metaId} from './meta-insights';
 import {META_READ_API_VERSION} from './meta-insights-provider';
 import {readBoundedJson} from './http-limits';
-export type MetaAdBundleInput={operationId:string;adsetId:string;creativeId:string;adId:string;pageId:string;pixelId:string;expectedMetaImageHash:string;callToActionType:'LEARN_MORE'|'SHOP_NOW';dailyBudgetKrw:number;graphDailyBudget:string;budgetUnitEvidence:string;ageMin:number;ageMax:number;country:'KR'};
-export type MetaAdBundleScope=MetaAdBundleInput&{accountId:string;campaignId:string;landingUrl:string;startAt:string;endAt:string;hook:string;body:string;assetBytesVerified:false};
+export type MetaAdBundleInput={operationId:string;imageUploadReceiptId?:string;adsetId:string;creativeId:string;adId:string;pageId:string;pixelId:string;expectedMetaImageHash:string;callToActionType:'LEARN_MORE'|'SHOP_NOW';dailyBudgetKrw:number;graphDailyBudget:string;budgetUnitEvidence:string;ageMin:number;ageMax:number;country:'KR'};
+export type MetaAdBundleScope=MetaAdBundleInput&{accountId:string;campaignId:string;landingUrl:string;startAt:string;endAt:string;hook:string;body:string;assetBytesVerified:false;sourceBytesVerified?:boolean;sourcePngHash?:string|null};
 export class MetaAdBundleError extends Error{constructor(public code:'invalid'|'mismatch'|'unknown',message:string){super(message)}}
 const obj=(v:unknown):Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:{};
 export function parseMetaAdBundle(value:unknown):MetaAdBundleInput{
- const v=obj(value),allowed=['operationId','adsetId','creativeId','adId','pageId','pixelId','expectedMetaImageHash','callToActionType','dailyBudgetKrw','graphDailyBudget','budgetUnitEvidence','ageMin','ageMax','country'];
+ const v=obj(value),allowed=['operationId','imageUploadReceiptId','adsetId','creativeId','adId','pageId','pixelId','expectedMetaImageHash','callToActionType','dailyBudgetKrw','graphDailyBudget','budgetUnitEvidence','ageMin','ageMax','country'];
  const invalid=()=>{throw new MetaAdBundleError('invalid','패키지의 식별자·별도 예산 단위·대한민국 성인 타깃을 확인하세요.')};
  if(Object.keys(v).some(k=>!allowed.includes(k))||typeof v.operationId!=='string'||! /^[a-f0-9]{64}$/.test(v.operationId))invalid();
+ if(v.imageUploadReceiptId!==undefined&&v.imageUploadReceiptId!==''&&(typeof v.imageUploadReceiptId!=='string'||! /^[a-f0-9]{64}$/.test(v.imageUploadReceiptId)))invalid();
  if(typeof v.dailyBudgetKrw!=='number'||!Number.isSafeInteger(v.dailyBudgetKrw)||v.dailyBudgetKrw<=0||v.dailyBudgetKrw>1e12)invalid();
  if(typeof v.graphDailyBudget!=='string'||! /^[1-9][0-9]{0,14}$/.test(v.graphDailyBudget))invalid();
  if(typeof v.expectedMetaImageHash!=='string'||! /^[a-f0-9]{32}$/.test(v.expectedMetaImageHash)||!['LEARN_MORE','SHOP_NOW'].includes(String(v.callToActionType)))invalid();
  if(typeof v.budgetUnitEvidence!=='string'||!v.budgetUnitEvidence.trim()||v.budgetUnitEvidence.length>500||/[\u0000-\u001f]/.test(v.budgetUnitEvidence))invalid();
  if(!Number.isInteger(v.ageMin)||!Number.isInteger(v.ageMax)||Number(v.ageMin)<18||Number(v.ageMax)>65||Number(v.ageMax)<Number(v.ageMin)||v.country!=='KR')invalid();
- return {operationId:v.operationId as string,adsetId:metaId(v.adsetId,'광고세트'),creativeId:metaId(v.creativeId,'Meta 소재'),adId:metaId(v.adId,'광고'),pageId:metaId(v.pageId,'페이지'),pixelId:metaId(v.pixelId,'픽셀'),expectedMetaImageHash:v.expectedMetaImageHash as string,callToActionType:v.callToActionType as 'LEARN_MORE'|'SHOP_NOW',dailyBudgetKrw:v.dailyBudgetKrw as number,graphDailyBudget:v.graphDailyBudget as string,budgetUnitEvidence:(v.budgetUnitEvidence as string).trim(),ageMin:v.ageMin as number,ageMax:v.ageMax as number,country:'KR'};
+ return {operationId:v.operationId as string,...(v.imageUploadReceiptId?{imageUploadReceiptId:v.imageUploadReceiptId as string}:{}),adsetId:metaId(v.adsetId,'광고세트'),creativeId:metaId(v.creativeId,'Meta 소재'),adId:metaId(v.adId,'광고'),pageId:metaId(v.pageId,'페이지'),pixelId:metaId(v.pixelId,'픽셀'),expectedMetaImageHash:v.expectedMetaImageHash as string,callToActionType:v.callToActionType as 'LEARN_MORE'|'SHOP_NOW',dailyBudgetKrw:v.dailyBudgetKrw as number,graphDailyBudget:v.graphDailyBudget as string,budgetUnitEvidence:(v.budgetUnitEvidence as string).trim(),ageMin:v.ageMin as number,ageMax:v.ageMax as number,country:'KR'};
 }
 function matches(value:boolean){if(!value)throw new MetaAdBundleError('mismatch','외부 객체의 계보·비활성 상태·예산·타깃·픽셀·페이지·소재·랜딩이 검토한 패키지와 일치하지 않습니다.')}
 function paused(v:Record<string,unknown>){return v.configured_status==='PAUSED'&&['PAUSED','CAMPAIGN_PAUSED','ADSET_PAUSED'].includes(String(v.effective_status))}
@@ -25,7 +26,7 @@ async function read(token:string,id:string,fields:string){
  if(!response.ok)throw new Error('provider response');const data=obj(await readBoundedJson(response,300000));if(data.error)throw new Error('provider response');return data;
 }
 export async function verifyMetaAdBundle(token:string,s:MetaAdBundleScope){
- parseMetaAdBundle(Object.fromEntries(Object.entries(s).filter(([k])=>!['accountId','campaignId','landingUrl','startAt','endAt','hook','body','assetBytesVerified'].includes(k))));
+ parseMetaAdBundle(Object.fromEntries(Object.entries(s).filter(([k])=>!['accountId','campaignId','landingUrl','startAt','endAt','hook','body','assetBytesVerified','sourceBytesVerified','sourcePngHash'].includes(k))));
  const accountId=metaId(s.accountId,'광고 계정'),campaignId=metaId(s.campaignId,'외부 캠페인');
  if(typeof token!=='string'||token.length<10||token.length>4096||! /^[A-Za-z0-9_.|\-]+$/.test(token))throw new MetaAdBundleError('invalid','읽기 연결을 확인하세요.');
  try{

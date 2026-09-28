@@ -1,0 +1,19 @@
+import assert from 'node:assert/strict';
+import {deflateSync} from 'node:zlib';
+import {testRuntime} from './helpers/runtime.mjs';
+function crc32(bytes){let crc=0xffffffff;for(const byte of bytes){crc^=byte;for(let bit=0;bit<8;bit++)crc=(crc>>>1)^((crc&1)?0xedb88320:0)}return (crc^0xffffffff)>>>0}
+function chunk(type,data){const name=Buffer.from(type),size=Buffer.alloc(4),crc=Buffer.alloc(4);size.writeUInt32BE(data.length);crc.writeUInt32BE(crc32(Buffer.concat([name,data])));return Buffer.concat([size,name,data,crc])}
+const signature=Buffer.from([137,80,78,71,13,10,26,10]),ihdr=Buffer.alloc(13);
+ihdr.writeUInt32BE(1080,0);ihdr.writeUInt32BE(1080,4);ihdr[8]=8;ihdr[9]=2;
+function fixture(fill=0){const pixels=Buffer.alloc((1080*3+1)*1080,fill);for(let row=0;row<1080;row++)pixels[row*(1080*3+1)]=0;return Buffer.concat([signature,chunk('IHDR',ihdr),chunk('IDAT',deflateSync(pixels)),chunk('IEND',Buffer.alloc(0))])}
+
+const png=fixture();let calls=0,mode='ok',state='prepared';
+const {load}=testRuntime(async(url,opts)=>{calls++;assert.equal(opts.method,'POST');assert.equal(opts.redirect,'manual');assert.ok(opts.signal);assert.match(url,/\/act_123\/adimages$/);const b=new URLSearchParams(opts.body);assert.equal(b.get('bytes'),png.toString('base64'));assert.equal([...b.keys()].join(','),'bytes');if(mode==='timeout')throw new Error('synthetic_upload_token');return Response.json(mode==='malformed'?{images:{}}:{images:{upload:{hash:'f'.repeat(32)}}})});
+const lib=await load('lib/meta-image-upload.ts'),media=await load('lib/execution-media.ts');const scope={id:'a'.repeat(64),accountId:'123',pngHash:await media.sha256(png)};
+let passed=0;const check=(v,n)=>{assert.ok(v,n);passed++};const journal={begin:async()=>{if(state!=='prepared')return false;state='sending';return true},finish:async r=>{if(mode==='save-fail'&&r.state==='uploaded')throw new Error('db');state=r.state}};
+await assert.rejects(()=>lib.uploadMetaImage('synthetic_upload_token',scope,png,journal));check(calls===0,'default disabled');
+await assert.rejects(()=>lib.uploadMetaImage('synthetic_upload_token',{...scope,pngHash:'0'.repeat(64)},png,journal,true));check(calls===0&&state==='prepared','hash mismatch before reservation');
+const r=await lib.uploadMetaImage('synthetic_upload_token',scope,png,journal,true);check(r.metaImageHash==='f'.repeat(32)&&r.sourceBytesVerified===true&&r.displayBytesVerified===false,'source proof only');check(state==='uploaded'&&calls===1,'durable success');await assert.rejects(()=>lib.uploadMetaImage('synthetic_upload_token',scope,png,journal,true));check(calls===1,'no duplicate');
+for(const m of ['timeout','malformed','save-fail']){mode=m;state='prepared';await assert.rejects(()=>lib.uploadMetaImage('synthetic_upload_token',scope,png,journal,true),e=>e.code==='unknown'&&!e.message.includes('synthetic_upload_token'));check(state==='unknown','durable unknown '+m);const before=calls;await assert.rejects(()=>lib.uploadMetaImage('synthetic_upload_token',scope,png,journal,true));check(calls===before,'unknown never retries '+m)}
+mode='ok';state='prepared';const concurrent=await Promise.allSettled([lib.uploadMetaImage('synthetic_upload_token',scope,png,journal,true),lib.uploadMetaImage('synthetic_upload_token',scope,png,journal,true)]);check(concurrent.filter(r=>r.status==='fulfilled').length===1,'concurrent only one upload');
+mode='timeout';state='prepared';await assert.rejects(()=>lib.uploadMetaImage('synthetic_upload_token',scope,png,{...journal,finish:async()=>{throw new Error('db unavailable')}},true));check(state==='sending','unknown save failure retains durable sending');const before=calls;await assert.rejects(()=>lib.uploadMetaImage('synthetic_upload_token',scope,png,journal,true));check(calls===before,'unresolved sending does not retry');console.log(JSON.stringify({passed}));

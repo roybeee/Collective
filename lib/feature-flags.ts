@@ -4,6 +4,8 @@
 import {ApiError,database,listRecords,recordStatement,stamp} from './server';
 
 export const FEATURE_FLAGS={
+ meta_ads_child_create:{defaultEnabled:false,description:'현재 검수·원본 업로드 영수증·PAUSED 부모 아래 광고세트와 소재와 광고를 단계별 생성한다. 광고세트/광고는 PAUSED 고정, 미확정 단계 재전송 금지, ACTIVE 없음.'},
+ meta_ads_image_upload:{defaultEnabled:false,description:'검수 원본 PNG를 별도 쓰기 연결로 Meta 이미지 라이브러리에 한 번 업로드한다. 광고 생성·활성화 없음. 결과 미확인 재업로드 금지.'},
  meta_ads_bundle:{defaultEnabled:false,description:'소유자가 외부 광고 구성·계정·부모·PAUSED 상태를 읽기 검증한다. 외부 생성·활성화·지출 없음.'},
  meta_ads_paused_write:{defaultEnabled:false,description:'소유자가 별도 쓰기 권한·현재 계획/소재 검수·명시 확인을 거쳐 Meta에 PAUSED 판매 캠페인만 만든다. 광고세트·광고·예산·ACTIVE 변경 없음. 꺼도 결과 미확인 작업의 읽기 대조·연결 해제는 가능하다.'},
  online_grading:{defaultEnabled:false,description:'운영 작업물 저장 뒤 결정론 채점기를 온라인으로 돌려 기록한다(F2 온라인 채점).'},

@@ -21,7 +21,8 @@ const deletedGroups:readonly Group[]=[
 ];
 // 제작·발행·주문 귀속 기록(blocksDeletion)이 있으면 삭제 자체가 거부되므로 대화상자는 사유만 보이고 보존 목록을 쓰지 않는다.
 const retainedGroups:readonly Group[]=[
- {label:'Meta 생성 기록',kinds:['meta_ads_write_operation'],note:'외부 객체 대조 이력'},
+ {label:'Meta 이미지 업로드 기록',kinds:['meta_ads_image_upload'],note:'원본 전송·외부 hash 계보'},
+ {label:'Meta 생성 기록',kinds:['meta_ads_write_operation','meta_ads_child_create'],note:'외부 객체 대조 이력'},
  {label:'Meta 예산 예약',kinds:['meta_ads_reservation'],note:'예약·해제 이력'},
  {label:'학습 규칙',kinds:['learning_rule'],note:'종료 표시로 남김, 원 캠페인 삭제 표시'},
  {label:'실험 요약',kinds:['viral_experiment_summary'],note:'원문을 뺀 요약으로 동결'},

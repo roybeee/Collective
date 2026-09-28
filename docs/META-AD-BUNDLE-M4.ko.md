@@ -10,7 +10,9 @@
 
 `viewMetaAdBundle(owner,c)`와 `requireVerifiedMetaAdBundle(owner,c)`가 M5에 검증된 전체 ID와 `scopeDigest`를 제공한다. digest는 전체 구성, 계획/소재 검수, 부모 영수증, 읽기·쓰기 연결 판에 묶인다. 조회 결과는 15분 이내만 유효하며 과거 스냅샷이다. 현재 PAUSED 상태의 지속 보증이 아니다. 검증 재시도 전에 기존 검증을 영구 무효화하므로 실패/시간초과/프로세스 중단 뒤 과거 확인으로 진행하지 못한다.
 
-신규 광고세트·소재·광고 생성 POST는 구현하지 않았다. 실제 계정 권한, 이미지 업로드·버튼/타깃 정책, 통화 단위, 계정별 필수 필드와 중복 생성 방지 계약을 운영 검증하기 전에는 생성 완료를 주장할 수 없다.
+검수 PNG의 전송 계보는 별도 [원본 업로드](META-IMAGE-UPLOAD-M4.ko.md) 영수증으로 연결할 수 있다. 그 경우 `sourceBytesVerified:true`와 원본 hash를 scope에 고정하며 입력한 Meta hash와 영수증이 다르면 거부한다. 외부 표시 이미지의 바이트 동일성은 계속 보증하지 않는다.
+
+신규 광고세트·소재·광고 POST는 별도 [PAUSED 하위 생성](META-AD-CREATE-M4.ko.md) 기능에 있다. 이 검증 API 자체는 GET만 실행한다. 실제 계정 권한, 이미지 업로드·버튼/타깃 정책, 통화 단위, 계정별 필수 필드와 중복 생성 방지 계약의 운영 검증은 미실행이다.
 
 공식 필드 출처: [Meta SDK AdSet](https://github.com/facebook/facebook-python-business-sdk/blob/main/facebook_business/adobjects/adset.py), [AdCreative](https://github.com/facebook/facebook-python-business-sdk/blob/main/facebook_business/adobjects/adcreative.py), [Ad](https://github.com/facebook/facebook-python-business-sdk/blob/main/facebook_business/adobjects/ad.py). Graph API 버전은 기존 META_READ_API_VERSION을 따른다.
 
