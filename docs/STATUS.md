@@ -142,10 +142,10 @@
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `5be14782db524a1ff056823be63a06aee36e355d` (#247) | tree `13f96e598cd6101b4a4397335b4e4c943c469adb`, [릴리스](releases/2026-09-28-5be1478.md) |
-| `origin/main` | 제품 기준 `5be1478`, 이 갱신은 문서만 변경 | 게시 제품 이후 미게시 제품 변경 0건 확인 |
-| Sites 게시 | `published`: 버전 53, deployment `appgdep_6ab9d0ed505c8191b79ec4a9894fd5b0` succeeded | 2026-09-28 02:30:05 UTC |
-| 실행 검증 | `runtime-verified`: 소유자 품질 콘솔의 `/api/version` tree 일치 | build `2026-09-28T02:28:02.841Z`, 프롬프트 매니페스트 기존 유지 |
+| 운영 제품 커밋 | `ddf9731bd1bd348a9bcc391433fd5cbbdb7c6b8c` (#248) | tree `d2e5c0fac4cd437df2cd1606f3cd33e9672e754d`, [릴리스](releases/2026-09-28-ddf9731.md) |
+| `origin/main` | `ddf9731` (2026-09-28 02:56 UTC 확인) | 게시한 제품과 동일, 이 기록은 문서만 변경 |
+| Sites 게시 | `published`: 버전 54, deployment `appgdep_6ab9d7351cf081919a4b84833065da1e` succeeded | 2026-09-28 02:55:59 UTC |
+| 실행 검증 | `runtime-verified`: 공개 버전의 제품 tree 일치 | build `2026-09-28T02:46:20.830Z`, 프롬프트 레지스트리 변경 없음 |
 | 인증 | 이메일 소유자 로그인 OWNER 유지, 익명/위조 헤더 C08 요청 401 | 실제 운영 UI·HTTP, 데이터 변경 없음 |
 | Sites 접근 | public, 환경 revision 4 유지 | Sites 응답·이번 작업에서 설정 변경 없음 |
 | 조사 워커 | online, lastSeen 2026-09-28 10:24:44 KST | 운영 설정 화면(real), 기존 token rotation/app gate 꺼짐 유지 |
@@ -338,13 +338,9 @@ PR #19(`docs/email-auth-release`, 커밋 aa06574·b242019)가 기록했으나 `m
 
 
 ## 레인 I (Codex — 브랜드 인터뷰 신규 제품 기능)
-갱신: 2026-09-28 02:35 UTC
-- 대표 신규 지시로 `feat/brand-interview-studio` 개발. 기준 `431e4175a9d8d581533979b4aa378bbcd8ff908d`. [범위·운영 인수](BRAND-INTERVIEW.ko.md).
-- 구현: 필수 8섹션/추가 24질문, 수기 저장, 파일 드롭·원본 보관, 브라우저 녹음, HERMES 섹션 후보 정리·원문 인용 검증·선택 반영, 관리자 확정 후 기존 캠페인 근거 연결.
-- 음성 전사: 로컬 STT 서비스 코드와 웹 어댑터 포함. 공유 HERMES 서버 설치 및 실제 음성 검증 `not_run`. Plaud MCP 직접 조회 미구현, Plaud TXT 첨부 가능.
-- 게시 `not_run`: LANES의 레인 A 단독 게시를 유지. 이 작업은 성장1 종료 범위에 추가하지 않는다.
-- 검사: 전체 185/185 스위트 12,701 assertions passed·mocked, 전사 큐 7 passed·mocked, typecheck/lint/build passed. 브라우저 E2E blocked(Chromium 다운로드 네트워크 실패). 다음: 브라우저 E2E·공유 서버 전사 설치 검증 → 레인 A 통합/게시 판단.
-
-- 레인 I 후속: 업종별 질문지 11종+공통 선택·저장, 답변 보존, 추천/자동 정리 업종 반영. 이전 인터뷰 스튜디오는 #233 merged 및 Sites 50 runtime-verified(별도 기록 PR #236). 이번 업종 기능은 typecheck/lint/build 및 인터뷰 40 checks passed(mocked). 전체 검사와 모바일·데스크톱 E2E는 CI에서 확인 후 게시.
-
-- 레인 I 캠페인 의사결정형 질문지: 대표의 실무 정보·질문 이유 요청으로 120질문 개정, 이유·캠페인 활용·근거 안내·가상 예시 표시. 기존 답변 보존. 타입/전용 검사 및 CI 확인 후 게시 예정.
+갱신: 2026-09-28 02:56 UTC
+- #233 인터뷰 스튜디오, #239 업종 선택에 이어 #248 캠페인 의사결정형 질문지 merged·Sites 54 published·runtime-verified. [게시 기록](releases/2026-09-28-ddf9731.md).
+- 120질문을 기간·수치·조건·근거 중심으로 개편. 질문 이유·캠페인 결정·자료 안내, 공통 가상 예시 표시. 기존 답변·첨부·업종 선택 보존. 기록 수를 준비도로 해석하지 않음.
+- 검사: 인터뷰 45 checks passed(mocked), typecheck/lint/build passed. 최종 main verify·e2e-smoke passed(실제 Chromium/로컬 D1·R2, 인증·외부 연결 mocked).
+- HERMES에 결정 기준을 전달하되 가상 예시는 미전송. 실제 운영 모델 호출 및 성과 개선 실증 not_run.
+- 남은 별도 항목: STT 서버 설치·실제 음성 전사 검증, Plaud 직접 MCP 연결. 기존 TXT 첨부 지원. 성장1 종료 범위에 추가하지 않음.
