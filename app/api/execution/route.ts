@@ -9,10 +9,12 @@ import {registerCodedPng} from '@/lib/coded-png-server';
 import {readBoundedJson,HttpBodyError} from '@/lib/http-limits';
 import {executionRate} from '@/lib/execution-rate';
 import {reviewActor,requireReasonCodes,publicationDecisionStatement} from '@/lib/review-decisions-server';
+import {experimentLinkFor,attachLink,linkExperiment,linkMedia,experimentLinkOptions} from '@/lib/publication-link-server';
 
 // 관리자 전용 실행. 승인·해제·확정한 실제 계정을 기록한다.
-const adminActions=['connect_buffer','disconnect_buffer','buffer_channels','save_limits','approve','execute','cancel','reconfirm','resolve_uncertain','register_coded_png'];
-export async function GET(req:Request){try{const owner=await identity(req),id=str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true),campaign=await readRecord<Campaign>(owner,'campaign',id);return json(await getExecution(owner,campaign))}catch(e){return failure(e)}}
+// loop-2: 준비 뒤 실험 연결·해제(link_experiment)와 Instagram 게시물 ID 입력(link_media)도 관리자만 한다. 준비 때 연결(save_publication experiment)은 발행 준비 권한을 따른다.
+const adminActions=['connect_buffer','disconnect_buffer','buffer_channels','save_limits','approve','execute','cancel','reconfirm','resolve_uncertain','register_coded_png','link_experiment','link_media'];
+export async function GET(req:Request){try{const owner=await identity(req),id=str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true),campaign=await readRecord<Campaign>(owner,'campaign',id);return json({...await getExecution(owner,campaign),experimentLinks:await experimentLinkOptions(owner,campaign)})}catch(e){return failure(e)}}
 export async function POST(req:Request){let owner='',lock='';try{
  owner=await identity(req);secureMutation(req);
  const input=await readBoundedJson<Record<string,unknown>>(req,800000);
@@ -30,7 +32,8 @@ export async function POST(req:Request){let owner='',lock='';try{
  if(input.action==='buffer_channels')return json(await listBufferChannels(str(input.token,'Buffer API 키',5000,true),input.organizationId?str(input.organizationId,'Buffer 조직',100,true):undefined));
  if(input.action==='disconnect_buffer')return json(await disconnectPublisher(owner,campaign,input,who!));
  if(input.action==='save_creative')return json(await saveCreative(owner,campaign,input));
- if(input.action==='save_publication')return json(await savePublication(owner,campaign,input,origin,who));
+ // loop-2: 실험 연결은 발행을 만들기 전에 검증한다(다른 캠페인 400·진행 중 아님 409·같은 안 중복 409면 초안도 만들지 않는다).
+ if(input.action==='save_publication'){const link=input.experiment===undefined||input.experiment===null?null:await experimentLinkFor(owner,campaign,input.experiment);const saved=await savePublication(owner,campaign,input,origin,who);return json(link?await attachLink(owner,campaign.id,saved,link):saved)}
  const p=await publicationFor(owner,campaign,input.id,input.version);
  if(input.action==='approve')return json(await approvePublication(owner,campaign,p,input,who!,origin));
  // A4-4: 게시 코드가 있는 초안에 코드 넣은 파생 PNG를 연결한다(관리자, 스위치 a4_png_code).
@@ -41,6 +44,8 @@ export async function POST(req:Request){let owner='',lock='';try{
   const decision=[publicationDecisionStatement(owner,p,input.action==='cancel'?'cancelled':'returned',reviewActor(who!),requireReasonCodes(input.reasonCodes,'publication'))];
   return json(input.action==='cancel'?await cancelPublication(owner,campaign,p,decision):await reconfirmPublication(owner,campaign,p,who!,decision));
  }
+ if(input.action==='link_experiment')return json(await linkExperiment(owner,campaign,p,input.experiment));
+ if(input.action==='link_media')return json(await linkMedia(owner,campaign,p,input,who!));
  if(input.action==='resolve_uncertain')return json(await resolveUncertain(owner,campaign,p,input,who!));
  if(input.action==='execute'){
   const {pending,token}=await reservePublication(owner,campaign,p,origin);

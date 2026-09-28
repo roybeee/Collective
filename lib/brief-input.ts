@@ -3,6 +3,8 @@ import {aiBrand,withoutPlanOwner,withoutAssignees,productionAllow,inputMaskingRe
 import {maskFields} from './pii-scan';
 import {briefInstructionsFor,type BriefInput} from './brief';
 import {isRecruitmentObjective,type Brand,type Campaign,type Artifact,type Metric} from './agency';
+// 입력 축소(input_diet, PR 4b): 켜진 제출만 브랜드 자료를 digest(요약, 카테고리는 거르지 않음)로 싣고 입력 상한을 적용한다. 꺼지면 부르지 않는다.
+import {INPUT_DIET_VERSION,archiveDigest,capInput,ROLE_INPUT_TOKEN_CAP,type InputDietOptions,type InputDietReport} from './input-diet';
 
 // 브리프 초안 제출(지시문·입력·가림 기록) 조립을 서버 의존 없이 만드는 순수 함수(G1). lib/brief-execution.ts start 분기는 DB에서 읽은 원자료와 stamp() 기준일을 넘기고
 // 이 출력을 그대로 저장·전송한다. 평가는 JSON으로 동결한 요청(briefRequestFor)과 고정 기준일로 같은 본문을 재현한다(tests/assembly-export.test.mjs).
@@ -29,7 +31,11 @@ export function briefRequestFor({campaignId,input,brand,evidence,archive,sourceM
   approvedLearnings:artifacts.filter(a=>relevantIds.has(a.campaignId)&&a.status==='approved'&&['data','quality','insight'].includes(a.role)).slice(0,4).map(a=>({campaignId:a.campaignId,title:a.title,content:a.content.slice(0,2500)}))},contextDate,storeAllow};
 }
 // maskingRecord는 초안 기록(brief_draft.inputMasking)에 남는 값이다: 입력 가림 기록 뒤에 브랜드 자료 가림 기록을 합친다(값 없음, 모델 입력에 싣지 않음).
-export function buildBriefSubmission({input,context:c,contextDate,storeAllow}:BriefRequest):{instructions:string;input:string;maskingRecord:InputMasking[]}{
- const masked=maskFields({brand:aiBrand(c.brand),evidence:{facts:c.evidence.facts,directives:c.evidence.directives},brandArchive:withoutAssignees(c.archive),currentBrief:withoutPlanOwner(input),trialLearning:c.trialLearning,previousCampaigns:c.previousCampaigns.map(p=>withoutPlanOwner(p)),recordedMetrics:c.recordedMetrics,approvedLearnings:c.approvedLearnings,contextDate},BRIEF_MASK_PATHS,{allow:productionAllow(c.evidence,c.archive,storeAllow)});
- return {instructions:briefInstructionsFor(input)+'\n'+campaignEvidencePolicy(input),input:JSON.stringify(masked.value),maskingRecord:[...inputMaskingRecord(masked),...c.sourceMasking]};
+// options.inputDiet: 운영 start는 lib/input-diet-server.ts로 읽은 스위치 상태를, 평가는 인자로 정한다(넘기지 않으면 꺼짐, 이전과 바이트 동일). 지시문은 스위치와 무관하게 같다.
+export function buildBriefSubmission({input,context:c,contextDate,storeAllow}:BriefRequest,{inputDiet=false}:InputDietOptions={}):{instructions:string;input:string;maskingRecord:InputMasking[];diet?:InputDietReport}{
+ const digest=inputDiet?archiveDigest(c.archive,null):null;
+ const built={brand:aiBrand(c.brand),evidence:{facts:c.evidence.facts,directives:c.evidence.directives},brandArchive:withoutAssignees(digest?digest.archive:c.archive),currentBrief:withoutPlanOwner(input),trialLearning:c.trialLearning,previousCampaigns:c.previousCampaigns.map(p=>withoutPlanOwner(p)),recordedMetrics:c.recordedMetrics,approvedLearnings:c.approvedLearnings,contextDate};
+ const capped=digest?capInput(built,ROLE_INPUT_TOKEN_CAP):null;
+ const masked=maskFields(capped?capped.value:built,BRIEF_MASK_PATHS,{allow:productionAllow(c.evidence,c.archive,storeAllow)});
+ return {instructions:briefInstructionsFor(input)+'\n'+campaignEvidencePolicy(input),input:JSON.stringify(masked.value),maskingRecord:[...inputMaskingRecord(masked),...c.sourceMasking],...(digest&&capped?{diet:{version:INPUT_DIET_VERSION,archive:digest.report,cap:capped.report}}:{})};
 }

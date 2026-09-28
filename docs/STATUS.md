@@ -101,7 +101,7 @@
 갱신: 2026-09-27 12:55 UTC (성장1 마감)
 - 성장1 마감 레인 Q 몫: [레인 Q 성장1 마감 기록](observations/2026-09-27-lane-q-growth1-closeout.md)(C07·C08·C10·C12 행, 5절 인계, 게시 뒤 감시 기준).
 - A1 `channel.offline` v4 `@a6df00903daa` **promoted · registry-active**(봉인 반복 3회 과반 통과). `channel.commerce`·`channel.shortform`은 봉인 반복 평가 진행 중, `viral.discovery`는 등록만(바이럴 분석 케이스 준비 뒤 활성화, #223 평가 경로 병합됨).
-- 진행: C07 입력 축소 on/off 쌍 평가 연결(#218 병합 뒤 PR). 게시 뒤 24~72시간 감시는 레인 A의 최종 묶음 게시 시각부터 시작.
+- 진행: C07 입력 축소 on/off 쌍 평가 연결 #225 구현·검사 완료, #218 뒤 통합 중. 역할·회의·브리프 비교 및 원 기록 스위치 상태 기반 캡처 드리프트 수정 포함. 실평가·활성화는 not_run. 게시 뒤 24~72시간 감시는 레인 A의 최종 묶음 게시 시각부터 시작.
 - #131·#135는 위 마감 기록과 `docs/releases/2026-09-26-*.md`로 대체하고 닫았다(오래된 STATUS 절은 옮기지 않음).
 - 요청(레인 R, 2026-09-26): `scripts/eval/specs/syn-s7-franchise.json`의 `expectations.industry`는 S7 재가져오기(기존 8건 삭제 뒤 새로 생성·가져오기)를 계획할 때 그 PR에서만 `['franchise','fnb']`로 바꾼다. 그 전에 바꾸면 specHash가 달라져 재가져오기가 409다. 운영 D1 S7 8건은 대표 승인으로 레인 R 콘솔 키트가 바꾼다(D1이 정본). 갱신 전 S7 run을 재채점하면 `caseUpdatedAfterRun` 표시가 붙고 판정은 같다([관찰 기록](observations/2026-09-26-lane-r-s7-industry.md)).
 ## 이전 기록 (레인 도입 전)

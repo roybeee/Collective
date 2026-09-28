@@ -128,13 +128,14 @@
 - 후보 보정은 비회귀 게이트라 후보에 불리한 쪽으로 센다. 산출물을 내지 않은 후보(재질문)가 같은 케이스 active의 내용 채점 합격을 셈에서 지워 다른 케이스 개선 1건으로 통과하는 것을 막는다. 봉인 케이스의 재질문은 `question_only`와 잃은 내용 채점 합격이 모두 봉인 회귀가 된다.
 - 최소 케이스 수는 강제하지 않는다(대표 결정 전). 대응 쌍이 30쌍 미만이면 `gate.warnings`에 `small_sample` 경고를 싣고 거부하지 않는다. `activate`·`stage`·`promote` 응답의 `event.gate`에 `cases`·`sealedCases`·`warnings`가 있다.
 - 진행 중(queued·running) run이 쓰는 케이스의 기대 판정·세트는 `update_case`로 바꿀 수 없다(409, 이름은 가능). 한 run의 두 쪽이 다른 기준으로 채점되는 것을 막는다.
+- 활성화 근거가 아닌 쌍 평가: 운영자 선호 쌍(`pair.kind: operator_preferences`, B3-2b)과 입력 축소 쌍(`pair.kind: input_diet`, 성장1 C07)은 `pairGate`를 통과해도 `activate`·`stage`·`promote` 근거가 되지 못한다(409, `gateRun`). 입력 축소 쌍은 스위치 `input_diet` 켜기 판단 근거로만 쓰고, 그 판정은 `GET /api/eval?pair=<run>`의 `gate`로 본다(`docs/EVAL.ko.md` 5절 '입력 축소 on/off 쌍 평가').
 
 ### 반복 쌍 평가 과반 게이트 (`lib/eval-stats.ts` `pairGateMajority`, 대표 결정 2026-09-27)
 
 결론: 같은 모델도 매번 조금씩 다르게 써서, 봉인 16케이스에서 버전과 무관한 판정 뒤바뀜이 몇 건씩 난다(A1 `channel.offline` v1 봉인 run `284fa4be`: 회귀 3·개선 3). 봉인 회귀 0건 조건을 흔들림 한 번이 막지 않도록, 같은 쌍 평가를 여러 번 돌려 과반으로 판정한다.
 
 - 사용: `activate`·`stage`에 `evalRunId` 대신 `evalRunIds`(2~5개, 서로 다른 run)를 준다. 둘을 함께 주거나 1개·6개 이상·중복이면 400이다. `promote`는 stage 때 저장한 run들로 다시 판정한다.
-- 모든 run이 이 단위·후보 버전의 pair run이어야 하고, 기준(active)이 서로 같고 지금 전체 적용 버전과 같아야 한다. 운영자 선호 쌍 run은 하나라도 섞이면 409다.
+- 모든 run이 이 단위·후보 버전의 pair run이어야 하고, 기준(active)이 서로 같고 지금 전체 적용 버전과 같아야 한다. 운영자 선호 쌍·입력 축소 쌍 run은 하나라도 섞이면 409다.
 - 구조 조건(pair·완료·모든 케이스 두 쪽 완료·게이트웨이 해시·보고 모델·봉인 1건 이상)은 run마다 위 표 그대로 본다. 보고 모델은 모든 run에서 하나여야 하고, 케이스 구성이 run마다 다르면 `case_set_mismatch`다.
 - 과반 판정(케이스·채점기마다, 위 후보 보정 포함): 봉인 회귀는 active가 과반 pass이고 후보가 과반 pass가 아닐 때다(짝수 반복의 동률은 후보에 불리하게 회귀로 센다). 합격 수는 active 과반 판정이 있는 대응 짝끼리 센다. `input_budget`은 후보가 케이스마다 과반 pass여야 한다.
 - run 하나(`evalRunId`)는 기존 `pairGate`와 판정이 같다. 이벤트와 포인터에는 `evalRunId`(첫 run)와 `evalRunIds`(전부)를 남기고, `event.gate.repeats`에 반복 횟수를 싣는다.

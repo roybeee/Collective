@@ -325,7 +325,7 @@ node scripts/eval/grade.mjs <case.json> [--json] [--detail]
 - `expectations`는 채점 컨텍스트다: `prohibitedTerms`(큐레이션 금지 표현), `facts`(`{confirmed,prohibited}`, 캡처 기본값은 요청의 확정·거절 사실), `industry`(업종 ID 또는 `[주 업종, ...허용 업종]` 1~5개, G3), `localStore`, `inputTokenCap`, `seededDefects`(G3 심은 결함 50개 이하, `{id, role?, marker?, keywords?}`이고 `marker`나 `keywords`가 있어야 한다). 그 밖의 키는 저장하지 않는다. 케이스별 예약 토큰을 바꾸는 입력은 없다(예약은 종류의 값, 3절).
 - `kind`(평가 종류, 8절): `role`|`meeting_step`|`brief`. 없으면 `role`이고, 이 필드가 없는 옛 케이스도 `role`로 읽어 이행이 필요 없다. 목록 밖 값은 400이다. 저장된 케이스의 종류를 실행할 수 없으면 `start_run`이 400이고 run을 기록하지 않는다.
 - `externalKey`·`specHash`(생성기 멱등 키, G4 합성 생성기용): 둘을 함께 보낸다. 하나만 오거나 형식이 틀리면 400이다. `externalKey`는 영문·숫자로 시작하는 200자 이하(영문·숫자·`_ . : -`), `specHash`는 8~128자(영문·숫자·`_ : -`)다. 같은 소유자에게 같은 키·같은 해시 케이스가 있으면 새로 만들지 않고 그 케이스를 그대로 돌려준다(이름 등 다른 입력은 무시). 같은 키에 다른 해시가 오면 409이고 아무것도 바꾸지 않는다(동결 케이스는 덮어쓰지 않는다). 키는 소유자 범위이고, 케이스를 지우면 그 키도 다시 쓸 수 있다.
-- `set`은 `dev`(기본) 또는 `sealed`. `capturedWith`에 캡처 시점 `PRACTICE_VERSION`·`ROLE_OUTPUT_VERSION`을 남겨 퇴역 판단에 쓴다.
+- `set`은 `dev`(기본) 또는 `sealed`. `capturedWith`에 캡처 시점 `PRACTICE_VERSION`·`ROLE_OUTPUT_VERSION`을 남겨 퇴역 판단에 쓴다. 운영 기록 캡처(역할·회의 단계·브리프)는 입력 축소 스위치 상태 `capturedWith.inputDiet`(boolean)도 남긴다(C07). 회의·브리프는 원 제출 기록의 상태, 역할은 캡처 때 워크스페이스 상태다. 조립에는 쓰지 않고(동결 요청에는 넣지 않는다), 수동·합성·바이럴 케이스에는 키가 없다.
 - 캠페인을 삭제해도 `eval_case`는 남는다(`retain`, `data_campaign` 링크로 삭제 영향 조회의 보존 건수에 나온다). 동결 요청에는 캠페인·브랜드·앞선 작업물 원문이 들어 있으므로 필요 없어진 케이스는 소유자가 개별 삭제한다.
 - 드리프트 방지: `tests/eval-server.test.mjs`가 캡처한 요청으로 만든 지시문·입력이 같은 캠페인의 운영 start 제출 본문과 바이트 동일한지 확인한다. 운영자 선호 규칙이 있는 캠페인은 `tests/eval-kinds.test.mjs`가, 회의 단계(교정 재시도 포함 12단계)와 기준일을 고정한 브리프는 `tests/eval-meeting-brief.test.mjs`가 같은 확인을 한다(8절).
 
@@ -420,6 +420,25 @@ run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
 - 활성화 금지: 이 run은 `pairGate`를 통과해도 프롬프트 레지스트리 `activate`·`stage`·`promote`의 근거가 되지 못한다(409, `lib/prompt-registry.ts` `passGate`).
 - 테스트: `tests/eval-preference-pair.test.mjs`(mocked: 모의 평가·운영 HERMES, 메모리 SQLite, 실제 `app/api/eval`·`app/api/prompts` 라우트).
 
+#### 입력 축소 on/off 쌍 평가(`pair.kind: input_diet`, 성장1 C07)
+
+결론: 스위치 `input_diet`(PR 4b, 기본 꺼짐, [INPUT-DIET](INPUT-DIET.ko.md))를 켜기 전에, 같은 run·같은 게이트웨이에서 케이스마다 꺼짐 조립(off)과 켜짐 조립(on)을 번갈아 제출하고 기존 `pairGate`(과반은 `pairGateMajority`)로 판정한다. 프롬프트·규칙 비교가 아니라 입력 조립 비교다. 결과는 스위치 켜기 판단 근거일 뿐 프롬프트 활성화 근거가 아니다.
+
+```json
+{"action":"start_run","pair":{"kind":"input_diet"},"caseIds":["c1","c2","c3"],"tokenBudget":250000,"label":"C07 입력 축소 on/off"}
+```
+
+- 두 쪽: `active` = off(동결 요청을 `inputDiet:false`로 조립. 인자 없는 지금 평가 조립·`active` run과 바이트 동일), `candidate` = on(같은 동결 요청을 `inputDiet:true`로 조립). 동결 요청은 그대로이고 조립 인자만 다르다(`lib/input-diet.ts` `INPUT_DIET_SIDES`). 지시문은 두 쪽이 같고 입력만 다르다. 역할은 `roleSubmission(r,{inputDiet})`, 회의 단계는 `buildMeetingSubmission(meeting,stepId,storeAllow,{inputDiet})`(`lib/eval-freeze.ts` `buildMeetingRequest` 세 번째 인자), 브리프는 `buildBriefSubmission(r,{inputDiet})`다.
+- 입력: `pair`는 `{kind:'input_diet'}`만 받는다. 다른 키(`unit`·`candidateVersionId`·`ruleIds` 등)는 400이다. 고를 본문·규칙이 없다.
+- 대상 케이스: 조립 함수가 `inputDiet`를 받는 역할·회의 단계·브리프. 바이럴 사례 분석은 `pair.skippedCases`로 센다. 남는 케이스가 없으면 400이고 run을 기록하지 않는다.
+- 고정 메타: run의 `pair`는 `{kind:'input_diet', unit:'input_diet', activeVersionId:'off', candidateVersionId:'input-diet-v1', skippedCases}`다(`lib/eval-kinds.ts` `INPUT_DIET_PAIR`). `?pair=<run>`과 목록도 같은 키를 보인다.
+- 예산: 종류별 예약(역할·브리프 50,000, 회의 단계 100,000)을 두 쪽 모두 잡고 3절 검사를 받는다.
+- 게이트: 기존 `pairGate` 그대로다(합격 수 on ≥ off, 봉인 1건 이상·봉인 회귀 0, `input_budget` 후보 전부 pass, 모델·게이트웨이 동일, 전 케이스 두 쪽 완료). 쌍 30 미만이면 `small_sample` 경고만 붙는다.
+  - 주의: 브리프의 `input_budget`은 채점기 설계상 `not_applicable`(대상 여부 결정 전, `lib/graders/ledger.ts`)이라 브리프가 섞인 run은 `input_budget` 사유 하나로 늘 막힌다. 게이트 판정 run은 역할·회의 단계(봉인 포함)로 돌리고, 브리프는 같은 방식의 별도 run에서 `comparison`(채점기별 합격 수)과 봉인 회귀·나머지 사유가 없는지를 본다. 게이트 규칙은 바꾸지 않았다.
+- 활성화 금지: 이 run은 `pairGate`를 통과해도 프롬프트 레지스트리 `activate`·`stage`·`promote` 근거가 되지 못한다(409, `lib/prompt-registry.ts` `passGate`→`gateRun`, 반복 `evalRunIds`에 섞여도 409). 스위치 켜기는 이 run의 `GET /api/eval?pair=<run>` 결과(`gate.ok`)를 근거로 대표가 기능 스위치 화면에서 한다.
+- 캡처와의 관계: 캡처 드리프트는 원 기록의 스위치 상태로 다시 조립해 판정한다(8절 '입력 축소와 캡처'). 케이스의 `capturedWith.inputDiet`는 기록일 뿐 이 쌍의 두 쪽을 바꾸지 않는다.
+- 테스트: `tests/eval-input-diet-pair.test.mjs`(mocked: 모의 평가·운영 HERMES, 메모리 SQLite, 실제 `app/api/eval`·`app/api/prompts` 라우트, 합성 데이터).
+
 ### 6. 같은 저울 재채점(`regrade_run`)
 
 결론: 채점기나 규제 사전을 고치면 이전 run과 새 run의 결과는 서로 다른 저울로 잰 값이 된다. `regrade_run`은 끝난 run에 저장된 모델 출력(`eval_output`)을 지금 코드의 채점기·규제 가드레일·예방 판정·정규화로 다시 채점한다. 모델·HERMES를 부르지 않아 토큰은 0이다.
@@ -483,7 +502,7 @@ run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
 
 - 처리기:
   - `freeze`: 저장할 요청과 담당을 정한다. 역할은 운영 요청 구조 검사이고 지금 조립기가 받아야 한다. 회의 단계·브리프는 아래 동결을 거친다(2절 표).
-  - `build`: 동결 요청 → `{instructions, input}`. 쌍 평가(5절)의 쪽 본문을 어디에 주입할지도 처리기가 정한다(역할은 `RoleRequest.prompts`, 회의 단계는 `snapshot.prompts.set`, 브리프는 대상 아님).
+  - `build`: 동결 요청 → `{instructions, input}`. 쌍 평가(5절)의 쪽 본문을 어디에 주입할지도 처리기가 정한다(역할은 `RoleRequest.prompts`, 회의 단계는 `snapshot.prompts.set`, 브리프는 대상 아님). 입력 축소 쌍의 쪽(`{inputDiet:'off'|'on'}`)은 역할·회의 단계·브리프가 조립 인자로 받고 바이럴은 거부한다.
   - `grade`: 출력 → 채점 결과(3절 '채점').
   - `reserve`: 케이스 1건 예약(3절). 역할·브리프·바이럴 사례 분석 50,000, 회의 단계 100,000이다. 케이스마다 바꾸는 입력은 없다.
   - `campaignOf`: 쌍 평가 대상 캠페인. 역할은 `request.campaign`, 회의 단계는 `meeting.snapshot.campaign`, 브리프·바이럴 사례 분석은 없음(바이럴은 `viral.discovery` 쌍 평가만 대상, 5절).
@@ -510,6 +529,10 @@ run 상태: `queued` → `running` → `completed` | `cancelled` | `blocked`.
 | `assembly_drift` | 위 사유 없이 다르다. 평가 조립이 운영과 갈라졌다는 뜻이다 | 예 |
 
   `frozenIdentical`은 동결본(자르고 줄이고 가린 저장 요청)으로 만든 제출이 원기록 조립과 같은지다. 한계: 발췌 상한(원 작업물 8,000자·재검토 후보 24,000자)을 넘는 본문의 앞부분에 가릴 값이 있으면, 가림으로 글자 수가 바뀌어 발췌 끝이 달라진다. 이때만 `false`다. 그 케이스는 운영 제출과 발췌 끝 몇 글자가 다를 수 있다. 브리프 승인 작업물 발췌(2,500자)는 요청을 만들 때 이미 잘라 이 한계가 없다.
+- 입력 축소와 캡처(C07, 스위치 `input_diet`): 다시 조립할 때 원 제출 당시 스위치 상태로 조립한다. 회의는 시작 때 고정한 `snapshot.inputDiet`, 브리프는 켜진 제출에만 붙는 초안의 `inputDiet` 요약으로 상태를 안다. 키가 없으면 꺼짐으로 조립된 기록이다(스위치 도입 전 기록 포함).
+  - 그래서 켜진 워크스페이스의 기록도 `identical`이고(오경보 `assembly_drift` 없음), 꺼진 기록은 판정이 이전과 같다. `frozenIdentical`도 같은 상태로 동결본을 조립해 비교한다.
+  - 현재 워크스페이스 상태로 대신하지 않는다. 대신하면 꺼진 때 만든 기록을 스위치를 켠 뒤 캡처할 때 오경보가 난다. 원 기록이 늘 상태를 가지므로 대체가 필요한 경우가 없다. 원 제출과 비교하지 않는 역할 캡처만 캡처 때 워크스페이스 상태를 기록한다.
+  - 동결 요청에는 스위치 상태를 넣지 않는다(회의 동결은 `snapshot.inputDiet`를 버린다). 상태는 케이스 `capturedWith.inputDiet`에만 남는다. 평가 `active` run은 늘 꺼짐 조립이라 제출 바이트가 이전과 같고, 켜짐 조립은 입력 축소 쌍(5절)의 candidate 쪽에서만 쓴다.
 - 회의 단계 입력 토큰: R3 기준선(2026-09-25) 실측으로 회의 단계 상한을 64,000으로 정했다.
   - 회의 20단계 중 최대는 52,268(운영 MAPDAL 재검토)이고, 다음은 28,653(개선본)이다. 나머지는 23k 이하다.
   - 역할 최대는 23,701이라 역할 상한 32,000은 그대로 둔다.

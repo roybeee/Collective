@@ -8,7 +8,8 @@ import {PRACTICE_VERSION} from './practice';
 import {GRADERS_VERSION,type GraderResult,type GraderStatus,type FactLedger,type SeededDefect} from './graders/index';
 import type {OutputNormalization} from './output-normalize';
 import {COMPLIANCE_LEXICON} from './graders/compliance';
-import {caseKind,evalKind,reserveOf,roleId,EVAL_CASE_TOKEN_RESERVE,type EvalCaseKind,type EvalKindHandler,type EvalExpectations,type EvalRequest,type EvalSide} from './eval-kinds';
+import {caseKind,evalKind,reserveOf,roleId,isInputDietPair,inputDietPairCases,INPUT_DIET_PAIR,EVAL_CASE_TOKEN_RESERVE,type EvalCaseKind,type EvalKindHandler,type EvalExpectations,type EvalRequest,type EvalSide,type InputDietPair} from './eval-kinds';
+import {inputDietEnabled} from './input-diet-server';
 import {captureMeetingStep,captureBrief,captureViralAnalysis,type CaptureCheck} from './eval-capture';
 import {compareRuns,pairReport} from './eval-stats';
 import {gatewayBasis} from './gateway-snapshot';
@@ -39,7 +40,9 @@ export type {EvalExpectations};
 // kind: 평가 종류(lib/eval-kinds.ts). 없는 옛 케이스는 role이다. externalKey·specHash: 생성기 멱등 키와 그 스펙 해시(같은 키에 다른 specHash는 409).
 // request: 종류별 동결 요청(역할 RoleRequest, 회의 단계 {meeting,stepId,storeAllow}, 브리프 BriefRequest). captureCheck: 회의·브리프 캡처의 드리프트 판정(lib/eval-capture.ts).
 // source synthetic·generator: 합성 생성기 출력을 import_cases로 가져온 케이스와 그 생성 커밋·트리(G4).
-export type EvalCase={id:string;kind?:EvalCaseKind;externalKey?:string;specHash?:string;role:string;label:string;set:EvalSet;request:EvalRequest;captureCheck?:CaptureCheck;generator?:{commit:string;tree:string};expectations:EvalExpectations;campaignId:string|null;source:'capture'|'manual'|'synthetic';capturedWith:{skillVersion:string;outputContractVersion:string};setChanges?:{from:EvalSet;to:EvalSet;at:string;by:Who}[];expectationsUpdatedAt?:string;createdBy:Who;createdAt:string;updatedAt:string};
+// capturedWith.inputDiet: 운영 기록 캡처(역할·회의 단계·브리프) 때의 입력 축소 스위치 상태(C07). 회의·브리프는 원 제출 기록의 상태, 역할은 캡처 때 워크스페이스 상태다.
+// 기록일 뿐 조립에 쓰지 않는다(active run은 늘 꺼짐 조립, 입력 축소 쌍은 두 쪽을 인자로 정한다). 수동·합성 케이스와 바이럴은 키가 없다.
+export type EvalCase={id:string;kind?:EvalCaseKind;externalKey?:string;specHash?:string;role:string;label:string;set:EvalSet;request:EvalRequest;captureCheck?:CaptureCheck;generator?:{commit:string;tree:string};expectations:EvalExpectations;campaignId:string|null;source:'capture'|'manual'|'synthetic';capturedWith:{skillVersion:string;outputContractVersion:string;inputDiet?:boolean};setChanges?:{from:EvalSet;to:EvalSet;at:string;by:Who}[];expectationsUpdatedAt?:string;createdBy:Who;createdAt:string;updatedAt:string};
 type StoredConnection={secret:string;host:string;isolationConfirmed:boolean;note:string;status:'ready'|'blocked';statusReason:string|null;model:string|null;checkedAt:string;updatedAt:string;updatedBy:Who};
 type Conn={endpoint:string;key:string};
 type Tokens={input:number|null;output:number|null;total:number|null};
@@ -56,7 +59,8 @@ type StopReason='budget_reached'|'monthly_cap_reached'|'usage_unreported';
 // pair: 쌍 평가(F3b) 대상 단위·후보·active 버전과 두 쪽 본문(시작 때 고정). gatewaySnapshotEnd: pair run이 끝날 때 같은 방식으로 다시 잰 게이트웨이 기준.
 // 운영자 선호 쌍(B3-2b, kind operator_preferences)은 active가 off(블록 없음), candidate가 on(고른 규칙 블록)이고 규칙 참조·블록·블록 해시를 시작 때 고정한다.
 // regrades: 같은 저울 재채점 기록(아래 '같은 저울 재채점'). results와 별개이며 results를 바꾸지 않는다.
-export type EvalPair=(PairPrompts|PreferencePair)&{skippedCases:number};
+// 입력 축소 쌍(C07, kind input_diet)은 active가 off, candidate가 on이고 메타가 고정값이다(lib/eval-kinds.ts INPUT_DIET_PAIR).
+export type EvalPair=(PairPrompts|PreferencePair|InputDietPair)&{skippedCases:number};
 export type EvalRun={gatewaySnapshot?:EvalGatewayBasis;gatewaySnapshotEnd?:EvalGatewayBasis;pair?:EvalPair;id:string;label:string;variant:'active'|'pair'|'judge';set:EvalSet|null;caseIds:string[];tokenBudget:number;usedTokens:number;status:'queued'|'running'|'completed'|'cancelled'|'blocked';stopReason?:StopReason;blockedReason?:string;overBudgetApproved?:{reason:string;by:Who;at:string;exceeded:string[];monthCommitted:number};sealedUsed?:{by:Who;at:string;cases:number};host:string|null;createdBy:Who;createdAt:string;updatedAt:string;cancelledBy?:Who;deleted?:{by:Who;at:string;cases:number};results:EvalCaseResult[];regrades?:EvalRegrade[]};
 type Step={run:EvalRun;writes?:D1PreparedStatement[]};
 // 시작 시점 게이트웨이 기준(F2b): operational은 운영 연결의 최신 passed 스냅샷(평가 연결 기준이 아님), eval은 같은 스냅샷 함수로 잰 평가 연결 해시(막히면 blocked).
@@ -196,13 +200,14 @@ async function existingExternal(owner:string,ext:External|null){
  return kase;
 }
 type CaseFields=Pick<EvalCase,'kind'|'role'|'label'|'set'|'request'|'expectations'|'campaignId'|'source'|'captureCheck'>;
-const caseRecord=(fields:CaseFields,by:Who,ext:External|null,at=stamp()):EvalCase=>({id:uid(),...fields,...ext,capturedWith:{skillVersion:PRACTICE_VERSION,outputContractVersion:ROLE_OUTPUT_VERSION},createdBy:by,createdAt:at,updatedAt:at});
-async function storeCase(owner:string,fields:CaseFields,by:Who,ext:External|null){
- const kase=caseRecord(fields,by,ext);
+const caseRecord=(fields:CaseFields,by:Who,ext:External|null,at=stamp(),inputDiet?:boolean):EvalCase=>({id:uid(),...fields,...ext,capturedWith:{skillVersion:PRACTICE_VERSION,outputContractVersion:ROLE_OUTPUT_VERSION,...(inputDiet===undefined?{}:{inputDiet})},createdBy:by,createdAt:at,updatedAt:at});
+async function storeCase(owner:string,fields:CaseFields,by:Who,ext:External|null,inputDiet?:boolean){
+ const kase=caseRecord(fields,by,ext,stamp(),inputDiet);
  await recordStatement(owner,'eval_case',kase.id,kase).run();
  return kase;
 }
 // 역할: 운영 역할 실행과 같은 DB 읽기(roleSources·roleRequestFor)로 요청을 만들어 JSON 그대로 동결한다(운영자 선호 블록 포함). 실행 가능 여부 검사(409)는 적용하지 않는다.
+// 역할 캡처는 원 제출과 비교하지 않는다(드리프트 판정 없음). 동결 요청에는 스위치 키를 넣지 않고, 캡처 때 워크스페이스의 input_diet 상태만 capturedWith에 남긴다.
 // 회의 단계({meetingId, stepId})·브리프({briefDraftId})·바이럴 사례 분석({jobId})은 lib/eval-capture.ts가 운영 기록으로 요청을 만들고 운영과 같은 가림을 거쳐 동결하며, 드리프트 판정을 captureCheck에 남긴다.
 async function captureCase(owner:string,input:Record<string,unknown>,by:Who){
  const kind=caseKind(input.kind),ext=externalOf(input),existing=await existingExternal(owner,ext);
@@ -213,12 +218,12 @@ async function captureCase(owner:string,input:Record<string,unknown>,by:Who){
  const request=await roleRequestFor(owner,c,role,sources,await readRecord<Brand>(owner,'brand',c.brandId)),frozen=JSON.parse(JSON.stringify(request)) as RoleRequest;
  if(JSON.stringify(frozen).length>MAX_REQUEST_CHARS)throw new ApiError(413,'역할 요청이 너무 커서 평가 케이스로 저장할 수 없습니다.');
  const facts={confirmed:request.evidence.facts.confirmed,prohibited:request.evidence.facts.prohibited} as FactLedger,name=roles.find(r=>r.id===role)!.name;
- return storeCase(owner,{kind,role,request:frozen,expectations:expectationsOf(input.expectations,facts),campaignId:c.id,source:'capture',set:evalSet(input.set),label:str(input.label??'','케이스 이름',200)||`${name} · ${c.title} · 브리프 v${c.version}`},by,ext);
+ return storeCase(owner,{kind,role,request:frozen,expectations:expectationsOf(input.expectations,facts),campaignId:c.id,source:'capture',set:evalSet(input.set),label:str(input.label??'','케이스 이름',200)||`${name} · ${c.title} · 브리프 v${c.version}`},by,ext,await inputDietEnabled(owner));
 }
 async function captureRecord(owner:string,kind:Exclude<EvalCaseKind,'role'>,input:Record<string,unknown>,by:Who,ext:External|null){
  const c=kind==='meeting_step'?await captureMeetingStep(owner,input):kind==='brief'?await captureBrief(owner,input):await captureViralAnalysis(owner,input);
  if(JSON.stringify(c.request).length>MAX_REQUEST_CHARS)throw new ApiError(413,'평가 요청이 너무 커서 평가 케이스로 저장할 수 없습니다.');
- return storeCase(owner,{kind,role:c.role,request:c.request,expectations:expectationsOf(input.expectations,c.facts),campaignId:c.campaignId,source:'capture',set:evalSet(input.set),label:str(input.label??'','케이스 이름',200)||c.label,captureCheck:c.captureCheck},by,ext);
+ return storeCase(owner,{kind,role:c.role,request:c.request,expectations:expectationsOf(input.expectations,c.facts),campaignId:c.campaignId,source:'capture',set:evalSet(input.set),label:str(input.label??'','케이스 이름',200)||c.label,captureCheck:c.captureCheck},by,ext,c.inputDiet);
 }
 async function saveCase(owner:string,input:Record<string,unknown>,by:Who){
  const kind=caseKind(input.kind),handler=evalKind(kind),ext=externalOf(input),existing=await existingExternal(owner,ext);
@@ -356,7 +361,7 @@ function runVariant(input:Record<string,unknown>){
  return variant;
 }
 // 쌍 평가 케이스: 후보 단위를 쓰는 케이스만 남긴다(역할 스킬은 같은 역할, 채널 스킬은 그 채널이 적용되는 캠페인). 쓰지 않는 케이스는 두 쪽 본문이 같아 토큰만 쓴다.
-// 캠페인은 종류 처리기가 정한다(역할 request.campaign, 회의 단계 meeting.snapshot.campaign). 브리프는 레지스트리 단위가 없어 늘 빠진다(skippedCases).
+// 캠페인은 종류 처리기가 정한다(역할 request.campaign, 회의 단계 meeting.snapshot.campaign). 브리프는 레지스트리 단위가 없어 프롬프트 쌍 평가에서 늘 빠진다(skippedCases, 입력 축소 쌍은 inputDietTargets).
 // 바이럴 발견 지시(viral.discovery, 캠페인 없음)는 바이럴 사례 분석(viral_analysis) 케이스만 쓴다. 역할·회의·브리프 케이스는 빠지고, 바이럴 케이스는 캠페인 단위 쌍 평가에서 빠진다.
 function usesUnit(c:EvalCase,unit:string){
  if(unitOf(unit)?.kind==='viral')return c.kind==='viral_analysis';
@@ -377,6 +382,7 @@ type RunTargets={caseIds:string[];results:EvalCaseResult[];sealed:number;set:Eva
 async function runTargets(owner:string,input:Record<string,unknown>,variant:EvalRun['variant']):Promise<RunTargets>{
  if(variant==='judge'){const t=await judgeTargets(owner,input.limit);return {caseIds:t.caseIds,results:t.results,sealed:0,set:null}}
  if(variant==='pair'&&obj(input.pair)?.kind===PREFERENCE_PAIR_KIND)return preferenceTargets(owner,input);
+ if(variant==='pair'&&isInputDietPair(obj(input.pair)))return inputDietTargets(owner,input);
  const prompts=variant==='pair'?await pairPrompts(owner,input.pair):undefined,all=supportedCases(await runCases(owner,input)),cases=prompts?pairCases(all,prompts.unit):all;
  return {caseIds:cases.map(c=>c.id),results:pendingResults(cases,!!prompts),sealed:cases.filter(c=>c.set==='sealed').length,set:Array.isArray(input.caseIds)?null:evalSet(input.set),...(prompts?{pair:{...prompts,skippedCases:all.length-cases.length}}:{})};
 }
@@ -404,6 +410,16 @@ async function preferenceTargets(owner:string,input:Record<string,unknown>):Prom
  const {pair,rules}=await preferencePair(owner,obj(input.pair)!),all=supportedCases(await runCases(owner,input)),{cases,skippedCases}=preferencePairCases(all,rules);
  if(!cases.length)throw new ApiError(400,'고른 운영자 선호 규칙이 모두 적용되는 역할 평가 케이스가 없습니다. 같은 브랜드·역할·채널의 역할 케이스를 고르세요(회의 단계·브리프는 대상이 아닙니다).');
  return {caseIds:cases.map(c=>c.id),results:pendingResults(cases,true),sealed:cases.filter(c=>c.set==='sealed').length,set:Array.isArray(input.caseIds)?null:evalSet(input.set),pair:{...pair,skippedCases}};
+}
+// ── 입력 축소 on/off 쌍 평가(성장1 C07) ──
+// pair:{kind:'input_diet'}만 받는다(다른 키는 400: 두 쪽은 스위치 꺼짐·켜짐으로 고정이고 고를 본문·규칙이 없다). 대상은 역할·회의 단계·브리프 케이스이고
+// 바이럴 사례 분석은 skippedCases로 센다. 남는 케이스가 없으면 400. 판정은 기존 pairGate(GET ?pair=)이고, 이 run은 프롬프트 활성화 근거가 아니다.
+async function inputDietTargets(owner:string,input:Record<string,unknown>):Promise<RunTargets>{
+ const extra=Object.keys(obj(input.pair)!).filter(k=>k!=='kind');
+ if(extra.length)throw new ApiError(400,`입력 축소 쌍 평가(pair.kind input_diet)는 kind만 받습니다(받지 않는 키: ${extra.slice(0,5).join(', ')}). 두 쪽은 스위치 꺼짐(active)·켜짐(candidate)으로 고정입니다.`);
+ const all=supportedCases(await runCases(owner,input)),{cases,skippedCases}=inputDietPairCases(all);
+ if(!cases.length)throw new ApiError(400,'입력 축소 쌍 평가 대상 케이스가 없습니다. 조립이 입력 축소를 받는 역할·회의 단계·브리프 케이스를 고르세요(바이럴 사례 분석은 대상이 아닙니다).');
+ return {caseIds:cases.map(c=>c.id),results:pendingResults(cases,true),sealed:cases.filter(c=>c.set==='sealed').length,set:Array.isArray(input.caseIds)?null:evalSet(input.set),pair:{...INPUT_DIET_PAIR,skippedCases}};
 }
 async function startRun(owner:string,input:Record<string,unknown>,by:Who){
  const tokenBudget=budgetOf(input.tokenBudget),variant=runVariant(input);
@@ -476,7 +492,8 @@ async function submitCase(owner:string,run:EvalRun,conn:Conn,at:number):Promise<
  // 제출 본문은 케이스 종류의 조립(lib/eval-kinds.ts build)이 만든다. 역할은 운영 start와 같은 roleSubmission이라 선호 규칙이 있는 동결본도 운영 제출과 바이트 동일하다.
  // pair run은 이 쪽 본문(후보 또는 active, active가 코드 상수면 null)을 넘기고, 어디에 주입할지는 종류 처리기가 정한다.
  // 운영자 선호 쌍(B3-2b)은 active가 off, candidate가 on이고 run에 고정한 블록을 넘긴다.
- const pair=run.pair,side:EvalSide|undefined=!pair?undefined:isPreferencePair(pair)?{preference:r.variant==='candidate'?'on':'off',block:pair.block}:r.variant==='candidate'?pair.candidateSet:pair.activeSet;
+ // 입력 축소 쌍(C07)은 active가 off, candidate가 on이다(동결 요청은 그대로, 조립 인자만 다르다).
+ const pair=run.pair,side:EvalSide|undefined=!pair?undefined:isInputDietPair(pair)?{inputDiet:r.variant==='candidate'?'on':'off'}:isPreferencePair(pair)?{preference:r.variant==='candidate'?'on':'off',block:pair.block}:r.variant==='candidate'?pair.candidateSet:pair.activeSet;
  let instructions:string,input:string;
  // 심사 run은 J1 심사 프롬프트(원 평가 출력·동결 요청)다. 입력 검사에 걸리거나 원 출력이 없으면 그 항목만 failed다.
  if(run.variant==='judge')try{({instructions,input}=await judgeSubmission(owner,r,kase,await connectionModel(owner)))}catch(e){if(e instanceof ApiError&&e.status<500)return {run:settle(withResult(run,at,{...r,status:'failed',error:e.message}))};throw e}
@@ -644,12 +661,12 @@ async function diagnoseRun(owner:string,id:string){
 // ── API 진입점(app/api/eval/route.ts). 권한 검사는 라우트가 한다(소유자만). ──
 function variantOf(v:unknown){if(v!=='active'&&v!=='candidate')throw new ApiError(400,'variant는 active 또는 candidate여야 합니다.');return v}
 // 쌍 평가 결과: 두 쪽 비교 통계와 활성화 게이트 판정(lib/eval-stats.ts pairReport). 본문(PromptSet)은 빼고 버전 id만 보인다.
-// 운영자 선호 쌍(B3-2b)은 블록 본문 대신 브랜드·규칙 참조·블록 해시를 더 보인다.
+// 운영자 선호 쌍(B3-2b)은 블록 본문 대신 브랜드·규칙 참조·블록 해시를 더 보인다. 입력 축소 쌍(C07)은 kind와 고정 off·on id를 보인다.
 async function pairRead(owner:string,runId:string){
  const run=await readRecord<EvalRun>(owner,'eval_run',runId);
  if(run.variant!=='pair'||!run.pair)throw new ApiError(400,'쌍 평가(pair) 실행이 아닙니다.');
  const p=run.pair,{unit,candidateVersionId,activeVersionId,skippedCases}=p;
- const pair=isPreferencePair(p)?{kind:p.kind,unit,brandId:p.brandId,activeVersionId,candidateVersionId,rules:p.rules,blockHash:p.blockHash,skippedCases}:{unit,candidateVersionId,activeVersionId,skippedCases};
+ const pair=isInputDietPair(p)?{kind:p.kind,unit,activeVersionId,candidateVersionId,skippedCases}:isPreferencePair(p)?{kind:p.kind,unit,brandId:p.brandId,activeVersionId,candidateVersionId,rules:p.rules,blockHash:p.blockHash,skippedCases}:{unit,candidateVersionId,activeVersionId,skippedCases};
  return {id:run.id,status:run.status,pair,...pairReport(run)};
 }
 // 목록에는 운영자 선호 쌍의 블록 본문(규칙 최대 8개)을 빼고 blockHash만 싣는다. 본문은 GET ?run=에서 본다.

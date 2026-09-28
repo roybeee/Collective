@@ -14,6 +14,7 @@ import {buildBriefSubmission,type BriefRequest} from './brief-input';
 import {meetingStepRequestOf,buildMeetingRequest,briefRequestOf,targetStep,type MeetingStepRequest} from './eval-freeze';
 import {scrubMeetingOutput,meetingLabels,type Synthesis} from './meetings';
 import {viralAnalysisSubmission,type ViralAnalysisRequest} from './learning-execution';
+import {INPUT_DIET_PAIR_KIND,INPUT_DIET_SIDES,INPUT_DIET_VERSION} from './input-diet';
 
 // 평가 종류(Q1 골격, G2 회의·브리프). 평가 케이스(eval_case.kind)마다 요청 동결(freeze: 입력 → 저장 요청·담당), 제출 조립(build: 동결 요청 → {instructions,input}),
 // 채점(grade: 출력 → 채점 결과), 케이스 1건 예약 토큰(reserve), 쌍 평가 대상 캠페인(campaignOf)을 한 처리기에 둔다. lib/eval-server.ts는 케이스의 kind로 처리기를 고른다.
@@ -31,9 +32,13 @@ export type EvalExpectations={prohibitedTerms:string[];facts:FactLedger|null;ind
 export type EvalRequest=RoleRequest|MeetingStepRequest|BriefRequest|ViralAnalysisRequest;
 type KindCase={id:string;role:string;kind?:string;request:EvalRequest;expectations:EvalExpectations};
 // 쌍 평가의 한 쪽. 프롬프트 쌍(F3b)은 본문(PromptSet, active가 코드 상수면 null), 운영자 선호 쌍(B3-2b)은 off·on과 run에 고정한 블록이다.
+// 입력 축소 쌍(C07, pair.kind input_diet)은 같은 동결 요청을 스위치 꺼짐(off)·켜짐(on)으로 조립한다(lib/input-diet.ts INPUT_DIET_SIDES).
 export type PreferenceSide={preference:'off'|'on';block:OperatorPreferenceBlock};
-export type EvalSide=PromptSet|null|PreferenceSide;
+export type InputDietSide={inputDiet:'off'|'on'};
+export type EvalSide=PromptSet|null|PreferenceSide|InputDietSide;
 const preferenceSide=(side:EvalSide|undefined):side is PreferenceSide=>!!side&&'preference' in side;
+const inputDietSide=(side:EvalSide|undefined):side is InputDietSide=>!!side&&'inputDiet' in side;
+const dietOf=(side:InputDietSide)=>INPUT_DIET_SIDES[side.inputDiet];
 const obj=(v:unknown)=>v!==null&&typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:null;
 const baseContext=(e:EvalExpectations):GradeContext=>({prohibitedTerms:e.prohibitedTerms,facts:e.facts,industry:e.industry,localStore:e.localStore,...(e.inputTokenCap?{inputTokenCap:e.inputTokenCap}:{})});
 // 역할 담당 ID(에이전시 역할 목록). 회의 단계는 대상 단계의 담당, 브리프는 담당이 없어 BRIEF_ROLE이다.
@@ -72,8 +77,10 @@ function freezeRole(v:unknown,roleInput:unknown){
 // side: 쌍 평가(pair)의 이 쪽 본문. undefined면 동결 요청 그대로, 아니면 그 본문(PromptSet, active가 코드 상수면 null → 주입 없음)을 요청 prompts로 주입한다.
 // 동결 요청의 다른 필드(운영자 선호 블록 포함)는 그대로다. 종류마다 주입 자리가 달라(회의 단계는 snapshot.prompts) 처리기가 정한다.
 // 운영자 선호 쌍(B3-2b)은 동결 요청의 operatorPreferences만 바꾼다: off는 키를 빼고, on은 run에 고정한 블록을 넣는다(preferenceSides). 조립은 운영과 같은 roleSubmission이다.
+// 입력 축소 쌍(C07)은 동결 요청을 그대로 두고 조립 인자만 off·on으로 넘긴다. off는 인자 없는 조립과 바이트가 같다.
 function buildRole(request:EvalRequest,side?:EvalSide){
  const r=request as RoleSubmissionRequest;
+ if(inputDietSide(side)){const {instructions,input}=roleSubmission(r,dietOf(side));return {instructions,input}}
  const {instructions,input}=roleSubmission(preferenceSide(side)?preferenceSides(r,side.block)[side.preference]:side===undefined?r:{...r,prompts:side??undefined});
  return {instructions,input};
 }
@@ -116,14 +123,15 @@ function gradeMeeting(kase:KindCase,output:string,inputTokens:number|null){
  return graded(item,ctx,runGraders(item,ctx,ALL_GRADERS),false,runGraders(meetingItem(kase,output,inputTokens,false),ctx,exposure));
 }
 
-// ── brief: 운영 브리프 초안과 같은 조립(lib/brief-input.ts buildBriefSubmission). 레지스트리 단위가 없어 쌍 평가에서 뺀다 ──
+// ── brief: 운영 브리프 초안과 같은 조립(lib/brief-input.ts buildBriefSubmission). 레지스트리 단위가 없어 프롬프트 쌍 평가에서 빼고, 입력 축소 쌍(C07)만 대상이다 ──
 function freezeBrief(v:unknown,roleInput:unknown){
  if(roleInput!==undefined&&roleInput!==BRIEF_ROLE)throw new ApiError(400,`브리프 케이스의 담당은 ${BRIEF_ROLE}입니다.`);
  return {request:briefRequestOf(v),role:BRIEF_ROLE};
 }
+// 입력 축소 쌍(C07)만 받는다. 프롬프트·운영자 선호 쌍은 여전히 대상이 아니다.
 function buildBrief(request:EvalRequest,side?:EvalSide){
- if(side!==undefined)throw new Error('브리프는 쌍 평가 대상이 아닙니다.');
- const {instructions,input}=buildBriefSubmission(request as BriefRequest);
+ if(side!==undefined&&!inputDietSide(side))throw new Error('브리프는 입력 축소 쌍 평가만 대상입니다.');
+ const {instructions,input}=buildBriefSubmission(request as BriefRequest,side?dietOf(side):undefined);
  return {instructions,input};
 }
 // 본문(text)은 계획이 되는 summary·제안 값이다(questions·assumptions 제외, 설계 3절). JSON이 아니면 원문 그대로다. briefInput은 사용자가 준 값(가격·날짜 단정 판정 제외).
@@ -149,6 +157,7 @@ function freezeViral(v:unknown,roleInput:unknown){
 // side: undefined(active run)·null(쌍 평가 active가 코드 상수)은 코드 상수, PromptSet은 그 viral 본문(없으면 코드 상수)이다. 운영자 선호 쌍은 대상이 아니다.
 function buildViral(request:EvalRequest,side?:EvalSide){
  if(preferenceSide(side))throw new Error('바이럴 사례 분석은 운영자 선호 쌍 평가 대상이 아닙니다.');
+ if(inputDietSide(side))throw new Error('바이럴 사례 분석은 입력 축소 쌍 평가 대상이 아닙니다(조립이 inputDiet를 받지 않는다).');
  return viralAnalysisSubmission(request as ViralAnalysisRequest,side?.viral);
 }
 // 채점 항목: 원 JSON(raw)과 사람이 읽는 분석 문장(text, 규제 가드레일이 읽는다). 채점기는 바이럴 목록(VIRAL_GRADERS)만 쓰고, 관찰 밖 수치 판정에 동결 사례·관찰을 준다.
@@ -160,11 +169,24 @@ function gradeViral(kase:KindCase,output:string,inputTokens:number|null){
 
 const HANDLERS:Record<EvalCaseKind,EvalKindHandler>={
  role:{kind:'role',reserve:EVAL_CASE_TOKEN_RESERVE,freeze:freezeRole,build:buildRole,grade:gradeRole,campaignOf:r=>obj((r as RoleRequest).campaign),factsOf:r=>ledgerOf((r as RoleRequest).evidence?.facts)},
- meeting_step:{kind:'meeting_step',reserve:EVAL_MEETING_STEP_TOKEN_RESERVE,freeze:freezeMeeting,build:(r,side)=>{if(preferenceSide(side))throw new Error('회의 단계는 운영자 선호 쌍 평가 대상이 아닙니다.');return buildMeetingRequest(r as MeetingStepRequest,side)},grade:gradeMeeting,campaignOf:r=>obj((r as MeetingStepRequest).meeting.snapshot.campaign),factsOf:r=>ledgerOf((r as MeetingStepRequest).meeting.snapshot.evidence?.facts)},
+ meeting_step:{kind:'meeting_step',reserve:EVAL_MEETING_STEP_TOKEN_RESERVE,freeze:freezeMeeting,build:(r,side)=>{if(preferenceSide(side))throw new Error('회의 단계는 운영자 선호 쌍 평가 대상이 아닙니다.');return inputDietSide(side)?buildMeetingRequest(r as MeetingStepRequest,undefined,dietOf(side)):buildMeetingRequest(r as MeetingStepRequest,side)},grade:gradeMeeting,campaignOf:r=>obj((r as MeetingStepRequest).meeting.snapshot.campaign),factsOf:r=>ledgerOf((r as MeetingStepRequest).meeting.snapshot.evidence?.facts)},
  brief:{kind:'brief',reserve:EVAL_BRIEF_TOKEN_RESERVE,freeze:freezeBrief,build:buildBrief,grade:gradeBrief,campaignOf:()=>null,factsOf:r=>ledgerOf((r as BriefRequest).context.evidence.facts)},
  // 캠페인이 없어 캠페인 기준 쌍 평가(역할·채널 단위)에서는 빠지고, viral.discovery 쌍 평가만 대상이다(lib/eval-server.ts pairCases).
  viral_analysis:{kind:'viral_analysis',reserve:EVAL_VIRAL_ANALYSIS_TOKEN_RESERVE,freeze:freezeViral,build:buildViral,grade:gradeViral,campaignOf:()=>null,factsOf:()=>null},
 };
+
+// ── 입력 축소 on/off 쌍 평가(성장1 C07, docs/EVAL.ko.md 'input_diet 쌍') ──
+// pair:{kind:'input_diet'}: active=off(동결 요청을 inputDiet false로 조립 = 지금 평가 기본 조립), candidate=on(inputDiet true). 규칙·본문 선택이 없어 메타가 고정값이다.
+// 대상은 조립 함수가 inputDiet를 받는 종류뿐이다(역할 roleSubmission·회의 buildMeetingSubmission·브리프 buildBriefSubmission). 바이럴 사례 분석은 빠진다(skippedCases).
+// 이 run은 스위치 input_diet 켜기 판단 근거이고 프롬프트 활성화 근거가 아니다(lib/prompt-registry.ts gateRun 409).
+export const INPUT_DIET_PAIR={kind:INPUT_DIET_PAIR_KIND,unit:INPUT_DIET_PAIR_KIND,activeVersionId:'off',candidateVersionId:INPUT_DIET_VERSION} as const;
+export type InputDietPair={kind:typeof INPUT_DIET_PAIR_KIND;unit:typeof INPUT_DIET_PAIR_KIND;activeVersionId:'off';candidateVersionId:typeof INPUT_DIET_VERSION};
+export const isInputDietPair=(pair:object|null|undefined):pair is InputDietPair=>!!pair&&(pair as {kind?:unknown}).kind===INPUT_DIET_PAIR_KIND;
+export const INPUT_DIET_PAIR_KINDS:readonly EvalCaseKind[]=['role','meeting_step','brief'];
+export function inputDietPairCases<C extends {kind?:string}>(cases:readonly C[]){
+ const kept=cases.filter(c=>(INPUT_DIET_PAIR_KINDS as readonly string[]).includes(c.kind??'role'));
+ return {cases:kept,skippedCases:cases.length-kept.length};
+}
 
 const known=(v:unknown):v is EvalCaseKind=>typeof v==='string'&&(EVAL_CASE_KINDS as readonly string[]).includes(v);
 // 입력의 kind: 없으면 role, 목록 밖이면 400.

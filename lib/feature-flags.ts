@@ -21,6 +21,9 @@ export const FEATURE_FLAGS={
  collect_guard:{defaultEnabled:false,description:'성과 자동 수집(워커)이 인증 오류(토큰 무효·연결 없음)를 만나면 그 대상을 바로 멈추고 재연결 필요로 표시하며, 연속 실패가 늘면 다음 시도 간격을 6→12→24시간으로 늘린다(PR 4b security-ops-5). 꺼도 실패 분류·실험 카드 경고·워크스페이스 알림은 계속된다.'},
  a4_png_code:{defaultEnabled:false,description:'관리자가 게시 코드가 있는 발행 초안에 코드를 그린 파생 PNG를 만들어 연결하고, 승인하면 그 파생 PNG를 앱 공개 주소로 제공한다(A4-4, 원본 소재 PNG·해시는 그대로, 승인 때 코드 PNG 확인 필수). 끄면 파생 PNG가 연결된 초안은 승인·접수하지 않는다(취소는 가능).'},
  b2_digest_queue:{defaultEnabled:false,description:'워커 tick이 주 1회 지난주 품질 집계(역할×프롬프트 버전×보고 모델)와 드리프트 경보(보고 모델·게이트웨이 변경, 역할 무효율 2배, 골든 스모크 하락, 토큰 예산 소진율)·보존 정리 제안을 기록한다(B2 2단계, 모델 호출 없음). 캠페인·작업물 상태는 바꾸지 않는다.'},
+ input_diet:{defaultEnabled:false,description:'역할·회의·브리프 입력을 줄인다(PR 4b): 캠페인 메타 제거, 선행 작업물 섹션별 예산(모든 섹션 포함), 회의 단계별 작업물 축소(품질 재검토 본문 중복 제거), 브랜드 자료 역할별 요약(digest)과 입력 상한. 확정 사실·근거 규율·출력 계약은 그대로다. 켜기 전에 레인 Q 쌍 평가가 필요하다.'},
+ b3_reflector:{defaultEnabled:false,description:'대표·관리자가 같은 브랜드×역할 교정 5건 이상 묶음을 Reflector 전용 HERMES 격리 프로필에 1회 보내 운영자 선호 규칙 초안(최대 5개, 인용 필수, 초안만·승인은 사람)을 제안받는다(B3-2, 토큰 사용·예산 가드 적용). 미리보기 확인·개인정보 탐지 시 전송 차단·대표 격리 확인이 있어야 보낸다.'},
+ publication_auto_link:{defaultEnabled:false,description:'워커가 예약 접수된 발행의 Buffer 상태를 30분마다 확인하고(예약 1시간 전~7일 뒤), 게시 확인·실험 연결·Instagram 게시물 ID가 모두 있는 발행을 그 실험 안의 성과 자동 수집 대상으로 등록한다(PR 4b loop-2). 꺼도 발행–실험 연결과 게시물 ID 입력은 계속된다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};

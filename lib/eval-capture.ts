@@ -23,9 +23,12 @@ import type {FactLedger} from './graders/index';
 //  (바이럴 사례 분석은 사례·관찰 기록이 작업 뒤에 바뀌었다. 지시문이 다르면 code_changed, 브랜드 가림 기록이 다르면 store_allow_changed다)
 //  assembly_drift 위 사유 없이 다르다 — 이것만 경보한다(조립 코드가 운영과 갈라졌다는 뜻).
 // frozenIdentical: 동결본(자르고 줄이고 가린 저장 요청)으로 만든 제출이 원기록 조립과 같은지. 발췌 상한 앞부분의 가림으로 글자 수가 바뀐 경우만 false다.
+// 입력 축소(input_diet, C07): 다시 조립할 때 원 제출 당시 스위치 상태를 쓴다. 원 기록이 상태를 가진다 — 회의는 시작 때 고정한 snapshot.inputDiet,
+// 브리프는 켜진 제출에만 붙는 초안의 inputDiet 요약. 키가 없으면 꺼짐으로 조립된 기록이다(스위치 도입 전 기록 포함). 그래서 현재 워크스페이스 상태로 대신하지 않는다:
+// 대신하면 꺼진 때 만든 기록을 스위치를 켠 뒤 캡처할 때 오경보가 난다. 이 상태는 Captured.inputDiet로 케이스 capturedWith에 남는다(동결 요청에는 넣지 않는다).
 export type CaptureSubmission='identical'|'no_submission'|'code_changed'|'store_allow_changed'|'context_changed'|'assembly_drift';
 export type CaptureCheck={submission:CaptureSubmission;frozenIdentical:boolean;checkedAt:string};
-export type Captured={request:EvalRequest;role:string;campaignId:string|null;label:string;facts:FactLedger|null;captureCheck:CaptureCheck};
+export type Captured={request:EvalRequest;role:string;campaignId:string|null;label:string;facts:FactLedger|null;captureCheck:CaptureCheck;inputDiet?:boolean};
 type Built={instructions:string;input:string};
 const same=(a:Built,b:Built)=>a.instructions===b.instructions&&a.input===b.input;
 async function storedSubmission(owner:string,id:string):Promise<Built|null>{
@@ -37,23 +40,26 @@ const ledgerOf=(facts:{confirmed?:unknown;prohibited?:unknown}|undefined):FactLe
 // {kind:'meeting_step', meetingId, stepId}. 지점 허용 값은 지금 값으로 읽는다(운영도 제출 때마다 읽는다).
 export async function captureMeetingStep(owner:string,input:Record<string,unknown>):Promise<Captured>{
  const m=await readRecord<Meeting>(owner,'team_meeting',str(input.meetingId,'회의',100,true)),stepId=str(input.stepId,'회의 단계',200,true);
- const storeAllow=await brandStoreAllow(owner,m.snapshot.campaign),production=buildMeetingSubmission(meetingBefore(m,stepId),stepId,storeAllow);
+ const inputDiet=!!m.snapshot.inputDiet,diet={inputDiet};
+ const storeAllow=await brandStoreAllow(owner,m.snapshot.campaign),production=buildMeetingSubmission(meetingBefore(m,stepId),stepId,storeAllow,diet);
  const request=freezeMeetingRequest(m,stepId,storeAllow),stored=await storedSubmission(owner,stepId);
  const step=m.steps.find(s=>s.id===stepId)!,recorded=(step as {inputMasking?:InputMasking[]}).inputMasking;
  const submission:CaptureSubmission=!stored?'no_submission':same(stored,production)?'identical':m.skillVersion!==PRACTICE_VERSION?'code_changed':JSON.stringify(production.maskingRecord)!==JSON.stringify(recorded)?'store_allow_changed':'assembly_drift';
  const roleName=roles.find(r=>r.id===step.role)?.name||step.role;
  return {request,role:step.role,campaignId:m.campaignId,label:`${phaseNames[step.phase]} · ${roleName} · ${m.snapshot.campaign.title}`,facts:ledgerOf(m.snapshot.evidence?.facts),
-  captureCheck:{submission,frozenIdentical:same(buildMeetingRequest(request),production),checkedAt:stamp()}};
+  captureCheck:{submission,frozenIdentical:same(buildMeetingRequest(request,undefined,diet),production),checkedAt:stamp()},inputDiet};
 }
 // {kind:'brief', briefDraftId}. 저장 초안의 입력과 작성일(UTC 날짜)을 기준일로, 운영 start와 같은 DB 읽기(briefSources)로 요청을 다시 만든다.
-type StoredDraft={id:string;input:BriefInput;campaignId?:string;createdAt:string};
+// inputDiet: 스위치가 켜진 초안 제출에만 붙는 입력 축소 요약(lib/brief-execution.ts). 있으면 켜짐으로 다시 조립한다.
+type StoredDraft={id:string;input:BriefInput;campaignId?:string;createdAt:string;inputDiet?:unknown};
 export async function captureBrief(owner:string,input:Record<string,unknown>):Promise<Captured>{
  const draft=await readRecord<StoredDraft>(owner,'brief_draft',str(input.briefDraftId,'브리프 초안',100,true));
  const raw=JSON.parse(JSON.stringify(briefRequestFor(await briefSources(owner,{campaignId:draft.campaignId,input:draft.input,contextDate:draft.createdAt.slice(0,10)}))));
- const production=buildBriefSubmission(raw),request=freezeBriefRequest(raw),stored=await storedSubmission(owner,'brief-'+draft.id);
+ const inputDiet=!!draft.inputDiet,diet={inputDiet};
+ const production=buildBriefSubmission(raw,diet),request=freezeBriefRequest(raw),stored=await storedSubmission(owner,'brief-'+draft.id);
  const submission:CaptureSubmission=!stored?'no_submission':same(stored,production)?'identical':stored.instructions!==production.instructions?'code_changed':'context_changed';
  return {request,role:BRIEF_ROLE,campaignId:draft.campaignId??null,label:`브리프 초안 · ${draft.input.title||'제목 없음'}`,facts:ledgerOf(request.context.evidence.facts),
-  captureCheck:{submission,frozenIdentical:same(buildBriefSubmission(request),production),checkedAt:stamp()}};
+  captureCheck:{submission,frozenIdentical:same(buildBriefSubmission(request,diet),production),checkedAt:stamp()},inputDiet};
 }
 
 // {kind:'viral_analysis', jobId}(레인 Q 바이럴 평가 PR 1). 끝난(completed·failed·cancelled) 사례 분석(L1) 작업만 캡처한다. 운영 start_analysis와 같은 DB 읽기
