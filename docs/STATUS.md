@@ -3,21 +3,22 @@
 > 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 운영(2026-09-28 07:42 UTC): `3f7adbe`, Sites61, tree `04d895fc3c89f10fbd78154fa8ad31a6fb6edd1c`, `published` · `runtime-verified`. [릴리스](releases/2026-09-28-3f7adbe.md). 비활성 생성 #258 포함, 기본 꺼짐. 예산 검토는 이 PR의 미게시 변경이다.
+- 운영(2026-09-28 07:42 UTC): `3f7adbe`, Sites61, tree `04d895fc3c89f10fbd78154fa8ad31a6fb6edd1c`, `published` · `runtime-verified`. [릴리스](releases/2026-09-28-3f7adbe.md). 비활성 생성 #258 포함, 기본 꺼짐. 자사몰 서명 수신은 이 PR의 미게시 변경이다.
 - 성장1 필수 코드 게시 대기 0건. #216·#218·#219·#225는 통합 #244로 병합·게시했다. #206·#208·#210~#214·#217·#220·#223·#231·#235·#237과 관련 문서도 현재 제품에 포함된다.
 - 기존 대기열의 미병합·404 문구는 과거 상태다. R 신규 PR #234·#241·#242·#243 및 인터뷰 게시 문서 #236·#240은 별도 소유자 작업이며 성장1 필수 잔여가 아니다.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-28 07:43 UTC (Codex: 비활성 생성 게시·M5 예산 검토)
+갱신: 2026-09-28 08:00 UTC (Codex: 예산 검토 경합 보완 통합·서명 수신 검증)
 - Meta M1 첫 증분 #253 merged(`e8fce70`) · Sites 56 published · 공개 tree runtime-verified. CI 199/199 suites·13,372 assertions, E2E 76+인증1 passed. [릴리스](releases/2026-09-28-e8fce70.md). 실제 계정 읽기는 토큰/계정 미제공으로 blocked이며 전체 M1 종료로 표시하지 않는다.
 - M2 주문·환불 #254 merged(`27c2162`) · Sites 57 published · 공개 tree runtime-verified. CI 200/200 suites·13,404 assertions, E2E 78+인증1 passed. [릴리스](releases/2026-09-28-27c2162.md). 실몰 어댑터·웹훅·Pixel/CAPI는 후속, 외부 고객 전송 0.
 - M3 소재·실험 검수 #255 merged(`8b437a0`) · Sites 58 published · 공개 tree runtime-verified. CI 201/201 suites·13,434 assertions, E2E 80+인증1 passed. [릴리스](releases/2026-09-28-8b437a0.md). 광고 생성/활성화 없음.
 - M6 보고 기반 #256 merged(`991c289`) · Sites59 published · 공개 tree runtime-verified. CI 202/202 suites·13,464 assertions, E2E82+인증1 passed. [릴리스](releases/2026-09-28-991c289.md). 전체 M6 종료/효과 검증이 아니다.
 - M1 수집 복구 #257 merged(`8d76730`) · Sites60 published · 공개 tree runtime-verified. CI 202/202 suites·13,476 assertions, E2E82+인증1 passed. [릴리스](releases/2026-09-28-8d76730.md). 시도/실패 지속·정상 자료 보존·같은 값의 새 수집 시각 확인, 자동 재시도 없음. 실제 계정 검증 blocked.
 - M4 캠페인 첫 증분 #258 merged(`3f7adbe`) · Sites61 published · 공개 tree runtime-verified. CI205/205 suites·13,575 assertions, E2E84+인증1 passed. [릴리스](releases/2026-09-28-3f7adbe.md). 기본 꺼짐·별도 권한·PAUSED 캠페인 하나만, 실제 생성/지출 없음. 전체 M4 종료가 아니다.
-- M5 로컬 예산 검토: 현재 계획·소재·계정 범위와 금액/기간·안전 여유를 대조하고 불변 검토/철회 기록. 지출 권한 없음. 로컬206/206 suites·13,610 assertions, 전용35·타입/lint70·39/프롬프트22/빌드 passed. CI·E2E 뒤 게시. [계약](META-BUDGET-M5.ko.md).
-- 다음: 자사몰 서명 웹훅의 전체 회귀·브라우저 검증, 외부 광고세트/소재/광고와 별도 지출 승인·예약 계약.
+- M5 로컬 예산 검토: 현재 계획·소재·계정 범위와 금액/기간·안전 여유를 대조하고 불변 검토/철회 기록. 지출 권한 없음. 로컬206/206 suites·13,610 assertions, 전용35·타입/lint70·39/프롬프트22/빌드 passed. PR #259 CI·E2E 검증 중, 별도 병합/게시. [계약](META-BUDGET-M5.ko.md). 초기 E2E의 M3 재조회/확인 경합을 보완했고 최신 #259 head를 이 브랜치에도 통합해 함께 검증한다. #259 병합 뒤 이 PR을 병합한다.
+- M2 서명 웹훅: 소유자 연결/키 교체·기본 수신 꺼짐·명시 켜기, HMAC/시각·본문 한도·현재 연결 검증, 기존 CSV 장부 규칙 재사용. 로컬206/206 suites·13,617 assertions·전용42·기존 주문32 passed. 타입/lint70·39/프롬프트22/빌드 passed. [계약](STOREFRONT-WEBHOOKS.ko.md). CI/E2E 뒤 병합·게시. 실몰 서버 설정/운영 주문 수신 not_run.
+- 다음: 연결 계정 캠페인 선택 UI, 외부 광고세트/소재/광고와 별도 지출 승인·예약 계약.
 - Meta UI/UX 개선 #250 `merged`(`8e9a1c7`) · Sites 55 `published` · 공개 운영 버전 tree `runtime-verified`. 네 단계 입력, 준비 상태/다음 할 일, 실시간 기여이익·구매 수, 미완성 저장·재조회. CI 198/198 suites·13,302 assertions, E2E 76+인증 1 passed. 데스크톱/모바일 화면 검토, 실제 Meta 연동·집행 not_run. [근거](releases/2026-09-28-8e9a1c7.md).
 - 성장2 Meta 첫 증분: #247 `merged`(`5be1478`) · Sites 53 `published` · 소유자 운영 tree `runtime-verified`. [M0 구현](META-ADS-M0.ko.md): 캠페인 탭·준비도·계획 저장·버전 충돌·역할/소유자 격리·집행 차단. CI 198/198 suites·13,297 assertions, E2E 76+인증 1 passed. 운영 새 탭·v0 누락 안내·집행 비활성 확인(real, 읽기만). M0 실제 상품/계정/이벤트 계약 확정과 M1~M6는 후속, Meta 연동·지출·전환 전송·효과 검증 not_run. [게시 근거](releases/2026-09-28-5be1478.md).
 - 성장2 계획 추가(2026-09-28 대표 요청): [E-M 자사몰·콘텐츠 기반 Meta 광고](GROWTH-2-META-ADS.ko.md). M0~M6(준비도→읽기 연결→전환/원장→소재 실험→비활성 초안→승인된 제한 집행→보고/학습), G0 개발/실집행/확대 분리. 계획 추가 뒤 후속 개발 지시로 위 M0를 착수했다. 계정 연결·광고 집행 not_run. 실제 소유 범위는 LANES에 기록.
@@ -145,14 +146,14 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-28 07:43 UTC (Codex: 비활성 생성 Sites61·예산 검토 개발)
+마지막 갱신: 2026-09-28 07:53 UTC (Codex: 비활성 생성 Sites61·서명 수신 개발)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
 | 운영 제품 커밋 | `3f7adbec84d2a622a5291b7e0281c32335db1d98` (#258) | tree `04d895fc3c89f10fbd78154fa8ad31a6fb6edd1c`, [릴리스](releases/2026-09-28-3f7adbe.md) |
-| `origin/main` | 게시 기준 `3f7adbe`; 이 PR은 로컬 예산 검토 후속 제품 변경 | 후속 병합 뒤 게시/실행 검증을 별도로 갱신 |
+| `origin/main` | 게시 기준 `3f7adbe`; 이 PR은 자사몰 서명 수신 후속 제품 변경 | 후속 병합 뒤 게시/실행 검증을 별도로 갱신 |
 | Sites 게시 | `published`: 버전 61, deployment `appgdep_6aba1a42cef88191ae962877d1d7ee0c` succeeded | 2026-09-28 07:42:04 UTC |
 | 실행 검증 | `runtime-verified`: 공개 `/api/version/public` tree 일치 | build `2026-09-28T07:41:17.853Z`; 이번 소유자 API·프롬프트 매니페스트 재조회 not_run |
 | 인증 | 이메일 소유자 로그인 OWNER 유지, 익명/위조 헤더 C08 요청 401 | 실제 운영 UI·HTTP, 데이터 변경 없음 |

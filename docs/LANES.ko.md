@@ -7,6 +7,10 @@
 - 결정: 대표 지시(2026-09-26 "계속 뭔가 앞서가있어서 중복업무를 하고있어보이는데 바로잡고 세션별 개발순서를 정리해서 중복업무를 없애").
 - 작성: Claude A 세션. 레인을 바꾸려면 대표 확인을 받고 이 문서를 고친다.
 
+### 레인 A: 자사몰 서명 수신 (2026-09-28)
+- `feat/storefront-signed-webhook`: 주문 반영 공통 서버 추출, storefront-webhooks 설정/수신 API, 서명/형식 모듈, 기존 주문 화면의 연결 패널, 전용 tests/e2e·문서.
+- 새 연결 기본 수신 꺼짐. 소유자가 켠 범용 COLLECTIVE 양식의 서명 주문만 기존 장부에 반영한다. 실몰 서버 설정·고객 전환 외부 전송은 하지 않는다.
+
 ### 레인 A: M5 예산 검토 첫 증분 (2026-09-28)
 - `feat/meta-spend-approval`: lib/meta-budget-review.ts, app/api/meta-ads/budget, app/meta-budget-panel.tsx, Meta 탭 연결, 전용 tests/e2e, 레코드/삭제 목록 및 문서.
 - CI에서 확인한 M3 새로고침 경합 보완: app/meta-creative-panel.tsx·e2e/meta-creative.spec.ts의 조회 중 입력/검토 잠금과 지연 응답 회귀.
