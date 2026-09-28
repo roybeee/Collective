@@ -32,6 +32,8 @@ check('old client omission preserves chosen industry',s.interview.industry==='re
 const guides=await rt.load('lib/brand-interview-industries.ts');
 check('each industry covers all common sections',guides.interviewIndustries.filter(i=>i.id!=='general').every(i=>core.interviewSections.every(section=>guides.industryQuestion(i.id,section.id))));
 check('tailored recommendations coexist with common questions',core.recommendedQuestions({},'restaurant').some(q=>q.reason==='업종 관점 보완')&&core.recommendedQuestions({},'restaurant').some(q=>q.reason==='필수 답변 미입력'));
+check('all industry questions expose actionable decision and evidence',guides.interviewIndustries.filter(i=>i.id!=='general').every(i=>core.interviewSections.every(section=>{const g=guides.industryQuestionGuide(i.id,section.id);return g.question&&g.why&&g.decision&&g.evidence})));
+check('common and follow-up questions explain purpose',core.interviewSections.every(s=>s.why&&s.decision&&s.fields&&s.example&&s.followupGuides.length===s.followups.length&&s.followupGuides.every(q=>q.why&&q.decision)));
 check('unknown historical guide renders common fallback',guides.interviewIndustry('unknown').id==='general');
 check('stale write rejected',(await call({action:'save',id:s.id,version:0,answers:{},attachments:[]})).status===409);
 check('cross-brand read rejected',(await call({action:'start',id:s.id,version:s.version,brandId:'ofd'})).status===404);
@@ -41,8 +43,12 @@ check('unauth rejected',(await call({action:'save',answers:{},attachments:[]},''
 const csrf=await route.POST(new Request('https://app.test/api/archive/interview',{method:'POST',headers:{...headers(member),origin:'https://evil.test'},body:'{}'}));check('CSRF rejected',csrf.status===403);
 check('missing Hermes blocks start',(await call({action:'start',id:s.id,version:s.version})).status===409);
 const secret=await server.encrypt(JSON.stringify({provider:'hermes',key:'test-key',endpoint:'https://hermes.example.com'}));rt.sql.prepare('INSERT INTO settings(owner,secret,model,updated_at) VALUES(?,?,?,?)').run(owner,secret,'HERMES',server.stamp());
+const empty=await call({action:'save',industry:'restaurant',answers:{},attachments:[]});
+check('questionnaire alone is not source evidence',(await call({action:'start',id:empty.data.id,version:empty.data.version})).status===400);
 failSubmit=true;r=await call({action:'start',id:s.id,version:s.version});s=r.data;check('timeout preserves recoverable request',s.interview.job.status==='uncertain');
 const firstKey=network.at(-1).init.headers['Idempotency-Key'];
+check('fictional answer examples are never sent in guide',!JSON.stringify(network.at(-1).init.body).includes(core.interviewSections[0].example));
+check('campaign decisions and missing-data instructions reach Hermes',JSON.stringify(network.at(-1).init.body).includes('광고할 메뉴')&&JSON.stringify(network.at(-1).init.body).includes('빠진 값은 만들지'));
 check('Hermes receives industry guide as instruction, not evidence',JSON.stringify(network.at(-1).init.body).includes('음식점')&&JSON.stringify(network.at(-1).init.body).includes('사실 근거가 아닙니다'));
 const beforeCancel=network.length;check('uncertain cancel does not create a run',(await call({action:'cancel',id:s.id,version:s.version})).status===409&&network.length===beforeCancel);
 check('pending edits rejected',(await call({action:'save',id:s.id,version:s.version,answers:{},attachments:[]})).status===409);
