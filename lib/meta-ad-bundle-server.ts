@@ -1,3 +1,4 @@
+import {eligibleMetaImageReceipts} from './meta-image-upload-server';
 import type {Campaign} from './agency';
 import {metaReadiness} from './meta-ads';
 import {metaCreativeContext,viewMetaCreative} from './meta-creative-server';
@@ -22,20 +23,23 @@ export async function metaAdBundleContext(owner:string,c:Campaign){
  const parents=operations.filter(o=>o.campaignId===c.id&&o.brandId===c.brandId&&o.campaignVersion===c.version&&o.evidenceFingerprint===parentFingerprint&&o.draft.accountId===connection?.accountId&&o.receipt.accountId===connection?.accountId&&o.receipt.state==='paused_verified'&&o.receipt.externalId);
  if(!parents.length)issues.push('현재 검수와 일치하는 비활성 부모 캠페인');
  const evidenceFingerprint=await storefrontDigest({parentFingerprint,readConnectionVersion:connection?.version??0,readConnectionUpdatedAt:connection?.updatedAt??null,writeConnectionUpdatedAt:writeConnection?.updatedAt??null,review:review.saved,parents:parents.map(p=>({id:p.id,version:p.version,receipt:p.receipt}))});
- return {creative,review,connection,parents,saved,enabled,issues:[...new Set(issues)],evidenceFingerprint};
+ const imageReceipts=await eligibleMetaImageReceipts(owner,c);
+ return {creative,review,connection,parents,saved,enabled,imageReceipts,issues:[...new Set(issues)],evidenceFingerprint};
 }
 export function metaAdBundleScope(c:Campaign,x:Awaited<ReturnType<typeof metaAdBundleContext>>,input:MetaAdBundleInput):MetaAdBundleScope{
  const p=x.parents.find(p=>p.id===input.operationId),plan=x.creative.plan?.input,review=x.review.saved?.input;
  if(x.issues.length||!p||!plan||!review||!x.connection||input.dailyBudgetKrw!==plan.dailyTarget)throw new ApiError(409,'현재 검수·부모 캠페인·원화 일별 목표와 패키지를 대조하세요.');
- return {...input,accountId:x.connection.accountId,campaignId:p.receipt.externalId!,landingUrl:plan.landingUrl,startAt:plan.startAt,endAt:plan.endAt,hook:review.hook,body:review.body,assetBytesVerified:false};
+ const imageReceipt=input.imageUploadReceiptId?x.imageReceipts.find(r=>r.id===input.imageUploadReceiptId&&r.receipt?.metaImageHash===input.expectedMetaImageHash):null;
+ if(input.imageUploadReceiptId&&!imageReceipt)throw new ApiError(409,'업로드 영수증과 현재 원본·계정·Meta 이미지 hash가 다릅니다.');
+ return {...input,...(imageReceipt?{sourceBytesVerified:true,sourcePngHash:imageReceipt.pngHash}:{}),accountId:x.connection.accountId,campaignId:p.receipt.externalId!,landingUrl:plan.landingUrl,startAt:plan.startAt,endAt:plan.endAt,hook:review.hook,body:review.body,assetBytesVerified:false};
 }
 export async function viewMetaAdBundle(owner:string,c:Campaign,canEdit=false){
  const x=await metaAdBundleContext(owner,c),s=x.saved;let verifiedScope:VerifiedMetaAdBundleScope|null=null;
- const stale=!!s&&(s.campaignVersion!==c.version||s.evidenceFingerprint!==x.evidenceFingerprint||!!x.issues.length);
+ const stale=!!s&&(s.campaignVersion!==c.version||s.evidenceFingerprint!==x.evidenceFingerprint||!!x.issues.length||!!s.input.imageUploadReceiptId&&!x.imageReceipts.some(r=>r.id===s.input.imageUploadReceiptId&&r.receipt?.metaImageHash===s.input.expectedMetaImageHash));
  if(s?.status==='verified'&&s.verifiedScope&&!stale&&x.enabled&&Date.now()-Date.parse(s.verifiedScope.verifiedAt)>=0&&Date.now()-Date.parse(s.verifiedScope.verifiedAt)<=15*60*1000){
   const scope=metaAdBundleScope(c,x,s.input),digest=await storefrontDigest({scope,evidenceFingerprint:x.evidenceFingerprint});
   if(s.verifiedScope.scopeDigest===digest)verifiedScope=s.verifiedScope;
  }
- return {saved:s,version:s?.version??0,campaignVersion:c.version,evidenceFingerprint:x.evidenceFingerprint,enabled:x.enabled,issues:x.issues,parents:x.parents.map(p=>({id:p.id,externalId:p.receipt.externalId,name:p.draft.name})),dailyBudgetKrw:x.creative.plan?.input.dailyTarget??null,landingUrl:x.creative.plan?.input.landingUrl??'',stale,verifiedScope,canEdit,canActivate:false as const};
+ return {imageReceipts:x.imageReceipts.map(r=>({id:r.id,pngHash:r.pngHash,metaImageHash:r.receipt!.metaImageHash})),saved:s,version:s?.version??0,campaignVersion:c.version,evidenceFingerprint:x.evidenceFingerprint,enabled:x.enabled,issues:x.issues,parents:x.parents.map(p=>({id:p.id,externalId:p.receipt.externalId,name:p.draft.name})),dailyBudgetKrw:x.creative.plan?.input.dailyTarget??null,landingUrl:x.creative.plan?.input.landingUrl??'',stale,verifiedScope,canEdit,canActivate:false as const};
 }
 export async function requireVerifiedMetaAdBundle(owner:string,c:Campaign){const v=await viewMetaAdBundle(owner,c);if(!v.verifiedScope)throw new ApiError(409,'현재 근거로 검토한 패키지를 15분 이내 다시 외부 조회하세요.');return v.verifiedScope}

@@ -23,6 +23,8 @@ export type SubjectErasure='delete'|'minimize'|'legal_hold'|'none';
 export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;retention?:RetentionPolicy;subjectErasure?:SubjectErasure;description:string};
 
 export const recordKinds:readonly RecordKind[]=[
+ {kind:'meta_ads_child_create',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'Meta 비활성 하위 광고 단계별 전송·불변 영수증'},
+ {kind:'meta_ads_image_upload',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'Meta 원본 이미지 업로드 시도·불변 영수증. 결과 미확인 작업 재전송 금지'},
  {kind:'account_event',parent:'none',campaignDeletion:'not_campaign_scoped',description:'계정 초대·역할 변경·잠금 등 워크스페이스 계정 감사 기록'},
  {kind:'artifact',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'담당자 작업물'},
  {kind:'background_attempt',parent:'none',campaignDeletion:'delete',links:['sequence_attempt'],description:'백그라운드 작업 재시도 기록. 캠페인 연속 실행(sequence:<캠페인>) 기록만 캠페인과 함께 지운다'},

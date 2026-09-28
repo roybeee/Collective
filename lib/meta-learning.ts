@@ -4,8 +4,17 @@ function text(value:unknown,label:string,max:number){if(typeof value!=='string'|
 
 export const metaDecisionLabels={hold:'보류',stop:'중단',retest:'재실험',continue:'계속 관찰'} as const;
 export const metaCandidateFields={hypothesis:'확인할 가설',variable:'바꿀 한 가지',control:'대조안',treatment:'실험안',stopCondition:'종료·중단 기준'} as const;
-export type MetaCandidate={hypothesis:string;variable:string;control:string;treatment:string;stopCondition:string;metric:'paid_orders'|'contribution';minSample:number;creativeId:string;creativeVersion:number;creativeHash:string;status:'draft'};
-export type MetaLearningDecision={id:string;campaignId:string;brandId:string;version:number;snapshotId:string;sourceDigest:string;sourceVersion:number;campaignVersion:number;decision:keyof typeof metaDecisionLabels;note:string;evidenceStatus:'insufficient'|'observation_only';candidate:MetaCandidate|null;mayActivate:false;requestDigest:string;recordedAt:string;actorId:string};
+export type MetaCandidate={hypothesis:string;variable:string;control:string;treatment:string;stopCondition:string;metric:'paid_orders'|'contribution';minSample:number;creativeId:string;creativeVersion:number;creativeHash:string;status:'draft'|'preregistered'};
+export type MetaPreregistration={sourceDecisionId:string;sourceDecisionVersion:number;candidateDigest:string;hypothesis:string;variable:string;control:string;treatment:string;primaryMetric:MetaCandidate['metric'];minSample:number;stopCondition:string;startAt:string;endAt:string;maturityHours:number;fixedConditions:string;singleVariableConfirmed:true;observationSource:'not_connected'};
+export type MetaLearningDecision={id:string;campaignId:string;brandId:string;version:number;snapshotId:string;sourceDigest:string;sourceVersion:number;campaignVersion:number;decision:keyof typeof metaDecisionLabels;note:string;evidenceStatus:'insufficient'|'observation_only';candidate:MetaCandidate|null;registration?:MetaPreregistration;mayActivate:false;requestDigest:string;recordedAt:string;actorId:string};
+
+export function preregistrationInput(b:Record<string,unknown>,now=Date.now()){
+ const startAt=text(b.startAt,'시작 시각',40),endAt=text(b.endAt,'종료 시각',40),start=Date.parse(startAt),end=Date.parse(endAt);
+ const validDate=(v:string)=>/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(v)&&new Date(v.slice(0,10)+'T00:00:00Z').toISOString().slice(0,10)===v.slice(0,10);
+ if(!Number.isFinite(start)||!Number.isFinite(end)||![startAt,endAt].every(validDate)||start<=now||end<=start||end-start>31*86400000)throw new MetaLearningInputError('미래 시작·종료 시각과 최대 31일 관측 기간을 지정하세요.');
+ if(b.singleVariableConfirmed!==true||!Number.isSafeInteger(b.maturityHours)||Number(b.maturityHours)<24||Number(b.maturityHours)>720)throw new MetaLearningInputError('한 변수만 변경함을 확인하고 종료 후 성숙 대기를 24~720시간으로 정하세요.');
+ return {startAt:new Date(start).toISOString(),endAt:new Date(end).toISOString(),maturityHours:Number(b.maturityHours),fixedConditions:text(b.fixedConditions,'고정 조건·배정 및 측정 계획',1500),singleVariableConfirmed:true as const};
+}
 
 export function candidateInput(value:unknown){
  if(value===null||value===undefined)return null;
