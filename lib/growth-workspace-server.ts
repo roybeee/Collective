@@ -78,6 +78,8 @@ export async function saveGrowth(who:Actor,c:Campaign,b:Record<string,unknown>){
 }
 async function transitionMission(who:Actor,c:Campaign,b:Record<string,unknown>){
  const old=await required<MissionInput>(who.owner,'mission',recordId(b.id),c),digest=await storefrontDigest({action:b.action,input:b.input??null,expectedVersion:b.expectedVersion,campaignVersion:c.version});
+ const linked=await database().prepare("SELECT id FROM records WHERE owner=? AND kind='growth_action_intent' AND parent_id=? AND json_extract(data,'$.input.missionId')=? LIMIT 1").bind(who.owner,c.id,old.id).first();
+ if(linked)throw new ApiError(409,'예산·재고가 연결된 미션은 판매 실행 결과 확인에서 처리하세요.');
  if(old.requestDigest===digest)return {...await growthView(who.owner,c,true),duplicate:true};
  if(b.expectedVersion!==old.version)throw new ApiError(409,'판매 미션이 변경되었습니다. 다시 불러오세요.');
  let status:MissionState=old.status??'draft',receipt=old.receipt;
