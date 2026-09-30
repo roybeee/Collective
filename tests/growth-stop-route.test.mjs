@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import {randomUUID,createHash} from 'node:crypto';
+import {testRuntime} from './helpers/runtime.mjs';
+let failKind='';const {load,sql,env}=testRuntime(async()=>{throw Error('No external calls')},{beforeRun:s=>{if(failKind&&s.values[2]===failKind&&s.query.startsWith('INSERT'))throw Error('atomic failure')}});
+const server=await load('lib/server.ts'),route=await load('app/api/growth/stop/route.ts'),stop=await load('lib/growth-stop-server.ts');let passed=0;const check=(v,n)=>{assert.ok(v,n);passed++};
+const owner='stop-owner',h={'oai-authenticated-user-id':owner,origin:'https://agency.test'},unpack=async r=>({status:r.status,body:await r.json()});
+const get=(headers=h)=>route.GET(new Request('https://agency.test/api/growth/stop',{headers})).then(unpack),post=(data,headers=h)=>route.POST(new Request('https://agency.test/api/growth/stop',{method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({action:'stop',expectedVersion:0,requestId:randomUUID(),reason:'운영 중단 검토',...data})})).then(unpack);
+check((await get({})).status===401,'anonymous');check((await get()).body.state.version===0,'default');await stop.requireGrowthRunning(owner);passed++;
+check((await post({},{...h,origin:'https://evil.test'})).status===403,'CSRF');
+const request={requestId:randomUUID()};let r=await post(request);check(r.status===200&&r.body.state.status==='stopped','stop');await assert.rejects(()=>stop.requireGrowthRunning(owner));passed++;check((await post(request)).body.duplicate,'UUID retry');check((await post({...request,reason:'다른 근거'})).status===409,'UUID conflict');check((await post({})).status===409,'CAS');
+await stop.requireGrowthRunning('other-owner');passed++;check(!(await get()).body.externalCancellationConfirmed,'no false external cancellation');
+r=await post({action:'resume',expectedVersion:1});check(r.status===200&&r.body.state.status==='running'&&r.body.state.version===2,'owner resume');await stop.requireGrowthRunning(owner);passed++;
+r=await post(request);check(r.body.duplicate&&r.body.state.status==='running','old stop replay never claims current stopped');
+failKind='growth_stop_history';check((await post({expectedVersion:2})).status===500,'history failure');failKind='';check((await get()).body.state.status==='running','atomic rollback');
+const lock=await server.acquireLock(owner);check((await post({expectedVersion:2})).status===409,'serialized');await server.releaseLock(owner,lock);
+env.AUTH_MODE='email';env.AUTH_ORIGIN='https://agency.test';sql.prepare('INSERT INTO auth_users(id,email,workspace_owner,role,status,created_at) VALUES(?,?,?,?,?,?)').run('real-owner','owner@test.invalid',owner,'admin','active',0);
+async function roleHeaders(role){const token=createHash('sha256').update('stop-'+role).digest('hex');sql.prepare('INSERT INTO auth_users(id,email,workspace_owner,role,status,created_at) VALUES(?,?,?,?,?,?)').run(role,role+'@test.invalid',owner,role,'active',1);sql.prepare('INSERT INTO auth_sessions VALUES(?,?,?,?)').run(createHash('sha256').update(token).digest('hex'),role,Date.now()+60000,Date.now());return {cookie:'__Host-collective_session='+token,origin:'https://agency.test'}}
+const admin=await roleHeaders('admin'),member=await roleHeaders('member');check((await get(member)).status===200,'member sees stop');check(!(await get(member)).body.canStop,'member permission');check((await post({expectedVersion:2},member)).status===403,'member cannot stop');check((await post({expectedVersion:2},admin)).status===200,'admin stop');check((await post({action:'resume',expectedVersion:3},admin)).status===403,'admin cannot resume');env.AUTH_MODE='legacy';
+for(let i=0;i<101;i++)await server.recordStatement(owner,'growth_stop_history','old-'+i,{id:'old-'+i,version:1,status:'stopped',reason:'과거 기록',actorId:owner,recordedAt:'2000-01-01T00:00:00Z',requestDigest:'old'}).run();
+check((await get()).body.hasMoreHistory,'bounded recent history');check((await post({expectedVersion:3})).status===200,'history count cannot block emergency stop');
+const originalPrepare=env.DB.prepare;env.DB.prepare=()=>{throw Error('unavailable database')};await assert.rejects(()=>stop.requireGrowthRunning(owner),e=>e.status===503);passed++;env.DB.prepare=originalPrepare;
+await server.recordStatement(owner,'growth_stop','global',{id:'global',status:'garbage',version:4},'global').run();await assert.rejects(()=>stop.requireGrowthRunning(owner));passed++;check((await get()).status===409,'corrupt fail closed');
+console.log(JSON.stringify({passed,external:'not_called'}));

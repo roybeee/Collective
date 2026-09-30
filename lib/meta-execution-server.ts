@@ -1,3 +1,4 @@
+import {requireGrowthRunning} from './growth-stop-server';
 import type {Campaign} from './agency';
 import type {MetaReservation} from './meta-reservation';
 import {metaAdBundleContext,metaAdBundleScope,requireVerifiedMetaAdBundle} from './meta-ad-bundle-server';
@@ -13,7 +14,7 @@ export async function executionRecords(owner:string){const r=await database().pr
 async function connection(owner:string,c:Campaign,accountId:string){const w=await readMetaWriteConnection(owner,c.brandId);if(!w||w.accountId!==accountId||w.brandId!==c.brandId||w.permission!=='ads_management')throw new ApiError(409,'고정된 브랜드·계정의 현재 쓰기 연결이 필요합니다.');return {token:await metaWriteToken(owner,w),fingerprint:await storefrontDigest({version:w.version,updatedAt:w.updatedAt,accountId:w.accountId,secret:w.secret})}}
 async function save(owner:string,old:MetaExecution,patch:Partial<MetaExecution>,actorId:string){const next={...old,...patch,version:old.version+1,updatedAt:stamp(),updatedBy:actorId};const r=await database().prepare("UPDATE records SET data=?,updated_at=? WHERE owner=? AND kind='meta_ads_execution' AND id=? AND data=?").bind(JSON.stringify(next),next.updatedAt,owner,`${owner}:meta_ads_execution:${old.id}`,JSON.stringify(old)).run();if(!r.meta.changes)throw new ApiError(409,'다른 요청이 실행 상태를 변경했습니다.');return next}
 async function current(owner:string,c:Campaign,e:MetaExecution,activation=false){
- try{const [x,w,r,enabled]=await Promise.all([metaAdBundleContext(owner,c),connection(owner,c,e.scope.accountId),readRecord<MetaReservation>(owner,'meta_ads_reservation',e.reservationId),isEnabled(owner,'meta_ads_execution')]);
+ try{await requireGrowthRunning(owner);const [x,w,r,enabled]=await Promise.all([metaAdBundleContext(owner,c),connection(owner,c,e.scope.accountId),readRecord<MetaReservation>(owner,'meta_ads_reservation',e.reservationId),isEnabled(owner,'meta_ads_execution')]);
  if(!enabled||c.status==='archived'||x.issues.length||!x.saved||x.evidenceFingerprint!==e.bundleEvidence||w.fingerprint!==e.connectionFingerprint||r.state!=='reserved'||r.version!==e.reservationVersion||r.scopeDigest!==e.scopeDigest)return false;
  const s=await metaAdBundleScope(c,x,x.saved.input);if(await storefrontDigest({scope:s,evidenceFingerprint:x.evidenceFingerprint})!==e.scopeDigest)return false;
  if(activation)await verifyExecutionCurrency(w.token,e.scope);
@@ -22,6 +23,7 @@ async function current(owner:string,c:Campaign,e:MetaExecution,activation=false)
 }
 export async function viewMetaExecution(owner:string,c:Campaign,canEdit=false){const [records,enabled,worker]=await Promise.all([executionRecords(owner),isEnabled(owner,'meta_ads_execution'),workerStatus(owner)]);return {records:records.filter(e=>e.campaignId===c.id),enabled,canEdit,workerOnline:worker.online,campaignVersion:c.version,maySpend:records.some(e=>e.campaignId===c.id&&e.maySpend),notice:'집계 지연과 일일 예산 초과 게재가 가능하며 로컬 한도는 실제 청구 상한을 보장하지 않습니다. 중단 후 광고비 대조까지 예약을 유지합니다.'}}
 export async function approveMetaExecution(owner:string,actorId:string,c:Campaign,b:Record<string,unknown>){
+ await requireGrowthRunning(owner);
  if(!await isEnabled(owner,'meta_ads_execution')||!(await workerStatus(owner)).online||c.status==='archived')throw new ApiError(409,'실행 기능과 온라인 감시 워커를 확인하세요.');
  const scope=await requireVerifiedMetaAdBundle(owner,c),r=await readRecord<MetaReservation>(owner,'meta_ads_reservation',str(b.reservationId,'예약',100,true)),x=await metaAdBundleContext(owner,c),w=await connection(owner,c,scope.accountId);
  if(b.expectedScopeDigest!==scope.scopeDigest||b.campaignVersion!==c.version||r.campaignId!==c.id||r.brandId!==c.brandId||r.state!=='reserved'||r.scopeDigest!==scope.scopeDigest||r.version!==b.reservationVersion||!scope.sourceBytesVerified||!scope.imageUploadReceiptId)throw new ApiError(409,'현재 예약·검수 원본·광고 구성의 동일성을 확인하세요.');
@@ -33,12 +35,13 @@ export async function approveMetaExecution(owner:string,actorId:string,c:Campaig
  const inserted=await database().prepare('INSERT OR IGNORE INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').bind(`${owner}:meta_ads_execution:${id}`,owner,'meta_ads_execution',c.id,JSON.stringify(record),at).run();if(!inserted.meta.changes)throw new ApiError(409,'이미 승인된 예약입니다.');return record;
 }
 export async function transitionMetaExecution(owner:string,actorId:string,c:Campaign,e:MetaExecution,target:'ACTIVE'|'PAUSED'){
+ if(target==='ACTIVE')await requireGrowthRunning(owner);
  const w=await connection(owner,c,e.scope.accountId);if(target==='ACTIVE'){
   if(e.state!=='approved'||!await current(owner,c,e,true))throw new ApiError(409,'승인 근거가 바뀌었거나 만료되었습니다.');
   await verifyExecutionCurrency(w.token,e.scope);const statuses=await readExecutionHierarchy(w.token,e.scope),spend=await readExecutionSpend(w.token,e.scope);if(Object.values(statuses).some(s=>s!=='PAUSED')||spend.totalSpend!==0)throw new ApiError(409,'외부 비활성 상태·미집행 근거를 다시 확인하세요.');
  }
  let row=e;
- const result=await runExecutionTransition(e,target,{read:()=>readExecutionHierarchy(w.token,e.scope,target==='ACTIVE'),write:(id,status)=>writeExecutionStatus(w.token,id,status)},{async save(p){row=await save(owner,row,p,actorId);return row},current:()=>current(owner,c,row,true)});
+ const result=await runExecutionTransition(e,target,{read:()=>readExecutionHierarchy(w.token,e.scope,target==='ACTIVE'),write:async(id,status)=>{if(status==='ACTIVE')await requireGrowthRunning(owner);await writeExecutionStatus(w.token,id,status)}},{async save(p){row=await save(owner,row,p,actorId);return row},current:()=>current(owner,c,row,true)});
  if(result.state==='active'||result.state==='stopped'){try{return await save(owner,result,{...await readExecutionSpend(w.token,e.scope),lastObservedAt:stamp()},actorId)}catch{return save(owner,result,{state:'unknown',maySpend:true,stopReason:'spend_unconfirmed'},actorId)}}return result;
 }
 export async function actMetaExecution(owner:string,actorId:string,c:Campaign,b:Record<string,unknown>){

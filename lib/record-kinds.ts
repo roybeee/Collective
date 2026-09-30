@@ -23,6 +23,8 @@ export type SubjectErasure='delete'|'minimize'|'legal_hold'|'none';
 export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;retention?:RetentionPolicy;subjectErasure?:SubjectErasure;description:string};
 
 export const recordKinds:readonly RecordKind[]=[
+ {kind:'growth_stop',parent:'none',campaignDeletion:'not_campaign_scoped',description:'소유자 작업공간 전체의 신규 실행·학습 적용 중단 상태'},
+ {kind:'growth_stop_history',parent:'none',campaignDeletion:'not_campaign_scoped',description:'전역 중단·명시 재개 추가 전용 감사 이력'},
  {kind:'growth_reconciliation',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'성장 판매 예약의 운영자 확인 실비·손실 대사 및 무집행 취소 추가 전용 이력'},
  {kind:'growth_target',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 잠정·확정 사업목표와 최신 변경 판. 실행 권한 없음'},
  {kind:'growth_target_history',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'사업목표 개정 이유와 이전 판의 추가 전용 이력'},

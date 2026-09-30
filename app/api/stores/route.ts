@@ -1,4 +1,5 @@
 import {getStoreOperations} from '@/lib/store-operations-server';
+import {requireGrowthRunning} from '@/lib/growth-stop-server';
 import {ledgerChanged} from '@/lib/store-operations';
 import {actor,identity,secureMutation,body,database,readRecord,listRecords,recordStatement,json,failure,str,uid,stamp,ApiError,acquireLock,releaseLock,eventStatement} from '@/lib/server';
 import {storeInput,channelInput,checkedVersion,experimentInput,measurementInput,option,storeRulePromotion,ADOPT_NEEDS_MEASUREMENT,LEDGER_CHANGED} from '@/lib/store-server';
@@ -9,6 +10,12 @@ import {isRecruitmentObjective,OBJECTIVE_MESSAGES,type Brand,type Campaign,type 
 import {emptyPlan,storeBriefCopy,storeCopyFields,syncStoreCopy,type StoreCopyKey} from '@/lib/brief';
 import {currentFactRefs} from '@/lib/ai-context';
 import {sameEvidenceFactRefs} from '@/lib/brand-facts';
+async function permittedPromotion(owner:string,...args:Parameters<typeof storeRulePromotion>){
+ const promotion=storeRulePromotion(...args);
+ if(!promotion.rule)return promotion;
+ try{await requireGrowthRunning(owner);return promotion;}
+ catch{return {...promotion,rule:null,reasons:[...promotion.reasons,'전역 중단 상태 또는 상태 확인 실패로 학습 적용을 보류합니다. 회고는 저장할 수 있습니다.']};}
+}
 export async function GET(req:Request){try{
  const owner=await identity(req),p=new URL(req.url).searchParams,brandId=p.get('brandId'),storeId=p.get('storeId');
  if(brandId)await readRecord<Brand>(owner,'brand',brandId);
@@ -28,7 +35,7 @@ export async function POST(req:Request){let lock='',owner='';try{
   const store=await readRecord<Store>(owner,'store',str(b.storeId,'지점',100,true)),experiment=await readRecord<StoreExperiment>(owner,'store_experiment',str(b.experimentId,'실험',100,true));if(experiment.storeId!==store.id)throw new ApiError(400,'다른 지점의 실험입니다.');
   const r=obj(b.review),review=b.review?{evidenceLevel:option(r.evidenceLevel,['observation','comparison','repeated'] as const,'근거 수준'),failureType:'none',confounders:'',nextAction:str(r.nextAction??'','다음 행동',2000),conditions:''}:undefined;
   const measurements=(await listRecords<StoreMeasurement>(owner,'store_measurement',store.id)).filter(m=>m.experimentId===experiment.id);
-  const decision=option(b.decision,Object.keys(decisions) as (keyof typeof decisions)[],'회고 판단'),{rule,reasons,blocked}=storeRulePromotion(experiment,decision,'',review,measurements);
+  const decision=option(b.decision,Object.keys(decisions) as (keyof typeof decisions)[],'회고 판단'),{rule,reasons,blocked}=await permittedPromotion(owner,experiment,decision,'',review,measurements);
   // 저장이 409로 거절되는 경우(장부 변경·핵심 지표 기록 없는 조건부 확대)는 저장과 같은 순서·문구로 blocked에 담는다(R3).
   const stop=decision==='adopt'&&await ledgerStale(owner,store.id,experiment.id,measurements)?LEDGER_CHANGED:blocked;
   return json({promoted:!!rule&&!stop,reasons,...(stop?{blocked:stop}:{})});
@@ -118,7 +125,7 @@ export async function POST(req:Request){let lock='',owner='';try{
   if(decision==='adopt'&&!measurements.some(m=>(m.scope??'experiment')==='experiment'&&m.values[experiment.primaryMetric]!==null))throw new ApiError(409,ADOPT_NEEDS_MEASUREMENT);
   const closed:StoreExperiment={...experiment,status:'completed',decision,learning,review,version:experiment.version+1,updatedAt:stamp()};
   // 회고를 학습 규칙으로 승격한다. 게이트를 통과하지 못하면 규칙 없이 회고만 저장된다.
-  const {rule,reasons}=storeRulePromotion(closed,decision,learning,review,measurements);
+  const {rule,reasons}=await permittedPromotion(owner,closed,decision,learning,review,measurements);
   const writes=[recordStatement(owner,'store_experiment',experiment.id,closed,store.id)];
   if(rule){writes.push(recordStatement(owner,'learning_rule',rule.id,rule,rule.brandId));if(closed.campaignId)writes.push(eventStatement(owner,closed.campaignId,`「${closed.title}」 회고를 ${rule.direction==='test'?'시험 적용 규칙':'주의사항'}으로 승격했습니다. 30일 후 재검토합니다.`,by));}
   // 규칙이 되지 않았으면 그 사유를 함께 돌려준다. 화면은 ruleId 유무로 승격 여부를 알린다.

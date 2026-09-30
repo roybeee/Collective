@@ -1,3 +1,4 @@
+import {requireGrowthRunning} from './growth-stop-server';
 import type {Campaign} from './agency';
 import {parseExecutionInput,parseExecutionReceipt,executionSafeText,executionId,canRecordExecution,type ExecutionInput,type ExecutionState,type ExecutionReceiptInput} from './growth-execution';
 import {prepareMissionCommitment,growthAuthorityView,type GrowthAuthorityRecord} from './growth-authority-server';
@@ -25,6 +26,7 @@ export async function growthExecutionView(who:Actor,c:Campaign){
  return {intents,receipts,commitments:authority.commitments,reconciliations,missions:workspace.missions,authorities:authority.authorities,inventory:operations.inventory,campaignVersion:c.version,canPrepare:who.role!=='member'&&c.status!=='archived'&&Boolean(c.storeId),canRecord:who.role!=='member',mayExecute:false as const};
 }
 async function prepare(who:Actor,c:Campaign,b:Record<string,unknown>){
+ await requireGrowthRunning(who.owner);
  const input=parseExecutionInput(b.input),id='intent-'+(await storefrontDigest([c.id,input.missionId])).slice(0,32),digest=await storefrontDigest({input,campaignVersion:b.campaignVersion});
  const old=await optional<ExecutionIntent>(who.owner,kinds.intent,id);
  if(old){scope(old,c);if(old.requestDigest!==digest)throw new ApiError(409,'이미 준비된 미션의 요청 내용이 다릅니다. 새 실행을 만들기 전에 기존 결과를 대사하세요.');return {...await growthExecutionView(who,c),duplicate:true}}
