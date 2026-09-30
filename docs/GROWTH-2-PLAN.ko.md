@@ -194,3 +194,7 @@ TargetContract는 D1–2 잠정 목표를 기록하고 첫2주 속도·첫4주 �
 필수 검증은 주문 중복/역순/부분환불, 타브랜드 접근, 동시 예산예약/재고, 공급자 unknown, 만료/철회, 실험 설계변조/분모, 봉인누출/rollback, 기능 꺼짐 회귀다. 프로젝트 게이트는 `node scripts/test.mjs`, `node node_modules/typescript/bin/tsc --noEmit`, `node scripts/lint-gate.mjs`, `node scripts/check-prompts.mjs`, `node scripts/run-framework.mjs build`이며 변경 브라우저/worker 계약의 실검증은 별도다. 각 결과는 `passed / failed / blocked / not_run` 및 `real / mocked`를 명시한다.
 
 이 문서는 전체 범위와 완료 기준의 복원이다. 위 검사를 실행했다거나 전체 카드가 배포되었다는 보고는 아니다.
+
+운영 G2-30/32의 현재 주문·품목 확인 목록은 [운영 확인 계약](GROWTH-2-OPERATION-REVIEW.ko.md)에 추가한다. 확인 목록·기존 폼 연결을 배송 지연 감지·고객 문의 자동처리·정산 완료로 세지 않는다.
+
+[원안 33카드 후속 개발 대조](GROWTH-2-NEXT-GAPS.ko.md)에 현재 코드 근거·미완료 경계·다음 3개 증분을 기록한다. 이는 새 완료 판정이 아니다.

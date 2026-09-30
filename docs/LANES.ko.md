@@ -210,3 +210,5 @@
 1. 이 문서와 [성장1 공통 종료 기준](GROWTH-1-CLOSEOUT.ko.md), STATUS의 자기 레인 칸, 게시 대기열을 읽는다.
 2. `gh pr list`로 다른 레인의 열린 PR이 고치는 파일을 보고, 위 표의 순서를 지킨다.
 3. 다음 일은 자기 레인 개발 순서의 맨 위에서 고른다. 다른 레인 목록의 일은 하지 않는다.
+
+- 운영 확인 목록: codex/growth2-operation-review, /Users/roybee/Collective-operation-review. 검증 기회 보드 e17a931 의존. 서버는 순수 조회/테스트, UI는 독립 목록/E2E, root는 기존 운영 응답·정확 폼 이동·dirty 보호·문서/통합/게시. 현재 동결·독립 리뷰 HIGH/MED0, 전체 회귀 뒤 순차 병합한다.

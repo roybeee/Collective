@@ -4,13 +4,18 @@ import {useEffect,useRef,useState,type ReactNode} from 'react';
 import {emptyOrderLineInput,type OrderLineInput} from '@/lib/growth-order-bridge';
 import type {InventoryInput,InventoryProjection} from '@/lib/growth-inventory';
 import {GrowthSettlementPanel,type GrowthSettlementView} from './growth-settlement-panel';
+import {GrowthOperationReviewView} from './growth-operation-review';
+import type {GrowthOperationReview} from '@/lib/growth-operation-review';
 import styles from './growth-panel.module.css';
 
 type GrowthEntry={id:string;version:number;input:Record<string,unknown>;status?:string};
 type InventoryRow={id:string;version:number;input:InventoryInput;projection:InventoryProjection};
 type OrderRow={id:string;version:number;orderDate:string;status:string;paidAmount:number|null;refundAmount:number|null};
 type LineRow={id:string;version:number;input:OrderLineInput;allocation:{status:string;netAllocated:number|null;reasons:string[]}};
-type OperationsView={available:boolean;storeId?:string;reason:string;inventory:InventoryRow[];orders:OrderRow[];orderLines:LineRow[];settlement?:GrowthSettlementView;campaignVersion:number;canEdit:boolean;mayExecute:false};
+type OperationsView={review?:GrowthOperationReview;available:boolean;storeId?:string;reason:string;inventory:InventoryRow[];orders:OrderRow[];orderLines:LineRow[];settlement?:GrowthSettlementView;campaignVersion:number;canEdit:boolean;mayExecute:false};
+type ReviewTarget={kind:'order_link'|'line_reconcile'|'line_operation'|'inventory';id:string};
+type FormKey='inventory_create'|'inventory_adjust'|'mission'|'order_link'|'operation'|'settlement';
+const actionForm:Record<string,FormKey>={create_inventory:'inventory_create',stock_adjust:'inventory_adjust',reserve_stock:'mission',release_stock:'mission',link_order:'order_link',record_operation:'operation',save_settlement:'settlement'};
 type Save=(body:Record<string,unknown>,message:string)=>Promise<boolean>;
 type FormProps={view:OperationsView;busy:boolean;save:Save};
 type Props={campaignId:string;missions:GrowthEntry[];offers:GrowthEntry[];catalogs:GrowthEntry[]};
@@ -35,6 +40,9 @@ async function request(url:string,init:RequestInit):Promise<OperationsView>{
 export function GrowthOperationsPanel(props:Props){return <OperationsWorkspace key={props.campaignId} {...props}/>;}
 function OperationsWorkspace({campaignId,missions,offers,catalogs}:Props){
  const [view,setView]=useState<OperationsView|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
+ const [dirty,setDirty]=useState<Partial<Record<FormKey,boolean>>>({}),[formRevision,setFormRevision]=useState(0),[selectedTarget,setSelectedTarget]=useState<(ReviewTarget&{revision:number})|null>(null);
+ const sections=useRef<Partial<Record<'inventory'|'link'|'operation',HTMLDetailsElement>>>({});
+ const hasDirty=Object.values(dirty).some(Boolean);
  const active=useRef<AbortController|null>(null);
  useEffect(()=>{
   const c=new AbortController();active.current=c;
@@ -51,21 +59,31 @@ function OperationsWorkspace({campaignId,missions,offers,catalogs}:Props){
   if(active.current||!view||!view.canEdit)return false;
   const c=new AbortController();active.current=c;setBusy(true);setError('');setMessage('');
   try{const next=await request('/api/growth/operations',{method:'POST',headers:{'Content-Type':'application/json'},signal:c.signal,body:JSON.stringify({...body,campaignId,campaignVersion:view.campaignVersion})});
-   if(c.signal.aborted)return false;setView(next);setMessage(success);return true;
+   if(c.signal.aborted)return false;setView(next);setMessage(success);const form=actionForm[String(body.action)];if(form)setDirty(previous=>({...previous,[form]:false}));return true;
   }catch(e){if(!c.signal.aborted)setError(`${e instanceof Error?e.message:'기록을 저장하지 못했습니다.'} 입력은 보존했습니다. 버전 충돌이면 운영 기록을 새로고침하고 최신 수량을 확인하세요.`);return false}
   finally{if(active.current===c)active.current=null;if(!c.signal.aborted)setBusy(false)}
  };
+ function markDirty(form:FormKey){setDirty(previous=>({...previous,[form]:true}));}
+ function openReview(target:ReviewTarget){
+  if(!view?.canEdit||busy||hasDirty||error)return;
+  const exists=target.kind==='inventory'?view.inventory.some(row=>row.id===target.id):target.kind==='order_link'?view.orders.some(row=>row.id===target.id):view.orderLines.some(row=>row.id===target.id);
+  if(!exists){setError('현재 운영 기록을 찾지 못했습니다. 새로고침해 확인하세요.');return;}
+  setSelectedTarget(previous=>({...target,revision:(previous?.revision??0)+1}));
+  const section=sections.current[target.kind==='inventory'?'inventory':target.kind==='line_operation'?'operation':'link'];
+  if(section){section.open=true;setTimeout(()=>{section.scrollIntoView({block:'start'});section.querySelector('select')?.focus();},0);}
+ }
+ function resetForms(){if(busy)return;setDirty({});setSelectedTarget(null);setFormRevision(previous=>previous+1);}
  return <section className={styles.business} aria-label="주문 재고 이행 운영"><header className={styles.header}><div><h3>주문·재고·이행</h3><p>주문 품목을 판매 미션과 연결하고 실사·출고·환불·반품을 기록합니다.</p></div><button type="button" onClick={()=>void refresh()} disabled={busy}>운영 기록 새로고침</button></header>
   <p className={styles.note}>운영자가 증빙을 확인한 내부 장부입니다. 외부 판매처·택배사·결제사로 실제 요청을 전송하지 않습니다. 주문 금액 배분은 판매 기여나 증분 매출의 증명이 아닙니다. 고객 이름·전화번호·이메일·비밀키를 입력하지 마세요.</p>
   {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}
   {!view?<p role="status">{error?'운영 기록을 불러오지 못했습니다. 새로고침으로 다시 시도하세요.':'운영 기록을 불러오고 있습니다.'}</p>:!view.available?<p className={styles.note}>{view.reason}</p>:<>
    {!view.canEdit&&<p className={styles.note}>조회 전용입니다. 기록 변경은 관리자에게 요청하세요.</p>}
-   <InventorySummary inventory={view.inventory}/><OrderSummary view={view}/>
-   {view.settlement&&<details><summary>지급예정·입금 증빙과 수령 현금</summary><GrowthSettlementPanel orders={view.orders} settlement={view.settlement} canEdit={view.canEdit} busy={busy} save={save}/></details>}
-   {view.canEdit&&<><details><summary>공유 재고 등록·실사·입고</summary><InventoryForms view={view} busy={busy} save={save} catalogs={catalogs}/></details>
-    <details><summary>미션 계획 재고 예약·해제</summary><MissionStockForm view={view} busy={busy} save={save} missions={missions} offers={offers} catalogs={catalogs}/></details>
-    <details><summary>주문 품목과 판매 미션 연결</summary><OrderLinkForm view={view} busy={busy} save={save} missions={missions} offers={offers} catalogs={catalogs}/></details>
-    <details><summary>출고·환불·반품·예약 해제 기록</summary><OperationForm view={view} busy={busy} save={save}/></details></>}
+   <InventorySummary inventory={view.inventory}/><OrderSummary view={view}/>{view.review&&<GrowthOperationReviewView review={view.review} onOpen={openReview} disabled={busy||hasDirty||!view.canEdit} stale={busy||!!error}/>}{hasDirty&&<p className={styles.note}>저장하지 않은 운영 입력이 있습니다. 확인 목록에서 다른 기록을 열기 전에 저장하거나 변경을 취소하세요. <button type="button" disabled={busy} onClick={resetForms}>운영 입력 변경 취소</button></p>}
+   {view.settlement&&<details onChangeCapture={()=>markDirty('settlement')}><summary>지급예정·입금 증빙과 수령 현금</summary><GrowthSettlementPanel key={`settlement-${formRevision}`} orders={view.orders} settlement={view.settlement} canEdit={view.canEdit} busy={busy} save={save}/></details>}
+   {view.canEdit&&<><details ref={node=>{if(node)sections.current.inventory=node;}} onChangeCapture={event=>markDirty((event.target as HTMLElement).closest('form')?.dataset.growthForm==='inventory_create'?'inventory_create':'inventory_adjust')}><summary>공유 재고 등록·실사·입고</summary><InventoryForms key={`inventory-${formRevision}-${selectedTarget?.kind==='inventory'?selectedTarget.revision:0}`} initialInventoryId={selectedTarget?.kind==='inventory'?selectedTarget.id:undefined} view={view} busy={busy} save={save} catalogs={catalogs}/></details>
+    <details onChangeCapture={()=>markDirty('mission')}><summary>미션 계획 재고 예약·해제</summary><MissionStockForm key={`mission-${formRevision}`} view={view} busy={busy} save={save} missions={missions} offers={offers} catalogs={catalogs}/></details>
+    <details ref={node=>{if(node)sections.current.link=node;}} onChangeCapture={()=>markDirty('order_link')}><summary>주문 품목과 판매 미션 연결</summary><OrderLinkForm key={`link-${formRevision}-${selectedTarget?.kind==='order_link'||selectedTarget?.kind==='line_reconcile'?selectedTarget.revision:0}`} initialTarget={selectedTarget?.kind==='order_link'||selectedTarget?.kind==='line_reconcile'?selectedTarget:undefined} view={view} busy={busy} save={save} missions={missions} offers={offers} catalogs={catalogs}/></details>
+    <details ref={node=>{if(node)sections.current.operation=node;}} onChangeCapture={()=>markDirty('operation')}><summary>출고·환불·반품·예약 해제 기록</summary><OperationForm key={`operation-${formRevision}-${selectedTarget?.kind==='line_operation'?selectedTarget.revision:0}`} initialLineId={selectedTarget?.kind==='line_operation'?selectedTarget.id:undefined} view={view} busy={busy} save={save}/></details></>}
   </>}
  </section>;
 }
@@ -110,19 +128,19 @@ function OrderSummary({view}:{view:OperationsView}){
  })}</section>;
 }
 
-function InventoryForms({view,busy,save,catalogs}:FormProps&{catalogs:GrowthEntry[]}){
+function InventoryForms({view,busy,save,catalogs,initialInventoryId=''}:FormProps&{catalogs:GrowthEntry[];initialInventoryId?:string}){
  const [draft,setDraft]=useState({sku:'',unit:'piece' as InventoryInput['unit'],onHand:null as number|null,observedAt:new Date().toISOString(),evidenceRef:''});
- const [adjust,setAdjust]=useState({id:crypto.randomUUID() as string,inventoryId:'',kind:'stocktake',quantity:'',observedAt:new Date().toISOString(),evidenceRef:''});
+ const [adjust,setAdjust]=useState({id:crypto.randomUUID() as string,inventoryId:initialInventoryId,kind:'stocktake',quantity:'',observedAt:new Date().toISOString(),evidenceRef:''});
  const selected=view.inventory.find(row=>row.id===adjust.inventoryId);
  async function create(){if(await save({action:'create_inventory',input:{sku:draft.sku,unit:draft.unit,onHand:draft.onHand,locationId:view.storeId},observedAt:draft.observedAt,evidenceRef:draft.evidenceRef},'공유 재고를 등록했습니다.'))setDraft({...draft,sku:'',onHand:null,evidenceRef:''})}
  async function adjustStock(){if(!selected)return;if(await save({action:'stock_adjust',...adjust,quantity:Number(adjust.quantity),inventoryVersion:selected.version},'재고 관측을 기록했습니다.'))setAdjust({...adjust,id:crypto.randomUUID(),quantity:'',evidenceRef:'',observedAt:new Date().toISOString()})}
- return <div className={styles.editor}><form onSubmit={e=>{e.preventDefault();void create()}}><h4>새 공유 재고</h4><fieldset disabled={busy||!view.storeId} className={styles.form}><legend className={styles.srOnly}>공유 재고 등록</legend>
+ return <div className={styles.editor}><form data-growth-form="inventory_create" onSubmit={e=>{e.preventDefault();void create()}}><h4>새 공유 재고</h4><fieldset disabled={busy||!view.storeId} className={styles.form}><legend className={styles.srOnly}>공유 재고 등록</legend>
   <Field label="SKU"><input required list="growth-inventory-skus" maxLength={160} value={draft.sku} onChange={e=>setDraft({...draft,sku:e.target.value})}/><datalist id="growth-inventory-skus">{catalogs.map(row=><option key={row.id} value={String(row.input.sku??'')}>{String(row.input.title??'')}</option>)}</datalist></Field>
   <Field label="고정 수량 단위"><select value={draft.unit} onChange={e=>setDraft({...draft,unit:e.target.value as InventoryInput['unit']})}><option value="piece">개 (piece)</option><option value="pack">팩 (pack)</option></select></Field>
   <Field label="처음 확인한 실물 수량 (미확인은 빈칸)"><input type="number" min={0} step={1} value={draft.onHand??''} onChange={e=>setDraft({...draft,onHand:nullable(e.target.value)})}/></Field>
   {draft.onHand!==null&&<EvidenceFields observedAt={draft.observedAt} evidenceRef={draft.evidenceRef} onChange={patch=>setDraft({...draft,...patch})}/>}<button type="submit">공유 재고 등록</button>
  </fieldset>{!view.storeId&&<p className={styles.note}>지점 식별자를 확인할 수 없습니다. 운영 기록을 새로고침하세요.</p>}</form>
- <form onSubmit={e=>{e.preventDefault();void adjustStock()}}><h4>실사·입고 기록</h4><p className={styles.note}>실사는 현재 총수량으로 바꾸고, 입고는 기존 수량에 더합니다. 재고 미확인 상태에서는 입고만 기록해도 가용량을 확정하지 않습니다.</p><fieldset disabled={busy||!view.inventory.length} className={styles.form}><legend className={styles.srOnly}>재고 관측 기록</legend>
+ <form data-growth-form="inventory_adjust" onSubmit={e=>{e.preventDefault();void adjustStock()}}><h4>실사·입고 기록</h4><p className={styles.note}>실사는 현재 총수량으로 바꾸고, 입고는 기존 수량에 더합니다. 재고 미확인 상태에서는 입고만 기록해도 가용량을 확정하지 않습니다.</p><fieldset disabled={busy||!view.inventory.length} className={styles.form}><legend className={styles.srOnly}>재고 관측 기록</legend>
   <Field label="관측할 공유 재고"><select required value={adjust.inventoryId} onChange={e=>setAdjust({...adjust,inventoryId:e.target.value,observedAt:new Date().toISOString()})}><option value="">재고 선택</option>{view.inventory.map(row=><option key={row.id} value={row.id}>{row.input.sku} · {unitName(row.input.unit)}</option>)}</select></Field>
   <Field label="관측 종류"><select value={adjust.kind} onChange={e=>setAdjust({...adjust,kind:e.target.value})}><option value="stocktake">실사 — 실제 총수량</option><option value="receive">입고 — 추가 수량</option></select></Field>
   <Field label={adjust.kind==='stocktake'?'실사한 총수량':'추가 입고 수량'}><input required type="number" min={adjust.kind==='stocktake'?0:1} step={1} value={adjust.quantity} onChange={e=>setAdjust({...adjust,quantity:e.target.value})}/></Field>
@@ -130,8 +148,9 @@ function InventoryForms({view,busy,save,catalogs}:FormProps&{catalogs:GrowthEntr
  </fieldset></form></div>;
 }
 
-function OrderLinkForm({view,busy,save,missions,offers,catalogs}:FormProps&Pick<Props,'missions'|'offers'|'catalogs'>){
- const [draft,setDraft]=useState<OrderLineInput>(()=>({...emptyOrderLineInput(),sourceKey:'manual'})),[expectedVersion,setExpectedVersion]=useState(0),[lineId,setLineId]=useState('');
+function OrderLinkForm({view,busy,save,missions,offers,catalogs,initialTarget}:FormProps&Pick<Props,'missions'|'offers'|'catalogs'>&{initialTarget?:ReviewTarget}){
+ const initialLine=initialTarget?.kind==='line_reconcile'?view.orderLines.find(row=>row.id===initialTarget.id):undefined,initialOrder=view.orders.find(row=>row.id===(initialLine?.input.orderId??initialTarget?.id));
+ const [draft,setDraft]=useState<OrderLineInput>(()=>initialLine?{...initialLine.input,orderVersion:initialOrder?.version??initialLine.input.orderVersion}:{...emptyOrderLineInput(),sourceKey:'manual',orderId:initialOrder?.id??'',orderVersion:initialOrder?.version??0}),[expectedVersion,setExpectedVersion]=useState(initialLine?.version??0),[lineId,setLineId]=useState(initialLine?.id??'');
  const selectedOrder=view.orders.find(row=>row.id===draft.orderId),selectedMission=missions.find(row=>row.id===draft.missionId);
  const selectedLine=view.orderLines.find(row=>row.id===lineId);
  const stale=!!selectedLine&&(selectedLine.version!==expectedVersion||selectedOrder?.version!==draft.orderVersion);
@@ -159,15 +178,15 @@ function OrderLinkForm({view,busy,save,missions,offers,catalogs}:FormProps&Pick<
  </form>;
 }
 
-function OperationForm({view,busy,save}:FormProps){
- const [draft,setDraft]=useState({id:crypto.randomUUID() as string,lineId:'',kind:'ship',quantity:'',observedAt:new Date().toISOString(),evidenceRef:'',safeRelease:false,returnAccepted:false,disposition:'unknown',restock:false});
+function OperationForm({view,busy,save,initialLineId=''}:FormProps&{initialLineId?:string}){
+ const [draft,setDraft]=useState({id:crypto.randomUUID() as string,lineId:initialLineId,kind:initialLineId?'':'ship',quantity:'',observedAt:new Date().toISOString(),evidenceRef:'',safeRelease:false,returnAccepted:false,disposition:'unknown',restock:false});
  const selected=view.orderLines.find(line=>line.id===draft.lineId),inventory=view.inventory.find(row=>row.id===selected?.input.inventoryId),order=inventory?.projection.orders.find(row=>row.orderId===selected?.id);
  function chooseKind(kind:string){setDraft({...draft,kind,observedAt:new Date().toISOString(),safeRelease:false,returnAccepted:false,disposition:'unknown',restock:false})}
  async function submit(){if(!inventory)return;if(await save({action:'record_operation',...draft,quantity:Number(draft.quantity),inventoryVersion:inventory.version},'운영자가 확인한 이행 사건을 기록했습니다. 외부 요청은 전송하지 않았습니다.'))setDraft({...draft,id:crypto.randomUUID(),quantity:'',evidenceRef:'',observedAt:new Date().toISOString(),safeRelease:false,returnAccepted:false,disposition:'unknown',restock:false})}
  return <form onSubmit={e=>{e.preventDefault();void submit()}}><p className={styles.note}>환불 수량 기록은 돈을 반환하거나 실물 재고를 복구하지 않습니다. 반품은 검수 수락·재판매 가능·재입고 확인이 모두 있어야 실물 수량에 더합니다.</p>
   <fieldset disabled={busy||!view.orderLines.length} className={styles.form}><legend>이행 사건 기록</legend>
    <Field label="이행할 주문 품목"><select required value={draft.lineId} onChange={e=>setDraft({...draft,lineId:e.target.value,observedAt:new Date().toISOString()})}><option value="">연결 품목 선택</option>{view.orderLines.map(line=><option key={line.id} value={line.id}>{line.input.orderId} · {line.input.externalLineId}</option>)}</select></Field>
-   <Field label="이행 종류"><select value={draft.kind} onChange={e=>chooseKind(e.target.value)}><option value="ship">출고 사실</option><option value="refund">환불 수량 확인</option><option value="return">반품 검수</option><option value="release">미출고 예약 해제</option></select></Field>
+   <Field label="이행 종류"><select required value={draft.kind} onChange={e=>chooseKind(e.target.value)}><option value="">이행 종류 선택</option><option value="ship">출고 사실</option><option value="refund">환불 수량 확인</option><option value="return">반품 검수</option><option value="release">미출고 예약 해제</option></select></Field>
    <Field label={`사건 수량${inventory?` (${unitName(inventory.input.unit)})`:''}`}><input required type="number" min={1} step={1} value={draft.quantity} onChange={e=>setDraft({...draft,quantity:e.target.value})}/></Field>
    <EvidenceFields observedAt={draft.observedAt} evidenceRef={draft.evidenceRef} onChange={patch=>setDraft({...draft,...patch})}/>
    {draft.kind==='release'&&<label className={styles.check}><input required type="checkbox" checked={draft.safeRelease} onChange={e=>setDraft({...draft,safeRelease:e.target.checked})}/>출고되지 않았고 안전하게 예약을 해제할 수 있음을 확인했습니다.</label>}
