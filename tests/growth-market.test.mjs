@@ -1,0 +1,46 @@
+import assert from 'node:assert/strict';
+import {testRuntime} from './helpers/runtime.mjs';
+
+const {load}=testRuntime(()=>{throw new Error('Market evidence must never fetch');});
+const market=await load('lib/growth-market.ts');
+const signal={title:'시장 신호',sourceUrl:'https://example.com/research',observedAt:'2025-01-01T00:00:00Z',expiresAt:'2099-01-01',sourceType:'market',summary:'시장 수요 변화의 관측 근거',sampleSize:null};
+const need={title:'구매 니즈 가설',situation:'퇴근 뒤 식사 준비',desiredOutcome:'조리 시간 절약',alternative:'배달 주문',barrier:'배송비',counterEvidence:'직접 조리를 선호하는 응답도 있음',signalIds:['signal-one'],deadline:'2099-01-01',nextAction:'인터뷰로 반례 확인',assignee:'리서치 담당'};
+let passed=0;
+function check(value,label){assert.ok(value,label);passed++;}
+function rejects(fn,label){assert.throws(fn,market.GrowthMarketError,label);passed++;}
+check(market.parseSignalInput(signal).sampleSize===null,'market does not invent sample sizes');
+check(market.parseNeedInput(need).signalIds[0]==='signal-one','need links evidence');
+for(const sourceUrl of ['http://example.com','https://user:pass@example.com','https://example.com?a=b','https://example.com#secret','https://127.0.0.1','https://2130706433','https://0x7f000001','https://[::1]','https://192.168.1.1','https://test.local','https://test.internal','https://localhost','https://example.com:8443','https://example.com/%75ser%40example.com']) rejects(()=>market.parseSignalInput({...signal,sourceUrl}),`reject unsafe URL ${sourceUrl}`);
+for(const observedAt of ['2025-02-29','2025-04-31','2099-01-01','2025-01-01T25:00:00Z','2025-01-01garbage']) rejects(()=>market.parseSignalInput({...signal,observedAt}),'strict actual calendar and no future observation');
+rejects(()=>market.parseSignalInput({...signal,expiresAt:signal.observedAt}),'expiry after observation');
+rejects(()=>market.parseSignalInput({...signal,summary:'문의 person@example.com'}),'reject email');
+rejects(()=>market.parseNeedInput({...need,assignee:'010-1234-5678'}),'reject phone');
+rejects(()=>market.parseSignalInput({...signal,sampleSize:-1}),'no negative sample');
+rejects(()=>market.parseSignalInput({...signal,sampleSize:2.5}),'no fractional sample');
+rejects(()=>market.parseSignalInput({...signal,sourceType:'unknown'}),'known source types');
+rejects(()=>market.parseSignalInput({...signal,title:'a'.repeat(201)}),'bounded title');
+rejects(()=>market.parseNeedInput({...need,deadline:'2099-02-30'}),'strict deadline');
+rejects(()=>market.parseNeedInput({...need,signalIds:['signal-one','signal-one']}),'unique evidence');
+const now=new Date('2026-01-01T00:00:00Z');
+check(market.signalEvidence(signal,now).status==='usable','public market source usable');
+check(market.signalEvidence({...signal,expiresAt:'2025-12-31'},now).status==='expired','expired evidence blocked');
+for(const sampleSize of [null,0,19]) check(market.signalEvidence({...signal,sourceType:'customer',sampleSize},now).status==='insufficient','small customer samples remain insufficient');
+check(market.signalEvidence({...signal,sourceType:'customer',sampleSize:20},now).status==='usable','twenty customer observations usable');
+const ready=market.needReadiness(need,[{id:'signal-one',input:signal}],now);
+check(ready.missing.length===0&&ready.evidenceLevel==='hypothesis','complete evidence never becomes verified demand');
+check(market.needReadiness(need,[],now).missing.length>0,'missing linked source blocks');
+check(market.needReadiness({...need,signalIds:[]},[],now).missing.length>0,'no sources blocks');
+check(market.needReadiness({...need,deadline:'2025-01-01'},[{id:'signal-one',input:signal}],now).missing.length>0,'past deadline blocks');
+check(market.needReadiness(need,[{id:'signal-one',input:{...signal,expiresAt:'2025-12-31'}}],now).missing.length>0,'expired source blocks need');
+check(market.needReadiness(need,[{id:'signal-one',input:{...signal,sourceType:'customer',sampleSize:1}}],now).missing.length>0,'insufficient source blocks need');
+const emptyNeed=market.emptyNeedInput();
+check(market.needReadiness(emptyNeed,[],now).missing.length>=9,'empty draft shows required work');
+const first=market.emptyNeedInput(),second=market.emptyNeedInput();
+check(first.signalIds!==second.signalIds,'empty inputs independent');
+check(market.emptySignalInput().sampleSize===null,'empty signal never fabricates customer count');
+check(market.signalEvidence({...signal,expiresAt:'2026-01-01'},'2026-01-01T14:59:59.998Z').status==='usable','expiry date includes KST end of day');
+check(market.signalEvidence({...signal,expiresAt:'2026-01-01'},'2026-01-01T15:00:00Z').status==='expired','expiry date ends at KST midnight');
+check(market.signalEvidence({...signal,observedAt:'2027-01-01T00:00:00Z'},now).status==='insufficient','future evidence fails at evaluation time');
+check(market.parseSignalInput({...signal,observedAt:'2024-02-29T09:00:00+09:00'}).observedAt.includes('+09:00'),'leap day and KST offset supported');
+rejects(()=>market.parseSignalInput({...signal,observedAt:'2025-01-01'}),'observation must contain timestamp');
+console.log(JSON.stringify({passed}));

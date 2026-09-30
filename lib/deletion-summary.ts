@@ -11,6 +11,7 @@ const JOBS='#jobs';
 // 작업물·실행·회의·성과를 앞에 둔다. 이 넷 중 하나라도 있으면 캠페인 제목을 입력해야 삭제할 수 있다.
 const WORK_KINDS=['artifact',JOBS,'team_meeting','metric'];
 const deletedGroups:readonly Group[]=[
+ {label:'성장·판매 계획',kinds:['growth_signal','growth_need','growth_catalog','growth_offer','growth_mission','growth_history','growth_authority']},
  {label:'작업물',kinds:['artifact']},{label:'실행',kinds:[JOBS]},{label:'회의',kinds:['team_meeting']},{label:'성과',kinds:['metric']},
  {label:'작업물 이전 버전',kinds:['history']},{label:'온라인 채점 결과',kinds:['grading']},{label:'바이럴 실험',kinds:['viral_experiment']},
  {label:'실험 정정·수집 기록',kinds:['experiment_revision','measurement_draft','measurement_source','learning_guidance']},
@@ -21,6 +22,7 @@ const deletedGroups:readonly Group[]=[
 ];
 // 제작·발행·주문 귀속 기록(blocksDeletion)이 있으면 삭제 자체가 거부되므로 대화상자는 사유만 보이고 보존 목록을 쓰지 않는다.
 const retainedGroups:readonly Group[]=[
+ {label:'성장 판매 예산 예약',kinds:['growth_commitment'],note:'누적 한도와 예약 대사 이력'},
  {label:'Meta 이미지 업로드 기록',kinds:['meta_ads_image_upload'],note:'원본 전송·외부 hash 계보'},
  {label:'Meta 생성 기록',kinds:['meta_ads_write_operation','meta_ads_child_create'],note:'외부 객체 대조 이력'},
  {label:'Meta 예산 예약',kinds:['meta_ads_reservation'],note:'예약·해제 이력'},
