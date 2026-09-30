@@ -23,6 +23,11 @@ export type SubjectErasure='delete'|'minimize'|'legal_hold'|'none';
 export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;retention?:RetentionPolicy;subjectErasure?:SubjectErasure;description:string};
 
 export const recordKinds:readonly RecordKind[]=[
+ {kind:'growth_customer',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'브랜드별 무작위 가명 고객과 목적별 동의 현재 판. 별도 연결 삭제 지원'},
+ {kind:'growth_consumer_consent',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'소비자 목적별 동의·철회 추가 전용 이력. 고객 연결 삭제 시 제거'},
+ {kind:'growth_consumer_order_link',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'운영자 확인 소비자·주문 연결. 원 주문과 분리하며 연결 삭제 시 제거'},
+ {kind:'growth_consumer_order_history',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'소비자 주문 연결 판 확인 이력. 고객 연결 삭제 시 제거'},
+ {kind:'growth_consumer_request',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'소비자 변경 요청의 중복·충돌 방지 기록. 연결 삭제 시 최소화'},
  {kind:'growth_action_intent',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'성장2 예산·재고 원자 예약과 수동 실행 준비·복구 상태'},
  {kind:'growth_action_receipt',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'성장2 운영자 확인 결과의 추가 전용 이력. 외부 실행 검증과 구분'},
  {kind:'growth_decision',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 일일 결정과 서버 집계 동결 근거. 실행 권한 없음'},
