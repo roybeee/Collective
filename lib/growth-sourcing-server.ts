@@ -23,7 +23,7 @@ async function inventoryRows(owner:string,c:Campaign){
  return r.results.map(x=>JSON.parse(x.data) as InventoryRow).filter(r=>r.brandId===c.brandId&&r.storeId===c.storeId);
 }
 function matched(items:InventoryRow[],sku:string){return items.filter(i=>i.input.sku===sku)}
-async function stockSnapshot(owner:string,c:Campaign,catalog:SourcingCatalog,unit:ComparisonInput['unit']):Promise<SourcingInventory>{
+export async function stockSnapshot(owner:string,c:Campaign,catalog:SourcingCatalog,unit:ComparisonInput['unit']):Promise<SourcingInventory>{
  const items=matched(await inventoryRows(owner,c),catalog.input.sku),refs=items.map(i=>({id:i.id,version:i.version}));
  const unknown=(reason:string):SourcingInventory=>({status:'unknown',unit,onHand:null,reserved:null,available:null,shortage:null,items:refs,reason});
  if(!items.length)return unknown('현재 매장·SKU의 재고 기록 없음');

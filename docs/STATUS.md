@@ -94,6 +94,15 @@
 - 타입·빌드·프롬프트22·lint 기존70/39 passed. 소싱 신규2+기존 워크스페이스4=E2E6 passed(real Chromium/local D1, 인증·응답 유실 주입 mocked). 최종 서버 문자 길이 보완 뒤 빌드 재통과. 전역중단 #275의 `24b2814`를 로컬 통합한 뒤 전체262/262 suites·15,841 assertions, 타입·빌드·lint70/39 및 소싱2/중단2/워크스페이스4 총E2E8 passed. 신규 소싱 기능은 아직 미게시이며 원안 전체는 미완료다.
 - 다음은 G2-30의 재발주 수량/시점·구매비 검토다. 실제 SKU 판매속도와 명시적 수요 가정, 미입고 발주 상태, 검토 한도와 현금 잔고를 분리하고 외부 발주는 수행하지 않는다.
 
+### 재발주 수량·시점·구매비 검토 후속 (2026-09-30 · Codex)
+갱신: 2026-09-30 11:36 UTC
+
+- `codex/growth2-reorder`, main `96402c7`에서 소싱 `4095478`을 의존 통합해 [G2-30 재발주 검토](GROWTH-2-REORDER.ko.md)를 구현했다. 운영자 수요 가정·납기·안전재고·추가 확보기간과 현재 공유 재고를 연결한다. 예약 부족분을 보존하고 미입고 발주 없음의 당일 확인·근거가 있어야 구매수량을 제시한다.
+- 필요량0이면 MOQ·고정배송비 없이 수량/비용0, 세금 별도면 견적 소계와 실제 현금소요 미확인을 구분한다. 비용 한도는 은행 잔고나 예산 위임이 아니다. 실제 발주·입고·가격·예산·정산 변경은 없으며 `mayOrder:false`다. 평가 시각·입력·상품·견적·재고 판과 평가를 불변 보존하고 현재 변경/시간 만료는 별도 표시한다.
+- 전용 domain35/API34 passed(real pure/memory SQLite, 인증 mocked, 외부0), 전체256/256 suites·15,763 assertions passed(외부 mocked). 단위/수요0·납기·MOQ·overflow·한도·기존 예약 부족·다른 캠페인 예약·CAS/UUID·원자 rollback·용량200·보관/역할 경계 회귀 포함. ISO 시차 범위·정확 평가시각·지점 브랜드 변경은 RED→GREEN. 독립 리뷰 HIGH/MED0.
+- 타입·빌드·프롬프트22·lint 기존70/39 passed. 재발주2+소싱2=E2E4 passed(real Chromium/local D1, 인증·응답 유실 주입 mocked), null→0·입력 보존·다른 후보 선택 시 근거 초기화·불변 이력·재조회/모바일 검증. 신규2모듈 V8 named function21/21 실행(문장/분기 지표 아님). 이후 전역중단과 main `e49815c`를 포함한 소싱 `3af681f` 통합에서 전체264/264 suites·15,910 assertions, 타입·빌드·lint70/39·브라우저 재발주/소싱/중단6 passed. 통합 충돌 리뷰 HIGH/MED0.
+- 이 신규 검토는 아직 미게시다. #275 전역 중단은 main `e49815c`로 merged, Sites74 published/runtime-verified(11:34 UTC), [게시 증거](releases/2026-09-30-e49815c.md). #276 소싱은 별도 CI 중이다. 다음은 카탈로그 수동 수량 대신 단일 공유 재고·확인 단위로 상품/오퍼/미션 준비도를 판정하는 수정이다.
+
 ### 공유 재고 기준 상품·오퍼·미션 준비도 (2026-09-30 · Codex)
 갱신: 2026-09-30 11:49 UTC
 
@@ -101,10 +110,11 @@
 - 신규 주문 할당의 piece/pack 우회와 소싱의 명시 상품 단위 누락을 독립 리뷰에서 발견해 RED→GREEN 수정했다. 기존 실제 주문의 부족/미확인 재고 기록, 출고/정정·비용 대사·해제는 유지한다. 손상 원장/조회 실패는 준비도 보류이며 기존 수동 수량으로 대체하지 않는다. 추가 원장·외부 실행·현금 변경은 없다.
 - stock 도메인10/API22, catalog124/workspace37/execution76/authority72/reconciliation43/stop recovery43/operations49/demand33/journey43/sourcing35/API41, 총13개 전용·기존회귀 파일 passed(real pure/memory SQLite, 인증/외부 mocked, 외부0). 전체264/264 suites·15,880 assertions passed. 새 helper V8 named function5/5 실행(문장·분기 지표 아님). 최종 독립 HIGH/MED0.
 - 타입·빌드·프롬프트22 passed. 최초 lint 미사용 테스트 선언1 경고증가를 제거하고 최종70 errors/39 warnings 기준선 passed. E2E 신규stock2/워크스페이스4/운영2/실행2/대사2 총12 passed(real Chromium/local D1, 인증·기존 대사 응답실패 주입 mocked). 실제 원장 재고가 있어 수동0에서도 준비, 다른 캠페인 예약 후 가용0이면 수동100으로도 보류, 단위·상품판 재연결·CAS입력보존·모바일을 확인했다.
-- 재발주 증분과 통합한 뒤 명시 상품 단위 불일치의 구매수량도 보류하도록 후속 통합 검증한다. 이 준비도 변경은 아직 미게시이며 전체 성장2 원안은 미완료다.
+- 재발주 통합 후 명시 상품 단위 불일치 시 구매수량·시점·현금 모두 null 보류하는 회귀2개를 추가했다. 통합 전체266/266 suites·15,951 assertions, 타입·빌드·관련8파일 E2E18 passed(real Chromium/local D1, 인증/기존 복구 실패 주입 mocked), 독립 통합 리뷰 HIGH/MED0. 이 준비도 변경은 아직 미게시이며 전체 성장2 원안은 미완료다.
+- #276 소싱은 main `25f370b`로 merged, Sites75 published/runtime-verified(11:52 UTC), [게시 증거](releases/2026-09-30-25f370b.md). #277 재발주는 원격 CI4개 passed 뒤 main `a652d29`로 merged, 아직 미게시다.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 현재 운영: #274까지 `96402c7e1400465ed54a8e9e6b745d0a3a3ad723`, Sites73, tree `e2ac2ff7a7a1b32a50d3e1c5829f2040a1a0aac9`. 2026-09-30 10:55 UTC merged/published/runtime-verified. 실비·손실 대사와 무집행 취소 예산·재고 원자 해제 포함. 원안 전체는 미완료이며 실제 공급자 실행·정산·효과 검증 not_run. [릴리스](releases/2026-09-30-96402c7.md).
+- 현재 운영: #276까지 `25f370b1130ecc1deb2bdbe1631564d3b715e36c`, Sites75, tree `7daa1d97df4e18416b59e95a5e33b47b3f527154`. 2026-09-30 11:52 UTC merged/published/runtime-verified. 전역 실행·학습 중단과 기존 주문/대사/복구 유지 포함. 원안 전체는 미완료이며 실제 공급자 실행·정산·효과 검증 not_run. [릴리스](releases/2026-09-30-e49815c.md).
 - 성장1 필수 코드 게시 대기 0건. #216·#218·#219·#225는 통합 #244로 병합·게시했다. #206·#208·#210~#214·#217·#220·#223·#231·#235·#237과 관련 문서도 현재 제품에 포함된다.
 - 기존 대기열의 미병합·404 문구는 과거 상태다. R 신규 PR #234·#241·#242·#243 및 인터뷰 게시 문서 #236·#240은 별도 소유자 작업이며 성장1 필수 잔여가 아니다.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
@@ -256,21 +266,21 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-28 08:03 UTC (Codex: 비활성 생성 Sites61·캠페인 선택 통합)
+마지막 갱신: 2026-09-30 11:57 UTC (Codex A 통합: 소싱 Sites75)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `dabf656c4249b6e7b446276909cd8d80305caa8d` (#264) | tree `9a5be85f566d554b57db1d992c6004e7ef2fd408`, [릴리스](releases/2026-09-29-dabf656.md) |
-| `origin/main` | 게시 제품 `dabf656`; 이 후속은 게시 기록만 변경 | 비제품 변경은 PUBLISH 5절 기준으로 구분 |
-| Sites 게시 | `published`: 버전67, deployment `appgdep_6aba814f60f48191a6a7333d3cd270eb` succeeded | 2026-09-28 15:01:57 UTC (09-29 KST) |
-| 실행 검증 | `runtime-verified`: 공개 `/api/version/public` tree 일치 | build `2026-09-28T14:34:11.527Z` |
-| 인증 | 소유자 로그인 캠페인 열림, 새 집행 API 익명401 | 실제 운영 UI·HTTP, 데이터 변경 없음 |
+| 운영 제품 커밋 | `25f370b1130ecc1deb2bdbe1631564d3b715e36c` (#276) | tree `7daa1d97df4e18416b59e95a5e33b47b3f527154`, [릴리스](releases/2026-09-30-25f370b.md) |
+| `origin/main` | 게시 제품 `25f370b`; 재발주 `a652d29`는 merged, 게시 대기 | 비제품 변경은 PUBLISH 5절 기준으로 구분 |
+| Sites 게시 | `published`: 버전75, deployment `appgdep_6abcf7de74308191aac25a8f900b4d7d` succeeded | 2026-09-30 11:52:19 UTC |
+| 실행 검증 | `runtime-verified`: 공개 `/api/version/public` tree 일치 | build `2026-09-30T11:49:09.533Z` |
+| 인증 | 새 전역 중단 API 익명401 | 실제 운영 HTTP, 데이터 변경 없음; 소유자 로그인 이번 재확인 not_run |
 | Sites 접근 | public, 환경 revision4 유지 | 설정 변경 없음 |
 | 조사 워커 | 이번 게시에서 온라인 상태 재확인 not_run | 활성화 시 서버에서 온라인 조건을 검사 |
-| 제품 CI | 최종 동일 tree의 verify·e2e-smoke 각각 passed | [run36436910511](https://github.com/roybeee/Collective/actions/runs/36436910511), 227 suites·14,123 assertions, E2E104+인증1 |
-| 성장2 판정 | 개발 종료 passed / 운영 인수 blocked / 효과 검증 not_run | [종료 판정](GROWTH-2-CLOSEOUT.ko.md) |
+| 제품 CI | #275 최종 head verify·e2e-smoke 4개 passed, main과 tree diff0 | [run36707964945](https://github.com/roybeee/Collective/actions/runs/36707964945), [run36707959231](https://github.com/roybeee/Collective/actions/runs/36707959231) |
+| 성장2 판정 | 전체33개 카드 개발 진행 중 / 실효과 검증 not_run | [원안 전체](GROWTH-2-PLAN.ko.md). 과거 [종료 판정](GROWTH-2-CLOSEOUT.ko.md)은 Meta M0~M6 한정 |
 | 성장1 판정 | 개발 종료 passed / 운영 인수 blocked / 효과 검증 not_run | [최종 판정·조건부 인계](observations/2026-09-28-lane-a-growth1-closeout.md) |
 
 - 테스트 흔들림(2026-09-25 관찰, 제품 동작 변경 없음):
