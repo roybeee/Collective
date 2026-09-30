@@ -1,3 +1,4 @@
+import {requireGrowthRunning} from './growth-stop-server';
 import {parseSettlementEvidence,projectSettlements,type SettlementEvidence} from './growth-settlement';
 import type {Campaign} from './agency';
 import type {Store} from './store-marketing';
@@ -119,6 +120,7 @@ async function stockAdjustment(who:Actor,c:Campaign,b:Record<string,unknown>){
  if(!prepared.duplicate)await database().batch(prepared.writes);return {...await growthOperationsView(who,c),duplicate:prepared.duplicate};
 }
 export async function prepareMissionStock(who:Actor,c:Campaign,b:Record<string,unknown>){
+ if(b.action!=='release_stock')await requireGrowthRunning(who.owner);
  const item=await inventoryFor(who.owner,c,id(b.inventoryId,'재고 ID')),mission=await readRecord<GrowthRecord<MissionInput>>(who.owner,'growth_mission',id(b.missionId,'미션 ID'));
  if(mission.campaignId!==c.id||mission.brandId!==c.brandId)throw new ApiError(404,'현재 캠페인의 미션을 선택하세요.');
  const release=b.action==='release_stock',eventId=id(b.id,'재고 사건 ID');

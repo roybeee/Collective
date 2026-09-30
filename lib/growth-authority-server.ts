@@ -1,3 +1,4 @@
+import {requireGrowthRunning} from './growth-stop-server';
 import type {Campaign} from './agency';
 import {evaluateAuthority,parseAuthorityInput,type AuthorityInput,type AuthorityAction,type AuthorityCommitment} from './growth-authority';
 import {growthView,type GrowthRecord} from './growth-workspace-server';
@@ -70,6 +71,7 @@ async function revokeAuthority(who:Actor,c:Campaign,b:Record<string,unknown>){
  return {...await growthAuthorityView(who,c),duplicate:false};
 }
 export async function prepareMissionCommitment(who:Actor,c:Campaign,b:Record<string,unknown>){
+ await requireGrowthRunning(who.owner);
  if(who.role==='member')throw new ApiError(403,'관리자만 준비 미션의 예산을 예약할 수 있습니다.');
  const authorityId=recordId(b.authorityId,'위임 ID'),missionId=recordId(b.missionId,'미션 ID');
  const authority=scoped(await readRecord<GrowthAuthorityRecord>(who.owner,'growth_authority',authorityId),c)!;

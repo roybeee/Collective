@@ -73,7 +73,17 @@
 - 위임/기간을 바꿔도 같은 계정의 누적 탐색손실을 유지한다. 예약 초과 실제 비용도 기록하고 신규 한도에 반영한다. 캠페인 보관·위임 철회 후 대사와 동일 UUID 재시도, 버전 충돌 입력 보존, 삭제 후 이력 보존을 적용했다.
 - 독립 코드/보안 리뷰에서 무관 주문 조회 한도 때문에 대사까지 막히는 MED1을 발견했다. 정확한 참조 저장과 전체 조회를 분리하고, 주문1001건에서 부분/최종 대사·무집행 취소·중복 재시도 회귀를 통과했다. 저장 후 조회 실패는 성공 확인으로 반환하고 화면은 최신 조회 전 추가 쓰기를 보류한다. 재검토 HIGH/MED0.
 - 전체252/252 suites·15,619 assertions passed(외부 mocked). 이후 최종 대사 회귀2개를 추가한 전용 API43과 도메인25 passed(real memory SQL/pure, 인증 mocked, 외부 호출0), 기존 실행API76 passed. 신규 도메인/서버 V8 named function10/11 실행(90.9%; 문장/분기 커버리지 아님). 프롬프트22 passed. 신규/기존 성장 E2E10 passed 뒤 최종 저장 확인/조회 실패 복구 변경 경로 E2E2 passed(real Chromium/local D1, 인증·응답 유실/조회 실패 주입 mocked). 최종 타입·빌드 passed, lint 기준선70/39 유지, staged gitleaks 약62KB 유출0.
-- 아직 미게시. 다음 본선은 owner 단위 전역 중단: 일반 예산/재고 예약, Buffer 게시, Meta 예약/ACTIVE, 일반·Meta 학습 적용 및 프롬프트 승격의 실제 서버 진입점에 공통 검사. 주문 수집·대사·감사·PAUSED/정산/불확실 결과 복구는 유지하고 이미 진행 중인 외부 요청은 별도로 추적한다. 공유 파일 소유권을 확인한 뒤 착수하며 재개만으로 자동 재전송하지 않는다. 원안33개 전체는 미완료다.
+- #274는 CI verify/e2e-smoke passed 뒤 `96402c7`로 merged. Sites73 published/runtime-verified(2026-09-30 10:55 UTC), [게시 증거](releases/2026-09-30-96402c7.md). 다음 본선은 owner 단위 전역 중단: 일반 예산/재고 예약, Buffer 게시, Meta 예약/ACTIVE, 일반·Meta 학습 적용 및 프롬프트 승격의 실제 서버 진입점에 공통 검사. 주문 수집·대사·감사·PAUSED/정산/불확실 결과 복구는 유지하고 이미 진행 중인 외부 요청은 별도로 추적한다. 공유 파일 소유권을 확인한 뒤 착수하며 재개만으로 자동 재전송하지 않는다. 원안33개 전체는 미완료다.
+
+### 작업공간 전역 중단 후속 (2026-09-30 · Codex)
+
+- 대표의 3시간 집중 개발 지시: 2026-09-30 10:51:55~13:51:55 UTC(한국시간22:51:55까지). `collective-2`를15분 재개로 갱신했다. 종료 때 진행 변경을 저장하고 실제 결과를 보고한다.
+- main `96402c7` 기준 `codex/growth2-global-stop`: [전역 중단 계약](GROWTH-2-GLOBAL-STOP.ko.md). owner 작업공간 전체 신규 예산·재고 예약, 게시 승인/접수, Meta 예약/활성화, 학습 채택·연장·프롬프트 적용을 차단한다. 관리자 중단/소유자 재개, owner 잠금·CAS·UUID·추가 전용 이력·손상/조회 실패 차단을 적용했다. 점포 회고·기존 비용 대사·정지·정산·복구는 유지한다.
+- 이미 전송 중인 Buffer 결과를 보존하고 전송 전 중단이면 공급자 호출0으로 기록한다. Meta ACTIVE 중 중단되면 추가 활성화는 막고 불확실 상태를 유지하며 이후 PAUSED·정산·예약 해제가 가능하다. 중단 자체가 외부 취소 완료나 예산/재고 해제를 뜻하지 않으며 재개 자동 재전송은 없다. Q 프롬프트 엔진은 유지하고 API 기존 잠금 안에 가드만 추가했다.
+- 전체256/256 suites·15,692 assertions passed(외부 mocked), 이후 추가한 전용 Buffer경합17/Meta경합8/중단중대사복구43 passed(real SQLite, 공급자 mocked, 실제 외부0). 중단 중 실제 주문 저장·부분/전액 환불 정정 API8 passed(real memory SQLite, 인증 mocked). 기본 전용 domain13/API27/entrygate12/학습19, 기존 learning148/stores141/prompts71/Meta실험34 passed. 기존 MetaAPI24/Bufferloop171/실행76/위임API72 passed. entrygate의 복구 항목은 정상 성공이 아니라 중단 차단을 건너뛰는 검증이며, 실제 성공은 별도 복구회귀로 검증했다.
+- 신규 중단 E2E2+기존 실행/대사4=6 passed(real Chromium/local D1, 인증·응답 유실 mocked). 최종 타입·빌드·프롬프트22 passed, lint 기준선70/39 유지. 신규 핵심2모듈 V8 named function7/7 실행(문장/분기 아님). 독립 코드/명세/보안 재검토 HIGH/MED0.
+- PR #275 첫 원격 CI는 추가 회귀 파일의 미사용 변수2개로 lint70/41 failed, e2e-smoke는 passed였다. 테스트의 미사용 선언만 제거했고 Buffer17/Meta8과 lint70/39를 재실행해 passed했다. 원격 재검증 결과는 별도로 확인한다.
+- 아직 미게시. 다음 증분은 G2-26 단일 SKU 소싱 후보의 원가·MOQ·납기 비교와 발주 검토안이며 실제 발주·계약·결제는 수행하지 않는다. 다SKU 번들·공급자 실연동·검증 확대 등 원안 전체 잔여를 계속한다.
 
 ### 공급 후보·소싱 비교 후속 (2026-09-30 · Codex)
 갱신: 2026-09-30 11:22 UTC
@@ -81,7 +91,7 @@
 - main `96402c7` 기준 `codex/growth2-sourcing`: [G2-26 단일 SKU 소싱 비교](GROWTH-2-SOURCING.ko.md). 공급 후보 원가·MOQ·납기·배송/부대비·세금·단위·증빙·유효일과 견적 개정 이력을 저장한다. 현재 상품·후보·공유 재고 판을 고정한 불변 비교이며 최저가 자동 채택이나 실제 발주 권한을 부여하지 않는다.
 - 단위가 다르면 수량·금액을 보류하고, 예약 초과 부족분을 포함한 가상 입고 영향을 계산한다. 현재 참조 변경·시간 경과 만료는 과거 평가를 덮지 않고 표시한다. 관리자/owner 경계, CAS·UUID·원자 저장·한도·삭제 보존을 적용했다. 기존 예산·재고·가격·정산 원장은 변경하지 않는다.
 - 코드/보안 리뷰에서 단위 혼합 계산·상품 ISO 만료·긴 배송/반품 조건의 조회 거부를 발견해 RED→GREEN 수정했다. 최종 HIGH/MED0. 도메인34/API39 passed(real pure/memory SQLite, 인증 mocked, 외부0), 전체254/254 suites·15,694 assertions passed(외부 mocked). 신규2모듈 V8 named function30/30 실행(문장/분기 지표 아님).
-- 타입·빌드·프롬프트22·lint 기존70/39 passed. 소싱 신규2+기존 워크스페이스4=E2E6 passed(real Chromium/local D1, 인증·응답 유실 주입 mocked). 최종 서버 문자 길이 보완 뒤 빌드 재통과. 전역중단 #275와 독립 브랜치이므로 병합 후 통합 검증한다. 신규 소싱 기능은 아직 미게시이며 원안 전체는 미완료다.
+- 타입·빌드·프롬프트22·lint 기존70/39 passed. 소싱 신규2+기존 워크스페이스4=E2E6 passed(real Chromium/local D1, 인증·응답 유실 주입 mocked). 최종 서버 문자 길이 보완 뒤 빌드 재통과. 전역중단 #275의 `24b2814`를 로컬 통합한 뒤 전체262/262 suites·15,841 assertions, 타입·빌드·lint70/39 및 소싱2/중단2/워크스페이스4 총E2E8 passed. 신규 소싱 기능은 아직 미게시이며 원안 전체는 미완료다.
 - 다음은 G2-30의 재발주 수량/시점·구매비 검토다. 실제 SKU 판매속도와 명시적 수요 가정, 미입고 발주 상태, 검토 한도와 현금 잔고를 분리하고 외부 발주는 수행하지 않는다.
 
 ### 재발주 수량·시점·구매비 검토 후속 (2026-09-30 · Codex)
@@ -90,17 +100,17 @@
 - `codex/growth2-reorder`, main `96402c7`에서 소싱 `4095478`을 의존 통합해 [G2-30 재발주 검토](GROWTH-2-REORDER.ko.md)를 구현했다. 운영자 수요 가정·납기·안전재고·추가 확보기간과 현재 공유 재고를 연결한다. 예약 부족분을 보존하고 미입고 발주 없음의 당일 확인·근거가 있어야 구매수량을 제시한다.
 - 필요량0이면 MOQ·고정배송비 없이 수량/비용0, 세금 별도면 견적 소계와 실제 현금소요 미확인을 구분한다. 비용 한도는 은행 잔고나 예산 위임이 아니다. 실제 발주·입고·가격·예산·정산 변경은 없으며 `mayOrder:false`다. 평가 시각·입력·상품·견적·재고 판과 평가를 불변 보존하고 현재 변경/시간 만료는 별도 표시한다.
 - 전용 domain35/API34 passed(real pure/memory SQLite, 인증 mocked, 외부0), 전체256/256 suites·15,763 assertions passed(외부 mocked). 단위/수요0·납기·MOQ·overflow·한도·기존 예약 부족·다른 캠페인 예약·CAS/UUID·원자 rollback·용량200·보관/역할 경계 회귀 포함. ISO 시차 범위·정확 평가시각·지점 브랜드 변경은 RED→GREEN. 독립 리뷰 HIGH/MED0.
-- 타입·빌드·프롬프트22·lint 기존70/39 passed. 재발주2+소싱2=E2E4 passed(real Chromium/local D1, 인증·응답 유실 주입 mocked), null→0·입력 보존·다른 후보 선택 시 근거 초기화·불변 이력·재조회/모바일 검증. 신규2모듈 V8 named function21/21 실행(문장/분기 지표 아님). 전역중단 및 최신 main 통합 검증은 다음 단계다.
+- 타입·빌드·프롬프트22·lint 기존70/39 passed. 재발주2+소싱2=E2E4 passed(real Chromium/local D1, 인증·응답 유실 주입 mocked), null→0·입력 보존·다른 후보 선택 시 근거 초기화·불변 이력·재조회/모바일 검증. 신규2모듈 V8 named function21/21 실행(문장/분기 지표 아님). 이후 전역중단과 main `e49815c`를 포함한 소싱 `3af681f` 통합에서 전체264/264 suites·15,910 assertions, 타입·빌드·lint70/39·브라우저 재발주/소싱/중단6 passed. 통합 충돌 리뷰 HIGH/MED0.
 - 이 신규 검토는 아직 미게시다. #275 전역 중단은 main `e49815c`로 merged, Sites74 published/runtime-verified(11:34 UTC), [게시 증거](releases/2026-09-30-e49815c.md). #276 소싱은 별도 CI 중이다. 다음은 카탈로그 수동 수량 대신 단일 공유 재고·확인 단위로 상품/오퍼/미션 준비도를 판정하는 수정이다.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 현재 운영: #273까지 `4cd3df12ce1e9d281d0a03e50dd793f593490f9b`, Sites72, tree `0093144031105c1bfb2857f03cd52892f17ce1d1`. 2026-09-30 09:54 UTC merged/published/runtime-verified. 사업목표 개정·30일 불변 리뷰·장부 재대조 포함. 성장2 원안 전체는 미완료이며 실제 고객 전송·실판매 효과 검증 not_run. [릴리스](releases/2026-09-30-4cd3df1.md).
+- 현재 운영: #275까지 `e49815ce7ac65442bb29fb93624b6c787f0bd939`, Sites74, tree `e7832e4ec1c78fbe753354c41ad6ab2f6d05bde4`. 2026-09-30 11:34 UTC merged/published/runtime-verified. 전역 실행·학습 중단과 기존 주문/대사/복구 유지 포함. 원안 전체는 미완료이며 실제 공급자 실행·정산·효과 검증 not_run. [릴리스](releases/2026-09-30-e49815c.md).
 - 성장1 필수 코드 게시 대기 0건. #216·#218·#219·#225는 통합 #244로 병합·게시했다. #206·#208·#210~#214·#217·#220·#223·#231·#235·#237과 관련 문서도 현재 제품에 포함된다.
 - 기존 대기열의 미병합·404 문구는 과거 상태다. R 신규 PR #234·#241·#242·#243 및 인터뷰 게시 문서 #236·#240은 별도 소유자 작업이며 성장1 필수 잔여가 아니다.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-30 09:54 UTC (Codex: 원안 전체 개발·#273 게시)
+갱신: 2026-09-30 10:55 UTC (Codex: 3시간 집중 개발·#274 게시)
 - 성장2 남은 코드 구현·검토 passed. Pixel/CAPI 내구성 큐·동의/철회, 승인된 제한 집행·부모 우선 비상 정지·정산, 불변 실험 설계·무작위 배정·관측·통계 판정·규칙 승인 및 낡은 근거 차단. [요구사항별 종료 판정](GROWTH-2-CLOSEOUT.ko.md). 새 `meta_ads_capi`·`meta_ads_execution`은 기본 OFF.
 - 최종 로컬 검증 passed: 전체 227/227 suites·14,123 assertions(외부 mocked), 브라우저104 + 최종 수정 뒤 핵심8(real local Chromium/D1, 외부 mocked), 이메일 인증1(real local), 타입·빌드·프롬프트22·lint 기준선70/39. Python 워커13·설치70·맵달19 passed. 새 비즈니스 모듈10개 V8 함수 커버리지141/151=93.4%(외부 mocked; 문장/분기 커버리지 아님). 코드·보안 재검토 HIGH/CRITICAL 잔여0.
 - #264 소스 병합·Sites67 게시·공개 버전 일치 검증 완료. 최종 CI verify/e2e-smoke 각각 passed(227 suites·14,123 assertions, 브라우저104+인증1). 실계정/실몰 연결·고객 전송·광고 지출·효과 검증은 not_run이며 운영 접근/동의/별도 금액·기간 승인이 필요하다. 아래 과거 증분별 미구현 문구는 해당 시점의 기록이다.
@@ -246,21 +256,21 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-28 08:03 UTC (Codex: 비활성 생성 Sites61·캠페인 선택 통합)
+마지막 갱신: 2026-09-30 11:34 UTC (Codex A 통합: 전역 중단 Sites74)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `dabf656c4249b6e7b446276909cd8d80305caa8d` (#264) | tree `9a5be85f566d554b57db1d992c6004e7ef2fd408`, [릴리스](releases/2026-09-29-dabf656.md) |
-| `origin/main` | 게시 제품 `dabf656`; 이 후속은 게시 기록만 변경 | 비제품 변경은 PUBLISH 5절 기준으로 구분 |
-| Sites 게시 | `published`: 버전67, deployment `appgdep_6aba814f60f48191a6a7333d3cd270eb` succeeded | 2026-09-28 15:01:57 UTC (09-29 KST) |
-| 실행 검증 | `runtime-verified`: 공개 `/api/version/public` tree 일치 | build `2026-09-28T14:34:11.527Z` |
-| 인증 | 소유자 로그인 캠페인 열림, 새 집행 API 익명401 | 실제 운영 UI·HTTP, 데이터 변경 없음 |
+| 운영 제품 커밋 | `e49815ce7ac65442bb29fb93624b6c787f0bd939` (#275) | tree `e7832e4ec1c78fbe753354c41ad6ab2f6d05bde4`, [릴리스](releases/2026-09-30-e49815c.md) |
+| `origin/main` | 게시 제품 `e49815c`; 소싱·재발주는 후속 개발 중 | 비제품 변경은 PUBLISH 5절 기준으로 구분 |
+| Sites 게시 | `published`: 버전74, deployment `appgdep_6abcf3c33c9c81918b5f816ff4f5904d` succeeded | 2026-09-30 11:34:48 UTC |
+| 실행 검증 | `runtime-verified`: 공개 `/api/version/public` tree 일치 | build `2026-09-30T11:32:56.682Z` |
+| 인증 | 새 전역 중단 API 익명401 | 실제 운영 HTTP, 데이터 변경 없음; 소유자 로그인 이번 재확인 not_run |
 | Sites 접근 | public, 환경 revision4 유지 | 설정 변경 없음 |
 | 조사 워커 | 이번 게시에서 온라인 상태 재확인 not_run | 활성화 시 서버에서 온라인 조건을 검사 |
-| 제품 CI | 최종 동일 tree의 verify·e2e-smoke 각각 passed | [run36436910511](https://github.com/roybeee/Collective/actions/runs/36436910511), 227 suites·14,123 assertions, E2E104+인증1 |
-| 성장2 판정 | 개발 종료 passed / 운영 인수 blocked / 효과 검증 not_run | [종료 판정](GROWTH-2-CLOSEOUT.ko.md) |
+| 제품 CI | #275 최종 head verify·e2e-smoke 4개 passed, main과 tree diff0 | [run36707964945](https://github.com/roybeee/Collective/actions/runs/36707964945), [run36707959231](https://github.com/roybeee/Collective/actions/runs/36707959231) |
+| 성장2 판정 | 전체33개 카드 개발 진행 중 / 실효과 검증 not_run | [원안 전체](GROWTH-2-PLAN.ko.md). 과거 [종료 판정](GROWTH-2-CLOSEOUT.ko.md)은 Meta M0~M6 한정 |
 | 성장1 판정 | 개발 종료 passed / 운영 인수 blocked / 효과 검증 not_run | [최종 판정·조건부 인계](observations/2026-09-28-lane-a-growth1-closeout.md) |
 
 - 테스트 흔들림(2026-09-25 관찰, 제품 동작 변경 없음):
