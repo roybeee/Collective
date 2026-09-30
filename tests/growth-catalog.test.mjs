@@ -6,8 +6,11 @@ const c = await load('lib/growth-catalog.ts');
 let passed = 0;
 function test(name, run) { run(); passed++; console.log('passed: ' + name); }
 const now = Date.parse('2026-09-30T03:00:00Z');
+const stock={status:'known',inventoryId:'stock',inventoryVersion:0,unit:'piece',onHand:10,reserved:0,available:10,shortage:0,reasons:[]};
+const catalogReadiness=(input,at,basis=stock)=>c.catalogReadiness(input,at,basis);
+const offerReadiness=(input,ref,at)=>c.offerReadiness(input,ref,at,stock);
 const catalog = () => ({...c.emptyCatalogInput(), sku:'SKU-01', title:'상품 🎵', price:10000,
-  unitCost:4000, variableCost:1000, stock:10, taxBasis:'included', fulfillment:'택배 3일',
+  unitCost:4000, variableCost:1000, stock:10, stockUnit:'piece', taxBasis:'included', fulfillment:'택배 3일',
   refunds:'수령 후 7일', rightsConfirmed:true, factIds:['fact-1'], validUntil:'2026-09-30'});
 const offer = () => ({...c.emptyOfferInput(), title:'첫 구매', catalogId:'cat-1', catalogVersion:1,
   needId:'need-1', price:9000, quantity:2, landingUrl:'https://shop.example.com/p/1',
@@ -17,11 +20,11 @@ const rejects = (fn) => assert.throws(fn, c.GrowthCatalogError);
 
 test('empty catalog draft is accepted and incomplete', () => {
   assert.equal(c.parseCatalogInput({}).price, null);
-  assert.ok(c.catalogReadiness(c.emptyCatalogInput(), now).missing.length > 0);
+  assert.ok(catalogReadiness(c.emptyCatalogInput(), now).missing.length > 0);
 });
 test('empty offer draft is accepted and incomplete', () => {
   assert.equal(c.parseOfferInput({}).price, null);
-  assert.ok(c.offerReadiness(c.emptyOfferInput(), null, now).missing.length > 0);
+  assert.ok(offerReadiness(c.emptyOfferInput(), null, now).missing.length > 0);
 });
 test('catalog arrays are independently created', () => {
   const a=c.emptyCatalogInput(), b=c.emptyCatalogInput(); a.factIds.push('x'); assert.equal(b.factIds.length,0);
@@ -31,10 +34,10 @@ test('parse preserves caller input and copies evidence arrays', () => {
   assert.equal(JSON.stringify(input),before); assert.notEqual(parsed.factIds,input.factIds);
 });
 test('valid catalog has positive unit contribution', () => {
-  const r=c.catalogReadiness(c.parseCatalogInput(catalog()),now); assert.equal(r.missing.length,0); assert.equal(r.unitContribution,5000);
+  const r=catalogReadiness(c.parseCatalogInput(catalog()),now); assert.equal(r.missing.length,0); assert.equal(r.unitContribution,5000);
 });
 test('valid offer uses its approved unit price', () => {
-  const r=c.offerReadiness(c.parseOfferInput(offer()),reference(),now); assert.equal(r.missing.length,0); assert.equal(r.unitContribution,4000);
+  const r=offerReadiness(c.parseOfferInput(offer()),reference(),now); assert.equal(r.missing.length,0); assert.equal(r.unitContribution,4000);
 });
 for (const value of [null,undefined,[],42,'draft']) test('rejects non-object input '+String(value), () => rejects(()=>c.parseCatalogInput(value)));
 for (const field of ['price','unitCost','variableCost','stock']) {
@@ -43,17 +46,17 @@ for (const field of ['price','unitCost','variableCost','stock']) {
   }
 }
 test('blank amount remains unknown',()=>assert.equal(c.parseCatalogInput({...catalog(),price:''}).price,null));
-test('zero cost is known and allowed',()=>assert.equal(c.catalogReadiness({...catalog(),unitCost:0,variableCost:0},now).missing.length,0));
-test('unknown cost blocks readiness',()=>assert.equal(c.catalogReadiness({...catalog(),unitCost:null},now).unitContribution,null));
-test('unknown tax basis blocks readiness',()=>assert.ok(c.catalogReadiness({...catalog(),taxBasis:'unknown'},now).missing.length));
-for(const price of [0,5000,4000]) test('nonpositive contribution blocks '+price,()=>assert.ok(c.catalogReadiness({...catalog(),price},now).missing.length));
-test('missing rights blocks readiness',()=>assert.ok(c.catalogReadiness({...catalog(),rightsConfirmed:false},now).missing.length));
-test('missing evidence blocks readiness',()=>assert.ok(c.catalogReadiness({...catalog(),factIds:[]},now).missing.length));
-test('out of stock blocks readiness',()=>assert.ok(c.catalogReadiness({...catalog(),stock:0},now).missing.length));
-test('date remains valid through Seoul end of day',()=>assert.equal(c.catalogReadiness(catalog(),Date.parse('2026-09-30T14:59:59.999Z')).missing.length,0));
-test('date expires at next Seoul midnight',()=>assert.ok(c.catalogReadiness(catalog(),Date.parse('2026-09-30T15:00:00Z')).missing.length));
-test('exact timestamp expiry is exclusive',()=>assert.ok(c.catalogReadiness({...catalog(),validUntil:'2026-09-30T03:00:00Z'},now).missing.length));
-test('future explicit offset timestamp accepted',()=>assert.equal(c.catalogReadiness({...catalog(),validUntil:'2026-10-01T00:00:00+09:00'},now).missing.length,0));
+test('zero cost is known and allowed',()=>assert.equal(catalogReadiness({...catalog(),unitCost:0,variableCost:0},now).missing.length,0));
+test('unknown cost blocks readiness',()=>assert.equal(catalogReadiness({...catalog(),unitCost:null},now).unitContribution,null));
+test('unknown tax basis blocks readiness',()=>assert.ok(catalogReadiness({...catalog(),taxBasis:'unknown'},now).missing.length));
+for(const price of [0,5000,4000]) test('nonpositive contribution blocks '+price,()=>assert.ok(catalogReadiness({...catalog(),price},now).missing.length));
+test('missing rights blocks readiness',()=>assert.ok(catalogReadiness({...catalog(),rightsConfirmed:false},now).missing.length));
+test('missing evidence blocks readiness',()=>assert.ok(catalogReadiness({...catalog(),factIds:[]},now).missing.length));
+test('out of stock blocks readiness',()=>assert.ok(catalogReadiness({...catalog(),stock:100},now,{...stock,onHand:0,available:0}).missing.length));
+test('date remains valid through Seoul end of day',()=>assert.equal(catalogReadiness(catalog(),Date.parse('2026-09-30T14:59:59.999Z')).missing.length,0));
+test('date expires at next Seoul midnight',()=>assert.ok(catalogReadiness(catalog(),Date.parse('2026-09-30T15:00:00Z')).missing.length));
+test('exact timestamp expiry is exclusive',()=>assert.ok(catalogReadiness({...catalog(),validUntil:'2026-09-30T03:00:00Z'},now).missing.length));
+test('future explicit offset timestamp accepted',()=>assert.equal(catalogReadiness({...catalog(),validUntil:'2026-10-01T00:00:00+09:00'},now).missing.length,0));
 test('valid leap day accepted',()=>assert.equal(c.parseCatalogInput({...catalog(),validUntil:'2028-02-29'}).validUntil,'2028-02-29'));
 for(const validUntil of ['2026-02-29','2026-02-30','2026-13-01','2026-09-31T01:00:00Z','2026-09-30T24:00:00Z','2026-09-30T03:00:00','tomorrow']) {
   test('rejects invalid calendar date '+validUntil,()=>rejects(()=>c.parseCatalogInput({...catalog(),validUntil})));
@@ -69,39 +72,39 @@ for(const landingUrl of ['javascript:alert(1)','http://shop.example.com','//shop
 }
 for(const quantity of [0,-1,1.1,Number.MAX_SAFE_INTEGER+1]) test('rejects invalid quantity '+quantity,()=>rejects(()=>c.parseOfferInput({...offer(),quantity})));
 test('rejects negative catalog version',()=>rejects(()=>c.parseOfferInput({...offer(),catalogVersion:-1})));
-test('missing catalog blocks offer',()=>assert.ok(c.offerReadiness(offer(),null,now).missing.length));
-test('wrong catalog reference blocks offer',()=>assert.ok(c.offerReadiness({...offer(),catalogId:'other'},reference(),now).missing.length));
-test('stale catalog version blocks offer',()=>assert.ok(c.offerReadiness({...offer(),catalogVersion:2},reference(),now).missing.length));
-test('insufficient inventory blocks offer',()=>assert.ok(c.offerReadiness({...offer(),quantity:11},reference(),now).missing.length));
-test('exact inventory boundary is accepted',()=>assert.equal(c.offerReadiness({...offer(),quantity:10},reference(),now).missing.length,0));
-test('price approval is required',()=>assert.ok(c.offerReadiness({...offer(),priceApproved:false},reference(),now).missing.length));
-test('expired catalog blocks dependent offer',()=>assert.ok(c.offerReadiness(offer(),reference(),Date.parse('2026-10-01T00:00:00Z')).missing.length));
-test('offer negative contribution blocks readiness',()=>assert.ok(c.offerReadiness({...offer(),price:4000},reference(),now).missing.length));
-test('offer unknown price has unknown contribution',()=>assert.equal(c.offerReadiness({...offer(),price:null},reference(),now).unitContribution,null));
-test('missing need blocks readiness',()=>assert.ok(c.offerReadiness({...offer(),needId:''},reference(),now).missing.length));
-test('invalid evaluation clock fails closed',()=>rejects(()=>c.catalogReadiness(catalog(),NaN)));
+test('missing catalog blocks offer',()=>assert.ok(offerReadiness(offer(),null,now).missing.length));
+test('wrong catalog reference blocks offer',()=>assert.ok(offerReadiness({...offer(),catalogId:'other'},reference(),now).missing.length));
+test('stale catalog version blocks offer',()=>assert.ok(offerReadiness({...offer(),catalogVersion:2},reference(),now).missing.length));
+test('insufficient inventory blocks offer',()=>assert.ok(offerReadiness({...offer(),quantity:11},reference(),now).missing.length));
+test('exact inventory boundary is accepted',()=>assert.equal(offerReadiness({...offer(),quantity:10},reference(),now).missing.length,0));
+test('price approval is required',()=>assert.ok(offerReadiness({...offer(),priceApproved:false},reference(),now).missing.length));
+test('expired catalog blocks dependent offer',()=>assert.ok(offerReadiness(offer(),reference(),Date.parse('2026-10-01T00:00:00Z')).missing.length));
+test('offer negative contribution blocks readiness',()=>assert.ok(offerReadiness({...offer(),price:4000},reference(),now).missing.length));
+test('offer unknown price has unknown contribution',()=>assert.equal(offerReadiness({...offer(),price:null},reference(),now).unitContribution,null));
+test('missing need blocks readiness',()=>assert.ok(offerReadiness({...offer(),needId:''},reference(),now).missing.length));
+test('invalid evaluation clock fails closed',()=>rejects(()=>catalogReadiness(catalog(),NaN)));
 test('readiness does not mutate caller data',()=>{
-  const input=offer(), ref=reference(), before=JSON.stringify([input,ref]); c.offerReadiness(input,ref,now); assert.equal(JSON.stringify([input,ref]),before);
+  const input=offer(), ref=reference(), before=JSON.stringify([input,ref]); offerReadiness(input,ref,now); assert.equal(JSON.stringify([input,ref]),before);
 });
-test('large bundle amount overflow blocks offer readiness',()=>assert.ok(c.offerReadiness({...offer(),price:Number.MAX_SAFE_INTEGER,quantity:2},reference(),now).missing.length));
-test('combined cost overflow cannot produce a contribution',()=>assert.equal(c.catalogReadiness({...catalog(),unitCost:Number.MAX_SAFE_INTEGER,variableCost:1},now).unitContribution,null));
-test('invalid evaluation clock blocks offer',()=>rejects(()=>c.offerReadiness(offer(),reference(),Infinity)));
+test('large bundle amount overflow blocks offer readiness',()=>assert.ok(offerReadiness({...offer(),price:Number.MAX_SAFE_INTEGER,quantity:2},reference(),now).missing.length));
+test('combined cost overflow cannot produce a contribution',()=>assert.equal(catalogReadiness({...catalog(),unitCost:Number.MAX_SAFE_INTEGER,variableCost:1},now).unitContribution,null));
+test('invalid evaluation clock blocks offer',()=>rejects(()=>offerReadiness(offer(),reference(),Infinity)));
 test('offer consent must be a boolean',()=>rejects(()=>c.parseOfferInput({...offer(),priceApproved:'true'})));
 test('offer rejects missing numeric quantity represented as null',()=>rejects(()=>c.parseOfferInput({...offer(),quantity:null})));
 test('empty optional draft fields keep conservative defaults',()=>{
   const input=c.parseOfferInput({quantity:'',catalogVersion:'',landingUrl:''}); assert.equal(input.quantity,1); assert.equal(input.catalogVersion,0);
 });
-test('invalid direct readiness input is rejected',()=>rejects(()=>c.catalogReadiness({...catalog(),stock:-1},now)));
-test('unsafe direct offer readiness input is rejected',()=>rejects(()=>c.offerReadiness({...offer(),landingUrl:'javascript:alert(1)'},reference(),now)));
-test('cost tax basis excluded does not infer a tax rate',()=>assert.equal(c.catalogReadiness({...catalog(),taxBasis:'excluded'},now).unitContribution,5000));
+test('invalid direct readiness input is rejected',()=>rejects(()=>catalogReadiness({...catalog(),stock:-1},now)));
+test('unsafe direct offer readiness input is rejected',()=>rejects(()=>offerReadiness({...offer(),landingUrl:'javascript:alert(1)'},reference(),now)));
+test('cost tax basis excluded does not infer a tax rate',()=>assert.equal(catalogReadiness({...catalog(),taxBasis:'excluded'},now).unitContribution,5000));
 for(const validUntil of ['0999-01-01','2026-09-30T12:00:00+15:00','2026-09-30T12:00:00+14:01','2026-09-30T12:60:00Z']) {
   test('rejects invalid year or ISO offset '+validUntil,()=>rejects(()=>c.parseCatalogInput({...catalog(),validUntil})));
 }
 for(const field of ['fulfillment','refunds','title','sku']) {
-  test('missing '+field+' blocks preparation',()=>assert.ok(c.catalogReadiness({...catalog(),[field]:''},now).missing.length));
+  test('missing '+field+' blocks preparation',()=>assert.ok(catalogReadiness({...catalog(),[field]:''},now).missing.length));
 }
 for(const field of ['title','purchaseReason','landingUrl']) {
-  test('missing offer '+field+' blocks preparation',()=>assert.ok(c.offerReadiness({...offer(),[field]:''},reference(),now).missing.length));
+  test('missing offer '+field+' blocks preparation',()=>assert.ok(offerReadiness({...offer(),[field]:''},reference(),now).missing.length));
 }
 test('rejects whitespace evidence IDs',()=>rejects(()=>c.parseCatalogInput({...catalog(),factIds:['fact one']})));
 test('rejects control characters in product text',()=>rejects(()=>c.parseCatalogInput({...catalog(),title:'a\u0000b'})));

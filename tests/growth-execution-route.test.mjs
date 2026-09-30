@@ -18,15 +18,16 @@ const signal={title:'시장 근거',sourceUrl:'https://example.com/market',obser
 check((await gp({action:'save_signal',id:'s',input:signal})).status===200,'signal fixture');
 check((await gp({action:'save_need',id:'n',input:{title:'니즈 가설',situation:'상황',desiredOutcome:'원하는 결과',alternative:'대안',barrier:'장애물',counterEvidence:'반례',signalIds:['s'],deadline:'2099-01-01',nextAction:'검증',assignee:'검토 담당'}})).status===200,'need fixture');
 await server.recordStatement(owner,'brand_fact','f',{id:'f',brandId:'brand',key:'product',value:'상품',status:'confirmed',source:'운영 확인',version:1,verifiedAt:'2026-01-01',validUntil:'2099-01-01'},'brand').run();
-check((await gp({action:'save_catalog',id:'p',input:{sku:'SKU',title:'상품',price:100,unitCost:20,variableCost:10,stock:20,currency:'KRW',taxBasis:'included',fulfillment:'배송 조건',refunds:'반품 조건',rightsConfirmed:true,factIds:['f'],validUntil:'2099-01-01'}})).status===200,'product fixture');
+check((await gp({action:'save_catalog',id:'p',input:{sku:'SKU',title:'상품',price:100,unitCost:20,variableCost:10,stock:20,stockUnit:'piece',currency:'KRW',taxBasis:'included',fulfillment:'배송 조건',refunds:'반품 조건',rightsConfirmed:true,factIds:['f'],validUntil:'2099-01-01'}})).status===200,'product fixture');
 check((await gp({action:'save_offer',id:'o',input:{title:'오퍼',catalogId:'p',catalogVersion:1,needId:'n',price:100,quantity:1,landingUrl:'https://example.com/buy',purchaseReason:'구매 이유',priceApproved:true}})).status===200,'offer fixture');
 const mission={title:'판매 미션',offerId:'o',offerVersion:1,assignee:'판매 담당',deadline:'2099-01-01',nextAction:'판매 준비',channel:'storefront',budget:60,lossLimit:4,stopRule:'한도 도달',fulfillmentOwner:'배송 담당'};
 async function makeMission(id,input=mission){check((await gp({action:'save_mission',id,input})).status===200,'mission fixture '+id);check((await gp({action:'queue_mission',id,expectedVersion:1})).status===200,'staged fixture '+id);}
-await makeMission('m');
+
 
 const created=await call(operations,{action:'create_inventory',input:{sku:'SKU',locationId:'store',unit:'piece',onHand:10},observedAt:before,evidenceRef:'stock-evidence'});
 check(created.status===200,'inventory fixture '+JSON.stringify(created));
 const inventoryId=created.body.inventory[0].id;
+await makeMission('m');
 const input={missionId:'m',missionVersion:2,authorityId:'auth',authorityVersion:1,inventoryId,inventoryVersion:1,quantity:3,recoveryOwner:'운영 담당',recoveryDueAt:after,evidenceRef:'prepare-evidence'};
 const prep={action:'prepare_execution',input};
 check((await get({})).status===401,'anonymous denied');

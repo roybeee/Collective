@@ -9,7 +9,7 @@ test('성장 공유재고·실제 주문 품목·출고·정산 재조회',async
   const sr=await page.request.post('/api/stores',{data:{action:'save_store',brandId:'ofd',data:{name:'이행 합성 지점',address:'합성 주소',tradeArea:'residential',goal:'품목 이행'}}});expect(sr.status()).toBe(200);const {id:storeId}=await sr.json();
   const title=`주문 재고 ${info.project.name}`,cr=await page.request.post('/api/action',{data:{action:'save_campaign',data:{brandId:'ofd',storeId,title,goal:'합성 이행 검증'}}});expect(cr.status()).toBe(200);const {id:campaignId}=await cr.json();
   const save=async(action:string,id:string,input:unknown)=>{const r=await page.request.post('/api/growth',{data:{action,id,input,campaignId,campaignVersion:1,expectedVersion:0}});expect(r.status(),await r.text()).toBe(200)};
-  await save('save_catalog','ops-catalog',{...emptyCatalogInput(),title:'합성 상품',sku:'OPS-SKU'});
+  await save('save_catalog','ops-catalog',{...emptyCatalogInput(),title:'합성 상품',sku:'OPS-SKU',stockUnit:'piece'});
   await save('save_offer','ops-offer',{...emptyOfferInput(),title:'합성 오퍼',catalogId:'ops-catalog',catalogVersion:1});
   await save('save_mission','ops-mission',{...emptyMissionInput(),title:'이행 연결 미션',offerId:'ops-offer',offerVersion:1});
   const or=await page.request.post('/api/store-operations',{data:{action:'save_order',storeId,data:{source:'direct',orderNumber:'OPS-ORDER',orderDate:new Date().toISOString().slice(0,10),mode:'delivery',status:'paid',paidAmount:10000,refundAmount:0,channel:'unknown'}}});expect(or.status(),await or.text()).toBe(200);

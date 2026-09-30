@@ -27,6 +27,8 @@ async function stockSnapshot(owner:string,c:Campaign,catalog:SourcingCatalog,uni
  const items=matched(await inventoryRows(owner,c),catalog.input.sku),refs=items.map(i=>({id:i.id,version:i.version}));
  const unknown=(reason:string):SourcingInventory=>({status:'unknown',unit,onHand:null,reserved:null,available:null,shortage:null,items:refs,reason});
  if(!items.length)return unknown('현재 매장·SKU의 재고 기록 없음');
+ if(items.length!==1)return unknown('동일 SKU의 공유 재고가 중복되어 대사 필요');
+ if(items[0].input.locationId!==c.storeId)return unknown('공유 재고 위치와 현재 지점 불일치');
  if(items.some(i=>i.input.unit!==unit))return unknown('견적과 재고 수량 단위 불일치: 자동 환산하지 않음');
  let onHand=0,reserved=0;
  for(const item of items){

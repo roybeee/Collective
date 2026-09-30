@@ -35,6 +35,7 @@ async function prepare(who:Actor,c:Campaign,b:Record<string,unknown>){
  const existing=await rows<ExecutionIntent>(who.owner,kinds.intent,c);
  if((await rows<ExecutionReceipt>(who.owner,kinds.receipt,c,5000)).length>=5000)throw new ApiError(409,'실행 증빙 한도에 도달했습니다.');
  if(existing.length>=1000)throw new ApiError(409,'판매 실행은 캠페인별 1000개까지 준비할 수 있습니다.');
+ const selectedInventory=await readRecord<InventoryRow>(who.owner,'growth_inventory_item',input.inventoryId);if(selectedInventory.brandId!==c.brandId||selectedInventory.storeId!==c.storeId)throw new ApiError(404,'현재 브랜드·지점의 재고를 선택하세요.');
  const budget=await prepareMissionCommitment(who,c,{authorityId:input.authorityId,expectedVersion:input.authorityVersion,missionId:input.missionId,missionVersion:input.missionVersion});
  for(const snapshot of [budget.mission.input,budget.authority.input])for(const value of Object.values(snapshot))if(typeof value==='string'&&value)executionSafeText(value,'연결 스냅샷',2000);
  const at=stamp(),reservationId='execution-'+(await storefrontDigest([c.id,input.missionId])).slice(0,32);

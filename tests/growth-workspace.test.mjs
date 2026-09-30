@@ -4,9 +4,11 @@ const {load,sql}=testRuntime(async()=>{throw Error('Growth planning must not tra
 const server=await load('lib/server.ts');
 const route=await load('app/api/growth/route.ts');
 let passed=0;const check=(v,n)=>{assert.ok(v,n);passed++};
-const owner='growth-owner',c={id:'c',brandId:'b',version:1,status:'active'};
+const owner='growth-owner',c={id:'c',brandId:'b',version:1,status:'active',storeId:'fixture-store'};
 const h={'oai-authenticated-user-id':owner,origin:'https://agency.test'};
 await server.recordStatement(owner,'campaign','c',c).run();
+await server.recordStatement(owner,'store','fixture-store',{id:'fixture-store',brandId:'b'}).run();
+await server.recordStatement(owner,'growth_inventory_item','fixture-stock',{id:'fixture-stock',brandId:'b',storeId:'fixture-store',version:0,input:{sku:'SYNTHETIC',locationId:'fixture-store',unit:'piece',onHand:20}},'fixture-store').run();
 await server.recordStatement(owner,'campaign','other',{...c,id:'other',brandId:'other-brand'}).run();
 const unpack=async r=>({status:r.status,body:await r.json()});
 const get=(headers=h)=>route.GET(new Request('https://agency.test/api/growth?campaignId=c',{headers})).then(unpack);
@@ -24,7 +26,7 @@ check((await post({...s,campaignId:'other',expectedVersion:1})).status===404,'cr
 const need={title:'선물 준비가 번거로운 고객',situation:'공연 방문 전',desiredOutcome:'빠른 선물 준비',alternative:'상품 개별 구매',barrier:'선택이 어렵다',counterEvidence:'묶음 선호가 실제 결제로 이어지지 않을 수 있다',signalIds:['signal-1'],deadline:'2099-01-01',nextAction:'선물 오퍼 비교',assignee:'판매 담당'};
 check((await post({action:'save_need',id:'need-1',input:{...need,signalIds:['absent']}})).status===404,'missing evidence rejected');
 check((await post({action:'save_need',id:'need-1',input:need})).status===200,'need saved');
-const catalog={sku:'SYNTHETIC',title:'합성 상품',price:10000,unitCost:3000,variableCost:1000,stock:10,currency:'KRW',taxBasis:'included',fulfillment:'영업일 기준 발송',refunds:'미개봉 반품 안내',rightsConfirmed:true,factIds:['f'],validUntil:'2099-01-01'};
+const catalog={sku:'SYNTHETIC',title:'합성 상품',price:10000,unitCost:3000,variableCost:1000,stock:10,stockUnit:'piece',currency:'KRW',taxBasis:'included',fulfillment:'영업일 기준 발송',refunds:'미개봉 반품 안내',rightsConfirmed:true,factIds:['f'],validUntil:'2099-01-01'};
 check((await post({action:'save_catalog',id:'cat-1',input:catalog})).status===409,'unconfirmed fact denied');
 await server.recordStatement(owner,'brand_fact','f',{id:'f',brandId:'b',key:'product',value:'합성 상품',source:'운영자 확인',status:'confirmed',version:1,verifiedAt:'2026-01-01',validUntil:'2099-01-01'},'b').run();
 check((await post({action:'save_catalog',id:'cat-1',input:catalog})).status===200,'catalog saved');
@@ -35,7 +37,7 @@ check((await post({action:'save_mission',id:'mission-1',input:mission})).status=
 r=await get();check(r.body.missions[0].readiness.missing.length===0,'linked readiness');
 check(r.body.missions[0].status==='draft'&&!r.body.mayExecute,'ready planning is not execution');
 check(r.body.needs[0].readiness.evidenceLevel==='hypothesis','need remains hypothesis');
-check(r.body.summary.salesStatus==='not_measured','no invented sales');
+check(r.body.summary.salesStatus==='ledger_only'&&r.body.business.orders===0&&r.body.business.cash===null,'no invented sales');
 await server.recordStatement(owner,'brand_fact','f',{id:'f',brandId:'b',key:'product',value:'상품 변경',source:'운영자 확인',status:'confirmed',version:2,verifiedAt:'2026-01-01',validUntil:'2099-01-01'},'b').run();
 r=await get();check(r.body.missions[0].readiness.missing.length>0,'fact revision invalidates downstream mission');
 check((await post({action:'queue_mission',id:'mission-1',expectedVersion:1})).status===409,'cannot stage stale chain');
