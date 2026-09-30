@@ -53,7 +53,8 @@
 - 다음: A3 run → A8-1 → A8-2 → A8-3 → B4 2부 → B3([순서](LANES.ko.md#레인-a-claude-a-세션)).
 
 ## 레인 R (Claude 트랙 R 세션 — 가맹 모집)
-갱신: 2026-09-27 15:40 UTC
+갱신: 2026-09-27 16:25 UTC
+- R15a-3(이 PR): 워크스페이스 할 일 '행사 뒤 48시간 연락'(`event_followup`, 행사 탭으로 이동). `lib/franchise-tasks.ts` `FranchiseNextTask`만 넓혔고 레인 A 파일은 바꾸지 않았다. 새 스위치 없음(`r_franchise` 뒤). 검사 passed · mocked(franchise-workspace 53, franchise-workspace-route 36).
 - R7a 공공 벤치마크 merged(#231 `36f169f`, 병렬 `lane-r-r7a` 세션): 가맹 모집 '벤치마크' 탭(V9), 사람이 버튼으로 적재·토큰 0, 키는 브랜드별 암호문(키 없음 409·외부 호출 0). 테스트 passed · mocked(187/187), 로컬 E2E 14/14. DATA-PROCESSING #232는 레인 A 검토 통과·병합(`2da58e5`). not_run: 게시, real 적재 1회(대표 키 저장 뒤), API 필드 이름·단위 실측 확인(틀리면 SCHEMA_MISMATCH로 저장 0).
 - R15b 결정론 모집 템플릿: R15b-1 merged(#230 `46865e0`, 순수 모듈 `lib/franchise-qr.ts`·`lib/franchise-cards.ts`, 런타임 연결 없음, 검사 passed · mocked(franchise-qr 18, franchise-cards 48, 변이 21/22)). R15b-2(#234, 자료 유형 `card_bundle`·PNG 내려받기)는 CI 뒤 병합한다.
 - 진행 중: R9a 정보성 너처링 초안. R9a-1 merged(#235 `d71d85a`): 순수 모듈이다(목적·분류·매체, 자리표시 템플릿 검사, 광고성 고정 요소, R2 판정, 허용 입력만 쓰는 모델 제출 조립, 요청당 1회 발송 기록 판정). 검사 passed · mocked(38, 변이 13/13). R9a-2(이 PR)는 HERMES 초안 1회(모델에 리드 정보 0건), 템플릿 저장·폐기, 리드 정보 요청·보낸 뒤 발송 기록(요청당 1회, 광고성 409), '너처링' 탭과 리드 상세 화면이다. 새 kind는 `franchise_message_template`·`franchise_nurture_draft`, 새 스위치는 없다(`r_franchise` 뒤). 검사 passed · mocked(franchise-nurture-route 34, 연결 변이 14/14). 로컬 E2E passed · real Chromium·로컬 D1 / mocked 인증(2/2). DATA-PROCESSING 짝 PR #238은 레인 A 검토 통과(조건: 3.5 정보 요청 행에 실제 요청만 기록·감사 확인 문장, 반영함).
