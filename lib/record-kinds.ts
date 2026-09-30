@@ -23,6 +23,10 @@ export type SubjectErasure='delete'|'minimize'|'legal_hold'|'none';
 export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;retention?:RetentionPolicy;subjectErasure?:SubjectErasure;description:string};
 
 export const recordKinds:readonly RecordKind[]=[
+ {kind:'growth_decision',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 일일 결정과 서버 집계 동결 근거. 실행 권한 없음'},
+ {kind:'growth_decision_history',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'일일 결정의 추가 전용 변경 이력'},
+ {kind:'growth_lesson',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 운영 교훈 후보·시험·재사용 검토. 자동 규칙 승격 없음'},
+ {kind:'growth_lesson_history',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'운영 교훈의 추가 전용 변경 이력'},
  {kind:'growth_authority',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 계정·기간·행동별 로컬 위임 계획. 실제 집행 권한과 분리'},
  {kind:'growth_settlement',parent:'store',campaignDeletion:'retain',links:['data_campaign'],blocksDeletion:true,purge:'keep',description:'매출과 구분한 지급예정·실입금 운영자 증빙'},
  {kind:'growth_settlement_history',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'정산 증빙 정정 전후의 추가 전용 이력'},
