@@ -1,3 +1,4 @@
+import {requireGrowthRunning} from './growth-stop-server';
 import {ApiError,runtime,readRecord,listRecords,recordStatement,eventStatement,database,acquireLock,releaseLock,stamp,uid,str,num,type Actor} from './server';
 import {openRecordSecret,sealRecordSecret} from './credential-crypto-server';
 import {campaignBudget,isRecruitmentObjective,type Artifact,type Brand,type Campaign} from './agency';
@@ -286,6 +287,7 @@ export async function approvalInputs(owner:string,campaign:Campaign,p:Publicatio
  return {credential,limits};
 }
 export async function approvePublication(owner:string,campaign:Campaign,p:Publication,input:Record<string,unknown>,who:Who,origin:string){
+ await requireGrowthRunning(owner);
  // 보관 캠페인은 발행을 승인하지 않는다(409, 보관 해제 후 다시).
  assertNotArchived(campaign);
  const external=p.mediaMode!=='auto';
@@ -306,6 +308,7 @@ export async function approvePublication(owner:string,campaign:Campaign,p:Public
 }
 // Called with the owner mutation lock. Persist the attempt BEFORE any publish call.
 export async function reservePublication(owner:string,campaign:Campaign,p:Publication,origin:string){
+ await requireGrowthRunning(owner);
  assertNotArchived(campaign);
  if(p.status!=='approved'||p.attemptedAt)throw new ApiError(409,'승인된 미실행 항목만 접수할 수 있습니다. 재전송하지 마세요.');
  const {credential,limits}=await approvalInputs(owner,campaign,p);

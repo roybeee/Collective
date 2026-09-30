@@ -1,4 +1,5 @@
 import type {Campaign} from './agency';
+import {requireGrowthRunning} from './growth-stop-server';
 import type {LearningRule} from './learning';
 import type {MetaLearningDecision} from './meta-learning';
 import {experimentDesignInput,type ExperimentDesign,type ExperimentUnit,type ExperimentObservation,type ExperimentResult,type ExperimentRule} from './meta-experiment';
@@ -90,6 +91,7 @@ async function ruleAction(owner:string,actorId:string,c:Campaign,d:ExperimentDes
  await database().batch([recordStatement(owner,'learning_rule',id,rule,c.brandId),recordStatement(owner,'meta_experiment_rule',candidate.id,{...candidate,status:'approved',learningRuleId:id,approvedAt:at,approvedBy:actorId},c.id)]);return {duplicate:false};
 }
 export async function mutateMetaExperiment(owner:string,actorId:string,c:Campaign,b:Record<string,unknown>){
+ if(b.action==='approve_rule')await requireGrowthRunning(owner);
  if(c.status==='archived'||b.confirmed!==true)throw new ApiError(409,'활성 캠페인에서 작업 내용을 확인하세요.');
  if(b.action==='design')return createDesign(owner,actorId,c,b);
  const d=await designFor(owner,c,b.designId);
