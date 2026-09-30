@@ -11,6 +11,7 @@ const JOBS='#jobs';
 // 작업물·실행·회의·성과를 앞에 둔다. 이 넷 중 하나라도 있으면 캠페인 제목을 입력해야 삭제할 수 있다.
 const WORK_KINDS=['artifact',JOBS,'team_meeting','metric'];
 const deletedGroups:readonly Group[]=[
+ {label:'사업목표·리뷰',kinds:['growth_target','growth_target_history','growth_target_review','growth_target_request']},
  {label:'성장·판매 계획',kinds:['growth_signal','growth_need','growth_catalog','growth_offer','growth_mission','growth_history','growth_authority','growth_demand','growth_demand_history','growth_journey','growth_journey_history','growth_decision','growth_decision_history','growth_lesson','growth_lesson_history']},
  {label:'작업물',kinds:['artifact']},{label:'실행',kinds:[JOBS]},{label:'회의',kinds:['team_meeting']},{label:'성과',kinds:['metric']},
  {label:'작업물 이전 버전',kinds:['history']},{label:'온라인 채점 결과',kinds:['grading']},{label:'바이럴 실험',kinds:['viral_experiment']},
