@@ -25,6 +25,7 @@
 - 후속 G2-30: `codex/growth2-reorder`, `/Users/roybee/Collective-reorder`. main `96402c7`에서 시작해 소싱 검증본 `4095478`을 의존 통합했다. 서버는 신규 재발주 API/도메인과 소싱 재고 조회 최소 export, UI는 신규 패널/E2E, root는 연결·kind/삭제보존·문서·통합을 소유한다. 검토 가정만 저장하고 기존 원장/발주/현금은 변경하지 않는다. #275/276 병합 뒤 최신 main과 통합 검증한다.
 
 - 후속 공유 재고 준비도: `codex/growth2-stock-readiness`, `/Users/roybee/Collective-stock-readiness`, main `e49815c`에서 소싱 검증본 `3af681f` 의존 통합. 서버는 단일 원장 조회·상품 단위·준비도·새 예약/주문연결 가드와 API 회귀, UI는 단위/현재 원장 표시와 E2E, root는 통합·문서·게시를 소유한다. 과거 수동 stock은 참고로만 사용하며 기존 주문의 부족/미확인 수량 기록·대사·해제는 유지한다. 재발주 증분 통합 후 상품 단위도 해당 계산에 재검증한다.
+- 자연 유입 실행 연결: `codex/growth2-organic-adapter`, `/Users/roybee/Collective-organic-adapter`, 검증된 stock/reorder 통합 `841bcef` 의존. server는 growth-publication 도메인·API·원자 준비·동기화·기존 receipt/대사/직접 재고해제 최소 가드, UI는 독립 발행 연결 패널·기존 실행 패널 잠금·E2E, root는 기존 Buffer reserve/execute 훅·registry·문서·통합/게시를 소유한다. 관리자 1:1 연결 후 기존 명시 발행 경로만 사용, 실제 외부0. 독립 리뷰가 권한·예약·unknown·해제 우회를 확인한다. #278 merged 뒤 최신 main 통합.
 - 기존 Meta 종료 판정은 M0~M6 한정으로 바로잡는다. 외부 집행 권한은 상품 준비 상태나 로컬 미션 저장으로 부여하지 않는다. 실제 계정·구매·고객 발송 결과를 개발 검사로 대체하지 않는다.
 
 ### 2026-09-28 성장2 계속 개발 · 첫 몰 mapdal.kr

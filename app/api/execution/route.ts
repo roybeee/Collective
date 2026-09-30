@@ -1,4 +1,5 @@
 import {requireGrowthRunning} from '@/lib/growth-stop-server';
+import {assertGrowthPublicationDispatch} from '@/lib/growth-publication-server';
 import {identity,requireAdminActor,secureMutation,readRecord,json,failure,str,stamp,ApiError,acquireLock,releaseLock,type Actor} from '@/lib/server';
 import {openRecordSecret} from '@/lib/credential-crypto-server';
 import {authEnv} from '@/lib/auth-session';
@@ -52,7 +53,7 @@ export async function POST(req:Request){let owner='',lock='';try{
   const {pending,token}=await reservePublication(owner,campaign,p,origin);
   await releaseLock(owner,lock);lock='';
   let result:Publication;
-  try{await requireGrowthRunning(owner)}catch{return json(await saveProviderResult(owner,campaign,pending,{...pending,status:'failed',error:'전송 직전 전역 실행 상태를 확인할 수 없거나 중단되었습니다. Buffer 요청을 보내지 않았습니다.'}));}
+  try{await requireGrowthRunning(owner);await assertGrowthPublicationDispatch(owner,campaign,pending)}catch{return json(await saveProviderResult(owner,campaign,pending,{...pending,status:'failed',error:'전송 직전 실행 상태·위임·예약을 확인할 수 없거나 중단되었습니다. Buffer 요청을 보내지 않았습니다.'}));}
   try{const remote=await submitBuffer(token,{channelId:pending.channelId!,text:pending.caption,url:pending.mediaUrl,dueAt:pending.scheduledAt});result={...pending,status:providerPublicationStatus(remote.status),providerId:remote.id,providerStatus:remote.status}}
   catch{result={...pending,status:'uncertain',error:'접수 여부를 확인하지 못했습니다. Buffer에서 확인하고 자동 재전송하지 마세요.'}}
   return json(await saveProviderResult(owner,campaign,pending,result));

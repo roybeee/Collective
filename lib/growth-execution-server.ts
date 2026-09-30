@@ -1,3 +1,4 @@
+import {assertGrowthPublicationManualReceipt,growthPublicationLinks} from './growth-publication-server';
 import {requireGrowthRunning} from './growth-stop-server';
 import type {Campaign} from './agency';
 import {parseExecutionInput,parseExecutionReceipt,executionSafeText,executionId,canRecordExecution,type ExecutionInput,type ExecutionState,type ExecutionReceiptInput} from './growth-execution';
@@ -10,7 +11,7 @@ import {ApiError,database,readRecord,recordStatement,stamp,type Actor} from './s
 import {prepareReconciliation,reconciliationRows} from './growth-reconciliation-server';
 
 export type ExecutionIntent={id:string;brandId:string;campaignId:string;campaignVersion:number;storeId:string;version:number;input:ExecutionInput;state:ExecutionState;requestDigest:string;commitmentId:string;reservationId:string;currentMissionVersion:number;source:'operator_attested';createdAt:string;createdBy:string;updatedAt:string;snapshot:{mission:MissionInput;authority:GrowthAuthorityRecord['input'];inventory:InventoryRow['input']}};
-export type ExecutionReceipt={id:string;intentId:string;intentVersion:number;campaignId:string;brandId:string;state:ExecutionState;input:ExecutionReceiptInput|null;requestDigest:string;source:'operator_attested';recordedAt:string;recordedBy:string};
+export type ExecutionReceipt={id:string;intentId:string;intentVersion:number;campaignId:string;brandId:string;state:ExecutionState;input:ExecutionReceiptInput|null;requestDigest:string;source:'operator_attested'|'buffer_publication';recordedAt:string;recordedBy:string};
 const kinds={intent:'growth_action_intent',receipt:'growth_action_receipt'};
 async function rows<T>(owner:string,kind:string,c:Campaign,limit=1000){
  const result=await database().prepare('SELECT data FROM records WHERE owner=? AND kind=? AND parent_id=? ORDER BY updated_at DESC LIMIT ?').bind(owner,kind,c.id,limit+1).all<{data:string}>();
@@ -21,9 +22,9 @@ async function optional<T>(owner:string,kind:string,id:string){try{return await 
 function scope(row:{campaignId:string;brandId:string},c:Campaign){if(row.campaignId!==c.id||row.brandId!==c.brandId)throw new ApiError(404,'현재 캠페인의 실행 기록을 찾지 못했습니다.')}
 function insert<T extends {id:string}>(who:Actor,kind:string,row:T,c:Campaign){return database().prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').bind(`${who.owner}:${kind}:${row.id}`,who.owner,kind,c.id,JSON.stringify(row),stamp())}
 export async function growthExecutionView(who:Actor,c:Campaign){
- const [intents,receipts,workspace,authority,operations,reconciliations]=await Promise.all([rows<ExecutionIntent>(who.owner,kinds.intent,c),rows<ExecutionReceipt>(who.owner,kinds.receipt,c,5000),growthView(who.owner,c,who.role!=='member'),growthAuthorityView(who,c),growthOperationsView(who,c),reconciliationRows(who.owner,c)]);
+ const [intents,receipts,workspace,authority,operations,reconciliations,publicationLinks]=await Promise.all([rows<ExecutionIntent>(who.owner,kinds.intent,c),rows<ExecutionReceipt>(who.owner,kinds.receipt,c,5000),growthView(who.owner,c,who.role!=='member'),growthAuthorityView(who,c),growthOperationsView(who,c),reconciliationRows(who.owner,c),growthPublicationLinks(who.owner,c)]);
  for(const row of [...intents,...receipts])scope(row,c);
- return {intents,receipts,commitments:authority.commitments,reconciliations,missions:workspace.missions,authorities:authority.authorities,inventory:operations.inventory,campaignVersion:c.version,canPrepare:who.role!=='member'&&c.status!=='archived'&&Boolean(c.storeId),canRecord:who.role!=='member',mayExecute:false as const};
+ return {intents:intents.map(i=>({...i,publicationLinkId:publicationLinks.find(l=>l.intentId===i.id)?.id??null})),receipts,commitments:authority.commitments,reconciliations,missions:workspace.missions,authorities:authority.authorities,inventory:operations.inventory,campaignVersion:c.version,canPrepare:who.role!=='member'&&c.status!=='archived'&&Boolean(c.storeId),canRecord:who.role!=='member',mayExecute:false as const};
 }
 async function prepare(who:Actor,c:Campaign,b:Record<string,unknown>){
  await requireGrowthRunning(who.owner);
@@ -49,6 +50,7 @@ async function prepare(who:Actor,c:Campaign,b:Record<string,unknown>){
 }
 async function recordReceipt(who:Actor,c:Campaign,b:Record<string,unknown>){
  const id=executionId(b.id),receiptId=executionId(b.receiptId),input=parseExecutionReceipt(b.input),old=await readRecord<ExecutionIntent>(who.owner,kinds.intent,id);scope(old,c);
+ await assertGrowthPublicationManualReceipt(who.owner,c,old);
  const digest=await storefrontDigest({id,receiptId,input,expectedVersion:b.expectedVersion}),key=`${id}:${receiptId}`,existing=await optional<ExecutionReceipt>(who.owner,kinds.receipt,key);
  if(existing){scope(existing,c);if(existing.requestDigest!==digest)throw new ApiError(409,'같은 실행 증빙 ID의 내용이 다릅니다.');return {...await growthExecutionView(who,c),duplicate:true}}
  if(b.expectedVersion!==old.version)throw new ApiError(409,'실행 확인 판이 변경되었습니다. 최신 기록을 확인하세요.');
