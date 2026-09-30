@@ -9,6 +9,7 @@ import {catalogStocks} from './growth-stock-readiness-server';
 import {liveSignalSource} from './growth-signal-source-server';
 import type {SignalSourceProvenance} from './growth-signal-source';
 import {growthBusiness} from './growth-business-server';
+import {buildOpportunityBoard} from './growth-opportunity-board';
 
 export type GrowthRecord<T>={id:string;campaignId:string;brandId:string;campaignVersion:number;version:number;input:T;updatedAt:string;updatedBy:string;requestDigest:string;sourceProvenance?:SignalSourceProvenance;factRefs?:FactRef[];evidenceRefs?:{id:string;version:number}[];status?:MissionState;receipt?:MissionReceipt};
 type Catalog=GrowthRecord<CatalogInput>;
@@ -41,7 +42,7 @@ async function workspace(owner:string,c:Campaign){
 }
 export async function growthView(owner:string,c:Campaign,canEdit:boolean){
  const [data,business]=await Promise.all([workspace(owner,c),growthBusiness(owner,c)]);
- return {...data,business,canEdit:canEdit&&c.status!=='archived',mayExecute:false as const,summary:{salesStatus:business.status,activeMissions:data.missions.filter(m=>['staged','unknown'].includes(m.status??'')).length,blockedMissions:data.missions.filter(m=>m.readiness.missing.length).length},links:{campaignId:c.id,brandId:c.brandId,storeId:c.storeId??null,orders:'store_order',meta:'meta_ads_plan'}};
+ return {...data,business,opportunityBoard:buildOpportunityBoard(data,Date.now()),canEdit:canEdit&&c.status!=='archived',mayExecute:false as const,summary:{salesStatus:business.status,activeMissions:data.missions.filter(m=>['staged','unknown'].includes(m.status??'')).length,blockedMissions:data.missions.filter(m=>m.readiness.missing.length).length},links:{campaignId:c.id,brandId:c.brandId,storeId:c.storeId??null,orders:'store_order',meta:'meta_ads_plan'}};
 }
 function entityFor(action:unknown):Entity{
  const entity=typeof action==='string'&&action.startsWith('save_')?action.slice(5):'';

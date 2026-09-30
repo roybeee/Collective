@@ -140,6 +140,15 @@
 - 전체276/276 suites·16,233 assertions passed(외부 mocked). 전용 domain24/API39, 기존 market50/workspace37/decisions56, kind53 passed(real pure/memory SQLite, 인증 mocked). 최종 타입·빌드·프롬프트22 passed, lint 기준선70/39 유지, staged gitleaks54KB 유출0. 독립 리뷰 HIGH/MED 잔여0.
 - 신규2+기존growth-workspace4 E2E6 passed(real local D1/Archive API/Chromium). 실제 저장 후 응답 유실만 mocked하여 동일UUID 복구·구판 충돌/입력 보존·새판 재가져오기·이전held/현재current·수정 잠금·모바일을 검증했다. 초기E2E의중첩label exact locator실패는combobox role locator로수정했고최종통과했다. 외부 수집·모델·발송0, 원격 CI·게시 전이며 전체 원안 완료가 아니다.
 
+### 고객 기회·상품·미션과 일정 연결 (2026-09-30 · Codex)
+갱신: 2026-09-30 13:07 UTC
+
+- #280 관측은 CI4개 passed 뒤 main `6c0c54f`로 merged. #281 확정 시장자료 가져오기 `230a1a6`는 검증/커밋/푸시하고 main 기준 원격 CI 중이다. 그 검증 소스를 `codex/growth2-opportunity-board`에 통합해 [G2-07/25 연결 보드](GROWTH-2-OPPORTUNITY-BOARD.ko.md)를 구현한다.
+- 기존 성장 조회의 현재 준비도를 받아 고객 기회당 상품·오퍼·미션을 묶고 각각의 기한·다음 행동·담당·보류·결과 불명을 표시한다. 일정은 기회/미션 ID당1건이며 지난 기한→오늘→예정→미확인 순서다. 매출 예측이나 자동 집행 순위로 주장하지 않는다.
+- 실제 기존 기록을 여는 동작은 ID/선택 판을 고정하고 미저장 입력·저장 중·오래된 조회에서는 잠근다. 종료 미션과 기존 활성수 의미를 보존한다. 같은 대상을 다시 열어도 정확한 기록을 선택하고 명시적 변경 취소로 이동 잠금을 해제한다.
+- 전체277/277 suites·16,263 assertions passed(외부 mocked). 전용 순수30·기존workspace37 passed. 최종 타입·빌드·프롬프트22 passed, lint 기존70/39 유지, staged gitleaks46KB 유출0. 독립 도메인/UI 읽기 리뷰 HIGH/MED0.
+- 신규2+기존workspace4 E2E6 passed(real local D1/API/Chromium, GET실패503만 mocked): 다중 오퍼 ready/held·unknown/closed·개별 기한·미확인 일정·정확 기록/A→B→A·dirty 취소·stale·모바일 검증. 외부0, 원격 CI·게시 전이며 전체 원안은 미완료다.
+
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
 - 현재 운영: #279까지 `6f84979fd1ddb0864053173ef88059a9747b09f7`, Sites77, tree `0a3af76a519b6f8b1a8da0b06f560e0fe0f8ce4a`. 2026-09-30 12:40 UTC merged/published/runtime-verified. 자연 유입 Buffer 연결·공유 예약 재사용·명시 상태 동기화 포함. 관측 증분은 게시 전이며 원안 전체는 미완료다. 실제 공급자 실행·정산·효과 검증 not_run. [릴리스](releases/2026-09-30-6f84979.md).
 - 성장1 필수 코드 게시 대기 0건. #216·#218·#219·#225는 통합 #244로 병합·게시했다. #206·#208·#210~#214·#217·#220·#223·#231·#235·#237과 관련 문서도 현재 제품에 포함된다.
