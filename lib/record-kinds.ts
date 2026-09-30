@@ -23,6 +23,10 @@ export type SubjectErasure='delete'|'minimize'|'legal_hold'|'none';
 export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;retention?:RetentionPolicy;subjectErasure?:SubjectErasure;description:string};
 
 export const recordKinds:readonly RecordKind[]=[
+ {kind:'growth_sourcing_candidate',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'단일 SKU 공급 후보의 견적 조건과 현재 판'},
+ {kind:'growth_sourcing_history',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'공급 후보 견적의 추가 전용 개정 이력'},
+ {kind:'growth_sourcing_comparison',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'소싱 비교 당시 견적·상품·재고의 불변 검토 스냅샷'},
+ {kind:'growth_sourcing_request',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'소싱 검토 저장 요청의 멱등 재시도 근거'},
  {kind:'growth_stop',parent:'none',campaignDeletion:'not_campaign_scoped',description:'소유자 작업공간 전체의 신규 실행·학습 적용 중단 상태'},
  {kind:'growth_stop_history',parent:'none',campaignDeletion:'not_campaign_scoped',description:'전역 중단·명시 재개 추가 전용 감사 이력'},
  {kind:'growth_reconciliation',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'성장 판매 예약의 운영자 확인 실비·손실 대사 및 무집행 취소 추가 전용 이력'},
