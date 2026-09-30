@@ -31,6 +31,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'growth_order_line',parent:'store',campaignDeletion:'retain',links:['data_campaign'],blocksDeletion:true,purge:'keep',description:'기존 주문 금액과 판매 미션·실물 품목 연결'},
  {kind:'growth_order_line_history',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'주문 품목 금액 배분 변경 이력'},
  {kind:'growth_commitment',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'성장2 로컬 미션 계획 예산 예약. 누적 한도 초기화 방지를 위해 보존. 외부 실행·결제 없음'},
+ {kind:'growth_demand',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 수요 캠페인의 단계·구매 경로·소재 권리·협업 계획. 외부 실행 없음'},
+ {kind:'growth_demand_history',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'수요 시퀀스 계획의 버전 변경 이력'},
  {kind:'growth_signal',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 시장 근거·출처·신선도(개인정보·외부 자동수집 없음)'},
  {kind:'growth_need',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 고객 상황·반증 가능한 니즈 가설·다음 행동'},
  {kind:'growth_catalog',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 캠페인 상품 준비·확정 사실 버전 참조'},
