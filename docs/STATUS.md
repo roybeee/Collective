@@ -2,6 +2,13 @@
 
 > 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
 
+## 성장2 원안 전체 재개 (2026-09-30 · Codex)
+
+- 대표 지시 “성장2의 원래 개발계획 전체를 개발 지속하라.” `codex/growth2-full`, 기준 `8cc2942`. 아래 과거 “성장2 필수 개발 종료”는 **Meta M0~M6에 한정된 판정**이다. 원안 전체는 미완료다.
+- [전체 원안 카드](GROWTH-2-PLAN.ko.md)를 기준으로 [첫 공통 기반](GROWTH-2-WORKSPACE.ko.md)을 구현했다. 상품·오퍼, 시장 근거·고객 기회, 판매 미션, 소유자 위임·누적 예산 예약, 캠페인 주문 장부 집계를 성장·판매 탭에서 연결한다. 로컬 준비 기록과 실제 매출·집행·효과 검증은 분리한다.
+- 로컬 검증 passed: 전체233/233 suites·14,504 assertions(외부 mocked), 최종 삭제 보호 회귀 추가 뒤 위임 API72 passed(real memory SQL, 외부 호출0), 전체 브라우저108 passed(real local Chromium/D1, 인증·외부 mocked). 타입·빌드·프롬프트22 passed, lint 기준선70 errors/39 warnings 유지. 신규 비즈니스 모듈7개 native V8 named function84/85(98.8%; line/branch 지표 아님). 코드/보안 재검토 HIGH/MEDIUM 잔여0(신규 변경 범위).
+- 이 증분은 아직 merged/published/runtime-verified가 아니다. 실제 외부 실행·정산·매출 효과는 not_run이며 원안 전체는 미완료다. 후속은 공유 재고·주문 품목/미션 연결·이행/환불/정산이다.
+
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
 - 현재 운영: #264 `dabf656c4249b6e7b446276909cd8d80305caa8d`, Sites67, tree `9a5be85f566d554b57db1d992c6004e7ef2fd408`. 2026-09-29 KST merged/published/runtime-verified. 성장2 필수 개발 종료 passed, 운영 인수 blocked, 실제 전송·집행·효과 검증 not_run. [릴리스](releases/2026-09-29-dabf656.md).
 - 성장1 필수 코드 게시 대기 0건. #216·#218·#219·#225는 통합 #244로 병합·게시했다. #206·#208·#210~#214·#217·#220·#223·#231·#235·#237과 관련 문서도 현재 제품에 포함된다.
