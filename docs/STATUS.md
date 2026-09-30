@@ -149,11 +149,21 @@
 - 전체277/277 suites·16,263 assertions passed(외부 mocked). 전용 순수30·기존workspace37 passed. 최종 타입·빌드·프롬프트22 passed, lint 기존70/39 유지, staged gitleaks46KB 유출0. 독립 도메인/UI 읽기 리뷰 HIGH/MED0.
 - 신규2+기존workspace4 E2E6 passed(real local D1/API/Chromium, GET실패503만 mocked): 다중 오퍼 ready/held·unknown/closed·개별 기한·미확인 일정·정확 기록/A→B→A·dirty 취소·stale·모바일 검증. 외부0, 원격 CI·게시 전이며 전체 원안은 미완료다.
 
+### 성장2 원안 잔여 15증분 (2026-09-30 · Claude 인계)
+갱신: 2026-09-30 18:30 UTC
+
+- 대표 지시 “성장계획 2 원안 전체 중 부분구현·미연결·개발 전 카드를 끝까지 개발 완료하라.” `claude/vibrant-bohr-gzwdmw`, 기준 main `2dd2f63`, Draft PR [#285](https://github.com/roybeee/Collective/pull/285). 소유·경계는 [레인 인계](LANES.ko.md)와 [잔여 대조](GROWTH-2-NEXT-GAPS.ko.md)를 따른다.
+- 구현(로컬 원장·조회·검토, 모두 `mayExecute:false`): 수요 단계↔발행 근거(G2-19/27/28), 상세페이지 수정안·수동 적용 영수증·롤백(G2-26/29/12a), 반품 원인→병목/결정/교훈(G2-30/29/31), 일반 판매 실험 사전등록·배정·SRM/오염·알파 소비(G2-08/09/10), 검증 확대 게이트→소유자 예약·대사(G2-12b/17b/11), 다SKU 번들(G2-26), 크리에이터·파트너 영수증(G2-27), CS 티켓·약속 기한(G2-30), 마케팅 후 공헌이익·현금(G2-32), 교훈 적용 계보(G2-13/31), 최적화 후보↔평가·실험(G2-15/16), 자사 데이터 신호 탐지(G2-06/07/25), 일일 자율 루프(G2-00/28), 판매처 pull cursor 어댑터(G2-04/18), 조건부 GEO·해외 파일럿·MMM 타당성(G2-20/21/22).
+- 새 스위치 `growth_daily_loop`·`storefront_pull` 기본 OFF. 워커 큐 `growth_daily`·`storefront_pull`은 스위치가 켜질 때만 동작한다. G2-23/24(외부 고객 서비스)는 사업 결정 전이라 구현하지 않았다.
+- 로컬 검증: 신규 route 15개 passed(real memory SQLite, 인증·외부 mocked), 신규 E2E 15 specs×모바일/데스크톱 passed(real local D1/API/Chromium), tsc·build passed, lint 기준선 70/39 유지. 전체 suite는 `graders.test.mjs` 시간 단정 1건만 failed(기준 main에서도 동일, Q 소유 파일이라 미수정).
+- merged/published/runtime-verified 아님. 실계정·외부 판매처 pull endpoint·실제 발행·지급·고객 응대·UCP·해외 출시·효과 검증은 not_run.
+
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
 - 현재 운영: #279까지 `6f84979fd1ddb0864053173ef88059a9747b09f7`, Sites77, tree `0a3af76a519b6f8b1a8da0b06f560e0fe0f8ce4a`. 2026-09-30 12:40 UTC merged/published/runtime-verified. 자연 유입 Buffer 연결·공유 예약 재사용·명시 상태 동기화 포함. 관측 증분은 게시 전이며 원안 전체는 미완료다. 실제 공급자 실행·정산·효과 검증 not_run. [릴리스](releases/2026-09-30-6f84979.md).
 - 성장1 필수 코드 게시 대기 0건. #216·#218·#219·#225는 통합 #244로 병합·게시했다. #206·#208·#210~#214·#217·#220·#223·#231·#235·#237과 관련 문서도 현재 제품에 포함된다.
 - 기존 대기열의 미병합·404 문구는 과거 상태다. R 신규 PR #234·#241·#242·#243 및 인터뷰 게시 문서 #236·#240은 별도 소유자 작업이며 성장1 필수 잔여가 아니다.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
+- #285 · 성장2(Claude 인계) · 보통 · `growth_daily_loop`=OFF, `storefront_pull`=OFF
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
 갱신: 2026-09-30 10:55 UTC (Codex: 3시간 집중 개발·#274 게시)
