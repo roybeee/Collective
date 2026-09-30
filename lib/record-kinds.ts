@@ -61,6 +61,7 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'growth_detected_signal',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'자사 장부(주문 속도·품절 위험·반품 원인·문의 반복·시즌 일정)에서 결정론적으로 감지한 검토 신호와 담당·기한·기각. 수요 예측 아님'},
  {kind:'growth_detected_signal_history',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'감지 신호 생성·확인·기각의 추가 전용 이력'},
  {kind:'growth_detected_signal_request',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'감지 신호 확인·기각 요청 멱등 재시도 근거'},
+ {kind:'growth_daily_run',parent:'none',campaignDeletion:'not_campaign_scoped',description:'KST 하루 1회 일일 운영 루프의 캠페인별 감지 결과·검토 안건(제안만). 실행·지출·발송 없음'},
  {kind:'growth_reorder_review',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'수요 가정·소싱 견적·공유 재고를 고정한 불변 재발주 검토'},
  {kind:'growth_reorder_request',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'재발주 검토 저장 요청 멱등 재시도 근거'},
  {kind:'growth_sourcing_candidate',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'단일 SKU 공급 후보의 견적 조건과 현재 판'},
