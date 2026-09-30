@@ -23,6 +23,10 @@ export type SubjectErasure='delete'|'minimize'|'legal_hold'|'none';
 export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;retention?:RetentionPolicy;subjectErasure?:SubjectErasure;description:string};
 
 export const recordKinds:readonly RecordKind[]=[
+ {kind:'growth_sourcing_candidate',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'단일 SKU 공급 후보의 견적 조건과 현재 판'},
+ {kind:'growth_sourcing_history',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'공급 후보 견적의 추가 전용 개정 이력'},
+ {kind:'growth_sourcing_comparison',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'소싱 비교 당시 견적·상품·재고의 불변 검토 스냅샷'},
+ {kind:'growth_sourcing_request',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'소싱 검토 저장 요청의 멱등 재시도 근거'},
  {kind:'growth_reconciliation',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'성장 판매 예약의 운영자 확인 실비·손실 대사 및 무집행 취소 추가 전용 이력'},
  {kind:'growth_target',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 잠정·확정 사업목표와 최신 변경 판. 실행 권한 없음'},
  {kind:'growth_target_history',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'사업목표 개정 이유와 이전 판의 추가 전용 이력'},
