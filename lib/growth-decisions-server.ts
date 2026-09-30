@@ -41,6 +41,7 @@ function missionLineage(mission:Workspace['missions'][number],c:Campaign,w:Works
   if(!need||need.campaignVersion!==c.version||(captured&&captured.version!==need.version))missing.push('고객 기회 변경 후 학습 근거 재검토');
   if(need)for(const id of need.input.signalIds){
    const signal=w.signals.find(r=>r.id===id),evidence=need.evidenceRefs?.find(r=>r.id===id);
+   if(signal?.sourceReadiness?.status==='held')missing.push('자료실 원본 변경·미확인 후 학습 근거 재검토');
    if(!signal||signal.campaignVersion!==c.version||(evidence&&evidence.version!==signal.version))missing.push('시장 근거 변경 후 학습 근거 재검토');
   }
  }

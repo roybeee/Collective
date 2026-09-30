@@ -6,9 +6,11 @@ import {parseMissionInput,missionReadiness,growthText,type MissionInput,type Mis
 import {ApiError,database,readRecord,recordStatement,stamp,str,type Actor} from './server';
 import {storefrontDigest} from './storefront-orders';
 import {catalogStocks} from './growth-stock-readiness-server';
+import {liveSignalSource} from './growth-signal-source-server';
+import type {SignalSourceProvenance} from './growth-signal-source';
 import {growthBusiness} from './growth-business-server';
 
-export type GrowthRecord<T>={id:string;campaignId:string;brandId:string;campaignVersion:number;version:number;input:T;updatedAt:string;updatedBy:string;requestDigest:string;factRefs?:FactRef[];evidenceRefs?:{id:string;version:number}[];status?:MissionState;receipt?:MissionReceipt};
+export type GrowthRecord<T>={id:string;campaignId:string;brandId:string;campaignVersion:number;version:number;input:T;updatedAt:string;updatedBy:string;requestDigest:string;sourceProvenance?:SignalSourceProvenance;factRefs?:FactRef[];evidenceRefs?:{id:string;version:number}[];status?:MissionState;receipt?:MissionReceipt};
 type Catalog=GrowthRecord<CatalogInput>;
 const kinds={signal:'growth_signal',need:'growth_need',catalog:'growth_catalog',offer:'growth_offer',mission:'growth_mission'} as const;
 type Entity=keyof typeof kinds;
@@ -29,12 +31,13 @@ function catalogStatus(r:Catalog,facts:BrandFact[],c:Campaign,stock:CatalogStock
 }
 async function workspace(owner:string,c:Campaign){
  const [signals,needs,catalogs,offers,missions,facts]=await Promise.all([rows<SignalInput>(owner,kinds.signal,c),rows<NeedInput>(owner,kinds.need,c),rows<CatalogInput>(owner,kinds.catalog,c),rows<OfferInput>(owner,kinds.offer,c),rows<MissionInput>(owner,kinds.mission,c),factsFor(owner,c)]);
- const ns=needs.map(r=>{const base=needReadiness(r.input,signals,Date.now());return {...r,readiness:{...base,missing:[...base.missing,...(r.input.signalIds.some(id=>!r.evidenceRefs?.some(ref=>ref.id===id&&ref.version===signals.find(s=>s.id===id)?.version))?['시장 근거 변경 후 고객 기회 재검토']:[]),...(r.campaignVersion!==c.version?['캠페인 변경 후 고객 기회 재검토']:[])]}}});
+ const currentSignals=await Promise.all(signals.map(async r=>{const sourceReadiness=await liveSignalSource(owner,c,r),base=signalEvidence(r.input,Date.now());return {...r,sourceReadiness,evidence:sourceReadiness?.status==='held'?{status:'insufficient' as const,reason:sourceReadiness.reasons.join(' ')}:base}}));
+ const ns=needs.map(r=>{const base=needReadiness(r.input,currentSignals,Date.now());return {...r,readiness:{...base,missing:[...base.missing,...(r.input.signalIds.some(id=>!r.evidenceRefs?.some(ref=>ref.id===id&&ref.version===signals.find(s=>s.id===id)?.version))?['시장 근거 변경 후 고객 기회 재검토']:[]),...(r.campaignVersion!==c.version?['캠페인 변경 후 고객 기회 재검토']:[])]}}});
  const stocks=await catalogStocks(owner,c,catalogs.map(r=>r.input));
  const cs=catalogs.map((r,i)=>({...r,currentStock:stocks[i],readiness:catalogStatus(r,facts,c,stocks[i])}));
  const os=offers.map(r=>{const item=cs.find(x=>x.id===r.input.catalogId)??null,need=ns.find(n=>n.id===r.input.needId);const base=offerReadiness(r.input,item,Date.now(),item?.currentStock);return {...r,currentStock:item?.currentStock??null,readiness:{...base,missing:[...base.missing,...(item?.readiness.missing??[]),...(need?.readiness.missing??['고객 근거 연결']),...(need&&!r.evidenceRefs?.some(ref=>ref.id===need.id&&ref.version===need.version)?['고객 기회 변경 후 오퍼 재검토']:[]),...(r.campaignVersion!==c.version?['캠페인 변경 후 오퍼 재검토']:[])]}}});
  const ms=missions.map(r=>{const offer=os.find(x=>x.id===r.input.offerId);return {...r,currentStock:offer?.currentStock??null,readiness:missionReadiness(r.input,[...(offer?.readiness.missing??['판매 오퍼 연결']),...(offer&&offer.version!==r.input.offerVersion?['오퍼 변경 후 미션 재검토']:[]),...(r.campaignVersion!==c.version?['캠페인 변경 후 미션 재검토']:[])])}});
- return {signals:signals.map(r=>({...r,evidence:signalEvidence(r.input,Date.now())})),needs:ns,catalogs:cs,offers:os,missions:ms,facts:facts.map(f=>({id:f.id,version:f.version,key:f.key,value:f.value})),campaignVersion:c.version};
+ return {signals:currentSignals,needs:ns,catalogs:cs,offers:os,missions:ms,facts:facts.map(f=>({id:f.id,version:f.version,key:f.key,value:f.value})),campaignVersion:c.version};
 }
 export async function growthView(owner:string,c:Campaign,canEdit:boolean){
  const [data,business]=await Promise.all([workspace(owner,c),growthBusiness(owner,c)]);
@@ -63,6 +66,7 @@ export async function saveGrowth(who:Actor,c:Campaign,b:Record<string,unknown>){
  if(b.campaignVersion!==c.version)throw new ApiError(409,'캠페인이 변경되었습니다. 다시 불러오세요.');
  if(['queue_mission','record_receipt','cancel_mission'].includes(String(b.action)))return transitionMission(who,c,b);
  const entity=entityFor(b.action),id=recordId(b.id),old=sameScope(await optional<GrowthRecord<unknown>>(who.owner,kinds[entity],id),c);
+ if(entity==='signal'&&old?.sourceProvenance)throw new ApiError(409,'가져온 신호는 원본 자료에서 수정한 뒤 새 판을 가져오세요.');
  const parsers={signal:parseSignalInput,need:parseNeedInput,catalog:parseCatalogInput,offer:parseOfferInput,mission:parseMissionInput};
  const input=parsers[entity](b.input),digest=await storefrontDigest({action:b.action,input,campaignVersion:c.version,expectedVersion:b.expectedVersion});
  if(old?.requestDigest===digest)return {...await growthView(who.owner,c,true),duplicate:true};

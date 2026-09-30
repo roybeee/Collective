@@ -63,6 +63,7 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'growth_demand',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 수요 캠페인의 단계·구매 경로·소재 권리·협업 계획. 외부 실행 없음'},
  {kind:'growth_demand_history',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'수요 시퀀스 계획의 버전 변경 이력'},
  {kind:'growth_signal',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 시장 근거·출처·신선도(개인정보·외부 자동수집 없음)'},
+ {kind:'growth_signal_source_request',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'확정 시장 자료의 성장 신호 가져오기 멱등 영수증. 캠페인 삭제 후 재사용 방지를 위해 보존'},
  {kind:'growth_need',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 고객 상황·반증 가능한 니즈 가설·다음 행동'},
  {kind:'growth_catalog',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 캠페인 상품 준비·확정 사실 버전 참조'},
  {kind:'growth_offer',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 상품·고객 근거에 연결한 판매 오퍼'},

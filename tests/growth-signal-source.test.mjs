@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';import {testRuntime} from './helpers/runtime.mjs';const {load}=testRuntime(async()=>{throw Error('external forbidden')});const d=await load('lib/growth-signal-source.ts');let passed=0;const check=(v,n)=>{assert.ok(v,n);passed++};
+const c={id:'c',brandId:'b',storeId:'s'},source={id:'s1',version:1,brandId:'b',storeId:'s',category:'market',origin:'manual',status:'confirmed',title:'시장 관찰',url:'https://example.com/research',content:'실제 공개 관측 내용',observedAt:'2026-01-01T00:00:00Z'},expiresAt='2099-01-01';
+const run=(s=source,r=null)=>d.assessSignalSource(c,s,r,expiresAt);
+check(run().status==='ready','confirmed public market source ready');check(run().input.observedAt===source.observedAt&&run().input.sampleSize===null,'original observation and unknown sample preserved');
+for(const patch of [{status:'candidate'},{status:'excluded'},{category:'product'},{brandId:'other'},{storeId:'other'},{content:'x'.repeat(4001)},{content:'person@example.com'},{url:'https://example.com/?token=private'},{observedAt:'2099-01-01T00:00:00Z'},{content:'ｐｅｒｓｏｎ＠ｅｘａｍｐｌｅ．ｃｏｍ'}])check(run({...source,...patch}).status==='held','held invalid source '+Object.keys(patch));
+const rs={...source,origin:'research',researchId:'r'},r={id:'r',brandId:'b',storeId:'s',status:'completed',report:{completedAt:'2026-01-02T00:00:00Z',access:[{sourceId:'s1',method:'browser',tool:'browser',scope:'공개 웹페이지 본문'}]}};
+check(run(rs,r).status==='ready','completed exact research access ready');for(const patch of [{status:'failed'},{brandId:'other'},{storeId:'other'},{report:{...r.report,access:[]}},{report:{...r.report,access:[{sourceId:'s1',method:'search_snippet',tool:'search',scope:'검색요약'}]}}])check(run(rs,{...r,...patch}).status==='held','research provenance held');
+check(run({...source,storeId:undefined}).status==='ready','brand source allowed in brand store campaign');
+for(const patch of [{version:0},{version:1.5}])check(run({...source,...patch}).status==='held','invalid source revision held');
+for(const access of [{bad:true},[null],[{sourceId:'s1',method:'browser',tool:1,scope:'text'}]])check(run(rs,{...r,report:{...r.report,access}}).status==='held','malformed access held');
+console.log(JSON.stringify({passed,external:0}));

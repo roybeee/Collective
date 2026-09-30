@@ -78,6 +78,7 @@ check('execution, Meta write/reservation and attributed order history block dele
 check('blocking kinds are never deleted',kinds.filter(k=>k.blocksDeletion).every(k=>k.campaignDeletion==='retain'));
 // A4: 추적 코드는 주문 장부의 귀속 근거라 캠페인을 지워도 남긴다(코드 재사용으로 옛 인쇄물 주문이 다른 캠페인에 붙지 않게). 삭제를 막지는 않는다.
 const kindOf=kind=>kinds.find(k=>k.kind===kind);
+check('growth archive import receipts survive campaign deletion without blocking it',policyOf('growth_signal_source_request')==='retain'&&kindOf('growth_signal_source_request').parent==='campaign'&&JSON.stringify(kindOf('growth_signal_source_request').links)==='["parent"]'&&kindOf('growth_signal_source_request').purge==='keep'&&!kindOf('growth_signal_source_request').blocksDeletion);
 check('tracking codes are retained through their campaign link without blocking deletion',policyOf('tracking_code')==='retain'&&JSON.stringify(kindOf('tracking_code').links)==='["data_campaign"]'&&!kindOf('tracking_code').blocksDeletion&&kindOf('tracking_code').parent==='store');
 // F4b-2(결정 7): 비식별 평가 신호는 캠페인과 잇지 않고(links 없음) 보존하며, token_budget 묶음(마지막 3개) 바로 앞에 둔다.
 check('de-identified signals are retained without a campaign link just before the token budget group',policyOf('deidentified_signal')==='retain'&&!(kindOf('deidentified_signal').links||[]).length&&kindOf('deidentified_signal').parent==='none'&&kinds.at(-4).kind==='deidentified_signal'&&/90일/.test(kindOf('deidentified_signal').description));
