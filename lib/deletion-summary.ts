@@ -23,7 +23,7 @@ const deletedGroups:readonly Group[]=[
 // 제작·발행·주문 귀속 기록(blocksDeletion)이 있으면 삭제 자체가 거부되므로 대화상자는 사유만 보이고 보존 목록을 쓰지 않는다.
 const retainedGroups:readonly Group[]=[
  {label:'성장 주문·재고 이력',kinds:['growth_stock_event','growth_order_line','growth_order_line_history','growth_settlement','growth_settlement_history'],note:'재고와 주문 대사 근거'},
- {label:'성장 판매 예산 예약',kinds:['growth_commitment'],note:'누적 한도와 예약 대사 이력'},
+ {label:'성장 판매 예산 예약',kinds:['growth_commitment','growth_action_intent','growth_action_receipt'],note:'누적 한도·재고 예약과 실행 결과 대사 이력'},
  {label:'Meta 이미지 업로드 기록',kinds:['meta_ads_image_upload'],note:'원본 전송·외부 hash 계보'},
  {label:'Meta 생성 기록',kinds:['meta_ads_write_operation','meta_ads_child_create'],note:'외부 객체 대조 이력'},
  {label:'Meta 예산 예약',kinds:['meta_ads_reservation'],note:'예약·해제 이력'},

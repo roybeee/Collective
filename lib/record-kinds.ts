@@ -23,6 +23,8 @@ export type SubjectErasure='delete'|'minimize'|'legal_hold'|'none';
 export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;retention?:RetentionPolicy;subjectErasure?:SubjectErasure;description:string};
 
 export const recordKinds:readonly RecordKind[]=[
+ {kind:'growth_action_intent',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'성장2 예산·재고 원자 예약과 수동 실행 준비·복구 상태'},
+ {kind:'growth_action_receipt',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'성장2 운영자 확인 결과의 추가 전용 이력. 외부 실행 검증과 구분'},
  {kind:'growth_decision',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 일일 결정과 서버 집계 동결 근거. 실행 권한 없음'},
  {kind:'growth_decision_history',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'일일 결정의 추가 전용 변경 이력'},
  {kind:'growth_lesson',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 운영 교훈 후보·시험·재사용 검토. 자동 규칙 승격 없음'},

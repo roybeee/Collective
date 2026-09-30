@@ -69,7 +69,7 @@ async function revokeAuthority(who:Actor,c:Campaign,b:Record<string,unknown>){
  await recordStatement(who.owner,'growth_authority',id,next,c.id).run();
  return {...await growthAuthorityView(who,c),duplicate:false};
 }
-async function reserveMission(who:Actor,c:Campaign,b:Record<string,unknown>){
+export async function prepareMissionCommitment(who:Actor,c:Campaign,b:Record<string,unknown>){
  if(who.role==='member')throw new ApiError(403,'관리자만 준비 미션의 예산을 예약할 수 있습니다.');
  const authorityId=recordId(b.authorityId,'위임 ID'),missionId=recordId(b.missionId,'미션 ID');
  const authority=scoped(await readRecord<GrowthAuthorityRecord>(who.owner,'growth_authority',authorityId),c)!;
@@ -83,14 +83,23 @@ async function reserveMission(who:Actor,c:Campaign,b:Record<string,unknown>){
  const ledger=await rows<GrowthCommitmentRecord>(who.owner,'growth_commitment',OWNER_LEDGER_LIMIT);
  const action=actionFor(authority.input,c,mission),decision=evaluateAuthority(authority.input,action,ledger.map(row=>row.commitment));
  if(!decision.allowed)throw new ApiError(409,`예약을 막았습니다: ${decision.reasons.join(' ')}`);
- if(decision.duplicate)return {...await growthAuthorityView(who,c),duplicate:true};
+ if(decision.duplicate){
+  const existing=ledger.find(row=>row.id===`${mission.id}:v${mission.version}`);
+  if(!existing||existing.authorityVersion!==authority.version||existing.authorityApprovalId!==authority.input.ownerApprovalId)throw new ApiError(409,'기존 예산 예약의 승인 판을 대사하세요.');
+  return {duplicate:true,writes:[],record:existing,mission,authority};
+ }
  if(ledger.filter(row=>row.campaignId===c.id).length>=COMMITMENT_LIMIT||ledger.length>=OWNER_LEDGER_LIMIT)throw new ApiError(409,'예약 원장 한도에 도달했습니다. 새 예약을 저장하지 않았습니다.');
  // The caller holds the workspace owner lock across validation, aggregate evaluation and this write.
  // A unique operation-derived row can only be inserted once; no settlement/release is inferred.
  const at=stamp(),id=`${mission.id}:v${mission.version}`;
  const record:GrowthCommitmentRecord={id,campaignId:c.id,brandId:c.brandId,authorityId,authorityVersion:authority.version,authorityApprovalId:authority.input.ownerApprovalId,authoritySnapshot:{...authority.input,allowedActions:[...authority.input.allowedActions]},missionId,missionVersion:mission.version,commitment:{authorityId,action,status:'reserved',at,reservedAmount:action.amount,reservedLoss:action.loss,actualAmount:null,actualLoss:null},createdAt:at,createdBy:who.id};
- await database().prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').bind(`${who.owner}:growth_commitment:${id}`,who.owner,'growth_commitment',c.id,JSON.stringify(record),at).run();
- return {...await growthAuthorityView(who,c),duplicate:false};
+ const write=database().prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').bind(`${who.owner}:growth_commitment:${id}`,who.owner,'growth_commitment',c.id,JSON.stringify(record),at);
+ return {duplicate:false,writes:[write],record,mission,authority};
+}
+async function reserveMission(who:Actor,c:Campaign,b:Record<string,unknown>){
+ const prepared=await prepareMissionCommitment(who,c,b);
+ if(!prepared.duplicate)await database().batch(prepared.writes);
+ return {...await growthAuthorityView(who,c),duplicate:prepared.duplicate};
 }
 export async function saveGrowthAuthority(who:Actor,c:Campaign,b:Record<string,unknown>){
  if(c.status==='archived')throw new ApiError(409,'보관한 캠페인은 변경할 수 없습니다.');

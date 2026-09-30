@@ -11,7 +11,7 @@ import {storefrontDigest} from './storefront-orders';
 import {ApiError,database,readRecord,recordStatement,stamp,str,type Actor} from './server';
 
 type SettlementRow={id:string;brandId:string;storeId:string;campaignId:string;input:SettlementEvidence;requestDigest:string;recordedAt:string;recordedBy:string};
-type InventoryRow={id:string;brandId:string;storeId:string;input:InventoryInput;version:number;createdAt:string;createdBy:string};
+export type InventoryRow={id:string;brandId:string;storeId:string;input:InventoryInput;version:number;createdAt:string;createdBy:string};
 type StockRow=InventoryEvent&{inventoryId:string;brandId:string;storeId:string;campaignId:string;requestDigest:string};
 type LineRow={id:string;brandId:string;storeId:string;campaignId:string;version:number;input:OrderLineInput;requestDigest:string;updatedAt:string;updatedBy:string;snapshot:{mission:MissionInput;offer:OfferInput;catalog:CatalogInput}};
 async function rows<T>(owner:string,kind:string,parentId:string,limit=1000):Promise<T[]>{
@@ -118,10 +118,11 @@ async function stockAdjustment(who:Actor,c:Campaign,b:Record<string,unknown>){
  const prepared=await prepareEvent(who,c,item,id(b.id,'재고 사건 ID'),await storefrontDigest({inventoryId:item.id,...fields}),fields,inventoryVersion(b.inventoryVersion));
  if(!prepared.duplicate)await database().batch(prepared.writes);return {...await growthOperationsView(who,c),duplicate:prepared.duplicate};
 }
-async function reserveStock(who:Actor,c:Campaign,b:Record<string,unknown>){
+export async function prepareMissionStock(who:Actor,c:Campaign,b:Record<string,unknown>){
  const item=await inventoryFor(who.owner,c,id(b.inventoryId,'재고 ID')),mission=await readRecord<GrowthRecord<MissionInput>>(who.owner,'growth_mission',id(b.missionId,'미션 ID'));
  if(mission.campaignId!==c.id||mission.brandId!==c.brandId)throw new ApiError(404,'현재 캠페인의 미션을 선택하세요.');
  const release=b.action==='release_stock',eventId=id(b.id,'재고 사건 ID');
+ if(release){const intents=await rows<{input:{missionId:string};state:string}>(who.owner,'growth_action_intent',c.id);if(intents.some(row=>row.input.missionId===mission.id&&row.state!=='failed'))throw new ApiError(409,'실행 결과가 실패로 확인되기 전에는 연결 재고를 해제할 수 없습니다.');}
  const fields={...basicEvent(release?'release':'reserve',quantity(b.quantity),str(b.observedAt,'확인 시각',40,true),growthText(b.evidenceRef,'예약 근거',160,true)),reservationId:release?id(b.reservationId,'예약 ID'):eventId,missionId:mission.id,safeRelease:release?flag(b.safeRelease):false};
  const events=await stockEvents(who.owner,item),duplicate=events.some(e=>e.id===eventId);
  if(!duplicate){
@@ -132,10 +133,14 @@ async function reserveStock(who:Actor,c:Campaign,b:Record<string,unknown>){
    const offer=await readRecord<GrowthRecord<OfferInput>>(who.owner,'growth_offer',mission.input.offerId),catalog=await readRecord<GrowthRecord<CatalogInput>>(who.owner,'growth_catalog',offer.input.catalogId);
    if([offer,catalog].some(r=>r.campaignId!==c.id||r.brandId!==c.brandId))throw new ApiError(404,'현재 캠페인의 상품을 선택하세요.');
    if(offer.version!==mission.input.offerVersion||catalog.version!==offer.input.catalogVersion||catalog.input.sku!==item.input.sku)throw new ApiError(409,'최신 상품·오퍼와 재고 SKU를 확인하세요.');
-   if(projectInventory(item.input,events).reservations.some(r=>r.missionId===mission.id&&r.held>0))throw new ApiError(409,'미션의 기존 재고 예약을 먼저 대사하세요.');
+   if(projectInventory(item.input,events).reservations.some(r=>r.missionId===mission.id&&(b.requireNoPriorReservation===true||r.held>0)))throw new ApiError(409,'미션의 기존 재고 예약을 먼저 대사하세요.');
   }
  }
  const prepared=await prepareEvent(who,c,item,eventId,await storefrontDigest({inventoryId:item.id,...fields}),fields,inventoryVersion(b.inventoryVersion));
+ return {...prepared,item,reservationId:fields.reservationId};
+}
+async function reserveStock(who:Actor,c:Campaign,b:Record<string,unknown>){
+ const prepared=await prepareMissionStock(who,c,b);
  if(!prepared.duplicate)await database().batch(prepared.writes);return {...await growthOperationsView(who,c),duplicate:prepared.duplicate};
 }
 async function saveSettlement(who:Actor,c:Campaign,b:Record<string,unknown>){
