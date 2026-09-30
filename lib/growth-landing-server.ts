@@ -75,7 +75,7 @@ export async function saveGrowthLanding(who:Actor,c:Campaign,b:Record<string,unk
    else{
     if(!old.approval||old.approval.digest!==await contentDigest(old))throw new ApiError(409,'승인된 내용과 현재 수정안이 다릅니다.');
     if(receipt!.observedUrl!==old.input.landingUrl)throw new ApiError(409,'확인한 페이지 URL이 수정안의 상세페이지와 다릅니다.');
-    if(Date.parse(receipt!.at)<Date.parse(old.approval.at))throw new ApiError(409,'적용 시각은 승인 이후여야 합니다.');
+    if(Date.parse(receipt!.at)<Math.floor(Date.parse(old.approval.at)/60_000)*60_000)throw new ApiError(409,'적용 시각은 승인 이후여야 합니다.');
     next.applied={method:'manual_attested',...receipt!,recordedAt:at,recordedBy:who.id};
    }
   }

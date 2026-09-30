@@ -38,7 +38,7 @@ export async function saveGrowthLessonApplication(who:Actor,c:Campaign,b:Record<
   let outcome;try{outcome=parseOutcome(b.outcome)}catch(e){throw new ApiError(400,e instanceof Error?e.message:'결과를 확인하세요.')}
   return versionedMutation<LessonApplicationRecord>(who,c,b,kinds,id,{action,outcome},async(old,at)=>{
    if(!old)throw new ApiError(404,'적용 기록을 찾지 못했습니다.');if(old.outcome)throw new ApiError(409,'이미 결과를 기록했습니다. 결과는 덮어쓰지 않습니다.');
-   if(Date.parse(outcome.at)<Date.parse(old.createdAt))throw new ApiError(409,'결과 시각은 적용 이후여야 합니다.');
+   if(Date.parse(outcome.at)<Math.floor(Date.parse(old.createdAt)/60_000)*60_000)throw new ApiError(409,'결과 시각은 적용 이후여야 합니다.');
    return {next:{...old,version:old.version+1,outcome:{...outcome,recordedAt:at,recordedBy:who.id},updatedAt:at,updatedBy:who.id},limit:1000};
   });
  }
