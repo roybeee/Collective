@@ -15,6 +15,7 @@ const kinds=JSON.parse(JSON.stringify(registry.recordKinds));
 const notRecordKinds=new Set(['invite','reset']);
 // records.kind를 드러내는 코드 형태. 새 접근 방식을 만들면 여기에도 추가한다.
 const patterns=[
+ /\binsert\(\s*[^,]+,\s*'([a-z_]+)'/g, // 추가 전용 운영 원장 헬퍼
  /\bconst kinds=\{([^}]+)\}/g, // 워크스페이스의 폐쇄된 entity→record kind 맵
  /\b(?:recordStatement|readRecord|listRecords|optionalRecord)(?:<[^>]*>)?\(\s*[^,()]+,\s*'([a-z_]+)'/g, // 공용 헬퍼
  /\b(?:rows|record|one)(?:<[^>]*>)?\(\s*db\s*,\s*[^,()]+,\s*'([a-z_]+)'/g, // 모듈 내부 조회 헬퍼(ai-context, fact-import)
@@ -34,6 +35,7 @@ const missing=found=>[...found].filter(k=>!registered.has(k)).sort();
 
 // 1) 스캐너 자체 검증: 각 형태를 잡고, 정책 없는 kind를 넣으면 누락으로 보고한다.
 const synthetic=[
+ "insert(who,'growth_order_line_history',row,c.id)",
  "recordStatement(owner,'artifact',a.id,a,c.id)","await readRecord<Campaign>(owner,'campaign',id)","listRecords<X>(owner, 'event', cid)",
  "rows<BrandFact>(db,owner,'brand_fact',brandId)","query<StoreOrder>('store_order','orderDate')","\"SELECT id FROM records WHERE owner=? AND kind='deleted_campaign'\"",
  "\"kind IN ('worker_credential','worker_state')\"","`${owner}:provider_usage:${id}`","workspace_owner||':account_event:'||?",
@@ -41,7 +43,7 @@ const synthetic=[
  "t.kind IN ('invite','reset')",
 ].join('\n');
 const syntheticFound=scanKinds(synthetic);
-check('scanner recognises every access form',['artifact','campaign','event','brand_fact','store_order','deleted_campaign','worker_credential','worker_state','provider_usage','account_event','usage_pricing'].every(k=>syntheticFound.has(k)));
+check('scanner recognises every access form',['growth_order_line_history','artifact','campaign','event','brand_fact','store_order','deleted_campaign','worker_credential','worker_state','provider_usage','account_event','usage_pricing'].every(k=>syntheticFound.has(k)));
 check('scanner ignores auth token kinds',!syntheticFound.has('invite')&&!syntheticFound.has('reset'));
 check('a kind without a registry policy is reported',JSON.stringify(missing(scanKinds("recordStatement(owner,'unregistered_probe',id,data,cid)")))===JSON.stringify(['unregistered_probe']));
 
@@ -72,7 +74,7 @@ check('only viral learning rules are retired and marked',JSON.stringify(kinds.fi
 check('frozen experiment summary is a retained brand record',policyOf('viral_experiment_summary')==='retain'&&kinds.find(k=>k.kind==='viral_experiment_summary').parent==='brand');
 check('store experiments and tombstones are retained',policyOf('store_experiment')==='retain'&&policyOf('deleted_campaign')==='retain');
 check('viral experiments and their revisions are deleted',policyOf('viral_experiment')==='delete'&&policyOf('experiment_revision')==='delete');
-check('execution, Meta write/reservation and attributed order history block deletion',JSON.stringify(kinds.filter(k=>k.blocksDeletion).map(k=>k.kind).sort())===JSON.stringify(['execution_creative','execution_publication','growth_commitment','meta_ads_child_create','meta_ads_execution','meta_ads_image_upload','meta_ads_reservation','meta_ads_write_operation','meta_experiment_design','meta_experiment_observation','meta_experiment_result','meta_experiment_rule','meta_experiment_unit','store_order']));
+check('execution, Meta write/reservation and attributed order history block deletion',JSON.stringify(kinds.filter(k=>k.blocksDeletion).map(k=>k.kind).sort())===JSON.stringify(['execution_creative','execution_publication','growth_commitment','growth_order_line','growth_settlement','growth_stock_event','meta_ads_child_create','meta_ads_execution','meta_ads_image_upload','meta_ads_reservation','meta_ads_write_operation','meta_experiment_design','meta_experiment_observation','meta_experiment_result','meta_experiment_rule','meta_experiment_unit','store_order']));
 check('blocking kinds are never deleted',kinds.filter(k=>k.blocksDeletion).every(k=>k.campaignDeletion==='retain'));
 // A4: 추적 코드는 주문 장부의 귀속 근거라 캠페인을 지워도 남긴다(코드 재사용으로 옛 인쇄물 주문이 다른 캠페인에 붙지 않게). 삭제를 막지는 않는다.
 const kindOf=kind=>kinds.find(k=>k.kind===kind);

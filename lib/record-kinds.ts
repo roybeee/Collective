@@ -7,7 +7,7 @@ import type {ViralExperiment,LearningMetric,LearningRule} from './learning';
 // delete: 캠페인과 함께 삭제 · retain: 캠페인과 이어져 있어도 남김 · retire_and_mark: 종료 상태와 삭제 표시로 남김 · not_campaign_scoped: 캠페인과 무관
 export type CampaignDeletionPolicy='delete'|'retain'|'retire_and_mark'|'not_campaign_scoped';
 // parent_id에 들어가는 값의 유형. none은 빈 문자열이다.
-export const recordParents=['none','brand','campaign','store','viral_case','viral_experiment','brand_fact','media','eval_run','franchise_lead'] as const;
+export const recordParents=['none','brand','campaign','store','viral_case','viral_experiment','brand_fact','media','eval_run','franchise_lead','inventory_item'] as const;
 export type RecordParent=typeof recordParents[number];
 // 레코드가 캠페인에 이어지는 경로. 삭제와 삭제 영향 조회가 같은 조건을 쓴다.
 export type CampaignLink='self'|'parent'|'brief_draft'|'draft_submission'|'job_submission'|'experiment_child'|'experiment_rule'|'guidance_job'|'sequence_attempt'|'data_campaign'|'data_campaigns';
@@ -24,6 +24,12 @@ export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:Campaig
 
 export const recordKinds:readonly RecordKind[]=[
  {kind:'growth_authority',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 계정·기간·행동별 로컬 위임 계획. 실제 집행 권한과 분리'},
+ {kind:'growth_settlement',parent:'store',campaignDeletion:'retain',links:['data_campaign'],blocksDeletion:true,purge:'keep',description:'매출과 구분한 지급예정·실입금 운영자 증빙'},
+ {kind:'growth_settlement_history',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'정산 증빙 정정 전후의 추가 전용 이력'},
+ {kind:'growth_inventory_item',parent:'store',campaignDeletion:'not_campaign_scoped',description:'브랜드·지점·SKU 공유 재고 원장'},
+ {kind:'growth_stock_event',parent:'inventory_item',campaignDeletion:'retain',links:['data_campaign'],blocksDeletion:true,purge:'keep',description:'재고 관측·예약·출고·반품 추가 전용 이력'},
+ {kind:'growth_order_line',parent:'store',campaignDeletion:'retain',links:['data_campaign'],blocksDeletion:true,purge:'keep',description:'기존 주문 금액과 판매 미션·실물 품목 연결'},
+ {kind:'growth_order_line_history',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'주문 품목 금액 배분 변경 이력'},
  {kind:'growth_commitment',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'성장2 로컬 미션 계획 예산 예약. 누적 한도 초기화 방지를 위해 보존. 외부 실행·결제 없음'},
  {kind:'growth_signal',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 시장 근거·출처·신선도(개인정보·외부 자동수집 없음)'},
  {kind:'growth_need',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 고객 상황·반증 가능한 니즈 가설·다음 행동'},

@@ -7,7 +7,14 @@
 - 대표 지시 “성장2의 원래 개발계획 전체를 개발 지속하라.” `codex/growth2-full`, 기준 `8cc2942`. 아래 과거 “성장2 필수 개발 종료”는 **Meta M0~M6에 한정된 판정**이다. 원안 전체는 미완료다.
 - [전체 원안 카드](GROWTH-2-PLAN.ko.md)를 기준으로 [첫 공통 기반](GROWTH-2-WORKSPACE.ko.md)을 구현했다. 상품·오퍼, 시장 근거·고객 기회, 판매 미션, 소유자 위임·누적 예산 예약, 캠페인 주문 장부 집계를 성장·판매 탭에서 연결한다. 로컬 준비 기록과 실제 매출·집행·효과 검증은 분리한다.
 - 로컬 검증 passed: 전체233/233 suites·14,504 assertions(외부 mocked), 최종 삭제 보호 회귀 추가 뒤 위임 API72 passed(real memory SQL, 외부 호출0), 전체 브라우저108 passed(real local Chromium/D1, 인증·외부 mocked). 타입·빌드·프롬프트22 passed, lint 기준선70 errors/39 warnings 유지. 신규 비즈니스 모듈7개 native V8 named function84/85(98.8%; line/branch 지표 아님). 코드/보안 재검토 HIGH/MEDIUM 잔여0(신규 변경 범위).
-- 이 증분은 아직 merged/published/runtime-verified가 아니다. 실제 외부 실행·정산·매출 효과는 not_run이며 원안 전체는 미완료다. 후속은 공유 재고·주문 품목/미션 연결·이행/환불/정산이다.
+- 이 증분은 아직 merged/published/runtime-verified가 아니다. 실제 외부 실행·정산·매출 효과는 not_run이며 원안 전체는 미완료다. 주문·재고·정산 후속 증분은 바로 아래에 기록한다.
+
+### 주문·재고·정산 후속 (2026-09-30 · Codex)
+
+- 첫 공통 기반은 Draft [#266](https://github.com/roybeee/Collective/pull/266), `c40ebd7`. 원격 CI verify/e2e-smoke 모두 passed. 후속은 이 커밋 위 `codex/growth2-fulfillment`이며 [운영 계약](GROWTH-2-OPERATIONS.ko.md)을 따른다.
+- 공유 실물 재고·미션 예약/해제·기존 주문 품목 연결·출고/환불/반품·지급예정/입금 증빙 UI/API를 구현했다. 재고 사건 멱등/CAS, 결과 불명 예약 유지, 기존 판매 스냅샷 보존, 원 주문 금액 한도, 0원 정상 주문 이행, 정산 수정 이력을 검증했다. 원안 G2-02/03/30/32의 부분 구현이다.
+- passed: 전체237/237 suites·14,684 assertions(외부 mocked); 전용 재고88·주문연결19·운영API45·정산27(real pure/memory SQL, 외부 호출0). 최종 성장 브라우저6 passed(real local Chromium/D1, 인증 fixture), 정산 UI 저장/수정판·모바일 화면 경계 포함. 타입·빌드·프롬프트22 passed, lint 기준선70/39 유지. 신규 도메인4개 V8 named function62/63=98.4%(line/branch 지표 아님). 코드/보안 리뷰 HIGH/MEDIUM 잔여0, 발견한 재대사·수수료·출고 경계 수정 후 재검증.
+- merged/published/runtime-verified 아님. 외부몰·택배·은행 쓰기/조회와 실판매 효과는 not_run. 다음 원안 본선은 수요 시퀀스·구매 병목·일일 결정/운영 교훈·재구매와 일반 판매 실행 연결이다. 공식 정산·CS/재발주와 범용 실험·검증 확대도 남아 있다.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
 - 현재 운영: #264 `dabf656c4249b6e7b446276909cd8d80305caa8d`, Sites67, tree `9a5be85f566d554b57db1d992c6004e7ef2fd408`. 2026-09-29 KST merged/published/runtime-verified. 성장2 필수 개발 종료 passed, 운영 인수 blocked, 실제 전송·집행·효과 검증 not_run. [릴리스](releases/2026-09-29-dabf656.md).
