@@ -9,6 +9,7 @@ import type {ConnectorKey, CollectionWindow, Collected} from './connectors/types
 import type {Arm, ViralExperiment} from './learning';
 import type {StoreMetricKey} from './store-marketing';
 import type {Campaign} from './agency';
+import type {Publication} from './execution';
 
 // 워커가 같은 대상을 과도하게 다시 부르지 않도록 하는 최소 간격(정의는 lib/measurement-status.ts).
 export {COLLECT_INTERVAL_MS};
@@ -131,6 +132,16 @@ async function draftFor(owner: string, experimentId: string) {
  }
 }
 
+// Preserve only a server-established exact publication binding; a changed target is a new source.
+async function publicationForCollection(owner:string,experiment:ViralExperiment,arm:'control'|'treatment',channel:ConnectorKey,target:string){
+ try{
+  const source=await readRecord<MeasurementSource>(owner,'measurement_source',`${experiment.id}:${arm}`);
+  if(!source.publicationId||source.id!==`${experiment.id}:${arm}`||source.experimentId!==experiment.id||source.arm!==arm||source.channel!==channel||source.target!==target||channel!=='instagram')return undefined;
+  const p=await readRecord<Publication>(owner,'execution_publication',source.publicationId);
+  return p.id===source.publicationId&&p.campaignId===experiment.campaignId&&p.experimentId===experiment.id&&p.arm===arm&&p.media?.mediaId===target?source.publicationId:undefined;
+ }catch(e){if(e instanceof ApiError&&e.status===404)return undefined;throw e}
+}
+
 export async function collectForExperiment(owner: string, input: Record<string, unknown>) {
  const experimentId = str(input.experimentId, '실험', 200, true);
  const experiment = await readRecord<ViralExperiment>(owner, 'viral_experiment', experimentId);
@@ -172,7 +183,9 @@ export async function collectForExperiment(owner: string, input: Record<string, 
   updatedAt: stamp(),
  } as MeasurementDraft;
 
+ const publicationId=await publicationForCollection(owner,experiment,arm,connector.key,target);
  const source: MeasurementSource = {
+  ...(publicationId?{publicationId}:{}),
   id: `${experimentId}:${arm}`,
   experimentId,
   channel: connector.key,
