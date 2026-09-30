@@ -82,6 +82,7 @@
 - 이미 전송 중인 Buffer 결과를 보존하고 전송 전 중단이면 공급자 호출0으로 기록한다. Meta ACTIVE 중 중단되면 추가 활성화는 막고 불확실 상태를 유지하며 이후 PAUSED·정산·예약 해제가 가능하다. 중단 자체가 외부 취소 완료나 예산/재고 해제를 뜻하지 않으며 재개 자동 재전송은 없다. Q 프롬프트 엔진은 유지하고 API 기존 잠금 안에 가드만 추가했다.
 - 전체256/256 suites·15,692 assertions passed(외부 mocked), 이후 추가한 전용 Buffer경합17/Meta경합8/중단중대사복구43 passed(real SQLite, 공급자 mocked, 실제 외부0). 중단 중 실제 주문 저장·부분/전액 환불 정정 API8 passed(real memory SQLite, 인증 mocked). 기본 전용 domain13/API27/entrygate12/학습19, 기존 learning148/stores141/prompts71/Meta실험34 passed. 기존 MetaAPI24/Bufferloop171/실행76/위임API72 passed. entrygate의 복구 항목은 정상 성공이 아니라 중단 차단을 건너뛰는 검증이며, 실제 성공은 별도 복구회귀로 검증했다.
 - 신규 중단 E2E2+기존 실행/대사4=6 passed(real Chromium/local D1, 인증·응답 유실 mocked). 최종 타입·빌드·프롬프트22 passed, lint 기준선70/39 유지. 신규 핵심2모듈 V8 named function7/7 실행(문장/분기 아님). 독립 코드/명세/보안 재검토 HIGH/MED0.
+- PR #275 첫 원격 CI는 추가 회귀 파일의 미사용 변수2개로 lint70/41 failed, e2e-smoke는 passed였다. 테스트의 미사용 선언만 제거했고 Buffer17/Meta8과 lint70/39를 재실행해 passed했다. 원격 재검증 결과는 별도로 확인한다.
 - 아직 미게시. 다음 증분은 G2-26 단일 SKU 소싱 후보의 원가·MOQ·납기 비교와 발주 검토안이며 실제 발주·계약·결제는 수행하지 않는다. 다SKU 번들·공급자 실연동·검증 확대 등 원안 전체 잔여를 계속한다.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)

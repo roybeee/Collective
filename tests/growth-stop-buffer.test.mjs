@@ -39,7 +39,6 @@ async function post(action,campaignId,data={},owner='owner',origin='https://app.
  const response=await route.POST(new Request('https://app.test/api/execution',{method:'POST',headers:{'content-type':'application/json','oai-authenticated-user-id':owner,origin},body:JSON.stringify({action,campaignId,...data})}));
  return {status:response.status,data:await response.json()};
 }
-const getState=async id=>(await route.GET(new Request('https://app.test/api/execution?campaignId='+id,{headers:{'oai-authenticated-user-id':'owner'}}))).json();
 let checks=0;const failures=[];function check(value,label){checks++;if(!value)failures.push(label)}
 async function setup(id,maxPublications=1,maxPlannedCostKRW=1000,extra={},bytes=png){
  // Each independent scenario starts a fresh rate window; the boundary is tested separately below.
