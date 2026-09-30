@@ -28,6 +28,7 @@
 - 자연 유입 실행 연결: `codex/growth2-organic-adapter`, `/Users/roybee/Collective-organic-adapter`, 검증된 stock/reorder 통합 `841bcef` 의존. server는 growth-publication 도메인·API·원자 준비·동기화·기존 receipt/대사/직접 재고해제 최소 가드, UI는 독립 발행 연결 패널·기존 실행 패널 잠금·E2E, root는 기존 Buffer reserve/execute 훅·registry·문서·통합/게시를 소유한다. 관리자 1:1 연결 후 기존 명시 발행 경로만 사용, 실제 외부0. 독립 리뷰가 권한·예약·unknown·해제 우회를 확인한다. #278 merged 뒤 최신 main 통합.
 - 발행 이후 관측 연결: `codex/growth2-publication-observation`, `/Users/roybee/Collective-publication-observation`, 검증된 adapter `fa9939a` 의존. server는 신규 readonly 관측 domain/server/API/tests와 기존 measurement-collection의 exact publicationId 보존 최소수정, UI는 신규 관측 패널/E2E, root는 기존 campaign 탭 콜백·GrowthPanel 접기 연결 및 문서·통합/게시를 소유한다. 새 원장·실적 복사·자동 수집·인과 판정 없음, 실제 외부0. #279 merged 후 latest main 통합.
 - 확정 시장자료 연결: `codex/growth2-signal-source`, `/Users/roybee/Collective-signal-source`, 검증 관측 `8258045` 통합. 서버는 새 출처 후보/가져오기·현재 계보 검사와 workspace/decisions 최소 전파, UI는 새 패널/E2E, root는 시장단계 연결·registry·문서·통합/게시를 소유한다. 기존 아카이브/연구는 읽기만 하며 실제 외부 수집·모델 호출은 하지 않는다. 같은 원본 판 멱등과 변경/제외 시 하위 보류를 독립 검토한다.
+- 기회·일정 조회: `codex/growth2-opportunity-board`, `/Users/roybee/Collective-opportunity-board`, 검증 신호 출처 `230a1a6` 통합. 서버는 새 순수 연결/기한/정렬 함수와 테스트, UI는 새 보드/E2E, root는 기존 growthView 응답·고객 기회 단계/정확 기록 선택·미저장 입력 보호·문서·통합/게시를 소유한다. 새 저장/API/외부 실행 없이 현재 서버 준비도를 표시한다.
 - 기존 Meta 종료 판정은 M0~M6 한정으로 바로잡는다. 외부 집행 권한은 상품 준비 상태나 로컬 미션 저장으로 부여하지 않는다. 실제 계정·구매·고객 발송 결과를 개발 검사로 대체하지 않는다.
 
 ### 2026-09-28 성장2 계속 개발 · 첫 몰 mapdal.kr
