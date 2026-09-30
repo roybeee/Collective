@@ -4,6 +4,12 @@
 GitHub 병합(`merged`)은 배포가 아니다. 게시(`published`)와 실행 검증(`runtime-verified`)을 각각 기록한다. 용어는 `AGENTS.md`의 상태 어휘를 따른다.
 게시 비용 기록: 2026-09-23 게시 1회에 약 18분이 걸렸고 ChatGPT Work 크레딧이 179 → 0으로 소진됐다. 같은 계정을 HERMES와 Codex가 쓴다. 게시 전 크레딧·한도 사전 점검은 대표 결정(2026-09-27)으로 하지 않는다.
 
+## 2026-09-30 Codex 직접 게시 경로 확인
+
+현재 Codex에는 Sites 커넥터가 제공된다. 기존 프로젝트 ID로 소유자/접근 수준을 조회한 후 source write credential을 받아, 별도 게시 worktree에서 기존 Sites head 위에 검증된 main의 정확한 트리를 투영한다. 자격증명은 Git per-command HTTP header만 사용하고 파일·config·remote URL에 보존하지 않는다. 로컬 build와 Sites package-site로 산출물을 만들고, 정확한 pushed SHA+아카이브를 save_site_version에 전달한 후 현재 public 접근 그대로 deploy_site_version을 실행한다. 성공 뒤 공개 runtime tree를 대조한다. [실제 게시 증거](releases/2026-09-30-a733099.md).
+
+아래 과거 “외부 API·CLI 없음”은 당시 도구 환경 기록이다. 원격 빌드/편집기 대행이 항상 필요한 것은 아니다. 저장·배포 도구 계약과 현재 사이트 접근 수준을 먼저 확인하고 기존 위임 범위를 따른다.
+
 ## 1. 기준 리비전 고정
 
 게시할 GitHub 리비전은 `origin/main`이고 CI `verify`가 passed여야 한다.
