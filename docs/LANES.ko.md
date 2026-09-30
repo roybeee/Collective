@@ -7,6 +7,13 @@
 - 결정: 대표 지시(2026-09-26 "계속 뭔가 앞서가있어서 중복업무를 하고있어보이는데 바로잡고 세션별 개발순서를 정리해서 중복업무를 없애").
 - 작성: Claude A 세션. 레인을 바꾸려면 대표 확인을 받고 이 문서를 고친다.
 
+### 2026-09-30 성장2 원안 잔여 개발 · Claude 인계
+
+- 대표 지시(2026-09-30 16:5x UTC, Claude 세션): “성장계획 2 원안 전체 중에 부분구현되었거나 아직 연결안되었거나 아직 개발 전인것들 멈추지말고 끝까지 개발 완료하라.” 기존 Codex 성장2 통합 담당의 마지막 활동(#284, 13:49 UTC) 뒤 이 Claude 세션이 성장2 원안 잔여 개발을 이어받는다.
+- 작업: `claude/vibrant-bohr-gzwdmw`, 기준 main `2dd2f63`. 한 브랜치에 카드별 커밋을 쌓고 Draft PR 하나로 올린다. 병합·Sites 게시는 레인 A 게시 담당(현재 성장2 통합 Codex 또는 대표 지정)이 한다. 이 세션은 게시하지 않는다.
+- 소유: 새 `lib/growth-*`·`app/api/growth/*`·`app/growth-*-panel.tsx`·전용 tests/e2e·`docs/GROWTH-2-*.ko.md`. 공유 변경은 `app/growth-panel.tsx` 연결, `lib/record-kinds.ts`·`lib/deletion-summary.ts` 등록, `docs/GROWTH-2-PLAN.ko.md` 추적 상태, STATUS의 성장2 절이다. R/Q 소유 파일(`lib/prompt-registry.ts`·`lib/eval-*`·franchise)은 읽기만 한다.
+- Codex가 성장2를 다시 이어가려면 이 브랜치의 PR을 먼저 병합하거나 대표 확인 후 소유를 되돌린다. 같은 카드를 두 세션이 동시에 개발하지 않는다.
+
 ### 2026-09-30 성장2 원안 전체 개발 재개
 
 - 대표 지시: “성장2의 원래 개발계획 전체를 개발 지속하라.” 원안 v2.0 G2-00~32를 기준으로 Meta 밖 상품·오퍼·시장·고객·판매·이행·학습 루프까지 이어간다.

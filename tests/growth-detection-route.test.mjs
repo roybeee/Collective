@@ -1,0 +1,32 @@
+// 자사 장부 결정론 신호 감지(G2-06/07/25): 주문 속도·품절 위험·반품 원인·문의 반복·시즌. 모델·외부 호출 0. 인증 mocked, 메모리 SQLite real.
+import assert from 'node:assert/strict';import {randomUUID} from 'node:crypto';import {testRuntime} from './helpers/runtime.mjs';
+const {load,sql}=testRuntime(async()=>{throw Error('external forbidden')});
+const server=await load('lib/server.ts'),route=await load('app/api/growth/detections/route.ts'),pure=await load('lib/growth-detection.ts');let passed=0;const check=(v,n)=>{assert.ok(v,n);passed++};
+const D=86400000,now=Date.parse('2026-09-30T03:00:00Z'),day=t=>new Date(t).toISOString().slice(0,10);
+const orders=(n,from,to)=>Array.from({length:n},(_,i)=>({orderDate:day(now-(from+(i%(to-from+1)))*D),status:'paid',paidAmount:1000,refundAmount:0}));
+let d=pure.detectSignals({now,orders:[...orders(14,0,6),...orders(21,7,27)],stock:[],returns:[],csRecurring:[]});check(d.some(x=>x.kind==='demand_rise'&&x.evidence.changePct===100),'demand rise +100%');
+d=pure.detectSignals({now,orders:[...orders(2,0,6),...orders(42,7,27)],stock:[],returns:[],csRecurring:[]});check(d.some(x=>x.kind==='demand_drop'),'demand drop');
+d=pure.detectSignals({now,orders:[...orders(2,0,6),...orders(3,7,27)],stock:[],returns:[],csRecurring:[]});check(!d.some(x=>x.kind.startsWith('demand')),'small samples do not trigger');
+d=pure.detectSignals({now,orders:[...orders(14,0,6)],stock:[],returns:[],csRecurring:[]});check(!d.some(x=>x.kind.startsWith('demand')),'no baseline no ratio');
+d=pure.detectSignals({now,orders:[...orders(14,0,6),{...orders(1,0,0)[0],status:'refunded',refundAmount:1000},...orders(21,7,27)],stock:[],returns:[],csRecurring:[]});check(d.find(x=>x.kind==='demand_rise').evidence.recentOrders===14,'refunded orders excluded');
+d=pure.detectSignals({now,orders:[],stock:[{sku:'A',available:5,status:'known',recentUnits:14},{sku:'B',available:100,status:'known',recentUnits:14},{sku:'C',available:0,status:'held',recentUnits:20},{sku:'D',available:1,status:'known',recentUnits:0}],returns:[],csRecurring:[]});check(d.filter(x=>x.kind==='stockout_risk').map(x=>x.evidence.available).join()==='5','only known stock under 3 days of cover');
+d=pure.detectSignals({now,orders:[],stock:[],returns:[...Array(3)].map(()=>({reasonCode:'wrong_option',observedAt:day(now-D)})).concat([...Array(5)].map(()=>({reasonCode:'unknown',observedAt:day(now)})),[{reasonCode:'product_defect',observedAt:day(now-40*D)},{reasonCode:'product_defect',observedAt:day(now)},{reasonCode:'product_defect',observedAt:day(now)}]),csRecurring:['shipping_delay']});
+check(d.some(x=>x.kind==='return_cluster'&&x.evidence.reasonCode==='wrong_option')&&!d.some(x=>x.evidence.reasonCode==='unknown')&&!d.some(x=>x.evidence.reasonCode==='product_defect'),'return cluster within 30 days, unknown excluded');check(d.some(x=>x.kind==='cs_recurring'),'cs recurring');
+d=pure.detectSignals({now:Date.parse('2026-10-20T00:00:00Z'),orders:[],stock:[],returns:[],csRecurring:[]});check(d.some(x=>x.key==='season:pepero:2026-11-11'&&x.dueBy==='2026-11-04')&&!d.some(x=>x.key.includes('christmas')),'season within 45 days with prep due date');
+d=pure.detectSignals({now:Date.parse('2029-12-01T00:00:00Z'),orders:[],stock:[],returns:[],csRecurring:[]});check(!d.some(x=>x.kind==='season'),'unknown years produce no guess');
+// route
+const owner='owner',c={id:'c',brandId:'b',storeId:'s',version:1,status:'active'},h={'oai-authenticated-user-id':owner,origin:'https://agency.test'};
+const put=(kind,id,data,parent='')=>server.recordStatement(owner,kind,id,data,parent).run();await put('campaign','c',c);await put('store','s',{id:'s',brandId:'b'},'b');
+const today=Date.now(),zero={foodCost:0,packagingCost:0,fees:0,deliveryCost:0,benefitCost:0};let n=0;
+for(let i=0;i<14;i++)await put('store_order','r'+i,{id:'r'+i,storeId:'s',campaignId:'c',orderDate:day(today-(i%7)*D),status:'paid',paidAmount:1000,refundAmount:0,costs:zero},'s');
+for(let i=0;i<21;i++)await put('store_order','b'+i,{id:'b'+i,storeId:'s',campaignId:'c',orderDate:day(today-(7+i)*D),status:'paid',paidAmount:1000,refundAmount:0,costs:zero},'s');
+const unpack=async r=>({status:r.status,body:await r.json()}),post=(data,headers=h)=>route.POST(new Request('https://agency.test/api/x',{method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({campaignId:'c',campaignVersion:1,expectedVersion:0,requestId:randomUUID(),...data})})).then(unpack),get=(headers=h)=>route.GET(new Request('https://agency.test/api/growth/detections?campaignId=c',{headers})).then(unpack);
+check((await post({action:'detect'},{})).status===401,'auth');check((await post({action:'detect'},{...h,origin:'https://evil.test'})).status===403,'CSRF');
+let r=await post({action:'detect'});check(r.status===200&&r.body.created>=1,'detection stored');n=r.body.created;r=await post({action:'detect'});check(r.body.created===0,'second run idempotent');
+r=await get();const sig=r.body.signals.find(x=>x.detection.kind==='demand_rise');check(sig&&sig.status==='new'&&sig.detectedBy==='operator'&&r.body.isForecast===false&&r.body.signals.length===n,'rise listed as new review signal, not forecast');
+check((await post({action:'acknowledge',id:sig.id,expectedVersion:1,triage:{assignee:'판매 담당',nextAction:'재고 확인',dueBy:'2020-01-01'}})).status===200,'acknowledged');r=await get();check(r.body.signals.find(x=>x.id===sig.id).overdue,'past due flagged');
+check((await post({action:'dismiss',id:sig.id,expectedVersion:2,reason:''})).status===400,'dismiss needs reason');check((await post({action:'dismiss',id:sig.id,expectedVersion:2,reason:'일시 행사 영향'})).status===200,'dismissed');check((await post({action:'acknowledge',id:sig.id,expectedVersion:3,triage:{assignee:'a',nextAction:'b',dueBy:'2099-01-01'}})).status===409,'dismissed not reopened');
+await post({action:'detect'});r=await get();check(r.body.signals.find(x=>x.id===sig.id).status==='dismissed','rerun does not reopen dismissed');
+check((await get({'oai-authenticated-user-id':'other'})).status===404,'owner isolation');
+check(sql.prepare("SELECT COUNT(*) n FROM records WHERE kind='growth_signal'").get().n===0,'no market signal records written');
+console.log(JSON.stringify({passed}));

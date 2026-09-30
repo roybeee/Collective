@@ -24,7 +24,7 @@ const deletedGroups:readonly Group[]=[
 // 제작·발행·주문 귀속 기록(blocksDeletion)이 있으면 삭제 자체가 거부되므로 대화상자는 사유만 보이고 보존 목록을 쓰지 않는다.
 const retainedGroups:readonly Group[]=[
  {label:'소싱 견적·비교',kinds:['growth_sourcing_candidate','growth_sourcing_history','growth_sourcing_comparison','growth_sourcing_request'],note:'공급 조건과 발주 검토 당시 근거'},
- {label:'성장 발행 연결',kinds:['growth_publication_link','growth_publication_history','growth_publication_request'],note:'승인 발행과 예산·재고 예약의 연결 및 결과 확인 이력'},
+ {label:'성장 발행 연결',kinds:['growth_publication_link','growth_publication_history','growth_publication_request','growth_demand_evidence','growth_demand_evidence_history','growth_demand_evidence_request','growth_landing_revision','growth_landing_revision_history','growth_landing_revision_request'],note:'승인 발행과 예산·재고 예약의 연결 및 결과 확인 이력'},
  {label:'재발주 검토',kinds:['growth_reorder_review','growth_reorder_request'],note:'수요 가정과 수량·시점·구매비 검토 근거'},
  {label:'판매 비용·손실 대사',kinds:['growth_reconciliation'],note:'운영자 확인 및 예약 해제 근거'},
  {label:'성장 주문·재고 이력',kinds:['growth_stock_event','growth_order_line','growth_order_line_history','growth_settlement','growth_settlement_history'],note:'재고와 주문 대사 근거'},

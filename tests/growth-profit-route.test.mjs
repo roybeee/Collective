@@ -1,0 +1,25 @@
+// 마케팅 후 공헌이익·현금 요약(G2-32). 미대사 지출은 null로 두고 0으로 채우지 않는다. 인증 mocked, 메모리 SQLite real.
+import assert from 'node:assert/strict';import {testRuntime} from './helpers/runtime.mjs';
+const {load}=testRuntime(async()=>{throw Error('external forbidden')});
+const server=await load('lib/server.ts'),route=await load('app/api/growth/profit/route.ts'),pure=await load('lib/growth-profit.ts');let passed=0;const check=(v,n)=>{assert.ok(v,n);passed++};
+const owner='owner',c={id:'c',brandId:'b',storeId:'s',version:1,status:'active',title:'캠페인'},h={'oai-authenticated-user-id':owner};
+const put=(kind,id,data,parent='')=>server.recordStatement(owner,kind,id,data,parent).run();await put('campaign','c',c);await put('store','s',{id:'s',brandId:'b',name:'지점'},'b');
+const today=new Date().toISOString().slice(0,10),now=new Date().toISOString(),zero={foodCost:0,packagingCost:0,fees:0,deliveryCost:0,benefitCost:0};
+await put('store_order','o1',{id:'o1',storeId:'s',campaignId:'c',orderDate:today,status:'paid',paidAmount:100000,refundAmount:10000,costs:{...zero,foodCost:30000},version:1},'s');
+const get=(q='',headers=h)=>route.GET(new Request('https://agency.test/api/growth/profit?campaignId=c'+q,{headers})).then(async r=>({status:r.status,body:await r.json()}));
+let r=await get();check(r.status===200&&r.body.netRevenue===90000&&r.body.contributionBeforeMarketing===60000&&r.body.marketing.total===0&&r.body.contributionAfterMarketing===60000,'no spend: after-marketing equals before');check(r.body.cash.netCashFlow===null&&r.body.causalStatus==='not_measured','net cash not claimed');
+const commit=(id,status,actual,amount=5000)=>put('growth_commitment',id,{id,brandId:'b',campaignId:'c',commitment:{authorityId:'a',action:{amount,operation:'spend'},status,at:now,reservedAmount:amount,reservedLoss:0,actualAmount:actual,actualLoss:0}},'c');
+await commit('k1','reconciled',4000);r=await get();check(r.body.marketing.total===4000&&r.body.contributionAfterMarketing===56000,'reconciled spend deducted');
+await commit('k2','reserved',null);r=await get();check(r.body.marketing.total===null&&r.body.contributionAfterMarketing===null&&r.body.marketing.known===4000&&r.body.marketing.unknownItems===1&&r.body.status==='partial','reserved spend keeps total unknown');
+await commit('k2','released',0);r=await get();check(r.body.marketing.total===4000,'released counts as zero');
+await put('growth_collaboration','co',{id:'co',brandId:'b',campaignId:'c',version:6,plan:{feeKrw:20000},stage:'published',receipts:[{stage:'published',at:now}]},'c');r=await get();check(r.body.contributionAfterMarketing===null&&r.body.marketing.bySource.find(x=>x.source==='collaboration').unknown===1,'published unsettled paid collaboration unknown');
+await put('growth_collaboration','co',{id:'co',brandId:'b',campaignId:'c',version:7,plan:{feeKrw:20000},stage:'settled',receipts:[{stage:'published',at:now},{stage:'settled',at:now,paidKrw:20000}]},'c');r=await get();check(r.body.marketing.total===24000&&r.body.contributionAfterMarketing===36000,'settled collaboration deducted');
+await put('meta_ads_execution','me',{id:'me',campaignId:'c',brandId:'b',state:'active',approvedAt:now,settledSpend:null,settledAt:null,totalSpend:3000,lastObservedAt:now},'c');r=await get();check(r.body.contributionAfterMarketing===null,'active Meta execution unknown');
+await put('meta_ads_execution','me',{id:'me',campaignId:'c',brandId:'b',state:'settled',approvedAt:now,settledSpend:3000,settledAt:now,totalSpend:3000,lastObservedAt:now},'c');r=await get();check(r.body.marketing.total===27000&&r.body.contributionAfterMarketing===33000,'settled Meta spend deducted');
+const settle=(id,kind,amount,fee=0)=>put('growth_settlement',id,{id,brandId:'b',storeId:'s',campaignId:'c',input:{eventId:id,revision:1,kind,orderId:'o1',orderVersion:1,accountRef:'acct',settlementRef:'set-'+id,receiptRef:'rc-'+id,currency:'KRW',amount,feeAmount:fee,taxBasis:'included',occurredAt:now,evidenceRef:'ev',origin:'operator_attested'}},'s');
+await settle('e1','expected',87000,3000);await settle('r1','received',50000,1500);r=await get();check(r.body.cash.expected===87000&&r.body.cash.received===50000&&r.body.cash.pending===37000&&r.body.cash.fees===1500,'cash received vs pending');
+await settle('r2','received',null);r=await get();check(r.body.cash.received===null&&r.body.cash.pending===null,'unknown receipt keeps cash null');
+check((await get('&from=2020-01-01&to=2020-01-31')).body.marketing.total===0,'period filter');check((await get('&from=2026-02-30')).status===200,'invalid date falls back to default period');check((await get('&from=2020-01-01&to=2026-12-31')).status===400,'max one year');
+check((await get('',{'oai-authenticated-user-id':'other'})).status===404,'owner isolation');
+check(pure.profitSummary({netRevenue:null,contributionBeforeMarketing:null,spend:[],cash:[],period:{from:today,to:today}}).contributionAfterMarketing===null,'unknown cost stays null');
+console.log(JSON.stringify({passed}));

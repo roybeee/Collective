@@ -1,0 +1,26 @@
+// 일일 운영 루프(G2-00/28): 스위치 꺼짐 무동작, KST 하루 1회, 캠페인별 감지·안건, 실패 재시도, 워커 큐 연결. 외부 호출 0.
+import assert from 'node:assert/strict';import {testRuntime} from './helpers/runtime.mjs';
+let fail=false;const {load,sql}=testRuntime(async()=>{throw Error('external forbidden')},{beforeRun(s){if(fail&&s.query.startsWith('INSERT INTO records')&&s.values[2]==='growth_detected_signal')throw Error('boom')}});
+const server=await load('lib/server.ts'),daily=await load('lib/growth-daily-server.ts'),flags=await load('lib/feature-flags.ts'),route=await load('app/api/growth/daily/route.ts');let passed=0;const check=(v,n)=>{assert.ok(v,n);passed++};
+const owner='owner',put=(kind,id,data,parent='')=>server.recordStatement(owner,kind,id,data,parent).run(),D=86400000,day=t=>new Date(t).toISOString().slice(0,10),now=Date.now();
+await put('campaign','c',{id:'c',brandId:'b',storeId:'s',version:1,status:'active',title:'판매 캠페인'});await put('campaign','arch',{id:'arch',brandId:'b',storeId:'s',version:1,status:'archived',title:'보관'});await put('campaign','nostore',{id:'nostore',brandId:'b',version:1,status:'active',title:'지점 없음'});await put('store','s',{id:'s',brandId:'b'},'b');
+const zero={foodCost:0,packagingCost:0,fees:0,deliveryCost:0,benefitCost:0};for(let i=0;i<14;i++)await put('store_order','r'+i,{id:'r'+i,storeId:'s',campaignId:'c',orderDate:day(now-(i%7)*D),status:'paid',paidAmount:1,refundAmount:0,costs:zero},'s');for(let i=0;i<21;i++)await put('store_order','b'+i,{id:'b'+i,storeId:'s',campaignId:'c',orderDate:day(now-(7+i)*D),status:'paid',paidAmount:1,refundAmount:0,costs:zero},'s');
+await put('growth_commitment','k',{id:'k',brandId:'b',campaignId:'c',commitment:{status:'reserved',at:new Date(now-10*D).toISOString(),action:{amount:100}}},'c');
+await put('growth_mission','m',{id:'m',brandId:'b',campaignId:'c',status:'staged',input:{deadline:'2020-01-01'}},'c');
+check((await daily.runGrowthDaily(owner,'worker',now)).status==='idle','flag off: no run');check(sql.prepare("SELECT COUNT(*) n FROM records WHERE kind='growth_daily_run'").get().n===0,'flag off writes nothing');
+await flags.setFeatureFlag(owner,{flag:'growth_daily_loop',enabled:true},{id:owner,email:null});
+check(await flags.isEnabled(owner,'growth_daily_loop'),'flag enabled');
+let r=await daily.runGrowthDaily(owner,'worker',now);check(r.status==='processed'&&r.campaigns===1,'one active store campaign processed (archived and storeless skipped)');
+const row=JSON.parse(sql.prepare("SELECT data FROM records WHERE kind='growth_daily_run'").get().data),camp=row.campaigns[0];
+check(row.day===daily.kstDay(now)&&row.status==='completed'&&camp.detection.created>=1,'detections created by daily loop');
+const kinds=camp.agenda.map(a=>a.kind);check(kinds.includes('signal_new')&&kinds.includes('reservation_unreconciled')&&kinds.includes('mission_overdue'),'agenda includes new signals, stale reservation, overdue mission');
+check(sql.prepare("SELECT COUNT(*) n FROM records WHERE kind='growth_detected_signal' AND json_extract(data,'$.detectedBy')='daily_loop'").get().n>=1,'signals attributed to daily loop');
+check((await daily.runGrowthDaily(owner,'worker',now)).status==='idle','second run same KST day idle');check((await daily.runGrowthDaily(owner,'operator',now)).status==='idle','operator run same day idle');
+check(sql.prepare("SELECT COUNT(*) n FROM records WHERE kind IN ('execution_publication','growth_action_intent','meta_ads_execution','prompt_release')").get().n===0,'no execution or prompt writes');
+const stopServer=await load('lib/growth-stop-server.ts');await stopServer.changeGrowthStop({owner,id:owner,email:null,role:'owner'},{action:'stop',expectedVersion:0,requestId:crypto.randomUUID(),reason:'운영 점검 중단'});const next=now+D;fail=true;r=await daily.runGrowthDaily(owner,'worker',next);fail=false;
+const row2=JSON.parse(sql.prepare("SELECT data FROM records WHERE id=?").get(`${owner}:growth_daily_run:${daily.kstDay(next)}`).data);check(r.status==='processed'&&row2.status==='partial'&&row2.campaigns[0].error&&row2.stop==='stopped','per-campaign failure recorded as partial, stop state recorded');
+const h={'oai-authenticated-user-id':owner,origin:'https://agency.test'};const g=await route.GET(new Request('https://agency.test/api/growth/daily?campaignId=c',{headers:h}));const v=await g.json();check(g.status===200&&v.enabled&&v.runs.length===2&&v.runs.some(x=>x.campaign?.campaignId==='c')&&v.mayExecute===false,'view lists runs with this campaign agenda');
+check((await route.POST(new Request('https://agency.test/api/growth/daily',{method:'POST',headers:{...h,'content-type':'application/json'},body:JSON.stringify({action:'bogus'})}))).status===400,'unknown action');
+check((await route.GET(new Request('https://agency.test/api/growth/daily?campaignId=c',{headers:{'oai-authenticated-user-id':'other'}}))).status===404,'owner isolation');
+const worker=await load('lib/research-worker.ts');check(/growthDaily/.test(worker.workerTick.toString()),'worker tick accepts the growth_daily queue');
+console.log(JSON.stringify({passed}));

@@ -29,6 +29,8 @@ export const FEATURE_FLAGS={
  b2_digest_queue:{defaultEnabled:false,description:'워커 tick이 주 1회 지난주 품질 집계(역할×프롬프트 버전×보고 모델)와 드리프트 경보(보고 모델·게이트웨이 변경, 역할 무효율 2배, 골든 스모크 하락, 토큰 예산 소진율)·보존 정리 제안을 기록한다(B2 2단계, 모델 호출 없음). 캠페인·작업물 상태는 바꾸지 않는다.'},
  input_diet:{defaultEnabled:false,description:'역할·회의·브리프 입력을 줄인다(PR 4b): 캠페인 메타 제거, 선행 작업물 섹션별 예산(모든 섹션 포함), 회의 단계별 작업물 축소(품질 재검토 본문 중복 제거), 브랜드 자료 역할별 요약(digest)과 입력 상한. 확정 사실·근거 규율·출력 계약은 그대로다. 켜기 전에 레인 Q 쌍 평가가 필요하다.'},
  b3_reflector:{defaultEnabled:false,description:'대표·관리자가 같은 브랜드×역할 교정 5건 이상 묶음을 Reflector 전용 HERMES 격리 프로필에 1회 보내 운영자 선호 규칙 초안(최대 5개, 인용 필수, 초안만·승인은 사람)을 제안받는다(B3-2, 토큰 사용·예산 가드 적용). 미리보기 확인·개인정보 탐지 시 전송 차단·대표 격리 확인이 있어야 보낸다.'},
+ storefront_pull:{defaultEnabled:false,description:'워커 tick이 소유자가 켠 판매처 주문 조회 연결을 간격마다 1페이지씩 읽어(읽기 전용, 고객 정보 없음) 기존 주문 장부에 반영한다. 커서는 저장과 같은 묶음에서만 전진한다.'},
+ growth_daily_loop:{defaultEnabled:false,description:'워커 tick이 KST 하루 1회 지점 캠페인마다 자사 장부 신호를 감지하고 문의 기한·신호·교훈 확인·실험 분석·예약 대사·미션 기한 안건을 기록한다. 게시·지출·발주·고객 발송·프롬프트 승격은 하지 않는다.'},
  publication_auto_link:{defaultEnabled:false,description:'워커가 예약 접수된 발행의 Buffer 상태를 30분마다 확인하고(예약 1시간 전~7일 뒤), 게시 확인·실험 연결·Instagram 게시물 ID가 모두 있는 발행을 그 실험 안의 성과 자동 수집 대상으로 등록한다(PR 4b loop-2). 꺼도 발행–실험 연결과 게시물 ID 입력은 계속된다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
