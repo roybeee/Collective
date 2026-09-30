@@ -518,5 +518,11 @@ PR #19(`docs/email-auth-release`, 커밋 aa06574·b242019)가 기록했으나 `m
 ### 주문·품목 운영 확인 목록 (2026-09-30 13:16 UTC)
 
 - [운영 확인 계약](GROWTH-2-OPERATION-REVIEW.ko.md): 재대사·미출고·취소/환불 후 할당·공유 재고 미확인/부족을 현재 캠페인에 모으고 정확한 기존 폼으로 이동한다. 원안 G2-30/32 부분 구현, 외부 실행0.
-- 도메인32/기존 운영API49, 타입·빌드·E2E4 passed. real local D1/API/Chromium이며 인증 및 실패 응답만 mocked. 독립 리뷰 HIGH/MED0, lint 기존70/39 기준선 passed. 전체278/278 suites·16,295 assertions passed(외부 mocked). 전체 브라우저 회귀는 별도 진행 중.
+- 도메인32/기존 운영API49, 타입·빌드·E2E4 passed. real local D1/API/Chromium이며 인증 및 실패 응답만 mocked. 독립 리뷰 HIGH/MED0, lint 기존70/39 기준선 passed. 전체278/278 suites·16,295 assertions passed(외부 mocked). 추가 전체 브라우저142개(모바일71+데스크톱71) passed, 6.8분·실패0. 실제 Chromium/로컬 D1 및 기존 Meta·보고서·오류 명시 mock 혼합. #283 HEAD7583f2f pushed·CI 진행 중.
 - #280은 main6c0c54f로 merged, Sites78 published/runtime-verified([증거](releases/2026-09-30-6c0c54f.md)). #281은 main15f3639로 merged, Sites79 published/runtime-verified([증거](releases/2026-09-30-15f3639.md)). #282 기회·일정 보드는 CI 진행 중. 원안 전체는 미완료.
+
+### 반품·환불 원인 근거 (2026-09-30 13:31 UTC)
+
+- [사건별 원인 계약](GROWTH-2-RETURN-REASONS.ko.md): 기존 return/refund 사건에 운영자 확인 원인·내부 증빙을 연결한다. unknown을 유지하며 고객 원문·환불 실행·재고 변경을 추가하지 않는다. 정확 사건/품목/재고/범위·판과 실제 필드 digest를 확인하고 현재/이력/멱등 요청을 원자 저장한다.
+- 도메인12/API33·종류 정책54 passed(real pure/memory SQL, 인증/runtime mocked·외부0). 타입 passed, 독립 code/security 리뷰 HIGH/MED0. 빌드·신규2/기존운영2 E2E4 passed(real local D1/API/Chromium; 응답 유실/GET503만 mocked), 프롬프트22·lint70/39 기준선 passed. 최종 전체280/280 suites·16,341 assertions passed(외부 mocked). 아직 merged/published가 아니다.
+- 앞선 운영 확인 목록 #283은 전체278/16,295·전체 브라우저142 passed 후 CI 중. #282는 원격 E2E1회 ECONNRESET(139pass/1fail) 뒤 해당 job 재실행 passed, 최종 CI4 passed 후 main71f6a65로 merged했다. 검증 head와 main tree diff0. 실패 기록은 삭제하지 않는다.

@@ -23,6 +23,9 @@ export type SubjectErasure='delete'|'minimize'|'legal_hold'|'none';
 export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;retention?:RetentionPolicy;subjectErasure?:SubjectErasure;description:string};
 
 export const recordKinds:readonly RecordKind[]=[
+ {kind:'growth_return_reason',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'정확한 반품·환불 사건에 연결한 운영자 확인 원인 현재 판. 고객 원문 없음'},
+ {kind:'growth_return_reason_history',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'반품·환불 원인 근거의 추가 전용 개정 이력'},
+ {kind:'growth_return_reason_request',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'반품·환불 원인 기록 요청 멱등 재시도 근거'},
  {kind:'growth_reorder_review',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'수요 가정·소싱 견적·공유 재고를 고정한 불변 재발주 검토'},
  {kind:'growth_reorder_request',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'재발주 검토 저장 요청 멱등 재시도 근거'},
  {kind:'growth_sourcing_candidate',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'단일 SKU 공급 후보의 견적 조건과 현재 판'},
