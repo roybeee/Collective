@@ -1,3 +1,4 @@
+import {requireGrowthRunning} from './growth-stop-server';
 import type {MetaExecution} from './meta-execution';
 import type {Campaign} from './agency';
 import type {MetaPlan} from './meta-ads';
@@ -23,6 +24,7 @@ export async function metaReservationView(owner:string,c:Campaign,canEdit:boolea
  return {records:records.filter(r=>r.campaignId===c.id).map(r=>({...r,stale:!bundle.verifiedScope||r.scopeDigest!==bundle.verifiedScope.scopeDigest})),scopeDigest:bundle.verifiedScope?.scopeDigest??null,allocatable:envelope.allocatable,reserved,issues,canEdit,maySpend,executionBlockers:['실행 패널에서 별도 승인한 구성만 활성화하며, 외부 중단과 최종 광고비 대조까지 예약을 유지합니다.','예약은 앱의 계획 장부이며 실제 청구 상한이나 광고 중단을 보장하지 않습니다.']};
 }
 export async function reserveMetaBudget(owner:string,actorId:string,c:Campaign,b:Record<string,unknown>){
+ await requireGrowthRunning(owner);
  if(c.status==='archived')throw new ApiError(409,'보관된 캠페인입니다.');
  const scope=await requireVerifiedMetaAdBundle(owner,c),plan=await readRecord<MetaPlan>(owner,'meta_ads_plan',c.id),p=plan.input,records=await reservationRecords(owner);
  if(b.expectedScopeDigest!==scope.scopeDigest||plan.campaignVersion!==c.version)throw new ApiError(409,'계획·광고 구성이 변경되었습니다. 다시 확인하세요.');

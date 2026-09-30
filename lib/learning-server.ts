@@ -1,5 +1,6 @@
 import {ApiError,str,num,stamp,uid,readRecord,listRecords,recordStatement,database,eventStatement,isAdmin,type EventActor} from './server';
 import {metaRuleEvidenceCurrent} from './meta-experiment-evidence';
+import {requireGrowthRunning} from './growth-stop-server';
 import {learningChannels,learningMetrics,evaluateExperiment,ruleApplies,defaultVerifyChannel,operatorRule,ANY_CHANNEL,PLAYBOOK_MAX_CHARS,type ViralCase,type ViralAnalysis,type TestIdea,type ViralExperiment,type ExperimentResult,type LearningRule,type LearningSnapshot,type Arm,type StoreAssessment,type ReviewDecisionSummary,type PlaybookRecheck,type LearningData,type CorrectionDecision,type PlaybookEvalGate} from './learning';
 import {channelHosts,storeChannelName,channelRegistry} from './channels';
 import {normalizeRuleBody,ruleBodyProblem,ruleTitle,playbookExpiry,activationProblem,correctionClusters,playbookFeedback,recurrenceRate,preferenceOrder,isPreferencePair,MAX_ACTIVE_PER_ROLE,PLAYBOOK_MIN_CITATIONS,PLAYBOOK_MAX_CITATIONS} from './playbook-curator';
@@ -153,6 +154,7 @@ async function createExperimentFromArtifact(owner:string,b:Record<string,unknown
  await database().batch([recordStatement(owner,'viral_experiment',e.id,e,campaign.id),eventStatement(owner,campaign.id,`작업물 「${a.title}」의 제안 실험 「${e.title}」을 바이럴 실험으로 설계했습니다.`,by)]);return {id:e.id};
 }
 export async function learningAction(owner:string,b:any,by?:PlaybookActor){
+ if(['adopt_rule','renew_rule','playbook_activate','playbook_renew'].includes(b.action))await requireGrowthRunning(owner);
  if(typeof b.action==='string'&&b.action.startsWith('playbook_'))return playbookAction(owner,b,by);
  if(b.action==='add_case'){
   const c=await makeCase(owner,b.data);const previous=(await listRecords<ViralCase>(owner,'viral_case')).find(x=>x.brandId===c.brandId&&x.url===c.url);
