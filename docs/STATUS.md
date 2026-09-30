@@ -514,3 +514,9 @@ PR #19(`docs/email-auth-release`, 커밋 aa06574·b242019)가 기록했으나 `m
 - 레인 I 후속: 업종별 질문지 11종+공통 선택·저장, 답변 보존, 추천/자동 정리 업종 반영. 이전 인터뷰 스튜디오는 #233 merged 및 Sites 50 runtime-verified(별도 기록 PR #236). 이번 업종 기능은 typecheck/lint/build 및 인터뷰 40 checks passed(mocked). 전체 검사와 모바일·데스크톱 E2E는 CI에서 확인 후 게시.
 
 - 레인 I 캠페인 의사결정형 질문지: 대표의 실무 정보·질문 이유 요청으로 120질문 개정, 이유·캠페인 활용·근거 안내·가상 예시 표시. 기존 답변 보존. 타입/전용 검사 및 CI 확인 후 게시 예정.
+
+### 주문·품목 운영 확인 목록 (2026-09-30 13:16 UTC)
+
+- [운영 확인 계약](GROWTH-2-OPERATION-REVIEW.ko.md): 재대사·미출고·취소/환불 후 할당·공유 재고 미확인/부족을 현재 캠페인에 모으고 정확한 기존 폼으로 이동한다. 원안 G2-30/32 부분 구현, 외부 실행0.
+- 도메인32/기존 운영API49, 타입·빌드·E2E4 passed. real local D1/API/Chromium이며 인증 및 실패 응답만 mocked. 독립 리뷰 HIGH/MED0, lint 기존70/39 기준선 passed. 전체278/278 suites·16,295 assertions passed(외부 mocked). 전체 브라우저 회귀는 별도 진행 중.
+- #280은 main6c0c54f로 merged, Sites78 published/runtime-verified([증거](releases/2026-09-30-6c0c54f.md)). #281은 main15f3639로 merged, Sites79 published/runtime-verified([증거](releases/2026-09-30-15f3639.md)). #282 기회·일정 보드는 CI 진행 중. 원안 전체는 미완료.

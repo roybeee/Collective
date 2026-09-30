@@ -1,4 +1,5 @@
 import {assertGrowthPublicationRelease} from './growth-publication-server';
+import {buildOperationReview} from './growth-operation-review';
 import type {ExecutionIntent} from './growth-execution-server';
 import {catalogStocks,requireCatalogInventoryIdentity} from './growth-stock-readiness-server';
 import {requireGrowthRunning} from './growth-stop-server';
@@ -47,7 +48,7 @@ export async function growthOperationsView(who:Actor,c:Campaign){
  const campaignSettlements=settlements.filter(r=>r.campaignId===c.id);
  const settlement=projectSettlements(orders.filter(o=>campaignSettlements.some(r=>r.input.orderId===o.id)),campaignSettlements.map(r=>r.input),stamp());
  const orderLines=lines.filter(l=>l.campaignId===c.id).map(row=>{const order=orders.find(o=>o.id===row.input.orderId&&o.storeId===c.storeId);return {...row,allocation:order?validateOrderAllocations(order,lines.filter(l=>l.input.orderId===order.id).map(l=>l.input)):{status:'reconciliation_required',netAllocated:null,reasons:['연결 주문을 찾지 못했습니다.']}}});
- return {available:true,storeId:c.storeId,reason:'운영자가 근거를 확인해 기록한 내부 운영 장부입니다. 외부 판매자·배송·은행 조회는 수행하지 않습니다.',inventory,orderLines,settlement,orders:orders.filter(o=>o.storeId===c.storeId).map(o=>({id:o.id,version:o.version,orderDate:o.orderDate,status:o.status,paidAmount:o.paidAmount,refundAmount:o.refundAmount,campaignId:o.campaignId??null})),campaignVersion:c.version,canEdit:who.role!=='member',mayExecute:false};
+ return {available:true,review:buildOperationReview({campaignId:c.id,brandId:c.brandId,storeId:c.storeId,orders,orderLines,inventory},Date.now()),storeId:c.storeId,reason:'운영자가 근거를 확인해 기록한 내부 운영 장부입니다. 외부 판매자·배송·은행 조회는 수행하지 않습니다.',inventory,orderLines,settlement,orders:orders.filter(o=>o.storeId===c.storeId).map(o=>({id:o.id,version:o.version,orderDate:o.orderDate,status:o.status,paidAmount:o.paidAmount,refundAmount:o.refundAmount,campaignId:o.campaignId??null})),campaignVersion:c.version,canEdit:who.role!=='member',mayExecute:false};
 }
 function insert(who:Actor,kind:string,row:{id:string},parent:string){return database().prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').bind(`${who.owner}:${kind}:${row.id}`,who.owner,kind,parent,JSON.stringify(row),stamp())}
 type EventFields=Pick<InventoryEvent,'kind'|'quantity'|'reservationId'|'missionId'|'orderId'|'observedAt'|'evidenceRef'|'safeRelease'|'returnAccepted'|'disposition'|'restock'>;
