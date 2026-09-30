@@ -1,3 +1,4 @@
+import {assertGrowthPublicationRelease} from './growth-publication-server';
 import type {Campaign} from './agency';
 import type {ExecutionIntent} from './growth-execution-server';
 import type {GrowthCommitmentRecord} from './growth-authority-server';
@@ -40,6 +41,7 @@ export async function prepareReconciliation(who:Actor,c:Campaign,b:Record<string
  if(intent.state!==mission.status&&!(intent.state==='prepared'&&mission.status==='staged'))throw new ApiError(409,'미션과 실행 결과 상태를 먼저 대사하세요.');
  const at=stamp(),after=reconcileCommitment(commitment.commitment,input,intent.state);
  const next={...after,...(input.mode==='final'?{reconciledAt:at}:{})};
+ if(input.mode==='release')await assertGrowthPublicationRelease(who.owner,c,intent);
  const writes=input.mode==='release'?await releaseWrites(who,c,intent,item,input,key):[];
  const history:ReconciliationRecord={id:key,brandId:c.brandId,campaignId:c.id,intentId:id,intentVersion:intent.version+1,commitmentId:commitment.id,commitmentVersion:(commitment.version??1)+1,missionVersion:mission.version,inventoryVersion:item.version,input,before:commitment.commitment,after:next,requestDigest:digest,source:'operator_attested',recordedAt:at,recordedBy:who.id};
  writes.push(recordStatement(who.owner,'growth_commitment',commitment.id,{...commitment,version:history.commitmentVersion,commitment:next},c.id),recordStatement(who.owner,'growth_action_intent',id,{...intent,version:history.intentVersion,updatedAt:at},c.id),database().prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').bind(`${who.owner}:${kinds.history}:${key}`,who.owner,kinds.history,c.id,JSON.stringify(history),at));

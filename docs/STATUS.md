@@ -113,8 +113,18 @@
 - 재발주 통합 후 명시 상품 단위 불일치 시 구매수량·시점·현금 모두 null 보류하는 회귀2개를 추가했다. 통합 전체266/266 suites·15,951 assertions, 타입·빌드·관련8파일 E2E18 passed(real Chromium/local D1, 인증/기존 복구 실패 주입 mocked), 독립 통합 리뷰 HIGH/MED0. 이 준비도 변경은 아직 미게시이며 전체 성장2 원안은 미완료다.
 - #276 소싱은 main `25f370b`로 merged, Sites75 published/runtime-verified(11:52 UTC), [게시 증거](releases/2026-09-30-25f370b.md). #277 재발주는 원격 CI4개 passed 뒤 main `a652d29`로 merged, 아직 미게시다.
 
+### 자연 유입 미션과 기존 Buffer 발행 연결 (2026-09-30 · Codex)
+갱신: 2026-09-30 12:25 UTC
+
+- 검증된 재발주·공유 재고 준비도 `841bcef` 기반 `codex/growth2-organic-adapter`: [G2-12a/28 실행 연결](GROWTH-2-PUBLICATION.ko.md). prepared organic 미션과 승인된 미시도 발행을 관리자 1:1 연결하고 기존 Buffer 실행 진입점에서 현재 위임·채널·소재·사실·예산·정확한 전체 재고 예약을 확인한다.
+- 발행 submitting과 성장 unknown을 같은 batch에 저장한다. 기존 예약을 중복 차감하지 않으며 전송 직전 철회·중단을 확인한다. 서버 발행 판의 명시 동기화, source 판 멱등, 접수/예약과 실제 게시 분리, 불확실 결과 재전송 금지, 수동 결과/무집행 해제 우회 차단을 구현했다.
+- 독립 리뷰 지적: 중복 sync·승인 내용 변경·상충 결과, 게시 권한, 무관 목록 상한의 복구 차단, 오퍼 전체 수량 예약을 수정했다. exact 복구 후 전체 조회 불가 시 저장 ACK를 보존한다. 재검토 HIGH/MED0, 전용 API54/복구26 및 실제 성장·Buffer route/SQLite 통합41 passed(인증·공급자 mocked, 실제 외부0).
+- 타입·빌드·프롬프트22·최종 lint70/39 passed. 신규 publication2와 기존 execution/reconciliation/stock/stop/Buffer execution10, E2E12 passed(real Chromium/local D1, 공급자 승인·상태 fixture·응답 유실/ACK mocked). UI 독립 리뷰 HIGH/MED0. 새2모듈 V8 named function21/21 실행(문장·분기 커버리지 아님), staged gitleaks 약121KB 유출0.
+- 초기 lint71/40은 const 선언·미사용 test sql 2줄 수정 뒤 기준선 복구. 최초 전체270/271 suites·16,057 assertions에서 새 삭제 차단 kind의 테스트 기대 목록 누락1건을 수정했고 전용52 passed, 두 번째 전체는 테스트 중 root가 변경 목록을 stage하여 graders의 작업트리 불변 검사가 실패했다(제품 변경 없음). 이후 파일·인덱스를 고정한 최종 전체271/271 suites·16,109 assertions passed(외부 mocked). 실제 계정 게시·도달·주문·효과는 not_run이며 원안 전체는 미완료다.
+- #277·278은 merged, Sites76 published/runtime-verified(12:14 UTC), [게시 증거](releases/2026-09-30-7e553b8.md).
+
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 현재 운영: #276까지 `25f370b1130ecc1deb2bdbe1631564d3b715e36c`, Sites75, tree `7daa1d97df4e18416b59e95a5e33b47b3f527154`. 2026-09-30 11:52 UTC merged/published/runtime-verified. 전역 실행·학습 중단과 기존 주문/대사/복구 유지 포함. 원안 전체는 미완료이며 실제 공급자 실행·정산·효과 검증 not_run. [릴리스](releases/2026-09-30-e49815c.md).
+- 현재 운영: #278까지 `7e553b8eb54db50d6ba59831d082bcab65820a78`, Sites76, tree `5d3aff8a4043dc8c679b6327f028ce971d496ea2`. 2026-09-30 12:14 UTC merged/published/runtime-verified. 전역 중단·소싱·재발주·공유 재고 준비도와 기존 주문/대사/복구 유지 포함. 원안 전체는 미완료이며 실제 공급자 실행·정산·효과 검증 not_run. [릴리스](releases/2026-09-30-7e553b8.md).
 - 성장1 필수 코드 게시 대기 0건. #216·#218·#219·#225는 통합 #244로 병합·게시했다. #206·#208·#210~#214·#217·#220·#223·#231·#235·#237과 관련 문서도 현재 제품에 포함된다.
 - 기존 대기열의 미병합·404 문구는 과거 상태다. R 신규 PR #234·#241·#242·#243 및 인터뷰 게시 문서 #236·#240은 별도 소유자 작업이며 성장1 필수 잔여가 아니다.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
@@ -266,20 +276,20 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-30 11:57 UTC (Codex A 통합: 소싱 Sites75)
+마지막 갱신: 2026-09-30 12:25 UTC (Codex A 통합: 재발주·공유 재고 Sites76)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `25f370b1130ecc1deb2bdbe1631564d3b715e36c` (#276) | tree `7daa1d97df4e18416b59e95a5e33b47b3f527154`, [릴리스](releases/2026-09-30-25f370b.md) |
-| `origin/main` | 게시 제품 `25f370b`; 재발주 `a652d29`는 merged, 게시 대기 | 비제품 변경은 PUBLISH 5절 기준으로 구분 |
-| Sites 게시 | `published`: 버전75, deployment `appgdep_6abcf7de74308191aac25a8f900b4d7d` succeeded | 2026-09-30 11:52:19 UTC |
-| 실행 검증 | `runtime-verified`: 공개 `/api/version/public` tree 일치 | build `2026-09-30T11:49:09.533Z` |
-| 인증 | 새 전역 중단 API 익명401 | 실제 운영 HTTP, 데이터 변경 없음; 소유자 로그인 이번 재확인 not_run |
+| 운영 제품 커밋 | `7e553b8eb54db50d6ba59831d082bcab65820a78` (#278) | tree `5d3aff8a4043dc8c679b6327f028ce971d496ea2`, [릴리스](releases/2026-09-30-7e553b8.md) |
+| `origin/main` | 게시 제품 `7e553b8`; 자연 유입 미션 발행 연결은 개발 중 | 비제품 변경은 PUBLISH 5절 기준으로 구분 |
+| Sites 게시 | `published`: 버전76, deployment `appgdep_6abcfcee20648191b3961dddcd7be244` succeeded | 2026-09-30 12:13:54 UTC |
+| 실행 검증 | `runtime-verified`: 공개 `/api/version/public` tree 일치 | build `2026-09-30T12:11:48.054Z` |
+| 인증 | 재발주·성장 API 익명401 | Sites76 실제 운영 HTTP, 데이터 변경 없음; 소유자 로그인 이번 재확인 not_run |
 | Sites 접근 | public, 환경 revision4 유지 | 설정 변경 없음 |
 | 조사 워커 | 이번 게시에서 온라인 상태 재확인 not_run | 활성화 시 서버에서 온라인 조건을 검사 |
-| 제품 CI | #275 최종 head verify·e2e-smoke 4개 passed, main과 tree diff0 | [run36707964945](https://github.com/roybeee/Collective/actions/runs/36707964945), [run36707959231](https://github.com/roybeee/Collective/actions/runs/36707959231) |
+| 제품 CI | #278 head verify·e2e-smoke 4개 passed, main과 tree diff0 | [run36711858019](https://github.com/roybeee/Collective/actions/runs/36711858019), [run36711804989](https://github.com/roybeee/Collective/actions/runs/36711804989) |
 | 성장2 판정 | 전체33개 카드 개발 진행 중 / 실효과 검증 not_run | [원안 전체](GROWTH-2-PLAN.ko.md). 과거 [종료 판정](GROWTH-2-CLOSEOUT.ko.md)은 Meta M0~M6 한정 |
 | 성장1 판정 | 개발 종료 passed / 운영 인수 blocked / 효과 검증 not_run | [최종 판정·조건부 인계](observations/2026-09-28-lane-a-growth1-closeout.md) |
 

@@ -1,3 +1,5 @@
+import {assertGrowthPublicationRelease} from './growth-publication-server';
+import type {ExecutionIntent} from './growth-execution-server';
 import {catalogStocks,requireCatalogInventoryIdentity} from './growth-stock-readiness-server';
 import {requireGrowthRunning} from './growth-stop-server';
 import {parseSettlementEvidence,projectSettlements,type SettlementEvidence} from './growth-settlement';
@@ -126,7 +128,7 @@ export async function prepareMissionStock(who:Actor,c:Campaign,b:Record<string,u
  const item=await inventoryFor(who.owner,c,id(b.inventoryId,'재고 ID')),mission=await readRecord<GrowthRecord<MissionInput>>(who.owner,'growth_mission',id(b.missionId,'미션 ID'));
  if(mission.campaignId!==c.id||mission.brandId!==c.brandId)throw new ApiError(404,'현재 캠페인의 미션을 선택하세요.');
  const release=b.action==='release_stock',eventId=id(b.id,'재고 사건 ID');
- if(release){const intents=await rows<{input:{missionId:string};state:string}>(who.owner,'growth_action_intent',c.id);if(intents.some(row=>row.input.missionId===mission.id&&row.state!=='failed'))throw new ApiError(409,'실행 결과가 실패로 확인되기 전에는 연결 재고를 해제할 수 없습니다.');}
+ if(release){const intents=await rows<ExecutionIntent>(who.owner,'growth_action_intent',c.id);for(const intent of intents.filter(i=>i.input.missionId===mission.id))await assertGrowthPublicationRelease(who.owner,c,intent);if(intents.some(row=>row.input.missionId===mission.id&&row.state!=='failed'))throw new ApiError(409,'실행 결과가 실패로 확인되기 전에는 연결 재고를 해제할 수 없습니다.');}
  const fields={...basicEvent(release?'release':'reserve',quantity(b.quantity),str(b.observedAt,'확인 시각',40,true),growthText(b.evidenceRef,'예약 근거',160,true)),reservationId:release?id(b.reservationId,'예약 ID'):eventId,missionId:mission.id,safeRelease:release?flag(b.safeRelease):false};
  const events=await stockEvents(who.owner,item),duplicate=events.some(e=>e.id===eventId);
  if(!duplicate){

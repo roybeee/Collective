@@ -1,4 +1,5 @@
 import {requireGrowthRunning} from './growth-stop-server';
+import {prepareGrowthPublicationSubmission} from './growth-publication-server';
 import {ApiError,runtime,readRecord,listRecords,recordStatement,eventStatement,database,acquireLock,releaseLock,stamp,uid,str,num,type Actor} from './server';
 import {openRecordSecret,sealRecordSecret} from './credential-crypto-server';
 import {campaignBudget,isRecruitmentObjective,type Artifact,type Brand,type Campaign} from './agency';
@@ -322,7 +323,8 @@ export async function reservePublication(owner:string,campaign:Campaign,p:Public
  await verifyMedia(p.mediaUrl,mediaHash(p),origin);
  const token=await openRecordSecret(owner,'publisher_credential',campaign.brandId,credential.secret);
  const pending:Publication={...p,status:'submitting',attemptedAt:stamp(),updatedAt:stamp(),version:p.version+1};
- await publicationKeepingReview(owner,pending,campaign.id).run();
+ const growth=await prepareGrowthPublicationSubmission(owner,campaign,p,pending);
+ await database().batch([publicationKeepingReview(owner,pending,campaign.id),...growth.writes]);
  return {pending,token};
 }
 // 발행 행 전체 쓰기(접수 예약·상태 조회). owner 잠금 밖에서 붙는 재검토 표시(가맹 정보공개서 버전 교체, lib/franchise-server.ts versionFactReview)가
