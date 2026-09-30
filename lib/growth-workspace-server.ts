@@ -1,10 +1,11 @@
 import type {Campaign} from './agency';
 import {effectiveBrandFacts,type BrandFact,type FactRef} from './brand-facts';
-import {parseCatalogInput,parseOfferInput,catalogReadiness,offerReadiness,type CatalogInput,type OfferInput} from './growth-catalog';
+import {parseCatalogInput,parseOfferInput,catalogReadiness,offerReadiness,type CatalogInput,type OfferInput,type CatalogStock} from './growth-catalog';
 import {parseSignalInput,parseNeedInput,signalEvidence,needReadiness,type SignalInput,type NeedInput} from './growth-market';
 import {parseMissionInput,missionReadiness,growthText,type MissionInput,type MissionReceipt,type MissionState} from './growth-mission';
 import {ApiError,database,readRecord,recordStatement,stamp,str,type Actor} from './server';
 import {storefrontDigest} from './storefront-orders';
+import {catalogStocks} from './growth-stock-readiness-server';
 import {growthBusiness} from './growth-business-server';
 
 export type GrowthRecord<T>={id:string;campaignId:string;brandId:string;campaignVersion:number;version:number;input:T;updatedAt:string;updatedBy:string;requestDigest:string;factRefs?:FactRef[];evidenceRefs?:{id:string;version:number}[];status?:MissionState;receipt?:MissionReceipt};
@@ -22,16 +23,17 @@ async function factsFor(owner:string,c:Campaign){
  const raw=await database().prepare("SELECT data FROM records WHERE owner=? AND kind='brand_fact' AND parent_id=?").bind(owner,c.brandId).all<{data:string}>();
  return effectiveBrandFacts(raw.results.map(r=>JSON.parse(r.data) as BrandFact),c.brandId,c.storeId);
 }
-function catalogStatus(r:Catalog,facts:BrandFact[],c:Campaign){
- const base=catalogReadiness(r.input),current=new Map(facts.map(f=>[f.id,f.version]));
+function catalogStatus(r:Catalog,facts:BrandFact[],c:Campaign,stock:CatalogStock){
+ const base=catalogReadiness(r.input,Date.now(),stock),current=new Map(facts.map(f=>[f.id,f.version]));
  return {...base,missing:[...base.missing,...(r.campaignVersion!==c.version?['캠페인 변경 후 상품 재검토']:[]),...((r.factRefs??[]).some(f=>current.get(f.id)!==f.version)?['상품 사실 변경·만료: 재검토 필요']:[])]};
 }
 async function workspace(owner:string,c:Campaign){
  const [signals,needs,catalogs,offers,missions,facts]=await Promise.all([rows<SignalInput>(owner,kinds.signal,c),rows<NeedInput>(owner,kinds.need,c),rows<CatalogInput>(owner,kinds.catalog,c),rows<OfferInput>(owner,kinds.offer,c),rows<MissionInput>(owner,kinds.mission,c),factsFor(owner,c)]);
  const ns=needs.map(r=>{const base=needReadiness(r.input,signals,Date.now());return {...r,readiness:{...base,missing:[...base.missing,...(r.input.signalIds.some(id=>!r.evidenceRefs?.some(ref=>ref.id===id&&ref.version===signals.find(s=>s.id===id)?.version))?['시장 근거 변경 후 고객 기회 재검토']:[]),...(r.campaignVersion!==c.version?['캠페인 변경 후 고객 기회 재검토']:[])]}}});
- const cs=catalogs.map(r=>({...r,readiness:catalogStatus(r,facts,c)}));
- const os=offers.map(r=>{const item=cs.find(x=>x.id===r.input.catalogId)??null,need=ns.find(n=>n.id===r.input.needId);const base=offerReadiness(r.input,item);return {...r,readiness:{...base,missing:[...base.missing,...(item?.readiness.missing??[]),...(need?.readiness.missing??['고객 근거 연결']),...(need&&!r.evidenceRefs?.some(ref=>ref.id===need.id&&ref.version===need.version)?['고객 기회 변경 후 오퍼 재검토']:[]),...(r.campaignVersion!==c.version?['캠페인 변경 후 오퍼 재검토']:[])]}}});
- const ms=missions.map(r=>{const offer=os.find(x=>x.id===r.input.offerId);return {...r,readiness:missionReadiness(r.input,[...(offer?.readiness.missing??['판매 오퍼 연결']),...(offer&&offer.version!==r.input.offerVersion?['오퍼 변경 후 미션 재검토']:[]),...(r.campaignVersion!==c.version?['캠페인 변경 후 미션 재검토']:[])])}});
+ const stocks=await catalogStocks(owner,c,catalogs.map(r=>r.input));
+ const cs=catalogs.map((r,i)=>({...r,currentStock:stocks[i],readiness:catalogStatus(r,facts,c,stocks[i])}));
+ const os=offers.map(r=>{const item=cs.find(x=>x.id===r.input.catalogId)??null,need=ns.find(n=>n.id===r.input.needId);const base=offerReadiness(r.input,item,Date.now(),item?.currentStock);return {...r,currentStock:item?.currentStock??null,readiness:{...base,missing:[...base.missing,...(item?.readiness.missing??[]),...(need?.readiness.missing??['고객 근거 연결']),...(need&&!r.evidenceRefs?.some(ref=>ref.id===need.id&&ref.version===need.version)?['고객 기회 변경 후 오퍼 재검토']:[]),...(r.campaignVersion!==c.version?['캠페인 변경 후 오퍼 재검토']:[])]}}});
+ const ms=missions.map(r=>{const offer=os.find(x=>x.id===r.input.offerId);return {...r,currentStock:offer?.currentStock??null,readiness:missionReadiness(r.input,[...(offer?.readiness.missing??['판매 오퍼 연결']),...(offer&&offer.version!==r.input.offerVersion?['오퍼 변경 후 미션 재검토']:[]),...(r.campaignVersion!==c.version?['캠페인 변경 후 미션 재검토']:[])])}});
  return {signals:signals.map(r=>({...r,evidence:signalEvidence(r.input,Date.now())})),needs:ns,catalogs:cs,offers:os,missions:ms,facts:facts.map(f=>({id:f.id,version:f.version,key:f.key,value:f.value})),campaignVersion:c.version};
 }
 export async function growthView(owner:string,c:Campaign,canEdit:boolean){

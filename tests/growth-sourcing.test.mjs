@@ -15,4 +15,5 @@ check(assess({unit:'pack'}).quantity===null&&assess({unit:'pack'}).totalCost===n
 check(d.assessSourcing(selection,{...catalog,input:{...catalog.input,validUntil:'2026-09-30T00:00:00Z'}},[quote],stock,1,Date.parse('2026-09-30T01:00:00Z')).rows[0].status==='held','catalog exact ISO expiry');
 assert.throws(()=>d.parseComparisonInput({...selection,candidates:[{id:'q',version:1},{id:'q',version:1}]}));passed++;
 assert.throws(()=>d.parseComparisonInput({...selection,requestedQuantity:0}));passed++;
+const mixed=d.assessSourcing(selection,{...catalog,input:{...catalog.input,stockUnit:'pack'}},[quote],stock,1,Date.parse('2026-09-30T03:00:00Z')).rows[0];check(mixed.status==='held'&&mixed.quantity===null&&mixed.totalCost===null&&mixed.projectedAvailable===null,'known catalog pack cannot compare piece costs');
 console.log(JSON.stringify({passed,external:'not_called'}));

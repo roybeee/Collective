@@ -1,3 +1,4 @@
+import {catalogStocks,requireCatalogInventoryIdentity} from './growth-stock-readiness-server';
 import {requireGrowthRunning} from './growth-stop-server';
 import {parseSettlementEvidence,projectSettlements,type SettlementEvidence} from './growth-settlement';
 import type {Campaign} from './agency';
@@ -66,7 +67,8 @@ async function createInventory(who:Actor,c:Campaign,b:Record<string,unknown>){
  const input=parseInventoryInput(b.input);if(input.locationId!==c.storeId)throw new ApiError(400,'이번 지점의 재고 위치를 선택하세요.');
  const key='inv-'+(await storefrontDigest([c.brandId,c.storeId,input.sku])).slice(0,32),old=await optional<InventoryRow>(who.owner,'growth_inventory_item',key);
  if(old)throw new ApiError(409,'이 상품·위치의 공유 재고가 이미 있습니다. 재고 재확인으로 갱신하세요.');
- if((await rows(who.owner,'growth_inventory_item',c.storeId!,500)).length>=500)throw new ApiError(409,'지점별 재고 상품은 500개까지 등록할 수 있습니다.');
+ const siblings=await rows<InventoryRow>(who.owner,'growth_inventory_item',c.storeId!,500);if(siblings.some(i=>i.input.sku===input.sku))throw new ApiError(409,'같은 SKU의 공유 재고가 이미 있습니다. 기존 장부를 대사하세요.');
+ if(siblings.length>=500)throw new ApiError(409,'지점별 재고 상품은 500개까지 등록할 수 있습니다.');
  const item:InventoryRow={id:key,brandId:c.brandId,storeId:c.storeId!,input:{...input,onHand:null},version:0,createdAt:stamp(),createdBy:who.id};
  if(input.onHand===null){await recordStatement(who.owner,'growth_inventory_item',key,item,c.storeId!).run();return growthOperationsView(who,c)}
  const observedAt=str(b.observedAt,'재고 확인 시각',40,true),evidenceRef=growthText(b.evidenceRef,'재고 근거',200,true),fields=basicEvent('stocktake',input.onHand,observedAt,evidenceRef),digest=await storefrontDigest({inventoryId:key,...fields});
@@ -94,7 +96,7 @@ async function linkOrder(who:Actor,c:Campaign,b:Record<string,unknown>){
  if(allocation.status==='invalid')throw new ApiError(409,allocation.reasons.join(' '));
  const record:LineRow={id:key,campaignId:c.id,brandId:c.brandId,storeId:c.storeId!,version:(old?.version??0)+1,input,requestDigest:digest,updatedAt:stamp(),updatedBy:who.id,snapshot:{mission:context.mission.input,offer:context.offer.input,catalog:context.catalog.input}};
  const writes=[recordStatement(who.owner,'growth_order_line',key,record,c.storeId!),insert(who,'growth_order_line_history',{...record,id:`${key}:v${record.version}`},c.id)];
- if(!old){const projection=projectInventory(context.inventory.input,await stockEvents(who.owner,context.inventory)),reservation=projection.reservations.find(r=>r.missionId===input.missionId&&r.held>0);
+ if(!old){await requireCatalogInventoryIdentity(who.owner,c,context.catalog.input,context.inventory.id);const projection=projectInventory(context.inventory.input,await stockEvents(who.owner,context.inventory)),reservation=projection.reservations.find(r=>r.missionId===input.missionId&&r.held>0);
   const fields={...basicEvent('allocate',input.units,stamp(),input.evidenceRef),orderId:key,reservationId:reservation?.reservationId??'',missionId:reservation?input.missionId:''};
   const prepared=await prepareEvent(who,c,context.inventory,'line-'+key,await storefrontDigest({lineId:key,input}),fields);if(prepared.duplicate)throw new ApiError(409,'품목 연결과 재고 이력을 대사하세요.');writes.push(...prepared.writes);
  }
@@ -135,6 +137,7 @@ export async function prepareMissionStock(who:Actor,c:Campaign,b:Record<string,u
    const offer=await readRecord<GrowthRecord<OfferInput>>(who.owner,'growth_offer',mission.input.offerId),catalog=await readRecord<GrowthRecord<CatalogInput>>(who.owner,'growth_catalog',offer.input.catalogId);
    if([offer,catalog].some(r=>r.campaignId!==c.id||r.brandId!==c.brandId))throw new ApiError(404,'현재 캠페인의 상품을 선택하세요.');
    if(offer.version!==mission.input.offerVersion||catalog.version!==offer.input.catalogVersion||catalog.input.sku!==item.input.sku)throw new ApiError(409,'최신 상품·오퍼와 재고 SKU를 확인하세요.');
+   const [stock]=await catalogStocks(who.owner,c,[catalog.input]);if(stock.status!=='known'||stock.inventoryId!==item.id||stock.inventoryVersion!==b.inventoryVersion||stock.available===null||fields.quantity>stock.available)throw new ApiError(409,'현재 단일 공유 재고·수량 단위·판·가용 수량을 다시 확인하세요.');
    if(projectInventory(item.input,events).reservations.some(r=>r.missionId===mission.id&&(b.requireNoPriorReservation===true||r.held>0)))throw new ApiError(409,'미션의 기존 재고 예약을 먼저 대사하세요.');
   }
  }

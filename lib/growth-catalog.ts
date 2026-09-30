@@ -8,6 +8,7 @@ export type CatalogInput = {
   unitCost: number | null;
   variableCost: number | null;
   stock: number | null;
+  stockUnit?: 'unknown' | 'piece' | 'pack';
   currency: 'KRW';
   taxBasis: 'unknown' | 'included' | 'excluded';
   fulfillment: string;
@@ -31,6 +32,7 @@ export type OfferInput = {
 };
 
 export type CatalogReference = {id: string; version: number; input: CatalogInput};
+export type CatalogStock = {status:'known'|'held';inventoryId:string|null;inventoryVersion:number|null;unit:'unknown'|'piece'|'pack';onHand:number|null;reserved:number|null;available:number|null;shortage:number|null;reasons:string[]};
 export type GrowthCatalogReadiness = {missing: string[]; unitContribution: number | null};
 
 export class GrowthCatalogError extends Error {
@@ -39,7 +41,7 @@ export class GrowthCatalogError extends Error {
 
 export function emptyCatalogInput(): CatalogInput {
   return {sku: '', title: '', price: null, unitCost: null, variableCost: null,
-    stock: null, currency: 'KRW', taxBasis: 'unknown', fulfillment: '', refunds: '',
+    stock: null, stockUnit: 'unknown', currency: 'KRW', taxBasis: 'unknown', fulfillment: '', refunds: '',
     rightsConfirmed: false, factIds: [], validUntil: ''};
 }
 
@@ -120,6 +122,8 @@ export function parseCatalogInput(value: unknown): CatalogInput {
   const input = record(value);
   const currency = input.currency ?? 'KRW';
   const taxBasis = input.taxBasis ?? 'unknown';
+  const stockUnit = input.stockUnit ?? 'unknown';
+  if (stockUnit !== 'unknown' && stockUnit !== 'piece' && stockUnit !== 'pack') throw new GrowthCatalogError('재고 수량 단위를 확인하세요.');
   if (currency !== 'KRW') throw new GrowthCatalogError('통화는 KRW만 지원합니다.');
   if (taxBasis !== 'unknown' && taxBasis !== 'included' && taxBasis !== 'excluded') throw new GrowthCatalogError('세금 기준이 유효하지 않습니다.');
   const factIds = input.factIds === undefined ? [] : input.factIds;
@@ -133,7 +137,7 @@ export function parseCatalogInput(value: unknown): CatalogInput {
   expiry(validUntil);
   return {sku: text(input.sku, 'SKU'), title: text(input.title, '상품명'),
     price: amount(input.price, '판매 단가'), unitCost: amount(input.unitCost, '단위원가'),
-    variableCost: amount(input.variableCost, '단위변동비'), stock: amount(input.stock, '재고'),
+    variableCost: amount(input.variableCost, '단위변동비'), stock: amount(input.stock, '재고'), stockUnit,
     currency, taxBasis, fulfillment: text(input.fulfillment, '배송 조건', 2000),
     refunds: text(input.refunds, '반품 조건', 2000), rightsConfirmed: boolean(input.rightsConfirmed, '권리 확인'),
     factIds: [...new Set(ids)], validUntil};
@@ -156,7 +160,7 @@ function contribution(price: number | null, input: CatalogInput): number | null 
   return price - totalCost;
 }
 
-export function catalogReadiness(value: CatalogInput, now = Date.now()): GrowthCatalogReadiness {
+export function catalogReadiness(value: CatalogInput, now = Date.now(), stock?: CatalogStock): GrowthCatalogReadiness {
   if (!Number.isFinite(now)) throw new GrowthCatalogError('평가 시각이 유효하지 않습니다.');
   const input = parseCatalogInput(value);
   const deadline = expiry(input.validUntil);
@@ -165,7 +169,11 @@ export function catalogReadiness(value: CatalogInput, now = Date.now()): GrowthC
     !input.sku && 'SKU를 입력하세요.', !input.title && '상품명을 입력하세요.',
     input.price === null && '판매 단가를 확인하세요.', input.unitCost === null && '단위원가를 확인하세요.',
     input.variableCost === null && '단위변동비를 확인하세요.',
-    (input.stock === null || input.stock <= 0) && '판매 가능한 재고를 확인하세요.',
+    (!input.stockUnit || input.stockUnit === 'unknown') && '상품의 재고 수량 단위를 확인하세요.',
+    (!stock || stock.status !== 'known') && '현재 매장·SKU의 공유 재고 장부를 확인하세요.',
+    stock?.status === 'known' && stock.unit !== input.stockUnit && '상품과 공유 재고 단위가 일치해야 합니다.',
+    stock?.status === 'known' && (stock.available === null || stock.available <= 0) && '판매 가능한 공유 재고가 부족합니다.',
+    ...(stock?.reasons ?? []),
     input.taxBasis === 'unknown' && '가격과 비용의 동일한 세금 기준을 확인하세요.',
     !input.fulfillment && '배송 조건을 입력하세요.', !input.refunds && '반품 조건을 입력하세요.',
     !input.rightsConfirmed && '판매 권리를 확인하세요.', !input.factIds.length && '검증할 상품 근거를 연결하세요.',
@@ -176,10 +184,10 @@ export function catalogReadiness(value: CatalogInput, now = Date.now()): GrowthC
   return {missing, unitContribution};
 }
 
-export function offerReadiness(value: OfferInput, catalog: CatalogReference | null, now = Date.now()): GrowthCatalogReadiness {
+export function offerReadiness(value: OfferInput, catalog: CatalogReference | null, now = Date.now(), stock?: CatalogStock): GrowthCatalogReadiness {
   const input = parseOfferInput(value);
   if (!Number.isFinite(now)) throw new GrowthCatalogError('평가 시각이 유효하지 않습니다.');
-  const basis = catalog ? catalogReadiness(catalog.input, now) : null;
+  const basis = catalog ? catalogReadiness(catalog.input, now, stock) : null;
   const unitContribution = catalog ? contribution(input.price, catalog.input) : null;
   const missing = [
     ...(basis?.missing ?? []), !catalog && '연결할 상품이 없습니다.',
@@ -188,7 +196,7 @@ export function offerReadiness(value: OfferInput, catalog: CatalogReference | nu
     !input.title && '오퍼명을 입력하세요.', !input.needId && '수요를 연결하세요.',
     !input.landingUrl && '구매 링크를 입력하세요.', !input.purchaseReason && '구매 이유를 입력하세요.',
     !input.priceApproved && '오퍼 가격 승인이 필요합니다.', input.price === null && '오퍼 단가를 확인하세요.',
-    catalog !== null && catalog.input.stock !== null && input.quantity > catalog.input.stock && '오퍼 수량보다 재고가 부족합니다.',
+    stock?.status === 'known' && stock.available !== null && input.quantity > stock.available && '오퍼 수량보다 공유 가용 재고가 부족합니다.',
     input.price !== null && !Number.isSafeInteger(input.price * input.quantity) && '오퍼 총액이 계산 가능한 범위를 초과합니다.',
     unitContribution === null && '오퍼 단위 공헌이익을 계산할 수 없습니다.',
     unitContribution !== null && unitContribution <= 0 && '오퍼 단위 공헌이익이 양수여야 합니다.',

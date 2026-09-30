@@ -21,7 +21,7 @@ export function parseComparisonInput(value:unknown):ComparisonInput{
  return {catalogId:id(b.catalogId),catalogVersion:number(b.catalogVersion,'상품 판',1,false)!,requestedQuantity:number(b.requestedQuantity,'요청 수량',1,false)!,unit:b.unit as ComparisonInput['unit'],candidates,note:sourcingText(b.note,'비교 메모')};
 }
 type Candidate={id:string;version:number;campaignVersion:number;input:CandidateInput};
-type Catalog={id:string;version:number;campaignVersion:number;input:{sku:string;taxBasis:string;validUntil:string}};
+type Catalog={id:string;version:number;campaignVersion:number;input:{sku:string;taxBasis:string;validUntil:string;stockUnit?:'unknown'|'piece'|'pack'}};
 export type SourcingInventory={status:'known'|'unknown';unit:'piece'|'pack';onHand:number|null;reserved:number|null;available:number|null;shortage:number|null;items:{id:string;version:number}[];reason:string};
 function currentDay(now:number){return new Date(now+9*3600000).toISOString().slice(0,10)}
 function catalogExpiry(value:string){
@@ -36,16 +36,17 @@ export function assessSourcing(input:ComparisonInput,catalog:Catalog,candidates:
   const q=candidate.input,missing:string[]=[];
   if(catalog.version!==input.catalogVersion||catalog.campaignVersion!==campaignVersion||q.catalogId!==catalog.id||q.catalogVersion!==catalog.version||candidate.campaignVersion!==campaignVersion)missing.push('상품·캠페인·견적 판 변경 후 재검토');
   if(q.taxBasis==='unknown'||catalog.input.taxBasis==='unknown'||q.taxBasis!==catalog.input.taxBasis)missing.push('상품과 견적 세금 기준 확인');
-  if(q.unit!==input.unit)missing.push('구매 수량·단위원가 단위 일치 확인');
+  const unitsMatch=q.unit===input.unit&&(!catalog.input.stockUnit||catalog.input.stockUnit==='unknown'||catalog.input.stockUnit===input.unit);
+  if(!unitsMatch)missing.push('구매 수량·단위원가 단위 일치 확인');
   if(!q.validUntil||q.validUntil<today)missing.push('견적 만료 또는 유효일 미확인');
   const deadline=catalogExpiry(catalog.input.validUntil);if(deadline===null||deadline<=now)missing.push('상품 근거 유효기간 재확인');
   if(!q.evidenceRef)missing.push('공급 견적 근거 미확인');
   for(const [key,label] of [['unitCost','단위 원가'],['moq','최소 수량'],['leadDays','납기'],['shippingCost','고정 배송비'],['extraCost','고정 추가비']] as const)if(q[key]===null)missing.push(`${label} 미확인`);
-  const quantity=q.moq===null||q.unit!==input.unit?null:Math.max(input.requestedQuantity,q.moq);
+  const quantity=q.moq===null||!unitsMatch?null:Math.max(input.requestedQuantity,q.moq);
   let totalCost:number|null=null;
   if(quantity!==null&&q.unitCost!==null&&q.shippingCost!==null&&q.extraCost!==null){const product=quantity*q.unitCost,total=product+q.shippingCost+q.extraCost;if(Number.isSafeInteger(product)&&Number.isSafeInteger(total))totalCost=total;else missing.push('비용 합계 안전 범위 초과');}
   let projectedAvailable:number|null=null,projectedShortage:number|null=null;
-  if(inventory.status==='known'&&inventory.unit===input.unit&&q.unit===input.unit&&quantity!==null&&inventory.onHand!==null&&inventory.reserved!==null){const projected=inventory.onHand+quantity;if(Number.isSafeInteger(projected)){projectedAvailable=Math.max(0,projected-inventory.reserved);projectedShortage=Math.max(0,inventory.reserved-projected);}else missing.push('입고 가정 수량 안전 범위 초과');}
+  if(inventory.status==='known'&&inventory.unit===input.unit&&unitsMatch&&quantity!==null&&inventory.onHand!==null&&inventory.reserved!==null){const projected=inventory.onHand+quantity;if(Number.isSafeInteger(projected)){projectedAvailable=Math.max(0,projected-inventory.reserved);projectedShortage=Math.max(0,inventory.reserved-projected);}else missing.push('입고 가정 수량 안전 범위 초과');}
   return {candidateId:candidate.id,candidateVersion:candidate.version,supplierCode:q.supplierCode,status:missing.length?'held' as const:'comparable' as const,missing,quantity,totalCost,effectiveUnitCost:totalCost!==null&&quantity!==null?totalCost/quantity:null,leadDays:q.leadDays,projectedAvailable,projectedShortage};
  });
  return {rows,mayOrder:false as const,notice:'MOQ는 최소 수량이며 발주 배수 조건은 확인하지 않았습니다. 비용과 재고 증가는 비교 가정이며 발주·입고·현금 이동을 실행하지 않습니다.'};

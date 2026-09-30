@@ -103,8 +103,18 @@
 - 타입·빌드·프롬프트22·lint 기존70/39 passed. 재발주2+소싱2=E2E4 passed(real Chromium/local D1, 인증·응답 유실 주입 mocked), null→0·입력 보존·다른 후보 선택 시 근거 초기화·불변 이력·재조회/모바일 검증. 신규2모듈 V8 named function21/21 실행(문장/분기 지표 아님). 이후 전역중단과 main `e49815c`를 포함한 소싱 `3af681f` 통합에서 전체264/264 suites·15,910 assertions, 타입·빌드·lint70/39·브라우저 재발주/소싱/중단6 passed. 통합 충돌 리뷰 HIGH/MED0.
 - 이 신규 검토는 아직 미게시다. #275 전역 중단은 main `e49815c`로 merged, Sites74 published/runtime-verified(11:34 UTC), [게시 증거](releases/2026-09-30-e49815c.md). #276 소싱은 별도 CI 중이다. 다음은 카탈로그 수동 수량 대신 단일 공유 재고·확인 단위로 상품/오퍼/미션 준비도를 판정하는 수정이다.
 
+### 공유 재고 기준 상품·오퍼·미션 준비도 (2026-09-30 · Codex)
+갱신: 2026-09-30 11:49 UTC
+
+- main `e49815c`에서 소싱 검증본 `3af681f`를 의존 통합한 `codex/growth2-stock-readiness`: [공유 재고 준비도](GROWTH-2-STOCK-READINESS.ko.md). 카탈로그 수동 수량은 참고로만 두고, 확인한 상품 단위와 현재 단일 매장·SKU 원장으로 준비도를 판정한다. 다른 캠페인 예약도 차감하며 다른 지점·중복·단위 불일치·미확인·조회 오류는 보류한다.
+- 신규 주문 할당의 piece/pack 우회와 소싱의 명시 상품 단위 누락을 독립 리뷰에서 발견해 RED→GREEN 수정했다. 기존 실제 주문의 부족/미확인 재고 기록, 출고/정정·비용 대사·해제는 유지한다. 손상 원장/조회 실패는 준비도 보류이며 기존 수동 수량으로 대체하지 않는다. 추가 원장·외부 실행·현금 변경은 없다.
+- stock 도메인10/API22, catalog124/workspace37/execution76/authority72/reconciliation43/stop recovery43/operations49/demand33/journey43/sourcing35/API41, 총13개 전용·기존회귀 파일 passed(real pure/memory SQLite, 인증/외부 mocked, 외부0). 전체264/264 suites·15,880 assertions passed. 새 helper V8 named function5/5 실행(문장·분기 지표 아님). 최종 독립 HIGH/MED0.
+- 타입·빌드·프롬프트22 passed. 최초 lint 미사용 테스트 선언1 경고증가를 제거하고 최종70 errors/39 warnings 기준선 passed. E2E 신규stock2/워크스페이스4/운영2/실행2/대사2 총12 passed(real Chromium/local D1, 인증·기존 대사 응답실패 주입 mocked). 실제 원장 재고가 있어 수동0에서도 준비, 다른 캠페인 예약 후 가용0이면 수동100으로도 보류, 단위·상품판 재연결·CAS입력보존·모바일을 확인했다.
+- 재발주 통합 후 명시 상품 단위 불일치 시 구매수량·시점·현금 모두 null 보류하는 회귀2개를 추가했다. 통합 전체266/266 suites·15,951 assertions, 타입·빌드·관련8파일 E2E18 passed(real Chromium/local D1, 인증/기존 복구 실패 주입 mocked), 독립 통합 리뷰 HIGH/MED0. 이 준비도 변경은 아직 미게시이며 전체 성장2 원안은 미완료다.
+- #276 소싱은 main `25f370b`로 merged, Sites75 published/runtime-verified(11:52 UTC), [게시 증거](releases/2026-09-30-25f370b.md). #277 재발주는 원격 CI4개 passed 뒤 main `a652d29`로 merged, 아직 미게시다.
+
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 현재 운영: #275까지 `e49815ce7ac65442bb29fb93624b6c787f0bd939`, Sites74, tree `e7832e4ec1c78fbe753354c41ad6ab2f6d05bde4`. 2026-09-30 11:34 UTC merged/published/runtime-verified. 전역 실행·학습 중단과 기존 주문/대사/복구 유지 포함. 원안 전체는 미완료이며 실제 공급자 실행·정산·효과 검증 not_run. [릴리스](releases/2026-09-30-e49815c.md).
+- 현재 운영: #276까지 `25f370b1130ecc1deb2bdbe1631564d3b715e36c`, Sites75, tree `7daa1d97df4e18416b59e95a5e33b47b3f527154`. 2026-09-30 11:52 UTC merged/published/runtime-verified. 전역 실행·학습 중단과 기존 주문/대사/복구 유지 포함. 원안 전체는 미완료이며 실제 공급자 실행·정산·효과 검증 not_run. [릴리스](releases/2026-09-30-e49815c.md).
 - 성장1 필수 코드 게시 대기 0건. #216·#218·#219·#225는 통합 #244로 병합·게시했다. #206·#208·#210~#214·#217·#220·#223·#231·#235·#237과 관련 문서도 현재 제품에 포함된다.
 - 기존 대기열의 미병합·404 문구는 과거 상태다. R 신규 PR #234·#241·#242·#243 및 인터뷰 게시 문서 #236·#240은 별도 소유자 작업이며 성장1 필수 잔여가 아니다.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
@@ -256,16 +266,16 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-30 11:34 UTC (Codex A 통합: 전역 중단 Sites74)
+마지막 갱신: 2026-09-30 11:57 UTC (Codex A 통합: 소싱 Sites75)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `e49815ce7ac65442bb29fb93624b6c787f0bd939` (#275) | tree `e7832e4ec1c78fbe753354c41ad6ab2f6d05bde4`, [릴리스](releases/2026-09-30-e49815c.md) |
-| `origin/main` | 게시 제품 `e49815c`; 소싱·재발주는 후속 개발 중 | 비제품 변경은 PUBLISH 5절 기준으로 구분 |
-| Sites 게시 | `published`: 버전74, deployment `appgdep_6abcf3c33c9c81918b5f816ff4f5904d` succeeded | 2026-09-30 11:34:48 UTC |
-| 실행 검증 | `runtime-verified`: 공개 `/api/version/public` tree 일치 | build `2026-09-30T11:32:56.682Z` |
+| 운영 제품 커밋 | `25f370b1130ecc1deb2bdbe1631564d3b715e36c` (#276) | tree `7daa1d97df4e18416b59e95a5e33b47b3f527154`, [릴리스](releases/2026-09-30-25f370b.md) |
+| `origin/main` | 게시 제품 `25f370b`; 재발주 `a652d29`는 merged, 게시 대기 | 비제품 변경은 PUBLISH 5절 기준으로 구분 |
+| Sites 게시 | `published`: 버전75, deployment `appgdep_6abcf7de74308191aac25a8f900b4d7d` succeeded | 2026-09-30 11:52:19 UTC |
+| 실행 검증 | `runtime-verified`: 공개 `/api/version/public` tree 일치 | build `2026-09-30T11:49:09.533Z` |
 | 인증 | 새 전역 중단 API 익명401 | 실제 운영 HTTP, 데이터 변경 없음; 소유자 로그인 이번 재확인 not_run |
 | Sites 접근 | public, 환경 revision4 유지 | 설정 변경 없음 |
 | 조사 워커 | 이번 게시에서 온라인 상태 재확인 not_run | 활성화 시 서버에서 온라인 조건을 검사 |

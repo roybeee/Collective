@@ -16,7 +16,7 @@ export function parseReorderInput(value:unknown,now=Date.now()):ReorderInput{
  const b=obj(value),d=obj(b.demand),o=obj(b.outstanding),from=day(d.from),to=day(d.to);if(from>to||to>kst(now))return fail('수요 기준기간은 순서대로, 한국시간 오늘까지 입력하세요.');if(!['piece','pack'].includes(String(b.unit))||!['unknown','confirmed_none'].includes(String(o.state)))return fail('단위·미입고 확인 상태를 확인하세요.');
  return {catalogId:id(b.catalogId),catalogVersion:num(b.catalogVersion,'상품 판',1,false)!,candidateId:id(b.candidateId),candidateVersion:num(b.candidateVersion,'견적 판',1,false)!,unit:b.unit as ReorderInput['unit'],demand:{from,to,quantity:num(d.quantity,'수요 가정 수량'),evidenceRef:text(d.evidenceRef,'수요 근거',160)},coverageDays:num(b.coverageDays,'추가 보유 일수'),safetyQuantity:num(b.safetyQuantity,'안전 수량'),outstanding:{state:o.state as ReorderInput['outstanding']['state'],observedAt:instant(o.observedAt,now),evidenceRef:text(o.evidenceRef,'미입고 근거',160)},purchaseBudget:num(b.purchaseBudget,'구매비 한도'),budgetEvidenceRef:text(b.budgetEvidenceRef,'한도 근거',160),note:text(b.note,'검토 메모')};
 }
-type Catalog={id:string;version:number;campaignVersion:number;input:{sku:string;taxBasis:string;validUntil:string}};
+type Catalog={id:string;version:number;campaignVersion:number;input:{sku:string;taxBasis:string;validUntil:string;stockUnit?:'unknown'|'piece'|'pack'}};
 type Candidate={id:string;version:number;campaignVersion:number;input:CandidateInput};
 export function assessReorder(input:ReorderInput,catalog:Catalog,candidate:Candidate,inventory:SourcingInventory,campaignVersion:number,now=Date.now()):ReorderAssessment{
  const missing:string[]=[],q=candidate.input,observedDays=(Date.parse(input.demand.to)-Date.parse(input.demand.from))/86400000+1;
@@ -27,11 +27,12 @@ export function assessReorder(input:ReorderInput,catalog:Catalog,candidate:Candi
  if(input.coverageDays===null||input.safetyQuantity===null)missing.push('보유 일수·안전 수량 미확인');
  const outstanding=input.outstanding.state==='confirmed_none'&&!!input.outstanding.evidenceRef&&input.outstanding.observedAt!==null&&Date.parse(input.outstanding.observedAt)<=now&&kst(Date.parse(input.outstanding.observedAt))===kst(now);
  if(!outstanding)missing.push('현재 한국시간 당일 미입고 없음 확인 필요');
- const stockKnown=inventory.status==='known'&&inventory.unit===input.unit&&q.unit===input.unit&&inventory.onHand!==null&&inventory.reserved!==null;
+ const unitsMatch=q.unit===input.unit&&(!catalog.input.stockUnit||catalog.input.stockUnit==='unknown'||catalog.input.stockUnit===input.unit);
+ const stockKnown=unitsMatch&&inventory.status==='known'&&inventory.unit===input.unit&&q.unit===input.unit&&inventory.onHand!==null&&inventory.reserved!==null;
  if(!stockKnown)missing.push('현재 재고·예약 수량 및 단위 미확인');
  if(stockKnown)result.rawStock=inventory.onHand!-inventory.reserved!;
  if(result.observedDays!==null&&input.demand.quantity!==null){result.demandPerDay=input.demand.quantity/result.observedDays;
-  if(q.leadDays!==null&&input.coverageDays!==null&&input.safetyQuantity!==null){
+  if(unitsMatch&&q.leadDays!==null&&input.coverageDays!==null&&input.safetyQuantity!==null){
    const horizon=q.leadDays+input.coverageDays,a=input.demand.quantity*q.leadDays,b=input.demand.quantity*horizon;
    const point=Math.ceil(a/result.observedDays)+input.safetyQuantity,target=Math.ceil(b/result.observedDays)+input.safetyQuantity;
    if([horizon,a,b,point,target].every(Number.isSafeInteger)){result.reorderPoint=point;result.targetQuantity=target;

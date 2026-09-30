@@ -4,8 +4,10 @@ import {testRuntime} from './helpers/runtime.mjs';
 const {load,sql,env}=testRuntime(async()=>{throw Error('Authority reservations must never dispatch');});
 const server=await load('lib/server.ts'),growth=await load('app/api/growth/route.ts'),route=await load('app/api/growth/authority/route.ts');
 let passed=0;const check=(condition,label)=>{assert.ok(condition,label);passed++;};
-const owner='authority-owner',c={id:'c',brandId:'brand',version:1,status:'active'},h={'oai-authenticated-user-id':owner,origin:'https://agency.test'};
+const owner='authority-owner',c={id:'c',brandId:'brand',version:1,status:'active',storeId:'fixture-store'},h={'oai-authenticated-user-id':owner,origin:'https://agency.test'};
 await server.recordStatement(owner,'campaign','c',c).run();
+await server.recordStatement(owner,'store','fixture-store',{id:'fixture-store',brandId:'brand'}).run();
+await server.recordStatement(owner,'growth_inventory_item','fixture-stock',{id:'fixture-stock',brandId:'brand',storeId:'fixture-store',version:0,input:{sku:'SKU',locationId:'fixture-store',unit:'piece',onHand:20}},'fixture-store').run();
 await server.recordStatement(owner,'campaign','other',{...c,id:'other'}).run();
 const unpack=async r=>({status:r.status,body:await r.json()});
 const post=(data,headers=h)=>route.POST(new Request('https://agency.test/api/growth/authority',{method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({campaignId:'c',campaignVersion:1,expectedVersion:0,...data})})).then(unpack);
@@ -39,7 +41,7 @@ const signal={title:'시장 근거',sourceUrl:'https://example.com/market',obser
 check((await gp({action:'save_signal',id:'s',input:signal})).status===200,'signal fixture');
 check((await gp({action:'save_need',id:'n',input:{title:'니즈 가설',situation:'상황',desiredOutcome:'원하는 결과',alternative:'대안',barrier:'장애물',counterEvidence:'반례',signalIds:['s'],deadline:'2099-01-01',nextAction:'검증',assignee:'검토 담당'}})).status===200,'need fixture');
 await server.recordStatement(owner,'brand_fact','f',{id:'f',brandId:'brand',key:'product',value:'상품',status:'confirmed',source:'운영 확인',version:1,verifiedAt:'2026-01-01',validUntil:'2099-01-01'},'brand').run();
-check((await gp({action:'save_catalog',id:'p',input:{sku:'SKU',title:'상품',price:100,unitCost:20,variableCost:10,stock:20,currency:'KRW',taxBasis:'included',fulfillment:'배송 조건',refunds:'반품 조건',rightsConfirmed:true,factIds:['f'],validUntil:'2099-01-01'}})).status===200,'product fixture');
+check((await gp({action:'save_catalog',id:'p',input:{sku:'SKU',title:'상품',price:100,unitCost:20,variableCost:10,stock:20,stockUnit:'piece',currency:'KRW',taxBasis:'included',fulfillment:'배송 조건',refunds:'반품 조건',rightsConfirmed:true,factIds:['f'],validUntil:'2099-01-01'}})).status===200,'product fixture');
 check((await gp({action:'save_offer',id:'o',input:{title:'오퍼',catalogId:'p',catalogVersion:1,needId:'n',price:100,quantity:1,landingUrl:'https://example.com/buy',purchaseReason:'구매 이유',priceApproved:true}})).status===200,'offer fixture');
 const mission={title:'판매 미션',offerId:'o',offerVersion:1,assignee:'판매 담당',deadline:'2099-01-01',nextAction:'판매 준비',channel:'storefront',budget:600,lossLimit:40,stopRule:'한도 도달',fulfillmentOwner:'배송 담당'};
 async function makeMission(id,input=mission){check((await gp({action:'save_mission',id,input})).status===200,'mission fixture '+id);check((await gp({action:'queue_mission',id,expectedVersion:1})).status===200,'staged fixture '+id);}
