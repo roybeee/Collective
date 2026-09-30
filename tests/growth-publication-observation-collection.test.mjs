@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';import {testRuntime} from './helpers/runtime.mjs';
+let calls=0;const {load}=testRuntime(async url=>{calls++;if(!url.startsWith('https://graph.facebook.com/'))throw Error('unexpected destination');return Response.json(url.includes('/insights')?{data:[{name:'reach',values:[{value:0}]},{name:'shares',values:[{value:0}]}]}:url.includes('fields=username')?{username:'fixture'}:{timestamp:'2026-09-01T00:00:00Z',media_type:'VIDEO'})});
+const s=await load('lib/server.ts'),creds=await load('lib/channel-credentials.ts'),collector=await load('lib/measurement-collection.ts');const owner='owner';let passed=0;const check=(v,n)=>{assert.ok(v,n);passed++};
+await s.seedBrands(owner);await s.recordStatement(owner,'campaign','c',{id:'c',brandId:'oda'}).run();await s.recordStatement(owner,'viral_experiment','e',{id:'e',campaignId:'c',brandId:'oda',channel:'Instagram',metric:'share_rate',status:'running'},'c').run();
+await creds.saveCredential(owner,'instagram',{accessToken:'synthetic-fixture',userId:'17841400000000000'},{brandId:'oda'});
+const p={id:'p',campaignId:'c',experimentId:'e',arm:'control',media:{mediaId:'123'},status:'published'},source={id:'e:control',experimentId:'e',publicationId:'p',channel:'instagram',arm:'control',target:'123',lastFetchedAt:'2026-09-01T00:00:00Z',lastError:null,window:{from:'2026-09-01',to:'2026-09-02'}};
+const save=async(a=source,b=p)=>{await s.recordStatement(owner,'measurement_source','e:control',a,'e').run();await s.recordStatement(owner,'execution_publication','p',b,'c').run()};
+const collect=async()=>{await collector.collectForExperiment(owner,{experimentId:'e',arm:'control',channel:'instagram',target:'123',from:'2026-09-01',to:'2026-09-02',publicationId:'client-forged'});return s.readRecord(owner,'measurement_source','e:control')};
+await save();check((await collect()).publicationId==='p','successful collection preserves canonical exact publication');
+for(const patch of [{target:'456'},{experimentId:'other'},{arm:'treatment'},{channel:'naver_ads'},{id:'wrong'}]){await save({...source,...patch});check(!(await collect()).publicationId,'mismatched source identity not preserved')}
+for(const patch of [{campaignId:'other'},{experimentId:'other'},{arm:'treatment'},{media:{mediaId:'456'}},{id:'other'}]){await save(source,{...p,...patch});check(!(await collect()).publicationId,'mismatched canonical publication not preserved')}
+await save({...source,publicationId:undefined});check(!(await collect()).publicationId,'client publication input ignored');
+console.log(JSON.stringify({passed,provider:'mocked',external:0,calls}));

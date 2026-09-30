@@ -123,8 +123,16 @@
 - 초기 lint71/40은 const 선언·미사용 test sql 2줄 수정 뒤 기준선 복구. 최초 전체270/271 suites·16,057 assertions에서 새 삭제 차단 kind의 테스트 기대 목록 누락1건을 수정했고 전용52 passed, 두 번째 전체는 테스트 중 root가 변경 목록을 stage하여 graders의 작업트리 불변 검사가 실패했다(제품 변경 없음). 이후 파일·인덱스를 고정한 최종 전체271/271 suites·16,109 assertions passed(외부 mocked). 실제 계정 게시·도달·주문·효과는 not_run이며 원안 전체는 미완료다.
 - #277·278은 merged, Sites76 published/runtime-verified(12:14 UTC), [게시 증거](releases/2026-09-30-7e553b8.md).
 
+### 발행 이후 플랫폼 관측·귀속 주문 연결 (2026-09-30 · Codex)
+갱신: 2026-09-30 12:44 UTC
+
+- #279 자연 유입 발행 연결은 원격 CI4개 passed 뒤 main `6f84979`로 merged, Sites77 published/runtime-verified했다. [게시 증거](releases/2026-09-30-6f84979.md). 별도 `codex/growth2-publication-observation`에서 [저장 관측 연결](GROWTH-2-PUBLICATION-OBSERVATION.ko.md)을 이어간다.
+- 성장 link→정확 publication→실험/안→명시 source/draft, 선택 기간의 정확 게시별 귀속 주문을 조회한다. 기존 수집 성공 저장의 publicationId 소실도 실제 publication 범위를 대조해 보존하도록 수정한다. 다른 대상의 옛 연결은 승계하지 않는다.
+- 전체274/274 suites·16,169 assertions passed(외부 mocked). 전용 domain29/API19/collection12와 기존 측정92/status52/publication-link35 passed(real pure/memory SQLite, 인증·공급자 mocked). 최종 타입·빌드·프롬프트22 passed, lint 기준선70/39 유지. 최종 E2E8 passed(real Chromium/local D1, 공급자 합성 fixture·조회실패 주입 mocked): 관측2+기존publication/execution/store-measurement6. 초기 브라우저2회는 기존 화면 이동 시 테스트 자료의 필수 creative/input 필드 누락으로 실패해 fixture 보완 후 통과했다.
+- 독립 리뷰의 미래 수집 시각/기간·잘못된 credential 범위와 store5000 조회상한 경계를 보완했고 HIGH/MED 잔여0. staged gitleaks59KB 유출0. 신규 외부 수집·원장 저장·전환율/인과 계산은 범위 밖이다. 기존 제작·발행/성과 탭 이동을 연결했다. 현재 관측 증분은 로컬 검증 완료이며 원격 CI·게시 전이다. 전체 원안 완료가 아니다.
+
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 현재 운영: #278까지 `7e553b8eb54db50d6ba59831d082bcab65820a78`, Sites76, tree `5d3aff8a4043dc8c679b6327f028ce971d496ea2`. 2026-09-30 12:14 UTC merged/published/runtime-verified. 전역 중단·소싱·재발주·공유 재고 준비도와 기존 주문/대사/복구 유지 포함. 원안 전체는 미완료이며 실제 공급자 실행·정산·효과 검증 not_run. [릴리스](releases/2026-09-30-7e553b8.md).
+- 현재 운영: #279까지 `6f84979fd1ddb0864053173ef88059a9747b09f7`, Sites77, tree `0a3af76a519b6f8b1a8da0b06f560e0fe0f8ce4a`. 2026-09-30 12:40 UTC merged/published/runtime-verified. 자연 유입 Buffer 연결·공유 예약 재사용·명시 상태 동기화 포함. 관측 증분은 게시 전이며 원안 전체는 미완료다. 실제 공급자 실행·정산·효과 검증 not_run. [릴리스](releases/2026-09-30-6f84979.md).
 - 성장1 필수 코드 게시 대기 0건. #216·#218·#219·#225는 통합 #244로 병합·게시했다. #206·#208·#210~#214·#217·#220·#223·#231·#235·#237과 관련 문서도 현재 제품에 포함된다.
 - 기존 대기열의 미병합·404 문구는 과거 상태다. R 신규 PR #234·#241·#242·#243 및 인터뷰 게시 문서 #236·#240은 별도 소유자 작업이며 성장1 필수 잔여가 아니다.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
