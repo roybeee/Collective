@@ -23,6 +23,7 @@ export type SubjectErasure='delete'|'minimize'|'legal_hold'|'none';
 export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;retention?:RetentionPolicy;subjectErasure?:SubjectErasure;description:string};
 
 export const recordKinds:readonly RecordKind[]=[
+ {kind:'growth_reconciliation',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'성장 판매 예약의 운영자 확인 실비·손실 대사 및 무집행 취소 추가 전용 이력'},
  {kind:'growth_target',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 잠정·확정 사업목표와 최신 변경 판. 실행 권한 없음'},
  {kind:'growth_target_history',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'사업목표 개정 이유와 이전 판의 추가 전용 이력'},
  {kind:'growth_target_review',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'목표 판·기간에 고정한 사업 리뷰와 서버 장부 관측 스냅샷'},

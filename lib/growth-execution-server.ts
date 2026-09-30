@@ -6,6 +6,7 @@ import {growthView,type GrowthRecord} from './growth-workspace-server';
 import type {MissionInput} from './growth-mission';
 import {storefrontDigest} from './storefront-orders';
 import {ApiError,database,readRecord,recordStatement,stamp,type Actor} from './server';
+import {prepareReconciliation,reconciliationRows} from './growth-reconciliation-server';
 
 export type ExecutionIntent={id:string;brandId:string;campaignId:string;campaignVersion:number;storeId:string;version:number;input:ExecutionInput;state:ExecutionState;requestDigest:string;commitmentId:string;reservationId:string;currentMissionVersion:number;source:'operator_attested';createdAt:string;createdBy:string;updatedAt:string;snapshot:{mission:MissionInput;authority:GrowthAuthorityRecord['input'];inventory:InventoryRow['input']}};
 export type ExecutionReceipt={id:string;intentId:string;intentVersion:number;campaignId:string;brandId:string;state:ExecutionState;input:ExecutionReceiptInput|null;requestDigest:string;source:'operator_attested';recordedAt:string;recordedBy:string};
@@ -19,9 +20,9 @@ async function optional<T>(owner:string,kind:string,id:string){try{return await 
 function scope(row:{campaignId:string;brandId:string},c:Campaign){if(row.campaignId!==c.id||row.brandId!==c.brandId)throw new ApiError(404,'현재 캠페인의 실행 기록을 찾지 못했습니다.')}
 function insert<T extends {id:string}>(who:Actor,kind:string,row:T,c:Campaign){return database().prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').bind(`${who.owner}:${kind}:${row.id}`,who.owner,kind,c.id,JSON.stringify(row),stamp())}
 export async function growthExecutionView(who:Actor,c:Campaign){
- const [intents,receipts,workspace,authority,operations]=await Promise.all([rows<ExecutionIntent>(who.owner,kinds.intent,c),rows<ExecutionReceipt>(who.owner,kinds.receipt,c,5000),growthView(who.owner,c,who.role!=='member'),growthAuthorityView(who,c),growthOperationsView(who,c)]);
+ const [intents,receipts,workspace,authority,operations,reconciliations]=await Promise.all([rows<ExecutionIntent>(who.owner,kinds.intent,c),rows<ExecutionReceipt>(who.owner,kinds.receipt,c,5000),growthView(who.owner,c,who.role!=='member'),growthAuthorityView(who,c),growthOperationsView(who,c),reconciliationRows(who.owner,c)]);
  for(const row of [...intents,...receipts])scope(row,c);
- return {intents,receipts,missions:workspace.missions,authorities:authority.authorities,inventory:operations.inventory,campaignVersion:c.version,canPrepare:who.role!=='member'&&c.status!=='archived'&&Boolean(c.storeId),canRecord:who.role!=='member',mayExecute:false as const};
+ return {intents,receipts,commitments:authority.commitments,reconciliations,missions:workspace.missions,authorities:authority.authorities,inventory:operations.inventory,campaignVersion:c.version,canPrepare:who.role!=='member'&&c.status!=='archived'&&Boolean(c.storeId),canRecord:who.role!=='member',mayExecute:false as const};
 }
 async function prepare(who:Actor,c:Campaign,b:Record<string,unknown>){
  const input=parseExecutionInput(b.input),id='intent-'+(await storefrontDigest([c.id,input.missionId])).slice(0,32),digest=await storefrontDigest({input,campaignVersion:b.campaignVersion});
@@ -61,6 +62,15 @@ async function recordReceipt(who:Actor,c:Campaign,b:Record<string,unknown>){
 export async function saveGrowthExecution(who:Actor,c:Campaign,b:Record<string,unknown>){
  if(who.role==='member')throw new ApiError(403,'관리자만 실행 준비와 확인을 기록할 수 있습니다.');
  if(b.campaignVersion!==c.version)throw new ApiError(409,'캠페인이 변경되었습니다. 다시 불러오세요.');
+ if(b.action==='reconcile_execution'){
+  const prepared=await prepareReconciliation(who,c,b);
+  if(!prepared.duplicate)await database().batch(prepared.writes);
+  const acknowledgement={reconciled:true as const,duplicate:prepared.duplicate,resultIntentId:executionId(b.id),mayExecute:false as const};
+  // Recovery depends on its exact references, never unrelated dashboard capacity.
+  // A failed refresh cannot turn a committed reconciliation into a failed mutation.
+  try{return {...await growthExecutionView(who,c),...acknowledgement};}
+  catch{return {...acknowledgement,viewUnavailable:true as const};}
+ }
  if(b.action==='prepare_execution')return prepare(who,c,b);
  if(b.action==='record_execution_receipt')return recordReceipt(who,c,b);
  throw new ApiError(400,'지원하지 않는 판매 실행 작업입니다.');
