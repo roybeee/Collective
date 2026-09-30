@@ -212,3 +212,5 @@
 3. 다음 일은 자기 레인 개발 순서의 맨 위에서 고른다. 다른 레인 목록의 일은 하지 않는다.
 
 - 운영 확인 목록: codex/growth2-operation-review, /Users/roybee/Collective-operation-review. 검증 기회 보드 e17a931 의존. 서버는 순수 조회/테스트, UI는 독립 목록/E2E, root는 기존 운영 응답·정확 폼 이동·dirty 보호·문서/통합/게시. 현재 동결·독립 리뷰 HIGH/MED0, 전체 회귀 뒤 순차 병합한다.
+
+- 반품·환불 원인: codex/growth2-return-reasons, /Users/roybee/Collective-return-reasons, 검증 운영목록7583f2f 의존. 서버는 새 domain/server/API/tests, UI는 새 panel/E2E, root는 GrowthPanel·registry/보존회귀·문서/통합 담당. 기존 원장/고객 메시지/원문 보관은 변경하지 않는다. planner 독립 리뷰 후 동결한다.

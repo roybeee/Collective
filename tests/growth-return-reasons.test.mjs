@@ -1,0 +1,4 @@
+import assert from 'node:assert/strict';import {testRuntime} from './helpers/runtime.mjs';const {load}=testRuntime(async()=>{throw Error('external forbidden')});const d=await load('lib/growth-return-reasons.ts');let passed=0;const check=(v,n)=>{assert.ok(v,n);passed++};
+for(const reasonCode of ['unknown','product_defect','description_mismatch','wrong_option','delivery_issue','change_of_mind','other'])check(d.parseReturnReasonInput({reasonCode,evidenceRef:'case-001'}).reasonCode===reasonCode,'valid reason '+reasonCode);
+for(const input of [{reasonCode:'invented',evidenceRef:'case'},{reasonCode:'unknown',evidenceRef:''},{reasonCode:'other',evidenceRef:'person@example.com'},{reasonCode:'other',evidenceRef:'ｐｅｒｓｏｎ＠ｅｘａｍｐｌｅ．ｃｏｍ'},{reasonCode:'other',evidenceRef:'access_token=private'}]){assert.throws(()=>d.parseReturnReasonInput(input));passed++}
+console.log(JSON.stringify({passed,external:0}));
