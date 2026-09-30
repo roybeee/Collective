@@ -13,6 +13,7 @@
 - 작업: `codex/growth2-full`, 기준 `8cc2942`, `/Users/roybee/Collective-growth2-full`. Codex가 기존 A 성장2 통합 역할을 이어받는다. R/Q의 별도 진행 파일은 건드리지 않는다.
 - 후속: 첫 기반 Draft #266 `c40ebd7` 위 `codex/growth2-fulfillment`에서 공유 재고·주문 품목·이행·정산 증빙을 구현한다. 같은 Codex 소유이며 신규 외부 실행/게시를 뜻하지 않는다.
 - 후속 G2-27: #266/#267 main 병합 뒤 `f019510`에서 `codex/growth2-demand` 시작. 수요 시퀀스·단계 근거·권리·협업 조건 및 비용을 오퍼/미션에 연결한다.
+- 후속 G2-29: #268 CI 통과·main `bdda24e` 병합 뒤 `codex/growth2-journey`에서 구매 병목 관측·수정계획·전후 평가를 개발한다. 원안 전체 개발의 동일 Codex 소유다.
 - 초기 소유: `lib/growth-*`, `app/api/growth`, 성장·판매 패널, 전용 테스트와 문서. 공유 변경은 캠페인 탭 연결·record kind·삭제 표시·상태 기록이다.
 - 기존 Meta 종료 판정은 M0~M6 한정으로 바로잡는다. 외부 집행 권한은 상품 준비 상태나 로컬 미션 저장으로 부여하지 않는다. 실제 계정·구매·고객 발송 결과를 개발 검사로 대체하지 않는다.
 

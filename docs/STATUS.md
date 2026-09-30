@@ -23,6 +23,15 @@
 - passed: 전체239/239 suites·14,834 assertions(외부 mocked). 전용 도메인117/API33(real pure/memory SQL, 외부 호출0). 성장 브라우저 기존6+신규 수요2 passed(real local Chromium/D1, 인증 fixture): 순서 저장·재조회, null/0, 동시 수정 입력 보존, 모바일/데스크톱 너비. 신규 검사 최초 textarea label 선택 실패는 접근성 role locator로 수정 후 재통과(앱 데이터는 정상 보존). 타입·빌드·프롬프트22 passed, lint gate 기존70/39 유지. 신규 도메인/서버 V8 named function24/24(100%; line/branch 지표 아님).
 - 코드 리뷰에서 진정성 확인 누락을 발견해 수정했고 재검증했다. 이 증분은 게시되지 않았으며 실제 채널 발행·반응 수집·협업 발송은 not_run. 다음 본선은 구매 병목(G2-29)·일일 결정/운영 교훈(G2-11/31/32)과 실행 연결이다. 소비자 동의/재구매·조건부 나머지 카드도 원안에 유지한다.
 
+### 구매 병목 후속 (2026-09-30 · Codex)
+갱신: 2026-09-30 03:57 UTC
+
+- 수요 시퀀스 [#268](https://github.com/roybeee/Collective/pull/268)은 원격 verify/e2e-smoke 모두 passed 뒤 main `bdda24e`로 merged. 검증된 head `378983d`와 병합 tree diff0. Sites 게시와 운영 버전 검증은 이번 실행에서 not_run.
+- `codex/growth2-journey`, 기준 `bdda24e`: 원안 G2-29의 [구매 병목 관측·수정 계획](GROWTH-2-JOURNEY.ko.md)을 구현했다. 유입~배송 단계, 분모·채널·기기·집단, 전후 관측기간·출처·집계 지연·추적 상태, 대체 설명, 조치·담당·기한과 현재 오퍼/미션 판을 연결한다.
+- 수동 관측의 전환율·환불률·공헌이익 차이를 구분하고 null/0·음수 이익을 보존한다. 미래/미성숙·추적 불명·불일치 관측창·상위 변경/미션 unknown에서는 차이를 숨긴다. 인과/자동 해결·확대 판정과 외부 실행은 제공하지 않는다.
+- 전용 도메인132/API43 passed(순수 로직·메모리 SQL 실행, 인증/외부 runtime mocked, 외부 호출0). 모바일/데스크톱 성장 브라우저10 passed(real local Chromium/D1, 인증 fixture): 새 병목2+기존 수요/이행/성장8, 저장·재조회·null/0·음수 이익·충돌 입력 보존·화면 너비. 타입·빌드·프롬프트22 passed, 최종 lint70 errors/39 warnings 기준선 유지. 병렬 편집 도중 첫 lint에서 경고1 증가를 보고했으며 최종 파일로 재실행해 기준선 통과. 신규 도메인/서버 V8 named function27/27(100%; line/branch 지표 아님).
+- 코드/보안 리뷰 HIGH/MEDIUM 잔여0. 전체241/241 suites·15,009 assertions passed(외부 mocked). G2-29 전체의 자동수집·실제 상담/추천·판매면 수정/실개선 검증은 잔여다. 다음은 G2-11/31/32 일일 결정·운영 교훈·30일 리뷰, 이어 G2-28/12a 일반 판매 실행과 G2-14 동의 기반 재구매다. 전체33개 카드 완료가 아니다.
+
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
 - 현재 운영: #264 `dabf656c4249b6e7b446276909cd8d80305caa8d`, Sites67, tree `9a5be85f566d554b57db1d992c6004e7ef2fd408`. 2026-09-29 KST merged/published/runtime-verified. 성장2 필수 개발 종료 passed, 운영 인수 blocked, 실제 전송·집행·효과 검증 not_run. [릴리스](releases/2026-09-29-dabf656.md).
 - 성장1 필수 코드 게시 대기 0건. #216·#218·#219·#225는 통합 #244로 병합·게시했다. #206·#208·#210~#214·#217·#220·#223·#231·#235·#237과 관련 문서도 현재 제품에 포함된다.
