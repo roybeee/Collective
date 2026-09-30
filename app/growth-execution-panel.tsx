@@ -2,25 +2,29 @@
 
 import {useCallback,useEffect,useRef,useState} from 'react';
 import styles from './growth-panel.module.css';
+import {GrowthReconciliationPanel,type ReconciliationData,type ReconciliationAck} from './growth-reconciliation-panel';
 
 type Reference={id:string;version:number;label:string};
 type Mission={id:string;version:number;status:string;input:{title:string;budget:number|null;lossLimit:number|null};readiness:{missing:string[]}};
 type Authority={id:string;version:number;input:{accountId:string;channel:string;status:string}};
 type Inventory={id:string;version:number;input:{sku:string;unit:'piece'|'pack'};projection:{available:number|null;reserved:number}};
 type Preparation={missionId:string;missionVersion:number;authorityId:string;authorityVersion:number;inventoryId:string;inventoryVersion:number;quantity:string;recoveryOwner:string;recoveryDueAt:string;evidenceRef:string};
-type Intent={id:string;version:number;state:string;input:Omit<Preparation,'quantity'>&{quantity:number};commitmentId:string;reservationId:string;snapshot?:{mission?:{input?:{title?:string};title?:string}}};
+type Intent={id:string;version:number;currentMissionVersion:number;state:string;input:Omit<Preparation,'quantity'>&{quantity:number};commitmentId:string;reservationId:string;snapshot?:{mission?:{input?:{title?:string};title?:string}}};
 type ReceiptRow={id:string;intentId:string;intentVersion:number;state:string;input:Receipt|null;recordedAt:string};
-type View={intents:Intent[];receipts:ReceiptRow[];missions:Mission[];authorities:Authority[];inventory:Inventory[];campaignVersion:number;canPrepare:boolean;canRecord:boolean;mayExecute:false};
+type View=Omit<ReconciliationData,'intents'|'inventory'>&{intents:Intent[];receipts:ReceiptRow[];missions:Mission[];authorities:Authority[];inventory:Inventory[];campaignVersion:number;canPrepare:boolean;canRecord:boolean;mayExecute:false};
 type Receipt={status:'unknown'|'observed'|'failed';reference:string;note:string};
 const emptyPreparation=():Preparation=>({missionId:'',missionVersion:0,authorityId:'',authorityVersion:0,inventoryId:'',inventoryVersion:0,quantity:'',recoveryOwner:'',recoveryDueAt:'',evidenceRef:''});
 const states:Record<string,string>={prepared:'예약 완료',reserved:'예약 완료',unknown:'결과 미확인',observed:'관측 완료',failed:'실패 확인'};
-async function request(campaignId:string,init:RequestInit={}):Promise<View>{
+async function request(campaignId:string,init?:RequestInit,allowUnavailable?:false):Promise<View>;
+async function request(campaignId:string,init:RequestInit,allowUnavailable:true):Promise<View|ReconciliationAck>;
+async function request(campaignId:string,init:RequestInit={},allowUnavailable=false):Promise<View|ReconciliationAck>{
  const response=await fetch(`/api/growth/execution${init.method==='POST'?'':`?campaignId=${encodeURIComponent(campaignId)}`}`,{...init,cache:'no-store'});
  const raw:unknown=await response.json();
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new Error('실행 준비 응답을 확인하지 못했습니다.');
  const data=raw as Record<string,unknown>;
  if(!response.ok)throw new Error(typeof data.error==='string'?data.error:'실행 준비 요청에 실패했습니다.');
- if(!['intents','receipts','missions','authorities','inventory'].every(key=>Array.isArray(data[key]))||typeof data.campaignVersion!=='number'||typeof data.canPrepare!=='boolean'||typeof data.canRecord!=='boolean')throw new Error('실행 준비 응답을 확인하지 못했습니다.');
+ if(allowUnavailable&&data.reconciled===true&&data.viewUnavailable===true&&typeof data.resultIntentId==='string')return data as unknown as ReconciliationAck;
+ if(!['intents','receipts','missions','authorities','inventory','commitments','reconciliations'].every(key=>Array.isArray(data[key]))||typeof data.campaignVersion!=='number'||typeof data.canPrepare!=='boolean'||typeof data.canRecord!=='boolean')throw new Error('실행 준비 응답을 확인하지 못했습니다.');
  return data as unknown as View;
 }
 function ReferenceField({label,rows,id,version,onChange}:{label:string;rows:Reference[];id:string;version:number;onChange:(id:string,version:number)=>void}){
@@ -52,6 +56,7 @@ function ExecutionEditor({campaignId,view,onView,busy,onBusy}:{campaignId:string
  const mission=view.missions.find(row=>row.id===draft.missionId),authority=view.authorities.find(row=>row.id===draft.authorityId),inventory=view.inventory.find(row=>row.id===draft.inventoryId),selected=view.intents.find(row=>row.id===selection.id);
  const staleCampaign=campaignVersion!==view.campaignVersion,staleReference=!!draft.missionId&&mission?.version!==draft.missionVersion||!!draft.authorityId&&authority?.version!==draft.authorityVersion||!!draft.inventoryId&&inventory?.version!==draft.inventoryVersion;
  const staleReceipt=!!selected&&selected.version!==selection.version,terminal=selected?.state==='observed'||selected?.state==='failed';
+ const stateLabel=(row:Intent)=>`${states[row.state]??row.state}${view.commitments.find(item=>item.id===row.commitmentId)?.commitment.status==='released'?' · 무집행 취소':''}`;
  const label=(row:Intent)=>view.missions.find(m=>m.id===row.input.missionId)?.input.title||row.snapshot?.mission?.input?.title||row.snapshot?.mission?.title||row.input.missionId;
  return <div className={styles.editor}>{error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}
  {staleCampaign&&<div className={styles.error}>캠페인이 변경되었습니다. 현재 입력과 연결 조건을 다시 검토하세요.<button type="button" disabled={busy} onClick={()=>setCampaignVersion(view.campaignVersion)}>현재 입력 유지 · 최신 캠페인 기준 사용</button></div>}
@@ -67,10 +72,11 @@ function ExecutionEditor({campaignId,view,onView,busy,onBusy}:{campaignId:string
  {staleReference&&<p className={styles.error}>연결 기록이 변경되었습니다. 최신 내용을 검토하고 각 연결 기준을 다시 선택하세요.</p>}
  <button type="submit" className={styles.primary} disabled={busy||!view.canPrepare||staleCampaign||staleReference||!draft.missionId||!draft.authorityId||!draft.inventoryId||mission?.status!=='staged'||!!mission?.readiness.missing.length}>예산·재고 함께 예약</button></form>
  {!view.canPrepare&&<p>현재 권한·캠페인 상태에서는 새 예약을 준비할 수 없습니다.</p>}
- <div className={styles.workspace}><aside className={styles.list} aria-label="판매 실행 기록">{!view.intents.length&&<p>예약된 실행 기록이 없습니다.</p>}{view.intents.map(row=><button key={row.id} type="button" disabled={busy} aria-pressed={selection.id===row.id} onClick={()=>select(row)}><strong>{label(row)}</strong><span>{states[row.state]??row.state} · v{row.version}</span></button>)}</aside>
- {selected&&<div className={styles.editor}><h4>{label(selected)} · {states[selected.state]??selected.state}</h4><p>예약 수량 {selected.input.quantity} · 결과 확인 {selected.input.recoveryOwner} · {selected.input.recoveryDueAt}</p><p>예산 예약 {selected.commitmentId}<br/>재고 예약 {selected.reservationId}</p>
+ <div className={styles.workspace}><aside className={styles.list} aria-label="판매 실행 기록">{!view.intents.length&&<p>예약된 실행 기록이 없습니다.</p>}{view.intents.map(row=><button key={row.id} type="button" disabled={busy} aria-pressed={selection.id===row.id} onClick={()=>select(row)}><strong>{label(row)}</strong><span>{stateLabel(row)} · v{row.version}</span></button>)}</aside>
+ {selected&&<div className={styles.editor}><h4>{label(selected)} · {stateLabel(selected)}</h4><p>예약 수량 {selected.input.quantity} · 결과 확인 {selected.input.recoveryOwner} · {selected.input.recoveryDueAt}</p><p>예산 예약 {selected.commitmentId}<br/>재고 예약 {selected.reservationId}</p>
  {staleReceipt&&<div className={styles.error}>다른 운영자가 결과를 갱신했습니다. 최신 상태는 {states[selected.state]??selected.state}입니다.<button type="button" disabled={busy||terminal} onClick={()=>{setSelection({id:selected.id,version:selected.version});setReceiptId(crypto.randomUUID());}}>현재 입력 유지 · 최신 결과 버전 사용</button></div>}
  <form onSubmit={event=>{event.preventDefault();void mutate('record_execution_receipt');}}><fieldset className={styles.receipt} disabled={busy||!view.canRecord||terminal||staleReceipt||staleCampaign}><legend>실행 결과 확인 기록</legend><label>확인 상태<select value={receipt.status} onChange={event=>setReceipt(previous=>({...previous,status:event.target.value as Receipt['status']}))}><option value="unknown">결과 미확인 · 예약 유지</option><option value="observed">운영자 관측 완료</option><option value="failed">실패 확인</option></select></label><label>결과 증빙 내부 ID<input required maxLength={200} value={receipt.reference} onChange={event=>setReceipt(previous=>({...previous,reference:event.target.value}))}/></label><label>결과 확인 내용<textarea required maxLength={1000} value={receipt.note} onChange={event=>setReceipt(previous=>({...previous,note:event.target.value}))}/></label><button type="submit">실행 결과 기록</button></fieldset></form>
+ <GrowthReconciliationPanel key={selected.id} intent={selected} data={view} busy={busy} onBusy={onBusy} onSubmit={async payload=>{const next=await request(campaignId,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,campaignId})},true);if('viewUnavailable' in next){if(next.resultIntentId!==selected.id)throw new Error('저장 대상 확인이 필요합니다.');if(mounted.current)onView({...view,canRecord:false,canPrepare:false});return next;}if(mounted.current){onView(next);const row=next.intents.find(item=>item.id===selected.id);if(row)setSelection({id:row.id,version:row.version});}return next;}}/>
  <section aria-label="실행 증빙 이력"><h4>실행 증빙 이력</h4>{view.receipts.filter(row=>row.intentId===selected.id).sort((a,b)=>b.intentVersion-a.intentVersion).map(row=><article className={styles.mission} key={row.id}><strong>{states[row.state]??row.state} · v{row.intentVersion}</strong><p>{row.recordedAt}</p>{row.input&&<><p>근거: {row.input.reference}</p><p>{row.input.note}</p></>}</article>)}</section>{terminal&&<p>최종 확인 기록은 다시 실행하거나 덮어쓰지 않습니다.</p>}<p className={styles.note}>결과 미확인에서는 재실행하지 않고 증빙을 확인합니다. 관측 완료는 매출 증명이 아닙니다. 실제 주문·출고·정산은 주문 운영 장부에서 확인하세요.</p></div>}</div>
  </div>;
 }

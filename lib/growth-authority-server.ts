@@ -5,7 +5,7 @@ import type {MissionInput} from './growth-mission';
 import {ApiError,database,readRecord,recordStatement,stamp,str,uid,type Actor} from './server';
 
 export type GrowthAuthorityRecord={id:string;brandId:string;campaignId:string;campaignVersion:number;version:number;input:AuthorityInput;updatedAt:string;updatedBy:string;revokedAt?:string;revokedBy?:string};
-export type GrowthCommitmentRecord={id:string;brandId:string;campaignId:string;authorityId:string;authorityVersion:number;authorityApprovalId:string;authoritySnapshot:AuthorityInput;missionId:string;missionVersion:number;commitment:AuthorityCommitment;createdAt:string;createdBy:string};
+export type GrowthCommitmentRecord={id:string;brandId:string;campaignId:string;version?:number;authorityId:string;authorityVersion:number;authorityApprovalId:string;authoritySnapshot:AuthorityInput;missionId:string;missionVersion:number;commitment:AuthorityCommitment;createdAt:string;createdBy:string};
 const AUTHORITY_LIMIT=100,COMMITMENT_LIMIT=1000,OWNER_LEDGER_LIMIT=10000;
 function recordId(value:unknown,label:string){const id=str(value,label,100,true);if(!/^[A-Za-z0-9_-]+$/.test(id))throw new ApiError(400,`${label} 형식을 확인하세요.`);return id;}
 async function rows<T>(owner:string,kind:string,limit:number,campaignId?:string):Promise<T[]>{

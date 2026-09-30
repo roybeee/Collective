@@ -20,6 +20,7 @@ export type AuthorityCommitment = {
   authorityId: string; action: AuthorityAction; status: 'reserved' | 'reconciled' | 'unknown' | 'released';
   at: string; reservedAmount: number | null; reservedLoss: number | null;
   actualAmount: number | null; actualLoss: number | null;
+  reconciledAt?: string;
 };
 export type AuthorityUsage = {total: number | null; day: number | null; week: number | null; loss: number | null};
 export type AuthorityDecision = {allowed: boolean; reasons: string[]; tier: AuthorityTier; duplicate: boolean; usage: AuthorityUsage};
@@ -117,7 +118,7 @@ function parseCommitment(value: unknown): AuthorityCommitment {
   return {authorityId: identifier(input.authorityId, true), action: parseAction(input.action),
     status: enumeration(input.status, ['reserved', 'reconciled', 'unknown', 'released']), at: timestamp(input.at, true),
     reservedAmount: money(input.reservedAmount), reservedLoss: money(input.reservedLoss),
-    actualAmount: money(input.actualAmount), actualLoss: money(input.actualLoss)};
+    actualAmount: money(input.actualAmount), actualLoss: money(input.actualLoss),...(input.reconciledAt!==undefined?{reconciledAt:timestamp(input.reconciledAt,true)}:{})};
 }
 
 function tier(operation: AuthorityOperation): AuthorityTier {
@@ -146,13 +147,13 @@ function usageFor(authority: AuthorityInput, commitments: AuthorityCommitment[],
     const unresolved = entry.status !== 'reconciled';
     const amount = unresolved ? held(entry.reservedAmount, entry.actualAmount) : entry.actualAmount;
     const loss = unresolved ? held(entry.reservedLoss, entry.actualLoss) : entry.actualLoss;
-    const at = Date.parse(entry.at);
+    const at = Math.max(Date.parse(entry.at),entry.reconciledAt?Date.parse(entry.reconciledAt):0);
     // Unresolved reservations never expire out of capacity merely because a day/week/period changed.
     const inPeriod = unresolved || entry.authorityId === authority.id || at >= periodStart;
     return {total: inPeriod ? sum(usage.total, amount) : usage.total,
       day: unresolved || at >= dayStart ? sum(usage.day, amount) : usage.day,
       week: unresolved || at >= weekStart ? sum(usage.week, amount) : usage.week,
-      loss: inPeriod ? sum(usage.loss, loss) : usage.loss};
+      loss: sum(usage.loss, loss)};
   }, {total: 0, day: 0, week: 0, loss: 0});
 }
 
@@ -206,6 +207,8 @@ function ledgerReasons(commitments: AuthorityCommitment[], action: AuthorityActi
   const reasons = new Set(keys).size !== keys.length ? ['중복된 비용 예약 키를 대사하세요.'] : [];
   for (const entry of commitments) {
     if (Date.parse(entry.at) > now) reasons.push('미래 시각의 비용 기록을 확인하세요.');
+    if (entry.reconciledAt&&Date.parse(entry.reconciledAt)>now) reasons.push('미래 시각의 대사 기록을 확인하세요.');
+    if (entry.status==='released'&&(entry.actualAmount!==0||entry.actualLoss!==0)) reasons.push('해제된 예약의 실비·손실은 확인된 0이어야 합니다.');
     if (['reserved', 'unknown'].includes(entry.status) &&
       (entry.action.amount === null || entry.action.loss === null || entry.reservedAmount === null || entry.reservedLoss === null ||
         entry.reservedAmount < entry.action.amount || entry.reservedLoss < entry.action.loss)) reasons.push('미대사 실행의 전체 비용과 손실을 예약해야 합니다.');
