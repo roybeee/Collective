@@ -75,14 +75,14 @@ export function signalEvidence(signal:SignalInput,now:Clock):{status:'usable'|'e
  }catch(error){if(!(error instanceof GrowthMarketError))throw error;return {status:'insufficient',reason:'출처 입력이 유효하지 않습니다.'};}
 }
 const NEED_FIELDS:ReadonlyArray<readonly[keyof NeedInput,string]>=[['title','제목'],['situation','발생 상황'],['desiredOutcome','원하는 결과'],['alternative','현재 대안'],['barrier','장애물'],['counterEvidence','반례'],['nextAction','다음 행동'],['assignee','담당 역할']];
-export function needReadiness(input:NeedInput,signals:Array<{id:string;input:SignalInput}>,now:Clock):{missing:string[];evidenceLevel:'hypothesis'}{
+export function needReadiness(input:NeedInput,signals:Array<{id:string;input:SignalInput;evidence?:ReturnType<typeof signalEvidence>}>,now:Clock):{missing:string[];evidenceLevel:'hypothesis'}{
  const at=clock(now);
  const fields=NEED_FIELDS.filter(([key])=>!String(input[key]??'').trim()).map(([,label])=>`${label} 입력 필요`);
  const deadline=(()=>{try{return dateTime(input.deadline,'니즈 기한').time>at?[]:['니즈 기한 경과'];}catch{return ['니즈 기한 입력 필요'];}})();
  const evidence=input.signalIds.length?input.signalIds.flatMap(id=>{
   const source=signals.find(signal=>signal.id===id);
   if(!source)return ['연결한 출처 누락'];
-  const result=signalEvidence(source.input,now);
+  const result=source.evidence??signalEvidence(source.input,now);
   return result.status==='usable'?[]:[result.reason];
  }):['출처 연결 필요'];
  return {missing:[...fields,...deadline,...evidence],evidenceLevel:'hypothesis'};

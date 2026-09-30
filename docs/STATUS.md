@@ -131,6 +131,15 @@
 - 전체274/274 suites·16,169 assertions passed(외부 mocked). 전용 domain29/API19/collection12와 기존 측정92/status52/publication-link35 passed(real pure/memory SQLite, 인증·공급자 mocked). 최종 타입·빌드·프롬프트22 passed, lint 기준선70/39 유지. 최종 E2E8 passed(real Chromium/local D1, 공급자 합성 fixture·조회실패 주입 mocked): 관측2+기존publication/execution/store-measurement6. 초기 브라우저2회는 기존 화면 이동 시 테스트 자료의 필수 creative/input 필드 누락으로 실패해 fixture 보완 후 통과했다.
 - 독립 리뷰의 미래 수집 시각/기간·잘못된 credential 범위와 store5000 조회상한 경계를 보완했고 HIGH/MED 잔여0. staged gitleaks59KB 유출0. 신규 외부 수집·원장 저장·전환율/인과 계산은 범위 밖이다. 기존 제작·발행/성과 탭 이동을 연결했다. 현재 관측 증분은 로컬 검증 완료이며 원격 CI·게시 전이다. 전체 원안 완료가 아니다.
 
+### 확정 시장자료와 성장 신호 연결 (2026-09-30 · Codex)
+갱신: 2026-09-30 12:54 UTC
+
+- #280 관측 증분 `8258045`는 로컬 전체274/274 suites·16,169 assertions, 타입·빌드·E2E8·lint70/39 검증 뒤 원격 CI 중이다. main #279는 Sites77 published/runtime-verified다.
+- 별도 `codex/growth2-signal-source`에서 [G2-06 자료 연결](GROWTH-2-SIGNAL-SOURCES.ko.md)을 개발한다. 확정 공개 시장자료를 서버 검증 후 가져오고 원자료 판·digest와 관측 시각을 보존한다. 완료 연구의 원문 접근 근거를 확인하며 같은 원본 판 중복과 수동 계보 제거를 막는다.
+- 원본 수정/제외/범위 변경·만료/조회 실패는 신호→기회→오퍼→미션과 해당 학습 계보에 보류로 전파한다. UI는 시장 단계에서 후보·검증된 요약·기한·중복·충돌을 표시한다. 가져온 근거 직접 편집은 잠그고 원자료 새 판을 명시적으로 가져온다.
+- 전체276/276 suites·16,233 assertions passed(외부 mocked). 전용 domain24/API39, 기존 market50/workspace37/decisions56, kind53 passed(real pure/memory SQLite, 인증 mocked). 최종 타입·빌드·프롬프트22 passed, lint 기준선70/39 유지, staged gitleaks54KB 유출0. 독립 리뷰 HIGH/MED 잔여0.
+- 신규2+기존growth-workspace4 E2E6 passed(real local D1/Archive API/Chromium). 실제 저장 후 응답 유실만 mocked하여 동일UUID 복구·구판 충돌/입력 보존·새판 재가져오기·이전held/현재current·수정 잠금·모바일을 검증했다. 초기E2E의중첩label exact locator실패는combobox role locator로수정했고최종통과했다. 외부 수집·모델·발송0, 원격 CI·게시 전이며 전체 원안 완료가 아니다.
+
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
 - 현재 운영: #279까지 `6f84979fd1ddb0864053173ef88059a9747b09f7`, Sites77, tree `0a3af76a519b6f8b1a8da0b06f560e0fe0f8ce4a`. 2026-09-30 12:40 UTC merged/published/runtime-verified. 자연 유입 Buffer 연결·공유 예약 재사용·명시 상태 동기화 포함. 관측 증분은 게시 전이며 원안 전체는 미완료다. 실제 공급자 실행·정산·효과 검증 not_run. [릴리스](releases/2026-09-30-6f84979.md).
 - 성장1 필수 코드 게시 대기 0건. #216·#218·#219·#225는 통합 #244로 병합·게시했다. #206·#208·#210~#214·#217·#220·#223·#231·#235·#237과 관련 문서도 현재 제품에 포함된다.
