@@ -154,6 +154,13 @@ function growthDailyRow(flags:unknown):FeatureRow{
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'일일 운영 루프 스위치 상태를 확인하지 못했습니다',link};
  return state.enabled?{...base,status:'available',reason:'조사 작업자가 하루 1회 신호 감지·안건 기록(모델 호출·게시·지출·발송 없음)'}:{...base,status:'blocked',reason:'기능 스위치 growth_daily_loop 꺼짐 · 소유자가 켭니다(수동 “오늘 안건 지금 만들기”는 가능)',link};
 }
+// 판매처 주문 조회(G2-04/18): 기능 스위치 storefront_pull. 켜지면 조사 작업자가 소유자가 켠 연결을 간격마다 읽는다.
+function storefrontPullRow(flags:unknown):FeatureRow{
+ const base={key:'storefront-pull',label:'판매처 주문 조회 연결(커서·재시도)'},link:FeatureLink={label:'캠페인의 성장·판매 탭에서 확인',view:'campaigns'};
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='storefront_pull'):undefined;
+ if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'판매처 조회 스위치 상태를 확인하지 못했습니다',link};
+ return state.enabled?{...base,status:'available',reason:'켠 연결을 간격마다 1페이지 읽기(고객 정보 없음, 외부 쓰기 없음)'}:{...base,status:'blocked',reason:'기능 스위치 storefront_pull 꺼짐 · 소유자가 켭니다',link};
+}
 // 가맹 경쟁 브랜드 공공 벤치마크(트랙 R R7a): r_franchise 스위치 뒤. 대표·관리자가 가맹 모집 → 벤치마크 탭에서 공공데이터 키를 저장한 뒤 버튼으로 적재한다(키가 없으면 막힘, 외부 호출 0).
 function franchiseBenchmarkRow(flags:unknown):FeatureRow{
  const base={key:'franchise-benchmark',label:'가맹 경쟁 브랜드 공공 벤치마크(공정위 공개 API)'},link:FeatureLink={label:'가맹 모집의 벤치마크 탭으로 이동',view:'franchise',tab:'benchmark'};
@@ -189,6 +196,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   playbookSignalsRow(input.flags),
   qualityDigestRow(input.flags),
   growthDailyRow(input.flags),
+  storefrontPullRow(input.flags),
   franchiseBenchmarkRow(input.flags),
   reflectorRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
