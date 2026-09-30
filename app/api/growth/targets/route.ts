@@ -1,0 +1,6 @@
+import type {Campaign} from '@/lib/agency';
+import {GrowthTargetsError} from '@/lib/growth-targets';
+import {compareTargetReview,growthTargetsView,saveGrowthTarget} from '@/lib/growth-targets-server';
+import {ApiError,requireAdminActor,secureMutation,body,readRecord,str,json,failure,acquireLock,releaseLock} from '@/lib/server';
+export async function GET(req:Request){try{const who=await requireAdminActor(req),q=new URL(req.url).searchParams,c=await readRecord<Campaign>(who.owner,'campaign',str(q.get('campaignId'),'캠페인',100,true)),view=await growthTargetsView(who,c);return json(q.has('reviewId')?{...view,reviewComparison:await compareTargetReview(who,c,str(q.get('reviewId'),'리뷰',100,true))}:view)}catch(e){return failure(e instanceof GrowthTargetsError?new ApiError(400,e.message):e)}}
+export async function POST(req:Request){let owner='',lock='';try{const who=await requireAdminActor(req);secureMutation(req);const b=await body(req);owner=who.owner;lock=await acquireLock(owner);const c=await readRecord<Campaign>(owner,'campaign',str(b.campaignId,'캠페인',100,true));return json(await saveGrowthTarget(who,c,b))}catch(e){return failure(e instanceof GrowthTargetsError?new ApiError(400,e.message):e)}finally{if(lock)await releaseLock(owner,lock)}}

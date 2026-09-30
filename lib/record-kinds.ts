@@ -23,6 +23,10 @@ export type SubjectErasure='delete'|'minimize'|'legal_hold'|'none';
 export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;retention?:RetentionPolicy;subjectErasure?:SubjectErasure;description:string};
 
 export const recordKinds:readonly RecordKind[]=[
+ {kind:'growth_target',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'성장2 잠정·확정 사업목표와 최신 변경 판. 실행 권한 없음'},
+ {kind:'growth_target_history',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'사업목표 개정 이유와 이전 판의 추가 전용 이력'},
+ {kind:'growth_target_review',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'목표 판·기간에 고정한 사업 리뷰와 서버 장부 관측 스냅샷'},
+ {kind:'growth_target_request',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'사업목표·리뷰 저장 요청의 멱등·충돌 검사'},
  {kind:'growth_customer',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'브랜드별 무작위 가명 고객과 목적별 동의 현재 판. 별도 연결 삭제 지원'},
  {kind:'growth_consumer_consent',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'소비자 목적별 동의·철회 추가 전용 이력. 고객 연결 삭제 시 제거'},
  {kind:'growth_consumer_order_link',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'운영자 확인 소비자·주문 연결. 원 주문과 분리하며 연결 삭제 시 제거'},
