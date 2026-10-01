@@ -1,6 +1,7 @@
 'use client';
 import {useCallback,useEffect,useState,type ComponentProps} from 'react';
 import {Button} from '@/components/ui/button';
+import {ScreenSkeleton} from '@/components/app/screen-skeleton';
 import {Sheet,SheetContent,SheetHeader,SheetTitle,SheetDescription} from '@/components/ui/sheet';
 import type {CampaignDetail} from '@/lib/campaign-detail';
 import {CampaignPanel} from './panels';
@@ -37,6 +38,8 @@ function LoadedCampaign(props:Props){
   return()=>controller.abort();
  },[id,c.version,c.updatedAt,c.status,c.storeId]);
  const reload=useCallback(async()=>{await Promise.all([parentReload(),load()]);},[parentReload,load]);
+ const retry=error?<div role="alert"><p>{error}</p><Button onClick={()=>void load().catch(e=>setError(e.message))}>다시 시도</Button></div>:null;
+ if(!detail&&props.asPage)return <section className="campaign-sheet campaign-page" aria-busy={!error} aria-labelledby={`campaign-title-${id}`}><header className="campaign-page-header"><h1 id={`campaign-title-${id}`}>{c.title}</h1><p className="campaign-page-lead">캠페인 상세와 버전 기록을 불러옵니다.</p></header>{retry??<ScreenSkeleton label="캠페인 상세를 불러오고 있습니다."/>}</section>;
  if(!detail)return <Sheet open onOpenChange={open=>{if(!open)props.onClose()}}><SheetContent className="campaign-sheet"><SheetHeader><SheetTitle>{props.campaign!.title}</SheetTitle><SheetDescription>캠페인 상세와 버전 기록을 불러옵니다.</SheetDescription></SheetHeader>{error?<div role="alert"><p>{error}</p><Button onClick={()=>void load().catch(e=>setError(e.message))}>다시 시도</Button></div>:<p>불러오는 중…</p>}</SheetContent></Sheet>;
  const data={...props.data,artifacts:detail.artifacts,metrics:detail.metrics,events:detail.events,runs:detail.runs};
  return <><CampaignPanel {...props} campaign={detail.campaign} data={data} history={detail.history} detailError={error} reload={reload}/><AiTeamSlot><EvidenceSummary campaignId={detail.campaign.id} artifacts={detail.artifacts}/><DirectivesPanel campaignId={detail.campaign.id}/></AiTeamSlot><OnlineGradingSlot campaignId={detail.campaign.id} artifacts={detail.artifacts}/><DataRequestsSlot campaignId={detail.campaign.id} artifacts={detail.artifacts}/><CampaignAttributionSlot campaignId={detail.campaign.id} onSaved={reload}/></>;

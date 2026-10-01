@@ -45,23 +45,23 @@ test('캠페인 상세는 새로고침 뒤에도 열려 있고 뒤로가기로 �
 
   // 같은 문서 안의 뒤로가기(popstate)
   await page.getByRole('button', {name: title + ' 열기', exact: true}).click();
-  await expect(page.getByRole('dialog', {name: title})).toBeVisible();
+  await expect(page.getByRole('region', {name: title})).toBeVisible();
   expect(query(page).get('view')).toBe('campaigns');
   expect(query(page).get('campaign')).toBe(id);
   await page.goBack();
-  await expect(page.getByRole('dialog', {name: title})).toHaveCount(0);
+  await expect(page.getByRole('region', {name: title})).toHaveCount(0);
   await expect(page.getByRole('heading', {level: 1, name: '캠페인'})).toBeVisible();
   expect(query(page).get('campaign')).toBeNull();
 
   // 새로고침하면 같은 캠페인이 다시 열린다.
   await page.getByRole('button', {name: title + ' 열기', exact: true}).click();
-  await expect(page.getByRole('dialog', {name: title})).toBeVisible();
+  await expect(page.getByRole('region', {name: title})).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('dialog', {name: title})).toBeVisible();
+  await expect(page.getByRole('region', {name: title})).toBeVisible();
   expect(query(page).get('campaign')).toBe(id);
   await page.screenshot({path: `e2e/artifacts/${testInfo.project.name}-nav-after-reload.png`, fullPage: true});
   await page.goBack();
-  await expect(page.getByRole('dialog', {name: title})).toHaveCount(0);
+  await expect(page.getByRole('region', {name: title})).toHaveCount(0);
   await expect(page.getByRole('button', {name: title + ' 열기', exact: true})).toBeVisible();
   expect(query(page).get('view')).toBe('campaigns');
 
@@ -109,7 +109,7 @@ test('상세 시트에서 브리프를 고치면 시트가 새 버전을 보여 
   expect(created.status()).toBe(200);
   const {id} = await created.json() as {id: string};
   await page.goto(`/?view=campaigns&campaign=${id}`);
-  const sheet = page.getByRole('dialog', {name: title});
+  const sheet = page.getByRole('region', {name: title});
   await expect(sheet.getByText('BRIEF v1', {exact: true})).toBeVisible();
 
   // 두 번째 저장은 시트가 넘긴 버전으로 검사된다. 시트가 옛 버전을 들고 있으면 409(다른 화면에서 브리프가 변경됐습니다)가 난다.
@@ -150,7 +150,7 @@ test('작업 중인 캠페인 상세는 폴링 한 번에 상세 API를 한 번�
     if (path === `/api/campaigns/${id}`) detailRequests++;
   });
   await page.goto(`/?view=campaigns&campaign=${id}`);
-  await expect(page.getByRole('dialog', {name: title}).getByText('BRIEF v1', {exact: true})).toBeVisible();
+  await expect(page.getByRole('region', {name: title}).getByText('BRIEF v1', {exact: true})).toBeVisible();
   const start = {workspace: workspaceRequests, detail: detailRequests};
   // tick마다 워크스페이스 1회·상세 1회. 부모 데이터가 바뀔 때마다 상세를 다시 읽으면 상세가 tick당 2회가 된다.
   // 5초 간격 폴링 두 주기. 부하가 걸린 러너에서도 두 번은 오도록 넉넉히 기다린다(간격 자체는 검사하지 않는다).

@@ -10,7 +10,8 @@ let passed=0;const check=(name,fn)=>{try{fn();passed++}catch(error){console.erro
 check('campaign detail refetches when the campaign record changes, not on every parent reload',()=>{assert.match(detail,/\},\[id,c\.version,c\.updatedAt,c\.status,c\.storeId\]\);/);assert.doesNotMatch(detail,/\[id,props\.data\]/)});
 
 // 작업물 카드 미리보기: 첫 비제목 문단, 내부 식별자 제거.
-check('asset cards use artifactPreview',()=>{assert.ok(workspace.includes('<p>{artifactPreview(a.content)}</p>'));assert.ok(!workspace.includes("a.content.replace(/[#*]/g,'')"))});
+// 카드 목록은 작업물 화면을 열 때만 내려받는 app/assets-grid.tsx에 있다(UX-PLAN-3 Q7).
+check('asset cards use artifactPreview',()=>{const grid=source('app/assets-grid.tsx');assert.ok(grid.includes('<p>{artifactPreview(a.content)}</p>'));assert.ok(workspace.includes("lazy(()=>import('./assets-grid')"));assert.ok(!grid.includes("a.content.replace(/[#*]/g,'')")&&!workspace.includes("a.content.replace(/[#*]/g,'')"))});
 
 // 캠페인 목록 진행 막대: 사용 가능한 역할 수 / 역할 수.
 check('campaign progress counts usable roles out of all roles',()=>{assert.ok(workspace.includes('usableRoleCount(c,data.artifacts)'));assert.ok(workspace.includes('count/roles.length*100'));assert.ok(!workspace.includes('count/8'))});
@@ -30,7 +31,8 @@ check('the workspace composer warns before opening and only auto-drafts a matchi
 check('the store panel receives and reports the store in the address',()=>{assert.ok(workspace.includes('initialStoreId={route.store}'));assert.ok(workspace.includes('onScopeChange='));assert.match(stores,/initialStoreId\?:string/);assert.ok((stores.match(/scope\.current\?\.\(/g)||[]).length>=4)});
 
 // 비동기 뒤 캠페인을 열 때 그 사이 이동한 화면을 덮어쓰지 않는다. 늦게 도착한 옛 응답이 새 데이터를 덮지 않는다.
-check('opening a campaign applies to the latest route',()=>assert.match(workspace,/function setSelectedId\(id:string\|null\)\{setRoute\(r=>/));
+// 캠페인 상세가 페이지라 다른 캠페인으로 옮기기 전에 저장하지 않은 입력을 묻는 확인(confirmLeave)이 앞에 올 수 있다(UX-PLAN-3 Q1).
+check('opening a campaign applies to the latest route',()=>assert.match(workspace,/function setSelectedId\(id:string\|null\)\{(?:if\(route\.campaign&&id!==route\.campaign&&!confirmLeave\(\)\)return;)?setRoute\(r=>/));
 check('an older workspace response never replaces a newer one',()=>assert.match(workspace,/const seq=\+\+reloadSeq\.current\.started/));
 
 // 기본 브랜드는 처음 불러올 때 한 번 정하고 이후 활동 변화로 바뀌지 않는다.

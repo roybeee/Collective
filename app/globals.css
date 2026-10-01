@@ -251,3 +251,11 @@ body{font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;backgrou
 .campaign-name{display:block}.campaign-name~.status{display:inline-flex;margin:6px 6px 0 0}
 .glossary-item{display:grid;gap:2px}.glossary-item small{color:#626c55;font-size:12px;line-height:1.5}
 .empty-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:4px}
+/* UX-PLAN-3 Q1 캠페인 상세 페이지: 시트용 크기·스크롤을 풀고 본문 여백을 쓴다. 안쪽 스타일(.campaign-sheet …)은 그대로 물려받는다. */
+.campaign-page{width:auto!important;max-width:none;overflow:visible!important;background:transparent}
+.campaign-page .crumbs{padding-right:0}.campaign-page .sheet-eyebrow{padding-right:0}
+.campaign-page-header{padding:0 0 18px}
+.campaign-page-header h1{font-size:26px;font-weight:600;line-height:1.4;outline:none}
+.campaign-page-lead{font-size:14px;color:#626c55;margin-top:8px}
+.campaign-page .sheet-actionbar,.campaign-page .campaign-tabs{padding-left:0;padding-right:0}
+@media(max-width:767px){.campaign-page-header h1{font-size:22px}}
