@@ -45,7 +45,12 @@ test('오늘의 안건·캠페인 탭 주소·지연 로딩·명령 팔레트·�
   // 5) 키보드 단축키(데스크톱): g c → 캠페인, / → 바로 가기, 입력란 안에서는 단축키가 아니다.
   if(!mobile){
    await page.locator('body').click({position:{x:5,y:5}});await page.keyboard.press('g');await page.keyboard.press('c');await expect(page).toHaveURL(/view=campaigns/);
-   await page.keyboard.press('/');await expect(page.getByRole('dialog',{name:'바로 가기'})).toBeVisible();await page.keyboard.press('Escape');
+   await page.keyboard.press('/');await expect(page.getByRole('dialog',{name:'바로 가기'})).toBeVisible();
+   // 용어 도움말·브랜드 검색(UX-PLAN-3 Q6·Q1): 검색하면 용어 정의가 보이고, 브랜드를 고르면 브랜드 아카이브로 간다.
+   const palette=page.getByRole('dialog',{name:'바로 가기'});await palette.getByPlaceholder('화면·캠페인 검색').fill('공헌이익');await expect(palette.getByRole('option',{name:/공헌이익.*판매 금액에서/})).toBeVisible();
+   await palette.getByPlaceholder('화면·캠페인 검색').fill('Old Ferry');await palette.getByRole('option',{name:/Old Ferry Donut/}).first().click();await expect(page).toHaveURL(/view=brands&brand=/);
+   await page.locator('body').click({position:{x:5,y:5}});await page.keyboard.press('?');await expect(page.getByRole('dialog',{name:'바로 가기'}).getByRole('option',{name:/^ROAS/})).toBeVisible();await page.keyboard.press('Escape');
+   await page.keyboard.press('g');await page.keyboard.press('c');await expect(page).toHaveURL(/view=campaigns/);
    await page.getByRole('textbox',{name:'캠페인 검색',exact:true}).fill('gh');await expect(page).toHaveURL(/view=campaigns/);
   }
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);

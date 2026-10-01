@@ -63,7 +63,7 @@
 .sectionTitle { display: flex; align-items: baseline; gap: 10px; font-size: 1.05rem; font-weight: 650; margin: 0 0 4px; }
 .sectionTitle span { font-size: .82rem; font-weight: 400; color: #5b6352; }
 /* 모바일에서는 바로가기를 가로 한 줄로 두고 고정하지 않는다(화면 높이 차지 방지). */
-@media (max-width: 767px) { .sectionNav { position: static; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; } .sectionNav a { min-height: 44px; flex: 0 0 auto; } .sectionTitle { flex-wrap: wrap; row-gap: 2px; } .sectionTitle span { flex-basis: 100%; } }
+@media (max-width: 767px) { .sectionNav { position: static; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; mask-image: linear-gradient(to right, black 85%, transparent); padding-right: 24px; } .sectionNav a { min-height: 44px; flex: 0 0 auto; } .sectionTitle { flex-wrap: wrap; row-gap: 2px; } .sectionTitle span { flex-basis: 100%; } }
 
 /* UX-PLAN-3 10.3: 저장 뒤 다음 단계, 초안 이어 쓰기, 직전 값 채우기(공용 Button 위에 배치만 정한다) */
 .nextStep, .fillPrevious { align-self: flex-start; }
