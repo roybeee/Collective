@@ -150,13 +150,14 @@
 - 신규2+기존workspace4 E2E6 passed(real local D1/API/Chromium, GET실패503만 mocked): 다중 오퍼 ready/held·unknown/closed·개별 기한·미확인 일정·정확 기록/A→B→A·dirty 취소·stale·모바일 검증. 외부0, 원격 CI·게시 전이며 전체 원안은 미완료다.
 
 ### 성장2 원안 잔여 15증분 (2026-09-30 · Claude 인계)
-갱신: 2026-09-30 23:30 UTC
+갱신: 2026-10-01 03:20 UTC
 
 - 대표 지시 “성장계획 2 원안 전체 중 부분구현·미연결·개발 전 카드를 끝까지 개발 완료하라.” `claude/vibrant-bohr-gzwdmw`, 기준 main `2dd2f63`, Draft PR [#285](https://github.com/roybeee/Collective/pull/285). 소유·경계는 [레인 인계](LANES.ko.md)와 [잔여 대조](GROWTH-2-NEXT-GAPS.ko.md)를 따른다.
 - 구현(로컬 원장·조회·검토, 모두 `mayExecute:false`): 수요 단계↔발행 근거(G2-19/27/28), 상세페이지 수정안·수동 적용 영수증·롤백(G2-26/29/12a), 반품 원인→병목/결정/교훈(G2-30/29/31), 일반 판매 실험 사전등록·배정·SRM/오염·알파 소비(G2-08/09/10), 검증 확대 게이트→소유자 예약·대사(G2-12b/17b/11), 다SKU 번들(G2-26), 크리에이터·파트너 영수증(G2-27), CS 티켓·약속 기한(G2-30), 마케팅 후 공헌이익·현금(G2-32), 교훈 적용 계보(G2-13/31), 최적화 후보↔평가·실험(G2-15/16), 자사 데이터 신호 탐지(G2-06/07/25), 일일 자율 루프(G2-00/28), 판매처 pull cursor 어댑터(G2-04/18), 조건부 GEO·해외 파일럿·MMM 타당성(G2-20/21/22).
 - 새 스위치 `growth_daily_loop`·`storefront_pull` 기본 OFF. 워커 큐 `growth_daily`·`storefront_pull`은 스위치가 켜질 때만 동작한다. G2-23/24(외부 고객 서비스)는 사업 결정 전이라 구현하지 않았다.
 - 로컬 검증: 신규 route 15개 passed(real memory SQLite, 인증·외부 mocked), 신규 E2E 15 specs×모바일/데스크톱 passed(real local D1/API/Chromium), tsc·build passed, lint 기준선 70/39 유지. 전체 suite는 `graders.test.mjs` 시간 단정 1건만 failed(기준 main에서도 동일, Q 소유 파일이라 미수정).
 - #285는 CI4개 passed 뒤 main `aea167d`(tree `035d3b1`)로 merged(2026-09-30 22:38 UTC). 대표 지시 “1.게시하라”로 이 세션이 게시 담당이 되어 [자동 게시](publish/aea167d.md)로 Sites82 published, 공개 `/api/version/public` tree 일치로 runtime-verified([릴리스](releases/2026-09-30-aea167d.md)). 실계정·외부 판매처 pull endpoint·실제 발행·지급·고객 응대·UCP·해외 출시·효과 검증은 not_run.
+- 제안(2026-10-01, 대표 지시 "UI/UX 최고 수준 기준 평가·개선 개발 계획"): [UX 2차 평가·개발 계획](UX-PLAN.ko.md)과 [계측 기준선](observations/2026-10-01-claude-ux-baseline.md), 재현 도구 `scripts/ux-audit.mjs`. 12차원 평균 2.3/5, 성장·판매 탭 열기 GET 31·접힌 높이 4.2화면·axe 대비 위반 1,239노드·44px 타깃 충족 ~5%. P0~P6(+선택 P7) 11~12주(1레인) 또는 7~8주(위생·구조 2레인). 대표 결정 6건 전에는 구현하지 않는다. 구현 소유는 레인 A.
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
 - 현재 운영: #285까지 `aea167d4c26bd8cb50c44008570f38e0537e41d7`, Sites82, tree `035d3b14027333a53748d48032afdb3422c7e8ae`. 2026-09-30 23:00 UTC merged/published/runtime-verified(대표 지시 “1.게시하라”, 자동 게시 #286). 성장2 원안 잔여 15증분 포함, 새 스위치 `growth_daily_loop`·`storefront_pull` 기본 OFF. 실제 외부 실행·정산·효과 검증 not_run. [릴리스](releases/2026-09-30-aea167d.md). 직전 #280~#284(`2dd2f63`)는 Sites81로 게시됐다.
