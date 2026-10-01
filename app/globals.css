@@ -211,7 +211,7 @@ body{font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;backgrou
 .agenda-list li[data-kind=decision] .agenda-kind{background:#fff6df;color:#6b4e0c}
 .agenda-main{display:flex;flex-direction:column;min-width:0;flex:1}
 .agenda-main b{font-size:14px;font-weight:600}
-.agenda-main small{font-size:12px;color:#5b6352;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.agenda-list>li{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px}.agenda-list>li>button:first-child{flex:1 1 260px}.agenda-list .agenda-quick{width:auto;flex:0 0 auto;align-self:center}.agenda-bulk{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:10px 0}.agenda-bulk small{color:#5b6352}.agenda-main small{font-size:12px;color:#5b6352;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .agenda-due{font-size:12px;color:#4f5748;flex-shrink:0}
 .agenda-empty{font-size:13px;color:#5b6352;padding:6px 0}
 .agenda-error{font-size:13px;color:#813e28}

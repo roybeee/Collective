@@ -63,3 +63,7 @@
 .sectionTitle { display: flex; align-items: baseline; gap: 10px; font-size: 1.05rem; font-weight: 650; margin: 0 0 4px; }
 .sectionTitle span { font-size: .82rem; font-weight: 400; color: #5b6352; }
 @media (max-width: 767px) { .sectionNav a { min-height: 44px; } }
+
+/* UX-PLAN-3 10.3: 저장 뒤 다음 단계, 초안 이어 쓰기, 직전 값 채우기(공용 Button 위에 배치만 정한다) */
+.nextStep, .fillPrevious { align-self: flex-start; }
+.resume { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; background: #f1f4ec; border: 1px solid #eceee8; border-radius: 8px; font-size: .88rem; color: #45503a; }
