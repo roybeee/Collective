@@ -74,9 +74,9 @@ export function DataRequestsSlot({campaignId,artifacts}:{campaignId:string;artif
  const open=listing.requests.filter(r=>r.status==='open'),closed=listing.requests.filter(r=>r.status!=='open');
  const edit=(id:string,mode:Editing['mode'])=>{setEditing(editing?.id===id&&editing.mode===mode?null:{id,mode});setText('')};
  return <OutputsSlot><section className="subtle-note" aria-label="자료 요청" aria-live="polite">
-  <div style={{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+  <div className="flex justify-between gap-2 items-center flex-wrap">
    <b>자료 요청 · 열림 {open.length} · 닫힘 {closed.length}</b>
-   {listing.enabled&&<span style={{display:'flex',gap:8}}>
+   {listing.enabled&&<span className="flex gap-2">
     <Button variant="outline" size="sm" disabled={busy} onClick={()=>void collect()}>작업물에서 모으기</Button>
     {admin&&<Button variant="ghost" size="sm" disabled={busy} onClick={()=>void reconcile()}><RefreshCw/>확정 사실과 대조</Button>}
    </span>}
@@ -87,11 +87,11 @@ export function DataRequestsSlot({campaignId,artifacts}:{campaignId:string;artif
    <span>{r.label}{r.assignee?` · 담당 ${r.assignee}`:''} · {r.storeId?'지점':'브랜드 공통'}{r.origins.length?` · 출처 ${r.origins.length}곳`:''}{r.factKey?'':' · 사실 항목 미지정(자동으로 닫히지 않음)'}</span>
    <br/><small>{r.text}</small>
    {r.scopeWarning==='store_link_needed'&&<p className="form-error">{STORE_LINK_WARNING}</p>}
-   {listing.enabled&&<span style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+   {listing.enabled&&<span className="flex gap-2 flex-wrap">
     <Button variant="ghost" size="sm" disabled={busy} onClick={()=>edit(r.id,'fact')}>사실 후보로 제안</Button>
     {admin&&<Button variant="ghost" size="sm" disabled={busy} onClick={()=>edit(r.id,'close')}>닫기·필요 없음</Button>}
    </span>}
-   {editing?.id===r.id&&<div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+   {editing?.id===r.id&&<div className="flex gap-2 flex-wrap items-center">
     <Input aria-label={editing.mode==='fact'?'사실 내용':'메모'} maxLength={editing.mode==='fact'?5000:500} value={text} placeholder={editing.mode==='fact'?`${r.label} 내용`:'메모(선택)'} onChange={e=>setText(e.target.value)}/>
     {editing.mode==='fact'?<Button size="sm" disabled={busy||!text.trim()} onClick={()=>void propose(r)}>후보 저장</Button>:<>
      <Button size="sm" disabled={busy} onClick={()=>void resolve(r,'close')}>답변 완료</Button>

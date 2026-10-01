@@ -6,6 +6,7 @@ import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select';
 import {api} from '@/lib/client';
 import type {MetaAdBundleInput} from '@/lib/meta-ad-bundle';
 import type {viewMetaAdBundle} from '@/lib/meta-ad-bundle-server';
+import {ScreenSkeleton} from '@/components/app/screen-skeleton';
 type View=Awaited<ReturnType<typeof viewMetaAdBundle>>;
 const blank:MetaAdBundleInput={operationId:'',adsetId:'',creativeId:'',adId:'',pageId:'',pixelId:'',expectedMetaImageHash:'',callToActionType:'LEARN_MORE',dailyBudgetKrw:0,graphDailyBudget:'',budgetUnitEvidence:'',ageMin:18,ageMax:65,country:'KR'};
 const labels={adsetId:'Meta 광고세트 ID',creativeId:'Meta 소재 ID',adId:'Meta 광고 ID',pageId:'Facebook 페이지 ID',pixelId:'Meta 픽셀 ID',expectedMetaImageHash:'검토한 Meta 이미지 hash',graphDailyBudget:'Graph daily_budget 원문 정수',budgetUnitEvidence:'원화·Graph 단위 대조 근거'} as const;
@@ -16,7 +17,7 @@ export function MetaAdBundlePanel({campaignId}:{campaignId:string}){
  async function act(action:'prepare'|'review'|'verify'){if(!data)return;setBusy(true);setError('');try{await api(action,{campaignId,campaignVersion:data.campaignVersion,expectedVersion:data.version,evidenceFingerprint:data.evidenceFingerprint,...(action==='prepare'?{input}:{confirmed})},'/api/meta-ads/bundle');await load()}catch(e){setError((e as Error).message);if(action==='verify')await load().catch(()=>{})}finally{setBusy(false)}}
  function change<K extends keyof MetaAdBundleInput>(key:K,value:MetaAdBundleInput[K]){setInput({...input,[key]:value});setDirty(true);setConfirmed(false)}
  const locked=busy||!data?.canEdit||!data.enabled;
- return <section aria-label="Meta 실행 패키지" className="form-stack"><h3>비활성 광고 실행 패키지</h3><p>Meta에서 마련한 광고세트·단일 이미지 링크 소재·광고의 연결을 검토합니다. 외부 생성·활성화·지출은 하지 않습니다.</p><p>지원 범위: 대한민국 성인 타깃, 웹사이트 구매 전환, 광고세트 일 예산. 다른 구성은 검증을 통과할 수 없습니다.</p>{error&&<p role="alert">{error}</p>}{!data?<p role="status">패키지를 불러오는 중입니다.</p>:<>
+ return <section aria-label="Meta 실행 패키지" className="form-stack"><h3>비활성 광고 실행 패키지</h3><p>Meta에서 마련한 광고세트·단일 이미지 링크 소재·광고의 연결을 검토합니다. 외부 생성·활성화·지출은 하지 않습니다.</p><p>지원 범위: 대한민국 성인 타깃, 웹사이트 구매 전환, 광고세트 일 예산. 다른 구성은 검증을 통과할 수 없습니다.</p>{error&&<p role="alert">{error}</p>}{!data?<ScreenSkeleton label="패키지를 불러오는 중입니다." rows={2}/>:<>
  {!data.enabled&&<p>소유자가 실행 패키지 기능을 켜야 준비할 수 있습니다.</p>}{data.issues.length>0&&<ul>{data.issues.map(i=><li key={i}>{i}</li>)}</ul>}
  <label className="field"><span>검증된 부모 Meta 캠페인</span><NativeSelect value={input.operationId} disabled={locked} onChange={e=>change('operationId',e.target.value)}><NativeSelectOption value="">선택</NativeSelectOption>{data.parents.map(p=><NativeSelectOption key={p.id} value={p.id}>{p.name} · {p.externalId}</NativeSelectOption>)}</NativeSelect></label>
  <label className="field"><span>원본 이미지 업로드 영수증</span><NativeSelect disabled={locked} value={input.imageUploadReceiptId??''} onChange={e=>change('imageUploadReceiptId',e.target.value)}><NativeSelectOption value="">수동 hash 대조만 사용</NativeSelectOption>{data.imageReceipts.map(r=><NativeSelectOption key={r.id} value={r.id}>{r.metaImageHash}</NativeSelectOption>)}</NativeSelect></label>

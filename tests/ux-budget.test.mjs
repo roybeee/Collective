@@ -13,12 +13,16 @@ export const measure=()=>({
  confirmCalls:count(app,/\bconfirm\(/g),
  inlineStyles:count(app,/style=\{\{/g),
  hexColors:new Set(css.match(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/g)||[]).size,
- mediaWidths:new Set((css.match(/(?:max|min)-width: ?\d+px/g)||[]).map(x=>x.replace(/\s/g,''))).size,
+ // 화면 폭 중단점은 @media 조건의 폭만 센다(요소의 min-width 같은 크기 지정은 중단점이 아니다).
+ mediaWidths:new Set((css.match(/@media[^{]*?\((?:max|min)-width: ?\d+px\)/g)||[]).map(x=>x.match(/\d+/)[0])).size,
  middleDotJoins:count(app,/ · /g),
 });
 let passed=0;const check=(v,n)=>{assert.ok(v,n);passed++};
 const now=measure();
 for(const [k,v] of Object.entries(now))check(v<=budget.static[k],`${k} ${v} > budget ${budget.static[k]} (줄였으면 예산을 낮추고, 늘었으면 공용 부품을 쓰세요)`);
+// 패널 안내문(Note)의 첫 문장은 60자 이하(UX-PLAN-3 Q4). 첫 문장은 늘 다 보이고 나머지는 '자세히'로 편다.
+const longNotes=[...app.matchAll(/<Note[^>]*>([^<{]+)<\/Note>/g)].map(m=>m[1].trim().split(/(?<=[.다요])\s/)[0]).filter(f=>f.length>60);
+check(longNotes.length===0,`Note first sentence over 60 chars: ${longNotes.join(' | ')}`);
 // 홈 첫 로딩 경계: 화면·대화상자는 lazy로만 불러온다.
 const ws=readFileSync('app/workspace.tsx','utf8');
 for(const m of budget.lazyOnly)check(!new RegExp(`^import [^;]*from '\\./${m}';`,'m').test(ws),`app/workspace.tsx must not statically import ./${m}`);

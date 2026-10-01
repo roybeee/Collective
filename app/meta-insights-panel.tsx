@@ -9,6 +9,7 @@ import {MetaCampaignPicker} from './meta-campaign-picker';
 import {metaInsightTemplate,parseMetaInsightImport,summarizeMetaInsights,type MetaAttribution,type MetaInsightReport} from '@/lib/meta-insights';
 import {metaSyncErrors,type MetaSyncState} from '@/lib/meta-sync-state';
 import s from './meta-insights-panel.module.css';
+import {ScreenSkeleton} from '@/components/app/screen-skeleton';
 type View={syncState:MetaSyncState|null;report:MetaInsightReport|null;summary:ReturnType<typeof summarizeMetaInsights>|null;version:number;campaignVersion:number;canEdit:boolean;stale:boolean;connection:{accountId:string;brandId:string;version:number;updatedAt:string}|null};
 const money=(v:number|null)=>v===null?'미확인':(v/100).toLocaleString('ko-KR',{maximumFractionDigits:2})+'원';
 const errorText=(e:unknown)=>e instanceof Error?e.message:'처리하지 못했습니다. 다시 시도하세요.';
@@ -25,7 +26,7 @@ export function MetaInsightsPanel({campaignId}:{campaignId:string}){
  function validate(){setError('');setSuccess('');try{setPreview(summarizeMetaInsights(parseMetaInsightImport(input).rows))}catch(e){setPreview(null);setError(errorText(e))}}
  function download(){const url=URL.createObjectURL(new Blob(['\uFEFF'+metaInsightTemplate],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='collective-meta-insights.csv';a.click();URL.revokeObjectURL(url)}
  const change=()=>{setPreview(null);setSuccess('')},disabled=busy||!view?.canEdit;
- if(!view)return <section className={s.root} aria-label="Meta 광고 성과"><div className={s.empty}>{error?<><p role="alert">{error}</p><Button onClick={()=>setRetry(n=>n+1)}>다시 불러오기</Button></>:<p role="status">광고 성과를 불러오고 있습니다…</p>}</div></section>;
+ if(!view)return <section className={s.root} aria-label="Meta 광고 성과"><div className={s.empty}>{error?<><p role="alert">{error}</p><Button onClick={()=>setRetry(n=>n+1)}>다시 불러오기</Button></>:<ScreenSkeleton label="광고 성과를 불러오고 있습니다." rows={2}/>}</div></section>;
  const summary=view.summary,r=view.report;
  return <section className={s.root} aria-label="Meta 광고 성과" aria-busy={busy}>
   <header className={s.header}><div><span className={s.eyebrow}>COLLECTIVE / RESULTS</span><h2>광고의 반응을 확인하세요</h2><p>Meta 성과를 가져오고, 실제 주문과 비교할 기준을 남깁니다.</p></div><Button variant="outline" disabled={busy} onClick={()=>setRetry(n=>n+1)}><RefreshCw size={16}/>새로고침</Button></header>

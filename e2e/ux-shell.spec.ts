@@ -26,6 +26,10 @@ test('오늘의 안건·캠페인 탭 주소·지연 로딩·명령 팔레트·�
   expect(new Set(calls).size,calls.join(',')).toBeLessThanOrEqual(2);
   const before=calls.length;await growth.locator('summary').filter({hasText:/^고객 문의·약속 기한$/}).click();await expect(growth.getByRole('region',{name:'고객 문의 처리',exact:true})).toBeVisible();
   expect(calls.slice(before)).toContain('/api/growth/cs');
+  // 연 패널과 섹션도 주소(#)에 남아 새로고침 뒤 같은 곳이 열린다(UX-PLAN-3 Q1).
+  await expect.poll(()=>page.evaluate(()=>decodeURIComponent(location.hash))).toBe('#panel-고객 문의·약속 기한');
+  await page.reload();await expect(page.getByRole('region',{name:'고객 문의 처리',exact:true})).toBeVisible();
+  await page.getByRole('navigation',{name:'성장 섹션 바로가기',exact:true}).getByRole('link',{name:/^실행/}).click();await expect.poll(()=>page.evaluate(()=>location.hash)).toBe('#growth-section-execute');
   // 2b) 작업 단계·Meta 하위 탭도 주소(csub)에 남고 새로고침 뒤 같은 단계를 연다. 이동 경로가 현재 탭을 보인다(UX-PLAN-3 Q1).
   await growth.getByRole('navigation',{name:'성장 작업 단계'}).getByRole('button',{name:'상품',exact:true}).click();await expect(page).toHaveURL(/ctab=growth&csub=catalog/);
   await page.reload();await expect(page.getByRole('navigation',{name:'성장 작업 단계'}).getByRole('button',{name:'상품',exact:true})).toHaveAttribute('aria-pressed','true');
@@ -52,6 +56,9 @@ test('오늘의 안건·캠페인 탭 주소·지연 로딩·명령 팔레트·�
    await page.locator('body').click({position:{x:5,y:5}});await page.keyboard.press('?');await expect(page.getByRole('dialog',{name:'바로 가기'}).getByRole('option',{name:/^ROAS/})).toBeVisible();await page.keyboard.press('Escape');
    await page.keyboard.press('g');await page.keyboard.press('c');await expect(page).toHaveURL(/view=campaigns/);
    await page.getByRole('textbox',{name:'캠페인 검색',exact:true}).fill('gh');await expect(page).toHaveURL(/view=campaigns/);
+   // 캠페인 표 머리글 정렬(UX-PLAN-3 Q7): 누르면 오름차순, 다시 누르면 내림차순으로 aria-sort가 바뀐다.
+   await page.getByRole('textbox',{name:'캠페인 검색',exact:true}).fill('');const sortHead=page.locator('.campaign-table').getByRole('columnheader',{name:/^캠페인/});
+   await expect(sortHead).toHaveAttribute('aria-sort','none');await sortHead.getByRole('button').click();await expect(sortHead).toHaveAttribute('aria-sort','ascending');await sortHead.getByRole('button').click();await expect(sortHead).toHaveAttribute('aria-sort','descending');
   }
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
  }finally{await context.close()}

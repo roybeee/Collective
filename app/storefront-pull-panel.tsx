@@ -26,7 +26,7 @@ function Workspace({campaignId}:{campaignId:string}){
     <label>조회 간격(분)<input type="number" min={15} max={1440} value={input.intervalMinutes} onChange={e=>setInput({...input,intervalMinutes:Number(e.target.value)})}/></label>
     <button type="submit">연결 만들기</button></fieldset></form>}
    {!mine.length&&<p>이 지점의 조회 연결이 없습니다.</p>}
-   <ul>{mine.map(c=><li key={c.id} style={{overflowWrap:'anywhere'}}><p><strong>{c.sourceKey}</strong> · {c.baseUrl} · {c.enabled?'켜짐':'꺼짐'} · {c.intervalMinutes}분 · 커서 {c.cursor?'있음':'처음부터'}</p>
+   <ul>{mine.map(c=><li key={c.id} className="wrap-anywhere"><p><strong>{c.sourceKey}</strong> · {c.baseUrl} · {c.enabled?'켜짐':'꺼짐'} · {c.intervalMinutes}분 · 커서 {c.cursor?'있음':'처음부터'}</p>
     <p>마지막 성공 {dateTime(c.lastSuccessAt,'없음')}{c.lastResult?` · 받음 ${c.lastResult.fetched} · 새 ${c.lastResult.created} · 갱신 ${c.lastResult.updated} · 중복 ${c.lastResult.duplicates}`:''}{c.lastError?` · 오류 ${errorLabels[c.lastError]??c.lastError}(연속 ${c.failures}회, 다음 ${dateTime(c.nextAttemptAt)})`:''}</p>
     {view.canEdit&&<><button type="button" disabled={saving} onClick={()=>void send({action:c.enabled?'disable':'enable',id:c.id,expectedVersion:c.version},c.enabled?'연결을 껐습니다.':'연결을 켰습니다.')}>{c.sourceKey} {c.enabled?'끄기':'켜기'}</button>{c.enabled&&<button type="button" disabled={saving} onClick={()=>void send({action:'pull_now',id:c.id},'1페이지를 조회했습니다.')}>{c.sourceKey} 지금 조회</button>}<button type="button" disabled={saving} onClick={()=>void send({action:'reset_cursor',id:c.id,expectedVersion:c.version},'커서를 처음으로 되돌렸습니다. 중복 주문은 장부에서 한 번만 셉니다.')}>{c.sourceKey} 커서 초기화</button></>}
    </li>)}</ul></>}

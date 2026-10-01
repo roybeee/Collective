@@ -6,6 +6,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import styles from './growth-panel.module.css';
 import {GrowthPublicationPanel} from './growth-publication-panel';
 import {GrowthReconciliationPanel,type ReconciliationData,type ReconciliationAck} from './growth-reconciliation-panel';
+import {ScreenSkeleton} from '@/components/app/screen-skeleton';
 
 type Reference={id:string;version:number;label:string};
 type Mission={id:string;version:number;status:string;input:{title:string;budget:number|null;lossLimit:number|null};readiness:{missing:string[]}};
@@ -94,6 +95,6 @@ export function GrowthExecutionPanel({campaignId}:{campaignId:string}){
  return <section className={styles.panel} aria-label="일반 판매 실행 준비"><header className={styles.header}><div><h3>일반 판매 실행 준비</h3><p>서명된 위임과 준비된 미션에 예산·공유 재고를 함께 예약합니다.</p></div><button aria-label="실행 준비 새로고침" type="button" disabled={loading||busy} onClick={reload}>새로고침</button></header>
  <Note className={styles.note}>외부 판매·광고 실행은 수행하지 않습니다. 결과 기록만으로 예산·재고를 자동 해제하지 않습니다. 증빙은 개인정보와 비밀값이 없는 내부 ID, 담당자는 역할로 입력하세요.</Note>
  <GrowthPublicationPanel campaignId={campaignId} onChanged={ids=>{setLinkedIntentIds(previous=>[...new Set([...previous,...ids])]);reload();}}/>
- {loading&&<p role="status">실행 준비를 불러오고 있습니다.</p>}{error&&<p role="alert" className={styles.error}>{error}</p>}{view&&<ExecutionEditor key={campaignId} campaignId={campaignId} view={view} linkedIntentIds={linkedIntentIds} onView={saved} busy={busy} onBusy={value=>{if(value){read.current?.abort();setLoading(false);}setBusy(value);}}/>}
+ {loading&&<ScreenSkeleton label="실행 준비를 불러오고 있습니다." rows={2}/>}{error&&<p role="alert" className={styles.error}>{error}</p>}{view&&<ExecutionEditor key={campaignId} campaignId={campaignId} view={view} linkedIntentIds={linkedIntentIds} onView={saved} busy={busy} onBusy={value=>{if(value){read.current?.abort();setLoading(false);}setBusy(value);}}/>}
  </section>;
 }

@@ -52,7 +52,7 @@ function Workspace({campaignId}:{campaignId:string}){
    <label>페이지 확인 증빙 ID<input maxLength={100} pattern="[A-Za-z0-9_-]+" value={receipt.evidenceRef} onChange={e=>setReceipt({...receipt,evidenceRef:e.target.value})}/></label>
    <label>되돌림 사유<input maxLength={500} value={receipt.reason} onChange={e=>setReceipt({...receipt,reason:e.target.value})}/></label>
    {!view.proposals.length&&<p>수정안이 없습니다.</p>}
-   <ul>{view.proposals.map(p=><li key={p.id} style={{overflowWrap:'anywhere'}}><p><strong>{p.input.title}</strong> · {p.id} · v{p.version} · {statusLabels[p.status]} · 원본 {p.sourceStatus==='held'?'보류':'현재'}</p>
+   <ul>{view.proposals.map(p=><li key={p.id} className="wrap-anywhere"><p><strong>{p.input.title}</strong> · {p.id} · v{p.version} · {statusLabels[p.status]} · 원본 {p.sourceStatus==='held'?'보류':'현재'}</p>
     <p>페이지 변경: {p.pageChanged==='operator_attested'?`운영자 확인 ${p.applied?.at}`:p.pageChanged==='rolled_back'?`되돌림 확인 ${p.rolledBack?.at}`:'확인되지 않음'} · 효과: 미측정</p>
     {[...p.sourceReasons,...p.readiness.missing].map(x=><p key={x}>{x}</p>)}
     {view.canEdit&&p.status==='draft'&&<><button type="button" disabled={busy||stale} onClick={()=>edit(p)}>{p.id} 수정</button><button type="button" disabled={busy||stale||p.sourceStatus==='held'||!!p.readiness.missing.length} onClick={()=>void send({action:'approve',id:p.id,expectedVersion:p.version},'승인했습니다. 페이지는 아직 바뀌지 않았습니다.')}>{p.id} 승인</button></>}

@@ -5,6 +5,7 @@ import {Note} from '@/components/app/note';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {emptyDemandInput,emptyDemandStep,type DemandInput,type DemandStep} from '@/lib/growth-demand';
 import styles from './growth-panel.module.css';
+import {ScreenSkeleton} from '@/components/app/screen-skeleton';
 
 type Reference={id:string;version:number;input:{title?:string;offerId?:string;offerVersion?:number}};
 type Sequence={id:string;version:number;input:DemandInput;readiness:{missing:string[];mayExecute:false;plannedCost:number|null}};
@@ -79,7 +80,7 @@ export function GrowthDemandPanel({campaignId}:{campaignId:string}){
  const locked=busy||!view?.canEdit;
  return <section className={styles.panel} aria-label="수요 시퀀스"><header className={styles.header}><div><h3>수요 시퀀스</h3><p>메시지·콘텐츠·검색어·협업을 구매 경로 순서로 연결합니다.</p></div><button aria-label="수요 기록 새로고침" type="button" onClick={reload} disabled={loading||busy}>새로고침</button></header>
   <Note className={styles.note}>이 기록은 계획과 운영자 관측입니다. 저장으로 광고·게시물·고객 메시지를 발송하지 않습니다. 직접 식별정보와 비공개 접근 URL을 입력하지 마세요.</Note>
-  {loading&&<p role="status">수요 기록을 불러오고 있습니다.</p>}{error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}
+  {loading&&<ScreenSkeleton label="수요 기록을 불러오고 있습니다." rows={2}/>}{error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}
   {view&&<div className={styles.workspace}><div role="group" className={styles.list} aria-label="수요 시퀀스 목록"><button type="button" disabled={locked} onClick={()=>pick()}>새 수요 시퀀스</button>{!view.sequences.length&&<p>저장된 수요 시퀀스가 없습니다.</p>}{view.sequences.map(row=><button key={row.id} type="button" aria-pressed={row.id===identity.id} disabled={busy} onClick={()=>pick(row)}><strong>{row.input.title||'제목 없는 초안'}</strong><span>v{row.version} · {row.input.steps.length}단계</span></button>)}</div>
    <div className={styles.editor}><h4>{identity.version?`수요 시퀀스 편집 · v${identity.version}`:'새 수요 시퀀스'}</h4>{!view.canEdit&&<p className={styles.note}>조회 전용입니다.</p>}
     {stale&&<div className={styles.error}>서버 기록이 v{selected.version}로 바뀌었습니다. 최신 기록과 현재 입력을 비교하고 저장 기준을 선택하세요.<details><summary>최신 수요 시퀀스 보기</summary><RecordView label="최신 수요 시퀀스 보기" value={selected.input}/></details><button type="button" disabled={busy||!view.canEdit} onClick={()=>{setIdentity({id:selected.id,version:selected.version});setError('');setMessage('현재 입력을 유지했습니다. 최신 기록 위에 새 버전으로 저장합니다.');}}>현재 입력 유지 · 최신 버전 기준 사용</button><button type="button" disabled={busy} onClick={()=>pick(selected)}>서버 기록으로 입력 교체</button></div>}

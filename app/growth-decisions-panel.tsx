@@ -4,6 +4,7 @@ import {Note} from '@/components/app/note';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {emptyDecisionInput,emptyLessonInput,type DecisionInput,type LessonInput} from '@/lib/growth-decisions';
 import styles from './growth-panel.module.css';
+import {ScreenSkeleton} from '@/components/app/screen-skeleton';
 
 type Kind='decision'|'lesson';
 type Input=DecisionInput|LessonInput;
@@ -85,6 +86,6 @@ export function GrowthDecisionsPanel({campaignId}:{campaignId:string}){
  function saved(next:View){read.current?.abort();setLoading(false);setView(next);}
  return <section className={styles.panel} aria-label="결정·운영 교훈"><header className={styles.header}><div><h3>일일 결정·운영 교훈</h3><p>관측과 판단을 나누고 실패·반례까지 다음 검증에 남깁니다.</p></div><button aria-label="결정·교훈 새로고침" type="button" disabled={loading||saving} onClick={reload}>새로고침</button></header>
  <Note className={styles.note}>개인정보·비공개 접근 URL을 입력하지 마세요. 담당자는 역할로 기록합니다. 실패 관측도 교훈으로 남길 수 있습니다. 재사용 검토는 자동 규칙 주입이나 성과의 인과 검증이 아닙니다. 손실 한도 빈칸은 미확인, 0은 명시한 한도입니다.</Note>
- {loading&&<p role="status">결정·교훈을 불러오고 있습니다.</p>}{error&&<p role="alert" className={styles.error}>{error}</p>}{view&&<><details open><summary>일일 결정 기록</summary><Editor kind="decision" campaignId={campaignId} view={view} onView={saved} saving={saving} onSaving={value=>{if(value){read.current?.abort();setLoading(false);}setSaving(value);}}/></details><details><summary>운영 교훈 기록</summary><Editor kind="lesson" campaignId={campaignId} view={view} onView={saved} saving={saving} onSaving={value=>{if(value){read.current?.abort();setLoading(false);}setSaving(value);}}/></details></>}
+ {loading&&<ScreenSkeleton label="결정·교훈을 불러오고 있습니다." rows={2}/>}{error&&<p role="alert" className={styles.error}>{error}</p>}{view&&<><details open><summary>일일 결정 기록</summary><Editor kind="decision" campaignId={campaignId} view={view} onView={saved} saving={saving} onSaving={value=>{if(value){read.current?.abort();setLoading(false);}setSaving(value);}}/></details><details><summary>운영 교훈 기록</summary><Editor kind="lesson" campaignId={campaignId} view={view} onView={saved} saving={saving} onSaving={value=>{if(value){read.current?.abort();setLoading(false);}setSaving(value);}}/></details></>}
  </section>;
 }

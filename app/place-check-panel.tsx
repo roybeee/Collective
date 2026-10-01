@@ -61,7 +61,7 @@ export function PlaceCheckPanel({store}:{store:Store}){
   </div>}
   {open.length>0&&<ul>{open.map(t=><li key={t.id}>
    <span>{t.title}</span>
-   <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+   <div className="flex gap-2 flex-wrap items-center">
     <Input aria-label="완료 근거" maxLength={3000} value={evidence[t.id]??''} placeholder="처리 근거(예: 플레이스 영업시간 수정)" onChange={e=>setEvidence(x=>({...x,[t.id]:e.target.value}))}/>
     <Button size="sm" variant="outline" disabled={busy||!listing.enabled||!(evidence[t.id]??'').trim()} onClick={()=>void complete(t)}>완료 기록</Button>
    </div>

@@ -57,13 +57,13 @@ export function ReflectorSection({brandId,onDrafts}:{brandId:string;onDrafts:()=
  useEffect(()=>{if(!pending)return;const t=setTimeout(async()=>{try{const x=await send('reflector_check',{id:pending});if(!ACTIVE.includes(x.status)&&x.ruleIds?.length){toast.success(`규칙 초안 ${x.ruleIds.length}건을 만들었습니다. 승인 전에는 전달하지 않습니다.`);drafts.current()}}catch(e){toast.error((e as Error).message)}await reload()},5000);return()=>clearTimeout(t)},[pending,state,reload]);
  if(!allowed)return null;
  const head=<div className="learning-card-top"><b><Sparkles size={16}/> Reflector · 규칙 초안 제안</b><Button size="sm" variant="ghost" disabled={busy} onClick={()=>void reload()}><RefreshCw/>새로고침</Button></div>;
- if(error)return <section aria-label="Reflector" style={{marginTop:32}}>{head}<p className="form-error" role="alert">{error}</p></section>;
- if(!state)return <section aria-label="Reflector" style={{marginTop:32}}>{head}<p className="learning-meta" role="status">불러오는 중입니다.</p></section>;
- if(!state.enabled)return <section aria-label="Reflector" style={{marginTop:32}}>{head}<p className="learning-note" role="note">Reflector 스위치(b3_reflector)가 꺼져 있습니다. 소유자가 설정에서 켜면 쓸 수 있습니다.</p></section>;
+ if(error)return <section aria-label="Reflector" className="mt-8">{head}<p className="form-error" role="alert">{error}</p></section>;
+ if(!state)return <section aria-label="Reflector" className="mt-8">{head}<p className="learning-meta" role="status">불러오는 중입니다.</p></section>;
+ if(!state.enabled)return <section aria-label="Reflector" className="mt-8">{head}<p className="learning-note" role="note">Reflector 스위치(b3_reflector)가 꺼져 있습니다. 소유자가 설정에서 켜면 쓸 수 있습니다.</p></section>;
  const open=async(role:string)=>{setBusy(true);setChecked(false);try{setPreview(await send<Preview>('reflector_preview',{brandId,role}))}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}};
  const run=async()=>{if(!preview)return;setBusy(true);try{await send('reflector_run',{brandId,role:preview.role,previewHash:preview.previewHash,confirmed:true});toast.success('Reflector에 보냈습니다. 결과를 확인하는 중입니다.');setPreview(null);await reload()}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}};
  const reasonOf=(c:Cluster)=>!c.eligible?`교정 ${c.corrections}건 · ${state.min}건 이상 필요`:!state.gate.ready?state.gate.reason:running.some(r=>r.role===c.role)?'진행 중인 실행이 있습니다':'';
- return <section aria-label="Reflector" style={{marginTop:32}}>{head}
+ return <section aria-label="Reflector" className="mt-8">{head}
   <p className="learning-note" role="note">같은 브랜드·역할의 교정이 90일 안에 {state.min}건 이상이면 교정 사유와 바뀐 부분 발췌를 격리된 HERMES 프로필에 1회 보내 규칙 초안(최대 5개, 인용 필수)을 받습니다. 보내기 전에 본문을 확인하고, 개인정보로 보이는 값이 있으면 보내지 않습니다. 초안은 승인 전까지 전달되지 않습니다.</p>
   {isOwner?<Connection conn={state.connection} busy={busy} onSaved={()=>void reload()}/>:!state.gate.ready&&<p className="learning-meta">{state.gate.reason}</p>}
   {state.clusters.length?<ul className="learning-meta" aria-label="역할별 제안 조건">{state.clusters.map(c=>{const why=reasonOf(c);return <li key={c.role}><b>{roleName(c.role)}</b> · 교정 {c.corrections}건 <Button size="sm" variant="outline" disabled={busy||!!why} title={why||undefined} onClick={()=>void open(c.role)}><Sparkles/>규칙 초안 제안받기</Button>{why&&<small> {why}</small>}</li>})}</ul>:<p className="learning-meta">이 브랜드에는 90일 안 교정 기록이 없습니다.</p>}
@@ -72,7 +72,7 @@ export function ReflectorSection({brandId,onDrafts}:{brandId:string;onDrafts:()=
    {preview&&<>
     {preview.blocked?<p className="form-error" role="alert">개인정보로 보이는 값이 있어 보낼 수 없습니다: {preview.findings.map(f=>`${f.field} ${kindLabel[f.kind]??f.kind} ${f.count}건`).join(', ')}. 원 작업물·브랜드 정보를 고친 뒤 다시 미리 보세요.</p>:<p className="learning-meta">개인정보 패턴 탐지 0건 · 사람 이름·민감정보는 패턴으로 다 잡지 못하니 본문을 직접 확인하세요.</p>}
     {!preview.gate.ready&&<p className="form-error" role="alert">{preview.gate.reason}</p>}
-    <pre className="learning-text" style={{maxHeight:320,overflow:'auto',whiteSpace:'pre-wrap'}} aria-label="보낼 본문">{preview.body.instructions+'\n\n'+JSON.stringify(JSON.parse(preview.body.input),null,1)}</pre>
+    <pre className="learning-text max-h-[320px] overflow-auto whitespace-pre-wrap" aria-label="보낼 본문">{preview.body.instructions+'\n\n'+JSON.stringify(JSON.parse(preview.body.input),null,1)}</pre>
     <label className="learning-check"><Checkbox checked={checked} onCheckedChange={v=>setChecked(v===true)} disabled={preview.blocked}/><span>보낼 본문을 확인했고 개인정보가 없습니다.</span></label>
     <div className="learning-actions"><Button disabled={busy||!checked||preview.blocked||!preview.gate.ready} onClick={()=>void run()}><Send/>Reflector로 보내기</Button></div>
    </>}
