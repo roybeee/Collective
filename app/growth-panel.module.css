@@ -50,3 +50,16 @@
 @media(max-width: 520px) {.businessGrid {grid-template-columns: 1fr;}}
 
 .panel details, .panel form, .panel fieldset, .field, .field label, .mission, .business { min-width: 0; }
+
+.warning { border: 1px solid #ecd9a7; background: #fff9e8; color: #6b4e0c; padding: 12px 14px; border-radius: 8px; font-size: .88rem; line-height: 1.6; }
+
+/* UX-PLAN P4: 성장·판매 탭 6섹션·바로가기·판매 기본 기록 */
+.sectionNav { position: sticky; top: 0; z-index: 2; display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 0; background: #fff; border-bottom: 1px solid #eceee8; margin: 4px 0 6px; }
+.sectionNav a { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid #dfe4d6; border-radius: 999px; font-size: .85rem; color: #2f3a24; text-decoration: none; background: #fbfcf9; min-height: 36px; }
+.sectionNav a small { font-size: .75rem; color: #556048; }
+.sectionNav a:hover { background: #f0f4e7; }
+.sectionNav a:focus-visible { outline: 2px solid #4d6b1f; outline-offset: 2px; }
+.section, .coreEditor { display: grid; gap: 8px; padding: 18px 0 6px; border-top: 1px solid #eceee8; scroll-margin-top: 64px; }
+.sectionTitle { display: flex; align-items: baseline; gap: 10px; font-size: 1.05rem; font-weight: 650; margin: 0 0 4px; }
+.sectionTitle span { font-size: .82rem; font-weight: 400; color: #5b6352; }
+@media (max-width: 767px) { .sectionNav a { min-height: 44px; } }

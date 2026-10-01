@@ -1,4 +1,5 @@
 'use client';
+import {Note} from '@/components/app/note';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {GrowthLessonApplicationView} from '@/lib/growth-lesson-applications-server';
 import {applicationTargets,type ApplicationInput} from '@/lib/growth-lesson-applications';
@@ -21,9 +22,9 @@ function Workspace({campaignId}:{campaignId:string}){
   catch(e){if(mounted.current&&!controller.signal.aborted)setError(`${e instanceof Error?e.message:'저장 실패'} 입력은 보존했습니다. 응답 미확인은 같은 입력으로 재시도하세요.`);}
   finally{writing.current=null;if(mounted.current&&!controller.signal.aborted)setSaving(false);}
  }
- return <section aria-label="교훈 적용 계보" className={styles.panel}><header className={styles.header}><h3>운영 교훈 적용·결과 회수</h3><button type="button" disabled={busy} onClick={()=>void load()}>교훈 적용 새로고침</button></header>
-  <p className={styles.note}>재사용 가능(reusable)한 교훈만 다음 미션·상세 수정안·수요·실험의 정확한 판에 적용 기록을 남기고, 확인일에 성공·실패·무효를 회수합니다. 제안은 자동 적용이 아니며 실패가 반복되어도 자동 퇴역·승격하지 않습니다. 결과 집계는 인과 판정이 아닙니다.</p>
-  {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">교훈 적용을 조회하고 있습니다.</p>}{stale&&<p className={styles.error}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
+ return <section aria-label="교훈 적용 계보" className={styles.panel}><header className={styles.header}><h3>운영 교훈 적용·결과 회수</h3><button aria-label="교훈 적용 새로고침" type="button" disabled={busy} onClick={()=>void load()}>새로고침</button></header>
+  <Note className={styles.note}>재사용 가능(reusable)한 교훈만 다음 미션·상세 수정안·수요·실험의 정확한 판에 적용 기록을 남기고, 확인일에 성공·실패·무효를 회수합니다. 제안은 자동 적용이 아니며 실패가 반복되어도 자동 퇴역·승격하지 않습니다. 결과 집계는 인과 판정이 아닙니다.</Note>
+  {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">교훈 적용을 조회하고 있습니다.</p>}{stale&&<p role="status" className={styles.warning}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
   {view&&<><h4>적용 제안</h4>{!view.suggestions.length&&<p>제안할 재사용 교훈이 없습니다.</p>}
    <ul>{view.suggestions.map(s=><li key={s.missionId}>{s.title} v{s.missionVersion}: {s.lessons.map(l=><button key={l.id} type="button" disabled={busy||!view.canEdit} onClick={()=>setInput({...emptyInput(),lessonId:l.id,lessonVersion:l.version,targetKind:'mission',targetId:s.missionId,targetVersion:s.missionVersion})}>{l.title}{l.record?` (성공 ${l.record.success}/실패 ${l.record.failure})`:''} 적용 준비</button>)}</li>)}</ul>
    {view.canEdit&&<form onSubmit={e=>{e.preventDefault();if(!draftId.current)draftId.current=`apply-${crypto.randomUUID().slice(0,8)}`;void send({action:'apply',id:draftId.current,expectedVersion:0,input},'교훈 적용을 기록했습니다.');}}><fieldset disabled={busy} className={styles.form}><legend>교훈 적용 기록</legend>

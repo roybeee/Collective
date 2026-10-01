@@ -1,4 +1,7 @@
 'use client';
+import {dateTime} from '@/lib/format';
+import {enumLabel} from '@/lib/ui-copy';
+import {Note} from '@/components/app/note';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {GrowthCsView} from '@/lib/growth-cs-server';
 import {csCategories,csChannels,csResolutions,type CsTicketInput} from '@/lib/growth-cs';
@@ -26,21 +29,21 @@ function Workspace({campaignId}:{campaignId:string}){
  }
  const ticket=view?.tickets.find(t=>t.id===ticketId);
  const record=(t:Ticket)=>send({action:'record_event',id:t.id,expectedVersion:t.version,event:{action:ev.action,at:ev.at?new Date(ev.at).toISOString():'',evidenceRef:ev.evidenceRef,note:ev.note,...(ev.action==='resolve'?{resolution:ev.resolution}:{})}},'처리를 기록했습니다.');
- return <section aria-label="고객 문의 처리" className={styles.panel}><header className={styles.header}><h3>고객 문의 · 약속 기한</h3><button type="button" disabled={busy} onClick={()=>void load()}>문의 새로고침</button></header>
-  <p className={styles.note}>고객 원문·이름·연락처·주소는 저장하지 않고 운영자 요약만 남깁니다. 약속 기한을 넘긴 미해결 문의를 먼저 보여줍니다. 반복 유형은 최근 30일 건수이며 비율·만족도가 아닙니다. 자동 응답·환불·재고 변경은 하지 않습니다.</p>
-  {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">문의를 조회하고 있습니다.</p>}{stale&&<p className={styles.error}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
+ return <section aria-label="고객 문의 처리" className={styles.panel}><header className={styles.header}><h3>고객 문의 · 약속 기한</h3><button aria-label="문의 새로고침" type="button" disabled={busy} onClick={()=>void load()}>새로고침</button></header>
+  <Note className={styles.note}>고객 원문·이름·연락처·주소는 저장하지 않고 운영자 요약만 남깁니다. 약속 기한을 넘긴 미해결 문의를 먼저 보여줍니다. 반복 유형은 최근 30일 건수이며 비율·만족도가 아닙니다. 자동 응답·환불·재고 변경은 하지 않습니다.</Note>
+  {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">문의를 조회하고 있습니다.</p>}{stale&&<p role="status" className={styles.warning}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
   {view&&<><p>미해결 {view.open}건 · 기한 초과 {view.overdue}건{view.recurring.recurring.length?` · 반복 유형: ${view.recurring.recurring.map(c=>categoryLabels[c]).join(', ')}`:''}</p>
    {view.canEdit&&<form onSubmit={e=>{e.preventDefault();if(!draftId.current)draftId.current=`cs-${crypto.randomUUID().slice(0,8)}`;void send({action:'save_ticket',id:draftId.current,expectedVersion:0,input:{...input,receivedAt:input.receivedAt?new Date(input.receivedAt).toISOString():'',promisedBy:input.promisedBy?new Date(input.promisedBy).toISOString():''}},'문의를 접수했습니다.');}}><fieldset disabled={busy} className={styles.form}><legend>문의 접수</legend>
     <label>문의 유형<select value={input.category} onChange={e=>setInput({...input,category:e.target.value as CsTicketInput['category']})}>{csCategories.map(c=><option key={c} value={c}>{categoryLabels[c]}</option>)}</select></label>
-    <label>접수 경로<select value={input.channel} onChange={e=>setInput({...input,channel:e.target.value as CsTicketInput['channel']})}>{csChannels.map(c=><option key={c} value={c}>{c}</option>)}</select></label>
+    <label>접수 경로<select value={input.channel} onChange={e=>setInput({...input,channel:e.target.value as CsTicketInput['channel']})}>{csChannels.map(c=><option key={c} value={c}>{enumLabel('csChannel',c)}</option>)}</select></label>
     <label className={styles.wide}>운영자 요약(고객 원문·연락처 제외)<textarea required maxLength={500} value={input.summary} onChange={e=>setInput({...input,summary:e.target.value})}/></label>
     <label>주문 품목 ID(선택)<input value={input.lineId} onChange={e=>setInput({...input,lineId:e.target.value})}/></label><label>담당<input required value={input.assignee} onChange={e=>setInput({...input,assignee:e.target.value})}/></label>
     <label>접수 시각<input type="datetime-local" value={input.receivedAt} onChange={e=>setInput({...input,receivedAt:e.target.value})}/></label><label>약속 기한<input type="datetime-local" value={input.promisedBy} onChange={e=>setInput({...input,promisedBy:e.target.value})}/></label>
     <label>우선순위<select value={input.priority} onChange={e=>setInput({...input,priority:e.target.value as 'normal'|'high'})}><option value="normal">보통</option><option value="high">높음</option></select></label>
     <button type="submit" disabled={stale||!input.summary||!input.receivedAt||!input.promisedBy}>문의 접수</button></fieldset></form>}
-   <ul>{view.tickets.map(t=><li key={t.id} style={{overflowWrap:'anywhere'}}><p><strong>{categoryLabels[t.input.category]}</strong> · {t.id} · {statusLabels[t.status]}{t.service.overdue?' · 기한 초과':''}{t.service.resolvedLate?' · 기한 뒤 해결':''} · 약속 {t.input.promisedBy.slice(0,16)} · 담당 {t.input.assignee}{t.input.priority==='high'?' · 높음':''}</p><p>{t.input.summary}</p>
+   <ul>{view.tickets.map(t=><li key={t.id} style={{overflowWrap:'anywhere'}}><p><strong>{categoryLabels[t.input.category]}</strong> · {t.id} · {statusLabels[t.status]}{t.service.overdue?' · 기한 초과':''}{t.service.resolvedLate?' · 기한 뒤 해결':''} · 약속 {dateTime(t.input.promisedBy)} · 담당 {t.input.assignee}{t.input.priority==='high'?' · 높음':''}</p><p>{t.input.summary}</p>
     {t.line&&<p>품목 {t.line.id} v{t.line.version} · {t.lineStatus==='held'?'품목 변경됨':'현재'}{t.returnReasons.length?` · 반품 원인: ${t.returnReasons.map(x=>x.reasonCode).join(', ')}`:''}</p>}
-    {t.events.length>0&&<p>처리: {t.events.map(e=>`${e.action}${e.resolution?`(${resolutionLabels[e.resolution]})`:''} ${e.at.slice(0,16)}`).join(' → ')}{t.service.firstResponseHours!==null?` · 첫 응답 ${t.service.firstResponseHours}시간`:''}</p>}
+    {t.events.length>0&&<p>처리: {t.events.map(e=>`${e.action}${e.resolution?`(${resolutionLabels[e.resolution]})`:''} ${dateTime(e.at)}`).join(' → ')}{t.service.firstResponseHours!==null?` · 첫 응답 ${t.service.firstResponseHours}시간`:''}</p>}
     {view.canEdit&&t.status!=='cancelled'&&<button type="button" disabled={busy} onClick={()=>{setTicketId(t.id);setEv(x=>({...x,at:local(Date.now()-60000)}));}}>{t.id} 처리 기록</button>}
    </li>)}</ul>
    {ticket&&<fieldset className={styles.form} disabled={busy}><legend>{ticket.id} 처리</legend>

@@ -83,14 +83,14 @@ function MetaPlanPanel({campaignId}:{campaignId:string}){
     </fieldset>
     <div className={s.stepFooter}><span>{step+1} / 4 단계</span><div>{step>0&&<Button type="button" variant="ghost" onClick={()=>go(step-1)}><ArrowLeft size={16}/>이전</Button>}{step<3&&<Button type="button" variant="outline" onClick={()=>go(step+1)}>다음 단계<ArrowRight size={16}/></Button>}</div></div>
    </div>
-   <aside className={s.summary} aria-label="계획 미리보기"><div className={s.summaryTitle}><h3>계획 미리보기</h3><span>{dirty?'저장 전 입력 기준':view.plan?'저장된 입력 기준':'입력 대기'}</span></div>
+   <div role="group" className={s.summary} aria-label="계획 미리보기"><div className={s.summaryTitle}><h3>계획 미리보기</h3><span>{dirty?'저장 전 입력 기준':view.plan?'저장된 입력 기준':'입력 대기'}</span></div>
     <div className={s.progressHeading}><b>준비 항목</b><span>{done}<small> / {total}</small></span></div><progress value={done} max={total} aria-label="계획 입력 진행률"/>
     <div className={s.readinessGroups}>{steps.map((x,i)=><button type="button" key={x.title} onClick={()=>go(i)}><span>{counts[i]===x.fields.length?<CheckCheck size={16}/>:<span className={s.groupNumber}>{i+1}</span>}{x.title}</span><b>{counts[i]===x.fields.length?'확인':`${x.fields.length-counts[i]}개 남음`}</b></button>)}</div>
     <dl className={s.metrics}><div><dt>광고 전 건당 기여이익</dt><dd data-testid="meta-contribution">{money(contribution)}</dd></div><div><dt>총 광고 예산</dt><dd>{money(input.totalBudget)}</dd></div>{input.goal==='purchase'&&<div><dt>광고비 회수에 필요한 구매</dt><dd data-testid="meta-breakeven">{breakEven===null?'계산 대기':breakEven.toLocaleString()+'건'}</dd></div>}</dl>
     <p className={s.metricNote}>{input.goal==='purchase'?'판매가 − 원가 − 변동비 기준. 환불·세금·제작비 제외, 예상 계산이며 성과 보장이 아닙니다.':'매출 미검증 · 문의와 참여 수치를 실제 구매로 간주하지 않습니다.'}</p>
     {contribution!==null&&contribution<=0&&<p className={s.warning}>현재 입력으로는 판매 후 광고비를 감당할 여유가 없습니다. 가격과 비용을 다시 확인하세요.</p>}
     {next>=0?<button type="button" className={s.nextAction} onClick={()=>go(next)}><span>다음 할 일<b>{steps[next].title} 채우기</b></span><ArrowRight size={18}/></button>:<div className={s.complete}><Check size={18}/><span>{invalid.length||!readiness.planningComplete?'입력 내용을 다시 확인하세요':'계획 입력을 마쳤습니다'}<small>{invalid.length?invalid[0]:!readiness.planningComplete?readiness.missing.join(' · '):'저장 후 실행 준비를 이어갈 수 있습니다.'}</small></span></div>}
-   </aside></div>
+   </div></div>
    <footer className={s.saveBar}><div><b>{dirty?'저장하지 않은 변경사항이 있습니다':view.plan?'저장된 계획입니다':'작성 중에도 저장할 수 있습니다'}</b><span>{!view.canEdit?'계획 변경은 대표·관리자만 할 수 있습니다.':'빈 항목은 다음에 이어서 작성하세요.'}</span></div><div><Button type="button" variant="ghost" disabled={busy||loading} onClick={reload}>최신 계획 불러오기</Button><Button type="submit" disabled={disabled}>{busy?'저장 중…':loading?'불러오는 중…':'준비 계획 저장'}</Button></div></footer>
    {view.plan&&view.plan.campaignVersion!==view.campaignVersion&&<p className={s.warning}>캠페인이 변경되었습니다. 현재 브리프를 확인한 뒤 준비 계획을 다시 저장하세요.</p>}
    {error&&<p role="alert" className={s.error}>{error} 입력은 유지되었습니다. 충돌이 발생했다면 최신 계획을 불러와 확인하세요.</p>}{saved&&<p role="status" className={s.success}>{saved}</p>}

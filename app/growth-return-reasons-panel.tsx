@@ -1,4 +1,5 @@
 'use client';
+import {Note} from '@/components/app/note';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {GrowthReturnReasonView} from '@/lib/growth-return-reasons-server';
 import styles from './growth-panel.module.css';
@@ -23,9 +24,9 @@ function Workspace({campaignId}:{campaignId:string}){
   catch(e){if(mounted.current&&!controller.signal.aborted)setError(`${e instanceof Error?e.message:'저장 실패'} 입력은 보존했습니다. 응답 미확인은 같은 입력으로 재시도하세요.`);}
   finally{writing.current=null;if(mounted.current&&!controller.signal.aborted)setSaving(false);}
  }
- return <section aria-label="반품 환불 원인" className={styles.panel}><header className={styles.header}><h3>반품·환불 원인 기록</h3><button type="button" disabled={busy} onClick={()=>void load()}>원인 목록 새로고침</button></header>
-  <p className={styles.note}>기존 반품·환불 사건에 운영자가 확인한 원인과 내부 증빙만 기록합니다. 외부 공급자나 고객의 확증이 아니며 재고·환불 금액을 변경하지 않습니다. 고객 원문·연락처·URL·비밀키를 입력하지 마세요.</p>
-  {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">원인 목록을 조회하고 있습니다.</p>}{stale&&<p className={styles.error}>이전 조회 결과입니다. 최신 목록 조회 전에는 추가 저장을 할 수 없습니다.</p>}
+ return <section aria-label="반품 환불 원인" className={styles.panel}><header className={styles.header}><h3>반품·환불 원인 기록</h3><button aria-label="원인 목록 새로고침" type="button" disabled={busy} onClick={()=>void load()}>새로고침</button></header>
+  <Note className={styles.note}>기존 반품·환불 사건에 운영자가 확인한 원인과 내부 증빙만 기록합니다. 외부 공급자나 고객의 확증이 아니며 재고·환불 금액을 변경하지 않습니다. 고객 원문·연락처·URL·비밀키를 입력하지 마세요.</Note>
+  {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">원인 목록을 조회하고 있습니다.</p>}{stale&&<p role="status" className={styles.warning}>이전 조회 결과입니다. 최신 목록 조회 전에는 추가 저장을 할 수 없습니다.</p>}
   {view&&<><form onSubmit={e=>{e.preventDefault();void save();}}><fieldset disabled={busy||!view.canEdit} className={styles.form}><legend>사건별 원인 근거</legend><label className={styles.wide}>기록할 반품·환불 사건<select value={selected?.eventId??''} onChange={e=>choose(e.target.value)}><option value="">사건 선택</option>{view.events.map(row=><option key={row.eventId} value={row.eventId}>{row.kind==='return'?'반품':'환불'} · {row.eventId} · {row.sourceStatus==='held'?'보류':row.current?'기록 있음':'원인 미기록'}</option>)}</select></label>
   {event&&<div className={styles.wide} style={{overflowWrap:'anywhere'}}><p>이행 사건 ID: {event.eventId} · 사건 v{event.eventVersion}</p><p>성장 품목 ID: {event.lineId} · 품목 v{event.lineVersion??'미확인'}</p><p>재고 ID: {event.inventoryId}</p><p>사건 기록 수량 {event.quantity===null?'미확인':`${event.quantity.toLocaleString('ko-KR')}${event.unit==='piece'?'개':event.unit==='pack'?'팩':' (단위 미확인)'}`}</p><p>사건 관측 시각: {event.observedAt??'미확인'} · 기록 시각: {event.recordedAt??'미확인'}</p><p>이 수량은 사건의 기록 수량이며, 해당 원인으로 발생한 수량이나 환불 금액이 아닙니다. 사건끼리 합산하지 않습니다.</p>{event.reasons.map(reason=><p key={reason}>{reason}</p>)}{event.current&&<p>저장 원인 v{event.current.version}: {labels[event.current.input.reasonCode]} · 증빙 {event.current.input.evidenceRef}</p>}</div>}
   {changed&&<div className={styles.wide}><p>선택한 기준 판이 현재 기록과 다릅니다. 입력을 보존했습니다.</p>{event&&<button type="button" disabled={stale} onClick={()=>{setSelected(basis(event,view.campaignVersion));retry.current=null;setError('');}}>현재 입력 유지 · 최신 판 채택</button>}</div>}

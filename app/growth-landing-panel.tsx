@@ -1,4 +1,5 @@
 'use client';
+import {Note} from '@/components/app/note';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {GrowthLandingView} from '@/lib/growth-landing-server';
 import {landingSectionKinds,type LandingProposalInput,type LandingSection} from '@/lib/growth-landing';
@@ -27,9 +28,9 @@ function Workspace({campaignId}:{campaignId:string}){
   finally{writing.current=null;if(mounted.current&&!controller.signal.aborted)setSaving(false);}
  }
  const receiptBody=(p:Proposal)=>({at:receipt.at?new Date(receipt.at).toISOString():'',evidenceRef:receipt.evidenceRef,observedUrl:p.input.landingUrl,reason:receipt.reason});
- return <section aria-label="상세페이지 수정안" className={styles.panel}><header className={styles.header}><h3>상세페이지 수정안 · 적용 확인</h3><button type="button" disabled={busy} onClick={()=>void load()}>수정안 새로고침</button></header>
-  <p className={styles.note}>수정안은 오퍼·상품·확정 사실 판에 고정한 검토 산출물입니다. 승인은 페이지 변경이 아니며, 운영자가 실제 판매처 페이지를 바꾼 뒤 확인 증빙으로 적용·되돌림을 기록합니다. 판매처 자동 수정 연동은 없습니다. 가격은 승인된 오퍼 가격만, 재고 수량 문구는 쓸 수 없습니다.</p>
-  {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">수정안을 조회하고 있습니다.</p>}{stale&&<p className={styles.error}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
+ return <section aria-label="상세페이지 수정안" className={styles.panel}><header className={styles.header}><h3>상세페이지 수정안 · 적용 확인</h3><button aria-label="수정안 새로고침" type="button" disabled={busy} onClick={()=>void load()}>새로고침</button></header>
+  <Note className={styles.note}>수정안은 오퍼·상품·확정 사실 판에 고정한 검토 산출물입니다. 승인은 페이지 변경이 아니며, 운영자가 실제 판매처 페이지를 바꾼 뒤 확인 증빙으로 적용·되돌림을 기록합니다. 판매처 자동 수정 연동은 없습니다. 가격은 승인된 오퍼 가격만, 재고 수량 문구는 쓸 수 없습니다.</Note>
+  {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">수정안을 조회하고 있습니다.</p>}{stale&&<p role="status" className={styles.warning}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
   {view&&<>{view.canEdit&&<button type="button" disabled={busy} onClick={startNew}>새 수정안</button>}
    {editing&&<form onSubmit={e=>{e.preventDefault();void send({action:'save_proposal',id:editing.id,expectedVersion:editing.expectedVersion,input},'수정안을 저장했습니다.');}}><fieldset disabled={busy||!view.canEdit} className={styles.form}><legend>수정안 {editing.id}</legend>
     <label>수정안 제목<input required maxLength={200} value={input.title} onChange={e=>setInput({...input,title:e.target.value})}/></label>

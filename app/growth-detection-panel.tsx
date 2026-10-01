@@ -1,4 +1,5 @@
 'use client';
+import {Note} from '@/components/app/note';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {GrowthDetectionView} from '@/lib/growth-detection-server';
 import styles from './growth-panel.module.css';
@@ -22,9 +23,9 @@ function Workspace({campaignId}:{campaignId:string}){
  }
  const selected=view?.signals.find(s=>s.id===triage.id);
  const act=(s:Row,action:'acknowledge'|'dismiss')=>send({action,id:s.id,expectedVersion:s.version,...(action==='acknowledge'?{triage:{assignee:triage.assignee,nextAction:triage.nextAction,dueBy:triage.dueBy}}:{reason:triage.reason})},()=>action==='acknowledge'?'담당과 기한을 지정했습니다.':'신호를 기각했습니다.');
- return <section aria-label="자사 장부 감지 신호" className={styles.panel}><header className={styles.header}><h3>자사 장부 감지 신호 · 기회 검토</h3><button type="button" disabled={busy} onClick={()=>void load()}>감지 신호 새로고침</button></header>
-  <p className={styles.note}>주문 속도 변화(최근 7일 vs 직전 21일, ±50%·최소 5건), 3일분 이하 공유 재고, 30일 반품 원인·문의 유형 3건 이상, 45일 안의 시즌 일정을 규칙으로만 감지합니다. 모델·외부 수집이 없고 수요 예측이 아닙니다. 매일 운영 루프가 새 신호를 만들며, 담당·다음 행동·기한을 지정하거나 사유와 함께 기각합니다.</p>
-  {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">감지 신호를 조회하고 있습니다.</p>}{stale&&<p className={styles.error}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
+ return <section aria-label="자사 장부 감지 신호" className={styles.panel}><header className={styles.header}><h3>자사 장부 감지 신호 · 기회 검토</h3><button aria-label="감지 신호 새로고침" type="button" disabled={busy} onClick={()=>void load()}>새로고침</button></header>
+  <Note className={styles.note}>주문 속도 변화(최근 7일 vs 직전 21일, ±50%·최소 5건), 3일분 이하 공유 재고, 30일 반품 원인·문의 유형 3건 이상, 45일 안의 시즌 일정을 규칙으로만 감지합니다. 모델·외부 수집이 없고 수요 예측이 아닙니다. 매일 운영 루프가 새 신호를 만들며, 담당·다음 행동·기한을 지정하거나 사유와 함께 기각합니다.</Note>
+  {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">감지 신호를 조회하고 있습니다.</p>}{stale&&<p role="status" className={styles.warning}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
   {view&&<>{view.canEdit&&<button type="button" disabled={busy||stale} onClick={()=>void send({action:'detect'},v=>`지금 감지했습니다: 조건 충족 ${v.detected}건 · 새 신호 ${v.created}건.`)}>지금 감지</button>}
    {!view.signals.length&&<p>감지 신호가 없습니다. 기회가 없다는 증명은 아닙니다.</p>}
    <ul>{view.signals.map(s=><li key={s.id} style={{overflowWrap:'anywhere'}}><p><strong>{kindLabels[s.detection.kind]}</strong> · {s.detection.title} · {statusLabels[s.status]}{s.overdue?' · 기한 경과':''} · {s.detectedBy==='daily_loop'?'일일 루프':'운영자'} {s.detectedAt.slice(0,10)}</p><p>{s.detection.detail} (기간 {s.detection.window.from}~{s.detection.window.to}{s.detection.dueBy?` · 준비 기한 ${s.detection.dueBy}`:''})</p>

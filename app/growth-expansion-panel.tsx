@@ -1,4 +1,5 @@
 'use client';
+import {Note} from '@/components/app/note';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {GrowthExpansionView} from '@/lib/growth-expansion-server';
 import type {ExpansionInput} from '@/lib/growth-expansion';
@@ -24,9 +25,9 @@ function Workspace({campaignId}:{campaignId:string}){
  }
  const num=(k:keyof ExpansionInput)=>(e:{target:{value:string}})=>setInput({...input,[k]:Number(e.target.value)});
  const reconcile=(p:Proposal)=>send({action:'reconcile',id:p.id,expectedVersion:p.version,commitmentVersion:p.commitment?.version,outcome:rec.outcome,reconciliation:{mode:rec.mode,actualAmount:rec.actualAmount===''?null:Number(rec.actualAmount),actualLoss:rec.actualLoss===''?null:Number(rec.actualLoss),evidenceRef:rec.evidenceRef,note:rec.note,noExecution:rec.noExecution,noOutstandingObligations:rec.noOutstandingObligations}},'확대 예약을 대사했습니다.');
- return <section aria-label="검증된 확대" className={styles.panel}><header className={styles.header}><h3>검증된 확대 · 1회 20% 이내</h3><button type="button" disabled={busy} onClick={()=>void load()}>확대 검토 새로고침</button></header>
-  <p className={styles.note}>사전등록 확증 실험의 최신 개선 근거(90일 이내, 같은 채널·오퍼 판, 개입 근거 판 동일), 양수 단위 공헌이익, 공유 가용 재고가 모두 있을 때만 제안합니다. 예약은 소유자가 건별로 승인하며 서명된 총·일·주·손실 한도를 넓히지 않습니다. 상시 위임에 자동 확대 권한은 없고, 실제 광고비 변경·집행은 이 화면에서 하지 않습니다.</p>
-  {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">확대 검토를 조회하고 있습니다.</p>}{stale&&<p className={styles.error}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
+ return <section aria-label="검증된 확대" className={styles.panel}><header className={styles.header}><h3>검증된 확대 · 1회 20% 이내</h3><button aria-label="확대 검토 새로고침" type="button" disabled={busy} onClick={()=>void load()}>새로고침</button></header>
+  <Note className={styles.note}>사전등록 확증 실험의 최신 개선 근거(90일 이내, 같은 채널·오퍼 판, 개입 근거 판 동일), 양수 단위 공헌이익, 공유 가용 재고가 모두 있을 때만 제안합니다. 예약은 소유자가 건별로 승인하며 서명된 총·일·주·손실 한도를 넓히지 않습니다. 상시 위임에 자동 확대 권한은 없고, 실제 광고비 변경·집행은 이 화면에서 하지 않습니다.</Note>
+  {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">확대 검토를 조회하고 있습니다.</p>}{stale&&<p role="status" className={styles.warning}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
   {view&&<>{view.canPropose&&<form onSubmit={e=>{e.preventDefault();if(!draftId.current)draftId.current=`expansion-${crypto.randomUUID().slice(0,8)}`;void send({action:'propose',id:draftId.current,expectedVersion:0,input},'확대를 제안했습니다. 아직 예약되지 않았습니다.');}}><fieldset disabled={busy} className={styles.form}><legend>확대 제안</legend>
     <label>미션 ID<input required value={input.missionId} onChange={e=>setInput({...input,missionId:e.target.value})}/></label><label>미션 판<input type="number" min={1} value={input.missionVersion} onChange={num('missionVersion')}/></label>
     <label>실험 ID<input required value={input.experimentId} onChange={e=>setInput({...input,experimentId:e.target.value})}/></label><label>분석 회차<input type="number" min={1} value={input.analysisNumber} onChange={num('analysisNumber')}/></label>

@@ -1,4 +1,5 @@
 'use client';
+import {Note} from '@/components/app/note';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {GrowthDemandEvidenceView} from '@/lib/growth-demand-evidence-server';
 import styles from './growth-panel.module.css';
@@ -26,9 +27,9 @@ function Workspace({campaignId}:{campaignId:string}){
   catch(e){if(mounted.current&&!controller.signal.aborted)setError(`${e instanceof Error?e.message:'저장 실패'} 입력은 보존했습니다. 응답 미확인은 같은 입력으로 재시도하세요.`);}
   finally{writing.current=null;if(mounted.current&&!controller.signal.aborted)setSaving(false);}
  }
- return <section aria-label="수요 단계 발행 근거" className={styles.panel}><header className={styles.header}><h3>수요 단계 ↔ 발행 근거</h3><button type="button" disabled={busy} onClick={()=>void load()}>단계 근거 새로고침</button></header>
-  <p className={styles.note}>자체 계정 자연 유입 단계에만 승인된 발행 연결을 붙입니다. 서버가 발행·측정·귀속 주문 기록을 직접 읽으며, 운영자 성과 메모와 구분합니다. 공급자 접수는 게시 완료가 아니고, 귀속 주문은 인과 효과가 아닙니다. 크리에이터·파트너·광고 단계는 별도 근거가 필요합니다.</p>
-  {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">단계 근거를 조회하고 있습니다.</p>}{stale&&<p className={styles.error}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
+ return <section aria-label="수요 단계 발행 근거" className={styles.panel}><header className={styles.header}><h3>수요 단계 ↔ 발행 근거</h3><button aria-label="단계 근거 새로고침" type="button" disabled={busy} onClick={()=>void load()}>새로고침</button></header>
+  <Note className={styles.note}>자체 계정 자연 유입 단계에만 승인된 발행 연결을 붙입니다. 서버가 발행·측정·귀속 주문 기록을 직접 읽으며, 운영자 성과 메모와 구분합니다. 공급자 접수는 게시 완료가 아니고, 귀속 주문은 인과 효과가 아닙니다. 크리에이터·파트너·광고 단계는 별도 근거가 필요합니다.</Note>
+  {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">단계 근거를 조회하고 있습니다.</p>}{stale&&<p role="status" className={styles.warning}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
   {view&&<><form onSubmit={e=>{e.preventDefault();void submit('link');}}><fieldset disabled={busy||!view.canEdit} className={styles.form}><legend>단계에 발행 근거 연결</legend>
    <label>수요 시퀀스<select value={sequenceId} onChange={e=>select({sequenceId:e.target.value})}><option value="">시퀀스 선택</option>{view.sequences.map(s=><option key={s.sequenceId} value={s.sequenceId}>{s.title||s.sequenceId} · v{s.sequenceVersion}</option>)}</select></label>
    <label>수요 단계<select value={stepId} onChange={e=>select({stepId:e.target.value})}><option value="">단계 선택</option>{sequence?.steps.map(st=><option key={st.stepId} value={st.stepId}>{st.stepId} · {st.channel}/{st.placement}{st.eligibility.length?' · 연결 불가':''}</option>)}</select></label>

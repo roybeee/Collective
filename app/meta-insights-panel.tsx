@@ -45,9 +45,9 @@ export function MetaInsightsPanel({campaignId}:{campaignId:string}){
     </fieldset>
     {preview&&<div className={s.preview}><b>저장 전 확인</b><p>광고비 {money(preview.spendMinor)} · 노출 {preview.impressions.toLocaleString()}회 · 클릭 {preview.clicks.toLocaleString()}회</p><p>저장하면 기존 성과 표를 이번 파일로 교체합니다. 이전 범위에 더하지 않습니다.</p><Button type="button" disabled={disabled} onClick={()=>void action('import')}>확인한 성과 저장</Button></div>}
    </form></div>
-   <aside className={s.card}><div className={s.title}><Link2 size={20}/><h3>브랜드 광고 계정</h3></div>{view.connection?<><span className={s.connected}>읽기 연결됨</span><p className={s.account}>계정 {view.connection.accountId}</p><p className={s.help}>이 브랜드의 캠페인에서만 사용합니다. 연결 해제 후에도 저장한 성과는 남습니다.</p><Button variant="outline" disabled={disabled} onClick={()=>void action('disconnect')}>읽기 연결 해제</Button></>:<p>계정을 연결하면 파일 없이 성과를 가져올 수 있습니다. 연결 전에는 외부 조회가 꺼져 있습니다.</p>}
+   <div className={s.card}><div className={s.title}><Link2 size={20}/><h3>브랜드 광고 계정</h3></div>{view.connection?<><span className={s.connected}>읽기 연결됨</span><p className={s.account}>계정 {view.connection.accountId}</p><p className={s.help}>이 브랜드의 캠페인에서만 사용합니다. 연결 해제 후에도 저장한 성과는 남습니다.</p><Button variant="outline" disabled={disabled} onClick={()=>void action('disconnect')}>읽기 연결 해제</Button></>:<p>계정을 연결하면 파일 없이 성과를 가져올 수 있습니다. 연결 전에는 외부 조회가 꺼져 있습니다.</p>}
     <form onSubmit={e=>{e.preventDefault();void action('connect')}}><fieldset disabled={disabled} className={s.fields}><legend className={s.srOnly}>읽기 연결</legend><label htmlFor={id+'token'}>{view.connection?'새 읽기 권한 토큰':'Meta 읽기 권한 토큰'}<Input id={id+'token'} type="password" autoComplete="off" value={token} onChange={e=>setToken(e.target.value)} maxLength={4096} required/></label><p className={s.help}>위 광고 계정의 ads_read 권한이 필요합니다. 토큰은 암호화해 저장하며 화면에 다시 표시하지 않습니다.</p><Button type="submit" variant="outline" disabled={!token||!accountId}>{view.connection?'연결 갱신':'광고 성과 읽기 연결'}</Button></fieldset></form><div className={s.boundary}><b>광고 집행과 분리되어 있습니다</b><p>이 연결은 성과 조회만 합니다. 광고 생성·예산 변경·고객 전환 전송은 실행하지 않습니다.</p></div>
-   </aside>
+   </div>
   </div>
   {!view.canEdit&&<p className={s.help}>계정 연결과 성과 저장은 대표·관리자만 할 수 있습니다.</p>}
   {error&&<p className={s.error} role="alert">{error} 저장된 성과는 유지됩니다.</p>}{success&&<p className={s.success} role="status">{success}</p>}
