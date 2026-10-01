@@ -26,6 +26,14 @@ test('오늘의 안건·캠페인 탭 주소·지연 로딩·명령 팔레트·�
   expect(new Set(calls).size,calls.join(',')).toBeLessThanOrEqual(2);
   const before=calls.length;await growth.locator('summary').filter({hasText:/^고객 문의·약속 기한$/}).click();await expect(growth.getByRole('region',{name:'고객 문의 처리',exact:true})).toBeVisible();
   expect(calls.slice(before)).toContain('/api/growth/cs');
+  // 2b) 작업 단계·Meta 하위 탭도 주소(csub)에 남고 새로고침 뒤 같은 단계를 연다. 이동 경로가 현재 탭을 보인다(UX-PLAN-3 Q1).
+  await growth.getByRole('navigation',{name:'성장 작업 단계'}).getByRole('button',{name:'상품',exact:true}).click();await expect(page).toHaveURL(/ctab=growth&csub=catalog/);
+  await page.reload();await expect(page.getByRole('navigation',{name:'성장 작업 단계'}).getByRole('button',{name:'상품',exact:true})).toHaveAttribute('aria-pressed','true');
+  await expect(page.getByRole('navigation',{name:'이동 경로',exact:true})).toContainText('성장·판매');
+  await page.getByRole('tab',{name:'Meta 광고 준비',exact:true}).click();await expect(page).not.toHaveURL(/csub=/);
+  await page.getByRole('tab',{name:'광고 성과',exact:true}).click();await expect(page).toHaveURL(/ctab=meta-ads&csub=insights/);
+  await page.reload();await expect(page.getByRole('tab',{name:'광고 성과',exact:true})).toHaveAttribute('aria-selected','true');
+  await expect(page.getByRole('navigation',{name:'이동 경로',exact:true})).toContainText('Meta 광고 준비');
   // 3) 안쪽 탭을 바꾸면 주소도 바뀐다.
   await page.getByRole('tab',{name:'성과',exact:true}).click();await expect(page).toHaveURL(/ctab=results/);
   // 4) 명령 팔레트(데스크톱 단축키)로 설정 이동 → 운영 안전에 전역 중단.

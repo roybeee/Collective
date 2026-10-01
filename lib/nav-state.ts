@@ -19,8 +19,11 @@ export type NavTab=LearningTab|StoreTab|BrandTab|FranchiseTab;
 export const campaignTabs=['brief','meeting','team','outputs','growth','meta-ads','execution','results','history'] as const;
 export type CampaignTab=typeof campaignTabs[number];
 export const isCampaignTab=(value:unknown):value is CampaignTab=>(campaignTabs as readonly unknown[]).includes(value);
-export type NavState={view:NavView;campaign?:string;brand?:string;store?:string;tab?:NavTab;ctab?:CampaignTab};
-type NavInput={view?:string|null;campaign?:string|null;brand?:string|null;store?:string|null;tab?:string|null;ctab?:string|null};
+// 캠페인 탭 안쪽 단계(csub, UX-PLAN-3 Q1): 성장·판매의 작업 단계(app/growth-panel.tsx)와 Meta 광고 준비의 하위 탭(app/meta-ads-panel.tsx). 새로고침·공유·뒤로가기 때 같은 단계를 연다. 첫 단계는 주소에 남기지 않는다(ctab의 brief와 같음).
+export const campaignSubs={growth:['signal','need','catalog','offer','mission'],'meta-ads':['plan','budget','conversions','creative','images','bundle','create','paused','execution','reservations','insights','orders','report','experiments','learning']} as const satisfies Partial<Record<CampaignTab,readonly string[]>>;
+export const campaignSubOf=(ctab:string|null|undefined,value:string|null|undefined)=>ctab&&ctab in campaignSubs?(campaignSubs[ctab as keyof typeof campaignSubs] as readonly string[]).find(sub=>sub===value):undefined;
+export type NavState={view:NavView;campaign?:string;brand?:string;store?:string;tab?:NavTab;ctab?:CampaignTab;csub?:string};
+type NavInput={view?:string|null;campaign?:string|null;brand?:string|null;store?:string|null;tab?:string|null;ctab?:string|null;csub?:string|null};
 // 서버 id 형식(UUID·시드 id·브랜드 번호 [a-zA-Z0-9_-], 최대 100자)만 받는다.
 const idPattern=/^[A-Za-z0-9_-]{1,100}$/;
 const validId=(value:string|null|undefined)=>typeof value==='string'&&idPattern.test(value)?value:undefined;
@@ -36,20 +39,20 @@ export const franchiseMenuVisible=(status:{enabled:boolean;hasRecords:boolean}|n
 export function normalizeNav(input:NavInput):NavState{
  const view=isView(input.view)?input.view:'overview',campaign=validId(input.campaign);
  const brand=view==='brands'||view==='stores'||view==='learning'||view==='franchise'?validId(input.brand):undefined,store=view==='stores'?validId(input.store):undefined,tab=tabOf(view,input.tab);
- const ctab=campaign&&isCampaignTab(input.ctab)&&input.ctab!=='brief'?input.ctab:undefined;
- return {view,...(campaign?{campaign}:{}),...(brand?{brand}:{}),...(store?{store}:{}),...(tab?{tab}:{}),...(ctab?{ctab}:{})};
+ const ctab=campaign&&isCampaignTab(input.ctab)&&input.ctab!=='brief'?input.ctab:undefined,csub=campaignSubOf(ctab,input.csub),firstSub=ctab&&ctab in campaignSubs?campaignSubs[ctab as keyof typeof campaignSubs][0]:undefined;
+ return {view,...(campaign?{campaign}:{}),...(brand?{brand}:{}),...(store?{store}:{}),...(tab?{tab}:{}),...(ctab?{ctab}:{}),...(csub&&csub!==firstSub?{csub}:{})};
 }
 export function parseNav(search:string):NavState{
  const params=new URLSearchParams(search);
- return normalizeNav({view:params.get('view'),campaign:params.get('campaign'),brand:params.get('brand'),store:params.get('store'),tab:params.get('tab'),ctab:params.get('ctab')});
+ return normalizeNav({view:params.get('view'),campaign:params.get('campaign'),brand:params.get('brand'),store:params.get('store'),tab:params.get('tab'),ctab:params.get('ctab'),csub:params.get('csub')});
 }
 // 기본 화면(워크스페이스)만 있으면 빈 문자열이라 주소가 '/'로 남는다.
 export function serializeNav(state:NavInput):string{
- const nav=normalizeNav(state),entries=Object.entries({view:nav.view,campaign:nav.campaign,brand:nav.brand,store:nav.store,tab:nav.tab,ctab:nav.ctab}).filter((entry):entry is [string,string]=>!!entry[1]);
+ const nav=normalizeNav(state),entries=Object.entries({view:nav.view,campaign:nav.campaign,brand:nav.brand,store:nav.store,tab:nav.tab,ctab:nav.ctab,csub:nav.csub}).filter((entry):entry is [string,string]=>!!entry[1]);
  return entries.length===1&&nav.view==='overview'?'':'?'+new URLSearchParams(entries).toString();
 }
 export function withCampaign(state:NavState,id:string|null):NavState{
- return normalizeNav({...state,campaign:id,ctab:id&&id===state.campaign?state.ctab:null});
+ const same=!!id&&id===state.campaign;return normalizeNav({...state,campaign:id,ctab:same?state.ctab:null,csub:same?state.csub:null});
 }
 // 불러온 데이터에 없는 id: 캠페인은 캠페인 목록으로, 브랜드는 같은 화면의 전체 목록으로(학습 탭만 유지, 지점·아카이브 탭은 그 브랜드의 것이라 버린다). 바뀌지 않으면 같은 객체를 돌려준다.
 export function reconcileNav(state:NavState,known:{campaigns:string[];brands:string[]}):NavState{
