@@ -34,6 +34,8 @@ function link(spec,ref){
  if(spec==='sonner')return synthetic(ref.imports.get(spec)||new Set(),()=>({success(){},error(){}}));
  if(spec==='./auth-client')return synthetic(ref.imports.get(spec)||new Set(),n=>n==='useAuthState'?()=>authState:n==='AuthContext'?AuthContext:()=>null);
  if(spec==='./account-context')return moduleFor('app/account-context.tsx');
+ // 첫 화면 알림은 app/home-alerts.tsx에 있고 measurement-collect가 다시 내보낸다(UX-PLAN-3 Q7).
+ if(spec==='./home-alerts')return moduleFor('app/home-alerts.tsx');
  if(spec.startsWith('@/lib/'))return moduleFor(resolve(spec.slice(2))+'.ts');
  if(spec.startsWith('.')&&ref.identifier.includes('/lib/')){const base=resolve(dirname(ref.identifier),spec);return moduleFor(existsSync(base+'.ts')?base+'.ts':base+'.tsx')}
  throw new Error('예상하지 못한 import: '+spec);

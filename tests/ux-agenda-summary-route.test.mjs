@@ -2,7 +2,7 @@
 // 인증 mocked, 메모리 SQLite real, 외부 0. 보관 캠페인 제외, 소유자 격리, 다른 캠페인 기록 미포함, 기한 판정을 고정한다.
 import assert from 'node:assert/strict';import {testRuntime} from './helpers/runtime.mjs';
 const {load}=testRuntime(async()=>{throw Error('external forbidden')});
-const server=await load('lib/server.ts'),agendaRoute=await load('app/api/agenda/route.ts'),summaryRoute=await load('app/api/growth/summary/route.ts');
+const server=await load('lib/server.ts'),agendaRoute=await load('app/api/agenda/route.ts'),summaryRoute=await load('app/api/growth/summary/route.ts'),growthRoute=await load('app/api/growth/route.ts');
 let passed=0;const check=(v,n)=>{assert.ok(v,n);passed++};
 const owner='owner',h={'oai-authenticated-user-id':owner};
 const put=(kind,id,data,parent='',who=owner)=>server.recordStatement(who,kind,id,data,parent).run();
@@ -44,6 +44,11 @@ check(r.status===200&&s.counts.cs===3&&s.counts.detection===2&&s.counts.landing=
 check(s.counts.expansion===0,'another campaign is not counted');
 check(s.attention.cs==='기한 초과 1건'&&s.attention.detection==='새 신호 1건'&&!s.attention.expansion,'attention flags');
 check((await getSummary('c1',{'oai-authenticated-user-id':'other'})).status===404,'owner isolation');
+// UX-PLAN-3 Q7: 성장 조회 한 번에 패널 요약과 전역 중단 상태를 싣는다(include=summary,stop). 기존 summary 필드는 그대로다.
+const growthGet=(q)=>growthRoute.GET(new Request(`https://agency.test/api/growth?campaignId=c1${q}`,{headers:h})).then(unpack);
+const plain=await growthGet(''),rich=await growthGet('&include=summary,stop');
+check(plain.status===200&&!('panelSummary' in plain.body)&&!('stopState' in plain.body),'growth view without include is unchanged');
+check(rich.status===200&&rich.body.panelSummary?.counts?.cs===3&&rich.body.stopState?.status==='running'&&JSON.stringify(rich.body.summary)===JSON.stringify(plain.body.summary),'include adds panelSummary and stopState and keeps the view summary');
 const summaryServer=await load('lib/growth-summary-server.ts'),listed=[...summaryServer.summaryKindFilter.matchAll(/'([a-z_]+)'/g)].map(m=>m[1]).sort();
 check(JSON.stringify(listed)===JSON.stringify([...new Set(Object.values(JSON.parse(JSON.stringify(summaryServer.summaryKinds))).flat())].sort()),'SQL kind list equals summaryKinds');
 console.log(JSON.stringify({passed}));

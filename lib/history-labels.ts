@@ -1,5 +1,5 @@
 import {roles,statuses,type Artifact} from './agency';
-import {scrubInternalIds} from './role-output';
+import {scrubInternalIds} from './artifact-text';
 
 // 화면 표시용 파생 계산만 한다. 저장 데이터와 서버 동작은 바꾸지 않는다.
 
