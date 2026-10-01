@@ -79,7 +79,8 @@ jobs:
   # 안정성이 확인될 때까지 비차단이다. verify와 독립된 잡이라 결과가 verify에 영향을 주지 않는다.
   e2e-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 전체 E2E가 두 화면 크기 184건이라 정상 실행도 16~17분이다. 느린 러너에서 20분 제한에 걸려 통과 중에 취소됐다(2026-10-01 run 36875727885). 여유를 둔다.
+    timeout-minutes: 30
     continue-on-error: true
     steps:
       - uses: actions/checkout@v5
