@@ -25,10 +25,13 @@ test('홈 첫 로딩 JS·접근성·터치 크기·가로 넘침 예산',async({
   const homeKB=Math.round(js.reduce((a,b)=>a+b,0)/1024);
   info.annotations.push({type:'homeJsGzKB',description:String(homeKB)});
   expect(homeKB,`home JS ${homeKB}KB gz`).toBeLessThanOrEqual(budget.homeJsGzKB);
-  for(const path of ['/',`/?view=campaigns&campaign=${campaignId}`,`/?view=campaigns&campaign=${campaignId}&ctab=growth`,'/?view=settings']){
+  for(const path of ['/',`/?view=campaigns&campaign=${campaignId}`,`/?view=campaigns&campaign=${campaignId}&ctab=growth`,`/?view=campaigns&campaign=${campaignId}&ctab=meta-ads`,'/?view=settings']){
    await page.goto(path);await page.waitForLoadState('networkidle');
    const a=await axeSerious(page);expect(a.count,`${path} ${a.rules.join(',')}`).toBeLessThanOrEqual(budget.axeCriticalSerious);
    expect(await overflow(page),path).toBeLessThanOrEqual(budget.horizontalOverflowPx);
+   // 탭 줄이 여러 줄로 감길 때 탭이 탭 줄 밖으로 넘치거나 아래 내용을 덮지 않는다(2026-10-01 모바일 겹침 회귀 방지).
+   const tabs=await page.evaluate(()=>[...document.querySelectorAll('[data-slot=tabs-list]')].filter(l=>(l as HTMLElement).offsetParent).map(l=>{const r=l.getBoundingClientRect();const last=Math.max(...[...l.querySelectorAll('[role=tab]')].map(t=>t.getBoundingClientRect().bottom));return Math.round(last-r.bottom)}));
+   for(const over of tabs)expect(over,`${path} tab row overflows its list by ${over}px`).toBeLessThanOrEqual(1);
    if(mobile){const t=await touch(page);expect(100*(t.total-t.small)/Math.max(1,t.total),`${path} ${t.small}/${t.total} under 44px`).toBeGreaterThanOrEqual(budget.mobileTouchTargetPct)}
   }
  }finally{await context.close()}
