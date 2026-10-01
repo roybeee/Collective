@@ -167,9 +167,12 @@ body{font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;backgrou
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 @media (max-width:767px){
  button,summary,select,[role=tab],[role=button],a[data-slot=button],input:not([type=checkbox]):not([type=radio]):not([type=hidden]),[data-slot=select-trigger],[data-slot=native-select]{min-height:44px}
- button,[role=tab],summary,a[data-slot=button]{min-width:44px}
+ /* 최소 너비는 아이콘 버튼에만 준다. 글자 버튼에 주면 flex 줄에서 기본 최소 너비(글자 폭)를 덮어써 버튼이 눌리고 이웃과 겹친다. */
+ button[data-size^=icon],a[data-slot=button][data-size^=icon]{min-width:44px}
  summary{display:flex;align-items:center}
- [data-slot=tabs-list]{height:auto;min-height:44px}
+ [data-slot=tabs-list]{height:auto;min-height:44px;flex-wrap:wrap;row-gap:4px;overflow:visible;max-width:100%;justify-content:flex-start}
+ [data-slot=tabs-trigger]{flex:0 0 auto;min-width:44px}
+ [data-slot=sheet-content]>button.absolute,[data-slot=dialog-content]>button.absolute{min-width:44px;display:inline-flex;align-items:center;justify-content:center}
  input[type=checkbox],input[type=radio]{width:22px;height:22px}
  label:has(>input[type=checkbox]),label:has(>input[type=radio]){min-height:44px;display:flex;align-items:center;gap:8px}
 }
@@ -194,7 +197,7 @@ body{font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;backgrou
 .agenda-card{background:#fff;border:1px solid #e3e6df;border-radius:12px;padding:22px 24px;margin-bottom:22px}
 .agenda-card>header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
 .agenda-card h2{font-size:20px;font-weight:650;letter-spacing:-.5px}
-.agenda-refresh{display:inline-flex;align-items:center;gap:6px;border:1px solid #dfe4d6;border-radius:8px;padding:7px 11px;font-size:13px;background:#fff;color:#2f3a24;min-height:36px}
+.agenda-refresh{display:inline-flex;align-items:center;gap:6px;border:1px solid #dfe4d6;border-radius:8px;padding:7px 11px;font-size:13px;background:#fff;color:#2f3a24;min-height:36px}@media(max-width:767px){.agenda-refresh{min-height:44px}}
 .agenda-counts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 14px;padding:0;list-style:none}
 .agenda-counts li{display:flex;align-items:center;gap:6px;background:#f6f8f2;border-radius:9px;padding:10px 12px;font-size:13px;color:#3d4733}
 .agenda-counts li b{margin-left:auto;font-size:18px;font-weight:650;color:#1f251b}
