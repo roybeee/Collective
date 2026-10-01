@@ -33,7 +33,7 @@ test('확인 사실로 실제 PNG를 만들고 새로고침 뒤 내려받는다'
  // 외부 주소 없이 초안을 만들면 승인 때 앱 공개 주소를 채운다. 승인 전에는 공개 주소가 없다.
  const draft=await page.request.post('/api/execution',{data:{action:'save_publication',campaignId:campaign.id,creativeId:state.creatives[0].id,scheduledAt:new Date(Date.now()+86400000).toISOString(),plannedCostKRW:0}});expect(draft.status()).toBe(200);const publication=await draft.json();expect(publication.mediaMode).toBe('auto');expect(publication.mediaUrl).toBe('');
  // 새로고침하면 주소(?campaign=)로 상세가 다시 열린다. 열린 상세가 뒤 목록을 가리므로 '열기'를 다시 누르지 않는다.
- await page.reload();await expect(page.getByRole('dialog',{name:title})).toBeVisible();await page.getByRole('tab',{name:'제작·발행',exact:true}).click();await expect(page.getByRole('link',{name:'원본 PNG 내려받기',exact:true})).toBeVisible();
+ await page.reload();await expect(page.getByRole('region',{name:title})).toBeVisible();await page.getByRole('tab',{name:'제작·발행',exact:true}).click();await expect(page.getByRole('link',{name:'원본 PNG 내려받기',exact:true})).toBeVisible();
  await expect(page.getByText('발행 연결: 연결 필요',{exact:true})).toBeVisible();await expect(steps.locator('[aria-current="step"]')).toHaveText('채널');
  // exec-loop-10: 한도는 '발행 횟수 한도'로 부르고 확정된 캠페인 예산을 함께 보여 준다. 예정 비용 입력은 유료 부스트 연동 전까지 참고용 접힘 영역에 있다.
  await expect(page.getByRole('heading',{name:'2. 채널 연결과 발행 횟수 한도',exact:true})).toBeVisible();await expect(page.getByText('실행 한도',{exact:false})).toHaveCount(0);
@@ -74,7 +74,7 @@ test('확인 사실로 실제 PNG를 만들고 새로고침 뒤 내려받는다'
  await expect(page.getByRole('heading',{name:'4. 주문 귀속',exact:true})).toBeVisible();await expect(page.getByText('주문·매출 화면에서',{exact:false})).toHaveCount(0);
  await page.getByRole('combobox',{name:'주문 장부를 열 지점',exact:true}).selectOption({label:storeName});
  await page.getByRole('button',{name:'주문 장부 열기',exact:true}).click();
- await expect(page).toHaveURL(new RegExp('[?&]view=stores&brand=ofd&store='+storeId+'&tab=ledger'));await expect(page.getByRole('dialog',{name:title})).toBeHidden();
+ await expect(page).toHaveURL(new RegExp('[?&]view=stores&brand=ofd&store='+storeId+'&tab=ledger'));await expect(page.getByRole('region',{name:title})).toBeHidden();
  await expect(page.getByRole('heading',{level:2,name:storeName,exact:true})).toBeVisible();
  // 주소의 지점 탭(tab=ledger)으로 탭을 누르지 않아도 주문 장부 탭이 열린다.
  await expect(page.getByRole('tab',{name:'주문 장부',exact:true})).toHaveAttribute('aria-selected','true');await expect(page.getByRole('heading',{name:'주문 성과 장부',exact:true})).toBeVisible();
