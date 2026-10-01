@@ -1,0 +1,20 @@
+{
+ "_note": "UX-PLAN-3 화면 품질 예산. static은 tests/ux-budget.test.mjs, runtime은 e2e/ux-budget.spec.ts가 확인한다. 값은 내려가기만 한다.",
+ "static": {
+  "rawButtons": 273,
+  "rawFormControls": 370,
+  "confirmCalls": 26,
+  "inlineStyles": 96,
+  "hexColors": 488,
+  "mediaWidths": 49,
+  "middleDotJoins": 1224
+ },
+ "lazyOnly": ["learning-panel", "brand-archive", "campaign-brief", "campaign-detail-panel", "panels", "delete-campaign-dialog", "measurement-collect", "campaign-metrics", "store-marketing-panel", "franchise-panel"],
+ "runtime": {
+  "homeJsGzKB": 235,
+  "growthTabRequests": 2,
+  "axeCriticalSerious": 0,
+  "mobileTouchTargetPct": 95,
+  "horizontalOverflowPx": 1
+ }
+}

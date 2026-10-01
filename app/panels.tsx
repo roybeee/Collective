@@ -20,9 +20,8 @@ import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import {Sheet,SheetContent,SheetHeader,SheetTitle,SheetDescription} from '@/components/ui/sheet';
 import {Tabs,TabsList,TabsTrigger,TabsContent} from '@/components/ui/tabs';
-import {roles,statuses,budgetLabel,type Campaign,type Brand,type Artifact} from '@/lib/agency';
+import {roles,budgetLabel,type Campaign,type Brand,type Artifact} from '@/lib/agency';
 import {api,downloadText,type WorkspaceData} from '@/lib/client';
-import {campaignStatus,isArchivedCampaign} from '@/lib/workspace-metrics';
 import {MeetingPanel} from './meeting-panel';
 import {CampaignLearning} from './learning-panel';
 import {CampaignBlueprint} from './campaign-brief';
@@ -44,11 +43,11 @@ const GrowthPanel=lazy(()=>import('./growth-panel').then(m=>({default:m.GrowthPa
 const ExecutionPanel=lazy(()=>import('./execution-panel').then(m=>({default:m.ExecutionPanel})));
 export {MetricCard,MetricDialog} from './campaign-metrics';
 export function Field({label,children,help}:{label:string;children:React.ReactNode;help?:string}){return <label className="field"><span>{label}</span>{children}{help&&<small>{help}</small>}</label>}
-export function Status({status,title}:{status:string;title?:string}){return <span className={'status status-'+status} title={title}>{statuses[status]||({approved:'승인 완료',review:'검토 대기',revision:'수정 요청',outdated:'이전 버전'} as Record<string,string>)[status]||status}</span>}
+// 상태 배지·빈 상태는 홈 첫 로딩에서도 쓰므로 가벼운 app/status-badge.tsx에 두고 여기서 다시 내보낸다(UX-PLAN-3 Q7).
+export {Status,CampaignStatus,Empty} from './status-badge';
+import {Status,CampaignStatus,Empty} from './status-badge';
 // 캠페인 상태 배지: 서버 파생 상태(derivedStatus, lib/campaign-status.ts)와 근거(statusReason). 이전 응답이면 저장 status를 쓴다.
 // 보관(archivedAt)은 진행 단계가 아니라 별도 표시다. 보관 캠페인은 진행 배지 옆에 '보관됨'을 함께 보인다(캠페인 목록·대시보드 표·상세).
-export function CampaignStatus({campaign}:{campaign:Pick<Campaign,'status'|'derivedStatus'|'statusReason'>&{archivedAt?:string|null}}){return <span className="campaign-status"><Status status={campaignStatus(campaign)} title={campaign.statusReason}/>{isArchivedCampaign(campaign)&&<span className="status status-archived" title="보관한 캠페인입니다. 새 AI 실행·팀 회의·연속 실행·발행 승인은 보관 해제 후 할 수 있습니다.">보관됨</span>}</span>}
-export function Empty({title,text,action}:{title:string;text:string;action?:React.ReactNode}){return <div className="empty-state"><FileText size={28}/><h3>{title}</h3><p>{text}</p>{action}</div>}
 export function BrandDialog({brand,onClose,onSaved}:{brand:Brand|null;onClose:()=>void;onSaved:()=>Promise<void>}){const[f,setF]=useState<Brand|null>(brand);const[busy,setBusy]=useState(false);useEffect(()=>setF(brand),[brand]);if(!f)return null;return <Dialog open={!!brand} onOpenChange={v=>!v&&!busy&&onClose()}><DialogContent className="wide-dialog"><DialogHeader><DialogTitle>{f.name} · 브랜드 지식</DialogTitle><DialogDescription>모든 담당자가 이 정보를 바탕으로 판단합니다. 변경하면 관련 캠페인의 현재 작업물에 ‘브랜드 변경’ 표시가 남고, 승인 전에 변경 확인이 필요합니다.</DialogDescription></DialogHeader><form className="form-stack" onSubmit={async e=>{e.preventDefault();setBusy(true);try{await api('save_brand',{id:f.id,data:f});await onSaved();toast.success('브랜드 지식을 저장했습니다.');onClose()}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}}}>{[['description','브랜드 소개'],['audience','핵심 고객'],['tone','목소리와 표현'],['constraints','지켜야 할 조건'],['knowledge','제품 · 디자인 · 시장 지식']].map(([k,label])=><Field key={k} label={label}><Textarea rows={k==='knowledge'?6:2} value={String(f[k as keyof Brand]||'')} onChange={e=>setF({...f,[k]:e.target.value})}/></Field>)}<div className="form-actions"><Button disabled={busy}>{busy?<LoaderCircle className="spin"/>:<Check/>}변경 저장</Button></div></form></DialogContent></Dialog>}
 export function RichText({text}:{text:string}){return <div className="rich-text">{text.split('\n').map((line,i)=>{if(/^#{1,3} /.test(line))return <h3 key={i}>{line.replace(/^#+ /,'')}</h3>;if(!line.trim())return <div className="text-gap" key={i}/>;const clean=line.replace(/\*\*(.*?)\*\*/g,'$1');return <p className={/^[-*] /.test(clean)?'text-bullet':''} key={i}>{clean}</p>})}</div>}
 // B1 수정 요청 사유 스위치(b1_reason_required) 상태. 읽지 못하면 꺼짐으로 보고 필수 여부는 서버 검사에 맡긴다.

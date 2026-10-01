@@ -174,7 +174,7 @@ check('a member cannot unarchive a campaign',(await authCall(member,{action:'una
 check('an admin can unarchive a campaign',(await authCall(admin,{action:'unarchive_campaign',id:'c'})).status===200&&!(await authRecord()).archivedAt);
 
 // --- 화면 연결 ------------------------------------------------------------------------
-const screen=readFileSync('app/workspace.tsx','utf8'),dialog=readFileSync('app/delete-campaign-dialog.tsx','utf8'),panels=readFileSync('app/panels.tsx','utf8');
+const screen=readFileSync('app/workspace.tsx','utf8'),dialog=readFileSync('app/delete-campaign-dialog.tsx','utf8'),panels=readFileSync('app/panels.tsx','utf8'),badge=readFileSync('app/status-badge.tsx','utf8');
 const has=(name,source,text)=>{assert.ok(source.includes(text),name);passed++};
 has('dashboard numbers and the sidebar count exclude archived campaigns',screen,'metrics=workspaceMetrics(live)');
 has('the dashboard campaign table excludes archived campaigns',screen,'recent=recentCampaigns(active.length?active:live.campaigns)');
@@ -184,7 +184,9 @@ has('the campaign list hides archived campaigns unless the archive filter is cho
 has('the campaign list offers the archive filter',screen,'<NativeSelectOption value={ARCHIVE_FILTER}>보관함</NativeSelectOption>');
 has('the campaign table badge uses the derived status',screen,'<TableCell><CampaignStatus campaign={c}/></TableCell>');
 check('the campaign table no longer draws the stored status',!screen.includes('<Status status={c.status}/>'));
-has('the campaign badge adds an archive badge next to the progress badge',panels,'status status-archived');
+// 캠페인 상태 배지는 홈 첫 로딩을 가볍게 하려고 app/status-badge.tsx로 옮겼고 app/panels.tsx가 다시 내보낸다(UX-PLAN-3 Q7).
+has('the campaign badge adds an archive badge next to the progress badge',badge,'status status-archived');
+has('panels re-exports the campaign badge',panels,"export {Status,CampaignStatus,Empty} from './status-badge';");
 check('the campaign name cell has no second archive badge',!screen.includes('status status-archived'));
 has('the artifact list leaves out archived campaigns like the sidebar count',screen,'!data.campaigns.some(c=>c.id===a.campaignId&&isArchived(c))');
 has('brand detail cards count visible campaigns like the dashboard',screen,'<span>{live.campaigns.filter(c=>c.brandId===b.id).length}개 캠페인</span><span>브랜드 아카이브</span>');

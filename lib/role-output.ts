@@ -2,6 +2,8 @@ import {roles,type Artifact} from './agency';
 import {practices} from './practice';
 import {normalizeSectionBody,normalizeQualityOutput,addNormalization,NO_NORMALIZATION,type OutputNormalization} from './output-normalize';
 import {COPY_PACK_VERSION,parseCopyPack,renderCopyPack,type CopyPack,type CopyPackIssue} from './copy-pack';
+import {isQuestionOnly,artifactUsable,type IdLabels} from './artifact-text';
+export {isQuestionOnly,scrubInternalIds,artifactUsable,type IdLabels} from './artifact-text';
 
 export const ROLE_OUTPUT_VERSION='role-output-v1';
 // 카피 팩 v2(A3-1): 콘텐츠 역할의 v1 섹션 4개에 구조화 팩(copyPack)을 더한 계약. 스위치 a3_copy_pack이 켜진 소유자의 콘텐츠 단독 실행만 쓴다(docs/COPY-PACK.ko.md).
@@ -12,15 +14,6 @@ export type RoleOutputContract={version:string;role:string;contextTruncated?:boo
 export function roleOutputContract(role:string,{copyPack=false}:{copyPack?:boolean}={}):RoleOutputContract {
  const sections=practices[role].outputs.map((title,index)=>({id:`output_${index+1}`,title}));
  return copyPack&&role==='content'?{version:ROLE_OUTPUT_V2,role,sections,copyPack:COPY_PACK_VERSION}:{version:ROLE_OUTPUT_VERSION,role,sections};
-}
-// A narrow guard for known nonanswers, not a factual accuracy or quality judgment.
-export function isQuestionOnly(content:string){
- const text=content.trim();
- if(text.length>2500)return false;
- // '없다'는 작업·요청·과업이 바로 주어일 때만 본다('요청하신 작업이 없습니다'). '… 과업이 확인되지 않은 상태에서 … 단정할 수 없습니다'는 재질문이 아니다(R3 기준선 MAPDAL 크리에이티브).
- return /(?:작업|요청|과업)[\s\S]{0,35}(?:명시되지|지정되지|주어지지)|(?:작업|요청|과업)이\s?(?:없습니다|없어요)/.test(text)
-  ||/(?:원하시는|수행할|진행할|어떤)[\s\S]{0,35}(?:작업|업무)[\s\S]{0,50}(?:선택해|지정해|알려\s?주|말씀해)/.test(text)
-  ||/(?:what (?:task|would you like)|please (?:specify|choose) (?:the |a )?task)/i.test(text);
 }
 // 형식을 바꾼 재질문: 번호 선택지+선택 요청, 또는 입력을 받으면 작성하겠다는 보류. 2,500자 제한은 섹션 단위다.
 // 고르게 하는 대상이 산출물·작업 방향일 때만 재질문이다. 고객 투표·퀴즈 문안과 사실 확인 요청은 제외한다.
@@ -69,7 +62,6 @@ export function substantiveIssue(text:string):string|null{
  return problem&&substanceMessages[problem];
 }
 // 실행 입력의 내부 식별자 → 입력에 붙인 ref 라벨. 저장 본문에서 식별자를 알려진 출처 이름으로 바꾸는 데 쓴다.
-export type IdLabels=Record<string,string>;
 export function idLabels({campaign,archive,artifacts=[]}:{campaign?:{id:string;version:number};archive?:{confirmedSources?:{id?:unknown}[];observations?:{id?:unknown}[];confirmedDiagnosis?:{id?:unknown}|null};artifacts?:{id:string;role:string;version:number}[]}):IdLabels{
  const labels:IdLabels={},set=(id:unknown,label:string)=>{if(typeof id==='string'&&id)labels[id]=label};
  archive?.confirmedSources?.forEach((s,i)=>set(s.id,`브랜드 자료 #${i+1}`));
@@ -80,27 +72,6 @@ export function idLabels({campaign,archive,artifacts=[]}:{campaign?:{id:string;v
  return labels;
 }
 // 산출물 본문에 새어 나온 내부 식별자를 사람이 읽는 출처 표현으로 바꾼다. 수량자는 모델 출력 길이에 대해 선형 시간이 되도록 상한을 둔다.
-const idWrap=(core:string)=>'`?(?:[\\w.]{0,40}id\\s{0,3}[=:]\\s{0,3})?'+core+'(?:\\s{0,3}[,/·]?\\s{0,3}(?:version|v)\\s{0,3}[=:]?\\s{0,3}\\d+)?`?';
-const escapeRegex=(s:string)=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-const uuid='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
-// 알려진 식별자: 바로 앞의 같은 출처 이름(예: '브랜드 자료 id=…')까지 라벨 하나로 합친다. 짧은 ID는 일반 단어와 겹칠 수 있어 제외한다.
-function labelKnownIds(text:string,labels:IdLabels){
- return Object.entries(labels).filter(([id])=>id.length>=20).sort((a,b)=>b[0].length-a[0].length).reduce((out,[id,label])=>{
-  const stem=label.replace(/\s(?:v\d+|#\d+)$/,''),last=stem.split(' ').pop()!;
-  const pattern=new RegExp(`(?:(?<![가-힣A-Za-z0-9])(?:${escapeRegex(stem)}|${escapeRegex(last)})\\s{0,3}(\\()?\\s{0,3})?${idWrap(escapeRegex(id))}(\\s{0,3}\\))?`,'gi');
-  return out.replace(pattern,(_,open?:string,close?:string)=>label+(open&&!close?'(':'')+(close&&!open?')':''));
- },text);
-}
-// URL 안의 식별자는 출처 주소이므로 그대로 둔다. 입력에 없는 UUID는 다른 출처로 둔갑시키지 않고 '내부 참조'로 둔다.
-export function scrubInternalIds(text:string,labels:IdLabels={}){
- return text.split(/(https?:\/\/[^\s)>\]]+)/).map((part,i)=>i%2?part:labelKnownIds(part,labels)
-  .replace(new RegExp(idWrap(`(?:meeting-)?${uuid}(?:-[a-z0-9]{1,12}){0,3}`),'gi'),'내부 참조')
-  .replace(new RegExp(idWrap('ai-[0-9a-f]{32}'),'gi'),'이전 작업물')
-  .replace(/`?(?:(?:(?:브랜드\s?)?아카이브\s?|brandArchive\.?|archive\s?)revision\s?[=:]?\s?\d+|\brevision\s?[=:]\s?\d+)`?/gi,'브랜드 자료')
-  .replace(/(이전 작업물|브랜드 자료|내부 참조)(?:\s{0,3}[(/·,]?\s{0,3}\1\s{0,3}\)?)+/g,'$1')
-  // 모음으로 끝나는 치환어 뒤에 남은 받침용 조사를 맞춘다.
-  .replace(/(브랜드 자료|내부 참조)(과|을|은)(?=[\s,.)\]]|$)/g,(_,word:string,particle:string)=>word+({과:'와',을:'를',은:'는'} as Record<string,string>)[particle])).join('');
-}
 // 입력 출처에 인용용 ref 라벨을 붙인다. 원래 식별자는 다른 기능이 쓰므로 유지한다.
 export function labelArchive<T extends {confirmedSources?:object[]}>(archive:T):T{
  return {...archive,...(archive.confirmedSources?{confirmedSources:archive.confirmedSources.map((s,i)=>({ref:`브랜드 자료 #${i+1}`,...s}))}:{})};
@@ -179,9 +150,6 @@ export function renderRoleOutput(content:string,role:string,contract?:RoleOutput
  const rendered=bodies.map(b=>`## ${b.title}\n\n${b.text}`).join('\n\n')+(changes?`\n\n## 수정 요청 반영 위치\n\n${changes.text}`:'');
  if(rendered.length>40000)return outputError('산출물이 40,000자 저장 한도를 초과했습니다. 요약해서 다시 작성하세요.');
  return {content:rendered,normalization:[...bodies,...(changes?[changes]:[])].map(b=>b.normalization).reduce(addNormalization,NO_NORMALIZATION),...(packed?{...(packed.pack?{copyPack:packed.pack}:{}),copyPackIssues:packed.issues}:{})};
-}
-export function artifactUsable(a:Artifact,campaignVersion:number){
- return ['review','approved'].includes(a.status)&&(!a.campaignVersion||a.campaignVersion===campaignVersion)&&!!a.content.trim()&&!isQuestionOnly(a.content);
 }
 // excerptOf: 한도를 넘는 본문을 줄이는 방식. 없으면 앞부분 절단이다. 입력 축소(input_diet, lib/input-diet.ts sectionExcerpt)는 같은 한도를 섹션에 나눠 모든 섹션을 싣는다.
 export function upstreamContext(artifacts:Artifact[],role:string,campaignVersion:number,excerptOf?:(content:string,limit:number)=>string){

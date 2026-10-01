@@ -12,7 +12,7 @@ import {credentialState} from '@/lib/feature-status';
 import type {ViralExperiment} from '@/lib/learning';
 import type {Campaign} from '@/lib/agency';
 import type {ResolvedScope} from '@/lib/channel-credentials';
-import type {CollectAlert,MeasurementView} from '@/lib/measurement-status';
+import type {MeasurementView} from '@/lib/measurement-status';
 
 // loop-1: 진행 중인 콘텐츠 실험 카드의 'A/B 성과 가져오기'와 자동 수집 상태(security-ops-5).
 // 수집은 초안만 만든다. 결과 반영과 비교 가능 확정은 '결과 입력'에서 사람이 한다. 수집 버튼은 대표·관리자에게, 이 실험 채널의 커넥터 연결이 있을 때만 보인다.
@@ -88,14 +88,5 @@ export function MeasurementCollect({experiment,view,campaign,canCollect,busy,onC
  </>;
 }
 
-// 워크스페이스 첫 화면 알림: 진행 중 실험의 자동 수집이 인증 오류·연결 없음으로 실패하고 있다. 보조 알림이라 불러오지 못하면 숨긴다.
-export function CollectAlertsView({alerts,onOpen}:{alerts:readonly CollectAlert[];onOpen:(brandId:string)=>void}){
- if(!alerts.length)return null;
- const first=alerts[0];
- return <section className="learning-note" role="status" aria-label="성과 자동 수집 재연결 필요"><b>성과 자동 수집 재연결 필요 {alerts.length}건</b> · 「{first.title}」 {armLabels[first.arm]}: {first.reason}{alerts.length>1?` 외 ${alerts.length-1}건`:''} <Button size="sm" variant="outline" onClick={()=>onOpen(first.brandId)}>실험 확인</Button></section>;
-}
-export function CollectAlertsNotice({onOpen}:{onOpen:(brandId:string)=>void}){
- const[alerts,setAlerts]=useState<CollectAlert[]>([]);
- useEffect(()=>{let active=true;fetch('/api/learning?only=collect_alerts').then(async r=>{if(!r.ok)return;const d=await r.json() as {collectAlerts?:CollectAlert[]};if(active)setAlerts(d.collectAlerts??[])}).catch(()=>{/* 보조 알림: 실패하면 숨긴다. */});return()=>{active=false}},[]);
- return <CollectAlertsView alerts={alerts} onOpen={onOpen}/>;
-}
+// 워크스페이스 첫 화면 알림(CollectAlertsView·CollectAlertsNotice)은 홈 첫 로딩을 가볍게 하려고 app/home-alerts.tsx에 둔다.
+export {CollectAlertsView,CollectAlertsNotice} from './home-alerts';

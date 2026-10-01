@@ -23,7 +23,7 @@ test('오늘의 안건·캠페인 탭 주소·지연 로딩·명령 팔레트·�
   await page.reload();await expect(page.getByRole('tab',{name:'성장·판매',exact:true})).toHaveAttribute('aria-selected','true');
   const growth=page.getByRole('region',{name:'성장2 판매 워크스페이스',exact:true});await expect(growth.getByRole('navigation',{name:'성장 섹션 바로가기',exact:true})).toBeVisible();
   await expect(growth.getByRole('heading',{name:/^판단/})).toBeVisible();await page.waitForTimeout(1500);
-  expect(new Set(calls).size,calls.join(',')).toBeLessThanOrEqual(4);
+  expect(new Set(calls).size,calls.join(',')).toBeLessThanOrEqual(2);
   const before=calls.length;await growth.locator('summary').filter({hasText:/^고객 문의·약속 기한$/}).click();await expect(growth.getByRole('region',{name:'고객 문의 처리',exact:true})).toBeVisible();
   expect(calls.slice(before)).toContain('/api/growth/cs');
   // 3) 안쪽 탭을 바꾸면 주소도 바뀐다.

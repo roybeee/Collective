@@ -44,9 +44,11 @@ export function GrowthStopPanel(){
  </section>;
 }
 // 캠페인 성장·판매 탭의 중단 안내(UX-PLAN P4·결정 1). 전역 중단 조작은 연결 및 설정 > 운영 안전으로 옮겼고, 여기서는 중단 중일 때만 한 줄로 알린다.
-export function GrowthStopBanner(){
- const [state,setState]=useState<{status:'running'|'stopped';reason:string}|null>(null);
- useEffect(()=>{const c=new AbortController();fetch('/api/growth/stop',{cache:'no-store',signal:c.signal}).then(r=>r.ok?r.json():null).then((v:unknown)=>{const s=(v as {state?:{status?:unknown;reason?:unknown}}|null)?.state;if(!c.signal.aborted&&s&&(s.status==='running'||s.status==='stopped'))setState({status:s.status,reason:typeof s.reason==='string'?s.reason:''});}).catch(()=>{});return()=>c.abort();},[]);
+// known: 성장 조회가 함께 실어 준 상태(GET /api/growth?include=stop). 있으면 따로 읽지 않는다(UX-PLAN-3 Q7).
+export function GrowthStopBanner({known}:{known?:{status:'running'|'stopped';reason:string}|null}={}){
+ const [fetched,setState]=useState<{status:'running'|'stopped';reason:string}|null>(null);
+ const state=known!==undefined?known:fetched;
+ useEffect(()=>{if(known!==undefined)return;const c=new AbortController();fetch('/api/growth/stop',{cache:'no-store',signal:c.signal}).then(r=>r.ok?r.json():null).then((v:unknown)=>{const s=(v as {state?:{status?:unknown;reason?:unknown}}|null)?.state;if(!c.signal.aborted&&s&&(s.status==='running'||s.status==='stopped'))setState({status:s.status,reason:typeof s.reason==='string'?s.reason:''});}).catch(()=>{});return()=>c.abort();},[known]);
  if(state?.status!=='stopped')return null;
  return <div role="status" aria-label="전역 실행 중단 안내" className={styles.warning}><b>전역 실행 중단 중</b> · 새 예약·게시·활성화가 막혀 있습니다.{state.reason?` 사유: ${state.reason}`:''} <button type="button" onClick={()=>pushNav({view:'settings'})}>운영 안전 설정 열기</button></div>;
 }

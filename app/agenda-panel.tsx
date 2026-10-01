@@ -16,7 +16,7 @@ export function AgendaPanel({onOpen}:{onOpen:(item:AgendaItem)=>void}){
   {loading&&!agenda&&<p role="status" className="agenda-empty">안건을 모으고 있습니다.</p>}
   {error&&<p role="alert" className="agenda-error">{error} <button type="button" onClick={()=>void load()}>다시 불러오기</button></p>}
   {agenda&&!agenda.items.length&&<p className="agenda-empty">지금 처리할 안건이 없습니다. 새 기한·승인 요청·감지 신호가 생기면 여기에 모입니다.</p>}
-  {agenda&&agenda.items.length>0&&<ol className="agenda-list">{agenda.items.map(item=><li key={item.id} data-kind={item.kind}><button type="button" onClick={()=>onOpen(item)}><span className="agenda-kind">{groups.find(g=>g.kind===item.kind)?.label}</span><span className="agenda-main"><b>{item.title}</b><small>{item.campaignTitle}{item.detail?` · ${item.detail}`:''}</small></span>{item.due&&<span className="agenda-due">{dueText(item.due)}</span>}<ArrowRight size={16} aria-hidden="true"/></button></li>)}</ol>}
+  {agenda&&agenda.items.length>0&&<ol className="agenda-list">{agenda.items.map(item=><li key={item.id} data-kind={item.kind}><button type="button" data-prefetch="detail growth" onClick={()=>onOpen(item)}><span className="agenda-kind">{groups.find(g=>g.kind===item.kind)?.label}</span><span className="agenda-main"><b>{item.title}</b><small>{item.campaignTitle}{item.detail?` · ${item.detail}`:''}</small></span>{item.due&&<span className="agenda-due">{dueText(item.due)}</span>}<ArrowRight size={16} aria-hidden="true"/></button></li>)}</ol>}
   {agenda&&agenda.total>agenda.items.length&&<p className="agenda-empty">상위 {agenda.items.length}건만 보입니다(전체 {agenda.total}건).</p>}
  </section>;
 }

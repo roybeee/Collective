@@ -88,7 +88,8 @@ check('campaign alert lines carry the note and the retest choice',campaignExpiri
 has('the campaign detail reads the expiring rules for its brand and store','campaignExpiring(data.expiringRules??[],campaign)');
 has('the campaign detail alert creates a retest experiment',"api('retest_rule',{id:r.id,version:r.version},'/api/learning')");
 has('the campaign detail alert links to the rules tab of its brand',"pushNav({view:'learning',brand:campaign.brandId,tab:'rules'})");
-has('the overview alert reads only the expiring rules',"fetch('/api/learning?only=expiring')");
+// 첫 화면 알림은 홈 첫 로딩을 가볍게 하려고 app/home-alerts.tsx로 옮겼고 학습 화면 모듈이 다시 내보낸다(UX-PLAN-3 Q7).
+check('the overview alert reads only the expiring rules',readFileSync('app/home-alerts.tsx','utf8').includes("fetch('/api/learning?only=expiring')")&&panel.includes("export {ExpiringRulesAlert} from './home-alerts';"),true);
 has('the experiment form asks for the verify channel','label="검증할 채널 *"');
 has('the experiment form shows the case channel','label="원 사례 채널"');
 

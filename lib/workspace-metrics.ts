@@ -1,6 +1,6 @@
 // 대시보드·사이드바 숫자의 정의. 화면마다 따로 세지 않도록 여기서만 센다(tests/workspace-metrics.test.mjs로 고정).
 import {roles,statuses,type Artifact,type Campaign,type Run} from './agency';
-import {artifactUsable} from './role-output';
+import {artifactUsable} from './artifact-text';
 import {franchiseNextTasks,type FranchiseNextTask,type FranchiseWorkspaceTasks} from './franchise-tasks';
 
 // 캠페인 상태(lib/agency.ts statuses): draft 브리프 작성 · ready 실행 준비 · running AI 작업 중 · blocked 진행 막힘 · review 검토 대기 · approved 기획 승인 ·
