@@ -1,4 +1,5 @@
 'use client';
+import {dateTime} from '@/lib/format';
 import {useState} from 'react';
 import {Button} from '@/components/ui/button';
 import {ExternalLink,RefreshCw,Search,TriangleAlert} from 'lucide-react';
@@ -17,7 +18,7 @@ export function DeepResearchPanel({brand,research,sources,busy,onFollowup}:{bran
  <div className="deep-plan-stats"><span>최근 <b>{plan.lookbackDays}일</b></span><span>자사 콘텐츠 목표 <b>{plan.targetCases}개</b></span><span>경쟁·대안 목표 <b>{plan.targetCompetitors}개</b></span><span>보완 조사 최대 <b>{plan.maxFollowups}회</b></span></div>
  <p className="subtle-note">접근 가능한 범위에서 조사합니다. 표본이 적거나 접근이 막히면 부족한 근거를 남깁니다. 목표 수량은 수집 완료 수량이 아닙니다.</p>
  <details><summary>조사 질문과 수행 범위</summary><ol>{plan.questions.map(q=><li key={q}>{q}</li>)}</ol><p>우선 확인할 채널: {plan.channels.join(' · ')}. 공식 계정과 사업 목적을 확인한 뒤 조사 비중을 조정합니다.</p><div className="deep-phases">{researchPhases.map((p,i)=><span key={p}>{String(i+1).padStart(2,'0')} {p}{report?' · 기록됨':''}</span>)}</div><p>계획부터 보완 조사까지 HERMES의 한 연속 작업으로 실행합니다. 접수 후에는 이 화면을 닫아도 실행이 이어지며, 다시 열면 결과를 확인해 보관합니다. HERMES 서버와 연결된 브라우저가 실행 가능한 상태여야 합니다.</p></details>
- {connection&&<div className="deep-access"><b>Aside {connection.aside==='advertised'?'목록에서 확인':'목록만으로 확인 불가'}</b><span>도구 위험 등급 {risk?.summary}</span><small>확인 시점 {connection.checkedAt.slice(0,16).replace('T',' ')}</small>{risk?.warning&&<p role="alert" className="load-error"><TriangleAlert size={16}/><span>{risk.warning}</span></p>}{connection.notes.map(n=><p key={n}>{n}</p>)}</div>}
+ {connection&&<div className="deep-access"><b>Aside {connection.aside==='advertised'?'목록에서 확인':'목록만으로 확인 불가'}</b><span>도구 위험 등급 {risk?.summary}</span><small>확인 시점 {dateTime(connection.checkedAt)}</small>{risk?.warning&&<p role="alert" className="load-error"><TriangleAlert size={16}/><span>{risk.warning}</span></p>}{connection.notes.map(n=><p key={n}>{n}</p>)}</div>}
  {!report&&<p className="notice"><Search size={16}/> 실제 브라우징 기록, 콘텐츠 비교와 반론 검토 결과가 여기에 모입니다. 도구 등록 확인과 사이트 접속 성공은 구분합니다.</p>}
  {report&&<><p className="notice">최근 조사에서 보고된 브라우징 {browserRecords.length}건 · Aside 사용 {asideRecords.length}건. {browserRecords.length?'아래 접근 기록에서 사용 도구와 출처를 확인하세요.':'이 조사에는 브라우징 근거가 없습니다. 연결 후 보완 조사를 실행해 확인하세요.'}</p><div className={'deep-verdict '+report.quality.status}><div><h4>{report.quality.status==='needs_data'?'추가 자료·보완 조사 필요':'진단 검토 가능'}</h4><p>자사 콘텐츠 {report.cases.filter(c=>c.relationship==='own').length}개 · 경쟁·대안 {report.competitors.length}개 · 시청 기록 {report.quality.viewedCases}개 · 비교 가능한 묶음 {report.quality.comparableGroups}개</p></div><Button variant="outline" disabled={busy} onClick={()=>onFollowup(research!.id)}>부족한 근거 보완 조사</Button></div>
  <p className="subtle-note">접근·시청 기록은 HERMES가 보고한 관찰입니다. 자동 검사는 형식과 근거 연결을 점검하며 사실 검증을 대신하지 않습니다. 원문을 확인한 뒤 전략에 사용하세요.</p>

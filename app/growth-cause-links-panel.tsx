@@ -1,4 +1,5 @@
 'use client';
+import {Note} from '@/components/app/note';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {GrowthCauseLinkView} from '@/lib/growth-cause-links-server';
 import type {CauseTargetKind} from '@/lib/growth-cause-links';
@@ -24,9 +25,9 @@ function Workspace({campaignId}:{campaignId:string}){
   finally{writing.current=null;if(mounted.current&&!controller.signal.aborted)setSaving(false);}
  }
  const d=view?.distribution;
- return <section aria-label="반품 원인 개선 연결" className={styles.panel}><header className={styles.header}><h3>반품·환불 원인 → 개선 검토</h3><button type="button" disabled={busy} onClick={()=>void load(window)}>원인 연결 새로고침</button></header>
-  <p className={styles.note}>운영자가 확인한 원인 기록을 같은 미션의 구매 병목·일일 결정·운영 교훈에 연결합니다. 원인 분포는 관측 기간의 반품·환불 품목 수 기준이며 결함률·인과 효과가 아닙니다. 자동 응대·환불·재고 해제·규칙 승격은 하지 않습니다.</p>
-  {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">원인 연결을 조회하고 있습니다.</p>}{stale&&<p className={styles.error}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
+ return <section aria-label="반품 원인 개선 연결" className={styles.panel}><header className={styles.header}><h3>반품·환불 원인 → 개선 검토</h3><button aria-label="원인 연결 새로고침" type="button" disabled={busy} onClick={()=>void load(window)}>새로고침</button></header>
+  <Note className={styles.note}>운영자가 확인한 원인 기록을 같은 미션의 구매 병목·일일 결정·운영 교훈에 연결합니다. 원인 분포는 관측 기간의 반품·환불 품목 수 기준이며 결함률·인과 효과가 아닙니다. 자동 응대·환불·재고 해제·규칙 승격은 하지 않습니다.</Note>
+  {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">원인 연결을 조회하고 있습니다.</p>}{stale&&<p role="status" className={styles.warning}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
   {view&&d&&<><form className={styles.form} onSubmit={e=>{e.preventDefault();void load(window);}}><label>관측 시작일<input type="date" value={window.from} onChange={e=>setWindow({...window,from:e.target.value})}/></label><label>관측 종료일<input type="date" value={window.to} onChange={e=>setWindow({...window,to:e.target.value})}/></label><button type="submit" disabled={busy}>기간 적용</button></form>
    <h4>원인 분포 ({d.window.from}~{d.window.to})</h4><p>분모: 반품·환불 사건이 있는 품목 {d.denominator.lines}건 · 원본 보류 {d.held}건 · 원인 미기록 {d.unrecorded}건 · 여러 원인 {d.linesWithMultipleCodes}건 · 관측 시각 없음 제외 {d.excludedWithoutObservedAt}건</p>
    <ul>{d.counts.map(c=><li key={c.code}>{reasonLabels[c.code]??c.code}: {c.lines}건</li>)}</ul><p>결함률·반품률이 아닌 운영자 확인 분포입니다. 인과 효과: 미측정.</p>

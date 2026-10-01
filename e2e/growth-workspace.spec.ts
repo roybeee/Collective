@@ -48,7 +48,7 @@ test('성장 판매 근거·니즈 연결·불완전 미션·충돌 입력 보�
   // A fresh browser page must recover the saved input from local D1.
   await page.reload();
   panel=await openGrowth(page,title);
-  await panel.getByRole('complementary',{name:'시장 근거 기록 목록'}).getByRole('button',{name:/수요 조사 출처/}).click();
+  await panel.getByRole('group',{name:'시장 근거 기록 목록'}).getByRole('button',{name:/수요 조사 출처/}).click();
   await expect(panel.getByRole('textbox',{name:'관측 요약',exact:true})).toHaveValue('공개 자료에서 간편 조리 선호를 관측');
   await expect(panel.getByLabel('표본 수 (미확인은 빈칸)',{exact:true})).toHaveValue('');
 

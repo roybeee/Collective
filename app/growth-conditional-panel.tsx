@@ -1,4 +1,6 @@
 'use client';
+import {enumLabel} from '@/lib/ui-copy';
+import {Note} from '@/components/app/note';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {GrowthConditionalView} from '@/lib/growth-conditional-server';
 import {geoEngines,pilotChecks,type GeoObservationInput,type PilotInput} from '@/lib/growth-conditional';
@@ -17,13 +19,13 @@ function Workspace({campaignId}:{campaignId:string}){
  async function send(body:Record<string,unknown>,done:string){if(saving||!view)return;const payload={campaignId,campaignVersion:view.campaignVersion,...body},key=JSON.stringify(payload),requestId=retry.current?.key===key?retry.current.requestId:crypto.randomUUID();retry.current={key,requestId};setSaving(true);setError('');setMessage('');
   try{const r=await fetch('/api/growth/conditional',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,requestId})}),v=await r.json() as {error?:string;version?:number};if(!r.ok)throw new Error(v.error??'저장하지 못했습니다.');retry.current=null;setMessage(done);if(body.action==='save_geo')setGeo(emptyGeo());else setPilotVersion(v.version??0);await load();}catch(e){setError(`${e instanceof Error?e.message:'저장 실패'} 입력은 보존했습니다.`);}finally{setSaving(false)}}
  const n=(v:string)=>v===''?null:Number(v);
- return <section aria-label="조건부 확장 검토" className={styles.panel}><header className={styles.header}><h3>조건부 확장 · GEO·해외·MMM</h3><button type="button" disabled={loading} onClick={()=>void load()}>조건부 검토 새로고침</button></header>
-  <p className={styles.note}>데이터·권리·사업성이 준비될 때만 여는 원안 선택 카드입니다. 구조화 데이터는 노출·인용 보장이 아니고, 해외 파일럿은 대표 결정 전 출시하지 않으며, MMM은 충분한 장기·변동 지출 이력이 없으면 실행하지 않고 예산을 배분하지 않습니다. 외부 고객 서비스(G2-23/24)는 별도 사업 결정이 필요합니다.</p>
+ return <section aria-label="조건부 확장 검토" className={styles.panel}><header className={styles.header}><h3>조건부 확장 · GEO·해외·MMM</h3><button aria-label="조건부 검토 새로고침" type="button" disabled={loading} onClick={()=>void load()}>새로고침</button></header>
+  <Note className={styles.note}>데이터·권리·사업성이 준비될 때만 여는 원안 선택 카드입니다. 구조화 데이터는 노출·인용 보장이 아니고, 해외 파일럿은 대표 결정 전 출시하지 않으며, MMM은 충분한 장기·변동 지출 이력이 없으면 실행하지 않고 예산을 배분하지 않습니다. 외부 고객 서비스(G2-23/24)는 별도 사업 결정이 필요합니다.</Note>
   {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">조건부 검토를 조회하고 있습니다.</p>}
   {view&&<><h4>GEO · 상품 구조화 데이터</h4><ul>{view.geo.products.map(p=><li key={p.offerId}>{p.title}: {p.ready?<textarea readOnly aria-label={`${p.title} JSON-LD`} value={JSON.stringify(p.jsonLd,null,1)}/>:p.missing.join(' ')}</li>)}</ul>
    <p>AI 답변 관측 {view.geo.summary.checks}회 · 인용 {view.geo.summary.cited}회 · 유입 세션 {view.geo.summary.referralSessions??'미확인'} · 주문은 추적 코드로 별도 확인</p>
    {view.canEdit&&<form onSubmit={e=>{e.preventDefault();void send({action:'save_geo',id:`geo-${crypto.randomUUID().slice(0,8)}`,expectedVersion:0,input:{...geo,observedAt:geo.observedAt?new Date(geo.observedAt).toISOString():''}},'관측을 기록했습니다.');}}><fieldset disabled={saving} className={styles.form}><legend>AI 답변 인용 관측</legend>
-    <label>AI 답변 서비스<select value={geo.engine} onChange={e=>setGeo({...geo,engine:e.target.value as GeoObservationInput['engine']})}>{geoEngines.map(x=><option key={x} value={x}>{x}</option>)}</select></label><label className={styles.wide}>질문<input maxLength={300} value={geo.query} onChange={e=>setGeo({...geo,query:e.target.value})}/></label>
+    <label>AI 답변 서비스<select value={geo.engine} onChange={e=>setGeo({...geo,engine:e.target.value as GeoObservationInput['engine']})}>{geoEngines.map(x=><option key={x} value={x}>{enumLabel('geoEngine',x)}</option>)}</select></label><label className={styles.wide}>질문<input maxLength={300} value={geo.query} onChange={e=>setGeo({...geo,query:e.target.value})}/></label>
     <label>관측 시각<input type="datetime-local" value={geo.observedAt} onChange={e=>setGeo({...geo,observedAt:e.target.value})}/></label><label><input type="checkbox" checked={geo.cited} onChange={e=>setGeo({...geo,cited:e.target.checked,citedUrl:e.target.checked?geo.citedUrl:''})}/>우리 페이지 인용됨</label>
     {geo.cited&&<label className={styles.wide}>인용 URL<input value={geo.citedUrl} onChange={e=>setGeo({...geo,citedUrl:e.target.value})}/></label>}<label>유입 세션(분석 도구)<input type="number" min={0} value={geo.referralSessions??''} onChange={e=>setGeo({...geo,referralSessions:n(e.target.value)})}/></label>
     <button type="submit" disabled={!geo.query||!geo.observedAt}>관측 기록</button></fieldset></form>}

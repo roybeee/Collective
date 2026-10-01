@@ -1,4 +1,5 @@
 'use client';
+import {Note} from '@/components/app/note';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {GrowthCollaborationView} from '@/lib/growth-collaboration-server';
 import type {CollaborationPlan,CollaborationStage} from '@/lib/growth-collaboration';
@@ -25,9 +26,9 @@ function Workspace({campaignId}:{campaignId:string}){
  }
  const recordStage=(r:Row)=>send({action:'record_stage',id:r.id,expectedVersion:r.version,receipt:{stage:receipt.stage,at:receipt.at?new Date(receipt.at).toISOString():'',evidenceRef:receipt.evidenceRef,note:receipt.note,disclosureConfirmed:receipt.disclosureConfirmed,authenticityConfirmed:receipt.authenticityConfirmed,paidKrw:receipt.paidKrw===''?null:Number(receipt.paidKrw)}},'단계 영수증을 기록했습니다.');
  const t=(k:keyof CollaborationPlan)=>(e:{target:{value:string}})=>setPlan({...plan,[k]:e.target.value});
- return <section aria-label="크리에이터 파트너 협업" className={styles.panel}><header className={styles.header}><h3>크리에이터·파트너 협업</h3><button type="button" disabled={busy} onClick={()=>void load()}>협업 새로고침</button></header>
-  <p className={styles.note}>크리에이터·파트너 수요 단계의 브리프·청중 적합 근거·권리·수수료·추적 코드·일정을 기록하고, 합의→납품→승인(광고 표시·진정성 확인)→게시→정산을 운영자 증빙으로 남깁니다. 협업자 연락·메시지 발송·지급은 하지 않으며 연락처를 입력하지 마세요. 성과는 추적 코드로 연결된 게시 이후 주문이며 인과 효과가 아닙니다.</p>
-  {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">협업을 조회하고 있습니다.</p>}{stale&&<p className={styles.error}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
+ return <section aria-label="크리에이터 파트너 협업" className={styles.panel}><header className={styles.header}><h3>크리에이터·파트너 협업</h3><button aria-label="협업 새로고침" type="button" disabled={busy} onClick={()=>void load()}>새로고침</button></header>
+  <Note className={styles.note}>크리에이터·파트너 수요 단계의 브리프·청중 적합 근거·권리·수수료·추적 코드·일정을 기록하고, 합의→납품→승인(광고 표시·진정성 확인)→게시→정산을 운영자 증빙으로 남깁니다. 협업자 연락·메시지 발송·지급은 하지 않으며 연락처를 입력하지 마세요. 성과는 추적 코드로 연결된 게시 이후 주문이며 인과 효과가 아닙니다.</Note>
+  {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">협업을 조회하고 있습니다.</p>}{stale&&<p role="status" className={styles.warning}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
   {view&&<>{view.canEdit&&<button type="button" disabled={busy} onClick={()=>{setEditing({id:`collab-${crypto.randomUUID().slice(0,8)}`,expectedVersion:0});setPlan(emptyPlan());retry.current=null;}}>새 협업</button>}
    {editing&&<form onSubmit={e=>{e.preventDefault();void send({action:'save_plan',id:editing.id,expectedVersion:editing.expectedVersion,plan},'협업 계획을 저장했습니다.');}}><fieldset disabled={busy||!view.canEdit} className={styles.form}><legend>협업 {editing.id}</legend>
     <label className={styles.wide}>수요 단계<select value={`${plan.sequenceId}|${plan.stepId}`} onChange={e=>{const s=view.steps.find(x=>`${x.sequenceId}|${x.stepId}`===e.target.value);setPlan({...plan,sequenceId:s?.sequenceId??'',sequenceVersion:s?.sequenceVersion??1,stepId:s?.stepId??'',partnerKind:s?.placement==='partner'?'partner':'creator'});}}><option value="|">단계 선택</option>{view.steps.map(s=><option key={`${s.sequenceId}|${s.stepId}`} value={`${s.sequenceId}|${s.stepId}`}>{s.title} · {s.stepId} · {s.placement==='creator'?'크리에이터':'파트너'} · 계획 비용 {won(s.plannedCost)}</option>)}</select></label>

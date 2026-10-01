@@ -7,7 +7,7 @@ import type {NavTab,NavView} from './nav-state';
 export type FeatureStatus='available'|'blocked'|'unimplemented';
 export const featureStatusLabels:Record<FeatureStatus,string>={available:'사용 가능',blocked:'조건 부족',unimplemented:'미구현'};
 // section은 설정 화면 안의 카드 id다(같은 화면이면 그 카드로 스크롤한다). 나머지는 주소 라우팅(lib/nav-state.ts)으로 이동하고, tab이 있으면 그 화면의 탭을 연다.
-// 캠페인 상세의 탭은 주소에 싣지 않으므로 캠페인 링크 라벨은 '캠페인을 열어 … 탭에서'로 도착 화면을 그대로 말한다.
+// 캠페인 안쪽 탭은 주소(ctab, lib/nav-state.ts)에 실리지만 이 링크는 아직 그것을 쓰지 않는다. 그래서 캠페인 링크 라벨은 '캠페인을 열어 … 탭에서'로 도착 화면을 그대로 말한다.
 export type SettingsSection='settings-ai'|'settings-worker'|'settings-channels';
 export type FeatureLink={label:string;view:NavView;brand?:string;campaign?:string;tab?:NavTab;section?:SettingsSection};
 export type FeatureRow={key:string;label:string;status:FeatureStatus;reason?:string;link?:FeatureLink};

@@ -15,8 +15,12 @@ export type BrandTab=typeof brandTabs[number];
 export const franchiseTabs=['leads','requests','assets','events','inflow','report','benchmark','nurture','settings'] as const;
 export type FranchiseTab=typeof franchiseTabs[number];
 export type NavTab=LearningTab|StoreTab|BrandTab|FranchiseTab;
-export type NavState={view:NavView;campaign?:string;brand?:string;store?:string;tab?:NavTab};
-type NavInput={view?:string|null;campaign?:string|null;brand?:string|null;store?:string|null;tab?:string|null};
+// 캠페인 상세의 탭(app/panels.tsx CampaignPanel). 화면 탭(tab)과 겹치지 않게 ctab으로 둔다(UX-PLAN P4: 새로고침·공유·뒤로가기 때 같은 탭).
+export const campaignTabs=['brief','meeting','team','outputs','growth','meta-ads','execution','results','history'] as const;
+export type CampaignTab=typeof campaignTabs[number];
+export const isCampaignTab=(value:unknown):value is CampaignTab=>(campaignTabs as readonly unknown[]).includes(value);
+export type NavState={view:NavView;campaign?:string;brand?:string;store?:string;tab?:NavTab;ctab?:CampaignTab};
+type NavInput={view?:string|null;campaign?:string|null;brand?:string|null;store?:string|null;tab?:string|null;ctab?:string|null};
 // 서버 id 형식(UUID·시드 id·브랜드 번호 [a-zA-Z0-9_-], 최대 100자)만 받는다.
 const idPattern=/^[A-Za-z0-9_-]{1,100}$/;
 const validId=(value:string|null|undefined)=>typeof value==='string'&&idPattern.test(value)?value:undefined;
@@ -32,19 +36,20 @@ export const franchiseMenuVisible=(status:{enabled:boolean;hasRecords:boolean}|n
 export function normalizeNav(input:NavInput):NavState{
  const view=isView(input.view)?input.view:'overview',campaign=validId(input.campaign);
  const brand=view==='brands'||view==='stores'||view==='learning'||view==='franchise'?validId(input.brand):undefined,store=view==='stores'?validId(input.store):undefined,tab=tabOf(view,input.tab);
- return {view,...(campaign?{campaign}:{}),...(brand?{brand}:{}),...(store?{store}:{}),...(tab?{tab}:{})};
+ const ctab=campaign&&isCampaignTab(input.ctab)&&input.ctab!=='brief'?input.ctab:undefined;
+ return {view,...(campaign?{campaign}:{}),...(brand?{brand}:{}),...(store?{store}:{}),...(tab?{tab}:{}),...(ctab?{ctab}:{})};
 }
 export function parseNav(search:string):NavState{
  const params=new URLSearchParams(search);
- return normalizeNav({view:params.get('view'),campaign:params.get('campaign'),brand:params.get('brand'),store:params.get('store'),tab:params.get('tab')});
+ return normalizeNav({view:params.get('view'),campaign:params.get('campaign'),brand:params.get('brand'),store:params.get('store'),tab:params.get('tab'),ctab:params.get('ctab')});
 }
 // 기본 화면(워크스페이스)만 있으면 빈 문자열이라 주소가 '/'로 남는다.
 export function serializeNav(state:NavInput):string{
- const nav=normalizeNav(state),entries=Object.entries({view:nav.view,campaign:nav.campaign,brand:nav.brand,store:nav.store,tab:nav.tab}).filter((entry):entry is [string,string]=>!!entry[1]);
+ const nav=normalizeNav(state),entries=Object.entries({view:nav.view,campaign:nav.campaign,brand:nav.brand,store:nav.store,tab:nav.tab,ctab:nav.ctab}).filter((entry):entry is [string,string]=>!!entry[1]);
  return entries.length===1&&nav.view==='overview'?'':'?'+new URLSearchParams(entries).toString();
 }
 export function withCampaign(state:NavState,id:string|null):NavState{
- return normalizeNav({...state,campaign:id});
+ return normalizeNav({...state,campaign:id,ctab:id&&id===state.campaign?state.ctab:null});
 }
 // 불러온 데이터에 없는 id: 캠페인은 캠페인 목록으로, 브랜드는 같은 화면의 전체 목록으로(학습 탭만 유지, 지점·아카이브 탭은 그 브랜드의 것이라 버린다). 바뀌지 않으면 같은 객체를 돌려준다.
 export function reconcileNav(state:NavState,known:{campaigns:string[];brands:string[]}):NavState{

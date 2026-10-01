@@ -7,6 +7,13 @@
 - 결정: 대표 지시(2026-09-26 "계속 뭔가 앞서가있어서 중복업무를 하고있어보이는데 바로잡고 세션별 개발순서를 정리해서 중복업무를 없애").
 - 작성: Claude A 세션. 레인을 바꾸려면 대표 확인을 받고 이 문서를 고친다.
 
+### 2026-10-01 UX 2차 개선 · Claude 위임
+
+- 대표 결정(2026-10-01): "모두 승인한다. 끝까지 멈추지말고 진행하라" — [UX 계획](UX-PLAN.ko.md) 12절 6건 승인. 이 Claude 세션이 레인 A의 화면·UX 구현(P0~P7)과 단계별 Sites 게시를 맡는다.
+- 소유: `app/globals.css`·`app/*.module.css`·`app/workspace.tsx`·`app/panels.tsx`·`app/growth-*-panel.tsx`의 화면 구조·문구·데이터 로딩, 신설 `components/app/*`·`lib/ui-copy.ts`·`lib/format.ts`·`lib/ui/*`·`app/api/agenda`·`app/api/growth/summary`, 관련 tests/e2e. 서버 의미·권한·상태 어휘는 바꾸지 않는다.
+- R/Q 소유 파일(`lib/prompt-registry.ts`·`lib/eval-*`·franchise 서버)은 읽기만 한다. 가맹 화면(`app/franchise-*`)은 공통 컴포넌트·토큰 교체만 하고 동작은 바꾸지 않는다.
+- 성장2 후속 개발이 같은 패널을 만지면 이 세션의 해당 PR을 먼저 병합하거나 대표 확인 후 순서를 정한다.
+
 ### 2026-09-30 성장2 원안 잔여 개발 · Claude 인계
 
 - 대표 지시(2026-09-30 16:5x UTC, Claude 세션): “성장계획 2 원안 전체 중에 부분구현되었거나 아직 연결안되었거나 아직 개발 전인것들 멈추지말고 끝까지 개발 완료하라.” 기존 Codex 성장2 통합 담당의 마지막 활동(#284, 13:49 UTC) 뒤 이 Claude 세션이 성장2 원안 잔여 개발을 이어받는다.

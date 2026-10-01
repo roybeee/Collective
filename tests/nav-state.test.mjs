@@ -97,6 +97,12 @@ const base=Object.freeze({view:'assets',brand:'oda'});
 check('opening a campaign keeps the current view',withCampaign({view:'assets'},'c9'),{view:'assets',campaign:'c9'});
 check('closing a campaign keeps the view',withCampaign({view:'campaigns',campaign:'c9'},null),{view:'campaigns'});
 check('invalid campaign id is not opened',withCampaign({view:'campaigns'},'bad id'),{view:'campaigns'});
+// UX-PLAN P4: 캠페인 탭(ctab)은 캠페인이 열려 있을 때만 주소에 남고 기본 탭(brief)은 생략한다.
+check('campaign tab round-trips through the address',parseNav(serializeNav({view:'campaigns',campaign:'c1',ctab:'growth'})),{view:'campaigns',campaign:'c1',ctab:'growth'});
+check('campaign tab without a campaign is dropped',normalizeNav({view:'campaigns',ctab:'growth'}),{view:'campaigns'});
+check('unknown or default campaign tab is dropped',[normalizeNav({view:'campaigns',campaign:'c1',ctab:'evil'}),normalizeNav({view:'campaigns',campaign:'c1',ctab:'brief'})],[{view:'campaigns',campaign:'c1'},{view:'campaigns',campaign:'c1'}]);
+check('opening another campaign resets the campaign tab',withCampaign({view:'campaigns',campaign:'c1',ctab:'growth'},'c2'),{view:'campaigns',campaign:'c2'});
+check('closing a campaign drops its tab',withCampaign({view:'campaigns',campaign:'c1',ctab:'growth'},null),{view:'campaigns'});
 check('withCampaign does not mutate its input',[withCampaign(base,'c1'),base],[{view:'assets',campaign:'c1'},{view:'assets',brand:'oda'}]);
 
 // --- 로드 뒤 존재 확인 -----------------------------------------------------------------

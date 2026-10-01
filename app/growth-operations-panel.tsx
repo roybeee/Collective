@@ -1,5 +1,8 @@
 'use client';
 
+import {fromLocalInput,toLocalInput} from '@/lib/format';
+import {RecordView} from '@/components/app/record-view';
+import {Note} from '@/components/app/note';
 import {useEffect,useRef,useState,type ReactNode} from 'react';
 import {emptyOrderLineInput,type OrderLineInput} from '@/lib/growth-order-bridge';
 import type {InventoryInput,InventoryProjection} from '@/lib/growth-inventory';
@@ -26,7 +29,7 @@ const unitName=(unit:InventoryInput['unit'])=>unit==='pack'?'팩':'개';
 const labels:Record<string,string>={current:'현재 판 기준',reconciliation_required:'재대사 필요',unallocated:'미배분',invalid:'배분 오류',paid:'결제 기록',refunded:'환불 기록',cancelled:'취소 기록',pending:'확인 중'};
 function Field({label,children}:{label:string;children:ReactNode}){return <div className={styles.field}><label>{label}{children}</label></div>;}
 function EvidenceFields({observedAt,evidenceRef,onChange}:{observedAt:string;evidenceRef:string;onChange:(patch:{observedAt?:string;evidenceRef?:string})=>void}){
- return <><Field label="관측 시각 (시간대 포함 ISO)"><input required placeholder="2026-10-01T10:00:00+09:00" value={observedAt} onChange={e=>onChange({observedAt:e.target.value})}/></Field><Field label="증빙 내부 ID (개인정보 제외)"><input required maxLength={160} placeholder="warehouse-check-001" value={evidenceRef} onChange={e=>onChange({evidenceRef:e.target.value})}/></Field></>;
+ return <><Field label="관측 시각(서울 시간)"><input required type="datetime-local" value={toLocalInput(observedAt)} onChange={e=>onChange({observedAt:fromLocalInput(e.target.value)})}/></Field><Field label="증빙 내부 ID (개인정보 제외)"><input required maxLength={160} placeholder="warehouse-check-001" value={evidenceRef} onChange={e=>onChange({evidenceRef:e.target.value})}/></Field></>;
 }
 async function request(url:string,init:RequestInit):Promise<OperationsView>{
  const response=await fetch(url,{...init,credentials:'same-origin',cache:'no-store'}),raw:unknown=await response.json();
@@ -73,8 +76,8 @@ function OperationsWorkspace({campaignId,missions,offers,catalogs}:Props){
   if(section){section.open=true;setTimeout(()=>{section.scrollIntoView({block:'start'});section.querySelector('select')?.focus();},0);}
  }
  function resetForms(){if(busy)return;setDirty({});setSelectedTarget(null);setFormRevision(previous=>previous+1);}
- return <section className={styles.business} aria-label="주문 재고 이행 운영"><header className={styles.header}><div><h3>주문·재고·이행</h3><p>주문 품목을 판매 미션과 연결하고 실사·출고·환불·반품을 기록합니다.</p></div><button type="button" onClick={()=>void refresh()} disabled={busy}>운영 기록 새로고침</button></header>
-  <p className={styles.note}>운영자가 증빙을 확인한 내부 장부입니다. 외부 판매처·택배사·결제사로 실제 요청을 전송하지 않습니다. 주문 금액 배분은 판매 기여나 증분 매출의 증명이 아닙니다. 고객 이름·전화번호·이메일·비밀키를 입력하지 마세요.</p>
+ return <section className={styles.business} aria-label="주문 재고 이행 운영"><header className={styles.header}><div><h3>주문·재고·이행</h3><p>주문 품목을 판매 미션과 연결하고 실사·출고·환불·반품을 기록합니다.</p></div><button aria-label="운영 기록 새로고침" type="button" onClick={()=>void refresh()} disabled={busy}>새로고침</button></header>
+  <Note className={styles.note}>운영자가 증빙을 확인한 내부 장부입니다. 외부 판매처·택배사·결제사로 실제 요청을 전송하지 않습니다. 주문 금액 배분은 판매 기여나 증분 매출의 증명이 아닙니다. 고객 이름·전화번호·이메일·비밀키를 입력하지 마세요.</Note>
   {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}
   {!view?<p role="status">{error?'운영 기록을 불러오지 못했습니다. 새로고침으로 다시 시도하세요.':'운영 기록을 불러오고 있습니다.'}</p>:!view.available?<p className={styles.note}>{view.reason}</p>:<>
    {!view.canEdit&&<p className={styles.note}>조회 전용입니다. 기록 변경은 관리자에게 요청하세요.</p>}
@@ -96,7 +99,7 @@ function MissionStockForm({view,busy,save,missions,offers,catalogs}:FormProps&Pi
  const choices=view.inventory.filter(row=>release?row.projection.reservations.some(held=>held.missionId===draft.missionId&&held.held>0):!!catalog&&row.input.sku===catalog.input.sku);
  const missionChoices=missions.filter(row=>release?['cancelled','failed'].includes(row.status??''):row.status==='staged');
  async function submit(){if(!mission||!inventory)return;if(await save({...draft,quantity:Number(draft.quantity),missionVersion:mission.version,inventoryVersion:inventory.version},release?'미션의 아직 주문에 배정하지 않은 재고 예약을 해제했습니다.':'미션 계획 수량을 공유 재고에 예약했습니다. 외부 판매는 수행하지 않았습니다.'))setDraft({...draft,id:crypto.randomUUID(),quantity:'',reservationId:'',evidenceRef:'',observedAt:new Date().toISOString(),safeRelease:false})}
- return <form onSubmit={e=>{e.preventDefault();void submit()}}><p className={styles.note}>준비된 미션에 개·팩 단위의 계획 수량을 명시적으로 예약합니다. 취소·실패가 확인된 미션의 미배정 예약만 해제할 수 있습니다. 주문에 배정된 수량은 주문 이행 화면에서 확인하세요.</p>
+ return <form onSubmit={e=>{e.preventDefault();void submit()}}><Note className={styles.note}>준비된 미션에 개·팩 단위의 계획 수량을 명시적으로 예약합니다. 취소·실패가 확인된 미션의 미배정 예약만 해제할 수 있습니다. 주문에 배정된 수량은 주문 이행 화면에서 확인하세요.</Note>
   <fieldset className={styles.form} disabled={busy}><legend>미션 계획 재고</legend>
    <Field label="예약 작업"><select value={draft.action} onChange={e=>setDraft({...draft,action:e.target.value,missionId:'',inventoryId:'',reservationId:'',observedAt:new Date().toISOString(),safeRelease:false})}><option value="reserve_stock">준비된 미션 재고 예약</option><option value="release_stock">취소·실패 미션 예약 해제</option></select></Field>
    <Field label="대상 판매 미션"><select required value={draft.missionId} onChange={e=>setDraft({...draft,missionId:e.target.value,inventoryId:'',reservationId:'',observedAt:new Date().toISOString()})}><option value="">미션 선택</option>{missionChoices.map(row=><option key={row.id} value={row.id}>{String(row.input.title??row.id)} · v{row.version}</option>)}</select></Field>
@@ -140,7 +143,7 @@ function InventoryForms({view,busy,save,catalogs,initialInventoryId=''}:FormProp
   <Field label="처음 확인한 실물 수량 (미확인은 빈칸)"><input type="number" min={0} step={1} value={draft.onHand??''} onChange={e=>setDraft({...draft,onHand:nullable(e.target.value)})}/></Field>
   {draft.onHand!==null&&<EvidenceFields observedAt={draft.observedAt} evidenceRef={draft.evidenceRef} onChange={patch=>setDraft({...draft,...patch})}/>}<button type="submit">공유 재고 등록</button>
  </fieldset>{!view.storeId&&<p className={styles.note}>지점 식별자를 확인할 수 없습니다. 운영 기록을 새로고침하세요.</p>}</form>
- <form data-growth-form="inventory_adjust" onSubmit={e=>{e.preventDefault();void adjustStock()}}><h4>실사·입고 기록</h4><p className={styles.note}>실사는 현재 총수량으로 바꾸고, 입고는 기존 수량에 더합니다. 재고 미확인 상태에서는 입고만 기록해도 가용량을 확정하지 않습니다.</p><fieldset disabled={busy||!view.inventory.length} className={styles.form}><legend className={styles.srOnly}>재고 관측 기록</legend>
+ <form data-growth-form="inventory_adjust" onSubmit={e=>{e.preventDefault();void adjustStock()}}><h4>실사·입고 기록</h4><Note className={styles.note}>실사는 현재 총수량으로 바꾸고, 입고는 기존 수량에 더합니다. 재고 미확인 상태에서는 입고만 기록해도 가용량을 확정하지 않습니다.</Note><fieldset disabled={busy||!view.inventory.length} className={styles.form}><legend className={styles.srOnly}>재고 관측 기록</legend>
   <Field label="관측할 공유 재고"><select required value={adjust.inventoryId} onChange={e=>setAdjust({...adjust,inventoryId:e.target.value,observedAt:new Date().toISOString()})}><option value="">재고 선택</option>{view.inventory.map(row=><option key={row.id} value={row.id}>{row.input.sku} · {unitName(row.input.unit)}</option>)}</select></Field>
   <Field label="관측 종류"><select value={adjust.kind} onChange={e=>setAdjust({...adjust,kind:e.target.value})}><option value="stocktake">실사 — 실제 총수량</option><option value="receive">입고 — 추가 수량</option></select></Field>
   <Field label={adjust.kind==='stocktake'?'실사한 총수량':'추가 입고 수량'}><input required type="number" min={adjust.kind==='stocktake'?0:1} step={1} value={adjust.quantity} onChange={e=>setAdjust({...adjust,quantity:e.target.value})}/></Field>
@@ -159,9 +162,9 @@ function OrderLinkForm({view,busy,save,missions,offers,catalogs,initialTarget}:F
  function chooseMission(id:string){const mission=missions.find(row=>row.id===id),offer=offers.find(row=>row.id===mission?.input.offerId);setDraft({...draft,missionId:id,missionVersion:mission?.version??0,offerId:offer?.id??'',offerVersion:offer?.version??0,inventoryId:''})}
  function chooseLine(id:string){const row=view.orderLines.find(line=>line.id===id);setLineId(id);setExpectedVersion(row?.version??0);setDraft(row?{...row.input,orderVersion:view.orders.find(order=>order.id===row.input.orderId)?.version??row.input.orderVersion}:{...emptyOrderLineInput(),sourceKey:'manual'})}
  async function submit(){if(await save({action:'link_order',input:draft,expectedVersion,inventoryVersion:selectedInventory?.version},'주문 품목을 연결했습니다. 금액 배분은 실판매 효과의 증명이 아닙니다.'))chooseLine('')}
- return <form onSubmit={e=>{e.preventDefault();void submit()}}><p className={styles.note}>개·팩 수량은 직접 확인해 입력하세요. 오퍼 수량에서 자동 계산하지 않습니다. 결제·환불 배분을 모르면 빈칸으로 둡니다.</p>
+ return <form onSubmit={e=>{e.preventDefault();void submit()}}><Note className={styles.note}>개·팩 수량은 직접 확인해 입력하세요. 오퍼 수량에서 자동 계산하지 않습니다. 결제·환불 배분을 모르면 빈칸으로 둡니다.</Note>
   <Field label="기존 품목 재대사 또는 새 연결"><select disabled={busy} value={lineId} onChange={e=>chooseLine(e.target.value)}><option value="">새 품목 연결</option>{view.orderLines.map(line=><option key={line.id} value={line.id}>{line.input.orderId} · {line.input.sourceKey}/{line.input.accountId} · {line.input.externalLineId} · v{line.version}</option>)}</select></Field>
-  {stale&&<div role="alert" className={styles.error}>품목 또는 원 주문이 변경되었습니다. 현재 입력 금액은 보존했습니다. 최신 품목 v{selectedLine.version} · 주문 v{selectedOrder?.version??'확인 필요'}를 검토하세요.<details><summary>서버의 최신 품목 배분 보기</summary><pre>{JSON.stringify(selectedLine.input,null,2)}</pre></details><button type="button" disabled={busy||!selectedOrder} onClick={()=>{if(!selectedOrder)return;setExpectedVersion(selectedLine.version);setDraft(current=>({...current,orderVersion:selectedOrder.version}))}}>현재 입력 유지 · 최신 품목 판 확인</button></div>}
+  {stale&&<div role="alert" className={styles.error}>품목 또는 원 주문이 변경되었습니다. 현재 입력 금액은 보존했습니다. 최신 품목 v{selectedLine.version} · 주문 v{selectedOrder?.version??'확인 필요'}를 검토하세요.<details><summary>서버의 최신 품목 배분 보기</summary><RecordView label="서버의 최신 품목 배분 보기" value={selectedLine.input}/></details><button type="button" disabled={busy||!selectedOrder} onClick={()=>{if(!selectedOrder)return;setExpectedVersion(selectedLine.version);setDraft(current=>({...current,orderVersion:selectedOrder.version}))}}>현재 입력 유지 · 최신 품목 판 확인</button></div>}
   <fieldset disabled={busy||!view.orders.length} className={styles.form}><legend>주문 품목과 판매 미션</legend>
    <Field label="지점 주문"><select required disabled={expectedVersion>0} value={draft.orderId} onChange={e=>{const order=view.orders.find(row=>row.id===e.target.value);setDraft({...draft,orderId:e.target.value,orderVersion:order?.version??0})}}><option value="">주문 선택</option>{view.orders.map(row=><option key={row.id} value={row.id}>{row.orderDate} · {row.id} · {labels[row.status]??row.status}</option>)}</select></Field>
    <Field label="연결 판매 미션"><select required disabled={expectedVersion>0} value={draft.missionId} onChange={e=>chooseMission(e.target.value)}><option value="">미션 선택</option>{missions.map(row=><option key={row.id} value={row.id}>{String(row.input.title??'판매 미션')} · v{row.version}</option>)}</select></Field>
@@ -183,7 +186,7 @@ function OperationForm({view,busy,save,initialLineId=''}:FormProps&{initialLineI
  const selected=view.orderLines.find(line=>line.id===draft.lineId),inventory=view.inventory.find(row=>row.id===selected?.input.inventoryId),order=inventory?.projection.orders.find(row=>row.orderId===selected?.id);
  function chooseKind(kind:string){setDraft({...draft,kind,observedAt:new Date().toISOString(),safeRelease:false,returnAccepted:false,disposition:'unknown',restock:false})}
  async function submit(){if(!inventory)return;if(await save({action:'record_operation',...draft,quantity:Number(draft.quantity),inventoryVersion:inventory.version},'운영자가 확인한 이행 사건을 기록했습니다. 외부 요청은 전송하지 않았습니다.'))setDraft({...draft,id:crypto.randomUUID(),quantity:'',evidenceRef:'',observedAt:new Date().toISOString(),safeRelease:false,returnAccepted:false,disposition:'unknown',restock:false})}
- return <form onSubmit={e=>{e.preventDefault();void submit()}}><p className={styles.note}>환불 수량 기록은 돈을 반환하거나 실물 재고를 복구하지 않습니다. 반품은 검수 수락·재판매 가능·재입고 확인이 모두 있어야 실물 수량에 더합니다.</p>
+ return <form onSubmit={e=>{e.preventDefault();void submit()}}><Note className={styles.note}>환불 수량 기록은 돈을 반환하거나 실물 재고를 복구하지 않습니다. 반품은 검수 수락·재판매 가능·재입고 확인이 모두 있어야 실물 수량에 더합니다.</Note>
   <fieldset disabled={busy||!view.orderLines.length} className={styles.form}><legend>이행 사건 기록</legend>
    <Field label="이행할 주문 품목"><select required value={draft.lineId} onChange={e=>setDraft({...draft,lineId:e.target.value,observedAt:new Date().toISOString()})}><option value="">연결 품목 선택</option>{view.orderLines.map(line=><option key={line.id} value={line.id}>{line.input.orderId} · {line.input.externalLineId}</option>)}</select></Field>
    <Field label="이행 종류"><select required value={draft.kind} onChange={e=>chooseKind(e.target.value)}><option value="">이행 종류 선택</option><option value="ship">출고 사실</option><option value="refund">환불 수량 확인</option><option value="return">반품 검수</option><option value="release">미출고 예약 해제</option></select></Field>

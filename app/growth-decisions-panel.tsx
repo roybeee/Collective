@@ -1,5 +1,6 @@
 'use client';
 
+import {Note} from '@/components/app/note';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {emptyDecisionInput,emptyLessonInput,type DecisionInput,type LessonInput} from '@/lib/growth-decisions';
 import styles from './growth-panel.module.css';
@@ -61,7 +62,7 @@ function Editor({kind,campaignId,view,onView,saving,onSaving}:{kind:Kind;campaig
  }
  const selected=rows.find(row=>row.id===identity.id),stale=!!selected&&selected.version!==identity.version,locked=saving||!view.canEdit;
  const values=draft as unknown as Record<string,string|number|null>,lesson=kind==='lesson'?draft as LessonInput:null;
- return <section aria-label={name}><div className={styles.workspace}><aside className={styles.list} aria-label={`${name} 목록`}><button type="button" disabled={locked} onClick={()=>pick()}>새 {name}</button>{!rows.length&&<p>저장된 기록이 없습니다.</p>}{rows.map(row=><button type="button" key={row.id} disabled={saving} aria-pressed={row.id===identity.id} onClick={()=>pick(row)}><strong>{row.input.title||'제목 없는 초안'}</strong><span>v{row.version}</span></button>)}</aside>
+ return <section aria-label={name}><div className={styles.workspace}><div role="group" className={styles.list} aria-label={`${name} 목록`}><button type="button" disabled={locked} onClick={()=>pick()}>새 {name}</button>{!rows.length&&<p>저장된 기록이 없습니다.</p>}{rows.map(row=><button type="button" key={row.id} disabled={saving} aria-pressed={row.id===identity.id} onClick={()=>pick(row)}><strong>{row.input.title||'제목 없는 초안'}</strong><span>v{row.version}</span></button>)}</div>
  <div className={styles.editor}><h4>{identity.version?`${name} 편집 · v${identity.version}`:`새 ${name}`}</h4>{!view.canEdit&&<p>조회 전용입니다.</p>}{error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}
  {stale&&<div className={styles.error}>서버 기록이 v{selected.version}로 바뀌었습니다. 최신 기록을 검토하고 저장 기준을 선택하세요.<details><summary>최신 기록 보기</summary><dl>{Object.entries(selected.input).map(([key,value])=><div key={key}><dt>{[...decisionFields,...lessonFields].find(field=>field.key===key)?.label??key}</dt><dd>{value===null?'미확인':String(value)}</dd></div>)}</dl></details><button type="button" disabled={locked} onClick={()=>{setIdentity({id:selected.id,version:selected.version});setError('');setMessage('현재 입력을 유지했습니다. 최신 기록 위에 새 버전으로 저장합니다.');}}>현재 입력 유지 · 최신 버전 기준 사용</button><button type="button" disabled={saving} onClick={()=>pick(selected)}>서버 기록으로 입력 교체</button></div>}
  <form onSubmit={e=>{e.preventDefault();void save();}}><fieldset disabled={locked} className={styles.form}><legend className={styles.srOnly}>{name} 입력</legend>
@@ -82,8 +83,8 @@ export function GrowthDecisionsPanel({campaignId}:{campaignId:string}){
  useEffect(()=>{const c=new AbortController();read.current=c;void Promise.resolve().then(()=>{if(!c.signal.aborted)void load(c.signal);});return()=>read.current?.abort();},[load]);
  function reload(){read.current?.abort();const c=new AbortController();read.current=c;void load(c.signal);}
  function saved(next:View){read.current?.abort();setLoading(false);setView(next);}
- return <section className={styles.panel} aria-label="결정·운영 교훈"><header className={styles.header}><div><h3>일일 결정·운영 교훈</h3><p>관측과 판단을 나누고 실패·반례까지 다음 검증에 남깁니다.</p></div><button type="button" disabled={loading||saving} onClick={reload}>결정·교훈 새로고침</button></header>
- <p className={styles.note}>개인정보·비공개 접근 URL을 입력하지 마세요. 담당자는 역할로 기록합니다. 실패 관측도 교훈으로 남길 수 있습니다. 재사용 검토는 자동 규칙 주입이나 성과의 인과 검증이 아닙니다. 손실 한도 빈칸은 미확인, 0은 명시한 한도입니다.</p>
+ return <section className={styles.panel} aria-label="결정·운영 교훈"><header className={styles.header}><div><h3>일일 결정·운영 교훈</h3><p>관측과 판단을 나누고 실패·반례까지 다음 검증에 남깁니다.</p></div><button aria-label="결정·교훈 새로고침" type="button" disabled={loading||saving} onClick={reload}>새로고침</button></header>
+ <Note className={styles.note}>개인정보·비공개 접근 URL을 입력하지 마세요. 담당자는 역할로 기록합니다. 실패 관측도 교훈으로 남길 수 있습니다. 재사용 검토는 자동 규칙 주입이나 성과의 인과 검증이 아닙니다. 손실 한도 빈칸은 미확인, 0은 명시한 한도입니다.</Note>
  {loading&&<p role="status">결정·교훈을 불러오고 있습니다.</p>}{error&&<p role="alert" className={styles.error}>{error}</p>}{view&&<><details open><summary>일일 결정 기록</summary><Editor kind="decision" campaignId={campaignId} view={view} onView={saved} saving={saving} onSaving={value=>{if(value){read.current?.abort();setLoading(false);}setSaving(value);}}/></details><details><summary>운영 교훈 기록</summary><Editor kind="lesson" campaignId={campaignId} view={view} onView={saved} saving={saving} onSaving={value=>{if(value){read.current?.abort();setLoading(false);}setSaving(value);}}/></details></>}
  </section>;
 }
