@@ -240,3 +240,6 @@ body{font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;backgrou
 @media not (max-width:767px){.campaign-sheet{width:min(1120px,100vw)!important}.campaign-tabs>[data-slot=tabs-list]{position:sticky;top:0;z-index:3;background:#fff}}
 .crumbs{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 6px;padding:0;list-style:none;font-size:13px;color:#626c55}.crumbs li+li:before{content:'›';margin-right:4px;color:#b9c3ad}.crumbs [aria-current]{color:#2f3a24;font-weight:600}.campaign-sheet .crumbs{padding-right:52px}.crumbs li{max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:767px){.crumbs [data-slot=button]{min-height:44px}}
+/* UX-PLAN-3 Q3 서버 검증 오류를 칸 아래에 보인다(components/app/field-error-bridge.tsx가 라벨에 data-field-error를 단다). */
+[data-field-error]::after{content:attr(data-field-error) / "";display:block;margin-top:4px;color:#b42318;font-size:12px;font-weight:500;line-height:1.5}
+[aria-invalid=true]{border-color:#b42318}
