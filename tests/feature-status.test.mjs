@@ -116,7 +116,7 @@ ok('R7a benchmark reason says the key is needed, tokens are zero and it is not o
 check('franchiseSwitch reads on, off and unknown',[franchiseSwitch(flagList(true)),franchiseSwitch(flagList(false)),franchiseSwitch(null),franchiseSwitch([{flag:'r_franchise',enabled:'yes'}]),franchiseSwitch([{flag:'online_grading',enabled:true}])],[true,false,null,null,null]);
 {const panelsSrc=readFileSync('app/panels.tsx','utf8');
  ok('only the owner sees the franchise switch button',panelsSrc.includes("r.key==='franchise'&&account?.isOwner&&franchiseOn!==null"));
- ok('the switch button asks first and posts the owner-only flag change',panelsSrc.includes('window.confirm(on?')&&panelsSrc.includes("JSON.stringify({action:'set',flag:'r_franchise',enabled:on})"));
+ ok('the switch button asks first and posts the owner-only flag change',panelsSrc.includes('await askConfirm(on?')&&panelsSrc.includes("JSON.stringify({action:'set',flag:'r_franchise',enabled:on})"));
  ok('after switching the sidebar status is re-read without a reload',panelsSrc.includes("window.dispatchEvent(new Event('focus'))")&&readFileSync('app/workspace.tsx','utf8').includes("window.addEventListener('focus',read)"));
 }
 ok('settings loads the switch list for the table',readFileSync('app/panels.tsx','utf8').includes("readJson('/api/feature-flags').then(d=>d.flags,()=>null)"));

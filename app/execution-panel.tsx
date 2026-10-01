@@ -1,4 +1,5 @@
 'use client';
+import {askConfirm} from '@/components/app/confirm-dialog';
 
 import Image from 'next/image';
 import {useCallback,useEffect,useRef,useState} from 'react';
@@ -109,8 +110,8 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
   const png=await renderCodedCard(await response.blob(),codeLabel(code));
   await action('register_coded_png',{id:p.id,version:p.version,code:code.code,png});
  },'게시 코드를 넣은 PNG를 이 초안에 연결했습니다. 원본과 비교해 확인한 뒤 코드 PNG 확인을 체크하고 승인하세요.')}
- function resolveMissing(p:Publication,restoreAttempt:boolean){
-  if(!window.confirm(`Buffer에 이 예약이 없음을 확인했나요? 실패로 닫고 발행 시도 차감을 ${restoreAttempt?'되돌립니다':'유지합니다'}. 재전송하지 않습니다.`))return;
+ async function resolveMissing(p:Publication,restoreAttempt:boolean){
+  if(!(await askConfirm({title:'Buffer에 이 예약이 없음을 확인했나요?',impact:`실패로 닫고 발행 시도 차감을 ${restoreAttempt?'되돌립니다':'유지합니다'}.`,undo:'재전송하지 않습니다.',confirmLabel:'실패로 닫기'})))return;
   void perform(()=>action('resolve_uncertain',{id:p.id,version:p.version,notFound:true,restoreAttempt}),'접수 여부를 실패로 확정했습니다.');
  }
  const saveDefaultLimits=()=>void perform(()=>action('save_limits',{maxPublications:1,maxPlannedCostKRW:0}),'기본 한도(발행 1회·0원)를 저장했습니다.');
@@ -146,7 +147,7 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
        <div className="flex gap-2"><button className="border rounded px-3 py-2" disabled={busy||!buffer.channels.some(c=>!c.paused)}>채널 확인·연결</button><button type="button" className="border rounded px-3 py-2" disabled={busy} onClick={()=>setBuffer(null)}>API 키 다시 입력</button></div>
       </>}
      </form>
-     {state.publisher.connected&&<button className="border rounded px-3 py-2" disabled={busy} onClick={()=>{if(window.confirm('Buffer 연결을 해제할까요? 저장된 API 키를 지우고, 이 브랜드의 승인된 발행은 초안으로 돌아갑니다. 이미 접수된 예약은 Buffer에서 따로 확인해야 합니다.'))void perform(()=>action('disconnect_buffer',{version:state.publisher.version}),'Buffer 연결을 해제했습니다. 승인된 발행은 초안으로 돌아갔습니다.')}}>Buffer 연결 해제</button>}
+     {state.publisher.connected&&<button className="border rounded px-3 py-2" disabled={busy} onClick={async()=>{if(await askConfirm({title:'Buffer 연결을 해제할까요?',impact:'저장된 API 키를 지우고, 이 브랜드의 승인된 발행은 초안으로 돌아갑니다.',undo:'이미 접수된 예약은 Buffer에서 따로 확인해야 합니다.',confirmLabel:'연결 해제',danger:true}))void perform(()=>action('disconnect_buffer',{version:state.publisher.version}),'Buffer 연결을 해제했습니다. 승인된 발행은 초안으로 돌아갔습니다.')}}>Buffer 연결 해제</button>}
     </AdminOnly>
     <p>누적 발행 시도 {totals.attempts}회. 실패·접수 미확인 시도도 포함합니다(관리자가 미접수를 확인해 복원한 시도는 제외).</p>
     {budget!==null&&<p>캠페인 예산 {budgetLabel(campaign)}</p>}

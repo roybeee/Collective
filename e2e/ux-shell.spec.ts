@@ -34,6 +34,12 @@ test('오늘의 안건·캠페인 탭 주소·지연 로딩·명령 팔레트·�
   else await page.goto('/?view=settings');
   await expect(page.getByRole('navigation',{name:'설정 바로가기',exact:true})).toBeVisible();
   await expect(page.getByRole('region',{name:'전역 실행 중단',exact:true})).toBeVisible();
+  // 5) 키보드 단축키(데스크톱): g c → 캠페인, / → 바로 가기, 입력란 안에서는 단축키가 아니다.
+  if(!mobile){
+   await page.locator('body').click({position:{x:5,y:5}});await page.keyboard.press('g');await page.keyboard.press('c');await expect(page).toHaveURL(/view=campaigns/);
+   await page.keyboard.press('/');await expect(page.getByRole('dialog',{name:'바로 가기'})).toBeVisible();await page.keyboard.press('Escape');
+   await page.getByRole('textbox',{name:'캠페인 검색',exact:true}).fill('gh');await expect(page).toHaveURL(/view=campaigns/);
+  }
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
  }finally{await context.close()}
 });

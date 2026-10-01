@@ -1,4 +1,5 @@
 'use client';
+import {askConfirm} from '@/components/app/confirm-dialog';
 import {clientId} from '@/lib/client';
 import {useEffect,useRef,useState} from 'react';
 import {toast} from 'sonner';
@@ -50,12 +51,12 @@ export function CampaignDialog({open,onClose,brands,edit,goal='',brandId,onSaved
  const unitConflicts=targetStore?addressConflicts([f.goal,f.stores].join('\n'),targetStore.address):[];
  // 목표에 선택하지 않은 브랜드 이름이 있으면 저장 전에 알린다(막지는 않는다).
  const otherBrands=otherBrandMentions(f.goal,brands,f.brandId);
- async function linkStore(){if(!edit||!linkChoice||!window.confirm(`「${edit.title}」 캠페인을 ${targetStore?.name||'선택한 지점'}에 연결합니다. 연결은 한 번만 할 수 있고 바꿀 수 없습니다. 계속할까요?`))return;setBusy(true);setError('');try{await api('link_store',{storeId:linkChoice,campaignId:edit.id,version:edit.version},'/api/stores');setLinkedStoreId(linkChoice);toast.success('캠페인을 지점에 연결했습니다. 지점 사실과 운영 정보가 AI 팀에 전달됩니다.');await reload()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
+ async function linkStore(){if(!edit||!linkChoice||!(await askConfirm({title:`「${edit.title}」 캠페인을 ${targetStore?.name||'선택한 지점'}에 연결할까요?`,undo:'연결은 한 번만 할 수 있고 바꿀 수 없습니다.',confirmLabel:'연결'})))return;setBusy(true);setError('');try{await api('link_store',{storeId:linkChoice,campaignId:edit.id,version:edit.version},'/api/stores');setLinkedStoreId(linkChoice);toast.success('캠페인을 지점에 연결했습니다. 지점 사실과 운영 정보가 AI 팀에 전달됩니다.');await reload()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
  const draftScopeChanged=!!draft&&(draft.input.brandId!==f.brandId||(draft.input.storeId||'')!==(f.storeId||''));
  // 브리프에 적힌 사실을 확인 1회로 사실 원장의 '확인 후보'로 등록한다. 확정은 관리자가 사실 원장에서 한다(PR 1 권한).
  async function registerFacts(candidates:FactCandidate[]){
   // 후보는 초안을 요청한 브리프의 브랜드·지점에 등록한다. 초안 뒤 폼의 브랜드·지점을 바꾸면 등록하지 않는다.
-  if(!draft||draftScopeChanged||!window.confirm(`브리프에 적힌 사실 ${candidates.length}개를 ${brands.find(b=>b.id===draft.input.brandId)?.name||'브랜드'} 사실 원장의 확인 후보로 등록합니다. 확정은 관리자가 합니다. 계속할까요?`))return;
+  if(!draft||draftScopeChanged||!(await askConfirm({title:`브리프 사실 ${candidates.length}개를 등록할까요?`,body:`${brands.find(b=>b.id===draft.input.brandId)?.name||'브랜드'} 사실 원장의 확인 후보로 등록합니다.`,impact:'확정은 관리자가 합니다.',confirmLabel:'등록'})))return;
   setBusy(true);let saved=0;const skipped:string[]=[];
   try{
    for(const c of candidates){const r=await fetch('/api/brand-facts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'save_fact',data:{brandId:draft.input.brandId,...(draft.input.storeId?{storeId:draft.input.storeId}:{}),key:c.key,value:c.value,status:'candidate',source:c.source,verifiedAt:'',validUntil:''}})});const d=await r.json() as {error?:string};if(r.ok)saved++;else if(r.status===409)skipped.push(c.key+': '+(d.error||'이미 있는 항목'));else throw new Error(d.error||'사실 후보를 등록하지 못했습니다.')}

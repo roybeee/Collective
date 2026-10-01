@@ -201,7 +201,8 @@ await test('worker panel and README contain no server address or root login',asy
 // 설정 화면: 가동 중 워커가 있을 때 다시 발급하면 10분 유예를 확인받고, 만료·회전·유예·거부·gate 상태를 보여 준다.
 await test('worker panel confirms reissue and shows expiry, rotation, rejection and gate state',async()=>{
  const source=readFileSync('app/research-worker-panel.tsx','utf8');
- assert.match(source,/window\.confirm\([^)]*가동 중 워커는 10분 안에 새 설치가 필요합니다/);
+ // 재발급 확인은 공용 확인 대화상자(components/app/confirm-dialog.tsx askConfirm)로 묻는다(UX-PLAN-3 Q2).
+ assert.match(source,/askConfirm\(\{[^}]*가동 중 워커는 10분 안에 새 설치가 필요합니다/);
  for(const field of ['expiresAt','rotationOfferedAt','graceUntil','lastRejectedAt','lastRejectedReason','gateEnforced'])assert.ok(source.includes('state.'+field)||source.includes('s.'+field),field);
 });
 // 브랜드 아카이브 배너(ResearchWorkerNotice): 거부·만료·교체 지연을 일반 '응답 없음' 대신 사유와 재발급 안내로 보여 준다(security-ops-4 권고 4, 앱 측).

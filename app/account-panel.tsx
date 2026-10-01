@@ -1,4 +1,5 @@
 'use client';
+import {askConfirm} from '@/components/app/confirm-dialog';
 
 import {useCallback,useEffect,useState,type FormEvent} from 'react';
 import {Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle} from '@/components/ui/dialog';
@@ -16,7 +17,7 @@ export function AccountPanel({user,onClose,onSignedOut}:{user:AccountUser;onClos
  const load=useCallback((signal?:AbortSignal)=>authRequest<{accounts:ManagedAccount[];events?:AccountEvent[]}>('/api/accounts',undefined,signal).then(r=>{setAccounts(r.accounts);setEvents(r.events||[])}),[]);
  useEffect(()=>{const controller=new AbortController();load(controller.signal).catch(e=>{if(!controller.signal.aborted)setError(e.message)});return()=>controller.abort()},[load]);
  async function perform(input:Record<string,unknown>,question?:string){
-  if(pending||(question&&!window.confirm(question)))return;setPending(true);setError('');setNotice('');setLink('');
+  if(pending||(question&&!(await askConfirm({title:question}))))return;setPending(true);setError('');setNotice('');setLink('');
   try{
    const result=await authRequest<{token?:string;self?:boolean}>('/api/accounts',input);
    if(result.self){onSignedOut();return;}
