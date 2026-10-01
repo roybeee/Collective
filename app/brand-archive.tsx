@@ -1,4 +1,5 @@
 'use client';
+import {askConfirm} from '@/components/app/confirm-dialog';
 import {dateTime} from '@/lib/format';
 import {BrandInterviewPanel} from './brand-interview-panel';
 import {DeepResearchPanel,SalvageNote} from './deep-research-panel';
@@ -55,7 +56,7 @@ export function BrandArchive({brand,workspace,initialTab,onBack,onEdit,onConnect
  const shown=data.sources.filter(s=>(category==='all'||s.category===category)&&(!query||[s.title,s.excerpt].some(t=>t.toLowerCase().includes(query.toLowerCase()))));
  async function reviewSource(status:ArchiveSource['status']){if(!source)return;setBusy(true);try{await post('review_source',{brandId:brand.id,id:source.id,version:source.version,status,...(status==='excluded'&&excludeReason?{reasonCodes:[excludeReason]}:{})});setSource(null);setExcludeReason('');await load()}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}}
  // 원본 파일 삭제(관리자): 자료 기록·추출 텍스트·검토 상태는 남기고 원본만 지운다. 이미 삭제했고 저장소 정리가 남았으면 확인 없이 정리만 다시 시도한다.
- async function deleteFile(){if(!source)return;const retry=!!source.fileDeletedAt;if(!retry&&!window.confirm(`원본 파일(${source.fileName})을 삭제할까요? 되돌릴 수 없습니다. 자료 기록·추출 텍스트·검토 상태는 남고 원본 다운로드만 사라집니다.`))return;setBusy(true);try{const r=await post('delete_source_file',{brandId:brand.id,id:source.id,version:source.version});toast.success((r as {cleanupPending?:boolean}).cleanupPending?'원본 다운로드를 닫았습니다. 저장소 정리는 자료 상세에서 다시 시도해 주세요.':'원본 파일을 삭제했습니다.');setSource(null);await load()}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}}
+ async function deleteFile(){if(!source)return;const retry=!!source.fileDeletedAt;if(!retry&&!(await askConfirm({title:`원본 파일(${source.fileName})을 삭제할까요?`,impact:'자료 기록·추출 텍스트·검토 상태는 남고 원본 다운로드만 사라집니다.',undo:'되돌릴 수 없습니다.',confirmLabel:'원본 삭제',danger:true})))return;setBusy(true);try{const r=await post('delete_source_file',{brandId:brand.id,id:source.id,version:source.version});toast.success((r as {cleanupPending?:boolean}).cleanupPending?'원본 다운로드를 닫았습니다. 저장소 정리는 자료 상세에서 다시 시도해 주세요.':'원본 파일을 삭제했습니다.');setSource(null);await load()}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}}
  async function confirmDiagnosis(){if(!diagnosis)return;setBusy(true);try{await post('confirm_diagnosis',{brandId:brand.id,id:diagnosis.id});await load()}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}}
  const campaignGoal=diagnosis&&fresh&&diagnosis.status==='confirmed'?diagnosis.opportunities[0]?.action||brand.intake?.clientNeed||'':brand.intake?.clientNeed||'';
  // 진행 표시: 미완료를 '준비 중' 하나로 뭉뚱그리지 않고 상태와 다음 행동(기존 조사·분류·채택·자료 추가 동작)을 보여 준다.

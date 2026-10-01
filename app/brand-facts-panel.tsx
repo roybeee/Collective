@@ -1,4 +1,5 @@
 'use client';
+import {askConfirm} from '@/components/app/confirm-dialog';
 import {useCallback,useEffect,useState,type FormEvent} from 'react';
 import type {Campaign} from '@/lib/agency';
 import type {BrandFact} from '@/lib/brand-facts';
@@ -84,7 +85,7 @@ export function BrandFactsPanel({campaign,brandId,onChanged}:{campaign?:Campaign
   }catch(error){setError((error as Error).message)}finally{setSaving(false)}
  }
  async function importCandidates(){
-  if(!overview||!window.confirm(`조사 주장·지점 정보·브리프의 확정 표현에서 사실 후보 ${overview.readiness.importable}건을 ${scopeName(storeId)} 범위의 확인 후보로 가져옵니다. 같은 항목이 이미 있으면 건너뜁니다. 확정은 관리자가 합니다. 계속할까요?`))return;
+  if(!overview||!(await askConfirm({title:`사실 후보 ${overview.readiness.importable}건을 가져올까요?`,body:`조사 주장·지점 정보·브리프의 확정 표현에서 ${scopeName(storeId)} 범위의 확인 후보로 가져옵니다.`,impact:'같은 항목이 이미 있으면 건너뜁니다. 확정은 관리자가 합니다.',confirmLabel:'가져오기'})))return;
   setSaving(true);setError('');setMessage('');setAlertNote('');
   try{
    const {response,data}=await postFacts<{imported:number;skipped:FactImportSkip[]}>({action:'import_candidates',brandId:brand,...(storeId?{storeId}:{})});

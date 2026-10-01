@@ -33,6 +33,8 @@ function link(spec,ref){
  if(spec==='sonner')return synthetic(ref.imports.get(spec)||new Set(),()=>({success(){},error(){}}));
  if(spec==='./auth-client')return synthetic(ref.imports.get(spec)||new Set(),n=>n==='useAuthState'?()=>authState:n==='AuthContext'?AuthContext:()=>null);
  if(spec==='./account-context')return moduleFor('app/account-context.tsx');
+ // 공용 확인 대화상자(UX-PLAN-3 Q2): 렌더 검사에서는 묻지 않고 승인으로 둔다.
+ if(spec==='@/components/app/confirm-dialog')return synthetic(ref.imports.get(spec)||new Set(),n=>n==='askConfirm'?()=>Promise.resolve(true):()=>null);
  if(spec.startsWith('@/lib/'))return moduleFor(resolve(spec.slice(2))+'.ts');
  if(spec.startsWith('.')&&ref.identifier.includes('/lib/')){const base=resolve(dirname(ref.identifier),spec);return moduleFor(existsSync(base+'.ts')?base+'.ts':base+'.tsx')}
  throw new Error('예상하지 못한 import: '+spec);

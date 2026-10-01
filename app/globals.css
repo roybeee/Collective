@@ -228,3 +228,6 @@ body{font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;backgrou
  .campaign-table td:last-child{position:absolute;right:8px;top:8px;width:auto}
  .campaign-sheet [data-slot=tabs-list]{flex-wrap:wrap;overflow:visible;row-gap:4px}
 }
+
+/* UX-PLAN-3 Q2 공용 확인 대화상자(components/app/confirm-view.tsx): 무엇·영향·되돌리기를 한 줄씩. 위험 동작은 확인 버튼을 경고색으로. */
+.confirm-lines{display:grid;gap:6px;text-align:left}.confirm-lines p{margin:0;line-height:1.6}.confirm-lines b{margin-right:6px}.confirm-danger{background:#b42318!important;color:#fff!important}

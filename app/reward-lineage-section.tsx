@@ -1,4 +1,5 @@
 'use client';
+import {askConfirm} from '@/components/app/confirm-dialog';
 // B4-2c 학습 화면의 '보상 계보' 절(docs/REWARD-LINEAGE.ko.md 11절). 새 탭 없이 학습 규칙 탭 아래에 둔다. 읽기 전용 표와 개선 루프 대장이고, 닫기(수치 동결)는 대표만 한다.
 // 대표·관리자만 보인다(직원에게는 절이 없다, 서버 GET 403과 같은 규칙). 스위치 b4_reward_lineage가 꺼져 있으면(409) 안내만 보인다.
 // 고지: 결정 16 전 발행은 실게시가 아님(realPublish:false), 일부만 집계(partial.kinds), 귀속≠증분, 자동 판정 아님, 규칙별 표는 중복 배분이라 합산 금지.
@@ -97,7 +98,7 @@ export function RewardLineageSection({brandId}:{brandId:string}){
  useEffect(()=>{let active=true;if(allowed&&brandId)void fetchLineage(brandId).then(next=>{if(active)setLoad(next)});return()=>{active=false}},[allowed,brandId]);
  if(!allowed)return null;
  async function close(l:ImprovementLoop){
-  if(!window.confirm('이 개선 루프를 닫고 지금 수치를 동결할까요? 닫은 루프는 되돌리지 않습니다.'))return;
+  if(!(await askConfirm({title:'이 개선 루프를 닫고 지금 수치를 동결할까요?',undo:'닫은 루프는 되돌리지 않습니다.',confirmLabel:'닫고 동결',danger:true})))return;
   const c=l.comparison,expected={before:{decidedFirst:c.before.decidedFirst,approvedFirst:c.before.approvedFirst},after:{decidedFirst:c.after.decidedFirst,approvedFirst:c.after.approvedFirst}};
   setBusy(true);
   try{await api('close',{brandId,loopId:l.id,version:l.version,expected},'/api/reward-lineage');toast.success('개선 루프를 닫고 수치를 동결했습니다.');await reload()}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}

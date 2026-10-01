@@ -56,10 +56,12 @@ test('업로드 텍스트는 서버가 다시 읽어 표시하고 원본 파일�
   await expect(detail.getByRole('link', {name: `원본 다운로드 · ${fileName}`})).toBeVisible();
   await page.screenshot({path: `e2e/artifacts/${testInfo.project.name}-upload-server-extraction.png`, fullPage: true});
 
-  // 원본 파일 삭제(관리자): 확인 창을 수락하면 레코드는 남고 원본 다운로드만 닫힌다.
-  page.once('dialog', d => void d.accept());
+  // 원본 파일 삭제(관리자): 확인 대화상자(무엇·영향·되돌리기)에서 '원본 삭제'를 누르면 레코드는 남고 원본 다운로드만 닫힌다.
   const deleted = page.waitForResponse(r => r.url().endsWith('/api/archive') && r.request().method() === 'POST' && r.request().postDataJSON()?.action === 'delete_source_file');
   await detail.getByRole('button', {name: '원본 파일 삭제', exact: true}).click();
+  const ask = page.getByRole('alertdialog', {name: /원본 파일\(.+\)을 삭제할까요\?/});
+  await expect(ask).toContainText('되돌릴 수 없습니다.');
+  await ask.getByRole('button', {name: '원본 삭제', exact: true}).click();
   const deletion = await deleted;
   expect(deletion.status()).toBe(200);
   expect((await deletion.json()).cleanupPending).toBe(false);
