@@ -18,4 +18,5 @@ check('conflict and permission errors stay on the form',fieldForError('다른 �
 check('one-letter names never match',fieldForError('값 입력을 확인해 주세요.',[{key:'x',label:'값'}]),null);
 const catalog=[{key:'price',label:'판매 단가 (원)'},{key:'unitCost',label:'단위원가 (원)'}];
 check('money label with unit',fieldForError('판매 단가 입력을 확인해 주세요.',catalog),'price');
+check('required mark and middle dot are ignored',fieldForError('지점 이름 입력을 확인해 주세요.',[{key:'name',label:'지점 이름 *'},{key:'address',label:'주소 · 주요 상권 *'}]),'name');
 console.log(JSON.stringify({passed},null,2));
