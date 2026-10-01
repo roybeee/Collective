@@ -1,75 +1,79 @@
-.panel { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; max-width: 100%; overflow-wrap: anywhere; gap: 16px; color: var(--foreground, #20231e); }
+.panel { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; max-width: 100%; overflow-wrap: anywhere; gap: 16px; color: var(--foreground, var(--neutral-17)); }
 .header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
 .header h2 { font-size: 1.3rem; font-weight: 700; margin-bottom: 6px; }
-.header p, .note { color: var(--muted-foreground, #62685d); font-size: .88rem; line-height: 1.7; }
-.panel button { border: 1px solid var(--border, #d7ddd7); border-radius: 8px; padding: 9px 13px; background: var(--background, #fff); cursor: pointer; font-size: .88rem; }
-.panel button:hover:not(:disabled) { background: var(--muted, #eceee8); }
+.header p, .note { color: var(--muted-foreground, var(--green-44)); font-size: .88rem; line-height: 1.7; }
+.panel button { border: 1px solid var(--border, var(--neutral-90)); border-radius: 8px; padding: 9px 13px; background: var(--background, #fff); cursor: pointer; font-size: .88rem; }
+.panel button:hover:not(:disabled) { background: var(--muted, var(--neutral-97)); }
 .panel button:disabled { opacity: .5; cursor: not-allowed; }
-.panel button:focus-visible, .panel input:focus-visible, .panel select:focus-visible, .panel textarea:focus-visible { outline: 2px solid #47715c; outline-offset: 3px; }
-.tabs { display: flex; gap: 8px; flex-wrap: wrap; border-bottom: 1px solid var(--border, #d7ddd7); padding-bottom: 14px; }
-.panel button[aria-pressed="true"] { border-color: #47715c; background: #f5f7f0; color: #294d37; }
+.panel button:focus-visible, .panel input:focus-visible, .panel select:focus-visible, .panel textarea:focus-visible { outline: 2px solid var(--green-44); outline-offset: 3px; }
+.tabs { display: flex; gap: 8px; flex-wrap: wrap; border-bottom: 1px solid var(--border, var(--neutral-90)); padding-bottom: 14px; }
+.panel button[aria-pressed="true"] { border-color: var(--green-44); background: var(--neutral-97); color: var(--green-32); }
 .workspace { display: grid; grid-template-columns: minmax(160px, 230px) minmax(0, 1fr); gap: 24px; align-items: start; }
 .list { display: grid; gap: 8px; max-height: 650px; overflow-y: auto; }
 .list button { display: grid; text-align: left; gap: 5px; overflow-wrap: anywhere; }
-.list span { font-size: .78rem; color: var(--muted-foreground, #62685d); }
-.list p { padding: 12px; font-size: .88rem; color: var(--muted-foreground, #62685d); }
+.list span { font-size: .78rem; color: var(--muted-foreground, var(--green-44)); }
+.list p { padding: 12px; font-size: .88rem; color: var(--muted-foreground, var(--green-44)); }
 .editor { min-width: 0; display: grid; gap: 16px; }
 .editor h3 { font-size: 1.1rem; font-weight: 650; }
 .form { border: none; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 0 0 18px; }
 .field label, .wide label, .receipt label { display: grid; gap: 6px; font-size: .88rem; }
-.panel input:not([type="checkbox"]), .panel textarea, .panel select { width: 100%; min-width: 0; border: 1px solid var(--border, #d7ddd7); border-radius: 7px; padding: 9px 11px; background: var(--background, #fff); color: inherit; font: inherit; }
+.panel input:not([type="checkbox"]), .panel textarea, .panel select { width: 100%; min-width: 0; border: 1px solid var(--border, var(--neutral-90)); border-radius: 7px; padding: 9px 11px; background: var(--background, #fff); color: inherit; font: inherit; }
 .panel textarea { resize: vertical; }
 .wide, .references { grid-column: 1 / -1; }
-.references { display: grid; gap: 10px; border: 1px solid var(--border, #d7ddd7); border-radius: 8px; padding: 12px; font-size: .88rem; }
+.references { display: grid; gap: 10px; border: 1px solid var(--border, var(--neutral-90)); border-radius: 8px; padding: 12px; font-size: .88rem; }
 .references legend { padding: 0 5px; }
-.references p { color: var(--muted-foreground, #62685d); }
+.references p { color: var(--muted-foreground, var(--green-44)); }
 .check { display: flex; align-items: flex-start; gap: 9px; font-size: .88rem; line-height: 1.6; overflow-wrap: anywhere; }
 .check input { margin-top: 5px; flex-shrink: 0; }
-.panel .primary { background: #35563e; color: #fff; border-color: #35563e; }
-.panel .primary:hover:not(:disabled) { background: #294531; }
+.panel .primary { background: var(--green-32); color: #fff; border-color: var(--green-32); }
+.panel .primary:hover:not(:disabled) { background: var(--green-23); }
 .panel .smallButton { justify-self: start; padding: 6px 10px; font-size: .8rem; margin-top: 5px; }
-.error { border: 1px solid #e7c8ba; background: #fffaf0; color: #813e28; padding: 14px; border-radius: 8px; line-height: 1.7; font-size: .88rem; overflow-wrap: anywhere; }
+.error { border: 1px solid var(--yellow-81); background: var(--neutral-97); color: var(--red-36); padding: 14px; border-radius: 8px; line-height: 1.7; font-size: .88rem; overflow-wrap: anywhere; }
 .error button { margin: 8px 8px 0 0; }
 .error pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; }
-.success { padding: 12px; background: #f5f7f0; color: #294d37; border-radius: 8px; font-size: .88rem; }
-.readiness { border-top: 1px solid var(--border, #d7ddd7); padding-top: 14px; font-size: .88rem; line-height: 1.7; }
+.success { padding: 12px; background: var(--neutral-97); color: var(--green-32); border-radius: 8px; font-size: .88rem; }
+.readiness { border-top: 1px solid var(--border, var(--neutral-90)); padding-top: 14px; font-size: .88rem; line-height: 1.7; }
 .readiness ul { padding-left: 20px; list-style: disc; margin: 6px 0; }
-.mission { display: grid; gap: 12px; border: 1px solid var(--border, #d7ddd7); padding: 16px; border-radius: 9px; font-size: .88rem; line-height: 1.6; }
+.mission { display: grid; gap: 12px; border: 1px solid var(--border, var(--neutral-90)); padding: 16px; border-radius: 9px; font-size: .88rem; line-height: 1.6; }
 .mission h4 { font-weight: 650; }
-.mission blockquote { border-left: 3px solid #47715c; padding-left: 12px; overflow-wrap: anywhere; }
+.mission blockquote { border-left: 3px solid var(--green-44); padding-left: 12px; overflow-wrap: anywhere; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .receipt { display: grid; gap: 12px; border: none; padding: 0; }
 .receipt legend { margin-bottom: 12px; font-weight: 600; }
 .srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
-@media (max-width: 700px) { .workspace { grid-template-columns: 1fr; gap: 18px; } .list { max-height: 220px; grid-template-columns: repeat(2, minmax(0, 1fr)); } .form { grid-template-columns: 1fr; } .header { flex-wrap: wrap; } .tabs button { flex: 1 1 auto; } }
-.business {margin: 1rem 0; padding: 1rem; border: 1px solid #d7ddd7; border-radius: 12px; background: #f5f7f0;}
+@media (max-width: 767px) { .workspace { grid-template-columns: 1fr; gap: 18px; } .list { max-height: 220px; grid-template-columns: repeat(2, minmax(0, 1fr)); } .form { grid-template-columns: 1fr; } .header { flex-wrap: wrap; } .tabs button { flex: 1 1 auto; } }
+.business {margin: 1rem 0; padding: 1rem; border: 1px solid var(--neutral-90); border-radius: 12px; background: var(--neutral-97);}
 .business h3 {margin: 0 0 .5rem; font-size: 1rem;}
 .businessGrid {display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem;}
-.businessGrid dt {font-size: .75rem; color: #526052;}
+.businessGrid dt {font-size: .75rem; color: var(--green-44);}
 .businessGrid dd {margin: .35rem 0 0; font-size: 1.1rem; font-weight: 650; overflow-wrap: anywhere;}
-@media(max-width: 520px) {.businessGrid {grid-template-columns: 1fr;}}
+@media(max-width: 480px) {.businessGrid {grid-template-columns: 1fr;}}
 
 .panel details, .panel form, .panel fieldset, .field, .field label, .mission, .business { min-width: 0; }
 
-.warning { border: 1px solid #f0d9a8; background: #fffbe8; color: #6b4e0c; padding: 12px 14px; border-radius: 8px; font-size: .88rem; line-height: 1.6; }
+.warning { border: 1px solid var(--olive-83); background: var(--neutral-97); color: var(--yellow-35); padding: 12px 14px; border-radius: 8px; font-size: .88rem; line-height: 1.6; }
 
 /* UX-PLAN P4: 성장·판매 탭 6섹션·바로가기·판매 기본 기록 */
-.sectionNav { position: sticky; top: 0; z-index: 2; display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 0; background: #fff; border-bottom: 1px solid #eceee8; margin: 4px 0 6px; }
-.sectionNav a { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid #e1e5da; border-radius: 999px; font-size: .85rem; color: #2f3a24; text-decoration: none; background: #ffffff; min-height: 36px; }
-.sectionNav a small { font-size: .75rem; color: #59654b; }
-.sectionNav a:hover { background: #eef5e4; }
-.sectionNav a:focus-visible { outline: 2px solid #4d6b1f; outline-offset: 2px; }
-.section, .coreEditor { display: grid; gap: 8px; padding: 18px 0 6px; border-top: 1px solid #eceee8; scroll-margin-top: 64px; }
+.sectionNav { position: sticky; top: 0; z-index: 2; display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 0; background: #fff; border-bottom: 1px solid var(--neutral-97); margin: 4px 0 6px; }
+.sectionNav a { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid var(--neutral-90); border-radius: 999px; font-size: .85rem; color: var(--green-23); text-decoration: none; background: #ffffff; min-height: 36px; }
+.sectionNav a small { font-size: .75rem; color: var(--green-44); }
+.sectionNav a:hover { background: var(--neutral-97); }
+.sectionNav a:focus-visible { outline: 2px solid var(--olive-42); outline-offset: 2px; }
+.section, .coreEditor { display: grid; gap: 8px; padding: 18px 0 6px; border-top: 1px solid var(--neutral-97); scroll-margin-top: 64px; }
 .sectionTitle { display: flex; align-items: baseline; gap: 10px; font-size: 1.05rem; font-weight: 650; margin: 0 0 4px; }
-.sectionTitle span { font-size: .82rem; font-weight: 400; color: #5b6352; }
+.sectionTitle span { font-size: .82rem; font-weight: 400; color: var(--green-44); }
 /* 모바일에서는 바로가기를 가로 한 줄로 두고 고정하지 않는다(화면 높이 차지 방지). */
 @media (max-width: 767px) { .sectionNav { position: static; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; mask-image: linear-gradient(to right, black 85%, transparent); padding-right: 24px; } .sectionNav a { min-height: 44px; flex: 0 0 auto; } .sectionTitle { flex-wrap: wrap; row-gap: 2px; } .sectionTitle span { flex-basis: 100%; } }
 
 /* UX-PLAN-3 10.3: 저장 뒤 다음 단계, 초안 이어 쓰기, 직전 값 채우기(공용 Button 위에 배치만 정한다) */
 .nextStep, .fillPrevious { align-self: flex-start; }
-.resume { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; background: #f5f7f0; border: 1px solid #eceee8; border-radius: 8px; font-size: .88rem; color: #45503a; }
+.resume { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; background: var(--neutral-97); border: 1px solid var(--neutral-97); border-radius: 8px; font-size: .88rem; color: var(--green-32); }
 /* 캠페인 상세 안에서는 캠페인 탭 줄(48px)이 위에 고정되므로 그 아래에 붙는다(UX-PLAN-3 Q1). */
 @media not (max-width: 767px) { :global(.campaign-sheet) .sectionNav { top: 48px; } }
 /* 서버 검증 오류가 가리키는 칸(UX-PLAN-3 Q3). */
 .field [aria-invalid=true], .wide [aria-invalid=true] { border-color: #b42318; }
 .fieldError { margin: 4px 0 0; color: #b42318; font-size: .85rem; }
+/* 판매 기본 기록 단계 진행 표시(UX-PLAN-3 Q2): 번호 또는 기록 있음 ✓, 아래에 진행 문장. */
+.stepNo { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: 6px; border-radius: 999px; border: 1px solid var(--green-77); font-size: .75rem; }
+.tabs button[aria-pressed="true"] .stepNo { background: var(--green-32); border-color: var(--green-32); color: #fff; }
+.stepProgress { margin: 8px 0 0; font-size: .85rem; color: var(--green-44); }

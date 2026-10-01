@@ -67,7 +67,7 @@ function DeleteCampaignBody({campaign,busy,setBusy,onClose,onDeleted}:{campaign:
    {gone&&<div className="load-error" role="alert"><span>{ALREADY_DELETED}</span><Button variant="outline" size="sm" onClick={refreshGone}><RefreshCw/>목록 새로 고침</Button></div>}
    {stale&&!gone&&<p role="alert" className="form-error">{STALE_CAMPAIGN}</p>}
    {summary&&(summary.blockedReason?<p role="alert" className="form-error">{summary.blockedReason}</p>:<><p>{summary.deleted}</p>{summary.retained&&<p>{summary.retained}</p>}{summary.archived&&<p>{summary.archived}</p>}</>)}
-   {canPurge&&summary&&<label className="archive-check" style={{alignItems:'flex-start'}}><input type="checkbox" checked={purge} onChange={e=>setPurge(e.target.checked)} disabled={busy}/><span><b>학습 자산까지 완전 삭제(소유자만)</b> {summary.purge}</span></label>}
+   {canPurge&&summary&&<label className="archive-check items-start"><input type="checkbox" checked={purge} onChange={e=>setPurge(e.target.checked)} disabled={busy}/><span><b>학습 자산까지 완전 삭제(소유자만)</b> {summary.purge}</span></label>}
    {suggestArchive&&<p className="archive-suggestion">작업물·실행·회의·성과 기록이 있어 보관을 권장합니다. 보관하면 기록을 모두 남긴 채 목록·대시보드에서 숨기고, 새 AI 실행·연속 실행·발행 승인을 막습니다. 캠페인 목록의 보관함에서 언제든 보관을 해제할 수 있습니다.</p>}
    {askTitle&&<div className="field deletion-confirm"><label htmlFor={inputId}>캠페인 제목 확인</label><Input id={inputId} aria-describedby={hintId} value={typed} onChange={e=>setTyped(e.target.value)} placeholder={campaign.title} autoComplete="off" disabled={busy}/><small id={hintId}>작업물·실행·회의·성과 기록이 있어 캠페인 제목을 그대로 입력해야 삭제할 수 있습니다.</small></div>}
   </div>

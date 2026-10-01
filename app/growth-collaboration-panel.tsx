@@ -42,7 +42,7 @@ function Workspace({campaignId}:{campaignId:string}){
     <label>납품 기한<input type="date" value={plan.deliverDueAt} onChange={t('deliverDueAt')}/></label><label>게시 기한<input type="date" value={plan.publishDueAt} onChange={t('publishDueAt')}/></label>
     <button type="submit" disabled={stale||!plan.stepId}>협업 계획 저장</button></fieldset></form>}
    {!view.collaborations.length&&<p>협업이 없습니다.</p>}
-   <ul>{view.collaborations.map(r=><li key={r.id} style={{overflowWrap:'anywhere'}}><p><strong>{r.plan.partnerAlias}</strong> · {r.id} · {stageLabels[r.stage]} · 단계 {r.plan.stepId} · 수수료 {won(r.plan.feeKrw)}{r.plan.commissionRate!==null?` + ${(r.plan.commissionRate*100).toFixed(1)}%`:''} · 납품 {r.plan.deliverDueAt} · 게시 {r.plan.publishDueAt} · 원본 {r.sourceStatus==='held'?'보류':'현재'}</p>
+   <ul>{view.collaborations.map(r=><li key={r.id} className="wrap-anywhere"><p><strong>{r.plan.partnerAlias}</strong> · {r.id} · {stageLabels[r.stage]} · 단계 {r.plan.stepId} · 수수료 {won(r.plan.feeKrw)}{r.plan.commissionRate!==null?` + ${(r.plan.commissionRate*100).toFixed(1)}%`:''} · 납품 {r.plan.deliverDueAt} · 게시 {r.plan.publishDueAt} · 원본 {r.sourceStatus==='held'?'보류':'현재'}</p>
     <p>성과: {r.performance.status==='observed'?`게시 이후 주문 ${r.performance.orders}건 · 순매출 ${won(r.performance.netRevenue)} · 공헌이익 ${won(r.performance.contribution)}`:r.performance.status==='not_published'?'게시 확인 전':r.performance.status==='no_tracking'?'추적 코드 없음':'보류'} · 인과 효과: 미측정</p>
     {[...r.sourceReasons,...r.warnings].map(x=><p key={x}>{x}</p>)}
     <p>영수증: {r.receipts.map(x=>`${stageLabels[x.stage]} ${x.at.slice(0,10)}${x.paidKrw!==undefined?` 지급 ${won(x.paidKrw)}`:''}`).join(' → ')||'없음'}</p>

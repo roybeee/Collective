@@ -6,6 +6,7 @@ import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select';
 import {api} from '@/lib/client';
 import type {MetaCreateInput,viewMetaCreate} from '@/lib/meta-ad-create-server';
 import {metaCreateStepNames,type MetaCreateStep} from '@/lib/meta-ad-create';
+import {ScreenSkeleton} from '@/components/app/screen-skeleton';
 type View=Awaited<ReturnType<typeof viewMetaCreate>>;
 const blank:MetaCreateInput={operationId:'',imageUploadReceiptId:'',pageId:'',pixelId:'',graphDailyBudget:'',budgetUnitEvidence:'',ageMin:18,ageMax:65,callToActionType:'LEARN_MORE'};
 const labels={adset:'광고세트',creative:'소재',ad:'광고'};
@@ -16,7 +17,7 @@ export function MetaAdCreatePanel({campaignId}:{campaignId:string}){
  async function act(action:'prepare'|'create'|'reconcile',step?:MetaCreateStep){if(!data)return;setBusy(true);setError('');try{await api(action,{campaignId,campaignVersion:data.campaignVersion,expectedVersion:data.version,evidenceFingerprint:data.evidenceFingerprint,...(action==='prepare'?{input}:{step,confirmed})},'/api/meta-ads/create');const v=await load();setData(v);setInput(v.saved?.input??input);setDirty(false);setConfirmed(false)}catch(e){setError((e as Error).message);setData(await load().catch(()=>null))}finally{setBusy(false)}}
  function change<K extends keyof MetaCreateInput>(key:K,value:MetaCreateInput[K]){setInput({...input,[key]:value});setDirty(true);setConfirmed(false)}
  const locked=busy||!data?.enabled||!data.canEdit||!!data.issues.length,started=!!data?.saved&&metaCreateStepNames.some(k=>data.saved!.steps[k].state!=='prepared');
- return <section aria-label="Meta 비활성 광고 생성" className="form-stack"><h3>비활성 광고 단계별 생성</h3><p>검수한 원본으로 광고세트·소재·광고를 하나씩 만듭니다. 광고세트와 광고는 PAUSED로 생성하며 활성화 기능은 없습니다.</p>{error&&<p role="alert">{error}</p>}{!data?<p role="status">생성 작업을 불러오는 중입니다.</p>:<>
+ return <section aria-label="Meta 비활성 광고 생성" className="form-stack"><h3>비활성 광고 단계별 생성</h3><p>검수한 원본으로 광고세트·소재·광고를 하나씩 만듭니다. 광고세트와 광고는 PAUSED로 생성하며 활성화 기능은 없습니다.</p>{error&&<p role="alert">{error}</p>}{!data?<ScreenSkeleton label="생성 작업을 불러오는 중입니다." rows={2}/>:<>
  {!data.enabled&&<p>소유자가 하위 광고 생성 기능을 켜야 준비할 수 있습니다.</p>}{data.issues.length>0&&<ul>{data.issues.map(i=><li key={i}>{i}</li>)}</ul>}
  <label className="field"><span>부모 비활성 캠페인</span><NativeSelect disabled={locked||started} value={input.operationId} onChange={e=>change('operationId',e.target.value)}><NativeSelectOption value="">선택</NativeSelectOption>{data.parents.map(p=><NativeSelectOption key={p.id} value={p.id}>{p.externalId}</NativeSelectOption>)}</NativeSelect></label>
  <label className="field"><span>원본 업로드 영수증</span><NativeSelect disabled={locked||started} value={input.imageUploadReceiptId??''} onChange={e=>change('imageUploadReceiptId',e.target.value)}><NativeSelectOption value="">선택</NativeSelectOption>{data.images.map(p=><NativeSelectOption key={p.id} value={p.id}>{p.metaImageHash}</NativeSelectOption>)}</NativeSelect></label>

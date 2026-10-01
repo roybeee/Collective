@@ -44,7 +44,7 @@ function MetaPlanPanel({campaignId}:{campaignId:string}){
  function change<K extends keyof MetaPlanInput>(key:K,value:MetaPlanInput[K]){setInput(old=>old?{...old,[key]:value}:old);setDirty(true);setSaved('');setError('')}
  function go(n:number){setStep(n);requestAnimationFrame(()=>heading.current?.focus())}
 async  function reload(){if(!dirty||await askConfirm({title:'저장하지 않은 입력을 버리고 최신 계획을 불러올까요?',impact:'이 화면에서 저장하지 않은 입력이 사라지고 서버의 최신 계획으로 바뀝니다.',undo:'버린 입력은 되돌릴 수 없습니다.',confirmLabel:'버리고 불러오기'})){setLoading(true);setSaved('');setRetry(n=>n+1)}}
- if(!view||!input)return <section aria-label="Meta 광고 준비" className={s.root}><div className={s.empty}><FileCheck2 size={28}/>{error?<><p role="alert">{error}</p><Button onClick={reload}>다시 불러오기</Button></>:<p role="status">준비 계획을 불러오고 있습니다…</p>}</div></section>;
+ if(!view||!input)return <section aria-label="Meta 광고 준비" className={s.root}><div className={s.empty}><FileCheck2 size={28}/>{error?<><p role="alert">{error}</p><Button onClick={reload}>다시 불러오기</Button></>:<ScreenSkeleton label="준비 계획을 불러오고 있습니다." rows={2}/>}</div></section>;
  const parsed=parseMetaPlan(input);
  const draft:MetaPlan={id:view.plan?.id??'',brandId:view.plan?.brandId??'',campaignId,campaignVersion:view.campaignVersion,version:view.version,input:parsed.input,updatedAt:'',updatedBy:{id:'',role:''}};
  const readiness=metaReadiness(draft,view.campaignVersion),invalid=parsed.errors;

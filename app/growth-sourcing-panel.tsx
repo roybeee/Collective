@@ -5,6 +5,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {emptyCandidateInput,emptyComparisonInput,type CandidateInput,type ComparisonInput} from '@/lib/growth-sourcing';
 import type {CatalogInput} from '@/lib/growth-catalog';
 import styles from './growth-panel.module.css';
+import {ScreenSkeleton} from '@/components/app/screen-skeleton';
 
 type Candidate={id:string;version:number;input:CandidateInput;updatedAt:string};
 type Catalog={id:string;version:number;input:CatalogInput};
@@ -52,5 +53,5 @@ export function GrowthSourcingPanel({campaignId}:{campaignId:string}){
  const load=useCallback(async(signal:AbortSignal)=>{setLoading(true);setError('');try{const next=await request(campaignId,{signal});if(!signal.aborted)setView(next);}catch(e){if(!signal.aborted)setError(e instanceof Error?e.message:'소싱 기록 조회에 실패했습니다.');}finally{if(!signal.aborted)setLoading(false);}},[campaignId]);
  useEffect(()=>{const c=new AbortController();read.current=c;void Promise.resolve().then(()=>{if(!c.signal.aborted)void load(c.signal);});return()=>read.current?.abort();},[load]);
  function reload(){read.current?.abort();const c=new AbortController();read.current=c;void load(c.signal);}
- return <section aria-label="상품 소싱 비교" className={styles.panel}><header className={styles.header}><div><h3>상품 소싱 비교</h3><p>단일 SKU의 공급 견적을 같은 요청 수량으로 비교하고 당시 판을 보존합니다.</p></div><button aria-label="소싱 기록 새로고침" type="button" disabled={busy||loading} onClick={reload}>새로고침</button></header><Note className={styles.note}>빈 금액은 미확인, 0은 확인한 값입니다. 모든 비용은 원화 견적 기준이며 현금 잔고가 아닙니다. 현재 재고 원장은 참조 자료이며 실제 입고·발주 가능 여부를 보증하지 않습니다. 자동 발주 권한 없음 · 최저가 자동 채택 없음. 개인정보 없이 내부 코드와 증빙 참조만 기록하세요.</Note>{loading&&<p role="status">소싱 기록을 불러오고 있습니다.</p>}{error&&<p role="alert" className={styles.error}>{error}</p>}{view&&<SourcingEditor key={campaignId} campaignId={campaignId} view={view} busy={busy||loading} onView={next=>{read.current?.abort();setLoading(false);setView(next);}} onBusy={value=>{if(value){read.current?.abort();setLoading(false);}setBusy(value);}}/>}</section>;
+ return <section aria-label="상품 소싱 비교" className={styles.panel}><header className={styles.header}><div><h3>상품 소싱 비교</h3><p>단일 SKU의 공급 견적을 같은 요청 수량으로 비교하고 당시 판을 보존합니다.</p></div><button aria-label="소싱 기록 새로고침" type="button" disabled={busy||loading} onClick={reload}>새로고침</button></header><Note className={styles.note}>빈 금액은 미확인, 0은 확인한 값입니다. 모든 비용은 원화 견적 기준이며 현금 잔고가 아닙니다. 현재 재고 원장은 참조 자료이며 실제 입고·발주 가능 여부를 보증하지 않습니다. 자동 발주 권한 없음 · 최저가 자동 채택 없음. 개인정보 없이 내부 코드와 증빙 참조만 기록하세요.</Note>{loading&&<ScreenSkeleton label="소싱 기록을 불러오고 있습니다." rows={2}/>}{error&&<p role="alert" className={styles.error}>{error}</p>}{view&&<SourcingEditor key={campaignId} campaignId={campaignId} view={view} busy={busy||loading} onView={next=>{read.current?.abort();setLoading(false);setView(next);}} onBusy={value=>{if(value){read.current?.abort();setLoading(false);}setBusy(value);}}/>}</section>;
 }

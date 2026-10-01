@@ -17,6 +17,7 @@ import {AdminOnly,canChange,useAccount} from './account-context';
 import {reasonChoices} from '@/lib/review-decisions';
 import {pushNav} from '@/lib/nav-state';
 import {ExperimentLinkSelect,PublicationExperiment,experimentChoice,type ExperimentOption} from './publication-experiment';
+import {ScreenSkeleton} from '@/components/app/screen-skeleton';
 
 async function request<T=unknown>(path:string,input?:Record<string,unknown>):Promise<T>{
  const response=await fetch(path,input?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)}:undefined);
@@ -47,7 +48,7 @@ function OrderLedgerLink({campaign,stores,error,onRetry}:{campaign:Campaign;stor
  if(target.kind==='store')return <button type="button" className="border rounded px-3 py-2" onClick={()=>pushNav(target.nav)}>주문 장부 열기</button>;
  if(target.kind==='archived')return <p role="note">이 캠페인의 지점은 보관됐거나 찾을 수 없어 주문 장부를 열 수 없습니다. 보관한 지점에는 주문을 기록할 수 없습니다.</p>;
  if(error)return <p role="alert">지점 목록을 불러오지 못했습니다: {error} <button type="button" className="underline" onClick={onRetry}>다시 시도</button></p>;
- if(target.kind==='loading')return <p role="status">지점 목록을 불러오고 있습니다.</p>;
+ if(target.kind==='loading')return <ScreenSkeleton label="지점 목록을 불러오고 있습니다." rows={2}/>;
  if(target.kind==='none')return <p>이 브랜드에 운영 중인 지점이 없습니다. 점포 마케팅에서 지점을 만든 뒤 주문을 기록하세요. <button type="button" className="underline" onClick={()=>pushNav(target.nav)}>점포 마케팅 열기</button></p>;
  const chosen=choice||(target.stores.length===1?target.stores[0].id:'');
  return <div className="flex flex-wrap gap-2 items-end"><label>주문 장부를 열 지점<select className="block border rounded p-2" value={chosen} onChange={e=>setChoice(e.target.value)}><option value="">지점을 선택하세요</option>{target.stores.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label><button type="button" className="border rounded px-3 py-2" disabled={!chosen} onClick={()=>pushNav(ledgerNav(campaign.brandId,chosen))}>주문 장부 열기</button></div>;
@@ -119,13 +120,13 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
  // 브랜드 공통 캠페인은 운영 지점을 골라야 코드를 발급한다. 목록을 불러오는 중·실패·운영 지점 0개면 초안 저장을 막고 상황에 맞는 안내를 보인다.
  const storeName=(id:string)=>stores?.find(s=>s.id===id)?.name||id,codeStores=(stores||[]).filter(s=>s.status==='active'),noCodeStore=!!codeType&&!campaign.storeId&&!codeStores.length;
  const reviews=state?.publications.filter(p=>p.needsReview&&reviewStatuses.includes(p.status))||[],submitted=state?.publications.filter(p=>['submitting','uncertain','accepted'].includes(p.status))||[];
- return <div className="execution-panel space-y-6">
+ return <div className="execution-panel space-y-6">{!canManage&&<p className="subtle-note admin-only-note" role="note">발행 승인·취소·결과 기록·한도 변경은 관리자만 할 수 있어 버튼을 보이지 않습니다. 진행 상태 확인과 제작 초안 작성은 할 수 있습니다.</p>}
   <div><h2 className="text-xl font-semibold">제작·발행</h2><p>확인된 브랜드 사실 → PNG 제작 → 승인 → Instagram 예약 접수 → 주문 귀속</p></div>
   {state&&<ol aria-label="첫 게시 단계" className="flex flex-wrap gap-2 text-sm">{steps.map((s,i)=><li key={s.label} aria-current={i===currentStep?'step':undefined} className={'rounded-full border px-3 py-1'+(i===currentStep?' font-semibold border-current':s.done?' opacity-70':'')}>{s.done?'✓ ':''}{s.label}</li>)}</ol>}
   {reviews.length>0&&<div role="alert" className="rounded-xl border p-4 space-y-2"><strong>사실 변경 확인 필요 {reviews.length}건</strong><ul className="space-y-1">{reviews.map(p=><li key={p.id}>{new Date(p.scheduledAt).toLocaleString()} 예약 · {publicationLabels[p.status]} · {p.status==='approved'?'같은 소재로 다시 승인할 수 없습니다. 이 발행을 취소하고 새 PNG로 새 초안을 만드세요.':'Buffer에서 취소 필요: 앱은 접수된 예약을 취소하지 않습니다.'}{p.providerId&&' · 게시 번호 '+p.providerId}<br/><small>{p.needsReview?.reason}</small></li>)}</ul></div>}
   <BrandFactsPanel campaign={campaign} onChanged={()=>{setPreview('');setSelected([]);void reload().catch(e=>setError(e.message))}}/>
   {error&&<p role="alert" className="form-error">{error}</p>}{notice&&<p role="status">{notice}</p>}
-  {!state?<p>실행 상태를 불러오고 있습니다.</p>:<>
+  {!state?<ScreenSkeleton label="실행 상태를 불러오고 있습니다." rows={2}/>:<>
    <section className="rounded-xl border p-4 space-y-3"><h3 className="font-semibold">1. 안내 카드 만들기</h3>
     <p>현재 유효한 확인 사실만 사용합니다. 브랜드 이름·색이나 사용한 사실이 바뀌면 새 소재를 만들어야 합니다.</p>
     {facts.length?facts.map(f=>{const reason=blockReason(f);return <label key={f.id} className="flex gap-2 items-start"><input type="checkbox" checked={selected.includes(f.id)} disabled={busy||(!!reason&&!selected.includes(f.id))} onChange={e=>setSelected(ids=>e.target.checked?[...ids,f.id]:ids.filter(id=>id!==f.id))}/><span>{factLabel(f.key)}: {f.value} <small>v{f.version}</small>{reason&&<small className="block">카드에 쓸 수 없음 · {reason}</small>}</span></label>}):<p>위에서 근거와 유효기한이 있는 사실을 확정하세요.</p>}
@@ -178,7 +179,7 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
      {state.copies.some(c=>!c.issues.length&&c.warnings?.length)&&<details><summary>확인이 필요한 카피 {state.copies.filter(c=>!c.issues.length&&c.warnings?.length).length}개(고를 수 있음)</summary><ul className="text-sm space-y-1">{state.copies.filter(c=>!c.issues.length&&c.warnings?.length).map(c=><li key={c.artifactId+':'+c.index}>{c.text.slice(0,80)} — {c.warnings!.join(', ')}</li>)}</ul></details>}
      <AdminOnly note={'게시 코드(쿠폰·POS 태그) 발급은 관리자만 할 수 있습니다. '+adminRequestNote}><fieldset className="grid gap-2 border rounded p-3"><legend>게시 코드 (선택)</legend>
       <label>코드 유형<select className="block border rounded p-2 w-full" name="codeType" value={codeType} disabled={busy} onChange={e=>setCodeType(e.target.value)}><option value="">코드 없이 준비</option><option value="coupon">쿠폰 코드</option><option value="pos_tag">POS 태그</option></select></label>
-      {codeType&&(campaign.storeId?<p>코드 지점: {storeName(campaign.storeId)} (캠페인 지점)</p>:codeStores.length?<label>코드 지점<select className="block border rounded p-2 w-full" name="codeStoreId" required defaultValue=""><option value="">지점을 선택하세요</option>{codeStores.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>:storesError?<p role="alert">지점 목록을 불러오지 못했습니다: {storesError} <button type="button" className="underline" disabled={busy} onClick={retryStores}>다시 시도</button></p>:stores===null?<p role="status">지점 목록을 불러오고 있습니다.</p>:<p role="alert">이 브랜드에 운영 중인 지점이 없습니다. 점포 마케팅에서 지점을 만든 뒤 코드를 쓰세요.</p>)}
+      {codeType&&(campaign.storeId?<p>코드 지점: {storeName(campaign.storeId)} (캠페인 지점)</p>:codeStores.length?<label>코드 지점<select className="block border rounded p-2 w-full" name="codeStoreId" required defaultValue=""><option value="">지점을 선택하세요</option>{codeStores.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>:storesError?<p role="alert">지점 목록을 불러오지 못했습니다: {storesError} <button type="button" className="underline" disabled={busy} onClick={retryStores}>다시 시도</button></p>:stores===null?<ScreenSkeleton label="지점 목록을 불러오고 있습니다." rows={2}/>:<p role="alert">이 브랜드에 운영 중인 지점이 없습니다. 점포 마케팅에서 지점을 만든 뒤 코드를 쓰세요.</p>)}
       <p className="text-sm">코드를 고르면 이 발행에만 쓰는 추적 코드를 발급하고 캡션 끝에 &apos;주문할 때 …&apos; 안내 줄을 붙입니다. {state.pngCode?'준비한 뒤 발행 카드의 \'코드 넣은 PNG 만들기\'로 이미지에도 코드를 넣을 수 있습니다(원본 소재는 그대로).':'PNG에는 넣지 않습니다.'} 주문 장부에서 이 코드로 게시별 귀속 주문을 셉니다. 귀속 매출은 증분 효과가 아닙니다.</p>
      </fieldset></AdminOnly>
      <ExperimentLinkSelect options={experimentOptions} publications={state.publications}/>

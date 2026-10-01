@@ -41,7 +41,7 @@ async function usageData():Promise<UsageData>{
  return {...data,campaigns:Array.isArray(data.campaigns)?data.campaigns:[],modelChanges:Array.isArray(data.modelChanges)?data.modelChanges:[],gateway:data.gateway&&Array.isArray(data.gateway.changes)?data.gateway:null,budget:data.budget&&data.budget.workspace&&Array.isArray(data.budget.campaigns)?data.budget:null,aliasPricing:Array.isArray(data.aliasPricing)?data.aliasPricing:[],qualityTable:data.qualityTable===undefined?undefined:data.qualityTable&&Array.isArray(data.qualityTable.rows)&&Array.isArray(data.qualityTable.alarms)&&Array.isArray(data.qualityTable.retention?.suggestions)?data.qualityTable:null,aliasPricingWarning:typeof data.aliasPricingWarning==='string'?data.aliasPricingWarning:null} as UsageData;
 }
 function UsageRows({entries,campaigns}:{entries:ProviderUsage[];campaigns:CampaignName[]}){
- return <div className="mt-5 overflow-x-auto"><table className="w-full text-left text-sm" style={{minWidth:940}}>
+ return <div className="mt-5 overflow-x-auto"><table className="w-full text-left text-sm min-w-[940px]">
   <caption className="sr-only">공급자 실행별 캠페인·역할, 토큰과 추정 비용</caption>
   <thead><tr className="border-b">{['관측 시각 · 공급자','캠페인 · 역할','공급자 보고 모델','실행 · 결과 처리','입력 토큰','출력 토큰','합계 토큰','비용 · 단가 버전'].map(label=><th scope="col" key={label} className="p-3 font-medium">{label}</th>)}</tr></thead>
   <tbody>{entries.map(entry=><tr key={entry.id} className="border-b align-top">
@@ -202,7 +202,7 @@ export function UsagePanel(){
   void usageData().then(next=>{if(!disposed){setData(next);setError('')}}).catch(error=>{if(!disposed)setError(error instanceof Error?error.message:'사용량을 불러오지 못했습니다.')}).finally(()=>{if(!disposed)setLoading(false)});
   return()=>{disposed=true};
  },[]);
- return <section className="settings-card" style={{gridColumn:'1 / -1',minWidth:0}}>
+ return <section className="settings-card col-span-full min-w-0">
   <div className="flex flex-wrap items-start justify-between gap-4"><div><div className="settings-icon"><ReceiptText/></div><h2>AI 사용량과 비용</h2></div><Button variant="outline" disabled={loading} onClick={()=>{setLoading(true);void refresh()}}><RefreshCw/>새로고침</Button></div>
   <p>실패하거나 취소된 실행도 공급자가 보고한 사용량을 남깁니다. 알 수 없는 모델·토큰·금액은 ‘미확인’으로 표시합니다.</p>
   <p className="subtle-note">hermes-agent는 연결 별칭입니다. 기반 모델이 보고되지 않으면 모델을 추정하거나 별칭에 모델 단가를 적용하지 않습니다. 소유자가 선언한 별칭 단가는 ‘선언 단가 추정’으로 따로 표시합니다.</p>

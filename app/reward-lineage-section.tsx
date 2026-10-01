@@ -72,9 +72,9 @@ function Loops({data,canClose,busy,onClose}:{data:RewardLineageResponse;canClose
 // 보상 계보 절(표시 전용). 닫기 버튼은 canClose(대표)일 때 closable 루프에만 있다.
 export function RewardLineageView({load,canClose,busy,onClose,onReload}:{load:RewardLoad;canClose:boolean;busy:boolean;onClose:(l:ImprovementLoop)=>void;onReload:()=>void}){
  const head=<div className="learning-card-top"><b>보상 계보 · 최근 28일</b><Button size="sm" variant="outline" disabled={busy||load.state==='loading'} onClick={onReload}><RefreshCw/>다시 계산</Button></div>;
- if(load.state==='off')return <section aria-label="보상 계보" style={{marginTop:32}}>{head}<p className="learning-note" role="note">{load.message}</p></section>;
- if(load.state!=='ready')return <section aria-label="보상 계보" style={{marginTop:32}}>{head}<p className={load.state==='error'?'form-error':'learning-meta'} role="status">{load.state==='error'?load.message:'보상 계보를 계산하고 있습니다.'}</p></section>;
- return <section aria-label="보상 계보" style={{marginTop:32}}>{head}
+ if(load.state==='off')return <section aria-label="보상 계보" className="mt-8">{head}<p className="learning-note" role="note">{load.message}</p></section>;
+ if(load.state!=='ready')return <section aria-label="보상 계보" className="mt-8">{head}<p className={load.state==='error'?'form-error':'learning-meta'} role="status">{load.state==='error'?load.message:'보상 계보를 계산하고 있습니다.'}</p></section>;
+ return <section aria-label="보상 계보" className="mt-8">{head}
   <Notices data={load.data}/>
   <VersionTable data={load.data}/>
   <RuleTable data={load.data}/>

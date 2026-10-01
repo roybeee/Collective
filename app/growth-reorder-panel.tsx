@@ -7,6 +7,7 @@ import {emptyReorderInput,type ReorderInput,type ReorderAssessment} from '@/lib/
 import type {CandidateInput,SourcingInventory} from '@/lib/growth-sourcing';
 import type {CatalogInput} from '@/lib/growth-catalog';
 import styles from './growth-panel.module.css';
+import {ScreenSkeleton} from '@/components/app/screen-skeleton';
 
 type Catalog={id:string;version:number;input:CatalogInput};
 type Candidate={id:string;version:number;input:CandidateInput};
@@ -54,5 +55,5 @@ export function GrowthReorderPanel({campaignId}:{campaignId:string}){
  const load=useCallback(async(signal:AbortSignal)=>{setLoading(true);setError('');try{const next=await request(campaignId,{signal});if(!signal.aborted)setView(next);}catch(e){if(!signal.aborted)setError(e instanceof Error?e.message:'재발주 검토를 조회하지 못했습니다.');}finally{if(!signal.aborted)setLoading(false);}},[campaignId]);
  useEffect(()=>{const c=new AbortController();read.current=c;void Promise.resolve().then(()=>{if(!c.signal.aborted)void load(c.signal);});return()=>read.current?.abort();},[load]);
  function reload(){read.current?.abort();const c=new AbortController();read.current=c;void load(c.signal);}
- return <section aria-label="재발주 검토" className={styles.panel}><header className={styles.header}><div><h3>재발주 검토</h3><p>수요 가정·소싱 견적·현재 재고 원장을 고정해 구매 필요 수량을 검토합니다.</p></div><button aria-label="재발주 기록 새로고침" type="button" disabled={busy||loading} onClick={reload}>새로고침</button></header><Note className={styles.note}>빈 수량·금액은 미확인, 0은 확인한 값입니다. 수요 입력은 운영자 가정이며 실제 판매속도가 아닙니다. 구매 비용 한도는 현금 잔고가 아니며, 견적 기준 구매비는 지급 확정액이 아닙니다. 이 기록으로 실제 발주·입고·현금 이동을 실행하지 않습니다. 자동 발주 권한 없음.</Note>{loading&&<p role="status">재발주 검토를 불러오고 있습니다.</p>}{error&&<p role="alert" className={styles.error}>{error}</p>}{view&&<Editor key={campaignId} campaignId={campaignId} view={view} busy={busy||loading} onView={next=>{read.current?.abort();setLoading(false);setView(next);}} onBusy={value=>{if(value){read.current?.abort();setLoading(false);}setBusy(value);}}/>}</section>;
+ return <section aria-label="재발주 검토" className={styles.panel}><header className={styles.header}><div><h3>재발주 검토</h3><p>수요 가정·소싱 견적·현재 재고 원장을 고정해 구매 필요 수량을 검토합니다.</p></div><button aria-label="재발주 기록 새로고침" type="button" disabled={busy||loading} onClick={reload}>새로고침</button></header><Note className={styles.note}>빈 수량·금액은 미확인, 0은 확인한 값입니다. 수요 입력은 운영자 가정이며 실제 판매속도가 아닙니다. 구매 비용 한도는 현금 잔고가 아니며, 견적 기준 구매비는 지급 확정액이 아닙니다. 이 기록으로 실제 발주·입고·현금 이동을 실행하지 않습니다. 자동 발주 권한 없음.</Note>{loading&&<ScreenSkeleton label="재발주 검토를 불러오고 있습니다." rows={2}/>}{error&&<p role="alert" className={styles.error}>{error}</p>}{view&&<Editor key={campaignId} campaignId={campaignId} view={view} busy={busy||loading} onView={next=>{read.current?.abort();setLoading(false);setView(next);}} onBusy={value=>{if(value){read.current?.abort();setLoading(false);}setBusy(value);}}/>}</section>;
 }

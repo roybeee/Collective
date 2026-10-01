@@ -22,7 +22,7 @@ const alarmNames:Record<string,string>={model_change:'보고 모델 변경',gate
 const HEAD=['역할','프롬프트 버전','보고 모델','AI 작업물','1차 승인율','수정 요청','폐기 토큰','미연결 토큰'];
 
 function Rows({rows}:{rows:UsageTableRow[]}){
- return <div className="mt-3 overflow-x-auto"><table className="w-full text-left text-sm" style={{minWidth:860}}>
+ return <div className="mt-3 overflow-x-auto"><table className="w-full text-left text-sm min-w-[860px]">
   <caption className="sr-only">지난주 역할·프롬프트 버전·보고 모델별 작업물·1차 승인율·토큰</caption>
   <thead><tr className="border-b">{HEAD.map(h=><th scope="col" key={h} className="p-3 font-medium">{h}</th>)}</tr></thead>
   <tbody>{rows.map(r=><tr key={JSON.stringify([r.role,r.promptVersion,r.reportedModel])} className="border-b align-top">

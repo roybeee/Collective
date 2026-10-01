@@ -87,10 +87,10 @@ const named=[];(function walk(node,depth){if((ts.isFunctionDeclaration(node)||ts
 check('CampaignTable is declared once at module level, not inside Workspace',named,[0]);
 ok('CampaignTable is declared before Workspace',workspace.indexOf('function CampaignTable(')<workspace.indexOf('export default function Workspace('));
 // 표가 쓰는 워크스페이스 값·동작은 props로 받는다(감사 권고 ③). 숨은 컨텍스트 의존이 없어 Provider 밖에서도 그대로 그려진다.
-ok('CampaignTable takes the workspace values as props',workspace.includes('function CampaignTable({items,rowMenu=false,data,loaded,search,filter,canManage,setSelectedId,setDeleteTarget,unarchive,newCampaign}:CampaignTableProps)'));
+ok('CampaignTable takes the workspace values as props',workspace.includes('function CampaignTable({items:raw,rowMenu=false,data,loaded,search,filter,canManage,setSelectedId,setDeleteTarget,unarchive,newCampaign}:CampaignTableProps)'));
 ok('both call sites pass the workspace values',workspace.includes('<CampaignTable items={recent.slice(0,3)} {...tableProps}/>')&&workspace.includes('<CampaignTable items={campaigns} rowMenu {...tableProps}/>')&&workspace.includes('const tableProps={data,loaded,search,filter,canManage,setSelectedId,setDeleteTarget,unarchive,newCampaign};'));
 ok('no table context is left in the workspace',!/createContext|useContext|CampaignTableScope/.test(workspace));
-ok('table labels are unchanged',workspace.includes('<TableHead>캠페인</TableHead><TableHead>브랜드</TableHead><TableHead>진행 상태</TableHead><TableHead>역할 진행</TableHead><TableHead className="text-right">예산 상한</TableHead>')&&workspace.includes("title={search||filter!=='all'?'조건에 맞는 캠페인이 없습니다':'다음 성장은 첫 브리프에서 시작됩니다'}"));
+ok('table labels are unchanged',workspace.includes("{head('title','캠페인')}{head('brand','브랜드')}{head('status','진행 상태')}{head('progress','역할 진행')}{head('budget','예산 상한','text-right')}")&&workspace.includes("aria-sort={sort?.key===key")&&workspace.includes("title={search||filter!=='all'?'조건에 맞는 캠페인이 없습니다':'다음 성장은 첫 브리프에서 시작됩니다'}"));
 
 // --- 사용량 화면: 단가(관리자)·예산 상한과 별칭 단가(소유자)는 읽기 전용+안내, 내보내기는 소유자만 ---------------------------
 const usage=source('app/usage-panel.tsx'),part=(text,from,to)=>text.slice(text.indexOf(from),to?text.indexOf(to):undefined);
