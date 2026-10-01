@@ -1,0 +1,21 @@
+// 서버 검증 오류 → 입력 칸 연결(lib/field-error.ts, UX-PLAN-3 Q3). 성장 작업 폼(app/growth-panel.tsx)이 이 규칙으로 aria-invalid와 칸 아래 오류를 그린다.
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {resolve} from 'node:path';
+import {SourceTextModule,createContext} from 'node:vm';
+import ts from 'typescript';
+const context=createContext({console});
+const m=new SourceTextModule(ts.transpileModule(readFileSync(resolve('lib/field-error.ts'),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText,{context});
+await m.link(()=>{throw new Error('no imports')});await m.evaluate();
+const {fieldForError}=m.namespace;
+let passed=0;const check=(name,actual,expected)=>{assert.equal(actual,expected,name);passed++};
+const signal=[{key:'title',label:'근거 제목'},{key:'sourceUrl',label:'공개 출처 URL'},{key:'observedAt',label:'관측 시각(서울 시간)'},{key:'summary',label:'관측 요약'}];
+check('server short label matches the last word of the screen label',fieldForError('제목 입력을 확인해 주세요.',signal),'title');
+check('full screen label wins',fieldForError('관측 요약 입력을 확인해 주세요.',signal),'summary');
+check('parenthetical help is ignored',fieldForError('관측 시각 형식을 확인하세요.',signal),'observedAt');
+check('longest match wins over a shared last word',fieldForError('공개 출처 URL은 https만 받습니다.',[{key:'a',label:'랜딩 URL'},{key:'b',label:'공개 출처 URL'}]),'b');
+check('conflict and permission errors stay on the form',fieldForError('다른 변경이 있습니다. 다시 불러오세요.',signal),null);
+check('one-letter names never match',fieldForError('값 입력을 확인해 주세요.',[{key:'x',label:'값'}]),null);
+const catalog=[{key:'price',label:'판매 단가 (원)'},{key:'unitCost',label:'단위원가 (원)'}];
+check('money label with unit',fieldForError('판매 단가 입력을 확인해 주세요.',catalog),'price');
+console.log(JSON.stringify({passed},null,2));

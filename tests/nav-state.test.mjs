@@ -103,6 +103,11 @@ check('campaign tab without a campaign is dropped',normalizeNav({view:'campaigns
 check('unknown or default campaign tab is dropped',[normalizeNav({view:'campaigns',campaign:'c1',ctab:'evil'}),normalizeNav({view:'campaigns',campaign:'c1',ctab:'brief'})],[{view:'campaigns',campaign:'c1'},{view:'campaigns',campaign:'c1'}]);
 check('opening another campaign resets the campaign tab',withCampaign({view:'campaigns',campaign:'c1',ctab:'growth'},'c2'),{view:'campaigns',campaign:'c2'});
 check('closing a campaign drops its tab',withCampaign({view:'campaigns',campaign:'c1',ctab:'growth'},null),{view:'campaigns'});
+// UX-PLAN-3 Q1: 탭 안쪽 단계(csub)는 그 탭의 허용 목록 값만 남고, 첫 단계·다른 탭의 값·캠페인을 바꾸면 버린다.
+check('growth step round-trips through the address',parseNav(serializeNav({view:'campaigns',campaign:'c1',ctab:'growth',csub:'offer'})),{view:'campaigns',campaign:'c1',ctab:'growth',csub:'offer'});
+check('meta sub tab round-trips through the address',parseNav('?view=campaigns&campaign=c1&ctab=meta-ads&csub=insights'),{view:'campaigns',campaign:'c1',ctab:'meta-ads',csub:'insights'});
+check('step of another tab, unknown step and first step are dropped',[normalizeNav({view:'campaigns',campaign:'c1',ctab:'growth',csub:'insights'}),normalizeNav({view:'campaigns',campaign:'c1',ctab:'results',csub:'offer'}),normalizeNav({view:'campaigns',campaign:'c1',ctab:'growth',csub:'__proto__'}),normalizeNav({view:'campaigns',campaign:'c1',ctab:'growth',csub:'signal'}),normalizeNav({view:'campaigns',campaign:'c1',ctab:'meta-ads',csub:'plan'})],[{view:'campaigns',campaign:'c1',ctab:'growth'},{view:'campaigns',campaign:'c1',ctab:'results'},{view:'campaigns',campaign:'c1',ctab:'growth'},{view:'campaigns',campaign:'c1',ctab:'growth'},{view:'campaigns',campaign:'c1',ctab:'meta-ads'}]);
+check('same campaign keeps the step, another campaign drops it',[withCampaign({view:'campaigns',campaign:'c1',ctab:'growth',csub:'offer'},'c1'),withCampaign({view:'campaigns',campaign:'c1',ctab:'growth',csub:'offer'},'c2')],[{view:'campaigns',campaign:'c1',ctab:'growth',csub:'offer'},{view:'campaigns',campaign:'c2'}]);
 check('withCampaign does not mutate its input',[withCampaign(base,'c1'),base],[{view:'assets',campaign:'c1'},{view:'assets',brand:'oda'}]);
 
 // --- 로드 뒤 존재 확인 -----------------------------------------------------------------

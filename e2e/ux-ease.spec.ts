@@ -24,6 +24,11 @@ test('안건 한 번 클릭 처리·다음 단계·초안 이어 쓰기·직전 
   await page.goto(`/?view=campaigns&campaign=${campaignId}&ctab=growth`);
   const panel=page.getByRole('region',{name:'성장2 판매 워크스페이스',exact:true});await expect(panel.getByRole('navigation',{name:'성장 작업 단계'})).toBeVisible();
   await panel.getByLabel('근거 제목',{exact:true}).fill('동네 저녁 수요 관찰');await panel.getByLabel('공개 출처 URL',{exact:true}).fill('https://example.com/evidence');await panel.getByLabel('근거 유효기한',{exact:true}).fill('2099-01-01');await panel.getByLabel('관측 요약',{exact:true}).fill('저녁 시간 주문 문의가 늘었다.');
+  // 서버 검증 오류는 그 칸에 붙고 초점이 그 칸으로 간다(UX-PLAN-3 Q3). 고치면 표시가 사라진다.
+  const url=panel.getByLabel('공개 출처 URL',{exact:true});await url.fill('http://example.com/evidence');
+  await panel.getByRole('button',{name:'시장 근거 저장',exact:true}).click();
+  await expect(url).toHaveAttribute('aria-invalid','true');await expect(url).toBeFocused();await expect(url).toHaveAccessibleDescription(/HTTPS URL/);
+  await url.fill('https://example.com/evidence');await expect(url).not.toHaveAttribute('aria-invalid','true');
   await panel.getByRole('button',{name:'시장 근거 저장',exact:true}).click();await expect(panel.getByRole('status')).toHaveText('서버에 저장했습니다.');
   await panel.getByRole('button',{name:'다음 단계: 고객·기회 만들기 →',exact:true}).click();
   await expect(panel.getByRole('button',{name:'고객·기회',exact:true})).toHaveAttribute('aria-pressed','true');
