@@ -170,8 +170,9 @@ body{font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;backgrou
  /* 최소 너비는 아이콘 버튼에만 준다. 글자 버튼에 주면 flex 줄에서 기본 최소 너비(글자 폭)를 덮어써 버튼이 눌리고 이웃과 겹친다. */
  button[data-size^=icon],a[data-slot=button][data-size^=icon]{min-width:44px}
  summary{display:flex;align-items:center}
- [data-slot=tabs-list]{height:auto;min-height:44px;flex-wrap:wrap;row-gap:4px;overflow:visible;max-width:100%;justify-content:flex-start}
- [data-slot=tabs-trigger]{flex:0 0 auto;min-width:44px}
+ [data-slot=tabs-list],.campaign-tabs>[data-slot=tabs-list]{height:auto;min-height:44px;flex-wrap:wrap;row-gap:4px;overflow:visible;max-width:100%;justify-content:flex-start}
+ /* 탭은 글자 폭보다 줄어들지 않는다. 화면별 탭 규칙(.campaign-tabs 등의 flex:0)보다 앞서야 하므로 !important를 쓴다. */
+ [data-slot=tabs-trigger]{flex:0 0 auto!important;height:auto!important;min-width:44px}
  [data-slot=sheet-content]>button.absolute,[data-slot=dialog-content]>button.absolute{min-width:44px;display:inline-flex;align-items:center;justify-content:center}
  input[type=checkbox],input[type=radio]{width:22px;height:22px}
  label:has(>input[type=checkbox]),label:has(>input[type=radio]){min-height:44px;display:flex;align-items:center;gap:8px}
@@ -231,3 +232,7 @@ body{font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;backgrou
 
 /* UX-PLAN-3 Q2 공용 확인 대화상자(components/app/confirm-view.tsx): 무엇·영향·되돌리기를 한 줄씩. 위험 동작은 확인 버튼을 경고색으로. */
 .confirm-lines{display:grid;gap:6px;text-align:left}.confirm-lines p{margin:0;line-height:1.6}.confirm-lines b{margin-right:6px}.confirm-danger{background:#b42318!important;color:#fff!important}
+.screen-skeleton{display:grid;gap:10px;padding:18px 2px}.screen-skeleton-bar{height:14px;border-radius:7px;background:linear-gradient(90deg,#eceee8 0%,#f7f8fa 50%,#eceee8 100%);background-size:200% 100%;animation:skeleton-shimmer 1.2s ease-in-out infinite}.screen-skeleton-bar.is-title{height:22px;width:38%}.screen-skeleton-bar:nth-child(3){width:92%}.screen-skeleton-bar:nth-child(4){width:78%}.screen-skeleton-bar:nth-child(5){width:64%}@keyframes skeleton-shimmer{0%{background-position:100% 0}100%{background-position:-100% 0}}
+.confirm-input{display:grid;gap:6px;font-size:14px;color:#45503a}.confirm-input input{border:1px solid #dfe4d6;border-radius:8px;padding:10px 12px;min-height:44px;font-size:16px}
+/* UX-PLAN-3 Q3: Meta 하위 탭 15개를 4단계 묶음으로 보여 준다(탭 이름·순서 의미는 유지). */
+.meta-tabs{display:flex;flex-wrap:wrap;gap:8px 14px;height:auto;max-width:100%;align-items:flex-start;justify-content:flex-start}.meta-tab-group{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:4px 8px 4px 6px;border:1px solid #eceee8;border-radius:10px;background:#fff}.meta-tab-step{font-size:12px;font-weight:700;color:#45503a;padding:0 6px 0 2px;white-space:nowrap}

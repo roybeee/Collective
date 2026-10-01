@@ -1,10 +1,7 @@
 'use client';
 import {askConfirm} from '@/components/app/confirm-dialog';
-import {MetaExperimentPanel} from './meta-experiment-panel';
-import {MetaExecutionPanel} from './meta-execution-panel';
-import {MetaAdCreatePanel} from './meta-ad-create-panel';
-import {MetaImageUploadPanel} from './meta-image-upload-panel';
-import {useEffect,useId,useRef,useState} from 'react';
+import {lazy,Suspense,useEffect,useId,useRef,useState} from 'react';
+import {ScreenSkeleton} from '@/components/app/screen-skeleton';
 import {ArrowLeft,ArrowRight,Check,CheckCheck,CircleHelp,FileCheck2,ShoppingBag,Play,ShieldCheck} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
@@ -12,16 +9,6 @@ import {Checkbox} from '@/components/ui/checkbox';
 import {RadioGroup,RadioGroupItem} from '@/components/ui/radio-group';
 import {NativeSelect} from '@/components/ui/native-select';
 import {Tabs,TabsList,TabsTrigger,TabsContent} from '@/components/ui/tabs';
-import {MetaReservationPanel} from './meta-reservation-panel';
-import {MetaAdBundlePanel} from './meta-ad-bundle-panel';
-import {MetaBudgetPanel} from './meta-budget-panel';
-import {MetaConversionPanel} from './meta-conversion-panel';
-import {MetaLearningPanel} from './meta-learning-panel';
-import {MetaPausedPanel} from './meta-paused-panel';
-import {MetaReportPanel} from './meta-report-panel';
-import {MetaInsightsPanel} from './meta-insights-panel';
-import {StorefrontOrdersPanel} from './storefront-orders-panel';
-import {MetaCreativePanel} from './meta-creative-panel';
 import {metaChecks,metaMoneyFields,metaTextFields,metaReadiness,parseMetaPlan,type MetaPlanInput,type MetaPlan} from '@/lib/meta-ads';
 import s from './meta-ads-panel.module.css';
 type View={input:MetaPlanInput;plan:MetaPlan|null;version:number;campaignVersion:number;canEdit:boolean;readiness:ReturnType<typeof metaReadiness>;links:{storeId:string|null;storeExperimentId:string|null}};
@@ -30,8 +17,23 @@ const labels:Record<string,string>={...metaTextFields,...metaMoneyFields,...meta
 const money=(n:number|null)=>n===null?'미입력':n.toLocaleString('ko-KR')+'원';
 const message=(e:unknown)=>e instanceof Error?e.message:'불러오지 못했습니다.';
 const checkHelp={inventory:'광고를 보고 구매할 고객에게 제공할 수 있는 수량입니다.',fulfillment:'배송 기간이나 예약 가능 시간, 담당자를 확인하세요.',refunds:'구매 전에 취소·환불 조건을 확인할 수 있어야 합니다.',rights:'사진, 영상, 음악과 상품의 사용 권한을 확인하세요.',measurement:'구매·문의 이후 결과를 확인할 위치를 정하세요.',consent:'고객의 동의와 데이터 처리 범위를 확인하세요.'};
+// 하위 화면은 탭을 열 때 내려받는다(UX-PLAN-3 Q7). 첫 탭(실행 준비)은 이 파일에 있다.
+const MetaExperimentPanel=lazy(()=>import('./meta-experiment-panel').then(m=>({default:m.MetaExperimentPanel})));
+const MetaExecutionPanel=lazy(()=>import('./meta-execution-panel').then(m=>({default:m.MetaExecutionPanel})));
+const MetaAdCreatePanel=lazy(()=>import('./meta-ad-create-panel').then(m=>({default:m.MetaAdCreatePanel})));
+const MetaImageUploadPanel=lazy(()=>import('./meta-image-upload-panel').then(m=>({default:m.MetaImageUploadPanel})));
+const MetaReservationPanel=lazy(()=>import('./meta-reservation-panel').then(m=>({default:m.MetaReservationPanel})));
+const MetaAdBundlePanel=lazy(()=>import('./meta-ad-bundle-panel').then(m=>({default:m.MetaAdBundlePanel})));
+const MetaBudgetPanel=lazy(()=>import('./meta-budget-panel').then(m=>({default:m.MetaBudgetPanel})));
+const MetaConversionPanel=lazy(()=>import('./meta-conversion-panel').then(m=>({default:m.MetaConversionPanel})));
+const MetaLearningPanel=lazy(()=>import('./meta-learning-panel').then(m=>({default:m.MetaLearningPanel})));
+const MetaPausedPanel=lazy(()=>import('./meta-paused-panel').then(m=>({default:m.MetaPausedPanel})));
+const MetaReportPanel=lazy(()=>import('./meta-report-panel').then(m=>({default:m.MetaReportPanel})));
+const MetaInsightsPanel=lazy(()=>import('./meta-insights-panel').then(m=>({default:m.MetaInsightsPanel})));
+const StorefrontOrdersPanel=lazy(()=>import('./storefront-orders-panel').then(m=>({default:m.StorefrontOrdersPanel})));
+const MetaCreativePanel=lazy(()=>import('./meta-creative-panel').then(m=>({default:m.MetaCreativePanel})));
 export function MetaAdsPanel({campaignId}:{campaignId:string}){
- return <Tabs defaultValue="plan" key={campaignId}><TabsList aria-label="Meta 작업" style={{maxWidth:'100%',height:'auto',flexWrap:'wrap'}}><TabsTrigger value="plan">실행 준비</TabsTrigger><TabsTrigger value="insights">광고 성과</TabsTrigger><TabsTrigger value="orders">주문 대조</TabsTrigger><TabsTrigger value="conversions">전환 준비</TabsTrigger><TabsTrigger value="creative">소재·실험</TabsTrigger><TabsTrigger value="report">성과 대조</TabsTrigger><TabsTrigger value="learning">다음 실험</TabsTrigger><TabsTrigger value="paused">비활성 초안</TabsTrigger><TabsTrigger value="budget">예산 검토</TabsTrigger><TabsTrigger value="images">원본 업로드</TabsTrigger><TabsTrigger value="create">하위 광고 생성</TabsTrigger><TabsTrigger value="bundle">광고 구성</TabsTrigger><TabsTrigger value="execution">집행·정지</TabsTrigger><TabsTrigger value="experiments">실험 관측</TabsTrigger><TabsTrigger value="reservations">예산 예약</TabsTrigger></TabsList><TabsContent value="plan"><MetaPlanPanel campaignId={campaignId}/></TabsContent><TabsContent value="insights"><MetaInsightsPanel campaignId={campaignId}/></TabsContent><TabsContent value="orders"><StorefrontOrdersPanel campaignId={campaignId}/></TabsContent><TabsContent value="conversions"><MetaConversionPanel campaignId={campaignId}/></TabsContent><TabsContent value="creative"><MetaCreativePanel campaignId={campaignId}/></TabsContent><TabsContent value="report"><MetaReportPanel campaignId={campaignId}/></TabsContent><TabsContent value="learning"><MetaLearningPanel campaignId={campaignId}/></TabsContent><TabsContent value="paused"><MetaPausedPanel campaignId={campaignId}/></TabsContent><TabsContent value="budget"><MetaBudgetPanel campaignId={campaignId}/></TabsContent><TabsContent value="images"><MetaImageUploadPanel campaignId={campaignId}/></TabsContent><TabsContent value="create"><MetaAdCreatePanel campaignId={campaignId}/></TabsContent><TabsContent value="bundle"><MetaAdBundlePanel campaignId={campaignId}/></TabsContent><TabsContent value="reservations"><MetaReservationPanel campaignId={campaignId}/></TabsContent><TabsContent value="execution"><MetaExecutionPanel campaignId={campaignId}/></TabsContent><TabsContent value="experiments"><MetaExperimentPanel campaignId={campaignId}/></TabsContent></Tabs>;
+ return <Tabs defaultValue="plan" key={campaignId}><TabsList aria-label="Meta 작업" className="meta-tabs"><div role="none" className="meta-tab-group"><span className="meta-tab-step" aria-hidden="true">1 준비</span><TabsTrigger value="plan">실행 준비</TabsTrigger><TabsTrigger value="budget">예산 검토</TabsTrigger><TabsTrigger value="conversions">전환 준비</TabsTrigger></div><div role="none" className="meta-tab-group"><span className="meta-tab-step" aria-hidden="true">2 소재·구성</span><TabsTrigger value="creative">소재·실험</TabsTrigger><TabsTrigger value="images">원본 업로드</TabsTrigger><TabsTrigger value="bundle">광고 구성</TabsTrigger><TabsTrigger value="create">하위 광고 생성</TabsTrigger><TabsTrigger value="paused">비활성 초안</TabsTrigger></div><div role="none" className="meta-tab-group"><span className="meta-tab-step" aria-hidden="true">3 집행</span><TabsTrigger value="execution">집행·정지</TabsTrigger><TabsTrigger value="reservations">예산 예약</TabsTrigger></div><div role="none" className="meta-tab-group"><span className="meta-tab-step" aria-hidden="true">4 관측·학습</span><TabsTrigger value="insights">광고 성과</TabsTrigger><TabsTrigger value="orders">주문 대조</TabsTrigger><TabsTrigger value="report">성과 대조</TabsTrigger><TabsTrigger value="experiments">실험 관측</TabsTrigger><TabsTrigger value="learning">다음 실험</TabsTrigger></div></TabsList><TabsContent value="plan"><MetaPlanPanel campaignId={campaignId}/></TabsContent><TabsContent value="insights"><Suspense fallback={<ScreenSkeleton/>}><MetaInsightsPanel campaignId={campaignId}/></Suspense></TabsContent><TabsContent value="orders"><Suspense fallback={<ScreenSkeleton/>}><StorefrontOrdersPanel campaignId={campaignId}/></Suspense></TabsContent><TabsContent value="conversions"><Suspense fallback={<ScreenSkeleton/>}><MetaConversionPanel campaignId={campaignId}/></Suspense></TabsContent><TabsContent value="creative"><Suspense fallback={<ScreenSkeleton/>}><MetaCreativePanel campaignId={campaignId}/></Suspense></TabsContent><TabsContent value="report"><Suspense fallback={<ScreenSkeleton/>}><MetaReportPanel campaignId={campaignId}/></Suspense></TabsContent><TabsContent value="learning"><Suspense fallback={<ScreenSkeleton/>}><MetaLearningPanel campaignId={campaignId}/></Suspense></TabsContent><TabsContent value="paused"><Suspense fallback={<ScreenSkeleton/>}><MetaPausedPanel campaignId={campaignId}/></Suspense></TabsContent><TabsContent value="budget"><Suspense fallback={<ScreenSkeleton/>}><MetaBudgetPanel campaignId={campaignId}/></Suspense></TabsContent><TabsContent value="images"><Suspense fallback={<ScreenSkeleton/>}><MetaImageUploadPanel campaignId={campaignId}/></Suspense></TabsContent><TabsContent value="create"><Suspense fallback={<ScreenSkeleton/>}><MetaAdCreatePanel campaignId={campaignId}/></Suspense></TabsContent><TabsContent value="bundle"><Suspense fallback={<ScreenSkeleton/>}><MetaAdBundlePanel campaignId={campaignId}/></Suspense></TabsContent><TabsContent value="reservations"><Suspense fallback={<ScreenSkeleton/>}><MetaReservationPanel campaignId={campaignId}/></Suspense></TabsContent><TabsContent value="execution"><Suspense fallback={<ScreenSkeleton/>}><MetaExecutionPanel campaignId={campaignId}/></Suspense></TabsContent><TabsContent value="experiments"><Suspense fallback={<ScreenSkeleton/>}><MetaExperimentPanel campaignId={campaignId}/></Suspense></TabsContent></Tabs>;
 }
 function MetaPlanPanel({campaignId}:{campaignId:string}){
  const id=useId(),heading=useRef<HTMLHeadingElement>(null);
