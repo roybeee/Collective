@@ -14,7 +14,7 @@ await put('growth_cs_ticket','t-over',{id:'t-over',campaignId:'c1',status:'open'
 await put('growth_cs_ticket','t-soon',{id:'t-soon',campaignId:'c1',status:'open',input:{summary:'옵션 문의',promisedBy:iso(now+2*H)}},'c1');
 await put('growth_cs_ticket','t-done',{id:'t-done',campaignId:'c1',status:'resolved',input:{summary:'끝난 문의',promisedBy:iso(now-5*H)}},'c1');
 await put('growth_cs_ticket','t-arch',{id:'t-arch',campaignId:'c2',status:'open',input:{summary:'보관 캠페인 문의',promisedBy:iso(now-H)}},'c2');
-await put('growth_detected_signal','s1',{id:'s1',campaignId:'c1',status:'new',title:'7일 수요 급증'},'c1');
+await put('growth_detected_signal','s1',{id:'s1',version:1,brandId:'b',campaignId:'c1',status:'new',detection:{key:'demand_rise:x',kind:'demand_rise',title:'최근 7일 유료 주문 증가',detail:'일평균 3건',window:{from:'2026-09-01',to:'2026-09-07'},evidence:{},dueBy:null},triage:null,dismissReason:'',detectedAt:iso(now-H)},'c1');
 await put('growth_detected_signal','s2',{id:'s2',campaignId:'c1',status:'acknowledged',title:'확인한 신호'},'c1');
 await put('growth_expansion','e1',{id:'e1',campaignId:'c3',status:'proposed',input:{title:'예산 20% 증액'}},'c3');
 await put('growth_landing_revision','l1',{id:'l1',campaignId:'c1',status:'draft',input:{title:'가격 문구 수정'}},'c1');
@@ -31,6 +31,9 @@ check(ids.includes('growth_cs_ticket:t-over')&&a.items.find(i=>i.id==='growth_cs
 check(a.items.find(i=>i.id==='growth_cs_ticket:t-soon')?.kind==='upcoming','CS promise within a day is upcoming');
 check(!ids.includes('growth_cs_ticket:t-done')&&!ids.includes('growth_cs_ticket:t-arch')&&!ids.includes('growth_cs_ticket:t-other'),'resolved, archived-campaign and other-owner items excluded');
 check(ids.includes('growth_detected_signal:s1')&&!ids.includes('growth_detected_signal:s2'),'only new signals');
+const sig=a.items.find(i=>i.id==='growth_detected_signal:s1');
+check(sig.title==='최근 7일 유료 주문 증가'&&sig.detail==='일평균 3건','signal title and detail come from the detection record');
+check(sig.quick?.type==='acknowledge_signal'&&sig.quick.recordId==='s1'&&sig.quick.version===1&&sig.quick.campaignVersion===1&&sig.quick.dueBy===day(now+3*24*H)&&sig.quick.nextAction.startsWith('최근 7일 유료 주문 증가'),'signal offers one-click acknowledge with defaults (due in 3 days)');
 check(a.items.find(i=>i.id==='growth_expansion:e1')?.kind==='decision'&&a.items.find(i=>i.id==='growth_expansion:e1')?.campaignTitle==='다른 캠페인','expansion awaiting approval across campaigns');
 check(a.items.find(i=>i.id==='growth_landing_revision:l1')?.title.includes('승인 대기'),'landing draft awaits approval');
 check(a.items.find(i=>i.id==='growth_collaboration:co1')?.kind==='decision','delivered collaboration awaits approval');
@@ -44,6 +47,11 @@ check(r.status===200&&s.counts.cs===3&&s.counts.detection===2&&s.counts.landing=
 check(s.counts.expansion===0,'another campaign is not counted');
 check(s.attention.cs==='기한 초과 1건'&&s.attention.detection==='새 신호 1건'&&!s.attention.expansion,'attention flags');
 check((await getSummary('c1',{'oai-authenticated-user-id':'other'})).status===404,'owner isolation');
+// 안건의 '내가 맡기'는 기존 감지 신호 API로 기록되고 안건에서 빠진다.
+const detections=await load('app/api/growth/detections/route.ts');
+const ack=await detections.POST(new Request('https://agency.test/api/growth/detections',{method:'POST',headers:{...h,'content-type':'application/json'},body:JSON.stringify({action:'acknowledge',campaignId:'c1',campaignVersion:sig.quick.campaignVersion,id:sig.quick.recordId,expectedVersion:sig.quick.version,requestId:crypto.randomUUID(),triage:{assignee:'대표',nextAction:sig.quick.nextAction,dueBy:sig.quick.dueBy}})})).then(unpack);
+check(ack.status===200,'quick acknowledge payload is accepted by the detections API: '+JSON.stringify(ack.body));
+check(!(await getAgenda()).body.items.some(i=>i.id==='growth_detected_signal:s1'),'acknowledged signal leaves the agenda');
 // UX-PLAN-3 Q7: 성장 조회 한 번에 패널 요약과 전역 중단 상태를 싣는다(include=summary,stop). 기존 summary 필드는 그대로다.
 const growthGet=(q)=>growthRoute.GET(new Request(`https://agency.test/api/growth?campaignId=c1${q}`,{headers:h})).then(unpack);
 const plain=await growthGet(''),rich=await growthGet('&include=summary,stop');
