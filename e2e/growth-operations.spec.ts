@@ -18,8 +18,8 @@ test('성장 공유재고·실제 주문 품목·출고·정산 재조회',async
   await page.locator('summary').filter({hasText:'주문·재고·이행 운영'}).click();
   const panel=page.getByRole('region',{name:'주문 재고 이행 운영',exact:true});
   await panel.locator('summary').filter({hasText:'공유 재고 등록·실사·입고'}).click();
-  const stock=panel.getByRole('group',{name:'공유 재고 등록',exact:true});
-  await stock.getByRole('combobox',{name:'SKU',exact:true}).fill('OPS-SKU');await stock.getByLabel('처음 확인한 실물 수량 (미확인은 빈칸)',{exact:true}).fill('5');await stock.getByLabel('증빙 내부 ID (개인정보 제외)',{exact:true}).fill('warehouse-1');await stock.getByRole('button',{name:'공유 재고 등록',exact:true}).click();await expect(panel.getByRole('status')).toContainText('공유 재고를 등록했습니다.');
+  const stock=panel.getByRole('group',{name:'공유 재고 저장',exact:true});
+  await stock.getByRole('combobox',{name:'SKU',exact:true}).fill('OPS-SKU');await stock.getByLabel('처음 확인한 실물 수량 (미확인은 빈칸)',{exact:true}).fill('5');await stock.getByLabel('증빙 내부 ID (개인정보 제외)',{exact:true}).fill('warehouse-1');await stock.getByRole('button',{name:'공유 재고 저장',exact:true}).click();await expect(panel.getByRole('status')).toContainText('공유 재고를 등록했습니다.');
   await panel.locator('summary').filter({hasText:'주문 품목과 판매 미션 연결'}).click();const link=panel.getByRole('group',{name:'주문 품목과 판매 미션',exact:true});
   await link.getByRole('combobox',{name:'지점 주문',exact:true}).selectOption(orderId);await link.getByRole('combobox',{name:'연결 판매 미션',exact:true}).selectOption('ops-mission');await link.getByRole('combobox',{name:'SKU가 일치하는 공유 재고',exact:true}).selectOption({index:1});await link.getByLabel('주문 품목 수량',{exact:true}).fill('2');
   for(const [name,value] of [['판매 계정 내부 ID','seller'],['원 주문 품목 ID','line-a'],['품목 연결 증빙 참조 (개인정보 제외)','seller-line-a'],['이 품목에 배분할 결제액 (원, 미확인은 빈칸)','10000'],['이 품목에 배분할 환불액 (원, 미확인은 빈칸)','0']])await link.getByLabel(name,{exact:true}).fill(value);

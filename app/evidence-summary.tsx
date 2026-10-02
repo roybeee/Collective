@@ -1,4 +1,5 @@
 'use client';
+import {StatList} from '@/components/app/stat-list';
 import {useCallback,useEffect,useState,type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 import {RefreshCw} from 'lucide-react';
@@ -45,7 +46,7 @@ export function EvidenceSummary({campaignId,artifacts}:{campaignId:string;artifa
  const changed=current.filter(a=>a.factsChanged).length,brandChanged=current.filter(a=>a.brandChanged).length,claims=current.filter(a=>a.unverifiedClaims?.length).length;
  return <section className="notice mb-4" aria-live="polite">
   <div className="flex justify-between gap-2 items-center"><b>AI 팀에 전달되는 근거</b><Button variant="ghost" size="sm" disabled={busy} onClick={()=>void load()}><RefreshCw/>다시 확인</Button></div>
-  {summary?<p>확정 사실 {summary.confirmedFacts} · 금지 표현 {summary.prohibitedFacts} · 확정 자료 {summary.confirmedSources} · 제외 후보 {summary.excludedCandidates} · {diagnosisLabel[summary.diagnosis]}</p>:!error&&<ScreenSkeleton label="불러오는 중." rows={2}/>}
+  {summary?<StatList label="AI 팀에 전달되는 근거 수" items={[['확정 사실',`${summary.confirmedFacts}건`],['금지 표현',`${summary.prohibitedFacts}건`],['확정 자료',`${summary.confirmedSources}건`],['제외 후보',`${summary.excludedCandidates}건`],['진단',diagnosisLabel[summary.diagnosis]]]}/>:!error&&<ScreenSkeleton label="불러오는 중." rows={2}/>}
   {summary&&<small>미확인 사실 후보 {summary.candidateFacts}건과 브랜드 소개 문구는 ‘미확인’으로 표시해 전달합니다. 제외 후보는 브랜드 아카이브에서 확인하면 반영됩니다.{summary.diagnosis==='stale'?' 채택한 진단의 근거나 브랜드 정보가 바뀌어 진단을 빼고 전달합니다.':''}</small>}
   {changed>0&&<p className="form-error">확정 사실이 바뀐 뒤의 작업물 {changed}건은 다시 검토해 주세요. 작업물은 그대로 유지됩니다.</p>}
   {brandChanged>0&&<p className="form-error">브랜드 정보가 바뀐 뒤의 작업물 {brandChanged}건은 새 기준과 맞는지 검토해 주세요. 승인하려면 변경 확인이 필요합니다.</p>}

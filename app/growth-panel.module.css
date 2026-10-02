@@ -81,3 +81,6 @@
 .headerActions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
 .panel .headerActions .smallButton { margin-top: 0; }
+/* 저장 충돌 때 두 선택지(최신 기록 불러오기 / 내 입력 유지). */
+.conflictChoices { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+

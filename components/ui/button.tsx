@@ -47,21 +47,34 @@ function Button({
   variant = "default",
   size = "default",
   asChild = false,
+  disabledReason,
   ...props
 }: React.ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
+    // 비활성일 때 버튼 옆에 보이는 이유(UX-PLAN-3 6차원 '비활성 버튼 이유 표시'). 빈 문자열이면 보이지 않는다.
+    disabledReason?: string
   }) {
   const Comp = asChild ? Slot.Root : "button"
+  const reasonId = React.useId()
+  const reason = props.disabled && disabledReason ? disabledReason : ""
 
-  return (
+  const button = (
     <Comp
       data-slot="button"
       data-variant={variant}
       data-size={size}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
+      {...(reason ? { "aria-describedby": cn(props["aria-describedby"], reasonId) } : {})}
     />
+  )
+  if (!reason) return button
+  return (
+    <>
+      {button}
+      <small id={reasonId} className="why-disabled">{reason}</small>
+    </>
   )
 }
 
