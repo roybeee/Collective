@@ -20,7 +20,7 @@ import {notifySaved} from '@/lib/ui/notify';
 // 수집은 초안만 만든다. 결과 반영과 비교 가능 확정은 '결과 입력'에서 사람이 한다. 수집 버튼은 대표·관리자에게, 이 실험 채널의 커넥터 연결이 있을 때만 보인다.
 export type ResolvedCredential={channel:ConnectorKey;label:string;resolvedScope:ResolvedScope|null;account:string;expiresAt:string|null};
 type Arm='control'|'treatment';
-const armLabels:Record<Arm,string>={control:'A안(대조안)',treatment:'B안(실험안)'};
+const armLabels:Record<Arm,string>={control:'A(대조안)',treatment:'B(실험안)'};
 const TOKEN_WARNING_MS=7*86400000;
 const when=(s:string|null)=>s?new Date(s).toLocaleString('ko-KR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'미확인';
 const scopeLabel=(s:ResolvedScope|null)=>s?.level==='store'?`지점 연결 ${s.storeId}`:s?.level==='brand'?`브랜드 연결 ${s.brandId}`:s?.level==='workspace'?'워크스페이스 기본':'연결 없음';

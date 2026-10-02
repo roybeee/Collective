@@ -64,7 +64,7 @@ const igConn=(over={})=>({channel:'instagram',label:'Instagram',resolvedScope:{l
 check('a failing source shows the fixed reason, the count and reconnection',()=>{
  const html=render(ui.CollectStatus,{view:view([source({lastError:{code:'reauth_required',reason:reasons.reauth_required},failures:2,reauthRequired:true,nextAttemptAt:'2026-09-20T12:00:00.000Z'})]),now:NOW});
  assert.match(html,/role="alert"/);
- assert.match(text(html),/자동 수집 실패\(A안\(대조안\)\): 인증 실패 · 토큰이 무효하거나 만료됐습니다\./);
+ assert.match(text(html),/자동 수집 실패\(A\(대조안\)\): 인증 실패 · 토큰이 무효하거나 만료됐습니다\./);
  assert.match(text(html),/연속 2회 ?, 재연결 필요 ?, 다음 시도/);
 });
 check('a stopped source says collection stopped instead of a next attempt',()=>{
@@ -77,7 +77,7 @@ check('a gateway failure is not called a reconnection',()=>{
 });
 check('a healthy source shows the last fetch and the next run',()=>{
  const html=text(render(ui.CollectStatus,{view:view([source()]),now:NOW}));
- assert.match(html,/A안\(대조안\) 자동 수집 ?, 대상 cmp-1 ?, 마지막 .* ?, 다음 /);assert.ok(!/자동 수집 실패/.test(html));
+ assert.match(html,/A\(대조안\) 자동 수집 ?, 대상 cmp-1 ?, 마지막 .* ?, 다음 /);assert.ok(!/자동 수집 실패/.test(html));
 });
 check('an expired or expiring token is warned on the card',()=>{
  assert.match(text(render(ui.CollectStatus,{connector:naverConn({expiresAt:'2026-09-19T00:00:00.000Z'}),now:NOW})),/토큰이 만료됐습니다\(브랜드 연결 ofd\)/);
@@ -88,7 +88,7 @@ check('an expired or expiring token is warned on the card',()=>{
 // ── 2) 수집 초안: arm 값·기간·연결과 비교 경고, 비교 가능 미확정 안내 ──
 check('the draft shows each arm with window and credential and the comparison warnings',()=>{
  const html=text(render(ui.CollectStatus,{view:view([source()]),now:NOW}));
- assert.match(html,/A안\(대조안\) ?, 120 \/ 4000 ?, 기간 2026-09-01~2026-09-07 ?, 수집 .* ?, 브랜드 연결 ofd/);
+ assert.match(html,/A\(대조안\) ?, 120 \/ 4000 ?, 기간 2026-09-01~2026-09-07 ?, 수집 .* ?, 브랜드 연결 ofd/);
  assert.match(html,/두 실험안을 서로 다른 연결로 수집했습니다/);
  assert.match(html,/비교 가능으로 확정되지 않습니다/);
 });
@@ -106,7 +106,7 @@ check('the collect button needs a running experiment, an admin and a connection'
 });
 check('the collect form asks for arm, connector, target and window',()=>{
  const html=render(ui.CollectFields,{f:{arm:'treatment',channel:'naver_ads',target:'',from:'2026-09-01',to:'2026-09-19'},set:()=>{},connectors:[naverConn()]});
- assert.match(html,/B안\(실험안\)/);assert.match(html,/네이버 검색광고, 1234567, 브랜드 연결 ofd/);assert.match(text(html),/광고 대상 ID \*/);assert.match(html,/type="date"/);
+ assert.match(html,/B\(실험안\)/);assert.match(html,/네이버 검색광고, 1234567, 브랜드 연결 ofd/);assert.match(text(html),/광고 대상 ID \*/);assert.match(html,/type="date"/);
 });
 let sent;fetchImpl=async(url,init)=>{sent={url,init};return new Response(JSON.stringify({collected:{},draft:{comparable:false}}),{status:200,headers:{'content-type':'application/json'}})};
 await ui.startCollect('e1',{arm:'control',channel:'naver_ads',target:' cmp-1 ',from:'2026-09-01',to:'2026-09-07'});

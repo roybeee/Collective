@@ -64,9 +64,9 @@ test('성장 판매 근거·니즈 연결·불완전 미션·충돌 입력 보�
   await expect(panel.getByRole('alert')).toContainText('입력은 보존했습니다.');
   await expect(panel.getByRole('textbox',{name:'관측 요약',exact:true})).toHaveValue('현재 창에서 검토한 근거 설명');
   await panel.getByRole('button',{name:'새로고침',exact:true}).click();
-  await expect(panel.getByRole('button',{name:'현재 입력 유지하고 최신 버전 기준 사용',exact:true})).toBeVisible();
+  await expect(panel.getByRole('button',{name:'현재 입력을 유지하고 최신 버전 기준 사용',exact:true})).toBeVisible();
   await expect(panel.getByRole('textbox',{name:'관측 요약',exact:true})).toHaveValue('현재 창에서 검토한 근거 설명');
-  await panel.getByRole('button',{name:'현재 입력 유지하고 최신 버전 기준 사용',exact:true}).click();
+  await panel.getByRole('button',{name:'현재 입력을 유지하고 최신 버전 기준 사용',exact:true}).click();
   await panel.getByRole('button',{name:'시장 근거 저장',exact:true}).click();
   await expect(panel.getByRole('status')).toHaveText('서버에 저장했습니다.');
   view=await read();

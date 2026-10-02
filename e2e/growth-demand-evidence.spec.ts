@@ -33,7 +33,7 @@ test('수요 단계 발행 근거 연결·크리에이터 차단·응답 유실 
   fixture(owner,'growth_demand','demand-seq',campaignId,{...seq,version:2});
   await stepBox.selectOption('creator-step');await stepBox.selectOption('owned-step');await evidence.fill('check-002');await panel.getByRole('button',{name:'다른 단계로 다시 연결',exact:true}).click();
   await expect(panel.getByRole('alert')).toContainText('변경');await expect(evidence).toHaveValue('check-002');
-  await panel.getByRole('button',{name:'단계 근거 새로고침',exact:true}).click();await expect(panel.getByRole('button',{name:'현재 입력 유지하고 최신 판 채택',exact:true})).toBeVisible();await panel.getByRole('button',{name:'현재 입력 유지하고 최신 판 채택',exact:true}).click();await expect(evidence).toHaveValue('check-002');
+  await panel.getByRole('button',{name:'단계 근거 새로고침',exact:true}).click();await expect(panel.getByRole('button',{name:'현재 입력을 유지하고 최신 판 채택',exact:true})).toBeVisible();await panel.getByRole('button',{name:'현재 입력을 유지하고 최신 판 채택',exact:true}).click();await expect(evidence).toHaveValue('check-002');
   await panel.getByRole('button',{name:'다른 단계로 다시 연결',exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'연결했습니다'})).toBeVisible();
   await panel.getByRole('button',{name:'연결 해제',exact:true}).click();await expect(panel).toContainText('연결된 단계 근거가 없습니다');await panel.locator('summary').filter({hasText:'연결 이력'}).click();await expect(panel).toContainText('v3, 해제');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
