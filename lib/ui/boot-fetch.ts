@@ -4,7 +4,8 @@
 export const BOOT_PATHS=['/api/auth','/api/workspace','/api/agenda'] as const;
 const MAX_AGE_MS=10_000;
 // 머리 스크립트는 화면 코드보다 먼저 돌아야 하므로 문자열로 둔다. 같은 출처 쿠키를 보내고 캐시는 쓰지 않는다(authRequest·agenda와 같은 옵션).
-export const BOOT_SCRIPT=`(function(){try{var t=Date.now(),b={};${JSON.stringify(BOOT_PATHS)}.forEach(function(p){var f=fetch(p,{credentials:'same-origin',cache:'no-store'});f.catch(function(){});b[p]={t:t,f:f}});window.__boot=b}catch(e){}})()`;
+// 본문은 바로 끝까지 읽어 둔다. 홈이 아닌 화면처럼 아무도 넘겨받지 않으면 읽지 않은 응답이 열린 채 남아 네트워크가 쉬지 않았다.
+export const BOOT_SCRIPT=`(function(){try{var t=Date.now(),b={};${JSON.stringify(BOOT_PATHS)}.forEach(function(p){var f=fetch(p,{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.blob().then(function(x){return new Response(x,{status:r.status,statusText:r.statusText,headers:r.headers})})});f.catch(function(){});b[p]={t:t,f:f}});window.__boot=b}catch(e){}})()`;
 type Boot=Record<string,{t:number;f:Promise<Response>}|undefined>;
 export function bootFetch(path:(typeof BOOT_PATHS)[number],init?:RequestInit):Promise<Response>{
  const boot=typeof window==='undefined'?undefined:(window as unknown as {__boot?:Boot}).__boot,hit=boot?.[path];
