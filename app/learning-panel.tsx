@@ -1,4 +1,5 @@
 'use client';
+import {DataTable} from '@/components/app/data-table';
 import {CardButton} from '@/components/app/card-button';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {toast} from 'sonner';
@@ -86,18 +87,29 @@ function PlaybookSignals({data,brandId,busy,canOwn,onDraft}:{data:LearningData;b
  return <section aria-label="교정 신호" className="mt-8">
   <div className="learning-card-top"><b>교정 신호 · 대표·관리자</b></div>
   <p className="learning-note" role="note">자동 판정 아님 · 읽을 때 계산한 참고값이며 규칙 상태·만료를 바꾸지 않습니다. 교정은 수정 요청과 사람이 고친 판의 승인입니다. 같은 역할에서 {CLUSTER_WINDOW_DAYS}일 안에 {PLAYBOOK_CLUSTER_MIN}건 이상이면 인용을 미리 채운 규칙 초안을 쓸 수 있습니다.</p>
-  {clusters.length?<div className="ledger-table-wrap"><table className="ledger-table"><caption className="sr-only">역할별 교정 묶음({CLUSTER_WINDOW_DAYS}일)</caption>
-   <thead><tr><th>역할 · 기간</th><th>교정</th><th>사유</th><th>이미 인용한 규칙</th><th>초안</th></tr></thead>
-   <tbody>{clusters.map(cl=><tr key={cl.role??''}><td><b>{signalRole(cl.role)}</b><small>{cl.window.from} ~ {cl.window.to}</small></td><td>{cl.corrections}건{cl.eligible?' · 초안 대상':''}</td><td>{codeCounts(cl.reasonCodes)}</td>
-    <td>{cl.coveredBy.length?cl.coveredBy.map(id=>rules.get(id)?.title??id).join(', '):'없음'}</td><td>{cl.eligible&&<Button size="sm" variant="outline" disabled={busy||!canOwn} onClick={()=>onDraft(cl)}><Plus/>규칙 초안 쓰기</Button>}</td></tr>)}</tbody></table></div>
+  {clusters.length?<DataTable caption={`역할별 교정 묶음(${CLUSTER_WINDOW_DAYS}일)`} rows={clusters} rowKey={cl=>cl.role??''} csvName="correction-clusters" columns={[
+   {label:'역할 · 기간',sort:cl=>signalRole(cl.role),csv:cl=>signalRole(cl.role),cell:cl=><><b>{signalRole(cl.role)}</b><small>{cl.window.from} ~ {cl.window.to}</small></>},
+   {label:'교정',sort:cl=>cl.corrections,csv:cl=>cl.corrections,cell:cl=>`${cl.corrections}건${cl.eligible?' · 초안 대상':''}`},
+   {label:'사유',csv:cl=>codeCounts(cl.reasonCodes),cell:cl=>codeCounts(cl.reasonCodes)},
+   {label:'이미 인용한 규칙',cell:cl=>cl.coveredBy.length?cl.coveredBy.map(id=>rules.get(id)?.title??id).join(', '):'없음'},
+   {label:'초안',cell:cl=>cl.eligible&&<Button size="sm" variant="outline" disabled={busy||!canOwn} onClick={()=>onDraft(cl)}><Plus/>규칙 초안 쓰기</Button>},
+  ]}/>
   :<p className="learning-meta">최근 {CLUSTER_WINDOW_DAYS}일 이 브랜드의 교정이 없습니다.</p>}
-  {feedback.length?<div className="ledger-table-wrap"><table className="ledger-table"><caption className="sr-only">운영자 선호 규칙 버전별 피드백(주입된 작업물의 첫 판정)</caption>
-   <thead><tr><th>규칙 · 판</th><th>주입 작업물</th><th>첫 판정</th><th>수정 없는 승인</th><th>같은 사유 재발</th><th>다른 사유 수정</th><th>사람 수정본</th></tr></thead>
-   <tbody>{feedback.map(x=><tr key={x.ruleId+'@'+x.ruleVersion}><td><b>{rules.get(x.ruleId)?.title??x.ruleId}</b><small>v{x.ruleVersion}{x.status==='insufficient'?' · 표본 부족(첫 판정 5건 미만)':''}</small></td><td>{x.injectedArtifacts}</td><td>{x.decidedFirst}</td><td>{x.helpful}</td><td>{x.recurrence}</td><td>{x.otherRevision}</td><td>{x.editedFirst}</td></tr>)}</tbody></table></div>
+  {feedback.length?<DataTable caption="운영자 선호 규칙 버전별 피드백(주입된 작업물의 첫 판정)" rows={feedback} rowKey={x=>x.ruleId+'@'+x.ruleVersion} csvName="preference-rule-feedback" columns={[
+   {label:'규칙 · 판',sort:x=>rules.get(x.ruleId)?.title??x.ruleId,csv:x=>`${rules.get(x.ruleId)?.title??x.ruleId} v${x.ruleVersion}`,cell:x=><><b>{rules.get(x.ruleId)?.title??x.ruleId}</b><small>v{x.ruleVersion}{x.status==='insufficient'?' · 표본 부족(첫 판정 5건 미만)':''}</small></>},
+   {label:'주입 작업물',sort:x=>x.injectedArtifacts,csv:x=>x.injectedArtifacts,cell:x=>x.injectedArtifacts},
+   {label:'첫 판정',sort:x=>x.decidedFirst,csv:x=>x.decidedFirst,cell:x=>x.decidedFirst},
+   {label:'수정 없는 승인',sort:x=>x.helpful,csv:x=>x.helpful,cell:x=>x.helpful},
+   {label:'같은 사유 재발',sort:x=>x.recurrence,csv:x=>x.recurrence,cell:x=>x.recurrence},
+   {label:'다른 사유 수정',sort:x=>x.otherRevision,csv:x=>x.otherRevision,cell:x=>x.otherRevision},
+   {label:'사람 수정본',sort:x=>x.editedFirst,csv:x=>x.editedFirst,cell:x=>x.editedFirst},
+  ]}/>
   :<p className="learning-meta">운영자 선호 규칙이 주입된 작업물이 아직 없습니다.</p>}
-  {recurrence.length>0&&<div className="ledger-table-wrap"><table className="ledger-table"><caption className="sr-only">같은 사유 재발률(4주)</caption>
-   <thead><tr><th>역할 · 사유</th><th>4주 재발률</th><th>판정 작업물(n)</th></tr></thead>
-   <tbody>{recurrence.map(x=><tr key={(x.role??'')+':'+x.reasonCode}><td><b>{signalRole(x.role)}</b><small>{reasonLabel(x.reasonCode)}</small></td><td>{x.rate===null?x.status:pct(x.rate)}</td><td>{x.n}</td></tr>)}</tbody></table></div>}
+  {recurrence.length>0&&<DataTable caption="같은 사유 재발률(4주)" rows={recurrence} rowKey={x=>(x.role??'')+':'+x.reasonCode} csvName="reason-recurrence" columns={[
+   {label:'역할 · 사유',sort:x=>signalRole(x.role),csv:x=>`${signalRole(x.role)} ${reasonLabel(x.reasonCode)}`,cell:x=><><b>{signalRole(x.role)}</b><small>{reasonLabel(x.reasonCode)}</small></>},
+   {label:'4주 재발률',sort:x=>x.rate??-1,csv:x=>x.rate===null?x.status:pct(x.rate),cell:x=>x.rate===null?x.status:pct(x.rate)},
+   {label:'판정 작업물(n)',sort:x=>x.n,csv:x=>x.n,cell:x=>x.n},
+  ]}/>}
  </section>;
 }
 // 생성 폼: 본문 400자, 역할·채널, 인용할 사람 판정(브랜드의 최근 판정 중 사유 요약으로 고른다). 저장하면 초안이다.
