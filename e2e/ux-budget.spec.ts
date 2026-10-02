@@ -20,6 +20,10 @@ const overlaps=(page:Page)=>page.evaluate(()=>{const els=[...document.querySelec
  for(let i=0;i<els.length;i++)for(let j=i+1;j<els.length;j++){if(els[i].contains(els[j])||els[j].contains(els[i]))continue;const a=rects[i],b=rects[j],w=Math.min(a.right,b.right)-Math.max(a.left,b.left),h=Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top);if(w>2&&h>2)bad.push(`${name(els[i])} × ${name(els[j])}`)}
  return bad});
 const overflow=(page:Page)=>page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
+// 글자가 한 글자씩 세로로 쌓이는 요소(폭이 글자 두 개보다 좁은데 세 줄을 넘는다). 2026-10-02 설정 채널 줄이 상태 점 규칙(7px 폭)에 걸려 세로로 겹친 회귀(평가 9회차)를 잡는다.
+const squeezed=(page:Page)=>page.evaluate(()=>{const bad:string[]=[];const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);const seen=new Set<Element>();
+ while(walker.nextNode()){const t=walker.currentNode,el=t.parentElement;if(!el||seen.has(el)||(t.textContent||'').trim().length<3)continue;seen.add(el);const cs=getComputedStyle(el);if(cs.visibility==='hidden'||cs.display==='none'||parseFloat(cs.fontSize)<1)continue;const r=el.getBoundingClientRect();if(!r.width||!r.height)continue;const fs=parseFloat(cs.fontSize),lh=parseFloat(cs.lineHeight)||fs*1.4;if(r.width<fs*2&&r.height>lh*3)bad.push(`${el.tagName.toLowerCase()}.${el.className} "${(t.textContent||'').trim().slice(0,20)}" ${Math.round(r.width)}x${Math.round(r.height)}`)}
+ return bad});
 
 test('홈 첫 로딩 JS·접근성·터치 크기·가로 넘침 예산',async({browser},info)=>{
  const owner=`budget-${info.project.name}-${Date.now()}`,context=await browser.newContext({baseURL:info.project.use.baseURL,viewport:info.project.use.viewport,extraHTTPHeaders:{'oai-authenticated-user-id':owner}}),page=await context.newPage();
@@ -39,6 +43,7 @@ test('홈 첫 로딩 JS·접근성·터치 크기·가로 넘침 예산',async({
    // 탭 줄이 여러 줄로 감길 때 탭이 탭 줄 밖으로 넘치거나 아래 내용을 덮지 않는다(2026-10-01 모바일 겹침 회귀 방지).
    const tabs=await page.evaluate(()=>[...document.querySelectorAll('[data-slot=tabs-list]')].filter(l=>(l as HTMLElement).offsetParent).map(l=>{const r=l.getBoundingClientRect();const last=Math.max(...[...l.querySelectorAll('[role=tab]')].map(t=>t.getBoundingClientRect().bottom));return Math.round(last-r.bottom)}));
    for(const over of tabs)expect(over,`${path} tab row overflows its list by ${over}px`).toBeLessThanOrEqual(1);
+   const thin=await squeezed(page);expect(thin,`${path} text squeezed into a vertical strip: ${thin.slice(0,4).join(' | ')}`).toEqual([]);
    const hit=await overlaps(page);expect(hit,`${path} overlapping controls: ${hit.slice(0,6).join(' | ')}`).toEqual([]);
    if(mobile){const t=await touch(page);expect(100*(t.total-t.small)/Math.max(1,t.total),`${path} ${t.small}/${t.total} under 44px`).toBeGreaterThanOrEqual(budget.mobileTouchTargetPct)}
   }
