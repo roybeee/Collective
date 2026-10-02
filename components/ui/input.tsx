@@ -3,7 +3,12 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {
-  return (
+  // 숫자 칸에 1,000 이상의 값이 들어 있으면 아래에 천 단위 쉼표 값을 보인다(UX-PLAN-3 6차원 '금액 입력 보조'). 화면 읽기는 칸의 값을 그대로 읽는다.
+  // 보조 글자는 빈 요소의 ::after(data-hint)로 그린다. 칸을 감싼 label의 글자·접근 이름에 섞이지 않게 한다.
+  const amount = type === "number" && props.value !== undefined && props.value !== "" ? Number(props.value) : NaN
+  // 날짜 칸은 브라우저 언어에 따라 mm/dd/yyyy로 보일 수 있어, 값이 있으면 아래에 한국어 날짜를 같이 보인다(UX-PLAN-3 6차원 '날짜 입력 보조').
+  const day = (type === "date" || type === "datetime-local") && typeof props.value === "string" ? koreanDate(props.value, type === "datetime-local") : ""
+  const input = (
     <input
       type={type}
       data-slot="input"
@@ -16,6 +21,31 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
       {...props}
     />
   )
+  if (day) return (
+    <>
+      {input}
+      <span className="num-hint" aria-hidden="true" data-hint={day}/>
+    </>
+  )
+  if (!Number.isFinite(amount) || Math.abs(amount) < 1000) return input
+  return (
+    <>
+      {input}
+      <span className="num-hint" aria-hidden="true" data-hint={amount.toLocaleString("ko-KR")}/>
+    </>
+  )
 }
 
-export { Input }
+// '2026-10-02' → '2026년 10월 2일 (금)', '2026-10-02T16:27' → '… 오후 4:27'. 형식이 다르면 빈 문자열.
+function koreanDate(value: string, withTime: boolean) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(value)
+  if (!m) return ""
+  const [, y, mo, d, h, mi] = m
+  const week = "일월화수목금토"[new Date(Date.UTC(+y, +mo - 1, +d)).getUTCDay()]
+  const date = `${+y}년 ${+mo}월 ${+d}일 (${week})`
+  if (!withTime || h === undefined) return date
+  const hour = +h
+  return `${date} ${hour < 12 ? "오전" : "오후"} ${hour % 12 || 12}:${mi}`
+}
+
+export { Input, koreanDate }

@@ -4,12 +4,13 @@
 // 입력란·편집 영역에서 누른 글자는 단축키로 보지 않는다. 첫 로딩에는 단축키 감지만 싣고 대화상자(cmdk)는 처음 열 때 내려받는다.
 import {lazy,Suspense,useEffect,useRef,useState} from 'react';
 import type {Campaign} from '@/lib/agency';
+import type {RecordHit} from '@/lib/record-search-server';
 export type PaletteView={id:string;name:string};
 export const goKeys:Record<string,string>={h:'overview',c:'campaigns',b:'brands',m:'stores',l:'learning',s:'settings'};
 const CommandPaletteDialog=lazy(()=>import('./command-palette-dialog'));
 const typing=(t:EventTarget|null)=>t instanceof HTMLElement&&(t.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)||!!t.closest('[role=dialog],[role=alertdialog]'));
 export type PaletteRecord={id:string;name:string;campaignId:string;campaign:string};
-export function CommandPalette(props:{views:PaletteView[];campaigns:Campaign[];brands?:PaletteView[];records?:PaletteRecord[];onView:(id:string)=>void;onCampaign:(id:string)=>void;onBrand?:(id:string)=>void;onRecord?:(campaignId:string)=>void;onNewCampaign:()=>void}){
+export function CommandPalette(props:{views:PaletteView[];campaigns:Campaign[];brands?:PaletteView[];records?:PaletteRecord[];onView:(id:string)=>void;onCampaign:(id:string)=>void;onBrand?:(id:string)=>void;onRecord?:(campaignId:string)=>void;onGrowthRecord?:(hit:RecordHit)=>void;onNewCampaign:()=>void}){
  const [open,setOpen]=useState(false),[loaded,setLoaded]=useState(false),[help,setHelp]=useState(false);
  const onView=useRef(props.onView);useEffect(()=>{onView.current=props.onView},[props.onView]);
  useEffect(()=>{

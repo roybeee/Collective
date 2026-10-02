@@ -33,7 +33,8 @@ test('검증된 확대 제안·20% 차단·소유자 승인 예약·대사',asyn
   await panel.getByRole('button',{name:'확대 제안',exact:true}).click();await expect(panel.getByRole('alert')).toContainText('20% 이내');
   await panel.getByRole('spinbutton',{name:'확대 후 예산(원)',exact:true}).fill('1200');await panel.getByRole('button',{name:'확대 제안',exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'아직 예약되지 않았습니다'})).toBeVisible();
   await expect(panel).toContainText('증가분 200원');const id=(await panel.locator('li strong').first().innerText()).trim();
-  const approve=panel.getByRole('button',{name:`${id} 소유자 승인·예약`,exact:true});await expect(approve).toBeDisabled();await panel.getByRole('combobox',{name:'예약에 쓸 활성 위임',exact:true}).selectOption('x-auth');
+  const approve=panel.getByRole('button',{name:`${id} 소유자 승인·예약`,exact:true});// 활성 위임이 하나뿐이면 미리 골라 둔다.
+  await expect(panel.getByRole('combobox',{name:'예약에 쓸 활성 위임',exact:true})).toHaveValue('x-auth');
   await approve.click();await expect(panel.getByRole('status').filter({hasText:'확대 예산을 예약했습니다'})).toBeVisible();await expect(panel).toContainText('확대 예약 200원 · 원장 reserved');
   await panel.getByRole('spinbutton',{name:'누적 실비(원)',exact:true}).fill('180');await panel.getByRole('spinbutton',{name:'누적 손실(원)',exact:true}).fill('20');await panel.getByRole('textbox',{name:'대사 증빙 ID',exact:true}).fill('settle-1');await panel.getByRole('textbox',{name:'대사 근거',exact:true}).fill('정산 확인');await panel.getByLabel('잔여 의무 없음 확인').check();
   await panel.getByRole('button',{name:`${id} 대사 기록`,exact:true}).click();await expect(panel).toContainText('원장 reconciled · 실비 180원 · 손실 20원');

@@ -36,6 +36,8 @@ check(sig.title==='최근 7일 유료 주문 증가'&&sig.detail==='일평균 3�
 check(sig.quick?.type==='acknowledge_signal'&&sig.quick.recordId==='s1'&&sig.quick.version===1&&sig.quick.campaignVersion===1&&sig.quick.dueBy===day(now+3*24*H)&&sig.quick.nextAction.startsWith('최근 7일 유료 주문 증가'),'signal offers one-click acknowledge with defaults (due in 3 days)');
 check(a.items.find(i=>i.id==='growth_expansion:e1')?.kind==='decision'&&a.items.find(i=>i.id==='growth_expansion:e1')?.campaignTitle==='다른 캠페인','expansion awaiting approval across campaigns');
 check(a.items.find(i=>i.id==='growth_landing_revision:l1')?.title.includes('승인 대기'),'landing draft awaits approval');
+// 안건 행은 그 기록이 있는 성장 탭 접기 패널을 바로 연다(과업 하네스).
+check(a.items.find(i=>i.id==='growth_cs_ticket:t-over')?.panel==='고객 문의·약속 기한'&&a.items.find(i=>i.id==='growth_expansion:e1')?.panel==='검증된 확대·예산 예약'&&a.items.find(i=>i.id==='growth_landing_revision:l1')?.panel==='상세페이지 수정안·적용 확인'&&sig.panel==='자사 장부 감지 신호','agenda items name the panel to open');
 check(a.items.find(i=>i.id==='growth_collaboration:co1')?.kind==='decision','delivered collaboration awaits approval');
 check(a.items.find(i=>i.id==='growth_mission:m1')?.kind==='upcoming'&&a.items.find(i=>i.id==='growth_mission:m2')?.kind==='overdue','mission deadlines');
 const kinds=a.items.map(i=>i.kind);check(kinds.indexOf('overdue')<kinds.indexOf('decision')&&kinds.lastIndexOf('decision')<kinds.indexOf('signal')&&kinds.indexOf('signal')<kinds.indexOf('upcoming'),'ordered overdue → decision → signal → upcoming');
