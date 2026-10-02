@@ -17,7 +17,7 @@ import {costDetailLine,factHeading,footnoteLines,franchiseFactUseIssue,FRANCHISE
 import type {Store} from '@/lib/store-marketing';
 import {BrandFactsPanel} from './brand-facts-panel';
 import {adminRequestNote} from './auth-client';
-import {AdminOnly,canChange,useAccount} from './account-context';
+import {AdminOnly,adminOnlyNote,canChange,useAccount} from './account-context';
 import {reasonChoices} from '@/lib/review-decisions';
 import {pushNav} from '@/lib/nav-state';
 import {ExperimentLinkSelect,PublicationExperiment,experimentChoice,type ExperimentOption} from './publication-experiment';
@@ -149,16 +149,16 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
       {!buffer?<><label>Buffer API 키<Input className="block border rounded p-2 w-full" name="token" type="password" autoComplete="off" required/></label><Button variant="outline" size="fit" disabled={busy}>조직·채널 불러오기</Button></>:<>
        <label>Buffer 조직<NativeSelect className="block border rounded p-2 w-full" value={buffer.organizationId} disabled={busy} onChange={e=>{const organizationId=e.target.value;void perform(async()=>setBuffer({token:buffer.token,...await action<Omit<BufferChoices,'token'>>('buffer_channels',{token:buffer.token,organizationId})}),'조직의 Instagram 채널을 불러왔습니다.')}}>{buffer.organizations.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</NativeSelect></label>
        {buffer.channels.length?<label>Instagram 채널<NativeSelect className="block border rounded p-2 w-full" name="channelId" required defaultValue={buffer.channels.find(c=>!c.paused)?.id}>{buffer.channels.map(c=><option key={c.id} value={c.id} disabled={c.paused}>{c.name}{c.paused?' · Buffer에서 일시 중지됨':''}</option>)}</NativeSelect></label>:<p>이 조직에는 연결된 Instagram 채널이 없습니다. Buffer에서 채널을 추가하거나 다른 조직을 고르세요.</p>}
-       <div className="flex gap-2"><Button variant="outline" size="fit" disabled={busy||!buffer.channels.some(c=>!c.paused)}>채널 확인·연결</Button><Button type="button" variant="outline" size="fit" disabled={busy} onClick={()=>setBuffer(null)}>API 키 다시 입력</Button></div>
+       <div className="flex gap-2"><Button variant="outline" size="fit" disabled={busy||!buffer.channels.some(c=>!c.paused)}>채널 확인·연결</Button><Button type="button" variant="outline" size="fit" disabled={busy} onClick={()=>setBuffer(null)}>API 키 바꾸기</Button></div>
       </>}
      </form>
      {state.publisher.connected&&<Button variant="outline" size="fit" disabled={busy} onClick={async()=>{if(await askConfirm({title:'Buffer 연결을 해제할까요?',impact:'저장된 API 키를 지우고, 이 브랜드의 승인된 발행은 초안으로 돌아갑니다.',undo:'이미 접수된 예약은 Buffer에서 따로 확인해야 합니다.',confirmLabel:'연결 해제',danger:true}))void perform(()=>action('disconnect_buffer',{version:state.publisher.version}),'Buffer 연결을 해제했습니다. 승인된 발행은 초안으로 돌아갔습니다.')}}>Buffer 연결 해제</Button>}
     </AdminOnly>
     <p>누적 발행 시도 {totals.attempts}회. 실패·접수 미확인 시도도 포함합니다(관리자가 미접수를 확인해 복원한 시도는 제외).</p>
     {budget!==null&&<p>캠페인 예산 {budgetLabel(campaign)}</p>}
-    {!state.limits&&<p>발행 횟수 한도가 아직 없습니다. 한도가 없으면 발행을 승인할 수 없습니다.{canManage&&<> <Button type="button" variant="outline" size="fit" disabled={busy} onClick={saveDefaultLimits}>기본 한도(발행 1회·0원) 저장</Button></>}</p>}
+    {!state.limits&&<p>발행 횟수 한도가 아직 없습니다. 한도가 없으면 발행을 승인할 수 없습니다. <Button type="button" variant="outline" size="fit" disabled={busy||!canManage} disabledReason={canManage?undefined:adminOnlyNote()} onClick={saveDefaultLimits}>기본 한도(발행 1회·0원) 저장</Button></p>}
     {!canManage&&state.limits&&<ul aria-label="현재 발행 횟수 한도" className="text-sm list-disc pl-5"><li>캠페인 최대 발행 시도 {state.limits.maxPublications}회</li><li>누적 예정 비용 상한 {state.limits.maxPlannedCostKRW.toLocaleString()}원</li></ul>}
-    {canManage&&<form key={state.limits?.version||0} className="grid gap-2" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);void perform(()=>action('save_limits',{version:state.limits?.version,maxPublications:Number(f.get('maxPublications')),maxPlannedCostKRW:Number(f.get('maxPlannedCostKRW')),paused:f.get('paused')==='on'}),'한도를 저장했습니다. 한도를 낮추면 기존 승인은 재확인해야 합니다.')}}>
+    <AdminOnly><form key={state.limits?.version||0} className="grid gap-2" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);void perform(()=>action('save_limits',{version:state.limits?.version,maxPublications:Number(f.get('maxPublications')),maxPlannedCostKRW:Number(f.get('maxPlannedCostKRW')),paused:f.get('paused')==='on'}),'한도를 저장했습니다. 한도를 낮추면 기존 승인은 재확인해야 합니다.')}}>
      <label>캠페인 최대 발행 시도<Input className="block border rounded p-2" name="maxPublications" type="number" min="0" max="100" step="1" defaultValue={state.limits?.maxPublications??1} required/></label>
      <details open={(state.limits?.maxPlannedCostKRW??0)>0}><summary>예정 비용 상한 · 유료 부스트 연동 전까지 참고용</summary><div className="grid gap-2 pt-2">
       <p className="text-sm">Buffer 유기 게시는 건당 비용이 없어 이 상한이 막는 실제 비용은 없습니다. 입력한 예정 비용에만 적용됩니다.</p>
@@ -166,7 +166,7 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
       <p className="text-sm">누적 예약 예정 비용 {totals.plannedCostKRW.toLocaleString()}원 · 캠페인 예산: {budgetLabel(campaign)}{budget===null?' · 예산을 확정하기 전에는 비용 상한을 0원으로만 저장할 수 있습니다.':' · 비용 상한은 예산을 넘을 수 없습니다.'}</p>
      </div></details>
      <label><CheckInput name="paused" defaultChecked={state.limits?.paused}/> 새 발행 접수 중지</label><Button variant="outline" size="fit" disabled={busy}>한도 저장</Button>
-    </form>}<p className="text-sm">발행 횟수 한도는 아래 발행 시도에 적용됩니다. 예정 비용은 유료 부스트 연동 전까지 참고로 입력한 값에만 상한을 적용하며, AI 모델 요금·광고비의 실제 청구 상한이 아닙니다. 이미 Buffer에 접수한 예약은 Buffer에서 취소해야 합니다.</p>
+    </form></AdminOnly><p className="text-sm">발행 횟수 한도는 아래 발행 시도에 적용됩니다. 예정 비용은 유료 부스트 연동 전까지 참고로 입력한 값에만 상한을 적용하며, AI 모델 요금·광고비의 실제 청구 상한이 아닙니다. 이미 Buffer에 접수한 예약은 Buffer에서 취소해야 합니다.</p>
     {state.limits?.paused&&<div role="status" className="rounded border p-3 space-y-1"><strong>새 발행 접수가 중지됐습니다.</strong> <span>이미 Buffer에 접수된 예약은 중지되지 않습니다. 아래 예약은 Buffer에서 취소 여부를 확인하세요.</span>{submitted.length?<ul aria-label="이미 접수된 예약">{submitted.map(p=><li key={p.id}>{new Date(p.scheduledAt).toLocaleString()} · {publicationLabels[p.status]}{p.providerId?' · 게시 번호 '+p.providerId:''}</li>)}</ul>:<p>이미 접수된 예약은 없습니다.</p>}</div>}
    </section>
    <section className="rounded-xl border p-4 space-y-3"><h3 className="font-semibold">3. 발행 준비·승인</h3>

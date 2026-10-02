@@ -1,4 +1,6 @@
 'use client';
+import {EmptyLine} from '@/components/app/empty-line';
+import {readOnlyReason} from '@/lib/ui/read-only';
 import {CheckInput} from '@/components/app/check';
 import {NativeSelect} from '@/components/ui/native-select';
 import {Input} from '@/components/ui/input';
@@ -29,11 +31,11 @@ function Workspace({campaignId}:{campaignId:string}){
  return <section aria-label="번들 오퍼" className={styles.panel}><header className={styles.header}><h3>여러 상품 번들 · 원가와 재고 할당</h3><Button variant="panel" size="fit" aria-label="번들 새로고침" type="button" disabled={busy} onClick={()=>void load()}>새로고침</Button></header>
   <Note className={styles.note}>번들의 원가·이익·할인과 만들 수 있는 수량을 계산합니다. 구성 상품의 정확한 판으로 번들 원가(수량×(원가+변동비))·공헌이익·정가 대비 할인과, 공유 재고로 만들 수 있는 최대 번들 수를 셉니다. 원가·세금 기준·재고가 확인되지 않으면 추정하지 않고 미확인으로 둡니다. 재고 예약·판매 실행은 하지 않습니다.</Note>
   {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">번들을 조회하고 있습니다.</p>}{stale&&<p role="status" className={styles.warning}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
-  {view&&<>{view.canEdit&&<Button variant="panel" size="fit" type="button" disabled={busy} onClick={()=>{setEditing({id:`bundle-${crypto.randomUUID().slice(0,8)}`,expectedVersion:0});setInput(emptyInput());retry.current=null;}}>새 번들</Button>}
+  {view&&<>{<Button variant="panel" size="fit" type="button" disabled={busy||!view.canEdit} disabledReason={view.canEdit?undefined:readOnlyReason} onClick={()=>{setEditing({id:`bundle-${crypto.randomUUID().slice(0,8)}`,expectedVersion:0});setInput(emptyInput());retry.current=null;}}>새 번들</Button>}
    {editing&&<form onSubmit={e=>{e.preventDefault();void save();}}><fieldset disabled={busy||!view.canEdit} className={styles.form}><legend>번들 {editing.id}</legend>
     <label>번들명<Input required maxLength={200} value={input.title} onChange={e=>setInput({...input,title:e.target.value})}/></label>
     {input.components.map((c,i)=><div key={i} className={styles.wide}><label>구성 상품 {i+1}<NativeSelect value={c.catalogId} onChange={e=>{const cat=view.catalogs.find(x=>x.id===e.target.value);comp(i,{catalogId:e.target.value,catalogVersion:cat?.version??1});}}><option value="">상품 선택</option>{view.catalogs.map(x=><option key={x.id} value={x.id}>{x.title||x.sku} · v{x.version} · 가용 {x.available??'미확인'}</option>)}</NativeSelect></label><label>구성 수량 {i+1}<Input type="number" min={1} max={1000} value={c.units} onChange={e=>comp(i,{units:Number(e.target.value)})}/></label>{input.components.length>2&&<Button variant="panel" size="fit" type="button" onClick={()=>setInput(x=>({...x,components:x.components.filter((_,j)=>j!==i)}))}>구성 {i+1} 삭제</Button>}</div>)}
-    {input.components.length<10&&<Button variant="panel" size="fit" type="button" onClick={()=>setInput(x=>({...x,components:[...x.components,{catalogId:'',catalogVersion:1,units:1}]}))}>구성 추가</Button>}
+    {input.components.length<10&&<Button variant="panel" size="fit" type="button" onClick={()=>setInput(x=>({...x,components:[...x.components,{catalogId:'',catalogVersion:1,units:1}]}))}>구성 하나 더</Button>}
     <label>번들 가격(원)<Input type="number" min={0} value={input.price??''} onChange={e=>setInput({...input,price:e.target.value===''?null:Number(e.target.value)})}/></label>
     <label><CheckInput checked={input.priceApproved} onChange={e=>setInput({...input,priceApproved:e.target.checked})}/>번들 가격 승인</label>
     <label>계획 판매 수량<Input type="number" min={0} value={input.plannedQuantity} onChange={e=>setInput({...input,plannedQuantity:Number(e.target.value)})}/></label>
@@ -41,11 +43,11 @@ function Workspace({campaignId}:{campaignId:string}){
     <label className={styles.wide}>구매 이유<Input maxLength={1000} value={input.purchaseReason} onChange={e=>setInput({...input,purchaseReason:e.target.value})}/></label>
     {conflict&&<div className={styles.wide}><p>이 번들이 다른 곳에서 바뀌었습니다. 입력을 보존했습니다.</p><Button variant="panel" size="fit" type="button" disabled={stale||!current} onClick={()=>{if(current)setEditing({id:current.id,expectedVersion:current.version});retry.current=null;}}>현재 입력 유지 · 최신 판 채택</Button></div>}
     <Button variant="panel" size="fit" type="submit" disabled={stale||conflict}>번들 저장</Button></fieldset></form>}
-   {!view.bundles.length&&<p>번들이 없습니다.</p>}
+   {!view.bundles.length&&<EmptyLine first={view.canEdit?'번들':undefined}>번들이 없습니다.</EmptyLine>}
    <ul>{view.bundles.map(b=><li key={b.id} className="wrap-anywhere"><p><strong>{b.input.title||b.id}</strong> · v{b.version} · 가격 {won(b.input.price)}{b.input.priceApproved?'(승인)':'(미승인)'} · 원가 {won(b.assessment.cost)} · 공헌이익 {won(b.assessment.contribution)} · 정가 합 {won(b.assessment.listPrice)}</p>
     <p>만들 수 있는 번들 {b.assessment.maxBundles??'미확인'}개 · 계획 {b.input.plannedQuantity}개</p>
     <ul>{b.assessment.allocation.map(a=><li key={a.catalogId}>{a.catalogId}: 번들당 {a.unitsPerBundle} · 필요 {a.required} · 가용 {a.available??'미확인'}{a.status==='held'?' · 재고 보류':''}</li>)}</ul>
     {b.assessment.missing.map(x=><p key={x}>{x}</p>)}
-    {view.canEdit&&<Button variant="panel" size="fit" type="button" disabled={busy||stale} onClick={()=>{setEditing({id:b.id,expectedVersion:b.version});setInput(structuredClone(b.input));retry.current=null;}}>{b.id} 수정</Button>}</li>)}</ul></>}
+    {<Button variant="panel" size="fit" type="button" disabled={busy||stale||!view.canEdit} disabledReason={view.canEdit?undefined:readOnlyReason} onClick={()=>{setEditing({id:b.id,expectedVersion:b.version});setInput(structuredClone(b.input));retry.current=null;}}>{b.id} 수정</Button>}</li>)}</ul></>}
  </section>;
 }

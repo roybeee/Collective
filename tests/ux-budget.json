@@ -8,7 +8,8 @@
   "inlineStyles":25,
   "hexColors":39,
   "mediaWidths":4,
-  "middleDotJoins": 1224
+  "middleDotJoins": 1216,
+  "bareEmptyLines": 48
  },
  "lazyOnly": ["learning-panel", "brand-archive", "campaign-brief", "campaign-detail-panel", "panels", "delete-campaign-dialog", "measurement-collect", "campaign-metrics", "store-marketing-panel", "franchise-panel"],
  "runtime": {

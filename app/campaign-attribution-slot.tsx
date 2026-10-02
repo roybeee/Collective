@@ -97,7 +97,7 @@ function AttributionBody({report:r}:{report:CampaignAttribution}){
 }
 function WeekTable({weeks}:{weeks:CampaignAttribution['weeks']}){
  const rows=unitRows(weeks.map(w=>({...w,key:w.weekStart,label:weekLabel(w.start,w.end)})));
- return <section><div className="section-heading"><div><h3>주별 귀속</h3><p>한국시간 월요일에 시작하는 주입니다. 첫 주와 마지막 주는 집계 기간 안의 날짜만 셉니다.</p></div></div><TrendBars title="주별 순매출 추세(귀속 주문 기준)" points={weeks.map((w,i)=>({label:w.start.slice(5),value:w.netRevenue,display:rows[i].netRevenue}))}/><DataTable caption="주별 귀속 주문·순매출·공헌이익" rows={rows} rowKey={w=>w.key} csvName="weekly-attribution" columns={[
+ return <section><div className="section-heading"><div><h3>주별 귀속</h3><p>한국시간 월요일에 시작하는 주입니다. 첫 주와 마지막 주는 집계 기간 안의 날짜만 셉니다.</p></div></div><TrendBars title="주별 순매출 추세(귀속 주문 기준)" points={weeks.map((w,i)=>({label:w.start.slice(5),value:w.netRevenue,display:rows[i].netRevenue}))}/><DataTable filterText={w=>w.label} caption="주별 귀속 주문·순매출·공헌이익" rows={rows} rowKey={w=>w.key} csvName="weekly-attribution" columns={[
  {label:'주',sort:w=>w.key,csv:w=>w.label,cell:w=><b>{w.label}</b>},{label:'귀속 주문',sort:w=>sortNumber(w.orders),csv:w=>w.orders,cell:w=>w.orders},
  {label:'순매출',sort:w=>sortNumber(w.netRevenue),csv:w=>w.netRevenue,cell:w=>w.netRevenue},
  {label:'공헌이익',sort:w=>sortNumber(w.contribution),csv:w=>w.contribution,cell:w=><>{w.contribution}{w.contributionNote&&<small>{w.contributionNote}</small>}</>},
@@ -105,7 +105,7 @@ function WeekTable({weeks}:{weeks:CampaignAttribution['weeks']}){
 }
 function Breakdown({title,column,rows,codes=false,note,empty='이 기간에 집계할 주문이 없습니다.'}:{title:string;column:string;rows:readonly Row[];codes?:boolean;note?:string;empty?:string}){
  const shown=unitRows(rows),linked=Object.fromEntries(rows.map(r=>[r.key,(r.codes||[]).join(', ')]));
- return <section><div className="section-heading"><div><h3>{title}</h3>{note&&<p>{note}</p>}</div></div>{!shown.length?<p className="notice">{empty}</p>:<DataTable caption={`${title} 귀속 주문·순매출·공헌이익`} rows={shown} rowKey={r=>r.key||'none'} csvName="attribution-breakdown" columns={[
+ return <section><div className="section-heading"><div><h3>{title}</h3>{note&&<p>{note}</p>}</div></div>{!shown.length?<p className="notice">{empty}</p>:<DataTable filterText={r=>r.label} caption={`${title} 귀속 주문·순매출·공헌이익`} rows={shown} rowKey={r=>r.key||'none'} csvName="attribution-breakdown" columns={[
  {label:column,sort:r=>r.label,csv:r=>r.label,cell:r=><b>{r.label}</b>},
  ...(codes?[{label:'코드',sort:(r:typeof shown[number])=>linked[r.key]||'',csv:(r:typeof shown[number])=>linked[r.key]||'코드 없음',cell:(r:typeof shown[number])=>linked[r.key]||'코드 없음'}]:[]),
  {label:'귀속 주문',sort:r=>sortNumber(r.orders),csv:r=>r.orders,cell:r=>r.orders},{label:'순매출',sort:r=>sortNumber(r.netRevenue),csv:r=>r.netRevenue,cell:r=>r.netRevenue},

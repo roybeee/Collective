@@ -1,4 +1,5 @@
 'use client';
+import {EmptyLine} from '@/components/app/empty-line';
 
 import {CheckInput} from '@/components/app/check';
 import {NativeSelect} from '@/components/ui/native-select';
@@ -119,7 +120,7 @@ function MissionStockForm({view,busy,save,missions,offers,catalogs}:FormProps&Pi
 
 function InventorySummary({inventory}:{inventory:InventoryRow[]}){
  return <section aria-label="공유 재고 현황"><h4>같은 지점·SKU의 공유 재고</h4><p className={styles.note}>상품 초안의 재고와 별도로 관리합니다. 미션과 주문의 미출고 예약은 자동으로 만료되지 않습니다.</p>
-  {!inventory.length?<p>등록된 공유 재고가 없습니다.</p>:inventory.map(row=><div key={row.id} className={styles.mission}><strong>{row.input.sku} · {unitName(row.input.unit)} 단위 · v{row.version}</strong><dl className={styles.businessGrid}>
+  {!inventory.length?<EmptyLine>등록된 공유 재고가 없습니다.</EmptyLine>:inventory.map(row=><div key={row.id} className={styles.mission}><strong>{row.input.sku} · {unitName(row.input.unit)} 단위 · v{row.version}</strong><dl className={styles.businessGrid}>
    {([['실물 재고',row.projection.onHand],['미출고 예약',row.projection.reserved],['새 예약 가능',row.projection.available],['부족 수량',row.projection.shortage]] as const).map(([name,value])=><div key={name}><dt>{name}</dt><dd>{count(value)}{value===null?'':unitName(row.input.unit)}</dd></div>)}
   </dl>{row.projection.shortage!==null&&row.projection.shortage>0&&<p className={styles.error}>실제 재고보다 예약이 많습니다. 부족분을 대사하기 전 새 미션 예약을 진행할 수 없습니다.</p>}{row.projection.onHand===null&&<p className={styles.note}>실물 재고가 미확인입니다. 실사 수량을 기록해야 새 미션 예약을 할 수 있습니다.</p>}</div>)}
  </section>;

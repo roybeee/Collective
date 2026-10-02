@@ -13,7 +13,7 @@ test('확인 사실로 실제 PNG를 만들고 새로고침 뒤 내려받는다'
  await page.goto('/');await page.getByRole('button',{name:title+' 열기',exact:true}).click();await page.getByRole('tab',{name:'제작·발행',exact:true}).click();
  const steps=page.getByRole('list',{name:'첫 게시 단계',exact:true});
  await expect(steps.locator('[aria-current="step"]')).toHaveText('사실 확정');
- await page.getByRole('button',{name:'사실 추가',exact:true}).click();
+ await page.getByRole('button',{name:'새 사실',exact:true}).click();
  // 표준 항목(대표 메뉴)은 지점별 항목이 아니라 브랜드 공통 저장에 범위 확인이 필요 없다.
  const form=page.getByRole('form',{name:'브랜드 사실 편집'});
  await form.getByRole('combobox',{name:'사실 항목',exact:true}).selectOption('signature_menu');await form.getByLabel('확인할 내용',{exact:true}).fill('테스트 대표 메뉴 107');await form.getByRole('combobox',{name:'사실 상태',exact:true}).selectOption('confirmed');

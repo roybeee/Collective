@@ -18,6 +18,8 @@ export const measure=()=>({
  // 화면 폭 중단점은 @media 조건의 폭만 센다(요소의 min-width 같은 크기 지정은 중단점이 아니다).
  mediaWidths:new Set((css.match(/@media[^{]*?\((?:max|min)-width: ?\d+px\)/g)||[]).map(x=>x.match(/\d+/)[0])).size,
  middleDotJoins:count(app,/ · /g),
+ // 빈 목록 안내는 공용 EmptyLine(다음 행동 버튼)으로 쓴다. 다음 행동 없는 '…없습니다.' 문단은 늘지 않는다.
+ bareEmptyLines:count(app,/<p(?: className=[^>]*)?>[^<{]{0,60}없습니다\.<\/p>/g),
 });
 let passed=0;const check=(v,n)=>{assert.ok(v,n);passed++};
 const now=measure();
@@ -29,9 +31,14 @@ check(longNotes.length===0,`Note first sentence over 60 chars: ${longNotes.join(
 const ownA=readdirSync('app').filter(n=>n.endsWith('.tsx')&&!/^(franchise-|online-grading|quality-|brand-interview|reflector|usage-panel|customer-report)/.test(n)).map(n=>readFileSync('app/'+n,'utf8')).join('\n');
 const longLeads=[...ownA.matchAll(/<h[23][^>]*>[^<{]*<\/h[23]>\s*<p(?: className=[^>]*)?>([^<{]+)<\/p>/g)].map(m=>m[1].trim()).filter(t=>t.length>60);
 check(longLeads.length===0,`header paragraph over 60 chars: ${longLeads.join(' | ')}`);
-// 저장 동사는 '저장'(서버에 쓰기)과 '기록'(관측·확인 사실 남기기) 두 가지만 버튼에 쓴다(UX-PLAN-3 4차원 4점 조건). '사전등록'은 실험 용어라 예외다.
-const otherVerbs=[...ownA.matchAll(/<(?:Button|CardButton)[^>]*>(?:<[A-Za-z]+\/>)?([^<>{}]{1,24}(?:등록|추가))<\/(?:Button|CardButton)>/g)].map(m=>m[1].trim()).filter(t=>!t.endsWith('사전등록'));
-check(otherVerbs.length===0,`save buttons must use 저장 or 기록: ${otherVerbs.join(' | ')}`);
+// 저장 동사는 '저장'(서버에 쓰기)과 '기록'(관측·확인 사실 남기기) 두 가지만 버튼에 쓴다(UX-PLAN-3 4차원 4점 조건). 대화상자를 여는 버튼은 '새 ○○', 폼에 칸을 늘리는 버튼은 '○○ 하나 더'다. '사전등록'은 실험 용어라 예외다.
+// 버튼 안의 아이콘·조건식({…})을 걷어내고 남은 글자로 판단한다(평가 5회차: 아이콘이 든 버튼을 놓치던 구멍).
+const buttonTexts=[...ownA.matchAll(/<(Button|CardButton)\b[^>]*?(?:\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}[^>]*?)*>([\s\S]*?)<\/\1>/g)].map(m=>m[2].replace(/<[^>]*>/g,'').replace(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g,'').trim());
+const otherVerbs=buttonTexts.filter(t=>/(등록|추가|입력)$/.test(t)&&!t.endsWith('사전등록'));
+check(otherVerbs.length===0,`save buttons must use 저장 or 기록 (row additions use '하나 더'): ${otherVerbs.join(' | ')}`);
+// 권한이 없을 때 버튼을 숨기지 않는다(UX-PLAN-3 11차원 4점 조건). 비활성과 이유(disabledReason)로 보인다.
+const hiddenByPermission=(ownA.match(/\b(?:view\??\.)?(?:canEdit|canManage)&&(?:<>)?\s?<(?:Button|form)\b/g)||[]).length;
+check(hiddenByPermission===0,`controls hidden by permission: ${hiddenByPermission}`);
 // 확인 대화상자는 무엇·영향·되돌리기를 모두 적는다(UX-PLAN-3 Q2·11차원 4점 조건). 타입이 영향·되돌림을 필수로 요구한다.
 check(/impact:string;undo:string;/.test(readFileSync('components/app/confirm-dialog.tsx','utf8')),'ConfirmAsk must require impact and undo');
 // 홈 첫 로딩 경계: 화면·대화상자는 lazy로만 불러온다.

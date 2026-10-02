@@ -20,7 +20,7 @@ test('상세페이지 수정안·가격 차단·승인≠적용·운영자 적�
   await panel.getByRole('button',{name:'수정안 저장',exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'수정안을 저장했습니다'})).toBeVisible();
   await expect(panel).toContainText('가격 표시 문구는 승인된 오퍼 가격과 같아야 합니다.');const id=(await panel.locator('legend').filter({hasText:'수정안 landing-'}).innerText()).replace('수정안 ','').trim();
   await expect(panel.getByRole('button',{name:`${id} 승인`,exact:true})).toBeDisabled();
-  await panel.getByRole('textbox',{name:'변경 문구 1',exact:true}).fill('12,000원');await panel.getByRole('button',{name:'구역 추가',exact:true}).click();
+  await panel.getByRole('textbox',{name:'변경 문구 1',exact:true}).fill('12,000원');await panel.getByRole('button',{name:'구역 하나 더',exact:true}).click();
   await panel.getByRole('combobox',{name:'구역 종류 2',exact:true}).selectOption('shipping');await panel.getByRole('textbox',{name:'변경 문구 2',exact:true}).fill('평일 오후 2시 전 주문은 당일 출고');await panel.getByRole('listbox',{name:'확정 사실 근거 2',exact:true}).selectOption(factId);
   await panel.getByRole('button',{name:'수정안 저장',exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'수정안을 저장했습니다'})).toBeVisible();await expect(panel).not.toContainText('가격 표시 문구는 승인된');
   await panel.getByRole('button',{name:`${id} 승인`,exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'페이지는 아직 바뀌지 않았습니다'})).toBeVisible();await expect(panel).toContainText('페이지 변경: 확인되지 않음');

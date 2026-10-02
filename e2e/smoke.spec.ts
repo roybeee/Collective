@@ -36,12 +36,12 @@ test('등록한 브랜드는 새로고침 뒤에도 남고 다른 소유자에�
 
   await page.goto('/');
   await openBrands(page);
-  await page.getByRole('button', {name: '브랜드 등록'}).first().click();
+  await page.getByRole('button', {name: '새 브랜드'}).first().click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('브랜드 이름').fill(brandName);
   await dialog.getByLabel('업종').fill('베이커리');
   const created = page.waitForResponse(r => r.url().endsWith('/api/archive') && r.request().method() === 'POST');
-  await dialog.getByRole('button', {name: '브랜드 등록'}).click();
+  await dialog.getByRole('button', {name: '브랜드 저장'}).click();
   const response = await created;
   expect(response.status()).toBe(200);
   const {id: brandId} = await response.json() as {id: string};
@@ -92,7 +92,7 @@ test('이전 작업물 원문을 비교하고 미확인 비용을 그대로 저�
   await expect(page.getByText('현재 원문: 오후 방문 동기를 실험한다.', {exact: true})).toBeVisible();
   await shot(page, testInfo, 'version-comparison');
   await page.getByRole('tab', {name: '성과', exact: true}).click();
-  await page.getByRole('button', {name: '성과 입력', exact: true}).click();
+  await page.getByRole('button', {name: '성과 기록', exact: true}).click();
   const dialog = page.getByRole('dialog').last();
   await dialog.getByLabel('측정 시작일').fill('2026-09-01');
   await dialog.getByLabel('측정 종료일').fill('2026-09-02');
@@ -102,7 +102,7 @@ test('이전 작업물 원문을 비교하고 미확인 비용을 그대로 저�
   await dialog.getByLabel('순매출 (원)', {exact: true}).fill('100000');
   await dialog.getByLabel('주문 수', {exact: true}).fill('10');
   await dialog.getByRole('button', {name: '성과 저장', exact: true}).click();
-  await expect(page.getByRole('heading', {name: '실제 성과 입력', exact: true})).toHaveCount(0);
+  await expect(page.getByRole('heading', {name: '실제 성과 기록', exact: true})).toHaveCount(0);
   await expect(page.getByText('출처: E2E 검증용 장부', {exact: false})).toBeVisible();
   const detail = await (await page.request.get('/api/campaigns/' + id)).json();
   expect(detail.metrics[0].variableCosts).toBeNull();
@@ -281,7 +281,7 @@ test('자료 업로드 화면에 개인정보 안내를 보인다', async ({brow
   const {context, page} = await ownerPage(browser, testInfo, `e2e-privacy-${testInfo.project.name}-${Date.now()}`);
   await page.request.get('/api/workspace');
   await page.goto('/?view=brands&brand=ofd&tab=sources');
-  await page.getByRole('button', {name: '자료 추가', exact: true}).click();
+  await page.getByRole('button', {name: '새 자료', exact: true}).click();
   await expect(page.getByRole('dialog', {name: '브랜드 자료 추가'})).toContainText('개인정보가 담긴 파일은 올리지 마세요.');
   await context.close();
 });

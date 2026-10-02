@@ -26,7 +26,7 @@ export function MetricCard({metric:m,onSaved}:{metric:Metric;onSaved?:()=>Promis
 }
 
 export function MetricDialog(props:MetricDialogProps){
- return <Dialog open={props.open} onOpenChange={open=>{if(!open)props.onClose()}}><DialogContent className="wide-dialog"><DialogHeader><DialogTitle>{props.initial?'성과 기록 수정':'실제 성과 입력'}</DialogTitle><DialogDescription>확인한 값만 입력하세요. 빈 값은 미확인으로 보존되며, 0은 실제로 확인한 0입니다.</DialogDescription></DialogHeader>{props.open&&<MetricForm key={props.initial?.id||'new'} {...props}/>}</DialogContent></Dialog>;
+ return <Dialog open={props.open} onOpenChange={open=>{if(!open)props.onClose()}}><DialogContent className="wide-dialog"><DialogHeader><DialogTitle>{props.initial?'성과 기록 수정':'실제 성과 기록'}</DialogTitle><DialogDescription>확인한 값만 입력하세요. 빈 값은 미확인으로 보존되며, 0은 실제로 확인한 0입니다.</DialogDescription></DialogHeader>{props.open&&<MetricForm key={props.initial?.id||'new'} {...props}/>}</DialogContent></Dialog>;
 }
 
 function MetricForm({campaigns,onClose,onSaved,initial}:MetricDialogProps){

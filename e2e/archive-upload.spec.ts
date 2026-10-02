@@ -33,7 +33,7 @@ test('업로드 텍스트는 서버가 다시 읽어 표시하고 원본 파일�
   // 화면 업로드: TXT 원문과 추가 메모.
   await page.goto('/?view=brands&brand=ofd&tab=sources');
   await expect(page.getByRole('tab', {name: /^자료 아카이브/})).toHaveAttribute('aria-selected', 'true');
-  await page.getByRole('button', {name: '자료 추가', exact: true}).click();
+  await page.getByRole('button', {name: '새 자료', exact: true}).click();
   const add = page.getByRole('dialog', {name: '브랜드 자료 추가'});
   const fileInput = add.locator('input[type="file"]');
   await expect(fileInput).toBeEnabled();
