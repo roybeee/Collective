@@ -325,5 +325,5 @@ details:not(.lazy-panel):not(.all-suggestions)>summary{list-style:none;display:f
 .num-hint{display:block;font-size:12px;line-height:1.4;color:var(--green-44);margin-top:2px;font-variant-numeric:tabular-nums}.num-hint::after{content:attr(data-hint)}
 .metric-summary{display:flex;flex-direction:column;gap:16px;margin-bottom:24px}
 .stat strong{justify-content:flex-start;align-items:baseline}.stat strong .stat-unit{margin-left:4px}.stat strong>svg{margin-left:auto;align-self:center}
-/* 공용 메타 한 줄(components/app/meta-line.tsx): 가운뎃점 대신 항목 사이 옅은 세로선 */
-.meta-line{display:inline-flex;flex-wrap:wrap;align-items:baseline;row-gap:2px;max-width:100%}.meta-line>span{min-width:0;overflow-wrap:anywhere}.meta-line>span+span::before{content:"";display:inline-block;width:1px;height:.85em;margin:0 .55em;background:currentColor;opacity:.35;vertical-align:-.08em}
+/* 공용 메타 한 줄(components/app/meta-line.tsx): 가운뎃점 대신 항목 사이 옅은 세로선. 쉼표(.meta-sep)는 글자 크기 0. */
+.meta-line{display:inline;overflow-wrap:anywhere}.meta-sep{font-size:0}.meta-line>span+span::before{content:"";display:inline-block;width:1px;height:.85em;margin:0 .55em;background:currentColor;opacity:.35;vertical-align:-.08em}
