@@ -1,4 +1,5 @@
 'use client';
+import {CheckInput} from '@/components/app/check';
 import {useRef,useState} from 'react';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
@@ -56,7 +57,7 @@ export function QualityOperationsPanel({campaigns}:{campaigns:Campaign[]}){
    </form>
    <form className="space-y-3" onSubmit={e=>{e.preventDefault();void mutate('/api/eval',{action:'start_run',label:`운영 화면 쌍 평가 ${unit}`,variant:'pair',pair:{unit,candidateVersionId:versionId},caseIds,tokenBudget:Number(budget)},'쌍 평가 실행을 생성했습니다. 운영 상태 조회로 진행 상황을 확인하세요.')}}>
     <h4>2. 기존 버전과 쌍 평가</h4><label className="block">후보 버전<NativeSelect aria-label="운영 후보 버전" value={versionId} onChange={e=>setVersionId(e.target.value)}><Option value="">등록된 후보 선택</Option>{versions.map(v=><Option key={v.id} value={v.id}>{v.id}</Option>)}</NativeSelect></label>
-    <fieldset><legend>평가 케이스 · 봉인 케이스 1건 이상 포함</legend><div className="max-h-48 overflow-auto">{data.evaluation.cases.map(c=><label className="block text-sm" key={c.id}><input type="checkbox" checked={caseIds.includes(c.id)} onChange={e=>setCaseIds(ids=>e.target.checked?[...ids,c.id]:ids.filter(id=>id!==c.id))}/> {c.set} · {c.kind} · {c.role} · {c.id}</label>)}</div></fieldset>
+    <fieldset><legend>평가 케이스 · 봉인 케이스 1건 이상 포함</legend><div className="max-h-48 overflow-auto">{data.evaluation.cases.map(c=><label className="block text-sm" key={c.id}><CheckInput checked={caseIds.includes(c.id)} onChange={e=>setCaseIds(ids=>e.target.checked?[...ids,c.id]:ids.filter(id=>id!==c.id))}/> {c.set} · {c.kind} · {c.role} · {c.id}</label>)}</div></fieldset>
     <label className="block">실행 토큰 상한<Input aria-label="쌍 평가 토큰 상한" type="number" min="1" max={data.evaluation.usage.smokeCap} value={budget} onChange={e=>setBudget(e.target.value)} required/></label>
     <p className="subtle-note">각 케이스를 두 번 실행합니다. 월 예산·평가 전용 연결·봉인 회귀 검사는 서버에서 확인합니다.</p>
     <Button type="submit" disabled={busy||!versionId||!selectedSealed||!Number.isSafeInteger(Number(budget))||Number(budget)<=0||Number(budget)>data.evaluation.usage.smokeCap||data.evaluation.connection.status!=='ready'||data.evaluation.runs.some(r=>['running','queued'].includes(r.status))}>쌍 평가 시작</Button>

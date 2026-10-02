@@ -98,7 +98,7 @@ export function RewardLineageSection({brandId}:{brandId:string}){
  useEffect(()=>{let active=true;if(allowed&&brandId)void fetchLineage(brandId).then(next=>{if(active)setLoad(next)});return()=>{active=false}},[allowed,brandId]);
  if(!allowed)return null;
  async function close(l:ImprovementLoop){
-  if(!(await askConfirm({title:'이 개선 루프를 닫고 지금 수치를 동결할까요?',undo:'닫은 루프는 되돌리지 않습니다.',confirmLabel:'닫고 동결',danger:true})))return;
+  if(!(await askConfirm({title:'이 개선 루프를 닫고 지금 수치를 동결할까요?',impact:'이 루프의 현재 수치가 고정되고 더 이상 갱신되지 않습니다.',undo:'닫은 루프는 되돌리지 않습니다.',confirmLabel:'닫고 동결',danger:true})))return;
   const c=l.comparison,expected={before:{decidedFirst:c.before.decidedFirst,approvedFirst:c.before.approvedFirst},after:{decidedFirst:c.after.decidedFirst,approvedFirst:c.after.approvedFirst}};
   setBusy(true);
   try{await api('close',{brandId,loopId:l.id,version:l.version,expected},'/api/reward-lineage');toast.success('개선 루프를 닫고 수치를 동결했습니다.');await reload()}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}

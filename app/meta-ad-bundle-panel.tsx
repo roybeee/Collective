@@ -1,4 +1,6 @@
 'use client';
+import {CheckInput} from '@/components/app/check';
+import {Note} from '@/components/app/note';
 import {useCallback,useEffect,useState} from 'react';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
@@ -17,7 +19,7 @@ export function MetaAdBundlePanel({campaignId}:{campaignId:string}){
  async function act(action:'prepare'|'review'|'verify'){if(!data)return;setBusy(true);setError('');try{await api(action,{campaignId,campaignVersion:data.campaignVersion,expectedVersion:data.version,evidenceFingerprint:data.evidenceFingerprint,...(action==='prepare'?{input}:{confirmed})},'/api/meta-ads/bundle');await load()}catch(e){setError((e as Error).message);if(action==='verify')await load().catch(()=>{})}finally{setBusy(false)}}
  function change<K extends keyof MetaAdBundleInput>(key:K,value:MetaAdBundleInput[K]){setInput({...input,[key]:value});setDirty(true);setConfirmed(false)}
  const locked=busy||!data?.canEdit||!data.enabled;
- return <section aria-label="Meta 실행 패키지" className="form-stack"><h3>비활성 광고 실행 패키지</h3><p>Meta에서 마련한 광고세트·단일 이미지 링크 소재·광고의 연결을 검토합니다. 외부 생성·활성화·지출은 하지 않습니다.</p><p>지원 범위: 대한민국 성인 타깃, 웹사이트 구매 전환, 광고세트 일 예산. 다른 구성은 검증을 통과할 수 없습니다.</p>{error&&<p role="alert">{error}</p>}{!data?<ScreenSkeleton label="패키지를 불러오는 중입니다." rows={2}/>:<>
+ return <section aria-label="Meta 실행 패키지" className="form-stack"><h3>비활성 광고 실행 패키지</h3><Note className="">Meta에서 마련한 광고세트·단일 이미지 링크 소재·광고의 연결을 검토합니다. 외부 생성·활성화·지출은 하지 않습니다.</Note><p>지원 범위: 대한민국 성인 타깃, 웹사이트 구매 전환, 광고세트 일 예산. 다른 구성은 검증을 통과할 수 없습니다.</p>{error&&<p role="alert">{error}</p>}{!data?<ScreenSkeleton label="패키지를 불러오는 중입니다." rows={2}/>:<>
  {!data.enabled&&<p>소유자가 실행 패키지 기능을 켜야 준비할 수 있습니다.</p>}{data.issues.length>0&&<ul>{data.issues.map(i=><li key={i}>{i}</li>)}</ul>}
  <label className="field"><span>검증된 부모 Meta 캠페인</span><NativeSelect value={input.operationId} disabled={locked} onChange={e=>change('operationId',e.target.value)}><NativeSelectOption value="">선택</NativeSelectOption>{data.parents.map(p=><NativeSelectOption key={p.id} value={p.id}>{p.name} · {p.externalId}</NativeSelectOption>)}</NativeSelect></label>
  <label className="field"><span>원본 이미지 업로드 영수증</span><NativeSelect disabled={locked} value={input.imageUploadReceiptId??''} onChange={e=>change('imageUploadReceiptId',e.target.value)}><NativeSelectOption value="">수동 hash 대조만 사용</NativeSelectOption>{data.imageReceipts.map(r=><NativeSelectOption key={r.id} value={r.id}>{r.metaImageHash}</NativeSelectOption>)}</NativeSelect></label>
@@ -26,6 +28,6 @@ export function MetaAdBundlePanel({campaignId}:{campaignId:string}){
  <p>준비 계획 원화 일별 목표: {data.dailyBudgetKrw?.toLocaleString()??'미입력'}원. Graph 예산 값은 별도 정수입니다. 앱은 두 단위를 자동 환산하지 않습니다.</p><p>대조 랜딩: {data.landingUrl||'미입력'}</p><p>외부 이미지 hash를 대조해도 원본 PNG와 파일 내용이 같다는 검증은 아닙니다. 실제 활성화는 지원하지 않습니다.</p>
  <div className="form-two">{(['ageMin','ageMax'] as const).map(k=><label className="field" key={k}><span>{k==='ageMin'?'최소 연령':'최대 연령'}</span><Input type="number" min={18} max={65} disabled={locked} value={input[k]} onChange={e=>change(k,Number(e.target.value))}/></label>)}</div>
  <Button disabled={locked||!!data.issues.length} onClick={()=>void act('prepare')}>패키지 준비 저장</Button>
- {data.saved&&<><p>패키지 상태: {data.saved.status} · 판 {data.version}{data.stale?' · 근거 변경, 다시 준비 필요':''}</p><label><input type="checkbox" disabled={locked||dirty} checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>Meta 소재 이미지·문구·버튼과 검수 원본, 페이지·픽셀·랜딩·타깃·기간, 원화와 Graph 예산 단위를 직접 대조했습니다.</label><div className="form-actions"><Button disabled={locked||dirty||data.stale||!confirmed} onClick={()=>void act('review')}>패키지 검토 기록</Button><Button disabled={locked||dirty||data.stale||!confirmed||data.saved.status==='prepared'} onClick={()=>void act('verify')}>외부 비활성 구성 조회</Button></div>{data.verifiedScope?<p>마지막 외부 확인: {data.verifiedScope.verifiedAt}. 현재까지 계속 비활성이라는 보증은 아니며, 이 확인은 15분 동안만 후속 승인 근거로 참조됩니다.</p>:<p>현재 유효한 외부 확인이 없습니다. 검토 후 다시 조회하세요.</p>}</>}
+ {data.saved&&<><p>패키지 상태: {data.saved.status} · 판 {data.version}{data.stale?' · 근거 변경, 다시 준비 필요':''}</p><label><CheckInput disabled={locked||dirty} checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>Meta 소재 이미지·문구·버튼과 검수 원본, 페이지·픽셀·랜딩·타깃·기간, 원화와 Graph 예산 단위를 직접 대조했습니다.</label><div className="form-actions"><Button disabled={locked||dirty||data.stale||!confirmed} onClick={()=>void act('review')}>패키지 검토 기록</Button><Button disabled={locked||dirty||data.stale||!confirmed||data.saved.status==='prepared'} onClick={()=>void act('verify')}>외부 비활성 구성 조회</Button></div>{data.verifiedScope?<p>마지막 외부 확인: {data.verifiedScope.verifiedAt}. 현재까지 계속 비활성이라는 보증은 아니며, 이 확인은 15분 동안만 후속 승인 근거로 참조됩니다.</p>:<p>현재 유효한 외부 확인이 없습니다. 검토 후 다시 조회하세요.</p>}</>}
  </>}</section>;
 }

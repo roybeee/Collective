@@ -1,4 +1,5 @@
 'use client';
+import {Note} from '@/components/app/note';
 import {useCallback,useEffect,useState,type FormEvent} from 'react';
 import type {BrandVoice,BrandVoiceInput,VoiceBody} from '@/lib/brand-voice';
 import {adminRequestNote,useCanManage} from './auth-client';
@@ -40,7 +41,7 @@ export function BrandVoicePanel({brandId}:{brandId:string}){
   }catch(error){setError((error as Error).message)}finally{setSaving(false)}
  }
  const {voice,active,limits}=state;
- return <section aria-label="브랜드 말투"><div className="section-heading"><div><h3>브랜드 말투</h3><p>카피·문안의 어조와 쓰지 않을 표현을 정합니다. 확정한 말투만 AI 크리에이티브·콘텐츠 담당에게 전달됩니다(기능 스위치가 켜진 경우).</p></div></div>
+ return <section aria-label="브랜드 말투"><div className="section-heading"><div><h3>브랜드 말투</h3><Note className="">카피·문안의 어조와 쓰지 않을 표현을 정합니다. 확정한 말투만 AI 크리에이티브·콘텐츠 담당에게 전달됩니다(기능 스위치가 켜진 경우).</Note></div></div>
   {error&&<div role="alert" className="load-error"><span>{error}</span><Button variant="outline" disabled={saving} onClick={()=>void load()}>다시 불러오기</Button></div>}{message&&<p role="status">{message}</p>}
   {loading?<ScreenSkeleton label="브랜드 말투를 불러오고 있습니다." rows={2}/>:<>
    <div className="notice"><p>{voice?`현재 판 v${voice.version} · ${STATUS[voice.status]}`:'아직 말투가 없습니다.'}{active?` · 모델에 가는 확정본 v${active.version}`:' · 모델에 가는 확정본 없음'}</p>{voice?.status==='draft'&&active&&<small>초안을 고치는 동안에는 이전 확정본 v{active.version}이 계속 쓰입니다.</small>}</div>

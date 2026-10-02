@@ -1,4 +1,5 @@
 'use client';
+import {NativeSelect} from '@/components/ui/native-select';
 import {useId,useState} from 'react';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
@@ -20,7 +21,7 @@ export function MetaCapiPanel({campaignId,view,onChange}:{campaignId:string;view
  <label><Checkbox checked={confirmed} onCheckedChange={v=>setConfirmed(v===true)} disabled={disabled}/>이 지점의 데이터셋과 전환 전용 연결을 확인했습니다</label>
  <p><Button disabled={disabled||!confirmed||!token||!datasetId||!origin} onClick={()=>void run('configure',{datasetId,origin,token,expectedConnectionVersion:c.connection?.version??0})}>전환 연결 저장</Button>{c.connection?.connected&&<Button variant="outline" disabled={disabled} onClick={()=>void run('disconnect',{expectedConnectionVersion:c.connection?.version})}>전환 연결 해제</Button>}</p>
  <h4>동의한 구매 전송 예약</h4><p>이메일 원문은 입력하지 마세요. 자사몰이 공백 제거·소문자 처리 후 SHA-256으로 만든 값과 실제 구매 브라우저 정보를 사용합니다. 해시도 고객 정보이므로 별도 동의가 필요합니다.</p>
- <label htmlFor={id+'event'}>전송할 구매<select id={id+'event'} value={eventId} disabled={disabled} onChange={e=>{setEventId(e.target.value);setPixel(null);setConsented(false)}}><option value="">구매 선택</option>{view.records.map(x=><option key={x.id} value={x.id}>{x.value.toLocaleString('ko-KR')}원 · {x.id.slice(-10)}</option>)}</select></label>
+ <label htmlFor={id+'event'}>전송할 구매<NativeSelect id={id+'event'} value={eventId} disabled={disabled} onChange={e=>{setEventId(e.target.value);setPixel(null);setConsented(false)}}><option value="">구매 선택</option>{view.records.map(x=><option key={x.id} value={x.id}>{x.value.toLocaleString('ko-KR')}원 · {x.id.slice(-10)}</option>)}</NativeSelect></label>
  <label htmlFor={id+'hash'}>동의한 이메일 SHA-256<Input id={id+'hash'} value={emailHash} maxLength={64} autoComplete="off" onChange={e=>setEmailHash(e.target.value)} disabled={disabled}/></label>
  <label htmlFor={id+'ua'}>실제 구매 브라우저 User-Agent<Input id={id+'ua'} value={ua} maxLength={512} autoComplete="off" onChange={e=>setUa(e.target.value)} disabled={disabled}/></label>
  <label htmlFor={id+'source'}>개인정보 없는 고정 구매 페이지 주소<Input id={id+'source'} value={source} onChange={e=>setSource(e.target.value)} disabled={disabled}/></label>

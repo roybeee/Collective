@@ -19,6 +19,8 @@ const buttonVariants = cva(
         ghost:
           "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
         link: "text-primary underline-offset-4 hover:underline",
+        // 성장·판매 패널의 보조 동작(목록 항목·단계·저장 등). 모양은 패널 CSS(growth-panel.module.css)와 같은 토큰을 쓴다.
+        panel: "border bg-background font-normal hover:bg-muted",
       },
       size: {
         default: "h-9 px-4 py-2 has-[>svg]:px-3",
@@ -29,6 +31,8 @@ const buttonVariants = cva(
         "icon-xs": "size-6 rounded-md [&_svg:not([class*='size-'])]:size-3",
         "icon-sm": "size-8",
         "icon-lg": "size-10",
+        // 글 길이에 맞춰 늘어난다(여러 줄 목록 항목). 높이 고정·줄바꿈 금지·줄어들기 금지를 푼다.
+        fit: "h-auto min-h-9 shrink whitespace-normal",
       },
     },
     defaultVariants: {

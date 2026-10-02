@@ -1,4 +1,5 @@
 'use client';
+import {CheckInput} from '@/components/app/check';
 import {askConfirm} from '@/components/app/confirm-dialog';
 import {useCallback,useEffect,useState,type FormEvent} from 'react';
 import type {Campaign} from '@/lib/agency';
@@ -86,7 +87,7 @@ export function BrandFactsPanel({campaign,brandId,onChanged}:{campaign?:Campaign
   }catch(error){setError((error as Error).message)}finally{setSaving(false)}
  }
  async function importCandidates(){
-  if(!overview||!(await askConfirm({title:`사실 후보 ${overview.readiness.importable}건을 가져올까요?`,body:`조사 주장·지점 정보·브리프의 확정 표현에서 ${scopeName(storeId)} 범위의 확인 후보로 가져옵니다.`,impact:'같은 항목이 이미 있으면 건너뜁니다. 확정은 관리자가 합니다.',confirmLabel:'가져오기'})))return;
+  if(!overview||!(await askConfirm({title:`사실 후보 ${overview.readiness.importable}건을 가져올까요?`,body:`조사 주장·지점 정보·브리프의 확정 표현에서 ${scopeName(storeId)} 범위의 확인 후보로 가져옵니다.`,impact:'같은 항목이 이미 있으면 건너뜁니다. 확정은 관리자가 합니다.',undo:'가져온 후보는 확인 단계에서 거절할 수 있습니다.',confirmLabel:'가져오기'})))return;
   setSaving(true);setError('');setMessage('');setAlertNote('');
   try{
    const {response,data}=await postFacts<{imported:number;skipped:FactImportSkip[]}>({action:'import_candidates',brandId:brand,...(storeId?{storeId}:{})});
@@ -131,7 +132,7 @@ export function BrandFactsPanel({campaign,brandId,onChanged}:{campaign?:Campaign
   {open&&<form className="form-stack" onSubmit={save} aria-label="브랜드 사실 편집"><fieldset disabled={saving} className="form-stack"><legend>{editing?'사실 수정':'새 사실'} · {scopeName(targetStore)}</legend>
    <label className="field"><span>사실 항목</span><NativeSelect required value={otherKey?OTHER:(keyItem?.key??'')} onChange={e=>{const value=e.target.value;setOtherKey(value===OTHER);setForm({...form,key:value===OTHER?'':value});setScopeConfirmed(false)}}><NativeSelectOption value="" disabled>항목 선택</NativeSelectOption>{factCatalog.filter(i=>!i.franchise).map(i=><NativeSelectOption key={i.key} value={i.key}>{i.label}{i.storeScoped?' · 지점별 항목':''}</NativeSelectOption>)}{franchise&&<NativeSelectOptGroup label="가맹 · 정보공개서 항목">{factCatalog.filter(i=>i.franchise).map(i=><NativeSelectOption key={i.key} value={i.key}>{i.label}{i.adUse===false?' · 광고 사용 불가(H6)':''}</NativeSelectOption>)}</NativeSelectOptGroup>}<NativeSelectOption value={OTHER}>기타(자유 입력)</NativeSelectOption></NativeSelect></label>
    {otherKey&&<label className="field"><span>기타 항목 이름{keyItem?` · ‘${keyItem.label}’ 표준 항목으로 저장됩니다`:''}</span><Input required maxLength={120} value={form.key} onChange={e=>setForm({...form,key:e.target.value})} placeholder="포장 용기"/></label>}
-   {needsScopeConfirm&&<label><input type="checkbox" required checked={scopeConfirmed} onChange={e=>setScopeConfirmed(e.target.checked)}/> {keyItem?.label}은(는) 지점마다 다른 항목입니다. 브랜드 공통으로 저장해 모든 지점의 제작물에 쓰는 것이 맞음을 확인합니다.{!campaign&&!!overview?.stores.length?' 지점 사실은 위 적용 범위에서 지점을 고른 뒤 추가하세요.':''}</label>}
+   {needsScopeConfirm&&<label><CheckInput required checked={scopeConfirmed} onChange={e=>setScopeConfirmed(e.target.checked)}/> {keyItem?.label}은(는) 지점마다 다른 항목입니다. 브랜드 공통으로 저장해 모든 지점의 제작물에 쓰는 것이 맞음을 확인합니다.{!campaign&&!!overview?.stores.length?' 지점 사실은 위 적용 범위에서 지점을 고른 뒤 추가하세요.':''}</label>}
    <label className="field"><span>확인할 내용</span><Textarea required rows={3} maxLength={5000} value={form.value} onChange={e=>setForm({...form,value:e.target.value})}/></label>
    {franchise&&frItem&&<fieldset className="form-stack" aria-label="정보공개서 근거"><legend>가맹 항목 · {frItem.label}</legend>
     {!franchise.enabled&&<p role="note" className="form-error">가맹 모집 기능이 꺼져 있어 가맹 항목은 사용 거절만 할 수 있습니다.</p>}
@@ -147,7 +148,7 @@ export function BrandFactsPanel({campaign,brandId,onChanged}:{campaign?:Campaign
    {canManage?<label className="field"><span>사실 상태</span><NativeSelect value={form.status} onChange={e=>{setForm({...form,status:e.target.value as BrandFact['status']});setConfirmed(false)}}>{Object.entries(statuses).map(([value,label])=><NativeSelectOption key={value} value={value}>{label}</NativeSelectOption>)}</NativeSelect></label>:<p className="subtle-note">사실 상태: {statuses.candidate}. 확정·거절은 관리자만 할 수 있습니다. {adminRequestNote}</p>}
    <label className="field"><span>확인 근거 · 문서·담당자·URL</span><Textarea required={form.status==='confirmed'} rows={2} maxLength={3000} value={form.source} onChange={e=>setForm({...form,source:e.target.value})}/></label>
    <div className="form-two"><label className="field"><span>확인 시점 · 현재 기기 시간대</span><Input type="datetime-local" required={form.status==='confirmed'} value={form.verifiedAt} onChange={e=>setForm({...form,verifiedAt:e.target.value})}/></label><label className="field"><span>유효 기한 · 현재 기기 시간대</span><Input type="datetime-local" required={form.status==='confirmed'} value={form.validUntil} onChange={e=>setForm({...form,validUntil:e.target.value})}/></label></div>
-   {form.status==='confirmed'&&<label><input type="checkbox" required checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/> 근거를 직접 확인했고 유효 기한까지 적용 가능한 사실임을 확인합니다.</label>}
+   {form.status==='confirmed'&&<label><CheckInput required checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/> 근거를 직접 확인했고 유효 기한까지 적용 가능한 사실임을 확인합니다.</label>}
    <p className="notice">후보·거절·기한이 지난 사실은 제작용 확인 사실에서 제외됩니다. 같은 항목의 지점 사실이 있으면 브랜드 공통 사실보다 우선합니다.</p>
    <div className="form-actions"><Button type="button" variant="outline" onClick={()=>setOpen(false)}>취소</Button><Button type="submit">{saving?'저장 중…':'사실 저장'}</Button></div>
   </fieldset></form>}

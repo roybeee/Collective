@@ -3,7 +3,7 @@
 // askConfirm()은 Promise<boolean>을 돌려준다. 화면에 ConfirmHost가 없으면(독립 화면·테스트) 같은 문장으로 기본 확인창을 쓴다.
 // 대화상자 부품은 처음 물을 때 내려받는다(홈 첫 로딩 예산, tests/ux-budget.json).
 import {lazy,Suspense,useEffect,useState} from 'react';
-export type ConfirmAsk={title:string;body?:string;impact?:string;undo?:string;confirmLabel?:string;danger?:boolean;input?:{label:string;type?:'text'|'number';placeholder?:string}};
+export type ConfirmAsk={title:string;body?:string;impact:string;undo:string;confirmLabel?:string;danger?:boolean;input?:{label:string;type?:'text'|'number';placeholder?:string}};
 type Pending=ConfirmAsk&{id:number;resolve:(ok:boolean,value?:string)=>void};
 let seq=0;
 let enqueue:((ask:Omit<Pending,'id'>)=>void)|null=null;

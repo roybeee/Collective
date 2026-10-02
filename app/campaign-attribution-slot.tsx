@@ -1,4 +1,5 @@
 'use client';
+import {Note} from '@/components/app/note';
 import {useEffect,useState,type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 import {RefreshCw,Save} from 'lucide-react';
@@ -19,7 +20,8 @@ function ResultsSlot({children}:{children:ReactNode}){
   let slot:HTMLDivElement|null=null;
   const sync=()=>{
    const panel=document.querySelector<HTMLElement>('.campaign-sheet [role="tabpanel"][id$="-content-results"]');
-   if(slot&&panel&&slot.parentElement===panel)return;
+   // 탭 내용보다 자리가 먼저 붙으면(탭을 눌러 열 때) 귀속 카드가 맨 위로 올라가 빈 여백이 생긴다. 항상 맨 끝으로 옮긴다.
+   if(slot&&panel&&slot.parentElement===panel){if(panel.lastElementChild!==slot)panel.appendChild(slot);return}
    slot?.remove();slot=null;
    if(panel){slot=document.createElement('div');slot.className='campaign-attribution-host';panel.appendChild(slot)}
    setHost(slot);
@@ -60,7 +62,7 @@ function AttributionCard({campaignId,onSaved}:{campaignId:string;onSaved:()=>Pro
  // 스냅샷은 끝난 날(어제까지)만 저장한다(서버도 오늘 끝나는 기간은 400). 종료일이 오늘이면 같은 시작일로 어제까지 다시 조회하게 한다.
  const yesterday=addDays(koreaToday(),-1),closed=!!report&&report.period.to<=yesterday,untilYesterday=()=>{if(!report)return;setLoading(true);setPeriod({from:report.period.from<yesterday?report.period.from:yesterday,to:yesterday})};
  return <section className="campaign-attribution" aria-label="주문 장부 귀속">
-  <div className="section-heading"><div><h2>주문 장부 귀속 · 자동 집계</h2><p>점포 주문 장부에서 이 캠페인에 귀속된 주문을 주 단위(한국시간 월~일)로 합칩니다. 저장한 성과가 아니라 지금 장부 기준입니다.</p></div>{ready&&(closed?<Button variant="outline" onClick={()=>setConfirming(true)}><Save/>스냅샷으로 저장</Button>:<Button variant="outline" onClick={untilYesterday}><RefreshCw/>어제까지로 조회</Button>)}</div>
+  <div className="section-heading"><div><h2>주문 장부 귀속 · 자동 집계</h2><Note className="">점포 주문 장부에서 이 캠페인에 귀속된 주문을 주 단위(한국시간 월~일)로 합칩니다. 저장한 성과가 아니라 지금 장부 기준입니다.</Note></div>{ready&&(closed?<Button variant="outline" onClick={()=>setConfirming(true)}><Save/>스냅샷으로 저장</Button>:<Button variant="outline" onClick={untilYesterday}><RefreshCw/>어제까지로 조회</Button>)}</div>
   <p className="notice">{NOT_INCREMENTAL}</p>
   {ready&&!closed&&<p className="notice">{"오늘 주문은 아직 확정 전이라 스냅샷은 어제까지의 기간으로만 저장합니다. '어제까지로 조회'로 기간을 바꾼 뒤 저장하세요."}</p>}
   <form className="ledger-period" aria-label="귀속 집계 기간" onSubmit={e=>{e.preventDefault();setLoading(true);setPeriod({...range})}}>

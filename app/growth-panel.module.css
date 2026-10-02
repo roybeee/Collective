@@ -10,14 +10,14 @@
 .panel button[aria-pressed="true"] { border-color: var(--green-44); background: var(--neutral-97); color: var(--green-32); }
 .workspace { display: grid; grid-template-columns: minmax(160px, 230px) minmax(0, 1fr); gap: 24px; align-items: start; }
 .list { display: grid; gap: 8px; max-height: 650px; overflow-y: auto; }
-.list button { display: grid; text-align: left; gap: 5px; overflow-wrap: anywhere; }
+.list button { display: grid; text-align: left; gap: 5px; overflow-wrap: anywhere; justify-content: stretch; justify-items: start; align-items: start; }
 .list span { font-size: .78rem; color: var(--muted-foreground, var(--green-44)); }
 .list p { padding: 12px; font-size: .88rem; color: var(--muted-foreground, var(--green-44)); }
 .editor { min-width: 0; display: grid; gap: 16px; }
 .editor h3 { font-size: 1.1rem; font-weight: 650; }
 .form { border: none; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 0 0 18px; }
 .field label, .wide label, .receipt label { display: grid; gap: 6px; font-size: .88rem; }
-.panel input:not([type="checkbox"]), .panel textarea, .panel select { width: 100%; min-width: 0; border: 1px solid var(--border, var(--neutral-90)); border-radius: 7px; padding: 9px 11px; background: var(--background, #fff); color: inherit; font: inherit; }
+.panel input:not([type="checkbox"]), .panel textarea, .panel select { width: 100%; height: auto; min-width: 0; border: 1px solid var(--border, var(--neutral-90)); border-radius: 7px; padding: 9px 11px; background: var(--background, #fff); color: inherit; font: inherit; }
 .panel textarea { resize: vertical; }
 .wide, .references { grid-column: 1 / -1; }
 .references { display: grid; gap: 10px; border: 1px solid var(--border, var(--neutral-90)); border-radius: 8px; padding: 12px; font-size: .88rem; }
@@ -77,3 +77,7 @@
 .stepNo { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: 6px; border-radius: 999px; border: 1px solid var(--green-77); font-size: .75rem; }
 .tabs button[aria-pressed="true"] .stepNo { background: var(--green-32); border-color: var(--green-32); color: #fff; }
 .stepProgress { margin: 8px 0 0; font-size: .85rem; color: var(--green-44); }
+/* 머리글 보조 동작(Meta 열기·새로고침)을 제목 옆 한 줄에 둔다. 모바일에서도 본문 앞에 버튼 줄이 따로 쌓이지 않는다. */
+.headerActions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+.panel .headerActions .smallButton { margin-top: 0; }

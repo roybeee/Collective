@@ -1,4 +1,5 @@
 'use client';
+import {Button} from '@/components/ui/button';
 import {dateTime,duration} from '@/lib/format';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {GrowthDailyView} from '@/lib/growth-daily-server';
@@ -13,10 +14,10 @@ function Workspace({campaignId}:{campaignId:string}){
  useEffect(()=>{void Promise.resolve().then(()=>load());return()=>reading.current?.abort();},[load]);
  async function runNow(){if(running)return;setRunning(true);setError('');setMessage('');try{const r=await fetch('/api/growth/daily',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'run_now'})}),v=await r.json() as {status?:string;error?:string};if(!r.ok)throw new Error(v.error??'실행하지 못했습니다.');setMessage(v.status==='processed'?'오늘 안건을 만들었습니다.':'오늘은 이미 실행했습니다(하루 1회).');await load();}catch(e){setError(e instanceof Error?e.message:'실행 실패');}finally{setRunning(false)}}
  const today=view?.runs.find(r=>r.day===view.today);
- return <section aria-label="일일 운영 루프" className={styles.panel}><header className={styles.header}><h3>일일 운영 루프 · 오늘의 안건</h3><button aria-label="안건 새로고침" type="button" disabled={loading} onClick={()=>void load()}>새로고침</button></header>
+ return <section aria-label="일일 운영 루프" className={styles.panel}><header className={styles.header}><h3>일일 운영 루프 · 오늘의 안건</h3><Button variant="panel" size="fit" aria-label="안건 새로고침" type="button" disabled={loading} onClick={()=>void load()}>새로고침</Button></header>
   {view&&<p className={styles.note}>{view.notice} 자동 실행은 기능 스위치 growth_daily_loop가 켜져 있을 때 조사 작업자가 KST 하루 1회 합니다. 현재 {view.enabled?'켜짐':'꺼짐'}.</p>}
   {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">일일 루프를 조회하고 있습니다.</p>}
-  {view&&<>{view.canRun&&<button type="button" disabled={running||loading} onClick={()=>void runNow()}>오늘 안건 지금 만들기</button>}
+  {view&&<>{view.canRun&&<Button variant="panel" size="fit" type="button" disabled={running||loading} onClick={()=>void runNow()}>오늘 안건 지금 만들기</Button>}
    {!today&&<p>오늘({view.today}) 실행 기록이 없습니다.</p>}
    {today&&<><p>{today.day} · {statusLabels[today.status]} · {today.trigger==='worker'?'작업자':'운영자'} · {duration(today.durationMs)} · 전역 {today.stop==='stopped'?'중단 중':today.stop==='running'?'운영 중':'확인 불가'}{today.skipped?` · 시간 예산으로 ${today.skipped}개 캠페인 다음 실행`:''}</p>
     {today.campaign?.error&&<p className={styles.error}>{today.campaign.error}</p>}
