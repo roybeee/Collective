@@ -94,7 +94,7 @@ check('a chosen option that is no longer offered falls back to all orders',()=>{
 // --- 3) 화면 연결 (원문 검사) ------------------------------------------------------------------
 check('the execution screen replaces the order guidance with an open-ledger button',()=>{
  assert.ok(!executionUi.includes('주문·매출 화면에서'));
- assert.ok(executionUi.includes('>주문 장부 열기</button>'));
+ assert.ok(executionUi.includes('>주문 장부 열기</Button>'));
  assert.ok(executionUi.includes('orderLedgerTarget(campaign,stores)'));
  assert.ok(executionUi.includes("import {pushNav} from '@/lib/nav-state'"));
  assert.ok(executionUi.includes('pushNav(target.nav)')&&executionUi.includes('pushNav(ledgerNav(campaign.brandId,chosen))'));

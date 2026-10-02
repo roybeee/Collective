@@ -40,9 +40,13 @@ test('오늘의 안건·캠페인 탭 주소·지연 로딩·명령 팔레트·�
   await expect(page.getByRole('navigation',{name:'이동 경로',exact:true})).toContainText('Meta 광고 준비');
   // 3) 안쪽 탭을 바꾸면 주소도 바뀐다.
   await page.getByRole('tab',{name:'성과',exact:true}).click();await expect(page).toHaveURL(/ctab=results/);
+  // 3b) 모바일: 스크롤로 머리글 동작이 사라지면 같은 버튼 묶음이 화면 아래에 고정된다(UX-PLAN-3 Q8). 첫 화면에서는 고정하지 않는다.
+  if(mobile){const edit=page.getByRole('button',{name:'브리프 수정',exact:true});await expect(edit).toHaveCount(1);await page.getByRole('navigation',{name:'이동 경로',exact:true}).scrollIntoViewIfNeeded();await expect(page.locator('[data-floating]')).toHaveCount(0);
+   await page.mouse.wheel(0,1500);await expect(page.locator('[data-floating]')).toHaveCount(1);await expect(edit).toBeInViewport();
+   const box=await edit.boundingBox(),vh=page.viewportSize()!.height;expect(box!.y+box!.height).toBeGreaterThan(vh-80);expect(box!.height).toBeGreaterThanOrEqual(44);await page.getByRole('navigation',{name:'이동 경로',exact:true}).scrollIntoViewIfNeeded();await expect(page.locator('[data-floating]')).toHaveCount(0)}
   // 4) 명령 팔레트(데스크톱 단축키)로 설정 이동 → 운영 안전에 전역 중단.
   await page.keyboard.press('Escape');
-  if(!mobile){await page.keyboard.press('Control+k');const palette=page.getByRole('dialog',{name:'바로 가기'});await expect(palette).toBeVisible();await palette.getByPlaceholder('화면·캠페인 검색').fill('연결 및 설정');await page.keyboard.press('Enter');}
+  if(!mobile){await page.keyboard.press('Control+k');const palette=page.getByRole('dialog',{name:'바로 가기'});await expect(palette).toBeVisible();await palette.getByPlaceholder('화면·캠페인·작업물 검색').fill('연결 및 설정');await page.keyboard.press('Enter');}
   else await page.goto('/?view=settings');
   await expect(page.getByRole('navigation',{name:'설정 바로가기',exact:true})).toBeVisible();
   await expect(page.getByRole('region',{name:'전역 실행 중단',exact:true})).toBeVisible();
@@ -51,8 +55,8 @@ test('오늘의 안건·캠페인 탭 주소·지연 로딩·명령 팔레트·�
    await page.locator('body').click({position:{x:5,y:5}});await page.keyboard.press('g');await page.keyboard.press('c');await expect(page).toHaveURL(/view=campaigns/);
    await page.keyboard.press('/');await expect(page.getByRole('dialog',{name:'바로 가기'})).toBeVisible();
    // 용어 도움말·브랜드 검색(UX-PLAN-3 Q6·Q1): 검색하면 용어 정의가 보이고, 브랜드를 고르면 브랜드 아카이브로 간다.
-   const palette=page.getByRole('dialog',{name:'바로 가기'});await palette.getByPlaceholder('화면·캠페인 검색').fill('공헌이익');await expect(palette.getByRole('option',{name:/공헌이익.*판매 금액에서/})).toBeVisible();
-   await palette.getByPlaceholder('화면·캠페인 검색').fill('Old Ferry');await palette.getByRole('option',{name:/Old Ferry Donut/}).first().click();await expect(page).toHaveURL(/view=brands&brand=/);
+   const palette=page.getByRole('dialog',{name:'바로 가기'});await palette.getByPlaceholder('화면·캠페인·작업물 검색').fill('공헌이익');await expect(palette.getByRole('option',{name:/공헌이익.*판매 금액에서/})).toBeVisible();
+   await palette.getByPlaceholder('화면·캠페인·작업물 검색').fill('Old Ferry');await palette.getByRole('option',{name:/Old Ferry Donut/}).first().click();await expect(page).toHaveURL(/view=brands&brand=/);
    await page.locator('body').click({position:{x:5,y:5}});await page.keyboard.press('?');await expect(page.getByRole('dialog',{name:'바로 가기'}).getByRole('option',{name:/^ROAS/})).toBeVisible();await page.keyboard.press('Escape');
    await page.keyboard.press('g');await page.keyboard.press('c');await expect(page).toHaveURL(/view=campaigns/);
    await page.getByRole('textbox',{name:'캠페인 검색',exact:true}).fill('gh');await expect(page).toHaveURL(/view=campaigns/);

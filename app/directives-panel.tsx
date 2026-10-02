@@ -33,7 +33,7 @@ export function DirectivesPanel({campaignId}:{campaignId:string}){
   if(await change('add',{id:pendingId.current,text})){pendingId.current='';setText('');toast.success('상시 지시를 추가했습니다. 다음 AI 실행부터 적용됩니다.')}
  }
  async function remove(d:CampaignDirective){
-  if(!(await askConfirm({title:'이 상시 지시를 삭제할까요?',impact:'기존 작업물과 브리프 버전은 그대로 유지됩니다.',confirmLabel:'삭제',danger:true})))return;
+  if(!(await askConfirm({title:'이 상시 지시를 삭제할까요?',impact:'기존 작업물과 브리프 버전은 그대로 유지됩니다.',undo:'삭제한 지시는 되돌릴 수 없습니다. 같은 내용으로 다시 추가할 수 있습니다.',confirmLabel:'삭제',danger:true})))return;
   if(await change('remove',{id:d.id}))toast.success('상시 지시를 삭제했습니다.');
  }
  const full=!!listing&&listing.directives.length>=listing.limits.count;

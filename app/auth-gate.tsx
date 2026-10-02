@@ -1,5 +1,7 @@
 'use client';
 
+import {CardButton} from '@/components/app/card-button';
+import {Button} from '@/components/ui/button';
 import {useCallback,useEffect,useState,type ReactNode} from 'react';
 import {authRequest,type AccountUser,type AuthState} from './auth-client';
 import {AccountProvider} from './account-context';
@@ -37,11 +39,11 @@ export default function AuthGate({children}:{children:ReactNode}){
   try{await authRequest('/api/auth',{action:'logout'});setState({mode:'email',user:null});setPanel(null);}
   catch(e){setError(e instanceof Error?e.message:'로그아웃하지 못했습니다.');}finally{setPending(false);}
  }
- if(!state)return <main className="auth-screen"><section className="auth-card"><div className="auth-brand">COLLECTIVE</div>{error?<><p role="alert">{error}</p><button className="auth-primary" onClick={()=>void refresh()}>다시 연결</button></>:<p role="status">워크스페이스를 준비하고 있습니다…</p>}</section></main>;
+ if(!state)return <main className="auth-screen"><section className="auth-card"><div className="auth-brand">COLLECTIVE</div>{error?<><p role="alert">{error}</p><Button className="auth-primary" onClick={()=>void refresh()}>다시 연결</Button></>:<p role="status">워크스페이스를 준비하고 있습니다…</p>}</section></main>;
  if(state.mode==='legacy')return <AccountProvider state={state}>{children}</AccountProvider>;
  if(link||!state.user)return <AuthForm link={link} onSignedIn={signedIn} onCancel={()=>setLink(null)}/>;
  const manager=state.user.role!=='member';
- return <AccountProvider state={state}><div className="auth-toolbar"><span>{state.user.email}</span><nav aria-label="계정 메뉴">{manager&&<button onClick={()=>setPanel('accounts')}>팀 계정 관리</button>}<button onClick={()=>setPanel('password')}>비밀번호 변경</button><button disabled={pending} onClick={()=>void logout()}>로그아웃</button></nav>{error&&<p role="alert">{error}</p>}</div>{children}
+ return <AccountProvider state={state}><div className="auth-toolbar"><span>{state.user.email}</span><nav aria-label="계정 메뉴">{manager&&<CardButton onClick={()=>setPanel('accounts')}>팀 계정 관리</CardButton>}<CardButton onClick={()=>setPanel('password')}>비밀번호 변경</CardButton><CardButton disabled={pending} onClick={()=>void logout()}>로그아웃</CardButton></nav>{error&&<p role="alert">{error}</p>}</div>{children}
   {panel==='accounts'&&manager&&<AccountPanel user={state.user} onClose={()=>setPanel(null)} onSignedOut={()=>{setState({mode:'email',user:null});setPanel(null)}}/>}
   {panel==='password'&&<PasswordPanel onClose={()=>setPanel(null)} onChanged={()=>{setPanel(null);void refresh()}}/>}
  </AccountProvider>;

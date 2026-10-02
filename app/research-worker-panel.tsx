@@ -49,7 +49,7 @@ export function ResearchWorkerPanel({hermes}:{hermes:boolean}){
  async function refresh(){try{const response=await fetch('/api/research-worker/setup',{cache:'no-store'}),data=await response.json() as WorkerStatus & {error?:string};if(!response.ok)throw new Error(data.error||'작업자 상태를 확인하지 못했습니다.');setState(data);setError('')}catch(e){setError((e as Error).message)}}
  useEffect(()=>{void refresh();const timer=setInterval(()=>void refresh(),15000);return()=>clearInterval(timer)},[]);
  async function action(action:'download'|'revoke'){
-  if(action==='download'&&state?.registered&&state.online&&!(await askConfirm({title:'설치 파일을 다시 발급할까요?',body:'가동 중 워커는 10분 안에 새 설치가 필요합니다.',impact:'지금 작업자는 10분 뒤 멈추고, 새 설치 파일로 서버를 다시 설치해야 이어집니다.',confirmLabel:'다시 발급'})))return;
+  if(action==='download'&&state?.registered&&state.online&&!(await askConfirm({title:'설치 파일을 다시 발급할까요?',body:'가동 중 워커는 10분 안에 새 설치가 필요합니다.',impact:'지금 작업자는 10분 뒤 멈추고, 새 설치 파일로 서버를 다시 설치해야 이어집니다.',undo:'다시 발급은 되돌릴 수 없습니다.',confirmLabel:'다시 발급'})))return;
   setBusy(true);setError('');try{
    const response=await fetch('/api/research-worker/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})});
    if(!response.ok){const result=await response.json() as {error?:string};throw new Error(result.error||'설정을 저장하지 못했습니다.')}

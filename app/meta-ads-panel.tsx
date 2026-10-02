@@ -1,4 +1,6 @@
 'use client';
+import {Note} from '@/components/app/note';
+import {CardButton} from '@/components/app/card-button';
 import {askConfirm} from '@/components/app/confirm-dialog';
 import {lazy,Suspense,useEffect,useId,useRef,useState} from 'react';
 import {ScreenSkeleton} from '@/components/app/screen-skeleton';
@@ -55,7 +57,7 @@ async  function reload(){if(!dirty||await askConfirm({title:'저장하지 않은
  const moneyField=(key:keyof typeof metaMoneyFields,help:string)=> <div className={s.field}><label htmlFor={`${id}-${key}`}>{metaMoneyFields[key]} <span>(원)</span></label><Input id={`${id}-${key}`} aria-describedby={`${id}-${key}-help`} type="number" inputMode="numeric" min={0} max={1e12} step={1} placeholder="금액 입력" value={input[key]??''} onChange={e=>change(key,e.target.value===''?null:Number(e.target.value))}/><p id={`${id}-${key}-help`}>{help}</p></div>;
  return <section aria-label="Meta 광고 준비" className={s.root} aria-busy={busy||loading}>
   <header className={s.header}><div><span className={s.eyebrow}>COLLECTIVE / META</span><h2>매출로 이어지는 광고 준비</h2><p>전환 경로부터 남는 이익까지, 실행 기준을 먼저 정하세요.</p></div><span className={s.badge}><FileCheck2 size={15}/>계획 단계</span></header>
-  <nav aria-label="광고 준비 단계" className={s.steps}>{steps.map((x,i)=><button key={x.title} type="button" aria-label={`${i+1}. ${x.title}`} aria-current={step===i?'step':undefined} onClick={()=>go(i)}><span className={s.stepNumber}>{counts[i]===x.fields.length?<Check size={16}/>:String(i+1).padStart(2,'0')}</span><span><b>{x.title}</b><small>{counts[i]} / {x.fields.length} 확인</small></span></button>)}</nav>
+  <nav aria-label="광고 준비 단계" className={s.steps}>{steps.map((x,i)=><CardButton key={x.title} type="button" aria-label={`${i+1}. ${x.title}`} aria-current={step===i?'step':undefined} onClick={()=>go(i)}><span className={s.stepNumber}>{counts[i]===x.fields.length?<Check size={16}/>:String(i+1).padStart(2,'0')}</span><span><b>{x.title}</b><small>{counts[i]} / {x.fields.length} 확인</small></span></CardButton>)}</nav>
   <form onSubmit={e=>{e.preventDefault();void save()}}>
    <div className={s.workspace}><div className={s.editor}>
     <div className={s.sectionHeading}><span>STEP {String(step+1).padStart(2,'0')}</span><h3 ref={heading} tabIndex={-1}>{steps[step].hint}</h3></div>
@@ -89,16 +91,16 @@ async  function reload(){if(!dirty||await askConfirm({title:'저장하지 않은
    </div>
    <div role="group" className={s.summary} aria-label="계획 미리보기"><div className={s.summaryTitle}><h3>계획 미리보기</h3><span>{dirty?'저장 전 입력 기준':view.plan?'저장된 입력 기준':'입력 대기'}</span></div>
     <div className={s.progressHeading}><b>준비 항목</b><span>{done}<small> / {total}</small></span></div><progress value={done} max={total} aria-label="계획 입력 진행률"/>
-    <div className={s.readinessGroups}>{steps.map((x,i)=><button type="button" key={x.title} onClick={()=>go(i)}><span>{counts[i]===x.fields.length?<CheckCheck size={16}/>:<span className={s.groupNumber}>{i+1}</span>}{x.title}</span><b>{counts[i]===x.fields.length?'확인':`${x.fields.length-counts[i]}개 남음`}</b></button>)}</div>
+    <div className={s.readinessGroups}>{steps.map((x,i)=><CardButton type="button" key={x.title} onClick={()=>go(i)}><span>{counts[i]===x.fields.length?<CheckCheck size={16}/>:<span className={s.groupNumber}>{i+1}</span>}{x.title}</span><b>{counts[i]===x.fields.length?'확인':`${x.fields.length-counts[i]}개 남음`}</b></CardButton>)}</div>
     <dl className={s.metrics}><div><dt>광고 전 건당 기여이익</dt><dd data-testid="meta-contribution">{money(contribution)}</dd></div><div><dt>총 광고 예산</dt><dd>{money(input.totalBudget)}</dd></div>{input.goal==='purchase'&&<div><dt>광고비 회수에 필요한 구매</dt><dd data-testid="meta-breakeven">{breakEven===null?'계산 대기':breakEven.toLocaleString()+'건'}</dd></div>}</dl>
     <p className={s.metricNote}>{input.goal==='purchase'?'판매가 − 원가 − 변동비 기준. 환불·세금·제작비 제외, 예상 계산이며 성과 보장이 아닙니다.':'매출 미검증 · 문의와 참여 수치를 실제 구매로 간주하지 않습니다.'}</p>
     {contribution!==null&&contribution<=0&&<p className={s.warning}>현재 입력으로는 판매 후 광고비를 감당할 여유가 없습니다. 가격과 비용을 다시 확인하세요.</p>}
-    {next>=0?<button type="button" className={s.nextAction} onClick={()=>go(next)}><span>다음 할 일<b>{steps[next].title} 채우기</b></span><ArrowRight size={18}/></button>:<div className={s.complete}><Check size={18}/><span>{invalid.length||!readiness.planningComplete?'입력 내용을 다시 확인하세요':'계획 입력을 마쳤습니다'}<small>{invalid.length?invalid[0]:!readiness.planningComplete?readiness.missing.join(' · '):'저장 후 실행 준비를 이어갈 수 있습니다.'}</small></span></div>}
+    {next>=0?<CardButton type="button" className={s.nextAction} onClick={()=>go(next)}><span>다음 할 일<b>{steps[next].title} 채우기</b></span><ArrowRight size={18}/></CardButton>:<div className={s.complete}><Check size={18}/><span>{invalid.length||!readiness.planningComplete?'입력 내용을 다시 확인하세요':'계획 입력을 마쳤습니다'}<small>{invalid.length?invalid[0]:!readiness.planningComplete?readiness.missing.join(' · '):'저장 후 실행 준비를 이어갈 수 있습니다.'}</small></span></div>}
    </div></div>
    <footer className={s.saveBar}><div><b>{dirty?'저장하지 않은 변경사항이 있습니다':view.plan?'저장된 계획입니다':'작성 중에도 저장할 수 있습니다'}</b><span>{!view.canEdit?'계획 변경은 대표·관리자만 할 수 있습니다.':'빈 항목은 다음에 이어서 작성하세요.'}</span></div><div><Button type="button" variant="ghost" disabled={busy||loading} onClick={reload}>최신 계획 불러오기</Button><Button type="submit" disabled={disabled}>{busy?'저장 중…':loading?'불러오는 중…':'준비 계획 저장'}</Button></div></footer>
    {view.plan&&view.plan.campaignVersion!==view.campaignVersion&&<p className={s.warning}>캠페인이 변경되었습니다. 현재 브리프를 확인한 뒤 준비 계획을 다시 저장하세요.</p>}
    {error&&<p role="alert" className={s.error}>{error} 입력은 유지되었습니다. 충돌이 발생했다면 최신 계획을 불러와 확인하세요.</p>}{saved&&<p role="status" className={s.success}>{saved}</p>}
   </form>
-  <div className={s.availability}><ShieldCheck size={20}/><div><h3>계획 저장으로 광고가 시작되지 않습니다</h3><p>광고 성과 탭에서 계정을 읽기 연결하거나 성과 파일을 가져올 수 있습니다. 전환 전송·소재 검수·집행 승인은 별도 단계입니다.</p></div></div>
+  <div className={s.availability}><ShieldCheck size={20}/><div><h3>계획 저장으로 광고가 시작되지 않습니다</h3><Note className="">광고 성과 탭에서 계정을 읽기 연결하거나 성과 파일을 가져올 수 있습니다. 전환 전송·소재 검수·집행 승인은 별도 단계입니다.</Note></div></div>
  </section>;
 }

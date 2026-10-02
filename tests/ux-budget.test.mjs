@@ -23,6 +23,12 @@ for(const [k,v] of Object.entries(now))check(v<=budget.static[k],`${k} ${v} > bu
 // 패널 안내문(Note)의 첫 문장은 60자 이하(UX-PLAN-3 Q4). 첫 문장은 늘 다 보이고 나머지는 '자세히'로 편다.
 const longNotes=[...app.matchAll(/<Note[^>]*>([^<{]+)<\/Note>/g)].map(m=>m[1].trim().split(/(?<=[.다요])\s/)[0]).filter(f=>f.length>60);
 check(longNotes.length===0,`Note first sentence over 60 chars: ${longNotes.join(' | ')}`);
+// 패널 머리 문단(제목 바로 뒤 <p>)은 60자 이하로 쓴다. 다른 레인 소유 화면(가맹·품질 콘솔·인터뷰·Reflector·사용량·고객 보고서)은 세지 않는다. 더 길면 첫 문장만 보이는 Note를 쓴다(UX-PLAN-3 4차원 4점 조건 '패널 첫 문단 60자').
+const ownA=readdirSync('app').filter(n=>n.endsWith('.tsx')&&!/^(franchise-|online-grading|quality-console|brand-interview|reflector|usage-panel|customer-report)/.test(n)).map(n=>readFileSync('app/'+n,'utf8')).join('\n');
+const longLeads=[...ownA.matchAll(/<h[23][^>]*>[^<{]*<\/h[23]>\s*<p(?: className=[^>]*)?>([^<{]+)<\/p>/g)].map(m=>m[1].trim()).filter(t=>t.length>60);
+check(longLeads.length===0,`header paragraph over 60 chars: ${longLeads.join(' | ')}`);
+// 확인 대화상자는 무엇·영향·되돌리기를 모두 적는다(UX-PLAN-3 Q2·11차원 4점 조건). 타입이 영향·되돌림을 필수로 요구한다.
+check(/impact:string;undo:string;/.test(readFileSync('components/app/confirm-dialog.tsx','utf8')),'ConfirmAsk must require impact and undo');
 // 홈 첫 로딩 경계: 화면·대화상자는 lazy로만 불러온다.
 const ws=readFileSync('app/workspace.tsx','utf8');
 for(const m of budget.lazyOnly)check(!new RegExp(`^import [^;]*from '\\./${m}';`,'m').test(ws),`app/workspace.tsx must not statically import ./${m}`);
