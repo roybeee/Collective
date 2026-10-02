@@ -15,7 +15,7 @@
   "negativeSafety": 3,
   "directToastSuccess": 0
  },
- "floors": {"undoNotices": 6},
+ "floors": {"undoNotices": 13},
  "lazyOnly": ["learning-panel", "brand-archive", "campaign-brief", "campaign-detail-panel", "panels", "delete-campaign-dialog", "measurement-collect", "campaign-metrics", "store-marketing-panel", "franchise-panel"],
  "runtime": {
   "homeJsGzKB": 175,

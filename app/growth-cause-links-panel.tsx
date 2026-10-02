@@ -9,6 +9,7 @@ import {metaText} from '@/lib/format';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {GrowthCauseLinkView} from '@/lib/growth-cause-links-server';
 import type {CauseTargetKind} from '@/lib/growth-cause-links';
+import {notifySaved} from '@/lib/ui/notify';
 import styles from './growth-panel.module.css';
 type View=GrowthCauseLinkView;
 type Row=View['records'][number];
@@ -17,23 +18,34 @@ const targetLabels:Record<CauseTargetKind,string>={journey:'구매 병목',decis
 async function read(campaignId:string,window:{from:string;to:string},signal:AbortSignal):Promise<View>{const q=new URLSearchParams({campaignId,...(window.from?{from:window.from}:{}),...(window.to?{to:window.to}:{})});const r=await fetch(`/api/growth/cause-links?${q}`,{cache:'no-store',signal}),v:unknown=await r.json();if(!r.ok)throw new Error((v as {error?:string})?.error??'원인 연결을 조회하지 못했습니다.');if(!v||typeof v!=='object'||!Array.isArray((v as View).records))throw new Error('원인 연결 응답을 확인하지 못했습니다.');return v as View;}
 export function GrowthCauseLinksPanel({campaignId}:{campaignId:string}){return <Workspace key={campaignId} campaignId={campaignId}/>}
 function Workspace({campaignId}:{campaignId:string}){
- const [view,setView]=useState<View|null>(null),[window,setWindow]=useState({from:'',to:''}),[eventId,setEventId]=useState(''),[targetKind,setTargetKind]=useState<CauseTargetKind>('journey'),[targetId,setTargetId]=useState(''),[note,setNote]=useState(''),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[stale,setStale]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
+ const [view,setView]=useState<View|null>(null),[window,setWindow]=useState({from:'',to:''}),[eventId,setEventId]=useState(''),[targetKind,setTargetKind]=useState<CauseTargetKind>('journey'),[targetId,setTargetId]=useState(''),[note,setNote]=useState(''),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[stale,setStale]=useState(false),[error,setError]=useState('');
  const mounted=useRef(false),reading=useRef<AbortController|null>(null),writing=useRef<AbortController|null>(null),retry=useRef<{key:string;requestId:string}|null>(null);
  const load=useCallback(async(range:{from:string;to:string}={from:'',to:''})=>{reading.current?.abort();const controller=new AbortController();reading.current=controller;setLoading(true);setError('');try{const next=await read(campaignId,range,controller.signal);if(!controller.signal.aborted){setView(next);setStale(false);}}catch(e){if(!controller.signal.aborted){setStale(true);setError(e instanceof Error?e.message:'조회 실패');}}finally{if(!controller.signal.aborted)setLoading(false);}},[campaignId]);
  useEffect(()=>{mounted.current=true;void Promise.resolve().then(()=>{if(mounted.current)void load();});return()=>{mounted.current=false;reading.current?.abort();writing.current?.abort();};},[load]);
  const busy=loading||saving,event=view?.events.find(e=>e.eventId===eventId),target=view?.targets[targetKind].find(t=>t.id===targetId);
+ // 성공 알림의 되돌리기는 서버에 이미 있는 반대 동작을 쓴다: 연결 → 같은 연결 해제(retire), 해제 → 같은 입력으로 다시 연결(link). 판(expectedVersion)이 그사이 바뀌었거나
+ // 원인·검토 기록이 개정됐으면 서버가 409로 막고 알림이 실패를 보인다. 요청 번호는 되돌리기마다 새로 만든다.
+ async function reverse(action:'link'|'retire',input:Row['input'],expectedVersion:number,campaignVersion:number){
+  const r=await fetch('/api/growth/cause-links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({campaignId,campaignVersion,action,expectedVersion,input,requestId:crypto.randomUUID()})}),v:unknown=await r.json();
+  if(!r.ok||(v as {recorded?:boolean})?.recorded!==true)throw new Error((v as {error?:string})?.error??'되돌리지 못했습니다.');
+  if(mounted.current)await load(window);
+ }
  async function send(action:'link'|'retire',row?:Row){if(busy||writing.current||!view||stale)return;
   const input=action==='retire'&&row?row.input:event&&target?{eventId:event.eventId,reasonVersion:event.reasonVersion,targetKind,targetId:target.id,targetVersion:target.version,note}:null;if(!input)return;
   const payload={campaignId,campaignVersion:view.campaignVersion,action,expectedVersion:action==='retire'&&row?row.version:view.records.find(r=>r.input.eventId===input.eventId&&r.input.targetKind===input.targetKind&&r.input.targetId===input.targetId)?.version??0,input},key=JSON.stringify(payload),requestId=retry.current?.key===key?retry.current.requestId:crypto.randomUUID();retry.current={key,requestId};
-  const controller=new AbortController();writing.current=controller;setSaving(true);setError('');setMessage('');
-  try{const r=await fetch('/api/growth/cause-links',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({...payload,requestId})}),v:unknown=await r.json();if(!r.ok)throw new Error((v as {error?:string})?.error??'저장하지 못했습니다.');if(!v||typeof v!=='object'||(v as {recorded?:boolean}).recorded!==true)throw new Error('저장 결과를 확인하지 못했습니다.');if(!mounted.current||controller.signal.aborted)return;retry.current=null;setStale(true);setMessage(action==='link'?'원인과 검토 기록을 연결했습니다. 최신 조회가 실패해도 저장은 완료된 상태입니다.':'연결을 해제했습니다.');await load(window);}
+  const controller=new AbortController();writing.current=controller;setSaving(true);setError('');
+  try{const r=await fetch('/api/growth/cause-links',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({...payload,requestId})}),v:unknown=await r.json();if(!r.ok)throw new Error((v as {error?:string})?.error??'저장하지 못했습니다.');if(!v||typeof v!=='object'||(v as {recorded?:boolean}).recorded!==true)throw new Error('저장 결과를 확인하지 못했습니다.');if(!mounted.current||controller.signal.aborted)return;retry.current=null;setStale(true);
+   const saved=(v as {version:number}).version,campaignVersion=payload.campaignVersion;
+   if(action==='link')notifySaved('원인과 검토 기록을 연결했습니다.',{description:'최신 조회가 실패해도 저장은 완료된 상태입니다.',undo:()=>reverse('retire',input,saved,campaignVersion),undone:'원인 연결을 해제했습니다.'});
+   else notifySaved('원인 연결을 해제했습니다.',{description:'이력은 보존됩니다.',undo:()=>reverse('link',input,saved,campaignVersion),undone:'해제한 원인 연결을 다시 연결했습니다.'});
+   await load(window);}
   catch(e){if(mounted.current&&!controller.signal.aborted)setError(`${e instanceof Error?e.message:'저장 실패'} 입력은 보존했습니다. 응답 미확인은 같은 입력으로 재시도하세요.`);}
   finally{writing.current=null;if(mounted.current&&!controller.signal.aborted)setSaving(false);}
  }
  const d=view?.distribution;
  return <section aria-label="반품 원인 개선 연결" className={styles.panel}><header className={styles.header}><h3>반품·환불 원인 → 개선 검토</h3><Button variant="panel" size="fit" aria-label="원인 연결 새로고침" type="button" disabled={busy} onClick={()=>void load(window)}>새로고침</Button></header>
   <Note className={styles.note}>운영자가 확인한 원인 기록을 같은 미션의 구매 병목·일일 결정·운영 교훈에 연결합니다. 원인 분포는 관측 기간의 반품·환불 품목 수 기준이며 결함률·인과 효과가 아닙니다. 응대·환불·재고 해제·규칙 승격은 운영자가 직접 합니다.</Note>
-  {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">원인 연결을 조회하고 있습니다.</p>}{stale&&<p role="status" className={styles.warning}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
+  {error&&<p role="alert" className={styles.error}>{error}</p>}{loading&&<p role="status">원인 연결을 조회하고 있습니다.</p>}{stale&&<p role="status" className={styles.warning}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
   {view&&d&&<><form className={styles.form} onSubmit={e=>{e.preventDefault();void load(window);}}><label>관측 시작일<Input type="date" value={window.from} onChange={e=>setWindow({...window,from:e.target.value})}/></label><label>관측 종료일<Input type="date" value={window.to} onChange={e=>setWindow({...window,to:e.target.value})}/></label><Button variant="panel" size="fit" type="submit" disabled={busy}>기간 적용</Button></form>
    <h4>원인 분포 ({d.window.from}~{d.window.to})</h4><p>분모: <MetaLine items={[`반품·환불 사건이 있는 품목 ${d.denominator.lines}건`,`원본 보류 ${d.held}건`,`원인 미기록 ${d.unrecorded}건`,`여러 원인 ${d.linesWithMultipleCodes}건`,`관측 시각 없음 제외 ${d.excludedWithoutObservedAt}건`]}/></p>
    <ul>{d.counts.map(c=><li key={c.code}>{reasonLabels[c.code]??c.code}: {c.lines}건</li>)}</ul><p>결함률·반품률이 아닌 운영자 확인 분포입니다. 인과 효과: 미측정.</p>

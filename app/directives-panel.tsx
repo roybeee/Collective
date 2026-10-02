@@ -11,13 +11,14 @@ import {Textarea} from '@/components/ui/textarea';
 import {api,clientId} from '@/lib/client';
 import type {CampaignDirective} from '@/lib/campaign-directives';
 import {notifySaved} from '@/lib/ui/notify';
+import {useAccount} from './account-context';
 
 type Listing={directives:CampaignDirective[];limits:{maxLength:number;count:number}};
 
 // 캠페인 상시 지시: 역할·회의·브리프 초안의 모든 AI 입력에 전달된다. 브리프 버전과 별개라 작업물을 무효화하지 않는다.
 export function DirectivesPanel({campaignId}:{campaignId:string}){
  const [listing,setListing]=useState<Listing|null>(null),[text,setText]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
- const pendingId=useRef('');
+ const pendingId=useRef(''),member=useAccount()?.role==='member';
  const fetchListing=useCallback(async()=>{
   const r=await fetch('/api/directives?campaignId='+encodeURIComponent(campaignId));const d=await r.json() as Listing&{error?:string};
   if(!r.ok)throw new Error(d.error||'상시 지시를 불러오지 못했습니다.');return {directives:d.directives,limits:d.limits};
@@ -37,9 +38,11 @@ export function DirectivesPanel({campaignId}:{campaignId:string}){
   // 되돌리기는 방금 저장한 같은 지시(id)를 지운다.
   const id=pendingId.current;if(await change('add',{id,text})){pendingId.current='';setText('');notifySaved('상시 지시를 저장했습니다.',{description:'다음 AI 실행부터 적용됩니다.',undo:async()=>{await api('remove',{campaignId,id},'/api/directives');setListing(await fetchListing())},undone:'상시 지시 저장을 되돌렸습니다.'})}
  }
+ // 삭제의 되돌리기는 같은 내용을 새 지시로 다시 저장한다(add). 작성자 구분(관리자/직원)이 AI 입력에 전달되므로, 지운 사람과 작성자 구분이 같을 때만 붙인다.
  async function remove(d:CampaignDirective){
-  if(!(await askConfirm({title:'이 상시 지시를 삭제할까요?',impact:'기존 작업물과 브리프 버전은 그대로 유지됩니다.',undo:'삭제한 지시는 되돌릴 수 없습니다. 같은 내용으로 다시 저장할 수 있습니다.',confirmLabel:'삭제',danger:true})))return;
-  if(await change('remove',{id:d.id}))notifySaved('상시 지시를 삭제했습니다.');
+  const restorable=(d.createdBy?.role==='member')===member;
+  if(!(await askConfirm({title:'이 상시 지시를 삭제할까요?',impact:'기존 작업물과 브리프 버전은 그대로 유지됩니다.',undo:restorable?'삭제 알림의 되돌리기로 같은 지시를 다시 저장할 수 있습니다.':'삭제한 지시는 되돌릴 수 없습니다. 같은 내용으로 다시 저장할 수 있습니다.',confirmLabel:'삭제',danger:true})))return;
+  if(await change('remove',{id:d.id}))notifySaved('상시 지시를 삭제했습니다.',{undo:restorable?async()=>{await api('add',{campaignId,id:clientId(),text:d.text},'/api/directives');setListing(await fetchListing())}:undefined,undone:'상시 지시를 다시 저장했습니다.'});
  }
  const full=!!listing&&listing.directives.length>=listing.limits.count;
  return <section className="notice mb-4">

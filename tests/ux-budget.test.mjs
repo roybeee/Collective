@@ -78,7 +78,7 @@ for(const n of readdirSync('app').filter(n=>n.endsWith('.tsx')&&!/^(franchise-|o
 }
 const nonSentence=notices.filter(x=>!x.t.endsWith('습니다.'));
 check(notices.length>0&&nonSentence.length===0,`success notices must be one sentence ending in '습니다.': ${nonSentence.map(x=>x.n+': '+x.t).join(' | ')}`);
-// 되돌리기 알림 수는 줄지 않는다(바닥 래칫). 캠페인 보관·보관 해제·상시 지시 저장(2곳)·자료 일괄 검토·가맹 모집 스위치.
+// 되돌리기 알림 수는 줄지 않는다(바닥 래칫). 캠페인 보관·보관 해제·상시 지시 저장(2곳)·상시 지시 삭제·자료 일괄 검토·자료 한 건 검토·가맹 모집 스위치·브리프 수정·매장 확인 기록 수정·원인 연결과 해제·플레이스 할 일 완료.
 check(undoNotices>=budget.floors.undoNotices,`undo notices ${undoNotices} < floor ${budget.floors.undoNotices}`);
 // 확인 대화상자는 무엇·영향·되돌리기를 모두 적는다(UX-PLAN-3 Q2·11차원 4점 조건). 타입이 영향·되돌림을 필수로 요구한다.
 check(/impact:string;undo:string;/.test(readFileSync('components/app/confirm-dialog.tsx','utf8')),'ConfirmAsk must require impact and undo');

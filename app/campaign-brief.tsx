@@ -47,7 +47,10 @@ export function CampaignDialog({open,onClose,brands,edit,goal='',brandId,onSaved
  // 저장 본문: 목적은 목적 선택란에서만 보낸다(f에 남은 이전 값·초안 입력 값은 뺀다). 소비자 캠페인은 키가 없고, 해제는 null이다(키 없음은 '유지').
  const storedObjective=isRecruitmentObjective(edit),objectiveEdited=!!objective!==storedObjective;
  const briefData=()=>{const rest:BriefInput={...f};delete rest.objective;return {...rest,...(objective||storedObjective?{objective:objective||null}:{}),title:f.title.trim()||f.goal.slice(0,60)}};
- async function save(connect=false){setBusy(true);setError('');try{const r=await api('save_campaign',{id:edit?.id,version:edit?.version,briefDraftId:draft?.id,...(draft?.result&&suggestionReason?{suggestionReasons:[suggestionReason]}:{}),data:briefData()});await onSaved(r.id);onClose();notifySaved('캠페인 브리프를 저장했습니다.');if(connect)onConnect()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
+ // 브리프 수정의 되돌리기: 같은 저장(save_campaign)으로 앞 판 내용을 다음 판에 다시 저장한다. 그사이 다른 저장이 있으면 서버가 409로 막고 알림이 실패를 보인다.
+ // 작업물의 '변경' 표시와 끝난 승인은 그대로다(되돌려도 다시 검토한다). 새 브리프는 되돌리지 않는다(보관은 캠페인 메뉴에서 한다).
+ const previousBrief=(c:Campaign)=>{const rest:BriefInput={...initial(),...c,budget:campaignBudget(c),plan:{...emptyPlan(),...c.plan}};delete rest.objective;return {...rest,...(objectiveEdited?{objective:storedObjective?CAMPAIGN_OBJECTIVE:null}:{})}};
+ async function save(connect=false){setBusy(true);setError('');try{const before=edit?{id:edit.id,version:edit.version+1,data:previousBrief(edit)}:null;const r=await api('save_campaign',{id:edit?.id,version:edit?.version,briefDraftId:draft?.id,...(draft?.result&&suggestionReason?{suggestionReasons:[suggestionReason]}:{}),data:briefData()});await onSaved(r.id);onClose();notifySaved('캠페인 브리프를 저장했습니다.',{undo:before?async()=>{await api('save_campaign',before);await reload()}:undefined,undone:'브리프를 앞 판 내용으로 되돌렸습니다.'});if(connect)onConnect()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
  // 기존 캠페인은 저장과 별도로 지점에 한 번만 연결한다(link_store). 새 캠페인은 저장할 때 선택한 지점으로 만든다.
  const lockedStoreId=edit?.storeId||linkedStoreId,targetStore=stores.find(s=>s.id===(lockedStoreId||(edit?linkChoice:f.storeId)));
  const unitConflicts=targetStore?addressConflicts([f.goal,f.stores].join('\n'),targetStore.address):[];
