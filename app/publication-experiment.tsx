@@ -1,5 +1,7 @@
 'use client';
 import {NativeSelect} from '@/components/ui/native-select';
+import {MetaLine} from '@/components/app/meta-line';
+import {metaText} from '@/lib/format';
 import {Input} from '@/components/ui/input';
 import {Button} from '@/components/ui/button';
 import {useState} from 'react';
@@ -9,7 +11,7 @@ import type {Publication} from '@/lib/execution';
 // 준비 때 연결은 발행 준비 권한을 따르고, 준비 뒤 연결·해제와 게시물 ID 입력은 관리자만 한다(서버 403과 같은 규칙).
 export type ExperimentOption={id:string;title:string};
 type Arm='control'|'treatment';
-const armLabels:Record<Arm,string>={control:'A · 대조안',treatment:'B · 실험안'};
+const armLabels:Record<Arm,string>={control:'A(대조안)',treatment:'B(실험안)'};
 const CLOSED=['cancelled','failed'];
 
 // 선택 값 '<실험 id>:<안>'을 요청 본문으로 바꾼다. 비우면 연결하지 않는다.
@@ -20,7 +22,7 @@ export function experimentChoice(value:string):{experimentId:string;arm:Arm}|nul
 // 같은 안에 살아 있는 다른 발행이 있으면 고를 수 없다(서버 409와 같은 판정).
 const takenBy=(publications:readonly Publication[],id:string,arm:Arm,self?:string)=>publications.find(p=>p.id!==self&&p.experimentId===id&&p.arm===arm&&!CLOSED.includes(p.status));
 function ArmOptions({options,publications,self}:{options:readonly ExperimentOption[];publications:readonly Publication[];self?:string}){
- return <>{options.flatMap(e=>(['control','treatment'] as const).map(arm=>{const taken=takenBy(publications,e.id,arm,self);return <option key={e.id+':'+arm} value={e.id+':'+arm} disabled={!!taken}>{e.title} · {armLabels[arm]}{taken?' · 다른 발행이 연결됨':''}</option>}))}</>;
+ return <>{options.flatMap(e=>(['control','treatment'] as const).map(arm=>{const taken=takenBy(publications,e.id,arm,self);return <option key={e.id+':'+arm} value={e.id+':'+arm} disabled={!!taken}>{metaText([e.title,armLabels[arm],!!taken&&'다른 발행이 연결됨'])}</option>}))}</>;
 }
 
 export function ExperimentLinkSelect({options,publications}:{options:readonly ExperimentOption[];publications:readonly Publication[]}){
@@ -31,11 +33,11 @@ export function ExperimentLinkSelect({options,publications}:{options:readonly Ex
 type Act=(name:'link_experiment'|'link_media',data:Record<string,unknown>,message:string)=>void;
 export function PublicationExperiment({p,options,canManage,busy,onAct}:{p:Publication;options:readonly ExperimentOption[];canManage:boolean;busy:boolean;onAct:Act}){
  const[choice,setChoice]=useState(''),[mediaId,setMediaId]=useState(''),[permalink,setPermalink]=useState('');
- const linked=p.experimentId&&p.arm?`${options.find(e=>e.id===p.experimentId)?.title??'실험 '+p.experimentId.slice(0,8)} · ${armLabels[p.arm]}`:'';
+ const linked=p.experimentId&&p.arm?`${options.find(e=>e.id===p.experimentId)?.title??'실험 '+p.experimentId.slice(0,8)} ${armLabels[p.arm]}`:'';
  const open=!CLOSED.includes(p.status);
  if(!linked&&!p.media&&(!canManage||!open||!options.length))return null;
  return <div className="grid gap-2 border rounded p-3" aria-label="콘텐츠 실험 연결">
-  <p className="text-sm">{linked?`콘텐츠 실험: ${linked}`:'콘텐츠 실험에 연결되지 않은 발행입니다.'}{p.media?` · Instagram 게시물 ${p.media.mediaId}`:''}{p.media?.permalink&&<> · <a className="underline" href={p.media.permalink} target="_blank" rel="noreferrer">게시물 열기</a></>}</p>
+  <p className="text-sm"><MetaLine items={[linked?`콘텐츠 실험: ${linked}`:'콘텐츠 실험에 연결되지 않은 발행입니다.',p.media&&`Instagram 게시물 ${p.media.mediaId}`,p.media?.permalink&&<a key="permalink" className="underline" href={p.media.permalink} target="_blank" rel="noreferrer">게시물 열기</a>]}/></p>
   {canManage&&open&&<div className="flex flex-wrap gap-2 items-end">
    {options.length>0&&<label className="text-sm">연결할 실험 안<NativeSelect className="block border rounded p-2" value={choice} disabled={busy} onChange={e=>setChoice(e.target.value)}><option value="">선택하세요</option><ArmOptions options={options} publications={[p]} self={p.id}/></NativeSelect></label>}
    {options.length>0&&<Button type="button" variant="outline" size="fit" disabled={busy||!experimentChoice(choice)} disabledReason={(!experimentChoice(choice))?'실험을 먼저 고르세요.':undefined} onClick={()=>onAct('link_experiment',{id:p.id,version:p.version,experiment:experimentChoice(choice)},'발행을 실험 안에 연결했습니다.')}>실험 연결</Button>}

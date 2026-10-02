@@ -17,8 +17,8 @@ test('확인 사실로 실제 PNG를 만들고 새로고침 뒤 내려받는다'
  // 표준 항목(대표 메뉴)은 지점별 항목이 아니라 브랜드 공통 저장에 범위 확인이 필요 없다.
  const form=page.getByRole('form',{name:'브랜드 사실 편집'});
  await form.getByRole('combobox',{name:'사실 항목',exact:true}).selectOption('signature_menu');await form.getByLabel('확인할 내용',{exact:true}).fill('테스트 대표 메뉴 107');await form.getByRole('combobox',{name:'사실 상태',exact:true}).selectOption('confirmed');
- await form.getByLabel('확인 근거 · 문서·담당자·URL',{exact:true}).fill('브라우저 회귀 테스트');
- await form.getByLabel('확인 시점 · 현재 기기 시간대',{exact:true}).fill('2020-01-01T12:00');await form.getByLabel('유효 기한 · 현재 기기 시간대',{exact:true}).fill('2099-01-01T12:00');
+ await form.getByLabel('확인 근거(문서·담당자·URL)',{exact:true}).fill('브라우저 회귀 테스트');
+ await form.getByLabel('확인 시점(현재 기기 시간대)',{exact:true}).fill('2020-01-01T12:00');await form.getByLabel('유효 기한(현재 기기 시간대)',{exact:true}).fill('2099-01-01T12:00');
  for(const box of await form.getByRole('checkbox').all())await box.check();
  await form.getByRole('button',{name:'사실 저장',exact:true}).click();await expect(form).toBeHidden();
  // 캡션·PNG에는 내부 key(signature_menu) 대신 표준 라벨이 쓰인다.

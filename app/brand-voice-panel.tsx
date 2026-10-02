@@ -1,5 +1,6 @@
 'use client';
 import {Note} from '@/components/app/note';
+import {MetaLine} from '@/components/app/meta-line';
 import {useCallback,useEffect,useState,type FormEvent} from 'react';
 import type {BrandVoice,BrandVoiceInput,VoiceBody} from '@/lib/brand-voice';
 import {adminRequestNote,useCanManage} from './auth-client';
@@ -11,7 +12,7 @@ import {ScreenSkeleton} from '@/components/app/screen-skeleton';
 // 모델에는 확정본만 가고, 기능 스위치 a3_brand_voice가 켜졌을 때 크리에이티브·콘텐츠 역할 입력에만 실린다.
 type Limits={items:number;item:number;samples:number;sample:number;block:number};
 type VoiceState={voice:BrandVoice|null;active:BrandVoiceInput|null;limits?:Limits;error?:string};
-const FIELDS:[keyof VoiceBody,string,string][]=[['tone','어조','따뜻한'],['do','쓸 것','짧은 문장'],['dont','피할 것','과장 감탄사 연속'],['preferTerms','선호 표현','갓 구운'],['avoidTerms','피할 표현 · 카피에 쓰면 채점기가 표시합니다','최고의'],['samples','예시 문장','퇴근길에 갓 구운 떡볶이 한 컵 챙겨 가세요.']];
+const FIELDS:[keyof VoiceBody,string,string][]=[['tone','어조','따뜻한'],['do','쓸 것','짧은 문장'],['dont','피할 것','과장 감탄사 연속'],['preferTerms','선호 표현','갓 구운'],['avoidTerms','피할 표현(카피에 쓰면 채점기가 표시합니다)','최고의'],['samples','예시 문장','퇴근길에 갓 구운 떡볶이 한 컵 챙겨 가세요.']];
 const STATUS={draft:'초안(모델에 가지 않음)',confirmed:'확정',revoked:'철회'};
 type Form=Record<keyof VoiceBody,string>;
 const emptyForm:Form={tone:'',do:'',dont:'',preferTerms:'',avoidTerms:'',samples:''};
@@ -44,7 +45,7 @@ export function BrandVoicePanel({brandId}:{brandId:string}){
  return <section aria-label="브랜드 말투"><div className="section-heading"><div><h3>브랜드 말투</h3><Note className="">카피·문안의 어조와 쓰지 않을 표현을 정합니다. 확정한 말투만 AI 크리에이티브·콘텐츠 담당에게 전달됩니다(기능 스위치가 켜진 경우).</Note></div></div>
   {error&&<div role="alert" className="load-error"><span>{error}</span><Button variant="outline" disabled={saving} onClick={()=>void load()}>다시 불러오기</Button></div>}{message&&<p role="status">{message}</p>}
   {loading?<ScreenSkeleton label="브랜드 말투를 불러오고 있습니다." rows={2}/>:<>
-   <div className="notice"><p>{voice?`현재 판 v${voice.version} · ${STATUS[voice.status]}`:'아직 말투가 없습니다.'}{active?` · 모델에 가는 확정본 v${active.version}`:' · 모델에 가는 확정본 없음'}</p>{voice?.status==='draft'&&active&&<small>초안을 고치는 동안에는 이전 확정본 v{active.version}이 계속 쓰입니다.</small>}</div>
+   <div className="notice"><p><MetaLine items={[voice?`현재 판 v${voice.version}(${STATUS[voice.status]})`:'아직 말투가 없습니다.',active?`모델에 가는 확정본 v${active.version}`:'모델에 가는 확정본 없음']}/></p>{voice?.status==='draft'&&active&&<small>초안을 고치는 동안에는 이전 확정본 v{active.version}이 계속 쓰입니다.</small>}</div>
    {canManage?<form className="form-stack" onSubmit={e=>void act('save_draft','초안을 저장했습니다. 확정해야 AI 입력에 쓰입니다.',e)} aria-label="브랜드 말투 편집"><fieldset disabled={saving} className="form-stack">
     <p className="subtle-note">한 줄에 한 항목입니다.{limits?` 목록마다 ${limits.items}개·항목 ${limits.item}자, 예시 ${limits.samples}개·${limits.sample}자, 전체 ${limits.block.toLocaleString('ko-KR')}자까지입니다.`:''} 전화번호·이메일 같은 개인정보는 적지 마세요(AI 입력에서는 가려집니다).</p>
     {FIELDS.map(([key,label,placeholder])=><label key={key} className="field"><span>{label}</span><Textarea rows={key==='samples'?3:2} value={form[key]} placeholder={placeholder} onChange={e=>setForm({...form,[key]:e.target.value})}/></label>)}

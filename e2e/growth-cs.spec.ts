@@ -16,10 +16,10 @@ test('고객 문의 접수·원문 차단·기한 초과·처리 기록',async({
   const attempts:string[]=[];let lose=true;await page.route('**/api/growth/cs',async route=>{if(route.request().method()==='POST'){attempts.push(route.request().postDataJSON().requestId);if(lose){lose=false;await route.fetch();await route.abort('failed');return;}}await route.continue();});
   await panel.getByRole('button',{name:'문의 접수',exact:true}).click();await expect(panel.getByRole('alert')).toContainText('입력은 보존했습니다');
   await panel.getByRole('button',{name:'문의 접수',exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'문의를 접수했습니다'})).toBeVisible();expect(attempts[0]).toBe(attempts[1]);
-  await expect(panel).toContainText('미해결 1건 · 기한 초과 1건');await expect(panel).toContainText('기한 초과');
-  const id=(await panel.locator('li strong').first().locator('..').innerText()).split(' · ')[1].trim();
+  await expect(panel).toContainText('미해결 1건, 기한 초과 1건');await expect(panel).toContainText('기한 초과');
+  const id=((await panel.locator('li p').first().textContent())??'').split(', ')[1].trim();
   await panel.getByRole('button',{name:`${id} 처리 기록`,exact:true}).click();await panel.getByRole('combobox',{name:'처리 종류',exact:true}).selectOption('resolve');await panel.getByRole('combobox',{name:'해결 방법',exact:true}).selectOption('shipped');await panel.getByRole('textbox',{name:'처리 증빙 ID',exact:true}).fill('ship-1');
-  await panel.getByRole('button',{name:'처리 저장',exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'처리를 기록했습니다'})).toBeVisible();await expect(panel).toContainText('미해결 0건 · 기한 초과 0건');await expect(panel).toContainText('기한 뒤 해결');
+  await panel.getByRole('button',{name:'처리 저장',exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'처리를 기록했습니다'})).toBeVisible();await expect(panel).toContainText('미해결 0건, 기한 초과 0건');await expect(panel).toContainText('기한 뒤 해결');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
  }finally{await context.close()}
 });

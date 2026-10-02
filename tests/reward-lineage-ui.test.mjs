@@ -35,6 +35,9 @@ function link(spec,ref){
  if(spec==='./account-context')return moduleFor('app/account-context.tsx');
  // 공용 확인 대화상자(UX-PLAN-3 Q2): 렌더 검사에서는 묻지 않고 승인으로 둔다.
  if(spec==='@/components/app/confirm-dialog')return synthetic(ref.imports.get(spec)||new Set(),n=>n==='askConfirm'?()=>Promise.resolve(true):()=>null);
+ // 공용 메타 줄(UX-PLAN-3 7차원): 실제 부품으로 그린다(cn의 clsx·tailwind-merge는 실제 패키지).
+ if(spec==='@/components/app/meta-line')return moduleFor('components/app/meta-line.tsx');
+ if(spec==='clsx'||spec==='tailwind-merge')return synthetic(ref.imports.get(spec)||new Set(),n=>require(spec)[n]);
  if(spec.startsWith('@/lib/'))return moduleFor(resolve(spec.slice(2))+'.ts');
  if(spec.startsWith('.')&&ref.identifier.includes('/lib/')){const base=resolve(dirname(ref.identifier),spec);return moduleFor(existsSync(base+'.ts')?base+'.ts':base+'.tsx')}
  throw new Error('예상하지 못한 import: '+spec);
@@ -78,10 +81,10 @@ check('only the owner may close loops',()=>{
  assert.equal(ui.canCloseLoops(null),false);
 });
 check('owner view has a close button on the closable loop only; admin view has none',()=>{
- assert.deepEqual(closeButtons(render(ui.RewardLineageView,view({canClose:true}))),['닫기 · 수치 동결']);
+ assert.deepEqual(closeButtons(render(ui.RewardLineageView,view({canClose:true}))),['닫기(수치 동결)']);
  assert.deepEqual(closeButtons(render(ui.RewardLineageView,view({canClose:false}))),[]);
  assert.match(text(render(ui.RewardLineageView,view({canClose:false}))),/닫기는 대표만 할 수 있습니다/);
- assert.ok(/<button[^>]*disabled=""[^>]*>닫기 · 수치 동결<\/button>/.test(render(ui.RewardLineageView,view({busy:true}))),'바쁠 때는 누를 수 없다');
+ assert.ok(/<button[^>]*disabled=""[^>]*>닫기\(수치 동결\)<\/button>/.test(render(ui.RewardLineageView,view({busy:true}))),'바쁠 때는 누를 수 없다');
 });
 
 // ── 2) 스위치 꺼짐·불러오기 ──
@@ -97,21 +100,21 @@ check('loading and error states have no tables',()=>{
 // ── 3) 표와 고지 ──
 check('the notices state realPublish:false, partial kinds, attribution is not incremental and no automatic verdict',()=>{
  const t=text(render(ui.RewardLineageView,view()));
- assert.match(t,/realPublish:false/);assert.match(t,/partial\.kinds/);assert.match(t,/review_decision/);assert.match(t,/귀속은 증분과 다릅니다/);assert.match(t,/자동 판정 아님/);assert.match(t,/not_run/);
+ assert.match(t,/realPublish:false/);assert.match(t,/partial\.kinds/);assert.match(t,/review_decision/);assert.match(t,/귀속은 증분과 다릅니다/);assert.match(t,/자동 판정이 아닙니다/);assert.match(t,/not_run/);
  assert.ok(!/partial\.kinds/.test(text(render(ui.RewardLineageView,view({load:ready({partial:{kinds:[]}})})))),'일부 집계가 없으면 고지하지 않는다');
 });
 check('the version table shows L0 to L4 per prompt version',()=>{
  const t=text(render(ui.RewardLineageView,view()));
- assert.match(t,/role\.content@bbbbbbbbbbbb/);assert.match(t,/5\/6 · 83\.3%/);assert.match(t,/2건 · 승인 2 · 접수 1/);assert.match(t,/3건 · 45,000원/);assert.match(t,/공헌이익 원가 미상/);
+ assert.match(t,/role\.content@bbbbbbbbbbbb/);assert.match(t,/5\/6, 83\.3%/);assert.match(t,/2건\s*,\s*승인 2\s*,\s*접수 1/);assert.match(t,/3건\s*,\s*45,000원/);assert.match(t,/공헌이익 원가 미상/);
 });
 check('the rule table warns not to add rows up (duplicate allocation) and shows insufficient samples',()=>{
  const t=text(render(ui.RewardLineageView,view()));
- assert.match(t,/중복 배분/);assert.match(t,/합산하지 마세요/);assert.match(t,/playbook:r1@2/);assert.match(t,/1\/3 · 표본 부족/);
+ assert.match(t,/중복 배분/);assert.match(t,/합산하지 마세요/);assert.match(t,/playbook:r1@2/);assert.match(t,/1\/3, 표본 부족/);
 });
 check('the loop list shows before and after, the explanatory probability, the status and the exit count',()=>{
  const t=text(render(ui.RewardLineageView,view()));
- assert.match(t,/닫힌 루프 1\/5건/);assert.match(t,/2\/6 · 33\.3%/);assert.match(t,/5\/6 · 83\.3%/);assert.match(t,/96\.1%/);assert.match(t,/설명용/);
- assert.match(t,/닫을 수 있음/);assert.match(t,/관찰 중 · 14일 미경과/);assert.match(t,/닫음 · 수치 동결/);assert.match(t,/종료 조건에 셈/);
+ assert.match(t,/닫힌 루프 1\/5건/);assert.match(t,/2\/6, 33\.3%/);assert.match(t,/5\/6, 83\.3%/);assert.match(t,/96\.1%/);assert.match(t,/설명용/);
+ assert.match(t,/닫을 수 있음/);assert.match(t,/관찰 중\(14일 미경과\)/);assert.match(t,/닫음\(수치 동결\)/);assert.match(t,/종료 조건에 셈/);
  assert.ok(!/권고|승격하세요|채택하세요/.test(t),'권고·판정 문구가 없다');
 });
 
