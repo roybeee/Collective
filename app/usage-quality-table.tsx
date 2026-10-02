@@ -16,7 +16,7 @@ export function firstPassText(r:Pick<UsageTableRow,'n'|'approvedFirst'|'firstPas
  // 비율은 서버가 표본 5건 이상일 때만 낸다(lib/quality-drift.ts usageTable). 비율이 없으면 표본 부족이다.
  return r.firstPassRate===null?`표본 부족 (n=${r.n})`:`${pct(r.firstPassRate)} (${r.approvedFirst}/${r.n})`;
 }
-const tokenText=(n:number,unknown:number)=>unknown>0?`${count(n)} · 미측정 ${count(unknown)}건`:count(n);
+const tokenText=(n:number,unknown:number)=>unknown>0?`${count(n)} (미측정 ${count(unknown)}건)`:count(n);
 const kst=(iso:string)=>new Date(iso).toLocaleDateString('ko-KR',{timeZone:'Asia/Seoul'});
 const alarmNames:Record<string,string>={model_change:'보고 모델 변경',gateway_change:'게이트웨이 변경',invalid_rate:'역할 형식 오류 비율',golden_drop:'골든 스모크 통과 감소',token_budget:'토큰 예산 소진율'};
 const HEAD=['역할','프롬프트 버전','보고 모델','AI 작업물','1차 승인율','수정 요청','폐기 토큰','미연결 토큰'];
@@ -40,10 +40,10 @@ function Alarms({table}:{table:QualityTableView}){
  </ul>;
 }
 export function QualityTable({table}:{table:QualityTableView|null}){
- if(!table)return <div className="notice mt-4" aria-label="주간 품질 표"><p className="font-medium">주간 품질 표 · 역할 × 프롬프트 버전 × 보고 모델</p>
+ if(!table)return <div className="notice mt-4" aria-label="주간 품질 표"><p className="font-medium">주간 품질 표(역할 × 프롬프트 버전 × 보고 모델)</p>
   <p className="subtle-note">아직 주간 품질 집계가 없습니다. 소유자가 기능 스위치 b2_digest_queue를 켜면 조사 작업자가 주 1회 지난주 집계를 기록합니다.</p></div>;
  return <div className="notice mt-4" aria-label="주간 품질 표">
-  <p className="font-medium">주간 품질 표 · {table.week} ({kst(table.range.from)} ~ {kst(new Date(Date.parse(table.range.to)-1).toISOString())}, 한국 시간)</p>
+  <p className="font-medium">주간 품질 표: {table.week} ({kst(table.range.from)} ~ {kst(new Date(Date.parse(table.range.to)-1).toISOString())}, 한국 시간)</p>
   <p className="text-xs">{table.notice}</p>
   {table.rows.length?<Rows rows={table.rows}/>:<p className="subtle-note mt-2">이 주에 집계할 AI 작업물·판정·사용량이 없습니다.</p>}
   <Alarms table={table}/>

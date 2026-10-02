@@ -44,7 +44,7 @@ check('fewer than 5 decisions is a sample shortage with n',/표본 부족 \(n=3\
 check('5 or more decisions shows the rate with counts',/80\.0% \(4\/5\)/.test(text));
 check('unknown model is unmeasured and the alias says the actual model is unconfirmed',/hermes-agent \(실제 모델 미확인\)/.test(text)&&/<td class="max-w-48 break-words p-3">미측정<\/td>/.test(out));
 check('code-constant prompt and registry prompt versions are shown as such',/코드 상수/.test(text)&&/role\.content@abcdef123456/.test(text));
-check('token counts with unreported runs say how many are unmeasured',/1,500 · 미측정 2건/.test(text));
+check('token counts with unreported runs say how many are unmeasured',/1,500 \(미측정 2건\)/.test(text));
 check('alarms and the retention suggestion are listed with plain labels',/보고 모델 변경: hermes: hermes-agent → model-b/.test(text)&&/역할 형식 오류 비율/.test(text)&&/보존 정리 제안: 14일 안에/.test(text));
 check('an empty week says so instead of drawing zero rows',/집계할 AI 작업물·판정·사용량이 없습니다/.test(html({...table,rows:[],alarms:[],retention:{...table.retention,suggestions:[]}})));
 const CAUSAL=/때문|덕분|효과|개선됐|개선되|악화|원인|인해|초래|기여|향상/;

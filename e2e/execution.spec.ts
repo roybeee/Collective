@@ -39,7 +39,7 @@ test('확인 사실로 실제 PNG를 만들고 새로고침 뒤 내려받는다'
  await expect(page.getByRole('heading',{name:'2. 채널 연결과 발행 횟수 한도',exact:true})).toBeVisible();await expect(page.getByText('실행 한도',{exact:false})).toHaveCount(0);
  await expect(page.getByText('캠페인 예산 0원(무예산)',{exact:true})).toBeVisible();await expect(page.getByLabel('누적 예정 비용 상한 (원)',{exact:true})).toBeHidden();
  const plannedCost=page.getByLabel('이 발행의 예정 비용 (원)',{exact:true});await expect(plannedCost).toBeHidden();
- await page.getByText('예정 비용 · 유료 부스트 연동 전까지 참고용',{exact:true}).click();await expect(plannedCost).toBeVisible();await expect(plannedCost).toHaveValue('0');
+ await page.getByText('예정 비용(유료 부스트 연동 전까지 참고용)',{exact:true}).click();await expect(plannedCost).toBeVisible();await expect(plannedCost).toHaveValue('0');
  await expect(page.getByText('고급: 외부 호스트',{exact:true})).toBeVisible();
  // 승인 버튼 옆 차단 사유: 한도·채널·기획 승인·기간. 기본 한도 버튼으로 한도 사유가 사라진다.
  const blockers=page.getByRole('list',{name:'승인 차단 사유',exact:true});
@@ -79,7 +79,7 @@ test('확인 사실로 실제 PNG를 만들고 새로고침 뒤 내려받는다'
  // 주소의 지점 탭(tab=ledger)으로 탭을 누르지 않아도 주문 장부 탭이 열린다.
  await expect(page.getByRole('tab',{name:'주문 장부',exact:true})).toHaveAttribute('aria-selected','true');await expect(page.getByRole('heading',{name:'주문 성과 장부',exact:true})).toBeVisible();
  const view=page.getByRole('combobox',{name:'주문 보기',exact:true}),row=page.getByRole('row').filter({hasText:orderNumber});await expect(row).toBeVisible();
- await view.selectOption({label:creativeTitle+' · '+title});await expect(row).toBeVisible();
+ await view.selectOption({label:creativeTitle+', '+title});await expect(row).toBeVisible();
  await view.selectOption('unknown');await expect(row).toHaveCount(0);await expect(page.getByText('이 조건의 주문 기록이 없습니다',{exact:true})).toBeVisible();
  await view.selectOption({label:title});await expect(row).toBeVisible();
  await context.close();

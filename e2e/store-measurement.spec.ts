@@ -36,7 +36,7 @@ const storeAction = (action: string, dryRun?: boolean) => (r: Response) => {
 async function previewCsv(page: Page, csv: string) {
   await page.getByRole('tab', {name: '주문 가져오기', exact: true}).click();
   await page.getByLabel('CSV 붙여넣기', {exact: true}).fill(csv);
-  await expect(page.getByRole('combobox', {name: '주문번호 · 필수', exact: true})).toHaveValue('주문번호');
+  await expect(page.getByRole('combobox', {name: '주문번호 (필수)', exact: true})).toHaveValue('주문번호');
   await expect(page.getByRole('combobox', {name: '쿠폰·추적 코드', exact: true})).toHaveValue('쿠폰코드');
   const previewed = page.waitForResponse(storeAction('import_orders', true));
   await page.getByRole('button', {name: '미리보기', exact: true}).click();
@@ -138,8 +138,8 @@ test('추적 코드로 가져온 주문은 자동 귀속 스위치를 켤 때만
   await page.getByRole('button', {name: '주문 기록', exact: true}).click();
   const dialog = page.getByRole('dialog', {name: '주문 기록', exact: true});
   await dialog.getByLabel('출처의 주문번호', {exact: true}).fill('E2E-A4-M1');
-  await dialog.getByLabel('할인 후 결제액 · 환불 전 (원)', {exact: true}).fill('9000');
-  await dialog.getByLabel('추적 코드 · 선택', {exact: true}).fill(code.toLowerCase());
+  await dialog.getByLabel('할인 후 결제액(환불 전, 원)', {exact: true}).fill('9000');
+  await dialog.getByLabel('추적 코드(선택)', {exact: true}).fill(code.toLowerCase());
   const typed = page.waitForResponse(storeAction('save_order'));
   await dialog.getByRole('button', {name: '주문 저장', exact: true}).click();
   const typedResponse = await typed;
@@ -186,7 +186,7 @@ test('추적 코드로 가져온 주문은 자동 귀속 스위치를 켤 때만
   const pos = page.getByRole('form', {name: 'POS 주간 합계 입력'});
   await pos.getByRole('combobox', {name: '주', exact: true}).selectOption(week);
   await pos.getByLabel('POS 순매출 합계 (원)', {exact: true}).fill('51000');
-  await pos.getByLabel('POS 주문 수 · 선택', {exact: true}).fill('3');
+  await pos.getByLabel('POS 주문 수(선택)', {exact: true}).fill('3');
   await pos.getByLabel('합계 출처', {exact: true}).fill('POS 주간 매출 리포트');
   const posSaved = page.waitForResponse(storeAction('set_pos_total'));
   await pos.getByRole('button', {name: '저장', exact: true}).click();
