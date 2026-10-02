@@ -8,18 +8,38 @@ import {Textarea} from '@/components/ui/textarea';
 import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select';
 import {api} from '@/lib/client';
 import {metricSummary,money,type Campaign,type Metric} from '@/lib/agency';
+import {DataTable,sortNumber} from '@/components/app/data-table';
+import {TrendBars} from '@/components/app/trend-bars';
 
 type CampaignChoice=Pick<Campaign,'id'|'title'>;
 type MetricDialogProps={open:boolean;campaigns:CampaignChoice[];onClose:()=>void;onSaved:()=>Promise<void>;initial?:Metric};
 const valueFields=[['revenue','순매출 (원)'],['variableCosts','상품 원가·변동비 (원)'],['adSpend','매체비 (원)'],['productionCost','제작비 (원)'],['orders','주문 수']] as const;
 const amount=(value:number|null)=>value===null?'자료 필요':money(value);
 
-export function MetricCard({metric:m,onSaved}:{metric:Metric;onSaved?:()=>Promise<void>}){
+const balanceNote='잔액 = 순매출 − 변동비 − 매체비 − 제작비. 고정비와 미기록 비용을 포함한 전체 이익이 아닙니다. 비용 미확인은 0으로 계산하지 않습니다.';
+// 성과 기록이 2개 이상이면 기간별 표와 순매출 추세로 한눈에 비교한다(UX-PLAN-3 7차원, 평가 7회차 '반복 카드'). 계산식 안내는 한 번만 보인다.
+export function MetricSummary({metrics}:{metrics:readonly Metric[]}){
+ const rows=[...metrics].sort((a,b)=>(a.periodStart??a.period).localeCompare(b.periodStart??b.period));
+ const num=(v:number|null)=>v===null?'자료 필요':money(v);
+ return <section className="metric-summary" aria-label="기간별 성과 비교">
+  <TrendBars title="기간별 순매출 추세(성과 기록 기준)" points={rows.map(m=>({label:m.periodStart??m.period,value:m.revenue,display:m.revenue===null?'미확인':money(m.revenue)}))}/>
+  <DataTable caption="기간별 성과" rows={rows} rowKey={m=>m.id} csvName="campaign-metrics" columns={[
+   {label:'기간',cell:m=>m.periodStart&&m.periodEnd?`${m.periodStart} ~ ${m.periodEnd}`:m.period,csv:m=>m.period},
+   {label:'순매출',cell:m=>num(m.revenue),sort:m=>sortNumber(m.revenue),csv:m=>m.revenue??'',align:'right'},
+   {label:'주문 수',cell:m=>m.orders===null?'자료 필요':`${m.orders.toLocaleString('ko-KR')}건`,sort:m=>sortNumber(m.orders),csv:m=>m.orders??'',align:'right'},
+   {label:'비용 차감 잔액',cell:m=>num(metricSummary(m).net),sort:m=>sortNumber(metricSummary(m).net),csv:m=>metricSummary(m).net??'',align:'right'},
+   {label:'매체비 대비 매출',cell:m=>{const r=metricSummary(m).roas;return r===null?'자료 필요':r.toFixed(2)+'배'},sort:m=>sortNumber(metricSummary(m).roas),csv:m=>metricSummary(m).roas??'',align:'right'},
+  ]}/>
+  <p className="subtle-note">{balanceNote}</p>
+ </section>;
+}
+
+export function MetricCard({metric:m,onSaved,compact=false}:{metric:Metric;onSaved?:()=>Promise<void>;compact?:boolean}){
  const summary=metricSummary(m),[editing,setEditing]=useState(false);
  return <div className="metric-card">
   <div className="section-heading"><h3>{m.period}</h3><span className="mode-pill">{m.schemaVersion===2?'출처·범위 기록':'기존 기록 · 비교 조건 미확인'}</span></div>
   <div className="metric-grid">{[['순매출',amount(m.revenue)],['기록 비용 차감 잔액',amount(summary.net)],['기준 대비 관찰 변화',m.schemaVersion===2?'비교 기록 필요':amount(summary.observedChange)],['매체비 대비 매출',summary.roas===null?'자료 필요':summary.roas.toFixed(2)+'배']].map(([label,value])=><div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
-  <p className="subtle-note">잔액 = 순매출 − 변동비 − 매체비 − 제작비. 고정비와 미기록 비용을 포함한 전체 이익이 아닙니다. 비용 미확인은 0으로 계산하지 않습니다.</p>
+  {!compact&&<p className="subtle-note">{balanceNote}</p>}
   {m.source&&<p>출처: {m.source}<br/>집계 정의: {m.definition}</p>}{m.notes&&<p className="metric-note">{m.notes}</p>}
   {onSaved&&<><Button variant="outline" size="sm" onClick={()=>setEditing(true)}>기록 수정</Button><MetricDialog open={editing} initial={m} campaigns={[{id:m.campaignId,title:'현재 캠페인'}]} onClose={()=>setEditing(false)} onSaved={onSaved}/></>}
  </div>;

@@ -48,7 +48,7 @@ test('오늘의 안건·캠페인 탭 주소·지연 로딩·명령 팔레트·�
    await page.getByRole('tab',{name:'성장·판매',exact:true}).click();await page.mouse.wheel(0,1500);await expect(page.locator('[data-floating]')).toHaveCount(0)}
   // 4) 명령 팔레트(데스크톱 단축키)로 설정 이동 → 운영 안전에 전역 중단.
   await page.keyboard.press('Escape');
-  if(!mobile){await page.keyboard.press('Control+k');const palette=page.getByRole('dialog',{name:'바로 가기'});await expect(palette).toBeVisible();await palette.getByPlaceholder('화면·캠페인·작업물 검색').fill('연결 및 설정');await page.keyboard.press('Enter');}
+  if(!mobile){await page.keyboard.press('Control+k');const palette=page.getByRole('dialog',{name:'바로 가기'});await expect(palette).toBeVisible();await palette.getByPlaceholder('화면·캠페인·기록 검색').fill('연결 및 설정');await page.keyboard.press('Enter');}
   else await page.goto('/?view=settings');
   await expect(page.getByRole('navigation',{name:'설정 바로가기',exact:true})).toBeVisible();
   await expect(page.getByRole('region',{name:'전역 실행 중단',exact:true})).toBeVisible();
@@ -57,8 +57,8 @@ test('오늘의 안건·캠페인 탭 주소·지연 로딩·명령 팔레트·�
    await page.locator('body').click({position:{x:5,y:5}});await page.keyboard.press('g');await page.keyboard.press('c');await expect(page).toHaveURL(/view=campaigns/);
    await page.keyboard.press('/');await expect(page.getByRole('dialog',{name:'바로 가기'})).toBeVisible();
    // 용어 도움말·브랜드 검색(UX-PLAN-3 Q6·Q1): 검색하면 용어 정의가 보이고, 브랜드를 고르면 브랜드 아카이브로 간다.
-   const palette=page.getByRole('dialog',{name:'바로 가기'});await palette.getByPlaceholder('화면·캠페인·작업물 검색').fill('공헌이익');await expect(palette.getByRole('option',{name:/공헌이익.*판매 금액에서/})).toBeVisible();
-   await palette.getByPlaceholder('화면·캠페인·작업물 검색').fill('Old Ferry');await palette.getByRole('option',{name:/Old Ferry Donut/}).first().click();await expect(page).toHaveURL(/view=brands&brand=/);
+   const palette=page.getByRole('dialog',{name:'바로 가기'});await palette.getByPlaceholder('화면·캠페인·기록 검색').fill('공헌이익');await expect(palette.getByRole('option',{name:/공헌이익.*판매 금액에서/})).toBeVisible();
+   await palette.getByPlaceholder('화면·캠페인·기록 검색').fill('Old Ferry');await palette.getByRole('option',{name:/Old Ferry Donut/}).first().click();await expect(page).toHaveURL(/view=brands&brand=/);
    await page.locator('body').click({position:{x:5,y:5}});await page.keyboard.press('?');await expect(page.getByRole('dialog',{name:'바로 가기'}).getByRole('option',{name:/^ROAS/})).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog',{name:'바로 가기'})).toBeHidden();
    await page.keyboard.press('g');await page.keyboard.press('c');await expect(page).toHaveURL(/view=campaigns/);
    await page.getByRole('textbox',{name:'캠페인 검색',exact:true}).fill('gh');await expect(page).toHaveURL(/view=campaigns/);

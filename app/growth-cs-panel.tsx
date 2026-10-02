@@ -13,6 +13,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import type {GrowthCsView} from '@/lib/growth-cs-server';
 import {csCategories,csChannels,csResolutions,type CsTicketInput} from '@/lib/growth-cs';
 import styles from './growth-panel.module.css';
+import {takePendingRecord} from '@/lib/ui/pending-section';
 type View=GrowthCsView;
 type Ticket=View['tickets'][number];
 const categoryLabels:Record<string,string>={shipping_delay:'배송 지연',product_question:'상품 문의',option_change:'옵션 변경',cancel_request:'취소 요청',return_request:'반품 요청',refund_request:'환불 요청',defect_report:'불량 신고',other:'기타'};
@@ -25,7 +26,7 @@ export function GrowthCsPanel({campaignId}:{campaignId:string}){return <Workspac
 function Workspace({campaignId}:{campaignId:string}){
  const [view,setView]=useState<View|null>(null),[input,setInput]=useState<CsTicketInput>(emptyTicket),[ticketId,setTicketId]=useState(''),[ev,setEv]=useState({action:'respond',at:'',evidenceRef:'',resolution:'answered',note:''}),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[stale,setStale]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
  const mounted=useRef(false),reading=useRef<AbortController|null>(null),writing=useRef<AbortController|null>(null),retry=useRef<{key:string;requestId:string}|null>(null),draftId=useRef('');
- const load=useCallback(async()=>{reading.current?.abort();const controller=new AbortController();reading.current=controller;setLoading(true);setError('');try{const next=await read(campaignId,controller.signal);if(!controller.signal.aborted){setView(next);setStale(false);}}catch(e){if(!controller.signal.aborted){setStale(true);setError(e instanceof Error?e.message:'조회 실패');}}finally{if(!controller.signal.aborted)setLoading(false);}},[campaignId]);
+ const load=useCallback(async()=>{reading.current?.abort();const controller=new AbortController();reading.current=controller;setLoading(true);setError('');try{const next=await read(campaignId,controller.signal);if(!controller.signal.aborted){setView(next);setStale(false);/* 안건·바로 가기에서 고른 문의는 처리 기록 칸을 바로 연다. */const picked=takePendingRecord('growth_cs_ticket');if(picked&&next.tickets.some(t=>t.id===picked&&t.status!=='cancelled')){setTicketId(picked);setEv(x=>({...x,at:local(Date.now()-60000)}));}}}catch(e){if(!controller.signal.aborted){setStale(true);setError(e instanceof Error?e.message:'조회 실패');}}finally{if(!controller.signal.aborted)setLoading(false);}},[campaignId]);
  useEffect(()=>{mounted.current=true;void Promise.resolve().then(()=>{if(mounted.current)void load();});return()=>{mounted.current=false;reading.current?.abort();writing.current?.abort();};},[load]);
  const busy=loading||saving;
  async function send(body:Record<string,unknown>,done:string){if(busy||writing.current||!view||stale)return;

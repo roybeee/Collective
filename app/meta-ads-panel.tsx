@@ -3,9 +3,9 @@ import {Note} from '@/components/app/note';
 import {metaSubGroup} from '@/lib/nav-state';
 import {CardButton} from '@/components/app/card-button';
 import {askConfirm} from '@/components/app/confirm-dialog';
-import {lazy,Suspense,useEffect,useId,useRef,useState} from 'react';
+import {lazy,Suspense,useEffect,useId,useState} from 'react';
 import {ScreenSkeleton} from '@/components/app/screen-skeleton';
-import {ArrowLeft,ArrowRight,Check,CheckCheck,CircleHelp,FileCheck2,ShoppingBag,Play,ShieldCheck} from 'lucide-react';
+import {ArrowRight,Check,CheckCheck,CircleHelp,FileCheck2,ShoppingBag,Play,ShieldCheck} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Checkbox} from '@/components/ui/checkbox';
@@ -42,12 +42,13 @@ export function MetaAdsPanel({campaignId,initialSub,onSubChange}:{campaignId:str
  return <Tabs defaultValue={sub} onValueChange={onSubChange} key={campaignId}><TabsList aria-label="Meta 작업" className="meta-tabs"><div role="none" className="meta-tab-group"><span className="meta-tab-step" aria-hidden="true">1 준비</span><TabsTrigger value="plan">실행 준비</TabsTrigger><TabsTrigger value="budget">예산·전환</TabsTrigger></div><div role="none" className="meta-tab-group"><span className="meta-tab-step" aria-hidden="true">2 소재·구성</span><TabsTrigger value="creative">소재·원본</TabsTrigger><TabsTrigger value="bundle">광고 구성·생성</TabsTrigger><TabsTrigger value="paused">비활성 초안</TabsTrigger></div><div role="none" className="meta-tab-group"><span className="meta-tab-step" aria-hidden="true">3 집행</span><TabsTrigger value="execution">집행·정지</TabsTrigger><TabsTrigger value="reservations">예산 예약</TabsTrigger></div><div role="none" className="meta-tab-group"><span className="meta-tab-step" aria-hidden="true">4 관측·학습</span><TabsTrigger value="insights">성과·대조</TabsTrigger><TabsTrigger value="experiments">실험 관측</TabsTrigger><TabsTrigger value="learning">다음 실험</TabsTrigger></div></TabsList><TabsContent value="plan"><MetaPlanPanel campaignId={campaignId}/></TabsContent><TabsContent value="budget" className="meta-stack"><Suspense fallback={<ScreenSkeleton/>}><MetaBudgetPanel campaignId={campaignId}/></Suspense><Suspense fallback={<ScreenSkeleton/>}><MetaConversionPanel campaignId={campaignId}/></Suspense></TabsContent><TabsContent value="creative" className="meta-stack"><Suspense fallback={<ScreenSkeleton/>}><MetaCreativePanel campaignId={campaignId}/></Suspense><Suspense fallback={<ScreenSkeleton/>}><MetaImageUploadPanel campaignId={campaignId}/></Suspense></TabsContent><TabsContent value="bundle" className="meta-stack"><Suspense fallback={<ScreenSkeleton/>}><MetaAdBundlePanel campaignId={campaignId}/></Suspense><Suspense fallback={<ScreenSkeleton/>}><MetaAdCreatePanel campaignId={campaignId}/></Suspense></TabsContent><TabsContent value="paused"><Suspense fallback={<ScreenSkeleton/>}><MetaPausedPanel campaignId={campaignId}/></Suspense></TabsContent><TabsContent value="execution"><Suspense fallback={<ScreenSkeleton/>}><MetaExecutionPanel campaignId={campaignId}/></Suspense></TabsContent><TabsContent value="reservations"><Suspense fallback={<ScreenSkeleton/>}><MetaReservationPanel campaignId={campaignId}/></Suspense></TabsContent><TabsContent value="insights" className="meta-stack"><Suspense fallback={<ScreenSkeleton/>}><MetaInsightsPanel campaignId={campaignId}/></Suspense><Suspense fallback={<ScreenSkeleton/>}><StorefrontOrdersPanel campaignId={campaignId}/></Suspense><Suspense fallback={<ScreenSkeleton/>}><MetaReportPanel campaignId={campaignId}/></Suspense></TabsContent><TabsContent value="experiments"><Suspense fallback={<ScreenSkeleton/>}><MetaExperimentPanel campaignId={campaignId}/></Suspense></TabsContent><TabsContent value="learning"><Suspense fallback={<ScreenSkeleton/>}><MetaLearningPanel campaignId={campaignId}/></Suspense></TabsContent></Tabs>;
 }
 function MetaPlanPanel({campaignId}:{campaignId:string}){
- const id=useId(),heading=useRef<HTMLHeadingElement>(null);
+ const id=useId();
  const [view,setView]=useState<View|null>(null),[input,setInput]=useState<MetaPlanInput|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[saved,setSaved]=useState(''),[dirty,setDirty]=useState(false),[retry,setRetry]=useState(0),[step,setStep]=useState(0);
  useEffect(()=>{const controller=new AbortController();void fetch('/api/meta-ads?campaignId='+encodeURIComponent(campaignId),{signal:controller.signal}).then(async r=>{const v=await r.json() as View & {error?:string};if(!r.ok)throw new Error(v.error||'조회 실패');return v as View}).then(v=>{setView(v);setInput(v.input);setDirty(false);setError('')}).catch(e=>{if(!controller.signal.aborted)setError(message(e))}).finally(()=>{if(!controller.signal.aborted)setLoading(false)});return()=>controller.abort()},[campaignId,retry]);
  async function save(){if(!view||!input)return;setBusy(true);setError('');setSaved('');try{const r=await fetch('/api/meta-ads',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'save_plan',campaignId,expectedVersion:view.version,campaignVersion:view.campaignVersion,input})});const v=await r.json() as View & {error?:string};if(!r.ok)throw new Error(v.error||'저장 실패');setView(v);setInput(v.input);setDirty(false);setSaved('준비 계획을 저장했습니다. 다음에 이어서 작성할 수 있습니다.')}catch(e){setError(message(e))}finally{setBusy(false)}}
  function change<K extends keyof MetaPlanInput>(key:K,value:MetaPlanInput[K]){setInput(old=>old?{...old,[key]:value}:old);setDirty(true);setSaved('');setError('')}
- function go(n:number){setStep(n);requestAnimationFrame(()=>heading.current?.focus())}
+ // 네 단계를 한 화면에 모두 보인다(과업 하네스: 단계 이동 클릭 절약). 단계 버튼은 그 구역으로 옮기고 제목에 초점을 둔다.
+ function go(n:number){setStep(n);requestAnimationFrame(()=>{const h=document.getElementById(`${id}-step-${n}`);h?.scrollIntoView({block:'start'});h?.focus({preventScroll:true})})}
 async  function reload(){if(!dirty||await askConfirm({title:'저장하지 않은 입력을 버리고 최신 계획을 불러올까요?',impact:'이 화면에서 저장하지 않은 입력이 사라지고 서버의 최신 계획으로 바뀝니다.',undo:'버린 입력은 되돌릴 수 없습니다.',confirmLabel:'버리고 불러오기'})){setLoading(true);setSaved('');setRetry(n=>n+1)}}
  if(!view||!input)return <section aria-label="Meta 광고 준비" className={s.root}><div className={s.empty}><FileCheck2 size={28}/>{error?<><p role="alert">{error}</p><Button onClick={reload}>다시 불러오기</Button></>:<ScreenSkeleton label="준비 계획을 불러오고 있습니다." rows={2}/>}</div></section>;
  const parsed=parseMetaPlan(input);
@@ -63,9 +64,9 @@ async  function reload(){if(!dirty||await askConfirm({title:'저장하지 않은
   <nav aria-label="광고 준비 단계" className={s.steps}>{steps.map((x,i)=><CardButton key={x.title} type="button" aria-label={`${i+1}. ${x.title}`} aria-current={step===i?'step':undefined} onClick={()=>go(i)}><span className={s.stepNumber}>{counts[i]===x.fields.length?<Check size={16}/>:String(i+1).padStart(2,'0')}</span><span><b>{x.title}</b><small>{counts[i]} / {x.fields.length} 확인</small></span></CardButton>)}</nav>
   <form onSubmit={e=>{e.preventDefault();void save()}}>
    <div className={s.workspace}><div className={s.editor}>
-    <div className={s.sectionHeading}><span>STEP {String(step+1).padStart(2,'0')}</span><h3 ref={heading} tabIndex={-1}>{steps[step].hint}</h3></div>
-    <fieldset disabled={disabled} className={s.fields}><legend className={s.srOnly}>{steps[step].title} 입력</legend>
-    {step===0&&<>
+    <div className={s.sectionHeading}><span>1단계 {steps[0].title}</span><h3 id={`${id}-step-0`} tabIndex={-1}>{steps[0].hint}</h3></div>
+    <fieldset disabled={disabled} className={s.fields}><legend className={s.srOnly}>{steps[0].title} 입력</legend>
+    {<>
      <div className={s.field}><span id={`${id}-path-label`} className={s.label}>전환 경로</span><RadioGroup aria-labelledby={`${id}-path-label`} value={input.path} onValueChange={v=>change('path',v as MetaPlanInput['path'])} className={s.choices} disabled={disabled}>
       {[{value:'storefront',label:'자사몰 구매',description:'상품 페이지에서 구매로 연결',icon:ShoppingBag},{value:'content',label:'콘텐츠 기반',description:'콘텐츠에서 문의·구매로 연결',icon:Play}].map(x=><label key={x.value} className={s.choice} data-selected={input.path===x.value}><x.icon size={22}/><b>{x.label}</b><span>{x.description}</span><RadioGroupItem id={`${id}-${x.value}`} value={x.value} aria-label={x.label}/></label>)}
      </RadioGroup></div>
@@ -73,24 +74,32 @@ async  function reload(){if(!dirty||await askConfirm({title:'저장하지 않은
      {textField('landingUrl','광고를 클릭한 고객이 도착할 공개 HTTPS 주소입니다. 추적 매개변수는 제외하세요.','https://your-store.com/product')}
      {textField('storeStack','구매 또는 문의 결과가 기록되는 곳입니다.','예: 카페24, 자사몰, 예약 페이지')}
     </>}
-    {step===1&&<>
+    </fieldset>
+    <div className={s.sectionHeading}><span>2단계 {steps[1].title}</span><h3 id={`${id}-step-1`} tabIndex={-1}>{steps[1].hint}</h3></div>
+    <fieldset disabled={disabled} className={s.fields}><legend className={s.srOnly}>{steps[1].title} 입력</legend>
+    {<>
      {textField('product','이번 광고에서 제안할 상품과 혜택을 적으세요.','예: 첫 구매 고객을 위한 2인 세트')}
      <div className={s.twoColumns}>{moneyField('price','고객에게 받는 건당 판매 금액입니다.')}{moneyField('unitCost','상품 한 건의 원가입니다. 없으면 0을 입력하세요.')}{moneyField('variableCost','배송·결제 수수료 등 판매할 때 발생하는 비용입니다.')}<div className={s.field}><label htmlFor={`${id}-tax`}>부가세 기준</label><NativeSelect id={`${id}-tax`} value={input.taxBasis} onChange={e=>change('taxBasis',e.target.value as MetaPlanInput['taxBasis'])}><option value="unknown">아직 확인하지 않음</option><option value="included">포함</option><option value="excluded">제외</option></NativeSelect><p>판매가와 비용을 같은 기준으로 입력하세요.</p></div></div>
      <div className={s.insight}><CircleHelp size={18}/><p>광고비를 쓰기 전, 한 건을 팔아 남는 금액을 확인합니다. 환불·세금·제작비를 반영한 실제 순이익과는 다릅니다.</p></div>
     </>}
-    {step===2&&<>
+    </fieldset>
+    <div className={s.sectionHeading}><span>3단계 {steps[2].title}</span><h3 id={`${id}-step-2`} tabIndex={-1}>{steps[2].hint}</h3></div>
+    <fieldset disabled={disabled} className={s.fields}><legend className={s.srOnly}>{steps[2].title} 입력</legend>
+    {<>
      <div className={s.twoColumns}>{moneyField('totalBudget','이번 실험 전체에 계획한 광고비입니다.')}{moneyField('dailyTarget','하루에 운영할 목표 금액입니다.')}{moneyField('lossLimit','이 금액의 손실에 도달하면 중단을 검토합니다.')}{moneyField('safetyReserve','집행 지연·추가 비용에 대비한 여유 금액입니다.')}{textField('startAt','한국 시간 (KST)')}{textField('endAt','한국 시간 (KST)')}</div>
      {textField('stopRule','지출·전환·손실을 기준으로 구체적으로 적으세요.','예: 3일간 구매가 없거나 손실 한도에 도달하면 중단')}
      <p className={s.note}>입력한 예산은 계획값입니다. 자동 중단이나 광고 계정의 청구 상한은 아직 설정되지 않습니다.</p>
     </>}
-    {step===3&&<>
+    </fieldset>
+    <div className={s.sectionHeading}><span>4단계 {steps[3].title}</span><h3 id={`${id}-step-3`} tabIndex={-1}>{steps[3].hint}</h3></div>
+    <fieldset disabled={disabled} className={s.fields}><legend className={s.srOnly}>{steps[3].title} 입력</legend>
+    {<>
      {textField('accountLabel','구분할 수 있는 이름만 입력하세요. 비밀번호나 토큰은 입력하지 않습니다.','예: 브랜드 공식 광고 계정')}
      {textField('attributionWindow','광고를 본 뒤 얼마 동안 발생한 전환을 비교할지 정하세요.','예: 클릭 후 7일, 조회 후 1일')}
      <div className={s.checkList}>{(Object.keys(metaChecks) as (keyof typeof metaChecks)[]).map(k=><label key={k} className={s.checkRow}><Checkbox checked={input.checks[k]} onCheckedChange={v=>change('checks',{...input.checks,[k]:v===true})} aria-label={metaChecks[k]} disabled={disabled}/><span><b>{metaChecks[k]}</b><small>{checkHelp[k]}</small></span></label>)}</div>
      <p className={s.note}>체크는 운영자가 확인한 내용이며, 외부 서비스의 검증 결과는 아닙니다.</p>
     </>}
     </fieldset>
-    <div className={s.stepFooter}><span>{step+1} / 4 단계</span><div>{step>0&&<Button type="button" variant="ghost" onClick={()=>go(step-1)}><ArrowLeft size={16}/>이전</Button>}{step<3&&<Button type="button" variant="outline" onClick={()=>go(step+1)}>다음 단계<ArrowRight size={16}/></Button>}</div></div>
    </div>
    <div role="group" className={s.summary} aria-label="계획 미리보기"><div className={s.summaryTitle}><h3>계획 미리보기</h3><span>{dirty?'저장 전 입력 기준':view.plan?'저장된 입력 기준':'입력 대기'}</span></div>
     <div className={s.progressHeading}><b>준비 항목</b><span>{done}<small> / {total}</small></span></div><progress value={done} max={total} aria-label="계획 입력 진행률"/>

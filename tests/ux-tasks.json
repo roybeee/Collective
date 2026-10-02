@@ -1,0 +1,16 @@
+{
+ "version":2,
+ "baselineRelease":"Sites83 9b60796 (UX 3차 시작, e2e/baseline/ux-tasks-9b60796.ts로 측정, 2026-10-02)",
+ "baselineTotal":{"desktop":35,"mobile":37},
+ "targetRatio":0.6,
+ "tasks":{
+  "1":{"name":"오늘 안건 처리","clicks":{"desktop":1,"mobile":1},"baseline":{"desktop":4,"mobile":4}},
+  "2":{"name":"상품·오퍼·미션 만들기","clicks":{"desktop":5,"mobile":5},"baseline":{"desktop":9,"mobile":9}},
+  "3":{"name":"고객 문의 기한 처리","clicks":{"desktop":2,"mobile":2},"baseline":{"desktop":4,"mobile":4}},
+  "4":{"name":"확대 제안 승인","clicks":{"desktop":2,"mobile":2},"baseline":{"desktop":3,"mobile":3}},
+  "5":{"name":"Meta 준비 점검","clicks":{"desktop":4,"mobile":4},"baseline":{"desktop":7,"mobile":7}},
+  "6":{"name":"발행 승인","clicks":{"desktop":2,"mobile":2},"baseline":{"desktop":3,"mobile":3}},
+  "7":{"name":"주간 성과 확인","clicks":{"desktop":2,"mobile":2},"baseline":{"desktop":2,"mobile":2}},
+  "8":{"name":"전역 중단과 재개","clicks":{"desktop":3,"mobile":4},"baseline":{"desktop":3,"mobile":5}}
+ }
+}

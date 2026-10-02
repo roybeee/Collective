@@ -152,9 +152,13 @@ export function LedgerMeasurementDialog({store,experiment,record,onClose,onSaved
 }
 
 // A4 점포 실측: 추적 코드·주문 가져오기·귀속 보고. 표시 판정은 lib/store-operations-view.ts, 권한·검증·귀속은 서버(lib/store-operations-server.ts)가 정한다.
+const ledgerTabs=['book','codes','import','report'];
+const ledgerTabFromHash=()=>{if(typeof window==='undefined')return 'book';const t=location.hash.replace(/^#ledger-/,'');return location.hash.startsWith('#ledger-')&&ledgerTabs.includes(t)?t:'book'};
 export function StoreLedgerPanel({store,experiments}:{store:Store;experiments:StoreExperiment[]}){
  // 관리자 전용(서버 adminOf): 추적 코드 만들기·주문 가져오기 확정·POS 주간 합계·수집 광고비 옮기기. 직원에게는 숨기고 안내한다.
- const canManage=canChange(useAccount()),[tab,setTab]=useState('book');
+ const canManage=canChange(useAccount()),[tab,setTabState]=useState(()=>ledgerTabFromHash());
+ // 하위 탭은 주소의 # 뒤(#ledger-codes 등)에 남아 새로고침·링크 공유 때 같은 탭이 열린다(UX-PLAN-3 1차원). 기록을 늘리지 않고 바꾼다.
+ const setTab=(next:string)=>{setTabState(next);if(typeof window!=='undefined')history.replaceState(history.state,'',location.pathname+location.search+(next==='book'?'':'#ledger-'+next))};
  return <Tabs value={tab} onValueChange={setTab}><TabsList variant="line" className="store-tabs" aria-label="주문 장부 보기"><TabsTrigger value="book">주문·비용</TabsTrigger><TabsTrigger value="codes">추적 코드</TabsTrigger><TabsTrigger value="import" disabled={!canManage}>주문 가져오기</TabsTrigger><TabsTrigger value="report">귀속 보고</TabsTrigger></TabsList>{!canManage&&<p className="subtle-note admin-only-note" role="note">주문 가져오기는 관리자만 할 수 있습니다.</p>}
   <TabsContent value="book"><LedgerBook store={store} experiments={experiments} onImport={canManage?()=>setTab('import'):undefined}/></TabsContent>
   <TabsContent value="codes"><TrackingCodesPanel store={store} canManage={canManage}/></TabsContent>

@@ -1,0 +1,30 @@
+// UX-PLAN-3 1차원 전역 검색: 바로 가기(/)의 성장 기록 찾기(GET /api/search). 읽기 전용.
+// 인증 mocked, 메모리 SQLite real, 외부 0. 소유자 격리, 보관 캠페인 제외, 2자 미만 빈 결과, 단계·패널 위치를 고정한다.
+import assert from 'node:assert/strict';import {testRuntime} from './helpers/runtime.mjs';
+const {load}=testRuntime(async()=>{throw Error('external forbidden')});
+const server=await load('lib/server.ts'),route=await load('app/api/search/route.ts');
+let passed=0;const check=(v,n)=>{assert.ok(v,n);passed++};
+const owner='owner',h={'oai-authenticated-user-id':owner};
+const put=(kind,id,data,parent='',who=owner)=>server.recordStatement(who,kind,id,data,parent).run();
+await put('campaign','c1',{id:'c1',brandId:'b',title:'매운 세트 10월',version:1,status:'active'});
+await put('campaign','c2',{id:'c2',brandId:'b',title:'보관 캠페인',version:1,status:'active',archivedAt:new Date().toISOString()});
+await put('growth_catalog','k1',{id:'k1',campaignId:'c1',version:1,input:{title:'매운 떡볶이 세트',sku:'SPICY-1'}},'c1');
+await put('growth_offer','o1',{id:'o1',campaignId:'c1',version:1,input:{title:'떡볶이 2인 오퍼'}},'c1');
+await put('growth_cs_ticket','t1',{id:'t1',campaignId:'c1',status:'open',input:{summary:'떡볶이 배송 지연 문의'}},'c1');
+await put('growth_detected_signal','s1',{id:'s1',campaignId:'c1',status:'new',detection:{title:'떡볶이 주문 증가'}},'c1');
+await put('growth_catalog','k2',{id:'k2',campaignId:'c2',version:1,input:{title:'보관된 떡볶이'}},'c2');
+await put('growth_catalog','k3',{id:'k3',campaignId:'x',version:1,input:{title:'다른 소유자 떡볶이'}},'x','other');
+const get=(q,headers=h)=>route.GET(new Request(`https://agency.test/api/search?q=${encodeURIComponent(q)}`,{headers})).then(async r=>({status:r.status,body:await r.json()}));
+check((await get('떡볶이',{})).status===401,'search requires auth');
+let r=await get('떡');check(r.status===200&&r.body.hits.length===0,'queries shorter than 2 characters return nothing');
+r=await get('떡볶이');const ids=r.body.hits.map(x=>x.id);
+check(r.status===200&&['growth_catalog:k1','growth_offer:o1','growth_cs_ticket:t1','growth_detected_signal:s1'].every(id=>ids.includes(id)),'finds catalog, offer, CS ticket and detected signal titles: '+JSON.stringify(ids));
+check(!ids.includes('growth_catalog:k2')&&!ids.includes('growth_catalog:k3'),'archived campaigns and other owners are excluded');
+const k1=r.body.hits.find(x=>x.id==='growth_catalog:k1'),t1=r.body.hits.find(x=>x.id==='growth_cs_ticket:t1');
+check(k1.step==='catalog'&&k1.label==='상품'&&k1.campaignTitle==='매운 세트 10월'&&!k1.panel,'sales basics open at their step');
+check(t1.panel==='고객 문의·약속 기한'&&!t1.step,'other records open their growth panel');
+r=await get('  SPICY-1 ');check(r.body.hits.length===0,'only titles are searched, not SKU when a title exists');
+r=await get('배송 지연');check(r.body.hits.length===1&&r.body.hits[0].id==='growth_cs_ticket:t1','spaces are matched and normalised');
+const lib=await load('lib/record-search-server.ts'),listed=[...lib.searchKindFilter.matchAll(/'([a-z_]+)'/g)].map(m=>m[1]);
+check(JSON.stringify(listed)===JSON.stringify([...lib.searchKinds]),'SQL kind list equals the searchable kinds');
+console.log(JSON.stringify({passed}));
