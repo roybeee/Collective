@@ -7,6 +7,8 @@ import {Textarea} from '@/components/ui/textarea';
 import {Input} from '@/components/ui/input';
 import {Button} from '@/components/ui/button';
 import {Note} from '@/components/app/note';
+import {MetaLine} from '@/components/app/meta-line';
+import {metaText} from '@/lib/format';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {GrowthCollaborationView} from '@/lib/growth-collaboration-server';
 import type {CollaborationPlan,CollaborationStage} from '@/lib/growth-collaboration';
@@ -38,7 +40,7 @@ function Workspace({campaignId}:{campaignId:string}){
   {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">협업을 조회하고 있습니다.</p>}{stale&&<p role="status" className={styles.warning}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
   {view&&<>{<Button variant="panel" size="fit" type="button" disabled={busy||!view.canEdit} disabledReason={view.canEdit?undefined:readOnlyReason} onClick={()=>{setEditing({id:`collab-${crypto.randomUUID().slice(0,8)}`,expectedVersion:0});setPlan(emptyPlan());retry.current=null;}}>새 협업</Button>}
    {editing&&<form onSubmit={e=>{e.preventDefault();void send({action:'save_plan',id:editing.id,expectedVersion:editing.expectedVersion,plan},'협업 계획을 저장했습니다.');}}><fieldset disabled={busy||!view.canEdit} className={styles.form}><legend>협업 {editing.id}</legend>
-    <label className={styles.wide}>수요 단계<NativeSelect value={`${plan.sequenceId}|${plan.stepId}`} onChange={e=>{const s=view.steps.find(x=>`${x.sequenceId}|${x.stepId}`===e.target.value);setPlan({...plan,sequenceId:s?.sequenceId??'',sequenceVersion:s?.sequenceVersion??1,stepId:s?.stepId??'',partnerKind:s?.placement==='partner'?'partner':'creator'});}}><option value="|">단계 선택</option>{view.steps.map(s=><option key={`${s.sequenceId}|${s.stepId}`} value={`${s.sequenceId}|${s.stepId}`}>{s.title} · {s.stepId} · {s.placement==='creator'?'크리에이터':'파트너'} · 계획 비용 {won(s.plannedCost)}</option>)}</NativeSelect></label>
+    <label className={styles.wide}>수요 단계<NativeSelect value={`${plan.sequenceId}|${plan.stepId}`} onChange={e=>{const s=view.steps.find(x=>`${x.sequenceId}|${x.stepId}`===e.target.value);setPlan({...plan,sequenceId:s?.sequenceId??'',sequenceVersion:s?.sequenceVersion??1,stepId:s?.stepId??'',partnerKind:s?.placement==='partner'?'partner':'creator'});}}><option value="|">단계 선택</option>{view.steps.map(s=><option key={`${s.sequenceId}|${s.stepId}`} value={`${s.sequenceId}|${s.stepId}`}>{metaText([s.title,s.stepId,s.placement==='creator'?'크리에이터':'파트너',`계획 비용 ${won(s.plannedCost)}`])}</option>)}</NativeSelect></label>
     <label>협업자 별칭(가명 ID)<Input required value={plan.partnerAlias} onChange={t('partnerAlias')}/></label>
     <label className={styles.wide}>청중 적합 근거<Textarea required maxLength={1000} value={plan.audienceFitEvidence} onChange={t('audienceFitEvidence')}/></label>
     <label className={styles.wide}>브리프<Textarea required maxLength={3000} value={plan.brief} onChange={t('brief')}/></label>
@@ -49,8 +51,8 @@ function Workspace({campaignId}:{campaignId:string}){
     <label>납품 기한<Input type="date" value={plan.deliverDueAt} onChange={t('deliverDueAt')}/></label><label>게시 기한<Input type="date" value={plan.publishDueAt} onChange={t('publishDueAt')}/></label>
     <Button variant="panel" size="fit" type="submit" disabled={stale||!plan.stepId} disabledReason={stale?'다른 곳에서 먼저 바뀌었습니다. 최신 기록을 불러온 뒤 다시 하세요.':!plan.stepId?'수요 단계를 먼저 고르세요.':undefined}>협업 계획 저장</Button></fieldset></form>}
    {!view.collaborations.length&&<EmptyLine next="위 ‘새 협업’ 버튼으로 시작하세요.">협업이 없습니다.</EmptyLine>}
-   <ul>{view.collaborations.map(r=><li key={r.id} className="wrap-anywhere"><p><strong>{r.plan.partnerAlias}</strong> · {r.id} · {stageLabels[r.stage]} · 단계 {r.plan.stepId} · 수수료 {won(r.plan.feeKrw)}{r.plan.commissionRate!==null?` + ${(r.plan.commissionRate*100).toFixed(1)}%`:''} · 납품 {r.plan.deliverDueAt} · 게시 {r.plan.publishDueAt} · 원본 {r.sourceStatus==='held'?'보류':'현재'}</p>
-    <p>성과: {r.performance.status==='observed'?`게시 이후 주문 ${r.performance.orders}건 · 순매출 ${won(r.performance.netRevenue)} · 공헌이익 ${won(r.performance.contribution)}`:r.performance.status==='not_published'?'게시 확인 전':r.performance.status==='no_tracking'?'추적 코드 없음':'보류'} · 인과 효과: 미측정</p>
+   <ul>{view.collaborations.map(r=><li key={r.id} className="wrap-anywhere"><p><MetaLine items={[<strong key="a">{r.plan.partnerAlias}</strong>,r.id,stageLabels[r.stage],`단계 ${r.plan.stepId}`,`수수료 ${won(r.plan.feeKrw)}${r.plan.commissionRate!==null?` + ${(r.plan.commissionRate*100).toFixed(1)}%`:''}`,`납품 ${r.plan.deliverDueAt}`,`게시 ${r.plan.publishDueAt}`,`원본 ${r.sourceStatus==='held'?'보류':'현재'}`]}/></p>
+    <p><MetaLine items={[...(r.performance.status==='observed'?[`성과: 게시 이후 주문 ${r.performance.orders}건`,`순매출 ${won(r.performance.netRevenue)}`,`공헌이익 ${won(r.performance.contribution)}`]:[`성과: ${r.performance.status==='not_published'?'게시 확인 전':r.performance.status==='no_tracking'?'추적 코드 없음':'보류'}`]),'인과 효과: 미측정']}/></p>
     {[...r.sourceReasons,...r.warnings].map(x=><p key={x}>{x}</p>)}
     <p>영수증: {r.receipts.map(x=>`${stageLabels[x.stage]} ${x.at.slice(0,10)}${x.paidKrw!==undefined?` 지급 ${won(x.paidKrw)}`:''}`).join(' → ')||'없음'}</p>
     {view.canEdit&&r.stage==='proposed'&&<Button variant="panel" size="fit" type="button" disabled={busy||stale} disabledReason={stale?'다른 곳에서 먼저 바뀌었습니다. 최신 기록을 불러온 뒤 다시 하세요.':undefined} onClick={()=>{setEditing({id:r.id,expectedVersion:r.version});setPlan(structuredClone(r.plan));retry.current=null;}}>{r.id} 계획 수정</Button>}
@@ -61,6 +63,6 @@ function Workspace({campaignId}:{campaignId:string}){
      {receipt.stage==='settled'&&<label>지급액(원)<Input type="number" min={0} value={receipt.paidKrw} onChange={e=>setReceipt({...receipt,paidKrw:e.target.value})}/></label>}
      <Button variant="panel" size="fit" type="button" disabled={busy||stale||!receipt.stage||!receipt.at||!receipt.evidenceRef} disabledReason={stale?'다른 곳에서 먼저 바뀌었습니다. 최신 기록을 불러온 뒤 다시 하세요.':!receipt.stage?'필수 칸을 먼저 채우세요.':!receipt.at?'필수 칸을 먼저 채우세요.':!receipt.evidenceRef?'필수 칸을 먼저 채우세요.':undefined} onClick={()=>void recordStage(r)}>{r.id} 단계 기록</Button></fieldset>}
    </li>)}</ul>
-   <details><summary>협업 이력</summary>{view.history.map(x=><p key={x.id+':'+x.version}>{x.id} · v{x.version} · {stageLabels[x.stage]} · {x.updatedAt}</p>)}</details></>}
+   <details><summary>협업 이력</summary>{view.history.map(x=><p key={x.id+':'+x.version}><MetaLine items={[x.id,`v${x.version}`,stageLabels[x.stage],x.updatedAt]}/></p>)}</details></>}
  </section>;
 }

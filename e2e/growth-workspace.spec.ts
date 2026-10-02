@@ -145,10 +145,10 @@ test('판매 위임 서명·재조회·철회와 사업 지표의 미확인 구�
   await page.reload();panel=await openGrowth(page,title);
   await panel.locator('summary').filter({hasText:'판매 위임·예산 한도'}).click();
   scope=panel.getByRole('region',{name:'판매 위임과 예산 한도'});
-  await scope.getByRole('button',{name:'test-account · 유효 · v1',exact:true}).click();
+  await scope.getByRole('button',{name:'test-account, 유효, v1',exact:true}).click();
   await expect(scope.getByLabel('기간 총한도 (원)',{exact:true})).toHaveValue('1000');
   await scope.getByRole('button',{name:'선택 위임 철회',exact:true}).click();
-  await expect(scope.getByRole('button',{name:'test-account · 철회 · v2',exact:true})).toBeVisible();
+  await expect(scope.getByRole('button',{name:'test-account, 철회, v2',exact:true})).toBeVisible();
   expect(await scope.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
   await scope.getByRole('heading',{name:'판매 위임과 예산 한도'}).scrollIntoViewIfNeeded();
   await page.screenshot({path:`e2e/artifacts/growth-authority-${info.project.name}.png`});

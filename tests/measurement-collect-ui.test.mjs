@@ -26,6 +26,7 @@ const part=name=>{function Part({children,variant,size,asChild,onOpenChange,onVa
 // 로그인 상태 대역: 테스트가 역할을 바꾼다. 계정 판정(accountOf·canChange)은 실제 account-context다.
 let authState=null;
 const AuthContext=React.createContext(null);
+const externalLibs={clsx:await import('clsx'),'tailwind-merge':await import('tailwind-merge')};
 function link(spec,ref){
  if(spec==='react')return synthetic(ref.imports.get(spec)||new Set(),n=>React[n]);
  if(spec==='react/jsx-runtime')return synthetic(ref.imports.get(spec)||new Set(),n=>jsxRuntime[n]);
@@ -36,6 +37,9 @@ function link(spec,ref){
  if(spec==='./account-context')return moduleFor('app/account-context.tsx');
  // 첫 화면 알림은 app/home-alerts.tsx에 있고 measurement-collect가 다시 내보낸다(UX-PLAN-3 Q7).
  if(spec==='./home-alerts')return moduleFor('app/home-alerts.tsx');
+ // 공용 한 줄 메타(MetaLine)는 실제 부품을 그린다. cn이 쓰는 외부 패키지는 실제 모듈을 그대로 넘긴다.
+ if(spec==='@/components/app/meta-line')return moduleFor('components/app/meta-line.tsx');
+ if(spec in externalLibs)return synthetic(ref.imports.get(spec)||new Set(),n=>externalLibs[spec][n]);
  if(spec.startsWith('@/lib/'))return moduleFor(resolve(spec.slice(2))+'.ts');
  if(spec.startsWith('.')&&ref.identifier.includes('/lib/')){const base=resolve(dirname(ref.identifier),spec);return moduleFor(existsSync(base+'.ts')?base+'.ts':base+'.tsx')}
  throw new Error('예상하지 못한 import: '+spec);
@@ -113,7 +117,7 @@ fetchImpl=()=>{throw new Error('렌더 중 네트워크 호출 금지')};
 check('the workspace alert counts reconnections and links to the first brand',()=>{
  const alerts=[{experimentId:'e1',brandId:'ofd',title:'첫 장면 실험',channel:'naver_ads',arm:'control',code:'reauth_required',reason:reasons.reauth_required},{experimentId:'e2',brandId:'oda',title:'두 번째',channel:'instagram',arm:'treatment',code:'not_connected',reason:'연결 없음'}];
  const html=render(ui.CollectAlertsView,{alerts,onOpen:()=>{}});
- assert.match(html,/aria-label="성과 자동 수집 재연결 필요"/);assert.match(text(html),/재연결 필요 2건 · 「첫 장면 실험」 A · 대조안: 인증 실패 .* 외 1건/);assert.match(html,/<button[^>]*>실험 확인<\/button>/);
+ assert.match(html,/aria-label="성과 자동 수집 재연결 필요"/);assert.match(text(html),/재연결 필요 2건\s*,\s*「첫 장면 실험」 A\(대조안\): 인증 실패 .* 외 1건/);assert.match(html,/<button[^>]*>실험 확인<\/button>/);
  assert.equal(render(ui.CollectAlertsView,{alerts:[],onOpen:()=>{}}),'');
 });
 

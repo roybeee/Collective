@@ -14,10 +14,10 @@ test('조건부 확장: 구조화 데이터·AI 인용 관측·해외 파일럿 
   await expect(panel.getByRole('textbox',{name:'매운 세트 JSON-LD',exact:true})).toHaveValue(/"priceCurrency": "KRW"/);await expect(panel).toContainText('MMM 타당성실행하지 않음');
   const local=new Date(Date.now()-60000-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16);
   await panel.getByRole('combobox',{name:'AI 답변 서비스',exact:true}).selectOption('perplexity');await panel.getByRole('textbox',{name:'질문',exact:true}).fill('매운 세트 추천');await panel.getByLabel('관측 시각',{exact:true}).fill(local);await panel.getByLabel('우리 페이지 인용됨').check();await panel.getByRole('textbox',{name:'인용 URL',exact:true}).fill('https://example.com/set');
-  await panel.getByRole('button',{name:'관측 기록',exact:true}).click();await expect(panel).toContainText('AI 답변 관측 1회 · 인용 1회');
+  await panel.getByRole('button',{name:'관측 기록',exact:true}).click();await expect(panel).toContainText('AI 답변 관측 1회, 인용 1회');
   await panel.getByRole('textbox',{name:'국가 코드',exact:true}).fill('jp');await panel.getByRole('textbox',{name:'현지 통화',exact:true}).fill('jpy');await panel.getByRole('combobox',{name:'오퍼',exact:true}).selectOption('c-offer');
   await panel.getByRole('spinbutton',{name:'현지 가격',exact:true}).fill('1500');await panel.getByRole('spinbutton',{name:'환율(원/현지 1단위)',exact:true}).fill('9');await panel.getByRole('spinbutton',{name:'도착 원가(원)',exact:true}).fill('8000');await panel.getByRole('spinbutton',{name:'예상 반품률(0~1)',exact:true}).fill('0.05');
-  await panel.getByRole('button',{name:'파일럿 준비 저장',exact:true}).click();await expect(panel).toContainText('JP · c-offer · 준비 안 됨 · 단위 공헌이익 4,825원');
+  await panel.getByRole('button',{name:'파일럿 준비 저장',exact:true}).click();await expect(panel).toContainText('JP, c-offer, 준비 안 됨, 단위 공헌이익 4,825원');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
  }finally{await context.close()}
 });

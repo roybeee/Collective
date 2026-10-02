@@ -6,6 +6,7 @@ import {FileText,ChevronRight} from 'lucide-react';
 import {roles,type Artifact} from '@/lib/agency';
 import {artifactPreview} from '@/lib/history-labels';
 import {Status} from './status-badge';
+import {MetaLine} from '@/components/app/meta-line';
 export function AssetsGrid({artifacts,onOpen}:{artifacts:Artifact[];onOpen:(campaignId:string)=>void}){
- return <div className="assets-grid">{artifacts.map(a=><CardButton className="asset-card" key={a.id} onClick={()=>onOpen(a.campaignId)}><div><span className="role-avatar tint" ref={cssVars({'--tint':roles.find(r=>r.id===a.role)?.color})}><FileText size={20}/></span><Status status={a.status}/></div><h3>{a.title}</h3><p>{artifactPreview(a.content)}</p><footer><span>{roles.find(r=>r.id===a.role)?.name} · v{a.version}</span><ChevronRight size={17}/></footer></CardButton>)}</div>;
+ return <div className="assets-grid">{artifacts.map(a=><CardButton className="asset-card" key={a.id} onClick={()=>onOpen(a.campaignId)}><div><span className="role-avatar tint" ref={cssVars({'--tint':roles.find(r=>r.id===a.role)?.color})}><FileText size={20}/></span><Status status={a.status}/></div><h3>{a.title}</h3><p>{artifactPreview(a.content)}</p><footer><MetaLine items={[roles.find(r=>r.id===a.role)?.name,`v${a.version}`]}/><ChevronRight size={17}/></footer></CardButton>)}</div>;
 }

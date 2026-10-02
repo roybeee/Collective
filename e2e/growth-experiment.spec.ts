@@ -30,7 +30,7 @@ test('판매 실험 사전등록·설계 동결·배정·관측·표본 부족 �
   const key=`${owner}:growth_experiment:${id}`,past=new Date(Date.now()-3600000).toISOString();
   run(`UPDATE records SET data=json_set(data,'$.input.startAt','${past}') WHERE id='${key}';`);await panel.getByRole('button',{name:'실험 새로고침',exact:true}).click();
   await panel.getByRole('textbox',{name:'배정할 가명 단위 키(줄마다 하나)',exact:true}).fill(['visitor-aaaa1','visitor-aaaa2','visitor-aaaa3','visitor-aaaa4'].join('\n'));await panel.getByRole('button',{name:`${id} 단위 배정`,exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'배정했습니다'})).toBeVisible();
-  await expect(panel).toContainText(/배정: 대조 \d · 처리 \d · 관측 0/);
+  await expect(panel).toContainText(/배정: 대조 \d, 처리 \d, 관측 0/);
   const unit=panel.getByRole('combobox',{name:'관측할 배정 단위',exact:true});const first=await unit.locator('option').nth(1).getAttribute('value');await unit.selectOption(first!);await panel.getByRole('textbox',{name:'관측 근거 ID',exact:true}).fill('obs-1');
   await panel.getByRole('button',{name:`${id} 관측 기록`,exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'관측을 기록했습니다'})).toBeVisible();await expect(panel).toContainText(/관측 1/);
   await panel.getByRole('button',{name:`${id} 분석`,exact:true}).click();await expect(panel.getByRole('alert')).toContainText('관측 기간 중');

@@ -19,7 +19,7 @@ test('여러 상품 번들 원가·최대 번들 수·계획 초과 표시·응�
   const attempts:string[]=[];let lose=true;await page.route('**/api/growth/bundles',async route=>{if(route.request().method()==='POST'){attempts.push(route.request().postDataJSON().requestId);if(lose){lose=false;await route.fetch();await route.abort('failed');return;}}await route.continue();});
   await panel.getByRole('button',{name:'번들 저장',exact:true}).click();await expect(panel.getByRole('alert')).toContainText('입력은 보존했습니다');
   await panel.getByRole('button',{name:'번들 저장',exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'번들을 저장했습니다'})).toBeVisible();expect(attempts[0]).toBe(attempts[1]);
-  await expect(panel).toContainText('원가 3,000원 · 공헌이익 6,000원 · 정가 합 10,000원');await expect(panel).toContainText('만들 수 있는 번들 2개 · 계획 3개');await expect(panel).toContainText('계획 수량(3)보다 만들 수 있는 번들(2)이 적습니다.');
+  await expect(panel).toContainText('원가 3,000원, 공헌이익 6,000원, 정가 합 10,000원');await expect(panel).toContainText('만들 수 있는 번들 2개, 계획 3개');await expect(panel).toContainText('계획 수량(3)보다 만들 수 있는 번들(2)이 적습니다.');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
  }finally{await context.close()}
 });
