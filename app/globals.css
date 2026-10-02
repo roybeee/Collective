@@ -332,5 +332,6 @@ details:not(.lazy-panel):not(.all-suggestions)>summary{list-style:none;display:f
 .num-hint{display:block;font-size:12px;line-height:1.4;color:var(--green-44);margin-top:2px;font-variant-numeric:tabular-nums}.num-hint::after{content:attr(data-hint)}
 .metric-summary{display:flex;flex-direction:column;gap:16px;margin-bottom:24px}
 .stat strong{justify-content:flex-start;align-items:baseline}.stat strong .stat-unit{margin-left:4px}.stat strong>svg{margin-left:auto;align-self:center}
-/* 공용 메타 한 줄(components/app/meta-line.tsx): 가운뎃점 대신 항목 사이 옅은 세로선. 쉼표(.meta-sep)는 글자 크기 0. 세로선은 배경으로 그린다(::before inline-block이면 접근 이름에 빈칸이 낀다). */
-.meta-line{display:inline;overflow-wrap:anywhere}.meta-sep{font-size:0!important}.meta-line>span+span{padding-left:1.1em;background:linear-gradient(color-mix(in srgb,currentColor 35%,transparent),color-mix(in srgb,currentColor 35%,transparent)) .55em 55%/1px .85em no-repeat}
+/* 공용 메타 한 줄(components/app/meta-line.tsx): 가운뎃점 대신 항목 사이 옅은 세로선. 쉼표(.meta-comma)는 글자 크기 0. 세로선은 쉼표 뒤 빈칸(.meta-sep)의 배경으로 그린다
+   (::before inline-block이나 항목 inline-block이면 접근 이름에 빈칸이 낀다). 줄 끝의 빈칸은 폭 0으로 지워져 세로선이 줄 끝·줄 첫머리에 남지 않는다. pre-wrap 안에서도 한 줄 안의 빈칸을 접게 한다(줄바꿈 허용 여부는 부모를 따른다). */
+.meta-line{display:inline;overflow-wrap:anywhere;white-space-collapse:collapse}.meta-comma{font-size:0!important}.meta-sep{word-spacing:.85em;background:linear-gradient(color-mix(in srgb,currentColor 35%,transparent),color-mix(in srgb,currentColor 35%,transparent)) 50% 55%/1px .85em no-repeat}

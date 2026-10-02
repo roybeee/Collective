@@ -133,4 +133,33 @@ for(const f of laneAFiles){
  const visit=x=>{if((ts.isStringLiteral(x)||ts.isNoSubstitutionTemplateLiteral(x)||ts.isTemplateHead(x)||ts.isTemplateMiddle(x)||ts.isTemplateTail(x)||ts.isJsxText(x))&&seedBrandNames.test(x.text))brandLiterals.push(`${f}: ${x.text.trim().slice(0,40)}`);ts.forEachChild(x,visit)};visit(sf);
 }
 check(laneAFiles.length>100&&brandLiterals.length===0,`hardcoded seed brand names in lane A screens: ${brandLiterals.join(' | ')}`);
-console.log(JSON.stringify({passed,now,directToastSuccess,notices:notices.length,undoNotices,brandLiterals:brandLiterals.length}));
+// 레인 A 화면(app/*.tsx, components/app/*.tsx)의 날짜·숫자 칸은 공용 Input(components/ui/input.tsx)으로 그린다(평가 10회차 ⑥: 성장 기본 기록 폼의 원시 <input>에
+// 빈 날짜 한국어 안내와 금액 천 단위 보조가 없었다). type 값이 식(조건식 등)이어도 그 안에 'date'·'number'·'datetime-local'이 있으면 센다. 체크박스·라디오·파일은 대상이 아니다.
+const laneAJsx=laneAFiles.filter(f=>!f.startsWith('components/ui/'));
+const rawDateNumber=[];
+for(const f of laneAJsx){
+ const sf=ts.createSourceFile(f,readFileSync(f,'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+ const visit=x=>{if((ts.isJsxSelfClosingElement(x)||ts.isJsxOpeningElement(x))&&x.tagName.getText()==='input'){const type=x.attributes.properties.find(p=>ts.isJsxAttribute(p)&&p.name.getText()==='type');if(type?.initializer&&/['"](?:date|number|datetime-local)['"]/.test(type.initializer.getText()))rawDateNumber.push(`${f}:${sf.getLineAndCharacterOfPosition(x.getStart()).line+1}`)}ts.forEachChild(x,visit)};visit(sf);
+}
+check(rawDateNumber.length===0,`raw date/number inputs in lane A screens (use components/ui/input.tsx Input): ${rawDateNumber.join(' | ')}`);
+// 자리표시·예시 문장의 브랜드는 선택한 브랜드에서 읽는다(평가 10회차 ⑪: 홈 목표 자리표시가 data.brands[0]이라 선택 상자의 브랜드와 달랐다).
+const firstBrandPlaceholders=[];
+for(const f of laneAJsx){
+ const sf=ts.createSourceFile(f,readFileSync(f,'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+ const visit=x=>{if(ts.isJsxAttribute(x)&&x.name.getText()==='placeholder'&&x.initializer&&/brands\[0\]/.test(x.initializer.getText()))firstBrandPlaceholders.push(`${f}:${sf.getLineAndCharacterOfPosition(x.getStart()).line+1}`);ts.forEachChild(x,visit)};visit(sf);
+}
+check(firstBrandPlaceholders.length===0,`placeholders that name brands[0] instead of the selected brand: ${firstBrandPlaceholders.join(' | ')}`);
+check(/placeholder=\{`예: \$\{selectedBrandName\?\?'우리 브랜드'\}의/.test(ws)&&/selectedBrandName=data\.brands\.find\(b=>b\.id===brandId\)\?\.name/.test(ws),'home goal placeholder names the selected brand (brandId)');
+// 같은 값은 한 이름으로 부른다(평가 10회차 ④). 순매출 − 원가·변동비는 '공헌이익'(대비할 때 '광고·제작비 차감 전 공헌이익'), 여기서 광고비·제작비를 더 뺀 값은
+// '광고·제작비 차감 후 공헌이익', 성장 탭 손익에서 대사된 마케팅 지출을 뺀 값은 '마케팅 지출 차감 후 공헌이익'이다. 메뉴 이름이 '브랜드 아카이브'라 '자료실'은 쓰지 않는다.
+// 레인 A 화면(app/*.tsx·components/app/*.tsx)과 화면 문자열을 만드는 레인 A lib 파일의 글자 리터럴(주석 제외)을 센다. 저장값·API 필드 이름은 영문이라 걸리지 않는다.
+const retiredTerms=/기여잔액|비용 차감 잔액|기여이익|자료실|마케팅 [전후] 공헌이익/;
+const laneATermLibs=[...LANE_A_VIEW_LIBS,'lib/glossary.ts','lib/archive.ts','lib/agency.ts',...readdirSync('lib').filter(n=>/^(growth-|meta-|store-)[\w-]*\.ts$/.test(n)).map(n=>'lib/'+n)];
+const retired=[];
+for(const f of [...new Set([...laneAJsx,...laneATermLibs])]){
+ const sf=ts.createSourceFile(f,readFileSync(f,'utf8'),ts.ScriptTarget.Latest,true,f.endsWith('.tsx')?ts.ScriptKind.TSX:ts.ScriptKind.TS);
+ const visit=x=>{if((ts.isStringLiteral(x)||ts.isNoSubstitutionTemplateLiteral(x)||ts.isTemplateHead(x)||ts.isTemplateMiddle(x)||ts.isTemplateTail(x)||ts.isJsxText(x))&&retiredTerms.test(x.text))retired.push(`${f}: ${x.text.trim().slice(0,40)}`);ts.forEachChild(x,visit)};visit(sf);
+}
+check(laneATermLibs.length>20&&retired.length===0,`retired synonyms on lane A screens (use 공헌이익 / 광고·제작비 차감 후 공헌이익 / 브랜드 아카이브): ${retired.join(' | ')}`);
+check(/term:'광고·제작비 차감 후 공헌이익'/.test(readFileSync('lib/glossary.ts','utf8')),'glossary defines the after-cost contribution name used on screens');
+console.log(JSON.stringify({passed,now,directToastSuccess,notices:notices.length,undoNotices,brandLiterals:brandLiterals.length,rawDateNumber:rawDateNumber.length,retiredTerms:retired.length}));

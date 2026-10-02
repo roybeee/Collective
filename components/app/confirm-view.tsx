@@ -2,6 +2,7 @@
 // 확인 대화상자 본문(components/app/confirm-dialog.tsx가 처음 물을 때 내려받는다).
 import {AlertDialog,AlertDialogAction,AlertDialogCancel,AlertDialogContent,AlertDialogDescription,AlertDialogFooter,AlertDialogHeader,AlertDialogTitle} from '@/components/ui/alert-dialog';
 import {useId,useRef,useState} from 'react';
+import {Input} from '@/components/ui/input';
 import type {ConfirmAsk} from './confirm-dialog';
 export default function ConfirmView({ask,onAnswer}:{ask:ConfirmAsk;onAnswer:(ok:boolean,value?:string)=>void}){
  const [value,setValue]=useState(''),inputId=useId();
@@ -12,7 +13,7 @@ export default function ConfirmView({ask,onAnswer}:{ask:ConfirmAsk;onAnswer:(ok:
    <AlertDialogHeader>
     <AlertDialogTitle>{ask.title}</AlertDialogTitle>
     <AlertDialogDescription asChild><div className="confirm-lines">{ask.body&&<p>{ask.body}</p>}{ask.impact&&<p><b>영향</b> {ask.impact}</p>}{ask.undo&&<p><b>되돌리기</b> {ask.undo}</p>}</div></AlertDialogDescription>
-    {ask.input&&<label className="confirm-input" htmlFor={inputId}><span>{ask.input.label}</span><input id={inputId} type={ask.input.type||'text'} inputMode={ask.input.type==='number'?'numeric':undefined} placeholder={ask.input.placeholder} value={value} onChange={e=>setValue(e.target.value)} autoFocus/></label>}
+    {ask.input&&<label className="confirm-input" htmlFor={inputId}><span>{ask.input.label}</span><Input id={inputId} type={ask.input.type||'text'} inputMode={ask.input.type==='number'?'numeric':undefined} placeholder={ask.input.placeholder} value={value} onChange={e=>setValue(e.target.value)} autoFocus/></label>}
    </AlertDialogHeader>
    <AlertDialogFooter>
     <AlertDialogCancel onClick={()=>reply(false)}>취소</AlertDialogCancel>

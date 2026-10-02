@@ -94,7 +94,7 @@ check('a baseline overlapping the experiment window is rejected',(await sp('save
 check('a baseline does not collide with the experiment measurement',(await sp('save_measurement',{storeId,experimentId,data:{...baseline,periodStart:'2026-06-01',periodEnd:'2026-06-30'}})).status===200);
 let d=(await sd(storeId)).data,m=d.measurements.find(m=>m.id===mid),metrics=domain.namespace.storeMetrics(m);
 check('missing is null not zero',m.values.visits===null);
-check('contribution calculated with complete costs',metrics.find(x=>x.label==='비용 차감 잔액').value===45000);
+check('contribution calculated with complete costs',metrics.find(x=>x.label==='광고·제작비 차감 후 공헌이익').value===45000);
 check('unfinished cohort not used',metrics.find(x=>x.label==='재구매율').value===null);
 check('new customer ad cost correct',Math.abs(metrics.find(x=>x.label==='신규 고객당 광고비').value-10000/6)<0.01);
 check('stale measurement update denied',(await sp('save_measurement',{storeId,experimentId,id:mid,version:99,data:measurement})).status===409);

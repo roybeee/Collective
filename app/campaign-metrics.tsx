@@ -28,7 +28,7 @@ export function MetricSummary({metrics}:{metrics:readonly Metric[]}){
    {label:'기간',cell:m=>m.periodStart&&m.periodEnd?`${m.periodStart} ~ ${m.periodEnd}`:m.period,csv:m=>m.period},
    {label:'순매출',cell:m=>num(m.revenue),sort:m=>sortNumber(m.revenue),csv:m=>m.revenue??'',align:'right'},
    {label:'주문 수',cell:m=>m.orders===null?'자료 필요':`${m.orders.toLocaleString('ko-KR')}건`,sort:m=>sortNumber(m.orders),csv:m=>m.orders??'',align:'right'},
-   {label:'비용 차감 잔액',cell:m=>num(metricSummary(m).net),sort:m=>sortNumber(metricSummary(m).net),csv:m=>metricSummary(m).net??'',align:'right'},
+   {label:'광고·제작비 차감 후 공헌이익',cell:m=>num(metricSummary(m).net),sort:m=>sortNumber(metricSummary(m).net),csv:m=>metricSummary(m).net??'',align:'right'},
    {label:'매체비 대비 매출',cell:m=>{const r=metricSummary(m).roas;return r===null?'자료 필요':r.toFixed(2)+'배'},sort:m=>sortNumber(metricSummary(m).roas),csv:m=>metricSummary(m).roas??'',align:'right'},
   ]}/>
   <p className="subtle-note">{balanceNote}</p>
@@ -45,7 +45,7 @@ export function MetricCard({metric:m,onSaved,compact=false,all=[]}:{metric:Metri
  const summary=metricSummary(m),[editing,setEditing]=useState(false),prev=m.schemaVersion===2?previousMetric(m,all):null;
  return <div className="metric-card">
   <div className="section-heading"><h3><MetaLine items={periodItems(m)}/></h3><span className="mode-pill">{m.schemaVersion===2?'출처·범위 기록':'기존 기록(조건 미확인)'}</span></div>
-  <div className="metric-grid">{[['순매출',amount(m.revenue)],['기록 비용 차감 잔액',amount(summary.net)],m.schemaVersion===2?['직전 기간 대비 순매출',changeText(m,prev)]:['기준 대비 관찰 변화',amount(summary.observedChange)],['매체비 대비 매출',summary.roas===null?'자료 필요':summary.roas.toFixed(2)+'배']].map(([label,value])=><div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
+  <div className="metric-grid">{[['순매출',amount(m.revenue)],['광고·제작비 차감 후 공헌이익',amount(summary.net)],m.schemaVersion===2?['직전 기간 대비 순매출',changeText(m,prev)]:['기준 대비 관찰 변화',amount(summary.observedChange)],['매체비 대비 매출',summary.roas===null?'자료 필요':summary.roas.toFixed(2)+'배']].map(([label,value])=><div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
   {!compact&&<p className="subtle-note">{balanceNote}</p>}
   {m.source&&<p>출처: {m.source}<br/>집계 정의: {m.definition}</p>}{m.notes&&<p className="metric-note">{m.notes}</p>}
   {onSaved&&<><Button variant="outline" size="sm" onClick={()=>setEditing(true)}>기록 수정</Button><MetricDialog open={editing} initial={m} campaigns={[{id:m.campaignId,title:'현재 캠페인'}]} onClose={()=>setEditing(false)} onSaved={onSaved}/></>}

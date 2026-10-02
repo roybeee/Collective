@@ -13,7 +13,7 @@ export function profitSummary(x:{netRevenue:number|null;contributionBeforeMarket
  const cash=x.cash.filter(c=>inPeriod(c.at)),sum=(rows:CashItem[],k:'amount'|'fee')=>rows.some(r=>r[k]===null)?null:rows.reduce((n,r)=>n+(r[k] as number),0);
  const received=sum(cash.filter(c=>c.kind==='received'),'amount'),expected=sum(cash.filter(c=>c.kind==='expected'),'amount');
  const reasons=[
-  ...(x.contributionBeforeMarketing===null?['주문 원가가 미확인이라 마케팅 전 공헌이익을 계산할 수 없습니다.']:[]),
+  ...(x.contributionBeforeMarketing===null?['주문 원가가 미확인이라 광고·제작비 차감 전 공헌이익을 계산할 수 없습니다.']:[]),
   ...(unknownSpend.length?[`대사되지 않은 마케팅 지출 ${unknownSpend.length}건(${[...new Set(unknownSpend.map(s=>s.source))].join(', ')})이 있어 마케팅 후 이익을 확정하지 않습니다.`]:[]),
   ...(received===null&&cash.some(c=>c.kind==='received')?['금액 미확인 입금 증빙이 있습니다.']:[]),
   '순현금은 원가 구매·재고 매입 현금이 연결되지 않아 계산하지 않습니다.',

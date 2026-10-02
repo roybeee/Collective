@@ -40,7 +40,7 @@ export function dashboardMetrics(o?:ChannelObservation){
  {id:'ctr',label:'링크 클릭률',value:rate('clicks','impressions'),unit:'%',unavailable:unavailable('clicks','impressions'),formula:'동일 범위 링크 클릭 ÷ 노출 × 100. YouTube 썸네일 CTR과 다른 지표입니다.'},
  {id:'conversion',label:'핵심 행동 세션율',value:rate('keyEventSessions','sessions'),unit:'%',unavailable:unavailable('keyEventSessions','sessions'),formula:'핵심 행동이 발생한 세션 ÷ 전체 세션 × 100. 이벤트 횟수가 아닙니다.'},
  {id:'revenue',label:'기록된 매출',value:value('revenue'),unit:'원',formula:'선택 기간의 기록 매출. 캠페인 순증 매출을 뜻하지 않습니다.'},
- {id:'contribution',label:'기록 비용 차감 잔액',value:contribution,unit:'원',formula:'매출 − 변동비 − 광고비 − 제작비. 제외 고정비가 있으면 영업이익이 아닙니다.'}];
+ {id:'contribution',label:'광고·제작비 차감 후 공헌이익',value:contribution,unit:'원',formula:'매출 − 변동비 − 광고비 − 제작비. 제외 고정비가 있으면 영업이익이 아닙니다.'}];
 }
 export function comparablePrevious(current:ChannelObservation,all:ChannelObservation[]){
  if(current.method==='public')return undefined;

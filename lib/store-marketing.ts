@@ -42,7 +42,7 @@ export function storeMetrics(m?:StoreMeasurement){
  const rate=(a:StoreMetricKey,b:StoreMetricKey)=>n(a)!==null&&n(b)!==null&&n(b)!>0?n(a)!/n(b)!*100:null;
  const complete=(['revenue','variableCosts','adSpend','productionCost'] as const).every(k=>n(k)!==null);
  return [{label:'확인된 구매',value:n('orders'),unit:'건',definition:'POS·결제 자료로 확인한 주문'},
- {label:'비용 차감 잔액',value:complete?n('revenue')!-n('variableCosts')!-n('adSpend')!-n('productionCost')!:null,unit:'원',definition:'매출 − 변동비 − 광고비 − 제작비(고정비 차감 전)'},
+ {label:'광고·제작비 차감 후 공헌이익',value:complete?n('revenue')!-n('variableCosts')!-n('adSpend')!-n('productionCost')!:null,unit:'원',definition:'매출 − 변동비 − 광고비 − 제작비(고정비 차감 전)'},
  {label:'신규 고객당 광고비',value:n('adSpend')!==null&&n('newCustomers')!==null&&n('newCustomers')!>0?n('adSpend')!/n('newCustomers')!:null,unit:'원',definition:'광고비 ÷ 확인된 신규 고객(전체 고객 획득 비용과 구분)'},
  {label:'쿠폰 사용률',value:rate('couponUsed','couponReceived'),unit:'%',definition:'같은 쿠폰·고객군의 사용 고객 ÷ 수령 고객'},
  {label:'재구매율',value:m?.cohortMatured?rate('repeatCustomers','eligibleCustomers'):null,unit:'%',definition:'관찰 기간 종료 고객 중 재구매 고객 비율'}];
