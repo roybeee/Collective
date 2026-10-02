@@ -24,3 +24,5 @@ export function shortId(id:string){return id.length<=10?id:`…${id.slice(-6)}`}
 /** datetime-local 입력 값(KST 벽시계) ↔ ISO. 브라우저 시간대와 무관하게 서울 시간으로 해석한다. */
 export function toLocalInput(value:unknown){const d=valid(value);if(!d)return '';const p=parts(d);return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`}
 export function fromLocalInput(value:string){if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value))return '';return new Date(`${value}:00+09:00`).toISOString()}
+/** 글자만 쓰는 자리(CSV·aria-label·title·선택지·알림)에서 여러 사실을 잇는다. 빈 값은 빼고 쉼표로 잇는다(가운뎃점 연결 대신, UX-PLAN-3 7차원). */
+export function metaText(items:readonly unknown[]){return items.filter(x=>x!==null&&x!==undefined&&x!==false&&x!=='').map(String).join(', ')}

@@ -259,7 +259,7 @@ body{font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;backgrou
 .campaign-page{width:auto!important;max-width:none;overflow:visible!important;background:transparent}
 .campaign-page .crumbs{padding-right:0}.campaign-page .sheet-eyebrow{padding-right:0}
 .campaign-page-header{padding:0 0 18px}
-.campaign-page-header h1{font-size:26px;font-weight:600;line-height:1.4;outline:none}
+.campaign-page-header h1{font-size:26px;font-weight:600;line-height:1.4;outline:none}.page-heading h1{outline:none}
 .campaign-page-lead{font-size:14px;color:var(--green-44);margin-top:8px}
 .campaign-page .sheet-actionbar,.campaign-page .campaign-tabs{padding-left:0;padding-right:0}
 @media(max-width:767px){.campaign-page-header h1{font-size:22px}}
@@ -325,3 +325,5 @@ details:not(.lazy-panel):not(.all-suggestions)>summary{list-style:none;display:f
 .num-hint{display:block;font-size:12px;line-height:1.4;color:var(--green-44);margin-top:2px;font-variant-numeric:tabular-nums}.num-hint::after{content:attr(data-hint)}
 .metric-summary{display:flex;flex-direction:column;gap:16px;margin-bottom:24px}
 .stat strong{justify-content:flex-start;align-items:baseline}.stat strong .stat-unit{margin-left:4px}.stat strong>svg{margin-left:auto;align-self:center}
+/* 공용 메타 한 줄(components/app/meta-line.tsx): 가운뎃점 대신 항목 사이 옅은 세로선. 쉼표(.meta-sep)는 글자 크기 0. 세로선은 배경으로 그린다(::before inline-block이면 접근 이름에 빈칸이 낀다). */
+.meta-line{display:inline;overflow-wrap:anywhere}.meta-sep{font-size:0!important}.meta-line>span+span{padding-left:1.1em;background:linear-gradient(color-mix(in srgb,currentColor 35%,transparent),color-mix(in srgb,currentColor 35%,transparent)) .55em 55%/1px .85em no-repeat}

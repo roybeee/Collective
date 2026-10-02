@@ -18,7 +18,6 @@ export const measure=()=>({
  hexColors:new Set(css.match(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/g)||[]).size,
  // 화면 폭 중단점은 @media 조건의 폭만 센다(요소의 min-width 같은 크기 지정은 중단점이 아니다).
  mediaWidths:new Set((css.match(/@media[^{]*?\((?:max|min)-width: ?\d+px\)/g)||[]).map(x=>x.match(/\d+/)[0])).size,
- middleDotJoins:count(app,/ · /g),
  // 빈 목록 안내는 공용 EmptyLine(다음 행동 버튼)으로 쓴다. 다음 행동 없는 '…없습니다.' 문단은 늘지 않는다.
  bareEmptyLines:count(app,/<p(?: className=[^>]*)?>[^<{]{0,60}없습니다\.<\/p>/g),
 });
@@ -30,6 +29,8 @@ const longNotes=[...app.matchAll(/<Note[^>]*>([^<{]+)<\/Note>/g)].map(m=>m[1].tr
 check(longNotes.length===0,`Note first sentence over 60 chars: ${longNotes.join(' | ')}`);
 // 패널 머리 문단(제목 바로 뒤 <p>)은 60자 이하로 쓴다. 다른 레인 소유 화면(가맹·품질 콘솔·품질 운영·인터뷰·Reflector·사용량·고객 보고서)은 세지 않는다. 더 길면 첫 문장만 보이는 Note를 쓴다(UX-PLAN-3 4차원 4점 조건 '패널 첫 문단 60자').
 const ownA=readdirSync('app').filter(n=>n.endsWith('.tsx')&&!/^(franchise-|online-grading|quality-|brand-interview|reflector|usage-panel|customer-report)/.test(n)).map(n=>readFileSync('app/'+n,'utf8')).join('\n');
+// 가운뎃점(' · ')으로 여러 사실을 이은 한 줄은 공용 MetaLine(항목 나눔)이나 metaText(쉼표)로 쓴다(UX-PLAN-3 7차원 4점 조건 ≤80). 다른 레인 소유 화면은 세지 않는다.
+check(count(ownA,/ · /g)<=budget.static.middleDotJoins,`middleDotJoins ${count(ownA,/ · /g)} > budget ${budget.static.middleDotJoins} (MetaLine·metaText를 쓰세요)`);
 const longLeads=[...ownA.matchAll(/<h[23][^>]*>[^<{]*<\/h[23]>\s*<p(?: className=[^>]*)?>([^<{]+)<\/p>/g)].map(m=>m[1].trim()).filter(t=>t.length>60);
 check(longLeads.length===0,`header paragraph over 60 chars: ${longLeads.join(' | ')}`);
 // 저장 동사는 '저장'(서버에 쓰기)과 '기록'(관측·확인 사실 남기기) 두 가지만 버튼에 쓴다(UX-PLAN-3 4차원 4점 조건). 대화상자를 여는 버튼은 '새 ○○', 폼에 칸을 늘리는 버튼은 '○○ 하나 더'다. '사전등록'은 실험 용어라 예외다.
@@ -54,6 +55,20 @@ check(negativeSafety<=budget.static.negativeSafety,`'하지 않습니다' ${nega
 // 한국어 화면에 영문 대문자 머리말(예: 'CAMPAIGN OBJECTIVE')을 두지 않는다(UX-PLAN-3 4차원, 평가 7회차). 브랜드 이름 COLLECTIVE와 형식 이름(JSON)은 예외다.
 const englishEyebrows=[...ownAScreens.matchAll(/>\s*([A-Z][A-Z'&]+(?:\s*[\/·]?\s*[A-Z][A-Z'&]+)*)\s*</g)].map(m=>m[1]).filter(t=>/[A-Z]{2,}/.test(t)&&!/^(COLLECTIVE|JSON|CSV|PNG|POS|ROAS|ROI|CTA|AI|URL|UTM|QR|SKU|HERMES|KST|ID|API|CS|MD|OFD|ODA)$/.test(t)&&t.length>=4);
 check(englishEyebrows.length===0,`English eyebrows on Korean screens: ${englishEyebrows.join(' | ')}`);
+// 성공 알림은 한 형식으로만 낸다(UX-PLAN-3 ⑤): lib/ui/notify.ts notifySaved — 제목은 '…습니다.' 한 문장, 덧붙임은 description, 되돌릴 수 있으면 '되돌리기'. 레인 A 화면은 toast.success를 직접 부르지 않는다.
+const directToastSuccess=(ownAScreens.match(/\btoast\.success\(/g)||[]).length;
+check(directToastSuccess<=budget.static.directToastSuccess,`direct toast.success in lane A screens ${directToastSuccess} > ${budget.static.directToastSuccess} (lib/ui/notify.ts notifySaved를 쓰세요)`);
+// notifySaved 첫 인자의 글자 그대로 문구(조건식 양쪽·템플릿 끝 포함)는 모두 '습니다.'로 끝난다. 변수로 넘기는 문구는 타입(Saved)이 컴파일 때 막는다.
+const notices=[];let undoNotices=0;
+for(const n of readdirSync('app').filter(n=>n.endsWith('.tsx')&&!/^(franchise-|online-grading|quality-|brand-interview|reflector|usage-|customer-report)/.test(n))){
+ const sf=ts.createSourceFile(n,readFileSync('app/'+n,'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+ const leaves=e=>ts.isParenthesizedExpression(e)?leaves(e.expression):ts.isConditionalExpression(e)?[...leaves(e.whenTrue),...leaves(e.whenFalse)]:ts.isStringLiteral(e)||ts.isNoSubstitutionTemplateLiteral(e)?[e.text]:ts.isTemplateExpression(e)?[e.templateSpans.at(-1).literal.text]:[];
+ const visit=x=>{if(ts.isCallExpression(x)&&ts.isIdentifier(x.expression)&&x.expression.text==='notifySaved'){notices.push(...leaves(x.arguments[0]).map(t=>({n,t})));const o=x.arguments[1];if(o&&ts.isObjectLiteralExpression(o)&&o.properties.some(p=>p.name?.getText()==='undo'))undoNotices++}ts.forEachChild(x,visit)};visit(sf);
+}
+const nonSentence=notices.filter(x=>!x.t.endsWith('습니다.'));
+check(notices.length>0&&nonSentence.length===0,`success notices must be one sentence ending in '습니다.': ${nonSentence.map(x=>x.n+': '+x.t).join(' | ')}`);
+// 되돌리기 알림 수는 줄지 않는다(바닥 래칫). 캠페인 보관·보관 해제·상시 지시 저장(2곳)·자료 일괄 검토·가맹 모집 스위치.
+check(undoNotices>=budget.floors.undoNotices,`undo notices ${undoNotices} < floor ${budget.floors.undoNotices}`);
 // 확인 대화상자는 무엇·영향·되돌리기를 모두 적는다(UX-PLAN-3 Q2·11차원 4점 조건). 타입이 영향·되돌림을 필수로 요구한다.
 check(/impact:string;undo:string;/.test(readFileSync('components/app/confirm-dialog.tsx','utf8')),'ConfirmAsk must require impact and undo');
 // 홈 첫 로딩 경계: 화면·대화상자는 lazy로만 불러온다.
@@ -66,4 +81,4 @@ const pureLib=readFileSync('vite.config.ts','utf8').match(/PURE_CLIENT_LIB = [^\
 check(pureLib.length>0,'vite.config.ts PURE_CLIENT_LIB list is readable');
 const declarationKinds=new Set([ts.SyntaxKind.ImportDeclaration,ts.SyntaxKind.ExportDeclaration,ts.SyntaxKind.TypeAliasDeclaration,ts.SyntaxKind.InterfaceDeclaration,ts.SyntaxKind.FunctionDeclaration,ts.SyntaxKind.VariableStatement]);
 for(const m of pureLib){const f=`lib/${m}.ts`,sf=ts.createSourceFile(f,readFileSync(f,'utf8'),ts.ScriptTarget.Latest,true);const bad=sf.statements.filter(x=>!declarationKinds.has(x.kind)).map(x=>x.getText().slice(0,40));check(bad.length===0,`${f} must hold only declarations at top level: ${bad.join(' | ')}`)}
-console.log(JSON.stringify({passed,now}));
+console.log(JSON.stringify({passed,now,directToastSuccess,notices:notices.length,undoNotices}));

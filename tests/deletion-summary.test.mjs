@@ -126,6 +126,6 @@ has('complete deletion re-checks the extra counts',dialog,'(purging?recheckPurge
 has('the dialog shows the archive line',dialog,'{summary.archived&&<p>{summary.archived}</p>}');
 has('the summary follows the purge choice',dialog,'deletionSummary(preview,{purge:purging})');
 has('the dialog description changes for complete deletion',dialog,'바이럴 출처 학습 규칙·이 캠페인의 사람 판정 로그·이전에 보관한 비식별 평가 신호도 지우고');
-has('the success message follows what the server did',dialog,"toast.success(done.purgedLearning?'캠페인과 학습 자산을 완전히 삭제했습니다.':'캠페인을 삭제했습니다.')");
+has('the success message follows what the server did',dialog,"notifySaved(done.purgedLearning?'캠페인과 학습 자산을 완전히 삭제했습니다.':'캠페인을 삭제했습니다.')");
 
 console.log(JSON.stringify({passed},null,2));

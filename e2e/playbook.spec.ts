@@ -37,7 +37,7 @@ test('소유자는 사람 판정 2건을 인용해 운영자 선호 규칙을 �
  await expect(dialog).toBeHidden();
 
  const card=section.locator('.learning-rule').filter({hasText:'첫 문장은 스무 자 안쪽으로 쓴다.'});
- await expect(card.getByText('초안 · 승인 대기')).toBeVisible();
+ await expect(card.getByText('초안(승인 대기)')).toBeVisible();
  await card.getByRole('button',{name:'승인',exact:true}).click();
  await expect(card.getByText('적용 중',{exact:true})).toBeVisible();
  await expect(card.getByText('교정 판정 인용 2건',{exact:false})).toBeVisible();

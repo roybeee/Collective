@@ -32,7 +32,7 @@ test('소유자는 블라인드 항목에 기준별 점수를 매기고 run·var
  const sheet=page.getByRole('dialog',{name:'품질 콘솔'});
  await sheet.getByRole('button',{name:'라벨 불러오기',exact:true}).click();
  const article=sheet.getByRole('article',{name:'라벨 항목'});
- await expect(article.getByText('항목 L0a1b2c3d4e · 인사이트')).toBeVisible();
+ await expect(article.getByText('항목 L0a1b2c3d4e(인사이트)')).toBeVisible();
  await expect(article.getByText('포장 고객은 저녁 시간대가 많다',{exact:false})).toBeVisible();
  await expect(sheet.getByText('라벨 3/5건',{exact:false})).toBeVisible();
  const html=await sheet.innerHTML();
@@ -44,7 +44,7 @@ test('소유자는 블라인드 항목에 기준별 점수를 매기고 run·var
  await expect(save).toBeDisabled();
  await article.getByRole('radiogroup',{name:'인과 절제 점수'}).getByLabel('해당없음').check();
  await save.click();
- await expect(sheet.getByRole('article',{name:'라벨 항목'}).getByText('항목 L9f8e7d6c5b · 인사이트')).toBeVisible();
+ await expect(sheet.getByRole('article',{name:'라벨 항목'}).getByText('항목 L9f8e7d6c5b(인사이트)')).toBeVisible();
  expect(posted).toEqual([{action:'save_label',itemId:'L0a1b2c3d4e',use:'measure',scores:{evidence_linkage:4,causal_overreach:'na'}}]);
  expect(JSON.stringify(posted)).not.toMatch(/SECRET|candidate|runId|caseId|variant/);
 

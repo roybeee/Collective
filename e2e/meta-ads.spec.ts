@@ -54,7 +54,7 @@ test('Meta 준비 계획 저장·재조회와 집행 차단',async({browser},inf
  await expect(insights).toContainText('광고비 1,200.25원');
  await insights.getByRole('button',{name:'확인한 성과 저장',exact:true}).click();
  await expect(insights.getByRole('status')).toContainText('성과를 저장했습니다');
- await expect(insights).toContainText('수동 입력 · Meta 검증 없음');
+ await expect(insights).toContainText('수동 입력(Meta 검증 없음)');
  await expect(insights.getByRole('cell',{name:'1,200.25원',exact:true})).toBeVisible();
  await insights.getByRole('button',{name:'새로고침',exact:true}).click();
  await expect(insights.getByRole('cell',{name:'1,200.25원',exact:true})).toBeVisible();

@@ -26,9 +26,9 @@ test('크리에이터 협업 계획·단계 영수증·광고 표시 승인 게�
   const id=(await panel.locator('legend').filter({hasText:/^협업 collab-/}).innerText()).replace('협업 ','').trim();
   const now=new Date(Date.now()-60000),local=new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,16);
   const stage=async(s:string,extra?:()=>Promise<void>)=>{await panel.getByRole('combobox',{name:'다음 단계',exact:true}).selectOption(s);await panel.getByLabel('발생 시각',{exact:true}).fill(local);await panel.getByRole('textbox',{name:'증빙 ID',exact:true}).fill('ev-'+s);if(extra)await extra();await panel.getByRole('button',{name:`${id} 단계 기록`,exact:true}).click();};
-  await stage('agreed');await expect(panel).toContainText(`${id} · 합의`);await stage('delivered');await expect(panel).toContainText(`${id} · 콘텐츠 납품`);
+  await stage('agreed');await expect(panel).toContainText(`${id}, 합의`);await stage('delivered');await expect(panel).toContainText(`${id}, 콘텐츠 납품`);
   await stage('approved');await expect(panel.getByRole('alert')).toContainText('광고·협찬 표시');
-  await panel.getByLabel('광고·협찬 표시 확인').check();await panel.getByLabel('가짜 참여·후기 없음 확인').check();await panel.getByRole('button',{name:`${id} 단계 기록`,exact:true}).click();await expect(panel).toContainText(`${id} · 브랜드 승인`);
+  await panel.getByLabel('광고·협찬 표시 확인').check();await panel.getByLabel('가짜 참여·후기 없음 확인').check();await panel.getByRole('button',{name:`${id} 단계 기록`,exact:true}).click();await expect(panel).toContainText(`${id}, 브랜드 승인`);
   await expect(panel).toContainText('인과 효과: 미측정');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
  }finally{await context.close()}

@@ -64,9 +64,9 @@ test('성장 판매 근거·니즈 연결·불완전 미션·충돌 입력 보�
   await expect(panel.getByRole('alert')).toContainText('입력은 보존했습니다.');
   await expect(panel.getByRole('textbox',{name:'관측 요약',exact:true})).toHaveValue('현재 창에서 검토한 근거 설명');
   await panel.getByRole('button',{name:'새로고침',exact:true}).click();
-  await expect(panel.getByRole('button',{name:'현재 입력 유지 · 최신 버전 기준 사용',exact:true})).toBeVisible();
+  await expect(panel.getByRole('button',{name:'현재 입력을 유지하고 최신 버전 기준 사용',exact:true})).toBeVisible();
   await expect(panel.getByRole('textbox',{name:'관측 요약',exact:true})).toHaveValue('현재 창에서 검토한 근거 설명');
-  await panel.getByRole('button',{name:'현재 입력 유지 · 최신 버전 기준 사용',exact:true}).click();
+  await panel.getByRole('button',{name:'현재 입력을 유지하고 최신 버전 기준 사용',exact:true}).click();
   await panel.getByRole('button',{name:'시장 근거 저장',exact:true}).click();
   await expect(panel.getByRole('status')).toHaveText('서버에 저장했습니다.');
   view=await read();
@@ -145,10 +145,10 @@ test('판매 위임 서명·재조회·철회와 사업 지표의 미확인 구�
   await page.reload();panel=await openGrowth(page,title);
   await panel.locator('summary').filter({hasText:'판매 위임·예산 한도'}).click();
   scope=panel.getByRole('region',{name:'판매 위임과 예산 한도'});
-  await scope.getByRole('button',{name:'test-account · 유효 · v1',exact:true}).click();
+  await scope.getByRole('button',{name:'test-account, 유효, v1',exact:true}).click();
   await expect(scope.getByLabel('기간 총한도 (원)',{exact:true})).toHaveValue('1000');
   await scope.getByRole('button',{name:'선택 위임 철회',exact:true}).click();
-  await expect(scope.getByRole('button',{name:'test-account · 철회 · v2',exact:true})).toBeVisible();
+  await expect(scope.getByRole('button',{name:'test-account, 철회, v2',exact:true})).toBeVisible();
   expect(await scope.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
   await scope.getByRole('heading',{name:'판매 위임과 예산 한도'}).scrollIntoViewIfNeeded();
   await page.screenshot({path:`e2e/artifacts/growth-authority-${info.project.name}.png`});

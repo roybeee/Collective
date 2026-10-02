@@ -1,7 +1,9 @@
 'use client';
 // 명령 팔레트 대화상자 본문. cmdk와 대화상자 부품은 처음 열 때만 내려받는다(app/command-palette.tsx, UX-PLAN-3 Q7).
-import {CommandDialog,CommandEmpty,CommandGroup,CommandInput,CommandItem,CommandList,CommandShortcut} from '@/components/ui/command';
-import {useEffect,useState} from 'react';
+import {Command,CommandEmpty,CommandGroup,CommandInput,CommandItem,CommandList,CommandShortcut} from '@/components/ui/command';
+import {Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle} from '@/components/ui/dialog';
+import {useEffect,useRef,useState} from 'react';
+import {focusMainHeading} from '@/lib/ui/return-focus';
 import type {RecordHit} from '@/lib/record-search-server';
 import type {Campaign} from '@/lib/agency';
 import {glossary} from '@/lib/glossary';
@@ -15,8 +17,11 @@ export default function CommandPaletteDialog({open,setOpen,help=false,views,camp
  useEffect(()=>{const q=query.trim();if(!canSearch||q.length<2)return;const c=new AbortController(),t=setTimeout(()=>{fetch(`/api/search?q=${encodeURIComponent(q)}`,{cache:'no-store',signal:c.signal}).then(r=>r.ok?r.json() as Promise<{hits:RecordHit[]}>:{hits:[]}).then(d=>{if(!c.signal.aborted)setHits(Array.isArray(d.hits)?d.hits:[])}).catch(()=>{})},200);return()=>{clearTimeout(t);c.abort()}},[query,canSearch]);
  // 닫을 때 검색어를 비운다. 다시 열면(특히 ? 안내) 지난 검색어가 목록을 가리지 않는다.
  const close=(v:boolean)=>{setOpen(v);if(!v)setQuery('');};
- const run=(fn:()=>void)=>{close(false);fn();};
- return <CommandDialog open={open} onOpenChange={close} title="바로 가기" description="화면·캠페인·브랜드·작업물·성장 기록 이름이나 용어를 입력하세요. 단축키: / 또는 Ctrl·⌘+K 열기, ? 안내, g 다음 글자로 화면 이동.">
+ // 항목으로 화면을 옮겼으면 닫힐 때 초점을 연 자리(문서 처음일 수 있음) 대신 새 화면 제목으로 둔다(UX-PLAN-3 ⑨).
+ const moved=useRef(false);
+ const run=(fn:()=>void)=>{moved.current=true;close(false);fn();};
+ return <Dialog open={open} onOpenChange={close}><DialogHeader className="sr-only"><DialogTitle>바로 가기</DialogTitle><DialogDescription>화면·캠페인·브랜드·작업물·성장 기록 이름이나 용어를 입력하세요. 단축키: / 또는 Ctrl·⌘+K 열기, ? 안내, g 다음 글자로 화면 이동.</DialogDescription></DialogHeader>
+ <DialogContent className="overflow-hidden p-0" onCloseAutoFocus={e=>{if(!moved.current)return;moved.current=false;e.preventDefault();focusMainHeading()}}><Command className="**:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]]:px-2 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5">
   <CommandInput placeholder="화면·캠페인·기록 검색" value={query} onValueChange={setQuery}/>
   <CommandList>
    <CommandEmpty>찾는 항목이 없습니다.</CommandEmpty>
@@ -47,5 +52,5 @@ export default function CommandPaletteDialog({open,setOpen,help=false,views,camp
     {glossary.map(g=><CommandItem key={g.term} value={`용어 ${g.term} ${g.definition}`} onSelect={()=>{}}><span className="glossary-item"><b>{g.term}</b><small>{g.definition}</small></span></CommandItem>)}
    </CommandGroup>}
   </CommandList>
- </CommandDialog>;
+ </Command></DialogContent></Dialog>;
 }

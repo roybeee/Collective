@@ -8,7 +8,7 @@ import {SourceTextModule,SyntheticModule,createContext} from 'node:vm';
 import ts from 'typescript';
 
 const context=createContext({console,URL,URLSearchParams,Date,Intl}),cache=new Map();
-const real=new Set(['@/lib/store-attribution','@/lib/execution','@/lib/nav-state']);
+const real=new Set(['@/lib/store-attribution','@/lib/execution','@/lib/nav-state','@/lib/format']);
 const transpile=(file)=>ts.transpileModule(readFileSync(file,'utf8'),{fileName:file,compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 // 모듈이 가져가는 이름. 대역 모듈은 이 이름만 내보낸다(값은 쓰이지 않는다).
 function importedNames(code){
@@ -74,11 +74,11 @@ const campaigns=[{id:'c1',title:'오픈 주 캠페인'},{id:'c2',title:'주문 �
 const creatives=[{id:'cr-titled',campaignId:'c1',title:'오픈 메뉴 안내 v1'},{id:'cr-untitled',campaignId:'c1',caption:'대표 메뉴: 떡볶이\n\n주문할 때 …',createdAt:'2026-09-23T05:05:00.000Z'},{id:'cr-not-ordered',campaignId:'c1',title:'주문 없는 소재'}];
 const options=plain(ledgerFilterOptions(orders,campaigns,creatives));
 check('campaign options list the store campaigns first, then campaigns left only on orders',()=>assert.deepEqual(options.campaigns,[
- {value:'campaign:c1',label:'오픈 주 캠페인'},{value:'campaign:c2',label:'주문 없는 캠페인'},{value:'campaign:c-gone',label:'기존 캠페인 · c-gone'}]));
+ {value:'campaign:c1',label:'오픈 주 캠페인'},{value:'campaign:c2',label:'주문 없는 캠페인'},{value:'campaign:c-gone',label:'기존 캠페인(c-gone)'}]));
 check('creative options list only creatives on the ledger orders, named with creativeLabel and their campaign',()=>assert.deepEqual(options.creatives,[
- {value:'creative:cr-titled',label:'오픈 메뉴 안내 v1 · 오픈 주 캠페인'},
+ {value:'creative:cr-titled',label:'오픈 메뉴 안내 v1, 오픈 주 캠페인'},
  {value:'creative:cr-missing-record',label:'소재 · cr-missi'},
- {value:'creative:cr-untitled',label:'소재 · 9월 23일 14:05 생성 · 대표 메뉴: 떡볶이 · 오픈 주 캠페인'}]));
+ {value:'creative:cr-untitled',label:'소재 · 9월 23일 14:05 생성 · 대표 메뉴: 떡볶이, 오픈 주 캠페인'}]));
 check('no orders and no campaigns give no options',()=>assert.deepEqual(plain(ledgerFilterOptions([],[],[])),{campaigns:[],creatives:[]}));
 const shown=filter=>orders.filter(o=>ledgerFilterMatch(o,filter)).map(o=>o.id);
 check('all and unknown filters keep their meaning',()=>{assert.deepEqual(shown('all'),['o1','o2','o3','o4','o5','o6']);assert.deepEqual(shown('unknown'),['o3'])});

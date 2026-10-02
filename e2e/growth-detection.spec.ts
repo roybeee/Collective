@@ -14,7 +14,7 @@ test('자사 장부 감지·재실행 멱등·담당 지정',async({browser},inf
   await panel.getByRole('button',{name:'지금 감지',exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'지금 감지했습니다'})).toBeVisible();await expect(panel).toContainText('최근 7일 유료 주문 증가');
   await panel.getByRole('button',{name:'지금 감지',exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'새 신호 0건'})).toBeVisible();
   await panel.getByRole('button',{name:'최근 7일 유료 주문 증가 검토',exact:true}).click();await panel.getByRole('textbox',{name:'담당',exact:true}).fill('판매 담당');await panel.getByRole('textbox',{name:'다음 행동',exact:true}).fill('재고와 오퍼 수량 확인');await panel.getByLabel('검토 기한',{exact:true}).fill('2099-01-01');
-  await panel.getByRole('button',{name:'담당 지정',exact:true}).click();await expect(panel).toContainText('담당 판매 담당 · 재고와 오퍼 수량 확인 · 기한 2099-01-01');
+  await panel.getByRole('button',{name:'담당 지정',exact:true}).click();await expect(panel).toContainText('담당 판매 담당, 재고와 오퍼 수량 확인, 기한 2099-01-01');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
  }finally{await context.close()}
 });

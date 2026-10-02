@@ -5,7 +5,6 @@ import {Note} from '@/components/app/note';
 import {useEffect,useState,type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 import {RefreshCw,Save} from 'lucide-react';
-import {toast} from 'sonner';
 import {Button} from '@/components/ui/button';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import {Input} from '@/components/ui/input';
@@ -14,7 +13,9 @@ import type {CampaignAttribution} from '@/lib/campaign-attribution';
 import {koreaToday} from '@/lib/store-operations';
 import {addDays} from '@/lib/store-attribution';
 import {plainCopy} from '@/lib/ui-copy';
+import {MetaLine} from '@/components/app/meta-line';
 import {NOT_INCREMENTAL,unitRows,weekLabel,won,type UnitRow} from '@/lib/store-operations-view';
+import {notifySaved} from '@/lib/ui/notify';
 
 // 캠페인 상세 '성과' 탭(panels.tsx) 끝에 붙인다. 탭은 열릴 때만 있으므로 DOM 변화를 보고 자리를 다시 찾는다(online-grading.tsx OutputsSlot과 같은 방식).
 function ResultsSlot({children}:{children:ReactNode}){
@@ -65,7 +66,7 @@ function AttributionCard({campaignId,onSaved}:{campaignId:string;onSaved:()=>Pro
  // 스냅샷은 끝난 날(어제까지)만 저장한다(서버도 오늘 끝나는 기간은 400). 종료일이 오늘이면 같은 시작일로 어제까지 다시 조회하게 한다.
  const yesterday=addDays(koreaToday(),-1),closed=!!report&&report.period.to<=yesterday,untilYesterday=()=>{if(!report)return;setLoading(true);setPeriod({from:report.period.from<yesterday?report.period.from:yesterday,to:yesterday})};
  return <section className="campaign-attribution" aria-label="주문 장부 귀속">
-  <div className="section-heading"><div><h2>주문 장부 귀속 · 자동 집계</h2><Note className="">점포 주문 장부에서 이 캠페인에 귀속된 주문을 주 단위(한국시간 월~일)로 합칩니다. 저장한 성과가 아니라 지금 장부 기준입니다.</Note></div>{ready&&(closed?<Button variant="outline" onClick={()=>setConfirming(true)}><Save/>스냅샷으로 저장</Button>:<Button variant="outline" onClick={untilYesterday}><RefreshCw/>어제까지로 조회</Button>)}</div>
+  <div className="section-heading"><div><h2>주문 장부 귀속(자동 집계)</h2><Note className="">점포 주문 장부에서 이 캠페인에 귀속된 주문을 주 단위(한국시간 월~일)로 합칩니다. 저장한 성과가 아니라 지금 장부 기준입니다.</Note></div>{ready&&(closed?<Button variant="outline" onClick={()=>setConfirming(true)}><Save/>스냅샷으로 저장</Button>:<Button variant="outline" onClick={untilYesterday}><RefreshCw/>어제까지로 조회</Button>)}</div>
   <p className="notice">{plainCopy(NOT_INCREMENTAL)}</p>
   {ready&&!closed&&<p className="notice">{"오늘 주문은 아직 확정 전이라 스냅샷은 어제까지의 기간으로만 저장합니다. '어제까지로 조회'로 기간을 바꾼 뒤 저장하세요."}</p>}
   <form className="ledger-period" aria-label="귀속 집계 기간" onSubmit={e=>{e.preventDefault();setLoading(true);setPeriod({...range})}}>
@@ -83,10 +84,10 @@ function AttributionBody({report:r}:{report:CampaignAttribution}){
  if(!t.records)return <><p className="notice">{r.period.from} ~ {r.period.to}에 이 캠페인에 귀속된 주문이 없습니다. 점포 마케팅 → 지점 → 주문 장부에서 추적 코드나 유입 확인 근거로 주문을 이 캠페인에 연결하면 여기에 자동으로 집계됩니다.</p><Notes notes={notes}/></>;
  return <>
   <div className="ledger-summary">
-   <article><span>귀속 주문</span><strong>{count(t.orders)}</strong><small>기록 {count(t.records)} · 취소·전액 환불은 주문 수에서 제외</small></article>
+   <article><span>귀속 주문</span><strong>{count(t.orders)}</strong><small><MetaLine items={[`기록 ${count(t.records)}`,'취소·전액 환불은 주문 수에서 제외']}/></small></article>
    <article><span>순매출</span><strong>{won(t.netRevenue)}</strong><small>결제액 − 환불액</small></article>
-   <article><span>공헌이익</span><strong>{won(t.contribution)}</strong><small>{t.unknownCostOrders?`원가 미확인 ${count(t.unknownCostOrders)} · 0으로 계산하지 않음`:'순매출 − 주문 원가 · 광고비 미배분'}</small></article>
-   <article><span>귀속 방식</span><strong>코드 {method('code')} · 수동 {method('manual')}</strong><small>추적 코드 귀속 · 근거를 적은 수동 귀속</small></article>
+   <article><span>공헌이익</span><strong>{won(t.contribution)}</strong><small><MetaLine items={t.unknownCostOrders?[`원가 미확인 ${count(t.unknownCostOrders)}`,'0으로 계산하지 않음']:['순매출 − 주문 원가','광고비 미배분']}/></small></article>
+   <article><span>귀속 방식</span><strong><MetaLine items={[`코드 ${method('code')}`,`수동 ${method('manual')}`]}/></strong><small><MetaLine items={['추적 코드 귀속','근거를 적은 수동 귀속']}/></small></article>
   </div>
   <WeekTable weeks={r.weeks}/>
   <Breakdown title="지점별" column="지점" rows={r.byStore}/>
@@ -120,10 +121,10 @@ function SnapshotDialog({campaignId,report:r,onClose,onSaved}:{campaignId:string
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),t=r.totals,variableCosts=t.contribution===null?null:t.netRevenue-t.contribution;
  async function save(){
   setBusy(true);setError('');
-  try{await api('snapshot',{campaignId,from:r.period.from,to:r.period.to,confirmed:true,expected:{orders:t.orders,netRevenue:t.netRevenue,contribution:t.contribution}},'/api/campaign-attribution');await onSaved();toast.success('주문 장부 귀속 집계를 성과 기록으로 저장했습니다.');onClose()}
+  try{await api('snapshot',{campaignId,from:r.period.from,to:r.period.to,confirmed:true,expected:{orders:t.orders,netRevenue:t.netRevenue,contribution:t.contribution}},'/api/campaign-attribution');await onSaved();notifySaved('주문 장부 귀속 집계를 성과 기록으로 저장했습니다.');onClose()}
   catch(e){setError(e instanceof Error?e.message:'저장하지 못했습니다.')}finally{setBusy(false)}
  }
- const rows=[['측정 기간',`${r.period.from} ~ ${r.period.to}`],['비교 범위',r.snapshot.scope],['자료 출처',r.snapshot.source],['수집 방식','원자료 내보내기'],['주문 수',count(t.orders)],['순매출',won(t.netRevenue)],['상품 원가·변동비',won(variableCosts)],['매체비·제작비','배분하지 않음 · 미확인으로 저장']];
+ const rows=[['측정 기간',`${r.period.from} ~ ${r.period.to}`],['비교 범위',r.snapshot.scope],['자료 출처',r.snapshot.source],['수집 방식','원자료 내보내기'],['주문 수',count(t.orders)],['순매출',won(t.netRevenue)],['상품 원가·변동비',won(variableCosts)],['매체비·제작비','배분하지 않음(미확인으로 저장)']];
  return <Dialog open onOpenChange={open=>{if(!open&&!busy)onClose()}}><DialogContent className="wide-dialog"><DialogHeader><DialogTitle>주문 장부 귀속 스냅샷 저장</DialogTitle><DialogDescription>지금 보이는 집계를 성과 기록으로 저장합니다. 저장 직전에 다시 집계해 확인한 값과 같을 때만 저장합니다.</DialogDescription></DialogHeader>
   <dl className="attribution-snapshot">{rows.map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
   <p className="notice">{plainCopy(NOT_INCREMENTAL)} 같은 비교 범위에서는 기간이 겹치지 않는 성과 기록만 저장됩니다.</p>

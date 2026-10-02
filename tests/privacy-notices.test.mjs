@@ -26,7 +26,7 @@ const upload=body(source('app/brand-archive.tsx'),'function SourceDialog','funct
 ok('the upload dialog shows the personal data file notice',upload.includes(UPLOAD));
 ok('the upload notice comes before every field, so no field label or accessible name changes',upload.indexOf(UPLOAD)<upload.indexOf('<Field'));
 ok('the upload notice comes before the file picker and the memo field',inOrder(upload,UPLOAD,'<Input type="file"',"'추가 메모'"));
-ok('upload labels used by E2E stay unchanged',['<DialogTitle>브랜드 자료 추가</DialogTitle>',"label={file?'추가 메모':'확인한 내용 · 원문 텍스트'}","{progress||'자료 보관'}"].every(t=>upload.includes(t)));
+ok('upload labels used by E2E stay unchanged',['<DialogTitle>브랜드 자료 추가</DialogTitle>',"label={file?'추가 메모':'확인한 내용이나 원문 텍스트'}","{progress||'자료 보관'}"].every(t=>upload.includes(t)));
 
 // --- 의뢰 정보(app/brand-archive.tsx 브랜드 등록 설명·의뢰 정보 탭) ---------------------------------------------------
 // 대표 결정(2026-09-24)으로 의뢰 목적·시장·경쟁사를 개인정보 패턴을 가린 뒤 AI 조사에 보내게 되어 '보내지 않습니다' 안내를 바꿨다. 패턴 가림은 이름을 잡지 못하므로 적지 말라는 문장을 같은 안내에 둔다.

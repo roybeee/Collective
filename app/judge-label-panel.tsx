@@ -1,5 +1,6 @@
 'use client';
 import {useState} from 'react';
+import {MetaLine} from '@/components/app/meta-line';
 import {RefreshCw,Save} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {Textarea} from '@/components/ui/textarea';
@@ -56,11 +57,11 @@ export function JudgeLabelPanel(){
  return <div className="judge-labels">
   <p className="subtle-note">평가 산출물의 렌더본에 AI 심사와 같은 루브릭으로 점수를 매깁니다. 어느 실행·버전의 출력인지는 보이지 않고 순서는 무작위입니다. 봉인 세트 출력은 나오지 않습니다. 라벨은 AI 심사 보정(κ)에만 쓰고 작업물 승인에는 쓰지 않습니다.</p>
   <div className="quality-toolbar"><Button type="button" variant="outline" disabled={busy} onClick={()=>void load()}><RefreshCw/>라벨 불러오기</Button>
-   {queue&&<span className="quality-dim">루브릭 {queue.rubricVersion} · 라벨 {queue.labeled+saved}/{queue.total}건</span>}</div>
+   {queue&&<span className="quality-dim"><MetaLine items={[`루브릭 ${queue.rubricVersion}`,`라벨 ${queue.labeled+saved}/${queue.total}건`]}/></span>}</div>
   {error&&<p className="form-error" role="alert">{error}</p>}
   {queue&&!item&&<p className="subtle-note" role="status">{queue.items.length?'이 목록의 라벨을 모두 저장했습니다. 다시 불러오면 다음 항목이 나옵니다.':'라벨을 매길 항목이 없습니다. 평가 실행이 끝나면 여기에 나옵니다.'}</p>}
   {item&&<article className="judge-item" aria-label="라벨 항목">
-   <h4>항목 {item.itemId} · {item.roleName}</h4>
+   <h4>항목 {item.itemId}({item.roleName})</h4>
    {item.output===null?<p className="quality-dim">모델 출력이 없어 라벨을 매길 수 없습니다. 다음 항목으로 넘어가세요.</p>:<pre className="judge-label-output">{item.output}</pre>}
    {criteria.map(c=><CriterionField key={c.id} c={c} value={scores[c.id]||''} onChange={v=>setScores(s=>({...s,[c.id]:v}))}/>)}
    <div className="quality-toolbar">

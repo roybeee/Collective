@@ -1,12 +1,14 @@
 'use client';
 import {useCallback,useEffect,useState} from 'react';
-import {toast} from 'sonner';
 import {ExternalLink} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
+import {MetaLine} from '@/components/app/meta-line';
+import {metaText} from '@/lib/format';
 import type {Store,StoreTask} from '@/lib/store-marketing';
 import {PLACE_FIELDS,PLACE_LIMITS,PLACE_PLATFORMS,type PlaceCheckState,type PlaceField,type PlaceSnapshot} from '@/lib/place-check';
 import {useAccount,canChange,adminOnlyNote} from './account-context';
+import {notifySaved,type Saved} from '@/lib/ui/notify';
 
 // 플레이스 정보 대조(A6-2): 점포 마케팅 '채널 점검' 탭 아래에 붙인다. 관리자가 네이버 플레이스에서 본 값을 옮겨 적으면 서버가 확정 사실과 대조한다.
 // 이 화면은 URL을 열지 않는다(링크는 사람이 여는 새 창). 스위치가 꺼져 있고 스냅샷이 없으면 아무것도 그리지 않는다.
@@ -39,25 +41,25 @@ export function PlaceCheckPanel({store}:{store:Store}){
   void fetchListing(controller.signal).then(d=>{if(!controller.signal.aborted){fill(d);setError('')}}).catch(e=>{if(!controller.signal.aborted)setError((e as Error).message)});
   return()=>controller.abort();
  },[fetchListing,fill]);
- async function run(task:()=>Promise<string>){
+ async function run(task:()=>Promise<[Saved,string?]>){
   setBusy(true);
-  try{const message=await task();fill(await fetchListing());setError('');toast.success(message)}
+  try{const [message,description]=await task();fill(await fetchListing());setError('');notifySaved(message,{description})}
   catch(e){setError((e as Error).message)}finally{setBusy(false)}
  }
  const save=()=>run(async()=>{
   const d=await send<{snapshot:PlaceSnapshot;tasks:StoreTask[];dataRequests?:number|null}>({action:'save_snapshot',storeId:store.id,platform:'naver_place',url,checkedAt,fields,version:snapshot?.version});
   const opened=d.tasks.filter(t=>t.status==='open').length,closed=d.tasks.length-opened;
-  return `대조 완료 · 할 일 열림 ${opened}건 · 닫힘 ${closed}건${d.dataRequests?` · 자료 요청 ${d.dataRequests}건`:''}`;
+  return ['플레이스 대조를 기록했습니다.',metaText([`할 일 열림 ${opened}건`,`닫힘 ${closed}건`,d.dataRequests?`자료 요청 ${d.dataRequests}건`:null])];
  });
- const complete=(t:StoreTask)=>run(async()=>{await send({action:'save_task',storeId:store.id,id:t.id,version:t.version,status:'done',evidence:evidence[t.id]??''});setEvidence(e=>({...e,[t.id]:''}));return '할 일을 완료로 기록했습니다.'});
+ const complete=(t:StoreTask)=>run(async()=>{await send({action:'save_task',storeId:store.id,id:t.id,version:t.version,status:'done',evidence:evidence[t.id]??''});setEvidence(e=>({...e,[t.id]:''}));return ['할 일을 완료로 기록했습니다.']});
  if(!listing||(!listing.enabled&&!listing.snapshots.length))return error?<p className="form-error" role="alert">{error}</p>:null;
  const open=listing.tasks.filter(t=>t.status==='open');
  return <section className="subtle-note" aria-label="플레이스 정보 대조" aria-live="polite">
   <div className="section-heading"><div><h3>{PLACE_PLATFORMS.naver_place.label} 정보 대조</h3><p>플레이스에서 본 값을 옮겨 적으면 확정 사실과 대조합니다. 다른 항목은 할 일로 열리고, 다시 일치하면 자동으로 완료됩니다.</p></div></div>
   {!listing.enabled&&<p>기능 스위치 a6_place_check가 꺼져 있어 새로 대조할 수 없습니다. 기존 결과는 그대로 보입니다.</p>}
   {snapshot&&<div>
-   <p>스냅샷 v{snapshot.version} · 확인일 {snapshot.checkedAt} · <a href={snapshot.url} target="_blank" rel="noreferrer">플레이스 열기<ExternalLink size={13}/></a></p>
-   <ul>{snapshot.result.map(r=><li key={r.field}><b>{FIELD_LABELS[r.field]}</b> · {STATE_LABELS[r.state]}{r.state==='conflict'?` · 플레이스 "${r.placeValue}" / 확정 "${r.factValue}"`:''}</li>)}</ul>
+   <p><MetaLine items={[`스냅샷 v${snapshot.version}`,`확인일 ${snapshot.checkedAt}`,<a key="open" href={snapshot.url} target="_blank" rel="noreferrer">플레이스 열기<ExternalLink size={13}/></a>]}/></p>
+   <ul>{snapshot.result.map(r=><li key={r.field}><MetaLine items={[<b key="f">{FIELD_LABELS[r.field]}</b>,STATE_LABELS[r.state],r.state==='conflict'&&`플레이스 "${r.placeValue}" / 확정 "${r.factValue}"`]}/></li>)}</ul>
   </div>}
   {open.length>0&&<ul>{open.map(t=><li key={t.id}>
    <span>{t.title}</span>

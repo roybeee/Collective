@@ -2,6 +2,7 @@
 import {Input} from '@/components/ui/input';
 import {Button} from '@/components/ui/button';
 import {Note} from '@/components/app/note';
+import {MetaLine} from '@/components/app/meta-line';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {GrowthProfitView} from '@/lib/growth-profit-server';
 import styles from './growth-panel.module.css';
@@ -18,9 +19,9 @@ function Workspace({campaignId}:{campaignId:string}){
   <Note className={styles.note}>마케팅 지출을 뺀 캠페인 이익과 현금을 보여 줍니다. 캠페인 주문 장부의 순매출·마케팅 전 공헌이익에서 대사된 마케팅 지출(판매 예산 예약·협업 정산·Meta 정산)을 뺍니다. 마케팅 후 이익은 모든 지출이 대사된 뒤 확정됩니다. 현금은 운영자 입금 증빙 기준이며, 원가 구매 현금이 연결되지 않아 순현금은 비워 둡니다. 인과 효과가 아닙니다.</Note>
   {error&&<p role="alert" className={styles.error}>{error}</p>}{loading&&<p role="status">손익을 조회하고 있습니다.</p>}
   <form className={styles.form} onSubmit={e=>{e.preventDefault();void load(range);}}><label>손익 시작일<Input type="date" value={range.from} onChange={e=>setRange({...range,from:e.target.value})}/></label><label>손익 종료일<Input type="date" value={range.to} onChange={e=>setRange({...range,to:e.target.value})}/></label><Button variant="panel" size="fit" type="submit" disabled={loading}>손익 기간 적용</Button></form>
-  {view&&<><p>기간 {view.period.from}~{view.period.to} · 장부 {view.ledger.status==='ledger_only'?'연결됨':'미확인'}</p>
-   <dl className={styles.form}><dt>순매출</dt><dd>{won(view.netRevenue)}</dd><dt>마케팅 전 공헌이익</dt><dd>{won(view.contributionBeforeMarketing)}</dd><dt>마케팅 지출</dt><dd>{won(view.marketing.total)}{view.marketing.unknownItems?` (확인 ${won(view.marketing.known)} · 미대사 ${view.marketing.unknownItems}건)`:''}</dd><dt>마케팅 후 공헌이익</dt><dd>{won(view.contributionAfterMarketing)}</dd><dt>입금 확인</dt><dd>{won(view.cash.received)}</dd><dt>정산 예정</dt><dd>{won(view.cash.expected)} · 미입금 {won(view.cash.pending)}</dd><dt>순현금</dt><dd>계산하지 않음</dd></dl>
-   <ul>{view.marketing.bySource.map(s=><li key={s.source}>{sourceLabels[s.source]}: 확인 {won(s.known)}{s.unknown?` · 미대사 ${s.unknown}건`:''}</li>)}</ul>
+  {view&&<><p><MetaLine items={[`기간 ${view.period.from}~${view.period.to}`,`장부 ${view.ledger.status==='ledger_only'?'연결됨':'미확인'}`]}/></p>
+   <dl className={styles.form}><dt>순매출</dt><dd>{won(view.netRevenue)}</dd><dt>마케팅 전 공헌이익</dt><dd>{won(view.contributionBeforeMarketing)}</dd><dt>마케팅 지출</dt><dd>{won(view.marketing.total)}{view.marketing.unknownItems?` (확인 ${won(view.marketing.known)}, 미대사 ${view.marketing.unknownItems}건)`:''}</dd><dt>마케팅 후 공헌이익</dt><dd>{won(view.contributionAfterMarketing)}</dd><dt>입금 확인</dt><dd>{won(view.cash.received)}</dd><dt>정산 예정</dt><dd><MetaLine items={[won(view.cash.expected),`미입금 ${won(view.cash.pending)}`]}/></dd><dt>순현금</dt><dd>계산하지 않음</dd></dl>
+   <ul>{view.marketing.bySource.map(s=><li key={s.source}>{sourceLabels[s.source]}: <MetaLine items={[`확인 ${won(s.known)}`,s.unknown?`미대사 ${s.unknown}건`:null]}/></li>)}</ul>
    {view.reasons.map(x=><p key={x}>{x}</p>)}</>}
  </section>;
 }

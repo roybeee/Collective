@@ -10,6 +10,8 @@ import {SourceTextModule,SyntheticModule,createContext} from 'node:vm';
 import ts from 'typescript';
 import * as React from 'react';
 import * as jsxRuntime from 'react/jsx-runtime';
+import * as clsx from 'clsx';
+import * as tailwindMerge from 'tailwind-merge';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {testRuntime} from './helpers/runtime.mjs';
 
@@ -317,7 +319,7 @@ for(const [label,change] of [['adds an invented source and a missing-id citation
 
 // 7) 화면: '뺀 항목'에서 같은 URL 재선언을 빼고, 있으면 '기존 자료 재선언 N건(인용 유지)'을 따로 한 줄로 보인다.
 const context=createContext({console}),cache=new Map(),stub=names=>Object.fromEntries(names.map(n=>[n,()=>null]));
-const packages={react:React,'react/jsx-runtime':jsxRuntime,'@/components/ui/button':stub(['Button']),'lucide-react':stub(['ExternalLink','RefreshCw','Search','TriangleAlert'])};
+const packages={react:React,'react/jsx-runtime':jsxRuntime,'@/components/ui/button':stub(['Button']),'lucide-react':stub(['ExternalLink','RefreshCw','Search','TriangleAlert']),clsx,'tailwind-merge':tailwindMerge};
 const synthetic=name=>{const ns=packages[name],keys=Object.keys(ns);return new SyntheticModule(keys,function(){for(const k of keys)this.setExport(k,ns[k])},{context,identifier:name})};
 function moduleFor(path){if(cache.has(path))return cache.get(path);const m=packages[path]?synthetic(path):new SourceTextModule(ts.transpileModule(readFileSync(path,'utf8'),{fileName:path,compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext,jsx:ts.JsxEmit.ReactJSX}}).outputText,{context,identifier:path});cache.set(path,m);return m}
 const local=(spec,from)=>{const base=spec.startsWith('@/')?resolve(spec.slice(2)):resolve(dirname(from),spec);for(const ext of ['.ts','.tsx'])if(existsSync(base+ext))return base+ext;throw new Error('cannot resolve '+spec)};
@@ -325,7 +327,8 @@ async function loadUi(path){const m=moduleFor(resolve(path));if(m.status==='unli
 const {SalvageNote}=await loadUi('app/deep-research-panel.tsx');
 const view=salvage=>renderToStaticMarkup(React.createElement(SalvageNote,{salvage})).replace(/<!-- -->/g,'');
 const both=view({dropped:[{section:'customerSignals',index:0,reason:REUSED}],kept:{sources:1},redeclared:11});
-check('the note counts only real drops and shows re-declarations on their own line',both.includes('살린 출처 1 · 뺀 항목 1')&&both.includes('기존 자료 재선언 11건(인용 유지)')&&both.includes('고객 관찰 1번째 · '+REUSED));
+const textOf=html=>html.replace(/<[^>]+>/g,'');
+check('the note counts only real drops and shows re-declarations on their own line',textOf(both).includes('살린 출처 1, 뺀 항목 1')&&both.includes('기존 자료 재선언 11건(인용 유지)')&&textOf(both).includes('고객 관찰 1번째, '+REUSED));
 const onlyRe=view({dropped:[],kept:{sources:0},redeclared:2});
 check('re-declarations alone show just their line, not an empty dropped list',onlyRe.includes('기존 자료 재선언 2건(인용 유지)')&&!onlyRe.includes('뺀 항목'));
 check('no drops and no re-declarations render nothing',view({dropped:[],kept:{}})===''&&view(undefined)==='');

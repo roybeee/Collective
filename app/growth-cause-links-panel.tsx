@@ -4,6 +4,8 @@ import {NativeSelect} from '@/components/ui/native-select';
 import {Input} from '@/components/ui/input';
 import {Button} from '@/components/ui/button';
 import {Note} from '@/components/app/note';
+import {MetaLine} from '@/components/app/meta-line';
+import {metaText} from '@/lib/format';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {GrowthCauseLinkView} from '@/lib/growth-cause-links-server';
 import type {CauseTargetKind} from '@/lib/growth-cause-links';
@@ -33,15 +35,15 @@ function Workspace({campaignId}:{campaignId:string}){
   <Note className={styles.note}>운영자가 확인한 원인 기록을 같은 미션의 구매 병목·일일 결정·운영 교훈에 연결합니다. 원인 분포는 관측 기간의 반품·환불 품목 수 기준이며 결함률·인과 효과가 아닙니다. 응대·환불·재고 해제·규칙 승격은 운영자가 직접 합니다.</Note>
   {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">원인 연결을 조회하고 있습니다.</p>}{stale&&<p role="status" className={styles.warning}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
   {view&&d&&<><form className={styles.form} onSubmit={e=>{e.preventDefault();void load(window);}}><label>관측 시작일<Input type="date" value={window.from} onChange={e=>setWindow({...window,from:e.target.value})}/></label><label>관측 종료일<Input type="date" value={window.to} onChange={e=>setWindow({...window,to:e.target.value})}/></label><Button variant="panel" size="fit" type="submit" disabled={busy}>기간 적용</Button></form>
-   <h4>원인 분포 ({d.window.from}~{d.window.to})</h4><p>분모: 반품·환불 사건이 있는 품목 {d.denominator.lines}건 · 원본 보류 {d.held}건 · 원인 미기록 {d.unrecorded}건 · 여러 원인 {d.linesWithMultipleCodes}건 · 관측 시각 없음 제외 {d.excludedWithoutObservedAt}건</p>
+   <h4>원인 분포 ({d.window.from}~{d.window.to})</h4><p>분모: <MetaLine items={[`반품·환불 사건이 있는 품목 ${d.denominator.lines}건`,`원본 보류 ${d.held}건`,`원인 미기록 ${d.unrecorded}건`,`여러 원인 ${d.linesWithMultipleCodes}건`,`관측 시각 없음 제외 ${d.excludedWithoutObservedAt}건`]}/></p>
    <ul>{d.counts.map(c=><li key={c.code}>{reasonLabels[c.code]??c.code}: {c.lines}건</li>)}</ul><p>결함률·반품률이 아닌 운영자 확인 분포입니다. 인과 효과: 미측정.</p>
    <form onSubmit={e=>{e.preventDefault();void send('link');}}><fieldset disabled={busy||!view.canEdit} className={styles.form}><legend>원인을 검토 기록에 연결</legend>
-    <label>원인 기록된 사건<NativeSelect value={eventId} onChange={e=>{setEventId(e.target.value);retry.current=null;}}><option value="">사건 선택</option>{view.events.map(e=><option key={e.eventId} value={e.eventId}>{e.kind==='return'?'반품':'환불'} · {e.eventId} · {reasonLabels[e.reasonCode]} v{e.reasonVersion}{e.sourceStatus==='held'?' · 보류':''}</option>)}</NativeSelect></label>
+    <label>원인 기록된 사건<NativeSelect value={eventId} onChange={e=>{setEventId(e.target.value);retry.current=null;}}><option value="">사건 선택</option>{view.events.map(e=><option key={e.eventId} value={e.eventId}>{metaText([e.kind==='return'?'반품':'환불',e.eventId,`${reasonLabels[e.reasonCode]??''} v${e.reasonVersion}`,e.sourceStatus==='held'&&'보류'])}</option>)}</NativeSelect></label>
     <label>검토 종류<NativeSelect value={targetKind} onChange={e=>{setTargetKind(e.target.value as CauseTargetKind);setTargetId('');retry.current=null;}}>{Object.entries(targetLabels).map(([k,l])=><option key={k} value={k}>{l}</option>)}</NativeSelect></label>
-    <label>검토 기록<NativeSelect value={targetId} onChange={e=>{setTargetId(e.target.value);retry.current=null;}}><option value="">기록 선택</option>{view.targets[targetKind].map(t=><option key={t.id} value={t.id}>{t.title||t.id} · v{t.version}</option>)}</NativeSelect></label>
+    <label>검토 기록<NativeSelect value={targetId} onChange={e=>{setTargetId(e.target.value);retry.current=null;}}><option value="">기록 선택</option>{view.targets[targetKind].map(t=><option key={t.id} value={t.id}>{metaText([t.title||t.id,`v${t.version}`])}</option>)}</NativeSelect></label>
     <label>연결 메모(개인정보 제외)<Input maxLength={300} value={note} onChange={e=>setNote(e.target.value)}/></label>
     <Button variant="panel" size="fit" type="submit" disabled={!event||!target||event.sourceStatus==='held'||stale} disabledReason={!event?'먼저 대상을 고르세요.':!target?'먼저 대상을 고르세요.':(event.sourceStatus==='held')?'원천 기록이 보류 상태입니다.':stale?'다른 곳에서 먼저 바뀌었습니다. 최신 기록을 불러온 뒤 다시 하세요.':undefined}>원인 연결</Button></fieldset></form>
-   <ul>{view.records.filter(r=>r.status==='active').map(r=><li key={r.id} className="wrap-anywhere"><p>{r.input.eventId} ({reasonLabels[r.snapshot.reasonCode]} v{r.snapshot.reasonVersion}) → {targetLabels[r.input.targetKind]} {r.input.targetId} v{r.snapshot.targetVersion} · {r.assessment?.status==='held'?'보류':'현재'}</p>{r.assessment?.reasons.map(x=><p key={x}>{x}</p>)}{<Button variant="panel" size="fit" type="button" disabled={busy||stale||!view.canEdit} disabledReason={view.canEdit?undefined:readOnlyReason} onClick={()=>void send('retire',r)}>{r.input.eventId}→{r.input.targetId} 해제</Button>}</li>)}</ul>
-   <details><summary>원인 연결 이력</summary>{view.history.map(h=><p key={h.id+':'+h.version} className="wrap-anywhere">{h.id} · v{h.version} · {h.status==='active'?'연결':'해제'} · {h.recordedAt}</p>)}</details></>}
+   <ul>{view.records.filter(r=>r.status==='active').map(r=><li key={r.id} className="wrap-anywhere"><p><MetaLine items={[<>{r.input.eventId} ({reasonLabels[r.snapshot.reasonCode]} v{r.snapshot.reasonVersion}) → {targetLabels[r.input.targetKind]} {r.input.targetId} v{r.snapshot.targetVersion}</>,r.assessment?.status==='held'?'보류':'현재']}/></p>{r.assessment?.reasons.map(x=><p key={x}>{x}</p>)}{<Button variant="panel" size="fit" type="button" disabled={busy||stale||!view.canEdit} disabledReason={view.canEdit?undefined:readOnlyReason} onClick={()=>void send('retire',r)}>{r.input.eventId}→{r.input.targetId} 해제</Button>}</li>)}</ul>
+   <details><summary>원인 연결 이력</summary>{view.history.map(h=><p key={h.id+':'+h.version} className="wrap-anywhere"><MetaLine items={[h.id,`v${h.version}`,h.status==='active'?'연결':'해제',h.recordedAt]}/></p>)}</details></>}
  </section>;
 }

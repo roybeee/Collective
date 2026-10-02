@@ -4,6 +4,7 @@ import {EmptyLine} from '@/components/app/empty-line';
 import {Input} from '@/components/ui/input';
 import {Button} from '@/components/ui/button';
 import {Note} from '@/components/app/note';
+import {MetaLine} from '@/components/app/meta-line';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import styles from './growth-panel.module.css';
 import type {GrowthPublicationObservationView} from '@/lib/growth-publication-observation-server';
@@ -12,15 +13,15 @@ type View=GrowthPublicationObservationView;
 type Row=View['rows'][number];
 type Period={from:string;to:string};
 const number=(value:number|null|undefined)=>value==null?'미확인':value.toLocaleString('ko-KR');
-const publications:Record<string,string>={draft:'승인 전',approved:'승인 · 미전송',submitting:'접수 확인 중',uncertain:'접수 여부 미확인',accepted:'접수·예약 확인 · 발행 전',published:'발행 확인',failed:'발행 실패',cancelled:'취소 기록',blocked:'공급자 확인 필요'};
+const publications:Record<string,string>={draft:'승인 전',approved:'승인(미전송)',submitting:'접수 확인 중',uncertain:'접수 여부 미확인',accepted:'접수·예약 확인(발행 전)',published:'발행 확인',failed:'발행 실패',cancelled:'취소 기록',blocked:'공급자 확인 필요'};
 function Reasons({reasons}:{reasons:string[]}){return reasons.length?<ul>{reasons.map((reason,index)=><li key={index}>{reason}</li>)}</ul>:null}
 function Observation({row,period}:{row:Row;period:Period}){
  const m=row.measurement,a=row.attribution,source=m.source;
- return <article className={styles.mission} aria-label={`발행 관측 ${row.publicationId}`}><h4>발행 {row.publicationId}</h4><p>미션 실행 {row.intentId} · {publications[row.publicationStatus]??'발행 상태 미확인'}</p><Reasons reasons={row.reasons}/>
- <section aria-label="저장된 측정 관측"><h5>{m.status==='observed'?'저장된 측정 관측':m.status==='historical'?'수집 종료 · 과거 성공 관측':'측정 보류 · 현재 수치 미확인'}</h5><p>측정 기간: {m.window?`${m.window.from} ~ ${m.window.to}`:'미확인'} · 수집 시각: {m.fetchedAt||'미확인'}</p>{row.experiment&&<p>연결 실험 {row.experiment.id} · {row.experiment.arm==='control'?'대조안':'실험안'} · {row.experiment.channel}</p>}
- {source?<><p>수집 상태: {source.pending?'첫 수집 대기':source.lastError?'수집 실패':source.stopped?'수집 종료':'저장된 수집 기록'} · 마지막 수집 시도 {source.lastFetchedAt||'미확인'}</p>{source.lastError&&<p className={styles.error}>{source.lastError.reason}</p>}</>:<EmptyLine next="발행을 연결한 뒤 수집 결과를 기록하세요.">연결된 수집 기록이 없습니다.</EmptyLine>}
- <p>분모 관측값: {number(m.value?.denominator)} · 분자 관측값: {number(m.value?.numerator)}</p><p>측정 정의: {m.definition||'미확인'}</p><Reasons reasons={m.limitations}/><Reasons reasons={m.reasons}/><Note className={styles.note}>Instagram 수치는 저장된 누적 관측이라 주문 조회 기간과 기간이 다를 수 있습니다.</Note></section>
- <section aria-label="발행 귀속 주문 장부"><h5>발행 귀속 주문 장부</h5><p>주문 조회 기간: {period.from} ~ {period.to}</p>{a.status==='held'?<p>귀속 조회 보류 · 주문 수치 미확인</p>:a.status==='no_rows'?<p>해당 기간에 이 발행으로 귀속된 주문 기록이 없습니다. 전체 판매는 주문 장부에서 확인하세요.</p>:<p>정확한 발행 ID로 귀속된 장부 기록입니다.</p>}<p>장부 기록: {number(a.value?.records)} · 주문: {number(a.value?.orders)} · 신규 고객: {number(a.value?.newCustomers)}</p><p>순매출(장부 관측): {number(a.value?.netRevenue)}원 · 공헌이익(장부 기준): {number(a.value?.contribution)}원 · 비용 미확인 주문: {number(a.value?.unknownCostOrders)}</p><Reasons reasons={a.reasons}/><p className={styles.note}>광고·제작비 배분과 POS 대사는 별도 확인이 필요합니다.</p></section></article>;
+ return <article className={styles.mission} aria-label={`발행 관측 ${row.publicationId}`}><h4>발행 {row.publicationId}</h4><p><MetaLine items={[`미션 실행 ${row.intentId}`,publications[row.publicationStatus]??'발행 상태 미확인']}/></p><Reasons reasons={row.reasons}/>
+ <section aria-label="저장된 측정 관측"><h5>{m.status==='observed'?'저장된 측정 관측':m.status==='historical'?'수집 종료(과거 성공 관측)':'측정 보류(현재 수치 미확인)'}</h5><p><MetaLine items={[`측정 기간: ${m.window?`${m.window.from} ~ ${m.window.to}`:'미확인'}`,`수집 시각: ${m.fetchedAt||'미확인'}`]}/></p>{row.experiment&&<p><MetaLine items={[`연결 실험 ${row.experiment.id}`,row.experiment.arm==='control'?'대조안':'실험안',row.experiment.channel]}/></p>}
+ {source?<><p><MetaLine items={[`수집 상태: ${source.pending?'첫 수집 대기':source.lastError?'수집 실패':source.stopped?'수집 종료':'저장된 수집 기록'}`,`마지막 수집 시도 ${source.lastFetchedAt||'미확인'}`]}/></p>{source.lastError&&<p className={styles.error}>{source.lastError.reason}</p>}</>:<EmptyLine next="발행을 연결한 뒤 수집 결과를 기록하세요.">연결된 수집 기록이 없습니다.</EmptyLine>}
+ <p><MetaLine items={[`분모 관측값: ${number(m.value?.denominator)}`,`분자 관측값: ${number(m.value?.numerator)}`]}/></p><p>측정 정의: {m.definition||'미확인'}</p><Reasons reasons={m.limitations}/><Reasons reasons={m.reasons}/><Note className={styles.note}>Instagram 수치는 저장된 누적 관측이라 주문 조회 기간과 기간이 다를 수 있습니다.</Note></section>
+ <section aria-label="발행 귀속 주문 장부"><h5>발행 귀속 주문 장부</h5><p>주문 조회 기간: {period.from} ~ {period.to}</p>{a.status==='held'?<p>귀속 조회 보류(주문 수치 미확인)</p>:a.status==='no_rows'?<p>해당 기간에 이 발행으로 귀속된 주문 기록이 없습니다. 전체 판매는 주문 장부에서 확인하세요.</p>:<p>정확한 발행 ID로 귀속된 장부 기록입니다.</p>}<p><MetaLine items={[`장부 기록: ${number(a.value?.records)}`,`주문: ${number(a.value?.orders)}`,`신규 고객: ${number(a.value?.newCustomers)}`]}/></p><p><MetaLine items={[`순매출(장부 관측): ${number(a.value?.netRevenue)}원`,`공헌이익(장부 기준): ${number(a.value?.contribution)}원`,`비용 미확인 주문: ${number(a.value?.unknownCostOrders)}`]}/></p><Reasons reasons={a.reasons}/><p className={styles.note}>광고·제작비 배분과 POS 대사는 별도 확인이 필요합니다.</p></section></article>;
 }
 export function GrowthPublicationObservationPanel({campaignId,onExecution,onResults}:{campaignId:string;onExecution?:()=>void;onResults?:()=>void}){
  const [view,setView]=useState<View|null>(null),[draft,setDraft]=useState<Period>({from:'',to:''}),[loading,setLoading]=useState(true),[error,setError]=useState('');const pending=useRef<AbortController|null>(null);

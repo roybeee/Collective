@@ -17,9 +17,9 @@ test('재사용 교훈 적용 제안·적용 기록·결과 회수',async({brows
   await panel.locator('li').filter({hasText:'l-m2 미션'}).getByRole('button',{name:'배송 안내 교훈 적용 준비'}).click();await expect(panel.getByRole('textbox',{name:'대상 ID',exact:true})).toHaveValue('l-m2');
   await panel.getByRole('textbox',{name:'적용 방법',exact:true}).fill('배송 안내 문구 추가');await panel.getByRole('textbox',{name:'확인할 결과',exact:true}).fill('배송 문의 감소');await panel.getByLabel('효과 확인일',{exact:true}).fill('2099-02-01');
   await panel.getByRole('button',{name:'적용 기록',exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'교훈 적용을 기록했습니다'})).toBeVisible();await expect(panel).toContainText('→ 판매 미션 l-m2 v1');await expect(panel).toContainText('결과 대기');
-  const apply=(await panel.locator('li').filter({hasText:'→ 판매 미션 l-m2'}).first().innerText()).split(' · ')[0].trim();
+  const apply=((await panel.locator('li').filter({hasText:'→ 판매 미션 l-m2'}).first().locator('p').first().textContent())??'').split(', ')[0].trim();
   await panel.getByRole('button',{name:`${apply} 결과 기록`,exact:true}).click();await panel.getByRole('combobox',{name:'결과',exact:true}).selectOption('failure');await panel.getByRole('textbox',{name:'결과 증빙 ID',exact:true}).fill('ev-1');await panel.getByRole('textbox',{name:'결과 근거',exact:true}).fill('문의 감소 없음');
-  await panel.getByRole('button',{name:'결과 저장',exact:true}).click();await expect(panel).toContainText('적용 1 · 성공 0 · 실패 1');
+  await panel.getByRole('button',{name:'결과 저장',exact:true}).click();await expect(panel).toContainText('적용 1, 성공 0, 실패 1');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
  }finally{await context.close()}
 });

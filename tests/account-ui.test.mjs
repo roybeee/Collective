@@ -17,7 +17,7 @@ function moduleFor(path){
  const m=packages[path]?synthetic(path):new SourceTextModule(ts.transpileModule(readFileSync(path,'utf8'),{fileName:path,compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext,jsx:ts.JsxEmit.ReactJSX}}).outputText,{context,identifier:path});
  cache.set(path,m);return m;
 }
-const local=(spec,from)=>{const base=resolve(dirname(from),spec);for(const ext of ['.ts','.tsx'])if(existsSync(base+ext))return base+ext;throw new Error('cannot resolve '+spec)};
+const local=(spec,from)=>{const base=spec.startsWith('@/')?resolve(spec.slice(2)):resolve(dirname(from),spec);for(const ext of ['.ts','.tsx'])if(existsSync(base+ext))return base+ext;throw new Error('cannot resolve '+spec)};
 async function load(path){const m=moduleFor(resolve(path));if(m.status==='unlinked')await m.link((spec,ref)=>moduleFor(packages[spec]?spec:local(spec,ref.identifier)));if(m.status!=='evaluated')await m.evaluate();return m.namespace}
 
 let passed=0;

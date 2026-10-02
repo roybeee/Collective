@@ -53,7 +53,7 @@ test('업로드 텍스트는 서버가 다시 읽어 표시하고 원본 파일�
   await expect(detail.getByText('추출 출처: 서버 추출 · 텍스트 추출 완료', {exact: true})).toBeVisible();
   await expect(detail.locator('pre')).toContainText(body);
   await expect(detail.locator('pre')).toContainText(memo);
-  await expect(detail.getByRole('link', {name: `원본 다운로드 · ${fileName}`})).toBeVisible();
+  await expect(detail.getByRole('link', {name: `원본 다운로드: ${fileName}`})).toBeVisible();
   await page.screenshot({path: `e2e/artifacts/${testInfo.project.name}-upload-server-extraction.png`, fullPage: true});
 
   // 원본 파일 삭제(관리자): 확인 대화상자(무엇·영향·되돌리기)에서 '원본 삭제'를 누르면 레코드는 남고 원본 다운로드만 닫힌다.
@@ -79,7 +79,7 @@ test('업로드 텍스트는 서버가 다시 읽어 표시하고 원본 파일�
   expect(kept.fileCleanupPending).toBeUndefined();
 
   await item(fileName).click();
-  await expect(detail.getByText(/^원본 파일 삭제됨 · \d{4}-\d{2}-\d{2}$/)).toBeVisible();
+  await expect(detail.getByText(/^원본 파일 삭제됨, \d{4}-\d{2}-\d{2}$/)).toBeVisible();
   await expect(detail.getByRole('link', {name: /원본 다운로드/})).toHaveCount(0);
   await expect(detail.getByRole('button', {name: '원본 파일 삭제', exact: true})).toHaveCount(0);
   await expect(detail.locator('pre')).toContainText(body);

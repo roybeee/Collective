@@ -1,24 +1,26 @@
 'use client';
 import {useEffect,useState} from 'react';
-import {toast} from 'sonner';
 import {Download,LoaderCircle,Check} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import {api} from '@/lib/client';
+import {MetaLine} from '@/components/app/meta-line';
+import {metaText} from '@/lib/format';
 import {channelNameForConnector,type ConnectorKey} from '@/lib/channels';
 import {credentialState} from '@/lib/feature-status';
 import type {ViralExperiment} from '@/lib/learning';
 import type {Campaign} from '@/lib/agency';
 import type {ResolvedScope} from '@/lib/channel-credentials';
 import type {MeasurementView} from '@/lib/measurement-status';
+import {notifySaved} from '@/lib/ui/notify';
 
 // loop-1: 진행 중인 콘텐츠 실험 카드의 'A/B 성과 가져오기'와 자동 수집 상태(security-ops-5).
 // 수집은 초안만 만든다. 결과 반영과 비교 가능 확정은 '결과 입력'에서 사람이 한다. 수집 버튼은 대표·관리자에게, 이 실험 채널의 커넥터 연결이 있을 때만 보인다.
 export type ResolvedCredential={channel:ConnectorKey;label:string;resolvedScope:ResolvedScope|null;account:string;expiresAt:string|null};
 type Arm='control'|'treatment';
-const armLabels:Record<Arm,string>={control:'A · 대조안',treatment:'B · 실험안'};
+const armLabels:Record<Arm,string>={control:'A(대조안)',treatment:'B(실험안)'};
 const TOKEN_WARNING_MS=7*86400000;
 const when=(s:string|null)=>s?new Date(s).toLocaleString('ko-KR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'미확인';
 const scopeLabel=(s:ResolvedScope|null)=>s?.level==='store'?`지점 연결 ${s.storeId}`:s?.level==='brand'?`브랜드 연결 ${s.brandId}`:s?.level==='workspace'?'워크스페이스 기본':'연결 없음';
@@ -47,10 +49,10 @@ export function CollectStatus({view,connector,now}:{view?:MeasurementView;connec
  if(!view&&!token)return null;
  return <section className="learning-assessment" aria-label="자동 수집 성과">
   {token&&<p role="alert">{token}</p>}
-  {failing.map(s=><p role="alert" key={s.id}>자동 수집 실패({armLabels[s.arm]}): {s.lastError!.reason} · 연속 {s.failures}회{s.reauthRequired?' · 재연결 필요':''}{s.stopped?' · 자동 수집 멈춤':s.nextAttemptAt?` · 다음 시도 ${when(s.nextAttemptAt)}`:''}</p>)}
-  {arms.length>0&&<ul className="learning-meta" aria-label="수집 초안">{arms.map(([a,d])=><li key={a}>{armLabels[a]} · {d.value?`${d.value.numerator??'미확인'} / ${d.value.denominator??'미확인'}`:'값 없음'} · 기간 {d.window?`${d.window.from}~${d.window.to}`:'미확인'} · 수집 {when(d.fetchedAt)} · {scopeLabel(d.credential)}</li>)}</ul>}
+  {failing.map(s=><p role="alert" key={s.id}>자동 수집 실패({armLabels[s.arm]}): <MetaLine items={[s.lastError!.reason,`연속 ${s.failures}회`,s.reauthRequired&&'재연결 필요',s.stopped?'자동 수집 멈춤':s.nextAttemptAt&&`다음 시도 ${when(s.nextAttemptAt)}`]}/></p>)}
+  {arms.length>0&&<ul className="learning-meta" aria-label="수집 초안">{arms.map(([a,d])=><li key={a}><MetaLine items={[armLabels[a],d.value?`${d.value.numerator??'미확인'} / ${d.value.denominator??'미확인'}`:'값 없음',`기간 ${d.window?`${d.window.from}~${d.window.to}`:'미확인'}`,`수집 ${when(d.fetchedAt)}`,scopeLabel(d.credential)]}/></li>)}</ul>}
   {!!view?.draft?.limitations.length&&<ul className="learning-meta" aria-label="수집 한계">{view.draft.limitations.map(x=><li key={x}>{x}</li>)}</ul>}
-  {view?.sources.filter(s=>!s.lastError).map(s=><small key={s.id}>{armLabels[s.arm]} 자동 수집 · 대상 {s.target} · 마지막 {when(s.lastFetchedAt)}{s.stopped?` · ${s.stoppedReason}`:s.nextAttemptAt?` · 다음 ${when(s.nextAttemptAt)}`:''}</small>)}
+  {view?.sources.filter(s=>!s.lastError).map(s=><small key={s.id}><MetaLine items={[`${armLabels[s.arm]} 자동 수집`,`대상 ${s.target}`,`마지막 ${when(s.lastFetchedAt)}`,s.stopped?s.stoppedReason:s.nextAttemptAt&&`다음 ${when(s.nextAttemptAt)}`]}/></small>)}
   {view?.draft&&<small>수집 초안은 비교 가능으로 확정되지 않습니다. 결과 입력에서 두 안의 조건을 확인한 뒤 직접 체크하세요.</small>}
  </section>;
 }
@@ -59,7 +61,7 @@ export function CollectStatus({view,connector,now}:{view?:MeasurementView;connec
 export function CollectFields({f,set,connectors}:{f:CollectForm;set:(k:keyof CollectForm,v:string)=>void;connectors:readonly ResolvedCredential[]}){
  return <>
   <div className="form-two"><label className="field"><span>실험안 *</span><NativeSelect value={f.arm} onChange={e=>set('arm',e.target.value)}><NativeSelectOption value="control">{armLabels.control}</NativeSelectOption><NativeSelectOption value="treatment">{armLabels.treatment}</NativeSelectOption></NativeSelect></label>
-  <label className="field"><span>커넥터 *</span><NativeSelect value={f.channel} onChange={e=>set('channel',e.target.value)}>{connectors.map(c=><NativeSelectOption key={c.channel} value={c.channel}>{c.label} · {c.account||'계정 미확인'} · {scopeLabel(c.resolvedScope)}</NativeSelectOption>)}</NativeSelect></label></div>
+  <label className="field"><span>커넥터 *</span><NativeSelect value={f.channel} onChange={e=>set('channel',e.target.value)}>{connectors.map(c=><NativeSelectOption key={c.channel} value={c.channel}>{metaText([c.label,c.account||'계정 미확인',scopeLabel(c.resolvedScope)])}</NativeSelectOption>)}</NativeSelect></label></div>
   <label className="field"><span>{f.channel==='instagram'?'게시물 ID *':'광고 대상 ID *'}</span><Input required value={f.target} maxLength={100} onChange={e=>set('target',e.target.value)} placeholder={f.channel==='instagram'?'숫자 미디어 ID':'캠페인·광고그룹·키워드 ID'}/><small>이 실험안을 게시·집행한 대상 하나를 적습니다. 두 안은 같은 연결·같은 기간으로 가져와야 비교할 수 있습니다.</small></label>
   <div className="form-two"><label className="field"><span>수집 시작일 *</span><Input type="date" required value={f.from} onChange={e=>set('from',e.target.value)}/></label><label className="field"><span>수집 종료일 *</span><Input type="date" required value={f.to} onChange={e=>set('to',e.target.value)}/><small>어제까지로 두면 워커가 6시간마다 어제까지로 넓혀 다시 가져옵니다.</small></label></div>
  </>;
@@ -78,7 +80,7 @@ export function MeasurementCollect({experiment,view,campaign,canCollect,busy,onC
  useEffect(()=>{if(!running)return;let active=true;fetch(`/api/channels?brandId=${encodeURIComponent(experiment.brandId)}${storeId?`&storeId=${encodeURIComponent(storeId)}`:''}`).then(async r=>{if(!r.ok)return;const d=await r.json() as {resolved?:ResolvedCredential[]};if(active){setNow(Date.now());setResolved(d.resolved??[])}}).catch(()=>{/* 보조 표시: 불러오지 못하면 버튼과 만료 경고를 숨긴다. */});return()=>{active=false}},[experiment.brandId,storeId,running]);
  const connectors=collectConnectors(experiment,resolved);
  function start(){setF(initialForm(experiment,view,connectors));setError('');setOpen(true)}
- async function submit(ev:React.FormEvent){ev.preventDefault();setSaving(true);setError('');try{await startCollect(experiment.id,f);setOpen(false);await onCollected();toast.success('성과를 초안으로 가져왔습니다. 결과 입력에서 확인한 뒤 반영하세요.')}catch(e){setError((e as Error).message)}finally{setSaving(false)}}
+ async function submit(ev:React.FormEvent){ev.preventDefault();setSaving(true);setError('');try{await startCollect(experiment.id,f);setOpen(false);await onCollected();notifySaved('성과를 초안으로 가져왔습니다.',{description:'결과 입력에서 확인한 뒤 반영하세요.'})}catch(e){setError((e as Error).message)}finally{setSaving(false)}}
  return <>
   <CollectStatus view={view} connector={connectors[0]??resolved.find(r=>channelNameForConnector(r.channel)===experiment.channel)} now={now}/>
   {canStartCollect(experiment,canCollect,connectors)&&<div className="learning-actions"><Button variant="outline" disabled={busy||saving} onClick={start}><Download/>A/B 성과 가져오기</Button></div>}

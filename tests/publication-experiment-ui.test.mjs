@@ -33,6 +33,9 @@ function link(spec,ref){
  if(spec==='sonner')return synthetic(ref.imports.get(spec)||new Set(),()=>({success(){},error(){}}));
  if(spec==='./auth-client')return synthetic(ref.imports.get(spec)||new Set(),n=>n==='useAuthState'?()=>authState:n==='AuthContext'?AuthContext:()=>null);
  if(spec==='./account-context')return moduleFor('app/account-context.tsx');
+ // 공용 메타 줄(UX-PLAN-3 7차원): 실제 부품으로 그린다(cn의 clsx·tailwind-merge는 실제 패키지).
+ if(spec==='@/components/app/meta-line')return moduleFor('components/app/meta-line.tsx');
+ if(spec==='clsx'||spec==='tailwind-merge')return synthetic(ref.imports.get(spec)||new Set(),n=>require(spec)[n]);
  if(spec.startsWith('@/lib/'))return moduleFor(resolve(spec.slice(2))+'.ts');
  if(spec.startsWith('.')&&ref.identifier.includes('/lib/')){const base=resolve(dirname(ref.identifier),spec);return moduleFor(existsSync(base+'.ts')?base+'.ts':base+'.tsx')}
  throw new Error('예상하지 못한 import: '+spec);
@@ -56,21 +59,21 @@ check('the select value becomes the experiment and arm',()=>{
 check('the prepare form offers both arms and disables an arm another live publication holds',()=>{
  const html=render(ui.ExperimentLinkSelect,{options,publications:[pub({id:'other',experimentId:'e1',arm:'control',status:'accepted'}),pub({id:'gone',experimentId:'e1',arm:'treatment',status:'cancelled'})]});
  assert.match(html,/name="experimentLink"/);assert.match(html,/<option value="" selected="">연결하지 않음<\/option>/);
- assert.match(html,/<option value="e1:control" disabled="">첫 장면 실험 · A · 대조안 · 다른 발행이 연결됨<\/option>/);
- assert.match(html,/<option value="e1:treatment">첫 장면 실험 · B · 실험안<\/option>/);
+ assert.match(html,/<option value="e1:control" disabled="">첫 장면 실험, A\(대조안\), 다른 발행이 연결됨<\/option>/);
+ assert.match(html,/<option value="e1:treatment">첫 장면 실험, B\(실험안\)<\/option>/);
 });
 check('no experiment select without running Instagram experiments',()=>assert.equal(render(ui.ExperimentLinkSelect,{options:[],publications:[]}),''));
 check('an admin sees link controls on an open publication and media input only after publication',()=>{
  const draft=render(ui.PublicationExperiment,{p:pub(),options,canManage:true,busy:false,onAct:noop});
  assert.deepEqual(buttons(draft),['실험 연결']);assert.ok(!/게시물 ID/.test(text(draft)));
  const published=render(ui.PublicationExperiment,{p:pub({status:'published',experimentId:'e1',arm:'control',media:{mediaId:'17900000000000001',permalink:'https://www.instagram.com/p/AbC/',linkedBy:'u',linkedAt:'x'}}),options,canManage:true,busy:false,onAct:noop});
- assert.match(text(published),/콘텐츠 실험: 첫 장면 실험 · A · 대조안 · Instagram 게시물 17900000000000001/);
+ assert.match(text(published),/콘텐츠 실험: 첫 장면 실험 A\(대조안\)\s*,\s*Instagram 게시물 17900000000000001/);
  assert.deepEqual(buttons(published),['실험 연결','연결 해제','게시물 ID 저장']);
  assert.match(published,/Buffer는 Instagram 게시물 ID를 알려 주지 않습니다/);
 });
 check('a member sees the link but no controls',()=>{
  const html=render(ui.PublicationExperiment,{p:pub({status:'published',experimentId:'e1',arm:'treatment'}),options,canManage:false,busy:false,onAct:noop});
- assert.match(text(html),/콘텐츠 실험: 첫 장면 실험 · B · 실험안/);assert.deepEqual(buttons(html),[]);
+ assert.match(text(html),/콘텐츠 실험: 첫 장면 실험 B\(실험안\)/);assert.deepEqual(buttons(html),[]);
  assert.equal(render(ui.PublicationExperiment,{p:pub(),options,canManage:false,busy:false,onAct:noop}),'','연결 없고 권한 없으면 숨긴다');
 });
 check('a cancelled publication offers no link controls',()=>{

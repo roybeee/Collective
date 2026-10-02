@@ -184,7 +184,7 @@ const panel=readFileSync('app/store-operations-panel.tsx','utf8');
 check('the transfer dialog keeps the save button off until the check',panel.includes('disabled={busy||!checked}'));
 check('blocked or transferred candidates have no transfer button and members see the admin note',panel.includes('!c.transferred&&!c.blocked&&(canManage?')&&panel.includes('관리자만 옮길 수 있습니다'));
 check('the dialog sends the chosen store experiment and the version of the record it replaces',/post\('transfer_spend',\{[^}]*storeExperimentId:link[^}]*\}/.test(panel)&&panel.includes('replacesVersion:c.replaces?.version'));
-check('a brand-wide candidate is marked and the dialog warns that the whole spend goes into this store',panel.includes("' · 브랜드 공통 캠페인'")&&panel.includes('이 지점 장부에만 들어갑니다')&&panel.includes('다른 지점에는 옮길 수 없습니다'));
+check('a brand-wide candidate is marked and the dialog warns that the whole spend goes into this store',panel.includes("c.scope==='brand'&&'브랜드 공통 캠페인'")&&panel.includes('이 지점 장부에만 들어갑니다')&&panel.includes('다른 지점에는 옮길 수 없습니다'));
 check('a rolling update names the record it replaces',panel.includes('c.replaces.from')&&panel.includes('두 번 들어가지 않습니다'));
 check('the collected spend list hides itself when there is nothing to show',panel.includes('if(!candidates.length&&!error)return null'));
 
