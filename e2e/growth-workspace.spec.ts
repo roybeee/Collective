@@ -12,7 +12,7 @@ async function openGrowth(page:Page,title:string){
  if((page.viewportSize()?.width??1280)<768)await page.keyboard.press('Escape');
  await page.getByRole('button',{name:`${title} 열기`,exact:true}).click();
  await page.getByRole('tab',{name:'성장·판매',exact:true}).click();
- const panel=page.getByRole('region',{name:'성장2 판매 워크스페이스',exact:true});
+ const panel=page.getByRole('region',{name:'판매 기본 기록',exact:true});
  await expect(panel.getByRole('navigation',{name:'성장 작업 단계'})).toBeVisible();
  return panel;
 }

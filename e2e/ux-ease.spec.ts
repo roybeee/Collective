@@ -22,7 +22,7 @@ test('안건 한 번 클릭 처리·다음 단계·초안 이어 쓰기·직전 
   expect(acknowledged?.status).toBe('acknowledged');expect(acknowledged?.triage?.nextAction).toContain('최근 7일 유료 주문 증가');expect(acknowledged?.triage?.dueBy).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   // 2) 저장 뒤 다음 단계로 바로 간다.
   await page.goto(`/?view=campaigns&campaign=${campaignId}&ctab=growth`);
-  const panel=page.getByRole('region',{name:'성장2 판매 워크스페이스',exact:true});await expect(panel.getByRole('navigation',{name:'성장 작업 단계'})).toBeVisible();
+  const panel=page.getByRole('region',{name:'판매 기본 기록',exact:true});await expect(panel.getByRole('navigation',{name:'성장 작업 단계'})).toBeVisible();
   await panel.getByLabel('근거 제목',{exact:true}).fill('동네 저녁 수요 관찰');await panel.getByLabel('공개 출처 URL',{exact:true}).fill('https://example.com/evidence');await panel.getByLabel('근거 유효기한',{exact:true}).fill('2099-01-01');await panel.getByLabel('관측 요약',{exact:true}).fill('저녁 시간 주문 문의가 늘었다.');
   // 서버 검증 오류는 그 칸에 붙고 초점이 그 칸으로 간다(UX-PLAN-3 Q3). 고치면 표시가 사라진다.
   const url=panel.getByLabel('공개 출처 URL',{exact:true});await url.fill('http://example.com/evidence');
@@ -38,7 +38,7 @@ test('안건 한 번 클릭 처리·다음 단계·초안 이어 쓰기·직전 
   await page.getByRole('button',{name:'고객·기회',exact:true}).click();
   await panel.getByRole('button',{name:'이어 쓰기',exact:true}).click();await expect(needTitle).toHaveValue('퇴근길 1인 가구 저녁');
   // 4) 직전 미션의 담당·채널·중단 기준을 한 번에 채운다.
-  page.once('dialog',d=>void d.accept());await panel.getByRole('button',{name:'판매 미션',exact:true}).click();
+  await panel.getByRole('button',{name:'판매 미션',exact:true}).click();await page.getByRole('alertdialog').getByRole('button',{name:'저장하지 않고 이동',exact:true}).click();
   await panel.getByLabel('미션 제목',{exact:true}).fill('첫 미션');await panel.getByLabel('실행 담당 역할',{exact:true}).fill('매장 매니저');await panel.getByLabel('중단 기준',{exact:true}).fill('손실 한도 도달');
   await panel.getByRole('button',{name:'판매 미션 저장',exact:true}).click();await expect(panel.getByRole('status')).toHaveText('서버에 저장했습니다.');
   await panel.getByRole('button',{name:'새 판매 미션',exact:true}).click();

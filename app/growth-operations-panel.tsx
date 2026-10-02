@@ -113,7 +113,7 @@ function MissionStockForm({view,busy,save,missions,offers,catalogs}:FormProps&Pi
    <Field label={`${release?'안전하게 해제할':'계획 예약'} 수량${inventory?` (${unitName(inventory.input.unit)})`:''}`}><Input required type="number" min={1} step={1} value={draft.quantity} onChange={e=>setDraft({...draft,quantity:e.target.value})}/></Field>
    <EvidenceFields observedAt={draft.observedAt} evidenceRef={draft.evidenceRef} onChange={patch=>setDraft({...draft,...patch})}/>
    {release&&<label className={styles.check}><CheckInput required checked={draft.safeRelease} onChange={e=>setDraft({...draft,safeRelease:e.target.checked})}/>취소·실패를 확인했고 아직 주문에 배정하지 않은 수량을 안전하게 해제합니다.</label>}
-   <Button variant="panel" size="fit" type="submit" disabled={!mission||!inventory||(release&&!draft.reservationId)}>{release?'미션 재고 예약 해제 저장':'미션 계획 재고 예약 저장'}</Button>
+   <Button variant="panel" size="fit" type="submit" disabled={!mission||!inventory||(release&&!draft.reservationId)} disabledReason={!mission?'미션을 먼저 고르세요.':!inventory?'재고를 먼저 고르세요.':release&&!draft.reservationId?'해제할 예약을 먼저 고르세요.':undefined}>{release?'미션 재고 예약 해제 저장':'미션 계획 재고 예약 저장'}</Button>
   </fieldset>{!missionChoices.length&&<p className={styles.note}>{release?'취소·실패 상태의 미션이 없습니다.':'판매 미션에서 준비 요청을 먼저 완료하세요.'}</p>}
  </form>;
 }

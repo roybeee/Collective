@@ -30,7 +30,7 @@ export function MetaInsightsPanel({campaignId}:{campaignId:string}){
  if(!view)return <section className={s.root} aria-label="Meta 광고 성과"><div className={s.empty}>{error?<><p role="alert">{error}</p><Button onClick={()=>setRetry(n=>n+1)}>다시 불러오기</Button></>:<ScreenSkeleton label="광고 성과를 불러오고 있습니다." rows={2}/>}</div></section>;
  const summary=view.summary,r=view.report;
  return <section className={s.root} aria-label="Meta 광고 성과" aria-busy={busy}>
-  <header className={s.header}><div><span className={s.eyebrow}>COLLECTIVE / RESULTS</span><h2>광고의 반응을 확인하세요</h2><p>Meta 성과를 가져오고, 실제 주문과 비교할 기준을 남깁니다.</p></div><Button variant="outline" disabled={busy} onClick={()=>setRetry(n=>n+1)}><RefreshCw size={16}/>새로고침</Button></header>
+  <header className={s.header}><div><span className={s.eyebrow}>Meta 성과</span><h2>광고의 반응을 확인하세요</h2><p>Meta 성과를 가져오고, 실제 주문과 비교할 기준을 남깁니다.</p></div><Button variant="outline" disabled={busy} onClick={()=>setRetry(n=>n+1)}><RefreshCw size={16}/>새로고침</Button></header>
   <div className={s.metrics}>{[{label:'광고비',value:summary?money(summary.spendMinor):'수집 대기'},{label:'Meta 보고 구매',value:summary?.purchases===null||!summary?'미확인':summary.purchases.toLocaleString()+'건'},{label:'Meta 보고 구매 금액',value:summary?money(summary.purchaseValueMinor):'미확인'},{label:'실제 주문 매출',value:'주문 대조 대기'}].map(x=><div key={x.label}><span>{x.label}</span><strong>{x.value}</strong></div>)}</div>
   <p className={s.caption}>Meta 구매 금액은 광고에 귀속된 보고값입니다. 환불을 뺀 실매출·순이익·광고로 늘어난 매출과는 다릅니다.</p>
   {view.stale&&<p className={s.warning}>캠페인이 변경된 뒤 아직 성과를 다시 확인하지 않았습니다. 현재 브랜드와 조회 범위를 확인하세요.</p>}

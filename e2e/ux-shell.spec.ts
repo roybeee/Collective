@@ -21,7 +21,7 @@ test('오늘의 안건·캠페인 탭 주소·지연 로딩·명령 팔레트·�
   // 2) 새로고침해도 같은 탭. 탭을 열 때 성장 API 요청은 4건 이하(접힌 패널은 열 때만 읽는다).
   const calls:string[]=[];page.on('request',r=>{const u=new URL(r.url());if(u.pathname.startsWith('/api/growth')||u.pathname==='/api/storefront-pulls')calls.push(u.pathname)});
   await page.reload();await expect(page.getByRole('tab',{name:'성장·판매',exact:true})).toHaveAttribute('aria-selected','true');
-  const growth=page.getByRole('region',{name:'성장2 판매 워크스페이스',exact:true});await expect(growth.getByRole('navigation',{name:'성장 섹션 바로가기',exact:true})).toBeVisible();
+  const growth=page.getByRole('region',{name:'판매 기본 기록',exact:true});await expect(growth.getByRole('navigation',{name:'성장 섹션 바로가기',exact:true})).toBeVisible();
   await expect(growth.getByRole('heading',{name:/^판단/})).toBeVisible();await page.waitForTimeout(1500);
   expect(new Set(calls).size,calls.join(',')).toBeLessThanOrEqual(2);
   const before=calls.length;await growth.locator('summary').filter({hasText:/^고객 문의·약속 기한$/}).click();await expect(growth.getByRole('region',{name:'고객 문의 처리',exact:true})).toBeVisible();
@@ -35,15 +35,17 @@ test('오늘의 안건·캠페인 탭 주소·지연 로딩·명령 팔레트·�
   await page.reload();await expect(page.getByRole('navigation',{name:'성장 작업 단계'}).getByRole('button',{name:'상품',exact:true})).toHaveAttribute('aria-pressed','true');
   await expect(page.getByRole('navigation',{name:'이동 경로',exact:true})).toContainText('성장·판매');
   await page.getByRole('tab',{name:'Meta 광고 준비',exact:true}).click();await expect(page).not.toHaveURL(/csub=/);
-  await page.getByRole('tab',{name:'광고 성과',exact:true}).click();await expect(page).toHaveURL(/ctab=meta-ads&csub=insights/);
-  await page.reload();await expect(page.getByRole('tab',{name:'광고 성과',exact:true})).toHaveAttribute('aria-selected','true');
+  await page.getByRole('tab',{name:'성과·대조',exact:true}).click();await expect(page).toHaveURL(/ctab=meta-ads&csub=insights/);
+  await page.reload();await expect(page.getByRole('tab',{name:'성과·대조',exact:true})).toHaveAttribute('aria-selected','true');
   await expect(page.getByRole('navigation',{name:'이동 경로',exact:true})).toContainText('Meta 광고 준비');
   // 3) 안쪽 탭을 바꾸면 주소도 바뀐다.
   await page.getByRole('tab',{name:'성과',exact:true}).click();await expect(page).toHaveURL(/ctab=results/);
   // 3b) 모바일: 스크롤로 머리글 동작이 사라지면 같은 버튼 묶음이 화면 아래에 고정된다(UX-PLAN-3 Q8). 첫 화면에서는 고정하지 않는다.
-  if(mobile){const edit=page.getByRole('button',{name:'브리프 수정',exact:true});await expect(edit).toHaveCount(1);await page.getByRole('navigation',{name:'이동 경로',exact:true}).scrollIntoViewIfNeeded();await expect(page.locator('[data-floating]')).toHaveCount(0);
+  // 고정 묶음(브리프 수정·내려받기)은 그 동작이 주 동작인 브리프 탭에서만 고정한다(평가 6회차: 성장 탭의 주 동작이 아니었다).
+  if(mobile){await page.getByRole('tab',{name:'브리프',exact:true}).click();const edit=page.getByRole('button',{name:'브리프 수정',exact:true});await expect(edit).toHaveCount(1);await page.getByRole('navigation',{name:'이동 경로',exact:true}).scrollIntoViewIfNeeded();await expect(page.locator('[data-floating]')).toHaveCount(0);
    await page.mouse.wheel(0,1500);await expect(page.locator('[data-floating]')).toHaveCount(1);await expect(edit).toBeInViewport();await expect(page.locator('[data-floating] .danger-action')).toBeHidden();
-   const box=await edit.boundingBox(),vh=page.viewportSize()!.height;expect(box!.y+box!.height).toBeGreaterThan(vh-80);expect(box!.height).toBeGreaterThanOrEqual(44);await page.getByRole('navigation',{name:'이동 경로',exact:true}).scrollIntoViewIfNeeded();await expect(page.locator('[data-floating]')).toHaveCount(0)}
+   const box=await edit.boundingBox(),vh=page.viewportSize()!.height;expect(box!.y+box!.height).toBeGreaterThan(vh-80);expect(box!.height).toBeGreaterThanOrEqual(44);await page.getByRole('navigation',{name:'이동 경로',exact:true}).scrollIntoViewIfNeeded();await expect(page.locator('[data-floating]')).toHaveCount(0);
+   await page.getByRole('tab',{name:'성장·판매',exact:true}).click();await page.mouse.wheel(0,1500);await expect(page.locator('[data-floating]')).toHaveCount(0)}
   // 4) 명령 팔레트(데스크톱 단축키)로 설정 이동 → 운영 안전에 전역 중단.
   await page.keyboard.press('Escape');
   if(!mobile){await page.keyboard.press('Control+k');const palette=page.getByRole('dialog',{name:'바로 가기'});await expect(palette).toBeVisible();await palette.getByPlaceholder('화면·캠페인·작업물 검색').fill('연결 및 설정');await page.keyboard.press('Enter');}

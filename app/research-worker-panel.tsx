@@ -70,7 +70,7 @@ export function ResearchWorkerPanel({hermes}:{hermes:boolean}){
   {!state.sshTarget&&<p className="subtle-note">‘&lt;서버 접속 주소&gt;’를 sudo 권한이 있는 계정@서버 주소로 바꿔 실행하세요. 배포 환경변수 RESEARCH_WORKER_SSH_TARGET을 설정하면 이 자리에 표시됩니다.</p>}
   <p className="subtle-note">기존 Hetzner Ubuntu 서버용입니다. 설치 중 기본 HERMES 연결을 재시작합니다. 서버 브라우저의 로그인 상태는 별도이며, 로그인이 필요한 자료는 조사 한계로 기록합니다.</p>
   </>}
-  <div className="worker-actions">{state?.canInstall&&<Button disabled={busy||!hermes} disabledReason={!hermes?'HERMES 연결 정보가 없습니다.':undefined} onClick={()=>action('download')}><Download/>{state.registered?'설치 파일 다시 발급':'서버 설치 파일 받기'}</Button>}<Button variant="outline" disabled={busy} onClick={refresh}><RefreshCw/>상태 확인</Button>{state?.canRevoke&&state.registered&&<Button variant="ghost" disabled={busy} onClick={()=>action('revoke')}><Unplug/>작업자 연결 해제</Button>}</div>
+  <div className="worker-actions"><Button disabled={!state?.canInstall||busy||!hermes} disabledReason={!state?.canInstall?'관리자만 설치 파일을 받을 수 있습니다.':!hermes?'HERMES 연결 정보가 없습니다.':undefined} onClick={()=>action('download')}><Download/>{state?.registered?'설치 파일 다시 발급':'서버 설치 파일 받기'}</Button><Button variant="outline" disabled={busy} onClick={refresh}><RefreshCw/>상태 확인</Button>{state?.canRevoke&&state.registered&&<Button variant="ghost" disabled={busy} onClick={()=>action('revoke')}><Unplug/>작업자 연결 해제</Button>}</div>
   {(state?.lastIssued||state?.lastRevoked)&&<p className="subtle-note">{[eventText('마지막 설치 파일 발급',state.lastIssued),eventText('마지막 연결 해제',state.lastRevoked)].filter(Boolean).join(' · ')}</p>}
   {state?.canInstall?<>
   {!hermes&&<p className="subtle-note">먼저 HERMES를 연결하세요.</p>}

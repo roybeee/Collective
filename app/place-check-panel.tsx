@@ -63,7 +63,7 @@ export function PlaceCheckPanel({store}:{store:Store}){
    <span>{t.title}</span>
    <div className="flex gap-2 flex-wrap items-center">
     <Input aria-label="완료 근거" maxLength={3000} value={evidence[t.id]??''} placeholder="처리 근거(예: 플레이스 영업시간 수정)" onChange={e=>setEvidence(x=>({...x,[t.id]:e.target.value}))}/>
-    <Button size="sm" variant="outline" disabled={busy||!listing.enabled||!(evidence[t.id]??'').trim()} onClick={()=>void complete(t)}>완료 기록</Button>
+    <Button size="sm" variant="outline" disabled={busy||!listing.enabled||!(evidence[t.id]??'').trim()} disabledReason={!listing.enabled?'플레이스 점검이 꺼져 있습니다.':!(evidence[t.id]??'').trim()?'확인 근거를 먼저 쓰세요.':undefined} onClick={()=>void complete(t)}>완료 기록</Button>
    </div>
   </li>)}</ul>}
   {listing.enabled&&(admin?<form className="form-stack" onSubmit={e=>{e.preventDefault();void save()}}>
