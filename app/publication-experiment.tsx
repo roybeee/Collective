@@ -37,7 +37,7 @@ export function PublicationExperiment({p,options,canManage,busy,onAct}:{p:Public
  const open=!CLOSED.includes(p.status);
  if(!linked&&!p.media&&(!canManage||!open||!options.length))return null;
  return <div className="grid gap-2 border rounded p-3" aria-label="콘텐츠 실험 연결">
-  <p className="text-sm"><MetaLine items={[linked?`콘텐츠 실험: ${linked}`:'콘텐츠 실험에 연결되지 않은 발행입니다.',p.media&&`Instagram 게시물 ${p.media.mediaId}`,p.media?.permalink&&<a key="permalink" className="underline" href={p.media.permalink} target="_blank" rel="noreferrer">게시물 열기</a>]}/></p>
+  <p className="text-sm"><MetaLine items={[linked?`콘텐츠 실험: ${linked}`:'콘텐츠 실험 연결 없음',p.media&&`Instagram 게시물 ${p.media.mediaId}`,p.media?.permalink&&<a key="permalink" className="underline" href={p.media.permalink} target="_blank" rel="noreferrer">게시물 열기</a>]}/></p>
   {canManage&&open&&<div className="flex flex-wrap gap-2 items-end">
    {options.length>0&&<label className="text-sm">연결할 실험 안<NativeSelect className="block border rounded p-2" value={choice} disabled={busy} onChange={e=>setChoice(e.target.value)}><option value="">선택하세요</option><ArmOptions options={options} publications={[p]} self={p.id}/></NativeSelect></label>}
    {options.length>0&&<Button type="button" variant="outline" size="fit" disabled={busy||!experimentChoice(choice)} disabledReason={(!experimentChoice(choice))?'실험을 먼저 고르세요.':undefined} onClick={()=>onAct('link_experiment',{id:p.id,version:p.version,experiment:experimentChoice(choice)},'발행을 실험 안에 연결했습니다.')}>실험 연결</Button>}

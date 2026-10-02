@@ -84,9 +84,9 @@ function AttributionBody({report:r}:{report:CampaignAttribution}){
  if(!t.records)return <><p className="notice">{r.period.from} ~ {r.period.to}에 이 캠페인에 귀속된 주문이 없습니다. 점포 마케팅 → 지점 → 주문 장부에서 추적 코드나 유입 확인 근거로 주문을 이 캠페인에 연결하면 여기에 자동으로 집계됩니다.</p><Notes notes={notes}/></>;
  return <>
   <div className="ledger-summary">
-   <article><span>귀속 주문</span><strong>{count(t.orders)}</strong><small><MetaLine items={[`기록 ${count(t.records)}`,'취소·전액 환불은 주문 수에서 제외']}/></small></article>
+   <article><span>귀속 주문</span><strong>{count(t.orders)}</strong><small>기록 {count(t.records)}. 취소·전액 환불은 주문 수에서 뺍니다.</small></article>
    <article><span>순매출</span><strong>{won(t.netRevenue)}</strong><small>결제액 − 환불액</small></article>
-   <article><span>공헌이익</span><strong>{won(t.contribution)}</strong><small><MetaLine items={t.unknownCostOrders?[`원가 미확인 ${count(t.unknownCostOrders)}`,'0으로 계산하지 않음']:['순매출 − 주문 원가','광고비 미배분']}/></small></article>
+   <article><span>공헌이익</span><strong>{won(t.contribution)}</strong><small>{t.unknownCostOrders?`원가 미확인 ${count(t.unknownCostOrders)}은 0이 아닌 미확인으로 둡니다.`:'순매출 − 주문 원가(광고비 미배분)'}</small></article>
    <article><span>귀속 방식</span><strong><MetaLine items={[`코드 ${method('code')}`,`수동 ${method('manual')}`]}/></strong><small><MetaLine items={['추적 코드 귀속','근거를 적은 수동 귀속']}/></small></article>
   </div>
   <WeekTable weeks={r.weeks}/>

@@ -47,8 +47,8 @@ export function MetricCard({metric:m,onSaved,compact=false,all=[]}:{metric:Metri
   <div className="section-heading"><h3><MetaLine items={periodItems(m)}/></h3><span className="mode-pill">{m.schemaVersion===2?'출처·범위 기록':'기존 기록(조건 미확인)'}</span></div>
   <div className="metric-grid">{[['순매출',amount(m.revenue)],['광고·제작비 차감 후 공헌이익',amount(summary.net)],m.schemaVersion===2?['직전 기간 대비 순매출',changeText(m,prev)]:['기준 대비 관찰 변화',amount(summary.observedChange)],['매체비 대비 매출',summary.roas===null?'자료 필요':summary.roas.toFixed(2)+'배']].map(([label,value])=><div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
   {!compact&&<p className="subtle-note">{balanceNote}</p>}
-  {m.source&&<p>출처: {m.source}<br/>집계 정의: {m.definition}</p>}{m.notes&&<p className="metric-note">{m.notes}</p>}
-  {onSaved&&<><Button variant="outline" size="sm" onClick={()=>setEditing(true)}>기록 수정</Button><MetricDialog open={editing} initial={m} campaigns={[{id:m.campaignId,title:'현재 캠페인'}]} onClose={()=>setEditing(false)} onSaved={onSaved}/></>}
+  {m.source&&<p className="metric-source">출처: {m.source}<br/>집계 정의: {m.definition}</p>}{m.notes&&<p className="metric-note">{m.notes}</p>}
+  {onSaved&&<><div className="metric-actions"><Button variant="outline" size="sm" onClick={()=>setEditing(true)}>기록 수정</Button></div><MetricDialog open={editing} initial={m} campaigns={[{id:m.campaignId,title:'현재 캠페인'}]} onClose={()=>setEditing(false)} onSaved={onSaved}/></>}
  </div>;
 }
 

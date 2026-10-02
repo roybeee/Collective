@@ -305,13 +305,13 @@ label [data-slot=native-select-wrapper],.form [data-slot=native-select-wrapper],
 /* 공용 데이터 표(components/app/data-table.tsx): 찾기·CSV 줄, 좁은 화면에서는 행을 카드로 읽고 칸마다 열 이름을 붙인다. */
 .data-table-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}.data-table-tools input{max-width:16rem}
 .data-table-wrap>.ledger-table-wrap{margin-bottom:0}.data-table-wrap{margin-bottom:28px}
-@media(max-width:767px){.data-table thead{display:none}.data-table,.data-table tbody,.data-table tr,.data-table td{display:block;width:100%}.data-table tr{border-bottom:1px solid var(--neutral-90);padding:10px 12px}.data-table td{border:0!important;padding:3px 0!important;text-align:left!important;display:flex;gap:10px}.data-table td::before{content:attr(data-label);flex:0 0 7.5rem;color:var(--green-44);font-size:12px}}
+@media(max-width:767px){.data-table thead{display:none}.data-table,.data-table tbody,.data-table tr,.data-table td{display:block;width:100%}.data-table tr{border-bottom:1px solid var(--neutral-90);padding:10px 12px}.data-table td{border:0!important;padding:3px 0!important;text-align:left!important;display:flex;gap:10px;align-items:baseline}.data-table td::before{content:attr(data-label);flex:0 0 7.5rem;color:var(--green-44);font-size:12px}}
 /* 공용 추세 막대(components/app/trend-bars.tsx). 막대는 데이터 색, 글자는 본문 색. 기준선 하나(1px). */
 .trend-bars{margin:0 0 14px}.trend-bars figcaption{font-size:13px;color:var(--green-44);margin-bottom:6px}
 .trend-plot{display:flex;align-items:stretch;gap:2px;height:150px;list-style:none;margin:0;padding:0}
 .trend-plot>li{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;outline:none;border-radius:6px}
 .trend-plot>li:focus-visible{box-shadow:0 0 0 2px var(--green-44)}
-.trend-value{height:18px;font-size:12px;font-weight:600;color:var(--neutral-17);white-space:nowrap}
+.trend-value{height:18px;font-size:12px;font-weight:600;color:var(--neutral-17);white-space:nowrap}.trend-value.is-hidden{visibility:hidden}
 /* 양 끝 막대의 값 표기는 그림 안쪽으로 붙인다(칸보다 넓은 표기가 화면 밖으로 밀리지 않게). */
 .trend-plot>li:first-child>.trend-value{align-self:flex-start}.trend-plot>li:last-child>.trend-value{align-self:flex-end}
 .trend-track{flex:1;width:100%;display:flex;align-items:flex-end;justify-content:center;border-bottom:1px solid var(--neutral-90)}
@@ -340,3 +340,10 @@ details:not(.lazy-panel):not(.all-suggestions)>summary{list-style:none;display:f
 /* 공용 메타 한 줄(components/app/meta-line.tsx): 가운뎃점 대신 항목 사이 옅은 세로선. 쉼표(.meta-comma)는 글자 크기 0. 세로선은 쉼표 뒤 빈칸(.meta-sep)의 배경으로 그린다
    (::before inline-block이나 항목 inline-block이면 접근 이름에 빈칸이 낀다). 줄 끝의 빈칸은 폭 0으로 지워져 세로선이 줄 끝·줄 첫머리에 남지 않는다. pre-wrap 안에서도 한 줄 안의 빈칸을 접게 한다(줄바꿈 허용 여부는 부모를 따른다). */
 .meta-line{display:inline;overflow-wrap:anywhere;white-space-collapse:collapse}.meta-comma{font-size:0!important}.meta-sep{word-spacing:.85em;background:linear-gradient(color-mix(in srgb,currentColor 35%,transparent),color-mix(in srgb,currentColor 35%,transparent)) 50% 55%/1px .85em no-repeat}
+/* 설정 기능표(app/panels.tsx FeatureTable): 이름 칸은 고정 폭, 상태·설명은 남은 폭을 쓴다. 한국어 낱말 중간에서 끊지 않고(keep-all) 마지막 낱말만 홀로 다음 줄로 떨어지지 않게 한다(text-wrap:pretty, 평가 10회차).
+   좁은 화면에서는 이름 줄 아래에 상태·설명을 쌓는다(80px 이름 칸에 '조사/작업자/연결'처럼 세 줄로 끊기던 것). */
+.scope-card .scope-row>div{flex:0 0 min(11rem,38%);min-width:0}.scope-card .scope-row>b{flex:1 1 0;min-width:0}
+.scope-card .scope-row>div,.scope-card .scope-row>b{word-break:keep-all;overflow-wrap:break-word;text-wrap:pretty}
+@media(max-width:767px){.scope-card .scope-row{flex-direction:column;gap:6px}.scope-card .scope-row>div{flex:none;color:var(--neutral-17);font-weight:550}.scope-card .scope-row>b{text-align:left}}
+/* 이어지는 안내 상자·기간 입력·버튼 사이의 세로 간격(평가 10회차: 성과 탭의 안내 상자 두 개가 붙고 '집계 시작일'이 위 상자에 닿았다). */
+.notice+.notice{margin-top:10px}.notice+.ledger-period{margin-top:18px}.metric-card .metric-source{font-size:14px;color:var(--green-44);line-height:1.7;margin-top:16px;overflow-wrap:anywhere}.metric-card .metric-actions{display:flex;gap:8px;margin-top:16px}

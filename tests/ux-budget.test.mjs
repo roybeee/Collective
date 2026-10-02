@@ -162,4 +162,29 @@ for(const f of [...new Set([...laneAJsx,...laneATermLibs])]){
 }
 check(laneATermLibs.length>20&&retired.length===0,`retired synonyms on lane A screens (use 공헌이익 / 광고·제작비 차감 후 공헌이익 / 브랜드 아카이브): ${retired.join(' | ')}`);
 check(/term:'광고·제작비 차감 후 공헌이익'/.test(readFileSync('lib/glossary.ts','utf8')),'glossary defines the after-cost contribution name used on screens');
-console.log(JSON.stringify({passed,now,directToastSuccess,notices:notices.length,undoNotices,brandLiterals:brandLiterals.length,rawDateNumber:rawDateNumber.length,retiredTerms:retired.length}));
+// 화면 글자에 '|'를 구분자로 쓰지 않는다(평가 10회차: '기록 12건 | 취소·전액 환불은…'). 여러 사실은 MetaLine 항목으로, 설명은 문장으로 쓴다.
+// 레인 A 화면(app/*.tsx·components/app/*.tsx)과 화면 문자열을 만드는 레인 A lib의 글자 리터럴(주석 제외)에서 빈칸 옆 '|'를 센다. join('|') 같은 키 이음은 빈칸이 없어 세지 않는다.
+const pipeSeparators=[];
+for(const f of [...new Set([...laneAJsx,...laneATermLibs])]){
+ const sf=ts.createSourceFile(f,readFileSync(f,'utf8'),ts.ScriptTarget.Latest,true,f.endsWith('.tsx')?ts.ScriptKind.TSX:ts.ScriptKind.TS);
+ const visit=x=>{if((ts.isStringLiteral(x)||ts.isNoSubstitutionTemplateLiteral(x)||ts.isTemplateHead(x)||ts.isTemplateMiddle(x)||ts.isTemplateTail(x)||ts.isJsxText(x))&&/\s\||\|\s/.test(x.text))pipeSeparators.push(`${f}: ${x.text.trim().slice(0,40)}`);ts.forEachChild(x,visit)};visit(sf);
+}
+check(pipeSeparators.length<=budget.static.pipeSeparators,`'|' separators in lane A screen text ${pipeSeparators.length} > ${budget.static.pipeSeparators}: ${pipeSeparators.join(' / ')}`);
+// MetaLine 항목은 사실 조각이다. 문장('…다.'·'…요.')을 항목으로 섞으면 세로선 뒤에 문장이 붙어 '항목 | 문장'으로 읽힌다(평가 10회차). 문장은 MetaLine 밖에 쓴다.
+const metaLineSentences=[];
+for(const f of laneAJsx){
+ const sf=ts.createSourceFile(f,readFileSync(f,'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+ const leaves=e=>{const out=[];const w=y=>{if(ts.isStringLiteral(y)||ts.isNoSubstitutionTemplateLiteral(y))out.push(y.text);else if(ts.isTemplateExpression(y))out.push(y.templateSpans.at(-1).literal.text);ts.forEachChild(y,w)};w(e);return out};
+ const visit=x=>{if((ts.isJsxSelfClosingElement(x)||ts.isJsxOpeningElement(x))&&x.tagName.getText()==='MetaLine'){const items=x.attributes.properties.find(p=>ts.isJsxAttribute(p)&&p.name.getText()==='items');if(items?.initializer)metaLineSentences.push(...leaves(items.initializer).filter(t=>/[다요]\.$/.test(t.trim())).map(t=>`${f}: ${t.trim().slice(0,40)}`))}ts.forEachChild(x,visit)};visit(sf);
+}
+check(metaLineSentences.length<=budget.static.metaLineSentences,`sentences inside MetaLine items ${metaLineSentences.length} > ${budget.static.metaLineSentences}: ${metaLineSentences.join(' / ')}`);
+// 설정 기능표는 좁은 화면에서 이름 줄 아래에 상태·설명을 쌓고, 한국어 낱말을 중간에서 끊거나 마지막 낱말만 홀로 떨어뜨리지 않는다(평가 10회차 mobile-07·desktop-07).
+check(/@media\(max-width:767px\)\{\.scope-card \.scope-row\{flex-direction:column/.test(css)&&/\.scope-card \.scope-row>b\{[^}]*\}[^\n]*\n?\.scope-card \.scope-row>div,\.scope-card \.scope-row>b\{word-break:keep-all;[^}]*text-wrap:pretty/.test(css),'settings feature rows stack on narrow screens and keep Korean words whole');
+// 추세 막대의 값 표기는 실제로 그려진 폭으로 겹침을 판단한다(평가 10회차: 점 개수 기준이면 넓은 화면에서도 마지막 주 값이 숨었다).
+{
+ const tb=readFileSync('components/app/trend-bars.tsx','utf8');
+ check(/new ResizeObserver\(/.test(tb)&&/trendLabelsApart\(/.test(tb),'trend bar labels are measured against the rendered width (ResizeObserver)');
+ const apart=new Function('a','b','gap',tb.match(/export function trendLabelsApart\([^)]*\)\{([^}]*)\}/)[1].replace(/^/,'gap=gap??8;'));
+ check(apart({left:500,right:560},{left:620,right:680})&&!apart({left:200,right:260},{left:250,right:310})&&!apart({left:200,right:260},{left:264,right:320}),'trendLabelsApart keeps an 8px gap between the peak and last labels');
+}
+console.log(JSON.stringify({passed,now,directToastSuccess,notices:notices.length,undoNotices,brandLiterals:brandLiterals.length,rawDateNumber:rawDateNumber.length,retiredTerms:retired.length,pipeSeparators:pipeSeparators.length,metaLineSentences:metaLineSentences.length}));
