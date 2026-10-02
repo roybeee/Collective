@@ -29,7 +29,7 @@ function Workspace({campaignId}:{campaignId:string}){
  }
  const comp=(i:number,patch:Partial<BundleInput['components'][number]>)=>setInput(x=>({...x,components:x.components.map((c,j)=>j===i?{...c,...patch}:c)}));
  return <section aria-label="번들 오퍼" className={styles.panel}><header className={styles.header}><h3>여러 상품 번들 · 원가와 재고 할당</h3><Button variant="panel" size="fit" aria-label="번들 새로고침" type="button" disabled={busy} onClick={()=>void load()}>새로고침</Button></header>
-  <Note className={styles.note}>번들의 원가·이익·할인과 만들 수 있는 수량을 계산합니다. 구성 상품의 정확한 판으로 번들 원가(수량×(원가+변동비))·공헌이익·정가 대비 할인과, 공유 재고로 만들 수 있는 최대 번들 수를 셉니다. 원가·세금 기준·재고가 확인되지 않으면 추정하지 않고 미확인으로 둡니다. 재고 예약·판매 실행은 하지 않습니다.</Note>
+  <Note className={styles.note}>번들의 원가·이익·할인과 만들 수 있는 수량을 계산합니다. 구성 상품의 정확한 판으로 번들 원가(수량×(원가+변동비))·공헌이익·정가 대비 할인과, 공유 재고로 만들 수 있는 최대 번들 수를 셉니다. 원가·세금 기준·재고가 확인되지 않으면 추정하지 않고 미확인으로 둡니다. 재고 예약·판매 실행은 판매 미션에서 따로 합니다.</Note>
   {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">번들을 조회하고 있습니다.</p>}{stale&&<p role="status" className={styles.warning}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
   {view&&<>{<Button variant="panel" size="fit" type="button" disabled={busy||!view.canEdit} disabledReason={view.canEdit?undefined:readOnlyReason} onClick={()=>{setEditing({id:`bundle-${crypto.randomUUID().slice(0,8)}`,expectedVersion:0});setInput(emptyInput());retry.current=null;}}>새 번들</Button>}
    {editing&&<form onSubmit={e=>{e.preventDefault();void save();}}><fieldset disabled={busy||!view.canEdit} className={styles.form}><legend>번들 {editing.id}</legend>

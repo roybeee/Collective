@@ -29,7 +29,7 @@ function Workspace({campaignId}:{campaignId:string}){
   finally{writing.current=null;if(mounted.current&&!controller.signal.aborted)setSaving(false);}
  }
  return <section aria-label="교훈 적용 계보" className={styles.panel}><header className={styles.header}><h3>운영 교훈 적용·결과 회수</h3><Button variant="panel" size="fit" aria-label="교훈 적용 새로고침" type="button" disabled={busy} onClick={()=>void load()}>새로고침</Button></header>
-  <Note className={styles.note}>재사용 가능한 교훈의 적용 기록과 결과를 남깁니다. 적용 대상은 다음 미션·상세 수정안·수요·실험의 정확한 판이고, 확인일에 성공·실패·무효를 회수합니다. 제안은 자동 적용이 아니며 실패가 반복되어도 자동 퇴역·승격하지 않습니다. 결과 집계는 인과 판정이 아닙니다.</Note>
+  <Note className={styles.note}>재사용 가능한 교훈의 적용 기록과 결과를 남깁니다. 적용 대상은 다음 미션·상세 수정안·수요·실험의 정확한 판이고, 확인일에 성공·실패·무효를 회수합니다. 제안은 자동 적용이 아니며, 퇴역·승격은 실패가 반복되어도 운영자가 정합니다. 결과 집계는 인과 판정이 아닙니다.</Note>
   {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">교훈 적용을 조회하고 있습니다.</p>}{stale&&<p role="status" className={styles.warning}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
   {view&&<><h4>적용 제안</h4>{!view.suggestions.length&&<EmptyLine next="실패 교훈을 저장하면 다른 캠페인에 쓸 후보로 제안됩니다.">제안할 재사용 교훈이 없습니다.</EmptyLine>}
    <ul>{view.suggestions.map(s=><li key={s.missionId}>{s.title} v{s.missionVersion}: {s.lessons.map(l=><Button disabledReason={view.canEdit?undefined:readOnlyReason} variant="panel" size="fit" key={l.id} type="button" disabled={busy||!view.canEdit} onClick={()=>setInput({...emptyInput(),lessonId:l.id,lessonVersion:l.version,targetKind:'mission',targetId:s.missionId,targetVersion:s.missionVersion})}>{l.title}{l.record?` (성공 ${l.record.success}/실패 ${l.record.failure})`:''} 적용 준비</Button>)}</li>)}</ul>

@@ -110,7 +110,7 @@ test('상세 시트에서 브리프를 고치면 시트가 새 버전을 보여 
   const {id} = await created.json() as {id: string};
   await page.goto(`/?view=campaigns&campaign=${id}`);
   const sheet = page.getByRole('region', {name: title});
-  await expect(sheet.getByText('BRIEF v1', {exact: true})).toBeVisible();
+  await expect(sheet.getByText('브리프 v1', {exact: true})).toBeVisible();
 
   // 두 번째 저장은 시트가 넘긴 버전으로 검사된다. 시트가 옛 버전을 들고 있으면 409(다른 화면에서 브리프가 변경됐습니다)가 난다.
   for (const [goal, version] of [['두 번째 목표', 2], ['세 번째 목표', 3]] as const) {
@@ -121,7 +121,7 @@ test('상세 시트에서 브리프를 고치면 시트가 새 버전을 보여 
     await dialog.getByRole('button', {name: '브리프 수정 저장', exact: true}).click();
     expect((await saved).status()).toBe(200);
     await expect(dialog).toBeHidden();
-    await expect(sheet.getByText(`BRIEF v${version}`, {exact: true})).toBeVisible();
+    await expect(sheet.getByText(`브리프 v${version}`, {exact: true})).toBeVisible();
     await expect(sheet.getByRole('heading', {level: 2, name: goal, exact: true})).toBeVisible();
   }
   await context.close();
@@ -150,7 +150,7 @@ test('작업 중인 캠페인 상세는 폴링 한 번에 상세 API를 한 번�
     if (path === `/api/campaigns/${id}`) detailRequests++;
   });
   await page.goto(`/?view=campaigns&campaign=${id}`);
-  await expect(page.getByRole('region', {name: title}).getByText('BRIEF v1', {exact: true})).toBeVisible();
+  await expect(page.getByRole('region', {name: title}).getByText('브리프 v1', {exact: true})).toBeVisible();
   const start = {workspace: workspaceRequests, detail: detailRequests};
   // tick마다 워크스페이스 1회·상세 1회. 부모 데이터가 바뀔 때마다 상세를 다시 읽으면 상세가 tick당 2회가 된다.
   // 5초 간격 폴링 두 주기. 부하가 걸린 러너에서도 두 번은 오도록 넉넉히 기다린다(간격 자체는 검사하지 않는다).

@@ -25,9 +25,9 @@ function Notices({data}:{data:RewardLineageResponse}){
  return <ul className="learning-meta" aria-label="보상 계보 고지">
   {!data.lineage.layers.publish.realPublish&&<li>realPublish:false · 결정 16 첫 실게시 전이라 발행(L1)은 앱 승인·접수 기록이며 실제 게시 증거가 아닙니다. 반응(L2)은 작업물 출처 실험만 줄여 셉니다.</li>}
   {partial.length>0&&<li>일부만 집계 · 행 상한을 넘어 최근 기록만 읽은 종류: {partial.join(', ')} (partial.kinds)</li>}
-  <li>귀속≠증분 · 추적 코드로 귀속된 주문은 캠페인이 없었어도 생겼을 수 있습니다.</li>
+  <li>귀속은 증분과 다릅니다. 추적 코드로 귀속된 주문은 캠페인이 없었어도 생겼을 수 있습니다.</li>
   <li>자동 판정 아님 · 이 표로 프롬프트 버전·규칙을 자동으로 올리거나 내리지 않습니다. 비교 확률은 설명용이며 판단은 대표가 합니다.</li>
-  <li>재방문(L4)은 A5 전이라 측정하지 않습니다(not_run).</li>
+  <li>재방문(L4)은 A5 이후에 측정합니다(not_run).</li>
  </ul>;
 }
 function VersionTable({data}:{data:RewardLineageResponse}){

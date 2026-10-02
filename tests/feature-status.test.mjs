@@ -142,7 +142,7 @@ ok('feature reads time out instead of waiting forever',panels.includes("fetch(pa
 ok('blocked links carry the target tab to the address',panels.includes('pushNav({view:link.view,brand:link.brand,campaign:link.campaign,tab:link.tab})'));
 ok('blocked rows navigate with the URL route helper',panels.includes('pushNav('));
 ok('the HERMES connection form is admin-only on screen',panels.includes('<AdminOnly')&&panels.includes("from './account-context'"));
-ok('the AI team note matches the current feature range',!panels.includes('이미지·영상 렌더링 및 광고 집행은 별도 연결이 필요합니다')&&panels.includes('PNG 정보 카드')&&panels.includes('영상 렌더링과 광고 집행은 아직 지원하지 않습니다'));
+ok('the AI team note matches the current feature range',!panels.includes('이미지·영상 렌더링 및 광고 집행은 별도 연결이 필요합니다')&&panels.includes('PNG 정보 카드')&&panels.includes('영상 렌더링은 앱 밖에서, 광고 집행은 Meta 광고 준비 탭의 승인 절차로 합니다'));
 // F5 설정 채널 카드: 브랜드·지점 단위 자격증명 상태와 '적용 범위' 연결 폼. 상태는 모두에게, 연결·해제는 관리자만(AdminOnly, PR 5c).
 const card=panels.slice(panels.indexOf('function ChannelCredentialsPanel('),panels.indexOf('function FeatureTable('));
 ok('the settings channel card is the brand-scoped card',panels.includes('<div id="settings-channels"><ChannelCredentialsPanel brands={data.brands}/></div>')&&!panels.includes("from './channel-panel'")&&!existsSync('app/channel-panel.tsx')&&card.length>0);

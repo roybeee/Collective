@@ -104,7 +104,7 @@ export function weekRows(weeks:readonly ReportWeek[]|undefined,baseline=false){
 }
 export function completenessSummary(weeks:readonly ReportWeek[]|undefined){
  const rows=weekRows(weeks),passed=rows.filter(r=>r.status==='pass').length;
- return {passed,total:rows.length,text:rows.length?`완전성 통과 ${passed}/${rows.length}주 · 통과한 주만 north-star에 집계합니다.`:'완전성 검사할 주가 없습니다. POS 합계를 입력하면 주별로 대조합니다.'};
+ return {passed,total:rows.length,text:rows.length?`완전성 통과 ${passed}/${rows.length}주 · 통과한 주만 핵심 지표에 집계합니다.`:'완전성 검사할 주가 없습니다. POS 합계를 입력하면 주별로 대조합니다.'};
 }
 // POS 합계는 끝난 주(일요일까지)만 받는다(서버 set_pos_total). 이미 저장한 합계는 보고서 주의 posVersion으로 고쳐 쓴다.
 const weekEndOf=(w:Pick<ReportWeek,'weekStart'|'weekEnd'>)=>w.weekEnd||new Date(Date.parse(w.weekStart+'T00:00:00Z')+6*86400000).toISOString().slice(0,10);
@@ -112,7 +112,7 @@ export function posWeekOptions(weeks:readonly ReportWeek[]|undefined,today:strin
  return [...(weeks||[])].filter(w=>/^\d{4}-\d{2}-\d{2}$/.test(w.weekStart)&&weekEndOf(w)<=today).sort((a,b)=>b.weekStart.localeCompare(a.weekStart)).map(w=>({value:w.weekStart,label:weekLabel(w.weekStart,w.weekEnd),version:finite(w.posVersion)?w.posVersion:undefined}));
 }
 export function northStarView(ns:Partial<NorthStar>|undefined){
- if(!ns||!whole(ns.passedWeeks))return {orders:'미확인',contribution:'미확인',basis:'완전성 통과 주가 없어 north-star를 집계하지 않았습니다.'};
+ if(!ns||!whole(ns.passedWeeks))return {orders:'미확인',contribution:'미확인',basis:'완전성 통과 주가 없어 핵심 지표를 집계하지 않았습니다.'};
  return {orders:count(whole(ns.attributedOrders)),contribution:won(ns.attributedContribution),basis:`완전성 통과 ${whole(ns.passedWeeks)}주 기준 · 미통과·미입력 ${whole(ns.excludedWeeks)}주 제외`};
 }
 

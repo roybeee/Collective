@@ -13,6 +13,7 @@ import {api} from '@/lib/client';
 import type {CampaignAttribution} from '@/lib/campaign-attribution';
 import {koreaToday} from '@/lib/store-operations';
 import {addDays} from '@/lib/store-attribution';
+import {plainCopy} from '@/lib/ui-copy';
 import {NOT_INCREMENTAL,unitRows,weekLabel,won,type UnitRow} from '@/lib/store-operations-view';
 
 // 캠페인 상세 '성과' 탭(panels.tsx) 끝에 붙인다. 탭은 열릴 때만 있으므로 DOM 변화를 보고 자리를 다시 찾는다(online-grading.tsx OutputsSlot과 같은 방식).
@@ -65,7 +66,7 @@ function AttributionCard({campaignId,onSaved}:{campaignId:string;onSaved:()=>Pro
  const yesterday=addDays(koreaToday(),-1),closed=!!report&&report.period.to<=yesterday,untilYesterday=()=>{if(!report)return;setLoading(true);setPeriod({from:report.period.from<yesterday?report.period.from:yesterday,to:yesterday})};
  return <section className="campaign-attribution" aria-label="주문 장부 귀속">
   <div className="section-heading"><div><h2>주문 장부 귀속 · 자동 집계</h2><Note className="">점포 주문 장부에서 이 캠페인에 귀속된 주문을 주 단위(한국시간 월~일)로 합칩니다. 저장한 성과가 아니라 지금 장부 기준입니다.</Note></div>{ready&&(closed?<Button variant="outline" onClick={()=>setConfirming(true)}><Save/>스냅샷으로 저장</Button>:<Button variant="outline" onClick={untilYesterday}><RefreshCw/>어제까지로 조회</Button>)}</div>
-  <p className="notice">{NOT_INCREMENTAL}</p>
+  <p className="notice">{plainCopy(NOT_INCREMENTAL)}</p>
   {ready&&!closed&&<p className="notice">{"오늘 주문은 아직 확정 전이라 스냅샷은 어제까지의 기간으로만 저장합니다. '어제까지로 조회'로 기간을 바꾼 뒤 저장하세요."}</p>}
   <form className="ledger-period" aria-label="귀속 집계 기간" onSubmit={e=>{e.preventDefault();setLoading(true);setPeriod({...range})}}>
    <label className="store-field"><span>집계 시작일</span><Input type="date" required value={range.from} max={range.to||undefined} onChange={e=>setRange({...range,from:e.target.value})}/></label>
@@ -112,7 +113,7 @@ function Breakdown({title,column,rows,codes=false,note,empty='이 기간에 집�
  {label:'공헌이익',sort:r=>sortNumber(r.contribution),csv:r=>r.contribution,cell:r=><>{r.contribution}{r.contributionNote&&<small>{r.contributionNote}</small>}</>},
 ]}/>}</section>;
 }
-function Notes({notes}:{notes:readonly string[]}){return notes.length?<ul className="subtle-note attribution-notes">{notes.map(n=><li key={n}>{n}</li>)}</ul>:null}
+function Notes({notes}:{notes:readonly string[]}){return notes.length?<ul className="subtle-note attribution-notes">{notes.map(n=><li key={n}>{plainCopy(n)}</li>)}</ul>:null}
 
 // 확인 대화: 저장할 값(기간·범위·출처·수치)을 보이고, 확인한 값(expected)을 함께 보낸다. 서버는 저장 직전에 다시 집계해 값이 다르면 409로 막는다.
 function SnapshotDialog({campaignId,report:r,onClose,onSaved}:{campaignId:string;report:CampaignAttribution;onClose:()=>void;onSaved:()=>Promise<void>}){
@@ -123,9 +124,9 @@ function SnapshotDialog({campaignId,report:r,onClose,onSaved}:{campaignId:string
   catch(e){setError(e instanceof Error?e.message:'저장하지 못했습니다.')}finally{setBusy(false)}
  }
  const rows=[['측정 기간',`${r.period.from} ~ ${r.period.to}`],['비교 범위',r.snapshot.scope],['자료 출처',r.snapshot.source],['수집 방식','원자료 내보내기'],['주문 수',count(t.orders)],['순매출',won(t.netRevenue)],['상품 원가·변동비',won(variableCosts)],['매체비·제작비','배분하지 않음 · 미확인으로 저장']];
- return <Dialog open onOpenChange={open=>{if(!open&&!busy)onClose()}}><DialogContent className="wide-dialog"><DialogHeader><DialogTitle>주문 장부 귀속 스냅샷 저장</DialogTitle><DialogDescription>지금 보이는 집계를 성과 기록으로 저장합니다. 저장 직전에 다시 집계해 확인한 값과 다르면 저장하지 않습니다.</DialogDescription></DialogHeader>
+ return <Dialog open onOpenChange={open=>{if(!open&&!busy)onClose()}}><DialogContent className="wide-dialog"><DialogHeader><DialogTitle>주문 장부 귀속 스냅샷 저장</DialogTitle><DialogDescription>지금 보이는 집계를 성과 기록으로 저장합니다. 저장 직전에 다시 집계해 확인한 값과 같을 때만 저장합니다.</DialogDescription></DialogHeader>
   <dl className="attribution-snapshot">{rows.map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
-  <p className="notice">{NOT_INCREMENTAL} 같은 비교 범위에서 기간이 겹치는 성과 기록이 있으면 저장하지 않습니다.</p>
+  <p className="notice">{plainCopy(NOT_INCREMENTAL)} 같은 비교 범위에서는 기간이 겹치지 않는 성과 기록만 저장됩니다.</p>
   {error&&<p className="form-error" role="alert">{error}</p>}
   <div className="form-actions"><Button variant="outline" disabled={busy} onClick={onClose}>취소</Button><Button disabled={busy} onClick={()=>void save()}>{busy?'저장 중…':'확인하고 저장'}</Button></div>
  </DialogContent></Dialog>;

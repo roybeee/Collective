@@ -47,6 +47,9 @@ check(silentDisabled<=budget.static.silentDisabled,`buttons disabled without a r
 const ownAScreens=readdirSync('app').filter(n=>n.endsWith('.tsx')&&!/^(franchise-|online-grading|quality-|brand-interview|reflector|usage-|customer-report)/.test(n)).map(n=>readFileSync('app/'+n,'utf8')).join('\n');
 const laneABareEmpty=(ownAScreens.match(/<(p|div)(?: className=(?:"[^"]*"|\{[^{}]*\}))?>(?:[^<{]|\{[^{}]*\})*?(?:기록|목록|이력|제안|후보|일정|작업물|주문|성과|사실|교정)[^<]{0,12}(?:이|가) (?:아직 )?없습니다\.<\/(p|div)>/g)||[]).length;
 check(laneABareEmpty===0,`lane A empty lines without a next action: ${laneABareEmpty}`);
+// 패널마다 '…하지 않습니다' 부인문을 되풀이하지 않는다(UX-PLAN-3 4차원 5점 조건 138 → ≤30). 외부 전송·지출 범위는 공용 SafetyScope(components/app/safety-scope.tsx) 한 줄로 적고, 나머지는 하는 일로 쓴다.
+const negativeSafety=(ownAScreens.match(/하지 않습니다/g)||[]).length;
+check(negativeSafety<=budget.static.negativeSafety,`'하지 않습니다' ${negativeSafety} > budget ${budget.static.negativeSafety} (안전 범위는 SafetyScope로, 나머지는 하는 일로 쓰세요)`);
 // 한국어 화면에 영문 대문자 머리말(예: 'CAMPAIGN OBJECTIVE')을 두지 않는다(UX-PLAN-3 4차원, 평가 7회차). 브랜드 이름 COLLECTIVE와 형식 이름(JSON)은 예외다.
 const englishEyebrows=[...ownAScreens.matchAll(/>\s*([A-Z][A-Z'&]+(?:\s*[\/·]?\s*[A-Z][A-Z'&]+)*)\s*</g)].map(m=>m[1]).filter(t=>/[A-Z]{2,}/.test(t)&&!/^(COLLECTIVE|JSON|CSV|PNG|POS|ROAS|ROI|CTA|AI|URL|UTM|QR|SKU|HERMES|KST|ID|API|CS|MD|OFD|ODA)$/.test(t)&&t.length>=4);
 check(englishEyebrows.length===0,`English eyebrows on Korean screens: ${englishEyebrows.join(' | ')}`);

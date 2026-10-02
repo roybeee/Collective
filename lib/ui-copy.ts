@@ -41,3 +41,5 @@ export const enumLabels={
  geoEngine:{chatgpt:'ChatGPT',perplexity:'Perplexity',gemini:'Gemini',google_ai_overview:'Google AI 개요',naver:'네이버',other:'기타'},
 } as const;
 export function enumLabel<K extends keyof typeof enumLabels>(kind:K,value:string):string{return (enumLabels[kind] as Record<string,string>)[value]??value}
+// 서버·보고서가 공유하는 고지 문구의 기호·영문 용어를 화면에서만 한국어로 보인다(데이터·보고서 원문은 그대로). UX-PLAN-3 4차원.
+export const plainCopy=(s:string)=>s.replaceAll('귀속≠증분:','귀속은 증분과 다릅니다.').replaceAll('귀속≠증분','귀속은 증분과 다름').replaceAll('north-star','핵심 지표').replaceAll('incrementality-lite','증분 간이 비교');

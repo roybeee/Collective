@@ -117,7 +117,7 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
   await action('register_coded_png',{id:p.id,version:p.version,code:code.code,png});
  },'게시 코드를 넣은 PNG를 이 초안에 연결했습니다. 원본과 비교해 확인한 뒤 코드 PNG 확인을 체크하고 승인하세요.')}
  async function resolveMissing(p:Publication,restoreAttempt:boolean){
-  if(!(await askConfirm({title:'Buffer에 이 예약이 없음을 확인했나요?',impact:`실패로 닫고 발행 시도 차감을 ${restoreAttempt?'되돌립니다':'유지합니다'}.`,undo:'재전송하지 않습니다.',confirmLabel:'실패로 닫기'})))return;
+  if(!(await askConfirm({title:'Buffer에 이 예약이 없음을 확인했나요?',impact:`실패로 닫고 발행 시도 차감을 ${restoreAttempt?'되돌립니다':'유지합니다'}.`,undo:'닫힌 발행은 다시 전송되지 않습니다. 다시 게시하려면 새 초안을 만드세요.',confirmLabel:'실패로 닫기'})))return;
   void perform(()=>action('resolve_uncertain',{id:p.id,version:p.version,notFound:true,restoreAttempt}),'접수 여부를 실패로 확정했습니다.');
  }
  const saveDefaultLimits=()=>void perform(()=>action('save_limits',{maxPublications:1,maxPlannedCostKRW:0}),'기본 한도(발행 1회·0원)를 저장했습니다.');
@@ -128,7 +128,7 @@ export function ExecutionPanel({campaign,brand}:{campaign:Campaign;brand:Brand})
  return <div className="execution-panel space-y-6">{!canManage&&<p className="subtle-note admin-only-note" role="note">발행 승인·취소·결과 기록·한도 변경은 관리자만 할 수 있어 버튼을 보이지 않습니다. 진행 상태 확인과 제작 초안 작성은 할 수 있습니다.</p>}
   <div><h2 className="text-xl font-semibold">제작·발행</h2><p>확인된 브랜드 사실 → PNG 제작 → 승인 → Instagram 예약 접수 → 주문 귀속</p></div>
   {state&&<ol aria-label="첫 게시 단계" className="flex flex-wrap gap-2 text-sm">{steps.map((s,i)=><li key={s.label} aria-current={i===currentStep?'step':undefined} className={'rounded-full border px-3 py-1'+(i===currentStep?' font-semibold border-current':s.done?' opacity-70':'')}>{s.done?'✓ ':''}{s.label}</li>)}</ol>}
-  {reviews.length>0&&<div role="alert" className="rounded-xl border p-4 space-y-2"><strong>사실 변경 확인 필요 {reviews.length}건</strong><ul className="space-y-1">{reviews.map(p=><li key={p.id}>{new Date(p.scheduledAt).toLocaleString()} 예약 · {publicationLabels[p.status]} · {p.status==='approved'?'같은 소재로 다시 승인할 수 없습니다. 이 발행을 취소하고 새 PNG로 새 초안을 만드세요.':'Buffer에서 취소 필요: 앱은 접수된 예약을 취소하지 않습니다.'}{p.providerId&&' · 게시 번호 '+p.providerId}<br/><small>{p.needsReview?.reason}</small></li>)}</ul></div>}
+  {reviews.length>0&&<div role="alert" className="rounded-xl border p-4 space-y-2"><strong>사실 변경 확인 필요 {reviews.length}건</strong><ul className="space-y-1">{reviews.map(p=><li key={p.id}>{new Date(p.scheduledAt).toLocaleString()} 예약 · {publicationLabels[p.status]} · {p.status==='approved'?'같은 소재로 다시 승인할 수 없습니다. 이 발행을 취소하고 새 PNG로 새 초안을 만드세요.':'Buffer에서 취소 필요: 접수된 예약은 Buffer에서 직접 취소하세요.'}{p.providerId&&' · 게시 번호 '+p.providerId}<br/><small>{p.needsReview?.reason}</small></li>)}</ul></div>}
   <BrandFactsPanel campaign={campaign} onChanged={()=>{setPreview('');setSelected([]);void reload().catch(e=>setError(e.message))}}/>
   {error&&<p role="alert" className="form-error">{error}</p>}{notice&&<p role="status">{notice}</p>}
   {!state?<ScreenSkeleton label="실행 상태를 불러오고 있습니다." rows={2}/>:<>

@@ -67,6 +67,7 @@
 
 /* UX-PLAN-3 10.3: 저장 뒤 다음 단계, 초안 이어 쓰기, 직전 값 채우기(공용 Button 위에 배치만 정한다) */
 .nextStep, .fillPrevious { align-self: flex-start; }
+.saveNext { margin-left: 8px; }
 .resume { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; background: var(--neutral-97); border: 1px solid var(--neutral-97); border-radius: 8px; font-size: .88rem; color: var(--green-32); }
 /* 캠페인 상세 안에서는 캠페인 탭 줄(48px)이 위에 고정되므로 그 아래에 붙는다(UX-PLAN-3 Q1). */
 @media not (max-width: 767px) { :global(.campaign-sheet) .sectionNav { top: 48px; } }

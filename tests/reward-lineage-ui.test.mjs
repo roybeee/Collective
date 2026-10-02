@@ -97,7 +97,7 @@ check('loading and error states have no tables',()=>{
 // ── 3) 표와 고지 ──
 check('the notices state realPublish:false, partial kinds, attribution is not incremental and no automatic verdict',()=>{
  const t=text(render(ui.RewardLineageView,view()));
- assert.match(t,/realPublish:false/);assert.match(t,/partial\.kinds/);assert.match(t,/review_decision/);assert.match(t,/귀속≠증분/);assert.match(t,/자동 판정 아님/);assert.match(t,/not_run/);
+ assert.match(t,/realPublish:false/);assert.match(t,/partial\.kinds/);assert.match(t,/review_decision/);assert.match(t,/귀속은 증분과 다릅니다/);assert.match(t,/자동 판정 아님/);assert.match(t,/not_run/);
  assert.ok(!/partial\.kinds/.test(text(render(ui.RewardLineageView,view({load:ready({partial:{kinds:[]}})})))),'일부 집계가 없으면 고지하지 않는다');
 });
 check('the version table shows L0 to L4 per prompt version',()=>{

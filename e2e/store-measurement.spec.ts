@@ -178,7 +178,7 @@ test('추적 코드로 가져온 주문은 자동 귀속 스위치를 켤 때만
   const reported = page.waitForResponse(storeAction('attribution_report'));
   await page.getByRole('tab', {name: '귀속 보고', exact: true}).click();
   expect((await reported).status()).toBe(200);
-  await expect(page.getByText('귀속≠증분', {exact: false}).first()).toBeVisible();
+  await expect(page.getByText('귀속은 증분과 다릅니다', {exact: false}).first()).toBeVisible();
   await expect(page.getByRole('heading', {name: '추적 코드별', exact: true})).toBeVisible();
   // A4-2: 게시별 표는 게시 코드로 귀속된 주문만 센다. 이 여정의 코드는 게시에 묶이지 않아 빈 표 안내가 보인다.
   await expect(page.getByRole('heading', {name: '게시별 귀속', exact: true})).toBeVisible();
@@ -205,7 +205,7 @@ test('추적 코드로 가져온 주문은 자동 귀속 스위치를 켤 때만
   await page.goto(`/?view=campaigns&campaign=${encodeURIComponent(campaignId)}`);
   await page.getByRole('tab', {name: '성과', exact: true}).click();
   const card = page.getByRole('region', {name: '주문 장부 귀속', exact: true});
-  await expect(card.getByText('귀속≠증분', {exact: false}).first()).toBeVisible();
+  await expect(card.getByText('귀속은 증분과 다릅니다', {exact: false}).first()).toBeVisible();
   await expect(card.locator('article').filter({hasText: '귀속 주문'})).toContainText('2건');
   await expect(card.locator('article').filter({hasText: '공헌이익'})).toContainText('미확인');
   await expect(card.getByRole('heading', {name: '주별 귀속', exact: true})).toBeVisible();

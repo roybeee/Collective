@@ -37,7 +37,7 @@ export function GrowthSettlementPanel({orders,settlement,canEdit,busy,save}:Prop
  }
  async function submit(){const {origin: _origin,...input}=draft;void _origin;if(await save({action:'save_settlement',input},'운영자 정산 증빙을 저장했습니다. 은행 대사는 수행하지 않았습니다.')){setBaseRevision(draft.revision);setDraft(current=>({...current,revision:current.revision+1}))}}
  return <section className={styles.business} aria-label="지급예정과 입금 증빙"><h3>지급예정·입금 증빙</h3>
-  <Note className={styles.note}>지급예정과 실제 입금 확인을 따로 기록합니다. 수령 현금은 입금 증빙의 합계이며, 원가·세금·기타 지출을 차감한 순현금흐름이 아닙니다. 운영자 증빙이며 은행·판매자 정산 확인을 완료한 기록으로 표시하지 않습니다.</Note>
+  <Note className={styles.note}>지급예정과 실제 입금 확인을 따로 기록합니다. 수령 현금은 입금 증빙의 합계이며, 원가·세금·기타 지출을 차감한 순현금흐름이 아닙니다. 운영자 증빙이며 은행·판매자 정산 확인은 따로 합니다.</Note>
   <dl className={styles.businessGrid}><AmountSummary name="지급예정 금액" value={settlement.expectedAmount}/><AmountSummary name="입금 증빙의 수령 현금" value={settlement.receivedCash}/><AmountSummary name="지급예정 수수료" value={settlement.expectedFees}/><AmountSummary name="입금 증빙 수수료" value={settlement.reportedFees}/><div><dt>순현금흐름</dt><dd>미확인</dd></div></dl>
   <p className={settlement.reconciliation==='stale'?styles.error:styles.note}>{settlement.reasons.join(' · ')}</p>
   <div className={styles.list} aria-label="정산 사건 목록">{!settlement.events.length?<EmptyLine next="위 ‘새 지급예정’·‘새 입금 확인’ 버튼으로 시작하세요.">등록된 정산 증빙이 없습니다.</EmptyLine>:settlement.events.map(event=><Button variant="panel" size="fit" type="button" key={event.eventId} disabled={busy} aria-pressed={event.eventId===draft.eventId} onClick={()=>choose(event.eventId)}><strong>{event.kind==='expected'?'지급예정':'입금 확인'} · {money(event.amount)}</strong><span>주문 {event.orderId} · 개별 참조 {event.receiptRef} · v{event.revision}</span></Button>)}</div>
