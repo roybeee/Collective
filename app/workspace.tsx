@@ -52,6 +52,7 @@ import {setPendingPanel,setPendingRecord,setPendingSection} from '@/lib/ui/pendi
 import {ConfirmHost} from '@/components/app/confirm-dialog';
 import {useDeferredFieldErrors} from '@/lib/ui/field-errors';
 import {rememberOpener} from '@/lib/ui/return-focus';
+import {keepFocus} from '@/lib/ui/focus-keeper';
 import {bootFetch,bootJsonNow} from '@/lib/ui/boot-fetch';
 import {ScreenSkeleton} from '@/components/app/screen-skeleton';
 import {AfterPaint} from '@/components/app/after-paint';
@@ -116,9 +117,11 @@ const known={campaigns:data.campaigns.map(c=>c.id),brands:data.brands.map(b=>b.i
 const routeUrl=serializeNav(route),corrected=route!==rawRoute,replaceUrl=useRef<string|null>(null);
 useEffect(()=>{const replace=corrected||replaceUrl.current===routeUrl;replaceUrl.current=null;if(routeUrl===serializeNav(parseNav(location.search)))return;if(replace)history.replaceState(null,'',location.pathname+routeUrl);else history.pushState(null,'',location.pathname+routeUrl)},[routeUrl,corrected]);
 useEffect(()=>{const restore=()=>setRoute(parseNav(location.search));window.addEventListener('popstate',restore);return()=>window.removeEventListener('popstate',restore)},[]);
-// 화면을 바꾸면(사이드바·g 단축키·뒤로가기) 초점을 새 화면 제목으로 옮겨 키보드 사용자가 문서 처음부터 Tab하지 않게 한다(UX-PLAN-3 ⑨). 첫 화면·캠페인 상세(제목이 스스로 초점을 받는다)·대화상자가 열린 때(바로 가기는 닫힐 때 옮긴다)는 두고 넘어간다.
+// 화면을 바꾸면(사이드바·g 단축키·뒤로가기) 초점을 새 화면 제목으로 옮겨 키보드 사용자가 문서 처음부터 Tab하지 않게 한다(UX-PLAN-3 ⑨). 첫 화면·캠페인 상세(제목이 스스로 초점을 받는다)·대화상자가 열린 때(바로 가기는 닫힐 때 옮긴다)는 두고 넘어간다. 닫히는 중인 대화상자(모바일 사이드바 시트에서 메뉴를 고른 때)는 열린 것으로 보지 않는다.
 const viewTitle=useRef<HTMLHeadingElement>(null),shownView=useRef('');
-useEffect(()=>{const prev=shownView.current;shownView.current=view;if(!prev||prev===view||selectedId||document.querySelector('[role=dialog],[role=alertdialog]'))return;viewTitle.current?.focus({preventScroll:true})},[view,selectedId]);
+// 저장 중 잠기거나 목록에서 빠진 버튼 때문에 초점이 body로 떨어지면 그 버튼(풀리면)이나 같은 영역의 결과 문구로 돌려준다(lib/ui/focus-keeper.ts).
+useEffect(()=>keepFocus(),[]);
+useEffect(()=>{const prev=shownView.current;shownView.current=view;if(!prev||prev===view||selectedId||document.querySelector('[role=dialog]:not([data-state=closed]),[role=alertdialog]:not([data-state=closed])'))return;viewTitle.current?.focus({preventScroll:true})},[view,selectedId]);
 // 여러 곳(폴링·저장 뒤·조사 감시)에서 동시에 불러도 늦게 도착한 옛 응답이 새 데이터를 덮지 않는다. 목표 입력의 기본 브랜드는 처음 불러올 때 한 번 정한다
 // (기억한 선택이 없을 때만, 저장하지 않음). 이후 다른 브랜드의 활동이 최신이 돼도 선택 상자가 바뀌지 않는다.
 const reloadSeq=useRef({started:0,applied:0});

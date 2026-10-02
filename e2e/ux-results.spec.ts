@@ -12,6 +12,6 @@ test('성과 탭은 기간별 표·추세를 보이고 계산식 안내를 반�
   const summary=page.getByRole('region',{name:'기간별 성과 비교',exact:true});
   await expect(summary.getByRole('table',{name:'기간별 성과'}).getByRole('row')).toHaveCount((page.viewportSize()?.width??1280)<768?2:3);
   await expect(summary).toContainText('기간별 순매출 추세');
-  await expect(page.getByText(/^잔액 = 순매출/)).toHaveCount(1);
+  await expect(page.getByText(/^광고·제작비 차감 후 공헌이익 = 순매출/)).toHaveCount(1);
  }finally{await context.close()}
 });

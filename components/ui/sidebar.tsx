@@ -159,6 +159,10 @@ function Sidebar({
   collapsible?: "offcanvas" | "icon" | "none"
 }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+  // 모바일 시트는 트리거(SheetTrigger) 없이 상태로 연다. radix는 닫을 때 트리거가 없으면 초점을 body로 떨군다.
+  // 연 버튼(머리 띠 메뉴)을 기억했다가, 닫힐 때 초점이 갈 곳이 없으면(Escape·바깥 누름) 그 버튼으로 돌려준다.
+  // 메뉴를 골라 화면을 옮긴 경우는 새 화면 제목이 이미 초점을 받았으므로 그대로 둔다(app/workspace.tsx). UX-PLAN-3 ⑨, e2e/ux-keyboard-tasks.spec.ts 과업 8.
+  const opener = React.useRef<HTMLElement | null>(null)
 
   if (collapsible === "none") {
     return (
@@ -189,6 +193,13 @@ function Sidebar({
             } as React.CSSProperties
           }
           side={side}
+          onOpenAutoFocus={() => { const el = document.activeElement; opener.current = el instanceof HTMLElement && el !== document.body ? el : null }}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            const active = document.activeElement, el = opener.current
+            opener.current = null
+            if ((!active || active === document.body) && el?.isConnected) el.focus({ preventScroll: true })
+          }}
         >
           <SheetHeader className="sr-only">
             <SheetTitle>Sidebar</SheetTitle>

@@ -24,6 +24,15 @@ const overflow=(page:Page)=>page.evaluate(()=>document.documentElement.scrollWid
 const squeezed=(page:Page)=>page.evaluate(()=>{const bad:string[]=[];const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);const seen=new Set<Element>();
  while(walker.nextNode()){const t=walker.currentNode,el=t.parentElement;if(!el||seen.has(el)||(t.textContent||'').trim().length<3)continue;seen.add(el);const cs=getComputedStyle(el);if(cs.visibility==='hidden'||cs.display==='none'||parseFloat(cs.fontSize)<1)continue;const r=el.getBoundingClientRect();if(!r.width||!r.height)continue;const fs=parseFloat(cs.fontSize),lh=parseFloat(cs.lineHeight)||fs*1.4;if(r.width<fs*2&&r.height>lh*3)bad.push(`${el.tagName.toLowerCase()}.${el.className} "${(t.textContent||'').trim().slice(0,20)}" ${Math.round(r.width)}x${Math.round(r.height)}`)}
  return bad});
+// 아래 검사들이 도는 화면(이름은 annotation에 쓴다). 캠페인 화면은 예산 캠페인 하나로 연다.
+const routes=(campaignId:string):[string,string][]=>[['홈','/'],['캠페인 브리프',`/?view=campaigns&campaign=${campaignId}`],['캠페인 성장·판매',`/?view=campaigns&campaign=${campaignId}&ctab=growth`],['캠페인 Meta',`/?view=campaigns&campaign=${campaignId}&ctab=meta-ads`],['설정','/?view=settings'],['캠페인 목록','/?view=campaigns'],['학습','/?view=learning'],['브랜드','/?view=brands'],['점포','/?view=stores'],['성과','/?view=results'],['AI 팀','/?view=agents'],['작업물','/?view=assets']];
+// 화면에 그려진 가운뎃점(' · ') 수(평가 10회차 ⑦: 소스 래칫 middleDotJoins·libMiddleDots와 별개로 실제 화면 글자를 센다). document.body.innerText 기준.
+// 다른 레인 소유 화면(가맹·품질 콘솔·품질 운영·인터뷰·Reflector·사용량·고객 보고서·온라인 채점)의 그릇 안 글자는 따로 센다. 보고만 하고 판정하지 않는다(레인 A 화면이 0이 아니다).
+const middleDots=(page:Page)=>page.evaluate(()=>{const n=(t:string)=>t.split(' · ').length-1,total=n(document.body.innerText);
+ const roots=[...document.querySelectorAll<HTMLElement>('.franchise-panel,.franchise-box,.interview-studio,.quality-stats,.quality-table,section[aria-label="Reflector"],section[aria-label="운영 검증과 프롬프트 적용"],section[aria-label="고객 보고서"],[aria-label="작업물 온라인 채점"]'),
+  ...[...document.querySelectorAll('h2')].filter(h=>h.textContent?.trim()==='AI 사용량과 비용').map(h=>h.closest('section')).filter((x):x is HTMLElement=>!!x)];
+ const other=roots.filter(r=>!roots.some(o=>o!==r&&o.contains(r))).reduce((sum,r)=>sum+n(r.innerText),0);
+ return {total,laneA:total-other,other}});
 
 test('홈 첫 로딩 JS·접근성·터치 크기·가로 넘침 예산',async({browser},info)=>{
  const owner=`budget-${info.project.name}-${Date.now()}`,context=await browser.newContext({baseURL:info.project.use.baseURL,viewport:info.project.use.viewport,extraHTTPHeaders:{'oai-authenticated-user-id':owner}}),page=await context.newPage();
@@ -36,8 +45,10 @@ test('홈 첫 로딩 JS·접근성·터치 크기·가로 넘침 예산',async({
   const homeKB=Math.round(js.reduce((a,b)=>a+b,0)/1024);
   info.annotations.push({type:'homeJsGzKB',description:String(homeKB)});
   expect(homeKB,`home JS ${homeKB}KB gz`).toBeLessThanOrEqual(budget.homeJsGzKB);
-  for(const path of ['/',`/?view=campaigns&campaign=${campaignId}`,`/?view=campaigns&campaign=${campaignId}&ctab=growth`,`/?view=campaigns&campaign=${campaignId}&ctab=meta-ads`,'/?view=settings','/?view=campaigns','/?view=learning','/?view=brands','/?view=stores','/?view=results','/?view=agents','/?view=assets']){
+  const dots:string[]=[];
+  for(const [label,path] of routes(campaignId)){
    await page.goto(path);await page.waitForLoadState('networkidle');
+   const d=await middleDots(page);dots.push(`${label} ${d.total}(A ${d.laneA}, 다른 레인 ${d.other})`);
    const a=await axeSerious(page);expect(a.count,`${path} ${a.rules.join(',')}`).toBeLessThanOrEqual(budget.axeCriticalSerious);
    expect(await overflow(page),path).toBeLessThanOrEqual(budget.horizontalOverflowPx);
    // 탭 줄이 여러 줄로 감길 때 탭이 탭 줄 밖으로 넘치거나 아래 내용을 덮지 않는다(2026-10-01 모바일 겹침 회귀 방지).
@@ -46,6 +57,26 @@ test('홈 첫 로딩 JS·접근성·터치 크기·가로 넘침 예산',async({
    const thin=await squeezed(page);expect(thin,`${path} text squeezed into a vertical strip: ${thin.slice(0,4).join(' | ')}`).toEqual([]);
    const hit=await overlaps(page);expect(hit,`${path} overlapping controls: ${hit.slice(0,6).join(' | ')}`).toEqual([]);
    if(mobile){const t=await touch(page);expect(100*(t.total-t.small)/Math.max(1,t.total),`${path} ${t.small}/${t.total} under 44px`).toBeGreaterThanOrEqual(budget.mobileTouchTargetPct)}
+  }
+  info.annotations.push({type:'middleDots',description:dots.join(' / ')});
+ }finally{await context.close()}
+});
+
+// UX-PLAN-3 ⑨ 5점 조건(평가 10회차): 200% 확대에서 내용 손실이 없다. 1280×800 화면을 200%로 키우면 CSS 화면 폭·높이가 640×400이 된다(WCAG 1.4.4·1.4.10).
+// 같은 화면들에서 글자가 세로 띠로 눌림(squeezed)·누를 수 있는 요소끼리 겹침(overlaps)·가로 넘침이 없어야 한다. 640px은 모바일 배치(768px 미만)로 그려진다.
+// 데스크톱 프로젝트에서만 잰다(모바일 프로젝트는 이미 390px 폭이다).
+test('200% 확대(640×400) 내용 손실 없음',async({browser},info)=>{
+ test.skip(info.project.name!=='desktop','1280×800을 200%로 키운 화면은 데스크톱 프로젝트에서만 잰다');test.setTimeout(120_000);
+ const owner=`zoom-${Date.now()}`,context=await browser.newContext({baseURL:info.project.use.baseURL,viewport:info.project.use.viewport,extraHTTPHeaders:{'oai-authenticated-user-id':owner}}),page=await context.newPage();
+ try{
+  await page.request.get('/api/workspace');
+  const {id:campaignId}=await (await page.request.post('/api/action',{data:{action:'save_campaign',data:{brandId:'ofd',title:'확대 캠페인',goal:'200% 확대 확인'}}})).json();
+  await page.setViewportSize({width:640,height:400});
+  for(const [label,path] of routes(campaignId)){
+   await page.goto(path);await page.waitForLoadState('networkidle');
+   expect(await overflow(page),`200% ${label} ${path}`).toBeLessThanOrEqual(budget.horizontalOverflowPx);
+   const thin=await squeezed(page);expect(thin,`200% ${label} text squeezed into a vertical strip: ${thin.slice(0,4).join(' | ')}`).toEqual([]);
+   const hit=await overlaps(page);expect(hit,`200% ${label} overlapping controls: ${hit.slice(0,6).join(' | ')}`).toEqual([]);
   }
  }finally{await context.close()}
 });
