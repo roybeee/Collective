@@ -8,6 +8,9 @@ import type {RecordHit} from '@/lib/record-search-server';
 export type PaletteView={id:string;name:string};
 export const goKeys:Record<string,string>={h:'overview',c:'campaigns',b:'brands',m:'stores',l:'learning',s:'settings'};
 const CommandPaletteDialog=lazy(()=>import('./command-palette-dialog'));
+// 화면의 '검색' 버튼(키보드가 없는 모바일 포함)이 바로 가기를 연다. 단축키와 같은 대화상자다(UX-PLAN-3 1차원 3클릭, e2e/ux-reach.spec.ts).
+const openEvent='collective:open-palette';
+export const openPalette=()=>window.dispatchEvent(new Event(openEvent));
 const typing=(t:EventTarget|null)=>t instanceof HTMLElement&&(t.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)||!!t.closest('[role=dialog],[role=alertdialog]'));
 export type PaletteRecord={id:string;name:string;campaignId:string;campaign:string};
 export function CommandPalette(props:{views:PaletteView[];campaigns:Campaign[];brands?:PaletteView[];records?:PaletteRecord[];onView:(id:string)=>void;onCampaign:(id:string)=>void;onBrand?:(id:string)=>void;onRecord?:(campaignId:string)=>void;onGrowthRecord?:(hit:RecordHit)=>void;onNewCampaign:()=>void}){
@@ -24,7 +27,8 @@ export function CommandPalette(props:{views:PaletteView[];campaigns:Campaign[];b
    if(pendingG&&Date.now()-pendingG<1500&&goKeys[e.key]){e.preventDefault();pendingG=0;onView.current(goKeys[e.key]);return}
    pendingG=0;
   };
-  window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);
+  const show=()=>{setLoaded(true);setHelp(false);setOpen(true)};
+  window.addEventListener('keydown',key);window.addEventListener(openEvent,show);return()=>{window.removeEventListener('keydown',key);window.removeEventListener(openEvent,show)};
  },[]);
  if(!loaded)return null;
  return <Suspense fallback={null}><CommandPaletteDialog open={open} setOpen={setOpen} help={help} {...props}/></Suspense>;
