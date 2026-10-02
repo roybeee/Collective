@@ -2,12 +2,12 @@
 import {useCallback,useEffect,useState,type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 import {RefreshCw} from 'lucide-react';
-import {toast} from 'sonner';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import type {Artifact} from '@/lib/agency';
 import {STORE_LINK_WARNING,type DataRequest} from '@/lib/data-requests';
 import {useAccount,canChange,adminOnlyNote} from './account-context';
+import {notifySaved,type Saved} from '@/lib/ui/notify';
 
 // 캠페인 상세 '작업물' 탭(panels.tsx) 끝에 붙인다. 탭은 열릴 때만 있으므로 DOM 변화를 보고 자리를 다시 찾는다(online-grading.tsx OutputsSlot과 같은 방식).
 function OutputsSlot({children}:{children:ReactNode}){
@@ -60,16 +60,16 @@ export function DataRequestsSlot({campaignId,artifacts}:{campaignId:string;artif
   void fetchListing(controller.signal).then(d=>{if(!controller.signal.aborted){setListing(d);setError('')}}).catch(e=>{if(!controller.signal.aborted)setError((e as Error).message)});
   return()=>controller.abort();
  },[fetchListing,signature]);
- async function run(task:()=>Promise<string>){
+ async function run(task:()=>Promise<[Saved,string?]>){
   setBusy(true);
-  try{const message=await task();setListing(await fetchListing());setError('');setEditing(null);setText('');toast.success(message)}
+  try{const [message,description]=await task();setListing(await fetchListing());setError('');setEditing(null);setText('');notifySaved(message,{description})}
   catch(e){setError((e as Error).message)}finally{setBusy(false)}
  }
- const collect=()=>run(async()=>{const d=await send<{created:number;merged:number;skipped:{confirmed:number;capped:number}}>('/api/data-requests',{action:'collect',campaignId});return `새 요청 ${d.created}건 · 출처 추가 ${d.merged}건${d.skipped.confirmed?` · 이미 확정 ${d.skipped.confirmed}건`:''}${d.skipped.capped?` · 한도 초과 ${d.skipped.capped}건`:''}`});
- const reconcile=()=>run(async()=>{const d=await send<{closed:number}>('/api/data-requests',{action:'reconcile',campaignId});return `확정 사실로 닫은 요청 ${d.closed}건`});
- const resolve=(r:DataRequest,action:'close'|'dismiss')=>run(async()=>{await send('/api/data-requests',{action,id:r.id,version:r.version,note:text});return action==='close'?'답변 완료로 닫았습니다.':'필요 없음으로 닫았습니다.'});
+ const collect=()=>run(async()=>{const d=await send<{created:number;merged:number;skipped:{confirmed:number;capped:number}}>('/api/data-requests',{action:'collect',campaignId});return ['자료 요청을 모았습니다.',`새 요청 ${d.created}건 · 출처 추가 ${d.merged}건${d.skipped.confirmed?` · 이미 확정 ${d.skipped.confirmed}건`:''}${d.skipped.capped?` · 한도 초과 ${d.skipped.capped}건`:''}`]});
+ const reconcile=()=>run(async()=>{const d=await send<{closed:number}>('/api/data-requests',{action:'reconcile',campaignId});return [`확정 사실로 요청 ${d.closed}건을 닫았습니다.`]});
+ const resolve=(r:DataRequest,action:'close'|'dismiss')=>run(async()=>{await send('/api/data-requests',{action,id:r.id,version:r.version,note:text});return [action==='close'?'답변 완료로 닫았습니다.':'필요 없음으로 닫았습니다.']});
  // 사실 후보 제안: 기존 사실 원장 경로(직원도 가능). 관리자가 확정하면 요청이 닫힌다.
- const propose=(r:DataRequest)=>run(async()=>{await send('/api/brand-facts',{action:'save_fact',data:{brandId:r.brandId,...(r.storeId?{storeId:r.storeId}:{}),key:r.factKey??r.label,value:text,status:'candidate',source:`자료 요청 ${r.id} · ${r.text}`.slice(0,3000),verifiedAt:'',validUntil:''}});return '확인 후보로 저장했습니다. 관리자가 확정하면 요청이 닫힙니다.'});
+ const propose=(r:DataRequest)=>run(async()=>{await send('/api/brand-facts',{action:'save_fact',data:{brandId:r.brandId,...(r.storeId?{storeId:r.storeId}:{}),key:r.factKey??r.label,value:text,status:'candidate',source:`자료 요청 ${r.id} · ${r.text}`.slice(0,3000),verifiedAt:'',validUntil:''}});return ['확인 후보로 저장했습니다.','관리자가 확정하면 요청이 닫힙니다.']});
  if(!listing||(!listing.enabled&&!listing.requests.length))return error?<OutputsSlot><p className="form-error" role="alert">{error}</p></OutputsSlot>:null;
  const open=listing.requests.filter(r=>r.status==='open'),closed=listing.requests.filter(r=>r.status!=='open');
  const edit=(id:string,mode:Editing['mode'])=>{setEditing(editing?.id===id&&editing.mode===mode?null:{id,mode});setText('')};

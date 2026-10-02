@@ -1,6 +1,5 @@
 'use client';
 import {useEffect,useState} from 'react';
-import {toast} from 'sonner';
 import {Download,LoaderCircle,Check} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
@@ -13,6 +12,7 @@ import type {ViralExperiment} from '@/lib/learning';
 import type {Campaign} from '@/lib/agency';
 import type {ResolvedScope} from '@/lib/channel-credentials';
 import type {MeasurementView} from '@/lib/measurement-status';
+import {notifySaved} from '@/lib/ui/notify';
 
 // loop-1: 진행 중인 콘텐츠 실험 카드의 'A/B 성과 가져오기'와 자동 수집 상태(security-ops-5).
 // 수집은 초안만 만든다. 결과 반영과 비교 가능 확정은 '결과 입력'에서 사람이 한다. 수집 버튼은 대표·관리자에게, 이 실험 채널의 커넥터 연결이 있을 때만 보인다.
@@ -78,7 +78,7 @@ export function MeasurementCollect({experiment,view,campaign,canCollect,busy,onC
  useEffect(()=>{if(!running)return;let active=true;fetch(`/api/channels?brandId=${encodeURIComponent(experiment.brandId)}${storeId?`&storeId=${encodeURIComponent(storeId)}`:''}`).then(async r=>{if(!r.ok)return;const d=await r.json() as {resolved?:ResolvedCredential[]};if(active){setNow(Date.now());setResolved(d.resolved??[])}}).catch(()=>{/* 보조 표시: 불러오지 못하면 버튼과 만료 경고를 숨긴다. */});return()=>{active=false}},[experiment.brandId,storeId,running]);
  const connectors=collectConnectors(experiment,resolved);
  function start(){setF(initialForm(experiment,view,connectors));setError('');setOpen(true)}
- async function submit(ev:React.FormEvent){ev.preventDefault();setSaving(true);setError('');try{await startCollect(experiment.id,f);setOpen(false);await onCollected();toast.success('성과를 초안으로 가져왔습니다. 결과 입력에서 확인한 뒤 반영하세요.')}catch(e){setError((e as Error).message)}finally{setSaving(false)}}
+ async function submit(ev:React.FormEvent){ev.preventDefault();setSaving(true);setError('');try{await startCollect(experiment.id,f);setOpen(false);await onCollected();notifySaved('성과를 초안으로 가져왔습니다.',{description:'결과 입력에서 확인한 뒤 반영하세요.'})}catch(e){setError((e as Error).message)}finally{setSaving(false)}}
  return <>
   <CollectStatus view={view} connector={connectors[0]??resolved.find(r=>channelNameForConnector(r.channel)===experiment.channel)} now={now}/>
   {canStartCollect(experiment,canCollect,connectors)&&<div className="learning-actions"><Button variant="outline" disabled={busy||saving} onClick={start}><Download/>A/B 성과 가져오기</Button></div>}

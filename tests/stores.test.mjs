@@ -289,7 +289,7 @@ check('the saved retrospective reports the same reasons as the preview',heldBack
 const storePanel=readFileSync('app/store-marketing-panel.tsx','utf8');
 check('the close dialog asks for the promotion preview',storePanel.includes("post('preview_close'"));
 check('the close dialog says a blocked review cannot be saved and disables saving',storePanel.includes('저장할 수 없습니다: ')&&storePanel.includes('disabled={busy||!!preview?.blocked}'));
-check('the close dialog reports the saved result from ruleId',storePanel.includes('r.ruleId')&&storePanel.includes('학습 규칙으로 승격됨')&&storePanel.includes('학습 규칙으로 승격되지 않음'));
+check('the close dialog reports the saved result from ruleId',storePanel.includes('r.ruleId')&&storePanel.includes('학습 규칙으로 승격했습니다.')&&storePanel.includes('학습 규칙으로 승격되지 않음'));
 check('the promoted toast opens the rules tab of the store brand by address',storePanel.includes("pushNav({view:'learning',brand:store.brandId,tab:'rules'})")&&!storePanel.includes("serializeNav({view:'learning'})"));
 
 check('promoted rule reaches a campaign for the same store',(await ruleContext('당근',storeId)).some(r=>r.id===adoptRule.id));

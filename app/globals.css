@@ -259,7 +259,7 @@ body{font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;backgrou
 .campaign-page{width:auto!important;max-width:none;overflow:visible!important;background:transparent}
 .campaign-page .crumbs{padding-right:0}.campaign-page .sheet-eyebrow{padding-right:0}
 .campaign-page-header{padding:0 0 18px}
-.campaign-page-header h1{font-size:26px;font-weight:600;line-height:1.4;outline:none}
+.campaign-page-header h1{font-size:26px;font-weight:600;line-height:1.4;outline:none}.page-heading h1{outline:none}
 .campaign-page-lead{font-size:14px;color:var(--green-44);margin-top:8px}
 .campaign-page .sheet-actionbar,.campaign-page .campaign-tabs{padding-left:0;padding-right:0}
 @media(max-width:767px){.campaign-page-header h1{font-size:22px}}

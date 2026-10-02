@@ -11,8 +11,8 @@ import {qualityCriteria,qualityMarkdown} from '@/lib/quality';
 import {roles,type Campaign} from '@/lib/agency';
 import {api,downloadText,type WorkspaceData} from '@/lib/client';
 import {phaseNames,meetingActive,meetingMarkdown,defaultMeetingAgenda,type PublicMeeting,type MeetingStep,type Contribution,type Synthesis,type Revision,type QualityReview} from '@/lib/meetings';
-import {toast} from 'sonner';
 import {EvidenceSummary} from './evidence-summary';
+import {notifySaved} from '@/lib/ui/notify';
 
 const stateName:Record<string,string>={running:'회의 진행 중',uncertain:'접수 확인 필요',completed:'회의 완료',failed:'회의 중단',cancelled:'중지됨'};
 const verdictName={ready_for_review:'사용자 검토 준비',revise:'수정 필요',needs_data:'자료 필요'};
@@ -58,7 +58,7 @@ export function MeetingPanel({campaign,workspace,onUpdated,onOutputs,onConnect}:
  function reviewMeeting(){edited.current=false;setPrevious(undefined);setAgenda(draft.agenda);startId.current=null}
  function exportMeeting(){if(!m)return;downloadText('팀-회의-'+m.id+'.md',meetingMarkdown(m))}
  // 안건에 쓴 지시를 캠페인 상시 지시로 남기면 이후 역할·회의·브리프 초안의 AI 입력에 함께 전달된다.
- async function saveDirective(){const text=agenda.trim();setBusy(true);try{await api('add',{campaignId:campaign.id,text},'/api/directives');toast.success('안건을 상시 지시로 저장했습니다. 이후 AI 입력에 함께 전달됩니다.');await load()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
+ async function saveDirective(){const text=agenda.trim(),id=clientId();setBusy(true);try{await api('add',{campaignId:campaign.id,id,text},'/api/directives');notifySaved('안건을 상시 지시로 저장했습니다.',{description:'이후 AI 입력에 함께 전달됩니다.',undo:()=>api('remove',{campaignId:campaign.id,id},'/api/directives'),undone:'상시 지시 저장을 되돌렸습니다.'});await load()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
  return <section className="meeting-panel">
   <div className="meeting-heading"><div><p className="eyebrow">팀 회의</p><h3>서로의 의견에서, 더 나은 실행안으로.</h3><p>8명 의견 교환 → 총괄의 과제 배정 → 담당자 개선 → 독립 품질 재검토</p></div><Users size={28}/></div>
   <EvidenceSummary campaignId={campaign.id} artifacts={workspace.artifacts}/>

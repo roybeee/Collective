@@ -12,6 +12,7 @@ import type {RewardLineageResponse} from '@/lib/reward-lineage-server';
 import type {RewardTotals} from '@/lib/reward-lineage';
 import type {ImprovementLoop,LoopSide,LoopStatus} from '@/lib/improvement-loops';
 import {canChange,useAccount,type Account} from './account-context';
+import {notifySaved} from '@/lib/ui/notify';
 
 export type RewardLoad={state:'loading'}|{state:'off';message:string}|{state:'error';message:string}|{state:'ready';data:RewardLineageResponse};
 const pct=(n:number|null)=>n===null?'표본 부족':(n*100).toFixed(1)+'%';
@@ -101,7 +102,7 @@ export function RewardLineageSection({brandId}:{brandId:string}){
   if(!(await askConfirm({title:'이 개선 루프를 닫고 지금 수치를 동결할까요?',impact:'이 루프의 현재 수치가 고정되고 더 이상 갱신되지 않습니다.',undo:'닫은 루프는 되돌리지 않습니다.',confirmLabel:'닫고 동결',danger:true})))return;
   const c=l.comparison,expected={before:{decidedFirst:c.before.decidedFirst,approvedFirst:c.before.approvedFirst},after:{decidedFirst:c.after.decidedFirst,approvedFirst:c.after.approvedFirst}};
   setBusy(true);
-  try{await api('close',{brandId,loopId:l.id,version:l.version,expected},'/api/reward-lineage');toast.success('개선 루프를 닫고 수치를 동결했습니다.');await reload()}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}
+  try{await api('close',{brandId,loopId:l.id,version:l.version,expected},'/api/reward-lineage');notifySaved('개선 루프를 닫고 수치를 동결했습니다.');await reload()}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}
  }
  return <RewardLineageView load={load} canClose={canCloseLoops(account)} busy={busy} onClose={l=>void close(l)} onReload={()=>void reload()}/>;
 }

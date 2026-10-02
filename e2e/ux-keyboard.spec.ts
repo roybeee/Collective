@@ -1,5 +1,6 @@
 import {test,expect,type Page} from '@playwright/test';
-// UX-PLAN-3 Q9 키보드만으로 핵심 과제 8개: 마우스 클릭 없이 Tab·Enter·화살표·단축키만 쓴다.
+// UX-PLAN-3 Q9 키보드 이동 점검: 마우스 클릭 없이 Tab·Enter·화살표·단축키만 쓴다. 정의된 핵심 8과제(tests/ux-tasks.json)의 키보드만 판은 e2e/ux-keyboard-tasks.spec.ts다.
+// 아래 8단계는 화면 이동·탭·대화상자 같은 공통 키보드 동작 점검이다.
 // 1 캠페인 화면 이동(g c) 2 캠페인 열기 3 상세 탭 이동(화살표) 4 시장 근거 저장 5 다음 단계 6 이동 경로로 목록 복귀 7 바로 가기로 설정 이동 8 새 캠페인 대화상자 열고 Esc로 닫기.
 // Real local D1/API/Chromium. 인증 헤더 mocked. 외부 호출 없음. 데스크톱만(모바일은 키보드 단축키 대상이 아님).
 const focusedName=(page:Page)=>page.evaluate(()=>{const e=document.activeElement as HTMLElement|null;if(!e)return '';return (e.getAttribute('aria-label')||(e as HTMLInputElement).labels?.[0]?.textContent||e.textContent||'').replace(/\s+/g,' ').trim()});

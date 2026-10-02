@@ -5,7 +5,6 @@ import {Note} from '@/components/app/note';
 import {useEffect,useState,type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 import {RefreshCw,Save} from 'lucide-react';
-import {toast} from 'sonner';
 import {Button} from '@/components/ui/button';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import {Input} from '@/components/ui/input';
@@ -15,6 +14,7 @@ import {koreaToday} from '@/lib/store-operations';
 import {addDays} from '@/lib/store-attribution';
 import {plainCopy} from '@/lib/ui-copy';
 import {NOT_INCREMENTAL,unitRows,weekLabel,won,type UnitRow} from '@/lib/store-operations-view';
+import {notifySaved} from '@/lib/ui/notify';
 
 // 캠페인 상세 '성과' 탭(panels.tsx) 끝에 붙인다. 탭은 열릴 때만 있으므로 DOM 변화를 보고 자리를 다시 찾는다(online-grading.tsx OutputsSlot과 같은 방식).
 function ResultsSlot({children}:{children:ReactNode}){
@@ -120,7 +120,7 @@ function SnapshotDialog({campaignId,report:r,onClose,onSaved}:{campaignId:string
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),t=r.totals,variableCosts=t.contribution===null?null:t.netRevenue-t.contribution;
  async function save(){
   setBusy(true);setError('');
-  try{await api('snapshot',{campaignId,from:r.period.from,to:r.period.to,confirmed:true,expected:{orders:t.orders,netRevenue:t.netRevenue,contribution:t.contribution}},'/api/campaign-attribution');await onSaved();toast.success('주문 장부 귀속 집계를 성과 기록으로 저장했습니다.');onClose()}
+  try{await api('snapshot',{campaignId,from:r.period.from,to:r.period.to,confirmed:true,expected:{orders:t.orders,netRevenue:t.netRevenue,contribution:t.contribution}},'/api/campaign-attribution');await onSaved();notifySaved('주문 장부 귀속 집계를 성과 기록으로 저장했습니다.');onClose()}
   catch(e){setError(e instanceof Error?e.message:'저장하지 못했습니다.')}finally{setBusy(false)}
  }
  const rows=[['측정 기간',`${r.period.from} ~ ${r.period.to}`],['비교 범위',r.snapshot.scope],['자료 출처',r.snapshot.source],['수집 방식','원자료 내보내기'],['주문 수',count(t.orders)],['순매출',won(t.netRevenue)],['상품 원가·변동비',won(variableCosts)],['매체비·제작비','배분하지 않음 · 미확인으로 저장']];

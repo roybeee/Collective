@@ -1,6 +1,5 @@
 'use client';
 import {useState} from 'react';
-import {toast} from 'sonner';
 import {Button} from '@/components/ui/button';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import {Input} from '@/components/ui/input';
@@ -10,6 +9,7 @@ import {api} from '@/lib/client';
 import {metricSummary,money,type Campaign,type Metric} from '@/lib/agency';
 import {DataTable,sortNumber} from '@/components/app/data-table';
 import {TrendBars} from '@/components/app/trend-bars';
+import {notifySaved} from '@/lib/ui/notify';
 
 type CampaignChoice=Pick<Campaign,'id'|'title'>;
 type MetricDialogProps={open:boolean;campaigns:CampaignChoice[];onClose:()=>void;onSaved:()=>Promise<void>;initial?:Metric};
@@ -65,7 +65,7 @@ function MetricForm({campaigns,onClose,onSaved,initial}:MetricDialogProps){
   event.preventDefault();setBusy(true);setError('');
   try{
    await api('save_metric',{...fields,id:initial?.id,version:initialVersion,schemaVersion:2,baselineContribution:null,...Object.fromEntries(valueFields.map(([key])=>[key,fields[key]===''?null:Number(fields[key])]))});
-   await onSaved();toast.success('성과 기록을 저장했습니다.');onClose();
+   await onSaved();notifySaved('성과 기록을 저장했습니다.');onClose();
   }catch(e){setError(e instanceof Error?e.message:'저장하지 못했습니다.')}finally{setBusy(false)}
  }
  return <form className="form-stack" onSubmit={save}>

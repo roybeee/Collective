@@ -25,8 +25,8 @@ async function read(campaignId:string,signal:AbortSignal):Promise<View>{const r=
 export function GrowthCsPanel({campaignId}:{campaignId:string}){return <Workspace key={campaignId} campaignId={campaignId}/>}
 function Workspace({campaignId}:{campaignId:string}){
  const [view,setView]=useState<View|null>(null),[input,setInput]=useState<CsTicketInput>(emptyTicket),[ticketId,setTicketId]=useState(''),[ev,setEv]=useState({action:'respond',at:'',evidenceRef:'',resolution:'answered',note:''}),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[stale,setStale]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
- const mounted=useRef(false),reading=useRef<AbortController|null>(null),writing=useRef<AbortController|null>(null),retry=useRef<{key:string;requestId:string}|null>(null),draftId=useRef('');
- const load=useCallback(async()=>{reading.current?.abort();const controller=new AbortController();reading.current=controller;setLoading(true);setError('');try{const next=await read(campaignId,controller.signal);if(!controller.signal.aborted){setView(next);setStale(false);/* 안건·바로 가기에서 고른 문의는 처리 기록 칸을 바로 연다. */const picked=takePendingRecord('growth_cs_ticket');if(picked&&next.tickets.some(t=>t.id===picked&&t.status!=='cancelled')){setTicketId(picked);setEv(x=>({...x,at:local(Date.now()-60000)}));}}}catch(e){if(!controller.signal.aborted){setStale(true);setError(e instanceof Error?e.message:'조회 실패');}}finally{if(!controller.signal.aborted)setLoading(false);}},[campaignId]);
+ const mounted=useRef(false),recordForm=useRef<HTMLFieldSetElement>(null),focusPicked=useRef(false),reading=useRef<AbortController|null>(null),writing=useRef<AbortController|null>(null),retry=useRef<{key:string;requestId:string}|null>(null),draftId=useRef('');
+ const load=useCallback(async()=>{reading.current?.abort();const controller=new AbortController();reading.current=controller;setLoading(true);setError('');try{const next=await read(campaignId,controller.signal);if(!controller.signal.aborted){setView(next);setStale(false);/* 안건·바로 가기에서 고른 문의는 처리 기록 칸을 바로 연다. */const picked=takePendingRecord('growth_cs_ticket');if(picked&&next.tickets.some(t=>t.id===picked&&t.status!=='cancelled')){focusPicked.current=true;setTicketId(picked);setEv(x=>({...x,at:local(Date.now()-60000)}));}}}catch(e){if(!controller.signal.aborted){setStale(true);setError(e instanceof Error?e.message:'조회 실패');}}finally{if(!controller.signal.aborted)setLoading(false);}},[campaignId]);
  useEffect(()=>{mounted.current=true;void Promise.resolve().then(()=>{if(mounted.current)void load();});return()=>{mounted.current=false;reading.current?.abort();writing.current?.abort();};},[load]);
  const busy=loading||saving;
  async function send(body:Record<string,unknown>,done:string){if(busy||writing.current||!view||stale)return;
@@ -36,6 +36,8 @@ function Workspace({campaignId}:{campaignId:string}){
   finally{writing.current=null;if(mounted.current&&!controller.signal.aborted)setSaving(false);}
  }
  const ticket=view?.tickets.find(t=>t.id===ticketId);
+ // 안건에서 고른 문의는 처리 칸의 첫 선택으로 초점을 옮긴다(키보드 사용자가 패널을 Tab으로 훑지 않게).
+ useEffect(()=>{if(!ticket||busy||!focusPicked.current)return;focusPicked.current=false;recordForm.current?.querySelector('select')?.focus();},[ticket,busy]);
  const record=(t:Ticket)=>send({action:'record_event',id:t.id,expectedVersion:t.version,event:{action:ev.action,at:ev.at?new Date(ev.at).toISOString():'',evidenceRef:ev.evidenceRef,note:ev.note,...(ev.action==='resolve'?{resolution:ev.resolution}:{})}},'처리를 기록했습니다.');
  return <section aria-label="고객 문의 처리" className={styles.panel}><header className={styles.header}><h3>고객 문의 · 약속 기한</h3><Button variant="panel" size="fit" aria-label="문의 새로고침" type="button" disabled={busy} onClick={()=>void load()}>새로고침</Button></header>
   <Note className={styles.note}>고객 원문·이름·연락처·주소는 저장하지 않고 운영자 요약만 남깁니다. 약속 기한을 넘긴 미해결 문의를 먼저 보여줍니다. 반복 유형은 최근 30일 건수이며 비율·만족도가 아닙니다. 응답·환불·재고 변경은 운영자가 직접 합니다.</Note>
@@ -54,7 +56,7 @@ function Workspace({campaignId}:{campaignId:string}){
     {t.events.length>0&&<p>처리: {t.events.map(e=>`${e.action}${e.resolution?`(${resolutionLabels[e.resolution]})`:''} ${dateTime(e.at)}`).join(' → ')}{t.service.firstResponseHours!==null?` · 첫 응답 ${t.service.firstResponseHours}시간`:''}</p>}
     {view.canEdit&&t.status!=='cancelled'&&<Button variant="panel" size="fit" type="button" disabled={busy} onClick={()=>{setTicketId(t.id);setEv(x=>({...x,at:local(Date.now()-60000)}));}}>{t.id} 처리 기록</Button>}
    </li>)}</ul>
-   {ticket&&<fieldset className={styles.form} disabled={busy}><legend>{ticket.id} 처리</legend>
+   {ticket&&<fieldset ref={recordForm} className={styles.form} disabled={busy}><legend>{ticket.id} 처리</legend>
     <label>처리 종류<NativeSelect value={ev.action} onChange={e=>setEv({...ev,action:e.target.value})}><option value="respond">응답</option><option value="resolve">해결</option><option value="reopen">다시 열기</option><option value="cancel">취소</option></NativeSelect></label>
     {ev.action==='resolve'&&<label>해결 방법<NativeSelect value={ev.resolution} onChange={e=>setEv({...ev,resolution:e.target.value})}>{csResolutions.map(r=><option key={r} value={r}>{resolutionLabels[r]}</option>)}</NativeSelect></label>}
     <label>처리 시각<Input type="datetime-local" value={ev.at} onChange={e=>setEv({...ev,at:e.target.value})}/></label><label>처리 증빙 ID<Input value={ev.evidenceRef} onChange={e=>setEv({...ev,evidenceRef:e.target.value})}/></label><label>처리 메모<Input maxLength={500} value={ev.note} onChange={e=>setEv({...ev,note:e.target.value})}/></label>

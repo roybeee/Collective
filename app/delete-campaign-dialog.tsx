@@ -2,7 +2,6 @@
 import {CheckInput} from '@/components/app/check';
 import {useEffect,useId,useState} from 'react';
 import {Archive,LoaderCircle,RefreshCw,Trash2} from 'lucide-react';
-import {toast} from 'sonner';
 import {AlertDialog,AlertDialogAction,AlertDialogCancel,AlertDialogContent,AlertDialogDescription,AlertDialogFooter,AlertDialogHeader,AlertDialogTitle} from '@/components/ui/alert-dialog';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
@@ -11,6 +10,7 @@ import {api} from '@/lib/client';
 import type {CampaignArchive} from '@/lib/campaign-archive';
 import {ALREADY_DELETED,COUNTS_CHANGED,LOAD_FAILED,STALE_CAMPAIGN,canConfirmDeletion,deletionSummary,needsTitleConfirmation,previewFailure,readDeletionPreview,recheckDeletion,recheckPurge,type DeletionPreview} from '@/lib/deletion-summary';
 import {canChange,useAccount} from './account-context';
+import {notifySaved} from '@/lib/ui/notify';
 
 // 조회 404: 다른 탭 등에서 이미 삭제된 캠페인. 다시 시도해도 같으므로 목록 새로 고침을 권한다.
 class CampaignGone extends Error{}
@@ -47,7 +47,7 @@ function DeleteCampaignBody({campaign,busy,setBusy,onClose,onDeleted,onRestored}
  async function archive(){
   if(busy)return;setBusy(true);setArchiving(true);setError('');
   // 보관은 기록을 지우지 않아 다시 조회하지 않는다. 진행 중 작업이 있으면 서버가 409와 사유로 거절한다. 보관한 캠페인도 목록에서 빠지므로 삭제와 같은 후속 처리(상세 닫기·목록 새로 고침)를 쓴다.
-  try{await api('archive_campaign',{id},'/api/campaigns');await onDeleted(id);onClose();toast.success('캠페인을 보관했습니다. 캠페인 목록의 보관함에서 보관을 해제할 수 있습니다.',{duration:10000,action:{label:'되돌리기',onClick:()=>{void api('unarchive_campaign',{id},'/api/campaigns').then(()=>onRestored?.()).then(()=>toast.success('보관을 해제했습니다.'),e=>toast.error((e as Error).message))}}})}
+  try{await api('archive_campaign',{id},'/api/campaigns');await onDeleted(id);onClose();notifySaved('캠페인을 보관했습니다.',{description:'캠페인 목록의 보관함에서 보관을 해제할 수 있습니다.',undo:async()=>{await api('unarchive_campaign',{id},'/api/campaigns');await onRestored?.()},undone:'보관을 해제했습니다.'})}
   catch(e){setError((e as Error).message)}finally{setBusy(false);setArchiving(false)}
  }
  async function remove(){
@@ -58,7 +58,7 @@ function DeleteCampaignBody({campaign,busy,setBusy,onClose,onDeleted,onRestored}
    const fresh=await loadPreview(id),changed=recheckDeletion(preview,fresh,campaign.version)||(purging?recheckPurge(preview,fresh):null);
    if(changed){setPreview(fresh);setTyped('');setError(changed===COUNTS_CHANGED?changed:'');return}
    // 완전 삭제 문구는 서버가 실제로 완전 삭제했을 때(purgedLearning)만 보인다. 이미 기본 삭제된 캠페인이면 서버가 409로 알린다.
-   const done=await (purging?api('delete_campaign',{id,version:fresh.version,confirmed:true,purgeLearning:true}):api('delete_campaign',{id,version:fresh.version,confirmed:true})) as {purgedLearning?:boolean};await onDeleted(id);onClose();toast.success(done.purgedLearning?'캠페인과 학습 자산을 완전히 삭제했습니다.':'캠페인을 삭제했습니다.');
+   const done=await (purging?api('delete_campaign',{id,version:fresh.version,confirmed:true,purgeLearning:true}):api('delete_campaign',{id,version:fresh.version,confirmed:true})) as {purgedLearning?:boolean};await onDeleted(id);onClose();notifySaved(done.purgedLearning?'캠페인과 학습 자산을 완전히 삭제했습니다.':'캠페인을 삭제했습니다.');
   }catch(e){if(e instanceof CampaignGone)setGone(true);else setError((e as Error).message)}finally{setBusy(false)}
  }
  return <><AlertDialogHeader><AlertDialogTitle>캠페인을 삭제할까요?</AlertDialogTitle><AlertDialogDescription>「{campaign.title}」 브리프와 아래 기록을 삭제합니다. 삭제 후 복구할 수 없습니다. {purging?'학습 자산까지 완전 삭제를 골라 바이럴 출처 학습 규칙·이 캠페인의 사람 판정 로그·이전에 보관한 비식별 평가 신호도 지우고, 실험 요약과 평가 신호를 남기지 않습니다.':'바이럴 출처 학습 규칙은 지우지 않고 종료 상태와 원 캠페인 삭제 표시로 남깁니다. 평가 신호는 원문 없이 비식별로 90일 보관합니다.'} 브랜드 지식, 수집한 바이럴 사례, 점포 실험·점포 규칙은 유지됩니다.</AlertDialogDescription></AlertDialogHeader>
