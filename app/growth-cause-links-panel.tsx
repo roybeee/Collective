@@ -30,7 +30,7 @@ function Workspace({campaignId}:{campaignId:string}){
  }
  const d=view?.distribution;
  return <section aria-label="반품 원인 개선 연결" className={styles.panel}><header className={styles.header}><h3>반품·환불 원인 → 개선 검토</h3><Button variant="panel" size="fit" aria-label="원인 연결 새로고침" type="button" disabled={busy} onClick={()=>void load(window)}>새로고침</Button></header>
-  <Note className={styles.note}>운영자가 확인한 원인 기록을 같은 미션의 구매 병목·일일 결정·운영 교훈에 연결합니다. 원인 분포는 관측 기간의 반품·환불 품목 수 기준이며 결함률·인과 효과가 아닙니다. 자동 응대·환불·재고 해제·규칙 승격은 하지 않습니다.</Note>
+  <Note className={styles.note}>운영자가 확인한 원인 기록을 같은 미션의 구매 병목·일일 결정·운영 교훈에 연결합니다. 원인 분포는 관측 기간의 반품·환불 품목 수 기준이며 결함률·인과 효과가 아닙니다. 응대·환불·재고 해제·규칙 승격은 운영자가 직접 합니다.</Note>
   {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">원인 연결을 조회하고 있습니다.</p>}{stale&&<p role="status" className={styles.warning}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
   {view&&d&&<><form className={styles.form} onSubmit={e=>{e.preventDefault();void load(window);}}><label>관측 시작일<Input type="date" value={window.from} onChange={e=>setWindow({...window,from:e.target.value})}/></label><label>관측 종료일<Input type="date" value={window.to} onChange={e=>setWindow({...window,to:e.target.value})}/></label><Button variant="panel" size="fit" type="submit" disabled={busy}>기간 적용</Button></form>
    <h4>원인 분포 ({d.window.from}~{d.window.to})</h4><p>분모: 반품·환불 사건이 있는 품목 {d.denominator.lines}건 · 원본 보류 {d.held}건 · 원인 미기록 {d.unrecorded}건 · 여러 원인 {d.linesWithMultipleCodes}건 · 관측 시각 없음 제외 {d.excludedWithoutObservedAt}건</p>

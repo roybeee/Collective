@@ -49,7 +49,7 @@ function Assessment({row}:{row:Blocker}){
  const difference=(value:number|null,unit:string)=>value===null?'미측정':`${value.toLocaleString('ko-KR',{maximumFractionDigits:4})}${unit}`;
  return <div className={styles.readiness} aria-label="구매 병목 평가"><p>비교 상태: {comparison.status==='observed'?'관측 차이 확인':comparison.status==='held'?'비교 보류':'미측정'}</p>
   <p>전환율 차이: {difference(comparison.conversionDeltaPp,'%p')} · 환불률 차이: {difference(comparison.refundDeltaPp,'%p')} · 공헌이익 차이: {difference(comparison.profitDelta,'원')}</p>
-  <p>관측 차이이며 인과효과 미검증입니다. 자동 해결·확대 판정을 하지 않습니다.</p>
+  <p>관측 차이이며 인과효과 미검증입니다. 해결·확대 판정은 운영자가 합니다.</p>
   {!!row.assessment.missing.length&&<><strong>보완할 항목</strong><ul>{row.assessment.missing.map((reason,i)=><li key={i}>{reason}</li>)}</ul></>}
   {!!comparison.reasons.length&&<><strong>비교 조건·한계</strong><ul>{comparison.reasons.map((reason,i)=><li key={i}>{reason}</li>)}</ul></>}
  </div>;
@@ -103,7 +103,7 @@ export function GrowthJourneyPanel({campaignId}:{campaignId:string}){
      <ObservationEditor label="개선 전" value={draft.before} onChange={patch=>change({before:{...draft.before,...patch}})}/><ObservationEditor label="개선 후" value={draft.after} onChange={patch=>change({after:{...draft.after,...patch}})}/>
     </fieldset>{<Button variant="panel" size="fit" type="submit" className={styles.primary} disabled={locked||stale||!view.canEdit} disabledReason={view.canEdit?undefined:readOnlyReason}>{busy?'저장 중…':'구매 병목 저장'}</Button>}</form>
     {dirty&&<p className={styles.note}>저장하지 않은 입력이 있습니다. 아래 평가는 마지막 서버 저장 기준입니다.</p>}
-    {selected?<Assessment row={selected}/>:<p className={styles.note}>초안을 저장하면 관측 비교의 보완 조건을 확인합니다. 자동 해결·외부 실행·확대를 수행하지 않습니다.</p>}
+    {selected?<Assessment row={selected}/>:<p className={styles.note}>초안을 저장하면 관측 비교의 보완 조건만 확인합니다.</p>}
    </div></div>}
  </section>;
 }

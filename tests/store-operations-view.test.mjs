@@ -96,10 +96,10 @@ check('baseline weeks are marked in the completeness table',v.weekRows([{weekSta
 check('report weeks are not baseline weeks',v.weekRows([{weekStart:'2026-08-31',status:'pass',ledgerNet:1,posNet:1}])[0].baseline,false);
 check('a week without a POS total never passes',v.weekRows([{weekStart:'2026-09-21',status:'pass',ledgerNet:1,posNet:null}])[0].status,'missing_pos');
 check('an unknown week key is shown as is',v.weekLabel('9월 첫째 주'),'9월 첫째 주');
-check('completeness summary counts passing weeks for the north-star',v.completenessSummary(weeks),{passed:1,total:4,text:'완전성 통과 1/4주 · 통과한 주만 north-star에 집계합니다.'});
+check('completeness summary counts passing weeks for the north-star',v.completenessSummary(weeks),{passed:1,total:4,text:'완전성 통과 1/4주 · 통과한 주만 핵심 지표에 집계합니다.'});
 check('no weeks means nothing counted yet',v.completenessSummary([]).text,'완전성 검사할 주가 없습니다. POS 합계를 입력하면 주별로 대조합니다.');
 check('north-star shows attributed orders and contribution of passed weeks only',v.northStarView({passedWeeks:2,excludedWeeks:3,attributedOrders:5,attributedContribution:14400,weeks:['2026-08-24','2026-09-14']}),{orders:'5건',contribution:'14,400원',basis:'완전성 통과 2주 기준 · 미통과·미입력 3주 제외'});
-check('north-star without data is unknown',v.northStarView(undefined),{orders:'미확인',contribution:'미확인',basis:'완전성 통과 주가 없어 north-star를 집계하지 않았습니다.'});
+check('north-star without data is unknown',v.northStarView(undefined),{orders:'미확인',contribution:'미확인',basis:'완전성 통과 주가 없어 핵심 지표를 집계하지 않았습니다.'});
 check('POS totals are offered only for finished weeks, newest first, with the saved version',v.posWeekOptions(weeks.map(w=>w.weekStart==='2026-09-21'?{...w,posVersion:2}:{...w,posVersion:null}),'2026-10-04').map(o=>[o.value,o.label,o.version??null]),[['2026-09-28','2026-09-28 ~ 10-04',null],['2026-09-21','2026-09-21 ~ 09-27',2],['2026-09-14','2026-09-14 ~ 09-20',null]]);
 check('the current week is not offered yet',v.posWeekOptions(weeks,'2026-10-03').map(o=>o.value),['2026-09-21','2026-09-14']);
 

@@ -58,7 +58,7 @@ function ExecutionEditor({campaignId,view,onView,busy,onBusy,linkedIntentIds}:{l
    const row=next.intents.find(item=>action==='prepare_execution'?item.input.missionId===draft.missionId:item.id===selection.id);
    if(!row)throw new Error('저장 응답에서 실행 기록을 확인하지 못했습니다. 새로고침으로 확인하세요.');
    onView(next);setSelection({id:row.id,version:row.version});setReceiptId(crypto.randomUUID());
-   setMessage(action==='prepare_execution'?'예산과 재고를 함께 예약했습니다. 외부 실행은 수행하지 않았습니다.':'실행 결과를 기록했습니다. 예산·재고 예약은 자동 해제하지 않습니다.');
+   setMessage(action==='prepare_execution'?'예산과 재고를 함께 예약했습니다. 외부 실행은 수행하지 않았습니다.':'실행 결과를 기록했습니다. 예산·재고 예약은 아래 대사에서 해제합니다.');
   }catch(e){if(mounted.current&&!c.signal.aborted)setError(`${e instanceof Error?e.message:'기록하지 못했습니다.'} 입력은 보존했습니다. 새로고침으로 서버 상태를 확인한 뒤 다시 시도하세요.`);}
   finally{pending.current=null;if(mounted.current&&!c.signal.aborted)onBusy(false);}
  }
@@ -74,7 +74,7 @@ function ExecutionEditor({campaignId,view,onView,busy,onBusy,linkedIntentIds}:{l
  <ReferenceField label="준비된 판매 미션" rows={view.missions.filter(row=>row.status==='staged').map(row=>({id:row.id,version:row.version,label:row.input.title}))} id={draft.missionId} version={draft.missionVersion} onChange={(missionId,missionVersion)=>change({missionId,missionVersion})}/>
  <ReferenceField label="서명된 판매 위임" rows={view.authorities.filter(row=>row.input.status==='active').map(row=>({id:row.id,version:row.version,label:`${row.input.accountId} · ${row.input.channel}`}))} id={draft.authorityId} version={draft.authorityVersion} onChange={(authorityId,authorityVersion)=>change({authorityId,authorityVersion})}/>
  <ReferenceField label="예약할 공유 재고" rows={view.inventory.map(row=>({id:row.id,version:row.version,label:`${row.input.sku} · 가용 ${row.projection.available??'미확인'} ${row.input.unit==='pack'?'팩':'개'}`}))} id={draft.inventoryId} version={draft.inventoryVersion} onChange={(inventoryId,inventoryVersion)=>change({inventoryId,inventoryVersion})}/>
- <Note className={styles.note}>준비도에서 확인한 브랜드·지점·SKU의 원장과 상품 수량 단위가 일치해야 합니다. 개·팩은 자동 환산하지 않습니다. 다른 캠페인의 예약으로 가용량이 바뀔 수 있으므로 최신 재고 판을 확인하세요.</Note><label className={styles.field}>예약할 재고 수량 (등록된 SKU 단위)<Input type="number" min={1} step={1} required value={draft.quantity} onChange={event=>change({quantity:event.target.value})}/></label>
+ <Note className={styles.note}>준비도에서 확인한 브랜드·지점·SKU의 원장과 상품 수량 단위가 같아야 합니다. 개·팩은 환산 없이 그대로 셉니다. 다른 캠페인의 예약으로 가용량이 바뀔 수 있으므로 최신 재고 판을 확인하세요.</Note><label className={styles.field}>예약할 재고 수량 (등록된 SKU 단위)<Input type="number" min={1} step={1} required value={draft.quantity} onChange={event=>change({quantity:event.target.value})}/></label>
  <label className={styles.field}>결과 확인 담당 역할<Input maxLength={200} required value={draft.recoveryOwner} onChange={event=>change({recoveryOwner:event.target.value})}/></label>
  <label className={styles.field}>결과 확인 기한<Input type="date" required value={draft.recoveryDueAt} onChange={event=>change({recoveryDueAt:event.target.value})}/></label>
  <label className={styles.wide}>준비 증빙 내부 ID<Input maxLength={100} required value={draft.evidenceRef} onChange={event=>change({evidenceRef:event.target.value})}/></label>
@@ -98,7 +98,7 @@ export function GrowthExecutionPanel({campaignId}:{campaignId:string}){
  function reload(){read.current?.abort();const c=new AbortController();read.current=c;void load(c.signal);}
  function saved(next:View){read.current?.abort();setLoading(false);setView(next);}
  return <section className={styles.panel} aria-label="일반 판매 실행 준비"><header className={styles.header}><div><h3>일반 판매 실행 준비</h3><p>서명된 위임과 준비된 미션에 예산·공유 재고를 함께 예약합니다.</p></div><Button variant="panel" size="fit" aria-label="실행 준비 새로고침" type="button" disabled={loading||busy} onClick={reload}>새로고침</Button></header>
- <Note className={styles.note}>외부 판매·광고 실행은 수행하지 않습니다. 결과 기록만으로 예산·재고를 자동 해제하지 않습니다. 증빙은 개인정보와 비밀값이 없는 내부 ID, 담당자는 역할로 입력하세요.</Note>
+ <Note className={styles.note}>외부 판매·광고는 운영자가 직접 실행하고 여기에는 결과만 기록합니다. 예산·재고 예약은 대사에서 해제합니다. 증빙은 개인정보와 비밀값이 없는 내부 ID, 담당자는 역할로 입력하세요.</Note>
  <GrowthPublicationPanel campaignId={campaignId} onChanged={ids=>{setLinkedIntentIds(previous=>[...new Set([...previous,...ids])]);reload();}}/>
  {loading&&<ScreenSkeleton label="실행 준비를 불러오고 있습니다." rows={2}/>}{error&&<p role="alert" className={styles.error}>{error}</p>}{view&&<ExecutionEditor key={campaignId} campaignId={campaignId} view={view} linkedIntentIds={linkedIntentIds} onView={saved} busy={busy} onBusy={value=>{if(value){read.current?.abort();setLoading(false);}setBusy(value);}}/>}
  </section>;

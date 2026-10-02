@@ -86,7 +86,7 @@ export function GrowthDemandPanel({campaignId}:{campaignId:string}){
  const offer=view?.offers.find(row=>row.id===draft.offerId),mission=view?.missions.find(row=>row.id===draft.missionId);
  const locked=busy||!view?.canEdit;
  return <section className={styles.panel} aria-label="수요 시퀀스"><header className={styles.header}><div><h3>수요 시퀀스</h3><p>메시지·콘텐츠·검색어·협업을 구매 경로 순서로 연결합니다.</p></div><Button variant="panel" size="fit" aria-label="수요 기록 새로고침" type="button" onClick={reload} disabled={loading||busy}>새로고침</Button></header>
-  <Note className={styles.note}>이 기록은 계획과 운영자 관측입니다. 저장으로 광고·게시물·고객 메시지를 발송하지 않습니다. 직접 식별정보와 비공개 접근 URL을 입력하지 마세요.</Note>
+  <Note className={styles.note}>이 기록은 계획과 운영자 관측입니다. 직접 식별정보와 비공개 접근 URL을 입력하지 마세요.</Note>
   {loading&&<ScreenSkeleton label="수요 기록을 불러오고 있습니다." rows={2}/>}{error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}
   {view&&<div className={styles.workspace}><div role="group" className={styles.list} aria-label="수요 시퀀스 목록"><Button disabledReason={view?.canEdit?undefined:readOnlyReason} variant="panel" size="fit" type="button" disabled={locked} onClick={()=>pick()}>새 수요 시퀀스</Button>{!view.sequences.length&&<EmptyLine next="위 ‘새 수요 시퀀스’ 버튼으로 시작하세요.">저장된 수요 시퀀스가 없습니다.</EmptyLine>}{view.sequences.map(row=><Button variant="panel" size="fit" key={row.id} type="button" aria-pressed={row.id===identity.id} disabled={busy} onClick={()=>pick(row)}><strong>{row.input.title||'제목 없는 초안'}</strong><span>v{row.version} · {row.input.steps.length}단계</span></Button>)}</div>
    <div className={styles.editor}><h4>{identity.version?`수요 시퀀스 편집 · v${identity.version}`:'새 수요 시퀀스'}</h4>{!view.canEdit&&<p className={styles.note}>조회 전용입니다.</p>}
@@ -100,7 +100,7 @@ export function GrowthDemandPanel({campaignId}:{campaignId:string}){
      <Button variant="panel" size="fit" type="button" disabled={draft.steps.length>=12} disabledReason={(draft.steps.length>=12)?'단계는 12개까지 넣을 수 있습니다.':undefined} onClick={()=>change({steps:[...draft.steps,{...emptyDemandStep(),id:crypto.randomUUID()}]})}>수요 단계 하나 더</Button>
     </fieldset>{<Button variant="panel" size="fit" type="submit" className={styles.primary} disabled={locked||stale||!view.canEdit} disabledReason={view.canEdit?undefined:readOnlyReason}>{busy?'저장 중…':'수요 시퀀스 저장'}</Button>}</form>
     {dirty&&<p className={styles.note}>저장하지 않은 입력이 있습니다. 아래 준비 상태는 마지막 서버 저장 기준입니다.</p>}
-    {selected?<div className={styles.readiness} aria-label="수요 시퀀스 준비 상태"><p>예상 비용 합계: {selected.readiness.plannedCost===null?'미확인':`${selected.readiness.plannedCost.toLocaleString('ko-KR')}원`} · 실제 지출·매출이 아닙니다.</p>{selected.readiness.missing.length?<><strong>보완할 항목</strong><ul>{selected.readiness.missing.map((reason,i)=><li key={i}>{reason}</li>)}</ul></>:<p>준비 항목이 채워졌습니다. 수요 검증·외부 집행 승인을 뜻하지 않습니다.</p>}</div>:<p className={styles.note}>초안을 저장하면 연결 자료와 단계별 준비 상태를 확인합니다.</p>}
+    {selected?<div className={styles.readiness} aria-label="수요 시퀀스 준비 상태"><p>예상 비용 합계: {selected.readiness.plannedCost===null?'미확인':`${selected.readiness.plannedCost.toLocaleString('ko-KR')}원`} · 실제 지출·매출이 아닙니다.</p>{selected.readiness.missing.length?<><strong>보완할 항목</strong><ul>{selected.readiness.missing.map((reason,i)=><li key={i}>{reason}</li>)}</ul></>:<p>준비 항목이 채워졌습니다. 수요 검증·외부 집행 승인은 따로 확인하세요.</p>}</div>:<p className={styles.note}>초안을 저장하면 연결 자료와 단계별 준비 상태를 확인합니다.</p>}
    </div></div>}
  </section>;
 }
