@@ -22,7 +22,7 @@ const gateOrder={orderDate:'2026-09-20',campaignId:'c1',creativeId:'cr1',channel
 const gated=plain(sa.publicationGateView(gateOrder,new Map([['pc',{status:'cancelled',scheduledDay:'2026-09-01'}]])));
 check('the gate view treats the manual wording like the import wording',!gated.codeAttribution&&!gated.campaignId&&gated.channel==='unknown'&&gated.attributionEvidence==='');
 check('the unpublished creative warning is the agreed wording',sa.UNPUBLISHED_CREATIVE_WARNING==='이 소재는 앱에서 게시된 기록이 없습니다. 앱 밖에서 게시했다면 근거에 적어 주세요.');
-check('the ledger import notes name refusals and warnings only when counted',JSON.stringify(sa.entrySummaryNotes({beforePublication:1,pendingPublication:2,notYetValid:1,unpublishedCreatives:3}))===JSON.stringify(['게시 코드로 귀속하지 않음: 게시 전 주문 1건 · 게시 상태 확인 전 2건','코드 적용 시작일 전 주문 1건은 추적 코드로 귀속하지 않았습니다.','앱에서 게시된 기록이 없는 소재에 직접 귀속한 주문 3건: 앱 밖에서 게시했다면 근거에 적어 주세요.'])&&sa.entrySummaryNotes({}).length===0&&sa.entrySummaryNotes(undefined).length===0);
+check('the ledger import notes name refusals and warnings only when counted',JSON.stringify(sa.entrySummaryNotes({beforePublication:1,pendingPublication:2,notYetValid:1,unpublishedCreatives:3}))===JSON.stringify(['게시 코드로 귀속하지 않음: 게시 전 주문 1건, 게시 상태 확인 전 2건','코드 적용 시작일 전 주문 1건은 추적 코드로 귀속하지 않았습니다.','앱에서 게시된 기록이 없는 소재에 직접 귀속한 주문 3건: 앱 밖에서 게시했다면 근거에 적어 주세요.'])&&sa.entrySummaryNotes({}).length===0&&sa.entrySummaryNotes(undefined).length===0);
 
 // 2) 준비: 지점 2곳, 캠페인·소재, 게시(예약 접수·내일 예약·승인 전·취소·게시 확인), 추적 코드(라우트로 만든다)
 const owner='a43-owner-production-authenticated-id';

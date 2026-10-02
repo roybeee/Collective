@@ -42,17 +42,17 @@ check('without gates a publication code is refused',ungated('PUBA').code===null&
 check('without gates a code without a publication behaves as before',ungated('CXYZ').code.id==='CXYZ'&&ungated('CXYZ').refused.length===0);
 const ca=(codeId,publicationId)=>({codeId,code:codeId,...(publicationId?{publicationId}:{}),conflictCodeIds:[]});
 const mix=[order({campaignId:'c1',creativeId:'cr1',paidAmount:1000,codeAttribution:ca('PUBA','pa')}),order({campaignId:'c1',creativeId:'cr1',paidAmount:2500,refundAmount:500,codeAttribution:ca('QPUB','pa')}),order({campaignId:'c1',paidAmount:700,codeAttribution:ca('CXYZ')}),order({campaignId:'c1',paidAmount:900,attributionEvidence:'계산대 구두 확인'})];
-const br=plain(sa.attributionBreakdown(mix,codes,undefined,{pa:'오픈 안내 v1 · 예약 2026-09-10 18:00 · 게시 확인'}));
+const br=plain(sa.attributionBreakdown(mix,codes,undefined,{pa:'오픈 안내 v1, 예약 2026-09-10 18:00, 게시 확인'}));
 check('by publication counts only orders attributed by a publication code',br.byPublication.length===1&&br.byPublication[0].key==='pa'&&br.byPublication[0].orders===2&&br.byPublication[0].netRevenue===3000);
-check('a publication row carries its label and every code linked to it',br.byPublication[0].label==='오픈 안내 v1 · 예약 2026-09-10 18:00 · 게시 확인'&&br.byPublication[0].codes.join()==='PUBA,QPUB');
+check('a publication row carries its label and every code linked to it',br.byPublication[0].label==='오픈 안내 v1, 예약 2026-09-10 18:00, 게시 확인'&&br.byPublication[0].codes.join()==='PUBA,QPUB');
 check('a publication row without a label falls back to its id',plain(sa.attributionBreakdown(mix,codes)).byPublication[0].label==='게시 pa');
 check('other breakdowns are unchanged by publication codes',br.byCode.length===3&&br.byCampaign.find(g=>g.key==='c1').orders===4);
 check('a creative title is shown as written',sa.creativeLabel({id:'cr-uuid',title:' 오픈 주소 안내 v1 ',createdAt:'2026-09-23T05:05:00.000Z'})==='오픈 주소 안내 v1');
-check('a creative without a title gets a readable Korean-time fallback',sa.creativeLabel({id:'cr-uuid',title:'',createdAt:'2026-09-22T15:05:00.000Z'})==='소재 · 9월 23일 00:05 생성');
-check('a creative without a date falls back to a short id',sa.creativeLabel({id:'abcdef123456'})==='소재 · abcdef12');
-check('the store label follows the execution label and adds the first fact line',sa.creativeLabel({id:'cr-uuid',caption:'주소: 휘경동 377 C107\n영업시간: 11시',createdAt:'2026-09-22T15:05:00.000Z'})==='소재 · 9월 23일 00:05 생성 · 주소: 휘경동 377 C107');
-check('a publication row label joins creative, Korean schedule and status',sa.publicationRowLabel({scheduledAt:'2026-09-10T09:00:00.000Z'},'오픈 안내','게시 확인')==='오픈 안내 · 예약 2026-09-10 18:00 · 게시 확인'&&sa.publicationRowLabel({},'소재','취소')==='소재 · 예약 시각 미확인 · 취소');
-check('the import note names publication refusals only when there are some',sa.publicationImportNote({beforePublication:2,unpublished:1,pendingPublication:3})==='게시 코드로 귀속하지 않음: 게시 전 주문 2건 · 취소·발행 실패 게시 1건 · 게시 상태 확인 전 3건'&&sa.publicationImportNote({beforePublication:0,unpublished:0})===null&&sa.publicationImportNote(undefined)===null);
+check('a creative without a title gets a readable Korean-time fallback',sa.creativeLabel({id:'cr-uuid',title:'',createdAt:'2026-09-22T15:05:00.000Z'})==='소재(9월 23일 00:05 생성)');
+check('a creative without a date falls back to a short id',sa.creativeLabel({id:'abcdef123456'})==='소재(abcdef12)');
+check('the store label follows the execution label and adds the first fact line',sa.creativeLabel({id:'cr-uuid',caption:'주소: 휘경동 377 C107\n영업시간: 11시',createdAt:'2026-09-22T15:05:00.000Z'})==='소재(9월 23일 00:05 생성), 주소: 휘경동 377 C107');
+check('a publication row label joins creative, Korean schedule and status',sa.publicationRowLabel({scheduledAt:'2026-09-10T09:00:00.000Z'},'오픈 안내','게시 확인')==='오픈 안내, 예약 2026-09-10 18:00, 게시 확인'&&sa.publicationRowLabel({},'소재','취소')==='소재, 예약 시각 미확인, 취소');
+check('the import note names publication refusals only when there are some',sa.publicationImportNote({beforePublication:2,unpublished:1,pendingPublication:3})==='게시 코드로 귀속하지 않음: 게시 전 주문 2건, 취소·발행 실패 게시 1건, 게시 상태 확인 전 3건'&&sa.publicationImportNote({beforePublication:0,unpublished:0})===null&&sa.publicationImportNote(undefined)===null);
 check('the pending warning appears only when orders wait for a publication status',sa.pendingPublicationNote({pendingPublication:2})?.includes('게시 상태 확인 전')&&sa.pendingPublicationNote({pendingPublication:2}).includes('2건')&&sa.pendingPublicationNote({pendingPublication:0})===null&&sa.pendingPublicationNote(undefined)===null);
 
 // 1b) 게시 관문을 지금 게시 상태로 다시 본 주문(보고서·주문 수정이 같은 규칙을 쓴다)
@@ -177,9 +177,9 @@ res=await act({action:'attribution_report',from:T,to:T});
 const rep=res.body,row=key=>rep.byPublication.find(g=>g.key===key);
 check('the report has a row per publication with orders and revenue',res.status===200&&rep.byPublication.length===2&&row('p-acc').orders===2&&row('p-acc').netRevenue===19000&&row('p-pub').orders===1&&row('p-pub').netRevenue===8000);
 check('a publication row lists its codes',row('p-acc').codes.includes(accCode)&&row('p-acc').codes.includes(qrCode)&&row('p-pub').codes.join()===codeFor['p-pub']);
-check('a publication row is labelled with the creative title, Korean schedule and status',row('p-acc').label===`오픈 주소 안내 v1 · 예약 ${T} 00:30 · 예약 접수`);
-check('a publication of an untitled creative uses the fallback label',row('p-pub').label===`소재 · 9월 23일 00:05 생성 · 주소: 휘경동 377 C107 · 예약 ${sa.addDays(T,-3)} 00:30 · 게시 확인`);
-check('the report carries creative display names',rep.creativeLabels.cr1==='오픈 주소 안내 v1'&&rep.creativeLabels.cr2==='소재 · 9월 23일 00:05 생성 · 주소: 휘경동 377 C107');
+check('a publication row is labelled with the creative title, Korean schedule and status',row('p-acc').label===`오픈 주소 안내 v1, 예약 ${T} 00:30, 예약 접수`);
+check('a publication of an untitled creative uses the fallback label',row('p-pub').label===`소재(9월 23일 00:05 생성), 주소: 휘경동 377 C107, 예약 ${sa.addDays(T,-3)} 00:30, 게시 확인`);
+check('the report carries creative display names',rep.creativeLabels.cr1==='오픈 주소 안내 v1'&&rep.creativeLabels.cr2==='소재(9월 23일 00:05 생성), 주소: 휘경동 377 C107');
 check('a report with every publication live has no gate note',!rep.notes.some(x=>x.includes('게시 관문 밖')));
 check('the report keeps the attribution caveat',rep.notes.some(x=>x.includes('귀속≠증분')));
 

@@ -124,7 +124,7 @@ function SnapshotDialog({campaignId,report:r,onClose,onSaved}:{campaignId:string
   try{await api('snapshot',{campaignId,from:r.period.from,to:r.period.to,confirmed:true,expected:{orders:t.orders,netRevenue:t.netRevenue,contribution:t.contribution}},'/api/campaign-attribution');await onSaved();notifySaved('주문 장부 귀속 집계를 성과 기록으로 저장했습니다.');onClose()}
   catch(e){setError(e instanceof Error?e.message:'저장하지 못했습니다.')}finally{setBusy(false)}
  }
- const rows=[['측정 기간',`${r.period.from} ~ ${r.period.to}`],['비교 범위',r.snapshot.scope],['자료 출처',r.snapshot.source],['수집 방식','원자료 내보내기'],['주문 수',count(t.orders)],['순매출',won(t.netRevenue)],['상품 원가·변동비',won(variableCosts)],['매체비·제작비','배분하지 않음(미확인으로 저장)']];
+ const rows=[['측정 기간',`${r.period.from} ~ ${r.period.to}`],['비교 범위',r.snapshot.scope.split(/\s·\s/).join(', ')],['자료 출처',r.snapshot.source],['수집 방식','원자료 내보내기'],['주문 수',count(t.orders)],['순매출',won(t.netRevenue)],['상품 원가·변동비',won(variableCosts)],['매체비·제작비','배분하지 않음(미확인으로 저장)']];
  return <Dialog open onOpenChange={open=>{if(!open&&!busy)onClose()}}><DialogContent className="wide-dialog"><DialogHeader><DialogTitle>주문 장부 귀속 스냅샷 저장</DialogTitle><DialogDescription>지금 보이는 집계를 성과 기록으로 저장합니다. 저장 직전에 다시 집계해 확인한 값과 같을 때만 저장합니다.</DialogDescription></DialogHeader>
   <dl className="attribution-snapshot">{rows.map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
   <p className="notice">{plainCopy(NOT_INCREMENTAL)} 같은 비교 범위에서는 기간이 겹치지 않는 성과 기록만 저장됩니다.</p>

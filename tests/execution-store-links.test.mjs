@@ -77,8 +77,8 @@ check('campaign options list the store campaigns first, then campaigns left only
  {value:'campaign:c1',label:'오픈 주 캠페인'},{value:'campaign:c2',label:'주문 없는 캠페인'},{value:'campaign:c-gone',label:'기존 캠페인(c-gone)'}]));
 check('creative options list only creatives on the ledger orders, named with creativeLabel and their campaign',()=>assert.deepEqual(options.creatives,[
  {value:'creative:cr-titled',label:'오픈 메뉴 안내 v1, 오픈 주 캠페인'},
- {value:'creative:cr-missing-record',label:'소재 · cr-missi'},
- {value:'creative:cr-untitled',label:'소재 · 9월 23일 14:05 생성 · 대표 메뉴: 떡볶이, 오픈 주 캠페인'}]));
+ {value:'creative:cr-missing-record',label:'소재(cr-missi)'},
+ {value:'creative:cr-untitled',label:'소재(9월 23일 14:05 생성), 대표 메뉴: 떡볶이, 오픈 주 캠페인'}]));
 check('no orders and no campaigns give no options',()=>assert.deepEqual(plain(ledgerFilterOptions([],[],[])),{campaigns:[],creatives:[]}));
 const shown=filter=>orders.filter(o=>ledgerFilterMatch(o,filter)).map(o=>o.id);
 check('all and unknown filters keep their meaning',()=>{assert.deepEqual(shown('all'),['o1','o2','o3','o4','o5','o6']);assert.deepEqual(shown('unknown'),['o3'])});

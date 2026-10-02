@@ -10,6 +10,7 @@ import {metricSummary,money,type Campaign,type Metric} from '@/lib/agency';
 import {DataTable,sortNumber} from '@/components/app/data-table';
 import {TrendBars} from '@/components/app/trend-bars';
 import {notifySaved} from '@/lib/ui/notify';
+import {MetaLine} from '@/components/app/meta-line';
 
 type CampaignChoice=Pick<Campaign,'id'|'title'>;
 type MetricDialogProps={open:boolean;campaigns:CampaignChoice[];onClose:()=>void;onSaved:()=>Promise<void>;initial?:Metric};
@@ -38,10 +39,12 @@ export function MetricSummary({metrics}:{metrics:readonly Metric[]}){
 export function previousMetric(m:Metric,all:Metric[]){const start=m.periodStart??m.period;return all.filter(x=>x.id!==m.id&&x.campaignId===m.campaignId&&x.schemaVersion===2&&(x.scope??'')===(m.scope??'')&&(x.periodStart??x.period)<start).sort((a,b)=>(b.periodStart??b.period).localeCompare(a.periodStart??a.period))[0]??null;}
 // 직전 기간 대비 순매출 변화율. 어느 한쪽이 미확인이거나 직전이 0이면 비교하지 않는다.
 const changeText=(m:Metric,prev:Metric|null)=>{if(!prev)return '직전 기록 없음';if(m.revenue===null||prev.revenue===null||prev.revenue===0)return '비교 자료 필요';const r=(m.revenue-prev.revenue)/prev.revenue*100;return `${r>=0?'+':''}${r.toFixed(1)}%`;};
+// 카드 제목: 저장된 period(기간과 범위를 가운뎃점으로 이은 값)는 그대로 두고 화면에서는 기간과 범위를 항목으로 나눠 그린다(가운뎃점으로 잇지 않는다).
+export const periodItems=(m:Pick<Metric,'period'|'periodStart'|'periodEnd'|'scope'>)=>m.periodStart&&m.periodEnd?[`${m.periodStart} ~ ${m.periodEnd}`,...(m.scope?m.scope.split(/\s·\s/):[])]:m.period.split(/\s·\s/);
 export function MetricCard({metric:m,onSaved,compact=false,all=[]}:{metric:Metric;onSaved?:()=>Promise<void>;compact?:boolean;all?:Metric[]}){
  const summary=metricSummary(m),[editing,setEditing]=useState(false),prev=m.schemaVersion===2?previousMetric(m,all):null;
  return <div className="metric-card">
-  <div className="section-heading"><h3>{m.period}</h3><span className="mode-pill">{m.schemaVersion===2?'출처·범위 기록':'기존 기록(비교 조건 미확인)'}</span></div>
+  <div className="section-heading"><h3><MetaLine items={periodItems(m)}/></h3><span className="mode-pill">{m.schemaVersion===2?'출처·범위 기록':'기존 기록(비교 조건 미확인)'}</span></div>
   <div className="metric-grid">{[['순매출',amount(m.revenue)],['기록 비용 차감 잔액',amount(summary.net)],m.schemaVersion===2?['직전 기간 대비 순매출',changeText(m,prev)]:['기준 대비 관찰 변화',amount(summary.observedChange)],['매체비 대비 매출',summary.roas===null?'자료 필요':summary.roas.toFixed(2)+'배']].map(([label,value])=><div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
   {!compact&&<p className="subtle-note">{balanceNote}</p>}
   {m.source&&<p>출처: {m.source}<br/>집계 정의: {m.definition}</p>}{m.notes&&<p className="metric-note">{m.notes}</p>}

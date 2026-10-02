@@ -10,7 +10,9 @@ export const featureStatusLabels:Record<FeatureStatus,string>={available:'사용
 // 캠페인 안쪽 탭은 주소(ctab, lib/nav-state.ts)에 실리지만 이 링크는 아직 그것을 쓰지 않는다. 그래서 캠페인 링크 라벨은 '캠페인을 열어 … 탭에서'로 도착 화면을 그대로 말한다.
 export type SettingsSection='settings-ai'|'settings-worker'|'settings-channels';
 export type FeatureLink={label:string;view:NavView;brand?:string;campaign?:string;tab?:NavTab;section?:SettingsSection};
-export type FeatureRow={key:string;label:string;status:FeatureStatus;reason?:string;link?:FeatureLink};
+// reason은 화면에서 항목으로 나눠 그린다(MetaLine). 레인 A 행은 항목 배열로 쓰고, 다른 레인 행의 문자열은 featureView가 나눈다.
+// flag는 그 행이 읽는 기능 스위치 이름이다. 화면 문구에는 넣지 않고 '자세히'의 기술 정보로만 보인다(평가 9회차 결함 3).
+export type FeatureRow={key:string;label:string;status:FeatureStatus;reason?:string|string[];link?:FeatureLink;flag?:string};
 type CampaignRef={id:string;brandId:string;updatedAt?:string;archivedAt?:string|null};
 // expiresAt: GET /api/channels의 토큰 만료 시각. 서버는 만료된 토큰도 connected:true로 주므로 now와 비교해 만료면 연결로 세지 않는다.
 type ChannelRef={label:string;connected:boolean;expiresAt?:string|null;expiringSoon?:boolean};
@@ -55,21 +57,21 @@ export function bufferCheckCampaigns(brands:unknown,campaigns:unknown):Record<st
 }
 
 function aiRow(connection:unknown):FeatureRow{
- const base={key:'ai',label:'8개 담당별 AI 작업 · HERMES 연결'},link:FeatureLink={label:'AI 팀 연결로 이동',view:'settings',section:'settings-ai'};
+ const base={key:'ai',label:'8개 담당별 AI 작업(HERMES 연결)'},link:FeatureLink={label:'AI 팀 연결로 이동',view:'settings',section:'settings-ai'};
  if(!record(connection)||typeof connection.configured!=='boolean')return {...base,status:'blocked',reason:'AI 연결 상태를 확인하지 못했습니다',link};
- return connection.configured?{...base,status:'available',reason:connection.provider==='openai'?'OpenAI API로 실행(별도 과금)':'HERMES로 실행'}:{...base,status:'blocked',reason:'HERMES 연결 전 · AI 작업·팀 회의·조사를 실행할 수 없습니다',link};
+ return connection.configured?{...base,status:'available',reason:connection.provider==='openai'?'OpenAI API로 실행(별도 과금)':'HERMES로 실행'}:{...base,status:'blocked',reason:['HERMES 연결 전','AI 작업·팀 회의·조사를 실행할 수 없습니다'],link};
 }
 function workerRow(worker:unknown):FeatureRow{
- const base={key:'worker',label:'조사 작업자 연결'},link:FeatureLink={label:'작업자 연결로 이동',view:'settings',section:'settings-worker'},later=' · 앱을 열어 둔 동안만 조사·AI 팀 실행이 이어집니다';
+ const base={key:'worker',label:'조사 작업자 연결'},link:FeatureLink={label:'작업자 연결로 이동',view:'settings',section:'settings-worker'},later='앱을 열어 둔 동안만 조사·AI 팀 실행이 이어집니다';
  if(!record(worker))return {...base,status:'blocked',reason:'작업자 상태를 확인하지 못했습니다',link};
- if(worker.online===true)return {...base,status:'available',reason:'서버 작업자 연결됨 · 화면을 닫아도 조사·AI 팀 실행이 이어집니다'};
- return {...base,status:'blocked',reason:(worker.registered===true?'서버 작업자 응답 없음':'서버 작업자 설치 전')+later,link};
+ if(worker.online===true)return {...base,status:'available',reason:['서버 작업자 연결됨','화면을 닫아도 조사·AI 팀 실행이 이어집니다']};
+ return {...base,status:'blocked',reason:[worker.registered===true?'서버 작업자 응답 없음':'서버 작업자 설치 전',later],link};
 }
 function pngRow(facts:unknown,brands:string[],now:number):FeatureRow{
  const base={key:'png',label:'PNG 정보 카드'},link:FeatureLink={label:'브랜드 아카이브의 확인 사실로 이동',view:'brands',...(brands[0]?{brand:brands[0],tab:'facts'}:{})};
  if(!Array.isArray(facts))return {...base,status:'blocked',reason:'확정 사실 수를 확인하지 못했습니다',link};
  const count=usableFacts(facts.filter(isFact),now);
- return count?{...base,status:'available',reason:`확정 사실 ${count}건 · 캠페인 제작·발행 탭에서 제작`}:{...base,status:'blocked',reason:'확정 사실 필요(현재 0건)',link};
+ return count?{...base,status:'available',reason:[`확정 사실 ${count}건`,'캠페인 제작·발행 탭에서 제작']}:{...base,status:'blocked',reason:'확정 사실 필요(현재 0건)',link};
 }
 function bufferRow(publishers:unknown,brands:string[],campaigns:unknown):FeatureRow{
  const base={key:'buffer',label:'Instagram 예약 발행(Buffer)'},checks=bufferCheckCampaigns(brands.map(id=>({id})),campaigns);
@@ -77,18 +79,18 @@ function bufferRow(publishers:unknown,brands:string[],campaigns:unknown):Feature
  const link:FeatureLink=target?{label:'캠페인을 열어 제작·발행 탭에서 연결',view:'campaigns',campaign:checks[target]}:{label:'캠페인을 만든 뒤 제작·발행 탭에서 연결',view:'campaigns'};
  if(!record(publishers))return {...base,status:'blocked',reason:'Buffer 연결 상태를 확인하지 못했습니다',link};
  const connected=brands.filter(id=>publishers[id]===true).length,failed=brands.filter(id=>publishers[id]===null).length;
- const reason=`브랜드별 연결 ${connected}/${brands.length}`+(failed?` · ${failed}개 브랜드 확인 실패`:'');
+ const reason=[`브랜드별 연결 ${connected}/${brands.length}`,...(failed?[`${failed}개 브랜드 확인 실패`]:[])];
  return connected?{...base,status:'available',reason}:{...base,status:'blocked',reason,link};
 }
 // 채널별 상태는 워크스페이스 기본이고(E2E가 사유 맨 앞의 기본 상태를 본다), 뒤에 자기 브랜드·지점 자격증명이 하나라도 쓸 수 있는 브랜드 수를 붙인다(F5).
 function measurementRow(channels:unknown,brandChannels:unknown,brands:string[],now:number):FeatureRow{
- const base={key:'measurement',label:'광고 · 게시물 성과 자동 수집'},link:FeatureLink={label:'성과 자동 수집 연결로 이동',view:'settings',section:'settings-channels'};
+ const base={key:'measurement',label:'광고와 게시물 성과 자동 수집'},link:FeatureLink={label:'성과 자동 수집 연결로 이동',view:'settings',section:'settings-channels'};
  if(!Array.isArray(channels))return {...base,status:'blocked',reason:'채널 연결 상태를 확인하지 못했습니다',link};
  const list=channels.filter((c):c is ChannelRef=>record(c)&&text(c.label)&&typeof c.connected==='boolean');
  if(!list.length)return {...base,status:'blocked',reason:'연결할 수 있는 채널이 없습니다',link};
  const expired=(c:ChannelRef)=>text(c.expiresAt)&&Date.parse(c.expiresAt)<=now,usable=(c:ChannelRef)=>c.connected&&!expired(c);
  const known=new Set(brands),linked=new Set(scopedCredentials(brandChannels).filter(c=>known.has(c.brandId)&&usableState(credentialState(c,now))).map(c=>c.brandId)).size;
- const reason=list.map(c=>c.label+(!c.connected?' 연결 전':expired(c)?' 토큰 만료':c.expiringSoon?' 연결됨(토큰 갱신 필요)':' 연결됨')).join(' · ')+' (워크스페이스 기본) · '+(Array.isArray(brandChannels)?`브랜드별 연결 ${linked}/${brands.length} 브랜드`:'브랜드별 연결을 확인하지 못했습니다');
+ const reason=[list.map(c=>c.label+(!c.connected?' 연결 전':expired(c)?' 토큰 만료':c.expiringSoon?' 연결됨(토큰 갱신 필요)':' 연결됨')).join(', ')+' (워크스페이스 기본)',Array.isArray(brandChannels)?`브랜드별 연결 ${linked}/${brands.length} 브랜드`:'브랜드별 연결을 확인하지 못했습니다'];
  return list.some(usable)||linked?{...base,status:'available',reason}:{...base,status:'blocked',reason,link};
 }
 
@@ -104,20 +106,20 @@ function franchiseRow(flags:unknown):FeatureRow{
  if(enabled===null)return {...base,status:'blocked',reason:'가맹 모집 스위치 상태를 확인하지 못했습니다',link};
  return enabled?{...base,status:'available',reason:'리드 · 연락처(암호화) · 캠페인 가맹 모집 목적(대표·관리자) · 모집 자료(승인·내보내기 대표·관리자)·설명회 행사 · 유입 코드·모집 비용(대표·관리자) · 법정 절차 판정(COLLECTIVE 휴리스틱 · 법률 자문 아님)'}:{...base,status:'blocked',reason:'기능 스위치 r_franchise 꺼짐 · 소유자가 켭니다',link};
 }
-// 자료 요청(A6-1): 기능 스위치 a6_data_requests 상태를 읽는다. 켜지면 캠페인 상세 '작업물' 탭에서 모으고, 사실 확정으로 자동으로 닫힌다.
+// 자료 요청(A6-1): 기능 스위치 a6_data_requests 상태를 읽는다(스위치 이름은 flag로만 넘긴다). 켜지면 캠페인 상세 '작업물' 탭에서 모으고, 사실 확정으로 자동으로 닫힌다.
 function dataRequestsRow(flags:unknown):FeatureRow{
- const base={key:'data-requests',label:'자료 요청(작업물의 자료 필요 → 사실 확정)'},link:FeatureLink={label:'캠페인을 열어 작업물 탭에서 확인',view:'campaigns'};
+ const base={key:'data-requests',label:'자료 요청(작업물의 자료 필요 → 사실 확정)',flag:'a6_data_requests'},link:FeatureLink={label:'캠페인을 열어 작업물 탭에서 확인',view:'campaigns'};
  const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='a6_data_requests'):undefined;
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'자료 요청 스위치 상태를 확인하지 못했습니다',link};
- return state.enabled?{...base,status:'available',reason:'작업물의 자료 필요 표지 모으기 · 같은 항목 사실 확정 때 자동 닫힘(모델 호출 없음)'}:{...base,status:'blocked',reason:'기능 스위치 a6_data_requests 꺼짐 · 소유자가 켭니다',link};
+ return state.enabled?{...base,status:'available',reason:['작업물의 자료 필요 표지 모으기','같은 항목 사실이 확정되면 자동으로 닫힘(모델 호출 없음)']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다'],link};
 }
 
 // 플레이스 대조(A6-2): 기능 스위치 a6_place_check 상태를 읽는다. 켜지면 점포 마케팅 '채널 점검' 탭에서 관리자가 스냅샷을 입력한다.
 function placeCheckRow(flags:unknown):FeatureRow{
- const base={key:'place-check',label:'플레이스 정보 대조(수동 스냅샷 → 확정 사실)'},link:FeatureLink={label:'점포 마케팅 채널 점검 탭에서 확인',view:'stores',tab:'channels'};
+ const base={key:'place-check',label:'플레이스 정보 대조(직접 옮겨 적은 정보 → 확정 사실)',flag:'a6_place_check'},link:FeatureLink={label:'점포 마케팅 채널 점검 탭에서 확인',view:'stores',tab:'channels'};
  const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='a6_place_check'):undefined;
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'플레이스 대조 스위치 상태를 확인하지 못했습니다',link};
- return state.enabled?{...base,status:'available',reason:'관리자가 옮겨 적은 네이버 플레이스 정보를 확정 사실과 대조 · 다른 항목은 점포 할 일, 다시 일치하면 자동 완료(모델 호출·스크래핑 없음)'}:{...base,status:'blocked',reason:'기능 스위치 a6_place_check 꺼짐 · 소유자가 켭니다',link};
+ return state.enabled?{...base,status:'available',reason:['관리자가 옮겨 적은 네이버 플레이스 정보를 확정 사실과 대조','다른 항목은 점포 할 일로 남기고 다시 일치하면 자동 완료(모델 호출·자동 수집 없음)']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다'],link};
 }
 // 고객 보고서(A8): 기능 스위치 a8_customer_report 상태를 읽는다. 켜지면 대표·관리자가 끝난 주 보고서를 미리 보고 동결하고, 대표가 검토한다(화면은 A8-3).
 function customerReportRow(flags:unknown):FeatureRow{
@@ -126,19 +128,19 @@ function customerReportRow(flags:unknown):FeatureRow{
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'고객 보고서 스위치 상태를 확인하지 못했습니다',link};
  return state.enabled?{...base,status:'available',reason:'끝난 주 장부·POS 대조·north-star 결정론 집계 · 동결·대표 검토 · JSON·Markdown·CSV 다운로드(모델 호출 없음)'}:{...base,status:'blocked',reason:'기능 스위치 a8_customer_report 꺼짐 · 소유자가 켭니다',link};
 }
-// 보상 계보(B4-2b): 기능 스위치 b4_reward_lineage 상태를 읽는다. 켜지면 대표·관리자가 GET /api/reward-lineage로 읽기 전용 집계를 본다(화면은 B4-2c).
+// 보상 계보(B4-2b): 기능 스위치 b4_reward_lineage 상태를 읽는다. 켜지면 대표·관리자가 학습 화면 학습 규칙 탭(app/reward-lineage-section.tsx)에서 읽기 전용 집계를 본다.
 function rewardLineageRow(flags:unknown):FeatureRow{
- const base={key:'reward-lineage',label:'보상 계보(프롬프트 버전·학습 규칙별 보상, 읽기 전용)'},link:FeatureLink={label:'학습 화면으로 이동(보상 계보 표는 B4-2c)',view:'learning'};
+ const base={key:'reward-lineage',label:'보상 계보(프롬프트 버전·학습 규칙별 보상, 읽기 전용)',flag:'b4_reward_lineage'},link:FeatureLink={label:'학습 화면 학습 규칙 탭에서 확인',view:'learning'};
  const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='b4_reward_lineage'):undefined;
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'보상 계보 스위치 상태를 확인하지 못했습니다',link};
- return state.enabled?{...base,status:'available',reason:'사람 판정·발행·반응(축소)·주문 귀속 결정론 집계 · 재방문 not_run · 자동 승격·강등 없음(모델 호출 없음, 화면은 B4-2c)'}:{...base,status:'blocked',reason:'기능 스위치 b4_reward_lineage 꺼짐 · 소유자가 켭니다',link};
+ return state.enabled?{...base,status:'available',reason:['사람 판정·발행·반응(축소)·주문 귀속을 정해진 규칙으로 집계','재방문은 아직 집계 전','자동 승격·강등 없음(모델 호출 없음)']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다'],link};
 }
 // 교정 신호(B3-2a): 기능 스위치 b3_playbook_signals 상태를 읽는다. 켜지면 대표·관리자가 학습 규칙 탭에서 교정 묶음·규칙별 피드백·같은 사유 재발률을 본다.
 function playbookSignalsRow(flags:unknown):FeatureRow{
- const base={key:'playbook-signals',label:'교정 신호(교정 묶음·규칙별 피드백·같은 사유 재발률)'},link:FeatureLink={label:'학습 화면 학습 규칙 탭에서 확인',view:'learning'};
+ const base={key:'playbook-signals',label:'교정 신호(교정 묶음·규칙별 피드백·같은 사유 재발률)',flag:'b3_playbook_signals'},link:FeatureLink={label:'학습 화면 학습 규칙 탭에서 확인',view:'learning'};
  const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='b3_playbook_signals'):undefined;
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'교정 신호 스위치 상태를 확인하지 못했습니다',link};
- return state.enabled?{...base,status:'available',reason:'브랜드×역할 교정 90일 5건 이상 초안 대상 · 규칙 버전별 파생 피드백 · 4주 재발률(읽을 때 계산, 모델 호출 없음, 규칙 자동 변경 없음)'}:{...base,status:'blocked',reason:'기능 스위치 b3_playbook_signals 꺼짐 · 소유자가 켭니다',link};
+ return state.enabled?{...base,status:'available',reason:['브랜드×역할 교정이 90일에 5건 이상이면 초안 대상','규칙 버전별 파생 피드백','4주 재발률(읽을 때 계산, 모델 호출과 규칙 자동 변경 없음)']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다'],link};
 }
 // 주간 품질 집계(B2 2단계): 기능 스위치 b2_digest_queue 상태를 읽는다. 켜지면 워커 tick이 주 1회 집계·드리프트 경보를 남기고 사용량 화면에 역할×프롬프트 버전×보고 모델 표가 보인다.
 function qualityDigestRow(flags:unknown):FeatureRow{
@@ -147,19 +149,19 @@ function qualityDigestRow(flags:unknown):FeatureRow{
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'주간 품질 집계 스위치 상태를 확인하지 못했습니다',link};
  return state.enabled?{...base,status:'available',reason:'조사 작업자가 주 1회 지난주 집계·경보를 기록(모델 호출 없음, 캠페인 상태 변경 없음)'}:{...base,status:'blocked',reason:'기능 스위치 b2_digest_queue 꺼짐 · 소유자가 켭니다',link};
 }
-// 성장2 일일 운영 루프(G2-00/28): 기능 스위치 growth_daily_loop 상태를 읽는다. 켜지면 조사 작업자가 KST 하루 1회 지점 캠페인의 자사 장부 신호 감지와 검토 안건을 기록한다.
+// 일일 운영 루프(G2-00/28): 기능 스위치 growth_daily_loop 상태를 읽는다. 켜지면 조사 작업자가 KST 하루 1회 지점 캠페인의 자사 장부 신호 감지와 검토 안건을 기록한다.
 function growthDailyRow(flags:unknown):FeatureRow{
- const base={key:'growth-daily',label:'성장2 일일 운영 루프(자사 장부 감지·검토 안건)'},link:FeatureLink={label:'캠페인의 성장·판매 탭에서 확인',view:'campaigns'};
+ const base={key:'growth-daily',label:'일일 운영 루프(자사 장부 감지·검토 안건)',flag:'growth_daily_loop'},link:FeatureLink={label:'캠페인의 성장·판매 탭에서 확인',view:'campaigns'};
  const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='growth_daily_loop'):undefined;
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'일일 운영 루프 스위치 상태를 확인하지 못했습니다',link};
- return state.enabled?{...base,status:'available',reason:'조사 작업자가 하루 1회 신호 감지·안건 기록(모델 호출·게시·지출·발송 없음)'}:{...base,status:'blocked',reason:'기능 스위치 growth_daily_loop 꺼짐 · 소유자가 켭니다(수동 “오늘 안건 지금 만들기”는 가능)',link};
+ return state.enabled?{...base,status:'available',reason:['조사 작업자가 하루 1회 신호 감지·안건 기록(모델 호출·게시·지출·발송 없음)']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다(“오늘 안건 지금 만들기”는 직접 누를 수 있음)'],link};
 }
 // 판매처 주문 조회(G2-04/18): 기능 스위치 storefront_pull. 켜지면 조사 작업자가 소유자가 켠 연결을 간격마다 읽는다.
 function storefrontPullRow(flags:unknown):FeatureRow{
- const base={key:'storefront-pull',label:'판매처 주문 조회 연결(커서·재시도)'},link:FeatureLink={label:'캠페인의 성장·판매 탭에서 확인',view:'campaigns'};
+ const base={key:'storefront-pull',label:'판매처 주문 조회 연결(이어 읽기·재시도)',flag:'storefront_pull'},link:FeatureLink={label:'캠페인의 성장·판매 탭에서 확인',view:'campaigns'};
  const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='storefront_pull'):undefined;
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'판매처 조회 스위치 상태를 확인하지 못했습니다',link};
- return state.enabled?{...base,status:'available',reason:'켠 연결을 간격마다 1페이지 읽기(고객 정보 없음, 외부 쓰기 없음)'}:{...base,status:'blocked',reason:'기능 스위치 storefront_pull 꺼짐 · 소유자가 켭니다',link};
+ return state.enabled?{...base,status:'available',reason:['켠 연결을 간격마다 1페이지 읽기(고객 정보 없음, 외부 쓰기 없음)']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다'],link};
 }
 // 가맹 경쟁 브랜드 공공 벤치마크(트랙 R R7a): r_franchise 스위치 뒤. 대표·관리자가 가맹 모집 → 벤치마크 탭에서 공공데이터 키를 저장한 뒤 버튼으로 적재한다(키가 없으면 막힘, 외부 호출 0).
 function franchiseBenchmarkRow(flags:unknown):FeatureRow{
@@ -180,10 +182,10 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
  return [
   {key:'brand',label:'브랜드 지식과 캠페인',status:'available',reason:'저장 및 수정'},
   aiRow(input.connection),
-  {key:'text',label:'카피 · 대본 · 제작 지시서',status:'available',reason:'텍스트 작업물(AI 작성 또는 직접 등록)'},
-  {key:'review',label:'작업물 검수와 버전 승인',status:'available',reason:'검토 · 수정 요청 · 승인'},
+  {key:'text',label:'카피, 대본, 제작 지시서',status:'available',reason:'텍스트 작업물(AI 작성 또는 직접 등록)'},
+  {key:'review',label:'작업물 검수와 버전 승인',status:'available',reason:['검토','수정 요청','승인']},
   {key:'quality-ops',label:'소유자 운영 검증·재채점·프롬프트 적용',status:'available',reason:'품질 콘솔 → 운영 상태 조회 · 쌍 평가 게이트 통과 후 지정 캠페인 적용'},
-  {key:'metrics',label:'실측 데이터 · 손익 계산',status:'available',reason:'직접 입력'},
+  {key:'metrics',label:'실측 데이터와 손익 계산',status:'available',reason:'직접 입력'},
   workerRow(input.worker),
   pngRow(input.facts,brands,now),
   bufferRow(input.publishers,brands,input.campaigns),
@@ -200,8 +202,26 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   franchiseBenchmarkRow(input.flags),
   reflectorRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
-  {key:'pos-auto',label:'POS 자동 수집',status:'unimplemented',reason:'POS 연동 없음 · CSV로 가져오세요'},
+  {key:'pos-auto',label:'POS 자동 수집',status:'unimplemented',reason:['POS 연동 없음','CSV로 가져오세요']},
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},
   {key:'ads',label:'광고 집행',status:'unimplemented',reason:'광고 생성·광고비 집행 기능 없음'},
  ];
+}
+// 화면에 그릴 모양(평가 9회차 결함 2·3). 사유는 항목 배열로 나눠 MetaLine으로 그리고(가운뎃점 ' · '로 잇지 않는다),
+// 기능 스위치 이름(소문자_밑줄)·단계 코드(B4-2c 등)·내부 이름(digest 큐)은 화면 문구에서 빼서 tech로 넘긴다. 화면은 tech를 '자세히' 안 기술 정보로만 보인다.
+// 레인 A 행은 lib 문구 자체에 코드가 없고 스위치 이름은 flag로 온다. 다른 레인 행의 문구는 고치지 않고, 여기서 화면에 그릴 때만 코드를 숨긴다.
+// 평가 보고서의 검사식(/\b[a-z]\d?_[a-z_]+\b/)은 growth_daily_loop처럼 첫 단어가 두 글자 이상인 스위치를 놓쳐서 넓혔다.
+export const INTERNAL_CODE=/\b[a-z][a-z0-9]*_[a-z0-9_]+\b|\bB\d-\d|성장2|digest/;
+function plainText(text:string,tech:string[]){
+ return text.replace(/\s*\(([^()]*)\)/g,(whole,inner:string)=>INTERNAL_CODE.test(inner)?(tech.push(inner.trim()),''):whole)
+  .replace(/\b[a-z][a-z0-9]*_[a-z0-9_]+\b/g,name=>(tech.push('스위치 이름 '+name),''))
+  .replace(/\s*\bB\d-\d\w*/g,code=>(tech.push('단계 '+code.trim()),''))
+  .replace(/성장2\s*/g,'').replace(/\s{2,}/g,' ').trim();
+}
+export type FeatureView={key:string;label:string;status:FeatureStatus;reason:string[];link?:FeatureLink;tech:string[]};
+export function featureView(row:FeatureRow):FeatureView{
+ const tech:string[]=row.flag?['스위치 이름 '+row.flag]:[];
+ const label=plainText(row.label,tech).split(/\s·\s/).join(', ');
+ const reason=(Array.isArray(row.reason)?row.reason:row.reason?row.reason.split(/\s·\s/):[]).map(p=>plainText(p,tech)).filter(Boolean);
+ return {key:row.key,label,status:row.status,reason,...(row.link?{link:{...row.link,label:plainText(row.link.label,tech)}}:{}),tech:[...new Set(tech)]};
 }

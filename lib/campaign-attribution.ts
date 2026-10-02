@@ -18,6 +18,7 @@ const ROW_LIMIT=5000;
 export const SNAPSHOT_SOURCE='주문 장부 귀속';
 // 스냅샷의 비교 범위는 캠페인마다 하나다. 같은 기간을 두 번 저장하면 campaignMeasurement의 기간 겹침 규칙이 409로 막는다.
 // 지점 캠페인은 그 지점, 브랜드 공통은 같은 브랜드 지점 합산이라 실제 지점은 정의(definition)에 적고, 범위 이름은 두 경우에 모두 맞는 문구로 둔다(지점 연결이 바뀌어도 겹침 판정이 이어진다).
+// SNAPSHOT_SCOPE는 metric.scope에 저장되고 같은 범위 비교(previousMetric)에 쓰는 값이라 글자를 바꾸지 않는다. 화면은 성과 카드(app/campaign-metrics.tsx)가 항목으로 나눠 그린다.
 export const SNAPSHOT_SCOPE='주문 장부 귀속 · 이 캠페인 범위 지점의 귀속 주문(정의 참고)';
 const blank=(v:unknown)=>v===undefined||v===null||v==='';
 const money=(n:number)=>Math.round(n*100)/100;
@@ -40,7 +41,7 @@ async function campaignRows<T>(owner:string,kind:'store_order'|'tracking_code',c
 export async function campaignAttribution(owner:string,campaign:Campaign,input:{from?:unknown;to?:unknown}={}){
  const {from,to}=attributionPeriod(input);
  const [stored,stores,codes]=await Promise.all([campaignRows<StoreOrder>(owner,'store_order',campaign.id,{from,to}),listRecords<Store>(owner,'store',campaign.brandId),campaignRows<TrackingCode>(owner,'tracking_code',campaign.id)]);
- const names=new Map(stores.filter(s=>!campaign.storeId||s.id===campaign.storeId).map(s=>[s.id,s.name+(s.status==='archived'?' · 보관':'')]));
+ const names=new Map(stores.filter(s=>!campaign.storeId||s.id===campaign.storeId).map(s=>[s.id,s.name+(s.status==='archived'?'(보관)':'')]));
  const inScope=stored.filter(o=>names.has(o.storeId)),outOfScope=stored.length-inScope.length;
  const found=await recordsByIds<Publication>(owner,'execution_publication',inScope.flatMap(o=>o.codeAttribution?.publicationId?[o.codeAttribution.publicationId]:[])),gates=gatesOf(found);
  const viewed=inScope.map(o=>publicationGateView(o,gates)),orders=viewed.filter(o=>o.campaignId===campaign.id),gated=viewed.filter((o,i)=>o!==inScope[i]).length,unattributed=viewed.length-orders.length;
@@ -51,7 +52,7 @@ export async function campaignAttribution(owner:string,campaign:Campaign,input:{
   ...(outOfScope?[`이 캠페인의 브랜드·지점 밖 주문 ${outOfScope}건은 뺐습니다.`]:[])];
  return {campaign:{id:campaign.id,title:campaign.title,storeId:campaign.storeId??null},period:{from,to},scope:campaign.storeId?'store' as const:'brand' as const,stores:[...names].map(([id,name])=>({id,name})),totals:orderMetrics(orders),weeks,
   byStore:groupBy(orders,o=>o.storeId,id=>names.get(id)||'지점 '+id),
-  byCreative:groupBy(orders,o=>o.creativeId||'',id=>id?creativeLabels[id]||'소재 '+id:'소재 미지정 · 캠페인만 귀속'),
+  byCreative:groupBy(orders,o=>o.creativeId||'',id=>id?creativeLabels[id]||'소재 '+id:'소재 미지정(캠페인만 귀속)'),
   byPublication:attributionBreakdown(orders,codes,undefined,publicationNames).byPublication,
   byMethod:groupBy(orders,o=>o.codeAttribution?'code':'manual',key=>key==='code'?'추적 코드 귀속':'수동 귀속'),
   excluded:{outOfScope,publicationGate:gated,unattributedByGate:unattributed},snapshot:{source:SNAPSHOT_SOURCE,scope:SNAPSHOT_SCOPE},notes};
@@ -73,10 +74,10 @@ export async function attributionSnapshot(owner:string,campaign:Campaign,b:Recor
  if(!t.records)throw new ApiError(400,'이 기간에 이 캠페인에 귀속된 주문이 없어 저장하지 않았습니다.');
  if(expected.orders!==t.orders||expected.netRevenue!==t.netRevenue||(expected.contribution??null)!==t.contribution)throw new ApiError(409,'확인한 뒤 주문 장부가 바뀌어 집계가 달라졌습니다. 다시 불러와 확인한 뒤 저장하세요.');
  const {from,to}=r.period,count=(key:string)=>r.byMethod.find(g=>g.key===key)?.orders??0,stores=r.stores.map(s=>s.name);
- const definition=[`기간: 한국시간 주문일 ${from} ~ ${to}(주는 월~일).`,`범위: ${campaign.storeId?`지점 캠페인 · ${list(stores)}`:`브랜드 공통 캠페인 · 같은 브랜드 지점 ${stores.length}곳 합산(${list(stores)})`}.`,
+ const definition=[`기간: 한국시간 주문일 ${from} ~ ${to}(주는 월~일).`,`범위: ${campaign.storeId?`지점 캠페인(${list(stores)})`:`브랜드 공통 캠페인, 같은 브랜드 지점 ${stores.length}곳 합산(${list(stores)})`}.`,
   '대상: 주문 장부에서 이 캠페인에 귀속된 주문(추적 코드 귀속과 유입 확인 근거를 적은 수동 귀속). 게시 코드 귀속은 저장할 때의 게시 상태로 게시 관문(예약 접수·게시 확인, 예약일 이후 주문)을 다시 봤다.',
   '계산: 주문 수는 결제 완료이고 전액 환불이 아닌 주문, 순매출은 결제액−환불액, 변동비는 주문 원가(식재료·포장·수수료·배달비·증정)의 합이다. 원가를 적지 않은 주문이 있으면 변동비는 미확인이고 추정하지 않는다. 광고비·제작비는 캠페인에 배분하지 않았다(미확인). POS 합계 대조 전 장부 기준이다.',
   ATTRIBUTION_NOT_INCREMENTAL].join(' ');
- const notes=[`추적 코드 귀속 ${count('code')}건 · 수동 귀속 ${count('manual')}건(취소·전액 환불 제외).`,`지점별: ${r.byStore.map(g=>`${g.label} ${g.orders}건`).join(' · ')}.`,...(t.unknownCostOrders?[`원가 미입력 주문 ${t.unknownCostOrders}건이 있어 변동비·공헌이익은 미확인입니다.`]:[]),...r.notes.filter(x=>x.startsWith('게시 관문 밖')||x.includes('밖 주문'))].join('\n').slice(0,5000);
+ const notes=[`추적 코드 귀속 ${count('code')}건, 수동 귀속 ${count('manual')}건(취소·전액 환불 제외).`,`지점별: ${r.byStore.map(g=>`${g.label} ${g.orders}건`).join(', ')}.`,...(t.unknownCostOrders?[`원가 미입력 주문 ${t.unknownCostOrders}건이 있어 변동비·공헌이익은 미확인입니다.`]:[]),...r.notes.filter(x=>x.startsWith('게시 관문 밖')||x.includes('밖 주문'))].join('\n').slice(0,5000);
  return campaignMeasurement(owner,campaign,{schemaVersion:2,periodStart:from,periodEnd:to,scope:SNAPSHOT_SCOPE,source:SNAPSHOT_SOURCE,method:'export',definition,revenue:t.netRevenue,variableCosts:t.contribution===null?null:money(t.netRevenue-t.contribution),adSpend:null,productionCost:null,orders:t.orders,notes});
 }
