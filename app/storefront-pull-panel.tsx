@@ -1,8 +1,11 @@
 'use client';
+import {EmptyLine} from '@/components/app/empty-line';
 import {Input} from '@/components/ui/input';
 import {Button} from '@/components/ui/button';
 import {dateTime} from '@/lib/format';
 import {Note} from '@/components/app/note';
+import {LockedNote} from '@/components/app/locked-note';
+import {readOnlyReason} from '@/lib/ui/read-only';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {StorefrontPull} from '@/lib/storefront-pull-server';
 import styles from './growth-panel.module.css';
@@ -27,10 +30,10 @@ function Workspace({campaignId}:{campaignId:string}){
     <label>조회 토큰<Input required type="password" autoComplete="off" value={input.token} onChange={e=>setInput({...input,token:e.target.value})}/></label>
     <label>조회 간격(분)<Input type="number" min={15} max={1440} value={input.intervalMinutes} onChange={e=>setInput({...input,intervalMinutes:Number(e.target.value)})}/></label>
     <Button variant="panel" size="fit" type="submit">연결 만들기</Button></fieldset></form>}
-   {!mine.length&&<p>이 지점의 조회 연결이 없습니다.</p>}
+   {!mine.length&&<EmptyLine first={view.canEdit?'조회 연결':undefined}>이 지점의 조회 연결이 없습니다.</EmptyLine>}
    <ul>{mine.map(c=><li key={c.id} className="wrap-anywhere"><p><strong>{c.sourceKey}</strong> · {c.baseUrl} · {c.enabled?'켜짐':'꺼짐'} · {c.intervalMinutes}분 · 커서 {c.cursor?'있음':'처음부터'}</p>
     <p>마지막 성공 {dateTime(c.lastSuccessAt,'없음')}{c.lastResult?` · 받음 ${c.lastResult.fetched} · 새 ${c.lastResult.created} · 갱신 ${c.lastResult.updated} · 중복 ${c.lastResult.duplicates}`:''}{c.lastError?` · 오류 ${errorLabels[c.lastError]??c.lastError}(연속 ${c.failures}회, 다음 ${dateTime(c.nextAttemptAt)})`:''}</p>
-    {view.canEdit&&<><Button variant="panel" size="fit" type="button" disabled={saving} onClick={()=>void send({action:c.enabled?'disable':'enable',id:c.id,expectedVersion:c.version},c.enabled?'연결을 껐습니다.':'연결을 켰습니다.')}>{c.sourceKey} {c.enabled?'끄기':'켜기'}</Button>{c.enabled&&<Button variant="panel" size="fit" type="button" disabled={saving} onClick={()=>void send({action:'pull_now',id:c.id},'1페이지를 조회했습니다.')}>{c.sourceKey} 지금 조회</Button>}<Button variant="panel" size="fit" type="button" disabled={saving} onClick={()=>void send({action:'reset_cursor',id:c.id,expectedVersion:c.version},'커서를 처음으로 되돌렸습니다. 중복 주문은 장부에서 한 번만 셉니다.')}>{c.sourceKey} 커서 초기화</Button></>}
+    {view.canEdit?<><Button variant="panel" size="fit" type="button" disabled={saving} onClick={()=>void send({action:c.enabled?'disable':'enable',id:c.id,expectedVersion:c.version},c.enabled?'연결을 껐습니다.':'연결을 켰습니다.')}>{c.sourceKey} {c.enabled?'끄기':'켜기'}</Button>{c.enabled&&<Button variant="panel" size="fit" type="button" disabled={saving} onClick={()=>void send({action:'pull_now',id:c.id},'1페이지를 조회했습니다.')}>{c.sourceKey} 지금 조회</Button>}<Button variant="panel" size="fit" type="button" disabled={saving} onClick={()=>void send({action:'reset_cursor',id:c.id,expectedVersion:c.version},'커서를 처음으로 되돌렸습니다. 중복 주문은 장부에서 한 번만 셉니다.')}>{c.sourceKey} 커서 초기화</Button></>:<LockedNote action={`${c.sourceKey} 연결 바꾸기`} reason={readOnlyReason}/>}
    </li>)}</ul></>}
  </section>;
 }

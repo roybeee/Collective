@@ -137,7 +137,7 @@ has('the report card renders every warning','incrementalityView(');
 has('the north-star comes from the view','northStarView(');
 has('the report asks for weekly POS totals',"post('set_pos_total'");
 has('tracking codes are created through the store operations API',"post('create_tracking_code'");
-has('code creation is only offered to managers','{canManage&&<form className="form-stack" aria-label="추적 코드 만들기"');
+has('code creation is only offered to managers (others see why)','<AdminOnly><form className="form-stack" aria-label="추적 코드 만들기"');
 has('POS totals are only offered to managers','{canManage&&<PosTotalForm');
 has('the ledger-form import stays for every role',"post('import_orders',{storeId:store.id,rows})");
 has('the ledger-form template download stays','orderCsvTemplate');

@@ -6,10 +6,10 @@ test('서버 검증 오류가 공용 폼의 해당 칸에 붙는다',async({brow
  try{
   await page.request.get('/api/workspace');
   await page.route('**/api/stores',r=>r.request().method()==='POST'?r.fulfill({status:400,contentType:'application/json',body:JSON.stringify({error:'지점 이름 입력을 확인해 주세요.'})}):r.continue());
-  await page.goto('/?view=stores');await page.getByRole('button',{name:'지점 등록',exact:true}).first().click();
+  await page.goto('/?view=stores');await page.getByRole('button',{name:'새 지점',exact:true}).first().click();
   const dialog=page.getByRole('dialog',{name:'지점 등록'}),name=dialog.locator('label:has(> span:text-is("지점 이름 *")) textarea');
   await name.fill('합성 지점');await dialog.getByLabel('주소 · 주요 상권 *',{exact:true}).fill('합성 주소');await dialog.getByLabel('늘리고 싶은 매출 · 고객 행동 *',{exact:true}).fill('저녁 주문');
-  await dialog.getByRole('button',{name:'지점 등록',exact:true}).click();
+  await dialog.getByRole('button',{name:'지점 저장',exact:true}).click();
   await expect(name).toHaveAttribute('aria-invalid','true');await expect(name).toBeFocused();await expect(name).toHaveAttribute('aria-description','지점 이름 입력을 확인해 주세요.');
   // 칸 아래 사유는 CSS 생성 문구(대체 문구 "")라 브라우저 접근성 트리의 칸 이름에 섞이지 않는다(Chrome 실제 트리로 확인).
   const cdp=await context.newCDPSession(page);await cdp.send('Accessibility.enable');const {root:doc}=await cdp.send('DOM.getDocument',{depth:-1,pierce:true}) as {root:{nodeId:number}};

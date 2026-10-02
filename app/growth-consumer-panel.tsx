@@ -1,5 +1,7 @@
 'use client';
+import {EmptyLine} from '@/components/app/empty-line';
 
+import {readOnlyReason} from '@/lib/ui/read-only';
 import {NativeSelect} from '@/components/ui/native-select';
 import {Input} from '@/components/ui/input';
 import {Button} from '@/components/ui/button';
@@ -51,9 +53,9 @@ function ConsumerEditor({campaignId,view,onView,busy,onBusy}:{campaignId:string;
   }catch(e){if(mounted.current&&!c.signal.aborted)setError(`${e instanceof Error?e.message:'저장하지 못했습니다.'} 입력은 보존했습니다. 응답을 확인하지 못했다면 동일 입력으로 재시도하거나 새로고침해 결과를 확인하세요.`);}
   finally{pending.current=null;if(mounted.current&&!c.signal.aborted)onBusy(false);}
  }
- return <><Button variant="panel" size="fit" type="button" disabled={locked||!view.canEdit} onClick={()=>void mutate('create_customer')}>새 가명 소비자 생성</Button>{error&&<p className={styles.error} role="alert">{error}</p>}{message&&<p className={styles.success} role="status">{message}</p>}
+ return <><Button disabledReason={view.canEdit?undefined:readOnlyReason} variant="panel" size="fit" type="button" disabled={locked||!view.canEdit} onClick={()=>void mutate('create_customer')}>새 가명 소비자 생성</Button>{error&&<p className={styles.error} role="alert">{error}</p>}{message&&<p className={styles.success} role="status">{message}</p>}
  {staleCampaign&&<p className={styles.error}>캠페인이 변경되었습니다.<Button variant="panel" size="fit" type="button" disabled={busy} onClick={()=>setCampaignVersion(view.campaignVersion)}>현재 입력 유지 · 최신 캠페인 기준 사용</Button></p>}
- <div className={styles.workspace}><div role="group" className={styles.list} aria-label="가명 소비자 목록">{!view.customers.length&&<p>등록된 가명 소비자가 없습니다.</p>}{view.customers.map(row=><Button variant="panel" size="fit" type="button" key={row.id} disabled={busy} aria-pressed={row.id===selection.id} onClick={()=>pick(row)}><strong>가명 {row.id.slice(0,12)}</strong><span>{row.state==='erased'?'삭제됨':'활성'} · v{row.version}</span></Button>)}</div>
+ <div className={styles.workspace}><div role="group" className={styles.list} aria-label="가명 소비자 목록">{!view.customers.length&&<EmptyLine first={view.canEdit?'가명 소비자':undefined}>등록된 가명 소비자가 없습니다.</EmptyLine>}{view.customers.map(row=><Button variant="panel" size="fit" type="button" key={row.id} disabled={busy} aria-pressed={row.id===selection.id} onClick={()=>pick(row)}><strong>가명 {row.id.slice(0,12)}</strong><span>{row.state==='erased'?'삭제됨':'활성'} · v{row.version}</span></Button>)}</div>
  {selected&&<div className={styles.editor}><h4>가명 소비자 · v{selection.version}</h4><p className="wrap-anywhere">{selected.id}</p>{stale&&<div className={styles.error}>기록이 v{selected.version}로 바뀌었습니다. 아래 최신 동의 상태를 검토하세요.<Button variant="panel" size="fit" type="button" disabled={busy} onClick={()=>{setSelection({id:selected.id,version:selected.version});retry.current=null;}}>현재 입력 유지 · 최신 소비자 버전 사용</Button></div>}
  <section aria-label="소비자 적격성" className={styles.readiness}><p>구매 후 관리: {selected.assessment.postPurchaseEligible?'후보':'보류'}</p><p>재구매 검토: {selected.assessment.reorderEligible?'후보':'보류'}</p><p>최근 구매일: {selected.assessment.latestPurchaseAt??'미확인'} · 검토 대기 {selected.assessment.waitDays}일</p><ul>{selected.assessment.reasons.map((reason,index)=><li key={index}>{reason}</li>)}</ul><p>후보 여부는 검토용입니다. 고객 메시지를 발송하지 않습니다.</p></section>
  <section aria-label="목적별 동의 상태">{purposes.map(([id,label])=><article key={id} className={styles.mission} aria-label={`${label} 동의 상태`}><h4>{label}</h4><p>{selected.consents[id]?.state==='granted'?'동의 기록':selected.consents[id]?.state==='revoked'?'철회':'동의 없음'}</p>{selected.consents[id]&&<p>확인: {selected.consents[id]?.observedAt||'미확인'}<br/>만료: {selected.consents[id]?.expiresAt||'해당 없음'}<br/>고지문: {selected.consents[id]?.noticeVersion||'해당 없음'}<br/>증빙: {selected.consents[id]?.evidenceRef||'해당 없음'}</p>}<Button variant="panel" size="fit" type="button" disabled={locked||selected.state==='erased'} onClick={()=>void mutate('set_consent',{purpose:id,state:'revoked'})}>{label} 동의 철회</Button></article>)}</section>

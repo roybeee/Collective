@@ -1,4 +1,6 @@
 'use client';
+import {EmptyLine} from '@/components/app/empty-line';
+import {readOnlyReason} from '@/lib/ui/read-only';
 import {CheckInput} from '@/components/app/check';
 import {NativeSelect} from '@/components/ui/native-select';
 import {Textarea} from '@/components/ui/textarea';
@@ -34,7 +36,7 @@ function Workspace({campaignId}:{campaignId:string}){
  return <section aria-label="크리에이터 파트너 협업" className={styles.panel}><header className={styles.header}><h3>크리에이터·파트너 협업</h3><Button variant="panel" size="fit" aria-label="협업 새로고침" type="button" disabled={busy} onClick={()=>void load()}>새로고침</Button></header>
   <Note className={styles.note}>크리에이터·파트너 수요 단계의 브리프·청중 적합 근거·권리·수수료·추적 코드·일정을 기록하고, 합의→납품→승인(광고 표시·진정성 확인)→게시→정산을 운영자 증빙으로 남깁니다. 협업자 연락·메시지 발송·지급은 하지 않으며 연락처를 입력하지 마세요. 성과는 추적 코드로 연결된 게시 이후 주문이며 인과 효과가 아닙니다.</Note>
   {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">협업을 조회하고 있습니다.</p>}{stale&&<p role="status" className={styles.warning}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
-  {view&&<>{view.canEdit&&<Button variant="panel" size="fit" type="button" disabled={busy} onClick={()=>{setEditing({id:`collab-${crypto.randomUUID().slice(0,8)}`,expectedVersion:0});setPlan(emptyPlan());retry.current=null;}}>새 협업</Button>}
+  {view&&<>{<Button variant="panel" size="fit" type="button" disabled={busy||!view.canEdit} disabledReason={view.canEdit?undefined:readOnlyReason} onClick={()=>{setEditing({id:`collab-${crypto.randomUUID().slice(0,8)}`,expectedVersion:0});setPlan(emptyPlan());retry.current=null;}}>새 협업</Button>}
    {editing&&<form onSubmit={e=>{e.preventDefault();void send({action:'save_plan',id:editing.id,expectedVersion:editing.expectedVersion,plan},'협업 계획을 저장했습니다.');}}><fieldset disabled={busy||!view.canEdit} className={styles.form}><legend>협업 {editing.id}</legend>
     <label className={styles.wide}>수요 단계<NativeSelect value={`${plan.sequenceId}|${plan.stepId}`} onChange={e=>{const s=view.steps.find(x=>`${x.sequenceId}|${x.stepId}`===e.target.value);setPlan({...plan,sequenceId:s?.sequenceId??'',sequenceVersion:s?.sequenceVersion??1,stepId:s?.stepId??'',partnerKind:s?.placement==='partner'?'partner':'creator'});}}><option value="|">단계 선택</option>{view.steps.map(s=><option key={`${s.sequenceId}|${s.stepId}`} value={`${s.sequenceId}|${s.stepId}`}>{s.title} · {s.stepId} · {s.placement==='creator'?'크리에이터':'파트너'} · 계획 비용 {won(s.plannedCost)}</option>)}</NativeSelect></label>
     <label>협업자 별칭(가명 ID)<Input required value={plan.partnerAlias} onChange={t('partnerAlias')}/></label>
@@ -46,7 +48,7 @@ function Workspace({campaignId}:{campaignId:string}){
     <label>추적 코드 ID<Input value={plan.trackingCodeId} onChange={t('trackingCodeId')}/></label>
     <label>납품 기한<Input type="date" value={plan.deliverDueAt} onChange={t('deliverDueAt')}/></label><label>게시 기한<Input type="date" value={plan.publishDueAt} onChange={t('publishDueAt')}/></label>
     <Button variant="panel" size="fit" type="submit" disabled={stale||!plan.stepId}>협업 계획 저장</Button></fieldset></form>}
-   {!view.collaborations.length&&<p>협업이 없습니다.</p>}
+   {!view.collaborations.length&&<EmptyLine first={view.canEdit?'협업 계획':undefined}>협업이 없습니다.</EmptyLine>}
    <ul>{view.collaborations.map(r=><li key={r.id} className="wrap-anywhere"><p><strong>{r.plan.partnerAlias}</strong> · {r.id} · {stageLabels[r.stage]} · 단계 {r.plan.stepId} · 수수료 {won(r.plan.feeKrw)}{r.plan.commissionRate!==null?` + ${(r.plan.commissionRate*100).toFixed(1)}%`:''} · 납품 {r.plan.deliverDueAt} · 게시 {r.plan.publishDueAt} · 원본 {r.sourceStatus==='held'?'보류':'현재'}</p>
     <p>성과: {r.performance.status==='observed'?`게시 이후 주문 ${r.performance.orders}건 · 순매출 ${won(r.performance.netRevenue)} · 공헌이익 ${won(r.performance.contribution)}`:r.performance.status==='not_published'?'게시 확인 전':r.performance.status==='no_tracking'?'추적 코드 없음':'보류'} · 인과 효과: 미측정</p>
     {[...r.sourceReasons,...r.warnings].map(x=><p key={x}>{x}</p>)}

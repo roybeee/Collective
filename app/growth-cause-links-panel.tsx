@@ -1,4 +1,5 @@
 'use client';
+import {readOnlyReason} from '@/lib/ui/read-only';
 import {NativeSelect} from '@/components/ui/native-select';
 import {Input} from '@/components/ui/input';
 import {Button} from '@/components/ui/button';
@@ -40,7 +41,7 @@ function Workspace({campaignId}:{campaignId:string}){
     <label>검토 기록<NativeSelect value={targetId} onChange={e=>{setTargetId(e.target.value);retry.current=null;}}><option value="">기록 선택</option>{view.targets[targetKind].map(t=><option key={t.id} value={t.id}>{t.title||t.id} · v{t.version}</option>)}</NativeSelect></label>
     <label>연결 메모(개인정보 제외)<Input maxLength={300} value={note} onChange={e=>setNote(e.target.value)}/></label>
     <Button variant="panel" size="fit" type="submit" disabled={!event||!target||event.sourceStatus==='held'||stale}>원인 연결</Button></fieldset></form>
-   <ul>{view.records.filter(r=>r.status==='active').map(r=><li key={r.id} className="wrap-anywhere"><p>{r.input.eventId} ({reasonLabels[r.snapshot.reasonCode]} v{r.snapshot.reasonVersion}) → {targetLabels[r.input.targetKind]} {r.input.targetId} v{r.snapshot.targetVersion} · {r.assessment?.status==='held'?'보류':'현재'}</p>{r.assessment?.reasons.map(x=><p key={x}>{x}</p>)}{view.canEdit&&<Button variant="panel" size="fit" type="button" disabled={busy||stale} onClick={()=>void send('retire',r)}>{r.input.eventId}→{r.input.targetId} 해제</Button>}</li>)}</ul>
+   <ul>{view.records.filter(r=>r.status==='active').map(r=><li key={r.id} className="wrap-anywhere"><p>{r.input.eventId} ({reasonLabels[r.snapshot.reasonCode]} v{r.snapshot.reasonVersion}) → {targetLabels[r.input.targetKind]} {r.input.targetId} v{r.snapshot.targetVersion} · {r.assessment?.status==='held'?'보류':'현재'}</p>{r.assessment?.reasons.map(x=><p key={x}>{x}</p>)}{<Button variant="panel" size="fit" type="button" disabled={busy||stale||!view.canEdit} disabledReason={view.canEdit?undefined:readOnlyReason} onClick={()=>void send('retire',r)}>{r.input.eventId}→{r.input.targetId} 해제</Button>}</li>)}</ul>
    <details><summary>원인 연결 이력</summary>{view.history.map(h=><p key={h.id+':'+h.version} className="wrap-anywhere">{h.id} · v{h.version} · {h.status==='active'?'연결':'해제'} · {h.recordedAt}</p>)}</details></>}
  </section>;
 }

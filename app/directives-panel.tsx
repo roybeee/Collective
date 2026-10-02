@@ -45,7 +45,7 @@ export function DirectivesPanel({campaignId}:{campaignId:string}){
    <Textarea aria-label="상시 지시" rows={2} value={text} maxLength={listing?.limits.maxLength} disabled={!listing||busy||full} onChange={e=>{setText(e.target.value);pendingId.current=''}} placeholder="예: 선택지를 되묻지 말고 초안을 완성합니다. 인기·할인·첫 오픈 혜택은 확인 전 광고 문구에 쓰지 않습니다."/>
    <div className="flex justify-between items-center gap-2 mt-2">
     <small>{listing?`${text.trim().length}/${listing.limits.maxLength}자 · ${listing.directives.length}/${listing.limits.count}개`:'불러오는 중…'}{full?' · 한도에 도달했습니다. 기존 지시를 정리해 주세요.':listing&&!text.trim()?'. 지시 내용을 입력하면 추가할 수 있습니다.':''}</small>
-    <Button type="submit" size="sm" disabled={!listing||busy||full||!text.trim()}>{busy?<LoaderCircle className="spin"/>:<Plus/>}지시 추가</Button>
+    <Button type="submit" size="sm" disabled={!listing||busy||full||!text.trim()}>{busy?<LoaderCircle className="spin"/>:<Plus/>}지시 저장</Button>
    </div>
   </form>
   {error&&<p className="form-error" role="alert">{error}</p>}

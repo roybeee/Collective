@@ -1,4 +1,6 @@
 'use client';
+import {EmptyLine} from '@/components/app/empty-line';
+import {readOnlyReason} from '@/lib/ui/read-only';
 import {NativeSelect} from '@/components/ui/native-select';
 import {Textarea} from '@/components/ui/textarea';
 import {Input} from '@/components/ui/input';
@@ -35,7 +37,7 @@ function Workspace({campaignId}:{campaignId:string}){
  return <section aria-label="상세페이지 수정안" className={styles.panel}><header className={styles.header}><h3>상세페이지 수정안 · 적용 확인</h3><Button variant="panel" size="fit" aria-label="수정안 새로고침" type="button" disabled={busy} onClick={()=>void load()}>새로고침</Button></header>
   <Note className={styles.note}>수정안은 오퍼·상품·확정 사실 판에 고정한 검토 산출물입니다. 승인은 페이지 변경이 아니며, 운영자가 실제 판매처 페이지를 바꾼 뒤 확인 증빙으로 적용·되돌림을 기록합니다. 판매처 자동 수정 연동은 없습니다. 가격은 승인된 오퍼 가격만, 재고 수량 문구는 쓸 수 없습니다.</Note>
   {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">수정안을 조회하고 있습니다.</p>}{stale&&<p role="status" className={styles.warning}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
-  {view&&<>{view.canEdit&&<Button variant="panel" size="fit" type="button" disabled={busy} onClick={startNew}>새 수정안</Button>}
+  {view&&<>{<Button variant="panel" size="fit" type="button" disabled={busy||!view.canEdit} disabledReason={view.canEdit?undefined:readOnlyReason} onClick={startNew}>새 수정안</Button>}
    {editing&&<form onSubmit={e=>{e.preventDefault();void send({action:'save_proposal',id:editing.id,expectedVersion:editing.expectedVersion,input},'수정안을 저장했습니다.');}}><fieldset disabled={busy||!view.canEdit} className={styles.form}><legend>수정안 {editing.id}</legend>
     <label>수정안 제목<Input required maxLength={200} value={input.title} onChange={e=>setInput({...input,title:e.target.value})}/></label>
     <label>판매 오퍼<NativeSelect value={input.offerId} onChange={e=>{const o=view.offers.find(x=>x.id===e.target.value);setInput({...input,offerId:e.target.value,offerVersion:o?.version??0,landingUrl:o?.landingUrl??''});}}><option value="">오퍼 선택</option>{view.offers.map(o=><option key={o.id} value={o.id}>{o.title||o.id} · v{o.version}</option>)}</NativeSelect></label>
@@ -49,13 +51,13 @@ function Workspace({campaignId}:{campaignId:string}){
      <label>변경 문구 {i+1}<Textarea required maxLength={2000} value={s.after} onChange={e=>section(i,{after:e.target.value})}/></label>
      <label>확정 사실 근거 {i+1}<NativeSelect multiple value={s.factIds} onChange={e=>section(i,{factIds:[...e.target.selectedOptions].map(o=>o.value)})}>{view.facts.map(f=><option key={f.id} value={f.id}>{f.key} · v{f.version}</option>)}</NativeSelect></label>
      {input.sections.length>1&&<Button variant="panel" size="fit" type="button" onClick={()=>setInput(x=>({...x,sections:x.sections.filter((_,j)=>j!==i)}))}>구역 {i+1} 삭제</Button>}</fieldset>)}
-    {input.sections.length<12&&<Button variant="panel" size="fit" type="button" onClick={()=>setInput(x=>({...x,sections:[...x.sections,emptySection()]}))}>구역 추가</Button>}
+    {input.sections.length<12&&<Button variant="panel" size="fit" type="button" onClick={()=>setInput(x=>({...x,sections:[...x.sections,emptySection()]}))}>구역 하나 더</Button>}
     {conflict&&<div className={styles.wide}><p>이 수정안이 다른 곳에서 바뀌었습니다. 입력을 보존했습니다.</p><Button variant="panel" size="fit" type="button" disabled={stale||!current} onClick={()=>{if(current)setEditing({id:current.id,expectedVersion:current.version});retry.current=null;}}>현재 입력 유지 · 최신 판 채택</Button></div>}
     <Button variant="panel" size="fit" type="submit" disabled={conflict||stale||!input.offerId}>수정안 저장</Button></fieldset></form>}
    <label>적용·되돌림 시각<Input type="datetime-local" value={receipt.at} onChange={e=>setReceipt({...receipt,at:e.target.value})}/></label>
    <label>페이지 확인 증빙 ID<Input maxLength={100} pattern="[A-Za-z0-9_-]+" value={receipt.evidenceRef} onChange={e=>setReceipt({...receipt,evidenceRef:e.target.value})}/></label>
    <label>되돌림 사유<Input maxLength={500} value={receipt.reason} onChange={e=>setReceipt({...receipt,reason:e.target.value})}/></label>
-   {!view.proposals.length&&<p>수정안이 없습니다.</p>}
+   {!view.proposals.length&&<EmptyLine first={view.canEdit?'수정안':undefined}>수정안이 없습니다.</EmptyLine>}
    <ul>{view.proposals.map(p=><li key={p.id} className="wrap-anywhere"><p><strong>{p.input.title}</strong> · {p.id} · v{p.version} · {statusLabels[p.status]} · 원본 {p.sourceStatus==='held'?'보류':'현재'}</p>
     <p>페이지 변경: {p.pageChanged==='operator_attested'?`운영자 확인 ${p.applied?.at}`:p.pageChanged==='rolled_back'?`되돌림 확인 ${p.rolledBack?.at}`:'확인되지 않음'} · 효과: 미측정</p>
     {[...p.sourceReasons,...p.readiness.missing].map(x=><p key={x}>{x}</p>)}

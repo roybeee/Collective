@@ -1,4 +1,7 @@
 'use client';
+import {EmptyLine} from '@/components/app/empty-line';
+import {LockedNote} from '@/components/app/locked-note';
+import {readOnlyReason} from '@/lib/ui/read-only';
 import {NativeSelect} from '@/components/ui/native-select';
 import {Textarea} from '@/components/ui/textarea';
 import {Input} from '@/components/ui/input';
@@ -32,7 +35,7 @@ function Workspace({campaignId}:{campaignId:string}){
  return <section aria-label="최적화 후보 샌드박스" className={styles.panel}><header className={styles.header}><h3>최적화 후보 · 샌드박스</h3><Button variant="panel" size="fit" aria-label="후보 새로고침" type="button" disabled={busy} onClick={()=>void load()}>새로고침</Button></header>
   <p className={styles.note}>실제 실패 근거(악화·무효 실험, 실패한 교훈 적용, 병목, 원인, 문의)에서만 후보를 만들고 토큰 {MAX_TOKEN_BUDGET.toLocaleString('ko-KR')}·비용 {MAX_KRW_BUDGET.toLocaleString('ko-KR')}원 안에서 평가합니다. 동결 후 평가 실행·확증 실험만 연결하며, 오프라인 통과는 매출 개선이 아닙니다. 이 화면은 프롬프트 등록·승격·채점기·봉인을 바꾸지 않고, 채택은 기존 승인 경로의 반영 기록을 참조만 합니다.</p>
   {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">후보를 조회하고 있습니다.</p>}{stale&&<p role="status" className={styles.warning}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
-  {view&&<>{view.canEdit&&<form onSubmit={e=>{e.preventDefault();if(!draftId.current)draftId.current=`opt-${crypto.randomUUID().slice(0,8)}`;void send({action:'save_candidate',id:draftId.current,expectedVersion:0,input},'후보를 저장했습니다.');}}><fieldset disabled={busy} className={styles.form}><legend>새 최적화 후보</legend>
+  {view&&<>{view.canEdit?<form onSubmit={e=>{e.preventDefault();if(!draftId.current)draftId.current=`opt-${crypto.randomUUID().slice(0,8)}`;void send({action:'save_candidate',id:draftId.current,expectedVersion:0,input},'후보를 저장했습니다.');}}><fieldset disabled={busy} className={styles.form}><legend>새 최적화 후보</legend>
     <label>실패 근거 종류<NativeSelect value={input.failureKind} onChange={e=>setInput({...input,failureKind:e.target.value as CandidateInput['failureKind']})}>{failureKinds.map(k=><option key={k} value={k}>{failureLabels[k]}</option>)}</NativeSelect></label>
     <label>실패 근거 ID<Input value={input.failureId} onChange={e=>setInput({...input,failureId:e.target.value})}/></label><label>실패 근거 판<Input type="number" min={1} value={input.failureVersion} onChange={e=>setInput({...input,failureVersion:Number(e.target.value)})}/></label>
     <label className={styles.wide}>실패 원인 요약<Input maxLength={1000} value={input.failureSummary} onChange={e=>setInput({...input,failureSummary:e.target.value})}/></label>
@@ -40,9 +43,9 @@ function Workspace({campaignId}:{campaignId:string}){
     <label>대상 참조<Input value={input.targetRef} onChange={e=>setInput({...input,targetRef:e.target.value})}/></label>
     <label className={styles.wide}>개선 제안<Textarea maxLength={3000} value={input.proposal} onChange={e=>setInput({...input,proposal:e.target.value})}/></label>
     <label>토큰 예산<Input type="number" min={0} max={MAX_TOKEN_BUDGET} value={input.tokenBudget} onChange={e=>setInput({...input,tokenBudget:Number(e.target.value)})}/></label><label>비용 예산(원)<Input type="number" min={0} max={MAX_KRW_BUDGET} value={input.krwBudget} onChange={e=>setInput({...input,krwBudget:Number(e.target.value)})}/></label>
-    <Button variant="panel" size="fit" type="submit" disabled={stale||!input.failureId||!input.proposal}>후보 저장</Button></fieldset></form>}
+    <Button variant="panel" size="fit" type="submit" disabled={stale||!input.failureId||!input.proposal}>후보 저장</Button></fieldset></form>:<LockedNote action="새 최적화 후보" reason={readOnlyReason}/>}
    <fieldset className={styles.form} disabled={busy}><legend>단계 입력</legend><label>평가 실행 ID<Input value={extra.evalRunId} onChange={e=>setExtra({...extra,evalRunId:e.target.value})}/></label><label>오프라인 판정<NativeSelect value={extra.verdict} onChange={e=>setExtra({...extra,verdict:e.target.value})}><option value="pass">통과</option><option value="fail">실패</option></NativeSelect></label><label>확증 실험 ID<Input value={extra.experimentId} onChange={e=>setExtra({...extra,experimentId:e.target.value})}/></label><label>반영 기록 ID<Input value={extra.ref} onChange={e=>setExtra({...extra,ref:e.target.value})}/></label><label>되돌림 사유<Input value={extra.reason} onChange={e=>setExtra({...extra,reason:e.target.value})}/></label><label>되돌림 증빙 ID<Input value={extra.evidenceRef} onChange={e=>setExtra({...extra,evidenceRef:e.target.value})}/></label></fieldset>
-   {!view.candidates.length&&<p>최적화 후보가 없습니다.</p>}
+   {!view.candidates.length&&<EmptyLine first={view.canEdit?'최적화 후보':undefined}>최적화 후보가 없습니다.</EmptyLine>}
    <ul>{view.candidates.map(r=><li key={r.id} className="wrap-anywhere"><p><strong>{kindLabels[r.input.candidateKind]} {r.input.targetRef}</strong> · {r.id} · {stageLabels[r.stage]} · 근거 {failureLabels[r.input.failureKind]} {r.input.failureId}{r.failureStatus==='changed'?' · 근거 변경':''}</p>
     <p>오프라인: {r.status.offline==='not_run'?'미실행':r.status.offline==='pass'?`통과(${r.offline?.evalRunId})`:'실패'} · 판매: {salesLabels[r.status.sales]} · {r.status.reason}</p>
     {view.canEdit&&r.stage==='draft'&&<Button variant="panel" size="fit" type="button" disabled={busy||stale} onClick={()=>void act(r,'freeze','후보를 동결했습니다.')}>{r.id} 동결</Button>}
