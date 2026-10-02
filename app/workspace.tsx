@@ -52,7 +52,7 @@ import {setPendingPanel,setPendingRecord,setPendingSection} from '@/lib/ui/pendi
 import {ConfirmHost} from '@/components/app/confirm-dialog';
 import {useDeferredFieldErrors} from '@/lib/ui/field-errors';
 import {rememberOpener} from '@/lib/ui/return-focus';
-import {bootFetch} from '@/lib/ui/boot-fetch';
+import {bootFetch,bootJsonNow} from '@/lib/ui/boot-fetch';
 import {ScreenSkeleton} from '@/components/app/screen-skeleton';
 import {notifySaved} from '@/lib/ui/notify';
 // 가맹 모집 화면(리드 원장·게이트 모듈 포함)은 메뉴를 열 때만 내려받는다(기능 스위치 기본 꺼짐, 대부분의 사용자는 쓰지 않는다).
@@ -109,7 +109,7 @@ const[deleteTarget,setDeleteTarget]=useState<Campaign|null>(null);
 const[qualityOpen,setQualityOpen]=useState(false);
 // 트랙 R 가맹 모집 메뉴: 워크스페이스를 불러온 뒤 상태(/api/franchise?view=status)를 읽고, 창으로 돌아올 때(focus) 다시 읽는다(스위치를 켠 뒤 메뉴가 나타나게). 보이는 규칙은 lib/nav-state.ts franchiseMenuVisible.
 const[franchiseStatus,setFranchiseStatus]=useState<{enabled:boolean;hasRecords:boolean}|null>(null);
-const[rawRoute,setRoute]=useState<NavState>(initialRoute);const[data,setData]=useState<WorkspaceData>(emptyData);const[loaded,setLoaded]=useState(false);const[error,setError]=useState('');const[brief,setBrief]=useState('');const[brandChoice,setBrandId]=useState(rememberedBrand);const[filter,setFilter]=useState('all');const[search,setSearch]=useState('');const[create,setCreate]=useState(false);const[edit,setEdit]=useState<Campaign|null>(null);const[brandEdit,setBrandEdit]=useState<Brand|null>(null);const[agentDetail,setAgentDetail]=useState<string|null>(null);const[metricOpen,setMetricOpen]=useState(false);
+const[rawRoute,setRoute]=useState<NavState>(initialRoute);const[boot]=useState(()=>bootJsonNow<WorkspaceData>('/api/workspace'));const[data,setData]=useState<WorkspaceData>(()=>boot??emptyData);const[loaded,setLoaded]=useState(!!boot);const[error,setError]=useState('');const[brief,setBrief]=useState('');const[brandChoice,setBrandId]=useState(()=>{const b=rememberedBrand();return !boot||boot.brands.some(x=>x.id===b)?b:defaultBrandId(boot.brands,campaignActivity(boot.campaigns))});const[filter,setFilter]=useState('all');const[search,setSearch]=useState('');const[create,setCreate]=useState(false);const[edit,setEdit]=useState<Campaign|null>(null);const[brandEdit,setBrandEdit]=useState<Brand|null>(null);const[agentDetail,setAgentDetail]=useState<string|null>(null);const[metricOpen,setMetricOpen]=useState(false);
 const known={campaigns:data.campaigns.map(c=>c.id),brands:data.brands.map(b=>b.id)},route=loaded?reconcileNav(rawRoute,known):rawRoute;const view=route.view,selectedId=route.campaign??null,archiveId=view==='brands'?route.brand??null:null,storeBrand=view==='stores'?route.brand:undefined;const brandId=defaultBrandId(data.brands,campaignActivity(data.campaigns),brandChoice);
 // 화면 상태 → 주소. 뒤로가기로 이미 같은 주소면 두고, 없는 id를 고친 경우와 replace로 이동한 경우(자동으로 고른 지점)는 기록을 늘리지 않고 바꾼다.
 const routeUrl=serializeNav(route),corrected=route!==rawRoute,replaceUrl=useRef<string|null>(null);
@@ -122,7 +122,8 @@ useEffect(()=>{const prev=shownView.current;shownView.current=view;if(!prev||pre
 // (기억한 선택이 없을 때만, 저장하지 않음). 이후 다른 브랜드의 활동이 최신이 돼도 선택 상자가 바뀌지 않는다.
 const reloadSeq=useRef({started:0,applied:0});
 const reload=useCallback(async()=>{const seq=++reloadSeq.current.started;try{const r=await bootFetch('/api/workspace');const d=await r.json() as WorkspaceData & {error?:string};if(!r.ok)throw new Error(d.error||'데이터를 불러오지 못했습니다.');if(seq<reloadSeq.current.applied)return;reloadSeq.current.applied=seq;setData(d);setError('');setLoaded(true);setBrandId(b=>d.brands.some(x=>x.id===b)?b:defaultBrandId(d.brands,campaignActivity(d.campaigns)))}catch(e){if(seq<reloadSeq.current.applied)return;setError((e as Error).message);throw e}},[]);
-useEffect(()=>{void reload().catch(()=>{})},[reload]);
+// 머리 스크립트가 미리 받은 워크스페이스로 첫 화면을 그렸으면(boot) 처음 불러오기는 건너뛴다. 이후 갱신은 폴링·저장 뒤 reload가 맡는다.
+useEffect(()=>{if(boot)return;void reload().catch(()=>{})},[reload,boot]);
 useEffect(()=>{if(!loaded)return;const controller=new AbortController();const read=()=>{fetch('/api/franchise?view=status',{signal:controller.signal}).then(r=>r.ok?r.json() as Promise<{enabled?:unknown;hasRecords?:unknown}>:null).then(d=>{if(!controller.signal.aborted)setFranchiseStatus(d?{enabled:d.enabled===true,hasRecords:d.hasRecords===true}:null)}).catch(()=>{})};read();window.addEventListener('focus',read);return()=>{controller.abort();window.removeEventListener('focus',read)}},[loaded]);
 const franchiseVisible=franchiseMenuVisible(franchiseStatus,canManage);
 const state=useRef({data,reload});state.current={data,reload};
