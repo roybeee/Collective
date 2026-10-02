@@ -37,8 +37,16 @@ const buttonTexts=[...ownA.matchAll(/<(Button|CardButton)\b[^>]*?(?:\{[^{}]*(?:\
 const otherVerbs=buttonTexts.filter(t=>/(등록|추가|입력)$/.test(t)&&!t.endsWith('사전등록'));
 check(otherVerbs.length===0,`save buttons must use 저장 or 기록 (row additions use '하나 더'): ${otherVerbs.join(' | ')}`);
 // 권한이 없을 때 버튼을 숨기지 않는다(UX-PLAN-3 11차원 4점 조건). 비활성과 이유(disabledReason)로 보인다.
-const hiddenByPermission=(ownA.match(/\b(?:view\??\.)?(?:canEdit|canManage)&&(?:<>)?\s?<(?:Button|form)\b/g)||[]).length;
+const hiddenByPermission=(ownA.match(/\b(?:view\??\.)?(?:canEdit|canManage|editable|canChange\([^)]*\))&&(?:<>)?\s?<(?:Button|form)\b/g)||[]).length;
 check(hiddenByPermission===0,`controls hidden by permission: ${hiddenByPermission}`);
+// 진행 중(busy 등) 말고 다른 조건으로 막힌 버튼은 이유(disabledReason)를 보인다(UX-PLAN-3 6차원 4점 조건). 부모가 넘긴 disabled·locked는 부모 쪽에서 센다.
+const transient=new Set(['busy','saving','pending','loading','working','sending','!!busy','props.busy','checking','acting','polling','disabled','locked','props.disabled']);
+const silentDisabled=[...ownA.matchAll(/<Button\b([^>]*?(?:\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}[^>]*?)*)>/g)].map(m=>m[1]).filter(a=>!a.includes('disabledReason')).map(a=>a.match(/disabled=\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/)?.[1]).filter(c=>c&&c.split('||').some(x=>!transient.has(x.trim()))).length;
+check(silentDisabled<=budget.static.silentDisabled,`buttons disabled without a reason ${silentDisabled} > ${budget.static.silentDisabled}`);
+// 레인 A 화면의 빈 목록 안내는 모두 EmptyLine(다음 행동 버튼이나 문장)으로 쓴다(UX-PLAN-3 12차원 4점 조건 '빈 상태 100% 다음 행동').
+const ownAScreens=readdirSync('app').filter(n=>n.endsWith('.tsx')&&!/^(franchise-|online-grading|quality-|brand-interview|reflector|usage-|customer-report)/.test(n)).map(n=>readFileSync('app/'+n,'utf8')).join('\n');
+const laneABareEmpty=(ownAScreens.match(/<(p|div)(?: className=(?:"[^"]*"|\{[^{}]*\}))?>(?:[^<{]|\{[^{}]*\})*?(?:기록|목록|이력|제안|후보|일정|작업물|주문|성과|사실|교정)[^<]{0,12}(?:이|가) (?:아직 )?없습니다\.<\/(p|div)>/g)||[]).length;
+check(laneABareEmpty===0,`lane A empty lines without a next action: ${laneABareEmpty}`);
 // 확인 대화상자는 무엇·영향·되돌리기를 모두 적는다(UX-PLAN-3 Q2·11차원 4점 조건). 타입이 영향·되돌림을 필수로 요구한다.
 check(/impact:string;undo:string;/.test(readFileSync('components/app/confirm-dialog.tsx','utf8')),'ConfirmAsk must require impact and undo');
 // 홈 첫 로딩 경계: 화면·대화상자는 lazy로만 불러온다.

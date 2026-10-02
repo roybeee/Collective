@@ -38,14 +38,14 @@ export function PublicationExperiment({p,options,canManage,busy,onAct}:{p:Public
   <p className="text-sm">{linked?`콘텐츠 실험: ${linked}`:'콘텐츠 실험에 연결되지 않은 발행입니다.'}{p.media?` · Instagram 게시물 ${p.media.mediaId}`:''}{p.media?.permalink&&<> · <a className="underline" href={p.media.permalink} target="_blank" rel="noreferrer">게시물 열기</a></>}</p>
   {canManage&&open&&<div className="flex flex-wrap gap-2 items-end">
    {options.length>0&&<label className="text-sm">연결할 실험 안<NativeSelect className="block border rounded p-2" value={choice} disabled={busy} onChange={e=>setChoice(e.target.value)}><option value="">선택하세요</option><ArmOptions options={options} publications={[p]} self={p.id}/></NativeSelect></label>}
-   {options.length>0&&<Button type="button" variant="outline" size="fit" disabled={busy||!experimentChoice(choice)} onClick={()=>onAct('link_experiment',{id:p.id,version:p.version,experiment:experimentChoice(choice)},'발행을 실험 안에 연결했습니다.')}>실험 연결</Button>}
+   {options.length>0&&<Button type="button" variant="outline" size="fit" disabled={busy||!experimentChoice(choice)} disabledReason={(!experimentChoice(choice))?'실험을 먼저 고르세요.':undefined} onClick={()=>onAct('link_experiment',{id:p.id,version:p.version,experiment:experimentChoice(choice)},'발행을 실험 안에 연결했습니다.')}>실험 연결</Button>}
    {linked&&<Button type="button" variant="outline" size="fit" disabled={busy} onClick={()=>onAct('link_experiment',{id:p.id,version:p.version,experiment:null},'실험 연결을 해제했습니다.')}>연결 해제</Button>}
   </div>}
   {canManage&&p.status==='published'&&<div className="grid gap-2">
    <p className="text-sm">Buffer는 Instagram 게시물 ID를 알려 주지 않습니다. 게시물 인사이트나 Graph API에서 확인한 숫자 ID를 한 번 적으세요. 실험에 연결된 발행이면 자동 수집 대상으로 넘깁니다(스위치 publication_auto_link가 켜져 있을 때).</p>
    <label className="text-sm">Instagram 게시물 ID (숫자)<Input className="block border rounded p-2 w-full" inputMode="numeric" value={mediaId} disabled={busy} onChange={e=>setMediaId(e.target.value)} placeholder={p.media?.mediaId??'17900000000000000'}/></label>
    <label className="text-sm">게시물 주소 (선택)<Input className="block border rounded p-2 w-full" type="url" value={permalink} disabled={busy} onChange={e=>setPermalink(e.target.value)} placeholder="https://www.instagram.com/p/…"/></label>
-   <div><Button type="button" variant="outline" size="fit" disabled={busy||!mediaId.trim()} onClick={()=>onAct('link_media',{id:p.id,version:p.version,mediaId:mediaId.trim(),...(permalink.trim()?{permalink:permalink.trim()}:{})},'Instagram 게시물 ID를 저장했습니다.')}>게시물 ID 저장</Button></div>
+   <div><Button type="button" variant="outline" size="fit" disabled={busy||!mediaId.trim()} disabledReason={(!mediaId.trim())?'필수 칸을 먼저 채우세요.':undefined} onClick={()=>onAct('link_media',{id:p.id,version:p.version,mediaId:mediaId.trim(),...(permalink.trim()?{permalink:permalink.trim()}:{})},'Instagram 게시물 ID를 저장했습니다.')}>게시물 ID 저장</Button></div>
   </div>}
  </div>;
 }

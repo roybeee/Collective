@@ -1,4 +1,5 @@
 'use client';
+import {EmptyLine} from '@/components/app/empty-line';
 import {CheckInput} from '@/components/app/check';
 import {NativeSelect} from '@/components/ui/native-select';
 import {Input} from '@/components/ui/input';
@@ -37,21 +38,21 @@ function Workspace({campaignId}:{campaignId:string}){
     <label>실험 ID<Input required value={input.experimentId} onChange={e=>setInput({...input,experimentId:e.target.value})}/></label><label>분석 회차<Input type="number" min={1} value={input.analysisNumber} onChange={num('analysisNumber')}/></label>
     <label>확대 후 예산(원)<Input type="number" min={1} value={input.nextBudget} onChange={num('nextBudget')}/></label><label>추가 판매 수량<Input type="number" min={0} value={input.addQuantity} onChange={num('addQuantity')}/></label>
     <label className={styles.wide}>확대 이유<Input required maxLength={1000} value={input.rationale} onChange={e=>setInput({...input,rationale:e.target.value})}/></label>
-    <Button variant="panel" size="fit" type="submit" disabled={stale}>확대 제안</Button></fieldset></form>}
+    <Button variant="panel" size="fit" type="submit" disabled={stale} disabledReason={stale?'다른 곳에서 먼저 바뀌었습니다. 최신 기록을 불러온 뒤 다시 하세요.':undefined}>확대 제안</Button></fieldset></form>}
    {view.canReserve&&<label>예약에 쓸 활성 위임<NativeSelect value={authorityId} onChange={e=>setAuthorityId(e.target.value)}><option value="">위임 선택</option>{view.authorities.map(a=><option key={a.id} value={a.id}>{a.id} · {a.channel} · {a.accountId} · v{a.version}</option>)}</NativeSelect></label>}
-   {!view.proposals.length&&<p>확대 제안이 없습니다.</p>}
+   {!view.proposals.length&&<EmptyLine next="확대 조건을 채운 미션이 생기면 위에서 제안할 수 있습니다.">확대 제안이 없습니다.</EmptyLine>}
    <ul>{view.proposals.map(p=><li key={p.id} className="wrap-anywhere"><p><strong>{p.id}</strong> · v{p.version} · {statusLabels[p.status]} · 미션 {p.input.missionId} → {won(p.input.nextBudget)} · 실험 {p.evidence.experimentId} {p.evidence.analysisNumber}회차({p.evidence.status})</p>
     {p.assessment&&<><p>증가분 {won(p.assessment.increase)} · 증분 {p.assessment.incremental?'확인':'없음'} · 이익 {p.assessment.profitable?'양수':'미확인/음수'} · 재고 {p.assessment.capacity?'충분':'부족/미확인'} · 범위 {p.assessment.causalScope}</p>{p.assessment.reasons.map(x=><p key={x}>{x}</p>)}</>}
     {p.commitment&&<p>확대 예약 {won(p.commitment.reservedAmount)} · 원장 {p.commitment.status} · 실비 {won(p.commitment.actualAmount)} · 손실 {won(p.commitment.actualLoss)}</p>}
-    {p.status==='proposed'&&view.canReserve&&<Button variant="panel" size="fit" type="button" disabled={busy||stale||!authority||!p.assessment?.allowed} onClick={()=>void send({action:'approve_reserve',id:p.id,expectedVersion:p.version,authorityId:authority!.id,authorityVersion:authority!.version},'소유자 승인으로 확대 예산을 예약했습니다. 집행은 별도입니다.')}>{p.id} 소유자 승인·예약</Button>}
-    {p.status==='proposed'&&<Button variant="panel" size="fit" type="button" disabled={busy||stale} onClick={()=>void send({action:'withdraw',id:p.id,expectedVersion:p.version},'제안을 철회했습니다.')}>{p.id} 철회</Button>}
+    {p.status==='proposed'&&view.canReserve&&<Button variant="panel" size="fit" type="button" disabled={busy||stale||!authority||!p.assessment?.allowed} disabledReason={stale?'다른 곳에서 먼저 바뀌었습니다. 최신 기록을 불러온 뒤 다시 하세요.':!authority?'판매 위임을 먼저 고르세요.':(!p.assessment?.allowed)?'판매 위임 범위를 벗어났습니다.':undefined} onClick={()=>void send({action:'approve_reserve',id:p.id,expectedVersion:p.version,authorityId:authority!.id,authorityVersion:authority!.version},'소유자 승인으로 확대 예산을 예약했습니다. 집행은 별도입니다.')}>{p.id} 소유자 승인·예약</Button>}
+    {p.status==='proposed'&&<Button variant="panel" size="fit" type="button" disabled={busy||stale} disabledReason={stale?'다른 곳에서 먼저 바뀌었습니다. 최신 기록을 불러온 뒤 다시 하세요.':undefined} onClick={()=>void send({action:'withdraw',id:p.id,expectedVersion:p.version},'제안을 철회했습니다.')}>{p.id} 철회</Button>}
     {p.status==='reserved'&&p.commitment&&!['reconciled','released'].includes(p.commitment.status)&&<fieldset className={styles.form}><legend>{p.id} 확대 예약 대사</legend>
      <label>집행 결과<NativeSelect value={rec.outcome} onChange={e=>setRec({...rec,outcome:e.target.value as 'observed'|'failed'})}><option value="observed">집행 확인</option><option value="failed">미집행 실패</option></NativeSelect></label>
      <label>대사 방법<NativeSelect value={rec.mode} onChange={e=>setRec({...rec,mode:e.target.value as 'partial'|'final'|'release'})}><option value="partial">부분</option><option value="final">최종</option><option value="release">무집행 해제</option></NativeSelect></label>
      <label>누적 실비(원)<Input type="number" min={0} value={rec.actualAmount} onChange={e=>setRec({...rec,actualAmount:e.target.value})}/></label><label>누적 손실(원)<Input type="number" min={0} value={rec.actualLoss} onChange={e=>setRec({...rec,actualLoss:e.target.value})}/></label>
      <label>대사 증빙 ID<Input value={rec.evidenceRef} onChange={e=>setRec({...rec,evidenceRef:e.target.value})}/></label><label>대사 근거<Input value={rec.note} onChange={e=>setRec({...rec,note:e.target.value})}/></label>
      <label><CheckInput checked={rec.noExecution} onChange={e=>setRec({...rec,noExecution:e.target.checked})}/>집행 없음 확인</label><label><CheckInput checked={rec.noOutstandingObligations} onChange={e=>setRec({...rec,noOutstandingObligations:e.target.checked})}/>잔여 의무 없음 확인</label>
-     <Button variant="panel" size="fit" type="button" disabled={busy||stale||!rec.evidenceRef||!rec.note} onClick={()=>void reconcile(p)}>{p.id} 대사 기록</Button></fieldset>}
+     <Button variant="panel" size="fit" type="button" disabled={busy||stale||!rec.evidenceRef||!rec.note} disabledReason={stale?'다른 곳에서 먼저 바뀌었습니다. 최신 기록을 불러온 뒤 다시 하세요.':!rec.evidenceRef?'필수 칸을 먼저 채우세요.':!rec.note?'필수 칸을 먼저 채우세요.':undefined} onClick={()=>void reconcile(p)}>{p.id} 대사 기록</Button></fieldset>}
    </li>)}</ul>
    <details><summary>확대 이력</summary>{view.history.map(h=><p key={h.id+':'+h.version}>{h.id} · v{h.version} · {statusLabels[h.status]} · {h.updatedAt}</p>)}</details></>}
  </section>;

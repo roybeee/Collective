@@ -47,19 +47,19 @@ function Workspace({campaignId}:{campaignId:string}){
     <label>고정 수수료(원)<Input type="number" min={0} value={plan.feeKrw??''} onChange={e=>setPlan({...plan,feeKrw:e.target.value===''?null:Number(e.target.value)})}/></label><label>성과 수수료율(0~0.5)<Input type="number" step={0.01} min={0} max={0.5} value={plan.commissionRate??''} onChange={e=>setPlan({...plan,commissionRate:e.target.value===''?null:Number(e.target.value)})}/></label>
     <label>추적 코드 ID<Input value={plan.trackingCodeId} onChange={t('trackingCodeId')}/></label>
     <label>납품 기한<Input type="date" value={plan.deliverDueAt} onChange={t('deliverDueAt')}/></label><label>게시 기한<Input type="date" value={plan.publishDueAt} onChange={t('publishDueAt')}/></label>
-    <Button variant="panel" size="fit" type="submit" disabled={stale||!plan.stepId}>협업 계획 저장</Button></fieldset></form>}
-   {!view.collaborations.length&&<EmptyLine first={view.canEdit?'협업 계획':undefined}>협업이 없습니다.</EmptyLine>}
+    <Button variant="panel" size="fit" type="submit" disabled={stale||!plan.stepId} disabledReason={stale?'다른 곳에서 먼저 바뀌었습니다. 최신 기록을 불러온 뒤 다시 하세요.':!plan.stepId?'수요 단계를 먼저 고르세요.':undefined}>협업 계획 저장</Button></fieldset></form>}
+   {!view.collaborations.length&&<EmptyLine next="위 ‘새 협업’ 버튼으로 시작하세요.">협업이 없습니다.</EmptyLine>}
    <ul>{view.collaborations.map(r=><li key={r.id} className="wrap-anywhere"><p><strong>{r.plan.partnerAlias}</strong> · {r.id} · {stageLabels[r.stage]} · 단계 {r.plan.stepId} · 수수료 {won(r.plan.feeKrw)}{r.plan.commissionRate!==null?` + ${(r.plan.commissionRate*100).toFixed(1)}%`:''} · 납품 {r.plan.deliverDueAt} · 게시 {r.plan.publishDueAt} · 원본 {r.sourceStatus==='held'?'보류':'현재'}</p>
     <p>성과: {r.performance.status==='observed'?`게시 이후 주문 ${r.performance.orders}건 · 순매출 ${won(r.performance.netRevenue)} · 공헌이익 ${won(r.performance.contribution)}`:r.performance.status==='not_published'?'게시 확인 전':r.performance.status==='no_tracking'?'추적 코드 없음':'보류'} · 인과 효과: 미측정</p>
     {[...r.sourceReasons,...r.warnings].map(x=><p key={x}>{x}</p>)}
     <p>영수증: {r.receipts.map(x=>`${stageLabels[x.stage]} ${x.at.slice(0,10)}${x.paidKrw!==undefined?` 지급 ${won(x.paidKrw)}`:''}`).join(' → ')||'없음'}</p>
-    {view.canEdit&&r.stage==='proposed'&&<Button variant="panel" size="fit" type="button" disabled={busy||stale} onClick={()=>{setEditing({id:r.id,expectedVersion:r.version});setPlan(structuredClone(r.plan));retry.current=null;}}>{r.id} 계획 수정</Button>}
+    {view.canEdit&&r.stage==='proposed'&&<Button variant="panel" size="fit" type="button" disabled={busy||stale} disabledReason={stale?'다른 곳에서 먼저 바뀌었습니다. 최신 기록을 불러온 뒤 다시 하세요.':undefined} onClick={()=>{setEditing({id:r.id,expectedVersion:r.version});setPlan(structuredClone(r.plan));retry.current=null;}}>{r.id} 계획 수정</Button>}
     {nextStages[r.stage].length>0&&<fieldset className={styles.form}><legend>{r.id} 단계 영수증</legend>
      <label>다음 단계<NativeSelect value={receipt.stage} onChange={e=>setReceipt({...receipt,stage:e.target.value as CollaborationStage})}><option value="">단계 선택</option>{nextStages[r.stage].map(s=><option key={s} value={s}>{stageLabels[s]}</option>)}</NativeSelect></label>
      <label>발생 시각<Input type="datetime-local" value={receipt.at} onChange={e=>setReceipt({...receipt,at:e.target.value})}/></label><label>증빙 ID<Input value={receipt.evidenceRef} onChange={e=>setReceipt({...receipt,evidenceRef:e.target.value})}/></label>
      {receipt.stage==='approved'&&<><label><CheckInput checked={receipt.disclosureConfirmed} onChange={e=>setReceipt({...receipt,disclosureConfirmed:e.target.checked})}/>광고·협찬 표시 확인</label><label><CheckInput checked={receipt.authenticityConfirmed} onChange={e=>setReceipt({...receipt,authenticityConfirmed:e.target.checked})}/>가짜 참여·후기 없음 확인</label></>}
      {receipt.stage==='settled'&&<label>지급액(원)<Input type="number" min={0} value={receipt.paidKrw} onChange={e=>setReceipt({...receipt,paidKrw:e.target.value})}/></label>}
-     <Button variant="panel" size="fit" type="button" disabled={busy||stale||!receipt.stage||!receipt.at||!receipt.evidenceRef} onClick={()=>void recordStage(r)}>{r.id} 단계 기록</Button></fieldset>}
+     <Button variant="panel" size="fit" type="button" disabled={busy||stale||!receipt.stage||!receipt.at||!receipt.evidenceRef} disabledReason={stale?'다른 곳에서 먼저 바뀌었습니다. 최신 기록을 불러온 뒤 다시 하세요.':!receipt.stage?'필수 칸을 먼저 채우세요.':!receipt.at?'필수 칸을 먼저 채우세요.':!receipt.evidenceRef?'필수 칸을 먼저 채우세요.':undefined} onClick={()=>void recordStage(r)}>{r.id} 단계 기록</Button></fieldset>}
    </li>)}</ul>
    <details><summary>협업 이력</summary>{view.history.map(x=><p key={x.id+':'+x.version}>{x.id} · v{x.version} · {stageLabels[x.stage]} · {x.updatedAt}</p>)}</details></>}
  </section>;

@@ -22,13 +22,13 @@ async function loadPreview(id:string,signal?:AbortSignal){
  return readDeletionPreview(result);
 }
 
-export function DeleteCampaignDialog({campaign,onClose,onDeleted}:{campaign:Campaign|null;onClose:()=>void;onDeleted:(id:string)=>Promise<void>}){
+export function DeleteCampaignDialog({campaign,onClose,onDeleted,onRestored}:{campaign:Campaign|null;onClose:()=>void;onDeleted:(id:string)=>Promise<void>;onRestored?:()=>Promise<void>}){
  const[busy,setBusy]=useState(false);
  // 캠페인마다 본문을 새로 그려(key) 조회 결과·입력한 제목·오류가 다른 캠페인으로 넘어가지 않게 한다.
- return <AlertDialog open={!!campaign} onOpenChange={open=>{if(!open&&!busy)onClose()}}><AlertDialogContent className="delete-campaign-dialog" onEscapeKeyDown={e=>{if(busy)e.preventDefault()}}>{campaign&&<DeleteCampaignBody key={campaign.id} campaign={campaign} busy={busy} setBusy={setBusy} onClose={onClose} onDeleted={onDeleted}/>}</AlertDialogContent></AlertDialog>;
+ return <AlertDialog open={!!campaign} onOpenChange={open=>{if(!open&&!busy)onClose()}}><AlertDialogContent className="delete-campaign-dialog" onEscapeKeyDown={e=>{if(busy)e.preventDefault()}}>{campaign&&<DeleteCampaignBody key={campaign.id} campaign={campaign} busy={busy} setBusy={setBusy} onClose={onClose} onDeleted={onDeleted} onRestored={onRestored}/>}</AlertDialogContent></AlertDialog>;
 }
 
-function DeleteCampaignBody({campaign,busy,setBusy,onClose,onDeleted}:{campaign:Campaign;busy:boolean;setBusy:(busy:boolean)=>void;onClose:()=>void;onDeleted:(id:string)=>Promise<void>}){
+function DeleteCampaignBody({campaign,busy,setBusy,onClose,onDeleted,onRestored}:{campaign:Campaign;busy:boolean;setBusy:(busy:boolean)=>void;onClose:()=>void;onDeleted:(id:string)=>Promise<void>;onRestored?:()=>Promise<void>}){
  const id=campaign.id,inputId=useId(),hintId=useId();
  const[archiving,setArchiving]=useState(false);const[preview,setPreview]=useState<DeletionPreview|null>(null);const[loadError,setLoadError]=useState('');const[gone,setGone]=useState(false);const[attempt,setAttempt]=useState(0);const[typed,setTyped]=useState('');const[error,setError]=useState('');
  // F4b-2(결정 7): '학습 자산까지 완전 삭제'는 소유자만 고른다(기본 해제, 서버도 소유자 외 403). 고르면 비식별 이관·규칙 종료 보존·요약 동결 없이 지운다.
@@ -47,7 +47,7 @@ function DeleteCampaignBody({campaign,busy,setBusy,onClose,onDeleted}:{campaign:
  async function archive(){
   if(busy)return;setBusy(true);setArchiving(true);setError('');
   // 보관은 기록을 지우지 않아 다시 조회하지 않는다. 진행 중 작업이 있으면 서버가 409와 사유로 거절한다. 보관한 캠페인도 목록에서 빠지므로 삭제와 같은 후속 처리(상세 닫기·목록 새로 고침)를 쓴다.
-  try{await api('archive_campaign',{id},'/api/campaigns');await onDeleted(id);onClose();toast.success('캠페인을 보관했습니다. 캠페인 목록의 보관함에서 보관을 해제할 수 있습니다.')}
+  try{await api('archive_campaign',{id},'/api/campaigns');await onDeleted(id);onClose();toast.success('캠페인을 보관했습니다. 캠페인 목록의 보관함에서 보관을 해제할 수 있습니다.',{duration:10000,action:{label:'되돌리기',onClick:()=>{void api('unarchive_campaign',{id},'/api/campaigns').then(()=>onRestored?.()).then(()=>toast.success('보관을 해제했습니다.'),e=>toast.error((e as Error).message))}}})}
   catch(e){setError((e as Error).message)}finally{setBusy(false);setArchiving(false)}
  }
  async function remove(){

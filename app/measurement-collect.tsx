@@ -83,7 +83,7 @@ export function MeasurementCollect({experiment,view,campaign,canCollect,busy,onC
   <CollectStatus view={view} connector={connectors[0]??resolved.find(r=>channelNameForConnector(r.channel)===experiment.channel)} now={now}/>
   {canStartCollect(experiment,canCollect,connectors)&&<div className="learning-actions"><Button variant="outline" disabled={busy||saving} onClick={start}><Download/>A/B 성과 가져오기</Button></div>}
   <Dialog open={open} onOpenChange={v=>!v&&!saving&&setOpen(false)}><DialogContent className="learning-dialog"><DialogHeader><DialogTitle>A/B 성과 가져오기</DialogTitle><DialogDescription>연결된 채널 API에서 한 실험안의 수치를 가져와 초안으로 저장합니다. 이후 워커가 같은 대상을 6시간마다 다시 가져옵니다. 결과 반영과 비교 가능 확정은 결과 입력에서 사람이 합니다.</DialogDescription></DialogHeader>
-   <form className="form-stack" onSubmit={submit}><CollectFields f={f} set={(k,v)=>setF(s=>({...s,[k]:v}))} connectors={connectors}/>{error&&<p role="alert" className="form-error">{error}</p>}<div className="form-actions"><Button type="button" variant="outline" disabled={saving} onClick={()=>setOpen(false)}>취소</Button><Button type="submit" disabled={saving||!f.channel}>{saving?<LoaderCircle className="spin"/>:<Check/>}가져오기</Button></div></form>
+   <form className="form-stack" onSubmit={submit}><CollectFields f={f} set={(k,v)=>setF(s=>({...s,[k]:v}))} connectors={connectors}/>{error&&<p role="alert" className="form-error">{error}</p>}<div className="form-actions"><Button type="button" variant="outline" disabled={saving} onClick={()=>setOpen(false)}>취소</Button><Button type="submit" disabled={saving||!f.channel} disabledReason={!f.channel?'필수 칸을 먼저 채우세요.':undefined}>{saving?<LoaderCircle className="spin"/>:<Check/>}가져오기</Button></div></form>
   </DialogContent></Dialog>
  </>;
 }

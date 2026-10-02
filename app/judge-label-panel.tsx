@@ -67,7 +67,7 @@ export function JudgeLabelPanel(){
     <label>용도<NativeSelect aria-label="라벨 용도" value={use} onChange={e=>setUse(e.target.value as Use)}><NativeSelectOption value="measure">측정(κ에 씀)</NativeSelectOption><NativeSelectOption value="anchor">앵커 맞춤(κ 제외)</NativeSelectOption></NativeSelect></label>
     <label className="judge-note">메모(선택)<Textarea aria-label="라벨 메모" value={note} maxLength={500} onChange={e=>setNote(e.target.value)}/></label>
    </div>
-   <div className="quality-toolbar"><Button type="button" disabled={busy||!complete||item.output===null} onClick={()=>void save()}><Save/>라벨 저장</Button>
+   <div className="quality-toolbar"><Button type="button" disabled={busy||!complete||item.output===null} disabledReason={!complete?'필수 칸을 먼저 채우세요.':(item.output===null)?'결과가 아직 없습니다.':undefined} onClick={()=>void save()}><Save/>라벨 저장</Button>
     <Button type="button" variant="outline" disabled={busy} onClick={()=>{setAt(i=>i+1);reset()}}>건너뛰기</Button>
     {!complete&&<span className="quality-dim">적용 기준 {criteria.length}개에 모두 점수(또는 해당없음)를 고르면 저장할 수 있습니다.</span>}</div>
   </article>}

@@ -70,7 +70,7 @@ export function PlaceCheckPanel({store}:{store:Store}){
    <label className="store-field"><span>플레이스 주소(https://map.naver.com 또는 place.naver.com)</span><Input required type="url" maxLength={PLACE_LIMITS.url} value={url} onChange={e=>setUrl(e.target.value)}/></label>
    <label className="store-field"><span>확인일</span><Input required type="date" max={today()} value={checkedAt} onChange={e=>setCheckedAt(e.target.value)}/></label>
    {PLACE_FIELDS.map(f=><label className="store-field" key={f}><span>{FIELD_LABELS[f]}</span><Input maxLength={PLACE_LIMITS.field[f]} value={fields[f]} onChange={e=>setFields(x=>({...x,[f]:e.target.value}))}/></label>)}
-   <Button type="submit" disabled={busy||!url.trim()}>확정 사실과 대조</Button>
+   <Button type="submit" disabled={busy||!url.trim()} disabledReason={(!url.trim())?'필수 칸을 먼저 채우세요.':undefined}>확정 사실과 대조</Button>
   </form>:<p className="subtle-note admin-only-note" role="note">{adminOnlyNote()} 플레이스 스냅샷은 대표·관리자가 입력합니다. 할 일 완료는 누구나 기록할 수 있습니다.</p>)}
   {error&&<p className="form-error" role="alert">{error}</p>}
  </section>;

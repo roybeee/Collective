@@ -45,7 +45,7 @@ check('store is ignored on learning',parseNav('?view=learning&brand=oda&store=s1
 check('store tabs are an allow-list',[...storeTabs],['diagnosis','ledger','channels','experiments','research','report']);
 // A8-3: 지점 '고객 보고서' 탭(app/customer-report-panel.tsx). 탭 노출(대표·관리자만)은 화면이 정하고, 주소는 허용 목록만 본다.
 check('store tab \'report\' is allowed in nav-state',[parseNav('?view=stores&brand=oda&store=s1&tab=report'),parseNav('?view=brands&brand=oda&tab=report')],[{view:'stores',brand:'oda',store:'s1',tab:'report'},{view:'brands',brand:'oda'}]);
-check('brand archive tabs are an allow-list',[...brandTabs],['overview','sources','facts','intake','research']);
+check('brand archive tabs are an allow-list',[...brandTabs],['overview','sources','facts','intake','research','interview','voice']);
 check('store marketing keeps brand, store and a store tab',parseNav('?view=stores&brand=oda&store=s1&tab=ledger'),{view:'stores',brand:'oda',store:'s1',tab:'ledger'});
 check('brand archive keeps brand and a brand tab',parseNav('?view=brands&brand=oda&tab=facts'),{view:'brands',brand:'oda',tab:'facts'});
 check('a store tab is dropped on the brand archive and a brand tab on stores',[parseNav('?view=brands&brand=oda&tab=ledger'),parseNav('?view=stores&brand=oda&tab=facts')],[{view:'brands',brand:'oda'},{view:'stores',brand:'oda'}]);

@@ -9,7 +9,7 @@ export type LearningTab=typeof learningTabs[number];
 // report는 고객 보고서 탭(A8-3, app/customer-report-panel.tsx)이다. 대표·관리자에게만 보이고 권한은 서버가 판정한다.
 export const storeTabs=['diagnosis','ledger','channels','experiments','research','report'] as const;
 export type StoreTab=typeof storeTabs[number];
-export const brandTabs=['overview','sources','facts','intake','research'] as const;
+export const brandTabs=['overview','sources','facts','intake','research','interview','voice'] as const;
 export type BrandTab=typeof brandTabs[number];
 // 가맹 모집 화면의 탭(app/franchise-panel.tsx, 트랙 R): 리드·정보주체 요청·모집 자료·행사(R15a-2b)·유입·비용(R5c)·설정. 설정 탭은 대표·관리자에게만 보이고, 직원에게는 리드 탭으로 보인다(서버도 403).
 export const franchiseTabs=['leads','requests','assets','events','inflow','report','benchmark','nurture','settings'] as const;
