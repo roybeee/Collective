@@ -10,6 +10,8 @@ const count=(src,re)=>(src.match(re)||[]).length;
 export const measure=()=>({
  rawButtons:count(app,/<button\b/g),
  rawFormControls:count(app,/<(?:input|select|textarea)\b/g),
+ // 목록형 기록은 공용 데이터 표(components/app/data-table.tsx)로 그린다. 원시 <table>은 늘지 않는다.
+ rawTables:count(app,/<table\b/g),
  confirmCalls:count(app,/\bconfirm\(/g),
  inlineStyles:count(app,/style=\{\{/g),
  hexColors:new Set(css.match(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/g)||[]).size,

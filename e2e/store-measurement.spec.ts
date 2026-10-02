@@ -94,6 +94,25 @@ test('추적 코드로 가져온 주문은 자동 귀속 스위치를 켤 때만
   expect(made).toMatchObject({campaignId, label: '오픈 주 포장 쿠폰'});
   const code = made.code;
   await expect(page.getByRole('button', {name: code + ' 복사', exact: true})).toBeVisible();
+  // 공용 데이터 표(UX-PLAN-3 7차원): 머리글 정렬(aria-sort), 표 안 찾기, CSV 내려받기(보이는 행·열 이름).
+  if ((page.viewportSize()?.width ?? 1280) >= 768) {
+    const codeTable = page.getByRole('table', {name: '이 지점의 추적 코드'});
+    const head = codeTable.getByRole('columnheader', {name: /^코드/});
+    await expect(head).toHaveAttribute('aria-sort', 'none');
+    await head.getByRole('button').click();
+    await expect(head).toHaveAttribute('aria-sort', 'ascending');
+    const tableArea = page.locator('.data-table-wrap').filter({has: codeTable});
+    await tableArea.getByRole('searchbox', {name: '표 안에서 찾기'}).fill('없는 코드');
+    await expect(codeTable.getByRole('row')).toHaveCount(1);
+    await tableArea.getByRole('searchbox', {name: '표 안에서 찾기'}).fill('');
+    const download = page.waitForEvent('download');
+    await tableArea.getByRole('button', {name: 'CSV 내려받기', exact: true}).click();
+    const file = await download;
+    expect(file.suggestedFilename()).toBe('tracking-codes.csv');
+    const text = (await import('node:fs')).readFileSync(await file.path(), 'utf8');
+    expect(text).toContain('코드,종류·팔,캠페인·채널,시작일');
+    expect(text).toContain(code);
+  }
   const listed = await (await page.request.post('/api/store-operations', {data: {action: 'list', storeId}})).json() as {codes: {code: string}[]; autoAttribution: boolean};
   expect(listed.codes.map(c => c.code)).toEqual([code]);
   expect(listed.autoAttribution).toBe(false);
