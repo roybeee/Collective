@@ -202,6 +202,8 @@ body{font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;backgrou
 .settings-nav{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;position:sticky;top:0;z-index:2;background:#ffffff;padding:6px 0}
 .settings-nav a{display:inline-flex;align-items:center;min-height:36px;padding:6px 12px;border:1px solid var(--neutral-90);border-radius:999px;background:#fff;font-size:13px;color:var(--green-23);text-decoration:none}
 .settings-safety{grid-column:1/-1}
+/* 평가 11회차: 긴 카드(성과 수집·AI 사용량·기능표)가 반 폭에 눌리지 않게 AI 연결·조사 작업자 한 쌍만 두 칸에 둔다. */
+.settings-layout>:not(#settings-ai):not(#settings-worker){grid-column:1/-1}
 @media (max-width:767px){.settings-nav a{min-height:44px}}
 /* UX-PLAN P5: 홈 오늘의 안건, 소개 카드 축소(온보딩을 마친 사용자) */
 .agenda-card{background:#fff;border:1px solid var(--neutral-90);border-radius:12px;padding:22px 24px;margin-bottom:22px}

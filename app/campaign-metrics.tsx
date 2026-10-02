@@ -17,7 +17,7 @@ type MetricDialogProps={open:boolean;campaigns:CampaignChoice[];onClose:()=>void
 const valueFields=[['revenue','순매출 (원)'],['variableCosts','상품 원가·변동비 (원)'],['adSpend','매체비 (원)'],['productionCost','제작비 (원)'],['orders','주문 수']] as const;
 const amount=(value:number|null)=>value===null?'자료 필요':money(value);
 
-const balanceNote='잔액 = 순매출 − 변동비 − 매체비 − 제작비. 고정비와 미기록 비용을 포함한 전체 이익이 아닙니다. 비용 미확인은 0이 아닌 미확인으로 둡니다.';
+const balanceNote='광고·제작비 차감 후 공헌이익 = 순매출 − 변동비 − 매체비 − 제작비. 고정비와 미기록 비용을 포함한 전체 이익이 아닙니다. 비용 미확인은 0이 아닌 미확인으로 둡니다.';
 // 성과 기록이 2개 이상이면 기간별 표와 순매출 추세로 한눈에 비교한다(UX-PLAN-3 7차원, 평가 7회차 '반복 카드'). 계산식 안내는 한 번만 보인다.
 export function MetricSummary({metrics}:{metrics:readonly Metric[]}){
  const rows=[...metrics].sort((a,b)=>(a.periodStart??a.period).localeCompare(b.periodStart??b.period));
