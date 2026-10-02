@@ -1,6 +1,8 @@
 'use client';
 import {useCallback,useEffect,useState,type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
+import {MetaLine} from '@/components/app/meta-line';
+import {metaText} from '@/lib/format';
 import {RefreshCw} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
@@ -65,17 +67,17 @@ export function DataRequestsSlot({campaignId,artifacts}:{campaignId:string;artif
   try{const [message,description]=await task();setListing(await fetchListing());setError('');setEditing(null);setText('');notifySaved(message,{description})}
   catch(e){setError((e as Error).message)}finally{setBusy(false)}
  }
- const collect=()=>run(async()=>{const d=await send<{created:number;merged:number;skipped:{confirmed:number;capped:number}}>('/api/data-requests',{action:'collect',campaignId});return ['자료 요청을 모았습니다.',`새 요청 ${d.created}건 · 출처 추가 ${d.merged}건${d.skipped.confirmed?` · 이미 확정 ${d.skipped.confirmed}건`:''}${d.skipped.capped?` · 한도 초과 ${d.skipped.capped}건`:''}`]});
+ const collect=()=>run(async()=>{const d=await send<{created:number;merged:number;skipped:{confirmed:number;capped:number}}>('/api/data-requests',{action:'collect',campaignId});return ['자료 요청을 모았습니다.',metaText([`새 요청 ${d.created}건`,`출처 추가 ${d.merged}건`,d.skipped.confirmed?`이미 확정 ${d.skipped.confirmed}건`:'',d.skipped.capped?`한도 초과 ${d.skipped.capped}건`:''])]});
  const reconcile=()=>run(async()=>{const d=await send<{closed:number}>('/api/data-requests',{action:'reconcile',campaignId});return [`확정 사실로 요청 ${d.closed}건을 닫았습니다.`]});
  const resolve=(r:DataRequest,action:'close'|'dismiss')=>run(async()=>{await send('/api/data-requests',{action,id:r.id,version:r.version,note:text});return [action==='close'?'답변 완료로 닫았습니다.':'필요 없음으로 닫았습니다.']});
  // 사실 후보 제안: 기존 사실 원장 경로(직원도 가능). 관리자가 확정하면 요청이 닫힌다.
- const propose=(r:DataRequest)=>run(async()=>{await send('/api/brand-facts',{action:'save_fact',data:{brandId:r.brandId,...(r.storeId?{storeId:r.storeId}:{}),key:r.factKey??r.label,value:text,status:'candidate',source:`자료 요청 ${r.id} · ${r.text}`.slice(0,3000),verifiedAt:'',validUntil:''}});return ['확인 후보로 저장했습니다.','관리자가 확정하면 요청이 닫힙니다.']});
+ const propose=(r:DataRequest)=>run(async()=>{await send('/api/brand-facts',{action:'save_fact',data:{brandId:r.brandId,...(r.storeId?{storeId:r.storeId}:{}),key:r.factKey??r.label,value:text,status:'candidate',source:`자료 요청 ${r.id}: ${r.text}`.slice(0,3000),verifiedAt:'',validUntil:''}});return ['확인 후보로 저장했습니다.','관리자가 확정하면 요청이 닫힙니다.']});
  if(!listing||(!listing.enabled&&!listing.requests.length))return error?<OutputsSlot><p className="form-error" role="alert">{error}</p></OutputsSlot>:null;
  const open=listing.requests.filter(r=>r.status==='open'),closed=listing.requests.filter(r=>r.status!=='open');
  const edit=(id:string,mode:Editing['mode'])=>{setEditing(editing?.id===id&&editing.mode===mode?null:{id,mode});setText('')};
  return <OutputsSlot><section className="subtle-note" aria-label="자료 요청" aria-live="polite">
   <div className="flex justify-between gap-2 items-center flex-wrap">
-   <b>자료 요청 · 열림 {open.length} · 닫힘 {closed.length}</b>
+   <b>자료 요청(열림 {open.length}, 닫힘 {closed.length})</b>
    {listing.enabled&&<span className="flex gap-2">
     <Button variant="outline" size="sm" disabled={busy} onClick={()=>void collect()}>작업물에서 모으기</Button>
     <Button variant="ghost" size="sm" disabled={busy||!admin} disabledReason={!admin?'관리자만 할 수 있습니다.':undefined} title={admin?undefined:'확정 사실과 대조는 관리자만 할 수 있습니다.'} onClick={()=>void reconcile()}><RefreshCw/>확정 사실과 대조</Button>
@@ -84,7 +86,7 @@ export function DataRequestsSlot({campaignId,artifacts}:{campaignId:string;artif
   {!listing.enabled&&<p>기능 스위치 a6_data_requests가 꺼져 있어 새로 모으거나 닫을 수 없습니다. 기존 요청은 그대로 보입니다.</p>}
   {listing.enabled&&!open.length&&<p>열린 자료 요청이 없습니다. 작업물의 ‘자료 필요’ 표시를 모으면 여기에 보입니다.</p>}
   {open.length>0&&<ul>{open.map(r=><li key={r.id}>
-   <span>{r.label}{r.assignee?` · 담당 ${r.assignee}`:''} · {r.storeId?'지점':'브랜드 공통'}{r.origins.length?` · 출처 ${r.origins.length}곳`:''}{r.factKey?'':' · 사실 항목 미지정(자동으로 닫히지 않음)'}</span>
+   <MetaLine items={[r.label,r.assignee?`담당 ${r.assignee}`:'',r.storeId?'지점':'브랜드 공통',r.origins.length?`출처 ${r.origins.length}곳`:'',!r.factKey&&'사실 항목 미지정(자동으로 닫히지 않음)']}/>
    <br/><small>{r.text}</small>
    {r.scopeWarning==='store_link_needed'&&<p className="form-error">{STORE_LINK_WARNING}</p>}
    {listing.enabled&&<span className="flex gap-2 flex-wrap">
@@ -99,7 +101,7 @@ export function DataRequestsSlot({campaignId,artifacts}:{campaignId:string;artif
    </div>}
   </li>)}</ul>}
   {!admin&&open.length>0&&<p className="subtle-note admin-only-note" role="note">{adminOnlyNote()} 닫기·필요 없음은 대표·관리자가, 사실 확정은 브랜드 아카이브에서 관리자가 합니다.</p>}
-  {closed.length>0&&<details><summary>닫힌 요청 {closed.length}건</summary><ul>{closed.map(r=><li key={r.id}>{r.label} · {resolutionText(r)}</li>)}</ul></details>}
+  {closed.length>0&&<details><summary>닫힌 요청 {closed.length}건</summary><ul>{closed.map(r=><li key={r.id}><MetaLine items={[r.label,resolutionText(r)]}/></li>)}</ul></details>}
   {error&&<p className="form-error" role="alert">{error}</p>}
  </section></OutputsSlot>;
 }

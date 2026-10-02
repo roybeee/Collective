@@ -111,7 +111,7 @@ test('과업 4: 확대 제안 승인',async({browser},info)=>{
   // 활성 위임이 하나뿐이면 미리 골라져 있다.
   await expect(panel.getByRole('combobox',{name:'예약에 쓸 활성 위임',exact:true})).toHaveValue('x-auth');
   await m.click(panel.getByRole('button',{name:`${id} 소유자 승인·예약`,exact:true}),`${id} 소유자 승인·예약`);
-  await expect(panel.getByRole('status').filter({hasText:'확대 예산을 예약했습니다'})).toBeVisible();await expect(panel).toContainText('확대 예약 200원 · 원장 reserved');
+  await expect(panel.getByRole('status').filter({hasText:'확대 예산을 예약했습니다'})).toBeVisible();await expect(panel).toContainText('확대 예약 200원, 원장 reserved');
   const {proposals}=await get(`/api/growth/expansion?campaignId=${campaignId}`) as {proposals:{id:string;status:string;commitment?:{status:string}}[]};
   const p=proposals.find(x=>x.id===id);expect(p?.status).toBe('reserved');expect(p?.commitment?.status).toBe('reserved');
   report(info,4,m);

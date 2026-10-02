@@ -2,6 +2,7 @@
 import {NativeSelect} from '@/components/ui/native-select';
 import {Input} from '@/components/ui/input';
 import {CardButton} from '@/components/app/card-button';
+import {MetaLine} from '@/components/app/meta-line';
 import {Button} from '@/components/ui/button';
 import {askConfirm} from '@/components/app/confirm-dialog';
 
@@ -56,8 +57,8 @@ export function AccountPanel({user,onClose,onSignedOut}:{user:AccountUser;onClos
   </form>
   {error&&<p className="auth-error" role="alert">{error}</p>}{notice&&<p className="auth-notice" role="status">{notice}</p>}
   {link&&<div className="auth-link"><label>초대·재설정 링크<Input readOnly value={link} onFocus={e=>e.target.select()}/></label><CardButton type="button" onClick={()=>void copy()}>링크 복사</CardButton><small>24시간 동안 한 번만 사용할 수 있습니다.</small></div>}
-  <ul className="auth-accounts">{accounts.map(account=>{const list=actions(account);return <li key={account.id}><div><strong>{account.email}</strong><small>{roleLabel(account.role)}{account.disabled?' · 접근 해제됨':account.status==='pending'?' · 초대 대기':''}{account.id===user.id?' · 내 계정':''}</small></div>{list.length>0&&<div className="auth-account-actions">{list.map(([label,input,question])=><CardButton key={label} type="button" disabled={pending} onClick={()=>void perform(input,question)}>{label}</CardButton>)}</div>}</li>})}</ul>
-  {user.role==='owner'&&<section className="auth-events" aria-label="최근 계정 변경"><h3>최근 계정 변경</h3>{events.length?<ol>{events.map(event=><li key={event.id}><time dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString('ko-KR')}</time><span>{event.actor?event.actor.email||'알 수 없음':'시스템'} · {eventLabels[event.action]||event.action}{event.role?`(${roleLabel(event.role)})`:''} · {event.targetEmail}</span></li>)}</ol>:<small>아직 기록이 없습니다.</small>}</section>}
+  <ul className="auth-accounts">{accounts.map(account=>{const list=actions(account);return <li key={account.id}><div><strong>{account.email}</strong><small><MetaLine items={[roleLabel(account.role),account.disabled?'접근 해제됨':account.status==='pending'?'초대 대기':'',account.id===user.id&&'내 계정']}/></small></div>{list.length>0&&<div className="auth-account-actions">{list.map(([label,input,question])=><CardButton key={label} type="button" disabled={pending} onClick={()=>void perform(input,question)}>{label}</CardButton>)}</div>}</li>})}</ul>
+  {user.role==='owner'&&<section className="auth-events" aria-label="최근 계정 변경"><h3>최근 계정 변경</h3>{events.length?<ol>{events.map(event=><li key={event.id}><time dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString('ko-KR')}</time><MetaLine items={[event.actor?event.actor.email||'알 수 없음':'시스템',`${eventLabels[event.action]||event.action}${event.role?`(${roleLabel(event.role)})`:''}`,event.targetEmail]}/></li>)}</ol>:<small>아직 기록이 없습니다.</small>}</section>}
  </DialogContent></Dialog>;
 }
 

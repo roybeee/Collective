@@ -20,7 +20,7 @@ test('실패 근거 최적화 후보·예산 상한·동결·오프라인≠매�
   await panel.getByRole('textbox',{name:'실패 근거 ID',exact:true}).fill('bad-exp:1');await panel.getByRole('textbox',{name:'실패 원인 요약',exact:true}).fill('문구 실험 악화');await panel.getByRole('textbox',{name:'대상 참조',exact:true}).fill('channel.commerce');await panel.getByRole('textbox',{name:'개선 제안',exact:true}).fill('배송 확실성을 먼저 제시');
   const tokens=panel.getByRole('spinbutton',{name:'토큰 예산',exact:true});await tokens.fill('900000');await panel.getByRole('button',{name:'후보 저장',exact:true}).click();expect(await tokens.evaluate(e=>(e as HTMLInputElement).validity.rangeOverflow)).toBe(true);await expect(panel).toContainText('최적화 후보가 없습니다');
   await panel.getByRole('spinbutton',{name:'토큰 예산',exact:true}).fill('50000');await panel.getByRole('button',{name:'후보 저장',exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'후보를 저장했습니다'})).toBeVisible();
-  const id=(await panel.locator('li').first().innerText()).split(' · ')[1].trim();await panel.getByRole('button',{name:`${id} 동결`,exact:true}).click();await expect(panel).toContainText(`${id} · 동결`);await expect(panel).toContainText('오프라인: 미실행 · 판매: 미연결');
+  const id=(await panel.locator('li').first().innerText()).split(/\s*,\s+/)[1].trim();await panel.getByRole('button',{name:`${id} 동결`,exact:true}).click();await expect(panel).toContainText(`${id}, 동결`);await expect(panel).toContainText('오프라인: 미실행, 판매: 미연결');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
  }finally{await context.close()}
 });
