@@ -12,8 +12,8 @@ test('판매처 주문 조회 연결 생성·토큰 비노출·켜기/끄기',as
   await panel.getByRole('textbox',{name:'판매처 키',exact:true}).fill('mapdal');await panel.getByRole('textbox',{name:'주문 조회 URL(HTTPS)',exact:true}).fill('http://shop.example.com/orders');await panel.getByLabel('조회 토큰',{exact:true}).fill('tok_'+'b'.repeat(28));
   await panel.getByRole('button',{name:'연결 만들기',exact:true}).click();await expect(panel.getByRole('alert')).toContainText('HTTPS');
   await panel.getByRole('textbox',{name:'주문 조회 URL(HTTPS)',exact:true}).fill('https://shop.example.com/orders');await panel.getByLabel('조회 토큰',{exact:true}).fill('tok_'+'b'.repeat(28));await panel.getByRole('button',{name:'연결 만들기',exact:true}).click();
-  await expect(panel.getByRole('status').filter({hasText:'연결을 만들었습니다'})).toBeVisible();await expect(panel).toContainText('mapdal · https://shop.example.com/orders · 꺼짐');await expect(panel).not.toContainText('b'.repeat(28));
-  await panel.getByRole('button',{name:'mapdal 켜기',exact:true}).click();await expect(panel).toContainText('· 켜짐 ·');await panel.getByRole('button',{name:'mapdal 끄기',exact:true}).click();await expect(panel).toContainText('· 꺼짐 ·');
+  await expect(panel.getByRole('status').filter({hasText:'연결을 만들었습니다'})).toBeVisible();await expect(panel).toContainText('mapdal, https://shop.example.com/orders, 꺼짐');await expect(panel).not.toContainText('b'.repeat(28));
+  await panel.getByRole('button',{name:'mapdal 켜기',exact:true}).click();await expect(panel).toContainText(', 켜짐,');await panel.getByRole('button',{name:'mapdal 끄기',exact:true}).click();await expect(panel).toContainText(', 꺼짐,');
   const api=await (await page.request.get('/api/storefront-pulls')).text();expect(api).not.toContain('b'.repeat(28));expect(external).toBe(0);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
  }finally{await context.close()}

@@ -31,9 +31,9 @@ test('반품 원인 → 일일 결정 연결·분포 분모·응답 유실 재�
   const attempts:string[]=[];let lose=true;await page.route('**/api/growth/cause-links',async route=>{if(route.request().method()==='POST'){attempts.push(route.request().postDataJSON().requestId);if(lose){lose=false;await route.fetch();await route.abort('failed');return;}}await route.continue();});
   await panel.getByRole('button',{name:'원인 연결',exact:true}).click();await expect(panel.getByRole('alert')).toContainText('입력은 보존했습니다');
   await panel.getByRole('button',{name:'원인 연결',exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'연결했습니다'})).toBeVisible();expect(attempts[0]).toBe(attempts[1]);
-  await expect(panel).toContainText('cause-refund (상품 결함 v1) → 일일 결정 cause-decision v1 · 현재');
+  await expect(panel).toContainText('cause-refund (상품 결함 v1) → 일일 결정 cause-decision v1, 현재');
   await reason('cause-refund','description_mismatch',1);await panel.getByRole('button',{name:'원인 연결 새로고침',exact:true}).click();await expect(panel).toContainText('연결 뒤 원인 기록이 개정되었습니다');
-  await panel.getByRole('button',{name:'cause-refund→cause-decision 해제',exact:true}).click();await panel.locator('summary').filter({hasText:'원인 연결 이력'}).click();await expect(panel).toContainText('v2 · 해제');
+  await panel.getByRole('button',{name:'cause-refund→cause-decision 해제',exact:true}).click();await panel.locator('summary').filter({hasText:'원인 연결 이력'}).click();await expect(panel).toContainText('v2, 해제');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
  }finally{await context.close()}
 });

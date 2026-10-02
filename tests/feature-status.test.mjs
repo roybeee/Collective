@@ -72,7 +72,7 @@ check('an expired token alone blocks collection with the channel link',view(row(
 check('a token expiring exactly now counts as expired',row(full({channels:channels(false,true,true,iso(0))}),'measurement').status,'blocked');
 check('another valid connection keeps collection available beside an expired token',view(row(full({channels:[{label:'네이버 검색광고',connected:true,expiresAt:null},{label:'Instagram',connected:true,expiresAt:iso(-day),expiringSoon:true}]}),'measurement')),{status:'available',reason:'네이버 검색광고 연결됨 · Instagram 토큰 만료 (워크스페이스 기본) · 브랜드별 연결 0/4 브랜드'});
 check('an unreadable expiry time is not treated as expired',row(full({channels:channels(false,true,false,'not-a-date')}),'measurement').status,'available');
-// E2E(설정 기능표)는 '조건 부족 · 네이버 검색광고 연결 전 · Instagram 연결 전'을 부분 문자열로 본다. 기본 상태가 사유 맨 앞에 남아야 한다.
+// E2E(설정 기능표)는 '조건 부족, 네이버 검색광고 연결 전 · Instagram 연결 전'을 부분 문자열로 본다. 기본 상태가 사유 맨 앞에 남아야 한다.
 ok('the workspace default states stay at the start of the reason',row(full({channels:channels(false,false)}),'measurement').reason.startsWith('네이버 검색광고 연결 전 · Instagram 연결 전'));
 
 // --- 성과 자동 수집: 브랜드·지점 단위 자격증명(F5) -------------------------------------
@@ -147,17 +147,17 @@ ok('the AI team note matches the current feature range',!panels.includes('이미
 const card=panels.slice(panels.indexOf('function ChannelCredentialsPanel('),panels.indexOf('function FeatureTable('));
 ok('the settings channel card is the brand-scoped card',panels.includes('<div id="settings-channels"><ChannelCredentialsPanel brands={data.brands}/></div>')&&!panels.includes("from './channel-panel'")&&!existsSync('app/channel-panel.tsx')&&card.length>0);
 ok('the card reads the brand list of GET /api/channels and the stores',panels.includes('byBrand:scopedCredentials(d.byBrand)')&&card.includes('channelSnapshot()')&&card.includes('channelScopes(')&&card.includes("readJson('/api/stores')"));
-ok('the connection form picks the scope with a labelled combobox',card.includes('aria-label="적용 범위"')&&["workspace:'워크스페이스 기본'","brand:'브랜드'","store:'브랜드 · 지점'"].every(label=>panels.includes(label)));
+ok('the connection form picks the scope with a labelled combobox',card.includes('aria-label="적용 범위"')&&["workspace:'워크스페이스 기본'","brand:'브랜드'","store:'브랜드 지점'"].every(label=>panels.includes(label)));
 ok('save and revoke send the chosen brand and store',card.includes("send('save_credential',{channel,data:form,...target}")&&card.includes("send('revoke_credential',{channel,...target}"));
-ok('the workspace default and per-brand states are shown before the admin-only form',card.includes('워크스페이스 기본 · ')&&card.indexOf('channelScopes(')<card.indexOf('<AdminOnly')&&card.includes("<AdminOnly note={'채널 연결·해제는 관리자만 할 수 있습니다. '+adminRequestNote}>")&&card.indexOf('<form')>card.indexOf('<AdminOnly')&&card.indexOf("send('revoke_credential'")>card.indexOf('<AdminOnly'));
+ok('the workspace default and per-brand states are shown before the admin-only form',card.includes("<MetaLine items={[c.label,'워크스페이스 기본',stateLine(base,c.account,c.expiresAt)]}/>")&&card.indexOf('channelScopes(')<card.indexOf('<AdminOnly')&&card.includes("<AdminOnly note={'채널 연결·해제는 관리자만 할 수 있습니다. '+adminRequestNote}>")&&card.indexOf('<form')>card.indexOf('<AdminOnly')&&card.indexOf("send('revoke_credential'")>card.indexOf('<AdminOnly'));
 // 보관한 지점도 이 채널에 저장된 자격증명이 있으면 지점 선택지에 '(보관됨)'으로 남는다. 고르면 저장은 막고(서버 409와 같은 규칙) 해제만 할 수 있다.
 ok('an archived store with a saved credential stays selectable for revoking',card.includes("s.status!=='archived'||snapshot.byBrand.some(c=>c.channel===channel&&c.brandId===brandId&&c.storeId===s.id)")&&card.includes("s.status==='archived'?' (보관됨)':''"));
 ok('an archived store can only be revoked, not saved',card.includes('disabled={busy||missing||archived}')&&card.includes('보관한 지점에는 새로 연결할 수 없습니다')&&card.includes("disabled={busy||missing} disabledReason={missing?'적용할 브랜드·지점을 먼저 고르세요.':undefined} onClick={()=>void send('revoke_credential'"));
 ok('brands without their own credential say when the workspace default is used',card.includes('워크스페이스 기본으로 수집'));
 ok('the feature table passes the brand list of GET /api/channels',panels.includes('brandChannels:channelState?.byBrand??null'));
 const smoke=readFileSync('e2e/smoke.spec.ts','utf8');
-ok('the smoke E2E sees the scope choice on the settings channel card',smoke.includes("getByRole('combobox', {name: '적용 범위', exact: true})")&&smoke.includes("['워크스페이스 기본', '브랜드', '브랜드 · 지점']"));
-ok('the smoke E2E keeps the measurement row assertion',smoke.includes("toContainText('조건 부족 · 네이버 검색광고 연결 전 · Instagram 연결 전')"));
+ok('the smoke E2E sees the scope choice on the settings channel card',smoke.includes("getByRole('combobox', {name: '적용 범위', exact: true})")&&smoke.includes("['워크스페이스 기본', '브랜드', '브랜드 지점']"));
+ok('the smoke E2E keeps the measurement row assertion',smoke.includes("toContainText('조건 부족, 네이버 검색광고 연결 전 · Instagram 연결 전')"));
 ok('the smoke E2E checks that the PNG link lands on the facts tab',smoke.includes("toHaveURL(/[?&]view=brands&brand=[^&]+&tab=facts/)")&&smoke.includes("getByRole('tab', {name: '확인 사실', exact: true})).toHaveAttribute('aria-selected', 'true')"));
 const template=existsSync('.github/pull_request_template.md')?readFileSync('.github/pull_request_template.md','utf8'):'';
 ok('the PR template asks to update the settings feature table',template.includes('설정 기능표 갱신'));

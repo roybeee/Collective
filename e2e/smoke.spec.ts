@@ -234,7 +234,7 @@ test('작업물이 있는 캠페인은 삭제 대신 보관하고 보관함에�
 });
 
 // ux-5·eng-hygiene-12: 설정의 기능표는 고정 문구가 아니라 실제 상태를 보인다(lib/feature-status.ts). 새 워크스페이스는 확정 사실 0건이라 PNG 정보 카드가 '조건 부족'이고
-// 그 행의 링크는 주소 라우팅으로 브랜드 아카이브의 확인 사실 탭을 연다. 확정 사실을 1건 저장한 뒤 '다시 확인'을 누르면 '사용 가능 · 확정 사실 1건'으로 바뀐다. 영상 렌더링은 '미구현'이다.
+// 그 행의 링크는 주소 라우팅으로 브랜드 아카이브의 확인 사실 탭을 연다. 확정 사실을 1건 저장한 뒤 '다시 확인'을 누르면 '사용 가능, 확정 사실 1건'으로 바뀐다. 영상 렌더링은 '미구현'이다.
 test('설정 기능표가 확정 사실과 연결 상태를 실제 값으로 보인다', async ({browser}, testInfo) => {
   test.setTimeout(30_000);
   const {context, page} = await ownerPage(browser, testInfo, `e2e-features-${testInfo.project.name}-${Date.now()}`);
@@ -242,11 +242,11 @@ test('설정 기능표가 확정 사실과 연결 상태를 실제 값으로 보
   const feature = (key: string) => table.locator(`[data-feature="${key}"]`);
   await page.goto('/?view=settings');
   await expect(table.getByRole('heading', {name: '현재 사용할 수 있는 기능', exact: true})).toBeVisible();
-  await expect(feature('png')).toContainText('조건 부족 · 확정 사실 필요(현재 0건)');
-  await expect(feature('ai')).toContainText('조건 부족 · HERMES 연결 전');
-  await expect(feature('measurement')).toContainText('조건 부족 · 네이버 검색광고 연결 전 · Instagram 연결 전');
-  await expect(feature('buffer')).toContainText(/조건 부족 · 브랜드별 연결 0\/\d+/);
-  await expect(feature('pos-csv')).toContainText('사용 가능 · CSV 가져오기 가능');
+  await expect(feature('png')).toContainText('조건 부족, 확정 사실 필요(현재 0건)');
+  await expect(feature('ai')).toContainText('조건 부족, HERMES 연결 전');
+  await expect(feature('measurement')).toContainText('조건 부족, 네이버 검색광고 연결 전 · Instagram 연결 전');
+  await expect(feature('buffer')).toContainText(/조건 부족, 브랜드별 연결 0\/\d+/);
+  await expect(feature('pos-csv')).toContainText('사용 가능, CSV 가져오기 가능');
   await expect(feature('video')).toContainText('미구현');
   await shot(page, testInfo, 'feature-table-blocked');
 
@@ -260,16 +260,16 @@ test('설정 기능표가 확정 사실과 연결 상태를 실제 값으로 보
   const saved = await page.request.post('/api/brand-facts', {data: {action: 'save_fact', confirmed: true, data: {brandId: 'ofd', key: 'E2E 기능표 확인', value: '기능표 실시간 확인용', status: 'confirmed', source: 'E2E 확인', verifiedAt: new Date(Date.now() - 60_000).toISOString(), validUntil: new Date(Date.now() + 86_400_000).toISOString()}}});
   expect(saved.status()).toBe(200);
   await table.getByRole('button', {name: '다시 확인', exact: true}).click();
-  await expect(feature('png')).toContainText('사용 가능 · 확정 사실 1건');
+  await expect(feature('png')).toContainText('사용 가능, 확정 사실 1건');
   await shot(page, testInfo, 'feature-table-facts');
 
-  // F5: 설정 채널 카드는 채널마다 워크스페이스 기본 상태를 보이고, 연결 폼에서 적용 범위(워크스페이스 기본 / 브랜드 / 브랜드 · 지점)를 고른다.
+  // F5: 설정 채널 카드는 채널마다 워크스페이스 기본 상태를 보이고, 연결 폼에서 적용 범위(워크스페이스 기본 / 브랜드 / 브랜드 지점)를 고른다.
   // 로컬 인증 헤더의 소유자는 관리자라 폼이 보인다. '브랜드'를 고르면 적용할 브랜드 선택이 나타난다.
   const channelCard = page.locator('#settings-channels');
-  await expect(channelCard.getByRole('group', {name: '네이버 검색광고 연결 상태', exact: true})).toContainText('네이버 검색광고 · 워크스페이스 기본 · 연결 전');
+  await expect(channelCard.getByRole('group', {name: '네이버 검색광고 연결 상태', exact: true})).toContainText('네이버 검색광고, 워크스페이스 기본, 연결 전');
   const scope = channelCard.getByRole('combobox', {name: '적용 범위', exact: true});
   await expect(scope).toBeVisible();
-  await expect(scope.locator('option')).toHaveText(['워크스페이스 기본', '브랜드', '브랜드 · 지점']);
+  await expect(scope.locator('option')).toHaveText(['워크스페이스 기본', '브랜드', '브랜드 지점']);
   await scope.selectOption({label: '브랜드'});
   await expect(channelCard.getByRole('combobox', {name: '브랜드', exact: true})).toBeVisible();
   await shot(page, testInfo, 'channel-scope');

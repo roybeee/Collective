@@ -31,7 +31,7 @@ test('상세페이지 수정안·가격 차단·승인≠적용·운영자 적�
   await panel.getByRole('button',{name:`${id} 적용 확인 기록`,exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'적용 확인을 기록했습니다'})).toBeVisible();expect(attempts[0]).toBe(attempts[1]);
   await expect(panel).toContainText('페이지 변경: 운영자 확인');await expect(panel).toContainText('효과: 미측정');
   await panel.getByRole('textbox',{name:'되돌림 사유',exact:true}).fill('전환 하락');await panel.getByRole('button',{name:`${id} 되돌림 기록`,exact:true}).click();await expect(panel).toContainText('되돌림 확인');
-  await panel.locator('summary').filter({hasText:'수정안 이력'}).click();await expect(panel).toContainText(`${id} · v5 · 되돌림 확인`);
+  await panel.locator('summary').filter({hasText:'수정안 이력'}).click();await expect(panel).toContainText(`${id}, v5, 되돌림 확인`);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
  }finally{await context.close()}
 });
