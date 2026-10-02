@@ -18,7 +18,6 @@ export const measure=()=>({
  hexColors:new Set(css.match(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/g)||[]).size,
  // 화면 폭 중단점은 @media 조건의 폭만 센다(요소의 min-width 같은 크기 지정은 중단점이 아니다).
  mediaWidths:new Set((css.match(/@media[^{]*?\((?:max|min)-width: ?\d+px\)/g)||[]).map(x=>x.match(/\d+/)[0])).size,
- middleDotJoins:count(app,/ · /g),
  // 빈 목록 안내는 공용 EmptyLine(다음 행동 버튼)으로 쓴다. 다음 행동 없는 '…없습니다.' 문단은 늘지 않는다.
  bareEmptyLines:count(app,/<p(?: className=[^>]*)?>[^<{]{0,60}없습니다\.<\/p>/g),
 });
@@ -30,6 +29,8 @@ const longNotes=[...app.matchAll(/<Note[^>]*>([^<{]+)<\/Note>/g)].map(m=>m[1].tr
 check(longNotes.length===0,`Note first sentence over 60 chars: ${longNotes.join(' | ')}`);
 // 패널 머리 문단(제목 바로 뒤 <p>)은 60자 이하로 쓴다. 다른 레인 소유 화면(가맹·품질 콘솔·품질 운영·인터뷰·Reflector·사용량·고객 보고서)은 세지 않는다. 더 길면 첫 문장만 보이는 Note를 쓴다(UX-PLAN-3 4차원 4점 조건 '패널 첫 문단 60자').
 const ownA=readdirSync('app').filter(n=>n.endsWith('.tsx')&&!/^(franchise-|online-grading|quality-|brand-interview|reflector|usage-panel|customer-report)/.test(n)).map(n=>readFileSync('app/'+n,'utf8')).join('\n');
+// 가운뎃점(' · ')으로 여러 사실을 이은 한 줄은 공용 MetaLine(항목 나눔)이나 metaText(쉼표)로 쓴다(UX-PLAN-3 7차원 4점 조건 ≤80). 다른 레인 소유 화면은 세지 않는다.
+check(count(ownA,/ · /g)<=budget.static.middleDotJoins,`middleDotJoins ${count(ownA,/ · /g)} > budget ${budget.static.middleDotJoins} (MetaLine·metaText를 쓰세요)`);
 const longLeads=[...ownA.matchAll(/<h[23][^>]*>[^<{]*<\/h[23]>\s*<p(?: className=[^>]*)?>([^<{]+)<\/p>/g)].map(m=>m[1].trim()).filter(t=>t.length>60);
 check(longLeads.length===0,`header paragraph over 60 chars: ${longLeads.join(' | ')}`);
 // 저장 동사는 '저장'(서버에 쓰기)과 '기록'(관측·확인 사실 남기기) 두 가지만 버튼에 쓴다(UX-PLAN-3 4차원 4점 조건). 대화상자를 여는 버튼은 '새 ○○', 폼에 칸을 늘리는 버튼은 '○○ 하나 더'다. '사전등록'은 실험 용어라 예외다.
