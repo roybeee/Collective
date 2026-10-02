@@ -53,7 +53,7 @@ test('홈 첫 로딩 JS·접근성·터치 크기·가로 넘침 예산',async({
 // UX-PLAN-3 ⑩ 5점 조건. 4G(왕복 150ms·내려받기 1.6Mbps·올리기 750kbps)+CPU 4배 감속에서 빈 캐시로 연 홈의 LCP(largest-contentful-paint 마지막 후보)와,
 // 같은 CPU 감속에서 핵심 조작(홈 표에서 캠페인 열기·성장·판매 탭·'/' 바로 가기)의 Event Timing duration 최댓값(INP와 같은 계산: 조작마다 가장 긴 이벤트)을 잰다.
 // lcpMs4g는 래칫이다. 3.4~3.6초에서 머리 스크립트 미리 요청(lib/ui/boot-fetch.ts)·홈 진입점 modulepreload(app/home-client.tsx)·홈 모듈 한 덩어리(vite.config.ts homeChunk)로
-// 2026-10-02 로컬 HTTP/1.1 서버 2.34~2.51초(목표 2.5초)가 됐다. CI 러너 흔들림을 감안해 예산은 2.7초로 둔다.
+// 홈 아래쪽을 첫 그림 다음 프레임에 그리게 해(components/app/after-paint.tsx) 2026-10-02 로컬 통합 빌드 2.32~2.38초(목표 2.5초)가 됐다. CI 러너 흔들림을 감안해 예산은 2.6초로 둔다.
 // 데스크톱 프로젝트에서만 잰다. 모바일 프로젝트는 같은 Chromium에 폭만 좁힌 것이라 새 정보가 없고, 감속 아래 두 번째 측정이 흔들려 예산 판정만 불안정해진다.
 test('4G 홈 LCP·핵심 조작 지연(INP) 예산',async({browser},info)=>{
  test.skip(info.project.name!=='desktop','데스크톱 프로젝트에서만 잰다');
