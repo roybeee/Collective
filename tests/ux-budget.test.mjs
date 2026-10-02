@@ -8,7 +8,18 @@ const budget=JSON.parse(readFileSync('tests/ux-budget.json','utf8'));
 const app=readdirSync('app').filter(n=>n.endsWith('.tsx')&&!n.startsWith('franchise-')&&n!=='online-grading.tsx').map(n=>readFileSync('app/'+n,'utf8')).join('\n');
 const css=readdirSync('app').filter(n=>n.endsWith('.css')).map(n=>readFileSync('app/'+n,'utf8')).join('\n');
 const count=(src,re)=>(src.match(re)||[]).length;
+// 레인 A가 소유하고 화면 문자열을 만드는 lib 파일(평가 9회차: app/*.tsx만 세면 lib 뷰 문자열의 ' · '가 화면에 그대로 나온다).
+// 주석은 빼고 문자열·템플릿 리터럴 안의 ' · '만 센다. 0이 목표다. 남은 것은 화면 문구가 아니라 저장·비교되는 값이거나 다른 레인 문구다:
+//  - lib/store-marketing.ts channelCatalog name 6개(가운뎃점 7개): 캠페인 channels·학습 규칙 채널 값으로 저장되고 lib/channels.ts 키와 비교한다(화면은 label).
+//  - lib/store-attribution.ts autoEvidence·manualEvidence 2개: 주문 attributionEvidence에 저장되고 isCodeEvidence가 글자 그대로 비교한다.
+//  - lib/campaign-attribution.ts SNAPSHOT_SCOPE 1개: metric.scope로 저장되고 같은 범위 비교에 쓴다(화면은 성과 카드가 항목으로 나눈다).
+//  - lib/feature-status.ts의 다른 레인 행(가맹·고객 보고서·주간 품질 집계·공공 벤치마크·Reflector·품질 운영) 문구 22개: 공유 파일이라 고치지 않고, 화면은 featureView가 항목으로 나눠 그린다.
+// 9회차 시작(9f9b9f6) 115개 → 32개.
+export const LANE_A_VIEW_LIBS=['lib/feature-status.ts','lib/store-operations-view.ts','lib/history-labels.ts','lib/campaign-status.ts','lib/execution.ts','lib/store-attribution.ts','lib/campaign-attribution.ts','lib/store-marketing.ts'];
+const literalMiddleDots=file=>{const sf=ts.createSourceFile(file,readFileSync(file,'utf8'),ts.ScriptTarget.Latest,true);let n=0;
+ const visit=x=>{if(ts.isStringLiteral(x)||ts.isNoSubstitutionTemplateLiteral(x)||ts.isTemplateHead(x)||ts.isTemplateMiddle(x)||ts.isTemplateTail(x))n+=x.text.split(' · ').length-1;ts.forEachChild(x,visit)};visit(sf);return n};
 export const measure=()=>({
+ libMiddleDots:LANE_A_VIEW_LIBS.reduce((n,f)=>n+literalMiddleDots(f),0),
  rawButtons:count(app,/<button\b/g),
  rawFormControls:count(app,/<(?:input|select|textarea)\b/g),
  // 목록형 기록은 공용 데이터 표(components/app/data-table.tsx)로 그린다. 원시 <table>은 늘지 않는다.
@@ -67,7 +78,7 @@ for(const n of readdirSync('app').filter(n=>n.endsWith('.tsx')&&!/^(franchise-|o
 }
 const nonSentence=notices.filter(x=>!x.t.endsWith('습니다.'));
 check(notices.length>0&&nonSentence.length===0,`success notices must be one sentence ending in '습니다.': ${nonSentence.map(x=>x.n+': '+x.t).join(' | ')}`);
-// 되돌리기 알림 수는 줄지 않는다(바닥 래칫). 캠페인 보관·보관 해제·상시 지시 저장(2곳)·자료 일괄 검토·가맹 모집 스위치.
+// 되돌리기 알림 수는 줄지 않는다(바닥 래칫). 캠페인 보관·보관 해제·상시 지시 저장(2곳)·상시 지시 삭제·자료 일괄 검토·자료 한 건 검토·가맹 모집 스위치·브리프 수정·매장 확인 기록 수정·원인 연결과 해제·플레이스 할 일 완료.
 check(undoNotices>=budget.floors.undoNotices,`undo notices ${undoNotices} < floor ${budget.floors.undoNotices}`);
 // 확인 대화상자는 무엇·영향·되돌리기를 모두 적는다(UX-PLAN-3 Q2·11차원 4점 조건). 타입이 영향·되돌림을 필수로 요구한다.
 check(/impact:string;undo:string;/.test(readFileSync('components/app/confirm-dialog.tsx','utf8')),'ConfirmAsk must require impact and undo');
@@ -81,4 +92,45 @@ const pureLib=readFileSync('vite.config.ts','utf8').match(/PURE_CLIENT_LIB = [^\
 check(pureLib.length>0,'vite.config.ts PURE_CLIENT_LIB list is readable');
 const declarationKinds=new Set([ts.SyntaxKind.ImportDeclaration,ts.SyntaxKind.ExportDeclaration,ts.SyntaxKind.TypeAliasDeclaration,ts.SyntaxKind.InterfaceDeclaration,ts.SyntaxKind.FunctionDeclaration,ts.SyntaxKind.VariableStatement]);
 for(const m of pureLib){const f=`lib/${m}.ts`,sf=ts.createSourceFile(f,readFileSync(f,'utf8'),ts.ScriptTarget.Latest,true);const bad=sf.statements.filter(x=>!declarationKinds.has(x.kind)).map(x=>x.getText().slice(0,40));check(bad.length===0,`${f} must hold only declarations at top level: ${bad.join(' | ')}`)}
-console.log(JSON.stringify({passed,now,directToastSuccess,notices:notices.length,undoNotices}));
+// 설정 '현재 사용할 수 있는 기능'에 내부 코드를 보이지 않는다(평가 9회차 결함 3: a6_data_requests·b4_reward_lineage·'B4-2c'·'워커 digest 큐'·'성장2 …').
+// 1) 레인 A 행은 lib 문구(label·reason·link.label) 자체에 코드가 없다. 스위치 이름은 flag로만 넘기고 화면은 '자세히'의 기술 정보로 보인다.
+// 2) 모든 행(다른 레인 행 포함)의 화면 모양(featureView)에도 코드와 ' · '가 없다. 다른 레인 문구는 공유 파일이라 고치지 않고 화면 단에서 숨긴다.
+// 평가 보고서의 검사식에 growth_daily_loop처럼 첫 단어가 두 글자 이상인 스위치 이름을 더해 넓혔다.
+{
+ const {SourceTextModule,createContext}=await import('node:vm'),{resolve,dirname}=await import('node:path');
+ const context=createContext({}),cache=new Map();
+ const moduleFor=path=>{path=resolve(path);if(!cache.has(path))cache.set(path,new SourceTextModule(ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText,{context,identifier:path}));return cache.get(path)};
+ const fs=moduleFor('lib/feature-status.ts');await fs.link((s,r)=>moduleFor(resolve(dirname(r.identifier),s+'.ts')));await fs.evaluate();
+ const {featureRows,featureView}=fs.namespace,plain=v=>JSON.parse(JSON.stringify(v));
+ const CODE=/\b[a-z]\d?_[a-z_]+\b|\b[a-z][a-z0-9]*_[a-z0-9_]+\b|\bB\d-\d|성장2|digest/;
+ const LANE_A_ROWS=['brand','ai','text','review','metrics','worker','png','buffer','measurement','data-requests','place-check','reward-lineage','playbook-signals','growth-daily','storefront-pull','pos-csv','pos-auto','video','ads'];
+ const flagNames=['r_franchise','a6_data_requests','a6_place_check','a8_customer_report','b4_reward_lineage','b3_playbook_signals','b2_digest_queue','growth_daily_loop','storefront_pull','b3_reflector'];
+ const now=Date.parse('2026-10-01T00:00:00.000Z'),brands=[{id:'b1'},{id:'b2'}],campaigns=[{id:'c1',brandId:'b1',updatedAt:'2026-09-30T00:00:00.000Z'}];
+ const inputs=[{},{now,brands,campaigns,flags:flagNames.map(flag=>({flag,enabled:true})),connection:{configured:true},worker:{online:true},facts:[],publishers:{b1:true,b2:null},channels:[{label:'네이버 검색광고',connected:true},{label:'Instagram',connected:false}],brandChannels:[]},
+  {now,brands,campaigns,flags:flagNames.map(flag=>({flag,enabled:false})),connection:{configured:false},worker:{registered:true,online:false},facts:[],publishers:{},channels:[{label:'네이버 검색광고',connected:false}],brandChannels:null}];
+ const words=r=>[r.label,...(Array.isArray(r.reason)?r.reason:[r.reason||'']),r.link?.label||''];
+ const all=inputs.flatMap(input=>plain(featureRows(input)));
+ const laneA=all.filter(r=>LANE_A_ROWS.includes(r.key));
+ check(new Set(laneA.map(r=>r.key)).size===LANE_A_ROWS.length,`lane A feature rows exist: ${LANE_A_ROWS.filter(k=>!laneA.some(r=>r.key===k)).join(', ')}`);
+ const laneACodes=laneA.flatMap(r=>words(r).filter(t=>CODE.test(t)).map(t=>r.key+': '+t));
+ check(laneACodes.length===0,`internal codes in lane A feature row words: ${laneACodes.join(' | ')}`);
+ const laneADots=laneA.flatMap(r=>words(r).filter(t=>t.includes(' · ')).map(t=>r.key+': '+t));
+ check(laneADots.length===0,`middle dot joins in lane A feature row words: ${laneADots.join(' | ')}`);
+ const screen=inputs.flatMap(input=>featureRows(input).map(r=>plain(featureView(r))));
+ const screenCodes=screen.flatMap(r=>[r.label,...r.reason,r.link?.label||''].filter(t=>CODE.test(t)||t.includes(' · ')).map(t=>r.key+': '+t));
+ check(screenCodes.length===0,`internal codes or middle dots on the settings feature screen: ${screenCodes.join(' | ')}`);
+ check(screen.some(r=>r.tech.includes('스위치 이름 a6_data_requests')),'switch names stay available as technical details');
+ const panels=readFileSync('app/panels.tsx','utf8');
+ check(panels.includes('rows.map(featureView)')&&panels.includes('<summary>자세히</summary>기술 정보: {metaText(r.tech)}'),'settings feature table renders featureView and keeps codes in the details');
+}
+// 레인 A 화면(app/*.tsx, components/**)의 글자 리터럴(문자열·템플릿·JSX 글자)에 시드·테스트 브랜드 이름을 하드코딩하지 않는다(평가 9회차 11차원: 브리프 목표 자리표시 '맵달서울').
+// 브랜드 이름은 선택한 브랜드(brands)에서 읽는다. 목록은 lib/agency.ts brandDefaults와 테스트 시드에서 쓰는 이름이다. 주석, 시드 데이터(lib), 테스트 파일은 세지 않는다.
+const seedBrandNames=/맵달|mapdal|old\s?ferry|올드\s?페리|oda\s?pizza|오다\s?피자|dr\.?\s?alan|닥터\s?알란/i;
+const laneAFiles=[...readdirSync('app').filter(n=>n.endsWith('.tsx')&&!/^(franchise-|online-grading|quality-|brand-interview|reflector|usage-|customer-report)/.test(n)).map(n=>'app/'+n),...['components/app','components/ui'].flatMap(d=>readdirSync(d).filter(n=>n.endsWith('.tsx')).map(n=>d+'/'+n))];
+const brandLiterals=[];
+for(const f of laneAFiles){
+ const sf=ts.createSourceFile(f,readFileSync(f,'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+ const visit=x=>{if((ts.isStringLiteral(x)||ts.isNoSubstitutionTemplateLiteral(x)||ts.isTemplateHead(x)||ts.isTemplateMiddle(x)||ts.isTemplateTail(x)||ts.isJsxText(x))&&seedBrandNames.test(x.text))brandLiterals.push(`${f}: ${x.text.trim().slice(0,40)}`);ts.forEachChild(x,visit)};visit(sf);
+}
+check(laneAFiles.length>100&&brandLiterals.length===0,`hardcoded seed brand names in lane A screens: ${brandLiterals.join(' | ')}`);
+console.log(JSON.stringify({passed,now,directToastSuccess,notices:notices.length,undoNotices,brandLiterals:brandLiterals.length}));

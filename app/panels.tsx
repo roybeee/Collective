@@ -39,7 +39,7 @@ import {MetricCard,MetricSummary,MetricDialog} from './campaign-metrics';
 import {adminRequestNote,useCanManage} from './auth-client';
 import {originLabel,reasonChoices,type ReasonCode,type HumanCriterion} from '@/lib/review-decisions';
 import {qualityCriteria} from '@/lib/quality';
-import {bufferCheckCampaigns,channelScopes,credentialState,credentialStateLabels,featureRows,featureStatusLabels,franchiseSwitch,scopedCredentials,type CredentialState,type FeatureLink,type ScopedCredential} from '@/lib/feature-status';
+import {bufferCheckCampaigns,channelScopes,credentialState,credentialStateLabels,featureRows,featureStatusLabels,featureView,franchiseSwitch,scopedCredentials,type CredentialState,type FeatureLink,type ScopedCredential} from '@/lib/feature-status';
 import type {Store} from '@/lib/store-marketing';
 import {pushNav} from '@/lib/nav-state';
 import {AdminOnly,useAccount} from './account-context';
@@ -188,6 +188,7 @@ function FeatureTable({data}:{data:WorkspaceData}){
  const[round,setRound]=useState(0),checkKey=JSON.stringify(bufferCheckCampaigns(data.brands,data.campaigns)),key=checkKey+'#'+round;
  const[loaded,setLoaded]=useState<{key:string;sources:FeatureSources}|null>(null),pending=loaded?.key!==key;
  useEffect(()=>{let active=true;void featureSources(JSON.parse(checkKey)).then(sources=>{if(active)setLoaded({key,sources})});return()=>{active=false}},[checkKey,key]);
+ // 화면 문구는 featureView로 그린다: 사유는 항목으로 나누고, 스위치 이름 같은 내부 코드는 '자세히'의 기술 정보로만 보인다.
  const rows=featureRows({connection:data.connection,brands:data.brands,campaigns:data.campaigns,...loaded?.sources,worker:loaded?.sources.worker??data.worker});
  // 가맹 모집 스위치(r_franchise)는 소유자만 바꾼다(서버 /api/feature-flags requireOwnerActor). 휴대폰에서도 켤 수 있게 기능표 행에 버튼을 둔다.
  // 바꾼 뒤 창 focus 이벤트를 보내 사이드바 메뉴(app/workspace.tsx가 focus 때 /api/franchise?view=status를 다시 읽음)가 새로고침 없이 반영되게 한다.
@@ -201,7 +202,7 @@ function FeatureTable({data}:{data:WorkspaceData}){
   catch(e){toast.error((e as Error).message)}finally{setSwitching(false)}
  }
  return <section className="settings-card scope-card"><h2>현재 사용할 수 있는 기능</h2>
-  {!loaded?<p className="subtle-note" role="status">연결 상태를 확인하고 있습니다…</p>:rows.map(r=><div className="scope-row" key={r.key} data-feature={r.key} data-status={r.status}><span>{r.label}</span><b><MetaLine items={[featureStatusLabels[r.status],r.reason]}/>{r.link&&<><br/><FeatureLinkButton link={r.link}/></>}{r.key==='franchise'&&account?.isOwner&&franchiseOn!==null&&<><br/><Button variant="outline" size="sm" className="mt-1" disabled={switching} onClick={()=>void toggleFranchise(!franchiseOn)}>{switching?<LoaderCircle className="spin"/>:null}{franchiseOn?'가맹 모집 끄기':'가맹 모집 켜기'}</Button></>}</b></div>)}
+  {!loaded?<p className="subtle-note" role="status">연결 상태를 확인하고 있습니다…</p>:rows.map(featureView).map(r=><div className="scope-row" key={r.key} data-feature={r.key} data-status={r.status}><div>{r.label}{r.tech.length>0&&<details className="scope-tech"><summary>자세히</summary>기술 정보: {metaText(r.tech)}</details>}</div><b><MetaLine items={[featureStatusLabels[r.status],...r.reason]}/>{r.link&&<><br/><FeatureLinkButton link={r.link}/></>}{r.key==='franchise'&&account?.isOwner&&franchiseOn!==null&&<><br/><Button variant="outline" size="sm" className="mt-1" disabled={switching} onClick={()=>void toggleFranchise(!franchiseOn)}>{switching?<LoaderCircle className="spin"/>:null}{franchiseOn?'가맹 모집 끄기':'가맹 모집 켜기'}</Button></>}</b></div>)}
   <div className="form-actions"><Button variant="outline" size="sm" disabled={pending} onClick={()=>setRound(n=>n+1)}>{pending?<LoaderCircle className="spin"/>:<RefreshCw/>}다시 확인</Button></div>
   <p className="subtle-note">HERMES gateway가 실행 중이어야 AI 팀을 실행할 수 있습니다. 기획·작업물 승인은 외부 게시·광고 집행으로 이어지지 않습니다. Instagram 게시는 제작·발행 탭에서 관리자가 발행을 승인·실행할 때만 Buffer에 예약 접수됩니다. 연결을 바꾼 뒤에는 ‘다시 확인’을 누르세요.</p></section>;
 }

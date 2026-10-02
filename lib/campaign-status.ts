@@ -41,7 +41,7 @@ function runningStage({activeJobs,meetings}:CampaignStatusInput):CampaignStatusR
 function blockedStage({campaign,meetings,sequence}:CampaignStatusInput,lastWorkAt:string):CampaignStatusResult|null{
  const meeting=meetings.filter(m=>currentVersion(m.campaignVersion,campaign)).toSorted((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''))[0];
  if(meeting?.status==='failed'&&(meeting.updatedAt||meeting.createdAt||'')>lastWorkAt)return {status:'blocked',reason:`최근 팀 회의가 실패했습니다${meeting.error?`(${clip(meeting.error)})`:''}. 회의 기록을 확인한 뒤 다시 진행하세요.`};
- if(sequence?.status==='blocked'&&currentVersion(sequence.campaignVersion,campaign)&&(sequence.updatedAt||'')>lastWorkAt)return {status:'blocked',reason:`연속 실행이 멈췄습니다${sequence.error?' · '+clip(sequence.error):'.'}`};
+ if(sequence?.status==='blocked'&&currentVersion(sequence.campaignVersion,campaign)&&(sequence.updatedAt||'')>lastWorkAt)return {status:'blocked',reason:`연속 실행이 멈췄습니다${sequence.error?`: ${clip(sequence.error)}`:'.'}`};
  return null;
 }
 // 발행 진행·성과 기록: 작업물의 마지막 변화보다 뒤에 생긴 기록만 단계로 본다(새 작업물이 생기면 새 기획 주기). 둘 다면 더 최근 기록이 이긴다.
@@ -51,7 +51,7 @@ function executionStage({campaign,publications,metrics}:CampaignStatusInput,last
  const executing=executed.length>0&&executedAt>=lastWorkAt,measuring=metrics.length>0&&measuredAt>=lastWorkAt;
  if(measuring&&(!executing||measuredAt>=executedAt)){
   const period=metrics.toSorted((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''))[0]?.period;
-  return {status:'measuring',reason:`성과 기록 ${metrics.length}건${period?` · 최근 기간 ${period}`:''}.`};
+  return {status:'measuring',reason:`성과 기록 ${metrics.length}건${period?`, 최근 기간 ${period.split(/\s·\s/).join(', ')}`:''}.`};
  }
  if(!executing)return null;
  const accepted=executed.filter(p=>p.status==='accepted').length,published=executed.length-accepted;
@@ -63,10 +63,10 @@ function planStage(c:StatusCampaign,artifacts:readonly Artifact[]):CampaignStatu
  const scope=[{id:c.id,version:c.version}],needsWork=needsWorkArtifacts(artifacts,scope),review=reviewArtifacts(artifacts,scope);
  const qualityFix=review.some(a=>{const verdict=a.role==='quality'?(a as Artifact&{qualityReview?:QualityReview}).qualityReview?.verdict:undefined;return !!verdict&&verdict!=='ready_for_review'});
  const requested=needsWork.filter(a=>a.status==='revision').length,unusable=needsWork.length-requested;
- if(needsWork.length||qualityFix)return {status:'revision',reason:[requested&&`수정 요청 ${requested}건`,unusable&&`보완 필요(재질문·빈 본문·이전 브리프 버전) ${unusable}건`,qualityFix&&'독립 품질 검수가 수정·자료 확인을 요청했습니다'].filter(Boolean).join(' · ')+'.'};
+ if(needsWork.length||qualityFix)return {status:'revision',reason:[requested&&`수정 요청 ${requested}건`,unusable&&`보완 필요(재질문·빈 본문·이전 브리프 버전) ${unusable}건`,qualityFix&&'독립 품질 검수가 수정·자료 확인을 요청했습니다'].filter(Boolean).join(', ')+'.'};
  if(review.length)return {status:'review',reason:`검토할 작업물 ${review.length}건이 판정을 기다립니다.`};
- if(artifacts.length)return {status:'ready',reason:`검토할 작업물이 없습니다 · 사용 가능한 역할 ${usableRoleCount(c,artifacts)}/${roles.length}. 남은 담당자 실행이나 품질 검수를 이어가세요.`};
- return executionGaps(c).length?{status:'draft',reason:`브리프에 빠진 항목이 있습니다 · ${executionGapLabels(c)}.`}:{status:'ready',reason:'브리프가 준비됐습니다. AI 팀 실행을 시작할 수 있습니다.'};
+ if(artifacts.length)return {status:'ready',reason:`검토할 작업물이 없습니다. 사용 가능한 역할 ${usableRoleCount(c,artifacts)}/${roles.length}. 남은 담당자 실행이나 품질 검수를 이어가세요.`};
+ return executionGaps(c).length?{status:'draft',reason:`브리프에 빠진 항목이 있습니다: ${executionGapLabels(c)}.`}:{status:'ready',reason:'브리프가 준비됐습니다. AI 팀 실행을 시작할 수 있습니다.'};
 }
 
 // 저장 status와 다르면 사유 끝에 저장값을 남긴다. 입력은 바꾸지 않는다.

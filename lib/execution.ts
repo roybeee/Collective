@@ -2,6 +2,7 @@ import {campaignBudget,statuses,type Campaign} from './agency';
 import {claimGuard} from './campaign-policy';
 import {disclosureLine} from './ai-disclosure';
 import type {VersionState} from './franchise-facts';
+import {metaText} from './format';
 
 export type FactRef={id:string;version:number};
 // materialHash: 소재 입력(브랜드 이름·색 + 사실 {id,version} + 캡션) 지문. 이 필드 이전 소재는 브리프 버전으로 판정한다. current: 서버가 계산한 현재 유효 여부(화면용).
@@ -55,13 +56,13 @@ export const mediaHash=(p:Pick<Publication,'pngHash'>&{codedPng?:Pick<CodedPng,'
 // 결정 17: AI 카피(copy.aiGenerated)면 사실 문구 뒤·코드 줄 앞에 빈 줄+AI 생성물 표시 줄을 넣는다. 카피 없음·문자열 카피·사람 카피는 이전 결과와 바이트 단위로 같다.
 export const composeCaption=(copy:string|Pick<PublicationCopy,'text'|'aiGenerated'>|undefined,factCaption:string,code?:Pick<PublicationCode,'type'|'code'>)=>{const text=typeof copy==='string'?copy:copy?.text,disclosure=typeof copy==='string'?null:disclosureLine(copy);const caption=text?text+'\n\n'+factCaption:factCaption,disclosed=disclosure?caption+'\n\n'+disclosure:caption;return code?disclosed+'\n\n'+codeLine(code):disclosed};
 export const CREATIVE_TITLE_MAX=60;
-// 소재 이름(실행 화면·점포 화면·귀속 보고 공용, lib/store-attribution.ts가 다시 내보낸다). 제목이 없으면 '소재 · 9월 23일 00:05 생성'(한국 시각, 날짜가 없으면 짧은 ID) 뒤에
+// 소재 이름(실행 화면·점포 화면·귀속 보고 공용, lib/store-attribution.ts가 다시 내보낸다). 제목이 없으면 '소재(9월 23일 00:05 생성)'(한국 시각, 날짜가 없으면 짧은 ID) 뒤에
 // 첫 사실 줄을 붙여 같은 분에 만든 소재도 구분한다. 저장된 기록을 그대로 받으므로 제목·캡션·날짜가 없거나 문자열이 아니어도 된다.
 const koreaCreated=(iso:string)=>{const d=new Date(Date.parse(iso)+9*3600000),two=(n:number)=>String(n).padStart(2,'0');return `${d.getUTCMonth()+1}월 ${d.getUTCDate()}일 ${two(d.getUTCHours())}:${two(d.getUTCMinutes())} 생성`};
 export function creativeLabel(c:{id:string;title?:unknown;caption?:unknown;createdAt?:unknown}){
  const title=typeof c.title==='string'?c.title.trim():'';if(title)return title;
  const created=typeof c.createdAt==='string'&&Number.isFinite(Date.parse(c.createdAt))?koreaCreated(c.createdAt):c.id.slice(0,8);
- return ['소재',created,typeof c.caption==='string'?c.caption.split('\n')[0].slice(0,40):''].filter(Boolean).join(' · ');
+ return metaText([`소재(${created})`,typeof c.caption==='string'?c.caption.split('\n')[0].slice(0,40):'']);
 }
 // 승인된 콘텐츠 작업물의 '게시 카피' 절(제목이 없는 본문이면 전체)을 빈 줄·하위 제목 단위로 나눈 캡션 후보. 목록 기호·강조 표시는 뺀다.
 const heading=(line:string)=>line.match(/^(#{1,6})[ \t]/)?.[1].length??0;
@@ -83,16 +84,16 @@ export const koreaDay=(iso:string)=>new Date(iso).toLocaleDateString('en-CA',{ti
 // 발행 승인 조건(data-truth-4 b): 기획 승인, 시작일·종료일 확정, 예약일(한국 날짜)이 기간 안.
 export function campaignGateIssues(c:Pick<Campaign,'status'|'startDate'|'endDate'>,scheduledAt:string):string[]{
  const issues:string[]=[];
- if(c.status!=='approved')issues.push(`기획 미승인 · 캠페인 기획이 승인돼야 발행을 승인할 수 있습니다(현재: ${statuses[c.status]||c.status||'미정'}).`);
- if(!c.startDate||!c.endDate)issues.push('기간 밖 · 캠페인 시작일·종료일을 확정하세요.');
- else{const day=koreaDay(scheduledAt);if(day<c.startDate||day>c.endDate)issues.push(`기간 밖 · 예약일 ${day}이 캠페인 기간 ${c.startDate}~${c.endDate} 밖입니다.`)}
+ if(c.status!=='approved')issues.push(`기획 미승인: 캠페인 기획이 승인돼야 발행을 승인할 수 있습니다(현재: ${statuses[c.status]||c.status||'미정'}).`);
+ if(!c.startDate||!c.endDate)issues.push('기간 밖: 캠페인 시작일·종료일을 확정하세요.');
+ else{const day=koreaDay(scheduledAt);if(day<c.startDate||day>c.endDate)issues.push(`기간 밖: 예약일 ${day}이 캠페인 기간 ${c.startDate}~${c.endDate} 밖입니다.`)}
  return issues;
 }
 // 예산 조건(data-truth-4 a): 예산이 미확정이면 비용이 있는 발행을, 확정 예산보다 큰 비용 상한은 예산 초과로 막는다.
 export function budgetIssues(c:{budget?:number|null;budgetConfirmedAt?:string},plannedCostKRW:number,limits:{maxPlannedCostKRW?:number}|null):string[]{
  const budget=campaignBudget(c),cap=limits?.maxPlannedCostKRW??0;
- if(budget===null)return plannedCostKRW>0?['예산 미확정 · 캠페인 예산을 확정해야 비용이 있는 발행을 승인할 수 있습니다.']:[];
- return cap>budget?[`예산 초과 · 비용 상한 ${cap.toLocaleString('ko-KR')}원이 확정 예산 ${budget.toLocaleString('ko-KR')}원을 넘습니다. 한도를 낮추세요.`]:[];
+ if(budget===null)return plannedCostKRW>0?['예산 미확정: 캠페인 예산을 확정해야 비용이 있는 발행을 승인할 수 있습니다.']:[];
+ return cap>budget?[`예산 초과: 비용 상한 ${cap.toLocaleString('ko-KR')}원이 확정 예산 ${budget.toLocaleString('ko-KR')}원을 넘습니다. 한도를 낮추세요.`]:[];
 }
 // 승인 뒤 바뀌어 재확인이 필요한 항목. 한도는 낮아졌을 때만 무효화한다(approvedLimits가 없는 이전 승인은 한도 버전으로 판정).
 // 낮아진 한도는 발행 횟수 한도와 예정 비용 상한을 구분해 부른다(exec-loop-10).
@@ -112,7 +113,7 @@ export function approvalDrift(p:Publication,credential:{channelId?:string;versio
 // franchise: 가맹 규칙 차단 사유(트랙 R R2, ExecutionState.franchise.publications[id]). 없으면 이전과 같은 배열이다.
 export function approvalBlockers({campaign,publication,state,factCount,rightsConfirmed,aiDisclosureConfirmed=false,codedPngConfirmed=false,franchise}:{campaign:Pick<Campaign,'status'|'startDate'|'endDate'>&{budget?:number|null;budgetConfirmedAt?:string};publication:Pick<Publication,'scheduledAt'|'creativeId'|'needsReview'|'copy'>&{plannedCostKRW?:number;codedPng?:Pick<CodedPng,'hash'>};state:Pick<ExecutionState,'creatives'|'limits'|'publisher'>;factCount:number;rightsConfirmed:boolean;aiDisclosureConfirmed?:boolean;codedPngConfirmed?:boolean;franchise?:{blockers:string[]}|null}):string[]{
  const creative=state.creatives.find(c=>c.id===publication.creativeId);
- return [...(!state.limits?['한도 미설정 · 기본 한도(발행 1회·0원)를 저장하세요.']:[]),...(!state.publisher.connected?['채널 미연결 · Buffer Instagram 채널을 연결하세요.']:[]),...(!factCount?['사실 없음 · 근거와 유효 기한이 있는 사실을 확정하세요.']:[]),...campaignGateIssues(campaign,publication.scheduledAt),...budgetIssues(campaign,publication.plannedCostKRW||0,state.limits),...(creative?.current===false||publication.needsReview?['사실 변경 · 소재 입력이나 사용한 사실이 바뀌었습니다. 이 초안을 취소하고 새 PNG로 새 초안을 만드세요.']:[]),...(!rightsConfirmed?['권리 확인 필요 · PNG·문구 사용 권리 확인란을 체크하세요.']:[]),...(publication.copy?.aiGenerated&&!aiDisclosureConfirmed?['AI 생성물 표시 확인 필요 · 캡션 끝 AI 생성물 표시 문구를 확인하고 확인란을 체크하세요.']:[]),...(publication.codedPng&&!codedPngConfirmed?['코드 PNG 확인 필요 · 게시 코드를 넣은 이미지를 원본과 비교해 확인하고 확인란을 체크하세요.']:[]),...(franchise?.blockers??[])];
+ return [...(!state.limits?['한도 미설정: 기본 한도(발행 1회·0원)를 저장하세요.']:[]),...(!state.publisher.connected?['채널 미연결: Buffer Instagram 채널을 연결하세요.']:[]),...(!factCount?['사실 없음: 근거와 유효 기한이 있는 사실을 확정하세요.']:[]),...campaignGateIssues(campaign,publication.scheduledAt),...budgetIssues(campaign,publication.plannedCostKRW||0,state.limits),...(creative?.current===false||publication.needsReview?['사실 변경: 소재 입력이나 사용한 사실이 바뀌었습니다. 이 초안을 취소하고 새 PNG로 새 초안을 만드세요.']:[]),...(!rightsConfirmed?['권리 확인 필요: PNG·문구 사용 권리 확인란을 체크하세요.']:[]),...(publication.copy?.aiGenerated&&!aiDisclosureConfirmed?['AI 생성물 표시 확인 필요: 캡션 끝 AI 생성물 표시 문구를 확인하고 확인란을 체크하세요.']:[]),...(publication.codedPng&&!codedPngConfirmed?['코드 PNG 확인 필요: 게시 코드를 넣은 이미지를 원본과 비교해 확인하고 확인란을 체크하세요.']:[]),...(franchise?.blockers??[])];
 }
 // 화면의 발행 승인 요청 본문. AI 카피 발행에만 'AI 생성물 표시 확인' 체크 값(aiDisclosureConfirmed)을 싣는다(결정 17). 사람 카피·카피 없는 발행은 이전 본문과 같다.
 export function approvalRequest(p:Pick<Publication,'copy'>,state:Pick<ExecutionState,'publisher'|'limits'>|null,aiChecked:boolean){

@@ -41,9 +41,10 @@ export function PlaceCheckPanel({store}:{store:Store}){
   void fetchListing(controller.signal).then(d=>{if(!controller.signal.aborted){fill(d);setError('')}}).catch(e=>{if(!controller.signal.aborted)setError((e as Error).message)});
   return()=>controller.abort();
  },[fetchListing,fill]);
- async function run(task:()=>Promise<[Saved,string?]>){
+ // 할 일 완료의 되돌리기는 같은 처리(save_task)로 할 일을 다시 연다(다음 판, 앞 근거 그대로). 그사이 판이 바뀌면 서버가 409로 막고 알림이 실패를 보인다.
+ async function run(task:()=>Promise<[Saved,string?]>,undo?:()=>Promise<unknown>,undone?:Saved){
   setBusy(true);
-  try{const [message,description]=await task();fill(await fetchListing());setError('');notifySaved(message,{description})}
+  try{const [message,description]=await task();fill(await fetchListing());setError('');notifySaved(message,{description,undo,undone})}
   catch(e){setError((e as Error).message)}finally{setBusy(false)}
  }
  const save=()=>run(async()=>{
@@ -51,7 +52,7 @@ export function PlaceCheckPanel({store}:{store:Store}){
   const opened=d.tasks.filter(t=>t.status==='open').length,closed=d.tasks.length-opened;
   return ['플레이스 대조를 기록했습니다.',metaText([`할 일 열림 ${opened}건`,`닫힘 ${closed}건`,d.dataRequests?`자료 요청 ${d.dataRequests}건`:null])];
  });
- const complete=(t:StoreTask)=>run(async()=>{await send({action:'save_task',storeId:store.id,id:t.id,version:t.version,status:'done',evidence:evidence[t.id]??''});setEvidence(e=>({...e,[t.id]:''}));return ['할 일을 완료로 기록했습니다.']});
+ const complete=(t:StoreTask)=>run(async()=>{await send({action:'save_task',storeId:store.id,id:t.id,version:t.version,status:'done',evidence:evidence[t.id]??''});setEvidence(e=>({...e,[t.id]:''}));return ['할 일을 완료로 기록했습니다.']},async()=>{await send({action:'save_task',storeId:store.id,id:t.id,version:t.version+1,status:'open',evidence:t.evidence??''});fill(await fetchListing())},'할 일을 다시 열었습니다.');
  if(!listing||(!listing.enabled&&!listing.snapshots.length))return error?<p className="form-error" role="alert">{error}</p>:null;
  const open=listing.tasks.filter(t=>t.status==='open');
  return <section className="subtle-note" aria-label="플레이스 정보 대조" aria-live="polite">

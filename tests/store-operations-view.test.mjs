@@ -56,14 +56,14 @@ check('row errors are listed in CSV line order',shown.errors,[{line:3,message:'3
 check('identifiable customers are counted, never shown',shown.privacy,'고객 식별 열 값이 있는 주문 2건은 원문을 저장하지 않고 건수만 셉니다.');
 check('a file with row errors cannot be confirmed',[shown.canConfirm,shown.blocked],[false,'오류 행이 있으면 파일 전체를 저장하지 않습니다. 고친 뒤 다시 미리보기 하세요.']);
 const on=v.previewView({dryRun:true,ready:4,duplicates:0,identifiableOrders:0,autoAttribution:{enabled:true,label:'자동 귀속 켜짐',attributed:2,conflicts:1,unknownCodes:1,unavailable:1}});
-check('a clean preview can be confirmed with the ready count',[on.canConfirm,on.confirmLabel,on.blocked,on.privacy],[true,'확정 · 4건 저장','',null]);
+check('a clean preview can be confirmed with the ready count',[on.canConfirm,on.confirmLabel,on.blocked,on.privacy],[true,'4건 확정 저장','',null]);
 check('attributed and unattributed rows split the ready rows',on.cards.slice(3),[{label:'자동 귀속',value:'2건'},{label:'미귀속',value:'2건'}]);
-check('code conflicts, unknown and unavailable codes are explained',on.codeNotes,'코드 충돌 1건(첫 유효 코드로 귀속) · 등록되지 않은 코드 1건 · 쓸 수 없는 코드 1건(캠페인 삭제 등)');
+check('code conflicts, unknown and unavailable codes are explained',on.codeNotes,'코드 충돌 1건(첫 유효 코드로 귀속), 등록되지 않은 코드 1건, 쓸 수 없는 코드 1건(캠페인 삭제 등)');
 check('nothing ready cannot be confirmed',v.previewView({ready:0,duplicates:2,identifiableOrders:0}).canConfirm,false);
 check('rejected rows in the {row,reason} shape are read too',v.previewView({ready:1,rejected:[{row:2,reason:'x'}]}).errors,[{line:2,message:'x'}]);
 check('the full error count wins over the first 50 errors',v.previewView({ready:1,errorCount:73,errors:[{line:2,message:'x'}]}).cards[2].value,'73건');
 const sampled=v.previewView({ready:2,sample:[{line:2,orderNumber:'A1',orderDate:'2026-09-21',source:'baemin',mode:'delivery',paidAmount:18000,discountAmount:1000,trackingCodes:['CAB23XYZ','QRB7X9K'],campaignId:'c1',arm:'A',conflict:true},{line:3,orderNumber:'A2',orderDate:'2026-09-21',source:'pos',mode:'hall',paidAmount:12000,discountAmount:0,trackingCodes:[],campaignId:null,arm:null,conflict:false}]},{c1:'오픈 캠페인'});
-check('the preview table shows saved values and the attribution per row',sampled.sample,[{line:2,orderNumber:'A1',orderDate:'2026-09-21',route:'배달의민족 · 배달',amount:'18,000원',discount:'1,000원',codes:'CAB23XYZ, QRB7X9K',attribution:'오픈 캠페인 · 팔 A · 코드 충돌'},{line:3,orderNumber:'A2',orderDate:'2026-09-21',route:'POS · 홀',amount:'12,000원',discount:'0원',codes:'없음',attribution:'미귀속'}]);
+check('the preview table shows saved values and the attribution per row',sampled.sample,[{line:2,orderNumber:'A1',orderDate:'2026-09-21',route:'배달의민족(배달)',amount:'18,000원',discount:'1,000원',codes:'CAB23XYZ, QRB7X9K',attribution:'오픈 캠페인, 팔 A, 코드 충돌'},{line:3,orderNumber:'A2',orderDate:'2026-09-21',route:'POS(홀)',amount:'12,000원',discount:'0원',codes:'없음',attribution:'미귀속'}]);
 const twins=v.previewView({ready:2,duplicates:0,identifiableOrders:0,sourceConflicts:2,sourceConflictLines:[2,3]});
 check('orders saved under another source are explained before confirming',[twins.sourceConflicts,twins.canConfirm],['출처(주문 채널)만 다른 같은 주문일·주문번호의 주문이 장부에 2건 있습니다(2, 3행). 열 매핑만 바꿔 같은 파일을 다시 올린 것이면 확정하지 마세요.',true]);
 check('no different-source orders means no notice',v.previewView({ready:1}).sourceConflicts,null);
@@ -76,10 +76,10 @@ check('estimated contribution is marked',v.unitRows([{key:'c1',orders:2,netReven
 check('rows without spend or customer data say so',v.unitRows([{key:'pos',orders:4,netRevenue:0,contribution:0,newCustomers:null,spendTotal:null}])[0],{key:'pos',label:'pos',orders:'4건',netRevenue:'0원',contribution:'0원',contributionNote:'',spend:'배분 안 함',newCustomers:'미확인',costPerNewCustomer:'미확인'});
 check('the unattributed row keeps the server label',v.unitRows([{key:'',label:'미귀속',orders:1,netRevenue:700,contribution:null}],{c1:'오픈 캠페인'})[0].label,'미귀속');
 check('a campaign title wins over the server id label',v.unitRows([{key:'c1',label:'c1',orders:1,netRevenue:700,contribution:null}],{c1:'오픈 캠페인'})[0].label,'오픈 캠페인');
-check('arm rows are named by campaign title and arm',v.armNames([{key:'c1·A'},{key:'c1·팔 없음'},{key:'c9·B'}],{c1:'오픈 캠페인'}),{'c1·A':'오픈 캠페인 · 팔 A','c1·팔 없음':'오픈 캠페인 · 팔 없음','c9·B':'c9 · 팔 B'});
-check('creative rows are named by campaign title and creative',v.creativeNames([{key:'c1·cr1'}],{c1:'오픈 캠페인'}),{'c1·cr1':'오픈 캠페인 · 소재 cr1'});
-check('creative rows use the report creative labels (title or fallback) when given',v.creativeNames([{key:'c1·cr1'},{key:'c1·cr2'},{key:'c9·cr3'}],{c1:'오픈 캠페인'},{cr1:'오픈 주소 안내 v1',cr2:'소재 · 9월 23일 00:05 생성 · 주소: 휘경동 377 C107'}),{'c1·cr1':'오픈 캠페인 · 오픈 주소 안내 v1','c1·cr2':'오픈 캠페인 · 소재 · 9월 23일 00:05 생성 · 주소: 휘경동 377 C107','c9·cr3':'c9 · 소재 cr3'});
-check('server-shaped arm rows show the campaign title',v.unitRows([{key:'c1·A',label:'c1 · A',orders:1,netRevenue:1,contribution:null}],v.armNames([{key:'c1·A'}],{c1:'오픈 캠페인'}))[0].label,'오픈 캠페인 · 팔 A');
+check('arm rows are named by campaign title and arm',v.armNames([{key:'c1·A'},{key:'c1·팔 없음'},{key:'c9·B'}],{c1:'오픈 캠페인'}),{'c1·A':'오픈 캠페인, 팔 A','c1·팔 없음':'오픈 캠페인, 팔 없음','c9·B':'c9, 팔 B'});
+check('creative rows are named by campaign title and creative',v.creativeNames([{key:'c1·cr1'}],{c1:'오픈 캠페인'}),{'c1·cr1':'오픈 캠페인, 소재 cr1'});
+check('creative rows use the report creative labels (title or fallback) when given',v.creativeNames([{key:'c1·cr1'},{key:'c1·cr2'},{key:'c9·cr3'}],{c1:'오픈 캠페인'},{cr1:'오픈 주소 안내 v1',cr2:'소재(9월 23일 00:05 생성), 주소: 휘경동 377 C107'}),{'c1·cr1':'오픈 캠페인, 오픈 주소 안내 v1','c1·cr2':'오픈 캠페인, 소재(9월 23일 00:05 생성), 주소: 휘경동 377 C107','c9·cr3':'c9, 소재 cr3'});
+check('server-shaped arm rows show the campaign title',v.unitRows([{key:'c1·A',label:'c1, A',orders:1,netRevenue:1,contribution:null}],v.armNames([{key:'c1·A'}],{c1:'오픈 캠페인'}))[0].label,'오픈 캠페인, 팔 A');
 check('the report request sends a variable cost rate only when entered',[v.reportRequest({from:'2026-09-01',to:'2026-09-30',rate:''}),v.reportRequest({from:'2026-09-01',to:'2026-09-30',rate:' 0.4 '})],[{from:'2026-09-01',to:'2026-09-30'},{from:'2026-09-01',to:'2026-09-30',variableCostRate:0.4}]);
 check('the contribution basis says when costs are estimated',[v.contributionBasis(null),v.contributionBasis({variableCostRate:0.4})],['원가를 모르면 미확인','원가 없는 주문은 변동비율 0.4로 추정']);
 check('a missing list is an empty table',v.unitRows(undefined),[]);
@@ -88,17 +88,17 @@ check('a missing list is an empty table',v.unitRows(undefined),[]);
 const weeks=[{weekStart:'2026-09-21',weekEnd:'2026-09-27',status:'pass',ledgerNet:500000,posNet:502000},{weekStart:'2026-09-28',weekEnd:'2026-10-04',status:'missing_pos',ledgerNet:300000,posNet:null},{weekStart:'2026-12-28',status:'fail',ledgerNet:200000,posNet:260000,reason:'장부 합계가 POS 합계와 1% 넘게 다릅니다.'},{weekStart:'2026-09-14',status:'fail',ledgerNet:100,posNet:90}];
 check('week rows show pass, missing POS total and the server reason',v.weekRows(weeks).map(w=>[w.label,w.ledger,w.pos,w.status,w.statusLabel]),[
  ['2026-09-21 ~ 09-27','500,000원','502,000원','pass','통과'],
- ['2026-09-28 ~ 10-04','300,000원','미입력','missing_pos','미통과 · POS 합계 미입력'],
- ['2026-12-28 ~ 2027-01-03','200,000원','260,000원','fail','미통과 · 장부 합계가 POS 합계와 1% 넘게 다릅니다.'],
- ['2026-09-14 ~ 09-20','100원','90원','fail','미통과 · 차이 10원'],
+ ['2026-09-28 ~ 10-04','300,000원','미입력','missing_pos','미통과: POS 합계 미입력'],
+ ['2026-12-28 ~ 2027-01-03','200,000원','260,000원','fail','미통과: 장부 합계가 POS 합계와 1% 넘게 다릅니다.'],
+ ['2026-09-14 ~ 09-20','100원','90원','fail','미통과: 차이 10원'],
 ]);
-check('baseline weeks are marked in the completeness table',v.weekRows([{weekStart:'2026-08-31',status:'pass',ledgerNet:1,posNet:1}],true).map(w=>[w.label,w.baseline]),[['2026-08-31 ~ 09-06 · 기준 주',true]]);
+check('baseline weeks are marked in the completeness table',v.weekRows([{weekStart:'2026-08-31',status:'pass',ledgerNet:1,posNet:1}],true).map(w=>[w.label,w.baseline]),[['2026-08-31 ~ 09-06(기준 주)',true]]);
 check('report weeks are not baseline weeks',v.weekRows([{weekStart:'2026-08-31',status:'pass',ledgerNet:1,posNet:1}])[0].baseline,false);
 check('a week without a POS total never passes',v.weekRows([{weekStart:'2026-09-21',status:'pass',ledgerNet:1,posNet:null}])[0].status,'missing_pos');
 check('an unknown week key is shown as is',v.weekLabel('9월 첫째 주'),'9월 첫째 주');
-check('completeness summary counts passing weeks for the north-star',v.completenessSummary(weeks),{passed:1,total:4,text:'완전성 통과 1/4주 · 통과한 주만 핵심 지표에 집계합니다.'});
+check('completeness summary counts passing weeks for the north-star',v.completenessSummary(weeks),{passed:1,total:4,text:'완전성 통과 1/4주. 통과한 주만 핵심 지표에 집계합니다.'});
 check('no weeks means nothing counted yet',v.completenessSummary([]).text,'완전성 검사할 주가 없습니다. POS 합계를 입력하면 주별로 대조합니다.');
-check('north-star shows attributed orders and contribution of passed weeks only',v.northStarView({passedWeeks:2,excludedWeeks:3,attributedOrders:5,attributedContribution:14400,weeks:['2026-08-24','2026-09-14']}),{orders:'5건',contribution:'14,400원',basis:'완전성 통과 2주 기준 · 미통과·미입력 3주 제외'});
+check('north-star shows attributed orders and contribution of passed weeks only',v.northStarView({passedWeeks:2,excludedWeeks:3,attributedOrders:5,attributedContribution:14400,weeks:['2026-08-24','2026-09-14']}),{orders:'5건',contribution:'14,400원',basis:'완전성 통과 2주 기준, 미통과·미입력 3주 제외'});
 check('north-star without data is unknown',v.northStarView(undefined),{orders:'미확인',contribution:'미확인',basis:'완전성 통과 주가 없어 핵심 지표를 집계하지 않았습니다.'});
 check('POS totals are offered only for finished weeks, newest first, with the saved version',v.posWeekOptions(weeks.map(w=>w.weekStart==='2026-09-21'?{...w,posVersion:2}:{...w,posVersion:null}),'2026-10-04').map(o=>[o.value,o.label,o.version??null]),[['2026-09-28','2026-09-28 ~ 10-04',null],['2026-09-21','2026-09-21 ~ 09-27',2],['2026-09-14','2026-09-14 ~ 09-20',null]]);
 check('the current week is not offered yet',v.posWeekOptions(weeks,'2026-10-03').map(o=>o.value),['2026-09-21','2026-09-14']);

@@ -9,12 +9,13 @@
   "hexColors":39,
   "mediaWidths":4,
   "middleDotJoins":0,
+  "libMiddleDots":32,
   "bareEmptyLines": 15,
   "silentDisabled": 0,
   "negativeSafety": 3,
   "directToastSuccess": 0
  },
- "floors": {"undoNotices": 6},
+ "floors": {"undoNotices": 13},
  "lazyOnly": ["learning-panel", "brand-archive", "campaign-brief", "campaign-detail-panel", "panels", "delete-campaign-dialog", "measurement-collect", "campaign-metrics", "store-marketing-panel", "franchise-panel"],
  "runtime": {
   "homeJsGzKB": 175,
@@ -22,7 +23,7 @@
   "axeCriticalSerious": 0,
   "mobileTouchTargetPct": 98,
   "horizontalOverflowPx": 1,
-  "lcpMs4g": 2700,
+  "lcpMs4g": 2600,
   "inpMs": 200
  }
 }

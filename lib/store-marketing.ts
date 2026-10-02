@@ -4,19 +4,22 @@ import type {PlaceTaskSource} from './place-check';
 
 export const tradeAreas={residential:'주거 상권',office:'오피스 상권',destination:'목적 방문·관광 상권',mixed:'복합 상권',unknown:'조사 필요'} as const;
 export type Store={id:string;brandId:string;name:string;address:string;tradeArea:keyof typeof tradeAreas;customer:string;goal:string;daypart:string;menu:string;hours:string;access:string;capacity:string;economics:string;competitors:string;status:'active'|'archived';version:number;createdAt:string;updatedAt:string};
-export const storeFields={name:'지점 이름',address:'주소 · 주요 상권',customer:'주요 고객 · 이용 상황',goal:'늘리고 싶은 매출 · 고객 행동',daypart:'집중할 요일 · 시간대',menu:'대표 메뉴 · 실제 가격',hours:'영업시간 · 휴무',access:'주차 · 대중교통 · 입구',capacity:'좌석 · 주문 처리 여력',economics:'객단가 · 원가 · 할인 여력',competitors:'비교할 주변 매장'} as const;
+// 지점 폼 칸 이름(화면·서버 검증 메시지 공용). 저장 키는 왼쪽 키이고 이름은 화면 문구라 가운뎃점으로 잇지 않고 자연스러운 말로 쓴다.
+export const storeFields={name:'지점 이름',address:'주소와 주요 상권',customer:'주요 고객과 이용 상황',goal:'늘리고 싶은 매출과 고객 행동',daypart:'집중할 요일과 시간대',menu:'대표 메뉴와 실제 가격',hours:'영업시간과 휴무',access:'주차, 대중교통, 입구',capacity:'좌석과 주문 처리 여력',economics:'객단가, 원가, 할인 여력',competitors:'비교할 주변 매장'} as const;
+// name은 캠페인 channels·학습 규칙 채널 값으로 저장되고 lib/channels.ts channelRegistry 키와 글자 그대로 맞춰 비교하는 값이라 바꾸지 않는다.
+// 화면에는 label(가운뎃점으로 잇지 않은 표시 이름)을 쓴다.
 export const channelCatalog=[
- {key:'naver_place',name:'네이버 플레이스',role:'검색 → 방문 결정',checks:['메뉴·가격 최신화','대표 메뉴·외관·입구 사진','영업시간·휴무·주차','예약·주문·전화 동선','후기 불만·답변 확인'],url:'https://ads.naver.com/sub/insight/adtips/155',tip:'매장 정보와 실제 운영을 일치시키세요. 지도 클릭은 방문 완료와 구분합니다.'},
- {key:'naver_ads',name:'네이버 검색광고',role:'검색 수요 확보',checks:['플레이스·파워링크 목적 구분','지역·메뉴·이용 상황 정리','연결 페이지 점검','일 예산·중단 기준','실제 구매 측정 경로'],url:'https://ads.naver.com/sub/insight/adtips/167',tip:'플레이스는 매장 정보 기반 매칭·클릭 과금, 지역소상공인광고는 유효 노출 과금입니다.'},
- {key:'blog',name:'블로그',role:'방문 전 궁금증 해소',checks:['지역·이용 상황별 질문','실제 메뉴·가격·사진','주차·주문 방법 안내','협찬·광고 표시 확인','매장 링크·방문 안내'],url:'',tip:'확인한 경험을 기록하세요. 글 발행 건수와 실제 유입 성과를 구분합니다.'},
- {key:'local_creator',name:'지역 맛집 페이지',role:'새로운 고객의 발견',checks:['실제 도달 지역 확인','최근 광고 게시물 성과','유사업종 콘텐츠 적합성','촬영·원본·재사용 권한','예약·쿠폰 추적 경로'],url:'',tip:'팔로워 수 외에 상권 도달과 광고 게시물 실적을 확인하세요. 통계는 운영자에게 제공받습니다.'},
- {key:'social',name:'SNS · 숏폼',role:'방문 이유 전달',checks:['대표 메뉴의 매력','고객 이용 상황','가격·위치·영업 안내','게시 후 관찰 기간 통일','소재별 방문 안내'],url:'',tip:'좋은 성과와 보통 성과를 함께 비교하고 광고 여부와 게시 경과를 기록하세요.'},
- {key:'daangn',name:'당근',role:'생활권 신규 고객·단골',checks:['비즈프로필 정보 정비','실제 방문 가능한 동네','소식·혜택 조건','쿠폰 사용 처리','광고비·사용 매출 기록'],url:'https://business.daangn.com/ads/smb',tip:'쿠폰 수령과 사용을 따로 기록하고 혜택 원가까지 계산하세요.'},
- {key:'maps',name:'카카오맵 · 구글 지도',role:'위치·방문 정보 확인',checks:['관리 권한·중복 장소','위치 핀·입구 확인','메뉴·운영시간 일치','외관·접근 방법','후기·문의 확인'],url:'https://kakaobusiness.gitbook.io/main/channel/run/mystore',tip:'채널마다 주소·가격·영업시간을 일치시키세요. 추가 지도 주소는 근거 메모에 보관합니다.'},
- {key:'orders',name:'예약 · 포장 · 배달',role:'실제 구매 연결',checks:['메뉴·옵션·품절 관리','주문·예약 완료 동선','수수료·포장 원가','취소·노쇼·처리 시간','채널별 결제 실적'],url:'',tip:'홀·포장·배달을 구분하고 각 채널의 수수료와 상품 원가를 기록하세요.'},
- {key:'retention',name:'카카오톡 · 재방문',role:'기존 고객 재구매',checks:['채널 추가 동선','수신 동의·대상 확인','재방문 이유·혜택','발송비·혜택 원가','동일 관찰 기간 재구매'],url:'https://kakaobusiness.gitbook.io/main/channel/run/message',tip:'친구 수와 재구매 고객 수를 구분합니다. 재방문은 관찰 기간이 끝난 고객군으로 계산하세요.'},
- {key:'partnership',name:'지역 제휴 · 커뮤니티',role:'주변 고객과 연결',checks:['오피스·숙박·주변 점포 후보','커뮤니티 홍보 규정','제휴 조건·담당자','전용 주문·쿠폰 경로','제휴별 비용·주문 실적'],url:'',tip:'주변 사업장과 고객 이용 상황이 맞는 제휴부터 검토하세요.'},
- {key:'offline',name:'매장 · 오프라인 안내',role:'입점·구매·재방문',checks:['간판·입구 식별','메뉴·가격 가독성','대표 상품·주문 안내','포장물·영수증 안내','혜택 확인·직원 안내'],url:'',tip:'온라인에서 본 정보와 실제 매장 경험이 일치하는지 확인하세요.'},
+ {key:'naver_place',name:'네이버 플레이스',label:'네이버 플레이스',role:'검색 → 방문 결정',checks:['메뉴·가격 최신화','대표 메뉴·외관·입구 사진','영업시간·휴무·주차','예약·주문·전화 동선','후기 불만·답변 확인'],url:'https://ads.naver.com/sub/insight/adtips/155',tip:'매장 정보와 실제 운영을 일치시키세요. 지도 클릭은 방문 완료와 구분합니다.'},
+ {key:'naver_ads',name:'네이버 검색광고',label:'네이버 검색광고',role:'검색 수요 확보',checks:['플레이스·파워링크 목적 구분','지역·메뉴·이용 상황 정리','연결 페이지 점검','일 예산·중단 기준','실제 구매 측정 경로'],url:'https://ads.naver.com/sub/insight/adtips/167',tip:'플레이스는 매장 정보 기반 매칭·클릭 과금, 지역소상공인광고는 유효 노출 과금입니다.'},
+ {key:'blog',name:'블로그',label:'블로그',role:'방문 전 궁금증 해소',checks:['지역·이용 상황별 질문','실제 메뉴·가격·사진','주차·주문 방법 안내','협찬·광고 표시 확인','매장 링크·방문 안내'],url:'',tip:'확인한 경험을 기록하세요. 글 발행 건수와 실제 유입 성과를 구분합니다.'},
+ {key:'local_creator',name:'지역 맛집 페이지',label:'지역 맛집 페이지',role:'새로운 고객의 발견',checks:['실제 도달 지역 확인','최근 광고 게시물 성과','유사업종 콘텐츠 적합성','촬영·원본·재사용 권한','예약·쿠폰 추적 경로'],url:'',tip:'팔로워 수 외에 상권 도달과 광고 게시물 실적을 확인하세요. 통계는 운영자에게 제공받습니다.'},
+ {key:'social',name:'SNS · 숏폼',label:'SNS 숏폼',role:'방문 이유 전달',checks:['대표 메뉴의 매력','고객 이용 상황','가격·위치·영업 안내','게시 후 관찰 기간 통일','소재별 방문 안내'],url:'',tip:'좋은 성과와 보통 성과를 함께 비교하고 광고 여부와 게시 경과를 기록하세요.'},
+ {key:'daangn',name:'당근',label:'당근',role:'생활권 신규 고객·단골',checks:['비즈프로필 정보 정비','실제 방문 가능한 동네','소식·혜택 조건','쿠폰 사용 처리','광고비·사용 매출 기록'],url:'https://business.daangn.com/ads/smb',tip:'쿠폰 수령과 사용을 따로 기록하고 혜택 원가까지 계산하세요.'},
+ {key:'maps',name:'카카오맵 · 구글 지도',label:'카카오맵·구글 지도',role:'위치·방문 정보 확인',checks:['관리 권한·중복 장소','위치 핀·입구 확인','메뉴·운영시간 일치','외관·접근 방법','후기·문의 확인'],url:'https://kakaobusiness.gitbook.io/main/channel/run/mystore',tip:'채널마다 주소·가격·영업시간을 일치시키세요. 추가 지도 주소는 근거 메모에 보관합니다.'},
+ {key:'orders',name:'예약 · 포장 · 배달',label:'예약·포장·배달',role:'실제 구매 연결',checks:['메뉴·옵션·품절 관리','주문·예약 완료 동선','수수료·포장 원가','취소·노쇼·처리 시간','채널별 결제 실적'],url:'',tip:'홀·포장·배달을 구분하고 각 채널의 수수료와 상품 원가를 기록하세요.'},
+ {key:'retention',name:'카카오톡 · 재방문',label:'카카오톡 재방문',role:'기존 고객 재구매',checks:['채널 추가 동선','수신 동의·대상 확인','재방문 이유·혜택','발송비·혜택 원가','동일 관찰 기간 재구매'],url:'https://kakaobusiness.gitbook.io/main/channel/run/message',tip:'친구 수와 재구매 고객 수를 구분합니다. 재방문은 관찰 기간이 끝난 고객군으로 계산하세요.'},
+ {key:'partnership',name:'지역 제휴 · 커뮤니티',label:'지역 제휴·커뮤니티',role:'주변 고객과 연결',checks:['오피스·숙박·주변 점포 후보','커뮤니티 홍보 규정','제휴 조건·담당자','전용 주문·쿠폰 경로','제휴별 비용·주문 실적'],url:'',tip:'주변 사업장과 고객 이용 상황이 맞는 제휴부터 검토하세요.'},
+ {key:'offline',name:'매장 · 오프라인 안내',label:'매장·오프라인 안내',role:'입점·구매·재방문',checks:['간판·입구 식별','메뉴·가격 가독성','대표 상품·주문 안내','포장물·영수증 안내','혜택 확인·직원 안내'],url:'',tip:'온라인에서 본 정보와 실제 매장 경험이 일치하는지 확인하세요.'},
 ] as const;
 // 점포 채널 체크리스트의 키. 자동 수집 커넥터 키는 lib/channels.ts의 ConnectorKey다.
 export type ChannelKey=typeof channelCatalog[number]['key'];
@@ -39,8 +42,8 @@ export function storeMetrics(m?:StoreMeasurement){
  const rate=(a:StoreMetricKey,b:StoreMetricKey)=>n(a)!==null&&n(b)!==null&&n(b)!>0?n(a)!/n(b)!*100:null;
  const complete=(['revenue','variableCosts','adSpend','productionCost'] as const).every(k=>n(k)!==null);
  return [{label:'확인된 구매',value:n('orders'),unit:'건',definition:'POS·결제 자료로 확인한 주문'},
- {label:'비용 차감 잔액',value:complete?n('revenue')!-n('variableCosts')!-n('adSpend')!-n('productionCost')!:null,unit:'원',definition:'매출 − 변동비 − 광고비 − 제작비 · 고정비 차감 전'},
- {label:'신규 고객당 광고비',value:n('adSpend')!==null&&n('newCustomers')!==null&&n('newCustomers')!>0?n('adSpend')!/n('newCustomers')!:null,unit:'원',definition:'광고비 ÷ 확인된 신규 고객 · 전체 고객 획득 비용과 구분'},
+ {label:'비용 차감 잔액',value:complete?n('revenue')!-n('variableCosts')!-n('adSpend')!-n('productionCost')!:null,unit:'원',definition:'매출 − 변동비 − 광고비 − 제작비(고정비 차감 전)'},
+ {label:'신규 고객당 광고비',value:n('adSpend')!==null&&n('newCustomers')!==null&&n('newCustomers')!>0?n('adSpend')!/n('newCustomers')!:null,unit:'원',definition:'광고비 ÷ 확인된 신규 고객(전체 고객 획득 비용과 구분)'},
  {label:'쿠폰 사용률',value:rate('couponUsed','couponReceived'),unit:'%',definition:'같은 쿠폰·고객군의 사용 고객 ÷ 수령 고객'},
  {label:'재구매율',value:m?.cohortMatured?rate('repeatCustomers','eligibleCustomers'):null,unit:'%',definition:'관찰 기간 종료 고객 중 재구매 고객 비율'}];
 }

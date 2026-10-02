@@ -62,8 +62,8 @@ check(exec.composeCaption(undefined,factCaption)===factCaption&&exec.composeCapt
 check(exec.composeCaption(undefined,factCaption,undefined)===factCaption&&exec.composeCaption('카피 한 줄',factCaption,undefined)==='카피 한 줄\n\n'+factCaption,'an explicit undefined code changes nothing');
 check(exec.composeCaption('카피 한 줄',factCaption,{type:'coupon',code:'CABCD2345'})==='카피 한 줄\n\n'+factCaption+'\n\n주문할 때 쿠폰 코드 CABCD2345를 알려 주세요.','code line is appended last after a blank line');
 check(exec.creativeLabel?.({id:'abcdef123456',title:'오픈 주소 안내 v1',caption:factCaption,createdAt:'2026-09-24T00:00:00.000Z'})==='오픈 주소 안내 v1','creative label shows the title');
-check(exec.creativeLabel?.({id:'abcdef123456',caption:factCaption+'\n영업시간: 11시',createdAt:'2026-09-23T15:05:00.000Z'})==='소재 · 9월 24일 00:05 생성 · 주소: 휘경동 377 C107','untitled creative gets a readable Korean-time fallback with its first fact line');
-check(exec.creativeLabel?.({id:'abcdef123456',caption:factCaption,createdAt:''})==='소재 · abcdef12 · 주소: 휘경동 377 C107','untitled creative without a date falls back to a short id');
+check(exec.creativeLabel?.({id:'abcdef123456',caption:factCaption+'\n영업시간: 11시',createdAt:'2026-09-23T15:05:00.000Z'})==='소재(9월 24일 00:05 생성), 주소: 휘경동 377 C107','untitled creative gets a readable Korean-time fallback with its first fact line');
+check(exec.creativeLabel?.({id:'abcdef123456',caption:factCaption,createdAt:''})==='소재(abcdef12), 주소: 휘경동 377 C107','untitled creative without a date falls back to a short id');
 check(exec.CREATIVE_TITLE_MAX===60,'creative title limit is 60 characters');
 
 // (3) 소재 제목: 선택, 앞뒤 공백 제거, 1~60자. 비우면 저장하지 않는다. 해시·캡션에 넣지 않는다.

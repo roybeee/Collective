@@ -5,6 +5,7 @@ import {trackingCodeTypes,isTrackingCodeType,normalizeUtmCampaign,utmQuery,type 
 import {importFields as orderImportFields,suggestMapping,checkMapping} from './order-import';
 import {ATTRIBUTION_NOT_INCREMENTAL} from './store-attribution';
 import {orderSources,orderModes} from './store-operations';
+import {metaText} from './format';
 
 export {trackingCodeTypes,type TrackingCode};
 export const AUTO_ATTRIBUTION_OFF='자동 귀속 꺼짐 — 소유자가 기능 스위치에서 켤 수 있음';
@@ -65,11 +66,11 @@ export function previewView(p:Partial<ImportPreview>|undefined,campaigns:Record<
  const ready=whole(p?.ready),auto=p?.autoAttribution,attributed=whole(auto?.attributed),customers=whole(p?.identifiableOrders),errorCount=Math.max(whole(p?.errorCount),errors.length);
  const notes=[[whole(auto?.conflicts),'코드 충돌 %건(첫 유효 코드로 귀속)'],[whole(auto?.unknownCodes),'등록되지 않은 코드 %건'],[whole(auto?.unavailable),'쓸 수 없는 코드 %건(캠페인 삭제 등)']] as const;
  return {cards:[{label:'저장 가능',value:count(ready)},{label:'이미 있음',value:count(whole(p?.duplicates))},{label:'오류 행',value:count(errorCount)},{label:'자동 귀속',value:count(attributed)},{label:'미귀속',value:count(Math.max(ready-attributed,0))}],
-  errors,codeNotes:notes.filter(([n])=>n>0).map(([n,text])=>text.replace('%',n.toLocaleString('ko-KR'))).join(' · ')||null,
+  errors,codeNotes:metaText(notes.filter(([n])=>n>0).map(([n,text])=>text.replace('%',n.toLocaleString('ko-KR'))))||null,
   privacy:customers?`고객 식별 열 값이 있는 주문 ${customers.toLocaleString('ko-KR')}건은 원문을 저장하지 않고 건수만 셉니다.`:null,
-  sample:(Array.isArray(p?.sample)?p.sample:[]).map(r=>({line:whole(r.line),orderNumber:r.orderNumber,orderDate:r.orderDate,route:`${orderSources[r.source as keyof typeof orderSources]||r.source} · ${orderModes[r.mode as keyof typeof orderModes]||r.mode}`,amount:won(r.paidAmount),discount:won(r.discountAmount),codes:r.trackingCodes?.length?r.trackingCodes.join(', '):'없음',attribution:r.campaignId?[campaigns[r.campaignId]||r.campaignId,...(r.arm?['팔 '+r.arm]:[]),...(r.conflict?['코드 충돌']:[])].join(' · '):'미귀속'})),
+  sample:(Array.isArray(p?.sample)?p.sample:[]).map(r=>({line:whole(r.line),orderNumber:r.orderNumber,orderDate:r.orderDate,route:`${orderSources[r.source as keyof typeof orderSources]||r.source}(${orderModes[r.mode as keyof typeof orderModes]||r.mode})`,amount:won(r.paidAmount),discount:won(r.discountAmount),codes:r.trackingCodes?.length?r.trackingCodes.join(', '):'없음',attribution:r.campaignId?metaText([campaigns[r.campaignId]||r.campaignId,r.arm&&'팔 '+r.arm,r.conflict&&'코드 충돌']):'미귀속'})),
   sourceConflicts:whole(p?.sourceConflicts)?`출처(주문 채널)만 다른 같은 주문일·주문번호의 주문이 장부에 ${whole(p?.sourceConflicts).toLocaleString('ko-KR')}건 있습니다(${(Array.isArray(p?.sourceConflictLines)?p.sourceConflictLines.map(whole):[]).join(', ')}행). 열 매핑만 바꿔 같은 파일을 다시 올린 것이면 확정하지 마세요.`:null,
-  canConfirm:ready>0&&!errorCount,blocked:errorCount?'오류 행이 있으면 파일 전체를 저장하지 않습니다. 고친 뒤 다시 미리보기 하세요.':'',confirmLabel:`확정 · ${ready.toLocaleString('ko-KR')}건 저장`};
+  canConfirm:ready>0&&!errorCount,blocked:errorCount?'오류 행이 있으면 파일 전체를 저장하지 않습니다. 고친 뒤 다시 미리보기 하세요.':'',confirmLabel:`${ready.toLocaleString('ko-KR')}건 확정 저장`};
 }
 
 export const reportSections=[{key:'byCode',title:'추적 코드별',column:'코드'},{key:'byArm',title:'팔(arm)별',column:'캠페인·팔'},{key:'byCreative',title:'소재별',column:'캠페인·소재'},{key:'byCampaign',title:'캠페인별',column:'캠페인'},{key:'byChannel',title:'채널별 단위경제',column:'유입 채널'},{key:'bySource',title:'주문 출처별',column:'출처'}] as const;
@@ -84,8 +85,8 @@ export function unitRows(rows:readonly UnitRow[]|undefined,names:Record<string,s
 // 팔·소재 행의 키는 `${campaignId}·${arm|creativeId}`다(lib/store-attribution.ts attributionBreakdown). 캠페인 id를 제목으로 바꿔 보인다.
 // 소재는 보고서가 준 소재 이름(creativeLabels: 제목, 없으면 만든 한국 시각·첫 사실 줄)을 쓰고, 이름이 없으면 id를 쓴다.
 const splitPair=(key:string)=>{const i=key.indexOf('·');return i<0?[key,'']:[key.slice(0,i),key.slice(i+1)]};
-export const armNames=(rows:readonly Pick<UnitRow,'key'>[]|undefined,titles:Record<string,string>)=>Object.fromEntries((rows||[]).map(r=>{const [id,arm]=splitPair(r.key);return [r.key,`${titles[id]||id} · ${arm==='팔 없음'?arm:'팔 '+arm}`]}));
-export const creativeNames=(rows:readonly Pick<UnitRow,'key'>[]|undefined,titles:Record<string,string>,labels:Record<string,string>={})=>Object.fromEntries((rows||[]).map(r=>{const [id,creative]=splitPair(r.key);return [r.key,`${titles[id]||id} · ${labels[creative]||'소재 '+creative}`]}));
+export const armNames=(rows:readonly Pick<UnitRow,'key'>[]|undefined,titles:Record<string,string>)=>Object.fromEntries((rows||[]).map(r=>{const [id,arm]=splitPair(r.key);return [r.key,metaText([titles[id]||id,arm==='팔 없음'?arm:'팔 '+arm])]}));
+export const creativeNames=(rows:readonly Pick<UnitRow,'key'>[]|undefined,titles:Record<string,string>,labels:Record<string,string>={})=>Object.fromEntries((rows||[]).map(r=>{const [id,creative]=splitPair(r.key);return [r.key,metaText([titles[id]||id,labels[creative]||'소재 '+creative])]}));
 // 보고서 요청. 변동비율(0~1)은 입력했을 때만 보내고 검증은 서버가 한다. 원가를 적지 않은 주문의 공헌이익을 이 비율로 추정한다.
 export const reportRequest=({from,to,rate}:{from:string;to:string;rate:string})=>({from,to,...(rate.trim()?{variableCostRate:Number(rate.trim())}:{})});
 export const contributionBasis=(economics:ReportEconomics|null|undefined)=>economics&&finite(economics.variableCostRate)?`원가 없는 주문은 변동비율 ${economics.variableCostRate}로 추정`:'원가를 모르면 미확인';
@@ -99,12 +100,12 @@ export function weekLabel(weekStart:string,weekEnd?:string){
 // POS 합계가 없으면 서버 판정과 상관없이 미입력이다. 미통과 사유는 서버 문구를 우선한다. 기준 주(incrementality-lite 비교용)는 표에 '기준 주'로 표시한다.
 export function weekRows(weeks:readonly ReportWeek[]|undefined,baseline=false){
  return (weeks||[]).map(w=>{const pos=finite(w.posNet)?w.posNet:null,status=pos===null?'missing_pos':w.status==='pass'?'pass':'fail';
-  return {weekStart:w.weekStart,label:weekLabel(w.weekStart,w.weekEnd)+(baseline?' · 기준 주':''),baseline,ledger:won(w.ledgerNet),pos:pos===null?'미입력':won(pos),status,
-   statusLabel:status==='pass'?'통과':status==='missing_pos'?'미통과 · POS 합계 미입력':'미통과 · '+(w.reason?.trim()||'차이 '+won(Math.abs(pos!-(finite(w.ledgerNet)?w.ledgerNet:0))))};});
+  return {weekStart:w.weekStart,label:weekLabel(w.weekStart,w.weekEnd)+(baseline?'(기준 주)':''),baseline,ledger:won(w.ledgerNet),pos:pos===null?'미입력':won(pos),status,
+   statusLabel:status==='pass'?'통과':status==='missing_pos'?'미통과: POS 합계 미입력':'미통과: '+(w.reason?.trim()||'차이 '+won(Math.abs(pos!-(finite(w.ledgerNet)?w.ledgerNet:0))))};});
 }
 export function completenessSummary(weeks:readonly ReportWeek[]|undefined){
  const rows=weekRows(weeks),passed=rows.filter(r=>r.status==='pass').length;
- return {passed,total:rows.length,text:rows.length?`완전성 통과 ${passed}/${rows.length}주 · 통과한 주만 핵심 지표에 집계합니다.`:'완전성 검사할 주가 없습니다. POS 합계를 입력하면 주별로 대조합니다.'};
+ return {passed,total:rows.length,text:rows.length?`완전성 통과 ${passed}/${rows.length}주. 통과한 주만 핵심 지표에 집계합니다.`:'완전성 검사할 주가 없습니다. POS 합계를 입력하면 주별로 대조합니다.'};
 }
 // POS 합계는 끝난 주(일요일까지)만 받는다(서버 set_pos_total). 이미 저장한 합계는 보고서 주의 posVersion으로 고쳐 쓴다.
 const weekEndOf=(w:Pick<ReportWeek,'weekStart'|'weekEnd'>)=>w.weekEnd||new Date(Date.parse(w.weekStart+'T00:00:00Z')+6*86400000).toISOString().slice(0,10);
@@ -113,7 +114,7 @@ export function posWeekOptions(weeks:readonly ReportWeek[]|undefined,today:strin
 }
 export function northStarView(ns:Partial<NorthStar>|undefined){
  if(!ns||!whole(ns.passedWeeks))return {orders:'미확인',contribution:'미확인',basis:'완전성 통과 주가 없어 핵심 지표를 집계하지 않았습니다.'};
- return {orders:count(whole(ns.attributedOrders)),contribution:won(ns.attributedContribution),basis:`완전성 통과 ${whole(ns.passedWeeks)}주 기준 · 미통과·미입력 ${whole(ns.excludedWeeks)}주 제외`};
+ return {orders:count(whole(ns.attributedOrders)),contribution:won(ns.attributedContribution),basis:`완전성 통과 ${whole(ns.passedWeeks)}주 기준, 미통과·미입력 ${whole(ns.excludedWeeks)}주 제외`};
 }
 
 // incrementality-lite: 완전성 통과 주만으로 기준 주 평균과 캠페인 주 평균을 비교한다. '귀속은 증분이 아님' 경고가 항상 첫 줄이다.

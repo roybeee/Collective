@@ -1,5 +1,6 @@
 import {roles,statuses,type Artifact} from './agency';
 import {scrubInternalIds} from './artifact-text';
+import {metaText} from './format';
 
 // 화면 표시용 파생 계산만 한다. 저장 데이터와 서버 동작은 바꾸지 않는다.
 
@@ -28,7 +29,8 @@ function replacedBy(historyId:string){
 }
 function versionLabel(a:VersionRecord,kind:'current'|'outdated'|'history'){
  const state=kind==='current'?(madeBy(a)?'현재: '+madeBy(a):'현재'):kind==='history'?(replacedBy(a.id)?`이전: ${replacedBy(a.id)}으로 교체`:'이전'):'';
- return [`${roleName(a.role)} v${a.version}`,statusLabel(a.status),kstTime(a.createdAt),state].filter(Boolean).join(' · ');
+ // 선택 상자(option) 글자라 MetaLine을 못 쓴다. 쉼표로 잇는다(metaText).
+ return metaText([`${roleName(a.role)} v${a.version}`,statusLabel(a.status),kstTime(a.createdAt),state]);
 }
 // 버전 비교 선택지: 역할 순서로 묶고, 묶음 안에서는 현재 버전 → 최근 작성 순. 이력으로 복사된 outdated 작업물은 한 번만 보인다.
 export function versionGroups(artifacts:VersionRecord[],history:VersionRecord[]):VersionGroup[]{

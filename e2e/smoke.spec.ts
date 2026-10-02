@@ -244,7 +244,10 @@ test('설정 기능표가 확정 사실과 연결 상태를 실제 값으로 보
   await expect(table.getByRole('heading', {name: '현재 사용할 수 있는 기능', exact: true})).toBeVisible();
   await expect(feature('png')).toContainText('조건 부족, 확정 사실 필요(현재 0건)');
   await expect(feature('ai')).toContainText('조건 부족, HERMES 연결 전');
-  await expect(feature('measurement')).toContainText('조건 부족, 네이버 검색광고 연결 전 · Instagram 연결 전');
+  await expect(feature('measurement')).toContainText('조건 부족, 네이버 검색광고 연결 전, Instagram 연결 전');
+  // 기능 스위치 이름 같은 내부 코드는 행 문구에 보이지 않고 '자세히'의 기술 정보 안에만 있다(평가 9회차 결함 3).
+  await expect(feature('data-requests').locator('b')).not.toContainText('a6_data_requests');
+  await expect(feature('data-requests').locator('details')).toContainText('기술 정보: 스위치 이름 a6_data_requests');
   await expect(feature('buffer')).toContainText(/조건 부족, 브랜드별 연결 0\/\d+/);
   await expect(feature('pos-csv')).toContainText('사용 가능, CSV 가져오기 가능');
   await expect(feature('video')).toContainText('미구현');

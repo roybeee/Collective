@@ -280,8 +280,8 @@ export async function approvalInputs(owner:string,campaign:Campaign,p:Publicatio
  await franchiseCaptionGate(owner,campaign,fr,used,p.caption,p.scheduledAt);
  await resolveFacts(owner,campaign,p.factRefs,Date.parse(p.scheduledAt));schedule(p.scheduledAt);
  const [credential,limits]=await Promise.all([optionalRecord<PublisherCredential>(owner,'publisher_credential',campaign.brandId),optionalRecord<ExecutionLimits>(owner,'execution_limits',campaign.id)]);
- if(!credential)throw new ApiError(409,'채널 미연결 · Buffer Instagram 채널을 연결한 뒤 승인하세요.');
- if(!limits)throw new ApiError(409,'한도 미설정 · 기본 한도(발행 1회·0원)를 저장한 뒤 승인하세요.');
+ if(!credential)throw new ApiError(409,'채널 미연결: Buffer Instagram 채널을 연결한 뒤 승인하세요.');
+ if(!limits)throw new ApiError(409,'한도 미설정: 기본 한도(발행 1회·0원)를 저장한 뒤 승인하세요.');
  if(limits.paused)throw new ApiError(409,'이 캠페인의 발행이 중지됐습니다.');
  // 한도를 저장한 뒤 예산을 낮추거나 미확정으로 되돌려도 승인·접수 때 다시 확인한다.
  const budget=budgetIssues(campaign,p.plannedCostKRW,limits);if(budget.length)throw new ApiError(409,budget.join(' '));

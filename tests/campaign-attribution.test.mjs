@@ -78,7 +78,7 @@ check('an order of a pending publication leaves the campaign until it goes live'
 check('a person-written evidence keeps the order as a manual attribution after the gate',row(r.byMethod,'manual').orders===2&&row(r.byMethod,'manual').records===3&&row(r.byMethod,'manual').netRevenue===15000);
 check('code attribution counts only orders whose code passes the gate',row(r.byMethod,'code').orders===2&&row(r.byMethod,'code').netRevenue===22000&&row(r.byMethod,'code').label==='추적 코드 귀속'&&row(r.byMethod,'manual').label==='수동 귀속');
 check('the publication rows keep only the live publication with its code',r.byPublication.length===1&&r.byPublication[0].key==='p-live'&&r.byPublication[0].orders===1&&r.byPublication[0].netRevenue===15000&&r.byPublication[0].codes.join()==='PLIV2345');
-check('a publication row is labelled with the creative, Korean schedule and status',r.byPublication[0].label===`오픈 주소 안내 v1 · 예약 ${d(-10)} 00:30 · 게시 확인`);
+check('a publication row is labelled with the creative, Korean schedule and status',r.byPublication[0].label===`오픈 주소 안내 v1, 예약 ${d(-10)} 00:30, 게시 확인`);
 check('the creative rows use the creative title and keep campaign-only orders apart',row(r.byCreative,'cr1').label==='오픈 주소 안내 v1'&&row(r.byCreative,'cr1').orders===3&&row(r.byCreative,'').orders===1&&row(r.byCreative,'').records===2&&row(r.byCreative,'').label.includes('소재 미지정'));
 check('a store campaign counts only its own store',r.byStore.length===1&&r.byStore[0].key==='s1'&&r.byStore[0].label==='휘경점'&&r.excluded.outOfScope===1);
 check('the gate counts are reported',r.excluded.publicationGate===3&&r.excluded.unattributedByGate===2&&r.notes.some(x=>x.includes('게시 관문 밖 3건')&&x.includes('2건')));
@@ -88,9 +88,9 @@ check('the report names the snapshot source and scope',r.snapshot.source==='주�
 // 4) 브랜드 공통 캠페인: 같은 브랜드의 모든 지점(보관 지점 포함) 합산, 다른 브랜드 주문 제외
 const w=(await settle(ca.campaignAttribution(owner,cw,period))).body;
 check('a brand-wide campaign adds up the orders of every store of the brand',w.totals.orders===2&&w.totals.netRevenue===10000&&w.totals.contribution===10000-1500-2500&&w.scope==='brand');
-check('the store rows list each store, an archived store included',w.byStore.length===2&&row(w.byStore,'s1').netRevenue===4000&&row(w.byStore,'s2').netRevenue===6000&&row(w.byStore,'s2').label==='회기점 · 보관');
+check('the store rows list each store, an archived store included',w.byStore.length===2&&row(w.byStore,'s1').netRevenue===4000&&row(w.byStore,'s2').netRevenue===6000&&row(w.byStore,'s2').label==='회기점(보관)');
 check('an order of another brand pointing at the campaign is left out and counted',w.excluded.outOfScope===1&&!w.byStore.some(g=>g.key==='s3')&&w.notes.some(x=>x.includes('밖 주문 1건')));
-check('an untitled creative gets the readable fallback label',row(w.byCreative,'cr-w').label==='소재 · 9월 23일 00:05 생성 · 주소: 휘경동 377 C107');
+check('an untitled creative gets the readable fallback label',row(w.byCreative,'cr-w').label==='소재(9월 23일 00:05 생성), 주소: 휘경동 377 C107');
 const none=(await settle(ca.campaignAttribution(owner,cn,period))).body;
 check('a campaign without orders has zero totals and empty rows',none.totals.records===0&&none.totals.orders===0&&none.byStore.length===0&&none.byPublication.length===0&&none.weeks.every(x=>x.orders===0));
 

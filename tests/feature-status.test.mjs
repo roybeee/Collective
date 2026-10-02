@@ -8,7 +8,7 @@ import ts from 'typescript';
 const context=createContext({console}),cache=new Map();
 function moduleFor(path){path=resolve(path);if(cache.has(path))return cache.get(path);const m=new SourceTextModule(ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText,{context,identifier:path});cache.set(path,m);return m;}
 const m=moduleFor('lib/feature-status.ts');await m.link((s,r)=>moduleFor(resolve(dirname(r.identifier),s+'.ts')));await m.evaluate();
-const {featureRows,featureStatusLabels,franchiseSwitch,bufferCheckCampaigns,credentialState,credentialStateLabels,scopedCredentials,channelScopes}=m.namespace;
+const {featureRows,featureView,featureStatusLabels,franchiseSwitch,bufferCheckCampaigns,credentialState,credentialStateLabels,scopedCredentials,channelScopes}=m.namespace;
 let passed=0;
 // vm 모듈의 배열·객체는 다른 realm이라 양쪽 모두 JSON으로 옮겨 비교한다.
 const plain=value=>JSON.parse(JSON.stringify(value));
@@ -23,7 +23,7 @@ const channels=(naver,instagram,expiringSoon=false,expiresAt=null)=>[{channel:'n
 const full=(over={})=>({connection:{configured:true,provider:'hermes'},worker:{registered:true,online:true},brands,campaigns:[],facts:[fact()],channels:channels(true,false),brandChannels:[],publishers:{ofd:true},now,...over});
 // F5: GET /api/channels의 byBrand 항목(브랜드·지점 단위 자격증명의 공개 상태).
 const scoped=(over={})=>({brandId:'ofd',storeId:null,channel:'naver_ads',label:'네이버 검색광고',connected:true,account:'acct',expiresAt:null,expiringSoon:false,...over});
-const defaults='네이버 검색광고 연결 전 · Instagram 연결 전 (워크스페이스 기본)';
+const defaults='네이버 검색광고 연결 전, Instagram 연결 전 (워크스페이스 기본)';
 const row=(input,key)=>featureRows(input).find(r=>r.key===key);
 const view=r=>r&&{status:r.status,reason:r.reason,link:r.link};
 
@@ -39,55 +39,55 @@ check('POS orders can be imported from CSV',view(row(full(),'pos-csv')),{status:
 // --- HERMES 연결 -----------------------------------------------------------------------
 check('HERMES connected runs the AI team',view(row(full(),'ai')),{status:'available',reason:'HERMES로 실행'});
 check('an OpenAI connection says it is billed separately',row(full({connection:{configured:true,provider:'openai'}}),'ai').reason,'OpenAI API로 실행(별도 과금)');
-check('no connection blocks the AI team with a link to the connection card',view(row(full({connection:{configured:false,provider:'hermes'}}),'ai')),{status:'blocked',reason:'HERMES 연결 전 · AI 작업·팀 회의·조사를 실행할 수 없습니다',link:{label:'AI 팀 연결로 이동',view:'settings',section:'settings-ai'}});
+check('no connection blocks the AI team with a link to the connection card',view(row(full({connection:{configured:false,provider:'hermes'}}),'ai')),{status:'blocked',reason:['HERMES 연결 전','AI 작업·팀 회의·조사를 실행할 수 없습니다'],link:{label:'AI 팀 연결로 이동',view:'settings',section:'settings-ai'}});
 
 // --- 조사 작업자 -----------------------------------------------------------------------
 check('an online worker is available',row(full(),'worker').status,'available');
-check('a registered but silent worker is blocked with the reason',view(row(full({worker:{registered:true,online:false}}),'worker')),{status:'blocked',reason:'서버 작업자 응답 없음 · 앱을 열어 둔 동안만 조사·AI 팀 실행이 이어집니다',link:{label:'작업자 연결로 이동',view:'settings',section:'settings-worker'}});
-check('an unregistered worker is blocked with the install reason',row(full({worker:{registered:false,online:false}}),'worker').reason,'서버 작업자 설치 전 · 앱을 열어 둔 동안만 조사·AI 팀 실행이 이어집니다');
+check('a registered but silent worker is blocked with the reason',view(row(full({worker:{registered:true,online:false}}),'worker')),{status:'blocked',reason:['서버 작업자 응답 없음','앱을 열어 둔 동안만 조사·AI 팀 실행이 이어집니다'],link:{label:'작업자 연결로 이동',view:'settings',section:'settings-worker'}});
+check('an unregistered worker is blocked with the install reason',row(full({worker:{registered:false,online:false}}),'worker').reason,['서버 작업자 설치 전','앱을 열어 둔 동안만 조사·AI 팀 실행이 이어집니다']);
 
 // --- PNG 정보 카드: 현재 유효한 확정 사실 수 --------------------------------------------
 check('zero confirmed facts blocks PNG cards and links to the first brand archive',view(row(full({facts:[]}),'png')),{status:'blocked',reason:'확정 사실 필요(현재 0건)',link:{label:'브랜드 아카이브의 확인 사실로 이동',view:'brands',brand:'ofd',tab:'facts'}});
 const mixed=[fact(),fact({status:'candidate'}),fact({status:'rejected'}),fact({validUntil:iso(-1)}),fact({verifiedAt:iso(day)}),fact({source:'  '}),fact({brandId:'oda',storeId:'s1',key:'hours'})];
-check('only confirmed, sourced and currently valid facts count (brand and store level)',view(row(full({facts:mixed}),'png')),{status:'available',reason:'확정 사실 2건 · 캠페인 제작·발행 탭에서 제작'});
+check('only confirmed, sourced and currently valid facts count (brand and store level)',view(row(full({facts:mixed}),'png')),{status:'available',reason:['확정 사실 2건','캠페인 제작·발행 탭에서 제작']});
 check('candidates and expired facts alone still block',row(full({facts:[fact({status:'candidate'}),fact({validUntil:iso(-day)})]}),'png').reason,'확정 사실 필요(현재 0건)');
-check('malformed fact entries are ignored instead of crashing',row(full({facts:[null,'x',{status:'confirmed'},fact({source:undefined}),fact()]}),'png').reason,'확정 사실 1건 · 캠페인 제작·발행 탭에서 제작');
+check('malformed fact entries are ignored instead of crashing',row(full({facts:[null,'x',{status:'confirmed'},fact({source:undefined}),fact()]}),'png').reason,['확정 사실 1건','캠페인 제작·발행 탭에서 제작']);
 
 // --- Instagram 예약 발행(Buffer): 브랜드별 연결 ------------------------------------------
 const campaigns=[{id:'c-old',brandId:'ofd',updatedAt:iso(-3*day)},{id:'c-new',brandId:'ofd',updatedAt:iso(-day)},{id:'c-arch',brandId:'ofd',updatedAt:iso(0),archivedAt:iso(0)},{id:'c-oda',brandId:'oda',updatedAt:iso(-day),archivedAt:iso(-day)}];
-check('no connected brand blocks scheduling and links to a campaign of the first unconnected brand',view(row(full({publishers:{},campaigns}),'buffer')),{status:'blocked',reason:'브랜드별 연결 0/4',link:{label:'캠페인을 열어 제작·발행 탭에서 연결',view:'campaigns',campaign:'c-new'}});
-check('one connected brand makes scheduling available with the count',view(row(full({publishers:{oda:true,ofd:false},campaigns}),'buffer')),{status:'available',reason:'브랜드별 연결 1/4'});
+check('no connected brand blocks scheduling and links to a campaign of the first unconnected brand',view(row(full({publishers:{},campaigns}),'buffer')),{status:'blocked',reason:['브랜드별 연결 0/4'],link:{label:'캠페인을 열어 제작·발행 탭에서 연결',view:'campaigns',campaign:'c-new'}});
+check('one connected brand makes scheduling available with the count',view(row(full({publishers:{oda:true,ofd:false},campaigns}),'buffer')),{status:'available',reason:['브랜드별 연결 1/4']});
 check('without campaigns the link opens the campaign list',row(full({publishers:{}}),'buffer').link,{label:'캠페인을 만든 뒤 제작·발행 탭에서 연결',view:'campaigns'});
-check('brands whose check failed are named in the reason',row(full({publishers:{ofd:null,oda:false},campaigns}),'buffer').reason,'브랜드별 연결 0/4 · 1개 브랜드 확인 실패');
-check('connections of unknown brands are not counted',row(full({publishers:{ghost:true}}),'buffer').reason,'브랜드별 연결 0/4');
+check('brands whose check failed are named in the reason',row(full({publishers:{ofd:null,oda:false},campaigns}),'buffer').reason,['브랜드별 연결 0/4','1개 브랜드 확인 실패']);
+check('connections of unknown brands are not counted',row(full({publishers:{ghost:true}}),'buffer').reason,['브랜드별 연결 0/4']);
 check('the check picks the latest non-archived campaign per brand, else an archived one',bufferCheckCampaigns(brands,campaigns),{ofd:'c-new',oda:'c-oda'});
 check('the check tolerates missing lists',bufferCheckCampaigns(undefined,null),{});
 
 // --- 성과 자동 수집: 네이버·Instagram 연결 상태 ----------------------------------------
 // 채널별 상태는 워크스페이스 기본(기존 소유자 단위 자격증명)이고, 뒤에 브랜드 단위 연결 수가 붙는다(F5).
-check('no measurement channel connected is blocked with both states and a link',view(row(full({channels:channels(false,false)}),'measurement')),{status:'blocked',reason:defaults+' · 브랜드별 연결 0/4 브랜드',link:{label:'성과 자동 수집 연결로 이동',view:'settings',section:'settings-channels'}});
-check('any connected channel makes collection available and flags token renewal',view(row(full({channels:channels(false,true,true,iso(3*day))}),'measurement')),{status:'available',reason:'네이버 검색광고 연결 전 · Instagram 연결됨(토큰 갱신 필요) (워크스페이스 기본) · 브랜드별 연결 0/4 브랜드'});
+check('no measurement channel connected is blocked with both states and a link',view(row(full({channels:channels(false,false)}),'measurement')),{status:'blocked',reason:[defaults,'브랜드별 연결 0/4 브랜드'],link:{label:'성과 자동 수집 연결로 이동',view:'settings',section:'settings-channels'}});
+check('any connected channel makes collection available and flags token renewal',view(row(full({channels:channels(false,true,true,iso(3*day))}),'measurement')),{status:'available',reason:['네이버 검색광고 연결 전, Instagram 연결됨(토큰 갱신 필요) (워크스페이스 기본)','브랜드별 연결 0/4 브랜드']});
 // channelStatus는 만료된 토큰도 connected:true·expiringSoon:true로 준다. 만료 시각이 지났으면 연결로 세지 않는다.
-check('an expired token alone blocks collection with the channel link',view(row(full({channels:channels(false,true,true,iso(-1))}),'measurement')),{status:'blocked',reason:'네이버 검색광고 연결 전 · Instagram 토큰 만료 (워크스페이스 기본) · 브랜드별 연결 0/4 브랜드',link:{label:'성과 자동 수집 연결로 이동',view:'settings',section:'settings-channels'}});
+check('an expired token alone blocks collection with the channel link',view(row(full({channels:channels(false,true,true,iso(-1))}),'measurement')),{status:'blocked',reason:['네이버 검색광고 연결 전, Instagram 토큰 만료 (워크스페이스 기본)','브랜드별 연결 0/4 브랜드'],link:{label:'성과 자동 수집 연결로 이동',view:'settings',section:'settings-channels'}});
 check('a token expiring exactly now counts as expired',row(full({channels:channels(false,true,true,iso(0))}),'measurement').status,'blocked');
-check('another valid connection keeps collection available beside an expired token',view(row(full({channels:[{label:'네이버 검색광고',connected:true,expiresAt:null},{label:'Instagram',connected:true,expiresAt:iso(-day),expiringSoon:true}]}),'measurement')),{status:'available',reason:'네이버 검색광고 연결됨 · Instagram 토큰 만료 (워크스페이스 기본) · 브랜드별 연결 0/4 브랜드'});
+check('another valid connection keeps collection available beside an expired token',view(row(full({channels:[{label:'네이버 검색광고',connected:true,expiresAt:null},{label:'Instagram',connected:true,expiresAt:iso(-day),expiringSoon:true}]}),'measurement')),{status:'available',reason:['네이버 검색광고 연결됨, Instagram 토큰 만료 (워크스페이스 기본)','브랜드별 연결 0/4 브랜드']});
 check('an unreadable expiry time is not treated as expired',row(full({channels:channels(false,true,false,'not-a-date')}),'measurement').status,'available');
-// E2E(설정 기능표)는 '조건 부족, 네이버 검색광고 연결 전 · Instagram 연결 전'을 부분 문자열로 본다. 기본 상태가 사유 맨 앞에 남아야 한다.
-ok('the workspace default states stay at the start of the reason',row(full({channels:channels(false,false)}),'measurement').reason.startsWith('네이버 검색광고 연결 전 · Instagram 연결 전'));
+// E2E(설정 기능표)는 '조건 부족, 네이버 검색광고 연결 전, Instagram 연결 전'을 부분 문자열로 본다. 기본 상태가 사유 첫 항목 맨 앞에 남아야 한다.
+ok('the workspace default states stay at the start of the reason',row(full({channels:channels(false,false)}),'measurement').reason[0].startsWith('네이버 검색광고 연결 전, Instagram 연결 전'));
 
 // --- 성과 자동 수집: 브랜드·지점 단위 자격증명(F5) -------------------------------------
-check('a brand credential alone makes collection available with the brand count',view(row(full({channels:channels(false,false),brandChannels:[scoped()]}),'measurement')),{status:'available',reason:defaults+' · 브랜드별 연결 1/4 브랜드'});
-check('brand and store credentials of one brand count that brand once',row(full({channels:channels(false,false),brandChannels:[scoped(),scoped({channel:'instagram',label:'Instagram'}),scoped({storeId:'s1'})]}),'measurement').reason,defaults+' · 브랜드별 연결 1/4 브랜드');
-check('a store credential counts its brand',view(row(full({channels:channels(false,false),brandChannels:[scoped({brandId:'oda',storeId:'s1',channel:'instagram'})]}),'measurement')),{status:'available',reason:defaults+' · 브랜드별 연결 1/4 브랜드'});
-check('two brands with their own credentials are counted separately',row(full({channels:channels(true,false),brandChannels:[scoped(),scoped({brandId:'mapdal'})]}),'measurement').reason,'네이버 검색광고 연결됨 · Instagram 연결 전 (워크스페이스 기본) · 브랜드별 연결 2/4 브랜드');
-check('an expired brand credential is not counted and blocks without a default',view(row(full({channels:channels(false,false),brandChannels:[scoped({expiresAt:iso(-1),expiringSoon:true})]}),'measurement')),{status:'blocked',reason:defaults+' · 브랜드별 연결 0/4 브랜드',link:{label:'성과 자동 수집 연결로 이동',view:'settings',section:'settings-channels'}});
+check('a brand credential alone makes collection available with the brand count',view(row(full({channels:channels(false,false),brandChannels:[scoped()]}),'measurement')),{status:'available',reason:[defaults,'브랜드별 연결 1/4 브랜드']});
+check('brand and store credentials of one brand count that brand once',row(full({channels:channels(false,false),brandChannels:[scoped(),scoped({channel:'instagram',label:'Instagram'}),scoped({storeId:'s1'})]}),'measurement').reason,[defaults,'브랜드별 연결 1/4 브랜드']);
+check('a store credential counts its brand',view(row(full({channels:channels(false,false),brandChannels:[scoped({brandId:'oda',storeId:'s1',channel:'instagram'})]}),'measurement')),{status:'available',reason:[defaults,'브랜드별 연결 1/4 브랜드']});
+check('two brands with their own credentials are counted separately',row(full({channels:channels(true,false),brandChannels:[scoped(),scoped({brandId:'mapdal'})]}),'measurement').reason,['네이버 검색광고 연결됨, Instagram 연결 전 (워크스페이스 기본)','브랜드별 연결 2/4 브랜드']);
+check('an expired brand credential is not counted and blocks without a default',view(row(full({channels:channels(false,false),brandChannels:[scoped({expiresAt:iso(-1),expiringSoon:true})]}),'measurement')),{status:'blocked',reason:[defaults,'브랜드별 연결 0/4 브랜드'],link:{label:'성과 자동 수집 연결로 이동',view:'settings',section:'settings-channels'}});
 check('a brand credential expiring soon still counts',row(full({channels:channels(false,false),brandChannels:[scoped({expiresAt:iso(3*day),expiringSoon:true})]}),'measurement').status,'available');
-check('credentials of brands outside this workspace are not counted',row(full({channels:channels(false,false),brandChannels:[scoped({brandId:'ghost'})]}),'measurement').reason,defaults+' · 브랜드별 연결 0/4 브랜드');
+check('credentials of brands outside this workspace are not counted',row(full({channels:channels(false,false),brandChannels:[scoped({brandId:'ghost'})]}),'measurement').reason,[defaults,'브랜드별 연결 0/4 브랜드']);
 check('a disconnected brand entry is not counted',row(full({channels:channels(false,false),brandChannels:[scoped({connected:false})]}),'measurement').status,'blocked');
-check('an unreadable brand list keeps the default states and says so',view(row(full({channels:channels(true,false),brandChannels:null}),'measurement')),{status:'available',reason:'네이버 검색광고 연결됨 · Instagram 연결 전 (워크스페이스 기본) · 브랜드별 연결을 확인하지 못했습니다'});
+check('an unreadable brand list keeps the default states and says so',view(row(full({channels:channels(true,false),brandChannels:null}),'measurement')),{status:'available',reason:['네이버 검색광고 연결됨, Instagram 연결 전 (워크스페이스 기본)','브랜드별 연결을 확인하지 못했습니다']});
 // channelStatus의 실제 모양: 브랜드 × 채널마다 브랜드 단위 상태(없으면 connected:false, storeId 없음)와 저장된 지점 단위 상태(storeId 있음).
 const statusShape=[...brands.flatMap(b=>['naver_ads','instagram'].map(channel=>({channel,label:channel,connected:b.id==='oda'&&channel==='instagram',account:'',expiresAt:null,expiringSoon:false,updatedAt:null,brandId:b.id}))),{channel:'naver_ads',label:'네이버 검색광고',connected:true,account:'s',expiresAt:iso(-1),expiringSoon:true,updatedAt:iso(-day),brandId:'mapdal',storeId:'s9',warning:'토큰이 만료됐습니다. 새 토큰으로 다시 연결하세요.'}];
-check('the channelStatus byBrand shape counts only usable brand and store credentials',row(full({channels:channels(false,false),brandChannels:statusShape}),'measurement').reason,defaults+' · 브랜드별 연결 1/4 브랜드');
+check('the channelStatus byBrand shape counts only usable brand and store credentials',row(full({channels:channels(false,false),brandChannels:statusShape}),'measurement').reason,[defaults,'브랜드별 연결 1/4 브랜드']);
 check('the channelStatus byBrand shape keeps store entries under their brand',channelScopes(brands,'naver_ads',scopedCredentials(statusShape),now).map(l=>[l.brandId,l.state,l.stores.map(s=>s.storeId+':'+s.state).join()]),[['ofd','none',''],['oda','none',''],['mapdal','none','s9:expired'],['mealzip','none','']]);
 
 // 연결 상태 4단계(설정 채널 카드와 기능표 공용): 연결됨·만료 임박·만료·연결 전.
@@ -132,6 +132,19 @@ check('an empty channel list is blocked, not available',row(full({channels:[]}),
 ok('every blocked row has a reason and a link',[...featureRows(),...featureRows(full({connection:{configured:false},worker:{registered:false,online:false},facts:[],publishers:{},channels:channels(false,false)}))].filter(r=>r.status==='blocked').every(r=>!!r.reason&&!!r.link?.label&&!!r.link.view));
 ok('available and unimplemented rows carry no link',rows.filter(r=>r.status!=='blocked').every(r=>!r.link));
 
+// --- 화면 모양(featureView): 사유 항목, 내부 코드는 기술 정보로 ---------------------------------
+// 평가 9회차 결함 2·3: 사유를 ' · '로 잇지 않고, 스위치 이름·단계 코드·내부 이름은 화면 문구가 아니라 '자세히'의 기술 정보로만 보인다.
+const flagsOff=['a6_data_requests','a6_place_check','a8_customer_report','b4_reward_lineage','b3_playbook_signals','b2_digest_queue','growth_daily_loop','storefront_pull','r_franchise','b3_reflector'].map(flag=>({flag,enabled:false}));
+const viewOf=(input,key)=>plain(featureView(featureRows(input).find(r=>r.key===key)));
+check('a lane A switch row keeps the switch name out of the words and in the technical details',viewOf(full({flags:flagsOff}),'data-requests'),{key:'data-requests',label:'자료 요청(작업물의 자료 필요 → 사실 확정)',status:'blocked',reason:['기능 꺼짐','소유자가 켭니다'],link:{label:'캠페인을 열어 작업물 탭에서 확인',view:'campaigns'},tech:['스위치 이름 a6_data_requests']});
+check('another lane row keeps its lib words but the screen hides the switch name and the internal name',viewOf(full({flags:flagsOff}),'quality-digest'),{key:'quality-digest',label:'주간 품질 집계, 드리프트 경보',status:'blocked',reason:['기능 스위치 꺼짐','소유자가 켭니다'],link:{label:'설정의 AI 사용량에서 확인',view:'settings',section:'settings-ai'},tech:['워커 digest 큐','스위치 이름 b2_digest_queue']});
+check('a joined reason of another lane is split into items',viewOf(full(),'quality-ops').reason,['품질 콘솔 → 운영 상태 조회','쌍 평가 게이트 통과 후 지정 캠페인 적용']);
+check('rows without codes carry no technical details',viewOf(full(),'png').tech,[]);
+for(const input of [{},full(),full({flags:flagsOff}),full({flags:flagsOff.map(f=>({...f,enabled:true}))})])for(const r of featureRows(input).map(featureView)){
+ ok(`${r.key}: no internal code on screen`,![r.label,...r.reason,r.link?.label||''].some(t=>/\b[a-z][a-z0-9]*_[a-z0-9_]+\b|\bB\d-\d|성장2|digest/.test(t)));
+ ok(`${r.key}: no middle dot join on screen`,![r.label,...r.reason].some(t=>t.includes(' · ')));
+}
+
 // --- 화면 연결 -------------------------------------------------------------------------
 const panels=readFileSync('app/panels.tsx','utf8');
 ok('the settings table renders featureRows instead of a fixed list',panels.includes('featureRows(')&&!panels.includes("['PNG 안내 카드','사용 가능']")&&!panels.includes("['POS 자동 수집','연결 전']"));
@@ -157,7 +170,8 @@ ok('brands without their own credential say when the workspace default is used',
 ok('the feature table passes the brand list of GET /api/channels',panels.includes('brandChannels:channelState?.byBrand??null'));
 const smoke=readFileSync('e2e/smoke.spec.ts','utf8');
 ok('the smoke E2E sees the scope choice on the settings channel card',smoke.includes("getByRole('combobox', {name: '적용 범위', exact: true})")&&smoke.includes("['워크스페이스 기본', '브랜드', '브랜드 지점']"));
-ok('the smoke E2E keeps the measurement row assertion',smoke.includes("toContainText('조건 부족, 네이버 검색광고 연결 전 · Instagram 연결 전')"));
+ok('the smoke E2E keeps the measurement row assertion',smoke.includes("toContainText('조건 부족, 네이버 검색광고 연결 전, Instagram 연결 전')"));
+ok('the smoke E2E checks the switch name stays inside the details',smoke.includes("locator('b')).not.toContainText('a6_data_requests')")&&smoke.includes("toContainText('기술 정보: 스위치 이름 a6_data_requests')"));
 ok('the smoke E2E checks that the PNG link lands on the facts tab',smoke.includes("toHaveURL(/[?&]view=brands&brand=[^&]+&tab=facts/)")&&smoke.includes("getByRole('tab', {name: '확인 사실', exact: true})).toHaveAttribute('aria-selected', 'true')"));
 const template=existsSync('.github/pull_request_template.md')?readFileSync('.github/pull_request_template.md','utf8'):'';
 ok('the PR template asks to update the settings feature table',template.includes('설정 기능표 갱신'));

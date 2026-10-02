@@ -26,9 +26,9 @@ const rerunHistory=[insightOld,strategyOld].map(a=>({...a,id:`${job('insight')}:
 const rerun=plain(versionGroups([cmo,{...insightOld,status:'outdated'},insightNew,{...strategyOld,status:'outdated'}],rerunHistory));
 check('versions are grouped by role in team order with role names',()=>assert.deepEqual(rerun.map(g=>[g.role,g.label]),[['cmo','총괄 파트너'],['insight','고객 인사이트'],['strategy','브랜드 전략']]));
 check('labels show role version, Korean status, KST time and current/previous reason',()=>assert.deepEqual(rerun.map(g=>g.options.map(o=>o.label)),[
- ['총괄 파트너 v1 · 기획 승인 · 09-23 14:00 KST · 현재'],
- ['고객 인사이트 v1 · 검토 대기 · 09-23 15:10 KST · 현재','고객 인사이트 v1 · 검토 대기 · 09-23 14:10 KST · 이전: 고객 인사이트 재작성으로 교체'],
- ['브랜드 전략 v1 · 검토 대기 · 09-23 14:20 KST · 이전: 고객 인사이트 재작성으로 교체']]));
+ ['총괄 파트너 v1, 기획 승인, 09-23 14:00 KST, 현재'],
+ ['고객 인사이트 v1, 검토 대기, 09-23 15:10 KST, 현재','고객 인사이트 v1, 검토 대기, 09-23 14:10 KST, 이전: 고객 인사이트 재작성으로 교체'],
+ ['브랜드 전략 v1, 검토 대기, 09-23 14:20 KST, 이전: 고객 인사이트 재작성으로 교체']]));
 check('labels never expose internal id fragments or English statuses',()=>{for(const o of rerun.flatMap(g=>g.options)){assert.ok(!/review|approved|outdated|ai-|:1$/.test(o.label),o.label);assert.ok(!o.label.includes(o.id.slice(-6)),o.label)}});
 check('an outdated artifact already copied to history is listed once',()=>assert.deepEqual(rerun.find(g=>g.role==='strategy').options.map(o=>o.id),[rerunHistory[1].id]));
 check('the default pair is the previous and current version of the same role',()=>assert.deepEqual(plain(defaultComparison(rerun)),{left:rerunHistory[0].id,right:insightNew.id}));
@@ -42,12 +42,12 @@ const contentV2={...contentV1,version:2,createdAt:'2026-09-23T09:00:00.000Z'};
 const edits=[{...creativeV1,id:`${meetingId}:${creativeV1.id}:1`,originalId:creativeV1.id},{...contentV1,id:'16fd2706-8baf-433b-82eb-8c7fada847da',originalId:contentV1.id}];
 const revised=plain(versionGroups([creativeV2,contentV2],edits));
 check('meeting improvements and direct edits are named as reasons',()=>assert.deepEqual(revised.map(g=>g.options.map(o=>o.label)),[
- ['크리에이티브 v2 · 검토 대기 · 09-23 17:00 KST · 현재: 회의 개선','크리에이티브 v1 · 수정 요청 · 09-23 16:00 KST · 이전: 회의 개선으로 교체'],
- ['콘텐츠 스튜디오 v2 · 검토 대기 · 09-23 18:00 KST · 현재: 직접 수정','콘텐츠 스튜디오 v1 · 검토 대기 · 09-23 16:30 KST · 이전: 직접 수정으로 교체']]));
+ ['크리에이티브 v2, 검토 대기, 09-23 17:00 KST, 현재: 회의 개선','크리에이티브 v1, 수정 요청, 09-23 16:00 KST, 이전: 회의 개선으로 교체'],
+ ['콘텐츠 스튜디오 v2, 검토 대기, 09-23 18:00 KST, 현재: 직접 수정','콘텐츠 스튜디오 v1, 검토 대기, 09-23 16:30 KST, 이전: 직접 수정으로 교체']]));
 check('with several changed roles the most recently changed role is compared',()=>assert.deepEqual(plain(defaultComparison(revised)),{left:edits[1].id,right:contentV2.id}));
-check('a manual first version and an unknown history format stay readable',()=>{const g=plain(versionGroups([{...contentV1}],[{...contentV1,id:'legacy:format',originalId:'other'}]));assert.deepEqual(g[0].options.map(o=>o.label),['콘텐츠 스튜디오 v1 · 검토 대기 · 09-23 16:30 KST · 현재: 직접 등록','콘텐츠 스튜디오 v1 · 검토 대기 · 09-23 16:30 KST · 이전'])});
+check('a manual first version and an unknown history format stay readable',()=>{const g=plain(versionGroups([{...contentV1}],[{...contentV1,id:'legacy:format',originalId:'other'}]));assert.deepEqual(g[0].options.map(o=>o.label),['콘텐츠 스튜디오 v1, 검토 대기, 09-23 16:30 KST, 현재: 직접 등록','콘텐츠 스튜디오 v1, 검토 대기, 09-23 16:30 KST, 이전'])});
 check('without any previous version both sides default to a current version',()=>{assert.deepEqual(plain(defaultComparison(plain(versionGroups([cmo],[])))),{left:cmo.id,right:cmo.id});assert.deepEqual(plain(defaultComparison([])),{left:'',right:''})});
-check('a role with only previous versions still defaults to that previous version',()=>{const g=plain(versionGroups([cmo,{...strategyOld,status:'outdated'}],[]));assert.equal(g[1].options[0].label,'브랜드 전략 v1 · 이전 버전 · 09-23 14:20 KST');assert.deepEqual(plain(defaultComparison(g)),{left:strategyOld.id,right:cmo.id})});
+check('a role with only previous versions still defaults to that previous version',()=>{const g=plain(versionGroups([cmo,{...strategyOld,status:'outdated'}],[]));assert.equal(g[1].options[0].label,'브랜드 전략 v1, 이전 버전, 09-23 14:20 KST');assert.deepEqual(plain(defaultComparison(g)),{left:strategyOld.id,right:cmo.id})});
 
 // 미리보기: 첫 비제목 문단, 내부 식별자 제거
 check('preview uses the first non-heading paragraph without markdown',()=>assert.equal(artifactPreview('## 핵심 요약\n\n**오후 방문 동기**를 실험합니다.\n조건은 같습니다.\n\n## 다음\n나머지'),'오후 방문 동기를 실험합니다. 조건은 같습니다.'));

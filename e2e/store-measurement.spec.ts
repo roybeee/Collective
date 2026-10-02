@@ -48,7 +48,7 @@ async function previewCsv(page: Page, csv: string) {
 // 확정(dryRun:false). 저장 뒤 화면은 주문·비용 탭으로 돌아간다.
 async function confirmCsv(page: Page, ready: number) {
   const saved = page.waitForResponse(storeAction('import_orders', false));
-  await page.getByRole('button', {name: `확정 · ${ready}건 저장`, exact: true}).click();
+  await page.getByRole('button', {name: `${ready}건 확정 저장`, exact: true}).click();
   const response = await saved;
   expect(response.status()).toBe(200);
   await expect(page.getByRole('tab', {name: '주문·비용', exact: true})).toHaveAttribute('aria-selected', 'true');
@@ -130,7 +130,7 @@ test('추적 코드로 가져온 주문은 자동 귀속 스위치를 켤 때만
   // 같은 파일을 다시 가져오면 저장할 주문이 없다(중복 방지).
   const again = await previewCsv(page, `${header}\nE2E-A4-1,${week},18000,${code}\n`);
   expect(again).toMatchObject({ready: 0, duplicates: 1});
-  await expect(page.getByRole('button', {name: '확정 · 0건 저장', exact: true})).toBeDisabled();
+  await expect(page.getByRole('button', {name: '0건 확정 저장', exact: true})).toBeDisabled();
 
   // 2b) A4-3: 주문 기록 창의 '추적 코드' 칸에 코드를 넣으면 스위치가 꺼져 있어도 코드의 캠페인으로 귀속한다(사람이 넣은 명시적 귀속).
   // 소문자로 넣어도 정규화해 찾는다. 오늘 주문이라 아래 4)의 지난주 POS 합계 대조에는 들어가지 않는다.

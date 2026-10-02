@@ -5,6 +5,7 @@ import {orderContribution,orderSources,type StoreOrder,type StoreSpend} from './
 import {channelCatalog} from './store-marketing';
 import {matchCode,trackingCodeTypes,type CodeToken,type TrackingCode,type TrackingCodeType} from './tracking-codes';
 import {creativeLabel} from './execution';
+import {metaText} from './format';
 
 export const ATTRIBUTION_NOT_INCREMENTAL='귀속≠증분: 추적 코드로 귀속된 주문은 캠페인이 없었어도 생겼을 수 있습니다. 귀속 수치는 캠페인의 인과 효과를 증명하지 않습니다.';
 export const COMPLETENESS_TOLERANCE=0.01;
@@ -35,6 +36,7 @@ export function publicationRefusal(code:Pick<TrackingCode,'publicationId'>,order
  return LIVE_PUBLICATION_STATUSES.includes(p.status)?null:'pending';
 }
 // 가져오기 자동 귀속의 근거 문구. 주문 근거가 이 문구 그대로면 사람이 근거를 새로 적지 않은 코드 자동 귀속이다.
+// autoEvidence·manualEvidence 문구는 주문 기록(attributionEvidence)에 저장되고 isCodeEvidence가 글자 그대로 비교한다. 화면 문구 정리(가운뎃점)로 바꾸지 않는다.
 export const autoEvidence=(code:Pick<TrackingCode,'code'|'type'>)=>`추적 코드 ${code.code}(${trackingCodeTypes[code.type]}) 자동 귀속 · 주문 CSV`;
 // 주문 기록 창·장부 양식 CSV에 사람이 코드를 직접 넣었을 때(A4-3) 근거를 비워 두면 채우는 문구. 가져오기 자동 문구와 같이 '사람이 근거를 따로 적지 않은 코드 귀속'으로 본다.
 // ledger: 장부 양식 CSV의 trackingCode 열. 저장한 근거만으로 창에서 한 건 넣은 코드와 파일로 한꺼번에 넣은 코드를 가를 수 있게 출처를 붙인다.
@@ -65,7 +67,7 @@ export function attributeByCodes(tokens:readonly CodeToken[],codes:readonly Trac
 const countOf=(counts:unknown,key:string)=>{const x=(counts&&typeof counts==='object'?counts:{}) as Record<string,unknown>,v=x[key];return typeof v==='number'&&Number.isFinite(v)&&v>0?v:0};
 export function publicationImportNote(counts:unknown){
  const n=(k:string)=>countOf(counts,k),parts=[...(n('beforePublication')?[`게시 전 주문 ${n('beforePublication')}건`]:[]),...(n('unpublished')?[`취소·발행 실패 게시 ${n('unpublished')}건`]:[]),...(n('pendingPublication')?[`게시 상태 확인 전 ${n('pendingPublication')}건`]:[])];
- return parts.length?'게시 코드로 귀속하지 않음: '+parts.join(' · '):null;
+ return parts.length?'게시 코드로 귀속하지 않음: '+metaText(parts):null;
 }
 // 확정 전 확인(allowPendingPublications). 가져온 주문은 다시 가져와도 건너뛰므로, 지금 확정하면 이 주문은 나중에 게시가 확인돼도 게시별로 귀속되지 않는다.
 export function pendingPublicationNote(counts:unknown){
@@ -98,10 +100,10 @@ export function entrySummaryNotes(summary:unknown){
  const n=(k:string)=>countOf(summary,k),publication=publicationImportNote(summary);
  return [...(publication?[publication]:[]),...(n('notYetValid')?[`코드 적용 시작일 전 주문 ${n('notYetValid')}건은 추적 코드로 귀속하지 않았습니다.`]:[]),...(n('unpublishedCreatives')?[`앱에서 게시된 기록이 없는 소재에 직접 귀속한 주문 ${n('unpublishedCreatives')}건: 앱 밖에서 게시했다면 근거에 적어 주세요.`]:[])];
 }
-// 소재 표시 이름은 실행 화면과 같은 규칙이다(lib/execution.ts creativeLabel): 제목, 없으면 '소재 · 9월 23일 14:05 생성 · 첫 사실 줄'(한국 시각).
+// 소재 표시 이름은 실행 화면과 같은 규칙이다(lib/execution.ts creativeLabel): 제목, 없으면 '소재(9월 23일 14:05 생성), 첫 사실 줄'(한국 시각).
 export {creativeLabel};
-// 게시별 줄 이름: 소재 이름 · 예약 시각(한국) · 게시 상태.
-export const publicationRowLabel=(p:{scheduledAt?:unknown},creative:string,status:string)=>[creative,'예약 '+(koreaMinute(p.scheduledAt)||'시각 미확인'),status].join(' · ');
+// 게시별 줄 이름: 소재 이름, 예약 시각(한국), 게시 상태(쉼표로 잇는다).
+export const publicationRowLabel=(p:{scheduledAt?:unknown},creative:string,status:string)=>metaText([creative,'예약 '+(koreaMinute(p.scheduledAt)||'시각 미확인'),status]);
 
 // 2) 지표. 주문 수·귀속 판단은 lib/store-operations.ts ledgerSummary와 같은 기준이다.
 export const countedOrder=(o:StoreOrder)=>o.status==='paid'&&(o.paidAmount===0||o.refundAmount<o.paidAmount);
@@ -124,13 +126,13 @@ export function groupBy(orders:readonly StoreOrder[],keyOf:(o:StoreOrder)=>strin
 // 소재 키는 `${campaignId}·${creativeId}`이고 화면이 캠페인 제목과 소재 이름(보고서의 creativeLabels)을 붙인다.
 // 게시는 게시 코드로 자동 귀속된 주문만 센다(A4-2). 줄 이름은 서버가 준 publicationLabels(소재 이름·예약 시각·상태), codes는 그 게시에 묶인 코드다.
 export function attributionBreakdown(orders:readonly StoreOrder[],codes:readonly TrackingCode[],economics?:Economics,publicationLabels:Record<string,string>={}){
- const codeLabel=(id:string)=>{const c=codes.find(x=>x.id===id);return c?[c.code,trackingCodeTypes[c.type],c.label].filter(Boolean).join(' · '):id};
+ const codeLabel=(id:string)=>{const c=codes.find(x=>x.id===id);return c?metaText([c.code,trackingCodeTypes[c.type],c.label]):id};
  const armKey=(o:StoreOrder)=>o.codeAttribution?`${o.campaignId||''}·${o.codeAttribution.arm||'팔 없음'}`:null;
  const publicationCodes=(key:string)=>[...new Set([...codes.filter(c=>c.publicationId===key).map(c=>c.code),...orders.flatMap(o=>o.codeAttribution?.publicationId===key?[o.codeAttribution.code]:[])])];
  return {
   byCode:groupBy(orders,o=>o.codeAttribution?.codeId??null,codeLabel,economics),
-  byArm:groupBy(orders,armKey,key=>key.replace('·',' · '),economics),
-  byCreative:groupBy(orders,o=>o.creativeId?`${o.campaignId||''}·${o.creativeId}`:null,key=>key.replace('·',' · 소재 '),economics),
+  byArm:groupBy(orders,armKey,key=>key.replace('·',', '),economics),
+  byCreative:groupBy(orders,o=>o.creativeId?`${o.campaignId||''}·${o.creativeId}`:null,key=>key.replace('·',', 소재 '),economics),
   byCampaign:groupBy(orders,o=>o.campaignId||'',key=>key||'미귀속',economics),
   byPublication:groupBy(orders,o=>o.codeAttribution?.publicationId??null,key=>publicationLabels[key]||'게시 '+key,economics).map(g=>({...g,codes:publicationCodes(g.key)})),
  };
@@ -184,7 +186,7 @@ export function weeklyCompletenessFromDays(weeks:readonly string[],days:readonly
   if(!pos)return {...base,posNet:null,posOrders:null,posVersion:null,diffRate:null,status:'missing_pos',reason:'POS 합계를 입력하지 않아 대조하지 못했습니다.'};
   const netOk=within(ledgerNet,pos.netSales,tolerance),countOk=pos.orderCount===null||within(ledgerOrders,pos.orderCount,tolerance);
   const diffRate=pos.netSales===0?(ledgerNet===0?0:null):ratio(Math.abs(ledgerNet-pos.netSales)/pos.netSales);
-  const reason=!netOk?`장부 순매출이 POS 합계와 ${pct}를 넘게 다릅니다(장부 ${won(ledgerNet)}원 · POS ${won(pos.netSales)}원).`:!countOk?`장부 주문 수가 POS 주문 수와 ${pct}를 넘게 다릅니다(장부 ${ledgerOrders}건 · POS ${pos.orderCount}건).`:`POS 합계와 ${pct} 이내로 맞습니다.`;
+  const reason=!netOk?`장부 순매출이 POS 합계와 ${pct}를 넘게 다릅니다(장부 ${won(ledgerNet)}원, POS ${won(pos.netSales)}원).`:!countOk?`장부 주문 수가 POS 주문 수와 ${pct}를 넘게 다릅니다(장부 ${ledgerOrders}건, POS ${pos.orderCount}건).`:`POS 합계와 ${pct} 이내로 맞습니다.`;
   return {...base,posNet:pos.netSales,posOrders:pos.orderCount,posVersion:pos.version,diffRate,status:netOk&&countOk?'pass':'fail',reason};
  });
 }
