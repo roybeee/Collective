@@ -60,6 +60,8 @@
 .sectionNav a:hover { background: var(--neutral-97); }
 .sectionNav a:focus-visible { outline: 2px solid var(--olive-42); outline-offset: 2px; }
 .section, .coreEditor { display: grid; gap: 8px; padding: 18px 0 6px; border-top: 1px solid var(--neutral-97); scroll-margin-top: 64px; }
+/* 섹션 바로가기 띠(높이 약 57px)가 위에 고정되므로 접힌 패널(#panel-…)로 옮길 때도 제목이 띠 아래에 보이게 띄운다(평가 9회차). */
+.panel :global(.lazy-panel) { scroll-margin-top: 64px; }
 .sectionTitle { display: flex; align-items: baseline; gap: 10px; font-size: 1.05rem; font-weight: 650; margin: 0 0 4px; }
 .sectionTitle span { font-size: .82rem; font-weight: 400; color: var(--green-44); }
 /* 모바일에서는 바로가기를 가로 한 줄로 두고 고정하지 않는다(화면 높이 차지 방지). */
@@ -70,7 +72,8 @@
 .saveNext { margin-left: 8px; }
 .resume { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; background: var(--neutral-97); border: 1px solid var(--neutral-97); border-radius: 8px; font-size: .88rem; color: var(--green-32); }
 /* 캠페인 상세 안에서는 캠페인 탭 줄(48px)이 위에 고정되므로 그 아래에 붙는다(UX-PLAN-3 Q1). */
-@media not (max-width: 767px) { :global(.campaign-sheet) .sectionNav { top: 48px; } }
+/* 그때 섹션·패널로 옮기면 탭 줄 48px+바로가기 띠 57px 아래에 제목이 오도록 여백을 더한다. */
+@media not (max-width: 767px) { :global(.campaign-sheet) .sectionNav { top: 48px; } :global(.campaign-sheet) .section, :global(.campaign-sheet) .coreEditor, :global(.campaign-sheet) .panel :global(.lazy-panel) { scroll-margin-top: 116px; } }
 /* 서버 검증 오류가 가리키는 칸(UX-PLAN-3 Q3). */
 .field [aria-invalid=true], .wide [aria-invalid=true] { border-color: #b42318; }
 .fieldError { margin: 4px 0 0; color: #b42318; font-size: .85rem; }

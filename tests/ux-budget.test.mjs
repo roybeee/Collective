@@ -123,4 +123,14 @@ for(const m of pureLib){const f=`lib/${m}.ts`,sf=ts.createSourceFile(f,readFileS
  const panels=readFileSync('app/panels.tsx','utf8');
  check(panels.includes('rows.map(featureView)')&&panels.includes('<summary>자세히</summary>기술 정보: {metaText(r.tech)}'),'settings feature table renders featureView and keeps codes in the details');
 }
-console.log(JSON.stringify({passed,now,directToastSuccess,notices:notices.length,undoNotices}));
+// 레인 A 화면(app/*.tsx, components/**)의 글자 리터럴(문자열·템플릿·JSX 글자)에 시드·테스트 브랜드 이름을 하드코딩하지 않는다(평가 9회차 11차원: 브리프 목표 자리표시 '맵달서울').
+// 브랜드 이름은 선택한 브랜드(brands)에서 읽는다. 목록은 lib/agency.ts brandDefaults와 테스트 시드에서 쓰는 이름이다. 주석, 시드 데이터(lib), 테스트 파일은 세지 않는다.
+const seedBrandNames=/맵달|mapdal|old\s?ferry|올드\s?페리|oda\s?pizza|오다\s?피자|dr\.?\s?alan|닥터\s?알란/i;
+const laneAFiles=[...readdirSync('app').filter(n=>n.endsWith('.tsx')&&!/^(franchise-|online-grading|quality-|brand-interview|reflector|usage-|customer-report)/.test(n)).map(n=>'app/'+n),...['components/app','components/ui'].flatMap(d=>readdirSync(d).filter(n=>n.endsWith('.tsx')).map(n=>d+'/'+n))];
+const brandLiterals=[];
+for(const f of laneAFiles){
+ const sf=ts.createSourceFile(f,readFileSync(f,'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+ const visit=x=>{if((ts.isStringLiteral(x)||ts.isNoSubstitutionTemplateLiteral(x)||ts.isTemplateHead(x)||ts.isTemplateMiddle(x)||ts.isTemplateTail(x)||ts.isJsxText(x))&&seedBrandNames.test(x.text))brandLiterals.push(`${f}: ${x.text.trim().slice(0,40)}`);ts.forEachChild(x,visit)};visit(sf);
+}
+check(laneAFiles.length>100&&brandLiterals.length===0,`hardcoded seed brand names in lane A screens: ${brandLiterals.join(' | ')}`);
+console.log(JSON.stringify({passed,now,directToastSuccess,notices:notices.length,undoNotices,brandLiterals:brandLiterals.length}));

@@ -7,7 +7,10 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
   // 보조 글자는 빈 요소의 ::after(data-hint)로 그린다. 칸을 감싼 label의 글자·접근 이름에 섞이지 않게 한다.
   const amount = type === "number" && props.value !== undefined && props.value !== "" ? Number(props.value) : NaN
   // 날짜 칸은 브라우저 언어에 따라 mm/dd/yyyy로 보일 수 있어, 값이 있으면 아래에 한국어 날짜를 같이 보인다(UX-PLAN-3 6차원 '날짜 입력 보조').
-  const day = (type === "date" || type === "datetime-local") && typeof props.value === "string" ? koreanDate(props.value, type === "datetime-local") : ""
+  // 빈 칸은 브라우저 자리표시(mm/dd/yyyy 등)를 바꿀 수 없어 아래 줄에 한국어 안내를 보인다(평가 9회차). 문서가 lang="ko"라 칸에 lang을 따로 달아도
+  // Chromium은 날짜 칸 형식을 브라우저 언어로 정하므로 바뀌지 않는다. 보조 줄로만 처리한다.
+  const isDate = type === "date" || type === "datetime-local"
+  const day = isDate && typeof props.value === "string" ? (props.value === "" ? emptyDateHint(type === "datetime-local") : koreanDate(props.value, type === "datetime-local")) : ""
   const input = (
     <input
       type={type}
@@ -48,4 +51,9 @@ function koreanDate(value: string, withTime: boolean) {
   return `${date} ${hour < 12 ? "오전" : "오후"} ${hour % 12 || 12}:${mi}`
 }
 
-export { Input, koreanDate }
+// 값이 빈 날짜 칸 아래에 보이는 안내. 브라우저 자리표시가 영문이어도 무엇을 고르는지 한국어로 읽힌다.
+function emptyDateHint(withTime: boolean) {
+  return withTime ? "날짜와 시각을 고르세요(연·월·일 시:분)" : "날짜를 고르세요(연·월·일)"
+}
+
+export { Input, koreanDate, emptyDateHint }
