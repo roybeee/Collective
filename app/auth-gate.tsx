@@ -2,11 +2,13 @@
 
 import {CardButton} from '@/components/app/card-button';
 import {Button} from '@/components/ui/button';
-import {useCallback,useEffect,useState,type ReactNode} from 'react';
+import {lazy,Suspense,useCallback,useEffect,useState,type ReactNode} from 'react';
 import {authRequest,type AccountUser,type AuthState} from './auth-client';
 import {AccountProvider} from './account-context';
-import {AuthForm,type SetupLink} from './auth-form';
-import {AccountPanel,PasswordPanel} from './account-panel';
+import type {SetupLink} from './auth-form';
+// 로그인 폼과 팀 계정·비밀번호 대화상자는 쓸 때 내려받는다(로그인한 홈 첫 로딩 JS 예산, UX-PLAN-3 ⑩).
+const AuthForm=lazy(()=>import('./auth-form').then(m=>({default:m.AuthForm})));
+const AccountPanel=lazy(()=>import('./account-panel').then(m=>({default:m.AccountPanel}))),PasswordPanel=lazy(()=>import('./account-panel').then(m=>({default:m.PasswordPanel})));
 import './auth.css';
 
 function readSetupLink():SetupLink|null{
@@ -41,10 +43,10 @@ export default function AuthGate({children}:{children:ReactNode}){
  }
  if(!state)return <main className="auth-screen"><section className="auth-card"><div className="auth-brand">COLLECTIVE</div>{error?<><p role="alert">{error}</p><Button className="auth-primary" onClick={()=>void refresh()}>다시 연결</Button></>:<p role="status">워크스페이스를 준비하고 있습니다…</p>}</section></main>;
  if(state.mode==='legacy')return <AccountProvider state={state}>{children}</AccountProvider>;
- if(link||!state.user)return <AuthForm link={link} onSignedIn={signedIn} onCancel={()=>setLink(null)}/>;
+ if(link||!state.user)return <Suspense fallback={<main className="auth-screen"><section className="auth-card"><div className="auth-brand">COLLECTIVE</div><p role="status">워크스페이스를 준비하고 있습니다…</p></section></main>}><AuthForm link={link} onSignedIn={signedIn} onCancel={()=>setLink(null)}/></Suspense>;
  const manager=state.user.role!=='member';
  return <AccountProvider state={state}><div className="auth-toolbar"><span>{state.user.email}</span><nav aria-label="계정 메뉴">{manager&&<CardButton onClick={()=>setPanel('accounts')}>팀 계정 관리</CardButton>}<CardButton onClick={()=>setPanel('password')}>비밀번호 변경</CardButton><CardButton disabled={pending} onClick={()=>void logout()}>로그아웃</CardButton></nav>{error&&<p role="alert">{error}</p>}</div>{children}
-  {panel==='accounts'&&manager&&<AccountPanel user={state.user} onClose={()=>setPanel(null)} onSignedOut={()=>{setState({mode:'email',user:null});setPanel(null)}}/>}
-  {panel==='password'&&<PasswordPanel onClose={()=>setPanel(null)} onChanged={()=>{setPanel(null);void refresh()}}/>}
+  {panel==='accounts'&&manager&&<Suspense fallback={null}><AccountPanel user={state.user} onClose={()=>setPanel(null)} onSignedOut={()=>{setState({mode:'email',user:null});setPanel(null)}}/></Suspense>}
+  {panel==='password'&&<Suspense fallback={null}><PasswordPanel onClose={()=>setPanel(null)} onChanged={()=>{setPanel(null);void refresh()}}/></Suspense>}
  </AccountProvider>;
 }

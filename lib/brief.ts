@@ -1,5 +1,6 @@
-import {campaignBudget,isRecruitmentObjective,type Campaign,type CampaignObjective} from './agency';
+import {isRecruitmentObjective,type Campaign,type CampaignObjective} from './agency';
 import type {Store} from './store-marketing';
+import {executionGapFields} from './execution-gaps';
 import {factDiscipline,claimPolicy,directivePolicy,measurementDiscipline} from './campaign-policy';
 
 export const planFields = {
@@ -14,7 +15,7 @@ export type CampaignPlan=Record<PlanKey,string>;
 export const emptyPlan=()=>Object.fromEntries(Object.keys(planFields).map(k=>[k,''])) as CampaignPlan;
 export const briefFields={title:'캠페인 이름',audience:'타깃 고객',channels:'사용할 채널',stores:'대상 매장 / 시장',products:'제품 / 제안',constraints:'지켜야 할 조건',...planFields};
 export type BriefKey=keyof typeof briefFields;
-export const questionFields={...briefFields,budget:'예산 상한',startDate:'시작일',endDate:'종료일',sources:'참고자료'};
+export const questionFields={...briefFields,...executionGapFields,sources:'참고자료'};
 export type QuestionKey=keyof typeof questionFields;
 // Facts and commitments are user-owned. A model may explain what to collect, never fill these from guesses.
 export const protectedFields=new Set<BriefKey>(['baseline','target','operations','owner','learning']);
@@ -55,9 +56,8 @@ export function readiness(c:Partial<BriefInput>|Campaign){
  const groups=[{title:'전략 설계',keys:['audience','barrier','message','journey'] as QuestionKey[]},{title:'측정 준비',keys:['kpi','baseline','target','tracking','experiment','decision'] as QuestionKey[]},{title:'운영 준비',keys:['products','operations','owner','schedule','budget','startDate','endDate'] as QuestionKey[]}];
  return groups.map(g=>({...g,missing:g.keys.filter(k=>k==='budget'?typeof c.budget!=='number':!meaningful(valueOf(c,k)))}));
 }
-// 목록 카드의 '실행 준비 미완' 표시: 예산 확정·시작일·종료일 중 빠진 항목. 저장된 캠페인의 확정 표시 없는 0은 미확정이다.
-export function executionGaps(c:Pick<Campaign,'budget'|'budgetConfirmedAt'|'startDate'|'endDate'>){return (['budget','startDate','endDate'] as const).filter(k=>k==='budget'?campaignBudget(c)===null:!c[k])}
-export function executionGapLabels(c:Pick<Campaign,'budget'|'budgetConfirmedAt'|'startDate'|'endDate'>){return executionGaps(c).map(k=>questionFields[k]).join(', ')}
+// 목록 카드의 '실행 준비 미완' 표시는 lib/execution-gaps.ts에 있다(홈 첫 로딩 JS 예산). 기존 호출처를 위해 여기서도 내보낸다.
+export {executionGaps,executionGapLabels} from './execution-gaps';
 // 캠페인 텍스트(목표·대상 매장)에 적힌 건물 동·호수가 연결 지점 주소에 없으면 충돌이다.
 // 동네 이름(휘경동·이문2동), 도로명(외대역동로), 지하철 노선(2호선), 지점 번호(2호점)는 동·호수로 보지 않는다.
 const unitPatterns=[/(?<![가-힣A-Za-z0-9])([A-Za-z]|\d{1,4}|[가나다라마바사])\s?동(?![가-힣])/g,/(?<!\d)(\d{1,5})\s?호(?![선점차기])/g];

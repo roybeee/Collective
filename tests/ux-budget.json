@@ -15,10 +15,12 @@
  },
  "lazyOnly": ["learning-panel", "brand-archive", "campaign-brief", "campaign-detail-panel", "panels", "delete-campaign-dialog", "measurement-collect", "campaign-metrics", "store-marketing-panel", "franchise-panel"],
  "runtime": {
-  "homeJsGzKB": 235,
+  "homeJsGzKB": 180,
   "growthTabRequests": 2,
   "axeCriticalSerious": 0,
   "mobileTouchTargetPct": 98,
-  "horizontalOverflowPx": 1
+  "horizontalOverflowPx": 1,
+  "lcpMs4g": 3700,
+  "inpMs": 200
  }
 }

@@ -5,6 +5,16 @@ import hostingConfig from "./.openai/hosting.json";
 import { readExecutionProfile } from "./scripts/execution-profile.mjs";
 import { sites } from "./build/sites-vite-plugin";
 
+// 브라우저 번들 전용: 최상위가 상수·함수 선언뿐인(부수 효과 없는) lib 모듈은 쓰는 부분만 싣는다. 품질 콘솔이 role-output에서 함수 하나만
+// 가져와도 지시문 상수(practice·campaign-policy 등)가 홈 첫 로딩에 실리던 것을 뺀다(UX-PLAN-3 ⑩). 목록의 모듈은 최상위에서 전역을 바꾸지 않는다(tests/ux-budget.test.mjs).
+const PURE_CLIENT_LIB = /[\\/]lib[\\/](?:practice|campaign-policy|brief|output-normalize|copy-pack|channels|learning|role-output|review-decisions|quality|artifact-text)\.ts$/;
+const pureClientLib = {
+  name: "collective:pure-client-lib",
+  transform(this: { environment?: { name: string } }, _code: string, id: string) {
+    return this.environment?.name === "client" && PURE_CLIENT_LIB.test(id) ? { moduleSideEffects: false } : null;
+  },
+};
+
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   "00000000-0000-4000-8000-000000000000";
 
@@ -76,6 +86,7 @@ export default defineConfig(async () => {
     },
     plugins: [
       vinext(),
+      pureClientLib,
       sites({ mockAuth: !managedLinux }),
       cloudflare({
         viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },

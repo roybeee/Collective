@@ -2,9 +2,9 @@ import {test,expect,type Page} from '@playwright/test';
 import {existsSync,readFileSync,readdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {gzipSync} from 'node:zlib';
-// UX-PLAN-3 Q0·Q7 런타임 예산(tests/ux-budget.json runtime): 홈 첫 로딩 JS(gz), axe critical·serious 0, 모바일 44px 비율, 가로 넘침.
+// UX-PLAN-3 Q0·Q7·⑩ 런타임 예산(tests/ux-budget.json runtime): 홈 첫 로딩 JS(gz), axe critical·serious 0, 모바일 44px 비율, 가로 넘침, 4G 홈 LCP, 핵심 조작 지연(INP).
 // Real local D1/API/Chromium. 인증 헤더 mocked. 외부 호출 없음. 예산을 넘으면 실패한다.
-const budget=JSON.parse(readFileSync('tests/ux-budget.json','utf8')).runtime as {homeJsGzKB:number;axeCriticalSerious:number;mobileTouchTargetPct:number;horizontalOverflowPx:number};
+const budget=JSON.parse(readFileSync('tests/ux-budget.json','utf8')).runtime as {homeJsGzKB:number;axeCriticalSerious:number;mobileTouchTargetPct:number;horizontalOverflowPx:number;lcpMs4g:number;inpMs:number};
 const axePath=(()=>{const store='node_modules/.pnpm';if(!existsSync(store))return null;const dir=readdirSync(store).find(d=>d.startsWith('axe-core@'));return dir?join(store,dir,'node_modules/axe-core/axe.min.js'):null})();
 async function axeSerious(page:Page){
  if(!axePath)return {count:0,rules:['axe-core not found']};
@@ -42,5 +42,38 @@ test('홈 첫 로딩 JS·접근성·터치 크기·가로 넘침 예산',async({
    const hit=await overlaps(page);expect(hit,`${path} overlapping controls: ${hit.slice(0,6).join(' | ')}`).toEqual([]);
    if(mobile){const t=await touch(page);expect(100*(t.total-t.small)/Math.max(1,t.total),`${path} ${t.small}/${t.total} under 44px`).toBeGreaterThanOrEqual(budget.mobileTouchTargetPct)}
   }
+ }finally{await context.close()}
+});
+
+// UX-PLAN-3 ⑩ 5점 조건. 4G(왕복 150ms·내려받기 1.6Mbps·올리기 750kbps)+CPU 4배 감속에서 빈 캐시로 연 홈의 LCP(largest-contentful-paint 마지막 후보)와,
+// 같은 CPU 감속에서 핵심 조작(홈 표에서 캠페인 열기·성장·판매 탭·'/' 바로 가기)의 Event Timing duration 최댓값(INP와 같은 계산: 조작마다 가장 긴 이벤트)을 잰다.
+// lcpMs4g는 목표 2.5초가 아니라 2026-10-02 측정값(로컬 HTTP/1.1 서버에서 3.4~3.6초)을 올림한 래칫이다. 로그인 확인→워크스페이스 읽기 직렬 요청과 늦게 시작하는 화면 코드가 남은 원인이다.
+// 데스크톱 프로젝트에서만 잰다. 모바일 프로젝트는 같은 Chromium에 폭만 좁힌 것이라 새 정보가 없고, 감속 아래 두 번째 측정이 흔들려 예산 판정만 불안정해진다.
+test('4G 홈 LCP·핵심 조작 지연(INP) 예산',async({browser},info)=>{
+ test.skip(info.project.name!=='desktop','데스크톱 프로젝트에서만 잰다');
+ const owner=`perf-${Date.now()}`,context=await browser.newContext({baseURL:info.project.use.baseURL,viewport:info.project.use.viewport,extraHTTPHeaders:{'oai-authenticated-user-id':owner}}),page=await context.newPage();
+ try{
+  await page.request.get('/api/workspace');
+  const title='성능 측정 캠페인';await page.request.post('/api/action',{data:{action:'save_campaign',data:{brandId:'ofd',title,goal:'성능 확인'}}});
+  await page.addInitScript(()=>{const w=window as unknown as {__events:{id:number;name:string;duration:number}[]};w.__events=[];new PerformanceObserver(list=>{for(const e of list.getEntries() as (PerformanceEventTiming&{interactionId:number})[])if(e.interactionId)w.__events.push({id:e.interactionId,name:e.name,duration:e.duration})}).observe({type:'event',durationThreshold:16,buffered:true} as PerformanceObserverInit)});
+  const cdp=await context.newCDPSession(page);await cdp.send('Network.enable');
+  await cdp.send('Network.emulateNetworkConditions',{offline:false,latency:150,downloadThroughput:200000,uploadThroughput:93750});await cdp.send('Emulation.setCPUThrottlingRate',{rate:4});
+  await page.goto('/');const open=page.locator('.campaign-table .campaign-name',{hasText:title});await expect(open).toBeVisible({timeout:30_000});await page.waitForLoadState('networkidle');
+  const lcp=await page.evaluate(()=>new Promise<number>(done=>{new PerformanceObserver(list=>{const e=list.getEntries();done(Math.round(e[e.length-1].startTime))}).observe({type:'largest-contentful-paint',buffered:true});setTimeout(()=>done(-1),3000)}));
+  info.annotations.push({type:'lcpMs4g',description:String(lcp)});
+  expect(lcp,'no largest-contentful-paint entry').toBeGreaterThan(0);expect(lcp,`home LCP ${lcp}ms under 4G`).toBeLessThanOrEqual(budget.lcpMs4g);
+  // 조작 지연은 네트워크와 무관하므로 4G 제한만 풀고 CPU 4배 감속은 둔다. 조작마다 그 사이 생긴 이벤트의 최댓값을 남긴다.
+  // 사람은 누르기 전에 마우스를 올린다. 올렸을 때 미리 받는 화면 코드(data-prefetch)가 다 받아진 뒤 누른 지연을 잰다(Playwright는 올리자마자 누른다).
+  const settle=async(target:ReturnType<typeof page.locator>)=>{await target.hover();await page.waitForLoadState('networkidle');await page.waitForTimeout(200)};
+  await cdp.send('Network.emulateNetworkConditions',{offline:false,latency:0,downloadThroughput:-1,uploadThroughput:-1});
+  const worst:Record<string,number>={};
+  const measure=async(name:string,act:()=>Promise<void>)=>{const from=await page.evaluate(()=>(window as unknown as {__events:unknown[]}).__events.length);await act();await page.waitForTimeout(300);worst[name]=await page.evaluate(n=>Math.max(0,...(window as unknown as {__events:{duration:number}[]}).__events.slice(n).map(e=>e.duration)),from)};
+  await settle(open);await measure('open-campaign',async()=>{await open.click();await expect(page.getByRole('tab',{name:'성장·판매',exact:true})).toBeVisible({timeout:30_000})});
+  await settle(page.getByRole('tab',{name:'성장·판매',exact:true}));await measure('growth-tab',async()=>{await page.getByRole('tab',{name:'성장·판매',exact:true}).click();await expect(page.getByRole('tab',{name:'성장·판매',exact:true})).toHaveAttribute('aria-selected','true');await page.waitForLoadState('networkidle')});
+  await page.locator('body').click({position:{x:5,y:5}});
+  await measure('palette',async()=>{await page.keyboard.press('/');await expect(page.getByRole('dialog',{name:'바로 가기'})).toBeVisible({timeout:30_000})});
+  const inp=Math.max(...Object.values(worst));
+  info.annotations.push({type:'inpMs',description:JSON.stringify(worst)});
+  expect(inp,`interaction latency ${JSON.stringify(worst)}`).toBeLessThanOrEqual(budget.inpMs);
  }finally{await context.close()}
 });
