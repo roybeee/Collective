@@ -93,7 +93,7 @@ test('과업 3: 고객 문의 기한 처리',async({browser},info)=>{
   await expect(panel.getByRole('combobox',{name:'처리 종류',exact:true})).toBeVisible();
   await m.select(panel.getByRole('combobox',{name:'처리 종류',exact:true}),'resolve');await m.select(panel.getByRole('combobox',{name:'해결 방법',exact:true}),'shipped');await m.fill(panel.getByRole('textbox',{name:'처리 증빙 ID',exact:true}),'ship-1');
   await m.click(panel.getByRole('button',{name:'처리 저장',exact:true}),'처리 저장');
-  await expect(panel.getByRole('status').filter({hasText:'처리를 기록했습니다'})).toBeVisible();await expect(panel).toContainText('미해결 0건 · 기한 초과 0건');
+  await expect(panel.getByRole('status').filter({hasText:'처리를 기록했습니다'})).toBeVisible();await expect(panel).toContainText('미해결 0건, 기한 초과 0건');
   const {tickets}=await get(`/api/growth/cs?campaignId=${campaignId}`) as {tickets:{id:string;status:string}[]};
   expect(tickets.find(t=>t.id===id)?.status).toBe('resolved');
   report(info,3,m);

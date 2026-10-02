@@ -100,7 +100,7 @@ test('키보드 과업 3: 고객 문의 기한 처리',async({browser},info)=>{
   await choose(k,panel.getByRole('combobox',{name:'해결 방법',exact:true}),'shipped');
   await k.tabTo(panel.getByRole('textbox',{name:'처리 증빙 ID',exact:true}));await k.type('ship-1');
   await k.tabTo(panel.getByRole('button',{name:'처리 저장',exact:true}));await k.press('Enter');
-  await expect(panel.getByRole('status').filter({hasText:'처리를 기록했습니다'})).toBeVisible();await expect(panel).toContainText('미해결 0건 · 기한 초과 0건');
+  await expect(panel.getByRole('status').filter({hasText:'처리를 기록했습니다'})).toBeVisible();await expect(panel).toContainText('미해결 0건, 기한 초과 0건');
   const {tickets}=await get(`/api/growth/cs?campaignId=${campaignId}`) as {tickets:{id:string;status:string}[]};
   expect(tickets.find(t=>t.id===id)?.status).toBe('resolved');
   report(info,3,k);
@@ -116,7 +116,7 @@ test('키보드 과업 4: 확대 제안 승인',async({browser},info)=>{
   const panel=page.getByRole('region',{name:'검증된 확대',exact:true});
   await expect(panel.getByRole('combobox',{name:'예약에 쓸 활성 위임',exact:true})).toHaveValue('x-auth');
   await k.tabTo(panel.getByRole('button',{name:`${id} 소유자 승인·예약`,exact:true}));await k.press('Enter');
-  await expect(panel.getByRole('status').filter({hasText:'확대 예산을 예약했습니다'})).toBeVisible();await expect(panel).toContainText('확대 예약 200원 · 원장 reserved');
+  await expect(panel.getByRole('status').filter({hasText:'확대 예산을 예약했습니다'})).toBeVisible();await expect(panel).toContainText('확대 예약 200원, 원장 reserved');
   const {proposals}=await get(`/api/growth/expansion?campaignId=${campaignId}`) as {proposals:{id:string;status:string;commitment?:{status:string}}[]};
   const p=proposals.find(x=>x.id===id);expect(p?.status).toBe('reserved');expect(p?.commitment?.status).toBe('reserved');
   report(info,4,k);
