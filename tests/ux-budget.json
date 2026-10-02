@@ -2,7 +2,7 @@
  "_note": "UX-PLAN-3 화면 품질 예산. static은 tests/ux-budget.test.mjs, runtime은 e2e/ux-budget.spec.ts가 확인한다. 값은 내려가기만 한다(floors는 올라가기만 한다).",
  "static": {
   "rawButtons": 2,
-  "rawFormControls": 5,
+  "rawFormControls": 4,
   "rawTables": 5,
   "confirmCalls": 5,
   "inlineStyles":0,
@@ -23,7 +23,7 @@
   "axeCriticalSerious": 0,
   "mobileTouchTargetPct": 98,
   "horizontalOverflowPx": 1,
-  "lcpMs4g": 2600,
+  "lcpMs4g": 2500,
   "inpMs": 200
  }
 }

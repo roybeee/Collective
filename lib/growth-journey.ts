@@ -117,7 +117,7 @@ function parseObservation(value:unknown):JourneyObservation {
     tracking:choice(input.tracking,['unknown','reliable','broken'],'unknown','추적 신뢰'),
     sourceUrls:strings(input.sourceUrls,'출처 URL',20,publicUrl),evidence:safeText(input.evidence,'관측 근거'),
     denominator:metric(input.denominator,'분모'),conversions:metric(input.conversions,'전환'),paidOrders:metric(input.paidOrders,'결제 주문'),
-    refundedOrders:metric(input.refundedOrders,'환불 주문'),contributionProfit:metric(input.contributionProfit,'기여이익',true)};
+    refundedOrders:metric(input.refundedOrders,'환불 주문'),contributionProfit:metric(input.contributionProfit,'공헌이익',true)};
   if (result.windowStart && result.windowEnd && result.windowStart>result.windowEnd) throw new GrowthJourneyError('관측 종료는 시작보다 빠를 수 없습니다.');
   if (result.denominator!==null && result.conversions!==null && result.conversions>result.denominator) throw new GrowthJourneyError('전환은 분모보다 클 수 없습니다.');
   if (result.paidOrders!==null && result.refundedOrders!==null && result.refundedOrders>result.paidOrders) throw new GrowthJourneyError('환불 주문은 결제 주문보다 클 수 없습니다.');

@@ -53,10 +53,10 @@ test('홈 첫 로딩 JS·접근성·터치 크기·가로 넘침 예산',async({
 // UX-PLAN-3 ⑩ 5점 조건. 4G(왕복 150ms·내려받기 1.6Mbps·올리기 750kbps)+CPU 4배 감속에서 빈 캐시로 연 홈의 LCP(largest-contentful-paint 마지막 후보)와,
 // 같은 CPU 감속에서 핵심 조작(홈 표에서 캠페인 열기·성장·판매 탭·'/' 바로 가기)의 Event Timing duration 최댓값(INP와 같은 계산: 조작마다 가장 긴 이벤트)을 잰다.
 // lcpMs4g는 래칫이다. 3.4~3.6초에서 머리 스크립트 미리 요청(lib/ui/boot-fetch.ts)·홈 진입점 modulepreload(app/home-client.tsx)·홈 모듈 한 덩어리(vite.config.ts homeChunk)로
-// 홈 아래쪽을 첫 그림 다음 프레임에 그리게 해(components/app/after-paint.tsx) 2026-10-02 로컬 통합 빌드 2.32~2.38초(목표 2.5초)가 됐다. CI 러너 흔들림을 감안해 예산은 2.6초로 둔다.
+// 홈 아래쪽을 첫 그림 다음 프레임에 그리게 해(components/app/after-paint.tsx) 2026-10-02 로컬 통합 빌드 2.32~2.38초가 됐다. 예산은 목표 2.5초이고, 세 번 잰 중앙값으로 판정한다(평가 10회차).
 // 데스크톱 프로젝트에서만 잰다. 모바일 프로젝트는 같은 Chromium에 폭만 좁힌 것이라 새 정보가 없고, 감속 아래 두 번째 측정이 흔들려 예산 판정만 불안정해진다.
 test('4G 홈 LCP·핵심 조작 지연(INP) 예산',async({browser},info)=>{
- test.skip(info.project.name!=='desktop','데스크톱 프로젝트에서만 잰다');
+ test.skip(info.project.name!=='desktop','데스크톱 프로젝트에서만 잰다');test.setTimeout(150_000);
  const owner=`perf-${Date.now()}`,context=await browser.newContext({baseURL:info.project.use.baseURL,viewport:info.project.use.viewport,extraHTTPHeaders:{'oai-authenticated-user-id':owner}}),page=await context.newPage();
  try{
   await page.request.get('/api/workspace');
@@ -65,9 +65,12 @@ test('4G 홈 LCP·핵심 조작 지연(INP) 예산',async({browser},info)=>{
   const cdp=await context.newCDPSession(page);await cdp.send('Network.enable');
   await cdp.send('Network.emulateNetworkConditions',{offline:false,latency:150,downloadThroughput:200000,uploadThroughput:93750});await cdp.send('Emulation.setCPUThrottlingRate',{rate:4});
   await page.goto('/');const open=page.locator('.campaign-table .campaign-name',{hasText:title});await expect(open).toBeVisible({timeout:30_000});await page.waitForLoadState('networkidle');
-  const lcp=await page.evaluate(()=>new Promise<number>(done=>{new PerformanceObserver(list=>{const e=list.getEntries();done(Math.round(e[e.length-1].startTime))}).observe({type:'largest-contentful-paint',buffered:true});setTimeout(()=>done(-1),3000)}));
-  info.annotations.push({type:'lcpMs4g',description:String(lcp)});
-  expect(lcp,'no largest-contentful-paint entry').toBeGreaterThan(0);expect(lcp,`home LCP ${lcp}ms under 4G`).toBeLessThanOrEqual(budget.lcpMs4g);
+  // 한 번 잰 값은 흔들린다(평가 10회차). 빈 캐시로 새 창을 두 번 더 열어 세 번의 중앙값을 예산과 비교한다.
+  const readLcp=(p:typeof page)=>p.evaluate(()=>new Promise<number>(done=>{new PerformanceObserver(list=>{const e=list.getEntries();done(Math.round(e[e.length-1].startTime))}).observe({type:'largest-contentful-paint',buffered:true});setTimeout(()=>done(-1),3000)}));
+  const coldLcp=async()=>{const c=await browser.newContext({baseURL:info.project.use.baseURL,viewport:info.project.use.viewport,extraHTTPHeaders:{'oai-authenticated-user-id':owner}});try{const p=await c.newPage(),s=await c.newCDPSession(p);await s.send('Network.enable');await s.send('Network.emulateNetworkConditions',{offline:false,latency:150,downloadThroughput:200000,uploadThroughput:93750});await s.send('Emulation.setCPUThrottlingRate',{rate:4});await p.goto('/');await expect(p.locator('.campaign-table .campaign-name',{hasText:title})).toBeVisible({timeout:30_000});await p.waitForLoadState('networkidle');return await readLcp(p)}finally{await c.close()}};
+  const samples=[await readLcp(page),await coldLcp(),await coldLcp()],lcp=[...samples].sort((a,b)=>a-b)[1];
+  info.annotations.push({type:'lcpMs4g',description:`${lcp} (중앙값, ${samples.join('·')})`});
+  expect(Math.min(...samples),'no largest-contentful-paint entry').toBeGreaterThan(0);expect(lcp,`home LCP median ${lcp}ms under 4G (${samples.join(', ')})`).toBeLessThanOrEqual(budget.lcpMs4g);
   // 조작 지연은 네트워크와 무관하므로 4G 제한만 풀고 CPU 4배 감속은 둔다. 조작마다 그 사이 생긴 이벤트의 최댓값을 남긴다.
   // 사람은 누르기 전에 마우스를 올린다. 올렸을 때 미리 받는 화면 코드(data-prefetch)가 다 받아진 뒤 누른 지연을 잰다(Playwright는 올리자마자 누른다).
   const settle=async(target:ReturnType<typeof page.locator>)=>{await target.hover();await page.waitForLoadState('networkidle');await page.waitForTimeout(200)};
