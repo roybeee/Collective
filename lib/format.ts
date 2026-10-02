@@ -13,6 +13,20 @@ export function count(value:number|null|undefined,unit='',empty=UNKNOWN){return 
 export function ratioOf(part:number|null|undefined,total:number|null|undefined,unit='건'){if(typeof part!=='number')return UNKNOWN;return typeof total==='number'?`${number.format(part)}/${number.format(total)}${unit}`:`${number.format(part)}${unit}(전체 ${UNKNOWN})`}
 /** ISO → '2026-10-01 14:30'(KST). */
 export function dateTime(value:unknown,empty=UNKNOWN){const d=valid(value);if(!d)return empty;const p=parts(d);return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`}
+/** ISO → '10월 2일 오후 3:10'(KST). 문장 안에 넣는 시각이다(변경 이력 문장). 표·선택지는 dateTime을 쓴다. */
+export function dayTime(value:unknown,empty=''){const d=valid(value);if(!d)return empty;const p=parts(d),h=Number(p.hour);return `${Number(p.month)}월 ${Number(p.day)}일 ${h<12?'오전':'오후'} ${h%12||12}:${p.minute}`}
+// 끝 글자의 받침(0 없음, 8 ㄹ). 한글 음절은 종성으로, 숫자는 읽는 소리(0 영·십·백, 1 일, 3 삼, 6 육, 7 칠, 8 팔)로, 영문은 l·m·n만 받침으로 본다.
+function finalConsonant(word:string){
+ const last=word.replace(/[\s」』)\]"'’”]+$/,'').slice(-1),code=last.charCodeAt(0)-0xac00;
+ if(code>=0&&code<=11171)return code%28;
+ if(/\d/.test(last))return ({'0':21,'1':8,'3':16,'6':1,'7':8,'8':8} as Record<string,number>)[last]??0;
+ return /[mn]/i.test(last)?4:/l/i.test(last)?8:0;
+}
+/** 받침에 맞춰 조사를 붙인다: josa('브랜드 전략 담당 v2','을/를') → '… v2를', josa('회의 개선','으로/로') → '회의 개선으로'. */
+export function josa(word:string,pair:'을/를'|'이/가'|'은/는'|'과/와'|'으로/로'){
+ const f=finalConsonant(word),[withFinal,without]=pair.split('/');
+ return word+(pair==='으로/로'?(f&&f!==8?withFinal:without):f?withFinal:without);
+}
 /** ISO 또는 'YYYY-MM-DD' → '2026-10-01'(KST). 날짜만 있는 값은 그대로 둔다(시간대 이동 없음). */
 export function date(value:unknown,empty=UNKNOWN){if(typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value))return value;const d=valid(value);if(!d)return empty;const p=parts(d);return `${p.year}-${p.month}-${p.day}`}
 /** 밀리초 → '850ms 미만은 1초 미만', '3초', '2분 5초', '1시간 4분'. */
