@@ -3,6 +3,7 @@
 // 홈 첫 로딩을 무겁게 만드는 정적 import도 막는다. 가맹(franchise-*)·온라인 채점(online-grading) 화면은 R·Q 소유라 계수에서 뺀다.
 import assert from 'node:assert/strict';
 import {readFileSync,readdirSync} from 'node:fs';
+import ts from 'typescript';
 const budget=JSON.parse(readFileSync('tests/ux-budget.json','utf8'));
 const app=readdirSync('app').filter(n=>n.endsWith('.tsx')&&!n.startsWith('franchise-')&&n!=='online-grading.tsx').map(n=>readFileSync('app/'+n,'utf8')).join('\n');
 const css=readdirSync('app').filter(n=>n.endsWith('.css')).map(n=>readFileSync('app/'+n,'utf8')).join('\n');
@@ -60,4 +61,9 @@ const ws=readFileSync('app/workspace.tsx','utf8');
 for(const m of budget.lazyOnly)check(!new RegExp(`^import [^;]*from '\\./${m}';`,'m').test(ws),`app/workspace.tsx must not statically import ./${m}`);
 check(!/from '\.\/command-palette-dialog'/.test(readFileSync('app/command-palette.tsx','utf8'))||/lazy\(\(\)=>import\('\.\/command-palette-dialog'\)\)/.test(readFileSync('app/command-palette.tsx','utf8')),'command palette dialog is lazy');
 check(/include=summary,stop/.test(readFileSync('app/growth-panel.tsx','utf8')),'growth tab reads view, panel summary and stop state in one request');
+// 브라우저 번들에서 부수 효과 없음으로 표시한 lib 모듈(vite.config.ts PURE_CLIENT_LIB)은 최상위에 선언만 둔다. 최상위 실행문(등록·전역 변경)이 생기면 번들에서 빠질 수 있다.
+const pureLib=readFileSync('vite.config.ts','utf8').match(/PURE_CLIENT_LIB = [^\n]*?\(\?:([\w|-]+)\)/)?.[1]?.split('|')??[];
+check(pureLib.length>0,'vite.config.ts PURE_CLIENT_LIB list is readable');
+const declarationKinds=new Set([ts.SyntaxKind.ImportDeclaration,ts.SyntaxKind.ExportDeclaration,ts.SyntaxKind.TypeAliasDeclaration,ts.SyntaxKind.InterfaceDeclaration,ts.SyntaxKind.FunctionDeclaration,ts.SyntaxKind.VariableStatement]);
+for(const m of pureLib){const f=`lib/${m}.ts`,sf=ts.createSourceFile(f,readFileSync(f,'utf8'),ts.ScriptTarget.Latest,true);const bad=sf.statements.filter(x=>!declarationKinds.has(x.kind)).map(x=>x.getText().slice(0,40));check(bad.length===0,`${f} must hold only declarations at top level: ${bad.join(' | ')}`)}
 console.log(JSON.stringify({passed,now}));
