@@ -15,6 +15,35 @@ const pureClientLib = {
   },
 };
 
+// 브라우저 번들 전용: 홈 화면(app/workspace.tsx)이 정적으로 끌어오는 작은 모듈(아이콘·공용 부품·lib)을 한 덩어리로 묶는다(UX-PLAN-3 ⑩ 4G LCP).
+// 묶지 않으면 공유 모듈마다 수백 바이트짜리 파일 40여 개로 갈라져, 4G 왕복(150ms)마다 6개씩만 받아 첫 화면이 약 1초 늦었다.
+// 홈은 이 앱의 유일한 페이지라 이 모듈들은 어차피 첫 화면에 다 내려받는다. 바이트는 그대로이고 파일 수만 준다.
+const HOME_ROOT = /[\\/]app[\\/]workspace\.tsx$/;
+// 외부 패키지(lucide 아이콘 묶음 파일 등)와 쓰는 부분만 싣는 lib(PURE_CLIENT_LIB)는 묶지 않는다. 묶으면 트리 셰이킹으로 빠지던 코드까지 홈에 실린다.
+const HOME_EXCLUDE = /[\\/]node_modules[\\/]/;
+type ChunkCtx = { getModuleInfo(id: string): { importedIds: readonly string[] } | null };
+const homeChunk = {
+  name: "collective:home-chunk",
+  outputOptions(this: { environment?: { name: string } }, options: Record<string, unknown>) {
+    if (this.environment?.name !== "client") return null;
+    const split = options.codeSplitting as { groups?: unknown[] } | undefined;
+    if (!split || typeof split !== "object") return null;
+    let home: Set<string> | null = null, root: string | null = null;
+    const group = {
+      name(id: string, ctx: ChunkCtx) {
+        if (!root && HOME_ROOT.test(id)) root = id;
+        if (!home && root) {
+          home = new Set();
+          const stack = [root];
+          while (stack.length) { const next = stack.pop()!; if (home.has(next) || HOME_EXCLUDE.test(next) || PURE_CLIENT_LIB.test(next)) continue; home.add(next); stack.push(...(ctx.getModuleInfo(next)?.importedIds ?? [])); }
+        }
+        return home?.has(id) ? "home" : null;
+      },
+    };
+    return { ...options, codeSplitting: { ...split, groups: [...(split.groups ?? []), group] } };
+  },
+};
+
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   "00000000-0000-4000-8000-000000000000";
 
@@ -87,6 +116,7 @@ export default defineConfig(async () => {
     plugins: [
       vinext(),
       pureClientLib,
+      homeChunk,
       sites({ mockAuth: !managedLinux }),
       cloudflare({
         viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },

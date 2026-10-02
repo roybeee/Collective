@@ -52,6 +52,7 @@ import {setPendingPanel,setPendingRecord,setPendingSection} from '@/lib/ui/pendi
 import {ConfirmHost} from '@/components/app/confirm-dialog';
 import {useDeferredFieldErrors} from '@/lib/ui/field-errors';
 import {rememberOpener} from '@/lib/ui/return-focus';
+import {bootFetch} from '@/lib/ui/boot-fetch';
 import {ScreenSkeleton} from '@/components/app/screen-skeleton';
 import {notifySaved} from '@/lib/ui/notify';
 // 가맹 모집 화면(리드 원장·게이트 모듈 포함)은 메뉴를 열 때만 내려받는다(기능 스위치 기본 꺼짐, 대부분의 사용자는 쓰지 않는다).
@@ -120,7 +121,7 @@ useEffect(()=>{const prev=shownView.current;shownView.current=view;if(!prev||pre
 // 여러 곳(폴링·저장 뒤·조사 감시)에서 동시에 불러도 늦게 도착한 옛 응답이 새 데이터를 덮지 않는다. 목표 입력의 기본 브랜드는 처음 불러올 때 한 번 정한다
 // (기억한 선택이 없을 때만, 저장하지 않음). 이후 다른 브랜드의 활동이 최신이 돼도 선택 상자가 바뀌지 않는다.
 const reloadSeq=useRef({started:0,applied:0});
-const reload=useCallback(async()=>{const seq=++reloadSeq.current.started;try{const r=await fetch('/api/workspace');const d=await r.json() as WorkspaceData & {error?:string};if(!r.ok)throw new Error(d.error||'데이터를 불러오지 못했습니다.');if(seq<reloadSeq.current.applied)return;reloadSeq.current.applied=seq;setData(d);setError('');setLoaded(true);setBrandId(b=>d.brands.some(x=>x.id===b)?b:defaultBrandId(d.brands,campaignActivity(d.campaigns)))}catch(e){if(seq<reloadSeq.current.applied)return;setError((e as Error).message);throw e}},[]);
+const reload=useCallback(async()=>{const seq=++reloadSeq.current.started;try{const r=await bootFetch('/api/workspace');const d=await r.json() as WorkspaceData & {error?:string};if(!r.ok)throw new Error(d.error||'데이터를 불러오지 못했습니다.');if(seq<reloadSeq.current.applied)return;reloadSeq.current.applied=seq;setData(d);setError('');setLoaded(true);setBrandId(b=>d.brands.some(x=>x.id===b)?b:defaultBrandId(d.brands,campaignActivity(d.campaigns)))}catch(e){if(seq<reloadSeq.current.applied)return;setError((e as Error).message);throw e}},[]);
 useEffect(()=>{void reload().catch(()=>{})},[reload]);
 useEffect(()=>{if(!loaded)return;const controller=new AbortController();const read=()=>{fetch('/api/franchise?view=status',{signal:controller.signal}).then(r=>r.ok?r.json() as Promise<{enabled?:unknown;hasRecords?:unknown}>:null).then(d=>{if(!controller.signal.aborted)setFranchiseStatus(d?{enabled:d.enabled===true,hasRecords:d.hasRecords===true}:null)}).catch(()=>{})};read();window.addEventListener('focus',read);return()=>{controller.abort();window.removeEventListener('focus',read)}},[loaded]);
 const franchiseVisible=franchiseMenuVisible(franchiseStatus,canManage);

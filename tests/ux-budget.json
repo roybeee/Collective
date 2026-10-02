@@ -17,12 +17,12 @@
  "floors": {"undoNotices": 6},
  "lazyOnly": ["learning-panel", "brand-archive", "campaign-brief", "campaign-detail-panel", "panels", "delete-campaign-dialog", "measurement-collect", "campaign-metrics", "store-marketing-panel", "franchise-panel"],
  "runtime": {
-  "homeJsGzKB": 180,
+  "homeJsGzKB": 175,
   "growthTabRequests": 2,
   "axeCriticalSerious": 0,
   "mobileTouchTargetPct": 98,
   "horizontalOverflowPx": 1,
-  "lcpMs4g": 3700,
+  "lcpMs4g": 2700,
   "inpMs": 200
  }
 }
