@@ -1,4 +1,5 @@
 'use client';
+import {whyDisabled} from '@/lib/ui/why-disabled';
 import {NativeSelect} from '@/components/ui/native-select';
 import {Textarea} from '@/components/ui/textarea';
 import {Input} from '@/components/ui/input';
@@ -44,7 +45,7 @@ function Workspace({campaignId}:{campaignId:string}){
     <label>주문 품목 ID(선택)<Input value={input.lineId} onChange={e=>setInput({...input,lineId:e.target.value})}/></label><label>담당<Input required value={input.assignee} onChange={e=>setInput({...input,assignee:e.target.value})}/></label>
     <label>접수 시각<Input type="datetime-local" value={input.receivedAt} onChange={e=>setInput({...input,receivedAt:e.target.value})}/></label><label>약속 기한<Input type="datetime-local" value={input.promisedBy} onChange={e=>setInput({...input,promisedBy:e.target.value})}/></label>
     <label>우선순위<NativeSelect value={input.priority} onChange={e=>setInput({...input,priority:e.target.value as 'normal'|'high'})}><option value="normal">보통</option><option value="high">높음</option></NativeSelect></label>
-    <Button variant="panel" size="fit" type="submit" disabled={stale||!input.summary||!input.receivedAt||!input.promisedBy}>문의 접수</Button></fieldset></form>}
+    <Button variant="panel" size="fit" type="submit" disabled={stale||!input.summary||!input.receivedAt||!input.promisedBy} disabledReason={whyDisabled([[stale,'최신 기록을 다시 불러온 뒤 접수할 수 있습니다.'],[!input.summary,'운영자 요약을 적어 주세요.'],[!input.receivedAt,'접수 시각을 넣어 주세요.'],[!input.promisedBy,'약속 기한을 넣어 주세요.']])}>문의 접수</Button></fieldset></form>}
    <ul>{view.tickets.map(t=><li key={t.id} className="wrap-anywhere"><p><strong>{categoryLabels[t.input.category]}</strong> · {t.id} · {statusLabels[t.status]}{t.service.overdue?' · 기한 초과':''}{t.service.resolvedLate?' · 기한 뒤 해결':''} · 약속 {dateTime(t.input.promisedBy)} · 담당 {t.input.assignee}{t.input.priority==='high'?' · 높음':''}</p><p>{t.input.summary}</p>
     {t.line&&<p>품목 {t.line.id} v{t.line.version} · {t.lineStatus==='held'?'품목 변경됨':'현재'}{t.returnReasons.length?` · 반품 원인: ${t.returnReasons.map(x=>x.reasonCode).join(', ')}`:''}</p>}
     {t.events.length>0&&<p>처리: {t.events.map(e=>`${e.action}${e.resolution?`(${resolutionLabels[e.resolution]})`:''} ${dateTime(e.at)}`).join(' → ')}{t.service.firstResponseHours!==null?` · 첫 응답 ${t.service.firstResponseHours}시간`:''}</p>}

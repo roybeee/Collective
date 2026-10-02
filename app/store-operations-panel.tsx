@@ -146,7 +146,7 @@ export function LedgerMeasurementDialog({store,experiment,record,onClose,onSaved
 export function StoreLedgerPanel({store,experiments}:{store:Store;experiments:StoreExperiment[]}){
  // 관리자 전용(서버 adminOf): 추적 코드 만들기·주문 가져오기 확정·POS 주간 합계·수집 광고비 옮기기. 직원에게는 숨기고 안내한다.
  const canManage=canChange(useAccount()),[tab,setTab]=useState('book');
- return <Tabs value={tab} onValueChange={setTab}><TabsList variant="line" className="store-tabs" aria-label="주문 장부 보기"><TabsTrigger value="book">주문·비용</TabsTrigger><TabsTrigger value="codes">추적 코드</TabsTrigger>{canManage&&<TabsTrigger value="import">주문 가져오기</TabsTrigger>}<TabsTrigger value="report">귀속 보고</TabsTrigger></TabsList>
+ return <Tabs value={tab} onValueChange={setTab}><TabsList variant="line" className="store-tabs" aria-label="주문 장부 보기"><TabsTrigger value="book">주문·비용</TabsTrigger><TabsTrigger value="codes">추적 코드</TabsTrigger><TabsTrigger value="import" disabled={!canManage} title={canManage?undefined:'주문 가져오기는 관리자만 할 수 있습니다.'}>주문 가져오기</TabsTrigger><TabsTrigger value="report">귀속 보고</TabsTrigger></TabsList>
   <TabsContent value="book"><LedgerBook store={store} experiments={experiments} onImport={canManage?()=>setTab('import'):undefined}/></TabsContent>
   <TabsContent value="codes"><TrackingCodesPanel store={store} canManage={canManage}/></TabsContent>
   {canManage&&<TabsContent value="import"><OrderImportPanel store={store} onSaved={()=>setTab('book')}/></TabsContent>}
