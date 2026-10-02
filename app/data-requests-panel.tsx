@@ -78,7 +78,7 @@ export function DataRequestsSlot({campaignId,artifacts}:{campaignId:string;artif
    <b>자료 요청 · 열림 {open.length} · 닫힘 {closed.length}</b>
    {listing.enabled&&<span className="flex gap-2">
     <Button variant="outline" size="sm" disabled={busy} onClick={()=>void collect()}>작업물에서 모으기</Button>
-    <Button variant="ghost" size="sm" disabled={busy||!admin} title={admin?undefined:'확정 사실과 대조는 관리자만 할 수 있습니다.'} onClick={()=>void reconcile()}><RefreshCw/>확정 사실과 대조</Button>
+    <Button variant="ghost" size="sm" disabled={busy||!admin} disabledReason={!admin?'관리자만 할 수 있습니다.':undefined} title={admin?undefined:'확정 사실과 대조는 관리자만 할 수 있습니다.'} onClick={()=>void reconcile()}><RefreshCw/>확정 사실과 대조</Button>
    </span>}
   </div>
   {!listing.enabled&&<p>기능 스위치 a6_data_requests가 꺼져 있어 새로 모으거나 닫을 수 없습니다. 기존 요청은 그대로 보입니다.</p>}
@@ -89,11 +89,11 @@ export function DataRequestsSlot({campaignId,artifacts}:{campaignId:string;artif
    {r.scopeWarning==='store_link_needed'&&<p className="form-error">{STORE_LINK_WARNING}</p>}
    {listing.enabled&&<span className="flex gap-2 flex-wrap">
     <Button variant="ghost" size="sm" disabled={busy} onClick={()=>edit(r.id,'fact')}>사실 후보로 제안</Button>
-    <Button variant="ghost" size="sm" disabled={busy||!admin} title={admin?undefined:'수동으로 닫기는 관리자만 할 수 있습니다.'} onClick={()=>edit(r.id,'close')}>닫기·필요 없음</Button>
+    <Button variant="ghost" size="sm" disabled={busy||!admin} disabledReason={!admin?'관리자만 할 수 있습니다.':undefined} title={admin?undefined:'수동으로 닫기는 관리자만 할 수 있습니다.'} onClick={()=>edit(r.id,'close')}>닫기·필요 없음</Button>
    </span>}
    {editing?.id===r.id&&<div className="flex gap-2 flex-wrap items-center">
     <Input aria-label={editing.mode==='fact'?'사실 내용':'메모'} maxLength={editing.mode==='fact'?5000:500} value={text} placeholder={editing.mode==='fact'?`${r.label} 내용`:'메모(선택)'} onChange={e=>setText(e.target.value)}/>
-    {editing.mode==='fact'?<Button size="sm" disabled={busy||!text.trim()} onClick={()=>void propose(r)}>후보 저장</Button>:<>
+    {editing.mode==='fact'?<Button size="sm" disabled={busy||!text.trim()} disabledReason={(!text.trim())?'필수 칸을 먼저 채우세요.':undefined} onClick={()=>void propose(r)}>후보 저장</Button>:<>
      <Button size="sm" disabled={busy} onClick={()=>void resolve(r,'close')}>답변 완료</Button>
      <Button size="sm" variant="outline" disabled={busy} onClick={()=>void resolve(r,'dismiss')}>필요 없음</Button></>}
    </div>}

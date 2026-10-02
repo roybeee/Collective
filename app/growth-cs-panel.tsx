@@ -57,7 +57,7 @@ function Workspace({campaignId}:{campaignId:string}){
     <label>처리 종류<NativeSelect value={ev.action} onChange={e=>setEv({...ev,action:e.target.value})}><option value="respond">응답</option><option value="resolve">해결</option><option value="reopen">다시 열기</option><option value="cancel">취소</option></NativeSelect></label>
     {ev.action==='resolve'&&<label>해결 방법<NativeSelect value={ev.resolution} onChange={e=>setEv({...ev,resolution:e.target.value})}>{csResolutions.map(r=><option key={r} value={r}>{resolutionLabels[r]}</option>)}</NativeSelect></label>}
     <label>처리 시각<Input type="datetime-local" value={ev.at} onChange={e=>setEv({...ev,at:e.target.value})}/></label><label>처리 증빙 ID<Input value={ev.evidenceRef} onChange={e=>setEv({...ev,evidenceRef:e.target.value})}/></label><label>처리 메모<Input maxLength={500} value={ev.note} onChange={e=>setEv({...ev,note:e.target.value})}/></label>
-    <Button variant="panel" size="fit" type="button" disabled={stale||!ev.at||!ev.evidenceRef} onClick={()=>void record(ticket)}>처리 저장</Button></fieldset>}
+    <Button variant="panel" size="fit" type="button" disabled={stale||!ev.at||!ev.evidenceRef} disabledReason={stale?'다른 곳에서 먼저 바뀌었습니다. 최신 기록을 불러온 뒤 다시 하세요.':!ev.at?'필수 칸을 먼저 채우세요.':!ev.evidenceRef?'필수 칸을 먼저 채우세요.':undefined} onClick={()=>void record(ticket)}>처리 저장</Button></fieldset>}
   </>}
  </section>;
 }

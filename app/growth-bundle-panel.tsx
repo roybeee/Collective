@@ -41,9 +41,9 @@ function Workspace({campaignId}:{campaignId:string}){
     <label>계획 판매 수량<Input type="number" min={0} value={input.plannedQuantity} onChange={e=>setInput({...input,plannedQuantity:Number(e.target.value)})}/></label>
     <label className={styles.wide}>구매 링크<Input value={input.landingUrl} onChange={e=>setInput({...input,landingUrl:e.target.value})}/></label>
     <label className={styles.wide}>구매 이유<Input maxLength={1000} value={input.purchaseReason} onChange={e=>setInput({...input,purchaseReason:e.target.value})}/></label>
-    {conflict&&<div className={styles.wide}><p>이 번들이 다른 곳에서 바뀌었습니다. 입력을 보존했습니다.</p><Button variant="panel" size="fit" type="button" disabled={stale||!current} onClick={()=>{if(current)setEditing({id:current.id,expectedVersion:current.version});retry.current=null;}}>현재 입력 유지 · 최신 판 채택</Button></div>}
-    <Button variant="panel" size="fit" type="submit" disabled={stale||conflict}>번들 저장</Button></fieldset></form>}
-   {!view.bundles.length&&<EmptyLine first={view.canEdit?'번들':undefined}>번들이 없습니다.</EmptyLine>}
+    {conflict&&<div className={styles.wide}><p>이 번들이 다른 곳에서 바뀌었습니다. 입력을 보존했습니다.</p><Button variant="panel" size="fit" type="button" disabled={stale||!current} disabledReason={stale?'다른 곳에서 먼저 바뀌었습니다. 최신 기록을 불러온 뒤 다시 하세요.':!current?'먼저 대상을 고르세요.':undefined} onClick={()=>{if(current)setEditing({id:current.id,expectedVersion:current.version});retry.current=null;}}>현재 입력 유지 · 최신 판 채택</Button></div>}
+    <Button variant="panel" size="fit" type="submit" disabled={stale||conflict} disabledReason={stale?'다른 곳에서 먼저 바뀌었습니다. 최신 기록을 불러온 뒤 다시 하세요.':conflict?'변경 충돌을 먼저 처리하세요.':undefined}>번들 저장</Button></fieldset></form>}
+   {!view.bundles.length&&<EmptyLine next="위 ‘새 번들’ 버튼으로 시작하세요.">번들이 없습니다.</EmptyLine>}
    <ul>{view.bundles.map(b=><li key={b.id} className="wrap-anywhere"><p><strong>{b.input.title||b.id}</strong> · v{b.version} · 가격 {won(b.input.price)}{b.input.priceApproved?'(승인)':'(미승인)'} · 원가 {won(b.assessment.cost)} · 공헌이익 {won(b.assessment.contribution)} · 정가 합 {won(b.assessment.listPrice)}</p>
     <p>만들 수 있는 번들 {b.assessment.maxBundles??'미확인'}개 · 계획 {b.input.plannedQuantity}개</p>
     <ul>{b.assessment.allocation.map(a=><li key={a.catalogId}>{a.catalogId}: 번들당 {a.unitsPerBundle} · 필요 {a.required} · 가용 {a.available??'미확인'}{a.status==='held'?' · 재고 보류':''}</li>)}</ul>

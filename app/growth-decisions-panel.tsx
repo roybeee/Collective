@@ -1,4 +1,5 @@
 'use client';
+import {EmptyLine} from '@/components/app/empty-line';
 
 import {readOnlyReason} from '@/lib/ui/read-only';
 import {NativeSelect} from '@/components/ui/native-select';
@@ -68,7 +69,7 @@ function Editor({kind,campaignId,view,onView,saving,onSaving}:{kind:Kind;campaig
  }
  const selected=rows.find(row=>row.id===identity.id),stale=!!selected&&selected.version!==identity.version,locked=saving||!view.canEdit;
  const values=draft as unknown as Record<string,string|number|null>,lesson=kind==='lesson'?draft as LessonInput:null;
- return <section aria-label={name}><div className={styles.workspace}><div role="group" className={styles.list} aria-label={`${name} 목록`}><Button disabledReason={view?.canEdit?undefined:readOnlyReason} variant="panel" size="fit" type="button" disabled={locked} onClick={()=>pick()}>새 {name}</Button>{!rows.length&&<p>저장된 기록이 없습니다.</p>}{rows.map(row=><Button variant="panel" size="fit" type="button" key={row.id} disabled={saving} aria-pressed={row.id===identity.id} onClick={()=>pick(row)}><strong>{row.input.title||'제목 없는 초안'}</strong><span>v{row.version}</span></Button>)}</div>
+ return <section aria-label={name}><div className={styles.workspace}><div role="group" className={styles.list} aria-label={`${name} 목록`}><Button disabledReason={view?.canEdit?undefined:readOnlyReason} variant="panel" size="fit" type="button" disabled={locked} onClick={()=>pick()}>새 {name}</Button>{!rows.length&&<EmptyLine next={`위 ‘새 ${name}’ 버튼으로 시작하세요.`}>저장된 {name} 기록이 없습니다.</EmptyLine>}{rows.map(row=><Button variant="panel" size="fit" type="button" key={row.id} disabled={saving} aria-pressed={row.id===identity.id} onClick={()=>pick(row)}><strong>{row.input.title||'제목 없는 초안'}</strong><span>v{row.version}</span></Button>)}</div>
  <div className={styles.editor}><h4>{identity.version?`${name} 편집 · v${identity.version}`:`새 ${name}`}</h4>{!view.canEdit&&<p>조회 전용입니다.</p>}{error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}
  {stale&&<div className={styles.error}>서버 기록이 v{selected.version}로 바뀌었습니다. 최신 기록을 검토하고 저장 기준을 선택하세요.<details><summary>최신 기록 보기</summary><dl>{Object.entries(selected.input).map(([key,value])=><div key={key}><dt>{[...decisionFields,...lessonFields].find(field=>field.key===key)?.label??key}</dt><dd>{value===null?'미확인':String(value)}</dd></div>)}</dl></details><Button disabledReason={view?.canEdit?undefined:readOnlyReason} variant="panel" size="fit" type="button" disabled={locked} onClick={()=>{setIdentity({id:selected.id,version:selected.version});setError('');setMessage('현재 입력을 유지했습니다. 최신 기록 위에 새 버전으로 저장합니다.');}}>현재 입력 유지 · 최신 버전 기준 사용</Button><Button variant="panel" size="fit" type="button" disabled={saving} onClick={()=>pick(selected)}>서버 기록으로 입력 교체</Button></div>}
  <form onSubmit={e=>{e.preventDefault();void save();}}><fieldset disabled={locked} className={styles.form}><legend className={styles.srOnly}>{name} 입력</legend>

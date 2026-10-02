@@ -140,7 +140,8 @@ check('both screens decide admin-only actions from the shared account context',(
  for(const ui of [executionUi,operationsUi]){assert.ok(ui.includes("from './account-context'"));assert.ok(ui.includes('canManage=canChange(useAccount())'));assert.ok(!ui.includes('useCanManage'))}
  assert.ok(executionUi.includes("<AdminOnly note={'채널 연결과 발행 횟수 한도는 관리자만 바꿀 수 있습니다. '+adminRequestNote}>"));
  assert.ok(executionUi.includes("<AdminOnly note={'게시 코드(쿠폰·POS 태그) 발급은 관리자만 할 수 있습니다. '+adminRequestNote}>"));
- assert.equal((operationsUi.match(/className="subtle-note admin-only-note" role="note"/g)||[]).length,3);
+ // 3곳 + 주문 가져오기 탭의 관리자 전용 이유(글자로 보인다, UX-PLAN-3 11.16).
+ assert.equal((operationsUi.match(/className="subtle-note admin-only-note" role="note"/g)||[]).length,4);
 });
 
 console.log(JSON.stringify({passed}));

@@ -127,7 +127,8 @@ const has=(name,text)=>{assert.ok(panel.includes(text),name);passed++};
 has('the panel uses the view module',"from '@/lib/store-operations-view'");
 for(const tab of ['추적 코드','주문 가져오기','귀속 보고'])has(`the ${tab} tab exists`,`>${tab}</TabsTrigger>`);
 // 권한이 없으면 탭을 숨기지 않고 비활성과 이유로 보인다(UX-PLAN-3 11차원). 가져오기 화면 자체는 관리자에게만 그린다.
-has('the import tab is disabled with a reason for non-managers','<TabsTrigger value="import" disabled={!canManage} title={canManage?undefined:');
+has('the import tab is disabled with a visible reason for non-managers','<TabsTrigger value="import" disabled={!canManage}>주문 가져오기</TabsTrigger>');
+has('the reason is shown as text, not only a tooltip','{!canManage&&<p className="subtle-note admin-only-note" role="note">주문 가져오기는 관리자만 할 수 있습니다.</p>}');
 has('the import tab content is only for managers','{canManage&&<TabsContent value="import">');
 has('the switch notice comes from the view','autoAttributionNotice(');
 has('codes and the switch state are read with the list action',"post('list'");

@@ -32,7 +32,7 @@ function Notices({data}:{data:RewardLineageResponse}){
 }
 function VersionTable({data}:{data:RewardLineageResponse}){
  const rows=data.lineage.byPromptVersion;
- if(!rows.length)return <p className="learning-meta">이 기간에 프롬프트 버전으로 이어진 보상 기록이 없습니다.</p>;
+ if(!rows.length)return <p className="learning-meta">이 기간에 프롬프트 버전으로 이어진 보상 기록이 없습니다. 기간을 넓혀 보세요.</p>;
  return <div className="ledger-table-wrap"><table className="ledger-table"><caption className="sr-only">프롬프트 버전별 보상 L0~L4</caption>
   <thead><tr><th>프롬프트 버전 · 역할</th><th>L0 1차 승인</th><th>L1 발행(승인·접수)</th><th>L2 반응(축소)</th><th>L3 귀속 주문</th><th>L4 재방문</th></tr></thead>
   <tbody>{rows.map(r=><tr key={r.promptVersion+':'+(r.role??'')}><td><b>{r.promptVersion}</b><small>{r.role??'역할 미상'} · 작업물 {r.artifacts}</small></td><td>{human(r)}<small>수정 요청 {r.human.revisions}</small></td>
@@ -46,7 +46,7 @@ function RuleTable({data}:{data:RewardLineageResponse}){
   {rows.length?<div className="ledger-table-wrap"><table className="ledger-table"><caption className="sr-only">학습 규칙별 보상(중복 배분)</caption>
    <thead><tr><th>규칙 · 판</th><th>등급</th><th>L0 1차 승인</th><th>L1 발행</th><th>L3 귀속 주문</th></tr></thead>
    <tbody>{rows.map(r=><tr key={r.ruleRef}><td><b>{r.ruleRef}</b></td><td>{r.grade}</td><td>{human(r)}</td><td>{r.publish.publications}건</td><td>{r.order.attributedOrders}건</td></tr>)}</tbody></table></div>
-  :<p className="learning-meta">이 기간에 규칙이 이어진 작업물이 없습니다.</p>}
+  :<p className="learning-meta">이 기간에 규칙이 이어진 작업물이 없습니다. 기간을 넓혀 보세요.</p>}
  </>;
 }
 const side=(s:LoopSide)=>`${s.approvedFirst}/${s.decidedFirst} · ${pct(s.firstPassRate)} · 발행 ${s.publish.publications} · 귀속 주문 ${s.order.attributedOrders}`;
@@ -66,7 +66,7 @@ function Loops({data,canClose,busy,onClose}:{data:RewardLineageResponse;canClose
   {loops.length?<div className="ledger-table-wrap"><table className="ledger-table"><caption className="sr-only">개선 루프 목록</caption>
    <thead><tr><th>개선</th><th>전 14일(L0·L1·L3)</th><th>후 14일(L0·L1·L3)</th><th>후가 나을 확률</th><th>상태</th></tr></thead>
    <tbody>{loops.map(l=><LoopRow key={l.id} loop={l} canClose={canClose} busy={busy} onClose={onClose}/>)}</tbody></table></div>
-  :<p className="learning-meta">평가 run과 승인이 있는 활성화·승격이나 운영자 선호 규칙 승인이 아직 없습니다.</p>}
+  :<p className="learning-meta">평가 run과 승인이 있는 활성화·승격이나 운영자 선호 규칙 승인이 아직 없습니다. 규칙을 승인하면 여기에 이어집니다.</p>}
  </section>;
 }
 // 보상 계보 절(표시 전용). 닫기 버튼은 canClose(대표)일 때 closable 루프에만 있다.

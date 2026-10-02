@@ -5,18 +5,19 @@
   "rawFormControls": 5,
   "rawTables": 5,
   "confirmCalls": 5,
-  "inlineStyles":25,
+  "inlineStyles":1,
   "hexColors":39,
   "mediaWidths":4,
   "middleDotJoins": 1216,
-  "bareEmptyLines": 48
+  "bareEmptyLines": 15,
+  "silentDisabled": 14
  },
  "lazyOnly": ["learning-panel", "brand-archive", "campaign-brief", "campaign-detail-panel", "panels", "delete-campaign-dialog", "measurement-collect", "campaign-metrics", "store-marketing-panel", "franchise-panel"],
  "runtime": {
   "homeJsGzKB": 235,
   "growthTabRequests": 2,
   "axeCriticalSerious": 0,
-  "mobileTouchTargetPct": 95,
+  "mobileTouchTargetPct": 98,
   "horizontalOverflowPx": 1
  }
 }

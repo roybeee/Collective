@@ -52,6 +52,6 @@ function MetricForm({campaigns,onClose,onSaved,initial}:MetricDialogProps){
   <div className="form-two">{valueFields.map(([key,label])=><label className="field" key={key}><span>{label}</span><Input type="number" min="0" max="1000000000000" step={key==='orders'?'1':'any'} value={fields[key]} placeholder="미확인" onChange={e=>update(key,e.target.value)}/></label>)}</div>
   <label className="field"><span>측정 방법과 메모</span><Textarea value={fields.notes} onChange={e=>update('notes',e.target.value)}/></label>
   <p className="notice">같은 캠페인·비교 범위의 기간은 겹칠 수 없습니다. 순매출에 반영한 할인·환불을 비용으로 다시 차감하지 마세요. 전후 차이는 인과 효과가 아닙니다.</p>
-  {error&&<p className="form-error" role="alert">{error}</p>}<div className="form-actions"><Button disabled={busy||!fields.campaignId}>{busy?'저장 중…':'성과 저장'}</Button></div>
+  {error&&<p className="form-error" role="alert">{error}</p>}<div className="form-actions"><Button disabled={busy||!fields.campaignId} disabledReason={!fields.campaignId?'캠페인을 먼저 고르세요.':undefined}>{busy?'저장 중…':'성과 저장'}</Button></div>
  </form>;
 }

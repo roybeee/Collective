@@ -1,4 +1,5 @@
 'use client';
+import {EmptyLine} from '@/components/app/empty-line';
 import {Button} from '@/components/ui/button';
 import {dateTime,duration} from '@/lib/format';
 import {useCallback,useEffect,useRef,useState} from 'react';
@@ -17,11 +18,11 @@ function Workspace({campaignId}:{campaignId:string}){
  return <section aria-label="일일 운영 루프" className={styles.panel}><header className={styles.header}><h3>일일 운영 루프 · 오늘의 안건</h3><Button variant="panel" size="fit" aria-label="안건 새로고침" type="button" disabled={loading} onClick={()=>void load()}>새로고침</Button></header>
   {view&&<p className={styles.note}>{view.notice} 자동 실행은 기능 스위치 growth_daily_loop가 켜져 있을 때 조사 작업자가 KST 하루 1회 합니다. 현재 {view.enabled?'켜짐':'꺼짐'}.</p>}
   {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">일일 루프를 조회하고 있습니다.</p>}
-  {view&&<>{view.canRun&&<Button variant="panel" size="fit" type="button" disabled={running||loading} onClick={()=>void runNow()}>오늘 안건 지금 만들기</Button>}
-   {!today&&<p>오늘({view.today}) 실행 기록이 없습니다.</p>}
+  {view&&<>{view.canRun&&<Button variant="panel" size="fit" type="button" disabled={running||loading} disabledReason={running?'진행 중인 작업이 끝나면 누를 수 있습니다.':undefined} onClick={()=>void runNow()}>오늘 안건 지금 만들기</Button>}
+   {!today&&<EmptyLine next="위 버튼으로 오늘 실행을 시작하세요.">오늘({view.today}) 실행 기록이 없습니다.</EmptyLine>}
    {today&&<><p>{today.day} · {statusLabels[today.status]} · {today.trigger==='worker'?'작업자':'운영자'} · {duration(today.durationMs)} · 전역 {today.stop==='stopped'?'중단 중':today.stop==='running'?'운영 중':'확인 불가'}{today.skipped?` · 시간 예산으로 ${today.skipped}개 캠페인 다음 실행`:''}</p>
     {today.campaign?.error&&<p className={styles.error}>{today.campaign.error}</p>}
-    {today.campaign&&!today.campaign.error&&<><p>감지 {today.campaign.detection?.detected??0}건 · 새 신호 {today.campaign.detection?.created??0}건</p>{today.campaign.agenda.length?<ul>{today.campaign.agenda.map(a=><li key={a.kind}>{a.action} ({a.count}건)</li>)}</ul>:<p>이 캠페인의 오늘 안건이 없습니다.</p>}</>}
+    {today.campaign&&!today.campaign.error&&<><p>감지 {today.campaign.detection?.detected??0}건 · 새 신호 {today.campaign.detection?.created??0}건</p>{today.campaign.agenda.length?<ul>{today.campaign.agenda.map(a=><li key={a.kind}>{a.action} ({a.count}건)</li>)}</ul>:<EmptyLine next="처리할 일이 생기면 여기에 나타납니다.">이 캠페인의 오늘 안건이 없습니다.</EmptyLine>}</>}
     {!today.campaign&&<p>이 캠페인은 오늘 실행 범위에 없었습니다(보관·지점 미연결·시간 예산).</p>}</>}
    <details><summary>최근 실행</summary>{view.runs.map(r=><p key={r.day}>{r.day} · {statusLabels[r.status]} · 캠페인 {r.campaigns}개{r.retryAt?` · 재시도 ${dateTime(r.retryAt)}`:''}</p>)}</details></>}
  </section>;

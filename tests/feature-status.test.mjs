@@ -152,7 +152,7 @@ ok('save and revoke send the chosen brand and store',card.includes("send('save_c
 ok('the workspace default and per-brand states are shown before the admin-only form',card.includes('워크스페이스 기본 · ')&&card.indexOf('channelScopes(')<card.indexOf('<AdminOnly')&&card.includes("<AdminOnly note={'채널 연결·해제는 관리자만 할 수 있습니다. '+adminRequestNote}>")&&card.indexOf('<form')>card.indexOf('<AdminOnly')&&card.indexOf("send('revoke_credential'")>card.indexOf('<AdminOnly'));
 // 보관한 지점도 이 채널에 저장된 자격증명이 있으면 지점 선택지에 '(보관됨)'으로 남는다. 고르면 저장은 막고(서버 409와 같은 규칙) 해제만 할 수 있다.
 ok('an archived store with a saved credential stays selectable for revoking',card.includes("s.status!=='archived'||snapshot.byBrand.some(c=>c.channel===channel&&c.brandId===brandId&&c.storeId===s.id)")&&card.includes("s.status==='archived'?' (보관됨)':''"));
-ok('an archived store can only be revoked, not saved',card.includes('disabled={busy||missing||archived}')&&card.includes('보관한 지점에는 새로 연결할 수 없습니다')&&card.includes("disabled={busy||missing} onClick={()=>void send('revoke_credential'"));
+ok('an archived store can only be revoked, not saved',card.includes('disabled={busy||missing||archived}')&&card.includes('보관한 지점에는 새로 연결할 수 없습니다')&&card.includes("disabled={busy||missing} disabledReason={missing?'적용할 브랜드·지점을 먼저 고르세요.':undefined} onClick={()=>void send('revoke_credential'"));
 ok('brands without their own credential say when the workspace default is used',card.includes('워크스페이스 기본으로 수집'));
 ok('the feature table passes the brand list of GET /api/channels',panels.includes('brandChannels:channelState?.byBrand??null'));
 const smoke=readFileSync('e2e/smoke.spec.ts','utf8');

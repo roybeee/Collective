@@ -19,7 +19,7 @@ export function GrowthOperationReviewView({review,onOpen,disabled=false,stale=fa
    {row.orderId&&<p>원 주문 ID: {row.orderId}</p>}{row.lineId&&<p>성장 품목 ID: {row.lineId}</p>}{row.inventoryId&&<p>공유 재고 ID: {row.inventoryId}</p>}
    {row.lineId&&<p>{quantity(row)}</p>}
    <ul className="list-disc space-y-1 pl-4">{row.reasons.map(reason=><li key={reason}>{reason}</li>)}</ul>
-   <Button type="button" variant="outline" size="fit" disabled={disabled||stale} onClick={()=>onOpen(row.target)}>{actions[row.target.kind]}</Button>
+   <Button type="button" variant="outline" size="fit" disabled={disabled||stale} disabledReason={stale?'다른 곳에서 먼저 바뀌었습니다. 최신 기록을 불러온 뒤 다시 하세요.':undefined} onClick={()=>onOpen(row.target)}>{actions[row.target.kind]}</Button>
   </article>)}</div>
   <p className="text-xs text-muted-foreground">수량·금액·해제 가능량을 추정하지 않습니다. 공유 원장 부족은 이 캠페인만의 부족량이 아니며, 취소·부분 환불만으로 안전 해제를 확정하지 않습니다.</p>
  </section>;
