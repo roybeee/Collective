@@ -25,7 +25,7 @@ export function AgendaPanel({onOpen}:{onOpen:(item:AgendaItem)=>void}){
   setActing(false);setActMessage(`${done}건을 맡았습니다.${failed.length?` ${failed.length}건은 처리하지 못했습니다(${failed.join(' / ')}).`:''}`);await load();
  }
  const quickSignals=agenda?.items.filter(i=>i.quick?.type==='acknowledge_signal')??[];
- return <section className="agenda-card" aria-labelledby="agenda-title"><header><div><p className="eyebrow">TODAY</p><h2 id="agenda-title">오늘의 안건</h2></div><CardButton type="button" className="agenda-refresh" aria-label="안건 새로고침" disabled={loading} onClick={()=>void load()}><RefreshCw size={15}/>새로고침</CardButton></header>
+ return <section className="agenda-card" aria-labelledby="agenda-title"><header><div><p className="eyebrow">오늘</p><h2 id="agenda-title">오늘의 안건</h2></div><CardButton type="button" className="agenda-refresh" aria-label="안건 새로고침" disabled={loading} onClick={()=>void load()}><RefreshCw size={15}/>새로고침</CardButton></header>
   {canAct&&quickSignals.length>1&&<div className="agenda-bulk"><Button type="button" disabled={acting} onClick={()=>void acknowledge(quickSignals)}>새 신호 {quickSignals.length}건 모두 내가 맡기</Button><small>담당은 {assignee}, 기한은 신호별 권장일(없으면 3일 뒤)입니다.</small></div>}
   {actMessage&&<p role="status" className="agenda-empty">{actMessage}</p>}
   {agenda&&<ul className="agenda-counts" aria-label="안건 요약">{groups.map(g=><li key={g.kind} data-kind={g.kind}>{g.icon}<span>{g.label}</span><b>{agenda.counts[g.kind]}</b></li>)}</ul>}

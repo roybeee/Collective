@@ -90,7 +90,7 @@ function AttributionBody({report:r}:{report:CampaignAttribution}){
   <WeekTable weeks={r.weeks}/>
   <Breakdown title="지점별" column="지점" rows={r.byStore}/>
   <Breakdown title="소재별" column="소재" rows={r.byCreative}/>
-  <Breakdown title="게시별" column="게시" rows={r.byPublication} codes note="게시 코드로 귀속되고 지금 게시 관문(예약 접수·게시 확인, 예약일 이후 주문)을 통과한 주문만 셉니다." empty="이 기간에 게시 코드로 귀속된 주문이 없습니다."/>
+  <Breakdown title="게시별" column="게시" rows={r.byPublication} codes note="게시 코드로 귀속되고 지금 게시 관문(예약 접수·게시 확인, 예약일 이후 주문)을 통과한 주문만 셉니다." empty="이 기간에 게시 코드로 귀속된 주문이 없습니다. 제작·발행 탭에서 게시 코드를 붙여 발행하면 여기에 모입니다."/>
   <Breakdown title="귀속 방식별" column="방식" rows={r.byMethod}/>
   <Notes notes={notes}/>
  </>;
@@ -103,7 +103,7 @@ function WeekTable({weeks}:{weeks:CampaignAttribution['weeks']}){
  {label:'공헌이익',sort:w=>sortNumber(w.contribution),csv:w=>w.contribution,cell:w=><>{w.contribution}{w.contributionNote&&<small>{w.contributionNote}</small>}</>},
 ]}/></section>;
 }
-function Breakdown({title,column,rows,codes=false,note,empty='이 기간에 집계할 주문이 없습니다.'}:{title:string;column:string;rows:readonly Row[];codes?:boolean;note?:string;empty?:string}){
+function Breakdown({title,column,rows,codes=false,note,empty='이 기간에 집계할 주문이 없습니다. 점포 마케팅의 주문 장부에서 주문을 가져오세요.'}:{title:string;column:string;rows:readonly Row[];codes?:boolean;note?:string;empty?:string}){
  const shown=unitRows(rows),linked=Object.fromEntries(rows.map(r=>[r.key,(r.codes||[]).join(', ')]));
  return <section><div className="section-heading"><div><h3>{title}</h3>{note&&<p>{note}</p>}</div></div>{!shown.length?<p className="notice">{empty}</p>:<DataTable filterText={r=>r.label} caption={`${title} 귀속 주문·순매출·공헌이익`} rows={shown} rowKey={r=>r.key||'none'} csvName="attribution-breakdown" columns={[
  {label:column,sort:r=>r.label,csv:r=>r.label,cell:r=><b>{r.label}</b>},

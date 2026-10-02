@@ -43,7 +43,7 @@ test('Meta 준비 계획 저장·재조회와 집행 차단',async({browser},inf
  await expect(panel).toContainText('계획 저장으로 광고가 시작되지 않습니다');
  expect(await panel.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
  await panel.screenshot({path:`e2e/artifacts/meta-workspace-${info.project.name}.png`});
- await page.getByRole('tab',{name:'광고 성과',exact:true}).click();
+ await page.getByRole('tab',{name:'성과·대조',exact:true}).click();
  const insights=page.getByRole('region',{name:'Meta 광고 성과'});
  await insights.getByLabel('광고 계정 ID',{exact:true}).fill('123');
  await insights.getByLabel('Meta 캠페인 ID',{exact:true}).fill('456');

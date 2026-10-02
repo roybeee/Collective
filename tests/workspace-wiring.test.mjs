@@ -31,8 +31,8 @@ check('the workspace composer warns before opening and only auto-drafts a matchi
 check('the store panel receives and reports the store in the address',()=>{assert.ok(workspace.includes('initialStoreId={route.store}'));assert.ok(workspace.includes('onScopeChange='));assert.match(stores,/initialStoreId\?:string/);assert.ok((stores.match(/scope\.current\?\.\(/g)||[]).length>=4)});
 
 // 비동기 뒤 캠페인을 열 때 그 사이 이동한 화면을 덮어쓰지 않는다. 늦게 도착한 옛 응답이 새 데이터를 덮지 않는다.
-// 캠페인 상세가 페이지라 다른 캠페인으로 옮기기 전에 저장하지 않은 입력을 묻는 확인(confirmLeave)이 앞에 올 수 있다(UX-PLAN-3 Q1).
-check('opening a campaign applies to the latest route',()=>assert.match(workspace,/function setSelectedId\(id:string\|null\)\{(?:if\(route\.campaign&&id!==route\.campaign&&!confirmLeave\(\)\)return;)?setRoute\(r=>/));
+// 캠페인 상세가 페이지라 다른 캠페인으로 옮기기 전에 저장하지 않은 입력을 묻는 공용 확인(leaveThen)이 앞에 올 수 있다(UX-PLAN-3 Q1·5차원).
+check('opening a campaign applies to the latest route',()=>assert.match(workspace,/function setSelectedId\(id:string\|null\)\{(?:const run=\(\)=>\{)?setRoute\(r=>/));
 check('an older workspace response never replaces a newer one',()=>assert.match(workspace,/const seq=\+\+reloadSeq\.current\.started/));
 
 // 기본 브랜드는 처음 불러올 때 한 번 정하고 이후 활동 변화로 바뀌지 않는다.

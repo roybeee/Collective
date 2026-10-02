@@ -25,16 +25,20 @@ export function DataTable<R>({rows,columns,rowKey,caption,captionHidden=true,csv
   const url=URL.createObjectURL(new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'}));
   const a=document.createElement('a');a.href=url;a.download=`${csvName}.csv`;a.hidden=true;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
  }
+ // 찾기는 행이 5개 이상일 때만 둔다(1~4행 표의 찾기 칸은 소음이다, 평가 7회차).
+ const searchable=!!filterText&&rows.length>=5;
+ // 숫자 열은 오른쪽 정렬한다. align을 주지 않아도 모든 행의 정렬 값이 숫자이고 날짜·시각 열이 아니면 숫자 열로 본다.
+ const right=(c:DataColumn<R>)=>c.align==='right'||(!!c.sort&&rows.length>0&&!/(일|시각|날짜|기간|주)$/.test(c.label)&&rows.every(r=>typeof c.sort!(r)==='number'));
  return <div className={'data-table-wrap'+(className?' '+className:'')}>
-  {(filterText||(csvName&&csvColumns.length>0))&&<div className="data-table-tools">
-   {filterText&&<Input type="search" aria-label="표 안에서 찾기" aria-describedby={statusId} placeholder="표 안에서 찾기" value={query} onChange={e=>setQuery(e.target.value)}/>}
+  {((searchable)||(csvName&&csvColumns.length>0))&&<div className="data-table-tools">
+   {searchable&&<Input type="search" aria-label="표 안에서 찾기" aria-describedby={statusId} placeholder="표 안에서 찾기" value={query} onChange={e=>setQuery(e.target.value)}/>}
    {csvName&&csvColumns.length>0&&<Button type="button" variant="outline" size="sm" disabled={!shown.length} onClick={download}>CSV 내려받기</Button>}
    <span id={statusId} className="sr-only" role="status">{query?`${shown.length}행을 찾았습니다.`:''}</span>
   </div>}
   <div className="ledger-table-wrap"><table className="ledger-table data-table">
    <caption className={captionHidden?'sr-only':undefined}>{caption}</caption>
-   <thead><tr>{columns.map((c,i)=><th key={c.label} scope="col" className={c.align==='right'?'text-right':undefined} aria-sort={c.sort?(sort?.i===i?(sort.dir===1?'ascending':'descending'):'none'):undefined}>{c.sort?<Button type="button" variant="ghost" size="sm" className="table-sort" aria-label={`${c.label} 정렬`} onClick={()=>setSort(s=>s?.i===i?{i,dir:s.dir===1?-1:1}:{i,dir:1})}>{c.label}<span aria-hidden="true">{sort?.i===i?(sort.dir===1?' ↑':' ↓'):''}</span></Button>:c.label}</th>)}</tr></thead>
-   <tbody>{shown.map(r=><tr key={rowKey(r)}>{columns.map(c=><td key={c.label} data-label={c.label} className={c.align==='right'?'text-right':undefined}>{c.cell(r)}</td>)}</tr>)}</tbody>
+   <thead><tr>{columns.map((c,i)=><th key={c.label} scope="col" className={right(c)?'text-right tabular-nums':undefined} aria-sort={c.sort?(sort?.i===i?(sort.dir===1?'ascending':'descending'):'none'):undefined}>{c.sort?<Button type="button" variant="ghost" size="sm" className="table-sort" aria-label={`${c.label} 정렬`} onClick={()=>setSort(s=>s?.i===i?{i,dir:s.dir===1?-1:1}:{i,dir:1})}>{c.label}<span aria-hidden="true">{sort?.i===i?(sort.dir===1?' ↑':' ↓'):''}</span></Button>:c.label}</th>)}</tr></thead>
+   <tbody>{shown.map(r=><tr key={rowKey(r)}>{columns.map(c=><td key={c.label} data-label={c.label} className={right(c)?'text-right tabular-nums':undefined}>{c.cell(r)}</td>)}</tr>)}</tbody>
   </table></div>
  </div>;
 }

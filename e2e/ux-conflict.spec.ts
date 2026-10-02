@@ -8,7 +8,7 @@ test('저장 충돌 때 두 선택지로 내 입력을 지키고 다시 저장�
   await page.request.get('/api/workspace');
   const {id:campaignId}=await (await page.request.post('/api/action',{data:{action:'save_campaign',data:{brandId:'ofd',title:'충돌 확인',goal:'충돌'}}})).json();
   await page.goto(`/?view=campaigns&campaign=${campaignId}&ctab=growth`);
-  const panel=page.getByRole('region',{name:'성장2 판매 워크스페이스',exact:true});await expect(panel.getByLabel('근거 제목',{exact:true})).toBeVisible();
+  const panel=page.getByRole('region',{name:'판매 기본 기록',exact:true});await expect(panel.getByLabel('근거 제목',{exact:true})).toBeVisible();
   await panel.getByLabel('근거 제목',{exact:true}).fill('처음 제목');await panel.getByLabel('공개 출처 URL',{exact:true}).fill('https://example.com/c');
   await panel.getByLabel('근거 유효기한',{exact:true}).fill('2099-01-01');await panel.getByLabel('관측 요약',{exact:true}).fill('관측');
   await panel.getByRole('button',{name:'시장 근거 저장',exact:true}).click();await expect(panel.getByRole('status')).toHaveText('서버에 저장했습니다.');

@@ -5,12 +5,12 @@
   "rawFormControls": 5,
   "rawTables": 5,
   "confirmCalls": 5,
-  "inlineStyles":1,
+  "inlineStyles":0,
   "hexColors":39,
   "mediaWidths":4,
   "middleDotJoins": 1216,
   "bareEmptyLines": 15,
-  "silentDisabled": 14
+  "silentDisabled": 0
  },
  "lazyOnly": ["learning-panel", "brand-archive", "campaign-brief", "campaign-detail-panel", "panels", "delete-campaign-dialog", "measurement-collect", "campaign-metrics", "store-marketing-panel", "franchise-panel"],
  "runtime": {

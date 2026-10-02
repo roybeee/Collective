@@ -21,7 +21,7 @@ export function MetaBudgetPanel({campaignId}:{campaignId:string}) {
  }
  const p=view?.scope,disabled=busy||!view?.canEdit,latest=view?.records[0];
  return <section className={s.root} aria-label="광고 예산 범위 검토" aria-busy={busy}>
-  <header className={s.header}><div><span className={s.eyebrow}>COLLECTIVE / BUDGET</span><h2>얼마까지, 언제까지 투자할까요?</h2><p>저장된 계획과 소재를 기준으로 이번 실험의 예산 범위를 검토합니다.</p></div><Button variant="outline" disabled={busy} onClick={()=>{setBusy(true);setSuccess('');setRetry(n=>n+1);}}><RefreshCw size={16}/>다시 불러오기</Button></header>
+  <header className={s.header}><div><span className={s.eyebrow}>Meta 예산</span><h2>얼마까지, 언제까지 투자할까요?</h2><p>저장된 계획과 소재를 기준으로 이번 실험의 예산 범위를 검토합니다.</p></div><Button variant="outline" disabled={busy} onClick={()=>{setBusy(true);setSuccess('');setRetry(n=>n+1);}}><RefreshCw size={16}/>다시 불러오기</Button></header>
   <div className={s.boundary}><ShieldCheck size={20}/><div><b>예산 검토 기록 · 광고 시작 전 단계</b><p>이 기록은 지출 승인이 아닙니다. 광고세트·광고·전환 경로와 외부 예산 단위, 한도·중단 기능을 확인한 뒤 실제 집행을 별도로 승인해야 합니다.</p></div></div>
   {error&&<p role="alert" className={s.error}>{error} 입력한 메모는 유지됩니다.</p>}{success&&<p role="status" className={s.success}>{success}</p>}
   {p&&view?<>

@@ -26,7 +26,7 @@ const dictionary={
  verified:{ko:'검증됨',en:'Verified'},
  notRun:{ko:'실행하지 않음',en:'Not run'},
  stopped:{ko:'중단됨',en:'Stopped'},
- unsavedLeave:{ko:'저장하지 않은 입력이 있습니다. 이동하면 입력이 사라집니다. 이동할까요?',en:'You have unsaved input. Leave anyway?'},
+ unsavedLeave:{ko:'이동할까요?',en:'You have unsaved input. Leave anyway?'},
 } as const;
 export type CopyKey=keyof typeof dictionary;
 export function t(key:CopyKey,locale:Locale='ko'):string{return dictionary[key][locale]}

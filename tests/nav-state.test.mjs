@@ -7,7 +7,7 @@ import ts from 'typescript';
 const context=createContext({console,URLSearchParams}),cache=new Map();
 function moduleFor(path){path=resolve(path);if(cache.has(path))return cache.get(path);const m=new SourceTextModule(ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText,{context,identifier:path});cache.set(path,m);return m;}
 const m=moduleFor('lib/nav-state.ts');await m.link((s,r)=>moduleFor(resolve(dirname(r.identifier),s+'.ts')));await m.evaluate();
-const {navViews,learningTabs,storeTabs,brandTabs,franchiseTabs,isLearningTab,isFranchiseTab,franchiseMenuVisible,parseNav,serializeNav,normalizeNav,withCampaign,reconcileNav}=m.namespace;
+const {navViews,learningTabs,storeTabs,brandTabs,franchiseTabs,isLearningTab,isFranchiseTab,franchiseMenuVisible,parseNav,serializeNav,normalizeNav,withCampaign,reconcileNav,metaSubGroup}=m.namespace;
 let passed=0;
 function check(name,actual,expected){assert.deepEqual(JSON.parse(JSON.stringify(actual)),expected,name);passed++}
 
@@ -122,6 +122,7 @@ check('unknown store brand shows all stores',reconcileNav({view:'stores',brand:'
 check('unknown learning brand keeps the tab',reconcileNav({view:'learning',brand:'nope',tab:'rules'},known),{view:'learning',tab:'rules'});
 check('unknown franchise brand shows the franchise view without brand or tab',reconcileNav({view:'franchise',brand:'nope',tab:'requests'},known),{view:'franchise'});
 check('unknown store or archive brand drops the store and brand tab',[reconcileNav({view:'stores',brand:'nope',store:'s1',tab:'ledger'},known),reconcileNav({view:'brands',brand:'nope',tab:'facts'},known)],[{view:'stores'},{view:'brands'}]);
+check('old Meta sub-tab links open the merged tab',[metaSubGroup('orders'),metaSubGroup('report'),metaSubGroup('conversions'),metaSubGroup('images'),metaSubGroup('create'),metaSubGroup('plan'),metaSubGroup('learning'),metaSubGroup(undefined)],['insights','insights','budget','creative','bundle','plan','learning',null]);
 const archive={view:'brands',brand:'oda'};
 assert.equal(reconcileNav(archive,known),archive,'known brand keeps the same state object');passed++;
 const plain={view:'results'};

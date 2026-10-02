@@ -84,3 +84,4 @@
 /* 저장 충돌 때 두 선택지(최신 기록 불러오기 / 내 입력 유지). */
 .conflictChoices { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 
+@media (max-width: 767px) { .list { align-items: start; } .list > :not(button), .list > button:first-child { grid-column: 1 / -1; } }

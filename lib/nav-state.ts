@@ -21,6 +21,9 @@ export type CampaignTab=typeof campaignTabs[number];
 export const isCampaignTab=(value:unknown):value is CampaignTab=>(campaignTabs as readonly unknown[]).includes(value);
 // 캠페인 탭 안쪽 단계(csub, UX-PLAN-3 Q1): 성장·판매의 작업 단계(app/growth-panel.tsx)와 Meta 광고 준비의 하위 탭(app/meta-ads-panel.tsx). 새로고침·공유·뒤로가기 때 같은 단계를 연다. 첫 단계는 주소에 남기지 않는다(ctab의 brief와 같음).
 export const campaignSubs={growth:['signal','need','catalog','offer','mission'],'meta-ads':['plan','budget','conversions','creative','images','bundle','create','paused','execution','reservations','insights','orders','report','experiments','learning']} as const satisfies Partial<Record<CampaignTab,readonly string[]>>;
+// Meta 하위 탭은 10개로 묶었다(app/meta-ads-panel.tsx). 옛 값은 묶인 탭 값으로 바꿔 연다(공유된 옛 링크 유지).
+export const metaSubAliases:Record<string,string>={conversions:'budget',images:'creative',create:'bundle',orders:'insights',report:'insights'};
+export const metaSubGroup=(value:string|null|undefined)=>value?metaSubAliases[value]??value:undefined;
 export const campaignSubOf=(ctab:string|null|undefined,value:string|null|undefined)=>ctab&&ctab in campaignSubs?(campaignSubs[ctab as keyof typeof campaignSubs] as readonly string[]).find(sub=>sub===value):undefined;
 export type NavState={view:NavView;campaign?:string;brand?:string;store?:string;tab?:NavTab;ctab?:CampaignTab;csub?:string};
 type NavInput={view?:string|null;campaign?:string|null;brand?:string|null;store?:string|null;tab?:string|null;ctab?:string|null;csub?:string|null};

@@ -22,7 +22,7 @@ test('키보드만으로 핵심 과제 8개',async({browser},info)=>{
   for(const name of ['팀 회의','AI 팀','작업물','성장·판매']){await page.keyboard.press('ArrowRight');await expect(page.getByRole('tab',{name:new RegExp('^'+name)})).toHaveAttribute('aria-selected','true')}
   await expect(page.getByRole('tab',{name:'성장·판매',exact:true})).toHaveAttribute('aria-selected','true');
   // 4) 시장 근거 칸을 Tab으로 채우고 Enter로 저장
-  const panel=page.getByRole('region',{name:'성장2 판매 워크스페이스',exact:true});await expect(panel.getByLabel('근거 제목',{exact:true})).toBeVisible();
+  const panel=page.getByRole('region',{name:'판매 기본 기록',exact:true});await expect(panel.getByLabel('근거 제목',{exact:true})).toBeVisible();
   await tabTo(page,/^근거 제목/);await page.keyboard.type('키보드로 쓴 근거');
   await tabTo(page,/^공개 출처 URL/);await page.keyboard.type('https://example.com/kbd');
   await tabTo(page,/^근거 유효기한/);await page.keyboard.type('01012099');
@@ -46,19 +46,21 @@ test('키보드만으로 핵심 과제 8개',async({browser},info)=>{
  }finally{await context.close()}
 });
 
-// UX-PLAN-3 Q9 5점 조건: 대화상자 초점(열면 안으로, 닫으면 연 버튼으로)과 200% 확대(1280px 화면의 CSS 너비 640px)에서 가로 넘침 0.
+// UX-PLAN-3 Q9 5점 조건: 대화상자 초점(열면 안으로, 닫으면 연 버튼으로)과 200% 확대(1280px 화면의 CSS 너비 640px)에서 가로 넘침 0. 화면 18개 전부를 본다.
 test('대화상자 초점 복귀와 200% 확대 넘침',async({browser},info)=>{
  test.skip((info.project.use.viewport?.width??1280)<768,'데스크톱 확대 검사');
  const context=await browser.newContext({baseURL:info.project.use.baseURL,viewport:{width:640,height:450},extraHTTPHeaders:{'oai-authenticated-user-id':`zoom-${Date.now()}`}}),page=await context.newPage();
  try{
   await page.request.get('/api/workspace');const {id}=await (await page.request.post('/api/action',{data:{action:'save_campaign',data:{brandId:'ofd',title:'확대 확인',goal:'확대'}}})).json();
-  for(const path of ['/','/?view=campaigns',`/?view=campaigns&campaign=${id}`,`/?view=campaigns&campaign=${id}&ctab=growth`,`/?view=campaigns&campaign=${id}&ctab=meta-ads`,'/?view=learning','/?view=brands','/?view=stores','/?view=settings']){
+  // 화면 18개 전부(캠페인 탭 9개 포함). 200% 확대(640px)와 320px 휴대폰 폭에서 같은 목록을 본다.
+  const screens=['/','/?view=campaigns','/?view=learning','/?view=brands','/?view=brands&brand=ofd','/?view=stores','/?view=agents','/?view=assets','/?view=results','/?view=settings',...['brief','meeting','team','outputs','growth','meta-ads','execution','results','history'].map(t=>`/?view=campaigns&campaign=${id}${t==='brief'?'':'&ctab='+t}`)];
+  for(const path of screens){
    await page.goto(path);await page.waitForLoadState('networkidle');
    expect(await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth),`${path} 200% overflow`).toBeLessThanOrEqual(1);
   }
   // 320px(가장 좁은 휴대폰) 재배치에서도 가로 넘침 0(UX-PLAN-3 Q8 5점 조건).
   await page.setViewportSize({width:320,height:640});
-  for(const path of ['/','/?view=campaigns',`/?view=campaigns&campaign=${id}&ctab=growth`,'/?view=settings']){await page.goto(path);await page.waitForLoadState('networkidle');expect(await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth),`${path} 320px overflow`).toBeLessThanOrEqual(1)}
+  for(const path of screens){await page.goto(path);await page.waitForLoadState('networkidle');expect(await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth),`${path} 320px overflow`).toBeLessThanOrEqual(1)}
   await page.setViewportSize({width:1280,height:900});await page.goto('/?view=campaigns');
   const trigger=page.getByRole('button',{name:'새 캠페인',exact:true}).first();await expect(trigger).toBeEnabled();await trigger.focus();await page.keyboard.press('Enter');
   const dialog=page.getByRole('dialog').first();await expect(dialog).toBeVisible();

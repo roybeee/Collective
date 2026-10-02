@@ -94,7 +94,7 @@ test('추적 코드로 가져온 주문은 자동 귀속 스위치를 켤 때만
   expect(made).toMatchObject({campaignId, label: '오픈 주 포장 쿠폰'});
   const code = made.code;
   await expect(page.getByRole('button', {name: code + ' 복사', exact: true})).toBeVisible();
-  // 공용 데이터 표(UX-PLAN-3 7차원): 머리글 정렬(aria-sort), 표 안 찾기, CSV 내려받기(보이는 행·열 이름).
+  // 공용 데이터 표(UX-PLAN-3 7차원): 머리글 정렬(aria-sort), 표 안 찾기(5행 이상), CSV 내려받기(보이는 행·열 이름).
   if ((page.viewportSize()?.width ?? 1280) >= 768) {
     const codeTable = page.getByRole('table', {name: '이 지점의 추적 코드'});
     const head = codeTable.getByRole('columnheader', {name: /^코드/});
@@ -102,9 +102,8 @@ test('추적 코드로 가져온 주문은 자동 귀속 스위치를 켤 때만
     await head.getByRole('button').click();
     await expect(head).toHaveAttribute('aria-sort', 'ascending');
     const tableArea = page.locator('.data-table-wrap').filter({has: codeTable});
-    await tableArea.getByRole('searchbox', {name: '표 안에서 찾기'}).fill('없는 코드');
-    await expect(codeTable.getByRole('row')).toHaveCount(1);
-    await tableArea.getByRole('searchbox', {name: '표 안에서 찾기'}).fill('');
+    // 표 안 찾기는 5행 이상일 때만 보인다(행이 1개인 이 표에는 없다).
+    await expect(tableArea.getByRole('searchbox', {name: '표 안에서 찾기'})).toHaveCount(0);
     const download = page.waitForEvent('download');
     await tableArea.getByRole('button', {name: 'CSV 내려받기', exact: true}).click();
     const file = await download;
@@ -193,7 +192,7 @@ test('추적 코드로 가져온 주문은 자동 귀속 스위치를 켤 때만
   await pos.getByRole('button', {name: '저장', exact: true}).click();
   expect((await posSaved).status()).toBe(200);
   await expect(page.getByRole('row').filter({hasText: week})).toContainText('통과');
-  await expect(page.getByRole('region', {name: 'north-star'})).toContainText('1건');
+  await expect(page.getByRole('region', {name: '핵심 지표(POS 대조 통과)'})).toContainText('1건');
   await page.screenshot({path: `e2e/artifacts/${testInfo.project.name}-store-measurement.png`, fullPage: true});
 
   // 5) PR 4b-2: 캠페인 상세 '성과' 탭에 같은 주문이 자동 집계되고, 확인 대화를 거쳐 schemaVersion 2 metric 스냅샷으로 저장된다.

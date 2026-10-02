@@ -32,7 +32,7 @@ const buttonVariants = cva(
         "icon-sm": "size-8",
         "icon-lg": "size-10",
         // 글 길이에 맞춰 늘어난다(여러 줄 목록 항목). 높이 고정·줄바꿈 금지·줄어들기 금지를 푼다.
-        fit: "h-auto min-h-9 shrink whitespace-normal",
+        fit: "h-auto min-h-9 shrink whitespace-normal px-3 py-1.5",
       },
     },
     defaultVariants: {
@@ -70,11 +70,13 @@ function Button({
     />
   )
   if (!reason) return button
+  // 버튼과 이유를 한 묶음(세로)으로 둔다. 형제로 두면 flex 줄의 한 칸이 되어 이유가 한 글자씩 접혔다(평가 7회차).
+  const block = /(^|\s)(w-full|flex-1)(\s|$)/.test(className ?? "")
   return (
-    <>
+    <span data-slot="button-reason" className={block ? "why-wrap why-wrap-block" : "why-wrap"}>
       {button}
       <small id={reasonId} className="why-disabled">{reason}</small>
-    </>
+    </span>
   )
 }
 

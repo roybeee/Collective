@@ -18,7 +18,7 @@ function Workspace({campaignId}:{campaignId:string}){
  return <section aria-label="일일 운영 루프" className={styles.panel}><header className={styles.header}><h3>일일 운영 루프 · 오늘의 안건</h3><Button variant="panel" size="fit" aria-label="안건 새로고침" type="button" disabled={loading} onClick={()=>void load()}>새로고침</Button></header>
   {view&&<p className={styles.note}>{view.notice} 자동 실행은 기능 스위치 growth_daily_loop가 켜져 있을 때 조사 작업자가 KST 하루 1회 합니다. 현재 {view.enabled?'켜짐':'꺼짐'}.</p>}
   {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">일일 루프를 조회하고 있습니다.</p>}
-  {view&&<>{view.canRun&&<Button variant="panel" size="fit" type="button" disabled={running||loading} disabledReason={running?'진행 중인 작업이 끝나면 누를 수 있습니다.':undefined} onClick={()=>void runNow()}>오늘 안건 지금 만들기</Button>}
+  {view&&<><Button variant="panel" size="fit" type="button" disabled={!view.canRun||running||loading} disabledReason={!view.canRun?'실행 권한이 없습니다. 관리자에게 요청하세요.':running?'진행 중인 작업이 끝나면 누를 수 있습니다.':undefined} onClick={()=>void runNow()}>오늘 안건 지금 만들기</Button>
    {!today&&<EmptyLine next="위 버튼으로 오늘 실행을 시작하세요.">오늘({view.today}) 실행 기록이 없습니다.</EmptyLine>}
    {today&&<><p>{today.day} · {statusLabels[today.status]} · {today.trigger==='worker'?'작업자':'운영자'} · {duration(today.durationMs)} · 전역 {today.stop==='stopped'?'중단 중':today.stop==='running'?'운영 중':'확인 불가'}{today.skipped?` · 시간 예산으로 ${today.skipped}개 캠페인 다음 실행`:''}</p>
     {today.campaign?.error&&<p className={styles.error}>{today.campaign.error}</p>}
