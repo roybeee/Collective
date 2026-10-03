@@ -196,7 +196,7 @@ test('상품 리서치: 승인 관문(리스크 높음·선정 금지) → 소�
   await expect(detail.locator('.why-disabled').filter({hasText:'리스크 높음 후보입니다'})).toBeVisible();
   // 위험 확인 표시만으로는 부족하다: 사유에 위험을 적어야 켜진다.
   await detail.getByRole('checkbox',{name:/리스크 높음 항목/}).check();
-  await expect(detail.locator('.why-disabled').filter({hasText:'사유에 확인한 위험을 적으세요'})).toBeVisible();
+  await expect(detail.locator('.why-disabled').filter({hasText:'확인한 위험'})).toBeVisible();
   await detail.getByRole('textbox',{name:/결정 사유$/}).fill('다이어트 효능 표현을 판매 페이지에서 빼기로 확인했습니다.');
   await expect(record).toBeEnabled();
   await detail.getByRole('checkbox',{name:/리스크 높음 항목/}).uncheck();

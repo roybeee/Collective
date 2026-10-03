@@ -4,7 +4,7 @@
 // - 승인 관문: analytics/score.ts reviewApprovalError와 같은 규칙(규칙마다 사유에 그 위험을 말하는 낱말 하나 이상, 상표 규칙은 상표 이름도 인정).
 import {normalizeKeyword} from './analytics/normalize';
 import {groupDigits,koWon} from './analytics/format';
-import {REVIEW_TERMS} from './analytics/risk';
+import {reviewApprovalError} from './analytics/score';
 import {BRAND_FIT_MAX,BRAND_FIT_MIN,BRAND_FIT_REASON_MAX,CLEAR_REASON_MAX,IMPORT_MAX_AGE_DAYS,IMPORT_SCOPE_MAX,LABEL_THRESHOLD_MAX,LABEL_THRESHOLD_MIN,PRICE_MAX_MAX,PRICE_MAX_MIN,QUESTION_MAX,REASON_MAX,REASON_MIN,RISK_NOTE_MAX,RISK_RULE_MAX,RISK_RULES_MAX} from './api';
 import type {CalibrationView,CampaignCatalogItem,LaunchOutcome,RiskRule,WeightsProposalView} from './api';
 import type {KeywordGroup,MetricKey,ResearchProduct,ScoreCard,Series,SeriesPoint,SourceId,SubScoreKey} from './types';
@@ -120,20 +120,13 @@ export function observedWhy(day:string,today:string):string{
 // ── 승인 관문(리스크 '높음' 점수표)
 // 저장한 리스크 검토가 있으면: 모든 항목을 확인해야 승인. 없으면: 위험 확인 표시 + 규칙마다 그 위험을 말하는 사유.
 export type ReviewState={checklist:{rule:string;checked:boolean}[]}|null|undefined;
-export function missingRiskTerms(card:Pick<ScoreCard,'review'>,reason:string):string[]{
- const review=card.review;if(!review)return [];
- const text=reason.normalize('NFC');
- const known=new Set(Object.values(REVIEW_TERMS).flat());
- const named=review.terms.filter(t=>!known.has(t)&&t!=='리스크'&&t!=='위험');
- return review.rules.filter(rule=>![...(REVIEW_TERMS[rule]??['리스크','위험']),...(rule==='trademark_use'?named:[])].some(t=>text.includes(t)));
-}
 export function approvalWhy(card:Pick<ScoreCard,'blocked'|'needsReview'|'review'>,reason:string,acknowledged:boolean,saved:ReviewState):string{
  if(card.blocked)return `선정 금지 후보라 승인할 수 없습니다: ${card.blocked.reason}`;
  if(!card.needsReview||!card.review)return '';
  if(saved){const open=saved.checklist.filter(x=>!x.checked).length;return open?`저장한 리스크 검토에 확인하지 않은 항목이 ${open}개 있습니다. 모두 확인해 다시 저장하세요.`:''}
  if(!acknowledged)return '리스크 높음 후보입니다. 리스크 검토를 저장하거나, 위험을 확인했다고 표시하고 사유에 그 위험을 적으세요.';
- const missing=missingRiskTerms(card,reason);
- return missing.length?`사유에 확인한 위험을 적으세요. 예: ${card.review.terms.slice(0,4).join(', ')} 중 하나.`:'';
+ // 평가 3회차: 서버 승인 관문(reviewApprovalError)을 그대로 불러 같은 기준으로 막는다(규칙마다 그 규칙의 말, 공백 빼고 최소 글자 수).
+ return reviewApprovalError(card,reason,true)??'';
 }
 // 리스크 검토 체크리스트 항목(서버 검사: 1~RISK_RULES_MAX개, 항목 1~RISK_RULE_MAX자, 중복 없음).
 export function riskChecklist(card:Pick<ScoreCard,'review'>,extra:readonly string[]):string[]{

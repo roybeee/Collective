@@ -74,7 +74,7 @@ check('blocked card cannot be approved',U.approvalWhy({...review,blocked:{reason
 check('needs review without ack is blocked',U.approvalWhy(review,'다이어트 표현을 뺐습니다.',false,null)!=='',true);
 check('ack without a risk term is blocked',U.approvalWhy(review,'좋아 보여서 승인합니다.',true,null)!=='',true);
 check('ack with a risk term passes',U.approvalWhy(review,'다이어트 효능 표현을 빼기로 했습니다.',true,null),'');
-for(const [reason,ack] of [['좋아 보여서 승인합니다.',true],['다이어트 효능 표현을 빼기로 했습니다.',true],['다이어트 표현 확인',false]])
+for(const [reason,ack] of [['좋아 보여서 승인합니다.',true],['다이어트 효능 표현을 빼기로 했습니다.',true],['다이어트 표현 확인',false],['광고 확인 완료',true],['표현 봤음',true],['광고 표현을 확인했습니다',true],['다이어트',true]])
  check(`client gate agrees with server gate: ${reason}/${ack}`,U.approvalWhy(review,reason,ack,null)==='',R.reviewApprovalError(review,reason,ack)===null);
 const tm={needsReview:true,blocked:null,review:{rules:['trademark_use'],reasons:['타사 상표'],terms:['상표','브랜드','권리자','라이선스','가상상표']}};
 check('trademark rule accepts the brand name itself',[U.approvalWhy(tm,'가상상표 사용 허락을 받았습니다.',true,null),R.reviewApprovalError(tm,'가상상표 사용 허락을 받았습니다.',true)],['',null]);
