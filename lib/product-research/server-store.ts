@@ -1,16 +1,16 @@
 // 상품 리서치 저장 계층(서버 전용). records 표의 pr_* kind만 쓴다(kinds.ts). 모든 조회·쓰기는 소유자(owner) 범위다.
 // 원칙: 스냅샷은 불변(INSERT만, 덮어쓰기 없음), 점수표 판도 불변, 자격증명은 봉인(lib/credential-crypto-server.ts)해서만 저장한다.
 // D1은 한 질의의 바인드 값 수와 호출당 질의 수에 한도가 있어, 여러 행 쓰기·지우기는 JSON 배열 하나를 json_each로 펼쳐 한 문장으로 보낸다.
-import {ApiError,database,readRecord,stamp} from '../server';
+import {ApiError,acquireLock,database,readRecord,releaseLock,stamp} from '../server';
 import {openRecordSecret,sealRecordSecret} from '../credential-crypto-server';
 import {isEnabled} from '../feature-flags';
 import {focusCategories,CATEGORIES} from './categories';
 import {FOCUS_TEMPERATURES} from './categories';
 import {PR_KINDS} from './kinds';
-import {CREDENTIAL_KEYS,type CredentialKey,type ResearchSettings} from './api';
+import {CREDENTIAL_KEYS,PRICE_MAX_MAX,PRICE_MAX_MIN,QUESTION_MAX,type CredentialKey,type ResearchSettings} from './api';
 import {parseResearchCredential,credentialAccount,type ResearchCredential} from './credentials';
-import {sourceSpec} from './sources';
-import {quotaDayKey} from './collectors/quota';
+import {dailyCap,quotaDayKey} from './collectors/quota';
+import {subjectKey} from './analytics/series';
 import type {Snapshot,SourceId,Temperature} from './types';
 
 export const K=PR_KINDS;
@@ -85,9 +85,9 @@ export function parseSettings(value:unknown):Omit<ResearchSettings,'version'|'up
  const temps=Array.isArray(v.temperatures)?[...new Set(v.temperatures)]:null;
  if(!temps||!temps.length||!temps.every(t=>TEMPS.includes(t as Temperature)))throw new ApiError(400,'보관 온도는 상온·냉장·냉동 중 1개 이상 고르세요.');
  const priceMax=v.priceMax===null||v.priceMax===undefined?null:v.priceMax;
- if(priceMax!==null&&(typeof priceMax!=='number'||!Number.isInteger(priceMax)||priceMax<100||priceMax>10_000_000))throw new ApiError(400,'가격 상한은 100원~1,000만 원 사이 정수로 입력하거나 비워 두세요.');
+ if(priceMax!==null&&(typeof priceMax!=='number'||!Number.isInteger(priceMax)||priceMax<PRICE_MAX_MIN||priceMax>PRICE_MAX_MAX))throw new ApiError(400,'가격 상한은 100원~1,000만 원 사이 정수로 입력하거나 비워 두세요.');
  const question=typeof v.question==='string'?v.question.trim():'';
- if(question.length>200||hasControl(question))throw new ApiError(400,'조사 질문은 200자 이내 한 줄로 입력하세요.');
+ if(question.length>QUESTION_MAX||hasControl(question))throw new ApiError(400,`조사 질문은 ${QUESTION_MAX}자 이내 한 줄로 입력하세요.`);
  return {categories:cats as string[],temperatures:temps as Temperature[],priceMax:priceMax as number|null,question};
 }
 
@@ -111,12 +111,15 @@ export async function loadCredential(owner:string,key:CredentialKey):Promise<Res
 }
 
 // ── 쿼터 원장(pr_quota). 호출 전에 원자적으로 예약하고(한도를 넘으면 예약되지 않음), 호출 전에 막힌 입력 오류만 되돌린다.
-export type QuotaRow={sourceId:SourceId;day:string;used:number;calls:number};
+// 한도는 앱 상한(collectors/quota.ts dailyCap)이다. 공급자가 한도를 공개하지 않은 출처도 보수 상한으로 막는다(평가 1회차 H4).
+// ok: 정상 응답을 받은 호출 수(30일 성공률 = ok/calls, 신선도 ②).
+export type QuotaRow={sourceId:SourceId;day:string;used:number;calls:number;ok?:number};
 export async function quotaUsed(owner:string,sourceId:SourceId,now:Date){
  return (await optional<QuotaRow>(owner,K.quota,`${sourceId}:${quotaDayKey(sourceId,now)}`))?.used??0;
 }
 export async function reserveQuota(owner:string,sourceId:SourceId,units:number,now:Date):Promise<boolean>{
- const day=quotaDayKey(sourceId,now),limit=sourceSpec(sourceId).dailyQuota??Number.MAX_SAFE_INTEGER,key=`${sourceId}:${day}`;
+ const day=quotaDayKey(sourceId,now),limit=dailyCap(sourceId),key=`${sourceId}:${day}`;
+ if(limit<=0||units>limit)return false;
  const r=await database().prepare(`INSERT INTO records(id,owner,kind,parent_id,data,updated_at) SELECT ?,?,?,?,json_object('sourceId',?,'day',?,'used',?,'calls',1),? WHERE ?<=? ON CONFLICT(id) DO UPDATE SET data=json_set(records.data,'$.used',json_extract(records.data,'$.used')+?,'$.calls',json_extract(records.data,'$.calls')+1),updated_at=excluded.updated_at WHERE records.owner=excluded.owner AND json_extract(records.data,'$.used')+?<=?`)
   .bind(rowId(owner,K.quota,key),owner,K.quota,sourceId,sourceId,day,units,now.toISOString(),units,limit,units,units,limit).run();
  return r.meta.changes>0;
@@ -125,6 +128,10 @@ export async function refundQuota(owner:string,sourceId:SourceId,units:number,no
  const key=`${sourceId}:${quotaDayKey(sourceId,now)}`;
  await database().prepare(`UPDATE records SET data=json_set(data,'$.used',max(0,json_extract(data,'$.used')-?),'$.calls',max(0,json_extract(data,'$.calls')-1)) WHERE id=? AND owner=? AND kind=?`).bind(units,rowId(owner,K.quota,key),owner,K.quota).run();
 }
+export async function markQuotaOk(owner:string,sourceId:SourceId,now:Date){
+ const key=`${sourceId}:${quotaDayKey(sourceId,now)}`;
+ await database().prepare(`UPDATE records SET data=json_set(data,'$.ok',coalesce(json_extract(data,'$.ok'),0)+1) WHERE id=? AND owner=? AND kind=?`).bind(rowId(owner,K.quota,key),owner,K.quota).run();
+}
 export async function pruneQuota(owner:string,now:Date){
  await database().prepare('DELETE FROM records WHERE owner=? AND kind=? AND updated_at<?').bind(owner,K.quota,new Date(now.getTime()-60*DAY).toISOString()).run();
 }
@@ -132,8 +139,40 @@ export async function pruneQuota(owner:string,now:Date){
 // ── 스냅샷(pr_snapshot). parent_id=출처, updated_at=수집 시각(오래된 순 정리에 쓴다).
 export function snapshotStatement(owner:string,s:Snapshot){return appendStatement(owner,K.snapshot,s.id,s,s.sourceId,s.fetchedAt)}
 export async function readSnapshots(owner:string,ids:readonly string[]){return readMany<Snapshot>(owner,K.snapshot,ids)}
-// 최근 스냅샷을 쪽 단위로 읽는다(한 응답이 너무 커지지 않게). since 이후·최대 limit개, 최신순.
+// ── 이상치 격리(pr_quarantine). 격리된 관측(스냅샷·대상·지표)은 사람이 해제하기 전까지 점수 계산 재료에서 뺀다(스냅샷 자체는 불변).
+export type QuarantineRow={id:string;sourceId:SourceId;snapshotId:string;subjectKey:string;metric:string;periodTo:string;value:number;median:number;robustZ:number;window:number[];status:'active'|'cleared';createdAt:string;cleared:{by:{id:string;email:string|null};at:string;reason:string}|null};
+export const MAX_ACTIVE_QUARANTINE=5000;
+export async function activeQuarantine(owner:string):Promise<Map<string,Set<string>>>{
+ const r=await database().prepare("SELECT json_extract(data,'$.snapshotId') s,json_extract(data,'$.subjectKey') k,json_extract(data,'$.metric') m FROM records WHERE owner=? AND kind=? AND json_extract(data,'$.status')='active' LIMIT ?").bind(owner,K.quarantine,MAX_ACTIVE_QUARANTINE).all<{s:string;k:string;m:string}>();
+ const out=new Map<string,Set<string>>();
+ for(const x of r.results){const set=out.get(x.s)??new Set<string>();set.add(`${x.k}|${x.m}`);out.set(x.s,set)}
+ return out;
+}
+// 격리 표를 스냅샷 묶음에 적용한다. 바뀐 스냅샷만 새 객체로 만들고 한계(limitations)에 사유를 더한다.
+export function applyQuarantine(snapshots:readonly Snapshot[],q:ReadonlyMap<string,ReadonlySet<string>>):Snapshot[]{
+ if(!q.size)return [...snapshots];
+ return snapshots.map(s=>{
+  const hit=q.get(s.id);if(!hit)return s;
+  const kept=s.observations.filter(o=>!hit.has(`${subjectKey(o.subject)}|${o.metric}`));
+  return kept.length===s.observations.length?s:{...s,observations:kept,limitations:[...s.limitations,`이상치로 격리된 관측 ${s.observations.length-kept.length}개는 사람이 해제하기 전까지 점수 계산에서 뺐습니다.`]};
+ });
+}
+
+// 재계산 한 번 안에서 같은 범위의 스냅샷을 두 번 읽지 않게 한다(이상치 검사·자사 판매·재계산이 같은 원본을 쓴다). 범위 밖에서는 캐시가 없다.
+let reuse:Map<string,Snapshot[]>|null=null,reuseDepth=0;
+export async function withSnapshotReuse<T>(fn:()=>Promise<T>):Promise<T>{
+ if(reuseDepth++===0)reuse=new Map();
+ try{return await fn()}finally{if(--reuseDepth===0)reuse=null}
+}
+export function forgetSnapshotReuse(owner:string){if(reuse)for(const k of [...reuse.keys()])if(k.startsWith(owner+'|'))reuse.delete(k)}
+// 최근 스냅샷(격리 적용). 재계산·백테스트·매칭 확인이 이 함수로 읽어 격리된 관측이 점수에 들어가지 않는다.
 export async function recentSnapshots(owner:string,sinceIso:string,limit:number):Promise<Snapshot[]>{
+ const [raw,q]=await Promise.all([recentSnapshotsRaw(owner,sinceIso,limit),activeQuarantine(owner)]);
+ return applyQuarantine(raw,q);
+}
+// 최근 스냅샷 원본을 쪽 단위로 읽는다(한 응답이 너무 커지지 않게). since 이후·최대 limit개, 최신순.
+export async function recentSnapshotsRaw(owner:string,sinceIso:string,limit:number):Promise<Snapshot[]>{
+ const cacheKey=`${owner}|${sinceIso}|${limit}`,hit=reuse?.get(cacheKey);if(hit)return hit;
  const out:Snapshot[]=[];let before='9999-12-31T23:59:59.999Z',beforeId='￿';
  while(out.length<limit){
   const page=Math.min(200,limit-out.length);
@@ -142,6 +181,7 @@ export async function recentSnapshots(owner:string,sinceIso:string,limit:number)
   if(r.results.length<page)break;
   const last=r.results[r.results.length-1];before=last.updated_at;beforeId=last.id;
  }
+ reuse?.set(cacheKey,out);
  return out;
 }
 // 스냅샷 한도: 넣을 자리가 없으면 400일이 지난 스냅샷 중 현재 점수표·메모·결정이 가리키지 않는 것을 오래된 순으로 지운다. 그래도 모자라면 409.
@@ -153,6 +193,29 @@ export async function ensureSnapshotRoom(owner:string,adding:number,now:Date,ref
  const prefix=rowId(owner,K.snapshot,''),victims=r.results.map(x=>x.id.slice(prefix.length)).filter(id=>!refs.has(id)).slice(0,need);
  if(victims.length<need)throw new ApiError(409,`스냅샷 저장 한도(${MAX_SNAPSHOTS.toLocaleString('ko-KR')}개)에 도달했고, ${SNAPSHOT_RETENTION_DAYS}일이 지난 정리 가능한 스냅샷이 부족합니다. 수집 범위를 줄이거나 관리자에게 정리를 요청하세요.`);
  await database().batch(bulkDelete(owner,K.snapshot,victims));
+}
+
+// ── 상품 리서치 잠금(평가 1회차 H5). 작업자 수집·즉시 수집·가져오기·재계산·결정·넘기기 등 모든 상품 리서치 쓰기가 같은 키를 쓴다.
+// 일반 소유자 잠금(acquireLock(owner))과 다른 행이라 상품 리서치가 다른 화면 저장을 오래 막지 않는다. waitMs 동안 기다린 뒤 409.
+export const researchLockKey=(owner:string)=>`${owner}:product-research`;
+export const RESEARCH_LOCK_BUSY='다른 상품 리서치 작업이 진행 중입니다. 잠시 후 다시 시도하세요.';
+export const RESEARCH_LOCK_WAIT_MS=3000;
+const pause=(ms:number)=>new Promise<void>(r=>setTimeout(r,ms));
+export async function acquireResearchLock(owner:string,waitMs=RESEARCH_LOCK_WAIT_MS):Promise<string>{
+ const key=researchLockKey(owner),deadline=Date.now()+Math.max(0,waitMs);
+ for(;;){
+  try{return await acquireLock(key)}catch(e){
+   if(!(e instanceof ApiError&&e.status===409))throw e;
+   // 타이머가 없는 실행 환경(검사용 vm)에서는 기다리지 않고 바로 알린다.
+   if(Date.now()>=deadline||typeof setTimeout!=='function')throw new ApiError(409,RESEARCH_LOCK_BUSY);
+   await pause(Math.min(250,Math.max(1,deadline-Date.now())));
+  }
+ }
+}
+export async function releaseResearchLock(owner:string,token:string){await releaseLock(researchLockKey(owner),token)}
+export async function withResearchLock<T>(owner:string,waitMs:number,fn:()=>Promise<T>):Promise<T>{
+ const token=await acquireResearchLock(owner,waitMs);
+ try{return await fn()}finally{await releaseResearchLock(owner,token)}
 }
 
 // ── 요청 멱등(pr_request)

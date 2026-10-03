@@ -279,7 +279,7 @@ const imp=async input=>plain(await c.parseImport({scope:'식품 베스트',obser
  check(!r.ok&&!('draft' in r),'import: invalid rows reject the whole file (no partial save)');
  const rows=[...new Set(r.errors.map(e=>e.row))].sort((a,b)=>a-b);
  assert.deepEqual(rows,[3,4,5,6,7]);passed++;
- check(r.errors.every(e=>e.reason.startsWith(`${e.row}행`)),'import: reasons carry row numbers');
+ check(r.errors.every(e=>Number.isInteger(e.row)&&!/^\d+행/.test(e.reason)),'import: row number lives in the row field only (no "3행: 3행:" prefix in the reason)');
  check(r.errors.some(e=>e.row===6&&e.field==='rating')&&r.errors.some(e=>e.row===5&&e.field==='price')&&r.errors.some(e=>e.row===7&&e.field==='title'),'import: field-specific reasons');
  const dup=await imp({sourceId:'musinsa_ranking_manual',fileName:'dup.csv',text:fixture('dup-rank.csv')});
  check(!dup.ok&&dup.errors.length===1&&dup.errors[0].row===4&&dup.errors[0].field==='rank'&&dup.errors[0].reason.includes('3행'),'import: duplicate rank rejected with both rows');
@@ -301,6 +301,10 @@ const imp=async input=>plain(await c.parseImport({scope:'식품 베스트',obser
  check(!api.ok,'import: API source ids are not importable');
  const future=await imp({sourceId:'musinsa_ranking_manual',fileName:'x.csv',text:'순위,상품명\n1,가\n',observedDate:'2026-10-04'});
  check(!future.ok&&/오늘/.test(future.errors[0].reason),'import: future observed date rejected');
+ const stale=await imp({sourceId:'musinsa_ranking_manual',fileName:'x.csv',text:'순위,상품명\n1,가\n',observedDate:'2026-09-18'});
+ check(!stale.ok&&/14일/.test(stale.errors[0].reason),'import: observed date older than 14 days (KST) rejected');
+ const edge=await imp({sourceId:'musinsa_ranking_manual',fileName:'x.csv',text:'순위,상품명\n1,가\n',observedDate:'2026-09-19'});
+ check(edge.ok,'import: observed date exactly 14 days ago accepted');
  const notArray=await imp({sourceId:'oliveyoung_ranking_manual',fileName:'x.json',text:'{"rank":1}'});
  check(!notArray.ok&&/배열/.test(notArray.errors[0].reason),'import: JSON must be an array');
  check(c.parseCsv('a,"b\r\nc",d\r\n\r\ne').length===3&&c.parseCsv('\uFEFFx,y')[0].cells[0]==='x','import: parseCsv handles CRLF in quotes, blank lines, BOM');

@@ -3,6 +3,7 @@
 // 전부 아니면 전무: 잘못된 행이 하나라도 있으면 파일 전체를 거절하고 행 번호와 사유를 돌려준다(부분 저장 0, 계획 P1b 완료 조건).
 // 머리글은 한국어·영어 별칭을 받는다. 알 수 없는 열(리뷰 작성자 등)은 저장하지 않는다. 원문은 해시·크기만 남긴다.
 import {sourceSpec} from '../sources';
+import {IMPORT_MAX_AGE_DAYS} from '../api';
 import type {MetricKey,Observation,Subject} from '../types';
 import {hasControl,sha256Hex} from './http';
 import {kstDayKey} from './quota';
@@ -187,8 +188,11 @@ export async function parseImport(input:ImportInput,deps:Pick<CollectDeps,'now'>
  if(!scope||scope.length>100||hasControl(scope))return fail('랭킹 범위(카테고리 이름)를 100자 이내로 입력하세요.');
  const observedDate=typeof input.observedDate==='string'?day(input.observedDate):null;
  if(!observedDate||observedDate!==input.observedDate.trim())return fail('기준일을 YYYY-MM-DD 형식으로 입력하세요.');
- const now=deps.now();
- if(observedDate>kstDayKey(now))return fail('기준일이 오늘(한국 시각)보다 늦습니다.');
+ const now=deps.now(),today=kstDayKey(now);
+ if(observedDate>today)return fail('기준일이 오늘(한국 시각)보다 늦습니다.');
+ // 평가 1회차 M1: 오래된 랭킹이 오늘 관측처럼 보이지 않게 기준일 하한을 둔다(한국 날짜로 14일 전까지).
+ const oldest=new Date(Date.parse(`${today}T00:00:00Z`)-IMPORT_MAX_AGE_DAYS*86400000).toISOString().slice(0,10);
+ if(observedDate<oldest)return fail(`기준일이 ${IMPORT_MAX_AGE_DAYS}일보다 오래됐습니다(${oldest} 이후만 받습니다). 최근 화면을 다시 저장해 올려 주세요.`);
  if(typeof input.text!=='string')return fail('파일 내용을 읽지 못했습니다.');
  const raw=input.text;
  const bytes=new TextEncoder().encode(raw);
@@ -210,7 +214,8 @@ export async function parseImport(input:ImportInput,deps:Pick<CollectDeps,'now'>
  const ranksByDate=new Map<string,number[]>();
  const rowLabel=format==='json'?'번째 항목':'행';
  for(const r of rows){
-  const bad=(field:Field|undefined,reason:string)=>issues.push({row:r.row,...(field?{field}:{}),reason:`${r.row}${rowLabel}: ${reason}`});
+  // 행 번호는 row 필드에만 둔다(평가 1회차 M9: 화면이 `${row}행`을 붙여 '3행: 3행:'이 되던 중복 제거).
+  const bad=(field:Field|undefined,reason:string)=>issues.push({row:r.row,...(field?{field}:{}),reason});
   if(r.extra)bad(undefined,'머리글보다 칸이 많습니다. 쉼표가 들어간 값은 큰따옴표로 묶어 주세요.');
   const get=(f:Field)=>r.values.get(f);
   // 순위: 1 이상 정수, 필수
