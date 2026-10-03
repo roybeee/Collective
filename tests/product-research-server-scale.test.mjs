@@ -54,6 +54,8 @@ check(maxRows<=1000,`no single query returns more than 1,000 rows (max ${maxRows
 check(queries<=120,`view issues ≤ 120 queries (issued ${queries})`);
 check(ms<4000,`view stays under the 4 s budget in the test runtime (took ${Math.round(ms)} ms)`);
 check(view.snapshots.length<=1050&&view.series.length>0,'snapshot metadata is capped (referenced ≤1,000 + latest 50) and series still render from cited snapshots');
+check(view.series.some(x=>new Set(x.points.map(p=>p.snapshotId)).size>=2),'series also read older snapshots of the cited sources (trend bars get more than one point)');
+check(view.snapshots.every(x=>Array.isArray(x.limitations)&&typeof x.rows==='number')&&view.snapshots.some(x=>x.request&&x.request.keywords==='x'&&x.rows===20),'snapshot metadata carries request scope, limitations and row count (no observation bodies)');
 const p0=view.products.find(p=>p.id==='prp_0000'),cur=p0.score;
 check(p0.previousScore&&Date.parse(cur.computedAt)-Date.parse(p0.previousScore.computedAt)>=6*DAY&&Date.parse(cur.computedAt)-Date.parse(p0.previousScore.computedAt)<7*DAY,'previousScore comes from the score index (the latest version ≥6 days older)');
 // 하루에 판이 20번 바뀌어도(즉시 수집·재계산 반복) 색인에 지난주 판이 남는다.

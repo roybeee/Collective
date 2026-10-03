@@ -68,7 +68,7 @@ export function ReportTab({view,act,busy,onOpen}:{view:View;act:Act;busy:boolean
    {weekly?<>
     <p className={s.muted}><MetaLine items={[`주 ${weekly.week}`,`작성 ${dateTime(weekly.at)}`,weeklyBrief?weeklyBrief.author.kind==='model'?'AI 상품 MD 작성':'템플릿 작성':null]}/></p>
     {weeklyBrief?<><p>{weeklyBrief.summary}</p>{weeklyBrief.claims.length>0&&<ul className={s.claims}>{weeklyBrief.claims.slice(0,6).map((c,i)=><li key={i}>{c.text}</li>)}</ul>}{weeklyBrief.risks.length>0&&<p className={s.muted}>리스크: {weeklyBrief.risks.join(', ')}</p>}</>
-     :<p className={s.muted}>{weekly.reason?`이번 주 메모를 만들지 않았습니다: ${weekly.reason}`:'메모 본문이 최근 선정 메모 50개 밖에 있어 여기서 보이지 못합니다. 선정 위원회 탭에서 찾으세요.'}</p>}
+     :<p className={s.muted}>{weekly.reason?`이번 주 메모를 만들지 않았습니다: ${weekly.reason}`:'주간 메모 본문을 불러오지 못했습니다. 화면을 새로 고친 뒤에도 같으면 점수를 다시 계산해 주간 메모를 다시 만드세요.'}</p>}
    </>:<EmptyLine next="자동 수집이 하루 계획을 끝낸 뒤 주 1회 결정형 메모를 만듭니다. 그 전에는 선정 위원회 탭에서 직접 만드세요.">자동 주간 메모가 아직 없습니다.</EmptyLine>}
   </section>
   <div className={s.reportGrid}>

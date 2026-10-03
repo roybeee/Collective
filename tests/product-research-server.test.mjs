@@ -91,6 +91,7 @@ check(r.status===200&&count('pr_snapshot')===1,'good file stores one snapshot');
 const snap0=rec('pr_snapshot',r.body.resultId);
 check(snap0.importedBy.id===OWNER&&snap0.importedBy.fileName==='coupang.csv'&&snap0.observations.some(o=>o.subject.externalId==='A1'),'snapshot keeps importedBy and external_id column');
 check(r.body.imports.length===1&&r.body.imports[0].rows===3&&r.body.imports[0].fileName==='coupang.csv','view lists the import');
+check(r.body.imports[0].scope==='쿠팡 소스'&&r.body.imports[0].observedDate===today,'view import record carries scope and observedDate');
 check(r.body.products.length===3&&r.body.products.every(p=>p.score&&p.score.weightsVersion==='w1'),'import → recompute → products with w1 score cards');
 const scoresAfterImport=count('pr_score'),productIds=r.body.products.map(p=>p.id).sort();
 r=await act('recompute');check(r.status===200&&count('pr_score')===scoresAfterImport,'recompute with the same inputs creates no new score version');

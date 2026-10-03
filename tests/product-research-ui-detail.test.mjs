@@ -83,4 +83,8 @@ check('saved review with all items checked passes without ack',U.approvalWhy(rev
 check('normal card has no gate',U.approvalWhy({needsReview:false,blocked:null,review:null},'',false,null),'');
 const items=U.riskChecklist({review:review.review},['식품 표시사항 확인','다이어트 효능 과장','x'.repeat(A.RISK_RULE_MAX+20)]);
 check('checklist = review reasons + base items, unique, each within RISK_RULE_MAX',[items.length,items[0],items.every(x=>x.length<=A.RISK_RULE_MAX)],[3,'다이어트 효능 과장',true]);
+// 스냅샷 요청 범위: 사람이 읽는 항목만, 내부 호출 설정은 숨김
+check('request scope lists readable items and hides internal call settings',U.requestScope({operation:'search',keyword:'마라소스',publishedAfter:'2026-09-01',maxResults:50,regionCode:'KR'}),['검색어 마라소스','게시 이후 2026-09-01']);
+check('datalab groups and unit read as names and 주',U.requestScope({startDate:'2026-01-05',endDate:'2026-09-28',timeUnit:'week',keywordGroups:'마라:마라소스|마라탕소스;떡볶이:떡볶이소스'}),['키워드 묶음 마라, 떡볶이','시작일 2026-01-05','종료일 2026-09-28','단위 주']);
+check('import scope keeps file, scope, date and rows; long values are cut',[U.requestScope({fileName:'c.csv',scope:'식품 소스',observedDate:'2026-10-01',format:'csv',rows:3}).join('|'),U.requestScope({keyword:'가'.repeat(100)})[0].length,U.requestScope(null).length],['범위 식품 소스|기준일 2026-10-01|파일 c.csv|행 수 3',4+80+1,0]);
 console.log(JSON.stringify({passed}));

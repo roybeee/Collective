@@ -12,7 +12,7 @@ import {StatList} from '@/components/app/stat-list';
 import {TrendBars} from '@/components/app/trend-bars';
 import {count,dateTime} from '@/lib/format';
 import {SOURCES} from '@/lib/product-research/sources';
-import {pointOn,productSeries,seriesAxis,snapshotRows,type SnapshotRow} from '@/lib/product-research/ui-detail';
+import {pointOn,productSeries,requestScope,seriesAxis,snapshotRows,type SnapshotRow} from '@/lib/product-research/ui-detail';
 import type {Series} from '@/lib/product-research/types';
 import {evidenceLabel,methodLabels,metricLabels,snapshotStatusLabels,sourceLabel,type Product,type View} from './product-research-shared';
 import s from './product-research.module.css';
@@ -51,7 +51,8 @@ export function SnapshotPanel({view,id,subjects,onClose}:{view:View;id:string;su
  const meta=view.snapshots?.find(x=>x.id===id)??null,imported=view.imports.find(x=>x.snapshotId===id)??null;
  const sourceId=meta?.sourceId??imported?.sourceId??null,spec=sourceId?SOURCES.find(x=>x.id===sourceId):null;
  const rows=snapshotRows(view.series??[],subjects,id);
- const limits=[...new Set((view.series??[]).filter(x=>x.points.some(p=>p.snapshotId===id)).flatMap(x=>x.limitations??[]))];
+ const limits=[...new Set([...(meta?.limitations??[]),...(view.series??[]).filter(x=>x.points.some(p=>p.snapshotId===id)).flatMap(x=>x.limitations??[])])];
+ const scope=meta?.request?requestScope(meta.request):[];
  const columns:DataColumn<SnapshotRow>[]=[
   {label:'대상',cell:r=>r.subject,sort:r=>r.subject,csv:r=>r.subject},
   {label:'지표',cell:r=>metricLabels[r.metric],sort:r=>metricLabels[r.metric],csv:r=>metricLabels[r.metric]},
@@ -65,13 +66,14 @@ export function SnapshotPanel({view,id,subjects,onClose}:{view:View;id:string;su
    ['수집 방식',spec?<span className={s.method} data-method={spec.method}>{methodLabels[spec.method]}</span>:'미확인'],
    ['수집 시각',dateTime(meta?.fetchedAt??imported?.importedAt)],
    ['상태',meta?.status?snapshotStatusLabels[meta.status]:'미확인'],
-   ['요청 범위',imported?`파일 ${imported.fileName}, ${count(imported.rows,'행')}`:'화면 응답에 없음'],
+   ['요청 범위',scope.length?scope.join(', '):imported?`파일 ${imported.fileName}, ${count(imported.rows,'행')}`:meta?.request?'없음':'미확인'],
+   ['관측 행',typeof meta?.rows==='number'?count(meta.rows,'행'):'미확인'],
    ['스냅샷 ID',<span key="id" className={s.code}>{id}</span>],
   ]}/>
   {imported&&<p className={s.muted}><MetaLine items={['운영자 가져오기',`가져온 사람 ${imported.importedBy??'미확인'}`,dateTime(imported.importedAt)]}/></p>}
   {rows.length?<DataTable rows={rows} columns={columns} rowKey={r=>`${r.subjectKey}|${r.metric}|${r.at}`} caption="이 상품과 관련된 관측 행" csvName="product-research-snapshot-rows" limit={50}/>
    :<EmptyLine next="이 스냅샷의 관측 행은 화면 응답의 시계열에 없어 값을 보이지 못합니다. 하위 점수 설명으로 판단하세요.">이 상품과 관련된 관측 행이 화면에 없습니다.</EmptyLine>}
   {limits.length>0&&<ul className={s.notes} aria-label="스냅샷 해석 한계">{limits.map(x=><li key={x}>{x}</li>)}</ul>}
-  <p className={s.muted}>요청 범위 원문(키워드·카테고리·기간)과 원문 본문은 화면 응답에 싣지 않습니다. 값은 이 상품의 시계열 점에서 찾았습니다.</p>
+  <p className={s.muted}>원문 본문은 화면 응답에 싣지 않습니다. 값은 이 상품의 시계열 점에서 찾았습니다.</p>
  </section>;
 }

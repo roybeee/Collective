@@ -86,13 +86,15 @@ export type RiskReview={id:string;productId:string;scoreCardId:string;checklist:
 export type ViewExtras={
  settings:ResearchSettings;
  credentials:{key:CredentialKey;connected:boolean;account:string|null;updatedAt:string|null}[];
- imports:{snapshotId:string;sourceId:SourceId;fileName:string;rows:number;importedAt:string;importedBy:string|null}[];
+ // scope·observedDate(추가 필드): 가져오기 때 적은 랭킹 범위와 기준일.
+ imports:{snapshotId:string;sourceId:SourceId;fileName:string;rows:number;importedAt:string;importedBy:string|null;scope?:string|null;observedDate?:string|null}[];
  collect:{lastRunAt:string|null;nextRunAt:string|null;lastErrors:{sourceId:SourceId;message:string;at:string}[]};
  campaigns:{id:string;title:string;version:number;brandId:string}[];
  canConnect:boolean; // 소유자
- // 추가 필드: 화면에 보이는 상품의 시계열(시계열마다 최근 104주 점만)과 근거 스냅샷 요약(현재 점수표·메모가 가리키는 것 + 최근 50개).
+ // 추가 필드: 화면에 보이는 상품의 시계열(점수표가 인용한 스냅샷 + 같은 출처의 이전 스냅샷, 합쳐 최대 200개. 시계열마다 최근 104주 점만)과 근거 스냅샷 요약(현재 점수표·메모가 가리키는 것 + 최근 50개).
  series?:Series[];
- snapshots?:{id:string;sourceId:SourceId;fetchedAt:string;status:Snapshot['status']}[];
+ // request·limitations·rows(추가 필드): 요청 범위(키워드·카테고리·기간·가져오기 범위), 해석 한계, 관측 행 수. 관측 본문은 싣지 않는다.
+ snapshots?:{id:string;sourceId:SourceId;fetchedAt:string;status:Snapshot['status'];request?:Snapshot['request']|null;limitations?:string[];rows?:number}[];
  // 평가 1회차 추가 필드(모두 선택). alerts: 출처별 연속 실패·격리 대기 경보. freshness: 출처별 30일 호출 성공률·마지막 정상 수집·격리 수.
  // rankingStatus: 랭킹 가져오기 출처별 마지막 가져오기와 이번 주(한국 날짜, 월요일 시작) 여부. quarantines: 해제를 기다리는 격리 관측(최대 100).
  // riskReviews: 화면 상품의 현재 점수표에 저장된 최신 리스크 검토. collectNow: 오늘 즉시 수집 횟수. weeklyReport: 마지막 주간 MD 리포트.

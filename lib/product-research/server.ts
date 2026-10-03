@@ -34,10 +34,10 @@ const TIER_LABEL:Record<ScoreCard['tier'],string>={adopt:'도입 검토',watch:'
 const TIER_ORDER:Record<ScoreCard['tier'],number>={adopt:0,watch:1,needs_data:2,reject:3};
 
 // ── 조회
-// 화면 응답이 읽는 양의 상한(평가 1회차 H6): 전체 스냅샷·점수표를 읽지 않는다. 시계열은 상위 상품의 점수표가 인용한 스냅샷(최대 200개)으로만 만들고,
+// 화면 응답이 읽는 양의 상한(평가 1회차 H6): 전체 스냅샷·점수표를 읽지 않는다. 시계열은 상위 상품의 점수표가 인용한 스냅샷(최대 120개)과 같은 출처의 104주 안 이전 스냅샷을 합쳐 최대 200개로 만들고,
 // '지난주' 점수는 상품별 점수표 색인(pr_score_index)에서, 스냅샷 요약은 인용된 것(최대 1,000개)과 최근 50개만 작은 열로 읽는다.
-const VIEW_SERIES_PRODUCTS=60,VIEW_SERIES_SNAPSHOTS=200,VIEW_META_SNAPSHOTS=1000,VIEW_QUARANTINES=100,VIEW_RISK_REVIEWS=1000;
-type SnapshotMeta={id:string;sourceId:SourceId;fetchedAt:string;status:Snapshot['status']};
+const VIEW_SERIES_PRODUCTS=60,VIEW_SERIES_SNAPSHOTS=200,VIEW_SERIES_CITED=120,VIEW_META_SNAPSHOTS=1000,VIEW_QUARANTINES=100,VIEW_RISK_REVIEWS=1000;
+type SnapshotMeta={id:string;sourceId:SourceId;fetchedAt:string;status:Snapshot['status'];request:Snapshot['request']|null;limitations:string[];rows:number};
 async function sourceRows(owner:string,creds:Awaited<ReturnType<typeof credentialStatus>>,now:Date){
  return Promise.all(SOURCES.map(async s=>{
   const last=await database().prepare("SELECT json_extract(data,'$.fetchedAt') f,json_extract(data,'$.status') st FROM records WHERE owner=? AND kind=? AND parent_id=? ORDER BY updated_at DESC LIMIT 1").bind(owner,K.snapshot,s.id).first<{f:string|null;st:Snapshot['status']|null}>();
@@ -52,11 +52,13 @@ async function sourceRows(owner:string,creds:Awaited<ReturnType<typeof credentia
 async function snapshotMeta(owner:string,ids:readonly string[]):Promise<SnapshotMeta[]>{
  const out:SnapshotMeta[]=[],uniq=[...new Set(ids)];
  for(let i=0;i<uniq.length;i+=300){
-  const r=await database().prepare("SELECT json_extract(data,'$.id') id,json_extract(data,'$.sourceId') s,json_extract(data,'$.fetchedAt') f,json_extract(data,'$.status') st FROM records WHERE owner=? AND kind=? AND id IN (SELECT value FROM json_each(?))").bind(owner,K.snapshot,JSON.stringify(uniq.slice(i,i+300).map(x=>`${owner}:${K.snapshot}:${x}`))).all<{id:string;s:SourceId;f:string;st:Snapshot['status']}>();
-  for(const x of r.results)out.push({id:x.id,sourceId:x.s,fetchedAt:x.f,status:x.st});
+  // 요청 범위(키워드·카테고리·기간·가져오기 범위)와 해석 한계, 관측 행 수만 작은 열로 읽는다. 관측 본문은 싣지 않는다.
+  const r=await database().prepare("SELECT json_extract(data,'$.id') id,json_extract(data,'$.sourceId') s,json_extract(data,'$.fetchedAt') f,json_extract(data,'$.status') st,json_extract(data,'$.request') q,json_extract(data,'$.limitations') l,json_array_length(data,'$.observations') n FROM records WHERE owner=? AND kind=? AND id IN (SELECT value FROM json_each(?))").bind(owner,K.snapshot,JSON.stringify(uniq.slice(i,i+300).map(x=>`${owner}:${K.snapshot}:${x}`))).all<{id:string;s:SourceId;f:string;st:Snapshot['status'];q:string|null;l:string|null;n:number|null}>();
+  for(const x of r.results)out.push({id:x.id,sourceId:x.s,fetchedAt:x.f,status:x.st,request:parseJson<Snapshot['request']>(x.q),limitations:parseJson<string[]>(x.l)??[],rows:Number(x.n)||0});
  }
  return out;
 }
+function parseJson<T>(v:string|null):T|null{if(!v)return null;try{return JSON.parse(v) as T}catch{return null}}
 function emptyView(settings:Awaited<ReturnType<typeof readSettings>>):ResearchViewResponse{
  return {enabled:false,collectEnabled:false,focus:{temperature:settings.temperatures,categories:settings.categories},sources:[],products:[],keywordGroups:[],briefs:[],backtests:[],canEdit:false,mayOrder:false,
   settings,credentials:CREDENTIAL_KEYS.map(key=>({key,connected:false,account:null,updatedAt:null})),imports:[],collect:{lastRunAt:null,nextRunAt:null,lastErrors:[]},campaigns:[],canConnect:false,series:[],snapshots:[]};
@@ -75,8 +77,11 @@ export async function researchView(who:Actor,now=new Date()):Promise<ResearchVie
   readCollectState(owner),
   database().prepare("SELECT data FROM records WHERE owner=? AND kind='campaign' ORDER BY updated_at DESC LIMIT 501").bind(owner).all<{data:string}>().then(r=>r.results.map(x=>JSON.parse(x.data) as Campaign)),
   // 가져오기 스냅샷은 출처(parent_id)가 가져오기 출처인 것만 색인으로 읽는다(전체 스냅샷을 훑지 않음).
-  database().prepare("SELECT json_extract(data,'$.id') id,json_extract(data,'$.sourceId') s,json_extract(data,'$.importedBy.fileName') f,json_extract(data,'$.request.rows') n,json_extract(data,'$.fetchedAt') at,json_extract(data,'$.importedBy.email') e,json_extract(data,'$.importedBy.id') u FROM records WHERE owner=? AND parent_id IN (SELECT value FROM json_each(?)) AND kind=? AND json_extract(data,'$.importedBy') IS NOT NULL ORDER BY updated_at DESC LIMIT 50").bind(owner,IMPORT_SOURCE_IDS,K.snapshot).all<{id:string;s:SourceId;f:string;n:number;at:string;e:string|null;u:string}>(),
+  database().prepare("SELECT json_extract(data,'$.id') id,json_extract(data,'$.sourceId') s,json_extract(data,'$.importedBy.fileName') f,json_extract(data,'$.request.rows') n,json_extract(data,'$.fetchedAt') at,json_extract(data,'$.importedBy.email') e,json_extract(data,'$.importedBy.id') u,json_extract(data,'$.request.scope') sc,json_extract(data,'$.request.observedDate') od FROM records WHERE owner=? AND parent_id IN (SELECT value FROM json_each(?)) AND kind=? AND json_extract(data,'$.importedBy') IS NOT NULL ORDER BY updated_at DESC LIMIT 50").bind(owner,IMPORT_SOURCE_IDS,K.snapshot).all<{id:string;s:SourceId;f:string;n:number;at:string;e:string|null;u:string;sc:string|null;od:string|null}>(),
  ]);
+ // 주간 리포트가 가리키는 메모가 최근 50개 밖이면 그 한 건을 더 읽어 화면이 본문을 보이게 한다.
+ const weeklyId=state.weekly?.briefId;
+ if(weeklyId&&!briefs.some(b=>b.id===weeklyId)){const w=await optional<MdBrief>(owner,K.brief,weeklyId);if(w)briefs.push(w)}
  const scores=await loadScores(owner,products.map(p=>p.scoreId??''));
  const latest=latestDecisions(decisions);
  // 조사 방향의 보관 온도 밖 상품(filtered.temperature, 분석 계층이 붙임)은 지우지 않고 목록 뒤로 보낸다.
@@ -86,12 +91,16 @@ export async function researchView(who:Actor,now=new Date()):Promise<ResearchVie
  const index=await readMany<ScoreIndex>(owner,K.scoreIndex,listed.filter(x=>x.score).map(x=>x.p.id));
  // 시계열: 상위 상품의 점수표가 인용한 스냅샷만 읽어(격리 적용) 그 상품의 키워드 묶음·목록 대상 시계열을 만든다. 시계열마다 최근 104주.
  const top=listed.slice(0,VIEW_SERIES_PRODUCTS),seriesIds=new Set<string>();
- for(const {score} of top){for(const id of score?.subScores.flatMap(s=>s.evidence)??[]){if(seriesIds.size>=VIEW_SERIES_SNAPSHOTS)break;seriesIds.add(id)}}
- const [seriesSnaps,quarantine]=await Promise.all([readSnapshots(owner,[...seriesIds]),activeQuarantine(owner)]);
+ for(const {score} of top){for(const id of score?.subScores.flatMap(s=>s.evidence)??[]){if(seriesIds.size>=VIEW_SERIES_CITED)break;seriesIds.add(id)}}
+ const cutoff=now.getTime()-SERIES_WEEKS*7*DAY;
+ const [cited,quarantine]=await Promise.all([readSnapshots(owner,[...seriesIds]),activeQuarantine(owner)]);
+ // 점수표는 출처마다 최신 스냅샷만 인용하므로, 같은 출처의 104주 안 이전 스냅샷을 남은 한도만큼 더 읽어 추세 막대가 이전 주를 보이게 한다.
+ const citedSources=[...new Set([...cited.values()].map(x=>x.sourceId))],room=VIEW_SERIES_SNAPSHOTS-cited.size;
+ const older=citedSources.length&&room>0?await database().prepare("SELECT id FROM records WHERE owner=? AND kind=? AND parent_id IN (SELECT value FROM json_each(?)) AND json_extract(data,'$.status')!='failed' AND json_extract(data,'$.fetchedAt')>=? ORDER BY updated_at DESC LIMIT ?").bind(owner,K.snapshot,JSON.stringify(citedSources),new Date(cutoff).toISOString(),room+cited.size).all<{id:string}>().then(r=>r.results.map(x=>x.id.slice(`${owner}:${K.snapshot}:`.length)).filter(id=>!cited.has(id)).slice(0,room)):[];
+ const seriesSnaps=[...cited.values(),...(older.length?(await readSnapshots(owner,older)).values():[])];
  const wanted=new Set<string>();
  for(const {p} of top){for(const l of p.listings)wanted.add(`ls:${l.sourceId}:${l.externalId}`);for(const g of groups.filter(g=>p.keywordGroupIds.includes(g.id))){wanted.add(`kw:${normalizeKeyword(g.label)}`);for(const k of g.keywords)wanted.add(`kw:${normalizeKeyword(k)}`)}}
- const cutoff=now.getTime()-SERIES_WEEKS*7*DAY;
- const series:Series[]=buildSeries(applyQuarantine([...seriesSnaps.values()],quarantine)).filter(s=>wanted.has(s.subjectKey)).map(s=>({...s,points:s.points.filter(p=>timeOf(p.at)>=cutoff)})).filter(s=>s.points.length);
+ const series:Series[]=buildSeries(applyQuarantine(seriesSnaps,quarantine)).filter(s=>wanted.has(s.subjectKey)).map(s=>({...s,points:s.points.filter(p=>timeOf(p.at)>=cutoff)})).filter(s=>s.points.length);
  const evidence=[...new Set([...listed.flatMap(x=>x.score?x.score.subScores.flatMap(s=>s.evidence):[]),...briefs.flatMap(b=>b.claims.flatMap(c=>c.citations))])].slice(0,VIEW_META_SNAPSHOTS);
  const recent=await database().prepare('SELECT id FROM records WHERE owner=? AND kind=? ORDER BY updated_at DESC LIMIT 50').bind(owner,K.snapshot).all<{id:string}>();
  const [snapshots,fresh,quarantines,reviews]=await Promise.all([
@@ -109,7 +118,7 @@ export async function researchView(who:Actor,now=new Date()):Promise<ResearchVie
   products:listed.map(({p,score})=>{const {scoreId:_s,brandFit:_b,...rest}=p;void _s;void _b;return {...rest,score,decision:latest.get(p.id)??null,previousScore:score?previousFromIndex(index.get(p.id)?.entries,score):null}}),
   keywordGroups:groups,briefs,backtests,canEdit:who.role!=='member',mayOrder:false,
   settings,credentials:creds,
-  imports:imports.results.map(r=>({snapshotId:r.id,sourceId:r.s,fileName:r.f,rows:Number(r.n)||0,importedAt:r.at,importedBy:r.e??r.u??null})),
+  imports:imports.results.map(r=>({snapshotId:r.id,sourceId:r.s,fileName:r.f,rows:Number(r.n)||0,importedAt:r.at,importedBy:r.e??r.u??null,scope:r.sc??null,observedDate:r.od??null})),
   collect:{lastRunAt:state.lastRunAt,nextRunAt:state.nextRunAt,lastErrors:errors},
   campaigns:campaigns.filter(c=>c.status!=='archived').slice(0,500).map(c=>({id:c.id,title:c.title,version:c.version,brandId:c.brandId})),
   canConnect:who.role==='owner',series,snapshots,

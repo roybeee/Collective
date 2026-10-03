@@ -45,6 +45,23 @@ export function snapshotRows(series:readonly Series[],subjects:ReadonlyMap<strin
  return out.sort((a,b)=>a.subject.localeCompare(b.subject)||a.metric.localeCompare(b.metric)||a.at.localeCompare(b.at));
 }
 
+// 스냅샷 요청 범위(snapshot.request)를 사람이 읽는 항목으로 바꾼다. 내부 호출 설정(operation·format·정렬 등)은 보이지 않는다.
+const SCOPE_LABELS:Record<string,string>={keyword:'검색어',query:'검색어',keywords:'키워드',hintKeywords:'키워드',keywordGroups:'키워드 묶음',categories:'카테고리',categoryCode:'카테고리 코드',
+ startDate:'시작일',endDate:'종료일',timeUnit:'단위',publishedAfter:'게시 이후',count:'영상 수',scope:'범위',observedDate:'기준일',fileName:'파일',rows:'행 수',weeks:'주 수',skus:'SKU 수',lines:'주문 줄 수'};
+const UNIT_LABELS:Record<string,string>={date:'일',week:'주',month:'월'};
+export function requestScope(request:Readonly<Record<string,string|number|boolean|null>>|null|undefined,max=80):string[]{
+ if(!request)return [];
+ const out:string[]=[];
+ for(const [key,label] of Object.entries(SCOPE_LABELS)){
+  const v=request[key];if(v===null||v===undefined||v==='')continue;
+  let text=key==='timeUnit'?UNIT_LABELS[String(v)]??String(v):String(v);
+  if(key==='keywordGroups'||key==='categories')text=text.split(';').map(x=>x.split(':')[0]).filter(Boolean).join(', ');
+  if([...text].length>max)text=[...text].slice(0,max).join('')+'…';
+  out.push(`${label} ${text}`);
+ }
+ return out;
+}
+
 // ── 지난주 대비(previousScore: 6일 이상 먼저 계산된 가장 최근 판)
 export type WeekDelta={total:number|null;momentum:number|null;since:string};
 type Scored={score:ScoreCard|null;previousScore?:{total:number|null;momentum:number|null;computedAt:string}|null};
