@@ -171,15 +171,15 @@
 - 요청(레인 A → 레인 Q, 2026-10-02): 워크스페이스의 품질 콘솔 정적 import(`tests/quality-console-route.test.mjs`)를 지연 로딩으로 바꿔도 되는지 검토 요청. 홈 첫 로딩 JS 약 12KB(gz)가 `lib/quality.ts` 경유로 실린다(UX-PLAN-3 10차원 목표 180KB).
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 현재 운영: #333까지 `2c100e6d6b79bb44507f4a85e07e261fff2e3728`, Sites99, tree `39cd51a35c98fe02062eab766aef5392f44d4a81`. 2026-10-03 14:18 UTC merged/published/runtime-verified(공개 tree 일치, 자동 게시 #334, [기록](releases/2026-10-03-2c100e6.md)). 상품 리서치·MD 에이전트(#329~#333, 독립 평가 3회차 4.29) 포함. 새 스위치 `product_research`·`product_research_collect`는 기본 꺼짐 그대로.
-- 직전 운영: #327까지 `6554664`, Sites98, tree `97d2abe`([릴리스](releases/2026-10-02-6554664.md)).
+- 현재 운영: #335까지 `51b3b825c3955646bcaadd88276aa5322396594e`, Sites100, tree `678e00285f8628fc34bb0ccddf796512161d1bf9`. 2026-10-03 15:38 UTC merged/published/runtime-verified(공개 tree 일치, Codex 직접 게시, [기록](releases/2026-10-03-51b3b82.md)). 상품 리서치 3회차 보강·4회차 결함 수정 포함. 코드 준비도 참고치 4.42/5, 실제 성과 미검증. `product_research`·`product_research_collect`는 기본 꺼짐 그대로.
+- 직전 운영: #333까지 `2c100e6`, Sites99, tree `39cd51a`([릴리스](releases/2026-10-03-2c100e6.md)).
 - 성장1 필수 코드 게시 대기 0건. #216·#218·#219·#225는 통합 #244로 병합·게시했다. #206·#208·#210~#214·#217·#220·#223·#231·#235·#237과 관련 문서도 현재 제품에 포함된다.
 - 기존 대기열의 미병합·404 문구는 과거 상태다. R 신규 PR #234·#241·#242·#243 및 인터뷰 게시 문서 #236·#240은 별도 소유자 작업이며 성장1 필수 잔여가 아니다.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-10-03 14:51 UTC (Codex: 상품 리서치 인계·4회차 검토)
-- 대표 지시 “이거 마저 진행하라”로 Claude의 3회차 수정본을 PR #335(`5322c7d`)로 인계받았다. Sites99 게시 기록 #334는 `2037585`로 merged, 운영 tree 일치 확인. #335 독립 검토에서 HIGH 1·MEDIUM 4건을 재현해 수정했으며 재검토 APPROVE(추가 HIGH/MEDIUM 0), 코드 준비도 4.42/5다. 전체316/316 suites·18,449 assertions passed(외부 mocked), 상품 리서치 E2E4 passed(Chromium/D1 real·인증 mocked), 타입·빌드·lint기준선70/39·프롬프트22 passed. [4회차 기록](PRODUCT-RESEARCH-EVAL-4.ko.md). 기능 스위치 꺼짐 유지, 실제 외부 수집·발주·집행 0. 원격 CI·Sites100 게시 확인은 후속한다.
+갱신: 2026-10-03 15:38 UTC (Codex: 상품 리서치 Sites100 게시·4회차 검토)
+- 대표 지시 “이거 마저 진행하라”로 Claude의 3회차 수정본을 PR #335(`5322c7d`)로 인계받았다. Sites99 게시 기록 #334는 `2037585`로 merged. #335 독립 검토의 HIGH 1·MEDIUM 4건을 수정하고 최종 `10d5c44`를 `51b3b82`로 merged, Sites100 published/runtime-verified. 재검토 APPROVE(추가 HIGH/MEDIUM 0), 코드 준비도 4.42/5. 전체316/316 suites·18,449 assertions passed(외부 mocked), 원격 전체 E2E273 passed·5 skipped와 이메일 인증1 passed, 타입·빌드·lint기준선70/39·프롬프트22 passed. [4회차 기록](PRODUCT-RESEARCH-EVAL-4.ko.md), [게시 기록](releases/2026-10-03-51b3b82.md). 기능 스위치 기본 꺼짐 유지, 실제 외부 수집·발주·집행 0. 실API·실판매·블라인드·법무·Q 레지스트리 등록은 별도 인계 조건이다.
 - 성장2 남은 코드 구현·검토 passed. Pixel/CAPI 내구성 큐·동의/철회, 승인된 제한 집행·부모 우선 비상 정지·정산, 불변 실험 설계·무작위 배정·관측·통계 판정·규칙 승인 및 낡은 근거 차단. [요구사항별 종료 판정](GROWTH-2-CLOSEOUT.ko.md). 새 `meta_ads_capi`·`meta_ads_execution`은 기본 OFF.
 - 최종 로컬 검증 passed: 전체 227/227 suites·14,123 assertions(외부 mocked), 브라우저104 + 최종 수정 뒤 핵심8(real local Chromium/D1, 외부 mocked), 이메일 인증1(real local), 타입·빌드·프롬프트22·lint 기준선70/39. Python 워커13·설치70·맵달19 passed. 새 비즈니스 모듈10개 V8 함수 커버리지141/151=93.4%(외부 mocked; 문장/분기 커버리지 아님). 코드·보안 재검토 HIGH/CRITICAL 잔여0.
 - #264 소스 병합·Sites67 게시·공개 버전 일치 검증 완료. 최종 CI verify/e2e-smoke 각각 passed(227 suites·14,123 assertions, 브라우저104+인증1). 실계정/실몰 연결·고객 전송·광고 지출·효과 검증은 not_run이며 운영 접근/동의/별도 금액·기간 승인이 필요하다. 아래 과거 증분별 미구현 문구는 해당 시점의 기록이다.
@@ -325,20 +325,20 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-09-30 12:25 UTC (Codex A 통합: 재발주·공유 재고 Sites76)
+마지막 갱신: 2026-10-03 15:38 UTC (Codex A 인계: 상품 리서치 Sites100)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `7e553b8eb54db50d6ba59831d082bcab65820a78` (#278) | tree `5d3aff8a4043dc8c679b6327f028ce971d496ea2`, [릴리스](releases/2026-09-30-7e553b8.md) |
-| `origin/main` | 게시 제품 `7e553b8`; 자연 유입 미션 발행 연결은 개발 중 | 비제품 변경은 PUBLISH 5절 기준으로 구분 |
-| Sites 게시 | `published`: 버전76, deployment `appgdep_6abcfcee20648191b3961dddcd7be244` succeeded | 2026-09-30 12:13:54 UTC |
-| 실행 검증 | `runtime-verified`: 공개 `/api/version/public` tree 일치 | build `2026-09-30T12:11:48.054Z` |
-| 인증 | 재발주·성장 API 익명401 | Sites76 실제 운영 HTTP, 데이터 변경 없음; 소유자 로그인 이번 재확인 not_run |
+| 운영 제품 커밋 | `51b3b825c3955646bcaadd88276aa5322396594e` (#335) | tree `678e00285f8628fc34bb0ccddf796512161d1bf9`, [릴리스](releases/2026-10-03-51b3b82.md) |
+| `origin/main` | 게시 제품 `51b3b82` 포함 | 이후 비제품 변경은 PUBLISH 5절 기준으로 구분 |
+| Sites 게시 | `published`: 버전100, deployment `appgdep_6ac1215a50b0819195d9124e4b786cb0` succeeded | 2026-10-03 15:38 UTC |
+| 실행 검증 | `runtime-verified`: 공개 `/api/version/public` tree 일치 | build `2026-10-03T15:00:20.379Z` |
+| 인증 | 상품 리서치 API 익명401 | Sites100 실제 운영 HTTP, 데이터 변경 없음; 소유자 로그인 이번 재확인 not_run |
 | Sites 접근 | public, 환경 revision4 유지 | 설정 변경 없음 |
 | 조사 워커 | 이번 게시에서 온라인 상태 재확인 not_run | 활성화 시 서버에서 온라인 조건을 검사 |
-| 제품 CI | #278 head verify·e2e-smoke 4개 passed, main과 tree diff0 | [run36711858019](https://github.com/roybeee/Collective/actions/runs/36711858019), [run36711804989](https://github.com/roybeee/Collective/actions/runs/36711804989) |
+| 제품 CI | #335 head verify·e2e-smoke 4개 passed, main과 tree diff0; main verify passed | [PR run37131596367](https://github.com/roybeee/Collective/actions/runs/37131596367), [main run37133001147](https://github.com/roybeee/Collective/actions/runs/37133001147) |
 | 성장2 판정 | 전체33개 카드 개발 진행 중 / 실효과 검증 not_run | [원안 전체](GROWTH-2-PLAN.ko.md). 과거 [종료 판정](GROWTH-2-CLOSEOUT.ko.md)은 Meta M0~M6 한정 |
 | 성장1 판정 | 개발 종료 passed / 운영 인수 blocked / 효과 검증 not_run | [최종 판정·조건부 인계](observations/2026-09-28-lane-a-growth1-closeout.md) |
 
