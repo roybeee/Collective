@@ -110,6 +110,7 @@ Sites는 ChatGPT 웹·데스크톱 안에서만 저장·게시되고 외부 API�
 - 작업이 하는 것: 지시문을 실행한다. 환경변수·접근 설정·D1·R2는 바꾸지 않는다. 결과(단계별 결과·해시 불일치 수·`TREE_EMBEDDED`·Sites 버전·deployment ID·Sites 커밋)를 PR 댓글로 남긴다. 라벨은 `sites-published` 또는 `sites-publish-blocked`로 바꾼다. 코드 push·병합·PR 닫기는 하지 않는다.
 - 라벨이 `sites-publish`로 남아 있는 동안에는 그 PR에 push·댓글을 더하지 않는다. 더하면 작업이 다시 실행된다. 결과 댓글을 받은 뒤 게시 기록(6절)을 같은 PR에 더하고 병합한다.
 - `sites-publish` 라벨 PR은 한 번에 하나만 둔다.
+- 순서 확인(2026-10-03, #334 Sites99 요청): 지시문·STATUS 커밋을 push한 **뒤** 라벨을 붙였더니 2시간 반 동안 실행되지 않았다(결과 댓글·라벨 변화 없음, 운영 tree 그대로). 라벨을 붙인 뒤의 push가 있어야 한다. 이 줄을 더한 커밋이 그 push다.
 - `runtime-verified`는 5단계 판정이다. 공개 경로 `/api/version/public`이 게시된 뒤에는 개발 도구가 curl로 직접 확인한다. 그 전 게시는 소유자 세션의 `/api/version`이 필요하다.
 - 첫 실행(2026-09-25 22:36 UTC, #119 push): GitHub 트리거가 동작했다(real). 작업은 PR 본문 파싱, main 포함(compare `identical`), CI success, Sites 작업 사본 tree·접근 설정 읽기까지 하고 멈췄다. 지시문 5단계가 비공개 전용 도구(`save_version_and_deploy_private`)를 적어서, public 사이트의 접근 설정 유지 조건과 맞지 않았기 때문이다(blocked, 파일 적용·빌드·게시 미실행). 결과 댓글과 라벨 교체(`sites-publish-blocked`)도 동작했다. 지시문 생성기는 4단계의 공개 사이트 도구를 적도록 고쳤다. 다시 요청할 때는 라벨을 `sites-publish`로 되돌린 뒤 고친 지시문 커밋을 push한다.
 - 첫 실행이 멈추면 대표가 같은 지시문을 편집기에 붙여 넣는 방식으로 돌아간다. 예약 작업 안에서 Sites 저장·배포 도구가 동작하는지는 두 번째 실행에서 확인한다.
