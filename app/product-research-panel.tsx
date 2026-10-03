@@ -69,8 +69,15 @@ export function ProductResearchPanel({initialTab,onTabChange}:{initialTab?:Resea
  const act:Act=async(request,message,description)=>{
   setBusy(true);
   try{
-   const r=await fetch('/api/product-research',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({...request,requestId:clientId()})});
-   const d=await r.json().catch(()=>({})) as Record<string,unknown>;
+   // AI 선정 메모는 서버가 약 20초까지 기다린 뒤 아직이면 pending을 준다. 같은 요청 번호로 다시 보내 결과를 받는다(최대 6번, 약 2분).
+   const requestId=clientId();let r:Response,d:Record<string,unknown>,tries=0;
+   for(;;){
+    r=await fetch('/api/product-research',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({...request,requestId})});
+    d=await r.json().catch(()=>({})) as Record<string,unknown>;
+    if(!(r.ok&&d.pending===true)||++tries>=6)break;
+    if(tries===1)toast.message('AI가 선정 메모를 쓰고 있습니다. 잠시 기다려 주세요.');
+   }
+   if(r.ok&&d.pending===true){toast.message('선정 메모가 아직 끝나지 않았습니다. 잠시 뒤 다시 눌러 확인하세요.');if(isView(d))setView(d);return {ok:false,error:'선정 메모 대기 중',issues:[]}}
    if(!r.ok||typeof d.error==='string'){
     const error=typeof d.error==='string'?d.error:'요청을 처리하지 못했습니다.',issues=readIssues(d);
     if(!issues.length)toast.error(error);

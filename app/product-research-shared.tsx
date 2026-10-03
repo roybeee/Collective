@@ -76,7 +76,7 @@ const decisionMessages:Record<DecisionStatus,Saved>={approved:'승인을 기록�
 // 결정 상자: 승인·보류·제외와 한 문장 사유. 승인·제외는 영향을 묻고 기록한다. 승인한 후보는 캠페인의 시장 근거로 넘길 수 있다(발주·가격 승인 없음).
 export function DecisionBox({view,product,act,busy,compact=false}:{view:View;product:Product;act:Act;busy:boolean;compact?:boolean}){
  const decision=product.decision,card=product.score;
- const [status,setStatus]=useState<DecisionStatus>(decision?.status??'hold'),[reason,setReason]=useState(''),[campaignId,setCampaignId]=useState('');
+ const [status,setStatus]=useState<DecisionStatus>(decision?.status??'hold'),[reason,setReason]=useState(''),[campaignId,setCampaignId]=useState(''),[sourceUrl,setSourceUrl]=useState('');
  const brief=view.briefs.filter(b=>b.productIds.includes(product.id)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0]??null;
  const blocked=status==='approved'&&card?.blocked?`선정 금지 후보입니다: ${card.blocked.reason}`:'';
  const why=!view.canEdit?editReason:!card?'점수표가 아직 없습니다. 출처와 가져오기 탭에서 점수를 다시 계산하세요.':blocked?blocked:!reason.trim()?'사유를 한 문장으로 쓰세요.':'';
@@ -97,7 +97,7 @@ export function DecisionBox({view,product,act,busy,compact=false}:{view:View;pro
   if(!decision||!campaign||handoffWhy)return;
   const ok=await askConfirm({title:`${campaign.title} 캠페인에 시장 근거로 넘길까요?`,impact:'이 캠페인 성장 탭에 시장 근거 초안이 생깁니다. 발주·결제·가격 승인은 일어나지 않습니다.',undo:'넘긴 근거는 그 캠페인 성장 탭에서 사람이 정리합니다.',confirmLabel:'시장 근거로 넘기기'});
   if(!ok)return;
-  await act({action:'handoff',decisionId:decision.id,campaignId:campaign.id,campaignVersion:campaign.version},'시장 근거로 넘겼습니다.','캠페인 성장 탭에서 확인하세요.');
+  await act({action:'handoff',decisionId:decision.id,campaignId:campaign.id,campaignVersion:campaign.version,...(sourceUrl.trim()?{sourceUrl:sourceUrl.trim()}:{})},'시장 근거로 넘겼습니다.','캠페인 성장 탭에서 확인하세요.');
  }
  return <div className={compact?s.decisionCompact:s.decision}>
   {decision&&<p className={s.muted}><MetaLine items={[`지금 결정: ${decisionLabels[decision.status]}`,dateTime(decision.decidedAt),decision.decidedBy.email??'결정한 사람 미확인']}/><br/>사유: {decision.reason}</p>}
@@ -106,6 +106,6 @@ export function DecisionBox({view,product,act,busy,compact=false}:{view:View;pro
   <Button type="button" disabled={busy||!!why} disabledReason={why} onClick={()=>void submit()}>결정 기록</Button>
   {decision?.status==='approved'&&(decision.handoff
    ?<p className={s.muted}>캠페인 시장 근거로 넘겼습니다(캠페인 {shortId(decision.handoff.campaignId)}).</p>
-   :<div className={s.handoff}><label className="field"><span>시장 근거로 넘길 캠페인</span><NativeSelect aria-label="시장 근거로 넘길 캠페인" value={campaignId} onChange={e=>setCampaignId(e.target.value)}><NativeSelectOption value="">캠페인 고르기</NativeSelectOption>{view.campaigns.map(c=><NativeSelectOption key={c.id} value={c.id}>{c.title}</NativeSelectOption>)}</NativeSelect></label><Button type="button" variant="outline" disabled={busy||!!handoffWhy} disabledReason={handoffWhy} onClick={()=>void handoff()}>시장 근거로 넘기기</Button></div>)}
+   :<div className={s.handoff}><label className="field"><span>시장 근거로 넘길 캠페인</span><NativeSelect aria-label="시장 근거로 넘길 캠페인" value={campaignId} onChange={e=>setCampaignId(e.target.value)}><NativeSelectOption value="">캠페인 고르기</NativeSelectOption>{view.campaigns.map(c=><NativeSelectOption key={c.id} value={c.id}>{c.title}</NativeSelectOption>)}</NativeSelect></label><label className="field"><span>근거 주소(선택)</span><Input aria-label="시장 근거 주소" value={sourceUrl} maxLength={500} disabled={!view.canEdit} placeholder="비우면 상품 목록의 공개 주소를 씁니다" onChange={e=>setSourceUrl(e.target.value)}/></label><Button type="button" variant="outline" disabled={busy||!!handoffWhy} disabledReason={handoffWhy} onClick={()=>void handoff()}>시장 근거로 넘기기</Button></div>)}
  </div>;
 }
