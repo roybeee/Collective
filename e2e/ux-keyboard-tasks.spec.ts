@@ -58,9 +58,11 @@ function report(info:TestInfo,n:number,k:Keys,mobile:boolean){
 // 본문으로 건너뛰기 링크로 사이드바를 건너뛴다(첫 Tab이 그 링크다).
 async function skipToMain(page:Page,k:Keys){await expect(page.getByRole('heading',{level:1})).toBeVisible();await k.tabTo(page.getByRole('link',{name:'본문으로 건너뛰기'}));await k.press('Enter')}
 // 캠페인 상세 탭 줄: 현재 탭으로 초점을 옮긴 뒤 화살표로 원하는 탭까지 간다(초점이 가면 선택된다).
+// 탭을 고르면 그 탭 내용이 그려지느라 초점 이동이 늦게 보일 수 있다(CI 모바일). 다음 키를 누르기 전에 초점이 다음 탭으로 옮겨진 것을 확인해야 목표 탭을 지나치지 않는다.
 async function goTab(page:Page,k:Keys,name:string){
  const tabs=page.getByRole('tablist').first();await k.tabTo(tabs.getByRole('tab',{selected:true}));
- const target=tabs.getByRole('tab',{name,exact:true});for(let i=0;i<15&&!await k.focused(target);i++)await k.press('ArrowRight');
+ const target=tabs.getByRole('tab',{name,exact:true}),activeTab=()=>page.evaluate(()=>document.activeElement?.getAttribute('role')==='tab'?document.activeElement.id:'');
+ for(let i=0;i<15&&!await k.focused(target);i++){const before=await activeTab();await k.press('ArrowRight');await expect.poll(activeTab,{timeout:3000}).not.toBe(before)}
  await expect(target,k.trail.slice(-20).join('\n')).toHaveAttribute('aria-selected','true');
 }
 // 기본 선택(native select): 화살표로 값을 바꾼다.

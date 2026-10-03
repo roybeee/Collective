@@ -1,0 +1,119 @@
+/* 상품 리서치 화면(app/product-research-*.tsx). 색은 :root 토큰만, 화면 폭 중단점은 공용 4개(480·767·1023·1279px) 안에서만 쓴다. */
+.panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; min-width: 0; }
+.statusRow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.muted { color: var(--green-44); font-size: 13px; line-height: 1.7; }
+.section { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; padding-top: 8px; }
+.title { font-size: 20px; font-weight: 650; line-height: 1.5; }
+.subtitle { font-size: 16px; font-weight: 600; margin-top: 10px; }
+.cardTitle { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+.legend { font-size: 13px; font-weight: 550; margin-bottom: 8px; padding: 0; }
+.headRow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.block { display: grid; gap: 10px; border-top: 1px solid var(--neutral-90); padding-top: 16px; min-width: 0; }
+.details { border: 1px solid var(--neutral-90); border-radius: 10px; padding: 12px 14px; background: white; }
+.details > summary { cursor: pointer; font-size: 14px; font-weight: 550; }
+.details[open] > summary { margin-bottom: 12px; }
+.formGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.wide { grid-column: 1 / -1; }
+.narrowField { width: 200px; max-width: 100%; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 14px; line-height: 1.6; min-height: 32px; flex-wrap: wrap; }
+.checks { display: flex; flex-wrap: wrap; gap: 6px 16px; border: 0; padding: 0; margin: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; border: 0; padding: 0; margin: 0; }
+.chip[aria-pressed="true"] { border-color: var(--olive-42); background: var(--olive-95); color: var(--green-23); }
+.focusMark { font-size: 12px; color: var(--olive-42); margin-left: 2px; }
+
+/* 레이더 칸: 크기 = 수요, 왼쪽 띠 색 = 모멘텀(글자로도 적는다). */
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; list-style: none; padding: 0; margin: 0; }
+.tileLarge { grid-column: span 2; }
+.tileMid, .tileSmall { grid-column: span 1; }
+.tile { display: grid; gap: 6px; width: 100%; height: 100%; text-align: left; position: relative; background: white; border: 1px solid var(--neutral-90); border-left: 4px solid var(--neutral-90); border-radius: 10px; padding: 14px 14px 12px; }
+.tile:hover { border-color: var(--green-77); }
+.tile[data-trend="up"] { border-left-color: var(--olive-57); }
+.tile[data-trend="down"] { border-left-color: var(--red-44); }
+.tile[data-trend="flat"] { border-left-color: var(--yellow-44); }
+.tileLarge .tile { min-height: 132px; background: var(--neutral-97); }
+.rank { position: absolute; top: 10px; right: 12px; font-size: 12px; color: var(--green-44); }
+.tileName { font-size: 15px; font-weight: 600; line-height: 1.45; padding-right: 22px; }
+.trend { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--green-44); }
+.trend[data-trend="up"] { color: var(--olive-42); }
+.trend[data-trend="down"] { color: var(--red-44); }
+.trend[data-trend="flat"] { color: var(--yellow-44); }
+
+.meterRow { display: grid; grid-template-columns: 7.5em minmax(0, 1fr) 2.5em; align-items: center; gap: 8px; font-size: 13px; color: var(--green-44); }
+.meterLabel { overflow-wrap: anywhere; }
+.meter { display: block; height: 8px; background: var(--neutral-97); border: 1px solid var(--neutral-90); border-radius: 4px; overflow: hidden; }
+.meterFill { display: block; height: 100%; background: var(--olive-57); border-radius: 0 4px 4px 0; }
+.meterValue { text-align: right; font-variant-numeric: tabular-nums; color: var(--green-23); font-weight: 600; }
+.unknown { grid-column: 2 / -1; color: var(--green-44); }
+
+.nameLink { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; font-weight: 550; color: var(--green-23); min-height: 32px; }
+.nameLink:hover { color: var(--olive-42); text-decoration: underline; }
+.blocked { color: var(--red-44); font-size: 13px; }
+.stack { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.empty { display: grid; gap: 8px; justify-items: start; }
+:global(.status).warn { background: var(--neutral-97); color: var(--yellow-35); }
+.badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.badgeIcon { gap: 4px; }
+
+.decision, .decisionCompact { display: grid; gap: 10px; justify-items: start; max-width: 560px; }
+.decision :global(.field), .decisionCompact :global(.field) { width: 100%; }
+.decisionCompact { border-top: 1px dashed var(--neutral-90); padding-top: 10px; }
+.handoff { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; width: 100%; }
+
+.detail { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
+.detailHead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.detailHead h2:focus { outline: none; }
+.stats.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.stats.stats > div { display: grid; align-content: start; gap: 2px; background: var(--neutral-97); border-radius: 8px; padding: 10px 12px; }
+.stats dt { font-size: 12px; color: var(--green-44); }
+.stats dd { font-size: 15px; font-weight: 600; color: var(--green-23); margin-top: 2px; overflow-wrap: anywhere; }
+.blockNote { border: 1px solid var(--red-80); background: var(--neutral-97); color: var(--red-36); border-radius: 8px; padding: 12px 14px; font-size: 13px; line-height: 1.7; }
+.blockNote ul, .blockNote ol { margin: 6px 0 0 18px; list-style: disc; }
+.matchBox { border: 1px solid var(--yellow-81); background: var(--neutral-97); border-radius: 8px; padding: 12px 14px; display: grid; gap: 8px; font-size: 13px; }
+.subScores { display: grid; gap: 14px; list-style: none; padding: 0; margin: 0; }
+.subScores > li { display: grid; gap: 4px; }
+.reason { font-size: 14px; line-height: 1.7; color: var(--green-32); }
+.evidence { font-size: 12px; color: var(--green-44); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.evidenceChip { display: inline-block; background: var(--neutral-97); border: 1px solid var(--neutral-90); border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+.listings, .plainList, .claims { display: grid; gap: 6px; list-style: none; padding: 0; margin: 0; font-size: 13px; }
+.claims { list-style: disc; padding-left: 18px; }
+.listings > li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.extLink { display: inline-flex; align-items: center; gap: 3px; color: var(--blue-44); text-decoration: underline; }
+.seriesGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+
+.pickList { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; border: 0; padding: 0; margin: 0; }
+.columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+.column { display: grid; align-content: start; gap: 10px; border: 1px solid var(--neutral-90); border-radius: 10px; padding: 14px; background: white; min-width: 0; }
+.column .stats.stats { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.column .stats.stats > div { display: flex; justify-content: space-between; gap: 8px; padding: 6px 10px; }
+.column .stats dd { font-size: 13px; margin: 0; }
+.briefs { display: grid; gap: 12px; list-style: none; padding: 0; margin: 0; }
+.briefCard { display: grid; gap: 8px; border: 1px solid var(--neutral-90); border-radius: 10px; padding: 14px; background: white; font-size: 14px; line-height: 1.7; }
+
+.reportGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.reportCard { border: 1px solid var(--neutral-90); border-radius: 10px; padding: 12px 14px; background: white; min-width: 0; }
+.reportCard li { display: grid; gap: 2px; }
+
+.legal { border: 1px solid var(--neutral-90); background: var(--neutral-97); border-radius: 8px; padding: 12px 14px; font-size: 13px; line-height: 1.75; color: var(--green-32); }
+.legal b { margin-right: 6px; color: var(--green-23); }
+.method { display: inline-block; white-space: nowrap; font-size: 12px; border-radius: 5px; padding: 3px 8px; background: var(--neutral-97); color: var(--green-44); }
+.method[data-method="api"] { color: var(--blue-44); }
+.method[data-method="licensed"] { color: var(--olive-42); }
+.method[data-method="manual"] { color: var(--orange-44); }
+.issues { display: grid; gap: 4px; margin: 6px 0 0 18px; list-style: decimal; font-size: 13px; }
+.credGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.credCard { display: grid; align-content: start; gap: 8px; border: 1px solid var(--neutral-90); border-radius: 10px; padding: 14px; background: white; min-width: 0; }
+.credForm { display: grid; gap: 10px; margin-top: 4px; }
+
+@media (max-width: 1023px) {
+ .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+ .reportGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 767px) {
+ .formGrid, .credGrid, .seriesGrid, .pickList, .reportGrid { grid-template-columns: minmax(0, 1fr); }
+ .tiles { grid-template-columns: minmax(0, 1fr); }
+ .tileLarge { grid-column: span 1; }
+ .detailHead { flex-direction: column; }
+ .check, .nameLink { min-height: 44px; }
+ .narrowField { width: 100%; }
+}

@@ -11,7 +11,9 @@ import type {SignalSourceProvenance} from './growth-signal-source';
 import {growthBusiness} from './growth-business-server';
 import {buildOpportunityBoard} from './growth-opportunity-board';
 
-export type GrowthRecord<T>={id:string;campaignId:string;brandId:string;campaignVersion:number;version:number;input:T;updatedAt:string;updatedBy:string;requestDigest:string;sourceProvenance?:SignalSourceProvenance;factRefs?:FactRef[];evidenceRefs?:{id:string;version:number}[];status?:MissionState;receipt?:MissionReceipt};
+// 상품 리서치 선정(lib/product-research/server.ts handoff)에서 넘어온 시장 근거의 계보. 있으면 성장 화면에서 고쳐 쓸 수 없다(근거가 끊긴다).
+export type ProductResearchProvenance={decisionId:string;scoreCardId:string;productId:string;snapshotIds:string[]};
+export type GrowthRecord<T>={id:string;campaignId:string;brandId:string;campaignVersion:number;version:number;input:T;updatedAt:string;updatedBy:string;requestDigest:string;sourceProvenance?:SignalSourceProvenance;productResearch?:ProductResearchProvenance;factRefs?:FactRef[];evidenceRefs?:{id:string;version:number}[];status?:MissionState;receipt?:MissionReceipt};
 type Catalog=GrowthRecord<CatalogInput>;
 const kinds={signal:'growth_signal',need:'growth_need',catalog:'growth_catalog',offer:'growth_offer',mission:'growth_mission'} as const;
 type Entity=keyof typeof kinds;
@@ -67,7 +69,7 @@ export async function saveGrowth(who:Actor,c:Campaign,b:Record<string,unknown>){
  if(b.campaignVersion!==c.version)throw new ApiError(409,'캠페인이 변경되었습니다. 다시 불러오세요.');
  if(['queue_mission','record_receipt','cancel_mission'].includes(String(b.action)))return transitionMission(who,c,b);
  const entity=entityFor(b.action),id=recordId(b.id),old=sameScope(await optional<GrowthRecord<unknown>>(who.owner,kinds[entity],id),c);
- if(entity==='signal'&&old?.sourceProvenance)throw new ApiError(409,'가져온 신호는 원본 자료에서 수정한 뒤 새 판을 가져오세요.');
+ if(entity==='signal'&&(old?.sourceProvenance||old?.productResearch))throw new ApiError(409,'가져온 신호는 원본 자료에서 수정한 뒤 새 판을 가져오세요.');
  const parsers={signal:parseSignalInput,need:parseNeedInput,catalog:parseCatalogInput,offer:parseOfferInput,mission:parseMissionInput};
  const input=parsers[entity](b.input),digest=await storefrontDigest({action:b.action,input,campaignVersion:c.version,expectedVersion:b.expectedVersion});
  if(old?.requestDigest===digest)return {...await growthView(who.owner,c,true),duplicate:true};

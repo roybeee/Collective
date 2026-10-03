@@ -17,8 +17,8 @@
   "pipeSeparators": 0,
   "metaLineSentences": 0
  },
- "floors": {"undoNotices": 13},
- "lazyOnly": ["learning-panel", "brand-archive", "campaign-brief", "campaign-detail-panel", "panels", "delete-campaign-dialog", "measurement-collect", "campaign-metrics", "store-marketing-panel", "franchise-panel"],
+ "floors": {"undoNotices": 14},
+ "lazyOnly": ["learning-panel", "brand-archive", "campaign-brief", "campaign-detail-panel", "panels", "delete-campaign-dialog", "measurement-collect", "campaign-metrics", "store-marketing-panel", "franchise-panel", "product-research-panel"],
  "runtime": {
   "homeJsGzKB": 175,
   "growthTabRequests": 2,

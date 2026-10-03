@@ -1,12 +1,12 @@
 // 연결 자격증명 암호문 쓰기·지연 재암호화·전체 재암호화(security-ops-6). 스위치 crypto_v1_write(기본 꺼짐)는 여기서만 읽고, 읽기 실패는 꺼짐이다.
-// 대상: AI 연결(settings), 성과 수집 채널(channel_credential), Buffer 발행(publisher_credential). AAD는 암호문이 놓인 자리(lib/credential-crypto.ts)다.
+// 대상: AI 연결(settings), 성과 수집 채널(channel_credential), Buffer 발행(publisher_credential), 상품 리서치 출처(pr_credential). AAD는 암호문이 놓인 자리(lib/credential-crypto.ts)다.
 // 꺼짐: 옛 형식으로 쓰고 읽을 때 다시 쓰지 않는다(이전 코드로 롤백해도 읽힌다). 켜짐: 현재 키·AAD로 v1을 쓰고, 옛 형식·이전 키 암호문은 읽을 때 현재 키로 다시 쓴다.
 // 다시 쓰기는 읽은 행과 같을 때만 바꾼다(CAS, updated_at·다른 필드 유지). 실패해도 읽기는 성공하고 로그에는 고정 코드와 kind만 남긴다(키·평문·암호문 없음).
 import {ApiError,database,encrypt,openSealed,SecretUnreadableError} from './server';
 import {recordAad,settingsAad} from './credential-crypto';
 import {isEnabled} from './feature-flags';
 
-export const SEALED_RECORD_KINDS=['channel_credential','publisher_credential'] as const;
+export const SEALED_RECORD_KINDS=['channel_credential','publisher_credential','pr_credential'] as const;
 export type SealedRecordKind=typeof SEALED_RECORD_KINDS[number];
 type SealedKind='settings'|SealedRecordKind;
 export type ResealSummary={resealed:number;current:number;changed:number;failed:Record<SealedKind,number>;reasons:Record<string,number>};
@@ -56,7 +56,7 @@ async function sealedItems(owner:string){
 // resealed: 현재 키로 다시 씀, current: 이미 현재 키, changed: 읽는 사이 바뀌어 건너뜀(다시 실행), failed: 풀지 못함(다시 등록 필요).
 export async function resealAll(owner:string):Promise<ResealSummary>{
  if(!await v1Writes(owner))throw new ApiError(409,'기능 스위치 crypto_v1_write를 켠 뒤 전체 재암호화를 실행하세요.');
- const summary:ResealSummary={resealed:0,current:0,changed:0,failed:{settings:0,channel_credential:0,publisher_credential:0},reasons:{}};
+ const summary:ResealSummary={resealed:0,current:0,changed:0,failed:{settings:0,channel_credential:0,publisher_credential:0,pr_credential:0},reasons:{}};
  for(const item of await sealedItems(owner)){
   try{
    const opened=await openSealed(item.sealed,item.aad);

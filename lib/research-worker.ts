@@ -109,8 +109,9 @@ async function rotateCredential(owner:string,saved:Credential,slot:Slot,ready:bo
 }
 // Rotate work classes so a long research run cannot starve scheduled measurements.
 // 반환 status는 설치된 파이썬 워커가 검사하는 ('idle','processed','retry') 안에 머물러야 한다.
+// productResearch(선택): 상품 리서치 공식 API 수집(lib/product-research/server-collect.ts). 라우트가 product_research·product_research_collect 스위치가 모두 켜진 소유자에게만 넘긴다.
 // digest(B2 2단계, 선택): 주간 품질 집계 큐(lib/quality-digest-queue-server.ts runDigestQueue). 넘겼을 때만 순환에 넣는다. 스위치는 그 모듈이 읽는다.
-export async function workerTick(principal:{owner:string;hash:string;gate?:GateVerdict;rotationReady?:boolean},executeResearch:(owner:string,input:Record<string,any>,timeout:number)=>Promise<Response>,collectDue?:(owner:string)=>Promise<{status:string}>,advanceWork?:(owner:string)=>Promise<{status:string}>,digest?:(owner:string)=>Promise<{status:string}>,metaExecution?:(owner:string)=>Promise<{status:string}>,metaConversion?:(owner:string)=>Promise<{status:string}>,growthDaily?:(owner:string)=>Promise<{status:string}>,storefrontPull?:(owner:string)=>Promise<{status:string}>){
+export async function workerTick(principal:{owner:string;hash:string;gate?:GateVerdict;rotationReady?:boolean},executeResearch:(owner:string,input:Record<string,any>,timeout:number)=>Promise<Response>,collectDue?:(owner:string)=>Promise<{status:string}>,advanceWork?:(owner:string)=>Promise<{status:string}>,digest?:(owner:string)=>Promise<{status:string}>,metaExecution?:(owner:string)=>Promise<{status:string}>,metaConversion?:(owner:string)=>Promise<{status:string}>,growthDaily?:(owner:string)=>Promise<{status:string}>,storefrontPull?:(owner:string)=>Promise<{status:string}>,productResearch?:(owner:string)=>Promise<{status:string}>){
  const {owner,hash,gate,rotationReady=false}=principal;
  const key=owner+':research-worker',lock=await acquireLock(key);
  try{
@@ -129,7 +130,7 @@ export async function workerTick(principal:{owner:string;hash:string;gate?:GateV
   await recordGatewaySnapshotSafely(owner);
   // F4b-2: 90일이 지난 비식별 평가 신호를 지운다(문장 1개, 하루 1회). 실패해도 작업 순환을 막지 않고 다음 날 tick·캠페인 삭제가 다시 지운다.
   if(purgeSignals)await purgeExpiredSignals(owner).catch(()=>console.error('deidentified_signal_purge_failed'));
-  const queues=['research','execution','measurement',...(digest?['digest']:[]),...(metaExecution?['meta_execution']:[]),...(metaConversion?['meta_conversion']:[]),...(growthDaily?['growth_daily']:[]),...(storefrontPull?['storefront_pull']:[])];
+  const queues=['research','execution','measurement',...(digest?['digest']:[]),...(metaExecution?['meta_execution']:[]),...(metaConversion?['meta_conversion']:[]),...(growthDaily?['growth_daily']:[]),...(storefrontPull?['storefront_pull']:[]),...(productResearch?['product_research']:[])];
   const first=(queues.indexOf(previous?.lastQueue||'')+1)%queues.length;
   for(let offset=0;offset<queues.length;offset++){
    const queue=queues[(first+offset)%queues.length];
@@ -147,6 +148,7 @@ export async function workerTick(principal:{owner:string;hash:string;gate?:GateV
    else if(queue==='meta_conversion'&&metaConversion)result=await metaConversion(owner);
    else if(queue==='growth_daily'&&growthDaily)result=await growthDaily(owner);
    else if(queue==='storefront_pull'&&storefrontPull)result=await storefrontPull(owner);
+   else if(queue==='product_research'&&productResearch)result=await productResearch(owner);
    if(result&&result.status!=='idle'){
     await recordStatement(owner,'worker_state','current',{...turnState,lastSeen:stamp(),lastStatus:result.httpStatus}).run();
     return {...result,status:result.status==='retry'?'retry':'processed',queue,pending:active.length,blocked,...rotated};
