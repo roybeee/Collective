@@ -23,6 +23,18 @@ export type SubjectErasure='delete'|'minimize'|'legal_hold'|'none';
 export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;retention?:RetentionPolicy;subjectErasure?:SubjectErasure;description:string};
 
 export const recordKinds:readonly RecordKind[]=[
+ {kind:'pr_credential',parent:'none',campaignDeletion:'not_campaign_scoped',description:'상품 리서치 출처 자격증명(검색광고·개발자센터·YouTube·쿠팡 파트너스·계약 데이터). 암호화 저장, 캠페인과 무관'},
+ {kind:'pr_snapshot',parent:'none',campaignDeletion:'not_campaign_scoped',description:'상품 리서치 원본 스냅샷(출처·요청 범위·본문 해시·관측 수치). 외부 원문 전체와 개인정보 없음, 캠페인과 무관'},
+ {kind:'pr_keyword_group',parent:'none',campaignDeletion:'not_campaign_scoped',description:'같은 수요를 뜻하는 키워드 묶음, 캠페인과 무관'},
+ {kind:'pr_product',parent:'none',campaignDeletion:'not_campaign_scoped',description:'여러 플랫폼 목록을 묶은 정규화 상품과 매칭 근거, 캠페인과 무관'},
+ {kind:'pr_score',parent:'none',campaignDeletion:'not_campaign_scoped',description:'상품 점수표 판(하위 점수·신뢰도·결측·차단 사유·가중치 판). 불변, 캠페인과 무관'},
+ {kind:'pr_brief',parent:'none',campaignDeletion:'not_campaign_scoped',description:'MD 선정 메모 판(주장별 스냅샷 인용·인용 채점 결과). 캠페인과 무관'},
+ {kind:'pr_decision',parent:'none',campaignDeletion:'not_campaign_scoped',description:'대표·MD 선정 결정(승인·보류·제외, 사유)과 성장2 연결 기록. 발주 권한 없음, 캠페인과 무관'},
+ {kind:'pr_backtest',parent:'none',campaignDeletion:'not_campaign_scoped',description:'점수표 가중치 판의 백테스트 결과(정밀도@k·순위 상관·기준선). 캠페인과 무관'},
+ {kind:'pr_quota',parent:'none',campaignDeletion:'not_campaign_scoped',description:'출처별 하루 호출 단위 사용량 원장(KST 날짜). 캠페인과 무관'},
+ {kind:'pr_collect_state',parent:'none',campaignDeletion:'not_campaign_scoped',description:'상품 리서치 수집 순환 상태(마지막 출처·실패 횟수·다음 시도). 캠페인과 무관'},
+ {kind:'pr_settings',parent:'none',campaignDeletion:'not_campaign_scoped',description:'상품 리서치 조사 방향(카테고리·보관 온도·가격대·질문). 캠페인과 무관'},
+ {kind:'pr_request',parent:'none',campaignDeletion:'not_campaign_scoped',description:'상품 리서치 쓰기 요청의 멱등 재시도 근거. 캠페인과 무관'},
  {kind:'growth_return_reason',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'정확한 반품·환불 사건에 연결한 운영자 확인 원인 현재 판. 고객 원문 없음'},
  {kind:'growth_return_reason_history',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'반품·환불 원인 근거의 추가 전용 개정 이력'},
  {kind:'growth_return_reason_request',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'반품·환불 원인 기록 요청 멱등 재시도 근거'},

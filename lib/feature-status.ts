@@ -177,6 +177,16 @@ function reflectorRow(flags:unknown):FeatureRow{
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'Reflector 스위치 상태를 확인하지 못했습니다',link};
  return state.enabled?{...base,status:'available',reason:'교정 5건 이상 · 미리보기 확인 · 개인정보 탐지 시 차단 · 대표 격리 확인 뒤 전용 HERMES 1회 호출(토큰 사용) · 초안만 저장, 승인은 사람'}:{...base,status:'blocked',reason:'기능 스위치 b3_reflector 꺼짐 · 소유자가 켭니다',link};
 }
+// 상품 리서치·MD 에이전트(docs/PRODUCT-RESEARCH-PLAN.ko.md): 기능 스위치 product_research(탭·점수표·선정)와 product_research_collect(공식 API 자동 수집)를 읽는다.
+function productResearchRow(flags:unknown):FeatureRow{
+ const base={key:'product-research',label:'상품 리서치·MD 선정(공식 지표 수집·점수표·선정 메모)',flag:'product_research'},link:FeatureLink={label:'상품 리서치 화면에서 확인',view:'research'};
+ const find=(name:string)=>Array.isArray(flags)?flags.find(f=>record(f)&&f.flag===name):undefined;
+ const main=find('product_research'),collect=find('product_research_collect');
+ if(!record(main)||typeof main.enabled!=='boolean')return {...base,status:'blocked',reason:'상품 리서치 스위치 상태를 확인하지 못했습니다',link};
+ if(!main.enabled)return {...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다'],link};
+ const auto=record(collect)&&collect.enabled===true;
+ return {...base,status:'available',reason:[auto?'공식 API 하루 1회 자동 수집(출처별 쿼터 안)':'자동 수집 꺼짐, 운영자 가져오기만','점수표와 선정 메모는 근거 인용 필수','발주·결제·공급자 연락 없음'],link};
+}
 export function featureRows(input:FeatureInput={}):FeatureRow[]{
  const now=typeof input.now==='number'?input.now:Date.now(),brands=brandIds(input.brands);
  return [
@@ -201,6 +211,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   storefrontPullRow(input.flags),
   franchiseBenchmarkRow(input.flags),
   reflectorRow(input.flags),
+  productResearchRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
   {key:'pos-auto',label:'POS 자동 수집',status:'unimplemented',reason:['POS 연동 없음','CSV로 가져오세요']},
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},
