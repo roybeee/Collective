@@ -3,8 +3,10 @@
 // - 입력 검사: api.ts 상수(QUESTION_MAX·REASON_MIN·REASON_MAX…)만 쓴다(평가 M8). 막힐 이유를 한국어 한 문장으로 돌려주고, 통과면 빈 문자열이다.
 // - 승인 관문: analytics/score.ts reviewApprovalError와 같은 규칙(규칙마다 사유에 그 위험을 말하는 낱말 하나 이상, 상표 규칙은 상표 이름도 인정).
 import {normalizeKeyword} from './analytics/normalize';
+import {groupDigits,koWon} from './analytics/format';
 import {REVIEW_TERMS} from './analytics/risk';
 import {BRAND_FIT_MAX,BRAND_FIT_MIN,BRAND_FIT_REASON_MAX,CLEAR_REASON_MAX,IMPORT_MAX_AGE_DAYS,IMPORT_SCOPE_MAX,LABEL_THRESHOLD_MAX,LABEL_THRESHOLD_MIN,PRICE_MAX_MAX,PRICE_MAX_MIN,QUESTION_MAX,REASON_MAX,REASON_MIN,RISK_NOTE_MAX,RISK_RULE_MAX,RISK_RULES_MAX} from './api';
+import type {CalibrationView,LaunchOutcome,RiskRule} from './api';
 import type {KeywordGroup,MetricKey,ResearchProduct,ScoreCard,Series,SeriesPoint,SourceId} from './types';
 
 // ── 시계열
@@ -136,4 +138,26 @@ export function approvalWhy(card:Pick<ScoreCard,'blocked'|'needsReview'|'review'
 export function riskChecklist(card:Pick<ScoreCard,'review'>,extra:readonly string[]):string[]{
  const items=[...(card.review?.reasons??[]),...extra].map(x=>x.trim().slice(0,RISK_RULE_MAX)).filter(Boolean);
  return [...new Set(items)].slice(0,RISK_RULES_MAX);
+}
+
+// ── 평가 2회차 화면 보조
+// 리스크 체크리스트: 서버 필수 항목(riskChecklists, 승인에 세는 것)을 앞에 두고 점수표 사유·기본 항목을 잇는다. 저장 때 필수 항목은 ruleId를 같이 보낸다.
+export function riskItemsWithIds(card:Pick<ScoreCard,'review'>,required:readonly RiskRule[]|undefined,extra:readonly string[]):{rule:string;ruleId:string|null}[]{
+ const req=required??[];
+ return riskChecklist(card,[...req.map(r=>r.text),...extra]).map(rule=>({rule,ruleId:req.find(r=>r.text.trim().slice(0,RISK_RULE_MAX)===rule)?.id??null}));
+}
+// 출시 뒤 결과 한 줄: 다 지난 가장 긴 창(없으면 진행 중인 가장 짧은 창). 값이 없으면 까닭을 적는다(0으로 채우지 않음).
+export function launchOutcomeText(outcome:LaunchOutcome|null|undefined,handedOff:boolean):string{
+ if(!handedOff)return '넘기지 않아 판매 결과 없음';
+ if(!outcome)return '캠페인 시장 근거로 넘김, 다음 재계산 때 판매 결과를 셉니다';
+ if(!outcome.sku)return `판매 결과 미확인: ${outcome.reason??'연결된 카탈로그 SKU가 없습니다'}`;
+ const done=outcome.windows.filter(w=>w.complete).sort((a,b)=>b.weeks-a.weeks)[0],w=done??[...outcome.windows].sort((a,b)=>a.weeks-b.weeks)[0];
+ if(!w)return `판매 결과 미확인: ${outcome.reason??'집계 창이 없습니다'}`;
+ const parts=[w.orders===null?'주문 미확인':`주문 ${groupDigits(w.orders)}건`,w.units===null?'수량 미확인':`${groupDigits(w.units)}개`,w.revenue===null?'매출 미확인':`매출 ${koWon(w.revenue)}`];
+ return `${w.weeks}주${w.complete?'':'(진행 중)'} ${parts.join(', ')}`;
+}
+// 데이터랩 보정 요약: 평균 절대 오차율(MAPE)과 묶음 수. 오차가 없으면 미확인.
+export function calibrationText(c:CalibrationView|null|undefined):string{
+ if(!c)return '아직 보정 보고가 없습니다. 검색광고와 데이터랩을 함께 수집한 뒤 점수를 다시 계산하면 만들어집니다.';
+ return `키워드 묶음 ${groupDigits(c.groups)}개, 평균 오차율 ${c.mape===null?'미확인':`${(c.mape*100).toFixed(1)}%`}.`;
 }

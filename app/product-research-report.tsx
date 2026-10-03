@@ -1,7 +1,7 @@
 'use client';
 // 주간 MD 리포트: 자동 작성한 마지막 주간 메모(weeklyReport), 이번 주(최근 7일) 신규·지난주 대비 오른·내린·제외 후보, 지난 결정의 성적표,
 // 가중치 판 백테스트(정밀도@k·순위 상관·기준선·후보 모집단). 지난주 대비는 previousScore(6일 이상 먼저 계산한 판)와의 차이다. 지난주 판이 없을 때만 모멘텀 점수로 나눈다.
-// 결정 뒤 실제 결과는 화면 응답에 아직 없어 '관측 중'으로 적는다.
+// 결정 뒤 실제 결과는 launchOutcomes(넘긴 결정의 카탈로그 SKU 판매 4·8·12주, 마지막 재계산 기준)로 적는다. 값이 없으면 까닭을 적는다.
 import {useState} from 'react';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
@@ -15,7 +15,7 @@ import {date,dateTime} from '@/lib/format';
 import type {BacktestResult} from '@/lib/product-research/types';
 import {categoryLabel,decisionLabels,editReason,score,subValue,type Act,type Product,type View} from './product-research-shared';
 import {MoverList,Trend} from './product-research-radar';
-import {movers,thresholdWhy} from '@/lib/product-research/ui-detail';
+import {launchOutcomeText,movers,thresholdWhy} from '@/lib/product-research/ui-detail';
 import s from './product-research.module.css';
 
 const WEEK=7*86400000,LIST=10;
@@ -34,6 +34,7 @@ export function ReportTab({view,act,busy,onOpen}:{view:View;act:Act;busy:boolean
  const falling=view.products.filter(p=>{const m=momentum(p);return m!==null&&m<=40}).sort((a,b)=>(momentum(a)??0)-(momentum(b)??0)).slice(0,LIST);
  const rejected=view.products.filter(p=>(p.decision?.status==='rejected'&&recent(p.decision.decidedAt))||(!p.decision&&p.score?.tier==='reject'));
  const decided=view.products.filter(p=>!!p.decision).sort((a,b)=>b.decision!.decidedAt.localeCompare(a.decision!.decidedAt));
+ const outcome=(p:Product)=>launchOutcomeText(view.launchOutcomes?.find(o=>o.decisionId===p.decision!.id),!!p.decision!.handoff);
  const decisionColumns:DataColumn<Product>[]=[
   {label:'후보',cell:p=><CardButton className={s.nameLink} onClick={()=>onOpen(p.id)}>{p.name}</CardButton>,sort:p=>p.name,csv:p=>p.name},
   {label:'결정',cell:p=>decisionLabels[p.decision!.status],sort:p=>decisionLabels[p.decision!.status],csv:p=>decisionLabels[p.decision!.status]},
@@ -41,7 +42,7 @@ export function ReportTab({view,act,busy,onOpen}:{view:View;act:Act;busy:boolean
   {label:'사유',cell:p=>p.decision!.reason,csv:p=>p.decision!.reason},
   {label:'결정 때 점수표',cell:p=>p.score&&p.score.id===p.decision!.scoreCardId?`총점 ${score(p.score)}`:'뒤에 다시 계산됨',csv:p=>p.score&&p.score.id===p.decision!.scoreCardId?score(p.score):'뒤에 다시 계산됨'},
   {label:'지금 총점',cell:p=>score(p.score),sort:p=>p.score?.total??-1,csv:p=>score(p.score),align:'right'},
-  {label:'이후 결과',cell:p=>p.decision!.handoff?'캠페인 시장 근거로 넘김, 판매 결과 관측 중':'관측 중',csv:p=>p.decision!.handoff?'캠페인 연결, 관측 중':'관측 중'},
+  {label:'이후 결과',cell:p=>outcome(p),csv:p=>outcome(p)},
  ];
  const backtests=[...view.backtests].sort((a,b)=>b.computedAt.localeCompare(a.computedAt));
  const backtestColumns:DataColumn<BacktestResult>[]=[

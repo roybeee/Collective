@@ -12,7 +12,7 @@ import {LockedNote} from '@/components/app/locked-note';
 import {MetaLine} from '@/components/app/meta-line';
 import {askConfirm} from '@/components/app/confirm-dialog';
 import {count,dateTime,percent} from '@/lib/format';
-import {clearReasonWhy,LIMITS,observedWhy,oldestImportDay,scopeWhy} from '@/lib/product-research/ui-detail';
+import {calibrationText,clearReasonWhy,LIMITS,observedWhy,oldestImportDay,scopeWhy} from '@/lib/product-research/ui-detail';
 import {CREDENTIAL_KEYS,CREDENTIAL_SOURCES,type CredentialKey} from '@/lib/product-research/api';
 import {IMPORTABLE_SOURCES,SOURCES} from '@/lib/product-research/sources';
 import type {SourceId} from '@/lib/product-research/types';
@@ -52,6 +52,8 @@ export function SourcesTab({view,act,busy,onCandidates}:{view:View;act:Act;busy:
   {manualRanks.length>0&&<p className={s.badges} aria-label="랭킹 가져오기 이번 주 상태">{manualRanks.map(r=><span key={r.sourceId} className={'status '+(r.thisWeek?'status-approved':s.warn)}>{sourceLabel(view,r.sourceId)} {r.thisWeek?'이번 주 가져옴':'이번 주 가져오기 전'}</span>)}</p>}
   <DataTable rows={view.sources} columns={columns} rowKey={x=>x.id} caption="상품 리서치 출처" csvName="product-research-sources"/>
   <p className={s.muted}>30일 성공률은 지난 30일 예약 호출 중 정상으로 끝난 비율입니다. 호출이 없으면 미확인입니다.</p>
+  {/* 평가 2회차 M3: 데이터랩 상대값을 검색광고 실측 합으로 맞춘 보정의 검증 오차. 오차 큰 묶음 3개를 함께 보인다. */}
+  <p className={s.muted} data-testid="pr-calibration">검색량 보정: {calibrationText(view.calibration)}{view.calibration?.rows.some(r=>r.error!==null)?` 오차 큰 묶음 ${view.calibration.rows.filter(r=>r.error!==null).slice(0,3).map(r=>`${r.label} ${(r.error!*100).toFixed(1)}%`).join(', ')}.`:''}</p>
   <section className={s.block} aria-labelledby="pr-collect-title"><h3 id="pr-collect-title" className={s.subtitle}>자동 수집</h3>
    <p className={s.muted}><MetaLine items={[`스위치 ${view.collectEnabled?'켜짐':'꺼짐'}`,`마지막 실행 ${dateTime(view.collect.lastRunAt,'없음')}`,`다음 실행 ${dateTime(view.collect.nextRunAt,'예정 없음')}`,usage?`오늘 즉시 수집 ${usage.usedToday}/${usage.maxPerDay}`:null]}/></p>
    {view.collect.lastErrors.length>0&&<ul className={s.issues} aria-label="최근 수집 실패">{view.collect.lastErrors.map((e,i)=><li key={i}><MetaLine items={[sourceLabel(view,e.sourceId),dateTime(e.at)]}/> {e.message}</li>)}</ul>}

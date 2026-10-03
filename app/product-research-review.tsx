@@ -11,7 +11,7 @@ import {MetaLine} from '@/components/app/meta-line';
 import {StatList} from '@/components/app/stat-list';
 import {count,dateTime,money,percent} from '@/lib/format';
 import {marginNumber} from '@/lib/product-research/ui-margin';
-import {brandFitReasonWhy,brandFitValueWhy,LIMITS,riskChecklist,riskNoteWhy} from '@/lib/product-research/ui-detail';
+import {brandFitReasonWhy,brandFitValueWhy,LIMITS,riskItemsWithIds,riskNoteWhy} from '@/lib/product-research/ui-detail';
 import type {CompetitionDetail,RegulatoryClass} from '@/lib/product-research/types';
 import {editReason,regulatoryLabels,sourceLabel,type Act,type Product,type View} from './product-research-shared';
 import s from './product-research.module.css';
@@ -55,13 +55,14 @@ const baseItems=(p:Product)=>[...riskItems[p.regulatory],...(p.regulatory!=='gen
 // 리스크 검토: 점검 항목 체크와 메모를 이 점수표 판에 저장한다(save_risk_review). 리스크 높음 점수표는 저장한 검토(모두 확인)가 있어야 승인할 수 있다.
 export function RiskReviewSection({view,product,act,busy}:{view:View;product:Product;act:Act;busy:boolean}){
  const card=product.score,saved=card?view.riskReviews?.find(r=>r.scoreCardId===card.id)??null:null;
- const items=card?riskChecklist(card,baseItems(product)):baseItems(product);
+ // 서버 필수 항목(riskChecklists)을 앞에 두고, 저장 때 그 항목은 ruleId를 같이 보낸다(평가 2회차 H1: 승인에는 필수 항목만 센다).
+ const pairs=card?riskItemsWithIds(card,view.riskChecklists?.find(c=>c.scoreCardId===card.id)?.items,baseItems(product)):baseItems(product).map(rule=>({rule,ruleId:null as string|null})),items=pairs.map(x=>x.rule);
  const [done,setDone]=useState<string[]>(()=>saved?saved.checklist.filter(x=>x.checked).map(x=>x.rule):[]),[note,setNote]=useState(saved?.note??'');
  const risk=card?.subScores.find(x=>x.key==='risk');
  const changed=!saved||saved.note!==note.trim()||items.some(x=>done.includes(x)!==!!saved.checklist.find(c=>c.rule===x)?.checked);
  const why=!view.canEdit?editReason:!card?'점수표가 아직 없어 검토를 저장할 판이 없습니다. 먼저 점수를 다시 계산하세요.':riskNoteWhy(note)||(!changed?'바뀐 체크나 메모가 없습니다.':'');
  const open=items.filter(x=>!done.includes(x)).length;
- const save=()=>{if(!card||why)return;void act({action:'save_risk_review',productId:product.id,scoreCardId:card.id,checklist:items.map(rule=>({rule,checked:done.includes(rule)})),note:note.trim()},'리스크 검토를 저장했습니다.',open?`확인하지 않은 항목 ${open}개가 남아 있습니다.`:'모든 항목을 확인했습니다.')};
+ const save=()=>{if(!card||why)return;void act({action:'save_risk_review',productId:product.id,scoreCardId:card.id,checklist:pairs.map(({rule,ruleId})=>({rule,checked:done.includes(rule),...(ruleId?{ruleId}:{})})),note:note.trim()},'리스크 검토를 저장했습니다.',open?`확인하지 않은 항목 ${open}개가 남아 있습니다.`:'모든 항목을 확인했습니다.')};
  return <section className={s.block} aria-labelledby="pr-risk-title"><h3 id="pr-risk-title" className={s.subtitle}>리스크 검토({regulatoryLabels[product.regulatory]})</h3>
   {card?.blocked&&<p className={s.blockNote} role="note"><b>선정 금지</b> {card.blocked.reason} 이 판은 승인할 수 없습니다.</p>}
   {card?.needsReview&&card.review&&<div className={s.matchBox} role="note"><p><b>사람 검토 필요(리스크 높음)</b> 아래 항목을 모두 확인해 저장하거나, 결정 사유에 확인한 위험을 적고 위험 확인을 표시해야 승인할 수 있습니다.</p><ul className={s.notes}>{card.review.reasons.map(x=><li key={x}>{x}</li>)}</ul></div>}
