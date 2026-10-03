@@ -13,6 +13,10 @@
 //  - 'N배'·'세 배' 같은 배수(파생 계산)와 글자로 쓴 수(만 원·수천 개·두 곳)는 관측값과 맞출 수 없어 거절한다.
 //  - 날짜(YYYY-MM-DD, YYYY년 M월 D일)는 인용 행의 관측 기간이나 그 스냅샷 수집일과 같아야 한다.
 // 상품·키워드 이름 안의 숫자는 allowedTerms(와 인용 행의 대상 이름)로만 뺀다. 글은 먼저 NFKC로 맞춘다(전각 숫자 ９·％도 보통 숫자로 읽는다, 평가 2회차 H2).
+// 평가 3회차 H-1: 이름 지우기(mask)는 숫자 읽기에만 쓴다. 단정·평가·방향·권고 말 검사는 원문에서 하고, 거기서 빼 주는 이름은 고른 상품 자신의 이름(names)뿐이며
+// 그 이름에 금지 말이 들어 있으면 빼 주지 않는다. 인용 행의 대상 이름(키워드·상품 목록 제목)은 서버가 틀로 만든 문장(serverRendered)에서만 뺀다.
+// 평가 3회차 H-3: 모델 메모의 주장은 이제 구조(상품·행·종류)로만 받고 서버가 문장을 만든다(analytics/brief.ts gradeClaims). 모델이 쓰는 자유 글(요약·리스크)은
+// 금지 목록이 아니라 허용 어휘(checkFreeText)로 검사한다: 허용 낱말·조사·어미와 고른 상품 이름 밖의 글자는 모두 거절한다(숫자·글자 수·단위·방향·최상급·인증·권고 말은 허용 어휘에 없다).
 import type {ClaimRef,MetricKey,Observation,Snapshot} from '../types';
 import {normalizeKeyword} from './normalize';
 
@@ -92,6 +96,19 @@ export function unverifiableWording(masked:string):string[]{
 }
 export const directionOf=(masked:string):'up'|'down'|'mixed'|null=>{const up=UP.test(masked),down=DOWN.test(masked);return up&&down?'mixed':up?'up':down?'down':null};
 
+// 이름이 금지 말(단정·평가·최상급·인증·방향·권고·배수·글자 수)을 품었는가. 품었으면 원문 검사에서 그 이름을 빼 주지 않는다(평가 3회차 H-1: 이름으로 금지 말 세탁).
+const SUPERLATIVE=/최초|유일|독점|넘버\s*원|no\.?\s*1(?![0-9])|베스트|best|최고|최대|최상|[1１]\s*등|[1１]\s*위|첫\s*(?:출시|선보|등장|판매)|가장|제일|톱|top/i;
+const CERT=/인증|허가|식약처|식품\s*의약품\s*안전처|식약청|특허|haccp|해썹|\bkc\b|gmp|획득|심사\s*(?:통과|완료)/i;
+const REC_ANY=/도입|입점|채택|선정|발주|출시|들여|소싱\s*(?:진행|추진|착수)|매입|추천|권장|권합|권해|권고|강추|유망|관찰|지켜\s*보|모니터링|주시|제외|보류/;
+export function unsafeName(name:string):boolean{
+ const c=nfkc(name);
+ return CLAIM_FORBIDDEN.test(c)||PROSE_FORBIDDEN.test(c)||HYPE_FORBIDDEN.test(c)||UP.test(c)||DOWN.test(c)||SUPERLATIVE.test(c)||CERT.test(c)||REC_ANY.test(c)||c.search(TIMES)>=0||c.search(SPELLED)>=0;
+}
+// 낱말 검사용 글: 원문(NFKC)에서 고른 상품 자신의 이름 중 금지 말이 없는 것만 지운다. serverRendered면 서버 틀이 인용한 대상 이름(rendered)도 지운다.
+export function wordingMask(text:string,names:readonly string[],rendered:readonly string[]=[]):string{
+ return maskTerms(text,[...names.filter(n=>!unsafeName(n)),...rendered]);
+}
+
 type Row={snap:Snapshot;obs:Observation;index:number;ref:ClaimRef;labels:string[]};
 export const rowId=(snapshotId:string,index:number)=>`${snapshotId}#${index}`;
 const obsSubjectKey=(o:Observation)=>o.subject.type==='keyword'?`kw:${normalizeKeyword(o.subject.text)}`:`ls:${o.subject.sourceId}:${o.subject.externalId}`;
@@ -109,7 +126,12 @@ const mentionPositions=(text:string,labels:readonly string[])=>mentionSpans(text
 
 export type CitationClaim={text:string;citations:readonly string[];refs?:readonly ClaimRef[]};
 export type CitationOptions={
+ // 숫자 읽기에서만 지우는 이름(상품 이름 속 '500g' 등). 단정·평가·방향 검사에는 쓰지 않는다(평가 3회차 H-1).
  allowedTerms?:readonly string[];
+ // 고른 상품 자신의 이름: 단정·평가·방향 검사에서 빼 준다(금지 말을 품은 이름은 빼지 않는다).
+ names?:readonly string[];
+ // 서버가 고정 틀로 만든 문장이면 true: 인용 행의 대상 이름·범위도 낱말 검사에서 뺀다(모델이 고를 수 없는 인용 자리라서).
+ serverRendered?:boolean;
  // 근거로 인정할 행(관측표). 주어지면 이 밖의 행은 인용해도 근거가 아니다. 형식: rowId(스냅샷ID, 관측 번호).
  allowedRows?:ReadonlySet<string>;
  // 대상 별칭(대상 키 → 이름들): 상품 이름·관측표에 실린 다듬은 제목 등.
@@ -151,8 +173,10 @@ export function checkClaim(c:CitationClaim,tag:string,byId:ReadonlyMap<string,Sn
  const bySubject=new Map<string,{rows:Row[];mentions:number[]}>();
  for(const r of rows){const e=bySubject.get(r.ref.subject)??{rows:[],mentions:[]};e.rows.push(r);bySubject.set(r.ref.subject,e)}
  for(const [key,e] of bySubject){e.mentions=mentionPositions(text,[...new Set(e.rows.flatMap(r=>r.labels))]);if(!e.mentions.length)unsupported.push(`${tag}: 인용한 행의 대상 '${obsLabel(e.rows[0].obs)}'(${key})이 주장 문장에 없습니다.`)}
- const terms=[...(opts.allowedTerms??[]),...rows.flatMap(r=>r.labels),...rows.map(r=>r.obs.scope??'')];
- const masked=maskTerms(text,terms);
+ const rowNames=[...rows.flatMap(r=>r.labels),...rows.map(r=>r.obs.scope??'')];
+ const terms=[...(opts.allowedTerms??[]),...(opts.names??[]),...rowNames];
+ // 낱말 검사(단정·평가·1위·방향)는 원문에서. 빼 주는 이름은 고른 상품 자신의 이름뿐(서버 틀 문장이면 인용 행의 대상 이름도).
+ const masked=wordingMask(text,opts.names??[],opts.serverRendered?[...rowNames,...(opts.names??[])]:[]);
  if(CLAIM_FORBIDDEN.test(masked))unsupported.push(`${tag}: 인증·허가·특허·최초·유일·'경쟁 없음' 같은 단정은 관측값으로 뒷받침할 수 없습니다 — "${c.text}"`);
  for(const w of unverifiableWording(masked))unsupported.push(`${tag}: ${w} — "${c.text}"`);
  if(ONE_RANK.test(masked)&&!rows.some(r=>r.obs.metric==='rank'&&r.obs.value===1))unsupported.push(`${tag}: '1위'를 뒷받침하는 순위 행(값 1)이 없습니다.`);
@@ -169,6 +193,14 @@ export function checkClaim(c:CitationClaim,tag:string,byId:ReadonlyMap<string,Sn
    const sideways=!elsewhere&&rows.some(r=>!cands.includes(r)&&typeof r.obs.value==='number'&&supports(n,r.obs.metric,r.obs.value));
    unsupported.push(`${tag}: '${n.raw}'와 맞는 관측값이 그 앞에서 말한 대상의 인용 행에 없습니다${elsewhere?'(인용하지 않은 스냅샷에만 있음)':sideways?'(다른 대상의 값임)':''}.`);
   }
+ }
+ // 바뀜 꼴('50에서 40으로'·'50 → 40'·'50(기간) → 40(기간)'): 앞 숫자는 이른 시점 행, 뒤 숫자는 늦은 시점 행(같은 대상·지표)과 맞아야 한다(평가 3회차: 방향 말 없이 순서만 뒤집는 우회).
+ for(let k=0;k+1<numbers.length;k++){
+  const a=numbers[k],b=numbers[k+1],between=text.slice(a.index+a.raw.length,b.index).replace(/\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?|\d{4}년\s*\d{1,2}월(?:\s*\d{1,2}일)?/g,' ');
+  if(!/^\s*(?:\([^()]*\))?\s*(?:→|->|⇒|에서)/.test(between)||/\d/.test(between))continue;
+  const groups=new Map<string,Row[]>();for(const r of rows)if(typeof r.obs.value==='number'){const g=`${r.ref.subject}|${r.obs.metric}|${r.obs.scope??''}`;groups.set(g,[...(groups.get(g)??[]),r])}
+  const ordered=[...groups.values()].some(g=>g.some(x=>g.some(y=>x.obs.period.to<y.obs.period.to&&supports(a,x.obs.metric,x.obs.value as number)&&supports(b,y.obs.metric,y.obs.value as number))));
+  if(!ordered)unsupported.push(`${tag}: '${a.raw} → ${b.raw}' 같은 바뀜은 같은 대상·지표의 이른 시점 행(앞 값)과 늦은 시점 행(뒤 값)으로 확인되어야 합니다.`);
  }
  for(const d of dates){
   const hit=rows.some(r=>r.snap.fetchedAt.startsWith(d.prefix)||r.obs.period.from.startsWith(d.prefix)||r.obs.period.to.startsWith(d.prefix));
@@ -202,22 +234,23 @@ const DIR_WORDS=new RegExp(`${UP.source}|${DOWN.source}`,'g');
 // 방향 말 바로 뒤가 조건·우려(…하면·경우·위험·…지 확인)면 사실 주장이 아니라 리스크 경고로 본다.
 const HEDGE=/^.{0,12}?(?:면|경우|우려|위험|않도록|지\s*(?:확인|점검|살펴|검토))/;
 const assertedDirection=(masked:string)=>directionOf([...masked.matchAll(DIR_WORDS)].filter(m=>!HEDGE.test(masked.slice((m.index as number)+m[0].length))).map(m=>m[0]).join(' '));
-// 요약·리스크 글(모델 메모): 숫자·날짜는 통과한 주장에 나온 것만, 인증·경쟁 없음 같은 단정·평가 말·배수·글자 수는 금지.
+// (v3, 하위 호환) 요약·리스크 글: 숫자·날짜는 통과한 주장에 나온 것만, 인증·경쟁 없음 같은 단정·평가 말·배수·글자 수는 금지.
+// 모델 메모(v4)는 이 금지 목록 검사 대신 허용 어휘 검사(checkFreeText)를 쓴다. 이 함수는 예전 판 결과를 다시 볼 때만 쓴다.
 // 방향 말(증가·급증·하락…)은 같은 방향을 말한 주장(행 단위로 방향을 확인한 주장)이 같은 대상 이름(allowedTerms)을 말할 때만 쓴다.
 export function checkProse(items:readonly {tag:string;text:string}[],claimTexts:readonly string[],opts:{allowedTerms?:readonly string[]}={}):string[]{
  const terms=opts.allowedTerms??[],out:string[]=[];
  const known=claimTexts.map(t=>extractFigures(t,terms)),nums=known.flatMap(k=>k.numbers),dates=new Set(known.flatMap(k=>k.dates.map(d=>d.prefix)));
  const named=(t:string)=>new Set(terms.filter(x=>compact(x).length>0&&mentionPositions(nfkc(t),[x]).length).map(compact));
- const claimDirs=claimTexts.map(t=>({dir:directionOf(maskTerms(t,terms)),subjects:named(t)}));
+ const claimDirs=claimTexts.map(t=>({dir:directionOf(wordingMask(t,terms)),subjects:named(t)}));
  for(const {tag,text} of items){
-  const masked=maskTerms(text,terms);
+  const masked=wordingMask(text,terms);
   if(PROSE_FORBIDDEN.test(masked))out.push(`${tag}: 인증·허가 획득·'경쟁 없음'·유일·최초·1위 같은 단정은 쓸 수 없습니다 — "${text}"`);
   for(const w of unverifiableWording(masked))out.push(`${tag}: ${w} — "${text}"`);
   const f=extractFigures(text,terms);
-  for(const n of f.numbers)if(!nums.some(k=>close(n.value,k.value,true)&&k.negative===n.negative&&k.percent===n.percent))out.push(`${tag}: '${n.raw}'는 인용 검사를 통과한 주장에 없는 숫자입니다(요약·리스크에는 새 숫자를 쓰지 않습니다).`);
+  for(const n of f.numbers)if(!nums.some(k=>close(n.value,k.value,true)&&k.negative===n.negative&&k.percent===n.percent&&k.unit===n.unit))out.push(`${tag}: '${n.raw}'는 인용 검사를 통과한 주장에 없는 숫자입니다(요약·리스크에는 새 숫자를 쓰지 않습니다).`);
   for(const d of f.dates)if(!dates.has(d.prefix))out.push(`${tag}: 날짜 '${d.raw}'는 주장에 없는 날짜입니다.`);
   for(const sen of sentences(nfkc(text))){
-   const dir=assertedDirection(maskTerms(sen.text,terms));if(!dir)continue;
+   const dir=assertedDirection(wordingMask(sen.text,terms));if(!dir)continue;
    if(dir==='mixed'){out.push(`${tag}: 증가와 감소를 함께 말해 방향을 확인할 수 없습니다 — "${sen.text.trim()}"`);continue}
    const subj=named(sen.text);
    if(!claimDirs.some(c=>c.dir===dir&&[...subj].some(x=>c.subjects.has(x))))out.push(`${tag}: '${dir==='up'?'증가·상승':'감소·하락'}' 같은 방향 말은 같은 대상의 같은 방향을 관측 행으로 확인한 주장이 있을 때만 씁니다 — "${sen.text.trim()}"`);
@@ -247,10 +280,11 @@ function recommendLevel(seg:string):{level:number;word:string}|null{
  if(best)return best;
  const g=asserted(seg,REC_GENERIC)[0];return g?{level:0,word:g[0]}:null;
 }
+// allowedTerms: 권고 말 검사에서 빼 줄 고른 상품 자신의 이름(금지 말을 품은 이름은 빼지 않는다, 평가 3회차 H-1).
 export function checkTierCeiling(items:readonly {tag:string;text:string}[],products:readonly TierCeiling[],opts:{allowedTerms?:readonly string[]}={}):string[]{
  const terms=opts.allowedTerms??[],out:string[]=[];
  for(const {tag,text} of items){
-  const full=nfkc(text),masked=maskTerms(full,terms);
+  const full=nfkc(text),masked=wordingMask(full,terms);
   for(const sen of sentences(full)){
    // 문장 안 상품 이름 자리(긴 이름 우선, 겹치면 앞의 것). 각 상품의 몫은 그 이름부터 다음 다른 상품 이름 앞까지(첫 상품은 문장 처음부터).
    const spans=products.flatMap((p,pi)=>mentionSpans(sen.text,p.names).map(x=>({...x,pi}))).sort((a,b)=>a.start-b.start||b.end-a.end);
@@ -262,6 +296,76 @@ export function checkTierCeiling(items:readonly {tag:string;text:string}[],produ
     if(rec&&rec.level<cap)out.push(`${tag}: '${p.names[0]}'는 점수표 분류가 '${p.label}'${p.blocked?'(선정 금지)':''}라 '${rec.word}' 권고를 쓸 수 없습니다(분류보다 높은 권고) — "${sen.text.trim()}"`);
    });
   }
+ }
+ return out;
+}
+
+// ── 자유 글 허용 어휘(평가 3회차 H-3). 모델이 쓰는 요약·리스크는 이 낱말(과 조사·어미), 고른 상품 자신의 이름으로만 쓴다.
+// 금지 목록이 아니라 허용 목록이다: 숫자·글자로 쓴 수·단위·방향/추세 말·최상급·인증/기관 말·권고 말은 여기에 없어서 새 낱말·띄어 쓴 낱말('인 기')·한자 숫자도 모두 거절된다.
+// 수치·방향·순위는 서버가 관측 행으로 만든 주장 문장에만, 권고는 recommendation 칸에만 있다. 낱말을 더할 때는 위 범주의 말이 아닌지 확인한다.
+// 상품에 붙어 권고가 되는 동작 낱말(판매·공급·주문·추가·소싱·승인·결정·검토·우선·먼저)과 안전 단정(안전)은 일부러 뺐다('○○를 판매하세요'·'승인하세요').
+export const FREE_TEXT_WORDS:readonly string[]=(
+ '근거 관측 관측값 관측표 자료 데이터 점수 점수표 총점 분류 신뢰도 판단 확인 미확인 재확인 필요 부족 충분 제한 제한적 불확실 불확실성 가능 가능성 주의 유의 점검 비교 대조 해석 설명 요약 이유 조건 사항 항목 내용 '+
+ '기준 대상 범위 정도 수준 여부 영향 차이 단계 과정 시점 기간 최근 현재 지금 이번 아직 다만 또한 그리고 그러나 하지만 따라서 그래서 함께 각각 모두 일부 별도 직접 다시 이후 이전 '+
+ '상품 후보 제품 검색 검색어 검색량 키워드 수요 판매처 판매량 가격 최저가 가격대 리뷰 후기 평점 영상 조회 조회수 순위 지수 추세 상대값 플랫폼 쿠팡 네이버 유튜브 데이터랩 검색광고 쇼핑 채널 시장 카테고리 출처 수집 '+
+ '위험 리스크 표시 표시사항 표기 규제 법규 문구 광고 표현 재고 회전 배송 보관 유통기한 상온 냉장 냉동 원가 마진 수익성 손익 비용 수수료 공급처 대표 사람 운영자 브랜드 상표 권리 적합성 '+
+ '계절 계절성 변동 변동성 편차 한계 표본 품질 포장 용량 구성 원료 성분 알레르기 원산지 고객 소비자 반응 문의 반품 교환 클레임 정보 의견 질문 메모 판정 상태 사실 결과 경우 때문 위해 대해 대한 '+
+ '관련 따른 따라 통해 같은 다른 해당 아니 아닌 아닙니다 미흡 명확 불명확 일관 상이 정리'
+).split(' ');
+// 한 글자 낱말은 조사·어미를 붙여 만들지 않고 정해 둔 꼴만 받는다('수'+'만'='수만', '하'+'나'='하나' 같은 조합을 막는다).
+const FREE_TEXT_SHORT=new Set((
+ '수 수가 수는 수도 것 것이 것은 것을 것도 것으로 것입니다 이 그 각 등 등을 등이 등의 및 또 안 중 중에 중인 중입니다 때 때는 전 전에 전에는 전까지 후 후에 뒤 뒤에 표 표의 표에 표를 표는 표로 '+
+ '하 합니다 해야 하며 하고 한 할 함 했습니다 하세요 하십시오 하지 하는 해서 하면 하여 했다 한다 됩니다 된 될 됨 되는 되지 되며 되고 되어 돼 됐습니다 되었습니다 되면 된다 '+
+ '있습니다 있어 있어서 있어야 있고 있으며 있는 있으나 있지만 있을 있음 있다 있으면 있는지 있었습니다 없습니다 없어 없고 없으며 없는 없으나 없지만 없을 없음 없다 없으면 없는지 없었습니다 '+
+ '않습니다 않았습니다 않고 않으며 않는 않은 않을 않음 않다 않으면 않아 않아서 않아야 않도록 않는지 맞는지 맞게 맞지'
+).split(' '));
+// 조사·어미(낱말 뒤에 최대 셋까지 이어 붙는다). 하다·되다 꼴도 여기에 둔다(확인+하+세요).
+const FREE_TEXT_SUFFIXES:readonly string[]=(
+ '은 는 이 가 을 를 의 에 에서 에게 와 과 도 만 로 으로 보다 처럼 까지 부터 마다 이나 나 며 이며 고 이고 라 이라 라는 이라는 란 이란 엔 에는 에도 에서는 로는 으로는 와는 과는 로서 으로서 와의 과의 뿐 이자 '+
+ '다 이다 입니다 니다 습니다 요 이요 에요 이에요 지 지만 이지만 므로 이므로 어 아 여 어서 아서 여서 어야 아야 여야 었 았 였 었습니다 았습니다 였습니다 었다 았다 였다 은지 는지 인지 을지 '+
+ '음 기 게 면 으면 이면 으나 는데 인데 니 으니 이니 세요 으세요 십시오 인 일 임 이라서 라서 도록 려면 거나 '+
+ '하 한 할 함 합 해 했 하여 하는 하지 하고 하며 하면 하기 하게 해야 해서 되 된 될 됨 됩 돼 됐 되어 되는 되지 되고 되며 되면 되기 되어야 돼야 되어서 돼서 야 적 적인 적으로'
+).split(' ');
+const reEsc=(s:string)=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+const alt=(xs:readonly string[])=>[...new Set(xs)].sort((a,b)=>b.length-a.length).map(reEsc).join('|');
+const FREE_SUFFIX_SRC=alt(FREE_TEXT_SUFFIXES);
+// 허용 글자: 한글 음절·로마자·자리표(상품 이름)와 문장부호(마침표·쉼표·가운뎃점·느낌표·물음표·괄호·따옴표·쌍점·쌍반점·빗금). 그 밖(%·화살표·부호·물결·한자·자모)은 거절한다.
+const NAME_SLOT='';
+const FREE_SEP=/[\s.,·!?()'"‘’“”:;/[\]]+/u;
+const FREE_CHARS=/^[가-힣A-Za-z]+$/u;
+// 거절한 낱말의 까닭(메시지용 분류일 뿐, 받아들이는 기준은 허용 목록이다).
+const FREE_REASONS:readonly (readonly [RegExp,string])[]=[
+ [/\p{Nd}/u,'숫자'],
+ [/[%％→←↑↓⇒~∼+×÷<>=\-−–]/u,'기호(화살표·부호·%)'],
+ [new RegExp(`${REC_ANY.source}|${REC_GENERIC.source}`),'권고 말(권고는 recommendation 칸으로만 냅니다)'],
+ [CERT,'인증·기관 말'],
+ [SUPERLATIVE,'최상급 말'],
+ [new RegExp(`${UP.source}|${DOWN.source}|꺾|주춤|확대|축소|토막|가파르|회복|지속|꾸준|정체|약세|강세|급`),'방향·추세 말'],
+ [new RegExp(`${HYPE_FORBIDDEN.source}|탄탄|잠재력|핫|장악|셀러|넘버`),'평가·과장 말'],
+ [/^(?:곳|개|회|원|위|점|명|건|배|개월|주|퍼센트|프로)/,'단위'],
+ [/^(?:한|두|세|네|다섯|여섯|일곱|여덟|아홉|열|스물|스무|서른|마흔|쉰|예순|일흔|여든|아흔|십|백|천|만|억|수십|수백|수천|수만|몇|여러|반)/,'글자로 쓴 수'],
+];
+export function freeTextReason(token:string):string{
+ for(const [re,why] of FREE_REASONS)if(re.test(token))return why;
+ return '허용 어휘 밖의 말';
+}
+// 자유 글 검사. names: 고른 상품 자신의 이름(금지 말을 품은 이름은 쓸 수 없다). 통과하면 빈 배열.
+export function checkFreeText(items:readonly {tag:string;text:string}[],opts:{names?:readonly string[];maxPerItem?:number}={}):string[]{
+ const names=[...new Set((opts.names??[]).map(n=>nfkc(n).replace(/\s+/g,' ').trim()).filter(n=>n.length>=2&&!unsafeName(n)))];
+ // 이름 낱말(두 글자 이상, 한글·로마자만)도 따로 쓸 수 있다('오뚜기 마라소스' → '마라소스').
+ const nameWords=[...new Set(names.flatMap(n=>n.split(' ')).filter(w=>w.length>=2&&/^[가-힣A-Za-z]+$/.test(w)))];
+ const ok=new RegExp(`^(?:${alt([...FREE_TEXT_WORDS,...nameWords,NAME_SLOT])}){1,3}(?:${FREE_SUFFIX_SRC}){0,3}$`,'u'),max=opts.maxPerItem??5,out:string[]=[];
+ for(const {tag,text} of items){
+  let s=nfkc(text).replace(/\s+/g,' ');
+  for(const n of [...names].sort((a,b)=>b.length-a.length))s=s.split(n).join(NAME_SLOT);
+  const bad:string[]=[];
+  for(const tok of s.split(FREE_SEP)){
+   if(!tok||(FREE_CHARS.test(tok)&&(FREE_TEXT_SHORT.has(tok)||ok.test(tok))))continue;
+   bad.push(tok);
+  }
+  const uniq=[...new Set(bad)];
+  for(const t of uniq.slice(0,max))out.push(`${tag}: '${t.split(NAME_SLOT).join('(상품 이름)')}'은(는) 자유 글에 쓸 수 없습니다(${freeTextReason(t)}). 요약·리스크는 허용 어휘로만 쓰고, 수치·방향·순위는 행을 고른 주장으로, 권고는 recommendation 칸으로 냅니다 — "${text}"`);
+  if(uniq.length>max)out.push(`${tag}: 허용 어휘 밖의 말이 ${uniq.length-max}개 더 있습니다.`);
  }
  return out;
 }

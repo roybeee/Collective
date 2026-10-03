@@ -217,6 +217,18 @@ eq(SC.scoreCard({...input,feasibility:{moq:100,leadDays:7,needsCertification:fal
  const both=SC.scoreCard({...input,risk:R.assessRisk({regulatory:'food',temperature:'ambient',titles:['오뚜기 살빠지는 차'],protectedBrands:list})},{computedAt:'x'});
  const dietMsg=SC.reviewApprovalError(both,'오뚜기 상표 확인했습니다.',true);ok(dietMsg?.includes('다이어트 효능 표현'),'every high rule must be addressed (Korean label)');ok(!/diet_claim|trademark_use/.test(dietMsg),`no internal rule codes in the message: ${dietMsg}`);
  ok(!/trademark_use/.test(SC.reviewApprovalError(hc,'검색 수요가 커서 승인합니다.',true))&&SC.reviewApprovalError(hc,'검색 수요가 커서 승인합니다.',true).includes('타사 상표'),'trademark rule shown as a Korean label');eq(SC.reviewApprovalError(both,'오뚜기 상표와 다이어트 표현을 고쳐 판매합니다.',true),null,'all rules addressed');
+ // 평가 3회차(낮음): 흔한 말('광고'·'표현') 하나나 너무 짧은 사유로는 통과하지 않는다. 규칙마다 그 규칙의 말, 공백 빼고 REVIEW_REASON_MIN자 이상.
+ const med={needsReview:true,review:{rules:['medical_claim'],reasons:['의약품으로 오인할 표현(치료·완치·특효 등)이 있습니다.'],terms:['의약','치료','표현','광고']}};
+ const md2={needsReview:true,review:{rules:['medical_claim','diet_claim'],reasons:['a','b'],terms:['의약','치료','표현','광고','다이어트','감량']}};
+ ok(SC.reviewApprovalError(med,'광고 확인 완료',true),"'광고' alone (and short) no longer passes");
+ ok(SC.reviewApprovalError(med,'광고 문구와 표현을 모두 확인했습니다.',true)?.includes('의약품 오인 표현'),'generic terms only → rule still missing (Korean label)');
+ ok(SC.reviewApprovalError(md2,'광고 표현을 확인했습니다.',true),"one generic term cannot cover two rules");
+ const twoMsg=SC.reviewApprovalError(md2,'치료 문구를 상세페이지에서 지웠습니다.',true);ok(twoMsg?.includes('다이어트 효능 표현')&&!twoMsg.includes('의약품 오인 표현'),`every flagged rule group must be named: ${twoMsg}`);
+ eq(SC.reviewApprovalError(md2,'치료 문구와 다이어트 효능 표현을 상세페이지에서 모두 지웠습니다.',true),null,'each rule group named → allowed');
+ ok(SC.reviewApprovalError(hc,'상표 ok',true)?.includes(`${SC.REVIEW_REASON_MIN}자`),'minimum length enforced');
+ const other={needsReview:true,review:{rules:['custom_rule'],reasons:['보관 온도 표시가 빠져 있어 확인이 필요합니다.'],terms:['리스크','위험']}};
+ ok(SC.reviewApprovalError(other,'리스크를 확인했고 위험을 감수합니다.',true),'rule without its own terms: generic words do not pass');
+ eq(SC.reviewApprovalError(other,'보관 온도 표시가 빠져 있어 확인이 필요합니다. 라벨을 고쳤습니다.',true),null,'rule without its own terms: quoting the server rule text passes');
 }
 // ⑧ 브랜드 적합성 힌트: 확정 사실과 상품 말의 겹침, 사실 ID 인용, 사람 판정은 그대로
 {

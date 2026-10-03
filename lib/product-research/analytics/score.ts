@@ -149,18 +149,28 @@ export function scoreCard(input:ScoreInput,opts:{weightsVersion?:string;computed
  return {id:shortId('prs',{productId:input.productId,version,inputDigest}),productId:input.productId,weightsVersion:version,computedAt:opts.computedAt,subScores:SUB_SCORES.map(k=>byKey.get(k)!),total,confidence,missing:SUB_SCORES.filter(k=>byKey.get(k)!.value===null),blocked,tier,inputDigest,
   needsReview:review!==null,review,brandFitHint:input.brandFitHint??null};
 }
-// 승인 관문(서버가 부른다): 리스크 '높음' 점수표는 확인 표시(acknowledged)와, 높음 항목마다 그 위험을 말하는 사유(REVIEW_TERMS 중 하나 이상)가 있어야 승인할 수 있다.
+// 승인 관문(서버가 부른다): 리스크 '높음' 점수표는 확인 표시(acknowledged)와, 높음 항목(규칙)마다 그 위험을 말하는 사유가 있어야 승인할 수 있다.
+// 평가 3회차(낮음): '광고'·'표현'·'리스크'·'위험'처럼 여러 규칙에 걸치는 흔한 말 하나로는 통과하지 않는다. 규칙마다 그 규칙만의 말(의약·치료, 다이어트·감량,
+// 상표·권리자·상표 이름, 심의·건강기능, 기능성·심사)이 사유에 있어야 하고, 규칙 말이 없는 규칙은 서버 사유 문장을 그대로 옮겨야 한다. 사유는 공백 빼고 REVIEW_REASON_MIN자 이상.
 // 통과하면 null, 아니면 한국어 오류 문장. 선정 금지(blocked)는 이 함수와 별개로 승인 불가다.
+export const REVIEW_REASON_MIN=10;
+const GENERIC_REVIEW_TERMS:ReadonlySet<string>=new Set(['표현','광고','리스크','위험']);
 export function reviewApprovalError(card:Pick<ScoreCard,'needsReview'|'review'>,reason:string,acknowledged:boolean):string|null{
  if(!card.needsReview||!card.review)return null;
  if(!acknowledged)return `리스크 '높음' 상품입니다(${card.review.reasons[0]??'사람 확인 필요'}). 위험을 확인했다는 표시와 함께 다시 승인하세요.`;
  const text=String(reason??'').normalize('NFC');
- // 규칙 목록에 없는 말(예: 상표 이름)은 상표 규칙의 말로도 인정한다.
- const named=card.review.terms.filter(t=>!Object.values(REVIEW_RULE_TERMS).some(ts=>ts.includes(t))&&t!=='리스크'&&t!=='위험');
- const missing=card.review.rules.filter(rule=>![...(REVIEW_RULE_TERMS[rule]??['리스크','위험']),...(rule==='trademark_use'?named:[])].some(t=>text.includes(t)));
  // 화면 문장에는 내부 규칙 코드(trademark_use 등) 대신 한국어 이름을 쓴다.
  const RULE_LABEL:Record<string,string>={trademark_use:'타사 상표',medical_claim:'의약품 오인 표현',diet_claim:'다이어트 효능 표현',hff_review:'건강기능식품 심의',functional_review:'기능성 화장품 심사'};
- return missing.length?`승인 사유에 확인한 위험(${missing.map(r=>RULE_LABEL[r]??'리스크 항목').join(', ')})을 적어 주세요. 예: ${card.review.terms.slice(0,4).join('·')} 중 하나를 넣어 무엇을 확인했는지 씁니다.`:null;
+ const label=(r:string)=>RULE_LABEL[r]??'리스크 항목';
+ if(text.replace(/\s+/g,'').length<REVIEW_REASON_MIN)return `승인 사유를 공백 빼고 ${REVIEW_REASON_MIN}자 이상으로, 확인한 위험(${card.review.rules.map(label).join(', ')})마다 무엇을 확인했는지 적어 주세요.`;
+ // 규칙 목록에 없는 말(예: 상표 이름)은 상표 규칙의 말로도 인정한다.
+ const named=card.review.terms.filter(t=>!Object.values(REVIEW_RULE_TERMS).some(ts=>ts.includes(t))&&!GENERIC_REVIEW_TERMS.has(t));
+ const core=(rule:string)=>{const g=REVIEW_RULE_TERMS[rule];return g?[...g.filter(t=>!GENERIC_REVIEW_TERMS.has(t)),...(rule==='trademark_use'?named:[])]:named};
+ const quotesRule=card.review.reasons.some(r=>r.trim().length>=REVIEW_REASON_MIN&&text.includes(r.trim()));
+ const missing=card.review.rules.filter(rule=>!core(rule).some(t=>text.includes(t))&&!(quotesRule&&!REVIEW_RULE_TERMS[rule]));
+ if(!missing.length)return null;
+ const examples=[...new Set(missing.flatMap(core))].slice(0,4);
+ return `승인 사유에 확인한 위험(${missing.map(label).join(', ')})을 규칙마다 적어 주세요. '광고'·'표현'·'위험' 같은 흔한 말만으로는 부족합니다.${examples.length?` 예: ${examples.join('·')}`:' 예: 점수표 리스크 사유 문장'}을 넣어 무엇을 확인했는지 씁니다.`;
 }
 
 // 상품 하나의 시계열 묶음. keywordKeys 첫 번째가 대표 키워드(추세·경쟁 기준)다.
