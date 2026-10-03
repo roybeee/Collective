@@ -1,0 +1,41 @@
+{
+ "keywordList": [
+  {
+   "relKeyword": "마라소스",
+   "monthlyPcQcCnt": 12300,
+   "monthlyMobileQcCnt": 45600,
+   "monthlyAvePcClkCnt": 120.5,
+   "monthlyAveMobileClkCnt": 890.1,
+   "monthlyAvePcCtr": 0.98,
+   "monthlyAveMobileCtr": 1.95,
+   "plAvgDepth": 15,
+   "compIdx": "중간"
+  },
+  {
+   "relKeyword": "마라소스추천",
+   "monthlyPcQcCnt": "< 10",
+   "monthlyMobileQcCnt": 30,
+   "plAvgDepth": 3,
+   "compIdx": "낮음"
+  },
+  {
+   "relKeyword": "마라샹궈소스",
+   "monthlyPcQcCnt": 1000,
+   "monthlyMobileQcCnt": "< 10",
+   "plAvgDepth": 8,
+   "compIdx": "높음"
+  },
+  {
+   "relKeyword": "훠궈소스",
+   "monthlyPcQcCnt": "2,400",
+   "monthlyMobileQcCnt": "0",
+   "plAvgDepth": 0,
+   "compIdx": ""
+  },
+  {
+   "monthlyPcQcCnt": 5,
+   "monthlyMobileQcCnt": 5,
+   "compIdx": "낮음"
+  }
+ ]
+}

@@ -1,0 +1,36 @@
+{
+ "kind": "youtube#searchListResponse",
+ "pageInfo": {
+  "totalResults": 12345,
+  "resultsPerPage": 3
+ },
+ "items": [
+  {
+   "id": {
+    "kind": "youtube#video",
+    "videoId": "abcdefghij1"
+   },
+   "snippet": {
+    "title": "마라소스 리뷰"
+   }
+  },
+  {
+   "id": {
+    "kind": "youtube#video",
+    "videoId": "abcdefghij2"
+   },
+   "snippet": {
+    "title": "마라소스 만들기"
+   }
+  },
+  {
+   "id": {
+    "kind": "youtube#channel",
+    "channelId": "UCxxxx"
+   },
+   "snippet": {
+    "title": "채널"
+   }
+  }
+ ]
+}

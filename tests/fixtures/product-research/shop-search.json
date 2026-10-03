@@ -1,0 +1,52 @@
+{
+ "lastBuildDate": "Sat, 03 Oct 2026 12:00:00 +0900",
+ "total": 48213,
+ "start": 1,
+ "display": 4,
+ "items": [
+  {
+   "title": "<b>마라소스</b> 500g &amp; 향신료",
+   "link": "https://smartstore.naver.com/a/products/1",
+   "image": "",
+   "lprice": "8900",
+   "hprice": "",
+   "mallName": "A상점",
+   "productId": "1001",
+   "productType": "2",
+   "brand": "하이디라오",
+   "maker": "",
+   "category1": "식품",
+   "category2": "소스/드레싱",
+   "category3": "중화소스",
+   "category4": ""
+  },
+  {
+   "title": "<b>마라</b> 샹궈 소스",
+   "link": "https://search.shopping.naver.com/catalog/2",
+   "lprice": "7500",
+   "mallName": "네이버",
+   "productId": "1002",
+   "brand": "",
+   "maker": "오뚜기",
+   "category1": "식품",
+   "category2": "소스/드레싱"
+  },
+  {
+   "title": "훠궈 <b>마라소스</b>",
+   "link": "javascript:alert(1)",
+   "lprice": "12000",
+   "mallName": "B상점",
+   "productId": "1003",
+   "brand": "",
+   "category1": "식품"
+  },
+  {
+   "title": "가격 없는 소스",
+   "link": "https://smartstore.naver.com/c/products/4",
+   "lprice": "",
+   "mallName": "A상점",
+   "productId": "1004",
+   "category1": "식품"
+  }
+ ]
+}
