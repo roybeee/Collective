@@ -6,8 +6,9 @@ import {normalizeKeyword} from './analytics/normalize';
 import {groupDigits,koWon} from './analytics/format';
 import {REVIEW_TERMS} from './analytics/risk';
 import {BRAND_FIT_MAX,BRAND_FIT_MIN,BRAND_FIT_REASON_MAX,CLEAR_REASON_MAX,IMPORT_MAX_AGE_DAYS,IMPORT_SCOPE_MAX,LABEL_THRESHOLD_MAX,LABEL_THRESHOLD_MIN,PRICE_MAX_MAX,PRICE_MAX_MIN,QUESTION_MAX,REASON_MAX,REASON_MIN,RISK_NOTE_MAX,RISK_RULE_MAX,RISK_RULES_MAX} from './api';
-import type {CalibrationView,LaunchOutcome,RiskRule} from './api';
-import type {KeywordGroup,MetricKey,ResearchProduct,ScoreCard,Series,SeriesPoint,SourceId} from './types';
+import type {CalibrationView,CampaignCatalogItem,LaunchOutcome,RiskRule,WeightsProposalView} from './api';
+import type {KeywordGroup,MetricKey,ResearchProduct,ScoreCard,Series,SeriesPoint,SourceId,SubScoreKey} from './types';
+import {SUB_SCORES} from './types';
 
 // ── 시계열
 export const listingKey=(l:{sourceId:SourceId;externalId:string})=>`ls:${l.sourceId}:${l.externalId}`;
@@ -156,8 +157,29 @@ export function launchOutcomeText(outcome:LaunchOutcome|null|undefined,handedOff
  const parts=[w.orders===null?'주문 미확인':`주문 ${groupDigits(w.orders)}건`,w.units===null?'수량 미확인':`${groupDigits(w.units)}개`,w.revenue===null?'매출 미확인':`매출 ${koWon(w.revenue)}`];
  return `${w.weeks}주${w.complete?'':'(진행 중)'} ${parts.join(', ')}`;
 }
-// 데이터랩 보정 요약: 평균 절대 오차율(MAPE)과 묶음 수. 오차가 없으면 미확인.
+// 데이터랩 보정 요약: 평균 절대 오차율(MAPE)과 묶음 수. 오차가 없으면 미확인. 보정하지 않은 묶음(평가 3회차 M3)이 있으면 그 수를 덧붙인다.
 export function calibrationText(c:CalibrationView|null|undefined):string{
  if(!c)return '아직 보정 보고가 없습니다. 검색광고와 데이터랩을 함께 수집한 뒤 점수를 다시 계산하면 만들어집니다.';
- return `키워드 묶음 ${groupDigits(c.groups)}개, 평균 오차율 ${c.mape===null?'미확인':`${(c.mape*100).toFixed(1)}%`}.`;
+ return `키워드 묶음 ${groupDigits(c.groups)}개, 평균 오차율 ${c.mape===null?'미확인':`${(c.mape*100).toFixed(1)}%`}.${c.uncalibrated?` 보정하지 않은 묶음 ${groupDigits(c.uncalibrated)}개(까닭은 아래 표).`:''}`;
 }
+
+// ── 평가 3회차 화면 보조
+// 보정 보고 한 행: 오차율(없으면 미확인)과 비고(보정·오차가 없는 까닭, "< 10" 범위 메모). 비고가 없으면 빈 문자열.
+export const calibrationErrorText=(row:CalibrationView['rows'][number])=>row.error===null?'미확인':`${(row.error*100).toFixed(1)}%`;
+export const calibrationNote=(row:CalibrationView['rows'][number])=>row.reason??(row.error===null?'오차를 잴 기준점이 모자랍니다.':'');
+// 넘기기 칸의 카탈로그 상품: 고른 캠페인의 상품 목록, 고르기를 막는 까닭(없으면 빈 문자열), 하나뿐이면 자동으로 고를 ID(서버도 하나뿐이면 그것을 쓴다).
+export function catalogChoice(catalogs:Readonly<Record<string,readonly CampaignCatalogItem[]>>|undefined,campaignId:string):{items:readonly CampaignCatalogItem[];why:string;auto:string|null}{
+ if(!campaignId)return {items:[],why:'캠페인을 먼저 고르세요.',auto:null};
+ const items=catalogs?.[campaignId]??[];
+ if(!items.length)return {items,why:'이 캠페인에 카탈로그 상품이 없어 시장 근거와 고객 기회 초안만 넘깁니다. 성장 탭에서 상품을 먼저 만들면 소싱 후보·판매 오퍼 초안도 함께 생깁니다.',auto:null};
+ return {items,why:'',auto:items.length===1?items[0].id:null};
+}
+export const catalogLabel=(x:CampaignCatalogItem)=>x.title&&x.sku?`${x.title} (${x.sku})`:x.title||x.sku||'이름 없는 상품';
+// 가중치 재보정 후보 표의 행(하위 점수 9개, 순서 고정). 제안이 없으면 proposed는 null.
+export type WeightRow={key:SubScoreKey;base:number;proposed:number|null;rho:number|null;n:number};
+export function weightRows(p:WeightsProposalView|null|undefined):WeightRow[]{
+ if(!p)return [];
+ return SUB_SCORES.map(key=>{const c=p.correlations.find(x=>x.key===key);return {key,base:p.base[key]??0,proposed:p.proposed?.[key]??null,rho:c?.rho??null,n:c?.n??0}});
+}
+export const weightText=(v:number|null)=>v===null?'미확인':v.toFixed(3);
+export const signedRho=(v:number|null)=>v===null?'미확인':v>0?`+${v.toFixed(2)}`:v<0?`−${Math.abs(v).toFixed(2)}`:'0.00';

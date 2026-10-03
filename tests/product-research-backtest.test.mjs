@@ -87,8 +87,15 @@ const strict=B.runBacktest({candidates:bundles,asOf:fx.asOf,horizonWeeks:12,thre
 // ── 서버 파이프라인 백테스트(평가 1회차 H3): 후보·특징은 기준 시점 이전 관측만으로 만든다
 const PL=await load('lib/product-research/server-pipeline.ts');
 const AT='2026-10-03T00:00:00.000Z';
-const e2e=PL.backtestFromSnapshots(fx.snapshots,12,0.3,AT);
-eq(e2e.result.asOf.slice(0,10),fx.asOf,'pipeline as-of = last observation − 12 weeks');
+// 평가 3회차 H-2: 합성 세계의 데이터랩은 마지막 날 한 번 받은 104주 소급 이력뿐이다. 소급 이력은 후보 자격·특징을 주지 않으므로 숫자를 내지 않는다.
+const backfilledOnly=PL.backtestFromSnapshots(fx.snapshots,12,0.3,AT);
+eq(backfilledOnly.result.asOf.slice(0,10),fx.asOf,'pipeline as-of = last observation − 12 weeks');
+ok(backfilledOnly.result.precisionAtK.every(p=>p.value===null)&&backfilledOnly.result.spearman===null&&/소급 이력만/.test(backfilledOnly.result.reason)&&backfilledOnly.universe.notes.some(n=>/소급 이력만 있는 비율 100%/.test(n)),'(H-2) datalab history fetched only after as-of → no precision, reason names the backfilled share');
+ok(!backfilledOnly.candidates.some(b=>b.series.some(s=>s.metric==='search_trend')),'(H-2) backfilled trend points feed no candidate feature');
+// 매일 수집하던 세계: 같은 데이터랩 요청을 기준 시점에도 받았다(그때까지의 점만). 이 사본이 특징을, 마지막 날 전체 이력이 정답을 만든다.
+const asOfT=backfilledOnly.result.asOf,tracked=[...fx.snapshots,...fx.snapshots.filter(s=>s.sourceId==='naver_datalab_search').map(s=>({...s,id:`${s.id}-asof`,fetchedAt:asOfT,observations:s.observations.filter(o=>Date.parse(o.period.to)<=Date.parse(asOfT))}))];
+const e2e=PL.backtestFromSnapshots(tracked,12,0.3,AT);
+eq(e2e.result.asOf,asOfT,'tracked copy keeps the same as-of');
 ok(e2e.result.reason===null&&e2e.result.precisionAtK.every(p=>typeof p.value==='number')&&e2e.universe.products>0,'pipeline backtest produces numbers from as-of data');
 // 기준 시점 뒤에만 나타난 목록(1위 신상)과 기준 시점 뒤의 엄청난 검색수는 후보·특징·기준선을 바꾸지 않는다
 const lateListing={type:'listing',sourceId:'coupang_ranking_manual',externalId:'late-1',title:'신상 마라 젤리 100g',brand:null,price:3900,url:null,categoryPath:'food_snack'};
@@ -98,7 +105,7 @@ const late=[
  {id:'late-sa',sourceId:'naver_searchad_keyword',method:'api',request:{},fetchedAt:new Date(Date.parse(weekEnd(76))+86400000).toISOString(),bodyDigest:'0',bodyBytes:1,status:'ok',limitations:[],importedBy:null,
   observations:[{subject:{type:'keyword',text:'마라소스'},metric:'search_volume_month',value:99999999,period:{from:weekStart(72),to:weekEnd(76)}}]},
 ];
-const withLate=PL.backtestFromSnapshots([...fx.snapshots,...late],12,0.3,AT);
+const withLate=PL.backtestFromSnapshots([...tracked,...late],12,0.3,AT);
 ok(!withLate.candidates.some(b=>b.listingKeys.includes('ls:coupang_ranking_manual:late-1')),'a product that only appears after as-of is not a candidate');
 eq(withLate.universe.excludedAfterAsOf,e2e.universe.excludedAfterAsOf+1,'excluded-after-as-of count includes the late listing');
 eq(js(withLate.candidates.map(b=>b.productId)),js(e2e.candidates.map(b=>b.productId)),'future-only snapshots leave the candidate universe unchanged');
@@ -106,7 +113,7 @@ eq(js(withLate.rows.map(r=>[r.productId,r.score,r.baselines.current_top,r.baseli
 ok(!withLate.rows.some(r=>r.baselines.current_top===99999999),'current_top never sees the post-as-of search volume');
 eq(js(withLate.result.precisionAtK),js(e2e.result.precisionAtK),'precision unchanged by future-only snapshots');
 // 기준 시점 이전에 순위 관측이 있으면 후보가 된다(같은 목록을 앞당겨 넣으면 들어온다)
-const early=PL.backtestFromSnapshots([...fx.snapshots,{...late[0],id:'early-rank',fetchedAt:new Date(Date.parse(weekEnd(40))+86400000).toISOString(),observations:[{...late[0].observations[0],period:{from:weekEnd(40),to:weekEnd(40)}}]}],12,0.3,AT);
+const early=PL.backtestFromSnapshots([...tracked,{...late[0],id:'early-rank',fetchedAt:new Date(Date.parse(weekEnd(40))+86400000).toISOString(),observations:[{...late[0].observations[0],period:{from:weekEnd(40),to:weekEnd(40)}}]}],12,0.3,AT);
 ok(early.candidates.some(b=>b.listingKeys.includes('ls:coupang_ranking_manual:late-1')),'(sanity) the same listing observed before as-of is a candidate');
 // 잘라 낸 스냅샷: 기준 시점 뒤 관측은 없다
 ok(PL.truncateSnapshots(fx.snapshots,fx.asOf).every(s=>s.observations.every(o=>o.period.to<=fx.asOf)),'truncateSnapshots keeps only period ≤ as-of');

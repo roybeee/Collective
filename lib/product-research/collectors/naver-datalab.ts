@@ -20,7 +20,8 @@ const MAX_GROUPS=5,MAX_KEYWORDS_PER_GROUP=20,MAX_CATEGORIES=3,MAX_CATEGORY_KEYWO
 // 일 단위로 수년을 요청해도 묶음 5개 × 3,000점 안팎이다. 1MB면 충분하다.
 const MAX_BYTES=1_000_000;
 // 데이터랩 검색어 트렌드는 2016-01-01부터, 쇼핑인사이트는 2017-08-01부터 자료가 있다.
-const SEARCH_FROM='2016-01-01',SHOPPING_FROM='2017-08-01';
+const SEARCH_FROM='2016-01-01';
+export const SHOPPING_FROM='2017-08-01';
 
 function dateWindow(input:{startDate:string;endDate:string;timeUnit:DatalabTimeUnit},earliest:string){
  const startDate=isoDay(input.startDate,'시작일'),endDate=isoDay(input.endDate,'종료일');

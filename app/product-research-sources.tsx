@@ -12,7 +12,7 @@ import {LockedNote} from '@/components/app/locked-note';
 import {MetaLine} from '@/components/app/meta-line';
 import {askConfirm} from '@/components/app/confirm-dialog';
 import {count,dateTime,percent} from '@/lib/format';
-import {calibrationText,clearReasonWhy,LIMITS,observedWhy,oldestImportDay,scopeWhy} from '@/lib/product-research/ui-detail';
+import {calibrationErrorText,calibrationNote,calibrationText,clearReasonWhy,LIMITS,observedWhy,oldestImportDay,scopeWhy} from '@/lib/product-research/ui-detail';
 import {CREDENTIAL_KEYS,CREDENTIAL_SOURCES,type CredentialKey} from '@/lib/product-research/api';
 import {IMPORTABLE_SOURCES,SOURCES} from '@/lib/product-research/sources';
 import type {SourceId} from '@/lib/product-research/types';
@@ -54,6 +54,8 @@ export function SourcesTab({view,act,busy,onCandidates}:{view:View;act:Act;busy:
   <p className={s.muted}>30일 성공률은 지난 30일 예약 호출 중 정상으로 끝난 비율입니다. 호출이 없으면 미확인입니다.</p>
   {/* 평가 2회차 M3: 데이터랩 상대값을 검색광고 실측 합으로 맞춘 보정의 검증 오차. 오차 큰 묶음 3개를 함께 보인다. */}
   <p className={s.muted} data-testid="pr-calibration">검색량 보정: {calibrationText(view.calibration)}{view.calibration?.rows.some(r=>r.error!==null)?` 오차 큰 묶음 ${view.calibration.rows.filter(r=>r.error!==null).slice(0,3).map(r=>`${r.label} ${(r.error!*100).toFixed(1)}%`).join(', ')}.`:''}</p>
+  {/* 평가 3회차 M3: 묶음마다 오차율과 보정하지 않은 까닭("< 10" 범위·잴 수 없는 키워드)을 표로 보인다. */}
+  {view.calibration&&view.calibration.rows.length>0&&<DataTable rows={view.calibration.rows} columns={calibrationColumns} rowKey={r=>r.groupId} caption="키워드 묶음별 검색량 보정" csvName="product-research-calibration" filterText={r=>[r.label,r.reason??''].join(' ')}/>}
   <section className={s.block} aria-labelledby="pr-collect-title"><h3 id="pr-collect-title" className={s.subtitle}>자동 수집</h3>
    <p className={s.muted}><MetaLine items={[`스위치 ${view.collectEnabled?'켜짐':'꺼짐'}`,`마지막 실행 ${dateTime(view.collect.lastRunAt,'없음')}`,`다음 실행 ${dateTime(view.collect.nextRunAt,'예정 없음')}`,usage?`오늘 즉시 수집 ${usage.usedToday}/${usage.maxPerDay}`:null]}/></p>
    {view.collect.lastErrors.length>0&&<ul className={s.issues} aria-label="최근 수집 실패">{view.collect.lastErrors.map((e,i)=><li key={i}><MetaLine items={[sourceLabel(view,e.sourceId),dateTime(e.at)]}/> {e.message}</li>)}</ul>}
@@ -70,6 +72,14 @@ export function SourcesTab({view,act,busy,onCandidates}:{view:View;act:Act;busy:
    :<EmptyLine next="위 '파일 가져오기'로 첫 랭킹 파일을 올리세요.">가져온 파일이 아직 없습니다.</EmptyLine>}
  </section>;
 }
+type CalibrationRow=NonNullable<View['calibration']>['rows'][number];
+const calibrationColumns:DataColumn<CalibrationRow>[]=[
+ {label:'키워드 묶음',cell:r=>r.label,sort:r=>r.label,csv:r=>r.label},
+ {label:'검증 오차율',cell:r=>calibrationErrorText(r),sort:r=>r.error??-1,csv:r=>r.error??'',align:'right'},
+ {label:'"< 10" 범위로 넣은 키워드',cell:r=>count(r.bounded??null,'개'),sort:r=>r.bounded??-1,csv:r=>r.bounded??'',align:'right'},
+ {label:'검색수를 잴 수 없는 키워드',cell:r=>count(r.missing??null,'개'),sort:r=>r.missing??-1,csv:r=>r.missing??'',align:'right'},
+ {label:'비고',cell:r=>calibrationNote(r)||'없음',csv:r=>calibrationNote(r)},
+];
 const connection=(x:SourceRow)=>x.method==='manual'?'가져오기 전용':x.method==='internal'?'앱 안 자료':x.connected?'연결됨':'연결 필요';
 const successText=(f:{successRate30d:number|null;calls30d:number}|null)=>f?.successRate30d==null?'미확인':`${percent(f.successRate30d)} (${count(f.calls30d,'회')})`;
 const quota=(x:SourceRow)=>x.dailyQuota===null?(x.quotaUsedToday===null?'제한 미확인':`${count(x.quotaUsedToday)} 사용`):`${count(x.quotaUsedToday??0)}/${count(x.dailyQuota)}`;

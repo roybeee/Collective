@@ -195,7 +195,9 @@ export async function recentSnapshotsRaw(owner:string,sinceIso:string,limit:numb
 // ── 출처별 읽기 계획(평가 2회차 H4). 최신 N개(전 출처 합산)로 자르면 하루 수십 개씩 쌓여 두 달 남짓만 남는다(12주 백테스트의 기준 시점 이전 관측이 0개).
 // 그래서 출처마다 따로 읽는다: range=기간 안 최신순 상한, latest_group=데이터랩처럼 한 스냅샷이 긴 이력을 싣는 출처는 묶음(그룹 이름)마다 가장 최근 1개, latest=최신 1개.
 // metrics를 주면 그 지표 관측만 SQL에서 골라 읽는다(필요한 열만, 응답 크기 축소).
-export type SourceLoad={sourceId:SourceId;mode:'range'|'latest_group'|'latest';from:string;to?:string;cap:number;metrics?:readonly MetricKey[]};
+// hintMetrics(추가, 선택): 요청 힌트 키워드(request.hintKeywords, 검색광고)인 대상에 한해서만 더 읽는 지표(평가 3회차 M3: "< 10" 범위 보정에 쓰는 PC·모바일 검색수).
+// 연관 키워드 100개의 PC·모바일까지 읽으면 검색광고 읽기 양이 두 배가 되므로 계획 키워드(힌트)만 읽는다.
+export type SourceLoad={sourceId:SourceId;mode:'range'|'latest_group'|'latest';from:string;to?:string;cap:number;metrics?:readonly MetricKey[];hintMetrics?:readonly MetricKey[]};
 const FAR='9999-12-31T23:59:59.999Z';
 // 데이터랩 요청 범위의 묶음 이름: keywordGroups·categories·keywords('이름:…;이름:…'), 없으면 keyword 하나. 모르면 빈 배열(그 스냅샷만의 묶음으로 본다).
 export function snapshotGroups(request:Snapshot['request']|null|undefined):string[]{
@@ -211,10 +213,10 @@ export function snapshotGroupMembers(request:Snapshot['request']|null|undefined)
  return out;
 }
 async function rangeRows(owner:string,l:SourceLoad):Promise<Snapshot[]>{
- const expr=l.metrics?.length?"json_set(data,'$.observations',json((SELECT json_group_array(json(value)) FROM json_each(data,'$.observations') WHERE json_extract(value,'$.metric') IN (SELECT value FROM json_each(?)))))":'data';
+ const expr=l.metrics?.length?"json_set(data,'$.observations',json((SELECT json_group_array(json(o.value)) FROM json_each(data,'$.observations') o WHERE json_extract(o.value,'$.metric') IN (SELECT value FROM json_each(?)) OR (json_extract(o.value,'$.metric') IN (SELECT value FROM json_each(?)) AND instr(','||lower(coalesce(json_extract(data,'$.request.hintKeywords'),''))||',',','||lower(replace(json_extract(o.value,'$.subject.text'),' ',''))||',')>0))))":'data';
  const out:Snapshot[]=[];let before=l.to??FAR,beforeId='￿',first=true;
  while(out.length<l.cap){
-  const page=Math.min(200,l.cap-out.length),binds:unknown[]=l.metrics?.length?[JSON.stringify(l.metrics)]:[];
+  const page=Math.min(200,l.cap-out.length),binds:unknown[]=l.metrics?.length?[JSON.stringify(l.metrics),JSON.stringify(l.hintMetrics??[])]:[];
   // 첫 쪽은 to 시각을 포함한다(같은 시각 스냅샷 포함), 다음 쪽부터는 (시각, id) 커서로 이어 읽는다.
   const r=await database().prepare(`SELECT id,${expr} d,updated_at FROM records WHERE owner=? AND kind=? AND parent_id=? AND updated_at>=? AND (updated_at<? OR (updated_at=? AND id<?)) ORDER BY updated_at DESC, id DESC LIMIT ?`).bind(...binds,owner,K.snapshot,l.sourceId,l.from,first?before+'\u0000':before,before,beforeId,page).all<{id:string;d:string;updated_at:string}>();
   first=false;
@@ -300,6 +302,8 @@ export async function renewResearchLock(owner:string):Promise<boolean|null>{
 }
 export const RESEARCH_LOCK_LOST='상품 리서치 잠금이 만료돼 다른 실행이 이어받았습니다. 이번 실행은 진행 상태를 저장하지 않고 멈췄습니다.';
 export class ResearchLockLost extends Error{constructor(){super(RESEARCH_LOCK_LOST)}}
+// 긴 작업의 단계 사이 잠금 갱신(평가 3회차 M4): 잃었으면 던진다. 이 실행 환경이 잡은 잠금이 없으면(null) 판단하지 않고 넘어간다.
+export async function renewOrThrow(owner:string){if(await renewResearchLock(owner)===false)throw new ResearchLockLost()}
 export async function withResearchLock<T>(owner:string,waitMs:number,fn:()=>Promise<T>):Promise<T>{
  const token=await acquireResearchLock(owner,waitMs);
  try{return await fn()}finally{await releaseResearchLock(owner,token)}

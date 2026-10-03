@@ -1,7 +1,7 @@
 // 상품 리서치 API 계약(순수 모듈). 서버(app/api/product-research)와 화면(app/product-research-*.tsx)이 같은 모양을 쓴다.
 // GET /api/product-research → ProductResearchView(types.ts)에 아래 ViewExtras를 더한 응답.
 // POST /api/product-research → {action, requestId(uuid v4), ...payload}. 쓰기는 대표·관리자만, 자동 수집 즉시 실행·출처 연결은 소유자만.
-import type {CategoryId,DecisionStatus,ProductResearchView,Series,Snapshot,SourceId,Temperature} from './types';
+import type {CategoryId,DecisionStatus,ProductResearchView,Series,Snapshot,SourceId,SubScoreKey,Temperature} from './types';
 
 export const RESEARCH_ACTIONS=[
  'save_settings',     // 조사 방향(카테고리·보관 온도·가격 상한·질문)
@@ -89,9 +89,18 @@ export type RiskReview={id:string;productId:string;scoreCardId:string;checklist:
 // 리스크 필수 항목(서버가 점수표 review에서 만든다): id는 규칙 id(같은 규칙이 여럿이면 '규칙#번호'), text는 그 위험 사유 문장.
 export type RiskRule={id:string;text:string};
 // 데이터랩 보정 보고(평가 2회차 M3): 묶음 키워드 검색광고 실측 합을 기준점으로 잡은 배율의 검증 오차. error·mape는 모자라면 null(0 아님). rows는 오차 큰 순 최대 100.
-export type CalibrationView={at:string;groups:number;mape:number|null;rows:{groupId:string;label:string;error:number|null}[]};
+// 평가 3회차 M3 추가 필드(선택): uncalibrated=보정하지 않은 묶음 수(검색광고를 잴 수 없는 키워드가 있거나 창이 모자람), 행의 reason=보정·오차가 없는 까닭(또는 "< 10" 범위 메모),
+// bounded=검색수 "< 10"을 0~9 범위(5)로 넣은 키워드 수, missing=월간 검색수를 잴 수 없는 키워드 수(있으면 그 묶음은 보정하지 않음).
+export type CalibrationView={at:string;groups:number;mape:number|null;rows:{groupId:string;label:string;error:number|null;reason?:string|null;bounded?:number;missing?:number}[];uncalibrated?:number};
 // 출시 뒤 결과(평가 2회차 M5): 성장2로 넘긴 결정의 카탈로그 SKU 판매(넘긴 시각부터 4·8·12주). sku가 null이면 값도 null이고 reason이 까닭이다.
 export type LaunchOutcome={decisionId:string;productId:string;campaignId:string;handedOffAt:string;sku:string|null;reason:string|null;windows:{weeks:number;complete:boolean;orders:number|null;units:number|null;revenue:number|null}[]};
+
+// 가중치 재보정 후보(평가 3회차 ⑩ 학습 고리, 읽기 전용): 8주 창이 다 지난 출시 뒤 순매출과 결정 때 점수표 하위 점수의 순위 상관으로 만든 가중치 제안.
+// 제안일 뿐 적용하지 않는다(점수표는 계속 base 판을 쓴다). 표본이 minN 미만이면 proposed는 null이고 reason이 까닭이다. 상관을 못 재는 하위 점수는 rho null(가중치는 base 그대로).
+export type WeightsProposalView={at:string;weeks:number;n:number;minN:number;baseVersion:string;base:Record<SubScoreKey,number>;proposed:Record<SubScoreKey,number>|null;
+ correlations:{key:SubScoreKey;rho:number|null;n:number}[];reason:string|null;caveats:string[]};
+// 넘기기 칸의 카탈로그 상품 고르기(평가 3회차 M6): 캠페인마다 그 캠페인·브랜드의 성장2 카탈로그 상품(최대 50개). 소싱 후보·오퍼 초안이 이 상품을 가리킨다.
+export type CampaignCatalogItem={id:string;version:number;title:string;sku:string};
 
 // GET 응답에 더하는 값.
 export type ViewExtras={
@@ -122,5 +131,8 @@ export type ViewExtras={
  calibration?:CalibrationView|null;
  launchOutcomes?:LaunchOutcome[];
  anomalyFlags?:QuarantineEntry[];
+ // 평가 3회차 추가 필드(모두 선택). campaignCatalogs: 캠페인 ID → 그 캠페인의 카탈로그 상품(넘기기 때 catalogId로 고른다). weightsProposal: 가중치 재보정 후보(제안만, 적용 안 함).
+ campaignCatalogs?:Record<string,CampaignCatalogItem[]>;
+ weightsProposal?:WeightsProposalView|null;
 };
 export type ResearchViewResponse=ProductResearchView&ViewExtras;

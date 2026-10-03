@@ -1,16 +1,17 @@
 // 상품 리서치·MD 에이전트 서버(P4·P5). 화면 응답(GET)과 쓰기 작업 16종(api.ts RESEARCH_ACTIONS)을 처리한다.
 // 권한: 조회·쓰기는 대표·관리자, 출처 연결·해제·즉시 수집은 소유자만. 모든 쓰기는 기능 스위치 product_research가 켜져 있어야 하고 requestId(uuid v4)로 멱등이며,
 // 상품 리서치 잠금(`${owner}:product-research`, 작업자 수집과 같은 키) 안에서 한다.
-// 하지 않는 것: 발주·결제·오퍼·카탈로그 가격·공급자 연락(mayOrder:false). 승인 결정은 성장2 캠페인의 시장 근거(growth_signal)로만 넘긴다.
+// 하지 않는 것: 발주·결제·오퍼 가격 승인·게시·카탈로그 가격·공급자 연락(mayOrder:false). 승인 결정은 성장2 캠페인의 시장 근거(growth_signal)와 사람이 채울 초안(고객 기회·소싱 후보·판매 오퍼)으로만 넘긴다.
 import type {Campaign} from '../agency';
 import {ApiError,database,readRecord,recordStatement,type Actor} from '../server';
 import {requireGrowthRunning} from '../growth-stop-server';
 import {parseSignalInput,parseNeedInput,signalEvidence,GrowthMarketError,type NeedInput,type SignalInput} from '../growth-market';
 import type {GrowthRecord} from '../growth-workspace-server';
 import {emptyCandidateInput,parseCandidateInput,GrowthSourcingError} from '../growth-sourcing';
+import {emptyOfferInput,parseOfferInput,GrowthCatalogError,type OfferInput} from '../growth-catalog';
 import type {CandidateRecord} from '../growth-sourcing-server';
 import {storefrontDigest} from '../storefront-orders';
-import {BACKTEST_HORIZONS,BRAND_FIT_MAX,BRAND_FIT_MIN,BRAND_FIT_REASON_MAX,BRIEF_PRODUCTS_MAX,CLEAR_REASON_MAX,COLLECT_NOW_PER_DAY,CREDENTIAL_KEYS,HANDOFF_EVIDENCE_MAX_DAYS,LABEL_THRESHOLD_MAX,LABEL_THRESHOLD_MIN,MATCH_KEYS_MAX,QUESTION_MAX,REASON_MAX,REASON_MIN,RESEARCH_ACTIONS,RISK_NOTE_MAX,RISK_RULE_MAX,RISK_RULES_MAX,type CredentialKey,type QuarantineEntry,type ResearchAction,type ResearchViewResponse,type RiskReview,type RiskRule} from './api';
+import {BACKTEST_HORIZONS,BRAND_FIT_MAX,BRAND_FIT_MIN,BRAND_FIT_REASON_MAX,BRIEF_PRODUCTS_MAX,CLEAR_REASON_MAX,COLLECT_NOW_PER_DAY,CREDENTIAL_KEYS,HANDOFF_EVIDENCE_MAX_DAYS,LABEL_THRESHOLD_MAX,LABEL_THRESHOLD_MIN,MATCH_KEYS_MAX,QUESTION_MAX,REASON_MAX,REASON_MIN,RESEARCH_ACTIONS,RISK_NOTE_MAX,RISK_RULE_MAX,RISK_RULES_MAX,type CredentialKey,type CampaignCatalogItem,type QuarantineEntry,type ResearchAction,type ResearchViewResponse,type RiskReview,type RiskRule} from './api';
 import {SOURCES,IMPORTABLE_SOURCES,sourceSpec} from './sources';
 import {CREDENTIAL_FOR_SOURCE,CredentialError,parseResearchCredential,type ResearchCredential} from './credentials';
 import {collectSearchadKeywords,collectDatalabSearch,trackYoutubeVideos,collectCoupangSearch,parseImport,CollectorError,kstDayKey,quotaDayKey,type CollectDeps,type ImportSourceId} from './collectors/index';
@@ -21,7 +22,7 @@ import {cleanTitle} from './analytics/match';
 import {shortId} from './analytics/hash';
 import {buildSeries,timeOf} from './analytics/series';
 import {normalizeKeyword} from './analytics/normalize';
-import {K,MAX_PRODUCTS,RESEARCH_LOCK_WAIT_MS,UUID_V4,acquireResearchLock,activeQuarantine,appendStatement,applyQuarantine,bulkPut,collectEnabled,countKind,credentialStatus,ensureRequestRoom,ensureSnapshotRoom,markQuotaOk,optional,parseSettings,putStatement,readMany,readSettings,readSnapshots,refundQuota,releaseResearchLock,requestStatement,requireResearch,researchEnabled,reserveQuota,sealCredential,snapshotStatement,type QuarantineRow,type RequestRow,type StoredCredential} from './server-store';
+import {K,MAX_PRODUCTS,RESEARCH_LOCK_LOST,RESEARCH_LOCK_WAIT_MS,ResearchLockLost,UUID_V4,acquireResearchLock,activeQuarantine,appendStatement,applyQuarantine,bulkPut,collectEnabled,countKind,credentialStatus,ensureRequestRoom,ensureSnapshotRoom,markQuotaOk,optional,parseSettings,putStatement,readMany,readSettings,readSnapshots,refundQuota,releaseResearchLock,renewOrThrow,requestStatement,requireResearch,researchEnabled,reserveQuota,sealCredential,snapshotStatement,type QuarantineRow,type RequestRow,type StoredCredential} from './server-store';
 import {backtest,isPinned,latestDecisions,loadDecisions,loadGroups,loadMaterial,loadProducts,loadScores,referencedSnapshots,type StoredProduct} from './server-pipeline';
 import {collectNow,defaultDeps,readCollectState} from './server-collect';
 import {briefInputs,modelBrief,templateBrief,ResearchError,type ModelJob} from './server-brief';
@@ -57,6 +58,19 @@ async function snapshotMeta(owner:string,ids:readonly string[]):Promise<Snapshot
   // 요청 범위(키워드·카테고리·기간·가져오기 범위)와 해석 한계, 관측 행 수만 작은 열로 읽는다. 관측 본문은 싣지 않는다.
   const r=await database().prepare("SELECT json_extract(data,'$.id') id,json_extract(data,'$.sourceId') s,json_extract(data,'$.fetchedAt') f,json_extract(data,'$.status') st,json_extract(data,'$.request') q,json_extract(data,'$.limitations') l,json_array_length(data,'$.observations') n FROM records WHERE owner=? AND kind=? AND id IN (SELECT value FROM json_each(?))").bind(owner,K.snapshot,JSON.stringify(uniq.slice(i,i+300).map(x=>`${owner}:${K.snapshot}:${x}`))).all<{id:string;s:SourceId;f:string;st:Snapshot['status'];q:string|null;l:string|null;n:number|null}>();
   for(const x of r.results)out.push({id:x.id,sourceId:x.s,fetchedAt:x.f,status:x.st,request:parseJson<Snapshot['request']>(x.q),limitations:parseJson<string[]>(x.l)??[],rows:Number(x.n)||0});
+ }
+ return out;
+}
+// 캠페인별 카탈로그 상품(평가 3회차 M6): 화면 캠페인의 성장2 카탈로그를 한 번에 작은 열로 읽는다. 캠페인·브랜드가 같은 것만, 캠페인마다 최대 CATALOG_PER_CAMPAIGN개(최근 수정 순).
+const CATALOG_PER_CAMPAIGN=50,CATALOG_READ_MAX=5000;
+async function campaignCatalogs(owner:string,campaigns:readonly Campaign[]):Promise<Record<string,CampaignCatalogItem[]>>{
+ if(!campaigns.length)return {};
+ const r=await database().prepare("SELECT parent_id c,json_extract(data,'$.id') id,json_extract(data,'$.version') v,json_extract(data,'$.brandId') b,json_extract(data,'$.campaignId') ci,json_extract(data,'$.input.title') t,json_extract(data,'$.input.sku') sku FROM records WHERE owner=? AND kind='growth_catalog' AND parent_id IN (SELECT value FROM json_each(?)) ORDER BY updated_at DESC, id DESC LIMIT ?").bind(owner,JSON.stringify(campaigns.map(c=>c.id)),CATALOG_READ_MAX).all<{c:string;id:string|null;v:number|null;b:string|null;ci:string|null;t:string|null;sku:string|null}>();
+ const byId=new Map(campaigns.map(c=>[c.id,c])),out:Record<string,CampaignCatalogItem[]>={};
+ for(const x of r.results){
+  const c=byId.get(x.c);if(!c||x.ci!==c.id||x.b!==c.brandId||typeof x.id!=='string'||typeof x.v!=='number')continue;
+  const list=out[c.id]??(out[c.id]=[]);if(list.length>=CATALOG_PER_CAMPAIGN)continue;
+  list.push({id:x.id,version:x.v,title:(typeof x.t==='string'?x.t.trim():'').slice(0,200),sku:(typeof x.sku==='string'?x.sku.trim():'').slice(0,80)});
  }
  return out;
 }
@@ -115,6 +129,7 @@ export async function researchView(who:Actor,now=new Date()):Promise<ResearchVie
  ]);
  const current=new Set(listed.flatMap(x=>x.score?[x.score.id]:[])),riskReviews:RiskReview[]=[],reviewed=new Set<string>();
  for(const rv of reviews)if(current.has(rv.scoreCardId)&&!reviewed.has(rv.scoreCardId)){reviewed.add(rv.scoreCardId);riskReviews.push(rv)}
+ const shown=campaigns.filter(c=>c.status!=='archived').slice(0,500);
  const errors=Object.entries(state.errors).filter(([,e])=>!!e).map(([sourceId,e])=>({sourceId:sourceId as SourceId,message:e!.message,at:e!.at}));
  const alerts=[...Object.entries(state.failures??{}).filter(([,f])=>!!f).map(([sourceId,f])=>({sourceId:sourceId as SourceId,message:f!.message,since:f!.since})),...fresh.quarantineAlerts];
  return {
@@ -124,7 +139,7 @@ export async function researchView(who:Actor,now=new Date()):Promise<ResearchVie
   settings,credentials:creds,
   imports:imports.results.map(r=>({snapshotId:r.id,sourceId:r.s,fileName:r.f,rows:Number(r.n)||0,importedAt:r.at,importedBy:r.e??r.u??null,scope:r.sc??null,observedDate:r.od??null})),
   collect:{lastRunAt:state.lastRunAt,nextRunAt:state.nextRunAt,lastErrors:errors},
-  campaigns:campaigns.filter(c=>c.status!=='archived').slice(0,500).map(c=>({id:c.id,title:c.title,version:c.version,brandId:c.brandId})),
+  campaigns:shown.map(c=>({id:c.id,title:c.title,version:c.version,brandId:c.brandId})),
   canConnect:who.role==='owner',series,snapshots,
   alerts,freshness:fresh.freshness,rankingStatus:fresh.rankingStatus,quarantines,riskReviews,
   collectNow:{usedToday:state.manualRuns?.day===kstDayKey(now)?state.manualRuns.count:0,maxPerDay:COLLECT_NOW_PER_DAY},
@@ -132,6 +147,8 @@ export async function researchView(who:Actor,now=new Date()):Promise<ResearchVie
   // 평가 2회차: 승인에 세는 리스크 필수 항목, 데이터랩 보정 보고·출시 뒤 결과(마지막 재계산 기준, 수집 상태에서 읽음), 표시만 한 상대값 급등.
   riskChecklists:listed.flatMap(({score})=>score&&needsReview(score)?[{scoreCardId:score.id,items:riskRules(score)}]:[]),
   calibration:state.calibration??null,launchOutcomes:state.outcomes?.rows??[],anomalyFlags:flags,
+  // 평가 3회차: 넘기기 칸의 캠페인별 카탈로그 상품, 가중치 재보정 후보(제안만, 마지막 재계산 기준).
+  campaignCatalogs:await campaignCatalogs(owner,shown),weightsProposal:state.recalibration??null,
  };
 }
 
@@ -141,7 +158,11 @@ const idOf=(v:unknown,label:string)=>{if(typeof v!=='string'||!/^[A-Za-z0-9_-]{1
 const OWNER_ONLY:readonly ResearchAction[]=['connect_source','disconnect_source','collect_now'];
 type Outcome={writes:D1PreparedStatement[];resultId:string|null;after?:()=>Promise<unknown>;pending?:ModelJob;request?:Partial<RequestRow>};
 // 재계산 경로는 모두 자사 판매 스냅샷·이상치 격리·점수표 색인을 함께 갱신한다(server-ops.ts refreshScores).
-const refresh=(owner:string,now:Date)=>async()=>refreshScores(owner,now,(await readCollectState(owner)).videos);
+// 단계 사이마다 잠금을 갱신하고(평가 3회차 M4), 잃었으면 남은 단계를 저장하지 않고 409로 알린다.
+const refresh=(owner:string,now:Date)=>async()=>{
+ try{return await refreshScores(owner,now,(await readCollectState(owner)).videos,{renew:()=>renewOrThrow(owner)})}
+ catch(e){if(e instanceof ResearchLockLost)throw new ApiError(409,RESEARCH_LOCK_LOST);throw e}
+};
 // 검토 필요 점수표(분석 계층이 붙이는 선택 필드). 아직 필드가 없는 점수표는 false다.
 type ReviewCard=ScoreCard&{needsReview?:boolean;review?:{rules:string[];reasons:string[];terms:string[]}|null};
 const needsReview=(c:ScoreCard)=>(c as ReviewCard).needsReview===true;
@@ -284,7 +305,7 @@ export function observedAtOf(s:Snapshot):string{
 function signalUrl(candidate:string,base:Omit<SignalInput,'sourceUrl'>){try{return parseSignalInput({...base,sourceUrl:candidate}).sourceUrl}catch{return null}}
 const NEED_DRAFT='초안 — 사람이 채움';
 // 넘기기(⑩): 같은 batch에 시장 신호(growth_signal) + 그 신호를 잇는 고객 기회 초안(growth_need) + 각 성장 이력 + 소싱 후보 초안(growth_sourcing_candidate, 카탈로그 상품이 정해질 때)
-// + 결정의 넘기기 연결. 카탈로그·오퍼·주문은 만들지 않고, 후보 초안은 원가 미확인·발주 권한 없음(mayOrder:false)이다.
+// + 판매 오퍼 초안(growth_offer, 평가 3회차: 단가 null·가격 승인 false) + 결정의 넘기기 연결. 카탈로그·주문은 만들지 않고, 후보 초안은 원가 미확인·발주 권한 없음(mayOrder:false)이다.
 async function handoff(who:Actor,b:Record<string,unknown>,now:Date):Promise<Outcome>{
  const owner=who.owner,d=await optional<MdDecision>(owner,K.decision,idOf(b.decisionId,'결정 ID'));
  if(!d)throw new ApiError(404,'선정 결정을 찾을 수 없습니다.');
@@ -329,7 +350,7 @@ async function handoff(who:Actor,b:Record<string,unknown>,now:Date):Promise<Outc
  const at=now.toISOString(),digest=await storefrontDigest({decisionId:d.id,campaignId:c.id,campaignVersion:c.version,input});
  const provenance={decisionId:d.id,scoreCardId:card.id,productId:p.id,snapshotIds:cited};
  const record:GrowthRecord<SignalInput>={id:signalId,campaignId:c.id,brandId:c.brandId,campaignVersion:c.version,version:1,input,updatedAt:at,updatedBy:who.id,requestDigest:digest,productResearch:provenance};
- const historyRow=(entity:'signal'|'need',id:string,data:unknown)=>database().prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').bind(`${owner}:growth_history:${entity}:${id}:1`,owner,'growth_history',c.id,JSON.stringify({...data as object,entity}),at);
+ const historyRow=(entity:'signal'|'need'|'offer',id:string,data:unknown)=>database().prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').bind(`${owner}:growth_history:${entity}:${id}:1`,owner,'growth_history',c.id,JSON.stringify({...data as object,entity}),at);
  // 고객 기회 초안: 성장 화면의 니즈 형식(parseNeedInput)을 그대로 통과해야 만든다. 상황·원하는 결과·장애물은 사람이 채운다고 적어 둔다(준비 점검이 '입력 필요'로 남긴다).
  let need:GrowthRecord<NeedInput>|null=null,needSkipped:string|null=null;
  try{
@@ -341,11 +362,12 @@ async function handoff(who:Actor,b:Record<string,unknown>,now:Date):Promise<Outc
  // 소싱 후보 초안(평가 2회차 M6): 성장2 소싱 후보 형식(parseCandidateInput)을 그대로 통과하는 초안을 같은 batch에 만든다. 원가·MOQ·납기는 미확인(null), 공급처는 미정, 발주 권한 없음.
  // 후보는 카탈로그 상품 하나를 가리켜야 하므로 이 캠페인의 카탈로그 상품(catalogId, 또는 하나뿐인 상품)이 있을 때만 만들고, 없으면 까닭을 남긴다(카탈로그는 만들지 않는다).
  const linked=(p as LinkedProduct).sourcing;
+ // 카탈로그 상품은 요청의 catalogId(이 캠페인·브랜드 것이어야 함, 아니면 404) 또는 하나뿐인 상품이다. 소싱 후보 초안과 판매 오퍼 초안이 같은 상품을 가리킨다.
+ const catalog=await campaignCatalog(owner,c,b.catalogId);
  let candidate:SourcingDraft|null=null,candidateSkipped:string|null=null;
  if(linked&&linked.campaignId===c.id)candidateSkipped='상품에 이 캠페인의 소싱 후보가 이미 연결돼 있어 초안을 만들지 않았습니다.';
  else{
-  const catalog=await campaignCatalog(owner,c,b.catalogId);
-  if(typeof catalog==='string')candidateSkipped=catalog;
+  if(typeof catalog==='string')candidateSkipped=catalog.replace('초안을','소싱 후보 초안을');
   else try{
    const candidateInput=parseCandidateInput({...emptyCandidateInput(),catalogId:catalog.id,catalogVersion:catalog.version,supplierCode:'unassigned',evidenceRef:`상품 리서치 시장 근거 ${signalId}`.slice(0,160),
     note:`${NEED_DRAFT}: 공급처·단위 원가·MOQ·납기·세금 기준을 확인해 채웁니다. 발주·결제·공급자 연락 권한 없음.`});
@@ -355,15 +377,30 @@ async function handoff(who:Actor,b:Record<string,unknown>,now:Date):Promise<Outc
    candidate={id:candidateId,brandId:c.brandId,campaignId:c.id,campaignVersion:c.version,version:1,input:candidateInput,createdAt:at,updatedAt:at,status:'draft',mayOrder:false,productResearch:provenance};
   }catch(e){if(e instanceof ApiError)throw e;candidateSkipped=e instanceof GrowthSourcingError?`소싱 후보 초안을 만들지 않았습니다: ${e.message}`:'소싱 후보 초안을 만들지 않았습니다.'}
  }
+ // 판매 오퍼 초안(평가 3회차 ⑩ 결정 연결): 성장2 오퍼 형식(growth-catalog.ts parseOfferInput)을 그대로 통과하는 초안을 같은 batch에 만든다.
+ // 오퍼 단가 null·가격 승인 false·구매 링크 비움이라 준비 점검(offerReadiness)이 '가격 승인 필요'로 남기고, 미션·게시는 이 오퍼로 진행할 수 없다(사람이 채운다).
+ // 고객 기회 초안과 카탈로그 상품이 모두 있어야 만든다(오퍼는 둘을 가리킨다).
+ let offer:GrowthRecord<OfferInput>|null=null,offerSkipped:string|null=null;
+ if(typeof catalog==='string')offerSkipped=catalog.replace('초안을','판매 오퍼 초안을');
+ else if(!need)offerSkipped='고객 기회 초안이 없어 판매 오퍼 초안을 만들지 않았습니다(오퍼는 고객 기회를 가리켜야 합니다).';
+ else try{
+  const offerInput=parseOfferInput({...emptyOfferInput(),title:`상품 리서치: ${p.name}`.slice(0,200),catalogId:catalog.id,catalogVersion:catalog.version,needId:need.id,price:null,quantity:1,landingUrl:'',
+   purchaseReason:`${NEED_DRAFT}: 구매 이유·오퍼 단가·구매 링크를 확인해 채웁니다. 가격 승인·게시·발주 없음.`,priceApproved:false});
+  const offerId='pro_'+(await storefrontDigest({campaignId:c.id,decisionId:d.id,entity:'offer'})).slice(0,40);
+  if(await optional(owner,'growth_offer',offerId))throw new ApiError(409,'이미 이 캠페인에 넘긴 결정입니다.');
+  await cap('growth_offer',500,'이 캠페인의 판매 오퍼');
+  offer={id:offerId,campaignId:c.id,brandId:c.brandId,campaignVersion:c.version,version:1,input:offerInput,updatedAt:at,updatedBy:who.id,requestDigest:await storefrontDigest({decisionId:d.id,campaignId:c.id,campaignVersion:c.version,offerInput}),evidenceRefs:[{id:need.id,version:1}],productResearch:provenance};
+ }catch(e){if(e instanceof ApiError)throw e;offerSkipped=e instanceof GrowthCatalogError?`판매 오퍼 초안을 만들지 않았습니다: ${e.message}`:'판매 오퍼 초안을 만들지 않았습니다.'}
  // handoff.candidateId·at(추가 필드): 만든 소싱 후보 초안과 넘긴 시각. 출시 뒤 결과(server-ops.ts launchOutcomes)가 이 후보 → 카탈로그 SKU로 자사 판매를 잇는다.
- const link:NonNullable<MdDecision['handoff']>&{candidateId:string|null;at:string}={campaignId:c.id,signalId,needId:need?.id??null,candidateId:candidate?.id??(linked&&linked.campaignId===c.id?linked.candidateId:null),at};
+ const link:NonNullable<MdDecision['handoff']>&{candidateId:string|null;offerId:string|null;at:string}={campaignId:c.id,signalId,needId:need?.id??null,candidateId:candidate?.id??(linked&&linked.campaignId===c.id?linked.candidateId:null),offerId:offer?.id??null,at};
  const next:MdDecision={...d,handoff:link};
  const sourcingWrites=candidate?[recordStatement(owner,'growth_sourcing_candidate',candidate.id,candidate,c.id),
   database().prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').bind(`${owner}:growth_sourcing_history:${crypto.randomUUID()}`,owner,'growth_sourcing_history',c.id,JSON.stringify(candidate),at),
   // 상품에 소싱 연결이 없으면 초안을 잇는다(견적이 채워지면 재계산이 수익성·실행 가능성에 쓴다).
   ...(linked?[]:[putStatement(owner,K.product,p.id,{...p,sourcing:{campaignId:c.id,candidateId:candidate.id,candidateVersion:1},updatedAt:at})])]:[];
- return {writes:[recordStatement(owner,'growth_signal',signalId,record,c.id),historyRow('signal',signalId,record),...(need?[recordStatement(owner,'growth_need',need.id,need,c.id),historyRow('need',need.id,need)]:[]),...sourcingWrites,putStatement(owner,K.decision,d.id,next,d.productId)],
-  resultId:signalId,request:{job:{signalId,needId:need?.id??null,needSkipped,candidateId:candidate?.id??null,candidateSkipped}}};
+ const offerWrites=offer?[recordStatement(owner,'growth_offer',offer.id,offer,c.id),historyRow('offer',offer.id,offer)]:[];
+ return {writes:[recordStatement(owner,'growth_signal',signalId,record,c.id),historyRow('signal',signalId,record),...(need?[recordStatement(owner,'growth_need',need.id,need,c.id),historyRow('need',need.id,need)]:[]),...sourcingWrites,...offerWrites,putStatement(owner,K.decision,d.id,next,d.productId)],
+  resultId:signalId,request:{job:{signalId,needId:need?.id??null,needSkipped,candidateId:candidate?.id??null,candidateSkipped,offerId:offer?.id??null,offerSkipped}}};
 }
 // 소싱 후보 초안을 이을 카탈로그 상품: 넘기기 요청의 catalogId(이 캠페인·브랜드 것이어야 함, 아니면 404), 없으면 캠페인 카탈로그 상품이 하나일 때 그것. 못 고르면 까닭 문장.
 type SourcingDraft=CandidateRecord&{status:'draft';mayOrder:false;productResearch:{decisionId:string;scoreCardId:string;productId:string;snapshotIds:string[]}};
@@ -375,9 +412,9 @@ async function campaignCatalog(owner:string,c:Campaign,given:unknown):Promise<{i
   return {id:row.id,version:row.version};
  }
  const r=await database().prepare('SELECT data FROM records WHERE owner=? AND kind=? AND parent_id=? LIMIT 2').bind(owner,'growth_catalog',c.id).all<{data:string}>();
- if(r.results.length!==1)return r.results.length?'캠페인 카탈로그 상품이 여러 개라 소싱 후보 초안을 만들지 않았습니다. 넘길 때 카탈로그 상품(catalogId)을 고르세요.':'캠페인에 카탈로그 상품이 없어 소싱 후보 초안을 만들지 않았습니다(카탈로그는 만들지 않습니다).';
+ if(r.results.length!==1)return r.results.length?'캠페인 카탈로그 상품이 여러 개라 초안을 만들지 않았습니다. 넘길 때 카탈로그 상품을 고르세요.':'캠페인에 카탈로그 상품이 없어 초안을 만들지 않았습니다(카탈로그는 만들지 않습니다).';
  const row=JSON.parse(r.results[0].data) as Row;
- return row.brandId===c.brandId&&row.campaignId===c.id?{id:row.id,version:row.version}:'캠페인 카탈로그 상품의 브랜드가 달라 소싱 후보 초안을 만들지 않았습니다.';
+ return row.brandId===c.brandId&&row.campaignId===c.id?{id:row.id,version:row.version}:'캠페인 카탈로그 상품의 브랜드가 달라 초안을 만들지 않았습니다.';
 }
 
 // ── 쓰기 진입점. 반환: 새 화면 + resultId(+duplicate·pending).

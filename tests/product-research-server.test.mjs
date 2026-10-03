@@ -22,6 +22,11 @@ const stub=async(url,init={})=>{
   for(const g of b.keywordGroups){const data=[];let t=Date.parse(b.startDate+'T00:00:00Z'),i=0;const end=Date.parse(b.endDate+'T00:00:00Z');while(t<=end){data.push({period:new Date(t).toISOString().slice(0,10),ratio:Math.min(100,20+i*0.5)});t+=(b.timeUnit==='week'?7:1)*DAY;i++}out.push({title:g.groupName,keywords:g.keywords,data})}
   return json({startDate:b.startDate,endDate:b.endDate,timeUnit:b.timeUnit,results:out});
  }
+ if(u.host==='openapi.naver.com'&&u.pathname==='/v1/datalab/shopping/category/keywords'){
+  const b=JSON.parse(init.body);const out=[];
+  for(const k of b.keyword){const data=[];let t=Date.parse(b.startDate+'T00:00:00Z');const end=Date.parse(b.endDate+'T00:00:00Z');while(t<=end){data.push({period:new Date(t).toISOString().slice(0,10),ratio:40});t+=7*DAY}out.push({title:k.name,keyword:k.param,data})}
+  return json({startDate:b.startDate,endDate:b.endDate,timeUnit:b.timeUnit,results:out});
+ }
  if(u.host==='openapi.naver.com'&&u.pathname==='/v1/search/shop.json'){
   const q=u.searchParams.get('query');
   return json({total:1520,items:[1,2,3].map(n=>({title:`<b>${q}</b> 정품 ${n}호 500g`,link:`https://smartstore.naver.com/shop${n}/products/${q.length}${n}`,lprice:String(3000+n*100),mallName:`몰${n}`,productId:`${q.length}0${n}${q.charCodeAt(0)}`,brand:`브랜드${n}`,category1:'식품'}))});
