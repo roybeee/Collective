@@ -7,8 +7,10 @@ import {ApiError,database,readRecord,recordStatement,type Actor} from '../server
 import {requireGrowthRunning} from '../growth-stop-server';
 import {parseSignalInput,parseNeedInput,signalEvidence,GrowthMarketError,type NeedInput,type SignalInput} from '../growth-market';
 import type {GrowthRecord} from '../growth-workspace-server';
+import {emptyCandidateInput,parseCandidateInput,GrowthSourcingError} from '../growth-sourcing';
+import type {CandidateRecord} from '../growth-sourcing-server';
 import {storefrontDigest} from '../storefront-orders';
-import {BACKTEST_HORIZONS,BRAND_FIT_MAX,BRAND_FIT_MIN,BRAND_FIT_REASON_MAX,BRIEF_PRODUCTS_MAX,CLEAR_REASON_MAX,COLLECT_NOW_PER_DAY,CREDENTIAL_KEYS,HANDOFF_EVIDENCE_MAX_DAYS,LABEL_THRESHOLD_MAX,LABEL_THRESHOLD_MIN,MATCH_KEYS_MAX,QUESTION_MAX,REASON_MAX,REASON_MIN,RESEARCH_ACTIONS,RISK_NOTE_MAX,RISK_RULE_MAX,RISK_RULES_MAX,type CredentialKey,type ResearchAction,type ResearchViewResponse,type RiskReview} from './api';
+import {BACKTEST_HORIZONS,BRAND_FIT_MAX,BRAND_FIT_MIN,BRAND_FIT_REASON_MAX,BRIEF_PRODUCTS_MAX,CLEAR_REASON_MAX,COLLECT_NOW_PER_DAY,CREDENTIAL_KEYS,HANDOFF_EVIDENCE_MAX_DAYS,LABEL_THRESHOLD_MAX,LABEL_THRESHOLD_MIN,MATCH_KEYS_MAX,QUESTION_MAX,REASON_MAX,REASON_MIN,RESEARCH_ACTIONS,RISK_NOTE_MAX,RISK_RULE_MAX,RISK_RULES_MAX,type CredentialKey,type QuarantineEntry,type ResearchAction,type ResearchViewResponse,type RiskReview,type RiskRule} from './api';
 import {SOURCES,IMPORTABLE_SOURCES,sourceSpec} from './sources';
 import {CREDENTIAL_FOR_SOURCE,CredentialError,parseResearchCredential,type ResearchCredential} from './credentials';
 import {collectSearchadKeywords,collectDatalabSearch,trackYoutubeVideos,collectCoupangSearch,parseImport,CollectorError,kstDayKey,quotaDayKey,type CollectDeps,type ImportSourceId} from './collectors/index';
@@ -36,7 +38,7 @@ const TIER_ORDER:Record<ScoreCard['tier'],number>={adopt:0,watch:1,needs_data:2,
 // ── 조회
 // 화면 응답이 읽는 양의 상한(평가 1회차 H6): 전체 스냅샷·점수표를 읽지 않는다. 시계열은 상위 상품의 점수표가 인용한 스냅샷(최대 120개)과 같은 출처의 104주 안 이전 스냅샷을 합쳐 최대 200개로 만들고,
 // '지난주' 점수는 상품별 점수표 색인(pr_score_index)에서, 스냅샷 요약은 인용된 것(최대 1,000개)과 최근 50개만 작은 열로 읽는다.
-const VIEW_SERIES_PRODUCTS=60,VIEW_SERIES_SNAPSHOTS=200,VIEW_SERIES_CITED=120,VIEW_META_SNAPSHOTS=1000,VIEW_QUARANTINES=100,VIEW_RISK_REVIEWS=1000;
+const VIEW_SERIES_PRODUCTS=60,VIEW_SERIES_SNAPSHOTS=200,VIEW_SERIES_CITED=120,VIEW_META_SNAPSHOTS=1000,VIEW_QUARANTINES=100,VIEW_FLAGS=50,VIEW_RISK_REVIEWS=1000;
 type SnapshotMeta={id:string;sourceId:SourceId;fetchedAt:string;status:Snapshot['status'];request:Snapshot['request']|null;limitations:string[];rows:number};
 async function sourceRows(owner:string,creds:Awaited<ReturnType<typeof credentialStatus>>,now:Date){
  return Promise.all(SOURCES.map(async s=>{
@@ -103,10 +105,12 @@ export async function researchView(who:Actor,now=new Date()):Promise<ResearchVie
  const series:Series[]=buildSeries(applyQuarantine(seriesSnaps,quarantine)).filter(s=>wanted.has(s.subjectKey)).map(s=>({...s,points:s.points.filter(p=>timeOf(p.at)>=cutoff)})).filter(s=>s.points.length);
  const evidence=[...new Set([...listed.flatMap(x=>x.score?x.score.subScores.flatMap(s=>s.evidence):[]),...briefs.flatMap(b=>b.claims.flatMap(c=>c.citations))])].slice(0,VIEW_META_SNAPSHOTS);
  const recent=await database().prepare('SELECT id FROM records WHERE owner=? AND kind=? ORDER BY updated_at DESC LIMIT 50').bind(owner,K.snapshot).all<{id:string}>();
- const [snapshots,fresh,quarantines,reviews]=await Promise.all([
+ const entry=(q:QuarantineRow):QuarantineEntry=>({id:q.id,sourceId:q.sourceId,snapshotId:q.snapshotId,subjectKey:q.subjectKey,metric:q.metric,periodTo:q.periodTo,value:q.value,median:q.median,robustZ:q.robustZ,createdAt:q.createdAt,status:q.status==='flagged'?'flagged':'active',basis:q.basis??null});
+ const quarantined=(status:'active'|'flagged',limit:number)=>database().prepare("SELECT data FROM records WHERE owner=? AND kind=? AND json_extract(data,'$.status')=? ORDER BY updated_at DESC LIMIT ?").bind(owner,K.quarantine,status,limit).all<{data:string}>().then(r=>r.results.map(x=>entry(JSON.parse(x.data) as QuarantineRow)));
+ const [snapshots,fresh,quarantines,flags,reviews]=await Promise.all([
   snapshotMeta(owner,[...evidence,...recent.results.map(r=>r.id.slice(`${owner}:${K.snapshot}:`.length))]),
   freshnessView(owner,now,rows),
-  database().prepare("SELECT data FROM records WHERE owner=? AND kind=? AND json_extract(data,'$.status')='active' ORDER BY updated_at DESC LIMIT ?").bind(owner,K.quarantine,VIEW_QUARANTINES).all<{data:string}>().then(r=>r.results.map(x=>{const q=JSON.parse(x.data) as QuarantineRow;return {id:q.id,sourceId:q.sourceId,snapshotId:q.snapshotId,subjectKey:q.subjectKey,metric:q.metric,periodTo:q.periodTo,value:q.value,median:q.median,robustZ:q.robustZ,createdAt:q.createdAt}})),
+  quarantined('active',VIEW_QUARANTINES),quarantined('flagged',VIEW_FLAGS),
   database().prepare('SELECT data FROM records WHERE owner=? AND kind=? ORDER BY updated_at DESC LIMIT ?').bind(owner,K.riskReview,VIEW_RISK_REVIEWS).all<{data:string}>().then(r=>r.results.map(x=>JSON.parse(x.data) as RiskReview)),
  ]);
  const current=new Set(listed.flatMap(x=>x.score?[x.score.id]:[])),riskReviews:RiskReview[]=[],reviewed=new Set<string>();
@@ -125,6 +129,9 @@ export async function researchView(who:Actor,now=new Date()):Promise<ResearchVie
   alerts,freshness:fresh.freshness,rankingStatus:fresh.rankingStatus,quarantines,riskReviews,
   collectNow:{usedToday:state.manualRuns?.day===kstDayKey(now)?state.manualRuns.count:0,maxPerDay:COLLECT_NOW_PER_DAY},
   weeklyReport:state.weekly??null,
+  // 평가 2회차: 승인에 세는 리스크 필수 항목, 데이터랩 보정 보고·출시 뒤 결과(마지막 재계산 기준, 수집 상태에서 읽음), 표시만 한 상대값 급등.
+  riskChecklists:listed.flatMap(({score})=>score&&needsReview(score)?[{scoreCardId:score.id,items:riskRules(score)}]:[]),
+  calibration:state.calibration??null,launchOutcomes:state.outcomes?.rows??[],anomalyFlags:flags,
  };
 }
 
@@ -138,6 +145,24 @@ const refresh=(owner:string,now:Date)=>async()=>refreshScores(owner,now,(await r
 // 검토 필요 점수표(분석 계층이 붙이는 선택 필드). 아직 필드가 없는 점수표는 false다.
 type ReviewCard=ScoreCard&{needsReview?:boolean;review?:{rules:string[];reasons:string[];terms:string[]}|null};
 const needsReview=(c:ScoreCard)=>(c as ReviewCard).needsReview===true;
+// 리스크 필수 항목(평가 2회차 H1): 서버가 점수표의 review(높음 항목)에서 만든다. 화면이 보낸 자유 문장은 승인에 세지 않는다.
+// text=위험 사유 문장(화면 체크리스트와 같은 200자 자르기), id=규칙 id(규칙과 사유가 1:1일 때) 또는 'review_번호'. 검토 필요인데 review가 없으면 일반 항목 하나.
+const GENERIC_RULE:RiskRule={id:'risk_review',text:'리스크 높음 사유를 확인했습니다.'};
+export function riskRules(card:ScoreCard):RiskRule[]{
+ if(!needsReview(card))return [];
+ const rv=(card as ReviewCard).review,reasons=[...new Set((rv?.reasons??[]).map(x=>x.trim().slice(0,RISK_RULE_MAX)).filter(Boolean))];
+ if(!rv||!reasons.length)return [GENERIC_RULE];
+ const aligned=rv.rules.length===reasons.length&&new Set(rv.rules).size===rv.rules.length;
+ return reasons.map((text,i)=>({id:aligned?rv.rules[i]:`review_${i+1}`,text}));
+}
+// 체크리스트 항목 → 필수 항목 id(없으면 null=운영자 추가 항목). ruleId를 주면 그것만 본다.
+const ruleOf=(rules:readonly RiskRule[],x:{rule:string;ruleId?:string|null})=>x.ruleId?rules.find(r=>r.id===x.ruleId)??null:rules.find(r=>r.text===x.rule.trim()||r.id===x.rule.trim())??null;
+// 저장한 검토로 승인할 수 있는지: 필수 항목이 모두 확인됐고, 확인하지 않은 운영자 항목이 없어야 한다. 막는 항목 이름 목록(없으면 빈 배열).
+function openRiskItems(rules:readonly RiskRule[],review:RiskReview):string[]{
+ const missing=rules.filter(r=>!review.checklist.some(x=>x.checked&&ruleOf(rules,x)?.id===r.id)).map(r=>r.text);
+ const extra=review.checklist.filter(x=>!x.checked&&!ruleOf(rules,x)).map(x=>x.rule);
+ return [...missing,...extra];
+}
 // 확인 표시·사유 검사: 분석 계층의 reviewApprovalError(analytics/score.ts)가 있으면 그것을, 없으면 같은 규칙의 지역 검사를 쓴다.
 type ReviewCheck=(card:ReviewCard,reason:string,acknowledged:boolean)=>string|null;
 function reviewError(card:ReviewCard,reason:string,acknowledged:boolean):string|null{
@@ -230,12 +255,12 @@ async function decide(who:Actor,b:Record<string,unknown>,now:Date):Promise<Outco
  const card=await optional<ScoreCard>(owner,K.score,scoreCardId);if(!card||card.productId!==p.id)throw new ApiError(404,'점수표를 찾을 수 없습니다.');
  if(status==='approved'&&card.blocked)throw new ApiError(409,`선정 금지 상품은 승인할 수 없습니다: ${card.blocked.reason}`);
  if(status==='approved'&&needsReview(card)){
-  // 둘 중 하나가 있어야 한다: ① 이 판에 저장한 리스크 체크리스트(모든 항목 확인), ② 위험 확인 표시(riskAcknowledged)와 확인한 위험을 적은 사유.
-  // 저장한 체크리스트에 확인하지 않은 항목이 있으면 ②로 넘어가지 않고 막는다(사람이 '아직'이라고 적은 것이다).
+  // 둘 중 하나가 있어야 한다: ① 이 판에 저장한 리스크 체크리스트(서버 필수 항목을 모두 확인), ② 위험 확인 표시(riskAcknowledged)와 확인한 위험을 적은 사유.
+  // 저장한 체크리스트에 확인하지 않은 항목이 있으면 ②로 넘어가지 않고 막는다(사람이 '아직'이라고 적은 것이다). 필수 항목은 저장한 문장이 아니라 점수표에서 다시 만든다(H1).
   const review=await latestRiskReview(owner,p.id,card.id);
   if(review){
-   const open=review.checklist.filter(x=>!x.checked);
-   if(open.length)throw new ApiError(409,`리스크 체크리스트에 확인하지 않은 항목이 ${open.length}개 있어 승인할 수 없습니다: ${open.slice(0,3).map(x=>x.rule).join(', ')}`);
+   const open=openRiskItems(riskRules(card),review);
+   if(open.length)throw new ApiError(409,`리스크 체크리스트에 확인하지 않은 항목이 ${open.length}개 있어 승인할 수 없습니다: ${open.slice(0,3).join(', ')}`);
   }else{
    const err=reviewError(card as ReviewCard,reason,b.riskAcknowledged===true);
    if(err)throw new ApiError(409,`이 점수표는 사람 리스크 검토가 필요합니다. ${err} 또는 리스크 체크리스트를 확인해 저장(save_risk_review)한 뒤 승인하세요.`);
@@ -258,7 +283,8 @@ export function observedAtOf(s:Snapshot):string{
 // 공개 https 주소 후보: 입력 → 목록 주소 그대로 → 쿼리·조각을 뺀 주소. 성장 신호 형식 검사(parseSignalInput)를 통과하는 첫 주소를 쓴다.
 function signalUrl(candidate:string,base:Omit<SignalInput,'sourceUrl'>){try{return parseSignalInput({...base,sourceUrl:candidate}).sourceUrl}catch{return null}}
 const NEED_DRAFT='초안 — 사람이 채움';
-// 넘기기(⑩): 같은 batch에 시장 신호(growth_signal) + 그 신호를 잇는 고객 기회 초안(growth_need) + 각 성장 이력 + 결정의 넘기기 연결. 카탈로그·오퍼·주문은 만들지 않는다.
+// 넘기기(⑩): 같은 batch에 시장 신호(growth_signal) + 그 신호를 잇는 고객 기회 초안(growth_need) + 각 성장 이력 + 소싱 후보 초안(growth_sourcing_candidate, 카탈로그 상품이 정해질 때)
+// + 결정의 넘기기 연결. 카탈로그·오퍼·주문은 만들지 않고, 후보 초안은 원가 미확인·발주 권한 없음(mayOrder:false)이다.
 async function handoff(who:Actor,b:Record<string,unknown>,now:Date):Promise<Outcome>{
  const owner=who.owner,d=await optional<MdDecision>(owner,K.decision,idOf(b.decisionId,'결정 ID'));
  if(!d)throw new ApiError(404,'선정 결정을 찾을 수 없습니다.');
@@ -312,9 +338,46 @@ async function handoff(who:Actor,b:Record<string,unknown>,now:Date):Promise<Outc
   if(await optional(owner,'growth_need',needId))throw new ApiError(409,'이미 이 캠페인에 넘긴 결정입니다.');
   need={id:needId,campaignId:c.id,brandId:c.brandId,campaignVersion:c.version,version:1,input:needInput,updatedAt:at,updatedBy:who.id,requestDigest:await storefrontDigest({decisionId:d.id,campaignId:c.id,campaignVersion:c.version,needInput}),evidenceRefs:[{id:signalId,version:1}],productResearch:provenance};
  }catch(e){if(e instanceof ApiError)throw e;needSkipped=e instanceof GrowthMarketError?`고객 기회 초안을 만들지 않았습니다: ${e.message}`:'고객 기회 초안을 만들지 않았습니다.'}
- const next:MdDecision={...d,handoff:{campaignId:c.id,signalId,needId:need?.id??null}};
- return {writes:[recordStatement(owner,'growth_signal',signalId,record,c.id),historyRow('signal',signalId,record),...(need?[recordStatement(owner,'growth_need',need.id,need,c.id),historyRow('need',need.id,need)]:[]),putStatement(owner,K.decision,d.id,next,d.productId)],
-  resultId:signalId,request:{job:{signalId,needId:need?.id??null,needSkipped}}};
+ // 소싱 후보 초안(평가 2회차 M6): 성장2 소싱 후보 형식(parseCandidateInput)을 그대로 통과하는 초안을 같은 batch에 만든다. 원가·MOQ·납기는 미확인(null), 공급처는 미정, 발주 권한 없음.
+ // 후보는 카탈로그 상품 하나를 가리켜야 하므로 이 캠페인의 카탈로그 상품(catalogId, 또는 하나뿐인 상품)이 있을 때만 만들고, 없으면 까닭을 남긴다(카탈로그는 만들지 않는다).
+ const linked=(p as LinkedProduct).sourcing;
+ let candidate:SourcingDraft|null=null,candidateSkipped:string|null=null;
+ if(linked&&linked.campaignId===c.id)candidateSkipped='상품에 이 캠페인의 소싱 후보가 이미 연결돼 있어 초안을 만들지 않았습니다.';
+ else{
+  const catalog=await campaignCatalog(owner,c,b.catalogId);
+  if(typeof catalog==='string')candidateSkipped=catalog;
+  else try{
+   const candidateInput=parseCandidateInput({...emptyCandidateInput(),catalogId:catalog.id,catalogVersion:catalog.version,supplierCode:'unassigned',evidenceRef:`상품 리서치 시장 근거 ${signalId}`.slice(0,160),
+    note:`${NEED_DRAFT}: 공급처·단위 원가·MOQ·납기·세금 기준을 확인해 채웁니다. 발주·결제·공급자 연락 권한 없음.`});
+   const candidateId='prc_'+(await storefrontDigest({campaignId:c.id,decisionId:d.id,entity:'sourcing_candidate'})).slice(0,40);
+   if(await optional(owner,'growth_sourcing_candidate',candidateId))throw new ApiError(409,'이미 이 캠페인에 넘긴 결정입니다.');
+   await cap('growth_sourcing_candidate',100,'이 캠페인의 소싱 후보');await cap('growth_sourcing_history',1000,'이 캠페인의 소싱 이력');
+   candidate={id:candidateId,brandId:c.brandId,campaignId:c.id,campaignVersion:c.version,version:1,input:candidateInput,createdAt:at,updatedAt:at,status:'draft',mayOrder:false,productResearch:provenance};
+  }catch(e){if(e instanceof ApiError)throw e;candidateSkipped=e instanceof GrowthSourcingError?`소싱 후보 초안을 만들지 않았습니다: ${e.message}`:'소싱 후보 초안을 만들지 않았습니다.'}
+ }
+ // handoff.candidateId·at(추가 필드): 만든 소싱 후보 초안과 넘긴 시각. 출시 뒤 결과(server-ops.ts launchOutcomes)가 이 후보 → 카탈로그 SKU로 자사 판매를 잇는다.
+ const link:NonNullable<MdDecision['handoff']>&{candidateId:string|null;at:string}={campaignId:c.id,signalId,needId:need?.id??null,candidateId:candidate?.id??(linked&&linked.campaignId===c.id?linked.candidateId:null),at};
+ const next:MdDecision={...d,handoff:link};
+ const sourcingWrites=candidate?[recordStatement(owner,'growth_sourcing_candidate',candidate.id,candidate,c.id),
+  database().prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').bind(`${owner}:growth_sourcing_history:${crypto.randomUUID()}`,owner,'growth_sourcing_history',c.id,JSON.stringify(candidate),at),
+  // 상품에 소싱 연결이 없으면 초안을 잇는다(견적이 채워지면 재계산이 수익성·실행 가능성에 쓴다).
+  ...(linked?[]:[putStatement(owner,K.product,p.id,{...p,sourcing:{campaignId:c.id,candidateId:candidate.id,candidateVersion:1},updatedAt:at})])]:[];
+ return {writes:[recordStatement(owner,'growth_signal',signalId,record,c.id),historyRow('signal',signalId,record),...(need?[recordStatement(owner,'growth_need',need.id,need,c.id),historyRow('need',need.id,need)]:[]),...sourcingWrites,putStatement(owner,K.decision,d.id,next,d.productId)],
+  resultId:signalId,request:{job:{signalId,needId:need?.id??null,needSkipped,candidateId:candidate?.id??null,candidateSkipped}}};
+}
+// 소싱 후보 초안을 이을 카탈로그 상품: 넘기기 요청의 catalogId(이 캠페인·브랜드 것이어야 함, 아니면 404), 없으면 캠페인 카탈로그 상품이 하나일 때 그것. 못 고르면 까닭 문장.
+type SourcingDraft=CandidateRecord&{status:'draft';mayOrder:false;productResearch:{decisionId:string;scoreCardId:string;productId:string;snapshotIds:string[]}};
+async function campaignCatalog(owner:string,c:Campaign,given:unknown):Promise<{id:string;version:number}|string>{
+ type Row={id:string;version:number;campaignId:string;brandId:string};
+ if(given!==undefined&&given!==null&&given!==''){
+  const row=await optional<Row>(owner,'growth_catalog',idOf(given,'카탈로그 상품 ID'));
+  if(!row||row.campaignId!==c.id||row.brandId!==c.brandId)throw new ApiError(404,'이 캠페인의 카탈로그 상품을 찾을 수 없습니다.');
+  return {id:row.id,version:row.version};
+ }
+ const r=await database().prepare('SELECT data FROM records WHERE owner=? AND kind=? AND parent_id=? LIMIT 2').bind(owner,'growth_catalog',c.id).all<{data:string}>();
+ if(r.results.length!==1)return r.results.length?'캠페인 카탈로그 상품이 여러 개라 소싱 후보 초안을 만들지 않았습니다. 넘길 때 카탈로그 상품(catalogId)을 고르세요.':'캠페인에 카탈로그 상품이 없어 소싱 후보 초안을 만들지 않았습니다(카탈로그는 만들지 않습니다).';
+ const row=JSON.parse(r.results[0].data) as Row;
+ return row.brandId===c.brandId&&row.campaignId===c.id?{id:row.id,version:row.version}:'캠페인 카탈로그 상품의 브랜드가 달라 소싱 후보 초안을 만들지 않았습니다.';
 }
 
 // ── 쓰기 진입점. 반환: 새 화면 + resultId(+duplicate·pending).
@@ -393,7 +456,7 @@ async function perform(who:Actor,action:ResearchAction,b:Record<string,unknown>,
    const r=await collectNow(owner,sourceId,deps);
    return {writes:[],resultId:null,request:{job:{calls:r.calls,stored:r.stored,remaining:r.remaining,runsToday:r.runsToday}}};
   }
-  case 'recompute':{const r=await refresh(owner,now)();return {writes:[],resultId:null,request:{job:r}}}
+  case 'recompute':{const {derived:_d,...r}=await refresh(owner,now)();void _d;return {writes:[],resultId:null,request:{job:r}}}
   case 'confirm_match':return confirmMatch(who,b,now);
   case 'set_brand_fit':{
    const p=await productOf(owner,b.productId),value=b.value;
@@ -457,14 +520,20 @@ async function perform(who:Actor,action:ResearchAction,b:Record<string,unknown>,
    const card=await optional<ScoreCard>(owner,K.score,scoreCardId);if(!card||card.productId!==p.id)throw new ApiError(404,'점수표를 찾을 수 없습니다.');
    const list=Array.isArray(b.checklist)?b.checklist:null;
    if(!list||!list.length||list.length>RISK_RULES_MAX)throw new ApiError(400,`리스크 체크리스트 항목을 1~${RISK_RULES_MAX}개 보내세요.`);
+   // 필수 항목은 서버가 점수표에서 만든다(H1). rule이 필수 항목 문장·id와 같으면 그 항목, ruleId를 주면 필수 항목 id여야 한다(모르면 400). 나머지는 운영자 추가 항목(승인에 세지 않음).
+   const rules=riskRules(card);
    const checklist=list.map(x=>{
     if(!x||typeof x!=='object'||Array.isArray(x)||typeof (x as {checked?:unknown}).checked!=='boolean')throw new ApiError(400,'체크리스트 항목은 {rule, checked(참·거짓)} 형식이어야 합니다.');
-    return {rule:text((x as {rule?:unknown}).rule,'체크 항목',1,RISK_RULE_MAX),checked:(x as {checked:boolean}).checked};
+    const given=(x as {ruleId?:unknown}).ruleId,ruleId=given===undefined||given===null||given===''?null:idOf(given,'필수 항목 ID');
+    if(ruleId&&!rules.some(r=>r.id===ruleId))throw new ApiError(400,`이 점수표의 필수 리스크 항목이 아닙니다: ${ruleId}. 화면을 새로 고쳐 최신 항목으로 다시 저장하세요.`);
+    const item={rule:text((x as {rule?:unknown}).rule,'체크 항목',1,RISK_RULE_MAX),checked:(x as {checked:boolean}).checked,ruleId};
+    return {...item,ruleId:ruleOf(rules,item)?.id??null};
    });
-   if(new Set(checklist.map(x=>x.rule)).size!==checklist.length)throw new ApiError(400,'같은 체크 항목이 두 번 있습니다.');
+   if(new Set(checklist.map(x=>x.rule)).size!==checklist.length||new Set(checklist.flatMap(x=>x.ruleId?[x.ruleId]:[])).size!==checklist.filter(x=>x.ruleId).length)throw new ApiError(400,'같은 체크 항목이 두 번 있습니다.');
    const note=b.note===undefined||b.note===null||b.note===''?'':text(b.note,'검토 메모',1,RISK_NOTE_MAX);
    if(await countKind(owner,K.riskReview)>=MAX_RISK_REVIEWS)throw new ApiError(409,'리스크 검토 기록 한도에 도달했습니다.');
-   const row:RiskReview={id:crypto.randomUUID(),productId:p.id,scoreCardId,checklist,note,by,at:now.toISOString()};
+   const draft:RiskReview={id:crypto.randomUUID(),productId:p.id,scoreCardId,checklist,note,by,at:now.toISOString()};
+   const row:RiskReview={...draft,complete:!openRiskItems(rules,draft).length};
    return {writes:[appendStatement(owner,K.riskReview,row.id,row,p.id,row.at)],resultId:row.id};
   }
  }

@@ -245,7 +245,9 @@ r=await act('set_brand_fit',{productId:target.id,value:82,reason:'브랜드 톤�
 check(r.status===200&&r.body.products.find(p=>p.id===target.id).score.subScores.find(s=>s.key==='brand_fit').value===82,'brand fit judgement enters a new score version');
 r=await act('run_backtest',{horizonWeeks:12,labelThreshold:20});
 check(r.status===200&&r.body.backtests.length===1,'backtest stored');
-const bt=r.body.backtests[0];check(bt.candidates>0&&bt.precisionAtK.every(p=>typeof p.value==='number')&&bt.reason===null&&bt.label.includes('20%')&&bt.baselines.length===3,'104-week datalab history → backtest with numbers and baselines (percent threshold converted)');
+// 평가 2회차 H3: 오늘 처음 수집한 키워드·목록은 데이터랩 104주 소급 이력이 있어도 과거 기준 시점의 후보가 아니다(생존 편향). 숫자 대신 사유를 준다.
+// 기준 시점 이전부터 쌓인 자료로 숫자를 내는 경우는 product-research-server-backtest.test.mjs(90일 일별 스냅샷)가 덮는다.
+const bt=r.body.backtests[0];check(bt.candidates===0&&bt.precisionAtK.every(p=>p.value===null)&&/처음 수집/.test(bt.reason)&&bt.label.includes('20%')&&bt.baselines.length===3,'subjects first collected today (104-week datalab backfill only) are not as-of candidates → no numbers, Korean reason');
 // 이력이 짧은 작업공간(가져오기 하루치뿐): 숫자를 만들지 않고 사유를 준다
 const O2='pr-owner-2',H2={...H,'oai-authenticated-user-id':O2};await flags.setFeatureFlag(O2,{flag:'product_research',enabled:true},{id:O2,email:null});
 await post({action:'import_file',requestId:randomUUID(),sourceId:'coupang_ranking_manual',fileName:'c.csv',text:good,scope:'쿠팡 소스',observedDate:today},H2);

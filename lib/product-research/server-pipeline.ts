@@ -1,29 +1,46 @@
 // 상품 리서치 재계산 파이프라인(서버, 외부 호출 없음). docs/PRODUCT-RESEARCH-PLAN.ko.md 4절.
 // 저장된 스냅샷 → 시계열(buildSeries) → 키워드 묶음(groupKeywords) → 상품 매칭(matchListings, 사람 확인한 묶음은 고정) → 점수표(w1).
 // 점수표 판은 불변이다: 입력 해시(inputDigest)가 같으면 같은 id라 새 판을 만들지 않는다. 상품 id는 목록이 겹치는 기존 상품 id를 이어 쓴다.
-// 계산 범위(Workers 메모리·CPU 한도): 최근 120일 스냅샷 최대 3,000개, 키워드 최대 500개, 자동 매칭 목록 최대 400개.
+// 계산 범위(Workers 메모리·CPU 한도): 최근 120일 스냅샷을 출처별 계획으로 읽는다(recomputePlan, 평가 2회차 H4), 키워드 최대 500개, 자동 매칭 목록 최대 400개.
 // 평가 1회차 반영: 조사 방향(보관 온도·가격 상한) 표시, 연결한 소싱 견적으로 수익성·실행 가능성 계산, 상표 보호 목록, 브랜드 아카이브 대조 힌트,
 // 백테스트는 기준 시점 이전 관측만으로 후보·특징을 만든다(미래 정보로 후보를 고르지 않는다).
 import {ApiError,database,stamp} from '../server';
 import {effectiveBrandFacts,type BrandFact} from '../brand-facts';
 import type {CandidateInput} from '../growth-sourcing';
-import type {ResearchSettings} from './api';
+import type {CalibrationView,ResearchSettings} from './api';
 import {categorySpec,CATEGORIES} from './categories';
-import {buildSeries,subjectKey,timeOf,DAY_MS} from './analytics/series';
+import {buildSeries,seriesKey,subjectKey,timeOf,DAY_MS} from './analytics/series';
 import {groupKeywords,normalizeKeyword,toKeywordGroup,type KeywordCluster} from './analytics/normalize';
 import {matchListings,classifyListing,listingKey,cleanTitle,listingBrand,type ListingInput,type Classification} from './analytics/match';
 import {buildScoreInput,scoreCard,type ProductBundle} from './analytics/score';
+import {calibrateTrend,sumAnchors} from './analytics/calibrate';
 import {runBacktest} from './analytics/backtest';
 import {shortId} from './analytics/hash';
 import {groupDigits} from './analytics/format';
 import {PROFIT_DEFAULTS,profitInputFromCandidate,type ProfitAssumption} from './analytics/profit';
 import {protectedBrandList} from './analytics/protected-brands';
 import {brandFitHint,type BrandFactLite,type BrandLite} from './analytics/brand-fit';
-import {K,MAX_PRODUCTS,MAX_SCORES,bulkDelete,bulkPut,countKind,listKind,optional,readMany,readSettings,recentSnapshots} from './server-store';
+import {K,MAX_PRODUCTS,MAX_SCORES,bulkDelete,bulkPut,countKind,latestSnapshotAt,listKind,loadPlanned,optional,readMany,readSettings,snapshotGroupMembers,type SourceLoad} from './server-store';
 import type {BacktestResult,KeywordGroup,MdDecision,MdBrief,ResearchProduct,RegulatoryClass,ScoreCard,Series,SeriesPoint,Snapshot,SourceId,Temperature} from './types';
 
-export const RECOMPUTE_WINDOW_DAYS=120,RECOMPUTE_MAX_SNAPSHOTS=3000,MAX_KEYWORDS=500,MAX_AUTO_LISTINGS=400;
+export const RECOMPUTE_WINDOW_DAYS=120,MAX_KEYWORDS=500,MAX_AUTO_LISTINGS=400;
 const RANK_SOURCES:readonly SourceId[]=['coupang_partners','licensed_ranking','coupang_ranking_manual','musinsa_ranking_manual','oliveyoung_ranking_manual'];
+// 출처별 읽기 계획(평가 2회차 H4). 최신 3,000개(전 출처 합산)로 자르면 하루 44개 안팎이 쌓여 68일 남짓만 남아, 12주 순위 기울기와 백테스트의 기준 시점 이전 관측이 사라졌다.
+// 데이터랩은 묶음마다 최신 1개(한 스냅샷이 104주 이력을 싣는다), 자사 판매는 최신 1개(전체 주를 다시 합산한 값), 나머지는 기간 안 출처별 상한. 검색광고는 쓰는 지표만 읽는다.
+export const SEARCHAD_METRICS=['search_volume_month','ad_competition'] as const;
+const isoAt=(t:number)=>new Date(t).toISOString();
+export function recomputePlan(now:Date):SourceLoad[]{
+ const from=isoAt(now.getTime()-RECOMPUTE_WINDOW_DAYS*DAY_MS);
+ return [
+  {sourceId:'naver_datalab_search',mode:'latest_group',from,cap:300},{sourceId:'naver_datalab_shopping',mode:'latest_group',from,cap:100},
+  {sourceId:'own_sales',mode:'latest',from,cap:1},
+  {sourceId:'naver_searchad_keyword',mode:'range',from,cap:1200,metrics:SEARCHAD_METRICS},
+  {sourceId:'naver_shop_search',mode:'range',from,cap:900},
+  {sourceId:'youtube_data',mode:'range',from,cap:900},
+  ...RANK_SOURCES.map((sourceId):SourceLoad=>({sourceId,mode:'range',from,cap:600})),
+ ];
+}
+export async function loadRecomputeSnapshots(owner:string,now:Date){return loadPlanned(owner,recomputePlan(now))}
 
 // 저장 형태: 화면 계약(ResearchProduct)에 현재 점수표 포인터와 사람 브랜드 적합성 판정을 더한다.
 export type BrandFitJudgement={value:number;reason:string;by:{id:string;email:string|null};at:string};
@@ -95,7 +112,8 @@ export function latestDecisions(decisions:readonly MdDecision[]){
 }
 
 // ── 스냅샷 → 계산 재료
-type Material={snapshots:Snapshot[];byId:Map<string,Snapshot>;series:Series[];clusters:KeywordCluster[];listings:Map<string,ListingInput&{priority:number}>;scope:Map<string,Set<string>>;maxTime:number};
+// trendMembers: 데이터랩 묶음 키(kw:정규형) → 그 묶음에 넣어 요청한 키워드 키(마지막 요청 기준). trendLabels: 묶음 키 → 요청한 묶음 이름.
+type Material={snapshots:Snapshot[];byId:Map<string,Snapshot>;series:Series[];clusters:KeywordCluster[];listings:Map<string,ListingInput&{priority:number}>;scope:Map<string,Set<string>>;maxTime:number;trendMembers:Map<string,string[]>;trendLabels:Map<string,string>};
 const isListing=(s:Snapshot['observations'][number]['subject']):s is Extract<typeof s,{type:'listing'}>=>s.type==='listing';
 
 export function material(snapshots:readonly Snapshot[]):Material{
@@ -134,7 +152,13 @@ export function material(snapshots:readonly Snapshot[]):Material{
   scope.set(q,keys);
  }
  const maxTime=sorted.reduce((m,s)=>Math.max(m,timeOf(s.fetchedAt)),0);
- return {snapshots:sorted,byId,series,clusters,listings,scope,maxTime};
+ // 데이터랩 묶음 구성(평가 2회차 M3): 묶음 값은 묶음 키워드 검색량의 합이라 보정 기준점도 같은 키워드의 합이어야 한다. 요청 범위(keywordGroups)에서 읽는다.
+ const trendMembers=new Map<string,string[]>(),trendLabels=new Map<string,string>();
+ for(const s of sorted)if(s.sourceId==='naver_datalab_search'&&s.status!=='failed')for(const [name,ks] of snapshotGroupMembers(s.request)){
+  const k=`kw:${normalizeKeyword(name)}`;if(k==='kw:')continue;
+  trendMembers.set(k,[...new Set([k,...ks.map(x=>`kw:${normalizeKeyword(x)}`)])].filter(x=>x!=='kw:'));trendLabels.set(k,name);
+ }
+ return {snapshots:sorted,byId,series,clusters,listings,scope,maxTime,trendMembers,trendLabels};
 }
 
 // 묶인 목록들의 분류: 더 보수적인 쪽(냉동>냉장>상온, 미확인 우선)을 쓴다(match.ts와 같은 규칙).
@@ -161,9 +185,11 @@ function videoSeries(primaryKey:string,videoIds:readonly string[],series:readonl
  return points.length>1?{subjectKey:primaryKey,metric:'video_views',sourceId:'youtube_data',points}:null;
 }
 
-type Draft={product:StoredProduct;bundle:ProductBundle;asOf:string;classification:Classification};
+// 계산 묶음: trendMembers(추가, 선택)는 데이터랩 묶음 키 → 합산 대상 키워드 키(score.ts 수요 보정이 읽는다). profitNotes: 소싱 견적 → 손익 입력 변환 메모(묶음 단위·세금 기준 미확인 등).
+export type TrendBundle=ProductBundle&{trendMembers?:Record<string,string[]>};
+type Draft={product:StoredProduct;bundle:TrendBundle;asOf:string;classification:Classification;profitNotes:string[]};
 // 상품 하나의 계산 묶음(점수 입력 재료).
-function bundleFor(p:ResearchProduct,m:Material,videos:readonly CollectVideo[],brandFit:BrandFitJudgement|null,classification:Classification,ctx:PipelineContext={}):Draft['bundle']&{asOf:string}{
+function bundleFor(p:ResearchProduct,m:Material,videos:readonly CollectVideo[],brandFit:BrandFitJudgement|null,classification:Classification,ctx:PipelineContext={}):TrendBundle&{asOf:string;profitNotes:string[]}{
  const groups=p.keywordGroupIds.map(id=>m.clusters.find(c=>c.id===id)).filter((c):c is KeywordCluster=>!!c);
  const hasTrend=(c:KeywordCluster)=>m.series.some(s=>s.subjectKey===`kw:${c.normalized}`&&s.metric==='search_trend');
  const primary=groups.find(hasTrend)??groups[0]??null;
@@ -173,7 +199,8 @@ function bundleFor(p:ResearchProduct,m:Material,videos:readonly CollectVideo[],b
  const listingKeys=p.listings.map(l=>`ls:${l.sourceId}:${l.externalId}`);
  const market=new Set<string>();
  if(primary)for(const k of primary.keywords){const keys=m.scope.get(normalizeKeyword(k));if(keys)for(const x of keys)market.add(x)}
- const wanted=new Set([...keywordKeys,...listingKeys,...market]);
+ const members:Record<string,string[]>={};for(const k of keywordKeys){const ms=m.trendMembers.get(k);if(ms&&ms.length>1)members[k]=ms}
+ const wanted=new Set([...keywordKeys,...listingKeys,...market,...Object.values(members).flat()]);
  const series:Series[]=m.series.filter(s=>wanted.has(s.subjectKey));
  if(primary&&!series.some(s=>s.subjectKey===`kw:${primary.normalized}`&&s.metric==='video_views')){
   const own=new Set(primary.keywords.map(normalizeKeyword));
@@ -186,10 +213,12 @@ function bundleFor(p:ResearchProduct,m:Material,videos:readonly CollectVideo[],b
  const needsCertification=CERT_CLASSES.includes(classification.regulatory)?true:classification.regulatory==='general'?null:false;
  // 수익성·실행 가능성: 연결한 소싱 견적이 있으면 견적 원가(고정비는 MOQ로 나눔)·MOQ·납기를 쓴다. 판매가는 관측 최저가, 판매 배송비·포장·반품·광고·채널은 가정값(표시됨).
  const quote=ctx.sourcing?.get(p.id)??null,linked=quote&&p.sourcing&&quote.candidateId===p.sourcing.candidateId?quote:null;
- let profit:Draft['bundle']['profit']=null,profitAssumed:ProfitAssumption[]|undefined,profitReason:string|null=null,moq:number|null=null,leadDays:number|null=null;
+ let profit:Draft['bundle']['profit']=null,profitAssumed:ProfitAssumption[]|undefined,profitReason:string|null=null,moq:number|null=null,leadDays:number|null=null,profitNotes:string[]=[];
  if(linked&&linked.ok){
   const D=PROFIT_DEFAULTS;
-  profit=profitInputFromCandidate(linked.input,{price:p.priceBand.min,channel:D.channel,shippingPerOrder:D.shippingPerOrder,packaging:D.packaging,returnRate:D.returnRate,adCostPerOrder:D.adCostPerOrder}).input;
+  // 변환 메모(견적 단위가 묶음·세금 기준 미확인 등)는 버리지 않고 수익성 하위 점수 설명에 붙인다(draftCard).
+  const conv=profitInputFromCandidate(linked.input,{price:p.priceBand.min,channel:D.channel,shippingPerOrder:D.shippingPerOrder,packaging:D.packaging,returnRate:D.returnRate,adCostPerOrder:D.adCostPerOrder});
+  profit=conv.input;profitNotes=conv.notes;
   profitAssumed=['price','channel','shipping','packaging','return_rate','ad_cost'];
   moq=linked.input.moq;leadDays=linked.input.leadDays;
  }else profitReason=linked&&!linked.ok?linked.reason:SOURCING_NEEDED;
@@ -198,7 +227,7 @@ function bundleFor(p:ResearchProduct,m:Material,videos:readonly CollectVideo[],b
   feasibility:{moq,leadDays,needsCertification,temperature:p.temperature},
   risk:{regulatory:p.regulatory,regulatorySure:classification.regulatorySure,temperature:p.temperature,titles:p.listings.map(l=>l.title),
    ...(ctx.protectedBrands?{protectedBrands:[...ctx.protectedBrands]}:{}),...(ctx.ownBrands?{ownBrands:[...ctx.ownBrands]}:{})},
-  brandFit:brandFit?{value:brandFit.value,by:'대표·MD',evidence:[]}:null,...(hint?{brandFitHint:hint}:{}),asOf};
+  brandFit:brandFit?{value:brandFit.value,by:'대표·MD',evidence:[]}:null,...(hint?{brandFitHint:hint}:{}),...(Object.keys(members).length?{trendMembers:members}:{}),asOf,profitNotes};
 }
 
 function linkGroups(name:string,listingKeys:readonly string[],m:Material):string[]{
@@ -258,17 +287,40 @@ export function computeProducts(m:Material,existing:readonly StoredProduct[],vid
  const groups=m.clusters.map(c=>toKeywordGroup(c,at));
  return {drafts,clusters:m.clusters,groups,material:m,dropped};
 }
-function splitBundle(b:ProductBundle&{asOf:string}){const {asOf,...bundle}=b;return {bundle,asOf}}
+function splitBundle(b:TrendBundle&{asOf:string;profitNotes:string[]}){const {asOf,profitNotes,...bundle}=b;return {bundle,asOf,profitNotes}}
+// 점수표 한 판: 손익 변환 메모를 점수 입력(입력 해시)과 수익성 하위 점수 설명에 함께 남긴다. 메모가 다르면 다른 판이다.
+export function draftCard(d:Pick<Draft,'bundle'|'asOf'|'profitNotes'>,at:string):ScoreCard{
+ const input=buildScoreInput(d.bundle,d.asOf),notes=d.profitNotes??[];
+ if(notes.length&&input.profit)input.profit={...input.profit,notes:[...input.profit.notes,...notes]};
+ const card=scoreCard(input,{weightsVersion:'w1',computedAt:at});
+ return notes.length?{...card,subScores:card.subScores.map(x=>x.key==='profitability'?{...x,reason:`${x.reason} 견적 참고: ${notes.join(', ')}.`}:x)}:card;
+}
+// 보정 보고(평가 2회차 M3): 데이터랩 묶음마다 묶음 키워드 검색광고 실측 합으로 잡은 배율의 검증 오차(겹치지 않는 달력 월 기준점, calibrate.ts)와 전체 평균 절대 백분율 오차.
+// 기준점이 없는 묶음은 넣지 않는다. 오차를 잴 기준점이 모자라면 error·mape는 null(0 아님).
+export type CalibrationReport=CalibrationView;
+export function calibrationReport(m:Pick<Material,'series'|'clusters'|'trendMembers'|'trendLabels'>,at:string):CalibrationReport{
+ const rows:CalibrationReport['rows']=[];
+ for(const s of m.series){
+  if(s.metric!=='search_trend'||s.sourceId!=='naver_datalab_search')continue;
+  const ancs=(m.trendMembers.get(s.subjectKey)??[s.subjectKey]).map(k=>m.series.find(x=>x.subjectKey===k&&x.metric==='search_volume_month')).filter((x):x is Series=>!!x);
+  if(!ancs.length)continue;
+  const cal=calibrateTrend(s.points,sumAnchors(ancs.map(x=>x.points)));if(!cal)continue;
+  const c=m.clusters.find(x=>`kw:${x.normalized}`===s.subjectKey);
+  rows.push({groupId:c?.id??s.subjectKey,label:(m.trendLabels.get(s.subjectKey)??c?.label??s.subjectKey.slice(3)).slice(0,60),error:cal.error?Math.round(cal.error.relative*10000)/10000:null});
+ }
+ const errs=rows.map(r=>r.error).filter((x):x is number=>x!==null);
+ return {at,groups:rows.length,mape:errs.length?Math.round(errs.reduce((a,b)=>a+b,0)/errs.length*10000)/10000:null,rows:rows.sort((a,b)=>(b.error??-1)-(a.error??-1)||(a.groupId<b.groupId?-1:1)).slice(0,100)};
+}
 
-export type RecomputeSummary={products:number;newScores:number;keywordGroups:number;snapshots:number;removedProducts:number};
+export type RecomputeSummary={products:number;newScores:number;keywordGroups:number;snapshots:number;removedProducts:number;calibration:CalibrationReport};
 // 재계산 + 저장. 같은 입력이면 점수표 판을 새로 만들지 않는다. 사람 확인 상품·결정이 있는 상품은 지우지 않는다.
 export async function recompute(owner:string,now=new Date(),videos:readonly CollectVideo[]=[]):Promise<RecomputeSummary>{
- const snapshots=await recentSnapshots(owner,new Date(now.getTime()-RECOMPUTE_WINDOW_DAYS*DAY_MS).toISOString(),RECOMPUTE_MAX_SNAPSHOTS);
+ const snapshots=await loadRecomputeSnapshots(owner,now);
  const m=material(snapshots),at=now.toISOString();
  const [existing,decisions,oldGroups]=await Promise.all([loadProducts(owner),loadDecisions(owner),loadGroups(owner)]);
  const decided=new Set(decisions.map(d=>d.productId));
  const c=computeProducts(m,existing,videos,decided,at,await loadContext(owner,existing,now));
- const cards=c.drafts.map(d=>({d,card:scoreCard(buildScoreInput(d.bundle,d.asOf),{weightsVersion:'w1',computedAt:at})}));
+ const cards=c.drafts.map(d=>({d,card:draftCard(d,at)}));
  const known=await loadScores(owner,cards.map(x=>x.card.id));
  const fresh=cards.filter(x=>!known.has(x.card.id)).map(x=>x.card);
  for(const x of cards)x.d.product.scoreId=x.card.id;
@@ -286,7 +338,7 @@ export async function recompute(owner:string,now=new Date(),videos:readonly Coll
   ...bulkDelete(owner,K.keywordGroup,staleGroups),
  ].filter(Boolean));
  await pruneScores(owner,new Set([...c.drafts.map(d=>d.product.scoreId as string),...decisions.map(d=>d.scoreCardId)]));
- return {products:c.drafts.length,newScores:fresh.length,keywordGroups:groups.length,snapshots:snapshots.length,removedProducts:stale.length+c.dropped.length};
+ return {products:c.drafts.length,newScores:fresh.length,keywordGroups:groups.length,snapshots:snapshots.length,removedProducts:stale.length+c.dropped.length,calibration:calibrationReport(m,at)};
 }
 // 점수표 판이 너무 많으면 현재 포인터·결정이 가리키지 않는 오래된 판부터 지운다.
 async function pruneScores(owner:string,keep:ReadonlySet<string>){
@@ -313,11 +365,29 @@ export async function referencedSnapshots(owner:string):Promise<Set<string>>{
 //  - 사람이 지금 확인한 묶음·브랜드 적합성·소싱 연결·조사 방향은 쓰지 않는다(기준 시점에는 없던 판단). 추적 영상도 기준 시점 이전에 추가한 것만.
 //  - 후보: 기준 시점 이전 관측으로 만든 상품 + 상품의 대표 묶음이 아닌 키워드 묶음(기준 시점 이전 검색 추세가 있는 것). 정답만 같은 대상의 전체 시계열로 잰다.
 //  - 남은 한계: 데이터랩 상대값은 수집 때 요청 창 전체 최댓값으로 맞춘 값이라, 기준 시점 이전 점도 축척(배율)은 미래를 안다. 로그 기울기·보정 배율과는 무관하다.
-export function truncateSnapshots(snapshots:readonly Snapshot[],asOf:string):Snapshot[]{
- const T=timeOf(asOf),out:Snapshot[]=[];
- for(const s of snapshots){const obs=s.observations.filter(o=>timeOf(o.period.to)<=T);if(obs.length)out.push(obs.length===s.observations.length?s:{...s,observations:obs})}
- return out;
+// 생존 편향 차단(평가 2회차 H3): 오늘 받은 데이터랩 스냅샷은 104주 이력을 싣는다. 기간 끝만 보면 '지금 인기라 추적을 시작한 키워드'가 과거 기준 시점의 후보가 된다.
+//  - 후보 자격: 그 대상(키워드·목록)이 처음 수집된 시각(fetchedAt)이 기준 시점 이하인 것만. 기준 시점 뒤에 처음 수집된 대상은 후보·특징에서 모두 뺀다.
+//  - 특징: 같은 (대상·지표·출처)를 기준 시점 이전에 받은 스냅샷이 있으면 그것만 쓴다. 없을 때만 기준 시점 뒤에 받은 스냅샷의 과거 구간(소급 이력)을 쓰고 한계에 센다.
+export type AsOfCut={snapshots:Snapshot[];lateSubjects:number;backfilledSeries:number};
+export function asOfCut(snapshots:readonly Snapshot[],asOf:string):AsOfCut{
+ const T=timeOf(asOf),first=new Map<string,number>(),early=new Set<string>();
+ for(const s of snapshots){
+  if(s.status==='failed')continue;const f=timeOf(s.fetchedAt);
+  for(const o of s.observations){const k=subjectKey(o.subject);if(!(f>=(first.get(k)??Infinity)))first.set(k,f);if(f<=T&&timeOf(o.period.to)<=T)early.add(seriesKey(k,o.metric,s.sourceId))}
+ }
+ const out:Snapshot[]=[],late=new Set<string>(),backfilled=new Set<string>();
+ for(const s of snapshots){
+  const f=timeOf(s.fetchedAt);
+  const obs=s.observations.filter(o=>{
+   if(timeOf(o.period.to)>T)return false;
+   const k=subjectKey(o.subject);if(!((first.get(k)??Infinity)<=T)){late.add(k);return false}
+   if(f<=T)return true;const sk=seriesKey(k,o.metric,s.sourceId);if(early.has(sk))return false;backfilled.add(sk);return true;
+  });
+  if(obs.length)out.push(obs.length===s.observations.length?s:{...s,observations:obs});
+ }
+ return {snapshots:out,lateSubjects:late.size,backfilledSeries:backfilled.size};
 }
+export function truncateSnapshots(snapshots:readonly Snapshot[],asOf:string):Snapshot[]{return asOfCut(snapshots,asOf).snapshots}
 // 키워드 묶음 후보(상품 목록 없이 수요만): 기준 시점 이전 검색 추세가 있는 묶음.
 function keywordBundle(c:KeywordCluster,m:Material):ProductBundle|null{
  const keywordKeys=[...new Set([`kw:${c.normalized}`,...c.keywords.map(k=>`kw:${normalizeKeyword(k)}`)])].filter(k=>k!=='kw:');
@@ -341,25 +411,43 @@ export function backtestFromSnapshots(snapshots:readonly Snapshot[],horizonWeeks
  const none={universe:null,candidates:[],rows:[]};
  if(!last)return {result:empty('저장된 상품·시계열이 없어 백테스트를 계산하지 않았습니다. 수집이나 가져오기 뒤 다시 실행하세요.'),...none};
  if(first>asOfT-4*7*DAY_MS)return {result:empty(`이력이 짧습니다. 기준 시점 이전 4주와 관측 기간 ${horizonWeeks}주가 필요하지만 저장된 시계열은 ${Math.max(0,Math.floor((last-first)/(7*DAY_MS)))}주입니다. 숫자를 만들지 않았습니다.`),...none};
- const asOf=new Date(asOfT).toISOString(),past=material(truncateSnapshots(snapshots,asOf));
+ const asOf=new Date(asOfT).toISOString(),cut=asOfCut(snapshots,asOf),past=material(cut.snapshots);
  const c=computeProducts(past,[],videos.filter(v=>timeOf(v.addedAt)<=asOfT),new Set(),at,{protectedBrands:ctx.protectedBrands,ownBrands:ctx.ownBrands});
  const primaries=new Set(c.drafts.map(d=>d.bundle.keywordKeys[0]).filter(Boolean));
  const groupBundles=past.clusters.map(k=>keywordBundle(k,past)).filter((b):b is ProductBundle=>!!b&&!primaries.has(b.keywordKeys[0]));
  const candidates=[...c.drafts.map(d=>d.bundle),...groupBundles];
- if(!candidates.length)return {result:empty('기준 시점 이전에 관측된 상품·키워드 묶음이 없어 백테스트를 계산하지 않았습니다(기준 시점 뒤에 처음 나타난 상품은 후보가 아닙니다).'),...none};
+ if(!candidates.length)return {result:empty(`기준 시점 이전에 처음 수집된 상품·키워드 묶음이 없어 백테스트를 계산하지 않았습니다(기준 시점 뒤에 처음 수집된 대상 ${cut.lateSubjects}개는 소급 이력이 있어도 후보가 아닙니다).`),...none};
  // 정답용 묶음: 같은 대상 키의 전체 시계열(기준 시점 뒤 포함). 점수에는 쓰지 않는다.
  const outcomes=new Map<string,ProductBundle>();
  for(const b of candidates){const keys=new Set([...b.keywordKeys,...b.listingKeys]);outcomes.set(b.productId,{...b,series:full.series.filter(s=>keys.has(s.subjectKey))})}
  const run=runBacktest({candidates,outcomes,asOf,horizonWeeks,threshold,computedAt:at});
  const excludedAfterAsOf=[...full.listings.keys()].filter(k=>!past.listings.has(k)).length;
  const universe:BacktestUniverse={products:c.drafts.length,keywordGroups:groupBundles.length,excludedAfterAsOf,
-  notes:['후보·특징은 기준 시점 이전 관측만으로 만들었습니다.','데이터랩 상대값의 축척은 수집 때 요청 창 전체 기준이라 기준 시점 뒤 자료를 압니다(기울기·보정 배율에는 영향 없음).']};
+  notes:['후보·특징은 기준 시점 이전 관측만으로 만들었습니다.',
+   `후보는 기준 시점 이전에 처음 수집된 대상만입니다. 기준 시점 뒤에 처음 수집된 대상 ${cut.lateSubjects}개는 소급 이력(데이터랩 104주 등)이 있어도 뺐습니다(지금 인기라 추적을 시작한 키워드의 생존 편향 차단).`,
+   ...(cut.backfilledSeries?[`기준 시점 이전에 받은 스냅샷이 없는 시계열 ${cut.backfilledSeries}개는 기준 시점 뒤에 받은 스냅샷의 과거 구간(소급 이력)으로 특징을 만들었습니다. 데이터랩 상대값의 축척은 그 요청 창 전체 기준이라 기준 시점 뒤 자료를 압니다(기울기·보정 배율에는 영향 없음).`]:[]),
+  ]};
  const r=run.result,result:BacktestResult={...r,label:r.label.replace(/상품$/,'상품·키워드 묶음'),universe,
   reason:r.candidates<10?`평가 가능한 후보가 ${r.candidates}개라 정밀도@10·@20을 계산하지 않았습니다(최소 10개).`:null};
  return {result,universe,candidates,rows:run.rows};
 }
+// 백테스트 읽기 계획(평가 2회차 H4·H3): 기준 시점 추정 E = 가장 늦은 스냅샷 − 관측 기간. 특징에 쓰는 출처는 E 앞뒤 창만 읽는다
+// (검색광고 E−75일~E+2일: 30일 보정 창·45일 기준점, 쇼핑 E−63일: 신규 진입 8주, 영상 E−49일: 6주 조회 속도), 순위는 E−14주~끝(12주 기울기 + 정답).
+// 데이터랩은 묶음마다 최신 1개(정답용 전체 이력) + E−3일 이전에 받은 최신 1개(실제 기준 시점은 E보다 조금 이를 수 있다. 있으면 특징은 이것만 쓴다, asOfCut).
+export function backtestPlan(maxAt:number,horizonWeeks:number):SourceLoad[]{
+ const E=maxAt-horizonWeeks*7*DAY_MS,far=isoAt(maxAt-800*DAY_MS),upTo=isoAt(E+2*DAY_MS);
+ return [
+  {sourceId:'naver_datalab_search',mode:'latest_group',from:far,cap:300},{sourceId:'naver_datalab_search',mode:'latest_group',from:far,to:isoAt(E-3*DAY_MS),cap:300},
+  {sourceId:'naver_datalab_shopping',mode:'latest_group',from:far,cap:100},{sourceId:'naver_datalab_shopping',mode:'latest_group',from:far,to:isoAt(E-3*DAY_MS),cap:100},
+  {sourceId:'naver_searchad_keyword',mode:'range',from:isoAt(E-75*DAY_MS),to:upTo,cap:1200,metrics:SEARCHAD_METRICS},
+  {sourceId:'naver_shop_search',mode:'range',from:isoAt(E-63*DAY_MS),to:upTo,cap:900},
+  {sourceId:'youtube_data',mode:'range',from:isoAt(E-49*DAY_MS),to:upTo,cap:700},
+  ...RANK_SOURCES.map((sourceId):SourceLoad=>({sourceId,mode:'range',from:isoAt(E-98*DAY_MS),cap:800})),
+ ];
+}
 export async function backtest(owner:string,horizonWeeks:4|8|12,threshold:number,now=new Date(),videos:readonly CollectVideo[]=[]):Promise<BacktestResult>{
- const snapshots=await recentSnapshots(owner,new Date(now.getTime()-800*DAY_MS).toISOString(),RECOMPUTE_MAX_SNAPSHOTS);
+ const last=await latestSnapshotAt(owner),maxAt=last?Math.min(timeOf(last),now.getTime()):now.getTime();
+ const snapshots=await loadPlanned(owner,backtestPlan(maxAt,horizonWeeks));
  const ctx=await loadContext(owner,[],now);
  return backtestFromSnapshots(snapshots,horizonWeeks,threshold,now.toISOString(),videos,{protectedBrands:ctx.protectedBrands,ownBrands:ctx.ownBrands}).result;
 }
@@ -367,6 +455,6 @@ export async function backtest(owner:string,horizonWeeks:4|8|12,threshold:number
 // 상품 확인 도구: 목록 키를 실제 관측에서 찾는다(병합 대상 확인용).
 export function knownListing(m:Material,key:string){return m.listings.get(key)??null}
 export function productTitle(l:ListingInput){return cleanTitle(l.title,listingBrand(l))}
-export async function loadMaterial(owner:string,now=new Date()){return material(await recentSnapshots(owner,new Date(now.getTime()-RECOMPUTE_WINDOW_DAYS*DAY_MS).toISOString(),RECOMPUTE_MAX_SNAPSHOTS))}
+export async function loadMaterial(owner:string,now=new Date()){return material(await loadRecomputeSnapshots(owner,now))}
 export function assertProductRoom(count:number){if(count>MAX_PRODUCTS)throw new ApiError(409,`상품은 ${MAX_PRODUCTS.toLocaleString('ko-KR')}개까지 저장할 수 있습니다.`)}
 export const nowIso=()=>stamp();

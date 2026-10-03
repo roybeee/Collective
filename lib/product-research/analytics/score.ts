@@ -2,7 +2,7 @@
 // 모델(LLM)은 이 점수를 설명할 뿐 바꾸지 않는다. 같은 입력이면 inputDigest·총점·분류가 늘 같다.
 import type {BrandFitHint,ScoreCard,Series,SourceId,SubScore,SubScoreKey,Temperature} from '../types';
 import {SUB_SCORES} from '../types';
-import {calibrateTrend,currentVolume} from './calibrate';
+import {calibrateTrend,currentVolume,sumAnchors} from './calibrate';
 import {assessCompetition,competitionInputFromSeries,type CompetitionResult} from './competition';
 import {groupDigits} from './format';
 import {digestOf,shortId} from './hash';
@@ -179,12 +179,14 @@ export function buildScoreInput(b:ProductBundle,asOf:string):ScoreInput{
  const trendSeries=primary?find(primary,'search_trend'):null;
  const trend=trendSeries?analyzeTrend(trendSeries.points):null;
  // 수요: 키워드마다 데이터랩 상대값을 검색광고 30일 실측으로 보정한 현재 30일 검색량을 더한다. 추세가 없으면 45일 안의 실측을 그대로 쓴다.
- const vols:number[]=[],dEv:string[]=[];
+ // 평가 2회차 M3: 데이터랩 묶음 값은 묶음 키워드 검색량의 합이다. 묶음 구성(trendMembers, 수집 요청 범위에서 읽음)이 있으면 기준점도 그 키워드들의 실측 합으로 잡고, 합에 든 키워드는 다시 더하지 않는다.
+ const vols:number[]=[],dEv:string[]=[],members=(b as ProductBundle&{trendMembers?:Readonly<Record<string,readonly string[]>>}).trendMembers??{},covered=new Set<string>();
  for(const k of b.keywordKeys){
-  const rel=find(k,'search_trend'),anc=find(k,'search_volume_month');if(!anc)continue;
-  const cal=rel?calibrateTrend(rel.points,anc.points):null,cur=currentVolume(cal);
-  if(cur!==null&&cal&&rel){vols.push(cur);dEv.push(cal.anchor.snapshotId,rel.points[rel.points.length-1].snapshotId);continue}
-  const last=latestValue(anc.points);if(last&&T-timeOf(last.at)<=45*DAY_MS){vols.push(last.value as number);dEv.push(last.snapshotId)}
+  if(covered.has(k))continue;
+  const rel=find(k,'search_trend'),group=rel?[...new Set([k,...(members[k]??[])])]:[k],ancs=group.map(x=>find(x,'search_volume_month')).filter((s):s is Series=>!!s);if(!ancs.length)continue;
+  const cal=rel?calibrateTrend(rel.points,sumAnchors(ancs.map(s=>s.points))):null,cur=currentVolume(cal);
+  if(cur!==null&&cal&&rel){vols.push(cur);for(const x of group)covered.add(x);dEv.push(...ancs.flatMap(s=>s.points.filter(p=>p.at===cal.anchor.at).map(p=>p.snapshotId)),rel.points[rel.points.length-1].snapshotId);continue}
+  const own=find(k,'search_volume_month'),last=own?latestValue(own.points):null;if(last&&T-timeOf(last.at)<=45*DAY_MS){vols.push(last.value as number);dEv.push(last.snapshotId)}
  }
  const volume=vols.length?vols.reduce((a,c)=>a+c,0):null;
  // 순위: 지금(최근 값)과 28일 전에 가장 가까운 과거 값.
