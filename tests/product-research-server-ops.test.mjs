@@ -19,6 +19,11 @@ const stub=async(url,init={})=>{
   for(const g of b.keywordGroups){const data=[];let t=Date.parse(b.startDate+'T00:00:00Z'),i=0;const end=Date.parse(b.endDate+'T00:00:00Z');while(t<=end){data.push({period:new Date(t).toISOString().slice(0,10),ratio:Math.min(100,20+i*0.5)});t+=(b.timeUnit==='week'?7:1)*DAY;i++}out.push({title:g.groupName,keywords:g.keywords,data})}
   return json({startDate:b.startDate,endDate:b.endDate,timeUnit:b.timeUnit,results:out});
  }
+ if(u.host==='openapi.naver.com'&&u.pathname==='/v1/datalab/shopping/category/keywords'){
+  const b=JSON.parse(init.body);const out=[];
+  for(const k of b.keyword){const data=[];let t=Date.parse(b.startDate+'T00:00:00Z');const end=Date.parse(b.endDate+'T00:00:00Z');while(t<=end){data.push({period:new Date(t).toISOString().slice(0,10),ratio:40});t+=7*DAY}out.push({title:k.name,keyword:k.param,data})}
+  return json({startDate:b.startDate,endDate:b.endDate,timeUnit:b.timeUnit,results:out});
+ }
  if(u.host==='openapi.naver.com'&&u.pathname==='/v1/search/shop.json'){const q=u.searchParams.get('query');return json({total:1520,items:[1,2].map(n=>({title:`<b>${q}</b> 정품 ${n}호 500g`,link:`https://smartstore.naver.com/shop${n}/products/${q.length}${n}`,lprice:String(3000+n*100),mallName:`몰${n}`,productId:`${q.length}0${n}${q.charCodeAt(0)}`,brand:`브랜드${n}`,category1:'식품'}))})}
  if(u.host==='www.googleapis.com'){
   if(u.pathname.endsWith('/search'))return mode.youtube==='fail'?new Response('boom',{status:503}):json({pageInfo:{totalResults:321},items:[{id:{videoId:'abcdefghijk'}}]});
@@ -57,10 +62,11 @@ check(['clear_quarantine','link_sourcing','unlink_sourcing','save_risk_review'].
 // ── H4: 출처별 하루 상한(공급자 한도가 없는 출처 포함)과 문서 표 일치
 const caps=plain(quota.APP_DAILY_CAPS);
 check(caps.naver_searchad_keyword===200&&caps.coupang_partners===100&&caps.naver_shop_search===2000&&caps.naver_datalab_search===900&&caps.youtube_data===9000,'conservative app caps for every auto source (searchad/coupang have no published quota)');
-check(quota.dailyCap('coupang_ranking_manual')===0&&quota.dailyCap('own_sales')===0&&quota.dailyCap('licensed_ranking')===0&&quota.dailyCap('naver_datalab_shopping')===0,'non-auto and unplanned sources have a zero cap (fail closed)');
+check(quota.dailyCap('coupang_ranking_manual')===0&&quota.dailyCap('own_sales')===0&&quota.dailyCap('licensed_ranking')===0,'non-auto sources have a zero cap (fail closed)');
+check(caps.naver_datalab_shopping===50&&quota.dailyCap('naver_datalab_shopping')===50,'(round 3 ①) datalab shopping insight is planned with a 50-call cap (provider 1,000)');
 const doc=readFileSync('docs/PRODUCT-RESEARCH.ko.md','utf8');
 const docRow=host=>doc.split('\n').find(l=>l.startsWith('|')&&l.includes(host)&&l.includes('하루 상한')===false&&/\d/.test(l))||'';
-const capCell={naver_searchad_keyword:['api.searchad.naver.com','200회'],naver_datalab_search:['데이터랩 검색어 트렌드','900회'],naver_shop_search:['네이버 쇼핑 검색','2,000회'],youtube_data:['www.googleapis.com','9,000단위'],coupang_partners:['api-gateway.coupang.com','100회']};
+const capCell={naver_datalab_shopping:['데이터랩 쇼핑인사이트','50회'],naver_searchad_keyword:['api.searchad.naver.com','200회'],naver_datalab_search:['데이터랩 검색어 트렌드','900회'],naver_shop_search:['네이버 쇼핑 검색','2,000회'],youtube_data:['www.googleapis.com','9,000단위'],coupang_partners:['api-gateway.coupang.com','100회']};
 check(Object.entries(capCell).every(([id,[key,text]])=>docRow(key).includes(text)&&caps[id]===Number(text.replace(/[^\d]/g,''))),'docs/PRODUCT-RESEARCH.ko.md states exactly the caps the code enforces');
 
 const O1='ops-caps';await on(O1,'product_research','product_research_collect');await connectAll(O1);
@@ -68,7 +74,7 @@ mode.youtube='fail';
 const statuses=[];for(let i=0;i<20;i++){const r=await post(O1,{action:'collect_now'});statuses.push(r.status);if(i===3)check(r.status===409&&/하루 3번/.test(r.body.error),'4th collect_now of the KST day is 409 with a Korean reason')}
 check(statuses.filter(s=>s===200).length===3&&statuses.slice(3).every(s=>s===409),'20 consecutive collect_now: only 3 run per KST day');
 const n=(host,path)=>calls.filter(c=>c.host===host&&(!path||c.path===path)).length;
-check(n('api.searchad.naver.com')<=200&&n('openapi.naver.com','/v1/datalab/search')<=900&&n('openapi.naver.com','/v1/search/shop.json')<=2000&&n('api-gateway.coupang.com')<=100,'provider calls stay under every cap after 20 collect_now');
+check(n('api.searchad.naver.com')<=200&&n('openapi.naver.com','/v1/datalab/search')<=900&&n('openapi.naver.com','/v1/datalab/shopping/category/keywords')<=50&&n('openapi.naver.com','/v1/search/shop.json')<=2000&&n('api-gateway.coupang.com')<=100,'provider calls stay under every cap after 20 collect_now');
 check(quotaRows(O1).every(q=>q.used<=quota.dailyCap(q.sourceId)),'quota ledger never exceeds the app cap');
 let v=await get(O1);
 check(v.body.collectNow.usedToday===3&&v.body.collectNow.maxPerDay===3,'view shows collect_now runs used today');

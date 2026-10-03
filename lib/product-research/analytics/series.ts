@@ -18,7 +18,7 @@ export const RENORMALIZED_NOTE='데이터랩 상대값은 요청마다 최댓값
 //  - 상대값 지표: 값과 무관하게 가장 늦게 수집한 것(옛 축척의 값을 남기지 않는다). 겹친 기간이 있었거나 점이 여러 요청에서 왔으면 limitations에 적는다.
 // 실패 스냅샷은 버린다. 부분 스냅샷은 쓰되 limitations가 화면에 따라간다.
 export function buildSeries(snapshots:readonly Snapshot[]):Series[]{
- const acc=new Map<string,{subject:string;metric:MetricKey;sourceId:SourceId;byPeriod:Map<string,{at:string;value:number|null;snapshotId:string;fetchedAt:number}>;overlaps:number}>();
+ const acc=new Map<string,{subject:string;metric:MetricKey;sourceId:SourceId;byPeriod:Map<string,SeriesPoint&{fetchedAt:number}>;overlaps:number}>();
  for(const snap of snapshots){
   if(snap.status==='failed')continue;const fetched=timeOf(snap.fetchedAt);
   for(const o of snap.observations){
@@ -29,13 +29,13 @@ export function buildSeries(snapshots:readonly Snapshot[]):Series[]{
    const relative=RELATIVE_METRICS.has(o.metric);
    if(prev&&relative&&prev.snapshotId!==snap.id)e.overlaps++;
    const better=relative?later:!prev||(value!==null&&prev.value===null)||((value===null)===(prev.value===null)&&later);
-   if(better)e.byPeriod.set(period,{at:o.period.to,value,snapshotId:snap.id,fetchedAt:fetched});
+   if(better)e.byPeriod.set(period,{at:o.period.to,value,snapshotId:snap.id,fetchedAt:fetched,...(value===null&&o.underTen===true&&snap.sourceId==='naver_searchad_keyword'&&(o.metric==='search_volume_pc'||o.metric==='search_volume_mobile')?{underTen:true}:{})});
   }
  }
  const out:Series[]=[];
  for(const e of acc.values()){
   // 기간이 다르지만 끝이 같은 점(예: 주간·일간 혼재)은 기간이 짧은 쪽이 먼저 오고 둘 다 남긴다. 같은 at이 여러 개면 소비자가 toWeekly로 합친다.
-  const points=[...e.byPeriod.values()].sort((a,b)=>timeOf(a.at)-timeOf(b.at)||(a.snapshotId<b.snapshotId?-1:1)).map(p=>({at:p.at,value:p.value,snapshotId:p.snapshotId}));
+  const points=[...e.byPeriod.values()].sort((a,b)=>timeOf(a.at)-timeOf(b.at)||(a.snapshotId<b.snapshotId?-1:1)).map(p=>({at:p.at,value:p.value,snapshotId:p.snapshotId,...(p.underTen?{underTen:true}:{})}));
   const sources=new Set(points.map(p=>p.snapshotId)).size;
   const limitations=RELATIVE_METRICS.has(e.metric)&&(e.overlaps>0||sources>1)?[`${RENORMALIZED_NOTE} (겹친 기간 ${e.overlaps}개, 점의 출처 요청 ${sources}개)`]:[];
   out.push({subjectKey:e.subject,metric:e.metric,sourceId:e.sourceId,points,...(limitations.length?{limitations}:{})});

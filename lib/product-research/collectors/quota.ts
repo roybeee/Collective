@@ -20,12 +20,12 @@ export function unitsFor(sourceId:SourceId,operation:QuotaOperation):number{
 }
 
 // 이 앱이 지키는 출처별 하루 상한(공급자 단위, 원장 pr_quota가 원자적으로 막는다). 평가 1회차 H4: 공급자가 한도를 공개하지 않은 출처도
-// 보수적인 상한을 둔다(쿼터 초과 0). 공개 한도가 있으면 여유분을 남긴다. 데이터랩 쇼핑인사이트는 수집 계획에 없어 0(호출 금지)이다.
+// 보수적인 상한을 둔다(쿼터 초과 0). 공개 한도가 있으면 여유분을 남긴다. 데이터랩 쇼핑인사이트는 평가 3회차 ①부터 계획에 들어갔다(하루 계획 4회, 즉시 수집 포함해도 상한 50 안).
 // docs/PRODUCT-RESEARCH.ko.md 3절 표가 이 값을 그대로 적는다.
 export const APP_DAILY_CAPS:Readonly<Partial<Record<SourceId,number>>>={
  naver_searchad_keyword:200,  // 호출 수(공급자 미공개)
  naver_datalab_search:900,    // 호출 수(공급자 1,000)
- naver_datalab_shopping:0,    // 계획에 없음
+ naver_datalab_shopping:50,   // 호출 수(공급자 1,000, 계획 하루 4회)
  naver_shop_search:2000,      // 호출 수(공급자 25,000)
  youtube_data:9000,           // 단위(공급자 10,000, 태평양 날짜)
  coupang_partners:100,        // 호출 수(공급자 승인 조건, 미공개)

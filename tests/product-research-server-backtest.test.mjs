@@ -82,7 +82,7 @@ const mk=(id,fetchedAt,value)=>({id,sourceId:'naver_datalab_search',method:'api'
 const cut=plain(PL.asOfCut([mk('early','2026-02-01T00:00:00Z',40),mk('late','2026-05-01T00:00:00Z',80)],'2026-03-01T00:00:00Z'));
 check(cut.snapshots.length===1&&cut.snapshots[0].id==='early'&&cut.backfilledSeries===0,'features use the pre-as-of snapshot of the same series, not the later re-normalised copy');
 const back=plain(PL.asOfCut([mk('late','2026-05-01T00:00:00Z',80),{...mk('sa','2026-02-01T00:00:00Z',1),sourceId:'naver_searchad_keyword',observations:[{subject:{type:'keyword',text:'굴소스'},metric:'search_volume_month',value:500,period:{from:'2026-01-01',to:'2026-01-31'}}]}],'2026-03-01T00:00:00Z'));
-check(back.snapshots.some(s=>s.id==='late')&&back.backfilledSeries===1&&back.lateSubjects===0,'a subject tracked before as-of may use backfilled history for a series it had no earlier snapshot of (counted as a limitation)');
+check(!back.snapshots.some(s=>s.id==='late')&&back.backfilledSeries===1&&back.lateSubjects===0&&back.trend.backfilledOnly===1&&back.trend.early===0,'(H-2) a subject seen before as-of (searchad) gets no backfilled datalab history: the post-as-of snapshot is excluded and counted as backfilled-only');
 const only=plain(PL.asOfCut([mk('late','2026-05-01T00:00:00Z',80)],'2026-03-01T00:00:00Z'));
 check(only.snapshots.length===0&&only.lateSubjects===1,'a subject first fetched after as-of is dropped entirely');
 

@@ -11,7 +11,9 @@ import {kstDayKey,kstWeekKey} from './collectors/quota';
 import {K,bulkDelete,bulkPut,countKind,ensureSnapshotRoom,forgetSnapshotReuse,optional,putStatement,readMany,snapshotStatement,withSnapshotReuse,type QuarantineRow} from './server-store';
 import {loadDecisions,loadProducts,loadRecomputeSnapshots,loadScores,recompute,referencedSnapshots,RECOMPUTE_WINDOW_DAYS,type CalibrationReport,type CollectVideo,type StoredProduct} from './server-pipeline';
 import {briefInputs,templateBrief} from './server-brief';
-import type {LaunchOutcome,ResearchAlert,RankingImportStatus,SourceFreshness} from './api';
+import type {LaunchOutcome,ResearchAlert,RankingImportStatus,SourceFreshness,WeightsProposalView} from './api';
+import {proposeWeights,RECALIBRATION_WEEKS,type RecalibrationRow} from './analytics/backtest';
+import {WEIGHT_SETS} from './analytics/score';
 import type {MdDecision,MetricKey,Observation,ScoreCard,Series,Snapshot,SourceId} from './types';
 
 const DAY=86400000;
@@ -165,7 +167,8 @@ async function restoreSourcing(owner:string,links:ReadonlyMap<string,string>,at:
 // ── 출시 뒤 결과(평가 2회차 M5): 성장2로 넘긴 결정 → 소싱 후보(넘기기 때 만든 초안 또는 상품에 연결한 후보) → 성장2 카탈로그 상품의 SKU → 자사 주문 장부.
 // 넘긴 시각부터 4·8·12주 동안의 주문 수·수량·순매출을 센다. SKU를 알 수 없으면 값은 null(0 아님)과 까닭. 장부에 그 SKU 주문이 없으면 0이다(장부가 있으므로 사실).
 // 수량·매출은 품목 하나라도 값이 비면 그 창은 null이다. 취소 주문은 뺀다. 운영자가 SKU를 직접 잇는 작업은 범위 밖이다.
-export const OUTCOME_WEEKS=[4,8,12] as const,OUTCOME_MAX_DECISIONS=200;
+// 평가 3회차(낮음): 주문 품목은 SKU·ID 순으로 OUTCOME_MAX_LINES개까지만 읽는다(결정형). 한도를 넘으면 마지막 SKU와 읽지 못한 SKU의 값은 null이고 까닭은 '집계 한도 초과'다(0으로 쓰지 않는다).
+export const OUTCOME_WEEKS=[4,8,12] as const,OUTCOME_MAX_DECISIONS=200,OUTCOME_MAX_LINES=OWN_SALES_MAX_LINES,OUTCOME_TRUNCATED='집계 한도 초과';
 type Handoff=NonNullable<MdDecision['handoff']>&{candidateId?:string|null;at?:string};
 export async function launchOutcomes(owner:string,now:Date):Promise<LaunchOutcome[]>{
  const handed=(await loadDecisions(owner)).filter(d=>d.handoff).sort((a,b)=>a.decidedAt<b.decidedAt?1:-1).slice(0,OUTCOME_MAX_DECISIONS);
@@ -183,7 +186,10 @@ export async function launchOutcomes(owner:string,now:Date):Promise<LaunchOutcom
  const resolved=handed.map(d=>({d,...skuOf(d),at:(d.handoff as Handoff).at??d.decidedAt}));
  const skus=[...new Set(resolved.map(r=>r.sku).filter((x):x is string=>!!x))];
  const ledger=skus.length?await database().prepare("SELECT 1 x FROM records WHERE owner=? AND kind='growth_order_line' LIMIT 1").bind(owner).first<{x:number}>():null;
- const lines=skus.length&&ledger?(await database().prepare("SELECT json_extract(data,'$.input.orderId') o,trim(json_extract(data,'$.snapshot.catalog.sku')) sku,json_extract(data,'$.input.units') u,json_extract(data,'$.input.paidAllocation') p,json_extract(data,'$.input.refundAllocation') r FROM records WHERE owner=? AND kind='growth_order_line' AND trim(json_extract(data,'$.snapshot.catalog.sku')) IN (SELECT value FROM json_each(?)) LIMIT ?").bind(owner,JSON.stringify(skus),OWN_SALES_MAX_LINES).all<{o:string|null;sku:string;u:number|null;p:number|null;r:number|null}>()).results:[];
+ const lines=skus.length&&ledger?(await database().prepare("SELECT json_extract(data,'$.input.orderId') o,trim(json_extract(data,'$.snapshot.catalog.sku')) sku,json_extract(data,'$.input.units') u,json_extract(data,'$.input.paidAllocation') p,json_extract(data,'$.input.refundAllocation') r FROM records WHERE owner=? AND kind='growth_order_line' AND trim(json_extract(data,'$.snapshot.catalog.sku')) IN (SELECT value FROM json_each(?)) ORDER BY sku,id LIMIT ?").bind(owner,JSON.stringify(skus),OUTCOME_MAX_LINES+1).all<{o:string|null;sku:string;u:number|null;p:number|null;r:number|null}>()).results:[];
+ // 한도를 넘었으면: SKU 순으로 읽었으므로 마지막 행의 SKU는 일부만 읽었고, 읽지 못한 SKU는 아예 없다. 다 읽은 SKU만 센다.
+ const truncated=lines.length>OUTCOME_MAX_LINES;if(truncated)lines.length=OUTCOME_MAX_LINES;
+ const lastSku=truncated?lines[lines.length-1]?.sku:undefined,counted=new Set(lines.map(l=>l.sku).filter(x=>x!==lastSku));
  const orderIds=[...new Set(lines.map(l=>l.o).filter((x):x is string=>typeof x==='string'&&!!x))],orders=new Map<string,{day:string;status:string}>();
  for(let i=0;i<orderIds.length;i+=200){
   const r=await database().prepare("SELECT json_extract(data,'$.id') id,json_extract(data,'$.orderDate') d,json_extract(data,'$.status') st FROM records WHERE owner=? AND kind='store_order' AND id IN (SELECT value FROM json_each(?))").bind(owner,JSON.stringify(orderIds.slice(i,i+200).map(id=>`${owner}:store_order:${id}`))).all<{id:string;d:string|null;st:string|null}>();
@@ -194,37 +200,59 @@ export async function launchOutcomes(owner:string,now:Date):Promise<LaunchOutcom
   const windows=OUTCOME_WEEKS.map(weeks=>{
    const end=start+weeks*7*DAY,complete=now.getTime()>=end;
    if(!sku)return {weeks,complete,orders:null,units:null,revenue:null};
-   if(!ledger)return {weeks,complete,orders:null,units:null,revenue:null};
+   if(!ledger||(truncated&&!counted.has(sku)))return {weeks,complete,orders:null,units:null,revenue:null};
    const from=kstDayKey(new Date(start)),to=kstDayKey(new Date(Math.min(end,now.getTime())));
    const hit=lines.filter(l=>{const o=l.sku===sku&&l.o?orders.get(l.o):undefined;return !!o&&o.status!=='cancelled'&&o.day>=from&&(complete?o.day<kstDayKey(new Date(end)):o.day<=to)});
    const units=hit.every(l=>typeof l.u==='number')?hit.reduce((s,l)=>s+(l.u as number),0):null;
    const revenue=hit.every(l=>typeof l.p==='number'&&typeof l.r==='number')?hit.reduce((s,l)=>s+(l.p as number)-(l.r as number),0):null;
    return {weeks,complete,orders:new Set(hit.map(l=>l.o)).size,units,revenue};
   });
-  return {decisionId:d.id,productId:d.productId,campaignId:h.campaignId,handedOffAt:new Date(start).toISOString(),sku,reason:sku&&!ledger?'자사 주문 장부(성장 주문 품목)가 없어 판매 결과를 셀 수 없습니다.':reason,windows};
+  return {decisionId:d.id,productId:d.productId,campaignId:h.campaignId,handedOffAt:new Date(start).toISOString(),sku,reason:sku&&!ledger?'자사 주문 장부(성장 주문 품목)가 없어 판매 결과를 셀 수 없습니다.':sku&&truncated&&!counted.has(sku)?`${OUTCOME_TRUNCATED}: 넘긴 SKU의 주문 품목이 ${OUTCOME_MAX_LINES.toLocaleString('ko-KR')}개를 넘어 이 SKU의 판매를 모두 세지 못했습니다(0이 아니라 미확인).`:reason,windows};
  });
 }
 
-// 수집 상태에 파생 값(보정 보고·출시 뒤 결과)을 덧붙여 저장한다(다른 필드는 그대로). 상품 리서치 잠금 안에서만 부른다.
-export type DerivedState={calibration:CalibrationReport;outcomes:{at:string;rows:LaunchOutcome[]}};
+// ── 가중치 재보정 후보(평가 3회차 ⑩ 학습 고리, 읽기 전용): 출시 뒤 8주 창이 다 지나고 순매출을 아는 결과만, 그 결정 때 점수표의 하위 점수와 순위 상관을 잰다.
+// 제안만 남기고 가중치 판·점수표는 바꾸지 않는다(analytics/backtest.ts proposeWeights). 결정 때 점수표의 가중치 판(없으면 w1)을 기준으로 제안한다.
+export async function weightsCandidate(owner:string,outcomes:readonly LaunchOutcome[],now:Date):Promise<WeightsProposalView>{
+ const done=outcomes.flatMap(o=>{const w=o.windows.find(x=>x.weeks===RECALIBRATION_WEEKS);return o.sku&&w&&w.complete&&w.revenue!==null?[{decisionId:o.decisionId,productId:o.productId,sku:o.sku,at:o.handedOffAt,revenue:w.revenue}]:[]}).sort((a,b)=>a.at.localeCompare(b.at)||a.decisionId.localeCompare(b.decisionId));
+ const decisions=done.length?new Map((await loadDecisions(owner)).map(d=>[d.id,d])):new Map<string,MdDecision>();
+ const cards=await loadScores(owner,done.map(x=>decisions.get(x.decisionId)?.scoreCardId??''));
+ const rows:RecalibrationRow[]=[],versions=new Set<string>(),products=new Set<string>(),skus=new Set<string>();
+ // 반복 승인·겹치는 판매 기간을 독립 표본처럼 세지 않는다. 상품/SKU별 가장 이른 성숙 결과 한 건만 쓴다.
+ for(const x of done){const d=decisions.get(x.decisionId),c=cards.get(d?.scoreCardId??'');if(!c||d?.productId!==x.productId||c.productId!==x.productId||products.has(x.productId)||skus.has(x.sku))continue;products.add(x.productId);skus.add(x.sku);versions.add(c.weightsVersion);rows.push({revenue:x.revenue,subScores:Object.fromEntries(c.subScores.map(s=>[s.key,s.value]))})}
+ const baseVersion=versions.size===1?[...versions][0]:'w1',base=WEIGHT_SETS[baseVersion]??WEIGHT_SETS.w1;
+ const p=proposeWeights(rows,base,{at:now.toISOString(),baseVersion:WEIGHT_SETS[baseVersion]?baseVersion:'w1'});
+ return {...p,caveats:[...p.caveats,'같은 상품 또는 SKU는 가장 이른 성숙 판매 결과 한 건만 사용합니다. 반복 승인과 겹치는 판매 기간은 표본 수를 늘리지 않습니다.',...(versions.size>1?[`결정 때 점수표의 가중치 판이 여러 개(${[...versions].sort().join(', ')})라 w1을 기준으로 제안했습니다.`]:[])]};
+}
+
+// 수집 상태에 파생 값(보정 보고·출시 뒤 결과·가중치 재보정 후보)을 덧붙여 저장한다(다른 필드는 그대로). 상품 리서치 잠금 안에서만 부른다.
+export type DerivedState={calibration:CalibrationReport;outcomes:{at:string;rows:LaunchOutcome[]};recalibration?:WeightsProposalView|null};
 async function saveDerived(owner:string,derived:DerivedState){
  const cur=await optional<Record<string,unknown>>(owner,K.collectState,'current');
  await putStatement(owner,K.collectState,'current',{...(cur??{}),...derived}).run();
 }
 
 // 재계산 감싸기. 모든 재계산 경로(가져오기·확인·브랜드 적합성·격리 해제·재계산 요청·수집 완료)가 이 함수를 쓴다.
-export async function refreshScores(owner:string,now:Date,videos:readonly CollectVideo[]=[]){
+// renew(선택, 평가 3회차 M4): 단계마다(쓰기 직전) 부르는 잠금 갱신. 잠금을 잃었으면 ResearchLockLost를 던져 남은 단계를 저장하지 않고 멈춘다.
+// 단계: 자사 판매 스냅샷 → 이상치 기록 → 재계산 저장(recompute 안, batch 직전) → 소싱 연결 되돌림 → 점수표 색인 → 파생 값 저장.
+export async function refreshScores(owner:string,now:Date,videos:readonly CollectVideo[]=[],opts:{renew?:()=>Promise<void>}={}){
+ const renew=opts.renew??(async()=>{});
  return withSnapshotReuse(async()=>{
+  await renew();
   const own=await ownSalesSnapshot(owner,now);
-  if(own){await ensureSnapshotRoom(owner,1,now,()=>referencedSnapshots(owner));await snapshotStatement(owner,own).run();forgetSnapshotReuse(owner)}
+  if(own){await ensureSnapshotRoom(owner,1,now,()=>referencedSnapshots(owner));await renew();await snapshotStatement(owner,own).run();forgetSnapshotReuse(owner)}
   const found=findAnomalies(await loadRecomputeSnapshots(owner,now),now.toISOString()),fresh=await freshAnomalies(owner,found);
   // 이미 기록한 관측(같은 스냅샷 또는 해제한 기간·상대값 같은 기간)은 그대로 둔다(insert_only + freshAnomalies).
-  if(fresh.length){await database().batch(bulkPut(owner,K.quarantine,fresh.map(q=>({key:q.id,parent:q.sourceId,data:q,at:q.createdAt})),'insert_only'))}
+  if(fresh.length){await renew();await database().batch(bulkPut(owner,K.quarantine,fresh.map(q=>({key:q.id,parent:q.sourceId,data:q,at:q.createdAt})),'insert_only'))}
   const links=await sourcingLinks(owner);
-  const summary=await recompute(owner,now,videos);
+  const summary=await recompute(owner,now,videos,renew);
+  await renew();
   const restored=await restoreSourcing(owner,links,now.toISOString());
+  await renew();
   await updateScoreIndex(owner,now.toISOString());
-  const derived:DerivedState={calibration:summary.calibration,outcomes:{at:now.toISOString(),rows:await launchOutcomes(owner,now)}};
+  const outcomes=await launchOutcomes(owner,now);
+  const derived:DerivedState={calibration:summary.calibration,outcomes:{at:now.toISOString(),rows:outcomes},recalibration:await weightsCandidate(owner,outcomes,now)};
+  await renew();
   await saveDerived(owner,derived);
   const {calibration:_c,...rest}=summary;void _c;
   return {...rest,calibration:{groups:summary.calibration.groups,mape:summary.calibration.mape},ownSalesSnapshot:own?own.id:null,anomaliesChecked:found.length,anomaliesNew:fresh.length,sourcingRestored:restored,derived};

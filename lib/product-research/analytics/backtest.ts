@@ -1,6 +1,8 @@
 // 백테스트(순수). 계획 8절 1번·④: 기준 시점 T에 점수를 고정하고(입력은 T 이전 점만), T+H주의 실제 변화로 정답을 매겨 정밀도@k·순위 상관을 잰다.
 // 기준선 셋(현재 1위·모멘텀만·무작위)과 같은 후보·같은 정답으로 비교한다. 무작위는 시드로 결정형이다.
-import type {BacktestResult,ScoreCard} from '../types';
+import type {BacktestResult,ScoreCard,SubScoreKey} from '../types';
+import {SUB_SCORES} from '../types';
+import type {WeightsProposalView} from '../api';
 import {shortId,sha256Hex} from './hash';
 import {buildScoreInput,scoreCard,type ProductBundle,type ScoreInput} from './score';
 import {DAY_MS,timeOf,toWeekly} from './series';
@@ -65,4 +67,32 @@ export function runBacktest(opts:{candidates:readonly ProductBundle[];asOf:strin
   label:`기준 시점 뒤 ${H}주에 대표 키워드 검색량(보정)이, 검색 추세가 없으면 플랫폼 순위가 ${Math.round(X*100)}% 이상 오른 상품`,computedAt:opts.computedAt,
  };
  return {result,rows,cards,inputs};
+}
+
+// ── 가중치 재보정 후보(평가 3회차 ⑩ 학습 고리, 순수·읽기 전용). 결정 때 점수표의 하위 점수와 출시 뒤 실제 순매출(같은 주 수 창, 다 지난 것만)의 순위 상관(스피어만)으로
+// 다음 판(w2) 가중치를 '제안'한다. 제안식: w2_k ∝ w_k × max(0, 1 + ρ_k) (상관을 못 잰 하위 점수는 ρ=0, 즉 그대로), 합 1로 맞추고 소수 셋째 자리로 반올림.
+// 표본이 minN 미만이면 제안하지 않는다(null과 까닭). 점수표·가중치 판은 바꾸지 않는다. 새 판은 백테스트로 기준선 대비 결과를 본 뒤 사람이 정한다.
+export const RECALIBRATION_MIN_N=8,RECALIBRATION_WEEKS=8;
+export type RecalibrationRow={subScores:Partial<Record<SubScoreKey,number|null>>;revenue:number};
+export function proposeWeights(rows:readonly RecalibrationRow[],base:Record<SubScoreKey,number>,opts:{at:string;baseVersion:string;weeks?:number;minN?:number}):WeightsProposalView{
+ const minN=opts.minN??RECALIBRATION_MIN_N,weeks=opts.weeks??RECALIBRATION_WEEKS,n=rows.length;
+ const correlations=SUB_SCORES.map(key=>{
+  const pairs=rows.filter(r=>typeof r.subScores[key]==='number');
+  const rho=pairs.length>=minN?spearman(pairs.map(r=>r.subScores[key] as number),pairs.map(r=>r.revenue)):null;
+  return {key,rho:rho===null?null:Math.round(rho*1000)/1000,n:pairs.length};
+ });
+ const caveats=[
+  '제안일 뿐 적용하지 않습니다. 점수표는 지금 가중치 판을 그대로 씁니다. 새 판으로 백테스트해 기준선보다 나은지 확인한 뒤 사람이 정합니다.',
+  '표본은 승인해 성장2로 넘긴 후보뿐입니다. 제외·보류한 후보의 매출은 모르므로 선택 편향이 있습니다.',
+  `출시 뒤 ${weeks}주 순매출은 가격·광고·재고처럼 점수 밖 요인의 영향을 받습니다.`,
+  ...(n<30?[`표본이 ${n}개로 적어 상관이 우연일 수 있습니다.`]:[]),
+ ];
+ const out={at:opts.at,weeks,n,minN,baseVersion:opts.baseVersion,base:{...base},correlations,caveats};
+ if(n<minN)return {...out,proposed:null,reason:`출시 뒤 ${weeks}주가 다 지나고 순매출을 아는 결과가 ${n}개라 가중치를 제안하지 않았습니다(최소 ${minN}개).`};
+ if(!correlations.some(c=>c.rho!==null))return {...out,proposed:null,reason:'하위 점수와 순매출의 순위 상관을 잴 수 있는 항목이 없어(값이 같거나 비어 있음) 가중치를 제안하지 않았습니다.'};
+ const raw=SUB_SCORES.map(k=>base[k]*Math.max(0,1+(correlations.find(c=>c.key===k)?.rho??0))),sum=raw.reduce((a,b)=>a+b,0);
+ if(!(sum>0))return {...out,proposed:null,reason:'모든 하위 점수가 순매출과 거꾸로 움직여 가중치를 제안하지 않았습니다.'};
+ const rounded=raw.map(x=>Math.round(x/sum*1000)/1000),drift=Math.round((1-rounded.reduce((a,b)=>a+b,0))*1000)/1000;
+ if(drift!==0){const i=rounded.indexOf(Math.max(...rounded));rounded[i]=Math.round((rounded[i]+drift)*1000)/1000}
+ return {...out,proposed:Object.fromEntries(SUB_SCORES.map((k,i)=>[k,rounded[i]])) as Record<SubScoreKey,number>,reason:null};
 }

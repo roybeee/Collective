@@ -92,6 +92,7 @@ export type Observation={
  subject:Subject;
  metric:MetricKey;
  value:number|null;      // null=미확인
+ underTen?:boolean;      // 공급자가 명시한 검색수 '< 10'. 일반 결측과 구분한다.
  // 값이 가리키는 기간. 하루 값이면 from=to.
  period:{from:string;to:string};
  // 랭킹이면 그 랭킹의 범위(카테고리 이름 등).
@@ -134,7 +135,7 @@ export type ResearchProduct={
 };
 
 // 시계열의 한 점. 반드시 스냅샷을 가리킨다.
-export type SeriesPoint={at:string;value:number|null;snapshotId:string};
+export type SeriesPoint={at:string;value:number|null;snapshotId:string;underTen?:boolean};
 // limitations(추가 필드, 선택): 시계열 해석을 제한하는 사실(예: 데이터랩 상대값이 서로 다른 요청의 재정규화 값으로 섞임).
 export type Series={subjectKey:string;metric:MetricKey;sourceId:SourceId;points:SeriesPoint[];limitations?:string[]};
 

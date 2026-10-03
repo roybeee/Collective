@@ -6,8 +6,11 @@ import {groupDigits} from './format';
 
 export type CompetitionListing={key:string;rank:number|null;reviewCount:number|null;price:number|null;firstSeenAt:string|null};
 export type CompetitionInput={asOf:string;sellerCount:number|null;productCount:number|null;adCompetition:number|null;listings:CompetitionListing[];
- // 목록(상품) 시계열의 가장 이른 관측 시각. 신규 진입 판단은 목록 관측 이력이 8주 이상일 때만 한다(처음 본 상품을 모두 신규로 오해하지 않게).
- historyStart:string|null;evidence:string[]};
+ // 목록(상품) 시계열의 관측 시작 시각. 신규 진입 판단은 목록 관측 이력이 8주 이상일 때만 한다(처음 본 상품을 모두 신규로 오해하지 않게).
+ // 평가 3회차 M2: 모든 목록 중 가장 이른 시각이 아니라, 신규 진입 판단에 쓰는 순위 목록의 범위(출처)마다 관측을 시작한 시각 중 가장 늦은 것이다.
+ historyStart:string|null;evidence:string[];
+ // 추가 필드(선택): 목록 범위(출처)별 관측 시작. 쇼핑 검색 범위는 이 키워드의 쇼핑 검색 관측(상품 수·판매처 수)이 시작된 시각을 쓴다.
+ historyStartByScope?:Record<string,string>};
 export type CompetitionResult={score:number|null;components:{key:'sellers'|'products'|'ad'|'concentration'|'dispersion'|'new_entrants';value:number;metric:number;weight:number}[];
  sellerCount:number|null;productCount:number|null;top10Hhi:number|null;priceDispersion:number|null;newEntrantShare:number|null;reasons:string[];evidence:string[];
  // 추가 필드: 가격 사분위(가격 있는 상품 4개 이상일 때)와 '비어 있는 자리' 한 문장(자료가 보여 줄 때만).
@@ -86,15 +89,27 @@ export function competitionInputFromSeries(all:readonly Series[],keywordKey:stri
  const kw=(metric:'seller_count'|'product_count'|'ad_competition')=>{const s=frozen.find(x=>x.subjectKey===keywordKey&&x.metric===metric);const p=s?latestValue(s.points):null;if(p)evidence.add(p.snapshotId);return p?p.value:null};
  const byListing=new Map<string,Series[]>();
  for(const s of frozen)if(s.subjectKey.startsWith('ls:')&&(!listingSources||listingSources.includes(s.sourceId))&&(s.metric==='rank'||s.metric==='review_count'||s.metric==='price_min'))byListing.set(s.subjectKey,[...(byListing.get(s.subjectKey)??[]),s]);
- const listings:CompetitionListing[]=[];let historyStart:string|null=null;
+ const listings:CompetitionListing[]=[];
  // 관측 이력 시작은 목록 시계열(순위·리뷰·가격)에서만 잡는다. 데이터랩·검색광고 이력이 길어도 목록을 본 기간이 8주 미만이면 신규 진입은 미확인(null)이다(평가 2회차 M2).
- for(const ss of byListing.values())for(const s of ss){const first=s.points.find(p=>p.value!==null)?.at;if(first&&(!historyStart||timeOf(first)<timeOf(historyStart)))historyStart=first}
+ // 평가 3회차 M2: 범위(목록 출처)마다 따로 잡는다. 다른 출처·다른 키워드 목록을 오래 봤다고 이 범위의 신규 진입을 판단하지 않는다.
+ const earliest=(ats:readonly string[])=>ats.reduce<string|null>((m,a)=>!m||timeOf(a)<timeOf(m)?a:m,null);
+ const scopeStart=new Map<string,string>(),sourceOf=new Map<string,SourceId>();
  for(const [key,ss] of byListing){
   const pick=(m:string)=>{const s=ss.find(x=>x.metric===m);const p=s?latestValue(s.points):null;if(p)evidence.add(p.snapshotId);return p?p.value:null};
-  const first=ss.flatMap(s=>s.points.filter(p=>p.value!==null).map(p=>p.at)).sort((a,b)=>timeOf(a)-timeOf(b))[0]??null;
+  const first=earliest(ss.flatMap(s=>s.points.filter(p=>p.value!==null).map(p=>p.at)));
+  const src=ss[0].sourceId;sourceOf.set(key,src);
+  if(first){const cur=scopeStart.get(src);if(!cur||timeOf(first)<timeOf(cur))scopeStart.set(src,first)}
   listings.push({key,rank:pick('rank'),reviewCount:pick('review_count'),price:pick('price_min'),firstSeenAt:first});
  }
- return {asOf,sellerCount:kw('seller_count'),productCount:kw('product_count'),adCompetition:kw('ad_competition'),listings:listings.sort((a,b)=>a.key<b.key?-1:1),historyStart,evidence:[...evidence].sort()};
+ // 쇼핑 검색 범위는 키워드마다 다르다: 이 키워드의 쇼핑 검색 관측(상품 수·판매처 수)이 있으면 그 시작을 쓴다(다른 키워드 목록의 시작이 아니라).
+ const shopKw=earliest(frozen.filter(x=>x.subjectKey===keywordKey&&x.sourceId==='naver_shop_search'&&(x.metric==='product_count'||x.metric==='seller_count')).flatMap(x=>x.points.filter(p=>p.value!==null).map(p=>p.at)));
+ if(shopKw&&scopeStart.has('naver_shop_search'))scopeStart.set('naver_shop_search',shopKw);
+ // 신규 진입 판단에 쓰는 범위: 순위가 있는 목록의 출처. 그 범위들의 시작 중 가장 늦은 것(모든 범위가 8주 이상 관측됐을 때만 판단). 순위 목록이 없으면 전체 목록 중 가장 이른 시작(표시용).
+ const ranked=[...new Set(listings.filter(l=>l.rank!==null).map(l=>sourceOf.get(l.key)).filter((x):x is SourceId=>!!x))];
+ const starts=ranked.map(src=>scopeStart.get(src)).filter((x):x is string=>!!x);
+ const historyStart=starts.length?starts.reduce((m,a)=>timeOf(a)>timeOf(m)?a:m):earliest([...scopeStart.values()]);
+ return {asOf,sellerCount:kw('seller_count'),productCount:kw('product_count'),adCompetition:kw('ad_competition'),listings:listings.sort((a,b)=>a.key<b.key?-1:1),historyStart,evidence:[...evidence].sort(),
+  historyStartByScope:Object.fromEntries([...scopeStart.entries()].sort((a,b)=>a[0]<b[0]?-1:1))};
 }
 // 스냅샷 묶음에서 바로 만들 때(네이버 쇼핑·쿠팡·랭킹 관측). buildSeries를 거쳐 같은 규칙(실패 스냅샷 제외·재수집 우선)을 쓴다.
 export function competitionFromSnapshots(snapshots:readonly Snapshot[],keyword:string,asOf:string,listingSources?:readonly SourceId[]):CompetitionResult{

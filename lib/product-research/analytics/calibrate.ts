@@ -54,6 +54,35 @@ export function sumAnchors(lists:readonly (readonly SeriesPoint[])[]):SeriesPoin
  for(const [at,p] of maps[0]){const vs=maps.map(m=>m.get(at)?.value);if(vs.every(v=>typeof v==='number'))out.push({at,value:(vs as number[]).reduce((a,b)=>a+b,0),snapshotId:p.snapshotId})}
  return out.sort((a,b)=>timeOf(a.at)-timeOf(b.at));
 }
+// 묶음 기준점 재료(평가 3회차 M3). 키워드마다 검색광고 월간 검색수(PC+모바일) 점과, 한쪽이 "< 10"이라 합계가 비었을 때 쓸 PC·모바일 점.
+// - 공급자가 명시한 "< 10"(underTen)은 0~9 사이 값이다: 그쪽은 5로 두고 다른 쪽 실측과 더한다. 일반 null은 추정하지 않는다.
+// - 합계가 비었는데 PC·모바일 값도 읽지 못했거나, 월간 검색수 관측이 아예 없는 키워드는 missing이다. 묶음에 missing이 하나라도 있으면
+//   기준점이 실제보다 낮게 잡히므로(빠진 키워드를 조용히 버리지 않는다) 그 묶음은 보정하지 않는다(호출자가 null과 까닭을 남긴다).
+export type AnchorMember={key:string;month:readonly SeriesPoint[]|null;pc?:readonly SeriesPoint[]|null;mobile?:readonly SeriesPoint[]|null};
+export const UNDER_TEN={estimate:5,low:0,high:9} as const;
+export type GroupAnchors={points:SeriesPoint[];bounded:string[];missing:string[];ranges:{at:string;low:number;high:number}[]};
+export function groupAnchors(members:readonly AnchorMember[]):GroupAnchors{
+ const lists:SeriesPoint[][]=[],bounded=new Set<string>(),missing:string[]=[],span=new Map<string,{low:number;high:number}>();
+ const side=(pts:readonly SeriesPoint[]|null|undefined,at:string)=>pts?.find(p=>p.at===at)??null;
+ for(const m of members){
+  const month=m.month??[];
+  if(!month.length){missing.push(m.key);continue}
+  const out:SeriesPoint[]=[];
+  for(const p of month){
+   if(p.value!==null){out.push(p);const r=span.get(`${m.key}|${p.at}`);if(!r)span.set(`${m.key}|${p.at}`,{low:p.value,high:p.value});continue}
+   const pc=side(m.pc,p.at),mo=side(m.mobile,p.at);
+   // 과거 null만 저장한 관측도 범위가 입증되지 않았으므로 재수집 전까지 미확인이다.
+   if(!pc||!mo||(pc.value===null&&pc.underTen!==true)||(mo.value===null&&mo.underTen!==true))continue;
+   const v=(x:SeriesPoint)=>x.value===null?UNDER_TEN.estimate:x.value,lo=(x:SeriesPoint)=>x.value===null?UNDER_TEN.low:x.value,hi=(x:SeriesPoint)=>x.value===null?UNDER_TEN.high:x.value;
+   out.push({at:p.at,value:v(pc)+v(mo),snapshotId:p.snapshotId});span.set(`${m.key}|${p.at}`,{low:lo(pc)+lo(mo),high:hi(pc)+hi(mo)});bounded.add(m.key);
+  }
+  if(!out.length){missing.push(m.key);continue}
+  lists.push(out);
+ }
+ const points=missing.length?[]:sumAnchors(lists);
+ const ranges=points.map(p=>{let low=0,high=0;for(const m of members){const r=span.get(`${m.key}|${p.at}`);if(r){low+=r.low;high+=r.high}}return {at:p.at,low,high}});
+ return {points,bounded:[...bounded].sort(),missing,ranges};
+}
 // 기준 시점의 30일 환산 검색량: 마지막 30일 창의 상대값 평균 × 배율. 보정이 없으면 null.
 export function currentVolume(c:CalibrationResult|null):number|null{
  if(!c||!c.points.length)return null;const last=c.points[c.points.length-1].at,w=windowMean(c.points,last,WINDOW_DAYS);return w.mean;

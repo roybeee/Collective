@@ -13,9 +13,10 @@ import {Note} from '@/components/app/note';
 import {Segmented} from '@/components/app/segmented';
 import {date,dateTime} from '@/lib/format';
 import type {BacktestResult} from '@/lib/product-research/types';
-import {categoryLabel,decisionLabels,editReason,score,subValue,type Act,type Product,type View} from './product-research-shared';
+import {categoryLabel,decisionLabels,editReason,score,subScoreLabels,subValue,type Act,type Product,type View} from './product-research-shared';
 import {MoverList,Trend} from './product-research-radar';
-import {launchOutcomeText,movers,thresholdWhy} from '@/lib/product-research/ui-detail';
+import {launchOutcomeText,movers,signedRho,thresholdWhy,weightRows,weightText,type WeightRow} from '@/lib/product-research/ui-detail';
+import type {WeightsProposalView} from '@/lib/product-research/api';
 import s from './product-research.module.css';
 
 const WEEK=7*86400000,LIST=10;
@@ -93,6 +94,28 @@ export function ReportTab({view,act,busy,onOpen}:{view:View;act:Act;busy:boolean
   {backtests.length?<DataTable rows={backtests} columns={backtestColumns} rowKey={b=>b.id} caption="가중치 판 백테스트 결과" csvName="product-research-backtests"/>
    :<EmptyLine next="위 '백테스트 실행'으로 저장된 시계열에서 첫 결과를 만드세요.">백테스트 결과가 아직 없습니다.</EmptyLine>}
   {backtests[0]&&<BacktestNotes result={backtests[0]}/>}
+  <WeightsProposal proposal={view.weightsProposal??null}/>
+ </section>;
+}
+
+// 가중치 재보정 후보(평가 3회차 ⑩ 학습 고리): 출시 뒤 순매출과 하위 점수의 순위 상관으로 만든 제안. 적용하지 않고 보여 주기만 한다.
+const weightColumns:DataColumn<WeightRow>[]=[
+ {label:'하위 점수',cell:r=>subScoreLabels[r.key],sort:r=>subScoreLabels[r.key],csv:r=>subScoreLabels[r.key]},
+ {label:'지금 가중치',cell:r=>weightText(r.base),sort:r=>r.base,csv:r=>r.base,align:'right'},
+ {label:'매출과 순위 상관',cell:r=>signedRho(r.rho),sort:r=>r.rho??-2,csv:r=>r.rho??'',align:'right'},
+ {label:'제안 가중치',cell:r=>weightText(r.proposed),sort:r=>r.proposed??-1,csv:r=>r.proposed??'',align:'right'},
+ {label:'표본',cell:r=>`${r.n}개`,sort:r=>r.n,csv:r=>r.n,align:'right'},
+];
+function WeightsProposal({proposal}:{proposal:WeightsProposalView|null}){
+ return <section className={s.reportCard} aria-labelledby="pr-weights-title">
+  <h3 id="pr-weights-title" className={s.cardTitle}>가중치 재보정 후보</h3>
+  <Note>출시 뒤 실제 매출로 하위 점수 가중치를 다시 맞춰 본 제안입니다. 점수표는 지금 가중치를 그대로 씁니다. 새 판으로 백테스트해 기준선보다 나은지 확인한 뒤 사람이 정합니다.</Note>
+  {proposal?<>
+   <p className={s.muted}><MetaLine items={[`표본 ${proposal.n}개(최소 ${proposal.minN}개)`,`출시 뒤 ${proposal.weeks}주 순매출`,`지금 판 ${proposal.baseVersion}`,`계산 ${dateTime(proposal.at)}`]}/></p>
+   {proposal.reason&&<p className={s.reason} data-testid="pr-weights-reason">제안하지 않은 이유: {proposal.reason}</p>}
+   <DataTable rows={weightRows(proposal)} columns={weightColumns} rowKey={r=>r.key} caption="하위 점수별 지금 가중치와 재보정 제안" csvName="product-research-weights"/>
+   {proposal.caveats.length>0&&<ul className={s.notes} aria-label="재보정 제안 주의점">{proposal.caveats.map(x=><li key={x}>{x}</li>)}</ul>}
+  </>:<EmptyLine next="성장2로 넘긴 후보의 출시 뒤 8주가 지나면 다음 재계산 때 만들어집니다.">가중치 재보정 후보가 아직 없습니다.</EmptyLine>}
  </section>;
 }
 

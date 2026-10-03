@@ -15,6 +15,11 @@ const stub=async(url,init={})=>{
   for(const g of b.keywordGroups){const data=[];let t=Date.parse(b.startDate+'T00:00:00Z');const end=Date.parse(b.endDate+'T00:00:00Z');while(t<=end){data.push({period:new Date(t).toISOString().slice(0,10),ratio:30});t+=(b.timeUnit==='week'?7:1)*DAY}out.push({title:g.groupName,keywords:g.keywords,data})}
   return json({startDate:b.startDate,endDate:b.endDate,timeUnit:b.timeUnit,results:out});
  }
+ if(u.host==='openapi.naver.com'&&u.pathname==='/v1/datalab/shopping/category/keywords'){
+  const b=JSON.parse(init.body);const out=[];
+  for(const k of b.keyword){const data=[];let t=Date.parse(b.startDate+'T00:00:00Z');const end=Date.parse(b.endDate+'T00:00:00Z');while(t<=end){data.push({period:new Date(t).toISOString().slice(0,10),ratio:40});t+=7*DAY}out.push({title:k.name,keyword:k.param,data})}
+  return json({startDate:b.startDate,endDate:b.endDate,timeUnit:b.timeUnit,results:out});
+ }
  if(u.host==='openapi.naver.com'&&u.pathname==='/v1/search/shop.json'){const q=u.searchParams.get('query');return json({total:1520,items:[1,2].map(n=>({title:`<b>${q}</b> ${n}호 500g`,link:`https://smartstore.naver.com/shop${n}/products/${q.length}${n}`,lprice:String(3000+n*100),mallName:`몰${n}`,productId:`${q.length}0${n}${q.charCodeAt(0)}`,brand:`브랜드${n}`,category1:'식품'}))})}
  if(u.host==='www.googleapis.com'){if(u.pathname.endsWith('/search'))return json({pageInfo:{totalResults:3},items:[{id:{videoId:'abcdefghijk'}}]});const ids=(u.searchParams.get('id')||'').split(',');return json({items:ids.map(id=>({id,snippet:{title:'영상'},statistics:{viewCount:'1000'}}))})}
  if(u.host==='api-gateway.coupang.com')return json({rCode:'0',data:[{productId:77,productName:'마라소스 500g',productPrice:3900,productUrl:'https://www.coupang.com/vp/products/77',rank:2}]});
@@ -160,7 +165,9 @@ const cand=rows(O5,'growth_sourcing_candidate')[0],decMara=rec(O5,'pr_decision',
 check(r.status===200&&count(O5,'growth_sourcing_candidate')===1&&cand.status==='draft'&&cand.mayOrder===false&&cand.campaignId==='camp1'&&cand.brandId==='b1'&&cand.version===1,'handoff creates one growth_sourcing_candidate draft in the campaign (status draft, mayOrder false)');
 check(cand.input.unitCost===null&&cand.input.moq===null&&cand.input.leadDays===null&&cand.input.taxBasis==='unknown'&&cand.input.catalogId==='cat1'&&cand.input.catalogVersion===2&&cand.productResearch.decisionId===dMara,'draft costs are unknown (null), linked to the only campaign catalog item, with provenance');
 check(JSON.stringify(plain(growth.parseCandidateInput(cand.input)))===JSON.stringify(cand.input),'the draft passes the growth sourcing validator unchanged (parseCandidateInput)');
-check(count(O5,'growth_sourcing_history')===1&&count(O5,'growth_catalog')===2&&count(O5,'growth_offer')===0&&count(O5,'store_order')===0,'history row written; no catalog, offer or order is created');
+check(count(O5,'growth_sourcing_history')===1&&count(O5,'growth_catalog')===2&&count(O5,'store_order')===0,'history row written; no catalog or order is created');
+const offer0=rows(O5,'growth_offer')[0];
+check(count(O5,'growth_offer')===1&&offer0.input.priceApproved===false&&offer0.input.price===null&&offer0.input.catalogId==='cat1'&&offer0.input.needId===decMara.handoff.needId&&decMara.handoff.offerId===offer0.id,'(round 3 ⑩) handoff also creates one offer draft for the same catalog item: no price, price not approved, linked to the need draft');
 check(decMara.handoff.candidateId===cand.id&&typeof decMara.handoff.at==='string'&&rec(O5,'pr_product',pMara.id).sourcing.candidateId===cand.id,'decision records the candidate and handoff time; the product is linked to the draft');
 r=await post(O5,{action:'handoff',decisionId:dJj,campaignId:'camp2',campaignVersion:1});
 const reqRow=rows(O5,'pr_request').find(x=>x.action==='handoff'&&x.status==='done'&&x.job?.signalId===r.body.resultId);

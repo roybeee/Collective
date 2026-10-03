@@ -13,7 +13,7 @@ import {dateTime,josa,shortId} from '@/lib/format';
 import {cssVars} from '@/lib/ui/css-vars';
 import type {Saved} from '@/lib/ui/notify';
 import {REASON_MAX,REASON_MIN,type ResearchRequest,type ResearchViewResponse,type CredentialKey} from '@/lib/product-research/api';
-import {approvalWhy,decisionReasonWhy} from '@/lib/product-research/ui-detail';
+import {approvalWhy,catalogChoice,catalogLabel,decisionReasonWhy} from '@/lib/product-research/ui-detail';
 import type {AccessMethod,DecisionStatus,MetricKey,RegulatoryClass,ScoreCard,SourceId,SubScoreKey,Temperature} from '@/lib/product-research/types';
 import {SOURCES} from '@/lib/product-research/sources';
 import {categorySpec} from '@/lib/product-research/categories';
@@ -110,14 +110,18 @@ export function DecisionBox({view,product,act,busy,compact=false}:{view:View;pro
   if(r.ok){setReason('');setAck(false)}
  }
  const campaign=view.campaigns.find(c=>c.id===campaignId);
+ // 초안(소싱 후보·판매 오퍼)을 이을 카탈로그 상품: 하나뿐이면 자동, 여럿이면 고른다(고르지 않으면 초안 없이 시장 근거만 넘긴다).
+ const [catalogId,setCatalogId]=useState('');
+ const choice=catalogChoice(view.campaignCatalogs,campaignId),chosenCatalog=catalogId||choice.auto||'';
  const handing=decision?.status==='approved'&&!decision.handoff;
  const [stop,recheckStop]=useGrowthStop(!!handing);
  const handoffWhy=!view.canEdit?editReason:stop==='stopped'?'전역 실행 중단 중이라 넘길 수 없습니다. 소유자가 설정에서 재개한 뒤 넘기세요.':stop==='loading'?'전역 실행 중단 상태를 확인하고 있습니다.':!campaign?'넘길 캠페인을 먼저 고르세요.':'';
  async function handoff(){
   if(!decision||!campaign||handoffWhy)return;
-  const ok=await askConfirm({title:`${campaign.title} 캠페인에 시장 근거로 넘길까요?`,impact:'이 캠페인 성장 탭에 시장 근거 초안이 생깁니다. 발주·결제·가격 승인은 일어나지 않습니다.',undo:'넘긴 근거는 그 캠페인 성장 탭에서 사람이 정리합니다.',confirmLabel:'시장 근거로 넘기기'});
+  const item=choice.items.find(x=>x.id===chosenCatalog);
+  const ok=await askConfirm({title:`${campaign.title} 캠페인에 시장 근거로 넘길까요?`,impact:item?`이 캠페인 성장 탭에 시장 근거와 고객 기회 초안, ${catalogLabel(item)}의 ${product.sourcing?.campaignId===campaign.id?'판매 오퍼 초안':'소싱 후보·판매 오퍼 초안'}이 생깁니다. 발주·결제·가격 승인·게시는 일어나지 않습니다.`:'이 캠페인 성장 탭에 시장 근거와 고객 기회 초안이 생깁니다. 발주·결제·가격 승인은 일어나지 않습니다.',undo:'넘긴 근거와 초안은 그 캠페인 성장 탭에서 사람이 정리합니다.',confirmLabel:'시장 근거로 넘기기'});
   if(!ok)return;
-  await act({action:'handoff',decisionId:decision.id,campaignId:campaign.id,campaignVersion:campaign.version,...(sourceUrl.trim()?{sourceUrl:sourceUrl.trim()}:{})},'시장 근거로 넘겼습니다.','캠페인 성장 탭에서 확인하세요.');
+  await act({action:'handoff',decisionId:decision.id,campaignId:campaign.id,campaignVersion:campaign.version,...(sourceUrl.trim()?{sourceUrl:sourceUrl.trim()}:{}),...(chosenCatalog?{catalogId:chosenCatalog}:{})},'시장 근거로 넘겼습니다.','캠페인 성장 탭에서 확인하세요.');
  }
  const options=[...(card?.blocked?[]:[{value:'approved' as const,label:'승인'}]),{value:'hold' as const,label:'보류'},{value:'rejected' as const,label:'제외'}];
  return <div className={compact?s.decisionCompact:s.decision}>
@@ -133,6 +137,8 @@ export function DecisionBox({view,product,act,busy,compact=false}:{view:View;pro
   <Button type="button" disabled={busy||!!why} disabledReason={why} onClick={()=>void submit()}>결정 기록</Button>
   {decision?.status==='approved'&&(decision.handoff
    ?<p className={s.muted}>캠페인 시장 근거로 넘겼습니다(캠페인 {shortId(decision.handoff.campaignId)}).</p>
-   :<div className={s.handoff}><label className="field"><span>시장 근거로 넘길 캠페인</span><NativeSelect aria-label="시장 근거로 넘길 캠페인" value={campaignId} onChange={e=>{setCampaignId(e.target.value);recheckStop()}}><NativeSelectOption value="">캠페인 고르기</NativeSelectOption>{view.campaigns.map(c=><NativeSelectOption key={c.id} value={c.id}>{c.title}</NativeSelectOption>)}</NativeSelect></label><label className="field"><span>근거 주소(선택)</span><Input aria-label="시장 근거 주소" value={sourceUrl} maxLength={500} disabled={!view.canEdit} placeholder="비우면 상품 목록의 공개 주소를 씁니다" onChange={e=>setSourceUrl(e.target.value)}/></label><Button type="button" variant="outline" disabled={busy||!!handoffWhy} disabledReason={handoffWhy} onClick={()=>void handoff()}>시장 근거로 넘기기</Button></div>)}
+   :<div className={s.handoff}><label className="field"><span>시장 근거로 넘길 캠페인</span><NativeSelect aria-label="시장 근거로 넘길 캠페인" value={campaignId} onChange={e=>{setCampaignId(e.target.value);setCatalogId('');recheckStop()}}><NativeSelectOption value="">캠페인 고르기</NativeSelectOption>{view.campaigns.map(c=><NativeSelectOption key={c.id} value={c.id}>{c.title}</NativeSelectOption>)}</NativeSelect></label>
+    <label className="field"><span>초안을 이을 카탈로그 상품</span><NativeSelect aria-label="초안을 이을 카탈로그 상품" value={chosenCatalog} disabled={!view.canEdit||!!choice.why||!!choice.auto} onChange={e=>setCatalogId(e.target.value)}><NativeSelectOption value="">{choice.items.length?'고르지 않기(초안 없이 넘김)':'카탈로그 상품 없음'}</NativeSelectOption>{choice.items.map(x=><NativeSelectOption key={x.id} value={x.id}>{catalogLabel(x)}</NativeSelectOption>)}</NativeSelect>
+     {(choice.why||choice.auto)&&<small className={s.muted} data-testid="pr-catalog-why">{choice.why||'이 캠페인의 카탈로그 상품이 하나라 그 상품으로 초안을 만듭니다.'}</small>}</label><label className="field"><span>근거 주소(선택)</span><Input aria-label="시장 근거 주소" value={sourceUrl} maxLength={500} disabled={!view.canEdit} placeholder="비우면 상품 목록의 공개 주소를 씁니다" onChange={e=>setSourceUrl(e.target.value)}/></label><Button type="button" variant="outline" disabled={busy||!!handoffWhy} disabledReason={handoffWhy} onClick={()=>void handoff()}>시장 근거로 넘기기</Button></div>)}
  </div>;
 }

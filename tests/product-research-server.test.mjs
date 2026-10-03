@@ -22,6 +22,11 @@ const stub=async(url,init={})=>{
   for(const g of b.keywordGroups){const data=[];let t=Date.parse(b.startDate+'T00:00:00Z'),i=0;const end=Date.parse(b.endDate+'T00:00:00Z');while(t<=end){data.push({period:new Date(t).toISOString().slice(0,10),ratio:Math.min(100,20+i*0.5)});t+=(b.timeUnit==='week'?7:1)*DAY;i++}out.push({title:g.groupName,keywords:g.keywords,data})}
   return json({startDate:b.startDate,endDate:b.endDate,timeUnit:b.timeUnit,results:out});
  }
+ if(u.host==='openapi.naver.com'&&u.pathname==='/v1/datalab/shopping/category/keywords'){
+  const b=JSON.parse(init.body);const out=[];
+  for(const k of b.keyword){const data=[];let t=Date.parse(b.startDate+'T00:00:00Z');const end=Date.parse(b.endDate+'T00:00:00Z');while(t<=end){data.push({period:new Date(t).toISOString().slice(0,10),ratio:40});t+=7*DAY}out.push({title:k.name,keyword:k.param,data})}
+  return json({startDate:b.startDate,endDate:b.endDate,timeUnit:b.timeUnit,results:out});
+ }
  if(u.host==='openapi.naver.com'&&u.pathname==='/v1/search/shop.json'){
   const q=u.searchParams.get('query');
   return json({total:1520,items:[1,2,3].map(n=>({title:`<b>${q}</b> 정품 ${n}호 500g`,link:`https://smartstore.naver.com/shop${n}/products/${q.length}${n}`,lprice:String(3000+n*100),mallName:`몰${n}`,productId:`${q.length}0${n}${q.charCodeAt(0)}`,brand:`브랜드${n}`,category1:'식품'}))});
@@ -41,6 +46,7 @@ const stub=async(url,init={})=>{
    const value=mode.hermes==='fabricate'?row.value+7:row.value;
    // 관측표 행에 row(스냅샷ID#번호)가 있으면 그 행을 인용하고, 없으면(이전 프롬프트) 스냅샷 ID를 인용한다.
    const out={summary:'근거 표의 관측값만으로 정리했습니다.',recommendation:'watch',claims:[{text:`'${row.subject}' ${row.metric} ${value} (${row.periodTo} 기준)`,citations:[row.row??row.snapshotId]}],risks:['규제 표시를 확인하세요.']};
+   if(mode.hermes==='unsafe-prose'){out.summary='규제 리스크가 없습니다.';out.risks=['원가가 없고 마진이 있습니다.'];}
    return json({object:'hermes.run',run_id:m[1],status:'completed',output:JSON.stringify(out),usage:{input_tokens:100,output_tokens:50,total_tokens:150}});
   }
  }
@@ -202,6 +208,14 @@ check(r.status===200&&count('pr_brief')===briefsBefore+1&&r.body.briefs.some(b=>
  if(typeof row0.row==='string')check(stored.claims[0].citations.includes(row0.snapshotId)&&Array.isArray(stored.claims[0].refs)&&stored.claims[0].refs.some(x=>x.snapshotId===row0.snapshotId),'model brief citing a row ref (snapshot#n) is graded per row and stored with refs');
  else check(stored.claims[0].citations.includes(row0.snapshotId),'model brief citing a snapshot id is stored (row refs arrive with the row-level grader)');}
 const sub=[...runInputs.values()].pop();check(typeof sub.instructions==='string'&&/observations/.test(sub.instructions)&&JSON.parse(sub.input).observations.every(o=>typeof o.snapshotId==='string'&&typeof o.value==='number'),'model receives only the observation table');
+mode.hermes='unsafe-prose';
+r=await act('generate_brief',{productIds:pick,question:'안전성과 수익성 확인',mode:'model'});
+check(r.status===200,'valid legacy evidence survives discarding unsupported model prose');
+const safeBriefId=r.body.resultId;
+const reloaded=await get(),safeBrief=reloaded.body.briefs.find(b=>b.id===safeBriefId);
+check(safeBrief&&!safeBrief.summary.includes('규제 리스크가 없습니다.')&&!safeBrief.risks.includes('원가가 없고 마진이 있습니다.'),'persisted and reloaded brief excludes unsupported safety and profit assertions');
+check(safeBrief.summary.includes(safeBrief.claims[0].text),'persisted summary is built from verified server-rendered evidence');
+mode.hermes='valid';
 
 // ── 8) 승인 → 성장2 시장 근거
 r=await get();const target=r.body.products.find(p=>p.score&&!p.score.blocked&&p.listings.some(l=>l.url&&!l.url.includes('?')));
