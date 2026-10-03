@@ -1,0 +1,35 @@
+{
+ "rCode": "0",
+ "rMessage": "",
+ "data": [
+  {
+   "categoryName": "식품",
+   "isRocket": true,
+   "isFreeShipping": true,
+   "productId": 7001,
+   "productImage": "",
+   "productName": "불닭소스 200g",
+   "productPrice": 3980,
+   "productUrl": "https://link.coupang.com/re/AFF1",
+   "rank": 1
+  },
+  {
+   "categoryName": "식품",
+   "isRocket": false,
+   "isFreeShipping": false,
+   "productId": 7002,
+   "productImage": "",
+   "productName": "마라소스 500g",
+   "productPrice": 8900,
+   "productUrl": "https://link.coupang.com/re/AFF2",
+   "rank": 2
+  },
+  {
+   "categoryName": "식품",
+   "productId": 7003,
+   "productName": "고추장 1kg",
+   "productPrice": 0,
+   "productUrl": "https://link.coupang.com/re/AFF3"
+  }
+ ]
+}

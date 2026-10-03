@@ -1,0 +1,27 @@
+{
+ "kind": "youtube#videoListResponse",
+ "items": [
+  {
+   "id": "abcdefghij1",
+   "snippet": {
+    "title": "마라소스 리뷰",
+    "channelTitle": "먹방채널"
+   },
+   "statistics": {
+    "viewCount": "153000",
+    "likeCount": "1200",
+    "commentCount": "88"
+   }
+  },
+  {
+   "id": "abcdefghij2",
+   "snippet": {
+    "title": "마라소스 만들기",
+    "channelTitle": "요리채널"
+   },
+   "statistics": {
+    "likeCount": "5"
+   }
+  }
+ ]
+}

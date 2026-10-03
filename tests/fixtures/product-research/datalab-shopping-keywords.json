@@ -1,0 +1,23 @@
+{
+ "startDate": "2026-09-01",
+ "endDate": "2026-09-02",
+ "timeUnit": "date",
+ "results": [
+  {
+   "title": "마라",
+   "keyword": [
+    "마라소스"
+   ],
+   "data": [
+    {
+     "period": "2026-09-01",
+     "ratio": 100
+    },
+    {
+     "period": "2026-09-02",
+     "ratio": "n/a"
+    }
+   ]
+  }
+ ]
+}

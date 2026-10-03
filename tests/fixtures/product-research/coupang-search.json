@@ -1,0 +1,27 @@
+{
+ "rCode": "0",
+ "rMessage": "",
+ "data": {
+  "landingUrl": "https://link.coupang.com/a/x",
+  "productData": [
+   {
+    "productId": 8001,
+    "productName": "마라소스 A",
+    "productPrice": 9900,
+    "productUrl": "https://link.coupang.com/re/S1",
+    "keyword": "마라소스",
+    "rank": 1,
+    "isRocket": true
+   },
+   {
+    "productId": 8002,
+    "productName": "마라소스 B",
+    "productPrice": 10900,
+    "productUrl": "https://link.coupang.com/re/S2",
+    "keyword": "마라소스",
+    "rank": 2,
+    "isRocket": false
+   }
+  ]
+ }
+}
