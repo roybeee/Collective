@@ -50,12 +50,15 @@ export type ResearchRequest=
  // riskAcknowledged(추가 필드, 선택): 검토 필요(needsReview) 점수표를 리스크 체크리스트 없이 승인할 때 위험 확인 표시. 사유에 확인한 위험(review.terms 중 하나)을 적어야 한다.
  |{action:'decide';productId:string;scoreCardId:string;briefId:string|null;status:DecisionStatus;reason:string;riskAcknowledged?:boolean}
  // sourceUrl(추가 필드, 선택): 상품 목록에 공개 https 주소가 없을 때 근거로 쓸 공개 주소. 없으면 가장 좋은 목록 주소를 쓴다.
- |{action:'handoff';decisionId:string;campaignId:string;campaignVersion:number;sourceUrl?:string}
+ // catalogId(추가 필드, 선택): 소싱 후보 초안을 이을 이 캠페인의 성장2 카탈로그 상품. 없으면 캠페인 카탈로그 상품이 하나일 때만 그것으로 초안을 만든다.
+ |{action:'handoff';decisionId:string;campaignId:string;campaignVersion:number;sourceUrl?:string;catalogId?:string}
  |{action:'run_backtest';horizonWeeks:4|8|12;labelThreshold:number}
  |{action:'clear_quarantine';quarantineId:string;reason:string}
  |{action:'link_sourcing';productId:string;campaignId:string;candidateId:string}
  |{action:'unlink_sourcing';productId:string}
- |{action:'save_risk_review';productId:string;scoreCardId:string;checklist:{rule:string;checked:boolean}[];note:string};
+ // 평가 2회차 H1: 승인에 세는 항목은 서버가 점수표(review)에서 만든 필수 항목(riskChecklists의 id 또는 text)뿐이다. rule이 그 text·id와 같으면 그 항목으로 센다.
+ // ruleId(추가 필드, 선택)를 주면 필수 항목 id여야 한다(모르는 id는 400). 그 밖의 항목은 운영자 추가 항목으로 저장만 하고 승인에 세지 않는다(확인하지 않았으면 승인을 막는다).
+ |{action:'save_risk_review';productId:string;scoreCardId:string;checklist:{rule:string;checked:boolean;ruleId?:string}[];note:string};
 
 // 서버가 쓰는 입력 검사 한도(평가 1회차 M8). 화면은 이 값을 그대로 써서 서버와 같은 기준으로 버튼을 켜고 끈다.
 export const QUESTION_MAX=200;            // 조사 질문·메모 질문(자)
@@ -79,8 +82,16 @@ export const HANDOFF_EVIDENCE_MAX_DAYS=30; // 넘기기 근거 관측의 최대 
 export type ResearchAlert={sourceId:SourceId;message:string;since:string};
 export type SourceFreshness={sourceId:SourceId;successRate30d:number|null;calls30d:number;lastOkAt:string|null;quarantined:number};
 export type RankingImportStatus={sourceId:SourceId;lastImportedAt:string|null;thisWeek:boolean};
-export type QuarantineEntry={id:string;sourceId:SourceId;snapshotId:string;subjectKey:string;metric:string;periodTo:string;value:number;median:number;robustZ:number;createdAt:string};
-export type RiskReview={id:string;productId:string;scoreCardId:string;checklist:{rule:string;checked:boolean}[];note:string;by:{id:string;email:string|null};at:string};
+// status·basis(추가 필드): 'flagged'는 상대값 급등을 빼지 않고 표시만 한 관측(다른 출처가 반박하지 않음), basis는 두 번째 출처 대조 결과 한 문장.
+export type QuarantineEntry={id:string;sourceId:SourceId;snapshotId:string;subjectKey:string;metric:string;periodTo:string;value:number;median:number;robustZ:number;createdAt:string;status?:'active'|'flagged';basis?:string|null};
+// 체크리스트 항목의 ruleId(추가 필드): 서버 필수 항목 id(null=운영자 추가 항목, 승인에 세지 않음). complete(추가 필드): 저장 때 필수 항목을 모두 확인했는지.
+export type RiskReview={id:string;productId:string;scoreCardId:string;checklist:{rule:string;checked:boolean;ruleId?:string|null}[];note:string;by:{id:string;email:string|null};at:string;complete?:boolean};
+// 리스크 필수 항목(서버가 점수표 review에서 만든다): id는 규칙 id(같은 규칙이 여럿이면 '규칙#번호'), text는 그 위험 사유 문장.
+export type RiskRule={id:string;text:string};
+// 데이터랩 보정 보고(평가 2회차 M3): 묶음 키워드 검색광고 실측 합을 기준점으로 잡은 배율의 검증 오차. error·mape는 모자라면 null(0 아님). rows는 오차 큰 순 최대 100.
+export type CalibrationView={at:string;groups:number;mape:number|null;rows:{groupId:string;label:string;error:number|null}[]};
+// 출시 뒤 결과(평가 2회차 M5): 성장2로 넘긴 결정의 카탈로그 SKU 판매(넘긴 시각부터 4·8·12주). sku가 null이면 값도 null이고 reason이 까닭이다.
+export type LaunchOutcome={decisionId:string;productId:string;campaignId:string;handedOffAt:string;sku:string|null;reason:string|null;windows:{weeks:number;complete:boolean;orders:number|null;units:number|null;revenue:number|null}[]};
 
 // GET 응답에 더하는 값.
 export type ViewExtras={
@@ -105,5 +116,11 @@ export type ViewExtras={
  riskReviews?:RiskReview[];
  collectNow?:{usedToday:number;maxPerDay:number};
  weeklyReport?:{week:string;briefId:string|null;at:string;reason:string|null}|null;
+ // 평가 2회차 추가 필드(모두 선택). riskChecklists: 화면 상품 중 검토 필요 점수표의 서버 필수 항목(승인에 세는 것). calibration: 마지막 재계산의 데이터랩 보정 보고.
+ // launchOutcomes: 넘긴 결정의 출시 뒤 판매 결과(마지막 재계산 기준). anomalyFlags: 빼지 않고 표시만 한 상대값 급등(최대 50).
+ riskChecklists?:{scoreCardId:string;items:RiskRule[]}[];
+ calibration?:CalibrationView|null;
+ launchOutcomes?:LaunchOutcome[];
+ anomalyFlags?:QuarantineEntry[];
 };
 export type ResearchViewResponse=ProductResearchView&ViewExtras;

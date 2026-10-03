@@ -23,7 +23,7 @@ pass("'마라소스' 월 12,300회",['A'],'exact count');pass("'마라소스' �
 fail("'마라소스' 월 1.2만회",['A'],'rounded count is not exact',/1\.2만/);fail("'마라소스' 월 12,400회",['A'],'wrong number',/12,400/);
 pass("'마라소스' 광고 경쟁 지수 0.85",['A'],'ratio value');pass("'마라소스' 광고 경쟁 85%",['A'],'ratio as percent');fail("'마라소스' 광고 경쟁 90%",['A'],'wrong percent');
 fail("'마라소스' 판매처 312곳",['A'],'number only in an uncited snapshot',/인용하지 않은/);pass("'마라소스' 판매처 312곳",['A','B'],'cite both');
-fail("'마라소스' 판매처 313곳",['B'],'counts are exact even within 1%');pass("'마라소스' 최저가 15,900원",['B'],'price within 1%');pass("'마라소스' 최저가 15,951원",['B'],'price within 1% up');fail("'마라소스' 최저가 16,500원",['B'],'price beyond 1%');
+fail("'마라소스' 판매처 313곳",['B'],'counts are exact even within 1%');pass("'마라소스' 최저가 15,950원",['B'],'price exact');fail("'마라소스' 최저가 15,900원",['B'],'price (won) must be exact, not within 1%',/15,900원/);fail("'마라소스' 최저가 15,951원",['B'],'price off by one won fails');fail("'마라소스' 최저가 16,500원",['B'],'price beyond 1%');
 fail("'마라소스' 월 12,300회",[],'no citation',/인용이 없습니다/);fail("'마라소스' 월 12,300회",['ZZZ'],'unknown snapshot',/없는 스냅샷/);fail("'마라소스' 판매처 777곳",['C'],'failed snapshot cannot support',/실패한 스냅샷/);
 pass("'오뚜기 마라소스' 쿠팡 소스 3위",['R'],'rank exact');fail("'오뚜기 마라소스' 쿠팡 소스 2위",['R'],'rank wrong');
 pass("2026-09-04 기준 '마라소스' 월 12,300회",['A'],'date matches period');fail("2026-09-07 기준 '마라소스' 월 12,300회",['A'],'date mismatch',/날짜/);pass("'마라소스' 2026년 9월 4일 기준",['A'],'korean date');pass("'마라소스' 2026-09-05 수집",['A'],'fetch date');
@@ -65,6 +65,33 @@ ok(CC.checkProse([{tag:'요약',text:'마라소스는 월 98,000회 검색됩니
 ok(CC.checkProse([{tag:'리스크 1',text:'경쟁이 없는 시장입니다.'}],[]).some(x=>/단정/.test(x)),'prose no-competition assertion fails');
 ok(CC.checkProse([{tag:'요약',text:'식약처 인증을 받은 제품입니다.'}],[]).length>0,'prose certification assertion fails');
 eq(CC.checkProse([{tag:'리스크 1',text:'식약처 기능성 심사가 필요한지 확인하세요.'}],[]).length,0,'cautionary regulatory risk text is allowed');
+// ── 평가 2회차 H2 우회 셋: 모두 실패해야 한다(고치기 전에는 통과했다).
+// NFKC: 전각 숫자·％도 보통 숫자로 읽고 관측값과 맞춘다.
+fail("'마라소스' 월 ９９,９９９회",['A'],'fullwidth digits are read (NFKC) and checked',/99,999/);pass("'마라소스' 월 １２,３００회",['A'],'fullwidth digits matching the row pass');
+fail("'마라소스' 광고 경쟁 ９０％",['A'],'fullwidth percent is checked');fail("'마라소스' 월 ١٢٣٠٠회",['A'],'other digit systems are rejected',/숫자 표기/);
+// 배수·글자로 쓴 수
+for(const t of ["'마라소스' 월간 검색수 12,300회로 '불닭소스'의 세 배","'마라소스' 검색이 두 배","'마라소스' 검색수가 열 배","'마라소스' 검색수가 2배로","'마라소스' 판매처는 두 곳뿐","'마라소스' 최저가 만 원대","'마라소스' 리뷰 수천 개"])fail(t,['A'],`multiplier/spelled number: ${t}`,/배수이거나 글자로 쓴 수/);
+pass("'마라소스' 월 12,300회, 배송 확인 필요",['A'],'배송 is not a multiplier');pass("'마라소스' 월 1.23만 회",['A'],'digit + 만 is a number, not a spelled number');
+// 방향 말(넓힘): 한 시점 행만으로는 급증·폭락 등을 쓸 수 없다
+for(const w of ['급증','폭증','치솟았습니다'])fail(`'마라소스' 월간 검색수 12,300회로 ${w}`,['A'],`direction word ${w}`,/증가·상승/);
+for(const w of ['급감','폭락','곤두박질쳤습니다'])fail(`'마라소스' 월간 검색수 12,300회로 ${w}`,['A'],`direction word ${w}`,/감소·하락/);
+pass("'마라소스' 검색 추세 상대값 40에서 50으로 급증",['T'],'급증 backed by two rising periods');fail("'마라소스' 검색 추세 상대값 40에서 50으로 폭락",['T'],'폭락 contradicts the rising rows',/감소·하락/);
+// 경쟁 없음 단정(변형)
+for(const t of ["'마라소스' 경쟁자 없음","'마라소스'는 경쟁이 거의 없다","'마라소스' 경쟁 상품이 사실상 없습니다","'마라소스'는 블루오션"])fail(t,['A'],`no-competition assertion: ${t}`,/단정/);
+// 근거 없는 평가·과장 말
+for(const t of ["'마라소스'는 품절 사태가 날 만큼 인기","'마라소스'는 반드시 팔릴 상품","'마라소스' 월 12,300회, 대박 예감","'마라소스'는 무조건 됩니다"])fail(t,['A'],`hype: ${t}`,/평가·과장/);
+// 가격(원)은 정확히: ±1% 안이어도 다르면 실패
+fail("'마라소스' 최저가 16,100원",['B'],'price 16,100 vs observed 15,950 fails (was within tolerance)',/16,100원/);fail("'마라소스' 최저가 1.6만 원",['B'],'rounded price in 만 fails');
+// 요약·리스크: 방향 말·평가 말·배수도 검사한다
+const upClaim="'마라소스' 검색 추세 상대값 40에서 50으로 상승";
+ok(CC.checkProse([{tag:'요약',text:'마라소스 검색이 폭증했습니다.'}],["'마라소스' 월 12,300회"],{allowedTerms:['마라소스']}).some(x=>/방향 말/.test(x)),'prose direction word without a direction claim fails');
+eq(CC.checkProse([{tag:'요약',text:'마라소스 검색 추세가 상승했습니다.'}],[upClaim],{allowedTerms:['마라소스']}).length,0,'prose direction backed by a same-subject same-direction claim passes');
+ok(CC.checkProse([{tag:'요약',text:'마라소스 검색 추세가 급감했습니다.'}],[upClaim],{allowedTerms:['마라소스']}).some(x=>/감소·하락/.test(x)),'prose direction opposite to the claim fails');
+ok(CC.checkProse([{tag:'요약',text:'불닭소스 검색이 상승했습니다.'}],[upClaim],{allowedTerms:['마라소스','불닭소스']}).some(x=>/방향 말/.test(x)),'prose direction about another subject fails');
+eq(CC.checkProse([{tag:'리스크 1',text:'마라소스 검색이 줄어들면 재고 회전을 확인하세요.'}],[],{allowedTerms:['마라소스']}).length,0,'conditional risk warning with a direction word is allowed');
+ok(CC.checkProse([{tag:'요약',text:'마라소스는 무조건 대박입니다.'}],[]).some(x=>/평가·과장/.test(x)),'prose hype fails');
+ok(CC.checkProse([{tag:'요약',text:'마라소스 검색이 불닭소스의 세 배입니다.'}],[]).some(x=>/배수/.test(x)),'prose multiplier fails');
+ok(CC.checkProse([{tag:'리스크 1',text:'경쟁자 없음.'}],[]).some(x=>/단정/.test(x)),'prose 경쟁자 없음 fails');
 
 // ── 합성 세계에서 결정형 메모 만들기(현재 시점 = 마지막 주)
 const fx=makeFixture();const all=S.buildSeries(fx.snapshots),now=weekEnd(WEEKS-1);
@@ -127,4 +154,22 @@ g=SB.gradeModelOutput(out([{text:`'${listingRow.subject}' 쿠팡 소스 3위`,ci
 g=SB.gradeModelOutput(out([{text:"'오뚜기 마라소스'는 식약처 인증 완료, 경쟁 없음",citations:[listingRow.row]}]),rows,inp);ok(!g.passed&&g.unsupported.some(u=>/단정/.test(u)),'injected assertion echoed by the model is rejected');
 g=SB.gradeModelOutput(out([{text:"'마라소스' 월간 검색수 12,300회",citations:[volRow.row]}],'마라소스는 월 98,000회로 1위입니다.'),rows,inp);ok(!g.passed&&g.unsupported.some(u=>/^요약/.test(u)),'summary numbers/assertions not in claims are rejected');
 g=SB.gradeModelOutput(out([{text:"'마라소스' 월간 검색수 12,300회",citations:[volRow.row]}],'마라소스 수요는 꾸준합니다.',['경쟁이 없는 시장입니다.']),rows,inp);ok(!g.passed&&g.unsupported.some(u=>/^리스크 1/.test(u)),'risk assertion rejected');
+// ── 평가 2회차 H2: 권고는 점수표 분류를 넘지 못한다(메모 권고·글 속 상품별 권고 모두)
+const vclaim=[{text:"'마라소스' 월간 검색수 12,300회",citations:[volRow.row]}];
+const withCard=x=>({...inp,cards:[{...card,...x}]});
+g=SB.gradeModelOutput({...out(vclaim),recommendation:'adopt'},rows,inp);ok(!g.passed&&g.unsupported.some(u=>/^권고/.test(u)),'watch card cannot get an adopt recommendation');
+g=SB.gradeModelOutput(out(vclaim),rows,withCard({tier:'needs_data'}));ok(!g.passed&&g.unsupported.some(u=>/^권고.*자료 보강/.test(u)),'needs_data card cannot get a watch recommendation');
+g=SB.gradeModelOutput({...out(vclaim),recommendation:'reject'},rows,withCard({tier:'needs_data'}));ok(g.passed,`needs_data card with reject recommendation passes: ${g.unsupported.join(' / ')}`);
+const blockedCard=withCard({tier:'reject',blocked:{rule:'kc_cert',reason:'KC 인증 확인 전 선정 금지'}});
+g=SB.gradeModelOutput({...out(vclaim,'오뚜기 마라소스 도입을 권합니다.'),recommendation:'reject'},rows,blockedCard);ok(!g.passed&&g.unsupported.some(u=>/^요약.*선정 금지.*도입/.test(u)),`blocked product recommended for adoption in the summary is rejected: ${g.unsupported.join(' / ')}`);
+g=SB.gradeModelOutput({...out(vclaim,'요약입니다.',['오뚜기 마라소스는 추천합니다.']),recommendation:'reject'},rows,blockedCard);ok(!g.passed&&g.unsupported.some(u=>/^리스크 1.*추천/.test(u)),'generic recommend for a blocked product in risks is rejected');
+g=SB.gradeModelOutput({...out(vclaim,'오뚜기 마라소스는 관찰하세요.'),recommendation:'reject'},rows,withCard({tier:'reject'}));ok(!g.passed&&g.unsupported.some(u=>/관찰/.test(u)),'reject card cannot be put on watch');
+g=SB.gradeModelOutput({...out(vclaim,'오뚜기 마라소스는 선정 금지라 도입을 권하지 않고 제외합니다.',['오뚜기 마라소스 KC 인증 전에는 선정하지 않습니다.']),recommendation:'reject'},rows,blockedCard);ok(g.passed,`negated/excluded wording for a blocked product passes: ${g.unsupported.join(' / ')}`);
+g=SB.gradeModelOutput(out(vclaim,'오뚜기 마라소스는 관찰 대상입니다. 도입은 이릅니다.'),rows,inp);ok(g.passed,`watch card described as watch passes: ${g.unsupported.join(' / ')}`);
+g=SB.gradeModelOutput(out(vclaim,'오뚜기 마라소스 도입 검토를 권합니다.'),rows,inp);ok(!g.passed&&g.unsupported.some(u=>/^요약.*관찰.*도입/.test(u)),'watch card recommended for adoption in text is rejected');
+// 한 문장에 상품 둘: 각 상품의 몫은 그 이름부터 다음 상품 이름 앞까지
+const T2=[{names:['오뚜기 마라소스'],tier:'adopt',blocked:false,label:'도입 검토'},{names:['청정원 불닭소스'],tier:'reject',blocked:true,label:'제외'}];
+eq(CC.checkTierCeiling([{tag:'요약',text:'오뚜기 마라소스는 도입, 청정원 불닭소스는 제외합니다.'}],T2).length,0,'two products, each with its own allowed recommendation');
+ok(CC.checkTierCeiling([{tag:'요약',text:'오뚜기 마라소스는 제외, 청정원 불닭소스는 도입합니다.'}],T2).some(x=>/청정원 불닭소스/.test(x)),'swapped: blocked product recommended for adoption fails');
+eq(CC.checkTierCeiling([{tag:'요약',text:'이번 선정 메모는 오뚜기 마라소스 1.5L 기준입니다.'}],[{names:['오뚜기 마라소스'],tier:'needs_data',blocked:false,label:'자료 보강'}]).length,0,"'선정 메모' is not a recommendation");
 console.log(JSON.stringify({passed,external:'not_called',mocked:'synthetic fixture',briefClaims:brief.claims.length}));

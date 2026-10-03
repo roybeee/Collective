@@ -6,7 +6,7 @@ import {groupDigits} from './format';
 
 export type CompetitionListing={key:string;rank:number|null;reviewCount:number|null;price:number|null;firstSeenAt:string|null};
 export type CompetitionInput={asOf:string;sellerCount:number|null;productCount:number|null;adCompetition:number|null;listings:CompetitionListing[];
- // 가장 이른 관측 시각. 신규 진입 판단은 관측 이력이 8주 이상일 때만 한다(처음 본 상품을 모두 신규로 오해하지 않게).
+ // 목록(상품) 시계열의 가장 이른 관측 시각. 신규 진입 판단은 목록 관측 이력이 8주 이상일 때만 한다(처음 본 상품을 모두 신규로 오해하지 않게).
  historyStart:string|null;evidence:string[]};
 export type CompetitionResult={score:number|null;components:{key:'sellers'|'products'|'ad'|'concentration'|'dispersion'|'new_entrants';value:number;metric:number;weight:number}[];
  sellerCount:number|null;productCount:number|null;top10Hhi:number|null;priceDispersion:number|null;newEntrantShare:number|null;reasons:string[];evidence:string[];
@@ -49,11 +49,12 @@ export function emptyPriceSlot(listings:readonly CompetitionListing[]):string|nu
  const from=Math.round((lo+w*best)/100)*100,to=Math.round((lo+w*(best+1))/100)*100;
  return `${groupDigits(from)}~${groupDigits(to)}원 가격대에는 관측 상품 ${groupDigits(ps.length)}개 중 ${groupDigits(counts[best])}개뿐이라 비어 있는 자리일 수 있습니다(그 가격대 수요는 따로 확인 필요).`;
 }
-// 신규 진입 속도: 상위 20개(순위 기준, 없으면 전체) 중 기준 시점 8주 안에 처음 보인 상품 비율.
+// 신규 진입 속도: 순위 상위 20개 중 기준 시점 8주 안에 처음 보인 상품 비율.
+// 순위가 없으면 '상위'를 정할 수 없어 계산하지 않는다(null, 평가 2회차 M2: 이름 순 20개를 상위로 오해하지 않게).
 export function newEntrantShare(input:Pick<CompetitionInput,'asOf'|'listings'|'historyStart'>,weeks=8):number|null{
  const T=timeOf(input.asOf),cut=T-weeks*7*DAY_MS;
  if(!input.historyStart||timeOf(input.historyStart)>cut)return null;
- const ranked=input.listings.filter(l=>l.firstSeenAt);const top=(ranked.some(l=>l.rank!==null)?ranked.filter(l=>l.rank!==null).sort((a,b)=>(a.rank as number)-(b.rank as number)):ranked).slice(0,20);
+ const top=input.listings.filter(l=>l.firstSeenAt&&l.rank!==null).sort((a,b)=>(a.rank as number)-(b.rank as number)).slice(0,20);
  if(top.length<5)return null;
  return top.filter(l=>timeOf(l.firstSeenAt as string)>cut).length/top.length;
 }
@@ -86,7 +87,8 @@ export function competitionInputFromSeries(all:readonly Series[],keywordKey:stri
  const byListing=new Map<string,Series[]>();
  for(const s of frozen)if(s.subjectKey.startsWith('ls:')&&(!listingSources||listingSources.includes(s.sourceId))&&(s.metric==='rank'||s.metric==='review_count'||s.metric==='price_min'))byListing.set(s.subjectKey,[...(byListing.get(s.subjectKey)??[]),s]);
  const listings:CompetitionListing[]=[];let historyStart:string|null=null;
- for(const s of frozen){const first=s.points[0]?.at;if(first&&(!historyStart||timeOf(first)<timeOf(historyStart)))historyStart=first}
+ // 관측 이력 시작은 목록 시계열(순위·리뷰·가격)에서만 잡는다. 데이터랩·검색광고 이력이 길어도 목록을 본 기간이 8주 미만이면 신규 진입은 미확인(null)이다(평가 2회차 M2).
+ for(const ss of byListing.values())for(const s of ss){const first=s.points.find(p=>p.value!==null)?.at;if(first&&(!historyStart||timeOf(first)<timeOf(historyStart)))historyStart=first}
  for(const [key,ss] of byListing){
   const pick=(m:string)=>{const s=ss.find(x=>x.metric===m);const p=s?latestValue(s.points):null;if(p)evidence.add(p.snapshotId);return p?p.value:null};
   const first=ss.flatMap(s=>s.points.filter(p=>p.value!==null).map(p=>p.at)).sort((a,b)=>timeOf(a)-timeOf(b))[0]??null;

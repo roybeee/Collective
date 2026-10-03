@@ -2,7 +2,7 @@
 // 모델(LLM)은 이 점수를 설명할 뿐 바꾸지 않는다. 같은 입력이면 inputDigest·총점·분류가 늘 같다.
 import type {BrandFitHint,ScoreCard,Series,SourceId,SubScore,SubScoreKey,Temperature} from '../types';
 import {SUB_SCORES} from '../types';
-import {calibrateTrend,currentVolume} from './calibrate';
+import {calibrateTrend,currentVolume,sumAnchors} from './calibrate';
 import {assessCompetition,competitionInputFromSeries,type CompetitionResult} from './competition';
 import {groupDigits} from './format';
 import {digestOf,shortId} from './hash';
@@ -140,7 +140,8 @@ export function scoreCard(input:ScoreInput,opts:{weightsVersion?:string;computed
  const confidence=Math.round(coverage*diversity*1000)/1000;
  const blocked=input.risk.blocked?{rule:input.risk.blocked.rule,reason:input.risk.blocked.reason}:null;
  const R=TIER_RULES;
- const tier:ScoreCard['tier']=blocked?'reject':total===null?'needs_data':total>=R.adoptTotal&&confidence>=R.adoptConfidence?'adopt':total>=R.watchTotal?'watch':confidence<R.needsDataConfidence?'needs_data':'reject';
+ // 신뢰도 하한은 '관찰'에도 건다(평가 2회차 M7): 리스크·실행 가능성은 거의 늘 있어 자료가 얇아도 총점이 50을 넘기 쉽다. 하한 미만은 총점과 관계없이 '자료 보강'.
+ const tier:ScoreCard['tier']=blocked?'reject':total===null||confidence<R.needsDataConfidence?'needs_data':total>=R.adoptTotal&&confidence>=R.adoptConfidence?'adopt':total>=R.watchTotal?'watch':'reject';
  const inputDigest=digestOf(input);
  // 리스크 '높음'(선정 금지 아님): 사람 확인 필요 표시. 승인 사유가 말해야 할 말(terms)을 함께 싣는다(reviewApprovalError).
  const high=blocked?[]:input.risk.items.filter(x=>x.level==='high');
@@ -157,7 +158,9 @@ export function reviewApprovalError(card:Pick<ScoreCard,'needsReview'|'review'>,
  // 규칙 목록에 없는 말(예: 상표 이름)은 상표 규칙의 말로도 인정한다.
  const named=card.review.terms.filter(t=>!Object.values(REVIEW_RULE_TERMS).some(ts=>ts.includes(t))&&t!=='리스크'&&t!=='위험');
  const missing=card.review.rules.filter(rule=>![...(REVIEW_RULE_TERMS[rule]??['리스크','위험']),...(rule==='trademark_use'?named:[])].some(t=>text.includes(t)));
- return missing.length?`승인 사유에 확인한 위험(${missing.join(', ')})을 적어 주세요. 예: ${card.review.terms.slice(0,4).join('·')} 중 하나를 넣어 무엇을 확인했는지 씁니다.`:null;
+ // 화면 문장에는 내부 규칙 코드(trademark_use 등) 대신 한국어 이름을 쓴다.
+ const RULE_LABEL:Record<string,string>={trademark_use:'타사 상표',medical_claim:'의약품 오인 표현',diet_claim:'다이어트 효능 표현',hff_review:'건강기능식품 심의',functional_review:'기능성 화장품 심사'};
+ return missing.length?`승인 사유에 확인한 위험(${missing.map(r=>RULE_LABEL[r]??'리스크 항목').join(', ')})을 적어 주세요. 예: ${card.review.terms.slice(0,4).join('·')} 중 하나를 넣어 무엇을 확인했는지 씁니다.`:null;
 }
 
 // 상품 하나의 시계열 묶음. keywordKeys 첫 번째가 대표 키워드(추세·경쟁 기준)다.
@@ -176,12 +179,14 @@ export function buildScoreInput(b:ProductBundle,asOf:string):ScoreInput{
  const trendSeries=primary?find(primary,'search_trend'):null;
  const trend=trendSeries?analyzeTrend(trendSeries.points):null;
  // 수요: 키워드마다 데이터랩 상대값을 검색광고 30일 실측으로 보정한 현재 30일 검색량을 더한다. 추세가 없으면 45일 안의 실측을 그대로 쓴다.
- const vols:number[]=[],dEv:string[]=[];
+ // 평가 2회차 M3: 데이터랩 묶음 값은 묶음 키워드 검색량의 합이다. 묶음 구성(trendMembers, 수집 요청 범위에서 읽음)이 있으면 기준점도 그 키워드들의 실측 합으로 잡고, 합에 든 키워드는 다시 더하지 않는다.
+ const vols:number[]=[],dEv:string[]=[],members=(b as ProductBundle&{trendMembers?:Readonly<Record<string,readonly string[]>>}).trendMembers??{},covered=new Set<string>();
  for(const k of b.keywordKeys){
-  const rel=find(k,'search_trend'),anc=find(k,'search_volume_month');if(!anc)continue;
-  const cal=rel?calibrateTrend(rel.points,anc.points):null,cur=currentVolume(cal);
-  if(cur!==null&&cal&&rel){vols.push(cur);dEv.push(cal.anchor.snapshotId,rel.points[rel.points.length-1].snapshotId);continue}
-  const last=latestValue(anc.points);if(last&&T-timeOf(last.at)<=45*DAY_MS){vols.push(last.value as number);dEv.push(last.snapshotId)}
+  if(covered.has(k))continue;
+  const rel=find(k,'search_trend'),group=rel?[...new Set([k,...(members[k]??[])])]:[k],ancs=group.map(x=>find(x,'search_volume_month')).filter((s):s is Series=>!!s);if(!ancs.length)continue;
+  const cal=rel?calibrateTrend(rel.points,sumAnchors(ancs.map(s=>s.points))):null,cur=currentVolume(cal);
+  if(cur!==null&&cal&&rel){vols.push(cur);for(const x of group)covered.add(x);dEv.push(...ancs.flatMap(s=>s.points.filter(p=>p.at===cal.anchor.at).map(p=>p.snapshotId)),rel.points[rel.points.length-1].snapshotId);continue}
+  const own=find(k,'search_volume_month'),last=own?latestValue(own.points):null;if(last&&T-timeOf(last.at)<=45*DAY_MS){vols.push(last.value as number);dEv.push(last.snapshotId)}
  }
  const volume=vols.length?vols.reduce((a,c)=>a+c,0):null;
  // 순위: 지금(최근 값)과 28일 전에 가장 가까운 과거 값.

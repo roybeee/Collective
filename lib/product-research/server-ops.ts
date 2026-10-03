@@ -1,17 +1,18 @@
 // 상품 리서치 운영 보강(서버 전용, 평가 1회차). 외부 호출 없음.
-// - 재계산 감싸기(refreshScores): 자사 판매 스냅샷(own_sales) → 이상치 격리 → 재계산(server-pipeline.ts) → 소싱 연결 보존 → 점수표 색인.
+// - 재계산 감싸기(refreshScores): 자사 판매 스냅샷(own_sales) → 이상치 격리(관측 한 점 단위, 상대값은 표시 우선) → 재계산(server-pipeline.ts) → 소싱 연결 보존 → 점수표 색인
+//   → 보정 보고·출시 뒤 결과(수집 상태 pr_collect_state에 덧붙여 저장, 화면 응답 calibration·launchOutcomes).
 // - 화면 응답 보조: 점수표 색인으로 '지난주' 판 찾기(전체 점수표를 읽지 않음), 출처별 신선도(30일 성공률·마지막 정상 수집·격리 수), 경보, 랭킹 가져오기 상태.
 // - 주간 MD 리포트: 한국 날짜 기준 주 1회 결정형 메모(모델 호출 없음)를 pr_brief로 저장.
 import {database,stamp} from '../server';
 import {SOURCES} from './sources';
-import {buildSeries,timeOf} from './analytics/series';
+import {buildSeries,RELATIVE_METRICS,timeOf} from './analytics/series';
 import {sha256Hex,shortId,stableJson} from './analytics/hash';
 import {kstDayKey,kstWeekKey} from './collectors/quota';
-import {K,bulkDelete,bulkPut,countKind,ensureSnapshotRoom,forgetSnapshotReuse,readMany,recentSnapshots,snapshotStatement,withSnapshotReuse,type QuarantineRow} from './server-store';
-import {loadProducts,loadScores,recompute,referencedSnapshots,RECOMPUTE_MAX_SNAPSHOTS,RECOMPUTE_WINDOW_DAYS,type CollectVideo,type StoredProduct} from './server-pipeline';
+import {K,bulkDelete,bulkPut,countKind,ensureSnapshotRoom,forgetSnapshotReuse,optional,putStatement,readMany,snapshotStatement,withSnapshotReuse,type QuarantineRow} from './server-store';
+import {loadDecisions,loadProducts,loadRecomputeSnapshots,loadScores,recompute,referencedSnapshots,RECOMPUTE_WINDOW_DAYS,type CalibrationReport,type CollectVideo,type StoredProduct} from './server-pipeline';
 import {briefInputs,templateBrief} from './server-brief';
-import type {ResearchAlert,RankingImportStatus,SourceFreshness} from './api';
-import type {MetricKey,Observation,ScoreCard,Snapshot,SourceId} from './types';
+import type {LaunchOutcome,ResearchAlert,RankingImportStatus,SourceFreshness} from './api';
+import type {MdDecision,MetricKey,Observation,ScoreCard,Series,Snapshot,SourceId} from './types';
 
 const DAY=86400000;
 
@@ -114,17 +115,37 @@ export function robustZ(value:number,window:readonly number[]){
  const m=median(window),mad=median(window.map(x=>Math.abs(x-m))),scale=Math.max(1.4826*mad,Math.abs(m)*0.1,1);
  return {median:m,mad,z:Math.abs(value-m)/scale};
 }
+// 평가 2회차 M1: 격리 단위는 관측 한 점(스냅샷·대상·지표·기간 끝)이다. 상대값(데이터랩 검색 추세·쇼핑 클릭 추세)의 급등은 진짜 상승일 수 있어
+// 두 번째 출처(같은 키워드의 검색광고 30일 실측)가 반박할 때(실측은 평소 수준, 강건 z ≤ 2)만 격리하고, 아니면 표시(flagged)만 한다(점수에 그대로 들어간다).
+export const SECOND_SOURCE_Z=2;
+function secondSource(s:Series,lastAt:string,all:readonly Series[]):{disagree:boolean;basis:string}{
+ const abs=s.subjectKey.startsWith('kw:')?all.find(x=>x.subjectKey===s.subjectKey&&x.metric==='search_volume_month'):undefined;
+ const pts=(abs?.points??[]).filter(p=>typeof p.value==='number'&&timeOf(p.at)<=timeOf(lastAt)+7*DAY);
+ if(pts.length<4)return {disagree:false,basis:'같은 키워드의 검색광고 실측이 모자라 다른 출처로 대조하지 못해 빼지 않고 표시만 했습니다.'};
+ const cur=pts[pts.length-1],r=robustZ(cur.value as number,pts.slice(-ANOMALY_WINDOW-1,-1).map(p=>p.value as number));
+ return r.z<=SECOND_SOURCE_Z?{disagree:true,basis:`검색광고 30일 실측은 평소 수준(강건 z ${Math.round(r.z*10)/10})이라 상대값 급등을 반박해 격리했습니다.`}
+  :{disagree:false,basis:`검색광고 30일 실측도 함께 올라(강건 z ${Math.round(r.z*10)/10}) 실제 상승일 수 있어 빼지 않고 표시만 했습니다.`};
+}
 export function findAnomalies(snapshots:readonly Snapshot[],at:string):QuarantineRow[]{
- const out:QuarantineRow[]=[];
- for(const s of buildSeries(snapshots)){
+ const out:QuarantineRow[]=[],all=buildSeries(snapshots);
+ for(const s of all){
   if(!ANOMALY_METRICS.has(s.metric))continue;
   const pts=s.points.filter(p=>typeof p.value==='number');
   if(pts.length<ANOMALY_WINDOW+1)continue;
   const last=pts[pts.length-1],window=pts.slice(-ANOMALY_WINDOW-1,-1).map(p=>p.value as number),r=robustZ(last.value as number,window);
   if(!(r.z>ANOMALY_Z))continue;
-  out.push({id:shortId('prq',{s:last.snapshotId,k:s.subjectKey,m:s.metric}),sourceId:s.sourceId,snapshotId:last.snapshotId,subjectKey:s.subjectKey,metric:s.metric,periodTo:last.at,value:last.value as number,median:r.median,robustZ:Math.round(r.z*10)/10,window,status:'active',createdAt:at,cleared:null});
+  const chk=RELATIVE_METRICS.has(s.metric)?secondSource(s,last.at,all):null;
+  out.push({id:shortId('prq',{s:last.snapshotId,k:s.subjectKey,m:s.metric,p:last.at}),sourceId:s.sourceId,snapshotId:last.snapshotId,subjectKey:s.subjectKey,metric:s.metric,periodTo:last.at,value:last.value as number,median:r.median,robustZ:Math.round(r.z*10)/10,window,
+   status:chk&&!chk.disagree?'flagged':'active',createdAt:at,cleared:null,basis:chk?.basis??null});
  }
  return out.sort((a,b)=>b.robustZ-a.robustZ||(a.id<b.id?-1:1)).slice(0,MAX_NEW_QUARANTINE);
+}
+// 이미 기록한 관측은 다시 만들지 않는다: 같은 스냅샷·대상·지표·기간 끝(기간 끝이 없는 옛 행은 같은 스냅샷이면 같다), 사람이 해제한 같은 출처·대상·지표·기간 끝,
+// 그리고 상대값은 같은 출처·대상·지표·기간 끝이면 상태와 스냅샷에 관계없이 같다(매일 같은 주를 다시 받아도 날마다 새로 격리·표시하지 않는다).
+async function freshAnomalies(owner:string,found:readonly QuarantineRow[]){
+ if(!found.length)return [];
+ const r=await database().prepare("SELECT json_extract(data,'$.sourceId') src,json_extract(data,'$.snapshotId') s,json_extract(data,'$.subjectKey') k,json_extract(data,'$.metric') m,json_extract(data,'$.periodTo') p,json_extract(data,'$.status') st FROM records WHERE owner=? AND kind=? AND json_extract(data,'$.subjectKey') IN (SELECT value FROM json_each(?)) LIMIT 20000").bind(owner,K.quarantine,JSON.stringify([...new Set(found.map(q=>q.subjectKey))])).all<{src:string;s:string;k:string;m:string;p:string|null;st:string}>();
+ return found.filter(q=>!r.results.some(x=>x.k===q.subjectKey&&x.m===q.metric&&(x.p?x.p===q.periodTo&&(x.s===q.snapshotId||(x.src===q.sourceId&&(x.st==='cleared'||RELATIVE_METRICS.has(q.metric as MetricKey)))):x.s===q.snapshotId)));
 }
 
 // ── 소싱 연결 보존: 재계산이 상품을 다시 쓸 때 사람이 이은 소싱 후보(sourcing)를 잃지 않게 되돌린다(재계산이 이미 보존하면 아무것도 쓰지 않는다).
@@ -141,20 +162,72 @@ async function restoreSourcing(owner:string,links:ReadonlyMap<string,string>,at:
  return rows.length;
 }
 
+// ── 출시 뒤 결과(평가 2회차 M5): 성장2로 넘긴 결정 → 소싱 후보(넘기기 때 만든 초안 또는 상품에 연결한 후보) → 성장2 카탈로그 상품의 SKU → 자사 주문 장부.
+// 넘긴 시각부터 4·8·12주 동안의 주문 수·수량·순매출을 센다. SKU를 알 수 없으면 값은 null(0 아님)과 까닭. 장부에 그 SKU 주문이 없으면 0이다(장부가 있으므로 사실).
+// 수량·매출은 품목 하나라도 값이 비면 그 창은 null이다. 취소 주문은 뺀다. 운영자가 SKU를 직접 잇는 작업은 범위 밖이다.
+export const OUTCOME_WEEKS=[4,8,12] as const,OUTCOME_MAX_DECISIONS=200;
+type Handoff=NonNullable<MdDecision['handoff']>&{candidateId?:string|null;at?:string};
+export async function launchOutcomes(owner:string,now:Date):Promise<LaunchOutcome[]>{
+ const handed=(await loadDecisions(owner)).filter(d=>d.handoff).sort((a,b)=>a.decidedAt<b.decidedAt?1:-1).slice(0,OUTCOME_MAX_DECISIONS);
+ if(!handed.length)return [];
+ const products=await readMany<StoredProduct>(owner,K.product,handed.map(d=>d.productId));
+ const candidateOf=(d:MdDecision)=>{const h=d.handoff as Handoff,p=products.get(d.productId);return h.candidateId??(p?.sourcing&&p.sourcing.campaignId===h.campaignId?p.sourcing.candidateId:null)};
+ const cands=await readMany<{campaignId:string;input:{catalogId?:string}}>(owner,'growth_sourcing_candidate',handed.map(candidateOf).filter((x):x is string=>!!x));
+ const catalogs=await readMany<{campaignId:string;input:{sku?:string}}>(owner,'growth_catalog',[...cands.values()].map(c=>c.input?.catalogId??'').filter(Boolean));
+ const skuOf=(d:MdDecision):{sku:string|null;reason:string|null}=>{
+  const id=candidateOf(d);if(!id)return {sku:null,reason:'연결한 소싱 후보가 없어 카탈로그 SKU를 알 수 없습니다.'};
+  const c=cands.get(id);if(!c)return {sku:null,reason:'연결한 소싱 후보를 찾을 수 없습니다.'};
+  const cat=c.input?.catalogId?catalogs.get(c.input.catalogId):undefined;if(!cat)return {sku:null,reason:'소싱 후보의 카탈로그 상품을 찾을 수 없습니다.'};
+  const sku=typeof cat.input?.sku==='string'?cat.input.sku.trim():'';return sku?{sku:sku.slice(0,80),reason:null}:{sku:null,reason:'카탈로그 상품에 SKU가 비어 있습니다.'};
+ };
+ const resolved=handed.map(d=>({d,...skuOf(d),at:(d.handoff as Handoff).at??d.decidedAt}));
+ const skus=[...new Set(resolved.map(r=>r.sku).filter((x):x is string=>!!x))];
+ const ledger=skus.length?await database().prepare("SELECT 1 x FROM records WHERE owner=? AND kind='growth_order_line' LIMIT 1").bind(owner).first<{x:number}>():null;
+ const lines=skus.length&&ledger?(await database().prepare("SELECT json_extract(data,'$.input.orderId') o,trim(json_extract(data,'$.snapshot.catalog.sku')) sku,json_extract(data,'$.input.units') u,json_extract(data,'$.input.paidAllocation') p,json_extract(data,'$.input.refundAllocation') r FROM records WHERE owner=? AND kind='growth_order_line' AND trim(json_extract(data,'$.snapshot.catalog.sku')) IN (SELECT value FROM json_each(?)) LIMIT ?").bind(owner,JSON.stringify(skus),OWN_SALES_MAX_LINES).all<{o:string|null;sku:string;u:number|null;p:number|null;r:number|null}>()).results:[];
+ const orderIds=[...new Set(lines.map(l=>l.o).filter((x):x is string=>typeof x==='string'&&!!x))],orders=new Map<string,{day:string;status:string}>();
+ for(let i=0;i<orderIds.length;i+=200){
+  const r=await database().prepare("SELECT json_extract(data,'$.id') id,json_extract(data,'$.orderDate') d,json_extract(data,'$.status') st FROM records WHERE owner=? AND kind='store_order' AND id IN (SELECT value FROM json_each(?))").bind(owner,JSON.stringify(orderIds.slice(i,i+200).map(id=>`${owner}:store_order:${id}`))).all<{id:string;d:string|null;st:string|null}>();
+  for(const x of r.results)if(typeof x.d==='string'&&/^\d{4}-\d{2}-\d{2}/.test(x.d))orders.set(x.id,{day:x.d.slice(0,10),status:x.st??''});
+ }
+ return resolved.map(({d,sku,reason,at}):LaunchOutcome=>{
+  const start=timeOf(at),h=d.handoff as Handoff;
+  const windows=OUTCOME_WEEKS.map(weeks=>{
+   const end=start+weeks*7*DAY,complete=now.getTime()>=end;
+   if(!sku)return {weeks,complete,orders:null,units:null,revenue:null};
+   if(!ledger)return {weeks,complete,orders:null,units:null,revenue:null};
+   const from=kstDayKey(new Date(start)),to=kstDayKey(new Date(Math.min(end,now.getTime())));
+   const hit=lines.filter(l=>{const o=l.sku===sku&&l.o?orders.get(l.o):undefined;return !!o&&o.status!=='cancelled'&&o.day>=from&&(complete?o.day<kstDayKey(new Date(end)):o.day<=to)});
+   const units=hit.every(l=>typeof l.u==='number')?hit.reduce((s,l)=>s+(l.u as number),0):null;
+   const revenue=hit.every(l=>typeof l.p==='number'&&typeof l.r==='number')?hit.reduce((s,l)=>s+(l.p as number)-(l.r as number),0):null;
+   return {weeks,complete,orders:new Set(hit.map(l=>l.o)).size,units,revenue};
+  });
+  return {decisionId:d.id,productId:d.productId,campaignId:h.campaignId,handedOffAt:new Date(start).toISOString(),sku,reason:sku&&!ledger?'자사 주문 장부(성장 주문 품목)가 없어 판매 결과를 셀 수 없습니다.':reason,windows};
+ });
+}
+
+// 수집 상태에 파생 값(보정 보고·출시 뒤 결과)을 덧붙여 저장한다(다른 필드는 그대로). 상품 리서치 잠금 안에서만 부른다.
+export type DerivedState={calibration:CalibrationReport;outcomes:{at:string;rows:LaunchOutcome[]}};
+async function saveDerived(owner:string,derived:DerivedState){
+ const cur=await optional<Record<string,unknown>>(owner,K.collectState,'current');
+ await putStatement(owner,K.collectState,'current',{...(cur??{}),...derived}).run();
+}
+
 // 재계산 감싸기. 모든 재계산 경로(가져오기·확인·브랜드 적합성·격리 해제·재계산 요청·수집 완료)가 이 함수를 쓴다.
 export async function refreshScores(owner:string,now:Date,videos:readonly CollectVideo[]=[]){
  return withSnapshotReuse(async()=>{
   const own=await ownSalesSnapshot(owner,now);
   if(own){await ensureSnapshotRoom(owner,1,now,()=>referencedSnapshots(owner));await snapshotStatement(owner,own).run();forgetSnapshotReuse(owner)}
-  const since=new Date(now.getTime()-RECOMPUTE_WINDOW_DAYS*DAY).toISOString();
-  const found=findAnomalies(await recentSnapshots(owner,since,RECOMPUTE_MAX_SNAPSHOTS),now.toISOString());
-  // 같은 관측(스냅샷·대상·지표)은 같은 id라 이미 격리됐거나 사람이 해제한 것은 그대로 둔다(insert_only).
-  if(found.length)await database().batch(bulkPut(owner,K.quarantine,found.map(q=>({key:q.id,parent:q.sourceId,data:q,at:q.createdAt})),'insert_only'));
+  const found=findAnomalies(await loadRecomputeSnapshots(owner,now),now.toISOString()),fresh=await freshAnomalies(owner,found);
+  // 이미 기록한 관측(같은 스냅샷 또는 해제한 기간·상대값 같은 기간)은 그대로 둔다(insert_only + freshAnomalies).
+  if(fresh.length){await database().batch(bulkPut(owner,K.quarantine,fresh.map(q=>({key:q.id,parent:q.sourceId,data:q,at:q.createdAt})),'insert_only'))}
   const links=await sourcingLinks(owner);
   const summary=await recompute(owner,now,videos);
   const restored=await restoreSourcing(owner,links,now.toISOString());
   await updateScoreIndex(owner,now.toISOString());
-  return {...summary,ownSalesSnapshot:own?own.id:null,anomaliesChecked:found.length,sourcingRestored:restored};
+  const derived:DerivedState={calibration:summary.calibration,outcomes:{at:now.toISOString(),rows:await launchOutcomes(owner,now)}};
+  await saveDerived(owner,derived);
+  const {calibration:_c,...rest}=summary;void _c;
+  return {...rest,calibration:{groups:summary.calibration.groups,mape:summary.calibration.mape},ownSalesSnapshot:own?own.id:null,anomaliesChecked:found.length,anomaliesNew:fresh.length,sourcingRestored:restored,derived};
  });
 }
 

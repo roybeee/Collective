@@ -42,6 +42,18 @@ export function calibrateTrend(relative:readonly SeriesPoint[],anchors:readonly 
   error:checks.length?{relative:checks.reduce((s,c)=>s+c.relative,0)/checks.length,max:Math.max(...checks.map(c=>c.relative)),checks,skipped:usable.length-1-checks.length}:null,
   evidence:[...new Set([main.a.snapshotId,...rel.map(p=>p.snapshotId)])]};
 }
+// 묶음 기준점 합(평가 2회차 M3): 데이터랩 묶음 값은 묶음 키워드 검색량의 합이라 기준점도 키워드별 검색광고 30일 실측을 더해야 한다.
+// 키워드마다 같은 창 끝(at)의 값이 모두 있는 날만 더한다(빠진 키워드를 0으로 보지 않는다). 겹치는 날이 하나도 없으면 첫 키워드와 겹치는 날이 가장 적은 키워드부터 빼 본다.
+// 점의 스냅샷은 첫 키워드의 것이다. 한 키워드면 그대로 돌려준다.
+export function sumAnchors(lists:readonly (readonly SeriesPoint[])[]):SeriesPoint[]{
+ if(lists.length<=1)return [...(lists[0]??[])];
+ let maps=lists.map(ps=>new Map(ps.filter(p=>p.value!==null).map(p=>[p.at,p])));
+ const overlap=(m:Map<string,SeriesPoint>)=>[...maps[0].keys()].filter(at=>m.has(at)).length;
+ while(maps.length>1&&![...maps[0].keys()].some(at=>maps.every(m=>m.has(at)))){let j=1;for(let i=2;i<maps.length;i++)if(overlap(maps[i])<overlap(maps[j]))j=i;maps=maps.filter((_,i)=>i!==j)}
+ const out:SeriesPoint[]=[];
+ for(const [at,p] of maps[0]){const vs=maps.map(m=>m.get(at)?.value);if(vs.every(v=>typeof v==='number'))out.push({at,value:(vs as number[]).reduce((a,b)=>a+b,0),snapshotId:p.snapshotId})}
+ return out.sort((a,b)=>timeOf(a.at)-timeOf(b.at));
+}
 // 기준 시점의 30일 환산 검색량: 마지막 30일 창의 상대값 평균 × 배율. 보정이 없으면 null.
 export function currentVolume(c:CalibrationResult|null):number|null{
  if(!c||!c.points.length)return null;const last=c.points[c.points.length-1].at,w=windowMean(c.points,last,WINDOW_DAYS);return w.mean;

@@ -140,20 +140,38 @@ check(r.body.rankingStatus.find(x=>x.sourceId==='coupang_ranking_manual').thisWe
 r=await post(O4,{action:'decide',productId:blocked.id,scoreCardId:blocked.score.id,briefId:null,status:'approved',reason:'순위가 높아 도입합니다.'});
 check(r.status===409&&/선정 금지 상품은 승인할 수 없습니다/.test(r.body.error),'gate: approving a blocked score card is 409');
 // 검토 필요 점수표(분석 계층이 붙이는 needsReview)
-sql.prepare("UPDATE records SET data=json_set(data,'$.needsReview',json('true')) WHERE id=?").run(`${O4}:pr_score:${mara.score.id}`);
+const DIET='다이어트 효능을 과장하는 표현이 있습니다.',TM="타사 상표 '오뚜기'가 제목에 있습니다.";
+sql.prepare("UPDATE records SET data=json_set(data,'$.needsReview',json('true'),'$.review',json(?)) WHERE id=?").run(JSON.stringify({rules:['diet_claim','trademark_use'],reasons:[DIET,TM],terms:['다이어트','상표','오뚜기']}),`${O4}:pr_score:${mara.score.id}`);
 r=await post(O4,{action:'decide',productId:mara.id,scoreCardId:mara.score.id,briefId:null,status:'approved',reason:'검색 수요가 커서 승인합니다.'});
 check(r.status===409&&/리스크 검토가 필요/.test(r.body.error)&&count(O4,'pr_decision')===0,'gate: needsReview without a saved risk review is 409');
+v=await get(O4);
+check(JSON.stringify(v.body.riskChecklists.find(x=>x.scoreCardId===mara.score.id)?.items)===JSON.stringify([{id:'diet_claim',text:DIET},{id:'trademark_use',text:TM}]),'GET riskChecklists: the server builds the required items from the score card review (rule id + reason text)');
 r=await post(O4,{action:'save_risk_review',productId:mara.id,scoreCardId:'prs_stale',checklist:[{rule:'식품 표시 확인',checked:true}],note:''});
 check(r.status===409,'risk review on a stale score card is 409');
-r=await post(O4,{action:'save_risk_review',productId:mara.id,scoreCardId:mara.score.id,checklist:[{rule:'식품 표시 확인',checked:true},{rule:'상표 침해 없음',checked:false}],note:'상표 확인 중'});
-check(r.status===200&&count(O4,'pr_risk_review')===1&&r.body.riskReviews.some(x=>x.scoreCardId===mara.score.id&&x.checklist.length===2&&x.by.id===O4),'risk review is stored (pr_risk_review) and shown for the current score card');
+// H1 우회 재현: 자유 문장 항목 하나를 확인으로 저장해도 승인 관문은 열리지 않는다(필수 항목은 서버가 점수표에서 만든다)
+r=await post(O4,{action:'save_risk_review',productId:mara.id,scoreCardId:mara.score.id,checklist:[{rule:'x',checked:true}],note:''});
+check(r.status===200&&r.body.riskReviews.find(x=>x.scoreCardId===mara.score.id).complete===false&&r.body.riskReviews.find(x=>x.scoreCardId===mara.score.id).checklist[0].ruleId===null,'a free-text item is stored as an operator item (ruleId null, review incomplete)');
 r=await post(O4,{action:'decide',productId:mara.id,scoreCardId:mara.score.id,briefId:null,status:'approved',reason:'검색 수요가 커서 승인합니다.'});
-check(r.status===409&&/확인하지 않은 항목/.test(r.body.error)&&/상표 침해 없음/.test(r.body.error),'gate: an unchecked risk item blocks approval with the item named');
-r=await post(O4,{action:'save_risk_review',productId:mara.id,scoreCardId:mara.score.id,checklist:[{rule:'식품 표시 확인',checked:true},{rule:'상표 침해 없음',checked:true}],note:'확인 완료'});
-check(r.status===200&&count(O4,'pr_risk_review')===2,'risk reviews are append-only (audit trail)');
+check(r.status===409&&/확인하지 않은 항목이 2개/.test(r.body.error)&&r.body.error.includes(DIET)&&count(O4,'pr_decision')===0,'H1: [{rule:"x",checked:true}] no longer makes a high-risk card approvable (both required items named)');
+r=await post(O4,{action:'decide',productId:mara.id,scoreCardId:mara.score.id,briefId:null,status:'approved',reason:'다이어트 표현과 상표 위험을 확인했습니다.',riskAcknowledged:true});
+check(r.status===409&&count(O4,'pr_decision')===0,'H1: a saved but incomplete review is not bypassed by riskAcknowledged');
+r=await post(O4,{action:'save_risk_review',productId:mara.id,scoreCardId:mara.score.id,checklist:[{rule:'아무 문장',ruleId:'made_up_rule',checked:true}],note:''});
+check(r.status===400&&/필수 리스크 항목이 아닙니다/.test(r.body.error),'H1: an unknown ruleId is rejected (400)');
+r=await post(O4,{action:'save_risk_review',productId:mara.id,scoreCardId:mara.score.id,checklist:[{rule:DIET,checked:true},{rule:'중복',ruleId:'diet_claim',checked:true}],note:''});
+check(r.status===400,'the same required item twice is 400');
+const reviewsBefore=count(O4,'pr_risk_review');
+r=await post(O4,{action:'save_risk_review',productId:mara.id,scoreCardId:mara.score.id,checklist:[{rule:DIET,checked:true},{rule:'trademark_use',checked:false},{rule:'상표 침해 없음',checked:true}],note:'상표 확인 중'});
+check(r.status===200&&count(O4,'pr_risk_review')===reviewsBefore+1&&r.body.riskReviews.some(x=>x.scoreCardId===mara.score.id&&x.checklist.length===3&&x.by.id===O4&&x.checklist[1].ruleId==='trademark_use'&&x.checklist[2].ruleId===null),'risk review is stored (pr_risk_review), matched by reason text or rule id, operator items kept with ruleId null');
+r=await post(O4,{action:'decide',productId:mara.id,scoreCardId:mara.score.id,briefId:null,status:'approved',reason:'검색 수요가 커서 승인합니다.'});
+check(r.status===409&&/확인하지 않은 항목/.test(r.body.error)&&r.body.error.includes(TM),'gate: an unchecked required item blocks approval with the item named');
+r=await post(O4,{action:'save_risk_review',productId:mara.id,scoreCardId:mara.score.id,checklist:[{rule:DIET,checked:true},{rule:'trademark_use',checked:true},{rule:'상표 침해 없음',checked:false}],note:'공급사 확인 대기'});
+r=await post(O4,{action:'decide',productId:mara.id,scoreCardId:mara.score.id,briefId:null,status:'approved',reason:'검색 수요가 커서 승인합니다.'});
+check(r.status===409&&/상표 침해 없음/.test(r.body.error),'an unchecked operator item still blocks approval (a person wrote "not yet")');
+r=await post(O4,{action:'save_risk_review',productId:mara.id,scoreCardId:mara.score.id,checklist:[{rule:DIET,checked:true},{rule:'trademark_use',checked:true},{rule:'상표 침해 없음',checked:true}],note:'확인 완료'});
+check(r.status===200&&count(O4,'pr_risk_review')===reviewsBefore+3&&r.body.riskReviews.find(x=>x.scoreCardId===mara.score.id).complete===true,'risk reviews are append-only (audit trail) and complete once every required item is checked');
 r=await post(O4,{action:'save_risk_review',productId:mara.id,scoreCardId:mara.score.id,checklist:[{rule:'x',checked:'yes'}],note:''});check(r.status===400,'risk checklist items need a boolean checked');
 r=await post(O4,{action:'decide',productId:mara.id,scoreCardId:mara.score.id,briefId:null,status:'approved',reason:'검색 수요가 커서 승인합니다.'});
-check(r.status===200,'approval passes once the latest risk review has every item checked');
+check(r.status===200,'approval passes once the latest risk review has every required item checked');
 const maraDecision=r.body.resultId;
 // 다른 길: 체크리스트 없이 위험 확인 표시(riskAcknowledged)와 확인한 위험을 적은 사유(review.terms)로 승인
 sql.prepare("UPDATE records SET data=json_set(data,'$.needsReview',json('true'),'$.review',json(?)) WHERE id=?").run(JSON.stringify({rules:['trademark_use'],reasons:['타사 상표 사용 의심'],terms:['상표','위험']}),`${O4}:pr_score:${tteok.score.id}`);

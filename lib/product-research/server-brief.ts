@@ -8,7 +8,7 @@ import {hermesSubmissionStatement,submitHermes,pollHermes} from '../hermes';
 import {markUsageOutcomeSafely} from '../usage-outcome';
 import type {UsageContext} from '../usage-ledger';
 import {buildBrief} from './analytics/brief';
-import {checkCitations,checkProse,rowId} from './analytics/citation-check';
+import {checkCitations,checkProse,checkTierCeiling,rowId,TIER_LEVEL} from './analytics/citation-check';
 import {shortId} from './analytics/hash';
 import {normalizeKeyword} from './analytics/normalize';
 import {subjectKey,timeOf} from './analytics/series';
@@ -87,16 +87,31 @@ export function parseModelOutput(text:unknown):ModelOutput|null{
  const risks:string[]=[];for(const r of o.risks){const t=str(r,300);if(!t)return null;risks.push(t)}
  return {summary,recommendation:rec as ModelOutput['recommendation'],claims,risks};
 }
-// 모델 출력 채점: 주장은 관측표 행 단위로(인용 행의 대상·지표·값·부호·방향, 단정 금지), 요약·리스크는 통과한 주장에 나온 숫자·날짜만 허용하고 단정을 금지한다.
+const REC_LEVEL:Record<MdBrief['recommendation'],number>={adopt:TIER_LEVEL.adopt,watch:TIER_LEVEL.watch,reject:TIER_LEVEL.reject};
+const REC_LABEL:Record<MdBrief['recommendation'],string>={adopt:'도입 검토',watch:'관찰',reject:'제외'};
+// 권고 상한(평가 2회차 H2): 메모 권고(recommendation)는 고른 상품 중 가장 높은 점수표 분류를 넘지 못한다(선정 금지·제외 → 제외, 자료 보강 → 제외, 관찰 → 관찰 이하).
+// 글(요약·주장·리스크) 속 상품별 권고도 그 상품의 분류를 넘지 못한다(checkTierCeiling).
+export function tierCeilingErrors(out:Pick<ModelOutput,'summary'|'recommendation'|'claims'|'risks'>,inp:BriefInputs,extraTerms:readonly string[]=[],rows:readonly ObservationRow[]=[]):string[]{
+ const errs:string[]=[],caps=inp.cards.map(c=>c.blocked?TIER_LEVEL.reject:TIER_LEVEL[c.tier]),best=caps.length?Math.min(...caps):TIER_LEVEL.reject;
+ const bestTier=(Object.keys(TIER_LEVEL) as ScoreCard['tier'][]).find(t=>TIER_LEVEL[t]===best)??'reject';
+ if(REC_LEVEL[out.recommendation]<best)errs.push(`권고: '${REC_LABEL[out.recommendation]}' 권고는 고른 상품의 가장 높은 점수표 분류('${TIER_LABEL[bestTier]}')보다 높아 쓸 수 없습니다.`);
+ const products=inp.cards.map(c=>{const p=inp.products.find(x=>x.id===c.productId)!;
+  const names=[p.name,sanitizeData(p.name,DATA_LIMITS.name),...p.listings.map(l=>l.title),...rows.filter(r=>r.productId===p.id&&r.subjectKey?.startsWith('ls:')).map(r=>r.subject)].filter(x=>x.trim().length>=2);
+  return {names:[...new Set(names)],tier:c.tier,blocked:!!c.blocked,label:TIER_LABEL[c.tier]}});
+ const items=[{tag:'요약',text:out.summary},...out.claims.map((c,i)=>({tag:`주장 ${i+1}`,text:c.text})),...out.risks.map((text,i)=>({tag:`리스크 ${i+1}`,text}))];
+ return [...errs,...checkTierCeiling(items,products,{allowedTerms:[...allowedTerms(rows,inp),...extraTerms]})];
+}
+// 모델 출력 채점: 주장은 관측표 행 단위로(인용 행의 대상·지표·값·부호·방향, 단정·평가 말 금지), 요약·리스크는 통과한 주장에 나온 숫자·날짜·방향만 허용하고 단정을 금지한다.
+// 권고는 점수표 분류를 넘지 못한다(tierCeilingErrors). question(선택)은 운영자 질문 글이라 권고 말 검사에서 뺀다.
 // 통과하면 주장마다 채점기가 확인한 행(refs)과 그 스냅샷 ID(citations)를 돌려준다(저장되는 메모는 항상 행 인용을 갖는다).
-export function gradeModelOutput(out:ModelOutput,rows:readonly ObservationRow[],inp:BriefInputs){
+export function gradeModelOutput(out:ModelOutput,rows:readonly ObservationRow[],inp:BriefInputs,question=''){
  const byId=new Map(inp.snapshots.map(s=>[s.id,s])),terms=allowedTerms(rows,inp);
  const allowedRows=new Set(rows.map(r=>rowOf(r,byId)).filter((x):x is string=>!!x));
  const aliases:Record<string,string[]>={};
  for(const r of rows){const key=r.subjectKey??null;if(!key)continue;const p=inp.products.find(x=>x.id===r.productId);aliases[key]=[...new Set([...(aliases[key]??[]),r.subject,...(p&&key.startsWith('ls:')?[p.name,sanitizeData(p.name,DATA_LIMITS.name)]:[])])]}
  const claims=checkCitations(out.claims,inp.snapshots,{allowedTerms:terms,allowedRows,subjectAliases:aliases});
  const prose=checkProse([{tag:'요약',text:out.summary},...out.risks.map((text,i)=>({tag:`리스크 ${i+1}`,text}))],out.claims.map(c=>c.text),{allowedTerms:terms});
- const unsupported=[...claims.unsupported,...prose];
+ const unsupported=[...claims.unsupported,...prose,...tierCeilingErrors(out,inp,question?[question,sanitizeData(question,DATA_LIMITS.question)]:[],rows)];
  const graded=out.claims.map((c,i)=>{const refs:ClaimRef[]=claims.refs[i]??[];return {text:c.text,citations:[...new Set(refs.map(r=>r.snapshotId))],refs}});
  return {passed:unsupported.length===0,unsupported,claims:graded};
 }
@@ -128,8 +143,8 @@ export async function modelBrief(owner:string,args:{question:string;productIds:s
   if(r.status==='completed'){
    const out=parseModelOutput(r.output[0]?.content[0]?.text);
    if(!out){await markUsageOutcomeSafely(owner,'hermes',job.providerId as string,'invalid_output');throw new ResearchError(409,'모델 출력이 정해진 JSON 형식이 아니어서 저장하지 않았습니다.',{unsupported:['출력 형식 오류']})}
-   const grade=gradeModelOutput(out,job.rows,inp);
-   if(!grade.passed){await markUsageOutcomeSafely(owner,'hermes',job.providerId as string,'invalid_output');throw new ResearchError(409,'모델 메모에 관측표로 확인되지 않는 숫자나 인용이 있어 저장하지 않았습니다.',{unsupported:grade.unsupported})}
+   const grade=gradeModelOutput(out,job.rows,inp,job.question);
+   if(!grade.passed){await markUsageOutcomeSafely(owner,'hermes',job.providerId as string,'invalid_output');throw new ResearchError(409,'모델 메모에 관측표로 확인되지 않는 숫자·인용·권고가 있어 저장하지 않았습니다.',{unsupported:grade.unsupported})}
    await markUsageOutcomeSafely(owner,'hermes',job.providerId as string,'completed');
    const brief:MdBrief={id:shortId('prbf',{q:job.question,products:job.productIds,run:job.providerId}),productIds:job.productIds,question:job.question,summary:out.summary,recommendation:out.recommendation,claims:grade.claims,risks:out.risks,
     author:{kind:'model',jobId:job.providerId as string},citationCheck:{passed:true,unsupported:[]},createdAt:at};

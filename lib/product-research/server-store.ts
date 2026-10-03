@@ -11,7 +11,7 @@ import {CREDENTIAL_KEYS,PRICE_MAX_MAX,PRICE_MAX_MIN,QUESTION_MAX,type Credential
 import {parseResearchCredential,credentialAccount,type ResearchCredential} from './credentials';
 import {dailyCap,quotaDayKey} from './collectors/quota';
 import {subjectKey} from './analytics/series';
-import type {Snapshot,SourceId,Temperature} from './types';
+import type {MetricKey,Snapshot,SourceId,Temperature} from './types';
 
 export const K=PR_KINDS;
 export const MAX_SNAPSHOTS=20000,MAX_PRODUCTS=2000,SNAPSHOT_RETENTION_DAYS=400,MAX_REQUESTS=20000,MAX_SCORES=50000;
@@ -139,21 +139,28 @@ export async function pruneQuota(owner:string,now:Date){
 // ── 스냅샷(pr_snapshot). parent_id=출처, updated_at=수집 시각(오래된 순 정리에 쓴다).
 export function snapshotStatement(owner:string,s:Snapshot){return appendStatement(owner,K.snapshot,s.id,s,s.sourceId,s.fetchedAt)}
 export async function readSnapshots(owner:string,ids:readonly string[]){return readMany<Snapshot>(owner,K.snapshot,ids)}
-// ── 이상치 격리(pr_quarantine). 격리된 관측(스냅샷·대상·지표)은 사람이 해제하기 전까지 점수 계산 재료에서 뺀다(스냅샷 자체는 불변).
-export type QuarantineRow={id:string;sourceId:SourceId;snapshotId:string;subjectKey:string;metric:string;periodTo:string;value:number;median:number;robustZ:number;window:number[];status:'active'|'cleared';createdAt:string;cleared:{by:{id:string;email:string|null};at:string;reason:string}|null};
+// ── 이상치 격리(pr_quarantine). 격리된 관측(스냅샷·대상·지표·기간 끝)은 사람이 해제하기 전까지 점수 계산 재료에서 뺀다(스냅샷 자체는 불변).
+// 평가 2회차 M1: 격리 단위는 관측 한 점(기간 끝 periodTo)이다. 데이터랩 104주 시계열 전체를 빼지 않는다. periodTo가 없는 옛 행은 예전처럼 그 스냅샷의 대상·지표 전체를 뺀다.
+// status 'flagged': 상대값(데이터랩) 급등처럼 다른 출처가 반박하지 않아 빼지 않고 표시만 한 관측(점수에 그대로 들어간다).
+export type QuarantineRow={id:string;sourceId:SourceId;snapshotId:string;subjectKey:string;metric:string;periodTo:string;value:number;median:number;robustZ:number;window:number[];status:'active'|'cleared'|'flagged';createdAt:string;cleared:{by:{id:string;email:string|null};at:string;reason:string}|null;
+ // 추가 필드(선택): 표시·격리 판단 근거(두 번째 출처 대조 결과).
+ basis?:string|null};
 export const MAX_ACTIVE_QUARANTINE=5000;
+export const quarantineKey=(subject:string,metric:string,periodTo:string|null)=>`${subject}|${metric}|${periodTo??'*'}`;
+// 상대값(데이터랩)은 매일 같은 주를 다시 받으므로, 격리한 기간은 같은 출처의 다른 스냅샷에서도 뺀다(지도 키 `*:출처`). 절대값은 그 스냅샷만.
+const RELATIVE=new Set(['search_trend','shopping_click_trend']);
 export async function activeQuarantine(owner:string):Promise<Map<string,Set<string>>>{
- const r=await database().prepare("SELECT json_extract(data,'$.snapshotId') s,json_extract(data,'$.subjectKey') k,json_extract(data,'$.metric') m FROM records WHERE owner=? AND kind=? AND json_extract(data,'$.status')='active' LIMIT ?").bind(owner,K.quarantine,MAX_ACTIVE_QUARANTINE).all<{s:string;k:string;m:string}>();
- const out=new Map<string,Set<string>>();
- for(const x of r.results){const set=out.get(x.s)??new Set<string>();set.add(`${x.k}|${x.m}`);out.set(x.s,set)}
+ const r=await database().prepare("SELECT json_extract(data,'$.snapshotId') s,json_extract(data,'$.sourceId') src,json_extract(data,'$.subjectKey') k,json_extract(data,'$.metric') m,json_extract(data,'$.periodTo') p FROM records WHERE owner=? AND kind=? AND json_extract(data,'$.status')='active' LIMIT ?").bind(owner,K.quarantine,MAX_ACTIVE_QUARANTINE).all<{s:string;src:string;k:string;m:string;p:string|null}>();
+ const out=new Map<string,Set<string>>(),add=(key:string,v:string)=>{const set=out.get(key)??new Set<string>();set.add(v);out.set(key,set)};
+ for(const x of r.results){const p=typeof x.p==='string'&&x.p?x.p:null,v=quarantineKey(x.k,x.m,p);add(x.s,v);if(p&&RELATIVE.has(x.m))add(`*:${x.src}`,v)}
  return out;
 }
 // 격리 표를 스냅샷 묶음에 적용한다. 바뀐 스냅샷만 새 객체로 만들고 한계(limitations)에 사유를 더한다.
 export function applyQuarantine(snapshots:readonly Snapshot[],q:ReadonlyMap<string,ReadonlySet<string>>):Snapshot[]{
  if(!q.size)return [...snapshots];
  return snapshots.map(s=>{
-  const hit=q.get(s.id);if(!hit)return s;
-  const kept=s.observations.filter(o=>!hit.has(`${subjectKey(o.subject)}|${o.metric}`));
+  const hit=q.get(s.id),any=q.get(`*:${s.sourceId}`);if(!hit&&!any)return s;
+  const kept=s.observations.filter(o=>{const k=subjectKey(o.subject),v=quarantineKey(k,o.metric,o.period.to);return !hit?.has(v)&&!hit?.has(quarantineKey(k,o.metric,null))&&!(any?.has(v)&&RELATIVE.has(o.metric))});
   return kept.length===s.observations.length?s:{...s,observations:kept,limitations:[...s.limitations,`이상치로 격리된 관측 ${s.observations.length-kept.length}개는 사람이 해제하기 전까지 점수 계산에서 뺐습니다.`]};
  });
 }
@@ -184,6 +191,73 @@ export async function recentSnapshotsRaw(owner:string,sinceIso:string,limit:numb
  reuse?.set(cacheKey,out);
  return out;
 }
+
+// ── 출처별 읽기 계획(평가 2회차 H4). 최신 N개(전 출처 합산)로 자르면 하루 수십 개씩 쌓여 두 달 남짓만 남는다(12주 백테스트의 기준 시점 이전 관측이 0개).
+// 그래서 출처마다 따로 읽는다: range=기간 안 최신순 상한, latest_group=데이터랩처럼 한 스냅샷이 긴 이력을 싣는 출처는 묶음(그룹 이름)마다 가장 최근 1개, latest=최신 1개.
+// metrics를 주면 그 지표 관측만 SQL에서 골라 읽는다(필요한 열만, 응답 크기 축소).
+export type SourceLoad={sourceId:SourceId;mode:'range'|'latest_group'|'latest';from:string;to?:string;cap:number;metrics?:readonly MetricKey[]};
+const FAR='9999-12-31T23:59:59.999Z';
+// 데이터랩 요청 범위의 묶음 이름: keywordGroups·categories·keywords('이름:…;이름:…'), 없으면 keyword 하나. 모르면 빈 배열(그 스냅샷만의 묶음으로 본다).
+export function snapshotGroups(request:Snapshot['request']|null|undefined):string[]{
+ if(!request)return [];
+ for(const key of ['keywordGroups','categories','keywords'] as const){const v=request[key];if(typeof v==='string'&&v)return v.split(';').map(x=>x.split(':')[0].trim()).filter(Boolean)}
+ return typeof request.keyword==='string'&&request.keyword?[request.keyword]:[];
+}
+// 데이터랩 묶음 구성: 묶음 이름 → 그 묶음에 넣어 요청한 키워드(합산 대상). keywordGroups가 없으면 빈 지도.
+export function snapshotGroupMembers(request:Snapshot['request']|null|undefined):Map<string,string[]>{
+ const out=new Map<string,string[]>(),v=request?.keywordGroups;
+ if(typeof v!=='string'||!v)return out;
+ for(const part of v.split(';')){const i=part.indexOf(':');if(i<=0)continue;const name=part.slice(0,i).trim(),ks=part.slice(i+1).split('|').map(x=>x.trim()).filter(Boolean);if(name&&ks.length)out.set(name,ks)}
+ return out;
+}
+async function rangeRows(owner:string,l:SourceLoad):Promise<Snapshot[]>{
+ const expr=l.metrics?.length?"json_set(data,'$.observations',json((SELECT json_group_array(json(value)) FROM json_each(data,'$.observations') WHERE json_extract(value,'$.metric') IN (SELECT value FROM json_each(?)))))":'data';
+ const out:Snapshot[]=[];let before=l.to??FAR,beforeId='￿',first=true;
+ while(out.length<l.cap){
+  const page=Math.min(200,l.cap-out.length),binds:unknown[]=l.metrics?.length?[JSON.stringify(l.metrics)]:[];
+  // 첫 쪽은 to 시각을 포함한다(같은 시각 스냅샷 포함), 다음 쪽부터는 (시각, id) 커서로 이어 읽는다.
+  const r=await database().prepare(`SELECT id,${expr} d,updated_at FROM records WHERE owner=? AND kind=? AND parent_id=? AND updated_at>=? AND (updated_at<? OR (updated_at=? AND id<?)) ORDER BY updated_at DESC, id DESC LIMIT ?`).bind(...binds,owner,K.snapshot,l.sourceId,l.from,first?before+'\u0000':before,before,beforeId,page).all<{id:string;d:string;updated_at:string}>();
+  first=false;
+  for(const row of r.results)out.push(JSON.parse(row.d) as Snapshot);
+  if(r.results.length<page)break;
+  const last=r.results[r.results.length-1];before=last.updated_at;beforeId=last.id;
+ }
+ return out;
+}
+// 묶음마다 가장 최근 스냅샷: 작은 열(요청 범위)만 최신순으로 훑어 새 묶음을 보탠 스냅샷만 고른 뒤 본문을 읽는다.
+async function latestGroupRows(owner:string,l:SourceLoad):Promise<Snapshot[]>{
+ const r=await database().prepare("SELECT id,json_extract(data,'$.request') q FROM records WHERE owner=? AND kind=? AND parent_id=? AND updated_at>=? AND updated_at<=? AND json_extract(data,'$.status')!='failed' ORDER BY updated_at DESC, id DESC LIMIT ?").bind(owner,K.snapshot,l.sourceId,l.from,l.to??FAR,Math.max(l.cap*20,500)).all<{id:string;q:string|null}>();
+ const seen=new Set<string>(),pick:string[]=[],prefix=rowId(owner,K.snapshot,'');
+ for(const x of r.results){
+  if(pick.length>=l.cap)break;
+  let req:Snapshot['request']|null=null;try{req=x.q?JSON.parse(x.q) as Snapshot['request']:null}catch{req=null}
+  const groups=snapshotGroups(req),keys=groups.length?groups:[`id:${x.id}`];
+  if(keys.every(k=>seen.has(k)))continue;
+  for(const k of keys)seen.add(k);pick.push(x.id.slice(prefix.length));
+ }
+ const got=await readMany<Snapshot>(owner,K.snapshot,pick);
+ return pick.map(id=>got.get(id)).filter((s):s is Snapshot=>!!s);
+}
+// 계획대로 읽는다(격리 미적용 원본). 같은 재계산 범위(withSnapshotReuse) 안에서는 같은 계획을 두 번 읽지 않는다.
+export async function loadPlannedRaw(owner:string,plan:readonly SourceLoad[]):Promise<Snapshot[]>{
+ const cacheKey=`${owner}|plan|${JSON.stringify(plan)}`,hit=reuse?.get(cacheKey);if(hit)return hit;
+ const out:Snapshot[]=[],ids=new Set<string>();
+ for(const l of plan){
+  const rows=l.mode==='latest_group'?await latestGroupRows(owner,l):await rangeRows(owner,l.mode==='latest'?{...l,cap:1}:l);
+  for(const s of rows)if(!ids.has(s.id)){ids.add(s.id);out.push(s)}
+ }
+ reuse?.set(cacheKey,out);
+ return out;
+}
+export async function loadPlanned(owner:string,plan:readonly SourceLoad[]):Promise<Snapshot[]>{
+ const [raw,q]=await Promise.all([loadPlannedRaw(owner,plan),activeQuarantine(owner)]);
+ return applyQuarantine(raw,q);
+}
+// 가장 늦은 정상 스냅샷 시각(백테스트 기준 시점 추정용). 없으면 null.
+export async function latestSnapshotAt(owner:string):Promise<string|null>{
+ const r=await database().prepare("SELECT MAX(updated_at) t FROM records WHERE owner=? AND kind=? AND json_extract(data,'$.status')!='failed'").bind(owner,K.snapshot).first<{t:string|null}>();
+ return r?.t??null;
+}
 // 스냅샷 한도: 넣을 자리가 없으면 400일이 지난 스냅샷 중 현재 점수표·메모·결정이 가리키지 않는 것을 오래된 순으로 지운다. 그래도 모자라면 409.
 export async function ensureSnapshotRoom(owner:string,adding:number,now:Date,referenced:()=>Promise<Set<string>>){
  const count=await countKind(owner,K.snapshot);
@@ -201,10 +275,13 @@ export const researchLockKey=(owner:string)=>`${owner}:product-research`;
 export const RESEARCH_LOCK_BUSY='다른 상품 리서치 작업이 진행 중입니다. 잠시 후 다시 시도하세요.';
 export const RESEARCH_LOCK_WAIT_MS=3000;
 const pause=(ms:number)=>new Promise<void>(r=>setTimeout(r,ms));
+// 이 실행 환경이 잡고 있는 잠금 토큰(소유자별). 긴 수집이 잠금 만료(lib/server.ts acquireLock, 120초) 전에 갱신할 때 쓴다(평가 2회차 M4).
+const held=new Map<string,string>();
+export const RESEARCH_LOCK_TTL_MS=120000;
 export async function acquireResearchLock(owner:string,waitMs=RESEARCH_LOCK_WAIT_MS):Promise<string>{
  const key=researchLockKey(owner),deadline=Date.now()+Math.max(0,waitMs);
  for(;;){
-  try{return await acquireLock(key)}catch(e){
+  try{const token=await acquireLock(key);held.set(owner,token);return token}catch(e){
    if(!(e instanceof ApiError&&e.status===409))throw e;
    // 타이머가 없는 실행 환경(검사용 vm)에서는 기다리지 않고 바로 알린다.
    if(Date.now()>=deadline||typeof setTimeout!=='function')throw new ApiError(409,RESEARCH_LOCK_BUSY);
@@ -212,7 +289,17 @@ export async function acquireResearchLock(owner:string,waitMs=RESEARCH_LOCK_WAIT
   }
  }
 }
-export async function releaseResearchLock(owner:string,token:string){await releaseLock(researchLockKey(owner),token)}
+export async function releaseResearchLock(owner:string,token:string){if(held.get(owner)===token)held.delete(owner);await releaseLock(researchLockKey(owner),token)}
+// 잠금 갱신: 이 실행 환경이 잡은 잠금이면 만료를 지금+120초로 민다. true=갱신, false=잠금을 잃음(만료 뒤 다른 실행이 가져감 → 상태를 저장하지 말고 멈춘다),
+// null=이 실행 환경이 잡은 잠금이 없음(검사에서 직접 부른 경우 등, 판단하지 않는다).
+export async function renewResearchLock(owner:string):Promise<boolean|null>{
+ const token=held.get(owner);if(!token)return null;
+ const r=await database().prepare('UPDATE mutation_locks SET expires_at=? WHERE owner=? AND token=?').bind(Date.now()+RESEARCH_LOCK_TTL_MS,researchLockKey(owner),token).run();
+ if(r.meta.changes>0)return true;
+ held.delete(owner);return false;
+}
+export const RESEARCH_LOCK_LOST='상품 리서치 잠금이 만료돼 다른 실행이 이어받았습니다. 이번 실행은 진행 상태를 저장하지 않고 멈췄습니다.';
+export class ResearchLockLost extends Error{constructor(){super(RESEARCH_LOCK_LOST)}}
 export async function withResearchLock<T>(owner:string,waitMs:number,fn:()=>Promise<T>):Promise<T>{
  const token=await acquireResearchLock(owner,waitMs);
  try{return await fn()}finally{await releaseResearchLock(owner,token)}
