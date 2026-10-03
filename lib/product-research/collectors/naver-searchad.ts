@@ -67,7 +67,7 @@ export async function collectSearchadKeywords(credential:NaverSearchadCredential
  const rows=list(record(res.json).keywordList);
  const observations:Observation[]=[];
  const seen=new Set<string>();
- let skipped=0,underTen=0,unknownComp=0;
+ let skipped=0,underTen=0,unknownCount=0,unknownComp=0;
  for(const item of rows){
   const row=record(item);
   const keyword=text(row.relKeyword,100);
@@ -77,11 +77,13 @@ export async function collectSearchadKeywords(credential:NaverSearchadCredential
   seen.add(key);
   const subject={type:'keyword' as const,text:keyword};
   const pc=parseQcCnt(row.monthlyPcQcCnt),mobile=parseQcCnt(row.monthlyMobileQcCnt),comp=compIdxValue(row.compIdx);
-  if(pc===null||mobile===null)underTen++;
+  const pcUnder=typeof row.monthlyPcQcCnt==='string'&&/^<\s*10$/.test(row.monthlyPcQcCnt.trim()),mobileUnder=typeof row.monthlyMobileQcCnt==='string'&&/^<\s*10$/.test(row.monthlyMobileQcCnt.trim());
+  if(pcUnder||mobileUnder)underTen++;
+  if((pc===null&&!pcUnder)||(mobile===null&&!mobileUnder))unknownCount++;
   if(comp===null)unknownComp++;
   observations.push(
-   {subject,metric:'search_volume_pc',value:pc,period},
-   {subject,metric:'search_volume_mobile',value:mobile,period},
+   {subject,metric:'search_volume_pc',value:pc,period,...(pcUnder?{underTen:true}:{})},
+   {subject,metric:'search_volume_mobile',value:mobile,period,...(mobileUnder?{underTen:true}:{})},
    // 합계는 둘 다 알 때만 낸다. 한쪽이 "< 10"이면 합계도 미확인이다.
    {subject,metric:'search_volume_month',value:pc!==null&&mobile!==null?pc+mobile:null,period},
    {subject,metric:'ad_competition',value:comp,period},
@@ -93,6 +95,7 @@ export async function collectSearchadKeywords(credential:NaverSearchadCredential
   '경쟁 지수는 광고 입찰 경쟁(낮음·중간·높음)이며 판매 경쟁과 같지 않습니다.',
  ];
  if(underTen)limitations.push(`검색수가 "< 10"으로 표시된 키워드 ${underTen}개는 0이 아니라 미확인(null)으로 두었습니다.`);
+ if(unknownCount)limitations.push(`검색수 응답이 누락되거나 잘못된 키워드 ${unknownCount}개는 범위를 추정하지 않고 미확인으로 두었습니다.`);
  if(unknownComp)limitations.push(`경쟁 지수를 확인하지 못한 키워드 ${unknownComp}개는 미확인으로 두었습니다.`);
  if(skipped)limitations.push(`키워드 이름이 없는 응답 행 ${skipped}개를 건너뛰었습니다.`);
  if(missingHints.length)limitations.push(`힌트 키워드 ${missingHints.join(', ')}의 행이 응답에 없습니다.`);
@@ -102,7 +105,7 @@ export async function collectSearchadKeywords(credential:NaverSearchadCredential
    sourceId:'naver_searchad_keyword',method:'api',
    request:{hintKeywords:hints.join(','),showDetail:true},
    fetchedAt:res.fetchedAt,bodyDigest:res.bodyDigest,bodyBytes:res.bodyBytes,
-   status:skipped||missingHints.length||!seen.size?'partial':'ok',
+   status:skipped||unknownCount||missingHints.length||!seen.size?'partial':'ok',
    limitations,observations,
   },
   unitsUsed:unitsFor('naver_searchad_keyword','keywordstool'),

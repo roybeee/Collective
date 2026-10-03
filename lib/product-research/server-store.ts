@@ -277,13 +277,12 @@ export const researchLockKey=(owner:string)=>`${owner}:product-research`;
 export const RESEARCH_LOCK_BUSY='다른 상품 리서치 작업이 진행 중입니다. 잠시 후 다시 시도하세요.';
 export const RESEARCH_LOCK_WAIT_MS=3000;
 const pause=(ms:number)=>new Promise<void>(r=>setTimeout(r,ms));
-// 이 실행 환경이 잡고 있는 잠금 토큰(소유자별). 긴 수집이 잠금 만료(lib/server.ts acquireLock, 120초) 전에 갱신할 때 쓴다(평가 2회차 M4).
-const held=new Map<string,string>();
+// 갱신은 각 호출자가 획득한 토큰을 명시적으로 전달한다. 소유자별 공유 토큰은 만료된 실행이 새 실행의 잠금을 갱신하게 하므로 쓰지 않는다.
 export const RESEARCH_LOCK_TTL_MS=120000;
 export async function acquireResearchLock(owner:string,waitMs=RESEARCH_LOCK_WAIT_MS):Promise<string>{
  const key=researchLockKey(owner),deadline=Date.now()+Math.max(0,waitMs);
  for(;;){
-  try{const token=await acquireLock(key);held.set(owner,token);return token}catch(e){
+  try{return await acquireLock(key)}catch(e){
    if(!(e instanceof ApiError&&e.status===409))throw e;
    // 타이머가 없는 실행 환경(검사용 vm)에서는 기다리지 않고 바로 알린다.
    if(Date.now()>=deadline||typeof setTimeout!=='function')throw new ApiError(409,RESEARCH_LOCK_BUSY);
@@ -291,22 +290,21 @@ export async function acquireResearchLock(owner:string,waitMs=RESEARCH_LOCK_WAIT
   }
  }
 }
-export async function releaseResearchLock(owner:string,token:string){if(held.get(owner)===token)held.delete(owner);await releaseLock(researchLockKey(owner),token)}
+export async function releaseResearchLock(owner:string,token:string){await releaseLock(researchLockKey(owner),token)}
 // 잠금 갱신: 이 실행 환경이 잡은 잠금이면 만료를 지금+120초로 민다. true=갱신, false=잠금을 잃음(만료 뒤 다른 실행이 가져감 → 상태를 저장하지 말고 멈춘다),
-// null=이 실행 환경이 잡은 잠금이 없음(검사에서 직접 부른 경우 등, 판단하지 않는다).
-export async function renewResearchLock(owner:string):Promise<boolean|null>{
- const token=held.get(owner);if(!token)return null;
+// 토큰이 없거나 다른 실행으로 교체됐으면 false다(실패 시 닫힘).
+export async function renewResearchLock(owner:string,token:string):Promise<boolean>{
+ if(!token)return false;
  const r=await database().prepare('UPDATE mutation_locks SET expires_at=? WHERE owner=? AND token=?').bind(Date.now()+RESEARCH_LOCK_TTL_MS,researchLockKey(owner),token).run();
- if(r.meta.changes>0)return true;
- held.delete(owner);return false;
+ return r.meta.changes>0;
 }
 export const RESEARCH_LOCK_LOST='상품 리서치 잠금이 만료돼 다른 실행이 이어받았습니다. 이번 실행은 진행 상태를 저장하지 않고 멈췄습니다.';
 export class ResearchLockLost extends Error{constructor(){super(RESEARCH_LOCK_LOST)}}
-// 긴 작업의 단계 사이 잠금 갱신(평가 3회차 M4): 잃었으면 던진다. 이 실행 환경이 잡은 잠금이 없으면(null) 판단하지 않고 넘어간다.
-export async function renewOrThrow(owner:string){if(await renewResearchLock(owner)===false)throw new ResearchLockLost()}
-export async function withResearchLock<T>(owner:string,waitMs:number,fn:()=>Promise<T>):Promise<T>{
+// 긴 작업의 단계 사이 잠금 갱신: 호출자의 토큰이 없거나 잠금을 잃었으면 던진다.
+export async function renewOrThrow(owner:string,token:string){if(!await renewResearchLock(owner,token))throw new ResearchLockLost()}
+export async function withResearchLock<T>(owner:string,waitMs:number,fn:(token:string)=>Promise<T>):Promise<T>{
  const token=await acquireResearchLock(owner,waitMs);
- try{return await fn()}finally{await releaseResearchLock(owner,token)}
+ try{return await fn(token)}finally{await releaseResearchLock(owner,token)}
 }
 
 // ── 요청 멱등(pr_request)

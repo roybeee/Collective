@@ -55,7 +55,7 @@ export function sumAnchors(lists:readonly (readonly SeriesPoint[])[]):SeriesPoin
  return out.sort((a,b)=>timeOf(a.at)-timeOf(b.at));
 }
 // 묶음 기준점 재료(평가 3회차 M3). 키워드마다 검색광고 월간 검색수(PC+모바일) 점과, 한쪽이 "< 10"이라 합계가 비었을 때 쓸 PC·모바일 점.
-// - "< 10"(값 null)은 0이 아니라 0~9 사이 값이다: 그쪽은 5로 두고(범위 0~9) 다른 쪽 실측과 더한다. 그 키워드는 bounded에 적는다.
+// - 공급자가 명시한 "< 10"(underTen)은 0~9 사이 값이다: 그쪽은 5로 두고 다른 쪽 실측과 더한다. 일반 null은 추정하지 않는다.
 // - 합계가 비었는데 PC·모바일 값도 읽지 못했거나, 월간 검색수 관측이 아예 없는 키워드는 missing이다. 묶음에 missing이 하나라도 있으면
 //   기준점이 실제보다 낮게 잡히므로(빠진 키워드를 조용히 버리지 않는다) 그 묶음은 보정하지 않는다(호출자가 null과 까닭을 남긴다).
 export type AnchorMember={key:string;month:readonly SeriesPoint[]|null;pc?:readonly SeriesPoint[]|null;mobile?:readonly SeriesPoint[]|null};
@@ -71,8 +71,8 @@ export function groupAnchors(members:readonly AnchorMember[]):GroupAnchors{
   for(const p of month){
    if(p.value!==null){out.push(p);const r=span.get(`${m.key}|${p.at}`);if(!r)span.set(`${m.key}|${p.at}`,{low:p.value,high:p.value});continue}
    const pc=side(m.pc,p.at),mo=side(m.mobile,p.at);
-   // 두 쪽 관측이 모두 있어야 어느 쪽이 "< 10"인지 안다. 하나라도 없으면 이 점은 범위를 정할 수 없다.
-   if(!pc||!mo)continue;
+   // 과거 null만 저장한 관측도 범위가 입증되지 않았으므로 재수집 전까지 미확인이다.
+   if(!pc||!mo||(pc.value===null&&pc.underTen!==true)||(mo.value===null&&mo.underTen!==true))continue;
    const v=(x:SeriesPoint)=>x.value===null?UNDER_TEN.estimate:x.value,lo=(x:SeriesPoint)=>x.value===null?UNDER_TEN.low:x.value,hi=(x:SeriesPoint)=>x.value===null?UNDER_TEN.high:x.value;
    out.push({at:p.at,value:v(pc)+v(mo),snapshotId:p.snapshotId});span.set(`${m.key}|${p.at}`,{low:lo(pc)+lo(mo),high:hi(pc)+hi(mo)});bounded.add(m.key);
   }

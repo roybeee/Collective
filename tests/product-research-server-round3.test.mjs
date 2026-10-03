@@ -38,6 +38,20 @@ const put=(o,kind,id,data,parent='',at=new Date().toISOString())=>sql.prepare('I
 let sn=0;const snap=(sourceId,fetchedAt,request,observations)=>({id:`s${sn++}`,sourceId,method:'api',request,fetchedAt:new Date(fetchedAt).toISOString(),bodyDigest:'0'.repeat(64),bodyBytes:1,status:'ok',limitations:[],importedBy:null,observations});
 const kw=(text,metric,value,from,to)=>({subject:{type:'keyword',text},metric,value,period:{from,to}});
 
+// 같은 isolate에서 새 실행이 잠금을 얻어도 이전 실행의 토큰은 되살아나지 않는다.
+{
+ const owner='r3-token-isolation',a=await store.acquireResearchLock(owner,0);
+ sql.prepare('UPDATE mutation_locks SET expires_at=? WHERE owner=?').run(0,owner+':product-research');
+ const b=await store.acquireResearchLock(owner,0);
+ check(a!==b&&await store.renewResearchLock(owner,a)===false,'expired task cannot renew the next task lock');
+ check(await store.renewResearchLock(owner,b)===true,'current task can renew its own lock');
+ check(await store.renewResearchLock(owner)===false,'missing caller token fails closed');
+ await assert.rejects(()=>store.renewOrThrow(owner,a),e=>e instanceof store.ResearchLockLost);
+ await store.releaseResearchLock(owner,a);
+ check(await store.renewResearchLock(owner,b)===true,'old task release cannot delete current task lock');
+ await store.releaseResearchLock(owner,b);
+}
+
 // ── H-2 재현: 30개 키워드 모두 기준 시점 전에 검색광고로 봤지만, 15개(상승)는 데이터랩 추적을 기준 시점 뒤에 시작했다.
 // 고치기 전: 뒤에 받은 104주 소급 이력이 후보 자격·특징을 줘 상승 15개만 후보 상위를 채워 정밀도@10 = 1.0이었다.
 {
@@ -77,7 +91,7 @@ const kw=(text,metric,value,from,to)=>({subject:{type:'keyword',text},metric,val
  const dl=snap('naver_datalab_search',end+DAY,{timeUnit:'week',keywordGroups:'마라묶음:마라소스|마라샹궈;떡묶음:떡볶이소스|떡볶이양념'},[...weeks.map(w=>kw('마라묶음','search_trend',50,w.from,w.to)),...weeks.map(w=>kw('떡묶음','search_trend',50,w.from,w.to))]);
  // 검색광고 30일 창 3개(겹치지 않는 달): 마라샹궈는 PC "< 10"(합계 null, 모바일 40), 떡볶이양념은 관측이 없다.
  const sa=[];for(const k of [0,1,2]){const to=end-k*31*DAY,from=to-29*DAY,at=to+DAY;
-  sa.push(snap('naver_searchad_keyword',at,{hintKeywords:'마라소스,마라샹궈,떡볶이소스'},[kw('마라소스','search_volume_month',1000,ymd(from),ymd(to)),kw('마라샹궈','search_volume_month',null,ymd(from),ymd(to)),kw('마라샹궈','search_volume_pc',null,ymd(from),ymd(to)),kw('마라샹궈','search_volume_mobile',40,ymd(from),ymd(to)),kw('떡볶이소스','search_volume_month',800,ymd(from),ymd(to))]))}
+  sa.push(snap('naver_searchad_keyword',at,{hintKeywords:'마라소스,마라샹궈,떡볶이소스'},[kw('마라소스','search_volume_month',1000,ymd(from),ymd(to)),kw('마라샹궈','search_volume_month',null,ymd(from),ymd(to)),{...kw('마라샹궈','search_volume_pc',null,ymd(from),ymd(to)),underTen:true},kw('마라샹궈','search_volume_mobile',40,ymd(from),ymd(to)),kw('떡볶이소스','search_volume_month',800,ymd(from),ymd(to))]))}
  const m=PL.material([dl,...sa]),rep=plain(PL.calibrationReport(m,'2026-09-28T00:00:00Z'));
  const mara=rep.rows.find(r=>r.label==='마라묶음'),tteok=rep.rows.find(r=>r.label==='떡묶음');
  check(mara&&mara.bounded===1&&mara.missing===0&&typeof mara.error==='number'&&/"< 10"/.test(mara.reason),`(M3) '< 10' keyword enters the group anchor as a bounded value (0~9 → 5) and the row says so: ${JSON.stringify(mara)}`);
@@ -85,7 +99,7 @@ const kw=(text,metric,value,from,to)=>({subject:{type:'keyword',text},metric,val
  check(rep.groups===1&&rep.uncalibrated===1,'(M3) groups counts calibrated groups only; uncalibrated is reported');
  check(JSON.stringify(plain(m.trendMembers.get('kw:마라묶음')))==='["kw:마라소스","kw:마라샹궈"]','(M3) group members are the requested keywords only (the group name is not a search term)');
  const CA=await load('lib/product-research/analytics/calibrate.ts');
- const ga=plain(CA.groupAnchors([{key:'a',month:[{at:'2026-09-01',value:1000,snapshotId:'x'}]},{key:'b',month:[{at:'2026-09-01',value:null,snapshotId:'x'}],pc:[{at:'2026-09-01',value:null,snapshotId:'x'}],mobile:[{at:'2026-09-01',value:40,snapshotId:'x'}]}]));
+ const ga=plain(CA.groupAnchors([{key:'a',month:[{at:'2026-09-01',value:1000,snapshotId:'x'}]},{key:'b',month:[{at:'2026-09-01',value:null,snapshotId:'x'}],pc:[{at:'2026-09-01',value:null,snapshotId:'x',underTen:true}],mobile:[{at:'2026-09-01',value:40,snapshotId:'x'}]}]));
  check(ga.points[0].value===1045&&ga.ranges[0].low===1040&&ga.ranges[0].high===1049&&ga.bounded.join()==='b'&&!ga.missing.length,'(M3) bounded anchor: 1000 + (5 + 40) = 1045, range 1040~1049 (not 1000)');
  const gm=plain(CA.groupAnchors([{key:'a',month:[{at:'2026-09-01',value:1000,snapshotId:'x'}]},{key:'c',month:null},{key:'d',month:[{at:'2026-09-01',value:null,snapshotId:'x'}]}]));
  check(gm.points.length===0&&gm.missing.join()==='c,d','(M3) no measurement, or a "< 10" total without PC/mobile values → missing, no anchor points');
@@ -164,6 +178,21 @@ let req=rows(O5,'pr_request').find(x=>x.action==='handoff'&&x.status==='done'&&x
 check(r.status===200&&count(O5,'growth_sourcing_candidate')===0&&count(O5,'growth_offer')===0&&/여러 개/.test(req.job.candidateSkipped)&&/판매 오퍼 초안/.test(req.job.offerSkipped),'(M6) two catalog items and no choice → signal/need only, both drafts skipped with a reason');
 r=await post(O5,{action:'handoff',decisionId:dTteok,campaignId:'camp1',campaignVersion:3,catalogId:'catB'});
 check(r.status===404&&count(O5,'growth_signal')===1,'(M6) a catalog item of another brand is 404 and writes nothing');
+// 이미 연결된 후보를 다른 상품 오퍼에 재사용하거나 오래된/다른 범위 후보로 넘기면 원자적으로 거절한다.
+{
+ const original=rec(O5,'pr_product',pTteok.id),linked={...original,sourcing:{campaignId:'camp1',candidateId:'existing',candidateVersion:1}};
+ const valid={id:'existing',brandId:'b1',campaignId:'camp1',version:1,input:{catalogId:'cat2',catalogVersion:1}};
+ await store.putStatement(O5,store.K.product,pTteok.id,linked).run();
+ for(const invalid of [null,{...valid,input:{catalogId:'cat1',catalogVersion:2}},{...valid,brandId:'b2'},{...valid,campaignId:'other'},{...valid,version:2},{...valid,input:{catalogId:'cat2',catalogVersion:2}}]){
+  if(invalid)await server.recordStatement(O5,'growth_sourcing_candidate','existing',invalid,'camp1').run();
+  else sql.prepare('DELETE FROM records WHERE id=?').run(`${O5}:growth_sourcing_candidate:existing`);
+  const before=rows(O5,'growth_signal').length+rows(O5,'growth_need').length+rows(O5,'growth_offer').length+rows(O5,'growth_history').length;
+  r=await post(O5,{action:'handoff',decisionId:dTteok,campaignId:'camp1',campaignVersion:3,catalogId:'cat2'});
+  check(r.status===409&&!rec(O5,'pr_decision',dTteok).handoff&&before===rows(O5,'growth_signal').length+rows(O5,'growth_need').length+rows(O5,'growth_offer').length+rows(O5,'growth_history').length,'invalid linked sourcing is 409 with no partial growth writes');
+ }
+ sql.prepare('DELETE FROM records WHERE id=?').run(`${O5}:growth_sourcing_candidate:existing`);
+ await store.putStatement(O5,store.K.product,pTteok.id,original).run();
+}
 r=await post(O5,{action:'handoff',decisionId:dTteok,campaignId:'camp1',campaignVersion:3,catalogId:'cat2'});
 const cand=rows(O5,'growth_sourcing_candidate')[0],offer=rows(O5,'growth_offer')[0],dec=rec(O5,'pr_decision',dTteok);
 check(r.status===200&&cand.input.catalogId==='cat2'&&cand.input.catalogVersion===1&&cand.status==='draft'&&cand.mayOrder===false,'(M6) the chosen catalog item gets the sourcing draft');
@@ -171,6 +200,14 @@ check(offer&&offer.input.catalogId==='cat2'&&offer.input.catalogVersion===1&&off
 check(JSON.stringify(plain(catalogLib.parseOfferInput(offer.input)))===JSON.stringify(offer.input)&&rows(O5,'growth_history').some(h=>h.entity==='offer'&&h.id===offer.id),'(⑩) the offer draft passes the growth offer validator unchanged and has a history row');
 const readiness=plain(catalogLib.offerReadiness(offer.input,{id:'cat2',version:1,input:{...catalogLib.emptyCatalogInput(),sku:'SKU-TTEOK',title:'떡볶이소스 300g'}},Date.now()));
 check(readiness.missing.includes('오퍼 가격 승인이 필요합니다.')&&readiness.missing.includes('오퍼 단가를 확인하세요.'),'(⑩) the growth readiness check keeps the offer blocked until a person sets and approves the price');
+{
+ const prior=rec(O5,'pr_decision',dTteok);
+ put(O5,'pr_decision','reuse-decision',{...prior,id:'reuse-decision',decidedAt:new Date(Date.now()+1).toISOString(),handoff:null});
+ const before=count(O5,'growth_sourcing_candidate');
+ r=await post(O5,{action:'handoff',decisionId:'reuse-decision',campaignId:'camp1',campaignVersion:3,catalogId:'cat2'});
+ const next=rec(O5,'pr_decision','reuse-decision'),nextOffer=next.handoff?rec(O5,'growth_offer',next.handoff.offerId):null;
+ check(r.status===200&&count(O5,'growth_sourcing_candidate')===before&&next.handoff.candidateId===cand.id&&nextOffer.input.catalogId===cand.input.catalogId,'matching existing sourcing is reused and the offer points to the same catalog');
+}
 
 // ── ⑩ 학습 고리: 가중치 재보정 후보(제안만). 순수 계산과 서버 경로.
 {

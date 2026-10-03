@@ -1,7 +1,7 @@
 // MD 선정 메모 작성(서버). template: 결정형(analytics/brief.ts). model: AI 팀 '상품 MD' 역할을 HERMES로 1회 실행.
 // 모델에는 관측표(행 ID·스냅샷 ID·관측값)만 보낸다. 외부·운영자 글(상품명·키워드·질문)은 md-prompt.ts sanitizeData로 다듬어 자료 칸에만 넣는다(지시문에는 들어가지 않는다).
 // 출력 계약 v4(평가 3회차 H-3): 모델은 주장 문장을 쓰지 않는다. 주장은 구조({productId,row,kind,compareRow?})로만 내고, 서버가 그 행의 값·단위·기간으로
-// 고정 틀 문장을 만든다(analytics/brief.ts gradeClaims — 결정형 메모와 같은 틀·같은 검사). 모델 자유 글은 짧은 요약·리스크뿐이며 허용 어휘(checkFreeText)만 통과한다.
+// 고정 틀 문장을 만든다(analytics/brief.ts gradeClaims — 결정형 메모와 같은 틀·같은 검사). 모델 자유 글은 호환성 검사만 하고 버린다. 요약·리스크도 서버가 만든다.
 // 권고는 recommendation 칸으로만 내고 점수표 분류를 넘지 못한다(tierCeilingErrors). 하나라도 어긋나면 저장하지 않는다(409, 근거 없는 목록).
 // HERMES는 비동기 실행이라 한 요청 안에서 짧게 기다리고(최대 약 20초), 끝나지 않으면 같은 requestId로 다시 요청해 이어서 확인한다.
 // 토큰 예산(lib/token-budget.ts)은 submitHermes가 요청 전에 예약하고, 사용량(lib/usage-ledger.ts)은 pollHermes가 종료 때 기록한다.
@@ -9,7 +9,7 @@ import {ApiError,connection} from '../server';
 import {hermesSubmissionStatement,submitHermes,pollHermes} from '../hermes';
 import {markUsageOutcomeSafely} from '../usage-outcome';
 import type {UsageContext} from '../usage-ledger';
-import {buildBrief,CLAIM_KINDS,defaultKind,gradeClaims,scorecardRisks,TIER_LABEL,type ClaimKind,type ClaimRow,type StructuredClaim} from './analytics/brief';
+import {buildBrief,BRIEF_UNVERIFIED_RISKS,CLAIM_KINDS,defaultKind,gradeClaims,scorecardRisks,TIER_LABEL,type ClaimKind,type ClaimRow,type StructuredClaim} from './analytics/brief';
 import {checkCitations,checkFreeText,checkTierCeiling,rowId,TIER_LEVEL} from './analytics/citation-check';
 import {shortId} from './analytics/hash';
 import {normalizeKeyword} from './analytics/normalize';
@@ -153,7 +153,7 @@ function legacyToStructured(c:LegacyClaim,tag:string,table:readonly ClaimRow[],i
 }
 // 모델 출력 채점(v4): 주장은 구조를 확인하고 서버 틀로 문장을 만든 뒤 인용 채점기로 확인한다(gradeClaims). 요약·리스크는 허용 어휘만(checkFreeText).
 // 권고는 점수표 분류를 넘지 못한다(tierCeilingErrors). 운영자 질문 글은 자유 글 검사에서 빼 주지 않는다(v3까지는 빼 줬다).
-// 통과하면 서버가 만든 주장 문장(행 refs·스냅샷 citations 포함)과, 서버 글(점수표 분류·점수표 리스크)을 붙인 요약·리스크를 돌려준다.
+// 허용 어휘 검사만으로 사실 여부를 보장할 수 없으므로 모델 요약·리스크는 버린다. 통과한 행 주장과 점수표만으로 저장용 글을 만든다(v3 이행도 동일).
 export function gradeModelOutput(out:ModelOutput,rows:readonly ObservationRow[],inp:BriefInputs){
  const byId=new Map(inp.snapshots.map(s=>[s.id,s])),table=claimTable(rows,byId),names=ownNames(inp);
  const products=inp.cards.map(c=>{const p=inp.products.find(x=>x.id===c.productId)!;return {id:p.id,name:p.name,names:[sanitizeData(p.name,DATA_LIMITS.name)]}});
@@ -166,7 +166,7 @@ export function gradeModelOutput(out:ModelOutput,rows:readonly ObservationRow[],
  const unsupported=[...claims.unsupported,...free,...tierCeilingErrors(out,inp,rows)];
  const lead=`점수표 분류: ${inp.cards.map(c=>`${inp.products.find(x=>x.id===c.productId)!.name}(${TIER_LABEL[c.tier]}${c.blocked?', 선정 금지':''})`).join(', ')}.`;
  const serverRisks=inp.cards.flatMap(c=>scorecardRisks(inp.products.find(x=>x.id===c.productId)!.name,c));
- return {passed:unsupported.length===0,unsupported,claims:claims.claims,summary:`${lead} ${out.summary}`,risks:[...serverRisks,...out.risks]};
+ return {passed:unsupported.length===0,unsupported,claims:claims.claims,summary:`${lead} ${claims.claims.map(c=>c.text).join(' ')}`,risks:serverRisks.length?serverRisks:[BRIEF_UNVERIFIED_RISKS]};
 }
 
 export type ModelJob={submissionId:string;providerId:string|null;question:string;productIds:string[];rows:ObservationRow[];startedAt:string};

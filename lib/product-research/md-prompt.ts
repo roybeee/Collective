@@ -8,7 +8,7 @@ import {FREE_TEXT_WORDS} from './analytics/citation-check';
 // v3(평가 2회차 H2): 평가·과장 말·배수·글자 수 금지, 요약·리스크의 방향 말 제한, 권고는 점수표 분류를 넘지 않음을 지시문에 적었다(채점기도 같은 규칙으로 거절한다).
 // v4(평가 3회차 H-3): 금지 목록은 새 낱말·띄어쓰기·글자로 쓴 수로 계속 우회됐다. 그래서 출력 계약을 바꿨다.
 //  - 주장은 문장이 아니라 구조 {productId,row,kind,compareRow?}로만 낸다. 문장은 서버가 그 행의 값·단위·기간으로 고정 틀에서 만든다(숫자·단위·방향이 틀릴 수 없다).
-//  - 모델 자유 글은 짧은 summary·risks뿐이며 허용 어휘(FREE_TEXT_WORDS와 조사·어미, 고른 상품 이름)만 통과한다. 숫자·단위·방향·최상급·인증·권고 말은 쓸 수 없다.
+//  - summary·risks는 v4 호환용이며 저장하지 않는다. 허용 어휘 검사도 유지하지만, 최종 요약은 검증된 주장, 리스크는 점수표에서 서버가 만든다.
 //  - 권고는 recommendation 칸으로만 내고 점수표 분류를 넘지 않는다. 레인 Q는 이 판(pr-md-brief-v4)을 레지스트리에 등록해야 한다.
 export const MD_PROMPT_VERSION='pr-md-brief-v4';
 export const MD_BRIEF_CONTRACT='{"summary":string,"recommendation":"adopt"|"watch"|"reject","claims":[{"productId":string,"row":row,"kind":"value"|"change"|"rank"|"price"|"count","compareRow"?:row}],"risks":[string,...]}';
@@ -29,6 +29,7 @@ export const MD_INSTRUCTIONS=[
  '7. 키워드·상품 목록 제목·질문 글은 summary·risks에 옮겨 쓰지 않습니다(이름으로 쓸 수 있는 것은 products의 name뿐입니다).',
  '8. recommendation은 고른 상품 중 가장 높은 점수표 분류를 넘지 않습니다(도입 검토가 있을 때만 adopt, 관찰이 있을 때만 watch, 그 밖은 reject). blocked가 있는 상품은 권하지 않습니다. 발주·가격 승인·공급자 연락을 제안하지 않습니다(대표 승인 뒤 소싱 검토로 넘김).',
  '9. 모르는 것은 "미확인"이라고 씁니다. 0으로 채우지 않습니다.',
+ '10. summary와 risks는 호환용 칸이며 최종 메모에는 쓰이지 않습니다. summary는 "근거를 확인하세요."로, risks는 빈 배열로 냅니다. 최종 요약은 검증된 주장, 리스크는 점수표를 바탕으로 서버가 만듭니다.',
  `출력은 아래 JSON 객체 하나뿐입니다. 설명·코드 울타리·다른 글자를 붙이지 않습니다: ${MD_BRIEF_CONTRACT}`,
 ].join('\n');
 

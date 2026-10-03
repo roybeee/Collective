@@ -152,10 +152,22 @@ ok(trendRows.length===2&&trendRows[0].periodTo<trendRows[1].periodTo,'table carr
 const sc=(row,kind='count',x={})=>({productId:'prp_1',row:row.row??row,kind,...x});
 const GOOD_SUMMARY='오뚜기 마라소스는 검색 근거와 순위 근거가 함께 있습니다. 가격 근거는 미확인입니다.';
 const out=(claims,summary=GOOD_SUMMARY,risks=['표시 사항을 확인하세요.'])=>({summary,recommendation:'watch',claims,risks});
+// 4회차 회귀: 허용 낱말만으로 만든 단정도 근거가 아니다. 자유 글은 저장용 문장에 넣지 않는다.
+for(const text of ['오뚜기 마라소스는 위험이 없습니다.','규제 리스크가 없습니다.','수요가 충분합니다.','원가가 없고 마진이 있습니다.']){
+ for(const claims of [[sc(volRow)],[{text:"'마라소스' 월간 검색수 12,300회",citations:[volRow.row]}]]){
+  const safe=SB.gradeModelOutput(out(claims,text,[text]),rows,inp);
+  ok(safe.passed,`valid evidence still usable with discarded model prose: ${text}`);
+  ok(!safe.summary.includes(text)&&!safe.risks.includes(text),`unsupported assertion never reaches a saved brief: ${text}`);
+  ok(safe.summary.includes(safe.claims[0].text),'summary uses the verified server-rendered claim');
+ }
+}
 let g=SB.gradeModelOutput(out([sc(volRow)]),rows,inp);
 ok(g.passed,`structured claim on a table row passes: ${g.unsupported.join(' / ')}`);ok(g.claims[0].citations.join()==='A'&&g.claims[0].refs[0].subject==='kw:마라소스','stored claim keeps snapshot ids and the graded row refs');
 eq(g.claims[0].text,"[오뚜기 마라소스] '마라소스' 월간 검색수 12,300회 (네이버 검색광고 키워드 도구, 2026-09-04 기준)",'server renders the claim sentence from the row (value·unit·period)');
-ok(g.summary.startsWith('점수표 분류: 오뚜기 마라소스(관찰).')&&g.summary.endsWith(GOOD_SUMMARY),`server lead + model summary: ${g.summary}`);ok(g.risks.at(-1)==='표시 사항을 확인하세요.','model risks kept after scorecard risks');
+ok(g.summary.startsWith('점수표 분류: 오뚜기 마라소스(관찰).')&&g.summary.endsWith(g.claims[0].text),`server lead + verified claim: ${g.summary}`);ok(!g.risks.includes('표시 사항을 확인하세요.'),'model risks discarded');
+const noRecordedRisks={...inp,cards:inp.cards.map(c=>({...c,blocked:null,missing:[],subScores:c.subScores.filter(s=>s.key!=='risk')}))};
+const cautious=SB.gradeModelOutput(out([sc(volRow)],'규제 리스크가 없습니다.',[]),rows,noRecordedRisks);
+ok(cautious.passed&&cautious.risks.some(r=>r.includes('별도 확인이 필요합니다.')),'missing scorecard risks never implies proven safety or profitability');
 g=SB.gradeModelOutput(out([sc('A#2')]),rows,inp);ok(!g.passed&&g.unsupported.some(u=>/관측표에 없습니다/.test(u)),'row outside the table is rejected');
 g=SB.gradeModelOutput(out([sc(listingRow,'rank')]),rows,inp);ok(g.passed&&g.claims[0].text.includes(`'${listingRow.subject}'`)&&/순위 3위/.test(g.claims[0].text),`listing rank claim rendered with the sanitized title in quotes: ${g.unsupported.join(' / ')}`);
 g=SB.gradeModelOutput(out([sc(volRow,'rank')]),rows,inp);ok(!g.passed&&g.unsupported.some(u=>/'rank' 종류는 지표 search_volume_month/.test(u)),'kind must fit the metric');

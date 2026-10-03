@@ -16,7 +16,7 @@ import {collectSearchadKeywords,collectDatalabSearch,collectDatalabShoppingKeywo
 import {dailyCap,kstWeekKey} from './collectors/quota';
 import type {NaverSearchadCredential,NaverDevelopersCredential,YoutubeCredential,CoupangPartnersCredential,ResearchCredential} from './credentials';
 import {normalizeKeyword} from './analytics/normalize';
-import {K,RESEARCH_LOCK_BUSY,RESEARCH_LOCK_LOST,ResearchLockLost,acquireResearchLock,collectEnabled,ensureSnapshotRoom,loadCredential,markQuotaOk,optional,pruneQuota,putStatement,readSettings,refundQuota,releaseResearchLock,renewOrThrow,renewResearchLock,reserveQuota,researchEnabled,snapshotStatement} from './server-store';
+import {K,RESEARCH_LOCK_BUSY,RESEARCH_LOCK_LOST,ResearchLockLost,acquireResearchLock,collectEnabled,ensureSnapshotRoom,loadCredential,markQuotaOk,optional,pruneQuota,putStatement,readSettings,refundQuota,releaseResearchLock,renewOrThrow,reserveQuota,researchEnabled,snapshotStatement} from './server-store';
 import {loadGroups,loadProducts,referencedSnapshots,type CollectVideo} from './server-pipeline';
 import {refreshScores,weeklyReport,type DerivedState} from './server-ops';
 import {database} from '../server';
@@ -156,11 +156,11 @@ const hasDueWork=(s:CollectState,now:Date)=>s.plan.slice(s.cursor).some(p=>!s.sk
 
 // 계획의 다음 단계들을 실행한다. 단계마다: 쿼터 예약 → 호출 → 스냅샷 저장. 인증·하루 쿼터 오류는 그 출처의 오늘 남은 단계를 건너뛴다.
 // 시간 상한(RUN_TIME_BUDGET_MS)을 넘으면 다음 단계를 꺼내지 않고 멈춘다(stopped='time'). 단계마다 잠금을 갱신하고, 잃었으면 ResearchLockLost를 던진다(호출자는 상태를 저장하지 않는다).
-export async function runSteps(owner:string,state:CollectState,budget:number,deps:CollectDeps):Promise<{calls:number;stored:number;stopped:'time'|null}>{
+export async function runSteps(owner:string,state:CollectState,budget:number,deps:CollectDeps,token:string):Promise<{calls:number;stored:number;stopped:'time'|null}>{
  const cache:Creds={},deadline=deps.now().getTime()+RUN_TIME_BUDGET_MS;let calls=0,stored=0,stopped:'time'|null=null;
  while(calls<budget){
   if(deps.now().getTime()>=deadline){if(hasDueWork(state,deps.now()))stopped='time';break}
-  if(await renewResearchLock(owner)===false)throw new ResearchLockLost();
+  await renewOrThrow(owner,token);
   const now=deps.now(),step=nextStep(state,now);if(!step)break;
   const src=step.sourceId,at=now.toISOString(),today=kstDayKey(now);
   const fail=(code:string,message:string,skip=false)=>{
@@ -177,6 +177,7 @@ export async function runSteps(owner:string,state:CollectState,budget:number,dep
   calls++;
   try{
    const out=await call(step,cred,state,deps);
+   await renewOrThrow(owner,token);
    const snaps:Snapshot[]=out.results.map(r=>({...r.draft,id:crypto.randomUUID(),importedBy:null}));
    if(snaps.length){await ensureSnapshotRoom(owner,snaps.length,now,()=>referencedSnapshots(owner));await database().batch(snaps.map(s=>snapshotStatement(owner,s)));stored+=snaps.length}
    // 정상 수집(30일 성공률의 분자)은 저장까지 끝난 호출만 센다. 저장 실패는 성공이 아니다.
@@ -189,6 +190,7 @@ export async function runSteps(owner:string,state:CollectState,budget:number,dep
    }
    delete state.errors[src];delete state.failures[src];delete state.nextAttemptAt[src];
   }catch(e){
+   if(e instanceof ResearchLockLost)throw e;
    if(isTransient(e)){
     const err=e as CollectorError,prev=state.attempts[src],n=(prev?.day===today?prev.count:0)+1;state.attempts[src]={day:today,count:n};
     if(n>=MAX_ATTEMPTS_PER_DAY){delete state.nextAttemptAt[src];fail(err.code,`${err.message} 오늘 ${n}번 실패해 이 출처는 내일 다시 시도합니다.`,true)}
@@ -202,7 +204,7 @@ export async function runSteps(owner:string,state:CollectState,budget:number,dep
  return {calls,stored,stopped};
 }
 
-async function finishIfDone(owner:string,state:CollectState,deps:CollectDeps,force:boolean,stopped:'time'|null=null){
+async function finishIfDone(owner:string,state:CollectState,deps:CollectDeps,force:boolean,stopped:'time'|null,token:string){
  const now=deps.now();state.lastRunAt=now.toISOString();
  if(stopped)state.stoppedAt=now.toISOString();
  if(planDone(state)){state.done=true;state.nextRunAt=nextKstMidnight(now)}
@@ -211,19 +213,19 @@ async function finishIfDone(owner:string,state:CollectState,deps:CollectDeps,for
   const waits=state.pending.filter(p=>!state.skip.includes(p.sourceId)).map(p=>state.nextAttemptAt[p.sourceId]).filter((x):x is string=>!!x).sort();
   state.nextRunAt=waits[0]??state.nextRunAt;
  }
- if(await renewResearchLock(owner)===false)throw new ResearchLockLost();
+ await renewOrThrow(owner,token);
  await saveState(owner,state);
  // 즉시 수집이 시간 상한으로 멈췄으면 재계산은 작업자가 계획을 마칠 때로 미룬다. 재계산이 남긴 파생 값(보정 보고·출시 뒤 결과)은 메모리 상태에도 옮긴다(뒤의 저장이 덮어쓰지 않게).
  // 재계산 단계 사이마다 잠금을 갱신한다(평가 3회차 M4). 잃었으면 ResearchLockLost로 남은 단계를 저장하지 않고 멈춘다(호출자가 처리).
- if(state.done||(force&&!stopped)){const r=await refreshScores(owner,now,state.videos,{renew:()=>renewOrThrow(owner)});state.calibration=r.derived.calibration;state.outcomes=r.derived.outcomes;state.recalibration=r.derived.recalibration??null}
+ if(state.done||(force&&!stopped)){const r=await refreshScores(owner,now,state.videos,{renew:()=>renewOrThrow(owner,token)});state.calibration=r.derived.calibration;state.outcomes=r.derived.outcomes;state.recalibration=r.derived.recalibration??null}
 }
 // 주간 MD 리포트: 오늘 계획을 마친 뒤, 한국 날짜 기준 이번 주(월요일 시작)에 아직 만들지 않았으면 한 번 만든다(보통 월요일).
-async function weeklyIfDue(owner:string,state:CollectState,now:Date){
+async function weeklyIfDue(owner:string,state:CollectState,now:Date,token:string){
  const week=kstWeekKey(now);
  if(!state.done||state.weekly?.week===week)return false;
  const r=await weeklyReport(owner,now);
  state.weekly={week,briefId:r.briefId,at:now.toISOString(),reason:r.reason};
- if(await renewResearchLock(owner)===false)throw new ResearchLockLost();
+ await renewOrThrow(owner,token);
  await saveState(owner,state);
  return true;
 }
@@ -238,18 +240,18 @@ export async function runProductResearchQueue(owner:string,deps:CollectDeps=defa
  try{
   const now=deps.now(),today=kstDayKey(now);
   let state=await readCollectState(owner);
-  if(state.day===today&&state.done)return {status:await weeklyIfDue(owner,state,now)?'processed':'idle'};
+  if(state.day===today&&state.done)return {status:await weeklyIfDue(owner,state,now,token)?'processed':'idle'};
   if(state.day!==today){
    await pruneQuota(owner,now);
    state=startDay(state,today);
    state.plan=await buildPlan(owner,state);
-   if(!state.plan.length){state.done=true;state.lastRunAt=now.toISOString();state.nextRunAt=nextKstMidnight(now);await saveState(owner,state);await weeklyIfDue(owner,state,now);return {status:'idle'}}
+   if(!state.plan.length){state.done=true;state.lastRunAt=now.toISOString();state.nextRunAt=nextKstMidnight(now);await renewOrThrow(owner,token);await saveState(owner,state);await weeklyIfDue(owner,state,now,token);return {status:'idle'}}
   }
   // 물러난 출처만 남았고 아직 때가 아니면 호출 없이 쉰다.
   if(!hasDueWork(state,now))return {status:'idle'};
-  const r=await runSteps(owner,state,STEPS_PER_TICK,deps);
-  await finishIfDone(owner,state,deps,false,r.stopped);
-  await weeklyIfDue(owner,state,deps.now());
+  const r=await runSteps(owner,state,STEPS_PER_TICK,deps,token);
+  await finishIfDone(owner,state,deps,false,r.stopped,token);
+  await weeklyIfDue(owner,state,deps.now(),token);
   return {status:'processed'};
  }catch(e){
   // 잠금을 잃었으면 다른 실행이 수집 상태를 이어 쓴다. 이 실행은 아무것도 저장하지 않고 쉰다.
@@ -266,7 +268,7 @@ export async function productResearchQueue(owner:string):Promise<((owner:string)
 // 소유자 즉시 수집(collect_now): 한국 날짜 하루 COLLECT_NOW_PER_DAY(3)번까지. 호출자(server.ts)가 상품 리서치 잠금을 잡고 부른다.
 // 출처를 고르지 않으면 오늘 계획을 이어서(끝났으면 새로) 30단계까지 실행하고, 남은 단계는 워커가 이어 간다.
 // 출처를 고르면 그 출처의 계획만 30단계까지 실행하고 오늘 계획의 위치는 건드리지 않는다. 어느 쪽이든 쿼터 원장의 남은 상한 안에서만 호출한다.
-export async function collectNow(owner:string,sourceId:SourceId|undefined,deps:CollectDeps=defaultDeps()){
+export async function collectNow(owner:string,sourceId:SourceId|undefined,deps:CollectDeps,token:string){
  if(!await collectEnabled(owner))throw new ApiError(409,'자동 수집 스위치(product_research_collect)가 꺼져 있습니다. 소유자가 켠 뒤 다시 시도하세요.');
  if(sourceId&&!sourceSpec(sourceId).autoFetch)throw new ApiError(400,'자동 수집을 하지 않는 출처입니다. 운영자 가져오기를 쓰세요.');
  const now=deps.now(),today=kstDayKey(now);
@@ -279,21 +281,21 @@ export async function collectNow(owner:string,sourceId:SourceId|undefined,deps:C
   if(state.day!==today){await pruneQuota(owner,now);state=startDay(state,today);state.plan=await buildPlan(owner,state)}
   else if(state.done||!state.plan.length){state={...state,cursor:0,done:false,skip:[],pending:[]};state.plan=await buildPlan(owner,state)}
   if(!state.plan.length)throw new ApiError(409,'연결된 자동 수집 출처가 없습니다. 출처 연결에서 키를 먼저 등록하세요.');
-  r=await runSteps(owner,state,STEPS_PER_COLLECT_NOW,deps);
+  r=await runSteps(owner,state,STEPS_PER_COLLECT_NOW,deps,token);
   remaining=state.plan.length-state.cursor+state.pending.length;
  }else{
   const plan=await buildPlan(owner,state,sourceId);
   if(!plan.length)throw new ApiError(409,'연결된 자동 수집 출처가 없습니다. 출처 연결에서 키를 먼저 등록하세요.');
   const daily={plan:state.plan,cursor:state.cursor,pending:state.pending,skip:state.skip};
   state.plan=plan;state.cursor=0;state.pending=[];state.skip=[];
-  r=await runSteps(owner,state,STEPS_PER_COLLECT_NOW,deps);
+  r=await runSteps(owner,state,STEPS_PER_COLLECT_NOW,deps,token);
   remaining=plan.length-state.cursor+state.pending.length;
   // 고른 출처에서 생긴 건너뛰기(인증·상한)는 오늘 계획에도 이어진다(같은 키·같은 상한). 물러난 단계는 버린다(작업자가 오늘 계획으로 다시 부른다).
   state.skip=[...new Set([...daily.skip,...state.skip])];
   state.plan=daily.plan;state.cursor=daily.cursor;state.pending=daily.pending;
  }
  state.manualRuns={day:today,count:used+1};
- await finishIfDone(owner,state,deps,true,r.stopped);
+ await finishIfDone(owner,state,deps,true,r.stopped,token);
  }catch(e){if(e instanceof ResearchLockLost)throw new ApiError(409,RESEARCH_LOCK_LOST);throw e}
  // stopped='time': 90초 상한으로 남은 단계를 두고 멈췄다(작업자가 이어 간다).
  return {...r,remaining,runsToday:used+1,at:stamp()};

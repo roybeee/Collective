@@ -214,14 +214,15 @@ export async function launchOutcomes(owner:string,now:Date):Promise<LaunchOutcom
 // ── 가중치 재보정 후보(평가 3회차 ⑩ 학습 고리, 읽기 전용): 출시 뒤 8주 창이 다 지나고 순매출을 아는 결과만, 그 결정 때 점수표의 하위 점수와 순위 상관을 잰다.
 // 제안만 남기고 가중치 판·점수표는 바꾸지 않는다(analytics/backtest.ts proposeWeights). 결정 때 점수표의 가중치 판(없으면 w1)을 기준으로 제안한다.
 export async function weightsCandidate(owner:string,outcomes:readonly LaunchOutcome[],now:Date):Promise<WeightsProposalView>{
- const done=outcomes.flatMap(o=>{const w=o.windows.find(x=>x.weeks===RECALIBRATION_WEEKS);return w&&w.complete&&w.revenue!==null?[{decisionId:o.decisionId,revenue:w.revenue}]:[]});
+ const done=outcomes.flatMap(o=>{const w=o.windows.find(x=>x.weeks===RECALIBRATION_WEEKS);return o.sku&&w&&w.complete&&w.revenue!==null?[{decisionId:o.decisionId,productId:o.productId,sku:o.sku,at:o.handedOffAt,revenue:w.revenue}]:[]}).sort((a,b)=>a.at.localeCompare(b.at)||a.decisionId.localeCompare(b.decisionId));
  const decisions=done.length?new Map((await loadDecisions(owner)).map(d=>[d.id,d])):new Map<string,MdDecision>();
  const cards=await loadScores(owner,done.map(x=>decisions.get(x.decisionId)?.scoreCardId??''));
- const rows:RecalibrationRow[]=[],versions=new Set<string>();
- for(const x of done){const c=cards.get(decisions.get(x.decisionId)?.scoreCardId??'');if(!c)continue;versions.add(c.weightsVersion);rows.push({revenue:x.revenue,subScores:Object.fromEntries(c.subScores.map(s=>[s.key,s.value]))})}
+ const rows:RecalibrationRow[]=[],versions=new Set<string>(),products=new Set<string>(),skus=new Set<string>();
+ // 반복 승인·겹치는 판매 기간을 독립 표본처럼 세지 않는다. 상품/SKU별 가장 이른 성숙 결과 한 건만 쓴다.
+ for(const x of done){const d=decisions.get(x.decisionId),c=cards.get(d?.scoreCardId??'');if(!c||d?.productId!==x.productId||c.productId!==x.productId||products.has(x.productId)||skus.has(x.sku))continue;products.add(x.productId);skus.add(x.sku);versions.add(c.weightsVersion);rows.push({revenue:x.revenue,subScores:Object.fromEntries(c.subScores.map(s=>[s.key,s.value]))})}
  const baseVersion=versions.size===1?[...versions][0]:'w1',base=WEIGHT_SETS[baseVersion]??WEIGHT_SETS.w1;
  const p=proposeWeights(rows,base,{at:now.toISOString(),baseVersion:WEIGHT_SETS[baseVersion]?baseVersion:'w1'});
- return versions.size>1?{...p,caveats:[...p.caveats,`결정 때 점수표의 가중치 판이 여러 개(${[...versions].sort().join(', ')})라 w1을 기준으로 제안했습니다.`]}:p;
+ return {...p,caveats:[...p.caveats,'같은 상품 또는 SKU는 가장 이른 성숙 판매 결과 한 건만 사용합니다. 반복 승인과 겹치는 판매 기간은 표본 수를 늘리지 않습니다.',...(versions.size>1?[`결정 때 점수표의 가중치 판이 여러 개(${[...versions].sort().join(', ')})라 w1을 기준으로 제안했습니다.`]:[])]};
 }
 
 // 수집 상태에 파생 값(보정 보고·출시 뒤 결과·가중치 재보정 후보)을 덧붙여 저장한다(다른 필드는 그대로). 상품 리서치 잠금 안에서만 부른다.

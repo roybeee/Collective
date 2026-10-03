@@ -4,7 +4,7 @@
 //    → 후보 목록 행(총점·신뢰도) → 후보 상세(이동 경로·출처별 추세 막대·근거 스냅샷 상세·경쟁 구조 표·가정값 표시) → '보류'와 사유 기록 → 설정 기능표 '상품 리서치·MD 선정' 행.
 // 3) 승인 관문·소싱 연결·전역 중단(두 번째 테스트): 리스크 높음 후보는 리스크 검토 저장 전 승인 버튼이 이유와 함께 막히고 API도 409, 선정 금지 후보는 승인 선택지가 없고 API 409,
 //    성장2 소싱 후보(공개 API로 만든 합성 견적) 연결 → 손익 시뮬레이터 '소싱 견적', 승인 뒤 전역 실행 중단이면 넘기기가 이유와 함께 막히고 API 409,
-//    재개 뒤 카탈로그 상품이 둘이면 넘기기 칸에서 하나를 골라 넘기고(catalogId), 그 상품에 판매 오퍼 초안(가격 없음·승인 전)이 생긴다(평가 3회차 M6·⑩).
+//    재개 뒤 카탈로그 상품이 둘이면 소싱 견적과 다른 상품은 409·오퍼 생성 없음, 연결된 상품으로 다시 넘기면 판매 오퍼 초안(가격 없음·승인 전)이 생긴다(평가 3회차 M6·⑩).
 // 근거: real Chromium·빌드 결과·로컬 D1(wrangler --local) / mocked 인증(legacy 로그인 헤더). 외부 API 호출 없음(자동 수집은 켜지 않는다).
 // 서버(GET/POST /api/product-research)가 없는 빌드에서는 건너뛴다(404). CSV 열 이름은 서버 가져오기 해석기와 맞춰야 한다(아래 RANK_CSV).
 import {test,expect,type Browser,type Page,type Response,type TestInfo} from '@playwright/test';
@@ -262,7 +262,7 @@ test('상품 리서치: 승인 관문(리스크 높음·선정 금지) → 소�
   expect((await handoff.json() as {error:string}).error).toContain('전역 중단');
 
   // 5) 평가 3회차 M6·⑩: 전역 실행을 재개하고 카탈로그 상품을 하나 더 만들면, 넘기기 칸에서 초안을 이을 상품을 고른다(여럿이면 자동으로 고르지 않음).
-  //    고른 상품(catalogId)이 요청에 실리고, 그 상품에 판매 오퍼 초안(가격 없음·가격 승인 전)이 생긴다.
+  //    소싱 견적과 다른 상품은 거절하고, 같은 화면에서 연결된 상품으로 다시 넘기면 오퍼 초안(가격 없음·가격 승인 전)이 생긴다.
   const stopNow=await (await page.request.get('/api/growth/stop')).json() as {state:{version:number}};
   const resumed=await page.request.post('/api/growth/stop',{data:{action:'resume',expectedVersion:stopNow.state.version,requestId:crypto.randomUUID(),reason:'상품 리서치 넘기기 확인 뒤 재개'}});
   expect(resumed.status(),await resumed.text()).toBe(200);
@@ -279,17 +279,31 @@ test('상품 리서치: 승인 관문(리스크 높음·선정 금지) → 소�
   await expect(catalogPick.locator('option',{hasText:'PR-E2E-SKU)'})).toHaveCount(1);
   await catalogPick.selectOption('pr-e2e-catalog-2');
   await detail.getByRole('textbox',{name:'시장 근거 주소'}).fill('https://www.coupang.com/vp/products/990001');
-  const handed=page.waitForResponse(researchAction('handoff'));
+  const mismatched=page.waitForResponse(researchAction('handoff'));
   await detail.getByRole('button',{name:'시장 근거로 넘기기'}).click();
   const confirm=page.getByRole('alertdialog');
   await expect(confirm).toContainText('판매 오퍼 초안');
   await confirm.getByRole('button',{name:'시장 근거로 넘기기'}).click();
+  const mismatchResponse=await mismatched;
+  expect(mismatchResponse.status(),await mismatchResponse.text()).toBe(409);
+  expect((mismatchResponse.request().postDataJSON() as {catalogId?:string}).catalogId).toBe('pr-e2e-catalog-2');
+  const mismatchError=(await mismatchResponse.json() as {error:string}).error;
+  expect(mismatchError).toContain('연결된 소싱 후보와 선택한 카탈로그 상품·판이 일치하지 않습니다.');
+  await expect(toast(page,mismatchError)).toBeVisible();
+  const rejectedGrowth=await (await page.request.get(`/api/growth?campaignId=${campaignId}`)).json() as {offers:unknown[]};
+  expect(rejectedGrowth.offers).toHaveLength(0);
+
+  await catalogPick.selectOption('pr-e2e-catalog');
+  const handed=page.waitForResponse(researchAction('handoff'));
+  await detail.getByRole('button',{name:'시장 근거로 넘기기'}).click();
+  await confirm.getByRole('button',{name:'시장 근거로 넘기기'}).click();
   const handedResponse=await handed;
   expect(handedResponse.status(),await handedResponse.text()).toBe(200);
-  expect((handedResponse.request().postDataJSON() as {catalogId?:string}).catalogId).toBe('pr-e2e-catalog-2');
+  expect((handedResponse.request().postDataJSON() as {catalogId?:string}).catalogId).toBe('pr-e2e-catalog');
   await expect(toast(page,'시장 근거로 넘겼습니다.')).toBeVisible();
   const growth=await (await page.request.get(`/api/growth?campaignId=${campaignId}`)).json() as {offers:{input:{catalogId:string;price:number|null;priceApproved:boolean};readiness:{missing:string[]}}[]};
-  const offerDraft=growth.offers.find(o=>o.input.catalogId==='pr-e2e-catalog-2');
+  expect(growth.offers).toHaveLength(1);
+  const offerDraft=growth.offers.find(o=>o.input.catalogId==='pr-e2e-catalog');
   expect(offerDraft,'offer draft for the chosen catalog item').toBeTruthy();
   expect(offerDraft!.input.price).toBeNull();
   expect(offerDraft!.input.priceApproved).toBe(false);

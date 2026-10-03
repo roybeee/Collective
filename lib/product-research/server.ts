@@ -159,8 +159,8 @@ const OWNER_ONLY:readonly ResearchAction[]=['connect_source','disconnect_source'
 type Outcome={writes:D1PreparedStatement[];resultId:string|null;after?:()=>Promise<unknown>;pending?:ModelJob;request?:Partial<RequestRow>};
 // 재계산 경로는 모두 자사 판매 스냅샷·이상치 격리·점수표 색인을 함께 갱신한다(server-ops.ts refreshScores).
 // 단계 사이마다 잠금을 갱신하고(평가 3회차 M4), 잃었으면 남은 단계를 저장하지 않고 409로 알린다.
-const refresh=(owner:string,now:Date)=>async()=>{
- try{return await refreshScores(owner,now,(await readCollectState(owner)).videos,{renew:()=>renewOrThrow(owner)})}
+const refresh=(owner:string,now:Date,token:string)=>async()=>{
+ try{return await refreshScores(owner,now,(await readCollectState(owner)).videos,{renew:()=>renewOrThrow(owner,token)})}
  catch(e){if(e instanceof ResearchLockLost)throw new ApiError(409,RESEARCH_LOCK_LOST);throw e}
 };
 // 검토 필요 점수표(분석 계층이 붙이는 선택 필드). 아직 필드가 없는 점수표는 false다.
@@ -223,7 +223,7 @@ async function productOf(owner:string,id:unknown){const p=await optional<LinkedP
 async function campaignOf(owner:string,id:unknown){try{return await readRecord<Campaign>(owner,'campaign',idOf(id,'캠페인 ID'))}catch(e){if(e instanceof ApiError&&e.status===404)throw new ApiError(404,'캠페인을 찾을 수 없습니다.');throw e}}
 const listingKeyOf=(l:{sourceId:string;externalId:string})=>`${l.sourceId}:${l.externalId}`;
 
-async function confirmMatch(who:Actor,b:Record<string,unknown>,now:Date):Promise<Outcome>{
+async function confirmMatch(who:Actor,b:Record<string,unknown>,now:Date,token:string):Promise<Outcome>{
  const owner=who.owner,target=await productOf(owner,b.productId),decision=b.decision;
  if(decision!=='merge'&&decision!=='split')throw new ApiError(400,'확인 방식은 merge(묶기)·split(나누기) 중 하나입니다.');
  const keys=Array.isArray(b.listingKeys)?[...new Set(b.listingKeys)]:[];
@@ -241,7 +241,7 @@ async function confirmMatch(who:Actor,b:Record<string,unknown>,now:Date):Promise
   const {sourcing:_s,filtered:_f,...base}=target as LinkedProduct&{filtered?:unknown};void _s;void _f;
   const fresh:StoredProduct={...pinned(base,moved),id,name:cleanTitle(head.title,null),brand:null,keywordGroupIds:[],createdAt:at,scoreId:null,brandFit:null};
   writes.push(putStatement(owner,K.product,target.id,pinned(target,kept)),putStatement(owner,K.product,id,fresh));
-  return {writes,resultId:id,after:refresh(owner,now)};
+  return {writes,resultId:id,after:refresh(owner,now,token)};
  }
  // merge: 목록을 이 상품으로 옮긴다. 다른 상품에서 빼 오며, 결정이 있는 상품의 목록은 옮기지 않는다.
  const [products,decisions]=await Promise.all([loadProducts(owner),loadDecisions(owner)]),decided=new Set(decisions.map(d=>d.productId));
@@ -259,7 +259,7 @@ async function confirmMatch(who:Actor,b:Record<string,unknown>,now:Date):Promise
   add.push(entry);
  }
  writes.push(putStatement(owner,K.product,target.id,pinned(target,[...target.listings,...add])));
- return {writes,resultId:target.id,after:refresh(owner,now)};
+ return {writes,resultId:target.id,after:refresh(owner,now,token)};
 }
 
 async function latestRiskReview(owner:string,productId:string,scoreCardId:string){
@@ -365,7 +365,13 @@ async function handoff(who:Actor,b:Record<string,unknown>,now:Date):Promise<Outc
  // 카탈로그 상품은 요청의 catalogId(이 캠페인·브랜드 것이어야 함, 아니면 404) 또는 하나뿐인 상품이다. 소싱 후보 초안과 판매 오퍼 초안이 같은 상품을 가리킨다.
  const catalog=await campaignCatalog(owner,c,b.catalogId);
  let candidate:SourcingDraft|null=null,candidateSkipped:string|null=null;
- if(linked&&linked.campaignId===c.id)candidateSkipped='상품에 이 캠페인의 소싱 후보가 이미 연결돼 있어 초안을 만들지 않았습니다.';
+ if(linked&&linked.campaignId===c.id){
+  const existing=await optional<CandidateRecord>(owner,'growth_sourcing_candidate',linked.candidateId);
+  if(!existing||existing.id!==linked.candidateId||existing.campaignId!==c.id||existing.brandId!==c.brandId||existing.version!==linked.candidateVersion||
+   typeof catalog==='string'||existing.input.catalogId!==catalog.id||existing.input.catalogVersion!==catalog.version)
+   throw new ApiError(409,'연결된 소싱 후보와 선택한 카탈로그 상품·판이 일치하지 않습니다. 소싱 연결과 카탈로그를 확인한 뒤 다시 시도하세요.');
+  candidateSkipped='상품에 이 캠페인의 소싱 후보가 이미 연결돼 있어 초안을 만들지 않았습니다.';
+ }
  else{
   if(typeof catalog==='string')candidateSkipped=catalog.replace('초안을','소싱 후보 초안을');
   else try{
@@ -429,10 +435,12 @@ export async function researchAction(who:Actor,b:Record<string,unknown>,deps:Act
  await requireResearch(owner);
  const token=await acquireResearchLock(owner,deps.lockWaitMs??RESEARCH_LOCK_WAIT_MS);
  let out:{resultId:string|null;duplicate?:boolean;pending?:boolean};
- try{out=await execute(who,action,b,now,deps,b.requestId.toLowerCase())}finally{await releaseResearchLock(owner,token)}
+ try{out=await execute(who,action,b,now,deps,b.requestId.toLowerCase(),token)}
+ catch(e){if(e instanceof ResearchLockLost)throw new ApiError(409,RESEARCH_LOCK_LOST);throw e}
+ finally{await releaseResearchLock(owner,token)}
  return {...await researchView(who,now),...out};
 }
-async function execute(who:Actor,action:ResearchAction,b:Record<string,unknown>,now:Date,deps:CollectDeps,requestId:string):Promise<{resultId:string|null;duplicate?:boolean;pending?:boolean}>{
+async function execute(who:Actor,action:ResearchAction,b:Record<string,unknown>,now:Date,deps:CollectDeps,requestId:string,token:string):Promise<{resultId:string|null;duplicate?:boolean;pending?:boolean}>{
  const owner=who.owner;
  // 자격증명 입력은 해시로도 기록하지 않는다(요청 지문에서 뺀다).
  const digest=await storefrontDigest(action==='connect_source'?{action,credentialKey:b.credentialKey}:b);
@@ -444,18 +452,19 @@ async function execute(who:Actor,action:ResearchAction,b:Record<string,unknown>,
  }else await ensureRequestRoom(owner,now);
  const row=(extra:Partial<RequestRow>):RequestRow=>({id:requestId,action,digest,resultId:null,at:now.toISOString(),status:'done',...extra});
  let out:Outcome;
- try{out=await perform(who,action,b,now,deps,requestId,prior)}catch(e){
+ try{out=await perform(who,action,b,now,deps,requestId,prior,token)}catch(e){
   // 모델 메모가 인용 검사에서 거절되면 같은 요청을 다시 보내도 다시 실행하지 않게 거절 결과를 남긴다(저장되는 메모는 없다).
   if(e instanceof ResearchError&&action==='generate_brief'&&b.mode==='model')await requestStatement(owner,row({status:'rejected',error:{status:e.status,message:e.message,unsupported:(e.extra.unsupported as string[]|undefined)}})).run();
   throw e;
  }
+ await renewOrThrow(owner,token);
  if(out.pending){await requestStatement(owner,row({status:'pending',job:out.pending as unknown as Record<string,unknown>})).run();return {resultId:null,pending:true}}
  await database().batch([...out.writes,requestStatement(owner,row({resultId:out.resultId,...out.request}))]);
  if(out.after)await out.after();
  return {resultId:out.resultId,duplicate:false};
 }
 
-async function perform(who:Actor,action:ResearchAction,b:Record<string,unknown>,now:Date,deps:CollectDeps,requestId:string,prior:RequestRow|null):Promise<Outcome>{
+async function perform(who:Actor,action:ResearchAction,b:Record<string,unknown>,now:Date,deps:CollectDeps,requestId:string,prior:RequestRow|null,token:string):Promise<Outcome>{
  const owner=who.owner,by={id:who.id,email:who.email};
  switch(action){
   case 'save_settings':{
@@ -485,22 +494,22 @@ async function perform(who:Actor,action:ResearchAction,b:Record<string,unknown>,
    }
    const snap:Snapshot={...r.draft,id:crypto.randomUUID(),importedBy:{id:who.id,email:who.email,fileName:String(r.draft.request.fileName)}};
    await ensureSnapshotRoom(owner,1,now,()=>referencedSnapshots(owner));
-   return {writes:[snapshotStatement(owner,snap)],resultId:snap.id,after:refresh(owner,now)};
+   return {writes:[snapshotStatement(owner,snap)],resultId:snap.id,after:refresh(owner,now,token)};
   }
   case 'collect_now':{
    const sourceId=b.sourceId===undefined||b.sourceId===null?undefined:b.sourceId as SourceId;
    if(sourceId!==undefined&&!SOURCES.some(s=>s.id===sourceId))throw new ApiError(400,'출처를 확인하세요.');
-   const r=await collectNow(owner,sourceId,deps);
+   const r=await collectNow(owner,sourceId,deps,token);
    return {writes:[],resultId:null,request:{job:{calls:r.calls,stored:r.stored,remaining:r.remaining,runsToday:r.runsToday}}};
   }
-  case 'recompute':{const {derived:_d,...r}=await refresh(owner,now)();void _d;return {writes:[],resultId:null,request:{job:r}}}
-  case 'confirm_match':return confirmMatch(who,b,now);
+  case 'recompute':{const {derived:_d,...r}=await refresh(owner,now,token)();void _d;return {writes:[],resultId:null,request:{job:r}}}
+  case 'confirm_match':return confirmMatch(who,b,now,token);
   case 'set_brand_fit':{
    const p=await productOf(owner,b.productId),value=b.value;
    if(typeof value!=='number'||!Number.isFinite(value)||value<BRAND_FIT_MIN||value>BRAND_FIT_MAX)throw new ApiError(400,'브랜드 적합성은 0~100 사이 숫자로 입력하세요.');
    const reason=text(b.reason,'판정 사유',REASON_MIN,BRAND_FIT_REASON_MAX);
    const next:StoredProduct={...p,brandFit:{value:Math.round(value*10)/10,reason,by,at:now.toISOString()},updatedAt:now.toISOString()};
-   return {writes:[putStatement(owner,K.product,p.id,next)],resultId:p.id,after:refresh(owner,now)};
+   return {writes:[putStatement(owner,K.product,p.id,next)],resultId:p.id,after:refresh(owner,now,token)};
   }
   case 'generate_brief':{
    const ids=Array.isArray(b.productIds)?[...new Set(b.productIds)]:[];
@@ -534,7 +543,7 @@ async function perform(who:Actor,action:ResearchAction,b:Record<string,unknown>,
    if(q.status!=='active')throw new ApiError(409,'이미 해제한 격리입니다.');
    const reason=text(b.reason,'해제 사유',REASON_MIN,CLEAR_REASON_MAX);
    const next:QuarantineRow={...q,status:'cleared',cleared:{by,at:now.toISOString(),reason}};
-   return {writes:[putStatement(owner,K.quarantine,id,next,q.sourceId)],resultId:id,after:refresh(owner,now)};
+   return {writes:[putStatement(owner,K.quarantine,id,next,q.sourceId)],resultId:id,after:refresh(owner,now,token)};
   }
   case 'link_sourcing':{
    const p=await productOf(owner,b.productId),c=await campaignOf(owner,b.campaignId);
@@ -543,13 +552,13 @@ async function perform(who:Actor,action:ResearchAction,b:Record<string,unknown>,
    const cand=await optional<{id:string;brandId:string;campaignId:string;version:number}>(owner,'growth_sourcing_candidate',candidateId);
    if(!cand||cand.campaignId!==c.id||cand.brandId!==c.brandId)throw new ApiError(404,'이 캠페인·브랜드의 소싱 후보를 찾을 수 없습니다.');
    const next:LinkedProduct={...p,sourcing:{campaignId:c.id,candidateId:cand.id,candidateVersion:cand.version},updatedAt:now.toISOString()};
-   return {writes:[putStatement(owner,K.product,p.id,next)],resultId:p.id,after:refresh(owner,now)};
+   return {writes:[putStatement(owner,K.product,p.id,next)],resultId:p.id,after:refresh(owner,now,token)};
   }
   case 'unlink_sourcing':{
    const p=await productOf(owner,b.productId);
    if(!p.sourcing)throw new ApiError(409,'연결된 소싱 후보가 없습니다.');
    const {sourcing:_s,...rest}=p;void _s;
-   return {writes:[putStatement(owner,K.product,p.id,{...rest,updatedAt:now.toISOString()})],resultId:p.id,after:refresh(owner,now)};
+   return {writes:[putStatement(owner,K.product,p.id,{...rest,updatedAt:now.toISOString()})],resultId:p.id,after:refresh(owner,now,token)};
   }
   case 'save_risk_review':{
    const p=await productOf(owner,b.productId),scoreCardId=idOf(b.scoreCardId,'점수표 ID');

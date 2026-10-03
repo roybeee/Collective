@@ -12,6 +12,7 @@ import {subjectKey,timeOf} from './series';
 
 const TIER_ORDER:Record<ScoreCard['tier'],number>={adopt:0,watch:1,needs_data:2,reject:3};
 export const TIER_LABEL:Record<ScoreCard['tier'],string>={adopt:'도입 검토',watch:'관찰',needs_data:'자료 보강',reject:'제외'};
+export const BRIEF_UNVERIFIED_RISKS='점수표에 기록된 리스크가 없더라도 안전성·규제 적합성과 실제 수요·원가·수익성은 별도 확인이 필요합니다.';
 // 주장 틀: 지표 이름과 단위. 값은 관측값 그대로(koNumber: 쉼표만 더함) 적는다. 여기 없는 지표는 주장으로 만들지 않는다.
 const CLAIM_METRICS:Partial<Record<MetricKey,{label:string;unit:string}>>={
  search_volume_month:{label:'월간 검색수',unit:'회'},
@@ -137,5 +138,5 @@ export function buildBrief(opts:{question:string;products:readonly ResearchProdu
 // 메모를 마크다운으로(화면·주간 리포트용). 인용은 스냅샷 ID 각주로 붙는다.
 export function briefMarkdown(b:MdBrief):string{
  const rec={adopt:'도입 검토',watch:'관찰',reject:'제외'}[b.recommendation];
- return [`# MD 선정 메모`,``,`**질문**: ${b.question}`,``,`**권고**: ${rec}`,``,b.summary,``,`## 근거`,...b.claims.map(c=>`- ${c.text} [${c.citations.join(', ')}]`),``,`## 리스크`,...(b.risks.length?b.risks.map(r=>`- ${r}`):['- 확인된 리스크 없음']),``,`인용 검사: ${b.citationCheck.passed?'통과':`실패 ${b.citationCheck.unsupported.length}건`}`].join('\n');
+ return [`# MD 선정 메모`,``,`**질문**: ${b.question}`,``,`**권고**: ${rec}`,``,b.summary,``,`## 근거`,...b.claims.map(c=>`- ${c.text} [${c.citations.join(', ')}]`),``,`## 리스크`,...(b.risks.length?b.risks.map(r=>`- ${r}`):[`- ${BRIEF_UNVERIFIED_RISKS}`]),``,`인용 검사: ${b.citationCheck.passed?'통과':`실패 ${b.citationCheck.unsupported.length}건`}`].join('\n');
 }

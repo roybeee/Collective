@@ -178,7 +178,8 @@
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-09-30 10:55 UTC (Codex: 3시간 집중 개발·#274 게시)
+갱신: 2026-10-03 14:51 UTC (Codex: 상품 리서치 인계·4회차 검토)
+- 대표 지시 “이거 마저 진행하라”로 Claude의 3회차 수정본을 PR #335(`5322c7d`)로 인계받았다. Sites99 게시 기록 #334는 `2037585`로 merged, 운영 tree 일치 확인. #335 독립 검토에서 HIGH 1·MEDIUM 4건을 재현해 수정했으며 재검토 APPROVE(추가 HIGH/MEDIUM 0), 코드 준비도 4.42/5다. 전체316/316 suites·18,449 assertions passed(외부 mocked), 상품 리서치 E2E4 passed(Chromium/D1 real·인증 mocked), 타입·빌드·lint기준선70/39·프롬프트22 passed. [4회차 기록](PRODUCT-RESEARCH-EVAL-4.ko.md). 기능 스위치 꺼짐 유지, 실제 외부 수집·발주·집행 0. 원격 CI·Sites100 게시 확인은 후속한다.
 - 성장2 남은 코드 구현·검토 passed. Pixel/CAPI 내구성 큐·동의/철회, 승인된 제한 집행·부모 우선 비상 정지·정산, 불변 실험 설계·무작위 배정·관측·통계 판정·규칙 승인 및 낡은 근거 차단. [요구사항별 종료 판정](GROWTH-2-CLOSEOUT.ko.md). 새 `meta_ads_capi`·`meta_ads_execution`은 기본 OFF.
 - 최종 로컬 검증 passed: 전체 227/227 suites·14,123 assertions(외부 mocked), 브라우저104 + 최종 수정 뒤 핵심8(real local Chromium/D1, 외부 mocked), 이메일 인증1(real local), 타입·빌드·프롬프트22·lint 기준선70/39. Python 워커13·설치70·맵달19 passed. 새 비즈니스 모듈10개 V8 함수 커버리지141/151=93.4%(외부 mocked; 문장/분기 커버리지 아님). 코드·보안 재검토 HIGH/CRITICAL 잔여0.
 - #264 소스 병합·Sites67 게시·공개 버전 일치 검증 완료. 최종 CI verify/e2e-smoke 각각 passed(227 suites·14,123 assertions, 브라우저104+인증1). 실계정/실몰 연결·고객 전송·광고 지출·효과 검증은 not_run이며 운영 접근/동의/별도 금액·기간 승인이 필요하다. 아래 과거 증분별 미구현 문구는 해당 시점의 기록이다.
