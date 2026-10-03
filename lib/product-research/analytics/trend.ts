@@ -97,7 +97,7 @@ export function analyzeTrend(points:readonly SeriesPoint[],opts:{horizonWeeks?:n
  else if(seasonal){durability='seasonal';reasons.push(`작년 같은 13주와 모양이 닮은(상관 ${seasonalCorr!.toFixed(2)}) 계절 상품입니다. 작년 기준 앞으로 12주 변화는 ${fmtPct((seasonalOutlook??1)-1)}입니다.`)}
  else if(slope12!==null&&slope12>=R.risingSlope){durability='rising';reasons.push(`최근 12주 주당 ${fmtPct(slope12Pct!)}로 꾸준히 오르고 있습니다.`)}
  else if(slope12!==null&&slope12<=R.decliningSlope){durability='declining';reasons.push(`최근 12주 주당 ${fmtPct(slope12Pct!)}로 줄고 있습니다.`)}
- else{durability='steady';reasons.push(`최근 12주 주당 ${fmtPct(slope12Pct??0)}로 큰 변화 없이 유지됩니다.`)}
+ else{durability='steady';reasons.push(slope12Pct===null?'최근 12주 기울기는 미확인이고 큰 변화가 보이지 않습니다.':`최근 12주 주당 ${fmtPct(slope12Pct)}로 큰 변화 없이 유지됩니다.`)}
  if(span<52)reasons.push('1년 미만 이력이라 계절성은 판단하지 않았습니다.');
  return {...empty,slope12,slope12Pct,preSpikeSlope,wow,yoy,seasonalCorr,seasonalAmplitude,seasonalOutlook,fad,spiking,durability,reasons};
 }

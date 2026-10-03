@@ -105,12 +105,37 @@
 .credCard { display: grid; align-content: start; gap: 8px; border: 1px solid var(--neutral-90); border-radius: 10px; padding: 14px; background: white; min-width: 0; }
 .credForm { display: grid; gap: 10px; margin-top: 4px; }
 
+.notes { display: grid; gap: 4px; margin: 0 0 0 18px; padding: 0; list-style: disc; font-size: 13px; line-height: 1.7; color: var(--green-32); }
+.code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; overflow-wrap: anywhere; }
+.evidence .evidenceChip { height: auto; min-height: 26px; padding: 1px 8px; font-size: 12px; font-weight: 500; white-space: normal; text-align: left; }
+.evidenceChip[aria-pressed="true"] { border-color: var(--olive-42); background: var(--olive-95); color: var(--green-23); }
+.snapshotPanel { display: grid; gap: 10px; border: 1px solid var(--olive-42); border-radius: 10px; padding: 12px 14px; background: white; min-width: 0; }
+.snapshotPanel h4:focus { outline: none; }
+.slotNote { border: 1px solid var(--neutral-90); background: var(--olive-95); border-radius: 8px; padding: 10px 14px; font-size: 13px; line-height: 1.7; color: var(--green-23); }
+.slotNote b { margin-right: 6px; }
+.riskList { display: grid; gap: 2px; border: 0; padding: 0; margin: 0; }
+.fitGrid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 14px; align-items: start; }
+.hintBox { display: grid; gap: 6px; border: 1px dashed var(--neutral-90); border-radius: 10px; padding: 12px 14px; background: var(--neutral-97); min-width: 0; }
+.factChip { display: inline-block; background: white; border: 1px solid var(--neutral-90); border-radius: 4px; padding: 1px 6px; overflow-wrap: anywhere; }
+.linkBox { display: grid; gap: 8px; justify-items: start; border: 1px solid var(--neutral-90); border-radius: 10px; padding: 12px 14px; background: var(--neutral-97); font-size: 13px; min-width: 0; }
+.linkBox > .stats { width: 100%; }
+.quoteTag, .assumeTag { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 600; border-radius: 4px; padding: 0 6px; vertical-align: 1px; }
+.quoteTag { background: var(--olive-95); color: var(--green-23); border: 1px solid var(--olive-42); }
+.assumeTag { background: var(--neutral-97); color: var(--yellow-35); border: 1px solid var(--yellow-81); }
+.ackBox { display: grid; gap: 4px; border: 1px solid var(--yellow-81); background: var(--neutral-97); border-radius: 8px; padding: 8px 12px; width: 100%; }
+.moverGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.offFocus { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 4px; opacity: 0.72; }
+.tile[data-off="true"] { opacity: 0.72; border-style: dashed; }
+.clearCell { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; min-width: 220px; }
+.clearCell > :first-child { flex: 1 1 160px; }
+
 @media (max-width: 1023px) {
  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
  .reportGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 767px) {
- .formGrid, .credGrid, .seriesGrid, .pickList, .reportGrid { grid-template-columns: minmax(0, 1fr); }
+ .formGrid, .credGrid, .seriesGrid, .pickList, .reportGrid, .fitGrid, .moverGrid { grid-template-columns: minmax(0, 1fr); }
+ .clearCell { min-width: 0; }
  .tiles { grid-template-columns: minmax(0, 1fr); }
  .tileLarge { grid-column: span 1; }
  .detailHead { flex-direction: column; }

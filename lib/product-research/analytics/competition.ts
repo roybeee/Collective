@@ -9,7 +9,9 @@ export type CompetitionInput={asOf:string;sellerCount:number|null;productCount:n
  // 가장 이른 관측 시각. 신규 진입 판단은 관측 이력이 8주 이상일 때만 한다(처음 본 상품을 모두 신규로 오해하지 않게).
  historyStart:string|null;evidence:string[]};
 export type CompetitionResult={score:number|null;components:{key:'sellers'|'products'|'ad'|'concentration'|'dispersion'|'new_entrants';value:number;metric:number;weight:number}[];
- sellerCount:number|null;productCount:number|null;top10Hhi:number|null;priceDispersion:number|null;newEntrantShare:number|null;reasons:string[];evidence:string[]};
+ sellerCount:number|null;productCount:number|null;top10Hhi:number|null;priceDispersion:number|null;newEntrantShare:number|null;reasons:string[];evidence:string[];
+ // 추가 필드: 가격 사분위(가격 있는 상품 4개 이상일 때)와 '비어 있는 자리' 한 문장(자료가 보여 줄 때만).
+ priceBand?:{p25:number;p50:number;p75:number}|null;emptySlot?:string|null};
 export const COMPETITION_WEIGHTS={sellers:0.25,products:0.2,ad:0.2,concentration:0.15,dispersion:0.05,new_entrants:0.15};
 const clamp=(v:number)=>Math.max(0,Math.min(100,v));
 const quantile=(xs:number[],q:number)=>{const s=[...xs].sort((a,b)=>a-b),pos=(s.length-1)*q,lo=Math.floor(pos),hi=Math.ceil(pos);return s[lo]+(s[hi]-s[lo])*(pos-lo)};
@@ -26,6 +28,26 @@ export function top10Hhi(listings:readonly CompetitionListing[]):number|null{
 export function priceDispersion(listings:readonly CompetitionListing[]):number|null{
  const ps=listings.map(l=>l.price).filter((p):p is number=>p!==null&&p>0);if(ps.length<4)return null;
  const med=quantile(ps,0.5);return med>0?(quantile(ps,0.75)-quantile(ps,0.25))/med:null;
+}
+// 가격 사분위(원). 가격 있는 상품 4개 미만이면 null.
+export function priceQuartiles(listings:readonly CompetitionListing[]):{p25:number;p50:number;p75:number}|null{
+ const ps=listings.map(l=>l.price).filter((p):p is number=>p!==null&&p>0);if(ps.length<4)return null;
+ return {p25:Math.round(quantile(ps,0.25)),p50:Math.round(quantile(ps,0.5)),p75:Math.round(quantile(ps,0.75))};
+}
+export const EMPTY_SLOT_RULES={minListings:8,bands:5,maxShare:0.1};
+// 비어 있는 가격대: 가격 있는 상품 8개 이상에서 최저~최고가를 같은 폭 5칸으로 나눠, 가운데 3칸 중 상품 비율이 10% 이하이고 양옆 칸에는 상품이 있는 칸.
+// 가장 비어 있는 칸 하나만 한 문장으로 말한다. 수요는 판단하지 않는다(그 가격대를 사람이 찾는지는 검색·판매 자료로 따로 확인).
+export function emptyPriceSlot(listings:readonly CompetitionListing[]):string|null{
+ const R=EMPTY_SLOT_RULES,ps=listings.map(l=>l.price).filter((p):p is number=>p!==null&&p>0).sort((a,b)=>a-b);
+ if(ps.length<R.minListings)return null;
+ const lo=ps[0],hi=ps[ps.length-1];if(!(hi>lo*1.5))return null;
+ const w=(hi-lo)/R.bands,counts=new Array<number>(R.bands).fill(0);
+ for(const p of ps)counts[Math.min(R.bands-1,Math.floor((p-lo)/w))]++;
+ let best=-1;
+ for(let i=1;i<R.bands-1;i++){if(counts[i]/ps.length>R.maxShare)continue;if(!counts.slice(0,i).some(Boolean)||!counts.slice(i+1).some(Boolean))continue;if(best<0||counts[i]<counts[best])best=i}
+ if(best<0)return null;
+ const from=Math.round((lo+w*best)/100)*100,to=Math.round((lo+w*(best+1))/100)*100;
+ return `${groupDigits(from)}~${groupDigits(to)}원 가격대에는 관측 상품 ${groupDigits(ps.length)}개 중 ${groupDigits(counts[best])}개뿐이라 비어 있는 자리일 수 있습니다(그 가격대 수요는 따로 확인 필요).`;
 }
 // 신규 진입 속도: 상위 20개(순위 기준, 없으면 전체) 중 기준 시점 8주 안에 처음 보인 상품 비율.
 export function newEntrantShare(input:Pick<CompetitionInput,'asOf'|'listings'|'historyStart'>,weeks=8):number|null{
@@ -52,7 +74,8 @@ export function assessCompetition(input:CompetitionInput):CompetitionResult{
  if(fresh!==null){comps.push({key:'new_entrants',metric:fresh,value:clamp((1-fresh)*100),weight:W.new_entrants});reasons.push(`상위 20개 중 최근 8주 신규 ${Math.round(fresh*100)}%`)}
  const wsum=comps.reduce((s,c)=>s+c.weight,0),score=wsum>0?Math.round(comps.reduce((s,c)=>s+c.value*c.weight,0)/wsum*10)/10:null;
  if(score===null)reasons.push('경쟁 지표가 없어 경쟁 강도를 판단하지 않았습니다.');
- return {score,components:comps,sellerCount:input.sellerCount,productCount:input.productCount,top10Hhi:hhi,priceDispersion:disp,newEntrantShare:fresh,reasons,evidence:[...input.evidence]};
+ return {score,components:comps,sellerCount:input.sellerCount,productCount:input.productCount,top10Hhi:hhi,priceDispersion:disp,newEntrantShare:fresh,reasons,evidence:[...input.evidence],
+  priceBand:priceQuartiles(input.listings),emptySlot:emptyPriceSlot(input.listings)};
 }
 
 // 시계열에서 기준 시점의 경쟁 입력을 만든다. keywordKey의 seller_count·product_count·ad_competition과,

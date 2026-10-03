@@ -110,6 +110,8 @@ async function rotateCredential(owner:string,saved:Credential,slot:Slot,ready:bo
 // Rotate work classes so a long research run cannot starve scheduled measurements.
 // 반환 status는 설치된 파이썬 워커가 검사하는 ('idle','processed','retry') 안에 머물러야 한다.
 // productResearch(선택): 상품 리서치 공식 API 수집(lib/product-research/server-collect.ts). 라우트가 product_research·product_research_collect 스위치가 모두 켜진 소유자에게만 넘긴다.
+// 아래 tick 잠금(owner+':research-worker')은 tick끼리만 막는다. 상품 리서치 큐는 그 안에서 화면 쓰기와 같은 `${owner}:product-research` 잠금을 따로 잡고,
+// 화면 쓰기가 잡고 있으면 기다리지 않고 idle을 돌려준다(평가 1회차 H5).
 // digest(B2 2단계, 선택): 주간 품질 집계 큐(lib/quality-digest-queue-server.ts runDigestQueue). 넘겼을 때만 순환에 넣는다. 스위치는 그 모듈이 읽는다.
 export async function workerTick(principal:{owner:string;hash:string;gate?:GateVerdict;rotationReady?:boolean},executeResearch:(owner:string,input:Record<string,any>,timeout:number)=>Promise<Response>,collectDue?:(owner:string)=>Promise<{status:string}>,advanceWork?:(owner:string)=>Promise<{status:string}>,digest?:(owner:string)=>Promise<{status:string}>,metaExecution?:(owner:string)=>Promise<{status:string}>,metaConversion?:(owner:string)=>Promise<{status:string}>,growthDaily?:(owner:string)=>Promise<{status:string}>,storefrontPull?:(owner:string)=>Promise<{status:string}>,productResearch?:(owner:string)=>Promise<{status:string}>){
  const {owner,hash,gate,rotationReady=false}=principal;

@@ -1,5 +1,6 @@
 // MD 선정 메모 작성(서버). template: 결정형(analytics/brief.ts). model: AI 팀 '상품 MD' 역할을 HERMES로 1회 실행.
-// 모델에는 관측표(스냅샷 ID + 관측값)만 보낸다. 완료 출력은 인용 채점기로 검사하고, 관측표 밖 숫자·없는 인용이 하나라도 있으면 저장하지 않는다(409, 근거 없는 목록).
+// 모델에는 관측표(행 ID·스냅샷 ID·관측값)만 보낸다. 외부·운영자 글(상품명·키워드·질문)은 md-prompt.ts sanitizeData로 다듬어 자료 칸에만 넣는다(지시문에는 들어가지 않는다).
+// 완료 출력은 인용 채점기로 행 단위 검사하고(대상·지표·값·부호·방향·단정 금지), 요약·리스크의 숫자는 통과한 주장에 나온 것만 허용한다. 하나라도 어긋나면 저장하지 않는다(409, 근거 없는 목록).
 // HERMES는 비동기 실행이라 한 요청 안에서 짧게 기다리고(최대 약 20초), 끝나지 않으면 같은 requestId로 다시 요청해 이어서 확인한다.
 // 토큰 예산(lib/token-budget.ts)은 submitHermes가 요청 전에 예약하고, 사용량(lib/usage-ledger.ts)은 pollHermes가 종료 때 기록한다.
 import {ApiError,connection} from '../server';
@@ -7,15 +8,15 @@ import {hermesSubmissionStatement,submitHermes,pollHermes} from '../hermes';
 import {markUsageOutcomeSafely} from '../usage-outcome';
 import type {UsageContext} from '../usage-ledger';
 import {buildBrief} from './analytics/brief';
-import {checkCitations} from './analytics/citation-check';
+import {checkCitations,checkProse,rowId} from './analytics/citation-check';
 import {shortId} from './analytics/hash';
 import {normalizeKeyword} from './analytics/normalize';
-import {timeOf} from './analytics/series';
+import {subjectKey,timeOf} from './analytics/series';
 import {sourceSpec} from './sources';
-import {mdSubmission,MD_PROMPT_VERSION,type ObservationRow} from './md-prompt';
+import {mdSubmission,sanitizeData,DATA_LIMITS,MD_PROMPT_VERSION,type ObservationRow} from './md-prompt';
 import {K,optional,readSnapshots} from './server-store';
 import {loadGroups,loadScores,type StoredProduct} from './server-pipeline';
-import type {KeywordGroup,MdBrief,MetricKey,Observation,ScoreCard,Snapshot} from './types';
+import type {ClaimRef,KeywordGroup,MdBrief,MetricKey,Observation,ScoreCard,Snapshot} from './types';
 
 // 응답에 근거 목록(unsupported)·형식 오류(issues)를 함께 싣는 오류.
 export class ResearchError extends ApiError{constructor(status:number,message:string,public extra:Record<string,unknown>={}){super(status,message)}}
@@ -43,31 +44,33 @@ export function templateBrief(question:string,inp:BriefInputs,at:string):MdBrief
 }
 
 // 모델에 보낼 관측표: 상품의 키워드 묶음 키워드와 그 상품 목록에 대한 점수표 근거 관측만, (대상·지표)별 가장 최근 값 하나.
+// 행마다 row(스냅샷ID#관측 번호)를 붙인다. 모델은 이 row로 인용하고, 채점기는 이 표의 행만 근거로 인정한다. 대상 이름은 다듬은 글(sanitizeData)이다.
 export function observationTable(inp:BriefInputs):ObservationRow[]{
  const byId=new Map(inp.snapshots.map(s=>[s.id,s])),rows:ObservationRow[]=[];
  for(const card of inp.cards){
   const p=inp.products.find(x=>x.id===card.productId)!;
   const kws=new Set(inp.groups.filter(g=>p.keywordGroupIds.includes(g.id)).flatMap(g=>g.keywords.map(normalizeKeyword))),ls=new Set(p.listings.map(l=>`${l.sourceId}:${l.externalId}`));
   const mine=(o:Observation)=>o.subject.type==='keyword'?kws.has(normalizeKeyword(o.subject.text)):ls.has(`${o.subject.sourceId}:${o.subject.externalId}`);
-  const latest=new Map<string,{o:Observation;s:Snapshot}>();
+  const latest=new Map<string,{o:Observation;s:Snapshot;i:number}>();
   for(const id of new Set(card.subScores.flatMap(s=>s.evidence))){const s=byId.get(id);if(!s||s.status==='failed')continue;
-   for(const o of s.observations){if(typeof o.value!=='number'||!TABLE_METRICS.includes(o.metric)||!mine(o))continue;
+   s.observations.forEach((o,i)=>{if(typeof o.value!=='number'||!TABLE_METRICS.includes(o.metric)||!mine(o))return;
     const label=o.subject.type==='keyword'?o.subject.text:o.subject.title,k=`${label}|${o.metric}|${o.scope??''}`,prev=latest.get(k);
-    if(!prev||timeOf(o.period.to)>timeOf(prev.o.period.to)||(o.period.to===prev.o.period.to&&s.id>prev.s.id))latest.set(k,{o,s})}}
+    if(!prev||timeOf(o.period.to)>timeOf(prev.o.period.to)||(o.period.to===prev.o.period.to&&s.id>prev.s.id))latest.set(k,{o,s,i})})}
   const picked=[...latest.values()].sort((a,b)=>TABLE_METRICS.indexOf(a.o.metric)-TABLE_METRICS.indexOf(b.o.metric)||(a.s.id<b.s.id?-1:1)).slice(0,MAX_ROWS_PER_PRODUCT);
-  for(const {o,s} of picked)rows.push({snapshotId:s.id,source:sourceSpec(s.sourceId).label,productId:p.id,subject:o.subject.type==='keyword'?o.subject.text:o.subject.title,metric:o.metric,value:o.value as number,periodTo:o.period.to,scope:o.scope??null});
+  for(const {o,s,i} of picked)rows.push({row:rowId(s.id,i),subjectKey:subjectKey(o.subject),snapshotId:s.id,source:sourceSpec(s.sourceId).label,productId:p.id,
+   subject:sanitizeData(o.subject.type==='keyword'?o.subject.text:o.subject.title,DATA_LIMITS.subject),metric:o.metric,value:o.value as number,periodTo:o.period.to,scope:o.scope?sanitizeData(o.scope,DATA_LIMITS.scope):null});
  }
  return rows.slice(0,MAX_ROWS);
 }
-// 채점용 스냅샷: 관측표에 실린 행만 남긴 사본(표 밖 관측값은 근거로 인정하지 않는다).
-function tableSnapshots(rows:readonly ObservationRow[],inp:BriefInputs):Snapshot[]{
- const byId=new Map(inp.snapshots.map(s=>[s.id,s])),out=new Map<string,Snapshot>();
- for(const r of rows){const s=byId.get(r.snapshotId);if(!s)continue;const o:Observation={subject:{type:'keyword',text:r.subject},metric:r.metric as MetricKey,value:r.value,period:{from:r.periodTo,to:r.periodTo},...(r.scope?{scope:r.scope}:{})};
-  const cur=out.get(s.id)??{...s,observations:[]};cur.observations.push(o);out.set(s.id,cur)}
- return [...out.values()];
+// 행 ID: 새 관측표는 row를 갖는다. 예전 대기 작업의 행(row 없음)은 스냅샷 안에서 같은 지표·기간·값의 관측 번호를 찾아 붙인다.
+function rowOf(r:ObservationRow,byId:ReadonlyMap<string,Snapshot>):string|null{
+ if(r.row)return r.row;
+ const s=byId.get(r.snapshotId);if(!s)return null;
+ const i=s.observations.findIndex(o=>o.metric===r.metric&&o.period.to===r.periodTo&&o.value===r.value);
+ return i<0?null:rowId(s.id,i);
 }
 function allowedTerms(rows:readonly ObservationRow[],inp:BriefInputs){
- return [...new Set([...inp.products.flatMap(p=>[p.name,p.brand??'',...p.listings.map(l=>l.title)]),...rows.flatMap(r=>[r.subject,r.scope??'',r.source]),...inp.groups.flatMap(g=>g.keywords)].filter(Boolean))];
+ return [...new Set([...inp.products.flatMap(p=>[p.name,sanitizeData(p.name,DATA_LIMITS.name),p.brand??'',...p.listings.map(l=>l.title)]),...rows.flatMap(r=>[r.subject,r.scope??'',r.source]),...inp.groups.flatMap(g=>g.keywords)].filter(Boolean))];
 }
 
 type ModelOutput={summary:string;recommendation:MdBrief['recommendation'];claims:{text:string;citations:string[]}[];risks:string[]};
@@ -84,13 +87,18 @@ export function parseModelOutput(text:unknown):ModelOutput|null{
  const risks:string[]=[];for(const r of o.risks){const t=str(r,300);if(!t)return null;risks.push(t)}
  return {summary,recommendation:rec as ModelOutput['recommendation'],claims,risks};
 }
-// 모델 출력 채점: 주장은 인용한 표 행과, 요약·리스크의 숫자는 표 전체와 맞아야 한다. 하나라도 어긋나면 unsupported에 담긴다.
+// 모델 출력 채점: 주장은 관측표 행 단위로(인용 행의 대상·지표·값·부호·방향, 단정 금지), 요약·리스크는 통과한 주장에 나온 숫자·날짜만 허용하고 단정을 금지한다.
+// 통과하면 주장마다 채점기가 확인한 행(refs)과 그 스냅샷 ID(citations)를 돌려준다(저장되는 메모는 항상 행 인용을 갖는다).
 export function gradeModelOutput(out:ModelOutput,rows:readonly ObservationRow[],inp:BriefInputs){
- const snaps=tableSnapshots(rows,inp),terms=allowedTerms(rows,inp),all=snaps.map(s=>s.id);
- const claims=checkCitations(out.claims,snaps,{allowedTerms:terms});
- const rest=checkCitations([{text:out.summary,citations:all},...out.risks.map(text=>({text,citations:all}))],snaps,{allowedTerms:terms});
- const unsupported=[...claims.unsupported,...rest.unsupported.map(u=>u.replace(/^주장 1:/,'요약:').replace(/^주장 (\d+):/,(_,n)=>`리스크 ${Number(n)-1}:`))];
- return {passed:unsupported.length===0,unsupported};
+ const byId=new Map(inp.snapshots.map(s=>[s.id,s])),terms=allowedTerms(rows,inp);
+ const allowedRows=new Set(rows.map(r=>rowOf(r,byId)).filter((x):x is string=>!!x));
+ const aliases:Record<string,string[]>={};
+ for(const r of rows){const key=r.subjectKey??null;if(!key)continue;const p=inp.products.find(x=>x.id===r.productId);aliases[key]=[...new Set([...(aliases[key]??[]),r.subject,...(p&&key.startsWith('ls:')?[p.name,sanitizeData(p.name,DATA_LIMITS.name)]:[])])]}
+ const claims=checkCitations(out.claims,inp.snapshots,{allowedTerms:terms,allowedRows,subjectAliases:aliases});
+ const prose=checkProse([{tag:'요약',text:out.summary},...out.risks.map((text,i)=>({tag:`리스크 ${i+1}`,text}))],out.claims.map(c=>c.text),{allowedTerms:terms});
+ const unsupported=[...claims.unsupported,...prose];
+ const graded=out.claims.map((c,i)=>{const refs:ClaimRef[]=claims.refs[i]??[];return {text:c.text,citations:[...new Set(refs.map(r=>r.snapshotId))],refs}});
+ return {passed:unsupported.length===0,unsupported,claims:graded};
 }
 
 export type ModelJob={submissionId:string;providerId:string|null;question:string;productIds:string[];rows:ObservationRow[];startedAt:string};
@@ -123,7 +131,7 @@ export async function modelBrief(owner:string,args:{question:string;productIds:s
    const grade=gradeModelOutput(out,job.rows,inp);
    if(!grade.passed){await markUsageOutcomeSafely(owner,'hermes',job.providerId as string,'invalid_output');throw new ResearchError(409,'모델 메모에 관측표로 확인되지 않는 숫자나 인용이 있어 저장하지 않았습니다.',{unsupported:grade.unsupported})}
    await markUsageOutcomeSafely(owner,'hermes',job.providerId as string,'completed');
-   const brief:MdBrief={id:shortId('prbf',{q:job.question,products:job.productIds,run:job.providerId}),productIds:job.productIds,question:job.question,summary:out.summary,recommendation:out.recommendation,claims:out.claims,risks:out.risks,
+   const brief:MdBrief={id:shortId('prbf',{q:job.question,products:job.productIds,run:job.providerId}),productIds:job.productIds,question:job.question,summary:out.summary,recommendation:out.recommendation,claims:grade.claims,risks:out.risks,
     author:{kind:'model',jobId:job.providerId as string},citationCheck:{passed:true,unsupported:[]},createdAt:at};
    return {brief,job};
   }

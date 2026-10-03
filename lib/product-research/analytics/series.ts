@@ -10,17 +10,25 @@ export const dayOf=(t:number)=>new Date(t).toISOString().slice(0,10);
 export const subjectKey=(s:Subject)=>s.type==='keyword'?`kw:${normalizeKeyword(s.text)}`:`ls:${s.sourceId}:${s.externalId}`;
 export const seriesKey=(subject:string,metric:MetricKey,sourceId:SourceId)=>`${subject}|${metric}|${sourceId}`;
 
-// 같은 (대상, 지표, 출처)의 같은 기간 값이 여러 스냅샷에 있으면, 값이 있는 것 중 가장 늦게 수집한 것을 쓴다(재수집이 정정한 값).
+// 상대값 지표(데이터랩): 요청마다 최댓값을 100으로 다시 맞춘(재정규화) 값이다. 축척이 섞이지 않게 같은 기간은 가장 늦게 수집한 값을 쓴다(값이 null이어도).
+export const RELATIVE_METRICS:ReadonlySet<MetricKey>=new Set<MetricKey>(['search_trend','shopping_click_trend']);
+export const RENORMALIZED_NOTE='데이터랩 상대값은 요청마다 최댓값을 100으로 다시 맞춘 값입니다. 같은 기간을 여러 번 받으면 가장 늦게 받은 값을 썼고, 이전 요청에만 있는 기간은 다른 축척일 수 있습니다.';
+// 같은 (대상, 지표, 출처)의 같은 기간 값이 여러 스냅샷에 있으면:
+//  - 절대값 지표: 값이 있는 것 중 가장 늦게 수집한 것(재수집이 정정한 값). 값 있는 옛 점이 새 null을 이긴다.
+//  - 상대값 지표: 값과 무관하게 가장 늦게 수집한 것(옛 축척의 값을 남기지 않는다). 겹친 기간이 있었거나 점이 여러 요청에서 왔으면 limitations에 적는다.
 // 실패 스냅샷은 버린다. 부분 스냅샷은 쓰되 limitations가 화면에 따라간다.
 export function buildSeries(snapshots:readonly Snapshot[]):Series[]{
- const acc=new Map<string,{subject:string;metric:MetricKey;sourceId:SourceId;byPeriod:Map<string,{at:string;value:number|null;snapshotId:string;fetchedAt:number}>}>();
+ const acc=new Map<string,{subject:string;metric:MetricKey;sourceId:SourceId;byPeriod:Map<string,{at:string;value:number|null;snapshotId:string;fetchedAt:number}>;overlaps:number}>();
  for(const snap of snapshots){
   if(snap.status==='failed')continue;const fetched=timeOf(snap.fetchedAt);
   for(const o of snap.observations){
    const subject=subjectKey(o.subject),key=seriesKey(subject,o.metric,snap.sourceId);
-   let e=acc.get(key);if(!e){e={subject,metric:o.metric,sourceId:snap.sourceId,byPeriod:new Map()};acc.set(key,e)}
+   let e=acc.get(key);if(!e){e={subject,metric:o.metric,sourceId:snap.sourceId,byPeriod:new Map(),overlaps:0};acc.set(key,e)}
    const period=`${o.period.from}|${o.period.to}`,prev=e.byPeriod.get(period),value=typeof o.value==='number'&&Number.isFinite(o.value)?o.value:null;
-   const better=!prev||(value!==null&&prev.value===null)||((value===null)===(prev.value===null)&&(fetched>prev.fetchedAt||(fetched===prev.fetchedAt&&snap.id>prev.snapshotId)));
+   const later=!prev||fetched>prev.fetchedAt||(fetched===prev.fetchedAt&&snap.id>prev.snapshotId);
+   const relative=RELATIVE_METRICS.has(o.metric);
+   if(prev&&relative&&prev.snapshotId!==snap.id)e.overlaps++;
+   const better=relative?later:!prev||(value!==null&&prev.value===null)||((value===null)===(prev.value===null)&&later);
    if(better)e.byPeriod.set(period,{at:o.period.to,value,snapshotId:snap.id,fetchedAt:fetched});
   }
  }
@@ -28,7 +36,9 @@ export function buildSeries(snapshots:readonly Snapshot[]):Series[]{
  for(const e of acc.values()){
   // 기간이 다르지만 끝이 같은 점(예: 주간·일간 혼재)은 기간이 짧은 쪽이 먼저 오고 둘 다 남긴다. 같은 at이 여러 개면 소비자가 toWeekly로 합친다.
   const points=[...e.byPeriod.values()].sort((a,b)=>timeOf(a.at)-timeOf(b.at)||(a.snapshotId<b.snapshotId?-1:1)).map(p=>({at:p.at,value:p.value,snapshotId:p.snapshotId}));
-  out.push({subjectKey:e.subject,metric:e.metric,sourceId:e.sourceId,points});
+  const sources=new Set(points.map(p=>p.snapshotId)).size;
+  const limitations=RELATIVE_METRICS.has(e.metric)&&(e.overlaps>0||sources>1)?[`${RENORMALIZED_NOTE} (겹친 기간 ${e.overlaps}개, 점의 출처 요청 ${sources}개)`]:[];
+  out.push({subjectKey:e.subject,metric:e.metric,sourceId:e.sourceId,points,...(limitations.length?{limitations}:{})});
  }
  return out.sort((a,b)=>{const ka=seriesKey(a.subjectKey,a.metric,a.sourceId),kb=seriesKey(b.subjectKey,b.metric,b.sourceId);return ka<kb?-1:ka>kb?1:0});
 }

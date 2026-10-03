@@ -10,9 +10,12 @@ test('확인 사실로 실제 PNG를 만들고 새로고침 뒤 내려받는다'
  // A4-2: 브랜드 공통 캠페인의 게시 코드는 같은 브랜드 지점을 골라 발급한다. 화면이 지점 목록을 불러오기 전에 지점을 만든다.
  const storeName='실행 코드 지점 '+info.project.name+' '+Date.now();
  const store=await page.request.post('/api/stores',{data:{action:'save_store',brandId:'ofd',data:{name:storeName,address:'서울 성수동 테스트 주소',tradeArea:'residential',goal:'평일 포장 주문 증가'}}});expect(store.status()).toBe(200);
- await page.goto('/');await page.getByRole('button',{name:title+' 열기',exact:true}).click();await page.getByRole('tab',{name:'제작·발행',exact:true}).click();
+ await page.goto('/');await page.getByRole('button',{name:title+' 열기',exact:true}).click();
+ // 단계 목록은 실행 상태·브랜드 사실을 모두 불러온 뒤에 그린다. 지연 로딩 탭의 첫 조회가 끝날 때까지 기다린다.
+ const loaded=page.waitForResponse(r=>r.url().includes('/api/execution?campaignId=')&&r.request().method()==='GET');
+ await page.getByRole('tab',{name:'제작·발행',exact:true}).click();expect((await loaded).status()).toBe(200);
  const steps=page.getByRole('list',{name:'첫 게시 단계',exact:true});
- await expect(steps.locator('[aria-current="step"]')).toHaveText('사실 확정');
+ await expect(steps.locator('[aria-current="step"]')).toHaveText('사실 확정',{timeout:15_000});
  await page.getByRole('button',{name:'새 사실',exact:true}).click();
  // 표준 항목(대표 메뉴)은 지점별 항목이 아니라 브랜드 공통 저장에 범위 확인이 필요 없다.
  const form=page.getByRole('form',{name:'브랜드 사실 편집'});

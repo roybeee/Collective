@@ -48,12 +48,12 @@ function limitOf(value:number|undefined,max:number,fallback:number){
  return n;
 }
 
-// 상품 목록 → 순위·판매가 관측. rank가 없으면 응답 순서(1부터)를 순위로 쓴다.
+// 상품 목록 → 순위·판매가 관측. rank가 없으면 순위는 미확인(null)이다. 응답 순서는 순위가 아니다(평가 1회차 M6). 순위 없는 상품은 limitations에 센다.
 function observe(rows:unknown[],scope:string,day:string){
  const observations:Observation[]=[];
  const period={from:day,to:day};
  let skipped=0,noPrice=0,positional=0;
- rows.forEach((raw,index)=>{
+ rows.forEach(raw=>{
   const row=record(raw);
   const id=row.productId===undefined||row.productId===null?null:text(String(row.productId),40);
   const title=text(row.productName,300);
@@ -61,7 +61,7 @@ function observe(rows:unknown[],scope:string,day:string){
   const given=nonNegative(row.rank);
   const hasRank=given!==null&&Number.isInteger(given)&&given>=1;
   if(!hasRank)positional++;
-  const rank=hasRank?given:index+1;
+  const rank=hasRank?given:null;
   const p=nonNegative(row.productPrice);
   const price=p!==null&&p>0?p:null;
   if(price===null)noPrice++;
@@ -79,7 +79,7 @@ function finish(sourceRequest:Record<string,string|number>,res:{fetchedAt:string
   '승인 조건·호출 제한은 파트너스 공식 문서 기준으로 확인이 필요합니다.',
  ];
  if(kind==='search')limitations.push('검색 순위는 파트너스 검색 결과 순서이며 판매 순위가 아닙니다.');
- if(out.positional)limitations.push(`순위 값이 없는 상품 ${out.positional}개는 응답 순서를 순위로 썼습니다.`);
+ if(out.positional)limitations.push(`순위 값이 없는 상품 ${out.positional}개는 순위를 미확인으로 두었습니다(응답 순서를 순위로 쓰지 않음).`);
  if(out.noPrice)limitations.push(`판매가가 없는 상품 ${out.noPrice}개는 가격을 미확인으로 두었습니다.`);
  if(out.skipped)limitations.push(`상품 ID나 이름이 없는 응답 행 ${out.skipped}개를 건너뛰었습니다.`);
  if(!total)limitations.push('반환된 상품이 없습니다.');
@@ -87,7 +87,7 @@ function finish(sourceRequest:Record<string,string|number>,res:{fetchedAt:string
   draft:{
    sourceId:'coupang_partners',method:'api',request:sourceRequest,
    fetchedAt:res.fetchedAt,bodyDigest:res.bodyDigest,bodyBytes:res.bodyBytes,
-   status:out.skipped||out.noPrice||!total?'partial':'ok',limitations,observations:out.observations,
+   status:out.skipped||out.noPrice||out.positional||!total?'partial':'ok',limitations,observations:out.observations,
   },
   unitsUsed:unitsFor('coupang_partners',kind==='best'?'coupang_bestcategories':'coupang_search'),
  };

@@ -20,33 +20,39 @@ export type ProfitInput={price:number|null;unitCost:number|null;shipping:number|
  returnRate?:number|null;
  // 수수료율을 확인했으면 덮어쓴다(가정표보다 우선).
  feeRate?:number|null};
-export type ProfitResult={channel:Channel;feeRate:number;feeAssumption:boolean;revenue:number|null;fee:number|null;contributionBeforeAds:number|null;contribution:number|null;marginPct:number|null;breakevenRoas:number|null;missing:string[];notes:string[]};
+// assumptions(추가 필드): 확인 전 가정값으로 계산한 입력(화면이 '가정값' 표시를 붙인다). costs(추가 필드): 주문 1건 비용 줄(상품 원가·배송(반품 회수 포함)·포장).
+export type ProfitAssumption='fee'|'return_rate'|'ad_cost'|'shipping'|'packaging'|'price'|'channel';
+export type ProfitResult={channel:Channel;feeRate:number;feeAssumption:boolean;revenue:number|null;fee:number|null;contributionBeforeAds:number|null;contribution:number|null;marginPct:number|null;breakevenRoas:number|null;missing:string[];notes:string[];
+ assumptions?:ProfitAssumption[];costs?:{goods:number;shipping:number;packaging:number}|null};
+// 소싱 견적만 있고 판매 쪽 값이 없을 때 쓰는 기본 가정값(사실 아님, 운영자가 고칠 값). 이 값을 쓴 계산은 assumptions에 남는다.
+export const PROFIT_DEFAULTS={channel:'naver_smartstore' as Channel,shippingPerOrder:3000,packaging:300,returnRate:0.03,adCostPerOrder:0,editable:true};
 const r2=(v:number)=>Math.round(v*100)/100;
 
-export function simulateProfit(input:ProfitInput):ProfitResult{
- const spec=CHANNEL_FEES[input.channel],missing:string[]=[],notes:string[]=[];
+export function simulateProfit(input:ProfitInput,assumed:readonly ProfitAssumption[]=[]):ProfitResult{
+ const spec=CHANNEL_FEES[input.channel],missing:string[]=[],notes:string[]=[],assumptions=new Set<ProfitAssumption>(assumed);
  const feeOverride=typeof input.feeRate==='number'&&input.feeRate>=0&&input.feeRate<1;
  const feeRate=feeOverride?input.feeRate as number:spec.feeRate,feeAssumption=!feeOverride&&spec.assumption;
- if(feeAssumption)notes.push(`${spec.label} 수수료 ${(feeRate*100).toFixed(2)}%는 확인 전 가정값입니다.`);
+ if(feeAssumption){notes.push(`${spec.label} 수수료 ${(feeRate*100).toFixed(2)}%는 확인 전 가정값입니다.`);assumptions.add('fee')}
  const req:[keyof ProfitInput,string][]=[['price','판매가'],['unitCost','단위 원가'],['shipping','배송비'],['packaging','포장비']];
  for(const [k,label] of req){const v=input[k];if(typeof v!=='number'||!Number.isFinite(v)||v<0)missing.push(label)}
  let r:number|null=0;
- if(input.returnRate===undefined)notes.push('반품률을 넣지 않아 0으로 가정했습니다.');
+ if(input.returnRate===undefined){notes.push('반품률을 넣지 않아 0으로 가정했습니다.');assumptions.add('return_rate')}
  else if(input.returnRate===null||!(input.returnRate>=0&&input.returnRate<1)){r=null;missing.push('반품률')}
  else r=input.returnRate;
  let ad:number|null=0;
- if(input.adCostPerOrder===undefined)notes.push('광고비를 넣지 않아 광고 없는 판매로 계산했습니다.');
+ if(input.adCostPerOrder===undefined){notes.push('광고비를 넣지 않아 광고 없는 판매로 계산했습니다.');assumptions.add('ad_cost')}
  else if(input.adCostPerOrder===null||!(input.adCostPerOrder>=0)){ad=null;missing.push('주문당 광고비')}
  else ad=input.adCostPerOrder;
- const base={channel:input.channel,feeRate,feeAssumption,missing,notes};
- if(missing.some(m=>m!=='주문당 광고비')||r===null)return {...base,revenue:null,fee:null,contributionBeforeAds:null,contribution:null,marginPct:null,breakevenRoas:null};
+ const base={channel:input.channel,feeRate,feeAssumption,missing,notes,assumptions:[...assumptions].sort()};
+ if(missing.some(m=>m!=='주문당 광고비')||r===null)return {...base,revenue:null,fee:null,contributionBeforeAds:null,contribution:null,marginPct:null,breakevenRoas:null,costs:null};
  const price=input.price as number,revenue=price*(1-r),fee=revenue*feeRate;
  // 반품 1건은 회수 배송비(편도 배송비와 같다고 가정)를 더 쓰고 상품은 재판매하지 못한다고 본다(식품 기준 보수 가정).
  const cba=revenue-fee-(input.unitCost as number)-(input.shipping as number)-(input.packaging as number)-r*(input.shipping as number);
  const contribution=ad===null?null:cba-ad;
  const breakevenRoas=cba>0?r2(price/cba):null;
  if(cba<=0)notes.push('광고 전 공헌이익이 0 이하라 어떤 광고 효율(ROAS)로도 남지 않습니다.');
- return {...base,revenue:r2(revenue),fee:r2(fee),contributionBeforeAds:r2(cba),contribution:contribution===null?null:r2(contribution),marginPct:contribution===null||price<=0?null:Math.round(contribution/price*10000)/10000,breakevenRoas};
+ return {...base,revenue:r2(revenue),fee:r2(fee),contributionBeforeAds:r2(cba),contribution:contribution===null?null:r2(contribution),marginPct:contribution===null||price<=0?null:Math.round(contribution/price*10000)/10000,breakevenRoas,
+  costs:{goods:r2(input.unitCost as number),shipping:r2((input.shipping as number)*(1+r)),packaging:r2(input.packaging as number)}};
 }
 
 // 성장2 소싱 후보(견적) → 시뮬레이터 입력. 고정 배송비·추가비(통관·검사 등)는 주문 수량(없으면 MOQ)에 나눠 단위 원가에 얹는다.

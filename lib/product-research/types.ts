@@ -127,15 +127,22 @@ export type ResearchProduct={
  match:{method:'barcode'|'brand_name_size'|'manual';confidence:number;confirmedBy:{id:string;email:string|null}|null};
  createdAt:string;
  updatedAt:string;
+ // 추가 필드(선택): 연결한 성장2 소싱 견적(growth_sourcing_candidate). 'link_sourcing' 작업이 쓴다. 있으면 재계산이 견적 원가·MOQ·납기로 수익성·실행 가능성을 계산한다.
+ sourcing?:{campaignId:string;candidateId:string;candidateVersion:number}|null;
+ // 추가 필드(선택): 조사 방향(pr_settings) 적용 결과. 지우지 않고 표시만 한다. temperature=보관 온도 설정 밖(목록에서 뒤로), priceMax=가격 상한 초과.
+ filtered?:{temperature:boolean;priceMax:boolean;reasons:string[]}|null;
 };
 
 // 시계열의 한 점. 반드시 스냅샷을 가리킨다.
 export type SeriesPoint={at:string;value:number|null;snapshotId:string};
-export type Series={subjectKey:string;metric:MetricKey;sourceId:SourceId;points:SeriesPoint[]};
+// limitations(추가 필드, 선택): 시계열 해석을 제한하는 사실(예: 데이터랩 상대값이 서로 다른 요청의 재정규화 값으로 섞임).
+export type Series={subjectKey:string;metric:MetricKey;sourceId:SourceId;points:SeriesPoint[];limitations?:string[]};
 
 export const SUB_SCORES=['demand','momentum','durability','competition','profitability','feasibility','content','brand_fit','risk'] as const;
 export type SubScoreKey=typeof SUB_SCORES[number];
 
+// 경쟁 설명(추가 필드, competition 하위 점수에만). 자료가 없는 칸은 null. emptySlot은 자료가 '비어 있는 자리'를 보여 줄 때만 한국어 한 문장, 아니면 null.
+export type CompetitionDetail={sellerCount:number|null;productCount:number|null;top10Hhi:number|null;priceBand:{p25:number;p50:number;p75:number}|null;newEntrantShare:number|null;emptySlot:string|null};
 export type SubScore={
  key:SubScoreKey;
  // 0~100. 자료가 없으면 null(0 아님).
@@ -144,7 +151,11 @@ export type SubScore={
  evidence:string[];
  // 사람이 읽는 한 문장 설명.
  reason:string;
+ // 추가 필드(선택): 경쟁 하위 점수의 구조화 설명.
+ detail?:CompetitionDetail;
 };
+// 브랜드 적합성 힌트(추가 필드, 결정형): 브랜드 아카이브 확정 사실과 상품 카테고리·키워드의 낱말 겹침. 사람 판정(brand_fit)을 대신하지 않는다.
+export type BrandFitHint={score:number|null;memo:string;factIds:string[]};
 
 // 점수표 판(불변). 가중치 판이 바뀌면 새 판을 만든다.
 export type ScoreCard={
@@ -161,16 +172,23 @@ export type ScoreCard={
  // 분류: 도입 검토·관찰·자료 보강·제외
  tier:'adopt'|'watch'|'needs_data'|'reject';
  inputDigest:string;
+ // 추가 필드(선택): 리스크 '높음'(선정 금지는 아님)이면 true. 서버는 이 점수표의 승인에 리스크를 언급한 사유와 확인 표시를 요구한다(review.terms 중 하나를 사유에 포함).
+ needsReview?:boolean;
+ review?:{rules:string[];reasons:string[];terms:string[]}|null;
+ // 추가 필드(선택): 브랜드 적합성 힌트(사람 brand_fit 값을 자동으로 채우지 않는다).
+ brandFitHint?:BrandFitHint|null;
 };
 
-// MD 선정 메모 판. 모든 수치는 citations에 있는 스냅샷을 인용한다.
+// 관측 행 인용. subject는 시계열 대상 키(kw:정규형 키워드 또는 ls:출처:외부ID), period는 관측 기간 끝(YYYY-MM-DD, 없으면 그 스냅샷 안 같은 대상·지표 전부).
+export type ClaimRef={snapshotId:string;subject:string;metric:MetricKey;period?:string};
+// MD 선정 메모 판. 모든 수치는 citations에 있는 스냅샷을 인용한다. refs(추가 필드)는 주장이 가리키는 관측 행이다(스냅샷 전체가 아니라 행 단위로 채점).
 export type MdBrief={
  id:string;
  productIds:string[];
  question:string;          // 대표가 준 방향(예: "여름 상온 K-스낵, 2만 원 이하")
  summary:string;
  recommendation:'adopt'|'watch'|'reject';
- claims:{text:string;citations:string[]}[];
+ claims:{text:string;citations:string[];refs?:ClaimRef[]}[];
  risks:string[];
  // 작성 방식: 결정형 템플릿 또는 모델. 모델이면 실행 ID.
  author:{kind:'template'}|{kind:'model';jobId:string};
@@ -207,6 +225,8 @@ export type BacktestResult={
  computedAt:string;
  // 계산하지 않은 이유(이력 부족·후보 부족 등). 숫자를 만들지 않았을 때만 값이 있다(추가 필드).
  reason?:string|null;
+ // 추가 필드(선택): 후보 모집단 구성(기준 시점 이전 관측만으로 만든 상품·키워드 묶음 수, 기준 시점 뒤에 처음 나타나 뺀 목록 수)과 해석 한계.
+ universe?:{products:number;keywordGroups:number;excludedAfterAsOf:number;notes:string[]}|null;
 };
 
 // 화면 응답(GET /api/product-research). 서버와 화면이 같은 모양을 쓴다.

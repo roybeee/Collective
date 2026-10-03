@@ -9,7 +9,7 @@ const HERMES='https://hermes.example.com';
 const calls=[];const mode={youtubeFail:true,hermes:'fabricate',searchadAuth:false,datalabAuth:false};let runs=0;const runInputs=new Map();
 const DAY=86400000,kst=d=>new Date(d.getTime()+9*3600000).toISOString().slice(0,10);
 const json=(v,status=200)=>new Response(JSON.stringify(v),{status,headers:{'content-type':'application/json'}});
-const {sql,env,load}=testRuntime(async(url,init={})=>{
+const stub=async(url,init={})=>{
  const u=new URL(String(url));calls.push({host:u.host,path:u.pathname,url:String(url)});
  if(u.host==='api.searchad.naver.com'){
   if(mode.searchadAuth)return new Response('denied',{status:401});
@@ -39,12 +39,14 @@ const {sql,env,load}=testRuntime(async(url,init={})=>{
   const m=/^\/v1\/runs\/(run_\d+)$/.exec(u.pathname);
   if(m){const sub=runInputs.get(m[1]),inp=JSON.parse(sub.input),row=inp.observations[0];
    const value=mode.hermes==='fabricate'?row.value+7:row.value;
-   const out={summary:'근거 표의 관측값만으로 정리했습니다.',recommendation:'watch',claims:[{text:`'${row.subject}' ${row.metric} ${value} (${row.periodTo} 기준)`,citations:[row.snapshotId]}],risks:['규제 표시를 확인하세요.']};
+   // 관측표 행에 row(스냅샷ID#번호)가 있으면 그 행을 인용하고, 없으면(이전 프롬프트) 스냅샷 ID를 인용한다.
+   const out={summary:'근거 표의 관측값만으로 정리했습니다.',recommendation:'watch',claims:[{text:`'${row.subject}' ${row.metric} ${value} (${row.periodTo} 기준)`,citations:[row.row??row.snapshotId]}],risks:['규제 표시를 확인하세요.']};
    return json({object:'hermes.run',run_id:m[1],status:'completed',output:JSON.stringify(out),usage:{input_tokens:100,output_tokens:50,total_tokens:150}});
   }
  }
  throw new Error('외부 호출 금지: '+String(url));
-});
+};
+const {sql,env,load}=testRuntime(stub);
 const server=await load('lib/server.ts'),flags=await load('lib/feature-flags.ts'),route=await load('app/api/product-research/route.ts');
 const collect=await load('lib/product-research/server-collect.ts'),worker=await load('lib/research-worker.ts'),sealing=await load('lib/credential-crypto-server.ts'),growthRoute=await load('app/api/growth/route.ts');
 let passed=0;const check=(v,n)=>{assert.ok(v,n);passed++};
@@ -89,6 +91,7 @@ check(r.status===200&&count('pr_snapshot')===1,'good file stores one snapshot');
 const snap0=rec('pr_snapshot',r.body.resultId);
 check(snap0.importedBy.id===OWNER&&snap0.importedBy.fileName==='coupang.csv'&&snap0.observations.some(o=>o.subject.externalId==='A1'),'snapshot keeps importedBy and external_id column');
 check(r.body.imports.length===1&&r.body.imports[0].rows===3&&r.body.imports[0].fileName==='coupang.csv','view lists the import');
+check(r.body.imports[0].scope==='쿠팡 소스'&&r.body.imports[0].observedDate===today,'view import record carries scope and observedDate');
 check(r.body.products.length===3&&r.body.products.every(p=>p.score&&p.score.weightsVersion==='w1'),'import → recompute → products with w1 score cards');
 const scoresAfterImport=count('pr_score'),productIds=r.body.products.map(p=>p.id).sort();
 r=await act('recompute');check(r.status===200&&count('pr_score')===scoresAfterImport,'recompute with the same inputs creates no new score version');
@@ -145,7 +148,15 @@ const state1=rec('pr_collect_state','current');
 check(state1.plan.length>0&&state1.cursor<=state1.plan.length,'collect plan stored with cursor');
 // 남은 단계는 워커가 이어 간다
 let ticks=0,st;do{st=await collect.runProductResearchQueue(OWNER);ticks++}while(st.status==='processed'&&ticks<10);
-check(['idle','processed'].includes(st.status)&&rec('pr_collect_state','current').done===true,'worker finishes the day plan (status stays idle/processed)');
+const waiting=rec('pr_collect_state','current');
+check(['idle','processed'].includes(st.status)&&waiting.done===false&&waiting.pending.length>0&&waiting.pending.every(p=>p.sourceId==='youtube_data')&&typeof waiting.nextAttemptAt.youtube_data==='string','youtube 500 is transient: only its steps wait for the backoff, other sources finished (status stays idle/processed)');
+check(waiting.attempts.youtube_data.count===1&&/다시 시도/.test(waiting.errors.youtube_data.message),'transient failure counts one attempt and says when it retries');
+// 시간이 흘러 재시도 두 번이 더 실패하면(하루 3번) YouTube는 오늘 멈추고 계획이 끝난다. 한국 자정을 넘기면 새 날 계획이라 이 확인은 건너뛴다.
+if(kst(new Date(Date.now()+31*60000))===kst(new Date())){
+ for(const m of [6,30]){const later={fetch:stub,now:()=>new Date(Date.now()+m*60000)};let s2,n=0;do{s2=await collect.runProductResearchQueue(OWNER,later);n++}while(s2.status==='processed'&&n<5)}
+ const ended=rec('pr_collect_state','current');
+ check(ended.done===true&&ended.skip.includes('youtube_data')&&ended.attempts.youtube_data.count===3&&/내일/.test(ended.errors.youtube_data.message),'worker finishes the day plan after 3 transient youtube failures (max 3 attempts/day)');
+}else passed++;
 const made=calls.slice(c0),n=(host,path)=>made.filter(c=>c.host===host&&(!path||c.path===path)).length;
 check(n('api.searchad.naver.com')<=8,'searchad ≤ 8 calls (≤40 keywords, 5 per call)');
 check(n('openapi.naver.com','/v1/datalab/search')<=8,'datalab ≤ 8 calls (≤40 groups)');
@@ -173,7 +184,7 @@ check(r.body.series.length>0&&r.body.snapshots.length>0&&r.body.snapshots.every(
 check(r.body.products.every(p=>'previousScore' in p),'each product carries previousScore (null when none)');
 const pick=scored.slice(0,2).map(p=>p.id);
 r=await act('generate_brief',{productIds:pick,question:'가을 상온 K-소스',mode:'template'});
-check(r.status===200&&r.body.briefs.length===1&&r.body.briefs[0].citationCheck.passed&&r.body.briefs[0].author.kind==='template','template brief passes citation check and is stored');
+check(r.status===200&&r.body.briefs.some(b=>b.id===r.body.resultId&&b.citationCheck.passed&&b.author.kind==='template'),'template brief passes citation check and is stored');
 const briefId=r.body.resultId;
 r=await act('generate_brief',{productIds:pick,question:'가을 상온 K-소스',mode:'model'});
 check(r.status===409&&/AI 연결|HERMES/.test(r.body.error),'model brief without an AI connection is 409');
@@ -187,6 +198,9 @@ check(count('provider_usage')>=1,'model usage recorded in the usage ledger');
 mode.hermes='valid';
 r=await act('generate_brief',{productIds:pick,question:'가을 상온 K-소스',mode:'model'});
 check(r.status===200&&count('pr_brief')===briefsBefore+1&&r.body.briefs.some(b=>b.author.kind==='model'&&b.citationCheck.passed),'model brief that cites table values is stored');
+{const last=[...runInputs.values()].pop(),row0=JSON.parse(last.input).observations[0],stored=r.body.briefs.find(b=>b.author.kind==='model');
+ if(typeof row0.row==='string')check(stored.claims[0].citations.includes(row0.snapshotId)&&Array.isArray(stored.claims[0].refs)&&stored.claims[0].refs.some(x=>x.snapshotId===row0.snapshotId),'model brief citing a row ref (snapshot#n) is graded per row and stored with refs');
+ else check(stored.claims[0].citations.includes(row0.snapshotId),'model brief citing a snapshot id is stored (row refs arrive with the row-level grader)');}
 const sub=[...runInputs.values()].pop();check(typeof sub.instructions==='string'&&/observations/.test(sub.instructions)&&JSON.parse(sub.input).observations.every(o=>typeof o.snapshotId==='string'&&typeof o.value==='number'),'model receives only the observation table');
 
 // ── 8) 승인 → 성장2 시장 근거
@@ -209,7 +223,9 @@ const signal=rec('growth_signal',r.body.resultId);
 check(signal.input.sourceType==='market'&&signal.input.title.startsWith('상품 리서치: ')&&signal.input.sourceUrl.startsWith('https://')&&signal.campaignId==='camp1'&&signal.brandId==='b1','signal is a market signal in the campaign');
 check(signal.productResearch.decisionId===decisionId&&signal.productResearch.scoreCardId===target.score.id&&signal.productResearch.snapshotIds.length>0,'signal keeps product research provenance');
 check(Date.parse(signal.input.expiresAt)-Date.parse(signal.input.observedAt)===30*DAY,'signal expires 30 days after the latest cited snapshot');
-check(count('growth_history')===1&&rec('pr_decision',decisionId).handoff.signalId===signal.id,'history and decision handoff link written atomically');
+check(count('growth_history')===2&&rec('pr_decision',decisionId).handoff.signalId===signal.id,'history (signal + need) and decision handoff link written atomically');
+const needId=rec('pr_decision',decisionId).handoff.needId,need=rec('growth_need',needId);
+check(count('growth_need')===1&&need&&need.input.signalIds.join()===signal.id&&need.evidenceRefs[0].id===signal.id&&need.campaignId==='camp1'&&need.brandId==='b1'&&/초안 — 사람이 채움/.test(need.input.situation),'handoff also drafts one growth_need linked to the signal (placeholders say a person fills them)');
 r=await post(hoReq);check(r.status===200&&r.body.duplicate===true&&count('growth_signal')===1,'handoff replay is idempotent');
 r=await act('handoff',{decisionId,campaignId:'camp1',campaignVersion:3});check(r.status===409,'a decision is handed off once');
 const gp=await growthRoute.POST(new Request('https://agency.test/api/growth',{method:'POST',headers:H,body:JSON.stringify({action:'save_signal',id:signal.id,campaignId:'camp1',campaignVersion:3,expectedVersion:1,input:signal.input})}));

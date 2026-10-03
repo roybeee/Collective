@@ -1,4 +1,4 @@
-// 결정형 MD 선정 메모(순수). 계획 4.3: 모든 주장은 점수표 근거(evidence) 스냅샷을 인용하고, 주장 속 숫자는 그 스냅샷의 관측값 그대로다.
+// 결정형 MD 선정 메모(순수). 계획 4.3: 모든 주장은 점수표 근거(evidence) 스냅샷의 관측 '행'(refs: 스냅샷·대상·지표·기간)을 인용하고, 주장 속 숫자는 그 행의 관측값 그대로다.
 // 파생 수치(점수·성장률)는 주장(claims)에 넣지 않고 요약(summary)에만 쓴다. 그래야 citation-check가 주장 전체를 엄격히 채점할 수 있다.
 import type {KeywordGroup,MdBrief,MetricKey,Observation,ResearchProduct,ScoreCard,Snapshot} from '../types';
 import {sourceSpec} from '../sources';
@@ -6,7 +6,7 @@ import {checkCitations} from './citation-check';
 import {koNumber} from './format';
 import {shortId} from './hash';
 import {normalizeKeyword} from './normalize';
-import {timeOf} from './series';
+import {subjectKey,timeOf} from './series';
 
 const TIER_ORDER:Record<ScoreCard['tier'],number>={adopt:0,watch:1,needs_data:2,reject:3};
 const TIER_LABEL:Record<ScoreCard['tier'],string>={adopt:'도입 검토',watch:'관찰',needs_data:'자료 보강',reject:'제외'};
@@ -49,7 +49,7 @@ export function buildBrief(opts:{question:string;products:readonly ResearchProdu
   const picked=[...latest.values()].sort((a,b)=>order.indexOf(a.o.metric)-order.indexOf(b.o.metric)||(subjectLabel(a.o)<subjectLabel(b.o)?-1:1)).slice(0,per);
   for(const {o,snap} of picked){
    const subject=subjectLabel(o);allowed.add(subject);if(o.scope)allowed.add(o.scope);
-   claims.push({text:`[${p.name}] ${CLAIM_METRICS[o.metric]!(o,subject)} (${sourceSpec(snap.sourceId).label}, ${o.period.to} 기준)`,citations:[snap.id]});
+   claims.push({text:`[${p.name}] ${CLAIM_METRICS[o.metric]!(o,subject)} (${sourceSpec(snap.sourceId).label}, ${o.period.to} 기준)`,citations:[snap.id],refs:[{snapshotId:snap.id,subject:subjectKey(o.subject),metric:o.metric,period:o.period.to}]});
   }
   if(card.blocked)risks.push(`[${p.name}] 선정 금지: ${card.blocked.reason}`);
   const risk=card.subScores.find(s=>s.key==='risk');if(risk&&risk.value!==null&&risk.value<90&&!card.blocked)risks.push(`[${p.name}] ${risk.reason}`);
@@ -60,9 +60,9 @@ export function buildBrief(opts:{question:string;products:readonly ResearchProdu
  const lead=top[0],leadName=lead?prodById.get(lead.productId)!.name:null;
  const summary=`'${opts.question}'에 대해 후보 ${cards.length}개를 점수표 ${cards[0]?.weightsVersion??'w1'}로 비교했습니다. 도입 검토 ${count('adopt')}개, 관찰 ${count('watch')}개, 자료 보강 ${count('needs_data')}개, 제외 ${count('reject')}개입니다.`+
   (lead&&leadName?` 1순위는 ${leadName}(${TIER_LABEL[lead.tier]}, 총점 ${lead.total===null?'미확인':lead.total.toFixed(1)}, 신뢰도 ${lead.confidence.toFixed(2)})입니다.`:'')+' 발주·가격 승인은 하지 않으며 대표 승인 뒤 소싱 검토로 넘깁니다.';
- const allowedTerms=[...allowed];
+ const allowedTerms=[...allowed],check=checkCitations(claims,opts.snapshots,{allowedTerms});
  return {id:shortId('prbf',{q:opts.question,cards:top.map(c=>c.id)}),productIds:top.map(c=>c.productId),question:opts.question,summary,recommendation,claims,risks,author:{kind:'template'},
-  citationCheck:checkCitations(claims,opts.snapshots,{allowedTerms}),createdAt:opts.createdAt};
+  citationCheck:{passed:check.passed,unsupported:check.unsupported},createdAt:opts.createdAt};
 }
 // 메모를 마크다운으로(화면·주간 리포트용). 인용은 스냅샷 ID 각주로 붙는다.
 export function briefMarkdown(b:MdBrief):string{

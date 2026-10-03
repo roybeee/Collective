@@ -3,7 +3,8 @@
 import type {RegulatoryClass,Temperature} from '../types';
 
 export type RiskLevel='low'|'medium'|'high'|'blocked';
-export type RiskItem={rule:string;level:RiskLevel;reason:string};
+// term(추가 필드): 항목을 일으킨 말(예: 상표 이름). 승인 사유 확인에 쓴다.
+export type RiskItem={rule:string;level:RiskLevel;reason:string;term?:string};
 export type RiskResult={level:RiskLevel;items:RiskItem[];blocked:{rule:string;reason:string}|null};
 export type RiskInput={regulatory:RegulatoryClass;
  // 규제 분류를 카테고리로 확인했는지. false면 '분류 미확인' 항목이 붙는다(match.ts classifyListing.regulatorySure).
@@ -13,6 +14,15 @@ export type RiskInput={regulatory:RegulatoryClass;
  // 자사가 권리를 가진 브랜드(제목에 있어도 무방). protectedBrands 중 이 목록에 없는 이름이 보이면 타사 상표 사용이다.
  ownBrands?:readonly string[];protectedBrands?:readonly string[]};
 const RANK:Record<RiskLevel,number>={low:0,medium:1,high:2,blocked:3};
+// '높음' 항목을 승인하려면 결정 사유가 그 위험을 말해야 한다: 규칙마다 사유에 들어가야 할 말(하나 이상). 상표 규칙은 그 상표 이름도 인정한다.
+export const REVIEW_TERMS:Record<string,readonly string[]>={
+ trademark_use:['상표','브랜드','권리자','라이선스'],
+ medical_claim:['의약','치료','표현','광고'],
+ diet_claim:['다이어트','감량','표현','광고'],
+ hff_review:['심의','건강기능'],
+ functional_review:['기능성','심사'],
+};
+export const reviewTermsFor=(item:RiskItem)=>[...(REVIEW_TERMS[item.rule]??['리스크','위험']),...(item.term?[item.term]:[])];
 export const maxLevel=(a:RiskLevel,b:RiskLevel)=>RANK[a]>=RANK[b]?a:b;
 
 // 제목 위험 표현. 정규식은 NFC·소문자 제목에 쓴다. 오탐이 확인되면 이 표만 고친다.
@@ -61,7 +71,7 @@ export function assessRisk(input:RiskInput):RiskResult{
   const t=String(raw??'').normalize('NFC').toLowerCase();
   for(const f of TEXT_FLAGS)if(!seen.has(f.rule)&&f.re.test(t)){seen.add(f.rule);items.push({rule:f.rule,level:f.level,reason:f.reason})}
   const own=(input.ownBrands??[]).map(b=>b.normalize('NFC').toLowerCase());
-  for(const b of input.protectedBrands??[]){const nb=b.normalize('NFC').toLowerCase();if(nb&&t.includes(nb)&&!own.includes(nb)&&!seen.has('trademark:'+nb)){seen.add('trademark:'+nb);items.push({rule:'trademark_use',level:'high',reason:`타사 상표 '${b}'가 제목에 있습니다. 권리자 허락 없이 쓰면 상표권 침해입니다.`})}}
+  for(const b of input.protectedBrands??[]){const nb=b.normalize('NFC').toLowerCase();if(nb&&t.includes(nb)&&!own.includes(nb)&&!seen.has('trademark:'+nb)){seen.add('trademark:'+nb);items.push({rule:'trademark_use',level:'high',reason:`타사 상표 '${b}'가 제목에 있습니다. 권리자 허락 없이 쓰면 상표권 침해입니다(재판매·OEM이면 권리 관계를 확인하세요).`,term:b})}}
  }
  const level=items.reduce<RiskLevel>((m,i)=>maxLevel(m,i.level),'low'),b=items.find(i=>i.level==='blocked');
  return {level,items,blocked:b?{rule:b.rule,reason:b.reason}:null};

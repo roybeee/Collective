@@ -11,6 +11,7 @@ import {MetaLine} from '@/components/app/meta-line';
 import {StatList} from '@/components/app/stat-list';
 import {dateTime} from '@/lib/format';
 import {SUB_SCORES,type MdBrief} from '@/lib/product-research/types';
+import {questionWhy,LIMITS} from '@/lib/product-research/ui-detail';
 import {categoryLabel,confidence,DecisionBadge,DecisionBox,editReason,evidenceLabel,score,scoreSort,subScoreLabels,temperatureLabels,TierBadge,tierLabels,type Act,type Product,type View} from './product-research-shared';
 import s from './product-research.module.css';
 
@@ -24,7 +25,7 @@ export function CommitteeTab({view,act,busy,onOpen}:{view:View;act:Act;busy:bool
  const [question,setQuestion]=useState(view.settings.question);
  const chosen=picked.map(id=>view.products.find(p=>p.id===id)).filter((p):p is Product=>!!p);
  const toggle=(id:string)=>setPicked(p=>p.includes(id)?p.filter(x=>x!==id):p.length>=MAX?p:[...p,id]);
- const briefWhy=!view.canEdit?editReason:!chosen.length?'비교할 후보를 하나 이상 고르세요.':!question.trim()?'조사 질문을 한 줄 쓰세요.':'';
+ const briefWhy=!view.canEdit?editReason:!chosen.length?'비교할 후보를 하나 이상 고르세요.':questionWhy(question,true);
  const brief=(mode:'template'|'model')=>void act({action:'generate_brief',productIds:chosen.map(p=>p.id),question:question.trim(),mode},mode==='model'?'선정 메모를 만들었습니다.':'템플릿 선정 메모를 만들었습니다.','인용 검사를 통과한 메모만 저장됩니다.');
  const briefs=[...view.briefs].filter(b=>!chosen.length||b.productIds.some(id=>picked.includes(id))).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
  return <section className={s.section} aria-labelledby="pr-committee-title">
@@ -44,7 +45,7 @@ export function CommitteeTab({view,act,busy,onOpen}:{view:View;act:Act;busy:bool
    <Button type="button" variant="ghost" size="sm" onClick={()=>toggle(p.id)}>비교에서 빼기</Button>
   </article>)}</div>}
   <section className={s.block} aria-labelledby="pr-brief-title"><h3 id="pr-brief-title" className={s.subtitle}>MD 선정 메모</h3>
-   <label className="field"><span>조사 질문</span><Input value={question} maxLength={300} placeholder="예: 여름 상온 K-스낵, 2만 원 이하" onChange={e=>setQuestion(e.target.value)}/></label>
+   <label className="field"><span>조사 질문({LIMITS.question}자까지)</span><Input value={question} maxLength={LIMITS.question} placeholder="예: 여름 상온 K-스낵, 2만 원 이하" onChange={e=>setQuestion(e.target.value)}/></label>
    <div className={s.toolbar}>
     <Button type="button" variant="outline" disabled={busy||!!briefWhy} disabledReason={briefWhy} onClick={()=>brief('template')}>템플릿으로 메모 만들기</Button>
     <Button type="button" disabled={busy||!!briefWhy} disabledReason={briefWhy} onClick={()=>brief('model')}>AI 상품 MD로 메모 만들기</Button>

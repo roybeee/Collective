@@ -13,6 +13,9 @@ const kinds={
  collectState:'pr_collect_state',
  settings:'pr_settings',
  request:'pr_request',
+ riskReview:'pr_risk_review',
+ quarantine:'pr_quarantine',
+ scoreIndex:'pr_score_index',
 } as const;
 export const PR_KINDS=kinds;
 export type PrKind=typeof PR_KINDS[keyof typeof PR_KINDS];
