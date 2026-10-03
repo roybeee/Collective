@@ -31,6 +31,8 @@ export const FEATURE_FLAGS={
  b3_reflector:{defaultEnabled:false,description:'대표·관리자가 같은 브랜드×역할 교정 5건 이상 묶음을 Reflector 전용 HERMES 격리 프로필에 1회 보내 운영자 선호 규칙 초안(최대 5개, 인용 필수, 초안만·승인은 사람)을 제안받는다(B3-2, 토큰 사용·예산 가드 적용). 미리보기 확인·개인정보 탐지 시 전송 차단·대표 격리 확인이 있어야 보낸다.'},
  storefront_pull:{defaultEnabled:false,description:'워커 tick이 소유자가 켠 판매처 주문 조회 연결을 간격마다 1페이지씩 읽어(읽기 전용, 고객 정보 없음) 기존 주문 장부에 반영한다. 커서는 저장과 같은 묶음에서만 전진한다.'},
  growth_daily_loop:{defaultEnabled:false,description:'워커 tick이 KST 하루 1회 지점 캠페인마다 자사 장부 신호를 감지하고 문의 기한·신호·교훈 확인·실험 분석·예약 대사·미션 기한 안건을 기록한다. 게시·지출·발주·고객 발송·프롬프트 승격은 하지 않는다.'},
+ product_research:{defaultEnabled:false,description:'상품 리서치 탭과 점수표·MD 선정 메모·선정 결정·운영자 랭킹 가져오기를 켠다. 외부 API 호출은 product_research_collect가 따로 켠다. 발주·결제·공급자 연락 없음.'},
+ product_research_collect:{defaultEnabled:false,description:'워커 tick이 하루 1회 공식 API(네이버 검색광고·데이터랩·쇼핑 검색, YouTube, 쿠팡 파트너스)로 상품 리서치 지표를 모은다. 출처별 하루 쿼터 안에서만 호출하고 robots·약관 금지 출처는 부르지 않는다.'},
  publication_auto_link:{defaultEnabled:false,description:'워커가 예약 접수된 발행의 Buffer 상태를 30분마다 확인하고(예약 1시간 전~7일 뒤), 게시 확인·실험 연결·Instagram 게시물 ID가 모두 있는 발행을 그 실험 안의 성과 자동 수집 대상으로 등록한다(PR 4b loop-2). 꺼도 발행–실험 연결과 게시물 ID 입력은 계속된다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;

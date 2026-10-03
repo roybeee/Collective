@@ -1,6 +1,6 @@
 // 워크스페이스 화면 상태 ↔ URL 쿼리(?view=&campaign=&brand=&store=&tab=). 새로고침·링크 공유·뒤로가기 때 같은 화면을 복원한다.
 // 허용하지 않은 화면·형식이 틀린 id·모르는 쿼리는 버린다. 존재 확인은 데이터를 불러온 뒤 reconcileNav로 한다.
-export const navViews=['overview','learning','campaigns','brands','stores','agents','assets','results','franchise','settings'] as const;
+export const navViews=['overview','learning','campaigns','brands','stores','agents','assets','results','franchise','research','settings'] as const;
 export type NavView=typeof navViews[number];
 // 학습 화면의 탭(app/learning-panel.tsx). 링크가 규칙 탭 등을 바로 열 수 있게 허용 목록만 받는다.
 export const learningTabs=['cases','experiments','rules','jobs'] as const;
@@ -14,7 +14,10 @@ export type BrandTab=typeof brandTabs[number];
 // 가맹 모집 화면의 탭(app/franchise-panel.tsx, 트랙 R): 리드·정보주체 요청·모집 자료·행사(R15a-2b)·유입·비용(R5c)·설정. 설정 탭은 대표·관리자에게만 보이고, 직원에게는 리드 탭으로 보인다(서버도 403).
 export const franchiseTabs=['leads','requests','assets','events','inflow','report','benchmark','nurture','settings'] as const;
 export type FranchiseTab=typeof franchiseTabs[number];
-export type NavTab=LearningTab|StoreTab|BrandTab|FranchiseTab;
+// 상품 리서치 화면의 탭(docs/PRODUCT-RESEARCH-PLAN.ko.md 6절): 트렌드 레이더·후보 목록·선정 위원회·주간 MD 리포트·출처와 가져오기.
+export const researchTabs=['radar','candidates','committee','report','sources'] as const;
+export type ResearchTab=typeof researchTabs[number];
+export type NavTab=LearningTab|StoreTab|BrandTab|FranchiseTab|ResearchTab;
 // 캠페인 상세의 탭(app/panels.tsx CampaignPanel). 화면 탭(tab)과 겹치지 않게 ctab으로 둔다(UX-PLAN P4: 새로고침·공유·뒤로가기 때 같은 탭).
 export const campaignTabs=['brief','meeting','team','outputs','growth','meta-ads','execution','results','history'] as const;
 export type CampaignTab=typeof campaignTabs[number];
@@ -31,9 +34,10 @@ type NavInput={view?:string|null;campaign?:string|null;brand?:string|null;store?
 const idPattern=/^[A-Za-z0-9_-]{1,100}$/;
 const validId=(value:string|null|undefined)=>typeof value==='string'&&idPattern.test(value)?value:undefined;
 const isView=(value:string|null|undefined):value is NavView=>(navViews as readonly string[]).includes(value as string);
-const viewTabs:Partial<Record<NavView,readonly NavTab[]>>={learning:learningTabs,stores:storeTabs,brands:brandTabs,franchise:franchiseTabs};
+const viewTabs:Partial<Record<NavView,readonly NavTab[]>>={learning:learningTabs,stores:storeTabs,brands:brandTabs,franchise:franchiseTabs,research:researchTabs};
 const tabOf=(view:NavView,value:string|null|undefined)=>viewTabs[view]?.find(tab=>tab===value);
 export const isLearningTab=(value:unknown):value is LearningTab=>(learningTabs as readonly unknown[]).includes(value);
+export const isResearchTab=(value:unknown):value is ResearchTab=>(researchTabs as readonly unknown[]).includes(value);
 export const isFranchiseTab=(value:unknown):value is FranchiseTab=>(franchiseTabs as readonly unknown[]).includes(value);
 // 사이드바 '가맹 모집' 메뉴: 상태를 읽기 전·실패하면 숨긴다. 기능 스위치(r_franchise)가 켜져 있으면 모두에게 보이고, 꺼졌으면 리드·정보주체 요청·모집 자료·행사 기록이 있을 때
 // 대표·관리자에게만 보인다(꺼진 뒤에도 조회·파기·정보주체 요청·모집 자료 폐기·행사 취소를 처리하도록). 꺼져 있고 기록이 없으면 메뉴는 스위치 도입 전과 같다. 권한 판정은 서버가 한다.

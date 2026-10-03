@@ -12,7 +12,7 @@ let passed=0;
 function check(name,actual,expected){assert.deepEqual(JSON.parse(JSON.stringify(actual)),expected,name);passed++}
 
 // --- 허용 화면 ---------------------------------------------------------------------
-check('allowed views match the sidebar menu and settings',[...navViews],['overview','learning','campaigns','brands','stores','agents','assets','results','franchise','settings']);
+check('allowed views match the sidebar menu and settings',[...navViews],['overview','learning','campaigns','brands','stores','agents','assets','results','franchise','research','settings']);
 
 // --- 파싱 ---------------------------------------------------------------------------
 check('empty query is the overview',parseNav(''),{view:'overview'});
