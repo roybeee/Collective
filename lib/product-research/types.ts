@@ -205,6 +205,8 @@ export type BacktestResult={
  // 정답 정의: 관측 기간 뒤 추세·순위가 기준 이상 오른 상품.
  label:string;
  computedAt:string;
+ // 계산하지 않은 이유(이력 부족·후보 부족 등). 숫자를 만들지 않았을 때만 값이 있다(추가 필드).
+ reason?:string|null;
 };
 
 // 화면 응답(GET /api/product-research). 서버와 화면이 같은 모양을 쓴다.
@@ -213,7 +215,8 @@ export type ProductResearchView={
  collectEnabled:boolean;   // 스위치 product_research_collect
  focus:{temperature:Temperature[];categories:CategoryId[]};
  sources:{id:SourceId;label:string;method:AccessMethod;connected:boolean;lastFetchedAt:string|null;lastStatus:Snapshot['status']|null;quotaUsedToday:number|null;dailyQuota:number|null}[];
- products:(ResearchProduct&{score:ScoreCard|null;decision:MdDecision|null})[];
+ // previousScore(추가 필드): 현재 판보다 6일 이상 먼저 계산된 가장 최근 점수표 판(지난주 대비 상승·하락 표시용). 없으면 null.
+ products:(ResearchProduct&{score:ScoreCard|null;decision:MdDecision|null;previousScore?:{total:number|null;momentum:number|null;computedAt:string}|null})[];
  keywordGroups:KeywordGroup[];
  briefs:MdBrief[];
  backtests:BacktestResult[];

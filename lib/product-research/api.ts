@@ -1,7 +1,7 @@
 // 상품 리서치 API 계약(순수 모듈). 서버(app/api/product-research)와 화면(app/product-research-*.tsx)이 같은 모양을 쓴다.
 // GET /api/product-research → ProductResearchView(types.ts)에 아래 ViewExtras를 더한 응답.
 // POST /api/product-research → {action, requestId(uuid v4), ...payload}. 쓰기는 대표·관리자만, 자동 수집 즉시 실행·출처 연결은 소유자만.
-import type {CategoryId,DecisionStatus,ProductResearchView,SourceId,Temperature} from './types';
+import type {CategoryId,DecisionStatus,ProductResearchView,Series,Snapshot,SourceId,Temperature} from './types';
 
 export const RESEARCH_ACTIONS=[
  'save_settings',     // 조사 방향(카테고리·보관 온도·가격 상한·질문)
@@ -43,7 +43,8 @@ export type ResearchRequest=
  |{action:'set_brand_fit';productId:string;value:number;reason:string}
  |{action:'generate_brief';productIds:string[];question:string;mode:'template'|'model'}
  |{action:'decide';productId:string;scoreCardId:string;briefId:string|null;status:DecisionStatus;reason:string}
- |{action:'handoff';decisionId:string;campaignId:string;campaignVersion:number}
+ // sourceUrl(추가 필드, 선택): 상품 목록에 공개 https 주소가 없을 때 근거로 쓸 공개 주소. 없으면 가장 좋은 목록 주소를 쓴다.
+ |{action:'handoff';decisionId:string;campaignId:string;campaignVersion:number;sourceUrl?:string}
  |{action:'run_backtest';horizonWeeks:4|8|12;labelThreshold:number};
 
 // GET 응답에 더하는 값.
@@ -54,5 +55,8 @@ export type ViewExtras={
  collect:{lastRunAt:string|null;nextRunAt:string|null;lastErrors:{sourceId:SourceId;message:string;at:string}[]};
  campaigns:{id:string;title:string;version:number;brandId:string}[];
  canConnect:boolean; // 소유자
+ // 추가 필드: 화면에 보이는 상품의 시계열(시계열마다 최근 104주 점만)과 근거 스냅샷 요약(현재 점수표·메모가 가리키는 것 + 최근 50개).
+ series?:Series[];
+ snapshots?:{id:string;sourceId:SourceId;fetchedAt:string;status:Snapshot['status']}[];
 };
 export type ResearchViewResponse=ProductResearchView&ViewExtras;

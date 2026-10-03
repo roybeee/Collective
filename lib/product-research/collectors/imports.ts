@@ -33,7 +33,7 @@ const BASE_ALIASES:Record<Field,readonly string[]>={
  sales_estimate:['판매량','예상판매량','추정판매량','월판매량','salesestimate','estimatedsales','sales'],
  url:['링크','주소','상품링크','상품주소','상품url','url','link'],
  date:['기준일','날짜','일자','수집일','date','observeddate'],
- product_id:['상품번호','상품id','상품코드','productid','itemid','id'],
+ product_id:['상품번호','상품id','상품코드','productid','itemid','id','externalid','외부id'],
 };
 // 출처별 추가 별칭(각 사이트 화면·내보내기에서 쓰는 이름).
 const EXTRA_ALIASES:Record<ImportSourceId,Partial<Record<Field,readonly string[]>>>={

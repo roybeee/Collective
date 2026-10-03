@@ -1,5 +1,15 @@
 # 데이터 처리 기준 (F4b · 대표 결정 12)
 
+## 2026-10-03 상품 리서치·MD 에이전트 데이터 경계 (레인 A)
+
+| 기능 | 받는 곳·가져오는 곳 | 보내는·저장하는 항목 | 개인정보 가능성 | 보호 조치 | 근거 |
+|---|---|---|---|---|---|
+| 공식 API 수집(`product_research_collect`) | `api.searchad.naver.com`, `openapi.naver.com`, `www.googleapis.com`, `api-gateway.coupang.com`(출처 레지스트리 고정 호스트만) | 보냄: 키워드·카테고리 번호·기간·영상 ID와 소유자가 등록한 키. 저장: 제3자 공개 시장 지표(검색수·상대 추세·상품 수·가격·순위·조회수)와 응답 본문 해시·크기 | 낮음. 개인을 식별하는 값은 받거나 저장하지 않는다(리뷰는 개수만, 작성자 없음) | 레지스트리 밖 호스트·리디렉트 거부, 응답 원문 미저장(해시만), 출처별 하루 쿼터 원장, 키는 `pr_credential` 봉인(키 회전 포함) | `lib/product-research/collectors/http.ts`, `lib/product-research/server-collect.ts`, `lib/product-research/server-store.ts` |
+| 운영자·계약 데이터 가져오기 | 운영자가 올린 CSV/JSON(2MB·2,000행) | 순위·상품명·브랜드·가격·리뷰 수·평점·판매 추정·상품 주소·외부 ID. 알 수 없는 열(리뷰 작성자 등)은 버리고 limitations에 이름만 적는다 | 낮음. 열 이름 별칭에 개인 항목이 없다 | 전부 아니면 전무(행 번호와 사유만 돌려줌), 가져온 사람 id·이메일·파일 이름만 기록 | `lib/product-research/collectors/imports.ts` |
+| MD 선정 메모(모델) | 운영 HERMES gateway `POST /v1/runs`(2.1과 같은 받는 곳) | 질문 문장, 상품 표준 이름·분류, 관측표(스냅샷 ID·출처 이름·대상 이름·지표·값·기간 끝) | 낮음. 시장 지표뿐이다. 질문 문장은 운영자 자유 텍스트라 검사 없이 간다 | 토큰 예산 예약·사용량 원장, 인용 검사 실패 시 저장 0 | `lib/product-research/server-brief.ts`, `lib/product-research/md-prompt.ts` |
+
+상품 리서치는 고객·가맹 리드·주문 원문을 읽지 않고, 결과를 고객에게 보내지 않는다. 승인한 상품은 성장2 캠페인의 시장 신호(`growth_signal`)로만 넘기며 발주·결제·공급자 연락을 하지 않는다. 운영 문서: [PRODUCT-RESEARCH.ko.md](PRODUCT-RESEARCH.ko.md).
+
 ## 2026-09-30 성장2 소비자 연결 경계 (레인 A)
 
 `growth_customer`, `growth_consumer_consent`, `growth_consumer_order_link`, `growth_consumer_order_history`, `growth_consumer_request`는 소유자·브랜드 범위의 가명 고객, 목적별 동의/철회, 운영자 확인 주문 연결과 멱등 기록이다. 이름·연락처·외부 고객 식별자/해시는 받지 않는다. 가명키도 보호 데이터이며 관리자 이상만 조회·변경한다. 브랜드 공통 자료여서 캠페인 삭제로 철회를 지우지 않는다. 별도 고객 연결 삭제는 동의·연결·이력/요청의 연결 정보를 제거·최소화하고 재활성화 방지 표시와 기존 원 주문을 분리해 보존한다.
