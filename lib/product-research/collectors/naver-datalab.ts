@@ -30,6 +30,23 @@ function dateWindow(input:{startDate:string;endDate:string;timeUnit:DatalabTimeU
  return {startDate,endDate,timeUnit:input.timeUnit};
 }
 
+// 주 단위 창 고정(평가 1회차 M2): 매일 '어제까지 N주'를 하루씩 밀어 요청하면 주 구간 시작일이 매일 바뀌어 같은 주가 다른 기간 키·다른 정규화로 쌓인다.
+// 그래서 주 단위 검색어 트렌드 요청은 끝을 종료일 이전 마지막 일요일(그 주가 끝난 날)로, 시작을 그보다 (주 수×7−1)일 앞의 월요일로 맞춘다(길이 고정).
+// 날짜는 수집 계획이 넘긴 한국 날짜(KST) 문자열 그대로 계산한다. 같은 주 안에서 며칠에 걸쳐 수집해도 요청 창·기간 키가 같다.
+const DAY_MS=86400_000;
+const dayOf=(t:number)=>new Date(t).toISOString().slice(0,10);
+export function anchorWeekWindow(w:{startDate:string;endDate:string},earliest=SEARCH_FROM):{startDate:string;endDate:string;weeks:number;moved:boolean}{
+ const s=Date.parse(`${w.startDate}T00:00:00Z`),e=Date.parse(`${w.endDate}T00:00:00Z`);
+ const days=Math.round((e-s)/DAY_MS)+1,weeks=Math.max(1,Math.floor(days/7));
+ const dow=(new Date(e).getUTCDay()+6)%7; // 월=0 … 일=6
+ let end=e-((dow+1)%7)*DAY_MS,start=end-(weeks*7-1)*DAY_MS;
+ const floor=Date.parse(`${earliest}T00:00:00Z`);
+ while(start<floor)start+=7*DAY_MS;
+ if(start>end){end=start+6*DAY_MS}
+ const out={startDate:dayOf(start),endDate:dayOf(end)};
+ return {...out,weeks:Math.round((end-start+DAY_MS)/(7*DAY_MS)),moved:out.startDate!==w.startDate||out.endDate!==w.endDate};
+}
+
 // 한 점이 가리키는 기간: 일=그날, 주=시작일부터 6일 뒤, 월=그 달 말일. 요청 종료일을 넘지 않게 자른다.
 function periodOf(start:string,timeUnit:DatalabTimeUnit,endDate:string){
  const t=Date.parse(`${start}T00:00:00Z`);
@@ -83,7 +100,9 @@ function names(values:string[],label:string){
 }
 
 export async function collectDatalabSearch(credential:NaverDevelopersCredential,input:DatalabSearchInput,deps:CollectDeps):Promise<CollectResult>{
- const w=dateWindow(input,SEARCH_FROM);
+ const given=dateWindow(input,SEARCH_FROM);
+ const anchored=given.timeUnit==='week'?anchorWeekWindow(given):null;
+ const w=anchored?{startDate:anchored.startDate,endDate:anchored.endDate,timeUnit:given.timeUnit}:given;
  const groups=Array.isArray(input.keywordGroups)?input.keywordGroups:[];
  if(!groups.length||groups.length>MAX_GROUPS)inputError(`주제어 묶음은 1~${MAX_GROUPS}개입니다.`);
  const keywordGroups=groups.map(g=>{
@@ -99,7 +118,7 @@ export async function collectDatalabSearch(credential:NaverDevelopersCredential,
    sourceId:'naver_datalab_search',method:'api',
    request:{...w,keywordGroups:keywordGroups.map(g=>`${g.groupName}:${g.keywords.join('|')}`).join(';')},
    fetchedAt:res.fetchedAt,bodyDigest:res.bodyDigest,bodyBytes:res.bodyBytes,
-   status:out.partial?'partial':'ok',limitations:out.limitations,observations:out.observations,
+   status:out.partial?'partial':'ok',limitations:[...out.limitations,...(anchored?.moved?[`주 단위 요청은 월요일 시작·일요일 끝 온전한 ${anchored.weeks}주로 맞췄습니다(요청 ${given.startDate}~${given.endDate} → ${w.startDate}~${w.endDate}).`]:[])],observations:out.observations,
   },
   unitsUsed:units,
  };

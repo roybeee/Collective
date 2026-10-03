@@ -153,4 +153,65 @@ const reordered=Object.fromEntries(Object.entries(input).reverse());eq(SC.scoreC
 ok(SC.scoreCard({...input,demand:{...input.demand,monthlyVolume:12301}},{computedAt:'x'}).inputDigest!==card.inputDigest,'digest changes with input');
 assert.throws(()=>SC.scoreCard(input,{computedAt:'x',weightsVersion:'w9'}));passed++;
 eq(SC.scoreCard({...input,feasibility:{moq:100,leadDays:7,needsCertification:false,temperature:'ambient'}},{computedAt:'x'}).subScores.find(s=>s.key==='feasibility').value-SC.scoreCard({...input,feasibility:{moq:100,leadDays:7,needsCertification:false,temperature:'frozen'}},{computedAt:'x'}).subScores.find(s=>s.key==='feasibility').value,40,'ambient bonus vs frozen (D1)');
+// ── 평가 1회차 반영 ──
+// M3 보정 오차: 매일 겹치는 30일 기준점은 같은 값을 두 번 재는 셈이라 달력 월마다 하나, 창이 겹치지 않는 것만 쓴다
+{
+ const relC=weekly(Array.from({length:20},(_,i)=>40+i),'2026-04-05','dlc');
+ const daily=(from,n)=>Array.from({length:n},(_,i)=>{const at=day(from,i),w=C.calibrateTrend(relC,[{at,value:1,snapshotId:'x'}]);return {at,value:Math.round(200*w.anchor.relativeMean*(1+0.05*Math.sin(i))),snapshotId:'sa'+i}});
+ const many=daily('2026-06-01',40),calM=C.calibrateTrend(relC,many);
+ ok(calM.error&&calM.error.checks.length<=2,`overlapping daily anchors collapse to ≤2 checks (${calM.error?.checks.length})`);
+ const ats=[calM.anchor.at,...calM.error.checks.map(c=>c.anchorAt)].map(a=>Date.parse(a+'T00:00:00Z')).sort((a,b)=>b-a);
+ ok(ats.every((t,i)=>i===0||ats[i-1]-t>=30*86400000),'checked anchor windows never overlap');
+ ok(new Set(calM.error.checks.map(c=>c.month)).size===calM.error.checks.length&&!calM.error.checks.some(c=>c.month===calM.anchor.at.slice(0,7)),'one anchor per calendar month, not the scale month');
+ ok(calM.error.skipped>=30,`overlapping anchors are counted as skipped (${calM.error.skipped})`);
+ eq(C.calibrateTrend(relC,daily('2026-06-01',25)).error,null,'fewer than 2 non-overlapping anchors → error null');
+}
+// M6 반짝 유행의 바탕 추세가 없으면 모멘텀은 50(보합)이 아니라 미확인
+{
+ const fadNoBase={...trendRising,durability:'fad',spiking:true,preSpikeSlope:null};
+ const c1=SC.scoreCard({...input,trend:fadNoBase,rank:null,video:null},{computedAt:'x'});
+ eq(c1.subScores.find(s=>s.key==='momentum').value,null,'fad without pre-spike baseline → momentum null (not 50)');ok(c1.missing.includes('momentum'),'momentum listed missing');
+ const c2=SC.scoreCard({...input,trend:{...fadNoBase,preSpikeSlope:0},rank:null,video:null},{computedAt:'x'});eq(c2.subScores.find(s=>s.key==='momentum').value,50,'a real flat baseline is 50');
+}
+// ⑤ 경쟁 설명: 가격 사분위·비어 있는 가격대
+{
+ const prices=[3000,3200,3500,3800,4000,9000,9500,10000,12000,12500],ls=prices.map((p,i)=>({key:'g'+i,rank:i+1,reviewCount:10+i,price:p,firstSeenAt:'2026-01-01'}));
+ const slot=CO.emptyPriceSlot(ls);ok(slot&&slot.includes('4,900~6,800원')&&slot.includes('10개 중 0개'),`empty price band sentence: ${slot}`);
+ eq(CO.emptyPriceSlot(lst(10,()=>1)),null,'evenly spread prices → no empty slot');eq(CO.emptyPriceSlot(ls.slice(0,5)),null,'too few listings → null');
+ eq(js(CO.priceQuartiles(ls)),js({p25:3575,p50:6500,p75:9875}),'price quartiles');
+ const cmp=CO.assessCompetition({...base,sellerCount:300,adCompetition:0.5,listings:ls,historyStart:'2026-01-01',evidence:['n1']});
+ const cc=SC.scoreCard({...input,competition:cmp},{computedAt:'x'}).subScores.find(s=>s.key==='competition');
+ ok(cc.detail&&cc.detail.sellerCount===300&&cc.detail.productCount===null&&cc.detail.priceBand.p50===6500&&cc.detail.emptySlot===slot&&'top10Hhi' in cc.detail&&'newEntrantShare' in cc.detail,'competition sub-score carries structured detail');
+ ok(cc.reason.includes('비어 있는 자리'),'reason states the empty slot');
+ eq(SC.scoreCard({...input,competition:null},{computedAt:'x'}).subScores.find(s=>s.key==='competition').detail,undefined,'no competition data → no detail');
+}
+// ⑦ 상표 보호 목록·'높음' 확인 표시·승인 사유
+{
+ const PB=await L('protected-brands');
+ const list=PB.protectedBrandList(['올드페리도넛','x']);ok(list.includes('오뚜기')&&list.includes('올드페리도넛')&&!list.includes('x'),'protected list = editable defaults + owner brands (≥2 chars)');eq(PB.BRAND_LIST_REVIEWED_AT,null,'default list marked unreviewed');
+ const tm=R.assessRisk({regulatory:'food',temperature:'ambient',titles:['오뚜기 마라소스 500g'],protectedBrands:list,ownBrands:['올드페리도넛']});eq(tm.level,'high','other company brand in title → high');
+ eq(R.assessRisk({regulatory:'food',temperature:'ambient',titles:['올드페리도넛 시그니처'],protectedBrands:list,ownBrands:['올드페리도넛']}).level,'low','own brand is not a trademark risk');
+ const hc=SC.scoreCard({...input,risk:tm},{computedAt:'x'});
+ ok(hc.needsReview===true&&hc.blocked===null&&hc.review.rules.includes('trademark_use')&&hc.review.terms.includes('상표')&&hc.review.terms.includes('오뚜기'),'high risk → needsReview with rules and terms');
+ ok(SC.reviewApprovalError(hc,'검색 수요가 커서 승인합니다.',true),'approval reason must mention the risk');
+ ok(SC.reviewApprovalError(hc,'오뚜기 상표 권리자와 재판매 조건을 확인했습니다.',false),'acknowledgement flag required');
+ eq(SC.reviewApprovalError(hc,'오뚜기 상표 권리자와 재판매 조건을 확인했습니다.',true),null,'acknowledged + risk named → allowed');
+ eq(card.needsReview,false,'low risk → no review needed');eq(SC.reviewApprovalError(card,'좋습니다',false),null,'no gate for low risk');
+ const both=SC.scoreCard({...input,risk:R.assessRisk({regulatory:'food',temperature:'ambient',titles:['오뚜기 살빠지는 차'],protectedBrands:list})},{computedAt:'x'});
+ ok(SC.reviewApprovalError(both,'오뚜기 상표 확인했습니다.',true)?.includes('diet_claim'),'every high rule must be addressed');eq(SC.reviewApprovalError(both,'오뚜기 상표와 다이어트 표현을 고쳐 판매합니다.',true),null,'all rules addressed');
+}
+// ⑧ 브랜드 적합성 힌트: 확정 사실과 상품 말의 겹침, 사실 ID 인용, 사람 판정은 그대로
+{
+ const BF=await L('brand-fit');
+ const facts=[{id:'f1',brandId:'b1',key:'주력 메뉴',value:'마라 소스와 매운 볶음 요리'},{id:'f2',brandId:'b1',key:'고객',value:'20대 직장인'},{id:'f9',brandId:'b2',key:'주력',value:'도넛'}];
+ const h=BF.brandFitHint({brands:[{id:'b1',name:'매운집'},{id:'b2',name:'도넛가게'}],facts,productName:'오뚜기 마라소스 500g',categoryLabel:'소스·양념(상온)',keywords:['마라소스','마라 소스']});
+ ok(h.score===50&&js(h.factIds)===js(['f1'])&&h.memo.includes('매운집')&&h.memo.includes('f1')&&h.memo.includes('대신하지 않습니다'),`hint cites fact ids: ${JSON.stringify(h)}`);
+ eq(BF.brandFitHint({brands:[{id:'b1',name:'매운집'}],facts:[],productName:'x',categoryLabel:null,keywords:['마라소스']}).score,null,'no confirmed facts → null');
+ const z=BF.brandFitHint({brands:[{id:'b2',name:'도넛가게'}],facts:facts.filter(f=>f.brandId==='b2'),productName:'오뚜기 마라소스',categoryLabel:'소스·양념(상온)',keywords:['마라소스']});ok(z.score===0&&z.factIds.length===0&&z.memo.includes('근거가 없다'),'no overlap → 0 with an explicit memo');
+ const hc=SC.scoreCard({...input,brandFitHint:h},{computedAt:'x'});ok(hc.brandFitHint.score===50&&hc.subScores.find(s=>s.key==='brand_fit').value===null,'hint is on the card but never sets the human brand_fit score');
+ ok(hc.inputDigest!==card.inputDigest,'hint is part of the score input (changes the version when facts change)');
+}
+// ⑥ 수익성 미확인 까닭
+eq(SC.scoreCard({...input,profit:null,profitReason:'소싱 견적 연결 필요'},{computedAt:'x'}).subScores.find(s=>s.key==='profitability').reason,'수익성 미확인: 소싱 견적 연결 필요.','profitability reason names the missing sourcing link');
+ok(SC.scoreCard({...input,profit:P.simulateProfit({price:20000,unitCost:8000,shipping:3000,packaging:500,channel:'coupang'},['shipping'])},{computedAt:'x'}).subScores.find(s=>s.key==='profitability').reason.includes('가정값'),'assumed profit inputs are labelled');
 console.log(JSON.stringify({passed,external:'not_called'}));

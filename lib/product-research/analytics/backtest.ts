@@ -42,12 +42,15 @@ export function outcomeOf(b:ProductBundle,asOf:string,horizonWeeks:number):{valu
  return {value:null,basis:null};
 }
 
-export function runBacktest(opts:{candidates:readonly ProductBundle[];asOf:string;horizonWeeks:number;weightsVersion?:string;threshold?:number;ks?:readonly number[];seed?:string;computedAt:string}):BacktestRun{
+// outcomes(선택): 정답 계산에만 쓰는 묶음(상품 ID별). 서버 백테스트는 후보·점수를 기준 시점 이전 관측만으로 만든 묶음(candidates)으로 내고,
+// 정답은 같은 대상 키의 전체 시계열 묶음(outcomes)으로 잰다. 없으면 candidates를 그대로 쓴다. 어느 쪽이든 점수는 buildScoreInput이 asOf로 자른 점만 본다.
+// 기준선 current_top: 기준 시점 입력의 수요(보정 검색량), 없으면 기준 시점 순위(작을수록 위). 둘 다 기준 시점 이전 자료다.
+export function runBacktest(opts:{candidates:readonly ProductBundle[];asOf:string;horizonWeeks:number;weightsVersion?:string;threshold?:number;ks?:readonly number[];seed?:string;computedAt:string;outcomes?:ReadonlyMap<string,ProductBundle>}):BacktestRun{
  const version=opts.weightsVersion??'w1',X=opts.threshold??0.3,ks=opts.ks??[10,20],seed=opts.seed??'pr-backtest',H=opts.horizonWeeks;
  const inputs:ScoreInput[]=[],cards:ScoreCard[]=[],rows:BacktestRow[]=[];
  for(const b of opts.candidates){
   // 점수는 asOf로 고정한 입력에서만 나온다(buildScoreInput이 미래 점을 잘라 낸다). 정답만 전체 시계열을 본다.
-  const input=buildScoreInput(b,opts.asOf),card=scoreCard(input,{weightsVersion:version,computedAt:opts.computedAt}),o=outcomeOf(b,opts.asOf,H);
+  const input=buildScoreInput(b,opts.asOf),card=scoreCard(input,{weightsVersion:version,computedAt:opts.computedAt}),o=outcomeOf(opts.outcomes?.get(b.productId)??b,opts.asOf,H);
   inputs.push(input);cards.push(card);
   rows.push({productId:b.productId,score:card.total,tier:card.tier,outcome:o.value,positive:o.value===null?null:o.value>=X,outcomeBasis:o.basis,
    baselines:{current_top:input.demand?.monthlyVolume??(input.rank?.current!=null?-input.rank.current:null),momentum_only:input.trend?.slope12??null,random:seededRandom(seed,b.productId)}});

@@ -1,13 +1,13 @@
 // 점수표 w1(순수·결정형). 계획 4.2: 하위 점수 9개, 결측은 0이 아니라 null, 가중치는 판 번호로 고정하고 백테스트 결과로만 바꾼다.
 // 모델(LLM)은 이 점수를 설명할 뿐 바꾸지 않는다. 같은 입력이면 inputDigest·총점·분류가 늘 같다.
-import type {ScoreCard,Series,SourceId,SubScore,SubScoreKey,Temperature} from '../types';
+import type {BrandFitHint,ScoreCard,Series,SourceId,SubScore,SubScoreKey,Temperature} from '../types';
 import {SUB_SCORES} from '../types';
 import {calibrateTrend,currentVolume} from './calibrate';
 import {assessCompetition,competitionInputFromSeries,type CompetitionResult} from './competition';
 import {groupDigits} from './format';
 import {digestOf,shortId} from './hash';
-import {simulateProfit,type ProfitInput,type ProfitResult} from './profit';
-import {assessRisk,type RiskInput,type RiskLevel,type RiskResult} from './risk';
+import {simulateProfit,type ProfitAssumption,type ProfitInput,type ProfitResult} from './profit';
+import {assessRisk,reviewTermsFor,REVIEW_TERMS as REVIEW_RULE_TERMS,type RiskInput,type RiskLevel,type RiskResult} from './risk';
 import {DAY_MS,latestValue,sliceAsOf,timeOf,videoViewVelocity} from './series';
 import {analyzeTrend,theilSen,type TrendResult} from './trend';
 
@@ -35,6 +35,9 @@ export type ScoreInput={
  brandFit:{value:number;by:string;evidence:string[]}|null;
  risk:RiskResult;
  sources:SourceId[];
+ // 추가 필드(선택): 수익성을 계산하지 못한 까닭(예: '소싱 견적 연결 필요'), 브랜드 아카이브 대조 힌트(사람 brand_fit을 채우지 않는다).
+ profitReason?:string|null;
+ brandFitHint?:BrandFitHint|null;
 };
 const clamp=(v:number)=>Math.max(0,Math.min(100,v));
 const r1=(v:number)=>Math.round(v*10)/10;
@@ -58,8 +61,9 @@ function momentumScore(i:ScoreInput):SubScore{
   // 계절 상품: 기대 변화 = 작년 같은 시기 이후 12주 변화(주당 환산) + 1년 사이 수준 변화(주당 환산). 기준 시점 이전 자료만 쓴다.
   if(seasonal){signal=Math.log(t.seasonalOutlook!)/12+(t.yoy!==null&&t.yoy>0?Math.log(t.yoy)/52:0);why=`작년 이 시기 이후 12주 ${((t.seasonalOutlook!-1)*100).toFixed(0)}%(계절 보정)`}
   // 반짝 유행: 급등 주를 뺀 바탕 추세만 모멘텀으로 본다.
-  else if(t.durability==='fad'){signal=t.preSpikeSlope??0;why=`급등 주를 뺀 바탕 추세 주당 ${((Math.exp(signal)-1)*100).toFixed(1)}%`}
-  parts.push({v:squash(signal,0.04),w:0.6,why});ev.push(...t.evidence.slice(-12));
+  // 바탕 추세(급등 직전 이력)가 없으면 모멘텀을 50(보합)으로 두지 않고 추세 몫을 뺀다(모르는 값은 0이 아니다, 평가 1회차 M6).
+  else if(t.durability==='fad'){if(t.preSpikeSlope===null)signal=NaN;else{signal=t.preSpikeSlope;why=`급등 주를 뺀 바탕 추세 주당 ${((Math.exp(signal)-1)*100).toFixed(1)}%`}}
+  if(Number.isFinite(signal)){parts.push({v:squash(signal,0.04),w:0.6,why});ev.push(...t.evidence.slice(-12))}
  }
  if(!seasonal&&i.rank&&(i.rank.slope!==null||(i.rank.current!==null&&i.rank.previous!==null&&i.rank.current>0&&i.rank.previous>0))){
   // 순위는 ln(순위)의 12주 Theil–Sen 기울기(4주 환산, 음수=상승)를 쓴다. 점이 모자라면 4주 전과 지금 두 점을 쓴다.
@@ -84,12 +88,16 @@ function durabilityScore(i:ScoreInput):SubScore{
 }
 function competitionScore(i:ScoreInput):SubScore{
  const c=i.competition;if(!c||c.score===null)return sub('competition',null,c?.evidence??[],'판매처·상품 수·광고 경쟁 자료가 없어 경쟁을 판단하지 않았습니다.');
- return sub('competition',100-c.score,c.evidence,`경쟁 강도 ${c.score.toFixed(0)}/100(${c.reasons.slice(0,3).join(', ')})을 뒤집은 값입니다.`);
+ // 구조화 설명(⑤): 판매처·상품 수·상위 10 집중도·가격 사분위·신규 진입·비어 있는 자리. 없는 칸은 null.
+ const detail={sellerCount:c.sellerCount,productCount:c.productCount,top10Hhi:c.top10Hhi===null?null:Math.round(c.top10Hhi*1000)/1000,priceBand:c.priceBand??null,newEntrantShare:c.newEntrantShare===null?null:Math.round(c.newEntrantShare*1000)/1000,emptySlot:c.emptySlot??null};
+ return {...sub('competition',100-c.score,c.evidence,`경쟁 강도 ${c.score.toFixed(0)}/100(${c.reasons.join(', ')})을 뒤집은 값입니다.${detail.emptySlot?` ${detail.emptySlot}`:''}`),detail};
 }
+const ASSUMPTION_LABEL:Record<ProfitAssumption,string>={fee:'수수료',return_rate:'반품률',ad_cost:'광고비',shipping:'배송비',packaging:'포장비',price:'판매가',channel:'판매 채널'};
 function profitabilityScore(i:ScoreInput):SubScore{
- const p=i.profit;if(!p||p.marginPct===null)return sub('profitability',null,[],`원가·배송 자료가 없어 수익성은 미확인입니다${p?.missing.length?`(${p.missing.join('·')} 없음)`:''}.`);
+ const p=i.profit;if(!p||p.marginPct===null)return sub('profitability',null,[],p?`원가·배송 자료가 모자라 수익성은 미확인입니다${p.missing.length?`(${p.missing.join('·')} 없음)`:''}.`:i.profitReason?`수익성 미확인: ${i.profitReason}.`:'원가·배송 자료가 없어 수익성은 미확인입니다.');
  // 공헌이익률 -5%=0, 40%=100.
- return sub('profitability',(p.marginPct+0.05)/0.45*100,[],`예상 공헌이익률 ${(p.marginPct*100).toFixed(1)}%${p.breakevenRoas!==null?`, 손익분기 ROAS ${p.breakevenRoas.toFixed(2)}`:''}${p.feeAssumption?'(수수료 가정값)':''}.`);
+ const assumed=(p.assumptions??(p.feeAssumption?['fee' as const]:[])).map(a=>ASSUMPTION_LABEL[a]);
+ return sub('profitability',(p.marginPct+0.05)/0.45*100,[],`예상 공헌이익률 ${(p.marginPct*100).toFixed(1)}%${p.breakevenRoas!==null?`, 손익분기 ROAS ${p.breakevenRoas.toFixed(2)}`:''}${assumed.length?`(${assumed.join('·')} 가정값)`:''}.`);
 }
 function feasibilityScore(i:ScoreInput):SubScore{
  const f=i.feasibility;if(!f||(f.moq===null&&f.leadDays===null&&f.needsCertification===null&&f.temperature==='unknown'))return sub('feasibility',null,[],'MOQ·납기·인증·보관 온도 자료가 없어 실행 가능성을 판단하지 않았습니다.');
@@ -134,13 +142,30 @@ export function scoreCard(input:ScoreInput,opts:{weightsVersion?:string;computed
  const R=TIER_RULES;
  const tier:ScoreCard['tier']=blocked?'reject':total===null?'needs_data':total>=R.adoptTotal&&confidence>=R.adoptConfidence?'adopt':total>=R.watchTotal?'watch':confidence<R.needsDataConfidence?'needs_data':'reject';
  const inputDigest=digestOf(input);
- return {id:shortId('prs',{productId:input.productId,version,inputDigest}),productId:input.productId,weightsVersion:version,computedAt:opts.computedAt,subScores:SUB_SCORES.map(k=>byKey.get(k)!),total,confidence,missing:SUB_SCORES.filter(k=>byKey.get(k)!.value===null),blocked,tier,inputDigest};
+ // 리스크 '높음'(선정 금지 아님): 사람 확인 필요 표시. 승인 사유가 말해야 할 말(terms)을 함께 싣는다(reviewApprovalError).
+ const high=blocked?[]:input.risk.items.filter(x=>x.level==='high');
+ const review=high.length?{rules:[...new Set(high.map(x=>x.rule))],reasons:high.map(x=>x.reason),terms:[...new Set(high.flatMap(reviewTermsFor))]}:null;
+ return {id:shortId('prs',{productId:input.productId,version,inputDigest}),productId:input.productId,weightsVersion:version,computedAt:opts.computedAt,subScores:SUB_SCORES.map(k=>byKey.get(k)!),total,confidence,missing:SUB_SCORES.filter(k=>byKey.get(k)!.value===null),blocked,tier,inputDigest,
+  needsReview:review!==null,review,brandFitHint:input.brandFitHint??null};
+}
+// 승인 관문(서버가 부른다): 리스크 '높음' 점수표는 확인 표시(acknowledged)와, 높음 항목마다 그 위험을 말하는 사유(REVIEW_TERMS 중 하나 이상)가 있어야 승인할 수 있다.
+// 통과하면 null, 아니면 한국어 오류 문장. 선정 금지(blocked)는 이 함수와 별개로 승인 불가다.
+export function reviewApprovalError(card:Pick<ScoreCard,'needsReview'|'review'>,reason:string,acknowledged:boolean):string|null{
+ if(!card.needsReview||!card.review)return null;
+ if(!acknowledged)return `리스크 '높음' 상품입니다(${card.review.reasons[0]??'사람 확인 필요'}). 위험을 확인했다는 표시와 함께 다시 승인하세요.`;
+ const text=String(reason??'').normalize('NFC');
+ // 규칙 목록에 없는 말(예: 상표 이름)은 상표 규칙의 말로도 인정한다.
+ const named=card.review.terms.filter(t=>!Object.values(REVIEW_RULE_TERMS).some(ts=>ts.includes(t))&&t!=='리스크'&&t!=='위험');
+ const missing=card.review.rules.filter(rule=>![...(REVIEW_RULE_TERMS[rule]??['리스크','위험']),...(rule==='trademark_use'?named:[])].some(t=>text.includes(t)));
+ return missing.length?`승인 사유에 확인한 위험(${missing.join(', ')})을 적어 주세요. 예: ${card.review.terms.slice(0,4).join('·')} 중 하나를 넣어 무엇을 확인했는지 씁니다.`:null;
 }
 
 // 상품 하나의 시계열 묶음. keywordKeys 첫 번째가 대표 키워드(추세·경쟁 기준)다.
+// profitAssumed·profitReason·brandFitHint(추가 필드, 선택): 손익 입력 중 가정값, 수익성 미확인 까닭, 브랜드 아카이브 대조 힌트.
 export type ProductBundle={
  productId:string;keywords:string[];keywordKeys:string[];listingKeys:string[];series:Series[];
  profit:ProfitInput|null;feasibility:ScoreInput['feasibility'];risk:RiskInput;brandFit:ScoreInput['brandFit'];
+ profitAssumed?:ProfitAssumption[];profitReason?:string|null;brandFitHint?:BrandFitHint|null;
 };
 const meanIn=(pts:readonly {at:string;value:number|null}[],from:number,to:number)=>{const vs=pts.filter(p=>p.value!==null&&timeOf(p.at)>from&&timeOf(p.at)<=to).map(p=>p.value as number);return vs.length?vs.reduce((a,b)=>a+b,0)/vs.length:null};
 // 기준 시점 asOf의 점수 입력. 모든 시계열을 먼저 sliceAsOf로 자른다: 이 함수 안에서는 asOf 뒤의 점을 볼 수 없다(미래 정보 차단).
@@ -174,6 +199,7 @@ export function buildScoreInput(b:ProductBundle,asOf:string):ScoreInput{
  const compIn=primary?competitionInputFromSeries(frozen,primary,asOf):null;
  const competition=compIn&&(compIn.sellerCount!==null||compIn.productCount!==null||compIn.adCompetition!==null||compIn.listings.length)?assessCompetition(compIn):null;
  return {productId:b.productId,asOf,demand:volume===null?null:{monthlyVolume:Math.round(volume),keywords:[...b.keywords],evidence:uniq(dEv)},trend,rank,video,competition,
-  profit:b.profit?simulateProfit(b.profit):null,feasibility:b.feasibility,brandFit:b.brandFit,risk:assessRisk(b.risk),sources:uniq(frozen.map(s=>s.sourceId)) as SourceId[]};
+  profit:b.profit?simulateProfit(b.profit,b.profitAssumed??[]):null,feasibility:b.feasibility,brandFit:b.brandFit,risk:assessRisk(b.risk),sources:uniq(frozen.map(s=>s.sourceId)) as SourceId[],
+  profitReason:b.profit?undefined:b.profitReason??undefined,brandFitHint:b.brandFitHint??undefined};
 }
 export const scoreBundle=(b:ProductBundle,asOf:string,opts:{weightsVersion?:string;computedAt:string})=>scoreCard(buildScoreInput(b,asOf),opts);

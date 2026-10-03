@@ -152,6 +152,32 @@ const yt={kind:'youtube',apiKey:'AIzaSyD-synthetic-key-000000000000000'};
  await rejects(c.trackYoutubeVideos(yt,ids,q.deps),'quota','youtube: 403 quotaExceeded → quota error');
 }
 
+// ── 데이터랩 주 단위 창 고정(평가 1회차 M2): 같은 주에 이틀 수집해도 시계열 점이 늘지 않는다
+{
+ const S=await rt.load('lib/product-research/analytics/series.ts'),DL=await rt.load('lib/product-research/collectors/naver-datalab.ts');
+ const DAY=86400000,iso=t=>new Date(t).toISOString().slice(0,10);
+ // 수집 계획과 같은 창: 끝 = 한국 날짜 어제, 시작 = 끝 − (104×7 − 1)일
+ const planned=kstToday=>{const end=Date.parse(kstToday+'T00:00:00Z')-DAY;return {startDate:iso(end-(104*7-1)*DAY),endDate:iso(end)}};
+ // 응답: 요청 창의 주마다 점 하나. 수집일마다 다른 정규화(재정규화)를 흉내 낸다.
+ const responder=scale=>(url,init)=>{const b=JSON.parse(init.body),data=[];for(let t=Date.parse(b.startDate+'T00:00:00Z'),i=0;t<=Date.parse(b.endDate+'T00:00:00Z');t+=7*DAY,i++)data.push({period:iso(t),ratio:Math.round(Math.min(100,(20+i*0.5)*scale)*100)/100});return json({startDate:b.startDate,endDate:b.endDate,timeUnit:'week',results:[{title:'마라소스',keywords:['마라소스'],data}]})};
+ const collect=async(kstToday,scale,id)=>{const f=fakeFetch(responder(scale));const r=plain(await c.collectDatalabSearch(dev,{...planned(kstToday),timeUnit:'week',keywordGroups:[{groupName:'마라소스',keywords:['마라소스']}]},f.deps));return {body:JSON.parse(f.calls[0].body),snap:{...r.draft,id,fetchedAt:kstToday+'T01:00:00.000Z',importedBy:null}}};
+ const tue=await collect('2026-09-29',1,'dl-tue'),wed=await collect('2026-09-30',0.9,'dl-wed'),mon=await collect('2026-10-05',0.8,'dl-mon');
+ check(tue.body.startDate===wed.body.startDate&&tue.body.endDate===wed.body.endDate,'datalab week: two days in the same week request the same window');
+ check(tue.body.endDate==='2026-09-27'&&new Date(tue.body.endDate+'T00:00:00Z').getUTCDay()===0&&new Date(tue.body.startDate+'T00:00:00Z').getUTCDay()===1,'datalab week: window ends on Sunday and starts on Monday (KST dates)');
+ check((Date.parse(tue.body.endDate)-Date.parse(tue.body.startDate))/DAY+1===104*7,'datalab week: fixed 104-week length');
+ check(tue.snap.limitations.some(l=>l.includes('월요일 시작')),'datalab week: moved window is disclosed');
+ const one=S.buildSeries([tue.snap]).find(s=>s.metric==='search_trend'),two=S.buildSeries([tue.snap,wed.snap]).find(s=>s.metric==='search_trend');
+ check(one.points.length===104&&two.points.length===one.points.length,`datalab week: same week twice adds no points (${one.points.length} → ${two.points.length})`);
+ check(two.points.every(p=>p.snapshotId==='dl-wed'),'datalab week: the latest fetch wins every overlapping period (no mixed scales)');
+ check(!one.limitations&&two.limitations&&two.limitations[0].includes('다시 맞춘'),'datalab week: re-normalisation recorded as a series limitation');
+ const three=S.buildSeries([tue.snap,wed.snap,mon.snap]).find(s=>s.metric==='search_trend');
+ check(mon.body.startDate===iso(Date.parse(tue.body.startDate+'T00:00:00Z')+7*DAY)&&three.points.length===105,'datalab week: next week shifts by exactly one week (periods align, one new point)');
+ check(DL.anchorWeekWindow({startDate:'2016-01-01',endDate:'2016-01-20'}).startDate>='2016-01-01','datalab week: never starts before the data floor');
+ // 같은 기간에 옛 값이 있고 새 값이 null이면 새 null이 이긴다(옛 축척 값을 남기지 않는다). 절대값 지표는 값 있는 옛 점이 이긴다(기존 규칙).
+ const mk=(id,fetchedAt,metric,value)=>({id,sourceId:'naver_datalab_search',method:'api',request:{},fetchedAt,bodyDigest:'0',bodyBytes:1,status:'ok',limitations:[],importedBy:null,observations:[{subject:{type:'keyword',text:'x'},metric,value,period:{from:'2026-09-21',to:'2026-09-27'}}]});
+ check(S.buildSeries([mk('a','2026-09-29T00:00:00Z','search_trend',50),mk('b','2026-09-30T00:00:00Z','search_trend',null)])[0].points[0].value===null,'relative metric: latest fetch wins even when null');
+ check(S.buildSeries([mk('a','2026-09-29T00:00:00Z','search_volume_month',50),mk('b','2026-09-30T00:00:00Z','search_volume_month',null)])[0].points[0].value===50,'absolute metric: older value beats newer null');
+}
 // ── 쿠팡 파트너스 ──
 const cp={kind:'coupang_partners',accessKey:'a1b2c3d4-0000-1111-2222-333344445555',secretKey:'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef'};
 {
@@ -164,7 +190,8 @@ const cp={kind:'coupang_partners',accessKey:'a1b2c3d4-0000-1111-2222-33334444555
  check(m&&m[1]===cp.accessKey&&m[2]==='261003T030405Z','coupang: Authorization CEA header shape');
  check(m[3]===createHmac('sha256',cp.secretKey).update('261003T030405Z'+'GET'+path+'limit=50').digest('hex'),'coupang: signature = hex HMAC(signedDate+method+path+query)');
  check(one(r.draft,listing('7001'),'rank').value===1&&one(r.draft,listing('7001'),'price_min').value===3980&&one(r.draft,listing('7001'),'rank').scope==='coupang_best:1012','coupang best: rank and price');
- check(one(r.draft,listing('7003'),'rank').value===3&&one(r.draft,listing('7003'),'price_min').value===null&&r.draft.status==='partial','coupang best: positional rank fallback, 0 price → null, partial');
+ check(one(r.draft,listing('7003'),'rank').value===null&&one(r.draft,listing('7003'),'price_min').value===null&&r.draft.status==='partial','coupang best: missing rank stays unknown (not response order), 0 price → null, partial');
+ check(r.draft.limitations.some(l=>l.includes('순위를 미확인')),'coupang best: missing rank disclosed');
  check(r.draft.limitations.some(l=>l.includes('공식 문서')),'coupang: approval/limit caveat');
  const s=fakeFetch(()=>json(fixture('coupang-search.json')));
  const rs=plain(await c.collectCoupangSearch(cp,'마라소스',s.deps)),sc=s.calls[0];
