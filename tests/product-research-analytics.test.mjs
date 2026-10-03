@@ -96,6 +96,19 @@ eq(CO.assessCompetition(base).score,null,'no data → null');
 const lo=CO.assessCompetition({...base,sellerCount:20,adCompetition:0.2}),hi=CO.assessCompetition({...base,sellerCount:5000,adCompetition:0.9});ok(hi.score>lo.score,'more sellers+ads harder');ok(lo.reasons.length>=2,'reasons');
 const cs=S.buildSeries([snap('n1','naver_shop_search',[{subject:kw('마라소스'),metric:'seller_count',value:300,period:{from:'2026-08-01',to:'2026-08-01'}}]),snap('n2','naver_shop_search',[{subject:kw('마라소스'),metric:'seller_count',value:999,period:{from:'2026-12-01',to:'2026-12-01'}}])]);
 const ci=CO.competitionInputFromSeries(cs,'kw:마라소스','2026-09-01');eq(ci.sellerCount,300,'future seller count ignored');eq(js(ci.evidence),js(['n1']),'evidence');
+// 평가 2회차 M2: 순위가 없으면 '상위 20'을 정할 수 없어 신규 진입은 null(이름 순으로 고르지 않는다)
+eq(CO.newEntrantShare({asOf:'2026-09-01',historyStart:'2026-01-01',listings:lst(10,()=>1).map(l=>({...l,rank:null,firstSeenAt:'2026-08-20'}))}),null,'no ranks → new entrant share null');
+// 평가 2회차 M2: 관측 이력 시작은 목록 시계열에서만. 데이터랩 이력이 길어도 목록을 본 지 8주가 안 되면 신규 진입은 미확인(모두 신규로 보지 않는다).
+{
+ const dl=Array.from({length:30},(_,i)=>({subject:kw('마라소스'),metric:'search_trend',value:50,period:{from:day('2026-02-01',7*i),to:day('2026-02-01',7*i)}}));
+ const lsObs=(d)=>Array.from({length:6},(_,i)=>({subject:{type:'listing',sourceId:'coupang_ranking_manual',externalId:'cp'+i,title:'상품'+i,brand:null,price:null,url:null,categoryPath:null},metric:'rank',value:i+1,period:{from:d,to:d}}));
+ const ser=S.buildSeries([snap('dl','naver_datalab_search',dl),snap('l1','coupang_ranking_manual',lsObs('2026-08-20')),snap('l2','coupang_ranking_manual',lsObs('2026-08-27'))]);
+ const cin=CO.competitionInputFromSeries(ser,'kw:마라소스','2026-09-01');
+ eq(cin.historyStart,'2026-08-20','history start from listing series only (not DataLab)');eq(cin.listings.length,6,'six ranked listings');
+ eq(CO.assessCompetition(cin).newEntrantShare,null,'short listing history → new entrant share null, not 100%');
+ const longer=S.buildSeries([snap('dl','naver_datalab_search',dl),snap('l0','coupang_ranking_manual',lsObs('2026-05-01')),snap('l1','coupang_ranking_manual',lsObs('2026-08-20'))]);
+ eq(CO.assessCompetition(CO.competitionInputFromSeries(longer,'kw:마라소스','2026-09-01')).newEntrantShare,0,'listing history ≥8 weeks → computed (all seen before the cut)');
+}
 eq(CO.competitionFromSnapshots([snap('n1','naver_shop_search',[{subject:kw('마라 소스'),metric:'seller_count',value:300,period:{from:'2026-08-01',to:'2026-08-01'}}])],'마라소스','2026-09-01').sellerCount,300,'from snapshots');
 
 // ── profit: 판매가 20,000·원가 8,000·배송 3,000·포장 500·스마트스토어 5.63%·반품 2%·광고 2,000
@@ -146,7 +159,11 @@ ok(SC.scoreCard({...input,demand:null},{computedAt:'x'}).total!==null,'momentum 
 const blocked=SC.scoreCard({...input,risk:R.assessRisk({regulatory:'health_functional_food',temperature:'ambient',titles:[]})},{computedAt:'x'});eq(blocked.tier,'reject','blocked → reject');eq(blocked.blocked.rule,'hff_review','blocked rule');ok(blocked.total!==null,'blocked keeps total separately');
 eq(card.tier,card.total>=70&&card.confidence>=0.6?'adopt':'watch','tier rule');
 const oneSource=SC.scoreCard({...input,sources:['naver_datalab_search']},{computedAt:'x'});near(oneSource.confidence,card.confidence/3,1e-3,'single source → diversity 1/3');
-if(oneSource.total>=50)eq(oneSource.tier,'watch','≥50 watch even with low confidence');
+// 평가 2회차 M7: 신뢰도 하한(0.4)은 '관찰'에도 걸린다. 총점 50 이상이어도 출처 하나뿐(신뢰도 낮음)이면 자료 보강.
+ok(oneSource.total>=50&&oneSource.confidence<SC.TIER_RULES.needsDataConfidence,`one-source card is ≥50 with low confidence (${oneSource.total}, ${oneSource.confidence})`);eq(oneSource.tier,'needs_data','≥50 but confidence below the floor → needs data, not watch');
+const twoSources=SC.scoreCard({...input,profit:null,sources:['naver_datalab_search','naver_searchad_keyword']},{computedAt:'x'});ok(twoSources.confidence>=0.4&&twoSources.confidence<0.6,`two sources: mid confidence (${twoSources.confidence})`);eq(twoSources.tier,twoSources.total>=50?'watch':'reject','mid confidence keeps watch');
+const thin=SC.scoreCard({...input,demand:{...input.demand,monthlyVolume:300000},trend:null,rank:null,video:null,competition:null,profit:null,brandFit:null,sources:['naver_searchad_keyword','naver_shop_search']},{computedAt:'x'});
+ok(thin.total>=50&&thin.confidence<0.4,`thin card: only demand+feasibility+risk (${thin.total}, ${thin.confidence})`);eq(thin.tier,'needs_data','thin data is not inflated to watch by risk/feasibility');
 const weak=SC.scoreCard({...input,sources:['naver_datalab_search'],demand:{...input.demand,monthlyVolume:100},trend:TR.analyzeTrend(mk(i=>1000*Math.exp(-0.03*Math.max(0,i-40))*wiggle(i))),rank:{current:40,previous:10,slope:null,evidence:[]},video:null,profit:null,feasibility:null,risk:R.assessRisk({regulatory:'food',temperature:'frozen',titles:['1+1']})},{computedAt:'x'});
 ok(weak.total<50&&weak.confidence<0.4,'weak & thin');eq(weak.tier,'needs_data','low confidence → needs data');
 const reordered=Object.fromEntries(Object.entries(input).reverse());eq(SC.scoreCard(reordered,{computedAt:'y'}).inputDigest,card.inputDigest,'digest stable under key order and computedAt');
@@ -198,7 +215,8 @@ eq(SC.scoreCard({...input,feasibility:{moq:100,leadDays:7,needsCertification:fal
  eq(SC.reviewApprovalError(hc,'오뚜기 상표 권리자와 재판매 조건을 확인했습니다.',true),null,'acknowledged + risk named → allowed');
  eq(card.needsReview,false,'low risk → no review needed');eq(SC.reviewApprovalError(card,'좋습니다',false),null,'no gate for low risk');
  const both=SC.scoreCard({...input,risk:R.assessRisk({regulatory:'food',temperature:'ambient',titles:['오뚜기 살빠지는 차'],protectedBrands:list})},{computedAt:'x'});
- ok(SC.reviewApprovalError(both,'오뚜기 상표 확인했습니다.',true)?.includes('diet_claim'),'every high rule must be addressed');eq(SC.reviewApprovalError(both,'오뚜기 상표와 다이어트 표현을 고쳐 판매합니다.',true),null,'all rules addressed');
+ const dietMsg=SC.reviewApprovalError(both,'오뚜기 상표 확인했습니다.',true);ok(dietMsg?.includes('다이어트 효능 표현'),'every high rule must be addressed (Korean label)');ok(!/diet_claim|trademark_use/.test(dietMsg),`no internal rule codes in the message: ${dietMsg}`);
+ ok(!/trademark_use/.test(SC.reviewApprovalError(hc,'검색 수요가 커서 승인합니다.',true))&&SC.reviewApprovalError(hc,'검색 수요가 커서 승인합니다.',true).includes('타사 상표'),'trademark rule shown as a Korean label');eq(SC.reviewApprovalError(both,'오뚜기 상표와 다이어트 표현을 고쳐 판매합니다.',true),null,'all rules addressed');
 }
 // ⑧ 브랜드 적합성 힌트: 확정 사실과 상품 말의 겹침, 사실 ID 인용, 사람 판정은 그대로
 {

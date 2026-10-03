@@ -1,5 +1,6 @@
 // 규제·리스크 체크리스트(순수). 계획 ⑦: 식품표시·화장품 기능성·KC·상표·가품 신호. 고위험은 총점과 별개로 '선정 금지'.
-// 법률 판단이 아니라 사람이 확인할 항목 목록이다. 'blocked'는 자동 선정만 막고, 사람이 근거를 확인해 풀 수 있다(결정 기록 필요).
+// 법률 판단이 아니라 사람이 확인할 항목 목록이다. 'blocked'는 자동 선정과 승인을 모두 막는다(server.ts가 승인을 409로 거절).
+// 확인한 인증·심의를 넘기는 입력(certified)은 있지만 지금은 화면·서버에서 그 값을 채우는 경로가 없어, 사람이 화면에서 선정 금지를 풀 수는 없다.
 import type {RegulatoryClass,Temperature} from '../types';
 
 export type RiskLevel='low'|'medium'|'high'|'blocked';

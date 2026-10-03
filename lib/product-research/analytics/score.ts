@@ -140,7 +140,8 @@ export function scoreCard(input:ScoreInput,opts:{weightsVersion?:string;computed
  const confidence=Math.round(coverage*diversity*1000)/1000;
  const blocked=input.risk.blocked?{rule:input.risk.blocked.rule,reason:input.risk.blocked.reason}:null;
  const R=TIER_RULES;
- const tier:ScoreCard['tier']=blocked?'reject':total===null?'needs_data':total>=R.adoptTotal&&confidence>=R.adoptConfidence?'adopt':total>=R.watchTotal?'watch':confidence<R.needsDataConfidence?'needs_data':'reject';
+ // 신뢰도 하한은 '관찰'에도 건다(평가 2회차 M7): 리스크·실행 가능성은 거의 늘 있어 자료가 얇아도 총점이 50을 넘기 쉽다. 하한 미만은 총점과 관계없이 '자료 보강'.
+ const tier:ScoreCard['tier']=blocked?'reject':total===null||confidence<R.needsDataConfidence?'needs_data':total>=R.adoptTotal&&confidence>=R.adoptConfidence?'adopt':total>=R.watchTotal?'watch':'reject';
  const inputDigest=digestOf(input);
  // 리스크 '높음'(선정 금지 아님): 사람 확인 필요 표시. 승인 사유가 말해야 할 말(terms)을 함께 싣는다(reviewApprovalError).
  const high=blocked?[]:input.risk.items.filter(x=>x.level==='high');
@@ -157,7 +158,9 @@ export function reviewApprovalError(card:Pick<ScoreCard,'needsReview'|'review'>,
  // 규칙 목록에 없는 말(예: 상표 이름)은 상표 규칙의 말로도 인정한다.
  const named=card.review.terms.filter(t=>!Object.values(REVIEW_RULE_TERMS).some(ts=>ts.includes(t))&&t!=='리스크'&&t!=='위험');
  const missing=card.review.rules.filter(rule=>![...(REVIEW_RULE_TERMS[rule]??['리스크','위험']),...(rule==='trademark_use'?named:[])].some(t=>text.includes(t)));
- return missing.length?`승인 사유에 확인한 위험(${missing.join(', ')})을 적어 주세요. 예: ${card.review.terms.slice(0,4).join('·')} 중 하나를 넣어 무엇을 확인했는지 씁니다.`:null;
+ // 화면 문장에는 내부 규칙 코드(trademark_use 등) 대신 한국어 이름을 쓴다.
+ const RULE_LABEL:Record<string,string>={trademark_use:'타사 상표',medical_claim:'의약품 오인 표현',diet_claim:'다이어트 효능 표현',hff_review:'건강기능식품 심의',functional_review:'기능성 화장품 심사'};
+ return missing.length?`승인 사유에 확인한 위험(${missing.map(r=>RULE_LABEL[r]??'리스크 항목').join(', ')})을 적어 주세요. 예: ${card.review.terms.slice(0,4).join('·')} 중 하나를 넣어 무엇을 확인했는지 씁니다.`:null;
 }
 
 // 상품 하나의 시계열 묶음. keywordKeys 첫 번째가 대표 키워드(추세·경쟁 기준)다.
