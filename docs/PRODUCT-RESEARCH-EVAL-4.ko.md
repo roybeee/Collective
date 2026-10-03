@@ -6,7 +6,7 @@
 
 - 인계 원본: PR #335 `5322c7d5833f1967081dcc3e46baa65c25db286d`.
 - 독립 코드 검토와 별도 보안 검토에서 HIGH 1건·MEDIUM 4건을 재현했다. 최초 판정은 변경 요청, 코드 준비도 참고치 4.30/5였다. 이전 평가자의 4.29와 같은 표본의 변화량으로 해석하지 않는다.
-- Sites99 게시 기록 #334는 `2037585`로 병합됐다. 실제 운영 tree는 `39cd51a35c98fe02062eab766aef5392f44d4a81`이다. 아래 수정은 아직 게시되지 않았다.
+- Sites99 게시 기록 #334는 `2037585`로 병합됐다. 아래 수정은 최종 `10d5c44` → main `51b3b82`로 병합됐으며, **Sites100 published/runtime-verified**다. 운영 tree `678e00285f8628fc34bb0ccddf796512161d1bf9` 일치. [게시 기록](releases/2026-10-03-51b3b82.md).
 
 | 결함 | 재현 | 수정 |
 |---|---|---|
@@ -22,7 +22,7 @@
 - 보정 회귀: `node --experimental-vm-modules tests/product-research-recalibration-regression.test.mjs` — passed 5 (실제 SQLite·순수 계산, 공급자 mocked, 외부 호출 0).
 - 독립 재검토: APPROVE. 기존 공격·표본 중복·결측 재현 13개 검사 passed, 추가 CRITICAL/HIGH/MEDIUM 발견 0건(검토 범위 한정).
 - 독립 검사: brief 281, server 104, round3 53, 보정 회귀 5 passed. SQLite는 real, 인증·공급자·모델은 mocked, 외부 호출 0.
-- 최종 전체 회귀: **316/316 suites, 18,449 assertions passed** (외부 mocked). 타입·lint 기준선(70/39)·프롬프트 22개·빌드 passed. Python 워커 13·설치 70·맵달 어댑터 19 passed. 최종 CI는 PR #335에서 확인한다.
+- 최종 전체 회귀: **316/316 suites, 18,449 assertions passed** (외부 mocked). 타입·lint 기준선(70/39)·프롬프트 22개·빌드 passed. Python 워커 13·설치 70·맵달 어댑터 19 passed. PR #335 CI 4 jobs passed, 전체 E2E 273 passed·5 skipped 및 이메일 인증 1 passed. 게시 대상 main verify도 passed.
 - 로컬 상품 리서치 E2E 첫 실행은 2 passed / 2 failed. 기존 소싱 cat1에서 다른 cat2 오퍼 생성을 기대하던 시나리오가 새 409 관문에 걸렸다. 불일치 거절·오퍼 0건·같은 화면에서 일치 상품 재시도 성공으로 수정한 뒤 모바일·데스크톱 **4/4 passed** (Chromium·D1 real, 인증 mocked, 외부 호출 0). 전체 CI는 PR #335에 기록한다.
 
 ## 수정 후 독립 평가
