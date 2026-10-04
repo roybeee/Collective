@@ -21,9 +21,12 @@ FIELDS = {'order_id', 'revision', 'order_date', 'status', 'paid_amount', 'refund
 
 
 class OrderPull:
-    def __init__(self, outbox, token):
+    def __init__(self, outbox, token, expected_scope=None):
         if not isinstance(token, str) or not 32 <= len(token) <= 500 or re.search(r'\s', token):
             raise ValueError('strong dedicated bearer token required')
+        if expected_scope is not None and (not isinstance(expected_scope,tuple) or len(expected_scope)!=2 or any(not isinstance(v,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',v) for v in expected_scope)):
+            raise ValueError('invalid scope')
+        self.expected_scope = expected_scope
         self.path = pathlib.Path(outbox).resolve(strict=True)
         self.key = token.encode()
         self.token_hash = hashlib.sha256(self.key).digest()
@@ -76,6 +79,10 @@ class OrderPull:
             deadline = time.monotonic() + 2
             db.set_progress_handler(lambda: int(time.monotonic() > deadline), 1000)
             db.execute('BEGIN')
+            if self.expected_scope is not None:
+                scope = dict(db.execute("SELECT key,value FROM scope WHERE key IN ('collective_tenant','collective_store')"))
+                if (scope.get('collective_tenant'),scope.get('collective_store')) != self.expected_scope:
+                    raise ValueError('outbox_scope_mismatch')
             # An unresolved cancellation is visible even if its original row was
             # already exported. Never silently advance a cursor past uncertainty.
             if db.execute('SELECT 1 FROM holds LIMIT 1').fetchone():

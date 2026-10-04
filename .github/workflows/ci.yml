@@ -75,6 +75,9 @@ jobs:
       - name: MAPDAL adapter contracts
         run: python3 -m unittest discover -s tests -p 'mapdal_*_test.py'
 
+      - name: Bounded evaluation gateway contracts
+        run: python3 -m unittest discover -s tests -p 'eval_gateway_*_test.py'
+
   # 로컬 빌드를 wrangler --local로 띄워 브라우저 여정을 확인한다(docs/E2E.ko.md).
   # 안정성이 확인될 때까지 비차단이다. verify와 독립된 잡이라 결과가 verify에 영향을 주지 않는다.
   e2e-smoke:

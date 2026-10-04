@@ -1,3 +1,4 @@
+import {boundedOutputDeletionStatements,storeBoundedPreparation,startBoundedEvaluation,advanceBoundedEvaluation,cancelBoundedEvaluation,boundedEvaluationSummary,boundedCostOverview,readBoundedPreparation,saveBoundedConnection,setBoundedMonthCap,type BoundedCost,type FrozenEvaluation} from './eval-cost-server';
 import {ApiError,database,json,failure,str,stamp,uid,encrypt,decrypt,recordStatement,readRecord,listRecords,configuration,connection,acquireLock,releaseLock,type Actor} from './server';
 import {hermesEndpoint,verifyHermes} from './hermes';
 import {readBoundedJson} from './http-limits';
@@ -61,7 +62,7 @@ type StopReason='budget_reached'|'monthly_cap_reached'|'usage_unreported';
 // regrades: 같은 저울 재채점 기록(아래 '같은 저울 재채점'). results와 별개이며 results를 바꾸지 않는다.
 // 입력 축소 쌍(C07, kind input_diet)은 active가 off, candidate가 on이고 메타가 고정값이다(lib/eval-kinds.ts INPUT_DIET_PAIR).
 export type EvalPair=(PairPrompts|PreferencePair|InputDietPair)&{skippedCases:number};
-export type EvalRun={gatewaySnapshot?:EvalGatewayBasis;gatewaySnapshotEnd?:EvalGatewayBasis;pair?:EvalPair;id:string;label:string;variant:'active'|'pair'|'judge';set:EvalSet|null;caseIds:string[];tokenBudget:number;usedTokens:number;status:'queued'|'running'|'completed'|'cancelled'|'blocked';stopReason?:StopReason;blockedReason?:string;overBudgetApproved?:{reason:string;by:Who;at:string;exceeded:string[];monthCommitted:number};sealedUsed?:{by:Who;at:string;cases:number};host:string|null;createdBy:Who;createdAt:string;updatedAt:string;cancelledBy?:Who;deleted?:{by:Who;at:string;cases:number};results:EvalCaseResult[];regrades?:EvalRegrade[]};
+export type EvalRun={boundedCost?:BoundedCost;gatewaySnapshot?:EvalGatewayBasis;gatewaySnapshotEnd?:EvalGatewayBasis;pair?:EvalPair;id:string;label:string;variant:'active'|'pair'|'judge';set:EvalSet|null;caseIds:string[];tokenBudget:number;usedTokens:number;status:'queued'|'running'|'completed'|'cancelled'|'blocked';stopReason?:StopReason;blockedReason?:string;overBudgetApproved?:{reason:string;by:Who;at:string;exceeded:string[];monthCommitted:number};sealedUsed?:{by:Who;at:string;cases:number};host:string|null;createdBy:Who;createdAt:string;updatedAt:string;cancelledBy?:Who;deleted?:{by:Who;at:string;cases:number};results:EvalCaseResult[];regrades?:EvalRegrade[]};
 type Step={run:EvalRun;writes?:D1PreparedStatement[]};
 // 시작 시점 게이트웨이 기준(F2b): operational은 운영 연결의 최신 passed 스냅샷(평가 연결 기준이 아님), eval은 같은 스냅샷 함수로 잰 평가 연결 해시(막히면 blocked).
 export type EvalGatewayBasis=Awaited<ReturnType<typeof gatewayBasis>>;
@@ -421,6 +422,14 @@ async function inputDietTargets(owner:string,input:Record<string,unknown>):Promi
  if(!cases.length)throw new ApiError(400,'입력 축소 쌍 평가 대상 케이스가 없습니다. 조립이 입력 축소를 받는 역할·회의 단계·브리프 케이스를 고르세요(바이럴 사례 분석은 대상이 아닙니다).');
  return {caseIds:cases.map(c=>c.id),results:pendingResults(cases,true),sealed:cases.filter(c=>c.set==='sealed').length,set:Array.isArray(input.caseIds)?null:evalSet(input.set),pair:{...INPUT_DIET_PAIR,skippedCases}};
 }
+/** Build the identical Q pair sides before requesting any paid execution. */
+export async function prepareBoundedEvaluation(owner:string,input:Record<string,unknown>){
+ const variant=runVariant(input);if(variant==='judge')throw new ApiError(400,'원화 상한 평가는 active 또는 pair만 지원합니다.');
+ const targets=await runTargets(owner,input,variant),cases=await Promise.all(targets.caseIds.map(id=>readRecord<EvalCase>(owner,'eval_case',id)));
+ const maxOutputTokens=input.maxOutputTokens;if(typeof maxOutputTokens!=='number'||!Number.isSafeInteger(maxOutputTokens)||maxOutputTokens<1||maxOutputTokens>1000000)throw new ApiError(400,'출력 토큰 상한을 지정하세요.');
+ const requests=targets.results.map(r=>{const kase=cases.find(c=>c.id===r.caseId)!,pair=targets.pair,side:EvalSide|undefined=!pair?undefined:isInputDietPair(pair)?{inputDiet:r.variant==='candidate'?'on':'off'}:isPreferencePair(pair)?{preference:r.variant==='candidate'?'on':'off',block:pair.block}:r.variant==='candidate'?pair.candidateSet:pair.activeSet;return {caseId:r.caseId,variant:r.variant,request:evalKind(kase.kind).build(kase.request,side),maxOutputTokens};});
+ const frozen:FrozenEvaluation={variant,caseIds:targets.caseIds,results:targets.results,set:targets.set,...(targets.pair?{pair:targets.pair}:{}),cases,requests};return storeBoundedPreparation(owner,frozen);
+}
 async function startRun(owner:string,input:Record<string,unknown>,by:Who){
  const tokenBudget=budgetOf(input.tokenBudget),variant=runVariant(input);
  const label=str(input.label??'','실행 이름',200),{caseIds,results,sealed,set,pair}=await runTargets(owner,input,variant),reserves=results.map(r=>r.reserve??EVAL_CASE_TOKEN_RESERVE);
@@ -438,6 +447,7 @@ async function startRun(owner:string,input:Record<string,unknown>,by:Who){
 async function stopProvider(conn:Conn,id:string){return evalRequest(conn,`/v1/runs/${id}/stop`,{method:'POST',body:'{}'}).then(()=>true,()=>false)}
 async function cancelRun(owner:string,input:Record<string,unknown>,by:Who){
  const run=await readRecord<EvalRun>(owner,'eval_run',str(input.id,'평가 실행',100,true));
+ if(run.boundedCost)return cancelBoundedEvaluation(owner,run);
  if(!ACTIVE.includes(run.status))throw new ApiError(409,'이미 끝난 평가 실행입니다.');
  const inflight=run.results.find(r=>r.status==='submitted'),gate=inflight?await connectionGate(owner):null;
  const stopped=inflight?.providerRunId&&gate&&'conn' in gate?await stopProvider(gate.conn,inflight.providerRunId):false,at=stamp();
@@ -449,12 +459,14 @@ async function cancelRun(owner:string,input:Record<string,unknown>,by:Who){
 // 재채점 기록(regrades)은 출력에서 나온 채점 상세라 결과와 함께 지운다.
 async function deleteRun(owner:string,input:Record<string,unknown>,by:Who){
  const run=await readRecord<EvalRun>(owner,'eval_run',str(input.id,'평가 실행',100,true)),db=database(),at=stamp();
+ if(run.boundedCost&&run.boundedCost.reservedKrw>0)throw new ApiError(409,'미정산 원화 평가 비용을 먼저 회수하세요.');
  if(ACTIVE.includes(run.status))throw new ApiError(409,'진행 중인 평가 실행은 취소한 뒤 삭제하세요.');
  if(run.deleted)throw new ApiError(409,'이미 삭제한 평가 실행입니다.');
  // 보정 라벨(J2)이 있는 run은 라벨의 근거(출력)가 사라지므로 지우지 않는다.
  if(await runHasLabels(owner,run.id))throw new ApiError(409,'AI 심사 보정 라벨이 있는 평가 실행은 삭제할 수 없습니다.');
  const tombstone:EvalRun={...run,results:[],...(run.regrades?{regrades:[]}:{}),deleted:{by,at,cases:run.results.length},updatedAt:at};
- await db.batch([db.prepare("DELETE FROM records WHERE owner=? AND kind IN ('eval_output','judge_output') AND parent_id=?").bind(owner,run.id),recordStatement(owner,'eval_run',run.id,tombstone)]);
+ const boundedDeletion=await boundedOutputDeletionStatements(owner,run,at);
+ await db.batch([...boundedDeletion,db.prepare("DELETE FROM records WHERE owner=? AND kind IN ('eval_output','judge_output') AND parent_id=?").bind(owner,run.id),recordStatement(owner,'eval_run',run.id,tombstone)]);
  return {id:run.id,deleted:true};
 }
 
@@ -553,6 +565,7 @@ export async function advanceEvalRun(owner:string,id:string){
   lock=await acquireLock(owner);
   const run=await readRecord<EvalRun>(owner,'eval_run',id);
   if(!ACTIVE.includes(run.status))return json({id,status:run.status});
+  if(run.boundedCost){const next=await advanceBoundedEvaluation(owner,id,gradeCase);return json({id,status:next.status});}
   const step=await evalStep(owner,run);
   await database().batch([...(step.writes||[]),recordStatement(owner,'eval_run',id,step.run)]);
   return json({id,status:step.run.status});
@@ -642,6 +655,7 @@ function regradeCompare(a:EvalRun,b:EvalRun){
 // Only the earliest unsuccessful submitted result is queried, on the original saved host.
 async function diagnoseRun(owner:string,id:string){
  const run=await readRecord<EvalRun>(owner,'eval_run',id);
+ if(run.boundedCost)return {runId:run.id,boundedCost:boundedEvaluationSummary(run),status:run.status};
  if(run.deleted||ACTIVE.includes(run.status))throw new ApiError(409,'종료된 평가 실행만 진단할 수 있습니다.');
  const result=run.results.find(r=>r.providerRunId&&r.status!=='completed');
  if(!result?.providerRunId||!RUN_ID.test(result.providerRunId))throw new ApiError(409,'진단할 HERMES 실행 번호가 없습니다.');
@@ -673,6 +687,8 @@ async function pairRead(owner:string,runId:string){
 const runSummary=(run:EvalRun)=>isPreferencePair(run.pair)?{...run,pair:Object.fromEntries(Object.entries(run.pair).filter(([k])=>k!=='block'))}:run;
 const caseSummary=(c:EvalCase)=>({id:c.id,kind:c.kind??'role',role:c.role,label:c.label,set:c.set,campaignId:c.campaignId,source:c.source,capturedWith:c.capturedWith,prohibitedTerms:c.expectations.prohibitedTerms.length,setChanges:c.setChanges||[],...(c.captureCheck?{captureCheck:c.captureCheck}:{}),createdBy:c.createdBy,createdAt:c.createdAt,updatedAt:c.updatedAt});
 export async function evalRead(owner:string,params:URLSearchParams){
+ if(params.has('boundedCost'))return boundedCostOverview(owner);
+ if(params.has('boundedPrepared'))return readBoundedPreparation(owner,str(params.get('boundedPrepared'),'원화 평가 준비',100,true));
  if(params.has('diagnose'))return diagnoseRun(owner,str(params.get('diagnose'),'평가 실행',100,true));
  if(params.get('view')==='operations'){
   const [conn,cases,runs,usage]=await Promise.all([optionalRecord<StoredConnection>(owner,'eval_connection','current'),listRecords<EvalCase>(owner,'eval_case'),listRecords<EvalRun>(owner,'eval_run'),evalMonthUsage(owner)]);
@@ -701,6 +717,10 @@ const ACTIONS:Record<string,(owner:string,input:Record<string,unknown>,by:Who)=>
 };
 export async function evalAction(owner:string,input:Record<string,unknown>,actor:Actor):Promise<Response>{
  const by=who(actor),name=String(input.action);
+ if(name==='prepare_bounded_run')return json(await prepareBoundedEvaluation(owner,input));
+ if(name==='start_bounded_run')return json(await startBoundedEvaluation(owner,input,actor));
+ if(name==='save_bounded_connection')return json(await saveBoundedConnection(owner,input,actor));
+ if(name==='set_bounded_month_cap')return json(await setBoundedMonthCap(owner,input,actor));
  if(name==='start_run')return startRun(owner,input,by);
  if(!Object.hasOwn(ACTIONS,name))throw new ApiError(400,'지원하지 않는 평가 작업입니다.');
  return json(await ACTIONS[name](owner,input,by));

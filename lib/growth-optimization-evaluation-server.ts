@@ -1,3 +1,4 @@
+import type {CostIntent} from './growth-optimization-cost-server';
 import type {Campaign,Artifact} from './agency';
 import {evalAction,evalRead,type EvalRun,type EvalCase} from './eval-server';
 import {pairPrompts,roleRunUnits,type PairPrompts} from './prompt-registry';
@@ -9,7 +10,7 @@ import type {OptimizationRecord} from './growth-optimization-server';
 import {inCampaign,optionalRecord} from './growth-ledger-server';
 import {storefrontDigest} from './storefront-orders';
 import {ApiError,type Actor} from './server';
-export type OptimizationEvaluation={pair:PairPrompts;caseIds:string[];caseDigest:string;pairDigest:string;intent?:{label:string;at:string;by:string;tokenBudget:number;krwBudget:number;krwCapNotEnforced:true}};
+export type OptimizationEvaluation={pair:PairPrompts;caseIds:string[];caseDigest:string;pairDigest:string;intent?:{label:string;at:string;by:string;tokenBudget:number;krwBudget:number;krwCapNotEnforced:true}|CostIntent};
 const params=(key?:string,value?:string)=>{const p=new URL('https://collective.invalid').searchParams;if(key)p.set(key,value!);return p};
 const unsupported=()=>new ApiError(409,'이 후보 종류는 전용 동결 페이로드 평가 어댑터가 필요합니다. 다른 프롬프트 평가로 대신 통과할 수 없습니다.');
 async function caseDigest(owner:string,ids:string[],unit?:string,budget?:number){
@@ -37,7 +38,7 @@ export async function assertEvaluation(owner:string,r:OptimizationRecord,startin
 }
 export async function runMatches(r:OptimizationRecord,run:EvalRun){
  const e=r.evaluation!,pair=run.pair&&'candidateSet' in run.pair?run.pair:null;
- return !!e.intent&&run.label===e.intent.label&&run.variant==='pair'&&run.results.length===e.caseIds.length*2&&e.caseIds.every(id=>['active','candidate'].every(variant=>run.results.filter(x=>x.caseId===id&&x.variant===variant).length===1))&&!!pair&&await storefrontDigest({unit:pair.unit,candidateVersionId:pair.candidateVersionId,activeVersionId:pair.activeVersionId,candidateSet:pair.candidateSet,activeSet:pair.activeSet})===e.pairDigest&&pair.skippedCases===0&&JSON.stringify([...run.caseIds].sort())===JSON.stringify(e.caseIds)&&run.tokenBudget===e.intent.tokenBudget&&run.usedTokens<=e.intent.tokenBudget&&run.usedTokens>=0&&Number.isSafeInteger(run.usedTokens)&&Date.parse(run.createdAt)>=Date.parse(e.intent.at)&&run.createdBy.id===e.intent.by;
+ return !!e.intent&&(!('preparedId' in e.intent)||(run.boundedCost?.preparedId===e.intent.preparedId&&run.boundedCost?.preparedDigest===e.intent.preparedDigest&&run.boundedCost.settledKrw<=e.intent.krwBudget))&&run.label===e.intent.label&&run.variant==='pair'&&run.results.length===e.caseIds.length*2&&e.caseIds.every(id=>['active','candidate'].every(variant=>run.results.filter(x=>x.caseId===id&&x.variant===variant).length===1))&&!!pair&&await storefrontDigest({unit:pair.unit,candidateVersionId:pair.candidateVersionId,activeVersionId:pair.activeVersionId,candidateSet:pair.candidateSet,activeSet:pair.activeSet})===e.pairDigest&&pair.skippedCases===0&&JSON.stringify([...run.caseIds].sort())===JSON.stringify(e.caseIds)&&run.tokenBudget===e.intent.tokenBudget&&run.usedTokens<=e.intent.tokenBudget&&run.usedTokens>=0&&Number.isSafeInteger(run.usedTokens)&&Date.parse(run.createdAt)>=Date.parse(e.intent.at)&&run.createdBy.id===e.intent.by;
 }
 /** Only called after the durable intent transaction succeeds. Never retry this call. */
 export async function dispatchEvaluation(who:Actor,r:OptimizationRecord){
