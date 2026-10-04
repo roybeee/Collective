@@ -171,14 +171,15 @@
 - 요청(레인 A → 레인 Q, 2026-10-02): 워크스페이스의 품질 콘솔 정적 import(`tests/quality-console-route.test.mjs`)를 지연 로딩으로 바꿔도 되는지 검토 요청. 홈 첫 로딩 JS 약 12KB(gz)가 `lib/quality.ts` 경유로 실린다(UX-PLAN-3 10차원 목표 180KB).
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 현재 운영: #341까지 `7852b96256de0c7113fc14166b46b37a964d8e99`, Sites103, tree `05c7e2e988cf2e2d0f3bbf8106d9c4f1225b965f`. merged/published/runtime-verified([기록](releases/2026-10-04-7852b96.md)). 수집 스위치는 이전 운영 재조회에서 켜짐 확인, API4종 연결은 별도다.
+- 현재 운영: #343까지 `f25d2c9658765297fba486290c30e4e1a3d86c27`, Sites104, tree `9319813c3b0d669f2ea889f610dc9b200197ffc8`. merged/published/runtime-verified([기록](releases/2026-10-04-f25d2c9.md)). HUB 두 API·YouTube 연결, 자동 수집은 사용자 승인대로 OFF. 검색광고·쿠팡 연결은 잔여다.
 - 직전 운영: #333까지 `2c100e6`, Sites99, tree `39cd51a`([릴리스](releases/2026-10-03-2c100e6.md)).
 - 성장1 필수 코드 게시 대기 0건. #216·#218·#219·#225는 통합 #244로 병합·게시했다. #206·#208·#210~#214·#217·#220·#223·#231·#235·#237과 관련 문서도 현재 제품에 포함된다.
 - 기존 대기열의 미병합·404 문구는 과거 상태다. R 신규 PR #234·#241·#242·#243 및 인터뷰 게시 문서 #236·#240은 별도 소유자 작업이며 성장1 필수 잔여가 아니다.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-10-04 06:30 UTC (Codex: NAVER API HUB 연결 로컬 검증·독립 리뷰 passed)
+갱신: 2026-10-04 07:42 UTC (Codex: Sites104 게시·HUB 실제 연결 passed)
+- [#343](https://github.com/roybeee/Collective/pull/343) `f25d2c9` merged → Sites104 published/runtime-verified. [게시·인증 기록](releases/2026-10-04-f25d2c9.md). 최종 CI356/356 suites·19,475 assertions, 타입·빌드·기준선 lint·계약 검사 passed. 전체 원격 E2E는 기록 시 실행 중. 네이버 HUB 두 API 각각 실제 검증1회/성공100%, 키 저장·새로고침 유지 확인. YouTube 연결 유지, 자동 수집 OFF. 검색광고 약관 동의·쿠팡 최종 승인·정책 수정·실평가/판매 근거는 별도 잔여다. 아래는 개발 중 기록이다.
 - 대표의 API 발급·연결 지시와 약관/발급 동의에 따라 NAVER Cloud의 `Collective-Research` Application에 검색어트렌드·쇼핑인사이트를 등록했다(각 월50,000회). `codex/research-naver-api-hub`, 기준 `3634126`에서 별도 HUB 인증 종류·두 API 저장 전 검증·기존 개발자센터 호환과 종료된 쇼핑 검색 호출 차단을 구현 중이다. 실제 키 저장/운영 응답 검증은 게시 후 별도 확인하며 키 원문은 소스에 넣지 않는다.
 - [HUB 연결 규격과 운영 경계](PRODUCT-RESEARCH-API-HUB.ko.md). 전체356/356 suites·19,467 assertions passed(외부 HTTP mocked), 모바일/데스크톱 수집 제어 E2E14 passed(real Chromium·D1, 인증 mocked), 타입·빌드·프롬프트22 passed, lint70/39 기준선 유지. 독립 리뷰의 연결 해제 영향 안내1건을 수정하고 UI9회귀·타입·빌드를 재검증했다. 최종 리뷰 APPROVE, 잔여 CRITICAL/HIGH/MEDIUM0. 원격 CI/병합/게시는 아직 not_run.
 - YouTube 기존 제한 키 연결은 운영 화면에서 실제 검증·저장·새로고침 유지까지 확인했다(real). 대표가 승인한 임시 정지로 자동 수집은 OFF다. 키 연결 성공을 보존/분석 정책 승인으로 취급하지 않는다. 블라인드 후보60개·평가자3인용 패킷은 준비했지만 실제 정답 라벨/평가 결과는0건이며, 과거 판매2SKU는 신규 출시 성과가 아니다.
@@ -345,20 +346,20 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-10-04 03:37 UTC (Codex A: 성장2 Sites103)
+마지막 갱신: 2026-10-04 07:42 UTC (Codex A: Sites104·HUB 연결)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `7852b96256de0c7113fc14166b46b37a964d8e99` (#341) | tree `05c7e2e988cf2e2d0f3bbf8106d9c4f1225b965f`, [릴리스](releases/2026-10-04-7852b96.md) |
-| `origin/main` | 게시 제품 `7852b96` 포함 | 이후 비제품 변경은 PUBLISH 5절 기준으로 구분 |
-| Sites 게시 | `published`: 버전103, deployment `appgdep_6ac1c9b290e08191a1a1c3ec5100c3ee` succeeded | 2026-10-04 03:36 UTC |
-| 실행 검증 | `runtime-verified`: 공개 버전 tree 일치 | build `2026-10-04T03:35:14.865Z` |
-| 인증 | 상품 리서치 API 익명401, email 설정 유지 | Sites103 실제 HTTP; 이전 소유자 수집 화면에서 스위치 켜짐·API 연결 필요 확인 |
+| 운영 제품 커밋 | `f25d2c9658765297fba486290c30e4e1a3d86c27` (#343) | tree `9319813c3b0d669f2ea889f610dc9b200197ffc8`, [릴리스](releases/2026-10-04-f25d2c9.md) |
+| `origin/main` | 게시 제품 `f25d2c9` 포함 | 이후 비제품 변경은 PUBLISH 5절 기준으로 구분 |
+| Sites 게시 | `published`: 버전104, deployment `appgdep_6ac202d38234819189dd327d62372d0a` succeeded | 2026-10-04 07:40 UTC |
+| 실행 검증 | `runtime-verified`: 공개 버전 tree 일치 | build `2026-10-04T07:28:13.553Z` |
+| 인증 | 상품 리서치 API 익명401, email 설정 유지 | HUB 두 API 실제 인증·저장 유지 passed, YouTube 연결, 자동 수집 OFF |
 | Sites 접근 | public, 환경 revision4 유지 | 설정 변경 없음 |
 | 조사 워커 | 이번 게시에서 온라인 상태 재확인 not_run | 활성화 시 서버에서 온라인 조건을 검사 |
-| 제품 CI | #341 verify passed, Linux E2E293 passed·5 skipped·0 failed, 이메일 인증1 passed | [PR CI](https://github.com/roybeee/Collective/actions/runs/37173313571) |
+| 제품 CI | #343 verify passed, 356/356 suites·19,475 assertions; 전체 E2E 실행 중 | [PR CI](https://github.com/roybeee/Collective/actions/runs/37185847405) |
 | 성장2 판정 | 원화 비용·판매처 설치·동의 SDK 게시 / 실제 계약·운영 설치 blocked / 실효과 not_run | [33카드 대조](GROWTH-2-COMPLETION.ko.md), Meta 한정 종료와 구분 |
 | 성장1 판정 | 개발 종료 passed / 운영 인수 blocked / 효과 검증 not_run | [최종 판정·조건부 인계](observations/2026-09-28-lane-a-growth1-closeout.md) |
 
