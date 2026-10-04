@@ -269,6 +269,7 @@ export async function productResearchQueue(owner:string):Promise<((owner:string)
 // 출처를 고르면 그 출처의 계획만 30단계까지 실행하고 오늘 계획의 위치는 건드리지 않는다. 어느 쪽이든 쿼터 원장의 남은 상한 안에서만 호출한다.
 export async function collectNow(owner:string,sourceId:SourceId|undefined,deps:CollectDeps,token:string){
  if(!await collectEnabled(owner))throw new ApiError(409,'자동 수집 스위치(product_research_collect)가 꺼져 있습니다. 소유자가 켠 뒤 다시 시도하세요.');
+ if(sourceId==='naver_shop_search')throw new ApiError(400,'네이버 쇼핑 검색은 서비스 종료로 자동 수집이 중단되었습니다. 과거 수집 자료만 조회할 수 있습니다.');
  if(sourceId&&!sourceSpec(sourceId).autoFetch)throw new ApiError(400,'자동 수집을 하지 않는 출처입니다. 운영자 가져오기를 쓰세요.');
  const now=deps.now(),today=kstDayKey(now);
  let state=await readCollectState(owner);
