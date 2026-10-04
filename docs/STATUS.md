@@ -178,8 +178,8 @@
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-10-04 00:59 UTC (Codex: 성장2 원안 잔여 통합, 원격 반영 대기)
-- 대표 지시 “성장2 남은것 멈추지말고 모두 개발진행해서 마무리하라”에 따라 `codex/growth2-completion`, 기준 `a790f2b`에서 [33카드 마감 기록](GROWTH-2-COMPLETION.ko.md)을 진행했다. 수집 제어·일일 복구/검토 초안·현금·번들 전체 이행·판매처 랜딩/주문/CS·소비자 동의/철회·실험 계측·교훈 맥락/결과 회수·Meta 제한 확대·정확판 최적화 연결이 로컬 소스에 구현되어 있다. 독립 검토 passed. 로컬 전체347/347 suites·19,295 assertions, 이후 잠금/손상 기록 회귀92개, 타입·빌드·lint 기준선70/39·Python119·prompt22 passed. 핵심 E2E36+연결2 passed, macOS 키보드2 failed(Linux 확인 대기). 마지막 전체 재실행·원격 CI 진행 예정. 이번 소스의 main 병합·게시·운영 버전 검증은 아직 완료하지 않았다.
+갱신: 2026-10-04 01:15 UTC (Codex: 성장2 Sites101 runtime-verified)
+- 대표 지시 “성장2 남은것 멈추지말고 모두 개발진행해서 마무리하라”에 따라 `codex/growth2-completion`, 기준 `a790f2b`에서 [33카드 마감 기록](GROWTH-2-COMPLETION.ko.md)을 진행했다. 수집 제어·일일 복구/검토 초안·현금·번들 전체 이행·판매처 랜딩/주문/CS·소비자 동의/철회·실험 계측·교훈 맥락/결과 회수·Meta 제한 확대·정확판 최적화 연결이 #337로 merged, Sites101 published/runtime-verified됐다. 독립 검토 passed. 최종 로컬·PR CI 전체348/348 suites·19,327 assertions, 잠금/손상 기록 회귀92개, 타입·빌드·lint 기준선70/39·Python119·prompt22 passed. 핵심 E2E36+연결2 passed, macOS 키보드2 failed(빈 native select에서도 재현). 원격 필수 verify passed, 비차단 Linux 전체 E2E는 Actions 결과로 별도 확인한다. [게시 기록](releases/2026-10-04-8d72d4c.md).
 - Q는 정확한 프롬프트/운영규칙/판매 개입 계보를 검사한다. 랜딩·오퍼의 무료 결정론적 검사는 AI 품질 평가와 구분한다. 유료 평가의 원화 실지출 hard cap을 강제할 상류 계약이 없어 **blocked**이며 신규 유료 실행은 409로 차단한다. 예산 입력이나 확인 체크를 실제 지출 제한으로 취급하지 않는다.
 - 판매처 상품·재고는 서명 조회·소유자 검토와 15분 TTL을 사용한다. 주기 작업자는 한 tick에 한 연결을 최소 5분 간격으로 읽고 실패 backoff를 적용한다. 현재 미이행 로컬 예약을 공급자 판매 가능 수량에서 보수적으로 공제하며, 만료/미확인/삭제는 해당 SKU를 보류한다. 입출고·실사·반품 이후에는 새 조회·승인 전 보류한다. 실제 MAPDAL 어댑터 운영 설치는 not_run. 기존 물리 재고·예약은 자동 수정하지 않는다.
 - 운영 수집 스위치는 이전 작업에서 `product_research=true`, `product_research_collect=true`로 변경 후 재조회했다. 당시 API 키 4종 미연결·후보 0으로 실수집은 not_run. 이번 UI는 실제 상태 재조회와 키 미연결을 구분한다. 실제 키·트래픽·동의·집행 범위/금액 및 실판매 성과 검증은 별도 운영 조건이다. 모의 공급자 통과를 실제 수집·발송·지출 완료로 표시하지 않는다.
@@ -332,21 +332,21 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-10-03 15:38 UTC (Codex A 인계: 상품 리서치 Sites100)
+마지막 갱신: 2026-10-04 01:15 UTC (Codex A: 성장2 Sites101)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `51b3b825c3955646bcaadd88276aa5322396594e` (#335) | tree `678e00285f8628fc34bb0ccddf796512161d1bf9`, [릴리스](releases/2026-10-03-51b3b82.md) |
-| `origin/main` | 게시 제품 `51b3b82` 포함 | 이후 비제품 변경은 PUBLISH 5절 기준으로 구분 |
-| Sites 게시 | `published`: 버전100, deployment `appgdep_6ac1215a50b0819195d9124e4b786cb0` succeeded | 2026-10-03 15:38 UTC |
-| 실행 검증 | `runtime-verified`: 공개 `/api/version/public` tree 일치 | build `2026-10-03T15:00:20.379Z` |
-| 인증 | 상품 리서치 API 익명401 | Sites100 실제 운영 HTTP, 데이터 변경 없음; 소유자 로그인 이번 재확인 not_run |
+| 운영 제품 커밋 | `8d72d4c12283c5d054de69bc8487a02f6f285a8b` (#337) | tree `1d4273e8ad5ef9f7c4daeaaad99f0954ab5e2be0`, [릴리스](releases/2026-10-04-8d72d4c.md) |
+| `origin/main` | 게시 제품 `8d72d4c` 포함 | 이후 비제품 변경은 PUBLISH 5절 기준으로 구분 |
+| Sites 게시 | `published`: 버전101, deployment `appgdep_6ac1a871bc9c8191817f1de82b398ba1` succeeded | 2026-10-04 01:14 UTC |
+| 실행 검증 | `runtime-verified`: 공개 버전 tree 일치 | build `2026-10-04T01:04:46.140Z` |
+| 인증 | 상품 리서치 API 익명401, email 모드 유지 | Sites101 실제 HTTP; 소유자 수집 화면에서 스위치 켜짐·API 연결 필요 확인 |
 | Sites 접근 | public, 환경 revision4 유지 | 설정 변경 없음 |
 | 조사 워커 | 이번 게시에서 온라인 상태 재확인 not_run | 활성화 시 서버에서 온라인 조건을 검사 |
-| 제품 CI | #335 head verify·e2e-smoke 4개 passed, main과 tree diff0; main verify passed | [PR run37131596367](https://github.com/roybeee/Collective/actions/runs/37131596367), [main run37133001147](https://github.com/roybeee/Collective/actions/runs/37133001147) |
-| 성장2 판정 | 전체33개 카드 개발 진행 중 / 실효과 검증 not_run | [원안 전체](GROWTH-2-PLAN.ko.md). 과거 [종료 판정](GROWTH-2-CLOSEOUT.ko.md)은 Meta M0~M6 한정 |
+| 제품 CI | #337 필수 verify passed, PR/main tree 동일; 비차단 E2E 별도 | [PR CI](https://github.com/roybeee/Collective/actions/runs/37166768604), [main CI](https://github.com/roybeee/Collective/actions/runs/37167313598) |
+| 성장2 판정 | 실행·회수 잔여 통합 게시 / Q 원화 유료 평가 계약 blocked / 실효과 not_run | [33카드 대조](GROWTH-2-COMPLETION.ko.md), Meta 한정 종료와 구분 |
 | 성장1 판정 | 개발 종료 passed / 운영 인수 blocked / 효과 검증 not_run | [최종 판정·조건부 인계](observations/2026-09-28-lane-a-growth1-closeout.md) |
 
 - 테스트 흔들림(2026-09-25 관찰, 제품 동작 변경 없음):

@@ -74,7 +74,7 @@ PR285의 15증분과 MD #329~335에서 수요 단계-발행 근거, 수동 상�
 
 33카드의 코드 완료/merged/published/runtime-verified/실계정검증/사업성과를 별도 칸으로 갱신. 전체 테스트·타입·빌드·기준선 lint, 핵심 E2E, code/security review, PR CI, Sites 공개 tree 검증을 통과한 코드만 완료 처리한다. 본선 개발잔여0이 되어도 G0 운영/인과 성과 완료라고 쓰지 않는다. 조건부20~24는 조건·담당·재개시점을 명시한다.
 
-## 현재 실행 기록 — 로컬 구현 및 독립 검토 passed, 원격 반영 대기
+## 현재 실행 기록 — #337 merged, Sites101 runtime-verified
 
 | 증분 | 현재 구현 범위 | 운영·평가 경계 |
 |---|---|---|
@@ -97,8 +97,8 @@ PR285의 15증분과 MD #329~335에서 수요 단계-발행 근거, 수동 상�
 
 ## 현재 잔여와 종료 조건
 
-1. **검토·통합 검증:** 독립 검토에서 발견한 H/M을 수정하고 재검토 passed. 전체 회귀 347/347 suites·19,295 assertions passed 후 마지막 잠금/손상 기록 보강을 전용 테스트 92개로 추가 검증했다. 최종 전체 재실행 및 원격 CI를 별도 확인한다. 타입·빌드 passed, lint 기준선70 errors/39 warnings gate passed, Python119 passed, 프롬프트22 passed. 핵심 화면36개와 연결 화면2개 passed(real Chromium/D1, 인증·외부 provider mocked). macOS 키보드 선택 테스트2개는 빈 native select에서도 재현되어 failed이며 Linux CI에서 확인한다.
-2. **원격 반영 not_run:** 이번 증분 PR/CI, main 병합, Sites 게시, 공개 버전 일치 확인은 각각 별도로 기록한다. 기존 Sites100 게시 이력은 이번 소스 게시 완료를 뜻하지 않는다.
+1. **검토·통합 검증:** 독립 검토에서 발견한 H/M을 수정하고 재검토 passed. 최종 전체348/348 suites·19,327 assertions가 로컬과 PR CI에서 passed. 마지막 잠금/손상 기록 전용92개도 passed. 타입·빌드 passed, lint 기준선70 errors/39 warnings gate passed, Python119 passed, 프롬프트22 passed. 핵심 화면36개와 연결 화면2개 passed(real Chromium/D1, 인증·외부 provider mocked). macOS 키보드 선택 테스트2개는 빈 native select에서도 재현되어 failed이며 Linux CI에서 확인한다.
+2. **원격 반영:** #337 merged, 필수 CI verify passed, Sites101 published/runtime-verified. [게시 기록](releases/2026-10-04-8d72d4c.md). 비차단 Linux 전체 E2E는 [Actions 결과](https://github.com/roybeee/Collective/actions/runs/37166768604)로 별도 확인한다.
 3. **Q 원화 hard cap blocked:** 현재 공개 상류 계약에 실제 유료 지출 제한 수단이 없어 신규 유료 평가를 409로 차단한다. 가격판·모델별 최대 비용·원자 원화 예약·공급자 강제 상한·영수증/unknown 회수 계약이 필요하다. 예산 스냅샷이나 확인 체크로 이 조건을 해제하지 않는다. 실제 유료 평가 not_run.
 4. **판매처 운영 설치 not_run:** 실제 MAPDAL 상품/주문/랜딩/CS/실험 어댑터의 설치·권한·정확 매핑·운영 대사는 not_run. 상품 재고는 수동 조회와 공정 순환 작업자에 연결했다. 최소 5분마다 한 연결을 읽고 실패 시 최대 6시간 backoff하며 15분 지난 근거는 보류한다. 가격·재고·물리 원장 근거 변경은 자동 승인하지 않는다.
 5. **실계정·사업 효과 별도:** 네이버 검색광고·개발자센터·YouTube·쿠팡 키 4종, 실제 트래픽, 목적별 고지/동의/철회, 법무 검토, 실제 집행 범위·금액과 판매 성숙 데이터가 필요하다. 수집 0건·모의 공급자 성공을 실수집/발송/매출 성과로 보고하지 않는다. G0-B/C/D 운영 실증과 인과 성과도 별도다.
@@ -106,9 +106,9 @@ PR285의 15증분과 MD #329~335에서 수요 단계-발행 근거, 수동 상�
 
 | 최종 확인 | 상태 | 증거 구분 |
 |---|---|---|
-| 로컬 회귀·타입·빌드·lint·독립 검토 | passed | 위 수치 및 검사별 실제/모의 구분; 마지막 전체 재실행과 원격 CI 별도 |
+| 로컬 회귀·타입·빌드·lint·독립 검토 | passed | 위 수치 및 검사별 실제/모의 구분; 최종 전체·필수 CI passed |
 | 핵심 E2E | passed / 일부 failed | 핵심36+연결2 passed; macOS 키보드2 failed, Linux 확인 대기 |
-| 이번 소스 main 병합 | not_run | merged 증거 별도 |
-| 이번 소스 Sites 게시·공개 버전 확인 | not_run | published / runtime-verified 별도 |
+| 이번 소스 main 병합 | merged | #337, `8d72d4c` |
+| 이번 소스 Sites 게시·공개 버전 확인 | published / runtime-verified | Sites101, 제품 tree 일치 |
 | 실판매처 설치·실계정 호출·실제 발송/지출 | not_run | 합성 DB·mock 성공으로 대체 불가 |
 | 신규 Q 유료 실행 | blocked | 원화 hard cap 상류 계약 부재, 409 차단 |
