@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {testRuntime} from './helpers/runtime.mjs';
+const {load}=testRuntime(async()=>{throw Error('network forbidden')});
+const worker=await load('lib/research-worker.ts');
+const token=await worker.registerWorker('owner'),principal={owner:'owner',hash:await worker.workerHash(token)};
+let recoveries=0,daily=0;const idle=async()=>({status:'idle'});
+const tick=(dailyWork=async()=>{daily++;return {status:'processed'}})=>worker.workerTick(principal,async()=>{throw Error('research forbidden')},idle,idle,undefined,undefined,undefined,dailyWork,undefined,undefined,async owner=>{assert.equal(owner,'owner');recoveries++;return {status:'processed'}});
+let passed=0;const check=(x,n)=>{assert.ok(x,n);passed++};
+check((await tick()).queue==='growth_daily','daily turn');
+check((await tick()).queue==='consumer_recovery','recovery gets separate fair turn');
+check((await tick()).queue==='growth_daily','recovery never starves daily');
+check((await tick(idle)).queue==='consumer_recovery','disabled daily still recovers');
+check(recoveries===2&&daily===2,'one work unit per tick');
+await assert.rejects(()=>worker.workerTick({...principal,hash:'0'.repeat(64)},async()=>new Response(),undefined,undefined,undefined,undefined,undefined,undefined,undefined,undefined,async()=>{throw Error('must not execute')}));passed++;
+console.log(JSON.stringify({passed}));

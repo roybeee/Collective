@@ -5,13 +5,18 @@ import {requireGrowthRunning} from './growth-stop-server';
 import {landingReadiness,parseLandingProposal,parseReceipt,type LandingProposalInput,type LandingReceipt,type LandingSnapshot,type LandingStatus} from './growth-landing';
 import {storefrontDigest} from './storefront-orders';
 import {ApiError,database,readRecord,recordStatement,stamp,str,type Actor} from './server';
+import type {LandingProviderState} from './growth-landing-provider';
+import type {GrowthAuthorityRecord} from './growth-authority-server';
+import {readLandingProviderConnection,landingProviderConnectionView,saveLandingProviderConnection} from './growth-provider-credential-server';
+import {saveLandingProviderAction} from './growth-landing-provider-server';
 const kinds={current:'growth_landing_revision',history:'growth_landing_revision_history',request:'growth_landing_revision_request'} as const;
-export type LandingRecord={id:string;brandId:string;campaignId:string;version:number;status:LandingStatus;input:LandingProposalInput;snapshot:LandingSnapshot;approval:{by:string;at:string;digest:string}|null;applied:LandingReceipt|null;rolledBack:LandingReceipt|null;requestDigest:string;createdAt:string;updatedAt:string;updatedBy:string};
+export type LandingRecord={id:string;brandId:string;campaignId:string;version:number;status:LandingStatus;input:LandingProposalInput;snapshot:LandingSnapshot;approval:{by:string;at:string;digest:string}|null;applied:LandingReceipt|null;rolledBack:LandingReceipt|null;requestDigest:string;createdAt:string;updatedAt:string;updatedBy:string;provider?:LandingProviderState};
 type Workspace=Awaited<ReturnType<typeof growthView>>;
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 async function optional<T>(owner:string,kind:string,id:string){try{return await readRecord<T>(owner,kind,id)}catch(e){if(e instanceof ApiError&&e.status===404)return null;throw e}}
 const scoped=(x:{brandId:string;campaignId:string},c:Campaign)=>x.brandId===c.brandId&&x.campaignId===c.id;
 async function rows<T>(owner:string,c:Campaign,kind:string,limit:number){const r=await database().prepare('SELECT data FROM records WHERE owner=? AND kind=? AND parent_id=? LIMIT ?').bind(owner,kind,c.id,limit+1).all<{data:string}>();if(r.results.length>limit)throw new ApiError(409,'상세페이지 수정안 조회 한도를 넘었습니다.');return r.results.map(x=>JSON.parse(x.data) as T)}
+async function landingHistory(owner:string,c:Campaign){const result=await database().prepare('SELECT data FROM records WHERE owner=? AND kind=? AND parent_id=? ORDER BY updated_at DESC,id DESC LIMIT 2001').bind(owner,kinds.history,c.id).all<{data:string}>();return {rows:result.results.slice(0,2000).map(r=>JSON.parse(r.data) as LandingRecord),hasMore:result.results.length>2000};}
 async function capacity(owner:string,c:Campaign,kind:string,limit:number){const r=await database().prepare('SELECT COUNT(*) n FROM records WHERE owner=? AND kind=? AND parent_id=?').bind(owner,kind,c.id).first<{n:number}>();if((r?.n??0)>=limit)throw new ApiError(409,'상세페이지 수정안 보관 한도에 도달했습니다.')}
 function append(owner:string,c:Campaign,kind:string,id:string,value:unknown,at:string){return database().prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').bind(`${owner}:${kind}:${id}`,owner,kind,c.id,JSON.stringify(value),at)}
 /** Current sources: exact offer/catalog/fact/journey versions. Changes after approval hold the proposal instead of silently re-approving it. */
@@ -26,24 +31,32 @@ function sources(input:LandingProposalInput,view:Workspace,journey:JourneyRecord
  const readiness=landingReadiness(input,{offerPrice:snapshot.offerPrice,priceApproved:snapshot.priceApproved,rightsConfirmed:catalog?.input.rightsConfirmed===true,factIds:view.facts.map(f=>f.id),offerLandingUrl:offer?.input.landingUrl??''});
  return {snapshot,reasons,readiness};
 }
-const contentDigest=(r:Pick<LandingRecord,'id'|'input'|'snapshot'>)=>storefrontDigest({id:r.id,input:r.input,snapshot:r.snapshot});
+const contentDigest=(r:Pick<LandingRecord,'id'|'input'|'snapshot'|'provider'>)=>storefrontDigest({id:r.id,input:r.input,snapshot:r.snapshot,...(r.provider?{providerBinding:r.provider.binding}:{})});
 async function journeyFor(owner:string,c:Campaign,input:LandingProposalInput){if(!input.journeyId)return null;const j=await optional<JourneyRecord>(owner,'growth_journey',input.journeyId);return j&&scoped(j,c)?j:null}
 export async function growthLandingView(who:Actor,c:Campaign){
- const [records,history,view,journeys]=await Promise.all([rows<LandingRecord>(who.owner,c,kinds.current,200),rows<LandingRecord>(who.owner,c,kinds.history,2000),growthView(who.owner,c,who.role!=='member'),rows<JourneyRecord>(who.owner,c,'growth_journey',500)]);
+ const [records,historyPage,view,journeys]=await Promise.all([rows<LandingRecord>(who.owner,c,kinds.current,200),landingHistory(who.owner,c),growthView(who.owner,c,who.role!=='member'),rows<JourneyRecord>(who.owner,c,'growth_journey',500)]);
+ const history=historyPage.rows;
  const own=records.filter(r=>scoped(r,c));
  const proposals=await Promise.all(own.map(async r=>{
   const journey=r.input.journeyId?journeys.find(j=>j.id===r.input.journeyId&&scoped(j,c))??null:null,{snapshot,reasons,readiness}=sources(r.input,view,journey);
   const drift=JSON.stringify(snapshot)!==JSON.stringify(r.snapshot)?['승인·저장 당시 오퍼·상품·사실·병목 판이 바뀌었습니다.']:[];
   const approvalValid=!!r.approval&&r.approval.digest===await contentDigest(r);
-  return {...r,sourceStatus:reasons.length||drift.length?'held' as const:'current' as const,sourceReasons:[...reasons,...drift],readiness,approvalValid,pageChanged:r.status==='applied'?'operator_attested' as const:r.status==='rolled_back'?'rolled_back' as const:'not_confirmed' as const};
+  return {...r,sourceStatus:reasons.length||drift.length?'held' as const:'current' as const,sourceReasons:[...reasons,...drift],readiness,approvalValid,pageChanged:r.status==='applied'?(r.applied?.method==='provider_verified'?'provider_verified' as const:'operator_attested' as const):r.status==='rolled_back'?'rolled_back' as const:'not_confirmed' as const};
  }));
  const journeyReceipts=journeys.filter(j=>scoped(j,c)).map(j=>{const applied=own.filter(r=>r.input.journeyId===j.id&&r.status==='applied');return {journeyId:j.id,journeyVersion:j.version,title:j.input.title,rawAppliedAt:j.input.appliedAt||null,receipts:applied.map(r=>({revisionId:r.id,version:r.version,at:r.applied!.at})),basis:applied.length?'operator_receipt' as const:j.input.appliedAt?'raw_applied_at_only' as const:'none' as const}});
- return {campaignId:c.id,campaignVersion:c.version,proposals,history:history.filter(r=>scoped(r,c)),offers:view.offers.map(o=>({id:o.id,version:o.version,title:o.input.title,landingUrl:o.input.landingUrl,price:o.input.price,priceApproved:o.input.priceApproved})),facts:view.facts.map(f=>({id:f.id,version:f.version,key:f.key})),journeys:journeyReceipts,canEdit:who.role!=='member'&&c.status!=='archived',mayApply:false as const,adapter:null,causalStatus:'not_measured' as const};
+ const connection=landingProviderConnectionView(await readLandingProviderConnection(who.owner,c)),authorities=await rows<GrowthAuthorityRecord>(who.owner,c,'growth_authority',100);
+ return {campaignId:c.id,campaignVersion:c.version,proposals,historyHasMore:historyPage.hasMore,history:history.filter(r=>scoped(r,c)),offers:view.offers.map(o=>({id:o.id,version:o.version,title:o.input.title,landingUrl:o.input.landingUrl,price:o.input.price,priceApproved:o.input.priceApproved})),facts:view.facts.map(f=>({id:f.id,version:f.version,key:f.key})),journeys:journeyReceipts,canEdit:who.role!=='member'&&c.status!=='archived',canManageProvider:who.role==='owner',providerConnection:connection,providerAuthorities:authorities.filter(a=>scoped(a,c)&&a.input.accountId==='mapdal:'+c.storeId&&a.input.channel==='storefront').map(a=>({id:a.id,version:a.version,status:a.input.status,expiresAt:a.input.expiresAt})),mayApply:false as const,adapter:connection?'mapdal_scoped_bridge' as const:null,causalStatus:'not_measured' as const};
 }
 export type GrowthLandingView=Awaited<ReturnType<typeof growthLandingView>>;
 const transitions:Record<string,{from:LandingStatus[];to:LandingStatus}>={approve:{from:['draft'],to:'approved'},record_applied:{from:['approved'],to:'applied'},record_rollback:{from:['applied'],to:'rolled_back'},withdraw:{from:['draft','approved'],to:'withdrawn'}};
 export async function saveGrowthLanding(who:Actor,c:Campaign,b:Record<string,unknown>){
  if(b.campaignVersion!==c.version)throw new ApiError(409,'캠페인이 변경되었습니다. 다시 불러오세요.');
+ if(['provider_configure','provider_enable','provider_disable'].includes(String(b.action)))return saveLandingProviderConnection(who,c,b);
+ if(String(b.action).startsWith('provider_'))return saveLandingProviderAction(who,c,b,{contentDigest,assertCurrent:async row=>{
+  const [view,journey]=await Promise.all([growthView(who.owner,c,true),journeyFor(who.owner,c,row.input)]),{snapshot,reasons,readiness}=sources(row.input,view,journey);
+  if(reasons.length||readiness.missing.length||JSON.stringify(snapshot)!==JSON.stringify(row.snapshot))throw new ApiError(409,reasons[0]??readiness.missing[0]??'승인한 상품·오퍼·사실·병목 판이 변경되었습니다.');
+  const catalog=view.catalogs.find(x=>x.id===snapshot.catalogId);if(!catalog||catalog.readiness.missing.some(m=>m==='근거 유효기한을 입력하세요.'||m==='상품 근거가 만료되었습니다.'))throw new ApiError(409,'현재 상품 근거의 유효기한을 확인하세요.');
+ }});
  const requestId=String(b.requestId??''),action=String(b.action??'');if(!uuid.test(requestId)||!Number.isSafeInteger(b.expectedVersion)||Number(b.expectedVersion)<0)throw new ApiError(400,'요청 번호와 수정안 판을 확인하세요.');
  if(action!=='save_proposal'&&!transitions[action])throw new ApiError(400,'지원하지 않는 상세페이지 수정안 작업입니다.');
  const id=str(b.id,'수정안 ID',100,true);if(!/^[A-Za-z0-9_-]+$/.test(id))throw new ApiError(400,'수정안 ID 형식을 확인하세요.');
@@ -52,6 +65,9 @@ export async function saveGrowthLanding(who:Actor,c:Campaign,b:Record<string,unk
  const [request,old]=await Promise.all([optional<{digest:string;id:string;version:number}>(who.owner,kinds.request,requestId),optional<LandingRecord>(who.owner,kinds.current,id)]),ack=(version:number,duplicate:boolean)=>({recorded:true as const,id,version,duplicate,mayApply:false as const});
  if(request){if(request.digest!==digest)throw new ApiError(409,'같은 요청 번호의 내용이 다릅니다.');return ack(old?.version??request.version,true)}
  if(old&&!scoped(old,c))throw new ApiError(404,'다른 캠페인의 수정안입니다.');
+ if(old?.provider?.attempt)throw new ApiError(409,'판매처 실행 이력이 있는 수정안은 공급자 결과 조회·되돌림 경로를 사용하세요.');
+ if(old?.provider&&['record_applied','record_rollback'].includes(action))throw new ApiError(409,'판매처 연결 수정안은 공급자 영수증으로만 확인하세요.');
+ if(old?.provider&&action==='approve'&&who.role!=='owner')throw new ApiError(403,'판매처 연결 수정안은 소유자만 승인합니다.');
  if(b.expectedVersion!==(old?.version??0))throw new ApiError(409,'수정안이 변경되었습니다. 입력을 보존하고 다시 불러오세요.');
  const at=stamp();let next:LandingRecord;
  if(action==='save_proposal'){

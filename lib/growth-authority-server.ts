@@ -27,7 +27,8 @@ export async function growthAuthorityView(who:Actor,c:Campaign){
  for(const row of [...authorities,...commitments])scoped(row,c);
  return {authorities,commitments,campaignVersion:c.version,canAuthorize:who.role==='owner'&&c.status!=='archived',canReserve:who.role!=='member'&&c.status!=='archived',mayExecute:false as const};
 }
-function actionFor(input:AuthorityInput,c:Campaign,mission:GrowthRecord<MissionInput>):AuthorityAction{
+type CommitmentMission={id:string;version:number;input:Pick<MissionInput,'channel'|'budget'|'lossLimit'>};
+function actionFor(input:AuthorityInput,c:Campaign,mission:CommitmentMission):AuthorityAction{
  return {id:mission.id,operationKey:`${mission.id}:v${mission.version}`,brandId:c.brandId,campaignId:c.id,accountId:input.accountId,channel:mission.input.channel,operation:mission.input.budget!==null&&mission.input.budget>0?'spend':'publish',amount:mission.input.budget,loss:mission.input.lossLimit,budget:'exploration',previousBudget:null,nextBudget:null,evidence:null};
 }
 function validateActiveGrant(input:AuthorityInput){
@@ -82,6 +83,14 @@ export async function prepareMissionCommitment(who:Actor,c:Campaign,b:Record<str
  if(mission.status!=='staged')throw new ApiError(409,'준비 요청한 미션만 예약할 수 있습니다.');
  const current=(await growthView(who.owner,c,true)).missions.find(row=>row.id===mission.id);
  if(!current||current.readiness.missing.length)throw new ApiError(409,'판매 미션의 상품·오퍼·근거 준비 상태를 다시 확인하세요.');
+ const prepared=await prepareScopedMissionCommitment(who,c,mission,authorityId,authority.version);return {...prepared,mission};
+}
+/** Caller validates the concrete single-SKU or bundle mission readiness under the same owner lock. */
+export async function prepareScopedMissionCommitment(who:Actor,c:Campaign,mission:CommitmentMission,authorityId:string,authorityVersion:number){
+ await requireGrowthRunning(who.owner);if(who.role==='member'||c.status==='archived')throw new ApiError(409,'현재 관리자·캠페인 준비 범위를 확인하세요.');
+ const authority=scoped(await readRecord<GrowthAuthorityRecord>(who.owner,'growth_authority',recordId(authorityId,'위임 ID')),c)!;
+ if(authority.version!==authorityVersion||authority.campaignVersion!==c.version)throw new ApiError(409,'위임·캠페인의 최신 판을 확인하세요.');
+ const missionId=recordId(mission.id,'미션 ID');
  const ledger=await rows<GrowthCommitmentRecord>(who.owner,'growth_commitment',OWNER_LEDGER_LIMIT);
  const action=actionFor(authority.input,c,mission),decision=evaluateAuthority(authority.input,action,ledger.map(row=>row.commitment));
  if(!decision.allowed)throw new ApiError(409,`예약을 막았습니다: ${decision.reasons.join(' ')}`);

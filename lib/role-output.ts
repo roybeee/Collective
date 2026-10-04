@@ -9,7 +9,7 @@ export const ROLE_OUTPUT_VERSION='role-output-v1';
 // 카피 팩 v2(A3-1): 콘텐츠 역할의 v1 섹션 4개에 구조화 팩(copyPack)을 더한 계약. 스위치 a3_copy_pack이 켜진 소유자의 콘텐츠 단독 실행만 쓴다(docs/COPY-PACK.ko.md).
 export const ROLE_OUTPUT_V2='role-output-v2';
 // 저장된 계약에만 붙는 실행 스냅샷: factRefs(입력에 쓴 확정·거절 사실), idLabels(입력 식별자→ref 라벨), claimGuard(저장 전 광고 표현 검사 목록).
-export type RoleOutputContract={version:string;role:string;contextTruncated?:boolean;sections:{id:string;title:string}[];copyPack?:typeof COPY_PACK_VERSION;factRefs?:{id:string;version:number;status?:'confirmed'|'rejected'}[];idLabels?:Record<string,string>;claimGuard?:{prohibited:string[];unverified:string[]}};
+export type RoleOutputContract={growthLessonReferences?:import('./growth-lesson-context').GrowthLessonReference[];growthLessonDigest?:string;version:string;role:string;contextTruncated?:boolean;sections:{id:string;title:string}[];copyPack?:typeof COPY_PACK_VERSION;factRefs?:{id:string;version:number;status?:'confirmed'|'rejected'}[];idLabels?:Record<string,string>;claimGuard?:{prohibited:string[];unverified:string[]}};
 // copyPack은 콘텐츠 역할에만 적용한다. 다른 역할이나 copyPack 없이 부르면 v1 계약이며 키 순서까지 이전과 같다(제출 바이트 동일).
 export function roleOutputContract(role:string,{copyPack=false}:{copyPack?:boolean}={}):RoleOutputContract {
  const sections=practices[role].outputs.map((title,index)=>({id:`output_${index+1}`,title}));

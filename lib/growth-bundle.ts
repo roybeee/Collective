@@ -1,5 +1,5 @@
 import {scanText} from './pii-scan';
-import type {CatalogInput,CatalogStock} from './growth-catalog';
+import {catalogReadiness,type CatalogInput,type CatalogStock} from './growth-catalog';
 export class GrowthBundleError extends Error {}
 export type BundleComponent={catalogId:string;catalogVersion:number;units:number};
 export type BundleInput={title:string;components:BundleComponent[];price:number|null;priceApproved:boolean;plannedQuantity:number;landingUrl:string;purchaseReason:string};
@@ -26,22 +26,29 @@ export function bundleAssessment(input:BundleInput,catalogs:BundleCatalog[],now=
  for(const {c,cat} of rows){
   if(!cat){missing.push(`${c.catalogId}: 현재 캠페인 상품이 아닙니다.`);continue}
   if(cat.version!==c.catalogVersion)missing.push(`${c.catalogId}: 상품이 변경되었습니다. 최신 판을 선택하세요.`);
+  missing.push(...[...cat.readiness.missing,...catalogReadiness(cat.input,now,cat.currentStock??undefined).missing].map(reason=>`${c.catalogId}: ${reason}`));
   if(!cat.input.rightsConfirmed)missing.push(`${c.catalogId}: 판매 권리를 확인하세요.`);
-  if(!cat.input.validUntil||Date.parse(cat.input.validUntil+'T23:59:59Z')<=now)missing.push(`${c.catalogId}: 상품 근거가 만료되었거나 없습니다.`);
   if(!cat.input.fulfillment||!cat.input.refunds)missing.push(`${c.catalogId}: 배송·반품 조건을 확인하세요.`);
  }
  const known=rows.every(r=>r.cat),bases=new Set(rows.map(r=>r.cat?.input.taxBasis));
  if(known&&(bases.size!==1||bases.has('unknown')))missing.push('구성 상품의 세금 기준이 같아야 합니다.');
  const costs=rows.map(({c,cat})=>cat&&cat.input.unitCost!==null&&cat.input.variableCost!==null?c.units*(cat.input.unitCost+cat.input.variableCost):null);
- const cost=known&&costs.every(x=>x!==null)&&bases.size===1&&!bases.has('unknown')?(costs as number[]).reduce((a,b)=>a+b,0):null;
+ const totalCost=known&&costs.every(x=>x!==null)&&bases.size===1&&!bases.has('unknown')?(costs as number[]).reduce((a,b)=>a+b,0):null;
+ const cost=totalCost!==null&&Number.isSafeInteger(totalCost)?totalCost:null;
  if(cost===null)missing.push('번들 원가를 계산할 수 없습니다(원가·변동비·세금 기준 확인).');
  const contribution=cost!==null&&input.price!==null&&Number.isSafeInteger(input.price-cost)?input.price-cost:null;
  if(input.price===null)missing.push('번들 가격을 입력하세요.');if(!input.priceApproved)missing.push('번들 가격 승인이 필요합니다.');
  if(contribution!==null&&contribution<=0)missing.push('번들 공헌이익이 양수여야 합니다.');
  const listPrice=rows.every(r=>r.cat?.input.price!==null&&r.cat)?rows.reduce((n,{c,cat})=>n+c.units*(cat!.input.price as number),0):null;
  const allocation=rows.map(({c,cat})=>{const s=cat?.currentStock;const status=!s||s.status!=='known'||s.available===null||s.unit!==cat?.input.stockUnit?'held' as const:'known' as const;return {catalogId:c.catalogId,unitsPerBundle:c.units,available:status==='known'?s!.available:null,maxBundles:status==='known'?Math.floor(s!.available!/c.units):null,required:c.units*input.plannedQuantity,status,unit:cat?.input.stockUnit??'unknown'}});
- const maxBundles=allocation.every(a=>a.maxBundles!==null)?Math.min(...allocation.map(a=>a.maxBundles as number)):null;
+ const stockAllocation=[...new Set(rows.map(r=>r.cat?.currentStock?.inventoryId).filter((id):id is string=>!!id))].map(inventoryId=>{
+  const shared=rows.filter(r=>r.cat?.currentStock?.inventoryId===inventoryId),first=shared[0].cat!,stock=first.currentStock!,unitsPerBundle=shared.reduce((n,r)=>n+r.c.units,0);
+  const consistent=shared.every(r=>r.cat?.input.sku===first.input.sku&&r.cat?.input.stockUnit===first.input.stockUnit&&r.cat?.currentStock?.inventoryVersion===stock.inventoryVersion&&r.cat?.currentStock?.available===stock.available);
+  const available=consistent&&allocation.filter(a=>shared.some(r=>r.c.catalogId===a.catalogId)).every(a=>a.status==='known')?stock.available:null;
+  return {inventoryId,inventoryVersion:stock.inventoryVersion,sku:first.input.sku,unit:first.input.stockUnit??'unknown',unitsPerBundle,available,maxBundles:available===null?null:Math.floor(available/unitsPerBundle),required:unitsPerBundle*input.plannedQuantity};
+ });
+ const maxBundles=allocation.every(a=>a.maxBundles!==null)&&stockAllocation.length&&stockAllocation.every(a=>a.maxBundles!==null)?Math.min(...stockAllocation.map(a=>a.maxBundles as number)):null;
  if(maxBundles===null)missing.push('구성 상품의 공유 재고를 확인하세요.');else if(maxBundles<input.plannedQuantity)missing.push(`계획 수량(${input.plannedQuantity})보다 만들 수 있는 번들(${maxBundles})이 적습니다.`);
  if(!input.title)missing.push('번들명을 입력하세요.');if(!input.landingUrl)missing.push('구매 링크를 입력하세요.');if(!input.purchaseReason)missing.push('구매 이유를 입력하세요.');
- return {missing:[...new Set(missing)],cost,contribution,listPrice,discountFromList:listPrice!==null&&input.price!==null?listPrice-input.price:null,maxBundles,allocation,mayExecute:false as const,mayReserve:false as const};
+ return {missing:[...new Set(missing)],cost,contribution,listPrice,discountFromList:listPrice!==null&&input.price!==null?listPrice-input.price:null,maxBundles,allocation,stockAllocation,mayExecute:false as const,mayReserve:false as const};
 }

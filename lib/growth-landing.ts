@@ -6,7 +6,7 @@ export type LandingSection={kind:typeof landingSectionKinds[number];before:strin
 export type LandingProposalInput={title:string;offerId:string;offerVersion:number;journeyId:string;journeyVersion:number;landingUrl:string;rationale:string;rollbackPlan:string;sections:LandingSection[]};
 export type LandingStatus='draft'|'approved'|'applied'|'rolled_back'|'withdrawn';
 export type LandingSnapshot={offerVersion:number;catalogId:string;catalogVersion:number;offerPrice:number|null;priceApproved:boolean;facts:FactRef[];journeyVersion:number|null};
-export type LandingReceipt={method:'manual_attested';at:string;evidenceRef:string;observedUrl:string;recordedAt:string;recordedBy:string;reason:string};
+export type LandingReceipt={method:'manual_attested'|'provider_verified';at:string;evidenceRef:string;observedUrl:string;recordedAt:string;recordedBy:string;reason:string};
 const control=/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/,secret=/(?:bearer\s+\S+|(?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret)\s*[:=]\s*\S+|\bsk-(?:proj-)?[\w-]{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i;
 function text(value:unknown,field:string,max:number,required=false):string{
  if(value===undefined||value==='')return required?fail(`${field}을(를) 입력하세요.`):'';

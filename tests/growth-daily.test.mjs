@@ -12,6 +12,7 @@ await flags.setFeatureFlag(owner,{flag:'growth_daily_loop',enabled:true},{id:own
 check(await flags.isEnabled(owner,'growth_daily_loop'),'flag enabled');
 let r=await daily.runGrowthDaily(owner,'worker',now);check(r.status==='processed'&&r.campaigns===1,'one active store campaign processed (archived and storeless skipped)');
 const row=JSON.parse(sql.prepare("SELECT data FROM records WHERE kind='growth_daily_run'").get().data),camp=row.campaigns[0];
+check(camp.drafts>0&&sql.prepare("SELECT COUNT(*) n FROM records WHERE kind='growth_need'").get().n===camp.drafts,'daily loop creates review drafts from detected signals');
 check(row.day===daily.kstDay(now)&&row.status==='completed'&&camp.detection.created>=1,'detections created by daily loop');
 const kinds=camp.agenda.map(a=>a.kind);check(kinds.includes('signal_new')&&kinds.includes('reservation_unreconciled')&&kinds.includes('mission_overdue'),'agenda includes new signals, stale reservation, overdue mission');
 check(sql.prepare("SELECT COUNT(*) n FROM records WHERE kind='growth_detected_signal' AND json_extract(data,'$.detectedBy')='daily_loop'").get().n>=1,'signals attributed to daily loop');

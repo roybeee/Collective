@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';import {randomUUID} from 'node:crypto';i
 const {load,sql}=testRuntime(async()=>{throw Error('external forbidden')});
 const s=await load('lib/server.ts'),route=await load('app/api/growth/experiments/route.ts'),growth=await load('app/api/growth/route.ts'),pure=await load('lib/growth-experiment.ts');let passed=0;const check=(v,n)=>{assert.ok(v,n);passed++};
 const owner='owner',headers={'oai-authenticated-user-id':owner,origin:'https://agency.test'},c={id:'c',brandId:'b',storeId:'store',version:1,status:'active'};
-const put=(kind,id,data,parent='')=>s.recordStatement(owner,kind,id,data,parent).run();const H=3600000,now=Date.now(),iso=t=>new Date(t).toISOString(),day=iso(now).slice(0,10);
+// Orders must remain inside the final window even during the first UTC minute.
+const put=(kind,id,data,parent='')=>s.recordStatement(owner,kind,id,data,parent).run();const H=3600000,now=Date.now(),iso=t=>new Date(t).toISOString(),day=iso(now-60000).slice(0,10);
 await put('campaign','c',c);await put('store','store',{id:'store',brandId:'b',name:'합성 매장'},'b');
 const g=async(action,id,input)=>{const r=await growth.POST(new Request('https://agency.test/api/growth',{method:'POST',headers,body:JSON.stringify({action,id,input,campaignId:'c',campaignVersion:1,expectedVersion:0})}));assert.equal(r.status,200,JSON.stringify(await r.clone().json()))};
 await g('save_catalog','cat',{sku:'EXP-SKU',title:'상품',price:10000,unitCost:3000,variableCost:1000,stock:0,stockUnit:'piece',currency:'KRW',taxBasis:'included',fulfillment:'배송',refunds:'반품',rightsConfirmed:true,factIds:[],validUntil:iso(now+30*86400000).slice(0,10)});

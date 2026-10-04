@@ -1,3 +1,5 @@
+import {bundleOrderMoneyRows} from './growth-bundle-order-bridge';
+import {assertSettlementCashIdentity} from './growth-cash-server';
 import {assertGrowthPublicationRelease} from './growth-publication-server';
 import {buildOperationReview} from './growth-operation-review';
 import type {ExecutionIntent} from './growth-execution-server';
@@ -8,7 +10,7 @@ import type {Campaign} from './agency';
 import type {Store} from './store-marketing';
 import type {StoreOrder} from './store-operations';
 import {parseInventoryInput,projectInventory,transitionInventory,type InventoryInput,type InventoryEvent} from './growth-inventory';
-import {parseOrderLineInput,validateOrderAllocations,type OrderLineInput} from './growth-order-bridge';
+import {parseOrderLineInput,validateOrderAllocations,validateOrderMoneyAllocations,type OrderLineInput} from './growth-order-bridge';
 import {growthText,type MissionInput} from './growth-mission';
 import type {GrowthRecord} from './growth-workspace-server';
 import type {OfferInput,CatalogInput} from './growth-catalog';
@@ -52,7 +54,7 @@ export async function growthOperationsView(who:Actor,c:Campaign){
 }
 function insert(who:Actor,kind:string,row:{id:string},parent:string){return database().prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').bind(`${who.owner}:${kind}:${row.id}`,who.owner,kind,parent,JSON.stringify(row),stamp())}
 type EventFields=Pick<InventoryEvent,'kind'|'quantity'|'reservationId'|'missionId'|'orderId'|'observedAt'|'evidenceRef'|'safeRelease'|'returnAccepted'|'disposition'|'restock'>;
-async function prepareEvent(who:Actor,c:Campaign,item:InventoryRow,eventId:string,requestDigest:string,fields:EventFields,expectedVersion?:unknown){
+export async function prepareEvent(who:Actor,c:Campaign,item:InventoryRow,eventId:string,requestDigest:string,fields:EventFields,expectedVersion?:unknown){
  const events=await stockEvents(who.owner,item),existing=events.find(e=>e.id===eventId);
  if(existing){if(existing.requestDigest!==requestDigest)throw new ApiError(409,'같은 운영 사건 ID의 내용이 다릅니다.');return {duplicate:true,writes:[],projection:projectInventory(item.input,events)}}
  if(expectedVersion!==undefined&&expectedVersion!==item.version)throw new ApiError(409,'재고가 변경되었습니다. 최신 수량을 다시 확인하세요.');
@@ -95,7 +97,8 @@ async function linkOrder(who:Actor,c:Campaign,b:Record<string,unknown>){
  const context=old?{order:await orderFor(who.owner,c,input.orderId),inventory:await inventoryFor(who.owner,c,input.inventoryId),mission:{input:old.snapshot.mission},offer:{input:old.snapshot.offer},catalog:{input:old.snapshot.catalog}}:await lineContext(who,c,input),lines=await storeLines(who.owner,c);
  if(context.order.version!==input.orderVersion)throw new ApiError(409,'최신 주문 판을 확인하세요.');
  if(!old&&lines.length>=1000)throw new ApiError(409,'지점별 품목 연결 한도에 도달했습니다.');
- const allocation=validateOrderAllocations(context.order,[...lines.filter(l=>l.id!==key&&l.input.orderId===input.orderId).map(l=>l.input),input]);
+ const bundleLines=await bundleOrderMoneyRows(who.owner,c);
+ const allocation=validateOrderMoneyAllocations(context.order,[...lines.filter(l=>l.id!==key&&l.input.orderId===input.orderId).map(l=>l.input),...bundleLines.filter(l=>l.input.orderId===input.orderId).map(l=>l.input),input]);
  if(allocation.status==='invalid')throw new ApiError(409,allocation.reasons.join(' '));
  const record:LineRow={id:key,campaignId:c.id,brandId:c.brandId,storeId:c.storeId!,version:(old?.version??0)+1,input,requestDigest:digest,updatedAt:stamp(),updatedBy:who.id,snapshot:{mission:context.mission.input,offer:context.offer.input,catalog:context.catalog.input}};
  const writes=[recordStatement(who.owner,'growth_order_line',key,record,c.storeId!),insert(who,'growth_order_line_history',{...record,id:`${key}:v${record.version}`},c.id)];
@@ -158,6 +161,7 @@ async function saveSettlement(who:Actor,c:Campaign,b:Record<string,unknown>){
  for(const row of all)scope(row,c);
  if(old){if(old.campaignId!==c.id)throw new ApiError(409,'다른 캠페인의 정산 사건입니다.');if(old.requestDigest===digest)return {...await growthOperationsView(who,c),duplicate:true};}
  if(input.revision!==(old?.input.revision??0)+1)throw new ApiError(409,'최신 정산 증빙 판을 확인하세요.');
+ await assertSettlementCashIdentity(who.owner,input,key);
  const order=await orderFor(who.owner,c,input.orderId);
  if(order.version!==input.orderVersion)throw new ApiError(409,'최신 주문을 확인해 정산 증빙을 연결하세요.');
  if(!old&&all.length>=1000)throw new ApiError(409,'정산 사건 한도에 도달했습니다.');

@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import {createHmac,randomUUID} from 'node:crypto';
+import {testRuntime} from './helpers/runtime.mjs';
+const secret='synthetic-worker-key-0000000000000000';let calls=0,mode='valid',price=100;
+const {load,sql}=testRuntime(async(url,o)=>{calls++;assert.equal(new URL(url).pathname,'/collective/v1/catalog/read');const b=JSON.parse(o.body),snapshot={tenantId:b.tenantId,storeId:b.storeId,productId:b.productId,state:'active',title:'상품',price,sellable:4,unit:'piece',observedAt:new Date().toISOString()},snapshotJson=JSON.stringify(snapshot),signature=createHmac('sha256',secret).update(`${o.headers['x-collective-timestamp']}\n${o.headers['x-collective-nonce']}\n200\n/collective/v1/catalog/read\n${snapshotJson}`).digest('hex');if(mode==='replace-lease')sql.prepare("UPDATE mutation_locks SET token='replacement' WHERE owner=?").run(owner);
+if(mode==='expire-lease')sql.prepare("UPDATE mutation_locks SET expires_at=0 WHERE owner=?").run(owner);
+if(mode==='delete-lease')sql.prepare("DELETE FROM mutation_locks WHERE owner=?").run(owner);
+if(mode==='source-race'||mode==='replace-lease')await put('growth_provider_catalog_source','a',{...oldSource,version:999});
+if(mode==='binding-race')await put('growth_provider_catalog_binding','a',{...binding,version:2,productId:'mpd::2'});
+ return Response.json({snapshot,snapshotJson,signature:mode==='invalid'?'0'.repeat(64):signature});});
+const s=await load('lib/server.ts'),crypt=await load('lib/credential-crypto-server.ts'),catalog=await load('lib/growth-provider-catalog-server.ts');
+const owner='owner',c={id:'c',brandId:'b',storeId:'s',status:'active',version:1},put=(kind,id,v,parent='s')=>s.recordStatement(owner,kind,id,v,parent).run();
+await put('campaign','c',c);await put('store','s',{id:'s',brandId:'b',status:'active'},'b');
+const connection={id:'growth_landing_provider:s',channel:'growth_landing_provider',brandId:'b',storeId:'s',baseUrl:'https://mapdal.kr',tenantId:'tenant',providerStoreId:'shop',secret:await crypt.sealRecordSecret(owner,'channel_credential','growth_landing_provider:s',secret),enabled:true,version:1};await put('channel_credential',connection.id,connection);
+await put('growth_inventory_item','inv',{id:'inv',brandId:'b',storeId:'s',version:0,input:{sku:'SKU',locationId:'s',unit:'piece',onHand:10}});
+const binding={id:'a',brandId:'b',storeId:'s',campaignId:'c',sku:'SKU',inventoryId:'inv',catalogId:'cat',catalogVersion:1,productId:'mpd::1',connectionVersion:1,version:1,approvedDigest:'old'};await put('growth_provider_catalog_binding','a',binding);
+let passed=0;const check=(v,m)=>{assert.ok(v,m);passed++};
+const oldSource={id:'a',brandId:'b',storeId:'s',campaignId:'c',version:7,status:'failed',snapshot:null,digest:null,connectionVersion:1,checkedAt:new Date().toISOString(),inventoryDigest:null};
+for(const testMode of ['replace-lease','expire-lease','delete-lease','source-race','binding-race']){
+ mode=testMode;sql.prepare('DELETE FROM mutation_locks WHERE owner=?').run(owner);
+ await put('growth_provider_catalog_binding','a',binding);await put('growth_provider_catalog_source','a',oldSource);
+ const token=await s.acquireLock(owner),requestId=randomUUID();
+ await assert.rejects(catalog.saveProviderCatalog({owner,id:owner,role:'owner',email:null},c,{action:'pull',id:'a',expectedVersion:1,campaignVersion:1,requestId},{leaseToken:token}),e=>e.status===409);passed++;
+ check((await s.readRecord(owner,'growth_provider_catalog_source','a')).version===(['replace-lease','source-race'].includes(mode)?999:7),mode+' preserves current source');
+ check((await s.readRecord(owner,'growth_provider_catalog_binding','a')).version===(mode==='binding-race'?2:1),mode+' preserves current binding');
+ check(sql.prepare("SELECT count(*) n FROM records WHERE kind IN ('growth_provider_catalog_history','growth_provider_catalog_request')").get().n===0,mode+' writes no orphan history/request');
+}
+await assert.rejects(catalog.saveProviderCatalog({owner,id:owner,role:'owner',email:null},c,{action:'pull',id:'a',expectedVersion:1,campaignVersion:1,requestId:randomUUID()}),e=>e.status===409);passed++;
+check(calls===5,'missing explicit lease cannot borrow another owners lock or call provider');
+console.log(JSON.stringify({passed,sqlite:'real',provider:'mocked'}));

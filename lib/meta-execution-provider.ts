@@ -37,3 +37,11 @@ export async function writeExecutionStatus(token:string,id:string,status:'ACTIVE
 }
 
 export async function verifyExecutionCurrency(token:string,s?:Pick<VerifiedMetaAdBundleScope,'dailyBudgetKrw'|'graphDailyBudget'>){const v=await get(token,'me',{fields:'currency'}),c=object(v.currency);match(c.user_currency==='KRW'&&typeof c.currency_offset==='number'&&Number.isSafeInteger(c.currency_offset)&&c.currency_offset>0);const offset=c.currency_offset as number;if(s)match(s.graphDailyBudget===krwGraphBudget(s.dailyBudgetKrw,offset));return {currency:'KRW' as const,offset};}
+
+/** One absolute daily-budget update. Graph offers no expected-budget CAS; callers journal and read back. */
+export async function writeExecutionDailyBudget(token:string,adsetId:string,graphDailyBudget:string){
+ if(!/^[1-9][0-9]{0,14}$/.test(graphDailyBudget))throw new MetaExecutionError('mismatch','검증된 Graph 일예산이 필요합니다.');
+ const form=new URL('https://graph.facebook.com').searchParams;form.set('daily_budget',graphDailyBudget);
+ const response=await fetch(`https://graph.facebook.com/${META_READ_API_VERSION}/${metaId(adsetId,'광고세트')}`,{method:'POST',redirect:'manual',headers:{Authorization:'Bearer '+tokenValue(token),'content-type':'application/x-www-form-urlencoded'},body:form.toString(),signal:AbortSignal.timeout(4000)}),value=object(await readBoundedJson(response,100000));
+ if(!response.ok||value.error||value.success!==true)throw new MetaExecutionError('unknown','일예산 변경 결과를 확인하지 못했습니다. 재전송하지 말고 조회 대사하세요.');
+}

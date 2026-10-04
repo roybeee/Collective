@@ -108,7 +108,7 @@ export function ProductResearchPanel({initialTab,onTabChange}:{initialTab?:Resea
    <TabsContent value="candidates">{detail?(product?<CandidateDetail key={product.id} view={view} product={product} act={act} busy={busy} onBack={()=>closeDetail()}/>:<div className="load-error" role="alert"><span>이 후보를 찾지 못했습니다. 다시 계산하면서 합쳐졌거나 지워졌을 수 있습니다.</span><Button variant="outline" size="sm" onClick={()=>closeDetail()}>후보 목록으로</Button></div>):<CandidatesTab view={view} act={act} busy={busy} onOpen={openDetail} onSources={()=>pickTab('sources')}/>}</TabsContent>
    <TabsContent value="committee"><CommitteeTab view={view} act={act} busy={busy} onOpen={openDetail}/></TabsContent>
    <TabsContent value="report"><ReportTab view={view} act={act} busy={busy} onOpen={openDetail}/></TabsContent>
-   <TabsContent value="sources"><SourcesTab view={view} act={act} busy={busy} onCandidates={()=>pickTab('candidates')}/></TabsContent>
+   <TabsContent value="sources"><SourcesTab view={view} act={act} busy={busy} onCandidates={()=>pickTab('candidates')} onRefresh={load}/></TabsContent>
   </Tabs>
  </div>;
 }

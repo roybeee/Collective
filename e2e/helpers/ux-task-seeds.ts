@@ -1,14 +1,7 @@
+import {seedCanonicalExpansion} from './canonical-expansion';
 import {expect,type Browser,type TestInfo} from '@playwright/test';
-import {execFileSync} from 'node:child_process';
-import {mkdtempSync,writeFileSync,rmSync} from 'node:fs';
-import {tmpdir} from 'node:os';
-import {join} from 'node:path';
 // 핵심 8과제 준비 데이터(e2e/ux-tasks.spec.ts 마우스 하네스와 e2e/ux-keyboard-tasks.spec.ts 키보드 하네스가 함께 쓴다). 측정 밖에서 API·로컬 D1 fixture로 넣는다.
 // Real local D1/API. 인증 헤더 mocked. 외부 호출·광고비 지출 없음.
-function fixture(owner:string,kind:string,id:string,parent:string,data:unknown){
- const quote=(value:string)=>`'${value.replaceAll("'","''")}'`,folder=mkdtempSync(join(tmpdir(),'collective-tasks-'));
- try{const path=join(folder,'fixture.sql');writeFileSync(path,`INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(${[`${owner}:${kind}:${id}`,owner,kind,parent,JSON.stringify(data),new Date().toISOString()].map(quote).join(',')}) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at;`);execFileSync(process.execPath,['--import','./scripts/sites-env.mjs','./node_modules/wrangler/bin/wrangler.js','d1','execute','DB','--config','dist/server/wrangler.json','--local','--persist-to','e2e/.state','--file',path],{stdio:'pipe'});}finally{rmSync(folder,{recursive:true,force:true})}
-}
 // 과업마다 새 소유자·새 브라우저 문맥. prefix로 하네스별 소유자를 나눈다.
 export async function taskContext(browser:Browser,info:TestInfo,prefix:string,n:number){
  const owner=`${prefix}-${n}-${info.project.name}-${Date.now()}`,context=await browser.newContext({baseURL:info.project.use.baseURL,viewport:info.project.use.viewport,extraHTTPHeaders:{'oai-authenticated-user-id':owner}}),page=await context.newPage();
@@ -65,9 +58,7 @@ export async function seedTask4({owner,post}:Seed,project:string){
  await save('save_mission','x-mission',{title:'미션',offerId:'x-offer',offerVersion:1,assignee:'담당',deadline:day,nextAction:'판매',channel:'storefront',budget:1000,lossLimit:1000,stopRule:'한도',fulfillmentOwner:'배송'});
  await post('/api/growth/operations',{action:'create_inventory',campaignId,campaignVersion:1,input:{sku:'X-SKU',locationId:storeId,unit:'piece',onHand:50},observedAt:before,evidenceRef:'stock'});
  await post('/api/growth/authority',{action:'save_authority',id:'x-auth',campaignId,campaignVersion:1,expectedVersion:0,sign:true,input:{accountId:'acct',channel:'storefront',status:'active',maxTier:'T3',allowedActions:['publish','spend'],startsAt:before,expiresAt:after,periodStart:before,periodEnd:after,totalCap:10000,dayCap:10000,weekCap:10000,lossCap:10000}});
- const digest='a'.repeat(64),now=new Date().toISOString();
- fixture(owner,'growth_experiment','x-exp',campaignId,{id:'x-exp',brandId:'ofd',campaignId,storeId,version:2,status:'registered',input:{title:'실험',mode:'confirm',aa:false,missionId:'x-mission',missionVersion:1,offerId:'x-offer',offerVersion:1,channel:'storefront',interventionRefs:[{kind:'offer',id:'x-offer',version:1}],minEffect:0.05,metric:'paid_orders',hypothesis:'가설',intervention:'개입',assignmentUnit:'pseudonymous_visitor',treatmentShare:0.5,lowerBound:0,upperBound:1,minSamplePerArm:10,startAt:before,endAt:before,maturityDays:0,stopRule:'중단'},seed:'s',registration:{digest,at:before,by:owner,refs:[]}});
- fixture(owner,'growth_experiment_result','x-exp:1',campaignId,{id:'x-exp:1',designId:'x-exp',campaignId,brandId:'ofd',analysisNumber:1,designDigest:digest,inputDigest:'i1',analysis:{status:'supported',analysisVersion:'growth_sales_v1',reasons:['조건부 개선 근거'],assigned:{control:20,treatment:20},analysed:{control:20,treatment:20},excluded:{notExposed:0,trackingIncomplete:0,contaminated:0,unknownValue:0},srm:{chi2:0,p:1,mismatch:false},statistics:{status:'supported',method:'hoeffding_union_alpha_spending_v1',alpha:0.025,controlSample:20,treatmentSample:20,controlMean:0.1,treatmentMean:0.4,difference:0.3,interval:[0.1,0.5],reason:'조건부 개선 근거'},descriptive:{controlMean:0.1,treatmentMean:0.4},causalScope:'storefront 등록 범위'},lineage:[],recordedAt:now,recordedBy:owner});
+ await seedCanonicalExpansion({owner,campaignId,storeId,before,post});
  // 제안은 관리자가 API로 올린 상태로 둔다. 과업은 소유자의 승인·예약이다.
  const id='expansion-task4';
  await post('/api/growth/expansion',{action:'propose',id,expectedVersion:0,campaignId,campaignVersion:1,requestId:crypto.randomUUID(),input:{missionId:'x-mission',missionVersion:1,experimentId:'x-exp',analysisNumber:1,nextBudget:1200,addQuantity:10,rationale:'확증 개선'}});

@@ -1,13 +1,15 @@
+import type {ExperimentIngestState} from './growth-experiment-events-server';
 import type {Campaign} from './agency';
 import type {ExperimentArm} from './meta-experiment';
 import {growthView} from './growth-workspace-server';
 import {analyseExperiment,assignUnit,parseExperimentDesign,parseUnitKey,GrowthExperimentError,type ExperimentDesignInput,type GrowthExperimentAnalysis} from './growth-experiment';
+import type {StorefrontOrderLink} from './storefront-orders';
 import {storefrontDigest} from './storefront-orders';
 import {ApiError,database,readRecord,recordStatement,stamp,str,type Actor} from './server';
 const kinds={design:'growth_experiment',history:'growth_experiment_history',unit:'growth_experiment_unit',result:'growth_experiment_result',request:'growth_experiment_request'} as const;
 export type GrowthExperimentRecord={id:string;brandId:string;campaignId:string;storeId:string;version:number;status:'draft'|'registered'|'cancelled';input:ExperimentDesignInput;seed:string;registration:{digest:string;at:string;by:string;refs:{kind:string;id:string;version:number}[]}|null;createdAt:string;updatedAt:string;updatedBy:string};
-export type GrowthExperimentUnit={id:string;designId:string;campaignId:string;brandId:string;unitHash:string;arm:ExperimentArm;assignedAt:string;version:number;observation:{exposed:boolean;trackingComplete:boolean;contaminated:boolean;orderIds:string[];evidenceRef:string;recordedAt:string;recordedBy:string}|null};
-export type GrowthExperimentResult={id:string;designId:string;campaignId:string;brandId:string;analysisNumber:number;designDigest:string;inputDigest:string;analysis:GrowthExperimentAnalysis;lineage:{unitHash:string;version:number;orders:{id:string;version:number}[]}[];recordedAt:string;recordedBy:string};
+export type GrowthExperimentUnit={id:string;designId:string;campaignId:string;brandId:string;unitHash:string;arm:ExperimentArm;assignedAt:string;version:number;ingest?:ExperimentIngestState;observation:{exposed:boolean;trackingComplete:boolean;contaminated:boolean;orderIds:string[];evidenceRef:string;recordedAt:string;recordedBy:string}|null};
+export type GrowthExperimentResult={id:string;designId:string;campaignId:string;brandId:string;analysisNumber:number;designDigest:string;inputDigest:string;analysis:GrowthExperimentAnalysis;lineage:{unitHash:string;version:number;source?:'signed_storefront'|'operator';orders:{id:string;version:number}[]}[];recordedAt:string;recordedBy:string};
 type Order={id:string;storeId:string;campaignId?:string;orderDate:string;status:string;paidAmount:number;refundAmount:number;costs:Record<string,number|null>;version:number};
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 async function optional<T>(owner:string,kind:string,id:string){try{return await readRecord<T>(owner,kind,id)}catch(e){if(e instanceof ApiError&&e.status===404)return null;throw e}}
@@ -27,10 +29,16 @@ function unitValue(d:ExperimentDesignInput,orders:Order[]){
 async function computeAnalysis(owner:string,c:Campaign,e:GrowthExperimentRecord,analysisNumber:number,now=Date.now()){
  const list=await units(owner,c,e.id),orderIds=[...new Set(list.flatMap(u=>u.observation?.orderIds??[]))],orders=new Map<string,Order|null>();
  for(const id of orderIds)orders.set(id,await optional<Order>(owner,'store_order',id));
- const analysisUnits=list.map(u=>{const os=(u.observation?.orderIds??[]).map(id=>orders.get(id)).filter((o):o is Order=>!!o&&o.storeId===e.storeId);const missing=(u.observation?.orderIds.length??0)!==os.length;return {arm:u.arm,exposed:!!u.observation?.exposed,trackingComplete:!!u.observation?.trackingComplete&&!missing,contaminated:!!u.observation?.contaminated,value:u.observation?unitValue(e.input,os):null}});
+ const canonical=await Promise.all(list.map(async u=>{
+  const links=u.ingest?await Promise.all(u.ingest.orderLinks.map(ref=>optional<StorefrontOrderLink>(owner,'storefront_order_link',ref.id))):[];
+  const os=(u.observation?.orderIds??[]).map(id=>orders.get(id)).filter((o):o is Order=>!!o&&o.storeId===e.storeId&&(!o.campaignId||o.campaignId===c.id)&&o.orderDate>=e.input.startAt.slice(0,10)&&o.orderDate<=e.input.endAt.slice(0,10));
+  const valid=!u.ingest||os.every(o=>links.some(l=>l&&l.orderId===o.id&&l.orderVersion===o.version&&l.brandId===c.brandId&&l.storeId===e.storeId&&l.sourceKey===u.ingest!.sourceKey));
+  return {os,valid,links:links.map(l=>l?{id:l.id,orderId:l.orderId,orderVersion:l.orderVersion,revision:l.revision,brandId:l.brandId,storeId:l.storeId,sourceKey:l.sourceKey}:null)};
+ }));
+ const analysisUnits=list.map((u,i)=>{const {os,valid}=canonical[i],missing=(u.observation?.orderIds.length??0)!==os.length;return {arm:u.arm,exposed:!!u.observation?.exposed,trackingComplete:!!u.observation?.trackingComplete&&!missing&&valid,contaminated:!!u.observation?.contaminated,value:u.observation?unitValue(e.input,os):null}});
  const analysis=analyseExperiment(e.input,analysisUnits,now,analysisNumber);
- const lineage=list.map(u=>({unitHash:u.unitHash,version:u.version,orders:(u.observation?.orderIds??[]).map(id=>({id,version:orders.get(id)?.version??0}))}));
- return {analysis,lineage,inputDigest:await storefrontDigest({lineage,orders:[...orders.entries()].map(([id,o])=>[id,o?{paid:o.paidAmount,refund:o.refundAmount,costs:o.costs,status:o.status,version:o.version}:null])})};
+ const lineage=list.map(u=>({unitHash:u.unitHash,version:u.version,source:u.ingest?'signed_storefront' as const:'operator' as const,orders:(u.observation?.orderIds??[]).map(id=>({id,version:orders.get(id)?.version??0}))}));
+ return {analysis,lineage,inputDigest:await storefrontDigest({lineage,canonicalLinks:canonical.map(x=>({valid:x.valid,links:x.links})),orders:[...orders.entries()].map(([id,o])=>[id,o?{paid:o.paidAmount,refund:o.refundAmount,costs:o.costs,status:o.status,version:o.version}:null])})};
 }
 export async function growthExperimentView(who:Actor,c:Campaign){
  const [designs,results]=await Promise.all([rows<GrowthExperimentRecord>(who.owner,c,kinds.design,200),rows<GrowthExperimentResult>(who.owner,c,kinds.result,2000)]);
@@ -38,18 +46,33 @@ export async function growthExperimentView(who:Actor,c:Campaign){
  const experiments=await Promise.all(own.map(async e=>{
   const list=e.status==='registered'?await units(who.owner,c,e.id):[],mine=results.filter(r=>r.designId===e.id&&scoped(r,c)).sort((a,b)=>a.analysisNumber-b.analysisNumber);
   const preview=e.status==='registered'?(await computeAnalysis(who.owner,c,e,mine.length+1)).analysis:null;
-  return {...publicDesign(e),units:{control:list.filter(u=>u.arm==='control').length,treatment:list.filter(u=>u.arm==='treatment').length,observed:list.filter(u=>u.observation).length},unitRows:list.slice(0,500).map(u=>({unitHash:u.unitHash,arm:u.arm,version:u.version,observed:!!u.observation,orders:u.observation?.orderIds.length??0})),preview:preview?{status:preview.status,reasons:preview.reasons,analysed:preview.analysed,excluded:preview.excluded,srm:preview.srm}:null,results:mine,latest:mine.at(-1)??null};
+  return {...publicDesign(e),units:{control:list.filter(u=>u.arm==='control').length,treatment:list.filter(u=>u.arm==='treatment').length,observed:list.filter(u=>u.observation).length,signed:list.filter(u=>u.ingest).length,manual:list.filter(u=>!u.ingest).length},unitRows:list.slice(0,500).map(u=>({unitHash:u.unitHash,arm:u.arm,version:u.version,observed:!!u.observation,source:u.ingest?'signed_storefront' as const:'operator' as const,orders:u.observation?.orderIds.length??0})),preview:preview?{status:preview.status,reasons:preview.reasons,analysed:preview.analysed,excluded:preview.excluded,srm:preview.srm}:null,results:mine,latest:mine.at(-1)??null};
  }));
  return {campaignId:c.id,campaignVersion:c.version,experiments,canEdit:who.role!=='member'&&c.status!=='archived',mayExecute:false as const,mayScale:false as const};
 }
 export type GrowthExperimentView=Awaited<ReturnType<typeof growthExperimentView>>;
-async function checkRefs(owner:string,c:Campaign,d:ExperimentDesignInput){
+/** Read-only canonical basis for collecting lesson observations; never starts an analysis or promotes a method. */
+export async function readExperimentOutcomeBasis(owner:string,c:Campaign,id:string,now=Date.now()){
+ const e=await optional<GrowthExperimentRecord>(owner,kinds.design,id);
+ if(!e||!scoped(e,c)||e.storeId!==c.storeId||e.status!=='registered'||!e.registration)throw new ApiError(409,'현재 등록 실험이 아닙니다.');
+ if(e.registration.digest!==await storefrontDigest({id:e.id,input:e.input}))throw new ApiError(409,'등록 실험 근거가 바뀌었습니다.');
+ if(await storefrontDigest(e.registration.refs)!==await storefrontDigest(e.input.interventionRefs))throw new ApiError(409,'등록 개입 근거가 바뀌었습니다.');
+ await checkExperimentRefs(owner,c,e.input);
+ const view=await growthView(owner,c,true),mission=view.missions.find(x=>x.id===e.input.missionId),offer=view.offers.find(x=>x.id===e.input.offerId),catalog=view.catalogs.find(x=>x.id===offer?.input.catalogId);
+ if(!mission||!offer||!catalog||[mission,offer,catalog].some(x=>x.campaignVersion!==c.version)||!catalog.input.validUntil||Date.parse(catalog.input.validUntil+'T23:59:59Z')<now||catalog.factRefs?.some(ref=>!view.facts.some(f=>f.id===ref.id&&f.version===ref.version)))throw new ApiError(409,'실험 상품·캠페인·확정 사실 근거를 재검토하세요.');
+ const results=(await rows<GrowthExperimentResult>(owner,c,kinds.result,2000)).filter(r=>scoped(r,c)&&r.designId===id).sort((a,b)=>a.analysisNumber-b.analysisNumber);
+ const latest=results.at(-1)??null,current=await computeAnalysis(owner,c,e,latest?.analysisNumber??1,now);
+ return {registrationDigest:e.registration.digest,inputDigest:current.inputDigest,latest:latest?{id:latest.id,number:latest.analysisNumber,digest:await storefrontDigest(latest),status:latest.analysis.status}:null,
+  current:!!latest&&latest.designDigest===e.registration.digest&&latest.inputDigest===current.inputDigest&&latest.analysis.status===current.analysis.status};
+}
+export async function checkExperimentRefs(owner:string,c:Campaign,d:ExperimentDesignInput){
  const view=await growthView(owner,c,true),mission=view.missions.find(m=>m.id===d.missionId),offer=view.offers.find(o=>o.id===d.offerId);
  if(!mission||mission.version!==d.missionVersion)throw new ApiError(409,'현재 판의 판매 미션을 연결하세요.');
- if(!offer||offer.version!==d.offerVersion||mission.input.offerId!==d.offerId)throw new ApiError(409,'미션에 연결된 현재 판의 오퍼를 선택하세요.');
+ if(!offer||offer.version!==d.offerVersion||mission.input.offerId!==d.offerId||mission.input.offerVersion!==d.offerVersion)throw new ApiError(409,'미션에 연결된 현재 판의 오퍼를 선택하세요.');
+ const catalog=view.catalogs.find(x=>x.id===offer.input.catalogId);if(!catalog||catalog.version!==offer.input.catalogVersion)throw new ApiError(409,'오퍼에 연결된 상품의 최신 판을 확인하세요.');
  if(mission.input.channel!==d.channel)throw new ApiError(409,'실험 채널은 미션 채널과 같아야 합니다.');
  const kindOf={landing_revision:'growth_landing_revision',demand_step:'growth_demand',publication_link:'growth_publication_link',offer:'growth_offer',manual:''} as const;
- for(const r of d.interventionRefs){if(r.kind==='manual')continue;const x=await optional<{brandId:string;campaignId:string;version:number}>(owner,kindOf[r.kind],r.id);if(!x||(r.kind!=='offer'&&!scoped(x,c))||x.version!==r.version)throw new ApiError(409,`개입 근거 ${r.kind}:${r.id}의 현재 판을 확인하세요.`)}
+ for(const r of d.interventionRefs){if(r.kind==='manual')continue;const x=await optional<{brandId:string;campaignId:string;version:number}>(owner,kindOf[r.kind],r.id);if(!x||!scoped(x,c)||x.version!==r.version)throw new ApiError(409,`개입 근거 ${r.kind}:${r.id}의 현재 판을 확인하세요.`)}
  if(d.mode==='confirm'&&!d.interventionRefs.length&&!d.aa)throw new ApiError(409,'확증 실험은 고정한 개입 근거가 필요합니다.');
 }
 export async function saveGrowthExperiment(who:Actor,c:Campaign,b:Record<string,unknown>){
@@ -74,7 +97,7 @@ export async function saveGrowthExperiment(who:Actor,c:Campaign,b:Record<string,
   if(action==='register'){
    if(old.status!=='draft')throw new ApiError(409,'초안만 등록할 수 있습니다.');if(!c.storeId)throw new ApiError(409,'지점이 있는 캠페인에서만 판매 실험을 등록합니다.');
    if(Date.parse(old.input.startAt)<=now)throw new ApiError(409,'사전등록은 시작 시각 전에 해야 합니다. 시작 시각을 미래로 바꾸세요.');
-   await checkRefs(who.owner,c,old.input);
+   await checkExperimentRefs(who.owner,c,old.input);
   }else if(old.status==='cancelled')throw new ApiError(409,'이미 취소한 실험입니다.');
   const next:GrowthExperimentRecord={...old,version:old.version+1,status:action==='register'?'registered':'cancelled',registration:action==='register'?{digest:await storefrontDigest({id,input:old.input}),at,by:who.id,refs:old.input.interventionRefs}:old.registration,updatedAt:at,updatedBy:who.id};
   writes.push(recordStatement(who.owner,kinds.design,id,next,c.id),append(who.owner,c,kinds.history,`${id}:${next.version}`,publicDesign(next),at));response={recorded:true,id,version:next.version};
@@ -95,6 +118,7 @@ export async function saveGrowthExperiment(who:Actor,c:Campaign,b:Record<string,
   const o=b.observation as Record<string,unknown>|undefined;if(!o||typeof o!=='object')throw new ApiError(400,'관측 입력을 확인하세요.');
   const hash=String(o.unitHash??'');if(!/^[a-f0-9]{64}$/.test(hash))throw new ApiError(400,'배정 단위 해시를 확인하세요.');
   const unit=await optional<GrowthExperimentUnit>(who.owner,kinds.unit,unitId(id,hash));if(!unit||unit.unitHash!==hash||!scoped(unit,c))throw new ApiError(404,'배정된 단위가 아닙니다.');
+  if(unit.ingest)throw new ApiError(409,'서명 수신 단위는 공급자 사건으로 갱신하세요. 수동 관측으로 덮어쓰지 않습니다.');
   if(b.expectedVersion!==unit.version)throw new ApiError(409,'단위 관측이 변경되었습니다. 다시 불러오세요.');
   for(const k of ['exposed','trackingComplete','contaminated'])if(typeof o[k]!=='boolean')throw new ApiError(400,'노출·추적·오염 여부를 선택하세요.');
   if(!Array.isArray(o.orderIds)||o.orderIds.length>20)throw new ApiError(400,'주문은 최대 20개입니다.');

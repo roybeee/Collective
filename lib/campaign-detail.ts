@@ -1,5 +1,6 @@
 import type {Artifact,Campaign,Event,Metric,Run} from './agency';
 import {database,listRecords,readRecord} from './server';
+import {refreshGrowthLessonArtifacts} from './growth-lesson-context-server';
 
 export type ArtifactVersion=Artifact & {originalId?:string};
 export type CampaignSequence={campaignId:string;status:'running'|'paused'|'completed'|'blocked';error?:string};
@@ -28,5 +29,5 @@ export async function campaignDetail(owner:string,id:string):Promise<CampaignDet
   listRecords<Event>(owner,'event',id),
   campaignRuns(owner,id),
  ]);
- return {campaign,artifacts,history:history.toSorted((a,b)=>(a.originalId||a.id).localeCompare(b.originalId||b.id)||b.version-a.version),metrics,events,runs};
+ return {campaign,artifacts:await refreshGrowthLessonArtifacts(owner,[campaign],artifacts),history:history.toSorted((a,b)=>(a.originalId||a.id).localeCompare(b.originalId||b.id)||b.version-a.version),metrics,events,runs};
 }

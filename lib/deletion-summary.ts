@@ -11,6 +11,8 @@ const JOBS='#jobs';
 // 작업물·실행·회의·성과를 앞에 둔다. 이 넷 중 하나라도 있으면 캠페인 제목을 입력해야 삭제할 수 있다.
 const WORK_KINDS=['artifact',JOBS,'team_meeting','metric'];
 const deletedGroups:readonly Group[]=[
+ {label:'교훈 관측 재개 위치',kinds:['growth_lesson_outcome_cursor']},
+ {label:'오퍼 검토 초안·재개 위치',kinds:['growth_offer_review_draft','growth_offer_review_cursor']},
  {label:'사업목표·리뷰',kinds:['growth_target','growth_target_history','growth_target_review','growth_target_request']},
  {label:'성장·판매 계획',kinds:['growth_signal','growth_need','growth_catalog','growth_offer','growth_mission','growth_history','growth_authority','growth_demand','growth_demand_history','growth_journey','growth_journey_history','growth_decision','growth_decision_history','growth_lesson','growth_lesson_history']},
  {label:'작업물',kinds:['artifact']},{label:'실행',kinds:[JOBS]},{label:'회의',kinds:['team_meeting']},{label:'성과',kinds:['metric']},
@@ -23,11 +25,18 @@ const deletedGroups:readonly Group[]=[
 ];
 // 제작·발행·주문 귀속 기록(blocksDeletion)이 있으면 삭제 자체가 거부되므로 대화상자는 사유만 보이고 보존 목록을 쓰지 않는다.
 const retainedGroups:readonly Group[]=[
+ {label:'묶음상품 미션·주문 이력',kinds:['growth_bundle','growth_bundle_history','growth_bundle_request','growth_bundle_mission','growth_bundle_mission_history','growth_bundle_mission_request','growth_bundle_order','growth_bundle_order_history','growth_bundle_order_request'],note:'구성품별 예약·출고·부분반품과 예산 대사'},
+ {label:'소비자 발송·취소 이력',kinds:['growth_consumer_delivery','growth_consumer_delivery_history','growth_consumer_delivery_request'],note:'목적별 동의에 따른 발송·철회 및 공급자 결과 대사'},
+ {label:'판매처 본인 문의 수신',kinds:['growth_cs_source','growth_cs_source_history','growth_cs_source_request'],note:'본인 문의·주문 연결과 서비스 답변의 감사 근거'},
+ {label:'교훈 적용 자동 관측',kinds:['growth_lesson_outcome','growth_lesson_outcome_history'],note:'적용 대상의 운영·실험 근거와 변경 이력'},
+ {label:'광고 예산 개정 이력',kinds:['meta_budget_amendment','meta_budget_amendment_history'],note:'승인된 확대 예산과 공급자 결과 대사'},
+ {label:'판매 실험·수집 영수증',kinds:['growth_experiment','growth_experiment_history','growth_experiment_unit','growth_experiment_result','growth_experiment_request','growth_experiment_ingest_event'],note:'실험 배정·노출·추적 종료와 분석 재현 근거'},
  {label:'소싱 견적·비교',kinds:['growth_sourcing_candidate','growth_sourcing_history','growth_sourcing_comparison','growth_sourcing_request'],note:'공급 조건과 발주 검토 당시 근거'},
  {label:'성장 발행 연결',kinds:['growth_publication_link','growth_publication_history','growth_publication_request','growth_demand_evidence','growth_demand_evidence_history','growth_demand_evidence_request','growth_landing_revision','growth_landing_revision_history','growth_landing_revision_request'],note:'승인 발행과 예산·재고 예약의 연결 및 결과 확인 이력'},
  {label:'재발주 검토',kinds:['growth_reorder_review','growth_reorder_request'],note:'수요 가정과 수량·시점·구매비 검토 근거'},
  {label:'판매 비용·손실 대사',kinds:['growth_reconciliation'],note:'운영자 확인 및 예약 해제 근거'},
  {label:'성장 주문·재고 이력',kinds:['growth_stock_event','growth_order_line','growth_order_line_history','growth_settlement','growth_settlement_history'],note:'재고와 주문 대사 근거'},
+ {label:'실제 현금·기간 대사',kinds:['growth_cash','growth_cash_history','growth_cash_request','growth_cash_coverage','growth_cash_coverage_history','growth_cash_coverage_request'],note:'실제 입출금 증빙과 기간별 대사 확인 이력'},
  {label:'성장 판매 예산 예약',kinds:['growth_commitment','growth_action_intent','growth_action_receipt'],note:'누적 한도·재고 예약과 실행 결과 대사 이력'},
  {label:'Meta 이미지 업로드 기록',kinds:['meta_ads_image_upload'],note:'원본 전송·외부 hash 계보'},
  {label:'Meta 생성 기록',kinds:['meta_ads_write_operation','meta_ads_child_create'],note:'외부 객체 대조 이력'},
