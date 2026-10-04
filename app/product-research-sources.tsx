@@ -65,7 +65,7 @@ export function SourcesTab({view,act,busy,onCandidates,onRefresh}:{view:View;act
    <Button type="button" variant="outline" disabled={busy||!!collectWhy} disabledReason={collectWhy} onClick={()=>void act({action:'collect_now'},'자동 수집을 한 번 실행했습니다.','출처별 하루 쿼터 안에서만 호출했습니다.')}>지금 수집</Button>
   </section>
   <section className={s.block} aria-labelledby="pr-cred-title"><h3 id="pr-cred-title" className={s.subtitle}>출처 연결</h3>
-   <p className={s.muted}>기존 네이버 개발자센터와 함께 연결되어 있으면 NAVER API HUB 키를 우선 사용합니다. HUB 연결을 해제하면 기존 키를 사용합니다.</p>
+   <p className={s.muted}>NAVER API HUB 키를 우선 사용합니다. 해제하면 연결된 기존 개발자센터 키를 씁니다.</p>
    <div className={s.credGrid}>{CREDENTIAL_KEYS.map(k=><CredentialCard key={k} view={view} credential={k} act={act} busy={busy}/>)}</div>
   </section>
   <QuarantineList view={view} act={act} busy={busy}/>

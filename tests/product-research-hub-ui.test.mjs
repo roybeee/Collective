@@ -29,5 +29,5 @@ const both=[{key:'naver_api_hub',connected:true},{key:'naver_developers',connect
 test('HUB removal warns that legacy collection continues',()=>{const text=shared.namespace.credentialDisconnectImpact('naver_api_hub',both);assert.match(text,/기존 네이버 개발자센터 키로 계속 수집/);assert.match(text,/자동 수집 스위치를 끄세요/);assert.doesNotMatch(text,/이 출처의 자동 수집을 멈춥니다/);});
 test('legacy removal preserves preferred HUB collection',()=>{const text=shared.namespace.credentialDisconnectImpact('naver_developers',both);assert.match(text,/NAVER API HUB 키로 계속 수집/);assert.doesNotMatch(text,/이 출처의 자동 수집을 멈춥니다/);});
 test('last key removal stops only its source',()=>{const text=shared.namespace.credentialDisconnectImpact('naver_api_hub',[both[0]]);assert.match(text,/이 출처의 자동 수집을 멈춥니다/);assert.match(text,/이미 모은 스냅샷과 점수/);});
-test('HUB precedence is visible when both keys are connected',()=>assert.match(render({credentials:both}),/함께 연결되어 있으면 NAVER API HUB 키를 우선 사용/));
+test('HUB precedence is visible when both keys are connected',()=>assert.match(render({credentials:both}),/NAVER API HUB 키를 우선 사용합니다\. 해제하면 연결된 기존 개발자센터 키를 씁니다\./));
 console.log(JSON.stringify({passed,render:'real React SSR',primitives:'mocked',network:0}));
