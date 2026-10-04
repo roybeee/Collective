@@ -68,7 +68,7 @@ const flag=(name,enabled)=>flags.setFeatureFlag(OWNER,{flag:name,enabled},by);
 let r=await get();
 check(r.status===200&&r.body.enabled===false&&Array.isArray(r.body.products)&&r.body.products.length===0&&r.body.mayOrder===false,'flag off GET returns the full view shape with enabled:false');
 check(r.body.settings.categories.length===6&&r.body.settings.temperatures.join()==='ambient'&&r.body.settings.priceMax===null&&r.body.settings.question==='','flag off still shows default settings (6 ambient focus categories)');
-check(r.body.credentials.length===5&&r.body.credentials.every(c=>c.connected===false)&&r.body.sources.length===11&&r.body.canConnect===true,'flag off still lists credentials and sources');
+check(r.body.credentials.length===6&&r.body.credentials.every(c=>c.connected===false)&&r.body.sources.length===11&&r.body.canConnect===true,'flag off still lists credentials and sources');
 r=await act('save_settings',{settings:{categories:['food_sauce'],temperatures:['ambient'],priceMax:null,question:''},expectedVersion:0});
 check(r.status===409&&/product_research/.test(r.body.error),'flag off write is refused (409)');
 check(count('pr_settings')===0&&count('pr_request')===0,'flag off write stores nothing');
@@ -171,17 +171,17 @@ check(made.filter(c=>c.path.endsWith('/youtube/v3/search')).length<=3,'youtube d
 check(n('api-gateway.coupang.com')<=1,'coupang best category once');
 const st2=rec('pr_collect_state','current');
 check(st2.errors.youtube_data&&/YouTube/.test(st2.errors.youtube_data.message),'youtube failure recorded per source');
-check(count('pr_snapshot')>10&&sql.prepare("SELECT COUNT(*) n FROM records WHERE kind='pr_snapshot' AND parent_id='naver_shop_search'").get().n>0&&sql.prepare("SELECT COUNT(*) n FROM records WHERE kind='pr_snapshot' AND parent_id='naver_datalab_search'").get().n>0,'other sources kept collecting after youtube failed');
+check(count('pr_snapshot')>10&&sql.prepare("SELECT COUNT(*) n FROM records WHERE kind='pr_snapshot' AND parent_id='naver_shop_search'").get().n===0&&sql.prepare("SELECT COUNT(*) n FROM records WHERE kind='pr_snapshot' AND parent_id='naver_datalab_search'").get().n>0,'other sources kept collecting after youtube failed');
 const quotaRows=sql.prepare("SELECT data FROM records WHERE kind='pr_quota'").all().map(x=>JSON.parse(x.data));
 check(quotaRows.every(q=>q.sourceId!=='youtube_data'||q.used<=10000)&&quotaRows.every(q=>q.sourceId!=='naver_datalab_search'||q.used<=1000),'quota ledger stays within daily quotas');
 check((await collect.runProductResearchQueue(OWNER)).status==='idle','second tick the same KST day is idle (once per day)');
 r=await get();check(r.body.collect.lastErrors.some(e=>e.sourceId==='youtube_data')&&r.body.collect.lastRunAt&&r.body.collect.nextRunAt,'view shows collect state and per-source errors');
-check(r.body.sources.find(s=>s.id==='naver_shop_search').quotaUsedToday>0&&r.body.sources.find(s=>s.id==='naver_shop_search').lastStatus,'view shows quota used and last status per source');
+check(r.body.sources.find(s=>s.id==='naver_datalab_search').quotaUsedToday>0&&r.body.sources.find(s=>s.id==='naver_datalab_search').lastStatus,'view shows quota used and last status per source');
 // 쿼터 거절: 오늘 쇼핑 검색 한도를 다 쓴 상태면 호출하지 않는다
 sql.prepare("UPDATE records SET data=json_set(data,'$.used',25000) WHERE kind='pr_quota' AND parent_id='naver_shop_search'").run();
 const c1=calls.length;r=await act('collect_now',{sourceId:'naver_shop_search'});
-check(r.status===200&&calls.slice(c1).filter(c=>c.path==='/v1/search/shop.json').length===0,'quota refusal: no shop call when the daily quota is used up');
-check(/쿼터/.test(rec('pr_collect_state','current').errors.naver_shop_search.message),'quota refusal recorded');
+check(r.status===400&&calls.slice(c1).filter(c=>c.path==='/v1/search/shop.json').length===0,'quota refusal: no shop call when the daily quota is used up');
+check(/자동 수집/.test(r.body.error),'retired source refusal reported');
 
 // ── 7) 결정형 메모 + 모델 메모(인용 검사)
 r=await get();
@@ -219,6 +219,7 @@ mode.hermes='valid';
 
 // ── 8) 승인 → 성장2 시장 근거
 r=await get();const target=r.body.products.find(p=>p.score&&!p.score.blocked&&p.listings.some(l=>l.url&&!l.url.includes('?')));
+const requiredReview=r.body.riskChecklists.find(x=>x.scoreCardId===target.score.id);if(requiredReview){const reviewed=await act('save_risk_review',{productId:target.id,scoreCardId:target.score.id,checklist:requiredReview.items.map(x=>({rule:x.text,ruleId:x.id,checked:true})),note:'합성 테스트의 필수 위험 확인'});check(reviewed.status===200,'approval fixture follows current risk checklist after source retirement')}
 r=await act('decide',{productId:target.id,scoreCardId:target.score.id,briefId,status:'approved',reason:'검색 수요와 순위 근거로 도입을 검토합니다.'});
 check(r.status===200||(r.status===404&&/메모/.test(r.body.error)),'decide accepts the current score card');
 if(r.status!==200)r=await act('decide',{productId:target.id,scoreCardId:target.score.id,briefId:null,status:'approved',reason:'검색 수요와 순위 근거로 도입을 검토합니다.'});
@@ -249,6 +250,9 @@ r=await act('decide',{productId:blockedP.id,scoreCardId:rec('pr_product',blocked
 r=await act('handoff',{decisionId:r.body.resultId,campaignId:'camp1',campaignVersion:3});check(r.status===409,'only approved decisions can be handed off');
 
 // ── 9) 매칭 확인·브랜드 적합성·백테스트
+// Matching has an explicit manual fixture instead of depending on a retired provider's products.
+await act('import_file',{sourceId:'coupang_ranking_manual',fileName:'match.csv',text:header+'\n1,가상비교 소스 250g,가상비교,3900,10,4.5,MATCH1,https://www.coupang.com/vp/products/9001',scope:'매칭 검사',observedDate:today});
+await act('recompute');
 r=await get();const multi=r.body.products.find(p=>p.listings.length>=1&&!p.decision);const other=r.body.products.find(p=>p.id!==multi.id&&!p.decision);
 r=await act('confirm_match',{productId:multi.id,decision:'merge',listingKeys:[`${other.listings[0].sourceId}:${other.listings[0].externalId}`]});
 check(r.status===200&&rec('pr_product',multi.id).match.method==='manual'&&rec('pr_product',multi.id).listings.length===multi.listings.length+1,'merge pins the product with the confirmed listing');

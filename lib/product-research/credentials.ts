@@ -4,16 +4,18 @@
 import type {SourceId} from './types';
 
 export type NaverSearchadCredential={kind:'naver_searchad';apiKey:string;secretKey:string;customerId:string};
-// 네이버 개발자센터 앱 하나의 키를 데이터랩 2종과 쇼핑 검색이 함께 쓴다.
+// 기존 개발자센터 데이터랩 연결을 보존한다. 새 HUB 연결은 별도로 저장하고 우선 사용한다.
 export type NaverDevelopersCredential={kind:'naver_developers';clientId:string;clientSecret:string};
+export type NaverApiHubCredential={kind:'naver_api_hub';clientId:string;clientSecret:string};
+export type NaverDatalabCredential=NaverDevelopersCredential|NaverApiHubCredential;
 export type YoutubeCredential={kind:'youtube';apiKey:string};
 export type CoupangPartnersCredential={kind:'coupang_partners';accessKey:string;secretKey:string};
 // 계약 데이터: 계약 전에는 내보내기 파일 가져오기만 하므로 키가 없을 수 있다. 계약으로 호스트가 정해지면 모양을 확정한다.
 export type LicensedCredential={kind:'licensed';vendor:string;apiKey:string|null};
-export type ResearchCredential=NaverSearchadCredential|NaverDevelopersCredential|YoutubeCredential|CoupangPartnersCredential|LicensedCredential;
+export type ResearchCredential=NaverSearchadCredential|NaverDevelopersCredential|NaverApiHubCredential|YoutubeCredential|CoupangPartnersCredential|LicensedCredential;
 export type CredentialKind=ResearchCredential['kind'];
 
-export const CREDENTIAL_KINDS:readonly CredentialKind[]=['naver_searchad','naver_developers','youtube','coupang_partners','licensed'];
+export const CREDENTIAL_KINDS:readonly CredentialKind[]=['naver_searchad','naver_developers','naver_api_hub','youtube','coupang_partners','licensed'];
 
 // 출처 → 필요한 자격증명. manual·internal 출처는 자격증명이 없다(null).
 export const CREDENTIAL_FOR_SOURCE:Readonly<Record<SourceId,CredentialKind|null>>={
@@ -29,6 +31,11 @@ export const CREDENTIAL_FOR_SOURCE:Readonly<Record<SourceId,CredentialKind|null>
  oliveyoung_ranking_manual:null,
  own_sales:null,
 };
+
+export function credentialKeyForSource(sourceId:SourceId,available:readonly CredentialKind[]):CredentialKind|null{
+ if((sourceId==='naver_datalab_search'||sourceId==='naver_datalab_shopping')&&available.includes('naver_api_hub'))return 'naver_api_hub';
+ return CREDENTIAL_FOR_SOURCE[sourceId];
+}
 
 export class CredentialError extends Error{
  status=400;
@@ -61,6 +68,10 @@ export function parseNaverDevelopersCredential(input:Record<string,unknown>):Nav
  };
 }
 
+export function parseNaverApiHubCredential(input:Record<string,unknown>):NaverApiHubCredential{
+ return {kind:'naver_api_hub',clientId:token(input.clientId,'네이버 API HUB Client ID',/^[A-Za-z0-9_-]{8,100}$/,'API HUB 애플리케이션의 Client ID를 넣으세요.'),clientSecret:token(input.clientSecret,'네이버 API HUB Client Secret',/^[A-Za-z0-9+/=_-]{6,200}$/,'같은 애플리케이션의 Client Secret을 넣으세요.')};
+}
+
 export function parseYoutubeCredential(input:Record<string,unknown>):YoutubeCredential{
  return {kind:'youtube',apiKey:token(input.apiKey,'YouTube API 키',/^[A-Za-z0-9_-]{20,100}$/,'Google Cloud 콘솔 > 사용자 인증 정보의 API 키를 넣으세요(OAuth 클라이언트 ID가 아닙니다).')};
 }
@@ -87,6 +98,7 @@ export function parseResearchCredential(kind:CredentialKind,input:Record<string,
  switch(kind){
   case 'naver_searchad':return parseNaverSearchadCredential(input);
   case 'naver_developers':return parseNaverDevelopersCredential(input);
+  case 'naver_api_hub':return parseNaverApiHubCredential(input);
   case 'youtube':return parseYoutubeCredential(input);
   case 'coupang_partners':return parseCoupangPartnersCredential(input);
   case 'licensed':return parseLicensedCredential(input);
@@ -99,6 +111,7 @@ export function credentialAccount(credential:ResearchCredential):string{
  const tail=(v:string)=>`…${v.slice(-4)}`;
  switch(credential.kind){
   case 'naver_searchad':return `고객 ${credential.customerId}`;
+  case 'naver_api_hub':
   case 'naver_developers':return `Client ${tail(credential.clientId)}`;
   case 'youtube':return `API 키 ${tail(credential.apiKey)}`;
   case 'coupang_partners':return `Access ${tail(credential.accessKey)}`;

@@ -8,7 +8,7 @@ import {focusCategories,CATEGORIES} from './categories';
 import {FOCUS_TEMPERATURES} from './categories';
 import {PR_KINDS} from './kinds';
 import {CREDENTIAL_KEYS,PRICE_MAX_MAX,PRICE_MAX_MIN,QUESTION_MAX,type CredentialKey,type ResearchSettings} from './api';
-import {parseResearchCredential,credentialAccount,type ResearchCredential} from './credentials';
+import {parseResearchCredential,credentialAccount,credentialKeyForSource,type ResearchCredential} from './credentials';
 import {dailyCap,quotaDayKey} from './collectors/quota';
 import {subjectKey} from './analytics/series';
 import type {MetricKey,Snapshot,SourceId,Temperature} from './types';
@@ -108,6 +108,12 @@ export async function loadCredential(owner:string,key:CredentialKey):Promise<Res
  if(!row)return null;
  const plain=await openRecordSecret(owner,K.credential,key,row.secret);
  try{return parseResearchCredential(key,JSON.parse(plain) as Record<string,unknown>)}catch{throw new ApiError(409,'저장된 출처 자격증명을 읽지 못했습니다. 출처 연결에서 다시 등록하세요.')}
+}
+
+// HUB 존재 자체가 우선순위를 결정한다. 해독·인증 실패 시 legacy로 우회하지 않는다.
+export async function sourceCredentialKey(owner:string,sourceId:SourceId){
+ const datalab=sourceId==='naver_datalab_search'||sourceId==='naver_datalab_shopping';
+ return credentialKeyForSource(sourceId,datalab&&await optional(owner,K.credential,'naver_api_hub')?['naver_api_hub']:[]);
 }
 
 // ── 쿼터 원장(pr_quota). 호출 전에 원자적으로 예약하고(한도를 넘으면 예약되지 않음), 호출 전에 막힌 입력 오류만 되돌린다.

@@ -24,11 +24,12 @@ export const RESEARCH_ACTIONS=[
 ] as const;
 export type ResearchAction=typeof RESEARCH_ACTIONS[number];
 
-// 출처 자격증명 묶음. naver_developers는 데이터랩 2종과 쇼핑 검색이 같이 쓴다.
-export const CREDENTIAL_KEYS=['naver_searchad','naver_developers','youtube','coupang_partners','licensed'] as const;
+// 데이터랩은 HUB 연결 우선, 기존 개발자센터 연결은 보존한다. 종료된 쇼핑 검색은 이력 표시만 유지한다.
+export const CREDENTIAL_KEYS=['naver_searchad','naver_developers','naver_api_hub','youtube','coupang_partners','licensed'] as const;
 export type CredentialKey=typeof CREDENTIAL_KEYS[number];
 export const CREDENTIAL_SOURCES:Record<CredentialKey,readonly SourceId[]>={
  naver_searchad:['naver_searchad_keyword'],
+ naver_api_hub:['naver_datalab_search','naver_datalab_shopping'],
  naver_developers:['naver_datalab_search','naver_datalab_shopping','naver_shop_search'],
  youtube:['youtube_data'],
  coupang_partners:['coupang_partners'],

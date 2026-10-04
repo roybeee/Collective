@@ -31,6 +31,16 @@ test('수집 스위치: 소유자 변경은 새로고침 뒤에도 유지되며 
   const input=page.getByLabel('네이버 검색광고 API 키',{exact:true}).first();
   await expect(input).toHaveAttribute('autocomplete','new-password');
   await expect(input).toHaveAttribute('name',/^pr-credential-/);
+  const hub=page.getByRole('region',{name:'NAVER API HUB 연결',exact:true});
+  await expect(hub.getByLabel('NAVER API HUB Client ID',{exact:true})).toBeVisible();
+  await expect(hub.getByLabel('NAVER API HUB Client Secret',{exact:true})).toHaveAttribute('type','password');
+  await expect(hub.getByLabel('NAVER API HUB Client Secret',{exact:true})).toHaveAttribute('autocomplete','new-password');
+  await expect(hub).toContainText('검색어 트렌드와 쇼핑인사이트 권한을 모두 확인한 뒤 연결을 저장합니다.');
+  await expect(page.getByRole('region',{name:'네이버 개발자센터(기존 연결용) 연결',exact:true})).toBeVisible();
+  const retired=page.getByRole('table',{name:'상품 리서치 출처',exact:true}).getByRole('row').filter({hasText:'네이버 쇼핑 검색'});
+  await expect(retired).toContainText('서비스 종료');
+  await expect(retired).not.toContainText('연결됨');
+  await expect(retired.getByRole('button',{name:/수집/})).toHaveCount(0);
  }finally{await context.close()}
 });
 

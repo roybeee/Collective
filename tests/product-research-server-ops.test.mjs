@@ -61,12 +61,12 @@ check(['clear_quarantine','link_sourcing','unlink_sourcing','save_risk_review'].
 
 // ── H4: 출처별 하루 상한(공급자 한도가 없는 출처 포함)과 문서 표 일치
 const caps=plain(quota.APP_DAILY_CAPS);
-check(caps.naver_searchad_keyword===200&&caps.coupang_partners===100&&caps.naver_shop_search===2000&&caps.naver_datalab_search===900&&caps.youtube_data===9000,'conservative app caps for every auto source (searchad/coupang have no published quota)');
+check(caps.naver_searchad_keyword===200&&caps.coupang_partners===100&&caps.naver_shop_search===0&&caps.naver_datalab_search===900&&caps.youtube_data===9000,'conservative app caps for every auto source (searchad/coupang have no published quota)');
 check(quota.dailyCap('coupang_ranking_manual')===0&&quota.dailyCap('own_sales')===0&&quota.dailyCap('licensed_ranking')===0,'non-auto sources have a zero cap (fail closed)');
 check(caps.naver_datalab_shopping===50&&quota.dailyCap('naver_datalab_shopping')===50,'(round 3 ①) datalab shopping insight is planned with a 50-call cap (provider 1,000)');
 const doc=readFileSync('docs/PRODUCT-RESEARCH.ko.md','utf8');
 const docRow=host=>doc.split('\n').find(l=>l.startsWith('|')&&l.includes(host)&&l.includes('하루 상한')===false&&/\d/.test(l))||'';
-const capCell={naver_datalab_shopping:['데이터랩 쇼핑인사이트','50회'],naver_searchad_keyword:['api.searchad.naver.com','200회'],naver_datalab_search:['데이터랩 검색어 트렌드','900회'],naver_shop_search:['네이버 쇼핑 검색','2,000회'],youtube_data:['www.googleapis.com','9,000단위'],coupang_partners:['api-gateway.coupang.com','100회']};
+const capCell={naver_datalab_shopping:['데이터랩 쇼핑인사이트','50회'],naver_searchad_keyword:['api.searchad.naver.com','200회'],naver_datalab_search:['데이터랩 검색어 트렌드','900회'],naver_shop_search:['네이버 쇼핑 검색','0회'],youtube_data:['www.googleapis.com','9,000단위'],coupang_partners:['api-gateway.coupang.com','100회']};
 check(Object.entries(capCell).every(([id,[key,text]])=>docRow(key).includes(text)&&caps[id]===Number(text.replace(/[^\d]/g,''))),'docs/PRODUCT-RESEARCH.ko.md states exactly the caps the code enforces');
 
 const O1='ops-caps';await on(O1,'product_research','product_research_collect');await connectAll(O1);
@@ -94,7 +94,7 @@ const st1=rec(O1,'pr_collect_state','current');
 check(st1.attempts.youtube_data.count>=1&&st1.failures.youtube_data&&typeof st1.failures.youtube_data.since==='string','youtube 503 counted as a transient attempt with a failure streak');
 v=await get(O1);
 check(v.body.alerts.some(a=>a.sourceId==='youtube_data'&&a.since===st1.failures.youtube_data.since&&a.message),'GET alerts carry the failing source, message and since');
-const fy=v.body.freshness.find(f=>f.sourceId==='youtube_data'),fs=v.body.freshness.find(f=>f.sourceId==='naver_shop_search');
+const fy=v.body.freshness.find(f=>f.sourceId==='youtube_data'),fs=v.body.freshness.find(f=>f.sourceId==='naver_datalab_search');
 check(fs.successRate30d===1&&fs.calls30d>0&&typeof fs.lastOkAt==='string'&&fy.successRate30d<1,'freshness: 30-day success rate per source (shop 100%, youtube below) and lastOkAt');
 check(v.body.freshness.find(f=>f.sourceId==='coupang_ranking_manual').successRate30d===null,'freshness: import-only sources have no call success rate (null, not 0)');
 if(kst(new Date(Date.now()+40*60000))===today){
@@ -123,6 +123,8 @@ check(r.status===409&&/다른 상품 리서치 작업/.test(r.body.error)&&count
 const stateBefore=JSON.stringify(rec(O3,'pr_collect_state','current'));
 check((await collect.runProductResearchQueue(O3)).status==='idle'&&JSON.stringify(rec(O3,'pr_collect_state','current'))===stateBefore,'worker tick idles without touching pr_collect_state while the UI holds the lock');
 open();r=await uiCollect;check(r.status===200&&!locked(O3),'collect_now finishes and releases the lock');
+// Separate worker-lock scenario: the smaller active-source plan may already finish in collect_now.
+sql.prepare("DELETE FROM records WHERE owner=? AND kind='pr_collect_state'").run(O3);
 const worker=collect.runProductResearchQueue(O3,{fetch:gate(),now:()=>new Date()});
 check(await waitLock(O3),'worker-driven collection takes the same product-research lock');
 r=await post(O3,{action:'recompute'});check(r.status===409&&/다른 상품 리서치 작업/.test(r.body.error),'UI recompute while the worker collects is 409');

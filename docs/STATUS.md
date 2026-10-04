@@ -178,7 +178,10 @@
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-10-04 03:08 UTC (Codex: 성장2 비용·운영 연결 로컬 검증 passed)
+갱신: 2026-10-04 06:30 UTC (Codex: NAVER API HUB 연결 로컬 검증·독립 리뷰 passed)
+- 대표의 API 발급·연결 지시와 약관/발급 동의에 따라 NAVER Cloud의 `Collective-Research` Application에 검색어트렌드·쇼핑인사이트를 등록했다(각 월50,000회). `codex/research-naver-api-hub`, 기준 `3634126`에서 별도 HUB 인증 종류·두 API 저장 전 검증·기존 개발자센터 호환과 종료된 쇼핑 검색 호출 차단을 구현 중이다. 실제 키 저장/운영 응답 검증은 게시 후 별도 확인하며 키 원문은 소스에 넣지 않는다.
+- [HUB 연결 규격과 운영 경계](PRODUCT-RESEARCH-API-HUB.ko.md). 전체356/356 suites·19,467 assertions passed(외부 HTTP mocked), 모바일/데스크톱 수집 제어 E2E14 passed(real Chromium·D1, 인증 mocked), 타입·빌드·프롬프트22 passed, lint70/39 기준선 유지. 독립 리뷰의 연결 해제 영향 안내1건을 수정하고 UI9회귀·타입·빌드를 재검증했다. 최종 리뷰 APPROVE, 잔여 CRITICAL/HIGH/MEDIUM0. 원격 CI/병합/게시는 아직 not_run.
+- YouTube 기존 제한 키 연결은 운영 화면에서 실제 검증·저장·새로고침 유지까지 확인했다(real). 대표가 승인한 임시 정지로 자동 수집은 OFF다. 키 연결 성공을 보존/분석 정책 승인으로 취급하지 않는다. 블라인드 후보60개·평가자3인용 패킷은 준비했지만 실제 정답 라벨/평가 결과는0건이며, 과거 판매2SKU는 신규 출시 성과가 아니다.
 - 대표 후속 지시 “나머지도마저개발하라”로 main `56760cd` 기준 `codex/growth2-paid-evaluation`에서 Q 원화 계약·정확 견적·월 원자 예약·중복 제출 방지·서명 영수증 대사·로컬 출력 삭제를 연결했다. 성장2 화면에서 견적/승인/복구/미정산 비용을 확인한다. 별도 평가 모델은 기존 운영 승격 게이트를 통과하지 않는다. [구현·운영 경계](GROWTH-2-COST-IMPLEMENTATION.ko.md).
 - MAPDAL 통합 ASGI·명시 migration·인증 readiness·주문 outbox 점포 고정과 소비자 실제 DB/본인 주문/목적별 동의·철회 SDK를 구현했다. 고지는 목적·본문·기간 digest로 고정하며 기존 MARKETING을 새 목적으로 확대하지 않는다. [설치](MAPDAL-INSTALL.ko.md), [고객 동의 SDK](MAPDAL-CONSUMER.ko.md), [평가 서비스](EVAL-GATEWAY.ko.md).
 - 독립 검토에서 운영 승격 오인·음수 사용량·견적 만료 예약·gateway 소유자/주문 outbox 범위·consumer readiness를 수정하고 재검토했다. 현재 blocking 결함 미발견. 모바일/데스크톱 핵심 E2E6 passed(real Chromium/D1, 인증·외부 provider mocked), 타입·빌드 passed, lint70/39 기준선 유지. 최종 전체354/354 suites·19,444 assertions, Python MAPDAL190·Gateway38 passed. PR #341 필수 CI verify와 Linux E2E293 passed·5 skipped·0 failed, 이메일 인증1 passed. `7852b96` merged 후 Sites103 published/runtime-verified. [게시 근거](releases/2026-10-04-7852b96.md).

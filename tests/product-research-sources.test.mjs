@@ -20,7 +20,7 @@ check(ids.length===SOURCES.length&&ids.every(id=>byId.has(id)),'every source id 
 const manual=SOURCES.filter(s=>s.method==='manual'),internal=SOURCES.filter(s=>s.method==='internal');
 check(manual.length===3&&manual.every(s=>s.autoFetch===false&&s.hosts.length===0),'manual sources: autoFetch false, no hosts');
 check(internal.every(s=>s.autoFetch===false&&s.hosts.length===0),'internal sources: autoFetch false, no hosts');
-check(SOURCES.filter(s=>s.method==='api').every(s=>s.autoFetch&&s.hosts.length>0),'api sources: autoFetch with fixed hosts');
+check(SOURCES.filter(s=>s.method==='api'&&s.id!=='naver_shop_search').every(s=>s.autoFetch&&s.hosts.length>0),'api sources: autoFetch with fixed hosts');
 const allowedHosts=new Set(SOURCES.filter(s=>s.method==='api'||s.method==='licensed').flatMap(s=>s.hosts));
 check(SOURCES.every(s=>s.hosts.every(h=>/^[a-z0-9.-]+$/.test(h)&&!h.includes('/'))),'registry hosts are bare host names');
 
@@ -55,7 +55,7 @@ for(const f of fetchers){
  assert.deepEqual(hits,[],`${f}가 manual 출처 ID를 참조합니다: ${hits.join(', ')}`);passed++;
 }
 // 자동 수집 파일이 쓰는 출처 ID 문자열은 모두 자동 수집이 허용된 api 출처다(quota.ts·index.ts는 ID 문자열이 youtube_data뿐이다).
-for(const f of fetchers)for(const id of ids)if(new RegExp(`'${id}'`).test(code(src.get(f)))){assert.ok(byId.get(id).method==='api'&&byId.get(id).autoFetch,`${f}: ${id}는 자동 수집 출처가 아닙니다`);passed++}
+for(const f of fetchers)for(const id of ids)if(new RegExp(`'${id}'`).test(code(src.get(f)))){assert.ok(byId.get(id).method==='api'&&(byId.get(id).autoFetch||(id==='naver_shop_search'&&!byId.get(id).autoFetch&&byId.get(id).hosts.length===0)),`${f}: ${id}는 자동 수집 출처가 아닙니다`);passed++}
 check(!/\bfetch\s*\(|fetchSourceJson|https:\/\//.test(code(src.get('imports.ts'))),'imports.ts has no network path');
 const directFetch=files.filter(f=>/\bfetch\s*\(/.test(code(src.get(f))));
 assert.deepEqual(directFetch,[],'수집기가 fetch를 직접 부릅니다: '+directFetch.join(', '));passed++;
