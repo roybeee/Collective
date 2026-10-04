@@ -13,8 +13,8 @@ import type {CandidateRecord} from '../growth-sourcing-server';
 import {storefrontDigest} from '../storefront-orders';
 import {BACKTEST_HORIZONS,BRAND_FIT_MAX,BRAND_FIT_MIN,BRAND_FIT_REASON_MAX,BRIEF_PRODUCTS_MAX,CLEAR_REASON_MAX,COLLECT_NOW_PER_DAY,CREDENTIAL_KEYS,HANDOFF_EVIDENCE_MAX_DAYS,LABEL_THRESHOLD_MAX,LABEL_THRESHOLD_MIN,MATCH_KEYS_MAX,QUESTION_MAX,REASON_MAX,REASON_MIN,RESEARCH_ACTIONS,RISK_NOTE_MAX,RISK_RULE_MAX,RISK_RULES_MAX,type CredentialKey,type CampaignCatalogItem,type QuarantineEntry,type ResearchAction,type ResearchViewResponse,type RiskReview,type RiskRule} from './api';
 import {SOURCES,IMPORTABLE_SOURCES,sourceSpec} from './sources';
-import {CREDENTIAL_FOR_SOURCE,CredentialError,parseResearchCredential,type ResearchCredential} from './credentials';
-import {collectSearchadKeywords,collectDatalabSearch,trackYoutubeVideos,collectCoupangSearch,parseImport,CollectorError,kstDayKey,quotaDayKey,type CollectDeps,type ImportSourceId} from './collectors/index';
+import {credentialKeyForSource,CredentialError,parseResearchCredential,type ResearchCredential} from './credentials';
+import {collectSearchadKeywords,collectDatalabSearch,collectDatalabShoppingCategories,trackYoutubeVideos,collectCoupangSearch,parseImport,CollectorError,kstDayKey,quotaDayKey,type CollectDeps,type CollectResult,type ImportSourceId} from './collectors/index';
 import {dailyCap} from './collectors/quota';
 import {buildBrief} from './analytics/brief';
 import * as scoring from './analytics/score';
@@ -45,8 +45,8 @@ async function sourceRows(owner:string,creds:Awaited<ReturnType<typeof credentia
  return Promise.all(SOURCES.map(async s=>{
   const last=await database().prepare("SELECT json_extract(data,'$.fetchedAt') f,json_extract(data,'$.status') st FROM records WHERE owner=? AND kind=? AND parent_id=? ORDER BY updated_at DESC LIMIT 1").bind(owner,K.snapshot,s.id).first<{f:string|null;st:Snapshot['status']|null}>();
   const ok=!last||last.st!=='failed'?last:await database().prepare("SELECT json_extract(data,'$.fetchedAt') f,json_extract(data,'$.status') st FROM records WHERE owner=? AND kind=? AND parent_id=? AND json_extract(data,'$.status')!='failed' ORDER BY updated_at DESC LIMIT 1").bind(owner,K.snapshot,s.id).first<{f:string|null;st:Snapshot['status']|null}>();
-  const key=CREDENTIAL_FOR_SOURCE[s.id];
-  const connected=s.method==='manual'?true:s.method==='internal'?false:!!creds.find(c=>c.key===key)?.connected;
+  const key=credentialKeyForSource(s.id,creds.filter(c=>c.connected).map(c=>c.key));
+  const connected=s.method==='manual'?true:s.method==='internal'||s.id==='naver_shop_search'?false:!!creds.find(c=>c.key===key)?.connected;
   const used=s.autoFetch?((await optional<{used:number}>(owner,K.quota,`${s.id}:${quotaDayKey(s.id,now)}`))?.used??0):null;
   // dailyQuota: 이 앱이 원장으로 지키는 하루 상한(collectors/quota.ts dailyCap). 자동 수집이 아닌 출처는 null.
   return {id:s.id,label:s.label,method:s.method,connected,lastFetchedAt:last?.f??null,lastStatus:last?.st??null,quotaUsedToday:used,dailyQuota:s.autoFetch?dailyCap(s.id):null,lastOkAt:ok?.f??null};
@@ -200,15 +200,18 @@ type LinkedProduct=StoredProduct&{sourcing?:SourcingLink};
 export const VERIFY_VIDEO_ID='jNQXAC9IVRw';
 async function verifyCredential(owner:string,c:ResearchCredential,deps:CollectDeps){
  const now=deps.now();
- const plan:{source:SourceId;run:()=>Promise<unknown>}|null=c.kind==='naver_searchad'?{source:'naver_searchad_keyword',run:()=>collectSearchadKeywords(c,['마라소스'],deps)}
-  :c.kind==='naver_developers'?{source:'naver_datalab_search',run:()=>{const end=new Date(Date.parse(`${kstDayKey(now)}T00:00:00Z`)-DAY),start=new Date(end.getTime()-6*DAY);return collectDatalabSearch(c,{startDate:start.toISOString().slice(0,10),endDate:end.toISOString().slice(0,10),timeUnit:'date',keywordGroups:[{groupName:'연결확인',keywords:['마라소스']}]},deps)}}
+ const plan:{source:SourceId;run:()=>Promise<CollectResult>}|null=c.kind==='naver_searchad'?{source:'naver_searchad_keyword',run:()=>collectSearchadKeywords(c,['마라소스'],deps)}
+  :(c.kind==='naver_developers'||c.kind==='naver_api_hub')?{source:'naver_datalab_search',run:()=>{const end=new Date(Date.parse(`${kstDayKey(now)}T00:00:00Z`)-DAY),start=new Date(end.getTime()-6*DAY);return collectDatalabSearch(c,{startDate:start.toISOString().slice(0,10),endDate:end.toISOString().slice(0,10),timeUnit:'date',keywordGroups:[{groupName:'연결확인',keywords:['마라소스']}]},deps)}}
   :c.kind==='youtube'?{source:'youtube_data',run:()=>trackYoutubeVideos(c,[VERIFY_VIDEO_ID],deps)}
   :c.kind==='coupang_partners'?{source:'coupang_partners',run:()=>collectCoupangSearch(c,'라면',deps,1)}
   :null;
  // 계약 데이터는 계약 전이라 부를 고정 호스트가 없다. 형식만 확인하고 저장한다(자동 수집 경로 없음).
  if(!plan)return;
+ const plans=[plan];
+ if(c.kind==='naver_api_hub'){const end=new Date(Date.parse(`${kstDayKey(now)}T00:00:00Z`)-DAY),start=new Date(end.getTime()-6*DAY);plans.push({source:'naver_datalab_shopping',run:()=>collectDatalabShoppingCategories(c,{startDate:start.toISOString().slice(0,10),endDate:end.toISOString().slice(0,10),timeUnit:'date',categories:[{name:'식품',code:'50000006'}]},deps)})}
+ for(const plan of plans){
  if(!await reserveQuota(owner,plan.source,1,now))throw new ApiError(409,`${sourceSpec(plan.source).label} 오늘 상한을 다 써서 연결 확인 호출을 하지 않았습니다. 내일 다시 시도하세요.`);
- try{await plan.run();await markQuotaOk(owner,plan.source,now)}catch(e){
+ try{const out=await plan.run();if(c.kind==='naver_api_hub'&&!out.draft.observations.some(o=>o.value!==null))throw new CollectorError('format','연결 확인 응답에 유효한 관측값이 없습니다.');await markQuotaOk(owner,plan.source,now)}catch(e){
   if(e instanceof CollectorError){
    if(e.code==='input'||e.code==='not_allowed')await refundQuota(owner,plan.source,1,now);
    if(e.code==='auth')throw new ApiError(400,`연결 확인 호출이 거절돼 저장하지 않았습니다. ${e.message}`);
@@ -216,6 +219,7 @@ async function verifyCredential(owner:string,c:ResearchCredential,deps:CollectDe
    throw new ApiError(502,`연결 확인 호출이 실패해 저장하지 않았습니다. ${e.message}`);
   }
   throw e;
+ }
  }
 }
 

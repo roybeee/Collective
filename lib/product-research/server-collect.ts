@@ -9,14 +9,13 @@ import {ApiError,stamp} from '../server';
 import {COLLECT_NOW_PER_DAY} from './api';
 import {CATEGORIES,type CategorySpec} from './categories';
 import {anchorWeekWindow,SHOPPING_FROM} from './collectors/naver-datalab';
-import {CREDENTIAL_FOR_SOURCE} from './credentials';
 import type {CredentialKey} from './api';
 import {sourceSpec} from './sources';
 import {collectSearchadKeywords,collectDatalabSearch,collectDatalabShoppingKeywords,collectShopSearch,discoverYoutubeVideos,trackYoutubeVideos,collectCoupangBestCategory,CollectorError,kstDayKey,unitsFor,type CollectDeps,type CollectResult,type QuotaOperation} from './collectors/index';
 import {dailyCap,kstWeekKey} from './collectors/quota';
-import type {NaverSearchadCredential,NaverDevelopersCredential,YoutubeCredential,CoupangPartnersCredential,ResearchCredential} from './credentials';
+import type {NaverSearchadCredential,NaverDevelopersCredential,NaverDatalabCredential,YoutubeCredential,CoupangPartnersCredential,ResearchCredential} from './credentials';
 import {normalizeKeyword} from './analytics/normalize';
-import {K,RESEARCH_LOCK_BUSY,RESEARCH_LOCK_LOST,ResearchLockLost,acquireResearchLock,collectEnabled,ensureSnapshotRoom,loadCredential,markQuotaOk,optional,pruneQuota,putStatement,readSettings,refundQuota,releaseResearchLock,renewOrThrow,reserveQuota,researchEnabled,snapshotStatement} from './server-store';
+import {K,RESEARCH_LOCK_BUSY,RESEARCH_LOCK_LOST,ResearchLockLost,acquireResearchLock,collectEnabled,ensureSnapshotRoom,loadCredential,sourceCredentialKey,markQuotaOk,optional,pruneQuota,putStatement,readSettings,refundQuota,releaseResearchLock,renewOrThrow,reserveQuota,researchEnabled,snapshotStatement} from './server-store';
 import {loadGroups,loadProducts,referencedSnapshots,type CollectVideo} from './server-pipeline';
 import {refreshScores,weeklyReport,type DerivedState} from './server-ops';
 import {database} from '../server';
@@ -86,9 +85,8 @@ export async function buildPlan(owner:string,state:CollectState,only?:SourceId):
  const steps:CollectStep[]=[];
  const want=(id:SourceId)=>!only||only===id;
  if(want('naver_searchad_keyword')&&await connected('naver_searchad'))for(const part of chunk(keywords,DAILY.keywordsPerHint))steps.push({sourceId:'naver_searchad_keyword',op:'keywordstool',keywords:part});
- if(await connected('naver_developers')){
+ if(await connected('naver_api_hub')||await connected('naver_developers')){
   if(want('naver_datalab_search'))for(const part of chunk(dlGroups,DAILY.groupsPerDatalab))steps.push({sourceId:'naver_datalab_search',op:'datalab',groups:part});
-  if(want('naver_shop_search'))for(const k of keywords.slice(0,DAILY.shopKeywords))steps.push({sourceId:'naver_shop_search',op:'shop',keyword:k});
   if(want('naver_datalab_shopping'))for(const part of shopping)steps.push({sourceId:'naver_datalab_shopping',op:'datalab_shopping',categoryCode:part.categoryCode,keywords:part.keywords});
  }
  if(want('youtube_data')&&await connected('youtube')){
@@ -111,7 +109,7 @@ function trimRelated(r:CollectResult,hints:readonly string[]):CollectResult{
 
 type Creds=Partial<Record<CredentialKey,ResearchCredential|null>>;
 async function credFor(owner:string,cache:Creds,sourceId:SourceId){
- const key=CREDENTIAL_FOR_SOURCE[sourceId] as CredentialKey|null;if(!key)return null;
+ const key=await sourceCredentialKey(owner,sourceId);if(!key)return null;
  if(!(key in cache))cache[key]=await loadCredential(owner,key);
  return cache[key]??null;
 }
@@ -121,13 +119,13 @@ async function call(step:CollectStep,cred:ResearchCredential,state:CollectState,
   case 'keywordstool':return {results:[trimRelated(await collectSearchadKeywords(cred as NaverSearchadCredential,step.keywords,deps),step.keywords)]};
   case 'datalab':{
    const end=new Date(Date.parse(`${kstDayKey(now)}T00:00:00Z`)-DAY),start=new Date(end.getTime()-(104*7-1)*DAY);
-   return {results:[await collectDatalabSearch(cred as NaverDevelopersCredential,{startDate:start.toISOString().slice(0,10),endDate:end.toISOString().slice(0,10),timeUnit:'week',keywordGroups:step.groups},deps)]};
+   return {results:[await collectDatalabSearch(cred as NaverDatalabCredential,{startDate:start.toISOString().slice(0,10),endDate:end.toISOString().slice(0,10),timeUnit:'week',keywordGroups:step.groups},deps)]};
   }
   case 'datalab_shopping':{
    // 검색어 트렌드와 같은 104주 창을 월요일 시작·일요일 끝 온전한 주로 맞춘다(날마다 주 구간이 밀리지 않게, 쇼핑인사이트는 2017-08-01부터).
    const end=new Date(Date.parse(`${kstDayKey(now)}T00:00:00Z`)-DAY),start=new Date(end.getTime()-(104*7-1)*DAY);
    const w=anchorWeekWindow({startDate:start.toISOString().slice(0,10),endDate:end.toISOString().slice(0,10)},SHOPPING_FROM);
-   return {results:[await collectDatalabShoppingKeywords(cred as NaverDevelopersCredential,{startDate:w.startDate,endDate:w.endDate,timeUnit:'week',categoryCode:step.categoryCode,keywords:step.keywords.map(k=>({name:k,keyword:k}))},deps)]};
+   return {results:[await collectDatalabShoppingKeywords(cred as NaverDatalabCredential,{startDate:w.startDate,endDate:w.endDate,timeUnit:'week',categoryCode:step.categoryCode,keywords:step.keywords.map(k=>({name:k,keyword:k}))},deps)]};
   }
   case 'shop':return {results:[await collectShopSearch(cred as NaverDevelopersCredential,step.keyword,deps)]};
   case 'yt_search':{const r=await discoverYoutubeVideos(cred as YoutubeCredential,{keyword:step.keyword,publishedAfter:new Date(now.getTime()-30*DAY).toISOString(),maxResults:DAILY.videosPerKeyword},deps);return {results:[r],videoIds:r.videoIds}}
@@ -168,6 +166,7 @@ export async function runSteps(owner:string,state:CollectState,budget:number,dep
    if(skip&&!state.skip.includes(src))state.skip.push(src);
    if(skip)state.pending=state.pending.filter(p=>p.sourceId!==src);
   };
+  if(!sourceSpec(src).autoFetch){fail('retired','자동 수집이 종료된 출처입니다.',true);continue}
   let cred:ResearchCredential|null;
   try{cred=await credFor(owner,cache,src)}catch(e){fail('credential',e instanceof ApiError?e.message:'저장된 자격증명을 읽지 못했습니다.',true);continue}
   if(!cred){fail('not_connected',`${sourceSpec(src).label} 연결이 없어 건너뛰었습니다.`,true);continue}

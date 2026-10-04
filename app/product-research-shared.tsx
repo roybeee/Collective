@@ -42,11 +42,18 @@ export const snapshotStatusLabels:Record<'ok'|'partial'|'failed',string>={ok:'�
 export type CredentialField={name:string;label:string;secret:boolean;optional?:boolean};
 export const credentialForms:Record<CredentialKey,{label:string;fields:readonly CredentialField[]}>={
  naver_searchad:{label:'네이버 검색광고',fields:[{name:'apiKey',label:'네이버 검색광고 API 키',secret:true},{name:'secretKey',label:'비밀키',secret:true},{name:'customerId',label:'고객 ID',secret:false}]},
- naver_developers:{label:'네이버 개발자센터',fields:[{name:'clientId',label:'네이버 개발자 Client ID',secret:false},{name:'clientSecret',label:'Client Secret',secret:true}]},
+ naver_developers:{label:'네이버 개발자센터(기존 연결용)',fields:[{name:'clientId',label:'네이버 개발자 Client ID',secret:false},{name:'clientSecret',label:'Client Secret',secret:true}]},
+ naver_api_hub:{label:'NAVER API HUB',fields:[{name:'clientId',label:'NAVER API HUB Client ID',secret:false},{name:'clientSecret',label:'NAVER API HUB Client Secret',secret:true}]},
  youtube:{label:'YouTube',fields:[{name:'apiKey',label:'YouTube API 키',secret:true}]},
  coupang_partners:{label:'쿠팡 파트너스',fields:[{name:'accessKey',label:'쿠팡 파트너스 Access 키',secret:true},{name:'secretKey',label:'Secret 키',secret:true}]},
  licensed:{label:'계약 데이터',fields:[{name:'vendor',label:'계약 데이터 공급사',secret:false},{name:'apiKey',label:'공급사 키(계약 뒤)',secret:true,optional:true}]},
 };
+
+export function credentialDisconnectImpact(credential:CredentialKey,credentials:readonly {key:CredentialKey;connected:boolean}[]):string{
+ const connected=(key:CredentialKey)=>credentials.some(c=>c.key===key&&c.connected);
+ const replacement=credential==='naver_api_hub'&&connected('naver_developers')?'기존 네이버 개발자센터':credential==='naver_developers'&&connected('naver_api_hub')?'NAVER API HUB':null;
+ return (replacement?`이 키를 삭제합니다. 자동 수집이 켜져 있으면 ${replacement} 키로 계속 수집합니다.`:'저장한 키를 지우고 이 출처의 자동 수집을 멈춥니다.')+' 모든 자동 수집을 멈추려면 자동 수집 스위치를 끄세요. 이미 모은 스냅샷과 점수는 그대로 남습니다.';
+}
 
 export const score=(card:ScoreCard|null|undefined)=>card?.total==null?'미확인':String(Math.round(card.total));
 export const scoreSort=(card:ScoreCard|null|undefined)=>card?.total==null?-1:card.total;

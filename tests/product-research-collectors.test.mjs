@@ -102,26 +102,8 @@ const dev={kind:'naver_developers',clientId:'synthClientId01',clientSecret:'synt
  check(g.calls.length===0,'datalab shopping: invalid input never fetches');
 }
 
-// ── 네이버 쇼핑 검색 ──
-{
- const f=fakeFetch(()=>json(fixture('shop-search.json')));
- const r=plain(await c.collectShopSearch(dev,'마라소스',f.deps)),call=f.calls[0],u=new URL(call.url);
- check(u.origin+u.pathname==='https://openapi.naver.com/v1/search/shop.json'&&u.searchParams.get('query')==='마라소스'&&u.searchParams.get('display')==='100'&&u.searchParams.get('sort')==='sim','shop: fixed URL with display=100, sort=sim');
- check(call.headers['x-naver-client-id']===dev.clientId&&call.headers['x-naver-client-secret']===dev.clientSecret,'shop: client headers');
- const d=r.draft;
- check(one(d,kw('마라소스'),'product_count').value===48213,'shop: product_count = total');
- check(one(d,kw('마라소스'),'price_min').value===7500&&one(d,kw('마라소스'),'price_median').value===8900,'shop: price_min and median over priced items');
- check(one(d,kw('마라소스'),'seller_count').value===3,'shop: distinct mallName count');
- const first=one(d,listing('1001'),'price_min');
- check(first.subject.title==='마라소스 500g & 향신료'&&first.subject.brand==='하이디라오'&&first.subject.categoryPath==='식품>소스/드레싱>중화소스'&&first.subject.url==='https://smartstore.naver.com/a/products/1'&&first.value===8900,'shop: listing subject stripped of <b>, entities decoded, category joined');
- check(one(d,listing('1002'),'price_min').subject.brand==='오뚜기','shop: maker used when brand blank');
- check(one(d,listing('1003'),'price_min').subject.url===null,'shop: non-http link dropped');
- check(one(d,listing('1004'),'price_min').value===null&&d.status==='partial','shop: blank lprice → null and partial');
- check(d.limitations.some(l=>l.includes("'네이버'"))&&d.limitations.some(l=>l.includes('상위 100개')),'shop: sample and catalog limitations');
- check(c.stripTags('<b>a</b> &lt;b&gt; &quot;x&quot;')==='a <b> "x"','shop: stripTags');
- await rejects(c.collectShopSearch(dev,'',f.deps),'input','shop: empty query rejected');
- await rejects(c.collectShopSearch(dev,'a\nb',f.deps),'input','shop: control chars rejected');
-}
+// 종료된 쇼핑 검색은 저장 이력만 유지하고 직접 호출도 네트워크 전에 막는다.
+{const f=fakeFetch(()=>json(fixture('shop-search.json')));await rejects(c.collectShopSearch(dev,'마라소스',f.deps),'not_allowed','retired shop blocked');check(f.calls.length===0,'retired shop never fetches');check(c.stripTags('<b>a</b> &lt;b&gt; &quot;x&quot;')==='a <b> "x"','historical shop text sanitizer retained');}
 
 // ── YouTube ──
 const yt={kind:'youtube',apiKey:'AIzaSyD-synthetic-key-000000000000000'};
@@ -209,7 +191,7 @@ const cp={kind:'coupang_partners',accessKey:'a1b2c3d4-0000-1111-2222-33334444555
 
 // ── 공용 HTTP: 상태 코드·리디렉트·크기·형식·시간 초과 ──
 {
- const run=responder=>{const f=fakeFetch(responder);return {f,p:c.collectShopSearch(dev,'마라소스',f.deps)}};
+ const run=responder=>{const f=fakeFetch(responder);return {f,p:c.fetchSourceJson('naver_datalab_search','https://openapi.naver.com/v1/datalab/search',{},f.deps,{label:'네이버',maxBytes:600000})}};
  const e401=await rejects(run(()=>json({errorMessage:'Authentication failed'},401)).p,'auth','http: 401 → auth');
  check(e401 instanceof c.CollectorAuthError&&/인증/.test(e401.message),'http: auth error class with Korean message');
  await rejects(run(()=>json({errorMessage:'forbidden'},403)).p,'auth','http: 403 → auth');
@@ -233,7 +215,7 @@ const cp={kind:'coupang_partners',accessKey:'a1b2c3d4-0000-1111-2222-33334444555
  await rejects(c.fetchSourceJson('naver_shop_search','http://openapi.naver.com/v1/search/shop.json',{},f.deps,{label:'x'}),'not_allowed','http: plain http blocked');
  check(f.calls.length===0,'http: blocked requests never reach fetch');
  const ok=fakeFetch(()=>json({a:1}));
- const got=plain(await c.fetchSourceJson('naver_shop_search','https://openapi.naver.com/x',{},ok.deps,{label:'x'}));
+ const got=plain(await c.fetchSourceJson('naver_datalab_search','https://openapi.naver.com/x',{},ok.deps,{label:'x'}));
  check(got.bodyDigest===sha('{"a":1}')&&got.bodyBytes===7&&got.fetchedAt===NOW.toISOString(),'http: digest, bytes and injected clock');
 }
 

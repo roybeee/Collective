@@ -124,7 +124,9 @@ const seen=[];const renewing=async(u,i)=>{const row=lockRow();seen.push(row?row.
 calls=0;await collect.runProductResearchQueue(O3,{fetch:renewing,now:clock});
 check(seen.length>=3&&seen.every(ms=>ms!==null&&ms>100000),`the lock is renewed to ~120 s before every step of a running tick (${seen.length} steps)`);
 // 잠금을 잃으면(만료 뒤 다른 실행이 가져감) 상태를 저장하지 않고 멈춘다
-const before=rec(O3,'pr_collect_state','current'),marker={...before,cursor:999,lastRunAt:'other-run'};
+const before={...rec(O3,'pr_collect_state','current'),cursor:0,done:false},marker={...before,cursor:999,lastRunAt:'other-run'};
+// Restart an explicit plan for lock-loss testing after retirement shortened the previous plan.
+sql.prepare('UPDATE records SET data=? WHERE id=?').run(JSON.stringify(before),`${O3}:pr_collect_state:current`);
 let n2=0;const steal=async(u,i)=>{n2++;if(n2===2){sql.prepare('UPDATE mutation_locks SET token=? WHERE owner=?').run('other-run-token',O3+':product-research');sql.prepare('UPDATE records SET data=? WHERE id=?').run(JSON.stringify(marker),`${O3}:pr_collect_state:current`)}t+=1000;return stub(u,i)};
 st=await collect.runProductResearchQueue(O3,{fetch:steal,now:clock});
 check(st.status==='idle'&&n2===2&&rec(O3,'pr_collect_state','current').cursor===999&&rec(O3,'pr_collect_state','current').lastRunAt==='other-run','after losing the lock the run stops and does not overwrite the other run\'s collect state');
@@ -140,10 +142,10 @@ r=await post(O4,{action:'connect_source',credentialKey:'naver_developers',input:
 const fill=sql.prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)');sql.exec('BEGIN');
 for(let i=0;i<20000;i++){const at=new Date(now.getTime()-i*1000).toISOString();fill.run(`${O4}:pr_snapshot:f${i}`,O4,'pr_snapshot','naver_searchad_keyword',JSON.stringify({...snap('naver_searchad_keyword',at,{},[]),id:`f${i}`}),at)}
 sql.exec('COMMIT');
-r=await direct(O4,{action:'collect_now',sourceId:'naver_shop_search'},{fetch:stub,now:()=>new Date()});
-const shopQuota=rows(O4,'pr_quota').find(q=>q.sourceId==='naver_shop_search');
-check(r.status===200&&shopQuota.calls>0&&!(shopQuota.ok>0)&&/한도/.test(rec(O4,'pr_collect_state','current').errors.naver_shop_search.message),'provider answered but storage failed → call counted, success not counted');
-v=await get(O4);check(v.body.freshness.find(f=>f.sourceId==='naver_shop_search').successRate30d===0,'30-day success rate shows 0 for storage failures (not 100%)');
+r=await direct(O4,{action:'collect_now',sourceId:'naver_datalab_shopping'},{fetch:stub,now:()=>new Date()});
+const shopQuota=rows(O4,'pr_quota').find(q=>q.sourceId==='naver_datalab_shopping');
+check(r.status===200&&shopQuota.calls>0&&!(shopQuota.ok>0)&&/한도/.test(rec(O4,'pr_collect_state','current').errors.naver_datalab_shopping.message),'provider answered but storage failed → call counted, success not counted');
+v=await get(O4);check(v.body.freshness.find(f=>f.sourceId==='naver_datalab_shopping').successRate30d===0,'30-day success rate shows 0 for storage failures (not 100%)');
 sql.prepare("DELETE FROM records WHERE owner=? AND kind='pr_snapshot'").run(O4);
 
 // ── M6 넘기기의 소싱 후보 초안, M5 출시 뒤 판매 결과

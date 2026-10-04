@@ -1,7 +1,7 @@
 // 네이버 데이터랩 수집기: 검색어 트렌드(POST /v1/datalab/search), 쇼핑인사이트 분야(/v1/datalab/shopping/categories)·분야 내 키워드(/category/keywords).
 // 데이터랩은 요청 하나 안에서 최댓값을 100으로 둔 상대값만 준다. 다른 요청끼리 크기를 비교할 수 없어 검색광고 절대값으로 보정한다(P2 정규화).
-// 인증은 개발자센터 X-Naver-Client-Id·X-Naver-Client-Secret 헤더다. 호스트는 고정 상수다.
-import type {NaverDevelopersCredential} from '../credentials';
+// 자격증명 종류에 따라 고정 HUB/개발자센터 경로와 헤더를 선택한다. 실패 후 공급자를 바꾸지 않는다.
+import type {NaverDatalabCredential} from '../credentials';
 import type {Observation,SourceId} from '../types';
 import {fetchSourceJson,inputError,isoDay,keywordInput,list,nonNegative,record,text} from './http';
 import {unitsFor} from './quota';
@@ -90,17 +90,19 @@ function observe(results:unknown,expected:{name:string;scope?:string}[],metric:'
  return {observations,limitations,partial:Boolean(missing.length||short.length||invalid)};
 }
 
-async function post(sourceId:SourceId,path:string,operation:QuotaOperation,credential:NaverDevelopersCredential,body:unknown,deps:CollectDeps,label:string){
- return {res:await fetchSourceJson(sourceId,DATALAB_BASE+path,{method:'POST',headers:{
-  'X-Naver-Client-Id':credential.clientId,'X-Naver-Client-Secret':credential.clientSecret,'Content-Type':'application/json',
- },body:JSON.stringify(body)},deps,{label,maxBytes:MAX_BYTES}),units:unitsFor(sourceId,operation)};
+async function post(sourceId:SourceId,path:string,operation:QuotaOperation,credential:NaverDatalabCredential,body:unknown,deps:CollectDeps,label:string){
+ const hub=credential.kind==='naver_api_hub';
+ const endpoint=hub?({datalab_search:'/search-trend/v1/search',datalab_shopping_categories:'/shopping/v1/categories',datalab_shopping_keywords:'/shopping/v1/category/keywords'} as Partial<Record<QuotaOperation,string>>)[operation]:path;
+ if(!endpoint)inputError('지원하지 않는 데이터랩 요청입니다.');
+ const headers:Record<string,string>=hub?{'X-NCP-APIGW-API-KEY-ID':credential.clientId,'X-NCP-APIGW-API-KEY':credential.clientSecret}:{'X-Naver-Client-Id':credential.clientId,'X-Naver-Client-Secret':credential.clientSecret};
+ return {res:await fetchSourceJson(sourceId,(hub?'https://naverapihub.apigw.ntruss.com':DATALAB_BASE)+endpoint,{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify(body)},deps,{label,maxBytes:MAX_BYTES}),units:unitsFor(sourceId,operation)};
 }
 
 function names(values:string[],label:string){
  if(new Set(values).size!==values.length)inputError(`${label} 이름이 겹칩니다. 묶음마다 다른 이름을 쓰세요.`);
 }
 
-export async function collectDatalabSearch(credential:NaverDevelopersCredential,input:DatalabSearchInput,deps:CollectDeps):Promise<CollectResult>{
+export async function collectDatalabSearch(credential:NaverDatalabCredential,input:DatalabSearchInput,deps:CollectDeps):Promise<CollectResult>{
  const given=dateWindow(input,SEARCH_FROM);
  const anchored=given.timeUnit==='week'?anchorWeekWindow(given):null;
  const w=anchored?{startDate:anchored.startDate,endDate:anchored.endDate,timeUnit:given.timeUnit}:given;
@@ -117,7 +119,7 @@ export async function collectDatalabSearch(credential:NaverDevelopersCredential,
  return {
   draft:{
    sourceId:'naver_datalab_search',method:'api',
-   request:{...w,keywordGroups:keywordGroups.map(g=>`${g.groupName}:${g.keywords.join('|')}`).join(';')},
+   request:{...w,provider:credential.kind,keywordGroups:keywordGroups.map(g=>`${g.groupName}:${g.keywords.join('|')}`).join(';')},
    fetchedAt:res.fetchedAt,bodyDigest:res.bodyDigest,bodyBytes:res.bodyBytes,
    status:out.partial?'partial':'ok',limitations:[...out.limitations,...(anchored?.moved?[`주 단위 요청은 월요일 시작·일요일 끝 온전한 ${anchored.weeks}주로 맞췄습니다(요청 ${given.startDate}~${given.endDate} → ${w.startDate}~${w.endDate}).`]:[])],observations:out.observations,
   },
@@ -131,7 +133,7 @@ function categoryCode(value:unknown){
  return value.trim();
 }
 
-export async function collectDatalabShoppingCategories(credential:NaverDevelopersCredential,input:DatalabCategoryInput,deps:CollectDeps):Promise<CollectResult>{
+export async function collectDatalabShoppingCategories(credential:NaverDatalabCredential,input:DatalabCategoryInput,deps:CollectDeps):Promise<CollectResult>{
  const w=dateWindow(input,SHOPPING_FROM);
  const given=Array.isArray(input.categories)?input.categories:[];
  if(!given.length||given.length>MAX_CATEGORIES)inputError(`쇼핑 분야는 1~${MAX_CATEGORIES}개입니다.`);
@@ -142,7 +144,7 @@ export async function collectDatalabShoppingCategories(credential:NaverDeveloper
  return {
   draft:{
    sourceId:'naver_datalab_shopping',method:'api',
-   request:{...w,endpoint:'categories',categories:categories.map(c=>`${c.name}:${c.code}`).join(';')},
+   request:{...w,provider:credential.kind,endpoint:'categories',categories:categories.map(c=>`${c.name}:${c.code}`).join(';')},
    fetchedAt:res.fetchedAt,bodyDigest:res.bodyDigest,bodyBytes:res.bodyBytes,
    status:out.partial?'partial':'ok',limitations:[...out.limitations,'쇼핑인사이트는 네이버쇼핑 클릭 기준이며 실제 판매량이 아닙니다.'],observations:out.observations,
   },
@@ -150,7 +152,7 @@ export async function collectDatalabShoppingCategories(credential:NaverDeveloper
  };
 }
 
-export async function collectDatalabShoppingKeywords(credential:NaverDevelopersCredential,input:DatalabCategoryKeywordInput,deps:CollectDeps):Promise<CollectResult>{
+export async function collectDatalabShoppingKeywords(credential:NaverDatalabCredential,input:DatalabCategoryKeywordInput,deps:CollectDeps):Promise<CollectResult>{
  const w=dateWindow(input,SHOPPING_FROM);
  const code=categoryCode(input.categoryCode);
  const given=Array.isArray(input.keywords)?input.keywords:[];
@@ -162,7 +164,7 @@ export async function collectDatalabShoppingKeywords(credential:NaverDevelopersC
  return {
   draft:{
    sourceId:'naver_datalab_shopping',method:'api',
-   request:{...w,endpoint:'category_keywords',categoryCode:code,keywords:keywords.map(k=>`${k.name}:${k.keyword}`).join(';')},
+   request:{...w,provider:credential.kind,endpoint:'category_keywords',categoryCode:code,keywords:keywords.map(k=>`${k.name}:${k.keyword}`).join(';')},
    fetchedAt:res.fetchedAt,bodyDigest:res.bodyDigest,bodyBytes:res.bodyBytes,
    status:out.partial?'partial':'ok',limitations:[...out.limitations,'쇼핑인사이트는 네이버쇼핑 클릭 기준이며 실제 판매량이 아닙니다.'],observations:out.observations,
   },

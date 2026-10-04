@@ -26,7 +26,7 @@ export const APP_DAILY_CAPS:Readonly<Partial<Record<SourceId,number>>>={
  naver_searchad_keyword:200,  // 호출 수(공급자 미공개)
  naver_datalab_search:900,    // 호출 수(공급자 1,000)
  naver_datalab_shopping:50,   // 호출 수(공급자 1,000, 계획 하루 4회)
- naver_shop_search:2000,      // 호출 수(공급자 25,000)
+ naver_shop_search:0,      // 호출 수(공급자 25,000)
  youtube_data:9000,           // 단위(공급자 10,000, 태평양 날짜)
  coupang_partners:100,        // 호출 수(공급자 승인 조건, 미공개)
 };

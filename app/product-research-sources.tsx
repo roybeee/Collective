@@ -18,7 +18,7 @@ import {IMPORTABLE_SOURCES,SOURCES} from '@/lib/product-research/sources';
 import type {SourceId} from '@/lib/product-research/types';
 import type {QuarantineEntry} from '@/lib/product-research/api';
 import {RecomputeButton} from './product-research-candidates';
-import {credentialForms,editReason,koreaToday,methodLabels,metricLabels,snapshotStatusLabels,sourceLabel,type Act,type RowIssue,type View} from './product-research-shared';
+import {credentialDisconnectImpact,credentialForms,editReason,koreaToday,methodLabels,metricLabels,snapshotStatusLabels,sourceLabel,type Act,type RowIssue,type View} from './product-research-shared';
 import {CollectionControl} from './product-research-collection-control';
 import s from './product-research.module.css';
 
@@ -28,7 +28,7 @@ type ImportRow=View['imports'][number];
 const ownerReason='소유자만 할 수 있습니다.';
 
 export function SourcesTab({view,act,busy,onCandidates,onRefresh}:{view:View;act:Act;busy:boolean;onCandidates:()=>void;onRefresh:()=>Promise<boolean>}){
- const autoConnected=view.sources.some(x=>x.method==='api'&&x.connected);
+ const autoConnected=view.sources.some(x=>x.id!=='naver_shop_search'&&x.method==='api'&&x.connected&&SOURCES.some(s=>s.id===x.id&&s.autoFetch));
  const usage=view.collectNow??null,exhausted=!!usage&&usage.usedToday>=usage.maxPerDay;
  const collectWhy=!view.canConnect?`즉시 수집은 ${ownerReason}`:!view.collectEnabled?'자동 수집 스위치가 꺼져 있습니다. 소유자가 아래 버튼으로 켭니다.':!autoConnected?'연결된 공식 API 출처가 없습니다. 아래에서 먼저 연결하세요.':exhausted?`오늘 즉시 수집을 ${usage.maxPerDay}번 다 썼습니다. 내일(한국 시각) 다시 할 수 있고, 하루 1회 자동 수집은 그대로 돕니다.`:'';
  const fresh=(id:SourceId)=>view.freshness?.find(x=>x.sourceId===id)??null;
@@ -52,6 +52,7 @@ export function SourcesTab({view,act,busy,onCandidates,onRefresh}:{view:View;act
   <Alerts view={view}/>
   {manualRanks.length>0&&<p className={s.badges} aria-label="랭킹 가져오기 이번 주 상태">{manualRanks.map(r=><span key={r.sourceId} className={'status '+(r.thisWeek?'status-approved':s.warn)}>{sourceLabel(view,r.sourceId)} {r.thisWeek?'이번 주 가져옴':'이번 주 가져오기 전'}</span>)}</p>}
   <DataTable rows={view.sources} columns={columns} rowKey={x=>x.id} caption="상품 리서치 출처" csvName="product-research-sources"/>
+  <p className={s.muted}>네이버 쇼핑 검색 API는 서비스가 종료되어 수집 대상에서 제외됩니다. 이전 수집 기록은 남아 있습니다.</p>
   <p className={s.muted}>30일 성공률은 지난 30일 예약 호출 중 정상으로 끝난 비율입니다. 호출이 없으면 미확인입니다.</p>
   {/* 평가 2회차 M3: 데이터랩 상대값을 검색광고 실측 합으로 맞춘 보정의 검증 오차. 오차 큰 묶음 3개를 함께 보인다. */}
   <p className={s.muted} data-testid="pr-calibration">검색량 보정: {calibrationText(view.calibration)}{view.calibration?.rows.some(r=>r.error!==null)?` 오차 큰 묶음 ${view.calibration.rows.filter(r=>r.error!==null).slice(0,3).map(r=>`${r.label} ${(r.error!*100).toFixed(1)}%`).join(', ')}.`:''}</p>
@@ -64,6 +65,7 @@ export function SourcesTab({view,act,busy,onCandidates,onRefresh}:{view:View;act
    <Button type="button" variant="outline" disabled={busy||!!collectWhy} disabledReason={collectWhy} onClick={()=>void act({action:'collect_now'},'자동 수집을 한 번 실행했습니다.','출처별 하루 쿼터 안에서만 호출했습니다.')}>지금 수집</Button>
   </section>
   <section className={s.block} aria-labelledby="pr-cred-title"><h3 id="pr-cred-title" className={s.subtitle}>출처 연결</h3>
+   <p className={s.muted}>기존 네이버 개발자센터와 함께 연결되어 있으면 NAVER API HUB 키를 우선 사용합니다. HUB 연결을 해제하면 기존 키를 사용합니다.</p>
    <div className={s.credGrid}>{CREDENTIAL_KEYS.map(k=><CredentialCard key={k} view={view} credential={k} act={act} busy={busy}/>)}</div>
   </section>
   <QuarantineList view={view} act={act} busy={busy}/>
@@ -82,7 +84,7 @@ const calibrationColumns:DataColumn<CalibrationRow>[]=[
  {label:'검색수를 잴 수 없는 키워드',cell:r=>count(r.missing??null,'개'),sort:r=>r.missing??-1,csv:r=>r.missing??'',align:'right'},
  {label:'비고',cell:r=>calibrationNote(r)||'없음',csv:r=>calibrationNote(r)},
 ];
-const connection=(x:SourceRow)=>x.method==='manual'?'가져오기 전용':x.method==='internal'?'앱 안 자료':x.connected?'연결됨':'연결 필요';
+const connection=(x:SourceRow)=>x.id==='naver_shop_search'?'서비스 종료':x.method==='manual'?'가져오기 전용':x.method==='internal'?'앱 안 자료':x.connected?'연결됨':'연결 필요';
 const successText=(f:{successRate30d:number|null;calls30d:number}|null)=>f?.successRate30d==null?'미확인':`${percent(f.successRate30d)} (${count(f.calls30d,'회')})`;
 const quota=(x:SourceRow)=>x.dailyQuota===null?(x.quotaUsedToday===null?'제한 미확인':`${count(x.quotaUsedToday)} 사용`):`${count(x.quotaUsedToday??0)}/${count(x.dailyQuota)}`;
 const importColumns=(view:View):DataColumn<ImportRow>[]=>[
@@ -101,17 +103,18 @@ function CredentialCard({view,credential,act,busy}:{view:View;credential:Credent
  const saveWhy=!view.canConnect?ownerReason:missing?'필수 칸을 먼저 채우세요.':'';
  async function save(){
   const input=Object.fromEntries(form.fields.map(f=>[f.name,(values[f.name]??'').trim()]).filter(([,v])=>v));
-  const r=await act({action:'connect_source',credentialKey:credential,input},`${form.label} 연결을 저장했습니다.`,'다음 자동 수집부터 이 키를 씁니다.');
+  const r=await act({action:'connect_source',credentialKey:credential,input},`${form.label} 연결을 저장했습니다.`,credential==='naver_developers'&&view.credentials.some(c=>c.key==='naver_api_hub'&&c.connected)?'NAVER API HUB 키가 우선 사용됩니다.':'다음 자동 수집부터 이 키를 씁니다.');
   if(r.ok)setValues({});
  }
  async function disconnect(){
-  const ok=await askConfirm({title:`${form.label} 연결을 해제할까요?`,impact:'저장한 키를 지우고 이 출처의 자동 수집을 멈춥니다. 이미 모은 스냅샷과 점수는 그대로 남습니다.',undo:'같은 키를 다시 넣으면 다시 연결됩니다.',confirmLabel:'연결 해제',danger:true});
+  const ok=await askConfirm({title:`${form.label} 연결을 해제할까요?`,impact:credentialDisconnectImpact(credential,view.credentials),undo:'같은 키를 다시 넣으면 다시 연결됩니다.',confirmLabel:'연결 해제',danger:true});
   if(ok)await act({action:'disconnect_source',credentialKey:credential},`${form.label} 연결을 해제했습니다.`);
  }
  const disconnectWhy=!view.canConnect?ownerReason:'';
  return <section className={s.credCard} aria-label={`${form.label} 연결`}>
   <div className={s.headRow}><b>{form.label}</b><span className={'status '+(state?.connected?'status-approved':'status-outdated')}>{state?.connected?'연결됨':'연결 전'}</span></div>
-  <small className={s.muted}>{CREDENTIAL_SOURCES[credential].map(id=>sourceLabel(view,id)).join(', ')}</small>
+  <small className={s.muted}>{CREDENTIAL_SOURCES[credential].filter(id=>id!=='naver_shop_search').map(id=>sourceLabel(view,id)).join(', ')}</small>
+  {credential==='naver_api_hub'&&<small className={s.muted}>데이터랩 검색어 트렌드와 쇼핑인사이트 권한을 모두 확인한 뒤 연결을 저장합니다.</small>}
   {state?.connected&&<small className={s.muted}><MetaLine items={[state.account?`계정 ${state.account}`:null,`저장 ${dateTime(state.updatedAt)}`]}/></small>}
   {view.canConnect?<form className={s.credForm} onSubmit={e=>{e.preventDefault();if(!saveWhy)void save()}} autoComplete="off">
    {form.fields.map(f=><label key={f.name} className="field"><span>{f.label}{f.optional?'(선택)':''}</span><Input type={f.secret?'password':'text'} name={`pr-credential-${credential}-${f.name}`} autoComplete={f.secret?'new-password':'off'} autoCapitalize="none" spellCheck={false} value={values[f.name]??''} onChange={e=>setValues(v=>({...v,[f.name]:e.target.value}))}/></label>)}
