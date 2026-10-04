@@ -93,7 +93,7 @@ check('ER-V4 approved asset versions are offered for new plans',v.assets.length=
 const leadRows=f.rows('franchise_lead');
 const hasLeadLeak=value=>{const text=JSON.stringify(value);return leadRows.some(l=>text.includes(l.id)||text.includes(l.systemCode))||text.includes('이테스트')||fixturePhones.some(phone=>text.includes(phone)||text.includes(phone.replaceAll('-','')))};
 check('ER-V5 no lead id, system code, name or phone in the view',!hasLeadLeak(v));
-check('ER-V5 a valid experiment UUID containing 010- is not a phone leak',!hasLeadLeak({...v,experiments:[{...e,id:'rx-12345010-1234-4123-8123-123456789abc'}]}));
+check('ER-V5 a valid experiment UUID containing 010- is not a phone leak',!hasLeadLeak({...v,experiments:[{...e,id:'rx-abcde010-abcd-4abc-8abc-abcdefabcdef'}]}));
 check('ER-V5 actual fixture phone values are rejected with or without separators',fixturePhones.every(phone=>hasLeadLeak({...v,leakedPhone:phone})&&hasLeadLeak({...v,leakedPhone:phone.replaceAll('-','')})));
 r=await get(member,'view=experiments&brandId=fr-b');
 check('ER-V6 the other brand sees none of these experiments',r.status===200&&r.body.experiments.length===0);
