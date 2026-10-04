@@ -382,8 +382,9 @@ export function campaignScopes(policy:CampaignDeletionPolicy,owner:string,campai
 }
 // records에 대한 SQL 한 문장. verb는 'DELETE' 또는 'SELECT ...' 앞부분이다. 여러 경로는 OR로 묶어 한 행을 한 번만 센다.
 export function scopesSql(verb:string,owner:string,scopes:readonly CampaignScope[]){
- const parts=scopes.map(s=>`(kind IN (${s.kinds.map(()=>'?').join(',')}) AND ${s.where})`);
- return {sql:`${verb} FROM records WHERE owner=? AND (${parts.join(' OR ')||'0'})`,binds:[owner,...scopes.flatMap(s=>[...s.kinds,...s.binds])]};
+ // D1 limits each query to 100 binds; one JSON array keeps kind growth from exhausting that budget.
+ const parts=scopes.map(s=>`(kind IN (SELECT value FROM json_each(?)) AND ${s.where})`);
+ return {sql:`${verb} FROM records WHERE owner=? AND (${parts.join(' OR ')||'0'})`,binds:[owner,...scopes.flatMap(s=>[JSON.stringify(s.kinds),...s.binds])]};
 }
 // 완전 삭제가 캠페인과 상관없이 소유자 범위로 지우는 kind(purge delete_all). 캠페인별 삭제(purge delete)는 campaignScopes(정책, …, k=>k.purge==='delete')로 만든다.
 export const purgeAllKinds:readonly string[]=recordKinds.filter(k=>k.purge==='delete_all').map(k=>k.kind);
