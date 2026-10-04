@@ -85,6 +85,8 @@ function TemplateEditor({brandId,data,onDone}:{brandId:string;data:NurtureViewDa
   if(r.status===200){setMessage(`템플릿을 저장했습니다(v${String((r.body.result as Json).version)}).`);setBody('');setSubject('');setDraftId(null);setDraft(null);onDone()}else setProblem(problemOf(r));
  }
  const running=!!draft&&ACTIVE_STATUSES.includes(draft.status);
+ // 새로고침·다른 기기에서 시작한 작성 중 초안: 이어서 확인(조회)·복구·중지를 연다. 이 버튼이 없으면 초안이 끝나지 않아 새 초안이 409로 막힌다.
+ const pending=!draft&&data.activeDraft?data.drafts.find(d=>d.id===data.activeDraft)??null:null;
  return <div className="franchise-box">
   <h4>새 템플릿</h4>
   <div className="form-two">
@@ -95,8 +97,12 @@ function TemplateEditor({brandId,data,onDone}:{brandId:string;data:NurtureViewDa
   <p className="subtle-note">{`자리표시: ${data.placeholders.join(' ')} · 이름·연락처·숫자 코드는 값으로 쓰지 않습니다.`}</p>
   {medium==='email'&&<label className="field"><span>제목</span><Input aria-label="템플릿 제목" maxLength={data.limits.subjectChars} value={subject} onChange={e=>setSubject(e.target.value)}/></label>}
   <label className="field"><span>본문</span><Textarea aria-label="템플릿 본문" rows={8} maxLength={data.limits.bodyChars} value={body} onChange={e=>{setBody(e.target.value);setDraftId(null)}}/></label>
+  {pending&&<div className="franchise-bar" role="status"><span>{`작성 중인 AI 초안이 있습니다(${labelOf(data.purposes,pending.purpose)} · ${labelOf(data.media,pending.medium)} · ${kst(pending.createdAt)}).`}</span>
+   <Button size="sm" variant="outline" disabled={busy} onClick={()=>void poll(pending.id,'poll')}>이어서 확인</Button>
+   {pending.status==='uncertain'&&<Button size="sm" variant="outline" disabled={busy} onClick={()=>void poll(pending.id,'recover')}>복구</Button>}
+   <Button size="sm" variant="outline" disabled={busy} onClick={()=>void poll(pending.id,'cancel')}>중지</Button></div>}
   <div className="franchise-actions">
-   <Button size="sm" variant="outline" disabled={busy||running||!data.enabled||!!data.activeDraft&&!draft} onClick={()=>void startDraft()}>AI 초안 만들기</Button>
+   <Button size="sm" variant="outline" disabled={busy||running||!data.enabled||!!pending} onClick={()=>void startDraft()}>AI 초안 만들기</Button>
    {draft?.status==='uncertain'&&<Button size="sm" variant="outline" disabled={busy} onClick={()=>void poll(draft.id,'recover')}>복구</Button>}
    {running&&<Button size="sm" variant="outline" disabled={busy} onClick={()=>void poll(draft!.id,'cancel')}>중지</Button>}
    <Button size="sm" disabled={busy||!data.enabled||!body.trim()} onClick={()=>void save()}>템플릿 저장</Button>
