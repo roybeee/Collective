@@ -17,7 +17,10 @@ async function context(owner:string,c:Campaign,eventId:string){
  const event=await readRecord<Event>(owner,'growth_stock_event',eventId);
  if(event.id!==eventId||!scoped(event,c))throw new ApiError(404,'현재 캠페인의 운영 사건이 아닙니다.');
  if(!['return','refund'].includes(event.kind)||!Number.isSafeInteger(event.version)||event.version<1||!Number.isSafeInteger(event.quantity)||event.quantity<1||!/^[a-f0-9]{64}$/.test(event.digest))throw new ApiError(409,'유효한 반품·환불 수량 사건을 선택하세요.');
- const [line,inventory]=await Promise.all([readRecord<Line>(owner,'growth_order_line',executionId(event.orderId)),readRecord<Inventory>(owner,'growth_inventory_item',executionId(event.inventoryId))]);
+ const [single,inventory]=await Promise.all([optional<Line>(owner,'growth_order_line',executionId(event.orderId)),readRecord<Inventory>(owner,'growth_inventory_item',executionId(event.inventoryId))]);
+ let line=single;
+ if(!line){const bundle=await optional<Scoped&{id:string;version:number;reservationScope:string;components:{inventoryId:string}[]}>(owner,'growth_bundle_order',executionId(event.orderId));if(bundle&&scoped(bundle,c)&&bundle.components.some(x=>x.inventoryId===event.inventoryId))line={...bundle,input:{inventoryId:event.inventoryId,missionId:bundle.reservationScope}};}
+ if(!line)throw new ApiError(404,'사건의 현재 주문 품목을 찾지 못했습니다.');
  if(line.id!==event.orderId||!scoped(line,c)||line.input.inventoryId!==event.inventoryId||inventory.id!==event.inventoryId||inventory.brandId!==c.brandId||inventory.storeId!==c.storeId||(event.missionId&&event.missionId!==line.input.missionId)||(!event.missionId&&event.reservationId))throw new ApiError(409,'사건의 정확한 품목·미션·재고 범위를 확인하세요.');
  if(!Number.isSafeInteger(line.version)||line.version<1)throw new ApiError(409,'품목 판을 확인하세요.');
  const eventDigest=await storefrontDigest({inventoryUnit:inventory.input.unit,lineBasis:{id:line.id,version:line.version,inventoryId:line.input.inventoryId,missionId:line.input.missionId},id:event.id,version:event.version,digest:event.digest,kind:event.kind,quantity:event.quantity,orderId:event.orderId,inventoryId:event.inventoryId,missionId:event.missionId,reservationId:event.reservationId,observedAt:event.observedAt,recordedAt:event.recordedAt,evidenceRef:event.evidenceRef,returnAccepted:event.returnAccepted,disposition:event.disposition,restock:event.restock});

@@ -1,4 +1,5 @@
 'use client';
+import {GrowthCsSourcePanel} from './growth-cs-source-panel';
 import {LockedNote} from '@/components/app/locked-note';
 import {MetaLine} from '@/components/app/meta-line';
 import {readOnlyReason} from '@/lib/ui/read-only';
@@ -41,7 +42,7 @@ function Workspace({campaignId}:{campaignId:string}){
  useEffect(()=>{if(!ticket||busy||!focusPicked.current)return;focusPicked.current=false;recordForm.current?.querySelector('select')?.focus();},[ticket,busy]);
  const record=(t:Ticket)=>send({action:'record_event',id:t.id,expectedVersion:t.version,event:{action:ev.action,at:ev.at?new Date(ev.at).toISOString():'',evidenceRef:ev.evidenceRef,note:ev.note,...(ev.action==='resolve'?{resolution:ev.resolution}:{})}},'처리를 기록했습니다.');
  return <section aria-label="고객 문의 처리" className={styles.panel}><header className={styles.header}><h3>고객 문의와 약속 기한</h3><Button variant="panel" size="fit" aria-label="문의 새로고침" type="button" disabled={busy} onClick={()=>void load()}>새로고침</Button></header>
-  <Note className={styles.note}>고객 원문·이름·연락처·주소는 저장하지 않고 운영자 요약만 남깁니다. 약속 기한을 넘긴 미해결 문의를 먼저 보여줍니다. 반복 유형은 최근 30일 건수이며 비율·만족도가 아닙니다. 응답·환불·재고 변경은 운영자가 직접 합니다.</Note>
+  <Note className={styles.note}>고객 원문·이름·연락처·주소는 저장하지 않고 운영자 요약만 남깁니다. 약속 기한을 넘긴 미해결 문의를 먼저 보여줍니다. 반복 유형은 최근 30일 건수이며 비율·만족도가 아닙니다. 서비스 답변은 아래 제공자 연결에서 승인합니다. 환불과 재고 변경은 별도 운영 절차로 처리합니다.</Note>
   {error&&<p role="alert" className={styles.error}>{error}</p>}{message&&<p role="status" className={styles.success}>{message}</p>}{loading&&<p role="status">문의를 조회하고 있습니다.</p>}{stale&&<p role="status" className={styles.warning}>이전 조회 결과입니다. 최신 조회 전에는 추가 저장을 할 수 없습니다.</p>}
   {view&&<><p><MetaLine items={[`미해결 ${view.open}건`,`기한 초과 ${view.overdue}건`,view.recurring.recurring.length>0&&`반복 유형: ${view.recurring.recurring.map(c=>categoryLabels[c]).join(', ')}`]}/></p>
    {view.canEdit?<form onSubmit={e=>{e.preventDefault();if(!draftId.current)draftId.current=`cs-${crypto.randomUUID().slice(0,8)}`;void send({action:'save_ticket',id:draftId.current,expectedVersion:0,input:{...input,receivedAt:input.receivedAt?new Date(input.receivedAt).toISOString():'',promisedBy:input.promisedBy?new Date(input.promisedBy).toISOString():''}},'문의를 접수했습니다.');}}><fieldset disabled={busy} className={styles.form}><legend>문의 접수</legend>
@@ -63,5 +64,6 @@ function Workspace({campaignId}:{campaignId:string}){
     <label>처리 시각<Input type="datetime-local" value={ev.at} onChange={e=>setEv({...ev,at:e.target.value})}/></label><label>처리 증빙 ID<Input value={ev.evidenceRef} onChange={e=>setEv({...ev,evidenceRef:e.target.value})}/></label><label>처리 메모<Input maxLength={500} value={ev.note} onChange={e=>setEv({...ev,note:e.target.value})}/></label>
     <Button variant="panel" size="fit" type="button" disabled={stale||!ev.at||!ev.evidenceRef} disabledReason={stale?'다른 곳에서 먼저 바뀌었습니다. 최신 기록을 불러온 뒤 다시 하세요.':!ev.at?'필수 칸을 먼저 채우세요.':!ev.evidenceRef?'필수 칸을 먼저 채우세요.':undefined} onClick={()=>void record(ticket)}>처리 저장</Button></fieldset>}
   </>}
+ <GrowthCsSourcePanel campaignId={campaignId}/>
  </section>;
 }

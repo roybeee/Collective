@@ -1,4 +1,5 @@
 import type {Campaign} from './agency';
+import {deliverySuppression} from './growth-consumer-delivery-suppression';
 import type {StoreOrder} from './store-operations';
 import type {Store} from './store-marketing';
 import {consumerAssessment,consumerEvidence,consentActive,emptyConsumerConsents,parseConsent,parseWaitDays,type ConsumerConsents,type ConsumerOrder} from './growth-consumer';
@@ -43,7 +44,7 @@ function validateFields(b:Record<string,unknown>){
 }
 async function capacity(owner:string,kind:string,brand:string,max:number){const r=await database().prepare('SELECT COUNT(*) AS n FROM records WHERE owner=? AND kind=? AND parent_id=?').bind(owner,kind,brand).first<{n:number}>();if((r?.n??0)>=max)throw new ApiError(409,'브랜드 기록 한도에 도달했습니다. 새 기록 전에 대사하세요.')}
 async function erase(who:Actor,c:Campaign,old:ConsumerCustomer|Tombstone,requestId:string){
- const statements=[recordStatement(who.owner,kinds.customer,old.id,{id:old.id,brandId:c.brandId,version:old.version+1,state:'erased'},c.brandId)];
+ const statements=[...deliverySuppression(who.owner,c.brandId,old.id,null,true,requestId,stamp()),recordStatement(who.owner,kinds.customer,old.id,{id:old.id,brandId:c.brandId,version:old.version+1,state:'erased'},c.brandId)];
  for(const kind of [kinds.consent,kinds.link,kinds.history])statements.push(database().prepare("DELETE FROM records WHERE owner=? AND kind=? AND parent_id=? AND json_extract(data,'$.customerId')=?").bind(who.owner,kind,c.brandId,old.id));
  // Keep request IDs as suppression tombstones, but remove payload digests and linking evidence.
  statements.push(database().prepare("UPDATE records SET data=json_object('id',id,'brandId',?,'customerId',?,'erased',json('true')) WHERE owner=? AND kind=? AND parent_id=? AND json_extract(data,'$.customerId')=?").bind(c.brandId,old.id,who.owner,kinds.request,c.brandId,old.id));
@@ -104,6 +105,7 @@ export async function saveGrowthConsumer(who:Actor,c:Campaign,b:Record<string,un
    if(!withdrawing)await capacity(who.owner,kinds.consent,c.brandId,5000);
    const consent={...next,recordedAt:at,withdrawnAt:next.withdrawnAt??prior?.withdrawnAt};
    consents={...old.consents,[next.purpose]:consent};
+   if(next.state==='revoked')statements.push(...deliverySuppression(who.owner,c.brandId,old.id,next.purpose,false,requestId,at));
    statements.push(appendStatement(who.owner,kinds.consent,crypto.randomUUID(),{customerId:old.id,brandId:c.brandId,customerVersion:old.version+1,...consent},c.brandId));
   }else statements.push(...await linkOrder(who,c,old,b,at));
   if(!withdrawing){await capacity(who.owner,kinds.request,c.brandId,10000);await growthConsumerView(who,c,waitDays);}

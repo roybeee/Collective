@@ -1,3 +1,4 @@
+import {providerCatalogCeiling} from './growth-provider-catalog-server';
 import type {Campaign} from './agency';
 import type {CatalogInput,CatalogStock} from './growth-catalog';
 import {projectInventory,type InventoryEvent} from './growth-inventory';
@@ -28,7 +29,7 @@ export async function catalogStocks(owner:string,c:Campaign,inputs:readonly Cata
   const item=matching[0];if(item.brandId!==c.brandId||item.storeId!==c.storeId||item.input.locationId!==c.storeId)return held(input,'재고 장부의 브랜드·지점·위치가 일치하지 않습니다.');
   if(item.input.unit!==input.stockUnit)return held(input,'상품과 재고 수량 단위가 다릅니다. 자동 환산하지 않습니다.');
   try{if(!projections.has(item.id))projections.set(item.id,projectionFor(owner,c,item));const p=await projections.get(item.id)!;if(p.onHand===null||p.available===null)return held(input,'현재 공유 재고 수량이 미확인입니다.');
-   return {status:'known',inventoryId:item.id,inventoryVersion:item.version,unit:item.input.unit,onHand:p.onHand,reserved:p.reserved,available:p.available,shortage:p.shortage,reasons:[]};
+   return providerCatalogCeiling(owner,c,input,{status:'known',inventoryId:item.id,inventoryVersion:item.version,unit:item.input.unit,onHand:p.onHand,reserved:p.reserved,available:p.available,shortage:p.shortage,reasons:[]});
   }catch{return held(input,'재고 사건 조회·범위·현재 판을 대사해야 합니다.')}
  }));
 }

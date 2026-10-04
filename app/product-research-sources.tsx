@@ -19,6 +19,7 @@ import type {SourceId} from '@/lib/product-research/types';
 import type {QuarantineEntry} from '@/lib/product-research/api';
 import {RecomputeButton} from './product-research-candidates';
 import {credentialForms,editReason,koreaToday,methodLabels,metricLabels,snapshotStatusLabels,sourceLabel,type Act,type RowIssue,type View} from './product-research-shared';
+import {CollectionControl} from './product-research-collection-control';
 import s from './product-research.module.css';
 
 const MAX_BYTES=2*1024*1024;
@@ -26,10 +27,10 @@ type SourceRow=View['sources'][number];
 type ImportRow=View['imports'][number];
 const ownerReason='소유자만 할 수 있습니다.';
 
-export function SourcesTab({view,act,busy,onCandidates}:{view:View;act:Act;busy:boolean;onCandidates:()=>void}){
+export function SourcesTab({view,act,busy,onCandidates,onRefresh}:{view:View;act:Act;busy:boolean;onCandidates:()=>void;onRefresh:()=>Promise<boolean>}){
  const autoConnected=view.sources.some(x=>x.method==='api'&&x.connected);
  const usage=view.collectNow??null,exhausted=!!usage&&usage.usedToday>=usage.maxPerDay;
- const collectWhy=!view.canConnect?`즉시 수집은 ${ownerReason}`:!view.collectEnabled?'자동 수집 스위치가 꺼져 있습니다. 소유자가 설정에서 켭니다.':!autoConnected?'연결된 공식 API 출처가 없습니다. 아래에서 먼저 연결하세요.':exhausted?`오늘 즉시 수집을 ${usage.maxPerDay}번 다 썼습니다. 내일(한국 시각) 다시 할 수 있고, 하루 1회 자동 수집은 그대로 돕니다.`:'';
+ const collectWhy=!view.canConnect?`즉시 수집은 ${ownerReason}`:!view.collectEnabled?'자동 수집 스위치가 꺼져 있습니다. 소유자가 아래 버튼으로 켭니다.':!autoConnected?'연결된 공식 API 출처가 없습니다. 아래에서 먼저 연결하세요.':exhausted?`오늘 즉시 수집을 ${usage.maxPerDay}번 다 썼습니다. 내일(한국 시각) 다시 할 수 있고, 하루 1회 자동 수집은 그대로 돕니다.`:'';
  const fresh=(id:SourceId)=>view.freshness?.find(x=>x.sourceId===id)??null;
  const ranking=(id:SourceId)=>view.rankingStatus?.find(x=>x.sourceId===id)??null;
  const columns:DataColumn<SourceRow>[]=[
@@ -58,6 +59,7 @@ export function SourcesTab({view,act,busy,onCandidates}:{view:View;act:Act;busy:
   {view.calibration&&view.calibration.rows.length>0&&<DataTable rows={view.calibration.rows} columns={calibrationColumns} rowKey={r=>r.groupId} caption="키워드 묶음별 검색량 보정" csvName="product-research-calibration" filterText={r=>[r.label,r.reason??''].join(' ')}/>}
   <section className={s.block} aria-labelledby="pr-collect-title"><h3 id="pr-collect-title" className={s.subtitle}>자동 수집</h3>
    <p className={s.muted}><MetaLine items={[`스위치 ${view.collectEnabled?'켜짐':'꺼짐'}`,`마지막 실행 ${dateTime(view.collect.lastRunAt,'없음')}`,`다음 실행 ${dateTime(view.collect.nextRunAt,'예정 없음')}`,usage?`오늘 즉시 수집 ${usage.usedToday}/${usage.maxPerDay}`:null]}/></p>
+   <CollectionControl enabled={view.collectEnabled} canConnect={view.canConnect} connected={autoConnected} busy={busy} onRefresh={onRefresh}/>
    {view.collect.lastErrors.length>0&&<ul className={s.issues} aria-label="최근 수집 실패">{view.collect.lastErrors.map((e,i)=><li key={i}><MetaLine items={[sourceLabel(view,e.sourceId),dateTime(e.at)]}/> {e.message}</li>)}</ul>}
    <Button type="button" variant="outline" disabled={busy||!!collectWhy} disabledReason={collectWhy} onClick={()=>void act({action:'collect_now'},'자동 수집을 한 번 실행했습니다.','출처별 하루 쿼터 안에서만 호출했습니다.')}>지금 수집</Button>
   </section>
@@ -112,7 +114,7 @@ function CredentialCard({view,credential,act,busy}:{view:View;credential:Credent
   <small className={s.muted}>{CREDENTIAL_SOURCES[credential].map(id=>sourceLabel(view,id)).join(', ')}</small>
   {state?.connected&&<small className={s.muted}><MetaLine items={[state.account?`계정 ${state.account}`:null,`저장 ${dateTime(state.updatedAt)}`]}/></small>}
   {view.canConnect?<form className={s.credForm} onSubmit={e=>{e.preventDefault();if(!saveWhy)void save()}} autoComplete="off">
-   {form.fields.map(f=><label key={f.name} className="field"><span>{f.label}{f.optional?'(선택)':''}</span><Input type={f.secret?'password':'text'} autoComplete="off" spellCheck={false} value={values[f.name]??''} onChange={e=>setValues(v=>({...v,[f.name]:e.target.value}))}/></label>)}
+   {form.fields.map(f=><label key={f.name} className="field"><span>{f.label}{f.optional?'(선택)':''}</span><Input type={f.secret?'password':'text'} name={`pr-credential-${credential}-${f.name}`} autoComplete={f.secret?'new-password':'off'} autoCapitalize="none" spellCheck={false} value={values[f.name]??''} onChange={e=>setValues(v=>({...v,[f.name]:e.target.value}))}/></label>)}
    <div className={s.toolbar}><Button type="submit" size="sm" disabled={busy||!!saveWhy} disabledReason={saveWhy}>{state?.connected?'키 바꿔 저장':'연결 저장'}</Button>
    {state?.connected&&<Button type="button" variant="ghost" size="sm" className="danger-action" disabled={busy||!!disconnectWhy} disabledReason={disconnectWhy} onClick={()=>void disconnect()}>연결 해제</Button>}</div>
   </form>:<LockedNote action="출처 연결" reason={ownerReason}/>}

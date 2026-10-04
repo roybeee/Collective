@@ -89,3 +89,23 @@ COLLECTIVE의 해당 브랜드/지점에서 몰 식별자 `mapdal`의 서명 수
 허용 호스트·HTTPS·443·고정 경로만 사용하고 사용자 정보/쿼리/fragment/리다이렉트/환경 프록시를 거부한다. 최초 송신의 URL을 outbox에 고정하여 다른 지점 연결로 바꿔 보내지 못한다. HMAC-SHA256은 수신 코드와 동일한 `timestamp + '.' + rawBody`를 사용한다. 네트워크 제한시간은 20초다.
 
 테스트는 합성 주문·로컬 SQLite·모의 HTTP를 사용했다. 실몰 주문/취소/부분환불 대조, 운영 웹훅 송수신, 실제 Meta 전환 수신은 아직 검증하지 않았다.
+
+## 서버 조회 endpoint
+
+`scripts/mapdal/order_pull.py`는 위 어댑터가 만드는 별도 outbox를 읽어 Collective의 기존 판매처 조회 연결에 제공한다. 실제 주문 데이터베이스를 HTTP 요청마다 읽지 않으며, 조회 토큰으로 원본 DB 자격이나 고객정보에 접근할 수 없다.
+
+```python
+import os
+from order_pull import OrderPull, OrderPullASGI
+pull = OrderPull(os.environ['COLLECTIVE_ORDER_OUTBOX'],
+                 os.environ['COLLECTIVE_ORDER_PULL_TOKEN'])
+app.mount('/collective/v1/orders', OrderPullASGI(pull))
+```
+
+별도 토큰은 32자 이상으로 설정한다. Collective에는 HTTPS endpoint `https://mapdal.kr/collective/v1/orders/`와 이 토큰을 등록한다. 프록시와 기존 로그인 미들웨어는 이 경로의 bearer 인증을 HTML 로그인으로 대체하지 않아야 한다. 원본→outbox 갱신은 위 `adapter.py --enqueue`의 명시적 읽기 전용 PostgreSQL/SQLite 경로로 수행한다. 설치 환경의 작업자가 갱신 범위와 주기를 설정하며, endpoint 자체가 원본 수집을 시작하지 않는다.
+
+응답은 주문별 7개 필드·`nextCursor`·`hasMore`뿐이다. 페이지마다 불변 outbox 행 100개를 읽고 같은 주문의 여러 판은 해당 페이지의 최신 판으로 합친다. 커서는 파일 경로·토큰에 서명되어 위변조/다른 outbox 재사용을 거부한다. 원본이 추가되면 기존 커서 다음부터 읽으며 동일 페이지 재조회는 같은 판을 반환한다. outbox를 복원·이동하거나 토큰을 바꾸면 Collective의 커서를 명시적으로 초기화한다. 기존 revision 중복 방지는 유지된다.
+
+미확정 취소 hold가 하나라도 있으면 409를 반환하여 커서를 진행시키지 않는다. 이미 가져간 유료 주문도 취소 불확실성이 있는 동안 최신 동기화 성공으로 표시하지 않는다. 구조화 환불 증빙으로 hold를 해소하면 다음 조회를 재개한다. 상태/금액/날짜/필드가 손상된 outbox는 원문 없는 503이며 임의 문자열을 내보내지 않는다. 파일은 SQLite `mode=ro`, 쿼리 시간 2초, 페이지 101행 탐색, 프로세스당 분당 120회 제한이다. 서버 앞단에도 동시접속 제한을 둔다.
+
+검증: `python3 tests/mapdal_order_pull_test.py` — 실제 임시 outbox의 필드 제한·페이지/재조회·복수 판·hold·서명 커서·인증·rate limit·원본 불변 검사. 운영 PostgreSQL 및 HTTP 설치는 **not_run**이다.

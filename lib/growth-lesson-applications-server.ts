@@ -1,4 +1,5 @@
 import type {Campaign} from './agency';
+import {lessonOutcomeView,lessonOutcomeHistory} from './growth-lesson-outcomes-server';
 import {growthDecisionsView} from './growth-decisions-server';
 import {lessonReuse,parseApplicationInput,parseOutcome,type ApplicationInput,type ApplicationOutcome} from './growth-lesson-applications';
 import {campaignRows,inCampaign,optionalRecord,versionedMutation,type Versioned} from './growth-ledger-server';
@@ -10,13 +11,14 @@ export type LessonApplicationRecord=Versioned&{input:ApplicationInput;lessonDige
 export async function growthLessonApplicationView(who:Actor,c:Campaign){
  const [rows,history,decisions]=await Promise.all([campaignRows<LessonApplicationRecord>(who.owner,c,kinds.current,1000),campaignRows<LessonApplicationRecord>(who.owner,c,kinds.history,10000),growthDecisionsView(who,c)]);
  const own=rows.filter(r=>inCampaign(r,c)),today=new Date().toISOString().slice(0,10);
+ const [automatic,automaticHistory]=await Promise.all([lessonOutcomeView(who,c,own),lessonOutcomeHistory(who,c)]);
  const applications=await Promise.all(own.map(async r=>{const lesson=decisions.lessons.find(l=>l.id===r.input.lessonId),target=await optionalRecord<{brandId:string;campaignId:string;version:number}>(who.owner,targetKinds[r.input.targetKind],r.input.targetId);
   const reasons=[...(!lesson?['교훈이 없습니다.']:lesson.version!==r.input.lessonVersion?['적용 뒤 교훈이 개정되었습니다.']:[]),...(!target||!inCampaign(target,c)?['적용 대상이 없습니다.']:target.version!==r.input.targetVersion?['적용 뒤 대상 기록이 바뀌었습니다.']:[])];
-  return {...r,sourceStatus:reasons.length?'changed' as const:'current' as const,sourceReasons:reasons,overdue:!r.outcome&&r.input.checkAt<today}}));
+  return {...r,automatic:automatic.get(r.id)??null,sourceStatus:reasons.length?'changed' as const:'current' as const,sourceReasons:reasons,overdue:!r.outcome&&r.input.checkAt<today}}));
  const reusable=decisions.lessons.filter(l=>l.assessment.canReuse).map(l=>({id:l.id,version:l.version,title:l.input.title,scope:l.input.scope,method:l.input.method,expiresAt:l.input.expiresAt}));
  const tally=lessonReuse(own.map(a=>({lessonId:a.input.lessonId,outcome:a.outcome,checkAt:a.input.checkAt})),today);
  const suggestions=decisions.missions.filter(m=>!['failed','cancelled'].includes(m.status??'')).map(m=>({missionId:m.id,missionVersion:m.version,title:m.input.title,lessons:reusable.filter(l=>!own.some(a=>a.input.lessonId===l.id&&a.input.targetKind==='mission'&&a.input.targetId===m.id)).map(l=>({...l,record:tally.find(t=>t.lessonId===l.id)??null})).sort((a,b)=>(b.record?.success??0)-(a.record?.success??0))})).filter(s=>s.lessons.length);
- return {campaignId:c.id,campaignVersion:c.version,applications,history:history.filter(h=>inCampaign(h,c)),reusable,tally,suggestions,canEdit:who.role!=='member',mayPromote:false as const,autoApply:false as const};
+ return {campaignId:c.id,campaignVersion:c.version,applications,automaticHistory,history:history.filter(h=>inCampaign(h,c)),reusable,tally,suggestions,canEdit:who.role!=='member',mayPromote:false as const,autoApply:false as const};
 }
 export type GrowthLessonApplicationView=Awaited<ReturnType<typeof growthLessonApplicationView>>;
 export async function saveGrowthLessonApplication(who:Actor,c:Campaign,b:Record<string,unknown>){

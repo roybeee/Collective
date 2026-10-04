@@ -25,5 +25,36 @@
 
 ## 남은 것
 
-- 판매처·광고 채널의 실제 노출 로그 자동 수집과 배정 연동(현재는 API/화면 입력). 실계정 실험 not_run.
+- 판매처용 서명 수신 서버는 아래 계약으로 구현됐다. 판매처 페이지의 가명 UUID 유지·서버 프록시·실제 노출·추적 완료/철회 전송 설치, 실제 동의 고지와 운영 검증은 남았다. 광고 플랫폼 노출 수집은 이 판매처 endpoint의 지원 범위가 아니다. 실계정 실험 not_run.
 - 결과를 확대 판단에 쓰는 경로는 [검증된 확대 게이트](GROWTH-2-EXPANSION.ko.md)에서 다룬다.
+
+
+## 판매처 서버의 서명 사건 수신 (2026-10-04)
+
+`POST /api/growth/experiments/events/{connectionId}`. 기존 활성 `storefront_webhook` 연결과 같은 암호화 secret을 **판매처 서버에서만** 사용한다. secret을 브라우저에 전달하지 않는다. 본문 16 KiB, 인증된 연결당 분당 120회, 캠페인당 일반 사건 10,000개, 실험당 5,000단위다. 일반 사건 한도가 차면 새 배정을 차단한다. 이미 배정된 단위의 최초 추적 마감·불완전에서 완전 추적으로 전환·동의 철회는 별도 안전 여유로 수신한다. 같은 상태의 반복 마감은 일반 한도를 적용하고, 이미 철회한 단위는 새로운 철회 사건을 추가할 수 없으므로 한도 우회 반복도 차단한다.
+
+HMAC-SHA256 입력은 정확히 아래 UTF-8 문자열이다. `x-collective-timestamp`는 10자리 Unix 초, 허용 오차 300초이며 `x-collective-signature`는 `sha256=` + 소문자 hex다. 주문 웹훅의 `timestamp.raw` 서명과 서로 재생되지 않는다.
+
+```text
+collective.growth-experiment.events.v1\nPOST\n/api/growth/experiments/events/{connectionId}\n{timestamp}\n{raw JSON body}
+```
+
+본문 공통 필드:
+
+- `eventId`: 무작위 UUID v4. 같은 사건 재전송은 같은 UUID/내용을 유지한다.
+- `action`: `assign`, `exposure`, `tracking_close`, `withdraw`.
+- `campaignId`, `designId`, `designVersion`, `registrationDigest`: 현재 등록된 storefront 실험의 정확한 판. 미션·오퍼·상품·개입 판, 연결 브랜드·지점도 재확인한다.
+- `unitKey`: 측정 동의 아래 생성해 유지하는 무작위 UUID v4. 이메일·전화·순번·낮은 엔트로피 식별자는 받지 않는다. 원 키는 저장하지 않고 실험 seed로 계산한 해시만 보존한다. 쿠키 초기화·교차 기기 identity 결합은 이 endpoint가 자동 해결하지 않는다.
+- `revision`: 최초 assign은 1, 이후 단위 사건은 바로 다음 정수. 역순은 409이며 이전 사건부터 재전송한다. 같은 단위 assign 재요청은 기존 서버 군·현재 판을 반환하고 새 표본을 만들지 않는다.
+- `occurredAt`: UTC ISO 시각. 미래·역순 시각은 거부한다.
+- `consent`: `{granted, noticeVersion, observedAt}`. assign/exposure/close는 granted=true, withdraw는 false. 철회 이후 같은 단위의 재노출·관측은 금지한다.
+
+추가 `tracking_close` 필드: `trackingComplete`·`contaminated` boolean, `trackingThrough` UTC ISO, `orders:[{externalId,revision}]` 최대 20개. 완전 추적은 실험 종료 시각까지 확인한 뒤에만 선언한다. 주문 없는 완전 추적 단위도 0인 비구매자로 분모에 포함된다. 추적 마감은 종료+성숙 대기+하루 수신 유예 내에 받는다. 동의 철회에는 이 기한을 적용하지 않는다. 철회는 캠페인 보관·실험 취소·개입 상품/오퍼 판 변경 뒤에도 수신하며, 활성 credential·owner/브랜드/지점·기존 배정 단위·원 사전등록 digest·사건 순서·서명·재생 검증은 그대로 유지한다. 오염은 한 번 true가 되면 되돌리지 않으며 이미 연결된 구매를 빈 주문 배열로 지울 수 없다.
+
+금액·배정 군·고객 연락처 필드는 거부한다. 서버가 군을 결정하고, 주문은 연결 sourceKey의 `storefront_order_link`와 현재 `store_order` 정확한 판에서만 가져온다. 이후 정규 주문/환불 동기화는 분석 때 다시 반영한다. 원본 링크와 다른 수동 변경·다른 지점/캠페인·연결되지 않은 주문은 정상 0으로 간주하지 않고 추적 미확인으로 제외한다.
+
+`growth_experiment_ingest_event`는 사건 digest·군/단위 해시·revision·credential 판·멱등 응답을 추가 전용으로 저장하며 unit 갱신과 한 batch다. 원 가명키·secret·본문은 저장하지 않는다. 연결 회전 뒤 동일 사건을 현재 secret으로 재서명하면 중복 반영되지 않고, 해제한 credential은 재생도 거부한다. 수동 관측과 서명 수신은 source 계보로 구분하고 같은 단위의 수동 덮어쓰기를 차단한다. 전역 중단은 신규 배정·노출을 차단하며 이미 모은 추적 마감·철회는 수신한다.
+
+검증: `tests/growth-experiment-events.test.mjs`는 실제 메모리 SQLite와 실제 HMAC/암호화를 사용하며 시간·인증 환경은 mocked, 외부 fetch는 금지한다. 실제 판매처 instrumentation 및 실계정 수신은 별도 runtime 검증이 필요하다.
+
+복구 회귀: `tests/growth-experiment-event-recovery.test.mjs` 17 passed(real SQLite·HMAC, 시간 mocked). 10,000개 사건으로 한도를 채운 뒤 마감·완전 추적 전환·철회, 반복 우회 차단, 성숙 종료/오퍼 변경/캠페인 보관/실험 취소 뒤 철회, credential 해제 거부를 검증했다. 한도와 만료 때문에 각각 409가 발생하는 RED를 먼저 확인했다.

@@ -15,7 +15,7 @@ type Kinds={current:string;history:string;request:string};
  * Runs one versioned mutation. `build` receives the current row (or null) and returns the next row plus extra statements;
  * CAS on expectedVersion, UUID replay with digest check and campaign version are enforced here.
  */
-export async function versionedMutation<T extends Versioned>(who:Actor,c:Campaign,b:Record<string,unknown>,kinds:Kinds,id:string,payload:unknown,build:(old:T|null,at:string)=>Promise<{next:T;extra?:D1PreparedStatement[];limit?:number}>){
+export async function versionedMutation<T extends Versioned>(who:Actor,c:Campaign,b:Record<string,unknown>,kinds:Kinds,id:string,payload:unknown,build:(old:T|null,at:string)=>Promise<{next:T;extra?:D1PreparedStatement[];limit?:number;recovery?:boolean}>){
  if(b.campaignVersion!==c.version)throw new ApiError(409,'캠페인이 변경되었습니다. 다시 불러오세요.');
  const requestId=String(b.requestId??'');if(!uuidPattern.test(requestId)||!Number.isSafeInteger(b.expectedVersion)||Number(b.expectedVersion)<0)throw new ApiError(400,'요청 번호와 기록 판을 확인하세요.');
  if(!/^[A-Za-z0-9_-]{1,100}$/.test(id))throw new ApiError(400,'기록 ID 형식을 확인하세요.');
@@ -24,8 +24,10 @@ export async function versionedMutation<T extends Versioned>(who:Actor,c:Campaig
  if(request){if(request.digest!==digest)throw new ApiError(409,'같은 요청 번호의 내용이 다릅니다.');return {recorded:true as const,id,version:old?.version??request.version,duplicate:true,mayExecute:false as const}}
  if(old&&!inCampaign(old,c))throw new ApiError(404,'다른 캠페인의 기록입니다.');
  if(b.expectedVersion!==(old?.version??0))throw new ApiError(409,'기록이 변경되었습니다. 입력을 보존하고 다시 불러오세요.');
- const at=stamp(),{next,extra=[],limit=500}=await build(old,at);
- if(!old)await campaignCapacity(who.owner,c,kinds.current,limit);await campaignCapacity(who.owner,c,kinds.history,limit*10);await campaignCapacity(who.owner,c,kinds.request,limit*20);
+ const at=stamp(),{next,extra=[],limit=500,recovery=false}=await build(old,at);
+ if(!old)await campaignCapacity(who.owner,c,kinds.current,limit);
+ // Existing obligations may append recovery evidence beyond ordinary soft caps.
+ if(!old||!recovery){await campaignCapacity(who.owner,c,kinds.history,limit*10);await campaignCapacity(who.owner,c,kinds.request,limit*20);}
  await database().batch([...extra,recordStatement(who.owner,kinds.current,id,next,c.id),appendRow(who.owner,c,kinds.history,`${id}:${next.version}`,next,at),appendRow(who.owner,c,kinds.request,requestId,{digest,id,version:next.version},at)]);
  return {recorded:true as const,id,version:next.version,duplicate:false,mayExecute:false as const};
 }

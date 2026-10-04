@@ -1,3 +1,5 @@
+import {effectiveBudgetScope} from './meta-budget-amendment';
+import {advanceMetaBudgetAmendmentForExecution,settleMetaBudgetAmendment} from './meta-budget-amendment-server';
 import {requireGrowthRunning} from './growth-stop-server';
 import type {Campaign} from './agency';
 import type {MetaReservation} from './meta-reservation';
@@ -17,7 +19,7 @@ async function current(owner:string,c:Campaign,e:MetaExecution,activation=false)
  try{await requireGrowthRunning(owner);const [x,w,r,enabled]=await Promise.all([metaAdBundleContext(owner,c),connection(owner,c,e.scope.accountId),readRecord<MetaReservation>(owner,'meta_ads_reservation',e.reservationId),isEnabled(owner,'meta_ads_execution')]);
  if(!enabled||c.status==='archived'||x.issues.length||!x.saved||x.evidenceFingerprint!==e.bundleEvidence||w.fingerprint!==e.connectionFingerprint||r.state!=='reserved'||r.version!==e.reservationVersion||r.scopeDigest!==e.scopeDigest)return false;
  const s=await metaAdBundleScope(c,x,x.saved.input);if(await storefrontDigest({scope:s,evidenceFingerprint:x.evidenceFingerprint})!==e.scopeDigest)return false;
- if(activation)await verifyExecutionCurrency(w.token,e.scope);
+ if(activation)await verifyExecutionCurrency(w.token,effectiveBudgetScope(e));
  if(activation&&(Date.now()>=Date.parse(e.activationDeadline)||Date.now()>=Date.parse(e.expiresAt)||!(await workerStatus(owner)).online))return false;return true;
  }catch{return false}
 }
@@ -38,10 +40,10 @@ export async function transitionMetaExecution(owner:string,actorId:string,c:Camp
  if(target==='ACTIVE')await requireGrowthRunning(owner);
  const w=await connection(owner,c,e.scope.accountId);if(target==='ACTIVE'){
   if(e.state!=='approved'||!await current(owner,c,e,true))throw new ApiError(409,'승인 근거가 바뀌었거나 만료되었습니다.');
-  await verifyExecutionCurrency(w.token,e.scope);const statuses=await readExecutionHierarchy(w.token,e.scope),spend=await readExecutionSpend(w.token,e.scope);if(Object.values(statuses).some(s=>s!=='PAUSED')||spend.totalSpend!==0)throw new ApiError(409,'외부 비활성 상태·미집행 근거를 다시 확인하세요.');
+  await verifyExecutionCurrency(w.token,effectiveBudgetScope(e));const statuses=await readExecutionHierarchy(w.token,effectiveBudgetScope(e)),spend=await readExecutionSpend(w.token,e.scope);if(Object.values(statuses).some(s=>s!=='PAUSED')||spend.totalSpend!==0)throw new ApiError(409,'외부 비활성 상태·미집행 근거를 다시 확인하세요.');
  }
  let row=e;
- const result=await runExecutionTransition(e,target,{read:()=>readExecutionHierarchy(w.token,e.scope,target==='ACTIVE'),write:async(id,status)=>{if(status==='ACTIVE')await requireGrowthRunning(owner);await writeExecutionStatus(w.token,id,status)}},{async save(p){row=await save(owner,row,p,actorId);return row},current:()=>current(owner,c,row,true)});
+ const result=await runExecutionTransition(e,target,{read:()=>readExecutionHierarchy(w.token,effectiveBudgetScope(e),target==='ACTIVE'),write:async(id,status)=>{if(status==='ACTIVE')await requireGrowthRunning(owner);await writeExecutionStatus(w.token,id,status)}},{async save(p){row=await save(owner,row,p,actorId);return row},current:()=>current(owner,c,row,true)});
  if(result.state==='active'||result.state==='stopped'){try{return await save(owner,result,{...await readExecutionSpend(w.token,e.scope),lastObservedAt:stamp()},actorId)}catch{return save(owner,result,{state:'unknown',maySpend:true,stopReason:'spend_unconfirmed'},actorId)}}return result;
 }
 export async function actMetaExecution(owner:string,actorId:string,c:Campaign,b:Record<string,unknown>){
@@ -55,19 +57,23 @@ export async function actMetaExecution(owner:string,actorId:string,c:Campaign,b:
  if(b.action==='settle'){
   if(e.state!=='stopped'||e.pending)throw new ApiError(409,'전체 중단을 확인한 뒤 최종 광고비를 대조하세요.');
   const amount=b.settledSpend;if(typeof amount!=='number'||!Number.isSafeInteger(amount)||amount<0||b.billingFinalConfirmed!==true)throw new ApiError(400,'최종 청구 원화 금액과 대조 완료 확인이 필요합니다.');
-  const w=await connection(owner,c,e.scope.accountId),s=await readExecutionHierarchy(w.token,e.scope,false),spend=await readExecutionSpend(w.token,e.scope);if(Object.values(s).some(v=>v!=='PAUSED')||amount<spend.totalSpend)throw new ApiError(409,'중단 상태·최종 청구 금액을 다시 확인하세요.');
+  const w=await connection(owner,c,e.scope.accountId),s=await readExecutionHierarchy(w.token,effectiveBudgetScope(e),false),spend=await readExecutionSpend(w.token,e.scope);if(Object.values(s).some(v=>v!=='PAUSED')||amount<spend.totalSpend)throw new ApiError(409,'중단 상태·최종 청구 금액을 다시 확인하세요.');
+  if(e.budgetAmendment)return settleMetaBudgetAmendment(owner,c,e,amount,spend,actorId);
   return save(owner,e,{state:'settled',settledSpend:amount,settledAt:stamp(),...spend,maySpend:false},actorId);
  }
  throw new ApiError(400,'지원하지 않는 실행 작업입니다.');
 }
 export async function advanceMetaExecutionWork(owner:string){
- const records=(await executionRecords(owner)).filter(e=>!['settled','revoked','stopped'].includes(e.state)).sort((a,b)=>Number(a.state==='approved')-Number(b.state==='approved')).slice(0,1);let advanced=0,retry=false;
+ const pending=await database().prepare("SELECT data FROM records WHERE owner=? AND kind='meta_ads_execution' AND json_extract(data,'$.state') NOT IN ('settled','revoked') AND (json_extract(data,'$.state')<>'stopped' OR json_extract(data,'$.budgetAmendment.state')='pending') ORDER BY CASE WHEN json_extract(data,'$.state') IN ('active','approved') THEN 1 ELSE 0 END,CASE WHEN json_extract(data,'$.state')='approved' THEN 1 ELSE 0 END,updated_at ASC LIMIT 1").bind(owner).all<{data:string}>();
+ const records=pending.results.map(x=>JSON.parse(x.data) as MetaExecution);let advanced=0,retry=false;
  for(const initial of records){let lock='';try{lock=await acquireLock(owner);let e=await readRecord<MetaExecution>(owner,'meta_ads_execution',initial.id);const c=await readRecord<Campaign>(owner,'campaign',e.campaignId);
+  if(e.state==='stopped'){const recovery=await advanceMetaBudgetAmendmentForExecution(owner,c,e,()=>Promise.resolve(false));if(recovery.status!=='idle')advanced++;await save(owner,await readRecord<MetaExecution>(owner,'meta_ads_execution',e.id),{},'worker');continue}
   if(e.state==='approved'){if(Date.now()<Date.parse(e.activationDeadline)&&await current(owner,c,e)){await save(owner,e,{},'worker');continue}e=await save(owner,e,{stopReason:'approval_expired_or_stale'},'worker')}
   if(e.state==='active'){
-   let reason:string|null=null;try{const w=await connection(owner,c,e.scope.accountId),statuses=await readExecutionHierarchy(w.token,e.scope),spend=await readExecutionSpend(w.token,e.scope);reason=executionStopReason(e,spend,await current(owner,c,e));if(Object.values(statuses).some(s=>s!=='ACTIVE'))reason='external_status_changed';if(!e.lastObservedAt||Date.now()-Date.parse(e.lastObservedAt)>180000)reason='monitor_stale';if(!reason){await save(owner,e,{...spend,lastObservedAt:stamp()},'worker');advanced++;continue}}catch{reason='monitor_unconfirmed'}e=await save(owner,e,{stopReason:reason},'worker');
+   let reason:string|null=null;try{const w=await connection(owner,c,e.scope.accountId),statuses=await readExecutionHierarchy(w.token,effectiveBudgetScope(e)),spend=await readExecutionSpend(w.token,e.scope);reason=executionStopReason(e,spend,await current(owner,c,e));if(Object.values(statuses).some(s=>s!=='ACTIVE'))reason='external_status_changed';if(!e.lastObservedAt||Date.now()-Date.parse(e.lastObservedAt)>180000)reason='monitor_stale';if(!reason){e=await save(owner,e,{...spend,lastObservedAt:stamp()},'worker');await advanceMetaBudgetAmendmentForExecution(owner,c,e,row=>current(owner,c,row));advanced++;continue}}catch{reason='monitor_unconfirmed'}e=await save(owner,e,{stopReason:reason},'worker');
   }
-  await transitionMetaExecution(owner,'worker',c,e,'PAUSED');advanced++;
+  await transitionMetaExecution(owner,'worker',c,e,'PAUSED');
+  const stopped=await readRecord<MetaExecution>(owner,'meta_ads_execution',e.id);if(stopped.budgetAmendment?.state==='pending')await advanceMetaBudgetAmendmentForExecution(owner,c,stopped,()=>Promise.resolve(false));advanced++;
  }catch{
   retry=true;
   // Advance queue age even on unavailable credentials, so one broken account cannot starve others.

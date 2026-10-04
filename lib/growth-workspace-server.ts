@@ -10,10 +10,11 @@ import {liveSignalSource} from './growth-signal-source-server';
 import type {SignalSourceProvenance} from './growth-signal-source';
 import {growthBusiness} from './growth-business-server';
 import {buildOpportunityBoard} from './growth-opportunity-board';
+import type {OpportunityDraftOrigin} from './growth-opportunity-drafts-server';
 
 // 상품 리서치 선정(lib/product-research/server.ts handoff)에서 넘어온 시장 근거의 계보. 있으면 성장 화면에서 고쳐 쓸 수 없다(근거가 끊긴다).
 export type ProductResearchProvenance={decisionId:string;scoreCardId:string;productId:string;snapshotIds:string[]};
-export type GrowthRecord<T>={id:string;campaignId:string;brandId:string;campaignVersion:number;version:number;input:T;updatedAt:string;updatedBy:string;requestDigest:string;sourceProvenance?:SignalSourceProvenance;productResearch?:ProductResearchProvenance;factRefs?:FactRef[];evidenceRefs?:{id:string;version:number}[];status?:MissionState;receipt?:MissionReceipt};
+export type GrowthRecord<T>={id:string;campaignId:string;brandId:string;campaignVersion:number;version:number;input:T;updatedAt:string;updatedBy:string;requestDigest:string;sourceProvenance?:SignalSourceProvenance;autoDraft?:OpportunityDraftOrigin;productResearch?:ProductResearchProvenance;factRefs?:FactRef[];evidenceRefs?:{id:string;version:number}[];status?:MissionState;receipt?:MissionReceipt};
 type Catalog=GrowthRecord<CatalogInput>;
 const kinds={signal:'growth_signal',need:'growth_need',catalog:'growth_catalog',offer:'growth_offer',mission:'growth_mission'} as const;
 type Entity=keyof typeof kinds;
@@ -70,6 +71,7 @@ export async function saveGrowth(who:Actor,c:Campaign,b:Record<string,unknown>){
  if(['queue_mission','record_receipt','cancel_mission'].includes(String(b.action)))return transitionMission(who,c,b);
  const entity=entityFor(b.action),id=recordId(b.id),old=sameScope(await optional<GrowthRecord<unknown>>(who.owner,kinds[entity],id),c);
  if(entity==='signal'&&(old?.sourceProvenance||old?.productResearch))throw new ApiError(409,'가져온 신호는 원본 자료에서 수정한 뒤 새 판을 가져오세요.');
+ if(entity==='mission'&&(id.startsWith('bundle-reservation-')||id.startsWith('bundle-mission-')))throw new ApiError(400,'번들 예약 전용 식별자는 판매 미션에 사용할 수 없습니다.');
  const parsers={signal:parseSignalInput,need:parseNeedInput,catalog:parseCatalogInput,offer:parseOfferInput,mission:parseMissionInput};
  const input=parsers[entity](b.input),digest=await storefrontDigest({action:b.action,input,campaignVersion:c.version,expectedVersion:b.expectedVersion});
  if(old?.requestDigest===digest)return {...await growthView(who.owner,c,true),duplicate:true};
@@ -81,7 +83,7 @@ export async function saveGrowth(who:Actor,c:Campaign,b:Record<string,unknown>){
  const facts=entity==='catalog'?await factsFor(who.owner,c):[];
  const factIds=entity==='catalog'?(input as CatalogInput).factIds:[];
  if(factIds.some(fid=>!facts.some(f=>f.id===fid)))throw new ApiError(409,'상품 근거는 현재 브랜드·지점의 유효한 확정 사실이어야 합니다.');
- const record:GrowthRecord<unknown>={id,campaignId:c.id,brandId:c.brandId,campaignVersion:c.version,version:(old?.version??0)+1,input,updatedAt:stamp(),updatedBy:who.id,requestDigest:digest,evidenceRefs,...(entity==='catalog'?{factRefs:facts.filter(f=>factIds.includes(f.id)).map(f=>({id:f.id,version:f.version}))}:{}),...(entity==='mission'?{status:'draft' as const}:{})};
+ const record:GrowthRecord<unknown>={id,campaignId:c.id,brandId:c.brandId,campaignVersion:c.version,version:(old?.version??0)+1,input,updatedAt:stamp(),updatedBy:who.id,requestDigest:digest,evidenceRefs,...(old?.autoDraft?{autoDraft:old.autoDraft}:{}),...(entity==='catalog'?{factRefs:facts.filter(f=>factIds.includes(f.id)).map(f=>({id:f.id,version:f.version}))}:{}),...(entity==='mission'?{status:'draft' as const}:{})};
  await commitRecord(who,entity,c,record);
  return {...await growthView(who.owner,c,true),duplicate:false};
 }

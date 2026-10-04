@@ -38,7 +38,7 @@ function safeText(value:unknown,field:string,max=2000):string {
     throw new GrowthDecisionsError(`${field}: 유효한 문자열을 입력하세요(최대 ${max}자).`);
   }
   const normalized=value.normalize('NFKC').replace(/[\u200b-\u200d\u2060\ufeff]/g,'');
-  if (scanText(normalized).length || /(?:bearer\s+\S+|(?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret)\s*[:=]\s*\S+|\bsk-(?:proj-)?[\w-]{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i.test(normalized)) {
+  if (scanText(normalized).length || /(?:bearer\s+\S+|(?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret)["']?\s*[:=]\s*\S+|\bsk-(?:proj-)?[\w-]{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i.test(normalized)) {
     throw new GrowthDecisionsError(`${field}: 식별정보와 인증정보를 넣을 수 없습니다.`);
   }
   return value.trim();

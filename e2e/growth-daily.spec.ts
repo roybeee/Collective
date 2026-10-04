@@ -14,7 +14,10 @@ test('일일 운영 루프 수동 실행·하루 1회·오늘 안건',async({bro
   await expect(panel).toContainText('현재 꺼짐');await expect(panel).toContainText('실행 기록이 없습니다');
   await panel.getByRole('button',{name:'오늘 안건 지금 만들기',exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'오늘 안건을 만들었습니다'})).toBeVisible();
   await expect(panel).toContainText('새 감지 신호에 담당·기한을 지정하거나 기각하세요.');
-  await panel.getByRole('button',{name:'오늘 안건 지금 만들기',exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'이미 실행했습니다'})).toBeVisible();
+  await expect(panel).toContainText('고객 기회 검토 초안');
+  const growth=await page.request.get(`/api/growth?campaignId=${campaignId}`);const needs=(await growth.json()).needs;
+  expect(needs.length).toBeGreaterThan(0);expect(needs.every((n:{autoDraft?:unknown;readiness:{missing:string[]}})=>n.autoDraft&&n.readiness.missing.length>0)).toBe(true);
+  await panel.getByRole('button',{name:'오늘 안건 지금 만들기',exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'오늘의 모든 캠페인 집계가 끝났습니다'})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
  }finally{await context.close()}
 });

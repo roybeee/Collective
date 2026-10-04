@@ -19,11 +19,12 @@ export function parseOrderLineInput(value:unknown):OrderLineInput{
  return {...refs,orderVersion:b.orderVersion,missionVersion:b.missionVersion,offerVersion:b.offerVersion,units:b.units,paidAllocation,refundAllocation,currency:b.currency,taxBasis:b.taxBasis,source:b.source,evidenceRef} as OrderLineInput;
 }
 type AllocationOrder=Pick<StoreOrder,'id'|'version'|'paidAmount'|'refundAmount'>;
-export function validateOrderAllocations(order:AllocationOrder,rawLinks:OrderLineInput[]){
+export type OrderMoneyAllocation=Pick<OrderLineInput,'orderId'|'orderVersion'|'sourceKey'|'accountId'|'externalLineId'|'paidAllocation'|'refundAllocation'>;
+export function validateOrderMoneyAllocations(order:AllocationOrder,links:OrderMoneyAllocation[]){
  const none={netAllocated:null as number|null,unallocatedPaid:null as number|null,unallocatedRefund:null as number|null};
  const invalid=(reason:string)=>({...none,status:'invalid' as const,reasons:[reason]});
  if(!Number.isSafeInteger(order.paidAmount)||!Number.isSafeInteger(order.refundAmount)||order.refundAmount<0||order.paidAmount<order.refundAmount)return invalid('원 주문 금액을 확인하세요.');
- let links:OrderLineInput[];try{links=rawLinks.map(parseOrderLineInput)}catch{return invalid('품목 연결 입력이 유효하지 않습니다.')}
+ if(links.some(l=>!Number.isSafeInteger(l.orderVersion)||l.orderVersion<1||[l.paidAllocation,l.refundAllocation].some(v=>v!==null&&(!Number.isSafeInteger(v)||v<0))))return invalid('품목 연결 입력이 유효하지 않습니다.');
  if(!links.length)return {...none,status:'unallocated' as const,reasons:['품목·미션 미연결']};
  if(links.some(l=>l.orderId!==order.id))return invalid('다른 주문의 품목을 함께 배분할 수 없습니다.');
  const keys=links.map(l=>JSON.stringify([l.sourceKey,l.accountId,l.externalLineId]));
@@ -34,3 +35,5 @@ export function validateOrderAllocations(order:AllocationOrder,rawLinks:OrderLin
  const complete=links.every(l=>l.paidAllocation!==null&&l.refundAllocation!==null);
  return {status:'current' as const,reasons:complete?[]:['일부 품목 금액 배분 미확인'],netAllocated:complete?paid-refund:null,unallocatedPaid:complete?order.paidAmount-paid:null,unallocatedRefund:complete?order.refundAmount-refund:null};
 }
+
+export function validateOrderAllocations(order:AllocationOrder,rawLinks:OrderLineInput[]){try{return validateOrderMoneyAllocations(order,rawLinks.map(parseOrderLineInput))}catch{return {netAllocated:null,unallocatedPaid:null,unallocatedRefund:null,status:'invalid' as const,reasons:['품목 연결 입력이 유효하지 않습니다.']}}}

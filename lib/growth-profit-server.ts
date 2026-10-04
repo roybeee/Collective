@@ -1,3 +1,4 @@
+import {growthCashView} from './growth-cash-server';
 import type {Campaign} from './agency';
 import type {GrowthCommitmentRecord} from './growth-authority-server';
 import type {CollaborationRecord} from './growth-collaboration-server';
@@ -12,12 +13,16 @@ export async function growthProfitView(who:Actor,c:Campaign,q:{from?:unknown;to?
  if(from>to||Date.parse(to)-Date.parse(from)>366*86400000)throw new ApiError(400,'기간은 시작≤끝, 최대 1년입니다.');
  const period={from,to},[business,commitments,collaborations,meta]=await Promise.all([growthBusiness(who.owner,c,period),campaignRows<GrowthCommitmentRecord>(who.owner,c,'growth_commitment',1000),campaignRows<CollaborationRecord>(who.owner,c,'growth_collaboration',200),database().prepare("SELECT data FROM records WHERE owner=? AND kind='meta_ads_execution' AND parent_id=? LIMIT 501").bind(who.owner,c.id).all<{data:string}>()]);
  const settlements=c.storeId?(await database().prepare("SELECT data FROM records WHERE owner=? AND kind='growth_settlement' AND parent_id=? AND json_extract(data,'$.campaignId')=? LIMIT 5001").bind(who.owner,c.storeId,c.id).all<{data:string}>()).results.map(r=>JSON.parse(r.data) as {brandId:string;campaignId:string;input:SettlementEvidence}):[];
+ if(settlements.length>5000)throw new ApiError(409,'정산 조회 한도를 넘었습니다. 전체 기록을 대사하세요.');
+ const actualCash=await growthCashView(who,c,period);
+ const executionIds=new Set(meta.results.map(x=>JSON.parse(x.data) as {id:string;campaignId:string;brandId:string}).filter(x=>x.campaignId===c.id&&x.brandId===c.brandId).map(x=>x.id));
+ const isProviderAlias=(r:GrowthCommitmentRecord)=>{const ref=(r as GrowthCommitmentRecord&{providerCostRef?:{kind:string;id:string}}).providerCostRef;return ref?.kind==='meta_ads_execution'&&executionIds.has(ref.id)};
  const spend:SpendItem[]=[
-  ...commitments.filter(r=>inCampaign(r,c)&&(r.commitment.action.amount??0)>0).map(r=>({source:'growth_commitment' as const,id:r.id,at:r.commitment.at,status:r.commitment.status==='reconciled'||r.commitment.status==='released'?'known' as const:'unknown' as const,amount:r.commitment.status==='released'?0:r.commitment.status==='reconciled'?r.commitment.actualAmount:null})),
+  ...commitments.filter(r=>inCampaign(r,c)&&(r.commitment.action.amount??0)>0&&!isProviderAlias(r)).map(r=>({source:'growth_commitment' as const,id:r.id,at:r.commitment.at,status:r.commitment.status==='reconciled'||r.commitment.status==='released'?'known' as const:'unknown' as const,amount:r.commitment.status==='released'?0:r.commitment.status==='reconciled'?r.commitment.actualAmount:null})),
   ...collaborations.filter(r=>inCampaign(r,c)).flatMap(r=>{const settled=r.receipts.find(x=>x.stage==='settled');const published=r.receipts.find(x=>x.stage==='published');if(settled)return [{source:'collaboration' as const,id:r.id,at:settled.at,status:settled.paidKrw===null||settled.paidKrw===undefined?'unknown' as const:'known' as const,amount:settled.paidKrw??null}];if(published&&(r.plan.feeKrw??0)>0)return [{source:'collaboration' as const,id:r.id,at:published.at,status:'unknown' as const,amount:null}];return []}),
   ...meta.results.map(x=>JSON.parse(x.data) as {id:string;campaignId:string;state:string;approvedAt:string;settledSpend:number|null;settledAt:string|null;totalSpend:number|null;lastObservedAt:string|null}).filter(x=>x.campaignId===c.id).map(x=>{const settled=x.state==='settled'&&Number.isSafeInteger(x.settledSpend);const never=x.state==='revoked'&&!x.lastObservedAt&&(x.totalSpend===null||x.totalSpend===0);return {source:'meta_execution' as const,id:x.id,at:settled&&x.settledAt?x.settledAt:x.approvedAt,status:settled||never?'known' as const:'unknown' as const,amount:settled?x.settledSpend:never?0:null}}),
  ];
  const cash:CashItem[]=settlements.filter(s=>inCampaign(s,c)).map(s=>({kind:s.input.kind,amount:s.input.amount,fee:s.input.feeAmount,at:s.input.occurredAt}));
- return {campaignId:c.id,ledger:{status:business.status,reason:business.reason},...profitSummary({netRevenue:business.netRevenue,contributionBeforeMarketing:business.contributionBeforeMarketing,spend,cash,period}),mayExecute:false as const};
+ return {campaignId:c.id,ledger:{status:business.status,reason:business.reason},...profitSummary({netRevenue:business.netRevenue,contributionBeforeMarketing:business.contributionBeforeMarketing,spend,cash,period,actualCash:actualCash.summary}),mayExecute:false as const};
 }
 export type GrowthProfitView=Awaited<ReturnType<typeof growthProfitView>>;

@@ -74,6 +74,9 @@ export async function assertNoActiveBriefs(owner:string){const drafts=await list
 // 캠페인 삭제를 막는 사유(없으면 null). 삭제와 삭제 영향 조회가 같은 판정을 쓴다. 보호 대상 kind는 lib/record-kinds.ts의 blocksDeletion이다.
 async function campaignDeletionBlock(owner:string,id:string){
  const db=database(),blocking=scopesSql('SELECT id',owner,blockingScopes(owner,id));
+ if(await db.prepare("SELECT id FROM records WHERE owner=? AND kind='growth_landing_revision' AND parent_id=? AND json_extract(data,'$.provider.attempt.status')='unknown' LIMIT 1").bind(owner,id).first())return '상세페이지 적용 결과를 확인 중입니다. 공급자 결과를 대사한 뒤 캠페인 삭제를 검토하세요.';
+ if(await db.prepare("SELECT id FROM records WHERE owner=? AND kind IN ('growth_consumer_delivery','growth_consumer_delivery_history') AND parent_id=? LIMIT 1").bind(owner,id).first())return '소비자 발송·취소 대사 이력이 있습니다. 처리 결과를 보존하도록 캠페인을 보관하세요.';
+ if(await db.prepare("SELECT id FROM records WHERE owner=? AND kind IN ('growth_cash','growth_cash_history') AND parent_id=? LIMIT 1").bind(owner,id).first())return '실제 현금 증빙 이력이 있어 삭제할 수 없습니다. 금액 대사를 유지하도록 캠페인을 보관하세요.';
  if(await db.prepare("SELECT id FROM records WHERE owner=? AND kind IN ('growth_stock_event','growth_order_line','growth_settlement') AND json_extract(data,'$.campaignId')=? LIMIT 1").bind(owner,id).first())return '성장 주문·재고 이력이 있어 삭제할 수 없습니다. 이행과 금액 대사를 유지하도록 캠페인을 보관하세요.';
  if(await db.prepare("SELECT id FROM records WHERE owner=? AND kind='growth_commitment' AND parent_id=? LIMIT 1").bind(owner,id).first())return '성장 판매 예산 예약 이력이 있어 삭제할 수 없습니다. 누적 한도와 대사를 유지하도록 캠페인을 보관하세요.';
  if(await db.prepare("SELECT id FROM records WHERE owner=? AND kind='meta_ads_write_operation' AND parent_id=? LIMIT 1").bind(owner,id).first())return 'Meta 생성 준비·전송 기록이 있어 삭제할 수 없습니다. 외부 객체 대조 이력을 유지하도록 캠페인을 보관하세요.';

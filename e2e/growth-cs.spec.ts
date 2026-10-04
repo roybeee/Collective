@@ -8,13 +8,16 @@ test('고객 문의 접수·원문 차단·기한 초과·처리 기록',async({
   const title=`고객 문의 ${info.project.name}`;await post('/api/action',{action:'save_campaign',data:{brandId:'ofd',storeId,title,goal:'문의'}});
   await page.goto('/');if((page.viewportSize()?.width??1280)<768)await page.locator('[data-sidebar="trigger"]').first().click();await page.getByRole('button',{name:'캠페인',exact:true}).click();if((page.viewportSize()?.width??1280)<768)await page.keyboard.press('Escape');await page.getByRole('button',{name:title+' 열기',exact:true}).click();await page.getByRole('tab',{name:'성장·판매',exact:true}).click();
   await page.locator('summary').filter({hasText:/^고객 문의·약속 기한$/}).click();const panel=page.getByRole('region',{name:'고객 문의 처리',exact:true});await expect(panel).toBeVisible({timeout:5000});
+  const source=page.getByRole('region',{name:'판매처 본인 문의 연결',exact:true});await expect(source).toContainText('접수 근거 0건');
+  await source.getByRole('button',{name:'문의 접수 동기화',exact:true}).click();await expect(source.getByRole('alert')).toContainText('소유자의 제공자 연결이 필요합니다');
+  await source.getByRole('button',{name:'현재 문의 연결 조회',exact:true}).click();await expect(source).toContainText('현재 응답 후보 0건');
   const local=(t:number)=>new Date(t-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16),now=Date.now();
   const summary=panel.getByRole('textbox',{name:'운영자 요약(고객 원문·연락처 제외)',exact:true});
   await summary.fill('고객 010-1234-5678 연락 요청');await panel.getByRole('textbox',{name:'담당',exact:true}).fill('CS 담당');await panel.getByLabel('접수 시각',{exact:true}).fill(local(now-5*3600000));await panel.getByLabel('약속 기한',{exact:true}).fill(local(now-3600000));
-  await panel.getByRole('button',{name:'문의 접수',exact:true}).click();await expect(panel.getByRole('alert')).toContainText('운영자 요약만');await expect(summary).toHaveValue('고객 010-1234-5678 연락 요청');
+  await panel.getByRole('button',{name:'문의 접수',exact:true}).click();await expect(panel.getByRole('alert').filter({hasText:'운영자 요약만'})).toBeVisible();await expect(summary).toHaveValue('고객 010-1234-5678 연락 요청');
   await summary.fill('배송 지연 문의, 출고 일정 안내 필요');
   const attempts:string[]=[];let lose=true;await page.route('**/api/growth/cs',async route=>{if(route.request().method()==='POST'){attempts.push(route.request().postDataJSON().requestId);if(lose){lose=false;await route.fetch();await route.abort('failed');return;}}await route.continue();});
-  await panel.getByRole('button',{name:'문의 접수',exact:true}).click();await expect(panel.getByRole('alert')).toContainText('입력은 보존했습니다');
+  await panel.getByRole('button',{name:'문의 접수',exact:true}).click();await expect(panel.getByRole('alert').filter({hasText:'입력은 보존했습니다'})).toBeVisible();
   await panel.getByRole('button',{name:'문의 접수',exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'문의를 접수했습니다'})).toBeVisible();expect(attempts[0]).toBe(attempts[1]);
   await expect(panel).toContainText('미해결 1건, 기한 초과 1건');await expect(panel).toContainText('기한 초과');
   const id=((await panel.locator('li p').first().textContent())??'').split(', ')[1].trim();

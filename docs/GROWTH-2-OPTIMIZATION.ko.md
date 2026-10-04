@@ -13,4 +13,6 @@
 
 저장: `growth_optimization`·`_history`·`_request`. 캠페인 삭제 시 보존.
 
+일일 루프는 최신 실패·무효·불확실 실험과 실패·무효 교훈 적용에서 검토용 운영 방법 초안을 만든다. `autoDraft`에는 정확한 원천 ID·판·digest를 남긴다. 원문은 복사하지 않고 재점검할 절차를 제안한다. 후보별 예산은 0이며 자동 동결·평가·채택·프롬프트 승격은 없다. 같은 원천의 반복 실행은 중복을 만들지 않고 사용자가 수정한 초안을 보존한다. 이후 새로운 분석이 나오면 기존 근거는 변경됨으로 표시되어 그대로 동결할 수 없다.
+
 검증(2026-09-30): `tests/growth-optimization-route.test.mjs` 28 passed(real 메모리 SQLite, 인증 mocked; 프롬프트 레코드 쓰기 0 확인), `e2e/growth-optimization.spec.ts` 모바일·데스크톱 2 passed(real Chromium/local D1, 실패 결과만 fixture).

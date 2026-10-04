@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import {testRuntime} from './helpers/runtime.mjs';
+const {load}=testRuntime(()=>{throw Error('external forbidden')});
+const lib=await load('lib/meta-budget-amendment.ts');let passed=0;const check=(x,n)=>{assert.ok(x,n);passed++};
+const execution={id:'e',campaignId:'c',brandId:'b',version:4,state:'active',pending:null,maxSpend:10000,dailyTarget:1000,lossLimit:8000,scope:{dailyBudgetKrw:1000,graphDailyBudget:'1000',startAt:'2026-01-01',endAt:'2099-01-01'},budgetAmendment:null};
+const input={executionId:'e',executionVersion:4,nextDailyBudgetKrw:1200,confirmed:true};
+const snapshot=lib.budgetAmendmentAmounts(execution,input,12000,10000,1);
+check(snapshot.increase===2000&&snapshot.nextDaily===1200&&snapshot.nextGraph==='1200','total and daily remain independent');
+for(const patch of [{nextDailyBudgetKrw:12000},{nextDailyBudgetKrw:1201},{nextDailyBudgetKrw:0},{confirmed:false},{executionVersion:3}]){assert.throws(()=>lib.budgetAmendmentAmounts(execution,{...input,...patch},12000,10000,1));passed++}
+assert.throws(()=>lib.budgetAmendmentAmounts(execution,input,12000,9999,1));passed++;
+const applied={...execution,budgetAmendment:{id:'a',state:'applied',nextDaily:1200,nextGraph:'1200'}};
+check(lib.effectiveBudgetScope(applied).graphDailyBudget==='1200'&&execution.scope.graphDailyBudget==='1000','effective scope does not mutate approval');
+check(lib.effectiveBudgetScope({...execution,budgetAmendment:{...applied.budgetAmendment,state:'pending'}}).graphDailyBudget==='1000','pending not effective');
+let writes=0,reads=0,row={id:'a',state:'approved',nextGraph:'1200'},remote='1000';
+const journal={save:async patch=>(row={...row,...patch})};
+const api={read:async()=>{reads++;return remote},write:async()=>{writes++;remote='1200';throw Error('response lost')},current:async()=>true};
+await lib.runBudgetAmendment(row,api,journal);check(row.state==='unknown'&&writes===1,'lost response durable unknown');
+await lib.runBudgetAmendment(row,api,journal);check(row.state==='applied'&&writes===1&&reads===1,'unknown reconciles GET only');
+await lib.runBudgetAmendment(row,api,journal);check(writes===1,'terminal never replays');
+row={id:'other',state:'approved',nextGraph:'1200'};await lib.runBudgetAmendment(row,{...api,current:async()=>false},journal);check(row.state==='blocked'&&writes===1,'stale authority never dispatches');
+row={id:'unknown',state:'unknown',nextGraph:'1200'};remote='1000';const before=reads;await lib.runBudgetAmendment(row,api,journal);check(row.state==='unknown'&&writes===1&&reads===before+1,'old value is not proof of nonacceptance');
+console.log(JSON.stringify({passed}));

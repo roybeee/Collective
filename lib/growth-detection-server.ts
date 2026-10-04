@@ -5,10 +5,10 @@ import {growthReturnReasonView} from './growth-return-reasons-server';
 import {growthCsView} from './growth-cs-server';
 import {campaignRows,inCampaign,versionedMutation,type Versioned} from './growth-ledger-server';
 import {storefrontDigest} from './storefront-orders';
-import {ApiError,database,recordStatement,stamp,str,type Actor} from './server';
+import {ApiError,database,stamp,str,type Actor} from './server';
 const kinds={current:'growth_detected_signal',history:'growth_detected_signal_history',request:'growth_detected_signal_request'} as const;
 export type DetectedSignalRecord=Versioned&{detection:Detection;status:'new'|'acknowledged'|'dismissed';triage:{assignee:string;nextAction:string;dueBy:string}|null;dismissReason:string;detectedAt:string;detectedBy:'daily_loop'|'operator';updatedAt:string;updatedBy:string};
-const idOf=async(key:string)=>'sig-'+(await storefrontDigest(key)).slice(0,32);
+const idOf=async(c:Campaign,key:string)=>'sig-'+(await storefrontDigest({brandId:c.brandId,campaignId:c.id,key})).slice(0,32);
 async function inputs(owner:string,c:Campaign,now:number){
  const from=new Date(now-35*86400000).toISOString().slice(0,10);
  const orders=c.storeId?(await database().prepare("SELECT data FROM records WHERE owner=? AND kind='store_order' AND parent_id=? AND json_extract(data,'$.campaignId')=? AND json_extract(data,'$.orderDate')>=? LIMIT 20001").bind(owner,c.storeId,c.id,from).all<{data:string}>()).results.map(r=>JSON.parse(r.data) as OrderPoint):[];
@@ -22,9 +22,9 @@ export async function runGrowthDetection(who:Pick<Actor,'owner'|'id'|'role'|'ema
  const [{orders,stock},reasons,cs]=await Promise.all([inputs(who.owner,c,now),growthReturnReasonView(who as Actor,c),growthCsView(who as Actor,c)]);
  const detections=detectSignals({now,orders,stock,returns:reasons.events.filter(e=>e.current&&e.sourceStatus==='current'&&e.observedAt).map(e=>({reasonCode:e.current!.input.reasonCode,observedAt:e.observedAt!})),csRecurring:cs.recurring.recurring});
  const at=stamp(),writes:D1PreparedStatement[]=[];let created=0;
- for(const d of detections){const id=await idOf(d.key);const exists=await database().prepare('SELECT 1 FROM records WHERE id=?').bind(`${who.owner}:${kinds.current}:${id}`).first();if(exists)continue;created++;
+ for(const d of detections){const id=await idOf(c,d.key);const exists=await database().prepare("SELECT 1 FROM records WHERE owner=? AND kind=? AND parent_id=? AND json_extract(data,'$.brandId')=? AND json_extract(data,'$.detection.key')=?").bind(who.owner,kinds.current,c.id,c.brandId,d.key).first();if(exists)continue;created++;
   const row:DetectedSignalRecord={id,brandId:c.brandId,campaignId:c.id,version:1,detection:d,status:'new',triage:null,dismissReason:'',detectedAt:at,detectedBy:by,updatedAt:at,updatedBy:who.id};
-  writes.push(recordStatement(who.owner,kinds.current,id,row,c.id),database().prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').bind(`${who.owner}:${kinds.history}:${id}:1`,who.owner,kinds.history,c.id,JSON.stringify(row),at));}
+  writes.push(database().prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').bind(`${who.owner}:${kinds.current}:${id}`,who.owner,kinds.current,c.id,JSON.stringify(row),at),database().prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').bind(`${who.owner}:${kinds.history}:${id}:1`,who.owner,kinds.history,c.id,JSON.stringify(row),at));}
  const total=await database().prepare('SELECT COUNT(*) n FROM records WHERE owner=? AND kind=? AND parent_id=?').bind(who.owner,kinds.current,c.id).first<{n:number}>();
  if((total?.n??0)+created>2000)throw new ApiError(409,'감지 신호 보관 한도에 도달했습니다. 오래된 신호를 정리하세요.');
  if(writes.length)await database().batch(writes);
