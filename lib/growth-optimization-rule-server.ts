@@ -1,3 +1,4 @@
+import type {CostIntent} from './growth-optimization-cost-server';
 import {roleArtifactId} from './role-execution';
 import type {Campaign,Artifact} from './agency';
 import type {CandidateInput} from './growth-optimization';
@@ -12,7 +13,7 @@ import {optionalRecord,inCampaign} from './growth-ledger-server';
 import type {GrowthExperimentRecord} from './growth-experiment-server';
 import type {GrowthPublicationLink} from './growth-publication-server';
 import {ApiError,database} from './server';
-export type RuleEvaluation={kind:'operator_preferences';rule:LearningRule;ruleDigest:string;pair:PreferencePair;caseIds:string[];caseDigest:string;campaignDigest:string;intent?:{label:string;at:string;by:string;tokenBudget:number}};
+export type RuleEvaluation={kind:'operator_preferences';rule:LearningRule;ruleDigest:string;pair:PreferencePair;caseIds:string[];caseDigest:string;campaignDigest:string;intent?:{label:string;at:string;by:string;tokenBudget:number}|CostIntent};
 type Candidate={id:string;input:CandidateInput;ruleEvaluation?:RuleEvaluation|null};
 const params=(key?:string,value?:string)=>{const p=new URL('https://collective.invalid').searchParams;if(key)p.set(key,value!);return p;};
 const scope=(c:Campaign)=>({id:c.id,brandId:c.brandId,storeId:c.storeId??null,channels:c.channels,version:c.version});
@@ -44,7 +45,7 @@ export async function validateRuleEvaluation(owner:string,c:Campaign,r:Candidate
 export async function ruleRunMatches(e:RuleEvaluation,run:EvalRun){
  const p=run.pair;if(!e.intent||!p||!('kind' in p)||p.kind!=='operator_preferences')return false;
  const {skippedCases,...pair}=p;
- return skippedCases===0&&run.variant==='pair'&&run.label===e.intent.label&&run.createdBy.id===e.intent.by&&Date.parse(run.createdAt)>=Date.parse(e.intent.at)&&run.tokenBudget===e.intent.tokenBudget&&Number.isSafeInteger(run.usedTokens)&&run.usedTokens>=0&&run.usedTokens<=e.intent.tokenBudget&&await storefrontDigest(pair)===await storefrontDigest(e.pair)&&JSON.stringify([...run.caseIds].sort())===JSON.stringify(e.caseIds)&&run.results.length===e.caseIds.length*2&&e.caseIds.every(id=>['active','candidate'].every(variant=>run.results.filter(x=>x.caseId===id&&x.variant===variant).length===1));
+ return (!('preparedId' in e.intent)||(run.boundedCost?.preparedId===e.intent.preparedId&&run.boundedCost?.preparedDigest===e.intent.preparedDigest&&run.boundedCost.settledKrw<=e.intent.krwBudget))&&skippedCases===0&&run.variant==='pair'&&run.label===e.intent.label&&run.createdBy.id===e.intent.by&&Date.parse(run.createdAt)>=Date.parse(e.intent.at)&&run.tokenBudget===e.intent.tokenBudget&&Number.isSafeInteger(run.usedTokens)&&run.usedTokens>=0&&run.usedTokens<=e.intent.tokenBudget&&await storefrontDigest(pair)===await storefrontDigest(e.pair)&&JSON.stringify([...run.caseIds].sort())===JSON.stringify(e.caseIds)&&run.results.length===e.caseIds.length*2&&e.caseIds.every(id=>['active','candidate'].every(variant=>run.results.filter(x=>x.caseId===id&&x.variant===variant).length===1));
 }
 export async function collectRuleEvaluation(owner:string,c:Campaign,r:Candidate,requested:unknown){
  const e=await assertRuleEvaluation(owner,c,r);if(!e.intent)throw new ApiError(409,'이 후보가 시작한 유료 평가 의도가 없습니다. 무료 검증은 Q 평가 통과가 아닙니다.');

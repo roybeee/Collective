@@ -1,0 +1,46 @@
+// Real SQLite; signed synthetic quote server. No paid provider call.
+import assert from 'node:assert/strict';
+import {createHmac,randomUUID,createHash} from 'node:crypto';
+import {testRuntime} from './helpers/runtime.mjs';
+const owner='o',key=randomUUID()+randomUUID();let contract,paid=0,quotes=0;
+const rt=testRuntime(async(url,opts={})=>{const path=new URL(url).pathname,method=opts.method??'GET',body=opts.body?JSON.parse(opts.body):null;let value;
+ if(path==='/v1/eval-contract')value=contract;
+ else if(path==='/v1/eval-quotes'){quotes++;value={schema:'collective.eval-quote.v1',quoteId:randomUUID(),contractDigest:contract.digest,requestDigest:await cost.costDigest(body.request),model:'fixture',maxInputTokens:100,maxOutputTokens:body.maxOutputTokens,maxChargeKrw:20,expiresAt:new Date(Date.now()+60000).toISOString()};}
+ else{paid++;throw Error('paid calls forbidden');}
+ return Response.json({...value,signature:createHmac('sha256',key).update(`collective.eval-cost.v1\n${method}\n${path}\n${owner}\n${cost.costCanonical(value)}`).digest('hex')});});
+const s=await rt.load('lib/server.ts'),cost=await rt.load('lib/eval-cost.ts'),ledger=await rt.load('lib/eval-cost-server.ts'),api=await rt.load('lib/growth-optimization-server.ts');
+s.runtime.EVAL_BOUNDED_ALLOWED_HOSTS='evaluation.example.com';
+const base={schema:'collective.eval-cost.v1',id:'fixture',provider:'fixture',model:'fixture',priceVersion:'v1',validUntil:new Date(Date.now()+3600000).toISOString(),billing:{mode:'fixed_krw',enforcement:'provider_fixed_krw',taxAndFeesIncluded:true},limits:{maxInputTokens:100,maxOutputTokens:200,maxRequests:1,tools:false,fallback:false,retries:false},durableIdempotency:true,receiptLookup:true};contract={...base,digest:await cost.costDigest(base)};
+const who={owner,id:owner,role:'owner',email:null},c={id:'c',brandId:'b',version:1,status:'active'},put=(kind,id,v)=>s.recordStatement(owner,kind,id,v,'c').run();
+await ledger.saveBoundedConnection(owner,{endpoint:'https://evaluation.example.com',key,trustKey:key,isolationConfirmed:true},who);
+await ledger.setBoundedMonthCap(owner,{capKrw:100,reason:'synthetic'},who);
+await put('growth_lesson_application','failure',{id:'failure',brandId:'b',campaignId:'c',version:1,outcome:{result:'failure'}});
+const body='배송 조건을 설명한다.',sha=createHash('sha256').update(JSON.stringify(body)).digest('hex'),vid='channel.commerce@'+sha.slice(0,12);
+await put('prompt_version',vid,{id:vid,unit:'channel.commerce',body,sha256:sha});
+const brand={id:'b',name:'합성',short:'SY',category:'SNACK BAR',color:'#224466',bg:'#eef2f6',description:'소개',audience:'고객',tone:'명료',constraints:'',knowledge:'자료'};
+await put('brand','b',brand);await put('campaign','c',{...c,title:'합성',goal:'검증',audience:'고객',channels:'커머스',stores:'점포',products:'상품',budget:null,startDate:'',endDate:'',constraints:'',sources:'',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+const q=await rt.load('lib/eval-server.ts'),captured=await (await q.evalAction(owner,{action:'capture_case',campaignId:'c',role:'content'},who)).json();
+await put('eval_case','case',{...captured,id:'case',set:'sealed'});
+const input={failureKind:'lesson_application',failureId:'failure',failureVersion:1,failureSummary:'합성 실패',candidateKind:'prompt_unit',targetRef:'channel.commerce',proposal:body,tokenBudget:100000,krwBudget:100};
+const call=(action,version,extra={})=>api.saveGrowthOptimization(who,c,{action,id:'x',expectedVersion:version,campaignVersion:1,requestId:randomUUID(),...extra});
+await call('save_candidate',0,{input});await call('freeze',1,{evaluation:{candidateVersionId:vid,caseIds:['case']}});
+await call('prepare_evaluation',2,{maxOutputTokens:100});
+let row=await s.readRecord(owner,'growth_optimization','x');
+assert.equal(row.costPreparation.totalMaxChargeKrw,40);assert.equal(quotes,2);assert.equal(paid,0);
+await assert.rejects(call('start_evaluation',3,{confirmed:false}));
+await assert.rejects(api.saveGrowthOptimization({...who,role:'admin'},c,{action:'start_evaluation',id:'x',expectedVersion:3,campaignVersion:1,requestId:randomUUID(),confirmed:true}));
+const request={action:'start_evaluation',id:'x',expectedVersion:3,campaignVersion:1,requestId:randomUUID(),confirmed:true};
+await api.saveGrowthOptimization(who,c,request);await api.saveGrowthOptimization(who,c,request);
+row=await s.readRecord(owner,'growth_optimization','x');
+const runs=await s.listRecords(owner,'eval_run');assert.equal(runs.length,1);assert.equal(runs[0].boundedCost.preparedId,row.costPreparation.preparedId);assert.equal(paid,0);
+assert.equal((await ledger.boundedCostOverview(owner)).month.reservedKrw,40);
+await assert.rejects(call('prepare_evaluation',4,{maxOutputTokens:100}));
+await assert.rejects(call('start_evaluation',4,{confirmed:true}));
+const helper=await rt.load('lib/growth-optimization-evaluation-server.ts');assert.equal(await helper.runMatches(row,runs[0]),true);
+assert.equal(await helper.runMatches(row,{...runs[0],boundedCost:{...runs[0].boundedCost,preparedDigest:'wrong'}}),false);
+await put('eval_case','case',{...captured,id:'case',set:'sealed',label:'changed after start'});
+await put('growth_stop','global',{id:'global',status:'stopped',version:1,reason:'fixture',updatedAt:new Date().toISOString(),updatedBy:owner});
+await api.saveGrowthOptimization(who,{...c,status:'archived'},{action:'resume_evaluation',id:'x',expectedVersion:4,campaignVersion:1,requestId:randomUUID()});
+assert.equal((await s.listRecords(owner,'eval_run')).length,1);assert.equal(paid,0);
+const view=await api.growthOptimizationView(who,c);assert.equal(view.candidates[0].costStatus.reservedKrw,40);
+console.log(JSON.stringify({passed:15,sqlite:'real',provider:'mocked',paidCalls:paid}));

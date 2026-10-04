@@ -17,7 +17,7 @@ test('실패 근거 최적화 후보·예산 상한·동결·오프라인≠매�
   const title=`최적화 ${info.project.name}`,{id:campaignId}=await post('/api/action',{action:'save_campaign',data:{brandId:'ofd',storeId,title,goal:'최적화'}});
   const body='배송 가능 여부와 구매 조건을 먼저 설명한다.',sha=createHash('sha256').update(JSON.stringify(body)).digest('hex'),versionId='channel.commerce@'+sha.slice(0,12);
   fixture(owner,'prompt_version',versionId,'',{id:versionId,unit:'channel.commerce',body,sha256:sha});
-  fixture(owner,'eval_case','opt-sealed','',{id:'opt-sealed',kind:'role',role:'content',label:'합성 봉인',set:'sealed',request:{campaign:{id:campaignId,channels:'커머스'}},expectations:{prohibitedTerms:[]},campaignId,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+  const captured=await post('/api/eval',{action:'capture_case',campaignId,role:'content'});fixture(owner,'eval_case','opt-sealed','',{...captured,id:'opt-sealed',set:'sealed',request:{...captured.request,campaign:{...captured.request.campaign,channels:'커머스'}}});
   fixture(owner,'growth_experiment_result','bad-exp:1',campaignId,{id:'bad-exp:1',designId:'bad-exp',campaignId,brandId:'ofd',analysisNumber:1,designDigest:'d',inputDigest:'i',analysis:{status:'rejected',analysisVersion:'growth_sales_v1',reasons:['악화'],assigned:{control:10,treatment:10},analysed:{control:10,treatment:10},excluded:{notExposed:0,trackingIncomplete:0,contaminated:0,unknownValue:0},srm:{chi2:0,p:1,mismatch:false},statistics:null,descriptive:{controlMean:0.2,treatmentMean:0.1},causalScope:'범위'},lineage:[],recordedAt:new Date().toISOString(),recordedBy:owner});
   await page.goto('/');if((page.viewportSize()?.width??1280)<768)await page.locator('[data-sidebar="trigger"]').first().click();await page.getByRole('button',{name:'캠페인',exact:true}).click();if((page.viewportSize()?.width??1280)<768)await page.keyboard.press('Escape');await page.getByRole('button',{name:title+' 열기',exact:true}).click();await page.getByRole('tab',{name:'성장·판매',exact:true}).click();
   await page.locator('summary').filter({hasText:/^최적화 후보 샌드박스$/}).click();const panel=page.getByRole('region',{name:'최적화 후보 샌드박스',exact:true});await expect(panel).toBeVisible({timeout:5000});
@@ -27,7 +27,13 @@ test('실패 근거 최적화 후보·예산 상한·동결·오프라인≠매�
   const id=(await panel.locator('li').first().innerText()).split(/\s*,\s+/)[1].trim();await panel.getByRole('button',{name:`${id} 동결`,exact:true}).click();await expect(panel.getByRole('alert')).toBeVisible();
   await panel.getByLabel('등록된 후보 버전 ID',{exact:true}).fill(versionId);await panel.getByLabel('봉인 포함 평가 케이스 ID (쉼표 구분)',{exact:true}).fill('opt-sealed');
   await panel.getByRole('button',{name:`${id} 동결`,exact:true}).click();await expect(panel).toContainText(`${id}, 동결`);await expect(panel).toContainText('오프라인: 미실행, 판매: 미연결');
-  await expect(panel.getByRole('button',{name:`${id} 유료 Q 평가 대기`,exact:true})).toBeDisabled();await expect(panel).toContainText('케이스 1개');
+  await expect(panel.getByRole('button',{name:`${id} 최대 0원 승인·평가 시작`,exact:true})).toBeDisabled();
+  await panel.getByText('Q 평가 공급자·원화 월 한도 설정',{exact:true}).click();
+  await panel.getByLabel('월 평가 지출 상한(원)',{exact:true}).fill('1000');await panel.getByLabel('예산 승인 사유',{exact:true}).fill('로컬 브라우저 합성 검증');
+  await panel.getByRole('button',{name:'원화 월 한도 승인',exact:true}).click();await expect(panel).toContainText('상한 1000원 / 미정산 예약 0원 / 확정 0원');
+  const cost=await (await page.request.get('/api/eval?boundedCost=1')).json();expect(cost.month.capKrw).toBe(1000);expect(cost.connection).toBeNull();
+  await panel.getByRole('button',{name:`${id} 평가 견적 준비`,exact:true}).click();await expect(panel.getByRole('alert').first()).toBeVisible();
+  await expect(panel.getByRole('button',{name:`${id} 최대 0원 승인·평가 시작`,exact:true})).toBeDisabled();await expect(panel).toContainText('케이스 1개');
   const current=await (await page.request.get(`/api/growth/optimization?campaignId=${campaignId}`)).json();expect(current.candidates[0].evaluation.pair.candidateVersionId).toBe(versionId);expect(current.candidates[0].evaluation.intent).toBeFalsy();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
  }finally{await context.close()}

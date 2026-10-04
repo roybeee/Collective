@@ -178,7 +178,14 @@
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-10-04 01:52 UTC (Codex: 성장2 Sites102 runtime-verified)
+갱신: 2026-10-04 03:08 UTC (Codex: 성장2 비용·운영 연결 로컬 검증 passed)
+- 대표 후속 지시 “나머지도마저개발하라”로 main `56760cd` 기준 `codex/growth2-paid-evaluation`에서 Q 원화 계약·정확 견적·월 원자 예약·중복 제출 방지·서명 영수증 대사·로컬 출력 삭제를 연결했다. 성장2 화면에서 견적/승인/복구/미정산 비용을 확인한다. 별도 평가 모델은 기존 운영 승격 게이트를 통과하지 않는다. [구현·운영 경계](GROWTH-2-COST-IMPLEMENTATION.ko.md).
+- MAPDAL 통합 ASGI·명시 migration·인증 readiness·주문 outbox 점포 고정과 소비자 실제 DB/본인 주문/목적별 동의·철회 SDK를 구현했다. 고지는 목적·본문·기간 digest로 고정하며 기존 MARKETING을 새 목적으로 확대하지 않는다. [설치](MAPDAL-INSTALL.ko.md), [고객 동의 SDK](MAPDAL-CONSUMER.ko.md), [평가 서비스](EVAL-GATEWAY.ko.md).
+- 독립 검토에서 운영 승격 오인·음수 사용량·견적 만료 예약·gateway 소유자/주문 outbox 범위·consumer readiness를 수정하고 재검토했다. 현재 blocking 결함 미발견. 모바일/데스크톱 핵심 E2E6 passed(real Chromium/D1, 인증·외부 provider mocked), 타입·빌드 passed, lint70/39 기준선 유지. 최종 전체354/354 suites·19,444 assertions, Python MAPDAL190·Gateway38 passed. 원격 CI·게시 결과는 후속 갱신한다. 운영은 아직 Sites102다.
+- 실제 고정 원화 공급자 계약·서버 호스트 허용/키, MAPDAL 운영 설치·법무 승인 고지·UUID/원화 상한/조회 영수증을 보장하는 발송 transport는 미연결이다. 실유료 평가·실제 고객 발송·운영 DB 변경은 not_run. 수집 API4종과 실제 매출/블라인드 평가 데이터도 운영 조건으로 남는다.
+
+### Sites102 기준 완료 기록
+
 - 삭제·보관 회귀 #339가 `59710e6`으로 merged, Sites102 published/runtime-verified됐다. 보존 대상 조회 바인드109→5, 삭제95→45. 전체349/349 suites·19,359 assertions, 독립 검토, 타입·빌드·lint70/39·prompt22 passed. 실제 로컬 D1/Chromium 삭제·보관·되돌리기8 passed(인증 mocked). #339 필수 CI verify passed, 전체 Linux E2E는 [run37168565625](https://github.com/roybeee/Collective/actions/runs/37168565625)의 최종 결과로 별도 확인한다. [게시 기록](releases/2026-10-04-59710e6.md).
 - 대표 지시 “성장2 남은것 멈추지말고 모두 개발진행해서 마무리하라”에 따라 `codex/growth2-completion`, 기준 `a790f2b`에서 [33카드 마감 기록](GROWTH-2-COMPLETION.ko.md)을 진행했다. 수집 제어·일일 복구/검토 초안·현금·번들 전체 이행·판매처 랜딩/주문/CS·소비자 동의/철회·실험 계측·교훈 맥락/결과 회수·Meta 제한 확대·정확판 최적화 연결이 #337로 merged, Sites101 published/runtime-verified됐다. 독립 검토 passed. 최종 로컬·PR CI 전체348/348 suites·19,327 assertions, 잠금/손상 기록 회귀92개, 타입·빌드·lint 기준선70/39·Python119·prompt22 passed. 핵심 E2E36+연결2 passed, macOS 키보드2 failed(빈 native select에서도 재현). 원격 필수 verify passed, 비차단 Linux 전체 E2E는 Actions 결과로 별도 확인한다. [게시 기록](releases/2026-10-04-8d72d4c.md).
 - Q는 정확한 프롬프트/운영규칙/판매 개입 계보를 검사한다. 랜딩·오퍼의 무료 결정론적 검사는 AI 품질 평가와 구분한다. 유료 평가의 원화 실지출 hard cap을 강제할 상류 계약이 없어 **blocked**이며 신규 유료 실행은 409로 차단한다. 예산 입력이나 확인 체크를 실제 지출 제한으로 취급하지 않는다.

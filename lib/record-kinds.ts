@@ -23,6 +23,10 @@ export type SubjectErasure='delete'|'minimize'|'legal_hold'|'none';
 export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;retention?:RetentionPolicy;subjectErasure?:SubjectErasure;description:string};
 
 export const recordKinds:readonly RecordKind[]=[
+ {kind:'eval_cost_connection',parent:'none',campaignDeletion:'not_campaign_scoped',description:'격리된 평가 공급자 연결·암호화 인증 및 서명 검증 키'},
+ {kind:'eval_cost_prepared',parent:'none',campaignDeletion:'not_campaign_scoped',description:'무료 견적·정확한 동결 평가 요청과 1회 실행 연결'},
+ {kind:'eval_cost_month',parent:'none',campaignDeletion:'not_campaign_scoped',description:'소유자 UTC 월 원화 상한·예약·확정 비용 원장'},
+ {kind:'eval_cost_intent',parent:'eval_run',campaignDeletion:'not_campaign_scoped',description:'평가 전송 전 영속 의도·미확인 예약·최종 비용 영수증'},
  {kind:'pr_credential',parent:'none',campaignDeletion:'not_campaign_scoped',description:'상품 리서치 출처 자격증명(검색광고·개발자센터·YouTube·쿠팡 파트너스·계약 데이터). 암호화 저장, 캠페인과 무관'},
  {kind:'pr_snapshot',parent:'none',campaignDeletion:'not_campaign_scoped',description:'상품 리서치 원본 스냅샷(출처·요청 범위·본문 해시·관측 수치). 외부 원문 전체와 개인정보 없음, 캠페인과 무관'},
  {kind:'pr_keyword_group',parent:'none',campaignDeletion:'not_campaign_scoped',description:'같은 수요를 뜻하는 키워드 묶음, 캠페인과 무관'},

@@ -1,6 +1,7 @@
 import type {Campaign} from './agency';
+import {prepareCandidateCost,candidateCostIntent,dispatchCandidateCost,candidateCostStatus,type CostPreparation} from './growth-optimization-cost-server';
 import {freezeEvaluation,collectEvaluation,salesIntervention,type OptimizationEvaluation} from './growth-optimization-evaluation-server';
-import {freezeRuleEvaluation,assertRuleEvaluation,validateRuleEvaluation,collectRuleEvaluation,ruleSalesIntervention,requireEnforcedEvaluationCost,type RuleEvaluation} from './growth-optimization-rule-server';
+import {freezeRuleEvaluation,assertRuleEvaluation,validateRuleEvaluation,collectRuleEvaluation,ruleSalesIntervention,type RuleEvaluation} from './growth-optimization-rule-server';
 import {freezeContentEvaluation,assertContentEvaluation,collectContentEvaluation,contentSalesIntervention,type ContentEvaluation} from './growth-optimization-content-server';
 import type {FailureDraftOrigin} from './growth-failure-drafts-server';
 import {readExperimentOutcomeBasis,type GrowthExperimentRecord} from './growth-experiment-server';
@@ -10,7 +11,7 @@ import {storefrontDigest} from './storefront-orders';
 import {ApiError,database,str,type Actor} from './server';
 const kinds={current:'growth_optimization',history:'growth_optimization_history',request:'growth_optimization_request'} as const;
 const failureKinds={experiment_result:'growth_experiment_result',lesson_application:'growth_lesson_application',journey:'growth_journey',cause_link:'growth_cause_link',cs_ticket:'growth_cs_ticket'} as const;
-export type OptimizationRecord=Versioned&{input:CandidateInput;autoDraft?:FailureDraftOrigin;stage:OptimizationStage;frozen:{digest:string;at:string;by:string}|null;evaluation?:OptimizationEvaluation|null;ruleEvaluation?:RuleEvaluation|null;contentEvaluation?:ContentEvaluation|null;validation?:Awaited<ReturnType<typeof validateRuleEvaluation>>;offline:{kind?:'q_pair'|'deterministic_content';reasons?:string[];evalRunId:string;verdict:'pass'|'fail';tokens:number;at:string;by:string}|null;sales:{experimentId:string;at:string;designDigest?:string;intervention?:Awaited<ReturnType<typeof salesIntervention>>|Awaited<ReturnType<typeof ruleSalesIntervention>>|Awaited<ReturnType<typeof contentSalesIntervention>>}|null;adoption:{ref:string;at:string;by:string}|null;rollback:{reason:string;evidenceRef:string;at:string;by:string}|null;createdAt:string;updatedAt:string;updatedBy:string};
+export type OptimizationRecord=Versioned&{input:CandidateInput;autoDraft?:FailureDraftOrigin;stage:OptimizationStage;costPreparation?:CostPreparation;frozen:{digest:string;at:string;by:string}|null;evaluation?:OptimizationEvaluation|null;ruleEvaluation?:RuleEvaluation|null;contentEvaluation?:ContentEvaluation|null;validation?:Awaited<ReturnType<typeof validateRuleEvaluation>>;offline:{kind?:'q_pair'|'deterministic_content';reasons?:string[];evalRunId:string;verdict:'pass'|'fail';tokens:number;at:string;by:string}|null;sales:{experimentId:string;at:string;designDigest?:string;intervention?:Awaited<ReturnType<typeof salesIntervention>>|Awaited<ReturnType<typeof ruleSalesIntervention>>|Awaited<ReturnType<typeof contentSalesIntervention>>}|null;adoption:{ref:string;at:string;by:string}|null;rollback:{reason:string;evidenceRef:string;at:string;by:string}|null;createdAt:string;updatedAt:string;updatedBy:string};
 async function failureValid(owner:string,c:Campaign,i:CandidateInput){
  const row=await optionalRecord<{id:string;brandId:string;campaignId:string;designId?:string;analysisNumber?:number;version?:number;analysis?:{status:string};outcome?:{result:string}|null;status?:string}>(owner,failureKinds[i.failureKind],i.failureId);
  if(!row||!inCampaign(row,c))return '현재 캠페인의 실패 근거가 아닙니다.';
@@ -36,11 +37,11 @@ async function salesResult(owner:string,c:Campaign,r:OptimizationRecord){
 }
 export async function growthOptimizationView(who:Actor,c:Campaign){
  const [rows,history]=await Promise.all([campaignRows<OptimizationRecord>(who.owner,c,kinds.current,200),campaignRows<OptimizationRecord>(who.owner,c,kinds.history,2000)]);
- const candidates=await Promise.all(rows.filter(r=>inCampaign(r,c)).map(async r=>{const failure=await failureValid(who.owner,c,r.input);const sales=await salesResult(who.owner,c,r);return {...r,failureStatus:failure?'changed' as const:'current' as const,failureReason:failure,status:candidateStatus({stage:r.stage,offline:r.offline?.verdict??'not_run',salesResult:sales}),salesResult:sales}}));
+ const candidates=await Promise.all(rows.filter(r=>inCampaign(r,c)).map(async r=>{const failure=await failureValid(who.owner,c,r.input);const sales=await salesResult(who.owner,c,r);return {...r,costStatus:await candidateCostStatus(who.owner,r),failureStatus:failure?'changed' as const:'current' as const,failureReason:failure,status:candidateStatus({stage:r.stage,offline:r.offline?.verdict??'not_run',salesResult:sales}),salesResult:sales}}));
  return {campaignId:c.id,campaignVersion:c.version,candidates,history:history.filter(h=>inCampaign(h,c)),canEdit:who.role!=='member'&&c.status!=='archived',canAdopt:who.role==='owner',mayPromote:false as const,mayChangeGraders:false as const};
 }
 export type GrowthOptimizationView=Awaited<ReturnType<typeof growthOptimizationView>>;
-const allowed:Record<string,OptimizationStage[]>={validate_evaluation:['frozen'],freeze:['draft'],start_evaluation:['frozen'],record_offline:['frozen'],link_sales:['offline_evaluated'],adopt:['sales_linked'],rollback:['adopted'],discard:['draft','frozen','offline_evaluated','sales_linked']};
+const allowed:Record<string,OptimizationStage[]>={resume_evaluation:['frozen'],prepare_evaluation:['frozen'],validate_evaluation:['frozen'],freeze:['draft'],start_evaluation:['frozen'],record_offline:['frozen'],link_sales:['offline_evaluated'],adopt:['sales_linked'],rollback:['adopted'],discard:['draft','frozen','offline_evaluated','sales_linked']};
 async function assertFrozenCandidate(owner:string,c:Campaign,r:OptimizationRecord){
  const evaluation=r.evaluation?{...r.evaluation,intent:undefined}:null,ruleEvaluation=r.ruleEvaluation?{...r.ruleEvaluation,intent:undefined}:null;
  if(!r.frozen||r.frozen.digest!==await storefrontDigest({id:r.id,input:r.input,...(evaluation?{evaluation}:{}),...(ruleEvaluation?{ruleEvaluation}:{}),...(r.contentEvaluation?{contentEvaluation:r.contentEvaluation}:{})}))throw new ApiError(409,'후보 동결 내용이 변경되었습니다.');
@@ -50,7 +51,7 @@ async function assertFrozenCandidate(owner:string,c:Campaign,r:OptimizationRecor
 export async function saveGrowthOptimization(who:Actor,c:Campaign,b:Record<string,unknown>){
  const id=str(b.id,'후보 ID',100,true),action=String(b.action??'');
  const input=action==='save_candidate'?parseCandidate(b.input):null;
- const result=await versionedMutation<OptimizationRecord>(who,c,b,kinds,id,{action,input,evalRunId:b.evalRunId,verdict:b.verdict,evaluation:b.evaluation,confirmed:b.confirmed,krwCapNotEnforced:b.krwCapNotEnforced,experimentId:b.experimentId,ref:b.ref,reason:b.reason,evidenceRef:b.evidenceRef},async(old,at)=>{
+ const result=await versionedMutation<OptimizationRecord>(who,c,b,kinds,id,{action,input,evalRunId:b.evalRunId,verdict:b.verdict,evaluation:b.evaluation,confirmed:b.confirmed,krwCapNotEnforced:b.krwCapNotEnforced,maxOutputTokens:b.maxOutputTokens,experimentId:b.experimentId,ref:b.ref,reason:b.reason,evidenceRef:b.evidenceRef},async(old,at)=>{
   if(action==='save_candidate'){
    if(c.status==='archived')throw new ApiError(409,'보관한 캠페인에는 후보를 만들지 않습니다.');if(old&&old.stage!=='draft')throw new ApiError(409,'동결한 후보는 바꿀 수 없습니다. 새 후보를 만드세요.');
    const problem=await failureValid(who.owner,c,input!);if(problem)throw new ApiError(409,problem);
@@ -67,9 +68,14 @@ export async function saveGrowthOptimization(who:Actor,c:Campaign,b:Record<strin
    next.stage='frozen';next.frozen={digest:await storefrontDigest({id,input:old.input,...(next.evaluation?{evaluation:next.evaluation}:{}),...(next.ruleEvaluation?{ruleEvaluation:next.ruleEvaluation}:{}),...(next.contentEvaluation?{contentEvaluation:next.contentEvaluation}:{})}),at,by:who.id};
   }else if(action==='validate_evaluation'){
    await assertFrozenCandidate(who.owner,c,old);next.validation=await validateRuleEvaluation(who.owner,c,old);
+  }else if(action==='prepare_evaluation'){
+   await assertFrozenCandidate(who.owner,c,old);next.costPreparation=await prepareCandidateCost(who,c,old,b.maxOutputTokens);
   }else if(action==='start_evaluation'){
-   if(who.role!=='owner')throw new ApiError(403,'평가 실행 비용 승인은 소유자만 할 수 있습니다.');
-   requireEnforcedEvaluationCost();
+   await assertFrozenCandidate(who.owner,c,old);const intent=await candidateCostIntent(who,c,old,b.confirmed,at);
+   if(old.ruleEvaluation)next.ruleEvaluation={...old.ruleEvaluation,intent};else if(old.evaluation)next.evaluation={...old.evaluation,intent};
+  }else if(action==='resume_evaluation'){
+   if(who.role!=='owner')throw new ApiError(403,'소유자만 평가 시작을 복구합니다.');
+   if(!old.evaluation?.intent&&!old.ruleEvaluation?.intent)throw new ApiError(409,'복구할 승인 의도가 없습니다.');
   }else if(action==='record_offline'){
    await assertFrozenCandidate(who.owner,c,old);
    if(old.contentEvaluation){const report=await collectContentEvaluation(who.owner,c,old);next.offline={kind:'deterministic_content',evalRunId:report.id,verdict:report.verdict,tokens:0,reasons:report.reasons,at,by:who.id};}
@@ -96,5 +102,6 @@ export async function saveGrowthOptimization(who:Actor,c:Campaign,b:Record<strin
   }else if(action==='discard')next.stage='discarded';
   return {next};
  });
+ if(action==='start_evaluation'||action==='resume_evaluation'){const saved=await optionalRecord<OptimizationRecord>(who.owner,kinds.current,id);if(saved&&inCampaign(saved,c))await dispatchCandidateCost(who,c,saved);}
  return result;
 }

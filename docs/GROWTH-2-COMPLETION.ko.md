@@ -1,5 +1,12 @@
 # 성장2 잔여 개발 마감 기록
 
+## 2026-10-04 비용·운영 연결 후속
+
+대표의 “나머지도마저개발하라” 지시로 [후속 구현](GROWTH-2-COST-IMPLEMENTATION.ko.md)을 진행했다. Q 고정 원화 계약/견적/예약/서명 영수증과 성장2 승인 화면, MAPDAL 통합 설치 및 실제 DB·목적별 동의 SDK가 추가됐다. 아래 Sites102 기록의 “코드 미연결”과 실제 공급자 계약/키 미설치를 구분한다. 현재 실제 원화 계약 공급자와 발송 transport, 고지 승인·운영 설치는 여전히 blocked/not_run이다. 최종 검증·GitHub·Sites 상태는 STATUS 레인 A와 후속 게시 기록이 정본이다.
+
+## Sites102 시점의 마감 기록
+
+
 기준: `/Users/roybee/Collective-md-round3`, 착수 기준 main `a790f2b`. 아래 33카드표와 실행 순서는 착수 당시 조사 이력이다. 현재 구현 상태는 하단 실행 기록을 따른다. 통합 #337과 삭제·보관 회귀 수정 #339가 merged됐고 제품 `59710e6`은 Sites102 published/runtime-verified다. 로컬 전체349/349 suites·19,359 assertions와 필수 CI verify passed. Q 원화 지출 제한 계약과 운영·사업 실증 조건은 아래처럼 별도 남는다.
 
 ## 착수 시점 판단 (이력)
@@ -95,7 +102,7 @@ PR285의 15증분과 MD #329~335에서 수요 단계-발행 근거, 수동 상�
 
 상품 재고 상한은 `max(0, min(local.available, provider.sellable - local.reserved))`이다. 새 예약이 즉시 상한을 소비한다. 공급자가 이미 차감한 예약과의 동일성을 입증할 수 없어 전체 미이행 예약을 보수적으로 공제하며 중복 차감으로 가용 수량이 줄 수 있다. 예약 수량 미확인은 보류한다. 입출고·실사·반품 사건 전체를 고정해 물리 원장이 바뀌면 다시 조회·승인하기 전 보류한다. 기존 출고·환불·안전한 해제는 복구할 수 있다. [상품·재고 계약](GROWTH-PROVIDER-CATALOG.ko.md), [최적화 평가 계약](GROWTH-OPTIMIZATION-EVALUATION.ko.md), [운영규칙 계약](GROWTH-OPTIMIZATION-RULE.ko.md).
 
-## 현재 잔여와 종료 조건
+## Sites102 당시 잔여와 종료 조건
 
 1. **검토·통합 검증:** 독립 검토에서 발견한 H/M을 수정하고 재검토 passed. 통합348/348 suites·19,327 assertions, 삭제 복구 후349/349·19,359 assertions passed. 마지막 잠금/손상 기록 전용92개도 passed. 타입·빌드 passed, lint 기준선70 errors/39 warnings gate passed, Python119 passed, 프롬프트22 passed. 핵심 화면36개와 연결 화면2개 passed(real Chromium/D1, 인증·외부 provider mocked). macOS 키보드 선택 테스트2개는 빈 native select에서도 재현되어 failed였으나 Linux CI에서는 통과했다.
 2. **원격 반영:** #337·#339 merged, 필수 CI verify passed, Sites102 published/runtime-verified. [게시 기록](releases/2026-10-04-59710e6.md). #337 전체 Linux E2E는285 passed·5 skipped·6 failed였고 macOS 키보드2건은 Linux에서 통과했다. 실패6건의 D1 바인드 한도 초과를 실제 workerd에서 재현·수정했으며 #339 회귀349/349·19,359 assertions와 삭제/보관/되돌리기 E2E8이 passed다. 수정본 전체 Linux E2E는 [Actions 결과](https://github.com/roybeee/Collective/actions/runs/37168565625)로 별도 확인한다.
