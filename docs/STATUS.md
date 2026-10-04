@@ -178,7 +178,8 @@
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
-갱신: 2026-10-04 01:15 UTC (Codex: 성장2 Sites101 runtime-verified)
+갱신: 2026-10-04 01:52 UTC (Codex: 성장2 Sites102 runtime-verified)
+- 삭제·보관 회귀 #339가 `59710e6`으로 merged, Sites102 published/runtime-verified됐다. 보존 대상 조회 바인드109→5, 삭제95→45. 전체349/349 suites·19,359 assertions, 독립 검토, 타입·빌드·lint70/39·prompt22 passed. 실제 로컬 D1/Chromium 삭제·보관·되돌리기8 passed(인증 mocked). #339 필수 CI verify passed, 전체 Linux E2E는 [run37168565625](https://github.com/roybeee/Collective/actions/runs/37168565625)의 최종 결과로 별도 확인한다. [게시 기록](releases/2026-10-04-59710e6.md).
 - 대표 지시 “성장2 남은것 멈추지말고 모두 개발진행해서 마무리하라”에 따라 `codex/growth2-completion`, 기준 `a790f2b`에서 [33카드 마감 기록](GROWTH-2-COMPLETION.ko.md)을 진행했다. 수집 제어·일일 복구/검토 초안·현금·번들 전체 이행·판매처 랜딩/주문/CS·소비자 동의/철회·실험 계측·교훈 맥락/결과 회수·Meta 제한 확대·정확판 최적화 연결이 #337로 merged, Sites101 published/runtime-verified됐다. 독립 검토 passed. 최종 로컬·PR CI 전체348/348 suites·19,327 assertions, 잠금/손상 기록 회귀92개, 타입·빌드·lint 기준선70/39·Python119·prompt22 passed. 핵심 E2E36+연결2 passed, macOS 키보드2 failed(빈 native select에서도 재현). 원격 필수 verify passed, 비차단 Linux 전체 E2E는 Actions 결과로 별도 확인한다. [게시 기록](releases/2026-10-04-8d72d4c.md).
 - Q는 정확한 프롬프트/운영규칙/판매 개입 계보를 검사한다. 랜딩·오퍼의 무료 결정론적 검사는 AI 품질 평가와 구분한다. 유료 평가의 원화 실지출 hard cap을 강제할 상류 계약이 없어 **blocked**이며 신규 유료 실행은 409로 차단한다. 예산 입력이나 확인 체크를 실제 지출 제한으로 취급하지 않는다.
 - 판매처 상품·재고는 서명 조회·소유자 검토와 15분 TTL을 사용한다. 주기 작업자는 한 tick에 한 연결을 최소 5분 간격으로 읽고 실패 backoff를 적용한다. 현재 미이행 로컬 예약을 공급자 판매 가능 수량에서 보수적으로 공제하며, 만료/미확인/삭제는 해당 SKU를 보류한다. 입출고·실사·반품 이후에는 새 조회·승인 전 보류한다. 실제 MAPDAL 어댑터 운영 설치는 not_run. 기존 물리 재고·예약은 자동 수정하지 않는다.
@@ -334,20 +335,20 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-10-04 01:15 UTC (Codex A: 성장2 Sites101)
+마지막 갱신: 2026-10-04 01:52 UTC (Codex A: 성장2 Sites102)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `8d72d4c12283c5d054de69bc8487a02f6f285a8b` (#337) | tree `1d4273e8ad5ef9f7c4daeaaad99f0954ab5e2be0`, [릴리스](releases/2026-10-04-8d72d4c.md) |
-| `origin/main` | 게시 제품 `8d72d4c` 포함 | 이후 비제품 변경은 PUBLISH 5절 기준으로 구분 |
-| Sites 게시 | `published`: 버전101, deployment `appgdep_6ac1a871bc9c8191817f1de82b398ba1` succeeded | 2026-10-04 01:14 UTC |
-| 실행 검증 | `runtime-verified`: 공개 버전 tree 일치 | build `2026-10-04T01:04:46.140Z` |
-| 인증 | 상품 리서치 API 익명401, email 모드 유지 | Sites101 실제 HTTP; 소유자 수집 화면에서 스위치 켜짐·API 연결 필요 확인 |
+| 운영 제품 커밋 | `59710e69af4f85c860400893cf8780bf3f630651` (#339) | tree `3849e183c9882a23b043ae738a05070c18b9261f`, [릴리스](releases/2026-10-04-59710e6.md) |
+| `origin/main` | 게시 제품 `59710e6` 포함 | 이후 비제품 변경은 PUBLISH 5절 기준으로 구분 |
+| Sites 게시 | `published`: 버전102, deployment `appgdep_6ac1b12ca92481919f795efa4bb016e8` succeeded | 2026-10-04 01:51 UTC |
+| 실행 검증 | `runtime-verified`: 공개 버전 tree 일치 | build `2026-10-04T01:44:28.950Z` |
+| 인증 | 상품 리서치 API 익명401, email 설정 유지 | Sites102 실제 HTTP; 이전 소유자 수집 화면에서 스위치 켜짐·API 연결 필요 확인 |
 | Sites 접근 | public, 환경 revision4 유지 | 설정 변경 없음 |
 | 조사 워커 | 이번 게시에서 온라인 상태 재확인 not_run | 활성화 시 서버에서 온라인 조건을 검사 |
-| 제품 CI | #337 필수 verify passed, PR/main tree 동일; 비차단 E2E 별도 | [PR CI](https://github.com/roybeee/Collective/actions/runs/37166768604), [main CI](https://github.com/roybeee/Collective/actions/runs/37167313598) |
+| 제품 CI | #339 필수 verify passed; PR 이후 main 병합 차이는 #338 문서뿐; 비차단 E2E 별도 | [PR CI](https://github.com/roybeee/Collective/actions/runs/37168565625) |
 | 성장2 판정 | 실행·회수 잔여 통합 게시 / Q 원화 유료 평가 계약 blocked / 실효과 not_run | [33카드 대조](GROWTH-2-COMPLETION.ko.md), Meta 한정 종료와 구분 |
 | 성장1 판정 | 개발 종료 passed / 운영 인수 blocked / 효과 검증 not_run | [최종 판정·조건부 인계](observations/2026-09-28-lane-a-growth1-closeout.md) |
 
