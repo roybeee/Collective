@@ -186,6 +186,8 @@
 
 ### 이전 게시·Meta 증분 기록 (각 항목 당시 상태)
 
+- 성장2 통합 뒤 삭제·보관 회귀(2026-10-04): #337 Linux 전체 E2E는 285 passed·5 skipped·6 failed였다. 실제 로컬 workerd에서 삭제 영향 조회의 `D1_ERROR: too many SQL variables`를 재현했다. 보존 대상 종류 증가로 한 문장의 바인드가 109개가 된 것이 원인이다. `codex/growth2-deletion-recovery`에서 종류 목록을 JSON 배열 바인드로 바꾸어 5개로 줄이고, 조회·삭제 일치/다른 소유자·캠페인 보존/중복 집계 방지 회귀를 추가했다. 전용 354 assertions·타입 passed, 전체 검사와 실제 브라우저 재검증 및 게시 결과는 후속 PR에 기록한다.
+
 - 대표 지시 “이거 마저 진행하라”로 Claude의 3회차 수정본을 PR #335(`5322c7d`)로 인계받았다. Sites99 게시 기록 #334는 `2037585`로 merged. #335 독립 검토의 HIGH 1·MEDIUM 4건을 수정하고 최종 `10d5c44`를 `51b3b82`로 merged, Sites100 published/runtime-verified. 재검토 APPROVE(추가 HIGH/MEDIUM 0), 코드 준비도 4.42/5. 전체316/316 suites·18,449 assertions passed(외부 mocked), 원격 전체 E2E273 passed·5 skipped와 이메일 인증1 passed, 타입·빌드·lint기준선70/39·프롬프트22 passed. [4회차 기록](PRODUCT-RESEARCH-EVAL-4.ko.md), [게시 기록](releases/2026-10-03-51b3b82.md). 기능 스위치 기본 꺼짐 유지, 실제 외부 수집·발주·집행 0. 실API·실판매·블라인드·법무·Q 레지스트리 등록은 별도 인계 조건이다.
 - 성장2 남은 코드 구현·검토 passed. Pixel/CAPI 내구성 큐·동의/철회, 승인된 제한 집행·부모 우선 비상 정지·정산, 불변 실험 설계·무작위 배정·관측·통계 판정·규칙 승인 및 낡은 근거 차단. [요구사항별 종료 판정](GROWTH-2-CLOSEOUT.ko.md). 새 `meta_ads_capi`·`meta_ads_execution`은 기본 OFF.
 - 최종 로컬 검증 passed: 전체 227/227 suites·14,123 assertions(외부 mocked), 브라우저104 + 최종 수정 뒤 핵심8(real local Chromium/D1, 외부 mocked), 이메일 인증1(real local), 타입·빌드·프롬프트22·lint 기준선70/39. Python 워커13·설치70·맵달19 passed. 새 비즈니스 모듈10개 V8 함수 커버리지141/151=93.4%(외부 mocked; 문장/분기 커버리지 아님). 코드·보안 재검토 HIGH/CRITICAL 잔여0.
