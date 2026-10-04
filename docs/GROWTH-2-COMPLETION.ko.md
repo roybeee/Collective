@@ -2,7 +2,7 @@
 
 ## 2026-10-04 비용·운영 연결 후속
 
-대표의 “나머지도마저개발하라” 지시로 [후속 구현](GROWTH-2-COST-IMPLEMENTATION.ko.md)을 진행했다. Q 고정 원화 계약/견적/예약/서명 영수증과 성장2 승인 화면, MAPDAL 통합 설치 및 실제 DB·목적별 동의 SDK가 추가됐다. 아래 Sites102 기록의 “코드 미연결”과 실제 공급자 계약/키 미설치를 구분한다. 현재 실제 원화 계약 공급자와 발송 transport, 고지 승인·운영 설치는 여전히 blocked/not_run이다. 최종 검증·GitHub·Sites 상태는 STATUS 레인 A와 후속 게시 기록이 정본이다.
+대표의 “나머지도마저개발하라” 지시로 [후속 구현](GROWTH-2-COST-IMPLEMENTATION.ko.md)을 진행했다. Q 고정 원화 계약/견적/예약/서명 영수증과 성장2 승인 화면, MAPDAL 통합 설치 및 실제 DB·목적별 동의 SDK가 추가됐다. 아래 Sites102 기록의 “코드 미연결”과 실제 공급자 계약/키 미설치를 구분한다. 현재 실제 원화 계약 공급자와 발송 transport, 고지 승인·운영 설치는 여전히 blocked/not_run이다. PR #341 `7852b96` merged, Sites103 published/runtime-verified. 전체 Node354/354·19,444 assertions, MAPDAL190·Gateway38, Linux E2E293 passed·5 skipped·0 failed·인증1 passed. [게시 근거](releases/2026-10-04-7852b96.md)가 정본이다.
 
 ## Sites102 시점의 마감 기록
 

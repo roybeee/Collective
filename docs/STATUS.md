@@ -171,7 +171,7 @@
 - 요청(레인 A → 레인 Q, 2026-10-02): 워크스페이스의 품질 콘솔 정적 import(`tests/quality-console-route.test.mjs`)를 지연 로딩으로 바꿔도 되는지 검토 요청. 홈 첫 로딩 JS 약 12KB(gz)가 `lib/quality.ts` 경유로 실린다(UX-PLAN-3 10차원 목표 180KB).
 
 ## 게시 대기열 (레인 A만 고침, 다른 레인은 요청 줄만 더함)
-- 현재 운영: #335까지 `51b3b825c3955646bcaadd88276aa5322396594e`, Sites100, tree `678e00285f8628fc34bb0ccddf796512161d1bf9`. 2026-10-03 15:38 UTC merged/published/runtime-verified(공개 tree 일치, Codex 직접 게시, [기록](releases/2026-10-03-51b3b82.md)). 상품 리서치 3회차 보강·4회차 결함 수정 포함. 코드 준비도 참고치 4.42/5, 실제 성과 미검증. `product_research`·`product_research_collect`는 기본 꺼짐 그대로.
+- 현재 운영: #341까지 `7852b96256de0c7113fc14166b46b37a964d8e99`, Sites103, tree `05c7e2e988cf2e2d0f3bbf8106d9c4f1225b965f`. merged/published/runtime-verified([기록](releases/2026-10-04-7852b96.md)). 수집 스위치는 이전 운영 재조회에서 켜짐 확인, API4종 연결은 별도다.
 - 직전 운영: #333까지 `2c100e6`, Sites99, tree `39cd51a`([릴리스](releases/2026-10-03-2c100e6.md)).
 - 성장1 필수 코드 게시 대기 0건. #216·#218·#219·#225는 통합 #244로 병합·게시했다. #206·#208·#210~#214·#217·#220·#223·#231·#235·#237과 관련 문서도 현재 제품에 포함된다.
 - 기존 대기열의 미병합·404 문구는 과거 상태다. R 신규 PR #234·#241·#242·#243 및 인터뷰 게시 문서 #236·#240은 별도 소유자 작업이며 성장1 필수 잔여가 아니다.
@@ -181,7 +181,7 @@
 갱신: 2026-10-04 03:08 UTC (Codex: 성장2 비용·운영 연결 로컬 검증 passed)
 - 대표 후속 지시 “나머지도마저개발하라”로 main `56760cd` 기준 `codex/growth2-paid-evaluation`에서 Q 원화 계약·정확 견적·월 원자 예약·중복 제출 방지·서명 영수증 대사·로컬 출력 삭제를 연결했다. 성장2 화면에서 견적/승인/복구/미정산 비용을 확인한다. 별도 평가 모델은 기존 운영 승격 게이트를 통과하지 않는다. [구현·운영 경계](GROWTH-2-COST-IMPLEMENTATION.ko.md).
 - MAPDAL 통합 ASGI·명시 migration·인증 readiness·주문 outbox 점포 고정과 소비자 실제 DB/본인 주문/목적별 동의·철회 SDK를 구현했다. 고지는 목적·본문·기간 digest로 고정하며 기존 MARKETING을 새 목적으로 확대하지 않는다. [설치](MAPDAL-INSTALL.ko.md), [고객 동의 SDK](MAPDAL-CONSUMER.ko.md), [평가 서비스](EVAL-GATEWAY.ko.md).
-- 독립 검토에서 운영 승격 오인·음수 사용량·견적 만료 예약·gateway 소유자/주문 outbox 범위·consumer readiness를 수정하고 재검토했다. 현재 blocking 결함 미발견. 모바일/데스크톱 핵심 E2E6 passed(real Chromium/D1, 인증·외부 provider mocked), 타입·빌드 passed, lint70/39 기준선 유지. 최종 전체354/354 suites·19,444 assertions, Python MAPDAL190·Gateway38 passed. 원격 CI·게시 결과는 후속 갱신한다. 운영은 아직 Sites102다.
+- 독립 검토에서 운영 승격 오인·음수 사용량·견적 만료 예약·gateway 소유자/주문 outbox 범위·consumer readiness를 수정하고 재검토했다. 현재 blocking 결함 미발견. 모바일/데스크톱 핵심 E2E6 passed(real Chromium/D1, 인증·외부 provider mocked), 타입·빌드 passed, lint70/39 기준선 유지. 최종 전체354/354 suites·19,444 assertions, Python MAPDAL190·Gateway38 passed. PR #341 필수 CI verify와 Linux E2E293 passed·5 skipped·0 failed, 이메일 인증1 passed. `7852b96` merged 후 Sites103 published/runtime-verified. [게시 근거](releases/2026-10-04-7852b96.md).
 - 실제 고정 원화 공급자 계약·서버 호스트 허용/키, MAPDAL 운영 설치·법무 승인 고지·UUID/원화 상한/조회 영수증을 보장하는 발송 transport는 미연결이다. 실유료 평가·실제 고객 발송·운영 DB 변경은 not_run. 수집 API4종과 실제 매출/블라인드 평가 데이터도 운영 조건으로 남는다.
 
 ### Sites102 기준 완료 기록
@@ -342,21 +342,21 @@
 - D1 이름 대조: passed · real. 소유자 화면의 브랜드 4개·지점 1개와 한글·영문 약칭·띄어쓰기 변형을 후보에 대조했다. 이름 원문은 저장하지 않는다. [후보와 수용 기준](LOCAL-CHANNEL-PACK.ko.md).
 
 
-마지막 갱신: 2026-10-04 01:52 UTC (Codex A: 성장2 Sites102)
+마지막 갱신: 2026-10-04 03:37 UTC (Codex A: 성장2 Sites103)
 
 ## 현재 운영 상태
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 운영 제품 커밋 | `59710e69af4f85c860400893cf8780bf3f630651` (#339) | tree `3849e183c9882a23b043ae738a05070c18b9261f`, [릴리스](releases/2026-10-04-59710e6.md) |
-| `origin/main` | 게시 제품 `59710e6` 포함 | 이후 비제품 변경은 PUBLISH 5절 기준으로 구분 |
-| Sites 게시 | `published`: 버전102, deployment `appgdep_6ac1b12ca92481919f795efa4bb016e8` succeeded | 2026-10-04 01:51 UTC |
-| 실행 검증 | `runtime-verified`: 공개 버전 tree 일치 | build `2026-10-04T01:44:28.950Z` |
-| 인증 | 상품 리서치 API 익명401, email 설정 유지 | Sites102 실제 HTTP; 이전 소유자 수집 화면에서 스위치 켜짐·API 연결 필요 확인 |
+| 운영 제품 커밋 | `7852b96256de0c7113fc14166b46b37a964d8e99` (#341) | tree `05c7e2e988cf2e2d0f3bbf8106d9c4f1225b965f`, [릴리스](releases/2026-10-04-7852b96.md) |
+| `origin/main` | 게시 제품 `7852b96` 포함 | 이후 비제품 변경은 PUBLISH 5절 기준으로 구분 |
+| Sites 게시 | `published`: 버전103, deployment `appgdep_6ac1c9b290e08191a1a1c3ec5100c3ee` succeeded | 2026-10-04 03:36 UTC |
+| 실행 검증 | `runtime-verified`: 공개 버전 tree 일치 | build `2026-10-04T03:35:14.865Z` |
+| 인증 | 상품 리서치 API 익명401, email 설정 유지 | Sites103 실제 HTTP; 이전 소유자 수집 화면에서 스위치 켜짐·API 연결 필요 확인 |
 | Sites 접근 | public, 환경 revision4 유지 | 설정 변경 없음 |
 | 조사 워커 | 이번 게시에서 온라인 상태 재확인 not_run | 활성화 시 서버에서 온라인 조건을 검사 |
-| 제품 CI | #339 필수 verify passed; PR 이후 main 병합 차이는 #338 문서뿐; 비차단 E2E 별도 | [PR CI](https://github.com/roybeee/Collective/actions/runs/37168565625) |
-| 성장2 판정 | 실행·회수 잔여 통합 게시 / Q 원화 유료 평가 계약 blocked / 실효과 not_run | [33카드 대조](GROWTH-2-COMPLETION.ko.md), Meta 한정 종료와 구분 |
+| 제품 CI | #341 verify passed, Linux E2E293 passed·5 skipped·0 failed, 이메일 인증1 passed | [PR CI](https://github.com/roybeee/Collective/actions/runs/37173313571) |
+| 성장2 판정 | 원화 비용·판매처 설치·동의 SDK 게시 / 실제 계약·운영 설치 blocked / 실효과 not_run | [33카드 대조](GROWTH-2-COMPLETION.ko.md), Meta 한정 종료와 구분 |
 | 성장1 판정 | 개발 종료 passed / 운영 인수 blocked / 효과 검증 not_run | [최종 판정·조건부 인계](observations/2026-09-28-lane-a-growth1-closeout.md) |
 
 - 테스트 흔들림(2026-09-25 관찰, 제품 동작 변경 없음):
