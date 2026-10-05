@@ -13,6 +13,8 @@ import type {CandidateRecord} from '../growth-sourcing-server';
 import {storefrontDigest} from '../storefront-orders';
 import {BACKTEST_HORIZONS,BRAND_FIT_MAX,BRAND_FIT_MIN,BRAND_FIT_REASON_MAX,BRIEF_PRODUCTS_MAX,CLEAR_REASON_MAX,COLLECT_NOW_PER_DAY,CREDENTIAL_KEYS,HANDOFF_EVIDENCE_MAX_DAYS,LABEL_THRESHOLD_MAX,LABEL_THRESHOLD_MIN,MATCH_KEYS_MAX,QUESTION_MAX,REASON_MAX,REASON_MIN,RESEARCH_ACTIONS,RISK_NOTE_MAX,RISK_RULE_MAX,RISK_RULES_MAX,type CredentialKey,type CampaignCatalogItem,type QuarantineEntry,type ResearchAction,type ResearchViewResponse,type RiskReview,type RiskRule} from './api';
 import {SOURCES,IMPORTABLE_SOURCES,sourceSpec} from './sources';
+import {researchSourcePolicy,snapshotResearchPolicy} from './source-policy';
+import {scoreResearchPolicy,briefResearchPolicy,briefResearchPolicies,productResearchPolicy,requireResearchPolicy,SOURCE_POLICY_VERSION} from './server-policy';
 import {credentialKeyForSource,CredentialError,parseResearchCredential,type ResearchCredential} from './credentials';
 import {collectSearchadKeywords,collectDatalabSearch,collectDatalabShoppingCategories,trackYoutubeVideos,collectCoupangSearch,parseImport,CollectorError,kstDayKey,quotaDayKey,type CollectDeps,type CollectResult,type ImportSourceId} from './collectors/index';
 import {dailyCap} from './collectors/quota';
@@ -49,7 +51,7 @@ async function sourceRows(owner:string,creds:Awaited<ReturnType<typeof credentia
   const connected=s.method==='manual'?true:s.method==='internal'||s.id==='naver_shop_search'?false:!!creds.find(c=>c.key===key)?.connected;
   const used=s.autoFetch?((await optional<{used:number}>(owner,K.quota,`${s.id}:${quotaDayKey(s.id,now)}`))?.used??0):null;
   // dailyQuota: 이 앱이 원장으로 지키는 하루 상한(collectors/quota.ts dailyCap). 자동 수집이 아닌 출처는 null.
-  return {id:s.id,label:s.label,method:s.method,connected,lastFetchedAt:last?.f??null,lastStatus:last?.st??null,quotaUsedToday:used,dailyQuota:s.autoFetch?dailyCap(s.id):null,lastOkAt:ok?.f??null};
+  return {id:s.id,label:s.label,method:s.method,connected,policy:researchSourcePolicy(s.id),lastFetchedAt:last?.f??null,lastStatus:last?.st??null,quotaUsedToday:used,dailyQuota:s.autoFetch?dailyCap(s.id):null,lastOkAt:ok?.f??null};
  }));
 }
 async function snapshotMeta(owner:string,ids:readonly string[]):Promise<SnapshotMeta[]>{
@@ -86,7 +88,7 @@ export async function researchView(who:Actor,now=new Date()):Promise<ResearchVie
  const rows=await sourceRows(owner,creds,now),sources=rows.map(({lastOkAt:_l,...s})=>{void _l;return s});
  // 스위치가 꺼져 있어도 화면이 설명 상태를 그릴 수 있게 같은 모양을 준다(조사 방향·출처 연결은 그대로, 결과 목록은 비움).
  if(!enabled)return {...emptyView(settings),collectEnabled:collect,sources,credentials:creds,canConnect:who.role==='owner'};
- const [products,decisions,groups,briefs,backtests,state,campaigns,imports]=await Promise.all([
+ const [products,decisions,groups,storedBriefs,backtests,state,campaigns,imports]=await Promise.all([
   loadProducts(owner),loadDecisions(owner),loadGroups(owner),
   database().prepare('SELECT data FROM records WHERE owner=? AND kind=? ORDER BY updated_at DESC LIMIT 50').bind(owner,K.brief).all<{data:string}>().then(r=>r.results.map(x=>JSON.parse(x.data) as MdBrief)),
   database().prepare('SELECT data FROM records WHERE owner=? AND kind=? ORDER BY updated_at DESC LIMIT 20').bind(owner,K.backtest).all<{data:string}>().then(r=>r.results.map(x=>JSON.parse(x.data) as BacktestResult)),
@@ -97,14 +99,19 @@ export async function researchView(who:Actor,now=new Date()):Promise<ResearchVie
  ]);
  // 주간 리포트가 가리키는 메모가 최근 50개 밖이면 그 한 건을 더 읽어 화면이 본문을 보이게 한다.
  const weeklyId=state.weekly?.briefId;
- if(weeklyId&&!briefs.some(b=>b.id===weeklyId)){const w=await optional<MdBrief>(owner,K.brief,weeklyId);if(w)briefs.push(w)}
- const scores=await loadScores(owner,products.map(p=>p.scoreId??''));
+ if(weeklyId&&!storedBriefs.some(b=>b.id===weeklyId)){const w=await optional<MdBrief>(owner,K.brief,weeklyId);if(w)storedBriefs.push(w)}
+ const briefPolicies=await briefResearchPolicies(owner,storedBriefs,now.getTime());
+ const briefs=storedBriefs.filter(b=>briefPolicies.get(b.id)?.allowed);
+ const storedScores=await loadScores(owner,products.map(p=>p.scoreId??''));
+ const scores=await usableViewScores(owner,storedScores,now);
  const latest=latestDecisions(decisions);
  // 조사 방향의 보관 온도 밖 상품(filtered.temperature, 분석 계층이 붙임)은 지우지 않고 목록 뒤로 보낸다.
  const offTemp=(p:StoredProduct)=>(p as StoredProduct&{filtered?:{temperature?:boolean}|null}).filtered?.temperature?1:0;
- const listed=products.map(p=>({p,score:p.scoreId?scores.get(p.scoreId)??null:null}))
+ const listed=products.filter(p=>!p.listings.length||p.listings.every(l=>researchSourcePolicy(l.sourceId).allowed)).map(p=>({p,score:p.scoreId?scores.get(p.scoreId)??null:null}))
   .sort((a,b)=>offTemp(a.p)-offTemp(b.p)||(a.score?TIER_ORDER[a.score.tier]:9)-(b.score?TIER_ORDER[b.score.tier]:9)||(b.score?.total??-1)-(a.score?.total??-1)||(a.p.id<b.p.id?-1:1)).slice(0,VIEW_PRODUCTS);
  const index=await readMany<ScoreIndex>(owner,K.scoreIndex,listed.filter(x=>x.score).map(x=>x.p.id));
+ const pastIds=listed.flatMap(({p,score})=>{if(!score)return [];const previous=previousFromIndex(index.get(p.id)?.entries,score);return previous?(index.get(p.id)?.entries.filter(e=>e.computedAt===previous.computedAt).slice(0,1).map(e=>e.id)??[]):[]});
+ const past=await usableViewScores(owner,await loadScores(owner,pastIds),now);
  // 시계열: 상위 상품의 점수표가 인용한 스냅샷만 읽어(격리 적용) 그 상품의 키워드 묶음·목록 대상 시계열을 만든다. 시계열마다 최근 104주.
  const top=listed.slice(0,VIEW_SERIES_PRODUCTS),seriesIds=new Set<string>();
  for(const {score} of top){for(const id of score?.subScores.flatMap(s=>s.evidence)??[]){if(seriesIds.size>=VIEW_SERIES_CITED)break;seriesIds.add(id)}}
@@ -114,9 +121,11 @@ export async function researchView(who:Actor,now=new Date()):Promise<ResearchVie
  const citedSources=[...new Set([...cited.values()].map(x=>x.sourceId))],room=VIEW_SERIES_SNAPSHOTS-cited.size;
  const older=citedSources.length&&room>0?await database().prepare("SELECT id FROM records WHERE owner=? AND kind=? AND parent_id IN (SELECT value FROM json_each(?)) AND json_extract(data,'$.status')!='failed' AND json_extract(data,'$.fetchedAt')>=? ORDER BY updated_at DESC LIMIT ?").bind(owner,K.snapshot,JSON.stringify(citedSources),new Date(cutoff).toISOString(),room+cited.size).all<{id:string}>().then(r=>r.results.map(x=>x.id.slice(`${owner}:${K.snapshot}:`.length)).filter(id=>!cited.has(id)).slice(0,room)):[];
  const seriesSnaps=[...cited.values(),...(older.length?(await readSnapshots(owner,older)).values():[])];
+ const groupSnapshots=await readSnapshots(owner,[...new Set(groups.filter(g=>g.sourcePolicyVersion===SOURCE_POLICY_VERSION).flatMap(g=>g.sourceSnapshotIds??[]))]);
+ const safeGroups=groups.filter(g=>g.sourcePolicyVersion===SOURCE_POLICY_VERSION&&!!g.sourceSnapshotIds?.length&&g.sourceSnapshotIds.every(id=>snapshotResearchPolicy(groupSnapshots.get(id),now.getTime()).allowed));
  const wanted=new Set<string>();
- for(const {p} of top){for(const l of p.listings)wanted.add(`ls:${l.sourceId}:${l.externalId}`);for(const g of groups.filter(g=>p.keywordGroupIds.includes(g.id))){wanted.add(`kw:${normalizeKeyword(g.label)}`);for(const k of g.keywords)wanted.add(`kw:${normalizeKeyword(k)}`)}}
- const series:Series[]=buildSeries(applyQuarantine(seriesSnaps,quarantine)).filter(s=>wanted.has(s.subjectKey)).map(s=>({...s,points:s.points.filter(p=>timeOf(p.at)>=cutoff)})).filter(s=>s.points.length);
+ for(const {p} of top){for(const l of p.listings)wanted.add(`ls:${l.sourceId}:${l.externalId}`);for(const g of safeGroups.filter(g=>p.keywordGroupIds.includes(g.id))){wanted.add(`kw:${normalizeKeyword(g.label)}`);for(const k of g.keywords)wanted.add(`kw:${normalizeKeyword(k)}`)}}
+ const series:Series[]=buildSeries(applyQuarantine(seriesSnaps.filter(s=>snapshotResearchPolicy(s,now.getTime()).allowed),quarantine)).filter(s=>wanted.has(s.subjectKey)).map(s=>({...s,points:s.points.filter(p=>timeOf(p.at)>=cutoff)})).filter(s=>s.points.length);
  const evidence=[...new Set([...listed.flatMap(x=>x.score?x.score.subScores.flatMap(s=>s.evidence):[]),...briefs.flatMap(b=>b.claims.flatMap(c=>c.citations))])].slice(0,VIEW_META_SNAPSHOTS);
  const recent=await database().prepare('SELECT id FROM records WHERE owner=? AND kind=? ORDER BY updated_at DESC LIMIT 50').bind(owner,K.snapshot).all<{id:string}>();
  const entry=(q:QuarantineRow):QuarantineEntry=>({id:q.id,sourceId:q.sourceId,snapshotId:q.snapshotId,subjectKey:q.subjectKey,metric:q.metric,periodTo:q.periodTo,value:q.value,median:q.median,robustZ:q.robustZ,createdAt:q.createdAt,status:q.status==='flagged'?'flagged':'active',basis:q.basis??null});
@@ -134,22 +143,28 @@ export async function researchView(who:Actor,now=new Date()):Promise<ResearchVie
  const alerts=[...Object.entries(state.failures??{}).filter(([,f])=>!!f).map(([sourceId,f])=>({sourceId:sourceId as SourceId,message:f!.message,since:f!.since})),...fresh.quarantineAlerts];
  return {
   enabled,collectEnabled:collect,focus:{temperature:settings.temperatures,categories:settings.categories},sources,
-  products:listed.map(({p,score})=>{const {scoreId:_s,brandFit:_b,...rest}=p;void _s;void _b;return {...rest,score,decision:latest.get(p.id)??null,previousScore:score?previousFromIndex(index.get(p.id)?.entries,score):null}}),
-  keywordGroups:groups,briefs,backtests,canEdit:who.role!=='member',mayOrder:false,
+  products:listed.map(({p,score})=>{const {scoreId:_s,brandFit:_b,...rest}=p;void _s;void _b;return {...rest,listings:rest.listings.filter(l=>researchSourcePolicy(l.sourceId).allowed),score,policyHeld:!!p.scoreId&&!score,decision:score?latest.get(p.id)??null:null,previousScore:score?previousFromIndex(index.get(p.id)?.entries.filter(e=>past.has(e.id)),score):null}}),
+  keywordGroups:safeGroups,briefs,backtests:backtests.filter(b=>b.sourcePolicyVersion===SOURCE_POLICY_VERSION),canEdit:who.role!=='member',mayOrder:false,
   settings,credentials:creds,
   imports:imports.results.map(r=>({snapshotId:r.id,sourceId:r.s,fileName:r.f,rows:Number(r.n)||0,importedAt:r.at,importedBy:r.e??r.u??null,scope:r.sc??null,observedDate:r.od??null})),
   collect:{lastRunAt:state.lastRunAt,nextRunAt:state.nextRunAt,lastErrors:errors},
   campaigns:shown.map(c=>({id:c.id,title:c.title,version:c.version,brandId:c.brandId})),
-  canConnect:who.role==='owner',series,snapshots,
-  alerts,freshness:fresh.freshness,rankingStatus:fresh.rankingStatus,quarantines,riskReviews,
+  canConnect:who.role==='owner',series,snapshots:snapshots.filter(s=>researchSourcePolicy(s.sourceId).allowed),
+  alerts,freshness:fresh.freshness,rankingStatus:fresh.rankingStatus,quarantines:quarantines.filter(q=>researchSourcePolicy(q.sourceId).allowed),riskReviews,
   collectNow:{usedToday:state.manualRuns?.day===kstDayKey(now)?state.manualRuns.count:0,maxPerDay:COLLECT_NOW_PER_DAY},
-  weeklyReport:state.weekly??null,
+  weeklyReport:state.weekly&&(!state.weekly.briefId||briefs.some(b=>b.id===state.weekly?.briefId))?state.weekly:null,
   // 평가 2회차: 승인에 세는 리스크 필수 항목, 데이터랩 보정 보고·출시 뒤 결과(마지막 재계산 기준, 수집 상태에서 읽음), 표시만 한 상대값 급등.
   riskChecklists:listed.flatMap(({score})=>score&&needsReview(score)?[{scoreCardId:score.id,items:riskRules(score)}]:[]),
-  calibration:state.calibration??null,launchOutcomes:state.outcomes?.rows??[],anomalyFlags:flags,
+  calibration:state.calibration?.sourcePolicyVersion===SOURCE_POLICY_VERSION?state.calibration:null,launchOutcomes:state.outcomes?.sourcePolicyVersion===SOURCE_POLICY_VERSION?state.outcomes.rows:[],anomalyFlags:flags.filter(q=>researchSourcePolicy(q.sourceId).allowed),
   // 평가 3회차: 넘기기 칸의 캠페인별 카탈로그 상품, 가중치 재보정 후보(제안만, 마지막 재계산 기준).
-  campaignCatalogs:await campaignCatalogs(owner,shown),weightsProposal:state.recalibration??null,
+  campaignCatalogs:await campaignCatalogs(owner,shown),weightsProposal:state.recalibration?.sourcePolicyVersion===SOURCE_POLICY_VERSION?state.recalibration:null,
  };
+}
+
+async function usableViewScores(owner:string,cards:Map<string,ScoreCard>,now:Date){
+ const ids=[...new Set([...cards.values()].flatMap(c=>c.subScores.flatMap(s=>s.evidence)))];
+ const snapshots=await readSnapshots(owner,ids);
+ return new Map([...cards].filter(([,card])=>{const refs=card.subScores.flatMap(s=>s.evidence);return refs.length>0&&refs.every(id=>snapshotResearchPolicy(snapshots.get(id),now.getTime()).allowed)}));
 }
 
 // ── 쓰기 공용
@@ -278,6 +293,7 @@ async function decide(who:Actor,b:Record<string,unknown>,now:Date):Promise<Outco
  const reason=text(b.reason,'결정 사유(한 문장 이상)',REASON_MIN,REASON_MAX);
  if(p.scoreId!==scoreCardId)throw new ApiError(409,'점수표가 새 판으로 바뀌었습니다. 최신 점수표를 확인한 뒤 다시 결정하세요.');
  const card=await optional<ScoreCard>(owner,K.score,scoreCardId);if(!card||card.productId!==p.id)throw new ApiError(404,'점수표를 찾을 수 없습니다.');
+ if(status==='approved'){requireResearchPolicy(await productResearchPolicy(owner,p,now.getTime()));const policy=await scoreResearchPolicy(owner,card,now.getTime());if(!policy.allowed)throw new ApiError(409,policy.reason??'근거 사용이 정책 검토로 보류되었습니다.')}
  if(status==='approved'&&card.blocked)throw new ApiError(409,`선정 금지 상품은 승인할 수 없습니다: ${card.blocked.reason}`);
  if(status==='approved'&&needsReview(card)){
   // 둘 중 하나가 있어야 한다: ① 이 판에 저장한 리스크 체크리스트(서버 필수 항목을 모두 확인), ② 위험 확인 표시(riskAcknowledged)와 확인한 위험을 적은 사유.
@@ -292,7 +308,7 @@ async function decide(who:Actor,b:Record<string,unknown>,now:Date):Promise<Outco
   }
  }
  let briefId:string|null=null;
- if(b.briefId!==null&&b.briefId!==undefined){briefId=idOf(b.briefId,'선정 메모 ID');const brief=await optional<MdBrief>(owner,K.brief,briefId);if(!brief||!brief.productIds.includes(p.id))throw new ApiError(404,'이 상품을 다룬 선정 메모가 아닙니다.')}
+ if(b.briefId!==null&&b.briefId!==undefined){briefId=idOf(b.briefId,'선정 메모 ID');const brief=await optional<MdBrief>(owner,K.brief,briefId);if(!brief||!brief.productIds.includes(p.id))throw new ApiError(404,'이 상품을 다룬 선정 메모가 아닙니다.');requireResearchPolicy(await briefResearchPolicy(owner,brief,now.getTime()))}
  if(await countKind(owner,K.decision)>=MAX_DECISIONS)throw new ApiError(409,'선정 결정 기록 한도에 도달했습니다.');
  const d:MdDecision={id:crypto.randomUUID(),productId:p.id,scoreCardId,briefId,status,reason,decidedBy:{id:who.id,email:who.email},decidedAt:now.toISOString(),handoff:null};
  return {writes:[appendStatement(owner,K.decision,d.id,d,p.id)],resultId:d.id};
@@ -323,6 +339,8 @@ async function handoff(who:Actor,b:Record<string,unknown>,now:Date):Promise<Outc
  await requireGrowthRunning(owner);
  const p=await optional<StoredProduct>(owner,K.product,d.productId),card=await optional<ScoreCard>(owner,K.score,d.scoreCardId);
  if(!p||!card)throw new ApiError(409,'결정이 가리키는 상품·점수표를 찾을 수 없습니다.');
+ requireResearchPolicy(await productResearchPolicy(owner,p,now.getTime()));
+ const policy=await scoreResearchPolicy(owner,card,now.getTime());if(!policy.allowed)throw new ApiError(409,policy.reason??'근거 사용이 정책 검토로 보류되었습니다.');
  const evidenceIds=[...new Set(card.subScores.flatMap(s=>s.evidence))];
  const [snaps,groups]=await Promise.all([readMany<Snapshot>(owner,K.snapshot,evidenceIds),loadGroups(owner)]);
  // 관측 기간·기준일로 30일이 지난 근거는 인용하지 않는다.
@@ -442,7 +460,7 @@ export async function researchAction(who:Actor,b:Record<string,unknown>,deps:Act
  try{out=await execute(who,action,b,now,deps,b.requestId.toLowerCase(),token)}
  catch(e){if(e instanceof ResearchLockLost)throw new ApiError(409,RESEARCH_LOCK_LOST);throw e}
  finally{await releaseResearchLock(owner,token)}
- return {...await researchView(who,now),...out};
+ return {...await researchView(who,deps.now()),...out};
 }
 async function execute(who:Actor,action:ResearchAction,b:Record<string,unknown>,now:Date,deps:CollectDeps,requestId:string,token:string):Promise<{resultId:string|null;duplicate?:boolean;pending?:boolean}>{
  const owner=who.owner;
@@ -479,6 +497,8 @@ async function perform(who:Actor,action:ResearchAction,b:Record<string,unknown>,
   }
   case 'connect_source':{
    const key=b.credentialKey as CredentialKey;if(!CREDENTIAL_KEYS.includes(key))throw new ApiError(400,'연결할 출처를 확인하세요.');
+   const policy=key==='youtube'?researchSourcePolicy('youtube_data'):key==='naver_searchad'?researchSourcePolicy('naver_searchad_keyword'):null;
+   if(policy&&!policy.allowed)throw new ApiError(409,policy.reason??'상품 리서치 연결이 정책 검토로 보류되었습니다.');
    const input=b.input&&typeof b.input==='object'&&!Array.isArray(b.input)?b.input as Record<string,unknown>:null;
    if(!input||!Object.values(input).every(v=>typeof v==='string'||v===null||v===undefined))throw new ApiError(400,'자격증명 입력 형식을 확인하세요.');
    let credential:ResearchCredential;try{credential=parseResearchCredential(key,input)}catch(e){if(e instanceof CredentialError)throw new ApiError(400,e.message);throw e}
@@ -498,7 +518,7 @@ async function perform(who:Actor,action:ResearchAction,b:Record<string,unknown>,
    }
    const snap:Snapshot={...r.draft,id:crypto.randomUUID(),importedBy:{id:who.id,email:who.email,fileName:String(r.draft.request.fileName)}};
    await ensureSnapshotRoom(owner,1,now,()=>referencedSnapshots(owner));
-   return {writes:[snapshotStatement(owner,snap)],resultId:snap.id,after:refresh(owner,now,token)};
+   return {writes:[snapshotStatement(owner,snap)],resultId:snap.id,after:()=>refresh(owner,deps.now(),token)()};
   }
   case 'collect_now':{
    const sourceId=b.sourceId===undefined||b.sourceId===null?undefined:b.sourceId as SourceId;
@@ -568,6 +588,7 @@ async function perform(who:Actor,action:ResearchAction,b:Record<string,unknown>,
    const p=await productOf(owner,b.productId),scoreCardId=idOf(b.scoreCardId,'점수표 ID');
    if(p.scoreId!==scoreCardId)throw new ApiError(409,'점수표가 새 판으로 바뀌었습니다. 최신 점수표로 다시 검토하세요.');
    const card=await optional<ScoreCard>(owner,K.score,scoreCardId);if(!card||card.productId!==p.id)throw new ApiError(404,'점수표를 찾을 수 없습니다.');
+   requireResearchPolicy(await productResearchPolicy(owner,p,now.getTime()));
    const list=Array.isArray(b.checklist)?b.checklist:null;
    if(!list||!list.length||list.length>RISK_RULES_MAX)throw new ApiError(400,`리스크 체크리스트 항목을 1~${RISK_RULES_MAX}개 보내세요.`);
    // 필수 항목은 서버가 점수표에서 만든다(H1). rule이 필수 항목 문장·id와 같으면 그 항목, ruleId를 주면 필수 항목 id여야 한다(모르면 400). 나머지는 운영자 추가 항목(승인에 세지 않음).

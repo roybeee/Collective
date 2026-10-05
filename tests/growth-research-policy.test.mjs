@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import {testRuntime} from './helpers/runtime.mjs';
+const {load,env,sql}=testRuntime(async()=>{throw new Error('external forbidden')});
+const server=await load('lib/server.ts'),growth=await load('lib/growth-workspace-server.ts');
+const owner='bulk-research',campaign={id:'c',brandId:'b',version:1,status:'active'};
+const at=new Date(Date.now()-1000).toISOString();
+const snapshot={id:'s',sourceId:'youtube_data',fetchedAt:at};
+await server.recordStatement(owner,'pr_snapshot','s',snapshot,'youtube_data').run();
+await server.recordStatement(owner,'pr_score','card',{id:'card',productId:'p',subScores:[{evidence:['s']}]}).run();
+const input={title:'RESTRICTED_TITLE',summary:'RESTRICTED_SUMMARY',sourceUrl:'https://example.com/RESTRICTED_URL',observedAt:at,expiresAt:'2099-01-01',sourceType:'market',sampleSize:99};
+for(let i=0;i<500;i++)await server.recordStatement(owner,'growth_signal','s'+i,{id:'s'+i,campaignId:'c',brandId:'b',version:1,campaignVersion:1,input,productResearch:{decisionId:'d',scoreCardId:'card',productId:'p',snapshotIds:['s']}},'c').run();
+
+const provenance={decisionId:'d',scoreCardId:'card',productId:'p',snapshotIds:['s']};
+const needInput={title:'RESTRICTED_NEED',situation:'RESTRICTED_SITUATION',desiredOutcome:'RESTRICTED_OUTCOME',alternative:'RESTRICTED_ALTERNATIVE',barrier:'RESTRICTED_BARRIER',counterEvidence:'RESTRICTED_COUNTER',nextAction:'RESTRICTED_ACTION',signalIds:['s0'],deadline:'2099-01-01',assignee:'담당'};
+const offerInput={title:'RESTRICTED_OFFER',purchaseReason:'RESTRICTED_PURCHASE',landingUrl:'https://example.com/RESTRICTED_LANDING',catalogId:'missing',catalogVersion:1,needId:'s0',price:null,quantity:1,priceApproved:false};
+// 기록 종류 사이 ID가 같아도 각각의 계보를 구분한다.
+await server.recordStatement(owner,'growth_need','s0',{id:'s0',campaignId:'c',brandId:'b',version:1,campaignVersion:1,input:needInput,productResearch:provenance,evidenceRefs:[{id:'s0',version:1}]},'c').run();
+await server.recordStatement(owner,'growth_offer','s0',{id:'s0',campaignId:'c',brandId:'b',version:1,campaignVersion:1,input:offerInput,productResearch:provenance,evidenceRefs:[{id:'s0',version:1}]},'c').run();
+let queries=0;const real=env.DB;const wrap=st=>({bind:(...a)=>wrap(st.bind(...a)),first:async()=>{queries++;return st.first()},all:async()=>{queries++;return st.all()},run:()=>st.run()});env.DB={prepare:q=>wrap(real.prepare(q)),batch:real.batch};
+const view=await growth.growthView(owner,campaign,true);env.DB=real;let passed=0;const check=(v,m)=>{assert.ok(v,m);passed++};
+check(view.signals.length===500&&view.signals.every(s=>s.sourceReadiness.status==='held'),'all 500 signals held');
+check(!JSON.stringify(view).includes('RESTRICTED_'),'held copied original never returned');
+check(view.needs[0].sourceReadiness.status==='held'&&view.offers[0].sourceReadiness.status==='held','copied need and offer each held');
+check(view.needs[0].readiness.missing.length>0&&view.offers[0].readiness.missing.length>0,'copied downstream readiness held');
+check(view.signals.every(s=>s.input.sourceUrl===''&&s.input.sampleSize===null),'URL and copied number removed');
+check(queries<=12,`shared card/snapshot batched: ${queries} queries`);
+check(JSON.parse(sql.prepare("SELECT data FROM records WHERE owner=? AND kind='growth_signal' LIMIT 1").get(owner).data).input.title==='RESTRICTED_TITLE','stored audit original not mutated');
+await server.recordStatement(owner,'pr_snapshot','s',{...snapshot,sourceId:'own_sales'},'own_sales').run();
+const usable=await growth.growthView(owner,campaign,true);check(usable.signals.every(s=>s.input.title==='RESTRICTED_TITLE'&&s.evidence.status==='usable'),'allowed exact original visible');
+check(usable.needs[0].input.title==='RESTRICTED_NEED'&&usable.offers[0].input.title==='RESTRICTED_OFFER','permitted need and offer preserve stored inputs');
+console.log(JSON.stringify({passed,queries,sqlite:'real',externalCalls:0}));

@@ -1,3 +1,4 @@
+import {productResearchPolicy,scoreResearchPolicy,snapshotIdsResearchPolicy,requireResearchPolicy,SOURCE_POLICY_VERSION} from './server-policy';
 // MD 선정 메모 작성(서버). template: 결정형(analytics/brief.ts). model: AI 팀 '상품 MD' 역할을 HERMES로 1회 실행.
 // 모델에는 관측표(행 ID·스냅샷 ID·관측값)만 보낸다. 외부·운영자 글(상품명·키워드·질문)은 md-prompt.ts sanitizeData로 다듬어 자료 칸에만 넣는다(지시문에는 들어가지 않는다).
 // 출력 계약 v4(평가 3회차 H-3): 모델은 주장 문장을 쓰지 않는다. 주장은 구조({productId,row,kind,compareRow?})로만 내고, 서버가 그 행의 값·단위·기간으로
@@ -34,6 +35,8 @@ export async function briefInputs(owner:string,productIds:readonly string[]):Pro
  if(products.some(p=>!p.scoreId))throw new ApiError(409,'점수표가 없는 상품이 있습니다. 재계산 뒤 다시 시도하세요.');
  const scores=await loadScores(owner,products.map(p=>p.scoreId as string)),cards=products.map(p=>scores.get(p.scoreId as string)).filter((c):c is ScoreCard=>!!c);
  if(cards.length!==products.length)throw new ApiError(409,'현재 점수표를 찾지 못했습니다. 재계산 뒤 다시 시도하세요.');
+ for(const product of products)requireResearchPolicy(await productResearchPolicy(owner,product));
+ for(const card of cards)requireResearchPolicy(await scoreResearchPolicy(owner,card));
  const ids=[...new Set(cards.flatMap(c=>c.subScores.flatMap(s=>s.evidence)))];
  const [snaps,groups]=await Promise.all([readSnapshots(owner,ids),loadGroups(owner)]);
  return {products,cards,snapshots:[...snaps.values()],groups};
@@ -42,7 +45,7 @@ export async function briefInputs(owner:string,productIds:readonly string[]):Pro
 export function templateBrief(question:string,inp:BriefInputs,at:string):MdBrief{
  const brief=buildBrief({question,products:inp.products,cards:inp.cards,snapshots:inp.snapshots,keywordGroups:inp.groups,createdAt:at,maxProducts:inp.products.length});
  if(!brief.citationCheck.passed)throw new ResearchError(409,'선정 메모의 인용 검사를 통과하지 못해 저장하지 않았습니다.',{unsupported:brief.citationCheck.unsupported});
- return brief;
+ return {...brief,sourcePolicyVersion:SOURCE_POLICY_VERSION,scoreCardIds:inp.cards.map(c=>c.id)};
 }
 
 // 모델에 보낼 관측표: 상품의 키워드 묶음 키워드와 그 상품 목록에 대한 점수표 근거 관측만, (대상·지표·범위)별 가장 최근 값 하나와 그 바로 앞 기간 값 하나.
@@ -169,38 +172,51 @@ export function gradeModelOutput(out:ModelOutput,rows:readonly ObservationRow[],
  return {passed:unsupported.length===0,unsupported,claims:claims.claims,summary:`${lead} ${claims.claims.map(c=>c.text).join(' ')}`,risks:serverRisks.length?serverRisks:[BRIEF_UNVERIFIED_RISKS]};
 }
 
-export type ModelJob={submissionId:string;providerId:string|null;question:string;productIds:string[];rows:ObservationRow[];startedAt:string};
+export type ModelJob={submissionId:string;providerId:string|null;question:string;productIds:string[];rows:ObservationRow[];startedAt:string;sourcePolicyVersion?:string;scoreCardIds?:string[]};
 const usage=(job:ModelJob):UsageContext=>({kind:'research',submissionId:job.submissionId,outputContractVersion:MD_PROMPT_VERSION,promptVersion:MD_PROMPT_VERSION});
 const sleep=(ms:number)=>typeof setTimeout==='function'?new Promise<void>(r=>setTimeout(r,ms)):Promise.resolve();
 export const MODEL_WAIT_MS=20000;
+async function modelJobPolicy(owner:string,job:ModelJob){
+ if(job.sourcePolicyVersion!==SOURCE_POLICY_VERSION||!Array.isArray(job.scoreCardIds)||!job.scoreCardIds.length)throw new ApiError(409,'이전 정책의 모델 작업은 재사용할 수 없습니다. 새 요청으로 작성하세요.');
+ const cards=await loadScores(owner,job.scoreCardIds);
+ for(const id of job.scoreCardIds)requireResearchPolicy(await scoreResearchPolicy(owner,cards.get(id)));
+ requireResearchPolicy(await snapshotIdsResearchPolicy(owner,job.rows.map(row=>row.snapshotId)));
+}
+
 
 // 모델 메모: 새로 시작하거나(prior 없음) 기다리던 실행을 이어서 확인한다. 끝나면 채점 통과분만 돌려주고, 아직이면 pending을 돌려준다.
 // 판을 올리기 전(v3)에 시작한 대기 작업의 출력은 v4 계약이 아니므로 형식 오류(409)로 끝난다. 같은 질문으로 새 요청을 보내면 된다.
 export async function modelBrief(owner:string,args:{question:string;productIds:string[];requestId:string},prior:ModelJob|null,at:string,waitMs=MODEL_WAIT_MS):Promise<{brief:MdBrief;job:ModelJob}|{pending:ModelJob}>{
+ const inp=await briefInputs(owner,args.productIds);
+ if(prior)await modelJobPolicy(owner,prior);
  const cfg=await connection(owner).catch((e:unknown)=>{if(e instanceof ApiError&&e.status===409)throw new ApiError(409,'모델 선정 메모는 AI 연결이 필요합니다. 연결 및 설정에서 HERMES를 연결하거나 결정형(template) 메모를 쓰세요.');throw e});
  if(cfg.provider!=='hermes')throw new ApiError(409,'모델 선정 메모는 HERMES 연결로만 작성합니다. 연결 및 설정에서 HERMES를 선택하거나 결정형(template) 메모를 쓰세요.');
- const inp=await briefInputs(owner,args.productIds);
  let job:ModelJob;
  if(prior?.providerId)job=prior;
  else{
   const rows=observationTable(inp);
   if(!rows.length)throw new ApiError(409,'고른 상품의 점수표 근거에 관측값이 없어 모델 메모를 쓸 수 없습니다. 수집·가져오기 뒤 다시 시도하세요.');
-  job={submissionId:`prmd-${args.requestId}`,providerId:null,question:args.question,productIds:[...args.productIds],rows,startedAt:at};
+  job={submissionId:`prmd-${args.requestId}`,providerId:null,question:args.question,productIds:[...args.productIds],rows,startedAt:at,sourcePolicyVersion:SOURCE_POLICY_VERSION,scoreCardIds:inp.cards.map(c=>c.id)};
   const products=inp.cards.map(c=>{const p=inp.products.find(x=>x.id===c.productId)!;return {id:p.id,name:p.name,tier:TIER_LABEL[c.tier],blocked:c.blocked?.reason??null,missing:c.missing}});
   await hermesSubmissionStatement(owner,job.submissionId,mdSubmission({question:args.question,products,observations:rows})).run();
+  await briefInputs(owner,args.productIds);
+  await modelJobPolicy(owner,job);
   const r=await submitHermes(owner,job.submissionId,cfg);
   job={...job,providerId:r.id};
  }
  const deadline=Date.now()+waitMs;
  for(;;){
+  await modelJobPolicy(owner,job);
   const r=await pollHermes(cfg,job.providerId as string,false,15000,owner,usage(job));
   if(r.status==='completed'){
+   await briefInputs(owner,args.productIds);
+   await modelJobPolicy(owner,job);
    const out=parseModelOutput(r.output[0]?.content[0]?.text);
    if(!out){await markUsageOutcomeSafely(owner,'hermes',job.providerId as string,'invalid_output');throw new ResearchError(409,'모델 출력이 정해진 JSON 형식(구조 주장·요약·리스크)이 아니어서 저장하지 않았습니다.',{unsupported:['출력 형식 오류']})}
    const grade=gradeModelOutput(out,job.rows,inp);
    if(!grade.passed){await markUsageOutcomeSafely(owner,'hermes',job.providerId as string,'invalid_output');throw new ResearchError(409,'모델 메모에 관측표로 확인되지 않는 행·허용 어휘 밖의 말·권고가 있어 저장하지 않았습니다.',{unsupported:grade.unsupported})}
    await markUsageOutcomeSafely(owner,'hermes',job.providerId as string,'completed');
-   const brief:MdBrief={id:shortId('prbf',{q:job.question,products:job.productIds,run:job.providerId}),productIds:job.productIds,question:job.question,summary:grade.summary,recommendation:out.recommendation,claims:grade.claims,risks:grade.risks,
+   const brief:MdBrief={sourcePolicyVersion:SOURCE_POLICY_VERSION,scoreCardIds:job.scoreCardIds,id:shortId('prbf',{q:job.question,products:job.productIds,run:job.providerId}),productIds:job.productIds,question:job.question,summary:grade.summary,recommendation:out.recommendation,claims:grade.claims,risks:grade.risks,
     author:{kind:'model',jobId:job.providerId as string},citationCheck:{passed:true,unsupported:[]},createdAt:at};
    return {brief,job};
   }

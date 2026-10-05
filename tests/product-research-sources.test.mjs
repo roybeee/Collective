@@ -12,6 +12,7 @@ const types=await rt.load('lib/product-research/types.ts');
 const c=await rt.load('lib/product-research/collectors/index.ts');
 let passed=0;const check=(v,n)=>{assert.ok(v,n);passed++};
 const SOURCES=JSON.parse(JSON.stringify(reg.SOURCES));
+const blockedIds=['naver_shop_search','naver_searchad_keyword','youtube_data'];
 const ids=JSON.parse(JSON.stringify(types.SOURCE_IDS));
 const byId=new Map(SOURCES.map(s=>[s.id,s]));
 
@@ -20,7 +21,7 @@ check(ids.length===SOURCES.length&&ids.every(id=>byId.has(id)),'every source id 
 const manual=SOURCES.filter(s=>s.method==='manual'),internal=SOURCES.filter(s=>s.method==='internal');
 check(manual.length===3&&manual.every(s=>s.autoFetch===false&&s.hosts.length===0),'manual sources: autoFetch false, no hosts');
 check(internal.every(s=>s.autoFetch===false&&s.hosts.length===0),'internal sources: autoFetch false, no hosts');
-check(SOURCES.filter(s=>s.method==='api'&&s.id!=='naver_shop_search').every(s=>s.autoFetch&&s.hosts.length>0),'api sources: autoFetch with fixed hosts');
+check(SOURCES.filter(s=>s.method==='api'&&!blockedIds.includes(s.id)).every(s=>s.autoFetch&&s.hosts.length>0),'api sources: autoFetch with fixed hosts');
 const allowedHosts=new Set(SOURCES.filter(s=>s.method==='api'||s.method==='licensed').flatMap(s=>s.hosts));
 check(SOURCES.every(s=>s.hosts.every(h=>/^[a-z0-9.-]+$/.test(h)&&!h.includes('/'))),'registry hosts are bare host names');
 
@@ -45,7 +46,9 @@ check(['http.ts','naver-searchad.ts','naver-datalab.ts','naver-shop.ts','youtube
 const hostsUsed=new Map();
 for(const [f,s] of src)for(const m of s.matchAll(/https?:\/\/([A-Za-z0-9.-]+)/g))hostsUsed.set(m[1],[...(hostsUsed.get(m[1])??[]),f]);
 check(hostsUsed.size>=4,'scanner found the collector host literals');
-const stray=[...hostsUsed].filter(([h])=>!allowedHosts.has(h));
+const blockedHosts=new Map([['api.searchad.naver.com','naver-searchad.ts'],['www.googleapis.com','youtube.ts']]);
+const stray=[...hostsUsed].filter(([h,files])=>!allowedHosts.has(h)&&!(blockedHosts.has(h)&&files.every(f=>f===blockedHosts.get(h))));
+for(const id of blockedIds){const spec=byId.get(id);check(!spec.autoFetch&&spec.hosts.length===0,`policy blocked ${id} has no allowed hosts`);throws(()=>reg.assertAutoFetch(id,''),`policy blocked ${id} rejects HTTP`)}
 assert.deepEqual(stray,[],'수집기에 레지스트리 밖 호스트가 있습니다: '+JSON.stringify(stray));passed++;
 check(!files.some(f=>/http:\/\//.test(code(src.get(f)))),'no plain http:// literal in collectors');
 const manualIds=manual.map(s=>s.id);
@@ -55,7 +58,7 @@ for(const f of fetchers){
  assert.deepEqual(hits,[],`${f}가 manual 출처 ID를 참조합니다: ${hits.join(', ')}`);passed++;
 }
 // 자동 수집 파일이 쓰는 출처 ID 문자열은 모두 자동 수집이 허용된 api 출처다(quota.ts·index.ts는 ID 문자열이 youtube_data뿐이다).
-for(const f of fetchers)for(const id of ids)if(new RegExp(`'${id}'`).test(code(src.get(f)))){assert.ok(byId.get(id).method==='api'&&(byId.get(id).autoFetch||(id==='naver_shop_search'&&!byId.get(id).autoFetch&&byId.get(id).hosts.length===0)),`${f}: ${id}는 자동 수집 출처가 아닙니다`);passed++}
+for(const f of fetchers)for(const id of ids)if(new RegExp(`'${id}'`).test(code(src.get(f)))){assert.ok(byId.get(id).method==='api'&&(byId.get(id).autoFetch||(blockedIds.includes(id)&&!byId.get(id).autoFetch&&byId.get(id).hosts.length===0)),`${f}: ${id}는 자동 수집 출처가 아닙니다`);passed++}
 check(!/\bfetch\s*\(|fetchSourceJson|https:\/\//.test(code(src.get('imports.ts'))),'imports.ts has no network path');
 const directFetch=files.filter(f=>/\bfetch\s*\(/.test(code(src.get(f))));
 assert.deepEqual(directFetch,[],'수집기가 fetch를 직접 부릅니다: '+directFetch.join(', '));passed++;

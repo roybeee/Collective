@@ -18,7 +18,7 @@ const snapIds=[];
 for(let i=0;i<SNAPSHOTS;i++){
  const id=`snap${String(i).padStart(5,'0')}`,at=new Date(now-(SNAPSHOTS-i)*40*60000).toISOString(),d=at.slice(0,10);snapIds.push(id);
  const observations=Array.from({length:20},(_,k)=>({subject:{type:'keyword',text:`키워드${(i*7+k)%400}`},metric:'search_volume_month',value:1000+((i+k)%50),period:{from:d,to:d}}));
- ins.run(`${O}:pr_snapshot:${id}`,O,'pr_snapshot','naver_searchad_keyword',JSON.stringify({id,sourceId:'naver_searchad_keyword',method:'api',request:{keywords:'x'},fetchedAt:at,bodyDigest:'0'.repeat(64),bodyBytes:4000,status:'ok',limitations:[],importedBy:null,observations}),at);
+ ins.run(`${O}:pr_snapshot:${id}`,O,'pr_snapshot','licensed_ranking',JSON.stringify({id,sourceId:'licensed_ranking',method:'api',request:{keywords:'x'},fetchedAt:at,bodyDigest:'0'.repeat(64),bodyBytes:4000,status:'ok',limitations:[],importedBy:null,observations}),at);
 }
 const sub=(key,value,evidence)=>({key,value,evidence,reason:`${key} 합성`});
 const card=(p,j,computedAt)=>({id:`prs_${p}_${j}`,productId:p,weightsVersion:'w1',computedAt,subScores:[sub('demand',50,[snapIds[(j*13)%SNAPSHOTS]]),sub('momentum',40+(j%30),[snapIds[(j*17+5)%SNAPSHOTS],snapIds[(j*19+9)%SNAPSHOTS]]),sub('durability',null,[]),sub('competition',null,[]),sub('profitability',null,[]),sub('feasibility',null,[]),sub('content',null,[]),sub('brand_fit',null,[]),sub('risk',90,[])],total:50+(j%40),confidence:0.6,missing:[],blocked:null,tier:j%3?'watch':'adopt',inputDigest:`d${j}`});
@@ -31,7 +31,7 @@ for(let i=0;i<PRODUCTS;i++){
  }
  const product={id:p,name:`상품 ${i}`,brand:null,categoryId:null,temperature:'ambient',regulatory:'food',priceBand:{min:null,max:null},listings:[{sourceId:'coupang_ranking_manual',externalId:`x${i}`,title:`상품 ${i}`,url:null}],keywordGroupIds:[`kg_${i}`],match:{method:'brand_name_size',confidence:0.96,confirmedBy:null},createdAt:new Date(now-200*DAY).toISOString(),updatedAt:new Date(now).toISOString(),scoreId:current.id,brandFit:null};
  ins.run(`${O}:pr_product:${p}`,O,'pr_product','',JSON.stringify(product),new Date(now).toISOString());
- ins.run(`${O}:pr_keyword_group:kg_${i}`,O,'pr_keyword_group','',JSON.stringify({id:`kg_${i}`,label:`키워드${i}`,keywords:[`키워드${i}`],categoryId:null,createdAt:new Date(now).toISOString(),updatedAt:new Date(now).toISOString()}),new Date(now).toISOString());
+ ins.run(`${O}:pr_keyword_group:kg_${i}`,O,'pr_keyword_group','',JSON.stringify({sourcePolicyVersion:'md-policy-2026-10-05',sourceSnapshotIds:[snapIds[Math.floor(i/7)]],id:`kg_${i}`,label:`키워드${i}`,keywords:[`키워드${i}`],categoryId:null,createdAt:new Date(now).toISOString(),updatedAt:new Date(now).toISOString()}),new Date(now).toISOString());
 }
 sql.exec('COMMIT');
 check(sql.prepare("SELECT COUNT(*) n FROM records WHERE owner=? AND kind='pr_snapshot'").get(O).n===SNAPSHOTS&&sql.prepare("SELECT COUNT(*) n FROM records WHERE owner=? AND kind='pr_score'").get(O).n===SCORES,'synthetic world: 3,000 snapshots and 50,000 score rows');

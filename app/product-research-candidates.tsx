@@ -31,7 +31,7 @@ export function CandidatesTab({view,act,busy,onOpen,onSources}:{view:View;act:Ac
   {label:'조사 방향',cell:p=>off(p)?p.filtered!.reasons.join(', '):'안',sort:p=>off(p)?1:0,csv:p=>off(p)?p.filtered!.reasons.join(', '):'안'},
   {label:'신뢰도',cell:p=>confidence(p.score),sort:p=>p.score?.confidence??-1,csv:p=>p.score?Math.round(p.score.confidence*100):'',align:'right'},
   {label:'분류',cell:p=><TierBadge card={p.score}/>,sort:p=>p.score?tierLabels[p.score.tier]:'',csv:p=>p.score?tierLabels[p.score.tier]:''},
-  {label:'차단 사유',cell:p=>p.score?.blocked?<span className={s.blocked}>{p.score.blocked.reason}</span>:<span className={s.muted}>없음</span>,sort:p=>p.score?.blocked?.reason??'',csv:p=>p.score?.blocked?.reason??''},
+  {label:'차단 사유',cell:p=>p.policyHeld?<span className={s.blocked}>근거 사용 보류: 허용된 자료로 재계산 필요</span>:p.score?.blocked?<span className={s.blocked}>{p.score.blocked.reason}</span>:<span className={s.muted}>없음</span>,sort:p=>p.score?.blocked?.reason??'',csv:p=>p.score?.blocked?.reason??''},
   {label:'결정 상태',cell:p=><span className={s.stack}><DecisionBadge product={p}/>{p.decision&&<small className={s.muted}>{date(p.decision.decidedAt)}</small>}</span>,sort:p=>p.decision?decisionLabels[p.decision.status]:'',csv:p=>p.decision?decisionLabels[p.decision.status]:'결정 전'},
  ];
  const [scope,setScope]=useState<'all'|'focus'>('all');

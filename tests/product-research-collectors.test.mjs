@@ -31,27 +31,9 @@ const one=(draft,pred,metric)=>{const found=obs(draft,pred,metric);assert.equal(
 // ── 검색광고 키워드 도구 ──
 const sa={kind:'naver_searchad',apiKey:'0100000000abcdefabcdef',secretKey:'AQAAAAB-secret-key-synthetic==',customerId:'1234567'};
 {
- const f=fakeFetch(()=>json(fixture('searchad-keywordstool.json')));
- const r=plain(await c.collectSearchadKeywords(sa,['마라 소스','불닭소스','마라소스'],f.deps));
- const call=f.calls[0],u=new URL(call.url);
- check(f.calls.length===1&&u.origin==='https://api.searchad.naver.com'&&u.pathname==='/keywordstool','searchad: fixed host and path');
- check(u.searchParams.get('hintKeywords')==='마라소스,불닭소스'&&u.searchParams.get('showDetail')==='1','searchad: hints have spaces removed, deduped, showDetail=1');
- check(call.headers['x-timestamp']===String(NOW.getTime())&&call.headers['x-api-key']===sa.apiKey&&call.headers['x-customer']===sa.customerId,'searchad: X-Timestamp/X-API-KEY/X-Customer headers');
- check(call.headers['x-signature']===createHmac('sha256',sa.secretKey).update(`${NOW.getTime()}.GET./keywordstool`).digest('base64'),'searchad: X-Signature = base64 HMAC-SHA256(ts.GET./keywordstool), query not signed');
- check(call.redirect==='manual'&&call.hasSignal,'searchad: redirect manual + timeout signal');
- const d=r.draft;
- check(one(d,kw('마라소스'),'search_volume_pc').value===12300&&one(d,kw('마라소스'),'search_volume_mobile').value===45600&&one(d,kw('마라소스'),'search_volume_month').value===57900,'searchad: pc/mobile/month mapped');
- check(one(d,kw('마라소스'),'ad_competition').value===0.5&&one(d,kw('마라소스추천'),'ad_competition').value===0&&one(d,kw('마라샹궈소스'),'ad_competition').value===1,'searchad: compIdx 중간/낮음/높음 → 0.5/0/1');
- check(one(d,kw('마라소스추천'),'search_volume_pc').value===null&&one(d,kw('마라소스추천'),'search_volume_mobile').value===30,'searchad: "< 10" → null, not 0');
- check(one(d,kw('마라소스추천'),'search_volume_month').value===null&&one(d,kw('마라샹궈소스'),'search_volume_month').value===null,'searchad: month total only when both pc and mobile known');
- check(one(d,kw('훠궈소스'),'search_volume_pc').value===2400&&one(d,kw('훠궈소스'),'search_volume_mobile').value===0&&one(d,kw('훠궈소스'),'ad_competition').value===null,'searchad: "2,400" parsed, real 0 kept, blank compIdx null');
- check(d.status==='partial'&&d.limitations.some(l=>l.includes('< 10'))&&d.limitations.some(l=>l.includes('불닭소스')),'searchad: missing hint + skipped row → partial with Korean limitations');
- check(d.limitations.some(l=>l.includes('지연')),'searchad: delay limitation');
- check(d.bodyDigest===sha(fixture('searchad-keywordstool.json'))&&d.bodyBytes===Buffer.byteLength(fixture('searchad-keywordstool.json')),'searchad: sha-256 digest and byte length of body');
- check(!JSON.stringify(d).includes('plAvgDepth')&&!JSON.stringify(d).includes('monthlyAvePcClkCnt'),'searchad: raw body not stored');
- check(d.observations[0].period.from==='2026-09-03'&&d.observations[0].period.to==='2026-10-02','searchad: 30-day period ending KST yesterday');
- check(r.unitsUsed===1&&d.method==='api'&&d.sourceId==='naver_searchad_keyword'&&!('id' in d)&&!('importedBy' in d),'searchad: draft shape and units');
- check(!JSON.stringify(d).includes(sa.secretKey)&&!JSON.stringify(d).includes(sa.apiKey),'searchad: credentials not in draft');
+ const f=fakeFetch(()=>json({}));
+ await rejects(c.collectSearchadKeywords(sa,['마라소스'],f.deps),'not_allowed','searchad: MD policy blocks collection');
+ check(f.calls.length===0,'searchad: policy denied before HTTP');
  check(c.parseQcCnt('< 10')===null&&c.parseQcCnt(0)===0&&c.parseQcCnt('1,234')===1234&&c.parseQcCnt(-1)===null&&c.compIdxValue('high')===null,'searchad: parseQcCnt/compIdxValue edge cases');
  const g=fakeFetch(()=>json({}));
  await rejects(c.collectSearchadKeywords(sa,['a','b','c','d','e','f'],g.deps),'input','searchad: 6 hints rejected');
@@ -108,30 +90,20 @@ const dev={kind:'naver_developers',clientId:'synthClientId01',clientSecret:'synt
 // ── YouTube ──
 const yt={kind:'youtube',apiKey:'AIzaSyD-synthetic-key-000000000000000'};
 {
- const f=fakeFetch(()=>json(fixture('youtube-search.json')));
- const r=plain(await c.discoverYoutubeVideos(yt,{keyword:'마라소스',publishedAfter:'2026-09-01T00:00:00Z',maxResults:10},f.deps)),u=new URL(f.calls[0].url);
- check(u.origin+u.pathname==='https://www.googleapis.com/youtube/v3/search'&&u.searchParams.get('part')==='snippet'&&u.searchParams.get('type')==='video'&&u.searchParams.get('maxResults')==='10'&&u.searchParams.get('publishedAfter')==='2026-09-01T00:00:00Z'&&u.searchParams.get('key')===yt.apiKey,'youtube search: URL params');
- check(JSON.stringify(r.videoIds)===JSON.stringify(['abcdefghij1','abcdefghij2'])&&r.unitsUsed===100,'youtube search: video ids and 100 units');
- const vc=one(r.draft,kw('마라소스'),'video_count');
- check(vc.value===12345&&vc.period.from==='2026-09-01'&&vc.period.to==='2026-10-03','youtube search: video_count for keyword');
- check(!JSON.stringify(r.draft).includes(yt.apiKey),'youtube: API key not stored in request');
- check(r.draft.status==='partial','youtube search: non-video result → partial');
+ const f=fakeFetch(()=>json({}));
+ await rejects(c.discoverYoutubeVideos(yt,{keyword:'마라소스',publishedAfter:'2026-09-01T00:00:00Z'},f.deps),'not_allowed','youtube search: MD policy denies collection');
+ check(f.calls.length===0,'youtube search: policy denied before HTTP');
  const g=fakeFetch(()=>json({}));
  await rejects(c.discoverYoutubeVideos(yt,{keyword:'a',publishedAfter:'2026-09-01T00:00:00Z',maxResults:26},g.deps),'input','youtube search: maxResults ≤25');
  await rejects(c.discoverYoutubeVideos(yt,{keyword:'a',publishedAfter:'2027-01-01T00:00:00Z'},g.deps),'input','youtube search: future window rejected');
- const v=fakeFetch(()=>json(fixture('youtube-videos.json')));
  const ids=['abcdefghij1','abcdefghij2','abcdefghij3'];
- const t=plain(await c.trackYoutubeVideos(yt,ids,v.deps)),vu=new URL(v.calls[0].url);
- check(vu.pathname==='/youtube/v3/videos'&&vu.searchParams.get('part')==='statistics,snippet'&&vu.searchParams.get('id')===ids.join(','),'youtube videos: URL params');
- const v1=one(t.draft,listing('abcdefghij1'),'video_views');
- check(v1.value===153000&&v1.subject.sourceId==='youtube_data'&&v1.subject.title==='마라소스 리뷰'&&v1.period.from==='2026-10-03','youtube videos: views per video listing subject');
- check(one(t.draft,listing('abcdefghij2'),'video_views').value===null&&one(t.draft,listing('abcdefghij3'),'video_views').value===null,'youtube videos: hidden/missing views → null');
- check(t.unitsUsed===1&&t.draft.status==='partial'&&!t.draft.observations.some(o=>o.metric==='video_view_velocity'),'youtube videos: 1 unit, partial, velocity not computed here');
+ await rejects(c.trackYoutubeVideos(yt,ids,g.deps),'not_allowed','youtube tracking: MD policy denies collection');
  await rejects(c.trackYoutubeVideos(yt,Array.from({length:51},(_,i)=>'abcdefghi'+String(i).padStart(2,'0')),g.deps),'input','youtube videos: >50 ids rejected');
  await rejects(c.trackYoutubeVideos(yt,['bad id'],g.deps),'input','youtube videos: invalid id rejected');
  check(g.calls.length===0,'youtube: invalid input never fetches');
  const q=fakeFetch(()=>json({error:{code:403,errors:[{reason:'quotaExceeded'}]}},403));
- await rejects(c.trackYoutubeVideos(yt,ids,q.deps),'quota','youtube: 403 quotaExceeded → quota error');
+ await rejects(c.trackYoutubeVideos(yt,ids,q.deps),'not_allowed','youtube: policy blocks even quota response');
+ check(q.calls.length===0,'youtube: no quota-consuming request');
 }
 
 // ── 데이터랩 주 단위 창 고정(평가 1회차 M2): 같은 주에 이틀 수집해도 시계열 점이 늘지 않는다

@@ -1,3 +1,4 @@
+import {researchProvenancePolicies} from './product-research/server-policy';
 import type {Campaign} from './agency';
 import {effectiveBrandFacts,type BrandFact,type FactRef} from './brand-facts';
 import {parseCatalogInput,parseOfferInput,catalogReadiness,offerReadiness,type CatalogInput,type OfferInput,type CatalogStock} from './growth-catalog';
@@ -35,11 +36,33 @@ function catalogStatus(r:Catalog,facts:BrandFact[],c:Campaign,stock:CatalogStock
 }
 async function workspace(owner:string,c:Campaign){
  const [signals,needs,catalogs,offers,missions,facts]=await Promise.all([rows<SignalInput>(owner,kinds.signal,c),rows<NeedInput>(owner,kinds.need,c),rows<CatalogInput>(owner,kinds.catalog,c),rows<OfferInput>(owner,kinds.offer,c),rows<MissionInput>(owner,kinds.mission,c),factsFor(owner,c)]);
- const currentSignals=await Promise.all(signals.map(async r=>{const sourceReadiness=await liveSignalSource(owner,c,r),base=signalEvidence(r.input,Date.now());return {...r,sourceReadiness,evidence:sourceReadiness?.status==='held'?{status:'insufficient' as const,reason:sourceReadiness.reasons.join(' ')}:base}}));
- const ns=needs.map(r=>{const base=needReadiness(r.input,currentSignals,Date.now());return {...r,readiness:{...base,missing:[...base.missing,...(r.input.signalIds.some(id=>!r.evidenceRefs?.some(ref=>ref.id===id&&ref.version===signals.find(s=>s.id===id)?.version))?['시장 근거 변경 후 고객 기회 재검토']:[]),...(r.campaignVersion!==c.version?['캠페인 변경 후 고객 기회 재검토']:[])]}}});
+ const researchPolicies=await researchProvenancePolicies(owner,[...signals.map(r=>({...r,id:`signal:${r.id}`})),...needs.map(r=>({...r,id:`need:${r.id}`})),...offers.map(r=>({...r,id:`offer:${r.id}`}))]);
+ const researchStatus=(entity:string,r:{id:string;productResearch?:ProductResearchProvenance})=>{
+  const policy=researchPolicies.get(`${entity}:${r.id}`);
+  return r.productResearch&&!policy?.allowed?{status:'held' as const,reasons:[policy?.reason??'상품 조사 원본을 확인할 수 없어 재검토가 필요합니다.']}:null;
+ };
+ const currentSignals=await Promise.all(signals.map(async r=>{
+  let sourceReadiness=await liveSignalSource(owner,c,r);
+  const researchHeld=researchStatus('signal',r);
+  if(researchHeld)sourceReadiness=researchHeld;
+  const input=researchHeld?{...r.input,title:'상품 조사 근거 확인 필요',summary:'현재 사용할 수 없는 조사 근거입니다. 허용된 원본으로 다시 검토하세요.',sourceUrl:'',sampleSize:null}:r.input;
+  const base=signalEvidence(input,Date.now());
+  return {...r,input,sourceReadiness,evidence:sourceReadiness?.status==='held'?{status:'insufficient' as const,reason:sourceReadiness.reasons.join(' ')}:base};
+ }));
+ const ns=needs.map(r=>{
+  const sourceReadiness=researchStatus('need',r);
+  const input=sourceReadiness?{...r.input,title:'상품 조사 근거 확인 필요',situation:'근거 재검토 필요',desiredOutcome:'근거 재검토 필요',alternative:'',barrier:'근거 재검토 필요',counterEvidence:'',nextAction:'허용된 원본 근거를 다시 확인하세요.'}:r.input;
+  const base=needReadiness(input,currentSignals,Date.now());
+  return {...r,input,sourceReadiness,readiness:{...base,missing:[...base.missing,...(sourceReadiness?.reasons??[]),...(input.signalIds.some(id=>!r.evidenceRefs?.some(ref=>ref.id===id&&ref.version===signals.find(s=>s.id===id)?.version))?['시장 근거 변경 후 고객 기회 재검토']:[]),...(r.campaignVersion!==c.version?['캠페인 변경 후 고객 기회 재검토']:[])]}};
+ });
  const stocks=await catalogStocks(owner,c,catalogs.map(r=>r.input));
  const cs=catalogs.map((r,i)=>({...r,currentStock:stocks[i],readiness:catalogStatus(r,facts,c,stocks[i])}));
- const os=offers.map(r=>{const item=cs.find(x=>x.id===r.input.catalogId)??null,need=ns.find(n=>n.id===r.input.needId);const base=offerReadiness(r.input,item,Date.now(),item?.currentStock);return {...r,currentStock:item?.currentStock??null,readiness:{...base,missing:[...base.missing,...(item?.readiness.missing??[]),...(need?.readiness.missing??['고객 근거 연결']),...(need&&!r.evidenceRefs?.some(ref=>ref.id===need.id&&ref.version===need.version)?['고객 기회 변경 후 오퍼 재검토']:[]),...(r.campaignVersion!==c.version?['캠페인 변경 후 오퍼 재검토']:[])]}}});
+ const os=offers.map(r=>{
+  const sourceReadiness=researchStatus('offer',r);
+  const input=sourceReadiness?{...r.input,title:'상품 조사 근거 확인 필요',purchaseReason:'허용된 원본 근거를 다시 확인하세요.',landingUrl:''}:r.input;
+  const item=cs.find(x=>x.id===input.catalogId)??null,need=ns.find(n=>n.id===input.needId),base=offerReadiness(input,item,Date.now(),item?.currentStock);
+  return {...r,input,sourceReadiness,currentStock:item?.currentStock??null,readiness:{...base,missing:[...base.missing,...(sourceReadiness?.reasons??[]),...(item?.readiness.missing??[]),...(need?.readiness.missing??['고객 근거 연결']),...(need&&!r.evidenceRefs?.some(ref=>ref.id===need.id&&ref.version===need.version)?['고객 기회 변경 후 오퍼 재검토']:[]),...(r.campaignVersion!==c.version?['캠페인 변경 후 오퍼 재검토']:[])]}};
+ });
  const ms=missions.map(r=>{const offer=os.find(x=>x.id===r.input.offerId);return {...r,currentStock:offer?.currentStock??null,readiness:missionReadiness(r.input,[...(offer?.readiness.missing??['판매 오퍼 연결']),...(offer&&offer.version!==r.input.offerVersion?['오퍼 변경 후 미션 재검토']:[]),...(r.campaignVersion!==c.version?['캠페인 변경 후 미션 재검토']:[])])}});
  return {signals:currentSignals,needs:ns,catalogs:cs,offers:os,missions:ms,facts:facts.map(f=>({id:f.id,version:f.version,key:f.key,value:f.value})),campaignVersion:c.version};
 }

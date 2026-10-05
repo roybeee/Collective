@@ -19,6 +19,7 @@ import type {SourceId} from '@/lib/product-research/types';
 import type {QuarantineEntry} from '@/lib/product-research/api';
 import {RecomputeButton} from './product-research-candidates';
 import {credentialDisconnectImpact,credentialForms,editReason,koreaToday,methodLabels,metricLabels,snapshotStatusLabels,sourceLabel,type Act,type RowIssue,type View} from './product-research-shared';
+import {ResearchRetention} from './product-research-retention';
 import {CollectionControl} from './product-research-collection-control';
 import s from './product-research.module.css';
 
@@ -51,6 +52,7 @@ export function SourcesTab({view,act,busy,onCandidates,onRefresh}:{view:View;act
   <p className={s.legal} role="note"><b>수집 원칙</b> 공식 API와 계약 데이터만 자동으로 모읍니다. 무신사·올리브영·쿠팡 랭킹은 robots.txt와 약관이 자동 접근을 막아, 운영자가 자기 계정으로 본 화면을 파일로 가져오기만 받습니다. 데이터베이스 투자를 보호한 민사 판례가 있어 막힌 곳은 긁지 않습니다.</p>
   <Alerts view={view}/>
   {manualRanks.length>0&&<p className={s.badges} aria-label="랭킹 가져오기 이번 주 상태">{manualRanks.map(r=><span key={r.sourceId} className={'status '+(r.thisWeek?'status-approved':s.warn)}>{sourceLabel(view,r.sourceId)} {r.thisWeek?'이번 주 가져옴':'이번 주 가져오기 전'}</span>)}</p>}
+  <ResearchRetention canInspect={view.canConnect}/>
   <DataTable rows={view.sources} columns={columns} rowKey={x=>x.id} caption="상품 리서치 출처" csvName="product-research-sources"/>
   <p className={s.muted}>네이버 쇼핑 검색 API는 서비스가 종료되어 수집 대상에서 제외됩니다. 이전 수집 기록은 남아 있습니다.</p>
   <p className={s.muted}>30일 성공률은 지난 30일 예약 호출 중 정상으로 끝난 비율입니다. 호출이 없으면 미확인입니다.</p>
@@ -100,7 +102,8 @@ function CredentialCard({view,credential,act,busy}:{view:View;credential:Credent
  const form=credentialForms[credential],state=view.credentials.find(c=>c.key===credential);
  const [values,setValues]=useState<Record<string,string>>({});
  const missing=form.fields.some(f=>!f.optional&&!values[f.name]?.trim());
- const saveWhy=!view.canConnect?ownerReason:missing?'필수 칸을 먼저 채우세요.':'';
+ const policy= CREDENTIAL_SOURCES[credential].filter(id=>id!=='naver_shop_search').map(id=>view.sources.find(s=>s.id===id)?.policy).find(p=>p&&!p.allowed);
+ const saveWhy=policy?.reason??(!view.canConnect?ownerReason:missing?'필수 칸을 먼저 채우세요.':'');
  async function save(){
   const input=Object.fromEntries(form.fields.map(f=>[f.name,(values[f.name]??'').trim()]).filter(([,v])=>v));
   const r=await act({action:'connect_source',credentialKey:credential,input},`${form.label} 연결을 저장했습니다.`,credential==='naver_developers'&&view.credentials.some(c=>c.key==='naver_api_hub'&&c.connected)?'NAVER API HUB 키가 우선 사용됩니다.':'다음 자동 수집부터 이 키를 씁니다.');
@@ -115,9 +118,10 @@ function CredentialCard({view,credential,act,busy}:{view:View;credential:Credent
   <div className={s.headRow}><b>{form.label}</b><span className={'status '+(state?.connected?'status-approved':'status-outdated')}>{state?.connected?'연결됨':'연결 전'}</span></div>
   <small className={s.muted}>{CREDENTIAL_SOURCES[credential].filter(id=>id!=='naver_shop_search').map(id=>sourceLabel(view,id)).join(', ')}</small>
   {credential==='naver_api_hub'&&<small className={s.muted}>데이터랩 검색어 트렌드와 쇼핑인사이트 권한을 모두 확인한 뒤 연결을 저장합니다.</small>}
+  {policy&&<p role="status" className={s.muted}>사용 보류: {policy.reason} 기존 키는 보관되며 연결 상태와 사용 허용 상태는 별개입니다.</p>}
   {state?.connected&&<small className={s.muted}><MetaLine items={[state.account?`계정 ${state.account}`:null,`저장 ${dateTime(state.updatedAt)}`]}/></small>}
   {view.canConnect?<form className={s.credForm} onSubmit={e=>{e.preventDefault();if(!saveWhy)void save()}} autoComplete="off">
-   {form.fields.map(f=><label key={f.name} className="field"><span>{f.label}{f.optional?'(선택)':''}</span><Input type={f.secret?'password':'text'} name={`pr-credential-${credential}-${f.name}`} autoComplete={f.secret?'new-password':'off'} autoCapitalize="none" spellCheck={false} value={values[f.name]??''} onChange={e=>setValues(v=>({...v,[f.name]:e.target.value}))}/></label>)}
+   {form.fields.map(f=><label key={f.name} className="field"><span>{f.label}{f.optional?'(선택)':''}</span><Input type={f.secret?'password':'text'} name={`pr-credential-${credential}-${f.name}`} disabled={!!policy} autoComplete={f.secret?'new-password':'off'} autoCapitalize="none" spellCheck={false} value={values[f.name]??''} onChange={e=>setValues(v=>({...v,[f.name]:e.target.value}))}/></label>)}
    <div className={s.toolbar}><Button type="submit" size="sm" disabled={busy||!!saveWhy} disabledReason={saveWhy}>{state?.connected?'키 바꿔 저장':'연결 저장'}</Button>
    {state?.connected&&<Button type="button" variant="ghost" size="sm" className="danger-action" disabled={busy||!!disconnectWhy} disabledReason={disconnectWhy} onClick={()=>void disconnect()}>연결 해제</Button>}</div>
   </form>:<LockedNote action="출처 연결" reason={ownerReason}/>}

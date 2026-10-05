@@ -47,6 +47,7 @@ const now=new Date(),todayT=Date.parse(kst(now)+'T00:00:00Z');
 const lastSunday=todayT-((new Date(todayT).getUTCDay()+7)%7||7)*DAY;
 const weeks=(n,valueOf)=>Array.from({length:n},(_,i)=>{const end=lastSunday-(n-1-i)*7*DAY;return {from:ymd(end-6*DAY),to:ymd(end),value:valueOf(i,n)}});
 
+// 아래 측정 커널 fixture는 허용 licensed_ranking으로 합성한 관측값이다. 실제 제공자 수집/계약을 주장하지 않는다.
 // ── M1 이상치 격리 단위와 상대값 급등
 const O1='r2-anomaly';await on(O1,'product_research');
 const spikeWeeks=weeks(20,(i,n)=>i===n-1?100:20+(i%3));
@@ -55,7 +56,7 @@ const dl1=putSnap(O1,snap('naver_datalab_search',new Date(now.getTime()-2*DAY).t
 // 검색광고 30일 실측 6점: 급등소스는 마지막 점도 같이 오름(동의), 반박소스는 평소 수준(반박)
 const E=lastSunday;
 for(let i=0;i<6;i++){const at=E-(5-i)*DAY,to=ymd(at),from=ymd(at-29*DAY);
- putSnap(O1,snap('naver_searchad_keyword',new Date(at+DAY+3600000).toISOString(),{keywords:'급등소스,반박소스'},[kwObs('급등소스','search_volume_month',i===5?6000:1000,from,to),kwObs('반박소스','search_volume_month',1000+i,from,to)]))}
+ putSnap(O1,snap('licensed_ranking',new Date(at+DAY+3600000).toISOString(),{keywords:'급등소스,반박소스'},[kwObs('급등소스','search_volume_month',i===5?6000:1000,from,to),kwObs('반박소스','search_volume_month',1000+i,from,to)]))}
 let r=await post(O1,{action:'recompute'});
 const q1=rows(O1,'pr_quarantine'),flagged=q1.find(q=>q.subjectKey==='kw:급등소스'&&q.metric==='search_trend'),blocked=q1.find(q=>q.subjectKey==='kw:반박소스'&&q.metric==='search_trend');
 check(r.status===200&&flagged&&flagged.status==='flagged'&&/함께 올라/.test(flagged.basis)&&flagged.periodTo===spikeWeeks[19].to,'relative trend spike that the searchad volume confirms is only flagged (status flagged, basis says the second source agrees)');
@@ -89,8 +90,8 @@ const O2='r2-calib';await on(O2,'product_research');
 const trend=weeks(30,()=>50);
 putSnap(O2,snap('naver_datalab_search',new Date(now.getTime()-DAY).toISOString(),{timeUnit:'week',keywordGroups:'마라소스:마라소스|마라탕소스'},trend.map(w=>kwObs('마라소스','search_trend',w.value,w.from,w.to))));
 for(const back of [0,40,80,120]){const at=E-back*DAY,to=ymd(at),from=ymd(at-29*DAY);
- putSnap(O2,snap('naver_searchad_keyword',new Date(at+DAY).toISOString(),{keywords:'마라소스'},[kwObs('마라소스','search_volume_month',1000,from,to)]));
- putSnap(O2,snap('naver_searchad_keyword',new Date(at+DAY+60000).toISOString(),{keywords:'마라탕소스'},[kwObs('마라탕소스','search_volume_month',3000,from,to)]))}
+ putSnap(O2,snap('licensed_ranking',new Date(at+DAY).toISOString(),{keywords:'마라소스'},[kwObs('마라소스','search_volume_month',1000,from,to)]));
+ putSnap(O2,snap('licensed_ranking',new Date(at+DAY+60000).toISOString(),{keywords:'마라탕소스'},[kwObs('마라탕소스','search_volume_month',3000,from,to)]))}
 putSnap(O2,{...snap('coupang_ranking_manual',new Date(now.getTime()-DAY).toISOString(),{scope:'소스'},[{subject:{type:'listing',sourceId:'coupang_ranking_manual',externalId:'M1',title:'매운집 마라소스 500g',brand:null,price:3900,url:'https://www.coupang.com/vp/products/1',categoryPath:null},metric:'rank',value:1,period:{from:ymd(E),to:ymd(E)}}]),method:'manual',importedBy:{id:O2,email:null,fileName:'c.csv'}});
 r=await post(O2,{action:'recompute'});
 const mara=r.body.products.find(p=>/마라소스/.test(p.name)),demand=mara.score.subScores.find(s=>s.key==='demand');
@@ -109,8 +110,10 @@ check(PL.calibrationReport(m2,'x').rows.length===1&&PL.calibrationReport({...m2,
 
 // ── M4 실행 시간 상한(주입한 시계)과 잠금 갱신
 const O3='r2-budget';await on(O3,'product_research','product_research_collect');
-for(const [credentialKey,input] of [['naver_searchad',{apiKey:'searchadApiKey0123456789',secretKey:'SECRETsearchadsecret1234567',customerId:'1234567'}],['naver_developers',{clientId:'devClientId01',clientSecret:'SECRETdevsecret123'}]]){r=await post(O3,{action:'connect_source',credentialKey,input});assert.equal(r.status,200,r.body.error)}
+for(const [credentialKey,input] of [['naver_developers',{clientId:'devClientId01',clientSecret:'test-only-secret'}]]){r=await post(O3,{action:'connect_source',credentialKey,input});assert.equal(r.status,200,r.body.error)}
 let t=Date.now(),calls=0;const clock=()=>new Date(t),slow=async(u,i)=>{t+=20000;calls++;return stub(u,i)};
+const budgetState={...collect.emptyCollectState(),day:kst(clock()),plan:Array.from({length:20},(_,i)=>({sourceId:'naver_datalab_search',sourcePolicyVersion:'md-policy-2026-10-05',sourceSnapshotIds:[],op:'datalab',groups:[{groupName:`시간검사${i}`,keywords:[`시간검사${i}`]}]}))};
+await server.recordStatement(O3,'pr_collect_state','current',budgetState).run();
 let st=await collect.runProductResearchQueue(O3,{fetch:slow,now:clock});
 let state=rec(O3,'pr_collect_state','current');
 check(st.status==='processed'&&calls===5&&state.cursor===5&&state.plan.length>12&&state.done===false&&typeof state.stoppedAt==='string','a worker tick stops after the 90 s budget (5 provider calls at 20 s each, not 12) and saves its cursor');
@@ -140,7 +143,7 @@ sql.prepare('DELETE FROM mutation_locks WHERE owner=?').run(O3+':product-researc
 const O4='r2-storage';await on(O4,'product_research','product_research_collect');
 r=await post(O4,{action:'connect_source',credentialKey:'naver_developers',input:{clientId:'devClientId01',clientSecret:'SECRETdevsecret123'}});assert.equal(r.status,200);
 const fill=sql.prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)');sql.exec('BEGIN');
-for(let i=0;i<20000;i++){const at=new Date(now.getTime()-i*1000).toISOString();fill.run(`${O4}:pr_snapshot:f${i}`,O4,'pr_snapshot','naver_searchad_keyword',JSON.stringify({...snap('naver_searchad_keyword',at,{},[]),id:`f${i}`}),at)}
+for(let i=0;i<20000;i++){const at=new Date(now.getTime()-i*1000).toISOString();fill.run(`${O4}:pr_snapshot:f${i}`,O4,'pr_snapshot','naver_searchad_keyword',JSON.stringify({...snap('licensed_ranking',at,{},[]),id:`f${i}`}),at)}
 sql.exec('COMMIT');
 r=await direct(O4,{action:'collect_now',sourceId:'naver_datalab_shopping'},{fetch:stub,now:()=>new Date()});
 const shopQuota=rows(O4,'pr_quota').find(q=>q.sourceId==='naver_datalab_shopping');
