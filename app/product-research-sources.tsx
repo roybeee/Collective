@@ -20,6 +20,8 @@ import type {QuarantineEntry} from '@/lib/product-research/api';
 import {RecomputeButton} from './product-research-candidates';
 import {credentialDisconnectImpact,credentialForms,editReason,koreaToday,methodLabels,metricLabels,snapshotStatusLabels,sourceLabel,type Act,type RowIssue,type View} from './product-research-shared';
 import {ResearchRetention} from './product-research-retention';
+import {ResearchRetentionActions} from './product-research-retention-actions';
+import {ResearchValidation} from './product-research-validation';
 import {CollectionControl} from './product-research-collection-control';
 import s from './product-research.module.css';
 
@@ -53,6 +55,8 @@ export function SourcesTab({view,act,busy,onCandidates,onRefresh}:{view:View;act
   <Alerts view={view}/>
   {manualRanks.length>0&&<p className={s.badges} aria-label="랭킹 가져오기 이번 주 상태">{manualRanks.map(r=><span key={r.sourceId} className={'status '+(r.thisWeek?'status-approved':s.warn)}>{sourceLabel(view,r.sourceId)} {r.thisWeek?'이번 주 가져옴':'이번 주 가져오기 전'}</span>)}</p>}
   <ResearchRetention canInspect={view.canConnect}/>
+  <ResearchRetentionActions canInspect={view.canConnect}/>
+  <ResearchValidation canInspect={view.canConnect}/>
   <DataTable rows={view.sources} columns={columns} rowKey={x=>x.id} caption="상품 리서치 출처" csvName="product-research-sources"/>
   <p className={s.muted}>네이버 쇼핑 검색 API는 서비스가 종료되어 수집 대상에서 제외됩니다. 이전 수집 기록은 남아 있습니다.</p>
   <p className={s.muted}>30일 성공률은 지난 30일 예약 호출 중 정상으로 끝난 비율입니다. 호출이 없으면 미확인입니다.</p>

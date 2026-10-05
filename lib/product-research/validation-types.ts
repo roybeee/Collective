@@ -1,0 +1,11 @@
+import type {LaunchOutcome} from './api';
+export type LegalEvidence={id:string;sourceId:string;reviewer:string;reviewedAt:string;validUntil:string;evidenceUrl:string;allowedScope:string;decision:'approved'|'restricted'|'rejected'};
+export type GroundTruth={id:string;sku:string;title:string;periodStart:string;periodEnd:string;decisionAt:string;criterion:string;criterionFrozenAt:string;evidenceUrl:string;evidenceHash:string;reviewer:string;reviewedAt:string;label:'hit'|'control';origin:'human'|'candidate'|'ai'};
+export type BlindResult={id:string;evaluatorName:string;packetHash:string;submittedFileHash:string;frozenAt:string;evaluatedAt:string;evidenceUrl:string;score:number;independence:'unverified_owner_submission'};
+export type ValidationSection='legal'|'groundTruth'|'blind';
+export type ValidationEvidence={legal:LegalEvidence[];groundTruth:GroundTruth[];blind:BlindResult[]};
+export type ValidationState=ValidationEvidence&{version:number;updatedAt:string|null;updatedBy:string|null;lastRequestId:string|null};
+export type ValidationGate={ready:boolean;verified:number;required:number;reasons:string[]};
+export type ValidationReadiness={complete:boolean;legal:ValidationGate;groundTruth:ValidationGate;blind:ValidationGate;sales:ValidationGate};
+export type ValidationView=ValidationState&{readiness:ValidationReadiness;launchOutcomes:LaunchOutcome[];automaticPolicyRelease:false};
+export type ValidationMutation={requestId:string;expectedVersion:number}&({section:'legal';entries:LegalEvidence[]}|{section:'groundTruth';entries:GroundTruth[]}|{section:'blind';entries:BlindResult[]});

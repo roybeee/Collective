@@ -24,6 +24,9 @@ import {CandidateDetail} from './product-research-detail';
 import {CommitteeTab} from './product-research-committee';
 import {ReportTab} from './product-research-report';
 import {SourcesTab} from './product-research-sources';
+import {ResearchRetention} from './product-research-retention';
+import {ResearchRetentionActions} from './product-research-retention-actions';
+import {ResearchValidation} from './product-research-validation';
 import s from './product-research.module.css';
 
 const tabLabels:Record<ResearchTab,string>={radar:'트렌드 레이더',candidates:'후보 목록',committee:'선정 위원회',report:'주간 MD 리포트',sources:'출처와 가져오기'};
@@ -92,7 +95,7 @@ export function ProductResearchPanel({initialTab,onTabChange}:{initialTab?:Resea
   finally{setBusy(false)}
  };
  if(error&&!view)return <div className="load-error" role="alert"><span>{error}</span><Button variant="outline" onClick={()=>void load()}><RefreshCw/>다시 시도</Button></div>;
- if(off||(view&&!view.enabled))return <ResearchOff isOwner={!!account?.isOwner} onEnabled={()=>{setOff(false);void load()}}/>;
+ if(off||(view&&!view.enabled))return <div className={s.panel}><ResearchOff isOwner={!!account?.isOwner} onEnabled={()=>{setOff(false);void load()}}/><ResearchRetention canInspect={!!account?.isOwner}/><ResearchRetentionActions canInspect={!!account?.isOwner}/><ResearchValidation canInspect={!!account?.isOwner}/></div>;
  if(!view)return <ScreenSkeleton label="상품 리서치 자료를 불러오고 있습니다." rows={5}/>;
  const product=detail?view.products.find(p=>p.id===detail)??null:null;
  return <div className={s.panel}>

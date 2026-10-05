@@ -1,18 +1,18 @@
 // 읽기 전용 보존 현황. 원문·키·개별 ID는 반환하지 않으며 운영 삭제를 실행하지 않는다.
 import {database} from '../server';
-import {snapshotResearchPolicy} from './source-policy';
+import {snapshotResearchPolicy,SOURCE_POLICY_VERSION} from './source-policy';
 import type {Snapshot} from './types';
 const KINDS=['pr_snapshot','pr_quarantine','pr_collect_state','pr_product','pr_keyword_group','pr_score','pr_brief','pr_backtest','pr_score_index','pr_request','pr_decision','hermes_submission','growth_signal','growth_history','growth_need','growth_offer','growth_sourcing_candidate','growth_sourcing_history'] as const;
 const PAGE=250,MAX_ROWS=10000,MAX_ROW_BYTES=512000,MAX_TOTAL_BYTES=32000000,DAY=86400000;
 type InventoryRow={kind:string;records:number;youtubeRecords:number;expiredRecords:number;invalidTimeRecords:number;oldestFetchedAt:string|null};
-export type ResearchRetentionInventory={checkedAt:string;complete:boolean;scanned:number;rows:InventoryRow[];externalDeletion:'unverified'|'not_applicable';automaticDeletion:false};
-type StoredRow={id:string;kind:string;data:string|null;bytes:number};
-type Entry={row:StoredRow;aliases:Set<string>;references:{kind:string;id:string}[];times:Set<number>;invalidTime:boolean;youtube:boolean;valid:boolean};
-function entry(row:StoredRow,now:number):Entry{
+export type ResearchRetentionInventory={checkedAt:string;complete:boolean;scanned:number;rows:InventoryRow[];externalDeletion:'unverified'|'not_applicable';automaticDeletion:boolean};
+export type StoredRow={id:string;kind:string;data:string|null;bytes:number};
+export type Entry={row:StoredRow;aliases:Set<string>;references:{kind:string;id:string}[];times:Set<number>;invalidTime:boolean;youtube:boolean;valid:boolean};
+export function retentionEntry(row:StoredRow,now:number):Entry{
  const out:Entry={row,aliases:new Set([row.id]),references:[],times:new Set(),invalidTime:false,youtube:false,valid:true};
  let count=0;
  const referenceKind=(key:string,path:string):string|undefined=>{
-  if(['snapshotId','snapshotIds','sourceSnapshotIds'].includes(key))return 'pr_snapshot';
+  if(['snapshotId','snapshotIds','sourceSnapshotIds','riskEvidence'].includes(key))return 'pr_snapshot';
   if(key==='evidence'&&(row.kind==='pr_score'||path.includes('.subScores.')))return 'pr_snapshot';
   if(key==='citations'&&(row.kind==='pr_brief'||row.kind==='pr_request'||row.kind==='hermes_submission'))return 'pr_snapshot';
   if(['scoreId','scoreCardId','scoreCardIds'].includes(key))return 'pr_score';
@@ -56,13 +56,13 @@ function entry(row:StoredRow,now:number):Entry{
  if(out.times.size)out.times=new Set([Math.min(...out.times)]);
  return out;
 }
-function inherit(entries:Entry[]):boolean{
+export function inheritRetention(entries:Entry[]):boolean{
  const index=new Map<string,Entry[]>();for(const e of entries)for(const id of e.aliases)index.set(id,[...(index.get(id)??[]),e]);
  // Reverse edges allow transitive copies to be marked in one bounded work queue.
  const parents=new Map<Entry,Set<Entry>>();let complete=true,edges=0;
  for(const e of entries){
   for(const ref of e.references){
-   const targets=(index.get(ref.id)??[]).filter(r=>r.row.kind===ref.kind);if(!targets.length)complete=false;
+   const targets=(index.get(ref.id)??[]).filter(r=>r.row.kind===ref.kind);if(targets.length!==1)complete=false;
    for(const target of targets){if(target===e)continue;if(++edges>200000)return false;const set=parents.get(target)??new Set<Entry>();set.add(e);parents.set(target,set)}
   }
  }
@@ -81,7 +81,9 @@ function inherit(entries:Entry[]):boolean{
 }
 export async function researchRetentionInventory(owner:string,now:Date=new Date()):Promise<ResearchRetentionInventory>{
  const at=now.getTime();if(!Number.isFinite(at)||!owner)throw new Error('보존 현황의 소유자와 확인 시각이 필요합니다.');
- const result:ResearchRetentionInventory={checkedAt:now.toISOString(),complete:true,scanned:0,rows:KINDS.map(kind=>({kind,records:0,youtubeRecords:0,expiredRecords:0,invalidTimeRecords:0,oldestFetchedAt:null})),externalDeletion:'not_applicable',automaticDeletion:false};
+ const stored=await database().prepare("SELECT data FROM records WHERE owner=? AND kind='pr_retention_settings' AND id=?").bind(owner,`${owner}:pr_retention_settings:current`).first<{data:string}>();
+ const setting=stored?JSON.parse(stored.data):null,automaticDeletion=setting?.automaticEnabled===true&&!!setting.confirmedBy&&setting.confirmationVersion===SOURCE_POLICY_VERSION;
+ const result:ResearchRetentionInventory={checkedAt:now.toISOString(),complete:true,scanned:0,rows:KINDS.map(kind=>({kind,records:0,youtubeRecords:0,expiredRecords:0,invalidTimeRecords:0,oldestFetchedAt:null})),externalDeletion:'not_applicable',automaticDeletion};
  const entries:Entry[]=[];let cursor='',bytes=0;
  try{
   while(true){
@@ -91,13 +93,13 @@ export async function researchRetentionInventory(owner:string,now:Date=new Date(
    if(!page.results.length)break;
    for(const row of page.results){
     if(result.scanned===MAX_ROWS||bytes+row.bytes>MAX_TOTAL_BYTES){result.complete=false;break}
-    result.scanned++;bytes+=row.bytes;cursor=row.id;const e=entry(row,at);entries.push(e);if(!e.valid)result.complete=false;
+    result.scanned++;bytes+=row.bytes;cursor=row.id;const e=retentionEntry(row,at);entries.push(e);if(!e.valid)result.complete=false;
    }
    if(result.scanned===MAX_ROWS&&page.results.length>remaining)break;
    if(bytes>MAX_TOTAL_BYTES||cursor!==page.results.at(-1)?.id)break;
   }
  }catch{result.complete=false}
- if(!inherit(entries))result.complete=false;
+ if(!inheritRetention(entries))result.complete=false;
  const byKind=new Map(result.rows.map(r=>[r.kind,r]));
  for(const e of entries){
   const row=byKind.get(e.row.kind)!;row.records++;
