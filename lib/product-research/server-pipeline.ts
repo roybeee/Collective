@@ -203,7 +203,8 @@ function bundleFor(p:ResearchProduct,m:Material,videos:readonly CollectVideo[],b
  const keywords=[...new Set(ordered.flatMap(g=>g.keywords))];
  const listingKeys=p.listings.map(l=>`ls:${l.sourceId}:${l.externalId}`);
  // 위험 규칙은 수치가 아닌 상품명도 사용한다. 실제 제목이 일치하는 원본 판을 점수 입력에 고정한다.
- const riskEvidence=m.snapshots.filter(s=>s.status!=='failed'&&s.observations.some(o=>o.subject.type==='listing'&&p.listings.some(l=>o.subject.type==='listing'&&l.sourceId===o.subject.sourceId&&l.externalId===o.subject.externalId&&l.title===o.subject.title))).map(s=>s.id);
+ const riskSources=p.listings.map(l=>m.snapshots.filter(s=>s.status!=='failed'&&s.observations.some(o=>o.subject.type==='listing'&&l.sourceId===o.subject.sourceId&&l.externalId===o.subject.externalId&&l.title===o.subject.title)).map(s=>s.id));
+ const riskEvidence=[...new Set(riskSources.flat())],riskEvidenceComplete=riskSources.every(ids=>ids.length>0);
  const market=new Set<string>();
  if(primary)for(const k of primary.keywords){const keys=m.scope.get(normalizeKeyword(k));if(keys)for(const x of keys)market.add(x)}
  const members:Record<string,string[]>={};for(const k of keywordKeys){const ms=m.trendMembers.get(k);if(ms&&!(ms.length===1&&ms[0]===k))members[k]=ms}
@@ -230,7 +231,7 @@ function bundleFor(p:ResearchProduct,m:Material,videos:readonly CollectVideo[],b
   moq=linked.input.moq;leadDays=linked.input.leadDays;
  }else profitReason=linked&&!linked.ok?linked.reason:SOURCING_NEEDED;
  const hint=ctx.brands?brandFitHint({brands:ctx.brands,facts:ctx.brandFacts??[],productName:p.name,categoryLabel:categorySpec(p.categoryId)?.label??null,keywords}):undefined;
- return {productId:p.id,keywords,keywordKeys,listingKeys,series,riskEvidence,profit,...(profitAssumed?{profitAssumed}:{}),profitReason,
+ return {productId:p.id,keywords,keywordKeys,listingKeys,series,riskEvidence,riskEvidenceComplete,profit,...(profitAssumed?{profitAssumed}:{}),profitReason,
   feasibility:{moq,leadDays,needsCertification,temperature:p.temperature},
   risk:{regulatory:p.regulatory,regulatorySure:classification.regulatorySure,temperature:p.temperature,titles:p.listings.map(l=>l.title),
    ...(ctx.protectedBrands?{protectedBrands:[...ctx.protectedBrands]}:{}),...(ctx.ownBrands?{ownBrands:[...ctx.ownBrands]}:{})},

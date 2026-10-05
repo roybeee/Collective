@@ -11,7 +11,7 @@ export async function snapshotIdsResearchPolicy(owner:string,ids:readonly string
  return {allowed:true,code:null,reason:null};
 }
 export async function scoreResearchPolicy(owner:string,card:ScoreCard|undefined,now=Date.now()):Promise<ResearchSourcePolicy>{
- if(!card||!Array.isArray(card.subScores)||card.subScores.some(s=>!s||!Array.isArray(s.evidence)))return missing();
+ if(!card||card.riskEvidenceComplete===false||!Array.isArray(card.subScores)||card.subScores.some(s=>!s||!Array.isArray(s.evidence)))return missing();
  return snapshotIdsResearchPolicy(owner,card.subScores.flatMap(s=>s.evidence),now);
 }
 export async function productResearchPolicy(owner:string,product:{scoreId?:string|null;listings?:{sourceId:unknown}[]}|undefined,now=Date.now()):Promise<ResearchSourcePolicy>{
@@ -21,7 +21,7 @@ export async function productResearchPolicy(owner:string,product:{scoreId?:strin
 }
 type PolicyProduct={scoreId?:string|null;listings?:{sourceId:unknown}[]};
 function cardEvidence(card:ScoreCard|undefined):string[]{
- return card&&Array.isArray(card.subScores)&&card.subScores.every(s=>s&&Array.isArray(s.evidence))?card.subScores.flatMap(s=>s.evidence):[];
+ return card&&card.riskEvidenceComplete!==false&&Array.isArray(card.subScores)&&card.subScores.every(s=>s&&Array.isArray(s.evidence))?card.subScores.flatMap(s=>s.evidence):[];
 }
 function idsPolicy(ids:readonly string[],snapshots:ReadonlyMap<string,Snapshot>,now:number):ResearchSourcePolicy{
  if(!ids.length||ids.length>10000||ids.some(id=>typeof id!=='string'||!id))return missing();
@@ -66,7 +66,7 @@ export async function researchProvenancePolicies(owner:string,rows:readonly {id:
   const cards=await readMany<ScoreCard>(owner,K.score,[...new Set(linked.map(r=>r.productResearch!.scoreCardId))]);
   const idsFor=(r:typeof linked[number])=>{
    const p=r.productResearch!,card=cards.get(p.scoreCardId);
-   if(!card||card.productId!==p.productId||!Array.isArray(p.snapshotIds)||!p.snapshotIds.length||!Array.isArray(card.subScores)||card.subScores.some(s=>!s||!Array.isArray(s.evidence)))return null;
+   if(!card||card.riskEvidenceComplete===false||card.productId!==p.productId||!Array.isArray(p.snapshotIds)||!p.snapshotIds.length||!Array.isArray(card.subScores)||card.subScores.some(s=>!s||!Array.isArray(s.evidence)))return null;
    const evidence=card.subScores.flatMap(s=>s.evidence);
    return evidence.length?[...p.snapshotIds,...evidence]:null;
   };

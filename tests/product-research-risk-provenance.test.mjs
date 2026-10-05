@@ -23,4 +23,21 @@ sql.prepare('UPDATE records SET data=json_set(data,\'$.sourceId\',\'youtube_data
 check(!(await policy.scoreResearchPolicy(owner,diet.score)).allowed,'forbidden original invalidates title-based risk card');
 sql.prepare('UPDATE records SET data=? WHERE id=?').run(original,key);sql.prepare('DELETE FROM records WHERE id=?').run(key);
 check(!(await policy.scoreResearchPolicy(owner,diet.score)).allowed,'missing original invalidates title-based risk card');
+// pinned 묶음은 일부 원본이 사라져도 상품명 fallback을 유지한다. 남은 정상 근거로 세탁되지 않아야 한다.
+sql.prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').run(key,owner,'pr_snapshot',JSON.parse(original).sourceId,original,new Date().toISOString());
+const productKey=`${owner}:pr_product:${diet.id}`,savedProduct=JSON.parse(sql.prepare('SELECT data FROM records WHERE id=?').get(productKey).data);
+const extra={sourceId:'coupang_ranking_manual',externalId:'extra-title',title:'다이어트 효과 약과',url:null};
+const extraSnapshot={...JSON.parse(original),id:'extra-original',sourceId:extra.sourceId,observations:[{subject:{type:'listing',...extra,price:null,brand:null,categoryPath:null},metric:'rank',value:1,period:{from:'2026-09-01',to:'2026-09-01'}}]};
+sql.prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').run(`${owner}:pr_snapshot:extra-original`,owner,'pr_snapshot',extra.sourceId,JSON.stringify(extraSnapshot),new Date().toISOString());
+sql.prepare('UPDATE records SET data=? WHERE id=?').run(JSON.stringify({...savedProduct,listings:[...savedProduct.listings,extra],match:{...savedProduct.match,confirmedBy:{id:owner,email:null}}}),productKey);
+await server.researchAction(who,{action:'recompute',requestId:randomUUID()});
+const currentCard=()=>{const p=JSON.parse(sql.prepare('SELECT data FROM records WHERE id=?').get(productKey).data);return JSON.parse(sql.prepare('SELECT data FROM records WHERE id=?').get(`${owner}:pr_score:${p.scoreId}`).data)};
+check((await policy.scoreResearchPolicy(owner,currentCard())).allowed,'mixed pinned titles all backed before deletion');
+sql.prepare('DELETE FROM records WHERE id=?').run(`${owner}:pr_snapshot:extra-original`);
+await server.researchAction(who,{action:'recompute',requestId:randomUUID()});
+const incomplete=currentCard();
+check(incomplete.riskEvidenceComplete===false,'missing one pinned title original marks incomplete risk evidence');
+check(incomplete.subScores.some(s=>s.evidence.length>0),'other valid evidence remains for regression');
+check(!(await policy.scoreResearchPolicy(owner,incomplete)).allowed,'partial surviving evidence never rescues whole card');
+check(!(await policy.scoreResearchPolicies(owner,[incomplete])).get(incomplete.id).allowed,'bulk path rejects incomplete risk evidence');
 console.log(JSON.stringify({passed,sqlite:'real',auth:'mocked',externalCalls:0}));

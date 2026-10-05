@@ -164,7 +164,7 @@ export async function researchView(who:Actor,now=new Date()):Promise<ResearchVie
 async function usableViewScores(owner:string,cards:Map<string,ScoreCard>,now:Date){
  const ids=[...new Set([...cards.values()].flatMap(c=>c.subScores.flatMap(s=>s.evidence)))];
  const snapshots=await readSnapshots(owner,ids);
- return new Map([...cards].filter(([,card])=>{const refs=card.subScores.flatMap(s=>s.evidence);return refs.length>0&&refs.every(id=>snapshotResearchPolicy(snapshots.get(id),now.getTime()).allowed)}));
+ return new Map([...cards].filter(([,card])=>{const refs=card.subScores.flatMap(s=>s.evidence);return card.riskEvidenceComplete!==false&&refs.length>0&&refs.every(id=>snapshotResearchPolicy(snapshots.get(id),now.getTime()).allowed)}));
 }
 
 // ── 쓰기 공용

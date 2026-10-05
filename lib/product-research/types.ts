@@ -162,6 +162,7 @@ export type BrandFitHint={score:number|null;memo:string;factIds:string[]};
 
 // 점수표 판(불변). 가중치 판이 바뀌면 새 판을 만든다.
 export type ScoreCard={
+ riskEvidenceComplete?:boolean;
  id:string;
  productId:string;
  weightsVersion:string;
