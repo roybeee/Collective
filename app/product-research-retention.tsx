@@ -29,7 +29,7 @@ export function ResearchRetention({canInspect}:{canInspect:boolean}){
    <p><MetaLine items={[report.complete?'조회 범위 확인 완료':'일부 확인',`${report.scanned}건`,dateTime(report.checkedAt)]}/></p>
    {!report.complete&&<p role="status">조회 한도 또는 확인 오류로 일부만 확인했습니다. 전체 자료가 없다는 뜻이 아닙니다.</p>}
    <DataTable rows={report.rows} columns={columns} rowKey={r=>r.kind} caption="수집 자료 보존 현황"/>
-   <p>자동 삭제: 꺼짐. 외부 전송본 삭제: {report.externalDeletion==='unverified'?'확인되지 않음':'이 조회 범위에서 대상 없음'}.</p>
+   <p>자동 보존 처리 설정은 아래에서 확인할 수 있습니다. 외부 전송본 삭제: {report.externalDeletion==='unverified'?'확인되지 않음':'이 조회 범위에서 대상 없음'}.</p>
   </div>}
  </section>;
 }

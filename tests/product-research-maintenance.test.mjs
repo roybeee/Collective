@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {testRuntime} from './helpers/runtime.mjs';
+const {load}=testRuntime(async()=>{throw new Error('Provider must not be called')});
+const queue=await load('lib/product-research/server-maintenance.ts');
+const retention=await load('lib/product-research/server-retention-actions.ts');
+const who={owner:'maintenance-owner',id:'maintenance-owner',role:'owner',email:null};
+assert.equal(await queue.productResearchMaintenanceQueue(who.owner),undefined);
+await retention.retentionAction(who,{action:'configure',automaticEnabled:true,confirmed:true});
+const callback=await queue.productResearchMaintenanceQueue(who.owner);
+assert.equal(typeof callback,'function');
+assert.equal((await callback(who.owner)).status,'idle');
+assert.equal((await retention.retentionView(who.owner)).latestPlan.total,0);
+await retention.retentionAction(who,{action:'configure',automaticEnabled:false,confirmed:true});
+assert.equal(await queue.productResearchMaintenanceQueue(who.owner),undefined);
+console.log(JSON.stringify({passed:5,sqlite:'real',externalCalls:0}));

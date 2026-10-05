@@ -178,6 +178,10 @@
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
+갱신: 2026-10-05 13:00 UTC (Codex: 보존 처리·실제 검증 자료 후속)
+- 기준 main `6f6401a3`(#345 merged, Sites105 published), `codex/research-closeout-workflow`. [보존 계획·적용과 실증 자료 계약](PRODUCT-RESEARCH-VALIDATION.ko.md)을 추가했다. exact scope/TTL/두 잠금/원자 receipt, 기본 OFF 자동 보존 worker 연결, 외부 삭제 운영자 증빙, 법무·정답·블라인드 불변 누적과 기존 출시 원장 조회를 구현했다. 사업/승인/혼합 참조는 보류하고 실제 운영 삭제·수집 재개·실평가 생성은 수행하지 않았다.
+- 신규 서버 보존51/정답37/API16/worker5 및 기존 보존31 passed(real SQLite, 공급자0). UI 연속 정답 저장·새로고침 보존과 OFF 계획을 포함한 모바일/데스크톱 E2E6 passed. 독립 코드/보안 APPROVE. 전체 회귀의 UX 공용부품 예산 실패를 기준 완화 없이 수정했다. 최종 전체367/367 suites·19,726 assertions, 타입·빌드·lint70/39·UX64·프롬프트22·Python13/70/190/38 passed. 마지막 공용부품 변경 뒤 E2E6 재통과. 별도 보안 검토도109개 회귀 후 APPROVE. 이 기록 시 미게시.
+
 갱신: 2026-10-05 (Codex: 상품 리서치 출처 정책 보완)
 - `codex/research-source-policy`, 기준 main `f6a21c4`: 검색광고·YouTube·쇼핑검색 MD 사용 차단, 기존 점수·AI 메모·성장 복사본 재검증, 구형 DataLab 대기 작업 전송 차단, 소유자 읽기 전용 보존 현황을 구현했다. [범위와 운영 잔여](PRODUCT-RESEARCH-SOURCE-POLICY.ko.md). 자동 수집 OFF 유지, 실제 삭제·외부 AI 호출0. 이 기록 시 새 버전 미게시. 검색광고 키 발급은 사용자 약관 동의 뒤 완료했지만 MD 연결은 미실행. 실상품 후보60개는 정답라벨0·실제평가자0이며 과거 매출은 신규 출시 성과가 아니다.
 - 로컬 전체362/362 suites·19,601 assertions passed(실제SQLite/외부mocked). 정책 E2E2 passed(real Chromium·local D1, 인증fixture). 타입·빌드·프롬프트22·lint70/39 기준선 passed. Python worker13/installer70/MAPDAL190/gateway38 passed. 최종 복사본 리뷰 수정은 전용 회귀와 원격 CI로 추가 검증한다. 보존 삭제 plan/apply·법무 승인·실제평가자·신규출시매출은 완료하지 않았다.
