@@ -15,11 +15,12 @@ import {collectSearchadKeywords,collectDatalabSearch,collectDatalabShoppingKeywo
 import {dailyCap,kstWeekKey} from './collectors/quota';
 import type {NaverSearchadCredential,NaverDevelopersCredential,NaverDatalabCredential,YoutubeCredential,CoupangPartnersCredential,ResearchCredential} from './credentials';
 import {normalizeKeyword} from './analytics/normalize';
-import {K,RESEARCH_LOCK_BUSY,RESEARCH_LOCK_LOST,ResearchLockLost,acquireResearchLock,collectEnabled,ensureSnapshotRoom,loadCredential,sourceCredentialKey,markQuotaOk,optional,pruneQuota,putStatement,readSettings,refundQuota,releaseResearchLock,renewOrThrow,reserveQuota,researchEnabled,snapshotStatement} from './server-store';
+import {K,RESEARCH_LOCK_BUSY,RESEARCH_LOCK_LOST,ResearchLockLost,acquireResearchLock,collectEnabled,ensureSnapshotRoom,loadCredential,sourceCredentialKey,markQuotaOk,optional,pruneQuota,putStatement,readSettings,readSnapshots,refundQuota,releaseResearchLock,renewOrThrow,reserveQuota,researchEnabled,snapshotStatement} from './server-store';
 import {loadGroups,loadProducts,referencedSnapshots,type CollectVideo} from './server-pipeline';
 import {refreshScores,weeklyReport,type DerivedState} from './server-ops';
 import {database} from '../server';
 import type {Snapshot,SourceId} from './types';
+import {researchSourcePolicy,snapshotResearchPolicy,SOURCE_POLICY_VERSION} from './source-policy';
 
 export const DAILY={keywords:40,datalabGroups:40,shopKeywords:20,youtubeDiscover:3,trackedVideos:200,videosPerKeyword:10,keywordsPerHint:5,groupsPerDatalab:5,keepRelated:100,shoppingKeywords:20,keywordsPerShopping:5};
 // 데이터랩 쇼핑인사이트(평가 3회차 ①): 조사 방향 카테고리의 씨앗 키워드를 네이버 쇼핑 분야(대분류) 안 키워드 클릭 추세로 받는다(호출당 키워드 5개, 하루 20개 = 4회).
@@ -33,19 +34,19 @@ export const RUN_TIME_BUDGET_MS=90_000;
 export const COUPANG_FOOD_CATEGORY='1012';
 const DAY=86400000;
 
-export type CollectStep=
+export type CollectStep={sourcePolicyVersion?:string;sourceSnapshotIds?:string[]} & (
  |{sourceId:'naver_searchad_keyword';op:'keywordstool';keywords:string[]}
  |{sourceId:'naver_datalab_search';op:'datalab';groups:{groupName:string;keywords:string[]}[]}
  |{sourceId:'naver_datalab_shopping';op:'datalab_shopping';categoryCode:string;keywords:string[]}
  |{sourceId:'naver_shop_search';op:'shop';keyword:string}
  |{sourceId:'youtube_data';op:'yt_search';keyword:string}
  |{sourceId:'youtube_data';op:'yt_track';chunk:number}
- |{sourceId:'coupang_partners';op:'coupang_best';categoryId:string};
+ |{sourceId:'coupang_partners';op:'coupang_best';categoryId:string});
 export type CollectError={message:string;at:string;code:string};
 // pending: 일시 오류로 물러난 단계(출처별 nextAttemptAt 뒤 다시 시도). attempts: 출처별 오늘 일시 오류 횟수(하루 3번이면 그 출처는 오늘 멈춤).
 // failures: 출처별 연속 실패(성공하면 지움) — 화면 경보(alerts)의 since. manualRuns: 오늘 즉시 수집 횟수. weekly: 마지막 주간 MD 리포트.
 export type CollectFailure={since:string;message:string;count:number};
-export type WeeklyReportState={week:string;briefId:string|null;at:string;reason:string|null};
+export type WeeklyReportState={week:string;briefId:string|null;at:string;reason:string|null;sourcePolicyVersion?:string};
 // calibration·outcomes(평가 2회차): 마지막 재계산의 데이터랩 보정 보고와 출시 뒤 결과(server-ops.ts refreshScores가 채운다). stoppedAt: 시간 상한으로 멈춘 마지막 시각.
 export type CollectState={day:string|null;plan:CollectStep[];cursor:number;done:boolean;lastRunAt:string|null;nextRunAt:string|null;errors:Partial<Record<SourceId,CollectError>>;skip:SourceId[];videos:CollectVideo[];youtubeCursor:number;
  pending:CollectStep[];nextAttemptAt:Partial<Record<SourceId,string>>;attempts:Partial<Record<SourceId,{day:string;count:number}>>;failures:Partial<Record<SourceId,CollectFailure>>;manualRuns:{day:string;count:number}|null;weekly:WeeklyReportState|null;
@@ -61,10 +62,14 @@ const chunk=<T>(xs:readonly T[],n:number)=>{const out:T[][]=[];for(let i=0;i<xs.
 const cleanKeyword=(k:string)=>k.replace(/[\s,]+/g,'').slice(0,40);
 
 // 오늘 계획. 연결된 출처만, 조사 방향의 카테고리 씨앗 키워드와 상품이 많이 붙은 키워드 묶음 순서다.
-export async function buildPlan(owner:string,state:CollectState,only?:SourceId):Promise<CollectStep[]>{
+export async function buildPlan(owner:string,state:CollectState,only?:SourceId,now=Date.now()):Promise<CollectStep[]>{
  const settings=await readSettings(owner),[groups,products]=await Promise.all([loadGroups(owner),loadProducts(owner)]);
  const linked=new Map<string,number>();for(const p of products)for(const g of p.keywordGroupIds)linked.set(g,(linked.get(g)??0)+1);
- const ranked=[...groups].sort((a,b)=>(linked.get(b.id)??0)-(linked.get(a.id)??0)||(a.label<b.label?-1:1));
+ const candidates=groups.filter(g=>g.sourcePolicyVersion===SOURCE_POLICY_VERSION&&Array.isArray(g.sourceSnapshotIds)&&g.sourceSnapshotIds.length>0&&g.sourceSnapshotIds.length<=10000&&g.sourceSnapshotIds.every(id=>typeof id==='string'&&id));
+ const ids=[...new Set(candidates.flatMap(g=>g.sourceSnapshotIds??[]))];
+ const snapshots=ids.length<=10000?await readSnapshots(owner,ids):new Map<string,Snapshot>();
+ const eligible=candidates.filter(g=>g.sourceSnapshotIds!.every(id=>snapshotResearchPolicy(snapshots.get(id),now).allowed));
+ const ranked=[...eligible].sort((a,b)=>(linked.get(b.id)??0)-(linked.get(a.id)??0)||(a.label<b.label?-1:1));
  const seeds=CATEGORIES.filter(c=>settings.categories.includes(c.id)).flatMap(c=>c.seedKeywords);
  const keywords:string[]=[],seen=new Set<string>();
  for(const k of [...seeds,...ranked.map(g=>g.label)]){const c=cleanKeyword(k),n=normalizeKeyword(c);if(!c||!n||seen.has(n))continue;seen.add(n);keywords.push(c);if(keywords.length>=DAILY.keywords)break}
@@ -83,7 +88,7 @@ export async function buildPlan(owner:string,state:CollectState,only?:SourceId):
  }
  const connected=async(key:CredentialKey)=>!!await optional(owner,K.credential,key);
  const steps:CollectStep[]=[];
- const want=(id:SourceId)=>!only||only===id;
+ const want=(id:SourceId)=>researchSourcePolicy(id).allowed&&(!only||only===id);
  if(want('naver_searchad_keyword')&&await connected('naver_searchad'))for(const part of chunk(keywords,DAILY.keywordsPerHint))steps.push({sourceId:'naver_searchad_keyword',op:'keywordstool',keywords:part});
  if(await connected('naver_api_hub')||await connected('naver_developers')){
   if(want('naver_datalab_search'))for(const part of chunk(dlGroups,DAILY.groupsPerDatalab))steps.push({sourceId:'naver_datalab_search',op:'datalab',groups:part});
@@ -94,7 +99,7 @@ export async function buildPlan(owner:string,state:CollectState,only?:SourceId):
   for(let c=0;c<Math.ceil(DAILY.trackedVideos/50);c++)steps.push({sourceId:'youtube_data',op:'yt_track',chunk:c});
  }
  if(want('coupang_partners')&&await connected('coupang_partners')&&CATEGORIES.some(c=>settings.categories.includes(c.id)&&c.group==='food'))steps.push({sourceId:'coupang_partners',op:'coupang_best',categoryId:COUPANG_FOOD_CATEGORY});
- return steps;
+ return steps.map(step=>({...step,sourcePolicyVersion:SOURCE_POLICY_VERSION,sourceSnapshotIds:[...new Set(eligible.flatMap(g=>g.sourceSnapshotIds??[]))]}));
 }
 
 // 검색광고 응답은 연관 키워드가 최대 1,000개라 힌트와 검색수 상위 100개만 저장한다(본문 해시·크기는 원래 응답 그대로).
@@ -166,6 +171,14 @@ export async function runSteps(owner:string,state:CollectState,budget:number,dep
    if(skip&&!state.skip.includes(src))state.skip.push(src);
    if(skip)state.pending=state.pending.filter(p=>p.sourceId!==src);
   };
+  const policy=researchSourcePolicy(src);
+  if(!policy.allowed||['yt_search','yt_track','keywordstool'].includes(step.op)){fail('source_policy_blocked',policy.reason??'현재 수집 정책에서 허용되지 않은 작업입니다.',true);continue}
+  if(src==='naver_datalab_search'||src==='naver_datalab_shopping'){
+   const refs=step.sourceSnapshotIds;
+   if(step.sourcePolicyVersion!==SOURCE_POLICY_VERSION||!Array.isArray(refs)||refs.length>10000||refs.some(id=>typeof id!=='string'||!id)){fail('source_policy_outdated','이전 정책의 수집 작업을 보류했습니다. 현재 정책으로 새 수집 계획을 만든 뒤 다시 시도하세요.',true);continue}
+   const evidence=await readSnapshots(owner,refs);
+   if(refs.some(id=>!snapshotResearchPolicy(evidence.get(id),now.getTime()).allowed)){fail('source_policy_blocked','수집 키워드의 원본 근거가 현재 정책을 통과하지 못해 전송을 보류했습니다.',true);continue}
+  }
   if(!sourceSpec(src).autoFetch){fail('retired','자동 수집이 종료된 출처입니다.',true);continue}
   let cred:ResearchCredential|null;
   try{cred=await credFor(owner,cache,src)}catch(e){fail('credential',e instanceof ApiError?e.message:'저장된 자격증명을 읽지 못했습니다.',true);continue}
@@ -223,7 +236,7 @@ async function weeklyIfDue(owner:string,state:CollectState,now:Date,token:string
  const week=kstWeekKey(now);
  if(!state.done||state.weekly?.week===week)return false;
  const r=await weeklyReport(owner,now);
- state.weekly={week,briefId:r.briefId,at:now.toISOString(),reason:r.reason};
+ state.weekly={week,briefId:r.briefId,at:now.toISOString(),reason:r.reason,sourcePolicyVersion:r.sourcePolicyVersion};
  await renewOrThrow(owner,token);
  await saveState(owner,state);
  return true;
@@ -243,7 +256,7 @@ export async function runProductResearchQueue(owner:string,deps:CollectDeps=defa
   if(state.day!==today){
    await pruneQuota(owner,now);
    state=startDay(state,today);
-   state.plan=await buildPlan(owner,state);
+   state.plan=await buildPlan(owner,state,undefined,deps.now().getTime());
    if(!state.plan.length){state.done=true;state.lastRunAt=now.toISOString();state.nextRunAt=nextKstMidnight(now);await renewOrThrow(owner,token);await saveState(owner,state);await weeklyIfDue(owner,state,now,token);return {status:'idle'}}
   }
   // 물러난 출처만 남았고 아직 때가 아니면 호출 없이 쉰다.
@@ -269,7 +282,7 @@ export async function productResearchQueue(owner:string):Promise<((owner:string)
 // 출처를 고르면 그 출처의 계획만 30단계까지 실행하고 오늘 계획의 위치는 건드리지 않는다. 어느 쪽이든 쿼터 원장의 남은 상한 안에서만 호출한다.
 export async function collectNow(owner:string,sourceId:SourceId|undefined,deps:CollectDeps,token:string){
  if(!await collectEnabled(owner))throw new ApiError(409,'자동 수집 스위치(product_research_collect)가 꺼져 있습니다. 소유자가 켠 뒤 다시 시도하세요.');
- if(sourceId==='naver_shop_search')throw new ApiError(400,'네이버 쇼핑 검색은 서비스 종료로 자동 수집이 중단되었습니다. 과거 수집 자료만 조회할 수 있습니다.');
+ if(sourceId){const policy=researchSourcePolicy(sourceId);if(!policy.allowed)throw new ApiError(400,policy.reason!)}
  if(sourceId&&!sourceSpec(sourceId).autoFetch)throw new ApiError(400,'자동 수집을 하지 않는 출처입니다. 운영자 가져오기를 쓰세요.');
  const now=deps.now(),today=kstDayKey(now);
  let state=await readCollectState(owner);
@@ -278,13 +291,13 @@ export async function collectNow(owner:string,sourceId:SourceId|undefined,deps:C
  let r:{calls:number;stored:number;stopped:'time'|null},remaining:number;
  try{
  if(!sourceId){
-  if(state.day!==today){await pruneQuota(owner,now);state=startDay(state,today);state.plan=await buildPlan(owner,state)}
-  else if(state.done||!state.plan.length){state={...state,cursor:0,done:false,skip:[],pending:[]};state.plan=await buildPlan(owner,state)}
+  if(state.day!==today){await pruneQuota(owner,now);state=startDay(state,today);state.plan=await buildPlan(owner,state,undefined,deps.now().getTime())}
+  else if(state.done||!state.plan.length){state={...state,cursor:0,done:false,skip:[],pending:[]};state.plan=await buildPlan(owner,state,undefined,deps.now().getTime())}
   if(!state.plan.length)throw new ApiError(409,'연결된 자동 수집 출처가 없습니다. 출처 연결에서 키를 먼저 등록하세요.');
   r=await runSteps(owner,state,STEPS_PER_COLLECT_NOW,deps,token);
   remaining=state.plan.length-state.cursor+state.pending.length;
  }else{
-  const plan=await buildPlan(owner,state,sourceId);
+  const plan=await buildPlan(owner,state,sourceId,deps.now().getTime());
   if(!plan.length)throw new ApiError(409,'연결된 자동 수집 출처가 없습니다. 출처 연결에서 키를 먼저 등록하세요.');
   const daily={plan:state.plan,cursor:state.cursor,pending:state.pending,skip:state.skip};
   state.plan=plan;state.cursor=0;state.pending=[];state.skip=[];

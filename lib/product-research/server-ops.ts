@@ -1,3 +1,4 @@
+import {scoreResearchPolicies,SOURCE_POLICY_VERSION} from './server-policy';
 // 상품 리서치 운영 보강(서버 전용, 평가 1회차). 외부 호출 없음.
 // - 재계산 감싸기(refreshScores): 자사 판매 스냅샷(own_sales) → 이상치 격리(관측 한 점 단위, 상대값은 표시 우선) → 재계산(server-pipeline.ts) → 소싱 연결 보존 → 점수표 색인
 //   → 보정 보고·출시 뒤 결과(수집 상태 pr_collect_state에 덧붙여 저장, 화면 응답 calibration·launchOutcomes).
@@ -20,7 +21,7 @@ const DAY=86400000;
 
 // ── 점수표 색인(pr_score_index): 상품마다 점수표 판 요약을 계산 날짜(UTC)마다 가장 늦은 1개씩 최근 30개(최신순, 현재 판은 늘 맨 앞).
 // 하루에 판이 여러 번 바뀌어도 '6일 이상 앞선 판'(지난주 대비)이 색인에 남는다. 화면은 상품 수만큼만 읽는다(평가 1회차 H6).
-export type ScoreIndexEntry={id:string;total:number|null;momentum:number|null;computedAt:string};
+export type ScoreIndexEntry={sourcePolicyVersion?:string;id:string;total:number|null;momentum:number|null;computedAt:string};
 export type ScoreIndex={productId:string;entries:ScoreIndexEntry[];updatedAt:string};
 export const SCORE_INDEX_DEPTH=30;
 // 현재 판을 맨 앞에 두고, 나머지는 계산 날짜마다 가장 늦은 판 하나만 남긴다.
@@ -31,7 +32,7 @@ function thin(entries:readonly ScoreIndexEntry[],currentId:string|null){
  for(const e of sorted){if(out.length>=SCORE_INDEX_DEPTH)break;const d=e.computedAt.slice(0,10);if(seen.has(e.id)||days.has(d))continue;out.push(e);seen.add(e.id);days.add(d)}
  return out;
 }
-const entryOf=(c:ScoreCard):ScoreIndexEntry=>({id:c.id,total:c.total,momentum:c.subScores.find(s=>s.key==='momentum')?.value??null,computedAt:c.computedAt});
+const entryOf=(c:ScoreCard):ScoreIndexEntry=>({sourcePolicyVersion:SOURCE_POLICY_VERSION,id:c.id,total:c.total,momentum:c.subScores.find(s=>s.key==='momentum')?.value??null,computedAt:c.computedAt});
 const byNewest=(a:ScoreIndexEntry,b:ScoreIndexEntry)=>timeOf(b.computedAt)-timeOf(a.computedAt)||(a.id<b.id?1:-1);
 
 export async function updateScoreIndex(owner:string,at=stamp()){
@@ -46,11 +47,13 @@ export async function updateScoreIndex(owner:string,at=stamp()){
  }
  const pending=products.filter(p=>p.scoreId&&((boot.get(p.id)??index.get(p.id)?.entries??[]).sort(byNewest)[0]?.id!==p.scoreId));
  const cards=await loadScores(owner,pending.map(p=>p.scoreId as string));
+ const policies=await scoreResearchPolicies(owner,[...cards.values()]);
  const rows:{key:string;data:ScoreIndex;at:string}[]=[];
  for(const p of products){
   if(!p.scoreId)continue;
   const prior=(boot.get(p.id)??index.get(p.id)?.entries??[]).slice(),card=cards.get(p.scoreId);
   if(!boot.has(p.id)&&!card)continue;
+  if(card&&!policies.get(card.id)?.allowed)continue;
   const entries=thin([...(card?[entryOf(card)]:[]),...prior.filter(e=>e.id!==card?.id)],p.scoreId);
   rows.push({key:p.id,data:{productId:p.id,entries,updatedAt:at},at});
  }
@@ -171,7 +174,9 @@ async function restoreSourcing(owner:string,links:ReadonlyMap<string,string>,at:
 export const OUTCOME_WEEKS=[4,8,12] as const,OUTCOME_MAX_DECISIONS=200,OUTCOME_MAX_LINES=OWN_SALES_MAX_LINES,OUTCOME_TRUNCATED='집계 한도 초과';
 type Handoff=NonNullable<MdDecision['handoff']>&{candidateId?:string|null;at?:string};
 export async function launchOutcomes(owner:string,now:Date):Promise<LaunchOutcome[]>{
- const handed=(await loadDecisions(owner)).filter(d=>d.handoff).sort((a,b)=>a.decidedAt<b.decidedAt?1:-1).slice(0,OUTCOME_MAX_DECISIONS);
+ let handed=(await loadDecisions(owner)).filter(d=>d.handoff).sort((a,b)=>a.decidedAt<b.decidedAt?1:-1).slice(0,OUTCOME_MAX_DECISIONS);
+ const decisionCards=await loadScores(owner,handed.map(d=>d.scoreCardId));
+ const allowed=await scoreResearchPolicies(owner,[...decisionCards.values()],now.getTime());handed=handed.filter(d=>allowed.get(d.scoreCardId)?.allowed);
  if(!handed.length)return [];
  const products=await readMany<StoredProduct>(owner,K.product,handed.map(d=>d.productId));
  const candidateOf=(d:MdDecision)=>{const h=d.handoff as Handoff,p=products.get(d.productId);return h.candidateId??(p?.sourcing&&p.sourcing.campaignId===h.campaignId?p.sourcing.candidateId:null)};
@@ -217,19 +222,20 @@ export async function weightsCandidate(owner:string,outcomes:readonly LaunchOutc
  const done=outcomes.flatMap(o=>{const w=o.windows.find(x=>x.weeks===RECALIBRATION_WEEKS);return o.sku&&w&&w.complete&&w.revenue!==null?[{decisionId:o.decisionId,productId:o.productId,sku:o.sku,at:o.handedOffAt,revenue:w.revenue}]:[]}).sort((a,b)=>a.at.localeCompare(b.at)||a.decisionId.localeCompare(b.decisionId));
  const decisions=done.length?new Map((await loadDecisions(owner)).map(d=>[d.id,d])):new Map<string,MdDecision>();
  const cards=await loadScores(owner,done.map(x=>decisions.get(x.decisionId)?.scoreCardId??''));
+ const policies=await scoreResearchPolicies(owner,[...cards.values()],now.getTime());
  const rows:RecalibrationRow[]=[],versions=new Set<string>(),products=new Set<string>(),skus=new Set<string>();
  // 반복 승인·겹치는 판매 기간을 독립 표본처럼 세지 않는다. 상품/SKU별 가장 이른 성숙 결과 한 건만 쓴다.
- for(const x of done){const d=decisions.get(x.decisionId),c=cards.get(d?.scoreCardId??'');if(!c||d?.productId!==x.productId||c.productId!==x.productId||products.has(x.productId)||skus.has(x.sku))continue;products.add(x.productId);skus.add(x.sku);versions.add(c.weightsVersion);rows.push({revenue:x.revenue,subScores:Object.fromEntries(c.subScores.map(s=>[s.key,s.value]))})}
+ for(const x of done){const d=decisions.get(x.decisionId),c=cards.get(d?.scoreCardId??'');if(!c||!policies.get(c.id)?.allowed||d?.productId!==x.productId||c.productId!==x.productId||products.has(x.productId)||skus.has(x.sku))continue;products.add(x.productId);skus.add(x.sku);versions.add(c.weightsVersion);rows.push({revenue:x.revenue,subScores:Object.fromEntries(c.subScores.map(s=>[s.key,s.value]))})}
  const baseVersion=versions.size===1?[...versions][0]:'w1',base=WEIGHT_SETS[baseVersion]??WEIGHT_SETS.w1;
  const p=proposeWeights(rows,base,{at:now.toISOString(),baseVersion:WEIGHT_SETS[baseVersion]?baseVersion:'w1'});
  return {...p,caveats:[...p.caveats,'같은 상품 또는 SKU는 가장 이른 성숙 판매 결과 한 건만 사용합니다. 반복 승인과 겹치는 판매 기간은 표본 수를 늘리지 않습니다.',...(versions.size>1?[`결정 때 점수표의 가중치 판이 여러 개(${[...versions].sort().join(', ')})라 w1을 기준으로 제안했습니다.`]:[])]};
 }
 
 // 수집 상태에 파생 값(보정 보고·출시 뒤 결과·가중치 재보정 후보)을 덧붙여 저장한다(다른 필드는 그대로). 상품 리서치 잠금 안에서만 부른다.
-export type DerivedState={calibration:CalibrationReport;outcomes:{at:string;rows:LaunchOutcome[]};recalibration?:WeightsProposalView|null};
+export type DerivedState={calibration:CalibrationReport;outcomes:{at:string;rows:LaunchOutcome[];sourcePolicyVersion?:string};recalibration?:WeightsProposalView|null};
 async function saveDerived(owner:string,derived:DerivedState){
  const cur=await optional<Record<string,unknown>>(owner,K.collectState,'current');
- await putStatement(owner,K.collectState,'current',{...(cur??{}),...derived}).run();
+ await putStatement(owner,K.collectState,'current',{...(cur??{}),...derived,calibration:{...derived.calibration,sourcePolicyVersion:SOURCE_POLICY_VERSION},outcomes:{...derived.outcomes,sourcePolicyVersion:SOURCE_POLICY_VERSION},recalibration:derived.recalibration?{...derived.recalibration,sourcePolicyVersion:SOURCE_POLICY_VERSION}:null}).run();
 }
 
 // 재계산 감싸기. 모든 재계산 경로(가져오기·확인·브랜드 적합성·격리 해제·재계산 요청·수집 완료)가 이 함수를 쓴다.
@@ -251,7 +257,7 @@ export async function refreshScores(owner:string,now:Date,videos:readonly Collec
   await renew();
   await updateScoreIndex(owner,now.toISOString());
   const outcomes=await launchOutcomes(owner,now);
-  const derived:DerivedState={calibration:summary.calibration,outcomes:{at:now.toISOString(),rows:outcomes},recalibration:await weightsCandidate(owner,outcomes,now)};
+  const derived:DerivedState={calibration:{...summary.calibration,sourcePolicyVersion:SOURCE_POLICY_VERSION},outcomes:{at:now.toISOString(),rows:outcomes,sourcePolicyVersion:SOURCE_POLICY_VERSION},recalibration:{...await weightsCandidate(owner,outcomes,now),sourcePolicyVersion:SOURCE_POLICY_VERSION}};
   await renew();
   await saveDerived(owner,derived);
   const {calibration:_c,...rest}=summary;void _c;
@@ -284,14 +290,14 @@ export async function freshnessView(owner:string,now:Date,sources:readonly Sourc
 // ── 주간 MD 리포트: 도입 검토·관찰 상위 10개(선정 금지 제외)로 결정형 메모를 만든다(모델 호출 없음).
 export const WEEKLY_QUESTION='주간 MD 리포트',WEEKLY_TOP=10;
 const TIER_ORDER:Record<ScoreCard['tier'],number>={adopt:0,watch:1,needs_data:2,reject:3};
-export async function weeklyReport(owner:string,now:Date):Promise<{briefId:string|null;reason:string|null}>{
+export async function weeklyReport(owner:string,now:Date):Promise<{briefId:string|null;reason:string|null;sourcePolicyVersion:string}>{
  const products=await loadProducts(owner),scores=await loadScores(owner,products.map(p=>p.scoreId??''));
  const top=products.flatMap(p=>{const c=p.scoreId?scores.get(p.scoreId):undefined;return c&&(c.tier==='adopt'||c.tier==='watch')&&!c.blocked?[{p,c}]:[]})
   .sort((a,b)=>TIER_ORDER[a.c.tier]-TIER_ORDER[b.c.tier]||(b.c.total??-1)-(a.c.total??-1)||(a.p.id<b.p.id?-1:1)).slice(0,WEEKLY_TOP);
- if(!top.length)return {briefId:null,reason:'도입 검토·관찰 후보가 없어 이번 주 MD 리포트를 만들지 않았습니다.'};
- if(await countKind(owner,K.brief)>=2000)return {briefId:null,reason:'선정 메모 기록 한도(2,000개)에 도달해 이번 주 MD 리포트를 만들지 않았습니다.'};
+ if(!top.length)return {sourcePolicyVersion:SOURCE_POLICY_VERSION,briefId:null,reason:'도입 검토·관찰 후보가 없어 이번 주 MD 리포트를 만들지 않았습니다.'};
+ if(await countKind(owner,K.brief)>=2000)return {sourcePolicyVersion:SOURCE_POLICY_VERSION,briefId:null,reason:'선정 메모 기록 한도(2,000개)에 도달해 이번 주 MD 리포트를 만들지 않았습니다.'};
  const at=now.toISOString();
- let brief;try{brief=templateBrief(WEEKLY_QUESTION,await briefInputs(owner,top.map(x=>x.p.id)),at)}catch(e){return {briefId:null,reason:e instanceof Error?`주간 MD 리포트를 저장하지 않았습니다: ${e.message}`:'주간 MD 리포트를 만들지 못했습니다.'}}
+ let brief;try{brief=templateBrief(WEEKLY_QUESTION,await briefInputs(owner,top.map(x=>x.p.id)),at)}catch(e){return {sourcePolicyVersion:SOURCE_POLICY_VERSION,briefId:null,reason:e instanceof Error?`주간 MD 리포트를 저장하지 않았습니다: ${e.message}`:'주간 MD 리포트를 만들지 못했습니다.'}}
  await database().batch(bulkPut(owner,K.brief,[{key:brief.id,data:brief,at}],'insert_only'));
- return {briefId:brief.id,reason:null};
+ return {sourcePolicyVersion:SOURCE_POLICY_VERSION,briefId:brief.id,reason:null};
 }

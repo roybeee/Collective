@@ -1,3 +1,5 @@
+import {researchSourcePolicy,snapshotResearchPolicy} from './source-policy';
+import {SOURCE_POLICY_VERSION} from './server-policy';
 // 상품 리서치 재계산 파이프라인(서버, 외부 호출 없음). docs/PRODUCT-RESEARCH-PLAN.ko.md 4절.
 // 저장된 스냅샷 → 시계열(buildSeries) → 키워드 묶음(groupKeywords) → 상품 매칭(matchListings, 사람 확인한 묶음은 고정) → 점수표(w1).
 // 점수표 판은 불변이다: 입력 해시(inputDigest)가 같으면 같은 id라 새 판을 만들지 않는다. 상품 id는 목록이 겹치는 기존 상품 id를 이어 쓴다.
@@ -33,16 +35,16 @@ export const SEARCHAD_HINT_METRICS=['search_volume_pc','search_volume_mobile'] a
 const isoAt=(t:number)=>new Date(t).toISOString();
 export function recomputePlan(now:Date):SourceLoad[]{
  const from=isoAt(now.getTime()-RECOMPUTE_WINDOW_DAYS*DAY_MS);
- return [
+ return ([
   {sourceId:'naver_datalab_search',mode:'latest_group',from,cap:300},{sourceId:'naver_datalab_shopping',mode:'latest_group',from,cap:100},
   {sourceId:'own_sales',mode:'latest',from,cap:1},
   {sourceId:'naver_searchad_keyword',mode:'range',from,cap:1200,metrics:SEARCHAD_METRICS,hintMetrics:SEARCHAD_HINT_METRICS},
   {sourceId:'naver_shop_search',mode:'range',from,cap:900},
   {sourceId:'youtube_data',mode:'range',from,cap:900},
   ...RANK_SOURCES.map((sourceId):SourceLoad=>({sourceId,mode:'range',from,cap:600})),
- ];
+ ] as SourceLoad[]).filter(s=>researchSourcePolicy(s.sourceId).allowed);
 }
-export async function loadRecomputeSnapshots(owner:string,now:Date){return loadPlanned(owner,recomputePlan(now))}
+export async function loadRecomputeSnapshots(owner:string,now:Date){return (await loadPlanned(owner,recomputePlan(now))).filter(s=>snapshotResearchPolicy(s,now.getTime()).allowed)}
 
 // 저장 형태: 화면 계약(ResearchProduct)에 현재 점수표 포인터와 사람 브랜드 적합성 판정을 더한다.
 export type BrandFitJudgement={value:number;reason:string;by:{id:string;email:string|null};at:string};
@@ -118,8 +120,8 @@ export function latestDecisions(decisions:readonly MdDecision[]){
 type Material={snapshots:Snapshot[];byId:Map<string,Snapshot>;series:Series[];clusters:KeywordCluster[];listings:Map<string,ListingInput&{priority:number}>;scope:Map<string,Set<string>>;maxTime:number;trendMembers:Map<string,string[]>;trendLabels:Map<string,string>};
 const isListing=(s:Snapshot['observations'][number]['subject']):s is Extract<typeof s,{type:'listing'}>=>s.type==='listing';
 
-export function material(snapshots:readonly Snapshot[]):Material{
- const sorted=[...snapshots].sort((a,b)=>timeOf(a.fetchedAt)-timeOf(b.fetchedAt)||(a.id<b.id?-1:1));
+export function material(snapshots:readonly Snapshot[],now=Date.now()):Material{
+ const sorted=snapshots.filter(s=>snapshotResearchPolicy(s,now).allowed).sort((a,b)=>timeOf(a.fetchedAt)-timeOf(b.fetchedAt)||(a.id<b.id?-1:1));
  const byId=new Map(sorted.map(s=>[s.id,s]));
  const series=buildSeries(sorted);
  // 키워드: 씨앗 + 일부러 추적한 키워드(쇼핑 검색·데이터랩·영상 발견) + 검색광고 검색수 상위.
@@ -200,6 +202,9 @@ function bundleFor(p:ResearchProduct,m:Material,videos:readonly CollectVideo[],b
  const keywordKeys=[...new Set(ordered.flatMap(g=>[`kw:${g.normalized}`,...g.keywords.map(k=>`kw:${normalizeKeyword(k)}`)]))].filter(k=>k!=='kw:');
  const keywords=[...new Set(ordered.flatMap(g=>g.keywords))];
  const listingKeys=p.listings.map(l=>`ls:${l.sourceId}:${l.externalId}`);
+ // 위험 규칙은 수치가 아닌 상품명도 사용한다. 실제 제목이 일치하는 원본 판을 점수 입력에 고정한다.
+ const riskSources=p.listings.map(l=>m.snapshots.filter(s=>s.status!=='failed'&&s.observations.some(o=>o.subject.type==='listing'&&l.sourceId===o.subject.sourceId&&l.externalId===o.subject.externalId&&l.title===o.subject.title)).map(s=>s.id));
+ const riskEvidence=[...new Set(riskSources.flat())],riskEvidenceComplete=riskSources.every(ids=>ids.length>0);
  const market=new Set<string>();
  if(primary)for(const k of primary.keywords){const keys=m.scope.get(normalizeKeyword(k));if(keys)for(const x of keys)market.add(x)}
  const members:Record<string,string[]>={};for(const k of keywordKeys){const ms=m.trendMembers.get(k);if(ms&&!(ms.length===1&&ms[0]===k))members[k]=ms}
@@ -226,7 +231,7 @@ function bundleFor(p:ResearchProduct,m:Material,videos:readonly CollectVideo[],b
   moq=linked.input.moq;leadDays=linked.input.leadDays;
  }else profitReason=linked&&!linked.ok?linked.reason:SOURCING_NEEDED;
  const hint=ctx.brands?brandFitHint({brands:ctx.brands,facts:ctx.brandFacts??[],productName:p.name,categoryLabel:categorySpec(p.categoryId)?.label??null,keywords}):undefined;
- return {productId:p.id,keywords,keywordKeys,listingKeys,series,profit,...(profitAssumed?{profitAssumed}:{}),profitReason,
+ return {productId:p.id,keywords,keywordKeys,listingKeys,series,riskEvidence,riskEvidenceComplete,profit,...(profitAssumed?{profitAssumed}:{}),profitReason,
   feasibility:{moq,leadDays,needsCertification,temperature:p.temperature},
   risk:{regulatory:p.regulatory,regulatorySure:classification.regulatorySure,temperature:p.temperature,titles:p.listings.map(l=>l.title),
    ...(ctx.protectedBrands?{protectedBrands:[...ctx.protectedBrands]}:{}),...(ctx.ownBrands?{ownBrands:[...ctx.ownBrands]}:{})},
@@ -253,6 +258,8 @@ function withCategory(cls:Classification,groupIds:readonly string[],m:Material):
 export type Computed={drafts:Draft[];clusters:KeywordCluster[];groups:KeywordGroup[];material:Material;dropped:string[]};
 // 순수 계산 부분(저장 없음). existing: 저장된 상품, videos: 수집 상태의 추적 영상.
 export function computeProducts(m:Material,existing:readonly StoredProduct[],videos:readonly CollectVideo[],keepIds:ReadonlySet<string>,at:string,ctx:PipelineContext={}):Computed{
+ existing=existing.filter(p=>p.listings.every(l=>researchSourcePolicy(l.sourceId).allowed));
+ videos=[];
  const pinned=existing.filter(isPinned),pinnedKeys=new Set(pinned.flatMap(p=>p.listings.map(l=>`${l.sourceId}:${l.externalId}`)));
  const pool=[...m.listings.entries()].filter(([k])=>!pinnedKeys.has(k)).sort((a,b)=>a[1].priority-b[1].priority||(a[0]<b[0]?-1:1)).slice(0,MAX_AUTO_LISTINGS).map(([,l])=>{const {priority:_p,...rest}=l;void _p;return rest as ListingInput});
  const matched=matchListings(pool,m.clusters).products;
@@ -287,7 +294,8 @@ export function computeProducts(m:Material,existing:readonly StoredProduct[],vid
  let dropped:string[]=[];
  // 조사 방향 밖(filtered) 상품은 지우지 않지만 한도가 넘치면 먼저 뺀다.
  if(drafts.length>MAX_PRODUCTS){const keep=drafts.filter(d=>isPinned(d.product)||keepIds.has(d.product.id)),rest=drafts.filter(d=>!keep.includes(d)).sort((a,b)=>(a.product.filtered?1:0)-(b.product.filtered?1:0));dropped=rest.slice(Math.max(0,MAX_PRODUCTS-keep.length)).map(d=>d.product.id);drafts.splice(0,drafts.length,...keep,...rest.slice(0,Math.max(0,MAX_PRODUCTS-keep.length)))}
- const groups=m.clusters.map(c=>toKeywordGroup(c,at));
+ const sourceSnapshotIds=m.snapshots.map(s=>s.id);
+ const groups=m.clusters.map(c=>({...toKeywordGroup(c,at),sourcePolicyVersion:SOURCE_POLICY_VERSION,sourceSnapshotIds}));
  return {drafts,clusters:m.clusters,groups,material:m,dropped};
 }
 function splitBundle(b:TrendBundle&{asOf:string;profitNotes:string[]}){const {asOf,profitNotes,...bundle}=b;return {bundle,asOf,profitNotes}}
@@ -330,7 +338,7 @@ export type RecomputeSummary={products:number;newScores:number;keywordGroups:num
 // beforeWrite(선택, 평가 3회차 M4): 계산을 마치고 저장 batch 직전에 부른다(잠금 갱신·잃었으면 던짐 → 아무것도 저장하지 않음).
 export async function recompute(owner:string,now=new Date(),videos:readonly CollectVideo[]=[],beforeWrite?:()=>Promise<void>):Promise<RecomputeSummary>{
  const snapshots=await loadRecomputeSnapshots(owner,now);
- const m=material(snapshots),at=now.toISOString();
+ const m=material(snapshots,now.getTime()),at=now.toISOString();
  const [existing,decisions,oldGroups]=await Promise.all([loadProducts(owner),loadDecisions(owner),loadGroups(owner)]);
  const decided=new Set(decisions.map(d=>d.productId));
  const c=computeProducts(m,existing,videos,decided,at,await loadContext(owner,existing,now));
@@ -397,7 +405,7 @@ export function asOfCut(snapshots:readonly Snapshot[],asOf:string):AsOfCut{
   const f=timeOf(s.fetchedAt);
   const obs=s.observations.filter(o=>{
    if(timeOf(o.period.to)>T)return false;
-   const k=subjectKey(o.subject);if(!((first.get(k)??Infinity)<=T)){late.add(k);return false}
+   const k=subjectKey(o.subject);if(!((first.get(k)??Infinity)<=T)){late.add(k);if(f>T)backfilled.add(seriesKey(k,o.metric,s.sourceId));return false}
    if(f<=T)return true;
    // 기준 시점 뒤에 받은 스냅샷의 과거 구간: 쓰지 않는다. 같은 시계열을 기준 시점 이전에 받은 적이 없으면 '소급 이력만 있는 시계열'로 센다.
    const sk=seriesKey(k,o.metric,s.sourceId);if(!early.has(sk))backfilled.add(sk);return false;
@@ -423,11 +431,12 @@ function keywordBundle(c:KeywordCluster,m:Material):ProductBundle|null{
 export type BacktestUniverse={products:number;keywordGroups:number;excludedAfterAsOf:number;notes:string[]};
 // 순수 계산(저장 없음): 스냅샷 → 누설 없는 후보 → 백테스트. 서버 backtest와 합성 하네스가 같이 쓴다.
 export function backtestFromSnapshots(snapshots:readonly Snapshot[],horizonWeeks:number,threshold:number,at:string,videos:readonly CollectVideo[]=[],ctx:Pick<PipelineContext,'protectedBrands'|'ownBrands'>={}):{result:BacktestResult;universe:BacktestUniverse|null;candidates:ProductBundle[];rows:ReturnType<typeof runBacktest>['rows']}{
- const full=material(snapshots);
+ snapshots=snapshots.filter(s=>snapshotResearchPolicy(s,timeOf(at)).allowed);
+ const full=material(snapshots,timeOf(at));
  let first=Infinity,last=0;
  for(const s of full.series)for(const p of s.points)if(p.value!==null){const t=timeOf(p.at);if(t<first)first=t;if(t>last)last=t}
  const H=horizonWeeks*7*DAY_MS,asOfT=last-H;
- const empty=(reason:string):BacktestResult=>({id:shortId('prb',{reason,horizonWeeks,threshold,at:at.slice(0,10)}),weightsVersion:'w1',asOf:Number.isFinite(asOfT)&&asOfT>0?new Date(asOfT).toISOString():at,horizonWeeks,candidates:0,
+ const empty=(reason:string):BacktestResult=>({id:shortId('prb',{reason,horizonWeeks,threshold,at:at.slice(0,10)}),sourcePolicyVersion:SOURCE_POLICY_VERSION,weightsVersion:'w1',asOf:Number.isFinite(asOfT)&&asOfT>0?new Date(asOfT).toISOString():at,horizonWeeks,candidates:0,
   precisionAtK:[{k:10,value:null},{k:20,value:null}],spearman:null,baselines:(['current_top','momentum_only','random'] as const).map(name=>({name,precisionAtK:[{k:10,value:null},{k:20,value:null}]})),
   label:`기준 시점 뒤 ${horizonWeeks}주에 대표 키워드 검색 추세(없으면 순위)가 ${Math.round(threshold*100)}% 이상 오른 상품·키워드 묶음`,computedAt:at,reason});
  const none={universe:null,candidates:[],rows:[]};
@@ -453,7 +462,7 @@ export function backtestFromSnapshots(snapshots:readonly Snapshot[],horizonWeeks
   ]};
  const r=run.result,biased=share!==null&&share>=BACKFILL_SHARE_MAX;
  const nulls=(list:{k:number;value:number|null}[])=>list.map(x=>({k:x.k,value:null}));
- const result:BacktestResult={...r,label:r.label.replace(/상품$/,'상품·키워드 묶음'),universe,
+ const result:BacktestResult={...r,sourcePolicyVersion:SOURCE_POLICY_VERSION,label:r.label.replace(/상품$/,'상품·키워드 묶음'),universe,
   ...(biased?{precisionAtK:nulls(r.precisionAtK),spearman:null,baselines:r.baselines.map(b=>({...b,precisionAtK:nulls(b.precisionAtK)}))}:{}),
   reason:biased?`검색 추세 시계열의 ${Math.round((share as number)*100)}%가 기준 시점 뒤에 추적을 시작해 소급 이력만 있습니다(기준 ${Math.round(BACKFILL_SHARE_MAX*100)}% 이상). 후보 모집단이 나중에 고른 키워드로 치우쳐 정밀도·순위 상관을 계산하지 않았습니다.`
    :r.candidates<10?`평가 가능한 후보가 ${r.candidates}개라 정밀도@10·@20을 계산하지 않았습니다(최소 10개).`:null};
@@ -464,14 +473,14 @@ export function backtestFromSnapshots(snapshots:readonly Snapshot[],horizonWeeks
 // 데이터랩은 묶음마다 최신 1개(정답용 전체 이력) + E−3일 이전에 받은 최신 1개(실제 기준 시점은 E보다 조금 이를 수 있다. 특징·후보는 기준 시점 이전에 받은 이것만 쓴다, asOfCut).
 export function backtestPlan(maxAt:number,horizonWeeks:number):SourceLoad[]{
  const E=maxAt-horizonWeeks*7*DAY_MS,far=isoAt(maxAt-800*DAY_MS),upTo=isoAt(E+2*DAY_MS);
- return [
+ return ([
   {sourceId:'naver_datalab_search',mode:'latest_group',from:far,cap:300},{sourceId:'naver_datalab_search',mode:'latest_group',from:far,to:isoAt(E-3*DAY_MS),cap:300},
   {sourceId:'naver_datalab_shopping',mode:'latest_group',from:far,cap:100},{sourceId:'naver_datalab_shopping',mode:'latest_group',from:far,to:isoAt(E-3*DAY_MS),cap:100},
   {sourceId:'naver_searchad_keyword',mode:'range',from:isoAt(E-75*DAY_MS),to:upTo,cap:1200,metrics:SEARCHAD_METRICS,hintMetrics:SEARCHAD_HINT_METRICS},
   {sourceId:'naver_shop_search',mode:'range',from:isoAt(E-63*DAY_MS),to:upTo,cap:900},
   {sourceId:'youtube_data',mode:'range',from:isoAt(E-49*DAY_MS),to:upTo,cap:700},
   ...RANK_SOURCES.map((sourceId):SourceLoad=>({sourceId,mode:'range',from:isoAt(E-98*DAY_MS),cap:800})),
- ];
+ ] as SourceLoad[]).filter(s=>researchSourcePolicy(s.sourceId).allowed);
 }
 export async function backtest(owner:string,horizonWeeks:4|8|12,threshold:number,now=new Date(),videos:readonly CollectVideo[]=[]):Promise<BacktestResult>{
  const last=await latestSnapshotAt(owner),maxAt=last?Math.min(timeOf(last),now.getTime()):now.getTime();

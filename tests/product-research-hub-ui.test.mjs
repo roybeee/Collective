@@ -9,7 +9,7 @@ const require=createRequire(import.meta.url),React=require('react'),jsx=require(
 const context=createContext({Date,Intl,URL,console}),cache=new Map();
 const keys=['naver_searchad','naver_developers','naver_api_hub','youtube','coupang_partners','licensed'];
 const sources=[{id:'naver_shop_search',label:'네이버 쇼핑 검색',method:'api',autoFetch:false},{id:'naver_datalab_search',label:'네이버 데이터랩 검색어 트렌드',method:'api',autoFetch:true},{id:'naver_datalab_shopping',label:'네이버 데이터랩 쇼핑인사이트',method:'api',autoFetch:true}];
-const api={CREDENTIAL_KEYS:keys,CREDENTIAL_SOURCES:Object.fromEntries(keys.map(k=>[k,k.startsWith('naver')?sources.map(s=>s.id):[]])),REASON_MIN:10,REASON_MAX:500};
+const api={CREDENTIAL_KEYS:keys,CREDENTIAL_SOURCES:Object.fromEntries(keys.map(k=>[k,k==='naver_searchad'?['naver_searchad_keyword']:k.startsWith('naver')?sources.map(s=>s.id):[]])),REASON_MIN:10,REASON_MAX:500};
 function synth(names,values){return new SyntheticModule([...names],function(){for(const name of names)this.setExport(name,values[name]??(()=>''));},{context});}
 function mod(file){file=resolve(file);if(cache.has(file))return cache.get(file);const code=ts.transpileModule(readFileSync(file,'utf8'),{fileName:file,compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;const m=new SourceTextModule(code,{context,identifier:file});m.names=new Map();for(const s of ts.createSourceFile(file,code,ts.ScriptTarget.ES2022).statements){if(!ts.isImportDeclaration(s))continue;const n=new Set();if(s.importClause?.name)n.add('default');for(const e of s.importClause?.namedBindings?.elements??[])n.add((e.propertyName||e.name).text);m.names.set(s.moduleSpecifier.text,n);}cache.set(file,m);return m;}
 const part=tag=>{function Part({children,disabledReason,variant,size,...props}){void variant;void size;return React.createElement(tag,{...props,title:disabledReason},children);}Part.displayName=tag;return Part;};
@@ -30,4 +30,8 @@ test('HUB removal warns that legacy collection continues',()=>{const text=shared
 test('legacy removal preserves preferred HUB collection',()=>{const text=shared.namespace.credentialDisconnectImpact('naver_developers',both);assert.match(text,/NAVER API HUB 키로 계속 수집/);assert.doesNotMatch(text,/이 출처의 자동 수집을 멈춥니다/);});
 test('last key removal stops only its source',()=>{const text=shared.namespace.credentialDisconnectImpact('naver_api_hub',[both[0]]);assert.match(text,/이 출처의 자동 수집을 멈춥니다/);assert.match(text,/이미 모은 스냅샷과 점수/);});
 test('HUB precedence is visible when both keys are connected',()=>assert.match(render({credentials:both}),/NAVER API HUB 키를 우선 사용합니다\. 해제하면 연결된 기존 개발자센터 키를 씁니다\./));
-console.log(JSON.stringify({passed,render:'real React SSR',primitives:'mocked',network:0}));
+const policyReason='광고 관리 목적 제한으로 상품 리서치 연결을 보류합니다.';
+const heldHtml=render({sources:[...view.sources,{...view.sources[0],id:'naver_searchad_keyword'}].map(s=>({...s,policy:{allowed:s.id!=='naver_searchad_keyword',code:s.id==='naver_searchad_keyword'?'source_policy_blocked':null,reason:s.id==='naver_searchad_keyword'?policyReason:null}}))});
+assert.match(heldHtml,/사용 보류:/);
+assert.match(heldHtml,/<input(?=[^>]*name="pr-credential-naver_searchad-apiKey")(?=[^>]*disabled="")[^>]*>/);
+console.log(JSON.stringify({passed:passed+2,render:'real React SSR',primitives:'mocked',network:0}));

@@ -2,13 +2,14 @@
 // 원칙: 공식 API → 계약 데이터 → 운영자 가져오기. robots.txt나 약관이 자동 수집을 막는 곳은 manual로만 둔다(autoFetch:false, hosts 비움).
 // tests/product-research-sources.test.mjs가 manual 출처에 자동 수집 경로가 없는지, 수집기가 레지스트리 밖 호스트를 부르지 않는지 확인한다.
 import type {SourceId,SourceSpec} from './types';
+import {researchSourcePolicy} from './source-policy';
 
 export const SOURCES:readonly SourceSpec[]=[
- {id:'naver_searchad_keyword',label:'네이버 검색광고 키워드 도구',method:'api',autoFetch:true,hosts:['api.searchad.naver.com'],
-  basis:'네이버 검색광고 공식 API(/keywordstool). 광고주 API 키·비밀키·고객 ID로 서명 호출',
+ {id:'naver_searchad_keyword',label:'네이버 검색광고 키워드 도구',method:'api',autoFetch:false,hosts:[],
+  basis:'광고 관리 목적의 별도 검토가 필요하여 상품 리서치 수집·MD·AI 재사용 중단',
   metrics:['search_volume_month','search_volume_pc','search_volume_mobile','ad_competition'],dailyQuota:null,scale:'absolute'},
  {id:'naver_datalab_search',label:'네이버 데이터랩 검색어 트렌드',method:'api',autoFetch:true,hosts:['openapi.naver.com','naverapihub.apigw.ntruss.com'],
-  basis:'네이버 API HUB(/search-trend/v1/search), 기존 개발자센터 연결(/v1/datalab/search). 상대값만 제공해 검색광고 절대값으로 보정',
+  basis:'네이버 API HUB(/search-trend/v1/search), 기존 개발자센터 연결(/v1/datalab/search). 상대값만 제공하며 절대 검색량으로 해석하지 않는다',
   metrics:['search_trend'],dailyQuota:1000,scale:'relative'},
  {id:'naver_datalab_shopping',label:'네이버 데이터랩 쇼핑인사이트',method:'api',autoFetch:true,hosts:['openapi.naver.com','naverapihub.apigw.ntruss.com'],
   basis:'네이버 API HUB(/shopping/v1/categories, /shopping/v1/category/keywords), 기존 개발자센터 연결(/v1/datalab/shopping/*). 쇼핑 클릭 상대값',
@@ -16,8 +17,8 @@ export const SOURCES:readonly SourceSpec[]=[
  {id:'naver_shop_search',label:'네이버 쇼핑 검색',method:'api',autoFetch:false,hosts:[],
   basis:'서비스 종료로 자동 수집을 중단했다. 과거 수집한 상품 수·최저가·판매처 자료만 보존한다',
   metrics:['product_count','seller_count','price_min','price_median'],dailyQuota:0,scale:'absolute'},
- {id:'youtube_data',label:'YouTube 데이터',method:'api',autoFetch:true,hosts:['www.googleapis.com'],
-  basis:'YouTube Data API v3. 하루 10,000단위(search.list 100, videos.list 1). 검색은 아끼고 영상 단위로 추적',
+ {id:'youtube_data',label:'YouTube 데이터',method:'api',autoFetch:false,hosts:[],
+  basis:'YouTube 자료의 상품 리서치 수집·MD·AI 재사용 중단. 기존 자료도 분석 근거에서 제외',
   metrics:['video_views','video_view_velocity','video_count'],dailyQuota:10000,scale:'absolute'},
  {id:'coupang_partners',label:'쿠팡 파트너스',method:'api',autoFetch:true,hosts:['api-gateway.coupang.com'],
   basis:'쿠팡 파트너스 공식 Open API(HMAC 서명). 승인 조건·호출 제한은 발급 화면 기준으로 확인',
@@ -47,6 +48,7 @@ export function sourceSpec(id:SourceId):SourceSpec{
 
 // 자동 수집기가 호출 직전에 부른다. 레지스트리가 허용하지 않은 출처·호스트면 던진다.
 export function assertAutoFetch(id:SourceId,host:string){
+ const policy=researchSourcePolicy(id);if(!policy.allowed)throw new Error(policy.reason!);
  const spec=sourceSpec(id);
  if(!spec.autoFetch||spec.method==='manual'||spec.method==='internal')throw new Error(`${spec.label}은 자동 수집이 허용되지 않습니다.`);
  if(!spec.hosts.includes(host))throw new Error(`${spec.label}의 허용 호스트가 아닙니다: ${host}`);

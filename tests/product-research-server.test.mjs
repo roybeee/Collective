@@ -6,7 +6,7 @@ import {randomUUID,createHash} from 'node:crypto';
 import {testRuntime} from './helpers/runtime.mjs';
 
 const HERMES='https://hermes.example.com';
-const calls=[];const mode={youtubeFail:true,hermes:'fabricate',searchadAuth:false,datalabAuth:false};let runs=0;const runInputs=new Map();
+const calls=[];const mode={youtubeFail:true,shoppingFail:false,hermes:'fabricate',searchadAuth:false,datalabAuth:false};let runs=0;const runInputs=new Map();
 const DAY=86400000,kst=d=>new Date(d.getTime()+9*3600000).toISOString().slice(0,10);
 const json=(v,status=200)=>new Response(JSON.stringify(v),{status,headers:{'content-type':'application/json'}});
 const stub=async(url,init={})=>{
@@ -23,6 +23,7 @@ const stub=async(url,init={})=>{
   return json({startDate:b.startDate,endDate:b.endDate,timeUnit:b.timeUnit,results:out});
  }
  if(u.host==='openapi.naver.com'&&u.pathname==='/v1/datalab/shopping/category/keywords'){
+  if(mode.shoppingFail)return new Response('boom',{status:500});
   const b=JSON.parse(init.body);const out=[];
   for(const k of b.keyword){const data=[];let t=Date.parse(b.startDate+'T00:00:00Z');const end=Date.parse(b.endDate+'T00:00:00Z');while(t<=end){data.push({period:new Date(t).toISOString().slice(0,10),ratio:40});t+=7*DAY}out.push({title:k.name,keyword:k.param,data})}
   return json({startDate:b.startDate,endDate:b.endDate,timeUnit:b.timeUnit,results:out});
@@ -122,15 +123,15 @@ mode.datalabAuth=false;const before=calls.length;
 r=await act('connect_source',{credentialKey:'naver_developers',input:{clientId:'devClientId01',clientSecret:secrets.clientSecret}});
 check(r.status===200&&calls.slice(before).some(c=>c.path==='/v1/datalab/search'),'connect verifies with one real (mocked) datalab call');
 check(r.body.credentials.find(c=>c.key==='naver_developers').connected===true&&r.body.credentials.find(c=>c.key==='naver_developers').account==='Client …Id01','GET shows connected + masked account');
-r=await act('connect_source',{credentialKey:'naver_searchad',input:{apiKey:'searchadApiKey0123456789',secretKey:secrets.secretKey,customerId:'1234567'}});check(r.status===200,'searchad connected');
-r=await act('connect_source',{credentialKey:'youtube',input:{apiKey:secrets.apiKey}});check(r.status===200,'youtube connected (videos.list verification)');
+r=await act('connect_source',{credentialKey:'naver_searchad',input:{apiKey:'searchadApiKey0123456789',secretKey:secrets.secretKey,customerId:'1234567'}});check(r.status===409,'searchad MD connection blocked by policy');
+r=await act('connect_source',{credentialKey:'youtube',input:{apiKey:secrets.apiKey}});check(r.status===409,'youtube MD connection blocked by policy');
 r=await act('connect_source',{credentialKey:'coupang_partners',input:{accessKey:'coupang-access-1',secretKey:secrets.coupangSecret}});check(r.status===200,'coupang connected (search limit=1 verification)');
 r=await act('connect_source',{credentialKey:'licensed',input:{vendor:'아이템스카우트'}});check(r.status===200&&r.body.credentials.find(c=>c.key==='licensed').account==='아이템스카우트','licensed placeholder stored without a call');
 const view=await get(),viewText=JSON.stringify(view.body),dbText=JSON.stringify(sql.prepare("SELECT data FROM records WHERE kind IN ('pr_credential','pr_request')").all());
 check(Object.values(secrets).every(s=>!viewText.includes(s)),'GET never echoes credential secrets');
 check(Object.values(secrets).every(s=>!dbText.includes(s)),'secrets are sealed at rest (not in credential or request rows)');
 check(sealing.SEALED_RECORD_KINDS.includes('pr_credential'),'pr_credential is covered by key rotation (SEALED_RECORD_KINDS)');
-check((await sealing.openRecordSecret(OWNER,'pr_credential','youtube',rec('pr_credential','youtube').secret)).includes(secrets.apiKey),'sealed credential opens with its record AAD');
+check((await sealing.openRecordSecret(OWNER,'pr_credential','naver_developers',rec('pr_credential','naver_developers').secret)).includes(secrets.clientSecret),'sealed credential opens with its record AAD');
 // 관리자(소유자 아님)는 출처 연결 403
 const token='c'.repeat(64);env.AUTH_MODE='email';env.AUTH_ORIGIN='https://agency.test';
 // 같은 작업공간의 첫 관리자가 소유자다. 두 번째 관리자로 로그인한다.
@@ -147,7 +148,7 @@ r=await act('collect_now');check(r.status===409&&/product_research_collect/.test
 check(await collect.productResearchQueue(OWNER)===undefined,'worker queue not offered while collect flag is off');
 await flag('product_research_collect',true);
 check(typeof await collect.productResearchQueue(OWNER)==='function','worker queue offered when both flags are on');
-const c0=calls.length;
+mode.shoppingFail=true;const c0=calls.length;
 r=await act('collect_now');
 check(r.status===200,'collect_now runs');
 const state1=rec('pr_collect_state','current');
@@ -155,27 +156,27 @@ check(state1.plan.length>0&&state1.cursor<=state1.plan.length,'collect plan stor
 // 남은 단계는 워커가 이어 간다
 let ticks=0,st;do{st=await collect.runProductResearchQueue(OWNER);ticks++}while(st.status==='processed'&&ticks<10);
 const waiting=rec('pr_collect_state','current');
-check(['idle','processed'].includes(st.status)&&waiting.done===false&&waiting.pending.length>0&&waiting.pending.every(p=>p.sourceId==='youtube_data')&&typeof waiting.nextAttemptAt.youtube_data==='string','youtube 500 is transient: only its steps wait for the backoff, other sources finished (status stays idle/processed)');
-check(waiting.attempts.youtube_data.count===1&&/다시 시도/.test(waiting.errors.youtube_data.message),'transient failure counts one attempt and says when it retries');
-// 시간이 흘러 재시도 두 번이 더 실패하면(하루 3번) YouTube는 오늘 멈추고 계획이 끝난다. 한국 자정을 넘기면 새 날 계획이라 이 확인은 건너뛴다.
+check(['idle','processed'].includes(st.status)&&waiting.done===false&&waiting.pending.length>0&&waiting.pending.every(p=>p.sourceId==='naver_datalab_shopping')&&typeof waiting.nextAttemptAt.naver_datalab_shopping==='string','shopping 500 is transient: only its steps wait for the backoff, other sources finished (status stays idle/processed)');
+check(waiting.attempts.naver_datalab_shopping.count===1&&/다시 시도/.test(waiting.errors.naver_datalab_shopping.message),'transient failure counts one attempt and says when it retries');
+// 시간이 흘러 재시도 두 번이 더 실패하면(하루 3번) 쇼핑인사이트는 오늘 멈추고 계획이 끝난다. 한국 자정을 넘기면 새 날 계획이라 이 확인은 건너뛴다.
 if(kst(new Date(Date.now()+31*60000))===kst(new Date())){
  for(const m of [6,30]){const later={fetch:stub,now:()=>new Date(Date.now()+m*60000)};let s2,n=0;do{s2=await collect.runProductResearchQueue(OWNER,later);n++}while(s2.status==='processed'&&n<5)}
  const ended=rec('pr_collect_state','current');
- check(ended.done===true&&ended.skip.includes('youtube_data')&&ended.attempts.youtube_data.count===3&&/내일/.test(ended.errors.youtube_data.message),'worker finishes the day plan after 3 transient youtube failures (max 3 attempts/day)');
+ check(ended.done===true&&ended.skip.includes('naver_datalab_shopping')&&ended.attempts.naver_datalab_shopping.count===3&&/내일/.test(ended.errors.naver_datalab_shopping.message),'worker finishes the day plan after 3 transient shopping failures (max 3 attempts/day)');
 }else passed++;
 const made=calls.slice(c0),n=(host,path)=>made.filter(c=>c.host===host&&(!path||c.path===path)).length;
-check(n('api.searchad.naver.com')<=8,'searchad ≤ 8 calls (≤40 keywords, 5 per call)');
+check(n('api.searchad.naver.com')===0,'searchad policy permits no calls');
 check(n('openapi.naver.com','/v1/datalab/search')<=8,'datalab ≤ 8 calls (≤40 groups)');
-check(n('openapi.naver.com','/v1/search/shop.json')<=20,'shop search ≤ 20 keywords');
-check(made.filter(c=>c.path.endsWith('/youtube/v3/search')).length<=3,'youtube discovery ≤ 3 search.list');
+check(n('openapi.naver.com','/v1/search/shop.json')===0,'retired shop permits no calls');
+check(n('www.googleapis.com')===0,'YouTube policy permits no calls');
 check(n('api-gateway.coupang.com')<=1,'coupang best category once');
 const st2=rec('pr_collect_state','current');
-check(st2.errors.youtube_data&&/YouTube/.test(st2.errors.youtube_data.message),'youtube failure recorded per source');
-check(count('pr_snapshot')>10&&sql.prepare("SELECT COUNT(*) n FROM records WHERE kind='pr_snapshot' AND parent_id='naver_shop_search'").get().n===0&&sql.prepare("SELECT COUNT(*) n FROM records WHERE kind='pr_snapshot' AND parent_id='naver_datalab_search'").get().n>0,'other sources kept collecting after youtube failed');
+check(st2.errors.naver_datalab_shopping&&/쇼핑인사이트/.test(st2.errors.naver_datalab_shopping.message),'shopping failure recorded per source');
+check(count('pr_snapshot')>0&&sql.prepare("SELECT COUNT(*) n FROM records WHERE kind='pr_snapshot' AND parent_id='naver_shop_search'").get().n===0&&sql.prepare("SELECT COUNT(*) n FROM records WHERE kind='pr_snapshot' AND parent_id='naver_datalab_search'").get().n>0,'other sources kept collecting after shopping failed');
 const quotaRows=sql.prepare("SELECT data FROM records WHERE kind='pr_quota'").all().map(x=>JSON.parse(x.data));
-check(quotaRows.every(q=>q.sourceId!=='youtube_data'||q.used<=10000)&&quotaRows.every(q=>q.sourceId!=='naver_datalab_search'||q.used<=1000),'quota ledger stays within daily quotas');
+check(quotaRows.every(q=>q.sourceId!=='naver_datalab_shopping'||q.used<=50)&&quotaRows.every(q=>q.sourceId!=='naver_datalab_search'||q.used<=900),'quota ledger stays within daily quotas');
 check((await collect.runProductResearchQueue(OWNER)).status==='idle','second tick the same KST day is idle (once per day)');
-r=await get();check(r.body.collect.lastErrors.some(e=>e.sourceId==='youtube_data')&&r.body.collect.lastRunAt&&r.body.collect.nextRunAt,'view shows collect state and per-source errors');
+r=await get();check(r.body.collect.lastErrors.some(e=>e.sourceId==='naver_datalab_shopping')&&r.body.collect.lastRunAt&&r.body.collect.nextRunAt,'view shows collect state and per-source errors');
 check(r.body.sources.find(s=>s.id==='naver_datalab_search').quotaUsedToday>0&&r.body.sources.find(s=>s.id==='naver_datalab_search').lastStatus,'view shows quota used and last status per source');
 // 쿼터 거절: 오늘 쇼핑 검색 한도를 다 쓴 상태면 호출하지 않는다
 sql.prepare("UPDATE records SET data=json_set(data,'$.used',25000) WHERE kind='pr_quota' AND parent_id='naver_shop_search'").run();

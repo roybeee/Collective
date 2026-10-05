@@ -9,7 +9,7 @@ import {testRuntime} from './helpers/runtime.mjs';
 
 const DAY=86400000,kst=d=>new Date(d.getTime()+9*3600000).toISOString().slice(0,10);
 const kstMonday=d=>{const day=kst(d),t=Date.parse(day+'T00:00:00Z'),dow=(new Date(t).getUTCDay()+6)%7;return new Date(t-dow*DAY).toISOString().slice(0,10)};
-const calls=[];const mode={youtube:'ok'};
+const calls=[];const mode={youtube:'ok',shopping:'ok'};
 const json=(v,status=200)=>new Response(JSON.stringify(v),{status,headers:{'content-type':'application/json'}});
 const stub=async(url,init={})=>{
  const u=new URL(String(url));calls.push({host:u.host,path:u.pathname});
@@ -20,6 +20,7 @@ const stub=async(url,init={})=>{
   return json({startDate:b.startDate,endDate:b.endDate,timeUnit:b.timeUnit,results:out});
  }
  if(u.host==='openapi.naver.com'&&u.pathname==='/v1/datalab/shopping/category/keywords'){
+  if(mode.shopping==='fail')return new Response('boom',{status:503});
   const b=JSON.parse(init.body);const out=[];
   for(const k of b.keyword){const data=[];let t=Date.parse(b.startDate+'T00:00:00Z');const end=Date.parse(b.endDate+'T00:00:00Z');while(t<=end){data.push({period:new Date(t).toISOString().slice(0,10),ratio:40});t+=7*DAY}out.push({title:k.name,keyword:k.param,data})}
   return json({startDate:b.startDate,endDate:b.endDate,timeUnit:b.timeUnit,results:out});
@@ -50,7 +51,7 @@ const count=(o,kind)=>sql.prepare('SELECT COUNT(*) n FROM records WHERE owner=? 
 const on=async(o,...names)=>{for(const flag of names)await flags.setFeatureFlag(o,{flag,enabled:true},{id:o,email:null})};
 const connectAll=async o=>{
  for(const [credentialKey,input] of [['naver_searchad',{apiKey:'searchadApiKey0123456789',secretKey:'SECRETsearchadsecret1234567',customerId:'1234567'}],['naver_developers',{clientId:'devClientId01',clientSecret:'SECRETdevsecret123'}],['youtube',{apiKey:'AIzaSECRETyoutubekey12345'}],['coupang_partners',{accessKey:'coupang-access-1',secretKey:'SECRETcoupang-secret-key'}]]){
-  const r=await post(o,{action:'connect_source',credentialKey,input});assert.equal(r.status,200,`${credentialKey} connect: ${r.body.error}`);
+  const r=await post(o,{action:'connect_source',credentialKey,input});assert.equal(r.status,['naver_searchad','youtube'].includes(credentialKey)?409:200,`${credentialKey} connect: ${r.body.error}`);
  }
 };
 const quotaRows=o=>sql.prepare("SELECT data FROM records WHERE owner=? AND kind='pr_quota'").all(o).map(x=>JSON.parse(x.data));
@@ -70,40 +71,40 @@ const capCell={naver_datalab_shopping:['데이터랩 쇼핑인사이트','50회'
 check(Object.entries(capCell).every(([id,[key,text]])=>docRow(key).includes(text)&&caps[id]===Number(text.replace(/[^\d]/g,''))),'docs/PRODUCT-RESEARCH.ko.md states exactly the caps the code enforces');
 
 const O1='ops-caps';await on(O1,'product_research','product_research_collect');await connectAll(O1);
-mode.youtube='fail';
+mode.shopping='fail';
 const statuses=[];for(let i=0;i<20;i++){const r=await post(O1,{action:'collect_now'});statuses.push(r.status);if(i===3)check(r.status===409&&/하루 3번/.test(r.body.error),'4th collect_now of the KST day is 409 with a Korean reason')}
 check(statuses.filter(s=>s===200).length===3&&statuses.slice(3).every(s=>s===409),'20 consecutive collect_now: only 3 run per KST day');
 const n=(host,path)=>calls.filter(c=>c.host===host&&(!path||c.path===path)).length;
-check(n('api.searchad.naver.com')<=200&&n('openapi.naver.com','/v1/datalab/search')<=900&&n('openapi.naver.com','/v1/datalab/shopping/category/keywords')<=50&&n('openapi.naver.com','/v1/search/shop.json')<=2000&&n('api-gateway.coupang.com')<=100,'provider calls stay under every cap after 20 collect_now');
+check(n('api.searchad.naver.com')===0&&n('www.googleapis.com')===0&&n('openapi.naver.com','/v1/datalab/search')<=900&&n('openapi.naver.com','/v1/datalab/shopping/category/keywords')<=50&&n('openapi.naver.com','/v1/search/shop.json')===0&&n('api-gateway.coupang.com')<=100,'provider calls stay under every cap after 20 collect_now');
 check(quotaRows(O1).every(q=>q.used<=quota.dailyCap(q.sourceId)),'quota ledger never exceeds the app cap');
 let v=await get(O1);
 check(v.body.collectNow.usedToday===3&&v.body.collectNow.maxPerDay===3,'view shows collect_now runs used today');
 check(v.body.sources.find(s=>s.id==='coupang_partners').dailyQuota===100&&v.body.sources.find(s=>s.id==='coupang_ranking_manual').dailyQuota===null,'view shows the enforced daily cap per auto source');
-// 남은 상한만 쓴다: 다른 소유자의 검색광고 원장을 상한-1로 두면 즉시 수집은 검색광고를 1번만 부른다. 쿠팡은 상한을 다 썼으면 0번.
+// 남은 상한만 쓴다: 다른 소유자의 데이터랩 검색어 원장을 상한-1로 두면 즉시 수집은 데이터랩 검색어를 1번만 부른다. 쿠팡은 상한을 다 썼으면 0번.
 const O2='ops-remaining';await on(O2,'product_research','product_research_collect');await connectAll(O2);
 const today=kst(new Date());
-sql.prepare("UPDATE records SET data=json_set(data,'$.used',199,'$.calls',199) WHERE owner=? AND kind='pr_quota' AND parent_id='naver_searchad_keyword'").run(O2);
+sql.prepare("UPDATE records SET data=json_set(data,'$.used',899,'$.calls',899) WHERE owner=? AND kind='pr_quota' AND parent_id='naver_datalab_search'").run(O2);
 sql.prepare("UPDATE records SET data=json_set(data,'$.used',100,'$.calls',100) WHERE owner=? AND kind='pr_quota' AND parent_id='coupang_partners'").run(O2);
-const before2={sa:n('api.searchad.naver.com'),cp:n('api-gateway.coupang.com')};
+const before2={sa:n('openapi.naver.com','/v1/datalab/search'),cp:n('api-gateway.coupang.com')};
 let r=await post(O2,{action:'collect_now'});
-check(r.status===200&&n('api.searchad.naver.com')-before2.sa===1&&n('api-gateway.coupang.com')-before2.cp===0,'collect_now spends only the remaining daily budget (searchad 1 left → 1 call, coupang 0 left → 0 calls)');
-check(/쿼터 상한/.test(rec(O2,'pr_collect_state','current').errors.naver_searchad_keyword.message)&&quotaRows(O2).every(q=>q.used<=quota.dailyCap(q.sourceId)),'cap refusal recorded and ledger stays at the cap');
+check(r.status===200&&n('openapi.naver.com','/v1/datalab/search')-before2.sa===1&&n('api-gateway.coupang.com')-before2.cp===0,'collect_now spends only the remaining daily budget (DataLab search 1 left → 1 call, coupang 0 left → 0 calls)');
+check(/쿼터 상한/.test(rec(O2,'pr_collect_state','current').errors.naver_datalab_search.message)&&quotaRows(O2).every(q=>q.used<=quota.dailyCap(q.sourceId)),'cap refusal recorded and ledger stays at the cap');
 
 // ── ⑪ 일시 오류 재시도·경보·주간 MD 리포트, ② 30일 성공률
 const st1=rec(O1,'pr_collect_state','current');
-check(st1.attempts.youtube_data.count>=1&&st1.failures.youtube_data&&typeof st1.failures.youtube_data.since==='string','youtube 503 counted as a transient attempt with a failure streak');
+check(st1.attempts.naver_datalab_shopping.count>=1&&st1.failures.naver_datalab_shopping&&typeof st1.failures.naver_datalab_shopping.since==='string','shopping 503 counted as a transient attempt with a failure streak');
 v=await get(O1);
-check(v.body.alerts.some(a=>a.sourceId==='youtube_data'&&a.since===st1.failures.youtube_data.since&&a.message),'GET alerts carry the failing source, message and since');
-const fy=v.body.freshness.find(f=>f.sourceId==='youtube_data'),fs=v.body.freshness.find(f=>f.sourceId==='naver_datalab_search');
-check(fs.successRate30d===1&&fs.calls30d>0&&typeof fs.lastOkAt==='string'&&fy.successRate30d<1,'freshness: 30-day success rate per source (shop 100%, youtube below) and lastOkAt');
+check(v.body.alerts.some(a=>a.sourceId==='naver_datalab_shopping'&&a.since===st1.failures.naver_datalab_shopping.since&&a.message),'GET alerts carry the failing source, message and since');
+const fy=v.body.freshness.find(f=>f.sourceId==='naver_datalab_shopping'),fs=v.body.freshness.find(f=>f.sourceId==='naver_datalab_search');
+check(fs.successRate30d===1&&fs.calls30d>0&&typeof fs.lastOkAt==='string'&&fy.successRate30d<1,'freshness: 30-day success rate per source (shop 100%, shopping below) and lastOkAt');
 check(v.body.freshness.find(f=>f.sourceId==='coupang_ranking_manual').successRate30d===null,'freshness: import-only sources have no call success rate (null, not 0)');
 if(kst(new Date(Date.now()+40*60000))===today){
- // 물러난 시간이 지나 YouTube가 회복하면 다음 작업자 순환에서 다시 시도해 성공하고 경보가 사라진다.
- mode.youtube='ok';
+ // 물러난 시간이 지나 쇼핑인사이트가 회복하면 다음 작업자 순환에서 다시 시도해 성공하고 경보가 사라진다.
+ mode.shopping='ok';
  const later={fetch:stub,now:()=>new Date(Date.now()+30*60000)};let s,k=0;do{s=await collect.runProductResearchQueue(O1,later);k++}while(s.status==='processed'&&k<10);
  const st2=rec(O1,'pr_collect_state','current');
- check(st2.done===true&&!st2.failures.youtube_data&&!st2.errors.youtube_data&&!st2.skip.includes('youtube_data'),'after the backoff the next worker tick retries youtube, succeeds and clears the alert');
- check(st2.weekly&&st2.weekly.week===kstMonday(new Date())&&(typeof st2.weekly.briefId==='string'||typeof st2.weekly.reason==='string'),'weekly MD report runs once the day plan is done (KST week starting Monday)');
+ check(st2.done===true&&!st2.failures.naver_datalab_shopping&&!st2.errors.naver_datalab_shopping&&!st2.skip.includes('naver_datalab_shopping'),'after the backoff the next worker tick retries shopping, succeeds and clears the alert');
+ check(st2.weekly&&typeof st2.weekly.sourcePolicyVersion==='string'&&st2.weekly.week===kstMonday(new Date())&&(typeof st2.weekly.briefId==='string'||typeof st2.weekly.reason==='string'),'weekly MD report runs once the day plan is done (KST week starting Monday)');
  const at=st2.weekly.at;await collect.runProductResearchQueue(O1,later);
  check(rec(O1,'pr_collect_state','current').weekly.at===at,'weekly MD report is not regenerated in the same KST week');
  if(st2.weekly.briefId)check(rec(O1,'pr_brief',st2.weekly.briefId).question==='주간 MD 리포트','weekly report stored as pr_brief with the weekly question');else passed++;
@@ -243,20 +244,20 @@ await post(O5,{action:'recompute'});check(count(O5,'pr_snapshot')===1,'unchanged
 // ── ② 이상치 격리(강건 z, MAD)와 사람 해제
 const O6='ops-anomaly';await on(O6,'product_research');
 const snap=(i,text,value)=>{const at=new Date(Date.now()-(10-i)*DAY).toISOString(),d=at.slice(0,10),id=randomUUID();
- sql.prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').run(`${O6}:pr_snapshot:${id}`,O6,'pr_snapshot','naver_searchad_keyword',JSON.stringify({id,sourceId:'naver_searchad_keyword',method:'api',request:{},fetchedAt:at,bodyDigest:'x',bodyBytes:1,status:'ok',limitations:[],importedBy:null,observations:[{subject:{type:'keyword',text},metric:'search_volume_month',value,period:{from:d,to:d}}]}),at);return id};
+ sql.prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').run(`${O6}:pr_snapshot:${id}`,O6,'pr_snapshot','licensed_ranking',JSON.stringify({id,sourceId:'licensed_ranking',method:'licensed',request:{},fetchedAt:at,bodyDigest:'x',bodyBytes:1,status:'ok',limitations:[],importedBy:null,observations:[{subject:{type:'listing',sourceId:'licensed_ranking',externalId:text,title:text,url:null},metric:'sales_estimate',value,period:{from:d,to:d}}]}),at);return id};
 const base=[1000,1010,990,1005,995,1000,1002,998];
 base.forEach((x,i)=>{snap(i,'이상치소스',x);snap(i,'정상소스',x)});
 const spike=snap(8,'이상치소스',50000);snap(8,'정상소스',1080);
 r=await post(O6,{action:'recompute'});
 const qs=sql.prepare("SELECT data FROM records WHERE owner=? AND kind='pr_quarantine'").all(O6).map(x=>JSON.parse(x.data));
-check(r.status===200&&qs.length===1&&qs[0].snapshotId===spike&&qs[0].subjectKey==='kw:이상치소스'&&qs[0].status==='active'&&qs[0].robustZ>5&&qs[0].median===1000,'a point >5 robust z from the last 8 is quarantined (normal series untouched)');
+check(r.status===200&&qs.length===1&&qs[0].snapshotId===spike&&qs[0].subjectKey==='ls:licensed_ranking:이상치소스'&&qs[0].status==='active'&&qs[0].robustZ>5&&qs[0].median===1000,'a point >5 robust z from the last 8 is quarantined (normal series untouched)');
 const filtered=plain(await store.recentSnapshots(O6,new Date(Date.now()-120*DAY).toISOString(),3000)).find(s=>s.id===spike);
 check(filtered.observations.length===0&&filtered.limitations.some(l=>/격리/.test(l)),'quarantined observation is excluded from the scoring input');
 v=await get(O6);
-check(v.body.freshness.find(f=>f.sourceId==='naver_searchad_keyword').quarantined===1&&v.body.quarantines.length===1&&v.body.alerts.some(a=>a.sourceId==='naver_searchad_keyword'&&/격리/.test(a.message)),'GET shows quarantined count, the entry and an alert');
+check(v.body.freshness.find(f=>f.sourceId==='licensed_ranking').quarantined===1&&v.body.quarantines.length===1&&v.body.alerts.some(a=>a.sourceId==='licensed_ranking'&&/격리/.test(a.message)),'GET shows quarantined count, the entry and an alert');
 r=await post(O6,{action:'clear_quarantine',quarantineId:qs[0].id,reason:'짧'});check(r.status===400,'clearing needs a reason');
 r=await post(O6,{action:'clear_quarantine',quarantineId:qs[0].id,reason:'방송 노출로 실제 급증을 확인했습니다.'});
-check(r.status===200&&rec(O6,'pr_quarantine',qs[0].id).status==='cleared'&&rec(O6,'pr_quarantine',qs[0].id).cleared.by.id===O6&&r.body.freshness.find(f=>f.sourceId==='naver_searchad_keyword').quarantined===0,'clear_quarantine records who cleared it and why');
+check(r.status===200&&rec(O6,'pr_quarantine',qs[0].id).status==='cleared'&&rec(O6,'pr_quarantine',qs[0].id).cleared.by.id===O6&&r.body.freshness.find(f=>f.sourceId==='licensed_ranking').quarantined===0,'clear_quarantine records who cleared it and why');
 await post(O6,{action:'recompute'});
 check(rec(O6,'pr_quarantine',qs[0].id).status==='cleared'&&plain(await store.recentSnapshots(O6,new Date(Date.now()-120*DAY).toISOString(),3000)).find(s=>s.id===spike).observations.length===1,'a cleared observation is not re-quarantined and re-enters scoring');
 r=await post(O6,{action:'clear_quarantine',quarantineId:qs[0].id,reason:'두 번째 해제 시도입니다.'});check(r.status===409,'clearing twice is 409');

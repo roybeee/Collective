@@ -6,12 +6,18 @@ import {ApiError,acquireLock,failure,json,releaseLock,requireAdminActor,secureMu
 import {HttpBodyError,readBoundedJson} from '@/lib/http-limits';
 import {researchAction,researchView,ResearchError} from '@/lib/product-research/server';
 
+import {researchRetentionInventory} from '@/lib/product-research/server-retention';
+
 const MAX_BODY=2_200_000;
 const fail=(e:unknown)=>e instanceof ResearchError?json({error:e.message,...e.extra},e.status):failure(e);
 // 성장2 기록(growth_signal·growth_need·growth_history)을 쓰는 작업. 성장 화면(lib/growth-workspace-server.ts)이 소유자 잠금으로 판 번호를 직렬화한다.
 const GROWTH_WRITES=new Set(['handoff']);
 
-export async function GET(req:Request){try{return json(await researchView(await requireAdminActor(req)))}catch(e){return fail(e)}}
+export async function GET(req:Request){try{
+ const who=await requireAdminActor(req);
+ if(new URL(req.url).searchParams.get('view')==='retention'){if(who.role!=='owner')throw new ApiError(403,'소유자만 보존 상태를 확인할 수 있습니다.');return json(await researchRetentionInventory(who.owner))}
+ return json(await researchView(who));
+}catch(e){return fail(e)}}
 
 export async function POST(req:Request){
  let owner='',lock='';

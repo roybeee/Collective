@@ -178,6 +178,10 @@
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
+갱신: 2026-10-05 (Codex: 상품 리서치 출처 정책 보완)
+- `codex/research-source-policy`, 기준 main `f6a21c4`: 검색광고·YouTube·쇼핑검색 MD 사용 차단, 기존 점수·AI 메모·성장 복사본 재검증, 구형 DataLab 대기 작업 전송 차단, 소유자 읽기 전용 보존 현황을 구현했다. [범위와 운영 잔여](PRODUCT-RESEARCH-SOURCE-POLICY.ko.md). 자동 수집 OFF 유지, 실제 삭제·외부 AI 호출0. 이 기록 시 새 버전 미게시. 검색광고 키 발급은 사용자 약관 동의 뒤 완료했지만 MD 연결은 미실행. 실상품 후보60개는 정답라벨0·실제평가자0이며 과거 매출은 신규 출시 성과가 아니다.
+- 로컬 전체362/362 suites·19,601 assertions passed(실제SQLite/외부mocked). 정책 E2E2 passed(real Chromium·local D1, 인증fixture). 타입·빌드·프롬프트22·lint70/39 기준선 passed. Python worker13/installer70/MAPDAL190/gateway38 passed. 최종 복사본 리뷰 수정은 전용 회귀와 원격 CI로 추가 검증한다. 보존 삭제 plan/apply·법무 승인·실제평가자·신규출시매출은 완료하지 않았다.
+
 갱신: 2026-10-04 07:42 UTC (Codex: Sites104 게시·HUB 실제 연결 passed)
 - [#343](https://github.com/roybeee/Collective/pull/343) `f25d2c9` merged → Sites104 published/runtime-verified. [게시·인증 기록](releases/2026-10-04-f25d2c9.md). 최종 CI356/356 suites·19,475 assertions, 타입·빌드·기준선 lint·계약 검사 passed. 전체 원격 E2E는 기록 시 실행 중. 네이버 HUB 두 API 각각 실제 검증1회/성공100%, 키 저장·새로고침 유지 확인. YouTube 연결 유지, 자동 수집 OFF. 검색광고 약관 동의·쿠팡 최종 승인·정책 수정·실평가/판매 근거는 별도 잔여다. 아래는 개발 중 기록이다.
 - 대표의 API 발급·연결 지시와 약관/발급 동의에 따라 NAVER Cloud의 `Collective-Research` Application에 검색어트렌드·쇼핑인사이트를 등록했다(각 월50,000회). `codex/research-naver-api-hub`, 기준 `3634126`에서 별도 HUB 인증 종류·두 API 저장 전 검증·기존 개발자센터 호환과 종료된 쇼핑 검색 호출 차단을 구현 중이다. 실제 키 저장/운영 응답 검증은 게시 후 별도 확인하며 키 원문은 소스에 넣지 않는다.

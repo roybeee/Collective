@@ -15,7 +15,7 @@ const O='bt-owner',who={owner:O,id:O,email:null,role:'owner'};
 await flags.setFeatureFlag(O,{flag:'product_research',enabled:true},{id:O,email:null});
 
 // ── 합성 세계: 오늘(day 89)까지 90일. 키워드 10개(절반은 기준 시점 뒤 상승), 쿠팡 순위 목록 20개, 채움 키워드 30개.
-const now=new Date(),dayAt=i=>new Date(now.getTime()-(89-i)*DAY),iso=d=>d.toISOString(),ymd=t=>new Date(t).toISOString().slice(0,10);
+const now=new Date(),dayAt=i=>new Date(now.getTime()-2*60*60000-(89-i)*DAY),iso=d=>d.toISOString(),ymd=t=>new Date(t).toISOString().slice(0,10);
 const KW=['마라소스','떡볶이소스','불닭소스','굴소스','칠리소스','데리야끼소스','바베큐소스','스리라차','고추장','쌈장'],RISING=new Set(KW.slice(0,5));
 const level=(k,t)=>RISING.has(k)?20*Math.exp(0.02*Math.max(0,t-10)):22+((k.length*7+Math.floor(t/7))%3);
 const ins=sql.prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)');
@@ -61,8 +61,9 @@ check(newest.length===3000&&!newest.some(s=>(s.sourceId==='naver_searchad_keywor
 // ── H4: 출처별 계획으로 읽으면 기준 시점 이전 관측이 남는다
 const latest=await store.latestSnapshotAt(O),plan=PL.backtestPlan(Date.parse(latest),12);
 const snaps=plain(await store.loadPlanned(O,plan));
-check(snaps.some(s=>s.sourceId==='naver_searchad_keyword'&&Date.parse(s.fetchedAt)<=asOfGuess)&&snaps.some(s=>s.sourceId==='coupang_partners'&&Date.parse(s.fetchedAt)<=asOfGuess),'backtest plan loads pre-as-of searchad and rank snapshots per source');
-check(snaps.filter(s=>s.sourceId==='naver_searchad_keyword').every(s=>s.observations.every(o=>o.metric==='search_volume_month'||o.metric==='ad_competition')),'searchad rows are read with only the metrics the pipeline uses (SQL-side observation filter)');
+check(!snaps.some(s=>s.sourceId==='naver_searchad_keyword')&&snaps.some(s=>s.sourceId==='coupang_partners'&&Date.parse(s.fetchedAt)<=asOfGuess),'backtest plan excludes prohibited SearchAd and retains pre-as-of permitted rankings');
+const storageOnly=plain(await store.loadPlanned(O,[{sourceId:'naver_searchad_keyword',mode:'range',from:'2020-01-01',cap:1200,metrics:PL.SEARCHAD_METRICS}]));
+check(storageOnly.length>0&&storageOnly.every(s=>s.observations.every(o=>o.metric==='search_volume_month'||o.metric==='ad_competition')),'historical storage metric projection preserved independently of MD policy');
 const dl=snaps.filter(s=>s.sourceId==='naver_datalab_search');
 check(dl.length<=6&&dl.some(s=>Date.parse(s.fetchedAt)<=asOfGuess)&&dl.some(s=>Date.parse(s.fetchedAt)>=today.getTime()),`datalab: latest snapshot per group plus the latest one before as-of (${dl.length} of ${bySource.naver_datalab_search}), not every daily copy`);
 check(snaps.length<1500,`backtest reads a bounded set (${snaps.length} snapshots instead of ${made})`);

@@ -92,7 +92,9 @@ const kw=(text,metric,value,from,to)=>({subject:{type:'keyword',text},metric,val
  // 검색광고 30일 창 3개(겹치지 않는 달): 마라샹궈는 PC "< 10"(합계 null, 모바일 40), 떡볶이양념은 관측이 없다.
  const sa=[];for(const k of [0,1,2]){const to=end-k*31*DAY,from=to-29*DAY,at=to+DAY;
   sa.push(snap('naver_searchad_keyword',at,{hintKeywords:'마라소스,마라샹궈,떡볶이소스'},[kw('마라소스','search_volume_month',1000,ymd(from),ymd(to)),kw('마라샹궈','search_volume_month',null,ymd(from),ymd(to)),{...kw('마라샹궈','search_volume_pc',null,ymd(from),ymd(to)),underTen:true},kw('마라샹궈','search_volume_mobile',40,ymd(from),ymd(to)),kw('떡볶이소스','search_volume_month',800,ymd(from),ymd(to))]))}
- const m=PL.material([dl,...sa]),rep=plain(PL.calibrationReport(m,'2026-09-28T00:00:00Z'));
+ const filtered=PL.material([dl,...sa]);check(filtered.snapshots.every(s=>s.sourceId!=='naver_searchad_keyword'),'MD excludes SearchAd anchors');
+ // 수학 커널 회귀는 정책을 거치지 않은 명시적 합성 시계열로 보존한다. MD 실행 입력이 아니다.
+ const m={...filtered,series:S.buildSeries([dl,...sa])},rep=plain(PL.calibrationReport(m,'2026-09-28T00:00:00Z'));
  const mara=rep.rows.find(r=>r.label==='마라묶음'),tteok=rep.rows.find(r=>r.label==='떡묶음');
  check(mara&&mara.bounded===1&&mara.missing===0&&typeof mara.error==='number'&&/"< 10"/.test(mara.reason),`(M3) '< 10' keyword enters the group anchor as a bounded value (0~9 → 5) and the row says so: ${JSON.stringify(mara)}`);
  check(tteok&&tteok.error===null&&tteok.missing===1&&/떡볶이양념/.test(tteok.reason)&&/보정하지 않았습니다/.test(tteok.reason),`(M3) a group keyword with no searchad measurement → no calibration, reason names it: ${tteok?.reason}`);
@@ -114,7 +116,8 @@ const kw=(text,metric,value,from,to)=>({subject:{type:'keyword',text},metric,val
  const O='r3-read';const at=new Date(Date.now()-2*DAY).toISOString(),f=ymd(Date.now()-32*DAY),t=ymd(Date.now()-3*DAY);
  const s=snap('naver_searchad_keyword',at,{hintKeywords:'마라소스,떡볶이소스',showDetail:true},['마라소스','떡볶이소스','연관키워드'].flatMap(k=>[kw(k,'search_volume_pc',10,f,t),kw(k,'search_volume_mobile',20,f,t),kw(k,'search_volume_month',30,f,t),kw(k,'ad_competition',0.5,f,t)]));
  put(O,'pr_snapshot',s.id,s,'naver_searchad_keyword',at);
- const got=plain(await PL.loadRecomputeSnapshots(O,new Date()))[0].observations;
+ check((await PL.loadRecomputeSnapshots(O,new Date())).length===0,'MD loading excludes SearchAd');
+ const got=plain(await store.loadPlanned(O,[{sourceId:'naver_searchad_keyword',mode:'range',from:'2020-01-01',cap:10,metrics:PL.SEARCHAD_METRICS,hintMetrics:PL.SEARCHAD_HINT_METRICS}]))[0].observations;
  check(got.filter(o=>o.metric==='search_volume_pc').map(o=>o.subject.text).sort().join()==='떡볶이소스,마라소스'&&got.filter(o=>o.subject.text==='연관키워드').every(o=>o.metric==='search_volume_month'||o.metric==='ad_competition'),'(M3) recompute reads PC/mobile counts only for hint keywords (SQL-side), related keywords keep the two used metrics');
 }
 
@@ -221,7 +224,8 @@ check(readiness.missing.includes('오퍼 가격 승인이 필요합니다.')&&re
  // 서버: 출시 뒤 8주가 지난 넘긴 결정 9개 → 결정 때 점수표 하위 점수와 순매출
  const O='r3-learn',now=new Date(),handedAt=new Date(now.getTime()-70*DAY).toISOString(),orderDay=kst(new Date(now.getTime()-60*DAY));
  for(let i=0;i<9;i++){
-  const card={id:`sc${i}`,productId:`p${i}`,weightsVersion:'w1',computedAt:handedAt,subScores:[['demand',50],['momentum',20+i*5],['durability',40],['competition',null],['profitability',null],['feasibility',60],['content',null],['brand_fit',null],['risk',90]].map(([key,value])=>({key,value,evidence:[],reason:''})),total:50,confidence:0.5,missing:[],blocked:null,tier:'watch',inputDigest:'0'};
+  const evidence=snap('own_sales',handedAt,{},[]);put(O,'pr_snapshot',evidence.id,evidence,'own_sales');
+  const card={id:`sc${i}`,productId:`p${i}`,weightsVersion:'w1',computedAt:handedAt,subScores:[['demand',50],['momentum',20+i*5],['durability',40],['competition',null],['profitability',null],['feasibility',60],['content',null],['brand_fit',null],['risk',90]].map(([key,value])=>({key,value,evidence:[evidence.id],reason:''})),total:50,confidence:0.5,missing:[],blocked:null,tier:'watch',inputDigest:'0'};
   put(O,'pr_score',card.id,card,card.productId);
   put(O,'pr_decision',`d${i}`,{id:`d${i}`,productId:`p${i}`,scoreCardId:card.id,briefId:null,status:'approved',reason:'승인합니다.',decidedBy:{id:O,email:null},decidedAt:handedAt,handoff:{campaignId:'c1',signalId:`s${i}`,needId:null,candidateId:`cand${i}`,at:handedAt}},`p${i}`);
   put(O,'growth_sourcing_candidate',`cand${i}`,{id:`cand${i}`,campaignId:'c1',input:{catalogId:`cat${i}`}},'c1');

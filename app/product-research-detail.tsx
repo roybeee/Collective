@@ -32,6 +32,7 @@ export function CandidateDetail({view,product,act,busy,onBack}:{view:View;produc
     {filtered.length>0&&<p className={s.badges} aria-label="조사 방향 밖 표시">{filtered.map(x=><span key={x} className={'status '+s.warn}>{x}</span>)}</p>}</div>
    <TierBadge card={card}/>
   </div>
+  {product.policyHeld&&<p role="status" className={s.blockNote}>근거 사용 보류: 기존 점수와 선정 결정의 표시를 보류했습니다. 허용된 자료로 점수를 다시 계산하세요.</p>}
   <StatList className={s.stats} label="점수표 요약" items={[['총점',score(card)],['신뢰도',confidence(card)],['지난주 대비 총점',delta?signed(delta.total):'지난주 점수 없음'],['지난주 대비 모멘텀',delta?signed(delta.momentum):'지난주 점수 없음'],['가중치 판',card?.weightsVersion??'미확인'],['계산 시각',dateTime(card?.computedAt)],['비어 있는 자료',card?.missing.length?card.missing.map(k=>subScoreLabels[k]).join(', '):'없음']]}/>
   {card?.blocked&&<p className={s.blockNote} role="note"><b>선정 금지</b> {card.blocked.reason}(규칙 {card.blocked.rule}). 총점과 관계없이 승인할 수 없습니다.</p>}
   {filtered.length>0&&<p className={s.muted}>조사 방향(보관 온도, 가격 상한) 밖이라 목록 뒤로 보냈습니다. 지우지 않았고 결정은 그대로 할 수 있습니다.</p>}

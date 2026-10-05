@@ -34,6 +34,7 @@ export type ScoreInput={
  // 브랜드 적합성 0~100: 대표·MD 또는 모델 판정. 없으면 null.
  brandFit:{value:number;by:string;evidence:string[]}|null;
  risk:RiskResult;
+ riskEvidence?:string[];riskEvidenceComplete?:boolean;
  sources:SourceId[];
  // 추가 필드(선택): 수익성을 계산하지 못한 까닭(예: '소싱 견적 연결 필요'), 브랜드 아카이브 대조 힌트(사람 brand_fit을 채우지 않는다).
  profitReason?:string|null;
@@ -123,7 +124,7 @@ function brandFitScore(i:ScoreInput):SubScore{
 const RISK_SCORE:Record<RiskLevel,number>={low:90,medium:60,high:25,blocked:0};
 function riskScore(i:ScoreInput):SubScore{
  const top=i.risk.items.filter(x=>x.level===i.risk.level);
- return sub('risk',RISK_SCORE[i.risk.level],[],`리스크 ${({low:'낮음',medium:'보통',high:'높음',blocked:'선정 금지'})[i.risk.level]}${top.length&&i.risk.level!=='low'?`: ${top[0].reason}`:''}`);
+ return sub('risk',RISK_SCORE[i.risk.level],i.riskEvidence??[],`리스크 ${({low:'낮음',medium:'보통',high:'높음',blocked:'선정 금지'})[i.risk.level]}${top.length&&i.risk.level!=='low'?`: ${top[0].reason}`:''}`);
 }
 
 export function scoreCard(input:ScoreInput,opts:{weightsVersion?:string;computedAt:string}):ScoreCard{
@@ -147,7 +148,7 @@ export function scoreCard(input:ScoreInput,opts:{weightsVersion?:string;computed
  const high=blocked?[]:input.risk.items.filter(x=>x.level==='high');
  const review=high.length?{rules:[...new Set(high.map(x=>x.rule))],reasons:high.map(x=>x.reason),terms:[...new Set(high.flatMap(reviewTermsFor))]}:null;
  return {id:shortId('prs',{productId:input.productId,version,inputDigest}),productId:input.productId,weightsVersion:version,computedAt:opts.computedAt,subScores:SUB_SCORES.map(k=>byKey.get(k)!),total,confidence,missing:SUB_SCORES.filter(k=>byKey.get(k)!.value===null),blocked,tier,inputDigest,
-  needsReview:review!==null,review,brandFitHint:input.brandFitHint??null};
+  riskEvidenceComplete:input.riskEvidenceComplete??true,needsReview:review!==null,review,brandFitHint:input.brandFitHint??null};
 }
 // 승인 관문(서버가 부른다): 리스크 '높음' 점수표는 확인 표시(acknowledged)와, 높음 항목(규칙)마다 그 위험을 말하는 사유가 있어야 승인할 수 있다.
 // 평가 3회차(낮음): '광고'·'표현'·'리스크'·'위험'처럼 여러 규칙에 걸치는 흔한 말 하나로는 통과하지 않는다. 규칙마다 그 규칙만의 말(의약·치료, 다이어트·감량,
@@ -177,7 +178,7 @@ export function reviewApprovalError(card:Pick<ScoreCard,'needsReview'|'review'>,
 // profitAssumed·profitReason·brandFitHint(추가 필드, 선택): 손익 입력 중 가정값, 수익성 미확인 까닭, 브랜드 아카이브 대조 힌트.
 export type ProductBundle={
  productId:string;keywords:string[];keywordKeys:string[];listingKeys:string[];series:Series[];
- profit:ProfitInput|null;feasibility:ScoreInput['feasibility'];risk:RiskInput;brandFit:ScoreInput['brandFit'];
+ profit:ProfitInput|null;feasibility:ScoreInput['feasibility'];risk:RiskInput;brandFit:ScoreInput['brandFit'];riskEvidence?:string[];riskEvidenceComplete?:boolean;
  profitAssumed?:ProfitAssumption[];profitReason?:string|null;brandFitHint?:BrandFitHint|null;
 };
 const meanIn=(pts:readonly {at:string;value:number|null}[],from:number,to:number)=>{const vs=pts.filter(p=>p.value!==null&&timeOf(p.at)>from&&timeOf(p.at)<=to).map(p=>p.value as number);return vs.length?vs.reduce((a,b)=>a+b,0)/vs.length:null};
@@ -217,7 +218,7 @@ export function buildScoreInput(b:ProductBundle,asOf:string):ScoreInput{
  const compIn=primary?competitionInputFromSeries(frozen,primary,asOf):null;
  const competition=compIn&&(compIn.sellerCount!==null||compIn.productCount!==null||compIn.adCompetition!==null||compIn.listings.length)?assessCompetition(compIn):null;
  return {productId:b.productId,asOf,demand:volume===null?null:{monthlyVolume:Math.round(volume),keywords:[...b.keywords],evidence:uniq(dEv)},trend,rank,video,competition,
-  profit:b.profit?simulateProfit(b.profit,b.profitAssumed??[]):null,feasibility:b.feasibility,brandFit:b.brandFit,risk:assessRisk(b.risk),sources:uniq(frozen.map(s=>s.sourceId)) as SourceId[],
+  profit:b.profit?simulateProfit(b.profit,b.profitAssumed??[]):null,feasibility:b.feasibility,brandFit:b.brandFit,risk:assessRisk(b.risk),riskEvidence:uniq(b.riskEvidence??[]),riskEvidenceComplete:b.riskEvidenceComplete??true,sources:uniq(frozen.map(s=>s.sourceId)) as SourceId[],
   profitReason:b.profit?undefined:b.profitReason??undefined,brandFitHint:b.brandFitHint??undefined};
 }
 export const scoreBundle=(b:ProductBundle,asOf:string,opts:{weightsVersion?:string;computedAt:string})=>scoreCard(buildScoreInput(b,asOf),opts);

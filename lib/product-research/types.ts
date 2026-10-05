@@ -105,6 +105,8 @@ export type Subject=
 
 // 같은 수요를 뜻하는 키워드 묶음.
 export type KeywordGroup={
+ sourcePolicyVersion?:string;
+ sourceSnapshotIds?:string[];
  id:string;
  label:string;
  keywords:string[];
@@ -160,6 +162,7 @@ export type BrandFitHint={score:number|null;memo:string;factIds:string[]};
 
 // 점수표 판(불변). 가중치 판이 바뀌면 새 판을 만든다.
 export type ScoreCard={
+ riskEvidenceComplete?:boolean;
  id:string;
  productId:string;
  weightsVersion:string;
@@ -184,6 +187,8 @@ export type ScoreCard={
 export type ClaimRef={snapshotId:string;subject:string;metric:MetricKey;period?:string};
 // MD 선정 메모 판. 모든 수치는 citations에 있는 스냅샷을 인용한다. refs(추가 필드)는 주장이 가리키는 관측 행이다(스냅샷 전체가 아니라 행 단위로 채점).
 export type MdBrief={
+ sourcePolicyVersion?:string;
+ scoreCardIds?:string[];
  id:string;
  productIds:string[];
  question:string;          // 대표가 준 방향(예: "여름 상온 K-스낵, 2만 원 이하")
@@ -213,6 +218,7 @@ export type MdDecision={
 };
 
 export type BacktestResult={
+ sourcePolicyVersion?:string;
  id:string;
  weightsVersion:string;
  asOf:string;              // 점수 고정 시점
@@ -235,9 +241,9 @@ export type ProductResearchView={
  enabled:boolean;          // 스위치 product_research
  collectEnabled:boolean;   // 스위치 product_research_collect
  focus:{temperature:Temperature[];categories:CategoryId[]};
- sources:{id:SourceId;label:string;method:AccessMethod;connected:boolean;lastFetchedAt:string|null;lastStatus:Snapshot['status']|null;quotaUsedToday:number|null;dailyQuota:number|null}[];
+ sources:{policy?:{allowed:boolean;code:string|null;reason:string|null};id:SourceId;label:string;method:AccessMethod;connected:boolean;lastFetchedAt:string|null;lastStatus:Snapshot['status']|null;quotaUsedToday:number|null;dailyQuota:number|null}[];
  // previousScore(추가 필드): 현재 판보다 6일 이상 먼저 계산된 가장 최근 점수표 판(지난주 대비 상승·하락 표시용). 없으면 null.
- products:(ResearchProduct&{score:ScoreCard|null;decision:MdDecision|null;previousScore?:{total:number|null;momentum:number|null;computedAt:string}|null})[];
+ products:(ResearchProduct&{policyHeld?:boolean;score:ScoreCard|null;decision:MdDecision|null;previousScore?:{total:number|null;momentum:number|null;computedAt:string}|null})[];
  keywordGroups:KeywordGroup[];
  briefs:MdBrief[];
  backtests:BacktestResult[];
