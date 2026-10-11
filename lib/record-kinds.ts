@@ -267,6 +267,11 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'store_report',parent:'store',campaignDeletion:'not_campaign_scoped',description:'지점 조사 보고서'},
  {kind:'store_spend',parent:'store',campaignDeletion:'not_campaign_scoped',description:'지점 비용 장부'},
  {kind:'store_task',parent:'store',campaignDeletion:'not_campaign_scoped',description:'지점 조사 후속 과제'},
+ {kind:'store_growth_profile',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포 성장 기준 판·손익·수용량·점포 원본 판 연결'},
+ {kind:'store_growth_candidate',parent:'store',campaignDeletion:'not_campaign_scoped',description:'공개 사업 지역 협업 후보·출처·견적·권리·확인일 판'},
+ {kind:'store_growth_time',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점주 확인 노동시간·기준 시간·비용 중복 반영 여부'},
+ {kind:'store_growth_comparison',parent:'store',campaignDeletion:'not_campaign_scoped',description:'동일 점포·실험의 완료 기간별 시간·도구 비용 대사 근거'},
+ {kind:'store_growth_link',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포 후보의 기존 캠페인·실험·추적·협업 참조와 브리프'},
  {kind:'team_meeting',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'AI 팀 회의'},
  // 추적 코드(A4)는 주문 장부의 귀속 근거다. 주문 장부 보존 원칙에 맞춰 캠페인을 지워도 남긴다: 코드→캠페인·팔·게시 연결이 남아야 옛 주문의 귀속을 설명할 수 있고,
  // 코드(레코드 id)가 남아 있어 인쇄된 옛 쿠폰·QR 코드가 다른 캠페인에 다시 쓰이지 않는다. 캠페인이 사라진 코드는 자동 귀속에 쓰지 않는다(lib/store-operations-server.ts codeBook).

@@ -233,6 +233,8 @@
 | `lib/eval-*`, `lib/online-grading.ts`, `lib/prompt-registry.ts`, `scripts/eval/` | Q | — | A·R가 고쳐야 하면 Q 칸에 요청한다 |
 
 ## 세션 시작 점검 (모든 레인)
+
+- 점포 성장 보강: codex/store-marketing-growth, /Users/roybee/Collective-store-growth, 기준 eaff4b8. root API·연결·registry·검증, 도메인 worker 성장 순수 모듈·카탈로그, UI worker 신규 성장 화면, 발견 worker 기존 점포 심층조사의 사업후보 구조화, E2E worker 핵심 사용자 흐름. R/Q 제품·프롬프트 수정 없음. scripts/eval/runtime.mjs에는 신규 입력 검증에 쓰는 실제 Zod 모듈의 테스트 어댑터만 추가한다. 로컬 개발 승인, 외부 집행·게시는 별도다.
 1. 이 문서와 [성장1 공통 종료 기준](GROWTH-1-CLOSEOUT.ko.md), STATUS의 자기 레인 칸, 게시 대기열을 읽는다.
 2. `gh pr list`로 다른 레인의 열린 PR이 고치는 파일을 보고, 위 표의 순서를 지킨다.
 3. 다음 일은 자기 레인 개발 순서의 맨 위에서 고른다. 다른 레인 목록의 일은 하지 않는다.

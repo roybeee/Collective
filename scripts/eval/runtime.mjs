@@ -4,6 +4,7 @@ import {readFileSync, readdirSync} from 'node:fs';
 import {resolve, dirname} from 'node:path';
 import {webcrypto, createHash} from 'node:crypto';
 import ts from 'typescript';
+import {z} from 'zod';
 
 // 모의 런타임: 메모리 SQLite(drizzle 마이그레이션) + TypeScript 모듈을 vm 컨텍스트에 올린다. 공급자 호출은 넘겨받은 fetch 스텁만 쓴다.
 // 테스트(tests/helpers/runtime.mjs testRuntime)와 합성 케이스 생성기(scripts/eval/synthesize.mjs)가 함께 쓴다.
@@ -38,6 +39,7 @@ export function moduleRuntime(fetch, hooks = {}, options = {}) {
  const envModule = new SyntheticModule(['env'], function() { this.setExport('env', env); }, {context});
  // next/server의 after()는 응답 뒤 작업을 예약한다. 테스트는 hooks.after로 받거나 실행하지 않는다.
  const nextModule = new SyntheticModule(['after'], function() { this.setExport('after', task => hooks.after?.(task)); }, {context});
+ const zodModule = new SyntheticModule(['z'], function() { this.setExport('z', z); }, {context});
  function moduleFor(file) {
   file = resolve(file);
   if (modules.has(file)) return modules.get(file);
@@ -50,6 +52,7 @@ export function moduleRuntime(fetch, hooks = {}, options = {}) {
   if (mod.status === 'unlinked') await mod.link((spec, ref) => {
    if (spec === 'cloudflare:workers') return envModule;
    if (spec === 'next/server') return nextModule;
+   if (spec === 'zod') return zodModule;
    const path = spec.startsWith('@/') ? resolve(spec.slice(2)) : resolve(dirname(ref.identifier), spec);
    return moduleFor(path.endsWith('.ts') ? path : path + '.ts');
   });

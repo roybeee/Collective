@@ -1,5 +1,9 @@
 # COLLECTIVE 현재 상태
 
+## 점포 성장 운영 보강 (2026-10-11 · Codex)
+
+- 사용자 승인으로 codex/store-marketing-growth, 기준 eaff4b8에서 [점포 성장 계획](STORE-GROWTH-PLAN.ko.md)을 구현·검증했다. 독립 개발 준비도 **4.75/5 APPROVE**. [최종 검증](STORE-GROWTH-VERIFICATION.ko.md): 전체371/371·19,867 assertions, 최종 타입/빌드/lint gate, 실제 로컬 모바일·데스크톱 E2E2 passed. 신규 중요 미해소0, 기존 의존성 취약점은 별도다. 실제 외부 조사·섭외·광고 효과는 not_run, merged/published/runtime-verified는 별도 상태다.
+
 > 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
 
 ## 성장2 원안 전체 재개 (2026-09-30 · Codex)
