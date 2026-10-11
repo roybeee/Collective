@@ -42,7 +42,8 @@ check('prototype keys are not tabs',parseNav('?view=learning&tab=__proto__'),{vi
 check('a tab outside the view allow-list is dropped',parseNav('?view=stores&brand=oda&tab=rules'),{view:'stores',brand:'oda'});
 check('store is ignored on learning',parseNav('?view=learning&brand=oda&store=s1'),{view:'learning',brand:'oda'});
 // ux-2 권고 (3)·ux-5: '주문 장부 열기'는 지점의 주문 장부 탭을, 설정 기능표 링크는 브랜드 아카이브의 확인 사실 탭을 연다. 탭은 화면별 허용 목록만 받는다.
-check('store tabs are an allow-list',[...storeTabs],['diagnosis','ledger','channels','experiments','research','report']);
+check('store tabs are an allow-list',[...storeTabs],['diagnosis','growth','ledger','channels','experiments','research','report']);
+check('store growth navigation survives reload',parseNav('?view=stores&store=s&tab=growth'),{view:'stores',store:'s',tab:'growth'});
 // A8-3: 지점 '고객 보고서' 탭(app/customer-report-panel.tsx). 탭 노출(대표·관리자만)은 화면이 정하고, 주소는 허용 목록만 본다.
 check('store tab \'report\' is allowed in nav-state',[parseNav('?view=stores&brand=oda&store=s1&tab=report'),parseNav('?view=brands&brand=oda&tab=report')],[{view:'stores',brand:'oda',store:'s1',tab:'report'},{view:'brands',brand:'oda'}]);
 check('brand archive tabs are an allow-list',[...brandTabs],['overview','sources','facts','intake','research','interview','voice']);
