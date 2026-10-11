@@ -2,6 +2,16 @@
 
 > 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
 
+## 점포 브라우저 실행 (Codex · 2026-10-12)
+갱신: 2026-10-11 16:06 UTC
+
+- 대표 승인 방향에 따라 `eaff4b8` 기준 `codex/store-browser-execution`, `/Users/roybee/Collective-store-browser`에서 [로컬 ASIDE 실행 경로](STORE-BROWSER.ko.md)를 구현했다. 기본 OFF, 별도 장치 토큰 해시, 점포/프로필 연결, 영업시간 조회·변경안 승인·단일 제출·관리 화면 재로딩 대조·불명확 결과의 조회 복구를 제공한다.
+- 이번 어댑터는 현장에서 관찰한 단일 입력칸만 지원한다. 실제 네이버의 요일별 편집 화면·사진 업로드·공개 플레이스 반영 자동 확인은 후속 범위다. 조사 워커 권한을 확대하지 않았다.
+- 신규 서버29/API7/큐복구1/실행기24 passed(mocked auth/외부 공급자, 실제 메모리 SQL·라우트). 실제 ASIDE 시험3 passed(real local browser, store/API phases mocked), 저장1회. 최종 UI E2E2 passed(real local Chromium/D1, auth fixture), 모바일·데스크톱 승인 후 보존 및 기능 OFF 회수·취소. 타입·빌드·UX64 passed, lint70 errors/39 warnings 기존 기준선 유지. Python 조사 워커13/설치70 passed(mocked gateway/root/network).
+- 독립 코드·보안 재검토 신규 CRITICAL/HIGH/MEDIUM 잔여0. V8 실행 range 측정은 라인·분기 커버리지 80% 달성 증거가 아니다. 기존 의존성 advisory와 workspace audit 명령 오류는 별도 기준선 위험이다.
+- 실제 ASIDE `u0`의 네이버 홈·로그인 화면 접근은 확인했다(real). 관리자 로그인과 검증 대상 점포가 없어 대상 점포 조회·변경 검증은 blocked다. 로그인 정보는 서버에 옮기지 않았다. 운영 변경·병합·게시·runtime-verified는 not_run이다.
+- 전체 회귀는 **failed: 370/371 suites, 19,758 assertions**다. 잔여 1건은 상품 리서치 round2이며 기준 `eaff4b8`의 별도 읽기 사본에서도 같은 실패가 재현됐다. 신규 오류는 수정 후 전용·전체 검사에서 재통과했다. 전체를 passed로 표시하지 않고 검토용 브랜치로 보존한다.
+
 ## 성장2 원안 전체 재개 (2026-09-30 · Codex)
 
 - 대표 지시 “성장2의 원래 개발계획 전체를 개발 지속하라.” `codex/growth2-full`, 기준 `8cc2942`. 아래 과거 “성장2 필수 개발 종료”는 **Meta M0~M6에 한정된 판정**이다. 원안 전체는 미완료다.

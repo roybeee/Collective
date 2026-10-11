@@ -23,6 +23,10 @@ export type SubjectErasure='delete'|'minimize'|'legal_hold'|'none';
 export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;retention?:RetentionPolicy;subjectErasure?:SubjectErasure;description:string};
 
 export const recordKinds:readonly RecordKind[]=[
+ {kind:'store_browser_binding',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포의 네이버 공개·관리 ID, 공식 관리 주소와 지정 로컬 장치·프로필 연결. 캠페인과 무관'},
+ {kind:'store_browser_job',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포 브라우저 조회·영업시간 변경의 승인 판·단일 제출·미확인 대사와 최소 관찰 근거. 캠페인과 무관'},
+ {kind:'store_browser_device',parent:'none',campaignDeletion:'not_campaign_scoped',description:'별도 로컬 장치 인증 해시·프로필·회수 상태. 로그인 쿠키·비밀번호 없음. 캠페인과 무관'},
+ {kind:'store_browser_event',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포 브라우저 작업의 승인·claim·제출·대사·인계 감사 이력. 캠페인과 무관'},
  {kind:'eval_cost_connection',parent:'none',campaignDeletion:'not_campaign_scoped',description:'격리된 평가 공급자 연결·암호화 인증 및 서명 검증 키'},
  {kind:'eval_cost_prepared',parent:'none',campaignDeletion:'not_campaign_scoped',description:'무료 견적·정확한 동결 평가 요청과 1회 실행 연결'},
  {kind:'eval_cost_month',parent:'none',campaignDeletion:'not_campaign_scoped',description:'소유자 UTC 월 원화 상한·예약·확정 비용 원장'},
