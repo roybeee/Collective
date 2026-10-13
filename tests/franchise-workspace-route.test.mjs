@@ -140,4 +140,13 @@ const SCREEN=readFileSync('app/workspace.tsx','utf8'),ITEM=readFileSync('app/fra
 check('WR-W4 the overview hands franchise tasks to the franchise item and keeps campaign tasks as before',SCREEN.includes("t.kind==='franchise'?<FranchiseNextTaskItem key={t.task} task={t}")&&SCREEN.includes('onClick={()=>setSelectedId(t.campaignId)}'));
 check('WR-W5 the item opens the franchise view at the task brand and tab and shows the disclaimer',ITEM.includes("onOpen({view:'franchise',brand:task.brandId,tab:task.tab})")&&ITEM.includes('{task.disclaimer}'));
 
+// ════ WR-V 행사 뒤 48시간 연락(R15a-3): 시작 1시간 뒤 예정 행사 1건 → 모든 역할에 event_followup 1건(행사 탭), 49시간 뒤에는 없음 ════
+check('WR-V0 switch back on for the event follow-up cases',(await f.setFlag(boss,true)).status===200);
+const evNow=f.clock.now(),evStart=new Date(evNow-3600000).toISOString();
+await f.server.recordStatement(WS,'recruitment_event','rv-follow',{id:'rv-follow',brandId:'fr-b',campaignId:'ca-x',type:'briefing',startsAt:evStart,placeLabel:'가상 장소',capacity:10,spendRef:null,counts:{applied:3,attended:2,noShow:1},codes:[],assetRefs:[],status:'scheduled',version:1,createdAt:evStart,updatedAt:evStart},'fr-b').run();
+w=await workspace(member);
+check('WR-V1 an event started one hour ago is an event follow-up task for members too (fr-b, events tab)',byTask(w.body).event_followup?.count===1&&byTask(w.body).event_followup?.brandId==='fr-b'&&!JSON.stringify(w.body.franchiseTasks).includes('가상 장소'));
+setNow(evNow+48*3600000);
+check('WR-V2 after 48 hours from the start the task is gone',!byTask((await workspace(boss)).body).event_followup);
+
 console.log(JSON.stringify({passed:passed.length}));

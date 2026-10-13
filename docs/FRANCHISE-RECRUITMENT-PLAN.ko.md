@@ -1204,6 +1204,11 @@ R4a가 `lib/franchise-rules.ts`에 만들고 R2·R4b가 쓴다. 레코드는 `{i
   - 변이: 1차 54개와 수정 뒤 50개가 모두 잡혔다.
   - 검사: `franchise-ui` 113, `franchise-ui-render` 54, `franchise-recruit-ui` 116(실제 `/api/franchise` 라우트·메모리 SQLite·SSR), `franchise-assets-route` 209, `franchise-model-boundary` 26, `nav-state` 90, `feature-status` 88. 실제 브라우저 E2E는 not_run이다. 가맹 E2E가 없고, 스위치·분기 A·사실·클립보드 준비가 필요하다.
   - 남은 것: R15a-3(워크스페이스 할 일 '행사 뒤 48시간 연락', R6 뒤), 실제 브라우저 확인(게시·스위치 켠 뒤 대표 화면).
+- R15a-3 구현 기록(2026-09-28, passed · mocked):
+  - 워크스페이스 할 일 `event_followup`('행사 뒤 48시간 연락')을 더했다. 예정(취소 아님) 설명회·견학·박람회 가운데 시작 시각 ≤ 지금 < 시작 + 48시간인 행사 수를 브랜드별로 센다. 창은 행사 보기의 `followUps`와 같다. 누르면 가맹 화면의 '행사' 탭으로 간다. 모든 역할에 보인다(행사 탭이 모두에게 열려 있다).
+  - 할 일 종류는 `lib/franchise-tasks.ts`의 `FranchiseNextTask`만 넓혔다(탭 'events' 추가). 레인 A 파일(`lib/workspace-metrics.ts`·`app/api/workspace/route.ts`·`app/workspace.tsx`)은 바꾸지 않았다. 판정은 `lib/franchise-workspace.ts` `eventFollowupCount`(`fr-tasks@2026-09-28.2`)이고, 읽기는 `lib/franchise-workspace-server.ts`가 행사 id·브랜드·시작 시각·상태만 넘긴다. 가명 코드·장소 라벨은 응답에 없다.
+  - 검사: `franchise-workspace` 53(48시간 경계·미래·취소·다른 브랜드 행사, 행사 탭 이동), `franchise-workspace-route` 36(시작 1시간 뒤 행사 1건 → 직원에게도 할 일 1건, 장소 라벨 없음, 48시간 뒤 사라짐).
+  - not_run: 로컬 E2E(다음 할 일 항목 화면은 R6d-1과 같아 새 화면이 없다), 운영 real 확인(게시 뒤).
   - 소유 파일 추가: `lib/franchise-assets-server.ts`(새), `lib/franchise-server.ts`, `lib/franchise.ts`, `app/api/brand-facts/route.ts`(호출 2곳), `lib/record-kinds.ts`(항목 2개, `franchise_audit` 뒤).
   - 대표 결정(2026-09-26, "표시하지마"): 앱 밖으로 내보내는 모집 자료에는 AI 생성물 표시를 붙이지 않고, 화면도 표시 문구를 넣을지 묻지 않는다. 결정 17(앱 발행 캡션의 AI 카피 표시)은 그대로다. 2a는 출처(작업물 id·판·origin)와 `aiGenerated`를 내부 증빙으로만 저장한다(응답·감사에 싣되 자료 본문에는 넣지 않음). 법률 검토(LR-1) 때 함께 확인할 항목으로 남긴다.
 - R15b 결정론 모집 템플릿(R-2, R5 뒤): 사실 카드와 같은 사실 검사를 쓰는 1080×1350·1080×1920 규격, 3~5장 PNG 묶음, R5 유입 코드 QR. 기존 렌더러(`lib/creative-render.ts`)는 고치지 않고 새 파일에 둔다. QR 인코더는 저장소에 없으므로 의존성 추가 여부를 PR 리뷰 포인트로 올린다(`package.json`). 생성형 이미지는 쓰지 않는다(성장 계획 하지 않을 것). 다장 묶음은 내려받아 사람이 올린다(Buffer 다중 이미지 접수는 확인하지 않았다). 점주·대표 인터뷰 영상은 content 역할의 15초 대본(`lib/agency.ts:16`)으로 사람이 촬영하고 완성본 해시를 `recruitment_asset`에 남긴다. 거부: 원장에 없는 수치가 든 카드 400, 유효하지 않은 유입 코드 QR 400.

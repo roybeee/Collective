@@ -20,7 +20,14 @@ check('WT-S1 the display module has no import',!/^\s*import\s/m.test(TASKS_SRC))
 const wsImports=[...WS_SRC.matchAll(/from '\.\/([^']+)'/g)].map(m=>m[1]).sort();
 check('WT-S1 the judgement module imports only pure franchise modules',same(wsImports,['franchise-facts','franchise-gates','franchise-rules','franchise-tasks']));
 check('WT-S1 no clock, storage, network or model call in the judgement module',!/Date\.now|new Date\(\)|database\(|listRecords|fetch\(|isEnabled/.test(WS_SRC));
-check('WT-S1 five task kinds in fixed order',same(tasks.FRANCHISE_TASKS,['unanswered','contract_soon','evidence_gap','registration_due','asset_review']));
+check('WT-S1 six task kinds in fixed order (R15a-3 event follow-up last)',same(tasks.FRANCHISE_TASKS,['unanswered','contract_soon','evidence_gap','registration_due','asset_review','event_followup']));
+// ════ WT-V 행사 뒤 48시간 연락(R15a-3) ════
+const EV=(id,startsAt,x={})=>({id,brandId:'b1',startsAt,status:'scheduled',...x});
+const EVS=[EV('e-now',NOW),EV('e-47h',at(-47*3600000)),EV('e-48h',at(-48*3600000)),EV('e-future',at(3600000)),EV('e-cancel',at(-3600000),{status:'cancelled'}),EV('e-other',at(-3600000),{brandId:'b2'})];
+check('WT-V1 events started within 48 hours count; the exact 48-hour edge, future, cancelled and other-brand events do not',ws.eventFollowupCount('b1',EVS,NOW)===2&&ws.eventFollowupCount('b2',EVS,NOW)===1&&ws.eventFollowupCount('b1',[],NOW)===0&&ws.eventFollowupCount('b1',EVS,'bad')===0);
+check('WT-V2 brand counts carry event_followup and the next task goes to the events tab',ws.brandTaskCounts({brandId:'b1',leads:[],gates:new Map(),registration:null,assets:[],attributed:new Map(),admin:false,events:EVS},NOW).event_followup===2
+ &&(t=>t.length===1&&t[0].task==='event_followup'&&t[0].tab==='events'&&t[0].label==='행사 뒤 48시간 연락'&&t[0].detail.includes('2건'))(plain(tasks.franchiseNextTasks({items:[{task:'event_followup',count:2,brandId:'b1'}],ruleVersion:'x',disclaimer:DISCLAIMER}))));
+check('WT-V3 no events means no event task (field defaults to empty)',ws.brandTaskCounts({brandId:'b1',leads:[],gates:new Map(),registration:null,assets:[],attributed:new Map(),admin:false},NOW).event_followup===0);
 check('WT-S1 thresholds are named constants',tasks.CONTRACT_SOON_DAYS===3&&tasks.REGISTRATION_DUE_DAYS===30&&tasks.H10_REVIEW_AT===20&&tasks.H10_LIMIT===30&&tasks.H10_REVIEW_AT<tasks.H10_LIMIT);
 
 // ════ WT-U 미응대 ════
@@ -76,7 +83,7 @@ const gates=new Map();
 const leads=[lead({id:'u1'}),lead({id:'u2',assigneeId:'m1'}),lead({id:'u3',assigneeId:'m2'}),lead({id:'c1',stage:'draft_provided',firstContactAt:at(-9*DAY)}),lead({id:'g1',stage:'contracted',contractedAt:at(-DAY),firstContactAt:at(-40*DAY)}),lead({id:'g2',stage:'contracted',contractedAt:at(-DAY),firstContactAt:at(-40*DAY)})];
 gates.set('c1',{windowAt:at(2*DAY),complete:null});gates.set('g1',{windowAt:at(-10*DAY),complete:false});gates.set('g2',{windowAt:at(-10*DAY),complete:true});
 const b1=ws.brandTaskCounts({brandId:'b1',leads,gates,registration:{brandId:'b1',versions:[ver('v1',{validUntil:at(20*DAY)})],fiscalYearEnd:null},assets,attributed,admin:true},NOW);
-check('WT-B1 per-brand counts',same(b1,{brandId:'b1',unanswered:3,contract_soon:1,evidence_gap:1,registration_due:1,asset_review:1}));
+check('WT-B1 per-brand counts',same(b1,{brandId:'b1',unanswered:3,contract_soon:1,evidence_gap:1,registration_due:1,asset_review:1,event_followup:0}));
 const memberView=ws.brandTaskCounts({brandId:'b1',leads,gates,registration:{brandId:'b1',versions:[ver('v1',{validUntil:at(20*DAY)})],fiscalYearEnd:null},assets,attributed,admin:false},NOW);
 check('WT-A1 members do not get the registration task (settings are admin-only)',memberView.registration_due===undefined&&memberView.unanswered===3);
 const built=plain(ws.buildWorkspaceTasks([b1,{brandId:'b0',unanswered:3,asset_review:0},{brandId:'b2',unanswered:1,evidence_gap:2}]));

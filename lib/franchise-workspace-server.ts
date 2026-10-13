@@ -12,7 +12,7 @@ import {attributeLead} from './franchise-recruitment';
 import {reportLeadCodes} from './franchise-report';
 import type {VersionLite} from './franchise-facts';
 import type {FranchiseWorkspaceTasks} from './franchise-tasks';
-import {gateCandidate,brandTaskCounts,buildWorkspaceTasks,type TaskGate,type AssetVersionLite,type BrandTaskCounts} from './franchise-workspace';
+import {gateCandidate,brandTaskCounts,buildWorkspaceTasks,type TaskGate,type AssetVersionLite,type BrandTaskCounts,type TaskEvent} from './franchise-workspace';
 
 type Viewer=Who&{owner:string};
 type VersionRow=VersionLite&Record<string,unknown>;
@@ -36,14 +36,14 @@ async function attributedByAsset(owner:string,leads:readonly LeadRecord[],now:st
 }
 async function computeTasks(who:Viewer,now:string):Promise<FranchiseWorkspaceTasks>{
  const admin=isAdminRole(who.role);
- const [leads,versions,profiles,assets]=await Promise.all([listRecords<LeadRecord>(who.owner,'franchise_lead'),admin?listRecords<VersionRow>(who.owner,'franchise_disclosure_version'):Promise.resolve([]),
-  admin?listRecords<ProfileRow>(who.owner,'franchise_profile'):Promise.resolve([]),listRecords<AssetVersionLite>(who.owner,'recruitment_asset')]);
- const brands=[...new Set([...leads.map(l=>l.brandId),...versions.map(v=>v.brandId),...assets.map(a=>a.brandId)])].filter((b):b is string=>typeof b==='string'&&b!=='').sort();
+ const [leads,versions,profiles,assets,events]=await Promise.all([listRecords<LeadRecord>(who.owner,'franchise_lead'),admin?listRecords<VersionRow>(who.owner,'franchise_disclosure_version'):Promise.resolve([]),
+  admin?listRecords<ProfileRow>(who.owner,'franchise_profile'):Promise.resolve([]),listRecords<AssetVersionLite>(who.owner,'recruitment_asset'),listRecords<TaskEvent>(who.owner,'recruitment_event')]);
+ const brands=[...new Set([...leads.map(l=>l.brandId),...versions.map(v=>v.brandId),...assets.map(a=>a.brandId),...events.map(e=>e.brandId)])].filter((b):b is string=>typeof b==='string'&&b!=='').sort();
  const attributed=await attributedByAsset(who.owner,leads,now),rows:BrandTaskCounts[]=[];
  for(const brandId of brands){
   const mine=leads.filter(l=>l.brandId===brandId),visible=mine.filter(l=>canSeeLead(who,l)),profile=profiles.find(p=>p.brandId===brandId);
   const registration={brandId,versions:versions.filter(v=>v.brandId===brandId).map(v=>({id:v.id,brandId:v.brandId,label:v.label,registeredAt:v.registeredAt??null,validFrom:v.validFrom,validUntil:v.validUntil,status:v.status==='retired'?'retired' as const:'active' as const})),fiscalYearEnd:profile?.forecastInputs?.fiscalYearEnd??null};
-  rows.push(brandTaskCounts({brandId,leads:visible,gates:await gatesOf(who.owner,brandId,visible,now),registration,assets,attributed,admin},now));
+  rows.push(brandTaskCounts({brandId,leads:visible,gates:await gatesOf(who.owner,brandId,visible,now),registration,assets,attributed,admin,events:events.map(e=>({id:e.id,brandId:e.brandId,startsAt:e.startsAt,status:e.status}))},now));
  }
  return buildWorkspaceTasks(rows);
 }
