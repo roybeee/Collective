@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Uninstalled example. Replace absolute paths and validate env JSON ownership/mode 0600. -->
+<plist version="1.0"><dict>
+ <key>Label</key><string>com.collective.store-browser-worker</string>
+ <key>ProgramArguments</key><array>
+  <string>/REPLACE/absolute/node</string>
+  <string>/REPLACE/absolute/Collective/scripts/store-browser-worker.mjs</string>
+  <string>--config</string><string>/REPLACE/private/browser-config.json</string>
+  <string>--env-file</string><string>/REPLACE/private/browser-env.json</string>
+  <string>--watch</string>
+ </array>
+ <key>WorkingDirectory</key><string>/REPLACE/absolute/Collective</string>
+ <key>RunAtLoad</key><true/>
+ <key>KeepAlive</key><false/>
+ <key>ProcessType</key><string>Background</string>
+ <key>StandardOutPath</key><string>/REPLACE/private/browser-worker.log</string>
+ <key>StandardErrorPath</key><string>/REPLACE/private/browser-worker-error.log</string>
+</dict></plist>

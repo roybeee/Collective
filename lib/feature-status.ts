@@ -187,6 +187,11 @@ function productResearchRow(flags:unknown):FeatureRow{
  const auto=record(collect)&&collect.enabled===true;
  return {...base,status:'available',reason:[auto?'공식 API 하루 1회 자동 수집(출처별 쿼터 안)':'자동 수집 꺼짐, 운영자 가져오기만','점수표와 선정 메모는 근거 인용 필수','발주·결제·공급자 연락 없음'],link};
 }
+function storeBrowserRow(flags:unknown):FeatureRow{
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='store_browser_execution'):undefined;
+ const reason=!record(state)||typeof state.enabled!=='boolean'?'점포 브라우저 관리 상태를 확인하지 못했습니다':state.enabled?['점포별 관리 주소·장치·브라우저 설정 확인 필요','변경 전후 승인 후 한 번 저장, 결과 미확인은 조회로 확인','실제 네이버 적용 여부는 점포별 작업 근거에서 확인']:['기능 꺼짐','소유자가 켭니다'];
+ return {key:'store-browser',label:'네이버 점포 영업시간 관리(로컬 장치)',flag:'store_browser_execution',status:'blocked',reason,link:{label:'점포 마케팅 채널 점검에서 연결',view:'stores',tab:'channels'}};
+}
 export function featureRows(input:FeatureInput={}):FeatureRow[]{
  const now=typeof input.now==='number'?input.now:Date.now(),brands=brandIds(input.brands);
  return [
@@ -212,6 +217,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   franchiseBenchmarkRow(input.flags),
   reflectorRow(input.flags),
   productResearchRow(input.flags),
+  storeBrowserRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
   {key:'pos-auto',label:'POS 자동 수집',status:'unimplemented',reason:['POS 연동 없음','CSV로 가져오세요']},
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},

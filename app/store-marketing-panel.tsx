@@ -19,6 +19,7 @@ import {channelCatalog,checkStates,tradeAreas,storeFields,storeMetricFields,expe
 import {StoreDiagnosticPanel,StoreLedgerPanel,LedgerMeasurementDialog} from './store-operations-panel';
 import {pushNav} from '@/lib/nav-state';
 import {PlaceCheckPanel} from './place-check-panel';
+import {StoreBrowserPanel} from './store-browser-panel';
 import {ReportTabTrigger,ReportTabContent} from './customer-report-panel';
 import {notifySaved} from '@/lib/ui/notify';
 const empty:StoreData={stores:[],channels:[],experiments:[],measurements:[],reports:[],tasks:[],research:[],sources:[]};
@@ -80,7 +81,9 @@ export function StoreMarketingPanel({workspace,initialBrandId,initialStoreId,ini
     <TabsContent value="research"><div className="section-heading"><h3>점포 조사 기록</h3><Button variant="outline" onClick={()=>void load()}><RefreshCw/>지금 상태 확인</Button></div>{!data.research.length&&<Blank>아직 점포 조사 기록이 없습니다.</Blank>}{data.research.map(r=><article className="store-research-record" key={r.id}><h3>{r.status==='completed'?'조사 결과 저장됨':r.status==='failed'?'조사 중단':r.status==='cancelled'?'사용자 중지':r.status==='uncertain'?'접수 확인 중':'조사 진행 중'}</h3><small><MetaLine items={[new Date(r.createdAt).toLocaleString('ko-KR'),r.model]}/></small>{r.error&&<p className="form-error">{r.error}</p>}{r.steps.map(s=><details key={s.id}><summary><MetaLine items={[researchStages[s.stage],s.status==='completed'?'저장됨':s.status==='pending'?'대기':s.status==='failed'?'중단':'진행 확인']}/></summary><p>{s.summary||'최종 응답을 기다리고 있습니다.'}</p>{s.limitations&&<p className="notice">{s.limitations}</p>}</details>)}</article>)}</TabsContent>
    </Tabs>
    {tab==='channels'&&<PlaceCheckPanel key={store.id} store={store}/>}
+   {tab==='channels'&&<StoreBrowserPanel key={store.id} store={store}/>}
   </>}
+  {!loading&&data.stores.some(s=>s.status==='archived')&&<details><summary>보관한 점포의 네이버 관리</summary>{data.stores.filter(s=>s.status==='archived').map(s=><ArchivedStoreBrowser key={s.id} store={s}/>)}</details>}
   {storeDialog&&<StoreDialog brands={workspace.brands} initial={storeDialog==='new'?undefined:storeDialog} brandId={brandId==='all'?workspace.brands[0]?.id:brandId} canResearch={workspace.connection.configured&&workspace.connection.provider==='hermes'} onClose={()=>setStoreDialog(null)} onSaved={async(id,brand,research)=>{setStoreDialog(null);setBrandId(brand);selectStore(id);if(research)try{await api('start',{id:clientId(),brandId:brand,storeId:id,mode:'deep'},'/api/archive/research');notifySaved('지점을 저장하고 조사를 접수했습니다.')}catch(e){toast.warning('지점은 저장됐습니다. 조사 접수: '+(e as Error).message)}if(research||storeDialog!=='new')await latestLoad.current();scope.current?.(brand,id,false)}}/>}
   {store&&channelDialog&&<ChannelDialog key={channelDialog} store={store} channelKey={channelDialog} initial={data.channels.find(c=>c.key===channelDialog)} onClose={()=>setChannelDialog(null)} onSaved={load}/>}
   {store&&experimentDialog&&<ExperimentDialog store={store} initial={experimentDialog} onClose={()=>setExperimentDialog(null)} onSaved={load}/>}
@@ -89,6 +92,10 @@ export function StoreMarketingPanel({workspace,initialBrandId,initialStoreId,ini
   {store&&closeDialog&&<CloseDialog store={store} experiment={closeDialog} onClose={()=>setCloseDialog(null)} onSaved={load}/>}
   {store&&taskDialog&&<TaskDialog store={store} {...taskDialog} onClose={()=>setTaskDialog(null)} onSaved={load}/>}
  </section>;
+}
+function ArchivedStoreBrowser({store}:{store:Store}){
+ const [open,setOpen]=useState(false);
+ return <details onToggle={e=>{if(e.target===e.currentTarget)setOpen(e.currentTarget.open)}}><summary>{store.name}</summary>{open&&<StoreBrowserPanel store={store}/>}</details>;
 }
 function StoreDialog({brands,initial,brandId,canResearch,onClose,onSaved}:{brands:Brand[];initial?:Store;brandId:string;canResearch:boolean;onClose:()=>void;onSaved:(id:string,brand:string,research:boolean)=>Promise<void>}){
  const [brand,setBrand]=useState(initial?.brandId||brandId),[f,setF]=useState<Record<string,string>>({...Object.fromEntries(Object.keys(storeFields).map(k=>[k,initial?.[k as keyof typeof storeFields]||''])),tradeArea:initial?.tradeArea||'unknown'}),[research,setResearch]=useState(canResearch&&!initial),[busy,setBusy]=useState(false);

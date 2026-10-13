@@ -34,6 +34,7 @@ export const FEATURE_FLAGS={
  product_research:{defaultEnabled:false,description:'상품 리서치 탭과 점수표·MD 선정 메모·선정 결정·운영자 랭킹 가져오기를 켠다. 외부 API 호출은 product_research_collect가 따로 켠다. 발주·결제·공급자 연락 없음.'},
  product_research_collect:{defaultEnabled:false,description:'워커 tick이 하루 1회 공식 API(네이버 검색광고·데이터랩·쇼핑 검색, YouTube, 쿠팡 파트너스)로 상품 리서치 지표를 모은다. 출처별 하루 쿼터 안에서만 호출하고 robots·약관 금지 출처는 부르지 않는다.'},
  publication_auto_link:{defaultEnabled:false,description:'워커가 예약 접수된 발행의 Buffer 상태를 30분마다 확인하고(예약 1시간 전~7일 뒤), 게시 확인·실험 연결·Instagram 게시물 ID가 모두 있는 발행을 그 실험 안의 성과 자동 수집 대상으로 등록한다(PR 4b loop-2). 꺼도 발행–실험 연결과 게시물 ID 입력은 계속된다.'},
+ store_browser_execution:{defaultEnabled:false,description:'등록한 로컬 장치가 지정된 네이버 점포의 영업시간을 조회하고, 관리자가 승인한 전후값만 한 번 저장한다. 대상·판·제출 허가를 확인하며 결과 미확인 작업은 조회로만 대사한다. 로그인·보안 차단은 사람에게 인계한다. 꺼도 기존 결과 조회·장치 회수·미확인 대사는 계속된다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};

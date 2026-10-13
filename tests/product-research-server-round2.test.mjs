@@ -3,7 +3,15 @@
 // 수집 실행 시간 상한·잠금 갱신·잠금을 잃으면 상태 저장 안 함(M4), 넘기기의 소싱 후보 초안(M6)과 출시 뒤 판매 결과(M5), 저장 실패는 성공률에 넣지 않음·손익 변환 메모 보존(낮음).
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {testRuntime} from './helpers/runtime.mjs';
+import {moduleRuntime} from '../scripts/eval/runtime.mjs';
+
+// 주말 CI도 같은 합성 자료를 평가한다. 별도 회귀 검사는 한국 주 경계를 주입한다.
+const RealDate=globalThis.Date,fixtureAt=RealDate.parse(process.env.PRODUCT_RESEARCH_TEST_NOW??'2026-10-13T03:00:00.000Z');
+assert.ok(Number.isFinite(fixtureAt),'fixture clock must be a valid ISO timestamp');
+const Date=class FixtureDate extends RealDate{
+ constructor(...args){super(...(args.length?args:[fixtureAt]))}
+ static now(){return fixtureAt}
+};
 
 const DAY=86400000,kst=d=>new Date(d.getTime()+9*3600000).toISOString().slice(0,10),ymd=t=>new Date(t).toISOString().slice(0,10);
 const json=(v,status=200)=>new Response(JSON.stringify(v),{status,headers:{'content-type':'application/json'}});
@@ -25,7 +33,7 @@ const stub=async(url,init={})=>{
  if(u.host==='api-gateway.coupang.com')return json({rCode:'0',data:[{productId:77,productName:'마라소스 500g',productPrice:3900,productUrl:'https://www.coupang.com/vp/products/77',rank:2}]});
  throw new Error('외부 호출 금지: '+String(url));
 };
-const {sql,load}=testRuntime(stub);
+const {sql,load}=moduleRuntime(stub,{}, {Date});
 const server=await load('lib/server.ts'),flags=await load('lib/feature-flags.ts'),route=await load('app/api/product-research/route.ts');
 const srv=await load('lib/product-research/server.ts'),collect=await load('lib/product-research/server-collect.ts');
 const PL=await load('lib/product-research/server-pipeline.ts'),SC=await load('lib/product-research/analytics/score.ts'),growth=await load('lib/growth-sourcing.ts');
@@ -40,7 +48,8 @@ const rows=(o,kind)=>sql.prepare('SELECT data FROM records WHERE owner=? AND kin
 const count=(o,kind)=>sql.prepare('SELECT COUNT(*) n FROM records WHERE owner=? AND kind=?').get(o,kind).n;
 const on=async(o,...names)=>{for(const flag of names)await flags.setFeatureFlag(o,{flag,enabled:true},{id:o,email:null})};
 const putSnap=(o,s)=>{sql.prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').run(`${o}:pr_snapshot:${s.id}`,o,'pr_snapshot',s.sourceId,JSON.stringify(s),s.fetchedAt);return s.id};
-const snap=(sourceId,fetchedAt,request,observations)=>({id:randomUUID(),sourceId,method:'api',request,fetchedAt,bodyDigest:'0'.repeat(64),bodyBytes:10,status:'ok',limitations:[],importedBy:null,observations});
+// 주 끝 다음 날 수집한 합성 자료가 월요일 이른 실행 시각보다 미래가 되지 않게 한다.
+const snap=(sourceId,fetchedAt,request,observations)=>({id:randomUUID(),sourceId,method:'api',request,fetchedAt:new Date(Math.min(Date.parse(fetchedAt),fixtureAt-1)).toISOString(),bodyDigest:'0'.repeat(64),bodyBytes:10,status:'ok',limitations:[],importedBy:null,observations});
 const kwObs=(text,metric,value,from,to)=>({subject:{type:'keyword',text},metric,value,period:{from,to}});
 const now=new Date(),todayT=Date.parse(kst(now)+'T00:00:00Z');
 // 지난 일요일(주 끝)과 그 주들
@@ -107,11 +116,13 @@ const CAL=await load('lib/product-research/analytics/calibrate.ts'),pt=(at,value
 check(JSON.stringify(plain(CAL.sumAnchors([[pt('2026-09-01',10,'a'),pt('2026-09-02',11,'a2')],[pt('2026-09-01',5,'b')],[pt('2026-08-01',7,'c')]])))===JSON.stringify([pt('2026-09-01',15,'a')]),'sumAnchors adds only dates every kept keyword has (a keyword with no overlapping date is dropped, never counted as 0)');
 check(CAL.sumAnchors([[pt('2026-09-01',null,'a')],[pt('2026-09-01',5,'b')]]).length===0,'a missing (null) value is not summed as 0');
 check(PL.calibrationReport(m2,'x').rows.length===1&&PL.calibrationReport({...m2,trendMembers:new Map()},'x').rows.length===1,'calibration report works with or without a group composition');
+check([O1,O2].flatMap(o=>rows(o,'pr_snapshot')).every(s=>Date.parse(s.fetchedAt)<fixtureAt),'anomaly and calibration fixtures never contain snapshots fetched after the evaluation clock');
 
 // ── M4 실행 시간 상한(주입한 시계)과 잠금 갱신
 const O3='r2-budget';await on(O3,'product_research','product_research_collect');
 for(const [credentialKey,input] of [['naver_developers',{clientId:'devClientId01',clientSecret:'test-only-secret'}]]){r=await post(O3,{action:'connect_source',credentialKey,input});assert.equal(r.status,200,r.body.error)}
-let t=Date.now(),calls=0;const clock=()=>new Date(t),slow=async(u,i)=>{t+=20000;calls++;return stub(u,i)};
+// 시간 예산 검사는 같은 한국 날짜의 정오에서 시작한다. 자정의 일별 큐 초기화와 섞지 않는다.
+let t=Date.parse(kst(now)+'T03:00:00Z'),calls=0;const clock=()=>new Date(t),slow=async(u,i)=>{t+=20000;calls++;return stub(u,i)};
 const budgetState={...collect.emptyCollectState(),day:kst(clock()),plan:Array.from({length:20},(_,i)=>({sourceId:'naver_datalab_search',sourcePolicyVersion:'md-policy-2026-10-05',sourceSnapshotIds:[],op:'datalab',groups:[{groupName:`시간검사${i}`,keywords:[`시간검사${i}`]}]}))};
 await server.recordStatement(O3,'pr_collect_state','current',budgetState).run();
 let st=await collect.runProductResearchQueue(O3,{fetch:slow,now:clock});
@@ -200,4 +211,4 @@ const noted=cardFor(quote('pack','unknown')),clean=cardFor(quote('piece','includ
 check(/견적 참고/.test(prof(noted).reason)&&/묶음\(pack\)/.test(prof(noted).reason)&&/세금 기준 미확인/.test(prof(noted).reason)&&!/견적 참고/.test(prof(clean).reason),`profit conversion notes are kept on the profitability sub-score: ${prof(noted).reason}`);
 check(noted.id!==cardFor(quote('piece','unknown')).id,'different notes → different score-card version (notes are part of the input digest)');
 
-console.log(JSON.stringify({passed,sqlite:'real',auth:'mocked',providers:'mocked',clock:'injected',external:0}));
+console.log(JSON.stringify({passed,sqlite:'real',auth:'mocked',providers:'mocked',clock:'injected',fixtureNow:new Date().toISOString(),external:0}));
