@@ -3,14 +3,16 @@
 > 레인·게시 담당·공유 파일 순서는 [세션별 레인](LANES.ko.md)이 정한다. 각 레인은 아래 자기 칸만 고친다. 아래 '이전 기록' 절들은 2026-09-26 레인 도입 전의 공용 기록이다.
 
 ## 점포 브라우저 실행 (Codex · 2026-10-12)
-갱신: 2026-10-13 15:03 UTC
+갱신: 2026-10-13 15:24 UTC
 
 - 대표 승인 방향에 따라 `eaff4b8` 기준 `codex/store-browser-execution`, `/Users/roybee/Collective-store-browser`에서 [로컬 ASIDE 실행 경로](STORE-BROWSER.ko.md)를 구현했다. 기본 OFF, 별도 장치 토큰 해시, 점포/프로필 연결, 영업시간 조회·변경안 승인·단일 제출·관리 화면 재로딩 대조·불명확 결과의 조회 복구를 제공한다.
 - 후속은 요일별 시간 구간·자정 넘김·휴무/미확인 구분, 사진 원본·권리 판·SHA256 고정과 권리 회수, 임대 기반 파일 전달, 공개 대조 상태, 장치 상태·watch singleton·launchd 미설치 템플릿이다. 현장에서 관찰해 등록한 DOM 연결에서 주간 편집·사진 저장을 지원하며, 실제 네이버 native 연결은 조회 전용이다. 조사 워커 권한을 확대하지 않았다.
 - 신규 서버29/API7/큐복구1/실행기24 passed(mocked auth/외부 공급자, 실제 메모리 SQL·라우트). 실제 ASIDE 시험3 passed(real local browser, store/API phases mocked), 저장1회. 최종 UI E2E2 passed(real local Chromium/D1, auth fixture), 모바일·데스크톱 승인 후 보존 및 기능 OFF 회수·취소. 타입·빌드·UX64 passed, lint70 errors/39 warnings 기존 기준선 유지. Python 조사 워커13/설치70 passed(mocked gateway/root/network).
 - 독립 코드·보안 재검토 신규 CRITICAL/HIGH/MEDIUM 잔여0. V8 실행 range 측정은 라인·분기 커버리지 80% 달성 증거가 아니다. 기존 의존성 advisory와 workspace audit 명령 오류는 별도 기준선 위험이다.
-- 사용자 로그인 후 ASIDE `u0`에서 맵달SEOUL 성수의 실제 관리 ID `11695831`, 공개 플레이스 ID `2071910776`, 관리 캘린더 7일 11:00–20:50을 native 어댑터로 조회했다(real). 최종 root 재실측 관리15:02:52/public15:02:56 UTC 둘 다 같은 점포·7일 시간을 확인했다. 공개 reader는 관찰한 iframe·리디렉션·점포 이름을 재확인하며 쓰기를 지원하지 않는다. 캘린더 표시와 법정공휴일·임시 설정은 별개다. 로그인 정보는 서버에 옮기지 않았다. 실제 네이버 저장·업로드, 운영 장치 설치·병합·게시·runtime-verified는 not_run이다.
+- 사용자 로그인 후 ASIDE `u0`에서 맵달SEOUL 성수의 실제 관리 ID `11695831`, 공개 플레이스 ID `2071910776`, 관리 캘린더 7일 11:00–20:50을 native 어댑터로 조회했다(real). 최종 root 재실측 관리15:02:52/public15:02:56 UTC 둘 다 같은 점포·7일 시간을 확인했다. 공개 reader는 관찰한 iframe·리디렉션·점포 이름을 재확인하며 쓰기를 지원하지 않는다. 캘린더 표시와 법정공휴일·임시 설정은 별개다. 로그인 정보는 서버에 옮기지 않았다. 실제 네이버 저장·업로드, 운영 장치 설치·게시·runtime-verified는 not_run이다.
 - 이전 전체 회귀 **failed: 370/371 suites, 19,758 assertions**는 보존한다. 상품 리서치 round2 테스트의 한국 주간 날짜 경계를 주입 시계로 고정하고 미래 fixture를 차단했다. 기존 39검사를 보존했고 일요일/월요일 경계 4회 passed(real SQLite, mocked 공급자·주입 시계). 최종 후속 전체 **378/378 suites, 19,886 assertions passed**(외부 mocked). 사진권리 회수13·공개/파일18·인계/보관 취소5·native23 passed(mocked memory SQLite/R2, actual SHA256). 실제 ASIDE 합성 화면 주간·사진 시험4 passed(real browser, mocked store/API), 최종 UI E2E8 passed(real Chromium/local D1/R2, auth fixture)이며 보관점포는 새로고침 뒤 독립 목록에서 회수할 수 있다. 타입·프롬프트22·UX64 passed, lint 기존70/39 유지. 최종 코드/보안 독립 검토 잔여CRITICAL/HIGH/MEDIUM0이다.
+- [#348](https://github.com/roybeee/Collective/pull/348)은 `340e972b0f66124dc616160ce8c2ede00c1e0ea6`으로 merged(15:23:03 UTC). 검증 head26a4669/main/Sites 패키지의 tree `9d3e9321a5180dc6b06022d7a8079f826fe1ea87` 일치. PR CI38418965161의 verify passed, 비차단 e2e-smoke는 진행 중이며 main CI38421590241도 진행 중이다. 검사 상태를 서로 섞지 않는다.
+- [게시 준비](publish/340e972.md): Sites107은 archive-backed save-only, source `912abbf28f9341ebd23ed2160c17805275cb5de5`다. 운영 배포는 not_run이며 고정 SHA340e972와 묶음 승인·main verify passed 뒤 게시한다. 현재 운영 `/api/version/public`는 tree unknown(15:08 UTC 실조회)이므로 runtime-verified로 표현하지 않는다.
 
 ## 성장2 원안 전체 재개 (2026-09-30 · Codex)
 
