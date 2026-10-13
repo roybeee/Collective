@@ -283,4 +283,15 @@ check('R32: repeated controls carry their row context for screen readers',()=>{
  assert.equal(count(ev,'aria-label="'+row+' 수정"'),1,'each row names itself');
 });
 check('R19: the new screens make no legal-compliance claim and show no AI disclosure',()=>{assert.ok(newHtml.length>=30);for(const html of newHtml){for(const bad of ['법적으로 적합','준수 완료','합법','AI 도움','name="ai-disclosure"'])assert.ok(!html.includes(bad),bad);assert.ok(!html.includes(disclosure.AI_DISCLOSURE_LINE))}});
+// R9a-2 후속: 새로고침 뒤에도 작성 중인 AI 초안을 이어서 확인할 수 있다(버튼이 없으면 초안이 queued로 남아 새 초안이 409로 막힌다).
+const nurture=await load('app/franchise-nurture-panel.tsx');
+const NV=(x={})=>({templates:[],drafts:[],activeDraft:null,purposes:[{key:'process_guide',label:'가맹 절차 안내',classification:'info_requested',classificationLabel:'요청받은 1회 정보'}],media:[{key:'email',label:'이메일'}],placeholders:['{이름}'],limits:{bodyChars:1000,subjectChars:60},enabled:true,role:'member',classificationNote:'COLLECTIVE 해석 · 법률 자문 아님',disclaimer:DISCLAIMER,...x});
+check('N1: an active draft from an earlier visit shows a resume button and a recover button when uncertain',()=>{
+ const queued=render(nurture.FranchiseNurture,{brandId:'b1',admin:false,initial:NV({activeDraft:'nd-old-000001',drafts:[{id:'nd-old-000001',purpose:'process_guide',medium:'email',status:'queued',result:null,reasons:[],createdAt:'2026-09-27T00:00:00.000Z'}]})});
+ assert.ok(queued.includes('작성 중인 AI 초안이 있습니다')&&queued.includes('이어서 확인'),'resume');
+ const uncertain=render(nurture.FranchiseNurture,{brandId:'b1',admin:false,initial:NV({activeDraft:'nd-old-000002',drafts:[{id:'nd-old-000002',purpose:'process_guide',medium:'email',status:'uncertain',result:null,reasons:[],createdAt:'2026-09-27T00:00:00.000Z'}]})});
+ assert.ok(uncertain.includes('이어서 확인')&&uncertain.includes('복구'),'recover');
+ const none=render(nurture.FranchiseNurture,{brandId:'b1',admin:false,initial:NV()});
+ assert.ok(!none.includes('작성 중인 AI 초안이 있습니다'));
+});
 console.log(JSON.stringify({passed},null,2));
