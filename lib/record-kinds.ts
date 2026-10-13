@@ -23,6 +23,7 @@ export type SubjectErasure='delete'|'minimize'|'legal_hold'|'none';
 export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;retention?:RetentionPolicy;subjectErasure?:SubjectErasure;description:string};
 
 export const recordKinds:readonly RecordKind[]=[
+ {kind:'store_browser_photo_rights',parent:'store',campaignDeletion:'not_campaign_scoped',description:'네이버 점포 사진의 원본 판·서버 바이트 해시·사용권 근거·유효기간·승인자와 회수 상태. 캠페인과 무관'},
  {kind:'store_browser_binding',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포의 네이버 공개·관리 ID, 공식 관리 주소와 지정 로컬 장치·프로필 연결. 캠페인과 무관'},
  {kind:'store_browser_job',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포 브라우저 조회·영업시간 변경의 승인 판·단일 제출·미확인 대사와 최소 관찰 근거. 캠페인과 무관'},
  {kind:'store_browser_device',parent:'none',campaignDeletion:'not_campaign_scoped',description:'별도 로컬 장치 인증 해시·프로필·회수 상태. 로그인 쿠키·비밀번호 없음. 캠페인과 무관'},

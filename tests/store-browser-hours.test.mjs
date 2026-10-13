@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {testRuntime} from './helpers/runtime.mjs';
+const {load}=testRuntime();const h=await load('lib/store-browser-hours.ts');
+const closed={state:'closed',intervals:[]},schedule=Object.fromEntries(['mon','tue','wed','thu','fri','sat','sun'].map(d=>[d,closed]));
+assert.equal(h.weeklyCanonical(schedule),JSON.stringify(schedule));
+assert.throws(()=>h.weeklySchedule({...schedule,mon:{state:'unknown',intervals:[]}},true));
+assert.throws(()=>h.weeklySchedule({...schedule,mon:{state:'open',intervals:[{start:'23:00',end:'02:00',endsNextDay:false}]}}));
+assert.throws(()=>h.weeklySchedule({...schedule,mon:{state:'open',intervals:[{start:'23:00',end:'02:00',endsNextDay:true}]},tue:{state:'open',intervals:[{start:'01:00',end:'04:00',endsNextDay:false}]}}));
+assert.throws(()=>h.weeklySchedule({...schedule,mon:{state:'open',intervals:[{start:'10:00',end:'12:00',endsNextDay:false},{start:'11:00',end:'13:00',endsNextDay:false}]}}));
+assert.throws(()=>h.weeklySchedule({mon:closed}));
+assert.equal(h.weeklySchedule({...schedule,sun:{state:'open',intervals:[{start:'23:00',end:'02:00',endsNextDay:true}]}}).sun.intervals[0].endsNextDay,true);
+console.log(JSON.stringify({passed:7,evidence:'mocked schedule boundary cases'}));
