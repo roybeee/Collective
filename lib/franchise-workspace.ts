@@ -4,14 +4,17 @@
 import {isDate,isInstant,parseInstant,toKstDate,addDays} from './franchise-rules';
 import {amendmentDeadline,GATE_DISCLAIMER} from './franchise-gates';
 import {currentDisclosureVersion,fyEndOf,type VersionLite} from './franchise-facts';
-import {FRANCHISE_TASKS,CONTRACT_SOON_DAYS,REGISTRATION_DUE_DAYS,H10_REVIEW_AT,type FranchiseTaskKind,type FranchiseWorkspaceTasks} from './franchise-tasks';
+import {FRANCHISE_TASKS,CONTRACT_SOON_DAYS,REGISTRATION_DUE_DAYS,H10_REVIEW_AT,EVENT_FOLLOWUP_HOURS,type FranchiseTaskKind,type FranchiseWorkspaceTasks} from './franchise-tasks';
 
-export const WORKSPACE_TASKS_VERSION='fr-tasks@2026-09-27.1';
+// .2: R15a-3 행사 뒤 48시간 연락(event_followup).
+export const WORKSPACE_TASKS_VERSION='fr-tasks@2026-09-28.2';
 const DAY_MS=86400000;
 export type TaskLead={id:string;stage:string;firstContactAt:string|null;contactState:string;contractedAt:string|null};
 // 계약 게이트 요약(lib/franchise-server.ts gateSummaries에서 옮김): 계약 가능 시각(모르면 null), 계약 게이트 통과 여부(계약 기록이 없으면 null).
 export type TaskGate={windowAt:string|null;complete:boolean|null};
 export type AssetVersionLite={id:string;version:number;brandId:string;status:string};
+// 행사 요약(가명 코드·장소 라벨 없이 id·브랜드·시작 시각·상태만).
+export type TaskEvent={id:string;brandId:string;startsAt:string;status:string};
 export type RegistrationInput={brandId:string;versions:readonly VersionLite[];fiscalYearEnd:string|null};
 export type RegistrationReason='version_expiring'|'version_expired'|'annual_deadline';
 export type BrandTaskCounts={brandId:string}&Partial<Record<FranchiseTaskKind,number>>;
@@ -55,8 +58,15 @@ export function assetReviewCount(brandId:string,assets:readonly AssetVersionLite
  return assets.filter(a=>a.brandId===brandId&&a.status==='approved'&&(attributed.get(`${a.id}:${a.version}`)??0)>=H10_REVIEW_AT).length;
 }
 
+// 행사 뒤 연락: 예정(취소 아님) 행사 가운데 시작 시각 ≤ 지금 < 시작 + 48시간인 행사 수. 행사 보기(followUps)와 같은 창이다.
+export function eventFollowupCount(brandId:string,events:readonly TaskEvent[],now:string){
+ if(!isInstant(now))return 0;
+ const n=parseInstant(now);
+ return events.filter(e=>e.brandId===brandId&&e.status==='scheduled'&&isInstant(e.startsAt)&&parseInstant(e.startsAt)<=n&&n<parseInstant(e.startsAt)+EVENT_FOLLOWUP_HOURS*3600000).length;
+}
+
 // 한 브랜드의 할 일 건수. leads는 보는 사람이 볼 수 있는 리드만 넘긴다(직원은 본인 담당·미배정). 변경등록은 설정 화면(대표·관리자)으로 가므로 admin일 때만 센다.
-export function brandTaskCounts(i:{brandId:string;leads:readonly TaskLead[];gates:ReadonlyMap<string,TaskGate>;registration:RegistrationInput|null;assets:readonly AssetVersionLite[];attributed:ReadonlyMap<string,number>;admin:boolean},now:string):BrandTaskCounts{
+export function brandTaskCounts(i:{brandId:string;leads:readonly TaskLead[];gates:ReadonlyMap<string,TaskGate>;registration:RegistrationInput|null;assets:readonly AssetVersionLite[];attributed:ReadonlyMap<string,number>;admin:boolean;events?:readonly TaskEvent[]},now:string):BrandTaskCounts{
  const gate=(l:TaskLead)=>i.gates.get(l.id);
  return {brandId:i.brandId,
   unanswered:i.leads.filter(isUnanswered).length,
@@ -64,6 +74,7 @@ export function brandTaskCounts(i:{brandId:string;leads:readonly TaskLead[];gate
   evidence_gap:i.leads.filter(l=>l.contractedAt!==null&&isEvidenceGap(gate(l)?.complete)).length,
   ...(i.admin?{registration_due:i.registration&&registrationDue(i.registration,now).due?1:0}:{}),
   asset_review:assetReviewCount(i.brandId,i.assets,i.attributed),
+  event_followup:eventFollowupCount(i.brandId,i.events??[],now),
  };
 }
 
