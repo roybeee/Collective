@@ -9,12 +9,12 @@ let checks=0;const failures=[];function check(value,label){checks++;if(!value)fa
 
 // 1) 레지스트리: 현재 커넥터가 모두 있고 서술자 규칙 위반이 없다.
 const keys=registry.connectorRegistry.map(d=>d.key);
-check(['instagram','naver_ads','buffer','meta_ads','store_browser','ftc_franchise'].every(k=>keys.includes(k)),'registry lists the current connectors: '+keys.join(','));
+check(['instagram','naver_ads','buffer','meta_ads','store_browser','ftc_franchise','kakao_bizmessage'].every(k=>keys.includes(k)),'registry lists the current connectors: '+keys.join(','));
 check(registry.describeViolations().length===0,'registry has no descriptor violations: '+registry.describeViolations().join(' | '));
 check(registry.capabilityFor('buffer.post.publish')?.riskTier==='T3'&&registry.capabilityFor('meta_ads.campaign.execution')?.riskTier==='T4'&&registry.capabilityFor('instagram.insights.read')?.riskTier==='T1','tiers: buffer publish T3, meta execution T4, instagram read T1');
 check(registry.connectorRegistry.flatMap(d=>d.capabilities).every(c=>c.defaultOff===true&&c.retryUnknown===false),'every capability is default off and never retries unknown writes');
 check(registry.capabilityFor('instagram.insights.read')?.credentialScope==='store'&&registry.capabilityFor('naver_ads.stats.read')?.credentialScope==='store','read connectors allow store-scoped credentials (lib/channel-credentials.ts F5)');
-check(registry.capabilitiesByTier('T4').map(c=>c.key).sort().join(',')==='meta_ads.campaign.execution,meta_ads.conversion.capi','T4 is only money-moving Meta writes');
+check(registry.capabilitiesByTier('T4').map(c=>c.key).sort().join(',')==='kakao_bizmessage.alimtalk.send,kakao_bizmessage.brand.send,meta_ads.campaign.execution,meta_ads.conversion.capi','T4 is only money-moving writes: Meta execution·CAPI and Kakao customer sends (C6)');
 const bad=registry.describeViolations([{key:'x',label:'x',module:'x',capabilities:[{key:'x.a',reads:[],writes:['w'],riskTier:'T1',rateLimit:{},credentialScope:'brand',defaultOff:true,flag:null,retryUnknown:false},{key:'x.a',reads:[],writes:[],riskTier:'T3',rateLimit:{perMinute:1},credentialScope:'brand',defaultOff:false,flag:null,retryUnknown:false}]}]);
 check(bad.length>=5,'violations are reported for bad key form, duplicate key, write on T1, no-write T3, no limit, defaultOff false: '+bad.length);
 

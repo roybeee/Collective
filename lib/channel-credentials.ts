@@ -42,7 +42,7 @@ export type ChannelStatus = {
 export type BrandChannelStatus = ChannelStatus & {brandId: string; storeId?: string; warning?: string};
 
 // id 규칙: '<owner>:channel_credential:<channel>[:<brandId>[:<storeId>]]'. 같은 kind를 쓰고 기존 레코드 id는 바꾸지 않는다.
-const recordId = (channel: ConnectorKey, unit: Unit) => [channel, unit.brandId, unit.storeId].filter(Boolean).join(':');
+const recordId = (channel: string, unit: Unit) => [channel, unit.brandId, unit.storeId].filter(Boolean).join(':');
 
 // 구분자(:)가 든 값은 다른 단위의 id와 겹칠 수 있어 받지 않는다.
 function unitId(value: unknown, label: string) {
@@ -184,4 +184,60 @@ export async function credentialResolution(owner: string, scope: CredentialScope
   const hit = await resolve(owner, key, unit);
   return {channel: key, label: connectors[key]!.label, resolvedScope: hit?.scope ?? null, account: hit?.record.account || '', expiresAt: hit?.record.expiresAt ?? null};
  }));
+}
+
+// ── C6 추가: 커넥터 레지스트리(lib/connectors) 밖 외부 채널의 자격증명 ──
+// 카카오 비즈메시지 딜러 자격증명은 Connector(parse/verify/collect) 모양이 아니라 같은 kind('channel_credential')·같은 암호화 경로만 함께 쓴다(lib/kakao/credential-server.ts).
+// id 규칙·단위 검증·암호문 저장은 위와 같고, 검증은 호출자가 먼저 한다. channelStatus()는 커넥터 키만 보므로 이 레코드는 그 목록에 나타나지 않는다(화면은 lib/kakao 쪽이 따로 보인다).
+export type ExternalChannel = 'kakao_bizmessage';
+type StoredExternal = {channel: ExternalChannel; brandId?: string; storeId?: string; secret: string; account: string; createdAt: string; updatedAt: string};
+async function storedExternal(owner: string, channel: ExternalChannel, unit: Unit) {
+ try {
+  return await readRecord<StoredExternal>(owner, 'channel_credential', recordId(channel, unit));
+ } catch (error) {
+  if (error instanceof ApiError && error.status === 404) return null;
+  throw error;
+ }
+}
+export async function saveExternalCredential(owner: string, channel: ExternalChannel, secret: unknown, account: string, scope?: CredentialScope) {
+ const unit = await checkedUnit(owner, scope, true);
+ const id = recordId(channel, unit), previous = await storedExternal(owner, channel, unit);
+ const record: StoredExternal = {
+  channel,
+  ...unit,
+  secret: await sealRecordSecret(owner, 'channel_credential', id, JSON.stringify(secret)),
+  account,
+  createdAt: previous?.createdAt || stamp(),
+  updatedAt: stamp(),
+ };
+ await recordStatement(owner, 'channel_credential', id, record).run();
+ return {channel, ...unit, account, updatedAt: record.updatedAt};
+}
+// 조회 우선순위는 커넥터와 같다(지점 > 브랜드 > 워크스페이스 기본). 없으면 null(호출자가 409를 정한다).
+export async function loadExternalCredential<T>(owner: string, channel: ExternalChannel, scope?: CredentialScope): Promise<{credential: T; account: string; resolvedScope: ResolvedScope} | null> {
+ const unit = normalized(scope);
+ const candidates: ResolvedScope[] = [
+  ...(unit.brandId && unit.storeId ? [{level: 'store' as const, brandId: unit.brandId, storeId: unit.storeId}] : []),
+  ...(unit.brandId ? [{level: 'brand' as const, brandId: unit.brandId}] : []),
+  {level: 'workspace'},
+ ];
+ for (const resolvedScope of candidates) {
+  const u = 'brandId' in resolvedScope ? resolvedScope : {};
+  const record = await storedExternal(owner, channel, u);
+  if (!record) continue;
+  const secret = await openRecordSecret(owner, 'channel_credential', recordId(channel, u), record.secret);
+  return {credential: JSON.parse(secret) as T, account: record.account, resolvedScope};
+ }
+ return null;
+}
+export async function revokeExternalCredential(owner: string, channel: ExternalChannel, scope?: CredentialScope) {
+ const unit = await checkedUnit(owner, scope, false);
+ if (!(await storedExternal(owner, channel, unit))) return {revoked: false};
+ await database().prepare('DELETE FROM records WHERE id=? AND owner=? AND kind=?').bind(`${owner}:channel_credential:${recordId(channel, unit)}`, owner, 'channel_credential').run();
+ return {revoked: true};
+}
+// 비밀값 없이 연결 상태만 돌려준다.
+export async function externalCredentialStatus(owner: string, channel: ExternalChannel, scope?: CredentialScope) {
+ const record = await storedExternal(owner, channel, normalized(scope));
+ return {channel, connected: !!record, account: record?.account || '', updatedAt: record?.updatedAt || null};
 }
