@@ -63,6 +63,13 @@ function shareLinksRow(flags:unknown):FeatureRow{
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'공유 링크 스위치 상태를 확인하지 못했습니다',link};
  return state.enabled?{...base,status:'available',reason:['동결 보고서 읽기 전용 링크(만료 기본 14일, 취소 가능)','작업물 판별 외부 검토자 승인·수정 요청 링크 최대 10개']}:{...base,status:'blocked',reason:['공유 링크 스위치 꺼짐','소유자가 켭니다'],link};
 }
+// 소재 예측 점수(G2): 기능 스위치 creative_score 상태를 읽는다. 켜지면 작업물 저장 때 결정론 추정 점수를 기록하고 작업물 옆에 근거를 보인다.
+function creativeScoreRow(flags:unknown):FeatureRow{
+ const base={key:'creative-score',label:'소재 예측 점수(추정)',flag:'creative_score'},link:FeatureLink={label:'캠페인을 열어 작업물 탭에서 확인',view:'campaigns'};
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='creative_score'):undefined;
+ if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'소재 예측 점수 스위치 상태를 확인하지 못했습니다',link};
+ return state.enabled?{...base,status:'available',reason:['저장 때 0~100점 추정 점수와 구성 요소별 근거 기록(규칙 기반, 성과 보장 아님)','게시 뒤 노출·클릭으로 브랜드×채널 보정표 만들기']}:{...base,status:'blocked',reason:['소재 예측 점수 스위치 꺼짐','소유자가 켭니다'],link};
+}
 function aiRow(connection:unknown):FeatureRow{
  const base={key:'ai',label:'8개 담당별 AI 작업(HERMES 연결)'},link:FeatureLink={label:'AI 팀 연결로 이동',view:'settings',section:'settings-ai'};
  if(!record(connection)||typeof connection.configured!=='boolean')return {...base,status:'blocked',reason:'AI 연결 상태를 확인하지 못했습니다',link};
@@ -254,6 +261,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   autonomyRulesRow(input.flags),
   scheduledRunsRow(input.flags),
   shareLinksRow(input.flags),
+  creativeScoreRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
   posAutoRow(input.flags),
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},
