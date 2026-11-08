@@ -198,6 +198,13 @@ function aiImageDisclosureRow(flags:unknown):FeatureRow{
  const reason=!record(state)||typeof state.enabled!=='boolean'?'AI 생성 이미지 표시 상태를 확인하지 못했습니다':state.enabled?['AI 출처로 등록한 소재 PNG에 기계판독 표시와 감사 기록','출처 불명 소재는 표시하지 않고 경고만 기록','가시 표시 줄은 화면에서 따로 적용']:['기능 꺼짐','소유자가 켭니다'];
  return {key:'ai-image-disclosure',label:'AI 생성 이미지 표시(AI 기본법 31조)',flag:'ai_image_disclosure',status:'blocked',reason,link:{label:'설정의 AI 사용량에서 확인',view:'settings',section:'settings-ai'}};
 }
+// POS 자동 수집(C7): 기능 스위치 pos_tossplace 상태를 읽는다. 켜지면 워커가 소유자가 켠 토스플레이스 연결의 주문·결제를 읽기 전용으로 장부에 반영한다(docs/POS-INTEGRATION.ko.md).
+function posAutoRow(flags:unknown):FeatureRow{
+ const base={key:'pos-auto',label:'POS 자동 수집(토스플레이스)',flag:'pos_tossplace'},link:FeatureLink={label:'캠페인의 성과 탭에서 확인',view:'campaigns'};
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='pos_tossplace'):undefined;
+ if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'POS 자동 수집 스위치 상태를 확인하지 못했습니다',link};
+ return state.enabled?{...base,status:'available',reason:'토스플레이스 주문·결제 자동 수집(읽기 전용, 고객 정보 없음, 외부 쓰기 없음)'}:{...base,status:'blocked',reason:['기능 스위치 pos_tossplace 꺼짐','소유자가 켭니다'],link};
+}
 export function featureRows(input:FeatureInput={}):FeatureRow[]{
  const now=typeof input.now==='number'?input.now:Date.now(),brands=brandIds(input.brands);
  return [
@@ -226,7 +233,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   storeBrowserRow(input.flags),
   aiImageDisclosureRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
-  {key:'pos-auto',label:'POS 자동 수집',status:'unimplemented',reason:['POS 연동 없음','CSV로 가져오세요']},
+  posAutoRow(input.flags),
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},
   {key:'ads',label:'광고 집행',status:'unimplemented',reason:'광고 생성·광고비 집행 기능 없음'},
  ];

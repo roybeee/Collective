@@ -37,6 +37,7 @@ export const FEATURE_FLAGS={
  meeting_choice_gate:{defaultEnabled:false,description:'회의 합의 단계에 남은 이견이 있으면 첫 개선 단계를 승인 대기로 멈추고, 사용자가 A/B·보류를 고른 뒤에만 다음 단계를 제출한다(X2). 꺼져 있으면 선택은 기록·전달만 하고 회의는 멈추지 않는다.'},
  store_browser_execution:{defaultEnabled:false,description:'등록한 로컬 장치가 지정된 네이버 점포의 영업시간을 조회하고, 관리자가 승인한 전후값만 한 번 저장한다. 대상·판·제출 허가를 확인하며 결과 미확인 작업은 조회로만 대사한다. 로그인·보안 차단은 사람에게 인계한다. 꺼도 기존 결과 조회·장치 회수·미확인 대사는 계속된다.'},
  ai_image_disclosure:{defaultEnabled:false,description:'AI 출처(ai·ai_edited)로 등록한 소재 PNG에 저장 전 기계판독 표시(iTXt ai-disclosure, AI 기본법 31조)를 넣고, 표시·출처 불명 경고·반출(앱 공개 사본·Meta 이미지 업로드) 감사 기록을 남긴다(C2). 출처 불명은 표시하지 않고 막지 않는다. 가시 표시 줄은 화면 경로가 그린다. 꺼져 있으면 바이트·기록 모두 이전과 같다.'},
+ pos_tossplace:{defaultEnabled:false,description:'워커 tick이 소유자가 켠 토스플레이스 POS 연결의 주문·결제를 간격마다 1페이지씩 읽어(읽기 전용, 고객 정보 없음) 기존 주문 장부에 출처 POS로 반영하고, 서명된 웹훅을 받는다. 커서는 저장과 같은 묶음에서만 전진한다. 꺼도 연결 설정·조회·저장된 증분 결과 보기는 계속된다(C7).'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};

@@ -253,7 +253,11 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'model_change',parent:'none',campaignDeletion:'not_campaign_scoped',description:'보고 모델 변경 경보. 별칭은 실제 모델 미확인(actual=null)으로 적는다(결정 10)'},
  {kind:'openai_submission',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'OpenAI 요청 원문'},
  {kind:'order_import',parent:'store',campaignDeletion:'not_campaign_scoped',description:'주문 CSV 가져오기 기록(건수·중복·귀속 수·식별 가능 주문 수·열 매핑·행위자). CSV 원문과 고객 ID 값은 담지 않는다'},
+ // C7 증분 측정: 캠페인당 1행(id=캠페인 id). 대상·대조 매장 id와 이중차분 결과만 담고 주문 행·고객 정보는 없다. 캠페인과 함께 지운다.
+ {kind:'incrementality_result',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'캠페인 홀드아웃 증분 결과(대상·대조 매장, 기간, 이중차분 lift·신뢰구간·판정, 관찰 비교 라벨). 캠페인과 함께 삭제'},
  {kind:'pos_weekly_total',parent:'store',campaignDeletion:'not_campaign_scoped',description:'지점 주간 POS 합계(순매출·주문 수). 주문 장부 완전성 대조 기준'},
+ // C7 POS 웹훅 멱등 기록: 연결 id + x-toss-webhook-id가 행 id다. 수신 시각·이벤트 종류·반영 요약만 두고 본문 원문·결제수단·고객 정보는 담지 않는다.
+ {kind:'pos_webhook_event',parent:'store',campaignDeletion:'not_campaign_scoped',description:'토스플레이스 POS 웹훅 수신 기록(멱등 키·이벤트 종류·반영 요약). 본문 원문·고객 정보 없음. 캠페인과 무관'},
  {kind:'provider_usage',parent:'none',campaignDeletion:'not_campaign_scoped',description:'AI 공급자 사용량 장부'},
  {kind:'public_media',parent:'media',campaignDeletion:'not_campaign_scoped',description:'공개 제공 소재 파일과 발행 참조'},
  {kind:'public_media_ref',parent:'media',campaignDeletion:'not_campaign_scoped',description:'공개 소재 파일의 소유자 참조'},
