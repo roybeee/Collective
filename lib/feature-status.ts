@@ -205,6 +205,18 @@ function posAutoRow(flags:unknown):FeatureRow{
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'POS 자동 수집 스위치 상태를 확인하지 못했습니다',link};
  return state.enabled?{...base,status:'available',reason:'토스플레이스 주문·결제 자동 수집(읽기 전용, 고객 정보 없음, 외부 쓰기 없음)'}:{...base,status:'blocked',reason:['기능 스위치 pos_tossplace 꺼짐','소유자가 켭니다'],link};
 }
+// G3 자율성 규칙·예약 실행: 스위치 autonomy_rules·scheduled_runs. 꺼져 있어도 규칙·예약 조회·편집은 되고 적용·실행만 멈춘다.
+function flagState(flags:unknown,flag:string){const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag===flag):undefined;return record(state)&&typeof state.enabled==='boolean'?state.enabled:null}
+function autonomyRulesRow(flags:unknown):FeatureRow{
+ const base={key:'autonomy-rules',label:'자율성 규칙(행동별 자동·확인 후·금지)',flag:'autonomy_rules'},link:FeatureLink={label:'연결 및 설정에서 확인',view:'settings'},enabled=flagState(flags,'autonomy_rules');
+ if(enabled===null)return {...base,status:'blocked',reason:'자율성 규칙 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['회의 시작·역할 실행·발행 접수·광고 활성화에 규칙 적용(금지는 차단, 고위험은 자동 불가)']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다(규칙 편집은 가능, 모든 행동은 확인 후)'],link};
+}
+function scheduledRunsRow(flags:unknown):FeatureRow{
+ const base={key:'scheduled-runs',label:'예약 실행(주간 성과 요약·일일 신호 검토)',flag:'scheduled_runs'},link:FeatureLink={label:'연결 및 설정에서 확인',view:'settings'},enabled=flagState(flags,'scheduled_runs');
+ if(enabled===null)return {...base,status:'blocked',reason:'예약 실행 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['조사 작업자가 예약마다 하루 1회 회의 안건 초안·오늘의 안건 항목 기록(모델 호출·게시·지출 없음)']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다(예약 편집은 가능)'],link};
+}
 export function featureRows(input:FeatureInput={}):FeatureRow[]{
  const now=typeof input.now==='number'?input.now:Date.now(),brands=brandIds(input.brands);
  return [
@@ -232,6 +244,8 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   productResearchRow(input.flags),
   storeBrowserRow(input.flags),
   aiImageDisclosureRow(input.flags),
+  autonomyRulesRow(input.flags),
+  scheduledRunsRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
   posAutoRow(input.flags),
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},

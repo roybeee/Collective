@@ -23,6 +23,11 @@ export type SubjectErasure='delete'|'minimize'|'legal_hold'|'none';
 export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;retention?:RetentionPolicy;subjectErasure?:SubjectErasure;description:string};
 
 export const recordKinds:readonly RecordKind[]=[
+ {kind:'autonomy_settings',parent:'none',campaignDeletion:'not_campaign_scoped',description:'소유자의 행동별 자율성 규칙(자동·확인 후·금지) 1행(id current). 캠페인과 무관(G3)'},
+ {kind:'scheduled_run',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'소유자가 정한 예약(종류·행동·KST 요일·시각·브랜드·캠페인 범위). 캠페인과 함께 삭제(G3)'},
+ {kind:'scheduled_run_execution',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'예약 실행 기록(예약 id+KST 날짜당 1행, 완료·건너뜀·실패 사유·만든 산출물 id). 캠페인과 함께 삭제(G3)'},
+ {kind:'meeting_agenda_draft',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'예약 실행이 만든 회의 안건 초안(최근 7일 성과 요약 문장, 모델 호출 없음). 회의 시작은 사람이 한다. 캠페인과 함께 삭제(G3)'},
+ {kind:'digest_sent',parent:'none',campaignDeletion:'not_campaign_scoped',description:'일일 요약 전송 기록(KST 날짜당 1행, 어댑터 이름·가린 대상·본문·결과). 이 판은 기록만 남기는 스텁. 캠페인과 무관(G3)'},
  {kind:'store_browser_photo_rights',parent:'store',campaignDeletion:'not_campaign_scoped',description:'네이버 점포 사진의 원본 판·서버 바이트 해시·사용권 근거·유효기간·승인자와 회수 상태. 캠페인과 무관'},
  {kind:'store_browser_binding',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포의 네이버 공개·관리 ID, 공식 관리 주소와 지정 로컬 장치·프로필 연결. 캠페인과 무관'},
  {kind:'store_browser_job',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포 브라우저 조회·영업시간 변경의 승인 판·단일 제출·미확인 대사와 최소 관찰 근거. 캠페인과 무관'},
