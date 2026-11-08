@@ -192,6 +192,13 @@ function storeBrowserRow(flags:unknown):FeatureRow{
  const reason=!record(state)||typeof state.enabled!=='boolean'?'점포 브라우저 관리 상태를 확인하지 못했습니다':state.enabled?['점포별 관리 주소·장치·브라우저 설정 확인 필요','변경 전후 승인 후 한 번 저장, 결과 미확인은 조회로 확인','실제 네이버 적용 여부는 점포별 작업 근거에서 확인']:['기능 꺼짐','소유자가 켭니다'];
  return {key:'store-browser',label:'네이버 점포 영업시간 관리(로컬 장치)',flag:'store_browser_execution',status:'blocked',reason,link:{label:'점포 마케팅 채널 점검에서 연결',view:'stores',tab:'channels'}};
 }
+// POS 자동 수집(C7): 기능 스위치 pos_tossplace 상태를 읽는다. 켜지면 워커가 소유자가 켠 토스플레이스 연결의 주문·결제를 읽기 전용으로 장부에 반영한다(docs/POS-INTEGRATION.ko.md).
+function posAutoRow(flags:unknown):FeatureRow{
+ const base={key:'pos-auto',label:'POS 자동 수집(토스플레이스)',flag:'pos_tossplace'},link:FeatureLink={label:'캠페인의 성과 탭에서 확인',view:'campaigns'};
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='pos_tossplace'):undefined;
+ if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'POS 자동 수집 스위치 상태를 확인하지 못했습니다',link};
+ return state.enabled?{...base,status:'available',reason:'토스플레이스 주문·결제 자동 수집(읽기 전용, 고객 정보 없음, 외부 쓰기 없음)'}:{...base,status:'blocked',reason:['기능 스위치 pos_tossplace 꺼짐','소유자가 켭니다'],link};
+}
 export function featureRows(input:FeatureInput={}):FeatureRow[]{
  const now=typeof input.now==='number'?input.now:Date.now(),brands=brandIds(input.brands);
  return [
@@ -219,7 +226,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   productResearchRow(input.flags),
   storeBrowserRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
-  {key:'pos-auto',label:'POS 자동 수집',status:'unimplemented',reason:['POS 연동 없음','CSV로 가져오세요']},
+  posAutoRow(input.flags),
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},
   {key:'ads',label:'광고 집행',status:'unimplemented',reason:'광고 생성·광고비 집행 기능 없음'},
  ];
