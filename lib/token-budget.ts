@@ -28,7 +28,9 @@ type Period=ReturnType<typeof kstMonth>;
 // 근거: 영어·JSON은 흔히 3~4자당 1토큰이라 문자 수/2는 넉넉하다. 한글은 토크나이저에 따라 1자당 1토큰 가까이 쓰일 수 있어
 // UTF-8 바이트/3(한글 1자=3바이트 → 1자당 1토큰)과 비교해 큰 값을 쓴다. 예산 가드는 막는 쪽으로 틀리는 편이 안전하다.
 // HERMES 에이전트 자체 지시·도구 호출·출력 토큰은 미리 알 수 없어 넣지 않는다. 종료 후 실제 사용량(provider_usage)이 이 추정을 대신한다.
-export function estimateInputTokens(text:string){return Math.max(Math.ceil(text.length/2),Math.ceil(new TextEncoder().encode(text).length/3))}
+// 식 자체는 브라우저 공용 순수 모듈(lib/token-estimate.ts)에 있다. 실행 전 계획 카드(X3)가 같은 식으로 추정한다.
+import {estimateInputTokens} from './token-estimate';
+export {estimateInputTokens};
 async function sha16(value:string){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))).map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,16)}
 const reservationKey=(owner:string,submissionId:string)=>`${owner}:token_reservation:${submissionId}`;
 async function readBudgets(db:Db,owner:string){

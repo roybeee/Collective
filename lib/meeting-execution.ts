@@ -4,7 +4,9 @@ import {PRACTICE_VERSION} from '@/lib/practice';
 import {qualityMarkdown} from '@/lib/quality';
 import {roles,type Campaign,type Brand,type Artifact,type Metric} from '@/lib/agency';
 import type {BriefDraft} from '@/lib/brief';
-import {initialSteps,meetingActive,publicMeeting,parseMeetingStep,candidateArtifacts,meetingAgenda,meetingLabels,meetingCopyPack,type Meeting,type MeetingStep,type Contribution,type Synthesis,type Revision,type QualityReview} from '@/lib/meetings';
+import {initialSteps,meetingActive,publicMeeting,parseMeetingStep,candidateArtifacts,meetingAgenda,meetingLabels,meetingCopyPack,hasDisagreement,latestChoice,userDecision,choiceLabels,type Meeting,type MeetingStep,type MeetingPlan,type MeetingChoice,type MeetingChoiceValue,type Contribution,type Synthesis,type Revision,type QualityReview} from '@/lib/meetings';
+// 이견 선택 게이트(X2, 스위치 meeting_choice_gate 기본 꺼짐): 켜져 있을 때만 합의 뒤 첫 개선 단계를 승인 대기로 멈춘다. 선택 기록·입력 전달은 스위치와 무관하다. 스위치는 보조 모듈이 읽는다.
+import {choiceGateEnabled} from './meeting-choice-server';
 import {claimGuard,unverifiedClaims} from '@/lib/campaign-policy';
 import {sameEvidenceFactRefs} from '@/lib/brand-facts';
 import {meetingSubmissionId,requireMeetingWorker,retryFailedMeeting,meetingBasis,meetingStale,type MeetingBasis} from './meeting-repair';
@@ -29,9 +31,24 @@ import {briefChannelIssues} from './copy-pack';
 // 입력 축소(input_diet, PR 4b): 회의 시작 때 스위치를 한 번 읽어 스냅샷에 고정한다(보조 모듈). 꺼져 있으면 키가 없어 회의 제출이 이전과 바이트 동일하다. 단계 입력 문자 수 분해(inputChars)는 스위치와 무관하게 단계 기록에 숫자만 남긴다.
 import {inputDietEnabled} from './input-diet-server';
 import {inputChars,INPUT_DIET_VERSION,type InputDietReport,type InputChars} from './input-diet';
-import {ApiError,identity,str,json,failure,database,readRecord,listRecords,recordStatement,eventStatement,connection,acquireLock,releaseLock,stamp,type EventActor} from '@/lib/server';
+import {ApiError,identity,str,json,failure,database,readRecord,listRecords,recordStatement,eventStatement,connection,acquireLock,releaseLock,stamp,uid,type EventActor} from '@/lib/server';
 
 const activeStates=['starting','queued','in_progress','uncertain'];
+const MAX_PLAN_TOKENS=10_000_000_000;
+// 실행 전 계획(X3) 검증(API 경계). 없으면 undefined, 형식이 틀리면 400. 추정은 기록만 하고 회의 실행은 바꾸지 않는다.
+function parseMeetingPlan(value:unknown):MeetingPlan|undefined{
+ if(value===undefined||value===null)return undefined;
+ if(typeof value!=='object'||Array.isArray(value))throw new ApiError(400,'실행 계획 형식을 확인해 주세요.');
+ const p=value as Record<string,unknown>,tokens=p.estimatedTokens,ms=p.estimatedMs,steps=p.steps;
+ if(typeof tokens!=='number'||!Number.isSafeInteger(tokens)||tokens<0||tokens>MAX_PLAN_TOKENS)throw new ApiError(400,'예상 토큰은 0 이상의 정수여야 합니다.');
+ if(ms!==null&&ms!==undefined&&(typeof ms!=='number'||!Number.isSafeInteger(ms)||ms<0))throw new ApiError(400,'예상 소요 시간 형식을 확인해 주세요.');
+ if(typeof steps!=='number'||!Number.isSafeInteger(steps)||steps<1||steps>13)throw new ApiError(400,'예상 단계 수는 1~13이어야 합니다.');
+ return {estimatedTokens:tokens,estimatedMs:typeof ms==='number'?ms:null,steps,approvedAt:stamp()};
+}
+// 공급자 활동 이름이 추론·근거 정리를 가리키면 '생각 중'으로 본다. 그 밖의 진행 중은 실행 중이다.
+const thinkingActivity=(activity?:string)=>!!activity&&/think|reason/i.test(activity);
+// 이견 선택 대기(게이트)는 공급자 접수 없이 멈춘 단계다. 공급자 승인 대기(providerId 있음)와 구분한다.
+const choiceGateWaiting=(s:MeetingStep)=>s.status==='waiting_for_approval'&&!s.providerId;
 const jobId=(owner:string,m:Meeting)=>owner+':meeting:'+m.id;
 function writes(owner:string,m:Meeting){
  const status=m.status==='running'?'in_progress':m.status;
@@ -87,8 +104,10 @@ async function finish(owner:string,m:Meeting){
 // 품질 재검토가 작업물을 저장해 회의가 완료되면 그 회의를 돌려준다. 온라인 채점(F2b)은 executeMeeting이 잠금을 푼 뒤 한다.
 async function applyStep(owner:string,m:Meeting,s:MeetingStep):Promise<Meeting|undefined>{
  if(s.phase==='synthesis'){
-  const tasks=(s.output as Synthesis).tasks;
-  m.steps.push(...tasks.map(t=>({id:`${m.id}:revision:${t.role}`,role:t.role,phase:'revision' as const,status:'pending' as const,task:t})),{id:`${m.id}:quality`,role:'quality',phase:'quality',status:'pending'});
+  const synthesis=s.output as Synthesis,tasks=synthesis.tasks;
+  // 게이트가 켜져 있고 실제 이견이 남았으면 첫 개선 단계를 승인 대기로 둔다. 사용자가 A/B·보류를 고르면(choose) 대기 단계가 다시 대기(pending)로 바뀌어 제출된다.
+  const gate=hasDisagreement(synthesis)&&await choiceGateEnabled(owner);
+  m.steps.push(...tasks.map((t,i)=>({id:`${m.id}:revision:${t.role}`,role:t.role,phase:'revision' as const,status:gate&&i===0?'waiting_for_approval' as const:'pending' as const,task:t})),{id:`${m.id}:quality`,role:'quality',phase:'quality',status:'pending'});
  }
  if(s.phase==='quality'){
   try{await finish(owner,m)}catch(e){if(!(e instanceof ApiError))throw e;m.status='failed';m.error=e.message;await database().batch(writes(owner,m))}
@@ -142,12 +161,26 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:E
    // 카피 팩 프로필은 회의 시작 때 고정한다. 회의 중 스위치를 바꿔도 이 회의의 콘텐츠 개선본 계약은 같다.
    const outputProfile=(await copyPackProfile(owner,'content'))??undefined;
    const inputDiet=await inputDietEnabled(owner);
-   const m:Meeting={skillVersion:PRACTICE_VERSION,id,campaignId:c.id,campaignVersion:c.version,agenda:str(b.agenda,'회의 안건',5000,true),status:'running',steps:initialSteps(id),createdAt:stamp(),updatedAt:stamp(),model:cfg.model,stopRequested:false,artifactIds:[],invalidatedRoles:[],previousMeetingId:previous?.id,snapshot:{prompts,...(outputProfile?{outputProfile}:{}),...(inputDiet?{inputDiet:INPUT_DIET_VERSION}:{}),brandArchive:archived.archive,sourceMasking:archived.sourceMasking,campaign:c,brand,artifacts,metrics,learning,evidence:await evidenceContext(database(),owner,c),...(previous?{previous:{id:previous.id,agenda:previous.agenda,decisions:previous.steps.find(s=>s.phase==='synthesis')?.output as Synthesis,quality:previous.steps.find(s=>s.phase==='quality')?.output as QualityReview,discussion:previous.steps.filter(s=>s.phase==='discussion'&&s.status==='completed').map(s=>({id:s.id,role:s.role,output:s.output as Contribution})),...(previousFailure?{failure:{role:previousFailure.role,phase:previousFailure.phase,error:previousFailure.error||previous.error||'응답 검증 실패'}}:{})}}:{})}};
+   const plan=parseMeetingPlan(b.plan),previousChoice=previous?userDecision(latestChoice(previous)):undefined;
+   const m:Meeting={skillVersion:PRACTICE_VERSION,id,campaignId:c.id,campaignVersion:c.version,agenda:str(b.agenda,'회의 안건',5000,true),status:'running',steps:initialSteps(id),createdAt:stamp(),updatedAt:stamp(),model:cfg.model,stopRequested:false,artifactIds:[],invalidatedRoles:[],previousMeetingId:previous?.id,...(plan?{plan}:{}),snapshot:{prompts,...(outputProfile?{outputProfile}:{}),...(inputDiet?{inputDiet:INPUT_DIET_VERSION}:{}),brandArchive:archived.archive,sourceMasking:archived.sourceMasking,campaign:c,brand,artifacts,metrics,learning,evidence:await evidenceContext(database(),owner,c),...(previous?{previous:{id:previous.id,agenda:previous.agenda,decisions:previous.steps.find(s=>s.phase==='synthesis')?.output as Synthesis,quality:previous.steps.find(s=>s.phase==='quality')?.output as QualityReview,discussion:previous.steps.filter(s=>s.phase==='discussion'&&s.status==='completed').map(s=>({id:s.id,role:s.role,output:s.output as Contribution})),...(previousFailure?{failure:{role:previousFailure.role,phase:previousFailure.phase,error:previousFailure.error||previous.error||'응답 검증 실패'}}:{}),...(previousChoice?{choice:previousChoice}:{})}}:{})}};
    await database().batch([database().prepare('INSERT INTO jobs(id,owner,campaign_id,role,status,model,campaign_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').bind(jobId(owner,m),owner,c.id,'meeting','in_progress',cfg.model,c.version,m.createdAt,m.updatedAt),recordStatement(owner,'team_meeting',m.id,m,c.id),eventStatement(owner,c.id,'팀 회의를 시작했습니다. 8명 의견 교환 → 개선 과제 → 품질 재검토.',by)]);
    return json(publicMeeting(m));
   }
-  if(!['advance','recover','cancel','retry_failed'].includes(String(b.action)))throw new ApiError(400,'지원하지 않는 회의 작업입니다.');
+  if(!['advance','recover','cancel','retry_failed','choose'].includes(String(b.action)))throw new ApiError(400,'지원하지 않는 회의 작업입니다.');
   const m=await readRecord<Meeting>(owner,'team_meeting',id);
+  if(b.action==='choose'){
+   // 남은 이견 A/B 선택(X2): 합의 단계가 완료된 회의에서만, 추가만 한다(meeting_choice 기록 + 회의의 choices). 게이트로 멈춘 단계가 있으면 다시 대기로 돌려 다음 조회 때 제출된다.
+   const stepId=str(b.stepId,'회의 단계',200,true),choice=b.choice;
+   if(choice!=='A'&&choice!=='B'&&choice!=='hold')throw new ApiError(400,'선택은 A, B, 보류 중 하나여야 합니다.');
+   const synthesis=m.steps.find(s=>s.id===stepId&&s.phase==='synthesis'),output=synthesis?.status==='completed'?synthesis.output as Synthesis:undefined;
+   if(!output)throw new ApiError(409,'합의 단계가 완료된 뒤에 이견을 선택할 수 있습니다.');
+   const record:MeetingChoice={id:uid(),stepId,choice:choice as MeetingChoiceValue,optionA:output.decisions,optionB:output.disagreements,createdAt:stamp(),...(by?{by:{id:by.id,email:by.email}}:{})};
+   m.choices=[...(m.choices||[]),record];
+   for(const s of m.steps)if(choiceGateWaiting(s))s.status='pending';
+   m.updatedAt=stamp();
+   await database().batch([recordStatement(owner,'meeting_choice',record.id,{...record,meetingId:m.id,campaignId:m.campaignId},m.campaignId),...writes(owner,m),eventStatement(owner,m.campaignId,`회의 이견 선택을 기록했습니다(${choiceLabels[record.choice]}). 다음 단계 입력에 전달합니다.`,by)]);
+   return json(publicMeeting(m));
+  }
   if(b.action==='retry_failed'){
    // 실패 회의 재시도도 잠금 안에서 회의 기록의 캠페인을 다시 검사한다(PR 4a-2). 없는 캠페인은 원래 경로가 답한다.
    await assertCampaignNotArchived(owner,m.campaignId);
@@ -159,7 +192,9 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:E
   if(!meetingActive(m))return json(publicMeeting(m));
   const s=m.steps.find(s=>s.status!=='completed');if(!s)throw new ApiError(409,'회의 진행 상태를 확인해 주세요.');
   if(b.action==='cancel'){m.stopRequested=true;m.updatedAt=stamp();await database().batch(writes(owner,m))}
-  if(m.stopRequested&&s.status==='pending'){m.status='cancelled';m.updatedAt=stamp();await database().batch(writes(owner,m));return json(publicMeeting(m))}
+  if(m.stopRequested&&(s.status==='pending'||choiceGateWaiting(s))){s.status='cancelled';s.completedAt=stamp();m.status='cancelled';m.updatedAt=stamp();await database().batch(writes(owner,m));return json(publicMeeting(m))}
+  // 이견 선택 대기(게이트): 사용자가 고르기 전에는 접수도 복구도 하지 않는다(백그라운드 recover 호출 포함).
+  if(choiceGateWaiting(s))return json(publicMeeting(m));
   const cfg=await connection(owner);if(cfg.provider!=='hermes')throw new ApiError(409,'회의를 시작한 HERMES 연결이 필요합니다.');
   if(s.status==='pending'){
    if(m.steps.length>13)throw new ApiError(409,'회의의 최대 실행 범위를 초과했습니다.');
@@ -178,9 +213,12 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:E
    recovering=true;prepared=m;const r=await submitHermes(owner,meetingSubmissionId(s),cfg);s.providerId=r.id;s.status='running';m.status='running';m.error=undefined;m.updatedAt=stamp();await database().batch(writes(owner,m));return json(publicMeeting(m));
   }
   const result=await pollHermes(cfg,s.providerId,m.stopRequested,30000,owner,meetingUsage(owner,m,s));
-  m.updatedAt=stamp();m.error=undefined;m.status='running';s.status='running';if(['completed','cancelled','failed'].includes(result.status))s.tokens=Number.isSafeInteger(result.usage.total_tokens)?Math.max(0,result.usage.total_tokens):s.tokens;
+  // 진행 중 상태는 공급자 보고로 세분한다(X2): 승인 대기(needsApproval)·생각 중(추론 활동)·실행 중. 종료 상태는 아래 분기가 덮어쓴다.
+  m.updatedAt=stamp();m.error=undefined;m.status='running';s.status=result.status==='in_progress'?(result.needsApproval?'waiting_for_approval':thinkingActivity(result.activity)?'thinking':'running'):'running';
+  if(result.activity){s.activity=result.activity;if(result.activityAt)s.activityAt=result.activityAt}
+  if(['completed','cancelled','failed'].includes(result.status))s.tokens=Number.isSafeInteger(result.usage.total_tokens)?Math.max(0,result.usage.total_tokens):s.tokens;
   if(m.stopRequested){
-   if(['completed','cancelled','failed'].includes(result.status)){s.status='cancelled';m.status='cancelled';await markUsageOutcome(owner,'hermes',s.providerId,result.invalidOutput?'invalid_output':'cancelled')}
+   if(['completed','cancelled','failed'].includes(result.status)){s.status='cancelled';s.completedAt=stamp();m.status='cancelled';await markUsageOutcome(owner,'hermes',s.providerId,result.invalidOutput?'invalid_output':'cancelled')}
    await database().batch(writes(owner,m));return json(publicMeeting(m));
   }
   if(result.status==='completed'){
