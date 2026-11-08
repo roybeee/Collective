@@ -15,7 +15,7 @@ const deletedGroups:readonly Group[]=[
  {label:'오퍼 검토 초안·재개 위치',kinds:['growth_offer_review_draft','growth_offer_review_cursor']},
  {label:'사업목표·리뷰',kinds:['growth_target','growth_target_history','growth_target_review','growth_target_request']},
  {label:'성장·판매 계획',kinds:['growth_signal','growth_need','growth_catalog','growth_offer','growth_mission','growth_history','growth_authority','growth_demand','growth_demand_history','growth_journey','growth_journey_history','growth_decision','growth_decision_history','growth_lesson','growth_lesson_history']},
- {label:'작업물',kinds:['artifact']},{label:'실행',kinds:[JOBS]},{label:'회의',kinds:['team_meeting']},{label:'성과',kinds:['metric']},
+ {label:'작업물',kinds:['artifact']},{label:'실행',kinds:[JOBS]},{label:'회의',kinds:['team_meeting','meeting_choice']},{label:'성과',kinds:['metric']},
  {label:'작업물 이전 버전',kinds:['history']},{label:'온라인 채점 결과',kinds:['grading']},{label:'바이럴 실험',kinds:['viral_experiment']},
  {label:'실험 정정·수집 기록',kinds:['experiment_revision','measurement_draft','measurement_source','learning_guidance']},
  {label:'Meta 광고 준비 계획',kinds:['meta_ads_plan','meta_ads_insights','meta_ads_creative_review','meta_ads_report','meta_ads_sync_state','meta_ads_budget_review','meta_ads_learning_decision','meta_ads_bundle']},

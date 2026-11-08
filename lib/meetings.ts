@@ -18,13 +18,34 @@ export type Synthesis={decisions:string;disagreements:string;questions:string;ta
 export type Revision={title:string;content:string;changes:string;copyPack?:CopyPack;copyPackIssues?:CopyPackIssue[]};
 export type MeetingAttempt={attempt:number;status:'failed';providerId?:string;raw?:string;error:string;tokens?:number;startedAt?:string;completedAt?:string};
 // promptVersion: 이 단계 제출의 지시 버전(F2a 조인 키). 레지스트리 단위면 unit@sha256 앞 12자, 코드 상수면 <스킬 버전>:<지시 sha256 앞 12자>.
-export type MeetingStep={id:string;role:string;phase:MeetingPhase;status:'pending'|'starting'|'running'|'uncertain'|'completed'|'failed'|'cancelled';providerId?:string;startedAt?:string;completedAt?:string;output?:Contribution|Synthesis|Revision|QualityReview;raw?:string;error?:string;task?:MeetingTask;tokens?:number;attempt?:number;attempts?:MeetingAttempt[];failureKind?:'invalid_output'|'provider_failed';correction?:{error:string};warnings?:string[];promptVersion?:string};
+// 단계 상태(GLOBAL-PLAN X2 G0). thinking: 공급자가 추론·근거 정리 활동을 보고한 진행 중. waiting_for_approval: 공급자 승인 대기(providerId 있음) 또는 이견 선택 대기(providerId 없음, 스위치 meeting_choice_gate).
+// 저장된 이전 기록의 다른 값은 모르는 상태로 그대로 그린다(lib/run-timeline.ts). activity·activityAt: 공급자가 보고한 마지막 활동(표시용).
+export type MeetingStepStatus='pending'|'starting'|'running'|'thinking'|'waiting_for_approval'|'uncertain'|'completed'|'failed'|'cancelled';
+export type MeetingStep={id:string;role:string;phase:MeetingPhase;status:MeetingStepStatus;providerId?:string;startedAt?:string;completedAt?:string;activity?:string;activityAt?:string;output?:Contribution|Synthesis|Revision|QualityReview;raw?:string;error?:string;task?:MeetingTask;tokens?:number;attempt?:number;attempts?:MeetingAttempt[];failureKind?:'invalid_output'|'provider_failed';correction?:{error:string};warnings?:string[];promptVersion?:string};
+// 남은 이견 A/B 선택(X2). A=채택한 방향(decisions), B=남은 이견(disagreements), hold=둘 다 보류. 기록(meeting_choice)은 추가만 하고 회의에는 최신 선택을 붙인다.
+export type MeetingChoiceValue='A'|'B'|'hold';
+export type MeetingChoice={id:string;stepId:string;choice:MeetingChoiceValue;optionA:string;optionB:string;createdAt:string;by?:{id:string;email:string|null}};
+// 실행 전 계획 카드(X3)가 시작 때 보낸 추정. 완료 뒤 실제 토큰(단계 토큰 합)과 비교해 보인다.
+export type MeetingPlan={estimatedTokens:number;estimatedMs:number|null;steps:number;approvedAt:string};
 // 회의 시작 때 캠페인에 고정한 프롬프트 해석(lib/prompt-registry.ts). source code는 코드 상수, registry는 set의 본문을 쓴다. promptVersion은 캠페인 단위 레지스트리 버전(unit@sha256 앞 12자, '+' 연결).
 export type MeetingPrompts={source:'code'|'registry';units?:Record<string,string>;promptVersion?:string;set?:PromptSet;fallback?:string};
 // snapshot.sourceMasking: 브랜드 자료 가림 기록(값 없음, 모델 입력에 싣지 않음). 단계마다 inputMasking에 합친다. 없으면 자료 가림 이전에 시작한 회의다(lib/meeting-execution.ts 전환 가림).
 // snapshot.outputProfile: 회의 시작 때 스위치 a3_copy_pack이 켜져 있었으면 'copy-pack-v2'. 모델 입력에 싣지 않고 콘텐츠 개선본의 지시·파싱만 바꾼다. 없으면 키가 없다.
 // snapshot.inputDiet: 회의 시작 때 스위치 input_diet가 켜져 있었으면 입력 축소 버전(lib/input-diet.ts). 회의 안의 모든 단계가 같은 조립을 쓴다. 없으면 키가 없다.
-export type Meeting={skillVersion?:string;id:string;campaignId:string;campaignVersion:number;agenda:string;status:MeetingStatus;steps:MeetingStep[];createdAt:string;updatedAt:string;model:string;stopRequested:boolean;error?:string;previousMeetingId?:string;artifactIds:string[];invalidatedRoles:string[];snapshot:{prompts?:MeetingPrompts;outputProfile?:typeof COPY_PACK_PROFILE;inputDiet?:typeof import('./input-diet').INPUT_DIET_VERSION;brandArchive?:Awaited<ReturnType<typeof import('./archive-server').brandArchiveContext>>;sourceMasking?:import('./ai-context').InputMasking[];campaign:Campaign;brand:Brand;artifacts:Artifact[];metrics:Metric[];learning:LearningRule[];evidence?:Awaited<ReturnType<typeof import('./ai-context').evidenceContext>>;previous?:{id:string;agenda:string;decisions?:Synthesis;quality?:QualityReview;discussion:{id:string;role:string;output:Contribution}[];failure?:{role:string;phase:MeetingPhase;error:string}}}};
+// snapshot.previous.choice: 이전 회의의 최신 이견 선택(있을 때만). 후속 회의 입력의 previousMeeting에 그대로 실린다.
+export type Meeting={skillVersion?:string;id:string;campaignId:string;campaignVersion:number;agenda:string;status:MeetingStatus;steps:MeetingStep[];createdAt:string;updatedAt:string;model:string;stopRequested:boolean;error?:string;previousMeetingId?:string;artifactIds:string[];invalidatedRoles:string[];plan?:MeetingPlan;choices?:MeetingChoice[];snapshot:{prompts?:MeetingPrompts;outputProfile?:typeof COPY_PACK_PROFILE;inputDiet?:typeof import('./input-diet').INPUT_DIET_VERSION;brandArchive?:Awaited<ReturnType<typeof import('./archive-server').brandArchiveContext>>;sourceMasking?:import('./ai-context').InputMasking[];campaign:Campaign;brand:Brand;artifacts:Artifact[];metrics:Metric[];learning:LearningRule[];evidence?:Awaited<ReturnType<typeof import('./ai-context').evidenceContext>>;previous?:{id:string;agenda:string;decisions?:Synthesis;quality?:QualityReview;discussion:{id:string;role:string;output:Contribution}[];failure?:{role:string;phase:MeetingPhase;error:string};choice?:UserDecision}}};
+// 모델 입력에 싣는 선택 모양. 사용자가 고른 쪽 본문만 chosen에 두고, 보류는 두 안을 모두 미확정으로 적는다.
+export type UserDecision={choice:MeetingChoiceValue;chosen:string;note:string;decidedAt:string};
+const NO_DISAGREEMENT=/^\s*(없음|없습니다|해당 없음|없다|none|n\/a)[.。]?\s*$/i;
+// 합의 단계에 실제 이견이 남았는지. '없음' 류 한 단어면 선택 카드를 내지 않는다.
+export const hasDisagreement=(s:Pick<Synthesis,'disagreements'>|undefined)=>!!s&&typeof s.disagreements==='string'&&!!s.disagreements.trim()&&!NO_DISAGREEMENT.test(s.disagreements);
+export const latestChoice=(m:Pick<Meeting,'choices'>,stepId?:string)=>[...(m.choices||[])].filter(c=>!stepId||c.stepId===stepId).sort((a,b)=>a.createdAt.localeCompare(b.createdAt)).at(-1);
+export function userDecision(c:MeetingChoice|undefined):UserDecision|undefined{
+ if(!c)return undefined;
+ const note=c.choice==='A'?'사용자가 채택한 방향(A)을 확정했습니다. 남은 이견(B)은 채택하지 마세요.':c.choice==='B'?'사용자가 남은 이견(B)을 채택했습니다. 채택한 방향(A)에서 B와 충돌하는 부분은 B를 따르세요.':'사용자가 두 안을 모두 보류했습니다. 어느 쪽도 확정하지 말고 조건부 초안과 확인 계획으로 작성하세요.';
+ return {choice:c.choice,chosen:c.choice==='A'?c.optionA:c.choice==='B'?c.optionB:`A: ${c.optionA}\nB: ${c.optionB}`,note,decidedAt:c.createdAt};
+}
+export const choiceLabels:Record<MeetingChoiceValue,string>={A:'A안 채택',B:'B안 채택',hold:'둘 다 보류'};
 // storedRepair: 저장된 응답이 현재 파서로 통과해 모델을 다시 부르지 않고 단계를 완료할 수 있는 상태.
 export type PublicMeeting=Omit<Meeting,'snapshot'|'steps'>&{stale?:boolean;steps:(Omit<MeetingStep,'providerId'|'raw'|'attempts'>&{attempts?:Omit<MeetingAttempt,'providerId'|'raw'>[];retryAvailable:boolean;storedRepair:boolean})[]};
 export const phaseNames:Record<MeetingPhase,string>={discussion:'의견 교환',synthesis:'합의·과제 배정',revision:'담당자 개선',quality:'품질 재검토'};
@@ -68,7 +89,8 @@ export function publicMeeting(m:Meeting,stale=false):PublicMeeting{
  })};
 }
 export function meetingMarkdown(m:PublicMeeting){
- return `# 팀 회의\n\n${m.agenda}\n\n회의 상태: ${m.status}\n시작: ${m.createdAt}\n${m.error?'오류: '+m.error+'\n':''}\n`+m.steps.map(s=>{
+ const choice=latestChoice(m);
+ return `# 팀 회의\n\n${m.agenda}\n\n회의 상태: ${m.status}\n시작: ${m.createdAt}\n${m.error?'오류: '+m.error+'\n':''}${choice?'이견 선택: '+choiceLabels[choice.choice]+' ('+choice.createdAt+')\n':''}\n`+m.steps.map(s=>{
   const attempts=[...(s.attempts||[]),{attempt:s.attempt||0,status:s.status,error:s.error,tokens:s.tokens}];
   return `## ${roles.find(r=>r.id===s.role)?.name||s.role} · ${phaseNames[s.phase]}\n\n상태: ${s.status}\n`+attempts.map(a=>`- 시도 ${a.attempt+1}: ${a.status} · 토큰 ${a.tokens??'미확인'}${a.error?' · '+a.error:''}`).join('\n')+(s.output?'\n\n'+JSON.stringify(s.output,null,2):'');
  }).join('\n\n');
