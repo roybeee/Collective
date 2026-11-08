@@ -39,6 +39,8 @@ export const enumLabels={
  experimentChannel:{storefront:'자사몰',organic:'자연 유입',meta:'Meta 광고',manual:'수동 기록'},
  assignmentUnit:{pseudonymous_visitor:'가명 방문자',pseudonymous_session:'가명 세션',store_day:'지점·일자'},
  geoEngine:{chatgpt:'ChatGPT',perplexity:'Perplexity',gemini:'Gemini',google_ai_overview:'Google AI 개요',naver:'네이버',other:'기타'},
+ // Meta 광고 실행 기록 상태(lib/meta-execution.ts MetaExecutionState). 승인 카드 v2(GLOBAL-PLAN X4): 화면에 원시 상태값 대신 보인다.
+ metaExecutionState:{approved:'실행 승인',activating:'활성화 중',active:'광고 활성',stopping:'중단 중',stopped:'중단됨',unknown:'미확인',settled:'최종 대조 완료',revoked:'승인 철회'},
 } as const;
 export function enumLabel<K extends keyof typeof enumLabels>(kind:K,value:string):string{return (enumLabels[kind] as Record<string,string>)[value]??value}
 // 서버·보고서가 공유하는 고지 문구의 기호·영문 용어를 화면에서만 한국어로 보인다(데이터·보고서 원문은 그대로). UX-PLAN-3 4차원.
