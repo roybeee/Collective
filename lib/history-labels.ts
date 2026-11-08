@@ -74,7 +74,11 @@ const ACTION=new RegExp(`^(.+?) (${Object.keys(ACTIONS).join('|')})$`);
 // 서버가 남긴 캠페인 이벤트 문구(lib/server.ts eventStatement)를 행위자·시각이 든 한 문장으로 바꾼다. 저장된 문구는 바꾸지 않는다.
 function eventLine(e:Pick<Event,'message'|'createdAt'|'actor'>):HistoryLine{
  const lead=`${e.actor?.email?e.actor.email+' 님이 ':''}${at(e.createdAt)}`,message=e.message.trim();
- // 검토: '${title} v${n} 승인|수정 요청|브랜드·사실 변경 확인 후 승인[ · 의견]'(app/api/action/route.ts review_artifact).
+ // 외부 검토자(G4 공유 링크, lib/share-links.ts externalEventMessage): '외부 검토자 ○○ · ${title} v${n} 승인|수정 요청[ · 메시지]'. 행위자 이메일이 없으니 라벨이 주어다.
+ const external=/^외부 검토자 (.+?)\s·\s(.+) v(\d+) (승인|수정 요청)(?:\s·\s([\s\S]+))?$/.exec(message);
+ if(external){const [,label,title,v,decision,note='']=external,who=josa(`외부 검토자 ${label}`,'이/가'),target=`${titleSubject(title)} v${v}`;
+  return {sentence:decision==='승인'?`${who} ${at(e.createdAt)}${josa(target,'을/를')} 승인했습니다.`:`${who} ${at(e.createdAt)}${target}의 수정을 요청했습니다.`,note:note.replace(DOT,', ')}}
+ // 검토:'${title} v${n} 승인|수정 요청|브랜드·사실 변경 확인 후 승인[ · 의견]'(app/api/action/route.ts review_artifact).
  const review=/^(.+) v(\d+) (승인|수정 요청|브랜드·사실 변경 확인 후 승인)(?:\s·\s([\s\S]+))?$/.exec(message);
  if(review){const [,title,v,decision,note='']=review,target=`${titleSubject(title)} v${v}`;
   return {sentence:decision==='수정 요청'?`${lead}${target}의 수정을 요청했습니다.`:`${lead}${decision==='승인'?'':'브랜드와 확정 사실이 바뀐 것을 확인하고 '}${josa(target,'을/를')} 승인했습니다.`,note:note.replace(DOT,', ')}}

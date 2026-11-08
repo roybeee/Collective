@@ -9,10 +9,12 @@ import {REPORT_METRICS,isoWeekOfDate,reportWeek,type CustomerReport,type MetricU
 import {addDays} from '@/lib/store-attribution';
 import type {Store} from '@/lib/store-marketing';
 import {canChange,useAccount,type Account} from './account-context';
+import {ShareLinksCard} from '@/components/app/share-links-card';
 
 // 주간 고객 보고서 화면(A8-3, docs/CUSTOMER-REPORT.ko.md 5·11절). 점포 마케팅 지점 탭 '고객 보고서'와 브랜드 사실 탭의 '사실 팩 받기'.
 // 대표·관리자만 탭을 본다(직원은 숨김, 서버도 403). '검토 완료'는 대표만. 스위치 a8_customer_report가 꺼져 있으면 동결본 목록·다운로드만 보인다.
 // 숫자는 서버(lib/customer-report-server.ts)가 계산하고, 화면은 받은 값을 그대로 보인다. 동결 요청은 대화상자에 보인 확인 값(confirm)을 그대로 보낸다.
+// 동결본마다 공유 링크 카드(components/app/share-links-card.tsx, G4): 로그인 없는 읽기 전용 주소를 만들고 취소한다. 스위치 share_links가 꺼져 있으면 만들기만 잠긴다.
 const API='/api/customer-reports';
 export const REPORT_SELECT_WEEKS=12,REPORT_LIST_WEEKS=26;
 const FORMATS=['md','csv','json'] as const;
@@ -156,6 +158,7 @@ function FrozenList({owner,enabled,frozen,busy,onReview,onDownload}:ViewProps){
     {e.stale&&<p className="form-error" role="note">장부 변경됨(stale) · 동결 뒤 주문·비용·POS·사실이 바뀌었습니다. 다시 동결하면 지금 장부로 새 판을 만듭니다.</p>}
     <div className="form-actions">{files(e)}{owner&&enabled&&!reviewed&&<Button size="sm" disabled={busy} onClick={()=>onReview(e)}>검토 완료</Button>}</div>
     {!!older.length&&<details><summary>{`이전 판 ${older.length}개`}</summary><ul>{older.map(v=><li key={v.version}>{`v${v.version} · 동결 ${kst(v.frozenAt)} · ${reviewText(v.review)}`} {files(e,v.version)}</li>)}</ul></details>}
+    <ShareLinksCard kind="customer_report" id={e.id} canManage title={`${e.week} v${e.version}`}/>
    </div></article></li>})}</ul>
  </div>;
 }

@@ -104,7 +104,8 @@ export function suggestionDecision(saved:string,suggested:string,baseline:string
 }
 
 // 판정 행위자는 계정 id와 역할만 남긴다. 캠페인을 지워도 남는 기록이라 이메일·검토 메모 원문은 담지 않고 메모는 길이(noteLength)만 둔다.
-export type ReviewActor={id:string;role:'owner'|'admin'|'member'};
+// external: 로그인 없는 외부 검토자 링크(G4, lib/share-links-server.ts)의 행위자. id는 'external:<라벨>'이고 그 작업물 판에 의견을 남길 수 있을 뿐 다른 권한은 없다.
+export type ReviewActor={id:string;role:'owner'|'admin'|'member'|'external'};
 export type ReviewDecision={id:string;targetKind:ReviewTargetKind;targetId:string;version:number;role:string|null;decision:ReviewDecisionValue;reasonCodes:ReasonCode[];section?:string;noteLength?:number;actor:ReviewActor;
  promptVersion:string|null;skillVersion:string|null;outputContractVersion:string|null;campaignId:string|null;brandId:string|null;origin?:string;criteria?:CriterionJudgement[];reasonsVersion:string;createdAt:string};
 // 역할×스킬 버전별 1차 승인율: AI가 만든 작업물(ai·ai_edited)마다 기록 순서상 첫 판정을 본다. 입력은 기록 순서대로 준다.

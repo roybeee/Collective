@@ -41,6 +41,7 @@ export const FEATURE_FLAGS={
  autonomy_rules:{defaultEnabled:false,description:'소유자가 행동별로 정한 자율성 규칙(자동·확인 후·금지)을 회의 시작·역할 실행·발행 접수·광고 활성화에 적용한다. 금지는 403, 자동은 저위험 행동만 표시한다. 꺼도 규칙 조회·편집은 계속되고 모든 행동은 확인 후로 동작한다(G3).'},
  scheduled_runs:{defaultEnabled:false,description:'워커 tick이 소유자 예약(KST 요일·시각)마다 하루 1회 회의 안건 초안 또는 오늘의 안건 항목을 기록한다(G3, 모델·외부 호출 없음). 전역 중단 중과 회의 시작 금지 규칙에서는 건너뛴 사유만 남긴다. 꺼도 예약 조회·편집은 계속된다.'},
  digest_mail:{defaultEnabled:false,description:'예약 실행 큐가 하루 1회 오늘의 결정 대기·기한·실행 결과·비용을 한 화면 요약으로 만들어 설정된 전송 어댑터에 넘기고 기록한다(G3). 이 판의 mail 어댑터는 기록만 남기는 스텁이며 실제 메일·알림톡은 보내지 않는다.'},
+ share_links:{defaultEnabled:false,description:'대표·관리자가 동결 고객 보고서의 읽기 전용 공유 링크와 작업물 판별 외부 검토자 승인 링크(최대 10개)를 만든다(G4, 로그인 없음·만료 기본 14일·최대 90일·취소 가능). 꺼지면 만들기는 409, 공개 주소는 모두 404다. 취소·목록은 계속된다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};

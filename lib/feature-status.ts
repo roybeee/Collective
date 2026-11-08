@@ -56,6 +56,13 @@ export function bufferCheckCampaigns(brands:unknown,campaigns:unknown):Record<st
  return Object.fromEntries(brandIds(brands).flatMap(id=>{const own=all.filter(c=>c.brandId===id),pick=latest(own.filter(c=>!c.archivedAt))||latest(own);return pick?[[id,pick.id]]:[]}));
 }
 
+// 공유 링크(G4): 기능 스위치 share_links 상태를 읽는다. 켜지면 대표·관리자가 점포 마케팅 고객 보고서 탭의 동결본에서 링크를 만든다.
+function shareLinksRow(flags:unknown):FeatureRow{
+ const base={key:'share-links',label:'보고서 공유 링크, 외부 검토자 승인 링크(로그인 없음)',flag:'share_links'},link:FeatureLink={label:'점포 마케팅 고객 보고서 탭에서 확인',view:'stores'};
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='share_links'):undefined;
+ if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'공유 링크 스위치 상태를 확인하지 못했습니다',link};
+ return state.enabled?{...base,status:'available',reason:['동결 보고서 읽기 전용 링크(만료 기본 14일, 취소 가능)','작업물 판별 외부 검토자 승인·수정 요청 링크 최대 10개']}:{...base,status:'blocked',reason:['공유 링크 스위치 꺼짐','소유자가 켭니다'],link};
+}
 function aiRow(connection:unknown):FeatureRow{
  const base={key:'ai',label:'8개 담당별 AI 작업(HERMES 연결)'},link:FeatureLink={label:'AI 팀 연결로 이동',view:'settings',section:'settings-ai'};
  if(!record(connection)||typeof connection.configured!=='boolean')return {...base,status:'blocked',reason:'AI 연결 상태를 확인하지 못했습니다',link};
@@ -246,6 +253,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   aiImageDisclosureRow(input.flags),
   autonomyRulesRow(input.flags),
   scheduledRunsRow(input.flags),
+  shareLinksRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
   posAutoRow(input.flags),
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},
