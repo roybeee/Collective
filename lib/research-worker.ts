@@ -113,7 +113,8 @@ async function rotateCredential(owner:string,saved:Credential,slot:Slot,ready:bo
 // 아래 tick 잠금(owner+':research-worker')은 tick끼리만 막는다. 상품 리서치 큐는 그 안에서 화면 쓰기와 같은 `${owner}:product-research` 잠금을 따로 잡고,
 // 화면 쓰기가 잡고 있으면 기다리지 않고 idle을 돌려준다(평가 1회차 H5).
 // digest(B2 2단계, 선택): 주간 품질 집계 큐(lib/quality-digest-queue-server.ts runDigestQueue). 넘겼을 때만 순환에 넣는다. 스위치는 그 모듈이 읽는다.
-export async function workerTick(principal:{owner:string;hash:string;gate?:GateVerdict;rotationReady?:boolean},executeResearch:(owner:string,input:Record<string,any>,timeout:number)=>Promise<Response>,collectDue?:(owner:string)=>Promise<{status:string}>,advanceWork?:(owner:string)=>Promise<{status:string}>,digest?:(owner:string)=>Promise<{status:string}>,metaExecution?:(owner:string)=>Promise<{status:string}>,metaConversion?:(owner:string)=>Promise<{status:string}>,growthDaily?:(owner:string)=>Promise<{status:string}>,storefrontPull?:(owner:string)=>Promise<{status:string}>,productResearch?:(owner:string)=>Promise<{status:string}>,consumerRecovery?:(owner:string)=>Promise<{status:string}>,providerCatalog?:(owner:string)=>Promise<{status:string}>){
+// scheduledRuns(G3, 선택): 예약 실행 큐(lib/scheduled-runs-server.ts scheduledRunsQueue). 라우트가 scheduled_runs 스위치가 켜진 소유자에게만 넘기므로 꺼진 소유자의 순환에는 큐 이름이 나타나지 않는다.
+export async function workerTick(principal:{owner:string;hash:string;gate?:GateVerdict;rotationReady?:boolean},executeResearch:(owner:string,input:Record<string,any>,timeout:number)=>Promise<Response>,collectDue?:(owner:string)=>Promise<{status:string}>,advanceWork?:(owner:string)=>Promise<{status:string}>,digest?:(owner:string)=>Promise<{status:string}>,metaExecution?:(owner:string)=>Promise<{status:string}>,metaConversion?:(owner:string)=>Promise<{status:string}>,growthDaily?:(owner:string)=>Promise<{status:string}>,storefrontPull?:(owner:string)=>Promise<{status:string}>,productResearch?:(owner:string)=>Promise<{status:string}>,consumerRecovery?:(owner:string)=>Promise<{status:string}>,providerCatalog?:(owner:string)=>Promise<{status:string}>,scheduledRuns?:(owner:string)=>Promise<{status:string}>){
  const {owner,hash,gate,rotationReady=false}=principal;
  const key=owner+':research-worker',lock=await acquireLock(key);
  try{
@@ -132,7 +133,7 @@ export async function workerTick(principal:{owner:string;hash:string;gate?:GateV
   await recordGatewaySnapshotSafely(owner);
   // F4b-2: 90일이 지난 비식별 평가 신호를 지운다(문장 1개, 하루 1회). 실패해도 작업 순환을 막지 않고 다음 날 tick·캠페인 삭제가 다시 지운다.
   if(purgeSignals)await purgeExpiredSignals(owner).catch(()=>console.error('deidentified_signal_purge_failed'));
-  const queues=['research','execution','measurement',...(digest?['digest']:[]),...(metaExecution?['meta_execution']:[]),...(metaConversion?['meta_conversion']:[]),...(growthDaily?['growth_daily']:[]),...(storefrontPull?['storefront_pull']:[]),...(productResearch?['product_research']:[]),...(consumerRecovery?['consumer_recovery']:[]),...(providerCatalog?['provider_catalog']:[])];
+  const queues=['research','execution','measurement',...(digest?['digest']:[]),...(metaExecution?['meta_execution']:[]),...(metaConversion?['meta_conversion']:[]),...(growthDaily?['growth_daily']:[]),...(storefrontPull?['storefront_pull']:[]),...(productResearch?['product_research']:[]),...(consumerRecovery?['consumer_recovery']:[]),...(providerCatalog?['provider_catalog']:[]),...(scheduledRuns?['scheduled_runs']:[])];
   const first=(queues.indexOf(previous?.lastQueue||'')+1)%queues.length;
   for(let offset=0;offset<queues.length;offset++){
    const queue=queues[(first+offset)%queues.length];
@@ -153,6 +154,7 @@ export async function workerTick(principal:{owner:string;hash:string;gate?:GateV
    else if(queue==='product_research'&&productResearch)result=await productResearch(owner);
    else if(queue==='consumer_recovery'&&consumerRecovery)result=await consumerRecovery(owner);
    else if(queue==='provider_catalog'&&providerCatalog)result=await providerCatalog(owner);
+   else if(queue==='scheduled_runs'&&scheduledRuns)result=await scheduledRuns(owner);
    if(result&&result.status!=='idle'){
     await recordStatement(owner,'worker_state','current',{...turnState,lastSeen:stamp(),lastStatus:result.httpStatus}).run();
     return {...result,status:result.status==='retry'?'retry':'processed',queue,pending:active.length,blocked,...rotated};

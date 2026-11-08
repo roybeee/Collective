@@ -22,6 +22,7 @@ const deletedGroups:readonly Group[]=[
  {label:'브리프 초안',kinds:['brief_draft']},{label:'상시 지시',kinds:['campaign_directive']},{label:'자료 요청',kinds:['data_request']},{label:'캠페인 이력',kinds:['event']},
  {label:'AI 요청·응답 원문',kinds:['hermes_submission','openai_submission','learning_task','learning_job_output','role_output_contract','role_output_failure','learning_snapshot','campaign_prompt_pin','reflector_run']},
  {label:'연속 실행·발행 설정',kinds:['campaign_sequence','background_attempt','execution_limits','publication_check']},{label:'캠페인 토큰 상한',kinds:['token_budget']},
+ {label:'예약 실행·회의 안건 초안',kinds:['scheduled_run','scheduled_run_execution','meeting_agenda_draft']},
 ];
 // 제작·발행·주문 귀속 기록(blocksDeletion)이 있으면 삭제 자체가 거부되므로 대화상자는 사유만 보이고 보존 목록을 쓰지 않는다.
 const retainedGroups:readonly Group[]=[
