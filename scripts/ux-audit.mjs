@@ -1,5 +1,5 @@
 // 화면·UX 계측(docs/UX-PLAN.ko.md 부록 A). 로컬 E2E 서버(node e2e/serve.mjs)에 합성 소유자로 지점·캠페인·상품·오퍼·미션을 만들고,
-// 화면 10종 × 모바일·데스크톱을 캡처해 화면마다 글자 수·대비 실패·44px 미만 타깃·헤딩 순서·접힘 패널·높이·axe(WCAG 2.x AA) 위반을 metrics.json에 남긴다.
+// 화면 10종(+홈 다크) × 모바일·데스크톱을 캡처해 화면마다 글자 수·대비 실패·44px 미만 타깃·헤딩 순서·접힘 패널·높이·axe(WCAG 2.x AA) 위반을 metrics.json에 남긴다.
 // 외부 호출 없음. 운영 서버에 쓰지 않는다. 사용: node scripts/ux-audit.mjs [출력 폴더=e2e/artifacts/ux-audit]
 // 환경: E2E_PORT(기본 8799), PLAYWRIGHT_CHROMIUM(크로미움 실행 파일, 없으면 Playwright 기본 설치본).
 import {chromium} from '@playwright/test';
@@ -67,6 +67,9 @@ for(const project of [{name:'desktop',viewport:{width:1280,height:800}},{name:'m
  const P=project.name;
  const go=async q=>{await page.goto(base+'/'+q);await page.waitForLoadState('networkidle').catch(()=>{})};
  await go('');await shot(page,P,'01-overview');
+ // 다크 모드(X5): OS 다크 설정을 흉내 내 같은 홈을 한 번 더 찍는다(next-themes 기본 system). 다크 화면의 대비·흰 상자는 이 캡처와 metrics.json의 textFail로 본다.
+ await page.emulateMedia({colorScheme:'dark'});await page.waitForFunction(()=>document.documentElement.classList.contains('dark')).catch(()=>{});await shot(page,P,'01-overview-dark',{theme:'dark'});
+ await page.emulateMedia({colorScheme:'light'});await page.waitForFunction(()=>!document.documentElement.classList.contains('dark')).catch(()=>{});
  await go('?view=campaigns');await shot(page,P,'02-campaigns');
  await go('?view=brands&brand=ofd');await shot(page,P,'03-brand-archive');
  await go('?view=stores&brand=ofd');await shot(page,P,'04-stores');
