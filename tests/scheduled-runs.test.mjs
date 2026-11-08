@@ -102,7 +102,7 @@ const other='sched-other';
 const token=await worker.registerWorker(other),tick=()=>workerRoute.POST(new Request('https://agency.test/api/research-worker',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token,'x-collective-owner':other},body:'{}'})).then(call);
 const lastQueue=()=>JSON.parse(sql.prepare("SELECT data FROM records WHERE owner=? AND kind='worker_state'").get(other).data).lastQueue;
 const seen=new Set();for(let i=0;i<6;i++){const t=await tick();assert.equal(t.status,200,'tick ok');seen.add(lastQueue())}
-check('switch off: the rotation never visits scheduled_runs',!seen.has('scheduled_runs')&&seen.has('provider_catalog'));
+check('switch off: the rotation never visits scheduled_runs',!seen.has('scheduled_runs')&&(seen.has('pos_pull')||seen.has('provider_catalog')));// 통합 뒤 순환의 마지막 큐는 pos_pull(C7)이다
 await core.recordStatement(other,'campaign','c',{id:'c',brandId:'b',version:1,status:'active',title:'t'}).run();
 await flags.setFeatureFlag(other,{flag:'scheduled_runs',enabled:true},by);
 const now=pure.kstParts(Date.now());
