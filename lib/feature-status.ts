@@ -192,6 +192,12 @@ function storeBrowserRow(flags:unknown):FeatureRow{
  const reason=!record(state)||typeof state.enabled!=='boolean'?'점포 브라우저 관리 상태를 확인하지 못했습니다':state.enabled?['점포별 관리 주소·장치·브라우저 설정 확인 필요','변경 전후 승인 후 한 번 저장, 결과 미확인은 조회로 확인','실제 네이버 적용 여부는 점포별 작업 근거에서 확인']:['기능 꺼짐','소유자가 켭니다'];
  return {key:'store-browser',label:'네이버 점포 영업시간 관리(로컬 장치)',flag:'store_browser_execution',status:'blocked',reason,link:{label:'점포 마케팅 채널 점검에서 연결',view:'stores',tab:'channels'}};
 }
+// C2 AI 생성 이미지 표시: 스위치 ai_image_disclosure가 켜져 있어야 AI 출처 소재 PNG에 기계판독 표시와 감사 기록이 남는다. 가시 표시 줄은 화면 경로가 따로 그린다.
+function aiImageDisclosureRow(flags:unknown):FeatureRow{
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='ai_image_disclosure'):undefined;
+ const reason=!record(state)||typeof state.enabled!=='boolean'?'AI 생성 이미지 표시 상태를 확인하지 못했습니다':state.enabled?['AI 출처로 등록한 소재 PNG에 기계판독 표시와 감사 기록','출처 불명 소재는 표시하지 않고 경고만 기록','가시 표시 줄은 화면에서 따로 적용']:['기능 꺼짐','소유자가 켭니다'];
+ return {key:'ai-image-disclosure',label:'AI 생성 이미지 표시(AI 기본법 31조)',flag:'ai_image_disclosure',status:'blocked',reason,link:{label:'설정의 AI 사용량에서 확인',view:'settings',section:'settings-ai'}};
+}
 export function featureRows(input:FeatureInput={}):FeatureRow[]{
  const now=typeof input.now==='number'?input.now:Date.now(),brands=brandIds(input.brands);
  return [
@@ -218,6 +224,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   reflectorRow(input.flags),
   productResearchRow(input.flags),
   storeBrowserRow(input.flags),
+  aiImageDisclosureRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
   {key:'pos-auto',label:'POS 자동 수집',status:'unimplemented',reason:['POS 연동 없음','CSV로 가져오세요']},
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},

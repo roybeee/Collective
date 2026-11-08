@@ -218,6 +218,7 @@ export const recordKinds:readonly RecordKind[]=[
  // A4-4 코드 넣은 파생 PNG. 발행 1건당 1행(id = 발행 id, parent = 캠페인)이고 발행 기록처럼 캠페인을 지워도 남긴다(발행 기록이 이미 삭제를 거부한다).
  {kind:'execution_coded_png',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'게시 코드를 그린 파생 PNG(발행·소재 id, 원본 소재 PNG 해시·파생 PNG 해시, 게시 코드와 코드 id, 비공개 파일 키, 등록한 사람 id·시각). 공개 사본은 승인 때 public_media로 만든다(A4-4)'},
  {kind:'execution_creative',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'제작한 소재. 있으면 캠페인 삭제를 거부한다'},
+ {kind:'ai_image_disclosure',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'AI 생성 이미지 표시 감사 기록(C2): 표시를 넣은 저장(원본·표시 뒤 해시, 출처, 가상인물, 정책, iTXt 본문), 출처 불명 경고, 반출 경로(앱 공개 사본·Meta 이미지)의 표시 유무. 고객 정보 없음'},
  {kind:'execution_limits',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'발행 한도 설정'},
  {kind:'execution_provider_audit',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'발행 공급자 응답 감사 기록. 발행 기록과 함께 생겨 삭제 거부 대상 캠페인에만 있다'},
  {kind:'execution_publication',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'발행 시도·결과. 있으면 캠페인 삭제를 거부한다'},
