@@ -12,7 +12,7 @@ function fixture(owner:string,kind:string,id:string,parent:string,data:unknown){
  try{const path=join(folder,'fixture.sql');writeFileSync(path,`INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(${[`${owner}:${kind}:${id}`,owner,kind,parent,JSON.stringify(data),new Date().toISOString()].map(quote).join(',')}) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at;`);execFileSync(process.execPath,['--import','./scripts/sites-env.mjs','./node_modules/wrangler/bin/wrangler.js','d1','execute','DB','--config','dist/server/wrangler.json','--local','--persist-to','e2e/.state','--file',path],{stdio:'pipe'});}finally{rmSync(folder,{recursive:true,force:true})}
 }
 const agendaOf=(page:Page)=>page.getByRole('region',{name:'오늘의 안건',exact:true});
-// 행 수는 행(li)으로 센다. 행마다 본문 버튼 외에 승인·수정 요청·미루기 버튼도 같은 제목을 접근 이름에 담는다.
+// 행 수는 행(li)으로 센다. 본문 버튼 이름에 제목이 들어가고, 승인·수정 요청·미루기 버튼은 '승인'·'수정 요청'·'미루기' 이름에 제목을 aria-describedby로 단다(Tab 정지는 본문 버튼만).
 const rowsOf=(page:Page,text:string|RegExp)=>agendaOf(page).locator('[data-inbox-row]').filter({hasText:text});
 const dialog=(page:Page)=>page.getByRole('alertdialog');
 
