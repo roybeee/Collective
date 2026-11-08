@@ -236,6 +236,8 @@ body{font-family:var(--font-sans);background:var(--background);color:var(--neutr
  [data-slot=sheet-content]>button.absolute,[data-slot=dialog-content]>button.absolute{min-width:44px;display:inline-flex;align-items:center;justify-content:center}
  input[type=checkbox],input[type=radio]{width:22px;height:22px}
  label:has(>input[type=checkbox]),label:has(>input[type=radio]){min-height:44px;display:flex;align-items:center;gap:8px}
+ /* 설정 화면 기능 표의 '자세히' 펼침은 width:fit-content라 Pretendard 12px 세 글자가 44px 아래로 내려간다(CI Linux에서 13개). */
+ .scope-tech summary{min-width:44px}
 }
 .segmented{display:inline-flex;gap:4px;padding:4px;background:var(--neutral-97);border-radius:9px;flex-wrap:wrap}.segmented>button{border:0;background:transparent;border-radius:7px;padding:8px 12px;font-size:13px;color:var(--green-32);min-height:36px}.segmented>button[aria-checked=true]{background:var(--background);color:var(--neutral-17);font-weight:600;box-shadow:0 1px 2px #0000001a}.segmented>button:focus-visible{outline:2px solid var(--olive-42);outline-offset:2px}@media(max-width:767px){.segmented>button{min-height:44px}}
 .ui-note{color:var(--muted-foreground);font-size:.88rem;line-height:1.7}.ui-note-wrap{display:flex;align-items:flex-start;gap:8px}.ui-note-wrap>p{flex:1;min-width:0}[data-clamp=true]{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}.ui-note-toggle{flex-shrink:0;border:0;background:transparent;color:var(--olive-35);text-decoration:underline;text-underline-offset:3px;font-size:.82rem;padding:2px 0;cursor:pointer}@media (max-width:767px){.ui-note-toggle{min-height:44px;min-width:44px}[data-clamp=true]{-webkit-line-clamp:2}}
