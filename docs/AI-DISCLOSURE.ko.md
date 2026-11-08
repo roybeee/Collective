@@ -84,10 +84,60 @@ AI 작업물의 카피를 게시 캡션에 쓰면 캡션 끝에 AI 생성물 표
 
 ## 8. 범위 밖
 
-- 생성형 이미지·영상의 표시: 지금은 사실 카드 PNG만 만든다.
+- 생성형 **영상**의 표시. 생성형 **이미지**(PNG)는 9절(C2)에서 다룬다.
 - 플랫폼이 제공하는 AI 표시 기능 연동, 규제·플랫폼 표시 위반을 찾는 결정론 채점기(GROWTH-PLAN A2).
 - 작업물 승인 경로(`app/api/action`)의 표시 확인: 작업물 승인은 광고 집행·외부 게시로 이어지지 않아 이번 범위 밖이다. 게시 직전 게이트(발행 승인)에서 확인한다.
 
+## 9. AI 생성 이미지 표시 (C2, AI 기본법 제31조)
+
+반출되는 생성물에 **기계판독 메타데이터**와 **사람이 인식할 수 있는 표시 또는 안내 문구**를 둔다는 요건을 소재 PNG에 적용한다. 스위치 `ai_image_disclosure`(기본 꺼짐, `lib/feature-flags.ts`)가 켜져 있을 때만 동작하고, 꺼져 있으면 바이트·기록이 모두 이전과 같다. 표시 문구는 2절과 같이 대표·법률 검토 전 초안이다. 계획 출처: [GLOBAL-PLAN C2](GLOBAL-PLAN.ko.md).
+
+- 코드: `lib/ai-disclosure-image.ts`(순수: CRC32·청크 배열·iTXt 넣기/읽기·판정), `lib/ai-disclosure-image-server.ts`(스위치·기록·저장 전 표시·반출 감사), `lib/execution-server.ts`(`saveCreative` 호출 지점), `lib/execution-media.ts`(앱 공개 사본 감사), `lib/meta-image-upload-server.ts`(Meta 업로드 바이트 감사), `lib/creative-render.ts`(가시 표시 줄 화면 경로), `lib/record-kinds.ts`(kind `ai_image_disclosure`), `lib/feature-status.ts`(설정 기능표 행)
+
+### 9.1 무엇을 표시하나
+
+| 소재 PNG의 출처(`save_creative` 요청의 `image.origin`) | 동작 |
+|---|---|
+| `ai`·`ai_edited` | 저장·해시 계산 **전에** iTXt 청크(키워드 `ai-disclosure`)를 IEND 앞에 넣는다. 소재 해시(`pngHash`)는 표시된 바이트의 해시다. 기록 `marked`. |
+| `manual` | 그대로 저장. 기록 없음. |
+| 없음 또는 알 수 없는 값(출처 불명) | 그대로 저장하고 막지 않는다. 경고 기록 `unknown_origin`만 남긴다(캡션의 출처 불명 규칙과 같은 태도: 표시 여부를 정할 수 없으니 임의로 표시하지 않는다). 지금 화면의 사실 카드 저장은 `image`를 보내지 않으므로, 스위치를 켜면 사실 카드 저장마다 이 경고가 남는다 — 사실 카드는 결정론 렌더링이라 AI 생성물이 아니며(1절), 화면이 `image:{origin:'manual'}`을 보내면 경고가 사라진다(화면 변경은 별도 PR). |
+
+iTXt 본문(JSON, 압축 없음): `{"origin":"ai"|"ai_edited","generator":"COLLECTIVE","model"?:string,"createdAt":ISO,"policy":"KR-AI-Basic-Act-31","virtualPerson":boolean}`. 픽셀 청크(IHDR·IDAT)는 바꾸지 않는다. 같은 원본·출처·가상인물·모델로 다시 저장하면 첫 기록의 본문(`createdAt` 포함)을 재사용해 **같은 바이트·같은 해시**가 되므로 소재 중복 판정이 유지된다.
+
+### 9.2 어디까지 따라가나
+
+표시는 저장 전에 넣기 때문에 그 뒤 모든 반출 경로가 같은 바이트를 내보낸다. 바이트는 바꾸지 않고(해시 대조가 깨진다) 표시 청크 유무만 감사 기록 `export`로 남긴다.
+
+| 경로 | 동작 |
+|---|---|
+| 소재 다운로드 `/api/execution/asset?id=` | 저장 바이트 그대로(표시 청크 포함). 기록 없음. |
+| 발행 승인 → 앱 공개 사본 `/media/<해시>.png`(Buffer가 가져간다) | 공개 사본을 처음 만들 때 `export`(channel `public_media`, 발행 id, 표시 유무) 기록. |
+| Meta 이미지 업로드(`metaImageSourceBytes`) | 보낼 바이트에 `export`(channel `meta_image`) 기록. 해시 대조·1회 전송 규율은 그대로. |
+| A4-4 코드 넣은 파생 PNG(`register_coded_png`) | 화면이 저장 PNG 위에 코드 라벨을 그려 다시 올린다. 브라우저 캔버스는 iTXt를 보존하지 않으므로 **파생 PNG에는 표시 청크가 없다**(미해결, 9.5). |
+
+### 9.3 가시 표시 줄
+
+서버는 이미지 안에 글자를 그릴 수 없다(PNG 픽셀을 다시 인코딩하지 않는다). 사람이 보는 표시는 화면 경로 `renderDisclosedCard(원본 Blob, 라벨, 코드 라벨 자리?)`가 코드 라벨과 같은 빈 줄(y 212~246)에 왼쪽 정렬로 그린다. 라벨은 `AI 생성 · COLLECTIVE`, 가상인물이면 `AI 생성 · COLLECTIVE · 가상인물`(상수 `AI_IMAGE_VISIBLE_LABEL`·`VIRTUAL_PERSON_IMAGE_LABEL`, `lib/ai-disclosure-image.ts`). 코드 라벨과 겹치면 자리를 주지 않는다(`disclosureBadgeBox`). **화면(제작·발행 탭)에는 아직 연결하지 않았다**(9.5).
+
+### 9.4 가상인물
+
+작업물이 가상인물 포함을 선언하면(`Artifact.virtualPerson:true`, 선택 필드 — 없으면 이전 모양 그대로) 그 카피로 준비한 발행은 카피 기록에 `copy.virtualPerson:true`를 남기고 캡션 끝에 심사지침 문구를 붙인다.
+
+> AI를 기반으로 생성된 가상인물이 포함된 게시물입니다.
+
+- 위치: AI 생성물 표시 줄 바로 다음 줄(AI 카피가 아니어도 가상인물 줄은 붙는다). 게시 코드 줄 앞.
+- 승인·접수 일치 검사: 저장 캡션에 이 줄이 없거나(문구 변경) 작업물의 선언이 준비 때와 다르면 409로 취소·재준비를 안내한다(결정 17 AI 줄과 같은 방식).
+- 규제 채점기: 이 문구는 `virtual_person_undisclosed`(차단) 규칙의 해소 표현에 들어 있어, 표시 줄을 붙인 캡션은 그 규칙에 걸리지 않는다. 이미지 라벨은 `가상인물`(9.3).
+- 작업물에 `virtualPerson`을 적는 화면·API는 아직 없다(9.5). 지금은 데이터로만 읽는다.
+
+### 9.5 검증 방법과 미해결
+
+- 확인: `readDisclosureChunk(bytes)`(`lib/ai-disclosure-image.ts`)가 표시 본문을 돌려주면 표시된 PNG다. `null`이면 표시 없음, PNG가 아니면 Error. `pngChunks(bytes)`로 청크 배열·CRC를 함께 검사할 수 있다. 감사 기록은 kind `ai_image_disclosure`(캠페인 아래, `action` marked·unknown_origin·export, 원본·표시 뒤 해시, 정책).
+- 테스트: `tests/ai-disclosure-image.test.mjs` — 1×1 PNG 왕복(청크 자리·CRC·IDAT 불변·재표시 교체·결정론), 스위치 꺼짐 바이트 불변, 출처 불명 경고, AI 출처 표시·기록·중복 판정, 소재 다운로드·공개 사본 반출 감사, 가상인물 줄·채점기 해소·승인 409, 기능표 행. 실제 SQLite, Buffer·R2 모의(mocked).
+- 미해결: **C2PA**(콘텐츠 자격증명 서명)는 구현하지 않았다 — iTXt는 서명이 없어 지울 수 있다. **생성형 영상**은 범위 밖. **가시 표시 줄 화면 연결**과 **작업물 `virtualPerson` 입력 화면**은 없다. **코드 넣은 파생 PNG**는 캔버스가 iTXt를 버려 표시 청크가 빠진다(파생 PNG 등록 때 서버가 다시 넣는 후속 작업 필요). 실제 AI 이미지 생성 경로는 아직 없어 `image.origin`을 보내는 호출자가 없다.
+
 ## 검증
+
+`tests/ai-disclosure-image.test.mjs`: 9절(C2) 전체.
 
 `tests/ai-disclosure.test.mjs`: 판정 규칙(`ai`·`ai_edited`·`manual`·기타), 표시 줄 위치(사실 뒤·코드 앞), 한도 계산, AI 카피 없는 발행의 바이트 불변, 승인 체크 없으면 409·있으면 승인과 확인자·시각 기록, 스위치 꺼짐이면 AI 카피 거절, 출처 불명 작업물 카피 거절, 일치 검사(문구가 바뀐 캡션 포함)·재준비(재확인·연결 해제)·제출 경로, 표시 확인 기록 누락의 드리프트, 화면 승인 본문(`approvalRequest`). 실제 SQLite, Buffer·R2는 모의 응답이다(mocked).

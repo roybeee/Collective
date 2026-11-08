@@ -7,6 +7,7 @@ import {storefrontDigest} from './storefront-orders';
 import {isEnabled} from './feature-flags';
 import {ApiError,database,listRecords,readRecord,runtime,stamp} from './server';
 import type {MetaImageJournal,MetaImageReceipt} from './meta-image-upload';
+import {auditImageExport} from './ai-disclosure-image-server';
 export type MetaImageUpload={id:string;campaignId:string;brandId:string;campaignVersion:number;creativeId:string;creativeVersion:number;pngHash:string;accountId:string;evidenceFingerprint:string;state:'prepared'|'sending'|'unknown'|'uploaded';receipt:MetaImageReceipt|null;version:number;createdAt:string;createdBy:string;sentAt:string|null;updatedAt:string;updatedBy:string};
 export async function metaImageUploadContext(owner:string,c:Campaign){
  const [x,reading,writing,operations,enabled]=await Promise.all([metaCreativeContext(owner,c),readMetaConnection(owner,c.brandId),readMetaWriteConnection(owner,c.brandId),listRecords<MetaImageUpload>(owner,'meta_ads_image_upload',c.id),isEnabled(owner,'meta_ads_image_upload')]);
@@ -29,7 +30,11 @@ export async function prepareMetaImageUpload(owner:string,c:Campaign,actorId:str
 export async function metaImageSourceBytes(owner:string,c:Campaign,o:MetaImageUpload){
  const creative=await readRecord<ExecutionCreative>(owner,'execution_creative',o.creativeId);
  if(creative.campaignId!==c.id||creative.brandId!==c.brandId||creative.version!==o.creativeVersion||creative.pngHash!==o.pngHash||creative.campaignVersion!==c.version)throw new ApiError(409,'업로드할 원본 소재의 계보가 변경되었습니다.');
- const object=await runtime.BUCKET?.get(creative.objectKey);if(!object)throw new ApiError(404,'검수 원본 PNG를 찾을 수 없습니다.');if(object.size>524288)throw new ApiError(413,'PNG 크기 한도를 넘었습니다.');return new Uint8Array(await object.arrayBuffer());
+ const object=await runtime.BUCKET?.get(creative.objectKey);if(!object)throw new ApiError(404,'검수 원본 PNG를 찾을 수 없습니다.');if(object.size>524288)throw new ApiError(413,'PNG 크기 한도를 넘었습니다.');
+ const bytes=new Uint8Array(await object.arrayBuffer());
+ // C2 반출 감사: Meta로 보내는 바이트의 표시 청크 유무를 기록한다(바이트·해시 대조는 그대로). 스위치가 꺼져 있으면 기록하지 않는다.
+ await auditImageExport(owner,{bytes,campaignId:c.id,artifactId:creative.id,channel:'meta_image'});
+ return bytes;
 }
 export function metaImageUploadJournal(owner:string,id:string,actorId:string):MetaImageJournal{
  const read=()=>readRecord<MetaImageUpload>(owner,'meta_ads_image_upload',id);

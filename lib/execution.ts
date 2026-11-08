@@ -13,7 +13,8 @@ export type PublicationStatus='draft'|'approved'|'submitting'|'uncertain'|'accep
 // mediaMode auto: 승인 때 앱 공개 주소(/media/<sha256>.png)를 채운다. external(이전 기록 포함): 고급 옵션의 Cloudinary·R2 주소.
 // copy: 승인된 콘텐츠 작업물에서 고른 카피. approvedLimits: 승인 당시 한도(낮아질 때만 무효). needsReview: 사용한 사실이 바뀌어 확인이 필요함.
 // aiGenerated: 준비 때 작업물 출처(origin)로 정한 AI 생성물 여부(결정 17, lib/ai-disclosure.ts). 이 필드 이전 기록에는 없다.
-export type PublicationCopy={artifactId:string;artifactVersion:number;index:number;text:string;aiGenerated?:boolean};
+// virtualPerson: 작업물이 가상인물 포함을 선언했을 때만 true(C2). 없으면 필드도 없다.
+export type PublicationCopy={artifactId:string;artifactVersion:number;index:number;text:string;aiGenerated?:boolean;virtualPerson?:boolean};
 export type NeedsReview={reason:string;at:string};
 // A4-2 게시 코드: 이 발행에만 발급한 추적 코드(lib/publication-codes.ts). 캡션 끝 코드 줄과 주문 장부의 게시별 귀속이 같은 코드를 쓴다.
 export type PublicationCode={id:string;code:string;type:'coupon'|'pos_tag';storeId:string};
@@ -54,7 +55,7 @@ export function codeLabel(code:Pick<PublicationCode,'type'|'code'>){return (code
 export const mediaHash=(p:Pick<Publication,'pngHash'>&{codedPng?:Pick<CodedPng,'hash'>})=>p.codedPng?.hash??p.pngHash;
 // 코드가 있을 때만 캡션 끝에 빈 줄+코드 줄을 붙인다. 코드가 없으면 이전 결과와 바이트 단위로 같다.
 // 결정 17: AI 카피(copy.aiGenerated)면 사실 문구 뒤·코드 줄 앞에 빈 줄+AI 생성물 표시 줄을 넣는다. 카피 없음·문자열 카피·사람 카피는 이전 결과와 바이트 단위로 같다.
-export const composeCaption=(copy:string|Pick<PublicationCopy,'text'|'aiGenerated'>|undefined,factCaption:string,code?:Pick<PublicationCode,'type'|'code'>)=>{const text=typeof copy==='string'?copy:copy?.text,disclosure=typeof copy==='string'?null:disclosureLine(copy);const caption=text?text+'\n\n'+factCaption:factCaption,disclosed=disclosure?caption+'\n\n'+disclosure:caption;return code?disclosed+'\n\n'+codeLine(code):disclosed};
+export const composeCaption=(copy:string|Pick<PublicationCopy,'text'|'aiGenerated'|'virtualPerson'>|undefined,factCaption:string,code?:Pick<PublicationCode,'type'|'code'>)=>{const text=typeof copy==='string'?copy:copy?.text,disclosure=typeof copy==='string'?null:disclosureLine(copy);const caption=text?text+'\n\n'+factCaption:factCaption,disclosed=disclosure?caption+'\n\n'+disclosure:caption;return code?disclosed+'\n\n'+codeLine(code):disclosed};
 export const CREATIVE_TITLE_MAX=60;
 // 소재 이름(실행 화면·점포 화면·귀속 보고 공용, lib/store-attribution.ts가 다시 내보낸다). 제목이 없으면 '소재(9월 23일 00:05 생성)'(한국 시각, 날짜가 없으면 짧은 ID) 뒤에
 // 첫 사실 줄을 붙여 같은 분에 만든 소재도 구분한다. 저장된 기록을 그대로 받으므로 제목·캡션·날짜가 없거나 문자열이 아니어도 된다.

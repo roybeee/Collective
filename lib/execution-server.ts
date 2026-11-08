@@ -16,7 +16,8 @@ import {issuePublicationCode} from './publication-codes';
 import {CODE_ALPHABET,CODE_MAX,type TrackingCode} from './tracking-codes';
 import type {Store} from './store-marketing';
 import {assertNotArchived} from './campaign-archive';
-import {AI_DISCLOSURE_LINE,hasKnownOrigin,isAiGenerated} from './ai-disclosure';
+import {AI_DISCLOSURE_LINE,VIRTUAL_PERSON_LINE,copyDisclosure,hasKnownOrigin,isAiGenerated} from './ai-disclosure';
+import {discloseCreativeImage,parseImageInput} from './ai-disclosure-image-server';
 import {footnoteIssues,franchiseFactUseIssues,versionStates,FRANCHISE_FACT_MESSAGES} from './franchise-facts';
 import {hasFranchiseContext,loadFranchiseContext,type FranchiseContext} from './franchise-facts-server';
 import {franchiseGateError,franchiseIssueLabels,judgeFranchiseText,mentionedFranchiseFacts,recruitmentLike,recruitmentWarning,type ClaimScope,type FranchiseJudgement} from './franchise-compliance';
@@ -121,7 +122,8 @@ async function approvedCopy(owner:string,campaign:Campaign,input:unknown,fr?:Fra
  const context=fr??await loadFranchiseContext(owner,campaign.brandId);
  if(claimScope(campaign,context))assertFranchiseText(franchiseJudgement(campaign,context,await confirmedFactContext(owner,campaign.brandId,campaign.storeId),text,stamp()));
  // AI 생성물 여부는 작업물 출처(origin)에서 파생해 발행에 기록한다(결정 17). 캡션 표시 줄과 승인 게이트가 이 값을 쓴다.
- return {artifactId:artifact.id,artifactVersion:artifact.version,index,text,aiGenerated:isAiGenerated(artifact)};
+ // 가상인물 선언(virtualPerson)은 작업물에서 함께 옮긴다(C2). 캡션 표시 줄과 승인 일치 검사가 이 값을 쓴다.
+ return {artifactId:artifact.id,artifactVersion:artifact.version,index,text,...copyDisclosure(artifact)};
 }
 export async function saveLimits(owner:string,campaign:Campaign,input:Record<string,unknown>){
  const old=await optionalRecord<ExecutionLimits>(owner,'execution_limits',campaign.id);if(old)assertVersion(old,input.version);
@@ -175,7 +177,9 @@ export async function saveCreative(owner:string,campaign:Campaign,input:Record<s
  if(caption===null)throw new ApiError(409,FRANCHISE_FACT_MESSAGES.staleFact);
  if(caption.length>1800)throw new ApiError(400,'선택한 사실이 너무 깁니다. 짧은 안내 사실을 선택하세요.');
  if(claimScope(campaign,fr))assertFranchiseText(franchiseJudgement(campaign,fr,await confirmedFactContext(owner,campaign.brandId,campaign.storeId),caption,stamp()));
- const bytes=await pngBytes(input.png),hash=await sha256(bytes),refs=facts.map(f=>({id:f.id,version:f.version}));
+ // C2: AI 출처 이미지는 해시 계산·저장 전에 기계판독 표시(iTXt)를 넣는다. 스위치 ai_image_disclosure가 꺼져 있으면 바이트 그대로다(lib/ai-disclosure-image-server.ts).
+ const {bytes}=await discloseCreativeImage(owner,campaign.id,await pngBytes(input.png),parseImageInput(input.image));
+ const hash=await sha256(bytes),refs=facts.map(f=>({id:f.id,version:f.version}));
  const material=await materialHash(await readRecord<Brand>(owner,'brand',campaign.brandId),refs,caption);
  const prior=(await listRecords<ExecutionCreative>(owner,'execution_creative',campaign.id)).find(c=>c.pngHash===hash&&c.materialHash===material);
  // 같은 PNG·입력이면 기존 소재를 돌려준다. 제목은 해시·캡션에 들어가지 않으므로 제목이 없던 소재에는 제목만 붙인다.
@@ -250,7 +254,7 @@ export async function savePublication(owner:string,campaign:Campaign,input:Recor
  // 코드 발급 전에 가맹 사실 게이트·가맹 규칙(예약 시각 규칙)·각주를 확인한다(막히면 코드가 발급되지 않는다).
  await franchiseCaptionGate(owner,campaign,fr,used,composeCaption(copy,creative.caption),scheduledAt);
  // 한도는 AI 생성물 표시 줄·코드 줄을 포함해 검사한다. 발급 전에는 가장 긴 코드(CODE_MAX자)로 재서, 발급 뒤에는 저장만 남게 한다(한도 때문에 발급한 코드가 버려지지 않게).
- const extraLines=[...(copy?.aiGenerated?['AI 생성물 표시 줄']:[]),...(choice?['게시 코드 줄']:[])].join('·');
+ const extraLines=[...(copy?.aiGenerated?['AI 생성물 표시 줄']:[]),...(copy?.virtualPerson?['가상인물 표시 줄']:[]),...(choice?['게시 코드 줄']:[])].join('·');
  if(composeCaption(copy,creative.caption,choice?{type:choice.type,code:CODE_ALPHABET[0].repeat(CODE_MAX)}:undefined).length>2200)throw new ApiError(400,(extraLines?extraLines+'을 포함한 캡션이':'캡션이')+' Instagram 한도 2,200자를 넘습니다. 더 짧은 카피를 고르'+(choice?'거나 코드 없이 준비하세요.':'세요.'));
  if(choice&&!who)throw new ApiError(403,'게시 코드 발급은 관리자만 할 수 있습니다.');
  const id=choice?await publicationIdFor(owner,campaign,creative.id,choice,existing):uid();
@@ -271,11 +275,12 @@ export async function approvalInputs(owner:string,campaign:Campaign,p:Publicatio
  const {creative,facts:used,fr}=await currentCreativeInputs(owner,campaign,p.creativeId);
  // 스위치를 켠 뒤 표시 문구 상수가 바뀌면 남은 초안·승인의 캡션에는 이전 표시 줄이 있다. 재확인으로는 캡션이 바뀌지 않으므로 취소·재준비를 안내한다(결정 17).
  if(p.copy?.aiGenerated===true&&!p.caption.includes(AI_DISCLOSURE_LINE))throw new ApiError(409,'AI 생성물 표시 문구가 준비 뒤 바뀌었습니다. 이 발행을 취소하고 다시 준비하세요.');
+ if(p.copy?.virtualPerson===true&&!p.caption.includes(VIRTUAL_PERSON_LINE))throw new ApiError(409,'가상인물 표시 문구가 준비 뒤 바뀌었습니다. 이 발행을 취소하고 다시 준비하세요.');
  if(creative.version!==p.creativeVersion||creative.pngHash!==p.pngHash||composeCaption(p.copy,creative.caption,p.trackingCode)!==p.caption)throw new ApiError(409,'소재가 변경됐습니다. 다시 준비하세요.');
  // A4-4: 코드 넣은 파생 PNG가 연결된 발행은 스위치가 켜져 있고 파생의 바탕이 이 원본 소재·게시 코드여야 한다.
  await assertCodedPngUsable(owner,p);
  // 기록된 AI 생성물 판정(이 필드 이전 기록 포함)이 작업물 출처와 다르면 캡션 표시 줄이 맞지 않으므로 다시 준비하게 한다(결정 17).
- if(p.copy){const copy=await approvedCopy(owner,campaign,p.copy,fr);if(copy.text!==p.copy.text)throw new ApiError(409,'카피 작업물이 바뀌었습니다. 캡션 후보를 다시 고르세요.');if(copy.aiGenerated!==(p.copy.aiGenerated===true))throw new ApiError(409,'카피 작업물의 AI 생성물 판정이 준비 때와 다릅니다. 이 발행을 취소하고 캡션 후보를 다시 골라 준비하세요.')}
+ if(p.copy){const copy=await approvedCopy(owner,campaign,p.copy,fr);if(copy.text!==p.copy.text)throw new ApiError(409,'카피 작업물이 바뀌었습니다. 캡션 후보를 다시 고르세요.');if(copy.aiGenerated!==(p.copy.aiGenerated===true))throw new ApiError(409,'카피 작업물의 AI 생성물 판정이 준비 때와 다릅니다. 이 발행을 취소하고 캡션 후보를 다시 골라 준비하세요.');if((copy.virtualPerson===true)!==(p.copy.virtualPerson===true))throw new ApiError(409,'카피 작업물의 가상인물 표시 선언이 준비 때와 다릅니다. 이 발행을 취소하고 캡션 후보를 다시 골라 준비하세요.')}
  // 가맹 사실 게이트·가맹 규칙·각주(트랙 R R1b·R2). 소재·발행 두 행의 캡션을 함께 고쳐 각주를 지워도 여기서 막는다. 승인 입력 확인란·역할(대표 포함)로는 풀리지 않는다.
  await franchiseCaptionGate(owner,campaign,fr,used,p.caption,p.scheduledAt);
  await resolveFacts(owner,campaign,p.factRefs,Date.parse(p.scheduledAt));schedule(p.scheduledAt);

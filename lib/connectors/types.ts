@@ -26,6 +26,28 @@ export type ChannelCredential = NaverAdsCredential | InstagramCredential;
 
 export type VerifiedAccount = {account: string; expiresAt?: string};
 
+// C1 커넥터 프레임워크 v2: 능력 서술자. 기존 Connector 형태는 그대로 두고 덧붙이기만 한다(하위 호환). 목록은 lib/connectors/registry.ts다.
+// riskTier: T1 읽기(지표 조회) · T2 내부 상태 변경(장부·연결) · T3 외부에 보이는 쓰기(게시·이미지 업로드·PAUSED 생성) · T4 돈·노출이 움직이는 쓰기(ACTIVE 광고·전환 전송).
+// rateLimit: 계정 키마다 적용하는 호출 상한(lib/connectors/rate-queue.ts). credentialScope: 자격증명을 어느 단위까지 둘 수 있는지(lib/channel-credentials.ts F5: 지점 > 브랜드 > 워크스페이스).
+// defaultOff: 모든 능력은 기능 스위치가 기본 꺼짐이다(상수 true로 고정해 서술자가 거짓을 적지 못하게 한다).
+export type RiskTier = 'T1' | 'T2' | 'T3' | 'T4';
+export type RateLimit = {perSecond?: number; perMinute?: number; perDay?: number};
+export type CredentialScopeLevel = 'workspace' | 'brand' | 'store';
+export type ConnectorCapability = {
+ key: string;
+ reads: readonly string[];
+ writes: readonly string[];
+ riskTier: RiskTier;
+ rateLimit: RateLimit;
+ credentialScope: CredentialScopeLevel;
+ defaultOff: true;
+ // 능력을 켜는 기능 스위치 이름(lib/feature-flags.ts). 스위치 없이 늘 켜진 읽기(기존 수집)는 null이다.
+ flag: string | null;
+ // 쓰기 결과를 모를 때(전송 뒤 타임아웃) 자동 재시도하지 않는다는 규율을 서술자에도 적는다. 읽기는 재시도해도 된다.
+ retryUnknown: false;
+};
+export type ConnectorDescriptor = {key: string; label: string; module: string; capabilities: readonly ConnectorCapability[]};
+
 export type Connector = {
  key: ConnectorKey;
  label: string;
