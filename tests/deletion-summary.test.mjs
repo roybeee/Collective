@@ -110,7 +110,7 @@ lacks('the inline row delete button is gone',workspace,'campaign-delete-button')
 has('delete lives in the row menu',workspace,'<DropdownMenuItem variant="destructive" onSelect={()=>setDeleteTarget(c)}><Trash2/>삭제…</DropdownMenuItem>');
 has('members never see the row menu',workspace,'rowMenu&&canManage&&<DropdownMenu');
 // 상세 시트 헤더의 삭제 버튼(app/panels.tsx)은 이 클래스로 경고색을 유지한다.
-has('the sheet delete button keeps its danger color',css,'.campaign-delete-button{color:#b42318}.campaign-delete-button:hover{color:#912018;background:#fff1f0}');
+has('the sheet delete button keeps its danger color',css,'.campaign-delete-button{color:var(--red-38)}.campaign-delete-button:hover{color:var(--red-33);background:var(--red-97)}');
 has('the dialog re-checks the preview right before deleting',dialog,'recheckDeletion(preview,fresh,campaign.version)');
 has('the dialog deletes the version it re-checked',dialog,"api('delete_campaign',{id,version:fresh.version,confirmed:true})");
 has('an already deleted campaign refreshes the list instead of retrying',dialog,'previewFailure(response.status,result?.error)');

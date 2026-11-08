@@ -2,7 +2,7 @@
 .header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
 .header h2 { font-size: 1.3rem; font-weight: 700; margin-bottom: 6px; }
 .header p, .note { color: var(--muted-foreground, var(--green-44)); font-size: .88rem; line-height: 1.7; }
-.panel button { border: 1px solid var(--border, var(--neutral-90)); border-radius: 8px; padding: 9px 13px; background: var(--background, #fff); cursor: pointer; font-size: .88rem; }
+.panel button { border: 1px solid var(--border, var(--neutral-90)); border-radius: 8px; padding: 9px 13px; background: var(--background); cursor: pointer; font-size: .88rem; }
 .panel button:hover:not(:disabled) { background: var(--muted, var(--neutral-97)); }
 .panel button:disabled { opacity: .5; cursor: not-allowed; }
 .panel button:focus-visible, .panel input:focus-visible, .panel select:focus-visible, .panel textarea:focus-visible { outline: 2px solid var(--green-44); outline-offset: 3px; }
@@ -17,7 +17,7 @@
 .editor h3 { font-size: 1.1rem; font-weight: 650; }
 .form { border: none; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 0 0 18px; }
 .field label, .wide label, .receipt label { display: grid; gap: 6px; font-size: .88rem; }
-.panel input:not([type="checkbox"]), .panel textarea, .panel select { width: 100%; height: auto; min-width: 0; border: 1px solid var(--border, var(--neutral-90)); border-radius: 7px; padding: 9px 11px; background: var(--background, #fff); color: inherit; font: inherit; }
+.panel input:not([type="checkbox"]), .panel textarea, .panel select { width: 100%; height: auto; min-width: 0; border: 1px solid var(--border, var(--neutral-90)); border-radius: 7px; padding: 9px 11px; background: var(--background); color: inherit; font: inherit; }
 .panel textarea { resize: vertical; }
 .wide, .references { grid-column: 1 / -1; }
 .references { display: grid; gap: 10px; border: 1px solid var(--border, var(--neutral-90)); border-radius: 8px; padding: 12px; font-size: .88rem; }
@@ -25,7 +25,7 @@
 .references p { color: var(--muted-foreground, var(--green-44)); }
 .check { display: flex; align-items: flex-start; gap: 9px; font-size: .88rem; line-height: 1.6; overflow-wrap: anywhere; }
 .check input { margin-top: 5px; flex-shrink: 0; }
-.panel .primary { background: var(--green-32); color: #fff; border-color: var(--green-32); }
+.panel .primary { background: var(--green-32); color: var(--primary-foreground); border-color: var(--green-32); }
 .panel .primary:hover:not(:disabled) { background: var(--green-23); }
 .panel .smallButton { justify-self: start; padding: 6px 10px; font-size: .8rem; margin-top: 5px; }
 .error { border: 1px solid var(--yellow-81); background: var(--neutral-97); color: var(--red-36); padding: 14px; border-radius: 8px; line-height: 1.7; font-size: .88rem; overflow-wrap: anywhere; }
@@ -54,8 +54,8 @@
 .warning { border: 1px solid var(--olive-83); background: var(--neutral-97); color: var(--yellow-35); padding: 12px 14px; border-radius: 8px; font-size: .88rem; line-height: 1.6; }
 
 /* UX-PLAN P4: 성장·판매 탭 6섹션·바로가기·판매 기본 기록 */
-.sectionNav { position: sticky; top: 0; z-index: 2; display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 0; background: #fff; border-bottom: 1px solid var(--neutral-97); margin: 4px 0 6px; }
-.sectionNav a { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid var(--neutral-90); border-radius: 999px; font-size: .85rem; color: var(--green-23); text-decoration: none; background: #ffffff; min-height: 36px; }
+.sectionNav { position: sticky; top: 0; z-index: 2; display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 0; background: var(--background); border-bottom: 1px solid var(--neutral-97); margin: 4px 0 6px; }
+.sectionNav a { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid var(--neutral-90); border-radius: 999px; font-size: .85rem; color: var(--green-23); text-decoration: none; background: var(--card); min-height: 36px; }
 .sectionNav a small { font-size: .75rem; color: var(--green-44); }
 .sectionNav a:hover { background: var(--neutral-97); }
 .sectionNav a:focus-visible { outline: 2px solid var(--olive-42); outline-offset: 2px; }
@@ -75,11 +75,11 @@
 /* 그때 섹션·패널로 옮기면 탭 줄 48px+바로가기 띠 57px 아래에 제목이 오도록 여백을 더한다. */
 @media not (max-width: 767px) { :global(.campaign-sheet) .sectionNav { top: 48px; } :global(.campaign-sheet) .section, :global(.campaign-sheet) .coreEditor, :global(.campaign-sheet) .panel :global(.lazy-panel) { scroll-margin-top: 116px; } }
 /* 서버 검증 오류가 가리키는 칸(UX-PLAN-3 Q3). */
-.field [aria-invalid=true], .wide [aria-invalid=true] { border-color: #b42318; }
-.fieldError { margin: 4px 0 0; color: #b42318; font-size: .85rem; }
+.field [aria-invalid=true], .wide [aria-invalid=true] { border-color: var(--red-38); }
+.fieldError { margin: 4px 0 0; color: var(--red-38); font-size: .85rem; }
 /* 판매 기본 기록 단계 진행 표시(UX-PLAN-3 Q2): 번호 또는 기록 있음 ✓, 아래에 진행 문장. */
 .stepNo { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: 6px; border-radius: 999px; border: 1px solid var(--green-77); font-size: .75rem; }
-.tabs button[aria-pressed="true"] .stepNo { background: var(--green-32); border-color: var(--green-32); color: #fff; }
+.tabs button[aria-pressed="true"] .stepNo { background: var(--green-32); border-color: var(--green-32); color: var(--primary-foreground); }
 .stepProgress { margin: 8px 0 0; font-size: .85rem; color: var(--green-44); }
 /* 머리글 보조 동작(Meta 열기·새로고침)을 제목 옆 한 줄에 둔다. 모바일에서도 본문 앞에 버튼 줄이 따로 쌓이지 않는다. */
 .headerActions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
