@@ -1,0 +1,32 @@
+/* 공개 공유 화면(G4, app/share/[token]/route.ts). 앱 CSS와 분리된 한 파일: 토큰 없이도 읽히는 정적 자원, 인라인 스타일·스크립트 없음. */
+:root{color-scheme:light dark;--share-bg:#f7f7f5;--share-card:#ffffff;--share-ink:#1c1c1a;--share-muted:#5f6368;--share-line:#e2e3df;--share-accent:#2f5d50;--share-error:#a63a2b;--share-ok:#2a6b3f}
+@media (prefers-color-scheme:dark){:root{--share-bg:#121311;--share-card:#1c1d1a;--share-ink:#f2f2ee;--share-muted:#a6aaa2;--share-line:#2f312c;--share-accent:#8fd1b8;--share-error:#f0907f;--share-ok:#8fd19c}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--share-bg);color:var(--share-ink);font:16px/1.55 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR",sans-serif}
+.share{max-width:52rem;margin:0 auto;padding:1.25rem 1rem 2rem}
+.share header{margin-bottom:1rem}
+.share h1{font-size:1.5rem;line-height:1.3;margin:.25rem 0}
+.share h2{font-size:1.05rem;margin:0 0 .5rem}
+.share-eyebrow{color:var(--share-muted);font-size:.85rem;margin:0}
+.share header p{color:var(--share-muted);margin:.25rem 0}
+.share section,.share-content{background:var(--share-card);border:1px solid var(--share-line);border-radius:.75rem;padding:1rem;margin:0 0 .85rem}
+.share table{width:100%;border-collapse:collapse;font-size:.95rem}
+.share th,.share td{text-align:left;padding:.4rem .5rem;border-bottom:1px solid var(--share-line);vertical-align:top}
+.share th{color:var(--share-muted);font-weight:600}
+.share td:not(:first-child),.share th:not(:first-child){text-align:right;white-space:nowrap}
+@media (max-width:40rem){.share table{display:block;overflow-x:auto}}
+.share ul{margin:0;padding-left:1.1rem}
+.share-notes{font-size:.9rem;color:var(--share-muted)}
+.share-ai{font-size:.9rem;padding:.6rem .8rem;border-left:3px solid var(--share-accent);background:var(--share-card)}
+.share-content pre{white-space:pre-wrap;word-break:break-word;font:inherit;margin:0}
+.share-form fieldset{border:1px solid var(--share-line);border-radius:.5rem;padding:.75rem 1rem;margin:.75rem 0 0}
+.share-form legend{padding:0 .3rem;color:var(--share-muted)}
+.share-choice{display:inline-flex;align-items:center;gap:.4rem;margin:0 1.25rem .5rem 0;min-height:44px}
+.share-field{display:block;margin:.5rem 0}
+.share-field span{display:block;font-size:.9rem;color:var(--share-muted);margin-bottom:.3rem}
+.share-form textarea{width:100%;min-height:6rem;padding:.6rem;border:1px solid var(--share-line);border-radius:.5rem;background:var(--share-bg);color:var(--share-ink);font:inherit}
+.share-form button{min-height:44px;padding:.6rem 1.25rem;border:0;border-radius:.5rem;background:var(--share-accent);color:var(--share-bg);font:inherit;font-weight:600;cursor:pointer}
+.share-form button:focus-visible,.share-form textarea:focus-visible,.share-form input:focus-visible{outline:3px solid var(--share-accent);outline-offset:2px}
+.share-error{color:var(--share-error);font-weight:600}
+.share-ok{color:var(--share-ok);font-weight:600}
+.share-foot{max-width:52rem;margin:0 auto;padding:0 1rem 2rem;color:var(--share-muted);font-size:.85rem}

@@ -23,6 +23,7 @@ export type SubjectErasure='delete'|'minimize'|'legal_hold'|'none';
 export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;retention?:RetentionPolicy;subjectErasure?:SubjectErasure;description:string};
 
 export const recordKinds:readonly RecordKind[]=[
+ {kind:'share_link',parent:'none',campaignDeletion:'delete',links:['data_campaign'],description:'공유 링크(G4): 동결 고객 보고서 한 판 또는 작업물 한 판을 가리키는 읽기 전용·취소 가능 링크. 행 id는 토큰 SHA-256(원문 없음), 라벨·만든 사람 id와 역할·만료·취소·조회 수·외부 검토자 결정 시각만 담는다. 작업물 링크는 캠페인과 함께 지우고(data.campaignId) 보고서 링크는 캠페인과 무관하다'},
  {kind:'store_browser_photo_rights',parent:'store',campaignDeletion:'not_campaign_scoped',description:'네이버 점포 사진의 원본 판·서버 바이트 해시·사용권 근거·유효기간·승인자와 회수 상태. 캠페인과 무관'},
  {kind:'store_browser_binding',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포의 네이버 공개·관리 ID, 공식 관리 주소와 지정 로컬 장치·프로필 연결. 캠페인과 무관'},
  {kind:'store_browser_job',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포 브라우저 조회·영업시간 변경의 승인 판·단일 제출·미확인 대사와 최소 관찰 근거. 캠페인과 무관'},

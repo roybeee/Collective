@@ -31,6 +31,8 @@ function link(spec,ref){
  if(spec.startsWith('@/components/ui/'))return synthetic(ref.imports.get(spec)||new Set(),part);
  if(spec==='lucide-react')return synthetic(ref.imports.get(spec)||new Set(),()=>()=>null);
  if(spec==='sonner')return synthetic(ref.imports.get(spec)||new Set(),()=>({success(){},error(){}}));
+ // 공유 링크 카드(G4)는 자기 요청을 하는 부품이라 여기서는 그리지 않는다(서버·화면 회귀는 tests/share-links.test.mjs·e2e/share-links.spec.ts).
+ if(spec==='@/components/app/share-links-card')return synthetic(ref.imports.get(spec)||new Set(),()=>()=>null);
  if(spec==='./auth-client')return synthetic(ref.imports.get(spec)||new Set(),n=>n==='useAuthState'?()=>authState:n==='AuthContext'?AuthContext:()=>null);
  if(spec==='./account-context')return moduleFor('app/account-context.tsx');
  if(spec.startsWith('@/lib/'))return moduleFor(resolve(spec.slice(2))+'.ts');

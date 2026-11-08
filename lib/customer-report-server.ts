@@ -194,6 +194,13 @@ export async function listReports(owner:string,p:URLSearchParams){
  return {enabled:await customerReportOn(owner),preview:null,frozen};
 }
 
+// 동결본의 한 판(G4 공유 링크용). version을 주지 않으면 지금 판, 주면 지금 판·이전 판(최근 5개)에서 찾고 없으면 404. 스위치와 무관하게 읽는다.
+export async function frozenReportVersion(owner:string,rawId:unknown,version?:number){
+ const id=parseId(rawId),row=await readRecord<FrozenReport>(owner,'customer_report',id),want=version??row.version,found=[row,...row.history].find(v=>v.version===want);
+ if(!found)throw new ApiError(404,'그 판의 보고서가 없습니다. 이전 판은 최근 5개까지 남습니다.');
+ return {id,brandId:row.scope.brandId,version:found.version,report:found.report};
+}
+
 // ── 다운로드(첨부) ──
 const TYPES={json:'application/json; charset=utf-8',md:'text/markdown; charset=utf-8',csv:'text/csv; charset=utf-8'} as const;
 type Format=keyof typeof TYPES;
