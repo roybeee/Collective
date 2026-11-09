@@ -56,6 +56,13 @@ export function bufferCheckCampaigns(brands:unknown,campaigns:unknown):Record<st
  return Object.fromEntries(brandIds(brands).flatMap(id=>{const own=all.filter(c=>c.brandId===id),pick=latest(own.filter(c=>!c.archivedAt))||latest(own);return pick?[[id,pick.id]]:[]}));
 }
 
+// 공유 링크(G4): 기능 스위치 share_links 상태를 읽는다. 켜지면 대표·관리자가 점포 마케팅 고객 보고서 탭의 동결본에서 링크를 만든다.
+function shareLinksRow(flags:unknown):FeatureRow{
+ const base={key:'share-links',label:'보고서 공유 링크, 외부 검토자 승인 링크(로그인 없음)',flag:'share_links'},link:FeatureLink={label:'점포 마케팅 고객 보고서 탭에서 확인',view:'stores'};
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='share_links'):undefined;
+ if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'공유 링크 스위치 상태를 확인하지 못했습니다',link};
+ return state.enabled?{...base,status:'available',reason:['동결 보고서 읽기 전용 링크(만료 기본 14일, 취소 가능)','작업물 판별 외부 검토자 승인·수정 요청 링크 최대 10개']}:{...base,status:'blocked',reason:['공유 링크 스위치 꺼짐','소유자가 켭니다'],link};
+}
 function aiRow(connection:unknown):FeatureRow{
  const base={key:'ai',label:'8개 담당별 AI 작업(HERMES 연결)'},link:FeatureLink={label:'AI 팀 연결로 이동',view:'settings',section:'settings-ai'};
  if(!record(connection)||typeof connection.configured!=='boolean')return {...base,status:'blocked',reason:'AI 연결 상태를 확인하지 못했습니다',link};
@@ -192,6 +199,31 @@ function storeBrowserRow(flags:unknown):FeatureRow{
  const reason=!record(state)||typeof state.enabled!=='boolean'?'점포 브라우저 관리 상태를 확인하지 못했습니다':state.enabled?['점포별 관리 주소·장치·브라우저 설정 확인 필요','변경 전후 승인 후 한 번 저장, 결과 미확인은 조회로 확인','실제 네이버 적용 여부는 점포별 작업 근거에서 확인']:['기능 꺼짐','소유자가 켭니다'];
  return {key:'store-browser',label:'네이버 점포 영업시간 관리(로컬 장치)',flag:'store_browser_execution',status:'blocked',reason,link:{label:'점포 마케팅 채널 점검에서 연결',view:'stores',tab:'channels'}};
 }
+// C2 AI 생성 이미지 표시: 스위치 ai_image_disclosure가 켜져 있어야 AI 출처 소재 PNG에 기계판독 표시와 감사 기록이 남는다. 가시 표시 줄은 화면 경로가 따로 그린다.
+function aiImageDisclosureRow(flags:unknown):FeatureRow{
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='ai_image_disclosure'):undefined;
+ const reason=!record(state)||typeof state.enabled!=='boolean'?'AI 생성 이미지 표시 상태를 확인하지 못했습니다':state.enabled?['AI 출처로 등록한 소재 PNG에 기계판독 표시와 감사 기록','출처 불명 소재는 표시하지 않고 경고만 기록','가시 표시 줄은 화면에서 따로 적용']:['기능 꺼짐','소유자가 켭니다'];
+ return {key:'ai-image-disclosure',label:'AI 생성 이미지 표시(AI 기본법 31조)',flag:'ai_image_disclosure',status:'blocked',reason,link:{label:'설정의 AI 사용량에서 확인',view:'settings',section:'settings-ai'}};
+}
+// POS 자동 수집(C7): 기능 스위치 pos_tossplace 상태를 읽는다. 켜지면 워커가 소유자가 켠 토스플레이스 연결의 주문·결제를 읽기 전용으로 장부에 반영한다(docs/POS-INTEGRATION.ko.md).
+function posAutoRow(flags:unknown):FeatureRow{
+ const base={key:'pos-auto',label:'POS 자동 수집(토스플레이스)',flag:'pos_tossplace'},link:FeatureLink={label:'캠페인의 성과 탭에서 확인',view:'campaigns'};
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='pos_tossplace'):undefined;
+ if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'POS 자동 수집 스위치 상태를 확인하지 못했습니다',link};
+ return state.enabled?{...base,status:'available',reason:'토스플레이스 주문·결제 자동 수집(읽기 전용, 고객 정보 없음, 외부 쓰기 없음)'}:{...base,status:'blocked',reason:['기능 스위치 pos_tossplace 꺼짐','소유자가 켭니다'],link};
+}
+// G3 자율성 규칙·예약 실행: 스위치 autonomy_rules·scheduled_runs. 꺼져 있어도 규칙·예약 조회·편집은 되고 적용·실행만 멈춘다.
+function flagState(flags:unknown,flag:string){const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag===flag):undefined;return record(state)&&typeof state.enabled==='boolean'?state.enabled:null}
+function autonomyRulesRow(flags:unknown):FeatureRow{
+ const base={key:'autonomy-rules',label:'자율성 규칙(행동별 자동·확인 후·금지)',flag:'autonomy_rules'},link:FeatureLink={label:'연결 및 설정에서 확인',view:'settings'},enabled=flagState(flags,'autonomy_rules');
+ if(enabled===null)return {...base,status:'blocked',reason:'자율성 규칙 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['회의 시작·역할 실행·발행 접수·광고 활성화에 규칙 적용(금지는 차단, 고위험은 자동 불가)']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다(규칙 편집은 가능, 모든 행동은 확인 후)'],link};
+}
+function scheduledRunsRow(flags:unknown):FeatureRow{
+ const base={key:'scheduled-runs',label:'예약 실행(주간 성과 요약·일일 신호 검토)',flag:'scheduled_runs'},link:FeatureLink={label:'연결 및 설정에서 확인',view:'settings'},enabled=flagState(flags,'scheduled_runs');
+ if(enabled===null)return {...base,status:'blocked',reason:'예약 실행 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['조사 작업자가 예약마다 하루 1회 회의 안건 초안·오늘의 안건 항목 기록(모델 호출·게시·지출 없음)']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다(예약 편집은 가능)'],link};
+}
 export function featureRows(input:FeatureInput={}):FeatureRow[]{
  const now=typeof input.now==='number'?input.now:Date.now(),brands=brandIds(input.brands);
  return [
@@ -218,8 +250,12 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   reflectorRow(input.flags),
   productResearchRow(input.flags),
   storeBrowserRow(input.flags),
+  aiImageDisclosureRow(input.flags),
+  autonomyRulesRow(input.flags),
+  scheduledRunsRow(input.flags),
+  shareLinksRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
-  {key:'pos-auto',label:'POS 자동 수집',status:'unimplemented',reason:['POS 연동 없음','CSV로 가져오세요']},
+  posAutoRow(input.flags),
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},
   {key:'ads',label:'광고 집행',status:'unimplemented',reason:'광고 생성·광고비 집행 기능 없음'},
  ];

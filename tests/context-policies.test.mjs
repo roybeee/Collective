@@ -33,7 +33,7 @@ for(const c of fixture.cases)check(`P0 is byte-identical for ${c.name}`,()=>{
 
 // 회의 단계 입력: lib/meeting-input.ts meetingContext(G1에서 lib/meeting-execution.ts context()를 옮긴 순수 함수)와 같은 키·순서로 만든 합성 입력. 키가 늘거나 빠지거나 순서가 어긋나면 아래 드리프트 검사가 잡는다.
 const base=byName('quality').context,roleInput=JSON.parse(byName('quality').submission.input);
-const meetingKeys=['skillVersion','channelPractice','agenda','role','phase','allowedRespondsTo','correction','brand','evidence','brandArchive','campaign','trialLearning','recordedMetrics','previousMeeting','originalArtifacts','discussion','synthesis','completedRevisions','task','candidateArtifacts','invalidatedRoles'];
+const meetingKeys=['skillVersion','channelPractice','agenda','role','phase','allowedRespondsTo','correction','brand','evidence','brandArchive','campaign','trialLearning','recordedMetrics','previousMeeting','originalArtifacts','discussion','synthesis','userDecision','completedRevisions','task','candidateArtifacts','invalidatedRoles'];
 // meetingContext가 가림 전에 만드는 입력 객체 리터럴(최상위 키에 skillVersion이 있는 변수 초기값)의 최상위 키(조건부 스프레드 안의 키 포함)를 TypeScript 구문 트리로 읽는다.
 function contextKeys(){
  const src=ts.createSourceFile('meeting-input.ts',readFileSync('lib/meeting-input.ts','utf8'),ts.ScriptTarget.ES2022,true);
@@ -57,12 +57,12 @@ function meetingInput(phase,role,{task}={}){
  const candidates=[...arts.filter(a=>roles.findIndex(r=>r.id===a.role)<first),...revised.map(r=>({role:r.role,...r}))];
  const spoken=phase==='discussion'?roles.slice(0,roles.findIndex(r=>r.id===role)):roles;
  return JSON.stringify({skillVersion:roleInput.skillVersion,channelPractice:roleInput.channelPractice,agenda:'합성 안건: 약점을 검토한다.',role,phase,allowedRespondsTo:[],correction:undefined,brand:roleInput.brand,evidence:roleInput.evidence,brandArchive:roleInput.brandArchive,campaign:{...base.campaign,...aiBudget(base.campaign)},trialLearning:[],recordedMetrics:[],previousMeeting,
-  originalArtifacts:arts.map(a=>({ref:artifactRef(a),...a,content:a.content.slice(0,8000),excerpt:a.content.length>8000})),discussion:spoken.map(r=>({ref:discussionRef(r.id),role:r.id,...contribution(r.id)})),synthesis:['revision','quality'].includes(phase)?synthesisOutput:undefined,completedRevisions:revised.map(r=>({role:r.role,...r})),task,
+  originalArtifacts:arts.map(a=>({ref:artifactRef(a),...a,content:a.content.slice(0,8000),excerpt:a.content.length>8000})),discussion:spoken.map(r=>({ref:discussionRef(r.id),role:r.id,...contribution(r.id)})),synthesis:['revision','quality'].includes(phase)?synthesisOutput:undefined,userDecision:undefined,completedRevisions:revised.map(r=>({role:r.role,...r})),task,
   ...(phase==='quality'?{candidateArtifacts:candidates.map(modelArtifact),invalidatedRoles:['growth','data']}:{})});
 }
 const meetings={discussion:meetingInput('discussion','insight'),synthesis:meetingInput('synthesis','cmo'),revision:meetingInput('revision','content',{task:{role:'content',instruction:'카피 개선',reason:'회의 근거',acceptance:'대조안 포함'}}),quality:meetingInput('quality','quality')};
 // 값이 undefined인 키(correction, 단계에 따라 synthesis·task, 품질 단계가 아니면 candidateArtifacts·invalidatedRoles)는 JSON에서 빠진다. 남은 키는 meetingContext 순서 그대로다.
-check('synthetic meeting inputs keep the meetingContext key order per stage',()=>{for(const input of Object.values(meetings)){const keys=Object.keys(JSON.parse(input));assert.deepEqual(keys,meetingKeys.filter(k=>keys.includes(k)));assert.ok(meetingKeys.filter(k=>!keys.includes(k)).every(k=>['correction','synthesis','task','candidateArtifacts','invalidatedRoles'].includes(k)))}});
+check('synthetic meeting inputs keep the meetingContext key order per stage',()=>{for(const input of Object.values(meetings)){const keys=Object.keys(JSON.parse(input));assert.deepEqual(keys,meetingKeys.filter(k=>keys.includes(k)));assert.ok(meetingKeys.filter(k=>!keys.includes(k)).every(k=>['correction','synthesis','userDecision','task','candidateArtifacts','invalidatedRoles'].includes(k)))}});
 
 // 모든 정책: 결과는 JSON이고, omitted 문자 합이 입력 길이 차이와 정확히 같다(생략 목록이 실제 변경 전부를 설명한다).
 const samples=[...fixture.cases.map(c=>({name:c.name,s:{kind:'role',role:c.role,input:c.submission.input}})),...Object.entries(meetings).map(([stage,input])=>({name:'meeting-'+stage,s:{kind:'meeting',role:JSON.parse(input).role,stage,input}}))];

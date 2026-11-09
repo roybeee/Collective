@@ -15,13 +15,15 @@ const deletedGroups:readonly Group[]=[
  {label:'오퍼 검토 초안·재개 위치',kinds:['growth_offer_review_draft','growth_offer_review_cursor']},
  {label:'사업목표·리뷰',kinds:['growth_target','growth_target_history','growth_target_review','growth_target_request']},
  {label:'성장·판매 계획',kinds:['growth_signal','growth_need','growth_catalog','growth_offer','growth_mission','growth_history','growth_authority','growth_demand','growth_demand_history','growth_journey','growth_journey_history','growth_decision','growth_decision_history','growth_lesson','growth_lesson_history']},
- {label:'작업물',kinds:['artifact']},{label:'실행',kinds:[JOBS]},{label:'회의',kinds:['team_meeting']},{label:'성과',kinds:['metric']},
+ {label:'작업물',kinds:['artifact']},{label:'실행',kinds:[JOBS]},{label:'회의',kinds:['team_meeting','meeting_choice']},{label:'성과',kinds:['metric']},
  {label:'작업물 이전 버전',kinds:['history']},{label:'온라인 채점 결과',kinds:['grading']},{label:'바이럴 실험',kinds:['viral_experiment']},
  {label:'실험 정정·수집 기록',kinds:['experiment_revision','measurement_draft','measurement_source','learning_guidance']},
  {label:'Meta 광고 준비 계획',kinds:['meta_ads_plan','meta_ads_insights','meta_ads_creative_review','meta_ads_report','meta_ads_sync_state','meta_ads_budget_review','meta_ads_learning_decision','meta_ads_bundle']},
  {label:'브리프 초안',kinds:['brief_draft']},{label:'상시 지시',kinds:['campaign_directive']},{label:'자료 요청',kinds:['data_request']},{label:'캠페인 이력',kinds:['event']},
  {label:'AI 요청·응답 원문',kinds:['hermes_submission','openai_submission','learning_task','learning_job_output','role_output_contract','role_output_failure','learning_snapshot','campaign_prompt_pin','reflector_run']},
- {label:'연속 실행·발행 설정',kinds:['campaign_sequence','background_attempt','execution_limits','publication_check']},{label:'캠페인 토큰 상한',kinds:['token_budget']},
+ {label:'연속 실행·발행 설정',kinds:['campaign_sequence','background_attempt','execution_limits','publication_check']},{label:'캠페인 토큰 상한',kinds:['token_budget']},{label:'홀드아웃 증분 결과',kinds:['incrementality_result']},
+ {label:'예약 실행·회의 안건 초안',kinds:['scheduled_run','scheduled_run_execution','meeting_agenda_draft']},
+ {label:'외부 검토자 링크',kinds:['share_link']},
 ];
 // 제작·발행·주문 귀속 기록(blocksDeletion)이 있으면 삭제 자체가 거부되므로 대화상자는 사유만 보이고 보존 목록을 쓰지 않는다.
 const retainedGroups:readonly Group[]=[

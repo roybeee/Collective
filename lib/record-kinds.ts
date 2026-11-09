@@ -23,6 +23,12 @@ export type SubjectErasure='delete'|'minimize'|'legal_hold'|'none';
 export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;retention?:RetentionPolicy;subjectErasure?:SubjectErasure;description:string};
 
 export const recordKinds:readonly RecordKind[]=[
+ {kind:'autonomy_settings',parent:'none',campaignDeletion:'not_campaign_scoped',description:'소유자의 행동별 자율성 규칙(자동·확인 후·금지) 1행(id current). 캠페인과 무관(G3)'},
+ {kind:'scheduled_run',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'소유자가 정한 예약(종류·행동·KST 요일·시각·브랜드·캠페인 범위). 캠페인과 함께 삭제(G3)'},
+ {kind:'scheduled_run_execution',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'예약 실행 기록(예약 id+KST 날짜당 1행, 완료·건너뜀·실패 사유·만든 산출물 id). 캠페인과 함께 삭제(G3)'},
+ {kind:'meeting_agenda_draft',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'예약 실행이 만든 회의 안건 초안(최근 7일 성과 요약 문장, 모델 호출 없음). 회의 시작은 사람이 한다. 캠페인과 함께 삭제(G3)'},
+ {kind:'digest_sent',parent:'none',campaignDeletion:'not_campaign_scoped',description:'일일 요약 전송 기록(KST 날짜당 1행, 어댑터 이름·가린 대상·본문·결과). 이 판은 기록만 남기는 스텁. 캠페인과 무관(G3)'},
+ {kind:'share_link',parent:'none',campaignDeletion:'delete',links:['data_campaign'],description:'공유 링크(G4): 동결 고객 보고서 한 판 또는 작업물 한 판을 가리키는 읽기 전용·취소 가능 링크. 행 id는 토큰 SHA-256(원문 없음), 라벨·만든 사람 id와 역할·만료·취소·조회 수·외부 검토자 결정 시각만 담는다. 작업물 링크는 캠페인과 함께 지우고(data.campaignId) 보고서 링크는 캠페인과 무관하다'},
  {kind:'store_browser_photo_rights',parent:'store',campaignDeletion:'not_campaign_scoped',description:'네이버 점포 사진의 원본 판·서버 바이트 해시·사용권 근거·유효기간·승인자와 회수 상태. 캠페인과 무관'},
  {kind:'store_browser_binding',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포의 네이버 공개·관리 ID, 공식 관리 주소와 지정 로컬 장치·프로필 연결. 캠페인과 무관'},
  {kind:'store_browser_job',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포 브라우저 조회·영업시간 변경의 승인 판·단일 제출·미확인 대사와 최소 관찰 근거. 캠페인과 무관'},
@@ -218,6 +224,7 @@ export const recordKinds:readonly RecordKind[]=[
  // A4-4 코드 넣은 파생 PNG. 발행 1건당 1행(id = 발행 id, parent = 캠페인)이고 발행 기록처럼 캠페인을 지워도 남긴다(발행 기록이 이미 삭제를 거부한다).
  {kind:'execution_coded_png',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'게시 코드를 그린 파생 PNG(발행·소재 id, 원본 소재 PNG 해시·파생 PNG 해시, 게시 코드와 코드 id, 비공개 파일 키, 등록한 사람 id·시각). 공개 사본은 승인 때 public_media로 만든다(A4-4)'},
  {kind:'execution_creative',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'제작한 소재. 있으면 캠페인 삭제를 거부한다'},
+ {kind:'ai_image_disclosure',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'AI 생성 이미지 표시 감사 기록(C2): 표시를 넣은 저장(원본·표시 뒤 해시, 출처, 가상인물, 정책, iTXt 본문), 출처 불명 경고, 반출 경로(앱 공개 사본·Meta 이미지)의 표시 유무. 고객 정보 없음'},
  {kind:'execution_limits',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'발행 한도 설정'},
  {kind:'execution_provider_audit',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'발행 공급자 응답 감사 기록. 발행 기록과 함께 생겨 삭제 거부 대상 캠페인에만 있다'},
  {kind:'execution_publication',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'발행 시도·결과. 있으면 캠페인 삭제를 거부한다'},
@@ -252,7 +259,11 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'model_change',parent:'none',campaignDeletion:'not_campaign_scoped',description:'보고 모델 변경 경보. 별칭은 실제 모델 미확인(actual=null)으로 적는다(결정 10)'},
  {kind:'openai_submission',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'OpenAI 요청 원문'},
  {kind:'order_import',parent:'store',campaignDeletion:'not_campaign_scoped',description:'주문 CSV 가져오기 기록(건수·중복·귀속 수·식별 가능 주문 수·열 매핑·행위자). CSV 원문과 고객 ID 값은 담지 않는다'},
+ // C7 증분 측정: 캠페인당 1행(id=캠페인 id). 대상·대조 매장 id와 이중차분 결과만 담고 주문 행·고객 정보는 없다. 캠페인과 함께 지운다.
+ {kind:'incrementality_result',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'캠페인 홀드아웃 증분 결과(대상·대조 매장, 기간, 이중차분 lift·신뢰구간·판정, 관찰 비교 라벨). 캠페인과 함께 삭제'},
  {kind:'pos_weekly_total',parent:'store',campaignDeletion:'not_campaign_scoped',description:'지점 주간 POS 합계(순매출·주문 수). 주문 장부 완전성 대조 기준'},
+ // C7 POS 웹훅 멱등 기록: 연결 id + x-toss-webhook-id가 행 id다. 수신 시각·이벤트 종류·반영 요약만 두고 본문 원문·결제수단·고객 정보는 담지 않는다.
+ {kind:'pos_webhook_event',parent:'store',campaignDeletion:'not_campaign_scoped',description:'토스플레이스 POS 웹훅 수신 기록(멱등 키·이벤트 종류·반영 요약). 본문 원문·고객 정보 없음. 캠페인과 무관'},
  {kind:'provider_usage',parent:'none',campaignDeletion:'not_campaign_scoped',description:'AI 공급자 사용량 장부'},
  {kind:'public_media',parent:'media',campaignDeletion:'not_campaign_scoped',description:'공개 제공 소재 파일과 발행 참조'},
  {kind:'public_media_ref',parent:'media',campaignDeletion:'not_campaign_scoped',description:'공개 소재 파일의 소유자 참조'},
@@ -273,6 +284,7 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'store_spend',parent:'store',campaignDeletion:'not_campaign_scoped',description:'지점 비용 장부'},
  {kind:'store_task',parent:'store',campaignDeletion:'not_campaign_scoped',description:'지점 조사 후속 과제'},
  {kind:'team_meeting',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'AI 팀 회의'},
+ {kind:'meeting_choice',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'회의 합의 단계의 남은 이견에 대한 사용자 A/B·보류 선택(추가만, 다음 단계 입력에 전달)'},
  // 추적 코드(A4)는 주문 장부의 귀속 근거다. 주문 장부 보존 원칙에 맞춰 캠페인을 지워도 남긴다: 코드→캠페인·팔·게시 연결이 남아야 옛 주문의 귀속을 설명할 수 있고,
  // 코드(레코드 id)가 남아 있어 인쇄된 옛 쿠폰·QR 코드가 다른 캠페인에 다시 쓰이지 않는다. 캠페인이 사라진 코드는 자동 귀속에 쓰지 않는다(lib/store-operations-server.ts codeBook).
  // 삭제를 막지는 않는다. 코드로 귀속된 주문이 있으면 store_order가 이미 캠페인 삭제를 거부한다.

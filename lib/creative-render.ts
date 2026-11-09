@@ -101,3 +101,32 @@ export async function renderCodedCard(original:Blob,label:string):Promise<string
   return png;
  }finally{bitmap.close()}
 }
+
+// C2 가시 표시 줄(화면 경로). 서버는 이미지 안에 글자를 그릴 수 없어 기계판독 표시(iTXt)만 넣고(lib/ai-disclosure-image.ts), 사람이 보는 표시는 브라우저가 코드 라벨과 같은 빈 줄(y 212~246)에
+// 왼쪽 정렬로 그린다. 코드 라벨(오른쪽 정렬)이 같은 줄에 있으면 두 라벨이 겹치지 않을 때만 자리를 준다. 원본 카드의 글자·각주를 가리지 않는다.
+export const DISCLOSURE_BADGE={top:212,height:34,left:72,right:1008,paddingX:14,gap:12,size:22};
+export function disclosureBadgeBox(textWidth:number,codeBox?:{x:number}|null){
+ const width=Math.ceil(textWidth)+DISCLOSURE_BADGE.paddingX*2,limit=codeBox?codeBox.x-DISCLOSURE_BADGE.gap:DISCLOSURE_BADGE.right;
+ return Number.isFinite(textWidth)&&textWidth>0&&DISCLOSURE_BADGE.left+width<=limit?{x:DISCLOSURE_BADGE.left,y:DISCLOSURE_BADGE.top,width,height:DISCLOSURE_BADGE.height}:null;
+}
+// 가시 표시 라벨 문구: AI 생성 표시에 가상인물이면 ' · 가상인물'을 덧붙인다(문구 상수는 lib/ai-disclosure-image.ts 한 곳).
+export const disclosureBadgeLabel=(base:string,virtualPersonLabel:string,virtualPerson:boolean)=>virtualPerson?base+' · '+virtualPersonLabel:base;
+// 저장된(또는 코드 라벨을 넣은) 1080×1080 PNG 위에 가시 표시 라벨만 더한 파생 PNG. 원본·해시는 바꾸지 않는다. 화면이 부르며 기계판독 표시는 서버가 저장 전에 따로 넣는다.
+export async function renderDisclosedCard(original:Blob,label:string,codeBox?:{x:number}|null):Promise<string>{
+ if(typeof document==='undefined')throw new Error('이미지 제작은 브라우저에서 실행하세요.');
+ const bitmap=await createImageBitmap(original);
+ try{
+  if(bitmap.width!==SIZE||bitmap.height!==SIZE)throw new Error('원본 소재가 1080×1080 PNG가 아닙니다. 소재를 다시 만드세요.');
+  if(document.fonts)await document.fonts.ready;
+  const canvas=document.createElement('canvas');canvas.width=SIZE;canvas.height=SIZE;
+  const context=canvas.getContext('2d');if(!context)throw new Error('이미지 제작 기능을 사용할 수 없습니다.');
+  context.drawImage(bitmap,0,0);
+  context.font=`700 ${DISCLOSURE_BADGE.size}px ${FONT}`;
+  const box=disclosureBadgeBox(context.measureText(label).width,codeBox);if(!box)throw new Error('AI 생성 표시 라벨이 카드에 들어가지 않습니다.');
+  context.fillStyle='#273953';context.fillRect(box.x,box.y,box.width,box.height);
+  context.fillStyle='#ffffff';context.textBaseline='middle';context.fillText(label,box.x+DISCLOSURE_BADGE.paddingX,box.y+box.height/2);
+  const png=canvas.toDataURL('image/png');
+  if(!png.startsWith('data:image/png;base64,'))throw new Error('PNG 파일을 만들지 못했습니다.');
+  return png;
+ }finally{bitmap.close()}
+}

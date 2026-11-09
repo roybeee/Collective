@@ -10,7 +10,7 @@
 .headRow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
 .toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
 .block { display: grid; gap: 10px; border-top: 1px solid var(--neutral-90); padding-top: 16px; min-width: 0; }
-.details { border: 1px solid var(--neutral-90); border-radius: 10px; padding: 12px 14px; background: white; }
+.details { border: 1px solid var(--neutral-90); border-radius: 10px; padding: 12px 14px; background: var(--card); }
 .details > summary { cursor: pointer; font-size: 14px; font-weight: 550; }
 .details[open] > summary { margin-bottom: 12px; }
 .formGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
@@ -26,7 +26,7 @@
 .tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; list-style: none; padding: 0; margin: 0; }
 .tileLarge { grid-column: span 2; }
 .tileMid, .tileSmall { grid-column: span 1; }
-.tile { display: grid; gap: 6px; width: 100%; height: 100%; text-align: left; position: relative; background: white; border: 1px solid var(--neutral-90); border-left: 4px solid var(--neutral-90); border-radius: 10px; padding: 14px 14px 12px; }
+.tile { display: grid; gap: 6px; width: 100%; height: 100%; text-align: left; position: relative; background: var(--card); border: 1px solid var(--neutral-90); border-left: 4px solid var(--neutral-90); border-radius: 10px; padding: 14px 14px 12px; }
 .tile:hover { border-color: var(--green-77); }
 .tile[data-trend="up"] { border-left-color: var(--olive-57); }
 .tile[data-trend="down"] { border-left-color: var(--red-44); }
@@ -83,15 +83,15 @@
 
 .pickList { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; border: 0; padding: 0; margin: 0; }
 .columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
-.column { display: grid; align-content: start; gap: 10px; border: 1px solid var(--neutral-90); border-radius: 10px; padding: 14px; background: white; min-width: 0; }
+.column { display: grid; align-content: start; gap: 10px; border: 1px solid var(--neutral-90); border-radius: 10px; padding: 14px; background: var(--card); min-width: 0; }
 .column .stats.stats { grid-template-columns: minmax(0, 1fr); gap: 4px; }
 .column .stats.stats > div { display: flex; justify-content: space-between; gap: 8px; padding: 6px 10px; }
 .column .stats dd { font-size: 13px; margin: 0; }
 .briefs { display: grid; gap: 12px; list-style: none; padding: 0; margin: 0; }
-.briefCard { display: grid; gap: 8px; border: 1px solid var(--neutral-90); border-radius: 10px; padding: 14px; background: white; font-size: 14px; line-height: 1.7; }
+.briefCard { display: grid; gap: 8px; border: 1px solid var(--neutral-90); border-radius: 10px; padding: 14px; background: var(--card); font-size: 14px; line-height: 1.7; }
 
 .reportGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.reportCard { border: 1px solid var(--neutral-90); border-radius: 10px; padding: 12px 14px; background: white; min-width: 0; }
+.reportCard { border: 1px solid var(--neutral-90); border-radius: 10px; padding: 12px 14px; background: var(--card); min-width: 0; }
 .reportCard li { display: grid; gap: 2px; }
 
 .legal { border: 1px solid var(--neutral-90); background: var(--neutral-97); border-radius: 8px; padding: 12px 14px; font-size: 13px; line-height: 1.75; color: var(--green-32); }
@@ -102,21 +102,21 @@
 .method[data-method="manual"] { color: var(--orange-44); }
 .issues { display: grid; gap: 4px; margin: 6px 0 0 18px; list-style: decimal; font-size: 13px; }
 .credGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.credCard { display: grid; align-content: start; gap: 8px; border: 1px solid var(--neutral-90); border-radius: 10px; padding: 14px; background: white; min-width: 0; }
+.credCard { display: grid; align-content: start; gap: 8px; border: 1px solid var(--neutral-90); border-radius: 10px; padding: 14px; background: var(--card); min-width: 0; }
 .credForm { display: grid; gap: 10px; margin-top: 4px; }
 
 .notes { display: grid; gap: 4px; margin: 0 0 0 18px; padding: 0; list-style: disc; font-size: 13px; line-height: 1.7; color: var(--green-32); }
 .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; overflow-wrap: anywhere; }
 .evidence .evidenceChip { height: auto; min-height: 26px; padding: 1px 8px; font-size: 12px; font-weight: 500; white-space: normal; text-align: left; }
 .evidenceChip[aria-pressed="true"] { border-color: var(--olive-42); background: var(--olive-95); color: var(--green-23); }
-.snapshotPanel { display: grid; gap: 10px; border: 1px solid var(--olive-42); border-radius: 10px; padding: 12px 14px; background: white; min-width: 0; }
+.snapshotPanel { display: grid; gap: 10px; border: 1px solid var(--olive-42); border-radius: 10px; padding: 12px 14px; background: var(--card); min-width: 0; }
 .snapshotPanel h4:focus { outline: none; }
 .slotNote { border: 1px solid var(--neutral-90); background: var(--olive-95); border-radius: 8px; padding: 10px 14px; font-size: 13px; line-height: 1.7; color: var(--green-23); }
 .slotNote b { margin-right: 6px; }
 .riskList { display: grid; gap: 2px; border: 0; padding: 0; margin: 0; }
 .fitGrid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 14px; align-items: start; }
 .hintBox { display: grid; gap: 6px; border: 1px dashed var(--neutral-90); border-radius: 10px; padding: 12px 14px; background: var(--neutral-97); min-width: 0; }
-.factChip { display: inline-block; background: white; border: 1px solid var(--neutral-90); border-radius: 4px; padding: 1px 6px; overflow-wrap: anywhere; }
+.factChip { display: inline-block; background: var(--card); border: 1px solid var(--neutral-90); border-radius: 4px; padding: 1px 6px; overflow-wrap: anywhere; }
 .linkBox { display: grid; gap: 8px; justify-items: start; border: 1px solid var(--neutral-90); border-radius: 10px; padding: 12px 14px; background: var(--neutral-97); font-size: 13px; min-width: 0; }
 .linkBox > .stats { width: 100%; }
 .quoteTag, .assumeTag { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 600; border-radius: 4px; padding: 0 6px; vertical-align: 1px; }

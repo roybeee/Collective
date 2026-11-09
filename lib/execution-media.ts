@@ -1,4 +1,5 @@
 import {ApiError,runtime,database,readRecord,recordStatement,stamp} from './server';
+import {aiImageDisclosureEnabled,auditImageExport} from './ai-disclosure-image-server';
 
 export async function sha256(bytes:Uint8Array){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new Uint8Array(bytes))),b=>b.toString(16).padStart(2,'0')).join('')}
 export async function pngBytes(data:unknown){
@@ -106,21 +107,30 @@ async function servedPublicationIds(owner:string,hash:string){
  const rows=await database().prepare(`SELECT j.value AS id FROM records m JOIN json_each(m.data,'$.publicationIds') j JOIN records p ON p.id=m.owner||':execution_publication:'||j.value AND p.owner=m.owner AND p.kind='execution_publication' WHERE m.id=? AND m.owner=? AND m.kind='public_media' AND json_extract(p.data,'$.status') IN (${SERVED})`).bind(`${owner}:public_media:${hash}`,owner).all<{id:string}>();
  return new Set(rows.results.map(r=>String(r.id)));
 }
+// C2 반출 감사: 공개 사본을 처음 만든 뒤 표시 청크 유무를 기록한다(바이트는 바꾸지 않는다). 발행 레코드가 없거나 기록이 실패해도 공개를 막지 않는다. 스위치가 꺼져 있으면 기록하지 않는다.
+async function auditPublicMedia(owner:string,bytes:Uint8Array,publicationId:string){
+ try{
+  if(!await aiImageDisclosureEnabled(owner))return;
+  const publication=await readRecord<{campaignId:string;creativeId:string}>(owner,'execution_publication',publicationId);
+  await auditImageExport(owner,{bytes,campaignId:publication.campaignId,artifactId:publication.creativeId,publicationId,channel:'public_media'});
+ }catch(e){console.error('ai_image_disclosure_audit_skipped',e instanceof Error?e.message:'unknown')}
+}
 export async function publishPublicMedia(owner:string,pngHash:string,publicationId:string,origin:string):Promise<string>{
  const hash=mediaHash(pngHash),base=appOrigin(origin),store=bucket();
  if(typeof publicationId!=='string'||!publicationId||publicationId.length>100)throw new ApiError(400,'발행을 확인하세요.');
  const sourceKey=await creativeObjectKey(owner,hash),key=publicMediaKey(hash),existing=await store.get(key);
- let created=false;
+ let created=false,published:Uint8Array|null=null;
  if(existing)await assertHash(existing,hash,'앱 공개 파일이 원본 PNG와 다릅니다. 관리자에게 문의하세요.');
  else{
   const source=await store.get(sourceKey);if(!source)throw new ApiError(404,'원본 소재 파일을 찾을 수 없습니다.');
   const bytes=new Uint8Array(await source.arrayBuffer());if(await sha256(bytes)!==hash)throw new ApiError(409,'저장된 소재 파일이 원본 해시와 다릅니다. 소재를 다시 만들어 주세요.');
-  await store.put(key,bytes,{httpMetadata:{contentType:'image/png'}});created=true;
+  await store.put(key,bytes,{httpMetadata:{contentType:'image/png'}});created=true;published=bytes;
  }
  try{
   const old=await ownPublicMedia(owner,hash),listed=!!old?.publicationIds.includes(publicationId);
   await database().batch([...(listed?[]:[recordStatement(owner,'public_media',hash,{owner,publicationIds:[...(old?.publicationIds||[]),publicationId],createdAt:old?.createdAt||stamp()} satisfies PublicMedia,hash)]),refStatement(owner,hash)]);
  }catch(e){if(created)await removeObject(key);throw e}
+ if(published)await auditPublicMedia(owner,published,publicationId);
  return `${base}/media/${hash}.png`;
 }
 // 참조를 먼저 지우고, 어느 owner도 제공 대상 발행으로 참조하지 않으면 공개 객체를 지운다. 삭제 실패는 기록만 한다(발행 상태가 이미 제공을 막는다).

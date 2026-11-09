@@ -37,6 +37,8 @@ let dispatchBlocked=false,dispatchCalls=0,providerCalls=0,stopBlocked=false;
 const pending={...p,status:'submitting',version:3,channelId:'channel',caption:'text',mediaUrl:'https://app.test/a.png',scheduledAt:'2098-01-01T00:00:00Z'};
 const implementations={
  identity:async()=>'owner',requireAdminActor:async()=>({owner:'owner',id:'owner',role:'owner'}),secureMutation:()=>{},
+ // G3 자율성 규칙 가드(ask=기존 동작). 이 스위트는 발행 전송 경계만 본다.
+ assertAutonomy:async()=>({mode:'ask'}),
  readBoundedJson:async req=>req.json(),readRecord:async()=>({id:'campaign',brandId:'brand'}),str:v=>v,
  json:value=>Response.json(value),failure:e=>Response.json({error:e.message},{status:e.status??500}),
  acquireLock:async()=>'lock',releaseLock:async()=>{},executionRate:async()=>{},authEnv:{AUTH_ORIGIN:'https://app.test'},

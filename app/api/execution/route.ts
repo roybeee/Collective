@@ -1,4 +1,5 @@
 import {requireGrowthRunning} from '@/lib/growth-stop-server';
+import {assertAutonomy} from '@/lib/autonomy-server';
 import {assertGrowthPublicationDispatch} from '@/lib/growth-publication-server';
 import {identity,requireAdminActor,secureMutation,readRecord,json,failure,str,stamp,ApiError,acquireLock,releaseLock,type Actor} from '@/lib/server';
 import {openRecordSecret} from '@/lib/credential-crypto-server';
@@ -24,6 +25,8 @@ export async function POST(req:Request){let owner='',lock='';try{
  // 게시 코드를 발급하는 발행 준비(A4-2)는 추적 코드 만들기(A4-1)처럼 관리자만 한다. 코드 없는 준비는 그대로다.
  const coded=input.action==='save_publication'&&input.trackingCode!==undefined&&input.trackingCode!==null;
  const who:Actor|null=adminActions.includes(String(input.action))||coded?await requireAdminActor(req):null;
+ // G3 자율성 규칙: 발행 접수(승인·전송)는 T3라 자동이 없고, 금지(never)면 잠금 전에 403으로 막는다(확인 후·꺼짐은 그대로).
+ if(input.action==='approve'||input.action==='execute')await assertAutonomy(owner,'publish_submit');
  lock=await acquireLock(owner);
  await executionRate(owner,'execution');
  const campaign=await readRecord<Campaign>(owner,'campaign',str(input.campaignId,'캠페인',100,true));
