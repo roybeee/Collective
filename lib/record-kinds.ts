@@ -209,6 +209,7 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'brand_archive_state',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'브랜드 아카이브 개정 번호'},
  {kind:'brand_diagnostic',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'브랜드 진단 결과'},
  {kind:'brand_fact',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'브랜드·지점 사실(후보·확정·거절)'},
+ {kind:'brand_learn_run',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'브랜드 자동 학습 실행 기록(G1): 읽은 공개 페이지 주소·관측 시각·바이트 수·추출 요약(이름·로고 주소·색 후보·소개·주소·전화·영업시간·가격 줄·공식 계정·말투 신호)·사실 후보와 저장 결과·색 적용 출처. 원문 HTML은 담지 않는다. 캠페인과 무관'},
  {kind:'brand_fact_history',parent:'brand_fact',campaignDeletion:'not_campaign_scoped',description:'브랜드 사실 이전 버전'},
  {kind:'brand_observation',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'브랜드 관찰 메모'},
  {kind:'brand_research',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'브랜드·지점 조사 실행 기록'},

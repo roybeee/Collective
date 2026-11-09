@@ -69,6 +69,12 @@ function creativeScoreRow(flags:unknown):FeatureRow{
  const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='creative_score'):undefined;
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'소재 예측 점수 스위치 상태를 확인하지 못했습니다',link};
  return state.enabled?{...base,status:'available',reason:['저장 때 0~100점 추정 점수와 구성 요소별 근거 기록(규칙 기반, 성과 보장 아님)','게시 뒤 노출·클릭으로 브랜드×채널 보정표 만들기']}:{...base,status:'blocked',reason:['소재 예측 점수 스위치 꺼짐','소유자가 켭니다'],link};
+// G1 브랜드 자동 학습: 스위치 brand_autolearn. 꺼져 있어도 실행 기록 조회는 되고 미리보기·후보 저장·색 적용·템플릿 초안만 멈춘다.
+function brandAutolearnRow(flags:unknown):FeatureRow{
+ const base={key:'brand-autolearn',label:'브랜드 자동 학습(URL→후보)',flag:'brand_autolearn'},link:FeatureLink={label:'홈 시작하기 카드에서 확인',view:'overview'};
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='brand_autolearn'):undefined;
+ if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'브랜드 자동 학습 스위치 상태를 확인하지 못했습니다',link};
+ return state.enabled?{...base,status:'available',reason:['공개 페이지 1회 읽기(10초, 1MB, 사설 주소 거부, 모델 호출 없음)','이름·로고·색·소개·주소·전화·영업시간·가격은 미확인 후보, 확정은 사람이 원장에서','첫 캠페인 템플릿 3개는 기존 브리프 저장 경로로 초안만 만듭니다']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다(기록 조회는 가능)'],link};
 }
 function aiRow(connection:unknown):FeatureRow{
  const base={key:'ai',label:'8개 담당별 AI 작업(HERMES 연결)'},link:FeatureLink={label:'AI 팀 연결로 이동',view:'settings',section:'settings-ai'};
@@ -275,6 +281,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   scheduledRunsRow(input.flags),
   shareLinksRow(input.flags),
   creativeScoreRow(input.flags),
+  brandAutolearnRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
   posAutoRow(input.flags),
   kakaoBizmessageRow(input.flags),
