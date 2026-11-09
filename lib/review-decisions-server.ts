@@ -39,10 +39,10 @@ async function artifactVersions(owner:string,a:ReviewedArtifact,view:AiView){
  if(view.origin!=='ai'&&view.origin!=='ai_edited')return noVersions;
  return {promptVersion:await promptVersionOf(owner,'artifactId',view.source?.id||a.id),skillVersion:view.source?.skillVersion??null,outputContractVersion:view.source?.outputContractVersion??null};
 }
-export async function artifactDecisionStatement(owner:string,a:ReviewedArtifact,input:{decision:'approved'|'revision';reasonCodes:ReasonCode[];note:string;criteria?:CriterionJudgement[];actor:ReviewActor}){
+export async function artifactDecisionStatement(owner:string,a:ReviewedArtifact,input:{decision:'approved'|'revision';reasonCodes:ReasonCode[];note:string;criteria?:CriterionJudgement[];actor:ReviewActor;manuallyVerified?:boolean}){
  const view=await aiView(owner,a);
  return decisionStatement(owner,{targetKind:'artifact',targetId:a.id,version:a.version,role:a.role,decision:input.decision,reasonCodes:input.reasonCodes,...(input.note?{noteLength:input.note.length}:{}),actor:input.actor,
-  ...await artifactVersions(owner,a,view),campaignId:a.campaignId,brandId:null,origin:view.origin,...(input.criteria?{criteria:input.criteria}:{})});
+  ...await artifactVersions(owner,a,view),campaignId:a.campaignId,brandId:null,origin:view.origin,...(input.criteria?{criteria:input.criteria}:{}),...(input.decision==='approved'&&input.manuallyVerified===true?{manuallyVerified:true as const}:{})});
 }
 export const sourceDecisionStatement=(owner:string,s:{id:string;brandId:string;version:number},actor:ReviewActor,reasonCodes:ReasonCode[])=>
  decisionStatement(owner,{targetKind:'source',targetId:s.id,version:s.version,role:null,decision:'excluded',reasonCodes,actor,...noVersions,campaignId:null,brandId:s.brandId});

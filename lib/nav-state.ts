@@ -28,8 +28,14 @@ export const campaignSubs={growth:['signal','need','catalog','offer','mission'],
 export const metaSubAliases:Record<string,string>={conversions:'budget',images:'creative',create:'bundle',orders:'insights',report:'insights'};
 export const metaSubGroup=(value:string|null|undefined)=>value?metaSubAliases[value]??value:undefined;
 export const campaignSubOf=(ctab:string|null|undefined,value:string|null|undefined)=>ctab&&ctab in campaignSubs?(campaignSubs[ctab as keyof typeof campaignSubs] as readonly string[]).find(sub=>sub===value):undefined;
-export type NavState={view:NavView;campaign?:string;brand?:string;store?:string;tab?:NavTab;ctab?:CampaignTab;csub?:string};
-type NavInput={view?:string|null;campaign?:string|null;brand?:string|null;store?:string|null;tab?:string|null;ctab?:string|null;csub?:string|null};
+// 연결 및 설정의 섹션 탭(section, app/settings-sections.tsx). 첫 탭(connect)은 주소에 남기지 않는다. 옛 카드 id(settings-ai 등)로 온 링크는 그 카드가 든 탭을 연다.
+export const settingsTabs=['connect','channels','automation','usage','team','features'] as const;
+export type SettingsTab=typeof settingsTabs[number];
+// 별칭 표에 없는 값(constructor 같은 상속 속성 포함)은 탭 목록과 같아야만 받는다.
+const settingsAliases:Record<string,SettingsTab>={'settings-safety':'connect','settings-ai':'connect','settings-worker':'connect','settings-channels':'channels'};
+export const settingsTabOf=(value:string|null|undefined):SettingsTab|undefined=>settingsTabs.find(t=>t===(value&&settingsAliases[value]||value));
+export type NavState={view:NavView;campaign?:string;brand?:string;store?:string;tab?:NavTab;ctab?:CampaignTab;csub?:string;section?:SettingsTab};
+type NavInput={view?:string|null;campaign?:string|null;brand?:string|null;store?:string|null;tab?:string|null;ctab?:string|null;csub?:string|null;section?:string|null};
 // 서버 id 형식(UUID·시드 id·브랜드 번호 [a-zA-Z0-9_-], 최대 100자)만 받는다.
 const idPattern=/^[A-Za-z0-9_-]{1,100}$/;
 const validId=(value:string|null|undefined)=>typeof value==='string'&&idPattern.test(value)?value:undefined;
@@ -47,15 +53,16 @@ export function normalizeNav(input:NavInput):NavState{
  const view=isView(input.view)?input.view:'overview',campaign=validId(input.campaign);
  const brand=view==='brands'||view==='stores'||view==='learning'||view==='franchise'?validId(input.brand):undefined,store=view==='stores'?validId(input.store):undefined,tab=tabOf(view,input.tab);
  const ctab=campaign&&isCampaignTab(input.ctab)&&input.ctab!=='brief'?input.ctab:undefined,csub=campaignSubOf(ctab,input.csub),firstSub=ctab&&ctab in campaignSubs?campaignSubs[ctab as keyof typeof campaignSubs][0]:undefined;
- return {view,...(campaign?{campaign}:{}),...(brand?{brand}:{}),...(store?{store}:{}),...(tab?{tab}:{}),...(ctab?{ctab}:{}),...(csub&&csub!==firstSub?{csub}:{})};
+ const section=view==='settings'?settingsTabOf(input.section):undefined;
+ return {view,...(campaign?{campaign}:{}),...(brand?{brand}:{}),...(store?{store}:{}),...(tab?{tab}:{}),...(ctab?{ctab}:{}),...(csub&&csub!==firstSub?{csub}:{}),...(section&&section!=='connect'?{section}:{})};
 }
 export function parseNav(search:string):NavState{
  const params=new URLSearchParams(search);
- return normalizeNav({view:params.get('view'),campaign:params.get('campaign'),brand:params.get('brand'),store:params.get('store'),tab:params.get('tab'),ctab:params.get('ctab'),csub:params.get('csub')});
+ return normalizeNav({view:params.get('view'),campaign:params.get('campaign'),brand:params.get('brand'),store:params.get('store'),tab:params.get('tab'),ctab:params.get('ctab'),csub:params.get('csub'),section:params.get('section')});
 }
 // 기본 화면(워크스페이스)만 있으면 빈 문자열이라 주소가 '/'로 남는다.
 export function serializeNav(state:NavInput):string{
- const nav=normalizeNav(state),entries=Object.entries({view:nav.view,campaign:nav.campaign,brand:nav.brand,store:nav.store,tab:nav.tab,ctab:nav.ctab,csub:nav.csub}).filter((entry):entry is [string,string]=>!!entry[1]);
+ const nav=normalizeNav(state),entries=Object.entries({view:nav.view,campaign:nav.campaign,brand:nav.brand,store:nav.store,tab:nav.tab,ctab:nav.ctab,csub:nav.csub,section:nav.section}).filter((entry):entry is [string,string]=>!!entry[1]);
  return entries.length===1&&nav.view==='overview'?'':'?'+new URLSearchParams(entries).toString();
 }
 export function withCampaign(state:NavState,id:string|null):NavState{

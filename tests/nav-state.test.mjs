@@ -7,7 +7,7 @@ import ts from 'typescript';
 const context=createContext({console,URLSearchParams}),cache=new Map();
 function moduleFor(path){path=resolve(path);if(cache.has(path))return cache.get(path);const m=new SourceTextModule(ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText,{context,identifier:path});cache.set(path,m);return m;}
 const m=moduleFor('lib/nav-state.ts');await m.link((s,r)=>moduleFor(resolve(dirname(r.identifier),s+'.ts')));await m.evaluate();
-const {navViews,learningTabs,storeTabs,brandTabs,franchiseTabs,isLearningTab,isFranchiseTab,franchiseMenuVisible,parseNav,serializeNav,normalizeNav,withCampaign,reconcileNav,metaSubGroup}=m.namespace;
+const {settingsTabs,settingsTabOf,navViews,learningTabs,storeTabs,brandTabs,franchiseTabs,isLearningTab,isFranchiseTab,franchiseMenuVisible,parseNav,serializeNav,normalizeNav,withCampaign,reconcileNav,metaSubGroup}=m.namespace;
 let passed=0;
 function check(name,actual,expected){assert.deepEqual(JSON.parse(JSON.stringify(actual)),expected,name);passed++}
 
@@ -127,5 +127,19 @@ const archive={view:'brands',brand:'oda'};
 assert.equal(reconcileNav(archive,known),archive,'known brand keeps the same state object');passed++;
 const plain={view:'results'};
 assert.equal(reconcileNav(plain,known),plain,'state without ids is unchanged');passed++;
+
+
+// --- 연결 및 설정 섹션 탭(section) -------------------------------------------------------
+check('settings tabs in screen order',[...settingsTabs],['connect','channels','automation','usage','team','features']);
+check('old card anchors open the tab that holds the card',['settings-safety','settings-ai','settings-worker','settings-channels'].map(settingsTabOf),['connect','connect','connect','channels']);
+check('tab values map to themselves',settingsTabs.map(settingsTabOf),[...settingsTabs]);
+check('unknown or inherited names are dropped',['constructor','__proto__','toString','settings-usage','',null,undefined].map(v=>settingsTabOf(v)??null),[null,null,null,null,null,null,null]);
+check('a section opens on the settings screen',parseNav('?view=settings&section=channels'),{view:'settings',section:'channels'});
+check('an old anchor in the address is mapped to its tab',parseNav('?view=settings&section=settings-channels'),{view:'settings',section:'channels'});
+check('the first tab stays out of the address',[parseNav('?view=settings&section=connect'),parseNav('?view=settings&section=settings-ai')],[{view:'settings'},{view:'settings'}]);
+check('section is dropped outside the settings screen',parseNav('?view=campaigns&section=channels'),{view:'campaigns'});
+check('section round-trips through the address',serializeNav({view:'settings',section:'features'}),'?view=settings&section=features');
+check('serializing an old anchor writes the tab value',serializeNav({view:'settings',section:'settings-worker'}),'?view=settings');
+check('every tab round-trips',settingsTabs.map(t=>parseNav(serializeNav({view:'settings',section:t})).section??'connect'),[...settingsTabs]);
 
 console.log(JSON.stringify({passed},null,2));

@@ -88,8 +88,11 @@ test('이전 작업물 원문을 비교하고 미확인 비용을 그대로 저�
   await page.goto('/');
   await page.getByRole('button', {name: title + ' 열기', exact: true}).click();
   await page.getByRole('tab', {name: '이력', exact: true}).click();
-  await expect(page.getByText('이전 원문: 할인 없이 방문 이유를 제안한다.', {exact: true})).toBeVisible();
-  await expect(page.getByText('현재 원문: 오후 방문 동기를 실험한다.', {exact: true})).toBeVisible();
+  // 버전 비교는 어절 단위 비교(components/app/version-diff.tsx)다. 나란히 보기에서 왼쪽은 이전 원문, 오른쪽은 지금 원문을 그대로 담는다.
+  await page.getByRole('radio', {name: '나란히 보기', exact: true}).click();
+  const compare = page.getByRole('group', {name: '버전 비교', exact: true});
+  await expect(compare.getByRole('region', {name: /^이전 버전 v/})).toContainText(/할인 없이.*이유를 제안한다\./);// 바뀐 구간마다 화면 낭독용 '삭제:' 표지가 들어간다
+  await expect(compare.getByRole('region', {name: /^비교할 버전 v/})).toContainText(/오후.*방문.*동기를 실험한다\./);
   await shot(page, testInfo, 'version-comparison');
   await page.getByRole('tab', {name: '성과', exact: true}).click();
   await page.getByRole('button', {name: '성과 기록', exact: true}).click();
@@ -129,6 +132,7 @@ test('사용량 단가 설정을 저장하고 API 기록을 확인한다', async
   if (mobile) await page.locator('[data-sidebar="trigger"]').first().click();
   await nav.click();
   if (mobile) await page.keyboard.press('Escape');
+  await page.getByRole('tab', {name: '사용량·비용', exact: true}).click();
   await expect(page.getByRole('heading', {name: 'AI 사용량과 비용', exact: true})).toBeVisible();
   await page.getByText('모델별 단가 설정', {exact: true}).click();
   await page.getByLabel('실제 모델 ID', {exact: true}).fill('e2e-test-model');
@@ -240,7 +244,7 @@ test('설정 기능표가 확정 사실과 연결 상태를 실제 값으로 보
   const {context, page} = await ownerPage(browser, testInfo, `e2e-features-${testInfo.project.name}-${Date.now()}`);
   const table = page.locator('.scope-card');
   const feature = (key: string) => table.locator(`[data-feature="${key}"]`);
-  await page.goto('/?view=settings');
+  await page.goto('/?view=settings&section=features');
   await expect(table.getByRole('heading', {name: '현재 사용할 수 있는 기능', exact: true})).toBeVisible();
   await expect(feature('png')).toContainText('조건 부족, 확정 사실 필요(현재 0건)');
   await expect(feature('ai')).toContainText('조건 부족, HERMES 연결 전');
@@ -268,6 +272,7 @@ test('설정 기능표가 확정 사실과 연결 상태를 실제 값으로 보
 
   // F5: 설정 채널 카드는 채널마다 워크스페이스 기본 상태를 보이고, 연결 폼에서 적용 범위(워크스페이스 기본 / 브랜드 / 브랜드 지점)를 고른다.
   // 로컬 인증 헤더의 소유자는 관리자라 폼이 보인다. '브랜드'를 고르면 적용할 브랜드 선택이 나타난다.
+  await page.getByRole('tab', {name: '채널 연결', exact: true}).click();
   const channelCard = page.locator('#settings-channels');
   await expect(channelCard.getByRole('group', {name: '네이버 검색광고 연결 상태', exact: true})).toContainText('네이버 검색광고, 워크스페이스 기본, 연결 전');
   const scope = channelCard.getByRole('combobox', {name: '적용 범위', exact: true});

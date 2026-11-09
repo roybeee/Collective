@@ -69,7 +69,8 @@ check('a meeting revision saved as a role artifact carries labels, not schema pa
 });
 
 // 이 정규화 이전에 저장된 AI 작업물도 화면에서는 같은 라벨로 보인다(작업물 보기 RichText). 저장 본문은 바꾸지 않는다.
-check('the artifact reading view labels schema paths of AI artifacts on display',()=>assert.match(readFileSync('app/panels.tsx','utf8'),/<RichText text=\{a\.origin==='ai'\|\|a\.origin==='ai_edited'\?labelSchemaPaths\(scrubInternalIds\(a\.content\)\)\.text:a\.content\}\/>/));
+// X7: 상세 본문은 인용 pill을 그리는 CitedText가 같은 표시용 본문(readingText)을 받는다.
+check('the artifact reading view labels schema paths of AI artifacts on display',()=>{const panels=readFileSync('app/panels.tsx','utf8');assert.match(panels,/const readingText=useMemo\(\(\)=>a\?\(a\.origin==='ai'\|\|a\.origin==='ai_edited'\?labelSchemaPaths\(scrubInternalIds\(a\.content\)\)\.text:a\.content\):'',\[a\]\)/);assert.match(panels,/<CitedText text=\{readingText\}/)});
 
 // (c) 지시의 정의 예시를 그대로 옮겨 쓰면 revisit_cohort_definition을 통과하고, 기준선의 결함 형태(코호트 기준 없음)는 fail이다.
 const revisit=GRADERS.find(g=>g.id==='revisit_cohort_definition'),grade=text=>revisit.grade({kind:'role',role:'insight',contract:true,text},{}).status;

@@ -87,7 +87,7 @@ test('가맹 모집 스위치 알림의 되돌리기로 앞 상태로 돌린다'
  try{
   const on=async()=>((await (await page.request.get('/api/feature-flags')).json()) as {flags:{flag:string;enabled:boolean}[]}).flags.find(f=>f.flag==='r_franchise')?.enabled;
   expect(await on()).toBe(false);
-  await page.goto('/?view=settings');
+  await page.goto('/?view=settings&section=features');
   await page.getByRole('button',{name:'가맹 모집 켜기',exact:true}).click();
   await page.getByRole('alertdialog').getByRole('button',{name:'켜기',exact:true}).click();
   await expect(page.getByText('가맹 모집을 켰습니다.',{exact:true})).toBeVisible();expect(await on()).toBe(true);

@@ -10,7 +10,11 @@ import {call} from './connectors/naver-ads';
 import {buildWriteRequest, executeWrite, liveDeps, readBack, verifyReadBack, NaverAdsWriteError, type WriteDeps, type WriteOperation} from './connectors/naver-ads-write';
 import type {NaverAdsCredential} from './connectors/types';
 import type {Store} from './store-marketing';
-import {dedupeAgainst, manualProposal, proposeFromStats, statsWindow, transitionProposal, ProposalError, PROPOSAL_LABEL, type AdsProposal, type KeywordStats, type ProposalKind} from './ads-proposals';
+import {dedupeAgainst, manualProposal, proposeFromStats, statsWindow, transitionProposal, ProposalError, PROPOSAL_LABEL, type AdsProposal, type AnyAdsProposal, type KeywordStats, type ProposalChannel, type ProposalKind} from './ads-proposals';
+import {applyDaangnProposal, createDaangnManualProposal, generateDaangnProposals, reconcileDaangnProposal} from './ads-proposals-daangn-server';
+import {DAANGN_FLAG_OFF} from './daangn-ads-server';
+// C8: channel 'daangn_ads' 제안은 같은 kind에 저장하고 아래 진입점이 채널로 나눈다. 채널을 주지 않거나 'naver_ads'면 이전과 같은 동작이다.
+const channelOf = (input: Record<string, unknown>): ProposalChannel => input.channel === undefined || input.channel === null || input.channel === '' || input.channel === 'naver_ads' ? 'naver_ads' : input.channel === 'daangn_ads' ? 'daangn_ads' : (() => { throw new ApiError(400, "채널은 'naver_ads' 또는 'daangn_ads'입니다."); })();
 
 export const FLAG_OFF = '쓰기 스위치 꺼짐: 기능 스위치 naver_ads_write를 켜야 승인·반영할 수 있습니다. 제안 생성·조회·대조는 계속됩니다.';
 export const NOTICE = `네이버 검색광고 제안은 ${PROPOSAL_LABEL}. 승인은 소유자·관리자, 반영은 승인된 제안 하나당 1회, 반영 뒤 읽기 대조로 확인합니다. 자동 입찰은 없습니다.`;
@@ -20,7 +24,7 @@ const STATS_FIELDS = ['impCnt', 'clkCnt', 'salesAmt', 'ccnt', 'convAmt', 'avgRnk
 type Scope = {brandId: string | null; storeId: string | null};
 const admin = (who: Actor) => who.role === 'owner' || who.role === 'admin';
 function requireAdmin(who: Actor) { if (!admin(who)) throw new ApiError(403, '소유자·관리자만 광고 제안을 승인·반영할 수 있습니다.'); }
-async function requireFlag(owner: string) { if (!(await isEnabled(owner, 'naver_ads_write'))) throw new ApiError(409, FLAG_OFF); }
+async function requireFlag(owner: string, channel: ProposalChannel = 'naver_ads') { if (channel === 'daangn_ads') { if (!(await isEnabled(owner, 'daangn_ads'))) throw new ApiError(409, DAANGN_FLAG_OFF); return; } if (!(await isEnabled(owner, 'naver_ads_write'))) throw new ApiError(409, FLAG_OFF); }
 const wrap = <T>(fn: () => T) => { try { return fn(); } catch (e) { if (e instanceof ProposalError || e instanceof NaverAdsWriteError) throw new ApiError(400, e.message); throw e; } };
 
 // 지점은 이 워크스페이스의 지점이어야 하고 브랜드와 맞아야 한다. 없으면 워크스페이스 기본 자격증명을 쓴다.
@@ -40,12 +44,12 @@ const rows = (raw: unknown): Record<string, unknown>[] => Array.isArray(raw) ? r
 const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? v : null;
 const text = (v: unknown) => typeof v === 'string' ? v : '';
 
-export async function listProposals(owner: string, filter: {campaignId?: string | null; storeId?: string | null} = {}) {
- const all = await listRecords<AdsProposal>(owner, 'ads_proposal');
- return all.filter(p => (!filter.campaignId || p.campaignId === filter.campaignId) && (!filter.storeId || p.storeId === filter.storeId)).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
+export async function listProposals(owner: string, filter: {campaignId?: string | null; storeId?: string | null; channel?: ProposalChannel | null} = {}) {
+ const all = await listRecords<AnyAdsProposal>(owner, 'ads_proposal');
+ return all.filter(p => (!filter.campaignId || p.campaignId === filter.campaignId) && (!filter.storeId || p.storeId === filter.storeId) && (!filter.channel || p.channel === filter.channel)).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
 }
-async function save(owner: string, p: AdsProposal) { await recordStatement(owner, 'ads_proposal', p.id, p, p.storeId ?? '').run(); return p; }
-async function readProposal(owner: string, id: unknown) { return readRecord<AdsProposal>(owner, 'ads_proposal', str(id, '제안', 100, true)); }
+async function save<P extends AnyAdsProposal>(owner: string, p: P) { await recordStatement(owner, 'ads_proposal', p.id, p, p.storeId ?? '').run(); return p; }
+async function readProposal(owner: string, id: unknown) { return readRecord<AnyAdsProposal>(owner, 'ads_proposal', str(id, '제안', 100, true)); }
 
 // 14일 통계를 모은다: 캠페인의 광고그룹(최대 10) → 키워드 → /stats(id 100개씩). 읽기만 한다.
 export async function collectKeywordStats(credential: NaverAdsCredential, campaignId: string, window: {from: string; to: string}): Promise<KeywordStats[]> {
@@ -72,7 +76,8 @@ export async function collectKeywordStats(credential: NaverAdsCredential, campai
 
 const target = (v: unknown, label: string) => { if (v === undefined || v === null || v === '') return null; if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) throw new ApiError(400, `${label}은(는) 0보다 큰 숫자여야 합니다.`); return v; };
 // 규칙 기반 제안 생성(스위치 무관, 읽기만). 같은 대상·규칙의 열린 제안은 다시 만들지 않는다.
-export async function generateProposals(who: Actor, input: Record<string, unknown>, now = Date.now()) {
+export async function generateProposals(who: Actor, input: Record<string, unknown>, now = Date.now(), deps?: WriteDeps) {
+ if (channelOf(input) === 'daangn_ads') { const scope = await scopeOf(who.owner, input); return {...await generateDaangnProposals(who, input, scope, await listProposals(who.owner, {channel: 'daangn_ads'}), now, deps), notice: NOTICE}; }
  const campaignId = str(input.campaignId, '네이버 캠페인 ID', 64, true), scope = await scopeOf(who.owner, input);
  const targets = {targetCpa: target(input.targetCpa, '목표 CPA'), targetRoas: target(input.targetRoas, '목표 ROAS')};
  const window = statsWindow(now), credential = await credentialFor(who.owner, scope);
@@ -87,6 +92,7 @@ const MANUAL_KINDS: readonly ProposalKind[] = ['create_keywords', 'create_campai
 // 사람이 직접 적는 새 지출 제안(T3). 작업 본문은 반영 때와 같은 검증(buildWriteRequest)을 미리 거친다.
 export async function createManualProposal(who: Actor, input: Record<string, unknown>) {
  requireAdmin(who);
+ if (channelOf(input) === 'daangn_ads') return createDaangnManualProposal(who, input, await scopeOf(who.owner, input));
  const kind = input.kind;
  if (typeof kind !== 'string' || !MANUAL_KINDS.includes(kind as ProposalKind)) throw new ApiError(400, '직접 작성할 수 있는 제안은 create_keywords·create_campaign·resume입니다.');
  const campaignId = str(input.campaignId, '네이버 캠페인 ID', 64, true), scope = await scopeOf(who.owner, input), rationale = str(input.rationale, '사유', 1000, true);
@@ -99,9 +105,9 @@ export async function createManualProposal(who: Actor, input: Record<string, unk
 
 export async function approveProposal(who: Actor, input: Record<string, unknown>) {
  requireAdmin(who);
- await requireFlag(who.owner);
- const autonomy = await assertAutonomy(who.owner, 'budget_change');
  const p = await readProposal(who.owner, input.id);
+ await requireFlag(who.owner, p.channel);
+ const autonomy = await assertAutonomy(who.owner, 'budget_change');
  return {proposal: await save(who.owner, wrap(() => transitionProposal(p, 'approved', who.id, stamp()))), autonomy: autonomy.mode};
 }
 export async function rejectProposal(who: Actor, input: Record<string, unknown>) {
@@ -113,9 +119,10 @@ export async function rejectProposal(who: Actor, input: Record<string, unknown>)
 // 승인된 제안을 반영한다. 저널(write)이 이미 있으면 다시 보내지 않는다(sent/unknown → 대조만).
 export async function applyProposal(who: Actor, input: Record<string, unknown>, deps?: WriteDeps) {
  requireAdmin(who);
- await requireFlag(who.owner);
- await assertAutonomy(who.owner, 'budget_change');
  const p = await readProposal(who.owner, input.id);
+ await requireFlag(who.owner, p.channel);
+ await assertAutonomy(who.owner, 'budget_change');
+ if (p.channel === 'daangn_ads') return applyDaangnProposal(who, p, deps);
  if (p.write) throw new ApiError(409, '이미 보낸 제안입니다. 결과를 모르면 대조(reconcile)로 확인하세요. 다시 보내지 않습니다.');
  if (p.status !== 'approved') throw new ApiError(409, '승인된 제안만 반영할 수 있습니다.');
  const credential = await credentialFor(who.owner, {brandId: p.brandId, storeId: p.storeId});
@@ -135,9 +142,10 @@ async function verify(credential: NaverAdsCredential, p: AdsProposal, by: string
 }
 
 // 결과 미확인(unknown 또는 sent로 멈춘) 제안을 읽기만으로 판정한다. 기대 상태와 같으면 applied→verified, 아니면 failed(반영되지 않음)로 둔다. 스위치 무관.
-export async function reconcileProposal(who: Actor, input: Record<string, unknown>) {
+export async function reconcileProposal(who: Actor, input: Record<string, unknown>, deps?: WriteDeps) {
  requireAdmin(who);
  const p = await readProposal(who.owner, input.id);
+ if (p.channel === 'daangn_ads') return reconcileDaangnProposal(who, p, deps);
  const stuck = p.status === 'approved' && p.write?.state === 'sent';
  if (p.status !== 'unknown' && !stuck) throw new ApiError(409, '결과 미확인 상태의 제안만 대조할 수 있습니다.');
  const credential = await credentialFor(who.owner, {brandId: p.brandId, storeId: p.storeId});
@@ -150,7 +158,8 @@ export async function reconcileProposal(who: Actor, input: Record<string, unknow
  return save(who.owner, transitionProposal({...base, write: {...base.write!, state: 'failed'}, verification: {...v, checkedAt: stamp()}}, 'failed', who.id, stamp(), `읽기 대조: 반영되지 않음 — ${v.details.join(' | ')}`));
 }
 
-export async function proposalsView(who: Actor, filter: {campaignId?: string | null; storeId?: string | null}) {
- return {proposals: await listProposals(who.owner, filter), enabled: await isEnabled(who.owner, 'naver_ads_write'), canApprove: admin(who), notice: NOTICE, label: PROPOSAL_LABEL};
+export async function proposalsView(who: Actor, filter: {campaignId?: string | null; storeId?: string | null; channel?: ProposalChannel | null}) {
+ const [enabled, daangn] = await Promise.all([isEnabled(who.owner, 'naver_ads_write'), isEnabled(who.owner, 'daangn_ads')]);
+ return {proposals: await listProposals(who.owner, filter), enabled, enabledByChannel: {naver_ads: enabled, daangn_ads: daangn}, canApprove: admin(who), notice: NOTICE, label: PROPOSAL_LABEL};
 }
 export type ProposalsView = Awaited<ReturnType<typeof proposalsView>>;

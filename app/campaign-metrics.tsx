@@ -1,5 +1,5 @@
 'use client';
-import {useEffect,useState} from 'react';
+import {lazy,Suspense,useEffect,useState} from 'react';
 import {Button} from '@/components/ui/button';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import {Input} from '@/components/ui/input';
@@ -13,6 +13,9 @@ import {notifySaved} from '@/lib/ui/notify';
 import {MetaLine} from '@/components/app/meta-line';
 import {INCREMENTALITY_LABEL,verdictLabels,type IncrementalityRecord} from '@/lib/incrementality';
 
+// X-F 네이버 검색광고 제안 카드(app/ads-proposals-card.tsx). 캠페인 상세 성과 탭 안에서만 그리고(성과 화면의 캠페인별 목록에서는 그리지 않는다) 그때 내려받는다.
+const AdsProposalsCard=lazy(()=>import('./ads-proposals-card').then(m=>({default:m.AdsProposalsCard})));
+function CampaignAdsProposals(){const [inSheet,setInSheet]=useState(false);return inSheet?<Suspense fallback={null}><AdsProposalsCard/></Suspense>:<span hidden ref={el=>{if(el?.closest('.campaign-sheet'))setInSheet(true)}}/>}
 // C7 홀드아웃 증분 카드(추가). 저장된 결과(GET /api/measurements?campaignId=)만 그린다. 계산은 측정 API(action incrementality)로 하고 여기서는 입력을 받지 않는다.
 type IncrementalityLoad={status:'loading'}|{status:'ready';record:IncrementalityRecord|null}|{status:'error'};
 const signedMoney=(v:number)=>(v>0?'+':'')+money(v);
@@ -20,7 +23,7 @@ export function IncrementalityCard({campaignId}:{campaignId:string}){
  const [load,setLoad]=useState<IncrementalityLoad>({status:'loading'});
  useEffect(()=>{let active=true;void fetch('/api/measurements?campaignId='+encodeURIComponent(campaignId)).then(async r=>{const d=await r.json() as {incrementality?:IncrementalityRecord|null};if(!r.ok)throw new Error('증분 결과를 확인하지 못했습니다.');return d.incrementality??null}).then(record=>{if(active)setLoad({status:'ready',record})}).catch(()=>{if(active)setLoad({status:'error'})});return()=>{active=false}},[campaignId]);
  const r=load.status==='ready'?load.record:null,res=r?.result;
- return <section className="metric-card" aria-label="홀드아웃 매장 증분">
+ return <><section className="metric-card" aria-label="홀드아웃 매장 증분">
   <div className="section-heading"><h3>홀드아웃 매장 증분(이중차분)</h3><span className="mode-pill">{INCREMENTALITY_LABEL}</span></div>
   {load.status==='loading'&&<p className="subtle-note">증분 결과를 불러오는 중…</p>}
   {load.status==='error'&&<p className="subtle-note">증분 결과를 확인하지 못했습니다.</p>}
@@ -30,7 +33,7 @@ export function IncrementalityCard({campaignId}:{campaignId:string}){
    {res.reasons.length>0&&<p className="subtle-note">{res.reasons.join(' ')}</p>}
    <p className="subtle-note">{INCREMENTALITY_LABEL}. 계절·날씨·휴일이 대상·대조 매장에 같게 작용했다는 가정 위의 관찰 비교이며, 대조 매장이 적을수록 우연한 차이가 커집니다. 계산 {r.computedAt.slice(0,10)}, v{r.version}</p>
   </>}
- </section>;
+ </section><CampaignAdsProposals/></>;
 }
 
 type CampaignChoice=Pick<Campaign,'id'|'title'>;

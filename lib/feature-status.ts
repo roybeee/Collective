@@ -77,6 +77,13 @@ function brandAutolearnRow(flags:unknown):FeatureRow{
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'브랜드 자동 학습 스위치 상태를 확인하지 못했습니다',link};
  return state.enabled?{...base,status:'available',reason:['공개 페이지 1회 읽기(10초, 1MB, 사설 주소 거부, 모델 호출 없음)','이름·로고·색·소개·주소·전화·영업시간·가격은 미확인 후보, 확정은 사람이 원장에서','첫 캠페인 템플릿 3개는 기존 브리프 저장 경로로 초안만 만듭니다']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다(기록 조회는 가능)'],link};
 }
+// G9 MCP 서버·API 키: 스위치 mcp_server. 켜지면 대표·관리자가 API 키를 만들고 외부 AI 도구가 /api/mcp로 읽기·초안 저장을 한다. 꺼지면 엔드포인트는 404다.
+function mcpServerRow(flags:unknown):FeatureRow{
+ const base={key:'mcp-server',label:'MCP 서버·API 키(외부 AI 도구 연결)',flag:'mcp_server'},link:FeatureLink={label:'연결 및 설정에서 확인',view:'settings'};
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='mcp_server'):undefined;
+ if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'MCP 서버 스위치 상태를 확인하지 못했습니다',link};
+ return state.enabled?{...base,status:'available',reason:['읽기 키와 초안 저장 키(만료 기본 90일, 취소 가능)','승인·발행·지출·고객 발송·AI 실행은 API로 할 수 없습니다']}:{...base,status:'blocked',reason:['MCP 서버 스위치 꺼짐','소유자가 켭니다(키 목록·취소는 가능)'],link};
+}
 function aiRow(connection:unknown):FeatureRow{
  const base={key:'ai',label:'8개 담당별 AI 작업(HERMES 연결)'},link:FeatureLink={label:'AI 팀 연결로 이동',view:'settings',section:'settings-ai'};
  if(!record(connection)||typeof connection.configured!=='boolean')return {...base,status:'blocked',reason:'AI 연결 상태를 확인하지 못했습니다',link};
@@ -283,6 +290,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   shareLinksRow(input.flags),
   creativeScoreRow(input.flags),
   brandAutolearnRow(input.flags),
+  mcpServerRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
   posAutoRow(input.flags),
   kakaoBizmessageRow(input.flags),
@@ -291,7 +299,22 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   {key:'ads',label:'광고 집행',status:'unimplemented',reason:'광고 생성·광고비 집행 기능 없음'},
   instagramDirectRow(input.flags),
   threadsRow(input.flags),
+  selectionRewriteRow(input.flags),
+  daangnAdsRow(input.flags),
+  placeDraftsRow(input.flags),
  ];
+}
+// C8 당근 광고 OpenAPI: 스위치 daangn_ads. 꺼지면 연결·수집·제안 생성·승인·반영은 409, 해제·조회·미확인 대조는 계속된다(docs/DAANGN-ADS.ko.md).
+function daangnAdsRow(flags:unknown):FeatureRow{
+ const base={key:'daangn-ads',label:'당근 광고 제안·반영·성과 수집',flag:'daangn_ads'},link:FeatureLink={label:'연결 및 설정에서 확인',view:'settings',section:'settings-channels'},enabled=flagState(flags,'daangn_ads');
+ if(enabled===null)return {...base,status:'blocked',reason:'당근 광고 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['광고주별 키로 캠페인·성과를 읽고 규칙 기반 중지·일 예산 조정 제안(추정)을 관리자가 승인하면 반영 뒤 읽기 대조','자동 적용·자동 예산 변경 없음(공개 베타, 경로·필드는 실계정 확인 전 가정)']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다(해제·조회·미확인 대조는 가능)'],link};
+}
+// C5 플레이스 리뷰 답글·소식 초안: 스위치 place_drafts. 네이버 스마트플레이스에는 공개 쓰기 API가 없어 제출은 사람이 하거나 점포 브라우저 작업으로 넘긴다(docs/PLACE-DRAFTS.ko.md).
+function placeDraftsRow(flags:unknown):FeatureRow{
+ const base={key:'place-drafts',label:'플레이스 리뷰 답글·소식 초안',flag:'place_drafts'},link:FeatureLink={label:'점포 마케팅에서 확인',view:'stores'},enabled=flagState(flags,'place_drafts');
+ if(enabled===null)return {...base,status:'blocked',reason:'플레이스 초안 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['확정 사실·말투로 답글·소식 초안(모델 호출 없음)과 규정 점검, 승인 뒤 복사·제출 지원','네이버 쓰기 API 없음: 자동 제출 없음, 제출은 사람이 표시하거나 점포 브라우저 작업으로 다시 승인']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다(조회는 가능)'],link};
 }
 // C3 직접 게시: 스위치 instagram_direct_publish·threads_publish. 켜져 있어도 브랜드 연결(장수명 토큰)과 사람의 승인·실행이 있어야 보낸다. 꺼져 있으면 Buffer 경로 그대로다.
 function instagramDirectRow(flags:unknown):FeatureRow{
@@ -303,6 +326,12 @@ function threadsRow(flags:unknown):FeatureRow{
  const base={key:'threads',label:'Threads 게시',flag:'threads_publish'},link:FeatureLink={label:'연결 및 설정에서 확인',view:'settings',section:'settings-channels'},enabled=flagState(flags,'threads_publish');
  if(enabled===null)return {...base,status:'blocked',reason:'Threads 게시 스위치 상태를 확인하지 못했습니다',link};
  return enabled?{...base,status:'available',reason:['브랜드별 Threads 연결이 있는 캠페인의 승인된 발행을 실행 때 Threads API로 게시(텍스트·이미지, 본문 500자)','답글은 수집만, 자동 답글 없음']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다'],link};
+}
+// X6 선택 다시 쓰기: 스위치 selection_rewrite. 켜져도 확인 카드를 거친 소유자·관리자 요청만 HERMES에 보내고, 제안은 받기 전까지 반영되지 않는다.
+function selectionRewriteRow(flags:unknown):FeatureRow{
+ const base={key:'selection-rewrite',label:'선택한 글 다시 쓰기(제작·발행 캡션 편집기)',flag:'selection_rewrite'},link:FeatureLink={label:'캠페인을 열어 제작·발행 탭에서 확인',view:'campaigns'},enabled=flagState(flags,'selection_rewrite');
+ if(enabled===null)return {...base,status:'blocked',reason:'선택 다시 쓰기 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['고른 글만 확인 카드(추정 토큰) 뒤 HERMES로 다시 쓰기, 줄이기, 톤 바꾸기','제안은 비교 화면에서 받기 전까지 반영되지 않음']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다'],link};
 }
 // 화면에 그릴 모양(평가 9회차 결함 2·3). 사유는 항목 배열로 나눠 MetaLine으로 그리고(가운뎃점 ' · '로 잇지 않는다),
 // 기능 스위치 이름(소문자_밑줄)·단계 코드(B4-2c 등)·내부 이름(digest 큐)은 화면 문구에서 빼서 tech로 넘긴다. 화면은 tech를 '자세히' 안 기술 정보로만 보인다.

@@ -3,11 +3,13 @@
 // 상태: draft → approved → applied | failed | unknown ; applied → verified | mismatch ; unknown → applied | failed (읽기 대조로만) ; draft → rejected.
 // 위험 등급(lib/growth-authority.ts 어휘): 입찰 변경 ≤20%·중지 T2, >20%·재개·새 지출(키워드·캠페인 생성) T3.
 import type {WriteOperation} from './connectors/naver-ads-write';
+import type {DaangnOperation} from './connectors/daangn-ads';
 import {BID_STEP, MAX_BID, MIN_BID} from './connectors/naver-ads-write';
 
 export class ProposalError extends Error { constructor(message: string) { super(message); this.name = 'ProposalError'; } }
 
-export const PROPOSAL_KINDS = ['bid', 'pause', 'resume', 'create_keywords', 'create_campaign'] as const;
+// C8 당근 광고: budget(일 예산 ±10%)·create_adgroup·create_creative·update_creative를 덧붙인다(네이버 제안은 그대로).
+export const PROPOSAL_KINDS = ['bid', 'pause', 'resume', 'create_keywords', 'create_campaign', 'budget', 'create_adgroup', 'create_creative', 'update_creative'] as const;
 export type ProposalKind = typeof PROPOSAL_KINDS[number];
 export const PROPOSAL_STATUSES = ['draft', 'approved', 'rejected', 'applied', 'failed', 'unknown', 'verified', 'mismatch'] as const;
 export type ProposalStatus = typeof PROPOSAL_STATUSES[number];
@@ -24,17 +26,22 @@ export type RuleInput = {campaignId: string; storeId?: string | null; brandId?: 
 export type ProposalEvidence = {ruleId: string; window: StatsWindow; metrics: Record<string, number | null>; learningRuleIds: string[]};
 export type WriteJournal = {state: 'sent' | 'done' | 'unknown' | 'failed'; attempts: number; sentAt: string; finishedAt?: string; providerIds?: string[]; httpStatus?: number | null; error?: string | null};
 export type ProposalTransition = {at: string; from: ProposalStatus | null; to: ProposalStatus; by: string; note?: string};
-export type AdsProposal = {
- id: string; channel: 'naver_ads'; campaignId: string; storeId: string | null; brandId: string | null;
+// 같은 kind 'ads_proposal' 레코드에 채널을 덧붙인다(C8). AdsProposal은 이전과 같은 네이버 모양이고, 당근 제안은 DaangnAdsProposal, 둘을 함께 다룰 때는 AnyAdsProposal이다.
+export type ProposalChannel = 'naver_ads' | 'daangn_ads';
+export type ProposalBase<C extends ProposalChannel, O> = {
+ id: string; channel: C; campaignId: string; storeId: string | null; brandId: string | null;
  kind: ProposalKind; riskTier: ProposalRisk; status: ProposalStatus; label: typeof PROPOSAL_LABEL;
- target: {type: 'keyword' | 'campaign' | 'adgroup'; ids: string[]; names: string[]};
+ target: {type: 'keyword' | 'campaign' | 'adgroup' | 'creative'; ids: string[]; names: string[]};
  diff: {before: Record<string, unknown>; after: Record<string, unknown>};
- operation: WriteOperation;
+ operation: O;
  rationale: {text: string; evidence: ProposalEvidence};
  createdAt: string; createdBy: string; approvedAt?: string; approvedBy?: string; appliedAt?: string;
  write?: WriteJournal; verification?: {status: 'verified' | 'mismatch'; checkedAt: string; details: string[]};
  history: ProposalTransition[];
 };
+export type AdsProposal = ProposalBase<'naver_ads', WriteOperation>;
+export type DaangnAdsProposal = ProposalBase<'daangn_ads', DaangnOperation>;
+export type AnyAdsProposal = AdsProposal | DaangnAdsProposal;
 export type ProposalContext = {now: string; by: string; id: () => string};
 
 export const RULES = [
@@ -108,15 +115,15 @@ const EDGES: Record<ProposalStatus, readonly ProposalStatus[]> = {
 };
 export const STATUS_LABELS: Record<ProposalStatus, string> = {draft: '제안', approved: '승인됨', rejected: '반려', applied: '반영됨(대조 전)', failed: '반영 실패', unknown: '결과 미확인', verified: '반영 확인', mismatch: '대조 불일치'};
 // 상태 전이(새 객체). 허용되지 않은 전이는 ProposalError.
-export function transitionProposal(p: AdsProposal, to: ProposalStatus, by: string, at: string, note?: string): AdsProposal {
+export function transitionProposal<P extends AnyAdsProposal>(p: P, to: ProposalStatus, by: string, at: string, note?: string): P {
  if (!EDGES[p.status].includes(to)) throw new ProposalError(`${STATUS_LABELS[p.status]} 상태에서는 ${STATUS_LABELS[to]}(으)로 바꿀 수 없습니다.`);
  return {...p, status: to, history: [...p.history, {at, from: p.status, to, by, ...(note ? {note} : {})}],
   ...(to === 'approved' ? {approvedAt: at, approvedBy: by} : {}), ...(to === 'applied' ? {appliedAt: at} : {})};
 }
 // 같은 대상·같은 규칙의 열린 제안(draft·approved·unknown·applied)이 있으면 중복이다.
-export const isOpen = (p: AdsProposal) => p.status === 'draft' || p.status === 'approved' || p.status === 'unknown' || p.status === 'applied';
-export function dedupeAgainst(existing: readonly AdsProposal[], fresh: readonly AdsProposal[]): AdsProposal[] {
- const keyOf = (p: AdsProposal) => `${p.campaignId}|${p.rationale.evidence.ruleId}|${p.target.type}|${p.target.ids.join(',')}`;
+export const isOpen = (p: AnyAdsProposal) => p.status === 'draft' || p.status === 'approved' || p.status === 'unknown' || p.status === 'applied';
+export function dedupeAgainst<P extends AnyAdsProposal>(existing: readonly AnyAdsProposal[], fresh: readonly P[]): P[] {
+ const keyOf = (p: AnyAdsProposal) => `${p.channel}|${p.campaignId}|${p.rationale.evidence.ruleId}|${p.target.type}|${p.target.ids.join(',')}`;
  const open = new Set(existing.filter(isOpen).map(keyOf));
  return fresh.filter(p => !open.has(keyOf(p)));
 }

@@ -91,7 +91,7 @@ check('providerIdsOf collects ids from arrays and objects',write.providerIdsOf({
 // 5) 레지스트리 서술자와 계약 하네스(실제 빌더 경유, 스크립트 transport).
 const cap=registry.capabilityFor('naver_ads.ncc.write');
 check('registry lists the write capability as T3, default off, flag naver_ads_write, store-scoped, no unknown retry',cap&&cap.riskTier==='T3'&&cap.defaultOff===true&&cap.retryUnknown===false&&cap.flag==='naver_ads_write'&&cap.credentialScope==='store'&&['campaign','adgroup','keyword','bid','lock'].every(w=>cap.writes.includes(w)));
-check('registry has no violations after the addition and the naver write is not T4 (T4 stays Meta money moves and Kakao customer sends)',registry.describeViolations().length===0&&registry.capabilitiesByTier('T4').every(c=>c.key.startsWith('meta_ads.')||c.key.startsWith('kakao_bizmessage.')));
+check('registry has no violations after the addition and the naver write is not T4 (T4 stays Meta money moves, Kakao customer sends and Daangn conversion events)',registry.describeViolations().length===0&&registry.capabilitiesByTier('T4').every(c=>c.key.startsWith('meta_ads.')||c.key.startsWith('kakao_bizmessage.')||c.key==='daangn_ads.conversion.send'));
 const caps=registry.descriptorFor('naver_ads').capabilities;
 const requests=[];
 const factory=script=>{const calls={};const transport=async(request,op)=>{requests.push({id:op.id,method:request.method,path:request.path,query:request.query});const steps=script[op.id]??[{kind:'thrown'}];return steps[Math.min(calls[op.id]=(calls[op.id]??0)+1,steps.length)-1]};
