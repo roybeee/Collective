@@ -212,6 +212,13 @@ function posAutoRow(flags:unknown):FeatureRow{
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'POS 자동 수집 스위치 상태를 확인하지 못했습니다',link};
  return state.enabled?{...base,status:'available',reason:'토스플레이스 주문·결제 자동 수집(읽기 전용, 고객 정보 없음, 외부 쓰기 없음)'}:{...base,status:'blocked',reason:['기능 스위치 pos_tossplace 꺼짐','소유자가 켭니다'],link};
 }
+// C6 카카오 비즈메시지: 스위치 kakao_bizmessage 상태를 읽는다. 켜져도 전송은 사람이 승인한 건만 간다(docs/KAKAO-BIZMESSAGE.ko.md).
+function kakaoBizmessageRow(flags:unknown):FeatureRow{
+ const base={key:'kakao-bizmessage',label:'카카오 비즈메시지(알림톡·브랜드 메시지)',flag:'kakao_bizmessage'},link:FeatureLink={label:'연결 및 설정에서 확인',view:'settings',section:'settings-channels'};
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='kakao_bizmessage'):undefined;
+ if(!state||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'카카오 비즈메시지 스위치 상태를 확인하지 못했습니다',link};
+ return state.enabled?{...base,status:'available',reason:'승인한 알림톡·브랜드 메시지를 딜러사 API로 전송(광고성 규칙 판정·수신동의 확인·자동 전송 없음)'}:{...base,status:'blocked',reason:['기능 스위치 kakao_bizmessage 꺼짐','소유자가 켭니다'],link};
+}
 // G3 자율성 규칙·예약 실행: 스위치 autonomy_rules·scheduled_runs. 꺼져 있어도 규칙·예약 조회·편집은 되고 적용·실행만 멈춘다.
 function flagState(flags:unknown,flag:string){const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag===flag):undefined;return record(state)&&typeof state.enabled==='boolean'?state.enabled:null}
 function autonomyRulesRow(flags:unknown):FeatureRow{
@@ -256,6 +263,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   shareLinksRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
   posAutoRow(input.flags),
+  kakaoBizmessageRow(input.flags),
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},
   {key:'ads',label:'광고 집행',status:'unimplemented',reason:'광고 생성·광고비 집행 기능 없음'},
  ];

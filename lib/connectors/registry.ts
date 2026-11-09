@@ -2,6 +2,7 @@
 // 이 파일은 동작을 바꾸지 않는다. 각 모듈의 호출 한도·위험도·자격증명 단위를 한곳에서 읽을 수 있게 하고, 계약 테스트(lib/connectors/contract-test.ts)가 서술자를 받는다.
 // 새 커넥터를 만들면 여기에 서술자를 더하고 tests/connector-contract.test.mjs의 하네스를 그 모의 커넥터로 돌린다.
 import type {ConnectorCapability, ConnectorDescriptor, RiskTier} from './types';
+import {kakaoDescriptor} from '../kakao/registry-descriptor';
 
 const capability = (c: Omit<ConnectorCapability, 'defaultOff' | 'retryUnknown'>): ConnectorCapability => ({...c, defaultOff: true, retryUnknown: false});
 
@@ -31,6 +32,8 @@ export const connectorRegistry: readonly ConnectorDescriptor[] = [
   capability({key: 'store_browser.hours.read', reads: ['business_hours'], writes: [], riskTier: 'T1', rateLimit: {perMinute: 6, perDay: 200}, credentialScope: 'store', flag: 'store_browser_execution'}),
   capability({key: 'store_browser.hours.write', reads: [], writes: ['business_hours'], riskTier: 'T3', rateLimit: {perMinute: 1, perDay: 20}, credentialScope: 'store', flag: 'store_browser_execution'}),
  ]},
+ // C6 카카오 비즈메시지(딜러사 API). 서술자 본문은 lib/kakao/registry-descriptor.ts에 있고 모의 딜러·계약 하네스가 같은 목록을 쓴다.
+ kakaoDescriptor,
 ];
 
 export function descriptorFor(key: string): ConnectorDescriptor | undefined {
