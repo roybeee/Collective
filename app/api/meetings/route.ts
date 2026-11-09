@@ -2,6 +2,7 @@ import {actor,secureMutation,body,failure} from '@/lib/server';
 import {executeMeeting} from '@/lib/meeting-execution';
 import {assertCampaignNotArchived,assertMeetingCampaignNotArchived} from '@/lib/campaign-archive';
 import {assertAutonomy,markAutonomy} from '@/lib/autonomy-server';
+import {requireAccess,campaignResource} from '@/lib/server-access';
 export {GET} from '@/lib/meeting-execution';
 
 export async function POST(req:Request){
@@ -10,6 +11,8 @@ export async function POST(req:Request){
   secureMutation(req);
   const b=await body(req);
   // 보관 캠페인에는 새 팀 회의·실패 회의 재시도를 시작하지 않는다(409). 잠금 밖 빠른 거절이다. 보관과 경합해 통과한 요청은 lib/meeting-execution.ts start·retry_failed가 소유자 잠금 안에서 다시 검사해 409로 막는다(PR 4a-2).
+  // G7: 팀 회의 시작은 run_ai 권한이다(대표·관리자·직원 그대로, 브랜드 매니저는 배정 브랜드만, 점포 매니저·검토자 403).
+  if(b.action==='start')await requireAccess(req,'run_ai',()=>campaignResource(who.owner,b.campaignId));
   if(b.action==='start')await assertCampaignNotArchived(who.owner,b.campaignId);
   if(b.action==='retry_failed')await assertMeetingCampaignNotArchived(who.owner,b.id);
   // G3 자율성 규칙: 회의 시작이 금지(never)면 403, 자동(auto)이면 응답에 autonomy:'auto'만 덧붙인다(확인 후·꺼짐은 그대로).

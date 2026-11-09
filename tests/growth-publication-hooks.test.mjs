@@ -49,6 +49,8 @@ const implementations={
  assertGrowthPublicationDispatch:async()=>{dispatchCalls++;if(dispatchBlocked)throw new ApiError(409,'delegation revoked')},
  submitBuffer:async()=>{providerCalls++;return {id:'remote',status:'scheduled'}},providerPublicationStatus:()=> 'accepted',
  saveProviderResult:async(_o,_c,_p,value)=>value,ApiError,HttpBodyError:ApiError,
+ // G7 권한 가드(lib/server-access.ts): 이 스위트의 요청자는 소유자라 발행(publish) 권한이 있다.
+ requireAccess:async()=>({actor:{owner:'owner',id:'owner',role:'owner'},principal:{role:'owner',brandIds:[],storeIds:[]}}),campaignResource:async()=>({}),
 };
 const routeContext=createContext({Request,Response,URL,console});
 const routeCode=ts.transpileModule(readFileSync('app/api/execution/route.ts','utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;

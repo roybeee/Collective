@@ -4,6 +4,7 @@
 // 화면은 같은 규칙으로 변경 버튼·폼을 숨기고 안내할 뿐이며 조회 정보는 그대로 보인다.
 import {useMemo,type ReactNode} from 'react';
 import {AuthContext,useAuthState,type AccountRole,type AuthState} from './auth-client';
+import {scopedRoleLabels,type ScopedRole} from '@/lib/access';
 
 export type Account={id:string;email:string|null;role:AccountRole;isAdmin:boolean;isOwner:boolean};
 // legacy 모드는 요청자가 곧 워크스페이스 소유자다(서버 actor()와 같다). 화면은 헤더 id를 모르므로 고정 id를 쓴다.
@@ -38,6 +39,14 @@ export function AdminOnly({children,owner=false,fallback,note}:{children:ReactNo
  const account=useAccount();
  if(canChange(account,owner))return <>{children}</>;
  return <>{fallback}<p className="subtle-note admin-only-note" role="note">{note??adminOnlyNote(owner)}</p></>;
+}
+
+// G7 범위 역할 표시(계정 관리 화면). 역할 이름과 배정한 브랜드(점포 매니저는 지점) 이름을 한 줄로 보인다. 이름을 모르면 id를 보인다.
+export type AccessView={role:ScopedRole;brandIds:readonly string[];storeIds:readonly string[]};
+export type ScopeNames={brands:readonly {id:string;name:string}[];stores:readonly {id:string;name:string}[]};
+export function accessLabel(access:AccessView,names:ScopeNames){
+ const list=access.role==='store_manager'?access.storeIds.map(id=>names.stores.find(s=>s.id===id)?.name||id):access.brandIds.map(id=>names.brands.find(b=>b.id===id)?.name||id);
+ return `${scopedRoleLabels[access.role]}(${list.join('·')||'배정 없음'})`;
 }
 
 export function WorkspaceProfile(){

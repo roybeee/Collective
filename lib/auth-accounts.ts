@@ -22,7 +22,8 @@ function eventInsert(actor:Principal,action:string,target:{id:string;email:strin
  const id=crypto.randomUUID(),at=new Date().toISOString(),data={id,action,targetId:target.id,targetEmail:target.email,...(role?{role}:{}),actor:{id:actor.id,email:actor.email},...extra,createdAt:at};
  return authDb().prepare(`INSERT INTO records(id,owner,kind,parent_id,data,updated_at) SELECT ?,?,'account_event','',?,? WHERE ${condition}`).bind(`${actor.owner}:account_event:${id}`,actor.owner,JSON.stringify(data),at,...values);
 }
-export async function issueToken(actor:Principal,input:Record<string,unknown>){
+// extra(G7, 선택): 같은 batch 끝에 붙일 문장(범위 역할 초대의 멤버십·감사 기록). 대상 계정과 새 토큰 해시를 받는다. 없으면 이전과 같다.
+export async function issueToken(actor:Principal,input:Record<string,unknown>,extra?:(target:{id:string;email:string},tokenHash:string)=>D1PreparedStatement[]){
  const db=authDb(),action=String(input.action),invite=action==='invite',reactivate=action==='reactivate';
  let target:{id:string;email:string;stored:string},ownerOnly:boolean;
  if(invite){
@@ -44,8 +45,10 @@ export async function issueToken(actor:Principal,input:Record<string,unknown>){
  if(reactivate)statements.push(db.prepare(`UPDATE auth_users SET status='pending' WHERE id=? AND workspace_owner=? AND role=? AND status='disabled' AND ${check}`).bind(target.id,actor.owner,target.stored,...by));
  statements.push(db.prepare(`UPDATE auth_tokens SET used='revoked' WHERE user_id=? AND used IS NULL AND ${check}`).bind(target.id,...by));
  statements.push(db.prepare(`INSERT INTO auth_tokens(token_hash,user_id,email,owner,role,kind,expires_at,created_at) SELECT ?,id,email,workspace_owner,role,?,?,? FROM auth_users WHERE id=? AND workspace_owner=? AND role=? AND status=? AND ${check}`).bind(hash,invite?'invite':'reset',now+86400000,now,target.id,actor.owner,target.stored,invite||reactivate?'pending':'active',...by));
+ const tokenAt=statements.length-1;
  statements.push(eventInsert(actor,action,target,invite?target.stored:null,'EXISTS(SELECT 1 FROM auth_tokens WHERE token_hash=?)',[hash],{tokenHash:hash}));
- const result=await db.batch(statements);if(!result[result.length-2].meta.changes)throw new AuthError(409,'계정 정보가 변경됐습니다. 다시 시도해 주세요.');return {token};
+ if(extra)statements.push(...extra(target,hash));
+ const result=await db.batch(statements);if(!result[tokenAt].meta.changes)throw new AuthError(409,'계정 정보가 변경됐습니다. 다시 시도해 주세요.');return {token};
 }
 // 대상 관리자가 발급한 아직 쓰지 않은 초대·재설정 링크를 폐기한다(발급 기록의 tokenHash로 찾는다). condition이 참일 때만 적용된다.
 const revokeIssued=(actor:Principal,issuerId:string,condition:string,values:unknown[])=>authDb().prepare(`UPDATE auth_tokens SET used='revoked' WHERE used IS NULL AND token_hash IN (SELECT json_extract(data,'$.tokenHash') FROM records WHERE owner=? AND kind='account_event' AND json_extract(data,'$.actor.id')=?) AND ${condition}`).bind(actor.owner,issuerId,...values);
@@ -75,6 +78,8 @@ export async function setRole(actor:Principal,userId:unknown,role:unknown){
   db.prepare(`UPDATE auth_tokens SET used='revoked' WHERE user_id=? AND used IS NULL AND EXISTS(SELECT 1 FROM auth_users WHERE ${where})`).bind(target.id,...values),
   // 관리자에서 직원으로 바꾸면 그 사람이 관리자일 때 발급한 링크도 폐기한다.
   ...(role==='member'?[revokeIssued(actor,target.id,`EXISTS(SELECT 1 FROM auth_users WHERE ${where})`,values)]:[]),
+  // G7: 관리자가 되면 범위 역할 멤버십을 지운다(관리자는 범위가 없다). 직원으로 내릴 때는 지울 멤버십이 없다.
+  ...(role==='admin'?[db.prepare(`DELETE FROM records WHERE id=? AND owner=? AND kind='membership' AND EXISTS(SELECT 1 FROM auth_users WHERE ${where})`).bind(`${actor.owner}:membership:${target.id}`,actor.owner,...values)]:[]),
   db.prepare(`UPDATE auth_users SET role=? WHERE ${where}`).bind(role,...values),
  ]);
  if(!results[results.length-1].meta.changes)throw new AuthError(409,'계정 정보가 변경됐습니다. 다시 시도해 주세요.');return {ok:true};

@@ -1,4 +1,5 @@
 import {requireAdminActor,secureMutation,body,json,failure,ApiError} from '@/lib/server';
+import {requireAccess} from '@/lib/server-access';
 import {applyProposal,approveProposal,createManualProposal,generateProposals,proposalsView,reconcileProposal,rejectProposal} from '@/lib/ads-proposals-server';
 
 // C4 네이버 검색광고 제안→승인→반영. 읽기·쓰기 모두 소유자·관리자(직원 403, 비로그인 401, 다른 출처 403).
@@ -18,6 +19,8 @@ export async function POST(req:Request){
   const view=()=>proposalsView(who,{campaignId:typeof input.campaignId==='string'?input.campaignId:null,storeId:typeof input.storeId==='string'?input.storeId:null,channel:channel(input.channel)});
   if(input.action==='generate')return json({...await generateProposals(who,input),...await view()});
   if(input.action==='create')return json({proposal:await createManualProposal(who,input),...await view()});
+  // G7: 승인은 publish, 반영은 spend 권한이다(대표·관리자 그대로, 범위 역할 403).
+  if(input.action==='approve'||input.action==='apply')await requireAccess(req,input.action==='apply'?'spend':'publish');
   if(input.action==='approve')return json({...await approveProposal(who,input),...await view()});
   if(input.action==='reject')return json({proposal:await rejectProposal(who,input),...await view()});
   if(input.action==='apply')return json({proposal:await applyProposal(who,input),...await view()});
