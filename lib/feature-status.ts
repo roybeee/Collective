@@ -77,6 +77,13 @@ function brandAutolearnRow(flags:unknown):FeatureRow{
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'브랜드 자동 학습 스위치 상태를 확인하지 못했습니다',link};
  return state.enabled?{...base,status:'available',reason:['공개 페이지 1회 읽기(10초, 1MB, 사설 주소 거부, 모델 호출 없음)','이름·로고·색·소개·주소·전화·영업시간·가격은 미확인 후보, 확정은 사람이 원장에서','첫 캠페인 템플릿 3개는 기존 브리프 저장 경로로 초안만 만듭니다']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다(기록 조회는 가능)'],link};
 }
+// G9 MCP 서버·API 키: 스위치 mcp_server. 켜지면 대표·관리자가 API 키를 만들고 외부 AI 도구가 /api/mcp로 읽기·초안 저장을 한다. 꺼지면 엔드포인트는 404다.
+function mcpServerRow(flags:unknown):FeatureRow{
+ const base={key:'mcp-server',label:'MCP 서버·API 키(외부 AI 도구 연결)',flag:'mcp_server'},link:FeatureLink={label:'연결 및 설정에서 확인',view:'settings'};
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='mcp_server'):undefined;
+ if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'MCP 서버 스위치 상태를 확인하지 못했습니다',link};
+ return state.enabled?{...base,status:'available',reason:['읽기 키와 초안 저장 키(만료 기본 90일, 취소 가능)','승인·발행·지출·고객 발송·AI 실행은 API로 할 수 없습니다']}:{...base,status:'blocked',reason:['MCP 서버 스위치 꺼짐','소유자가 켭니다(키 목록·취소는 가능)'],link};
+}
 function aiRow(connection:unknown):FeatureRow{
  const base={key:'ai',label:'8개 담당별 AI 작업(HERMES 연결)'},link:FeatureLink={label:'AI 팀 연결로 이동',view:'settings',section:'settings-ai'};
  if(!record(connection)||typeof connection.configured!=='boolean')return {...base,status:'blocked',reason:'AI 연결 상태를 확인하지 못했습니다',link};
@@ -283,6 +290,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   shareLinksRow(input.flags),
   creativeScoreRow(input.flags),
   brandAutolearnRow(input.flags),
+  mcpServerRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
   posAutoRow(input.flags),
   kakaoBizmessageRow(input.flags),

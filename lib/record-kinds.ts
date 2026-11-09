@@ -30,6 +30,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'digest_sent',parent:'none',campaignDeletion:'not_campaign_scoped',description:'일일 요약 전송 기록(KST 날짜당 1행, 어댑터 이름·가린 대상·본문·결과). 이 판은 기록만 남기는 스텁. 캠페인과 무관(G3)'},
  {kind:'rewrite_request',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'제작·발행 캡션 편집기의 선택 다시 쓰기 요청(행 id rw-…: 방식·톤·채널·고른 글·상태·HERMES 접수 번호·제안 글·받기/버리기 결정·모델·요청한 사람 id와 역할). 제출 원문은 hermes_submission rewrite-<id>(부모 없음)다. 캡션·발행은 바꾸지 않는다. 캠페인과 함께 삭제(X6)'},
  {kind:'share_link',parent:'none',campaignDeletion:'delete',links:['data_campaign'],description:'공유 링크(G4): 동결 고객 보고서 한 판 또는 작업물 한 판을 가리키는 읽기 전용·취소 가능 링크. 행 id는 토큰 SHA-256(원문 없음), 라벨·만든 사람 id와 역할·만료·취소·조회 수·외부 검토자 결정 시각만 담는다. 작업물 링크는 캠페인과 함께 지우고(data.campaignId) 보고서 링크는 캠페인과 무관하다'},
+ {kind:'api_key',parent:'none',campaignDeletion:'not_campaign_scoped',description:'외부 AI 도구용 API 키(G9): 행 id는 키 SHA-256(원문 없음), 라벨·범위(읽기·초안 저장)·표시용 접두어와 끝 4자·만든 사람 id와 역할·만료·취소·마지막 사용 시각만 담는다. 캠페인과 무관'},
+ {kind:'api_call',parent:'none',campaignDeletion:'not_campaign_scoped',description:'MCP 도구 호출 감사(G9): 키 id·도구 이름·성공 여부·오류 분류·시각만. 입력·결과 본문은 담지 않는다. 캠페인과 무관'},
  {kind:'marketing_consent',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'카카오 마케팅 수신 동의(C6): 브랜드별 수신자 해시(SHA-256, 번호 원문 없음)당 1행. 동의 일시·출처·야간 동의·철회 시각. 캠페인과 무관'},
  {kind:'marketing_optout',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'카카오 마케팅 수신거부(C6): 수신자 해시당 1행, 수신거부 시각·출처. 광고성 전송 판정이 읽는다. 캠페인과 무관'},
  {kind:'kakao_friend_relation',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'카카오톡 채널 친구 관계(ADDED·BLOCKED·NONE) 동기화 결과(C6): 수신자 해시당 1행, 카카오 사용자 id는 저장하지 않는다. 캠페인과 무관'},
