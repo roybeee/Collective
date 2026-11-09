@@ -46,6 +46,7 @@ export const FEATURE_FLAGS={
  creative_score:{defaultEnabled:false,description:'작업물이 저장되면 소재 예측 점수(0~100, 추정·규칙 기반·성과 보장 아님)를 결정론 규칙으로 계산해 기록하고 작업물 옆에 근거와 함께 보인다(G2, 모델 호출 없음). 게시 뒤 노출·클릭이 쌓이면 대표·관리자가 브랜드×채널 보정표를 만든다. 꺼도 저장된 점수 조회는 계속된다.'},
  instagram_direct_publish:{defaultEnabled:false,description:'브랜드에 Instagram 직접 게시 연결(장수명 토큰)이 있으면 승인된 발행의 실행을 Buffer 대신 Instagram Graph API로 보낸다(컨테이너 → 게시 두 단계, 실행 즉시 게시, 결과 미확인 재전송 금지, 게시 한도 사전 확인). 꺼져 있거나 연결이 없으면 Buffer 경로 그대로다(C3). 승인·실행 버튼 없이 보내는 일은 없다.'},
  threads_publish:{defaultEnabled:false,description:'브랜드에 Threads 연결이 있고 Instagram 직접 게시 연결이 없으면 승인된 발행의 실행을 Threads API로 보낸다(텍스트·이미지, 본문 500자, 두 단계, 결과 미확인 재전송 금지). 꺼져 있거나 연결이 없으면 이전 경로 그대로다(C3). 답글은 수집만 하고 자동 답글은 없다.'},
+ naver_ads_write:{defaultEnabled:false,description:'소유자·관리자가 승인한 네이버 검색광고 제안(규칙 기반 입찰 조정·중지·재개·키워드/캠페인 생성, 추정·규칙 기반)만 서명한 POST/PUT로 반영하고 읽기 대조로 확인한다(C4). 자동 입찰·자동 적용 없음, 결과 미확인 작업은 재전송하지 않는다. 꺼지면 승인·반영은 409이고 제안 생성·조회·반려·미확인 대조는 계속된다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};

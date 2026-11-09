@@ -4,35 +4,48 @@ import {ConnectorAuthError} from './errors';
 import type {Connector, Collected, NaverAdsCredential} from './types';
 
 // 고정 호스트만 호출한다. 사용자가 URL을 입력하는 경로가 없으므로 SSRF 표면이 없다.
-const HOST = 'https://api.searchad.naver.com';
+export const HOST = 'https://api.searchad.naver.com';
 const TIMEOUT_MS = 20000;
 // 외부 공급자 응답은 명시적 바이트 한도 안에서만 읽는다(docs/SECURITY-BOUNDARIES.ko.md).
 const MAX_RESPONSE_BYTES = 200000;
 
-// 검색광고 API 서명: base64(HMAC-SHA256(secretKey, `${timestamp}.${method}.${path}`))
-async function sign(secretKey: string, timestamp: string, method: string, path: string) {
+// 검색광고 API 서명: base64(HMAC-SHA256(secretKey, `${timestamp}.${method}.${path}`)). 경로에 쿼리는 넣지 않는다(공식 python-sample signaturehelper.py와 같다).
+export async function sign(secretKey: string, timestamp: string, method: string, path: string) {
  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secretKey), {name: 'HMAC', hash: 'SHA-256'}, false, ['sign']);
  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${timestamp}.${method}.${path}`));
  return btoa(String.fromCharCode(...new Uint8Array(mac)));
 }
 
+export type SignedMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
+export type SignedRequestInit = {query?: string; body?: unknown; timeoutMs?: number; now?: () => number};
+// 서명 헤더만 만든다(C4 쓰기 모듈과 테스트가 그대로 검사한다). X-Timestamp는 호출 직전에 만들어야 한다(FAQ 'Invalid Timestamp').
+export async function signedHeaders(credential: NaverAdsCredential, method: SignedMethod, path: string, timestamp: string) {
+ return {
+  'X-Timestamp': timestamp,
+  'X-API-KEY': credential.apiKey,
+  'X-Customer': credential.customerId,
+  'X-Signature': await sign(credential.secretKey, timestamp, method, path),
+  'Content-Type': 'application/json',
+ };
+}
+// 서명한 요청을 보내고 원시 Response를 돌려준다. 오류 해석은 하지 않는다(fetch 예외는 그대로 던진다).
+// GET은 아래 send()가 기존 그대로 감싸고, POST/PUT/DELETE는 lib/connectors/naver-ads-write.ts가 한도 큐·unknown 규율로 감싼다.
+export async function signedRequest(credential: NaverAdsCredential, method: SignedMethod, path: string, init: SignedRequestInit = {}) {
+ const timestamp = String((init.now ?? Date.now)());
+ return fetch(HOST + path + (init.query ?? ''), {
+  method,
+  redirect: 'manual',
+  headers: await signedHeaders(credential, method, path, timestamp),
+  ...(init.body === undefined ? {} : {body: JSON.stringify(init.body)}),
+  signal: AbortSignal.timeout(init.timeoutMs ?? TIMEOUT_MS),
+ });
+}
+
 // 서명한 GET을 보내고 상태 코드까지 확인한 응답을 돌려준다. 본문은 읽지 않는다.
 async function send(credential: NaverAdsCredential, path: string, query = '') {
- const timestamp = String(Date.now());
- const signature = await sign(credential.secretKey, timestamp, 'GET', path);
  let response: Response;
  try {
-  response = await fetch(HOST + path + query, {
-   redirect: 'manual',
-   headers: {
-    'X-Timestamp': timestamp,
-    'X-API-KEY': credential.apiKey,
-    'X-Customer': credential.customerId,
-    'X-Signature': signature,
-    'Content-Type': 'application/json',
-   },
-   signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
+  response = await signedRequest(credential, 'GET', path, {query});
  } catch {
   throw new ApiError(502, '네이버 검색광고 응답을 받지 못했습니다. 잠시 후 다시 시도해 주세요.');
  }
@@ -41,7 +54,8 @@ async function send(credential: NaverAdsCredential, path: string, query = '') {
  return response;
 }
 
-async function call(credential: NaverAdsCredential, path: string, query = '') {
+// 서명한 GET의 JSON 본문(200KB 한도). C4 쓰기 모듈의 읽기 대조(read-back)도 이 함수를 쓴다.
+export async function call(credential: NaverAdsCredential, path: string, query = '') {
  const response = await send(credential, path, query);
  try {
   return await readBoundedJson<Record<string, unknown> | unknown[]>(response, MAX_RESPONSE_BYTES);

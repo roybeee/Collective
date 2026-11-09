@@ -14,6 +14,8 @@ export const connectorRegistry: readonly ConnectorDescriptor[] = [
  ]},
  {key: 'naver_ads', label: '네이버 검색광고 통계', module: 'lib/connectors/naver-ads.ts', capabilities: [
   capability({key: 'naver_ads.stats.read', reads: ['campaign_stats', 'customer'], writes: [], riskTier: 'T1', rateLimit: {perSecond: 5, perDay: 10000}, credentialScope: 'store', flag: null}),
+  // C4 쓰기(lib/connectors/naver-ads-write.ts): 승인된 제안만 보낸다. 자동 입찰 없음. 읽기는 반영 뒤 대조용 GET이다. 한도 숫자는 FAQ가 비공개라 보수적 초깃값(429는 큐가 대기).
+  capability({key: 'naver_ads.ncc.write', reads: ['campaign', 'adgroup', 'keyword', 'ad'], writes: ['campaign', 'adgroup', 'keyword', 'bid', 'lock', 'ad'], riskTier: 'T3', rateLimit: {perSecond: 5, perMinute: 120, perDay: 3000}, credentialScope: 'store', flag: 'naver_ads_write'}),
  ]},
  {key: 'ftc_franchise', label: '공정위 가맹정보 공개 API', module: 'lib/connectors/ftc-franchise.ts', capabilities: [
   capability({key: 'ftc_franchise.stats.read', reads: ['brand_frcs_stats'], writes: [], riskTier: 'T1', rateLimit: {perSecond: 2, perDay: 1000}, credentialScope: 'workspace', flag: 'r_franchise'}),
