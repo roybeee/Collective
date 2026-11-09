@@ -1,5 +1,5 @@
 import {test,expect,type Page} from '@playwright/test';
-// GLOBAL-PLAN X5 다크 모드: 머리 띠 테마 버튼으로 다크를 고르면 html.dark가 붙고, 새로고침 뒤에도 남고(next-themes localStorage), 홈 본문에 흰 상자(rgb(255,255,255))가 없다.
+// GLOBAL-PLAN X5 다크 모드: 머리 띠 테마 버튼으로 다크를 고르면 html.dark가 붙고, 새로고침 뒤에도 남고(lib/ui/theme.ts localStorage), 홈 본문에 흰 상자(rgb(255,255,255))가 없다.
 // 기본값은 시스템 설정이라 OS가 다크면 저장값 없이도 다크다. 라이트 모드의 axe·대비는 e2e/ux-budget.spec.ts가 본다.
 // Real local D1/API/Chromium. 인증 헤더 mocked. 외부 호출 없음.
 const WHITE='rgb(255, 255, 255)';
