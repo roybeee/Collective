@@ -291,6 +291,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   {key:'ads',label:'광고 집행',status:'unimplemented',reason:'광고 생성·광고비 집행 기능 없음'},
   instagramDirectRow(input.flags),
   threadsRow(input.flags),
+  selectionRewriteRow(input.flags),
  ];
 }
 // C3 직접 게시: 스위치 instagram_direct_publish·threads_publish. 켜져 있어도 브랜드 연결(장수명 토큰)과 사람의 승인·실행이 있어야 보낸다. 꺼져 있으면 Buffer 경로 그대로다.
@@ -303,6 +304,12 @@ function threadsRow(flags:unknown):FeatureRow{
  const base={key:'threads',label:'Threads 게시',flag:'threads_publish'},link:FeatureLink={label:'연결 및 설정에서 확인',view:'settings',section:'settings-channels'},enabled=flagState(flags,'threads_publish');
  if(enabled===null)return {...base,status:'blocked',reason:'Threads 게시 스위치 상태를 확인하지 못했습니다',link};
  return enabled?{...base,status:'available',reason:['브랜드별 Threads 연결이 있는 캠페인의 승인된 발행을 실행 때 Threads API로 게시(텍스트·이미지, 본문 500자)','답글은 수집만, 자동 답글 없음']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다'],link};
+}
+// X6 선택 다시 쓰기: 스위치 selection_rewrite. 켜져도 확인 카드를 거친 소유자·관리자 요청만 HERMES에 보내고, 제안은 받기 전까지 반영되지 않는다.
+function selectionRewriteRow(flags:unknown):FeatureRow{
+ const base={key:'selection-rewrite',label:'선택한 글 다시 쓰기(제작·발행 캡션 편집기)',flag:'selection_rewrite'},link:FeatureLink={label:'캠페인을 열어 제작·발행 탭에서 확인',view:'campaigns'},enabled=flagState(flags,'selection_rewrite');
+ if(enabled===null)return {...base,status:'blocked',reason:'선택 다시 쓰기 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['고른 글만 확인 카드(추정 토큰) 뒤 HERMES로 다시 쓰기, 줄이기, 톤 바꾸기','제안은 비교 화면에서 받기 전까지 반영되지 않음']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다'],link};
 }
 // 화면에 그릴 모양(평가 9회차 결함 2·3). 사유는 항목 배열로 나눠 MetaLine으로 그리고(가운뎃점 ' · '로 잇지 않는다),
 // 기능 스위치 이름(소문자_밑줄)·단계 코드(B4-2c 등)·내부 이름(digest 큐)은 화면 문구에서 빼서 tech로 넘긴다. 화면은 tech를 '자세히' 안 기술 정보로만 보인다.
