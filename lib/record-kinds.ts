@@ -23,12 +23,23 @@ export type SubjectErasure='delete'|'minimize'|'legal_hold'|'none';
 export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;retention?:RetentionPolicy;subjectErasure?:SubjectErasure;description:string};
 
 export const recordKinds:readonly RecordKind[]=[
+ // G8 셀프 가입·선불 크레딧(docs/SELF-SIGNUP.ko.md·docs/BILLING.ko.md). 모두 소유자 범위이고 캠페인과 무관하다.
+ {kind:'workspace_origin',parent:'none',campaignDeletion:'not_campaign_scoped',description:'셀프 가입으로 만든 워크스페이스 표시 1행(id current, 가입 시각). 있으면 예시 브랜드·캠페인을 넣지 않는다(G8). 캠페인과 무관'},
+ {kind:'signup_consent',parent:'none',campaignDeletion:'not_campaign_scoped',description:'셀프 가입 동의 기록 1행(id current, 이용약관·개인정보 수집이용 필수 동의 문서 판·마케팅 수신 선택 여부·동의 시각). 캠페인과 무관(G8)'},
+ {kind:'billing_account',parent:'none',campaignDeletion:'not_campaign_scoped',description:'크레딧 과금 시작 시각과 요금제 1행(id current). 시작 전 AI 사용은 크레딧에서 빼지 않는다. 캠페인과 무관(G8)'},
+ {kind:'credit_ledger',parent:'none',campaignDeletion:'not_campaign_scoped',description:'크레딧 원장 항목(월 기본 제공·충전·AI 사용·환불·소멸, 부호 붙은 크레딧·월·주문 번호). 월별 항목은 같은 id로 다시 계산한다. 캠페인과 무관(G8)'},
+ {kind:'billing_order',parent:'none',campaignDeletion:'not_campaign_scoped',description:'크레딧 충전 주문(주문 번호·상품·크레딧·공급가·부가세·총액·상태·결제 키·테스트/라이브). 결제 키는 화면 응답에서 뺀다. 캠페인과 무관(G8)'},
+ {kind:'billing_alert',parent:'none',campaignDeletion:'not_campaign_scoped',description:'크레딧 사용량 알림(월·단계(80·100%)당 1행, 문구·시각). 캠페인과 무관(G8)'},
  {kind:'autonomy_settings',parent:'none',campaignDeletion:'not_campaign_scoped',description:'소유자의 행동별 자율성 규칙(자동·확인 후·금지) 1행(id current). 캠페인과 무관(G3)'},
  {kind:'scheduled_run',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'소유자가 정한 예약(종류·행동·KST 요일·시각·브랜드·캠페인 범위). 캠페인과 함께 삭제(G3)'},
  {kind:'scheduled_run_execution',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'예약 실행 기록(예약 id+KST 날짜당 1행, 완료·건너뜀·실패 사유·만든 산출물 id). 캠페인과 함께 삭제(G3)'},
  {kind:'meeting_agenda_draft',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'예약 실행이 만든 회의 안건 초안(최근 7일 성과 요약 문장, 모델 호출 없음). 회의 시작은 사람이 한다. 캠페인과 함께 삭제(G3)'},
  {kind:'digest_sent',parent:'none',campaignDeletion:'not_campaign_scoped',description:'일일 요약 전송 기록(KST 날짜당 1행, 어댑터 이름·가린 대상·본문·결과). 이 판은 기록만 남기는 스텁. 캠페인과 무관(G3)'},
  {kind:'rewrite_request',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'제작·발행 캡션 편집기의 선택 다시 쓰기 요청(행 id rw-…: 방식·톤·채널·고른 글·상태·HERMES 접수 번호·제안 글·받기/버리기 결정·모델·요청한 사람 id와 역할). 제출 원문은 hermes_submission rewrite-<id>(부모 없음)다. 캡션·발행은 바꾸지 않는다. 캠페인과 함께 삭제(X6)'},
+ {kind:'geo_question',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'AI 검색 노출 추적 질문(G5, 행 id gq-…: 문장·언어·유형(브랜드·카테고리·지역)·측정 엔진·켜기 여부·출처(starter·manual)와 시작 질문의 근거 사실 id·판·바꾼 사람 id). 캠페인과 무관'},
+ {kind:'geo_run',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'AI 검색 노출 측정 1회(G5, 행 id geo-run-…: 직접·예약 구분·예약 실행 id·브랜드 이름·공식 URL·경쟁 브랜드 이름·추정 토큰·질문×엔진 작업별 상태·HERMES 접수 번호·오류·요청한 사람 id와 역할). 제출 원문은 hermes_submission geo-<작업 id>(부모 없음). 토큰 예산은 시작한 캠페인으로 센다. 캠페인과 무관'},
+ {kind:'geo_observation',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'AI 답변 엔진 관찰 기록(G5): 질문·엔진·관찰 시각·상태(observed·login_required·unavailable)·연 화면 주소·답변 앞 1,500자 원문·인용 URL과 공식 URL 일치·브랜드 언급·첫 언급 순서·언급된 경쟁 브랜드·출처 hermes·측정 id. 노출 보장 아님. 캠페인과 무관'},
+ {kind:'geo_settings',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'AI 검색 노출 사이트 점검(G5, 브랜드당 1행): JSON-LD·llms.txt 있음·없음·미확인(사람이 표시)·판·바꾼 사람 id. 캠페인과 무관'},
  {kind:'share_link',parent:'none',campaignDeletion:'delete',links:['data_campaign'],description:'공유 링크(G4): 동결 고객 보고서 한 판 또는 작업물 한 판을 가리키는 읽기 전용·취소 가능 링크. 행 id는 토큰 SHA-256(원문 없음), 라벨·만든 사람 id와 역할·만료·취소·조회 수·외부 검토자 결정 시각만 담는다. 작업물 링크는 캠페인과 함께 지우고(data.campaignId) 보고서 링크는 캠페인과 무관하다'},
  {kind:'api_key',parent:'none',campaignDeletion:'not_campaign_scoped',description:'외부 AI 도구용 API 키(G9): 행 id는 키 SHA-256(원문 없음), 라벨·범위(읽기·초안 저장)·표시용 접두어와 끝 4자·만든 사람 id와 역할·만료·취소·마지막 사용 시각만 담는다. 캠페인과 무관'},
  {kind:'api_call',parent:'none',campaignDeletion:'not_campaign_scoped',description:'MCP 도구 호출 감사(G9): 키 id·도구 이름·성공 여부·오류 분류·시각만. 입력·결과 본문은 담지 않는다. 캠페인과 무관'},
@@ -208,6 +219,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'meta_ads_child_create',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'Meta 비활성 하위 광고 단계별 전송·불변 영수증'},
  {kind:'meta_ads_image_upload',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'Meta 원본 이미지 업로드 시도·불변 영수증. 결과 미확인 작업 재전송 금지'},
  {kind:'account_event',parent:'none',campaignDeletion:'not_campaign_scoped',description:'계정 초대·역할 변경·잠금 등 워크스페이스 계정 감사 기록'},
+ {kind:'membership',parent:'none',campaignDeletion:'not_campaign_scoped',description:'G7 범위 역할 멤버십: 직원 계정 1명당 1행(id=계정 id), 역할(brand_manager·store_manager·reviewer)·배정 브랜드 id·지점 id·변경한 사람·시각. 데이터 소유는 워크스페이스 그대로다. 캠페인과 무관'},
+ {kind:'access_change',parent:'none',campaignDeletion:'not_campaign_scoped',description:'G7 범위 역할 배정·변경·해제 감사 기록: 대상 계정 id·이메일, 이전·이후 역할과 브랜드·지점 id, 변경한 사람 id·이메일, 시각. 캠페인과 무관'},
  {kind:'artifact',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'담당자 작업물'},
  {kind:'background_attempt',parent:'none',campaignDeletion:'delete',links:['sequence_attempt'],description:'백그라운드 작업 재시도 기록. 캠페인 연속 실행(sequence:<캠페인>) 기록만 캠페인과 함께 지운다'},
  {kind:'background_cursor',parent:'none',campaignDeletion:'not_campaign_scoped',description:'백그라운드 작업 순번 커서'},

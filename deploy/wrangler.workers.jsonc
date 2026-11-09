@@ -1,0 +1,38 @@
+// COLLECTIVE — Cloudflare Workers 직접 배포 설정 템플릿(DEPLOY_TARGET=workers, docs/INFRA-WORKERS.ko.md).
+// 이 파일에는 계정 ID·데이터베이스 ID·비밀값을 넣지 않는다. ${NAME}·${NAME:-기본값} 자리표시자는
+// 빌드 때 환경변수로 채운다(deploy/workers-config.mjs). 계정은 wrangler 실행 환경의 CLOUDFLARE_ACCOUNT_ID가 정한다.
+{
+  "name": "${CF_WORKER_NAME:-collective}",
+  // 빌드 결과(dist/server/wrangler.json)의 main은 Cloudflare Vite 플러그인이 번들 파일(index.js)로 바꾼다.
+  "main": "./deploy/worker-entry.ts",
+  "compatibility_date": "2026-05-15",
+  "compatibility_flags": ["nodejs_compat"],
+  // 미리보기 URL(versions upload)과 workers.dev 주소. 사용자 도메인은 소유자가 대시보드·routes로 붙인다.
+  "workers_dev": true,
+  "preview_urls": true,
+  // migrations_dir는 빌드 결과 설정(dist/server/wrangler.json) 위치 기준이다. ../../drizzle = 저장소의 drizzle/.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "${CF_D1_DATABASE_NAME:-collective}",
+      "database_id": "${CF_D1_DATABASE_ID}",
+      "migrations_dir": "${CF_D1_MIGRATIONS_DIR:-../../drizzle}"
+    }
+  ],
+  "r2_buckets": [
+    { "binding": "BUCKET", "bucket_name": "${CF_R2_BUCKET}" }
+  ],
+  // Workers 직접 배포에는 Sites 로그인 앞단이 없다. GPT 헤더를 믿는 legacy는 쓰지 않는다(AUTH_MODE=email 고정).
+  "vars": {
+    "AUTH_MODE": "email",
+    "AUTH_ORIGIN": "${AUTH_ORIGIN}",
+    "INTERNAL_CRON": "${INTERNAL_CRON:-0}"
+  },
+  // 값은 넣지 않는다. 소유자가 `wrangler secret put <이름>`으로 넣는다. 선택 비밀값은 docs/INFRA-WORKERS.ko.md 표를 따른다.
+  "secrets": {
+    "required": ["AGENCY_ENCRYPTION_KEY", "OPENAI_API_KEY"]
+  },
+  "observability": { "enabled": true },
+  // 예약 tick. INTERNAL_CRON=1일 때만 일한다(deploy/worker-entry.ts). 그 밖에는 즉시 끝난다.
+  "triggers": { "crons": ["${CF_CRON:-*/5 * * * *}"] }
+}

@@ -24,7 +24,8 @@ export type BriefSuggestion={field:BriefKey;value:string;reason:string};
 export type FactCandidate={key:string;value:string;source:'사용자 브리프'};
 export type BriefResult={summary:string;suggestions:BriefSuggestion[];questions:{field:QuestionKey;question:string;why:string}[];assumptions:string[];contextUsed:string[];factCandidates?:FactCandidate[]};
 // objective: 저장된 가맹 모집 캠페인에서만 이어받는다(lib/brief-execution.ts). 소비자 캠페인 초안에는 키가 없다.
-export type BriefInput={storeId?:string;objective?:CampaignObjective;brandId:string;title:string;goal:string;audience:string;channels:string;stores:string;products:string;budget:number|null;startDate:string;endDate:string;constraints:string;sources:string;plan:CampaignPlan};
+// outputLanguage: 영어·일본어 산출물일 때만 있다(lib/brief-language.ts, 없으면 한국어 — 브리프 지시문 바이트 동일).
+export type BriefInput={storeId?:string;objective?:CampaignObjective;outputLanguage?:import('./brief-language').OutputLanguage;brandId:string;title:string;goal:string;audience:string;channels:string;stores:string;products:string;budget:number|null;startDate:string;endDate:string;constraints:string;sources:string;plan:CampaignPlan};
 export type BriefDraft={id:string;status:'starting'|'queued'|'in_progress'|'uncertain'|'completed'|'failed'|'cancelled';input:BriefInput;campaignId?:string;campaignVersion?:number;result?:BriefResult;error?:string;createdAt:string;updatedAt:string;model:string;savedCampaignId?:string};
 export type DraftMeta={id:string;generatedAt:string;model:string;values:Partial<Record<BriefKey,string>>;questions:BriefResult['questions'];assumptions:string[];contextUsed:string[]};
 export function valueOf(c:Partial<BriefInput>|Campaign,k:QuestionKey):string{const v=k in planFields?c.plan?.[k as PlanKey]:(c as unknown as Record<string,unknown>)[k];return v===undefined||v===null?'':String(v)}

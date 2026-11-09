@@ -78,6 +78,35 @@ jobs:
       - name: Bounded evaluation gateway contracts
         run: python3 -m unittest discover -s tests -p 'eval_gateway_*_test.py'
 
+  # I1 Cloudflare Workers 직접 배포 경로가 썩지 않게 한다(docs/INFRA-WORKERS.ko.md). 비차단이며 비밀값·계정 값 없이 돈다.
+  # DEPLOY_TARGET=workers 빌드 → 설정 점검(dry-run: 소유자 환경값 없음은 경고) → wrangler versions upload --dry-run(업로드 없음). 원격 명령은 실행하지 않는다.
+  workers-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (DEPLOY_TARGET=workers)
+        run: node scripts/run-framework.mjs build
+        env:
+          DEPLOY_TARGET: workers
+
+      - name: Workers deploy check (dry-run, no remote)
+        run: node scripts/deploy-workers.mjs check --dry-run
+
   # 로컬 빌드를 wrangler --local로 띄워 브라우저 여정을 확인한다(docs/E2E.ko.md).
   # 안정성이 확인될 때까지 비차단이다. verify와 독립된 잡이라 결과가 verify에 영향을 주지 않는다.
   e2e-smoke:

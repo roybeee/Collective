@@ -13,19 +13,21 @@ import {registerCodedPng} from '@/lib/coded-png-server';
 import {readBoundedJson,HttpBodyError} from '@/lib/http-limits';
 import {executionRate} from '@/lib/execution-rate';
 import {reviewActor,requireReasonCodes,publicationDecisionStatement} from '@/lib/review-decisions-server';
+import {requireAccess,campaignResource} from '@/lib/server-access';
 import {experimentLinkFor,attachLink,linkExperiment,linkMedia,experimentLinkOptions} from '@/lib/publication-link-server';
 
 // 관리자 전용 실행. 승인·해제·확정한 실제 계정을 기록한다.
 // loop-2: 준비 뒤 실험 연결·해제(link_experiment)와 Instagram 게시물 ID 입력(link_media)도 관리자만 한다. 준비 때 연결(save_publication experiment)은 발행 준비 권한을 따른다.
 const adminActions=['connect_buffer','disconnect_buffer','buffer_channels','save_limits','approve','execute','cancel','reconfirm','resolve_uncertain','register_coded_png','link_experiment','link_media','collect_comments'];
-export async function GET(req:Request){try{const owner=await identity(req),id=str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true),campaign=await readRecord<Campaign>(owner,'campaign',id);return json({...await getExecution(owner,campaign),experimentLinks:await experimentLinkOptions(owner,campaign)})}catch(e){return failure(e)}}
+export async function GET(req:Request){try{const owner=await identity(req),id=str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true),campaign=await readRecord<Campaign>(owner,'campaign',id);await requireAccess(req,'read_campaign',{brandId:campaign.brandId,storeId:campaign.storeId??null,campaignId:campaign.id});return json({...await getExecution(owner,campaign),experimentLinks:await experimentLinkOptions(owner,campaign)})}catch(e){return failure(e)}}
 export async function POST(req:Request){let owner='',lock='';try{
  owner=await identity(req);secureMutation(req);
  const input=await readBoundedJson<Record<string,unknown>>(req,800000);
  if(!input||typeof input!=='object'||Array.isArray(input))throw new ApiError(400,'입력 형식을 확인하세요.');
  // 게시 코드를 발급하는 발행 준비(A4-2)는 추적 코드 만들기(A4-1)처럼 관리자만 한다. 코드 없는 준비는 그대로다.
  const coded=input.action==='save_publication'&&input.trackingCode!==undefined&&input.trackingCode!==null;
- const who:Actor|null=adminActions.includes(String(input.action))||coded?await requireAdminActor(req):null;
+ // G7: 발행 승인·전송(approve·execute)은 publish 권한이다. 대표·관리자는 이전과 같고, 브랜드 매니저는 배정 브랜드의 캠페인에서만 한다(직원은 같은 403).
+ const who:Actor|null=input.action==='approve'||input.action==='execute'?(await requireAccess(req,'publish',()=>campaignResource(owner,input.campaignId))).actor:adminActions.includes(String(input.action))||coded?await requireAdminActor(req):null;
  // G3 자율성 규칙: 발행 접수(승인·전송)는 T3라 자동이 없고, 금지(never)면 잠금 전에 403으로 막는다(확인 후·꺼짐은 그대로).
  if(input.action==='approve'||input.action==='execute')await assertAutonomy(owner,'publish_submit');
  lock=await acquireLock(owner);

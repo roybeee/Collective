@@ -302,6 +302,9 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   selectionRewriteRow(input.flags),
   daangnAdsRow(input.flags),
   placeDraftsRow(input.flags),
+  geoTrackingRow(input.flags),
+  selfSignupRow(input.flags),
+  creditBillingRow(input.flags),
  ];
 }
 // C8 당근 광고 OpenAPI: 스위치 daangn_ads. 꺼지면 연결·수집·제안 생성·승인·반영은 409, 해제·조회·미확인 대조는 계속된다(docs/DAANGN-ADS.ko.md).
@@ -333,6 +336,12 @@ function selectionRewriteRow(flags:unknown):FeatureRow{
  if(enabled===null)return {...base,status:'blocked',reason:'선택 다시 쓰기 스위치 상태를 확인하지 못했습니다',link};
  return enabled?{...base,status:'available',reason:['고른 글만 확인 카드(추정 토큰) 뒤 HERMES로 다시 쓰기, 줄이기, 톤 바꾸기','제안은 비교 화면에서 받기 전까지 반영되지 않음']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다'],link};
 }
+// G5 AI 검색 노출 자동 추적: 스위치 geo_tracking. 켜져도 대표·관리자가 계획(추정 토큰)을 보고 측정을 누르거나, 자율성 규칙이 자동일 때 주간 예약이 돈다.
+function geoTrackingRow(flags:unknown):FeatureRow{
+ const base={key:'geo-tracking',label:'AI 검색 노출 자동 추적',flag:'geo_tracking'},link:FeatureLink={label:'캠페인을 열어 성장 탭의 조건부 확장에서 확인',view:'campaigns'},enabled=flagState(flags,'geo_tracking');
+ if(enabled===null)return {...base,status:'blocked',reason:'AI 검색 노출 추적 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['질문과 엔진마다 HERMES가 공개 답변 화면 한 장을 읽어 원문 발췌와 인용을 관찰 기록으로 남김(추정 토큰 확인 뒤 실행)','로그인 화면은 측정하지 못함으로 남김, 노출 보장 아님']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다'],link};
+}
 // 화면에 그릴 모양(평가 9회차 결함 2·3). 사유는 항목 배열로 나눠 MetaLine으로 그리고(가운뎃점 ' · '로 잇지 않는다),
 // 기능 스위치 이름(소문자_밑줄)·단계 코드(B4-2c 등)·내부 이름(digest 큐)은 화면 문구에서 빼서 tech로 넘긴다. 화면은 tech를 '자세히' 안 기술 정보로만 보인다.
 // 레인 A 행은 lib 문구 자체에 코드가 없고 스위치 이름은 flag로 온다. 다른 레인 행의 문구는 고치지 않고, 여기서 화면에 그릴 때만 코드를 숨긴다.
@@ -350,4 +359,16 @@ export function featureView(row:FeatureRow):FeatureView{
  const label=plainText(row.label,tech).split(/\s·\s/).join(', ');
  const reason=(Array.isArray(row.reason)?row.reason:row.reason?row.reason.split(/\s·\s/):[]).map(p=>plainText(p,tech)).filter(Boolean);
  return {key:row.key,label,status:row.status,reason,...(row.link?{link:{...row.link,label:plainText(row.link.label,tech)}}:{}),tech:[...new Set(tech)]};
+}
+// G8 셀프 가입: 스위치 self_signup(플랫폼 스위치, 운영자 워크스페이스 값). 켜지면 로그인 화면에서 새 워크스페이스 가입이 열린다(docs/SELF-SIGNUP.ko.md).
+function selfSignupRow(flags:unknown):FeatureRow{
+ const base={key:'self-signup',label:'새 워크스페이스 셀프 가입',flag:'self_signup'},link:FeatureLink={label:'연결 및 설정에서 확인',view:'settings'},enabled=flagState(flags,'self_signup');
+ if(enabled===null)return {...base,status:'blocked',reason:'셀프 가입 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['이메일·비밀번호 가입, 필수 동의 2개와 선택 동의 1개(미리 선택 없음)','메일 발송 전이라 확인 링크를 화면에 보입니다(공개 운영 전 메일 연결 필요)']}:{...base,status:'blocked',reason:['셀프 가입 스위치 꺼짐','초대로만 가입합니다(운영자 워크스페이스 소유자가 켭니다)'],link};
+}
+// G8 선불 크레딧: 스위치 credit_billing(플랫폼 스위치). 켜지면 원장·알림·잔액 0 정지와 테스트 결제가 동작한다(docs/BILLING.ko.md).
+function creditBillingRow(flags:unknown):FeatureRow{
+ const base={key:'credit-billing',label:'선불 크레딧 요금제·테스트 결제',flag:'credit_billing'},link:FeatureLink={label:'연결 및 설정에서 확인',view:'settings'},enabled=flagState(flags,'credit_billing');
+ if(enabled===null)return {...base,status:'blocked',reason:'크레딧 요금제 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['1,000토큰 = 1크레딧, 80%·100% 알림, 잔액 0이면 새 AI 실행 정지','토스페이먼츠 테스트 키로만 충전·환불합니다(실결제 전환은 대표 결정)']}:{...base,status:'blocked',reason:['크레딧 요금제 스위치 꺼짐','요금표 미리보기만 보입니다(운영자 워크스페이스 소유자가 켭니다)'],link};
 }

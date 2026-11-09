@@ -5,6 +5,7 @@ import {consentSummary,generateReconsentNotice,importConsents,listReconsentNotic
 import {kakaoChannelClient,syncFriendRelations} from '@/lib/kakao/channel-sync';
 import {approveMessage,checkMessage,draftMessage,kakaoEnabled,listSends,pollResult,sendMessage} from '@/lib/kakao/send-server';
 import {KAKAO_RULES} from '@/lib/kakao/compliance';
+import {requireAccess} from '@/lib/server-access';
 
 // C6 카카오 비즈메시지 API(docs/KAKAO-BIZMESSAGE.ko.md 7절). 소유자·관리자만(직원 403, 비로그인 401, 다른 출처 403). 화면은 이 판에 없다.
 // GET ?brandId=: 스위치·딜러 연결 상태(비밀값 없음)·수신동의 요약·재동의 안내·최근 전송 기록·규칙 근거.
@@ -54,6 +55,8 @@ export async function POST(req:Request){
   const input=await body(req),action=typeof input.action==='string'?input.action:'';
   if(!ACTIONS.has(action))return json({error:'지원하지 않는 작업입니다.'},400);
   const who=OWNER_ACTIONS.has(action)?await requireOwnerActor(req):await requireAdminActor(req);owner=who.owner;secureMutation(req);
+  // G7: 승인·전송은 고객 발송(send_customer), 연결·해제는 연결 관리 권한이다(대표·관리자 그대로, 범위 역할 403).
+  if(action==='approve'||action==='send'||OWNER_ACTIONS.has(action))await requireAccess(req,OWNER_ACTIONS.has(action)?'manage_connections':'send_customer');
   lock=await acquireLock(owner);
   await executionRate(owner,'kakao_bizmessage');
   const out=await run(who,action,input);

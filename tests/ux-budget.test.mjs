@@ -149,7 +149,7 @@ for(const f of laneAJsx){
  const visit=x=>{if(ts.isJsxAttribute(x)&&x.name.getText()==='placeholder'&&x.initializer&&/brands\[0\]/.test(x.initializer.getText()))firstBrandPlaceholders.push(`${f}:${sf.getLineAndCharacterOfPosition(x.getStart()).line+1}`);ts.forEachChild(x,visit)};visit(sf);
 }
 check(firstBrandPlaceholders.length===0,`placeholders that name brands[0] instead of the selected brand: ${firstBrandPlaceholders.join(' | ')}`);
-check(/placeholder=\{`예: \$\{selectedBrandName\?\?'우리 브랜드'\}의/.test(ws)&&/selectedBrandName=data\.brands\.find\(b=>b\.id===brandId\)\?\.name/.test(ws),'home goal placeholder names the selected brand (brandId)');
+check(/placeholder=\{t\('brief\.placeholder',\{brand:selectedBrandName\?\?t\('brief\.ourBrand'\)\}\)\}/.test(ws)&&readFileSync('lib/i18n/ko.ts','utf8').includes("'brief.placeholder':'예: {brand}의 평일 방문을 늘리는 캠페인을 기획해줘.'")&&/selectedBrandName=data\.brands\.find\(b=>b\.id===brandId\)\?\.name/.test(ws),'home goal placeholder names the selected brand (brandId)');
 // 같은 값은 한 이름으로 부른다(평가 10회차 ④). 순매출 − 원가·변동비는 '공헌이익'(대비할 때 '광고·제작비 차감 전 공헌이익'), 여기서 광고비·제작비를 더 뺀 값은
 // '광고·제작비 차감 후 공헌이익', 성장 탭 손익에서 대사된 마케팅 지출을 뺀 값은 '마케팅 지출 차감 후 공헌이익'이다. 메뉴 이름이 '브랜드 아카이브'라 '자료실'은 쓰지 않는다.
 // 레인 A 화면(app/*.tsx·components/app/*.tsx)과 화면 문자열을 만드는 레인 A lib 파일의 글자 리터럴(주석 제외)을 센다. 저장값·API 필드 이름은 영문이라 걸리지 않는다.

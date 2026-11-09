@@ -2,9 +2,11 @@
 // 켜져 있으면 KST 오늘 차례가 된 예약마다 (예약 id, 날짜) 실행 기록 1행을 남긴다. 이미 있으면 읽기만 한다(멱등).
 // 전역 중단(lib/growth-stop.ts) 중이면 실행하지 않고 skipped 사유를 기록한다. 회의 안건 초안은 자율성 규칙 meeting_start가 never면 skipped다.
 // 쓰기: scheduled_run(예약), scheduled_run_execution(실행 기록), meeting_agenda_draft(안건 초안) 또는 growth_detected_signal(오늘의 안건 신호). HERMES·외부 호출 0회.
+// 예외(G5): 행동 run_geo_tracking은 lib/geo-run-server.ts로 GEO 측정을 만들고 HERMES에 낮은 빈도로 제출한다(스위치 geo_tracking·research_run 자동일 때만).
 import type {Campaign,Metric} from './agency';
 import {evaluateAutonomyFor} from './autonomy-server';
 import {sendDailyDigest} from './digest-server';
+import {advanceGeoRunsSafely,geoScheduleSkip,startScheduledGeo} from './geo-run-server';
 import {isEnabled} from './feature-flags';
 import {readGrowthStop} from './growth-stop-server';
 import {ScheduledRunError,agendaSignalText,kstParts,meetingDraftAgenda,parseScheduleInput,periodFor,scheduledRunId,summarizeMetrics,type Schedule,type ScheduledRun} from './scheduled-runs';
@@ -80,6 +82,7 @@ async function createAgendaSignal(owner:string,s:Schedule,period:string,runId:st
 async function skipReason(owner:string,s:Schedule,stopped:boolean){
  if(stopped)return '전역 중단 중이라 예약을 실행하지 않았습니다.';
  if(s.action==='create_meeting_draft'){const d=await evaluateAutonomyFor(owner,'meeting_start');if(d.mode==='never')return d.reason}
+ if(s.action==='run_geo_tracking')return geoScheduleSkip(owner);
  return null;
 }
 async function executeOne(owner:string,s:Schedule,period:string,stopped:boolean,now:number):Promise<ScheduledRun>{
@@ -89,7 +92,7 @@ async function executeOne(owner:string,s:Schedule,period:string,stopped:boolean,
   const skipped=await skipReason(owner,s,stopped);
   if(skipped)return finish('skipped',skipped,null);
   await campaignOf(owner,s.brandId,s.campaignId);
-  const outputId=s.action==='create_meeting_draft'?await createMeetingDraft(owner,s,period,id,now):await createAgendaSignal(owner,s,period,id,now);
+  const outputId=s.action==='create_meeting_draft'?await createMeetingDraft(owner,s,period,id,now):s.action==='run_geo_tracking'?await startScheduledGeo(owner,s,id):await createAgendaSignal(owner,s,period,id,now);
   return finish('completed','',outputId);
  }catch(e){return finish('failed',e instanceof ApiError?e.message:'예약 실행에 실패했습니다.',null)}
 }
@@ -106,7 +109,9 @@ async function runLocked(owner:string,now:number){
   runs.push(run);
  }
  const digest=await sendDailyDigest(owner,now);
- return runs.length||digest.status==='processed'?{status:'processed' as const,runs:runs.length,digest:digest.status}:{status:'idle' as const,reason:'nothing_due' as const};
+ // G5: 진행 중 GEO 측정을 앞으로 민다(스위치 geo_tracking이 꺼져 있으면 0, 실패해도 큐를 막지 않는다).
+ const geo=await advanceGeoRunsSafely(owner);
+ return runs.length||digest.status==='processed'||geo>0?{status:'processed' as const,runs:runs.length,digest:digest.status}:{status:'idle' as const,reason:'nothing_due' as const};
 }
 export async function runScheduledRuns(owner:string,now=Date.now()){
  if(!await isEnabled(owner,'scheduled_runs'))return {status:'idle' as const,reason:'disabled' as const};

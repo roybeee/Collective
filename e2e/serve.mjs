@@ -36,7 +36,8 @@ for (const file of readdirSync('drizzle').filter(f => f.endsWith('.sql')).sort()
 // 기본 여정의 가맹 리드 가져오기(e2e/franchise-recruit.spec.ts)는 연락처를 암호화해 저장하므로 AGENCY_ENCRYPTION_KEY가 있어야 한다(없으면 503).
 // 공개된 테스트 전용 고정 키(32바이트 0x07)이고 로컬 E2E D1의 합성 데이터에만 쓴다. 운영 키와 무관하다.
 const e2eOnlyKey = Buffer.alloc(32, 7).toString('base64');
-const authArgs = emailAuth ? ['--local-protocol','https','--var','AUTH_MODE:email','--var',`AUTH_ORIGIN:https://127.0.0.1:${port}`,'--var','AUTH_BOOTSTRAP_EMAIL:admin@example.test','--var','AUTH_BOOTSTRAP_OWNER:e2e-email-owner','--var',`AUTH_BOOTSTRAP_TOKEN_HASH:${createHash('sha256').update('e2e-only-bootstrap-token-do-not-use-in-production').digest('hex')}`] : ['--var','AUTH_MODE:legacy','--var',`AGENCY_ENCRYPTION_KEY:${e2eOnlyKey}`];
+// 결제 여정(e2e/billing.spec.ts, G8)은 테스트 형식(test_)의 가짜 시크릿 키로 주문 만들기까지만 실제로 돈다. 승인 요청은 브라우저에서 page.route로 모의하므로 토스로 나가지 않는다.
+const authArgs = emailAuth ? ['--local-protocol','https','--var','AUTH_MODE:email','--var',`AUTH_ORIGIN:https://127.0.0.1:${port}`,'--var','AUTH_BOOTSTRAP_EMAIL:admin@example.test','--var','AUTH_BOOTSTRAP_OWNER:e2e-email-owner','--var',`AUTH_BOOTSTRAP_TOKEN_HASH:${createHash('sha256').update('e2e-only-bootstrap-token-do-not-use-in-production').digest('hex')}`] : ['--var','AUTH_MODE:legacy','--var',`AGENCY_ENCRYPTION_KEY:${e2eOnlyKey}`,'--var','TOSS_PAYMENTS_SECRET_KEY:test_sk_e2e_dummy_not_a_real_key'];
 const server = spawn(process.execPath, [...wrangler, 'dev', '--config', config, '--local', '--persist-to', state, '--ip', '127.0.0.1', '--port', port, '--inspector-port', '0', ...(emailAuth?['--upstream-protocol','https']:[]), ...authArgs], {stdio: ['inherit', 'pipe', 'inherit']});
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => server.kill(signal));
 // workerd는 크래시 사유(예: *** Received signal #11)를 stdout으로 낸다. Playwright webServer는 stdout을 버리므로
