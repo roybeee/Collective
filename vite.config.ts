@@ -4,6 +4,7 @@ import { defineConfig } from "vite";
 import hostingConfig from "./.openai/hosting.json";
 import { readExecutionProfile } from "./scripts/execution-profile.mjs";
 import { sites } from "./build/sites-vite-plugin";
+import { deployTarget, readWorkersConfig } from "./deploy/workers-config.mjs";
 
 // 브라우저 번들 전용: 최상위가 상수·함수 선언뿐인(부수 효과 없는) lib 모듈은 쓰는 부분만 싣는다. 품질 콘솔이 role-output에서 함수 하나만
 // 가져와도 지시문 상수(practice·campaign-policy 등)가 홈 첫 로딩에 실리던 것을 뺀다(UX-PLAN-3 ⑩). 목록의 모듈은 최상위에서 전역을 바꾸지 않는다(tests/ux-budget.test.mjs).
@@ -49,6 +50,10 @@ const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
 
 const { d1, r2 } = hostingConfig;
 
+// 빌드 대상(I1, docs/INFRA-WORKERS.ko.md). 기본 sites는 기존 동작 그대로다. workers는 Sites 로그인 플러그인을 빼고
+// deploy/wrangler.workers.jsonc를 환경변수로 채운 설정(AUTH_MODE=email 고정, cron, 관측)으로 빌드한다.
+const target = deployTarget(process.env.DEPLOY_TARGET);
+
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const managedLinux = readExecutionProfile() === "managed-linux";
@@ -74,6 +79,12 @@ const localBindingConfig = {
       ]
     : [],
 };
+
+function workersConfig() {
+  const { config, problems } = readWorkersConfig(process.env);
+  if (problems.length) throw new Error(`Workers 배포 설정 오류: ${problems.join(" / ")}`);
+  return config;
+}
 
 // 커밋된 트리 해시는 GitHub 커밋과 그것을 게시하는 Sites 커밋에서 동일하다. 커밋 SHA는
 // 두 저장소가 다르므로 트리만이 배포본의 신원이 된다. git이 없는 빌드 환경을 위해
@@ -117,11 +128,11 @@ export default defineConfig(async () => {
       vinext(),
       pureClientLib,
       homeChunk,
-      sites({ mockAuth: !managedLinux }),
+      ...(target === "sites" ? [sites({ mockAuth: !managedLinux })] : []),
       cloudflare({
         viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },
         inspectorPort: false,
-        config: localBindingConfig,
+        config: target === "sites" ? localBindingConfig : workersConfig(),
       }),
     ],
     define: {
