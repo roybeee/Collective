@@ -131,7 +131,8 @@ const cmoRate=rates.find(x=>x.role==='cmo'&&x.skillVersion==='practice-v9'),data
 check('first-pass approval rate is grouped by role and skill version',cmoRate?.artifacts===2&&cmoRate.approvedFirst===1&&cmoRate.editedFirst===0&&cmoRate.rate===0.5&&dataRate?.rate===1);
 check('manual artifacts are left out of the first-pass rate',rates.every(x=>x.skillVersion!==null||x.role!=='cmo')&&JSON.stringify(plain(pure.firstPassApproval([{targetKind:'artifact',targetId:'m',origin:'manual',decision:'approved',role:'cmo',skillVersion:null}])))==='[]');
 check('the pure aggregation agrees with the stored one',JSON.stringify(plain(pure.firstPassApproval(decisions())))===JSON.stringify(rates));
-check('the panel shows the readable origin label',(()=>{const panels=readFileSync('app/panels.tsx','utf8');return (panels.match(/originLabel\(a\.origin\)/g)||[]).length>=2&&!panels.includes("a.origin==='ai'?'AI 작성':'직접 등록'")})());
+// X7: 상세 머리와 목록 카드의 출처 글자는 AI 출처 배지(components/app/ai-origin-badge.tsx)가 originLabel로 그린다.
+check('the panel shows the readable origin label',(()=>{const panels=readFileSync('app/panels.tsx','utf8'),badge=readFileSync('components/app/ai-origin-badge.tsx','utf8');return (panels.match(/<AiOriginBadge [^>]*origin=\{a\.origin\}/g)||[]).length>=2&&/label=originLabel\(origin\)/.test(badge)&&!panels.includes("a.origin==='ai'?'AI 작성':'직접 등록'")})());
 
 // 7) H: 선호 쌍(AI 원본·사람 확정본·판정)을 조회로만 묶는다
 const pair=plain(await store.preferencePair(O,'ai2'));

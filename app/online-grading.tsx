@@ -4,6 +4,7 @@ import {createPortal} from 'react-dom';
 import type {Artifact} from '@/lib/agency';
 import {roles} from '@/lib/agency';
 import {COMPLIANCE_LEXICON} from '@/lib/graders/compliance-lexicon';
+import {GRADING_UPDATED_EVENT} from '@/lib/artifact-sources-client';
 
 // 온라인 채점(F2b) 요약. 기능 스위치 online_grading이 켜졌을 때 저장 직후 채점한 결과만 있다. 자동 점검이며 승인·품질 판정이 아니다.
 // not_run: 줄 수가 채점 한도를 넘어 채점기를 돌리지 않았다(lines에 줄 수).
@@ -39,6 +40,9 @@ const sourceCount=(ruleId:string)=>COMPLIANCE_LEXICON.rules.find(r=>r.id===ruleI
 export function OnlineGradingSlot({campaignId,artifacts}:{campaignId:string;artifacts:Artifact[]}){
  const [rows,setRows]=useState<GradingRow[]>([]);
  const signature=artifacts.map(a=>`${a.id}:${a.version}`).join('|');
+ // X7 '다시 점검'(작업물 상세 규정 점검 패널)이 grading 기록을 다시 쓰면 요약을 다시 읽는다.
+ const [round,setRound]=useState(0);
+ useEffect(()=>{const refresh=()=>setRound(n=>n+1);window.addEventListener(GRADING_UPDATED_EVENT,refresh);return()=>window.removeEventListener(GRADING_UPDATED_EVENT,refresh)},[]);
  useEffect(()=>{
   const controller=new AbortController();
   void fetch('/api/usage?grading='+encodeURIComponent(campaignId),{signal:controller.signal,cache:'no-store'})
@@ -46,7 +50,7 @@ export function OnlineGradingSlot({campaignId,artifacts}:{campaignId:string;arti
    .then(list=>{if(!controller.signal.aborted)setRows(list)})
    .catch(()=>{if(!controller.signal.aborted)setRows([])});
   return()=>controller.abort();
- },[campaignId,signature]);
+ },[campaignId,signature,round]);
  const current=artifacts.flatMap(a=>{const g=rows.find(r=>r.artifactId===a.id&&r.artifactVersion===a.version);return g?[{a,g}]:[]});
  const held=artifacts.flatMap(a=>{const h=(a as Artifact&{complianceHold?:ComplianceHold}).complianceHold;return h&&a.status!=='outdated'?[{a,h}]:[]});
  if(!current.length&&!held.length)return null;

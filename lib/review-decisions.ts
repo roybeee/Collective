@@ -107,7 +107,9 @@ export function suggestionDecision(saved:string,suggested:string,baseline:string
 // external: 로그인 없는 외부 검토자 링크(G4, lib/share-links-server.ts)의 행위자. id는 'external:<라벨>'이고 그 작업물 판에 의견을 남길 수 있을 뿐 다른 권한은 없다.
 export type ReviewActor={id:string;role:'owner'|'admin'|'member'|'external'};
 export type ReviewDecision={id:string;targetKind:ReviewTargetKind;targetId:string;version:number;role:string|null;decision:ReviewDecisionValue;reasonCodes:ReasonCode[];section?:string;noteLength?:number;actor:ReviewActor;
- promptVersion:string|null;skillVersion:string|null;outputContractVersion:string|null;campaignId:string|null;brandId:string|null;origin?:string;criteria?:CriterionJudgement[];reasonsVersion:string;createdAt:string};
+ promptVersion:string|null;skillVersion:string|null;outputContractVersion:string|null;campaignId:string|null;brandId:string|null;origin?:string;criteria?:CriterionJudgement[];
+ // X7: 근거 부족 작업물을 승인할 때 사람이 '직접 확인했습니다'를 표시했다(승인 판정에만, 없으면 키 없음).
+ manuallyVerified?:true;reasonsVersion:string;createdAt:string};
 // 역할×스킬 버전별 1차 승인율: AI가 만든 작업물(ai·ai_edited)마다 기록 순서상 첫 판정을 본다. 입력은 기록 순서대로 준다.
 // 1차 승인은 사람이 고치지 않은 AI 판(origin ai)에 내린 첫 판정이 approved인 경우만이다. 사람이 먼저 고친 판(ai_edited)의 첫 판정은 분모에만 넣고 editedFirst로 센다.
 // 직접 작성(manual)은 AI 스킬 판정이 아니라 뺀다.
