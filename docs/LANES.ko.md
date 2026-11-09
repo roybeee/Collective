@@ -158,6 +158,7 @@
 | **R** 가맹 모집 | Claude 트랙 R 세션 | 트랙 R 전체(`docs/FRANCHISE-RECRUITMENT-PLAN.ko.md`) | 하지 않음. 게시 대기열에 적는다 |
 | **Q** 품질·평가·운영 | Codex 세션 | 품질 계획 v2 잔여(R4·A/A·R5·J4), 평가 하네스·HERMES·품질 콘솔, 프롬프트 레지스트리 운영(A1 `channel.offline` 쌍 평가·활성화), 게시 뒤 운영 감시 | 하지 않음. 게시 대기열에 적는다 |
 | **G** 성장 계획 잔여 개발 | Claude G 세션(roybee-86) | 대표 지시(2026-09-27 "코드 쪽 남은 것 전부 개발·배포·게시까지")로 맡은 성장 계획 잔여 코드: B3-2 Reflector, PR 4b 잔여(`loop-1`·`loop-2`·`loop-10`·`security-ops-5`·`-6`·`ai-quality-9`), B2 2단계, A4-4, A1 커머스·감사 묶음 콘텐츠, 비식별 신호 채점기 버전 결함 | 하지 않음. 게시 대기열에 적는다 |
+| **W** 글로벌 도약 | Claude W 세션(2026-11-09 대표 지시 "전체 진행하라") | [글로벌 도약 계획 v2](GLOBAL-PLAN.ko.md)의 하위 트랙 X(실행 가시성·신뢰 UX)·C(채널 집행·수집·규제 레이어)·G(지능·글로벌화)·I(인프라). 하위 트랙 G는 위 레인 G(성장 계획 잔여)와 다른 일이다. 통합 브랜치(`integrate/wave*`)로 묶어 검증 뒤 병합한다 | 하지 않음. 게시 대기열에 적는다 |
 
 - 레인에 없는 새 일이 생기면, 먼저 발견한 세션이 STATUS의 자기 레인 칸에 "제안"으로 적고 대표 확인을 받은 뒤 이 표에 더한다.
 - 다른 레인의 PR을 대신 병합하거나 고치지 않는다. 막히면 그 레인 칸의 '막힌 것'에 적는다.
@@ -168,6 +169,14 @@
 - 브랜치: `feat/brand-interview-studio`. 소유: `lib/brand-interview*`, `app/brand-interview-panel.tsx`, `app/api/archive/interview/`, `server/interview-transcriber/`, 전용 검사·문서.
 - 기존 파일 최소 연결: `app/brand-archive.tsx` 인터뷰 탭, `app/api/archive/file/route.ts` 음성 형식, `app/globals.css` 전용 스타일.
 - 게시는 하지 않는다. 음성 서비스 설치/실제 검증 뒤 레인 A가 검토하여 묶음에 포함한다. 성장1 마감 조건에 추가하지 않는다.
+
+## 레인 W — 글로벌 도약 (2026-11-09 대표 신규 지시)
+
+- 담당: Claude W 세션. 대표 지시 "aside 활용해서 글로벌 최고 수준으로 끌어올리기 위해 추가로 개발 진행해야될 것들 조사 후 개발 계획 수립하라" → "전체 진행하라"(2026-11-09). 계획 정본은 [GLOBAL-PLAN](GLOBAL-PLAN.ko.md)이다. 문서 안의 '레인 X·C·G'는 레인 W의 하위 트랙 이름이다.
+- 진행 방식: 하위 트랙별 브랜치(`lane-x/*`·`lane-c/*`·`lane-g/*`·`infra/*`)를 워크트리에서 개발 → 통합 브랜치 `integrate/wave1`~`wave3`로 묶어 공용 파일 충돌을 풀고 전체 단위·E2E·빌드 검증 → 통합 PR로 main 병합(원 커밋 보존).
+- 공용 파일(`lib/feature-flags.ts`·`lib/feature-status.ts`·`lib/record-kinds.ts`·`lib/deletion-summary.ts`·`lib/channel-credentials.ts`·`lib/connectors/registry.ts`, 테스트 기대 목록)은 줄 추가만 한다. 통합 때는 `git merge-file --union`으로 레인별 변경을 차례로 얹고 함수 경계의 닫는 괄호를 확인한다(줄 중복 제거 방식은 `}`를 지워 금지).
+- 새 런타임 동작은 모두 기본 꺼짐 스위치 뒤에 둔다. 외부 쓰기(Meta·Threads·네이버 검색광고·당근·카카오 딜러·토스플레이스·토스페이먼츠)는 실계정 검증 전이며, 실계정 확인은 대표가 키·제휴를 확보한 뒤 한다.
+- 게시는 하지 않는다. 게시 대기열에 요청 줄을 적고 게시 담당이 묶음으로 한다.
 
 ## 레인별 개발 순서
 

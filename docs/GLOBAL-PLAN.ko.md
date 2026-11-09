@@ -25,6 +25,8 @@
 
 ## 3. 레인
 
+이 문서의 X·C·G는 [LANES](LANES.ko.md)의 **레인 W(글로벌 도약)** 하위 트랙 이름이다. 하위 트랙 G는 LANES의 레인 G(성장 계획 잔여)와 다른 일이다.
+
 | 레인 | 맡는 일 | 소유 파일 | 게시 |
 |---|---|---|---|
 | **X** 실행 가시성·신뢰 UX | 결정 인박스 v2, 실행 타임라인·회의 뷰, 실행 전 계획 카드, 승인 카드 v2, 다크 모드·Pretendard, 채널 미리보기, 인용·배지·신뢰도·준수 패널, 버전 diff | `app/agenda*`, `app/meeting-panel.tsx`, `app/panels.tsx`, `app/execution-panel.tsx`, `app/campaign-history.tsx`, `components/app/**`, `app/globals.css`, `app/layout.tsx`, `lib/ui/**` | 하지 않음, 대기열에 줄 추가 |
