@@ -57,3 +57,30 @@ export type Connector = {
  verify(credential: ChannelCredential): Promise<VerifiedAccount>;
  collect(credential: ChannelCredential, target: string, window: CollectionWindow): Promise<Collected>;
 };
+
+// C3 직접 게시 공급자(Publisher). Instagram Graph(lib/connectors/instagram-publish.ts)·Threads(lib/connectors/threads.ts)가 구현한다. 기존 Connector 형태는 그대로 두고 덧붙인다.
+// 모든 메서드는 승인 뒤 사람이 '실행'을 눌렀을 때만 불린다(기본 꺼짐). 전송 뒤 결과를 모르면 outcome 'unknown'이며 자동 재시도하지 않는다(rate-queue 규율).
+export type PublisherChannel = 'instagram_direct' | 'threads';
+// 장수명 토큰과 계정 ID. login: Instagram API with Instagram Login(graph.instagram.com) 또는 Facebook Login for Business(graph.facebook.com). Threads는 graph.threads.net 고정.
+export type DirectPublisherCredential = {channel: PublisherChannel; accessToken: string; userId: string; expiresAt?: string; login?: 'facebook' | 'instagram'};
+export type PublishMediaType = 'IMAGE' | 'TEXT' | 'CAROUSEL' | 'REELS';
+// text: 최종 캡션(AI 생성물·가상인물 표시 줄·게시 코드 줄이 이미 들어간 lib/execution.ts composeCaption 결과). imageUrl: 공개 https PNG 주소(표시 처리된 바이트의 공개 사본).
+export type PublishDraft = {text: string; imageUrl?: string | null; mediaType?: PublishMediaType; children?: readonly string[]; videoUrl?: string | null};
+export type PrepareResult = {ok: boolean; issues: string[]; imageReachable: boolean | null};
+// outcome: rate-queue의 Outcome 또는 cached(같은 멱등 키로 이미 게시된 결과를 돌려줌, 재전송 없음). containerId: 1단계(컨테이너) 결과. id: 게시된 미디어 ID.
+export type PublishOutcome = {outcome: 'success' | 'retryable' | 'rate_limited' | 'fatal' | 'unknown' | 'cached'; id?: string; containerId?: string; attempts: number; error?: string};
+export type PublishStatus = {id: string; status: string; permalink?: string; raw: unknown};
+// used·total·remaining는 공급자 응답에 없으면 null(0과 구분). durationSeconds: 창 길이(Meta는 86400).
+export type PublishLimit = {used: number | null; total: number | null; durationSeconds: number | null; remaining: number | null; raw: unknown};
+export type PublicationComment = {id: string; text: string; username: string | null; timestamp: string | null; likeCount: number | null};
+export type Publisher = {
+ key: PublisherChannel;
+ account: string;
+ prepare(draft: PublishDraft): Promise<PrepareResult>;
+ submit(draft: PublishDraft, idempotencyKey: string): Promise<PublishOutcome>;
+ status(id: string): Promise<PublishStatus>;
+ limit(): Promise<PublishLimit>;
+ collect(postId: string, window: CollectionWindow): Promise<Collected>;
+ collectComments(postId: string): Promise<PublicationComment[]>;
+ verify(): Promise<VerifiedAccount>;
+};

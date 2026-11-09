@@ -63,6 +63,20 @@ function shareLinksRow(flags:unknown):FeatureRow{
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'공유 링크 스위치 상태를 확인하지 못했습니다',link};
  return state.enabled?{...base,status:'available',reason:['동결 보고서 읽기 전용 링크(만료 기본 14일, 취소 가능)','작업물 판별 외부 검토자 승인·수정 요청 링크 최대 10개']}:{...base,status:'blocked',reason:['공유 링크 스위치 꺼짐','소유자가 켭니다'],link};
 }
+// 소재 예측 점수(G2): 기능 스위치 creative_score 상태를 읽는다. 켜지면 작업물 저장 때 결정론 추정 점수를 기록하고 작업물 옆에 근거를 보인다.
+function creativeScoreRow(flags:unknown):FeatureRow{
+ const base={key:'creative-score',label:'소재 예측 점수(추정)',flag:'creative_score'},link:FeatureLink={label:'캠페인을 열어 작업물 탭에서 확인',view:'campaigns'};
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='creative_score'):undefined;
+ if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'소재 예측 점수 스위치 상태를 확인하지 못했습니다',link};
+ return state.enabled?{...base,status:'available',reason:['저장 때 0~100점 추정 점수와 구성 요소별 근거 기록(규칙 기반, 성과 보장 아님)','게시 뒤 노출·클릭으로 브랜드×채널 보정표 만들기']}:{...base,status:'blocked',reason:['소재 예측 점수 스위치 꺼짐','소유자가 켭니다'],link};
+}
+// G1 브랜드 자동 학습: 스위치 brand_autolearn. 꺼져 있어도 실행 기록 조회는 되고 미리보기·후보 저장·색 적용·템플릿 초안만 멈춘다.
+function brandAutolearnRow(flags:unknown):FeatureRow{
+ const base={key:'brand-autolearn',label:'브랜드 자동 학습(URL→후보)',flag:'brand_autolearn'},link:FeatureLink={label:'홈 시작하기 카드에서 확인',view:'overview'};
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='brand_autolearn'):undefined;
+ if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'브랜드 자동 학습 스위치 상태를 확인하지 못했습니다',link};
+ return state.enabled?{...base,status:'available',reason:['공개 페이지 1회 읽기(10초, 1MB, 사설 주소 거부, 모델 호출 없음)','이름·로고·색·소개·주소·전화·영업시간·가격은 미확인 후보, 확정은 사람이 원장에서','첫 캠페인 템플릿 3개는 기존 브리프 저장 경로로 초안만 만듭니다']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다(기록 조회는 가능)'],link};
+}
 function aiRow(connection:unknown):FeatureRow{
  const base={key:'ai',label:'8개 담당별 AI 작업(HERMES 연결)'},link:FeatureLink={label:'AI 팀 연결로 이동',view:'settings',section:'settings-ai'};
  if(!record(connection)||typeof connection.configured!=='boolean')return {...base,status:'blocked',reason:'AI 연결 상태를 확인하지 못했습니다',link};
@@ -212,6 +226,13 @@ function posAutoRow(flags:unknown):FeatureRow{
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'POS 자동 수집 스위치 상태를 확인하지 못했습니다',link};
  return state.enabled?{...base,status:'available',reason:'토스플레이스 주문·결제 자동 수집(읽기 전용, 고객 정보 없음, 외부 쓰기 없음)'}:{...base,status:'blocked',reason:['기능 스위치 pos_tossplace 꺼짐','소유자가 켭니다'],link};
 }
+// C6 카카오 비즈메시지: 스위치 kakao_bizmessage 상태를 읽는다. 켜져도 전송은 사람이 승인한 건만 간다(docs/KAKAO-BIZMESSAGE.ko.md).
+function kakaoBizmessageRow(flags:unknown):FeatureRow{
+ const base={key:'kakao-bizmessage',label:'카카오 비즈메시지(알림톡·브랜드 메시지)',flag:'kakao_bizmessage'},link:FeatureLink={label:'연결 및 설정에서 확인',view:'settings',section:'settings-channels'};
+ const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='kakao_bizmessage'):undefined;
+ if(!state||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'카카오 비즈메시지 스위치 상태를 확인하지 못했습니다',link};
+ return state.enabled?{...base,status:'available',reason:'승인한 알림톡·브랜드 메시지를 딜러사 API로 전송(광고성 규칙 판정·수신동의 확인·자동 전송 없음)'}:{...base,status:'blocked',reason:['기능 스위치 kakao_bizmessage 꺼짐','소유자가 켭니다'],link};
+}
 // G3 자율성 규칙·예약 실행: 스위치 autonomy_rules·scheduled_runs. 꺼져 있어도 규칙·예약 조회·편집은 되고 적용·실행만 멈춘다.
 function flagState(flags:unknown,flag:string){const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag===flag):undefined;return record(state)&&typeof state.enabled==='boolean'?state.enabled:null}
 function autonomyRulesRow(flags:unknown):FeatureRow{
@@ -223,6 +244,12 @@ function scheduledRunsRow(flags:unknown):FeatureRow{
  const base={key:'scheduled-runs',label:'예약 실행(주간 성과 요약·일일 신호 검토)',flag:'scheduled_runs'},link:FeatureLink={label:'연결 및 설정에서 확인',view:'settings'},enabled=flagState(flags,'scheduled_runs');
  if(enabled===null)return {...base,status:'blocked',reason:'예약 실행 스위치 상태를 확인하지 못했습니다',link};
  return enabled?{...base,status:'available',reason:['조사 작업자가 예약마다 하루 1회 회의 안건 초안·오늘의 안건 항목 기록(모델 호출·게시·지출 없음)']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다(예약 편집은 가능)'],link};
+}
+// C4 네이버 검색광고 제안·반영: 스위치 naver_ads_write. 꺼져 있어도 제안 생성·조회·반려·미확인 대조는 되고 승인·반영만 409다. 자동 입찰은 없다(docs/NAVER-ADS-WRITE.ko.md).
+function naverAdsWriteRow(flags:unknown):FeatureRow{
+ const base={key:'naver-ads-write',label:'네이버 검색광고 제안·반영',flag:'naver_ads_write'},link:FeatureLink={label:'연결 및 설정의 성과 수집 채널에서 확인',view:'settings',section:'settings-channels'},enabled=flagState(flags,'naver_ads_write');
+ if(enabled===null)return {...base,status:'blocked',reason:'네이버 검색광고 쓰기 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['규칙 기반 입찰 조정·중지 제안(추정)을 관리자가 승인하면 네이버 검색광고에 반영하고 읽기 대조로 확인','자동 입찰·자동 적용 없음(승인 필수, 결과 미확인은 재전송 없음)']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다(제안 생성·조회·대조는 가능, 승인·반영은 막힘)'],link};
 }
 export function featureRows(input:FeatureInput={}):FeatureRow[]{
  const now=typeof input.now==='number'?input.now:Date.now(),brands=brandIds(input.brands);
@@ -254,11 +281,28 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   autonomyRulesRow(input.flags),
   scheduledRunsRow(input.flags),
   shareLinksRow(input.flags),
+  creativeScoreRow(input.flags),
+  brandAutolearnRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
   posAutoRow(input.flags),
+  kakaoBizmessageRow(input.flags),
+  naverAdsWriteRow(input.flags),
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},
   {key:'ads',label:'광고 집행',status:'unimplemented',reason:'광고 생성·광고비 집행 기능 없음'},
+  instagramDirectRow(input.flags),
+  threadsRow(input.flags),
  ];
+}
+// C3 직접 게시: 스위치 instagram_direct_publish·threads_publish. 켜져 있어도 브랜드 연결(장수명 토큰)과 사람의 승인·실행이 있어야 보낸다. 꺼져 있으면 Buffer 경로 그대로다.
+function instagramDirectRow(flags:unknown):FeatureRow{
+ const base={key:'instagram-direct',label:'Instagram 직접 게시(Graph API)',flag:'instagram_direct_publish'},link:FeatureLink={label:'연결 및 설정에서 확인',view:'settings',section:'settings-channels'},enabled=flagState(flags,'instagram_direct_publish');
+ if(enabled===null)return {...base,status:'blocked',reason:'Instagram 직접 게시 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['브랜드별 Instagram 직접 게시 연결이 있는 캠페인의 승인된 발행을 실행 때 Graph API로 게시(두 단계, 결과 미확인 재전송 없음)','연결이 없는 브랜드는 Buffer 경로 그대로']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다(꺼져 있으면 Buffer 경로)'],link};
+}
+function threadsRow(flags:unknown):FeatureRow{
+ const base={key:'threads',label:'Threads 게시',flag:'threads_publish'},link:FeatureLink={label:'연결 및 설정에서 확인',view:'settings',section:'settings-channels'},enabled=flagState(flags,'threads_publish');
+ if(enabled===null)return {...base,status:'blocked',reason:'Threads 게시 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['브랜드별 Threads 연결이 있는 캠페인의 승인된 발행을 실행 때 Threads API로 게시(텍스트·이미지, 본문 500자)','답글은 수집만, 자동 답글 없음']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다'],link};
 }
 // 화면에 그릴 모양(평가 9회차 결함 2·3). 사유는 항목 배열로 나눠 MetaLine으로 그리고(가운뎃점 ' · '로 잇지 않는다),
 // 기능 스위치 이름(소문자_밑줄)·단계 코드(B4-2c 등)·내부 이름(digest 큐)은 화면 문구에서 빼서 tech로 넘긴다. 화면은 tech를 '자세히' 안 기술 정보로만 보인다.

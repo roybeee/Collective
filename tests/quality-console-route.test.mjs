@@ -196,7 +196,7 @@ check('the route is GET only',!('POST' in route)&&!('PUT' in route)&&!('DELETE' 
 
 // 8) 화면 연결: 소유자·관리자만 진입점, 패널 요소
 const ws=readFileSync('app/workspace.tsx','utf8'),panelPath='app/quality-console-panel.tsx',panel=existsSync(panelPath)?readFileSync(panelPath,'utf8'):'';
-check('workspace has one quality console entry for managers only',/import \{QualityConsolePanel\} from '\.\/quality-console-panel'/.test(ws)&&(ws.match(/<span>품질 콘솔<\/span>/g)||[]).length===1&&/\{canManage&&<SidebarMenuButton onClick=\{\(\)=>setQualityOpen\(true\)\}>/.test(ws)&&/\{canManage&&<QualityConsolePanel /.test(ws));
+check('workspace has one quality console entry for managers only, loaded only when opened',/const QualityConsolePanel=lazy\(\(\)=>import\('\.\/quality-console-panel'\)/.test(ws)&&(ws.match(/<span>품질 콘솔<\/span>/g)||[]).length===1&&/\{canManage&&<SidebarMenuButton onClick=\{\(\)=>setQualityOpen\(true\)\}>/.test(ws)&&/\{canManage&&qualityOpen&&<Suspense fallback=\{null\}><QualityConsolePanel /.test(ws));
 check('existing navigation labels are unchanged',['워크스페이스','바이럴 학습','캠페인','브랜드 아카이브','점포 마케팅','AI 팀','작업물','성과 분석','연결 및 설정'].every(label=>ws.includes(`'${label}'`)||ws.includes(`<span>${label}</span>`)));
 check('panel reads the console API and offers the weekly digest',/\/api\/quality-console/.test(panel)&&/format=digest/.test(panel)&&/주간 다이제스트 받기/.test(panel));
 check('panel shows small samples, uncalibrated and undefined kappa and partial aggregation',/표본 부족/.test(panel)&&/보정 불가/.test(panel)&&/정의 불가/.test(panel)&&/일부만 집계/.test(panel));

@@ -41,7 +41,13 @@ export const FEATURE_FLAGS={
  autonomy_rules:{defaultEnabled:false,description:'소유자가 행동별로 정한 자율성 규칙(자동·확인 후·금지)을 회의 시작·역할 실행·발행 접수·광고 활성화에 적용한다. 금지는 403, 자동은 저위험 행동만 표시한다. 꺼도 규칙 조회·편집은 계속되고 모든 행동은 확인 후로 동작한다(G3).'},
  scheduled_runs:{defaultEnabled:false,description:'워커 tick이 소유자 예약(KST 요일·시각)마다 하루 1회 회의 안건 초안 또는 오늘의 안건 항목을 기록한다(G3, 모델·외부 호출 없음). 전역 중단 중과 회의 시작 금지 규칙에서는 건너뛴 사유만 남긴다. 꺼도 예약 조회·편집은 계속된다.'},
  digest_mail:{defaultEnabled:false,description:'예약 실행 큐가 하루 1회 오늘의 결정 대기·기한·실행 결과·비용을 한 화면 요약으로 만들어 설정된 전송 어댑터에 넘기고 기록한다(G3). 이 판의 mail 어댑터는 기록만 남기는 스텁이며 실제 메일·알림톡은 보내지 않는다.'},
+ kakao_bizmessage:{defaultEnabled:false,description:'소유자·관리자가 승인한 카카오 비즈메시지(알림톡 정보성·브랜드 메시지 광고성)를 연결한 딜러사 API로 보내고 결과를 조회한다(C6). 전송 전 광고성 규칙((광고) 머리말·080 수신거부·20:50~08:00 제한·2년 재동의·수신거부·하루 상한)을 다시 판정하며 자동 전송은 없다. 꺼도 판정·초안·승인·수신동의 가져오기·조회는 계속된다.'},
  share_links:{defaultEnabled:false,description:'대표·관리자가 동결 고객 보고서의 읽기 전용 공유 링크와 작업물 판별 외부 검토자 승인 링크(최대 10개)를 만든다(G4, 로그인 없음·만료 기본 14일·최대 90일·취소 가능). 꺼지면 만들기는 409, 공개 주소는 모두 404다. 취소·목록은 계속된다.'},
+ creative_score:{defaultEnabled:false,description:'작업물이 저장되면 소재 예측 점수(0~100, 추정·규칙 기반·성과 보장 아님)를 결정론 규칙으로 계산해 기록하고 작업물 옆에 근거와 함께 보인다(G2, 모델 호출 없음). 게시 뒤 노출·클릭이 쌓이면 대표·관리자가 브랜드×채널 보정표를 만든다. 꺼도 저장된 점수 조회는 계속된다.'},
+ instagram_direct_publish:{defaultEnabled:false,description:'브랜드에 Instagram 직접 게시 연결(장수명 토큰)이 있으면 승인된 발행의 실행을 Buffer 대신 Instagram Graph API로 보낸다(컨테이너 → 게시 두 단계, 실행 즉시 게시, 결과 미확인 재전송 금지, 게시 한도 사전 확인). 꺼져 있거나 연결이 없으면 Buffer 경로 그대로다(C3). 승인·실행 버튼 없이 보내는 일은 없다.'},
+ threads_publish:{defaultEnabled:false,description:'브랜드에 Threads 연결이 있고 Instagram 직접 게시 연결이 없으면 승인된 발행의 실행을 Threads API로 보낸다(텍스트·이미지, 본문 500자, 두 단계, 결과 미확인 재전송 금지). 꺼져 있거나 연결이 없으면 이전 경로 그대로다(C3). 답글은 수집만 하고 자동 답글은 없다.'},
+ naver_ads_write:{defaultEnabled:false,description:'소유자·관리자가 승인한 네이버 검색광고 제안(규칙 기반 입찰 조정·중지·재개·키워드/캠페인 생성, 추정·규칙 기반)만 서명한 POST/PUT로 반영하고 읽기 대조로 확인한다(C4). 자동 입찰·자동 적용 없음, 결과 미확인 작업은 재전송하지 않는다. 꺼지면 승인·반영은 409이고 제안 생성·조회·반려·미확인 대조는 계속된다.'},
+ brand_autolearn:{defaultEnabled:false,description:'공식 웹사이트·플레이스·SNS 공개 페이지 주소 1개를 서버가 1회 읽어(10초·1MB, 사설 주소 거부, 모델 호출 없음) 이름·로고·색·소개·주소·전화·영업시간·가격·말투 신호를 미확인 후보로 뽑고, 사람이 누르면 사실 원장 확인 후보로 저장하며 첫 캠페인 템플릿 3개로 브리프 초안을 만든다(G1). 확정과 브랜드 색 적용은 사람이 한다. 꺼지면 미리보기·저장·색 적용·템플릿 초안은 409이고 기록 조회는 계속된다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};
