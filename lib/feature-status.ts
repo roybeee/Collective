@@ -69,6 +69,7 @@ function creativeScoreRow(flags:unknown):FeatureRow{
  const state=Array.isArray(flags)?flags.find(f=>record(f)&&f.flag==='creative_score'):undefined;
  if(!record(state)||typeof state.enabled!=='boolean')return {...base,status:'blocked',reason:'소재 예측 점수 스위치 상태를 확인하지 못했습니다',link};
  return state.enabled?{...base,status:'available',reason:['저장 때 0~100점 추정 점수와 구성 요소별 근거 기록(규칙 기반, 성과 보장 아님)','게시 뒤 노출·클릭으로 브랜드×채널 보정표 만들기']}:{...base,status:'blocked',reason:['소재 예측 점수 스위치 꺼짐','소유자가 켭니다'],link};
+}
 // G1 브랜드 자동 학습: 스위치 brand_autolearn. 꺼져 있어도 실행 기록 조회는 되고 미리보기·후보 저장·색 적용·템플릿 초안만 멈춘다.
 function brandAutolearnRow(flags:unknown):FeatureRow{
  const base={key:'brand-autolearn',label:'브랜드 자동 학습(URL→후보)',flag:'brand_autolearn'},link:FeatureLink={label:'홈 시작하기 카드에서 확인',view:'overview'};
