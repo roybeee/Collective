@@ -23,7 +23,7 @@ type View={proposals:AdsProposal[];enabled:boolean;canApprove:boolean;notice?:st
 type Load={state:'loading'}|{state:'ready';view:View}|{state:'denied'|'error';message:string};
 const LABEL='추정·규칙 기반, 자동 적용 없음';
 const SWITCH_OFF='쓰기 스위치 꺼짐: 소유자가 기능표에서 네이버 검색광고 쓰기를 켜야 승인과 반영을 할 수 있습니다.';
-const kindLabels:Record<ProposalKind,string>={bid:'입찰가 변경',pause:'키워드 중지',resume:'다시 켜기',create_keywords:'키워드 추가',create_campaign:'캠페인 만들기'};
+const kindLabels:Record<ProposalKind,string>={bid:'입찰가 변경',pause:'중지',resume:'다시 켜기',create_keywords:'키워드 추가',create_campaign:'캠페인 만들기',budget:'일 예산 변경',create_adgroup:'광고그룹 만들기',create_creative:'소재 만들기',update_creative:'소재 고치기'};
 const statusLabels:Record<ProposalStatus,string>={draft:'제안',approved:'승인됨',rejected:'반려',applied:'반영됨(대조 전)',failed:'반영 실패',unknown:'결과 미확인',verified:'반영 확인',mismatch:'대조 불일치'};
 const riskLabels={T2:'위험 T2(되돌리기 쉬움)',T3:'위험 T3(새 지출·큰 변경)'} as const;
 // 확인 대화상자의 무엇·어디·비용·되돌림. 비용은 입찰가 차이(클릭당)나 지출 방향만 적는다(실제 지출은 클릭 수에 따른다).
