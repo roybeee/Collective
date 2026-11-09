@@ -9,10 +9,13 @@ import {Button} from '@/components/ui/button';
 import {enumLabel} from '@/lib/ui-copy';
 import {Note} from '@/components/app/note';
 import {MetaLine} from '@/components/app/meta-line';
-import {useCallback,useEffect,useRef,useState} from 'react';
+import {Suspense,lazy,useCallback,useEffect,useRef,useState} from 'react';
+import {LazyPanel} from '@/components/app/lazy-panel';
 import type {GrowthConditionalView} from '@/lib/growth-conditional-server';
 import {geoEngines,pilotChecks,type GeoObservationInput,type PilotInput} from '@/lib/growth-conditional';
 import styles from './growth-panel.module.css';
+// G5 AI 검색 노출 자동 추적(스위치 geo_tracking). 수동 관측 기록 아래에서 열 때만 불러온다.
+const GeoPanel=lazy(()=>import('./geo-panel').then(m=>({default:m.GeoPanel})));
 type View=GrowthConditionalView;
 const checkLabels:Record<typeof pilotChecks[number],string>={productEligibility:'상품 수입·판매 자격',rightsCleared:'권리',logistics:'물류',returnsPolicy:'반품',fxBasis:'환율 기준',settlementPath:'정산 경로',taxCustoms:'세금·통관'};
 const pilotLabels={blocked:'막힘',not_ready:'준비 안 됨',ready_for_owner_decision:'대표 결정 대기(출시 아님)'} as const;
@@ -37,6 +40,7 @@ function Workspace({campaignId}:{campaignId:string}){
     <label>관측 시각<Input type="datetime-local" value={geo.observedAt} onChange={e=>setGeo({...geo,observedAt:e.target.value})}/></label><label><CheckInput checked={geo.cited} onChange={e=>setGeo({...geo,cited:e.target.checked,citedUrl:e.target.checked?geo.citedUrl:''})}/>우리 페이지 인용됨</label>
     {geo.cited&&<label className={styles.wide}>인용 URL<Input value={geo.citedUrl} onChange={e=>setGeo({...geo,citedUrl:e.target.value})}/></label>}<label>유입 세션(분석 도구)<Input type="number" min={0} value={geo.referralSessions??''} onChange={e=>setGeo({...geo,referralSessions:n(e.target.value)})}/></label>
     <Button variant="panel" size="fit" type="submit" disabled={!geo.query||!geo.observedAt} disabledReason={!geo.query?'필수 칸을 먼저 채우세요.':!geo.observedAt?'필수 칸을 먼저 채우세요.':undefined}>관측 기록</Button></fieldset></form>:<LockedNote action="AI 답변 인용 관측" reason={readOnlyReason}/>}
+   <LazyPanel summary="AI 검색 노출 자동 추적">{()=><Suspense fallback={<p role="status">AI 검색 노출 화면을 불러오고 있습니다.</p>}><GeoPanel campaignId={campaignId}/></Suspense>}</LazyPanel>
    <h4>해외 파일럿 준비</h4><ul>{view.overseas.map(p=><li key={p.id}><MetaLine items={[p.input.country,p.input.offerId,pilotLabels[p.assessment.status],`단위 공헌이익 ${p.assessment.unitContributionKrw===null?'미확인':`${p.assessment.unitContributionKrw.toLocaleString('ko-KR')}원`}`,p.assessment.reasons.join(', ')]}/>{<Button disabled={!view.canEdit} disabledReason={view.canEdit?undefined:readOnlyReason} variant="panel" size="fit" type="button" onClick={()=>{setPilot(structuredClone(p.input));setPilotVersion(p.version);}}>{p.input.country} 수정</Button>}</li>)}</ul>
    {view.canEdit?<form onSubmit={e=>{e.preventDefault();void send({action:'save_pilot',id:`pilot-${pilot.country.toLowerCase()}`,expectedVersion:pilotVersion,input:pilot},'파일럿 준비를 저장했습니다.');}}><fieldset disabled={saving} className={styles.form}><legend>국가별 준비</legend>
     <label>국가 코드<Input maxLength={2} value={pilot.country} onChange={e=>setPilot({...pilot,country:e.target.value.toUpperCase()})}/></label><label>현지 통화<Input maxLength={3} value={pilot.currency} onChange={e=>setPilot({...pilot,currency:e.target.value.toUpperCase()})}/></label>
