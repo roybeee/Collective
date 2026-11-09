@@ -55,6 +55,8 @@ export const FEATURE_FLAGS={
  mcp_server:{defaultEnabled:false,description:'대표·관리자가 만든 API 키(읽기·초안 저장 범위, 만료 기본 90일, 취소 가능)로 외부 AI 도구(Claude·ChatGPT)가 MCP 엔드포인트 /api/mcp에서 브랜드·캠페인·작업물·성과·오늘의 안건·학습 규칙을 읽고 캠페인 초안·작업물 초안(검토 대기)만 저장한다(G9). 승인·발행·지출·고객 발송·AI 실행은 없다. 키당 1분 60회, 호출마다 감사 기록(본문 없음). 꺼지면 엔드포인트는 모두 404, 키 만들기는 409이고 목록·취소는 계속된다.'},
  scoped_roles:{defaultEnabled:false,description:'대표·관리자가 직원 계정에 브랜드·점포 범위 역할(브랜드 매니저·점포 매니저·검토자)을 초대·배정한다(G7). 범위 역할은 배정 브랜드·지점의 캠페인만 보고 표에 정한 작업만 한다. 꺼지면 새 범위 역할 초대·배정은 409이고, 범위 해제와 이미 배정된 범위의 적용은 계속된다. 대표·관리자·직원은 스위치와 무관하게 그대로다.'},
  geo_tracking:{defaultEnabled:false,description:'대표·관리자가 브랜드별로 정한 AI 검색 질문(확정 사실로 만든 시작 질문 포함)을 질문×엔진(ChatGPT·Perplexity·Gemini·Google AI 개요·네이버)마다 HERMES 브라우저 실행 1회로 공개 답변 화면을 읽어 답변 앞 1,500자 원문·인용 URL·언급 여부를 관찰 기록으로 남기고(G5, 토큰 사용, 계획 추정·예산 가드·자율성 규칙·전역 중단 적용), 점유율·인용률·주간 변화와 개선 백로그를 보인다. 로그인이 필요한 화면은 로그인하지 않고 login_required로 남긴다. 노출 보장 아님. 꺼지면 조회·저장·측정은 409다.'},
+ self_signup:{defaultEnabled:false,description:'로그인 화면에 새 워크스페이스 가입(이메일·비밀번호, 이용약관·개인정보 동의 필수, 마케팅 수신 선택)을 연다(G8). 플랫폼 스위치라 운영자 워크스페이스(처음 만든 관리자 계정의 워크스페이스) 값만 읽는다. 메일 발송 어댑터가 없어 확인 링크를 화면에 보이므로 공개 전 메일 연결이 필요하다. 꺼지면 가입 API는 404이고 초대 가입·로그인은 그대로다.'},
+ credit_billing:{defaultEnabled:false,description:'선불 크레딧 원장(월 기본 제공·충전·AI 사용 1,000토큰=1크레딧·환불·소멸)과 80%·100% 알림을 켜고, 잔액 0이면 새 AI 실행을 시작 전에 막는다(운영자 워크스페이스 제외). 토스페이먼츠 테스트 키(test_)로만 충전·환불한다(G8). 플랫폼 스위치라 운영자 워크스페이스 값만 읽는다. 꺼지면 원장·가드·결제는 모두 동작하지 않고 요금표만 보인다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};

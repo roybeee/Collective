@@ -15,6 +15,7 @@ import {accountRoleLabels,useAccount} from './account-context';
 
 const SettingsChannels=lazy(()=>import('./settings-channels').then(m=>({default:m.SettingsChannels})));
 const AutonomyPanel=lazy(()=>import('./autonomy-panel').then(m=>({default:m.AutonomyPanel})));
+const BillingPanel=lazy(()=>import('./billing-panel').then(m=>({default:m.BillingPanel})));
 export const settingsTabLabels:Record<SettingsTab,string>={connect:'연결(AI·작업자)',channels:'채널 연결',automation:'자동화 규칙',usage:'사용량·비용',team:'팀·권한',features:'기능표'};
 const currentTab=():SettingsTab=>typeof window==='undefined'?'connect':parseNav(window.location.search).section??'connect';
 
@@ -59,7 +60,7 @@ export function SettingsShell({data,reload,connect,channels,usage,features}:{dat
   connect,
   channels:<><Suspense fallback={loading}><SettingsChannels brands={data.brands} campaigns={data.campaigns} reload={reload}/></Suspense>{channels}</>,
   automation:<section className="settings-card" aria-labelledby="settings-automation-title"><h2 id="settings-automation-title">자동화 규칙</h2><p>행동별 자율성과 예약 실행을 정합니다.</p><Suspense fallback={loading}><AutonomyPanel/></Suspense></section>,
-  usage,team:<TeamCard/>,features,
+  usage:<>{usage}<Suspense fallback={loading}><BillingPanel/></Suspense></>,team:<TeamCard/>,features,
  };
  return <Tabs value={tab} onValueChange={choose} orientation={mobile?'horizontal':'vertical'} className="settings-tabs">
   <nav className="settings-nav" aria-label="설정 바로가기"><TabsList aria-label="설정 섹션">{settingsTabs.map(t=><TabsTrigger key={t} value={t}>{settingsTabLabels[t]}</TabsTrigger>)}</TabsList></nav>

@@ -6,6 +6,7 @@
 // 평가 실행(lib/eval-server.ts)은 별도 연결·별도 월 예산(결정 5, 1.5M)이고 submitHermes를 거치지 않으므로 여기서 다시 막지 않는다.
 import {ApiError,str} from './server';
 import type {UsageKind} from './usage-ledger';
+import {creditStop} from './billing-server';
 
 type Db=D1Database;
 type Who={id:string;email:string|null};
@@ -118,6 +119,8 @@ async function estimateFor(db:Db,owner:string,submissionId:string,kind:UsageKind
 const previousReservation=(db:Db,owner:string,submissionId:string)=>db.prepare("SELECT json_extract(data,'$.keyHash') AS keyHash,json_extract(data,'$.reservedAt') AS reservedAt FROM records WHERE id=? AND owner=? AND kind='token_reservation'").bind(reservationKey(owner,submissionId),owner).first<{keyHash:string;reservedAt:string}>();
 // 새 요청이면 상한 안일 때만 예약을 남긴다(미설정이어도 남겨 나중에 정한 상한이 진행 중 실행을 센다). 예약을 못 쓰면 누계를 다시 읽어 409를 던지고 요청을 보내지 않는다.
 async function reserve(db:Db,owner:string,r:Omit<Reservation,'reservedAt'|'runId'>,now:Date){
+ // 선불 크레딧 정지(G8, 스위치 credit_billing 켜짐일 때만): 잔액 0 이하이면 예약·요청 전에 확정 409로 막는다(lib/billing-server.ts creditStop).
+ const stop=await creditStop(db,owner,now);if(stop)throw new TokenBudgetExceeded(stop);
  const id=reservationKey(owner,r.submissionId),reservation:Reservation={...r,reservedAt:now.toISOString(),runId:null};
  const p=kstMonth(now),{workspace,campaign}=limitsOf(await readBudgets(db,owner),r.campaignId);
  const limits=[...(workspace!==null?[{limit:workspace,campaignId:null}]:[]),...(campaign!==null?[{limit:campaign,campaignId:r.campaignId}]:[])];
