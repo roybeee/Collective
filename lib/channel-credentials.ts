@@ -240,6 +240,7 @@ export async function revokeExternalCredential(owner: string, channel: ExternalC
 export async function externalCredentialStatus(owner: string, channel: ExternalChannel, scope?: CredentialScope) {
  const record = await storedExternal(owner, channel, normalized(scope));
  return {channel, connected: !!record, account: record?.account || '', updatedAt: record?.updatedAt || null};
+}
 // ---- C3 직접 게시 자격증명(instagram_direct·threads). 같은 kind(channel_credential)·같은 id 규칙 '<channel>:<brandId>'을 쓰되 브랜드 단위만 허용한다(지점·워크스페이스 기본 없음).
 // 기존 조회(channelStatus·credentialResolution)는 connectors에 없는 채널을 무시하므로 영향이 없다. version은 발행 승인 때 '발행 계정' 드리프트 검사에 쓴다(lib/execution.ts approvalDrift).
 export const publisherChannels: readonly PublisherChannel[] = ['instagram_direct', 'threads'];
@@ -253,6 +254,7 @@ const brandScope = (value: unknown): CredentialScope => ({brandId: typeof value 
 export function publisherChannel(value: unknown): PublisherChannel {
  if (value !== 'instagram_direct' && value !== 'threads') throw new ApiError(400, '직접 게시 채널(instagram_direct·threads)을 선택하세요.');
  return value;
+}
 // 사용자 입력 → 자격증명. 토큰 만료일은 토큰에서 읽을 수 없어 사용자가 발급 때 확인한 값을 보관하고 경고에만 쓴다.
 export function parsePublisherCredential(channel: PublisherChannel, input: Record<string, unknown>): DirectPublisherCredential {
  const accessToken = str(input.accessToken, '액세스 토큰', 1000, true), userId = str(input.userId, channel === 'threads' ? 'Threads 계정 ID' : 'Instagram 계정 ID', 40, true);
@@ -262,9 +264,11 @@ export function parsePublisherCredential(channel: PublisherChannel, input: Recor
  const expiresAt = str(input.expiresAt ?? '', '토큰 만료일', 40);
  if (expiresAt && !Number.isFinite(Date.parse(expiresAt))) throw new ApiError(400, '토큰 만료일을 확인해 주세요.');
  return {channel, accessToken, userId, ...(expiresAt ? {expiresAt: new Date(expiresAt).toISOString()} : {}), ...(channel === 'instagram_direct' && login ? {login} : {})};
+}
 async function storedPublisher(owner: string, channel: PublisherChannel, brandId: string) {
  try { return await readRecord<StoredPublisherCredential>(owner, 'channel_credential', recordId(channel, {brandId})); }
  catch (error) { if (error instanceof ApiError && error.status === 404) return null; throw error; }
+}
 const publisherMeta = (r: StoredPublisherCredential): PublisherCredentialMeta => ({channel: r.channel, brandId: r.brandId, account: r.account, userId: r.userId, expiresAt: r.expiresAt ?? null, expiringSoon: !!r.expiresAt && Date.parse(r.expiresAt) - Date.now() < TOKEN_WARNING_MS, version: r.version, updatedAt: r.updatedAt});
 // 저장 전에 verify(/me)로 토큰이 그 계정의 것인지 확인한다. 실패하면 저장하지 않는다. 비밀값은 응답에 담지 않는다.
 export async function savePublisherCredential(owner: string, channelInput: unknown, brandIdInput: unknown, input: Record<string, unknown>, verify: PublisherVerifier): Promise<PublisherCredentialMeta> {
@@ -277,13 +281,16 @@ export async function savePublisherCredential(owner: string, channelInput: unkno
   account: verified.account, userId: credential.userId,
   ...(credential.expiresAt ? {expiresAt: credential.expiresAt} : {}), ...(credential.login ? {login: credential.login} : {}),
   version: (previous?.version || 0) + 1, createdAt: previous?.createdAt || stamp(), updatedAt: stamp(),
+ };
  await recordStatement(owner, 'channel_credential', recordId(channel, unit), record).run();
  return publisherMeta(record);
+}
 export async function loadPublisherCredential(owner: string, channel: PublisherChannel, brandId: string): Promise<{credential: DirectPublisherCredential; meta: PublisherCredentialMeta} | null> {
  const record = await storedPublisher(owner, channel, brandId);
  if (!record) return null;
  const secret = await openRecordSecret(owner, 'channel_credential', recordId(channel, {brandId}), record.secret);
  return {credential: JSON.parse(secret) as DirectPublisherCredential, meta: publisherMeta(record)};
+}
 // 저장된 토큰으로 /me를 다시 불러 지금도 유효한지 본다. 저장은 바꾸지 않는다(계정 이름이 달라졌으면 응답에만 보인다).
 export async function verifyPublisherCredential(owner: string, channelInput: unknown, brandIdInput: unknown, verify: PublisherVerifier) {
  const channel = publisherChannel(channelInput), unit = await checkedUnit(owner, brandScope(brandIdInput), false);
@@ -291,9 +298,13 @@ export async function verifyPublisherCredential(owner: string, channelInput: unk
  if (!loaded) throw new ConnectorMissingError(`${publisherLabels[channel]} 연결이 없습니다. 먼저 연결하세요.`);
  const verified = await verify(loaded.credential);
  return {...loaded.meta, verifiedAccount: verified.account, verifiedAt: stamp()};
+}
 export async function revokePublisherCredential(owner: string, channelInput: unknown, brandIdInput: unknown) {
  const channel = publisherChannel(channelInput), unit = await checkedUnit(owner, brandScope(brandIdInput), false);
  if (!unit.brandId || !(await storedPublisher(owner, channel, unit.brandId))) return {revoked: false};
+ await database().prepare('DELETE FROM records WHERE id=? AND owner=? AND kind=?').bind(`${owner}:channel_credential:${recordId(channel, unit)}`, owner, 'channel_credential').run();
+ return {revoked: true};
+}
 // 브랜드의 직접 게시 연결 상태(비밀값 없음). 연결이 없는 채널은 connected:false다.
 export async function publisherCredentialStatus(owner: string, brandIdInput: unknown): Promise<(PublisherCredentialMeta & {connected: true; label: string} | {channel: PublisherChannel; brandId: string; connected: false; label: string})[]> {
  const unit = await checkedUnit(owner, brandScope(brandIdInput), false);
