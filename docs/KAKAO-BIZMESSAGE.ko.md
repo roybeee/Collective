@@ -72,7 +72,7 @@ SendResult.outcome = success | failed | unknown
 - kind(모두 `parent_id = brandId`, 캠페인 무관): `marketing_consent`(해시당 1행: `consentedAt`·`source`·`nightConsent`·`revokedAt`) · `marketing_optout`(수신거부) · `kakao_friend_relation`(ADDED/BLOCKED/NONE) · `kakao_reconsent_notice`(재동의 안내) · `bizmessage_send`(전송 기록).
 - **CSV 가져오기**(`consent_import`): 머리글 `phone,consentedAt[,source,nightConsent]`, 5,000행 이내, 날짜는 ISO 또는 `YYYY-MM-DD`(KST 00:00), 미래 불가. **오류가 하나라도 있으면 저장하지 않고** 줄 번호만 돌려준다. 같은 수신자의 더 늦은 동의는 갱신(철회 해제), 더 이른 동의는 무시.
 - **수신거부**(`optout`): 수신거부 레코드와 동의의 `revokedAt`을 같은 묶음으로 쓴다.
-- **재동의 안내**(`reconsent`): 23개월 경과(활성)·24개월 만료 수신자를 모아 브랜드·KST 날짜당 1건의 `kakao_reconsent_notice`를 만든다. 모양은 `growth_detected_signal`과 같다(`status:'new'`, `detection:{title, detail, dueBy, recipientHashes}`). 오늘의 안건(`lib/agenda-server.ts`)은 캠페인에 묶인 kind만 읽으므로, 이 안내를 안건에 올리려면 agenda 쪽에 kind 한 줄을 더하는 별도 PR이 필요하다(이 판은 레코드·API까지).
+- **재동의 안내**(`reconsent`): 23개월 경과(활성)·24개월 만료 수신자를 모아 브랜드·KST 날짜당 1건의 `kakao_reconsent_notice`를 만든다. 모양은 `growth_detected_signal`과 같다(`status:'new'`, `detection:{title, detail, dueBy, recipientHashes}`). 새(`status:'new'`) 안내는 홈 '오늘의 안건' 알림 탭에 브랜드·기한과 함께 보이고 설정 → 채널 연결로 간다(`lib/agenda-workspace-sources.ts`, 레인 X-G). 범위 역할(고객 발송 권한 없음)에게는 보이지 않는다.
 
 ## 6. 전송 파이프라인 (`lib/kakao/send-server.ts`)
 

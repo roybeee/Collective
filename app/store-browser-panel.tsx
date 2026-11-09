@@ -8,7 +8,7 @@ import {EmptyLine} from '@/components/app/empty-line';
 import {Note} from '@/components/app/note';
 import {MetaLine} from '@/components/app/meta-line';
 import type {Store} from '@/lib/store-marketing';
-import {BROWSER_JOB_LABELS,type BrowserBinding,type BrowserDevice,type BrowserListing} from '@/lib/store-browser';
+import {BROWSER_JOB_LABELS,type BrowserBinding,type BrowserDevice,type BrowserJobType,type BrowserListing} from '@/lib/store-browser';
 import {notifySaved,type Saved} from '@/lib/ui/notify';
 import {useAccount,canChange,adminOnlyNote} from './account-context';
 import {StoreBrowserWeekly,WeeklyScheduleView} from './store-browser-weekly';
@@ -17,6 +17,8 @@ import {StoreBrowserDeviceHealth,StoreBrowserPublicReadback} from './store-brows
 
 type BindingForm=Pick<BrowserBinding,'naverPlaceId'|'managerBusinessId'|'managerUrl'|'publicUrl'|'deviceId'|'profileId'>;
 const emptyBinding:BindingForm={naverPlaceId:'',managerBusinessId:'',managerUrl:'',publicUrl:'',deviceId:'',profileId:''};
+// 작업 유형 이름. 리뷰 답글·소식(C5)은 승인한 플레이스 초안 문안으로만 만들어진다(lib/place-drafts-server.ts, 레인 X-G가 이름을 붙였다).
+export const browserJobTypeLabels:Record<BrowserJobType,string>={read_hours:'영업시간 조회',read_weekly_hours:'영업시간 조회',change_hours:'영업시간 변경',change_weekly_hours:'영업시간 변경',upload_photo:'사진 업로드',reply_review:'리뷰 답글 등록',post_news:'소식 등록'};
 function Field({label,children}:{label:string;children:ReactNode}){return <label className="store-field"><span>{label}</span>{children}</label>}
 async function send<T>(payload:Record<string,unknown>):Promise<T>{
  const r=await fetch('/api/store-browser',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -100,9 +102,10 @@ export function StoreBrowserPanel({store}:{store:Store}){
   {admin&&listing.devices.length>0&&<ul>{listing.devices.map(d=><li key={d.id}><MetaLine items={[d.label,d.status==='revoked'?'연결 해제':'등록됨']}/><StoreBrowserDeviceHealth device={d}/> {d.status!=='revoked'&&<Button size="sm" variant="outline" disabled={busy} onClick={()=>void run(async()=>{await send({action:'revoke_device',deviceId:d.id,expectedVersion:d.version})},'컴퓨터 연결을 해제했습니다.')}>연결 해제</Button>}</li>)}</ul>}
   {!admin&&<p className="admin-only-note" role="note">{adminOnlyNote()} 작업 진행 상황과 결과를 확인할 수 있습니다.</p>}
   {listing.jobs.length>0?<ul>{listing.jobs.map(job=><li key={job.id} className="form-stack">
-   <p><MetaLine items={[<b key="type">{job.type==='upload_photo'?'사진 업로드':job.type==='read_hours'||job.type==='read_weekly_hours'?'영업시간 조회':'영업시간 변경'}</b>,BROWSER_JOB_LABELS[job.status]]}/></p>
+   <p><MetaLine items={[<b key="type">{browserJobTypeLabels[job.type]??'영업시간 변경'}</b>,BROWSER_JOB_LABELS[job.status]]}/></p>
    {job.type==='change_hours'&&<div className="form-two"><div><b>변경 전</b><p className="whitespace-pre-wrap">{job.beforeHours}</p></div><div><b>승인할 변경 내용</b><p className="whitespace-pre-wrap">{job.afterHours}</p></div></div>}
    {job.beforeSchedule&&job.afterSchedule&&<div className="form-two"><div><b>변경 전 요일별 시간</b><WeeklyScheduleView schedule={job.beforeSchedule}/></div><div><b>승인할 요일별 시간</b><WeeklyScheduleView schedule={job.afterSchedule}/></div></div>}
+   {job.placeDraft&&<div><b>승인한 문안</b><p className="whitespace-pre-wrap">{job.placeDraft.text}</p></div>}
    {job.photo&&<p><MetaLine items={[`승인할 사진: ${listing.photoSources?.find(s=>s.id===job.photo?.sourceId)?.title||'아카이브 사진 원본'}`,`원본 버전 ${job.photo.sourceVersion}`]}/></p>}
    {job.note&&<p>{job.note}</p>}
    {job.evidence&&<div><p><MetaLine items={[<b key="source">{job.evidence.source==='real'?'실제 화면에서 확인':'모의 테스트 근거'}</b>,job.evidence.capturedAt]}/></p><p><MetaLine items={[job.evidence.storeName,`플레이스 ${job.evidence.naverPlaceId}`]}/></p>{job.evidence.schedule?<WeeklyScheduleView schedule={job.evidence.schedule}/>:['read_hours','change_hours'].includes(job.type)&&<p className="whitespace-pre-wrap">{job.evidence.hours}</p>}{job.evidence.note&&<p>{job.evidence.note}</p>}</div>}
