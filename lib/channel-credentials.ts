@@ -189,7 +189,8 @@ export async function credentialResolution(owner: string, scope: CredentialScope
 // ── C6 추가: 커넥터 레지스트리(lib/connectors) 밖 외부 채널의 자격증명 ──
 // 카카오 비즈메시지 딜러 자격증명은 Connector(parse/verify/collect) 모양이 아니라 같은 kind('channel_credential')·같은 암호화 경로만 함께 쓴다(lib/kakao/credential-server.ts).
 // id 규칙·단위 검증·암호문 저장은 위와 같고, 검증은 호출자가 먼저 한다. channelStatus()는 커넥터 키만 보므로 이 레코드는 그 목록에 나타나지 않는다(화면은 lib/kakao 쪽이 따로 보인다).
-export type ExternalChannel = 'kakao_bizmessage';
+// C8: 당근 광고 OpenAPI 키(daangn_ads)도 같은 외부 채널 경로를 쓴다(lib/daangn-ads-server.ts).
+export type ExternalChannel = 'kakao_bizmessage' | 'daangn_ads';
 type StoredExternal = {channel: ExternalChannel; brandId?: string; storeId?: string; secret: string; account: string; createdAt: string; updatedAt: string};
 async function storedExternal(owner: string, channel: ExternalChannel, unit: Unit) {
  try {

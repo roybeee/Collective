@@ -291,7 +291,21 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   {key:'ads',label:'광고 집행',status:'unimplemented',reason:'광고 생성·광고비 집행 기능 없음'},
   instagramDirectRow(input.flags),
   threadsRow(input.flags),
+  daangnAdsRow(input.flags),
+  placeDraftsRow(input.flags),
  ];
+}
+// C8 당근 광고 OpenAPI: 스위치 daangn_ads. 꺼지면 연결·수집·제안 생성·승인·반영은 409, 해제·조회·미확인 대조는 계속된다(docs/DAANGN-ADS.ko.md).
+function daangnAdsRow(flags:unknown):FeatureRow{
+ const base={key:'daangn-ads',label:'당근 광고 제안·반영·성과 수집',flag:'daangn_ads'},link:FeatureLink={label:'연결 및 설정에서 확인',view:'settings',section:'settings-channels'},enabled=flagState(flags,'daangn_ads');
+ if(enabled===null)return {...base,status:'blocked',reason:'당근 광고 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['광고주별 키로 캠페인·성과를 읽고 규칙 기반 중지·일 예산 조정 제안(추정)을 관리자가 승인하면 반영 뒤 읽기 대조','자동 적용·자동 예산 변경 없음(공개 베타, 경로·필드는 실계정 확인 전 가정)']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다(해제·조회·미확인 대조는 가능)'],link};
+}
+// C5 플레이스 리뷰 답글·소식 초안: 스위치 place_drafts. 네이버 스마트플레이스에는 공개 쓰기 API가 없어 제출은 사람이 하거나 점포 브라우저 작업으로 넘긴다(docs/PLACE-DRAFTS.ko.md).
+function placeDraftsRow(flags:unknown):FeatureRow{
+ const base={key:'place-drafts',label:'플레이스 리뷰 답글·소식 초안',flag:'place_drafts'},link:FeatureLink={label:'점포 마케팅에서 확인',view:'stores'},enabled=flagState(flags,'place_drafts');
+ if(enabled===null)return {...base,status:'blocked',reason:'플레이스 초안 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['확정 사실·말투로 답글·소식 초안(모델 호출 없음)과 규정 점검, 승인 뒤 복사·제출 지원','네이버 쓰기 API 없음: 자동 제출 없음, 제출은 사람이 표시하거나 점포 브라우저 작업으로 다시 승인']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다(조회는 가능)'],link};
 }
 // C3 직접 게시: 스위치 instagram_direct_publish·threads_publish. 켜져 있어도 브랜드 연결(장수명 토큰)과 사람의 승인·실행이 있어야 보낸다. 꺼져 있으면 Buffer 경로 그대로다.
 function instagramDirectRow(flags:unknown):FeatureRow{
