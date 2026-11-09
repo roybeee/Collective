@@ -8,6 +8,7 @@ import type {Campaign} from '@/lib/agency';
 import {providerPublicationStatus,type Publication} from '@/lib/execution';
 import {getExecution,saveLimits,connectPublisher,disconnectPublisher,saveCreative,savePublication,publicationFor,currentCreative,approvePublication,reservePublication,publicationKeepingReview,saveProviderResult,cancelPublication,reconfirmPublication,resolveUncertain,retireMedia,externalMediaReview,type PublisherCredential} from '@/lib/execution-server';
 import {submitBuffer,inspectBuffer,listBufferChannels} from '@/lib/publisher-buffer';
+import {collectPublicationComments,dispatchDirect} from '@/lib/execution-publisher-server';
 import {registerCodedPng} from '@/lib/coded-png-server';
 import {readBoundedJson,HttpBodyError} from '@/lib/http-limits';
 import {executionRate} from '@/lib/execution-rate';
@@ -16,7 +17,7 @@ import {experimentLinkFor,attachLink,linkExperiment,linkMedia,experimentLinkOpti
 
 // 관리자 전용 실행. 승인·해제·확정한 실제 계정을 기록한다.
 // loop-2: 준비 뒤 실험 연결·해제(link_experiment)와 Instagram 게시물 ID 입력(link_media)도 관리자만 한다. 준비 때 연결(save_publication experiment)은 발행 준비 권한을 따른다.
-const adminActions=['connect_buffer','disconnect_buffer','buffer_channels','save_limits','approve','execute','cancel','reconfirm','resolve_uncertain','register_coded_png','link_experiment','link_media'];
+const adminActions=['connect_buffer','disconnect_buffer','buffer_channels','save_limits','approve','execute','cancel','reconfirm','resolve_uncertain','register_coded_png','link_experiment','link_media','collect_comments'];
 export async function GET(req:Request){try{const owner=await identity(req),id=str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true),campaign=await readRecord<Campaign>(owner,'campaign',id);return json({...await getExecution(owner,campaign),experimentLinks:await experimentLinkOptions(owner,campaign)})}catch(e){return failure(e)}}
 export async function POST(req:Request){let owner='',lock='';try{
  owner=await identity(req);secureMutation(req);
@@ -52,11 +53,15 @@ export async function POST(req:Request){let owner='',lock='';try{
  if(input.action==='link_experiment')return json(await linkExperiment(owner,campaign,p,input.experiment));
  if(input.action==='link_media')return json(await linkMedia(owner,campaign,p,input,who!));
  if(input.action==='resolve_uncertain')return json(await resolveUncertain(owner,campaign,p,input,who!));
+ // C3: 직접 게시로 게시 확인된 발행의 댓글·답글을 학습 실험실용으로 수집한다(추가만, 자동 답글 없음).
+ if(input.action==='collect_comments')return json(await collectPublicationComments(owner,campaign,p,who));
  if(input.action==='execute'){
-  const {pending,token}=await reservePublication(owner,campaign,p,origin);
+  const {pending,token,direct}=await reservePublication(owner,campaign,p,origin);
   await releaseLock(owner,lock);lock='';
   let result:Publication;
-  try{await requireGrowthRunning(owner);await assertGrowthPublicationDispatch(owner,campaign,pending)}catch{return json(await saveProviderResult(owner,campaign,pending,{...pending,status:'failed',error:'전송 직전 실행 상태·위임·예약을 확인할 수 없거나 중단되었습니다. Buffer 요청을 보내지 않았습니다.'}));}
+  try{await requireGrowthRunning(owner);await assertGrowthPublicationDispatch(owner,campaign,pending)}catch{return json(await saveProviderResult(owner,campaign,pending,{...pending,status:'failed',error:'전송 직전 실행 상태·위임·예약을 확인할 수 없거나 중단되었습니다. '+(direct?'게시':'Buffer')+' 요청을 보내지 않았습니다.'}));}
+  // C3: 승인 때 발행 계정이 직접 게시(instagram_direct·threads)였으면 Buffer 대신 공급자에 직접 보낸다(두 단계·결과 미확인 재전송 금지). Buffer 경로는 그대로다.
+  if(direct)return json(await saveProviderResult(owner,campaign,pending,await dispatchDirect(owner,campaign,pending).catch(()=>({...pending,status:'uncertain' as const,error:'직접 게시 결과를 확인하지 못했습니다. 계정에서 게시 여부를 확인하고 자동 재전송하지 마세요.'}))));
   try{const remote=await submitBuffer(token,{channelId:pending.channelId!,text:pending.caption,url:pending.mediaUrl,dueAt:pending.scheduledAt});result={...pending,status:providerPublicationStatus(remote.status),providerId:remote.id,providerStatus:remote.status}}
   catch{result={...pending,status:'uncertain',error:'접수 여부를 확인하지 못했습니다. Buffer에서 확인하고 자동 재전송하지 마세요.'}}
   return json(await saveProviderResult(owner,campaign,pending,result));

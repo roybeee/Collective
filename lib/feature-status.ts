@@ -258,7 +258,20 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   posAutoRow(input.flags),
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},
   {key:'ads',label:'광고 집행',status:'unimplemented',reason:'광고 생성·광고비 집행 기능 없음'},
+  instagramDirectRow(input.flags),
+  threadsRow(input.flags),
  ];
+}
+// C3 직접 게시: 스위치 instagram_direct_publish·threads_publish. 켜져 있어도 브랜드 연결(장수명 토큰)과 사람의 승인·실행이 있어야 보낸다. 꺼져 있으면 Buffer 경로 그대로다.
+function instagramDirectRow(flags:unknown):FeatureRow{
+ const base={key:'instagram-direct',label:'Instagram 직접 게시(Graph API)',flag:'instagram_direct_publish'},link:FeatureLink={label:'연결 및 설정에서 확인',view:'settings',section:'settings-channels'},enabled=flagState(flags,'instagram_direct_publish');
+ if(enabled===null)return {...base,status:'blocked',reason:'Instagram 직접 게시 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['브랜드별 Instagram 직접 게시 연결이 있는 캠페인의 승인된 발행을 실행 때 Graph API로 게시(두 단계, 결과 미확인 재전송 없음)','연결이 없는 브랜드는 Buffer 경로 그대로']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다(꺼져 있으면 Buffer 경로)'],link};
+}
+function threadsRow(flags:unknown):FeatureRow{
+ const base={key:'threads',label:'Threads 게시',flag:'threads_publish'},link:FeatureLink={label:'연결 및 설정에서 확인',view:'settings',section:'settings-channels'},enabled=flagState(flags,'threads_publish');
+ if(enabled===null)return {...base,status:'blocked',reason:'Threads 게시 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['브랜드별 Threads 연결이 있는 캠페인의 승인된 발행을 실행 때 Threads API로 게시(텍스트·이미지, 본문 500자)','답글은 수집만, 자동 답글 없음']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다'],link};
 }
 // 화면에 그릴 모양(평가 9회차 결함 2·3). 사유는 항목 배열로 나눠 MetaLine으로 그리고(가운뎃점 ' · '로 잇지 않는다),
 // 기능 스위치 이름(소문자_밑줄)·단계 코드(B4-2c 등)·내부 이름(digest 큐)은 화면 문구에서 빼서 tech로 넘긴다. 화면은 tech를 '자세히' 안 기술 정보로만 보인다.

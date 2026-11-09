@@ -42,6 +42,8 @@ export const FEATURE_FLAGS={
  scheduled_runs:{defaultEnabled:false,description:'워커 tick이 소유자 예약(KST 요일·시각)마다 하루 1회 회의 안건 초안 또는 오늘의 안건 항목을 기록한다(G3, 모델·외부 호출 없음). 전역 중단 중과 회의 시작 금지 규칙에서는 건너뛴 사유만 남긴다. 꺼도 예약 조회·편집은 계속된다.'},
  digest_mail:{defaultEnabled:false,description:'예약 실행 큐가 하루 1회 오늘의 결정 대기·기한·실행 결과·비용을 한 화면 요약으로 만들어 설정된 전송 어댑터에 넘기고 기록한다(G3). 이 판의 mail 어댑터는 기록만 남기는 스텁이며 실제 메일·알림톡은 보내지 않는다.'},
  share_links:{defaultEnabled:false,description:'대표·관리자가 동결 고객 보고서의 읽기 전용 공유 링크와 작업물 판별 외부 검토자 승인 링크(최대 10개)를 만든다(G4, 로그인 없음·만료 기본 14일·최대 90일·취소 가능). 꺼지면 만들기는 409, 공개 주소는 모두 404다. 취소·목록은 계속된다.'},
+ instagram_direct_publish:{defaultEnabled:false,description:'브랜드에 Instagram 직접 게시 연결(장수명 토큰)이 있으면 승인된 발행의 실행을 Buffer 대신 Instagram Graph API로 보낸다(컨테이너 → 게시 두 단계, 실행 즉시 게시, 결과 미확인 재전송 금지, 게시 한도 사전 확인). 꺼져 있거나 연결이 없으면 Buffer 경로 그대로다(C3). 승인·실행 버튼 없이 보내는 일은 없다.'},
+ threads_publish:{defaultEnabled:false,description:'브랜드에 Threads 연결이 있고 Instagram 직접 게시 연결이 없으면 승인된 발행의 실행을 Threads API로 보낸다(텍스트·이미지, 본문 500자, 두 단계, 결과 미확인 재전송 금지). 꺼져 있거나 연결이 없으면 이전 경로 그대로다(C3). 답글은 수집만 하고 자동 답글은 없다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};

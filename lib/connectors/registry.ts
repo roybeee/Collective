@@ -2,6 +2,8 @@
 // 이 파일은 동작을 바꾸지 않는다. 각 모듈의 호출 한도·위험도·자격증명 단위를 한곳에서 읽을 수 있게 하고, 계약 테스트(lib/connectors/contract-test.ts)가 서술자를 받는다.
 // 새 커넥터를 만들면 여기에 서술자를 더하고 tests/connector-contract.test.mjs의 하네스를 그 모의 커넥터로 돌린다.
 import type {ConnectorCapability, ConnectorDescriptor, RiskTier} from './types';
+import {INSTAGRAM_PUBLISH_LIMIT, INSTAGRAM_READ_LIMIT} from './instagram-publish';
+import {THREADS_PUBLISH_LIMIT, THREADS_READ_LIMIT} from './threads';
 
 const capability = (c: Omit<ConnectorCapability, 'defaultOff' | 'retryUnknown'>): ConnectorCapability => ({...c, defaultOff: true, retryUnknown: false});
 
@@ -30,6 +32,17 @@ export const connectorRegistry: readonly ConnectorDescriptor[] = [
  {key: 'store_browser', label: '네이버 점포 브라우저(로컬 장치)', module: 'lib/store-browser-*.ts', capabilities: [
   capability({key: 'store_browser.hours.read', reads: ['business_hours'], writes: [], riskTier: 'T1', rateLimit: {perMinute: 6, perDay: 200}, credentialScope: 'store', flag: 'store_browser_execution'}),
   capability({key: 'store_browser.hours.write', reads: [], writes: ['business_hours'], riskTier: 'T3', rateLimit: {perMinute: 1, perDay: 20}, credentialScope: 'store', flag: 'store_browser_execution'}),
+ ]},
+ // C3 직접 게시. 승인된 발행을 사람이 실행할 때만 보낸다(docs/INSTAGRAM-DIRECT.ko.md). 한도 숫자는 초깃값이고 실제 상한은 limit()이 읽는 공급자 쿼터다.
+ {key: 'instagram_direct', label: 'Instagram 직접 게시(Graph API)', module: 'lib/connectors/instagram-publish.ts', capabilities: [
+  capability({key: 'instagram_direct.media.publish', reads: [], writes: ['media', 'media_publish'], riskTier: 'T3', rateLimit: INSTAGRAM_PUBLISH_LIMIT, credentialScope: 'brand', flag: 'instagram_direct_publish'}),
+  capability({key: 'instagram_direct.limit.read', reads: ['content_publishing_limit', 'media', 'me'], writes: [], riskTier: 'T1', rateLimit: INSTAGRAM_READ_LIMIT, credentialScope: 'brand', flag: 'instagram_direct_publish'}),
+  capability({key: 'instagram_direct.comments.read', reads: ['comments'], writes: [], riskTier: 'T1', rateLimit: INSTAGRAM_READ_LIMIT, credentialScope: 'brand', flag: 'instagram_direct_publish'}),
+ ]},
+ {key: 'threads', label: 'Threads 게시', module: 'lib/connectors/threads.ts', capabilities: [
+  capability({key: 'threads.post.publish', reads: [], writes: ['threads', 'threads_publish'], riskTier: 'T3', rateLimit: THREADS_PUBLISH_LIMIT, credentialScope: 'brand', flag: 'threads_publish'}),
+  capability({key: 'threads.limit.read', reads: ['threads_publishing_limit', 'media', 'me'], writes: [], riskTier: 'T1', rateLimit: THREADS_READ_LIMIT, credentialScope: 'brand', flag: 'threads_publish'}),
+  capability({key: 'threads.replies.read', reads: ['replies'], writes: [], riskTier: 'T1', rateLimit: THREADS_READ_LIMIT, credentialScope: 'brand', flag: 'threads_publish'}),
  ]},
 ];
 
