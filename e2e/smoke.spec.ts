@@ -129,6 +129,7 @@ test('사용량 단가 설정을 저장하고 API 기록을 확인한다', async
   if (mobile) await page.locator('[data-sidebar="trigger"]').first().click();
   await nav.click();
   if (mobile) await page.keyboard.press('Escape');
+  await page.getByRole('tab', {name: '사용량·비용', exact: true}).click();
   await expect(page.getByRole('heading', {name: 'AI 사용량과 비용', exact: true})).toBeVisible();
   await page.getByText('모델별 단가 설정', {exact: true}).click();
   await page.getByLabel('실제 모델 ID', {exact: true}).fill('e2e-test-model');
@@ -240,7 +241,7 @@ test('설정 기능표가 확정 사실과 연결 상태를 실제 값으로 보
   const {context, page} = await ownerPage(browser, testInfo, `e2e-features-${testInfo.project.name}-${Date.now()}`);
   const table = page.locator('.scope-card');
   const feature = (key: string) => table.locator(`[data-feature="${key}"]`);
-  await page.goto('/?view=settings');
+  await page.goto('/?view=settings&section=features');
   await expect(table.getByRole('heading', {name: '현재 사용할 수 있는 기능', exact: true})).toBeVisible();
   await expect(feature('png')).toContainText('조건 부족, 확정 사실 필요(현재 0건)');
   await expect(feature('ai')).toContainText('조건 부족, HERMES 연결 전');
@@ -268,6 +269,7 @@ test('설정 기능표가 확정 사실과 연결 상태를 실제 값으로 보
 
   // F5: 설정 채널 카드는 채널마다 워크스페이스 기본 상태를 보이고, 연결 폼에서 적용 범위(워크스페이스 기본 / 브랜드 / 브랜드 지점)를 고른다.
   // 로컬 인증 헤더의 소유자는 관리자라 폼이 보인다. '브랜드'를 고르면 적용할 브랜드 선택이 나타난다.
+  await page.getByRole('tab', {name: '채널 연결', exact: true}).click();
   const channelCard = page.locator('#settings-channels');
   await expect(channelCard.getByRole('group', {name: '네이버 검색광고 연결 상태', exact: true})).toContainText('네이버 검색광고, 워크스페이스 기본, 연결 전');
   const scope = channelCard.getByRole('combobox', {name: '적용 범위', exact: true});

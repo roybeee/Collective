@@ -144,7 +144,7 @@ test('상품 리서치: 가져오기 → 다시 계산 → 후보 상세 → 보
   await expect(page.locator('tbody tr').filter({hasText:MARK}).first().locator('td[data-label="결정 상태"]')).toContainText('보류');
 
   // 7) 설정 기능표 행.
-  await page.goto('/?view=settings');
+  await page.goto('/?view=settings&section=features');
   const featureRow=page.locator('[data-feature="product-research"]');
   await expect(featureRow).toContainText('상품 리서치·MD 선정');
   await expect(featureRow).toContainText('사용 가능');

@@ -56,7 +56,7 @@ test('이메일 로그인·초대·세션 유지·권한 제한·폐기',async({
  await expect(member.getByRole('button',{name:'채널 확인·연결',exact:true})).toHaveCount(0);
  await member.keyboard.press('Escape');
  // ux-3: 직원 사이드바 프로필은 로그인 이메일과 역할(직원)을 보이고, 관리자 전용 단가 폼 대신 서버 403과 같은 안내를 보인다(저장된 단가 조회는 그대로).
- await member.goto('/?view=settings');
+ await member.goto('/?view=settings&section=usage');
  await member.getByRole('button',{name:'Toggle Sidebar'}).click();
  const profile=member.getByRole('group',{name:'로그인 계정'});
  await expect(profile).toContainText('member@example.test');

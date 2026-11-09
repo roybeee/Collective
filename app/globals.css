@@ -414,3 +414,35 @@ details:not(.lazy-panel):not(.all-suggestions)>summary{list-style:none;display:f
 .tabular,table,.stat strong,.stat-list dd,.agenda-counts li b,.trend-value,.record-view dd,.ledger-table,.data-table{font-variant-numeric:tabular-nums}
 /* 테마 전환 버튼(components/app/theme-toggle.tsx): 머리 띠 검색 버튼과 같은 크기·색. */
 .topbar-theme{color:var(--green-44)}@media(max-width:767px){.topbar-theme{width:44px;height:44px}}
+/* X-F settings: 연결 및 설정 섹션 탭(app/settings-sections.tsx)과 채널 연결 카드(app/settings-channels.tsx)·광고 제안 카드(app/ads-proposals-card.tsx). 데스크톱은 왼쪽 세로 목록, 휴대폰은 위쪽 가로 목록이다. */
+.settings-tabs{align-items:flex-start;gap:24px}
+.settings-tabs>[data-slot=tabs-content]{flex:1 1 auto;min-width:0;width:100%}
+.settings-tabs[data-orientation=vertical]>.settings-nav{flex:0 0 200px;align-self:flex-start;padding:0}
+.settings-tabs[data-orientation=vertical]>.settings-nav>[data-slot=tabs-list]{width:100%;height:auto;flex-direction:column;align-items:stretch;gap:2px;background:transparent;padding:0}
+.settings-tabs[data-orientation=vertical]>.settings-nav [data-slot=tabs-trigger]{justify-content:flex-start;width:100%;flex:0 0 auto;height:auto;min-height:40px;padding:8px 12px;border-radius:8px;text-align:left}
+.settings-tabs[data-orientation=vertical]>.settings-nav [data-slot=tabs-trigger][data-state=active]{background:var(--card);border:1px solid var(--neutral-90);color:var(--neutral-8);font-weight:650}
+.settings-tabs[data-orientation=horizontal]>.settings-nav{width:100%}
+.channel-hub{display:flex;flex-direction:column;gap:14px}
+.channel-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.channel-card-head h3{font-size:16px;font-weight:650}
+.channel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.channel-card{padding:18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.channel-card .form-actions{flex-wrap:wrap;gap:8px}
+.channel-card-warn{display:flex;align-items:flex-start;gap:6px;color:var(--red-44);font-size:13px}
+.channel-card-warn svg{flex:0 0 auto;width:16px;height:16px;margin-top:2px}
+.channel-card-switch{font-size:13px;color:var(--muted-foreground)}
+.channel-card-more{border-top:1px solid var(--neutral-97);padding-top:8px}
+.channel-card-more>summary{cursor:pointer;font-size:14px;font-weight:600}
+.channel-card-more>:not(summary){margin-top:10px}
+.channel-verdict{border:1px solid var(--neutral-90);border-radius:8px;padding:10px 12px;font-size:13px}
+.channel-verdict[data-ok=false]{border-color:var(--red-44)}
+.channel-verdict b{display:inline-flex;align-items:center;gap:4px}
+.channel-verdict svg{width:15px;height:15px}
+.channel-verdict ul,.channel-rows,.proposal-list{display:grid;gap:8px;padding:0;list-style:none}
+.channel-rows>li{border:1px solid var(--neutral-97);border-radius:8px;padding:10px 12px;font-size:13px;display:grid;gap:6px}
+.ads-proposals{display:flex;flex-direction:column;gap:12px}
+.proposal-item{border:1px solid var(--neutral-90);border-radius:10px;padding:12px 14px;display:grid;gap:8px;min-width:0;overflow-wrap:anywhere}
+.proposal-badges{display:inline-flex;gap:6px;flex-wrap:wrap}
+.proposal-diff{list-style:none;padding:0;display:grid;gap:4px;font-size:13px}
+.proposal-diff s{color:var(--muted-foreground)}
+@media(max-width:767px){.settings-tabs{gap:12px}.channel-grid{grid-template-columns:minmax(0,1fr);gap:10px}.channel-card{padding:14px;gap:6px}.channel-hub{gap:10px}}

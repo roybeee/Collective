@@ -10,7 +10,7 @@ import type {GrowthDetectionView} from '@/lib/growth-detection-server';
 import styles from './growth-panel.module.css';
 type View=GrowthDetectionView;
 type Row=View['signals'][number];
-const kindLabels={demand_rise:'주문 증가',demand_drop:'주문 감소',stockout_risk:'품절 위험',return_cluster:'반품 원인 반복',cs_recurring:'문의 반복',season:'시즌 일정'} as const;
+const kindLabels={demand_rise:'주문 증가',demand_drop:'주문 감소',stockout_risk:'품절 위험',return_cluster:'반품 원인 반복',cs_recurring:'문의 반복',season:'시즌 일정',scheduled_review:'예약 검토'} as const;
 const statusLabels={new:'새 신호',acknowledged:'담당 지정',dismissed:'기각'} as const;
 async function read(campaignId:string,signal:AbortSignal):Promise<View>{const r=await fetch(`/api/growth/detections?campaignId=${encodeURIComponent(campaignId)}`,{cache:'no-store',signal}),v:unknown=await r.json();if(!r.ok)throw new Error('감지 신호를 조회하지 못했습니다. 관리자 권한과 연결 상태를 확인하세요.');if(!v||typeof v!=='object'||!Array.isArray((v as View).signals))throw new Error('감지 응답을 확인하지 못했습니다.');return v as View;}
 export function GrowthDetectionPanel({campaignId}:{campaignId:string}){return <Workspace key={campaignId} campaignId={campaignId}/>}
