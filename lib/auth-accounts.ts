@@ -1,5 +1,5 @@
-import {AuthError} from './auth-errors';
-import {authDb,hashToken,randomToken,roleSql,type Principal,type Role} from './auth-session';
+import {AuthError,invalidCredentials} from './auth-errors';
+import {authDb,hashToken,randomToken,roleSql,sessionInsert,type Principal,type Role} from './auth-session';
 import {normalizeEmail} from './auth-request';
 type Account={id:string;email:string;role:Role;stored:'admin'|'member';status:string;accepted:number;workspace_owner:string;created_at:number};
 const columns=`u.id,u.email,${roleSql('u')} AS role,u.role AS stored,u.status,u.password_hash IS NOT NULL AS accepted,u.workspace_owner,u.created_at`;
@@ -100,4 +100,50 @@ export async function revokeSessions(actor:Principal,userId:unknown){
   db.prepare(`DELETE FROM auth_sessions WHERE user_id=? AND EXISTS(SELECT 1 FROM auth_users WHERE ${where})`).bind(target.id,...values),
  ]);
  if(!results[0].meta.changes)throw new AuthError(409,'계정 정보가 변경됐습니다. 다시 시도해 주세요.');return {ok:true,self:target.id===actor.id};
+}
+// 셀프 가입(G8, 스위치 self_signup, docs/SELF-SIGNUP.ko.md). 새 계정은 자기 id를 workspace_owner로 갖는 새 워크스페이스의 첫 관리자(=소유자)다.
+// 가입 대기 계정은 status 'pending'이고 이메일 확인 링크(auth_tokens kind 'verify', 24시간 일회용)로 활성화한다. 확인 전에는 로그인할 수 없다.
+// 예시 브랜드·캠페인은 넣지 않는다(workspace_origin 행, lib/server.ts seedBrands). 동의 기록은 signup_consent 1행에 남긴다(비밀번호·토큰 원문 없음).
+export const SIGNUP_TERMS_VERSION='terms-draft-2026-11',SIGNUP_PRIVACY_VERSION='privacy-draft-2026-11';
+const VERIFY_KIND='verify',VERIFY_TTL=86400000;
+const signupConflict=()=>new AuthError(409,'이 이메일로는 새로 가입할 수 없습니다. 이미 계정이 있으면 로그인해 주세요.');
+export function signupConsents(input:Record<string,unknown>){
+ if(input.termsAccepted!==true||input.privacyAccepted!==true)throw new AuthError(400,'이용약관과 개인정보 수집·이용에 동의해 주세요. 두 항목은 필수입니다.');
+ if(input.marketingOptIn!==undefined&&typeof input.marketingOptIn!=='boolean')throw new AuthError(400,'마케팅 수신 동의 값을 확인해 주세요.');
+ return {termsVersion:SIGNUP_TERMS_VERSION,privacyVersion:SIGNUP_PRIVACY_VERSION,marketingOptIn:input.marketingOptIn===true};
+}
+// 같은 이메일의 확인 전 셀프 가입은 새 비밀번호와 새 링크로 다시 시작한다(이전 링크 폐기). 초대·기존 계정 이메일은 409다.
+export async function startSelfSignup(email:string,passwordHash:string,consents:ReturnType<typeof signupConsents>){
+ const db=authDb(),existing=await db.prepare('SELECT id,workspace_owner,status FROM auth_users WHERE email=?').bind(email).first<{id:string;workspace_owner:string;status:string}>();
+ if(existing&&(existing.status!=='pending'||existing.workspace_owner!==existing.id))throw signupConflict();
+ const id=existing?.id??crypto.randomUUID(),token=randomToken(),hash=await hashToken(token),now=Date.now(),at=new Date(now).toISOString();
+ const statements=[
+  db.prepare("INSERT INTO auth_users(id,email,password_hash,workspace_owner,role,status,created_at) VALUES(?,?,?,?,'admin','pending',?) ON CONFLICT(id) DO UPDATE SET password_hash=excluded.password_hash WHERE auth_users.status='pending' AND auth_users.workspace_owner=auth_users.id").bind(id,email,passwordHash,id,now),
+  db.prepare('UPDATE auth_tokens SET used=? WHERE user_id=? AND used IS NULL').bind('revoked',id),
+  db.prepare("INSERT INTO auth_tokens(token_hash,user_id,email,owner,role,kind,expires_at,created_at) SELECT ?,id,email,workspace_owner,role,?,?,? FROM auth_users WHERE id=? AND email=? AND status='pending' AND workspace_owner=id AND password_hash=?").bind(hash,VERIFY_KIND,now+VERIFY_TTL,now,id,email,passwordHash),
+  db.prepare('INSERT OR IGNORE INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').bind(`${id}:workspace_origin:current`,id,'workspace_origin','',JSON.stringify({selfSignup:true,createdAt:at}),at),
+  db.prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at').bind(`${id}:signup_consent:current`,id,'signup_consent','',JSON.stringify({...consents,consentedAt:at}),at),
+ ];
+ // 동시에 같은 새 이메일로 가입하면 이메일 고유 색인 충돌로 batch 전체가 되돌려진다. 이긴 쪽만 남고 진 쪽은 409다.
+ let results:D1Result[];
+ try{results=await db.batch(statements)}catch{throw signupConflict()}
+ if(!results[2].meta.changes)throw new AuthError(409,'가입 정보가 변경됐습니다. 다시 시도해 주세요.');
+ return {token};
+}
+// 이메일 확인: 링크 일회 소비·계정 활성화·로그인 세션 생성을 한 batch로 한다. 이메일이 링크와 다르거나 만료·사용된 링크는 401이다.
+export async function verifySelfSignup(email:string,token:unknown){
+ if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token))throw invalidCredentials();
+ const db=authDb(),hash=await hashToken(token),now=Date.now();
+ const target=await db.prepare(`SELECT u.id,u.email,u.password_hash AS passwordHash,u.workspace_owner AS owner,${roleSql('u')} AS role FROM auth_tokens t JOIN auth_users u ON u.id=t.user_id WHERE t.token_hash=? AND t.email=? AND t.email=u.email AND t.kind=? AND t.used IS NULL AND t.expires_at>? AND u.status='pending' AND u.workspace_owner=u.id`).bind(hash,email,VERIFY_KIND,now).first<{id:string;email:string;passwordHash:string|null;owner:string;role:Role}>();
+ if(!target?.passwordHash)throw invalidCredentials();
+ const nonce=randomToken(),session=randomToken(),owned='EXISTS(SELECT 1 FROM auth_tokens WHERE token_hash=? AND used=?)';
+ const results=await db.batch([
+  db.prepare("UPDATE auth_tokens SET used=? WHERE token_hash=? AND used IS NULL AND expires_at>? AND EXISTS(SELECT 1 FROM auth_users WHERE id=auth_tokens.user_id AND status='pending')").bind(nonce,hash,now),
+  db.prepare(`UPDATE auth_users SET status='active' WHERE id=? AND status='pending' AND ${owned}`).bind(target.id,hash,nonce),
+  db.prepare(`UPDATE auth_tokens SET used='revoked' WHERE user_id=? AND used IS NULL AND ${owned}`).bind(target.id,hash,nonce),
+  sessionInsert(await hashToken(session),target.id,target.passwordHash),
+ ]);
+ if(!results[0].meta.changes||!results[3].meta.changes)throw invalidCredentials();
+ const user:Principal={id:target.id,email:target.email,role:target.role,owner:target.owner};
+ return {user,token:session};
 }

@@ -302,6 +302,8 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   selectionRewriteRow(input.flags),
   daangnAdsRow(input.flags),
   placeDraftsRow(input.flags),
+  selfSignupRow(input.flags),
+  creditBillingRow(input.flags),
  ];
 }
 // C8 당근 광고 OpenAPI: 스위치 daangn_ads. 꺼지면 연결·수집·제안 생성·승인·반영은 409, 해제·조회·미확인 대조는 계속된다(docs/DAANGN-ADS.ko.md).
@@ -350,4 +352,16 @@ export function featureView(row:FeatureRow):FeatureView{
  const label=plainText(row.label,tech).split(/\s·\s/).join(', ');
  const reason=(Array.isArray(row.reason)?row.reason:row.reason?row.reason.split(/\s·\s/):[]).map(p=>plainText(p,tech)).filter(Boolean);
  return {key:row.key,label,status:row.status,reason,...(row.link?{link:{...row.link,label:plainText(row.link.label,tech)}}:{}),tech:[...new Set(tech)]};
+}
+// G8 셀프 가입: 스위치 self_signup(플랫폼 스위치, 운영자 워크스페이스 값). 켜지면 로그인 화면에서 새 워크스페이스 가입이 열린다(docs/SELF-SIGNUP.ko.md).
+function selfSignupRow(flags:unknown):FeatureRow{
+ const base={key:'self-signup',label:'새 워크스페이스 셀프 가입',flag:'self_signup'},link:FeatureLink={label:'연결 및 설정에서 확인',view:'settings'},enabled=flagState(flags,'self_signup');
+ if(enabled===null)return {...base,status:'blocked',reason:'셀프 가입 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['이메일·비밀번호 가입, 필수 동의 2개와 선택 동의 1개(미리 선택 없음)','메일 발송 전이라 확인 링크를 화면에 보입니다(공개 운영 전 메일 연결 필요)']}:{...base,status:'blocked',reason:['셀프 가입 스위치 꺼짐','초대로만 가입합니다(운영자 워크스페이스 소유자가 켭니다)'],link};
+}
+// G8 선불 크레딧: 스위치 credit_billing(플랫폼 스위치). 켜지면 원장·알림·잔액 0 정지와 테스트 결제가 동작한다(docs/BILLING.ko.md).
+function creditBillingRow(flags:unknown):FeatureRow{
+ const base={key:'credit-billing',label:'선불 크레딧 요금제·테스트 결제',flag:'credit_billing'},link:FeatureLink={label:'연결 및 설정에서 확인',view:'settings'},enabled=flagState(flags,'credit_billing');
+ if(enabled===null)return {...base,status:'blocked',reason:'크레딧 요금제 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['1,000토큰 = 1크레딧, 80%·100% 알림, 잔액 0이면 새 AI 실행 정지','토스페이먼츠 테스트 키로만 충전·환불합니다(실결제 전환은 대표 결정)']}:{...base,status:'blocked',reason:['크레딧 요금제 스위치 꺼짐','요금표 미리보기만 보입니다(운영자 워크스페이스 소유자가 켭니다)'],link};
 }

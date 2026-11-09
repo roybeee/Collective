@@ -23,6 +23,13 @@ export type SubjectErasure='delete'|'minimize'|'legal_hold'|'none';
 export type RecordKind={kind:string;parent:RecordParent;campaignDeletion:CampaignDeletionPolicy;links?:readonly CampaignLink[];blocksDeletion?:true;purge?:LearningPurge;retention?:RetentionPolicy;subjectErasure?:SubjectErasure;description:string};
 
 export const recordKinds:readonly RecordKind[]=[
+ // G8 셀프 가입·선불 크레딧(docs/SELF-SIGNUP.ko.md·docs/BILLING.ko.md). 모두 소유자 범위이고 캠페인과 무관하다.
+ {kind:'workspace_origin',parent:'none',campaignDeletion:'not_campaign_scoped',description:'셀프 가입으로 만든 워크스페이스 표시 1행(id current, 가입 시각). 있으면 예시 브랜드·캠페인을 넣지 않는다(G8). 캠페인과 무관'},
+ {kind:'signup_consent',parent:'none',campaignDeletion:'not_campaign_scoped',description:'셀프 가입 동의 기록 1행(id current, 이용약관·개인정보 수집이용 필수 동의 문서 판·마케팅 수신 선택 여부·동의 시각). 캠페인과 무관(G8)'},
+ {kind:'billing_account',parent:'none',campaignDeletion:'not_campaign_scoped',description:'크레딧 과금 시작 시각과 요금제 1행(id current). 시작 전 AI 사용은 크레딧에서 빼지 않는다. 캠페인과 무관(G8)'},
+ {kind:'credit_ledger',parent:'none',campaignDeletion:'not_campaign_scoped',description:'크레딧 원장 항목(월 기본 제공·충전·AI 사용·환불·소멸, 부호 붙은 크레딧·월·주문 번호). 월별 항목은 같은 id로 다시 계산한다. 캠페인과 무관(G8)'},
+ {kind:'billing_order',parent:'none',campaignDeletion:'not_campaign_scoped',description:'크레딧 충전 주문(주문 번호·상품·크레딧·공급가·부가세·총액·상태·결제 키·테스트/라이브). 결제 키는 화면 응답에서 뺀다. 캠페인과 무관(G8)'},
+ {kind:'billing_alert',parent:'none',campaignDeletion:'not_campaign_scoped',description:'크레딧 사용량 알림(월·단계(80·100%)당 1행, 문구·시각). 캠페인과 무관(G8)'},
  {kind:'autonomy_settings',parent:'none',campaignDeletion:'not_campaign_scoped',description:'소유자의 행동별 자율성 규칙(자동·확인 후·금지) 1행(id current). 캠페인과 무관(G3)'},
  {kind:'scheduled_run',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'소유자가 정한 예약(종류·행동·KST 요일·시각·브랜드·캠페인 범위). 캠페인과 함께 삭제(G3)'},
  {kind:'scheduled_run_execution',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'예약 실행 기록(예약 id+KST 날짜당 1행, 완료·건너뜀·실패 사유·만든 산출물 id). 캠페인과 함께 삭제(G3)'},
