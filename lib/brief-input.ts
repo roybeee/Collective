@@ -1,3 +1,4 @@
+import {outputLanguageLine} from './brief-language';
 import {campaignEvidencePolicy} from './campaign-policy';
 import {aiBrand,withoutPlanOwner,withoutAssignees,productionAllow,inputMaskingRecord,BRAND_MASK_PATHS,DIRECTIVE_MASK_PATHS,FACT_MASK_PATHS,STORE_MASK_PATHS,campaignMaskPaths,metricMaskPaths,type EvidenceContext,type InputMasking} from './ai-context';
 import {maskFields} from './pii-scan';
@@ -37,5 +38,6 @@ export function buildBriefSubmission({input,context:c,contextDate,storeAllow}:Br
  const built={brand:aiBrand(c.brand),evidence:{facts:c.evidence.facts,directives:c.evidence.directives},brandArchive:withoutAssignees(digest?digest.archive:c.archive),currentBrief:withoutPlanOwner(input),trialLearning:c.trialLearning,previousCampaigns:c.previousCampaigns.map(p=>withoutPlanOwner(p)),recordedMetrics:c.recordedMetrics,approvedLearnings:c.approvedLearnings,contextDate};
  const capped=digest?capInput(built,ROLE_INPUT_TOKEN_CAP):null;
  const masked=maskFields(capped?capped.value:built,BRIEF_MASK_PATHS,{allow:productionAllow(c.evidence,c.archive,storeAllow)});
- return {instructions:briefInstructionsFor(input)+'\n'+campaignEvidencePolicy(input),input:JSON.stringify(masked.value),maskingRecord:[...inputMaskingRecord(masked),...c.sourceMasking],...(digest&&capped?{diet:{version:INPUT_DIET_VERSION,archive:digest.report,cap:capped.report}}:{})};
+ // 출력 언어(G6): 브리프가 영어·일본어일 때만 한 줄이 붙는다(lib/brief-language.ts). 한국어면 빈 문자열이라 바이트 동일하다.
+ return {instructions:briefInstructionsFor(input)+'\n'+campaignEvidencePolicy(input)+outputLanguageLine(input),input:JSON.stringify(masked.value),maskingRecord:[...inputMaskingRecord(masked),...c.sourceMasking],...(digest&&capped?{diet:{version:INPUT_DIET_VERSION,archive:digest.report,cap:capped.report}}:{})};
 }

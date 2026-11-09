@@ -5,6 +5,7 @@ import {CardButton} from '@/components/app/card-button';
 import {MetaLine} from '@/components/app/meta-line';
 import {Button} from '@/components/ui/button';
 import {askConfirm} from '@/components/app/confirm-dialog';
+import {LocaleToggle} from '@/components/app/locale-toggle';
 
 import {useCallback,useEffect,useState,type FormEvent} from 'react';
 import {Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle} from '@/components/ui/dialog';
@@ -50,6 +51,8 @@ export function AccountPanel({user,onClose,onSignedOut}:{user:AccountUser;onClos
   return list;
  }
  return <Dialog open onOpenChange={open=>{if(!open)onClose()}}><DialogContent className="auth-dialog"><DialogHeader><DialogTitle>팀 계정 관리</DialogTitle><DialogDescription>초대한 직원은 이 워크스페이스의 업무 자료를 함께 사용합니다.{user.role==='owner'?'':' 관리자 계정의 초대·변경은 소유자만 할 수 있습니다.'}</DialogDescription></DialogHeader>
+  {/* 화면 언어(G6 1단계). 머리 띠가 아니라 계정 메뉴에서 바꾼다(홈 첫 로딩 예산). 계정 메뉴가 없는 헤더 인증에서는 설정 > 팀·권한에 같은 선택이 있다. */}
+  <LocaleToggle className="mb-2"/>
   <form className="auth-invite-form" onSubmit={e=>{e.preventDefault();void perform({action:'invite',email,role:user.role==='owner'?role:'member'})}}>
    <label>초대할 이메일<Input type="email" required maxLength={254} value={email} onChange={e=>setEmail(e.target.value)} disabled={pending}/></label>
    {user.role==='owner'&&<label>계정 권한<NativeSelect value={role} onChange={e=>setRole(e.target.value as 'admin'|'member')} disabled={pending}><option value="member">직원</option><option value="admin">관리자</option></NativeSelect></label>}

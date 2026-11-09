@@ -5,16 +5,18 @@ import {useSyncExternalStore} from 'react';
 import {readTheme,setTheme,subscribeTheme} from '@/lib/ui/theme';
 import {Monitor,Moon,Sun} from 'lucide-react';
 import {Button} from '@/components/ui/button';
+import {useT} from '@/lib/i18n-react';
+import type {MessageKey} from '@/lib/i18n';
 
 const order=['system','light','dark'] as const;
 type Mode=(typeof order)[number];
-const labels:Record<Mode,string>={system:'시스템',light:'라이트',dark:'다크'};
+const labels:Record<Mode,MessageKey>={system:'theme.system',light:'theme.light',dark:'theme.dark'};
 const icons:Record<Mode,typeof Monitor>={system:Monitor,light:Sun,dark:Moon};
 
 export function ThemeToggle({className}:{className?:string}){
- const current:Mode=useSyncExternalStore(subscribeTheme,readTheme,()=>'system');
+ const t=useT(),current:Mode=useSyncExternalStore(subscribeTheme,readTheme,()=>'system');
  const next=order[(order.indexOf(current)+1)%order.length];
  const Icon=icons[current];
- const label=`화면 테마: ${labels[current]}. 누르면 ${labels[next]}`;
+ const label=t('theme.label',{current:t(labels[current]),next:t(labels[next])});
  return <Button type="button" variant="ghost" size="icon" className={className} aria-label={label} title={label} data-theme-mode={current} onClick={()=>setTheme(next)}><Icon aria-hidden/></Button>;
 }
