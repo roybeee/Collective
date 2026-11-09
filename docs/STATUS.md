@@ -186,7 +186,7 @@
 - 성장1 필수 코드 게시 대기 0건. #216·#218·#219·#225는 통합 #244로 병합·게시했다. #206·#208·#210~#214·#217·#220·#223·#231·#235·#237과 관련 문서도 현재 제품에 포함된다.
 - 기존 대기열의 미병합·404 문구는 과거 상태다. R 신규 PR #234·#241·#242·#243 및 인터뷰 게시 문서 #236·#240은 별도 소유자 작업이며 성장1 필수 잔여가 아니다.
 - 요청 형식: `- #PR번호 · 레인 · 급함/보통 · 새 스위치와 기본값`
-- #358·#364·#370 · 레인 W(글로벌 도약 통합 1~3차) · 보통 · 새 스위치 17개 모두 기본 꺼짐(`ai_image_disclosure`, `pos_tossplace`, `autonomy_rules`, `scheduled_runs`, `digest_mail`, `share_links`, `meeting_choice_gate`, `instagram_direct_publish`, `threads_publish`, `naver_ads_write`, `kakao_bizmessage`, `brand_autolearn`, `creative_score`, `selection_rewrite`, `daangn_ads`, `place_drafts`, `mcp_server`). 스위치 없이 바로 보이는 변경: 결정 인박스 v2·승인 카드 v2·다크 모드·Pretendard·실행 타임라인·계획 카드·설정 섹션 탭·채널 연결 카드·신뢰 UI·채널 미리보기·버전 비교. D1 스키마 변경 없음(모두 records kind 추가). 게시 전 확인: 홈 첫 로딩 JS 165KB(예산 170), 운영에서 `/api/mcp`가 Sites 로그인 디스패처를 통과하는지.
+- #358·#364·#370·#377·#381 · 레인 W(글로벌 도약 통합 1~4차·마감) · 보통 · 새 스위치 21개 모두 기본 꺼짐(레인 W 칸 목록). 스위치 없이 바로 보이는 변경: 결정 인박스 v2·승인 카드 v2·다크 모드·Pretendard·실행 타임라인·계획 카드·설정 섹션 탭·채널 연결 카드·신뢰 UI·채널 미리보기·버전 비교·언어 전환(기본 한국어). D1 스키마 변경 없음. 게시 전 확인: 홈 첫 로딩 JS(예산 172KB), 운영에서 `/api/mcp`가 Sites 로그인 디스패처를 통과하는지, `DEPLOY_TARGET` 미설정(sites) 유지.
 
 ## 레인 A (Claude A 세션 — 제품 기능·게시 담당)
 갱신: 2026-10-05 13:00 UTC (Codex: 보존 처리·실제 검증 자료 후속)
@@ -324,14 +324,17 @@
 - #131·#135는 위 마감 기록과 `docs/releases/2026-09-26-*.md`로 대체하고 닫았다(오래된 STATUS 절은 옮기지 않음).
 - 요청(레인 R, 2026-09-26): `scripts/eval/specs/syn-s7-franchise.json`의 `expectations.industry`는 S7 재가져오기(기존 8건 삭제 뒤 새로 생성·가져오기)를 계획할 때 그 PR에서만 `['franchise','fnb']`로 바꾼다. 그 전에 바꾸면 specHash가 달라져 재가져오기가 409다. 운영 D1 S7 8건은 대표 승인으로 레인 R 콘솔 키트가 바꾼다(D1이 정본). 갱신 전 S7 run을 재채점하면 `caseUpdatedAfterRun` 표시가 붙고 판정은 같다([관찰 기록](observations/2026-09-26-lane-r-s7-industry.md)).
 ## 레인 W (Claude W 세션 — 글로벌 도약)
-갱신: 2026-11-09 03:20 UTC
-- 계획: [GLOBAL-PLAN v2](GLOBAL-PLAN.ko.md)(#350). 340e972 재판정: 글로벌 12기능 부분 11·없음 1, UX 15패턴 부분 13·없음 2, 한국 10기능 있음 2·부분 6·없음 2.
-- `merged`: 1차 #358(`4985c72`) — 결정 인박스 v2·승인 카드 v2, 다크 모드·Pretendard, 실행 타임라인·계획 카드·회의 A/B 선택, 커넥터 v2·AI 생성 이미지 표시, 토스플레이스 POS·홀드아웃 증분, 자율성 규칙·예약 실행·일일 요약, 보고서·외부 검토자 공유 링크. 2차 #364(`0594595`) — Instagram 직접 게시·Threads, 네이버 검색광고 제안→승인→반영, 카카오 비즈메시지 어댑터·광고성 전송 규칙·수신동의 원장, 브랜드 자동 학습·첫 캠페인 템플릿, 소재 예측 점수. 3차 #370(`0aaca12`) — 신뢰 UI(인용·AI 배지·근거 3단계·규정 패널), 채널 미리보기·선택 다시 쓰기·어절 버전 비교, 설정 섹션 탭·채널 연결 카드·자동화 규칙·광고 제안 카드, 당근 광고·플레이스 초안, MCP 서버·API 키.
-- 검증(3차 통합 트리, 로컬): tsc 0, 단위 408/408 suites·21,452 assertions(mocked), lint 70/39, build 0, 전체 E2E 337 passed·5 skipped(실패 4 중 스모크 2건 수정 후 통과, `ux-keyboard-tasks` 과업 3 2건은 macOS Chromium native select 차이로 로컬만 실패·CI 통과). 통합 PR 3건 모두 CI verify·e2e-smoke passed.
-- 홈 첫 로딩 JS: next-themes 교체(175.5→174.5KB)·품질 콘솔 지연 로딩(175.0→165.2KB). 예산 175→170KB로 강화. 새 API 경로마다 프레임워크 라우트 표가 홈 index 청크에 실리는 점에 유의.
-- not_run: 모든 외부 쓰기 실계정 검증, 운영 게시, 사람 사용성 시험.
-- 진행 중: Phase 2(다국어 1단계, 브랜드·점포 범위 역할, GEO 자동 추적, 셀프 가입·크레딧 요금제(테스트 결제), Cloudflare Workers 직접 배포 준비(원격 실행 없음)) — base `integrate/wave3`.
-- 막힌 것(대표 직접): Meta 앱 검수, 당근 광고 OpenAPI 키, 네이버 검색광고 API 실계정 확인(플레이스 광고 범위), 토스플레이스 개발자 앱, 네이버 플레이스 플러스 POS 제휴, 카카오 비즈메시지 딜러 계약.
+갱신: 2026-11-09 06:40 UTC
+- 계획: [GLOBAL-PLAN v2](GLOBAL-PLAN.ko.md). Phase 1·2·3 개발 범위 **merged**(main `1738d40`). published·runtime-verified 아님.
+- `merged` 통합 PR: 1차 #358(`4985c72`), 2차 #364(`0594595`), 3차 #370(`0aaca12`), 4차 #377(`e71b79f`), 마감 #381(`1738d40`). 원 레인 PR 커밋은 각 병합에 보존.
+- 들어간 것(에픽 22 + 마감): 결정 인박스 v2·승인 카드 v2, 다크 모드·Pretendard, 실행 타임라인·계획 카드·회의 A/B 선택, 커넥터 v2·AI 생성 이미지 표시, 토스플레이스 POS·홀드아웃 증분, 자율성 규칙·예약 실행·일일 요약, 보고서·외부 검토자 공유 링크, Instagram 직접 게시·Threads, 네이버 검색광고 제안→승인→반영, 카카오 비즈메시지·수신동의 원장, 브랜드 자동 학습·템플릿, 소재 예측 점수, 신뢰 UI(인용·AI 배지·근거 3단계·규정 패널), 채널 미리보기·선택 다시 쓰기·어절 버전 비교, 설정 섹션 탭·채널 연결 카드, 당근 광고·플레이스 초안, MCP 서버·API 키, 다국어 1단계(ko/en/ja), 범위 역할(조회 57·쓰기 19 경로 가드), GEO 자동 추적, 셀프 가입·크레딧(테스트 결제), Workers 직접 배포 준비(원격 실행 0회).
+- 검증(마감 통합 트리): tsc 0, 단위 423/423 suites·22,366 assertions(mocked), lint 70/39, build 0, 전체 E2E 355 passed·7 skipped·2 failed(`ux-keyboard-tasks` 과업 3, macOS 전용·CI Linux 통과). #381 CI verify·e2e-smoke·workers-build passed.
+- 독립 평가([기록](observations/2026-11-09-qa-global-eval.md)): 12차원 4.50→4.33(모바일·접근성 회귀). 회귀 D1~D6은 #381에서 수정(홈·AI 팀·작업물·가맹 axe serious·critical 0, 390px 문서 폭 390). 재채점은 not_run.
+- 홈 첫 로딩 JS: 로컬 169.85KB, CI 171KB. 예산 175→170(오늘 강화)→172KB. 새 코드는 지연 청크에 둔다.
+- 새 스위치 21개 모두 기본 꺼짐: `ai_image_disclosure`, `autonomy_rules`, `brand_autolearn`, `creative_score`, `credit_billing`, `daangn_ads`, `digest_mail`, `geo_tracking`, `instagram_direct_publish`, `kakao_bizmessage`, `mcp_server`, `meeting_choice_gate`, `naver_ads_write`, `place_drafts`, `pos_tossplace`, `scheduled_runs`, `scoped_roles`, `selection_rewrite`, `self_signup`, `share_links`, `threads_publish`. D1 스키마 변경 없음.
+- not_run: 외부 실계정(Meta·Threads·네이버 검색광고·당근·카카오 딜러·토스플레이스·토스페이먼츠·HERMES GEO), 운영 게시, 사람 사용성 5명, 12차원 재채점.
+- 운영 전 남은 일: 셀프 가입 확인 메일 발송 어댑터, Workers 이전 시 Sites D1·R2 데이터 내보내기 경로(대표 결정), `/api/share` GET 직원 노출 여부(대표 결정), 다국어 2단계(캠페인 상세·작업물·성장 패널), 성장·판매 탭 `GET /api/growth/signal-sources` 400(기존 결함).
+- 막힌 것(대표 직접): Meta 앱 검수, 당근 광고 OpenAPI 키, 네이버 검색광고 실계정(플레이스 광고 범위), 토스플레이스 개발자 앱, 플레이스 플러스 POS 제휴, 카카오 비즈메시지 딜러 계약, 토스페이먼츠 실결제(통신판매업 신고·환불 정책).
 
 ## 이전 기록 (레인 도입 전)
 
