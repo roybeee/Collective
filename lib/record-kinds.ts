@@ -28,6 +28,7 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'scheduled_run_execution',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'예약 실행 기록(예약 id+KST 날짜당 1행, 완료·건너뜀·실패 사유·만든 산출물 id). 캠페인과 함께 삭제(G3)'},
  {kind:'meeting_agenda_draft',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'예약 실행이 만든 회의 안건 초안(최근 7일 성과 요약 문장, 모델 호출 없음). 회의 시작은 사람이 한다. 캠페인과 함께 삭제(G3)'},
  {kind:'digest_sent',parent:'none',campaignDeletion:'not_campaign_scoped',description:'일일 요약 전송 기록(KST 날짜당 1행, 어댑터 이름·가린 대상·본문·결과). 이 판은 기록만 남기는 스텁. 캠페인과 무관(G3)'},
+ {kind:'rewrite_request',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'제작·발행 캡션 편집기의 선택 다시 쓰기 요청(행 id rw-…: 방식·톤·채널·고른 글·상태·HERMES 접수 번호·제안 글·받기/버리기 결정·모델·요청한 사람 id와 역할). 제출 원문은 hermes_submission rewrite-<id>(부모 없음)다. 캡션·발행은 바꾸지 않는다. 캠페인과 함께 삭제(X6)'},
  {kind:'share_link',parent:'none',campaignDeletion:'delete',links:['data_campaign'],description:'공유 링크(G4): 동결 고객 보고서 한 판 또는 작업물 한 판을 가리키는 읽기 전용·취소 가능 링크. 행 id는 토큰 SHA-256(원문 없음), 라벨·만든 사람 id와 역할·만료·취소·조회 수·외부 검토자 결정 시각만 담는다. 작업물 링크는 캠페인과 함께 지우고(data.campaignId) 보고서 링크는 캠페인과 무관하다'},
  {kind:'marketing_consent',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'카카오 마케팅 수신 동의(C6): 브랜드별 수신자 해시(SHA-256, 번호 원문 없음)당 1행. 동의 일시·출처·야간 동의·철회 시각. 캠페인과 무관'},
  {kind:'marketing_optout',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'카카오 마케팅 수신거부(C6): 수신자 해시당 1행, 수신거부 시각·출처. 광고성 전송 판정이 읽는다. 캠페인과 무관'},

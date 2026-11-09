@@ -48,6 +48,7 @@ export const FEATURE_FLAGS={
  threads_publish:{defaultEnabled:false,description:'브랜드에 Threads 연결이 있고 Instagram 직접 게시 연결이 없으면 승인된 발행의 실행을 Threads API로 보낸다(텍스트·이미지, 본문 500자, 두 단계, 결과 미확인 재전송 금지). 꺼져 있거나 연결이 없으면 이전 경로 그대로다(C3). 답글은 수집만 하고 자동 답글은 없다.'},
  naver_ads_write:{defaultEnabled:false,description:'소유자·관리자가 승인한 네이버 검색광고 제안(규칙 기반 입찰 조정·중지·재개·키워드/캠페인 생성, 추정·규칙 기반)만 서명한 POST/PUT로 반영하고 읽기 대조로 확인한다(C4). 자동 입찰·자동 적용 없음, 결과 미확인 작업은 재전송하지 않는다. 꺼지면 승인·반영은 409이고 제안 생성·조회·반려·미확인 대조는 계속된다.'},
  brand_autolearn:{defaultEnabled:false,description:'공식 웹사이트·플레이스·SNS 공개 페이지 주소 1개를 서버가 1회 읽어(10초·1MB, 사설 주소 거부, 모델 호출 없음) 이름·로고·색·소개·주소·전화·영업시간·가격·말투 신호를 미확인 후보로 뽑고, 사람이 누르면 사실 원장 확인 후보로 저장하며 첫 캠페인 템플릿 3개로 브리프 초안을 만든다(G1). 확정과 브랜드 색 적용은 사람이 한다. 꺼지면 미리보기·저장·색 적용·템플릿 초안은 409이고 기록 조회는 계속된다.'},
+ selection_rewrite:{defaultEnabled:false,description:'제작·발행 캡션 편집기에서 고른 글 한 조각을 소유자·관리자가 확인 카드(무엇·어디·추정 비용)를 거쳐 HERMES에 1회 보내 다시 쓰기·줄이기·톤 바꾸기 제안을 받는다(X6, 토큰 사용, 예산 가드·자율성 규칙 적용). 제안은 비교 화면에서 받기 전까지 반영되지 않고 캡션·발행을 바꾸지 않는다. 꺼지면 요청·조회·결정은 409다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};
