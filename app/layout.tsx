@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { BOOT_SCRIPT } from "@/lib/ui/boot-fetch";
 import { THEME_BOOT_SCRIPT } from "@/lib/ui/theme";
+import { LOCALE_BOOT_SCRIPT } from "@/lib/i18n";
 
 export const metadata: Metadata = {
   title: "COLLECTIVE — AI Marketing Company",
@@ -26,6 +27,8 @@ export default function RootLayout({
       {/* 홈 첫 화면 요청을 화면 코드보다 먼저 시작한다(lib/ui/boot-fetch.ts, UX-PLAN-3 ⑩ 4G LCP). 고정 문자열이며 사용자 값이 없다. */}
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+        {/* 화면 언어(G6): 저장된 언어로 html[lang]을 첫 그림 전에 맞춘다(lib/i18n.ts). 한국어 사전만 싣고 다른 언어 사전은 고를 때 내려받는다. */}
+        <script dangerouslySetInnerHTML={{ __html: LOCALE_BOOT_SCRIPT }} />
         <script dangerouslySetInnerHTML={{ __html: BOOT_SCRIPT }} />
       </head>
       <body className="antialiased">

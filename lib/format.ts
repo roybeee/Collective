@@ -5,8 +5,16 @@ export const UNKNOWN='미확인';
 const number=new Intl.NumberFormat('ko-KR');
 const parts=(date:Date)=>Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:KST,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(date).map(p=>[p.type,p.value])) as Record<string,string>;
 const valid=(value:unknown):Date|null=>{if(value===null||value===undefined||value==='')return null;const d=value instanceof Date?value:new Date(String(value));return Number.isFinite(d.getTime())?d:null};
-/** 19800 → '19,800원'. null·NaN은 '미확인'. */
-export function money(value:number|null|undefined,empty=UNKNOWN){return typeof value==='number'&&Number.isFinite(value)?`${number.format(value)}원`:empty}
+// 화면 언어(GLOBAL-PLAN G6, lib/i18n.ts). 인자를 주지 않으면 한국어이며 기존 결과와 같다. 영어·일본어는 Intl로 만든다.
+export type DisplayLocale='ko'|'en'|'ja';
+const localeTags:Record<DisplayLocale,string>={ko:'ko-KR',en:'en-US',ja:'ja-JP'};
+const finite=(value:unknown):value is number=>typeof value==='number'&&Number.isFinite(value);
+/** 19800 → '19,800원'. null·NaN은 '미확인'. locale이 en·ja면 '₩19,800'. */
+export function money(value:number|null|undefined,empty=UNKNOWN,locale:DisplayLocale='ko'){if(!finite(value))return empty;return locale==='ko'?`${number.format(value)}원`:new Intl.NumberFormat(localeTags[locale],{style:'currency',currency:'KRW',currencyDisplay:'narrowSymbol',maximumFractionDigits:0}).format(value)}
+/** 큰 수를 짧게: 12000 → ko '1.2만', en '12K', ja '1.2万'. */
+export function compact(value:number|null|undefined,locale:DisplayLocale='ko',empty=UNKNOWN){return finite(value)?new Intl.NumberFormat(localeTags[locale],{notation:'compact',maximumFractionDigits:1}).format(value):empty}
+/** 날짜와 요일(KST): ko '11월 9일 (월)', en 'Mon, Nov 9', ja '11月9日(月)'. 'YYYY-MM-DD'는 서울 날짜 그대로 읽는다. */
+export function dayLabel(value:unknown,locale:DisplayLocale='ko',empty=UNKNOWN){const d=typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)?valid(`${value}T12:00:00+09:00`):valid(value);if(!d)return empty;return new Intl.DateTimeFormat(localeTags[locale],{timeZone:KST,month:locale==='en'?'short':'long',day:'numeric',weekday:'short'}).format(d)}
 /** 1234 → '1,234'. */
 export function count(value:number|null|undefined,unit='',empty=UNKNOWN){return typeof value==='number'&&Number.isFinite(value)?`${number.format(value)}${unit}`:empty}
 /** 분자/분모를 함께: '3/12건'. 분모를 모르면 '3건(전체 미확인)'. */

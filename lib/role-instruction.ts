@@ -1,3 +1,4 @@
+import {outputLanguageLine} from './brief-language';
 import {roleOutputContract,upstreamContext,labelArchive} from './role-output';
 import {aiBrand,withoutPlanOwner,withoutAssignees,productionAllow,inputMaskingRecord,BRAND_MASK_PATHS,DIRECTIVE_MASK_PATHS,FACT_MASK_PATHS,STORE_MASK_PATHS,campaignMaskPaths,type EvidenceContext,type InputMasking} from './ai-context';
 import {maskFields} from './pii-scan';
@@ -60,8 +61,9 @@ const brandVoicePolicy='\n브랜드 말투(brandVoice)는 대표·관리자가 �
 const sectionFormat=' 계약 섹션 제목(## 제목)은 시스템이 붙입니다. 각 content 안에서는 #·## 제목을 쓰지 말고 ### 이하 소제목만 쓰세요. 빈 섹션 없이 모든 content를 본문으로 채우고, content를 소제목으로 시작하더라도 그 아래에 본문을 쓰세요.';
 // 계약 섹션 목록은 앞선 작업물 발췌 여부(contextTruncated)와 무관하므로 역할만으로 정해진다.
 // 카피 팩 v2(콘텐츠 + outputProfile)면 JSON 형식에 copyPack 스키마를, 끝에 팩 규칙을 덧붙인다. 아니면 두 조각이 빈 문자열이라 이전과 바이트 동일하다.
-export function buildRoleInstruction(r:Pick<RoleRequest,'role'|'revisionRequest'|'prompts'|'outputProfile'|'brandVoice'>&{campaign?:{objective?:unknown}|null}):string{
+// 출력 언어(G6, lib/brief-language.ts): 캠페인이 영어·일본어일 때만 말투 줄 뒤에 한 줄을 붙인다. 한국어면 빈 문자열이라 바이트 동일하다.
+export function buildRoleInstruction(r:Pick<RoleRequest,'role'|'revisionRequest'|'prompts'|'outputProfile'|'brandVoice'>&{campaign?:{objective?:unknown;outputLanguage?:unknown}|null}):string{
  const role=roleOf(r.role),outputContract=roleOutputContract(role.id,{copyPack:copyPackOf(r)}),revision=revisionInstruction(r),packed=!!outputContract.copyPack;
  const contractInstruction='\n지금 '+role.name+' 담당 과업을 실행합니다. 자료 부족은 작업 선택 질문으로 반환하지 말고 조건부 초안과 확인 계획에 표시하세요. 사실 정확성은 별도 사용자 검토가 필요합니다.'+(role.id==='quality'?'':'\nJSON 한 개만 반환하세요: {contractVersion:'+JSON.stringify(outputContract.version)+',role:'+JSON.stringify(role.id)+',sections:[{id:"output_1",content:"마크다운 초안"}]'+(r.revisionRequest?',changes:"요청 반영 위치"':'')+(packed?','+copyPackSchema:'')+'}. 필수 sections: '+JSON.stringify(outputContract.sections)+'. 모든 id를 한 번씩 포함하고 각 content에 해당 산출물을 작성하세요.'+sectionFormat+(packed?copyPackInstruction:'')+revision);
- return baseInstruction(role,r.prompts,r.campaign)+(voiceForRole(role.id,r.brandVoice)?brandVoicePolicy:'')+contractInstruction+(role.id==='quality'?'\n'+qualityContract+'\n형식: {verdict:"ready_for_review|revise|needs_data",summary:"결론",findings:"종합 발견 사항",checks:[],taskChecks:[]} 이번 단독 검수에는 합의 과제가 없으므로 taskChecks는 반드시 빈 배열 []로 두고, 역할별 지적은 checks의 location·fix에 적으세요. 실제 checks를 모두 채우고 JSON 한 개만 반환하세요.'+(r.revisionRequest?' 요청 반영 위치는 findings 끝에 changes 절로 적으세요.':''):'');
+ return baseInstruction(role,r.prompts,r.campaign)+(voiceForRole(role.id,r.brandVoice)?brandVoicePolicy:'')+outputLanguageLine(r.campaign)+contractInstruction+(role.id==='quality'?'\n'+qualityContract+'\n형식: {verdict:"ready_for_review|revise|needs_data",summary:"결론",findings:"종합 발견 사항",checks:[],taskChecks:[]} 이번 단독 검수에는 합의 과제가 없으므로 taskChecks는 반드시 빈 배열 []로 두고, 역할별 지적은 checks의 location·fix에 적으세요. 실제 checks를 모두 채우고 JSON 한 개만 반환하세요.'+(r.revisionRequest?' 요청 반영 위치는 findings 끝에 changes 절로 적으세요.':''):'');
 }

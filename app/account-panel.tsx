@@ -8,6 +8,7 @@ import {askConfirm} from '@/components/app/confirm-dialog';
 import {Checkbox} from '@/components/ui/checkbox';
 import {SCOPED_ROLES,isScopedRole,scopedRoleDescriptions,scopedRoleLabels,type ScopedRole} from '@/lib/access';
 import {accessLabel,type AccessView,type ScopeNames} from './account-context';
+import {LocaleToggle} from '@/components/app/locale-toggle';
 
 import {useCallback,useEffect,useState,type FormEvent} from 'react';
 import {Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle} from '@/components/ui/dialog';
@@ -72,6 +73,8 @@ export function AccountPanel({user,onClose,onSignedOut}:{user:AccountUser;onClos
  // 범위 역할 지정: 스위치가 켜졌고 접근 중인 직원 계정(본인 제외)만. 해제는 위 목록의 '범위 해제'로 스위치와 무관하게 할 수 있다.
  const canScope=(account:ManagedAccount)=>!!scope?.enabled&&account.role==='member'&&account.status!=='disabled'&&account.id!==user.id;
  return <Dialog open onOpenChange={open=>{if(!open)onClose()}}><DialogContent className="auth-dialog"><DialogHeader><DialogTitle>팀 계정 관리</DialogTitle><DialogDescription>초대한 직원은 이 워크스페이스의 업무 자료를 함께 사용합니다.{user.role==='owner'?'':' 관리자 계정의 초대·변경은 소유자만 할 수 있습니다.'}</DialogDescription></DialogHeader>
+  {/* 화면 언어(G6 1단계). 머리 띠가 아니라 계정 메뉴에서 바꾼다(홈 첫 로딩 예산). 계정 메뉴가 없는 헤더 인증에서는 설정 > 팀·권한에 같은 선택이 있다. */}
+  <LocaleToggle className="mb-2"/>
   <form className="auth-invite-form" onSubmit={e=>{e.preventDefault();const r=role==='admin'&&user.role!=='owner'?'member':role;void perform({action:'invite',email,...(isScopedRole(r)?{role:r,brandIds:picked.brandIds,storeIds:picked.storeIds}:{role:r})})}}>
    <label>초대할 이메일<Input type="email" required maxLength={254} value={email} onChange={e=>setEmail(e.target.value)} disabled={pending}/></label>
    {(user.role==='owner'||scope?.enabled)&&<label>계정 권한<NativeSelect value={role} onChange={e=>{const next=e.target.value as InviteRole;setRole(next);if(isScopedRole(next))setPicked({...picked,role:next})}} disabled={pending}><option value="member">직원</option>{user.role==='owner'&&<option value="admin">관리자</option>}{scope?.enabled&&SCOPED_ROLES.map(r=><option key={r} value={r}>{scopedRoleLabels[r]}</option>)}</NativeSelect><small className="auth-role-note block text-xs">{isScopedRole(role)?scopedRoleDescriptions[role]:baseRoleNotes[role]}</small></label>}
