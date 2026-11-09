@@ -3,7 +3,7 @@ import {cssVars} from '@/lib/ui/css-vars';
 import {MetaLine} from '@/components/app/meta-line';
 import {metaText} from '@/lib/format';
 import {CheckInput} from '@/components/app/check';
-import {useCallback,useEffect,useRef,useState} from 'react';
+import {lazy,Suspense,useCallback,useEffect,useRef,useState} from 'react';
 import {toast} from 'sonner';
 import {Plus,MapPin,Search,RefreshCw,Check,LoaderCircle,FileText,FlaskConical,ExternalLink,Pencil,ChevronRight} from 'lucide-react';
 import {Button} from '@/components/ui/button';
@@ -22,6 +22,8 @@ import {PlaceCheckPanel} from './place-check-panel';
 import {StoreBrowserPanel} from './store-browser-panel';
 import {ReportTabTrigger,ReportTabContent} from './customer-report-panel';
 import {notifySaved} from '@/lib/ui/notify';
+// C5 플레이스 리뷰 답글·소식 초안 카드(레인 X-G). 채널 점검 탭을 열 때 내려받는다.
+const PlaceDraftsCard=lazy(()=>import('./place-drafts-card').then(m=>({default:m.PlaceDraftsCard})));
 const empty:StoreData={stores:[],channels:[],experiments:[],measurements:[],reports:[],tasks:[],research:[],sources:[]};
 const today=()=>new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'});
 const channelName=(key:string)=>channelCatalog.find(c=>c.key===key)?.label||key;
@@ -82,6 +84,7 @@ export function StoreMarketingPanel({workspace,initialBrandId,initialStoreId,ini
    </Tabs>
    {tab==='channels'&&<PlaceCheckPanel key={store.id} store={store}/>}
    {tab==='channels'&&<StoreBrowserPanel key={store.id} store={store}/>}
+   {tab==='channels'&&<Suspense fallback={null}><PlaceDraftsCard key={store.id} store={store}/></Suspense>}
   </>}
   {!loading&&data.stores.some(s=>s.status==='archived')&&<details><summary>보관한 점포의 네이버 관리</summary>{data.stores.filter(s=>s.status==='archived').map(s=><ArchivedStoreBrowser key={s.id} store={s}/>)}</details>}
   {storeDialog&&<StoreDialog brands={workspace.brands} initial={storeDialog==='new'?undefined:storeDialog} brandId={brandId==='all'?workspace.brands[0]?.id:brandId} canResearch={workspace.connection.configured&&workspace.connection.provider==='hermes'} onClose={()=>setStoreDialog(null)} onSaved={async(id,brand,research)=>{setStoreDialog(null);setBrandId(brand);selectStore(id);if(research)try{await api('start',{id:clientId(),brandId:brand,storeId:id,mode:'deep'},'/api/archive/research');notifySaved('지점을 저장하고 조사를 접수했습니다.')}catch(e){toast.warning('지점은 저장됐습니다. 조사 접수: '+(e as Error).message)}if(research||storeDialog!=='new')await latestLoad.current();scope.current?.(brand,id,false)}}/>}

@@ -17,7 +17,7 @@
 - 공개 JSON: `GET /api/share/<token>`, `POST /api/share/<token>` `{decision:'approved'|'revision',note?}`.
 - 소유자 쪽(세션, 대표·관리자): `GET /api/share?kind=customer_report|artifact&id=`, `POST /api/share` `{action:'create',scope:{kind,id},label,days?}` · `{action:'revoke',id}`.
 - 토큰: 암호학적 난수 32바이트(16진 64자). 응답에 **만들 때 한 번만** 온다. 저장은 SHA-256 해시만 하고(`records` kind `share_link`, 행 id `share_link:<해시>`), 어떤 로그에도 토큰을 쓰지 않는다.
-- 화면: 점포 마케팅 → 지점 → 고객 보고서 탭 → 동결본 카드마다 '공유 링크'(`components/app/share-links-card.tsx`). 작업물 검토자 링크는 API로 만든다(작업물 대화상자 `app/panels.tsx`는 레인 A 소유라 이 PR에서 연결하지 않았다).
+- 화면: 점포 마케팅 → 지점 → 고객 보고서 탭 → 동결본 카드마다 '공유 링크'(`components/app/share-links-card.tsx`). 작업물 검토자 링크는 작업물 대화상자(`app/panels.tsx` → `app/artifact-reviewer-links.tsx`, 대표·관리자, 스위치가 꺼져 있고 링크가 없으면 숨김)에서 만들고 취소한다(레인 X-G). 같은 판 사용 중 수(최대 10개)를 보이고, 취소는 확인 대화상자(무엇·어디·되돌림)를 거친다.
 
 ## 3. 한도와 기본값
 
@@ -67,6 +67,5 @@
 
 ## 8. 남은 일
 
-- 작업물 대화상자(`app/panels.tsx`, 레인 A)에 검토자 링크 카드 연결. 카드(`ShareLinksCard kind="artifact"`)와 API는 준비돼 있다.
 - 보고서 외 '보고서형' 기록(가맹 모집 성과 확정 판 등)으로 범위 확장. `ShareScope`에 kind를 더하고 `scopeOf`·`targetView`에 분기를 추가한다.
 - 운영 스위치 켜기 전: 외부 고객 게이트(설계 원칙 13)와 `docs/DATA-PROCESSING.ko.md`의 외부 고객 데이터 검토를 거친다.

@@ -18,3 +18,5 @@ export function outputLanguageLine(c?:{outputLanguage?:unknown}|null):string{
  const language=outputLanguageOf(c);
  return language==='ko'?'':`\n출력 언어: 모든 산출물을 ${languageNames[language]}로 작성한다. 이 줄은 위 지시의 한국어 작성 요구보다 우선하며, JSON 키·섹션 id·형식은 그대로 둔다.`;
 }
+// 브리프 화면의 '산출물 언어' 선택지와 캠페인 머리 표시(app/campaign-brief.tsx, app/panels.tsx). 각 언어의 자기 이름으로 적는다.
+export const outputLanguageLabels:Record<OutputLanguage,string>={ko:'한국어',en:'English',ja:'日本語'};

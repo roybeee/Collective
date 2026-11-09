@@ -33,4 +33,5 @@ export const ja:Record<MessageKey,string>={
  'settings.tab.connect':'接続(AI・ワーカー)','settings.tab.channels':'チャネル接続','settings.tab.automation':'自動化ルール','settings.tab.usage':'使用量・費用','settings.tab.team':'チーム・権限','settings.tab.features':'機能一覧','settings.nav':'設定ショートカット','settings.tabs':'設定セクション','settings.automationLead':'操作ごとの自律性と予約実行を決めます。','settings.loadingCards':'カードを読み込んでいます。',
  'team.lead':'自分の役割によって変更できる設定が異なります。','team.mine':'自分のアカウント','team.login':'ログイン中のアカウント','team.owner':'ワークスペースのオーナー','team.unknown':'確認できません','team.role':'役割','team.rules':'役割ごとの権限','team.note':'メンバーの招待と役割の変更は、画面上部のアカウントメニューの「チームアカウント管理」で行います。オーナー・管理者にだけ表示されます。',
  'team.rule.owner':'代表(オーナー)','team.rule.ownerCan':'すべての接続と解除、機能スイッチ、カカオディーラー接続、POS接続設定','team.rule.admin':'管理者','team.rule.adminCan':'AIチーム・チャネル接続、広告提案の承認と反映、受信同意台帳、予約実行','team.rule.member':'スタッフ','team.rule.memberCan':'キャンペーンの作業と閲覧。接続・スイッチ・承認は変更できません',
+ 'access.deniedApprove':'このブランドの承認権限がありません。','access.deniedPublish':'このブランドの公開権限がありません。',
 };

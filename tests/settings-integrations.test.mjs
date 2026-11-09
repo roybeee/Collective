@@ -67,7 +67,8 @@ ok('six channel cards',['<BufferCard','channel="instagram_direct"','channel="thr
 ok('secret inputs are write-only password fields',['app/settings-publishers.tsx','app/settings-kakao.tsx','app/settings-pos.tsx'].every(f=>(src(f).match(/type="password" autoComplete="off"/g)||[]).length>=1));
 ok('revokes ask with confirm fields',['app/settings-publishers.tsx','app/settings-kakao.tsx','app/settings-pos.tsx'].every(f=>/askConfirm\(\{title:[^]*?fields:\{what:/.test(src(f))));
 ok('ads proposals card is lazy in the campaign results area and shows the label',/lazy\(\(\)=>import\('\.\/ads-proposals-card'\)/.test(metrics)&&src('app/ads-proposals-card.tsx').includes("'추정·규칙 기반, 자동 적용 없음'"));
-ok('ads proposals approve and apply carry the switch reason',(src('app/ads-proposals-card.tsx').match(/disabled=\{busy\|\|!!switchReason\} disabledReason=\{switchReason\}/g)||[]).length===2);
+// 레인 X-G: 반영은 spend 판정(applyReason)을 먼저 보고, 그 밖에는 승인과 같은 스위치 이유(switchReason)로 막는다.
+ok('ads proposals approve and apply carry the switch reason',(src('app/ads-proposals-card.tsx').match(/disabled=\{busy\|\|!!switchReason\} disabledReason=\{switchReason\}/g)||[]).length===1&&(src('app/ads-proposals-card.tsx').match(/disabled=\{busy\|\|!!applyReason\} disabledReason=\{applyReason\}/g)||[]).length===1&&/applyReason=[^;]*:switchReason;/.test(src('app/ads-proposals-card.tsx')));
 ok('growth detection labels scheduled reviews',detection.includes("scheduled_review:'예약 검토'"));
 ok('the e2e spec exists',existsSync('e2e/settings-integrations.spec.ts'));
 ok('new files stay under 800 lines',['app/settings-sections.tsx','app/settings-channels.tsx','app/settings-channel-card.tsx','app/settings-channel-state.ts','app/settings-publishers.tsx','app/settings-kakao.tsx','app/settings-pos.tsx','app/ads-proposals-card.tsx'].every(f=>src(f).split('\n').length<800));

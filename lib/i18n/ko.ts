@@ -34,6 +34,8 @@ export const ko={
  'confirm.what':'무엇','confirm.where':'어디','confirm.when':'언제','confirm.cost':'비용','confirm.reversible':'되돌림','confirm.changesPlaceholder':'무엇을 어떻게 바꿔야 하는지 적어 주세요.',
  // 빈 상태(components/app/empty-line.tsx)
  'empty.first':'첫 {thing} 쓰기',
+ // 범위 역할 거절 이유(app/agenda-panel.tsx, 레인 X-G)
+ 'access.deniedApprove':'이 브랜드의 승인 권한이 없습니다.','access.deniedPublish':'이 브랜드의 발행 권한이 없습니다.',
 } as const;
 export type HomeKey=keyof typeof ko;
 export type MessageKey=HomeKey|keyof typeof import('./ko-lazy').koLazy;

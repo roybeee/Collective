@@ -9,11 +9,13 @@ const text=(v:unknown,max=80)=>typeof v==='string'?v.slice(0,max):'';
 const roleName=(id:unknown)=>roles.find(r=>r.id===id)?.name||'';
 const num=(v:unknown)=>typeof v==='number'&&Number.isFinite(v)?v:null;
 const where=(c:SourceCampaign,names:Names)=>[names.brand(c.brandId),names.store(c.storeId)].filter(Boolean);
+// 범위 역할 화면 판정에 쓰는 자원(브랜드·지점). 행 안 동작이 있는 출처에만 단다.
+const scope=(c:SourceCampaign)=>({brandId:c.brandId,storeId:c.storeId??null});
 // 작업물 검토 대기: status 'review'(lib/history-labels.ts 표기 '검토 대기'). 현재 브리프 버전의 작업물만 행 안에서 승인·수정 요청할 수 있다(서버가 같은 조건을 409로 막는다).
 export function artifactItem(d:R,c:SourceCampaign,names:Names):AgendaItem|null{
  if(d.status!=='review'||typeof d.id!=='string')return null;
  const current=d.campaignVersion===undefined||d.campaignVersion===c.version,version=Number.isSafeInteger(d.version)?Number(d.version):0;
- return {id:`artifact:${d.id}`,kind:'decision',source:'artifact',title:`${roleName(d.role)||'작업물'} 작업물 검토 대기`,detail:text(d.title)||`v${version}`,campaignId:c.id,campaignTitle:c.title,where:where(c,names),due:null,cost:null,section:'decide',ctab:'outputs',
+ return {id:`artifact:${d.id}`,kind:'decision',source:'artifact',title:`${roleName(d.role)||'작업물'} 작업물 검토 대기`,detail:text(d.title)||`v${version}`,campaignId:c.id,campaignTitle:c.title,where:where(c,names),due:null,cost:null,section:'decide',ctab:'outputs',...scope(c),
   ...(current&&version>0?{action:{type:'review_artifact' as const,recordId:d.id,version,role:String(d.role??'')}}:{})};
 }
 // 발행 승인 대기(초안)·접수 대기(승인됨). 초안만 행 안에서 승인한다. AI 카피·코드 PNG 발행은 화면의 별도 확인란이 필요해 실행 탭에서만 승인한다(열기만).
@@ -21,7 +23,7 @@ export function publicationItem(d:R,c:SourceCampaign,names:Names):AgendaItem|nul
  if(typeof d.id!=='string'||(d.status!=='draft'&&d.status!=='approved'))return null;
  const cost=num(d.plannedCostKRW)??0,due=typeof d.scheduledAt==='string'?d.scheduledAt:null,copy=(d.copy??{}) as R,aiCopy=copy.aiGenerated===true,codedPng=!!d.codedPng,version=Number.isSafeInteger(d.version)?Number(d.version):0;
  const account=text(d.channelId,60);
- const base={id:`publication:${d.id}`,kind:'decision' as const,source:'publication' as const,campaignId:c.id,campaignTitle:c.title,where:[...where(c,names),...(account?[`계정 ${account}`]:[])],due,cost,section:'execute' as const,ctab:'execution' as const,detail:text(d.caption).split('\n')[0]};
+ const base={id:`publication:${d.id}`,kind:'decision' as const,source:'publication' as const,campaignId:c.id,campaignTitle:c.title,where:[...where(c,names),...(account?[`계정 ${account}`]:[])],due,cost,section:'execute' as const,ctab:'execution' as const,detail:text(d.caption).split('\n')[0],...scope(c)};
  if(d.status==='approved')return {...base,title:'승인한 발행 접수 대기'};
  return {...base,title:'발행 승인 대기',...(version>0&&!d.needsReview?{action:{type:'approve_publication' as const,recordId:d.id,version,aiCopy,codedPng}}:{})};
 }

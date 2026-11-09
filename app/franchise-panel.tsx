@@ -8,7 +8,7 @@ import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Textarea} from '@/components/ui/textarea';
 import {NativeSelect,NativeSelectOption} from '@/components/ui/native-select';
-import {Tabs,TabsList,TabsTrigger} from '@/components/ui/tabs';
+import {Tabs,TabsContent,TabsList,TabsTrigger} from '@/components/ui/tabs';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import type {WorkspaceData} from '@/lib/client';
 import {franchiseTabs,type FranchiseTab} from '@/lib/nav-state';
@@ -75,8 +75,9 @@ export function FranchisePanel({workspace,initialBrandId,initialTab,onScopeChang
   {status&&!enabled&&<p className="notice" role="note">{OFF_BANNER}</p>}
   {intakeError&&<div role="alert" className="load-error"><span>{intakeError}</span><Button variant="outline" size="sm" onClick={()=>void loadIntake()}>다시 불러오기</Button></div>}
   {intake&&branch!=='A'&&<p className="notice" role="note">{branch==='B'||branch==='C'?FRANCHISE_ERRORS.BRANCH_BLOCKED.text:UNDETERMINED_BANNER}{admin?' 설정 탭의 가맹 프로필에서 분기를 기록합니다.':''}</p>}
-  <Tabs value={shown} onValueChange={pickTab}><TabsList className="h-auto max-w-full flex-wrap"><TabsTrigger value="leads">리드</TabsTrigger><TabsTrigger value="requests">정보주체 요청</TabsTrigger><TabsTrigger value="assets">모집 자료</TabsTrigger><TabsTrigger value="events">행사</TabsTrigger><TabsTrigger value="inflow">유입·비용</TabsTrigger><TabsTrigger value="report">성과</TabsTrigger><TabsTrigger value="benchmark">벤치마크</TabsTrigger><TabsTrigger value="nurture">너처링</TabsTrigger>{admin&&<TabsTrigger value="settings">설정</TabsTrigger>}</TabsList></Tabs>
-  {!status?!statusError&&<p role="status">가맹 모집 정보를 불러오고 있습니다.</p>
+  <Tabs value={shown} onValueChange={pickTab}><TabsList className="h-auto max-w-full flex-wrap"><TabsTrigger value="leads">리드</TabsTrigger><TabsTrigger value="requests">정보주체 요청</TabsTrigger><TabsTrigger value="assets">모집 자료</TabsTrigger><TabsTrigger value="events">행사</TabsTrigger><TabsTrigger value="inflow">유입·비용</TabsTrigger><TabsTrigger value="report">성과</TabsTrigger><TabsTrigger value="benchmark">벤치마크</TabsTrigger><TabsTrigger value="nurture">너처링</TabsTrigger>{admin&&<TabsTrigger value="settings">설정</TabsTrigger>}</TabsList>
+  {/* 접근성(QA D4): 탭 내용은 TabsContent 안에 두어 선택한 탭의 aria-controls가 실제 tabpanel을 가리킨다. 보이는 내용·동작은 같다. */}
+  <TabsContent value={shown}>{!status?!statusError&&<p role="status">가맹 모집 정보를 불러오고 있습니다.</p>
    :shown==='leads'?<LeadsTab key={brandId} brandId={brandId} status={status} admin={admin} intake={intake} campaigns={campaigns} onRequests={()=>pickTab('requests')}/>
    :shown==='requests'?<RequestsTab key={brandId} brandId={brandId} admin={admin} keyReady={status.contactKey==='ready'}/>
    :shown==='assets'?<FranchiseAssets key={brandId} brandId={brandId} admin={admin} artifacts={workspace.artifacts} onStatus={()=>void loadStatus()}/>
@@ -85,7 +86,7 @@ export function FranchisePanel({workspace,initialBrandId,initialTab,onScopeChang
    :shown==='report'?<FranchiseReport key={brandId} brandId={brandId} admin={admin}/>
    :shown==='benchmark'?<FranchiseBenchmark key={brandId} brandId={brandId} admin={admin}/>
    :shown==='nurture'?<FranchiseNurture key={brandId} brandId={brandId} admin={admin}/>
-   :<FranchiseSettings key={brandId} brandId={brandId} enabled={enabled} onChanged={()=>void loadIntake()}/>}
+   :<FranchiseSettings key={brandId} brandId={brandId} enabled={enabled} onChanged={()=>void loadIntake()}/>}</TabsContent></Tabs>
  </section>;
 }
 

@@ -5,11 +5,15 @@ import {brandDefaults,type Campaign} from './agency';
 import {database,type Actor} from './server';
 import {artifactItem,briefQuestionItem,dataRequestItem,meetingItems,publicationItem,sequenceItem,type Names,type SourceCampaign} from './agenda-sources';
 import {agendaTabOf,type Agenda,type AgendaCounts,type AgendaItem,type AgendaKind,type AgendaTab} from './agenda-types';
+import {adsProposalItem,billingAlertItems,geoRunItem,placeDraftItem,reconsentItem} from './agenda-workspace-sources';
+import {can,isScoped,type AccessPrincipal} from './access';
 export type {Agenda,AgendaAction,AgendaItem,AgendaKind,AgendaQuick,AgendaTab} from './agenda-types';
 const kstDay=(t:number)=>new Date(t+9*3600000).toISOString().slice(0,10);
 const DAY=86400000;
 const growthKinds=['growth_cs_ticket','growth_detected_signal','growth_expansion','growth_landing_revision','growth_collaboration','growth_mission'];
-const inboxKinds=['artifact','execution_publication','team_meeting','campaign_sequence','data_request','brief_draft'];
+const inboxKinds=['artifact','execution_publication','team_meeting','campaign_sequence','data_request','brief_draft','geo_run'];
+// 캠페인에 묶이지 않는 출처(lib/agenda-workspace-sources.ts). 요금 알림은 워크스페이스, 재동의 안내·플레이스 초안·광고 제안은 브랜드·지점 범위다.
+const workspaceKinds=['billing_alert','kakao_reconsent_notice','place_draft','ads_proposal'];
 const kindFilter=`kind IN (${[...growthKinds,...inboxKinds].map(k=>`'${k}'`).join(',')})`;
 type Row={kind:string;data:string};
 const text=(v:unknown,max=80)=>typeof v==='string'?v.slice(0,max):'';
@@ -46,7 +50,8 @@ function growthItems(kind:string,d:Record<string,unknown>,c:Campaign,now:number)
  return [];
 }
 // 인박스 출처(작업물·발행·회의·연속 실행·자료 요청·브리프 질문)는 기록 종류별 순수 함수에 맡긴다. 캠페인 연결 키는 종류마다 다르다(brief_draft는 campaignId, campaign_sequence는 캠페인 행).
-function inboxItems(kind:string,d:Record<string,unknown>,c:SourceCampaign,who:Names):AgendaItem[]{
+function inboxItems(kind:string,d:Record<string,unknown>,c:SourceCampaign,who:Names,now:number):AgendaItem[]{
+ if(kind==='geo_run'){const i=geoRunItem(d,c,who,now);return i?[i]:[]}
  if(kind==='artifact'){const i=artifactItem(d,c,who);return i?[i]:[]}
  if(kind==='execution_publication'){const i=publicationItem(d,c,who);return i?[i]:[]}
  if(kind==='team_meeting')return meetingItems(d,c,who);
@@ -56,17 +61,30 @@ function inboxItems(kind:string,d:Record<string,unknown>,c:SourceCampaign,who:Na
  return [];
 }
 const order:Record<AgendaKind,number>={overdue:0,decision:1,question:2,signal:3,upcoming:4};
-// visible(선택): 범위 역할이 볼 수 있는 캠페인만 남긴다(app/api/agenda, lib/server-access.ts readableCampaigns). 없으면 이전과 같다.
-export async function agenda(who:Actor,now=Date.now(),visible?:(c:Campaign)=>boolean):Promise<Agenda>{
- const campaigns=(await database().prepare("SELECT data FROM records WHERE owner=? AND kind='campaign' LIMIT 2000").bind(who.owner).all<{data:string}>()).results.map(r=>JSON.parse(r.data) as Campaign&{archivedAt?:string|null}).filter(c=>!c.archivedAt&&(!visible||visible(c)));
+// 범위 역할 거르기(G7, lib/access.ts). 범위 없는 역할(대표·관리자·직원)은 이전과 같이 모두 본다. 범위 역할은 볼 수 있는 캠페인의 항목과,
+// 배정 브랜드·지점 안에서 처리할 수 있는 플레이스 초안·광고 제안만 본다. 요금 알림(사용량)·카카오 재동의(고객 발송)는 워크스페이스 전체 권한이라 범위 역할에게 없다.
+function workspaceItems(kind:string,d:Record<string,unknown>,label:Names,principal:AccessPrincipal|null):AgendaItem[]{
+ const scoped=!!principal&&isScoped(principal),allowed=(i:AgendaItem|null,action:'publish'|'send_customer')=>i&&(!scoped||can(principal!,action,{brandId:i.brandId??null,storeId:i.storeId??null}))?[i]:[];
+ if(kind==='kakao_reconsent_notice')return allowed(reconsentItem(d,label),'send_customer');
+ if(kind==='place_draft')return allowed(placeDraftItem(d,label),'publish');
+ if(kind==='ads_proposal')return allowed(adsProposalItem(d,label),'publish');
+ return [];
+}
+export async function agenda(who:Actor,now=Date.now(),principal:AccessPrincipal|null=null):Promise<Agenda>{
+ const scoped=!!principal&&isScoped(principal);
+ const campaigns=(await database().prepare("SELECT data FROM records WHERE owner=? AND kind='campaign' LIMIT 2000").bind(who.owner).all<{data:string}>()).results.map(r=>JSON.parse(r.data) as Campaign&{archivedAt?:string|null}).filter(c=>!c.archivedAt&&(!scoped||can(principal!,'read_campaign',{brandId:c.brandId,storeId:c.storeId??null})));
  const byId=new Map(campaigns.map(c=>[c.id,c]));
- const [rows,label]=await Promise.all([database().prepare(`SELECT kind,data FROM records WHERE owner=? AND ${kindFilter} LIMIT 20000`).bind(who.owner).all<Row>().then(r=>r.results),names(who.owner)]);
+ const [rows,wide,label]=await Promise.all([database().prepare(`SELECT kind,data FROM records WHERE owner=? AND ${kindFilter} LIMIT 20000`).bind(who.owner).all<Row>().then(r=>r.results),
+  database().prepare(`SELECT kind,data FROM records WHERE owner=? AND kind IN (${workspaceKinds.map(k=>`'${k}'`).join(',')}) LIMIT 5000`).bind(who.owner).all<Row>().then(r=>r.results),names(who.owner)]);
  const items:AgendaItem[]=[];
  for(const r of rows){
   const d=parse(r.data);if(!d)continue;
   const c=byId.get(String(d.campaignId??''));if(!c)continue;
-  items.push(...(growthKinds.includes(r.kind)?growthItems(r.kind,d,c,now):inboxItems(r.kind,d,{id:c.id,title:c.title,version:c.version,brandId:c.brandId,storeId:c.storeId},label)));
+  items.push(...(growthKinds.includes(r.kind)?growthItems(r.kind,d,c,now):inboxItems(r.kind,d,{id:c.id,title:c.title,version:c.version,brandId:c.brandId,storeId:c.storeId},label,now)));
  }
+ const alerts:Record<string,unknown>[]=[];
+ for(const r of wide){const d=parse(r.data);if(!d)continue;if(r.kind==='billing_alert')alerts.push(d);else items.push(...workspaceItems(r.kind,d,label,principal))}
+ if(!principal||can(principal,'view_usage'))items.push(...billingAlertItems(alerts,kstDay(now).slice(0,7)));
  items.sort((a,b)=>order[a.kind]-order[b.kind]||(a.due??'9').localeCompare(b.due??'9')||a.campaignTitle.localeCompare(b.campaignTitle)||a.title.localeCompare(b.title));
  const counts:AgendaCounts={overdue:0,decision:0,question:0,signal:0,upcoming:0},tabs:Record<AgendaTab,number>={decide:0,ask:0,notify:0};
  for(const i of items){counts[i.kind]++;tabs[agendaTabOf(i.kind)]++}

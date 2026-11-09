@@ -1,5 +1,7 @@
 import {test,expect,type Page} from '@playwright/test';
-import {existsSync,readFileSync,readdirSync} from 'node:fs';
+import {existsSync,mkdtempSync,readFileSync,readdirSync,rmSync,writeFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {gzipSync} from 'node:zlib';
 // UX-PLAN-3 Q0·Q7·⑩ 런타임 예산(tests/ux-budget.json runtime): 홈 첫 로딩 JS(gz), axe critical·serious 0, 모바일 44px 비율, 가로 넘침, 4G 홈 LCP, 핵심 조작 지연(INP).
@@ -115,5 +117,65 @@ test('4G 홈 LCP·핵심 조작 지연(INP) 예산',async({browser},info)=>{
   const inp=Math.max(...Object.values(worst));
   info.annotations.push({type:'inpMs',description:JSON.stringify(worst)});
   expect(inp,`interaction latency ${JSON.stringify(worst)}`).toBeLessThanOrEqual(budget.inpMs);
+ }finally{await context.close()}
+});
+
+// QA D10(2026-11-09 독립 평가 D1~D6): 빈 캠페인·스위치 꺼짐만 재면 결정 인박스·상태 배지·실행 타임라인 결함을 놓친다. 실제와 비슷한 홈을 만든다:
+// 기능 스위치를 모두 켜고(켜지지 않는 스위치는 건너뛴다), 안건 종류마다 항목을 둔다 — 결정(작업물 검토 대기·발행 승인 대기·플레이스 초안·광고 제안), 질문(브리프 확인 질문),
+// 알림(새 감지 신호·크레딧 알림·AI 검색 노출 측정). 라이트·다크 모두 axe serious·critical 0, 390px에서 문서 폭 ≤ 화면 폭. 실행 기록이 있는 AI 팀 탭(타임라인)과 가맹 모집도 함께 잰다.
+// Real local D1/API/Chromium. 인증 헤더 mocked. 일부 기록은 로컬 D1 fixture. 외부 호출·지출 없음.
+function seedSql(statements:string[]){
+ const folder=mkdtempSync(join(tmpdir(),'ux-budget-seed-'));
+ try{const path=join(folder,'seed.sql');writeFileSync(path,statements.join('\n'));execFileSync(process.execPath,['--import','./scripts/sites-env.mjs','./node_modules/wrangler/bin/wrangler.js','d1','execute','DB','--config','dist/server/wrangler.json','--local','--persist-to','e2e/.state','--file',path],{stdio:'pipe'})}finally{rmSync(folder,{recursive:true,force:true})}
+}
+const q=(v:string)=>`'${v.replaceAll("'","''")}'`;
+const recordSql=(owner:string,kind:string,id:string,parent:string,data:unknown)=>`INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(${[`${owner}:${kind}:${id}`,owner,kind,parent,JSON.stringify(data),new Date().toISOString()].map(q).join(',')}) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at;`;
+test('기능을 모두 켜고 안건 종류마다 항목이 있는 홈도 접근성·가로 넘침 예산을 지킨다(라이트·다크)',async({browser},info)=>{
+ test.setTimeout(150_000);
+ const owner=`seeded-home-${info.project.name}-${Date.now()}`,context=await browser.newContext({baseURL:info.project.use.baseURL,viewport:info.project.use.viewport,extraHTTPHeaders:{'oai-authenticated-user-id':owner}}),page=await context.newPage();
+ const post=async(path:string,data:unknown)=>{const r=await page.request.post(path,{data});expect(r.status(),await r.text()).toBe(200);return r.json()};
+ try{
+  await page.request.get('/api/workspace');
+  const {flags}=await (await page.request.get('/api/feature-flags')).json() as {flags:{flag:string}[]};
+  const on:string[]=[];for(const {flag} of flags){const r=await page.request.post('/api/feature-flags',{data:{action:'set',flag,enabled:true}});if(r.ok())on.push(flag)}
+  info.annotations.push({type:'flagsOn',description:`${on.length}/${flags.length}`});
+  const {id:campaignId,version}=await post('/api/action',{action:'save_campaign',data:{brandId:'ofd',title:'안건 예산 캠페인',goal:'결정 인박스 접근성 확인'}}) as {id:string;version?:number};
+  for(const [role,title] of [['strategy','브랜드 방향 초안'],['content','게시 카피 초안 — 아주 긴 제목으로 한 줄 요약이 좁은 화면 폭을 넘기는지 확인하는 작업물']])await post('/api/action',{action:'save_artifact',campaignId,role,title,content:'## 합성\n본문'});
+  const {id:storeId}=await post('/api/stores',{action:'save_store',brandId:'ofd',data:{name:'안건 예산 지점',address:'합성 주소',tradeArea:'residential',goal:'안건'}}) as {id:string};
+  await page.request.post('/api/place-drafts',{data:{action:'create',kind:'review_reply',storeId,sourceText:'맛있고 친절했어요.',rating:5}});
+  const now=new Date().toISOString(),before=new Date(Date.now()-86400000).toISOString(),month=new Date(Date.now()+9*3600000).toISOString().slice(0,7),cv=version??1;
+  seedSql([
+   recordSql(owner,'execution_publication','budget-pub',campaignId,{id:'budget-pub',campaignId,campaignVersion:cv,creativeId:'c',creativeVersion:1,pngHash:'b'.repeat(64),factRefs:[],caption:'합성 발행 문구',mediaUrl:'',mediaMode:'auto',scheduledAt:new Date(Date.now()+2*86400000).toISOString(),plannedCostKRW:1500,version:1,status:'draft',createdAt:before}),
+   recordSql(owner,'brief_draft','budget-brief',campaignId,{id:'budget-brief',status:'completed',campaignId,input:{},result:{summary:'합성',suggestions:[],questions:[{field:'kpi',question:'목표 지표는 무엇인가요?',why:'합성'}],assumptions:[],contextUsed:[]},createdAt:before,updatedAt:before,model:'m'}),
+   recordSql(owner,'growth_detected_signal','budget-signal',campaignId,{id:'budget-signal',campaignId,status:'new',version:1,detection:{title:'최근 7일 유료 주문 증가',detail:'합성 신호',kind:'orders_up'}}),
+   recordSql(owner,'billing_alert',`${month}-80`,'',{id:`${month}-80`,month,level:80,kind:'signal',title:'크레딧 80% 사용',detail:'이번 달 크레딧의 80%를 썼습니다.',createdAt:now}),
+   recordSql(owner,'geo_run','budget-geo','ofd',{id:'budget-geo',brandId:'ofd',campaignId,status:'completed',jobs:[{id:'j1',status:'completed'},{id:'j2',status:'failed'}],createdAt:before,updatedAt:now}),
+   recordSql(owner,'ads_proposal','budget-ads','',{id:'budget-ads',channel:'naver_ads',campaignId:'ncc-budget',storeId:null,brandId:'ofd',kind:'bid',riskTier:'T2',status:'draft',target:{type:'keyword',ids:['k'],names:['떡볶이']},diff:{before:{},after:{}},history:[],createdAt:before}),
+   `INSERT INTO jobs(id,owner,campaign_id,role,status,model,campaign_version,created_at,updated_at) VALUES(${[`budget-job-${owner}`,owner,campaignId,'content','completed','synthetic-model'].map(q).join(',')},${cv},${q(before)},${q(now)});`,
+  ]);
+  const result:Record<string,unknown>={};
+  for(const theme of ['light','dark'] as const){
+   await page.addInitScript(t=>{try{localStorage.setItem('theme',t)}catch{/* 저장소가 막히면 시스템 테마 */}},theme);
+   await page.goto('/');await page.waitForLoadState('networkidle');
+   const agenda=page.getByRole('region',{name:'오늘의 안건',exact:true});
+   await expect(agenda.locator('[data-inbox-row]').first()).toBeVisible({timeout:30_000});
+   if(theme==='dark')await expect(page.locator('html')).toHaveClass(/\bdark\b/);
+   const kinds=await agenda.locator('[data-inbox-row]').evaluateAll(rows=>[...new Set(rows.map(r=>r.getAttribute('data-kind')))]);
+   expect(kinds,'seeded agenda has decision, question and notification rows').toEqual(expect.arrayContaining(['decision','question','signal']));
+   const approve=agenda.getByRole('button',{name:'승인',exact:true}).first();await expect(approve).toBeVisible();
+   const colors=await approve.evaluate(e=>{const cs=getComputedStyle(e);return [cs.color,cs.backgroundColor]});expect.soft(colors[0],'approve text differs from its background').not.toBe(colors[1]);
+   const width=await page.evaluate(()=>({doc:document.documentElement.scrollWidth,view:window.innerWidth}));
+   const home=await axeSerious(page);result[`home-${theme}`]={axe:home.count,rules:home.rules,docWidth:width.doc,viewport:width.view};
+   expect.soft(home.count,`seeded home (${theme}) ${home.rules.join(',')}`).toBeLessThanOrEqual(budget.axeCriticalSerious);
+   expect.soft(width.doc-width.view,`seeded home (${theme}) document ${width.doc}px > viewport ${width.view}px`).toBeLessThanOrEqual(budget.horizontalOverflowPx);
+   for(const [label,path] of [['AI 팀',`/?view=campaigns&campaign=${campaignId}&ctab=team`],['작업물',`/?view=campaigns&campaign=${campaignId}&ctab=outputs`],['가맹 모집','/?view=franchise']]){
+    await page.goto(path);await page.waitForLoadState('networkidle');
+    const a=await axeSerious(page);result[`${label}-${theme}`]={axe:a.count,rules:a.rules};
+    expect.soft(a.count,`${label} (${theme}) ${a.rules.join(',')}`).toBeLessThanOrEqual(budget.axeCriticalSerious);
+    expect.soft(await overflow(page),`${label} (${theme})`).toBeLessThanOrEqual(budget.horizontalOverflowPx);
+   }
+  }
+  info.annotations.push({type:'seededHome',description:JSON.stringify(result)});
+  console.log('[seeded-home]',info.project.name,JSON.stringify(result));
  }finally{await context.close()}
 });
