@@ -302,6 +302,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   selectionRewriteRow(input.flags),
   daangnAdsRow(input.flags),
   placeDraftsRow(input.flags),
+  geoTrackingRow(input.flags),
  ];
 }
 // C8 당근 광고 OpenAPI: 스위치 daangn_ads. 꺼지면 연결·수집·제안 생성·승인·반영은 409, 해제·조회·미확인 대조는 계속된다(docs/DAANGN-ADS.ko.md).
@@ -332,6 +333,12 @@ function selectionRewriteRow(flags:unknown):FeatureRow{
  const base={key:'selection-rewrite',label:'선택한 글 다시 쓰기(제작·발행 캡션 편집기)',flag:'selection_rewrite'},link:FeatureLink={label:'캠페인을 열어 제작·발행 탭에서 확인',view:'campaigns'},enabled=flagState(flags,'selection_rewrite');
  if(enabled===null)return {...base,status:'blocked',reason:'선택 다시 쓰기 스위치 상태를 확인하지 못했습니다',link};
  return enabled?{...base,status:'available',reason:['고른 글만 확인 카드(추정 토큰) 뒤 HERMES로 다시 쓰기, 줄이기, 톤 바꾸기','제안은 비교 화면에서 받기 전까지 반영되지 않음']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다'],link};
+}
+// G5 AI 검색 노출 자동 추적: 스위치 geo_tracking. 켜져도 대표·관리자가 계획(추정 토큰)을 보고 측정을 누르거나, 자율성 규칙이 자동일 때 주간 예약이 돈다.
+function geoTrackingRow(flags:unknown):FeatureRow{
+ const base={key:'geo-tracking',label:'AI 검색 노출 자동 추적',flag:'geo_tracking'},link:FeatureLink={label:'캠페인을 열어 성장 탭의 조건부 확장에서 확인',view:'campaigns'},enabled=flagState(flags,'geo_tracking');
+ if(enabled===null)return {...base,status:'blocked',reason:'AI 검색 노출 추적 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['질문과 엔진마다 HERMES가 공개 답변 화면 한 장을 읽어 원문 발췌와 인용을 관찰 기록으로 남김(추정 토큰 확인 뒤 실행)','로그인 화면은 측정하지 못함으로 남김, 노출 보장 아님']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다'],link};
 }
 // 화면에 그릴 모양(평가 9회차 결함 2·3). 사유는 항목 배열로 나눠 MetaLine으로 그리고(가운뎃점 ' · '로 잇지 않는다),
 // 기능 스위치 이름(소문자_밑줄)·단계 코드(B4-2c 등)·내부 이름(digest 큐)은 화면 문구에서 빼서 tech로 넘긴다. 화면은 tech를 '자세히' 안 기술 정보로만 보인다.

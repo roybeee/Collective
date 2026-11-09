@@ -1,14 +1,15 @@
 // G3 예약 실행(순수 모듈). 소유자가 KST 요일+시각으로 정한 예약이 워커 큐 'scheduled_runs'에서 돈다(lib/scheduled-runs-server.ts).
 // 행동은 두 가지뿐이다: create_meeting_draft(최근 7일 성과 요약을 담은 회의 안건 초안 기록, HERMES 호출 없음)과 create_agenda_item(오늘의 안건에 보이는 감지 신호 기록).
+// G5 추가: 종류 geo_weekly는 행동 run_geo_tracking과만 짝을 이룬다(AI 검색 노출 측정 HERMES 실행, lib/geo-run-server.ts). 스위치 geo_tracking·자율성 research_run 자동·전역 중단이 아닐 때만 돈다.
 // 멱등 키는 (예약 id, 기간)이고 기간은 KST 날짜다. 같은 날 두 번째 tick은 실행 기록을 읽고 끝난다.
 import type {Metric} from './agency';
 
-export const SCHEDULE_KINDS=['weekly_performance_summary','daily_signal_review'] as const;
+export const SCHEDULE_KINDS=['weekly_performance_summary','daily_signal_review','geo_weekly'] as const;
 export type ScheduleKind=typeof SCHEDULE_KINDS[number];
-export const SCHEDULE_ACTIONS=['create_meeting_draft','create_agenda_item'] as const;
+export const SCHEDULE_ACTIONS=['create_meeting_draft','create_agenda_item','run_geo_tracking'] as const;
 export type ScheduleAction=typeof SCHEDULE_ACTIONS[number];
-export const SCHEDULE_KIND_LABELS:Record<ScheduleKind,string>={weekly_performance_summary:'주간 성과 요약',daily_signal_review:'일일 신호 검토'};
-export const SCHEDULE_ACTION_LABELS:Record<ScheduleAction,string>={create_meeting_draft:'회의 안건 초안 만들기',create_agenda_item:'오늘의 안건에 올리기'};
+export const SCHEDULE_KIND_LABELS:Record<ScheduleKind,string>={weekly_performance_summary:'주간 성과 요약',daily_signal_review:'일일 신호 검토',geo_weekly:'AI 검색 노출 주간 측정'};
+export const SCHEDULE_ACTION_LABELS:Record<ScheduleAction,string>={create_meeting_draft:'회의 안건 초안 만들기',create_agenda_item:'오늘의 안건에 올리기',run_geo_tracking:'AI 검색 노출 측정 실행(HERMES)'};
 export const WEEKDAY_LABELS=['일','월','화','수','목','금','토'] as const;
 export type ScheduleSpec={weekdays:number[];hour:number};
 export type ScheduleInput={kind:ScheduleKind;action:ScheduleAction;brandId:string;campaignId:string;spec:ScheduleSpec;title:string};
@@ -39,8 +40,12 @@ export function parseScheduleInput(value:unknown):ScheduleInput{
  const input=value as Record<string,unknown>;
  const title=input.title===undefined?'':input.title;
  if(typeof title!=='string'||title.length>120||/[\x00-\x1f\x7f]/.test(title))throw new ScheduledRunError('예약 이름은 120자 이하 한 줄이어야 합니다.');
- return {kind:enumeration(input.kind,SCHEDULE_KINDS,'예약 종류'),action:enumeration(input.action,SCHEDULE_ACTIONS,'예약 행동'),
-  brandId:identifier(input.brandId,'브랜드'),campaignId:identifier(input.campaignId,'캠페인'),spec:parseScheduleSpec(input.spec),title:title.trim()};
+ const kind=enumeration(input.kind,SCHEDULE_KINDS,'예약 종류'),action=enumeration(input.action,SCHEDULE_ACTIONS,'예약 행동');
+ if((kind==='geo_weekly')!==(action==='run_geo_tracking'))throw new ScheduledRunError('AI 검색 노출 주간 측정은 측정 실행 행동과만 짝을 이룹니다.');
+ const spec=parseScheduleSpec(input.spec);
+ if(kind==='geo_weekly'&&spec.weekdays.length!==1)throw new ScheduledRunError('AI 검색 노출 측정은 주 1회(요일 하나)만 예약할 수 있습니다.');
+ return {kind,action,
+  brandId:identifier(input.brandId,'브랜드'),campaignId:identifier(input.campaignId,'캠페인'),spec,title:title.trim()};
 }
 export function kstParts(now:number){
  const local=new Date(now+KST);

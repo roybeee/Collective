@@ -53,6 +53,7 @@ export const FEATURE_FLAGS={
  daangn_ads:{defaultEnabled:false,description:'관리자가 광고주별 당근 광고 OpenAPI 키(공개 베타)를 연결해 캠페인·광고그룹·소재와 기간 성과를 읽고(광고 계정당 분당 60회), 규칙 기반 제안(14일 클릭 0 중지·CPA 초과 일 예산 10% 인하·ROAS 양호 10% 인상, 추정)을 승인하면 한 번 반영하고 읽기 대조로 확인한다(C8). 자동 적용·자동 예산 변경 없음, 결과 미확인 작업은 재전송하지 않는다. 꺼지면 연결·수집·제안 생성·승인·반영은 409이고 해제·조회·반려·미확인 대조는 계속된다.'},
  place_drafts:{defaultEnabled:false,description:'대표·관리자가 플레이스 리뷰 답글·소식 초안을 확정 사실·확정 말투로 결정론 템플릿 작성하고(모델 호출 없음) 규정 점검 뒤 승인하면, 복사·제출 지원(승인 문안+스마트플레이스 관리 주소, 제출은 사람이 표시) 또는 점포 브라우저 작업(등록 장치·화면 매핑이 있을 때, 다시 승인 필요)으로 넘긴다(C5). 자동 제출 없음, 네이버 스마트플레이스 공개 쓰기 API 없음. 꺼지면 초안 작성·승인·제출 표시는 409이고 조회는 계속된다.'},
  mcp_server:{defaultEnabled:false,description:'대표·관리자가 만든 API 키(읽기·초안 저장 범위, 만료 기본 90일, 취소 가능)로 외부 AI 도구(Claude·ChatGPT)가 MCP 엔드포인트 /api/mcp에서 브랜드·캠페인·작업물·성과·오늘의 안건·학습 규칙을 읽고 캠페인 초안·작업물 초안(검토 대기)만 저장한다(G9). 승인·발행·지출·고객 발송·AI 실행은 없다. 키당 1분 60회, 호출마다 감사 기록(본문 없음). 꺼지면 엔드포인트는 모두 404, 키 만들기는 409이고 목록·취소는 계속된다.'},
+ geo_tracking:{defaultEnabled:false,description:'대표·관리자가 브랜드별로 정한 AI 검색 질문(확정 사실로 만든 시작 질문 포함)을 질문×엔진(ChatGPT·Perplexity·Gemini·Google AI 개요·네이버)마다 HERMES 브라우저 실행 1회로 공개 답변 화면을 읽어 답변 앞 1,500자 원문·인용 URL·언급 여부를 관찰 기록으로 남기고(G5, 토큰 사용, 계획 추정·예산 가드·자율성 규칙·전역 중단 적용), 점유율·인용률·주간 변화와 개선 백로그를 보인다. 로그인이 필요한 화면은 로그인하지 않고 login_required로 남긴다. 노출 보장 아님. 꺼지면 조회·저장·측정은 409다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};
