@@ -48,6 +48,7 @@ export const FEATURE_FLAGS={
  threads_publish:{defaultEnabled:false,description:'브랜드에 Threads 연결이 있고 Instagram 직접 게시 연결이 없으면 승인된 발행의 실행을 Threads API로 보낸다(텍스트·이미지, 본문 500자, 두 단계, 결과 미확인 재전송 금지). 꺼져 있거나 연결이 없으면 이전 경로 그대로다(C3). 답글은 수집만 하고 자동 답글은 없다.'},
  naver_ads_write:{defaultEnabled:false,description:'소유자·관리자가 승인한 네이버 검색광고 제안(규칙 기반 입찰 조정·중지·재개·키워드/캠페인 생성, 추정·규칙 기반)만 서명한 POST/PUT로 반영하고 읽기 대조로 확인한다(C4). 자동 입찰·자동 적용 없음, 결과 미확인 작업은 재전송하지 않는다. 꺼지면 승인·반영은 409이고 제안 생성·조회·반려·미확인 대조는 계속된다.'},
  brand_autolearn:{defaultEnabled:false,description:'공식 웹사이트·플레이스·SNS 공개 페이지 주소 1개를 서버가 1회 읽어(10초·1MB, 사설 주소 거부, 모델 호출 없음) 이름·로고·색·소개·주소·전화·영업시간·가격·말투 신호를 미확인 후보로 뽑고, 사람이 누르면 사실 원장 확인 후보로 저장하며 첫 캠페인 템플릿 3개로 브리프 초안을 만든다(G1). 확정과 브랜드 색 적용은 사람이 한다. 꺼지면 미리보기·저장·색 적용·템플릿 초안은 409이고 기록 조회는 계속된다.'},
+ mcp_server:{defaultEnabled:false,description:'대표·관리자가 만든 API 키(읽기·초안 저장 범위, 만료 기본 90일, 취소 가능)로 외부 AI 도구(Claude·ChatGPT)가 MCP 엔드포인트 /api/mcp에서 브랜드·캠페인·작업물·성과·오늘의 안건·학습 규칙을 읽고 캠페인 초안·작업물 초안(검토 대기)만 저장한다(G9). 승인·발행·지출·고객 발송·AI 실행은 없다. 키당 1분 60회, 호출마다 감사 기록(본문 없음). 꺼지면 엔드포인트는 모두 404, 키 만들기는 409이고 목록·취소는 계속된다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};
