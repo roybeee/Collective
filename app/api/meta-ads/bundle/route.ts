@@ -5,7 +5,8 @@ import {metaReadToken} from '@/lib/meta-read-connection';
 import {MetaInsightError} from '@/lib/meta-insights';
 import {storefrontDigest} from '@/lib/storefront-orders';
 import {ApiError,acquireLock,actor,body,database,failure,json,readRecord,recordStatement,releaseLock,requireOwnerActor,secureMutation,stamp,str} from '@/lib/server';
-export async function GET(req:Request){try{const who=await actor(req),c=await readRecord<Campaign>(who.owner,'campaign',str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true));return json(await viewMetaAdBundle(who.owner,c,who.role==='owner'))}catch(e){return failure(e)}}
+import {requireCampaignRead} from '@/lib/server-access';
+export async function GET(req:Request){try{const who=await actor(req);await requireCampaignRead(req,new URL(req.url).searchParams.get('campaignId'));const c=await readRecord<Campaign>(who.owner,'campaign',str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true));return json(await viewMetaAdBundle(who.owner,c,who.role==='owner'))}catch(e){return failure(e)}}
 async function save(owner:string,old:MetaAdBundle|null,next:MetaAdBundle){
  if(!old){await recordStatement(owner,'meta_ads_bundle',next.id,next,next.campaignId).run();return}
  const r=await database().prepare("UPDATE records SET data=?,updated_at=? WHERE owner=? AND kind='meta_ads_bundle' AND id=? AND data=?").bind(JSON.stringify(next),next.updatedAt,owner,`${owner}:meta_ads_bundle:${next.id}`,JSON.stringify(old)).run();if(!r.meta.changes)throw new ApiError(409,'패키지가 변경되었습니다. 다시 조회하세요.');

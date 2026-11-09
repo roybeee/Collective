@@ -3,7 +3,8 @@ import {MetaImageError,uploadMetaImage} from '@/lib/meta-image-upload';
 import {metaImageSourceBytes,metaImageUploadContext,metaImageUploadJournal,prepareMetaImageUpload,viewMetaImageUpload,type MetaImageUpload} from '@/lib/meta-image-upload-server';
 import {metaWriteToken} from '@/lib/meta-write-connection';
 import {ApiError,acquireLock,actor,body,failure,json,readRecord,releaseLock,requireAdminActor,secureMutation,str} from '@/lib/server';
-export async function GET(req:Request){try{const who=await actor(req),c=await readRecord<Campaign>(who.owner,'campaign',str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true));return json(await viewMetaImageUpload(who.owner,c,who.role!=='member'))}catch(e){return failure(e)}}
+import {requireCampaignRead} from '@/lib/server-access';
+export async function GET(req:Request){try{const who=await actor(req);await requireCampaignRead(req,new URL(req.url).searchParams.get('campaignId'));const c=await readRecord<Campaign>(who.owner,'campaign',str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true));return json(await viewMetaImageUpload(who.owner,c,who.role!=='member'))}catch(e){return failure(e)}}
 export async function POST(req:Request){let owner='',lock='';try{
  const who=await requireAdminActor(req);secureMutation(req);const b=await body(req);
  if(!['prepare','upload'].includes(String(b.action))||Object.keys(b).some(k=>!['action','campaignId','campaignVersion','evidenceFingerprint','operationId','expectedVersion','confirmed'].includes(k)))throw new ApiError(400,'지원하지 않는 이미지 업로드 작업입니다.');

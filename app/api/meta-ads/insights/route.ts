@@ -5,10 +5,11 @@ import {MetaInsightError,metaAttributions,metaId,metaWindow,parseMetaInsightImpo
 import {collectMetaRead,MetaReadError} from '@/lib/meta-insights-provider';
 import {metaConnectionId,metaReadToken,prepareMetaConnection,publicMetaConnection,readMetaConnection,type MetaReadConnection} from '@/lib/meta-read-connection';
 import {ApiError,acquireLock,actor,body,database,eventStatement,failure,json,listRecords,readRecord,recordStatement,releaseLock,requireAdminActor,secureMutation,stamp,str} from '@/lib/server';
+import {requireCampaignRead} from '@/lib/server-access';
 async function report(owner:string,id:string){try{return await readRecord<MetaInsightReport>(owner,'meta_ads_insights',id)}catch(e){if(e instanceof ApiError&&e.status===404)return null;throw e}}
 async function syncState(owner:string,id:string){try{return await readRecord<MetaSyncState>(owner,'meta_ads_sync_state',id)}catch(e){if(e instanceof ApiError&&e.status===404)return null;throw e}}
 const view=async(owner:string,r:MetaInsightReport|null,c:Campaign,canEdit:boolean)=>({syncState:await syncState(owner,c.id),report:r,summary:r?summarizeMetaInsights(r.rows):null,version:r?.version??0,campaignVersion:c.version,canEdit,stale:!!r&&(r.brandId!==c.brandId||r.campaignVersion!==c.version)});
-export async function GET(req:Request){try{const who=await actor(req),c=await readRecord<Campaign>(who.owner,'campaign',str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true));return json({...await view(who.owner,await report(who.owner,c.id),c,who.role!=='member'),connection:publicMetaConnection(await readMetaConnection(who.owner,c.brandId))})}catch(e){return failure(e)}}
+export async function GET(req:Request){try{const who=await actor(req);await requireCampaignRead(req,new URL(req.url).searchParams.get('campaignId'));const c=await readRecord<Campaign>(who.owner,'campaign',str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true));return json({...await view(who.owner,await report(who.owner,c.id),c,who.role!=='member'),connection:publicMetaConnection(await readMetaConnection(who.owner,c.brandId))})}catch(e){return failure(e)}}
 export async function POST(req:Request){let owner='',lock='';try{
  const who=await requireAdminActor(req);secureMutation(req);const b=await body(req);
  if(!['import','connect','disconnect','sync'].includes(String(b.action)))throw new ApiError(400,'지원하지 않는 성과 작업입니다.');

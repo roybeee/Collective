@@ -2,9 +2,10 @@
 // 로그인 계정·역할을 화면 전체에 내려 주는 공용 컨텍스트(ux-3). AuthGate가 AccountProvider로 감싼다.
 // 판정은 서버가 한다(lib/server.ts actor·requireAdminActor·requireOwnerActor: 직원은 관리자 작업 403, 소유자 전용 작업은 관리자도 403).
 // 화면은 같은 규칙으로 변경 버튼·폼을 숨기고 안내할 뿐이며 조회 정보는 그대로 보인다.
-import {useMemo,type ReactNode} from 'react';
-import {AuthContext,useAuthState,type AccountRole,type AuthState} from './auth-client';
-import {scopedRoleLabels,type ScopedRole} from '@/lib/access';
+import {useCallback,useMemo,useSyncExternalStore,type ReactNode} from 'react';
+import {AuthContext,useAuthState,useCanManage,type AccountRole,type AuthState} from './auth-client';
+import {scopedRoleLabels,type AccessAction,type AccessResource,type ScopedRole} from '@/lib/access';
+import {clientCan,denyKind,subscribeWorkspaceAccess,workspaceAccess,type DenyKind} from '@/lib/access-client';
 
 export type Account={id:string;email:string|null;role:AccountRole;isAdmin:boolean;isOwner:boolean};
 // legacy 모드는 요청자가 곧 워크스페이스 소유자다(서버 actor()와 같다). 화면은 헤더 id를 모르므로 고정 id를 쓴다.
@@ -52,4 +53,16 @@ export function accessLabel(access:AccessView,names:ScopeNames){
 export function WorkspaceProfile(){
  const p=accountProfile(useAccount());
  return <div className="profile" role="group" aria-label="로그인 계정"><span aria-hidden="true">{p.initial}</span><div className="profile-text">{p.hasEmail?<b className="profile-email" title={p.name}>{p.name}</b>:<b>{p.name}</b>}{p.label&&<small>{p.label}</small>}</div>{p.badge&&<span className="profile-badge">{p.badge}</span>}</div>;
+}
+
+// 레인 X-G: 범위 역할을 아는 버튼 판정. 대표·관리자·직원은 useCanManage와 같은 값이고(화면 동일), 범위 역할은 lib/access.ts 표로 자원(브랜드·지점)을 본다.
+// check(action,resource)는 행마다 다른 자원을 볼 때(안건 목록) 쓴다. deny는 막을 때의 문구 종류('scope' 배정 범위 밖, 'admin' 관리자 전용).
+export function useAccessCheck():{check:(action:AccessAction,resource?:AccessResource)=>boolean;deny:DenyKind;scoped:boolean}{
+ const canManage=useCanManage(),access=useSyncExternalStore(subscribeWorkspaceAccess,workspaceAccess,()=>null);
+ const check=useCallback((action:AccessAction,resource:AccessResource={})=>clientCan(canManage,access,action,resource),[canManage,access]);
+ return {check,deny:denyKind(access),scoped:!!access};
+}
+export function useCan(action:AccessAction,resource:AccessResource={}):boolean{
+ const {check}=useAccessCheck();
+ return check(action,resource);
 }

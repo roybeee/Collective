@@ -5,8 +5,9 @@ import {curate} from '@/lib/playbook-curator';
 import type {SourceCampaignDeleted} from '@/lib/record-kinds';
 import {measurementViews,measurementAlerts} from '@/lib/measurement-status-server';
 import {collectAlerts} from '@/lib/measurement-status';
+import {denyScoped} from '@/lib/server-access';
 // reviewDecisions(인용 선택용 판정 요약)·playbookSuggestions(Curator 제안)·playbookRechecks(중지한 운영자 선호 규칙의 재확인 표시)는 운영자 선호 영역(B3-1)이 쓴다.
-export async function GET(req:Request){try{const owner=await identity(req);
+export async function GET(req:Request){try{const owner=await identity(req);await denyScoped(req);
  // 워크스페이스 첫 화면의 만료 임박 알림(loop-11)은 규칙만 읽어 만료 임박 목록만 돌려준다.
  // 성과 자동 수집 재연결 알림(loop-1·security-ops-5)도 같은 방식으로 알림 목록만 돌려준다.
  if(new URL(req.url).searchParams.get('only')==='collect_alerts')return json({collectAlerts:await measurementAlerts(owner)});
@@ -15,4 +16,4 @@ export async function GET(req:Request){try{const owner=await identity(req);
  const blocked=new Set(await Promise.all(rules.filter(r=>r.status==='active'&&!r.sourceCampaignDeleted&&!operatorRule(r)).map(async r=>await renewBlocked(owner,r,experiments)?r.id:'')));
  const shown=rules.map(r=>blocked.has(r.id)?{...r,renewBlocked:true}:r);
  return json({cases,analyses,experiments:experiments.map(withStats),rules:shown,expiringRules:expiringRules(shown),snapshots,observations,jobOutputs,guidances,jobs:jobs.results,experimentSummaries,reviewDecisions,playbookSuggestions:curate(rules),playbookRechecks,measurements,collectAlerts:collectAlerts(measurements,experiments),...await playbookSignals(owner,req,rules,snapshots)})}catch(e){return failure(e)}}
-export async function POST(req:Request){let owner='',token='';try{const who=await actor(req);owner=who.owner;secureMutation(req);const b=await body(req);token=await acquireLock(owner);return json(await learningAction(owner,b,{id:who.id,email:who.email,role:who.role}))}catch(e){return failure(e)}finally{if(token)await releaseLock(owner,token)}}
+export async function POST(req:Request){let owner='',token='';try{const who=await actor(req);owner=who.owner;secureMutation(req);await denyScoped(req);const b=await body(req);token=await acquireLock(owner);return json(await learningAction(owner,b,{id:who.id,email:who.email,role:who.role}))}catch(e){return failure(e)}finally{if(token)await releaseLock(owner,token)}}

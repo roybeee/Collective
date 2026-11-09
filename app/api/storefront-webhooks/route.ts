@@ -3,8 +3,9 @@ import {sealRecordSecret} from '@/lib/credential-crypto-server';
 import {storefrontSource,StorefrontInputError} from '@/lib/storefront-orders';
 import {publicStorefrontWebhook,storefrontWebhookId,type StorefrontWebhook} from '@/lib/storefront-webhook';
 import {ApiError,acquireLock,actor,body,failure,json,listRecords,readRecord,recordStatement,releaseLock,requireOwnerActor,secureMutation,stamp,str,uid} from '@/lib/server';
+import {requireStoreRead} from '@/lib/server-access';
 async function connections(owner:string,storeId:string){return (await listRecords<StorefrontWebhook>(owner,'channel_credential')).filter(c=>c.channel==='storefront_webhook'&&c.storeId===storeId);}
-export async function GET(req:Request){try{const who=await actor(req),store=await readRecord<Store>(who.owner,'store',str(new URL(req.url).searchParams.get('storeId'),'지점',100,true));return json({canEdit:who.role==='owner',connections:(await connections(who.owner,store.id)).map(publicStorefrontWebhook)});}catch(e){return failure(e);}}
+export async function GET(req:Request){try{const who=await actor(req);await requireStoreRead(req,new URL(req.url).searchParams.get('storeId'));const store=await readRecord<Store>(who.owner,'store',str(new URL(req.url).searchParams.get('storeId'),'지점',100,true));return json({canEdit:who.role==='owner',connections:(await connections(who.owner,store.id)).map(publicStorefrontWebhook)});}catch(e){return failure(e);}}
 export async function POST(req:Request){let owner='',lock='';try{
  const who=await requireOwnerActor(req);secureMutation(req);const b=await body(req);if(!['create','enable','disable','rotate'].includes(String(b.action)))throw new ApiError(400,'지원하지 않는 웹훅 설정입니다.');owner=who.owner;lock=await acquireLock(owner);const store=await readRecord<Store>(owner,'store',str(b.storeId,'지점',100,true));if(store.status!=='active'&&b.action!=='disable')throw new ApiError(409,'보관된 지점에는 수신 연결을 설정할 수 없습니다.');
  const now=stamp();let saved:StorefrontWebhook,signingSecret:string|undefined;

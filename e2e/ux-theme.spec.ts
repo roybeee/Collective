@@ -31,7 +31,7 @@ test('테마 버튼으로 다크 전환·새로고침 유지·홈 본문에 흰 
   await expect(page.locator('html')).toHaveClass(/\bdark\b/);
   await expect.poll(()=>page.evaluate(()=>getComputedStyle(document.body).backgroundColor)).not.toBe(WHITE);
   expect(await whiteBoxes(page),'다크 홈 본문의 흰 상자').toEqual([]);
-  for(const sel of ['.workspace-main','.agenda-card','.agenda-list button','[data-slot=sidebar-inner]']){
+  for(const sel of ['.workspace-main','.agenda-card','.agenda-list .agenda-row-main','[data-slot=sidebar-inner]']){
    const el=page.locator(sel).first();if(await el.count()===0)continue;
    expect(await el.evaluate(e=>getComputedStyle(e).backgroundColor),sel).not.toBe(WHITE);
   }

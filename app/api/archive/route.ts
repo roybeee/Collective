@@ -8,15 +8,16 @@ import {sourceSummary,publicResearch,type ArchiveSource,type ChannelObservation,
 import {archiveState,stateWrite,assertArchiveIdle,makeSource,makeObservation,intake,deleteSourceFile,withoutCleanupKey,type SourceFileDeletion} from '@/lib/archive-server';
 import {diagnosisBasis,diagnosisIncluded,latestAdopted,brandBasis,type AdoptedDiagnostic} from '@/lib/ai-context';
 import {reviewActor,requireReasonCodes,sourceDecisionStatement} from '@/lib/review-decisions-server';
-export async function GET(req:Request){try{const owner=await identity(req),u=new URL(req.url),brandId=str(u.searchParams.get('brandId'),'브랜드',100,true),brand=await readRecord<Brand>(owner,'brand',brandId);
+import {requireBrandRead,denyScoped,requireBrandAction,scopedPrincipal,scopeStoreRows} from '@/lib/server-access';
+export async function GET(req:Request){try{const owner=await identity(req),u=new URL(req.url),brandId=str(u.searchParams.get('brandId'),'브랜드',100,true);await requireBrandRead(req,brandId);const brand=await readRecord<Brand>(owner,'brand',brandId),scoped=await scopedPrincipal(req),shown=<R extends {storeId?:unknown}>(rows:R[])=>scoped?scopeStoreRows(scoped,brandId,rows):rows;
  if(u.searchParams.get('sourceId')){const s=await readRecord<ArchiveSource&SourceFileDeletion>(owner,'brand_source',str(u.searchParams.get('sourceId'),'자료',100,true));if(s.brandId!==brandId)throw new ApiError(404,'자료를 찾을 수 없습니다.');const{objectKey:_,...data}=withoutCleanupKey(s);return json(data)}
  // 진단마다 근거 상태(basis)와 AI 입력 포함 여부(included)를 서버 규칙으로 계산해 화면이 같은 기준을 쓰게 한다.
  const state=await archiveState(owner,brandId),sources=await listRecords<ArchiveSource>(owner,'brand_source',brandId);
  const diagnostics=await listRecords<AdoptedDiagnostic>(owner,'brand_diagnostic',brandId),latest=latestAdopted(diagnostics);
- return json({state,sources:sources.map(sourceSummary),observations:await listRecords<ChannelObservation>(owner,'brand_observation',brandId),diagnostics:diagnostics.map(d=>({...d,basis:diagnosisBasis(d,sources),included:d.id===latest?.id&&diagnosisIncluded(d,sources,brand,state.revision)})),research:(await listRecords<BrandResearch>(owner,'brand_research',brandId)).map(publicResearch),storageReady:!!runtime.BUCKET});
+ return json({state,sources:shown(sources).map(sourceSummary),observations:await listRecords<ChannelObservation>(owner,'brand_observation',brandId),diagnostics:diagnostics.map(d=>({...d,basis:diagnosisBasis(d,sources),included:d.id===latest?.id&&diagnosisIncluded(d,sources,brand,state.revision)})),research:shown(await listRecords<BrandResearch>(owner,'brand_research',brandId)).map(publicResearch),storageReady:!!runtime.BUCKET});
 }catch(e){return failure(e)}}
 export async function POST(req:Request){let owner='',lock='';try{owner=await identity(req);secureMutation(req);const b=await body(req);lock=await acquireLock(owner);
- if(b.action==='create_brand'){
+ if(b.action==='create_brand'){await denyScoped(req);
   const id=str(b.id,'브랜드 번호',100,true);if(!/^[a-zA-Z0-9_-]{5,100}$/.test(id))throw new ApiError(400,'브랜드 번호를 확인하세요.');const existing=(await listRecords<Brand>(owner,'brand')).find(x=>x.id===id);if(existing)return json({id:existing.id});
   const name=str(b.data?.name,'브랜드 이름',100,true),brand:Brand={id,name,short:name.slice(0,3).toUpperCase(),category:str(b.data?.category??'','업종',100,true),description:str(b.data?.description??'','소개',5000),audience:'',tone:'',constraints:'',knowledge:'',color:'#273953',bg:'#e5e9ee',intake:intake(b.data?.intake)};
   let research:BrandResearch|undefined,researchBlocked:string|undefined;
@@ -26,7 +27,7 @@ export async function POST(req:Request){let owner='',lock='';try{owner=await ide
   if(research)scheduleResearch(owner,research.id);
   return json({id,researchId:research?.id,researchQueued:!!research,...(researchBlocked?{researchBlocked}:{})});
  }
- const brandId=str(b.brandId,'브랜드',100,true),brand=await readRecord<Brand>(owner,'brand',brandId);await assertArchiveIdle(owner,brandId);const state=await archiveState(owner,brandId);
+ const brandId=str(b.brandId,'브랜드',100,true);await requireBrandAction(req,'edit_campaign',brandId);const brand=await readRecord<Brand>(owner,'brand',brandId);await assertArchiveIdle(owner,brandId);const state=await archiveState(owner,brandId);
  // 확정 자료·채택 진단·의뢰 정보는 AI 제작 맥락에 '확인된 근거'로 들어가므로 관리자 전용이다. 직원은 자료 추가와 후보 검토까지 한다.
  if(b.action==='save_intake'){await requireAdminActor(req);await assertNoActiveJobs(owner);const updated={...brand,intake:intake(b.data)};await database().batch([recordStatement(owner,'brand',brandId,updated),stateWrite(owner,brandId,state.revision+1)]);return json({id:brandId})}
  if(b.action==='add_source'){

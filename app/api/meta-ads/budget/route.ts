@@ -5,6 +5,7 @@ import {metaBudgetEnvelope,META_BUDGET_REVIEW_PURPOSE,type MetaBudgetScope,type 
 import {readMetaConnection,publicMetaConnection} from '@/lib/meta-read-connection';
 import {storefrontDigest} from '@/lib/storefront-orders';
 import {ApiError,acquireLock,actor,body,database,failure,json,readRecord,recordStatement,releaseLock,requireOwnerActor,secureMutation,stamp,str} from '@/lib/server';
+import {requireCampaignRead} from '@/lib/server-access';
 
 async function history(owner:string,id:string) {
   const rows=await database().prepare("SELECT data FROM records WHERE owner=? AND kind='meta_ads_budget_review' AND parent_id=? ORDER BY CAST(json_extract(data,'$.version') AS INTEGER) DESC LIMIT 20").bind(owner,id).all<{data:string}>();
@@ -24,7 +25,7 @@ async function view(owner:string,c:Campaign,canEdit:boolean) {
     status:!latest?'not_reviewed':latest.action==='revoke'?'revoked':current?'reviewed':'stale'};
 }
 export async function GET(req:Request) {
-  try {const who=await actor(req),c=await readRecord<Campaign>(who.owner,'campaign',str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true));return json(await view(who.owner,c,who.role==='owner'));}catch(e){return failure(e);}
+  try {const who=await actor(req);await requireCampaignRead(req,new URL(req.url).searchParams.get('campaignId'));const c=await readRecord<Campaign>(who.owner,'campaign',str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true));return json(await view(who.owner,c,who.role==='owner'));}catch(e){return failure(e);}
 }
 export async function POST(req:Request) {
   let owner='',lock='';

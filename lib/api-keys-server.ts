@@ -3,7 +3,7 @@
 // 확인 순서: 키 모양 → 해시 PK 조회 → 저장 id와 상수 시간 비교 → 만료·취소. 실패는 모두 같은 null(호출자가 같은 401로 답한다).
 // 스위치 mcp_server(기본 꺼짐)는 이 파일에서만 읽는다. 꺼지면 만들기 409, MCP 경로는 모두 404다. 목록·취소는 꺼져도 된다.
 import {ApiError,database,recordStatement,stamp,uid,type Actor} from './server';
-import {hashToken,randomToken} from './auth-session';
+import {authMode,hashToken,randomToken} from './auth-session';
 import {isEnabled} from './feature-flags';
 import {API_KEY_MESSAGES as M,API_KEY_PREFIX,API_KEY_RATE_PER_MINUTE,API_KEYS_MAX_ACTIVE,entryOf,expiryOf,isApiKeyToken,keyState,parseCreateKey,parseRevokeKey,type ApiKey,type ApiKeyEntry,type Parsed} from './api-keys';
 
@@ -70,7 +70,16 @@ export async function resolveApiKey(token:unknown):Promise<ResolvedKey|null>{
  if(!row||!sameHash(row.id,id))return null;
  const key=JSON.parse(row.data) as ApiKey;
  if(keyState(key,Date.now())!=='active')return null;
+ if(!await creatorStillAdmin(row.owner,key))return null;
  return {owner:row.owner,rowId:row.id,key};
+}
+// 이메일 모드: 키를 만든 계정이 지금도 그 워크스페이스의 활성 관리자여야 한다(접근 해제·직원 강등·다른 워크스페이스면 같은 null → 401).
+// legacy 모드는 계정 표가 없어(만든 사람 = 소유자 헤더) 검사하지 않는다. 인증 모드를 읽지 못하면 닫힌 쪽(검사)으로 간다.
+async function creatorStillAdmin(owner:string,key:ApiKey){
+ let email=true;try{email=authMode()==='email'}catch{email=true}
+ if(!email)return true;
+ const user=await database().prepare("SELECT 1 AS ok FROM auth_users WHERE id=? AND workspace_owner=? AND role='admin' AND status='active'").bind(key.createdBy?.id??'',owner).first<{ok:number}>().catch(()=>null);
+ return !!user;
 }
 // 마지막 사용 시각은 1분에 한 번만 쓴다(요청마다 쓰지 않는다). 실패해도 요청은 계속한다.
 export async function touchApiKey(r:ResolvedKey,now=Date.now()){

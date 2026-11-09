@@ -13,7 +13,7 @@ import {registerCodedPng} from '@/lib/coded-png-server';
 import {readBoundedJson,HttpBodyError} from '@/lib/http-limits';
 import {executionRate} from '@/lib/execution-rate';
 import {reviewActor,requireReasonCodes,publicationDecisionStatement} from '@/lib/review-decisions-server';
-import {requireAccess,campaignResource} from '@/lib/server-access';
+import {requireAccess,campaignResource,requireCampaignAction} from '@/lib/server-access';
 import {experimentLinkFor,attachLink,linkExperiment,linkMedia,experimentLinkOptions} from '@/lib/publication-link-server';
 
 // 관리자 전용 실행. 승인·해제·확정한 실제 계정을 기록한다.
@@ -28,6 +28,8 @@ export async function POST(req:Request){let owner='',lock='';try{
  const coded=input.action==='save_publication'&&input.trackingCode!==undefined&&input.trackingCode!==null;
  // G7: 발행 승인·전송(approve·execute)은 publish 권한이다. 대표·관리자는 이전과 같고, 브랜드 매니저는 배정 브랜드의 캠페인에서만 한다(직원은 같은 403).
  const who:Actor|null=input.action==='approve'||input.action==='execute'?(await requireAccess(req,'publish',()=>campaignResource(owner,input.campaignId))).actor:adminActions.includes(String(input.action))||coded?await requireAdminActor(req):null;
+ // 범위 가드: 관리자 전용이 아닌 발행 준비(소재·발행 초안 저장, 상태 조회)는 캠페인 edit_campaign이다(직원 그대로).
+ if(!who)await requireCampaignAction(req,'edit_campaign',input.campaignId);
  // G3 자율성 규칙: 발행 접수(승인·전송)는 T3라 자동이 없고, 금지(never)면 잠금 전에 403으로 막는다(확인 후·꺼짐은 그대로).
  if(input.action==='approve'||input.action==='execute')await assertAutonomy(owner,'publish_submit');
  lock=await acquireLock(owner);

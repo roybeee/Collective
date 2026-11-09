@@ -22,6 +22,7 @@ import {DropdownMenu,DropdownMenuContent,DropdownMenuItem,DropdownMenuTrigger,lo
 import {roles,budgetLabel,type Brand,type Campaign} from '@/lib/agency';
 import {executionGapLabels,executionGaps} from '@/lib/execution-gaps';
 import {api,type WorkspaceData} from '@/lib/client';
+import {setWorkspaceAccess} from '@/lib/access-client';
 import {isLearningTab,isFranchiseTab,isResearchTab,franchiseMenuVisible,normalizeNav,parseNav,reconcileNav,serializeNav,withCampaign,type NavState} from '@/lib/nav-state';
 import {activeCampaignNote,activeCampaigns,campaignStatusCounts,isSampleCampaign,nextTasks,onboardingComplete,recentCampaigns,usableRoleCount,workspaceMetrics} from '@/lib/workspace-metrics';
 import {canAutoDraft,defaultBrandId,otherBrandMentions} from '@/lib/brand-default';
@@ -136,6 +137,8 @@ useEffect(()=>{const prev=shownView.current;shownView.current=view;if(!prev||pre
 // (기억한 선택이 없을 때만, 저장하지 않음). 이후 다른 브랜드의 활동이 최신이 돼도 선택 상자가 바뀌지 않는다.
 const reloadSeq=useRef({started:0,applied:0});
 const reload=useCallback(async()=>{const seq=++reloadSeq.current.started;try{const r=await bootFetch('/api/workspace');const d=await r.json() as WorkspaceData & {error?:string};if(!r.ok)throw new Error(d.error||'데이터를 불러오지 못했습니다.');if(seq<reloadSeq.current.applied)return;reloadSeq.current.applied=seq;setData(d);setError('');setLoaded(true);setBrandId(b=>d.brands.some(x=>x.id===b)?b:defaultBrandId(d.brands,campaignActivity(d.campaigns)))}catch(e){if(seq<reloadSeq.current.applied)return;setError((e as Error).message);throw e}},[]);
+// G7 범위 역할: 응답의 access(역할·배정 브랜드·지점)를 화면 권한 판정(app/account-context.tsx useCan)에 넘긴다. 범위 없는 역할은 access가 없어 null이다.
+useEffect(()=>{setWorkspaceAccess((data as WorkspaceData&{access?:unknown}).access)},[data]);
 // 머리 스크립트가 미리 받은 워크스페이스로 첫 화면을 그렸으면(boot) 처음 불러오기는 건너뛴다. 이후 갱신은 폴링·저장 뒤 reload가 맡는다.
 useEffect(()=>{if(boot)return;void reload().catch(()=>{})},[reload,boot]);
 useEffect(()=>{if(!loaded)return;const controller=new AbortController();const read=()=>{fetch('/api/franchise?view=status',{signal:controller.signal}).then(r=>r.ok?r.json() as Promise<{enabled?:unknown;hasRecords?:unknown}>:null).then(d=>{if(!controller.signal.aborted)setFranchiseStatus(d?{enabled:d.enabled===true,hasRecords:d.hasRecords===true}:null)}).catch(()=>{})};read();window.addEventListener('focus',read);return()=>{controller.abort();window.removeEventListener('focus',read)}},[loaded]);
