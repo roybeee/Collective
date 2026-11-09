@@ -146,4 +146,52 @@ export async function scopedPrincipal(req:Request):Promise<AccessPrincipal|null>
 }
 // 브랜드·지점을 가진 항목(사실·자료 요청·조사 등)을 거른다. 지점 항목은 지점 운영 자료와 같은 규칙(canReadStore)이다. 범위 없는 역할은 입력 그대로다.
 export const scopeByBrandStore=<R extends {brandId?:unknown;storeId?:unknown}>(principal:AccessPrincipal,rows:readonly R[]):R[]=>isScoped(principal)?rows.filter(r=>text(r.storeId)?canReadStore(principal,{brandId:text(r.brandId),storeId:text(r.storeId)}):canReadCampaign(principal,r)):[...rows];
+// ── 쓰기 가드(경로별 범위 가드의 쓰기 표, docs/ROLES.ko.md) ──
+// 조회 가드와 같이 범위 없는 역할은 자원을 읽지 않고 역할만으로 판단한다(대표·관리자·직원은 edit_campaign·run_ai 모두 전체라 그대로 통과).
+export async function requireCampaignAction(req:Request,action:AccessAction,campaignId:unknown):Promise<Access>{
+ return requireAccess(req,action,async()=>campaignResource(await ownerOf(req),campaignId));
+}
+export async function requireBrandAction(req:Request,action:AccessAction,brandId:unknown):Promise<Access>{
+ return requireAccess(req,action,{brandId:text(brandId)});
+}
+export async function requireStoreAction(req:Request,action:AccessAction,storeId:unknown):Promise<Access>{
+ return requireAccess(req,action,async()=>storeResource(await ownerOf(req),storeId));
+}
+// 입력이 가리키는 범위: 캠페인 → 지점 → 브랜드 순으로 가장 좁은 것을 쓴다. 아무것도 없으면 빈 자원(범위 역할 403).
+export async function requireInputAction(req:Request,action:AccessAction,input:{campaignId?:unknown;storeId?:unknown;brandId?:unknown}):Promise<Access>{
+ return requireAccess(req,action,async()=>{
+  const owner=await ownerOf(req);
+  if(text(input.campaignId))return campaignResource(owner,input.campaignId);
+  if(text(input.storeId)){const s=await storeResource(owner,input.storeId);return text(input.brandId)&&s.brandId!==input.brandId?{}:s}
+  return {brandId:text(input.brandId)};
+ });
+}
+// 저장된 기록(회의·조사·초안·학습 기록·사실 등)이 가리키는 범위. 캠페인 → 지점 → 브랜드 순이고, 브리프 초안처럼 input 안에 둔 기록도 읽는다.
+async function linkedResource(owner:string,kind:string,id:unknown):Promise<AccessResource>{
+ const d=await recordData(owner,kind,id);if(!d)return {};
+ const nested=d.input&&typeof d.input==='object'?d.input as Record<string,unknown>:{};
+ if(text(d.campaignId))return campaignResource(owner,d.campaignId);
+ const storeId=text(d.storeId)??text(nested.storeId),brandId=text(d.brandId)??text(nested.brandId);
+ if(storeId){const s=await storeResource(owner,storeId);return brandId&&s.brandId!==brandId?{}:s}
+ return {brandId};
+}
+export async function requireRecordAction(req:Request,action:AccessAction,kind:string,id:unknown):Promise<Access>{
+ return requireAccess(req,action,async()=>linkedResource(await ownerOf(req),kind,id));
+}
+// 같은 id로 다시 시작하면 기존 기록을 돌려주는 경로(브리프 초안 시작)용: 기록이 이미 있으면 그 범위도 본다. 없으면 통과(새로 만드는 범위는 호출자가 따로 본다).
+export async function requireExistingRecordAction(req:Request,action:AccessAction,kind:string,id:unknown):Promise<Access>{
+ const access=await accessOf(req);
+ if(!isScoped(access.principal)||!await recordData(access.actor.owner,kind,id))return access;
+ return requireAccess(req,action,()=>linkedResource(access.actor.owner,kind,id));
+}
+// 역할 실행 작업(jobs 표)의 캠페인.
+export async function requireJobAction(req:Request,action:AccessAction,jobId:unknown):Promise<Access>{
+ return requireAccess(req,action,async()=>{
+  if(typeof jobId!=='string'||!jobId||jobId.length>500)return {};
+  const owner=await ownerOf(req),row=await database().prepare('SELECT campaign_id FROM jobs WHERE id=? AND owner=?').bind(jobId,owner).first<{campaign_id:string}>();
+  return row?campaignResource(owner,row.campaign_id):{};
+ });
+}
+// 한 브랜드 화면 안의 지점 항목(자료·관찰·조사 등, storeId가 있으면 지점 항목)을 지점 운영 규칙으로 거른다. 브랜드는 이미 가드한 요청 브랜드다.
+export const scopeStoreRows=<R extends {storeId?:unknown}>(principal:AccessPrincipal,brandId:string,rows:readonly R[]):R[]=>isScoped(principal)?rows.filter(r=>!text(r.storeId)||canReadStore(principal,{brandId,storeId:text(r.storeId)})):[...rows];
 export const scopeStores=<R extends {id?:unknown;brandId?:unknown}>(principal:AccessPrincipal,rows:readonly R[]):R[]=>isScoped(principal)?rows.filter(r=>canReadStore(principal,{brandId:text(r.brandId),storeId:text(r.id)})):[...rows];

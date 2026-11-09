@@ -8,7 +8,7 @@ import {confirmedFactContext} from '@/lib/brand-facts-server';
 import {applyLearnedVisual,learnBrandPage,listLearnRuns,saveLearnRun,saveLearnedCandidates,BRAND_AUTOLEARN_OFF,type LearnSourceInput} from '@/lib/brand-learn-server';
 import {BRAND_LEARN_SAMPLE_HTML,BRAND_LEARN_SAMPLE_PATH} from '@/lib/brand-learn-sample';
 import {campaignTemplates,isTemplateId,templateBriefInput} from '@/lib/campaign-templates';
-import {requireBrandRead} from '@/lib/server-access';
+import {requireBrandRead,requireBrandAction,requireRecordAction} from '@/lib/server-access';
 
 // 브랜드 자동 학습(에픽 G1). 읽기: 스위치 상태·최근 실행 기록·템플릿 목록. 쓰기(스위치 꺼짐이면 409):
 //  preview(공개 페이지 1회 GET → 후보 미리보기, 실행 기록) · save_candidates(후보를 사실 원장 '확인 후보'로) · apply_visual(관리자: 제안 색을 브랜드 색으로)
@@ -35,6 +35,7 @@ export async function POST(req:Request){
    // 템플릿 입력만 여기서 만들고 저장은 기존 브리프 저장 경로(save_campaign: validateCampaign·브랜드 검사·이벤트)가 한다. 잠금은 그 경로가 잡는다.
    if(!await isEnabled(owner,'brand_autolearn'))throw new ApiError(409,BRAND_AUTOLEARN_OFF);
    const brandId=str(input.brandId,'브랜드',100,true),template=input.template;
+   await requireBrandAction(req,'edit_campaign',brandId);
    if(!isTemplateId(template))throw new ApiError(400,'템플릿을 확인하세요.');
    const brand=await readRecord<Brand>(owner,'brand',brandId);
    const [stores,confirmed]=await Promise.all([listRecords<Store>(owner,'store',brandId),confirmedFactContext(owner,brandId)]);
@@ -43,11 +44,13 @@ export async function POST(req:Request){
   }
   if(input.action==='preview'){
    // 가져오기(최대 10초)는 잠금 밖에서 하고 기록만 잠금 안에서 쓴다.
+   await requireBrandAction(req,'edit_campaign',input.brandId);
    const run=await learnBrandPage(owner,input,learnSource(req,input.url));
    lock=await acquireLock(owner);await executionRate(owner,'brand_learn');
    return json({run:await saveLearnRun(owner,run,who)});
   }
   if(input.action!=='save_candidates'&&input.action!=='apply_visual')throw new ApiError(400,'지원하지 않는 작업입니다.');
+  await requireRecordAction(req,'edit_campaign','brand_learn_run',input.runId);
   lock=await acquireLock(owner);await executionRate(owner,'brand_learn');
   if(input.action==='save_candidates')return json(await saveLearnedCandidates(owner,input,who));
   return json(await applyLearnedVisual(owner,input,who));

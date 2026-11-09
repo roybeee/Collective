@@ -10,7 +10,7 @@ import {isRecruitmentObjective,OBJECTIVE_MESSAGES,type Brand,type Campaign,type 
 import {emptyPlan,storeBriefCopy,storeCopyFields,syncStoreCopy,type StoreCopyKey} from '@/lib/brief';
 import {currentFactRefs} from '@/lib/ai-context';
 import {sameEvidenceFactRefs} from '@/lib/brand-facts';
-import {requireBrandRead,requireStoreRead,scopedPrincipal,scopeStores} from '@/lib/server-access';
+import {requireBrandRead,requireStoreRead,scopedPrincipal,scopeStores,requireStoreAction,requireBrandAction,requireCampaignAction} from '@/lib/server-access';
 async function permittedPromotion(owner:string,...args:Parameters<typeof storeRulePromotion>){
  const promotion=storeRulePromotion(...args);
  if(!promotion.rule)return promotion;
@@ -36,6 +36,7 @@ export async function POST(req:Request){let lock='',owner='';try{
  const who=await actor(req),by={id:who.id,email:who.email};owner=who.owner;secureMutation(req);const b=await body(req);
  // 회고 저장 전 승격 미리보기(loop-7). 읽기만 하므로 저장 잠금을 잡지 않는다. 입력 중 미리보기가 저장과 겹쳐 409를 내지 않게 한다.
  if(b.action==='preview_close'){
+  await requireStoreRead(req,b.storeId);
   const store=await readRecord<Store>(owner,'store',str(b.storeId,'지점',100,true)),experiment=await readRecord<StoreExperiment>(owner,'store_experiment',str(b.experimentId,'실험',100,true));if(experiment.storeId!==store.id)throw new ApiError(400,'다른 지점의 실험입니다.');
   const r=obj(b.review),review=b.review?{evidenceLevel:option(r.evidenceLevel,['observation','comparison','repeated'] as const,'근거 수준'),failureType:'none',confounders:'',nextAction:str(r.nextAction??'','다음 행동',2000),conditions:''}:undefined;
   const measurements=(await listRecords<StoreMeasurement>(owner,'store_measurement',store.id)).filter(m=>m.experimentId===experiment.id);
@@ -45,6 +46,9 @@ export async function POST(req:Request){let lock='',owner='';try{
   return json({promoted:!!rule&&!stop,reasons,...(stop?{blocked:stop}:{})});
  }
  lock=await acquireLock(owner);const db=database();
+ // 범위 가드: 새 지점은 브랜드, 그 밖의 지점 쓰기는 지점(연결 캠페인이 있으면 그 캠페인도) edit_campaign이다(대표·관리자·직원 그대로).
+ if(b.action==='save_store'){if(b.id)await requireStoreAction(req,'edit_campaign',b.id);else await requireBrandAction(req,'edit_campaign',b.brandId)}
+ else{await requireStoreAction(req,'edit_campaign',b.storeId);if(b.action==='link_store')await requireCampaignAction(req,'edit_campaign',b.campaignId)}
  if(b.action==='save_store'){
   const brandId=str(b.brandId,'브랜드',100,true);await readRecord<Brand>(owner,'brand',brandId);
   const old=b.id?await readRecord<Store>(owner,'store',str(b.id,'지점',100,true)):undefined;

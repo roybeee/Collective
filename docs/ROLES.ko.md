@@ -115,7 +115,27 @@ API 예: `POST /api/accounts {"action":"invite","email":"hq@brand.example","role
 
 API 키(`lib/api-keys-server.ts` `resolveApiKey`): 이메일 모드에서는 키를 만든 계정이 지금도 그 워크스페이스의 활성 관리자(`auth_users.role='admin' AND status='active'`)여야 한다. 접근 해제(disabled)·직원 강등·다른 워크스페이스면 키가 남아 있어도 MCP는 다른 실패와 같은 401이다(관리자 역할을 되찾으면 다시 쓴다). legacy 모드는 계정 표가 없어 검사하지 않는다.
 
-남은 위험(이번 판 밖):
-- 쓰기 경로 중 G7 표에 없는 것(예: `/api/archive` POST, `/api/archive/interview` POST, `/api/brief`, `/api/data-requests` POST, `/api/stores` POST, `/api/store-browser` POST, `/api/campaign-attribution` POST, `/api/directives` POST)은 범위 역할에게 아직 `edit_campaign` 가드가 없다. 응답이 쓰기 결과라 조회 누출은 아니지만 배정 밖 쓰기가 가능하다.
-- 점포 매니저는 브랜드 단위 자료(아카이브·브랜드 보이스·학습 실행)를 배정 지점의 브랜드 범위로 읽는다. 아카이브 응답의 조사 목록에는 다른 지점의 조사가 섞일 수 있다.
-- `/api/share` GET은 코드 주석과 달리 직원에게도 링크 목록을 준다(이번 판은 직원 동작을 바꾸지 않음).
+아카이브 화면(`/api/archive` GET)의 자료·조사 목록에서 지점 항목(`storeId`가 있는 행)은 지점 운영 규칙(`scopeStoreRows`)으로 거른다. 점포 매니저는 브랜드 단위 항목과 배정 지점 항목만 받는다.
+
+### 쓰기 경로
+
+app 아래 쓰기 처리기(POST·PUT·PATCH·DELETE)가 있는 route 파일 114개를 같은 방식으로 분류했다. 쓰기 도우미는 `requireCampaignAction`·`requireBrandAction`·`requireStoreAction`·`requireInputAction`(입력의 캠페인 → 지점 → 브랜드)·`requireRecordAction`(저장된 기록의 범위)·`requireExistingRecordAction`·`requireJobAction`이다. 조회 가드와 같이 대표·관리자·직원은 `edit_campaign`·`run_ai`가 모두 전체라 자원을 읽지 않고 통과한다. 상태·응답·순서는 이전과 같다. 회귀: `tests/scoped-roles-writes.test.mjs`.
+
+| 분류 | 경로 | 작업·자원 |
+|---|---|---|
+| 새 쓰기 가드(19) | `/api/archive`(브랜드 만들기는 범위 역할 403, 나머지는 요청 브랜드), `/api/archive/file`, `/api/archive/interview`(시작·진행·전사는 `run_ai`) | `edit_campaign` 브랜드 |
+| | `/api/archive/research`(시작은 요청 브랜드·지점, 진행·복구·중지는 저장된 조사), `/api/brief`(시작은 캠페인 또는 입력 브랜드·지점과 같은 id의 기존 초안, 불러오기는 `read_campaign`, 진행·복구·중지는 저장된 초안) | `run_ai` |
+| | `/api/brand-facts`(저장할 브랜드·지점, 수정이면 기존 사실의 범위도), `/api/brand-learn`(미리보기는 브랜드, 후보 저장은 학습 기록, 템플릿 캠페인은 브랜드 + 기존 `save_campaign` 가드) | `edit_campaign` |
+| | `/api/campaign-attribution`, `/api/directives`, `/api/data-requests`(캠페인 → 지점 → 브랜드), `/api/execution`의 관리자 전용이 아닌 작업(소재·발행 초안 저장, 상태 조회) | `edit_campaign` 캠페인 |
+| | `/api/meetings`의 시작 밖 작업(진행·복구·중지·재시도·이견 선택은 그 회의의 캠페인), `/api/run`의 시작 밖 작업(연속 실행 진행·중지는 캠페인, 조회·복구·중지는 그 작업의 캠페인) | `run_ai` |
+| | `/api/stores`(새 지점은 브랜드, 그 밖은 지점과 연결할 캠페인, 회고 미리보기는 지점 읽기), `/api/store-operations`(실측 조회는 지점 읽기, 나머지는 지점), `/api/place-checks` | `edit_campaign` 지점 |
+| | `/api/franchise`, `/api/learning`, `/api/learning/run` | 범위 역할 403(워크스페이스 전체) |
+| 이미 가드(G7, 5) | `/api/action`(모든 작업이 G7 가드 또는 관리자 전용), `/api/ads-proposals`, `/api/kakao`, `/api/place-drafts`, `/api/meta-ads/execution` | 기존 그대로 |
+| 관리자·대표 전용(80) | `/api/accounts`, `/api/api-keys`, `/api/autonomy`(PUT), `/api/billing/checkout`·`confirm`·`refund`, `/api/brand-voice`, `/api/campaigns`, `/api/channels`, `/api/creative-score`, `/api/customer-reports`, `/api/daangn-ads`, `/api/eval`, `/api/feature-flags`, `/api/geo`, `/api/growth`의 쓰기 33개(모두 `requireAdminActor`), `/api/measurements`, `/api/meta-ads`의 쓰기 14개(execution 제외), `/api/pos/tossplace`, `/api/product-research`(·`retention`·`validation`), `/api/prompts`, `/api/reflector`, `/api/research-worker/setup`, `/api/reward-lineage`, `/api/rewrite`, `/api/scheduled-runs`, `/api/share`, `/api/store-browser`, `/api/storefront-orders`, `/api/storefront-pulls`, `/api/storefront-webhooks`, `/api/usage` | 범위 역할은 저장 역할이 직원이라 route나 서버 모듈의 역할 검사에서 기존 403 |
+| 별도 인증(10) | `/api/auth`, `/api/auth/signup`, `/api/mcp`(API 키), `/api/share/[token]`(공유 토큰), `/api/growth/consumer-delivery/authorize`, `/api/growth/experiments/events/[id]`(서명), `/api/pos/tossplace/webhook`, `/api/research-worker`, `/api/storefront-webhooks/[id]`(서명), `/api/store-browser/worker`(작업자) | 세션 역할과 무관 |
+
+### 남은 위험·참고
+
+- `/api/share` GET(공유 링크 목록)은 코드 주석("대표·관리자만, 직원 403")과 달리 직원에게도 목록을 준다. 만들기·취소(POST)는 서버 모듈에서 직원 403이다. 이 판은 직원 동작을 바꾸지 않는다는 조건이라 GET은 그대로 두었다. 범위 역할은 위 표대로 걸러진다(고객 보고서 링크 403, 작업물 링크는 볼 수 있는 캠페인만). 직원 GET을 막을지는 대표 결정 사항이다.
+- 점포 매니저는 브랜드 단위 자료(아카이브의 브랜드 항목·브랜드 보이스·학습 실행 목록)를 배정 지점의 브랜드 범위로 읽는다. 지점 항목만 거른다.
+- 쓰기 가드는 범위 판단만 더한다. 각 경로의 기존 검사(스위치·HERMES 연결·버전·관리자 전용 작업)는 그대로 남아, 범위를 통과한 요청도 그 검사에서 409·403이 될 수 있다.
