@@ -5,6 +5,7 @@ import type {ConnectorCapability, ConnectorDescriptor, RiskTier} from './types';
 import {kakaoDescriptor} from '../kakao/registry-descriptor';
 import {INSTAGRAM_PUBLISH_LIMIT, INSTAGRAM_READ_LIMIT} from './instagram-publish';
 import {THREADS_PUBLISH_LIMIT, THREADS_READ_LIMIT} from './threads';
+import {EVENT_LIMIT, MANAGEMENT_LIMIT} from './daangn-ads';
 
 const capability = (c: Omit<ConnectorCapability, 'defaultOff' | 'retryUnknown'>): ConnectorCapability => ({...c, defaultOff: true, retryUnknown: false});
 
@@ -48,6 +49,13 @@ export const connectorRegistry: readonly ConnectorDescriptor[] = [
   capability({key: 'threads.post.publish', reads: [], writes: ['threads', 'threads_publish'], riskTier: 'T3', rateLimit: THREADS_PUBLISH_LIMIT, credentialScope: 'brand', flag: 'threads_publish'}),
   capability({key: 'threads.limit.read', reads: ['threads_publishing_limit', 'media', 'me'], writes: [], riskTier: 'T1', rateLimit: THREADS_READ_LIMIT, credentialScope: 'brand', flag: 'threads_publish'}),
   capability({key: 'threads.replies.read', reads: ['replies'], writes: [], riskTier: 'T1', rateLimit: THREADS_READ_LIMIT, credentialScope: 'brand', flag: 'threads_publish'}),
+ ]},
+ // C8 당근 광고 OpenAPI(공개 베타). 관리·성과는 광고 계정당 분당 60회, 이벤트는 초당 100회(docs/DAANGN-ADS.ko.md). 쓰기는 승인된 제안만 보낸다.
+ // 전환 이벤트는 types.ts 정의('전환 전송'은 T4)에 따라 T4로 둔다(요청서의 T2는 describeViolations 규칙상 외부 쓰기에 쓸 수 없다).
+ {key: 'daangn_ads', label: '당근 광고 OpenAPI', module: 'lib/connectors/daangn-ads.ts', capabilities: [
+  capability({key: 'daangn_ads.management.read', reads: ['campaign', 'ad_group', 'creative', 'performance', 'business_rights'], writes: [], riskTier: 'T1', rateLimit: MANAGEMENT_LIMIT, credentialScope: 'store', flag: 'daangn_ads'}),
+  capability({key: 'daangn_ads.management.write', reads: ['campaign', 'ad_group', 'creative'], writes: ['campaign', 'ad_group', 'creative', 'status', 'daily_budget'], riskTier: 'T3', rateLimit: MANAGEMENT_LIMIT, credentialScope: 'store', flag: 'daangn_ads'}),
+  capability({key: 'daangn_ads.conversion.send', reads: [], writes: ['conversion_event'], riskTier: 'T4', rateLimit: EVENT_LIMIT, credentialScope: 'store', flag: 'daangn_ads'}),
  ]},
 ];
 
