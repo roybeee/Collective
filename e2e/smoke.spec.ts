@@ -88,8 +88,11 @@ test('이전 작업물 원문을 비교하고 미확인 비용을 그대로 저�
   await page.goto('/');
   await page.getByRole('button', {name: title + ' 열기', exact: true}).click();
   await page.getByRole('tab', {name: '이력', exact: true}).click();
-  await expect(page.getByText('이전 원문: 할인 없이 방문 이유를 제안한다.', {exact: true})).toBeVisible();
-  await expect(page.getByText('현재 원문: 오후 방문 동기를 실험한다.', {exact: true})).toBeVisible();
+  // 버전 비교는 어절 단위 비교(components/app/version-diff.tsx)다. 나란히 보기에서 왼쪽은 이전 원문, 오른쪽은 지금 원문을 그대로 담는다.
+  await page.getByRole('radio', {name: '나란히 보기', exact: true}).click();
+  const compare = page.getByRole('group', {name: '버전 비교', exact: true});
+  await expect(compare.getByRole('region', {name: /^이전 버전 v/})).toContainText(/할인 없이.*이유를 제안한다\./);// 바뀐 구간마다 화면 낭독용 '삭제:' 표지가 들어간다
+  await expect(compare.getByRole('region', {name: /^비교할 버전 v/})).toContainText(/오후.*방문.*동기를 실험한다\./);
   await shot(page, testInfo, 'version-comparison');
   await page.getByRole('tab', {name: '성과', exact: true}).click();
   await page.getByRole('button', {name: '성과 기록', exact: true}).click();
