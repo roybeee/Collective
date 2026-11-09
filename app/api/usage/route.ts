@@ -1,4 +1,4 @@
-import {requireAdmin,requireOwnerActor,ApiError,body,database,failure,identity,isAdmin,json,secureMutation,str} from '@/lib/server';
+import {requireAdmin,requireAdminActor,requireOwnerActor,ApiError,body,database,failure,identity,isAdmin,json,secureMutation,str} from '@/lib/server';
 import {aliasPricingContext,listUsagePricing,saveAliasPricing,saveUsagePricing} from '@/lib/usage-ledger';
 import {aliasPricingWarning} from '@/lib/usage-summary';
 import {setTokenBudget,tokenBudgetSummary} from '@/lib/token-budget';
@@ -7,6 +7,7 @@ import {recentModelChanges,reportedModels} from '@/lib/usage-model-alarm';
 import {gatewayStatus} from '@/lib/gateway-snapshot';
 import {campaignGradings} from '@/lib/online-grading';
 import {latestQualityTable} from '@/lib/quality-digest-queue-server';
+import {regradeArtifact} from '@/lib/artifact-regrade';
 
 export async function GET(req:Request){
  try{
@@ -27,6 +28,8 @@ export async function POST(req:Request){
    const who=await requireOwnerActor(req);
    return json(input.action==='set_budget'?{budget:await setTokenBudget(database(),who.owner,input,{id:who.id,email:who.email})}:{aliasPricing:await saveAliasPricing(who.owner,input)});
   }
+  // X7 '다시 점검': 작업물 현재 판 하나를 결정론 채점기·규제 점검으로 다시 채점한다(대표·관리자, 모델 호출 없음, lib/artifact-regrade.ts).
+  if(input?.action==='regrade_artifact'){const who=await requireAdminActor(req);return json(await regradeArtifact(who.owner,str(input.artifactId,'작업물',200,true),{id:who.id,role:who.role}))}
   if(!input||input.action!=='set_pricing')throw new ApiError(400,'지원하지 않는 사용량 설정입니다.');
   return json({pricing:await saveUsagePricing(owner,input)});
  }catch(error){return failure(error)}
