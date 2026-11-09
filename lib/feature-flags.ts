@@ -43,6 +43,7 @@ export const FEATURE_FLAGS={
  digest_mail:{defaultEnabled:false,description:'예약 실행 큐가 하루 1회 오늘의 결정 대기·기한·실행 결과·비용을 한 화면 요약으로 만들어 설정된 전송 어댑터에 넘기고 기록한다(G3). 이 판의 mail 어댑터는 기록만 남기는 스텁이며 실제 메일·알림톡은 보내지 않는다.'},
  kakao_bizmessage:{defaultEnabled:false,description:'소유자·관리자가 승인한 카카오 비즈메시지(알림톡 정보성·브랜드 메시지 광고성)를 연결한 딜러사 API로 보내고 결과를 조회한다(C6). 전송 전 광고성 규칙((광고) 머리말·080 수신거부·20:50~08:00 제한·2년 재동의·수신거부·하루 상한)을 다시 판정하며 자동 전송은 없다. 꺼도 판정·초안·승인·수신동의 가져오기·조회는 계속된다.'},
  share_links:{defaultEnabled:false,description:'대표·관리자가 동결 고객 보고서의 읽기 전용 공유 링크와 작업물 판별 외부 검토자 승인 링크(최대 10개)를 만든다(G4, 로그인 없음·만료 기본 14일·최대 90일·취소 가능). 꺼지면 만들기는 409, 공개 주소는 모두 404다. 취소·목록은 계속된다.'},
+ creative_score:{defaultEnabled:false,description:'작업물이 저장되면 소재 예측 점수(0~100, 추정·규칙 기반·성과 보장 아님)를 결정론 규칙으로 계산해 기록하고 작업물 옆에 근거와 함께 보인다(G2, 모델 호출 없음). 게시 뒤 노출·클릭이 쌓이면 대표·관리자가 브랜드×채널 보정표를 만든다. 꺼도 저장된 점수 조회는 계속된다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};

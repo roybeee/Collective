@@ -17,6 +17,7 @@ import {runGraders,GRADERS_VERSION,type FactLedger,type GradeContext,type Grader
 import {bodyOf} from './graders/text';
 import {checkCompliance,downgradeVerdict,COMPLIANCE_NOTICE,type ComplianceReport} from './graders/compliance';
 import {qualityMarkdown,type QualityReview} from './quality';
+import {scoreSavedArtifacts} from './creative-score-server';
 import {roles,type Artifact,type Campaign} from './agency';
 import type {Meeting} from './meetings';
 
@@ -95,6 +96,8 @@ async function gradeTargets(owner:string,campaign:Campaign,targets:GradingTarget
 export async function gradeSavedArtifacts(owner:string,campaign:Campaign,targets:GradingTarget[],snapshotFacts?:SnapshotFacts){
  try{
   if(!targets.length)return 0;
+  // G2 소재 예측 점수: 스위치 creative_score가 켜졌을 때만 같은 저장 뒤 비차단으로 계산한다(lib/creative-score-server.ts, 예외를 던지지 않음).
+  await scoreSavedArtifacts(owner,targets.map(t=>({id:t.artifact.id,version:t.artifact.version})));
   const on=await switches(owner);
   if(!on.grading&&!on.downgrade)return 0;
   return await gradeTargets(owner,campaign,targets,snapshotFacts,on);
