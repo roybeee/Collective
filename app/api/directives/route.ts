@@ -3,11 +3,13 @@ import {executionRate} from '@/lib/execution-rate';
 import {listDirectives,changeDirective,DIRECTIVE_MAX_LENGTH,DIRECTIVE_LIMIT} from '@/lib/campaign-directives';
 import {evidenceContext,evidenceSummary} from '@/lib/ai-context';
 import type {Campaign} from '@/lib/agency';
+import {requireCampaignRead,requireCampaignAction} from '@/lib/server-access';
 
 // 캠페인 상세의 상시 지시 목록과 'AI 팀에 전달되는 근거' 요약.
 export async function GET(req:Request){
  try{
   const owner=await identity(req);
+  await requireCampaignRead(req,new URL(req.url).searchParams.get('campaignId'));
   const campaign=await readRecord<Campaign>(owner,'campaign',str(new URL(req.url).searchParams.get('campaignId')??'','캠페인',100,true));
   const [directives,evidence]=await Promise.all([listDirectives(owner,campaign.id),evidenceContext(database(),owner,campaign)]);
   return json({directives,limits:{maxLength:DIRECTIVE_MAX_LENGTH,count:DIRECTIVE_LIMIT},evidence:evidenceSummary(evidence)});
@@ -21,6 +23,7 @@ export async function POST(req:Request){
  try{
   const who=await actor(req);owner=who.owner;secureMutation(req);
   const input=await body(req);
+  await requireCampaignAction(req,'edit_campaign',input.campaignId);
   lock=await acquireLock(owner);
   await executionRate(owner,'directives');
   return json(await changeDirective(owner,input,who));

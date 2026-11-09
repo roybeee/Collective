@@ -56,8 +56,9 @@ function inboxItems(kind:string,d:Record<string,unknown>,c:SourceCampaign,who:Na
  return [];
 }
 const order:Record<AgendaKind,number>={overdue:0,decision:1,question:2,signal:3,upcoming:4};
-export async function agenda(who:Actor,now=Date.now()):Promise<Agenda>{
- const campaigns=(await database().prepare("SELECT data FROM records WHERE owner=? AND kind='campaign' LIMIT 2000").bind(who.owner).all<{data:string}>()).results.map(r=>JSON.parse(r.data) as Campaign&{archivedAt?:string|null}).filter(c=>!c.archivedAt);
+// visible(선택): 범위 역할이 볼 수 있는 캠페인만 남긴다(app/api/agenda, lib/server-access.ts readableCampaigns). 없으면 이전과 같다.
+export async function agenda(who:Actor,now=Date.now(),visible?:(c:Campaign)=>boolean):Promise<Agenda>{
+ const campaigns=(await database().prepare("SELECT data FROM records WHERE owner=? AND kind='campaign' LIMIT 2000").bind(who.owner).all<{data:string}>()).results.map(r=>JSON.parse(r.data) as Campaign&{archivedAt?:string|null}).filter(c=>!c.archivedAt&&(!visible||visible(c)));
  const byId=new Map(campaigns.map(c=>[c.id,c]));
  const [rows,label]=await Promise.all([database().prepare(`SELECT kind,data FROM records WHERE owner=? AND ${kindFilter} LIMIT 20000`).bind(who.owner).all<Row>().then(r=>r.results),names(who.owner)]);
  const items:AgendaItem[]=[];

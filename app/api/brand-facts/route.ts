@@ -5,13 +5,16 @@ import {flagPublicationsForFactChange} from '@/lib/execution-server';
 import {executionRate} from '@/lib/execution-rate';
 import {afterFactSaved} from '@/lib/data-requests-server';
 import {markAssetsForChange} from '@/lib/franchise-assets-server';
+import {requireBrandRead,requireStoreRead,scopedPrincipal,scopeByBrandStore,requireInputAction,requireRecordAction} from '@/lib/server-access';
 
 export async function GET(req:Request){
  try{
   const owner=await identity(req),params=new URL(req.url).searchParams;
   const brandId=str(params.get('brandId')??'','브랜드',100)||undefined;
   const storeId=str(params.get('storeId')??'','지점',100)||undefined;
-  const facts=await getBrandFacts(owner,brandId,storeId);
+  if(brandId)await requireBrandRead(req,brandId);
+  if(storeId)await requireStoreRead(req,storeId);
+  const scoped=await scopedPrincipal(req),listed=await getBrandFacts(owner,brandId,storeId),facts=scoped?scopeByBrandStore(scoped,listed):listed;
   if(!brandId)return json({facts});
   // 가맹 프로필이나 정보공개서 버전이 있는 브랜드만 franchise 블록을 싣는다(비가맹 브랜드 응답 불변).
   const franchise=await franchiseFactsOverview(owner,brandId,facts);
@@ -28,6 +31,10 @@ export async function POST(req:Request){
   if(input.action!=='save_fact'&&input.action!=='import_candidates'&&input.action!=='rebase_facts')throw new ApiError(400,'지원하지 않는 작업입니다.');
   lock=await acquireLock(owner);
   await executionRate(owner,'facts');
+  // 범위 가드: 사실 저장은 저장할 브랜드·지점과(수정이면) 기존 사실의 범위 모두에서 edit_campaign이어야 한다.
+  const factData=(input.data&&typeof input.data==='object'&&!Array.isArray(input.data)?input.data:{}) as Record<string,unknown>;
+  if(input.action==='save_fact'){await requireInputAction(req,'edit_campaign',{storeId:factData.storeId,brandId:factData.brandId});if(input.id)await requireRecordAction(req,'edit_campaign','brand_fact',input.id)}
+  else await requireInputAction(req,'edit_campaign',{storeId:input.storeId,brandId:input.brandId});
   if(input.action==='import_candidates')return json(await importFactCandidates(database(),owner,str(input.brandId,'브랜드',100,true),str(input.storeId??'','지점',100)||undefined,who));
   // 가맹 사실을 새 정보공개서 버전으로 옮긴다(대표·관리자). 옮긴 사실을 쓴 발행에 재검토를 붙인다.
   if(input.action==='rebase_facts'){

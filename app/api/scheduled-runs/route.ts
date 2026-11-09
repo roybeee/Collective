@@ -1,9 +1,10 @@
 import {actor,requireAdminActor,secureMutation,body,json,failure,ApiError} from '@/lib/server';
 import {removeSchedule,saveSchedule,scheduledRunsView,setScheduleEnabled} from '@/lib/scheduled-runs-server';
+import {denyScoped} from '@/lib/server-access';
 
 // G3 예약 실행. 읽기는 로그인한 모든 역할, 쓰기는 소유자·관리자만(직원 403, 비로그인 401, 다른 출처 403). 실행 자체는 워커 큐가 한다(여기서 run_now 없음).
 export async function GET(req:Request){
- try{return json(await scheduledRunsView(await actor(req)))}catch(error){return failure(error)}
+ try{const who=await actor(req);await denyScoped(req);return json(await scheduledRunsView(who))}catch(error){return failure(error)}
 }
 export async function POST(req:Request){
  try{

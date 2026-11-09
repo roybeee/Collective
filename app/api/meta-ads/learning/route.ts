@@ -2,9 +2,10 @@ import type {Campaign} from '@/lib/agency';
 import {metaLearningView,recordMetaLearning,preregisterMetaLearning} from '@/lib/meta-learning-server';
 import {MetaLearningInputError} from '@/lib/meta-learning';
 import {ApiError,acquireLock,actor,body,failure,json,readRecord,releaseLock,requireAdminActor,secureMutation,str} from '@/lib/server';
+import {requireCampaignRead} from '@/lib/server-access';
 
 export async function GET(req:Request){
- try{const who=await actor(req),c=await readRecord<Campaign>(who.owner,'campaign',str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true));return json(await metaLearningView(who.owner,c,who.role!=='member',who.role==='owner'));}catch(e){return failure(e);}
+ try{const who=await actor(req);await requireCampaignRead(req,new URL(req.url).searchParams.get('campaignId'));const c=await readRecord<Campaign>(who.owner,'campaign',str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true));return json(await metaLearningView(who.owner,c,who.role!=='member',who.role==='owner'));}catch(e){return failure(e);}
 }
 export async function POST(req:Request){
  let owner='',lock='';

@@ -2,7 +2,8 @@ import {META_CONVERSION_PURPOSE,type MetaConversionEvent} from '@/lib/meta-conve
 import {conversionContext,conversionId,conversionView} from '@/lib/meta-conversion-server';
 import {advanceMetaConversionWork,configureMetaCapi,disconnectMetaCapi,metaPixelEnvelope,queueMetaCapi,purgeMetaCapiMatching,limitMetaConversionMutation} from '@/lib/meta-capi-server';
 import {ApiError,acquireLock,actor,body,database,failure,json,recordStatement,releaseLock,requireOwnerActor,secureMutation,stamp,str} from '@/lib/server';
-export async function GET(req:Request){try{const who=await actor(req),{store}=await conversionContext(who.owner,str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true));return json(await conversionView(who.owner,store,who.role==='owner'));}catch(e){return failure(e)}}
+import {requireCampaignRead} from '@/lib/server-access';
+export async function GET(req:Request){try{const who=await actor(req);await requireCampaignRead(req,new URL(req.url).searchParams.get('campaignId'));const {store}=await conversionContext(who.owner,str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true));return json(await conversionView(who.owner,store,who.role==='owner'));}catch(e){return failure(e)}}
 function validateContract(b:Record<string,unknown>,orderDate:string){
  if(b.confirmed!==true||b.consentGranted!==true||b.isTest!==false||b.purpose!==META_CONVERSION_PURPOSE)throw new ApiError(400,'실제 주문 여부와 고객의 별도 광고 전환 측정 동의·목적을 명시적으로 확인하세요.');
  if(typeof b.evidenceRef!=='string'||!/^consent-[A-Za-z0-9_-]{1,64}$/.test(b.evidenceRef))throw new ApiError(400,'동의 증빙 참조는 consent-로 시작하는 비식별 관리번호여야 합니다. 고객 정보를 입력하지 마세요.');

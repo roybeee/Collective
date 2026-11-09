@@ -8,11 +8,13 @@ import {gatewayStatus} from '@/lib/gateway-snapshot';
 import {campaignGradings} from '@/lib/online-grading';
 import {latestQualityTable} from '@/lib/quality-digest-queue-server';
 import {regradeArtifact} from '@/lib/artifact-regrade';
+import {requireAccess,requireCampaignRead} from '@/lib/server-access';
 
 export async function GET(req:Request){
  try{
   const owner=await identity(req),params=new URL(req.url).searchParams;
   // 캠페인 상세 작업물 옆 온라인 채점 요약(F2b). 사용량 화면 응답과 따로 읽는다.
+  if(params.has('grading'))await requireCampaignRead(req,params.get('grading'));else await requireAccess(req,'view_usage');
   if(params.has('grading'))return json({gradings:await campaignGradings(owner,str(params.get('grading'),'캠페인',100,true))});
   // budget: 이번 달(한국 시간) 토큰 예산 요약(loop-4). aliasPricing: 별칭 단가 선언과 경보 경고(loop-5).
   // qualityTable: 마지막 주간 품질 집계의 역할×프롬프트 버전×보고 모델 표(B2 2단계). 역할별 승인율을 담아 품질 콘솔과 같이 소유자·관리자에게만 싣는다(직원 응답에는 키가 없다).

@@ -5,8 +5,9 @@ import {GrowthMissionError} from '@/lib/growth-mission';
 import {GrowthReconciliationError} from '@/lib/growth-reconciliation';
 import {growthExecutionView,saveGrowthExecution} from '@/lib/growth-execution-server';
 import {ApiError,actor,requireAdminActor,secureMutation,body,readRecord,str,json,failure,acquireLock,releaseLock} from '@/lib/server';
+import {requireCampaignRead} from '@/lib/server-access';
 export async function GET(req:Request){
- try{const who=await actor(req),id=str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true),campaign=await readRecord<Campaign>(who.owner,'campaign',id);return json(await growthExecutionView(who,campaign));}catch(e){return failure(e);}
+ try{const who=await actor(req),id=str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true);await requireCampaignRead(req,id);const campaign=await readRecord<Campaign>(who.owner,'campaign',id);return json(await growthExecutionView(who,campaign));}catch(e){return failure(e);}
 }
 export async function POST(req:Request){
  let owner='',lock='';

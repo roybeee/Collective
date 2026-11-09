@@ -2,9 +2,10 @@ import type {Campaign} from '@/lib/agency';
 import {GrowthAuthorityError} from '@/lib/growth-authority';
 import {growthAuthorityView,saveGrowthAuthority} from '@/lib/growth-authority-server';
 import {ApiError,actor,requireAdminActor,secureMutation,body,readRecord,str,json,failure,acquireLock,releaseLock} from '@/lib/server';
+import {requireCampaignRead} from '@/lib/server-access';
 
 export async function GET(req:Request){
- try{const who=await actor(req),id=str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true),campaign=await readRecord<Campaign>(who.owner,'campaign',id);return json(await growthAuthorityView(who,campaign));}
+ try{const who=await actor(req),id=str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true);await requireCampaignRead(req,id);const campaign=await readRecord<Campaign>(who.owner,'campaign',id);return json(await growthAuthorityView(who,campaign));}
  catch(e){return failure(e);}
 }
 export async function POST(req:Request){
