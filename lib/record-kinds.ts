@@ -34,6 +34,7 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'store_browser_job',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포 브라우저 조회·영업시간 변경의 승인 판·단일 제출·미확인 대사와 최소 관찰 근거. 캠페인과 무관'},
  {kind:'store_browser_device',parent:'none',campaignDeletion:'not_campaign_scoped',description:'별도 로컬 장치 인증 해시·프로필·회수 상태. 로그인 쿠키·비밀번호 없음. 캠페인과 무관'},
  {kind:'store_browser_event',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포 브라우저 작업의 승인·claim·제출·대사·인계 감사 이력. 캠페인과 무관'},
+ {kind:'ads_proposal',parent:'store',campaignDeletion:'not_campaign_scoped',description:'네이버 검색광고 제안(C4): 규칙 기반 입찰 조정·중지·재개·키워드/캠페인 생성 제안의 전후값·근거·상태(제안→승인→반영→읽기 대조)·쓰기 저널·공급자 ID. campaignId는 네이버 캠페인 ID라 COLLECTIVE 캠페인과 무관, parent_id는 지점(없으면 빈 값)'},
  {kind:'eval_cost_connection',parent:'none',campaignDeletion:'not_campaign_scoped',description:'격리된 평가 공급자 연결·암호화 인증 및 서명 검증 키'},
  {kind:'eval_cost_prepared',parent:'none',campaignDeletion:'not_campaign_scoped',description:'무료 견적·정확한 동결 평가 요청과 1회 실행 연결'},
  {kind:'eval_cost_month',parent:'none',campaignDeletion:'not_campaign_scoped',description:'소유자 UTC 월 원화 상한·예약·확정 비용 원장'},

@@ -224,6 +224,12 @@ function scheduledRunsRow(flags:unknown):FeatureRow{
  if(enabled===null)return {...base,status:'blocked',reason:'예약 실행 스위치 상태를 확인하지 못했습니다',link};
  return enabled?{...base,status:'available',reason:['조사 작업자가 예약마다 하루 1회 회의 안건 초안·오늘의 안건 항목 기록(모델 호출·게시·지출 없음)']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다(예약 편집은 가능)'],link};
 }
+// C4 네이버 검색광고 제안·반영: 스위치 naver_ads_write. 꺼져 있어도 제안 생성·조회·반려·미확인 대조는 되고 승인·반영만 409다. 자동 입찰은 없다(docs/NAVER-ADS-WRITE.ko.md).
+function naverAdsWriteRow(flags:unknown):FeatureRow{
+ const base={key:'naver-ads-write',label:'네이버 검색광고 제안·반영',flag:'naver_ads_write'},link:FeatureLink={label:'연결 및 설정의 성과 수집 채널에서 확인',view:'settings',section:'settings-channels'},enabled=flagState(flags,'naver_ads_write');
+ if(enabled===null)return {...base,status:'blocked',reason:'네이버 검색광고 쓰기 스위치 상태를 확인하지 못했습니다',link};
+ return enabled?{...base,status:'available',reason:['규칙 기반 입찰 조정·중지 제안(추정)을 관리자가 승인하면 네이버 검색광고에 반영하고 읽기 대조로 확인','자동 입찰·자동 적용 없음(승인 필수, 결과 미확인은 재전송 없음)']}:{...base,status:'blocked',reason:['기능 꺼짐','소유자가 켭니다(제안 생성·조회·대조는 가능, 승인·반영은 막힘)'],link};
+}
 export function featureRows(input:FeatureInput={}):FeatureRow[]{
  const now=typeof input.now==='number'?input.now:Date.now(),brands=brandIds(input.brands);
  return [
@@ -256,6 +262,7 @@ export function featureRows(input:FeatureInput={}):FeatureRow[]{
   shareLinksRow(input.flags),
   {key:'pos-csv',label:'POS 주문 CSV 가져오기',status:'available',reason:'CSV 가져오기 가능(점포 마케팅 → 주문 장부)'},
   posAutoRow(input.flags),
+  naverAdsWriteRow(input.flags),
   {key:'video',label:'영상 렌더링',status:'unimplemented',reason:'영상 제작 기능 없음'},
   {key:'ads',label:'광고 집행',status:'unimplemented',reason:'광고 생성·광고비 집행 기능 없음'},
  ];
