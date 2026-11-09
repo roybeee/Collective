@@ -16,6 +16,8 @@ const context=createContext({
  approvalInputs:async()=>({credential:{secret:'mock'},limits:{maxPublications:3,maxPlannedCostKRW:1000}}),
  approvalDrift:()=>[],executionTotals:()=>({attempts:0,plannedCostKRW:0}),listRecords:async()=>[],
  verifyMedia:async()=>{},mediaHash:()=>'',openRecordSecret:async()=>'mock-token',
+ // C3: 발행 계정이 직접 게시(instagram_direct·threads)인지 판정하는 경계. 이 스위트는 Buffer 예약만 본다(false).
+ isDirectChannelId:()=>false,
  publicationKeepingReview:()=>pubWrite,
  prepareGrowthPublicationSubmission:async()=>{prepared++;if(prepareBlocked)throw new ApiError(409,'reservation changed');return {writes:linked?[growthWrite]:[]}},
  database:()=>({batch:async writes=>{if(writeBlocked)throw new Error('write failed');batches.push([...writes]);}}),

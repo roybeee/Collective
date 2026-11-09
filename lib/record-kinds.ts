@@ -235,6 +235,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'execution_limits',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'발행 한도 설정'},
  {kind:'execution_provider_audit',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'발행 공급자 응답 감사 기록. 발행 기록과 함께 생겨 삭제 거부 대상 캠페인에만 있다'},
  {kind:'execution_publication',parent:'campaign',campaignDeletion:'retain',links:['parent'],blocksDeletion:true,purge:'keep',description:'발행 시도·결과. 있으면 캠페인 삭제를 거부한다'},
+ {kind:'publication_container',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'직접 게시(Instagram Graph·Threads) 두 단계 저널(C3): 발행 id당 1행, 컨테이너 id·단계(created·publishing·published·unknown·failed)·게시 id. 중간에 죽어도 컨테이너를 다시 만들거나 게시를 재전송하지 않게 한다. 발행 기록과 함께 삭제 거부 대상 캠페인에만 있다'},
+ {kind:'publication_comment',parent:'campaign',campaignDeletion:'retain',links:['parent'],purge:'keep',description:'직접 게시한 게시물의 댓글·답글 수집(C3, 학습 실험실용, 추가만·자동 답글 없음): 발행 id와 공급자 댓글 id, 본문, 작성자 표시 이름, 시각. 발행 기록과 함께 남긴다(삭제 거부 대상 캠페인에만 있다)'},
  {kind:'execution_rate',parent:'none',campaignDeletion:'not_campaign_scoped',description:'API 호출 빈도 제한 창'},
  {kind:'experiment_revision',parent:'viral_experiment',campaignDeletion:'delete',links:['experiment_child'],description:'바이럴 실험 결과 정정 전 버전'},
  {kind:'feature_flag',parent:'none',campaignDeletion:'not_campaign_scoped',description:'서버 기능 스위치(소유자 범위, 플래그당 1행). 행이 없으면 lib/feature-flags.ts 기본값을 쓴다'},

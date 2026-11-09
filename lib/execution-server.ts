@@ -11,6 +11,7 @@ export {materialHash} from './execution-creative-basis';
 import {approvalDrift,budgetIssues,campaignGateIssues,captionIssues,composeCaption,copyBlocks,executionTotals,mediaHash,providerPublicationStatus,publicationLabels,reviewStatuses,uncertainResolvable,CREATIVE_TITLE_MAX,type CaptionCandidate,type ExecutionCreative,type ExecutionLimits,type ExecutionState,type FranchiseExecution,type NeedsReview,type Publication,type PublicationCode,type PublicationCopy,type PublicationStatus,type FactRef} from './execution';
 import {isOwnMediaUrl,mediaUrl,pngBytes,publishPublicMedia,retirePublicMedia,sha256,storePngThen,verifyMedia} from './execution-media';
 import {inspectBuffer,verifyBuffer} from './publisher-buffer';
+import {directPublisherCredential,isDirectChannelId,selectDirectPublisher} from './execution-publisher-server';
 import {assertCodedPngUsable,pngCodeEnabled} from './coded-png-server';
 import {issuePublicationCode} from './publication-codes';
 import {CODE_ALPHABET,CODE_MAX,type TrackingCode} from './tracking-codes';
@@ -28,6 +29,11 @@ import {isInstant} from './franchise-rules';
 export type PublisherCredential={secret:string;version:number;channelId:string;account:string;organizationId?:string};
 type Who=Pick<Actor,'id'|'email'>;
 export async function optionalRecord<T>(owner:string,kind:string,id:string){try{return await readRecord<T>(owner,kind,id)}catch(e){if(e instanceof ApiError&&e.status===404)return null;throw e}}
+// C3 발행 공급자 선택: 스위치가 켜져 있고 브랜드에 직접 게시 연결(instagram_direct·threads)이 있으면 그 계정, 아니면 Buffer 연결(기존 경로 불변). 화면·승인·접수가 같은 함수를 쓴다.
+async function effectivePublisherCredential(owner:string,brandId:string):Promise<PublisherCredential|null>{
+ const direct=await selectDirectPublisher(owner,brandId);
+ return direct?directPublisherCredential(direct):optionalRecord<PublisherCredential>(owner,'publisher_credential',brandId);
+}
 // 판정 범위(트랙 R R3): 가맹 모집 목적(objective) 캠페인은 가맹 프로필 유무와 관계없이 모집 범위, 가맹 프로필 브랜드의 그 밖 캠페인은 소비자 범위,
 // 둘 다 아니면 판정하지 않는다(비가맹 경로 불변). 기능 스위치는 읽지 않는다(저장된 objective 캠페인은 저장값대로 점검하고, 끄는 길은 목적 해제다).
 const claimScope=(campaign:Pick<Campaign,'objective'>,fr:FranchiseContext):ClaimScope|null=>isRecruitmentObjective(campaign)?'recruitment':fr.profile?'consumer':null;
@@ -50,7 +56,7 @@ function franchiseJudgement(campaign:Campaign,fr:FranchiseContext,facts:BrandFac
 // 차단(해제 불가·근거 필요)이면 409. 승인 입력 확인란·역할(대표 포함)은 이 판정을 바꾸지 못한다.
 function assertFranchiseText(j:FranchiseJudgement|null){const e=j&&franchiseGateError(j);if(e)throw new ApiError(e.status,e.message)}
 export async function getExecution(owner:string,campaign:Campaign):Promise<ExecutionState>{
- const [creatives,publications,limits,credential,brand,facts,copies,fr]=await Promise.all([listRecords<ExecutionCreative>(owner,'execution_creative',campaign.id),listRecords<Publication>(owner,'execution_publication',campaign.id),optionalRecord<ExecutionLimits>(owner,'execution_limits',campaign.id),optionalRecord<PublisherCredential>(owner,'publisher_credential',campaign.brandId),optionalRecord<Brand>(owner,'brand',campaign.brandId),confirmedFactContext(owner,campaign.brandId,campaign.storeId),captionCandidates(owner,campaign),loadFranchiseContext(owner,campaign.brandId)]);
+ const [creatives,publications,limits,credential,brand,facts,copies,fr]=await Promise.all([listRecords<ExecutionCreative>(owner,'execution_creative',campaign.id),listRecords<Publication>(owner,'execution_publication',campaign.id),optionalRecord<ExecutionLimits>(owner,'execution_limits',campaign.id),effectivePublisherCredential(owner,campaign.brandId),optionalRecord<Brand>(owner,'brand',campaign.brandId),confirmedFactContext(owner,campaign.brandId,campaign.storeId),captionCandidates(owner,campaign),loadFranchiseContext(owner,campaign.brandId)]);
  // 정보공개서 버전은 근거 있는 가맹 사실의 각주 계산에만 쓰인다(근거 없는 사실의 캡션은 버전과 무관하다).
  const current=await Promise.all(creatives.map(c=>creativeCurrent(campaign,brand,facts,c,fr.versions)));
  const state:ExecutionState={creatives:creatives.map((c,i)=>({...c,objectKey:'',current:current[i]})),publications,limits,publisher:credential?{connected:true,channelId:credential.channelId,account:credential.account,version:credential.version}:{connected:false},copies,copyCaptions:aiCopyCaptionsEnabled()};
@@ -284,7 +290,7 @@ export async function approvalInputs(owner:string,campaign:Campaign,p:Publicatio
  // 가맹 사실 게이트·가맹 규칙·각주(트랙 R R1b·R2). 소재·발행 두 행의 캡션을 함께 고쳐 각주를 지워도 여기서 막는다. 승인 입력 확인란·역할(대표 포함)로는 풀리지 않는다.
  await franchiseCaptionGate(owner,campaign,fr,used,p.caption,p.scheduledAt);
  await resolveFacts(owner,campaign,p.factRefs,Date.parse(p.scheduledAt));schedule(p.scheduledAt);
- const [credential,limits]=await Promise.all([optionalRecord<PublisherCredential>(owner,'publisher_credential',campaign.brandId),optionalRecord<ExecutionLimits>(owner,'execution_limits',campaign.id)]);
+ const [credential,limits]=await Promise.all([effectivePublisherCredential(owner,campaign.brandId),optionalRecord<ExecutionLimits>(owner,'execution_limits',campaign.id)]);
  if(!credential)throw new ApiError(409,'채널 미연결: Buffer Instagram 채널을 연결한 뒤 승인하세요.');
  if(!limits)throw new ApiError(409,'한도 미설정: 기본 한도(발행 1회·0원)를 저장한 뒤 승인하세요.');
  if(limits.paused)throw new ApiError(409,'이 캠페인의 발행이 중지됐습니다.');
@@ -326,11 +332,13 @@ export async function reservePublication(owner:string,campaign:Campaign,p:Public
  if(total.attempts>=limits.maxPublications)throw new ApiError(409,`발행 횟수 한도를 초과합니다(누적 발행 시도 ${total.attempts}회 · 한도 ${limits.maxPublications}회).`);
  if(total.plannedCostKRW+p.plannedCostKRW>limits.maxPlannedCostKRW)throw new ApiError(409,`예정 비용 상한을 초과합니다(누적 ${total.plannedCostKRW.toLocaleString('ko-KR')}원 + 이번 ${p.plannedCostKRW.toLocaleString('ko-KR')}원 · 상한 ${limits.maxPlannedCostKRW.toLocaleString('ko-KR')}원).`);
  await verifyMedia(p.mediaUrl,mediaHash(p),origin);
- const token=await openRecordSecret(owner,'publisher_credential',campaign.brandId,credential.secret);
+ // C3: 직접 게시 계정이면 Buffer 토큰이 없다(토큰은 전송 모듈이 channel_credential에서 연다). direct=true면 라우트가 Buffer 대신 lib/execution-publisher-server.ts dispatchDirect로 보낸다.
+ const direct=isDirectChannelId(credential.channelId);
+ const token=direct?'':await openRecordSecret(owner,'publisher_credential',campaign.brandId,credential.secret);
  const pending:Publication={...p,status:'submitting',attemptedAt:stamp(),updatedAt:stamp(),version:p.version+1};
  const growth=await prepareGrowthPublicationSubmission(owner,campaign,p,pending);
  await database().batch([publicationKeepingReview(owner,pending,campaign.id),...growth.writes]);
- return {pending,token};
+ return {pending,token,direct};
 }
 // 발행 행 전체 쓰기(접수 예약·상태 조회). owner 잠금 밖에서 붙는 재검토 표시(가맹 정보공개서 버전 교체, lib/franchise-server.ts versionFactReview)가
 // 읽은 뒤 쓰기 전에 붙었으면 지우지 않는다(saveProviderResult와 같은 취지). 새 행에 재검토 표시가 있거나 저장된 행에 없으면 recordStatement와 같은 바이트다.
