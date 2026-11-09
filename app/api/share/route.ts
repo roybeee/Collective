@@ -1,6 +1,7 @@
 import {actor,acquireLock,body,failure,json,releaseLock,secureMutation} from '@/lib/server';
 import {executionRate} from '@/lib/execution-rate';
 import {listShareLinks,shareLinkAction} from '@/lib/share-links-server';
+import {denyScoped,readableCampaignIds,scopedPrincipal} from '@/lib/server-access';
 
 // 공유 링크 소유자 쪽 API(G4, docs/SHARE-LINKS.ko.md). 대표·관리자만(직원 403, 비로그인 401). 공개 조회는 /api/share/[token]과 /share/[token]이다.
 // GET ?kind=customer_report|artifact(&id=): 그 대상의 링크 목록(상태·조회 수·외부 결정 시각). 스위치가 꺼져도 읽는다.
@@ -8,7 +9,11 @@ import {listShareLinks,shareLinkAction} from '@/lib/share-links-server';
 export async function GET(req:Request){
  try{
   const who=await actor(req);
-  return json(await listShareLinks(who.owner,new URL(req.url).searchParams));
+  const params=new URL(req.url).searchParams,scoped=await scopedPrincipal(req);
+  // 범위 역할: 고객 보고서 링크는 워크스페이스 전체 권한이라 403, 작업물 링크는 볼 수 있는 캠페인의 것만 남긴다.
+  if(scoped&&params.get('kind')!=='artifact')await denyScoped(req);
+  const result=await listShareLinks(who.owner,params),ids=scoped?await readableCampaignIds(req):null;
+  return json(ids?{...result,links:result.links.filter(l=>typeof l.scope.campaignId==='string'&&ids.has(l.scope.campaignId))}:result);
  }catch(error){return failure(error)}
 }
 export async function POST(req:Request){

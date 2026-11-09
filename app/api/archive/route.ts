@@ -8,7 +8,8 @@ import {sourceSummary,publicResearch,type ArchiveSource,type ChannelObservation,
 import {archiveState,stateWrite,assertArchiveIdle,makeSource,makeObservation,intake,deleteSourceFile,withoutCleanupKey,type SourceFileDeletion} from '@/lib/archive-server';
 import {diagnosisBasis,diagnosisIncluded,latestAdopted,brandBasis,type AdoptedDiagnostic} from '@/lib/ai-context';
 import {reviewActor,requireReasonCodes,sourceDecisionStatement} from '@/lib/review-decisions-server';
-export async function GET(req:Request){try{const owner=await identity(req),u=new URL(req.url),brandId=str(u.searchParams.get('brandId'),'브랜드',100,true),brand=await readRecord<Brand>(owner,'brand',brandId);
+import {requireBrandRead} from '@/lib/server-access';
+export async function GET(req:Request){try{const owner=await identity(req),u=new URL(req.url),brandId=str(u.searchParams.get('brandId'),'브랜드',100,true);await requireBrandRead(req,brandId);const brand=await readRecord<Brand>(owner,'brand',brandId);
  if(u.searchParams.get('sourceId')){const s=await readRecord<ArchiveSource&SourceFileDeletion>(owner,'brand_source',str(u.searchParams.get('sourceId'),'자료',100,true));if(s.brandId!==brandId)throw new ApiError(404,'자료를 찾을 수 없습니다.');const{objectKey:_,...data}=withoutCleanupKey(s);return json(data)}
  // 진단마다 근거 상태(basis)와 AI 입력 포함 여부(included)를 서버 규칙으로 계산해 화면이 같은 기준을 쓰게 한다.
  const state=await archiveState(owner,brandId),sources=await listRecords<ArchiveSource>(owner,'brand_source',brandId);

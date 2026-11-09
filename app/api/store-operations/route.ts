@@ -5,8 +5,9 @@ import {diagnosisInput,orderInput,spendInput,validateOrderExperiment,getStoreOpe
 import {entrySummary,type EntryView} from '@/lib/store-attribution';
 import {TRANSFER_PREFIX} from '@/lib/spend-transfer';
 import {checkedVersion,measurementInput,option} from '@/lib/store-server';
+import {requireStoreRead} from '@/lib/server-access';
 
-export async function GET(req:Request){try{const owner=await identity(req),p=new URL(req.url).searchParams,storeId=str(p.get('storeId'),'지점',100,true);await readRecord<Store>(owner,'store',storeId);if(p.get('part')==='diagnosis')return json({diagnostics:await listRecords<StoreDiagnostic>(owner,'store_diagnostic',storeId),orders:[],spend:[],from:'',to:''});return json(await getStoreOperations(owner,storeId,p.get('from')||undefined,p.get('to')||undefined))}catch(e){return failure(e)}}
+export async function GET(req:Request){try{const owner=await identity(req),p=new URL(req.url).searchParams,storeId=str(p.get('storeId'),'지점',100,true);await requireStoreRead(req,storeId);await readRecord<Store>(owner,'store',storeId);if(p.get('part')==='diagnosis')return json({diagnostics:await listRecords<StoreDiagnostic>(owner,'store_diagnostic',storeId),orders:[],spend:[],from:'',to:''});return json(await getStoreOperations(owner,storeId,p.get('from')||undefined,p.get('to')||undefined))}catch(e){return failure(e)}}
 export async function POST(req:Request){let owner='',lock='';try{
  owner=await identity(req);secureMutation(req);const b=await body(req);
  // 저장하지 않는 점포 실측 작업은 쓰기 잠금 없이 처리한다(보관 지점 허용 여부는 measurementAction이 정한다).

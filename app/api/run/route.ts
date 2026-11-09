@@ -3,7 +3,7 @@ import {executeRole} from '@/lib/role-execution';
 import {assertCampaignNotArchived} from '@/lib/campaign-archive';
 import {assertAutonomy,markAutonomy} from '@/lib/autonomy-server';
 import {roles} from '@/lib/agency';
-import {requireAccess,campaignResource} from '@/lib/server-access';
+import {requireAccess,campaignResource,readableCampaignIds} from '@/lib/server-access';
 
 // 실행 전 계획 카드(X3)의 근거: 소유자의 최근 종료 역할 실행(접수·종료 시각·보고 토큰). 실행 내용은 바꾸지 않고 읽기만 한다. 캠페인 번호를 주면 그 캠페인을 먼저 세운다.
 const RECENT_LIMIT=40;
@@ -13,7 +13,8 @@ export async function GET(req:Request){
   const rows=await database().prepare(`SELECT id,campaign_id,role,status,tokens,created_at,updated_at FROM jobs WHERE owner=? AND role IN (SELECT value FROM json_each(?)) AND status IN ('completed','failed','cancelled','incomplete') ORDER BY (campaign_id=?) DESC,updated_at DESC LIMIT ${RECENT_LIMIT}`).bind(owner,JSON.stringify(roles.map(r=>r.id)),campaignId).all<{id:string;campaign_id:string;role:string;status:string;tokens:number|null;created_at:string;updated_at:string}>();
   const recent=rows.results.map(r=>{const start=Date.parse(r.created_at),end=Date.parse(r.updated_at),ok=Number.isFinite(start)&&Number.isFinite(end)&&end>=start;
    return {id:r.id,campaignId:r.campaign_id,role:r.role,status:r.status,tokens:typeof r.tokens==='number'&&r.tokens>0?r.tokens:null,startedAt:r.created_at,finishedAt:r.updated_at,durationMs:ok&&r.status==='completed'?end-start:null}});
-  return json({recent});
+  const ids=await readableCampaignIds(req);
+  return json({recent:ids?recent.filter(r=>ids.has(r.campaignId)):recent});
  }catch(error){return failure(error)}
 }
 

@@ -1,9 +1,10 @@
 import type {Campaign} from '@/lib/agency';
 import {ApiError,acquireLock,actor,body,database,eventStatement,failure,identity,json,readRecord,recordStatement,releaseLock,secureMutation,str} from '@/lib/server';
 import {attributionSnapshot,campaignAttribution} from '@/lib/campaign-attribution';
+import {requireCampaignRead} from '@/lib/server-access';
 
 // 캠페인 성과 탭의 주문 장부 귀속 집계(lib/campaign-attribution.ts). 저장하지 않으므로 로그인한 모든 역할이 쓰기 잠금 없이 읽는다. 기간: from·to(기본 최근 8주, 최대 26주).
-export async function GET(req:Request){try{const owner=await identity(req),p=new URL(req.url).searchParams,campaign=await readRecord<Campaign>(owner,'campaign',str(p.get('campaignId'),'캠페인',100,true));return json(await campaignAttribution(owner,campaign,{from:p.get('from')||undefined,to:p.get('to')||undefined}))}catch(e){return failure(e)}}
+export async function GET(req:Request){try{const owner=await identity(req),p=new URL(req.url).searchParams;await requireCampaignRead(req,p.get('campaignId'));const campaign=await readRecord<Campaign>(owner,'campaign',str(p.get('campaignId'),'캠페인',100,true));return json(await campaignAttribution(owner,campaign,{from:p.get('from')||undefined,to:p.get('to')||undefined}))}catch(e){return failure(e)}}
 // action=snapshot: 확인한 집계를 schemaVersion 2 metric으로 저장한다. 권한과 순서는 기존 성과 입력(app/api/action/route.ts save_metric)과 같다:
 // 로그인한 모든 역할, 같은 출처 요청(secureMutation), 워크스페이스 쓰기 잠금, metric과 캠페인 이벤트를 한 번에 저장.
 export async function POST(req:Request){let owner='',lock='';try{

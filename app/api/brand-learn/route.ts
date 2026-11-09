@@ -8,6 +8,7 @@ import {confirmedFactContext} from '@/lib/brand-facts-server';
 import {applyLearnedVisual,learnBrandPage,listLearnRuns,saveLearnRun,saveLearnedCandidates,BRAND_AUTOLEARN_OFF,type LearnSourceInput} from '@/lib/brand-learn-server';
 import {BRAND_LEARN_SAMPLE_HTML,BRAND_LEARN_SAMPLE_PATH} from '@/lib/brand-learn-sample';
 import {campaignTemplates,isTemplateId,templateBriefInput} from '@/lib/campaign-templates';
+import {requireBrandRead} from '@/lib/server-access';
 
 // 브랜드 자동 학습(에픽 G1). 읽기: 스위치 상태·최근 실행 기록·템플릿 목록. 쓰기(스위치 꺼짐이면 409):
 //  preview(공개 페이지 1회 GET → 후보 미리보기, 실행 기록) · save_candidates(후보를 사실 원장 '확인 후보'로) · apply_visual(관리자: 제안 색을 브랜드 색으로)
@@ -15,6 +16,7 @@ import {campaignTemplates,isTemplateId,templateBriefInput} from '@/lib/campaign-
 export async function GET(req:Request){
  try{
   const who=await actor(req),params=new URL(req.url).searchParams,brandId=str(params.get('brandId')??'','브랜드',100,true);
+  await requireBrandRead(req,brandId);
   const [enabled,runs]=await Promise.all([isEnabled(who.owner,'brand_autolearn'),listLearnRuns(who.owner,brandId)]);
   return json({enabled,offReason:enabled?null:BRAND_AUTOLEARN_OFF,runs,templates:campaignTemplates});
  }catch(error){return failure(error)}

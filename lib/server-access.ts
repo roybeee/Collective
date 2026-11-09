@@ -84,3 +84,66 @@ export function scopePayload<T extends Record<string,unknown>>(principal:AccessP
  if(!isScoped(principal))return payload;
  return {...Object.fromEntries(Object.entries(payload).filter(([key])=>!WORKSPACE_WIDE_KEYS.includes(key))),access:accessSummary(principal)} as unknown as T;
 }
+
+// ── 조회 가드(경로별 범위 가드, docs/ROLES.ko.md '경로별 범위 가드') ──
+// 모두 범위 없는 역할(대표·관리자·직원·legacy)에는 자원을 읽지 않고 통과한다(requireAccess의 roleOnly). 응답·상태·순서는 이전과 같다.
+// 범위 역할은 자원을 읽어 배정 밖이거나 없는 항목이면 403 SCOPE_DENIED다(다른 브랜드 항목의 존재를 404로 드러내지 않는다).
+const ownerOf=async(req:Request)=>(await accessOf(req)).actor.owner;
+export async function requireCampaignRead(req:Request,campaignId:unknown):Promise<Access>{
+ return requireAccess(req,'read_campaign',async()=>campaignResource(await ownerOf(req),campaignId));
+}
+export async function requireArtifactRead(req:Request,artifactId:unknown):Promise<Access>{
+ return requireAccess(req,'read_campaign',async()=>artifactResource(await ownerOf(req),artifactId));
+}
+export async function requireBrandRead(req:Request,brandId:unknown):Promise<Access>{
+ return requireAccess(req,'read_campaign',{brandId:text(brandId)});
+}
+// 캠페인에 이어진 기록(소재·발행 등, data.campaignId)의 캠페인으로 판단한다.
+export async function requireLinkedCampaignRead(req:Request,kind:string,id:unknown):Promise<Access>{
+ return requireAccess(req,'read_campaign',async()=>{const owner=await ownerOf(req),d=await recordData(owner,kind,id);return d?campaignResource(owner,d.campaignId):{}});
+}
+// 브랜드에 이어진 기록(브랜드 자료 등, data.brandId)의 브랜드로 판단한다.
+export async function requireLinkedBrandRead(req:Request,kind:string,id:unknown):Promise<Access>{
+ return requireAccess(req,'read_campaign',async()=>{const d=await recordData(await ownerOf(req),kind,id);return d?{brandId:text(d.brandId)}:{}});
+}
+// 지점 운영 자료(장부·진단·점검·주문·수신 연결): 브랜드 매니저는 브랜드, 점포 매니저는 배정 지점, 검토자는 지점을 배정받았을 때만 읽는다.
+export function canReadStore(principal:AccessPrincipal,resource:AccessResource):boolean{
+ if(!isScoped(principal))return true;
+ if(!can(principal,'read_campaign',resource))return false;
+ return principal.role!=='reviewer'||(typeof resource.storeId==='string'&&principal.storeIds.includes(resource.storeId));
+}
+export async function requireStoreRead(req:Request,storeId:unknown):Promise<Access>{
+ const access=await accessOf(req);
+ if(!isScoped(access.principal))return requireAccess(req,'read_campaign');
+ const target=await storeResource(access.actor.owner,storeId);
+ if(target.storeId&&canReadStore(access.principal,target))return access;
+ throw new ApiError(403,SCOPE_DENIED);
+}
+// 브랜드를 가로지르는 워크스페이스 집계(학습·예약 실행·가맹 모집 등): 범위 역할에는 403, 범위 없는 역할은 그대로다.
+export async function denyScoped(req:Request):Promise<Access>{
+ const access=await accessOf(req);
+ if(isScoped(access.principal))throw new ApiError(403,SCOPE_DENIED);
+ return access;
+}
+// 목록 거르기. 범위 없는 역할은 null(거르지 않음)을 돌려 호출자가 입력을 그대로 쓴다.
+export type CampaignLike={id?:unknown;brandId?:unknown;storeId?:unknown};
+export const canReadCampaign=(principal:AccessPrincipal,c:CampaignLike)=>can(principal,'read_campaign',{brandId:text(c.brandId),storeId:text(c.storeId)});
+export async function readableCampaigns(req:Request):Promise<((c:CampaignLike)=>boolean)|null>{
+ const {principal}=await accessOf(req);
+ return isScoped(principal)?(c:CampaignLike)=>canReadCampaign(principal,c):null;
+}
+export async function readableCampaignIds(req:Request):Promise<ReadonlySet<string>|null>{
+ const {actor:who,principal}=await accessOf(req);
+ if(!isScoped(principal))return null;
+ const rows=await database().prepare("SELECT data FROM records WHERE owner=? AND kind='campaign' LIMIT 5000").bind(who.owner).all<{data:string}>();
+ const ids=rows.results.map(r=>parse(r.data) as CampaignLike|null).filter(c=>!!c&&typeof c.id==='string'&&canReadCampaign(principal,c)).map(c=>(c as CampaignLike).id as string);
+ return new Set(ids);
+}
+// 범위 역할이면 권한 주체를, 아니면 null을 돌려준다(목록 응답을 거를지 정할 때 쓴다).
+export async function scopedPrincipal(req:Request):Promise<AccessPrincipal|null>{
+ const {principal}=await accessOf(req);
+ return isScoped(principal)?principal:null;
+}
+// 브랜드·지점을 가진 항목(사실·자료 요청·조사 등)을 거른다. 지점 항목은 지점 운영 자료와 같은 규칙(canReadStore)이다. 범위 없는 역할은 입력 그대로다.
+export const scopeByBrandStore=<R extends {brandId?:unknown;storeId?:unknown}>(principal:AccessPrincipal,rows:readonly R[]):R[]=>isScoped(principal)?rows.filter(r=>text(r.storeId)?canReadStore(principal,{brandId:text(r.brandId),storeId:text(r.storeId)}):canReadCampaign(principal,r)):[...rows];
+export const scopeStores=<R extends {id?:unknown;brandId?:unknown}>(principal:AccessPrincipal,rows:readonly R[]):R[]=>isScoped(principal)?rows.filter(r=>canReadStore(principal,{brandId:text(r.brandId),storeId:text(r.id)})):[...rows];

@@ -1,7 +1,8 @@
 import {identity,secureMutation,body,str,json,failure,readRecord,listRecords,ApiError} from '@/lib/server';
 import {saveInterview,getInterview,publicInterview,startInterview,advanceInterview,applyInterview,transcribeInterviewAudio,interviewLock} from '@/lib/brand-interview-server';
 import type {InterviewSource} from '@/lib/brand-interview';
-export async function GET(req:Request){try{const owner=await identity(req),brandId=str(new URL(req.url).searchParams.get('brandId'),'브랜드',100,true);await readRecord(owner,'brand',brandId);return json({interviews:(await listRecords<InterviewSource>(owner,'brand_source',brandId)).filter(s=>s.interview&&s.status!=='excluded').map(publicInterview)})}catch(e){return failure(e)}}
+import {requireBrandRead} from '@/lib/server-access';
+export async function GET(req:Request){try{const owner=await identity(req),brandId=str(new URL(req.url).searchParams.get('brandId'),'브랜드',100,true);await requireBrandRead(req,brandId);await readRecord(owner,'brand',brandId);return json({interviews:(await listRecords<InterviewSource>(owner,'brand_source',brandId)).filter(s=>s.interview&&s.status!=='excluded').map(publicInterview)})}catch(e){return failure(e)}}
 export async function POST(req:Request){try{const owner=await identity(req);secureMutation(req);const b=await body(req),brandId=str(b.brandId,'브랜드',100,true);await readRecord(owner,'brand',brandId);
  return await interviewLock(owner,brandId,async()=>{
   if(b.action==='save')return json(publicInterview(await saveInterview(owner,brandId,b)));

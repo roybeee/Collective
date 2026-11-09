@@ -5,13 +5,16 @@ import {flagPublicationsForFactChange} from '@/lib/execution-server';
 import {executionRate} from '@/lib/execution-rate';
 import {afterFactSaved} from '@/lib/data-requests-server';
 import {markAssetsForChange} from '@/lib/franchise-assets-server';
+import {requireBrandRead,requireStoreRead,scopedPrincipal,scopeByBrandStore} from '@/lib/server-access';
 
 export async function GET(req:Request){
  try{
   const owner=await identity(req),params=new URL(req.url).searchParams;
   const brandId=str(params.get('brandId')??'','브랜드',100)||undefined;
   const storeId=str(params.get('storeId')??'','지점',100)||undefined;
-  const facts=await getBrandFacts(owner,brandId,storeId);
+  if(brandId)await requireBrandRead(req,brandId);
+  if(storeId)await requireStoreRead(req,storeId);
+  const scoped=await scopedPrincipal(req),listed=await getBrandFacts(owner,brandId,storeId),facts=scoped?scopeByBrandStore(scoped,listed):listed;
   if(!brandId)return json({facts});
   // 가맹 프로필이나 정보공개서 버전이 있는 브랜드만 franchise 블록을 싣는다(비가맹 브랜드 응답 불변).
   const franchise=await franchiseFactsOverview(owner,brandId,facts);

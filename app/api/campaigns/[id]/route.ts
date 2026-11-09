@@ -1,10 +1,12 @@
 import {campaignDetail,type CampaignSequence} from '@/lib/campaign-detail';
 import {statusRecordsQuery,withDerivedStatus,type StatusMeeting,type StatusPublication} from '@/lib/campaign-status';
 import {database,failure,identity,json,listRecords,str} from '@/lib/server';
+import {requireCampaignRead} from '@/lib/server-access';
 
 export async function GET(req:Request,context:{params:Promise<{id:string}>}){
  try{
   const owner=await identity(req),{id}=await context.params,campaignId=str(id,'캠페인',100,true);
+  await requireCampaignRead(req,campaignId);
   const [detail,sequences,meetings,publications]=await Promise.all([
    campaignDetail(owner,campaignId),listRecords<CampaignSequence>(owner,'campaign_sequence',campaignId),
    database().prepare(statusRecordsQuery('team_meeting',true)).bind(owner,campaignId).all<StatusMeeting&{campaignId:string}>(),

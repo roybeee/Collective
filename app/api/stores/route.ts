@@ -10,6 +10,7 @@ import {isRecruitmentObjective,OBJECTIVE_MESSAGES,type Brand,type Campaign,type 
 import {emptyPlan,storeBriefCopy,storeCopyFields,syncStoreCopy,type StoreCopyKey} from '@/lib/brief';
 import {currentFactRefs} from '@/lib/ai-context';
 import {sameEvidenceFactRefs} from '@/lib/brand-facts';
+import {requireBrandRead,requireStoreRead,scopedPrincipal,scopeStores} from '@/lib/server-access';
 async function permittedPromotion(owner:string,...args:Parameters<typeof storeRulePromotion>){
  const promotion=storeRulePromotion(...args);
  if(!promotion.rule)return promotion;
@@ -18,8 +19,11 @@ async function permittedPromotion(owner:string,...args:Parameters<typeof storeRu
 }
 export async function GET(req:Request){try{
  const owner=await identity(req),p=new URL(req.url).searchParams,brandId=p.get('brandId'),storeId=p.get('storeId');
+ if(brandId)await requireBrandRead(req,brandId);
+ if(storeId)await requireStoreRead(req,storeId);
+ const scoped=await scopedPrincipal(req);
  if(brandId)await readRecord<Brand>(owner,'brand',brandId);
- const stores=await listRecords<Store>(owner,'store',brandId||undefined);
+ const listed=await listRecords<Store>(owner,'store',brandId||undefined),stores=scoped?scopeStores(scoped,listed):listed;
  if(!storeId)return json({stores,channels:[],experiments:[],measurements:[],reports:[],tasks:[],research:[],sources:[]});
  const store=await readRecord<Store>(owner,'store',storeId);if(brandId&&store.brandId!==brandId)throw new ApiError(404,'해당 브랜드의 지점이 아닙니다.');
  const [channels,experiments,measurements,reports,tasks,research]=await Promise.all([listRecords(owner,'store_channel',storeId),listRecords(owner,'store_experiment',storeId),listRecords(owner,'store_measurement',storeId),listRecords(owner,'store_report',storeId),listRecords(owner,'store_task',storeId),listRecords<BrandResearch>(owner,'brand_research',store.brandId)]);

@@ -1,9 +1,15 @@
-import {actor,secureMutation,body,failure} from '@/lib/server';
+import {actor,identity,secureMutation,body,failure} from '@/lib/server';
 import {executeMeeting} from '@/lib/meeting-execution';
 import {assertCampaignNotArchived,assertMeetingCampaignNotArchived} from '@/lib/campaign-archive';
 import {assertAutonomy,markAutonomy} from '@/lib/autonomy-server';
-import {requireAccess,campaignResource} from '@/lib/server-access';
-export {GET} from '@/lib/meeting-execution';
+import {requireAccess,campaignResource,requireCampaignRead} from '@/lib/server-access';
+import {GET as meetingsGet} from '@/lib/meeting-execution';
+
+// 회의 목록 읽기: 범위 역할은 캠페인 범위를 먼저 본다(범위 없는 역할은 이전과 같은 lib/meeting-execution.ts GET).
+export async function GET(req:Request){
+ try{await identity(req);await requireCampaignRead(req,new URL(req.url).searchParams.get('campaignId'))}catch(error){return failure(error)}
+ return meetingsGet(req);
+}
 
 export async function POST(req:Request){
  try{

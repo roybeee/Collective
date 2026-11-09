@@ -5,8 +5,9 @@ import {curate} from '@/lib/playbook-curator';
 import type {SourceCampaignDeleted} from '@/lib/record-kinds';
 import {measurementViews,measurementAlerts} from '@/lib/measurement-status-server';
 import {collectAlerts} from '@/lib/measurement-status';
+import {denyScoped} from '@/lib/server-access';
 // reviewDecisions(인용 선택용 판정 요약)·playbookSuggestions(Curator 제안)·playbookRechecks(중지한 운영자 선호 규칙의 재확인 표시)는 운영자 선호 영역(B3-1)이 쓴다.
-export async function GET(req:Request){try{const owner=await identity(req);
+export async function GET(req:Request){try{const owner=await identity(req);await denyScoped(req);
  // 워크스페이스 첫 화면의 만료 임박 알림(loop-11)은 규칙만 읽어 만료 임박 목록만 돌려준다.
  // 성과 자동 수집 재연결 알림(loop-1·security-ops-5)도 같은 방식으로 알림 목록만 돌려준다.
  if(new URL(req.url).searchParams.get('only')==='collect_alerts')return json({collectAlerts:await measurementAlerts(owner)});
