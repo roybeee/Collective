@@ -1,6 +1,7 @@
 // 캠페인 보관(ux-9 권고 2 잔여): 보관·해제, 진행 중 작업이면 409, 보관 중 새 AI 실행(역할·회의·회의 재시도·캠페인 초안)·연속 실행·발행 승인·접수 409,
 // 목록·대시보드 제외, 삭제 정책 불변, 권한(캠페인 삭제와 같음). 보관은 캠페인 레코드의 archivedAt·archivedBy만 쓴다(새 kind 없음).
 // 외부 호출은 가짜 fetch로만 한다. 유료 모델·Buffer 호출 없음.
+import {koSource} from './helpers/i18n-source.mjs';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
@@ -174,7 +175,7 @@ check('a member cannot unarchive a campaign',(await authCall(member,{action:'una
 check('an admin can unarchive a campaign',(await authCall(admin,{action:'unarchive_campaign',id:'c'})).status===200&&!(await authRecord()).archivedAt);
 
 // --- 화면 연결 ------------------------------------------------------------------------
-const screen=readFileSync('app/workspace.tsx','utf8'),dialog=readFileSync('app/delete-campaign-dialog.tsx','utf8'),panels=readFileSync('app/panels.tsx','utf8'),badge=readFileSync('app/status-badge.tsx','utf8');
+const screen=readFileSync('app/workspace.tsx','utf8'),dialog=readFileSync('app/delete-campaign-dialog.tsx','utf8'),panels=koSource('app/panels.tsx'),badge=readFileSync('app/status-badge.tsx','utf8');
 const has=(name,source,text)=>{assert.ok(source.includes(text),name);passed++};
 has('dashboard numbers and the sidebar count exclude archived campaigns',screen,'metrics=workspaceMetrics(live)');
 has('the dashboard campaign table excludes archived campaigns',screen,'recent=recentCampaigns(active.length?active:live.campaigns)');

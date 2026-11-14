@@ -1,6 +1,7 @@
 // ⑦(docs/DATA-PROCESSING.ko.md 4.4, 레인 B): 검토 메모 입력란과 자료 업로드 화면에 개인정보 입력 금지 안내가 있다.
 // 화면 원문 검사로 고정한다. 안내는 설명 텍스트만 더하고 기존 라벨·버튼 이름(E2E가 쓰는 '추가 메모'·'자료 보관' 등)은 그대로 둔다.
 // B1 사유 선택(작업물 수정 요청 사유 칩, 브리프 제안 미사용 사유, 자료 사용 제외 사유)은 코드 목록이라 글을 적을 수 없어 안내 대상이 아니다.
+import {koSource} from './helpers/i18n-source.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
@@ -16,7 +17,7 @@ const MEMO='고객 이름·전화번호·주소 같은 개인정보는 적지 �
 const UPLOAD='개인정보가 담긴 파일은 올리지 마세요. 고객 이름·전화번호·주소 같은 개인정보는 메모에도 적지 마세요. 자료 내용은 AI 작업 입력으로 쓰일 수 있습니다.';
 
 // --- 작업물 검토 메모(app/panels.tsx ArtifactDialog): 메모 입력란 바로 아래, 수정 요청 버튼 앞 ---------------------
-const artifact=body(source('app/panels.tsx'),'export function ArtifactDialog','export function CampaignPanel');
+const artifact=body(koSource('app/panels.tsx'),'export function ArtifactDialog','export function CampaignPanel');
 ok('the artifact review memo shows the personal data notice',artifact.includes(MEMO));
 ok('the notice sits under the memo textarea and before the review buttons',inOrder(artifact,'<Textarea value={note}',MEMO,'>수정 요청</Button>'));
 ok('the memo placeholder stays unchanged',artifact.includes('placeholder="검토 의견을 남기세요. 수정 요청에는 의견이 필요합니다."'));

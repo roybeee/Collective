@@ -19,10 +19,17 @@ export function dayLabel(value:unknown,locale:DisplayLocale='ko',empty=UNKNOWN){
 export function count(value:number|null|undefined,unit='',empty=UNKNOWN){return typeof value==='number'&&Number.isFinite(value)?`${number.format(value)}${unit}`:empty}
 /** 분자/분모를 함께: '3/12건'. 분모를 모르면 '3건(전체 미확인)'. */
 export function ratioOf(part:number|null|undefined,total:number|null|undefined,unit='건'){if(typeof part!=='number')return UNKNOWN;return typeof total==='number'?`${number.format(part)}/${number.format(total)}${unit}`:`${number.format(part)}${unit}(전체 ${UNKNOWN})`}
-/** ISO → '2026-10-01 14:30'(KST). */
-export function dateTime(value:unknown,empty=UNKNOWN){const d=valid(value);if(!d)return empty;const p=parts(d);return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`}
-/** ISO → '10월 2일 오후 3:10'(KST). 문장 안에 넣는 시각이다(변경 이력 문장). 표·선택지는 dateTime을 쓴다. */
-export function dayTime(value:unknown,empty=''){const d=valid(value);if(!d)return empty;const p=parts(d),h=Number(p.hour);return `${Number(p.month)}월 ${Number(p.day)}일 ${h<12?'오전':'오후'} ${h%12||12}:${p.minute}`}
+// 날짜·시각·기간의 화면 언어(GLOBAL-PLAN G6 2단계). lib/i18n.ts setLocale이 맞춘다. 서버·테스트 런타임은 부르지 않아 한국어 그대로다.
+// 한국어 결과는 이전과 바이트가 같다. 영어·일본어는 Intl(서울 시간)로 만들고, 기본 빈 값('미확인')도 그 언어로 바꾼다.
+let shown:DisplayLocale='ko';
+export function setDisplayLocale(locale:DisplayLocale){shown=locale}
+const unknownWord=()=>shown==='en'?'Unconfirmed':shown==='ja'?'未確認':UNKNOWN;
+const intl=(d:Date,o:Intl.DateTimeFormatOptions)=>new Intl.DateTimeFormat(localeTags[shown],{timeZone:KST,hourCycle:'h23',...o}).format(d);
+const ymd=():Intl.DateTimeFormatOptions=>shown==='en'?{year:'numeric',month:'short',day:'numeric'}:{year:'numeric',month:'2-digit',day:'2-digit'};
+/** ISO → '2026-10-01 14:30'(KST). en 'Oct 1, 2026, 14:30', ja '2026/10/01 14:30'. */
+export function dateTime(value:unknown,empty=unknownWord()){const d=valid(value);if(!d)return empty;if(shown!=='ko')return intl(d,{...ymd(),hour:'2-digit',minute:'2-digit'});const p=parts(d);return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`}
+/** ISO → '10월 2일 오후 3:10'(KST). 문장 안에 넣는 시각이다(변경 이력 문장). 표·선택지는 dateTime을 쓴다. en 'Oct 2, 3:10 PM', ja '10月2日 15:10'. */
+export function dayTime(value:unknown,empty=''){const d=valid(value);if(!d)return empty;if(shown!=='ko')return intl(d,{month:shown==='en'?'short':'long',day:'numeric',hour:'numeric',minute:'2-digit',hourCycle:shown==='en'?'h12':'h23'});const p=parts(d),h=Number(p.hour);return `${Number(p.month)}월 ${Number(p.day)}일 ${h<12?'오전':'오후'} ${h%12||12}:${p.minute}`}
 // 끝 글자의 받침(0 없음, 8 ㄹ). 한글 음절은 종성으로, 숫자는 읽는 소리(0 영·십·백, 1 일, 3 삼, 6 육, 7 칠, 8 팔)로, 영문은 l·m·n만 받침으로 본다.
 function finalConsonant(word:string){
  const last=word.replace(/[\s」』)\]"'’”]+$/,'').slice(-1),code=last.charCodeAt(0)-0xac00;
@@ -36,9 +43,10 @@ export function josa(word:string,pair:'을/를'|'이/가'|'은/는'|'과/와'|'�
  return word+(pair==='으로/로'?(f&&f!==8?withFinal:without):f?withFinal:without);
 }
 /** ISO 또는 'YYYY-MM-DD' → '2026-10-01'(KST). 날짜만 있는 값은 그대로 둔다(시간대 이동 없음). */
-export function date(value:unknown,empty=UNKNOWN){if(typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value))return value;const d=valid(value);if(!d)return empty;const p=parts(d);return `${p.year}-${p.month}-${p.day}`}
+export function date(value:unknown,empty=unknownWord()){const dateOnly=typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value);if(dateOnly&&shown==='ko')return value;const d=valid(dateOnly?`${value}T12:00:00+09:00`:value);if(!d)return empty;if(shown!=='ko')return intl(d,ymd());const p=parts(d);return `${p.year}-${p.month}-${p.day}`}
 /** 밀리초 → '850ms 미만은 1초 미만', '3초', '2분 5초', '1시간 4분'. */
-export function duration(ms:number|null|undefined,empty=UNKNOWN){if(typeof ms!=='number'||!Number.isFinite(ms)||ms<0)return empty;if(ms<1000)return '1초 미만';const s=Math.round(ms/1000);if(s<60)return `${s}초`;const m=Math.floor(s/60),r=s%60;if(m<60)return r?`${m}분 ${r}초`:`${m}분`;const h=Math.floor(m/60),mm=m%60;return mm?`${h}시간 ${mm}분`:`${h}시간`}
+const units={ko:['1초 미만','초','분','시간',' '],en:['under 1s','s','m','h',' '],ja:['1秒未満','秒','分','時間','']} as const;
+export function duration(ms:number|null|undefined,empty=unknownWord()){if(typeof ms!=='number'||!Number.isFinite(ms)||ms<0)return empty;const [under,sec,min,hour,gap]=units[shown];if(ms<1000)return under;const s=Math.round(ms/1000);if(s<60)return `${s}${sec}`;const m=Math.floor(s/60),r=s%60;if(m<60)return r?`${m}${min}${gap}${r}${sec}`:`${m}${min}`;const h=Math.floor(m/60),mm=m%60;return mm?`${h}${hour}${gap}${mm}${min}`:`${h}${hour}`}
 /** 비율 0~1 → '12.5%'. */
 export function percent(value:number|null|undefined,digits=1,empty=UNKNOWN){return typeof value==='number'&&Number.isFinite(value)?`${(value*100).toFixed(digits).replace(/\.0+$/,'')}%`:empty}
 /** 내부 ID를 짧게: 'landing-3f9a2c1b' → '…3f9a2c'. 전체 값은 title·복사 버튼으로만 준다. */

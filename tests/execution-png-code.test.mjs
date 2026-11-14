@@ -1,3 +1,4 @@
+import {koSource} from './helpers/i18n-source.mjs';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {deflateSync} from 'node:zlib';
@@ -170,7 +171,7 @@ const cancelled=await post('cancel','on',{id:lateReg.data.id,version:lateReg.dat
 check(cancelled.status===200&&cancelled.data.status==='cancelled','the coded draft can still be cancelled');
 
 // 10) 문서와 화면
-const panel=readFileSync('app/execution-panel.tsx','utf8'),loop=readFileSync('docs/EXECUTION-LOOP.ko.md','utf8'),store=readFileSync('docs/STORE-MEASUREMENT.ko.md','utf8');
+const panel=koSource('app/execution-panel.tsx'),loop=readFileSync('docs/EXECUTION-LOOP.ko.md','utf8'),store=readFileSync('docs/STORE-MEASUREMENT.ko.md','utf8');
 check(panel.includes("'register_coded_png'")&&panel.includes('codedPngApproval(p,!!codedChecks[p.id])')&&panel.includes('codedPngConfirmed:!!codedChecks[p.id]')&&panel.includes('코드 넣은 PNG 만들기')&&panel.includes('codedPng=')&&panel.includes('코드 PNG 확인'),'the panel offers the coded PNG button, preview and check');
 check(loop.includes('## PNG 게시 코드 (A4-4)')&&loop.includes('a4_png_code')&&loop.includes('픽셀')&&store.includes('A4-4'),'the execution loop and store measurement docs describe A4-4');
 console.log(JSON.stringify({passed:checks-failures.length,failed:failures.length,failures,providerCalls:calls,evidence:'real SQLite; mocked Buffer and R2; genuine PNG fixtures'}));

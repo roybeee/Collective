@@ -1,6 +1,7 @@
 // UX-PLAN-3 Q0·Q7: 화면 품질 래칫. 아래 수치는 기준값 이하로만 내려갈 수 있다(올라가면 실패). 줄였으면 tests/ux-budget.json을 함께 낮춘다.
 // 런타임 예산(홈 JS·성장 탭 요청·axe·44px)은 e2e/ux-budget.spec.ts가 같은 파일로 확인한다.
 // 홈 첫 로딩을 무겁게 만드는 정적 import도 막는다. 가맹(franchise-*)·온라인 채점(online-grading) 화면은 R·Q 소유라 계수에서 뺀다.
+import {koSource} from './helpers/i18n-source.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync,readdirSync} from 'node:fs';
 import ts from 'typescript';
@@ -120,7 +121,7 @@ for(const m of pureLib){const f=`lib/${m}.ts`,sf=ts.createSourceFile(f,readFileS
  const screenCodes=screen.flatMap(r=>[r.label,...r.reason,r.link?.label||''].filter(t=>CODE.test(t)||t.includes(' · ')).map(t=>r.key+': '+t));
  check(screenCodes.length===0,`internal codes or middle dots on the settings feature screen: ${screenCodes.join(' | ')}`);
  check(screen.some(r=>r.tech.includes('스위치 이름 a6_data_requests')),'switch names stay available as technical details');
- const panels=readFileSync('app/panels.tsx','utf8');
+ const panels=koSource('app/panels.tsx');
  check(panels.includes('rows.map(featureView)')&&panels.includes('<summary>자세히</summary>기술 정보: {metaText(r.tech)}'),'settings feature table renders featureView and keeps codes in the details');
 }
 // 레인 A 화면(app/*.tsx, components/**)의 글자 리터럴(문자열·템플릿·JSX 글자)에 시드·테스트 브랜드 이름을 하드코딩하지 않는다(평가 9회차 11차원: 브리프 목표 자리표시 '맵달서울').

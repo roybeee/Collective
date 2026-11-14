@@ -2,6 +2,7 @@
 // (a) 입력 JSON 필드 경로를 본문에 쓰지 않는 규칙, (b) 계약 섹션 안 #·## 제목 금지·빈 섹션 금지, (c) 관찰이 끝난 코호트 분모, (d) 광고 카피·후기·광고 표시·가격 규칙이 있고,
 // 정책 문장이 입력 경로를 라벨 없이 단독으로 부르지 않는지 본다. 지시 예시·표시 문구가 채점기(lib/graders)·규제 가드레일(compliance)의 판정과 맞는지도 본다.
 // 근거: 순수 함수와 합성 문자열(mocked). 외부 호출 0회.
+import {koSource} from './helpers/i18n-source.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync,readdirSync} from 'node:fs';
 import {pureLoader} from '../scripts/eval/load-ts.mjs';
@@ -70,7 +71,7 @@ check('a meeting revision saved as a role artifact carries labels, not schema pa
 
 // 이 정규화 이전에 저장된 AI 작업물도 화면에서는 같은 라벨로 보인다(작업물 보기 RichText). 저장 본문은 바꾸지 않는다.
 // X7: 상세 본문은 인용 pill을 그리는 CitedText가 같은 표시용 본문(readingText)을 받는다.
-check('the artifact reading view labels schema paths of AI artifacts on display',()=>{const panels=readFileSync('app/panels.tsx','utf8');assert.match(panels,/const readingText=useMemo\(\(\)=>a\?\(a\.origin==='ai'\|\|a\.origin==='ai_edited'\?labelSchemaPaths\(scrubInternalIds\(a\.content\)\)\.text:a\.content\):'',\[a\]\)/);assert.match(panels,/<CitedText text=\{readingText\}/)});
+check('the artifact reading view labels schema paths of AI artifacts on display',()=>{const panels=koSource('app/panels.tsx');assert.match(panels,/const readingText=useMemo\(\(\)=>a\?\(a\.origin==='ai'\|\|a\.origin==='ai_edited'\?labelSchemaPaths\(scrubInternalIds\(a\.content\)\)\.text:a\.content\):'',\[a\]\)/);assert.match(panels,/<CitedText text=\{readingText\}/)});
 
 // (c) 지시의 정의 예시를 그대로 옮겨 쓰면 revisit_cohort_definition을 통과하고, 기준선의 결함 형태(코호트 기준 없음)는 fail이다.
 const revisit=GRADERS.find(g=>g.id==='revisit_cohort_definition'),grade=text=>revisit.grade({kind:'role',role:'insight',contract:true,text},{}).status;

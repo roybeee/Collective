@@ -5,7 +5,7 @@
 // - 선택은 localStorage 'locale'에 남고 html[lang]을 바꾼다. 첫 그림 전 lang은 LOCALE_BOOT_SCRIPT가 맞춘다(app/layout.tsx).
 // - React 구독(useT·useLocale)은 lib/i18n-react.ts에 있다. 이 파일은 서버·테스트 런타임에서도 읽힌다(window·localStorage가 없으면 한국어).
 import {ko,type MessageKey} from './i18n/ko';
-import {compact,dayLabel,money,type DisplayLocale} from './format';
+import {compact,dayLabel,money,setDisplayLocale,type DisplayLocale} from './format';
 export type {MessageKey} from './i18n/ko';
 export type Locale=DisplayLocale;
 export const LOCALES:readonly Locale[]=['ko','en','ja'];
@@ -55,7 +55,7 @@ export async function setLocale(locale:Locale,{persist=true}:{persist?:boolean}=
  if(request!==state.request)return false;
  if(persist){try{localStorage.setItem(LOCALE_KEY,locale)}catch{/* 사생활 보호 모드 등: 이번 화면에만 적용 */}}
  applyLang(locale);
- if(state.locale!==locale){state.locale=locale;notify()}
+ if(state.locale!==locale){state.locale=locale;setDisplayLocale(locale);notify()}
  return true;
 }
 /** 저장된 언어로 시작한다(첫 구독 때 한 번). 한국어면 아무것도 내려받지 않는다. */

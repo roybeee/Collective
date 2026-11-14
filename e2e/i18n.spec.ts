@@ -59,3 +59,47 @@ test('언어 전환: 영어·일본어·한국어, 새로고침 유지, 확인 �
   expect(await page.evaluate(()=>localStorage.getItem('locale'))).toBe('ko');
  }finally{await context.close()}
 });
+
+// GLOBAL-PLAN G6 2단계(모바일·데스크톱): 캠페인 상세 틀·탭과 제작·발행 탭이 영어·일본어로 바뀌고, 한국어는 이전 문구 그대로다(QA 2026-11-09 D7).
+// 저장된 언어(localStorage locale)로 연다. 캠페인 이름·작업물 본문(사용자 자료)은 번역하지 않는다. Real local D1/API/Chromium. 인증 헤더 mocked. 외부 호출 없음.
+const HANGUL=/[가-힣]/;
+async function openTab(page:Page,name:string|RegExp){const tab=page.getByRole('tab',{name,exact:typeof name==='string'}).first();await tab.click();await expect(tab).toHaveAttribute('aria-selected','true')}
+test('캠페인 상세 탭·제작·발행: 영어·일본어 머리말, 한국어 그대로',async({browser},info)=>{
+ test.setTimeout(120_000);
+ const {context,page,post}=await taskContext(browser,info,'i18n2',1);
+ try{
+  const title=`언어 상세 ${info.project.name}`;
+  const {id}=await post('/api/action',{action:'save_campaign',data:{brandId:'ofd',title,goal:'상세 화면 언어 확인'}}) as {id:string};
+  await post('/api/action',{action:'save_artifact',campaignId:id,role:'strategy',title:'상세 언어 초안',content:'## 방향\n합성 본문'});
+  const open=async(locale:string,ctab='')=>{await page.goto('/');await page.evaluate(l=>localStorage.setItem('locale',l),locale);await page.goto(`/?view=campaigns&campaign=${id}${ctab?`&ctab=${ctab}`:''}`);await expect(page.locator('html')).toHaveAttribute('lang',locale);await expect(page.getByRole('heading',{level:1,name:title})).toBeVisible()};
+
+  // English: 이동 경로·탭·브리프·AI 팀·작업물·성과·이력·팀 회의·제작·발행
+  await open('en');
+  await expect(page.getByRole('navigation',{name:'Breadcrumb'}).getByRole('button',{name:'Campaign list'})).toBeVisible();
+  const tabs=page.getByRole('tablist').first();
+  for(const name of ['Brief','Team meeting','AI team','Growth & sales','Meta ads prep','Production & publishing','Performance','History'])await expect(tabs.getByRole('tab',{name,exact:true})).toBeVisible();
+  await expect(tabs.getByRole('tab',{name:/^Deliverables/})).toBeVisible();
+  expect(HANGUL.test(await tabs.innerText())).toBe(false);
+  await expect(page.getByText('Campaign goal',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Edit brief'})).toBeVisible();
+  await openTab(page,'AI team');await expect(page.getByRole('heading',{name:'8 areas of expertise, one goal'})).toBeVisible();
+  await openTab(page,/^Deliverables/);await expect(page.getByRole('heading',{name:'Deliverables to review',exact:true})).toBeVisible();
+  await openTab(page,'Performance');await expect(page.getByRole('heading',{name:'Measured results',exact:true})).toBeVisible();
+  await openTab(page,'History');await expect(page.getByRole('heading',{name:'Compare deliverable versions',exact:true})).toBeVisible();
+  await openTab(page,'Team meeting');await expect(page.getByRole('heading',{name:"From each other's opinions to a better execution plan."})).toBeVisible();
+  await openTab(page,'Production & publishing');
+  await expect(page.getByRole('heading',{level:2,name:'Production & publishing',exact:true})).toBeVisible();
+  await expect(page.getByText(/^Confirmed brand facts → PNG production/)).toBeVisible();
+
+  // 日本語: 탭과 제작·발행 머리말
+  await open('ja','execution');
+  await expect(page.getByRole('tablist').first().getByRole('tab',{name:'ブリーフ',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{level:2,name:'制作・公開',exact:true})).toBeVisible();
+
+  // 한국어: 이전 문구 그대로
+  await open('ko');
+  for(const name of ['브리프','팀 회의','AI 팀','제작·발행','성과','이력'])await expect(page.getByRole('tablist').first().getByRole('tab',{name,exact:true})).toBeVisible();
+  await expect(page.getByRole('navigation',{name:'이동 경로'}).getByRole('button',{name:'캠페인 목록'})).toBeVisible();
+  await expect(page.getByText('캠페인 목표',{exact:true})).toBeVisible();
+ }finally{await context.close()}
+});
