@@ -43,7 +43,13 @@ export function publisherFor(sel: DirectSelection, journal: ContainerJournal): P
  return sel.kind === 'threads' ? threadsPublisher({credential: sel.credential, journal}) : instagramPublisher({credential: sel.credential, journal});
 }
 // 발행 → 게시 초안. 캡션은 저장된 최종 캡션 그대로(AI 생성물·가상인물 표시 줄·게시 코드 줄 포함, lib/execution.ts composeCaption). 이미지는 승인 때 만든 공개 사본(표시 처리된 바이트의 해시 주소).
-export const directDraftFor = (p: Pick<Publication, 'caption' | 'mediaUrl'>): PublishDraft => ({text: p.caption, imageUrl: p.mediaUrl, mediaType: 'IMAGE'});
+// 캐러셀은 첫 장(발행의 공개 주소)+추가 장 공개 주소를 순서대로, 릴스는 영상 주소와 첫 장을 표지로 싣는다(lib/execution-media-set.ts).
+export const directDraftFor = (p: Pick<Publication, 'caption' | 'mediaUrl'> & {mediaSet?: Publication['mediaSet']}): PublishDraft => {
+ const set = p.mediaSet;
+ if (set?.type === 'CAROUSEL') return {text: p.caption, mediaType: 'CAROUSEL', items: [p.mediaUrl, ...set.items.map(i => i.mediaUrl)]};
+ if (set?.type === 'REELS') return {text: p.caption, mediaType: 'REELS', videoUrl: set.video.url, coverUrl: p.mediaUrl || null, videoBytes: set.video.bytes};
+ return {text: p.caption, imageUrl: p.mediaUrl, mediaType: 'IMAGE'};
+};
 
 const failed = (pending: Publication, error: string): Publication => ({...pending, status: 'failed', error});
 // 접수 예약(reservePublication) 뒤 호출된다(attemptedAt·submitting은 이미 저장됐다). 보내지 않은 실패는 failed, 보낸 뒤 결과 불명은 uncertain, 게시 성공은 published다.
@@ -52,6 +58,7 @@ export async function dispatchDirect(owner: string, campaign: Campaign, pending:
  const sel = await selectDirectPublisher(owner, campaign.brandId);
  if (!sel) return failed(pending, '직접 게시 스위치 또는 브랜드 연결이 실행 전에 꺼졌습니다. 보내지 않았습니다.');
  if (directChannelId(sel.kind, sel.credential.userId) !== pending.channelId) return failed(pending, '승인 때의 발행 계정과 지금 연결된 계정이 다릅니다. 보내지 않았습니다. 재확인 뒤 다시 승인하세요.');
+ if (pending.mediaSet && sel.kind !== 'instagram_direct') return failed(pending, '캐러셀·릴스는 Instagram 직접 게시로만 보낼 수 있습니다. 보내지 않았습니다.');
  const publisher = publisherFor(sel, d1ContainerJournal(owner, campaign.id)), draft = directDraftFor(pending), label = publisherLabels[sel.kind];
  const prepared = await publisher.prepare(draft);
  if (!prepared.ok) return failed(pending, `${label} 준비 검사 실패: ${prepared.issues.join(' ')} 보내지 않았습니다.`);

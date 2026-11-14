@@ -5,7 +5,7 @@
 - 계획 출처: [GLOBAL-PLAN C6](GLOBAL-PLAN.ko.md)
 - 코드: `lib/kakao/types.ts`(딜러 무관 계약) · `lib/kakao/dealer-generic.ts`(참고 구현) · `lib/kakao/dealer-mock.ts`(테스트) · `lib/kakao/compliance.ts`(규칙 엔진, 순수) · `lib/kakao/consent.ts`·`consent-server.ts`(수신동의 원장) · `lib/kakao/channel-sync.ts`(친구 관계) · `lib/kakao/send-server.ts`(전송 파이프라인) · `lib/kakao/credential-server.ts`(딜러 자격증명) · `app/api/kakao/route.ts`(API) · `lib/kakao/registry-descriptor.ts`(커넥터 서술자)
 - 검증: `tests/kakao-compliance.test.mjs`(순수·계약 하네스), `tests/kakao-send.test.mjs`(서버·API, mocked)
-- 화면: 이 판에는 없다. API만 있다.
+- 화면: 설정 → 채널 연결 → 카카오 카드(딜러 연결·수신동의 원장·판정 미리보기, `app/settings-kakao.tsx`)와 그 안의 '메시지 보내기'(지연 로딩, `app/settings-kakao-send.tsx`, 11절).
 
 ## 1. 사실 전제 (2026-11-09 조사, 딜러 계약 전 가정)
 
@@ -126,3 +126,12 @@ draft ──판정 저장──▶ approve(사람, assertAutonomy('customer_send
 - `node --experimental-vm-modules tests/kakao-compliance.test.mjs` — passed · 순수(59): 분류·형식·야간·동의·수신거부·상한·CSV 해시·재동의·서술자·계약 하네스 5 시나리오·참고 딜러 분류
 - `node --experimental-vm-modules tests/kakao-send.test.mjs` — passed · mocked(63): 권한·딜러 연결·CSV 가져오기(번호 미저장)·초안→승인→전송·스위치 꺼짐 409·unknown 비재전송·멱등 재전송·결과 폴링·하루 상한·수신거부·친구 동기화·재동의 안내
 - 실제 딜러·카카오 API 호출: not_run(딜러 계약 전, 대표 직접)
+
+## 11. 전송 화면 (레인 C 마감)
+
+- 위치: 설정 → 채널 연결 → 카카오 카드 → '메시지 보내기'(열 때 내려받는다).
+- 순서: 종류(브랜드 메시지·알림톡) → 본문(알림톡은 템플릿 코드도) → 수신자 묶음 → 묶음 안 수신자(해시 앞 8자) → 추정 비용 → '초안 저장·판정'(기존 `draft`, 판정 결과 표시) → 전송 상태 목록에서 '전송 승인'(확인 카드: 무엇·어디·언제·비용·되돌림, 기존 `approve`) → 번호 입력 뒤 '보내기'(기존 `send`, 해시가 다르면 400) → '결과 조회'(기존 `result`).
+- 새 읽기: `GET /api/kakao?brandId=&segment=active|night|renewal_due|informational` — 묶음의 수·묶음별 수·해시(최대 50)·가정 단가(`unitKrw`)만 돌려준다(저장 없음). 번호는 원장에 없으므로 응답에도 없다. 묶음: 유효 동의 / 야간 동의 포함 / 곧 재동의(23개월, 재동의 안내와 같은 기준) / 정보성(수신거부만 제외).
+- 비용은 **가정 단가**(`lib/kakao/segments.ts ESTIMATED_UNIT_KRW`, 알림톡 8원·브랜드 메시지 20원, 부가세 별도)로 수 × 단가를 '추정'으로만 보인다. 계약한 딜러 단가로 이 표만 바꾼다. 실제 비용은 딜러 결과(`costKrw`)가 정한다.
+- 스위치 `kakao_bizmessage`가 꺼져 있으면 '보내기'·'결과 조회' 단추가 막히고 이유를 보인다(서버도 409). 초안·판정·승인은 된다.
+- 검증: `tests/channel-ops-completion.test.mjs`(묶음 읽기·해시만), `e2e/channel-completion.spec.ts`(화면, 로컬 D1·real, 딜러 호출 없음).

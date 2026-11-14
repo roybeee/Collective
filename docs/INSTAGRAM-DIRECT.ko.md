@@ -42,8 +42,8 @@ Buffer를 거치지 않고 Instagram Graph API·Threads API로 승인된 발행�
 - 승인·실행 버튼 없이 게시하지 않는다. 워커·예약 실행·일일 루프는 이 경로를 부르지 않는다.
 - 결과를 모르는 게시(unknown)를 다시 보내지 않는다. 사람이 `접수 확인`에서 닫는다.
 - 토큰을 자동 갱신하지 않는다. 만료 7일 전부터 상태에 경고가 붙고, 소유자가 새 장수명 토큰으로 다시 연결한다(`connect_publisher`를 다시 호출하면 version이 올라가고 기존 승인은 '발행 계정' 드리프트로 재확인 대상이 된다).
-- 댓글에 답하지 않는다. 캐러셀 자식 컨테이너·릴스 영상 업로드는 공급자 코드에 있지만 실행 경로는 단일 이미지만 보낸다.
-- `refresh`·`resolve_uncertain`·`disconnect_buffer`는 Buffer 전용이다. 직접 게시 발행의 미확인 건은 `providerStatus`의 컨테이너 id와 계정의 게시물로 대조한 뒤 `resolve_uncertain`의 `notFound`(실패로 닫기)만 쓴다. 게시 ID로 확정하는 길은 후속 PR.
+- 댓글에 답하지 않는다. 캐러셀·릴스는 7절 묶음으로만 보낸다(Instagram 직접 게시 전용, Buffer·Threads는 단일 이미지 그대로).
+- `refresh`·`resolve_uncertain`·`disconnect_buffer`는 Buffer 전용이다. 직접 게시 발행의 미확인 건은 8절 `reconcile_direct`(계정 최근 게시물 대조, 읽기만)로 닫는다. `resolve_uncertain`의 `notFound`(실패로 닫기)도 그대로 쓸 수 있다.
 
 ## 6. 가정(공식 문서 미확인 항목)
 
@@ -51,3 +51,22 @@ Buffer를 거치지 않고 Instagram Graph API·Threads API로 승인된 발행�
 - Threads 본문 500자 제한은 3자 요약에서 확인했고 Meta 문서 원문은 직접 확인하지 못했다(코드 상수 `THREADS_TEXT_MAX`).
 - `Authorization: Bearer` 헤더 인증은 기존 `lib/connectors/instagram.ts`와 같은 방식이다. Threads API가 쿼리 `access_token`만 받는 것으로 확인되면 `publish-core.ts attempt()` 한 곳만 고친다.
 - Instagram Login 호스트의 인사이트·댓글 필드는 Facebook Login 호스트와 같다고 가정했다.
+
+## 7. 캐러셀·릴스 실행 경로 (레인 C 마감)
+
+- 발행 준비(`save_publication`)에 `mediaSet`을 붙인다. 스위치 `instagram_direct_publish`가 켜져 있고 브랜드에 Instagram 직접 게시 연결이 있어야 한다(아니면 409).
+  - 캐러셀: `{"type":"CAROUSEL","creativeIds":[…]}` — 발행의 원래 소재가 첫 장이고, 같은 캠페인의 현재 소재 1~9개를 더 붙인다(모두 2~10장, 중복 불가). 추가 장도 승인 때 앱 공개 주소(`/media/<sha256>.png`)로 연다.
+  - 릴스: `{"type":"REELS","video":{"url":"https://res.cloudinary.com/…/<sha256>.mp4","sha256":"…","bytes":N}}` — 영상은 Cloudinary·R2 공개 주소에 해시 파일명으로 둔다. 원래 소재 PNG는 표지(`cover_url`)다. 서버는 영상을 내려받지 않고 HEAD의 `content-type`(video/*)·`content-length`가 기록한 크기와 같은지 본다(가정: 상한 300MB, 공식 사양 재확인 필요).
+- 승인: 승인 요청에 `mediaHashes`(첫 장 해시 → 추가 장 해시 순서, 릴스는 [표지, 영상])를 화면에 보인 그대로 싣는다. 지금 묶음과 다르면 409(`미디어 해시`). 승인 뒤 추가 소재의 버전·PNG가 바뀌면 승인·접수가 409다(캡션 규칙과 같음). 화면은 발행 카드에 장마다 이미지·해시 앞 12자를 보이고 확인 카드 '무엇'에 같은 해시 목록을 싣는다(`app/publication-media-set.tsx`).
+- 실행: 준비 검사(장수 2~10, 장마다 HEAD, 영상 HEAD·크기) → 한도(`content_publishing_limit`) → 자식 컨테이너(`is_carousel_item=true`)를 하나씩 → 부모(`media_type=CAROUSEL`, `children`) → `media_publish`. 릴스는 `media_type=REELS`·`video_url`·`cover_url` → 처리 완료(`FINISHED`) → 게시.
+- 자식 단위 재개: 저널(`publication_container`) 상태 `children`에 만든 자식 id를 하나씩 적는다. 중간에 죽거나 자식 하나가 거부되면 부모·게시로 가지 않고, 다음 실행은 빈 칸만 만든다. 자식·부모 컨테이너는 게시물이 아니라 재시도해도 노출이 없다. 게시 단계 규율(결과 불명 unknown, 재전송 금지)은 그대로다.
+- 검증: `tests/channel-publish-completion.test.mjs` — mocked(fetch 스텁, 메모리 SQLite·R2).
+
+## 8. 결과 미확인 직접 게시 대조 (`reconcile_direct`)
+
+`POST /api/execution {"action":"reconcile_direct","campaignId":…,"id":<발행>,"version":…}`(관리자). `uncertain`(또는 2분 지난 `submitting`) Instagram 직접 게시·Threads 발행만 대상이다.
+
+1. 계정의 최근 게시물을 읽는다: Instagram `GET /me/media?fields=id,caption,timestamp,permalink`, Threads `GET /me/threads?fields=id,text,timestamp,permalink`(읽기만, 자동 재전송 없음).
+2. 캡션을 정규화(NFC·줄바꿈·앞뒤 공백)해 SHA-256으로 비교하고, 게시 시각이 접수 5분 전~30분 뒤 창 안인 것만 본다. 다른 발행에 이미 연결된 게시물은 뺀다(`lib/direct-reconcile.ts`).
+3. 정확히 하나 → `published`(게시물 id·`permalink` 기록, 두 단계 저널도 published로 닫아 재실행은 cached). 없음 → 창이 닫힌 뒤에만 `failed`(사유 기록), 창 안이면 `uncertain` 유지(`directReconcile.result='none_yet'`). 여럿 → `uncertain` 유지, 후보(id·시각·permalink)를 보이고 사람이 계정에서 확인한다.
+4. 읽지 못하면 502이고 상태는 바뀌지 않는다. 매 대조는 캠페인 이벤트(감사)를 남긴다. 창 길이는 운영 관측으로 조정하는 초깃값이다.

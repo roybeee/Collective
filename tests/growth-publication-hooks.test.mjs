@@ -18,6 +18,8 @@ const context=createContext({
  verifyMedia:async()=>{},mediaHash:()=>'',openRecordSecret:async()=>'mock-token',
  // C3: 발행 계정이 직접 게시(instagram_direct·threads)인지 판정하는 경계. 이 스위트는 Buffer 예약만 본다(false).
  isDirectChannelId:()=>false,
+ // C3 후속: 캐러셀·릴스 묶음 검사 경계. 묶음 없는 Buffer 예약은 아무것도 하지 않는다.
+ verifyMediaSet:async()=>{},
  publicationKeepingReview:()=>pubWrite,
  prepareGrowthPublicationSubmission:async()=>{prepared++;if(prepareBlocked)throw new ApiError(409,'reservation changed');return {writes:linked?[growthWrite]:[]}},
  database:()=>({batch:async writes=>{if(writeBlocked)throw new Error('write failed');batches.push([...writes]);}}),

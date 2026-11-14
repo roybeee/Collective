@@ -65,7 +65,11 @@ export type PublisherChannel = 'instagram_direct' | 'threads';
 export type DirectPublisherCredential = {channel: PublisherChannel; accessToken: string; userId: string; expiresAt?: string; login?: 'facebook' | 'instagram'};
 export type PublishMediaType = 'IMAGE' | 'TEXT' | 'CAROUSEL' | 'REELS';
 // text: 최종 캡션(AI 생성물·가상인물 표시 줄·게시 코드 줄이 이미 들어간 lib/execution.ts composeCaption 결과). imageUrl: 공개 https PNG 주소(표시 처리된 바이트의 공개 사본).
-export type PublishDraft = {text: string; imageUrl?: string | null; mediaType?: PublishMediaType; children?: readonly string[]; videoUrl?: string | null};
+// items: 캐러셀 자식 이미지의 공개 https 주소(2~10개, 순서대로). 실행 경로가 자식 컨테이너를 만들고 부모의 children에 넣는다. children은 미리 만든 자식 컨테이너 id(이전 형식).
+// videoUrl·coverUrl: 릴스 영상과 표지 이미지의 공개 주소. videoBytes: 승인 때 기록한 영상 크기(준비 검사에서 HEAD content-length와 비교).
+export type PublishDraft = {text: string; imageUrl?: string | null; mediaType?: PublishMediaType; children?: readonly string[]; items?: readonly string[]; videoUrl?: string | null; coverUrl?: string | null; videoBytes?: number | null};
+// 결과 미확인 대조용 최근 게시물(lib/connectors/publish-core.ts parseRecentMedia와 같은 모양).
+export type RecentMediaItem = {id: string; caption: string; timestamp: string | null; permalink: string | null};
 export type PrepareResult = {ok: boolean; issues: string[]; imageReachable: boolean | null};
 // outcome: rate-queue의 Outcome 또는 cached(같은 멱등 키로 이미 게시된 결과를 돌려줌, 재전송 없음). containerId: 1단계(컨테이너) 결과. id: 게시된 미디어 ID.
 export type PublishOutcome = {outcome: 'success' | 'retryable' | 'rate_limited' | 'fatal' | 'unknown' | 'cached'; id?: string; containerId?: string; attempts: number; error?: string};
@@ -83,4 +87,6 @@ export type Publisher = {
  collect(postId: string, window: CollectionWindow): Promise<Collected>;
  collectComments(postId: string): Promise<PublicationComment[]>;
  verify(): Promise<VerifiedAccount>;
+ // 결과 미확인 대조용 최근 게시물 읽기(읽기만, 재전송 없음). 읽지 못하면 null.
+ recentMedia?(): Promise<RecentMediaItem[] | null>;
 };

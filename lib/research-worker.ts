@@ -114,8 +114,10 @@ async function rotateCredential(owner:string,saved:Credential,slot:Slot,ready:bo
 // 화면 쓰기가 잡고 있으면 기다리지 않고 idle을 돌려준다(평가 1회차 H5).
 // digest(B2 2단계, 선택): 주간 품질 집계 큐(lib/quality-digest-queue-server.ts runDigestQueue). 넘겼을 때만 순환에 넣는다. 스위치는 그 모듈이 읽는다.
 // posPull(C7, 선택): 토스플레이스 POS 조회 큐(lib/pos/server.ts runPosPulls). 스위치 pos_tossplace는 그 모듈이 읽고, 꺼져 있으면 idle이다.
+// daangnConversion(C8 후속, 선택): 주문 장부 → 당근 전환 이벤트 대기열 넣기(lib/daangn-conversions-server.ts, 전송은 사람). adsProposalAuto(C4·C8 후속, 선택): 광고 제안 주간 자동 생성(lib/ads-proposals-auto-server.ts, 초안만).
+// 둘 다 라우트가 스위치(daangn_ads / scheduled_runs+광고 채널 스위치)가 켜진 소유자에게만 넘긴다.
 // scheduledRuns(G3, 선택): 예약 실행 큐(lib/scheduled-runs-server.ts scheduledRunsQueue). 라우트가 scheduled_runs 스위치가 켜진 소유자에게만 넘기므로 꺼진 소유자의 순환에는 큐 이름이 나타나지 않는다.
-export async function workerTick(principal:{owner:string;hash:string;gate?:GateVerdict;rotationReady?:boolean},executeResearch:(owner:string,input:Record<string,any>,timeout:number)=>Promise<Response>,collectDue?:(owner:string)=>Promise<{status:string}>,advanceWork?:(owner:string)=>Promise<{status:string}>,digest?:(owner:string)=>Promise<{status:string}>,metaExecution?:(owner:string)=>Promise<{status:string}>,metaConversion?:(owner:string)=>Promise<{status:string}>,growthDaily?:(owner:string)=>Promise<{status:string}>,storefrontPull?:(owner:string)=>Promise<{status:string}>,productResearch?:(owner:string)=>Promise<{status:string}>,consumerRecovery?:(owner:string)=>Promise<{status:string}>,providerCatalog?:(owner:string)=>Promise<{status:string}>,posPull?:(owner:string)=>Promise<{status:string}>,scheduledRuns?:(owner:string)=>Promise<{status:string}>){
+export async function workerTick(principal:{owner:string;hash:string;gate?:GateVerdict;rotationReady?:boolean},executeResearch:(owner:string,input:Record<string,any>,timeout:number)=>Promise<Response>,collectDue?:(owner:string)=>Promise<{status:string}>,advanceWork?:(owner:string)=>Promise<{status:string}>,digest?:(owner:string)=>Promise<{status:string}>,metaExecution?:(owner:string)=>Promise<{status:string}>,metaConversion?:(owner:string)=>Promise<{status:string}>,growthDaily?:(owner:string)=>Promise<{status:string}>,storefrontPull?:(owner:string)=>Promise<{status:string}>,productResearch?:(owner:string)=>Promise<{status:string}>,consumerRecovery?:(owner:string)=>Promise<{status:string}>,providerCatalog?:(owner:string)=>Promise<{status:string}>,posPull?:(owner:string)=>Promise<{status:string}>,scheduledRuns?:(owner:string)=>Promise<{status:string}>,daangnConversion?:(owner:string)=>Promise<{status:string}>,adsProposalAuto?:(owner:string)=>Promise<{status:string}>){
  const {owner,hash,gate,rotationReady=false}=principal;
  const key=owner+':research-worker',lock=await acquireLock(key);
  try{
@@ -134,7 +136,7 @@ export async function workerTick(principal:{owner:string;hash:string;gate?:GateV
   await recordGatewaySnapshotSafely(owner);
   // F4b-2: 90일이 지난 비식별 평가 신호를 지운다(문장 1개, 하루 1회). 실패해도 작업 순환을 막지 않고 다음 날 tick·캠페인 삭제가 다시 지운다.
   if(purgeSignals)await purgeExpiredSignals(owner).catch(()=>console.error('deidentified_signal_purge_failed'));
-  const queues=['research','execution','measurement',...(digest?['digest']:[]),...(metaExecution?['meta_execution']:[]),...(metaConversion?['meta_conversion']:[]),...(growthDaily?['growth_daily']:[]),...(storefrontPull?['storefront_pull']:[]),...(productResearch?['product_research']:[]),...(consumerRecovery?['consumer_recovery']:[]),...(providerCatalog?['provider_catalog']:[]),...(posPull?['pos_pull']:[]),...(scheduledRuns?['scheduled_runs']:[])];
+  const queues=['research','execution','measurement',...(digest?['digest']:[]),...(metaExecution?['meta_execution']:[]),...(metaConversion?['meta_conversion']:[]),...(growthDaily?['growth_daily']:[]),...(storefrontPull?['storefront_pull']:[]),...(productResearch?['product_research']:[]),...(consumerRecovery?['consumer_recovery']:[]),...(providerCatalog?['provider_catalog']:[]),...(posPull?['pos_pull']:[]),...(scheduledRuns?['scheduled_runs']:[]),...(daangnConversion?['daangn_conversion']:[]),...(adsProposalAuto?['ads_proposal_auto']:[])];
   const first=(queues.indexOf(previous?.lastQueue||'')+1)%queues.length;
   for(let offset=0;offset<queues.length;offset++){
    const queue=queues[(first+offset)%queues.length];
@@ -157,6 +159,8 @@ export async function workerTick(principal:{owner:string;hash:string;gate?:GateV
    else if(queue==='provider_catalog'&&providerCatalog)result=await providerCatalog(owner);
    else if(queue==='pos_pull'&&posPull)result=await posPull(owner);
    else if(queue==='scheduled_runs'&&scheduledRuns)result=await scheduledRuns(owner);
+   else if(queue==='daangn_conversion'&&daangnConversion)result=await daangnConversion(owner);
+   else if(queue==='ads_proposal_auto'&&adsProposalAuto)result=await adsProposalAuto(owner);
    if(result&&result.status!=='idle'){
     await recordStatement(owner,'worker_state','current',{...turnState,lastSeen:stamp(),lastStatus:result.httpStatus}).run();
     return {...result,status:result.status==='retry'?'retry':'processed',queue,pending:active.length,blocked,...rotated};

@@ -16,7 +16,9 @@ export async function readAutonomyRecord(owner:string):Promise<AutonomySettingsR
 }
 export async function autonomyView(who:Actor){
  const record=await readAutonomyRecord(who.owner),admin=who.role==='owner'||who.role==='admin';
- return {settings:record.settings,version:record.version,updatedAt:record.updatedAt,updatedBy:admin?record.updatedBy:null,enabled:await isEnabled(who.owner,'autonomy_rules'),actions:autonomyActionInfos(),canEdit:admin,
+ // 전환 이벤트 전송(conversion_send)은 당근 광고 스위치(daangn_ads)가 켜진 워크스페이스에만 행으로 보인다(꺼져 있으면 쓸 일이 없다). 저장·평가는 스위치와 무관하다.
+ const daangn=await isEnabled(who.owner,'daangn_ads').catch(()=>false);
+ return {settings:record.settings,version:record.version,updatedAt:record.updatedAt,updatedBy:admin?record.updatedBy:null,enabled:await isEnabled(who.owner,'autonomy_rules'),actions:autonomyActionInfos().filter(a=>a.action!=='conversion_send'||daangn),canEdit:admin,
   notice:'자율성 규칙은 행동마다 자동·확인 후·금지를 정합니다. 스위치가 꺼져 있으면 모두 확인 후로 동작하고, 고위험 행동은 자동으로 둘 수 없습니다.'};
 }
 export type AutonomyView=Awaited<ReturnType<typeof autonomyView>>;

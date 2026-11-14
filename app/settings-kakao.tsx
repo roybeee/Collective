@@ -2,7 +2,7 @@
 // 채널 연결 탭의 카카오 비즈메시지 카드(X-F, docs/KAKAO-BIZMESSAGE.ko.md). GET /api/kakao?brandId=, POST connect·disconnect(소유자)·verify·consent_import·optout·check(소유자·관리자).
 // 이 카드는 딜러 연결, 수신동의 원장(CSV 가져오기·수신거부), 문구 판정 미리보기까지만 한다. 전송 화면은 이 판의 범위 밖이다.
 // 전화번호는 요청 본문으로만 서버에 가고 서버는 해시만 남긴다. 화면도 보낸 뒤 칸을 비운다.
-import {useEffect,useState} from 'react';
+import {Suspense,lazy,useEffect,useState} from 'react';
 import {CheckCircle2,Link2,LoaderCircle,RefreshCw,ShieldCheck,Unplug,XCircle} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
@@ -15,10 +15,13 @@ import {toast} from 'sonner';
 import {useAccount} from './account-context';
 import {ChannelCard,FormField,RequestError,errorText,request} from './settings-channel-card';
 import {csvDataRows,dealerIssue} from './settings-channel-state';
+import type {SendRow} from './settings-kakao-send';
+// 메시지 보내기(초안·판정·수신자 묶음·추정 비용·승인·전송·상태)는 열 때 내려받는다(C6 후속).
+const KakaoSendPanel=lazy(()=>import('./settings-kakao-send').then(m=>({default:m.KakaoSendPanel})));
 
 type Dealer={connected?:boolean;account?:string;updatedAt?:string|null};
 type Consents={total:number;counts:{active:number;expired:number;revoked:number;invalid:number;none:number};optouts:number;reconsentDue:number};
-type KakaoView={enabled?:boolean;dealer?:Dealer;consents?:Consents};
+type KakaoView={enabled?:boolean;dealer?:Dealer;consents?:Consents;sends?:SendRow[]};
 type Reason={rule:string;message:string;basis?:string};
 type Verdict={ok:boolean;classification:string;reasons:Reason[];warnings:Reason[];kst?:{date:string;time:string;night:boolean}};
 type Load={state:'loading'}|{state:'ready';view:KakaoView}|{state:'denied';message:string}|{state:'error';message:string};
@@ -99,6 +102,6 @@ export function KakaoCard({brandId,brandName,switchOn,round}:{brandId:string;bra
    <Button variant="ghost" size="sm" disabled={busy||!owner} disabledReason={!owner?OWNER_REASON:undefined} onClick={()=>void disconnect()}><Unplug/>해제</Button></>}
   </div>
   {open&&<DealerForm brandId={brandId} busy={busy} onSubmit={connect}/>}
-  {load.state==='ready'&&<><ConsentLedger brandId={brandId} consents={view?.consents} canEdit={admin} busy={busy} send={async b=>{const r=await send(b);if(r&&b.action!=='check')setAgain(n=>n+1);return r}}/><ComplianceDryRun brandId={brandId} canEdit={admin} busy={busy} send={send}/></>}
+  {load.state==='ready'&&<><ConsentLedger brandId={brandId} consents={view?.consents} canEdit={admin} busy={busy} send={async b=>{const r=await send(b);if(r&&b.action!=='check')setAgain(n=>n+1);return r}}/><ComplianceDryRun brandId={brandId} canEdit={admin} busy={busy} send={send}/><Suspense fallback={null}><KakaoSendPanel brandId={brandId} brandName={brandName} canEdit={admin} switchOn={switchOn} sends={view?.sends??[]} refresh={()=>setAgain(n=>n+1)}/></Suspense></>}
  </ChannelCard>;
 }

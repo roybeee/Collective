@@ -3,6 +3,7 @@
 import {ApiError,database,readRecord,recordStatement,stamp,str,type Actor} from '../server';
 import type {Brand} from '../agency';
 import {CONSENT_CHANNEL,consentRecordId,consentState,isRecipientHash,normalizePhone,parseConsentCsv,recipientHash,reconsentDue,reconsentNotice,type ConsentRecord,type FriendRelationRecord,type OptoutRecord,type ReconsentNotice} from './consent';
+import {SEGMENTS,isSegment,segmentView} from './segments';
 
 // kind 리터럴은 tests/record-kinds.test.mjs 스캐너가 읽는 모양(kinds 상수 객체)으로 둔다.
 const kinds={consent:'marketing_consent',optout:'marketing_optout',friend:'kakao_friend_relation',notice:'kakao_reconsent_notice'} as const;
@@ -77,3 +78,9 @@ export async function generateReconsentNotice(owner:string,who:Actor,brandId:str
 export const listReconsentNotices=(owner:string,brandId:string)=>rowsOf<ReconsentNotice>(owner,CONSENT_KINDS.notice,brandId,100);
 export const readFriendRelation=(owner:string,brandId:string,hash:string)=>optional<FriendRelationRecord>(owner,CONSENT_KINDS.friend,consentRecordId(brandId,hash));
 export const friendRelationStatement=(owner:string,record:FriendRelationRecord)=>recordStatement(owner,CONSENT_KINDS.friend,record.id,record,record.brandId);
+// C6 후속: 전송 화면 수신자 묶음(GET /api/kakao?brandId=&segment=). 수·해시(최대 50)만 돌려준다. 번호는 원장에 없다.
+export async function consentSegment(owner:string,brandId:string,segment:unknown,nowMs=Date.now()){
+ if(!isSegment(segment))throw new ApiError(400,`수신자 묶음은 ${SEGMENTS.join('·')} 중 하나입니다.`);
+ const [consents,optouts]=await Promise.all([listConsents(owner,brandId),rowsOf<OptoutRecord>(owner,CONSENT_KINDS.optout,brandId,10000)]);
+ return {brandId,...segmentView(consents,new Set(optouts.map(o=>o.recipientHash)),segment,nowMs)};
+}

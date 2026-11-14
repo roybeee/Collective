@@ -68,5 +68,19 @@
 ## 6. 하지 않은 것
 
 - 실제 당근 광고 계정 호출(모든 검증은 fetch 스텁, mocked).
-- 전환 이벤트를 주문 장부에서 만들어 보내는 경로(동의·식별자 해시 정책 포함). 커넥터 함수만 있다.
+- 클릭 id·사용자 식별자를 실은 전환(장부에 받는 칸이 없다, 7절).
 - 소재 이미지 업로드, 입찰 자동 조정, 예약 실행.
+
+## 7. 주문 장부 → 전환 이벤트 (레인 C 마감)
+
+- 대상: 주문 장부(`store_order`)에서 유입 채널이 당근(`channel: 'daangn'`)으로 귀속된 결제 주문, 순매출 > 0, 주문일이 최근 30일(KST) 안. 환불·취소 주문은 넣지 않는다.
+- 클릭 id: 주문 장부(가져오기 양식·POS·외부 몰)에는 당근 광고 클릭 id를 받는 칸이 없다. 그래서 이벤트는 클릭 id·사용자 식별자 없이 **주문 단위 오프라인 전환**(`eventId = collective-order-<주문 id>`, `eventName: purchase`, 순매출 `value`·`KRW`, 주문일 KST 00:00)으로만 만든다. 당근 API가 클릭 id 없는 이벤트를 받는지는 실계정 확인 전 **가정**이다. 묶음(집계) 전환 API는 문서로 확인되지 않아 쓰지 않는다. 거부(4xx)되면 그 묶음은 `failed`로 남고 다시 보내지 않는다.
+- 대기열: 워커 큐 `daangn_conversion`(스위치 `daangn_ads`가 켜진 소유자에게만 순환에 들어간다)이 지점마다 당근 연결(지점 > 브랜드 > 워크스페이스)을 확인하고 새 대상 주문을 kind `daangn_conversion`(id=주문 id, parent=지점)에 `queued`로 넣는다. 주문 1건당 1행이라 멱등이고, 외부 호출은 없다. `POST /api/daangn-ads {action:'queue_conversions'}`가 같은 일을 사람이 누른다.
+- 전송: 레지스트리 `daangn_ads.conversion.send`가 T4라 **자동 전송이 없다**. 자율성 규칙 행동 `conversion_send`(T4, 확인 후·금지만, 기본 확인 후)를 거쳐 사람이 `POST /api/daangn-ads {action:'send_conversions', storeId}`를 누르면 그 지점의 `queued` 행을 최대 50건 한 묶음으로 보낸다. 금지(never)면 403, 스위치 꺼짐이면 409.
+- 보내기 전에 행을 `sending`으로 저장한다. 성공 `sent`, 보낸 뒤 결과 불명(타임아웃·5xx) `unknown`, 거부 `failed`, 한도·보내기 전 실패는 `queued`로 되돌린다. `sending`·`sent`·`unknown`·`failed`는 다시 보내지 않는다. `unknown`은 사람이 당근 광고 화면에서 확인한 뒤 `POST {action:'resolve_conversion', storeId, id, outcome:'sent'|'failed'}`로 닫는다.
+- `GET /api/daangn-ads?storeId=`의 `conversions`에 상태별 수·최근 200행·`clickId:'not_captured'`가 있다.
+- 검증: `tests/channel-ops-completion.test.mjs` — mocked(당근 fetch 스텁, 메모리 SQLite).
+
+## 8. 제안 주간 자동 생성
+
+[NAVER-ADS-WRITE.ko.md 11절](NAVER-ADS-WRITE.ko.md)과 같은 큐(`ads_proposal_auto`)가 당근 연결도 돈다(스위치 `scheduled_runs` + `daangn_ads`).

@@ -3,9 +3,9 @@
 // 아무것도 자동으로 보내지 않는다(승인 뒤 사람이 '실행'). 결과 미확인은 unknown으로 남기고 재전송하지 않는다. 답글은 수집만 하고 자동 답글은 없다.
 import {str, stamp} from '../server';
 import {ConnectorAuthError} from './errors';
-import {attempt, captionIssues, imageReachable, parseComments, parsePublishLimit, payloadError, payloadId, twoStepPublish, DEFAULT_TIMEOUT_MS, MAX_RESPONSE_BYTES, type Attempt, type ContainerJournal, type PublishHttp} from './publish-core';
+import {attempt, captionIssues, imageReachable, parseComments, parsePublishLimit, parseRecentMedia, payloadError, payloadId, twoStepPublish, DEFAULT_TIMEOUT_MS, MAX_RESPONSE_BYTES, type Attempt, type ContainerJournal, type PublishHttp} from './publish-core';
 import {runWithBackoff, type BackoffPolicy, type RunDeps} from './rate-queue';
-import type {Collected, DirectPublisherCredential, PublishDraft, PublishLimit, Publisher, PublishOutcome, PublishStatus, PrepareResult, PublicationComment, RateLimit, VerifiedAccount} from './types';
+import type {Collected, DirectPublisherCredential, PublishDraft, PublishLimit, Publisher, PublishOutcome, PublishStatus, PrepareResult, PublicationComment, RateLimit, RecentMediaItem, VerifiedAccount} from './types';
 
 export const THREADS_TEXT_MAX = 500;
 export const THREADS_PUBLISH_LIMIT: RateLimit = {perMinute: 10, perDay: 250};
@@ -29,6 +29,8 @@ export function threadsRaw(credential: DirectPublisherCredential, partial?: Part
   replies: (id: string): Promise<Attempt> => attempt(h, `${THREADS_HOST}${idPath(id)}/replies?fields=id,text,username,timestamp&limit=50`, {token}),
   insights: (id: string): Promise<Attempt> => attempt(h, `${THREADS_HOST}${idPath(id)}/insights?metric=views,likes,replies,reposts,quotes`, {token}),
   me: (): Promise<Attempt> => attempt(h, `${THREADS_HOST}/me?fields=id,username`, {token}),
+  // 결과 미확인 대조: 계정의 최근 게시물(읽기만). 본문 필드는 text다.
+  recentMedia: (): Promise<Attempt> => attempt(h, `${THREADS_HOST}/me/threads?fields=id,text,timestamp,permalink&limit=25`, {token}),
   imageReachable: (url: string) => imageReachable(h, url),
  };
 }
@@ -69,6 +71,10 @@ export function threadsPublisher(o: ThreadsPublisherOptions): Publisher {
   },
   async limit(): Promise<PublishLimit> {
    return parsePublishLimit((await read(key + ':read', () => raw.limit(), deps, policy)).payload);
+  },
+  async recentMedia(): Promise<RecentMediaItem[] | null> {
+   const r = await read(key + ':read', () => raw.recentMedia(), deps, policy);
+   return r.payload ? parseRecentMedia(r.payload, 'text') : null;
   },
   async collect(postId, window): Promise<Collected> {
    const mediaId = str(postId, '게시물 ID', 60, true);

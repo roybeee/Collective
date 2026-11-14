@@ -59,6 +59,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'place_draft',parent:'store',campaignDeletion:'not_campaign_scoped',description:'플레이스 리뷰 답글·소식 초안(C5): 원문(운영자가 붙여 넣은 리뷰·소식 요청), 결정론 템플릿 초안, 사용한 확정 사실·말투 판, 규정 점검, 상태(초안→승인→제출 표시(수동·장치)→확인)와 점포 브라우저 작업 id. 자동 제출 없음. 캠페인과 무관'},
  {kind:'place_draft_mapping',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포 브라우저 장치에 리뷰 답글·소식 등록 화면 매핑(registered_dom)이 있다는 관리자 확인(C5): 지점 연결 판·장치·프로필·작업 유형·확인자. 매핑 자체(선택자)는 장치 로컬 설정에만 있다. 캠페인과 무관'},
  {kind:'ads_proposal',parent:'store',campaignDeletion:'not_campaign_scoped',description:'네이버 검색광고 제안(C4): 규칙 기반 입찰 조정·중지·재개·키워드/캠페인 생성 제안의 전후값·근거·상태(제안→승인→반영→읽기 대조)·쓰기 저널·공급자 ID. campaignId는 네이버 캠페인 ID라 COLLECTIVE 캠페인과 무관, parent_id는 지점(없으면 빈 값)'},
+ {kind:'daangn_conversion',parent:'store',campaignDeletion:'not_campaign_scoped',description:'당근 광고 전환 이벤트 대기열(C8 후속): 주문 장부의 당근 귀속 결제 주문 1건당 1행(id=주문 id). 이벤트(purchase·금액·주문일·클릭 id 없음)·상태(queued→sending→sent|failed|unknown)·보낸 사람. 개인정보 없음. 캠페인과 무관'},
+ {kind:'ads_proposal_auto_run',parent:'none',campaignDeletion:'not_campaign_scoped',description:'광고 제안 주간 자동 생성 실행 기록(C4·C8 후속): (채널, 연결 단위, KST 주) 1행, 만든 제안 수·건너뛴 사유·안건 신호 id. 승인·반영 없음. 캠페인과 무관'},
  {kind:'eval_cost_connection',parent:'none',campaignDeletion:'not_campaign_scoped',description:'격리된 평가 공급자 연결·암호화 인증 및 서명 검증 키'},
  {kind:'eval_cost_prepared',parent:'none',campaignDeletion:'not_campaign_scoped',description:'무료 견적·정확한 동결 평가 요청과 1회 실행 연결'},
  {kind:'eval_cost_month',parent:'none',campaignDeletion:'not_campaign_scoped',description:'소유자 UTC 월 원화 상한·예약·확정 비용 원장'},
