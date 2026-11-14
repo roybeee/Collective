@@ -1,12 +1,12 @@
 // MCP 서버 전송(G9, docs/MCP-SERVER.ko.md): Streamable HTTP의 단일 엔드포인트에서 JSON-RPC 2.0 POST를 받아 JSON으로 답한다(SSE·세션 없음, 상태 없는 서버).
-// 순서: Bearer API 키 확인(실패 401) → 키 소유자의 스위치 mcp_server(꺼짐 404) → 키당 빈도 제한(429) → POST만(그 밖 405) → Origin·MCP-Protocol-Version 확인
+// 순서: Bearer API 키 확인(실패 401, 유효한 키 없는 요청은 IP당 1분 30회 넘으면 429) → 키 소유자의 스위치 mcp_server(꺼짐 404) → 키당 빈도 제한(429) → POST만(그 밖 405) → Origin·MCP-Protocol-Version 확인
 // → 본문(1MB, JSON 아님 -32700, 배열 묶음 -32600) → 메서드. 알림(id 없음)과 클라이언트 응답은 202 빈 본문이다.
 // 세션 쿠키와 oai-authenticated-user-id 헤더는 읽지 않는다. 키 원문·요청 본문은 기록하지 않는다(감사 api_call은 도구 이름·성공 여부만).
 import {APP_BUILD} from '../app-version';
 import {ApiError} from '../server';
 import {HttpBodyError,readBoundedText} from '../http-limits';
 import {API_KEY_MESSAGES,bearerToken} from '../api-keys';
-import {apiCallStatement,apiKeyRate,keyActor,mcpServerOn,resolveApiKey,touchApiKey,type ApiCallAudit,type ResolvedKey} from '../api-keys-server';
+import {apiCallStatement,apiKeyRate,invalidKeyRate,keyActor,mcpServerOn,resolveApiKey,touchApiKey,type ApiCallAudit,type ResolvedKey} from '../api-keys-server';
 import {McpParamsError,type ToolContext} from './schema';
 import {UnknownToolError,callTool,listTools} from './tools';
 
@@ -80,9 +80,22 @@ const foreignOrigin=(req:Request)=>{const o=req.headers.get('origin');return !!o
 // MCP-Protocol-Version은 너그럽게 본다: 없으면 받고, 있으면 알려진 판이어야 한다.
 const badProtocol=(req:Request)=>{const v=req.headers.get('mcp-protocol-version');return v!==null&&!(SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(v.trim())};
 
+// 401의 WWW-Authenticate(RFC 6750, MCP 인증 규격의 Bearer 안내). OAuth(인가 서버 메타데이터)는 이 판에서 제공하지 않으므로 resource_metadata를 넣지 않고,
+// 클라이언트가 '키를 넣으라'는 안내를 보이도록 error_description에 적는다(헤더 값은 ASCII만). 키가 아예 없으면 RFC 6750 3.1대로 error 코드를 넣지 않는다.
+const KEY_HELP='Create an API key in COLLECTIVE settings and send it as Authorization: Bearer ck_... (OAuth is not supported)';
+export function wwwAuthenticate(hasToken:boolean){
+ return hasToken?`Bearer realm="collective", error="invalid_token", error_description="API key is invalid, expired or revoked. ${KEY_HELP}"`:`Bearer realm="collective", error_description="API key required. ${KEY_HELP}"`;
+}
 async function authorized(req:Request):Promise<{ok:true;key:ResolvedKey}|{ok:false;response:Response}>{
- const key=await resolveApiKey(bearerToken(req.headers.get('authorization')));
- if(!key)return {ok:false,response:rpcError(null,RPC.unauthorized,API_KEY_MESSAGES.unauthorized,401,{'WWW-Authenticate':'Bearer realm="collective", error="invalid_token"'})};
+ const header=req.headers.get('authorization'),key=await resolveApiKey(bearerToken(header));
+ if(!key){
+  // 유효한 키가 없는 요청은 IP당 빈도 제한을 먼저 본다(넘으면 429, 키 추측 완화).
+  try{await invalidKeyRate(req)}catch(e){
+   if(e instanceof ApiError&&e.status===429)return {ok:false,response:rpcError(null,RPC.rateLimited,e.message,429,{'Retry-After':'60'})};
+   throw e;
+  }
+  return {ok:false,response:rpcError(null,RPC.unauthorized,API_KEY_MESSAGES.unauthorized,401,{'WWW-Authenticate':wwwAuthenticate(!!header?.trim())})};
+ }
  if(!await mcpServerOn(key.owner))return {ok:false,response:mcpNotFound()};
  try{await apiKeyRate(key.key.id)}catch(e){
   if(e instanceof ApiError&&e.status===429)return {ok:false,response:rpcError(null,RPC.rateLimited,e.message,429,{'Retry-After':'60'})};

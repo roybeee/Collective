@@ -1,4 +1,6 @@
 import {ApiError,database,recordStatement,stamp,listRecords,readRecord,acquireLock,releaseLock,runtime,purgeExpiredSignals} from './server';
+import {purgeApiCallAudit} from './api-keys-server';
+import {runCreativeCalibrationMaintenance} from './creative-publication-link-server';
 import {researchActive,type BrandResearch} from './archive';
 import {recordGatewaySnapshotSafely} from './gateway-snapshot';
 
@@ -134,6 +136,9 @@ export async function workerTick(principal:{owner:string;hash:string;gate?:GateV
   await recordGatewaySnapshotSafely(owner);
   // F4b-2: 90일이 지난 비식별 평가 신호를 지운다(문장 1개, 하루 1회). 실패해도 작업 순환을 막지 않고 다음 날 tick·캠페인 삭제가 다시 지운다.
   if(purgeSignals)await purgeExpiredSignals(owner).catch(()=>console.error('deidentified_signal_purge_failed'));
+  // G9: 90일이 지난 MCP 호출 감사(api_call)를 지운다(하루 1회, 문장 1개, 멱등). G2: 소재 점수 자동 보정(스위치 creative_score, 7일 간격, 예외 없음).
+  if(purgeSignals)await purgeApiCallAudit(owner).catch(()=>console.error('api_call_purge_failed'));
+  if(purgeSignals)await runCreativeCalibrationMaintenance(owner);
   const queues=['research','execution','measurement',...(digest?['digest']:[]),...(metaExecution?['meta_execution']:[]),...(metaConversion?['meta_conversion']:[]),...(growthDaily?['growth_daily']:[]),...(storefrontPull?['storefront_pull']:[]),...(productResearch?['product_research']:[]),...(consumerRecovery?['consumer_recovery']:[]),...(providerCatalog?['provider_catalog']:[]),...(posPull?['pos_pull']:[]),...(scheduledRuns?['scheduled_runs']:[])];
   const first=(queues.indexOf(previous?.lastQueue||'')+1)%queues.length;
   for(let offset=0;offset<queues.length;offset++){

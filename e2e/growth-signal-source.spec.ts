@@ -13,3 +13,28 @@ test('확정 Archive 시장자료 가져오기·판 충돌·응답 유실·중�
   const response=await page.request.get(`/api/growth?campaignId=${campaignId}`),view=await response.json();expect(view.signals).toHaveLength(1);expect(view.signals[0].input.sampleSize).toBeNull();expect(view.signals[0].input.expiresAt).toBe(expiresAt);await post('/api/archive',{action:'review_source',brandId:'ofd',id:sourceId,version:3,status:'confirmed'});await panel.getByRole('button',{name:'자료 목록 새로고침',exact:true}).click();await panel.getByRole('button',{name:'현재 기한을 유지하고 최신 자료 판 사용',exact:true}).click();await expect(expiry).toHaveValue(expiresAt);await expect(panel.getByRole('button',{name:'시장 근거로 가져오기',exact:true})).toBeEnabled();await panel.getByRole('button',{name:'시장 근거로 가져오기',exact:true}).click();await expect(panel.getByRole('status').filter({hasText:'시장 근거를 가져왔습니다.'})).toBeVisible();const revised=await(await page.request.get(`/api/growth?campaignId=${campaignId}`)).json();expect(revised.signals).toHaveLength(2);expect(revised.signals.find((row:{sourceProvenance?:{sourceVersion:number}})=>row.sourceProvenance?.sourceVersion===3)?.sourceReadiness.status).toBe('held');expect(revised.signals.find((row:{sourceProvenance?:{sourceVersion:number}})=>row.sourceProvenance?.sourceVersion===4)?.sourceReadiness.status).toBe('current');expect(attempts).toHaveLength(3);expect(attempts[2]).not.toBe(attempts[1]);const restored=await open();await restored.getByRole('combobox',{name:'브랜드 아카이브 자료 선택',exact:true}).selectOption(sourceId);await expect(restored).toContainText('이미 가져온 자료입니다.');await expect(restored.getByRole('button',{name:'시장 근거로 가져오기',exact:true})).toBeDisabled();expect(await restored.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);await restored.getByRole('heading',{name:'확정 시장자료 가져오기',exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:`e2e/artifacts/growth-signal-source-${info.project.name}.png`});
  }finally{await context.close().catch(()=>{})}
 });
+
+// QA D8 회귀(docs/observations/2026-11-09-qa-global-eval.md): 모든 기능 스위치를 켜고 지점·상품이 있는 캠페인의 성장·판매 탭을 열어도
+// /api/ 응답에 4xx·5xx가 없어야 한다(시장 근거 단계의 GET /api/growth/signal-sources 포함, 형제 성장 패널의 첫 조회도 함께 본다).
+test('성장·판매 탭 열기: 모든 스위치 켬에서도 API 4xx 없음(D8)',async({browser},info)=>{
+ const owner=`signal-d8-${info.project.name}-${Date.now()}`,context=await browser.newContext({baseURL:info.project.use.baseURL,viewport:info.project.use.viewport,extraHTTPHeaders:{'oai-authenticated-user-id':owner}}),page=await context.newPage();
+ const bad:string[]=[],seen:string[]=[];
+ try{
+  const post=async(path:string,data:unknown)=>{const response=await page.request.post(path,{data});expect(response.status(),await response.text()).toBe(200);return response.json()};
+  await page.request.get('/api/workspace');
+  const flags=(await (await page.request.get('/api/feature-flags')).json()).flags as {flag:string}[];
+  for(const f of flags)await post('/api/feature-flags',{action:'set',flag:f.flag,enabled:true});
+  const store=await post('/api/stores',{action:'save_store',brandId:'ofd',data:{name:'성수 플래그십',address:'서울 성동구 연무장길 00',tradeArea:'residential',goal:'주말 방문 20% 증가'}}) as {id:string};
+  const title=`D8 회귀 ${info.project.name}`,{id:campaignId}=await post('/api/action',{action:'save_campaign',data:{brandId:'ofd',storeId:store.id,title,goal:'10월 매운 세트 300개 판매'}}) as {id:string};
+  await post('/api/growth',{action:'save_catalog',id:'cat-spicy',campaignId,campaignVersion:1,expectedVersion:0,input:{sku:'MD-SPICY-SET',title:'매운 세트(2인)',price:19800,unitCost:7200,variableCost:1800,stock:120,stockUnit:'piece',currency:'KRW',taxBasis:'included',fulfillment:'택배 배송(주문 후 2일)',refunds:'미개봉 7일 내 반품',rightsConfirmed:true,factIds:[],validUntil:'2026-12-31'}});
+  const direct=await page.request.get(`/api/growth/signal-sources?campaignId=${encodeURIComponent(campaignId)}`);
+  expect(direct.status(),await direct.text()).toBe(200);
+  page.on('response',r=>{const path=new URL(r.url()).pathname;if(!path.startsWith('/api/'))return;seen.push(path);if(r.status()>=400)bad.push(`${r.status()} ${r.request().method()} ${path}`)});
+  await page.goto(`/?view=campaigns&campaign=${campaignId}`);
+  await page.getByRole('tab',{name:'성장·판매',exact:true}).click();
+  await expect(page.getByRole('region',{name:'확정 시장자료 가져오기',exact:true})).toBeVisible({timeout:10_000});
+  await expect.poll(()=>seen.includes('/api/growth/signal-sources'),{timeout:10_000}).toBe(true);
+  await page.waitForLoadState('networkidle').catch(()=>{});
+  expect(bad).toEqual([]);
+ }finally{await context.close().catch(()=>{})}
+});

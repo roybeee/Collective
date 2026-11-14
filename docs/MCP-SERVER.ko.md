@@ -1,6 +1,6 @@
 # MCP 서버·API 키 (G9)
 
-마지막 갱신: 2026-11-09 KST. 레인 G. 전체 계획 `docs/GLOBAL-PLAN.ko.md` 에픽 G9. 기능 스위치 `mcp_server`(기본 꺼짐) 뒤에 있다. 꺼진 기본 상태에서는 엔드포인트가 모두 404이고 키를 만들 수 없다.
+마지막 갱신: 2026-11-14 KST. 레인 G. 전체 계획 `docs/GLOBAL-PLAN.ko.md` 에픽 G9. 기능 스위치 `mcp_server`(기본 꺼짐) 뒤에 있다. 꺼진 기본 상태에서는 엔드포인트가 모두 404이고 키를 만들 수 없다.
 
 비유하면 API 키는 "열람실 출입증"이다. 출입증을 가진 AI 도구는 서류(브랜드·캠페인·작업물·성과)를 읽고, 초안 범위 출입증이면 검토함에 초안을 넣을 수 있다. 결재 도장(승인)·발송·지출은 출입증으로 할 수 없고, 사람이 COLLECTIVE 화면에서 한다.
 
@@ -62,6 +62,7 @@ ChatGPT 설정 → 커넥터(개발자 모드) → 사용자 지정 커넥터 �
 | `MCP-Protocol-Version` 헤더 | 없으면 받는다. 있으면 위 세 판 중 하나여야 하고 아니면 400 |
 | Origin | 다른 출처의 브라우저 Origin은 403(DNS 리바인딩 방지). Origin 없는 서버 간 호출은 받는다 |
 | 본문 | 1MB 초과 413 |
+| 401 안내 | `WWW-Authenticate: Bearer realm="collective", …`(RFC 6750). 키가 없으면 `error` 코드 없이 `error_description="API key required. …"`, 틀린·만료·취소 키면 `error="invalid_token"`. 설명은 ASCII 영어(헤더 값 제약)이고 본문 JSON-RPC 오류는 한국어 그대로 |
 | 오류 코드 | -32700 JSON 아님 · -32600 잘못된 요청 · -32601 모르는 메서드 · -32602 모르는 도구·인자 오류 · -32603 내부 오류(내부 정보 없음) · -32001 인증(401) · -32029 빈도 제한(429) |
 | 도구 업무 오류 | 결과 `isError:true` + 한국어 문장(없음·충돌·자율성 금지·범위 밖) |
 
@@ -99,6 +100,7 @@ ChatGPT 설정 → 커넥터(개발자 모드) → 사용자 지정 커넥터 �
 | 만료 | 기본 90일, 1~365일(화면 선택 30·90·180·365일) |
 | 개수 | 사용 중인 키 소유자당 20개 |
 | 빈도 | 키당 1분 60회(`auth_rate_limits`). 넘으면 429 `Retry-After: 60` |
+| 키 없는 요청 빈도 | 유효한 키가 없는 요청(키 없음·모양 틀림·만료·취소·모르는 키)은 IP당 1분 30회(`auth_rate_limits`, 키 `mcp-ip:<주소>` 해시). 넘으면 429 `Retry-After: 60`. 주소는 Cloudflare가 넣는 `CF-Connecting-IP`만 믿고(없으면 한 묶음), IPv6는 /64로 묶는다(`lib/auth-request.ts clientAddress`). `X-Forwarded-For`는 위조할 수 있어 읽지 않는다 |
 | 만들기 쓰기 빈도 | `execution_rate` `api_keys` 60회/분, 소유자 변경 잠금 |
 | 권한 | 대표·관리자만 목록·만들기·취소(직원 403). 키는 만든 사람의 역할로 오늘의 안건을 읽는다 |
 | 마지막 사용 | 1분에 한 번만 갱신 |
@@ -111,9 +113,18 @@ ChatGPT 설정 → 커넥터(개발자 모드) → 사용자 지정 커넥터 �
 
 ## 8. 감사
 
-`tools/call`마다 `records` kind `api_call` 1행: `id`·`keyId`·`tool`·`ok`·`error`(tool_error·scope_denied·invalid_params·unknown_tool·internal)·`at`. 입력 인자와 결과 본문은 남기지 않는다. `initialize`·`ping`·`tools/list`는 남기지 않는다. 이 판은 감사 행 보존 기간 정리를 하지 않는다(후속).
+`tools/call`마다 `records` kind `api_call` 1행: `id`·`keyId`·`tool`·`ok`·`error`(tool_error·scope_denied·invalid_params·unknown_tool·internal)·`at`. 입력 인자와 결과 본문은 남기지 않는다. `initialize`·`ping`·`tools/list`는 남기지 않는다.
+
+보존: 90일. 워커 하루 정리 단계(`lib/research-worker.ts`, 소유자당 UTC 하루 1회)가 `purgeApiCallAudit`로 기록 시각(`updated_at`)이 90일 지난 행을 지운다(문장 1개, 여러 번 돌려도 결과가 같다). 실패해도 워커 순환을 막지 않고 다음 날 다시 지운다.
 
 ## 9. 검증
 
 - `node --experimental-vm-modules tests/api-keys.test.mjs`, `tests/mcp-server.test.mjs` — 메모리 SQLite·로컬 인증 헤더(mocked).
+- `tests/mcp-hardening.test.mjs`(2026-11-14) — 401 `WWW-Authenticate`(키 없음·틀린 키·ASCII), 키 없는 요청 IP당 1분 30회 429(다른 주소·유효한 키·위조 `X-Forwarded-For`·IPv6 /64·창 만료), `api_call` 90일 정리(멱등)와 워커 하루 정리 연결. mocked.
 - 로컬 서버(`E2E_PORT=8835 node e2e/serve.mjs`)에서 스위치를 켜고 키를 만든 뒤 curl로 `initialize`·`tools/list`·`tools/call list_brands`를 확인했다(실제 로컬 wrangler·로컬 D1, 인증 헤더 모의). Claude·ChatGPT에서의 real 연결은 아직이다.
+
+## 10. 인증 방식 결정(2026-11-14)
+
+- **OAuth 2.1은 이 판의 범위 밖이다.** MCP 인증 규격(2025-06-18)은 HTTP 전송에서 OAuth 2.1(보호 자원 메타데이터·인가 서버 메타데이터·동적 클라이언트 등록)을 권장하지만, 지금 COLLECTIVE는 인가 서버가 없고 로그인 디스패처(Sites) 뒤에 있어 공개 인가 경로를 열려면 게시 담당의 경로 확인이 먼저다.
+- 대신 **API 키(Bearer)**를 유지한다. 401에는 규격이 요구하는 `WWW-Authenticate` 헤더를 붙이되 `resource_metadata`(OAuth 메타데이터 주소)는 넣지 않는다 — 넣으면 클라이언트가 없는 OAuth 흐름을 시작한다. `error_description`에 'COLLECTIVE 설정에서 API 키를 만들어 Authorization: Bearer로 보내라, OAuth 미지원'을 적어 클라이언트가 분명한 안내를 보이게 한다.
+- 남은 위험: OAuth만 받는 커넥터(일부 ChatGPT 계정 설정)는 연결할 수 없다. 키 유출 시 피해 범위는 키 범위(read·draft)와 만료(기본 90일)로 제한하고, 키 없는 추측 요청은 IP당 1분 30회로 늦춘다. OAuth를 도입하면 이 절을 바꾸고 `resource_metadata`를 401 헤더에 더한다.

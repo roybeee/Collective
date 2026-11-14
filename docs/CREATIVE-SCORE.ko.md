@@ -49,10 +49,11 @@
 - API `GET /api/creative-score?artifactId=`: 로그인한 모든 역할. `{enabled, artifactId, artifactVersion, score|null}`. 다른 소유자·없는 작업물 404. `GET ?brandId=&channel=`: 보정표(없으면 null).
 - API `POST {action:'recompute', artifactId}`: 대표·관리자(직원 403, 비로그인 401, 다른 출처 403). 스위치 꺼짐 409. 같은 입력이면 `written:false`.
 - API `POST {action:'calibrate', brandId, channel, observations:[{artifactId, publishedAt, impressions, clicks}]}`: 대표·관리자. 4절 참고.
+- API `POST {action:'calibrate_linked'}` · `{action:'backfill_links'}` · `{action:'link_meta_ad', …}`: 대표·관리자, 스위치 꺼짐 409. 4.1절 참고.
 
 ## 4. 사후 보정 절차
 
-1. 게시 뒤 **7일 이상** 지나고 **노출 30회 이상**인 소재의 관측(작업물 id·게시 시각·노출·클릭)을 모은다. 이 판은 자동 수집 연결이 없다 — 대표·관리자가 Instagram 인사이트·Meta 보고서 값을 `calibrate`로 넘긴다(클릭 ≤ 노출, 정수, ISO 시각, 1~2,000건).
+1. 게시 뒤 **7일 이상** 지나고 **노출 30회 이상**인 소재의 관측(작업물 id·게시 시각·노출·클릭)을 모은다. 자동 경로는 4.1절(작업물↔발행 연결)이고, 대표·관리자가 Instagram 인사이트·Meta 보고서 값을 `calibrate`로 직접 넘길 수도 있다(클릭 ≤ 노출, 정수, ISO 시각, 1~2,000건).
 2. 서버가 관측을 저장된 점수(그 작업물의 가장 최근 판)와 합친다. 점수가 없는 작업물은 `missing`으로 돌려주고 뺀다.
 3. `buildCalibration`이 브랜드×채널 표를 만든다(`creative_calibration` id `<브랜드>:<채널>`, parent 브랜드).
    - 관측 10건 미만: `insufficient`(표 없음, 점수에 아무 영향 없음).
@@ -62,6 +63,20 @@
 4. 표가 생기면 이후 계산되는 점수의 `rulesVersion`에 표 버전·시각이 들어가 같은 판이 다시 계산된다. 표를 지우거나 다시 만들면 또 바뀐다.
 
 표가 하는 일은 등급 표시와 표본 표시까지다. 가중치 자동 학습·규칙 자동 승격은 없다.
+
+### 4.1 자동 보정(작업물 ↔ 발행 ↔ 관측 연결, 2026-11-14)
+
+코드: `lib/creative-publication-link.ts`(순수), `lib/creative-publication-link-server.ts`(저장·워커). 스위치 `creative_score`가 꺼져 있으면 모든 훅이 스위치 1행만 읽고 아무것도 쓰지 않는다. 어떤 훅도 예외를 던지지 않는다(로그 `creative_link_error` 1줄).
+
+| 단계 | 언제 | 무엇을 |
+|---|---|---|
+| 연결 기록 | 발행 준비(`save_publication`)·접수(`execute`, Buffer·직접 게시)·`refresh`·게시물 ID 입력(`link_media`) 응답 직전(`app/api/execution/route.ts`) | 작업물 카피(`copy.artifactId·artifactVersion`)로 만든 발행만 `artifact_publication_link` 1행(id 발행 id, parent 캠페인). 채널 `buffer`·`instagram_direct`·`threads`, 외부 게시물 ID(직접 게시는 게시 확인된 공급자 ID, Buffer는 `link_media`의 Instagram 게시물 ID — Buffer 게시 번호는 쓰지 않는다), 게시 시각(게시 확인 때). 바뀐 것이 없으면 쓰지 않는다 |
+| Meta 광고 | 대표·관리자 `POST /api/creative-score {action:'link_meta_ad', artifactId, artifactVersion?, adId, publishedAt}` | Meta 소재(실행 소재 PNG·검수 카피)에는 작업물 판 기록이 없어 자동 연결하지 않는다. 사람이 광고 ID(숫자)와 작업물 판을 잇는다(id `meta:<광고 ID>`) |
+| 관측 붙이기 | 측정 수집 저장 뒤(`lib/measurement-collection.ts collectForExperiment`, 워커 재수집 포함), Meta 성과 저장 뒤(`app/api/meta-ads/insights` import·sync) | 같은 외부 ID의 연결에 마지막 관측을 붙인다. Instagram은 도달(reach)=분모·공유(shares)=분자, Meta는 노출·클릭(기간 합계). 값이 같으면 쓰지 않는다 |
+| 백필 | 주간 실행 첫 단계, 또는 `POST {action:'backfill_links'}` | 기존 발행(카피 있음, 최대 5,000건)마다 연결을 맞추고, 저장된 측정 초안(`measurement_draft` arm의 target)·Meta 성과로 관측을 붙인다. 여러 번 돌려도 결과가 같다 |
+| 주간 보정 | 워커 하루 정리 단계(`lib/research-worker.ts`, UTC 하루 1회)에서 `creative_calibration_run` 마지막 실행 뒤 7일이 지났을 때. 바로 하려면 `POST {action:'calibrate_linked'}` | 연결 관측을 **같은 작업물 판**의 점수와 합쳐 브랜드×점수 채널 표를 `buildCalibration`으로 다시 만든다(7일·노출 30회 하한 그대로). 내용이 같으면 쓰지 않는다(표 계산 시각도 그대로라 점수가 다시 계산되지 않는다). 연결로 만든 표는 `source:'linked'`. 사람이 `calibrate`로 만든 표는 연결 관측이 10건 미만이면 덮지 않는다 |
+
+한계: 점수는 작업물 전체 본문 기준이고 발행 캡션은 그중 고른 카피 1개다. 한 작업물 판이 여러 발행에 쓰이면 발행마다 관측 1건이다. Instagram 공유율·Meta CTR은 같은 표에서 섞이지 않도록 점수 채널(캠페인 첫 채널)로 묶지만, 한 캠페인 안에서 두 공급자를 함께 쓰면 정의가 섞일 수 있다(연결의 `metrics.definition`에 남는다). 검증은 mocked(메모리 SQLite·Instagram Graph 스텁·합성 관측)까지이고 실제 게시물 관측과의 real 대조는 없다.
 
 ## 5. 알려진 편향과 한계
 
@@ -84,4 +99,5 @@
 ## 7. 검증(2026-11-09, mocked)
 
 - `tests/creative-score.test.mjs`: 가중치 합 100, 훅 강·약, 결정론, 차단 상한 20·경고 −3, 규칙 충족/위반/확인 불가, 유사도 감점, 채널 한도·링크, AI 표시, 말투·거절 사실, 보정표(부족·방향성·관측 기반·단조/비단조·등급 적용).
+- `tests/creative-publication-link.test.mjs`(2026-11-14): 연결 기록(스위치 꺼짐 0행·켜짐 1행·멱등·응답 모양), 실제 `collectForExperiment`(Instagram Graph 스텁)의 관측 붙이기, 백필(멱등), 연결 관측 보정표(방향성·7일 간격·변경 없음 쓰기 0·관측 변경 다시 씀·사람 표 보존), Meta 광고 연결, API 409, kind·삭제 문구. E2E `e2e/creative-score-calibration.spec.ts`: 점수 11판 → 연결 관측 fixture → `calibrate_linked` → 카드 표본 n=11.
 - `tests/creative-score-server.test.mjs`: 스위치 꺼짐 0행, 켜짐 1행(parent 캠페인), 멱등·새 판·규칙 변경 재계산, 예외 격리, API 권한(401·403·404·409)·검증(400), 보정표 저장·조회·점수 표본 표시, kind·스위치·기능표·삭제 문구 등록.

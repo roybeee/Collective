@@ -25,6 +25,7 @@ const deletedGroups:readonly Group[]=[
  {label:'예약 실행·회의 안건 초안',kinds:['scheduled_run','scheduled_run_execution','meeting_agenda_draft']},
  {label:'외부 검토자 링크',kinds:['share_link']},
  {label:'소재 예측 점수',kinds:['creative_score']},
+ {label:'소재 점수 보정 연결',kinds:['artifact_publication_link']},
  {label:'선택 다시 쓰기 요청',kinds:['rewrite_request']},
  {label:'실행 중 추가 지시',kinds:['meeting_instruction','run_instruction']},
 ];
