@@ -191,7 +191,8 @@ check('the campaign name cell has no second archive badge',!screen.includes('sta
 has('the artifact list leaves out archived campaigns like the sidebar count',screen,'!data.campaigns.some(c=>c.id===a.campaignId&&isArchived(c))');
 // 브랜드 카드 화면은 지연 로딩 모듈(app/workspace-views.tsx)로 옮겼다. 워크스페이스가 보관 제외 목록(live)을 넘기고, 카드가 그 목록으로 센다.
 has('brand detail cards count visible campaigns like the dashboard',screen.includes('<BrandsView data={live}')?readFileSync('app/workspace-views.tsx','utf8'):'','<span>{data.campaigns.filter(c=>c.brandId===b.id).length}개 캠페인</span><span>브랜드 아카이브</span>');
-has('the WebMCP campaign list reports the derived status',screen,'status:c.derivedStatus||c.status');
+// WebMCP 도구 정의는 modelContext가 있을 때만 불러오는 모듈(app/webmcp-tools.ts)로 옮겼다(UX-PLAN-3 11.26).
+has('the WebMCP campaign list reports the derived status',screen.includes("import('./webmcp-tools')")?readFileSync('app/webmcp-tools.ts','utf8'):'','status:c.derivedStatus||c.status');
 has('archived rows can be restored from the row menu',screen,"api('unarchive_campaign',{id:c.id},'/api/campaigns')");
 has('the dialog archives through the campaigns API',dialog,"api('archive_campaign',{id},'/api/campaigns')");
 has('archive is offered when work, runs, meetings or results exist',dialog,'needsTitleConfirmation(preview)');
