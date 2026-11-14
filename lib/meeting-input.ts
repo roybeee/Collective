@@ -5,6 +5,8 @@ import {meetingInstructions,candidateArtifacts,respondsToHandles,discussionRef,a
 import {labelArchive} from './role-output';
 import {aiBrand,withoutPlanOwner,withoutAssignees,productionAllow,inputMaskingRecord,BRAND_MASK_PATHS,DIRECTIVE_MASK_PATHS,FACT_MASK_PATHS,STORE_MASK_PATHS,campaignMaskPaths,metricMaskPaths,type InputMasking} from './ai-context';
 import {maskFields} from './pii-scan';
+// 실행 중 지시 추가(P14): 추가할 때 진행 중이던 단계 뒤 단계부터 addedInstructions로 싣는다. 지시가 없으면 키가 없어 바이트 동일하다.
+import {instructionsBefore,instructionInput,INSTRUCTION_MASK_PATHS} from './meeting-instructions';
 // 입력 축소(input_diet, PR 4b): 켜진 회의(스냅샷 inputDiet)만 단계별로 작업물을 줄이고 브랜드 자료를 역할별 digest로 싣는다. 꺼지면 부르지 않는다.
 import {INPUT_DIET_VERSION,dietCampaign,sectionExcerpt,meetingOriginal,archiveDigest,capInput,MEETING_INPUT_TOKEN_CAP,type InputDietOptions,type InputDietReport} from './input-diet';
 
@@ -19,7 +21,7 @@ const CANDIDATE_CONTENT_LIMIT=24000;
 const pick=(a:object,keys:readonly string[])=>Object.fromEntries(Object.entries(a).filter(([k])=>keys.includes(k)));
 // 가림 경로(③). 모델 출력(발언·합의·개선 과제)은 가리지 않는다. 개선본은 candidateArtifacts와 completedRevisions 두 곳으로 가므로 둘 다 제목·본문을 가린다.
 // 확정 사실 값은 허용 값이라 경로에 없다. 후보·금지 사실 값과 점포 맥락의 지점 자유 텍스트는 가린다.
-export const MEETING_MASK_PATHS=['agenda',...BRAND_MASK_PATHS,...DIRECTIVE_MASK_PATHS,...FACT_MASK_PATHS,...STORE_MASK_PATHS,...campaignMaskPaths('campaign'),...metricMaskPaths('recordedMetrics'),'previousMeeting.agenda','previousMeeting.decisions.decisions','previousMeeting.decisions.questions','originalArtifacts.*.title','originalArtifacts.*.content','completedRevisions.*.title','completedRevisions.*.content','candidateArtifacts.*.title','candidateArtifacts.*.content'];
+export const MEETING_MASK_PATHS=['agenda',...BRAND_MASK_PATHS,...DIRECTIVE_MASK_PATHS,...FACT_MASK_PATHS,...STORE_MASK_PATHS,...campaignMaskPaths('campaign'),...metricMaskPaths('recordedMetrics'),'previousMeeting.agenda','previousMeeting.decisions.decisions','previousMeeting.decisions.questions','originalArtifacts.*.title','originalArtifacts.*.content','completedRevisions.*.title','completedRevisions.*.content','candidateArtifacts.*.title','candidateArtifacts.*.content',...INSTRUCTION_MASK_PATHS];
 // 교정 재시도(correction이 있는 단계)의 지시문 끝 문장. 입력에는 correction 필드로 직전 실패 사유가 들어간다.
 const CORRECTION='\n이전 응답은 검증에 실패했습니다. correction.error를 고치고, respondsTo에는 allowedRespondsTo의 ref만 사용하세요. 요청 선택지를 묻지 말고 이 단계의 완성된 결과를 반환하세요.';
 // 단계 입력(가린 값)과 입력 가림 기록. storeAllow: 브랜드 단위 회의의 지점 허용 값(lib/store-allow-server.ts). 가림 허용 목록에만 쓴다.
@@ -29,10 +31,11 @@ export function meetingContext(m:Meeting,s:MeetingStep,storeAllow:readonly strin
  const snapshot=m.snapshot,ref=(id:string)=>discussionRef(m.steps.find(t=>t.id===id)?.role||''),digest=inputDiet&&snapshot.brandArchive?archiveDigest(labelArchive(snapshot.brandArchive),s.role):null,quality=s.phase==='quality';
  // 남은 이견 A/B 선택(X2): 이 회의의 합의 단계에 사용자 선택이 있으면 뒤 단계(개선·품질) 입력에 userDecision으로 싣는다. 선택이 없으면 키가 없어 이전과 바이트 동일하다.
  const decision=s.phase==='revision'||s.phase==='quality'?userDecision(latestChoice(m,m.steps.find(t=>t.phase==='synthesis')?.id)):undefined;
+ const added=instructionInput(instructionsBefore(m.steps.map(t=>t.id),s.id,m.instructions));
  const built={skillVersion:m.skillVersion,channelPractice:campaignPractice(snapshot.campaign,snapshot.prompts?.set?.channels),agenda:m.agenda,role:s.role,phase:s.phase,allowedRespondsTo:respondsToHandles(s,m.steps),correction:s.correction,brand:aiBrand(snapshot.brand),...(snapshot.evidence?{evidence:{facts:snapshot.evidence.facts,directives:snapshot.evidence.directives}}:{}),brandArchive:snapshot.brandArchive&&withoutAssignees(digest?digest.archive:labelArchive(snapshot.brandArchive)),campaign:withoutPlanOwner({...(inputDiet?dietCampaign(snapshot.campaign):snapshot.campaign),...aiBudget(snapshot.campaign)}),trialLearning:snapshot.learning,recordedMetrics:snapshot.metrics,previousMeeting:snapshot.previous,
   originalArtifacts:snapshot.artifacts.map(a=>{const original={ref:artifactRef(a),...pick(a,MEETING_ARTIFACT_FIELDS),content:a.content.slice(0,8000),excerpt:a.content.length>8000};return inputDiet?meetingOriginal(original,a.content,s.phase):original}),
   discussion:m.steps.filter(t=>t.phase==='discussion'&&t.status==='completed').map(t=>{const o=t.output as Contribution;return {ref:discussionRef(t.role),role:t.role,...o,respondsTo:o.respondsTo.map(ref)}}),
-  synthesis:m.steps.find(t=>t.phase==='synthesis')?.output,...(decision?{userDecision:decision}:{}),
+  synthesis:m.steps.find(t=>t.phase==='synthesis')?.output,...(decision?{userDecision:decision}:{}),...(added?{addedInstructions:added}:{}),
   // 카피 팩 개선본(A3-4)은 팩 렌더본이 content에 있으므로 팩 필드(copyPack·copyPackIssues)는 싣지 않는다. 팩이 없으면 이전과 같다.
   completedRevisions:m.steps.filter(t=>t.phase==='revision'&&t.status==='completed').map(t=>{const revision={role:t.role,...(t.output&&withoutCopyPack(t.output))};return inputDiet&&quality?Object.fromEntries(Object.entries(revision).filter(([k])=>k!=='content')):revision}),
   task:s.task,...(quality?{candidateArtifacts:candidateArtifacts(m).artifacts.map(a=>({ref:artifactRef(a),...pick(a,CANDIDATE_FIELDS),content:inputDiet?sectionExcerpt(a.content,CANDIDATE_CONTENT_LIMIT):a.content.slice(0,CANDIDATE_CONTENT_LIMIT),excerpt:a.content.length>CANDIDATE_CONTENT_LIMIT})),invalidatedRoles:candidateArtifacts(m).invalidatedRoles}:{})};

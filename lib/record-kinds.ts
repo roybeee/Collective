@@ -315,6 +315,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'store_task',parent:'store',campaignDeletion:'not_campaign_scoped',description:'지점 조사 후속 과제'},
  {kind:'team_meeting',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'AI 팀 회의'},
  {kind:'meeting_choice',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'회의 합의 단계의 남은 이견에 대한 사용자 A/B·보류 선택(추가만, 다음 단계 입력에 전달)'},
+ {kind:'meeting_instruction',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'진행 중 회의에 사용자가 추가한 지시(추가만, 추가할 때 진행 중이던 단계 뒤 단계 입력부터 전달, P14)'},
+ {kind:'run_instruction',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'진행 중 연속 실행에 사용자가 추가한 지시(추가만, 다음 담당 실행 입력부터 그 연속 실행이 끝날 때까지 전달, P14)'},
  // 추적 코드(A4)는 주문 장부의 귀속 근거다. 주문 장부 보존 원칙에 맞춰 캠페인을 지워도 남긴다: 코드→캠페인·팔·게시 연결이 남아야 옛 주문의 귀속을 설명할 수 있고,
  // 코드(레코드 id)가 남아 있어 인쇄된 옛 쿠폰·QR 코드가 다른 캠페인에 다시 쓰이지 않는다. 캠페인이 사라진 코드는 자동 귀속에 쓰지 않는다(lib/store-operations-server.ts codeBook).
  // 삭제를 막지는 않는다. 코드로 귀속된 주문이 있으면 store_order가 이미 캠페인 삭제를 거부한다.

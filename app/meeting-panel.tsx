@@ -3,8 +3,8 @@ import {cssVars} from '@/lib/ui/css-vars';
 import {clientId} from '@/lib/client';
 import {metaText} from '@/lib/format';
 import {MetaLine} from '@/components/app/meta-line';
-import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
-import {Users,Play,Pause,RefreshCw,LoaderCircle,Check,ArrowRight,Download,MessageSquare} from 'lucide-react';
+import {useCallback,useEffect,useId,useMemo,useRef,useState} from 'react';
+import {Users,Play,Pause,RefreshCw,LoaderCircle,Check,ArrowRight,Download,MessageSquare,ChevronDown,ChevronRight} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {Textarea} from '@/components/ui/textarea';
 import {Label} from '@/components/ui/label';
@@ -17,7 +17,12 @@ import {phaseNames,meetingActive,meetingMarkdown,defaultMeetingAgenda,hasDisagre
 import {PlanCard,usePlanRules} from '@/components/app/plan-card';
 import {RunTimeline} from '@/components/app/run-timeline';
 import {ChoiceCard} from '@/components/app/choice-card';
-import {meetingTimeline,statusView,POLL_RUNNING_MS} from '@/lib/run-timeline';
+import {meetingTimeline,statusView,withInstructions,POLL_RUNNING_MS} from '@/lib/run-timeline';
+// 팀 회의 뷰(P2): 참석자 열·결정 카드, 접을 수 있는 발언, 실행 중 지시 추가(P14).
+import {MeetingParticipants,DecisionCards,choiceSentence} from '@/components/app/meeting-board';
+import {AddInstruction} from '@/components/app/add-instruction';
+import {useT} from '@/lib/i18n-react';
+import '@/lib/i18n/lazy';
 import {estimateMeetingPlan,MEETING_DEFAULT_STEPS} from '@/lib/token-estimate';
 import {EvidenceSummary} from './evidence-summary';
 import {notifySaved} from '@/lib/ui/notify';
@@ -37,8 +42,18 @@ function StepOutput({step,steps,choice,waiting,busy,onChoose}:{step:MeetingStep|
  const x=step.output as QualityReview;return <><strong className={'meeting-verdict '+x.verdict}>{verdictName[x.verdict]}</strong><Text label="검수 결론">{x.summary}</Text><Text label="검토 항목과 후속 요청">{x.findings}</Text>{!!x.gateIssues?.length&&<Text label="추가 확인 필요">{x.gateIssues.join("\n")}</Text>}<div className="quality-checks">{x.checks?.map((check,i)=><section key={check.criterion+i}><header><b>{qualityCriteria[check.criterion as keyof typeof qualityCriteria]||check.criterion}</b><span>{check.status==='pass'?'통과':check.status==='revise'?'수정 필요':'자료 필요'}</span></header><p>위치: {check.location}</p><p>{check.finding}</p><p>다음 조치: {check.fix}</p></section>)}</div>{!!x.taskChecks?.length&&<Text label="과제별 완료 검토">{x.taskChecks.map(t=>`${roleName(t.role)}: ${t.status==='pass'?'통과':t.status==='revise'?'수정 필요':'자료 필요'}\n${t.location}: ${t.finding}\n다음 조치: ${t.fix}`).join('\n\n')}</Text>}</>;
 }
 
+// 발언 하나(P2 발언 스트림). 머리(담당·단계·상태)는 늘 보이고 본문은 접고 펼 수 있다(기본 펼침). 합의 뒤 단계에는 사용자 이견 선택을 한 줄로 보인다.
+function MeetingTurn({step,index,header,children,choiceNote}:{step:PublicMeeting['steps'][number];index:number;header:React.ReactNode;children:React.ReactNode;choiceNote?:string}){
+ const t=useT(),id=useId(),[open,setOpen]=useState(true);
+ return <article className={'meeting-turn '+step.phase} data-step={step.id}>
+  <header>{header}<Button type="button" variant="ghost" size="sm" className="min-h-11" aria-expanded={open} aria-controls={id} aria-label={t(open?'meetingBoard.collapse':'meetingBoard.expand',{n:index+1,role:roleName(step.role)})} onClick={()=>setOpen(v=>!v)}>{open?<ChevronDown/>:<ChevronRight/>}<span className="max-sm:sr-only">{t(open?'meetingBoard.collapseShort':'meetingBoard.expandShort')}</span></Button></header>
+  {choiceNote&&<p className="choice-applied m-0 mb-3 rounded-md border border-border bg-background px-3 py-2 text-[13px]" role="note">{choiceNote}</p>}
+  <div id={id} hidden={!open}>{children}</div>
+ </article>;
+}
 export function MeetingPanel({campaign,workspace,onUpdated,onOutputs,onConnect}:{campaign:Campaign;workspace:WorkspaceData;onUpdated:()=>Promise<void>;onOutputs:()=>void;onConnect:()=>void}){
  const[meetings,setMeetings]=useState<PublicMeeting[]>([]),[selected,setSelected]=useState(''),[agenda,setAgenda]=useState(defaultMeetingAgenda),[draft,setDraft]=useState({agenda:'',reviewFixes:0}),[previous,setPrevious]=useState<string|undefined>(),[busy,setBusy]=useState(false),[polling,setPolling]=useState(false),[error,setError]=useState(''),[loaded,setLoaded]=useState(false);
+ const t=useT();
  const current=useRef(meetings);current.current=meetings;const pending=useRef(false),startId=useRef<string|null>(null),edited=useRef(false);
  // 안건 기본값은 서버가 만든 초안(검수 수정 요청·상시 지시)을 따른다. 사용자가 고친 뒤에는 덮어쓰지 않는다.
  const load=useCallback(async()=>{const r=await fetch('/api/meetings?campaignId='+encodeURIComponent(campaign.id));const d=await r.json() as {meetings:PublicMeeting[];agendaDraft?:{agenda:string;reviewFixes:number};error?:string};if(!r.ok)throw new Error(d.error||'회의 기록을 불러오지 못했습니다.');setMeetings(d.meetings);if(d.agendaDraft){const next=d.agendaDraft;setDraft(next);if(!edited.current&&next.agenda)setAgenda(next.agenda)}setSelected(s=>s||d.meetings.find(meetingActive)?.id||d.meetings[0]?.id||'');setLoaded(true);return d.meetings},[campaign.id]);
@@ -76,6 +91,12 @@ export function MeetingPanel({campaign,workspace,onUpdated,onOutputs,onConnect}:
   try{merge(await post('choose',{id:meetingId,stepId,choice}));notifySaved('이견 선택을 저장했습니다.',{description:'다음 단계와 후속 회의 입력에 전달됩니다.'})}
   catch(e){setError((e as Error).message)}finally{pending.current=false;setBusy(false)}
  }
+ // 실행 중 지시 추가(P14): 진행 중 회의에만. 지금 단계가 아니라 다음 단계 입력부터 반영된다(서버 lib/meeting-input.ts).
+ async function addInstruction(text:string){if(!active)return;const result=await post('add_instruction',{id:active.id,text});merge(result);notifySaved('회의에 지시를 추가했습니다.',{description:t('instruction.next')})}
+ // 결정 카드(P2)와 뒤 단계의 선택 표시: 합의 단계 출력·최신 이견 선택. 합의 뒤 단계(개선·품질)에만 '사용자가 A안을 골랐습니다'를 붙인다.
+ const synthesisOf=(x:PublicMeeting)=>{const s=x.steps.find(t=>t.phase==='synthesis');return s?.status==='completed'?s.output as Synthesis:undefined};
+ const choiceOf=(x:PublicMeeting)=>latestChoice(x,x.steps.find(t=>t.phase==='synthesis')?.id);
+ function afterChoice(s:PublicMeeting['steps'][number]){if(!m||(s.phase!=='revision'&&s.phase!=='quality'))return undefined;const c=choiceOf(m);if(!c)return undefined;return t(!s.startedAt||s.startedAt>=c.createdAt?'meetingBoard.choiceApplied':'meetingBoard.choiceLater',{choice:choiceSentence(t,c)})}
  function followUp(){if(!m)return;edited.current=true;setPrevious(m.id);setAgenda('이전 회의의 미해결 쟁점과 품질 검토 요청을 우선 해결하고, 최신 작업물을 한 단계 더 개선해 주세요. 필요한 사실과 검증할 실험을 구분하세요.');setSelected('');startId.current=null}
  function reviewMeeting(){edited.current=false;setPrevious(undefined);setAgenda(draft.agenda);startId.current=null}
  function exportMeeting(){if(!m)return;downloadText('팀-회의-'+m.id+'.md',meetingMarkdown(m))}
@@ -90,10 +111,17 @@ export function MeetingPanel({campaign,workspace,onUpdated,onOutputs,onConnect}:
   {!workspace.worker?.online&&<p className="form-error" role="status">{workspace.worker?.registered?'서버 작업자 오프라인: 접수된 작업과 기록은 유지되며 작업자가 다시 연결되면 이어집니다.':'서버 작업자가 등록되지 않았습니다. 연결 및 설정에서 등록해 주세요.'}</p>}
   {error&&<div className="meeting-error" role="alert"><p>{error}</p><Button variant="outline" size="sm" onClick={()=>{setError('');void load().catch(e=>setError(e.message))}}><RefreshCw/>다시 확인</Button></div>}
   {active&&<div className="meeting-live" aria-live="polite"><div><span className="meeting-live-dot"/><b>{active.stopRequested?'중지 확인 중':stateName[active.status]}</b><p><MetaLine items={[roleName(active.steps.find(s=>s.status!=='completed')?.role||'cmo'),phaseNames[active.steps.find(s=>s.status!=='completed')?.phase||'discussion'],statusView(active.steps.find(s=>s.status!=='completed')?.status||'pending',active.steps.find(s=>s.status!=='completed')?.phase).label]}/></p>{active.error&&<p className="form-error">{active.error}</p>}</div><div>{active.status==='uncertain'&&<Button size="sm" variant="outline" disabled={busy||polling} onClick={()=>void action('recover')}><RefreshCw/>기존 요청 확인</Button>}<Button size="sm" variant="ghost" disabled={busy||polling||active.stopRequested} disabledReason={active.stopRequested?'중지를 요청했습니다. 멈출 때까지 기다리세요.':undefined} onClick={()=>void action('cancel')}><Pause/>회의 중지</Button></div></div>}
+  {active&&!active.stopRequested&&<AddInstruction onAdd={addInstruction} disabled={busy} disabledReason={busy?t('instruction.busy'):undefined}/>}
   {!!meetings.length&&<div className="meeting-history-bar"><NativeSelect aria-label="회의 기록 선택" value={selected} onChange={e=>setSelected(e.target.value)}><NativeSelectOption value="">회의 선택</NativeSelectOption>{meetings.map(x=><NativeSelectOption key={x.id} value={x.id}>{metaText([date(x.createdAt),stateName[x.status],x.agenda.slice(0,24)])}</NativeSelectOption>)}</NativeSelect>{m&&<Button size="sm" variant="ghost" onClick={exportMeeting}><Download/>회의록</Button>}</div>}
-  {m&&<><div className="meeting-session-title"><h4>{m.agenda}</h4><span><MetaLine items={[`${m.steps.filter(s=>s.status==='completed').length}/${m.steps.length} 단계 완료`,`브리프 v${m.campaignVersion}`]}/></span></div><div className="meeting-roster">{roles.map(r=>{const s=m.steps.find(s=>s.phase==='discussion'&&s.role===r.id);return <div key={r.id} className={s?.status==='completed'?'done':step?.id===s?.id&&meetingActive(m)?'speaking':''}><span className="role-avatar tint" ref={cssVars({'--tint':r.color})}>{s?.status==='completed'?<Check size={15}/>:r.initial}</span><small>{r.name}</small></div>})}</div>
-   <RunTimeline items={meetingTimeline(m.steps,roleName,p=>phaseNames[p])} label="회의 진행 타임라인" className="my-4"/>
-   <div className="meeting-transcript">{m.steps.filter(s=>s.output||s.status!=='pending').map((s,i)=><article className={'meeting-turn '+s.phase} key={s.id}><header><span className="role-avatar tint" ref={cssVars({'--tint':roles.find(r=>r.id===s.role)?.color})}>{roles.find(r=>r.id===s.role)?.initial}</span><div><h4>{roleName(s.role)}</h4><span><MetaLine items={[phaseNames[s.phase],String(i+1).padStart(2,'0')]}/></span></div>{statusView(s.status,s.phase).live?<LoaderCircle className="spin" size={17}/>:s.status==='completed'?<Check size={17}/>:null}<span className="sr-only">{statusView(s.status,s.phase).label}</span></header><small><MetaLine items={[`시도 ${(s.attempt||0)+1}`,`토큰 ${s.tokens??'미확인'}`]}/></small>{!!s.attempts?.length&&<details><summary>이전 실패 기록 {s.attempts.length}건</summary>{s.attempts.map(a=><p key={a.attempt}><MetaLine items={[`시도 ${a.attempt+1}`,`토큰 ${a.tokens??'미확인'}`,a.error]}/></p>)}</details>}{s.output?<StepOutput step={s} steps={m.steps} choice={latestChoice(m,s.id)} waiting={m.steps.some(t=>t.phase==='revision'&&t.status==='waiting_for_approval')} busy={busy} onChoose={s.phase==='synthesis'?choice=>choose(m.id,s.id,choice):undefined}/>:<p className="subtle-note">{s.error||(s.status==='waiting_for_approval'?'합의 단계의 남은 이견을 선택하면 이어서 진행합니다.':'HERMES의 실제 응답을 기다리고 있습니다.')}</p>}</article>)}</div>
+  {m&&<><div className="meeting-session-title"><h4>{m.agenda}</h4><span><MetaLine items={[`${m.steps.filter(s=>s.status==='completed').length}/${m.steps.length} 단계 완료`,`브리프 v${m.campaignVersion}`]}/></span></div>
+   <div className="meeting-board grid gap-4 xl:grid-cols-[180px_minmax(0,1fr)_240px]">
+    <div className="xl:col-start-1 xl:row-start-1"><MeetingParticipants roles={roles} steps={m.steps} live={meetingActive(m)} phaseName={x=>phaseNames[x.phase]}/></div>
+    <div className="xl:col-start-3 xl:row-start-1"><DecisionCards synthesis={synthesisOf(m)} choice={choiceOf(m)} roleName={roleName}/></div>
+    <div className="min-w-0 xl:col-start-2 xl:row-start-1">
+   <RunTimeline items={withInstructions(meetingTimeline(m.steps,roleName,p=>phaseNames[p]),m.instructions,{title:t('instruction.timelineTitle'),subtitle:t('instruction.timelineNext')})} label="회의 진행 타임라인" className="my-4"/>
+   <div className="meeting-transcript">{m.steps.filter(s=>s.output||s.status!=='pending').map((s,i)=><MeetingTurn key={s.id} step={s} index={i} choiceNote={afterChoice(s)} header={<><span className="role-avatar tint" ref={cssVars({'--tint':roles.find(r=>r.id===s.role)?.color})}>{roles.find(r=>r.id===s.role)?.initial}</span><div><h4>{roleName(s.role)}</h4><span><MetaLine items={[phaseNames[s.phase],String(i+1).padStart(2,'0')]}/></span></div>{statusView(s.status,s.phase).live?<LoaderCircle className="spin" size={17}/>:s.status==='completed'?<Check size={17}/>:null}<span className="sr-only">{statusView(s.status,s.phase).label}</span></>}><small><MetaLine items={[`시도 ${(s.attempt||0)+1}`,`토큰 ${s.tokens??'미확인'}`]}/></small>{!!s.attempts?.length&&<details><summary>이전 실패 기록 {s.attempts.length}건</summary>{s.attempts.map(a=><p key={a.attempt}><MetaLine items={[`시도 ${a.attempt+1}`,`토큰 ${a.tokens??'미확인'}`,a.error]}/></p>)}</details>}{s.output?<StepOutput step={s} steps={m.steps} choice={latestChoice(m,s.id)} waiting={m.steps.some(t=>t.phase==='revision'&&t.status==='waiting_for_approval')} busy={busy} onChoose={s.phase==='synthesis'?choice=>choose(m.id,s.id,choice):undefined}/>:<p className="subtle-note">{s.error||(s.status==='waiting_for_approval'?'합의 단계의 남은 이견을 선택하면 이어서 진행합니다.':'HERMES의 실제 응답을 기다리고 있습니다.')}</p>}</MeetingTurn>)}</div>
+    </div>
+   </div>
    {m.status==='completed'&&<div className="meeting-result"><h4>개선본과 품질 재검토를 작업물에 저장했습니다.</h4><p>아직 사용자 승인 전입니다.{m.invalidatedRoles.length?' '+metaText(m.invalidatedRoles.map(roleName))+' 작업은 변경된 방향에 맞춰 다시 작성해야 합니다.':''}</p><Button variant="outline" onClick={onOutputs}>개선된 작업물 보기<ArrowRight/></Button></div>}
    {!meetingActive(m)&&<div className="meeting-followup">{m.error&&<p className="form-error">{m.error}</p>}{m.stale&&m.status==='failed'&&<p className="subtle-note" role="status">기준 자료 변경됨 — 완료 발언을 이어받아 새 회의 시작</p>}{step?.retryAvailable&&<><Button variant="outline" disabled={!!active||busy||otherRun||!connected||!workspace.worker?.registered} disabledReason={!!active?'진행 중인 작업이 끝나면 누를 수 있습니다.':otherRun?'진행 중인 작업이 끝나면 누를 수 있습니다.':!connected?'먼저 연결하세요.':(!workspace.worker?.registered)?'필수 칸을 먼저 채우세요.':undefined} onClick={()=>void action('retry_failed')}><RefreshCw/>{step.storedRepair?'저장된 응답으로 단계 완료':'실패 단계 다시 작성'}</Button><small>{step.storedRepair?'저장된 응답이 지금 기준으로는 유효합니다. 모델을 다시 부르지 않아 추가 사용량이 없습니다.':`완료 발언은 보존합니다. 이 단계에서 ${2-(step.attempt||0)}회 남았고 추가 사용량이 발생합니다.`}</small></>}<Button variant="outline" disabled={!!active} disabledReason={!!active?'진행 중인 작업이 끝나면 누를 수 있습니다.':undefined} onClick={followUp}><MessageSquare/>후속 회의 새로 시작</Button><small>완료 발언·중단 사유·검수 결과와 최신 작업물을 새 회의에 전달합니다.</small></div>}
   </>}

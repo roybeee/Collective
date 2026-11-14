@@ -12,6 +12,10 @@ import {ruleApplies,operatorRule,type LearningRule} from '@/lib/learning';
 import {formatElapsed} from '@/lib/run-timeline';
 import {compareTokens,formatTokens,type PlanEstimate,type PlanItem} from '@/lib/token-estimate';
 import type {Campaign} from '@/lib/agency';
+// 예상 비용 원화·크레딧 환산(QA D13): lib/billing.ts 자리 표시 가격(1크레딧=1,000토큰, 충전 단가)으로 추정한다. 가격은 대표 확정 전이라 '추정'과 안내를 함께 적는다.
+import '@/lib/i18n/lazy';
+import {useT} from '@/lib/i18n-react';
+import {tokenCost} from '@/lib/usage-meter';
 
 export const NO_DURATION_HISTORY='첫 실행이라 추정 불가';
 export type PlanRules={learning:number|null;directives:number|null};
@@ -19,12 +23,12 @@ export type PlanOutcome={estimatedTokens:number;actualTokens:number|null;duratio
 type Props={title?:string;lead?:string;estimate:PlanEstimate;rules:PlanRules;excluded?:readonly string[];onToggle?:(id:string,included:boolean)=>void;primaryLabel:string;onApprove:()=>void;disabled?:boolean;disabledReason?:string;busy?:boolean;outcome?:PlanOutcome|null;children?:React.ReactNode};
 const count=(n:number|null)=>n===null?'확인 중':`${n}건`;
 export function PlanCard({title='실행 전 계획',lead='아래 내용을 확인하고 승인하면 시작합니다.',estimate,rules,excluded=[],onToggle,primaryLabel,onApprove,disabled,disabledReason,busy,outcome,children}:Props){
- const id=useId(),included=estimate.items.filter(i=>!excluded.includes(i.id)),total=included.reduce((n,i)=>n+i.estimatedTokens,0);
+ const t=useT(),id=useId(),included=estimate.items.filter(i=>!excluded.includes(i.id)),total=included.reduce((n,i)=>n+i.estimatedTokens,0),cost=tokenCost(total);
  return <section className="plan-card notice flex-col items-stretch gap-3" aria-labelledby={id+'-title'} data-testid="plan-card">
   <div><h4 id={id+'-title'} className="m-0 text-[15px] font-semibold text-foreground">{title}</h4><p className="m-0 text-[13px]">{lead}</p></div>
-  <StatList label="예상 비용과 적용 규칙" items={[['예상 토큰(추정)',formatTokens(total)],['예상 소요',estimate.durationMs===null?NO_DURATION_HISTORY:'약 '+formatElapsed(estimate.durationMs)],['학습 규칙',count(rules.learning)],['상시 지시',count(rules.directives)]]}/>
+  <StatList label="예상 비용과 적용 규칙" items={[['예상 토큰(추정)',formatTokens(total)],[t('plan.costLabel'),cost.krw===null?t('plan.costCredits',{credits:cost.credits.toLocaleString('ko-KR')}):t('plan.cost',{credits:cost.credits.toLocaleString('ko-KR'),krw:cost.krw.toLocaleString('ko-KR')})],['예상 소요',estimate.durationMs===null?NO_DURATION_HISTORY:'약 '+formatElapsed(estimate.durationMs)],['학습 규칙',count(rules.learning)],['상시 지시',count(rules.directives)]]}/>
   <ul className="m-0 grid list-none gap-1.5 p-0" aria-label="산출물과 담당">{estimate.items.map(item=><PlanRow key={item.id} item={item} included={!excluded.includes(item.id)} onToggle={onToggle}/>)}</ul>
-  <small className="text-[12px] text-muted-foreground">토큰은 입력 길이와 최근 실행 평균으로 추정한 값이며 실제 사용량은 끝난 뒤 기록됩니다.{estimate.samples>0?` 최근 실행 ${estimate.samples}건을 참고했습니다.`:''}</small>
+  <small className="text-[12px] text-muted-foreground">토큰은 입력 길이와 최근 실행 평균으로 추정한 값이며 실제 사용량은 끝난 뒤 기록됩니다.{' '}{t('plan.costNote')}{estimate.samples>0?` 최근 실행 ${estimate.samples}건을 참고했습니다.`:''}</small>
   {children}
   <div className="flex flex-wrap items-center gap-2"><Button className="lime-button min-h-11" disabled={disabled||busy||!included.length} disabledReason={disabledReason??(!included.length?'실행할 항목을 하나 이상 남기세요.':undefined)} onClick={onApprove}>{busy?<LoaderCircle className="spin"/>:<Play/>}{primaryLabel}</Button></div>
   {outcome&&<PlanOutcomeLine outcome={outcome}/>}

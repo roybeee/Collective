@@ -7,6 +7,8 @@ import type {BriefDraft} from '@/lib/brief';
 import {initialSteps,meetingActive,publicMeeting,parseMeetingStep,candidateArtifacts,meetingAgenda,meetingLabels,meetingCopyPack,hasDisagreement,latestChoice,userDecision,choiceLabels,type Meeting,type MeetingStep,type MeetingPlan,type MeetingChoice,type MeetingChoiceValue,type Contribution,type Synthesis,type Revision,type QualityReview} from '@/lib/meetings';
 // 이견 선택 게이트(X2, 스위치 meeting_choice_gate 기본 꺼짐): 켜져 있을 때만 합의 뒤 첫 개선 단계를 승인 대기로 멈춘다. 선택 기록·입력 전달은 스위치와 무관하다. 스위치는 보조 모듈이 읽는다.
 import {choiceGateEnabled} from './meeting-choice-server';
+// 실행 중 지시 추가(P14) 검증·한도(lib/meeting-instructions.ts).
+import {cleanInstruction,INSTRUCTION_MAX_CHARS,INSTRUCTION_MAX_COUNT,type AddedInstruction} from './meeting-instructions';
 import {claimGuard,unverifiedClaims} from '@/lib/campaign-policy';
 import {sameEvidenceFactRefs} from '@/lib/brand-facts';
 import {meetingSubmissionId,requireMeetingWorker,retryFailedMeeting,meetingBasis,meetingStale,type MeetingBasis} from './meeting-repair';
@@ -166,7 +168,7 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:E
    await database().batch([database().prepare('INSERT INTO jobs(id,owner,campaign_id,role,status,model,campaign_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').bind(jobId(owner,m),owner,c.id,'meeting','in_progress',cfg.model,c.version,m.createdAt,m.updatedAt),recordStatement(owner,'team_meeting',m.id,m,c.id),eventStatement(owner,c.id,'팀 회의를 시작했습니다. 8명 의견 교환 → 개선 과제 → 품질 재검토.',by)]);
    return json(publicMeeting(m));
   }
-  if(!['advance','recover','cancel','retry_failed','choose'].includes(String(b.action)))throw new ApiError(400,'지원하지 않는 회의 작업입니다.');
+  if(!['advance','recover','cancel','retry_failed','choose','add_instruction'].includes(String(b.action)))throw new ApiError(400,'지원하지 않는 회의 작업입니다.');
   const m=await readRecord<Meeting>(owner,'team_meeting',id);
   if(b.action==='choose'){
    // 남은 이견 A/B 선택(X2): 합의 단계가 완료된 회의에서만, 추가만 한다(meeting_choice 기록 + 회의의 choices). 게이트로 멈춘 단계가 있으면 다시 대기로 돌려 다음 조회 때 제출된다.
@@ -179,6 +181,17 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:E
    for(const s of m.steps)if(choiceGateWaiting(s))s.status='pending';
    m.updatedAt=stamp();
    await database().batch([recordStatement(owner,'meeting_choice',record.id,{...record,meetingId:m.id,campaignId:m.campaignId},m.campaignId),...writes(owner,m),eventStatement(owner,m.campaignId,`회의 이견 선택을 기록했습니다(${choiceLabels[record.choice]}). 다음 단계 입력에 전달합니다.`,by)]);
+   return json(publicMeeting(m));
+  }
+  if(b.action==='add_instruction'){
+   // 실행 중 지시 추가(P14): 진행 중 회의에만, 추가만 한다(meeting_instruction 기록 + 회의의 instructions). 지금 단계가 아니라 그 뒤 단계 입력부터 실린다(lib/meeting-input.ts).
+   if(!meetingActive(m)||m.stopRequested)throw new ApiError(409,'진행 중인 회의에만 지시를 추가할 수 있습니다.');
+   const text=cleanInstruction(b.text);if(!text)throw new ApiError(400,`추가 지시는 1~${INSTRUCTION_MAX_CHARS}자로 적어 주세요.`);
+   if((m.instructions||[]).length>=INSTRUCTION_MAX_COUNT)throw new ApiError(409,`한 회의에 지시는 ${INSTRUCTION_MAX_COUNT}개까지 추가할 수 있습니다.`);
+   const current=m.steps.find(s=>s.status!=='completed');if(!current)throw new ApiError(409,'회의 진행 상태를 확인해 주세요.');
+   const record:AddedInstruction={id:uid(),text,createdAt:stamp(),afterStepId:current.id,...(by?{by:{id:by.id,email:by.email}}:{})};
+   m.instructions=[...(m.instructions||[]),record];m.updatedAt=stamp();
+   await database().batch([recordStatement(owner,'meeting_instruction',record.id,{...record,meetingId:m.id,campaignId:m.campaignId},m.campaignId),...writes(owner,m),eventStatement(owner,m.campaignId,'회의 중 지시를 추가했습니다. 다음 단계 입력부터 반영합니다.',by)]);
    return json(publicMeeting(m));
   }
   if(b.action==='retry_failed'){

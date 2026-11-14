@@ -8,6 +8,8 @@ import {qualityContract} from './quality';
 import {roles,aiBudget,type Campaign,type Brand,type Artifact} from './agency';
 import {COPY_PACK_PROFILE,copyPackSchema,copyPackInstruction} from './copy-pack';
 import {BRAND_VOICE_MASK_PATHS,voiceForRole,type BrandVoiceInput} from './brand-voice';
+// 연속 실행 중 지시 추가(P14): 요청에 addedInstructions가 있을 때만 입력 끝에 싣는다. 없으면 키가 없어 이전과 바이트 동일하다.
+import {INSTRUCTION_MASK_PATHS,type AddedInstructionInput} from './meeting-instructions';
 // 입력 축소(input_diet, PR 4b): 켜진 제출만 캠페인 메타·중복 deliverable을 빼고, 선행 작업물을 섹션별 예산으로, 브랜드 자료를 역할별 digest로 싣고 입력 상한을 적용한다. 꺼지면 부르지 않는다.
 import {INPUT_DIET_VERSION,dietCampaign,sectionExcerpt,archiveDigest,capInput,ROLE_INPUT_TOKEN_CAP,type InputDietOptions,type InputDietReport} from './input-diet';
 
@@ -21,7 +23,7 @@ export type PreviousDecisions={agenda:string;decisions:string;questions:string};
 // storeAllow: 브랜드 단위 캠페인의 지점 허용 값(lib/store-allow-server.ts). 가림 허용 목록에만 쓰고 모델 입력에는 싣지 않는다. 없으면 키가 없다.
 // outputProfile: 출력 계약 프로필. 'copy-pack-v2'면 콘텐츠 역할이 카피 팩 v2 계약(lib/copy-pack.ts)으로 답한다. 다른 역할은 무시한다. 없으면 키가 없어 이전과 바이트 동일하다.
 // brandVoice: 확정 브랜드 말투(A3-2, lib/brand-voice.ts). 스위치 a3_brand_voice가 켜진 content·creative 역할만 받는다. 다른 역할은 있어도 싣지 않고, 없으면 키가 없어 이전과 바이트 동일하다.
-export type RoleRequest={role:string;campaign:Campaign;brand:Brand;archive:{confirmedSources?:object[]};evidence:Pick<EvidenceContext,'facts'|'directives'>;learning:unknown;previous:Artifact[];previousDecisions?:PreviousDecisions;revisionRequest?:RevisionRequest;prompts?:PromptSet;storeAllow?:string[];outputProfile?:typeof COPY_PACK_PROFILE;brandVoice?:BrandVoiceInput};
+export type RoleRequest={role:string;campaign:Campaign;brand:Brand;archive:{confirmedSources?:object[]};evidence:Pick<EvidenceContext,'facts'|'directives'>;learning:unknown;previous:Artifact[];previousDecisions?:PreviousDecisions;revisionRequest?:RevisionRequest;prompts?:PromptSet;storeAllow?:string[];outputProfile?:typeof COPY_PACK_PROFILE;brandVoice?:BrandVoiceInput;addedInstructions?:AddedInstructionInput};
 const copyPackOf=(r:Pick<RoleRequest,'outputProfile'>)=>r.outputProfile===COPY_PACK_PROFILE;
 function roleOf(id:string){
  const role=roles.find(r=>r.id===id);
@@ -38,14 +40,14 @@ export function roleRequestPlan(r:Pick<RoleRequest,'role'|'campaign'|'previous'|
  return {priorContext,outputContract:{...roleOutputContract(r.role,{copyPack:copyPackOf(r)}),contextTruncated:priorContext.some(a=>a.excerpt)}};
 }
 // 입력 최소화(레인 A): 브랜드 정체성 허용 목록, 담당자 자리표시, 자유 텍스트 가림(허용: 확정 사실·지점 주소·사업장 유선 번호). 가릴 탐지 0이면 이전과 바이트 동일하다.
-const ROLE_MASK_PATHS=[...BRAND_MASK_PATHS,...DIRECTIVE_MASK_PATHS,...FACT_MASK_PATHS,...STORE_MASK_PATHS,...campaignMaskPaths('campaign'),'previous.*.title','previous.*.content','previousDecisions.agenda','previousDecisions.decisions','previousDecisions.questions','revisionRequest.note','revisionRequest.previousExcerpt',...BRAND_VOICE_MASK_PATHS];
+const ROLE_MASK_PATHS=[...BRAND_MASK_PATHS,...DIRECTIVE_MASK_PATHS,...FACT_MASK_PATHS,...STORE_MASK_PATHS,...campaignMaskPaths('campaign'),'previous.*.title','previous.*.content','previousDecisions.agenda','previousDecisions.decisions','previousDecisions.questions','revisionRequest.note','revisionRequest.previousExcerpt',...BRAND_VOICE_MASK_PATHS,...INSTRUCTION_MASK_PATHS];
 // findings: 가림 기록(필드·종류·건수, 허용 값이라 가리지 않은 탐지는 allowed:true, 값 없음). role-execution.ts가 role_output_contract.inputMasking에 저장한다.
 // inputDiet(스위치 input_diet, 운영은 lib/input-diet-server.ts가 읽어 넘긴다. 평가는 인자를 넘기지 않아 꺼짐): 꺼지면 이전과 바이트 동일하다.
 // 켜지면 task.deliverable(지시문 '담당 결과물'과 중복)과 캠페인 메타를 빼고, 브랜드 자료는 ref를 붙인 뒤 역할별 digest로 바꾸고, 조립 뒤 입력 상한을 적용한다. diet는 그 요약이다(켜진 때만).
 export function buildRoleInputMasked(r:RoleRequest,{inputDiet=false}:InputDietOptions={}):{input:string;findings:InputMasking[];diet?:InputDietReport}{
  const role=roleOf(r.role),c=r.campaign,{priorContext,outputContract}=roleRequestPlan(r,{inputDiet}),voice=voiceForRole(role.id,r.brandVoice);
  const digest=inputDiet?archiveDigest(labelArchive(r.archive),role.id):null;
- const built={task:{action:'작성',role:role.id,roleName:role.name,...(inputDiet?{}:{deliverable:role.deliverable}),outputContract,instruction:'지금 이 역할의 산출물을 작성하세요. 작업 선택을 재질문하지 마세요. 미확정 자료는 자료 필요와 확인 계획으로 남기고 가능한 초안을 완성하세요.'+revisionInstruction(r)},skillVersion:PRACTICE_VERSION,channelPractice:campaignPractice(c,r.prompts?.channels),brand:aiBrand(r.brand),...(voice?{brandVoice:voice}:{}),brandArchive:withoutAssignees(digest?digest.archive:labelArchive(r.archive)),evidence:{facts:r.evidence.facts,directives:r.evidence.directives},factPolicy,campaign:withoutPlanOwner({...(inputDiet?dietCampaign(c):c),...aiBudget(c),id:undefined,ref:`브리프 v${c.version}`}),learning:r.learning,previous:priorContext,...(r.previousDecisions?{previousDecisions:r.previousDecisions}:{}),...(r.revisionRequest?{revisionRequest:r.revisionRequest}:{})};
+ const built={task:{action:'작성',role:role.id,roleName:role.name,...(inputDiet?{}:{deliverable:role.deliverable}),outputContract,instruction:'지금 이 역할의 산출물을 작성하세요. 작업 선택을 재질문하지 마세요. 미확정 자료는 자료 필요와 확인 계획으로 남기고 가능한 초안을 완성하세요.'+revisionInstruction(r)},skillVersion:PRACTICE_VERSION,channelPractice:campaignPractice(c,r.prompts?.channels),brand:aiBrand(r.brand),...(voice?{brandVoice:voice}:{}),brandArchive:withoutAssignees(digest?digest.archive:labelArchive(r.archive)),evidence:{facts:r.evidence.facts,directives:r.evidence.directives},factPolicy,campaign:withoutPlanOwner({...(inputDiet?dietCampaign(c):c),...aiBudget(c),id:undefined,ref:`브리프 v${c.version}`}),learning:r.learning,previous:priorContext,...(r.previousDecisions?{previousDecisions:r.previousDecisions}:{}),...(r.revisionRequest?{revisionRequest:r.revisionRequest}:{}),...(r.addedInstructions?{addedInstructions:r.addedInstructions}:{})};
  const capped=digest?capInput(built,ROLE_INPUT_TOKEN_CAP):null,raw=capped?capped.value:built;
  const masked=maskFields(raw,ROLE_MASK_PATHS,{allow:productionAllow(r.evidence,r.archive,r.storeAllow)});
  return {input:JSON.stringify(masked.value),findings:inputMaskingRecord(masked),...(digest&&capped?{diet:{version:INPUT_DIET_VERSION,archive:digest.report,cap:capped.report}}:{})};

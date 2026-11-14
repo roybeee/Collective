@@ -1,4 +1,6 @@
 'use client';
+// 사용량 미터(P11): 탭 머리에 이번 달 토큰 누계/상한 막대(80%·100% 상태)를 보인다. 이미 읽은 예산 요약을 넘겨 다시 읽지 않는다.
+import {UsageMeter} from '@/components/app/usage-meter';
 import {useCallback,useEffect,useState,type FormEvent} from 'react';
 import {Download,ReceiptText,RefreshCw,TriangleAlert} from 'lucide-react';
 import {Badge} from '@/components/ui/badge';
@@ -204,6 +206,7 @@ export function UsagePanel(){
  },[]);
  return <section className="settings-card col-span-full min-w-0">
   <div className="flex flex-wrap items-start justify-between gap-4"><div><div className="settings-icon"><ReceiptText/></div><h2>AI 사용량과 비용</h2></div><Button variant="outline" disabled={loading} onClick={()=>{setLoading(true);void refresh()}}><RefreshCw/>새로고침</Button></div>
+  {data?.budget&&<UsageMeter budget={data.budget} className="my-3"/>}
   <p>실패하거나 취소된 실행도 공급자가 보고한 사용량을 남깁니다. 알 수 없는 모델·토큰·금액은 ‘미확인’으로 표시합니다.</p>
   <p className="subtle-note">hermes-agent는 연결 별칭입니다. 기반 모델이 보고되지 않으면 모델을 추정하거나 별칭에 모델 단가를 적용하지 않습니다. 소유자가 선언한 별칭 단가는 ‘선언 단가 추정’으로 따로 표시합니다.</p>
   <p className="notice">{data?.notice||'비용은 직접 등록한 단가로 계산한 추정치입니다. 도구 요금·할인·캐시 요금·세금은 포함하지 않습니다.'}</p>
