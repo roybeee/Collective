@@ -1,10 +1,10 @@
 'use client';
 import {t,type MessageKey} from '@/lib/i18n';
 import {useT} from '@/lib/i18n-react';
-import '@/lib/i18n/lazy';
+import '@/lib/i18n/lazy-campaign';
 import {cssVars} from '@/lib/ui/css-vars';
 import {clientId} from '@/lib/client';
-import {metaText} from '@/lib/format';
+import {kstText,metaText} from '@/lib/format';
 import {MetaLine} from '@/components/app/meta-line';
 import {useCallback,useEffect,useId,useMemo,useRef,useState} from 'react';
 import {Users,Play,Pause,RefreshCw,LoaderCircle,Check,ArrowRight,Download,MessageSquare,ChevronDown,ChevronRight} from 'lucide-react';
@@ -33,7 +33,8 @@ const stateKeys:Record<string,MessageKey>={running:'meeting.state.running',uncer
 const stateName=(status:string)=>stateKeys[status]?t(stateKeys[status]):undefined;
 const verdictKeys={ready_for_review:'meeting.verdict.ready',revise:'meeting.verdict.revise',needs_data:'meeting.verdict.needsData'} as const;
 const roleName=(id:string)=>roles.find(r=>r.id===id)?.name||id;
-const date=(s:string)=>new Date(s).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+// 회의 기록 시각은 화면 언어로 적는다(lib/format.ts kstText, 한국어는 이전 결과와 같다).
+const date=(s:string)=>kstText(s,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
 const post=async(action:string,data:Record<string,unknown>)=>await api(action,data,'/api/meetings') as unknown as PublicMeeting;
 function Text({label,children}:{label:string;children:React.ReactNode}){return <div className="meeting-text"><h5>{label}</h5><p>{children}</p></div>}
 type ChoiceProps={choice?:MeetingChoice;waiting?:boolean;busy?:boolean;onChoose?:(choice:MeetingChoiceValue)=>Promise<void>};

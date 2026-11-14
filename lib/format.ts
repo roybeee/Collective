@@ -26,6 +26,10 @@ export function setDisplayLocale(locale:DisplayLocale){shown=locale}
 const unknownWord=()=>shown==='en'?'Unconfirmed':shown==='ja'?'未確認':UNKNOWN;
 const intl=(d:Date,o:Intl.DateTimeFormatOptions)=>new Intl.DateTimeFormat(localeTags[shown],{timeZone:KST,hourCycle:'h23',...o}).format(d);
 const ymd=():Intl.DateTimeFormatOptions=>shown==='en'?{year:'numeric',month:'short',day:'numeric'}:{year:'numeric',month:'2-digit',day:'2-digit'};
+/** 서울 시각을 지금 화면 언어로 적는다(Intl 옵션 그대로). 한국어는 이전 화면의 toLocaleString('ko-KR',{timeZone:'Asia/Seoul',…}) 결과와 같다. 값이 없거나 틀리면 empty. */
+export function kstText(value:unknown,options:Intl.DateTimeFormatOptions,empty=''){const d=valid(value);return d?d.toLocaleString(localeTags[shown],{timeZone:KST,...options}):empty}
+/** 서울 날짜만(toLocaleDateString). 한국어는 '2026. 11. 15.'처럼 이전 결과와 같다. */
+export function kstDate(value:unknown,empty=''){const d=valid(value);return d?d.toLocaleDateString(localeTags[shown],{timeZone:KST}):empty}
 /** ISO → '2026-10-01 14:30'(KST). en 'Oct 1, 2026, 14:30', ja '2026/10/01 14:30'. */
 export function dateTime(value:unknown,empty=unknownWord()){const d=valid(value);if(!d)return empty;if(shown!=='ko')return intl(d,{...ymd(),hour:'2-digit',minute:'2-digit'});const p=parts(d);return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`}
 /** ISO → '10월 2일 오후 3:10'(KST). 문장 안에 넣는 시각이다(변경 이력 문장). 표·선택지는 dateTime을 쓴다. en 'Oct 2, 3:10 PM', ja '10月2日 15:10'. */

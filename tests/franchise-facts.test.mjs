@@ -7,6 +7,7 @@ import {deflateSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
 import {franchiseFixture,captureConsole,DISCLAIMER,sha64} from './helpers/franchise-fixture.mjs';
 import {testRuntime} from './helpers/runtime.mjs';
+import {koSource} from './helpers/i18n-source.mjs';
 import {seed,mockHermes,runRole,runMeeting,roleCampaign,meetingCampaign,brand as seedBrand,now as seedNow} from './helpers/prompt-seed.mjs';
 
 captureConsole();
@@ -283,5 +284,5 @@ check('model submission bytes are identical with or without franchise source and
 check('no franchise source detail reaches a model submission',after.bodies.every(b=>!/sourceRef|disclosureVersionId|정보공개서 등록 버전|가상 정보공개서 모델본|storeType|dv-model/.test(b))&&after.bodies.some(b=>b.includes('franchise_fee')));
 
 // 묶음 13 게시 전 점검(2026-09-25): 스위치가 꺼지면 서버가 옮기기를 409로 막으므로 화면도 '새 버전으로 옮기기' 버튼을 그리지 않는다(원문 검사, mocked).
-check('rebase button needs the switch on',/canManage&&block\.enabled&&block\.currentVersionId\?<> <Button[^>]*onClick=\{onRebase\}>새 버전으로 옮기기/.test(readFileSync('app/brand-facts-panel.tsx','utf8')));
+check('rebase button needs the switch on',/canManage&&block\.enabled&&block\.currentVersionId\?<> <Button[^>]*onClick=\{onRebase\}>새 버전으로 옮기기/.test(koSource('app/brand-facts-panel.tsx')));
 console.log(JSON.stringify({passed:passed.length}));

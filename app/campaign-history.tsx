@@ -1,7 +1,7 @@
 'use client';
 import {t} from '@/lib/i18n';
 import {useT} from '@/lib/i18n-react';
-import '@/lib/i18n/lazy';
+import '@/lib/i18n/lazy-campaign';
 import {EmptyLine} from '@/components/app/empty-line';
 import {useState} from 'react';
 import {NativeSelect,NativeSelectOptGroup,NativeSelectOption} from '@/components/ui/native-select';

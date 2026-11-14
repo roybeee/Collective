@@ -2,7 +2,7 @@
 // 금액은 화면 언어로 맞춘다(한국어는 lib/agency money와 같은 '19,800원').
 import {t,localMoney as money} from '@/lib/i18n';
 import {useT} from '@/lib/i18n-react';
-import '@/lib/i18n/lazy';
+import '@/lib/i18n/lazy-campaign';
 import {lazy,Suspense,useEffect,useState} from 'react';
 import {Button} from '@/components/ui/button';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';

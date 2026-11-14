@@ -2,7 +2,7 @@
 // 규정 수정 제안 목록(스위치 compliance_fixes가 켜졌을 때만 규정 점검 패널이 내려받는 lazy 청크). 걸린 규칙마다 제안(어절 비교·근거·확인 필요)을 보이고,
 // 제안이 없는 규칙은 '직접 고쳐야 합니다'로 둔다. 고른 제안은 확인 카드(무엇·어디·되돌림)를 거쳐 POST /api/action apply_compliance_fixes로 보낸다.
 // 서버가 저장 본문으로 제안을 다시 계산하고 새 버전을 저장한 뒤 다시 점검한 결과를 돌려준다. 이 부품은 글을 직접 바꾸지 않는다.
-import '@/lib/i18n/lazy';
+import '@/lib/i18n/lazy-trust';
 import {useState} from 'react';
 import {toast} from 'sonner';
 import {Button} from '@/components/ui/button';

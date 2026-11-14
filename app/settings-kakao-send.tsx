@@ -2,7 +2,7 @@
 // 채널 연결 → 카카오 카드 안의 '메시지 보내기'(C6 후속, docs/KAKAO-BIZMESSAGE.ko.md 6절). app/settings-kakao.tsx가 지연 로딩한다.
 // 순서: 초안(템플릿 코드 또는 브랜드 메시지 본문) → 판정 결과 → 수신자 묶음(수·해시만) → 추정 비용 → 승인(확인 카드) → 전송(번호 입력, 해시 대조) → 상태 목록.
 // 쓰는 API: GET /api/kakao?brandId=&segment=(읽기), POST draft·approve·send·result(기존). 번호는 전송 요청 본문에만 있고 서버·화면에 남지 않는다.
-import '@/lib/i18n/lazy';
+import '@/lib/i18n/lazy-settings';
 import {useEffect,useState} from 'react';
 import {Send,ShieldCheck} from 'lucide-react';
 import {Button} from '@/components/ui/button';

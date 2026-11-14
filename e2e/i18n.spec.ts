@@ -103,3 +103,69 @@ test('캠페인 상세 탭·제작·발행: 영어·일본어 머리말, 한국�
   await expect(page.getByText('캠페인 목표',{exact:true})).toBeVisible();
  }finally{await context.close()}
 });
+
+// GLOBAL-PLAN G6 3단계(모바일·데스크톱, QA 2026-11-15 N2): 영어·일본어에서 작업물 대화상자의 신뢰 UI(규정 점검·출처 배지·수정 사유·검토자 링크)·안건 제목·카카오·플레이스 초안·광고 제안 카드 틀에 한글이 남지 않는다.
+// 한글 비율은 그 영역 글자에서 시드한 사용자 자료(캠페인·작업물·지점 이름, 리뷰·제안 문장, 초안 문장)를 뺀 값이다. 한국어는 이전 문구 그대로다. Real local D1/API/Chromium. 인증 헤더 mocked. 외부 호출 없음.
+const hangulRatio=(loc:ReturnType<Page['locator']>,exclude:readonly string[]=[])=>loc.evaluate((el,ex)=>{let text=(el as HTMLElement).innerText;for(const x of ex)text=text.split(x).join('');const letters=text.replace(/\s/g,'').length,h=(text.match(/[가-힣]/g)??[]).length;return letters?h/letters:1},[...exclude].sort((a,b)=>b.length-a.length));
+// 한글이 남은 줄을 실패 메시지에 싣는다(무엇이 번역되지 않았는지 바로 보이게).
+const hangulLines=(loc:ReturnType<Page['locator']>,exclude:readonly string[]=[])=>loc.evaluate((el,ex)=>{let text=(el as HTMLElement).innerText;for(const x of ex)text=text.split(x).join('');return text.split('\n').filter(l=>/[가-힣]/.test(l)).slice(0,6).join(' | ')},[...exclude].sort((a,b)=>b.length-a.length));
+const expectChrome=async(loc:ReturnType<Page['locator']>,label:string,exclude:readonly string[]=[],limit=0.02)=>{const r=await hangulRatio(loc,exclude);expect(r,`${label} Hangul ratio ${r.toFixed(3)}: ${r>=limit?await hangulLines(loc,exclude):''}`).toBeLessThan(limit)};
+const phase3={
+ en:{agenda:'Today’s agenda',decide:/^Decide/,artifactRow:'Content studio deliverable awaiting review',placeRow:'Place review reply awaiting approval',compliance:'Compliance check',recheck:'Check again',reasons:'Reasons for changes',origin:'Added manually',place:'Place review replies & news drafts',ads:'Naver search ads proposals',kakao:'Kakao Business Message (dealer)',reviewer:'Reviewer links'},
+ ja:{agenda:'今日の議題',decide:/^決定/,artifactRow:'コンテンツスタジオの作業物がレビュー待ち',placeRow:'プレイスのレビュー返信が承認待ち',compliance:'規定チェック',recheck:'再チェック',reasons:'修正依頼の理由',origin:'直接登録',place:'プレイスのレビュー返信・お知らせ下書き',ads:'Naver検索広告の提案',kakao:'カカオビジネスメッセージ(ディーラー)',reviewer:'レビュアーリンク'},
+ ko:{agenda:'오늘의 안건',decide:/^결정/,artifactRow:'콘텐츠 스튜디오 작업물 검토 대기',placeRow:'플레이스 리뷰 답글 승인 대기',compliance:'규정 점검',recheck:'다시 점검',reasons:'수정 요청 사유',origin:'직접 등록',place:'플레이스 리뷰 답글·소식 초안',ads:'네이버 검색광고 제안',kakao:'카카오 비즈메시지(딜러)',reviewer:'검토자 링크'},
+} as const;
+test('신뢰 UI·안건 제목·설정 카드: 영어·일본어에 한국어 틀이 없고 한국어는 그대로',async({browser},info)=>{
+ test.setTimeout(240_000);
+ const {context,page,post}=await taskContext(browser,info,'i18n3',1);
+ try{
+  for(const flag of ['share_links','place_drafts'])expect((await page.request.post('/api/feature-flags',{data:{action:'set',flag,enabled:true}})).status()).toBe(200);
+  const title=`언어 신뢰 ${info.project.name}`,artifactTitle=`신뢰 초안 ${info.project.name}`,storeName=`언어 지점 ${info.project.name}`,review='음식이 맛있고 친절했어요. 또 올게요.',rationale='E2E 다시 켜기 제안';
+  const {id:campaignId}=await post('/api/action',{action:'save_campaign',data:{brandId:'ofd',title,goal:'신뢰 화면 언어'}}) as {id:string};
+  await post('/api/action',{action:'save_artifact',campaignId,role:'content',title:artifactTitle,content:'## 카피\n합성 본문'});
+  const {id:storeId}=await post('/api/stores',{action:'save_store',brandId:'ofd',data:{name:storeName,address:'합성 주소',tradeArea:'residential',goal:'언어'}}) as {id:string};
+  await post('/api/place-drafts',{action:'create',kind:'review_reply',storeId,sourceText:review,rating:5});
+  const seeded=await post('/api/ads-proposals',{action:'create',kind:'resume',campaignId:'e2e-ncc-1',operation:{op:'set_user_lock',target:'keyword',ids:['nkw-e2e-1'],userLock:false},rationale}) as {proposal:{id:string}};
+  const day=(n:number)=>new Date(Date.now()-n*86_400_000).toISOString().slice(0,10);
+  await post('/api/action',{action:'save_metric',campaignId,schemaVersion:2,periodStart:day(13),periodEnd:day(7),scope:'전체 주문',source:'POS 정산서',definition:'KST 순매출',method:'export',revenue:412000,orders:20,variableCosts:100000,adSpend:30000,productionCost:0});
+  const user=[title,artifactTitle,storeName,review,rationale,'합성 본문'];
+  for(const locale of ['en','ja','ko'] as const){
+   const n=phase3[locale],translated=locale!=='ko';
+   await page.goto('/');await page.evaluate(l=>localStorage.setItem('locale',l),locale);
+   await page.goto('/');await expect(page.locator('html')).toHaveAttribute('lang',locale);
+   // 안건 제목(서버 titleKey): 작업물 검토·플레이스 초안 행의 제목 글자
+   const inbox=agenda(page,n.agenda);await expect(inbox).toBeVisible();
+   await inbox.getByRole('radio',{name:n.decide}).click();
+   for(const row of [n.artifactRow,n.placeRow]){const b=inbox.locator('[data-inbox-row] b').filter({hasText:row}).first();await expect(b,`${locale} agenda ${row}`).toHaveText(row);if(translated)expect(await hangulRatio(b)).toBe(0)}
+   // 작업물 대화상자: 규정 점검 패널·출처 배지·수정 사유 칩·검토자 링크 카드
+   await page.goto(`/?view=campaigns&campaign=${campaignId}&ctab=outputs`);
+   const item=page.locator('.artifact-item').filter({hasText:artifactTitle});await expect(item).toBeVisible({timeout:30_000});
+   await expect(item.locator('.origin-badge')).toHaveText(n.origin);
+   await item.locator('.artifact-row').click();
+   const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();
+   const panel=dialog.getByRole('region',{name:n.compliance,exact:true});await expect(panel).toBeVisible();
+   await expect(panel.getByRole('button',{name:n.recheck,exact:true})).toBeVisible();
+   await expect(panel.locator('.meta-line').first()).toBeVisible();
+   const reasons=dialog.getByRole('group',{name:n.reasons,exact:true});await expect(reasons).toBeVisible();
+   const share=dialog.getByRole('region',{name:`${n.reviewer} ${artifactTitle}`});await expect(share).toBeVisible();
+   if(translated)for(const [label,region] of [['compliance',panel],['reasons',reasons],['reviewer links',share]] as const)await expectChrome(region,`${locale} ${label}`,user);
+   await page.keyboard.press('Escape');await expect(dialog).toBeHidden();
+   // 광고 제안 카드(캠페인 성과 탭)
+   await page.goto(`/?view=campaigns&campaign=${campaignId}&ctab=results`);
+   const ads=page.getByRole('region',{name:n.ads,exact:true});await expect(ads).toBeVisible({timeout:30_000});
+   await expect(ads.locator(`[data-proposal="${seeded.proposal.id}"]`)).toContainText(rationale);
+   if(translated)await expectChrome(ads,`${locale} ads card`,user);
+   // 플레이스 초안 카드(점포 마케팅 > 지점 > 채널 점검). 초안 문장(규칙으로 만든 답글)은 사용자 자료로 뺀다.
+   await page.goto(`/?view=stores&brand=ofd&store=${encodeURIComponent(storeId)}&tab=channels`);
+   const place=page.getByRole('region',{name:n.place,exact:true});await expect(place).toBeVisible({timeout:30_000});
+   await expect(place.locator('[data-place-draft]').first()).toBeVisible();
+   const listing=await (await page.request.get('/api/place-drafts?storeId='+encodeURIComponent(storeId))).json() as {drafts:{draft:{text:string}}[]};
+   const draft=[...listing.drafts.flatMap(d=>d.draft.text.split('\n')),...await place.locator('[data-place-draft] ul li').allInnerTexts()];
+   if(translated)await expectChrome(place,`${locale} place card`,[...user,...draft]);
+   // 카카오 카드(설정 > 채널 연결)
+   await page.goto('/?view=settings&section=channels');
+   const kakao=page.locator('[data-channel="kakao"]');await expect(kakao).toBeVisible({timeout:30_000});await expect(kakao).toContainText(n.kakao);
+   if(translated)await expectChrome(kakao,`${locale} kakao card`,user);
+  }
+ }finally{await context.close()}
+});
