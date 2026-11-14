@@ -10,6 +10,7 @@ import type {Arm, ViralExperiment} from './learning';
 import type {StoreMetricKey} from './store-marketing';
 import type {Campaign} from './agency';
 import type {Publication} from './execution';
+import {attachMeasurement} from './creative-publication-link-server';
 
 // 워커가 같은 대상을 과도하게 다시 부르지 않도록 하는 최소 간격(정의는 lib/measurement-status.ts).
 export {COLLECT_INTERVAL_MS};
@@ -202,6 +203,8 @@ export async function collectForExperiment(owner: string, input: Record<string, 
   recordStatement(owner, 'measurement_draft', experimentId, draft, experiment.campaignId),
   recordStatement(owner, 'measurement_source', source.id, source, experimentId),
  ]);
+ // G2 자동 보정: 같은 외부 게시물 ID로 이은 작업물 연결에 관측(분모·분자)을 붙인다(스위치 creative_score, 꺼지면 1행만 읽음, 예외 없음).
+ await attachMeasurement(owner, {connector: connector.key, target, arm: collected.arm, definition: collected.definition, fetchedAt: collected.fetchedAt});
  return {collected, draft};
 }
 

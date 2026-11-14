@@ -11,7 +11,7 @@ export async function authBody(req:Request){
 // IP 키(100회)는 모든 요청을 센다. 계정은 (계정+IP) 키(10회)로 빠르게 막고, 여러 IP의 실패를 합산하는 계정 전체 키는 막지 않고 늦춘다.
 // 인증에 성공하면 계정 키를 지우므로(clearRateLimit) 남는 수는 실패뿐이다. 다른 IP의 실패가 정상 사용자의 IP 키를 채우지 않는다.
 const limitWindow=900000,accountLimit=50,maxWaitSeconds=60;
-function clientAddress(req:Request){
+export function clientAddress(req:Request){
  // Only the edge-provided address is trusted; forwarded headers are ignored.
  const address=req.headers.get('cf-connecting-ip')||'unknown-edge-address';
  // IPv6는 한 사용자가 보통 /64 전체를 받으므로 /64 접두어로 묶는다. 주소를 바꿔 가며 (계정+IP) 키를 새로 받지 못하게 한다. IPv4는 그대로 쓴다.

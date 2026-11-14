@@ -1,6 +1,8 @@
 import {actor,requireAdminActor,secureMutation,body,json,failure,ApiError,str} from '@/lib/server';
 import {artifactCreativeScore,recomputeCreativeScore,calibrateCreativeScores,brandCalibration} from '@/lib/creative-score-server';
 import {requireArtifactRead,requireBrandRead} from '@/lib/server-access';
+import {calibrateFromLinks,backfillPublicationLinks,linkMetaAd} from '@/lib/creative-publication-link-server';
+import {isEnabled} from '@/lib/feature-flags';
 
 // 소재 예측 점수(G2, docs/CREATIVE-SCORE.ko.md). 읽기는 로그인한 모든 역할(작업물 점수 ?artifactId= 또는 보정표 ?brandId=&channel=).
 // 쓰기(다시 계산·보정표 만들기)는 대표·관리자만(직원 403, 비로그인 401). 다시 계산은 스위치 creative_score가 꺼져 있으면 409다. 모델·외부 호출은 없다.
@@ -19,6 +21,10 @@ export async function POST(req:Request){
   const who=await requireAdminActor(req);secureMutation(req);const input=await body(req);
   if(input.action==='recompute')return json(await recomputeCreativeScore(who.owner,str(input.artifactId,'작업물',200,true)));
   if(input.action==='calibrate')return json(await calibrateCreativeScores(who.owner,input));
+  // 자동 보정(연결 관측): 바로 다시 맞추기·백필·Meta 광고 연결. 스위치 꺼짐 409.
+  if(input.action==='calibrate_linked')return json(await calibrateFromLinks(who.owner));
+  if(input.action==='backfill_links'){if(!await isEnabled(who.owner,'creative_score').catch(()=>false))throw new ApiError(409,'소재 예측 점수 스위치가 꺼져 있습니다. 소유자가 켠 뒤 다시 시도하세요.');return json(await backfillPublicationLinks(who.owner))}
+  if(input.action==='link_meta_ad')return json(await linkMetaAd(who.owner,input));
   throw new ApiError(400,'지원하지 않는 소재 점수 작업입니다.');
  }catch(error){return failure(error)}
 }

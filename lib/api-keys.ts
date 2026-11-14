@@ -7,6 +7,8 @@ export const API_KEY_SCOPES=['read','draft'] as const;
 export type ApiKeyScope=typeof API_KEY_SCOPES[number];
 export const API_KEY_SCOPE_LABELS:Record<ApiKeyScope,string>={read:'읽기',draft:'읽기 + 초안 저장'};
 export const API_KEY_DEFAULT_DAYS=90,API_KEY_MAX_DAYS=365,API_KEY_LABEL_MAX=60,API_KEYS_MAX_ACTIVE=20,API_KEY_RATE_PER_MINUTE=60;
+// 유효한 키가 없는 요청의 IP당 1분 한도(키 추측·무차별 대입 완화)와 호출 감사(api_call) 보존 기간.
+export const API_KEY_INVALID_PER_IP_MINUTE=30,API_CALL_RETENTION_DAYS=90;
 export const API_KEY_DAY_CHOICES=[30,90,180,365] as const;
 export type ApiKeyCreator={id:string;role:'owner'|'admin'};
 export type ApiKey={id:string;label:string;scope:ApiKeyScope;prefix:typeof API_KEY_PREFIX;last4:string;createdBy:ApiKeyCreator;createdAt:string;expiresAt:string;revokedAt:string|null;lastUsedAt:string|null};
@@ -23,6 +25,7 @@ export const API_KEY_MESSAGES={
  notFound:'그 API 키가 없습니다.',
  unauthorized:'API 키가 없거나 만료·취소됐습니다. 설정에서 새 키를 만들어 Authorization: Bearer 헤더로 보내세요.',
  rate:`요청이 많습니다. API 키당 1분에 ${API_KEY_RATE_PER_MINUTE}회까지입니다. 잠시 후 다시 시도하세요.`,
+ ipRate:`유효한 API 키 없이 보낸 요청이 많습니다. 같은 주소에서 1분에 ${API_KEY_INVALID_PER_IP_MINUTE}회까지입니다. 잠시 후 올바른 키로 다시 시도하세요.`,
 } as const;
 
 // ── 입력 검증(경계) ── 테스트 런타임이 npm 패키지를 올리지 못해 lib은 외부 검증 라이브러리를 쓰지 않는다(lib/share-links.ts와 같다). 모르는 필드는 거부한다.

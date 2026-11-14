@@ -50,6 +50,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'bizmessage_send',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'카카오 비즈메시지 전송 기록(C6): 초안·판정·승인·전송(멱등 키·딜러 메시지 id·결과 success/failed/unknown·비용)·결과 폴링. 수신자는 해시만. 캠페인과 무관'},
  {kind:'creative_score',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'소재 예측 점수(G2): 작업물 한 판(id:버전)의 0~100 추정 점수·등급·구성 요소별 근거·주의 표시·입력 해시·적용 규칙 id. 기능 스위치 creative_score가 켜졌을 때 저장 뒤 계산하거나 대표·관리자가 다시 계산한다. 캠페인과 함께 삭제'},
  {kind:'creative_calibration',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'소재 예측 점수 사후 보정표(G2): 브랜드×채널 1행(id 브랜드:채널). 게시 뒤 노출·클릭 관측과 예측 점수를 대조한 분위 구간별 관측 CTR 중앙값·구성 요소 상관 부호·표본 수·기간·방향성 라벨. 가중치를 바꾸지 않는다. 캠페인과 무관'},
+ {kind:'artifact_publication_link',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'소재 예측 점수 자동 보정 연결(G2): 발행 1건(id 발행 id, Meta 광고는 meta:<광고 ID>)이 어떤 작업물 판의 카피로 만들어졌는지·게시 채널·외부 게시물 ID·게시 시각·그 외부 ID로 수집한 마지막 관측(분모·분자·정의). 스위치 creative_score가 켜졌을 때 쓴다. 캠페인과 함께 삭제'},
+ {kind:'creative_calibration_run',parent:'none',campaignDeletion:'not_campaign_scoped',description:'소재 예측 점수 자동 보정 실행 상태(소유자당 1행 current: 마지막 실행 시각·브랜드×채널 묶음 수·쓴 표 수·연결 수). 워커 하루 정리 단계가 7일 간격을 판단한다. 캠페인과 무관'},
  {kind:'store_browser_photo_rights',parent:'store',campaignDeletion:'not_campaign_scoped',description:'네이버 점포 사진의 원본 판·서버 바이트 해시·사용권 근거·유효기간·승인자와 회수 상태. 캠페인과 무관'},
  {kind:'store_browser_binding',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포의 네이버 공개·관리 ID, 공식 관리 주소와 지정 로컬 장치·프로필 연결. 캠페인과 무관'},
  {kind:'store_browser_job',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포 브라우저 조회·영업시간 변경의 승인 판·단일 제출·미확인 대사와 최소 관찰 근거. 캠페인과 무관'},
