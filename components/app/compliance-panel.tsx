@@ -3,6 +3,7 @@ import {lazy,Suspense,useState} from 'react';
 import {Button} from '@/components/ui/button';
 import {MetaLine} from './meta-line';
 import {CreativeScoreCard} from './creative-score-card';
+import {ComplianceRate} from './compliance-rate';
 import {regradeArtifact,type AppliedFixes} from '@/lib/artifact-sources-client';
 import {SEVERITY_LABELS,type ComplianceView} from '@/lib/artifact-sources';
 
@@ -23,7 +24,7 @@ export function CompliancePanel({artifactId,artifactVersion,compliance,canManage
  }
  const shown=compliance?.categories.filter(c=>c.warn||c.block)??[],clean=compliance?.categories.filter(c=>!c.warn&&!c.block)??[];
  return <section className="compliance-panel form-stack" aria-label="규정 점검">
-  <div className="section-heading"><h4>규정 점검</h4><Button type="button" size="sm" variant="outline" disabled={busy||!canManage} disabledReason={!canManage?'대표·관리자만 다시 점검할 수 있습니다.':undefined} onClick={()=>void recheck()}>{busy?'점검 중':'다시 점검'}</Button></div>
+  <div className="section-heading"><h4>규정 점검</h4><ComplianceRate compliance={compliance}/><Button type="button" size="sm" variant="outline" disabled={busy||!canManage} disabledReason={!canManage?'대표·관리자만 다시 점검할 수 있습니다.':undefined} onClick={()=>void recheck()}>{busy?'점검 중':'다시 점검'}</Button></div>
   {!compliance?<p className="loading-line" role="status">규정 점검 결과를 불러오고 있습니다.</p>
    :compliance.status==='not_run'?<p className="subtle-note">본문이 {compliance.lines}줄이라 자동 점검 한도를 넘었습니다. 담당자가 원문 규정을 직접 확인하세요.</p>
    :<>
