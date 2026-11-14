@@ -26,6 +26,8 @@ export const writePolicy: BackoffPolicy = {maxAttempts: 3, baseDelayMs: 1000, ma
 export const DAANGN_FLAG = 'daangn_ads';
 export const CAPABILITY_KEYS = {read: 'daangn_ads.management.read', write: 'daangn_ads.management.write', events: 'daangn_ads.conversion.send'} as const;
 const TIMEOUT_MS = 20000, MAX_RESPONSE_BYTES = 500000, MAX_EVENTS = 50, MAX_READBACK = 20;
+// 전환 이벤트 한 번 전송 상한(주문 장부 전송 큐 lib/daangn-conversions-server.ts가 같은 값으로 묶는다).
+export const DAANGN_MAX_EVENTS = MAX_EVENTS;
 // 예산(원): 정수, 100원 단위, 1,000원~1억 원(미확인 가정: 공개 문서의 최소 일 예산을 확인하지 못했다).
 export const MIN_BUDGET = 1000, MAX_BUDGET = 100000000, BUDGET_STEP = 100;
 

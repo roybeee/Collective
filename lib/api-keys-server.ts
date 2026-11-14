@@ -4,8 +4,9 @@
 // 스위치 mcp_server(기본 꺼짐)는 이 파일에서만 읽는다. 꺼지면 만들기 409, MCP 경로는 모두 404다. 목록·취소는 꺼져도 된다.
 import {ApiError,database,recordStatement,stamp,uid,type Actor} from './server';
 import {authMode,hashToken,randomToken} from './auth-session';
+import {clientAddress} from './auth-request';
 import {isEnabled} from './feature-flags';
-import {API_KEY_MESSAGES as M,API_KEY_PREFIX,API_KEY_RATE_PER_MINUTE,API_KEYS_MAX_ACTIVE,entryOf,expiryOf,isApiKeyToken,keyState,parseCreateKey,parseRevokeKey,type ApiKey,type ApiKeyEntry,type Parsed} from './api-keys';
+import {API_KEY_MESSAGES as M,API_CALL_RETENTION_DAYS,API_KEY_INVALID_PER_IP_MINUTE,API_KEY_PREFIX,API_KEY_RATE_PER_MINUTE,API_KEYS_MAX_ACTIVE,entryOf,expiryOf,isApiKeyToken,keyState,parseCreateKey,parseRevokeKey,type ApiKey,type ApiKeyEntry,type Parsed} from './api-keys';
 
 const rowId=(hash:string)=>`api_key:${hash}`;
 const RATE_WINDOW=60000,TOUCH_EVERY=60000;
@@ -87,12 +88,25 @@ export async function touchApiKey(r:ResolvedKey,now=Date.now()){
  const used:ApiKey={...r.key,lastUsedAt:new Date(now).toISOString()};
  await database().prepare('UPDATE records SET data=? WHERE id=? AND owner=? AND json_extract(data,\'$.revokedAt\') IS NULL').bind(JSON.stringify(used),r.rowId,r.owner).run().catch(()=>console.error('api_key_touch_failed'));
 }
-// 키당 1분 60회(auth_rate_limits, 기존 인증 정리 주기가 지난 창을 지운다). 넘으면 429.
-export async function apiKeyRate(keyId:string,now=Date.now()){
- const key=await hashToken('mcp-key:'+keyId),db=database();
+// 1분 창 계수(auth_rate_limits, 기존 인증 정리 주기가 지난 창을 지운다). 읽지 못하면 한도를 넘은 것으로 본다(닫힌 쪽).
+async function bumpWindow(name:string,now:number){
+ const key=await hashToken(name),db=database();
  await db.prepare('INSERT INTO auth_rate_limits(key,count,window_start) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=CASE WHEN window_start<=? THEN 1 ELSE count+1 END,window_start=CASE WHEN window_start<=? THEN excluded.window_start ELSE window_start END').bind(key,now,now-RATE_WINDOW,now-RATE_WINDOW).run();
- const row=await db.prepare('SELECT count FROM auth_rate_limits WHERE key=?').bind(key).first<{count:number}>();
- if(!row||row.count>API_KEY_RATE_PER_MINUTE)throw new ApiError(429,M.rate);
+ return (await db.prepare('SELECT count FROM auth_rate_limits WHERE key=?').bind(key).first<{count:number}>())?.count??Infinity;
+}
+// 키당 1분 60회. 넘으면 429.
+export async function apiKeyRate(keyId:string,now=Date.now()){
+ if(await bumpWindow('mcp-key:'+keyId,now)>API_KEY_RATE_PER_MINUTE)throw new ApiError(429,M.rate);
+}
+// 유효한 키가 없는 요청(키 없음·모양 틀림·만료·취소·모르는 키)은 IP당 1분 30회. 넘으면 429. 주소는 Cloudflare가 넣은 CF-Connecting-IP만 믿고
+// (없으면 한 묶음 'unknown-edge-address'), IPv6는 /64로 묶는다(lib/auth-request.ts clientAddress와 같다). X-Forwarded-For는 위조할 수 있어 읽지 않는다.
+export async function invalidKeyRate(req:Request,now=Date.now()){
+ if(await bumpWindow('mcp-ip:'+clientAddress(req),now)>API_KEY_INVALID_PER_IP_MINUTE)throw new ApiError(429,M.ipRate);
+}
+// 감사 보존: 90일이 지난 api_call 행을 지운다(워커 하루 정리 단계, 문장 1개). 여러 번 돌려도 결과가 같다. 지운 행 수를 돌려준다.
+export async function purgeApiCallAudit(owner:string,now=Date.now()){
+ const cutoff=new Date(now-API_CALL_RETENTION_DAYS*86400000).toISOString();
+ return (await database().prepare("DELETE FROM records WHERE owner=? AND kind='api_call' AND updated_at<?").bind(owner,cutoff).run()).meta.changes;
 }
 // 호출 감사(kind api_call): 키 id·도구 이름·성공 여부·오류 분류·시각만. 입력·결과 본문(payload)은 남기지 않는다.
 export type ApiCallAudit={keyId:string;tool:string;ok:boolean;error?:'tool_error'|'scope_denied'|'invalid_params'|'unknown_tool'|'internal'};

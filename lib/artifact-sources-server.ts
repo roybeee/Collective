@@ -14,6 +14,8 @@ import {meetingLabels,type Meeting} from './meetings';
 import {roleArtifactId} from './role-execution';
 import {evidenceContext} from './ai-context';
 import {checkCompliance,COMPLIANCE_LEXICON,COMPLIANCE_NOTICE} from './graders/compliance';
+import {computeComplianceFixes,COMPLIANCE_FIX_NOTICE} from './graders/compliance-fixes';
+import {isEnabled} from './feature-flags';
 import {bodyOf} from './graders/text';
 import type {FactLedger} from './graders/types';
 import {MAX_GRADED_LINES} from './online-grading';
@@ -94,6 +96,13 @@ export function complianceViewOf(a:Pick<Artifact,'id'|'role'|'content'>,ledger:F
  const categories=[...new Set(rules.map(r=>r.category))].map(category=>({category,label:COMPLIANCE_CATEGORY_LABELS[category]??category,pass:rules.filter(r=>r.category===category&&!hit.has(r.id)).length,warn:issues.filter(i=>i.category===category&&i.severity==='warn').length,block:issues.filter(i=>i.category===category&&i.severity==='block').length}));
  return {...base,status:'checked',categories,issues};
 }
+// 규정 수정 제안(스위치 compliance_fixes). 꺼져 있거나 점검하지 않은 판(not_run)이면 보기를 그대로 둔다(키도 없다). 전송자 명칭은 캠페인 브랜드 이름이다.
+export async function withComplianceFixes(owner:string,c:Campaign,a:Pick<Artifact,'version'|'content'>,view:ComplianceView,ledger:FactLedger|null):Promise<ComplianceView>{
+ if(view.status!=='checked'||!await isEnabled(owner,'compliance_fixes'))return view;
+ const brand=await optional(readRecord<{name?:string}>(owner,'brand',c.brandId));
+ const items=computeComplianceFixes(a.content,{facts:ledger,senderName:typeof brand?.name==='string'?brand.name:null}).map(f=>({id:f.id,ruleId:f.ruleId,kind:f.kind,before:f.before,after:f.after,rationale:f.rationale,needsCheck:f.needsCheck,preview:f.preview,sources:sourcesOf(f.sources)}));
+ return {...view,fixes:{version:a.version,notice:COMPLIANCE_FIX_NOTICE,items,scope:{brandId:c.brandId,storeId:c.storeId??null,campaignId:c.id}}};
+}
 export async function factLedgerOf(owner:string,c:Campaign):Promise<FactLedger|null>{
  try{const facts=(await evidenceContext(database(),owner,c)).facts;return {confirmed:facts.confirmed as FactLedger['confirmed'],prohibited:facts.prohibited as FactLedger['prohibited']}}
  catch{return null}
@@ -110,7 +119,7 @@ export async function artifactSources(owner:string,artifactId:string):Promise<Ar
  const [run,ledger,grading,usageModel]=await Promise.all([runOf(owner,a),factLedgerOf(owner,c),optional(readRecord<{gradedAt?:string}>(owner,'grading',`${a.id}:${a.version}`)),isAiGenerated(a)?reportedModel(owner,a.id):Promise.resolve(null)]);
  const [labelled,facts]=await Promise.all([labelSources(owner,run?.labels??{},c),factSources(owner,a,c,ledger)]);
  return {artifactId:a.id,version:a.version,brandId:c.brandId,refs:{...labelled,...facts},factKeys:Object.keys(facts).map(k=>k.slice('fact:'.length)),
-  origin:originInfo(a,run,usageModel??run?.model??null),compliance:complianceViewOf(a,ledger,text(grading?.gradedAt))};
+  origin:originInfo(a,run,usageModel??run?.model??null),compliance:await withComplianceFixes(owner,c,a,complianceViewOf(a,ledger,text(grading?.gradedAt)),ledger)};
 }
 // 작업물 목록 카드의 소재 예측 점수 배지(G2). 캠페인의 저장된 점수 중 현재 판만 쓴다. 없는 캠페인·다른 소유자는 404다.
 export async function campaignScoreSummaries(owner:string,campaignId:string):Promise<ArtifactScoreSummary[]>{

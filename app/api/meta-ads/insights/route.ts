@@ -6,6 +6,7 @@ import {collectMetaRead,MetaReadError} from '@/lib/meta-insights-provider';
 import {metaConnectionId,metaReadToken,prepareMetaConnection,publicMetaConnection,readMetaConnection,type MetaReadConnection} from '@/lib/meta-read-connection';
 import {ApiError,acquireLock,actor,body,database,eventStatement,failure,json,listRecords,readRecord,recordStatement,releaseLock,requireAdminActor,secureMutation,stamp,str} from '@/lib/server';
 import {requireCampaignRead} from '@/lib/server-access';
+import {attachMetaInsights} from '@/lib/creative-publication-link-server';
 async function report(owner:string,id:string){try{return await readRecord<MetaInsightReport>(owner,'meta_ads_insights',id)}catch(e){if(e instanceof ApiError&&e.status===404)return null;throw e}}
 async function syncState(owner:string,id:string){try{return await readRecord<MetaSyncState>(owner,'meta_ads_sync_state',id)}catch(e){if(e instanceof ApiError&&e.status===404)return null;throw e}}
 const view=async(owner:string,r:MetaInsightReport|null,c:Campaign,canEdit:boolean)=>({syncState:await syncState(owner,c.id),report:r,summary:r?summarizeMetaInsights(r.rows):null,version:r?.version??0,campaignVersion:c.version,canEdit,stale:!!r&&(r.brandId!==c.brandId||r.campaignVersion!==c.version)});
@@ -47,5 +48,6 @@ export async function POST(req:Request){let owner='',lock='';try{
  if(b.expectedVersion!==(old?.version??0))throw new ApiError(409,'다른 성과가 저장되었습니다. 최신 화면을 불러온 뒤 다시 확인하세요.');
  const saved:MetaInsightReport={...input,id:c.id,campaignId:c.id,brandId:c.brandId,campaignVersion:c.version,version:(old?.version??0)+1,source,collectedAt:stamp(),updatedBy:who.id,digest};
  await database().batch([recordStatement(owner,'meta_ads_insights',c.id,saved,c.id),...(nextSync?[recordStatement(owner,'meta_ads_sync_state',c.id,nextSync,c.id)]:[]),eventStatement(owner,c.id,`Meta 성과 ${source==='manual'?'수동 가져오기':'읽기 수집'} v${saved.version} · ${saved.rows.length}행 · 실제 주문 매출 미검증`,{id:who.id,email:who.email})]);
+ await attachMetaInsights(owner,saved);
  return json({...await view(owner,saved,c,true),connection:publicMetaConnection(connection)});
  }catch(e){return failure(e instanceof MetaReadError?new ApiError(e.code==='rate_limit'?429:502,e.message):e instanceof MetaInsightError||e instanceof ImportError?new ApiError(400,e.message):e)}finally{if(lock)await releaseLock(owner,lock)}}

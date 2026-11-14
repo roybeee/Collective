@@ -1,6 +1,7 @@
 // 재실행 영향 설명(개선 계획 PR 5 '재실행 영향 설명', ux-12): 역할을 다시 작성하면 그 역할과 뒤 순서 역할의 이전 버전이 아닌 작업물이 이전 버전(outdated)이 된다(lib/role-execution.ts 완료 저장).
 // 화면(app/panels.tsx '다시 작성')은 그 대상과 건수를 미리 보인다. 근거: mocked(순수 함수, 합성 작업물).
 import assert from 'node:assert/strict';
+import {koSource} from './helpers/i18n-source.mjs';
 import {readFileSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
 import {SourceTextModule,createContext} from 'node:vm';
@@ -33,7 +34,7 @@ check('the note names the affected roles and count and says history is kept',()=
  assert.equal(rerunImpactNote([]),'');
 });
 check('the campaign sheet shows the note next to the rewrite button',()=>{
- const src=readFileSync('app/panels.tsx','utf8');
+ const src=koSource('app/panels.tsx');
  assert.ok(/import \{rerunImpact,rerunImpactNote\} from '@\/lib\/rerun-impact'/.test(src));
  assert.ok(/>다시 작성<\/Button><small className="rerun-impact">\{rerunImpactNote\(rerunImpact\(artifacts,r\.id\)\)\}<\/small>/.test(src));
 });

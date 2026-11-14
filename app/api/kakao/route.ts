@@ -1,7 +1,8 @@
 import {acquireLock,actor,body,failure,json,releaseLock,requireAdminActor,requireOwnerActor,secureMutation,str,type Actor} from '@/lib/server';
 import {executionRate} from '@/lib/execution-rate';
 import {connectDealer,dealerStatus,disconnectDealer,loadDealer,verifyDealer} from '@/lib/kakao/credential-server';
-import {consentSummary,generateReconsentNotice,importConsents,listReconsentNotices,recordOptout,requireBrand} from '@/lib/kakao/consent-server';
+import {consentSegment,consentSummary,generateReconsentNotice,importConsents,listReconsentNotices,recordOptout,requireBrand} from '@/lib/kakao/consent-server';
+import {ESTIMATED_UNIT_KRW} from '@/lib/kakao/segments';
 import {kakaoChannelClient,syncFriendRelations} from '@/lib/kakao/channel-sync';
 import {approveMessage,checkMessage,draftMessage,kakaoEnabled,listSends,pollResult,sendMessage} from '@/lib/kakao/send-server';
 import {KAKAO_RULES} from '@/lib/kakao/compliance';
@@ -23,6 +24,9 @@ export async function GET(req:Request){
   const [enabled,dealer]=await Promise.all([kakaoEnabled(who.owner),dealerStatus(who.owner,brandId?{brandId}:undefined)]);
   if(!brandId)return json({enabled,dealer,rules:KAKAO_RULES});
   const id=await requireBrand(who.owner,brandId);
+  // C6 후속(전송 화면): segment가 있으면 그 수신자 묶음의 수·해시(최대 50)와 추정 단가만 돌려준다(읽기, 저장 없음).
+  const segment=p.get('segment');
+  if(segment)return json({enabled,...await consentSegment(who.owner,id,segment),unitKrw:ESTIMATED_UNIT_KRW});
   const [consents,notices,sends]=await Promise.all([consentSummary(who.owner,id),listReconsentNotices(who.owner,id),listSends(who.owner,id)]);
   return json({enabled,dealer,brandId:id,consents,notices,sends,rules:KAKAO_RULES});
  }catch(error){return failure(error)}

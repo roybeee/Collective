@@ -10,15 +10,19 @@ import {getExecution,saveLimits,connectPublisher,disconnectPublisher,saveCreativ
 import {submitBuffer,inspectBuffer,listBufferChannels} from '@/lib/publisher-buffer';
 import {collectPublicationComments,dispatchDirect} from '@/lib/execution-publisher-server';
 import {registerCodedPng} from '@/lib/coded-png-server';
+import {reconcileDirect} from '@/lib/direct-reconcile-server';
 import {readBoundedJson,HttpBodyError} from '@/lib/http-limits';
 import {executionRate} from '@/lib/execution-rate';
 import {reviewActor,requireReasonCodes,publicationDecisionStatement} from '@/lib/review-decisions-server';
 import {requireAccess,campaignResource,requireCampaignAction} from '@/lib/server-access';
 import {experimentLinkFor,attachLink,linkExperiment,linkMedia,experimentLinkOptions} from '@/lib/publication-link-server';
+import {recordPublicationLink} from '@/lib/creative-publication-link-server';
+// G2 자동 보정: 작업물 카피로 만든 발행의 연결(artifact_publication_link)을 남긴다. 스위치 creative_score가 꺼져 있으면 1행만 읽고, 예외를 던지지 않는다.
+async function noteLink<T>(owner:string,value:T){await recordPublicationLink(owner,value);return value}
 
 // 관리자 전용 실행. 승인·해제·확정한 실제 계정을 기록한다.
 // loop-2: 준비 뒤 실험 연결·해제(link_experiment)와 Instagram 게시물 ID 입력(link_media)도 관리자만 한다. 준비 때 연결(save_publication experiment)은 발행 준비 권한을 따른다.
-const adminActions=['connect_buffer','disconnect_buffer','buffer_channels','save_limits','approve','execute','cancel','reconfirm','resolve_uncertain','register_coded_png','link_experiment','link_media','collect_comments'];
+const adminActions=['connect_buffer','disconnect_buffer','buffer_channels','save_limits','approve','execute','cancel','reconfirm','resolve_uncertain','register_coded_png','link_experiment','link_media','collect_comments','reconcile_direct'];
 export async function GET(req:Request){try{const owner=await identity(req),id=str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true),campaign=await readRecord<Campaign>(owner,'campaign',id);await requireAccess(req,'read_campaign',{brandId:campaign.brandId,storeId:campaign.storeId??null,campaignId:campaign.id});return json({...await getExecution(owner,campaign),experimentLinks:await experimentLinkOptions(owner,campaign)})}catch(e){return failure(e)}}
 export async function POST(req:Request){let owner='',lock='';try{
  owner=await identity(req);secureMutation(req);
@@ -43,7 +47,7 @@ export async function POST(req:Request){let owner='',lock='';try{
  if(input.action==='disconnect_buffer')return json(await disconnectPublisher(owner,campaign,input,who!));
  if(input.action==='save_creative')return json(await saveCreative(owner,campaign,input));
  // loop-2: 실험 연결은 발행을 만들기 전에 검증한다(다른 캠페인 400·진행 중 아님 409·같은 안 중복 409면 초안도 만들지 않는다).
- if(input.action==='save_publication'){const link=input.experiment===undefined||input.experiment===null?null:await experimentLinkFor(owner,campaign,input.experiment);const saved=await savePublication(owner,campaign,input,origin,who);return json(link?await attachLink(owner,campaign.id,saved,link):saved)}
+ if(input.action==='save_publication'){const link=input.experiment===undefined||input.experiment===null?null:await experimentLinkFor(owner,campaign,input.experiment);const saved=await savePublication(owner,campaign,input,origin,who);return json(await noteLink(owner,link?await attachLink(owner,campaign.id,saved,link):saved))}
  const p=await publicationFor(owner,campaign,input.id,input.version);
  if(input.action==='approve')return json(await approvePublication(owner,campaign,p,input,who!,origin));
  // A4-4: 게시 코드가 있는 초안에 코드 넣은 파생 PNG를 연결한다(관리자, 스위치 a4_png_code).
@@ -55,20 +59,22 @@ export async function POST(req:Request){let owner='',lock='';try{
   return json(input.action==='cancel'?await cancelPublication(owner,campaign,p,decision):await reconfirmPublication(owner,campaign,p,who!,decision));
  }
  if(input.action==='link_experiment')return json(await linkExperiment(owner,campaign,p,input.experiment));
- if(input.action==='link_media')return json(await linkMedia(owner,campaign,p,input,who!));
+ if(input.action==='link_media')return json(await noteLink(owner,await linkMedia(owner,campaign,p,input,who!)));
  if(input.action==='resolve_uncertain')return json(await resolveUncertain(owner,campaign,p,input,who!));
  // C3: 직접 게시로 게시 확인된 발행의 댓글·답글을 학습 실험실용으로 수집한다(추가만, 자동 답글 없음).
  if(input.action==='collect_comments')return json(await collectPublicationComments(owner,campaign,p,who));
+ // C3 후속: 결과 미확인 직접 게시 발행을 계정의 최근 게시물(캡션 해시·시각 창)로 대조한다. 읽기만 하고 다시 보내지 않는다.
+ if(input.action==='reconcile_direct')return json(await reconcileDirect(owner,campaign,p,who!));
  if(input.action==='execute'){
   const {pending,token,direct}=await reservePublication(owner,campaign,p,origin);
   await releaseLock(owner,lock);lock='';
   let result:Publication;
   try{await requireGrowthRunning(owner);await assertGrowthPublicationDispatch(owner,campaign,pending)}catch{return json(await saveProviderResult(owner,campaign,pending,{...pending,status:'failed',error:'전송 직전 실행 상태·위임·예약을 확인할 수 없거나 중단되었습니다. '+(direct?'게시':'Buffer')+' 요청을 보내지 않았습니다.'}));}
   // C3: 승인 때 발행 계정이 직접 게시(instagram_direct·threads)였으면 Buffer 대신 공급자에 직접 보낸다(두 단계·결과 미확인 재전송 금지). Buffer 경로는 그대로다.
-  if(direct)return json(await saveProviderResult(owner,campaign,pending,await dispatchDirect(owner,campaign,pending).catch(()=>({...pending,status:'uncertain' as const,error:'직접 게시 결과를 확인하지 못했습니다. 계정에서 게시 여부를 확인하고 자동 재전송하지 마세요.'}))));
+  if(direct)return json(await noteLink(owner,await saveProviderResult(owner,campaign,pending,await dispatchDirect(owner,campaign,pending).catch(()=>({...pending,status:'uncertain' as const,error:'직접 게시 결과를 확인하지 못했습니다. 계정에서 게시 여부를 확인하고 자동 재전송하지 마세요.'})))));
   try{const remote=await submitBuffer(token,{channelId:pending.channelId!,text:pending.caption,url:pending.mediaUrl,dueAt:pending.scheduledAt});result={...pending,status:providerPublicationStatus(remote.status),providerId:remote.id,providerStatus:remote.status}}
   catch{result={...pending,status:'uncertain',error:'접수 여부를 확인하지 못했습니다. Buffer에서 확인하고 자동 재전송하지 마세요.'}}
-  return json(await saveProviderResult(owner,campaign,pending,result));
+  return json(await noteLink(owner,await saveProviderResult(owner,campaign,pending,result)));
  }
  if(input.action==='refresh'){
   if(!p.providerId)throw new ApiError(409,'공급자 게시 번호가 없습니다. Buffer에서 접수 여부를 직접 확인하세요. 자동 재전송은 차단됩니다.');
@@ -79,7 +85,7 @@ export async function POST(req:Request){let owner='',lock='';try{
   const status=providerPublicationStatus(remote.status),review=await externalMediaReview(p,status,origin);
   const updated:Publication={...p,status,providerStatus:remote.status,...(review?{needsReview:review}:{}),version:p.version+1,updatedAt:stamp()};await publicationKeepingReview(owner,updated,campaign.id).run();
   if(status==='failed')await retireMedia(owner,[p]);
-  return json(updated);
+  return json(await noteLink(owner,updated));
  }
  throw new ApiError(400,'지원하지 않는 실행입니다.');
 }catch(e){return failure(e instanceof HttpBodyError?new ApiError(e.status,e.message):e)}finally{if(lock)await releaseLock(owner,lock)}}

@@ -53,7 +53,8 @@ check('execution gaps list missing dates',brief.executionGaps(unset).join()==='b
 // 화면: 확정 0원을 '미확정'으로 보이지 않게 모든 예산 표시는 budgetLabel을 쓰고, 캠페인 표는 실행 준비 미완 배지를 보여 준다.
 // WebMCP 초안 도구는 사용자가 정하지 않은 예산을 확정하지 않는다(null=미확정).
 const source=file=>readFileSync(file,'utf8');
-check('WebMCP draft tool leaves the budget unconfirmed',!/budget:0\b/.test(source('app/workspace.tsx'))&&source('app/workspace.tsx').includes("api('save_campaign',{data:{...x,budget:null}})"));
+// 도구 정의는 app/webmcp-tools.ts에 있다(UX-PLAN-3 11.26). 워크스페이스는 그 모듈을 불러오기만 한다.
+check('WebMCP draft tool leaves the budget unconfirmed',!/budget:0\b/.test(source('app/workspace.tsx'))&&!/budget:0\b/.test(source('app/webmcp-tools.ts'))&&source('app/workspace.tsx').includes("import('./webmcp-tools')")&&source('app/webmcp-tools.ts').includes("api('save_campaign',{data:{...x,budget:null}})"));
 check('campaign screens label budgets with budgetLabel',['app/workspace.tsx','app/panels.tsx'].every(f=>!source(f).includes('c.budget?money(c.budget)')&&source(f).includes('budgetLabel(c)')));
 check('campaign table shows the execution readiness badge with missing items',source('app/workspace.tsx').includes('executionGaps(c)')&&source('app/workspace.tsx').includes('실행 준비 미완'));
 check('execution gap labels name budget and dates',brief.executionGapLabels?.(unset)==='예산 상한, 시작일, 종료일');

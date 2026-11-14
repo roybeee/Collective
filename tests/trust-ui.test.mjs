@@ -1,6 +1,7 @@
 // X7 신뢰 UI 회귀(docs/GLOBAL-PLAN.ko.md 에픽 X7): ref 라벨 → 인용 조각 나누기, 근거 3단계 판정, 출처 읽기 API(인용 지도·AI 출처·규제 점검 보기, 소유자 범위),
 // 승인 판정의 manuallyVerified 저장(선택·이전 요청 호환), '다시 점검' regrade_artifact(결정론·대표/관리자 권한·grading 덮어쓰기), 화면 연결.
 // 근거: mocked(메모리 SQLite, 헤더 세션 주입, fetch 스텁). 모델·외부 네트워크 호출은 0회다. 데이터는 합성(실제 고객·매장 아님).
+import {koSource} from './helpers/i18n-source.mjs';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
@@ -137,7 +138,7 @@ check('a revision does not store manuallyVerified',r.status===200&&decisionFor('
 check('no model or network call happened',fetchCalls===0);
 
 // ── 7) 화면 연결(정적) ──
-const panels=readFileSync('app/panels.tsx','utf8'),pill=readFileSync('components/app/citation-pill.tsx','utf8'),badge=readFileSync('components/app/ai-origin-badge.tsx','utf8'),panel=readFileSync('components/app/compliance-panel.tsx','utf8');
+const panels=koSource('app/panels.tsx'),pill=readFileSync('components/app/citation-pill.tsx','utf8'),badge=readFileSync('components/app/ai-origin-badge.tsx','utf8'),panel=readFileSync('components/app/compliance-panel.tsx','utf8');
 check('the dialog renders citations, the origin badge, confidence and the compliance panel',/<CitedText /.test(panels)&&/<AiOriginBadge key="origin"/.test(panels)&&/<ConfidenceLabel /.test(panels)&&/<CompliancePanel /.test(panels));
 check('the approve request carries manuallyVerified only when verification is required',/decision==='approved'&&mustVerify\?\{manuallyVerified:true\}:\{\}/.test(panels)&&/mustVerify&&!verified/.test(panels)&&/직접 확인했습니다/.test(panels));
 check('list cards show the origin badge and score badge outside the card button',/<div className="artifact-trust-row"><AiOriginBadge /.test(panels)&&/<ScoreBadge /.test(panels)&&!/originLabel\(a\.origin\)/.test(panels));

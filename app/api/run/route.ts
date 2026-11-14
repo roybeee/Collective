@@ -3,12 +3,16 @@ import {executeRole} from '@/lib/role-execution';
 import {assertCampaignNotArchived} from '@/lib/campaign-archive';
 import {assertAutonomy,markAutonomy} from '@/lib/autonomy-server';
 import {roles} from '@/lib/agency';
-import {requireAccess,campaignResource,readableCampaignIds,requireCampaignAction,requireJobAction} from '@/lib/server-access';
+import {requireAccess,campaignResource,readableCampaignIds,requireCampaignAction,requireJobAction,requireCampaignRead} from '@/lib/server-access';
+import {addRunInstruction,runInstructions} from '@/lib/run-instruction-server';
 
 // 실행 전 계획 카드(X3)의 근거: 소유자의 최근 종료 역할 실행(접수·종료 시각·보고 토큰). 실행 내용은 바꾸지 않고 읽기만 한다. 캠페인 번호를 주면 그 캠페인을 먼저 세운다.
 const RECENT_LIMIT=40;
 export async function GET(req:Request){
  try{
+  // 연속 실행 중 추가 지시 목록(P14, ?instructions=<캠페인 id>). 캠페인 읽기 권한이면 본다.
+  const instructionsFor=new URL(req.url).searchParams.get('instructions');
+  if(instructionsFor!==null){const owner=await identity(req);await requireCampaignRead(req,instructionsFor);return json({instructions:await runInstructions(owner,instructionsFor)})}
   const owner=await identity(req),campaignId=new URL(req.url).searchParams.get('campaignId')||'';
   const rows=await database().prepare(`SELECT id,campaign_id,role,status,tokens,created_at,updated_at FROM jobs WHERE owner=? AND role IN (SELECT value FROM json_each(?)) AND status IN ('completed','failed','cancelled','incomplete') ORDER BY (campaign_id=?) DESC,updated_at DESC LIMIT ${RECENT_LIMIT}`).bind(owner,JSON.stringify(roles.map(r=>r.id)),campaignId).all<{id:string;campaign_id:string;role:string;status:string;tokens:number|null;created_at:string;updated_at:string}>();
   const recent=rows.results.map(r=>{const start=Date.parse(r.created_at),end=Date.parse(r.updated_at),ok=Number.isFinite(start)&&Number.isFinite(end)&&end>=start;
@@ -26,6 +30,8 @@ export async function POST(req:Request){
   // 보관 캠페인에는 새 역할 실행을 시작하지 않는다(409). 연속 실행 시작·진행은 lib/campaign-sequence.ts가 잠금 안에서 막는다.
   // 역할 start 검사는 잠금 밖 빠른 거절이다. 보관과 경합해 통과한 시작은 lib/role-execution.ts start가 소유자 잠금 안에서 캠페인을 읽은 직후 다시 검사해 409로 막는다(PR 4a-2).
   // G7: 역할 실행 시작(단독·연속)은 run_ai 권한이다(대표·관리자·직원 그대로, 브랜드 매니저는 배정 브랜드만, 점포 매니저·검토자 403).
+  // 연속 실행 중 지시 추가(P14): 그 캠페인의 run_ai 권한. 다음 담당 실행 입력부터 반영한다(lib/run-instruction-server.ts).
+  if(b.action==='add_instruction'){await requireCampaignAction(req,'run_ai',b.campaignId);return json(await addRunInstruction(who.owner,b,{id:who.id,email:who.email}))}
   if(b.action==='start'||b.action==='start_sequence')await requireAccess(req,'run_ai',()=>campaignResource(who.owner,b.campaignId));
   // 범위 가드: 연속 실행 진행·중지는 캠페인, 조회·복구·중지는 그 작업의 캠페인 run_ai다(대표·관리자·직원 그대로).
   else if(b.action==='stop_sequence'||b.action==='advance_sequence')await requireCampaignAction(req,'run_ai',b.campaignId);

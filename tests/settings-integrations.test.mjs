@@ -1,5 +1,6 @@
 // X-F 연결 및 설정 재구성: 채널 연결 카드의 순수 판정(app/settings-channel-state.ts)과 화면 배선(섹션 탭·카드 6종·광고 제안 카드·자동화 규칙 탭)을 고정한다.
 // 근거: mocked(순수 함수, 고정 시각). 실제 공급자 호출은 없다.
+import {koSource} from './helpers/i18n-source.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync,existsSync} from 'node:fs';
 import {resolve} from 'node:path';
@@ -56,7 +57,7 @@ check('no diff and non-bid delta',[s.diffLines(null),s.bidDelta({before:{userLoc
 
 // --- 화면 배선(소스) ----------------------------------------------------------------------
 const src=f=>readFileSync(f,'utf8');
-const panels=src('app/panels.tsx'),sections=src('app/settings-sections.tsx'),channels=src('app/settings-channels.tsx'),metrics=src('app/campaign-metrics.tsx'),detection=src('app/growth-detection-panel.tsx');
+const panels=koSource('app/panels.tsx'),sections=src('app/settings-sections.tsx'),channels=koSource('app/settings-channels.tsx'),metrics=koSource('app/campaign-metrics.tsx'),detection=src('app/growth-detection-panel.tsx');
 ok('settings panel renders the section shell and keeps the card ids',panels.includes('<SettingsShell data={data} reload={reload} connect={')&&['id="settings-safety"','id="settings-ai"','id="settings-worker"','<div id="settings-channels"><ChannelCredentialsPanel brands={data.brands}/></div>'].every(x=>panels.includes(x))&&panels.includes('usage={<UsagePanel/>} features={<FeatureTable data={data}/>}'));
 ok('feature links inside settings open the tab that holds the card',panels.includes("if(link.view==='settings'&&link.section){openSettingsSection(link.section);return}"));
 ok('the old anchor bar is gone',!panels.includes('href="#settings-ai"'));

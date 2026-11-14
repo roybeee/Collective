@@ -1,8 +1,8 @@
 // 실행 타임라인(GLOBAL-PLAN X2)의 상태 어휘와 항목 변환(순수 모듈). 회의 단계와 역할 실행(jobs)을 같은 모양으로 그린다.
 // 모르는 상태(이전 기록·새 공급자 값)는 '상태 미확인'으로 그려 화면이 비지 않게 한다. 색만으로 상태를 구분하지 않도록 글자 라벨을 늘 함께 낸다.
 import type {MeetingPhase} from './meetings';
-export type TimelineTone='idle'|'live'|'wait'|'done'|'fail'|'stop'|'unknown';
-export type TimelineItem={id:string;title:string;subtitle?:string;status:string;phase?:MeetingPhase;activity?:string;startedAt?:string|null;finishedAt?:string|null;attempt?:number;tokens?:number|null;error?:string|null};
+export type TimelineTone='idle'|'live'|'wait'|'done'|'fail'|'stop'|'unknown'|'note';
+export type TimelineItem={id:string;title:string;subtitle?:string;status:string;phase?:MeetingPhase;activity?:string;startedAt?:string|null;finishedAt?:string|null;attempt?:number;tokens?:number|null;error?:string|null;note?:string};
 export type StatusView={label:string;tone:TimelineTone;live:boolean};
 // '생각 중'은 단계가 실제로 하는 일(구체 동사)로 적는다. 역할 실행(phase 없음)은 근거 정리로 본다.
 const thinkingVerbs:Record<MeetingPhase,string>={discussion:'근거 정리 중',synthesis:'합의안 정리 중',revision:'개선본 작성 중',quality:'검수 항목 대조 중'};
@@ -18,6 +18,8 @@ const fixed:Record<string,StatusView>={
  failed:{label:'실패',tone:'fail',live:false},
  cancelled:{label:'취소',tone:'stop',live:false},
  incomplete:{label:'중단됨',tone:'stop',live:false},
+ // 실행 중 추가 지시(P14). 단계가 아니라 기록이라 진행 중으로 세지 않는다.
+ instruction:{label:'지시 추가',tone:'note',live:false},
 };
 export const knownStatuses=Object.keys(fixed).concat('thinking');
 export function statusView(status:string,phase?:MeetingPhase):StatusView{
@@ -52,3 +54,12 @@ export function runTimeline(runs:readonly RunLike[],roleName:RoleName,limit=12):
 // 진행 중 항목이 있으면 화면은 3초마다 조회하고 1초마다 경과를 다시 그린다.
 export const POLL_RUNNING_MS=3000;
 export const hasLive=(items:readonly Pick<TimelineItem,'status'>[])=>items.some(i=>statusView(i.status).live);
+// 실행 중 추가 지시(P14)를 타임라인에 끼운다. 지시를 남길 때 진행 중이던 항목(afterId) 바로 뒤에, 그 항목을 모르면 끝에 둔다. 원래 항목 순서는 바꾸지 않는다.
+export type InstructionLike={id:string;text:string;createdAt:string;afterStepId:string|null};
+export function withInstructions(items:readonly TimelineItem[],instructions:readonly InstructionLike[]|undefined,label:{title:string;subtitle:string}):TimelineItem[]{
+ if(!instructions?.length)return [...items];
+ const toItem=(i:InstructionLike):TimelineItem=>({id:'instruction:'+i.id,title:label.title,subtitle:label.subtitle,status:'instruction',startedAt:i.createdAt,finishedAt:i.createdAt,note:i.text});
+ const sorted=[...instructions].sort((a,b)=>a.createdAt.localeCompare(b.createdAt)),ids=new Set(items.map(x=>x.id));
+ const after=(id:string)=>sorted.filter(i=>i.afterStepId===id).map(toItem);
+ return [...items.flatMap(x=>[x,...after(x.id)]),...sorted.filter(i=>!i.afterStepId||!ids.has(i.afterStepId)).map(toItem)];
+}

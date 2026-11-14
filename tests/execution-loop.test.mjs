@@ -1,3 +1,4 @@
+import {koSource} from './helpers/i18n-source.mjs';
 import assert from 'node:assert/strict';
 import {deflateSync} from 'node:zlib';
 import {readFileSync} from 'node:fs';
@@ -422,7 +423,7 @@ check(JSON.stringify(exec.approvalDrift(approvedPub,cred,{version:2,maxPublicati
 check(JSON.stringify(exec.approvalDrift({...approvedPub,approvedLimits:undefined},cred,{version:2,maxPublications:2,maxPlannedCostKRW:1000}))==='["발행 횟수 한도"]','a legacy approval with another limits version names the publication count limit');
 check(exec.approvalDrift(approvedPub,cred,{version:3,maxPublications:3,maxPlannedCostKRW:2000}).length===0,'raised limits keep the approval');
 for(const file of ['lib/execution.ts','lib/execution-server.ts','app/execution-panel.tsx','docs/EXECUTION-LOOP.ko.md'])check(!readFileSync(file,'utf8').includes('실행 한도'),'the old limit name is gone from '+file);
-check(readFileSync('app/execution-panel.tsx','utf8').includes('0원보다 크게 입력하면 확정 예산과 예정 비용 상한 안에서만 승인·접수됩니다'),'the reference cost input explains that a positive value is still capped');
+check(koSource('app/execution-panel.tsx').includes('0원보다 크게 입력하면 확정 예산과 예정 비용 상한 안에서만 승인·접수됩니다'),'the reference cost input explains that a positive value is still capped');
 const steps=exec.publishSteps?.({...emptyState,creatives:[]},1)||[];
 check(steps.map(x=>x.label).join('→')==='사실 확정→PNG→채널→한도→초안→승인→접수'&&steps.findIndex(x=>!x.done)===1,'publish checklist marks the current step');
 check(JSON.stringify(exec.copyBlocks('## 게시 카피 3종과 용도·CTA\n\n### 안 1: 방문\n**훅**: 휘경동 한 판\n- 지금 들러 주세요\n\n### 안 2\n1. 포장도 됩니다\n## 총 15초 편집표\n0–3초 매장'))===JSON.stringify(['훅: 휘경동 한 판\n지금 들러 주세요','포장도 됩니다'])&&!exec.copyBlocks('## 전략\n\n게시 카피 아님').length,'copy candidates keep sub-headed copy variants and ignore other sections');
@@ -435,7 +436,7 @@ check(await probe(new Response(null,{status:302,headers:{location:'/login'}}))==
 probeInit=null;
 check(await probe(new Error('not called'),'https://other.test/media/x.png')===true&&probeInit===null,'other-origin media is not probed from the browser');
 // exec-loop-6 (4): 설정의 기능 표는 PNG 카드 제작과 Buffer 예약을 실제 상태로 안내한다.
-const panelsSource=readFileSync('app/panels.tsx','utf8'),featureSource=readFileSync('lib/feature-status.ts','utf8');
+const panelsSource=koSource('app/panels.tsx'),featureSource=readFileSync('lib/feature-status.ts','utf8');
 check(panelsSource.includes('featureRows(')&&featureSource.includes("'PNG 정보 카드'")&&featureSource.includes("'Instagram 예약 발행(Buffer)'")&&!panelsSource.includes("['광고 집행 · SNS 게시','연결 전']")&&!panelsSource.includes("['이미지 · 영상 렌더링','연결 전']"),'settings capability table reflects PNG cards and Buffer scheduling');
 console.log(JSON.stringify({passed:checks-failures.length,failed:failures.length,failures,providerCalls:calls,evidence:'real SQLite; mocked Buffer, media HTTP and R2; genuine PNG fixture'}));
 assert.deepEqual(failures,[]);

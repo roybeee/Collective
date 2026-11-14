@@ -4,6 +4,7 @@ import { defineConfig } from "vite";
 import hostingConfig from "./.openai/hosting.json";
 import { readExecutionProfile } from "./scripts/execution-profile.mjs";
 import { sites } from "./build/sites-vite-plugin";
+import { clientRouteManifest } from "./build/client-route-manifest.mjs";
 import { deployTarget, readWorkersConfig } from "./deploy/workers-config.mjs";
 
 // 브라우저 번들 전용: 최상위가 상수·함수 선언뿐인(부수 효과 없는) lib 모듈은 쓰는 부분만 싣는다. 품질 콘솔이 role-output에서 함수 하나만
@@ -126,6 +127,7 @@ export default defineConfig(async () => {
     },
     plugins: [
       vinext(),
+      clientRouteManifest,
       pureClientLib,
       homeChunk,
       ...(target === "sites" ? [sites({ mockAuth: !managedLinux })] : []),

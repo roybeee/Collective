@@ -8,7 +8,11 @@ export type OriginInfo={origin:string;originLabel:string;role:string;roleName:st
 export type ComplianceIssueView={category:string;ruleId:string;severity:'block'|'warn';title:string;excerpt:string;sources:{title:string;url:string}[]};
 export type ComplianceCategoryView={category:string;label:string;pass:number;warn:number;block:number};
 // status not_run: 줄 수가 채점 한도(lib/online-grading.ts MAX_GRADED_LINES)를 넘어 점검하지 않았다.
-export type ComplianceView={status:'checked'|'not_run';lines:number;checkedAt:string;gradedAt:string|null;notice:string;categories:ComplianceCategoryView[];issues:ComplianceIssueView[]};
+// 규정 수정 제안 한 건(스위치 compliance_fixes가 켜졌을 때만, lib/graders/compliance-fixes.ts). preview는 고침이 걸친 줄의 전후다. 적용 요청은 id만 보낸다.
+export type ComplianceFixView={id:string;ruleId:string;kind:'insert'|'replace'|'remove'|'append';before:string;after:string;rationale:string;needsCheck:boolean;preview:{before:string;after:string};sources:{title:string;url:string}[]};
+// 제안을 계산한 판과 권한 판단용 범위(캠페인 브랜드·지점). 화면은 범위 역할의 편집 권한을 이 값으로 본다.
+export type ComplianceFixes={version:number;notice:string;items:ComplianceFixView[];scope:{brandId:string;storeId:string|null;campaignId:string}};
+export type ComplianceView={status:'checked'|'not_run';lines:number;checkedAt:string;gradedAt:string|null;notice:string;categories:ComplianceCategoryView[];issues:ComplianceIssueView[];fixes?:ComplianceFixes};
 export type ArtifactSources={artifactId:string;version:number;brandId:string;refs:Record<string,CitationSource>;factKeys:string[];origin:OriginInfo;compliance:ComplianceView};
 export type ArtifactScoreSummary={artifactId:string;artifactVersion:number;score:number;band:string};
 

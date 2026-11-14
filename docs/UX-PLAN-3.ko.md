@@ -796,3 +796,22 @@ Q0 게이트 → Q7 성능 → Q2 데이터·피드백(캐시 훅이 성능과 �
   - 3클릭 하네스를 주문 번호·학습 규칙·브랜드 사실 기록 단위 검색까지 넓혀야 한다.
   - 날짜 칸 연도가 흐린 현상은 재현하지 못했다.
   - 모바일 메뉴 버튼 이름 'Toggle Sidebar'는 다른 레인 E2E가 이 이름을 써서 함께 고쳐야 한다.
+
+### 11.26 홈 첫 로딩 여유 확보 (2026-11-14)
+
+- **결과**: 홈 첫 로딩 JS(gz, `e2e/ux-budget.spec.ts`와 같은 방식: networkidle까지 받은 .js 합)가 169.8 → 160.5KB(반올림 170 → 160)가 됐다. 예산 래칫 `homeJsGzKB`를 172 → 165로 내렸다. 기준은 `integrate/wave6`(`f88a9e5`) 로컬 빌드이고, 웨이브 6 통합본 `integrate/wave6-work`(`263d808`) 위에서도 169.9 → 160.5KB다.
+
+  | 청크 | 전 | 후 | 바꾼 것 |
+  |---|---|---|---|
+  | index(vinext 런타임·경로 목록) | 59.9 | 54.1 | 브라우저 경로 목록에서 `/api/*` 경로 처리기 제외 |
+  | home(홈 화면) | 49.8 | 46.2 | tailwind-merge 가벼운 설정(약 −3.2), WebMCP 도구 지연 로드(약 −0.45) |
+  | framework(react-dom) | 57.7 | 57.7 | 그대로 |
+  | 나머지(home-client 등) | 2.4 | 2.4 | 그대로(청크별 반올림이라 합이 0.1 다를 수 있다) |
+
+- **경로 목록**: vinext는 브라우저 진입점에 모든 경로(API 경로 처리기 약 120개 포함)를 싣는다. `build/client-route-manifest.mjs` 플러그인이 가상 진입점에서 `/api/*` 항목만 뺀다(`__VINEXT_LINK_PREFETCH_ROUTES__`·`routeManifest.routes`·`routeHandlers`). `/share/*`·`/media/*`는 그대로 문서 이동이다. 이 앱의 `/api/*`는 `fetch`와 일반 `<a>`(문서 이동·내려받기)로만 쓰고, Pages 라우터가 없어 하이브리드 소유자 판정도 쓰지 않는다. vinext 생성 형식이 바뀌면 빌드가 멈춘다. 검사: `tests/client-route-manifest.test.mjs`(vinext 실제 생성기와 빌드 결과).
+- **tailwind-merge**: `cn()`이 기본 설정(379개 그룹) 대신 `lib/tw-merge-config.ts`(소스에 나오는 클래스가 속한 110개 그룹)를 쓴다. 생성: `node scripts/gen-tw-merge-config.mjs`. `tests/tw-merge-config.test.mjs`가 소스의 모든 토큰에서 그룹 여부가 같고, 그룹이 있는 토큰의 모든 순서쌍(약 37만 쌍)에서 기본 twMerge와 결과가 같음을 확인한다. twMerge는 두 토큰 관계로 결과가 정해지므로 소스 토큰으로 만든 모든 className에서 같다. 아무 파일도 가져오지 않는 `components/ui` 부품은 소스에서 뺀다.
+- **WebMCP**: 도구 정의를 `app/webmcp-tools.ts`로 옮기고 `document.modelContext`가 있을 때만 불러온다. 없는 브라우저는 받지 않는다.
+- **앞으로의 규칙**
+  - 새 API는 `app/api/` 아래에 둔다. 다른 경로에 경로 처리기를 두면 브라우저 경로 목록에 실린다.
+  - 새 Tailwind 클래스 그룹을 쓰기 시작해 `tests/tw-merge-config.test.mjs`가 실패하면 생성기를 다시 돌린다. 설정 파일을 손으로 고치지 않는다.
+  - 홈에 새로 싣는 코드는 여전히 lazy 청크에 둔다. 예산은 내려가기만 한다.

@@ -50,6 +50,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'bizmessage_send',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'카카오 비즈메시지 전송 기록(C6): 초안·판정·승인·전송(멱등 키·딜러 메시지 id·결과 success/failed/unknown·비용)·결과 폴링. 수신자는 해시만. 캠페인과 무관'},
  {kind:'creative_score',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'소재 예측 점수(G2): 작업물 한 판(id:버전)의 0~100 추정 점수·등급·구성 요소별 근거·주의 표시·입력 해시·적용 규칙 id. 기능 스위치 creative_score가 켜졌을 때 저장 뒤 계산하거나 대표·관리자가 다시 계산한다. 캠페인과 함께 삭제'},
  {kind:'creative_calibration',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'소재 예측 점수 사후 보정표(G2): 브랜드×채널 1행(id 브랜드:채널). 게시 뒤 노출·클릭 관측과 예측 점수를 대조한 분위 구간별 관측 CTR 중앙값·구성 요소 상관 부호·표본 수·기간·방향성 라벨. 가중치를 바꾸지 않는다. 캠페인과 무관'},
+ {kind:'artifact_publication_link',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'소재 예측 점수 자동 보정 연결(G2): 발행 1건(id 발행 id, Meta 광고는 meta:<광고 ID>)이 어떤 작업물 판의 카피로 만들어졌는지·게시 채널·외부 게시물 ID·게시 시각·그 외부 ID로 수집한 마지막 관측(분모·분자·정의). 스위치 creative_score가 켜졌을 때 쓴다. 캠페인과 함께 삭제'},
+ {kind:'creative_calibration_run',parent:'none',campaignDeletion:'not_campaign_scoped',description:'소재 예측 점수 자동 보정 실행 상태(소유자당 1행 current: 마지막 실행 시각·브랜드×채널 묶음 수·쓴 표 수·연결 수). 워커 하루 정리 단계가 7일 간격을 판단한다. 캠페인과 무관'},
  {kind:'store_browser_photo_rights',parent:'store',campaignDeletion:'not_campaign_scoped',description:'네이버 점포 사진의 원본 판·서버 바이트 해시·사용권 근거·유효기간·승인자와 회수 상태. 캠페인과 무관'},
  {kind:'store_browser_binding',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포의 네이버 공개·관리 ID, 공식 관리 주소와 지정 로컬 장치·프로필 연결. 캠페인과 무관'},
  {kind:'store_browser_job',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포 브라우저 조회·영업시간 변경의 승인 판·단일 제출·미확인 대사와 최소 관찰 근거. 캠페인과 무관'},
@@ -59,6 +61,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'place_draft',parent:'store',campaignDeletion:'not_campaign_scoped',description:'플레이스 리뷰 답글·소식 초안(C5): 원문(운영자가 붙여 넣은 리뷰·소식 요청), 결정론 템플릿 초안, 사용한 확정 사실·말투 판, 규정 점검, 상태(초안→승인→제출 표시(수동·장치)→확인)와 점포 브라우저 작업 id. 자동 제출 없음. 캠페인과 무관'},
  {kind:'place_draft_mapping',parent:'store',campaignDeletion:'not_campaign_scoped',description:'점포 브라우저 장치에 리뷰 답글·소식 등록 화면 매핑(registered_dom)이 있다는 관리자 확인(C5): 지점 연결 판·장치·프로필·작업 유형·확인자. 매핑 자체(선택자)는 장치 로컬 설정에만 있다. 캠페인과 무관'},
  {kind:'ads_proposal',parent:'store',campaignDeletion:'not_campaign_scoped',description:'네이버 검색광고 제안(C4): 규칙 기반 입찰 조정·중지·재개·키워드/캠페인 생성 제안의 전후값·근거·상태(제안→승인→반영→읽기 대조)·쓰기 저널·공급자 ID. campaignId는 네이버 캠페인 ID라 COLLECTIVE 캠페인과 무관, parent_id는 지점(없으면 빈 값)'},
+ {kind:'daangn_conversion',parent:'store',campaignDeletion:'not_campaign_scoped',description:'당근 광고 전환 이벤트 대기열(C8 후속): 주문 장부의 당근 귀속 결제 주문 1건당 1행(id=주문 id). 이벤트(purchase·금액·주문일·클릭 id 없음)·상태(queued→sending→sent|failed|unknown)·보낸 사람. 개인정보 없음. 캠페인과 무관'},
+ {kind:'ads_proposal_auto_run',parent:'none',campaignDeletion:'not_campaign_scoped',description:'광고 제안 주간 자동 생성 실행 기록(C4·C8 후속): (채널, 연결 단위, KST 주) 1행, 만든 제안 수·건너뛴 사유·안건 신호 id. 승인·반영 없음. 캠페인과 무관'},
  {kind:'eval_cost_connection',parent:'none',campaignDeletion:'not_campaign_scoped',description:'격리된 평가 공급자 연결·암호화 인증 및 서명 검증 키'},
  {kind:'eval_cost_prepared',parent:'none',campaignDeletion:'not_campaign_scoped',description:'무료 견적·정확한 동결 평가 요청과 1회 실행 연결'},
  {kind:'eval_cost_month',parent:'none',campaignDeletion:'not_campaign_scoped',description:'소유자 UTC 월 원화 상한·예약·확정 비용 원장'},
@@ -315,6 +319,8 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'store_task',parent:'store',campaignDeletion:'not_campaign_scoped',description:'지점 조사 후속 과제'},
  {kind:'team_meeting',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'AI 팀 회의'},
  {kind:'meeting_choice',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'회의 합의 단계의 남은 이견에 대한 사용자 A/B·보류 선택(추가만, 다음 단계 입력에 전달)'},
+ {kind:'meeting_instruction',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'진행 중 회의에 사용자가 추가한 지시(추가만, 추가할 때 진행 중이던 단계 뒤 단계 입력부터 전달, P14)'},
+ {kind:'run_instruction',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'진행 중 연속 실행에 사용자가 추가한 지시(추가만, 다음 담당 실행 입력부터 그 연속 실행이 끝날 때까지 전달, P14)'},
  // 추적 코드(A4)는 주문 장부의 귀속 근거다. 주문 장부 보존 원칙에 맞춰 캠페인을 지워도 남긴다: 코드→캠페인·팔·게시 연결이 남아야 옛 주문의 귀속을 설명할 수 있고,
  // 코드(레코드 id)가 남아 있어 인쇄된 옛 쿠폰·QR 코드가 다른 캠페인에 다시 쓰이지 않는다. 캠페인이 사라진 코드는 자동 귀속에 쓰지 않는다(lib/store-operations-server.ts codeBook).
  // 삭제를 막지는 않는다. 코드로 귀속된 주문이 있으면 store_order가 이미 캠페인 삭제를 거부한다.

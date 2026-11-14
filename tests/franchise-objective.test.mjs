@@ -4,6 +4,7 @@
 // R3b: 가맹 모집 채널 단위 6개(franchise·portal·keyword·expo·leadad·referral, objective 한정·channels 문구만 봄), 본문 되풀이 안전,
 // objective 캠페인의 역할·회의·브리프 지시문에서 소비자 30일 재방문율 정의 자리를 가맹 모집 규칙으로 바꾸기(소비자 지시 바이트는 그대로).
 // 근거: mocked(메모리 SQLite, 이메일 모드 세션 주입, 모의 R2, 외부 fetch는 던지는 스텁, 모의 HERMES). 값·문장은 모두 합성이다. 판정은 COLLECTIVE 휴리스틱 · 법률 자문 아님(결정 20 보류).
+import {koSource} from './helpers/i18n-source.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync,readdirSync} from 'node:fs';
 import {deflateSync} from 'node:zlib';
@@ -383,10 +384,10 @@ check('6: the unset consumer caption approves with the franchise warning only',p
 check('6: execution and model runners do not read the franchise switch (stored objective drives the scope)',['lib/execution-server.ts','lib/role-execution.ts','lib/meeting-execution.ts','lib/brief-execution.ts'].every(p=>!/r_franchise/.test(readFileSync(p,'utf8'))));
 
 // ════ 6b) 화면(원문 검사, mocked): 목적은 목적 선택란에서만 보내고, 선택란은 대표·관리자에게만 보인다(스위치가 꺼져도 지정된 캠페인은 해제할 수 있게) ════
-const briefSrc=readFileSync('app/campaign-brief.tsx','utf8');
+const briefSrc=koSource('app/campaign-brief.tsx');
 check('6b: the dialog strips the objective carried in the form and sends it only from the objective control (null to unset, no key for consumer campaigns)',briefSrc.includes('delete rest.objective')&&briefSrc.includes('...(objective||storedObjective?{objective:objective||null}:{})')&&briefSrc.includes('const storedObjective=isRecruitmentObjective(edit)')&&briefSrc.includes('data:briefData()'));
 check('6b: only owner/admin see the objective control, and an objective campaign disables store selection',briefSrc.includes('canManage&&(franchiseOn||storedObjective||!!objective)?')&&briefSrc.includes('setFranchiseOn(false)')&&briefSrc.includes('const canManage=canChange(useAccount())')&&briefSrc.includes('disabled={!!lockedStoreId||!!objective||storedObjective||active||busy}')&&briefSrc.includes('edit&&!lockedStoreId&&!objective&&!storedObjective&&linkChoice'));
-const panelSrc=readFileSync('app/execution-panel.tsx','utf8');
+const panelSrc=koSource('app/execution-panel.tsx');
 check('6b: the publish tab names the recruitment scope for objective campaigns and keeps the consumer sentence',panelSrc.includes("state.franchise.scope==='recruitment'?'가맹 모집 캠페인입니다.")&&panelSrc.includes('가맹 프로필이 있는 브랜드입니다. 캡션에 가맹 모집 규칙(소비자 캠페인 범위)을 적용합니다.'));
 
 // ════ 7) 모델 제출: 역할 입력과 브리프 초안 ════

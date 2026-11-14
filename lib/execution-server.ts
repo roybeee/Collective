@@ -12,6 +12,7 @@ import {approvalDrift,budgetIssues,campaignGateIssues,captionIssues,composeCapti
 import {isOwnMediaUrl,mediaUrl,pngBytes,publishPublicMedia,retirePublicMedia,sha256,storePngThen,verifyMedia} from './execution-media';
 import {inspectBuffer,verifyBuffer} from './publisher-buffer';
 import {directPublisherCredential,isDirectChannelId,selectDirectPublisher} from './execution-publisher-server';
+import {assertMediaSetApproval,assertMediaSetCurrent,draftMediaSet,parseMediaSet,publishMediaSet,retireMediaSet,verifyMediaSet} from './execution-media-set-server';
 import {assertCodedPngUsable,pngCodeEnabled} from './coded-png-server';
 import {issuePublicationCode} from './publication-codes';
 import {CODE_ALPHABET,CODE_MAX,type TrackingCode} from './tracking-codes';
@@ -152,10 +153,10 @@ export async function connectPublisher(owner:string,campaign:Campaign,input:Reco
  await recordStatement(owner,'publisher_credential',campaign.brandId,value,campaign.brandId).run();return {connected:true,channelId,account,version:value.version};
 }
 // 승인을 새 버전의 초안으로 되돌린다. 승인 필드와 자동 공개 주소를 비운다(JSON 저장 시 undefined 필드는 빠진다).
-function toDraft(p:Publication,reason:string):Publication{return {...p,status:'draft',version:p.version+1,mediaUrl:p.mediaMode==='auto'?'':p.mediaUrl,channelId:undefined,credentialVersion:undefined,limitsVersion:undefined,approvedLimits:undefined,approvedBy:undefined,approvedAt:undefined,aiDisclosureConfirmedBy:undefined,aiDisclosureConfirmedAt:undefined,codedPngConfirmedBy:undefined,codedPngConfirmedAt:undefined,needsReview:undefined,invalidatedReason:reason,updatedAt:stamp()}}
+function toDraft(p:Publication,reason:string):Publication{return {...p,status:'draft',version:p.version+1,mediaUrl:p.mediaMode==='auto'?'':p.mediaUrl,mediaSet:draftMediaSet(p.mediaSet),channelId:undefined,credentialVersion:undefined,limitsVersion:undefined,approvedLimits:undefined,approvedBy:undefined,approvedAt:undefined,aiDisclosureConfirmedBy:undefined,aiDisclosureConfirmedAt:undefined,codedPngConfirmedBy:undefined,codedPngConfirmedAt:undefined,needsReview:undefined,invalidatedReason:reason,updatedAt:stamp()}}
 // 승인에서 벗어난 발행의 앱 공개 주소 참조를 해제한다. 호출자는 owner 변경 잠금을 가진다. 실패해도 상태 변경은 유지하고 기록만 남긴다.
 export async function retireMedia(owner:string,publications:Publication[]){
- for(const p of publications)if(p.mediaMode==='auto'&&p.mediaUrl)await retirePublicMedia(owner,mediaHash(p),p.id).catch(e=>console.error('execution_media_retire_failed',e instanceof Error?e.message:'unknown'));
+ for(const p of publications){if(p.mediaMode==='auto'&&p.mediaUrl)await retirePublicMedia(owner,mediaHash(p),p.id).catch(e=>console.error('execution_media_retire_failed',e instanceof Error?e.message:'unknown'));await retireMediaSet(owner,p)}
 }
 // exec-loop-11: 자격증명을 지우고 이 브랜드의 모든 승인을 초안으로 되돌리며 감사 이벤트를 남긴다. 이미 접수된 예약은 Buffer에서 처리한다.
 export async function disconnectPublisher(owner:string,campaign:Campaign,input:Record<string,unknown>,who:Who){
@@ -256,6 +257,8 @@ export async function savePublication(owner:string,campaign:Campaign,input:Recor
  if(existing.length>=200)throw new ApiError(409,'캠페인 발행 기록 한도 200개에 도달했습니다. 새 캠페인으로 준비하세요.');
  if(existing.some(p=>p.creativeId===creative.id&&p.scheduledAt===scheduledAt&&p.status!=='cancelled'))throw new ApiError(409,'같은 소재와 시각의 발행이 이미 있습니다. 기존 발행을 확인하세요.');
  const copy=input.copy?await approvedCopy(owner,campaign,input.copy,fr):undefined;
+ // C3 후속: 캐러셀(추가 소재)·릴스(영상) 묶음. Instagram 직접 게시 계정일 때만 받는다(lib/execution-media-set-server.ts).
+ const mediaSet=input.mediaSet===undefined||input.mediaSet===null?undefined:await parseMediaSet(owner,campaign,input.mediaSet,creative,cid=>currentCreative(owner,campaign,cid));
  const choice=input.trackingCode===undefined||input.trackingCode===null?null:await publicationCodeChoice(owner,campaign,input.trackingCode);
  // 코드 발급 전에 가맹 사실 게이트·가맹 규칙(예약 시각 규칙)·각주를 확인한다(막히면 코드가 발급되지 않는다).
  await franchiseCaptionGate(owner,campaign,fr,used,composeCaption(copy,creative.caption),scheduledAt);
@@ -269,7 +272,7 @@ export async function savePublication(owner:string,campaign:Campaign,input:Recor
  if(issued&&choice&&(issued.type!==choice.type||issued.storeId!==choice.storeId||issued.publicationId!==id))throw new ApiError(409,'게시 코드 발급 결과가 선택한 유형·지점과 다릅니다. 새로고침 후 다시 준비하세요.');
  const trackingCode:PublicationCode|undefined=issued&&choice?{id:issued.id,code:issued.code,type:choice.type,storeId:issued.storeId}:undefined;
  const caption=composeCaption(copy,creative.caption,trackingCode);
- const p:Publication={id,campaignId:campaign.id,creativeId:creative.id,creativeVersion:creative.version,campaignVersion:campaign.version,pngHash:creative.pngHash,factRefs:creative.factRefs,caption,...(copy?{copy}:{}),...(trackingCode?{trackingCode}:{}),mediaUrl:mediaMode==='auto'?'':checked,mediaMode,scheduledAt,plannedCostKRW,version:1,status:'draft',createdAt:stamp()};
+ const p:Publication={id,campaignId:campaign.id,creativeId:creative.id,creativeVersion:creative.version,campaignVersion:campaign.version,pngHash:creative.pngHash,factRefs:creative.factRefs,caption,...(copy?{copy}:{}),...(trackingCode?{trackingCode}:{}),mediaUrl:mediaMode==='auto'?'':checked,mediaMode,scheduledAt,plannedCostKRW,version:1,status:'draft',createdAt:stamp(),...(mediaSet?{mediaSet}:{})};
  await recordStatement(owner,'execution_publication',p.id,p,campaign.id).run();return p;
 }
 export async function publicationFor(owner:string,campaign:Campaign,id:unknown,version:unknown){
@@ -285,6 +288,8 @@ export async function approvalInputs(owner:string,campaign:Campaign,p:Publicatio
  if(creative.version!==p.creativeVersion||creative.pngHash!==p.pngHash||composeCaption(p.copy,creative.caption,p.trackingCode)!==p.caption)throw new ApiError(409,'소재가 변경됐습니다. 다시 준비하세요.');
  // A4-4: 코드 넣은 파생 PNG가 연결된 발행은 스위치가 켜져 있고 파생의 바탕이 이 원본 소재·게시 코드여야 한다.
  await assertCodedPngUsable(owner,p);
+ // C3 후속: 캐러셀 추가 소재도 준비 때 버전·PNG 그대로여야 한다.
+ await assertMediaSetCurrent(p,cid=>currentCreative(owner,campaign,cid));
  // 기록된 AI 생성물 판정(이 필드 이전 기록 포함)이 작업물 출처와 다르면 캡션 표시 줄이 맞지 않으므로 다시 준비하게 한다(결정 17).
  if(p.copy){const copy=await approvedCopy(owner,campaign,p.copy,fr);if(copy.text!==p.copy.text)throw new ApiError(409,'카피 작업물이 바뀌었습니다. 캡션 후보를 다시 고르세요.');if(copy.aiGenerated!==(p.copy.aiGenerated===true))throw new ApiError(409,'카피 작업물의 AI 생성물 판정이 준비 때와 다릅니다. 이 발행을 취소하고 캡션 후보를 다시 골라 준비하세요.');if((copy.virtualPerson===true)!==(p.copy.virtualPerson===true))throw new ApiError(409,'카피 작업물의 가상인물 표시 선언이 준비 때와 다릅니다. 이 발행을 취소하고 캡션 후보를 다시 골라 준비하세요.')}
  // 가맹 사실 게이트·가맹 규칙·각주(트랙 R R1b·R2). 소재·발행 두 행의 캡션을 함께 고쳐 각주를 지워도 여기서 막는다. 승인 입력 확인란·역할(대표 포함)로는 풀리지 않는다.
@@ -312,10 +317,12 @@ export async function approvePublication(owner:string,campaign:Campaign,p:Public
  const {credential,limits}=await approvalInputs(owner,campaign,p);
  const changed=[...(input.channelId!==credential.channelId||input.credentialVersion!==credential.version?['발행 계정']:[]),...(input.limitsVersion!==limits.version?['발행 횟수 한도']:[])];
  if(changed.length)throw new ApiError(409,`화면에 표시된 정보가 변경됐습니다(${changed.join(', ')}). 새로고침하고 다시 확인하세요.`);
+ assertMediaSetApproval(p,input,credential.channelId);
  // 자동 모드는 승인된 발행만 앱 공개 주소로 제공한다. 외부 호스트는 원본 해시와 같은지 확인한다.
  let url=p.mediaUrl;if(external)await verifyMedia(p.mediaUrl,p.pngHash,origin);else url=await publishPublicMedia(owner,mediaHash(p),p.id,origin);
- const approved:Publication={...p,status:'approved',version:p.version+1,mediaUrl:url,channelId:credential.channelId,credentialVersion:credential.version,limitsVersion:limits.version,approvedLimits:{maxPublications:limits.maxPublications,maxPlannedCostKRW:limits.maxPlannedCostKRW},approvedBy:who.id,approvedAt:stamp(),...(aiCopy?{aiDisclosureConfirmedBy:who.id,aiDisclosureConfirmedAt:stamp()}:{}),...(p.codedPng?{codedPngConfirmedBy:who.id,codedPngConfirmedAt:stamp()}:{}),invalidatedReason:undefined,updatedAt:stamp()};
- try{await recordStatement(owner,'execution_publication',p.id,approved,campaign.id).run()}catch(e){if(!external)await retirePublicMedia(owner,mediaHash(p),p.id).catch(()=>{});throw e}
+ let mediaSet;try{mediaSet=await publishMediaSet(owner,p,origin)}catch(e){if(!external)await retirePublicMedia(owner,mediaHash(p),p.id).catch(()=>{});throw e}
+ const approved:Publication={...p,status:'approved',version:p.version+1,mediaUrl:url,channelId:credential.channelId,credentialVersion:credential.version,limitsVersion:limits.version,approvedLimits:{maxPublications:limits.maxPublications,maxPlannedCostKRW:limits.maxPlannedCostKRW},approvedBy:who.id,approvedAt:stamp(),...(aiCopy?{aiDisclosureConfirmedBy:who.id,aiDisclosureConfirmedAt:stamp()}:{}),...(p.codedPng?{codedPngConfirmedBy:who.id,codedPngConfirmedAt:stamp()}:{}),invalidatedReason:undefined,updatedAt:stamp(),...(mediaSet?{mediaSet}:{})};
+ try{await recordStatement(owner,'execution_publication',p.id,approved,campaign.id).run()}catch(e){if(!external)await retirePublicMedia(owner,mediaHash(p),p.id).catch(()=>{});await retireMediaSet(owner,approved);throw e}
  return approved;
 }
 // Called with the owner mutation lock. Persist the attempt BEFORE any publish call.
@@ -334,6 +341,7 @@ export async function reservePublication(owner:string,campaign:Campaign,p:Public
  await verifyMedia(p.mediaUrl,mediaHash(p),origin);
  // C3: 직접 게시 계정이면 Buffer 토큰이 없다(토큰은 전송 모듈이 channel_credential에서 연다). direct=true면 라우트가 Buffer 대신 lib/execution-publisher-server.ts dispatchDirect로 보낸다.
  const direct=isDirectChannelId(credential.channelId);
+ await verifyMediaSet(p,origin,direct);
  const token=direct?'':await openRecordSecret(owner,'publisher_credential',campaign.brandId,credential.secret);
  const pending:Publication={...p,status:'submitting',attemptedAt:stamp(),updatedAt:stamp(),version:p.version+1};
  const growth=await prepareGrowthPublicationSubmission(owner,campaign,p,pending);

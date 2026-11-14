@@ -42,12 +42,12 @@ export const connectorRegistry: readonly ConnectorDescriptor[] = [
  // C3 직접 게시. 승인된 발행을 사람이 실행할 때만 보낸다(docs/INSTAGRAM-DIRECT.ko.md). 한도 숫자는 초깃값이고 실제 상한은 limit()이 읽는 공급자 쿼터다.
  {key: 'instagram_direct', label: 'Instagram 직접 게시(Graph API)', module: 'lib/connectors/instagram-publish.ts', capabilities: [
   capability({key: 'instagram_direct.media.publish', reads: [], writes: ['media', 'media_publish'], riskTier: 'T3', rateLimit: INSTAGRAM_PUBLISH_LIMIT, credentialScope: 'brand', flag: 'instagram_direct_publish'}),
-  capability({key: 'instagram_direct.limit.read', reads: ['content_publishing_limit', 'media', 'me'], writes: [], riskTier: 'T1', rateLimit: INSTAGRAM_READ_LIMIT, credentialScope: 'brand', flag: 'instagram_direct_publish'}),
+  capability({key: 'instagram_direct.limit.read', reads: ['content_publishing_limit', 'media', 'me', 'recent_media'], writes: [], riskTier: 'T1', rateLimit: INSTAGRAM_READ_LIMIT, credentialScope: 'brand', flag: 'instagram_direct_publish'}),
   capability({key: 'instagram_direct.comments.read', reads: ['comments'], writes: [], riskTier: 'T1', rateLimit: INSTAGRAM_READ_LIMIT, credentialScope: 'brand', flag: 'instagram_direct_publish'}),
  ]},
  {key: 'threads', label: 'Threads 게시', module: 'lib/connectors/threads.ts', capabilities: [
   capability({key: 'threads.post.publish', reads: [], writes: ['threads', 'threads_publish'], riskTier: 'T3', rateLimit: THREADS_PUBLISH_LIMIT, credentialScope: 'brand', flag: 'threads_publish'}),
-  capability({key: 'threads.limit.read', reads: ['threads_publishing_limit', 'media', 'me'], writes: [], riskTier: 'T1', rateLimit: THREADS_READ_LIMIT, credentialScope: 'brand', flag: 'threads_publish'}),
+  capability({key: 'threads.limit.read', reads: ['threads_publishing_limit', 'media', 'me', 'recent_media'], writes: [], riskTier: 'T1', rateLimit: THREADS_READ_LIMIT, credentialScope: 'brand', flag: 'threads_publish'}),
   capability({key: 'threads.replies.read', reads: ['replies'], writes: [], riskTier: 'T1', rateLimit: THREADS_READ_LIMIT, credentialScope: 'brand', flag: 'threads_publish'}),
  ]},
  // C8 당근 광고 OpenAPI(공개 베타). 관리·성과는 광고 계정당 분당 60회, 이벤트는 초당 100회(docs/DAANGN-ADS.ko.md). 쓰기는 승인된 제안만 보낸다.

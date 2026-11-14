@@ -18,6 +18,8 @@ const context=createContext({
  verifyMedia:async()=>{},mediaHash:()=>'',openRecordSecret:async()=>'mock-token',
  // C3: 발행 계정이 직접 게시(instagram_direct·threads)인지 판정하는 경계. 이 스위트는 Buffer 예약만 본다(false).
  isDirectChannelId:()=>false,
+ // C3 후속: 캐러셀·릴스 묶음 검사 경계. 묶음 없는 Buffer 예약은 아무것도 하지 않는다.
+ verifyMediaSet:async()=>{},
  publicationKeepingReview:()=>pubWrite,
  prepareGrowthPublicationSubmission:async()=>{prepared++;if(prepareBlocked)throw new ApiError(409,'reservation changed');return {writes:linked?[growthWrite]:[]}},
  database:()=>({batch:async writes=>{if(writeBlocked)throw new Error('write failed');batches.push([...writes]);}}),
@@ -51,6 +53,8 @@ const implementations={
  saveProviderResult:async(_o,_c,_p,value)=>value,ApiError,HttpBodyError:ApiError,
  // G7 권한 가드(lib/server-access.ts): 이 스위트의 요청자는 소유자라 발행(publish) 권한이 있다.
  requireAccess:async()=>({actor:{owner:'owner',id:'owner',role:'owner'},principal:{role:'owner',brandIds:[],storeIds:[]}}),campaignResource:async()=>({}),
+ // G2 자동 보정 연결 훅(lib/creative-publication-link-server.ts): 예외 없는 기록이라 이 스위트의 전송 경계와 무관하다.
+ recordPublicationLink:async()=>'skipped',
 };
 const routeContext=createContext({Request,Response,URL,console});
 const routeCode=ts.transpileModule(readFileSync('app/api/execution/route.ts','utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;

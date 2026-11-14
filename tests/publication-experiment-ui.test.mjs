@@ -1,6 +1,7 @@
 // loop-2 발행–실험 연결 화면(app/publication-experiment.tsx): 실제 React(react-dom/server)로 준비 폼 선택지(다른 발행이 연결된 안은 고를 수 없음)와
 // 발행 카드의 연결·해제·게시물 ID 입력 칸(관리자·게시 확인만)을 그리고, 선택 값 해석과 실행 화면 연결(원문 검사)을 확인한다.
 // 근거: mocked(화면 부품은 기본 HTML 요소 대역, 효과·네트워크 없음). 실제 브라우저 E2E는 not_run.
+import {koSource} from './helpers/i18n-source.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync,existsSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
@@ -80,7 +81,7 @@ check('a cancelled publication offers no link controls',()=>{
  assert.equal(render(ui.PublicationExperiment,{p:pub({status:'cancelled'}),options,canManage:true,busy:false,onAct:noop}),'');
  assert.deepEqual(buttons(render(ui.PublicationExperiment,{p:pub({status:'failed',experimentId:'e1',arm:'control'}),options,canManage:true,busy:false,onAct:noop})),[]);
 });
-const panel=readFileSync('app/execution-panel.tsx','utf8');
+const panel=koSource('app/execution-panel.tsx');
 check('the execution panel sends the chosen arm when preparing and renders the card block',()=>{
  assert.match(panel,/<ExperimentLinkSelect options=\{experimentOptions\} publications=\{state\.publications\}\/>/);
  assert.match(panel,/experiment:experimentChoice\(String\(f\.get\('experimentLink'\)\)\)/);

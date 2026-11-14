@@ -36,6 +36,8 @@ const MEETING_PATH_MAP:PathMap=[
  ['originalArtifacts.*.',['meeting.snapshot.artifacts.*.']],
  ['completedRevisions.*.',[REVISION]],
  ['candidateArtifacts.*.',['meeting.snapshot.artifacts.*.',REVISION]],
+ // 실행 중 추가 지시(P14)는 동결본에 싣지 않는다(이견 선택 choices와 같다). 원자료 경로가 없으므로 동결 가림 대상도 없다.
+ ['addedInstructions.',[]],
 ];
 const BRIEF_PATH_MAP:PathMap=[
  ['brand.brandIntro.text',['context.brand.description','context.brand.knowledge']],

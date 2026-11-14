@@ -1,6 +1,7 @@
 // 설정 '현재 사용할 수 있는 기능' 표의 실시간 판정(lib/feature-status.ts, ux-5·eng-hygiene-12).
 // 행마다 사용 가능·조건 부족(사유·이동 링크)·미구현 3단계이고, 입력이 없거나 깨졌으면 '사용 가능'으로 보이지 않는다.
 import assert from 'node:assert/strict';
+import {koSource} from './helpers/i18n-source.mjs';
 import {readFileSync,existsSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
 import {SourceTextModule,createContext} from 'node:vm';
@@ -119,12 +120,12 @@ check('unknown or broken flag state is not available',[row(full(),'franchise').s
 check('R7a benchmark row follows r_franchise and links to the benchmark tab',[view(row(full({flags:flagList(true)}),'franchise-benchmark')).status,view(row(full({flags:flagList(false)}),'franchise-benchmark')).status,JSON.stringify(row(full({flags:flagList(true)}),'franchise-benchmark').link)],['available','blocked','{"label":"가맹 모집의 벤치마크 탭으로 이동","view":"franchise","tab":"benchmark"}']);
 ok('R7a benchmark reason says the key is needed, tokens are zero and it is not our forecast basis',(r=>r.includes('키가 없으면 적재 막힘')&&r.includes('토큰 0')&&r.includes('자사 예상매출 근거가 아님'))(row(full({flags:flagList(true)}),'franchise-benchmark').reason));
 check('franchiseSwitch reads on, off and unknown',[franchiseSwitch(flagList(true)),franchiseSwitch(flagList(false)),franchiseSwitch(null),franchiseSwitch([{flag:'r_franchise',enabled:'yes'}]),franchiseSwitch([{flag:'online_grading',enabled:true}])],[true,false,null,null,null]);
-{const panelsSrc=readFileSync('app/panels.tsx','utf8');
+{const panelsSrc=koSource('app/panels.tsx');
  ok('only the owner sees the franchise switch button',panelsSrc.includes("r.key==='franchise'&&account?.isOwner&&franchiseOn!==null"));
  ok('the switch button asks first and posts the owner-only flag change',panelsSrc.includes('await askConfirm(on?')&&panelsSrc.includes("JSON.stringify({action:'set',flag:'r_franchise',enabled:on})"));
  ok('after switching the sidebar status is re-read without a reload',panelsSrc.includes("window.dispatchEvent(new Event('focus'))")&&readFileSync('app/workspace.tsx','utf8').includes("window.addEventListener('focus',read)"));
 }
-ok('settings loads the switch list for the table',readFileSync('app/panels.tsx','utf8').includes("readJson('/api/feature-flags').then(d=>d.flags,()=>null)"));
+ok('settings loads the switch list for the table',koSource('app/panels.tsx').includes("readJson('/api/feature-flags').then(d=>d.flags,()=>null)"));
 
 // --- 입력 누락: 안전한 기본 ------------------------------------------------------------
 const none=featureRows();
@@ -151,7 +152,7 @@ for(const input of [{},full(),full({flags:flagsOff}),full({flags:flagsOff.map(f=
 }
 
 // --- 화면 연결 -------------------------------------------------------------------------
-const panels=readFileSync('app/panels.tsx','utf8');
+const panels=koSource('app/panels.tsx'); // 사전으로 옮긴 문구는 한국어 값으로 되돌려 본다(GLOBAL-PLAN G6 2단계)
 ok('the settings table renders featureRows instead of a fixed list',panels.includes('featureRows(')&&!panels.includes("['PNG 안내 카드','사용 가능']")&&!panels.includes("['POS 자동 수집','연결 전']"));
 ok('the settings table reads only existing GET endpoints',['/api/brand-facts','/api/channels','/api/execution?campaignId=','/api/research-worker/setup'].every(path=>panels.includes(path)));
 // '다시 확인'은 작업자 상태도 다시 읽는다(워크스페이스 응답은 주기적으로 갱신되지 않는다). 응답이 없는 요청은 시간 제한 뒤 '확인하지 못했습니다'로 끝난다.
