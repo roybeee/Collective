@@ -49,7 +49,7 @@ function StepOutput({step,steps,choice,waiting,busy,onChoose}:{step:MeetingStep|
 function MeetingTurn({step,index,header,children,choiceNote}:{step:PublicMeeting['steps'][number];index:number;header:React.ReactNode;children:React.ReactNode;choiceNote?:string}){
  const t=useT(),id=useId(),[open,setOpen]=useState(true);
  return <article className={'meeting-turn '+step.phase} data-step={step.id}>
-  <header>{header}<Button type="button" variant="ghost" size="sm" className="min-h-11" aria-expanded={open} aria-controls={id} aria-label={t(open?'meetingBoard.collapse':'meetingBoard.expand',{n:index+1,role:roleName(step.role)})} onClick={()=>setOpen(v=>!v)}>{open?<ChevronDown/>:<ChevronRight/>}<span className="max-sm:sr-only">{t(open?'meetingBoard.collapseShort':'meetingBoard.expandShort')}</span></Button></header>
+  <header>{header}<Button type="button" variant="ghost" size="sm" className="min-h-11 min-w-11" aria-expanded={open} aria-controls={id} aria-label={t(open?'meetingBoard.collapse':'meetingBoard.expand',{n:index+1,role:roleName(step.role)})} onClick={()=>setOpen(v=>!v)}>{open?<ChevronDown/>:<ChevronRight/>}<span className="max-sm:sr-only">{t(open?'meetingBoard.collapseShort':'meetingBoard.expandShort')}</span></Button></header>
   {choiceNote&&<p className="choice-applied m-0 mb-3 rounded-md border border-border bg-background px-3 py-2 text-[13px]" role="note">{choiceNote}</p>}
   <div id={id} hidden={!open}>{children}</div>
  </article>;

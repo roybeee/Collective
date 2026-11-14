@@ -71,6 +71,13 @@ test('인용 pill·AI 출처 배지·근거 부족 확인 승인·규정 점검 
   // 규정 점검 패널: 차단 표현과 다시 점검.
   const panel=dialog.getByRole('region',{name:'규정 점검'});
   await expect(panel).toContainText('영수증·리뷰 이벤트');await expect(panel).toContainText('차단');
+  // 준수율(QA D12): 머리에 '준수율 N%'와 통과 규칙 / 점검 규칙. 차단이 있으니 100% 미만이고 백분율이 두 수와 맞는다.
+  const rate=panel.locator('.compliance-rate');await expect(rate).toContainText(/^준수율 \d+%통과 규칙 \d+ \/ 점검 규칙 \d+$/);
+  const [passedRules,checkedRules]=(await rate.locator('small').innerText()).match(/\d+/g)!.map(Number),percent=Number(await rate.getAttribute('data-percent'));
+  expect(checkedRules).toBeGreaterThan(passedRules);expect(percent).toBe(Math.floor(100*passedRules/checkedRules));
+  // 대화상자 닫기 누르는 영역(QA D11·N4): 데스크톱 24px, 모바일 44px 이상. 아이콘은 16px 그대로다.
+  const close=dialog.locator('[data-slot=dialog-close]').last(),closeBox=await close.boundingBox(),iconBox=await close.locator('svg').boundingBox(),minTarget=(page.viewportSize()?.width??1280)<768?44:24;
+  expect(Math.min(closeBox!.width,closeBox!.height),`닫기 ${closeBox!.width}×${closeBox!.height}`).toBeGreaterThanOrEqual(minTarget);expect(Math.round(iconBox!.width)).toBe(16);
   await expect(panel.getByRole('link',{name:/^법령 근거/}).first()).toHaveAttribute('rel','noopener noreferrer');
   await panel.getByRole('button',{name:'다시 점검'}).click();
   await expect(panel.getByRole('status').filter({hasText:'다시 점검했습니다'})).toBeVisible();

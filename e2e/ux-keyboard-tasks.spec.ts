@@ -37,6 +37,8 @@ function keyboard(page:Page){
  return {
   press,
   type:async(text:string)=>{await page.keyboard.type(text);typed+=text.length},
+  // 글자 키를 keyDown(text)·keyUp으로 하나씩 보낸다. 한글처럼 미국 자판에 없는 글자도 keypress가 생겨 select의 typeahead가 동작한다.
+  typeKeys:async(text:string)=>{const cdp=await page.context().newCDPSession(page);try{for(const ch of text){await cdp.send('Input.dispatchKeyEvent',{type:'keyDown',key:ch,text:ch,unmodifiedText:ch});await cdp.send('Input.dispatchKeyEvent',{type:'keyUp',key:ch})}}finally{await cdp.detach()}typed+=text.length;await settle()},
   // 목표가 보일 때까지 기다린 뒤 Tab(또는 Shift+Tab)으로 초점을 옮긴다.
   tabTo:async(l:Locator,back=false,limit=200)=>{await expect(l).toBeVisible();for(let i=0;i<limit;i++){if(await focused(l))return;await press(back?'Shift+Tab':'Tab')}throw new Error(`Tab으로 닿지 못했습니다.\n${trail.slice(-30).join('\n')}`)},
   focused,
@@ -65,8 +67,10 @@ async function goTab(page:Page,k:Keys,name:string){
  for(let i=0;i<15&&!await k.focused(target);i++){const before=await activeTab();await k.press('ArrowRight');await expect.poll(activeTab,{timeout:3000}).not.toBe(before)}
  await expect(target,k.trail.slice(-20).join('\n')).toHaveAttribute('aria-selected','true');
 }
-// 기본 선택(native select): 화살표로 값을 바꾼다.
-async function choose(k:Keys,l:Locator,value:string){await k.tabTo(l);for(let i=0;i<20&&await l.inputValue()!==value;i++)await k.press('ArrowDown');await expect(l).toHaveValue(value)}
+// 기본 선택(native select): 초점을 Tab으로 옮긴 뒤 선택지 글자를 쳐서(typeahead) 고른다.
+// 닫힌 select에서 ArrowDown은 Linux·Windows Chromium만 값을 바꾸고 macOS Chromium은 바꾸지 않는다(2026-11-15 QA N6). 글자 입력은 두 플랫폼에서 같게 동작한다.
+// 한글 글자는 page.keyboard.type이 insertText로 보내 keypress가 생기지 않으므로, 한글 자판의 글자 키처럼 CDP keyDown(text 포함)으로 보낸다. 글자 입력이라 키 수에 넣지 않는다.
+async function choose(k:Keys,l:Locator,value:string){await k.tabTo(l);const label=((await l.locator(`option[value="${value}"]`).textContent())??'').trim().split(/\s/)[0];await k.typeKeys(label);await expect(l).toHaveValue(value)}
 // 바로 가기를 연다. 데스크톱은 / 단축키, 모바일은 머리 띠의 '검색' 버튼(Tab·Enter).
 async function openPalette(page:Page,k:Keys,mobile:boolean){
  await expect(page.getByRole('heading',{level:1})).toBeVisible();

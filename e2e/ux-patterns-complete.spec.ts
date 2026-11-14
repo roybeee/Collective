@@ -86,6 +86,9 @@ test('팀 회의 뷰는 참석자 상태·결정 카드·선택 결과를 보이
   const first=page.locator(`[data-step="${meetingId}:discussion:cmo"]`);
   const toggle=first.getByRole('button',{name:/번째 발언\(.+\) 접기/});
   await expect(toggle).toHaveAttribute('aria-expanded','true');
+  // 누르는 영역(QA 2026-11-15 N4): 모바일은 글자를 숨긴 아이콘 버튼이라 폭도 44px 이상이어야 한다.
+  const toggleBox=await toggle.boundingBox(),minTarget=(page.viewportSize()?.width??1280)<768?44:24;
+  expect(Math.min(toggleBox!.width,toggleBox!.height),`접기 ${toggleBox!.width}×${toggleBox!.height}`).toBeGreaterThanOrEqual(minTarget);
   await expect(first.getByText('발언 1',{exact:true})).toBeVisible();
   await toggle.click();
   await expect(first.getByRole('button',{name:/번째 발언\(.+\) 펼치기/})).toHaveAttribute('aria-expanded','false');
