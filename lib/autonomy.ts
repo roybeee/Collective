@@ -4,7 +4,7 @@
 // 이 모듈은 저장·권한을 모른다. 서버 적용은 lib/autonomy-server.ts, 화면은 app/autonomy-panel.tsx다.
 import type {AuthorityTier} from './growth-authority';
 
-export const AUTONOMY_ACTIONS=['role_run','meeting_start','brief_draft','research_run','data_collect','publish_submit','ad_activate','budget_change','customer_send','policy_change'] as const;
+export const AUTONOMY_ACTIONS=['role_run','meeting_start','brief_draft','research_run','data_collect','publish_submit','ad_activate','budget_change','customer_send','policy_change','conversion_send'] as const;
 export type AutonomyAction=typeof AUTONOMY_ACTIONS[number];
 export const AUTONOMY_MODES=['auto','ask','never'] as const;
 export type AutonomyMode=typeof AUTONOMY_MODES[number];
@@ -19,10 +19,13 @@ export const AUTONOMY_TIERS:Record<AutonomyAction,AuthorityTier>={
  role_run:'T1',meeting_start:'T1',brief_draft:'T1',
  publish_submit:'T3',ad_activate:'T3',budget_change:'T3',customer_send:'T3',
  policy_change:'T4',
+ // 당근 전환 이벤트 전송(lib/daangn-conversions-server.ts). 레지스트리 daangn_ads.conversion.send가 T4라 자동이 없다(확인 후·금지만).
+ conversion_send:'T4',
 };
 export const AUTONOMY_LABELS:Record<AutonomyAction,string>={
  role_run:'역할 실행(단독 역할·연속 실행)',meeting_start:'팀 회의 시작',brief_draft:'브리프 초안 작성',research_run:'브랜드 조사 실행',data_collect:'성과·주문 자료 수집',
  publish_submit:'발행 접수(Buffer 전송)',ad_activate:'광고 활성화(Meta)',budget_change:'예산 변경',customer_send:'고객 발송',policy_change:'정책·규칙 변경',
+ conversion_send:'전환 이벤트 전송(당근 광고)',
 };
 export const AUTONOMY_MODE_LABELS:Record<AutonomyMode,string>={auto:'자동',ask:'확인 후',never:'금지'};
 export const HIGH_TIER_REASON='T3 이상 행동(발행 접수·광고 활성화·예산 변경·고객 발송·정책 변경)은 자동으로 실행할 수 없습니다. 확인 후 또는 금지만 고를 수 있습니다.';

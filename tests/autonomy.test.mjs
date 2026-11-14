@@ -10,12 +10,12 @@ const route=await load('app/api/autonomy/route.ts'),meetings=await load('app/api
 const passed=[];const check=(name,value)=>{assert.ok(value,name);passed.push(name)};
 const plain=v=>JSON.parse(JSON.stringify(v));
 const owner='auto-owner';
-const actions=[...pure.AUTONOMY_ACTIONS],modes=[...pure.AUTONOMY_MODES],high=['publish_submit','ad_activate','budget_change','customer_send','policy_change'];
+const actions=[...pure.AUTONOMY_ACTIONS],modes=[...pure.AUTONOMY_MODES],high=['publish_submit','ad_activate','budget_change','customer_send','policy_change','conversion_send'];
 
 // 1) 순수 행렬: 고위험 5개는 auto 거부(한국어 사유), 그 밖 25개 조합은 저장·평가가 그대로다.
-check('ten actions and three modes are declared',actions.length===10&&modes.join()==='auto,ask,never');
+check('eleven actions (conversion_send appended) and three modes are declared',actions.length===11&&modes.join()==='auto,ask,never');
 check('defaults are ask for every action',actions.every(a=>pure.defaultAutonomySettings()[a]==='ask'));
-check('tier mapping reuses T0~T4 and puts exactly five actions at T3 or above',actions.filter(a=>pure.isHighTier(a)).join()===high.join()&&pure.AUTONOMY_TIERS.policy_change==='T4'&&pure.AUTONOMY_TIERS.research_run==='T0');
+check('tier mapping reuses T0~T4 and puts exactly six actions at T3 or above (conversion_send T4)',actions.filter(a=>pure.isHighTier(a)).join()===high.join()&&pure.AUTONOMY_TIERS.policy_change==='T4'&&pure.AUTONOMY_TIERS.conversion_send==='T4'&&pure.AUTONOMY_TIERS.research_run==='T0');
 let accepted=0,rejected=0;
 for(const action of actions)for(const mode of modes){
  let settings=null,error=null;
@@ -27,7 +27,7 @@ for(const action of actions)for(const mode of modes){
  assert.equal(pure.evaluateAutonomy(settings,action,{enabled:false}).mode,'ask',`${action} ${mode} is ask when the switch is off`);
  accepted++;
 }
-check('matrix: 25 accepted combinations and 5 rejected high-tier auto settings',accepted===25&&rejected===5);
+check('matrix: 27 accepted combinations and 6 rejected high-tier auto settings (conversion_send appended)',accepted===27&&rejected===6);
 check('unknown action and unknown mode are rejected',(()=>{try{pure.parseAutonomySettings({fly:'auto'});return false}catch(e){return /알 수 없는 행동/.test(e.message)}})()&&(()=>{try{pure.parseAutonomySettings({role_run:'maybe'});return false}catch(e){return /모드는/.test(e.message)}})());
 check('partial input keeps the base for the other actions',(()=>{const s=pure.parseAutonomySettings({role_run:'auto'},{...pure.defaultAutonomySettings(),meeting_start:'never'});return s.role_run==='auto'&&s.meeting_start==='never'&&s.brief_draft==='ask'})());
 check('a corrupt stored high-tier auto reads back as ask',pure.sanitizeAutonomySettings({publish_submit:'auto',role_run:'auto',junk:1}).publish_submit==='ask'&&pure.sanitizeAutonomySettings({publish_submit:'auto',role_run:'auto'}).role_run==='auto');
@@ -57,7 +57,7 @@ const get=headers=>route.GET(new Request('https://agency.test/api/autonomy',{hea
 const put=(input,headers)=>route.PUT(new Request('https://agency.test/api/autonomy',{method:'PUT',headers:{'content-type':'application/json',...headers},body:JSON.stringify(input)})).then(call);
 const legacy={'oai-authenticated-user-id':owner,origin:'https://agency.test'};
 let r=await get(legacy);
-check('legacy owner reads settings, actions and the enabled state',r.status===200&&r.body.enabled===true&&r.body.actions.length===10&&r.body.settings.meeting_start==='never'&&r.body.canEdit===true);
+check('legacy owner reads settings, actions and the enabled state',r.status===200&&r.body.enabled===true&&r.body.actions.length===10&&!r.body.actions.some(a=>a.action==='conversion_send')&&r.body.settings.meeting_start==='never'&&r.body.canEdit===true);
 r=await put({settings:{brief_draft:'auto'}},legacy);
 check('legacy owner writes through the API',r.status===200&&r.body.settings.brief_draft==='auto'&&r.body.version===2);
 r=await put({settings:{ad_activate:'auto'}},legacy);

@@ -98,3 +98,10 @@ draft → approved → applied → verified | mismatch
 - 삭제, 예산(`dailyBudget`) 변경, 확장소재, 타게팅 쓰기는 없다.
 - 학습 규칙(`lib/learning*.ts`) 연결은 `rationale.evidence.learningRuleIds`(빈 배열) 자리만 두었다.
 - 워커 자동 제안 생성은 없다(사람이 `generate`를 누른다).
+
+## 11. 제안 주간 자동 생성 (레인 C 마감)
+
+- 워커 큐 `ads_proposal_auto`(`lib/ads-proposals-auto-server.ts`)는 스위치 `scheduled_runs`와 채널 스위치(`naver_ads_write`·`daangn_ads`)가 함께 켜진 채널만 돈다. 둘 중 하나라도 꺼지면 순환에 큐 이름이 나타나지 않는다.
+- 연결된 광고 계정(`channel_credential`의 지점·브랜드·워크스페이스 단위)마다 KST 주(월요일 날짜) 1회, 캠페인 목록 GET에서 최대 5개 캠페인에 5절 규칙(당근은 DAANGN-ADS 3절)을 돌려 **초안 제안만** 만든다. 승인·반영은 하지 않고 외부 호출은 읽기뿐이다. 한 tick에 계정 최대 3개.
+- 만든 초안은 기존 출처(`lib/agenda-workspace-sources.ts adsProposalItem`)로 오늘의 안건 '결정' 탭에 승인 대기로 보인다. 같은 대상·규칙의 열린 제안은 다시 만들지 않는다(`dedupeAgainst`).
+- 실행 기록 kind `ads_proposal_auto_run`(id `채널:브랜드:지점:주`)이 멱등 키다. 오류는 기록에 남기고 다음 주에 다시 돈다.

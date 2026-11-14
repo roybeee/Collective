@@ -10,6 +10,7 @@ import {getExecution,saveLimits,connectPublisher,disconnectPublisher,saveCreativ
 import {submitBuffer,inspectBuffer,listBufferChannels} from '@/lib/publisher-buffer';
 import {collectPublicationComments,dispatchDirect} from '@/lib/execution-publisher-server';
 import {registerCodedPng} from '@/lib/coded-png-server';
+import {reconcileDirect} from '@/lib/direct-reconcile-server';
 import {readBoundedJson,HttpBodyError} from '@/lib/http-limits';
 import {executionRate} from '@/lib/execution-rate';
 import {reviewActor,requireReasonCodes,publicationDecisionStatement} from '@/lib/review-decisions-server';
@@ -21,7 +22,7 @@ async function noteLink<T>(owner:string,value:T){await recordPublicationLink(own
 
 // 관리자 전용 실행. 승인·해제·확정한 실제 계정을 기록한다.
 // loop-2: 준비 뒤 실험 연결·해제(link_experiment)와 Instagram 게시물 ID 입력(link_media)도 관리자만 한다. 준비 때 연결(save_publication experiment)은 발행 준비 권한을 따른다.
-const adminActions=['connect_buffer','disconnect_buffer','buffer_channels','save_limits','approve','execute','cancel','reconfirm','resolve_uncertain','register_coded_png','link_experiment','link_media','collect_comments'];
+const adminActions=['connect_buffer','disconnect_buffer','buffer_channels','save_limits','approve','execute','cancel','reconfirm','resolve_uncertain','register_coded_png','link_experiment','link_media','collect_comments','reconcile_direct'];
 export async function GET(req:Request){try{const owner=await identity(req),id=str(new URL(req.url).searchParams.get('campaignId'),'캠페인',100,true),campaign=await readRecord<Campaign>(owner,'campaign',id);await requireAccess(req,'read_campaign',{brandId:campaign.brandId,storeId:campaign.storeId??null,campaignId:campaign.id});return json({...await getExecution(owner,campaign),experimentLinks:await experimentLinkOptions(owner,campaign)})}catch(e){return failure(e)}}
 export async function POST(req:Request){let owner='',lock='';try{
  owner=await identity(req);secureMutation(req);
@@ -62,6 +63,8 @@ export async function POST(req:Request){let owner='',lock='';try{
  if(input.action==='resolve_uncertain')return json(await resolveUncertain(owner,campaign,p,input,who!));
  // C3: 직접 게시로 게시 확인된 발행의 댓글·답글을 학습 실험실용으로 수집한다(추가만, 자동 답글 없음).
  if(input.action==='collect_comments')return json(await collectPublicationComments(owner,campaign,p,who));
+ // C3 후속: 결과 미확인 직접 게시 발행을 계정의 최근 게시물(캡션 해시·시각 창)로 대조한다. 읽기만 하고 다시 보내지 않는다.
+ if(input.action==='reconcile_direct')return json(await reconcileDirect(owner,campaign,p,who!));
  if(input.action==='execute'){
   const {pending,token,direct}=await reservePublication(owner,campaign,p,origin);
   await releaseLock(owner,lock);lock='';
