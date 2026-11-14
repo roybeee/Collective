@@ -115,6 +115,11 @@ check('field paths from object keys are sanitized',()=>assert.deepEqual(plain(ma
 check('contactAllowValues returns landline business numbers only (no mobile, no email)',()=>assert.deepEqual(plain(contactAllowValues(['주차 가능, 문의 02-000-0000',null,'메일 store@example.com','점주 010-0000-0999, +82 10-0000-0998','대표 070-0000-0000'])),['02-000-0000','070-0000-0000']));
 check('mergeFindings adds counts per field and kind',()=>assert.deepEqual(plain(mergeFindings([{field:'a',kind:'phone',count:1}],[{field:'a',kind:'phone',count:2},{field:'b',kind:'email',count:1}])),[{field:'a',kind:'phone',count:3},{field:'b',kind:'email',count:1}]));
 
+// 14) QA N3(2026-11-15) 결정: 공개 테스트 카드 번호(카드사 문서의 시험용 번호, Luhn 유효)는 이어 쓰기·묶음 모두 결제정보다.
+for(const v of ['4111111111111111','5555555555554444','378282246310005','4222222222222','4111 1111 1111 1111','5555-5555-5555-4444','3782-822463-10005'])check(`Luhn-valid test card is payment: ${v}`,()=>assert.equal(kinds(`카드 ${v} 결제`),'payment'));
+// 자유 글의 13자리 숫자열은 계속 막는다(fail-closed): 13자리 계좌(이어 쓰기)·주민번호 모양과 구별할 수 없어 탐지기를 느슨하게 하지 않는다.
+// 앱이 만든 기록 id(Date.now() 포함)는 탐지기가 아니라 식별자 층(lib/growth-execution.ts storedRecordId)에서 PII 검사 없이 형식만 본다.
+check('bare 13-digit epoch-ms run in free text stays fail-closed',()=>{assert.equal(kinds('1794677180051'),'payment');assert.equal(kinds('d8-src-1794677180051'),'payment')});
 // 13) 주문 가져오기(lib/order-import.ts PHONE·CARD)가 거부하는 값은 여기서도 모두 탐지한다(상위 집합).
 for(const v of ['010-0000-0000','+82 10 0000 0000','0000 0000 0000 0000','0000-0000-0000-0'])check(`order-import rejection is also detected: ${v}`,()=>{const k=orders.personalDataKind(v);assert.ok(k);assert.ok(scanText(v).some(f=>f.kind===(k==='phone'?'phone':'payment')))});
 console.log(JSON.stringify({passed:passed.length}));
