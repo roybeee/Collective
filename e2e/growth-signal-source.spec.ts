@@ -1,4 +1,16 @@
 import {test,expect} from '@playwright/test';
+import {execFileSync} from 'node:child_process';
+import {mkdtempSync,writeFileSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+
+// 로컬 D1 fixture(e2e/trust-ui.spec.ts와 같은 방식): API가 만들지 않는 모양의 자료 id를 넣을 때만 쓴다.
+const quote=(value:string)=>`'${value.replaceAll("'","''")}'`;
+function runSql(sql:string){
+ const folder=mkdtempSync(join(tmpdir(),'collective-signal-'));
+ try{const path=join(folder,'fixture.sql');writeFileSync(path,sql);execFileSync(process.execPath,['--import','./scripts/sites-env.mjs','./node_modules/wrangler/bin/wrangler.js','d1','execute','DB','--config','dist/server/wrangler.json','--local','--persist-to','e2e/.state','--file',path],{stdio:'pipe'})}finally{rmSync(folder,{recursive:true,force:true})}
+}
+const record=(owner:string,kind:string,id:string,parent:string,data:unknown)=>`INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(${[`${owner}:${kind}:${id}`,owner,kind,parent,JSON.stringify(data),new Date().toISOString()].map(quote).join(',')}) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at;`;
 
 test('확정 Archive 시장자료 가져오기·판 충돌·응답 유실·중복 방지',async({browser},info)=>{
  const owner=`signal-source-${info.project.name}-${Date.now()}`,context=await browser.newContext({baseURL:info.project.use.baseURL,viewport:info.project.use.viewport,extraHTTPHeaders:{'oai-authenticated-user-id':owner}}),page=await context.newPage();
@@ -27,13 +39,20 @@ test('성장·판매 탭 열기: 모든 스위치 켬에서도 API 4xx 없음(D8
   const store=await post('/api/stores',{action:'save_store',brandId:'ofd',data:{name:'성수 플래그십',address:'서울 성동구 연무장길 00',tradeArea:'residential',goal:'주말 방문 20% 증가'}}) as {id:string};
   const title=`D8 회귀 ${info.project.name}`,{id:campaignId}=await post('/api/action',{action:'save_campaign',data:{brandId:'ofd',storeId:store.id,title,goal:'10월 매운 세트 300개 판매'}}) as {id:string};
   await post('/api/growth',{action:'save_catalog',id:'cat-spicy',campaignId,campaignVersion:1,expectedVersion:0,input:{sku:'MD-SPICY-SET',title:'매운 세트(2인)',price:19800,unitCost:7200,variableCost:1800,stock:120,stockUnit:'piece',currency:'KRW',taxBasis:'included',fulfillment:'택배 배송(주문 후 2일)',refunds:'미개봉 7일 내 반품',rightsConfirmed:true,factIds:[],validUntil:'2026-12-31'}});
+  // QA N3(2026-11-15): Date.now() 13자리가 든 시장 자료 id(trust-ui 시드 모양)가 있어도 목록은 200이다.
+  const stampId=`d8-src-${Date.now()}`,stampTitle='타임스탬프 id 시장 자료',observedAt=new Date(Date.now()-86400000).toISOString();
+  runSql(record(owner,'brand_source',stampId,'ofd',{id:stampId,brandId:'ofd',title:stampTitle,category:'market',origin:'manual',status:'confirmed',url:'https://example.com/market',content:'합성 공개 관측',scope:'공개 웹 자료',observedAt,createdAt:observedAt,version:1}));
   const direct=await page.request.get(`/api/growth/signal-sources?campaignId=${encodeURIComponent(campaignId)}`);
   expect(direct.status(),await direct.text()).toBe(200);
+  expect(((await direct.json()) as {candidates:{sourceId:string;status:string}[]}).candidates.find(x=>x.sourceId===stampId)?.status).toBe('ready');
   page.on('response',r=>{const path=new URL(r.url()).pathname;if(!path.startsWith('/api/'))return;seen.push(path);if(r.status()>=400)bad.push(`${r.status()} ${r.request().method()} ${path}`)});
   await page.goto(`/?view=campaigns&campaign=${campaignId}`);
   await page.getByRole('tab',{name:'성장·판매',exact:true}).click();
-  await expect(page.getByRole('region',{name:'확정 시장자료 가져오기',exact:true})).toBeVisible({timeout:10_000});
+  const region=page.getByRole('region',{name:'확정 시장자료 가져오기',exact:true});
+  await expect(region).toBeVisible({timeout:10_000});
   await expect.poll(()=>seen.includes('/api/growth/signal-sources'),{timeout:10_000}).toBe(true);
+  await expect(region.getByRole('combobox',{name:'브랜드 아카이브 자료 선택',exact:true})).toContainText(stampTitle);
+  await expect(region.getByRole('alert')).toHaveCount(0);
   await page.waitForLoadState('networkidle').catch(()=>{});
   expect(bad).toEqual([]);
  }finally{await context.close().catch(()=>{})}

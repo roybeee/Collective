@@ -8,7 +8,7 @@
 // 가맹 범주(franchise_recruit, 트랙 R R2)는 checkCompliance의 opts.franchise로만 켠다. 기본 호출(온라인 채점·평가)은 이 범주를 보지 않는다.
 // scope 'recruitment': 모집 범위(objective 캠페인·내보내기)에서만 적용한다. 가맹 규칙의 id는 규칙 레지스트리(lib/franchise-rules.ts) id 그대로다.
 export type ComplianceSeverity='block'|'warn'|'info';
-export const COMPLIANCE_CATEGORIES=['platform_review','endorsement','ai_label','ad_message','food_claim','cosmetic_claim','ecommerce_terms','rights','franchise_recruit'] as const;
+export const COMPLIANCE_CATEGORIES=['platform_review','endorsement','ai_label','ad_message','food_claim','cosmetic_claim','ecommerce_terms','rights','franchise_recruit','ad_claim'] as const;
 export type ComplianceCategory=typeof COMPLIANCE_CATEGORIES[number];
 export type ComplianceRule={id:string;category:ComplianceCategory;severity:ComplianceSeverity;title:string;match:string;context?:string;cleared?:string;also?:string;except?:string;held?:string;ledgerKey?:string;marked?:boolean;scope?:'recruitment';sources:string[]};
 export const HELD_MARK='⟪M⟫';
@@ -191,8 +191,26 @@ const ASSOCIATION_CONDITION=`${ASSOC_TERMS}|${ASSOC_ORG}[^.\\n]{0,20}?(?:(?:가�
 // 면제: 가입 여부와 관계없음·차이 없음·같은 조건('계약 조건은 같습니다', '계약에 영향이 없습니다'). 양보로 쓴 '자유지만'은 면제가 아니다.
 const ASSOCIATION_EXCEPT='관계\\s?없이|무관하게|무관합니다|상관\\s?없이|자유(?!\\s?(?:지만|이지만|이나|인데|이긴))|같(?:습니다|아요|다|음)|동일|똑같|차이\\s?(?:가\\s?|는\\s?)?없|영향\\s?(?:이|은|을)?\\s?(?:없|주지\\s?않)';
 
+// 일반 표시·광고 주장(ad_claim, QA N7 2026-11-15). 부당한 표시·광고행위의 유형 및 기준 지정고시 Ⅲ.14.나: '최대·최고·최초·제일·유일' 같은 배타적 절대 표현은
+// 객관 근거로 입증될 때만 쓴다. 같은 고시 Ⅱ.2.나(5)는 주관 판단(맛·느낌)과 통념상 광고 표현('최고의 강사진')을 오인성이 낮다고 적어, 단독 '최고의 맛'은 보지 않는다.
+// 비교 범위 앞머리(업계·국내·전국·세계 …)가 붙은 최상급, 지표 순위(판매·만족도 1위), '1위 브랜드', '넘버원', '유일무이', '최초 개발·출시', '100% 효과·천연', '완벽 차단' 같은 객관 주장만 본다.
+// 순위를 목표로 적은 계획 문장('판매 1위 달성을 목표로')은 주장이 아니다(except). 매장 안 메뉴 순위('매출 1위 메뉴', '인기 1위 품목')는 경쟁 비교가 아니라 보지 않는다.
+const AD_SCOPE='(?:동종\\s?업계|업계|국내|전국|세계|지역|동네|대한민국|한국|아시아|시장)';
+const AD_RANK='(?:1\\s?위|1\\s?등|넘버\\s?원|No\\.?\\s?1(?!\\d))';
+const AD_SUPERLATIVE=[`${AD_SCOPE}\\s?(?:최고|최대|최초|최저|최상|제일|유일|${AD_RANK})`,`(?:판매량?|매출|만족도|선호도|인기|점유율|재구매율?|평점)\\s?${AD_RANK}(?!\\s?(?:메뉴|품목))`,
+ '(?<!\\d)1\\s?위\\s?(?:브랜드|맛집|제품|업체|매장)','넘버\\s?원','유일무이','(?<![가-힣])최초(?:로)?\\s?(?:개발|출시|도입|선보)',
+ '100\\s?%\\s?(?:만족|효과|효능|완치|안전|천연|무첨가|살균|제거|차단|성공)','완벽(?:하게|한|히)?\\s?(?:차단|제거|살균|해결|효과)'].join('|');
+// 따옴표로 든 표현을 '…표현을 사용하려는 경우'처럼 조건·점검 대상으로 가리키는 절은 사용이 아니다(held).
+const AD_SUPERLATIVE_HELD=`${HELD_MARK}[’”'"」』][^.\\n]{0,40}표현(?:을|를)?\\s?(?:사용하려|쓰려|넣으려|쓰는\\s?경우|사용하는\\s?경우)`;
+const AD_RANK_GOAL='목표|달성(?:을|를|하|해|할|이)?|도전|노리|노려|노린';
+// 성과 보장: 효과·효능·수익·매출(상승)·수입·소득·감량을 '보장·보증'하는 표현. 보증금·보증 보험·보증 기간·보장형(광고 상품) 같은 명사는 아니다. 부정('보장하지 않습니다')은 negation.ts가 면제한다.
+// 보장 표현을 이름으로 가리키거나('수익·매출 보장 표현', '매출 보장 규칙') 남의 광고를 경고하는 절('수익을 보장한다는 광고는 … 위반입니다')은 면제한다(held, 절 단위).
+// '수익 보장은 위반이지만 저희는 보장합니다'처럼 같은 문장에서 다시 약속하는 우회는 '한다는 광고' 꼴이 아니라 면제하지 않는다.
+const AD_GUARANTEE_HELD=`${HELD_MARK}\\s?(?:표현|규칙|금지)|${HELD_MARK}(?:한다는|하는|된다는|하겠다는)\\s?(?:광고|표현|문구|약속)[^.\\n]{0,30}(?:위반|불법|금지|주의|조심)`;
+const AD_OUTCOME_GUARANTEE='(?:효과|효능|수익|매출|수입|소득|감량)(?:\\s?(?:상승|증가|향상|개선))?(?:을|를|이|가|은|는|도)?\\s?(?:(?:100\\s?%|확실히|확실하게|반드시|무조건|꼭)\\s?)?(?:보장|보증)(?!\\s?(?:금|보험|기간|서|제도|범위|대상|한도|형))';
+
 export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:string;sources:Record<string,ComplianceSource>;rules:ComplianceRule[]}={
- version:'compliance-lexicon-2026-09-25.14',
+ version:'compliance-lexicon-2026-11-15.15',
  checkedAt:'2026-09-23',
  platformPolicy:'플랫폼별 리뷰 운영정책(예: 지도·예약 플랫폼) 공식 URL은 아직 확인하지 않았다. 게시 전 해당 플랫폼 공식 정책 페이지에서 확인하고, 확인되면 사전 버전을 올려 출처를 추가한다.',
  sources:{
@@ -209,6 +227,7 @@ export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:
   trademark_act:{title:'상표법',url:law('상표법')},
   franchise_act:{title:'가맹사업거래의 공정화에 관한 법률(법률 제20712호)',url:`${FR_DRF}&target=law&type=XML&MST=268283`},
   franchise_decree:{title:'가맹사업거래의 공정화에 관한 법률 시행령(대통령령 제36561호, 2026-08-04 시행)',url:`${FR_DRF}&target=eflaw&type=XML&MST=288453&efYd=20260804`},
+  unfair_ad_notice:{title:'부당한 표시·광고행위의 유형 및 기준 지정고시(공정거래위원회고시 제2019-11호) Ⅲ.14.나 배타성을 띤 절대적 표현',url:'https://www.law.go.kr/행정규칙/부당한표시ㆍ광고행위의유형및기준지정고시'},
   franchise_false_info_notice:{title:'가맹사업거래 상 허위·과장 정보제공행위 등의 유형 지정고시(공정거래위원회고시 제2019-8호, 2019-11-20 시행)',url:`${FR_DRF}&target=admrul&type=XML&ID=2100000183885`},
  },
  rules:[
@@ -257,5 +276,8 @@ export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:
   {id:'kr.fr.territory_claims',category:'franchise_recruit',severity:'warn',title:'독점 상권·영업지역 보장 표현',match:'독점\\s?(?:상권|영업\\s?(?:지역|권))|영업\\s?지역\\s?(?:보장|보호)|상권\\s?독점',ledgerKey:'^territory_clause$',sources:['franchise_act']},
   {id:'kr.ad.endorsement_disclosure',category:'franchise_recruit',severity:'warn',title:'경제적 이해관계 표시 없는 점주 후기',match:'(?:가맹\\s?)?점주\\s?(?:님\\s?)?(?:후기|인터뷰|추천|이야기|증언)',cleared:'광고|협찬|경제적\\s?(?:대가|이해관계)|대가를?\\s?받',sources:['endorsement_guideline','fair_labeling']},
   {id:'kr.ad.virtual_human_label',category:'franchise_recruit',severity:'warn',title:'가상인물 표시 없는 AI 가상인물',match:'(?:AI|가상)\\s?(?:점주|인물|모델|아바타(?!\\s?(?:포토\\s?존|만들기|꾸미기|필터|스티커|체험|게임))|인플루언서)',cleared:'가상\\s?인물(?:임|입니다|\\s?표시)|AI\\s?생성\\s?인물',sources:['endorsement_guideline','fair_labeling']},
+  // ⑩ 일반 표시·광고 주장(QA N7): 범주와 관계없이 본다. 확정 원장 claim_basis(순위·최상급 근거)가 있으면 해소, [확인 필요] 표시 문장은 면제.
+  {id:'kr.ad.superlative_unsupported',category:'ad_claim',severity:'warn',title:'근거 없는 최상급·배타적 표현(최고·1위·최초·유일·100%·완벽)',match:AD_SUPERLATIVE,except:AD_RANK_GOAL,held:AD_SUPERLATIVE_HELD,ledgerKey:'^claim_basis$',marked:true,sources:['fair_labeling','unfair_ad_notice']},
+  {id:'kr.ad.outcome_guarantee',category:'ad_claim',severity:'block',title:'효과·수익·매출 보장 표현',match:AD_OUTCOME_GUARANTEE,held:AD_GUARANTEE_HELD,sources:['fair_labeling','unfair_ad_notice']},
  ],
 };

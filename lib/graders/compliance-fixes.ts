@@ -17,6 +17,7 @@ export const COMPLIANCE_FIX_NOTICE='수정 제안은 COLLECTIVE 휴리스틱이�
 export const OPTOUT_PLACEHOLDER='[수신거부 080-…]';
 export const SENDER_PLACEHOLDER='[전송자 명칭 확인 필요]';
 export const CLAIM_PLACEHOLDER='[확인 필요: 순위 근거]';
+export const CLAIM_BASIS_PLACEHOLDER='[확인 필요: 근거]';
 export class ComplianceFixConflictError extends Error{}
 
 type Span={start:number;end:number};
@@ -89,6 +90,13 @@ function firstMatch(c:Ctx){
  return m?{start:c.sentence.start+m.index,end:c.sentence.start+m.index+m[0].length,text:m[0]}:null;
 }
 const at=(pos:number)=>({start:pos,end:pos});
+// 문장 안의 첫 매치부터 마지막 매치까지를 바꾸되 매치만 자리표시로 바꾼다(사이의 글은 그대로 둔다).
+function claimReplacement(c:Ctx,placeholder:string,rationale:string):Draft|null{
+ const s=c.text.slice(c.sentence.start,c.sentence.end),all=[...s.matchAll(new RegExp(c.rule.match,'g'))].filter(m=>m[0]);
+ if(!all.length)return null;
+ const from=all[0].index!,to=all[all.length-1].index!+all[all.length-1][0].length;
+ return {kind:'replace',range:{start:c.sentence.start+from,end:c.sentence.start+to},after:s.slice(from,to).replace(new RegExp(c.rule.match,'g'),m=>m?placeholder:m),needsCheck:true,anchor:c.sentence.start,rationale};
+}
 const FIXERS:Readonly<Record<string,(c:Ctx)=>Draft|null>>={
  sponsorship_undisclosed:c=>{
   const blog=BLOG.test(c.text.slice(c.part.start,c.part.end)),pos=contentStart(c.text,c.line);
@@ -121,13 +129,11 @@ const FIXERS:Readonly<Record<string,(c:Ctx)=>Draft|null>>={
   rationale:'화장품을 의약품으로 잘못 알게 하는 표현은 쓸 수 없습니다(화장품법 제13조). 문장을 지웁니다.'}),
  'kr.fr.revenue_guarantee':c=>({kind:'remove',range:removal(c),after:'',needsCheck:false,anchor:c.sentence.start,
   rationale:'가맹 모집에서 수익·매출 보장 표현은 허위·과장 정보입니다(가맹사업법 제9조). 규칙에 정해진 대체 문장이 없어 문장만 지웁니다.'}),
- 'kr.fr.superlative_claims':c=>{
-  const s=c.text.slice(c.sentence.start,c.sentence.end),all=[...s.matchAll(new RegExp(c.rule.match,'g'))].filter(m=>m[0]);
-  if(!all.length)return null;
-  const from=all[0].index!,to=all[all.length-1].index!+all[all.length-1][0].length;
-  return {kind:'replace',range:{start:c.sentence.start+from,end:c.sentence.start+to},after:s.slice(from,to).replace(new RegExp(c.rule.match,'g'),m=>m?CLAIM_PLACEHOLDER:m),needsCheck:true,anchor:c.sentence.start,
-   rationale:'순위·최상급 표현은 객관적 근거가 확정 사실로 있을 때만 씁니다. 근거가 없어 표현을 지우고 확인 필요 표시로 바꿉니다.'};
- },
+ 'kr.fr.superlative_claims':c=>claimReplacement(c,CLAIM_PLACEHOLDER,'순위·최상급 표현은 객관적 근거가 확정 사실로 있을 때만 씁니다. 근거가 없어 표현을 지우고 확인 필요 표시로 바꿉니다.'),
+ // QA N7 일반 표시·광고 규칙: 최상급은 근거 자리표시로 바꾸고, 효과·수익·매출 보장 문장은 지운다.
+ 'kr.ad.superlative_unsupported':c=>claimReplacement(c,CLAIM_BASIS_PLACEHOLDER,'최고·1위·최초·유일 같은 배타적 절대 표현은 객관적 근거로 입증될 때만 씁니다(부당 표시·광고 지정고시 Ⅲ.14.나). 확정 근거가 없어 표현을 확인 필요 표시로 바꿉니다.'),
+ 'kr.ad.outcome_guarantee':c=>({kind:'remove',range:removal(c),after:'',needsCheck:false,anchor:c.sentence.start,
+  rationale:'효과·수익·매출을 보장한다는 표현은 실증할 수 없는 거짓·과장 광고가 될 수 있습니다(표시광고법 제3조). 고쳐 쓸 근거가 없어 문장을 지웁니다.'}),
 };
 export const FIXABLE_RULE_IDS=Object.freeze(Object.keys(FIXERS));
 export const hasFixer=(ruleId:string)=>Object.hasOwn(FIXERS,ruleId);
