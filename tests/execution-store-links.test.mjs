@@ -1,6 +1,7 @@
 // ux-2 권고 (2)(3)·ux-3: 실행 화면의 '주문 장부 열기'와 점포 주문 장부의 캠페인·소재 필터, 두 화면의 관리자 전용 동작 안내.
 // 순수 계산(장부 이동 대상·필터 선택지·필터 일치)은 화면 모듈이 내보낸 함수를 불러 확인한다. 화면 부품·react 같은 의존은 이름만 있는 대역으로 바꾸고,
 // 계산에 쓰는 lib 모듈(소재 이름 creativeLabel, 주소 규칙 nav-state)만 실제로 불러온다. 화면 연결은 원문 검사(tests/workspace-wiring.test.mjs와 같은 방식)로 본다.
+import {koSource} from './helpers/i18n-source.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
@@ -31,7 +32,7 @@ async function load(file){
  if(m.status!=='evaluated')await m.evaluate();return m.namespace;
 }
 const execution=await load('app/execution-panel.tsx'),operations=await load('app/store-operations-panel.tsx'),nav=await load('lib/nav-state.ts');
-const source=file=>readFileSync(file,'utf8'),executionUi=source('app/execution-panel.tsx'),operationsUi=source('app/store-operations-panel.tsx');
+const source=file=>readFileSync(file,'utf8'),executionUi=koSource('app/execution-panel.tsx'),operationsUi=source('app/store-operations-panel.tsx');
 let passed=0;const check=(name,fn)=>{try{fn();passed++}catch(error){console.error('FAIL:',name);throw error}};
 const plain=value=>JSON.parse(JSON.stringify(value));
 

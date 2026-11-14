@@ -40,6 +40,19 @@ await check('compact units per locale',()=>{assert.equal(f.compact(12000),'1.2�
 await check('day labels per locale (KST, date-only stays on the Seoul day)',()=>{assert.equal(f.dayLabel('2026-11-09'),'11월 9일 (월)');assert.equal(f.dayLabel('2026-11-09','en'),'Mon, Nov 9');assert.equal(f.dayLabel('2026-11-09','ja'),'11月9日(月)');assert.equal(f.dayLabel('2026-11-08T15:30:00Z','ko'),'11월 9일 (월)');assert.equal(f.dayLabel('bad','en'),'미확인')});
 await check('existing Korean formats are unchanged',()=>{assert.equal(f.count(1234),'1,234');assert.equal(f.dateTime('2026-10-01T05:30:00.000Z'),'2026-10-01 14:30');assert.equal(f.dayTime('2026-10-02T06:10:00Z'),'10월 2일 오후 3:10');assert.equal(f.percent(0.125),'12.5%')});
 
+// 2단계: 날짜·시각·기간은 화면 언어를 따른다(setLocale이 lib/format.ts에 알린다). 한국어 결과와 서버(언어를 바꾸지 않는 런타임)는 그대로다.
+await check('dates, times and durations follow the screen language; Korean stays byte-identical',async()=>{
+ const sample=()=>[f.dateTime('2026-10-01T05:30:00.000Z'),f.dateTime(null),f.date('2026-10-01'),f.date('2026-10-01T20:00:00Z'),f.dayTime('2026-10-02T06:10:00Z'),f.duration(500),f.duration(125000),f.duration(3840000)].join(' | ');
+ assert.equal(sample(),'2026-10-01 14:30 | 미확인 | 2026-10-01 | 2026-10-02 | 10월 2일 오후 3:10 | 1초 미만 | 2분 5초 | 1시간 4분');
+ assert.equal(await i18n.setLocale('en',{persist:false}),true);
+ assert.equal(sample(),'Oct 1, 2026, 14:30 | Unconfirmed | Oct 1, 2026 | Oct 2, 2026 | Oct 2, 3:10 PM | under 1s | 2m 5s | 1h 4m');
+ assert.equal(f.dateTime(undefined,'없음'),'없음');
+ assert.equal(await i18n.setLocale('ja',{persist:false}),true);
+ assert.equal(sample(),'2026/10/01 14:30 | 未確認 | 2026/10/01 | 2026/10/02 | 10月2日 15:10 | 1秒未満 | 2分5秒 | 1時間4分');
+ assert.equal(await i18n.setLocale('ko',{persist:false}),true);
+ assert.equal(sample(),'2026-10-01 14:30 | 미확인 | 2026-10-01 | 2026-10-02 | 10월 2일 오후 3:10 | 1초 미만 | 2분 5초 | 1시간 4분');
+});
+
 // 4) 사전 완결성(키·자리표시 일치)은 tests/i18n-coverage.test.mjs가 본다. 여기서는 사전 모양만 확인한다.
 await check('dictionaries are plain string maps',()=>{for(const d of [ko,en,ja])assert.ok(Object.values(d).every(v=>typeof v==='string'))});
 

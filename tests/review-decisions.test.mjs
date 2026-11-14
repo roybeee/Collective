@@ -1,6 +1,7 @@
 // B1 사람 판정·교정 결정 로그 회귀(대표 결정 8). 실제 SQLite(node:sqlite)와 실제 라우트를 쓰고 외부 호출은 막는다(mocked: fetch 스텁, 헤더 세션).
 // 사유 코드 v1 사전·F1 채점기 매핑, review_decision 추가 전용 이력, 사유 필수 스위치, 기준별 사람 판정, AI 편집 교정(origin ai_edited),
 // 브리프 제안 채택·수정·미사용, 자료 제외·발행 취소 사유, 선호 쌍 조회, 캠페인 삭제 정책, 화면 연결을 확인한다. LLM 호출은 0이어야 한다.
+import {koSource} from './helpers/i18n-source.mjs';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {readFileSync,existsSync} from 'node:fs';
@@ -132,7 +133,7 @@ check('first-pass approval rate is grouped by role and skill version',cmoRate?.a
 check('manual artifacts are left out of the first-pass rate',rates.every(x=>x.skillVersion!==null||x.role!=='cmo')&&JSON.stringify(plain(pure.firstPassApproval([{targetKind:'artifact',targetId:'m',origin:'manual',decision:'approved',role:'cmo',skillVersion:null}])))==='[]');
 check('the pure aggregation agrees with the stored one',JSON.stringify(plain(pure.firstPassApproval(decisions())))===JSON.stringify(rates));
 // X7: 상세 머리와 목록 카드의 출처 글자는 AI 출처 배지(components/app/ai-origin-badge.tsx)가 originLabel로 그린다.
-check('the panel shows the readable origin label',(()=>{const panels=readFileSync('app/panels.tsx','utf8'),badge=readFileSync('components/app/ai-origin-badge.tsx','utf8');return (panels.match(/<AiOriginBadge [^>]*origin=\{a\.origin\}/g)||[]).length>=2&&/label=originLabel\(origin\)/.test(badge)&&!panels.includes("a.origin==='ai'?'AI 작성':'직접 등록'")})());
+check('the panel shows the readable origin label',(()=>{const panels=koSource('app/panels.tsx'),badge=readFileSync('components/app/ai-origin-badge.tsx','utf8');return (panels.match(/<AiOriginBadge [^>]*origin=\{a\.origin\}/g)||[]).length>=2&&/label=originLabel\(origin\)/.test(badge)&&!panels.includes("a.origin==='ai'?'AI 작성':'직접 등록'")})());
 
 // 7) H: 선호 쌍(AI 원본·사람 확정본·판정)을 조회로만 묶는다
 const pair=plain(await store.preferencePair(O,'ai2'));
@@ -243,7 +244,7 @@ check('the retained decisions hold no review note text or reviewer email',rows()
 check('the deletion dialog names the retained decision log',deletionSummary({...preview,retained:{review_decision:kept}}).retained===`보존: 사람 판정 로그 ${kept}건(사유 코드·판정만, 검토 메모 원문 없음)`);
 
 // 11) 화면 연결과 문서
-const panels=readFileSync('app/panels.tsx','utf8'),archiveUi=readFileSync('app/brand-archive.tsx','utf8'),publishUi=readFileSync('app/execution-panel.tsx','utf8'),briefUi=readFileSync('app/campaign-brief.tsx','utf8');
+const panels=koSource('app/panels.tsx'),archiveUi=readFileSync('app/brand-archive.tsx','utf8'),publishUi=koSource('app/execution-panel.tsx'),briefUi=koSource('app/campaign-brief.tsx');
 check('the artifact dialog shows reason chips and sends reasons and criteria',panels.includes("reasonChoices('artifact'")&&panels.includes('reasonCodes:reasons')&&panels.includes('criteria')&&panels.includes('b1_reason_required'));
 check('archive exclusion, publication cancel and brief save send optional reasons',archiveUi.includes('reasonCodes')&&publishUi.includes('reasonCodes')&&briefUi.includes('suggestionReasons'));
 const doc=existsSync('docs/REVIEW-DECISIONS.ko.md')?readFileSync('docs/REVIEW-DECISIONS.ko.md','utf8'):'';

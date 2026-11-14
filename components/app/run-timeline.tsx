@@ -6,6 +6,9 @@ import {Ban,CircleCheck,CircleQuestionMark,CircleX,Clock,Hand,LoaderCircle} from
 import {MetaLine} from '@/components/app/meta-line';
 import {cn} from '@/lib/utils';
 import {elapsedMs,formatElapsed,hasLive,statusView,type TimelineItem,type TimelineTone} from '@/lib/run-timeline';
+import {t} from '@/lib/i18n';
+import {useT} from '@/lib/i18n-react';
+import '@/lib/i18n/lazy';
 
 const icons:Record<TimelineTone,React.ComponentType<{size?:number;className?:string;'aria-hidden'?:boolean}>>={idle:Clock,live:LoaderCircle,wait:Hand,done:CircleCheck,fail:CircleX,stop:Ban,unknown:CircleQuestionMark};
 // 대기·완료 색은 라이트·다크 토큰(globals.css --yellow-35·--olive-42, 상태 배지와 같은 값)이다. 고정 Tailwind 색(emerald-700)은 다크에서 대비가 모자랐다(QA D6).
@@ -17,7 +20,7 @@ function useTicker(active:boolean,fixed?:number){
  useEffect(()=>{if(fixed!==undefined||!active)return;const t=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(t)},[active,fixed]);
  return fixed??now;
 }
-export function RunTimeline({items,label,now:fixedNow,className}:{items:readonly TimelineItem[];label:string;now?:number;className?:string}){
+export function RunTimeline({items,label,now:fixedNow,className}:{items:readonly TimelineItem[];label:string;now?:number;className?:string}){useT();
  const now=useTicker(hasLive(items),fixedNow);
  if(!items.length)return null;
  return <div role="log" aria-live="polite" aria-label={label} className={cn('run-timeline',className)}><ol className="grid gap-2 m-0 p-0 list-none">
@@ -27,7 +30,7 @@ export function RunTimeline({items,label,now:fixedNow,className}:{items:readonly
     <span className={cn('mt-0.5 shrink-0',tones[view.tone])}><Icon size={18} className={view.live&&view.tone==='live'?'spin':undefined} aria-hidden/></span>
     <div className="min-w-0 flex-1 text-sm leading-6">
      <div className="flex flex-wrap items-baseline gap-x-2"><b className={tones[view.tone]}>{view.label}</b><span>{item.title}</span>{item.subtitle&&<span className="text-muted-foreground text-[13px]">{item.subtitle}</span>}</div>
-     <small className="block text-[13px] text-muted-foreground"><MetaLine items={[started&&'시작 '+started,elapsed!==null&&(view.live?'경과 '+formatElapsed(elapsed):'소요 '+formatElapsed(elapsed)),typeof item.attempt==='number'&&item.attempt>1&&`시도 ${item.attempt}회`,item.tokens!==null&&item.tokens!==undefined&&`토큰 ${item.tokens.toLocaleString('ko-KR')}`,item.activity&&view.tone==='live'&&'활동 '+item.activity]}/></small>
+     <small className="block text-[13px] text-muted-foreground"><MetaLine items={[started&&t('timeline.started')+started,elapsed!==null&&(view.live?t('timeline.elapsed')+formatElapsed(elapsed):t('timeline.took')+formatElapsed(elapsed)),typeof item.attempt==='number'&&item.attempt>1&&t('timeline.attempts',{n:item.attempt}),item.tokens!==null&&item.tokens!==undefined&&t('timeline.tokens',{n:item.tokens.toLocaleString('ko-KR')}),item.activity&&view.tone==='live'&&t('timeline.activity')+item.activity]}/></small>
      {item.error&&<p className="form-error m-0 text-[13px]">{item.error}</p>}
     </div>
    </li>;

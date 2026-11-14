@@ -1,5 +1,6 @@
 // 레인 X-G 화면 권한 판정(lib/access-client.ts): 범위 없는 역할(대표·관리자·직원)은 기존 화면 규칙(useCanManage 값)과 같고, 범위 역할은 lib/access.ts 표를 자원(브랜드·지점)으로 읽는다.
 // access 모양이 깨졌으면 범위 없음으로 넓히지 않고 직원 규칙으로 막는다. 저장소(setWorkspaceAccess)는 같은 값이면 알리지 않는다. 근거: 순수 함수(외부 호출 0회).
+import {koSource} from './helpers/i18n-source.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {testRuntime} from './helpers/runtime.mjs';
@@ -33,8 +34,8 @@ off();c.setWorkspaceAccess(sm);check(calls===2,'unsubscribed listener is not cal
 // 화면 연결: 승인·발행 버튼이 useAccessCheck/useCan을 쓰고, 워크스페이스가 access를 넘긴다.
 const src=f=>readFileSync(f,'utf8');
 check(src('app/workspace.tsx').includes('setWorkspaceAccess((data as WorkspaceData&{access?:unknown}).access)'),'workspace hands /api/workspace access to the client store');
-check(/access\.check\('approve_artifact',\{brandId:campaign\.brandId/.test(src('app/panels.tsx'))&&src('app/panels.tsx').includes('!canApprove?approveDenied'),'artifact dialog approve uses the scoped check');
-check(/access\.check\('publish',\{brandId:campaign\.brandId/.test(src('app/execution-panel.tsx'))&&src('app/execution-panel.tsx').includes("{canPublish&&p.status==='draft'"),'execution approve/submit uses the publish check');
+check(/access\.check\('approve_artifact',\{brandId:campaign\.brandId/.test(koSource('app/panels.tsx'))&&koSource('app/panels.tsx').includes('!canApprove?approveDenied'),'artifact dialog approve uses the scoped check');
+check(/access\.check\('publish',\{brandId:campaign\.brandId/.test(koSource('app/execution-panel.tsx'))&&koSource('app/execution-panel.tsx').includes("{canPublish&&p.status==='draft'"),'execution approve/submit uses the publish check');
 check(src('app/agenda-panel.tsx').includes('canAct={canActOn(item)}')&&src('app/agenda-panel.tsx').includes("t(actionOf(i)==='publish'?'access.deniedPublish':'access.deniedApprove')"),'inbox rows judge each row by its brand·store');
 check(src('app/ads-proposals-card.tsx').includes("useCan('publish',scope)")&&src('app/ads-proposals-card.tsx').includes("useCan('spend',scope)"),'ads proposals card checks publish and spend');
 console.log(JSON.stringify({passed}));

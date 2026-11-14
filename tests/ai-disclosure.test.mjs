@@ -1,3 +1,4 @@
+import {koSource} from './helpers/i18n-source.mjs';
 import assert from 'node:assert/strict';
 import {deflateSync} from 'node:zlib';
 import {readFileSync,existsSync,readdirSync} from 'node:fs';
@@ -93,7 +94,7 @@ const draft=(offset,copy,extra={})=>post('save_publication','aid',{creativeId:cr
 check((await getState('aid')).copyCaptions===false&&(await getState('aid')).copies.length===0,'switch off offers no copy candidates');
 const off=await draft(1,{artifactId:'ai-art',artifactVersion:1,index:0});
 check(off.status===409&&off.data.error.includes('결정 17'),'switch off still rejects AI copy captions');
-const offReason='대표가 AI 생성물 표시 문구(결정 17)를 확정할 때까지 꺼져 있습니다',panelSource=readFileSync('app/execution-panel.tsx','utf8');
+const offReason='대표가 AI 생성물 표시 문구(결정 17)를 확정할 때까지 꺼져 있습니다',panelSource=koSource('app/execution-panel.tsx');
 check(off.data.error.includes(offReason)&&panelSource.includes(offReason)&&!panelSource.includes('AI 생성물 표시 기준이 정해질 때까지'),'switch-off note on the screen gives the same reason as the server');
 
 rt.env.AI_COPY_CAPTIONS='enabled';
@@ -212,7 +213,7 @@ rt.env.AI_COPY_CAPTIONS=undefined;
 const literalFiles=['lib','app'].flatMap(dir=>readdirSync(dir,{recursive:true}).filter(f=>/\.(ts|tsx)$/.test(f)).map(f=>dir+'/'+f)).filter(f=>readFileSync(f,'utf8').includes(LINE));
 check(JSON.stringify(literalFiles)==='["lib/ai-disclosure.ts"]','the disclosure wording lives in one constant '+JSON.stringify(literalFiles));
 check(existsSync('lib/ai-disclosure.ts')&&readFileSync('lib/ai-disclosure.ts','utf8').includes('초안'),'code comment marks the wording as a draft pending review');
-const panel=readFileSync('app/execution-panel.tsx','utf8');
+const panel=koSource('app/execution-panel.tsx');
 check(panel.includes('AI 생성물 표시 확인')&&panel.includes('aiDisclosureConfirmed')&&panel.includes('>AI 생성물<')&&panel.includes('disclosureLine(')&&panel.includes('AI_DISCLOSURE_LINE'),'panel shows the AI badge, the disclosure preview and the required check');
 // 체크 상태는 발행 id로 저장하고, 같은 키로 승인 본문과 차단 사유를 만든다.
 check(panel.includes('setAiChecks(old=>({...old,[p.id]:e.target.checked}))')&&panel.includes('approvalRequest(p,state,!!aiChecks[p.id])')&&panel.includes('aiDisclosureConfirmed:!!aiChecks[p.id]'),'panel keys the disclosure tick by publication id for the checkbox, the approval body and the blockers');

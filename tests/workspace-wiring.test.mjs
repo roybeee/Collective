@@ -1,9 +1,10 @@
 // 화면 연결 고정(PR 5a 리뷰 반영). 계산은 lib/*.ts 스위트가, 실제 여정은 e2e/navigation.spec.ts가 확인한다.
 // 여기서는 화면이 그 계산을 실제로 쓰는지(원문 검사, tests/campaign-store-link.test.mjs와 같은 방식)만 본다.
+import {koSource} from './helpers/i18n-source.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const source=file=>readFileSync(file,'utf8');
-const workspace=source('app/workspace.tsx'),detail=source('app/campaign-detail-panel.tsx'),brief=source('app/campaign-brief.tsx'),stores=source('app/store-marketing-panel.tsx'),learning=source('app/learning-panel.tsx');
+const workspace=source('app/workspace.tsx'),detail=source('app/campaign-detail-panel.tsx'),brief=koSource('app/campaign-brief.tsx'),stores=source('app/store-marketing-panel.tsx'),learning=source('app/learning-panel.tsx');
 let passed=0;const check=(name,fn)=>{try{fn();passed++}catch(error){console.error('FAIL:',name);throw error}};
 
 // 상세: 폴링 tick마다 다시 읽지 않되(부모 data 객체 의존 금지), 캠페인 레코드(버전·수정 시각·상태·지점)가 바뀌면 다시 읽는다.
