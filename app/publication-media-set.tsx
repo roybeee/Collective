@@ -2,7 +2,7 @@
 // 제작·발행 탭 발행 카드 안의 캐러셀·릴스 묶음과 직접 게시 결과 미확인 대조(C3 후속). app/execution-panel.tsx가 지연 로딩한다.
 // 묶음: 장마다 소재 이미지·순서·미디어 해시 앞 12자를 보이고, 승인 확인 카드(무엇)에 같은 해시 목록을 싣는다(lib/execution-media-set.ts). 서버는 승인 요청의 해시가 다르면 409다.
 // 대조: 결과 미확인 직접 게시 발행에 '계정 게시물로 대조'(POST reconcile_direct)를 보인다. 읽기만 하고 다시 보내지 않는다. 여러 후보면 후보를 보인다.
-import '@/lib/i18n/lazy';
+import '@/lib/i18n/lazy-exec';
 import Image from 'next/image';
 import {Button} from '@/components/ui/button';
 import {MetaLine} from '@/components/app/meta-line';

@@ -1,7 +1,7 @@
 'use client';
 // 실행 중 '지시 추가'(벤치마크 P14, Figma Make 메시지 큐처럼). 진행 중 회의·연속 실행에서 다음 단계 입력부터 반영할 지시를 남긴다.
 // 지금 실행 중인 단계는 바뀌지 않는다는 것을 버튼 옆에 늘 적는다. 저장된 지시는 실행 타임라인에 '지시 추가 · 다음 단계부터 반영'으로 보인다.
-import '@/lib/i18n/lazy';
+import '@/lib/i18n/lazy-campaign';
 import {useId,useState} from 'react';
 import {LoaderCircle,MessageSquarePlus} from 'lucide-react';
 import {Button} from '@/components/ui/button';

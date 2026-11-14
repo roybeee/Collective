@@ -16,14 +16,14 @@ const placeWhere=(names:Names,brandId:string|null,storeId:string|null)=>[brandId
 export function billingAlertItems(rows:readonly R[],month:string):AgendaItem[]{
  const current=rows.filter(d=>d.month===month&&(d.level===80||d.level===100)).sort((a,b)=>Number(b.level)-Number(a.level));
  const top=current[0];if(!top||!id(top.id))return [];
- return [{...workspace,id:`billing_alert:${top.id}`,kind:'signal',source:'billing',title:text(top.title)||'크레딧 사용 알림',detail:text(top.detail,160),where:['워크스페이스 전체'],section:'observe',nav:{view:'settings',section:'usage'}}];
+ return [{...workspace,id:`billing_alert:${top.id}`,kind:'signal',source:'billing',title:text(top.title)||'크레딧 사용 알림',titleKey:top.level===100?'agenda.t.billing100':'agenda.t.billing80',detail:text(top.detail,160),where:['워크스페이스 전체'],section:'observe',nav:{view:'settings',section:'usage'}}];
 }
 
 // 카카오 마케팅 수신 재동의 안내(status 'new'). 브랜드 단위이며 연결 및 설정 > 채널 연결의 카카오 카드에서 처리한다.
 export function reconsentItem(d:R,names:Names):AgendaItem|null{
  const brandId=id(d.brandId);if(d.status!=='new'||!id(d.id)||!brandId)return null;
  const det=(d.detection??{}) as R,due=typeof det.dueBy==='string'&&det.dueBy?det.dueBy:null;
- return {...workspace,id:`kakao_reconsent:${d.id}`,kind:'signal',source:'kakao',title:text(det.title)||'카카오 수신 재동의 확인',detail:text(det.detail,160),where:[names.brand(brandId)],due,brandId,storeId:null,section:'observe',nav:{view:'settings',section:'channels'}};
+ return {...workspace,id:`kakao_reconsent:${d.id}`,kind:'signal',source:'kakao',title:text(det.title)||'카카오 수신 재동의 확인',...(text(det.title)?{}:{titleKey:'agenda.t.reconsent'}),detail:text(det.detail,160),where:[names.brand(brandId)],due,brandId,storeId:null,section:'observe',nav:{view:'settings',section:'channels'}};
 }
 
 // GEO(AI 검색 노출) 측정이 끝났거나 멈춘 기록. 최근 7일 안에 바뀐 것만 알림으로 둔다. 측정 화면은 캠페인 성장 탭 근거 섹션의 조건부 확장 패널 안이다.
@@ -32,14 +32,15 @@ export function geoRunItem(d:R,c:SourceCampaign,names:Names,now:number):AgendaIt
  const at=Date.parse(text(d.updatedAt,40));if(!Number.isFinite(at)||at<now-GEO_NOTICE_DAYS*DAY)return null;
  const jobs=Array.isArray(d.jobs)?d.jobs as R[]:[],done=jobs.filter(j=>j.status==='completed').length,failed=jobs.filter(j=>j.status==='failed'||j.status==='uncertain').length;
  const title=d.status==='cancelled'||!done?'AI 검색 노출 측정 실패':failed?'AI 검색 노출 측정 일부 실패':'AI 검색 노출 측정 완료';
- return {id:`geo_run:${d.id}`,kind:'signal',source:'geo',title,detail:`완료 ${done}/${jobs.length}건${failed?`, 실패 ${failed}건`:''}`,campaignId:c.id,campaignTitle:c.title,where:[names.brand(c.brandId),names.store(c.storeId)].filter(Boolean),due:null,cost:null,brandId:c.brandId,storeId:c.storeId??null,section:'evidence',panel:'조건부 확장(GEO·해외·MMM)'};
+ const titleKey=d.status==='cancelled'||!done?'agenda.t.geoFailed':failed?'agenda.t.geoPartial':'agenda.t.geoDone';
+ return {id:`geo_run:${d.id}`,kind:'signal',source:'geo',title,titleKey,detail:`완료 ${done}/${jobs.length}건${failed?`, 실패 ${failed}건`:''}`,detailKey:failed?'agenda.d.geoFailed':'agenda.d.geo',detailVars:{done,total:jobs.length,failed},campaignId:c.id,campaignTitle:c.title,where:[names.brand(c.brandId),names.store(c.storeId)].filter(Boolean),due:null,cost:null,brandId:c.brandId,storeId:c.storeId??null,section:'evidence',panel:'조건부 확장(GEO·해외·MMM)'};
 }
 
 // 플레이스 리뷰 답글·소식 초안 승인 대기(status 'draft'). 점포 마케팅 > 지점 > 채널 점검 탭의 초안 카드(app/place-drafts-card.tsx)에서 승인한다.
 export function placeDraftItem(d:R,names:Names):AgendaItem|null{
  const storeId=id(d.storeId),brandId=id(d.brandId);if(d.status!=='draft'||!id(d.id)||!storeId)return null;
  const draft=(d.draft??{}) as R,blocking=((d.compliance??{}) as R).blocking===true;
- return {...workspace,id:`place_draft:${d.id}`,kind:'decision',source:'place_draft',title:d.kind==='news_post'?'플레이스 소식 승인 대기':'플레이스 리뷰 답글 승인 대기',detail:(blocking?'규정 점검 막힘: ':'')+text(draft.text),where:placeWhere(names,brandId,storeId),brandId:brandId??undefined,storeId,section:'execute',nav:{view:'stores',...(brandId?{brand:brandId}:{}),store:storeId,tab:'channels'}};
+ return {...workspace,id:`place_draft:${d.id}`,kind:'decision',source:'place_draft',title:d.kind==='news_post'?'플레이스 소식 승인 대기':'플레이스 리뷰 답글 승인 대기',titleKey:d.kind==='news_post'?'agenda.t.placeNews':'agenda.t.placeReply',detail:(blocking?'규정 점검 막힘: ':'')+text(draft.text),where:placeWhere(names,brandId,storeId),brandId:brandId??undefined,storeId,section:'execute',nav:{view:'stores',...(brandId?{brand:brandId}:{}),store:storeId,tab:'channels'}};
 }
 
 // 광고 제안 승인 대기(status 'draft'). 채널(네이버 검색광고·당근 광고)과 광고 계정의 캠페인 번호를 어디에 함께 적는다.
@@ -48,6 +49,6 @@ export function adsProposalItem(d:R,names:Names):AgendaItem|null{
  if(d.status!=='draft'||!id(d.id))return null;
  const daangn=d.channel==='daangn_ads',brandId=id(d.brandId),storeId=id(d.storeId),target=(d.target??{}) as R,targets=(Array.isArray(target.names)?target.names:[]).filter((x):x is string=>typeof x==='string');
  const account=text(d.campaignId,64);
- return {...workspace,id:`ads_proposal:${d.id}`,kind:'decision',source:'ads_proposal',title:daangn?'당근 광고 제안 승인 대기':'네이버 검색광고 제안 승인 대기',detail:[proposalKinds[String(d.kind)]||'광고 변경',targets.slice(0,3).join(', ')].filter(Boolean).join(': '),
+ return {...workspace,id:`ads_proposal:${d.id}`,kind:'decision',source:'ads_proposal',title:daangn?'당근 광고 제안 승인 대기':'네이버 검색광고 제안 승인 대기',titleKey:daangn?'agenda.t.adsDaangn':'agenda.t.adsNaver',detail:[proposalKinds[String(d.kind)]||'광고 변경',targets.slice(0,3).join(', ')].filter(Boolean).join(': '),
   where:[...placeWhere(names,brandId,storeId),...(account?[`광고 캠페인 ${account}`]:[])],brandId:brandId??undefined,storeId,section:'execute',nav:{view:'settings',section:'channels'}};
 }

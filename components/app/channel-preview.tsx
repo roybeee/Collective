@@ -1,7 +1,7 @@
 'use client';
 import {t} from '@/lib/i18n';
 import {useT} from '@/lib/i18n-react';
-import '@/lib/i18n/lazy';
+import '@/lib/i18n/lazy-exec';
 // X6 채널 모양 미리보기(표시 전용). 앱 테마와 상관없이 실제 채널처럼 밝은 기기 틀(app/globals.css '/* X6 X8 preview diff */' 토큰)로 그린다. 다크 모드에서도 뒤집지 않는다.
 // 표시 줄(AI 생성물·가상인물)은 '더 보기' 접기와 상관없이 늘 보인다. 글자 수·바이트는 lib/text-bytes.ts가 센다(Instagram 2,200자, Threads 500자, 문자 SMS 90바이트·LMS 2,000바이트).
 import {useState,type ReactNode} from 'react';

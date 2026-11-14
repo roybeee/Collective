@@ -172,5 +172,5 @@ check('no model or network call happened',fetchCalls===0);
 const panel=readFileSync('components/app/compliance-panel.tsx','utf8'),list=readFileSync('components/app/compliance-fixes.tsx','utf8');
 check('the panel loads the fix list lazily only when the view has fixes',/lazy\(\(\)=>import\('\.\/compliance-fixes'\)\)/.test(panel)&&/compliance\.fixes&&/.test(panel)&&/regradeArtifact\(artifactId\)/.test(panel));
 check('the fix list reuses the word diff, asks a confirm card with what/where/reversible and sends only ids',/<VersionDiff compact /.test(list)&&/askConfirm\(/.test(list)&&/reversible:t\('fixes\.reversible'\)/.test(list)&&/applyComplianceFixes\(artifactId,fixes\.version,chosen\.map\(f=>f\.id\)\)/.test(list));
-check('rules without a fix say 직접 고쳐야 합니다',readFileSync('lib/i18n/ko-lazy.ts','utf8').includes("'fixes.manual':'직접 고쳐야 합니다."));
+check('rules without a fix say 직접 고쳐야 합니다',readFileSync('lib/i18n/ko-trust.ts','utf8').includes("'fixes.manual':'직접 고쳐야 합니다."));
 console.log(JSON.stringify({passed}));

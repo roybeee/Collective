@@ -1,6 +1,15 @@
 // 결정 인박스 v2(GLOBAL-PLAN X1) 화면 순수 규칙: 탭 필터, 미루기(이 기기 24시간), 키보드 자판 뜻, 일괄 승인 순차 실행. DOM·fetch는 app/agenda-panel.tsx가 한다.
 // 선언만 둔다(브라우저 번들·tests/agenda-inbox.test.mjs가 같은 코드를 쓴다).
 import {agendaTabOf,type AgendaItem,type AgendaTab} from './agenda-types';
+import {currentLocale,t,type MessageKey} from './i18n';
+// 서버가 만든 제목·설명(titleKey·detailKey, 한국어 원본 lib/i18n/ko-agenda.ts)을 화면 언어로 바꾼 새 항목. 한국어는 서버 문장 그대로라 홈 사전(ko.ts)이 늘지 않는다.
+// 사전에 없는 키(화면보다 새 서버)는 서버 문장을 쓴다. 담당 이름(vars.roleId)은 사전 role.<id>가 있으면 그 이름이다.
+export function localAgendaItem(item:AgendaItem):AgendaItem{
+ if(currentLocale()==='ko'||!item.titleKey&&!item.detailKey)return item;
+ const say=(key:string|undefined,vars:Record<string,string|number>|undefined,fallback:string)=>{if(!key)return fallback;const text=t(key as MessageKey,vars);return text===key?fallback:text};
+ const roleId=item.vars?.roleId,vars=roleId===undefined?item.vars:{...item.vars,role:say(`role.${roleId}`,undefined,String(item.vars?.role??''))};
+ return {...item,title:say(item.titleKey,vars,item.title),detail:say(item.detailKey,item.detailVars,item.detail)};
+}
 export const SNOOZE_KEY='collective.agenda.snooze';
 export const SNOOZE_MS=24*3600000;
 export type SnoozeMap=Record<string,string>;

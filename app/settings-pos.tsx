@@ -1,7 +1,7 @@
 'use client';
 import {t} from '@/lib/i18n';
 import {useT} from '@/lib/i18n-react';
-import '@/lib/i18n/lazy';
+import '@/lib/i18n/lazy-settings';
 // 채널 연결 탭의 토스플레이스 POS 카드(X-F, docs/POS-INTEGRATION.ko.md). GET /api/pos/tossplace(대표·관리자), POST create·update·enable·disable·reset_cursor·pull_now(소유자).
 // 읽기 전용 수집이다. 키는 쓰기 전용 칸이고 응답에 나오지 않는다. 연결을 지우는 API는 없어서 '해제'는 수집 끄기다.
 import {useEffect,useState} from 'react';

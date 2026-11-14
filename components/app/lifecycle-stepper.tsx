@@ -1,7 +1,7 @@
 'use client';
 // 작업물 상태 머신 단계 표시(벤치마크 P5). 초안(AI 작성) → 검토 중 → 수정 요청 ↔ 검토 중 → 승인 → 발행 예약 → 발행됨을 한 줄로 보인다.
 // 단계 판정은 lib/artifact-lifecycle.ts(읽기 전용). 색만으로 구분하지 않도록 아이콘과 글자(현재 단계는 굵게, aria-current="step")를 함께 쓴다.
-import '@/lib/i18n/lazy';
+import '@/lib/i18n/lazy-campaign';
 import {Check,Circle,CircleDot,Minus} from 'lucide-react';
 import {useT} from '@/lib/i18n-react';
 import {cn} from '@/lib/utils';

@@ -38,4 +38,5 @@ export const ko={
  'access.deniedApprove':'이 브랜드의 승인 권한이 없습니다.','access.deniedPublish':'이 브랜드의 발행 권한이 없습니다.',
 } as const;
 export type HomeKey=keyof typeof ko;
-export type MessageKey=HomeKey|keyof typeof import('./ko-lazy').koLazy;
+// 열 때 내려받는 화면 구역(ko-lazy.ts 공통, ko-<구역>.ts)과 서버 안건 문장(ko-agenda.ts, 화면에 등록하지 않는다)의 키. 형식만 가져오므로 홈 청크에 사전이 실리지 않는다.
+export type MessageKey=HomeKey|keyof typeof import('./ko-lazy').koLazy|keyof typeof import('./ko-campaign').koCampaign|keyof typeof import('./ko-exec').koExec|keyof typeof import('./ko-settings').koSettings|keyof typeof import('./ko-trust').koTrust|keyof typeof import('./ko-cards').koCards|keyof typeof import('./ko-agenda').koAgenda;

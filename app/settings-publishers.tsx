@@ -1,7 +1,7 @@
 'use client';
 import {t} from '@/lib/i18n';
 import {useT} from '@/lib/i18n-react';
-import '@/lib/i18n/lazy';
+import '@/lib/i18n/lazy-settings';
 // 채널 연결 탭의 Instagram 직접 게시·Threads 카드(X-F, docs/INSTAGRAM-DIRECT.ko.md). POST /api/channels connect_publisher·verify_publisher·revoke_publisher(관리자).
 // 연결은 저장 전에 서버가 공급자 /me로 토큰을 확인한다. 토큰은 쓰기 전용 칸이며 응답에 나오지 않는다. 게시는 발행 승인·실행 때만 일어난다.
 import {useState} from 'react';
