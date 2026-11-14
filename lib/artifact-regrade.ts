@@ -6,7 +6,7 @@ import {readRecord,recordStatement,stamp,ApiError} from './server';
 import type {Artifact,Campaign} from './agency';
 import {gradeArtifact,MAX_GRADED_LINES,type Grading,type GradingContext} from './online-grading';
 import {GRADERS_VERSION} from './graders/index';
-import {complianceViewOf,factLedgerOf} from './artifact-sources-server';
+import {complianceViewOf,factLedgerOf,withComplianceFixes} from './artifact-sources-server';
 
 type StoredArtifact=Artifact&{meetingId?:string};
 type RegradeActor={id:string;role:string};
@@ -26,5 +26,5 @@ export async function regradeArtifact(owner:string,artifactId:string,by:RegradeA
  await recordStatement(owner,'grading',id,grading,c.id).run();
  const summary={id,artifactId:a.id,artifactVersion:a.version,role:a.role,source:grading.source,status:grading.status,reason:grading.reason,lines:grading.lines,summary:grading.summary,
   compliance:grading.compliance?{block:grading.compliance.block,warn:grading.compliance.warn,info:grading.compliance.info}:null,durationMs:grading.durationMs,gradedAt,failed:grading.graders.filter(g=>g.status==='fail'||g.status==='grader_error').map(g=>g.id)};
- return {grading:summary,compliance:complianceViewOf(a,ledger,gradedAt,gradedAt)};
+ return {grading:summary,compliance:await withComplianceFixes(owner,c,a,complianceViewOf(a,ledger,gradedAt,gradedAt),ledger)};
 }
