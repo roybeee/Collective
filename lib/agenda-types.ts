@@ -16,6 +16,8 @@ export type AgendaSource='growth'|'artifact'|'publication'|'meeting'|'sequence'|
 // where: 브랜드·지점·계정처럼 '어디'를 적는 조각(문장 아님). cost: 예정 비용(원, 없으면 null).
 // brandId·storeId: 범위 역할 화면 판정(app/account-context.tsx useAccessCheck)에 쓰는 자원. nav: 캠페인에 묶이지 않은 출처(요금 알림·카카오 재동의·플레이스 초안·광고 제안)가 열 화면.
 // 캠페인에 묶이지 않은 항목은 campaignId·campaignTitle이 빈 문자열이다.
-export type AgendaItem={id:string;kind:AgendaKind;source?:AgendaSource;title:string;detail:string;campaignId:string;campaignTitle:string;where?:string[];due:string|null;cost?:number|null;section:'decide'|'execute'|'observe'|'prepare'|'evidence'|'learn';panel?:string;ctab?:CampaignTab;quick?:AgendaQuick;action?:AgendaAction;brandId?:string;storeId?:string|null;nav?:NavState};
+// titleKey·vars(GLOBAL-PLAN G6 3단계): 서버가 만든 제목의 사전 키와 자리 값. title(한국어)은 그대로 둔다(이전 화면·테스트용). 화면은 영어·일본어일 때만 키로 그린다(lib/agenda-client.ts agendaTitle).
+// detailKey·detailVars: 서버가 만든 설명 문장(건수 등)일 때만 단다. 저장된 글(작업물 제목·캡션)은 키가 없다. 키의 한국어 원본은 lib/i18n/ko-agenda.ts.
+export type AgendaItem={id:string;kind:AgendaKind;source?:AgendaSource;title:string;titleKey?:string;vars?:Record<string,string|number>;detail:string;detailKey?:string;detailVars?:Record<string,string|number>;campaignId:string;campaignTitle:string;where?:string[];due:string|null;cost?:number|null;section:'decide'|'execute'|'observe'|'prepare'|'evidence'|'learn';panel?:string;ctab?:CampaignTab;quick?:AgendaQuick;action?:AgendaAction;brandId?:string;storeId?:string|null;nav?:NavState};
 export type AgendaCounts=Record<AgendaKind,number>;
 export type Agenda={items:AgendaItem[];counts:AgendaCounts;tabs:Record<AgendaTab,number>;total:number;generatedAt:string};

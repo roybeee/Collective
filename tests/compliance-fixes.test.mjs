@@ -61,6 +61,15 @@ check('franchise superlative is replaced by a 확인 필요 placeholder',frRules
 check('franchise revenue guarantee is removed with no invented replacement sentence',!frRules.includes('kr.fr.revenue_guarantee')||f.find(x=>x.ruleId==='kr.fr.revenue_guarantee')?.after==='');
 check('franchise fixes clear their rules in recruitment scope',['kr.fr.superlative_claims','kr.fr.revenue_guarantee'].every(id=>!rules(applyAll(FR,RECRUIT),RECRUIT).includes(id)));
 check('a confirmed claim_basis fact leaves the superlative unflagged, so no fix is suggested',fixesOf(FR,{...RECRUIT,facts:{confirmed:[{key:'claim_basis',value:'합성 조사'}],prohibited:[]}}).every(x=>x.ruleId!=='kr.fr.superlative_claims'));
+// QA N7(2026-11-15): 일반 광고의 근거 없는 최상급은 '[확인 필요: 근거]'로 바꾸고, 효과·수익·매출 보장 문장은 지운다(가맹 옵트인 없이).
+const AD='## 게시 카피\n업계 최고 매운맛을 드립니다. 다이어트 도시락, 감량 효과 보장! 맛있습니다.';
+f=fixesOf(AD);
+const adSup=f.find(x=>x.ruleId==='kr.ad.superlative_unsupported'),adGua=f.find(x=>x.ruleId==='kr.ad.outcome_guarantee');
+check('general superlative is replaced by the basis placeholder',adSup?.kind==='replace'&&adSup.before==='업계 최고'&&adSup.after===fx.CLAIM_BASIS_PLACEHOLDER&&adSup.needsCheck===true);
+check('outcome guarantee sentence is removed without an invented replacement',adGua?.kind==='remove'&&adGua.after===''&&adGua.before.includes('감량 효과 보장'));
+const adFixed=applyAll(AD);
+check('applying the general ad fixes clears both rules and keeps other sentences',!rules(adFixed).some(id=>id.startsWith('kr.ad.'))&&adFixed.includes('[확인 필요: 근거] 매운맛을 드립니다.')&&adFixed.includes('맛있습니다.'));
+check('a confirmed claim_basis fact suppresses the general superlative fix',fixesOf(AD,{facts:{confirmed:[{key:'claim_basis',value:'합성 대회 기록'}],prohibited:[]}}).every(x=>x.ruleId!=='kr.ad.superlative_unsupported'));
 const MANUAL='영수증 리뷰 작성 시 음료 1잔을 증정합니다.\n지금 구매하세요.';
 check('rules without a safe fix (review reward, price) produce no suggestion',rules(MANUAL).length>0&&fixesOf(MANUAL).length===0);
 check('clean text has no suggestions',fixesOf('## 소개\n평일 오후에 들르기 좋은 분식집입니다.').length===0);
@@ -163,5 +172,5 @@ check('no model or network call happened',fetchCalls===0);
 const panel=readFileSync('components/app/compliance-panel.tsx','utf8'),list=readFileSync('components/app/compliance-fixes.tsx','utf8');
 check('the panel loads the fix list lazily only when the view has fixes',/lazy\(\(\)=>import\('\.\/compliance-fixes'\)\)/.test(panel)&&/compliance\.fixes&&/.test(panel)&&/regradeArtifact\(artifactId\)/.test(panel));
 check('the fix list reuses the word diff, asks a confirm card with what/where/reversible and sends only ids',/<VersionDiff compact /.test(list)&&/askConfirm\(/.test(list)&&/reversible:t\('fixes\.reversible'\)/.test(list)&&/applyComplianceFixes\(artifactId,fixes\.version,chosen\.map\(f=>f\.id\)\)/.test(list));
-check('rules without a fix say 직접 고쳐야 합니다',readFileSync('lib/i18n/ko-lazy.ts','utf8').includes("'fixes.manual':'직접 고쳐야 합니다."));
+check('rules without a fix say 직접 고쳐야 합니다',readFileSync('lib/i18n/ko-trust.ts','utf8').includes("'fixes.manual':'직접 고쳐야 합니다."));
 console.log(JSON.stringify({passed}));

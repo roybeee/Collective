@@ -1,7 +1,7 @@
 'use client';
 import {t} from '@/lib/i18n';
 import {useT} from '@/lib/i18n-react';
-import '@/lib/i18n/lazy';
+import '@/lib/i18n/lazy-campaign';
 import {askConfirm} from '@/components/app/confirm-dialog';
 import {clientId} from '@/lib/client';
 import {useEffect,useRef,useState} from 'react';

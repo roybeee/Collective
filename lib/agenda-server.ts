@@ -30,22 +30,22 @@ function growthItems(kind:string,d:Record<string,unknown>,c:Campaign,now:number)
  const input=(d.input??{}) as Record<string,unknown>;
  if(kind==='growth_cs_ticket'&&d.status==='open'){
   const due=typeof input.promisedBy==='string'?input.promisedBy:null,t=due?Date.parse(due):NaN;
-  if(Number.isFinite(t)&&t<now)return [{...base,id,kind:'overdue',title:'고객 문의 약속 기한 초과',detail:text(input.summary)||text(input.type),due,section:'observe',panel:'고객 문의·약속 기한'}];
-  if(Number.isFinite(t)&&t<now+DAY)return [{...base,id,kind:'upcoming',title:'고객 문의 약속 기한 임박',detail:text(input.summary)||text(input.type),due,section:'observe',panel:'고객 문의·약속 기한'}];
+  if(Number.isFinite(t)&&t<now)return [{...base,id,kind:'overdue',title:'고객 문의 약속 기한 초과',titleKey:'agenda.t.csOverdue',detail:text(input.summary)||text(input.type),due,section:'observe',panel:'고객 문의·약속 기한'}];
+  if(Number.isFinite(t)&&t<now+DAY)return [{...base,id,kind:'upcoming',title:'고객 문의 약속 기한 임박',titleKey:'agenda.t.csSoon',detail:text(input.summary)||text(input.type),due,section:'observe',panel:'고객 문의·약속 기한'}];
  }
  if(kind==='growth_detected_signal'&&d.status==='new'){
   // 감지 기록은 detection 안에 제목·설명·권장 기한을 둔다(lib/growth-detection.ts). 이전 형식(맨 위 title)도 읽는다.
   const det=(d.detection??{}) as Record<string,unknown>,title=text(det.title)||text(d.title)||'새 감지 신호',suggested=typeof det.dueBy==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(det.dueBy)&&det.dueBy>=kstDay(now)?det.dueBy:kstDay(now+3*DAY);
-  return [{...base,id,kind:'signal',title,detail:text(det.detail)||text(d.reason)||text(det.kind)||text(d.kind),due:null,section:'evidence',panel:'자사 장부 감지 신호',
+  return [{...base,id,kind:'signal',title,...(text(det.title)||text(d.title)?{}:{titleKey:'agenda.t.signal'}),detail:text(det.detail)||text(d.reason)||text(det.kind)||text(d.kind),due:null,section:'evidence',panel:'자사 장부 감지 신호',
    quick:typeof d.id==='string'&&Number.isSafeInteger(d.version)?{type:'acknowledge_signal',recordId:d.id,version:Number(d.version),campaignVersion:c.version,nextAction:`${title}: 원인을 확인하고 일일 결정에 기록`.slice(0,500),dueBy:suggested}:undefined}];
  }
- if(kind==='growth_expansion'&&d.status==='proposed')return [{...base,id,kind:'decision',title:'확대 제안 승인 대기',detail:text(input.title)||text(input.reason),due:null,section:'decide',panel:'검증된 확대·예산 예약'}];
- if(kind==='growth_landing_revision'&&(d.status==='draft'||d.status==='approved'))return [{...base,id,kind:'decision',title:d.status==='draft'?'상세페이지 수정안 승인 대기':'승인한 상세페이지 적용 확인 대기',detail:text(input.title)||text(input.summary),due:null,section:'execute',panel:'상세페이지 수정안·적용 확인'}];
- if(kind==='growth_collaboration'){const receipts=Array.isArray(d.receipts)?d.receipts as {stage?:string}[]:[];if(receipts.at(-1)?.stage==='delivered')return [{...base,id,kind:'decision',title:'협업 콘텐츠 승인 대기',detail:text(input.partnerName)||text(input.title),due:null,section:'execute',panel:'크리에이터·파트너 협업'}];}
+ if(kind==='growth_expansion'&&d.status==='proposed')return [{...base,id,kind:'decision',title:'확대 제안 승인 대기',titleKey:'agenda.t.expansion',detail:text(input.title)||text(input.reason),due:null,section:'decide',panel:'검증된 확대·예산 예약'}];
+ if(kind==='growth_landing_revision'&&(d.status==='draft'||d.status==='approved'))return [{...base,id,kind:'decision',title:d.status==='draft'?'상세페이지 수정안 승인 대기':'승인한 상세페이지 적용 확인 대기',titleKey:d.status==='draft'?'agenda.t.landing':'agenda.t.landingApproved',detail:text(input.title)||text(input.summary),due:null,section:'execute',panel:'상세페이지 수정안·적용 확인'}];
+ if(kind==='growth_collaboration'){const receipts=Array.isArray(d.receipts)?d.receipts as {stage?:string}[]:[];if(receipts.at(-1)?.stage==='delivered')return [{...base,id,kind:'decision',title:'협업 콘텐츠 승인 대기',titleKey:'agenda.t.collaboration',detail:text(input.partnerName)||text(input.title),due:null,section:'execute',panel:'크리에이터·파트너 협업'}];}
  if(kind==='growth_mission'&&!['closed','cancelled','completed','done'].includes(String(d.status??''))){
   const due=typeof input.deadline==='string'&&input.deadline?input.deadline:null,t=due?Date.parse(due.length===10?`${due}T23:59:59+09:00`:due):NaN;
-  if(Number.isFinite(t)&&t<now)return [{...base,id,kind:'overdue',title:'판매 미션 기한 지남',detail:text(input.title),due,section:'execute'}];
-  if(Number.isFinite(t)&&t<now+3*DAY)return [{...base,id,kind:'upcoming',title:'판매 미션 기한 3일 이내',detail:text(input.title),due,section:'execute'}];
+  if(Number.isFinite(t)&&t<now)return [{...base,id,kind:'overdue',title:'판매 미션 기한 지남',titleKey:'agenda.t.missionOverdue',detail:text(input.title),due,section:'execute'}];
+  if(Number.isFinite(t)&&t<now+3*DAY)return [{...base,id,kind:'upcoming',title:'판매 미션 기한 3일 이내',titleKey:'agenda.t.missionSoon',detail:text(input.title),due,section:'execute'}];
  }
  return [];
 }

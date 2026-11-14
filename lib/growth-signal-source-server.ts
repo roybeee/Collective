@@ -4,7 +4,7 @@ import type {GrowthRecord} from './growth-workspace-server';
 import {type SignalInput,signalEvidence} from './growth-market';
 import {assessSignalSource,signalSourceBasis,signalSourceText,type SignalSourceProvenance} from './growth-signal-source';
 import {storefrontDigest} from './storefront-orders';
-import {executionId} from './growth-execution';
+import {GrowthExecutionError,storedRecordId} from './growth-execution';
 import {ApiError,database,readRecord,recordStatement,stamp,type Actor} from './server';
 const kinds={request:'growth_signal_source_request'} as const;
 const requestKind=kinds.request;
@@ -14,13 +14,17 @@ async function signalId(c:Campaign,sourceId:string,sourceVersion:number){return 
 async function capacity(owner:string,kind:string,c:Campaign,limit:number){const row=await database().prepare('SELECT COUNT(*) n FROM records WHERE owner=? AND kind=? AND parent_id=?').bind(owner,kind,c.id).first<{n:number}>();if((row?.n??0)>=limit)throw new ApiError(409,'출처 연결 기록 한도에 도달했습니다.')}
 function append(owner:string,kind:string,id:string,value:unknown,c:Campaign,at:string){return database().prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) VALUES(?,?,?,?,?,?)').bind(`${owner}:${kind}:${id}`,owner,kind,c.id,JSON.stringify(value),at)}
 function safeTitle(s:ArchiveSource){try{return signalSourceText(s.title,200)}catch{return '검토가 필요한 자료'}}
+// 형식이 맞지 않는 id의 자료 한 건은 목록 전체를 막지 않고 보류 후보로 보인다(QA N3). 원래 id 대신 안전한 대체 id를 쓴다(가져오기는 형식 검사에서 막힌다).
+const UNREADABLE_ID='자료 식별자 형식을 확인할 수 없어 가져올 수 없습니다. 브랜드 아카이브에서 자료를 다시 등록하세요.';
+async function unreadableCandidate(s:ArchiveSource){return {sourceId:'held_'+(await storefrontDigest({brandSourceId:String(s.id)})).slice(0,32),sourceVersion:Number.isSafeInteger(s.version)?s.version:0,title:safeTitle(s),sourceUrl:null,observedAt:null,status:'held' as const,reasons:[UNREADABLE_ID],signalPreview:null,importedSignalId:null}}
 export async function growthSignalSourceView(who:Actor,c:Campaign){
  const rows=await database().prepare('SELECT data FROM records WHERE owner=? AND kind=? AND parent_id=? LIMIT 501').bind(who.owner,'brand_source',c.brandId).all<{data:string}>();
  if(rows.results.length>500)throw new ApiError(409,'브랜드 자료 조회 한도를 넘었습니다.');
  const sources=rows.results.map(x=>JSON.parse(x.data) as ArchiveSource).filter(s=>s.brandId===c.brandId&&(!s.storeId||s.storeId===c.storeId)&&s.category==='market');
  const candidates=await Promise.all(sources.map(async s=>{
-  const sourceId=executionId(s.id),r=s.origin==='research'&&s.researchId?await optional<BrandResearch>(who.owner,'brand_research',s.researchId):null,assessment=assessSignalSource(c,s,r,'9999-12-31');
-  const id=await signalId(c,s.id,s.version),imported=await optional<GrowthRecord<SignalInput>>(who.owner,'growth_signal',id);
+  const sourceId=storedRecordId(s.id);if(!sourceId)return unreadableCandidate(s);
+  const r=s.origin==='research'&&s.researchId?await optional<BrandResearch>(who.owner,'brand_research',s.researchId):null,assessment=assessSignalSource(c,s,r,'9999-12-31');
+  const id=await signalId(c,sourceId,s.version),imported=await optional<GrowthRecord<SignalInput>>(who.owner,'growth_signal',id);
   return {sourceId,sourceVersion:s.version,title:safeTitle(s),sourceUrl:assessment.input?.sourceUrl??null,observedAt:assessment.input?.observedAt??null,status:assessment.status,reasons:assessment.reasons,signalPreview:assessment.input?{summary:assessment.input.summary,sourceType:'market' as const,sampleSize:null}:null,importedSignalId:imported?.id??null};
  }));
  return {campaignId:c.id,campaignVersion:c.version,candidates,canImport:who.role!=='member'&&c.status!=='archived',mayCollect:false as const,mayExecute:false as const};
@@ -40,7 +44,8 @@ export async function liveSignalSource(owner:string,c:Campaign,signal:GrowthReco
 export async function importGrowthSignalSource(who:Actor,c:Campaign,b:Record<string,unknown>){
  if(c.status==='archived')throw new ApiError(409,'보관한 캠페인에는 자료를 가져올 수 없습니다.');
  if(b.campaignVersion!==c.version)throw new ApiError(409,'캠페인이 변경되었습니다. 다시 불러오세요.');
- const sourceId=executionId(b.sourceId),version=b.sourceVersion,requestId=String(b.requestId??'');
+ const sourceId=storedRecordId(b.sourceId),version=b.sourceVersion,requestId=String(b.requestId??'');
+ if(!sourceId)throw new GrowthExecutionError('내부 식별자 형식을 확인하세요.');
  if(!Number.isSafeInteger(version)||Number(version)<1||!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)||typeof b.expiresAt!=='string')throw new ApiError(400,'출처 판·요청 번호·유효기한을 확인하세요.');
  const digest=await storefrontDigest({sourceId,sourceVersion:version,campaignId:c.id,campaignVersion:c.version,expiresAt:b.expiresAt}),request=await optional<{digest:string;signalId:string;campaignId:string}>(who.owner,requestKind,requestId);
  const ack=(id:string,duplicate:boolean)=>({imported:true as const,signalId:id,duplicate,mayCollect:false as const,mayExecute:false as const});

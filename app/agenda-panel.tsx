@@ -13,7 +13,7 @@ import {Button} from '@/components/ui/button';
 import {clientId} from '@/lib/client';
 import {RefreshCw} from 'lucide-react';
 import type {Agenda,AgendaItem,AgendaTab} from '@/lib/agenda-types';
-import {approvable,batchSummary,costSum,inboxKey,moveIndex,readSnoozes,runSequentially,snooze,snoozedCount,visibleItems,writeSnoozes,type BatchResult,type SnoozeMap} from '@/lib/agenda-client';
+import {approvable,localAgendaItem,batchSummary,costSum,inboxKey,moveIndex,readSnoozes,runSequentially,snooze,snoozedCount,visibleItems,writeSnoozes,type BatchResult,type SnoozeMap} from '@/lib/agenda-client';
 import {date} from '@/lib/format';
 import {localMoney as money,t,type MessageKey} from '@/lib/i18n';
 import {useT} from '@/lib/i18n-react';
@@ -61,7 +61,8 @@ export function AgendaPanel({onOpen}:{onOpen:(item:AgendaItem)=>void}){
  // 성장 탭이 아닌 출처(작업물·발행·회의·브리프)는 그 캠페인 탭으로 바로 간다. 성장 기록은 기존 경로(섹션·패널 열기)를 쓴다.
  // 캠페인에 묶이지 않은 출처(요금 알림·재동의·플레이스 초안·광고 제안)는 그 화면(nav)으로 간다.
  const open=(item:AgendaItem)=>item.nav?pushNav(item.nav):item.ctab&&item.ctab!=='growth'?pushNav({view:'overview',campaign:item.campaignId,ctab:item.ctab}):onOpen(item);
- const items=agenda?visibleItems(agenda.items,tab==='all'?null:tab,snoozed):[],hidden=agenda?snoozedCount(agenda.items,snoozed):0;
+ // 서버가 만든 제목·설명은 화면 언어로 바꿔 그린다(lib/agenda-client.ts localAgendaItem, 한국어는 그대로).
+ const items=agenda?visibleItems(agenda.items,tab==='all'?null:tab,snoozed).map(localAgendaItem):[],hidden=agenda?snoozedCount(agenda.items,snoozed):0;
  const quickSignals=items.filter(i=>i.quick?.type==='acknowledge_signal'),chosen=items.filter(i=>selected.includes(i.id)&&approvable(i));
  async function approveSelected(){
   if(!chosen.length||acting)return;

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {testRuntime} from './helpers/runtime.mjs';
 const {load}=testRuntime(async()=>{throw Error('no external calls');});
-const {parseExecutionInput,parseExecutionReceipt,canRecordExecution,executionId}=await load('lib/growth-execution.ts');
+const {parseExecutionInput,parseExecutionReceipt,canRecordExecution,executionId,storedRecordId}=await load('lib/growth-execution.ts');
 let passed=0;const check=(value,label)=>{assert.ok(value,label);passed++;},throws=(fn,label)=>{assert.throws(fn,label);passed++;};
 const input={missionId:'mission',missionVersion:2,authorityId:'authority',authorityVersion:1,inventoryId:'inventory',inventoryVersion:0,quantity:1,recoveryOwner:'운영 담당',recoveryDueAt:'2099-01-01T10:00:00+09:00',evidenceRef:'evidence-one'};
 check(JSON.stringify(parseExecutionInput(input))===JSON.stringify(input),'input roundtrip');
@@ -17,4 +17,8 @@ for(const status of ['unknown','failed','observed'])check(parseExecutionReceipt(
 for(const status of ['prepared','success','',null])throws(()=>parseExecutionReceipt({status,reference:'receipt',note:'운영자 확인'}),'invalid receipt state');
 for(const value of ['',null,'a'.repeat(1001),'user@example.com','Bearer abcd','api_key=example','sk-proj-example1234','ｕｓｅｒ＠ｅｘａｍｐｌｅ．ｃｏｍ'])throws(()=>parseExecutionReceipt({status:'unknown',reference:'receipt',note:value}),'unsafe note');
 throws(()=>executionId('bad value'),'invalid direct id');
+// QA N3(2026-11-15): 저장 기록 id는 형식만 본다. Date.now() 13자리 id는 executionId(자유 입력 PII 검사)에서는 막히지만 storedRecordId로는 통과한다.
+throws(()=>executionId('d8-src-1794677180051'),'root cause: a Date.now() id trips the free-text PII scan');
+for(let t=Date.UTC(2020,0,1);t<Date.UTC(2035,0,1);t+=86400000*37+12345)check(storedRecordId('trust-src-desktop-'+t)==='trust-src-desktop-'+t&&storedRecordId(String(t))===String(t),'epoch-ms id passes '+t);
+for(const value of ['',null,undefined,1,'bad value','../escape','a'.repeat(101),'user@example.com','a:b'])check(storedRecordId(value)===null,'stored id format '+String(value).slice(0,12));
 console.log(JSON.stringify({passed,externalCalls:0}));

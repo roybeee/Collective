@@ -8,7 +8,7 @@ import {cn} from '@/lib/utils';
 import {elapsedMs,formatElapsed,hasLive,statusView,type TimelineItem,type TimelineTone} from '@/lib/run-timeline';
 import {t} from '@/lib/i18n';
 import {useT} from '@/lib/i18n-react';
-import '@/lib/i18n/lazy';
+import '@/lib/i18n/lazy-campaign';
 
 const icons:Record<TimelineTone,React.ComponentType<{size?:number;className?:string;'aria-hidden'?:boolean}>>={idle:Clock,live:LoaderCircle,wait:Hand,done:CircleCheck,fail:CircleX,stop:Ban,unknown:CircleQuestionMark,note:MessageSquarePlus};
 // 대기·완료 색은 라이트·다크 토큰(globals.css --yellow-35·--olive-42, 상태 배지와 같은 값)이다. 고정 Tailwind 색(emerald-700)은 다크에서 대비가 모자랐다(QA D6).

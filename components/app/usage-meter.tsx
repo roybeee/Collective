@@ -2,7 +2,7 @@
 // 사용량 미터(벤치마크 P11). 이번 달(한국 시간) 토큰 누계를 월 상한 대비 막대·글자로 보인다. 80% 이상 주의, 100% 이상 상한 도달(lib/usage-meter.ts).
 // 홈 첫 로딩에 싣지 않는다(tests/ux-budget.json homeJsGzKB): 캠페인 상세 머리(app/panels.tsx, lazy)와 설정 사용량·비용 탭 머리에만 둔다.
 // 값은 GET /api/usage?budget(view_usage 권한)에서만 읽는다. 권한이 없거나 읽지 못하면 아무것도 그리지 않는다(숫자를 꾸미지 않는다).
-import '@/lib/i18n/lazy';
+import '@/lib/i18n/lazy-campaign';
 import {useEffect,useState} from 'react';
 import {Gauge} from 'lucide-react';
 import {useT} from '@/lib/i18n-react';

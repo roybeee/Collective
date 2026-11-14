@@ -1,7 +1,7 @@
 'use client';
 // AI 팀 탭의 실행 타임라인 + 연속 실행 중 지시 추가(벤치마크 P14). 연속 실행이 진행 중일 때만 '지시 추가'를 그리고,
 // 저장한 지시는 남길 때 진행 중이던 실행 바로 뒤에 '지시 추가 · 다음 단계부터 반영'으로 끼운다(lib/run-timeline.ts withInstructions). 지시 목록을 읽지 못하면 실행 항목만 그린다.
-import '@/lib/i18n/lazy';
+import '@/lib/i18n/lazy-campaign';
 import {useEffect,useState} from 'react';
 import {RunTimeline} from '@/components/app/run-timeline';
 import {AddInstruction} from '@/components/app/add-instruction';

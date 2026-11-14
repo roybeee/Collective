@@ -2,11 +2,12 @@
 // 순수 함수와 모의 런타임(메모리 SQLite)만 쓴다. 외부 호출 없음. 한국어 결과는 기존과 바이트 동일해야 한다.
 import assert from 'node:assert/strict';
 import {runInNewContext} from 'node:vm';
+import {readdirSync} from 'node:fs';
 import {testRuntime} from './helpers/runtime.mjs';
 const {load}=testRuntime(async()=>{throw Error('external forbidden')});
 let passed=0;
 const check=async(name,fn)=>{try{await fn();passed++}catch(e){e.message=`${name}: ${e.message}`;throw e}};
-const i18n=await load('lib/i18n.ts'),ko={...(await load('lib/i18n/ko.ts')).ko,...(await load('lib/i18n/ko-lazy.ts')).koLazy},en=(await load('lib/i18n/en.ts')).en,ja=(await load('lib/i18n/ja.ts')).ja,f=await load('lib/format.ts');
+const i18n=await load('lib/i18n.ts'),ko={...(await load('lib/i18n/ko.ts')).ko,...(await load('lib/i18n/ko-lazy.ts')).koLazy,...Object.assign({},...await Promise.all(readdirSync('lib/i18n').filter(f=>/^ko-(?!lazy)\w+\.ts$/.test(f)).map(async f=>Object.values(await load(`lib/i18n/${f}`))[0])))},en=(await load('lib/i18n/en.ts')).en,ja=(await load('lib/i18n/ja.ts')).ja,f=await load('lib/format.ts');
 
 // 1) t(): 기본 한국어, {이름} 채우기, 없는 이름은 그대로, 사전에 없는 값은 한국어로 보이고 빠진 키로 센다.
 await check('default locale is ko and t returns the Korean source',()=>{assert.equal(i18n.currentLocale(),'ko');assert.equal(i18n.t('nav.overview'),'워크스페이스');assert.equal(i18n.t('agenda.title'),'오늘의 안건')});

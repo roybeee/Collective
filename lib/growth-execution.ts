@@ -11,6 +11,9 @@ export function executionSafeText(value:unknown,label:string,max=200){
  if(scanText(normalized).length||/(?:bearer\s+\S+|(?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret)\s*[:=]\s*\S+|\bsk-(?:proj-)?[\w-]{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i.test(normalized))throw new GrowthExecutionError(`${label}에 식별정보와 인증정보를 넣을 수 없습니다.`);
  return value.trim();
 }
+// 소유자 자신의 저장 기록에서 읽은 id(앱·서버가 만든 식별자)는 자유 입력이 아니라 개인정보 패턴 검사 없이 형식만 본다. 형식이 틀리면 null.
+// QA N3(2026-11-15): Date.now() 13자리가 든 id('d8-src-1794677180051')를 카드번호로 오탐해 목록 전체가 400이었다. 사용자가 적는 근거 참조는 계속 executionId를 쓴다.
+export function storedRecordId(value:unknown):string|null{return typeof value==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(value)?value:null}
 export function executionId(value:unknown){const result=executionSafeText(value,'내부 식별자',100);if(!/^[A-Za-z0-9_-]+$/.test(result))throw new GrowthExecutionError('내부 식별자 형식을 확인하세요.');return result}
 function integer(value:unknown,min=1){if(typeof value!=='number'||!Number.isSafeInteger(value)||value<min)throw new GrowthExecutionError(`${min} 이상의 정수를 입력하세요.`);return value}
 export function parseExecutionInput(value:unknown):ExecutionInput{

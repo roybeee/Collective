@@ -63,7 +63,10 @@ import {outputLanguageLabels,outputLanguageOf} from '@/lib/brief-language';
 // 화면 언어(GLOBAL-PLAN G6 2단계): 캠페인 상세 틀·탭과 작업물 대화상자(ArtifactDialog) 문구. 수정 사유 칩·설정 패널은 아직 한국어다.
 import {t,type MessageKey} from '@/lib/i18n';
 import {useT} from '@/lib/i18n-react';
+import '@/lib/i18n/lazy-campaign';
 import '@/lib/i18n/lazy';
+import '@/lib/i18n/lazy-exec';
+import '@/lib/i18n/lazy-trust';
 import {rerunImpact,rerunImpactNote} from '@/lib/rerun-impact';
 // AI 팀 탭: 실행 전 계획 카드(X3)와 실행 타임라인(X2). 비용이 드는 실행은 카드의 주 버튼으로만 시작한다.
 import {PlanCard,usePlanRules} from '@/components/app/plan-card';
@@ -96,8 +99,10 @@ async function reasonSwitch(){try{const r=await fetch('/api/feature-flags');cons
 function ReviewReasons({role,reasons,onReasons,criteria,onCriteria,required}:{role:string;reasons:ReasonCode[];onReasons:(v:ReasonCode[])=>void;criteria:Record<string,HumanCriterion>;onCriteria:(v:Record<string,HumanCriterion>)=>void;required:boolean}){
  const toggle=(code:ReasonCode)=>onReasons(reasons.includes(code)?reasons.filter(x=>x!==code):[...reasons,code]);
  const judge=(key:string,value:HumanCriterion)=>onCriteria(criteria[key]===value?Object.fromEntries(Object.entries(criteria).filter(([k])=>k!==key)):{...criteria,[key]:value});
- return <div className="form-stack"><div role="group" aria-label="수정 요청 사유" className="flex flex-wrap gap-1.5">{reasonChoices('artifact',role).map(r=><Button key={r.code} type="button" size="sm" variant={reasons.includes(r.code)?'default':'outline'} aria-pressed={reasons.includes(r.code)} title={r.description} onClick={()=>toggle(r.code)}>{r.label}</Button>)}</div><small>{required?'수정 요청에는 사유를 1개 이상 고르세요.':'수정 요청 사유를 고르면 개선 분석에 쓰입니다(선택).'}</small>
- {role==='quality'&&<div role="group" aria-label="기준별 사람 판정" className="form-stack">{Object.entries(qualityCriteria).map(([key,label])=><div key={key} className="flex items-center gap-1.5"><span className="min-w-[88px]">{label}</span>{(['pass','revise'] as const).map(v=><Button key={v} type="button" size="sm" variant={criteria[key]===v?'default':'outline'} aria-pressed={criteria[key]===v} aria-label={`${label} ${v==='pass'?'통과':'수정 필요'}`} onClick={()=>judge(key,v)}>{v==='pass'?'통과':'수정'}</Button>)}</div>)}<small>검수 기준별 사람 판정은 AI 검수 판정과 비교하는 데 쓰입니다(선택).</small></div>}</div>;
+ // 사유 코드는 lib/review-decisions.ts 그대로 보내고, 칩 이름·설명만 사전(reason.label.<코드>·reason.desc.<코드>)에서 읽는다. 사전에 없는 코드는 저장된 한국어 이름을 쓴다.
+ const named=(key:string,fallback:string)=>{const text=t(key as MessageKey);return text===key?fallback:text};
+ return <div className="form-stack"><div role="group" aria-label={t('reason.group')} className="flex flex-wrap gap-1.5">{reasonChoices('artifact',role).map(r=><Button key={r.code} type="button" size="sm" variant={reasons.includes(r.code)?'default':'outline'} aria-pressed={reasons.includes(r.code)} title={named(`reason.desc.${r.code}`,r.description)} onClick={()=>toggle(r.code)}>{named(`reason.label.${r.code}`,r.label)}</Button>)}</div><small>{required?t('reason.required'):t('reason.optional')}</small>
+ {role==='quality'&&<div role="group" aria-label={t('reason.criteria')} className="form-stack">{Object.entries(qualityCriteria).map(([key,ko])=>{const label=named(`reason.label.${key}`,ko);return <div key={key} className="flex items-center gap-1.5"><span className="min-w-[88px]">{label}</span>{(['pass','revise'] as const).map(v=><Button key={v} type="button" size="sm" variant={criteria[key]===v?'default':'outline'} aria-pressed={criteria[key]===v} aria-label={t(v==='pass'?'reason.passLabel':'reason.reviseLabel',{label})} onClick={()=>judge(key,v)}>{v==='pass'?t('reason.pass'):t('reason.revise')}</Button>)}</div>})}<small>{t('reason.criteriaNote')}</small></div>}</div>;
 }
 // X7 신뢰 UI(docs/GLOBAL-PLAN.ko.md 에픽 X7): 작업물 상세의 인용 pill, AI 출처 배지, 근거 3단계, 규정 점검 패널. 근거 정보는 /api/artifact-sources에서 판마다 한 번 읽는다.
 // AI가 쓴 작업물이 '근거 부족'이면 승인에 '직접 확인했습니다' 표시가 더 필요하고 승인 요청에 manuallyVerified를 싣는다(서버는 판정 기록에 남긴다).

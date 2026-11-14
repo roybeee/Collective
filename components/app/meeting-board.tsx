@@ -1,7 +1,7 @@
 'use client';
 // 팀 회의 뷰(벤치마크 P2) 부품: 참석자 열(에이전트 배지 + 상태 점 + 글자 상태)과 '결정' 카드 묶음(합의의 모든 결정·남은 이견·확인할 사실·담당 배정).
 // 상태는 색 점만으로 구분하지 않고 글자(statusView 라벨)를 함께 쓴다. 사용자의 A/B 선택은 결정 카드와 뒤 단계 발언에 '사용자가 A안을 골랐습니다'로 보인다.
-import '@/lib/i18n/lazy';
+import '@/lib/i18n/lazy-campaign';
 import {Check} from 'lucide-react';
 import {useT} from '@/lib/i18n-react';
 import {cn} from '@/lib/utils';

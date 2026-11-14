@@ -1,7 +1,7 @@
 'use client';
 import {t} from '@/lib/i18n';
 import {useT} from '@/lib/i18n-react';
-import '@/lib/i18n/lazy';
+import '@/lib/i18n/lazy-settings';
 // 연결 및 설정 '채널 연결' 탭(X-F). 채널마다 카드 하나: Buffer, Instagram 직접 게시, Threads, 카카오 비즈메시지(딜러), 토스플레이스 POS, 네이버 검색광고.
 // 상태는 기존 API만 읽는다: GET /api/feature-flags(스위치), GET /api/channels?brandId=(직접 게시 연결·성과 수집 키), GET /api/execution?campaignId=(Buffer),
 // GET /api/kakao?brandId=, GET /api/pos/tossplace. 카드는 연결·확인·해제를 기존 POST로만 한다. 게시·발송·광고 쓰기는 이 탭에서 일어나지 않는다.

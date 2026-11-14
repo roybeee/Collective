@@ -1,7 +1,7 @@
 'use client';
 import {t} from '@/lib/i18n';
 import {useT} from '@/lib/i18n-react';
-import '@/lib/i18n/lazy';
+import '@/lib/i18n/lazy-campaign';
 // 실행 전 계획 카드(GLOBAL-PLAN X3). 비용이 드는 실행('AI 팀 이어서 실행'·'팀 회의 시작') 앞에 산출물·담당·예상 토큰(추정)·예상 소요·적용 규칙 수를 보여 주고,
 // 카드의 주 버튼 하나를 눌러야 실행이 시작된다. 완료 뒤에는 같은 자리에 실제 토큰 대비 추정(outcome)을 보인다.
 // 항목 제외 체크박스는 API가 부분 실행을 지원할 때만(onToggle이 있을 때만) 그린다.
