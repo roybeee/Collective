@@ -57,6 +57,7 @@ export const FEATURE_FLAGS={
  geo_tracking:{defaultEnabled:false,description:'대표·관리자가 브랜드별로 정한 AI 검색 질문(확정 사실로 만든 시작 질문 포함)을 질문×엔진(ChatGPT·Perplexity·Gemini·Google AI 개요·네이버)마다 HERMES 브라우저 실행 1회로 공개 답변 화면을 읽어 답변 앞 1,500자 원문·인용 URL·언급 여부를 관찰 기록으로 남기고(G5, 토큰 사용, 계획 추정·예산 가드·자율성 규칙·전역 중단 적용), 점유율·인용률·주간 변화와 개선 백로그를 보인다. 로그인이 필요한 화면은 로그인하지 않고 login_required로 남긴다. 노출 보장 아님. 꺼지면 조회·저장·측정은 409다.'},
  self_signup:{defaultEnabled:false,description:'로그인 화면에 새 워크스페이스 가입(이메일·비밀번호, 이용약관·개인정보 동의 필수, 마케팅 수신 선택)을 연다(G8). 플랫폼 스위치라 운영자 워크스페이스(처음 만든 관리자 계정의 워크스페이스) 값만 읽는다. 메일 발송 어댑터가 없어 확인 링크를 화면에 보이므로 공개 전 메일 연결이 필요하다. 꺼지면 가입 API는 404이고 초대 가입·로그인은 그대로다.'},
  credit_billing:{defaultEnabled:false,description:'선불 크레딧 원장(월 기본 제공·충전·AI 사용 1,000토큰=1크레딧·환불·소멸)과 80%·100% 알림을 켜고, 잔액 0이면 새 AI 실행을 시작 전에 막는다(운영자 워크스페이스 제외). 토스페이먼츠 테스트 키(test_)로만 충전·환불한다(G8). 플랫폼 스위치라 운영자 워크스페이스 값만 읽는다. 꺼지면 원장·가드·결제는 모두 동작하지 않고 요금표만 보인다.'},
+ compliance_fixes:{defaultEnabled:false,description:'작업물 규정 점검 패널에 규칙별 결정론 수정 제안(#광고·(광고) 넣기, 가상인물·AI 생성 표시 붙이기, 질병 효능 문장 지우기 등)과 고른 수정 적용을 켠다. 적용은 대표·관리자·편집 범위 역할이 확인 카드를 거쳐 새 버전으로 저장하고 바로 다시 점검한다(모델 호출 없음, COLLECTIVE 휴리스틱 · 법률 자문 아님). 꺼지면 제안이 보이지 않고 적용은 409다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};

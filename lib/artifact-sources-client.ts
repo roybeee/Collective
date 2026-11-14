@@ -22,3 +22,11 @@ export async function regradeArtifact(artifactId:string){
  window.dispatchEvent(new CustomEvent(GRADING_UPDATED_EVENT));
  return data.compliance;
 }
+// 규정 수정 제안 적용(POST /api/action apply_compliance_fixes). 고른 제안 id와 그 제안을 계산한 판만 보낸다(본문은 서버가 저장본으로 다시 계산한다).
+export type AppliedFixes={id:string;version:number;applied:number;ruleIds:string[];compliance:ComplianceView};
+export async function applyComplianceFixes(artifactId:string,version:number,fixIds:readonly string[]){
+ const response=await fetch('/api/action',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'apply_compliance_fixes',artifactId,version,fixIds})});
+ const data=await readJson<AppliedFixes>(response,'수정 제안을 적용하지 못했습니다.');
+ window.dispatchEvent(new CustomEvent(GRADING_UPDATED_EVENT));
+ return data;
+}

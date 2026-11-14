@@ -1,18 +1,21 @@
 'use client';
-import {useState} from 'react';
+import {lazy,Suspense,useState} from 'react';
 import {Button} from '@/components/ui/button';
 import {MetaLine} from './meta-line';
 import {CreativeScoreCard} from './creative-score-card';
-import {regradeArtifact} from '@/lib/artifact-sources-client';
+import {regradeArtifact,type AppliedFixes} from '@/lib/artifact-sources-client';
 import {SEVERITY_LABELS,type ComplianceView} from '@/lib/artifact-sources';
 
 // X7 규정 점검 패널(작업물 상세). 규칙 분류별 통과·주의·차단 수와 걸린 표현(제목·발췌·법령 근거 링크)을 보인다. 자동 점검이며 법률 자문이 아니다.
 // '다시 점검'은 POST /api/usage regrade_artifact(대표·관리자, 결정론 채점기, 모델 호출 없음)를 부르고 그 결과로 바꾼다.
-// '수정 제안 적용'은 채점기가 구체적인 대체 문구를 줄 때만 보이는 자리다. 현재 규제 점검(lib/graders/compliance.ts)은 대체 문구를 주지 않아 버튼을 그리지 않는다.
+// 수정 제안(스위치 compliance_fixes, lib/graders/compliance-fixes.ts)은 보기에 fixes가 있을 때만 lazy 청크(compliance-fixes.tsx)로 내려받아 그린다. 꺼져 있으면 이전 화면과 같다.
+// 적용하면 서버가 새 버전을 저장하고 다시 점검한 보기를 돌려준다. 대화상자의 본문은 부모가 다시 읽을 때 새 버전이 되므로, 그 전까지 새 판 번호를 안내한다.
+const ComplianceFixes=lazy(()=>import('./compliance-fixes'));
 // 아래에 소재 예측 점수 카드(G2, components/app/creative-score-card.tsx)를 붙인다. 목록 배지(ScoreBadge)와 같은 모듈이라 캠페인 상세 청크(app/panels.tsx, lazy)에 함께 실린다. 홈 첫 로딩에는 없다.
 const kst=(iso:string|null)=>iso?new Date(iso).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):null;
 export function CompliancePanel({artifactId,artifactVersion,compliance,canManage,onChange}:{artifactId:string;artifactVersion:number;compliance:ComplianceView|null;canManage:boolean;onChange:(view:ComplianceView)=>void}){
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[done,setDone]=useState('');
+ function applied(result:AppliedFixes){onChange(result.compliance);setError('');setDone(`v${result.version} 점검 결과입니다. 차단 ${result.compliance.issues.filter(i=>i.severity==='block').length}건, 주의 ${result.compliance.issues.filter(i=>i.severity==='warn').length}건입니다. 본문은 이 창을 다시 열면 v${result.version}으로 보입니다.`)}
  async function recheck(){
   setBusy(true);setError('');setDone('');
   try{const view=await regradeArtifact(artifactId);onChange(view);setDone(`다시 점검했습니다. 차단 ${view.issues.filter(i=>i.severity==='block').length}건, 주의 ${view.issues.filter(i=>i.severity==='warn').length}건입니다.`)}
@@ -34,6 +37,7 @@ export function CompliancePanel({artifactId,artifactVersion,compliance,canManage
      </li>)}</ul>
     </li>)}</ul>
     {clean.length>0&&<p className="subtle-note">걸린 표현이 없는 분류 {clean.length}개: {clean.map(c=>`${c.label} 통과 ${c.pass}`).join(', ')}.</p>}
+    {compliance.fixes&&compliance.issues.length>0&&<Suspense fallback={null}><ComplianceFixes key={compliance.fixes.version} artifactId={artifactId} compliance={compliance} canManage={canManage} onApplied={applied}/></Suspense>}
     <p className="subtle-note">{compliance.notice}</p>
    </>}
   {done&&<p className="subtle-note" role="status">{done}</p>}

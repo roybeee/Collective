@@ -8,7 +8,7 @@ let passed=0;const check=(v,n)=>{assert.ok(v,n);passed++};
 const HANGUL=/[가-힣ㄱ-ㆎ]/;
 // strict: JSX 밖 문자열(오류·확인 문장)까지 0. jsx: JSX 안만 본다(선택지 이름·동작 판정용 데이터는 허용).
 const strict=['app/agenda-panel.tsx','components/app/inbox-row.tsx','components/app/inbox-actions.tsx','components/app/confirm-dialog.tsx','components/app/confirm-view.tsx','components/app/theme-toggle.tsx','app/command-palette-dialog.tsx','app/settings-sections.tsx'];
-const jsxOnly=['components/app/empty-line.tsx','components/app/locale-toggle.tsx','app/command-palette.tsx'];
+const jsxOnly=['components/app/empty-line.tsx','components/app/locale-toggle.tsx','app/command-palette.tsx','components/app/compliance-fixes.tsx'];
 // app/workspace.tsx는 1단계 영역만 본다: 건너뛰기 링크·사이드바·머리 띠·화면 제목·새 캠페인 브리프 카드·지표 타일.
 const workspaceRegions=[['a','skip-link'],['Sidebar',null],['header','topbar'],['div','page-heading'],['section','brief-card'],['div','stats-row']];
 
