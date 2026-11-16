@@ -1,9 +1,9 @@
 import type {QualityReview} from '../quality';
 import type {FactLedger} from './types';
-import {COMPLIANCE_LEXICON,HELD_MARK,type ComplianceRule,type ComplianceSeverity,type ComplianceCategory} from './compliance-lexicon';
+import {COMPLIANCE_LEXICON,HELD_MARK,type ComplianceRule,type ComplianceSeverity,type ComplianceCategory,type CompliancePack} from './compliance-lexicon';
 import {neutralize,negatedAt,prohibitiveLabel} from './negation';
 export {COMPLIANCE_LEXICON,COMPLIANCE_CATEGORIES} from './compliance-lexicon';
-export type {ComplianceRule,ComplianceSeverity,ComplianceCategory} from './compliance-lexicon';
+export type {ComplianceRule,ComplianceSeverity,ComplianceCategory,CompliancePack} from './compliance-lexicon';
 
 // 규제·플랫폼·업종 표시 가드레일(A2) 판정 로직. 어휘는 compliance-lexicon.ts에 있다. 결과는 검토 신호이며 법률 판단이 아니다.
 export const COMPLIANCE_NOTICE='이 검사는 표시·광고 관련 법령과 공식 지침의 일부 표현을 찾는 자동 점검이며 법률 자문이 아닙니다. 게시 전 담당자가 원문 규정과 플랫폼 정책을 확인해야 합니다.';
@@ -137,10 +137,17 @@ function withoutStopLists(text:string){
 // 가맹 범주(franchise_recruit, 트랙 R R2)는 opts.franchise로 옵트인할 때만 본다. 기본 호출(온라인 채점·평가)의 이슈 목록은 이전과 같다(사전 버전 문자열만 바뀐다).
 // scope 'recruitment' 규칙(생산·판매 채널 표현)은 모집 범위에서만 본다. 캡션·발행 게이트는 이 경로가 아니라 lib/franchise-compliance.ts가 직접 판정한다.
 export type FranchiseComplianceScope={scope:'consumer'|'recruitment'};
-const skipped=(rule:ComplianceRule,franchise?:FranchiseComplianceScope|null)=>rule.category==='franchise_recruit'&&(!franchise||(rule.scope==='recruitment'&&franchise.scope!=='recruitment'));
-export function checkCompliance(text:string,opts:{facts?:FactLedger|null;franchise?:FranchiseComplianceScope|null}={}):ComplianceReport{
- const sections=sectionsOf(withoutStopLists(withoutProhibitedCells(text))),keys=confirmedKeys(opts.facts),franchise=opts.franchise;
- return {version:COMPLIANCE_LEXICON.version,issues:COMPLIANCE_LEXICON.rules.flatMap(rule=>skipped(rule,franchise)?[]:ruleIssue(rule,sections,keys)),notice:COMPLIANCE_NOTICE};
+// 옵트인 묶음(.16 'mkt', 스위치 compliance_mkt_rules)은 opts.packs에 이름이 있을 때만 본다. 묶음 규칙(pack)은 건너뛰고, 기존 규칙의 묶음 확장(extend)은 매치에 더하지 않는다.
+// 그래서 packs가 없거나 비면 이슈 목록이 .15와 같다(tests/compliance-mkt.test.mjs 회귀 오라클). 알 수 없는 묶음 이름은 무시한다.
+export type ComplianceOptions={facts?:FactLedger|null;franchise?:FranchiseComplianceScope|null;packs?:readonly CompliancePack[]|null};
+const packOn=(packs:ComplianceOptions['packs'],pack:CompliancePack)=>!!packs?.includes(pack);
+export const rulesInPacks=(rule:Pick<ComplianceRule,'pack'>,packs?:ComplianceOptions['packs'])=>!rule.pack||packOn(packs,rule.pack);
+// 묶음 확장이 켜진 규칙의 실제 매치. 수정 제안(compliance-fixes.ts)도 같은 규칙으로 위치를 찾는다. 입력 규칙을 바꾸지 않는다.
+export const effectiveRule=(rule:ComplianceRule,packs?:ComplianceOptions['packs']):ComplianceRule=>rule.extend&&packOn(packs,rule.extend.pack)?{...rule,match:`${rule.match}|${rule.extend.match}`}:rule;
+const skipped=(rule:ComplianceRule,franchise?:FranchiseComplianceScope|null,packs?:ComplianceOptions['packs'])=>!rulesInPacks(rule,packs)||rule.category==='franchise_recruit'&&(!franchise||(rule.scope==='recruitment'&&franchise.scope!=='recruitment'));
+export function checkCompliance(text:string,opts:ComplianceOptions={}):ComplianceReport{
+ const sections=sectionsOf(withoutStopLists(withoutProhibitedCells(text))),keys=confirmedKeys(opts.facts),franchise=opts.franchise,packs=opts.packs;
+ return {version:COMPLIANCE_LEXICON.version,issues:COMPLIANCE_LEXICON.rules.flatMap(rule=>skipped(rule,franchise,packs)?[]:ruleIssue(effectiveRule(rule,packs),sections,keys)),notice:COMPLIANCE_NOTICE};
 }
 // 판정은 하향만 한다. 차단(block)이 있으면 사용자 검토 준비를 수정 필요로 내리고, 경고·정보와 무위반은 판정을 바꾸지 않는다.
 export function downgradeVerdict(verdict:QualityReview['verdict'],issues:Pick<ComplianceIssue,'severity'>[]):QualityReview['verdict']{

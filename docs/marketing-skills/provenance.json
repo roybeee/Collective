@@ -1,0 +1,497 @@
+{
+ "schema": "marketing-skills-provenance-1",
+ "source": "로컬 전용 스킬 저장소(원격 없음). 경로는 ~/marketing-skills, 이 저장소에 원문을 넣지 않는다.",
+ "tag": "v1",
+ "commit": "a63c6b73daceda3692da1300a9352f65fd5bad91",
+ "legalCheckQueried": "2026-11-15",
+ "lexiconVersion": "compliance-lexicon-2026-11-16.16",
+ "flag": "compliance_mkt_rules",
+ "policy": [
+  "스킬 문장·예시 카피·브랜드 사실·원문 행 번호를 옮기지 않는다. 판단 규칙만 새로 쓴다.",
+  "법령 근거는 LEGAL-CHECK 행만 쓴다. 없으면 미확인으로 두고 규칙에 넣지 않는다.",
+  "B06만으로 선 규칙은 넣지 않는다.",
+  "promptUnits는 P4(역할 프롬프트)에서 채운다. P0·P1 단계에서는 비어 있다."
+ ],
+ "legalCheckRows": [
+  "개인정보보호법 제22조",
+  "부정경쟁방지법 제2조1호",
+  "식품표시광고법 제8조①",
+  "전자상거래법 제21조의2",
+  "정보통신망법 시행령 제61조·별표 6",
+  "정보통신망법 제50조",
+  "지정고시 Ⅲ.11",
+  "지정고시 Ⅲ.12",
+  "지정고시 Ⅲ.16.나",
+  "지정고시 Ⅲ.3.라",
+  "추천·보증 심사지침 Ⅳ.1",
+  "추천·보증 심사지침 Ⅴ.1",
+  "추천·보증 심사지침 Ⅴ.6.나",
+  "표시광고법 제3조①",
+  "표시광고법 제5조①",
+  "화장품법 제13조①4호"
+ ],
+ "files": [
+  {
+   "path": "skills/marketing-ethics-check/SKILL.md",
+   "sha256": "52a1b84d8cb2ddcfdd47971686217ed3fdd8e85f6854fc4f9094569f3bc24e5d",
+   "rules": [
+    "kr.ad.scarcity_unverified",
+    "kr.ad.foreign_only_disclosure",
+    "kr.rv.negative_suppression",
+    "kr.ad.authority_claim",
+    "kr.cos.ai_expert",
+    "kr.food.body_change",
+    "kr.ad.comparison_unsupported",
+    "kr.ad.outcome_guarantee",
+    "kr.ad.unconditional_warranty",
+    "kr.ec.preselected_option",
+    "kr.ec.extra_cost_missing"
+   ],
+   "promptUnits": []
+  },
+  {
+   "path": "skills/marketing-ethics-check/references/price.md",
+   "sha256": "d2ca4efa60eca13bd38e87ef9f11d57f2eb0527c9e8f3ad908ba9c7d0bf93aad",
+   "rules": [
+    "kr.ad.scarcity_unverified",
+    "kr.ad.unconditional_warranty",
+    "kr.ec.extra_cost_missing"
+   ],
+   "promptUnits": []
+  },
+  {
+   "path": "skills/marketing-ethics-check/references/endorsement.md",
+   "sha256": "d7a7f5c27c496a6d8d821ab700936f9a8a9d3ea591e78bf8923054945476be0d",
+   "rules": [
+    "kr.ad.foreign_only_disclosure",
+    "kr.rv.negative_suppression",
+    "kr.cos.ai_expert",
+    "kr.rights.ugc_repost"
+   ],
+   "promptUnits": []
+  },
+  {
+   "path": "skills/marketing-ethics-check/references/food.md",
+   "sha256": "c75bf96b342a720e17b13d5a3dee83a03b78c3eff04bcd9c31c2fb2229988d37",
+   "rules": [
+    "kr.food.body_change",
+    "disease_claim"
+   ],
+   "promptUnits": []
+  },
+  {
+   "path": "skills/marketing-ethics-check/references/cosmetics.md",
+   "sha256": "c7ec39df996d2aae8c1cc0b6a51161737663794a2a1ceb8ea71603b0f498f2cf",
+   "rules": [
+    "kr.cos.ai_expert"
+   ],
+   "promptUnits": []
+  },
+  {
+   "path": "skills/marketing-ethics-check/references/messaging.md",
+   "sha256": "025d646ebdeebcd89a9db03ffc4be321017de4206afe448ac5ea84170b1fd69d",
+   "rules": [
+    "kr.ec.preselected_option",
+    "kr.msg.sender_missing",
+    "kr.msg.consent_refusal_denial"
+   ],
+   "promptUnits": []
+  },
+  {
+   "path": "skills/marketing-ethics-check/references/rights-ip.md",
+   "sha256": "dfc1786acea8ff15e80d66572d21cb162c6195d6b9e8d01eb7b664317dde4f6a",
+   "rules": [
+    "kr.rights.ugc_repost",
+    "kr.rights.official_claim"
+   ],
+   "promptUnits": []
+  },
+  {
+   "path": "docs/sources/LEGAL-CHECK.md",
+   "sha256": "0eaabb903cd53eaa73265e3ccd652faef9b0d142111473676657f6259f3d9079",
+   "rules": [
+    "kr.ad.scarcity_unverified",
+    "kr.ad.foreign_only_disclosure",
+    "kr.rv.negative_suppression",
+    "kr.ad.authority_claim",
+    "kr.cos.ai_expert",
+    "kr.food.body_change",
+    "disease_claim",
+    "kr.ad.comparison_unsupported",
+    "kr.ad.outcome_guarantee",
+    "kr.ad.unconditional_warranty",
+    "kr.ec.preselected_option",
+    "kr.msg.sender_missing",
+    "kr.msg.consent_refusal_denial",
+    "kr.rights.ugc_repost",
+    "kr.rights.official_claim",
+    "kr.ec.extra_cost_missing"
+   ],
+   "promptUnits": []
+  }
+ ],
+ "rules": [
+  {
+   "id": "kr.ad.scarcity_unverified",
+   "kind": "rule",
+   "risk": 1,
+   "severity": "warn",
+   "files": [
+    "skills/marketing-ethics-check/SKILL.md",
+    "skills/marketing-ethics-check/references/price.md",
+    "docs/sources/LEGAL-CHECK.md"
+   ],
+   "legal": [
+    {
+     "row": "표시광고법 제3조①",
+     "note": "거짓·과장"
+    },
+    {
+     "row": "지정고시 Ⅲ.3.라",
+     "note": "12호 실제와 다른 한정 표시"
+    }
+   ],
+   "books": [],
+   "derived": "한정·선착순·마감 문구는 기간·수량 증빙을 요구하고, 날짜 범위·준비 수량·원장 offer_period로 해소한다. 측정 문장은 뺀다.",
+   "leftToGuidance": "자동 리셋 카운트다운, 재개 기간(운영 기준)",
+   "pack": "mkt"
+  },
+  {
+   "id": "kr.ad.foreign_only_disclosure",
+   "kind": "rule",
+   "risk": 3,
+   "severity": "warn",
+   "files": [
+    "skills/marketing-ethics-check/SKILL.md",
+    "skills/marketing-ethics-check/references/endorsement.md",
+    "docs/sources/LEGAL-CHECK.md"
+   ],
+   "legal": [
+    {
+     "row": "추천·보증 심사지침 Ⅴ.6.나",
+     "note": "같은 언어로 명확히 표시"
+    }
+   ],
+   "books": [],
+   "derived": "해시태그·괄호의 외국어 광고 표시만 있고 한국어 표시가 없는 추천을 경고한다.",
+   "leftToGuidance": "표시 위치(더보기·댓글), 매체별 위치",
+   "pack": "mkt"
+  },
+  {
+   "id": "kr.rv.negative_suppression",
+   "kind": "rule",
+   "risk": 3,
+   "severity": "warn",
+   "files": [
+    "skills/marketing-ethics-check/SKILL.md",
+    "skills/marketing-ethics-check/references/endorsement.md",
+    "docs/sources/LEGAL-CHECK.md"
+   ],
+   "legal": [
+    {
+     "row": "추천·보증 심사지침 Ⅳ.1",
+     "note": "가공·재구성 금지"
+    },
+    {
+     "row": "표시광고법 제3조①",
+     "note": "기만"
+    }
+   ],
+   "books": [],
+   "derived": "부정 후기 삭제·수정 요청과 부정 후기 보상 제외를 경고한다. 법령 행이 이 행위를 직접 적지 않아 warn으로 시작한다.",
+   "leftToGuidance": "리뷰 이벤트 설계 전체",
+   "pack": "mkt"
+  },
+  {
+   "id": "kr.ad.authority_claim",
+   "kind": "rule",
+   "risk": 4,
+   "severity": "warn",
+   "files": [
+    "skills/marketing-ethics-check/SKILL.md",
+    "docs/sources/LEGAL-CHECK.md"
+   ],
+   "legal": [
+    {
+     "row": "지정고시 Ⅲ.12",
+     "note": "사실 없는 기관 추천·수상"
+    },
+    {
+     "row": "표시광고법 제3조①",
+     "note": "거짓·과장"
+    }
+   ],
+   "books": [],
+   "derived": "기관 인증·선정·지정 명칭은 원장 certification이 없으면 경고한다.",
+   "leftToGuidance": "식품 의사 추천 세부(미확인)",
+   "pack": "mkt"
+  },
+  {
+   "id": "kr.cos.ai_expert",
+   "kind": "rule",
+   "risk": 4,
+   "severity": "block",
+   "files": [
+    "skills/marketing-ethics-check/SKILL.md",
+    "skills/marketing-ethics-check/references/cosmetics.md",
+    "skills/marketing-ethics-check/references/endorsement.md",
+    "docs/sources/LEGAL-CHECK.md"
+   ],
+   "legal": [
+    {
+     "row": "화장품법 제13조①4호",
+     "note": "AI로 만든 전문가 추천 오인 광고"
+    }
+   ],
+   "books": [],
+   "derived": "화장품·피부 문맥에서 AI로 만든 의사·약사·전문가 추천을 차단한다.",
+   "leftToGuidance": "전문가 관여 증빙 확인",
+   "pack": "mkt"
+  },
+  {
+   "id": "kr.food.body_change",
+   "kind": "rule",
+   "risk": 5,
+   "severity": "warn",
+   "files": [
+    "skills/marketing-ethics-check/SKILL.md",
+    "skills/marketing-ethics-check/references/food.md",
+    "docs/sources/LEGAL-CHECK.md"
+   ],
+   "legal": [
+    {
+     "row": "식품표시광고법 제8조①",
+     "note": "4호 거짓·과장 범위"
+    }
+   ],
+   "books": [],
+   "derived": "먹은 뒤 몸 상태가 바뀐다는 표현을 경고한다. 맛·식감·먹는 장면과 가격 부담감은 뺀다.",
+   "leftToGuidance": "수제·무첨가 같은 서류 확인 사실(P2 측정 뒤 결정)",
+   "pack": "mkt"
+  },
+  {
+   "id": "disease_claim",
+   "kind": "extension",
+   "risk": 5,
+   "severity": "block",
+   "files": [
+    "skills/marketing-ethics-check/references/food.md",
+    "docs/sources/LEGAL-CHECK.md"
+   ],
+   "legal": [
+    {
+     "row": "식품표시광고법 제8조①",
+     "note": "1–3호 질병·의약품·건강기능식품 오인"
+    }
+   ],
+   "books": [],
+   "derived": "기존 질병 효능 규칙에 빠진 건강 효능 낱말을 mkt 묶음이 켜질 때만 더한다.",
+   "leftToGuidance": "없음",
+   "pack": "mkt"
+  },
+  {
+   "id": "kr.ad.comparison_unsupported",
+   "kind": "rule",
+   "risk": 7,
+   "severity": "warn",
+   "files": [
+    "skills/marketing-ethics-check/SKILL.md",
+    "docs/sources/LEGAL-CHECK.md"
+   ],
+   "legal": [
+    {
+     "row": "표시광고법 제3조①",
+     "note": "부당 비교"
+    },
+    {
+     "row": "표시광고법 제5조①",
+     "note": "실증"
+    }
+   ],
+   "books": [],
+   "derived": "경쟁 대상과의 수치·우열 비교는 원장 claim_basis가 없으면 경고한다. 자사 이전 판 비교는 뺀다.",
+   "leftToGuidance": "비방",
+   "pack": "mkt"
+  },
+  {
+   "id": "kr.ad.outcome_guarantee",
+   "kind": "extension",
+   "risk": 8,
+   "severity": "block",
+   "files": [
+    "skills/marketing-ethics-check/SKILL.md",
+    "docs/sources/LEGAL-CHECK.md"
+   ],
+   "legal": [
+    {
+     "row": "표시광고법 제3조①",
+     "note": "기만"
+    }
+   ],
+   "books": [],
+   "derived": "기존 성과 보장 규칙에 검색 순위·AI 추천 1순위 보장을 mkt 묶음이 켜질 때만 더한다.",
+   "leftToGuidance": "없음",
+   "pack": "mkt"
+  },
+  {
+   "id": "kr.ad.unconditional_warranty",
+   "kind": "rule",
+   "risk": 8,
+   "severity": "warn",
+   "files": [
+    "skills/marketing-ethics-check/SKILL.md",
+    "skills/marketing-ethics-check/references/price.md",
+    "docs/sources/LEGAL-CHECK.md"
+   ],
+   "legal": [
+    {
+     "row": "지정고시 Ⅲ.11",
+     "note": "내용·기간 없는 품질보증"
+    }
+   ],
+   "books": [],
+   "derived": "범위·기간·절차 없는 보증·만족 보장·무조건 환불을 경고한다.",
+   "leftToGuidance": "없음",
+   "pack": "mkt"
+  },
+  {
+   "id": "kr.ec.preselected_option",
+   "kind": "rule",
+   "risk": 9,
+   "severity": "warn",
+   "files": [
+    "skills/marketing-ethics-check/SKILL.md",
+    "skills/marketing-ethics-check/references/messaging.md",
+    "docs/sources/LEGAL-CHECK.md"
+   ],
+   "legal": [
+    {
+     "row": "전자상거래법 제21조의2",
+     "note": "추가 청약 항목 미리 선택"
+    },
+    {
+     "row": "개인정보보호법 제22조",
+     "note": "홍보 동의 따로 받기"
+    }
+   ],
+   "books": [],
+   "derived": "추가 항목·홍보 동의를 미리 선택한 화면 설계를 경고한다.",
+   "leftToGuidance": "화면 설계, 수치심 문구",
+   "pack": "mkt"
+  },
+  {
+   "id": "kr.msg.sender_missing",
+   "kind": "rule",
+   "risk": 10,
+   "severity": "warn",
+   "files": [
+    "skills/marketing-ethics-check/references/messaging.md",
+    "docs/sources/LEGAL-CHECK.md"
+   ],
+   "legal": [
+    {
+     "row": "정보통신망법 시행령 제61조·별표 6",
+     "note": "전송자 명칭·연락처"
+    },
+    {
+     "row": "정보통신망법 제50조",
+     "note": "④ 표시"
+    }
+   ],
+   "books": [],
+   "derived": "광고성 메시지 초안에 전송자 명칭·연락처가 없으면 경고한다. 080 수신거부 번호는 연락처로 보지 않는다.",
+   "leftToGuidance": "승인 묶음",
+   "pack": "mkt"
+  },
+  {
+   "id": "kr.msg.consent_refusal_denial",
+   "kind": "rule",
+   "risk": 10,
+   "severity": "block",
+   "files": [
+    "skills/marketing-ethics-check/references/messaging.md",
+    "docs/sources/LEGAL-CHECK.md"
+   ],
+   "legal": [
+    {
+     "row": "개인정보보호법 제22조",
+     "note": "⑤ 동의 거부를 이유로 한 제공 거부 금지"
+    }
+   ],
+   "books": [],
+   "derived": "홍보 동의를 가입·이용·참여 조건으로 거는 문장과 필수 표기를 차단한다. 동의자에게만 보내는 발송 문장은 뺀다.",
+   "leftToGuidance": "승인 묶음",
+   "pack": "mkt"
+  },
+  {
+   "id": "kr.rights.ugc_repost",
+   "kind": "rule",
+   "risk": 16,
+   "severity": "warn",
+   "files": [
+    "skills/marketing-ethics-check/references/endorsement.md",
+    "skills/marketing-ethics-check/references/rights-ip.md",
+    "docs/sources/LEGAL-CHECK.md"
+   ],
+   "legal": [
+    {
+     "row": "추천·보증 심사지침 Ⅳ.1",
+     "note": "가공 금지"
+    },
+    {
+     "row": "추천·보증 심사지침 Ⅴ.1",
+     "note": "소비자 추천 요건"
+    }
+   ],
+   "books": [],
+   "derived": "작성자 허락 기록 없는 고객 게시물 재게시를 경고한다. 태그·멘션은 허락으로 보지 않는다.",
+   "leftToGuidance": "서면 허락 범위, 저작권(미확인)",
+   "pack": "mkt"
+  },
+  {
+   "id": "kr.rights.official_claim",
+   "kind": "rule",
+   "risk": 16,
+   "severity": "warn",
+   "files": [
+    "skills/marketing-ethics-check/references/rights-ip.md",
+    "docs/sources/LEGAL-CHECK.md"
+   ],
+   "legal": [
+    {
+     "row": "부정경쟁방지법 제2조1호",
+     "note": "바목 품질·내용 오인"
+    },
+    {
+     "row": "표시광고법 제3조①",
+     "note": "거짓·과장"
+    }
+   ],
+   "books": [],
+   "derived": "공급·라이선스 계약 근거 없는 공식·정품 표기를 경고한다. 공식 계정 안내는 뺀다.",
+   "leftToGuidance": "레이블 로고 배치",
+   "pack": "mkt"
+  },
+  {
+   "id": "kr.ec.extra_cost_missing",
+   "kind": "rule",
+   "risk": 19,
+   "severity": "warn",
+   "files": [
+    "skills/marketing-ethics-check/SKILL.md",
+    "skills/marketing-ethics-check/references/price.md",
+    "docs/sources/LEGAL-CHECK.md"
+   ],
+   "legal": [
+    {
+     "row": "지정고시 Ⅲ.16.나",
+     "note": "부대비용 포함 실제 지불액"
+    }
+   ],
+   "books": [],
+   "derived": "배달·배송 주문 문장의 가격에 부대비용·최소 주문 금액 칸이 없으면 경고한다.",
+   "leftToGuidance": "종전가격 거래 기록",
+   "pack": "mkt"
+  }
+ ]
+}

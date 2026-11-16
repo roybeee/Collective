@@ -7,10 +7,13 @@
 // ledgerKey: 확정 원장 항목 이름이 맞으면 해소. marked: [확인 필요]·미확정 표시 문장은 면제.
 // 가맹 범주(franchise_recruit, 트랙 R R2)는 checkCompliance의 opts.franchise로만 켠다. 기본 호출(온라인 채점·평가)은 이 범주를 보지 않는다.
 // scope 'recruitment': 모집 범위(objective 캠페인·내보내기)에서만 적용한다. 가맹 규칙의 id는 규칙 레지스트리(lib/franchise-rules.ts) id 그대로다.
+import {mktPackRules,MKT_DISEASE_EXTENSION,MKT_RANK_GUARANTEE_EXTENSION} from './compliance-lexicon-mkt';
 export type ComplianceSeverity='block'|'warn'|'info';
 export const COMPLIANCE_CATEGORIES=['platform_review','endorsement','ai_label','ad_message','food_claim','cosmetic_claim','ecommerce_terms','rights','franchise_recruit','ad_claim'] as const;
 export type ComplianceCategory=typeof COMPLIANCE_CATEGORIES[number];
-export type ComplianceRule={id:string;category:ComplianceCategory;severity:ComplianceSeverity;title:string;match:string;context?:string;cleared?:string;also?:string;except?:string;held?:string;ledgerKey?:string;marked?:boolean;scope?:'recruitment';sources:string[]};
+// pack: 옵트인 묶음(.16 'mkt' = 마케팅 묶음, checkCompliance opts.packs). extend: 기존 규칙에 묶음이 켜질 때만 더하는 매치(규칙 id·등급은 그대로).
+export type CompliancePack='mkt';
+export type ComplianceRule={id:string;pack?:CompliancePack;extend?:{pack:CompliancePack;match:string};category:ComplianceCategory;severity:ComplianceSeverity;title:string;match:string;context?:string;cleared?:string;also?:string;except?:string;held?:string;ledgerKey?:string;marked?:boolean;scope?:'recruitment';sources:string[]};
 export const HELD_MARK='⟪M⟫';
 export type ComplianceSource={title:string;url:string};
 
@@ -210,7 +213,7 @@ const AD_GUARANTEE_HELD=`${HELD_MARK}\\s?(?:표현|규칙|금지)|${HELD_MARK}(?
 const AD_OUTCOME_GUARANTEE='(?:효과|효능|수익|매출|수입|소득|감량)(?:\\s?(?:상승|증가|향상|개선))?(?:을|를|이|가|은|는|도)?\\s?(?:(?:100\\s?%|확실히|확실하게|반드시|무조건|꼭)\\s?)?(?:보장|보증)(?!\\s?(?:금|보험|기간|서|제도|범위|대상|한도|형))';
 
 export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:string;sources:Record<string,ComplianceSource>;rules:ComplianceRule[]}={
- version:'compliance-lexicon-2026-11-15.15',
+ version:'compliance-lexicon-2026-11-16.16',
  checkedAt:'2026-09-23',
  platformPolicy:'플랫폼별 리뷰 운영정책(예: 지도·예약 플랫폼) 공식 URL은 아직 확인하지 않았다. 게시 전 해당 플랫폼 공식 정책 페이지에서 확인하고, 확인되면 사전 버전을 올려 출처를 추가한다.',
  sources:{
@@ -228,6 +231,10 @@ export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:
   franchise_act:{title:'가맹사업거래의 공정화에 관한 법률(법률 제20712호)',url:`${FR_DRF}&target=law&type=XML&MST=268283`},
   franchise_decree:{title:'가맹사업거래의 공정화에 관한 법률 시행령(대통령령 제36561호, 2026-08-04 시행)',url:`${FR_DRF}&target=eflaw&type=XML&MST=288453&efYd=20260804`},
   unfair_ad_notice:{title:'부당한 표시·광고행위의 유형 및 기준 지정고시(공정거래위원회고시 제2019-11호) Ⅲ.14.나 배타성을 띤 절대적 표현',url:'https://www.law.go.kr/행정규칙/부당한표시ㆍ광고행위의유형및기준지정고시'},
+  // .16 마케팅 묶음(mkt) 출처. 조문은 마케팅 스킬 법령 확인 기록(2026-11-15 조회)의 행만 쓴다.
+  unfair_ad_items:{title:'부당한 표시·광고행위의 유형 및 기준 지정고시(공정거래위원회고시) Ⅲ.3.라 12호·Ⅲ.11·Ⅲ.12·Ⅲ.16.나',url:'https://www.law.go.kr/행정규칙/부당한표시ㆍ광고행위의유형및기준지정고시'},
+  privacy_act:{title:'개인정보 보호법 제22조(동의를 받는 방법) ①7호·⑤',url:law('개인정보보호법')},
+  network_decree:{title:'정보통신망 이용촉진 및 정보보호 등에 관한 법률 시행령 제61조·별표 6(광고성 정보 표시 방법)',url:law('정보통신망이용촉진및정보보호등에관한법률시행령')},
   franchise_false_info_notice:{title:'가맹사업거래 상 허위·과장 정보제공행위 등의 유형 지정고시(공정거래위원회고시 제2019-8호, 2019-11-20 시행)',url:`${FR_DRF}&target=admrul&type=XML&ID=2100000183885`},
  },
  rules:[
@@ -248,7 +255,7 @@ export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:
   {id:'optout_missing',category:'ad_message',severity:'warn',title:'무료 수신거부 방법 안내 누락',match:MESSAGE,context:PROMOTION,except:DEFERRAL,cleared:'수신\\s?거부|무료\\s?거부|수신\\s?철회|080-?\\d',sources:['network_act']},
   {id:'night_send',category:'ad_message',severity:'warn',title:'야간(21시~08시) 광고 전송은 별도 동의 필요',match:'(?:밤|저녁|오후)\\s?(?:9|10|11)\\s?시|(?:새벽|오전)\\s?[0-7]\\s?시|(?<!\\d)(?:21|22|23|24)\\s?시(?!간)|(?<![\\d:])(?:21|22|23|0[0-7])\\s?:\\s?[0-5]\\d|자정|심야|야간',also:'발송|전송|보내|보낸|푸시',cleared:'야간[^.\\n]{0,10}동의|별도\\s?(?:야간\\s?)?(?:수신\\s?)?동의',sources:['network_act']},
   // ⑤ 식품 표시·광고: 질병 예방·치료 효능 오인, 원산지 주장(국내산·OO산·한우 등) 시 원장 미확정 경고. 확인 목록의 '원산지' 낱말은 주장이 아니다.
-  {id:'disease_claim',category:'food_claim',severity:'block',title:'식품의 질병 예방·치료 효능 표현',match:'(?:당뇨|고혈압|혈압|혈당|비만|면역력?|질병|질환|감기|변비|치매|숙취)[^.\\n]{0,10}(?:예방|치료|개선|완화|낮춰|낮춘|낮추|강화|회복|효과|효능|높여|높인|줄여|줄인|해소|에\\s?좋은)|다이어트\\s?(?:효과|효능)|(?<![가-힣])암\\s?(?:예방|치료|억제)|항암|해독\\s?(?:효과|작용)',sources:['food_labeling_act']},
+  {id:'disease_claim',extend:{pack:'mkt',match:MKT_DISEASE_EXTENSION},category:'food_claim',severity:'block',title:'식품의 질병 예방·치료 효능 표현',match:'(?:당뇨|고혈압|혈압|혈당|비만|면역력?|질병|질환|감기|변비|치매|숙취)[^.\\n]{0,10}(?:예방|치료|개선|완화|낮춰|낮춘|낮추|강화|회복|효과|효능|높여|높인|줄여|줄인|해소|에\\s?좋은)|다이어트\\s?(?:효과|효능)|(?<![가-힣])암\\s?(?:예방|치료|억제)|항암|해독\\s?(?:효과|작용)',sources:['food_labeling_act']},
   {id:'origin_unconfirmed',category:'food_claim',severity:'warn',title:'원산지 주장(원장에 원산지 확정값 없음)',match:'(?:국내|국|수입|미국|호주|중국|칠레|브라질|스페인|캐나다|뉴질랜드|베트남|태국|일본|이탈리아|독일|노르웨이|러시아)산(?![가-힣]*업)|한우|한돈',ledgerKey:'원산지|산지',marked:true,sources:['origin_act','food_labeling_act']},
   // ⑥ 화장품: 의약품 오인, 미인증 기능성 표현.
   {id:'drug_claim',category:'cosmetic_claim',severity:'block',title:'화장품의 의약품 오인 표현',match:'(?:여드름|아토피|피부염|습진|건선|탈모|흉터|상처|염증|무좀|기미)[^.\\n]{0,12}(?:치료|완치|치유|재생|없애|없앤|사라지|사라진|낫)|(?:세포|피부|모발)\\s?재생|의약품\\s?(?:수준|급|효과)|약처럼|처방\\s?(?:없이|받은)',sources:['cosmetics_act']},
@@ -278,6 +285,8 @@ export const COMPLIANCE_LEXICON:{version:string;checkedAt:string;platformPolicy:
   {id:'kr.ad.virtual_human_label',category:'franchise_recruit',severity:'warn',title:'가상인물 표시 없는 AI 가상인물',match:'(?:AI|가상)\\s?(?:점주|인물|모델|아바타(?!\\s?(?:포토\\s?존|만들기|꾸미기|필터|스티커|체험|게임))|인플루언서)',cleared:'가상\\s?인물(?:임|입니다|\\s?표시)|AI\\s?생성\\s?인물',sources:['endorsement_guideline','fair_labeling']},
   // ⑩ 일반 표시·광고 주장(QA N7): 범주와 관계없이 본다. 확정 원장 claim_basis(순위·최상급 근거)가 있으면 해소, [확인 필요] 표시 문장은 면제.
   {id:'kr.ad.superlative_unsupported',category:'ad_claim',severity:'warn',title:'근거 없는 최상급·배타적 표현(최고·1위·최초·유일·100%·완벽)',match:AD_SUPERLATIVE,except:AD_RANK_GOAL,held:AD_SUPERLATIVE_HELD,ledgerKey:'^claim_basis$',marked:true,sources:['fair_labeling','unfair_ad_notice']},
-  {id:'kr.ad.outcome_guarantee',category:'ad_claim',severity:'block',title:'효과·수익·매출 보장 표현',match:AD_OUTCOME_GUARANTEE,held:AD_GUARANTEE_HELD,sources:['fair_labeling','unfair_ad_notice']},
+  {id:'kr.ad.outcome_guarantee',extend:{pack:'mkt',match:MKT_RANK_GUARANTEE_EXTENSION},category:'ad_claim',severity:'block',title:'효과·수익·매출 보장 표현',match:AD_OUTCOME_GUARANTEE,held:AD_GUARANTEE_HELD,sources:['fair_labeling','unfair_ad_notice']},
+  // ⑪ 마케팅 묶음(.16, pack 'mkt'): opts.packs에 'mkt'가 있을 때만 본다(스위치 compliance_mkt_rules). 규칙은 lib/graders/compliance-lexicon-mkt.ts.
+  ...mktPackRules({message:MESSAGE,promotion:PROMOTION,deferral:DEFERRAL,measurement:MEASUREMENT}),
  ],
 };

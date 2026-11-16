@@ -20,7 +20,8 @@ eq('every rule hit → 0%',complianceRate({categories:[{category:'a',pass:0}],is
 check('does not mutate its input',(()=>{const v=Object.freeze({categories:Object.freeze([Object.freeze({category:'a',pass:1})]),issues:Object.freeze([Object.freeze({category:'a',ruleId:'r'})])});complianceRate(v);return true})());
 
 // 2) 작업물 규정 보기와 같은 규칙 집합: 점검 규칙 수 = 소비자 점검 규칙(가맹 모집 범위 규칙 제외) 수. 위반이 있어도 분모는 같다.
-const applicable=COMPLIANCE_LEXICON.rules.filter(r=>r.scope!=='recruitment').length;
+// 옵트인 묶음 규칙(.16 pack 'mkt')은 스위치가 꺼진 기본 보기에서 세지 않는다.
+const applicable=COMPLIANCE_LEXICON.rules.filter(r=>r.scope!=='recruitment'&&!r.pack).length;
 const view=content=>complianceViewOf({id:'rate-a',role:'copy',content},null,null,'2026-11-15T00:00:00.000Z');
 const clean=complianceRate(view('## 이번 주 메뉴\n매운 떡볶이 세트를 소개합니다.'));
 eq('clean artifact: every applicable rule passes',clean,{passed:applicable,checked:applicable,percent:100});
