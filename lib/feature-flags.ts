@@ -58,6 +58,7 @@ export const FEATURE_FLAGS={
  self_signup:{defaultEnabled:false,description:'로그인 화면에 새 워크스페이스 가입(이메일·비밀번호, 이용약관·개인정보 동의 필수, 마케팅 수신 선택)을 연다(G8). 플랫폼 스위치라 운영자 워크스페이스(처음 만든 관리자 계정의 워크스페이스) 값만 읽는다. 메일 발송 어댑터가 없어 확인 링크를 화면에 보이므로 공개 전 메일 연결이 필요하다. 꺼지면 가입 API는 404이고 초대 가입·로그인은 그대로다.'},
  credit_billing:{defaultEnabled:false,description:'선불 크레딧 원장(월 기본 제공·충전·AI 사용 1,000토큰=1크레딧·환불·소멸)과 80%·100% 알림을 켜고, 잔액 0이면 새 AI 실행을 시작 전에 막는다(운영자 워크스페이스 제외). 토스페이먼츠 테스트 키(test_)로만 충전·환불한다(G8). 플랫폼 스위치라 운영자 워크스페이스 값만 읽는다. 꺼지면 원장·가드·결제는 모두 동작하지 않고 요금표만 보인다.'},
  compliance_fixes:{defaultEnabled:false,description:'작업물 규정 점검 패널에 규칙별 결정론 수정 제안(#광고·(광고) 넣기, 가상인물·AI 생성 표시 붙이기, 질병 효능 문장 지우기 등)과 고른 수정 적용을 켠다. 적용은 대표·관리자·편집 범위 역할이 확인 카드를 거쳐 새 버전으로 저장하고 바로 다시 점검한다(모델 호출 없음, COLLECTIVE 휴리스틱 · 법률 자문 아님). 꺼지면 제안이 보이지 않고 적용은 409다.'},
+ compliance_mkt_rules:{defaultEnabled:false,description:'규정 점검 사전 .16의 마케팅 묶음(mkt) 14개 규칙과 기존 두 규칙의 확장(식품 건강 효능 낱말, 순위·AI 추천 1순위 보장)을 작업물 규정 점검·온라인 채점·다시 점검·수정 제안에 더한다. 한정·마감 증빙, 외국어만 쓴 광고 표시, 부정 후기 삭제, 인증·선정 명칭, AI 가상 전문가의 화장품 추천, 몸 상태 변화 식품 표현, 경쟁 비교, 무조건 보증, 미리 선택한 항목, 광고 메시지 전송자, 홍보 동의 거부 시 서비스 거부, 고객 게시물 재게시, 공식·정품 표기, 배달 부대비용을 본다. 꺼지면 이슈 목록이 .15와 같다. A2 하향(작업물 보류)은 계속 .15 기준이다(결정론, 모델 호출 없음, COLLECTIVE 휴리스틱 · 법률 자문 아님).'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};
