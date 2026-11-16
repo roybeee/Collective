@@ -34,5 +34,7 @@ export function parseGeoChangeInput(value:unknown,now:number):GeoChangeInput{
 export const newRechecks=(appliedOn:string):GeoRecheck[]=>geoRecheckDates(appliedOn).map(r=>({...r,status:'scheduled'}));
 // 재관측 시작 표시(새 객체). 같은 회차를 두 번 시작하지 않는다.
 export const markRecheckStarted=(c:GeoChange,offset:number,runId:string,at:string):GeoChange=>({...c,rechecks:c.rechecks.map(r=>r.offset===offset&&r.status==='scheduled'?{...r,status:'started',runId,startedAt:at}:r)});
+// 재관측 건너뜀 표시(새 객체). 예약 상태인 회차만 바꾼다.
+export const markRecheckSkipped=(c:GeoChange,offset:number,reason:string,at:string):GeoChange=>({...c,rechecks:c.rechecks.map(r=>r.offset===offset&&r.status==='scheduled'?{...r,status:'skipped',reason,skippedAt:at}:r)});
 // 재관측 측정 번호: 변경 id와 회차로 정한다(같은 회차는 같은 번호라 두 번 만들지 않는다).
 export const recheckRunId=(changeId:string,offset:number)=>'geo-run-'+(changeId.replace(/[^a-z0-9]/g,'')+'d'+offset).slice(-32);

@@ -13,7 +13,7 @@ export const koGeo={
  'geo.change.title':'변경 기록과 재관측','geo.change.lead':'변경을 기록하면 반영일부터 +14일·+42일에 같은 조건으로 다시 측정하도록 예약합니다. 조사 실행이 자동일 때만 저절로 돌고, 아니면 예정일이 지난 뒤 여기에 표시됩니다.',
  'geo.change.kind':'변경 종류','geo.change.summary':'변경 요약','geo.change.appliedOn':'반영일(게시·색인 확인일)','geo.change.basis':'반영 근거','geo.change.save':'변경 기록','geo.change.saved':'변경을 기록하고 재관측을 예약했습니다.','geo.change.needSummary':'변경 요약을 먼저 쓰세요.','geo.change.needDay':'반영일을 고르세요.','geo.change.empty':'기록한 변경이 없습니다.',
  'geo.change.recheck':'+{offset}일 {day} {status}','geo.change.due':'재관측 예정일이 지났습니다: {items}. 지금 측정으로 직접 실행할 수 있습니다.','geo.change.dueItem':'+{offset}일({day})',
- 'geo.recheck.scheduled':'예약','geo.recheck.started':'측정 시작',
+ 'geo.recheck.scheduled':'예약','geo.recheck.started':'측정 시작','geo.recheck.skipped':'건너뜀(캠페인 보관·삭제)',
  'geo.kind.entity_basics':'처방 0 묶음(공식 정보 페이지·지도 등록 정보·표기 통일)','geo.kind.faq':'자주 묻는 질문 추가·수정','geo.kind.page':'공식 페이지 본문 수정','geo.kind.listing':'플랫폼 등록 정보 수정','geo.kind.other':'기타',
  'geo.basis.published':'게시 확인','geo.basis.indexed':'색인 확인',
 } as const;

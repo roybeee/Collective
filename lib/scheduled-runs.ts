@@ -84,7 +84,8 @@ export function agendaSignalText(schedule:Pick<Schedule,'title'|'kind'>,period:s
 // 날짜는 UTC 자정 기준 날짜 더하기로 계산한다(KST 날짜 문자열이라 시차가 끼지 않는다). 실행은 lib/geo-run-server.ts advanceGeoRunsSafely가 tick마다 맡는다.
 export const GEO_RECHECK_OFFSETS=[14,42] as const;
 export type GeoRecheckOffset=typeof GEO_RECHECK_OFFSETS[number];
-export type GeoRecheck={offset:GeoRecheckOffset;dueOn:string;status:'scheduled'|'started';runId?:string;startedAt?:string};
+// skipped: 기록한 캠페인이 보관·삭제돼 그 회차를 돌리지 않음(사유와 시각을 한 번 남기고 다시 시도하지 않는다).
+export type GeoRecheck={offset:GeoRecheckOffset;dueOn:string;status:'scheduled'|'started'|'skipped';runId?:string;startedAt?:string;reason?:string;skippedAt?:string};
 export const addKstDays=(day:string,n:number)=>new Date(Date.parse(day+'T00:00:00Z')+n*DAY).toISOString().slice(0,10);
 export const geoRecheckDates=(appliedOn:string)=>GEO_RECHECK_OFFSETS.map(offset=>({offset,dueOn:addKstDays(appliedOn,offset)}));
 // 오늘(KST)까지 예정일이 온, 아직 시작하지 않은 재관측. 예정일이 이른 순.

@@ -13,7 +13,7 @@ export const enGeo:Record<keyof typeof koGeo,string>={
  'geo.change.title':'Change log and re-observation','geo.change.lead':'Recording a change schedules re-measurement under the same conditions +14 and +42 days after the applied day. It runs by itself only when research runs are automatic; otherwise it shows here once the due day passes.',
  'geo.change.kind':'Change type','geo.change.summary':'Change summary','geo.change.appliedOn':'Applied day (published or indexed)','geo.change.basis':'Applied basis','geo.change.save':'Record change','geo.change.saved':'Recorded the change and scheduled re-observation.','geo.change.needSummary':'Write the change summary first.','geo.change.needDay':'Choose the applied day.','geo.change.empty':'No changes recorded.',
  'geo.change.recheck':'+{offset} days {day} {status}','geo.change.due':'Re-observation is due: {items}. You can run it now with Measure now.','geo.change.dueItem':'+{offset} days ({day})',
- 'geo.recheck.scheduled':'Scheduled','geo.recheck.started':'Measurement started',
+ 'geo.recheck.scheduled':'Scheduled','geo.recheck.started':'Measurement started','geo.recheck.skipped':'Skipped (campaign archived or deleted)',
  'geo.kind.entity_basics':'Prescription 0 bundle (official info page · map listing · consistent name)','geo.kind.faq':'FAQ added or edited','geo.kind.page':'Official page text edited','geo.kind.listing':'Platform listing edited','geo.kind.other':'Other',
  'geo.basis.published':'Publication confirmed','geo.basis.indexed':'Indexing confirmed',
 };

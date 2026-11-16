@@ -17,13 +17,13 @@ import {readGrowthStop} from './growth-stop-server';
 import {markUsageOutcomeSafely} from './usage-outcome';
 import {effectiveBrandFacts,type BrandFact} from './brand-facts';
 import {factLabel} from './fact-catalog';
-import {assertNotArchived} from './campaign-archive';
+import {assertNotArchived,isArchived} from './campaign-archive';
 import type {UsageContext} from './usage-ledger';
 import {GEO_GROUPS,GEO_INTENTS_V2,GEO_QUESTION_ID,GEO_QUESTION_LIMIT,GeoInputError,measurementPairs,normalizeQuestion,parseGeoQuestionInput,pendingStarters,type GeoEngine,type GeoQuestion} from './geo-questions';
 import {GeoResponseError,geoSubmission,geoTarget,parseGeoResponse,type GeoObservation,type GeoTarget} from './geo-observation';
 import {GEO_SITE_STATES,geoReport,llmsTxtTemplate,type GeoSiteChecks,type GeoSiteState} from './geo-report';
 import {GEO_VERDICT_RULES,geoReportV2} from './geo-verdict';
-import {GEO_CHANGE_BASES,GEO_CHANGE_KINDS,GeoChangeError,markRecheckStarted,newRechecks,parseGeoChangeInput,recheckRunId,type GeoChange} from './geo-change';
+import {GEO_CHANGE_BASES,GEO_CHANGE_KINDS,GeoChangeError,markRecheckSkipped,markRecheckStarted,newRechecks,parseGeoChangeInput,recheckRunId,type GeoChange} from './geo-change';
 import {dueGeoRechecks} from './scheduled-runs';
 
 const kinds={question:'geo_question',run:'geo_run',observation:'geo_observation',site:'geo_settings',change:'geo_change'} as const;
@@ -293,17 +293,25 @@ export async function saveGeoChange(who:Actor,c:Campaign,b:Record<string,unknown
  return row;
 }
 // 예정일이 온 재관측을 tick마다 하나 시작한다. 예약 측정과 같은 조건(스위치 둘, research_run 자동, 진행 중 측정 없음)일 때만이고, 아니면 화면에 '재관측 예정일 지남'으로 남는다.
+// 기록한 캠페인이 없거나·다른 브랜드거나·보관됐으면 그 회차를 건너뜀(사유)으로 한 번 남기고 같은 tick에 다음 회차로 넘어간다(뒤 회차를 막지 않고 오류 로그도 남기지 않는다).
+// 시작이 확정 거절(진행 중 측정·예산·전역 중단 등 ApiError)이면 조용히 다음 tick에 다시 본다.
+export const GEO_RECHECK_SKIP={missing:'기록한 캠페인을 찾지 못해 이 재관측을 건너뛰었습니다.',brand:'기록한 캠페인이 다른 브랜드에 속해 이 재관측을 건너뛰었습니다.',archived:'기록한 캠페인이 보관돼 이 재관측을 건너뛰었습니다. 다른 캠페인 화면의 지금 측정으로 확인하세요.'} as const;
+const GEO_RECHECK_SCAN=20;
 async function startDueRechecksSafely(owner:string):Promise<number>{
  try{
   if(!await geoV2Enabled(owner)||await geoScheduleSkip(owner))return 0;
-  const changes=await listRecords<GeoChange>(owner,kinds.change),due=dueGeoRechecks(changes,Date.now())[0];
-  if(!due)return 0;
-  const change=changes.find(x=>x.id===due.changeId)!,c=await readRecord<Campaign>(owner,'campaign',change.campaignId);
-  if(c.brandId!==change.brandId)return 0;
-  assertNotArchived(c);
-  const {run}=await createRun(owner,c,recheckRunId(change.id,due.offset),'recheck',null,`recheck:${change.id}:${due.offset}`);
-  await recordStatement(owner,kinds.change,change.id,markRecheckStarted(change,due.offset,run.id,stamp()),change.brandId).run();
-  await advanceGeoRun(owner,run.id);
-  return 1;
+  const changes=new Map((await listRecords<GeoChange>(owner,kinds.change)).map(c=>[c.id,c]));
+  for(const due of dueGeoRechecks([...changes.values()],Date.now()).slice(0,GEO_RECHECK_SCAN)){
+   const change=changes.get(due.changeId)!,c=await optional<Campaign>(owner,'campaign',change.campaignId);
+   const skip=!c?GEO_RECHECK_SKIP.missing:c.brandId!==change.brandId?GEO_RECHECK_SKIP.brand:isArchived(c)?GEO_RECHECK_SKIP.archived:null;
+   if(skip){const next=markRecheckSkipped(change,due.offset,skip,stamp());changes.set(change.id,next);await recordStatement(owner,kinds.change,change.id,next,change.brandId).run();continue}
+   let run:GeoRun;
+   try{({run}=await createRun(owner,c!,recheckRunId(change.id,due.offset),'recheck',null,`recheck:${change.id}:${due.offset}`))}
+   catch(e){if(e instanceof ApiError)return 0;throw e}
+   await recordStatement(owner,kinds.change,change.id,markRecheckStarted(change,due.offset,run.id,stamp()),change.brandId).run();
+   await advanceGeoRun(owner,run.id);
+   return 1;
+  }
+  return 0;
  }catch{console.error('geo_recheck_start_failed');return 0}
 }

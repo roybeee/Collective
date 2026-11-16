@@ -369,5 +369,28 @@ check('the next tick does not start the same recheck again',rows('geo_run').leng
 check('the +42 recheck of the older change stays scheduled',rows('geo_change').find(x=>x.id===oldChange).rechecks[1].status==='scheduled');
 await flags.setFeatureFlag(WS,{flag:'autonomy_rules',enabled:false},by);
 await post(boss,{action:'cancel_run',runId:started.runId});
+// 6-7) 맨 앞 재관측의 캠페인이 보관·삭제됐으면 그 회차를 건너뜀(사유)으로 한 번만 남기고 같은 tick에 다음 회차로 넘어간다. tick마다 오류 로그를 남기지 않는다.
+{
+ await server.recordStatement(WS,'campaign','geo-archived',{id:'geo-archived',brandId:BRAND,title:'보관 캠페인',goal:'시험',status:'draft',archivedAt:at,version:2,createdAt:at,updatedAt:at}).run();
+ const ch=(id,campaignId,daysAgo)=>({id,brandId:BRAND,campaignId,kind:'faq',summary:'시험 변경',appliedOn:shift(kstToday,-14-daysAgo),appliedBasis:'published',questionIds:[],rechecks:[{offset:14,dueOn:shift(kstToday,-daysAgo),status:'scheduled'},{offset:42,dueOn:shift(kstToday,28-daysAgo),status:'scheduled'}],createdAt:at,createdBy:'geo-boss'});
+ for(const c of [ch('gchg-archived01','geo-archived',3),ch('gchg-missing001','geo-gone',2),ch('gchg-validnext1',CAMPAIGN,1)])await server.recordStatement(WS,'geo_change',c.id,c,BRAND).run();
+ await flags.setFeatureFlag(WS,{flag:'autonomy_rules',enabled:true},by);
+ const errors=[],origError=console.error;console.error=(...a)=>{errors.push(a.join(' '))};
+ try{
+  await geo.advanceGeoRunsSafely(WS);
+  const get1=id=>rows('geo_change').find(x=>x.id===id);
+  const arch=get1('gchg-archived01').rechecks[0],gone=get1('gchg-missing001').rechecks[0],next=get1('gchg-validnext1').rechecks[0];
+  check('an archived head recheck is skipped with a reason',arch.status==='skipped'&&/보관/.test(arch.reason)&&typeof arch.skippedAt==='string');
+  check('a recheck whose campaign is missing is skipped with a reason',gone.status==='skipped'&&/찾지 못/.test(gone.reason));
+  check('the next due recheck starts in the same tick',next.status==='started'&&rows('geo_run').some(x=>x.id===next.runId&&x.scheduleRunId==='recheck:gchg-validnext1:14'));
+  check('the archived change keeps its future +42 recheck scheduled',get1('gchg-archived01').rechecks[1].status==='scheduled');
+  const snapshot=JSON.stringify([get1('gchg-archived01'),get1('gchg-missing001')]);
+  await post(boss,{action:'cancel_run',runId:next.runId});
+  await geo.advanceGeoRunsSafely(WS);await geo.advanceGeoRunsSafely(WS);
+  check('the skip is recorded once (later ticks leave it unchanged)',JSON.stringify([get1('gchg-archived01'),get1('gchg-missing001')])===snapshot);
+  check('skipping does not log an error on any tick',!errors.some(e=>/geo_recheck_start_failed|geo_run_advance_failed/.test(e)));
+ }finally{console.error=origError}
+ await flags.setFeatureFlag(WS,{flag:'autonomy_rules',enabled:false},by);
+}
 
 console.log(JSON.stringify({passed:passed.length}));

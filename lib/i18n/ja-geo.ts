@@ -13,7 +13,7 @@ export const jaGeo:Record<keyof typeof koGeo,string>={
  'geo.change.title':'変更記録と再観測','geo.change.lead':'変更を記録すると、反映日から+14日・+42日に同じ条件で再測定を予約します。調査実行が自動のときだけ自動で動き、そうでなければ予定日を過ぎたあとここに表示されます。',
  'geo.change.kind':'変更の種類','geo.change.summary':'変更の要約','geo.change.appliedOn':'反映日(公開・インデックス確認日)','geo.change.basis':'反映の根拠','geo.change.save':'変更を記録','geo.change.saved':'変更を記録し、再観測を予約しました。','geo.change.needSummary':'先に変更の要約を書いてください。','geo.change.needDay':'反映日を選んでください。','geo.change.empty':'記録した変更はありません。',
  'geo.change.recheck':'+{offset}日 {day} {status}','geo.change.due':'再観測の予定日を過ぎました: {items}。「今すぐ測定」で直接実行できます。','geo.change.dueItem':'+{offset}日({day})',
- 'geo.recheck.scheduled':'予約','geo.recheck.started':'測定開始',
+ 'geo.recheck.scheduled':'予約','geo.recheck.started':'測定開始','geo.recheck.skipped':'スキップ(キャンペーンのアーカイブ・削除)',
  'geo.kind.entity_basics':'処方0のまとまり(公式情報ページ・地図登録情報・表記統一)','geo.kind.faq':'よくある質問の追加・修正','geo.kind.page':'公式ページ本文の修正','geo.kind.listing':'プラットフォーム登録情報の修正','geo.kind.other':'その他',
  'geo.basis.published':'公開確認','geo.basis.indexed':'インデックス確認',
 };
