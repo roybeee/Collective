@@ -1,5 +1,5 @@
 // X7 신뢰 UI 화면 요청(작업물 상세·목록 전용, 캠페인 상세 lazy 청크에만 실린다). 서버는 app/api/artifact-sources·app/api/usage(regrade_artifact).
-import type {ArtifactScoreSummary,ArtifactSources,ComplianceView} from './artifact-sources';
+import type {ArtifactScoreSummary,ArtifactSources,ComplianceView,EthicsChecklistView,EthicsMarkView} from './artifact-sources';
 import type {ArtifactCardSummary} from './artifact-card-summary-server';
 
 // 다시 점검 뒤 작업물 탭의 온라인 채점 요약(app/online-grading.tsx)이 다시 읽도록 알리는 이벤트 이름.
@@ -29,4 +29,9 @@ export async function applyComplianceFixes(artifactId:string,version:number,fixI
  const data=await readJson<AppliedFixes>(response,'수정 제안을 적용하지 못했습니다.');
  window.dispatchEvent(new CustomEvent(GRADING_UPDATED_EVENT));
  return data;
+}
+// 사람 확인 체크리스트 표시 기록(POST /api/action mark_ethics_check, 스위치 ethics_review_checklist). 추가 전용이며 승인을 막지 않는다.
+export async function markEthicsCheck(input:{artifactId:string;version:number;itemId:string;status:EthicsMarkView['status'];note:string}){
+ const response=await fetch('/api/action',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'mark_ethics_check',...input})});
+ return (await readJson<{checklist:EthicsChecklistView}>(response,'확인 표시를 기록하지 못했습니다.')).checklist;
 }

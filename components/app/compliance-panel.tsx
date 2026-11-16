@@ -16,6 +16,8 @@ import {kstText} from '@/lib/format';
 // 수정 제안(스위치 compliance_fixes, lib/graders/compliance-fixes.ts)은 보기에 fixes가 있을 때만 lazy 청크(compliance-fixes.tsx)로 내려받아 그린다. 꺼져 있으면 이전 화면과 같다.
 // 적용하면 서버가 새 버전을 저장하고 다시 점검한 보기를 돌려준다. 대화상자의 본문은 부모가 다시 읽을 때 새 버전이 되므로, 그 전까지 새 판 번호를 안내한다.
 const ComplianceFixes=lazy(()=>import('./compliance-fixes'));
+// 사람 확인 체크리스트(스위치 ethics_review_checklist, components/app/ethics-checklist.tsx)는 보기에 checklist가 있을 때만 lazy로 내려받는다. 꺼져 있으면 이전 화면과 같다.
+const EthicsChecklist=lazy(()=>import('./ethics-checklist'));
 // 아래에 소재 예측 점수 카드(G2, components/app/creative-score-card.tsx)를 붙인다. 목록 배지(ScoreBadge)와 같은 모듈이라 캠페인 상세 청크(app/panels.tsx, lazy)에 함께 실린다. 홈 첫 로딩에는 없다.
 // 점검 시각은 화면 언어로 적는다(lib/format.ts kstText, 한국어는 이전 결과와 같다). 분류 이름·고지문은 서버 값이 한국어 원본이고, 영어·일본어일 때만 사전(trust.category.<분류>·trust.cmp.notice)으로 바꾼다. 규칙 제목·발췌·법령 출처는 원문 그대로 둔다.
 const kst=(iso:string|null)=>iso?kstText(iso,{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):null;
@@ -50,6 +52,7 @@ export function CompliancePanel({artifactId,artifactVersion,compliance,canManage
    </>}
   {done&&<p className="subtle-note" role="status">{done}</p>}
   {error&&<p className="form-error" role="alert">{error}</p>}
+  {compliance?.checklist&&<Suspense fallback={null}><EthicsChecklist key={`${artifactId}:${compliance.checklist.artifactVersion}`} artifactId={artifactId} checklist={compliance.checklist} canManage={canManage} onChange={checklist=>onChange({...compliance,checklist})}/></Suspense>}
   <CreativeScoreCard artifactId={artifactId} artifactVersion={artifactVersion} canManage={canManage}/>
  </section>;
 }

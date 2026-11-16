@@ -12,7 +12,12 @@ export type ComplianceCategoryView={category:string;label:string;pass:number;war
 export type ComplianceFixView={id:string;ruleId:string;kind:'insert'|'replace'|'remove'|'append';before:string;after:string;rationale:string;needsCheck:boolean;preview:{before:string;after:string};sources:{title:string;url:string}[]};
 // 제안을 계산한 판과 권한 판단용 범위(캠페인 브랜드·지점). 화면은 범위 역할의 편집 권한을 이 값으로 본다.
 export type ComplianceFixes={version:number;notice:string;items:ComplianceFixView[];scope:{brandId:string;storeId:string|null;campaignId:string}};
-export type ComplianceView={status:'checked'|'not_run';lines:number;checkedAt:string;gradedAt:string|null;notice:string;categories:ComplianceCategoryView[];issues:ComplianceIssueView[];fixes?:ComplianceFixes};
+// 사람 확인 체크리스트(스위치 ethics_review_checklist가 켜졌을 때만, lib/ethics-checklist.ts). 근거 law는 법령·조문·링크, unverified 미확인, operating 운영 기준이다.
+// marks는 현재 판의 항목별 마지막 표시다(기록은 추가 전용 kind ethics_check_mark). 표시와 기록만 하고 승인을 막지 않는다.
+export type EthicsChecklistItemView={id:string;basis:{kind:'law'|'unverified'|'operating';law?:string;article?:string;url?:string|null};triggers:string[]};
+export type EthicsMarkView={itemId:string;status:'confirmed'|'held'|'not_applicable';note:string;actorRole:string;createdAt:string};
+export type EthicsChecklistView={version:string;artifactVersion:number;items:EthicsChecklistItemView[];marks:EthicsMarkView[];scope:{brandId:string;storeId:string|null;campaignId:string}};
+export type ComplianceView={status:'checked'|'not_run';lines:number;checkedAt:string;gradedAt:string|null;notice:string;categories:ComplianceCategoryView[];issues:ComplianceIssueView[];fixes?:ComplianceFixes;checklist?:EthicsChecklistView};
 export type ArtifactSources={artifactId:string;version:number;brandId:string;refs:Record<string,CitationSource>;factKeys:string[];origin:OriginInfo;compliance:ComplianceView};
 export type ArtifactScoreSummary={artifactId:string;artifactVersion:number;score:number;band:string};
 
