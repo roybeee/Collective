@@ -19,11 +19,14 @@ import {effectiveBrandFacts,type BrandFact} from './brand-facts';
 import {factLabel} from './fact-catalog';
 import {assertNotArchived} from './campaign-archive';
 import type {UsageContext} from './usage-ledger';
-import {GEO_QUESTION_ID,GEO_QUESTION_LIMIT,GeoInputError,measurementPairs,normalizeQuestion,parseGeoQuestionInput,pendingStarters,type GeoEngine,type GeoQuestion} from './geo-questions';
+import {GEO_GROUPS,GEO_INTENTS_V2,GEO_QUESTION_ID,GEO_QUESTION_LIMIT,GeoInputError,measurementPairs,normalizeQuestion,parseGeoQuestionInput,pendingStarters,type GeoEngine,type GeoQuestion} from './geo-questions';
 import {GeoResponseError,geoSubmission,geoTarget,parseGeoResponse,type GeoObservation,type GeoTarget} from './geo-observation';
 import {GEO_SITE_STATES,geoReport,llmsTxtTemplate,type GeoSiteChecks,type GeoSiteState} from './geo-report';
+import {GEO_VERDICT_RULES,geoReportV2} from './geo-verdict';
+import {GEO_CHANGE_BASES,GEO_CHANGE_KINDS,GeoChangeError,markRecheckStarted,newRechecks,parseGeoChangeInput,recheckRunId,type GeoChange} from './geo-change';
+import {dueGeoRechecks} from './scheduled-runs';
 
-const kinds={question:'geo_question',run:'geo_run',observation:'geo_observation',site:'geo_settings'} as const;
+const kinds={question:'geo_question',run:'geo_run',observation:'geo_observation',site:'geo_settings',change:'geo_change'} as const;
 export const GEO_MAX_IN_FLIGHT=3,GEO_SUBMIT_PER_ADVANCE=2,GEO_POLL_PER_ADVANCE=3,GEO_MAX_JOBS=50,GEO_HTTP_TIMEOUT_MS=15000,GEO_OBSERVATION_LIMIT=500,GEO_RECENT_RUNS=20;
 // 작업당 추정 토큰 하한: 제출 본문 추정은 브라우저 화면 읽기·도구 호출을 빼므로 실제보다 크게 작다. 기록이 없을 때도 막는 쪽으로 보수적으로 잡는다(종료 뒤 실제 사용량이 대신한다).
 export const GEO_JOB_MIN_TOKENS=15000;
@@ -39,11 +42,14 @@ export const GEO_MESSAGES={
  uncertain:'접수 여부를 확인하지 못했습니다. 다음 진행에서 같은 요청 번호로 다시 확인합니다.',
  missing:'측정 기록을 찾지 못했습니다.',
  scheduleAuto:'예약 측정은 자율성 규칙에서 브랜드 조사 실행이 자동일 때만 돕니다. 화면의 지금 측정으로 확인한 뒤 실행하세요.',
+ v2Off:'AI 검색 노출 관측 프로토콜 v2 스위치가 꺼져 있습니다. 소유자가 기능 스위치에서 켜야 변경 기록과 재관측 예약을 쓸 수 있습니다.',
+ tooManyRepeats:`반복 포함 한 번에 측정할 수 있는 작업은 최대 ${GEO_MAX_JOBS}개입니다. 질문·엔진·반복 횟수를 줄이세요.`,
 } as const;
 
 export type GeoJobStatus='pending'|'queued'|'uncertain'|'completed'|'failed'|'cancelled';
-export type GeoJob={id:string;questionId:string;questionText:string;locale:string;engine:GeoEngine;status:GeoJobStatus;providerId?:string;observationId?:string;error?:string;submittedAt?:string};
-export type GeoRun={id:string;brandId:string;campaignId:string;trigger:'manual'|'schedule';scheduleRunId:string|null;status:'running'|'completed'|'cancelled';target:GeoTarget;estimate:{jobs:number;perJobTokens:number;totalTokens:number;basis:'history'|'input'};jobs:GeoJob[];createdAt:string;updatedAt:string;by:{id:string;role:string}|null;model:string};
+// repeat·protocol·trigger 'recheck'·estimate.repeats는 프로토콜 v2(스위치 geo_protocol_v2)로 만든 측정에만 있다. v1 측정 기록의 모양은 그대로다.
+export type GeoJob={id:string;questionId:string;questionText:string;locale:string;engine:GeoEngine;status:GeoJobStatus;providerId?:string;observationId?:string;error?:string;submittedAt?:string;repeat?:number};
+export type GeoRun={id:string;brandId:string;campaignId:string;trigger:'manual'|'schedule'|'recheck';scheduleRunId:string|null;status:'running'|'completed'|'cancelled';target:GeoTarget;estimate:{jobs:number;perJobTokens:number;totalTokens:number;basis:'history'|'input';repeats?:number};jobs:GeoJob[];createdAt:string;updatedAt:string;by:{id:string;role:string}|null;model:string;protocol?:2};
 type GeoSettings=GeoSiteChecks&{id:string;brandId:string;version:number;updatedAt:string;updatedBy:string};
 
 const submissionId=(jobId:string)=>'geo-'+jobId;
@@ -53,8 +59,9 @@ const saveRun=(owner:string,r:GeoRun)=>recordStatement(owner,kinds.run,r.id,r,r.
 const admin=(who:Pick<Actor,'role'>)=>who.role==='owner'||who.role==='admin';
 
 export async function geoEnabled(owner:string){try{return await isEnabled(owner,'geo_tracking')}catch{return false}}
+export async function geoV2Enabled(owner:string){try{return await isEnabled(owner,'geo_protocol_v2')}catch{return false}}
 async function requireSwitch(owner:string){if(!await geoEnabled(owner))throw new ApiError(409,GEO_MESSAGES.off)}
-const input=<T>(task:()=>T):T=>{try{return task()}catch(e){if(e instanceof GeoInputError)throw new ApiError(400,e.message);throw e}};
+const input=<T>(task:()=>T):T=>{try{return task()}catch(e){if(e instanceof GeoInputError||e instanceof GeoChangeError)throw new ApiError(400,e.message);throw e}};
 
 async function optional<T>(owner:string,kind:string,id:string):Promise<T|null>{try{return await readRecord<T>(owner,kind,id)}catch(e){if(e instanceof ApiError&&e.status===404)return null;throw e}}
 async function brandContext(owner:string,brandId:string){
@@ -70,34 +77,51 @@ async function observationsOf(owner:string,brandId:string){
  return rows.results.map(r=>JSON.parse(r.data) as GeoObservation);
 }
 const siteOf=async(owner:string,brandId:string):Promise<GeoSettings|null>=>optional<GeoSettings>(owner,kinds.site,brandId);
+const changesOf=async(owner:string,brandId:string)=>(await listRecords<GeoChange>(owner,kinds.change,brandId)).sort((a,b)=>b.appliedOn.localeCompare(a.appliedOn)||b.createdAt.localeCompare(a.createdAt));
 
 // 작업당 추정 토큰: 제출 본문 추정 + 출력 여유, 최근 GEO 실행의 실제 평균, 하한 중 큰 값.
 async function recentGeoTokens(owner:string){
  const row=await database().prepare("SELECT AVG(t) AS n,COUNT(t) AS c FROM (SELECT COALESCE(json_extract(data,'$.totalTokens'),json_extract(data,'$.inputTokens')+json_extract(data,'$.outputTokens')) AS t FROM records WHERE owner=? AND kind='provider_usage' AND json_extract(data,'$.role')=? AND t IS NOT NULL ORDER BY json_extract(data,'$.observedAt') DESC LIMIT ?)").bind(owner,GEO_USAGE_ROLE,GEO_RECENT_RUNS).first<{n:number|null;c:number}>();
  return {average:Math.ceil(Number(row?.n)||0),samples:Number(row?.c)||0};
 }
-export function geoJobEstimate(target:GeoTarget,pairs:readonly {question:Pick<GeoQuestion,'text'>;engine:GeoEngine}[],history:{average:number;samples:number}){
- const longest=pairs.reduce((n,p)=>{const s=geoSubmission(target,p.question.text,p.engine);return Math.max(n,estimateInputTokens(JSON.stringify({input:s.input,instructions:s.instructions})))},0);
- const fromInput=Math.max(longest+OUTPUT_ALLOWANCE,GEO_JOB_MIN_TOKENS),perJobTokens=Math.max(fromInput,history.average);
- return {jobs:pairs.length,perJobTokens,totalTokens:perJobTokens*pairs.length,basis:history.average>fromInput?'history' as const:'input' as const,samples:history.samples};
+// v2: 지시가 길어진 만큼 측정당 추정을 다시 재고, 작업 수는 쌍×반복이다(예산 가드가 반복을 센다). v2가 아니면 결과 모양이 v1과 같다.
+export function geoJobEstimate(target:GeoTarget,pairs:readonly {question:Pick<GeoQuestion,'text'>;engine:GeoEngine}[],history:{average:number;samples:number},v2?:{repeats:number;protocol:2}){
+ const longest=pairs.reduce((n,p)=>{const s=geoSubmission(target,p.question.text,p.engine,v2?.protocol);return Math.max(n,estimateInputTokens(JSON.stringify({input:s.input,instructions:s.instructions})))},0);
+ const fromInput=Math.max(longest+OUTPUT_ALLOWANCE,GEO_JOB_MIN_TOKENS),perJobTokens=Math.max(fromInput,history.average),jobs=pairs.length*(v2?.repeats??1);
+ const out={jobs,perJobTokens,totalTokens:perJobTokens*jobs,basis:history.average>fromInput?'history' as const:'input' as const,samples:history.samples};
+ return v2?{...out,repeats:v2.repeats}:out;
+}
+// 반복 횟수: v2에서만 1~3(기본 3). v1은 항상 1이다.
+function repeatsOf(v2:boolean,value:unknown){
+ if(!v2)return 1;
+ if(value===undefined||value===null)return GEO_VERDICT_RULES.maxRepeats;
+ if(!Number.isInteger(value)||Number(value)<1||Number(value)>GEO_VERDICT_RULES.maxRepeats)throw new ApiError(400,`반복 횟수는 1~${GEO_VERDICT_RULES.maxRepeats}회입니다.`);
+ return Number(value);
 }
 
 export async function geoView(who:Actor,c:Campaign){
  await requireSwitch(who.owner);
- const [{brand,confirmed,target},questions,runs,observations,site,history]=await Promise.all([brandContext(who.owner,c.brandId),questionsOf(who.owner,c.brandId),runsOf(who.owner,c.brandId),observationsOf(who.owner,c.brandId),siteOf(who.owner,c.brandId),recentGeoTokens(who.owner)]);
+ const [{brand,confirmed,target},questions,runs,observations,site,history,v2]=await Promise.all([brandContext(who.owner,c.brandId),questionsOf(who.owner,c.brandId),runsOf(who.owner,c.brandId),observationsOf(who.owner,c.brandId),siteOf(who.owner,c.brandId),recentGeoTokens(who.owner),geoV2Enabled(who.owner)]);
  const checks:GeoSiteChecks={jsonLd:site?.jsonLd??'unknown',llmsTxt:site?.llmsTxt??'unknown'},pairs=measurementPairs(questions);
- const starters=pendingStarters({brandName:brand.name,category:brand.category,facts:confirmed.map(f=>({id:f.id,key:f.key,value:f.value}))},questions);
- return {campaignId:c.id,brandId:c.brandId,brandName:brand.name,questions,starters,runs:runs.slice(0,5),active:runs.find(r=>r.status==='running')??null,observations:observations.slice(0,200),
+ const starters=pendingStarters({brandName:brand.name,category:brand.category,facts:confirmed.map(f=>({id:f.id,key:f.key,value:f.value})),...(v2?{competitors:target.competitors,v2}:{})},questions);
+ const base={campaignId:c.id,brandId:c.brandId,brandName:brand.name,questions,starters,runs:runs.slice(0,5),active:runs.find(r=>r.status==='running')??null,observations:observations.slice(0,200),
   report:geoReport({questions,observations,site:checks}),site:{...checks,version:site?.version??0},plan:{questions:new Set(pairs.map(p=>p.question.id)).size,engines:new Set(pairs.map(p=>p.engine)).size,...geoJobEstimate(target,pairs,history)},
   target:{officialUrls:target.officialUrls,competitors:target.competitors},llmsTxt:llmsTxtTemplate({brandName:brand.name,summary:brand.description??'',officialUrls:target.officialUrls,facts:confirmed.filter(f=>!/^https?:/.test(f.value.trim())).slice(0,12).map(f=>({label:factLabel(f.key),value:f.value}))}),
   canEdit:admin(who)&&c.status!=='archived',limit:GEO_QUESTION_LIMIT,maxJobs:GEO_MAX_JOBS};
+ if(!v2)return base;
+ const changes=await changesOf(who.owner,c.brandId);
+ return {...base,protocol:2 as const,intents:GEO_INTENTS_V2,groups:GEO_GROUPS,changeKinds:GEO_CHANGE_KINDS,changeBases:GEO_CHANGE_BASES,changes:changes.slice(0,20),rechecksDue:dueGeoRechecks(changes,Date.now()),
+  report:geoReportV2({questions,observations,site:checks,confirmedFactKeys:confirmed.map(f=>f.key)}),
+  plan:{questions:base.plan.questions,engines:base.plan.engines,...geoJobEstimate(target,pairs,history,{repeats:GEO_VERDICT_RULES.maxRepeats,protocol:2})}};
 }
 export type GeoView=Awaited<ReturnType<typeof geoView>>;
+// v2 화면 부분(app/geo-protocol-v2.tsx)이 읽는 모양.
+export type GeoViewV2=Extract<GeoView,{protocol:2}>;
 
 // 질문 저장: id가 없으면 새로 만든다. 같은 문장(정규화 기준) 중복은 409, 판이 다르면 409.
 export async function saveGeoQuestion(who:Actor,c:Campaign,b:Record<string,unknown>){
  await requireSwitch(who.owner);assertNotArchived(c);
- const parsed=input(()=>parseGeoQuestionInput(b.input)),all=await questionsOf(who.owner,c.brandId);
+ const v2=await geoV2Enabled(who.owner),parsed=input(()=>parseGeoQuestionInput(b.input,{v2})),all=await questionsOf(who.owner,c.brandId);
  const id=typeof b.id==='string'&&b.id?b.id:'gq-'+crypto.randomUUID().slice(0,12);
  if(!GEO_QUESTION_ID.test(id))throw new ApiError(400,'질문 번호 형식이 올바르지 않습니다.');
  const old=all.find(q=>q.id===id)??null;
@@ -113,8 +137,8 @@ export async function saveGeoQuestion(who:Actor,c:Campaign,b:Record<string,unkno
 export async function addGeoStarters(who:Actor,c:Campaign,b:Record<string,unknown>){
  await requireSwitch(who.owner);assertNotArchived(c);
  if(!Array.isArray(b.texts)||!b.texts.length||b.texts.length>GEO_QUESTION_LIMIT||b.texts.some(t=>typeof t!=='string'))throw new ApiError(400,'저장할 추천 질문을 고르세요.');
- const [{brand,confirmed},all]=await Promise.all([brandContext(who.owner,c.brandId),questionsOf(who.owner,c.brandId)]);
- const starters=pendingStarters({brandName:brand.name,category:brand.category,facts:confirmed.map(f=>({id:f.id,key:f.key,value:f.value}))},all);
+ const [{brand,confirmed,target},all,v2]=await Promise.all([brandContext(who.owner,c.brandId),questionsOf(who.owner,c.brandId),geoV2Enabled(who.owner)]);
+ const starters=pendingStarters({brandName:brand.name,category:brand.category,facts:confirmed.map(f=>({id:f.id,key:f.key,value:f.value})),...(v2?{competitors:target.competitors,v2}:{})},all);
  const wanted=new Set((b.texts as string[]).map(normalizeQuestion)),picked=starters.filter(s=>wanted.has(normalizeQuestion(s.text)));
  if(picked.length!==wanted.size)throw new ApiError(409,'추천 목록에 없는 질문이 있습니다. 새로고침한 뒤 다시 고르세요.');
  if(all.length+picked.length>GEO_QUESTION_LIMIT)throw new ApiError(409,`질문은 브랜드마다 최대 ${GEO_QUESTION_LIMIT}개입니다.`);
@@ -134,8 +158,9 @@ export async function saveGeoSite(who:Actor,c:Campaign,b:Record<string,unknown>)
 }
 
 // 측정 시작. 같은 번호가 있으면 그대로 돌려준다(멱등). 브랜드마다 진행 중 측정은 하나. 계획 전체 추정이 예산 안이어야 기록을 만든다.
-async function createRun(owner:string,c:Campaign,id:string,trigger:GeoRun['trigger'],by:GeoRun['by'],scheduleRunId:string|null){
+async function createRun(owner:string,c:Campaign,id:string,trigger:GeoRun['trigger'],by:GeoRun['by'],scheduleRunId:string|null,repeatsInput?:unknown){
  if(!GEO_RUN_ID.test(id))throw new ApiError(400,'측정 번호 형식이 올바르지 않습니다.');
+ const v2=await geoV2Enabled(owner),repeats=repeatsOf(v2,repeatsInput);
  const existing=await optional<GeoRun>(owner,kinds.run,id);
  if(existing){if(existing.brandId!==c.brandId)throw new ApiError(404,GEO_MESSAGES.missing);return {run:existing,created:false}}
  const runs=await runsOf(owner,c.brandId);
@@ -147,17 +172,20 @@ async function createRun(owner:string,c:Campaign,id:string,trigger:GeoRun['trigg
  const pairs=measurementPairs(questions);
  if(!pairs.length)throw new ApiError(409,GEO_MESSAGES.empty);
  if(pairs.length>GEO_MAX_JOBS)throw new ApiError(409,GEO_MESSAGES.tooMany);
+ if(pairs.length*repeats>GEO_MAX_JOBS)throw new ApiError(409,GEO_MESSAGES.tooManyRepeats);
  if(!target.brandName)throw new ApiError(409,'브랜드 이름이 비어 있어 언급 여부를 판정할 수 없습니다.');
- const e=geoJobEstimate(target,pairs,history),estimate={jobs:e.jobs,perJobTokens:e.perJobTokens,totalTokens:e.totalTokens,basis:e.basis};
+ const e=geoJobEstimate(target,pairs,history,v2?{repeats,protocol:2}:undefined),estimate={jobs:e.jobs,perJobTokens:e.perJobTokens,totalTokens:e.totalTokens,basis:e.basis,...(v2?{repeats}:{})};
  await assertTokenBudget(database(),owner,c.id,estimate.totalTokens);
- const at=stamp(),run:GeoRun={id,brandId:c.brandId,campaignId:c.id,trigger,scheduleRunId,status:'running',target,estimate,jobs:pairs.map((p,i)=>({id:`${id}-${i+1}`,questionId:p.question.id,questionText:p.question.text,locale:p.question.locale,engine:p.engine,status:'pending'})),createdAt:at,updatedAt:at,by,model:cfg.model};
+ // v2 작업 순서: 회차 1의 모든 쌍 → 회차 2 → 회차 3(같은 쌍의 반복이 한 번에 몰리지 않게 한다).
+ const plan=v2?Array.from({length:repeats},(_,r)=>pairs.map(p=>({p,repeat:r+1}))).flat():pairs.map(p=>({p,repeat:0}));
+ const at=stamp(),run:GeoRun={id,brandId:c.brandId,campaignId:c.id,trigger,scheduleRunId,status:'running',target,estimate,jobs:plan.map(({p,repeat},i)=>({id:`${id}-${i+1}`,questionId:p.question.id,questionText:p.question.text,locale:p.question.locale,engine:p.engine,status:'pending' as const,...(v2?{repeat}:{})})),createdAt:at,updatedAt:at,by,model:cfg.model,...(v2?{protocol:2 as const}:{})};
  await saveRun(owner,run).run();
  return {run,created:true};
 }
 export async function startGeoRun(who:Actor,c:Campaign,b:Record<string,unknown>){
  await requireSwitch(who.owner);assertNotArchived(c);
  await assertAutonomy(who.owner,'research_run');
- const {run,created}=await createRun(who.owner,c,String(b.id??''),'manual',{id:who.id,role:who.role},null);
+ const {run,created}=await createRun(who.owner,c,String(b.id??''),'manual',{id:who.id,role:who.role},null,b.repeats);
  return created?advanceGeoRun(who.owner,run.id):run;
 }
 
@@ -168,9 +196,9 @@ async function settleJob(owner:string,run:GeoRun,job:GeoJob,cfg:Connection,stop:
  if(polled.status==='cancelled'){await markUsageOutcomeSafely(owner,'hermes',job.providerId!,'cancelled');return {...job,status:'cancelled'}}
  if(polled.status!=='completed'){await markUsageOutcomeSafely(owner,'hermes',job.providerId!,polled.invalidOutput?'invalid_output':'provider_failed');return {...job,status:'failed',error:polled.failureReason??'HERMES가 측정을 끝내지 못했습니다.'}}
  let parsed;
- try{parsed=parseGeoResponse(polled.output[0]?.content[0]?.text,{engine:job.engine,question:job.questionText,target:run.target,notBefore:Date.parse(job.submittedAt??run.createdAt),now:Date.now()})}
+ try{parsed=parseGeoResponse(polled.output[0]?.content[0]?.text,{engine:job.engine,question:job.questionText,target:run.target,notBefore:Date.parse(job.submittedAt??run.createdAt),now:Date.now(),...(run.protocol===2?{protocol:2 as const}:{})})}
  catch(e){if(!(e instanceof GeoResponseError))throw e;await markUsageOutcomeSafely(owner,'hermes',job.providerId!,'invalid_output');return {...job,status:'failed',error:'HERMES 응답 형식 오류: '+e.message}}
- const obs:GeoObservation={...parsed,id:job.id,brandId:run.brandId,questionId:job.questionId,questionText:job.questionText,locale:job.locale,engine:job.engine,source:'hermes',runId:run.id,jobId:job.id,providerRunId:job.providerId!,recordedAt:stamp()};
+ const obs:GeoObservation={...parsed,id:job.id,brandId:run.brandId,questionId:job.questionId,questionText:job.questionText,locale:job.locale,engine:job.engine,source:'hermes',runId:run.id,jobId:job.id,providerRunId:job.providerId!,recordedAt:stamp(),...(job.repeat?{repeat:job.repeat}:{})};
  await recordStatement(owner,kinds.observation,obs.id,obs,run.brandId).run();
  await markUsageOutcomeSafely(owner,'hermes',job.providerId!,'completed');
  return {...job,status:'completed',observationId:obs.id};
@@ -180,7 +208,7 @@ async function submitJob(owner:string,run:GeoRun,job:GeoJob,cfg:Connection):Prom
  try{
   if(job.status==='pending'){
    await assertTokenBudget(database(),owner,run.campaignId,run.estimate.perJobTokens);
-   await hermesSubmissionStatement(owner,submissionId(job.id),geoSubmission(run.target,job.questionText,job.engine)).run();
+   await hermesSubmissionStatement(owner,submissionId(job.id),geoSubmission(run.target,job.questionText,job.engine,run.protocol)).run();
   }
   const r=await submitHermes(owner,submissionId(job.id),cfg,undefined,GEO_HTTP_TIMEOUT_MS);
   return {...job,status:'queued',providerId:r.id,error:undefined,submittedAt:job.submittedAt??stamp()};
@@ -249,6 +277,33 @@ export async function advanceGeoRunsSafely(owner:string):Promise<number>{
   if(!await geoEnabled(owner))return 0;
   const active=(await listRecords<GeoRun>(owner,kinds.run)).filter(r=>r.status==='running').slice(0,2);
   for(const r of active)await advanceGeoRun(owner,r.id);
-  return active.length;
+  return active.length+await startDueRechecksSafely(owner);
  }catch{console.error('geo_run_advance_failed');return 0}
+}
+
+// 변경 기록(v2). 기록한 캠페인이 재관측 토큰 예산의 기준이다. 기록은 추가만 하고, 재관측 상태만 바뀐다.
+export async function saveGeoChange(who:Actor,c:Campaign,b:Record<string,unknown>){
+ await requireSwitch(who.owner);assertNotArchived(c);
+ if(!await geoV2Enabled(who.owner))throw new ApiError(409,GEO_MESSAGES.v2Off);
+ const parsed=input(()=>parseGeoChangeInput(b.input,Date.now()));
+ const questions=await questionsOf(who.owner,c.brandId);
+ if(parsed.questionIds.some(id=>!questions.some(q=>q.id===id)))throw new ApiError(409,'관련 질문 중 이 브랜드에 없는 질문이 있습니다. 새로고침한 뒤 다시 고르세요.');
+ const row:GeoChange={...parsed,id:'gchg-'+crypto.randomUUID().replaceAll('-','').slice(0,12),brandId:c.brandId,campaignId:c.id,rechecks:newRechecks(parsed.appliedOn),createdAt:stamp(),createdBy:who.id};
+ await recordStatement(who.owner,kinds.change,row.id,row,c.brandId).run();
+ return row;
+}
+// 예정일이 온 재관측을 tick마다 하나 시작한다. 예약 측정과 같은 조건(스위치 둘, research_run 자동, 진행 중 측정 없음)일 때만이고, 아니면 화면에 '재관측 예정일 지남'으로 남는다.
+async function startDueRechecksSafely(owner:string):Promise<number>{
+ try{
+  if(!await geoV2Enabled(owner)||await geoScheduleSkip(owner))return 0;
+  const changes=await listRecords<GeoChange>(owner,kinds.change),due=dueGeoRechecks(changes,Date.now())[0];
+  if(!due)return 0;
+  const change=changes.find(x=>x.id===due.changeId)!,c=await readRecord<Campaign>(owner,'campaign',change.campaignId);
+  if(c.brandId!==change.brandId)return 0;
+  assertNotArchived(c);
+  const {run}=await createRun(owner,c,recheckRunId(change.id,due.offset),'recheck',null,`recheck:${change.id}:${due.offset}`);
+  await recordStatement(owner,kinds.change,change.id,markRecheckStarted(change,due.offset,run.id,stamp()),change.brandId).run();
+  await advanceGeoRun(owner,run.id);
+  return 1;
+ }catch{console.error('geo_recheck_start_failed');return 0}
 }

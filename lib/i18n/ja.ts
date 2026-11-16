@@ -7,6 +7,7 @@ import {jaExec} from './ja-exec';
 import {jaSettings} from './ja-settings';
 import {jaAgenda} from './ja-agenda';
 import {jaCards} from './ja-cards';
+import {jaGeo} from './ja-geo';
 export const ja:Record<MessageKey,string>={
  // 사이드바 메뉴와 화면 설명(app/workspace.tsx)
  'nav.overview':'ワークスペース','nav.learning':'バイラル学習','nav.campaigns':'キャンペーン','nav.brands':'ブランドアーカイブ','nav.stores':'店舗マーケティング','nav.agents':'AIチーム','nav.assets':'成果物','nav.results':'成果分析','nav.research':'商品リサーチ','nav.franchise':'加盟募集','nav.settings':'接続と設定',
@@ -57,5 +58,5 @@ export const ja:Record<MessageKey,string>={
  'locale.label':'言語','locale.lead':'画面の言語を選びます。ブランド資料とAIの成果物は変わりません。','locale.failed':'言語辞書を読み込めませんでした。韓国語のままにします。',
  // 상태 배지(app/status-badge.tsx). 한국어 화면은 lib/agency statuses 이름을 그대로 쓰고, 영어·일본어일 때만 이 키를 읽는다
  'status.draft':'ブリーフ作成','status.ready':'実行準備','status.running':'AI作業中','status.blocked':'進行停止','status.review':'レビュー待ち','status.approved':'企画承認','status.revision':'修正依頼','status.executing':'公開進行中','status.measuring':'成果記録','status.outdated':'以前のバージョン','status.archived':'アーカイブ済み','status.archivedNote':'アーカイブしたキャンペーンです。新しいAI実行・チーム会議・連続実行・公開承認はアーカイブ解除後に行えます。',
- ...jaCampaign,...jaTrust,...jaExec,...jaSettings,...jaCards,...jaAgenda,
+ ...jaCampaign,...jaTrust,...jaExec,...jaSettings,...jaCards,...jaAgenda,...jaGeo,
 };

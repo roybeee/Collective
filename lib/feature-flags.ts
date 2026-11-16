@@ -58,6 +58,7 @@ export const FEATURE_FLAGS={
  self_signup:{defaultEnabled:false,description:'로그인 화면에 새 워크스페이스 가입(이메일·비밀번호, 이용약관·개인정보 동의 필수, 마케팅 수신 선택)을 연다(G8). 플랫폼 스위치라 운영자 워크스페이스(처음 만든 관리자 계정의 워크스페이스) 값만 읽는다. 메일 발송 어댑터가 없어 확인 링크를 화면에 보이므로 공개 전 메일 연결이 필요하다. 꺼지면 가입 API는 404이고 초대 가입·로그인은 그대로다.'},
  credit_billing:{defaultEnabled:false,description:'선불 크레딧 원장(월 기본 제공·충전·AI 사용 1,000토큰=1크레딧·환불·소멸)과 80%·100% 알림을 켜고, 잔액 0이면 새 AI 실행을 시작 전에 막는다(운영자 워크스페이스 제외). 토스페이먼츠 테스트 키(test_)로만 충전·환불한다(G8). 플랫폼 스위치라 운영자 워크스페이스 값만 읽는다. 꺼지면 원장·가드·결제는 모두 동작하지 않고 요금표만 보인다.'},
  compliance_fixes:{defaultEnabled:false,description:'작업물 규정 점검 패널에 규칙별 결정론 수정 제안(#광고·(광고) 넣기, 가상인물·AI 생성 표시 붙이기, 질병 효능 문장 지우기 등)과 고른 수정 적용을 켠다. 적용은 대표·관리자·편집 범위 역할이 확인 카드를 거쳐 새 버전으로 저장하고 바로 다시 점검한다(모델 호출 없음, COLLECTIVE 휴리스틱 · 법률 자문 아님). 꺼지면 제안이 보이지 않고 적용은 409다.'},
+ geo_protocol_v2:{defaultEnabled:false,description:'AI 검색 노출 자동 추적(geo_tracking)에 관측 프로토콜 v2를 더한다: 비교 질문 묶음(지역은 카테고리 아래), 응답 스키마 geo-observation-2(맥락 긍정·중립·부정과 100자 이하 이유, 인용 출처 공식·편집 플랫폼·제3자·미분류), 질문×엔진마다 최대 3회 반복(토큰 추정·예산 가드가 반복을 센다), \'N회 중 k회\'와 판정어(장악·경합·열세·부재·방어 실패·미관측, 기준값은 운영 기준, 7일 이상 떨어진 두 시점이 없으면 판정 보류), 엔티티 부재 처방 0 우선, 변경 기록(geo_change)과 +14·+42일 재관측 예약. 꺼지면 v1 보고·스키마와 같다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};

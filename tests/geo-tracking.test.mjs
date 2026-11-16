@@ -13,6 +13,8 @@ const answer=(sent,mode)=>{
  const good={...base,status:'observed',answerExcerpt:'휘경동에서는 엽떡과 판떡이 자주 추천됩니다. 판떡은 로제 떡볶이가 대표입니다.',citations:[{url:'https://pantteok.example.kr/menu',title:'판떡 메뉴'},{url:'https://blog.example.com/a',title:'후기'}],brandMentioned:true,competitorsMentioned:['엽떡']};
  if(mode==='invented')return {...good,rating:5};
  if(mode==='gap')return {...good,answerExcerpt:'휘경동은 엽떡이 유명합니다.',citations:[{url:'https://blog.example.com/b',title:'후기'}],brandMentioned:false};
+ // geo_protocol_v2: 지시가 schema 2를 요구하면 맥락(context)을 더한 답을 돌려준다.
+ if(String(sent.instructions??'').includes('geo-observation-2'))return {...good,schema:'geo-observation-2',citations:[...good.citations,{url:'https://map.naver.com/p/entry/place/777',title:'지도'}],context:{tone:'positive',reason:'로제 떡볶이가 대표 메뉴로 소개됨'}};
  return good;
 };
 const rt=testRuntime(async(url,init={})=>{
@@ -219,5 +221,153 @@ check('a scheduled run is created with the schedule id and no human',srun.trigge
 check('the same schedule period returns the same run',await geo.startScheduledGeo(WS,{brandId:BRAND,campaignId:CAMPAIGN},'sched-abc:2026-11-09')===sid);
 for(let i=0;i<6;i++)await geo.advanceGeoRunsSafely(WS);
 check('the worker tick advances the scheduled run to completion',rows('geo_run').find(x=>x.id===sid).status==='completed');
+
+// ── 6) 프로토콜 v2(스위치 geo_protocol_v2, 기본 꺼짐) ──
+// 6-1) 꺼짐일 때 v1과 같다: 기준선 해시는 변경 전 코드(559df20)에서 같은 입력으로 계산했다.
+{
+ const hash=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex').slice(0,16);
+ const T=Date.parse('2026-11-16T03:00:00.000Z');
+ const vctx={engine:'perplexity',question:'휘경동 떡볶이 추천',target,notBefore:T-1000,now:T+1000};
+ const vresp=JSON.stringify({schema:'geo-observation-1',engine:'perplexity',question:'휘경동 떡볶이 추천',status:'observed',observedAt:new Date(T).toISOString(),pageUrl:'https://www.perplexity.ai/search?q=x',answerExcerpt:'엽떡도 있지만 판떡이 좋습니다.',citations:[{url:'https://www.pantteok.example.kr/about',title:'공식'},{url:'https://map.naver.com/p/entry/place/9999',title:'다른 가게'}],brandMentioned:true,competitorsMentioned:['엽떡'],note:''});
+ const W1x='2026-11-02T03:00:00.000Z',W2x='2026-11-09T03:00:00.000Z';
+ const vfix=[o('q1','perplexity',W1x,{brandMentioned:false}),o('q2','perplexity',W1x),o('q1','perplexity',W2x,{brandCited:true,citations:[{url:'https://pantteok.example.kr',title:'',domain:'pantteok.example.kr',brand:true}]}),o('q2','perplexity',W2x,{brandMentioned:false,competitorsMentioned:['엽떡']}),o('q2','naver',W2x,{status:'login_required',brandMentioned:null,brandCited:null})];
+ const vfacts=[{id:'f-addr',key:'address',value:'서울특별시 동대문구 휘경동 123-4'},{id:'f-menu',key:'signature_menu',value:'로제 떡볶이, 순대'}];
+ const qrow={text:'휘경동 떡볶이 추천'};
+ check('v1 parse is byte-identical to the pre-v2 baseline',hash(ob.parseGeoResponse(vresp,vctx))==='b7cc2ffa1e5cef87');
+ check('v1 report is byte-identical to the pre-v2 baseline',hash(rep.geoReport({questions:[{id:'q1',text:'판떡 영업시간'},{id:'q2',text:'휘경동 떡볶이 추천'}],observations:vfix,site:{jsonLd:'unknown',llmsTxt:'absent'}}))==='de6ed70c60498855');
+ check('v1 starters are byte-identical (no competitors, no v2)',hash(qs.starterQuestions({brandName:'판떡',category:'떡볶이',facts:vfacts}))==='0cf525e4e1840bf4');
+ check('v1 starters stay identical when competitors are given but v2 is off',hash(qs.starterQuestions({brandName:'판떡',category:'떡볶이',facts:vfacts,competitors:['엽떡']}))==='0cf525e4e1840bf4');
+ check('v1 HERMES instruction is byte-identical',hash(ob.geoSubmission(target,'휘경동 떡볶이 추천','naver'))==='efd679b51954432a');
+ check('v1 token estimate is byte-identical',hash(geo.geoJobEstimate(target,[{question:qrow,engine:'naver'},{question:qrow,engine:'chatgpt'}],{average:0,samples:0}))==='19bf1fd640f43197');
+ check('v1 schema and intents are unchanged',ob.GEO_OBSERVATION_SCHEMA==='geo-observation-1'&&JSON.stringify(qs.GEO_INTENTS)==='["brand","category","local"]');
+ check('a schema-2 answer to a v1 request is rejected with the v1 message',/schema 값이 다릅니다/.test(bad(()=>ob.parseGeoResponse(vresp.replace('geo-observation-1','geo-observation-2'),vctx))));
+}
+r=await get(boss);
+check('with v2 off the view has no v2 keys and the report equals the v1 report',r.status===200&&!('protocol' in r.body)&&!('changes' in r.body)&&!('verdicts' in r.body.report)&&!('repeats' in r.body.plan)&&JSON.stringify(r.body.report)===JSON.stringify(plain(rep.geoReport({questions:r.body.questions,observations:rows('geo_observation'),site:{jsonLd:'present',llmsTxt:'present'}}))));
+check('v1 runs store no protocol or repeat fields',rows('geo_run').every(x=>!('protocol' in x)&&x.jobs.every(j=>!('repeat' in j))));
+check('save_change is 409 while v2 is off',(await post(boss,{action:'save_change',input:{kind:'faq',summary:'FAQ 추가',appliedOn:'2026-11-10',appliedBasis:'published'}})).status===409&&rows('geo_change').length===0);
+check('a comparison question is rejected while v2 is off',(await post(boss,{action:'save_question',expectedVersion:0,input:{...qi,text:'판떡 엽떡 비교',intent:'comparison'}})).status===400);
+
+// 6-2) 질문 묶음: 비교 묶음 추가, 지역은 카테고리 아래
+check('comparison intent parses only with v2',qs.parseGeoQuestionInput({...qi,intent:'comparison'},{v2:true}).intent==='comparison'&&/질문 유형/.test(bad(()=>qs.parseGeoQuestionInput({...qi,intent:'comparison'}))));
+check('groups: local shows under category, comparison is its own group',qs.geoGroupOf('local')==='category'&&qs.geoGroupOf('category')==='category'&&qs.geoGroupOf('comparison')==='comparison'&&qs.geoGroupOf('brand')==='brand'&&JSON.stringify(qs.GEO_GROUPS)==='["category","comparison","brand"]');
+{const s2=plain(qs.starterQuestions({brandName:'판떡',category:'떡볶이',facts,competitors:['엽떡','신전떡볶이','동네떡볶이'],v2:true}));
+ check('v2 starters add comparison questions from the competitor list (at most two)',s2.filter(s=>s.intent==='comparison').map(s=>s.text).join('|')==='판떡 엽떡 비교|판떡 신전떡볶이 비교'&&s2.filter(s=>s.intent==='comparison').every(s=>s.basis.includes('brand.competitors'))&&s2.length<=qs.GEO_STARTER_COUNT);}
+
+// 6-3) 관찰 스키마 geo-observation-2: 맥락·인용 4분류
+{
+ const T=Date.now(),c2={...ctx,notBefore:T-1000,now:T+1000,protocol:2};
+ const r2=(over={})=>JSON.stringify({schema:'geo-observation-2',engine:'perplexity',question:'휘경동 떡볶이 추천',status:'observed',observedAt:new Date(T).toISOString(),pageUrl:'https://www.perplexity.ai/search?q=x',answerExcerpt:'엽떡도 있지만 판떡이 좋습니다.',
+  citations:[{url:'https://www.pantteok.example.kr/about',title:'공식'},{url:'https://map.naver.com/p/entry/place/9999',title:'다른 가게'},{url:'https://blog.naver.com/someone/1',title:'후기'},{url:'https://blog.example.com/a',title:'모름'}],brandMentioned:true,competitorsMentioned:['엽떡'],note:'',context:{tone:'neutral',reason:'여러 가게 중 하나로 나열'},...over});
+ const v2=plain(ob.parseGeoResponse(r2(),c2));
+ check('v2 parse keeps v1 fields and adds protocol and context',v2.protocol===2&&v2.brandCited===true&&v2.firstMentionRank===2&&v2.context.tone==='neutral'&&v2.context.reason==='여러 가게 중 하나로 나열');
+ check('citations are classified official / platform / third party / unclassified',v2.citations.map(c=>c.sourceClass).join(',')==='official,platform,third_party,unclassified');
+ check('a platform page that is our own listing stays platform but counts as brand citation',(()=>{const x=plain(ob.parseGeoResponse(r2({citations:[{url:'https://map.naver.com/p/entry/place/1234',title:'우리 지도'}]}),c2));return x.citations[0].sourceClass==='platform'&&x.citations[0].brand===true&&x.brandCited===true})());
+ const r2bad=(name,text,re)=>check(name,re.test(bad(()=>ob.parseGeoResponse(text,c2))));
+ r2bad('a reason over 100 characters is rejected',r2({context:{tone:'positive',reason:'가'.repeat(101)}}),/100자/);
+ r2bad('an unknown tone is rejected',r2({context:{tone:'great',reason:'좋음'}}),/긍정·중립·부정/);
+ r2bad('a missing context when the brand is mentioned is rejected',r2({context:null}),/context/);
+ r2bad('a context when the brand is not mentioned is rejected',r2({brandMentioned:false,answerExcerpt:'엽떡이 유명합니다.',context:{tone:'negative',reason:'없음'}}),/context/);
+ r2bad('a v1 answer to a v2 request is rejected',r2({schema:'geo-observation-1'}),/schema 값이 다릅니다/);
+ r2bad('an invented key is still rejected in v2',r2({score:3}),/정해지지 않은 키/);
+ const nf=plain(ob.parseGeoResponse(r2({brandMentioned:false,answerExcerpt:'엽떡이 유명합니다.',context:null}),c2));
+ check('context is null when the brand is not mentioned',nf.context===null&&nf.protocol===2);
+ const lg=plain(ob.parseGeoResponse(r2({status:'login_required',pageUrl:'https://chatgpt.com/',answerExcerpt:'',citations:[],brandMentioned:null,competitorsMentioned:[],context:null}),c2));
+ check('login_required in v2 has null context',lg.status==='login_required'&&lg.context===null&&lg.protocol===2);
+ const s2=ob.geoSubmission(target,'휘경동 떡볶이 추천','naver',2);
+ check('the v2 instruction asks for schema 2 with context and a 100-character reason',s2.instructions.includes('geo-observation-2')&&/context/.test(s2.instructions)&&/100자/.test(s2.instructions)&&s2.input===ob.geoSubmission(target,'휘경동 떡볶이 추천','naver').input);
+}
+
+// 6-4) N회 중 k회·판정어·7일 규칙·방어 실패·엔티티 부재
+{
+ const vd=await load('lib/geo-verdict.ts');
+ check('count label reads N회 중 k회',vd.countLabel(6,4)==='6회 중 4회');
+ check('verdict thresholds (운영 기준): 2/3 dominant, 1/3 contested, above 0 behind, 0 absent, none unobserved',vd.verdictOf(3,2)==='dominant'&&vd.verdictOf(6,3)==='contested'&&vd.verdictOf(3,1)==='contested'&&vd.verdictOf(4,1)==='behind'&&vd.verdictOf(3,0)==='absent'&&vd.verdictOf(0,0)==='unobserved'&&vd.GEO_VERDICT_RULES.label==='운영 기준');
+ check('verdict words are the Korean protocol words',JSON.stringify(Object.values(vd.GEO_VERDICT_LABELS))===JSON.stringify(['장악','경합','열세','부재','방어 실패','미관측','판정 보류']));
+ // 날짜는 date 명령으로 계산했다: 2026-11-02 +7일 = 2026-11-09, +6일 = 2026-11-08, 2026-11-09 -28일 = 2026-10-12.
+ const at=(day)=>day+'T03:00:00.000Z';// KST 정오
+ const ob2=(questionId,engine,day,mentioned)=>({questionId,engine,observedAt:at(day),status:'observed',brandMentioned:mentioned,brandCited:false,competitorsMentioned:[],citations:[]});
+ const qv=[{id:'qb',text:'판떡 영업시간',intent:'brand'},{id:'qc',text:'휘경동 떡볶이 추천',intent:'local'},{id:'qx',text:'판떡 엽떡 비교',intent:'comparison'}];
+ const seven=[ob2('qc','perplexity','2026-11-02',true),ob2('qc','perplexity','2026-11-02',true),ob2('qc','perplexity','2026-11-09',false)];
+ const six=[ob2('qc','perplexity','2026-11-02',true),ob2('qc','perplexity','2026-11-08',true)];
+ const rowOf=(rowsV,group,engine)=>rowsV.find(x=>x.group===group&&x.engine===engine);
+ const v7=rowOf(vd.geoVerdicts(qv,seven),'category','perplexity'),v6=rowOf(vd.geoVerdicts(qv,six),'category','perplexity');
+ check('two time points 7 days apart give a verdict with N회 중 k회 (local counted under category)',v7.n===3&&v7.k===2&&v7.count==='3회 중 2회'&&v7.timePoints===2&&v7.verdict==='dominant');
+ check('time points 6 days apart give 판정 보류 with the count kept',v6.verdict==='pending'&&v6.count==='2회 중 2회'&&vd.GEO_VERDICT_LABELS[v6.verdict]==='판정 보류');
+ check('a single time point is 판정 보류',rowOf(vd.geoVerdicts(qv,[ob2('qc','naver','2026-11-09',true)]),'category','naver').verdict==='pending');
+ check('a group with no observation is 미관측',rowOf(vd.geoVerdicts(qv,seven),'comparison','perplexity').verdict==='unobserved');
+ check('login_required rows do not count in N',rowOf(vd.geoVerdicts(qv,[...seven,{...ob2('qc','perplexity','2026-11-09',null),status:'login_required'}]),'category','perplexity').n===3);
+ const drop=[ob2('qc','perplexity','2026-10-05',true),ob2('qc','perplexity','2026-10-12',true),ob2('qc','perplexity','2026-11-02',false),ob2('qc','perplexity','2026-11-02',false),ob2('qc','perplexity','2026-11-09',true),ob2('qc','perplexity','2026-11-09',false)];
+ const vdrop=rowOf(vd.geoVerdicts(qv,drop),'category','perplexity');
+ check('a drop from the previous 28-day window is 방어 실패 with the current level kept',vdrop.verdict==='defense_failed'&&vdrop.level==='behind'&&vdrop.previous==='dominant'&&vdrop.n===4&&vdrop.k===1);
+ const absent=[ob2('qb','perplexity','2026-11-02',false),ob2('qb','perplexity','2026-11-09',false),ob2('qc','perplexity','2026-11-02',true)];
+ const noFacts=vd.geoReportV2({questions:qv,observations:absent,site:{jsonLd:'present',llmsTxt:'present'},confirmedFactKeys:[]});
+ check('brand-group absence puts prescription 0 (entity absence) first in the backlog',noFacts.backlog[0].kind==='entity_absent'&&noFacts.entity.absent===true&&JSON.stringify(noFacts.entity.engines)==='["perplexity"]');
+ check('without confirmed facts prescription 0 waits',noFacts.backlog[0].waiting===true&&/대기/.test(noFacts.backlog[0].text));
+ const withFacts=vd.geoReportV2({questions:qv,observations:absent,site:{jsonLd:'present',llmsTxt:'present'},confirmedFactKeys:['address','signature_menu']});
+ check('with a confirmed address prescription 0 names the info page, map listing and name consistency',withFacts.backlog[0].kind==='entity_absent'&&withFacts.backlog[0].waiting===false&&/공식 정보 페이지/.test(withFacts.backlog[0].text)&&/지도/.test(withFacts.backlog[0].text)&&/표기/.test(withFacts.backlog[0].text));
+ const fine=vd.geoReportV2({questions:qv,observations:seven,site:{jsonLd:'present',llmsTxt:'present'},confirmedFactKeys:[]});
+ check('no brand-group absence means no prescription 0',!fine.backlog.some(b=>b.kind==='entity_absent')&&fine.entity.absent===false);
+ check('the v2 report keeps every v1 field and labels its thresholds 운영 기준',Object.keys(plain(rep.geoReport({questions:qv,observations:seven,site:{jsonLd:'present',llmsTxt:'present'}}))).every(k=>k in fine)&&fine.protocol===2&&fine.rules.label==='운영 기준'&&fine.rules.minGapDays===7);
+ check('citation and context mixes count v2 observations only',(()=>{const m=vd.geoReportV2({questions:qv,observations:[{...ob2('qc','perplexity','2026-11-09',true),protocol:2,context:{tone:'positive',reason:'x'},citations:[{url:'https://a.kr',title:'',domain:'a.kr',brand:true,sourceClass:'official'},{url:'https://b.kr',title:'',domain:'b.kr',brand:false,sourceClass:'unclassified'}]},ob2('qc','perplexity','2026-11-02',true)],site:{jsonLd:'present',llmsTxt:'present'},confirmedFactKeys:[]});return m.citationMix.official===1&&m.citationMix.unclassified===1&&m.citationMix.platform===0&&m.contextMix.positive===1&&m.contextMix.neutral===0})());
+}
+
+// 6-5) 재관측 예약 +14·+42일(lib/scheduled-runs.ts). 기대 날짜는 date 명령으로 계산했다: 2026-12-01 +14일 = 2026-12-15, +42일 = 2027-01-12.
+check('rechecks are scheduled at +14 and +42 days',JSON.stringify(plain(sched.geoRecheckDates('2026-12-01')))==='[{"offset":14,"dueOn":"2026-12-15"},{"offset":42,"dueOn":"2027-01-12"}]'&&JSON.stringify(sched.GEO_RECHECK_OFFSETS)==='[14,42]');
+check('due rechecks are those scheduled on or before today (KST)',(()=>{const ch=[{id:'gchg-a',rechecks:[{offset:14,dueOn:'2026-12-15',status:'scheduled'},{offset:42,dueOn:'2027-01-12',status:'scheduled'}]},{id:'gchg-b',rechecks:[{offset:14,dueOn:'2026-12-10',status:'started',runId:'geo-run-x'}]}];
+ const due=plain(sched.dueGeoRechecks(ch,Date.parse('2026-12-15T00:00:00.000Z')));// KST 2026-12-15 09시
+ return due.length===1&&due[0].changeId==='gchg-a'&&due[0].offset===14&&!sched.dueGeoRechecks(ch,Date.parse('2026-12-14T14:00:00.000Z')).length})());// KST 12-14 23시
+
+// 6-6) 켜면: 반복·예산 가드·관찰·보고·변경 기록·재관측 예약
+await flags.setFeatureFlag(WS,{flag:'geo_protocol_v2',enabled:true},by);
+r=await get(boss);
+const pairs2=r.body.questions.filter(q=>q.active).reduce((n,q)=>n+q.engines.length,0);
+check('with v2 the plan repeats every pair 3 times and the token total counts repeats',r.body.protocol===2&&r.body.plan.repeats===3&&r.body.plan.jobs===pairs2*3&&r.body.plan.totalTokens===r.body.plan.perJobTokens*pairs2*3);
+check('the v2 estimate triples the v1 total for the same pairs',(()=>{const ps=[{question:{text:'휘경동 떡볶이 추천'},engine:'naver'},{question:{text:'판떡 영업시간'},engine:'chatgpt'}],e1=geo.geoJobEstimate(target,ps,{average:0,samples:0}),e3=geo.geoJobEstimate(target,ps,{average:0,samples:0},{repeats:3,protocol:2});return e3.jobs===6&&e3.repeats===3&&e3.totalTokens===e3.perJobTokens*6&&e3.perJobTokens>=e1.perJobTokens})());
+{
+ const sum=await budget.tokenBudgetSummary(server.database(),WS),line=sum.workspace??sum.lines?.workspace??sum;
+ const usedNow=Number(line.used??0)+Number(line.inProgress??0),v1Total=r.body.plan.perJobTokens*pairs2;
+ await budget.setTokenBudget(server.database(),WS,{scope:'workspace',monthlyTokens:usedNow+v1Total},by);
+ const sentB=hermes.bodies.length;
+ const rb=await post(boss,{action:'start_run',id:'geo-run-v2budget1'});
+ check('the budget guard counts repeats: a budget that fits one pass blocks three repeats',rb.status===409&&/토큰 예산 초과/.test(rb.body.error)&&hermes.bodies.length===sentB&&!rows('geo_run').some(x=>x.id==='geo-run-v2budget1'));
+ await budget.setTokenBudget(server.database(),WS,{scope:'workspace',monthlyTokens:null},by);
+}
+hermes.modeFor=()=>'good';
+r=await post(boss,{action:'start_run',id:'geo-run-v2run0001',repeats:3});
+check('a v2 run creates three repeat jobs per pair and asks for schema 2',r.status===200&&r.body.protocol===2&&r.body.jobs.length===pairs2*3&&[1,2,3].every(k=>r.body.jobs.filter(j=>j.repeat===k).length===pairs2)&&hermes.bodies.at(-1).instructions.includes('geo-observation-2'));
+check('repeats outside 1..3 are rejected',(await post(boss,{action:'start_run',id:'geo-run-v2bad0001',repeats:4})).status===400);
+for(let i=0;i<30&&r.body.status==='running';i++)r=await post(boss,{action:'advance',runId:'geo-run-v2run0001'});
+const v2obs=rows('geo_observation').filter(x=>x.runId==='geo-run-v2run0001');
+check('v2 observations store protocol, repeat, context and citation classes',r.body.status==='completed'&&v2obs.length===pairs2*3&&v2obs.every(x=>x.protocol===2&&x.repeat>=1&&x.context?.tone==='positive'&&x.citations.some(c=>c.sourceClass==='platform')));
+r=await get(boss);
+const vrow=r.body.report.verdicts.find(x=>x.group==='category'&&x.engine==='perplexity');
+check('the v2 view reports N회 중 k회 and 판정 보류 for a single time point',vrow&&/^\d+회 중 \d+회$/.test(vrow.count)&&vrow.verdict==='pending'&&r.body.report.rules.label==='운영 기준'&&r.body.report.citationMix.platform>0);
+check('the v2 view offers the comparison intent and the three groups',JSON.stringify(r.body.intents)==='["brand","category","local","comparison"]'&&JSON.stringify(r.body.groups)==='["category","comparison","brand"]');
+// 변경 기록과 +14·+42 재관측
+const kstToday=new Date(Date.now()+9*3600000).toISOString().slice(0,10);
+const shift=(day,n)=>new Date(Date.parse(day+'T00:00:00Z')+n*86400000).toISOString().slice(0,10);
+r=await post(boss,{action:'save_change',input:{kind:'faq',summary:'공식 페이지에 영업시간 FAQ 추가',appliedOn:kstToday,appliedBasis:'published',questionIds:[]}});
+check('a change record schedules rechecks at +14 and +42 days from the applied day',r.status===200&&/^gchg-/.test(r.body.id)&&JSON.stringify(r.body.rechecks.map(x=>[x.offset,x.dueOn,x.status]))===JSON.stringify([[14,shift(kstToday,14),'scheduled'],[42,shift(kstToday,42),'scheduled']]));
+check('a change in the future or with an unknown kind is rejected',(await post(boss,{action:'save_change',input:{kind:'faq',summary:'x',appliedOn:shift(kstToday,2),appliedBasis:'published'}})).status===400&&(await post(boss,{action:'save_change',input:{kind:'magic',summary:'x',appliedOn:kstToday,appliedBasis:'published'}})).status===400);
+check('a member cannot record a change',(await post(member,{action:'save_change',input:{kind:'faq',summary:'x',appliedOn:kstToday,appliedBasis:'published'}})).status===403);
+r=await post(boss,{action:'save_change',input:{kind:'entity_basics',summary:'공식 정보 페이지·지도 등록 정보·이름 표기 정비',appliedOn:shift(kstToday,-15),appliedBasis:'indexed'}});
+const oldChange=r.body.id;
+check('an older change has its +14 recheck already due',(await get(boss)).body.rechecksDue.some(d=>d.changeId===oldChange&&d.offset===14));
+const runsBefore=rows('geo_run').length;
+await geo.advanceGeoRunsSafely(WS);
+check('a due recheck does not start while research runs are not automatic',rows('geo_run').length===runsBefore&&rows('geo_change').find(x=>x.id===oldChange).rechecks[0].status==='scheduled');
+await flags.setFeatureFlag(WS,{flag:'autonomy_rules',enabled:true},by);
+await server.recordStatement(WS,'autonomy_settings','current',{id:'current',version:4,settings:{research_run:'auto'},updatedAt:at,updatedBy:null}).run();
+await geo.advanceGeoRunsSafely(WS);
+const started=rows('geo_change').find(x=>x.id===oldChange).rechecks[0];
+const rrun=rows('geo_run').find(x=>x.id===started.runId);
+check('with research runs automatic the tick starts the recheck run once',started.status==='started'&&rrun&&rrun.scheduleRunId===`recheck:${oldChange}:14`&&rrun.trigger==='recheck'&&rrun.protocol===2);
+const runsAfter=rows('geo_run').length;
+await geo.advanceGeoRunsSafely(WS);
+check('the next tick does not start the same recheck again',rows('geo_run').length===runsAfter);
+check('the +42 recheck of the older change stays scheduled',rows('geo_change').find(x=>x.id===oldChange).rechecks[1].status==='scheduled');
+await flags.setFeatureFlag(WS,{flag:'autonomy_rules',enabled:false},by);
+await post(boss,{action:'cancel_run',runId:started.runId});
 
 console.log(JSON.stringify({passed:passed.length}));

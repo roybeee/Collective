@@ -10,7 +10,8 @@ export type GeoSiteState=typeof GEO_SITE_STATES[number];
 export type GeoSiteChecks={jsonLd:GeoSiteState;llmsTxt:GeoSiteState};
 export type GeoReportObservation=Pick<GeoObservation,'questionId'|'engine'|'status'|'observedAt'|'brandMentioned'|'brandCited'|'competitorsMentioned'|'citations'>;
 export type GeoEngineStats={engine:GeoEngine;observed:number;mentions:number;cited:number;notObserved:number;shareOfVoice:number|null;citationRate:number|null};
-export type GeoBacklogItem={id:string;kind:'competitor_gap'|'mention_without_citation'|'not_mentioned'|'login_required'|'json_ld'|'llms_txt';text:string;questionId?:string;engines?:GeoEngine[];link?:'json_ld_generator'|'llms_txt_template'|'manual_observation'};
+// entity_absent·waiting은 프로토콜 v2(lib/geo-verdict.ts)만 만든다.
+export type GeoBacklogItem={id:string;kind:'competitor_gap'|'mention_without_citation'|'not_mentioned'|'login_required'|'json_ld'|'llms_txt'|'entity_absent';text:string;questionId?:string;engines?:GeoEngine[];link?:'json_ld_generator'|'llms_txt_template'|'manual_observation';waiting?:boolean};
 export type GeoReport={label:typeof GEO_REPORT_LABEL;week:string|null;previousWeek:string|null;engines:(GeoEngineStats&{previous:GeoEngineStats|null;change:{shareOfVoice:number|null;citationRate:number|null}})[];topDomains:{domain:string;count:number;brand:boolean}[];backlog:GeoBacklogItem[];observations:number;exposureGuaranteed:false};
 
 const KST=9*3600000,DAY=86400000;
