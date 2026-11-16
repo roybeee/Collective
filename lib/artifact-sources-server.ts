@@ -16,6 +16,7 @@ import {evidenceContext} from './ai-context';
 import {checkCompliance,COMPLIANCE_LEXICON,COMPLIANCE_NOTICE} from './graders/compliance';
 import {computeComplianceFixes,COMPLIANCE_FIX_NOTICE} from './graders/compliance-fixes';
 import {isEnabled} from './feature-flags';
+import {withEthicsChecklist} from './ethics-checklist-server';
 import {bodyOf} from './graders/text';
 import type {FactLedger} from './graders/types';
 import {MAX_GRADED_LINES} from './online-grading';
@@ -119,7 +120,7 @@ export async function artifactSources(owner:string,artifactId:string):Promise<Ar
  const [run,ledger,grading,usageModel]=await Promise.all([runOf(owner,a),factLedgerOf(owner,c),optional(readRecord<{gradedAt?:string}>(owner,'grading',`${a.id}:${a.version}`)),isAiGenerated(a)?reportedModel(owner,a.id):Promise.resolve(null)]);
  const [labelled,facts]=await Promise.all([labelSources(owner,run?.labels??{},c),factSources(owner,a,c,ledger)]);
  return {artifactId:a.id,version:a.version,brandId:c.brandId,refs:{...labelled,...facts},factKeys:Object.keys(facts).map(k=>k.slice('fact:'.length)),
-  origin:originInfo(a,run,usageModel??run?.model??null),compliance:await withComplianceFixes(owner,c,a,complianceViewOf(a,ledger,text(grading?.gradedAt)),ledger)};
+  origin:originInfo(a,run,usageModel??run?.model??null),compliance:await withEthicsChecklist(owner,c,a,await withComplianceFixes(owner,c,a,complianceViewOf(a,ledger,text(grading?.gradedAt)),ledger))};
 }
 // 작업물 목록 카드의 소재 예측 점수 배지(G2). 캠페인의 저장된 점수 중 현재 판만 쓴다. 없는 캠페인·다른 소유자는 404다.
 export async function campaignScoreSummaries(owner:string,campaignId:string):Promise<ArtifactScoreSummary[]>{

@@ -338,6 +338,8 @@ export const recordKinds:readonly RecordKind[]=[
  // B1 판정 로그(대표 결정 8). 추가만 하고 덮어쓰지 않는다(lib/review-decisions-server.ts). B2 κ·B3 개선 분석의 평가 자료라 eval_case처럼 캠페인을 지워도 남긴다
  // (캠페인 삭제 영향 조회에는 보존 건수로, 대화상자에는 '사람 판정 로그'로 보인다). 브랜드 자료 제외 판정은 campaignId가 없다. token_budget 묶음(마지막 3개, tests/token-budget.test.mjs 고정) 앞에 둔다.
  {kind:'review_decision',parent:'none',campaignDeletion:'retain',links:['data_campaign'],purge:'delete',description:'사람 판정·교정 결정 로그(작업물 승인·수정 요청, 브리프 제안 채택·수정·미사용, 자료 제외, 발행 취소·되돌림)와 사유 코드·실행 버전(B1). 캠페인을 지워도 평가 자료로 남긴다(소유자가 완전 삭제를 고르면 그 캠페인의 로그는 지운다, F4b-2). 검토 메모 원문·검토자 이메일은 담지 않는다(메모는 길이만, 행위자는 id·역할)'},
+ // P6 사람 확인 체크리스트(lib/ethics-checklist-server.ts). 추가만 하고 덮어쓰지 않는다(행 id는 매번 새 uuid). 캠페인과 함께 지운다.
+ {kind:'ethics_check_mark',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'사람 확인 체크리스트 표시(작업물 id·판·항목 id·확인/보류/해당 없음·메모 300자 이하·체크리스트 판·표시한 사람 id와 역할·시각). 추가 전용, 항목별 마지막 표시를 보인다. 승인을 막지 않는다. 캠페인과 함께 삭제(P6)'},
  // 프롬프트 레지스트리(F3a, 대표 결정 2·3). 버전은 불변이고 캠페인과 무관하다. 캠페인 고정(pin)만 캠페인과 함께 지운다.
  // token_budget 묶음(마지막 3개, tests/token-budget.test.mjs 고정) 앞에 둔다.
  {kind:'prompt_version',parent:'none',campaignDeletion:'not_campaign_scoped',description:'불변 프롬프트 버전(단위·본문·sha256·sourceSha·출처 메타·등록자·등록 시각). git prompts/ 정본과 main 본문이 같을 때만 만든다(F3a)'},

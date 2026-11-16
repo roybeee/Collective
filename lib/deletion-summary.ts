@@ -28,6 +28,7 @@ const deletedGroups:readonly Group[]=[
  {label:'소재 점수 보정 연결',kinds:['artifact_publication_link']},
  {label:'선택 다시 쓰기 요청',kinds:['rewrite_request']},
  {label:'실행 중 추가 지시',kinds:['meeting_instruction','run_instruction']},
+ {label:'사람 확인 체크리스트 표시',kinds:['ethics_check_mark']},
 ];
 // 제작·발행·주문 귀속 기록(blocksDeletion)이 있으면 삭제 자체가 거부되므로 대화상자는 사유만 보이고 보존 목록을 쓰지 않는다.
 const retainedGroups:readonly Group[]=[

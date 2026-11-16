@@ -71,6 +71,8 @@ test('인용 pill·AI 출처 배지·근거 부족 확인 승인·규정 점검 
   // 규정 점검 패널: 차단 표현과 다시 점검.
   const panel=dialog.getByRole('region',{name:'규정 점검'});
   await expect(panel).toContainText('영수증·리뷰 이벤트');await expect(panel).toContainText('차단');
+  // 스위치 ethics_review_checklist가 꺼져 있으면 사람 확인 체크리스트가 없다(패널이 이전과 같다).
+  await expect(panel.getByRole('region',{name:'사람 확인 체크리스트'})).toHaveCount(0);
   // 준수율(QA D12): 머리에 '준수율 N%'와 통과 규칙 / 점검 규칙. 차단이 있으니 100% 미만이고 백분율이 두 수와 맞는다.
   const rate=panel.locator('.compliance-rate');await expect(rate).toContainText(/^준수율 \d+%통과 규칙 \d+ \/ 점검 규칙 \d+$/);
   const [passedRules,checkedRules]=(await rate.locator('small').innerText()).match(/\d+/g)!.map(Number),percent=Number(await rate.getAttribute('data-percent'));
@@ -96,5 +98,47 @@ test('인용 pill·AI 출처 배지·근거 부족 확인 승인·규정 점검 
   expect(sent.manuallyVerified).toBe(true);
   await expect(page.getByText('현재 버전을 승인했습니다.')).toBeVisible();
   await page.screenshot({path:`e2e/artifacts/${info.project.name}-trust-ui.png`,fullPage:true});
+ }finally{await context.close()}
+});
+
+// 사람 확인 체크리스트(스위치 ethics_review_checklist 켜짐, 마케팅 스킬 이식 계획 P6): 영어 산출물·가격·체험단 본문 → 신호별 항목(대상국·표기 위치),
+// 항목에 '보류'와 메모를 기록 → 대화상자를 다시 열어도 마지막 표시가 남음 → 보류가 있어도 승인은 된다(표시와 기록만).
+test('사람 확인 체크리스트: 신호별 항목 → 보류 기록 → 다시 열어도 유지 → 승인은 막지 않음',async({browser},info)=>{
+ const owner=`ethics-${info.project.name}-${Date.now()}`,context=await browser.newContext({baseURL:info.project.use.baseURL,viewport:info.project.use.viewport,extraHTTPHeaders:{'oai-authenticated-user-id':owner}}),page=await context.newPage();
+ try{
+  const post=async(path:string,data:unknown)=>{const r=await page.request.post(path,{data});expect(r.status(),await r.text()).toBe(200);return r.json()};
+  await page.request.get('/api/workspace');
+  await post('/api/feature-flags',{action:'set',flag:'ethics_review_checklist',enabled:true});
+  const {id:campaignId}=await post('/api/action',{action:'save_campaign',data:{brandId:'ofd',title:`체크리스트 ${info.project.name}`,goal:'해외 고객 방문',outputLanguage:'en'}}) as {id:string};
+  const aid=`ethics-${info.project.name}-${Date.now()}`,name=`체크리스트 작업물 ${info.project.name}`;
+  runSql(record(owner,'artifact',aid,campaignId,{id:aid,campaignId,campaignVersion:1,role:'content',title:name,content:'## Post\nReviewers from our tasting group loved it. Tteokbokki $4.50 this week.',version:1,status:'review',origin:'manual',createdAt:new Date().toISOString()}));
+  await page.goto(`/?view=campaigns&campaign=${campaignId}&ctab=outputs`);
+  const card=page.locator('.artifact-item').filter({hasText:name});
+  await expect(card).toBeVisible({timeout:30_000});
+  await card.locator('.artifact-row').click();
+  const dialog=page.getByRole('dialog');
+  const checklist=dialog.getByRole('region',{name:'사람 확인 체크리스트'});
+  await expect(checklist).toBeVisible();
+  await expect(checklist.locator('[data-item="target_country"]')).toContainText('산출물 언어가 한국어가 아니어서 추가');
+  await expect(checklist.locator('[data-item="disclosure_placement"]')).toContainText('추천·보증 등에 관한 표시·광고 심사지침');
+  await expect(checklist.locator('[data-item="required_labeling"]')).toContainText('근거 미확인');
+  const row=checklist.locator('[data-item="rights_scope"]'),recordButton=row.getByRole('button',{name:'기록'});
+  await expect(recordButton).toBeDisabled();
+  await row.getByRole('radio',{name:'보류'}).click();
+  await row.getByRole('textbox').fill('사진 사용 허락서 회신 대기');
+  const request=page.waitForRequest(r=>r.url().endsWith('/api/action')&&r.method()==='POST'&&(r.postData()??'').includes('mark_ethics_check'));
+  await recordButton.click();
+  const sent=JSON.parse((await request).postData()??'{}');
+  expect(sent).toMatchObject({artifactId:aid,version:1,itemId:'rights_scope',status:'held',note:'사진 사용 허락서 회신 대기'});
+  await expect(row).toContainText('마지막 표시: 보류');await expect(row).toContainText('사진 사용 허락서 회신 대기');
+  await expect(checklist).toContainText('보류 1');
+  await page.screenshot({path:`e2e/artifacts/${info.project.name}-ethics-checklist.png`});
+  // 다시 열어도 서버 기록에서 마지막 표시를 읽는다.
+  await page.keyboard.press('Escape');await expect(dialog).toBeHidden();
+  await card.locator('.artifact-row').click();
+  await expect(page.getByRole('dialog').getByRole('region',{name:'사람 확인 체크리스트'}).locator('[data-item="rights_scope"]')).toContainText('마지막 표시: 보류');
+  // 보류 표시가 있어도 승인 버튼은 그대로 동작한다.
+  await page.getByRole('dialog').getByRole('button',{name:'이 버전 승인'}).click();
+  await expect(page.getByText('현재 버전을 승인했습니다.')).toBeVisible();
  }finally{await context.close()}
 });

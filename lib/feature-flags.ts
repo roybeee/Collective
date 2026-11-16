@@ -58,6 +58,7 @@ export const FEATURE_FLAGS={
  self_signup:{defaultEnabled:false,description:'로그인 화면에 새 워크스페이스 가입(이메일·비밀번호, 이용약관·개인정보 동의 필수, 마케팅 수신 선택)을 연다(G8). 플랫폼 스위치라 운영자 워크스페이스(처음 만든 관리자 계정의 워크스페이스) 값만 읽는다. 메일 발송 어댑터가 없어 확인 링크를 화면에 보이므로 공개 전 메일 연결이 필요하다. 꺼지면 가입 API는 404이고 초대 가입·로그인은 그대로다.'},
  credit_billing:{defaultEnabled:false,description:'선불 크레딧 원장(월 기본 제공·충전·AI 사용 1,000토큰=1크레딧·환불·소멸)과 80%·100% 알림을 켜고, 잔액 0이면 새 AI 실행을 시작 전에 막는다(운영자 워크스페이스 제외). 토스페이먼츠 테스트 키(test_)로만 충전·환불한다(G8). 플랫폼 스위치라 운영자 워크스페이스 값만 읽는다. 꺼지면 원장·가드·결제는 모두 동작하지 않고 요금표만 보인다.'},
  compliance_fixes:{defaultEnabled:false,description:'작업물 규정 점검 패널에 규칙별 결정론 수정 제안(#광고·(광고) 넣기, 가상인물·AI 생성 표시 붙이기, 질병 효능 문장 지우기 등)과 고른 수정 적용을 켠다. 적용은 대표·관리자·편집 범위 역할이 확인 카드를 거쳐 새 버전으로 저장하고 바로 다시 점검한다(모델 호출 없음, COLLECTIVE 휴리스틱 · 법률 자문 아님). 꺼지면 제안이 보이지 않고 적용은 409다.'},
+ ethics_review_checklist:{defaultEnabled:false,description:'작업물 규정 점검 패널에 사람 확인 체크리스트(연출·표기 위치·권위·누락·필수 표시·권리 범위·입점처 수익·취약층·대상국·AI 표시 위치 중 내용 신호로 고른 항목, 근거는 법령 조문·미확인·운영 기준)를 보이고, 승인 권한자가 항목마다 확인·보류·해당 없음과 메모를 추가 전용으로 기록한다(P6, 모델 호출 없음, 법률 자문 아님). 승인을 막지 않는다. 꺼지면 패널은 이전과 같고 기록은 409다.'},
 } as const satisfies Record<string,{defaultEnabled:boolean;description:string}>;
 export type FeatureFlag=keyof typeof FEATURE_FLAGS;
 export type FlagAuthor={id:string;email:string|null};
