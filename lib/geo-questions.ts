@@ -9,8 +9,14 @@ export type GeoEngine=typeof GEO_ENGINES[number];
 export const GEO_LOCALES=['ko','en','ja'] as const;
 export type GeoLocale=typeof GEO_LOCALES[number];
 export const GEO_INTENTS=['brand','category','local'] as const;
-export type GeoIntent=typeof GEO_INTENTS[number];
-export const GEO_INTENT_LABELS:Record<GeoIntent,string>={brand:'브랜드',category:'카테고리',local:'지역'};
+// 프로토콜 v2(스위치 geo_protocol_v2): 비교 질문(우리 대 경쟁 대안)을 더한다. v1 입력 검사·시작 질문은 GEO_INTENTS 그대로다.
+export const GEO_INTENTS_V2=['brand','category','local','comparison'] as const;
+export type GeoIntent=typeof GEO_INTENTS_V2[number];
+export const GEO_INTENT_LABELS:Record<GeoIntent,string>={brand:'브랜드',category:'카테고리',local:'지역',comparison:'비교'};
+// v2 판정 묶음 3개: 카테고리 추천(지역 질문 포함)·비교·브랜드 직접. 지역 질문은 카테고리 추천의 한 갈래로 센다.
+export const GEO_GROUPS=['category','comparison','brand'] as const;
+export type GeoGroup=typeof GEO_GROUPS[number];
+export const geoGroupOf=(intent:GeoIntent):GeoGroup=>intent==='local'?'category':intent;
 export const GEO_LOCALE_LABELS:Record<GeoLocale,string>={ko:'한국어',en:'영어',ja:'일본어'};
 export const GEO_QUESTION_LIMIT=30,GEO_STARTER_COUNT=10,GEO_QUESTION_MAX=200;
 export const GEO_QUESTION_ID=/^gq-[a-z0-9-]{4,60}$/;
@@ -19,7 +25,8 @@ export type GeoQuestionInput={text:string;locale:GeoLocale;intent:GeoIntent;engi
 // basis: 시작 질문이 쓴 근거(사실 id 또는 'brand.name'·'brand.category'). 직접 쓴 질문은 빈 배열이다.
 export type GeoQuestion=GeoQuestionInput&{id:string;brandId:string;version:number;origin:'starter'|'manual';basis:string[];createdAt:string;updatedAt:string;updatedBy:string};
 export type GeoFact={id:string;key:string;value:string};
-export type GeoStarterSource={brandName:string;category:string;facts:readonly GeoFact[]};
+// competitors·v2는 프로토콜 v2에서만 쓴다(비교 시작 질문). v2가 아니면 결과가 v1과 같다.
+export type GeoStarterSource={brandName:string;category:string;facts:readonly GeoFact[];competitors?:readonly string[];v2?:boolean};
 export type GeoStarter={text:string;intent:GeoIntent;basis:string[]};
 
 export class GeoInputError extends Error{constructor(message:string){super(message);this.name='GeoInputError'}}
@@ -27,14 +34,14 @@ const fail=(message:string):never=>{throw new GeoInputError(message)};
 const control=/[\u0000-\u001f\u007f]/;
 export const normalizeQuestion=(text:string)=>text.normalize('NFKC').replace(/\s+/g,' ').trim().toLowerCase();
 
-export function parseGeoQuestionInput(value:unknown):GeoQuestionInput{
+export function parseGeoQuestionInput(value:unknown,options:{v2?:boolean}={}):GeoQuestionInput{
  if(!value||typeof value!=='object'||Array.isArray(value))fail('질문 입력 객체가 필요합니다.');
  const b=value as Record<string,unknown>;
  if(typeof b.text!=='string'||!b.text.trim()||b.text.length>GEO_QUESTION_MAX||control.test(b.text))fail(`질문은 1~${GEO_QUESTION_MAX}자 한 줄입니다.`);
  const text=(b.text as string).replace(/\s+/g,' ').trim();
  if(scanText(text.normalize('NFKC')).length)fail('질문에 연락처·주소 같은 식별정보를 넣을 수 없습니다.');
  if(!GEO_LOCALES.includes(b.locale as GeoLocale))fail('언어는 한국어·영어·일본어 중 하나입니다.');
- if(!GEO_INTENTS.includes(b.intent as GeoIntent))fail('질문 유형(브랜드·카테고리·지역)을 고르세요.');
+ if(options.v2?!GEO_INTENTS_V2.includes(b.intent as GeoIntent):!(GEO_INTENTS as readonly string[]).includes(b.intent as string))fail(options.v2?'질문 유형(브랜드·카테고리·지역·비교)을 고르세요.':'질문 유형(브랜드·카테고리·지역)을 고르세요.');
  if(!Array.isArray(b.engines)||!b.engines.length||b.engines.some(e=>!GEO_ENGINES.includes(e as GeoEngine)))fail('측정할 AI 답변 서비스를 하나 이상 고르세요.');
  if(typeof b.active!=='boolean')fail('추적 여부(켜기/끄기)를 지정하세요.');
  const engines=GEO_ENGINES.filter(e=>(b.engines as unknown[]).includes(e));
@@ -65,9 +72,11 @@ export function starterQuestions(src:GeoStarterSource,limit=GEO_STARTER_COUNT):G
  const menuFact=factOf(facts,['signature_menu']),menuList=menuFact?menus(menuFact.value):[];
  const hoursFact=factOf(facts,['hours']),parkingFact=factOf(facts,['parking']);
  const b=brand?['brand.name']:[];
+ const rivals=src.v2&&brand?(src.competitors??[]).map(clean).filter(c=>c&&normalizeQuestion(c)!==normalizeQuestion(brand)).slice(0,2):[];
  const candidates:(GeoStarter|null)[]=[
   area&&category?{text:`${area} ${category} 추천`,intent:'local',basis:[...areaBasis,...categoryBasis]}:null,
   brand?{text:`${brand} 영업시간`,intent:'brand',basis:[...b,...(hoursFact?[hoursFact.id]:[])]}:null,
+  ...rivals.map(c=>({text:`${brand} ${c} 비교`,intent:'comparison' as const,basis:[...b,'brand.competitors']})),
   ...menuList.map(m=>({text:`${m} 맛집`,intent:'category' as const,basis:[menuFact!.id]})),
   ...(area?menuList.map(m=>({text:`${area} ${m} 맛집`,intent:'local' as const,basis:[...areaBasis,menuFact!.id]})):[]),
   category?{text:`${category} 추천`,intent:'category',basis:categoryBasis}:null,

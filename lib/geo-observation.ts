@@ -10,10 +10,19 @@ export const GEO_EXCERPT_MAX=1500,GEO_CITATIONS_MAX=20,GEO_NOTE_MAX=300;
 export const GEO_STATUSES=['observed','login_required','unavailable'] as const;
 export type GeoObservationStatus=typeof GEO_STATUSES[number];
 export type GeoTarget={brandName:string;officialUrls:string[];competitors:string[]};
-export type GeoCitation={url:string;title:string;domain:string;brand:boolean};
-export type GeoParsed={status:GeoObservationStatus;observedAt:string;pageUrl:string;answerExcerpt:string;citations:GeoCitation[];brandMentioned:boolean|null;brandCited:boolean|null;firstMentionRank:number|null;competitorsMentioned:string[];note:string};
-// 저장 행(kind geo_observation, 부모 브랜드). 발췌·인용·시각은 HERMES 브라우저 관찰의 기록이며 노출 보장이 아니다.
-export type GeoObservation=GeoParsed&{id:string;brandId:string;questionId:string;questionText:string;locale:string;engine:GeoEngine;source:'hermes';runId:string;jobId:string;providerRunId:string;recordedAt:string};
+// 프로토콜 v2(스위치 geo_protocol_v2): 스키마 geo-observation-2는 v1 키에 context 하나를 더한다. v1 요청의 검사·결과는 바뀌지 않는다.
+export const GEO_OBSERVATION_SCHEMA_V2='geo-observation-2';
+export const GEO_CONTEXT_TONES=['positive','neutral','negative'] as const;
+export type GeoContextTone=typeof GEO_CONTEXT_TONES[number];
+export const GEO_CONTEXT_REASON_MAX=100;
+export type GeoContext={tone:GeoContextTone;reason:string};
+// 인용 출처 4분류(운영 기준 도메인 목록). platform=가게가 직접 고치는 등록 정보(지도·배달·예약), third_party=언론·블로그·커뮤니티·백과, 목록에 없으면 unclassified(사람이 확인).
+export const GEO_SOURCE_CLASSES=['official','platform','third_party','unclassified'] as const;
+export type GeoSourceClass=typeof GEO_SOURCE_CLASSES[number];
+export type GeoCitation={url:string;title:string;domain:string;brand:boolean;sourceClass?:GeoSourceClass};
+export type GeoParsed={status:GeoObservationStatus;observedAt:string;pageUrl:string;answerExcerpt:string;citations:GeoCitation[];brandMentioned:boolean|null;brandCited:boolean|null;firstMentionRank:number|null;competitorsMentioned:string[];note:string;protocol?:2;context?:GeoContext|null};
+// 저장 행(kind geo_observation, 부모 브랜드). 발췌·인용·시각은 HERMES 브라우저 관찰의 기록이며 노출 보장이 아니다. repeat는 v2 반복 회차(1~3).
+export type GeoObservation=GeoParsed&{id:string;brandId:string;questionId:string;questionText:string;locale:string;engine:GeoEngine;source:'hermes';runId:string;jobId:string;providerRunId:string;recordedAt:string;repeat?:number};
 
 // 엔진별 공개 답변 화면. 질문을 주소에 싣는 엔진은 그 주소를, 아니면 첫 화면에서 질문을 입력한다.
 export const GEO_ENGINE_PAGES:Record<GeoEngine,{label:string;page:(q:string)=>string;how:string}>={
@@ -46,6 +55,16 @@ export function isOfficialUrl(url:string,matchers:readonly Matcher[]):boolean{
  return matchers.some(m=>m.path?host===m.host&&(path===m.path||path.startsWith(m.path+'/')):host===m.host||host.endsWith('.'+m.host));
 }
 export const domainOf=(url:string)=>{try{return hostOf(new URL(url).hostname)}catch{return ''}};
+// 편집 플랫폼: 호스트(하위 도메인 포함) 또는 호스트+경로 접두어. 제3자: 호스트(하위 도메인 포함). 둘 다 운영 기준이며 늘릴 수 있다.
+export const GEO_PLATFORM_DOMAINS=['map.naver.com','place.naver.com','pcmap.place.naver.com','map.kakao.com','place.map.kakao.com','maps.google.com','google.com/maps','maps.app.goo.gl','baemin.com','yogiyo.co.kr','coupangeats.com','catchtable.co.kr','tripadvisor.com','tripadvisor.co.kr','yelp.com'] as const;
+export const GEO_THIRD_PARTY_DOMAINS=['blog.naver.com','cafe.naver.com','post.naver.com','news.naver.com','n.news.naver.com','news.daum.net','v.daum.net','tistory.com','brunch.co.kr','velog.io','medium.com','wikipedia.org','namu.wiki','youtube.com','reddit.com','dcinside.com','theqoo.net','clien.net','mangoplate.com','diningcode.com'] as const;
+const listed=(url:string,list:readonly string[])=>{let u:URL;try{u=new URL(url)}catch{return false}const host=hostOf(u.hostname),path=u.pathname;return list.some(e=>{const [h,...p]=e.split('/'),prefix=p.length?'/'+p.join('/'):'';return (host===h||host.endsWith('.'+h))&&(!prefix||path===prefix||path.startsWith(prefix+'/'))})};
+// 편집 플랫폼 목록이 공식 일치보다 먼저다(우리 지도 등록 정보도 platform이고 brand 표시는 따로 남는다).
+export function classifyCitation(url:string,matchers:readonly Matcher[]):GeoSourceClass{
+ if(listed(url,GEO_PLATFORM_DOMAINS))return 'platform';
+ if(isOfficialUrl(url,matchers))return 'official';
+ return listed(url,GEO_THIRD_PARTY_DOMAINS)?'third_party':'unclassified';
+}
 // 첫 언급 순서: 발췌에서 브랜드가 처음 나온 위치보다 먼저 나온 경쟁 브랜드 수 + 1. 발췌에 브랜드가 없으면 null(발췌 밖 언급은 순서를 모른다).
 export function firstMentionRank(excerpt:string,brandName:string,competitors:readonly string[]):number|null{
  const text=norm(excerpt),at=text.indexOf(norm(brandName));
@@ -54,9 +73,9 @@ export function firstMentionRank(excerpt:string,brandName:string,competitors:rea
 }
 
 // HERMES 지시. 입력은 질문·엔진·브랜드 이름·경쟁 브랜드 이름 목록(사실 원문·고객 정보 없음)이다.
-export function geoSubmission(target:GeoTarget,question:string,engine:GeoEngine){
+export function geoSubmission(target:GeoTarget,question:string,engine:GeoEngine,protocol?:2){
  const page=GEO_ENGINE_PAGES[engine];
- const instructions=[
+ const steps=[
   '당신은 AI 검색 노출 관찰자입니다. 아래 한 화면만 브라우저로 열어 보이는 그대로 기록합니다.',
   `1) ${page.label} 공개 화면(${page.how})을 엽니다: ${page.page(question)}`,
   '2) 질문 문장을 바꾸지 않습니다. 다른 화면·다른 질문·추가 검색은 하지 않습니다. 같은 화면 안 새로고침도 하지 않습니다.',
@@ -65,7 +84,10 @@ export function geoSubmission(target:GeoTarget,question:string,engine:GeoEngine)
   '5) brandMentioned: 답변 본문에 브랜드 이름이 나오면 true. competitorsMentioned: 아래 경쟁 브랜드 목록 중 답변에 나온 이름만 목록의 글자 그대로 적습니다(목록에 없는 이름은 적지 않습니다).',
   '6) 화면에 없는 내용을 추측하거나 지어내지 않습니다. 확인하지 못한 값은 status로 표시합니다.',
   `7) 다른 글 없이 JSON 객체 하나만 답합니다. 키는 정확히 schema("${GEO_OBSERVATION_SCHEMA}"), engine, question, status(observed|login_required|unavailable), observedAt(ISO 8601), pageUrl(연 화면 https 주소), answerExcerpt, citations([{url,title}]), brandMentioned(true|false, observed가 아니면 null), competitorsMentioned(배열), note(${GEO_NOTE_MAX}자 이하, 없으면 "")입니다. observed가 아니면 answerExcerpt는 "", citations는 []입니다.`,
- ].join('\n');
+ ];
+ const instructions=(protocol===2?[...steps.slice(0,6),
+  `7) context: 답변이 브랜드를 소개하는 말투를 positive(추천·칭찬)|neutral(나열·사실 설명)|negative(단점·비추천) 중 하나로 고르고, 그렇게 본 근거를 답변 표현에서 ${GEO_CONTEXT_REASON_MAX}자 이하로 적습니다({"tone","reason"}). brandMentioned가 true가 아니면 null입니다.`,
+  `8) 다른 글 없이 JSON 객체 하나만 답합니다. 키는 정확히 schema("${GEO_OBSERVATION_SCHEMA_V2}"), engine, question, status(observed|login_required|unavailable), observedAt(ISO 8601), pageUrl(연 화면 https 주소), answerExcerpt, citations([{url,title}]), brandMentioned(true|false, observed가 아니면 null), competitorsMentioned(배열), context({tone,reason} 또는 null), note(${GEO_NOTE_MAX}자 이하, 없으면 "")입니다. observed가 아니면 answerExcerpt는 "", citations는 [], context는 null입니다.`]:steps).join('\n');
  const input=JSON.stringify({engine,question,brandName:target.brandName,competitors:target.competitors});
  return {input,instructions};
 }
@@ -81,16 +103,27 @@ function extractJson(text:string):unknown{
  if(start<0||end<start)bad('JSON 객체가 없습니다.');
  try{return JSON.parse(t.slice(start,end+1))}catch{return bad('JSON 형식이 아닙니다.')}
 }
-export type GeoParseContext={engine:GeoEngine;question:string;target:GeoTarget;notBefore:number;now:number};
+export type GeoParseContext={engine:GeoEngine;question:string;target:GeoTarget;notBefore:number;now:number;protocol?:2};
+// v2 맥락 검사: 브랜드가 나온 관찰만 {tone,reason}, 그 밖에는 null이어야 한다.
+function parseContext(v:unknown,mentioned:boolean|null):GeoContext|null{
+ if(mentioned!==true){if(v!==null)bad('브랜드가 나오지 않은 관찰의 context는 null입니다.');return null}
+ if(!v||typeof v!=='object'||Array.isArray(v))bad('브랜드가 나온 관찰에는 context({tone,reason})가 필요합니다.');
+ const c=v as Record<string,unknown>;
+ if(Object.keys(c).some(k=>k!=='tone'&&k!=='reason'))bad('context는 tone·reason만 가집니다.');
+ if(!GEO_CONTEXT_TONES.includes(c.tone as GeoContextTone))bad('context.tone은 positive·neutral·negative(긍정·중립·부정) 중 하나입니다.');
+ if(typeof c.reason!=='string'||!c.reason.trim()||c.reason.length>GEO_CONTEXT_REASON_MAX||controlChars.test(c.reason))bad(`context.reason은 1~${GEO_CONTEXT_REASON_MAX}자입니다.`);
+ return {tone:c.tone as GeoContextTone,reason:(c.reason as string).trim()};
+}
 export function parseGeoResponse(text:unknown,ctx:GeoParseContext):GeoParsed{
+ const v2=ctx.protocol===2,keys=v2?[...KEYS,'context']:KEYS;
  if(typeof text!=='string'||!text.trim())bad('응답이 비었습니다.');
  const v=extractJson(text as string);
  if(!v||typeof v!=='object'||Array.isArray(v))bad('응답이 JSON 객체가 아닙니다.');
  const r=v as Record<string,unknown>;
- const extra=Object.keys(r).filter(k=>!KEYS.includes(k)),missing=KEYS.filter(k=>k!=='note'&&!(k in r));
+ const extra=Object.keys(r).filter(k=>!keys.includes(k)),missing=keys.filter(k=>k!=='note'&&!(k in r));
  if(extra.length)bad(`정해지지 않은 키가 있습니다: ${extra.slice(0,5).join(', ')}`);
  if(missing.length)bad(`필수 키가 빠졌습니다: ${missing.join(', ')}`);
- if(r.schema!==GEO_OBSERVATION_SCHEMA)bad('schema 값이 다릅니다.');
+ if(r.schema!==(v2?GEO_OBSERVATION_SCHEMA_V2:GEO_OBSERVATION_SCHEMA))bad('schema 값이 다릅니다.');
  if(r.engine!==ctx.engine)bad('요청한 엔진과 응답 엔진이 다릅니다.');
  if(typeof r.question!=='string'||r.question.replace(/\s+/g,' ').trim()!==ctx.question.replace(/\s+/g,' ').trim())bad('요청한 질문과 응답 질문이 다릅니다.');
  if(!GEO_STATUSES.includes(r.status as GeoObservationStatus))bad('status는 observed·login_required·unavailable 중 하나입니다.');
@@ -103,7 +136,8 @@ export function parseGeoResponse(text:unknown,ctx:GeoParseContext):GeoParsed{
  if(status!=='observed'){
   if(r.answerExcerpt!==''||(r.citations as unknown[]).length||(r.competitorsMentioned as unknown[]).length||r.brandMentioned!==null)bad('관찰하지 못한 응답에는 발췌·인용·언급 값을 넣지 않습니다.');
   const pageUrl=r.pageUrl===''?'':webUrl(r.pageUrl,'pageUrl');
-  return {...base,pageUrl,answerExcerpt:'',citations:[],brandMentioned:null,brandCited:null,firstMentionRank:null,competitorsMentioned:[]};
+  const empty={...base,pageUrl,answerExcerpt:'',citations:[],brandMentioned:null,brandCited:null,firstMentionRank:null,competitorsMentioned:[]};
+  return v2?{...empty,protocol:2,context:parseContext(r.context,null)}:empty;
  }
  const pageUrl=webUrl(r.pageUrl,'pageUrl');
  if(typeof r.answerExcerpt!=='string'||!r.answerExcerpt.trim()||r.answerExcerpt.length>GEO_EXCERPT_MAX||controlChars.test(r.answerExcerpt))bad(`answerExcerpt는 1~${GEO_EXCERPT_MAX}자 원문입니다.`);
@@ -116,14 +150,16 @@ export function parseGeoResponse(text:unknown,ctx:GeoParseContext):GeoParsed{
   const o=c as Record<string,unknown>,keys=Object.keys(o);
   if(keys.some(k=>k!=='url'&&k!=='title')||!('url' in o))bad(`citations[${i}]는 url·title만 가집니다.`);
   const url=webUrl(o.url,`citations[${i}].url`),title=o.title===undefined?'':typeof o.title==='string'&&o.title.length<=300&&!controlChars.test(o.title)?o.title.trim():bad(`citations[${i}].title 형식이 올바르지 않습니다.`);
-  return {url,title,domain:domainOf(url),brand:isOfficialUrl(url,matchers)};
+  const cite={url,title,domain:domainOf(url),brand:isOfficialUrl(url,matchers)};
+  return v2?{...cite,sourceClass:classifyCitation(url,matchers)}:cite;
  });
  const list=ctx.target.competitors,names=(r.competitorsMentioned as unknown[]).map((n,i)=>{
   const hit=typeof n==='string'?list.find(c=>norm(c)===norm(n)):undefined;
   return hit??bad(`competitorsMentioned[${i}]가 경쟁 브랜드 목록에 없습니다.`);
  });
  if(r.brandMentioned===false&&mentions(excerpt,ctx.target.brandName))bad('발췌에 브랜드 이름이 있는데 brandMentioned가 false입니다.');
- return {...base,pageUrl,answerExcerpt:excerpt,citations,brandMentioned:r.brandMentioned as boolean,brandCited:citations.some(c=>c.brand),firstMentionRank:firstMentionRank(excerpt,ctx.target.brandName,list),competitorsMentioned:[...new Set(names)]};
+ const out={...base,pageUrl,answerExcerpt:excerpt,citations,brandMentioned:r.brandMentioned as boolean,brandCited:citations.some(c=>c.brand),firstMentionRank:firstMentionRank(excerpt,ctx.target.brandName,list),competitorsMentioned:[...new Set(names)]};
+ return v2?{...out,protocol:2,context:parseContext(r.context,out.brandMentioned)}:out;
 }
 // 공식 URL·경쟁 브랜드 목록. 브랜드 웹사이트·SNS 링크와 확정 사실 값 안의 웹 주소(공식 계정·플레이스 주소 등)만 쓴다.
 export function geoTarget(brand:{name:string;intake?:{website?:string;socialLinks?:string;competitors?:string}},factValues:readonly string[]):GeoTarget{
