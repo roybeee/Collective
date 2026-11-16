@@ -1,13 +1,14 @@
 import type {Brand} from './agency';
 import type {ArchiveSource,ArchiveState,Diagnostic} from './archive';
 import type {CampaignDirective} from './campaign-directives';
-import {scopedBrandFacts,evidenceFactRefs,type BrandFact,type EvidenceFactRef} from './brand-facts';
+import {scopedBrandFacts,evidenceFactRefs,statementQuote,FACT_EVIDENCE_LABELS,type BrandFact,type EvidenceFactRef} from './brand-facts';
 import {contactAllowValues,type PiiFieldFinding} from './pii-scan';
 
 // 역할·회의·브리프 초안이 같은 근거를 받도록 만드는 단일 컨텍스트. 서버 모듈을 가져오지 않아 화면에서도 규칙 함수를 쓸 수 있다.
 // directives.author: 지시 작성자 구분. 상시 지시는 사실 근거가 아니며 AI 지시문이 권한 한계를 함께 전달한다(campaign-policy directivePolicy).
 export type DirectiveInput={text:string;author:'관리자'|'직원'};
-export type EvidenceContext={facts:{confirmed:unknown[];prohibited:unknown[];candidate:unknown[]};directives:DirectiveInput[];brandIntro:{text:string;verification:'unverified'};sources:{confirmed:number;excludedCandidates:number;diagnosis:'included'|'stale'|'none'};factRefs?:EvidenceFactRef[]};
+// facts.statements: 근거 상태(스위치 fact_evidence_state)가 켜지고 범위에 진술 사실이 있을 때만 있다. 진술은 확정 사실(confirmed)로 세지 않는다.
+export type EvidenceContext={facts:{confirmed:unknown[];prohibited:unknown[];candidate:unknown[];statements?:unknown[]};directives:DirectiveInput[];brandIntro:{text:string;verification:'unverified'};sources:{confirmed:number;excludedCandidates:number;diagnosis:'included'|'stale'|'none'};factRefs?:EvidenceFactRef[]};
 export type AiBrand={identity:Pick<Brand,'name'|'short'|'category'|'color'|'tone'|'audience'|'constraints'>;brandIntro:{text:string;verification:'unverified';useInCopy:false}};
 export type AdoptedDiagnostic=Diagnostic&{brandBasis?:string;confirmedBy?:{id:string;email:string|null};confirmedAt?:string;adoptionSeq?:number};
 // brandArchiveContext가 AI에 전달하는 확정 자료 수의 한도.
@@ -54,6 +55,19 @@ const scope=(f:BrandFact)=>f.storeId?'지점':'브랜드';
 const confirmedItem=(f:BrandFact)=>({key:f.key,value:f.value,source:f.source,verifiedAt:f.verifiedAt,validUntil:f.validUntil,scope:scope(f)});
 const prohibitedItem=(f:BrandFact)=>({key:f.key,value:f.value,scope:scope(f),use:'광고 금지 표현: 확인 전까지 광고 문구·제작 지시·가설의 전제로 쓰지 않습니다.'});
 const candidateItem=(f:BrandFact)=>({key:f.key,value:f.value,scope:scope(f),use:f.status==='confirmed'?'미확인(확인 근거·유효기한 재확인 필요): 쓰려면 [확인 필요]로 표시합니다.':'미확인 후보: 쓰려면 [확인 필요]로 표시합니다.'});
+// 근거 상태 라벨(P3): 스위치가 켜지고 범위의 사실 중 하나라도 basis를 기록했을 때만 붙는다. 아니면 위 항목 그대로라 바이트가 같다.
+const STATEMENT_USE='진술: 말한 사람의 말입니다. quote의 인용 형식으로만 쓰고 확인된 사실 문장으로 바꾸지 않습니다. 수치·날짜·횟수의 근거로 쓰지 않습니다.';
+const statementItem=(f:BrandFact)=>({key:f.key,quote:statementQuote(f),speaker:f.speaker??'',source:f.source,verifiedAt:f.verifiedAt,validUntil:f.validUntil,scope:scope(f),evidenceState:FACT_EVIDENCE_LABELS.statement,use:STATEMENT_USE});
+type Scoped=ReturnType<typeof scopedBrandFacts>;
+function factItems(scoped:Scoped,labelled:boolean):EvidenceContext['facts']{
+ if(!labelled)return {confirmed:scoped.confirmed.map(confirmedItem),prohibited:scoped.prohibited.map(prohibitedItem),candidate:scoped.candidate.map(candidateItem)};
+ const documents=scoped.confirmed.filter(f=>f.basis!=='statement'),statements=scoped.confirmed.filter(f=>f.basis==='statement');
+ return {confirmed:documents.map(f=>({...confirmedItem(f),evidenceState:FACT_EVIDENCE_LABELS.confirmed})),prohibited:scoped.prohibited.map(prohibitedItem),candidate:scoped.candidate.map(f=>({...candidateItem(f),evidenceState:FACT_EVIDENCE_LABELS.unconfirmed})),...(statements.length?{statements:statements.map(statementItem)}:{})};
+}
+// 근거 상태 스위치(fact_evidence_state) 읽기. 이 모듈은 서버 모듈을 가져오지 않으므로 스위치 행(lib/feature-flags.ts와 같은 id·형식)을 직접 읽는다. 행이 없거나 읽지 못하면 꺼짐(코드 기본값)이다.
+async function factEvidenceFlag(db:D1Database,owner:string){
+ try{return (await record<{enabled?:unknown}>(db,owner,'feature_flag','fact_evidence_state'))?.enabled===true}catch{return false}
+}
 
 async function rows<T>(db:D1Database,owner:string,kind:string,parentId:string){
  const result=await db.prepare('SELECT data FROM records WHERE owner=? AND kind=? AND parent_id=? ORDER BY updated_at DESC').bind(owner,kind,parentId).all<{data:string}>();
@@ -65,21 +79,23 @@ async function record<T>(db:D1Database,owner:string,kind:string,id:string){
 }
 
 // 캠페인의 브랜드·지점 범위로 거른 사실·상시 지시·미확인 소개·근거 자료 상태. factRefs는 작업물에 저장해 사실 변경을 감지한다.
-export async function evidenceContext(db:D1Database,owner:string,campaign:{id:string;brandId:string;stores?:unknown;storeId?:string}):Promise<EvidenceContext>{
+// options.factEvidenceState: 근거 상태 라벨 여부. 주지 않으면 소유자 스위치(fact_evidence_state)를 읽는다. 꺼져 있거나 basis를 기록한 사실이 없으면 이전과 바이트가 같다.
+export async function evidenceContext(db:D1Database,owner:string,campaign:{id:string;brandId:string;stores?:unknown;storeId?:string},options:{factEvidenceState?:boolean}={}):Promise<EvidenceContext>{
  const storeId=campaign.storeId||undefined;
- const [brand,facts,sources,diagnostics,states,directives]=await Promise.all([
+ const [brand,facts,sources,diagnostics,states,directives,evidenceState]=await Promise.all([
   record<Brand>(db,owner,'brand',campaign.brandId),
   rows<BrandFact>(db,owner,'brand_fact',campaign.brandId),
   rows<ArchiveSource>(db,owner,'brand_source',campaign.brandId),
   rows<AdoptedDiagnostic>(db,owner,'brand_diagnostic',campaign.brandId),
   rows<ArchiveState>(db,owner,'brand_archive_state',campaign.brandId),
   campaign.id?rows<CampaignDirective>(db,owner,'campaign_directive',campaign.id):Promise.resolve([] as CampaignDirective[]),
+  options.factEvidenceState??factEvidenceFlag(db,owner),
  ]);
  const scoped=scopedBrandFacts(facts,campaign.brandId,storeId),inScope=sources.filter(s=>!s.storeId||s.storeId===storeId);
  const adopted=latestAdopted(diagnostics),revision=states[0]?.revision??0;
  const diagnosis=!adopted?'none':brand&&diagnosisIncluded(adopted,sources,brand,revision)?'included':'stale';
  return {
-  facts:{confirmed:scoped.confirmed.map(confirmedItem),prohibited:scoped.prohibited.map(prohibitedItem),candidate:scoped.candidate.map(candidateItem)},
+  facts:factItems(scoped,evidenceState&&[...scoped.confirmed,...scoped.candidate].some(f=>f.basis!==undefined)),
   directives:[...directives].sort((a,b)=>a.createdAt.localeCompare(b.createdAt)).map(d=>({text:d.text,author:d.createdBy?.role==='member'?'직원' as const:'관리자' as const})),
   brandIntro:{text:brand?aiBrand(brand).brandIntro.text:'',verification:'unverified'},
   sources:{confirmed:Math.min(CONTEXT_SOURCE_LIMIT,inScope.filter(s=>s.status==='confirmed').length),excludedCandidates:inScope.filter(s=>s.status==='candidate').length,diagnosis},

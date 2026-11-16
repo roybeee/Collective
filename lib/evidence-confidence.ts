@@ -18,9 +18,10 @@ export function confidenceLevel(c:ConfidenceCounts):ConfidenceLevel{
  if(ratio>=HIGH_RATIO&&c.confirmedFacts>=1&&c.checkFlags===0&&c.warns===0)return 'sufficient';
  return 'partial';
 }
-export function evidenceConfidence(text:string,{factKeys=[],warns=0,blocks=0}:{factKeys?:readonly string[];warns?:number;blocks?:number}={}):EvidenceConfidence{
- const units=claimSentences(text,factKeys);
- const facts=new Set(units.flatMap(u=>u.refs.filter(r=>r.kind==='fact').map(r=>r.key)));
+// statementKeys(근거 상태 P3): 진술 사실 항목 이름. 인용으로는 세되 확정 사실 건수(confirmedFacts)에는 넣지 않는다. 비어 있으면 결과가 이전과 같다.
+export function evidenceConfidence(text:string,{factKeys=[],statementKeys=[],warns=0,blocks=0}:{factKeys?:readonly string[];statementKeys?:readonly string[];warns?:number;blocks?:number}={}):EvidenceConfidence{
+ const units=claimSentences(text,factKeys),statements=new Set(statementKeys.map(k=>'fact:'+k));
+ const facts=new Set(units.flatMap(u=>u.refs.filter(r=>r.kind==='fact'&&!statements.has(r.key)).map(r=>r.key)));
  const counts:ConfidenceCounts={sentences:units.length,cited:units.filter(u=>u.refs.length>0).length,confirmedFacts:facts.size,checkFlags:(text.match(CHECK_FLAG)||[]).length,warns,blocks};
  const level=confidenceLevel(counts);
  return {level,label:CONFIDENCE_LABELS[level],counts};

@@ -29,7 +29,9 @@ check('eight role skills, channel skills and the viral discovery unit',()=>asser
 // A1은 레지스트리 콘텐츠 후보만 변경한다. 코드 폴백과 운영 제출 기준선은 그대로다.
 // A1 커머스·감사 묶음(tests/a1-commerce-audit-practice.test.mjs)도 후보 단위 셋을 뺀다.
 const A1_CANDIDATE_UNITS=['channel.offline','channel.commerce','channel.shortform','viral.discovery'];
-const codeEqualUnits=units.promptUnits.map(u=>u.unit).filter(unit=>!A1_CANDIDATE_UNITS.includes(unit));
+// 마케팅 스킬 이식 P4a(레인 W): 역할 본문 8개는 레지스트리 후보만 바꾼다(코드 폴백·운영 제출 기준선 불변). 검사는 tests/mkt-skill-prompts.test.mjs.
+const MKT_CANDIDATE_UNITS=['role.cmo','role.insight','role.strategy','role.creative','role.content','role.growth','role.data','role.quality'];
+const codeEqualUnits=units.promptUnits.map(u=>u.unit).filter(unit=>!A1_CANDIDATE_UNITS.includes(unit)&&!MKT_CANDIDATE_UNITS.includes(unit));
 for(const unit of codeEqualUnits){
  const file=JSON.parse(readFileSync('prompts/'+units.unitFile(unit),'utf8'));
  check(`${unit} canonical file equals the code constant`,()=>assert.equal(units.canonicalJson(unit,file.body),JSON.stringify(plain(units.codeUnitBody(unit)))));

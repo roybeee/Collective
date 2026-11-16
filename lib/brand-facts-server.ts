@@ -1,7 +1,7 @@
 import {ApiError,str,readRecord,listRecords,recordStatement,database,uid,stamp,type Actor} from './server';
 import type {Brand,Campaign,Artifact} from './agency';
 import type {Store} from './store-marketing';
-import {effectiveBrandFacts,scopedBrandFacts,evidenceFactRefs,sameEvidenceFactRefs,type BrandFact} from './brand-facts';
+import {effectiveBrandFacts,scopedBrandFacts,evidenceFactRefs,sameEvidenceFactRefs,isFactBasis,type BrandFact,type FactBasis} from './brand-facts';
 import {canonicalFactKey,factCatalogItem,franchiseFactKey,franchiseItem} from './fact-catalog';
 import {isEnabled} from './feature-flags';
 import {checkFranchiseFactSave,readCostDetail,readSourceRef,sameJson,versionStates,FRANCHISE_FACT_MESSAGES,type VersionLite} from './franchise-facts';
@@ -68,6 +68,20 @@ function factInput(data:Record<string,unknown>,confirmed:unknown):Pick<BrandFact
  return {key,value,status,source,verifiedAt,validUntil};
 }
 
+// 근거 상태 스위치(fact_evidence_state, P3) 읽기. 읽기 실패는 꺼짐으로 본다(입력·응답이 이전과 같다).
+export async function factEvidenceStateEnabled(owner:string):Promise<boolean>{
+ try{return await isEnabled(owner,'fact_evidence_state')}catch{console.error('fact_evidence_state_flag_unreadable');return false}
+}
+export const FACT_BASIS_MESSAGES={off:'근거 상태 입력이 꺼져 있습니다. 대표가 기능 스위치 fact_evidence_state를 켠 뒤 다시 저장하세요.',invalid:'근거 상태는 문서(document) 또는 진술(statement)만 저장합니다. 해석은 사실 원장에 저장하지 않습니다.',speaker:'진술은 말한 사람(예: 대표)을 적어야 합니다.'};
+// 근거 상태 입력: basis가 undefined면 이전 값 유지, null이면 지움. 진술만 말한 사람(speaker)을 남긴다.
+function basisInput(fields:Record<string,unknown>,old:BrandFact|undefined):{basis?:FactBasis;speaker?:string}{
+ const basis=fields.basis===undefined?old?.basis:fields.basis===null?undefined:isFactBasis(fields.basis)?fields.basis:(()=>{throw new ApiError(400,FACT_BASIS_MESSAGES.invalid)})();
+ if(basis!=='statement')return basis?{basis}:{};
+ const speaker=fields.speaker===undefined||fields.speaker===null?old?.speaker??'':str(fields.speaker,'말한 사람',60);
+ if(!speaker.trim())throw new ApiError(400,FACT_BASIS_MESSAGES.speaker);
+ return {basis,speaker:speaker.trim()};
+}
+
 // 가맹 사실 식별(트랙 R R1b): 가맹 문맥 브랜드에서는 옛 자유 key('가맹비')도 가맹 항목으로 보고, 창업비용 항목은 매장 유형까지 본다. 비가맹 브랜드는 canonical key 그대로다.
 function factIdentity(f:Pick<BrandFact,'key'|'cost'>,ctx:boolean){
  const fk=ctx?franchiseFactKey(f.key):undefined;
@@ -96,6 +110,8 @@ export async function saveBrandFact(owner:string,input:Record<string,unknown>,wh
  if(old&&(old.version!==input.version||old.brandId!==brandId||old.storeId!==storeId))throw new ApiError(409,'사실의 버전이나 범위가 변경됐습니다. 새로고침하세요.');
  if(!old&&input.version!==undefined&&input.version!==0)throw new ApiError(409,'기존 사실을 다시 불러오세요.');
  const parsed=factInput(fields,input.confirmed);
+ if((fields.basis!==undefined||fields.speaker!==undefined)&&!await factEvidenceStateEnabled(owner))throw new ApiError(409,FACT_BASIS_MESSAGES.off);
+ const evidence=basisInput(fields,old);
  const existing=await listRecords<BrandFact>(owner,'brand_fact',brandId);
  if(!old&&existing.length>=200)throw new ApiError(409,'브랜드 사실은 200개까지 보관할 수 있습니다. 기존 사실을 검토하세요.');
  if(old&&old.version>=200&&!(old.status==='confirmed'&&parsed.status==='rejected'))throw new ApiError(409,'이 사실의 수정 한도에 도달했습니다. 확정 사실의 사용 거절은 가능합니다.');
@@ -121,7 +137,7 @@ export async function saveBrandFact(owner:string,input:Record<string,unknown>,wh
   if(dup)throw new ApiError(409,!old&&isStale(dup,fr)?FRANCHISE_FACT_MESSAGES.staleDuplicate:'같은 범위의 사실 항목이 이미 있습니다. 기존 항목을 수정하세요.');
  }
  const decision:FactDecision=parsed.status==='candidate'?{}:{confirmedBy:{id:who.id,email:who.email},confirmedAt:stamp()};
- const fact:BrandFact&FactDecision={...parsed,key,id,brandId,...(storeId?{storeId}:{}),...(extra.sourceRef?{sourceRef:extra.sourceRef}:{}),...(extra.cost?{cost:extra.cost}:{}),...decision,version:(old?.version||0)+1,updatedAt:stamp()};
+ const fact:BrandFact&FactDecision={...parsed,key,id,brandId,...(storeId?{storeId}:{}),...(extra.sourceRef?{sourceRef:extra.sourceRef}:{}),...(extra.cost?{cost:extra.cost}:{}),...evidence,...decision,version:(old?.version||0)+1,updatedAt:stamp()};
  const writes=[recordStatement(owner,'brand_fact',id,fact,brandId)];
  if(old)writes.push(recordStatement(owner,'brand_fact_history',`${id}:${old.version}`,old,id));
  writes.push(...await factsChangedWrites(owner,brandId,[...existing.filter(f=>f.id!==id),fact]));
@@ -131,7 +147,9 @@ export async function saveBrandFact(owner:string,input:Record<string,unknown>,wh
  const item=factCatalogItem(parsed.key),warnings=[...(item?.storeScoped&&!storeId?[`${item.label}은(는) 지점마다 다른 항목입니다. 브랜드 공통으로 저장하면 모든 지점의 제작물에 쓰입니다. 범위가 맞는지 확인하세요.`]:[]),...franchiseWarnings];
  const shortened=!!old?.validUntil&&!(Date.parse(parsed.validUntil)>=Date.parse(old.validUntil));
  const sourceChanged=franchiseWrite&&!!old&&(old.sourceRef?.disclosureVersionId!==extra.sourceRef?.disclosureVersionId||old.sourceRef?.fiscalYear!==extra.sourceRef?.fiscalYear||old.sourceRef?.asOf!==extra.sourceRef?.asOf||!sameJson(old.cost,extra.cost));
- const affectsPublications=!!old&&(old.status==='confirmed'&&parsed.status!=='confirmed'||parsed.status==='rejected'&&old.status!=='rejected'||parsed.value!==old.value||shortened||sourceChanged);
+ // 확정 사실의 근거 상태가 바뀌면(문서 ↔ 진술, basis 없음은 문서) 그 사실을 쓰는 문장 형식이 바뀌므로 재검토 대상이다.
+ const basisChanged=!!old&&old.status==='confirmed'&&(old.basis??'document')!==(evidence.basis??'document');
+ const affectsPublications=!!old&&(old.status==='confirmed'&&parsed.status!=='confirmed'||parsed.status==='rejected'&&old.status!=='rejected'||parsed.value!==old.value||shortened||sourceChanged||basisChanged);
  return {id,version:fact.version,fact,warnings,affectsPublications};
 }
 // 근거 버전이 현재 등록 버전이 아닌 가맹 사실.
