@@ -40,6 +40,7 @@ export const recordKinds:readonly RecordKind[]=[
  {kind:'geo_run',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'AI 검색 노출 측정 1회(G5, 행 id geo-run-…: 직접·예약 구분·예약 실행 id·브랜드 이름·공식 URL·경쟁 브랜드 이름·추정 토큰·질문×엔진 작업별 상태·HERMES 접수 번호·오류·요청한 사람 id와 역할). 제출 원문은 hermes_submission geo-<작업 id>(부모 없음). 토큰 예산은 시작한 캠페인으로 센다. 캠페인과 무관'},
  {kind:'geo_observation',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'AI 답변 엔진 관찰 기록(G5): 질문·엔진·관찰 시각·상태(observed·login_required·unavailable)·연 화면 주소·답변 앞 1,500자 원문·인용 URL과 공식 URL 일치·브랜드 언급·첫 언급 순서·언급된 경쟁 브랜드·출처 hermes·측정 id. 노출 보장 아님. 캠페인과 무관'},
  {kind:'geo_settings',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'AI 검색 노출 사이트 점검(G5, 브랜드당 1행): JSON-LD·llms.txt 있음·없음·미확인(사람이 표시)·판·바꾼 사람 id. 캠페인과 무관'},
+ {kind:'geo_change',parent:'brand',campaignDeletion:'not_campaign_scoped',description:'AI 검색 노출 개선 변경 기록(프로토콜 v2, 스위치 geo_protocol_v2, 행 id gchg-…: 변경 종류·요약 200자·반영일(KST)·반영 근거(게시·색인 확인)·관련 질문 id·+14·+42일 재관측 예정일과 상태·재관측 측정 id·기록한 캠페인 id(토큰 예산)·기록한 사람 id). 추가만 하고 고치지 않는다(재관측 상태만 바뀐다). 캠페인과 무관'},
  {kind:'share_link',parent:'none',campaignDeletion:'delete',links:['data_campaign'],description:'공유 링크(G4): 동결 고객 보고서 한 판 또는 작업물 한 판을 가리키는 읽기 전용·취소 가능 링크. 행 id는 토큰 SHA-256(원문 없음), 라벨·만든 사람 id와 역할·만료·취소·조회 수·외부 검토자 결정 시각만 담는다. 작업물 링크는 캠페인과 함께 지우고(data.campaignId) 보고서 링크는 캠페인과 무관하다'},
  {kind:'api_key',parent:'none',campaignDeletion:'not_campaign_scoped',description:'외부 AI 도구용 API 키(G9): 행 id는 키 SHA-256(원문 없음), 라벨·범위(읽기·초안 저장)·표시용 접두어와 끝 4자·만든 사람 id와 역할·만료·취소·마지막 사용 시각만 담는다. 캠페인과 무관'},
  {kind:'api_call',parent:'none',campaignDeletion:'not_campaign_scoped',description:'MCP 도구 호출 감사(G9): 키 id·도구 이름·성공 여부·오류 분류·시각만. 입력·결과 본문은 담지 않는다. 캠페인과 무관'},
@@ -338,6 +339,8 @@ export const recordKinds:readonly RecordKind[]=[
  // B1 판정 로그(대표 결정 8). 추가만 하고 덮어쓰지 않는다(lib/review-decisions-server.ts). B2 κ·B3 개선 분석의 평가 자료라 eval_case처럼 캠페인을 지워도 남긴다
  // (캠페인 삭제 영향 조회에는 보존 건수로, 대화상자에는 '사람 판정 로그'로 보인다). 브랜드 자료 제외 판정은 campaignId가 없다. token_budget 묶음(마지막 3개, tests/token-budget.test.mjs 고정) 앞에 둔다.
  {kind:'review_decision',parent:'none',campaignDeletion:'retain',links:['data_campaign'],purge:'delete',description:'사람 판정·교정 결정 로그(작업물 승인·수정 요청, 브리프 제안 채택·수정·미사용, 자료 제외, 발행 취소·되돌림)와 사유 코드·실행 버전(B1). 캠페인을 지워도 평가 자료로 남긴다(소유자가 완전 삭제를 고르면 그 캠페인의 로그는 지운다, F4b-2). 검토 메모 원문·검토자 이메일은 담지 않는다(메모는 길이만, 행위자는 id·역할)'},
+ // P6 사람 확인 체크리스트(lib/ethics-checklist-server.ts). 추가만 하고 덮어쓰지 않는다(행 id는 매번 새 uuid). 캠페인과 함께 지운다.
+ {kind:'ethics_check_mark',parent:'campaign',campaignDeletion:'delete',links:['parent'],description:'사람 확인 체크리스트 표시(작업물 id·판·항목 id·확인/보류/해당 없음·메모 300자 이하·체크리스트 판·표시한 사람 id와 역할·시각). 추가 전용, 항목별 마지막 표시를 보인다. 승인을 막지 않는다. 캠페인과 함께 삭제(P6)'},
  // 프롬프트 레지스트리(F3a, 대표 결정 2·3). 버전은 불변이고 캠페인과 무관하다. 캠페인 고정(pin)만 캠페인과 함께 지운다.
  // token_budget 묶음(마지막 3개, tests/token-budget.test.mjs 고정) 앞에 둔다.
  {kind:'prompt_version',parent:'none',campaignDeletion:'not_campaign_scoped',description:'불변 프롬프트 버전(단위·본문·sha256·sourceSha·출처 메타·등록자·등록 시각). git prompts/ 정본과 main 본문이 같을 때만 만든다(F3a)'},

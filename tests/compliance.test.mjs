@@ -391,7 +391,7 @@ check('severity follows the registry tier (hard_block and block_unless_evidence 
 check('every franchise-law source URL of a kr.fr rule is in the registry sourceUrls of the same id',()=>{for(const r of frRules.filter(r=>r.id.startsWith('kr.fr.'))){const urls=registry(r.id).sourceUrls;for(const k of r.sources){const url=COMPLIANCE_LEXICON.sources[k].url;if(k.startsWith('franchise_'))assert.ok(urls.includes(url),r.id+' '+k);else assert.ok(k==='fair_labeling'&&urls.some(u=>u.includes('lsId=002011')),r.id+' '+k)}}});
 check('the false-information notice source carries the formal title',()=>{const t=COMPLIANCE_LEXICON.sources.franchise_false_info_notice.title;assert.match(t,/가맹사업거래 상 허위·과장 정보제공행위 등의 유형 지정고시/);assert.match(t,/제2019-8호/)});
 // .15(2026-11-15, QA N7): 일반 표시·광고 범주(ad_claim)를 .14 위에 더했다. 같은 저울 원칙대로 사전이 바뀌면 버전을 올린다.
-check('the lexicon version is bumped to .15 (general ad_claim category on top of .14)',()=>assert.equal(COMPLIANCE_LEXICON.version,'compliance-lexicon-2026-11-15.15'));
+check('the lexicon version is bumped to .16 (opt-in mkt pack on top of .15; default issue lists unchanged, tests/compliance-mkt.test.mjs)',()=>assert.equal(COMPLIANCE_LEXICON.version,'compliance-lexicon-2026-11-16.16'));
 check('a quoted franchise example is info in the opt-in A2 path',()=>{const issues=checkCompliance('경쟁점 사례: “월 순수익 500만원 보장”.',CONSUMER).issues.filter(i=>i.category==='franchise_recruit');assert.ok(issues.length>0&&issues.every(i=>i.severity==='info'))});
 check('detection rate is 100% and false positive rate is 0%',()=>{assert.equal(detected,violations.length);assert.equal(falsePositives,0)});
 console.log(JSON.stringify({passed:passed.length,violations:violations.length,detected,normals:normals.length,falsePositives}));

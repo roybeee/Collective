@@ -7,7 +7,7 @@ import {MetaLine} from '@/components/app/meta-line';
 import {metaText} from '@/lib/format';
 import {CheckInput} from '@/components/app/check';
 import {askConfirm} from '@/components/app/confirm-dialog';
-import {useCallback,useEffect,useState,type FormEvent} from 'react';
+import {lazy,Suspense,useCallback,useEffect,useState,type FormEvent} from 'react';
 import type {Campaign} from '@/lib/agency';
 import type {BrandFact} from '@/lib/brand-facts';
 import type {FactDecision} from '@/lib/brand-facts-server';
@@ -21,6 +21,9 @@ import {Input} from '@/components/ui/input';
 import {Textarea} from '@/components/ui/textarea';
 import {NativeSelect,NativeSelectOptGroup,NativeSelectOption} from '@/components/ui/native-select';
 import {ScreenSkeleton} from '@/components/app/screen-skeleton';
+import type {BasisForm} from './fact-evidence-fields';
+// 근거 상태 입력·라벨(스위치 fact_evidence_state, P3)은 스위치가 켜졌을 때만 내려받는 지연 청크다.
+const FactEvidenceFields=lazy(()=>import('./fact-evidence-fields'));
 
 // 문구 표는 그릴 때 사전에서 읽는다(모듈을 읽는 시점의 언어에 묶이지 않게).
 const statuses=()=>({candidate:t('facts.status.candidate'),confirmed:t('facts.status.confirmed'),rejected:t('facts.status.rejected')});
@@ -29,6 +32,10 @@ const OTHER='__other';
 type FactForm=Pick<BrandFact,'key'|'value'|'status'|'source'|'verifiedAt'|'validUntil'>;
 type Overview={readiness:{confirmed:number;candidates:number;importable:number};checks:LedgerCheck[];stores:{id:string;name:string}[]};
 type SaveResult={error?:string;warnings?:string[];reviewPublications?:number|null;rebased?:number;unchanged?:number};
+// 근거 상태 저장 본문: 지정 안 함이면 이전 값이 없을 때 키를 빼고(바이트 동일), 있으면 null로 지운다.
+const emptyBasis:BasisForm={basis:'',speaker:''};
+const basisFormOf=(f:BrandFact|null):BasisForm=>({basis:f?.basis??'',speaker:f?.speaker??''});
+const basisPayload=(form:BasisForm,previous:BrandFact|null)=>!form.basis?(previous?.basis?{basis:null}:{}):form.basis==='statement'?{basis:form.basis,speaker:form.speaker.trim()}:{basis:form.basis};
 const emptyForm:FactForm={key:'',value:'',status:'candidate',source:'',verifiedAt:'',validUntil:''};
 // 트랙 R R1b 가맹 블록(GET /api/brand-facts, 가맹 프로필이나 정보공개서 버전이 있는 브랜드만).
 type FranchiseBlock={enabled:boolean;fiscalYearEnd:string|null;currentVersionId:string|null;versions:{id:string;label:string;registeredAt:string|null;state:VersionState}[];staleFactIds:string[];disclaimer:string};
@@ -57,6 +64,7 @@ export function BrandFactsPanel({campaign,brandId,onChanged}:{campaign?:Campaign
  const [scopeStore,setScopeStore]=useState(''),storeId=campaign?campaign.storeId:scopeStore||undefined;
  const [facts,setFacts]=useState<(BrandFact&FactDecision)[]>([]),[overview,setOverview]=useState<Overview|null>(null),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState(''),[alertNote,setAlertNote]=useState(''),[skipped,setSkipped]=useState<FactImportSkip[]>([]);
  const [checkedAt,setCheckedAt]=useState(()=>Date.now());
+ const [evidenceState,setEvidenceState]=useState(false),[basis,setBasis]=useState<BasisForm>(emptyBasis);
  const [franchise,setFranchise]=useState<FranchiseBlock|null>(null),[source,setSource]=useState<SourceForm>(emptySource),[rebasing,setRebasing]=useState<BrandFact|null>(null),[rebaseForm,setRebaseForm]=useState({fiscalYear:'',page:'',asOf:'',verifiedAt:'',validUntil:''});
  const [editing,setEditing]=useState<BrandFact|null>(null),[form,setForm]=useState<FactForm>(emptyForm),[open,setOpen]=useState(false),[confirmed,setConfirmed]=useState(false),[otherKey,setOtherKey]=useState(false),[scopeConfirmed,setScopeConfirmed]=useState(false);
  // 직원은 확인 후보만 제안·수정·가져오기한다. 확정·거절과 확정·거절된 사실 수정은 관리자 전용이다(서버 403).
@@ -66,15 +74,15 @@ export function BrandFactsPanel({campaign,brandId,onChanged}:{campaign?:Campaign
   setLoading(true);setError('');
   try{
    const params=new URLSearchParams({brandId:brand});if(storeId)params.set('storeId',storeId);
-   const response=await fetch('/api/brand-facts?'+params,{signal});const data=await response.json() as {facts:(BrandFact&FactDecision)[];error?:string;franchise?:FranchiseBlock}&Partial<Overview>;
+   const response=await fetch('/api/brand-facts?'+params,{signal});const data=await response.json() as {facts:(BrandFact&FactDecision)[];error?:string;franchise?:FranchiseBlock;evidenceState?:boolean}&Partial<Overview>;
    if(!response.ok)throw new Error(data.error||t('facts.loadFailed'));
-   if(!signal?.aborted){setFacts(data.facts.filter(f=>!f.storeId||f.storeId===storeId));setOverview(data.readiness&&data.checks&&data.stores?{readiness:data.readiness,checks:data.checks,stores:data.stores}:null);setFranchise(data.franchise??null);setCheckedAt(Date.now())}
+   if(!signal?.aborted){setFacts(data.facts.filter(f=>!f.storeId||f.storeId===storeId));setOverview(data.readiness&&data.checks&&data.stores?{readiness:data.readiness,checks:data.checks,stores:data.stores}:null);setFranchise(data.franchise??null);setEvidenceState(data.evidenceState===true);setCheckedAt(Date.now())}
   }catch(error){if(!signal?.aborted)setError((error as Error).message)}finally{if(!signal?.aborted)setLoading(false)}
  },[brand,storeId]);
  useEffect(()=>{const controller=new AbortController();void Promise.resolve().then(()=>{if(!controller.signal.aborted)return load(controller.signal)});return ()=>controller.abort()},[load]);
  function edit(fact:BrandFact|null){
   setEditing(fact);setForm(fact?{key:fact.key,value:fact.value,status:fact.status,source:fact.source,verifiedAt:localInput(fact.verifiedAt),validUntil:localInput(fact.validUntil)}:emptyForm);
-  setSource(sourceFormOf(fact));setOtherKey(!!fact&&!factCatalogItem(fact.key));setConfirmed(false);setScopeConfirmed(false);setOpen(true);setError('');setMessage('');setAlertNote('');
+  setSource(sourceFormOf(fact));setBasis(basisFormOf(fact));setOtherKey(!!fact&&!factCatalogItem(fact.key));setConfirmed(false);setScopeConfirmed(false);setOpen(true);setError('');setMessage('');setAlertNote('');
  }
  const targetStore=editing?editing.storeId:storeId,keyItem=factCatalogItem(form.key),needsScopeConfirm=!!keyItem?.storeScoped&&!targetStore;
  // 가맹 항목(가맹 브랜드만): 정보공개서 근거·창업비용 상세를 함께 보낸다. 가맹 항목이 아니게 바꾸면 이전 근거를 지운다(null).
@@ -88,7 +96,7 @@ export function BrandFactsPanel({campaign,brandId,onChanged}:{campaign?:Campaign
  async function save(event:FormEvent){
   event.preventDefault();setSaving(true);setError('');setMessage('');setAlertNote('');
   try{
-   const {response,data}=await postFacts<SaveResult>({action:'save_fact',id:editing?.id,version:editing?.version,confirmed:form.status==='confirmed'&&confirmed,data:{...form,brandId:brand,...(targetStore?{storeId:targetStore}:{}),verifiedAt:isoInput(form.verifiedAt),validUntil:isoInput(form.validUntil),...franchisePayload()}});
+   const {response,data}=await postFacts<SaveResult>({action:'save_fact',id:editing?.id,version:editing?.version,confirmed:form.status==='confirmed'&&confirmed,data:{...form,brandId:brand,...(targetStore?{storeId:targetStore}:{}),verifiedAt:isoInput(form.verifiedAt),validUntil:isoInput(form.validUntil),...franchisePayload(),...(evidenceState?basisPayload(basis,editing):{})}});
    if(!response.ok)throw new Error((response.status===409?t('facts.conflict'):'')+(data.error||t('facts.saveFailed')));
    setOpen(false);setEditing(null);setMessage(t('facts.saved'));setAlertNote(savedNote(data));await load();onChanged?.();
   }catch(error){setError((error as Error).message)}finally{setSaving(false)}
@@ -128,7 +136,7 @@ export function BrandFactsPanel({campaign,brandId,onChanged}:{campaign?:Campaign
   {!!skipped.length&&<details className="fold"><summary>{t('facts.skipped')} {skipped.length}{t('facts.countUnit')}</summary><ul>{skipped.map((s,i)=><li key={i}><MetaLine items={[scopeName(s.storeId),`${s.label}: ${s.value}`,s.reason]}/></li>)}</ul></details>}
   {!!overview?.checks.length&&<details className="fold" open={!campaign}><summary>{t('facts.checkNeeded')} {overview.checks.length}{t('facts.countUnit')}</summary><ul className="artifact-list">{overview.checks.map(c=><li key={c.id} className="brand-detail-card"><div className="brand-detail-body"><p><span className="source-state">{checkStates()[c.state]}</span> <MetaLine items={[c.origin==='brand'?t('facts.brandIntro'):t('facts.storeInfo',{storeName:c.storeName??''}),`${c.label}: ${c.value}`]}/></p>{c.origin==='brand'&&<p className="subtle-note">{c.claim}</p>}{c.state==='conflict'&&<p className="form-error">{c.origin==='store'?t('facts.storeValue',{label:c.label}):t('facts.introValue',{label:c.label})} {t('facts.differs')} {c.ledgerValue}</p>}{c.state==='prohibited'&&<p className="form-error">{t('facts.prohibited')}</p>}{c.state==='unverified'&&<Button variant="outline" size="sm" disabled={saving} onClick={()=>void register(c)}>{t('facts.saveCandidate')}</Button>}</div></li>)}</ul></details>}
   {error&&<div role="alert" className="load-error"><span>{error}</span><Button variant="outline" disabled={saving} onClick={()=>void load()}>{t('facts.refresh')}</Button></div>}{message&&<p role="status">{message}</p>}{alertNote&&<p role="alert" className="form-error">{alertNote}</p>}
-  {loading?<ScreenSkeleton label={t('facts.loading')} rows={2}/>:facts.length?<ul className="artifact-list">{facts.map(f=><li key={f.id} className="brand-detail-card"><div className="brand-detail-body"><h4><MetaLine items={[factLabel(f.key)+(factCatalogItem(f.key)?'':t('facts.other')),statuses()[f.status]]}/></h4><p className="whitespace-pre-wrap">{f.value}</p>{franchise&&<FranchiseFactNote fact={f} block={franchise} canManage={canManage} disabled={saving} onRebase={()=>{setRebasing(f);setRebaseForm({fiscalYear:f.sourceRef?String(f.sourceRef.fiscalYear):'',page:f.sourceRef?.page?String(f.sourceRef.page):'',asOf:f.sourceRef?.asOf??'',verifiedAt:'',validUntil:''})}}/>}<p><MetaLine items={[scopeName(f.storeId),`v${f.version}`,f.status==='confirmed'&&Date.parse(f.validUntil)<=checkedAt&&t('facts.expired')]}/></p><p>{t('facts.source')} {f.source||t('facts.unverified')}</p><p><MetaLine items={[t('facts.checkedOn',{v:f.verifiedAt?new Date(f.verifiedAt).toLocaleString('ko-KR'):t('facts.unverified')}),t('facts.validUntil',{v:f.validUntil?new Date(f.validUntil).toLocaleString('ko-KR'):t('facts.unset')})]}/></p>{f.status!=='candidate'&&f.confirmedBy&&<p><MetaLine items={[`${f.status==='confirmed'?t('facts.confirm'):t('facts.reject')}: ${f.confirmedBy.email||f.confirmedBy.id}`,f.confirmedAt&&new Date(f.confirmedAt).toLocaleString('ko-KR')]}/></p>}{(canManage||f.status==='candidate')&&<Button variant="outline" disabled={saving} onClick={()=>edit(f)} aria-label={t('facts.editLabel',{v:factLabel(f.key)})}>{canManage?t('facts.edit'):t('facts.editCandidate')}</Button>}</div></li>)}</ul>:<p className="notice">{t('facts.empty')}</p>}
+  {loading?<ScreenSkeleton label={t('facts.loading')} rows={2}/>:facts.length?<ul className="artifact-list">{facts.map(f=><li key={f.id} className="brand-detail-card"><div className="brand-detail-body"><h4><MetaLine items={[factLabel(f.key)+(factCatalogItem(f.key)?'':t('facts.other')),statuses()[f.status]]}/></h4><p className="whitespace-pre-wrap">{f.value}</p>{evidenceState&&<Suspense fallback={null}><FactEvidenceFields mode="badge" fact={f}/></Suspense>}{franchise&&<FranchiseFactNote fact={f} block={franchise} canManage={canManage} disabled={saving} onRebase={()=>{setRebasing(f);setRebaseForm({fiscalYear:f.sourceRef?String(f.sourceRef.fiscalYear):'',page:f.sourceRef?.page?String(f.sourceRef.page):'',asOf:f.sourceRef?.asOf??'',verifiedAt:'',validUntil:''})}}/>}<p><MetaLine items={[scopeName(f.storeId),`v${f.version}`,f.status==='confirmed'&&Date.parse(f.validUntil)<=checkedAt&&t('facts.expired')]}/></p><p>{t('facts.source')} {f.source||t('facts.unverified')}</p><p><MetaLine items={[t('facts.checkedOn',{v:f.verifiedAt?new Date(f.verifiedAt).toLocaleString('ko-KR'):t('facts.unverified')}),t('facts.validUntil',{v:f.validUntil?new Date(f.validUntil).toLocaleString('ko-KR'):t('facts.unset')})]}/></p>{f.status!=='candidate'&&f.confirmedBy&&<p><MetaLine items={[`${f.status==='confirmed'?t('facts.confirm'):t('facts.reject')}: ${f.confirmedBy.email||f.confirmedBy.id}`,f.confirmedAt&&new Date(f.confirmedAt).toLocaleString('ko-KR')]}/></p>}{(canManage||f.status==='candidate')&&<Button variant="outline" disabled={saving} onClick={()=>edit(f)} aria-label={t('facts.editLabel',{v:factLabel(f.key)})}>{canManage?t('facts.edit'):t('facts.editCandidate')}</Button>}</div></li>)}</ul>:<p className="notice">{t('facts.empty')}</p>}
   {rebasing&&franchise&&<form className="form-stack" onSubmit={rebase} aria-label={t('facts.rebaseTitle')}><fieldset disabled={saving} className="form-stack"><legend>{factLabel(rebasing.key)}{t('facts.rebaseLead')}{versionLabel(franchise.currentVersionId||'')}{t('facts.rebaseTail')}</legend>
    <p className="subtle-note">{t('facts.rebaseNote')} {franchise.disclaimer}</p>
    <div className="form-two"><label className="field"><span>{t('facts.fiscalYear')}</span><Input required type="number" min={2000} max={2199} value={rebaseForm.fiscalYear} onChange={e=>setRebaseForm({...rebaseForm,fiscalYear:e.target.value})}/></label><label className="field"><span>{t('facts.pageOptional')}</span><Input type="number" min={1} max={5000} value={rebaseForm.page} onChange={e=>setRebaseForm({...rebaseForm,page:e.target.value})}/></label></div>
@@ -153,6 +161,7 @@ export function BrandFactsPanel({campaign,brandId,onChanged}:{campaign?:Campaign
     {frItem.disclosure&&<p className="subtle-note">{t('facts.franchiseRule')} {franchise.disclaimer}</p>}
    </fieldset>}
    {canManage?<label className="field"><span>{t('facts.statusField')}</span><NativeSelect value={form.status} onChange={e=>{setForm({...form,status:e.target.value as BrandFact['status']});setConfirmed(false)}}>{Object.entries(statuses()).map(([value,label])=><NativeSelectOption key={value} value={value}>{label}</NativeSelectOption>)}</NativeSelect></label>:<p className="subtle-note">{t('facts.statusLabel')} {statuses().candidate}{t('facts.statusAdminOnly')} {adminRequestNote}</p>}
+   {evidenceState&&<Suspense fallback={null}><FactEvidenceFields mode="form" form={basis} onChange={setBasis}/></Suspense>}
    <label className="field"><span>{t('facts.sourceField')}</span><Textarea required={form.status==='confirmed'} rows={2} maxLength={3000} value={form.source} onChange={e=>setForm({...form,source:e.target.value})}/></label>
    <div className="form-two"><label className="field"><span>{t('facts.verifiedAtLocal')}</span><Input type="datetime-local" required={form.status==='confirmed'} value={form.verifiedAt} onChange={e=>setForm({...form,verifiedAt:e.target.value})}/></label><label className="field"><span>{t('facts.validUntilLocal')}</span><Input type="datetime-local" required={form.status==='confirmed'} value={form.validUntil} onChange={e=>setForm({...form,validUntil:e.target.value})}/></label></div>
    {form.status==='confirmed'&&<label><CheckInput required checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/> {t('facts.attest')}</label>}

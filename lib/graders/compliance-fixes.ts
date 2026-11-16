@@ -3,7 +3,7 @@
 // 080 번호·전송자 명칭처럼 모르는 값은 자리표시와 [확인 필요]로 둔다. 안전한 고침이 없는 규칙은 제안을 만들지 않는다(화면이 '직접 고쳐야 합니다'를 보인다).
 // 위치 찾기: 채점기를 그대로 돌려 규칙의 첫 걸린 문장(발췌)을 찾고, 그 문장을 같은 길이의 빈칸으로 가린 뒤 다시 돌려 다음 문장을 찾는다(오프셋이 원문과 같다).
 // 해소 단위: 표기·표시 규칙은 채점기와 같이 소제목 단락마다 한 번만 고친다(한 단락의 표기가 그 단락의 모든 걸린 문장을 해소한다).
-import {checkCompliance,COMPLIANCE_LEXICON,type ComplianceRule,type FranchiseComplianceScope} from './compliance';
+import {checkCompliance,effectiveRule,COMPLIANCE_LEXICON,type ComplianceRule,type ComplianceOptions,type FranchiseComplianceScope} from './compliance';
 import type {FactLedger} from './types';
 import {VIRTUAL_PERSON_LINE} from '../ai-disclosure';
 import {AI_IMAGE_VISIBLE_LABEL} from '../ai-disclosure-image';
@@ -12,12 +12,14 @@ export type ComplianceFixKind='insert'|'replace'|'remove'|'append';
 export type FixRange={start:number;end:number};
 // before: 원문의 range 부분(넣기·붙이기는 빈 문자열). after: 그 자리에 들어갈 글. preview: 고침이 걸친 줄의 전후(화면 비교용).
 export type ComplianceFix={id:string;ruleId:string;kind:ComplianceFixKind;range:FixRange;before:string;after:string;rationale:string;sources:string[];needsCheck:boolean;preview:{before:string;after:string}};
-export type ComplianceFixOptions={facts?:FactLedger|null;franchise?:FranchiseComplianceScope|null;senderName?:string|null};
+// packs: 규정 점검과 같은 옵트인 묶음(.16 'mkt'). 서버는 보기와 적용에서 같은 스위치 값으로 계산해 고침 id가 같다.
+export type ComplianceFixOptions={facts?:FactLedger|null;franchise?:FranchiseComplianceScope|null;packs?:ComplianceOptions['packs'];senderName?:string|null};
 export const COMPLIANCE_FIX_NOTICE='수정 제안은 COLLECTIVE 휴리스틱이며 법률 자문이 아닙니다. 적용하면 새 버전으로 저장되고 이전 버전으로 되돌릴 수 있습니다.';
 export const OPTOUT_PLACEHOLDER='[수신거부 080-…]';
 export const SENDER_PLACEHOLDER='[전송자 명칭 확인 필요]';
 export const CLAIM_PLACEHOLDER='[확인 필요: 순위 근거]';
 export const CLAIM_BASIS_PLACEHOLDER='[확인 필요: 근거]';
+export const WARRANTY_PLACEHOLDER='[확인 필요: 보증 범위·기간·절차]';
 export class ComplianceFixConflictError extends Error{}
 
 type Span={start:number;end:number};
@@ -134,6 +136,14 @@ const FIXERS:Readonly<Record<string,(c:Ctx)=>Draft|null>>={
  'kr.ad.superlative_unsupported':c=>claimReplacement(c,CLAIM_BASIS_PLACEHOLDER,'최고·1위·최초·유일 같은 배타적 절대 표현은 객관적 근거로 입증될 때만 씁니다(부당 표시·광고 지정고시 Ⅲ.14.나). 확정 근거가 없어 표현을 확인 필요 표시로 바꿉니다.'),
  'kr.ad.outcome_guarantee':c=>({kind:'remove',range:removal(c),after:'',needsCheck:false,anchor:c.sentence.start,
   rationale:'효과·수익·매출을 보장한다는 표현은 실증할 수 없는 거짓·과장 광고가 될 수 있습니다(표시광고법 제3조). 고쳐 쓸 근거가 없어 문장을 지웁니다.'}),
+ // .16 마케팅 묶음(mkt): 한국어 광고 표시 넣기, 몸 상태 변화·AI 전문가 추천 문장 지우기, 무조건 보증은 범위·기간 확인 표시로 바꾸기. 나머지 mkt 규칙은 사람이 고친다.
+ 'kr.ad.foreign_only_disclosure':c=>({kind:'insert',range:at(contentStart(c.text,c.line)),after:'#광고 ',needsCheck:false,anchor:c.part.start,
+  rationale:'국내 소비자에게 보이는 추천·협찬 게시물은 한국어로 광고임을 표시합니다(추천·보증 심사지침 Ⅴ.6.나). 외국어 표시만으로는 부족해 이 줄 앞에 #광고를 넣습니다.'}),
+ 'kr.food.body_change':c=>({kind:'remove',range:removal(c),after:'',needsCheck:false,anchor:c.sentence.start,
+  rationale:'먹은 뒤 몸 상태가 바뀐다는 식품 표현은 거짓·과장 광고가 될 수 있습니다(식품표시광고법 제8조). 맛·식감·먹는 장면으로 다시 쓰도록 문장을 지웁니다.'}),
+ 'kr.cos.ai_expert':c=>({kind:'remove',range:removal(c),after:'',needsCheck:false,anchor:c.sentence.start,
+  rationale:'AI로 만든 의사·약사·전문가가 화장품을 추천하는 것처럼 보이는 광고는 금지됩니다(화장품법 제13조①4호). 문장을 지웁니다.'}),
+ 'kr.ad.unconditional_warranty':c=>claimReplacement(c,WARRANTY_PLACEHOLDER,'내용·기간 없이 품질·만족을 보증하는 표현은 부당한 표시가 될 수 있습니다(지정고시 Ⅲ.11). 보증 범위·기간·절차를 정해 적도록 확인 필요 표시로 바꿉니다.'),
 };
 export const FIXABLE_RULE_IDS=Object.freeze(Object.keys(FIXERS));
 export const hasFixer=(ruleId:string)=>Object.hasOwn(FIXERS,ruleId);
@@ -181,13 +191,13 @@ function hitSentences(text:string,ruleId:string,opts:ComplianceFixOptions):Span[
  }
  return out;
 }
-const ruleOf=(id:string)=>COMPLIANCE_LEXICON.rules.find(r=>r.id===id);
+const ruleOf=(id:string,opts:ComplianceFixOptions)=>{const rule=COMPLIANCE_LEXICON.rules.find(r=>r.id===id);return rule&&effectiveRule(rule,opts.packs)};
 // 원문과 옵션이 같으면 결과(고침 id 포함)도 같다. 서버는 저장 본문으로 다시 계산해 화면이 고른 id만 적용한다.
 export function computeComplianceFixes(text:string,opts:ComplianceFixOptions={}):ComplianceFix[]{
  const hit=new Set(checkCompliance(text,opts).issues.filter(i=>i.severity!=='info'&&hasFixer(i.ruleId)).map(i=>i.ruleId));
  const drafts:{rule:ComplianceRule;draft:Draft}[]=[];
  for(const id of FIXABLE_RULE_IDS){
-  const rule=ruleOf(id);if(!rule||!hit.has(id))continue;
+  const rule=ruleOf(id,opts);if(!rule||!hit.has(id))continue;
   const anchors=new Set<number>();
   for(const sentence of hitSentences(text,id,opts)){
    const draft=FIXERS[id]({text,rule,sentence,line:lineAt(text,sentence.start),part:partAt(text,sentence.start),opts});

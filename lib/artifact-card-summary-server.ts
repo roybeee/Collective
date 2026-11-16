@@ -5,14 +5,15 @@ import {listRecords,readRecord} from './server';
 import type {Artifact,Campaign} from './agency';
 import type {Publication} from './execution';
 import {complianceViewOf,factLedgerOf} from './artifact-sources-server';
+import {compliancePacksOf} from './online-grading';
 import {publicationMark,type PublicationMark} from './artifact-lifecycle';
 
 export type ArtifactCardSummary={artifactId:string;artifactVersion:number;publication:PublicationMark;compliance:{status:'checked'|'not_run';block:number;warn:number}};
 export async function campaignArtifactCards(owner:string,campaignId:string):Promise<ArtifactCardSummary[]>{
  const c=await readRecord<Campaign>(owner,'campaign',campaignId);
- const [artifacts,publications,ledger]=await Promise.all([listRecords<Artifact>(owner,'artifact',campaignId),listRecords<Publication>(owner,'execution_publication',campaignId),factLedgerOf(owner,c)]);
+ const [artifacts,publications,ledger,packs]=await Promise.all([listRecords<Artifact>(owner,'artifact',campaignId),listRecords<Publication>(owner,'execution_publication',campaignId),factLedgerOf(owner,c),compliancePacksOf(owner)]);
  return artifacts.filter(a=>a.status!=='outdated').map(a=>{
-  const view=complianceViewOf(a,ledger,null);
+  const view=complianceViewOf(a,ledger,null,undefined,packs);
   return {artifactId:a.id,artifactVersion:a.version,publication:publicationMark(a,publications),compliance:{status:view.status,block:view.issues.filter(i=>i.severity==='block').length,warn:view.issues.filter(i=>i.severity==='warn').length}};
  });
 }

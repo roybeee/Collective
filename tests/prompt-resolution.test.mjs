@@ -43,6 +43,8 @@ check('code run writes no campaign pin',()=>assert.equal(sql.prepare("SELECT COU
 raw.publishRepo(SOURCE_SHA);raw.publishRepo('main');
 // A1 정본은 새 후보다(channel.offline, 커머스·감사 묶음의 channel.commerce·channel.shortform·viral.discovery). 이 절의 '코드와 같은 본문' 대조는 실제 코드 폴백을 명시적으로 등록한다.
 for(const ref of [SOURCE_SHA,'main'])for(const unit of ['channel.offline','channel.commerce','channel.shortform','viral.discovery'])raw.publish(ref,unit,units.codeUnitBody(unit));
+// 마케팅 스킬 이식 P4a: 역할 정본 8개도 새 후보다. 같은 이유로 코드 폴백 본문을 명시적으로 등록한다.
+for(const ref of [SOURCE_SHA,'main'])for(const unit of units.promptUnits.map(u=>u.unit).filter(u=>u.startsWith('role.')))raw.publish(ref,unit,units.codeUnitBody(unit));
 const ids={};
 for(const u of units.promptUnits){const r=await post({action:'register',unit:u.unit,sourceSha:SOURCE_SHA});ids[u.unit]=r.body.version?.id;await setRelease(server,owner,u.unit,ids[u.unit])}
 check('all 22 units registered',()=>assert.equal(Object.values(ids).filter(Boolean).length,22));
@@ -92,7 +94,7 @@ const dUsage=await usageOf(discovery.id);
 check('viral provider usage records the registry version',()=>assert.equal(dUsage.promptVersion,ids['viral.discovery']));
 
 // 5) 다른 본문 활성화: 이미 고정한 캠페인은 고정 버전을 쓰고, 새 캠페인은 새 active를 쓴다.
-const V2='f3a5'.repeat(10),insightBody={...raw.repoBody('role.insight'),focus:'합성 개선 초점: 선택 장벽 하나를 먼저 확인한다'};
+const V2='f3a5'.repeat(10),insightBody={...JSON.parse(JSON.stringify(units.codeUnitBody('role.insight'))),focus:'합성 개선 초점: 선택 장벽 하나를 먼저 확인한다'};
 raw.publish(V2,'role.insight',insightBody);raw.publish('main','role.insight',insightBody);
 const insightV2=(await post({action:'register',unit:'role.insight',sourceSha:V2})).body.version.id;
 await setRelease(server,owner,'role.insight',insightV2,{previous:ids['role.insight']});
@@ -101,7 +103,7 @@ check('a pinned campaign keeps its pinned insight version',()=>assert.ok(pinned.
 const fresh={...roleCampaign,id:'pr-res-campaign-2'};await put('campaign',fresh.id,fresh);
 await runRole(execution,server,owner,fresh,'cmo');const freshInsight=await runRole(execution,server,owner,fresh,'insight');
 check('a new campaign resolves the new active body',()=>assert.ok(freshInsight.status==='completed'&&freshInsight.instructions.includes(insightBody.focus)));
-check('the new body changes only the role skill text, not the code-owned sections',()=>assert.equal(freshInsight.instructions.replace(insightBody.focus,raw.repoBody('role.insight').focus),pinned.instructions));
+check('the new body changes only the role skill text, not the code-owned sections',()=>assert.equal(freshInsight.instructions.replace(insightBody.focus,units.codeUnitBody('role.insight').focus),pinned.instructions));
 const freshSnapshot=await snapshotOf(sql.prepare("SELECT id FROM jobs WHERE campaign_id=? AND role='insight'").get(fresh.id).id);
 check('the new campaign records the new insight version',()=>assert.ok(freshSnapshot.promptVersion.split('+').includes(insightV2)));
 // 회의도 같은 해석기로 새 본문을 쓴다: 역할 스킬은 지시에, 채널 스킬은 입력의 channelPractice에 들어간다.

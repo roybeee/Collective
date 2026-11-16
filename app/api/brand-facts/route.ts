@@ -1,5 +1,5 @@
 import {identity,actor,secureMutation,body,str,json,failure,ApiError,acquireLock,releaseLock,database,stamp} from '@/lib/server';
-import {getBrandFacts,saveBrandFact,rebaseFranchiseFacts,franchiseFactsOverview} from '@/lib/brand-facts-server';
+import {getBrandFacts,saveBrandFact,rebaseFranchiseFacts,franchiseFactsOverview,factEvidenceStateEnabled} from '@/lib/brand-facts-server';
 import {factOverview,importFactCandidates} from '@/lib/fact-import';
 import {flagPublicationsForFactChange} from '@/lib/execution-server';
 import {executionRate} from '@/lib/execution-rate';
@@ -18,7 +18,9 @@ export async function GET(req:Request){
   if(!brandId)return json({facts});
   // 가맹 프로필이나 정보공개서 버전이 있는 브랜드만 franchise 블록을 싣는다(비가맹 브랜드 응답 불변).
   const franchise=await franchiseFactsOverview(owner,brandId,facts);
-  return json({facts,...await factOverview(database(),owner,brandId,storeId),...(franchise?{franchise}:{})});
+  // 근거 상태 입력(스위치 fact_evidence_state, P3)이 켜졌을 때만 evidenceState를 싣는다(꺼짐이면 응답 불변).
+  const evidenceState=await factEvidenceStateEnabled(owner);
+  return json({facts,...await factOverview(database(),owner,brandId,storeId),...(franchise?{franchise}:{}),...(evidenceState?{evidenceState}:{})});
  }catch(error){return failure(error)}
 }
 

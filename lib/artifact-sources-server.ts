@@ -13,12 +13,13 @@ import type {LearningRule} from './learning';
 import {meetingLabels,type Meeting} from './meetings';
 import {roleArtifactId} from './role-execution';
 import {evidenceContext} from './ai-context';
-import {checkCompliance,COMPLIANCE_LEXICON,COMPLIANCE_NOTICE} from './graders/compliance';
+import {checkCompliance,rulesInPacks,COMPLIANCE_LEXICON,COMPLIANCE_NOTICE,type CompliancePack} from './graders/compliance';
 import {computeComplianceFixes,COMPLIANCE_FIX_NOTICE} from './graders/compliance-fixes';
 import {isEnabled} from './feature-flags';
+import {withEthicsChecklist} from './ethics-checklist-server';
 import {bodyOf} from './graders/text';
 import type {FactLedger} from './graders/types';
-import {MAX_GRADED_LINES} from './online-grading';
+import {MAX_GRADED_LINES,compliancePacksOf} from './online-grading';
 import {originLabel} from './review-decisions';
 import {factLabel} from './fact-catalog';
 import {isAiGenerated,AI_DISCLOSURE_LINE,VIRTUAL_PERSON_LINE} from './ai-disclosure';
@@ -86,21 +87,22 @@ async function factSources(owner:string,a:Artifact,c:Campaign,ledger:FactLedger|
 }
 const sourcesOf=(ids:readonly string[])=>ids.flatMap(id=>{const s=COMPLIANCE_LEXICON.sources[id];return s?[{title:s.title,url:s.url}]:[]});
 // 규칙 분류별 통과·주의·차단. 통과는 그 분류에서 걸린 규칙이 없는 규칙 수다(가맹 모집 범위 규칙은 소비자 점검에서 쓰지 않아 뺀다). info(인용 문장)는 세지 않는다.
-export function complianceViewOf(a:Pick<Artifact,'id'|'role'|'content'>,ledger:FactLedger|null,gradedAt:string|null,checkedAt=stamp()):ComplianceView{
+// packs: 옵트인 묶음(.16 'mkt'). 꺼져 있으면 묶음 규칙을 점검·통과 수에서 모두 빼서 보기가 .15와 같다.
+export function complianceViewOf(a:Pick<Artifact,'id'|'role'|'content'>,ledger:FactLedger|null,gradedAt:string|null,checkedAt=stamp(),packs:readonly CompliancePack[]=[]):ComplianceView{
  const lines=a.content.split('\n').length;
  const base={lines,checkedAt,gradedAt,notice:COMPLIANCE_NOTICE};
  if(lines>MAX_GRADED_LINES)return {...base,status:'not_run',categories:[],issues:[]};
- const report=checkCompliance(bodyOf({id:a.id,kind:'role',role:a.role,text:a.content}),{facts:ledger});
+ const report=checkCompliance(bodyOf({id:a.id,kind:'role',role:a.role,text:a.content}),{facts:ledger,packs});
  const issues=report.issues.flatMap(i=>i.severity==='info'?[]:[{category:i.category,ruleId:i.ruleId,severity:i.severity as 'block'|'warn',title:i.title,excerpt:i.excerpt,sources:sourcesOf(i.sources)}]);
- const rules=COMPLIANCE_LEXICON.rules.filter(r=>r.scope!=='recruitment'),hit=new Set(issues.map(i=>i.ruleId));
+ const rules=COMPLIANCE_LEXICON.rules.filter(r=>r.scope!=='recruitment'&&rulesInPacks(r,packs)),hit=new Set(issues.map(i=>i.ruleId));
  const categories=[...new Set(rules.map(r=>r.category))].map(category=>({category,label:COMPLIANCE_CATEGORY_LABELS[category]??category,pass:rules.filter(r=>r.category===category&&!hit.has(r.id)).length,warn:issues.filter(i=>i.category===category&&i.severity==='warn').length,block:issues.filter(i=>i.category===category&&i.severity==='block').length}));
  return {...base,status:'checked',categories,issues};
 }
 // 규정 수정 제안(스위치 compliance_fixes). 꺼져 있거나 점검하지 않은 판(not_run)이면 보기를 그대로 둔다(키도 없다). 전송자 명칭은 캠페인 브랜드 이름이다.
-export async function withComplianceFixes(owner:string,c:Campaign,a:Pick<Artifact,'version'|'content'>,view:ComplianceView,ledger:FactLedger|null):Promise<ComplianceView>{
+export async function withComplianceFixes(owner:string,c:Campaign,a:Pick<Artifact,'version'|'content'>,view:ComplianceView,ledger:FactLedger|null,packs:readonly CompliancePack[]=[]):Promise<ComplianceView>{
  if(view.status!=='checked'||!await isEnabled(owner,'compliance_fixes'))return view;
  const brand=await optional(readRecord<{name?:string}>(owner,'brand',c.brandId));
- const items=computeComplianceFixes(a.content,{facts:ledger,senderName:typeof brand?.name==='string'?brand.name:null}).map(f=>({id:f.id,ruleId:f.ruleId,kind:f.kind,before:f.before,after:f.after,rationale:f.rationale,needsCheck:f.needsCheck,preview:f.preview,sources:sourcesOf(f.sources)}));
+ const items=computeComplianceFixes(a.content,{facts:ledger,packs,senderName:typeof brand?.name==='string'?brand.name:null}).map(f=>({id:f.id,ruleId:f.ruleId,kind:f.kind,before:f.before,after:f.after,rationale:f.rationale,needsCheck:f.needsCheck,preview:f.preview,sources:sourcesOf(f.sources)}));
  return {...view,fixes:{version:a.version,notice:COMPLIANCE_FIX_NOTICE,items,scope:{brandId:c.brandId,storeId:c.storeId??null,campaignId:c.id}}};
 }
 export async function factLedgerOf(owner:string,c:Campaign):Promise<FactLedger|null>{
@@ -117,9 +119,9 @@ function originInfo(a:StoredArtifact,run:RunRecord|null,model:string|null):Origi
 export async function artifactSources(owner:string,artifactId:string):Promise<ArtifactSources>{
  const a=await readRecord<StoredArtifact>(owner,'artifact',artifactId),c=await readRecord<Campaign>(owner,'campaign',a.campaignId);
  const [run,ledger,grading,usageModel]=await Promise.all([runOf(owner,a),factLedgerOf(owner,c),optional(readRecord<{gradedAt?:string}>(owner,'grading',`${a.id}:${a.version}`)),isAiGenerated(a)?reportedModel(owner,a.id):Promise.resolve(null)]);
- const [labelled,facts]=await Promise.all([labelSources(owner,run?.labels??{},c),factSources(owner,a,c,ledger)]);
+ const [labelled,facts,packs]=await Promise.all([labelSources(owner,run?.labels??{},c),factSources(owner,a,c,ledger),compliancePacksOf(owner)]);
  return {artifactId:a.id,version:a.version,brandId:c.brandId,refs:{...labelled,...facts},factKeys:Object.keys(facts).map(k=>k.slice('fact:'.length)),
-  origin:originInfo(a,run,usageModel??run?.model??null),compliance:await withComplianceFixes(owner,c,a,complianceViewOf(a,ledger,text(grading?.gradedAt)),ledger)};
+  origin:originInfo(a,run,usageModel??run?.model??null),compliance:await withEthicsChecklist(owner,c,a,await withComplianceFixes(owner,c,a,complianceViewOf(a,ledger,text(grading?.gradedAt),stamp(),packs),ledger,packs))};
 }
 // 작업물 목록 카드의 소재 예측 점수 배지(G2). 캠페인의 저장된 점수 중 현재 판만 쓴다. 없는 캠페인·다른 소유자는 404다.
 export async function campaignScoreSummaries(owner:string,campaignId:string):Promise<ArtifactScoreSummary[]>{

@@ -19,6 +19,7 @@ import {GEO_ENGINES,GEO_INTENTS,GEO_INTENT_LABELS,GEO_LOCALES,GEO_LOCALE_LABELS,
 import {GEO_ENGINE_PAGES,type GeoObservation} from '@/lib/geo-observation';
 import type {GeoView} from '@/lib/geo-run-server';
 import type {GeoSiteState} from '@/lib/geo-report';
+import {GeoProtocolV2} from './geo-protocol-v2';
 import styles from './growth-panel.module.css';
 
 const POLL_MS=15000;
@@ -80,7 +81,7 @@ export function GeoPanel({campaignId}:{campaignId:string}){
   <form onSubmit={e=>{e.preventDefault();void send({action:'save_question',id:editing?.id,expectedVersion:editing?.version??0,input:form},editing?'질문을 저장했습니다.':'새 질문을 저장했습니다.',()=>{setForm(emptyForm());setEditing(null)})}}><fieldset disabled={saving} className={styles.form}><legend>{editing?'질문 수정':'새 질문'}</legend>
    <label className={styles.wide}>질문<Input maxLength={200} value={form.text} onChange={e=>setForm({...form,text:e.target.value})}/></label>
    <label>언어<NativeSelect value={form.locale} onChange={e=>setForm({...form,locale:e.target.value as GeoQuestionInput['locale']})}>{GEO_LOCALES.map(l=><option key={l} value={l}>{GEO_LOCALE_LABELS[l]}</option>)}</NativeSelect></label>
-   <label>유형<NativeSelect value={form.intent} onChange={e=>setForm({...form,intent:e.target.value as GeoQuestionInput['intent']})}>{GEO_INTENTS.map(i=><option key={i} value={i}>{GEO_INTENT_LABELS[i]}</option>)}</NativeSelect></label>
+   <label>유형<NativeSelect value={form.intent} onChange={e=>setForm({...form,intent:e.target.value as GeoQuestionInput['intent']})}>{('protocol' in view?view.intents:GEO_INTENTS).map(i=><option key={i} value={i}>{GEO_INTENT_LABELS[i]}</option>)}</NativeSelect></label>
    {GEO_ENGINES.map(e=><label key={e}><CheckInput checked={form.engines.includes(e)} onChange={ev=>setForm({...form,engines:ev.target.checked?GEO_ENGINES.filter(x=>x===e||form.engines.includes(x)):form.engines.filter(x=>x!==e)})}/>{engineLabel(e)}</label>)}
    <label><CheckInput checked={form.active} onChange={e=>setForm({...form,active:e.target.checked})}/>추적 켜기</label>
    <Button variant="panel" size="fit" type="submit" disabled={!canEdit||!form.text.trim()||!form.engines.length} disabledReason={!canEdit?readOnlyReason:!form.text.trim()?'질문을 먼저 쓰세요.':!form.engines.length?'엔진을 하나 이상 고르세요.':undefined}>질문 저장</Button>
@@ -106,6 +107,7 @@ export function GeoPanel({campaignId}:{campaignId:string}){
   <h5>보고서 {view.report.week?`${view.report.week} 주`:''}</h5>
   {view.report.engines.length?<DataTable rows={view.report.engines} rowKey={e=>e.engine} caption="엔진별 점유율과 인용률" columns={[{label:'엔진',cell:e=>engineLabel(e.engine)},{label:'점유율(언급/관찰 질문)',cell:e=>`${pct(e.shareOfVoice)} (${e.mentions}/${e.observed})`,sort:e=>e.shareOfVoice??-1},{label:'인용률',cell:e=>`${pct(e.citationRate)} (${e.cited}/${e.observed})`,sort:e=>e.citationRate??-1},{label:'지난주 대비 점유율',cell:e=>pp(e.change.shareOfVoice)},{label:'지난주 대비 인용률',cell:e=>pp(e.change.citationRate)},{label:'측정 못 함',cell:e=>`${e.notObserved}`}]}/>:<EmptyLine next="측정이 쌓이면 엔진별 점유율이 계산됩니다.">보고서에 쓸 관찰 기록이 아직 없습니다.</EmptyLine>}
   {view.report.topDomains.length>0&&<p><MetaLine label="많이 인용된 도메인" items={view.report.topDomains.map(d=>`${d.domain} ${d.count}회${d.brand?'(공식)':''}`)}/></p>}
+  {'protocol' in view&&<GeoProtocolV2 view={view} send={send} saving={saving} canEdit={canEdit} lockedReason={lockedReason}/>}
   <h5>개선 백로그</h5>
   <ul>{view.report.backlog.map(b=><li key={b.id}>{b.text}{b.engines?.length?<> <small><MetaLine items={b.engines.map(engineLabel)}/></small></>:null}</li>)}</ul>
   <form onSubmit={e=>{e.preventDefault();void send({action:'save_site',expectedVersion:view.site.version,...checks},'사이트 점검을 저장했습니다.',()=>setSite(null))}}><fieldset disabled={saving} className={styles.form}><legend>사이트 점검(사람이 확인)</legend>

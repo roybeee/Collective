@@ -79,3 +79,17 @@ export function meetingDraftAgenda(schedule:Pick<Schedule,'title'|'kind'>,summar
 export function agendaSignalText(schedule:Pick<Schedule,'title'|'kind'>,period:string){
  return {title:`${scheduleTitle(schedule)} 검토`,detail:`${period} 예약 실행이 올린 검토 항목입니다. 지난 기간 신호·성과를 확인하고 담당·기한을 정하세요.`};
 }
+
+// GEO 프로토콜 v2(스위치 geo_protocol_v2): 변경 기록(geo_change)마다 반영일(KST 날짜)부터 +14일·+42일에 같은 조건 재관측을 예약한다(운영 기준).
+// 날짜는 UTC 자정 기준 날짜 더하기로 계산한다(KST 날짜 문자열이라 시차가 끼지 않는다). 실행은 lib/geo-run-server.ts advanceGeoRunsSafely가 tick마다 맡는다.
+export const GEO_RECHECK_OFFSETS=[14,42] as const;
+export type GeoRecheckOffset=typeof GEO_RECHECK_OFFSETS[number];
+// skipped: 기록한 캠페인이 보관·삭제돼 그 회차를 돌리지 않음(사유와 시각을 한 번 남기고 다시 시도하지 않는다).
+export type GeoRecheck={offset:GeoRecheckOffset;dueOn:string;status:'scheduled'|'started'|'skipped';runId?:string;startedAt?:string;reason?:string;skippedAt?:string};
+export const addKstDays=(day:string,n:number)=>new Date(Date.parse(day+'T00:00:00Z')+n*DAY).toISOString().slice(0,10);
+export const geoRecheckDates=(appliedOn:string)=>GEO_RECHECK_OFFSETS.map(offset=>({offset,dueOn:addKstDays(appliedOn,offset)}));
+// 오늘(KST)까지 예정일이 온, 아직 시작하지 않은 재관측. 예정일이 이른 순.
+export function dueGeoRechecks(changes:readonly {id:string;rechecks:readonly GeoRecheck[]}[],now:number){
+ const today=kstParts(now).day;
+ return changes.flatMap(c=>c.rechecks.filter(r=>r.status==='scheduled'&&r.dueOn<=today).map(r=>({changeId:c.id,offset:r.offset,dueOn:r.dueOn}))).sort((a,b)=>a.dueOn.localeCompare(b.dueOn)||a.changeId.localeCompare(b.changeId)||a.offset-b.offset);
+}

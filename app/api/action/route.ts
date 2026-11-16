@@ -13,6 +13,7 @@ import {requireAccess,artifactResource} from '@/lib/server-access';
 import {reviewActor,requireReasonCodes,requireCriteria,artifactDecisionStatement,briefSuggestionStatements,type ReviewedArtifact} from '@/lib/review-decisions-server';
 import {artifactVersionWrites} from '@/lib/artifact-save';
 import {applyComplianceFixesAction} from '@/lib/compliance-fixes-server';
+import {markEthicsCheckAction} from '@/lib/ethics-checklist-server';
 export async function POST(req:Request){let lockOwner="",lockToken="";try{const who=await actor(req),owner=who.owner,by={id:who.id,email:who.email};secureMutation(req);const b=await body(req);lockOwner=owner;lockToken=await acquireLock(owner);const db=database();
 if(b.action==='delete_campaign'){await requireAdminActor(req);return json(await deleteCampaign(owner,b,{...by,role:who.role}))}
 if(b.action==='save_campaign'){
@@ -61,6 +62,8 @@ if(b.action==='save_artifact'){
  const {artifact:a,writes}=await artifactVersionWrites(owner,c,old,{role,title,content},by);await db.batch(writes);return json({id:a.id})}
 // 규정 수정 제안 적용(스위치 compliance_fixes, lib/compliance-fixes-server.ts): 저장 본문으로 제안을 다시 계산해 고른 것만 새 버전으로 저장하고 다시 점검한다.
 if(b.action==='apply_compliance_fixes')return json(await applyComplianceFixesAction(req,who,b));
+// 사람 확인 체크리스트 표시(스위치 ethics_review_checklist, lib/ethics-checklist-server.ts): 추가 전용 기록, 승인을 막지 않는다.
+if(b.action==='mark_ethics_check')return json(await markEthicsCheckAction(req,who,b));
 if(b.action==='review_artifact'){
  // G7: 최종 승인은 approve_artifact(대표·관리자, 배정 브랜드의 브랜드 매니저·검토자, 배정 지점의 점포 매니저), 수정 요청은 캠페인을 볼 수 있으면 된다. 직원 승인은 이전과 같은 403이다.
  await requireAccess(req,b.decision==='approved'?'approve_artifact':'read_campaign',()=>artifactResource(owner,b.id));const a=await readRecord<Artifact>(owner,'artifact',str(b.id,'작업물',100,true));await assertNoActiveJobs(owner,a.campaignId);if(a.status==='outdated')throw new ApiError(409,'이전 브리프의 작업물은 승인할 수 없습니다.');if(a.version!==b.version)throw new ApiError(409,'작업물이 수정됐습니다. 최신 내용을 확인해 주세요.');if(!['approved','revision'].includes(b.decision))throw new ApiError(400,'검토 결과를 선택하세요.');const note=str(b.note??'','검토 의견',5000);if(b.decision==='revision'&&!note)throw new ApiError(400,'수정 요청 내용을 적어 주세요.');

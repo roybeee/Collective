@@ -15,7 +15,7 @@ import {isEnabled} from './feature-flags';
 import {evidenceContext} from './ai-context';
 import {runGraders,GRADERS_VERSION,type FactLedger,type GradeContext,type GraderResult,type GraderStatus} from './graders/index';
 import {bodyOf} from './graders/text';
-import {checkCompliance,downgradeVerdict,COMPLIANCE_NOTICE,type ComplianceReport} from './graders/compliance';
+import {checkCompliance,downgradeVerdict,COMPLIANCE_NOTICE,type ComplianceReport,type CompliancePack} from './graders/compliance';
 import {qualityMarkdown,type QualityReview} from './quality';
 import {scoreSavedArtifacts} from './creative-score-server';
 import {roles,type Artifact,type Campaign} from './agency';
@@ -35,13 +35,18 @@ export type Grading={id:string;artifactId:string;artifactVersion:number;campaign
 
 const emptySummary=():Record<GraderStatus,number>=>({pass:0,fail:0,not_applicable:0,grader_error:0});
 // 순수 채점: 저장된 본문(사용자가 보는 렌더본)을 채점한다. 규제 점검은 발췌(excerpt) 없이 분류·규칙·심각도만 남긴다.
-export function gradeArtifact(artifact:GradedArtifact,ctx:GradeContext,inputTokens:number|null){return scoreArtifact(artifact,ctx,inputTokens).result}
+// packs: 규정 점검 옵트인 묶음(.16 'mkt', 스위치 compliance_mkt_rules → compliancePacksOf). 비어 있으면 .15와 같은 이슈 목록이다.
+export function gradeArtifact(artifact:GradedArtifact,ctx:GradeContext,inputTokens:number|null,packs:readonly CompliancePack[]=[]){return scoreArtifact(artifact,ctx,inputTokens,packs).result}
+// 스위치 compliance_mkt_rules가 켜졌으면 ['mkt']. 읽지 못하면 묶음 없이(.15) 점검한다. 규정 보기·수정 제안·온라인 채점·다시 점검이 같은 값을 쓴다.
+export async function compliancePacksOf(owner:string):Promise<CompliancePack[]>{
+ try{return await isEnabled(owner,'compliance_mkt_rules')?['mkt']:[]}catch{console.error('compliance_mkt_rules_flag_unreadable');return []}
+}
 // report: A2 하향이 재사용하는 규제 점검 원본(발췌 포함). grading 기록에는 넣지 않는다.
-function scoreArtifact(artifact:GradedArtifact,ctx:GradeContext,inputTokens:number|null){
+function scoreArtifact(artifact:GradedArtifact,ctx:GradeContext,inputTokens:number|null,packs:readonly CompliancePack[]=[]){
  const started=Date.now();
  const item={id:artifact.id,kind:'role' as const,role:artifact.role,text:artifact.content,contract:!!artifact.outputContractVersion,inputTokens};
  const graders=runGraders(item,ctx).map(g=>({id:g.id,status:g.status,...(g.detail?{detail:g.detail.slice(0,200)}:{})}));
- const report=checkCompliance(bodyOf(item),{facts:ctx.facts}),count=(s:string)=>report.issues.filter(i=>i.severity===s).length;
+ const report=checkCompliance(bodyOf(item),{facts:ctx.facts,packs}),count=(s:string)=>report.issues.filter(i=>i.severity===s).length;
  const summary=graders.reduce((acc,g)=>({...acc,[g.status]:acc[g.status]+1}),emptySummary());
  return {report,result:{graders,summary,compliance:{version:report.version,block:count('block'),warn:count('warn'),info:count('info'),issues:report.issues.map(i=>({category:i.category,ruleId:i.ruleId,severity:i.severity}))},durationMs:Date.now()-started}};
 }
@@ -57,15 +62,16 @@ const gradingOf=(t:GradingTarget,campaignId:string,context:GradingContext):Omit<
 // 잠금 밖에서 쓰므로 그사이 캠페인이 지워졌으면 쓰지 않는다(캠페인과 함께 지운다는 grading 보존 정책). 같은 id는 덮어쓴다(recordStatement와 같은 규칙).
 const saveGrading=(owner:string,g:Grading)=>database().prepare('INSERT INTO records(id,owner,kind,parent_id,data,updated_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM records WHERE id=? AND owner=? AND kind=?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at WHERE records.owner=excluded.owner')
  .bind(`${owner}:grading:${g.id}`,owner,'grading',g.campaignId,JSON.stringify(g),stamp(),`${owner}:campaign:${g.campaignId}`,owner,'campaign').run();
-async function gradeOne(owner:string,campaign:Pick<Campaign,'id'|'storeId'>,t:GradingTarget,facts:{ledger:FactLedger|null;source:FactSource}){
+async function gradeOne(owner:string,campaign:Pick<Campaign,'id'|'storeId'>,t:GradingTarget,facts:{ledger:FactLedger|null;source:FactSource},packs:readonly CompliancePack[]){
  const context:GradingContext={facts:facts.source,confirmedFacts:facts.ledger?.confirmed.length??0,prohibitedFacts:facts.ledger?.prohibited.length??0,industry:null,localStore:!!campaign.storeId,inputTokens:null};
  try{
   const lines=t.artifact.content.split('\n').length;
   if(lines>MAX_GRADED_LINES){await saveGrading(owner,{...gradingOf(t,campaign.id,context),status:'not_run',graders:[],summary:null,compliance:null,durationMs:null,gradedAt:stamp(),reason:'too_many_lines',lines});return}
   const inputTokens=await usageInputTokens(owner,t.usageId),base=gradingOf(t,campaign.id,{...context,inputTokens});
-  const {result,report}=scoreArtifact(t.artifact,{facts:facts.ledger,industry:null,localStore:context.localStore},inputTokens);
+  const {result,report}=scoreArtifact(t.artifact,{facts:facts.ledger,industry:null,localStore:context.localStore},inputTokens,packs);
   await saveGrading(owner,{...base,status:'graded',...result,gradedAt:stamp()} satisfies Grading);
-  return report;
+  // A2 하향(complianceHold)은 묶음 없이(.15) 본다. 묶음을 켠 채점 결과는 하향에 재사용하지 않는다(P2 측정 뒤 대표가 정한다).
+  return packs.length?undefined:report;
  }catch(error){
   console.error('online_grading_grader_error');
   const base=gradingOf(t,campaign.id,context),failed:Grading={...base,status:'grader_error',graders:[],summary:null,compliance:null,durationMs:null,gradedAt:stamp(),error:String((error as Error)?.message||error).slice(0,200)};
@@ -78,8 +84,8 @@ async function switchedOn(owner:string){
 async function downgradeOn(owner:string){
  try{return await isEnabled(owner,'a2_downgrade')}catch{console.error('a2_downgrade_flag_unreadable');return false}
 }
-type Switches={grading:boolean;downgrade:boolean};
-const switches=async(owner:string):Promise<Switches>=>({grading:await switchedOn(owner),downgrade:await downgradeOn(owner)});
+type Switches={grading:boolean;downgrade:boolean;packs:readonly CompliancePack[]};
+const switches=async(owner:string):Promise<Switches>=>({grading:await switchedOn(owner),downgrade:await downgradeOn(owner),packs:await compliancePacksOf(owner)});
 async function factsFor(owner:string,campaign:Campaign,snapshot?:{confirmed?:unknown[];prohibited?:unknown[]}|null){
  if(snapshot)return {ledger:ledgerOf(snapshot),source:'snapshot' as const};
  try{return {ledger:ledgerOf((await evidenceContext(database(),owner,campaign)).facts),source:'current' as const}}
@@ -88,7 +94,7 @@ async function factsFor(owner:string,campaign:Campaign,snapshot?:{confirmed?:unk
 type SnapshotFacts={confirmed?:unknown[];prohibited?:unknown[]}|null|undefined;
 async function gradeTargets(owner:string,campaign:Campaign,targets:GradingTarget[],snapshotFacts:SnapshotFacts,on:Switches,a2Targets=targets){
  const facts=await factsFor(owner,campaign,snapshotFacts),reports=new Map<string,ComplianceReport>();
- if(on.grading)for(const target of targets){const report=await gradeOne(owner,campaign,target,facts);if(report)reports.set(target.artifact.id,report)}
+ if(on.grading)for(const target of targets){const report=await gradeOne(owner,campaign,target,facts,on.packs);if(report)reports.set(target.artifact.id,report)}
  if(on.downgrade)await holdAndDowngrade(owner,campaign.id,a2Targets,facts.ledger,reports);
  return on.grading?targets.length:0;
 }

@@ -1,6 +1,7 @@
 import {outputLanguageLine} from './brief-language';
 import {aiBudget,isRecruitmentObjective} from './agency';
 import {campaignPractice} from './practice';
+import {withMeetingBlock} from './practice';
 import {meetingInstructions,candidateArtifacts,respondsToHandles,discussionRef,artifactRef,meetingCopyPack,withoutCopyPack,latestChoice,userDecision,type Meeting,type MeetingStep,type Contribution} from './meetings';
 import {labelArchive} from './role-output';
 import {aiBrand,withoutPlanOwner,withoutAssignees,productionAllow,inputMaskingRecord,BRAND_MASK_PATHS,DIRECTIVE_MASK_PATHS,FACT_MASK_PATHS,STORE_MASK_PATHS,campaignMaskPaths,metricMaskPaths,type InputMasking} from './ai-context';
@@ -53,5 +54,6 @@ export function buildMeetingSubmission(m:Meeting,stepId:string,storeAllow:readon
  const s=m.steps.find(t=>t.id===stepId);if(!s)throw new Error('회의 단계를 찾을 수 없습니다.');
  const built=meetingContext(m,s,storeAllow,options);
  // 출력 언어(G6): 캠페인이 영어·일본어일 때만 한 줄이 붙는다(lib/brief-language.ts). 한국어면 빈 문자열이라 바이트 동일하다.
- return {instructions:meetingInstructions(s,!!m.skillVersion,m.snapshot.prompts?.set,meetingCopyPack(m,s),isRecruitmentObjective(m.snapshot.campaign))+outputLanguageLine(m.snapshot.campaign)+(s.correction?CORRECTION:''),input:JSON.stringify(built.value),maskingRecord:[...built.findings,...(m.snapshot.sourceMasking||[])],...(built.diet?{diet:built.diet}:{})};
+ // 마케팅 스킬 블록(P4b): 회의 시작 때 스냅샷에 고정한 스위치(snapshot.mktSkillPrompts)가 있고 개선 회의일 때만 단계별 블록이 붙는다. 없으면 바이트 동일하다.
+ return {instructions:withMeetingBlock(meetingInstructions(s,!!m.skillVersion,m.snapshot.prompts?.set,meetingCopyPack(m,s),isRecruitmentObjective(m.snapshot.campaign)),s.phase,!!m.snapshot.mktSkillPrompts&&!!m.skillVersion)+outputLanguageLine(m.snapshot.campaign)+(s.correction?CORRECTION:''),input:JSON.stringify(built.value),maskingRecord:[...built.findings,...(m.snapshot.sourceMasking||[])],...(built.diet?{diet:built.diet}:{})};
 }

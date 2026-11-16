@@ -15,7 +15,7 @@ const jsxOnly2=['app/meeting-panel.tsx','components/app/channel-preview.tsx'];
 // app/panels.tsx는 캠페인 상세 틀(CampaignPanel: 머리·이동 경로·탭·브리프·AI 팀·작업물·성과·이력 탭)과 작업물 대화상자(ArtifactDialog)만 본다. 수정 사유 칩(ReviewReasons)·설정 패널은 아직 한국어다.
 const panelsRegions=['CampaignPanel','ArtifactDialog','ReviewReasons'];
 // 3단계 화면(신뢰 UI·카카오·공유 링크·플레이스 초안·광고 제안·브랜드 사실 카드 틀). 브랜드 사실·점수·광고 제안 카드는 서버 값과 맞춰 보는 이름 표(데이터)가 JSX 밖에 있어 JSX 안만 본다.
-const strict3=['components/app/compliance-panel.tsx','components/app/confidence-label.tsx','components/app/citation-pill.tsx','components/app/ai-origin-badge.tsx','app/settings-kakao.tsx','components/app/share-links-card.tsx','app/place-drafts-card.tsx'];
+const strict3=['components/app/compliance-panel.tsx','components/app/confidence-label.tsx','components/app/citation-pill.tsx','components/app/ai-origin-badge.tsx','app/settings-kakao.tsx','components/app/share-links-card.tsx','app/place-drafts-card.tsx','app/geo-protocol-v2.tsx'];
 const jsxOnly3=['components/app/creative-score-card.tsx','app/ads-proposals-card.tsx','components/app/safety-scope.tsx','app/brand-facts-panel.tsx','components/app/lifecycle-stepper.tsx','components/app/compliance-count-badge.tsx','components/app/usage-meter.tsx'];
 strict.push(...strict2,...strict3);jsxOnly.push(...jsxOnly2,...jsxOnly3);
 // app/workspace.tsx는 1단계 영역만 본다: 건너뛰기 링크·사이드바·머리 띠·화면 제목·새 캠페인 브리프 카드·지표 타일.

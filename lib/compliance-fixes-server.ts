@@ -11,7 +11,7 @@ import {artifactVersionWrites,type SavedArtifact} from './artifact-save';
 import {factLedgerOf} from './artifact-sources-server';
 import {regradeArtifact} from './artifact-regrade';
 import {applyComplianceFixes,computeComplianceFixes,ComplianceFixConflictError} from './graders/compliance-fixes';
-import {MAX_GRADED_LINES} from './online-grading';
+import {MAX_GRADED_LINES,compliancePacksOf} from './online-grading';
 
 export const FIXES_OFF='규정 수정 제안 기능이 꺼져 있습니다. 소유자가 설정의 기능 스위치에서 켭니다.';
 const MAX_SELECTED=50,MAX_CONTENT=40000;
@@ -36,7 +36,8 @@ export async function applyComplianceFixesAction(req:Request,who:Actor,b:Record<
  if(old.status==='outdated')throw new ApiError(409,'이전 브리프의 작업물입니다. 새 작업물을 등록하세요.');
  if(old.content.split('\n').length>MAX_GRADED_LINES)throw new ApiError(409,'본문이 자동 점검 한도를 넘어 수정 제안이 없습니다.');
  const brand=await readRecord<{name?:string}>(owner,'brand',c.brandId).catch(()=>null);
- const all=computeComplianceFixes(old.content,{facts:await factLedgerOf(owner,c),senderName:typeof brand?.name==='string'?brand.name:null});
+ // 보기(withComplianceFixes)와 같은 묶음(스위치 compliance_mkt_rules)으로 다시 계산해야 고침 id가 같다.
+ const all=computeComplianceFixes(old.content,{facts:await factLedgerOf(owner,c),packs:await compliancePacksOf(owner),senderName:typeof brand?.name==='string'?brand.name:null});
  const chosen=ids.map(fid=>all.find(f=>f.id===fid));
  if(chosen.some(f=>!f))throw new ApiError(409,'수정 제안이 바뀌었습니다. 다시 점검한 뒤 고르세요.');
  let content:string;

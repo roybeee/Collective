@@ -7,6 +7,7 @@ import {enExec} from './en-exec';
 import {enSettings} from './en-settings';
 import {enAgenda} from './en-agenda';
 import {enCards} from './en-cards';
+import {enGeo} from './en-geo';
 export const en:Record<MessageKey,string>={
  // 사이드바 메뉴와 화면 설명(app/workspace.tsx)
  'nav.overview':'Workspace','nav.learning':'Viral learning','nav.campaigns':'Campaigns','nav.brands':'Brand archive','nav.stores':'Store marketing','nav.agents':'AI team','nav.assets':'Deliverables','nav.results':'Performance','nav.research':'Product research','nav.franchise':'Franchise recruiting','nav.settings':'Connections & settings',
@@ -57,5 +58,5 @@ export const en:Record<MessageKey,string>={
  'locale.label':'Language','locale.lead':'Choose the screen language. Brand materials and AI outputs do not change.','locale.failed':'Could not load the language dictionary. Staying in Korean.',
  // 상태 배지(app/status-badge.tsx). 한국어 화면은 lib/agency statuses 이름을 그대로 쓰고, 영어·일본어일 때만 이 키를 읽는다
  'status.draft':'Writing brief','status.ready':'Ready to run','status.running':'AI working','status.blocked':'Blocked','status.review':'Awaiting review','status.approved':'Plan approved','status.revision':'Changes requested','status.executing':'Publishing','status.measuring':'Recording results','status.outdated':'Earlier version','status.archived':'Archived','status.archivedNote':'This campaign is archived. New AI runs, team meetings, continuous runs and publishing approvals are available after unarchiving.',
- ...enCampaign,...enTrust,...enExec,...enSettings,...enCards,...enAgenda,
+ ...enCampaign,...enTrust,...enExec,...enSettings,...enCards,...enAgenda,...enGeo,
 };
