@@ -1,6 +1,6 @@
 import {markUsageOutcomeSafely as markUsageOutcome} from './usage-outcome';
 import {brandArchiveInput,maskedArchiveSnapshot} from '@/lib/archive-server';
-import {PRACTICE_VERSION} from '@/lib/practice';
+import {PRACTICE_VERSION,MKT_SKILL_PROMPTS_VERSION} from '@/lib/practice';
 import {qualityMarkdown} from '@/lib/quality';
 import {roles,type Campaign,type Brand,type Artifact,type Metric} from '@/lib/agency';
 import type {BriefDraft} from '@/lib/brief';
@@ -32,6 +32,7 @@ import {copyPackProfile} from './copy-pack-server';
 import {briefChannelIssues} from './copy-pack';
 // 입력 축소(input_diet, PR 4b): 회의 시작 때 스위치를 한 번 읽어 스냅샷에 고정한다(보조 모듈). 꺼져 있으면 키가 없어 회의 제출이 이전과 바이트 동일하다. 단계 입력 문자 수 분해(inputChars)는 스위치와 무관하게 단계 기록에 숫자만 남긴다.
 import {inputDietEnabled} from './input-diet-server';
+import {mktSkillPromptsEnabled} from './mkt-skills-server';
 import {inputChars,INPUT_DIET_VERSION,type InputDietReport,type InputChars} from './input-diet';
 import {ApiError,identity,str,json,failure,database,readRecord,listRecords,recordStatement,eventStatement,connection,acquireLock,releaseLock,stamp,uid,type EventActor} from '@/lib/server';
 
@@ -163,8 +164,10 @@ export async function executeMeeting(owner:string,b:Record<string,unknown>,by?:E
    // 카피 팩 프로필은 회의 시작 때 고정한다. 회의 중 스위치를 바꿔도 이 회의의 콘텐츠 개선본 계약은 같다.
    const outputProfile=(await copyPackProfile(owner,'content'))??undefined;
    const inputDiet=await inputDietEnabled(owner);
+   // 마케팅 스킬 블록(P4b)도 회의 시작 때 고정한다. 회의 중 스위치를 바꿔도 이 회의의 지시문은 같다.
+   const mktSkills=await mktSkillPromptsEnabled(owner);
    const plan=parseMeetingPlan(b.plan),previousChoice=previous?userDecision(latestChoice(previous)):undefined;
-   const m:Meeting={skillVersion:PRACTICE_VERSION,id,campaignId:c.id,campaignVersion:c.version,agenda:str(b.agenda,'회의 안건',5000,true),status:'running',steps:initialSteps(id),createdAt:stamp(),updatedAt:stamp(),model:cfg.model,stopRequested:false,artifactIds:[],invalidatedRoles:[],previousMeetingId:previous?.id,...(plan?{plan}:{}),snapshot:{prompts,...(outputProfile?{outputProfile}:{}),...(inputDiet?{inputDiet:INPUT_DIET_VERSION}:{}),brandArchive:archived.archive,sourceMasking:archived.sourceMasking,campaign:c,brand,artifacts,metrics,learning,evidence:await evidenceContext(database(),owner,c),...(previous?{previous:{id:previous.id,agenda:previous.agenda,decisions:previous.steps.find(s=>s.phase==='synthesis')?.output as Synthesis,quality:previous.steps.find(s=>s.phase==='quality')?.output as QualityReview,discussion:previous.steps.filter(s=>s.phase==='discussion'&&s.status==='completed').map(s=>({id:s.id,role:s.role,output:s.output as Contribution})),...(previousFailure?{failure:{role:previousFailure.role,phase:previousFailure.phase,error:previousFailure.error||previous.error||'응답 검증 실패'}}:{}),...(previousChoice?{choice:previousChoice}:{})}}:{})}};
+   const m:Meeting={skillVersion:PRACTICE_VERSION,id,campaignId:c.id,campaignVersion:c.version,agenda:str(b.agenda,'회의 안건',5000,true),status:'running',steps:initialSteps(id),createdAt:stamp(),updatedAt:stamp(),model:cfg.model,stopRequested:false,artifactIds:[],invalidatedRoles:[],previousMeetingId:previous?.id,...(plan?{plan}:{}),snapshot:{prompts,...(outputProfile?{outputProfile}:{}),...(inputDiet?{inputDiet:INPUT_DIET_VERSION}:{}),...(mktSkills?{mktSkillPrompts:MKT_SKILL_PROMPTS_VERSION}:{}),brandArchive:archived.archive,sourceMasking:archived.sourceMasking,campaign:c,brand,artifacts,metrics,learning,evidence:await evidenceContext(database(),owner,c),...(previous?{previous:{id:previous.id,agenda:previous.agenda,decisions:previous.steps.find(s=>s.phase==='synthesis')?.output as Synthesis,quality:previous.steps.find(s=>s.phase==='quality')?.output as QualityReview,discussion:previous.steps.filter(s=>s.phase==='discussion'&&s.status==='completed').map(s=>({id:s.id,role:s.role,output:s.output as Contribution})),...(previousFailure?{failure:{role:previousFailure.role,phase:previousFailure.phase,error:previousFailure.error||previous.error||'응답 검증 실패'}}:{}),...(previousChoice?{choice:previousChoice}:{})}}:{})}};
    await database().batch([database().prepare('INSERT INTO jobs(id,owner,campaign_id,role,status,model,campaign_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').bind(jobId(owner,m),owner,c.id,'meeting','in_progress',cfg.model,c.version,m.createdAt,m.updatedAt),recordStatement(owner,'team_meeting',m.id,m,c.id),eventStatement(owner,c.id,'팀 회의를 시작했습니다. 8명 의견 교환 → 개선 과제 → 품질 재검토.',by)]);
    return json(publicMeeting(m));
   }

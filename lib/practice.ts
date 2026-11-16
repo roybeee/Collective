@@ -101,3 +101,17 @@ export function campaignPractice(c:ChannelScope,channels?:Record<string,string>)
  return [guides.length?guides.join('\n'):channels?.default??defaultChannelSkill,campaignEvidencePolicy(c)].join('\n');
 }
 export const viralPractice=`실무 분석: facts는 관찰 범위/장면·자막 위치/시점을 붙인 사실, hook은 첫 장면의 자극과 약속, retention은 전개·정보 공개 순서, sharing은 누구에게 왜 보낼지의 가설로 구분하세요. context에는 계정 규모·게시 경과시간·유료 배포·협업·시기 영향을 적고 미확인은 그대로 남기세요. counterEvidence에는 다른 설명과 저성과 비교 사례 또는 비교 불가 이유를 쓰세요. 아이디어마다 어떤 관찰에서 나온 가설인지, 브랜드에 맞게 바꿀 원리, 실패를 보여줄 신호를 명시하세요. 성공 사례의 표면적 문구를 복제하거나 조회수만으로 효과를 입증하지 마세요. 분석 자체는 학습 규칙 채택 근거가 아니며 실제 실험과 검토가 필요합니다.`;
+// ── 마케팅 스킬 블록(스위치 mkt_skill_prompts, 마케팅 스킬 이식 P4b, 코드 소유) ──
+// 레지스트리 본문이 아니라 코드가 소유한다. 스위치가 꺼져 있으면 붙지 않아 역할·회의 지시문과 inputHash가 이전과 같다. 켜면 지시문 끝에만 붙고 출력 계약 섹션 수는 그대로다(lib/role-output.ts 불변).
+// 버전은 역할 inputHash와 회의 스냅샷(snapshot.mktSkillPrompts)에 남는다. 문구를 바꾸면 버전을 올린다.
+export const MKT_SKILL_PROMPTS_VERSION='2026-11-16.1';
+// 총괄 실행과 회의 합의 단계: 캠페인 크기에 따라 경로를 고르고 단계별 담당을 정한다. AI 답변 기준선과 윤리 게이트는 어느 경로에서도 빼지 않는다.
+export const marketingRouting='마케팅 경로: 먼저 캠페인 크기를 정하세요. 브리프의 채널이 하나이고 새 오퍼·가격 조건이 없으면 빠른 경로(AI 답변 기준선 → 핵심 메시지 → 카피 → 윤리 게이트), 채널이 둘 이상이거나 오퍼·가격 조건이 있으면 전체 경로(AI 답변 기준선 → 포지셔닝 → 핵심 메시지 → 브랜드 이야기 → 카피 → 확산 → AI 답변 처방·재관측 → 윤리 게이트)로 갑니다. 어느 경로에서도 AI 답변 기준선과 윤리 게이트는 생략하지 않습니다. 담당: AI 답변 기준선과 이야기의 증거 발굴은 인사이트, 포지셔닝과 핵심 메시지는 전략, 이야기 구성은 크리에이티브, 카피는 콘텐츠, 확산은 그로스, AI 답변 처방과 재관측 계획은 데이터, 윤리 게이트는 품질, 경로 선택과 순서는 총괄이 맡습니다. 고른 경로와 그 이유(채널 수, 오퍼 유무)를 본문에 한 줄로 적고, 기준선이나 게이트에 필요한 자료가 없으면 자료 필요로 남기세요.';
+// 모든 역할·회의 단계: 사실 문장의 근거 상태. 원장 라벨(확인·진술·미확인, 스위치 fact_evidence_state)이 없어도 같은 규율을 따른다.
+export const evidenceStateDiscipline='근거 상태 규율: 사실 문장은 확인·진술·미확인 세 상태로만 다루세요. 수치·날짜·횟수·기간은 확인 상태의 확정 사실이 뒷받침할 때만 씁니다. 진술은 "누가 무엇이라고 말한다"는 인용 형식으로만 쓰고 확인된 사실 문장으로 바꾸지 않습니다. 미확인 항목은 [확인 필요]로 표시하고, 해석은 [해석]으로 표시해 사실과 섞지 마세요.';
+// 품질 단계(역할 실행·회의 품질 재검토): 기존 판정 형식 안에서 게시 전 판정과 근거 종류를 문장으로 요구한다. 새 필드·섹션은 없다.
+export const qualityVerdictWording='게시 전 판정: 기존 판정 형식과 항목은 그대로 두고, findings와 각 점검의 판단 근거 문장 안에 게시 전 판정을 통과·보류·반려 중 하나로 적으세요. 판정마다 근거 종류를 법령 행(입력이나 규정 점검 결과에 나온 법령 조항만), 미확인(법령 근거를 확인하지 못함), 운영 기준(COLLECTIVE 운영 기준) 중 하나로 밝힙니다. 입력에 없는 법령 조항을 만들지 마세요. 이 판정은 검토 보조이며 법률 자문이 아닙니다.';
+const block=(parts:(string|false)[])=>'\n'+parts.filter((p):p is string=>!!p).join('\n');
+export const mktRoleBlock=(role:string)=>block([role==='cmo'&&marketingRouting,evidenceStateDiscipline,role==='quality'&&qualityVerdictWording]);
+export const mktMeetingBlock=(phase:string)=>block([phase==='synthesis'&&marketingRouting,evidenceStateDiscipline,phase==='quality'&&qualityVerdictWording]);
+export const withMeetingBlock=(text:string,phase:string,enabled:boolean)=>enabled?text+mktMeetingBlock(phase):text;
